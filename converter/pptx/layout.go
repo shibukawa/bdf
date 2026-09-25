@@ -69,18 +69,20 @@ type textLine struct {
 	baseline  float64
 	offset    float64 // alignment shift
 	bulletX   float64
+	cx, cy    float64 // column offset
 }
 
 // layoutParagraph breaks a paragraph into lines of at most width (no limit
 // when wrap is false).
 func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 	markBreaks(pa.items)
-	firstStart := pa.marL + pa.indent
+	// a first line that would start left of the text box starts at its edge
+	firstStart := math.Max(pa.marL+pa.indent, 0)
 	bulletX := firstStart
 	if b := pa.bullet; b != nil {
 		switch {
 		case pa.indent >= 0:
-			firstStart = pa.marL + pa.indent + b.w
+			firstStart = bulletX + b.w
 		case bulletX+b.w > pa.marL:
 			firstStart = bulletX + b.w
 		default:
@@ -356,7 +358,8 @@ func (e *textEmitter) emitLines(lines []*textLine, dx, dy float64) {
 		default:
 			e.cv.obj.Mark(bdf.MarkLine, "")
 		}
-		base := ln.baseline + dy
+		base := ln.baseline + dy + ln.cy
+		dx := dx + ln.cx
 		if b := ln.pa.bullet; b != nil && ln.first {
 			bx := ln.bulletX
 			if ln.pa.algn == "ctr" || ln.pa.algn == "r" {

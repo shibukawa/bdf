@@ -22,28 +22,6 @@ func (c *converter) loadTableStyles() {
 	}
 }
 
-// builtinTableStyle is PowerPoint's default table style, "Medium Style 2 -
-// Accent 1", used when a table names a style the file does not define.
-const builtinTableStyle = `<tblStyle styleId="{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}">
-<wholeTbl><tcTxStyle><fontRef idx="minor"><prstClr val="black"/></fontRef><schemeClr val="dk1"/></tcTxStyle>
-<tcStyle><tcBdr>
-<left><ln w="12700"><solidFill><schemeClr val="lt1"/></solidFill></ln></left>
-<right><ln w="12700"><solidFill><schemeClr val="lt1"/></solidFill></ln></right>
-<top><ln w="12700"><solidFill><schemeClr val="lt1"/></solidFill></ln></top>
-<bottom><ln w="12700"><solidFill><schemeClr val="lt1"/></solidFill></ln></bottom>
-<insideH><ln w="12700"><solidFill><schemeClr val="lt1"/></solidFill></ln></insideH>
-<insideV><ln w="12700"><solidFill><schemeClr val="lt1"/></solidFill></ln></insideV>
-</tcBdr><fill><solidFill><schemeClr val="accent1"><tint val="20000"/></schemeClr></solidFill></fill></tcStyle></wholeTbl>
-<band1H><tcStyle><tcBdr/><fill><solidFill><schemeClr val="accent1"><tint val="40000"/></schemeClr></solidFill></fill></tcStyle></band1H>
-<band2H><tcStyle><tcBdr/></tcStyle></band2H>
-<band1V><tcStyle><tcBdr/><fill><solidFill><schemeClr val="accent1"><tint val="40000"/></schemeClr></solidFill></fill></tcStyle></band1V>
-<band2V><tcStyle><tcBdr/></tcStyle></band2V>
-<lastCol><tcTxStyle b="on"><fontRef idx="minor"><prstClr val="black"/></fontRef><schemeClr val="lt1"/></tcTxStyle><tcStyle><tcBdr/><fill><solidFill><schemeClr val="accent1"/></solidFill></fill></tcStyle></lastCol>
-<firstCol><tcTxStyle b="on"><fontRef idx="minor"><prstClr val="black"/></fontRef><schemeClr val="lt1"/></tcTxStyle><tcStyle><tcBdr/><fill><solidFill><schemeClr val="accent1"/></solidFill></fill></tcStyle></firstCol>
-<lastRow><tcTxStyle b="on"><fontRef idx="minor"><prstClr val="black"/></fontRef><schemeClr val="lt1"/></tcTxStyle><tcStyle><tcBdr><top><ln w="38100"><solidFill><schemeClr val="lt1"/></solidFill></ln></top></tcBdr><fill><solidFill><schemeClr val="accent1"/></solidFill></fill></tcStyle></lastRow>
-<firstRow><tcTxStyle b="on"><fontRef idx="minor"><prstClr val="black"/></fontRef><schemeClr val="lt1"/></tcTxStyle><tcStyle><tcBdr><bottom><ln w="38100"><solidFill><schemeClr val="lt1"/></solidFill></ln></bottom></tcBdr><fill><solidFill><schemeClr val="accent1"/></solidFill></fill></tcStyle></firstRow>
-</tblStyle>`
-
 func (c *converter) tableStyle(tblPr *node) *node {
 	if st := tblPr.child("tableStyle"); st != nil {
 		return st
@@ -56,11 +34,14 @@ func (c *converter) tableStyle(tblPr *node) *node {
 	if st, ok := c.tableStyles[id]; ok {
 		return st
 	}
-	n, _ := parseXML([]byte(builtinTableStyle))
-	if id != "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}" {
-		c.warnOnce("tblstyle:"+id, "table style %s is not defined in the file; using the default table style", id)
+	if st := builtinTableStyle(id); st != nil {
+		c.tableStyles[id] = st
+		return st
 	}
-	return n
+	c.warnOnce("tblstyle:"+id, "unknown table style %s; using the default table style", id)
+	st := builtinTableStyle("{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}")
+	c.tableStyles[id] = st
+	return st
 }
 
 type tcell struct {

@@ -99,6 +99,9 @@ type textBlock struct {
 	fm         matrix
 	upright    bool
 	vertical   bool
+	cols       int     // number of columns (0 or 1: one)
+	colW       float64 // column width
+	colGap     float64 // space between columns
 }
 
 // renderText lays out a text frame in the box x,y,w,h of the coordinate
@@ -152,11 +155,19 @@ func (s *slideCtx) layoutText(tf *textFrame, x, y, w, h float64, m matrix) *text
 		x, y, w, h = 0, 0, h, w
 		b.vertical = true
 	}
-	if v, ok := bp.attr("numCol"); ok && atof(v, 1) > 1 {
-		s.c.warnOnce("numcol", "multi-column text boxes are laid out in one column")
-	}
 	b.x, b.y, b.w, b.h, b.fm = x, y, w, h, fm
-	b.lo = layoutBody(paras, w-b.ins[0]-b.ins[2], wrap)
+	width := w - b.ins[0] - b.ins[2]
+	if v, ok := bp.attr("numCol"); ok && atof(v, 1) > 1 && wrap {
+		b.cols = min(int(atof(v, 1)), 16)
+		b.colGap = emuChain(bp, "spcCol", 0)
+		b.colW = (width - float64(b.cols-1)*b.colGap) / float64(b.cols)
+		if b.colW > 0 {
+			width = b.colW
+		} else {
+			b.cols = 0
+		}
+	}
+	b.lo = layoutBody(paras, width, wrap)
 	return b
 }
 
@@ -172,6 +183,20 @@ func (s *slideCtx) drawTextBlock(cv *canvas, b *textBlock) {
 		dy = iy + (ih-b.lo.height)/2
 	case "b":
 		dy = iy + ih - b.lo.height
+	}
+	if b.cols > 1 {
+		// Lines flow into the next column when they pass the bottom.
+		dy = iy
+		col, colTop, inCol := 0, 0.0, 0
+		for _, ln := range b.lo.lines {
+			top := ln.baseline + ln.desc - ln.height
+			if ln.baseline+ln.desc-colTop > ih && inCol > 0 && col < b.cols-1 {
+				col++
+				colTop, inCol = top, 0
+			}
+			ln.cx, ln.cy = float64(col)*(b.colW+b.colGap), -colTop
+			inCol++
+		}
 	}
 	cv.obj.Save()
 	cv.transform(b.fm)
