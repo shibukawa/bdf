@@ -63,7 +63,7 @@ node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に�
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
 ```
 
-Go は 1.27 以上が必要です。golden テストは `playwright-core` を使います。Chromium は `CHROMIUM_PATH` で指定するか、`npx playwright-core install chromium` で入れてください。
+Go は 1.27 以上が必要です。golden テストは `playwright-core`（固定バージョン。golden 画像はその Chromium ビルドの headless shell で描いたもの）を使います。`npx playwright-core install chromium` で入れるか、同じビルドの headless shell を `CHROMIUM_PATH` で指定してください。
 
 ## エンコーダ API の雰囲気（Go）
 

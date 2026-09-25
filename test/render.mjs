@@ -27,7 +27,11 @@ else {
   fileServer = await serve(dirname(abs));
   src = `http://127.0.0.1:${fileServer.port}/${basename(abs)}`;
 }
-const executablePath = process.env.CHROMIUM_PATH ?? ["/opt/pw-browsers/chromium-1194/chrome-linux/chrome"].find((p) => existsSync(p));
+// Use an explicit browser (CHROMIUM_PATH, or the headless shell preinstalled in some sandboxes);
+// otherwise fall back to the one installed by `npx playwright-core install chromium`, which is
+// the headless shell too. The full Chromium binary rasterizes small text differently from the
+// shell, so the goldens only match when every machine runs the same one.
+const executablePath = process.env.CHROMIUM_PATH ?? ["/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell"].find((p) => existsSync(p));
 // The pixels must not depend on the machine: Canvas 2D is rasterized in software (no GPU or
 // SwiftShader path, which also makes the worker's OffscreenCanvas match the main thread), text
 // is drawn without hinting or LCD filtering so the fontconfig defaults (hint style, subpixel
