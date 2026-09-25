@@ -30,7 +30,12 @@ const { server, port } = await serve(root);
 // Use an explicit Chromium (CHROMIUM_PATH, or the one preinstalled in some sandboxes);
 // otherwise fall back to the browser installed by `npx playwright-core install chromium`.
 const executablePath = process.env.CHROMIUM_PATH ?? ["/opt/pw-browsers/chromium-1194/chrome-linux/chrome"].find((p) => existsSync(p));
-const browser = await chromium.launch(executablePath ? { executablePath } : {});
+// Text is rasterized without hinting or LCD filtering so that the fontconfig defaults of the
+// machine (hint style, subpixel order) do not leak into the pixels; playwright-core is pinned
+// to the release whose Chromium build matches the goldens.
+const launch = { args: ["--font-render-hinting=none", "--disable-lcd-text"] };
+if (executablePath) launch.executablePath = executablePath;
+const browser = await chromium.launch(launch);
 let failed = 0;
 try {
   const page = await browser.newPage({ deviceScaleFactor: 1 });

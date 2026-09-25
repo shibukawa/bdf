@@ -28,7 +28,12 @@ else {
   src = `http://127.0.0.1:${fileServer.port}/${basename(abs)}`;
 }
 const executablePath = process.env.CHROMIUM_PATH ?? ["/opt/pw-browsers/chromium-1194/chrome-linux/chrome"].find((p) => existsSync(p));
-const browser = await chromium.launch(executablePath ? { executablePath } : {});
+// Text is rasterized without hinting or LCD filtering so that the fontconfig defaults of the
+// machine (hint style, subpixel order) do not leak into the pixels; playwright-core is pinned
+// to the release whose Chromium build matches the goldens.
+const launch = { args: ["--font-render-hinting=none", "--disable-lcd-text"] };
+if (executablePath) launch.executablePath = executablePath;
+const browser = await chromium.launch(launch);
 try {
   const page = await browser.newPage();
   page.on("console", (m) => { if (m.type() === "error") console.error("[browser]", m.text()); });
