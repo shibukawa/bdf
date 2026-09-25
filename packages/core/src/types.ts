@@ -15,6 +15,7 @@ export interface View {
   id: string;
   kind: ViewKind;
   title?: string;
+  textIndex?: Hash;
   pages?: Page[];
   continuous?: { gap: number };
   tile?: number;

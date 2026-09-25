@@ -1,10 +1,18 @@
 /// <reference lib="webworker" />
 import { BdfDocument, BufferSource, RangeSource, SplitSource, fetchSingle, extractText, type TextRun, type Manifest } from "@bdf/core";
 import { PageRenderer } from "./page.js";
+import { DocumentSearch } from "./search.js";
 import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource } from "./protocol.js";
 
 let doc: BdfDocument | undefined;
 let pages: PageRenderer | undefined;
+let search: DocumentSearch | undefined;
+
+const measureCtx = new OffscreenCanvas(1, 1).getContext("2d")!;
+const measure = (font: string, text: string) => {
+  measureCtx.font = font;
+  return measureCtx.measureText(text).width;
+};
 
 async function open(source: OpenSource): Promise<Manifest> {
   switch (source.kind) {
@@ -13,6 +21,7 @@ async function open(source: OpenSource): Promise<Manifest> {
     case "split": doc = await BdfDocument.open(new SplitSource(source.base)); break;
   }
   pages = new PageRenderer(doc!, {}, (self as unknown as { fonts?: FontFaceSet }).fonts);
+  search = new DocumentSearch(doc!, measure);
   return doc!.manifest;
 }
 
@@ -25,10 +34,10 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
     case "open":
       return { result: await open(req.source), transfer: [] };
     case "close":
-      doc = pages = undefined;
+      doc = pages = search = undefined;
       return { result: null, transfer: [] };
   }
-  if (!doc || !pages) throw new Error("bdf: no document open");
+  if (!doc || !pages || !search) throw new Error("bdf: no document open");
   const view = doc.view(req.view);
   switch (req.type) {
     case "page": {
@@ -60,6 +69,14 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
         runs.push(...extractText(obj, (h) => doc!.objectSync(h)));
       }
       return { result: runs, transfer: [] };
+    }
+    case "search":
+      return { result: await search.search(view, req.query, req.options), transfer: [] };
+    case "locate": {
+      // Fonts must be loaded for measureText; locate() loads the objects, which loads their fonts.
+      const rects = [];
+      for (const hit of req.hits) rects.push(await search.locate(view, hit));
+      return { result: rects, transfer: [] };
     }
   }
 }

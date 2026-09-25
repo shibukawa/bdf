@@ -56,6 +56,9 @@ type View struct {
 	Kind  string `json:"kind"`
 	Title string `json:"title,omitempty"`
 
+	// optional text index part (docs/spec.md §7.9)
+	TextIndex string `json:"textIndex,omitempty"`
+
 	// fixed / flow
 	Pages      []*Page     `json:"pages,omitempty"`
 	Continuous *Continuous `json:"continuous,omitempty"`

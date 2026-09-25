@@ -8,6 +8,7 @@ Office 系ファイルをサーバーで変換しておき、フロントエン�
 - 命令セットは `CanvasRenderingContext2D` に 1:1 対応
 - `DecompressionStream` で展開、Worker + `OffscreenCanvas` で描画
 - 内容アドレスの Part によりマスターや繰り返し部品を自動共有
+- テキスト索引 Part と Worker 内の全文検索（行またぎ、NFKC・かな正規化、ヒット矩形）
 - 1 ファイル形式と分割ファイル形式を相互変換可能
 
 ドキュメント:
@@ -81,5 +82,7 @@ import { BdfWorkerClient } from "@bdf/render";
 const client = new BdfWorkerClient(new Worker(workerUrl, { type: "module" }));
 const manifest = await client.open({ kind: "single", url: "/doc.bdf", range: true });
 const bitmap = await client.page("slides", 0, devicePixelRatio); // ImageBitmap
-const runs = await client.text("slides", 0);                      // 選択・検索用テキスト
+const runs = await client.text("slides", 0);                      // 選択・コピー用テキスト
+const hits = await client.search("doc", "list of objects");         // 全文検索（正規化つき）
+const rects = await client.locate("doc", hits);                    // ハイライト矩形（ページ座標）
 ```

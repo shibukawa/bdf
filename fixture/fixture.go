@@ -135,6 +135,11 @@ func Demo() (*bdf.Document, error) {
 	buildSlides(d, fonts, img, iconH, iconBB)
 	buildFlow(d, fonts, iconH, iconBB)
 	buildSheet(d, fonts, img)
+	for _, v := range d.Views {
+		if _, err := d.BuildTextIndex(v); err != nil {
+			return nil, err
+		}
+	}
 	return d, nil
 }
 
@@ -162,10 +167,10 @@ func buildSlides(d *bdf.Document, fonts *Fonts, img bdf.Hash, iconH bdf.Hash, ic
 		body := bdf.NewObject()
 		fb := body.AddFont(fonts.BoldRef)
 		fr := body.AddFont(fonts.RegularRef)
-		body.Font(fb, 36).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).
+		body.Mark(bdf.MarkBox, "title").Font(fb, 36).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).
 			FillText(title, 48, 80, fonts.BoldM.Advance(title, 36))
 		num := fmt.Sprintf("%d / %d", i+1, len(titles))
-		body.Font(fr, 12).FillColor(bdf.RGB(0xff, 0xff, 0xff)).TextStyle(bdf.AlignRight, bdf.BaselineAlphabetic, bdf.DirInherit, 0).
+		body.Mark(bdf.MarkBox, "page-number").Font(fr, 12).FillColor(bdf.RGB(0xff, 0xff, 0xff)).TextStyle(bdf.AlignRight, bdf.BaselineAlphabetic, bdf.DirInherit, 0).
 			FillText(num, w-140, h-14, fonts.RegularM.Advance(num, 12)).
 			TextStyle(bdf.AlignLeft, bdf.BaselineAlphabetic, bdf.DirInherit, 0)
 
@@ -275,13 +280,16 @@ func buildFlow(d *bdf.Document, fonts *Fonts, iconH bdf.Hash, iconBB bdf.Rect) {
 		fr := body.AddFont(fonts.RegularRef)
 		y := float32(my + 20)
 		title := fmt.Sprintf("Section %d", page+1)
-		body.Font(fb, 20).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).FillText(title, mx, y, fonts.BoldM.Advance(title, 20))
+		body.Mark(bdf.MarkParagraph, "heading").Font(fb, 20).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).FillText(title, mx, y, fonts.BoldM.Advance(title, 20))
 		y += 32
 		body.Font(fr, 11).FillColor(bdf.RGB(0x22, 0x22, 0x22))
 		for rep := 0; rep < 3; rep++ {
+			body.Mark(bdf.MarkParagraph, "")
 			for _, line := range lorem {
-				if line != "" {
-					body.FillText(line, mx, y, fonts.RegularM.Advance(line, 11))
+				if line == "" {
+					body.Mark(bdf.MarkParagraph, "")
+				} else {
+					body.Mark(bdf.MarkLine, "").FillText(line, mx, y, fonts.RegularM.Advance(line, 11))
 				}
 				y += 15
 			}
@@ -298,7 +306,7 @@ func buildFlow(d *bdf.Document, fonts *Fonts, iconH bdf.Hash, iconBB bdf.Rect) {
 				}
 				body.StrokeRect(tx+float32(c)*cw, ty+float32(r)*rh, cw, rh)
 				cell := fmt.Sprintf("R%dC%d", r+1, c+1)
-				body.FillColor(bdf.RGB(0x22, 0x22, 0x22)).FillText(cell, tx+float32(c)*cw+6, ty+float32(r)*rh+13, fonts.RegularM.Advance(cell, 11))
+				body.Mark(bdf.MarkCell, fmt.Sprintf("%c%d", 'A'+c, r+1)).FillColor(bdf.RGB(0x22, 0x22, 0x22)).FillText(cell, tx+float32(c)*cw+6, ty+float32(r)*rh+13, fonts.RegularM.Advance(cell, 11))
 			}
 		}
 		bodyH, _ := d.AddObject(body)
@@ -357,7 +365,7 @@ func buildSheet(d *bdf.Document, fonts *Fonts, img bdf.Hash) {
 					m = fonts.BoldM
 				}
 				adv := m.Advance(s, 10)
-				t.Font(f, 10).FillColor(bdf.RGB(0x22, 0x22, 0x22))
+				t.Mark(bdf.MarkCell, fmt.Sprintf("%c%d", 'A'+c, r+1)).Font(f, 10).FillColor(bdf.RGB(0x22, 0x22, 0x22))
 				if f == fr {
 					t.TextStyle(bdf.AlignRight, bdf.BaselineAlphabetic, bdf.DirInherit, 0).FillText(s, x+colW-4, y+14, adv).
 						TextStyle(bdf.AlignLeft, bdf.BaselineAlphabetic, bdf.DirInherit, 0)

@@ -137,6 +137,12 @@ async function main() {
       textRuns,
     });
   }
+  // search through the worker: hits, then rectangles
+  const hits = await client.search("doc", "list of objects");
+  const rects = await client.locate("doc", hits);
+  const sheetHits = await client.search("sheet1", "row 150");
+  const sheetRects = await client.locate("sheet1", sheetHits);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }

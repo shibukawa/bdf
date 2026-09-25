@@ -1,4 +1,5 @@
-import type { Manifest, Rect, TextRun } from "@bdf/core";
+import type { Manifest, Rect, TextRun, SearchHit, SearchOptions } from "@bdf/core";
+import type { HitRect } from "./search.js";
 import type { WorkerCall, WorkerResponse, OpenSource } from "./protocol.js";
 
 /** Main-thread handle to a rendering worker. */
@@ -38,6 +39,13 @@ export class BdfWorkerClient {
   }
   text(view: string, page: number): Promise<TextRun[]> {
     return this.call<TextRun[]>({ type: "text", view, page });
+  }
+  search(view: string, query: string, options?: SearchOptions): Promise<SearchHit[]> {
+    return this.call<SearchHit[]>({ type: "search", view, query, options });
+  }
+  /** Rectangles for each hit, in page or sheet coordinates. */
+  locate(view: string, hits: SearchHit[]): Promise<HitRect[][]> {
+    return this.call<HitRect[][]>({ type: "locate", view, hits });
   }
   close(): Promise<null> {
     return this.call<null>({ type: "close" });

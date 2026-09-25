@@ -134,3 +134,69 @@ func TestSingleAndSplit(t *testing.T) {
 		t.Fatal("single -> split -> single is not byte-identical")
 	}
 }
+
+func TestExtractTextAndIndex(t *testing.T) {
+	d := NewDocument()
+	child := NewObject()
+	cf := child.AddFont(SystemFont("serif", 400, StyleNormal))
+	child.Font(cf, 10).FillText("child", 0, 0, 20)
+	childH, childBB := d.AddObject(child)
+
+	o := NewObject()
+	f := o.AddFont(SystemFont("sans-serif", 400, StyleNormal))
+	o.Font(f, 12)
+	o.Mark(MarkParagraph, "").FillText("Hello", 0, 0, 30).FillText("World", 35, 0, 30) // gap 5 > 0.2*size => space
+	o.Mark(MarkLine, "").FillText("second", 0, 15, 40)
+	o.FillText("-line", 40, 15, 20) // adjacent => none
+	o.Mark(MarkAltText, "outlined").FillRect(0, 0, 1, 1)
+	o.Save().Translate(100, 100).Use(o.AddObject(childH, childBB)).Restore()
+	h, _ := d.AddObject(o)
+
+	obj, _ := DecodeObject(d.Part(h).Data)
+	runs, err := ExtractText(obj, func(hh Hash) *ObjectPart {
+		p, _ := DecodeObject(d.Part(hh).Data)
+		return p
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	var seps []byte
+	for _, r := range runs {
+		texts = append(texts, r.Text)
+		seps = append(seps, r.Sep)
+	}
+	wantTexts := []string{"Hello", "World", "second", "-line", "outlined", "child"}
+	wantSeps := []byte{SepBreak, SepSpace, SepSpace, SepNone, SepSpace, SepSpace}
+	if strings.Join(texts, "|") != strings.Join(wantTexts, "|") {
+		t.Fatalf("texts = %v", texts)
+	}
+	for i := range wantSeps {
+		if seps[i] != wantSeps[i] {
+			t.Errorf("run %d (%q) sep = %d, want %d", i, texts[i], seps[i], wantSeps[i])
+		}
+	}
+	if runs[5].X != 100 || runs[5].Y != 100 || runs[5].Font.Family != "serif" {
+		t.Fatalf("child run = %+v", runs[5])
+	}
+
+	v := d.NewView("v", ViewFixed, "")
+	v.AddPage(200, 200, Layer{Role: RoleBody, Obj: h})
+	ih, err := d.BuildTextIndex(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.TextIndex != ih.String() {
+		t.Fatal("view does not reference the index")
+	}
+	idx, err := DecodeTextIndex(d.Part(ih).Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := PlainText(idx); got != "Hello World second-line outlined child" {
+		t.Fatalf("plain text = %q", got)
+	}
+	if idx[5].Ordinal != 5 || idx[0].A != 0 || idx[0].B != 0 {
+		t.Fatalf("index entry = %+v", idx[5])
+	}
+}

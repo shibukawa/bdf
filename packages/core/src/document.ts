@@ -1,5 +1,7 @@
 import { decode, type PartSource } from "./container.js";
 import { decodeObject, decodePathCollection, objectDeps } from "./object.js";
+import { decodeTextIndex, type IndexRun } from "./search.js";
+import { extractText } from "./text.js";
 import type { Manifest, PartEntry, ObjectPart, PathData, Hash, View } from "./types.js";
 
 /** A loaded document: manifest plus a cache of decoded parts. */
@@ -56,6 +58,32 @@ export class BdfDocument {
     return o;
   }
   private loadedObjects = new Map<Hash, ObjectPart>();
+
+  /**
+   * Text index runs of a view: the text index part when present, otherwise
+   * built by extracting text from every object of the view (which loads them all).
+   */
+  async textIndex(view: View): Promise<IndexRun[]> {
+    if (view.textIndex) return decodeTextIndex(await this.part(view.textIndex));
+    const runs: IndexRun[] = [];
+    const add = async (a: number, b: number, hash: Hash) => {
+      const obj = await this.ensure(hash);
+      extractText(obj, (h) => this.objectSync(h)).forEach((r, i) => {
+        runs.push({ a, b, ordinal: r.ordinal, sep: i === 0 ? 2 : r.sep, text: r.text });
+      });
+    };
+    if (view.kind === "sheet") {
+      const keys = Object.keys(view.tiles ?? {}).map((k) => k.split(",").map(Number) as [number, number]);
+      keys.sort((p, q) => p[1] - q[1] || p[0] - q[0]);
+      for (const [x, y] of keys) await add(x, y, view.tiles![`${x},${y}`]);
+    } else {
+      const pages = view.pages ?? [];
+      for (let pi = 0; pi < pages.length; pi++) {
+        for (let li = 0; li < pages[pi].layers.length; li++) await add(pi, li, pages[pi].layers[li].obj);
+      }
+    }
+    return runs;
+  }
 
   pathCollection(hash: Hash): Promise<PathData[]> {
     let p = this.pathSets.get(hash);

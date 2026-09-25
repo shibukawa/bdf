@@ -117,7 +117,8 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
           { "role": "header", "obj": "…" },
           { "role": "body",   "obj": "…" },
           { "role": "footer", "obj": "…" } ] }, … ],
-      "continuous": { "gap": 24 } },
+      "continuous": { "gap": 24 },
+      "textIndex": "<hash>" },                       // 任意: テキスト索引 Part（§7.9）
 
     { "id": "sheet1", "kind": "sheet", "title": "Sheet1",
       "tile": 2048,
@@ -316,8 +317,43 @@ pattern: varuint imageRef ; u8 repeat(0=repeat 1=repeat-x 2=repeat-y 3=no-repeat
 | op | 名前 | オペランド | 意味 |
 |---|---|---|---|
 | 0x70 | LINK | f32 x y w h, str url | リンク領域。描画には影響しない |
-| 0x71 | MARK | u8 kind, str payload | 構造マーク（段落境界、セル参照など）。描画には影響しない |
+| 0x71 | MARK | u8 kind, str payload | 構造マーク（§7.8）。描画には影響しない |
 | 0xFF | EXT | u32 len, u8[len] | 拡張。未知なら読み飛ばす |
+
+### 7.8 MARK の種類とテキストの構造
+
+`MARK` は描画に影響しない境界情報で、検索・選択・コピーのために命令列に読み順を与える。
+
+| kind | 名前 | payload | 意味 |
+|---|---|---|---|
+| 0 | PARAGRAPH | 任意 | 段落の開始。以降の run は前の run と結合されない |
+| 1 | LINE | 任意 | 同じ段落内の行の開始。前の run との間に空白 1 つがあるものとして扱う |
+| 2 | CELL | セル参照（例 `B12`） | 表・シートのセルの開始。PARAGRAPH と同じ境界 |
+| 3 | BOX | 任意 | テキストボックス・図形内テキストの開始。PARAGRAPH と同じ境界 |
+| 4 | ALT_TEXT | 文字列 | 直後の描画（アウトライン化した文字、1 文字ずつ描いた縦書きなど）が表す文字列。検索対象になるが描画には使わない |
+
+- `MARK` の効果は次の `FILL_TEXT` / `STROKE_TEXT` / `ALT_TEXT` に及び、run どうしの結合規則を決める。同じ行で書式だけが変わった run の間には `MARK` を置かない（結合される）。
+- `MARK` を出さないエンコーダのために、読み手は位置に基づく推定（y が変われば行、同じ行で字送りの 0.2 倍以上の隙間があれば空白）で補ってよい。ただし推定は不正確なので、エンコーダは `MARK` を出すことが強く推奨される。
+
+### 7.9 テキスト索引 Part
+
+View ごとに任意で持てる索引。`View.textIndex` にハッシュを置く（`t: idx`）。全 Object をデコードせずに全文検索するため、またサーバー側の検索エンジンに同じデータを流すためのもの。
+
+```
+u8[4]   "BTXT"
+u16     version (1)
+varuint nRuns
+run ×n:
+  varuint a        fixed/flow: ページ番号   sheet: タイル x
+  varuint b        fixed/flow: レイヤー番号 sheet: タイル y
+  varuint ordinal  その Object のテキスト抽出（§8 のテキストバックエンド、USE の子を含む走査順）における run の通し番号
+  u8      sep      前の run との結合: 0=連結 1=空白 2=段落境界（一致は境界をまたがない）
+  str     text     run の文字列（ALT_TEXT の場合はその文字列）
+```
+
+- 順序は読み順。読み手は `text` を `sep` に従って連結した平文に対して検索し、ヒットを (a, b, ordinal, 文字範囲) に戻す。
+- ヒットの矩形は該当 Object をデコードして run の位置・フォント・`advance` から計算する（部分一致は接頭辞幅の計測で求める）。
+- 正規化（NFKC、大文字小文字、かな）は索引には施さず、検索時に読み手が行う。
 
 ## 8. 読み手（ビューア）アーキテクチャ
 
@@ -332,6 +368,7 @@ Viewer UI                            Loader      fetch / DecompressionStream / P
 
 - 描画は `(Object, 変換行列, クリップ矩形)` の純関数。Tile・ページ・高倍率時の部分再描画をすべて同じ経路で処理する。
 - 命令列は「実行できるデータ」なので、バックエンドを差し替えられる: Canvas レンダラ、テキスト抽出（検索・選択用の DOM レイヤー）、ヒットテスト（リンク）、将来的な WebGL/WebGPU レンダラ。テキストレイヤーのために別の Part を持つ必要はない。
+- 検索はビューアではなくライブラリ（Worker）が提供する。索引 Part（§7.9）があればそれを、なければ Object を走査して同じ形の run 列を作り、正規化して検索し、ヒットの矩形を返す。ビューアはヒット一覧とハイライトの描画だけを担当する。
 - 大きな文書ではページ表を Index Part にして、可視範囲のページだけ Part を取得する。single 形式でも `off`/`len` により Range 取得できる。
 
 必要なブラウザ機能（いずれも 2023 年時点の主要ブラウザで利用可能）: `DecompressionStream("deflate-raw")`、Worker 内 `OffscreenCanvas`、Worker 内 `FontFace` / `self.fonts`、`createImageBitmap`、`Path2D`、`roundRect`。`letterSpacing`、`filter` は任意機能とし、非対応環境では無視または代替描画する。
