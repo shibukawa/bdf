@@ -29,6 +29,11 @@ jobs:
             go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "fixtures/pdf/$n.bdf"
           done
+          for f in converter/pptx/testdata/*.pptx; do
+            n=$(basename "$f" .pptx)
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "fixtures/pptx/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:

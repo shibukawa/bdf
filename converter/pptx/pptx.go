@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -78,6 +79,7 @@ type converter struct {
 	choices       map[resolveKey]*faceChoice
 	fallback      map[fallbackKey]*faceChoice
 	fallbackLists map[fallbackListKey][]fontdb.Resolved
+	missing       map[rune]bool  // characters no available font has
 	pageOf        map[string]int // slide part → page number in the output
 	pages         int
 	images        map[string]*imageEntry
@@ -112,7 +114,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	c := &converter{pkg: p, opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{},
 		themes: map[string]*theme{}, faceRunes: map[*fontdb.Face]map[rune]bool{},
 		choices: map[resolveKey]*faceChoice{}, fallback: map[fallbackKey]*faceChoice{},
-		fallbackLists: map[fallbackListKey][]fontdb.Resolved{}, pageOf: map[string]int{},
+		fallbackLists: map[fallbackListKey][]fontdb.Resolved{}, pageOf: map[string]int{}, missing: map[rune]bool{},
 		images: map[string]*imageEntry{}, patterns: map[string]bdf.Hash{}}
 	c.db = fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
 	if len(c.db.Faces) == 0 && !opts.SystemFonts {
@@ -190,6 +192,22 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		pages = append(pages, pageRef{page, kept})
 	}
 	c.finalize()
+	if len(c.missing) > 0 {
+		var rs []rune
+		for r := range c.missing {
+			rs = append(rs, r)
+		}
+		slices.Sort(rs)
+		var b strings.Builder
+		for i, r := range rs {
+			if i == 20 {
+				fmt.Fprintf(&b, " … (%d more)", len(rs)-20)
+				break
+			}
+			fmt.Fprintf(&b, " %c U+%04X", r, r)
+		}
+		c.warnf("no available font has glyphs for:%s; viewers draw them with their own fonts", b.String())
+	}
 	for _, pr := range pages {
 		for i, cv := range pr.layers {
 			pr.page.Layers[i].Obj = cv.hash

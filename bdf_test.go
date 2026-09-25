@@ -148,8 +148,9 @@ func TestExtractTextAndIndex(t *testing.T) {
 	o.Mark(MarkParagraph, "").FillText("Hello", 0, 0, 30).FillText("World", 35, 0, 30) // gap 5 > 0.2*size => space
 	o.Mark(MarkLine, "").FillText("second", 0, 15, 40)
 	o.FillText("-line", 40, 15, 20) // adjacent => none
+	o.Mark(MarkWrap, "").FillText("wrapped", 0, 30, 40) // next line, joined without a separator
 	sq := o.AddPath((&Path{}).Rect(0, 0, 1, 1))
-	o.Mark(MarkAltText, "outlined").FillPathAt(sq, NonZero, 5, 30) // alt text describes the next drawing op
+	o.Mark(MarkAltText, "outlined").FillPathAt(sq, NonZero, 5, 45) // alt text describes the next drawing op
 	o.Save().Translate(100, 100).Use(o.AddObject(childH, childBB)).Restore()
 	h, _ := d.AddObject(o)
 
@@ -167,8 +168,8 @@ func TestExtractTextAndIndex(t *testing.T) {
 		texts = append(texts, r.Text)
 		seps = append(seps, r.Sep)
 	}
-	wantTexts := []string{"Hello", "World", "second", "-line", "outlined", "child"}
-	wantSeps := []byte{SepBreak, SepSpace, SepSpace, SepNone, SepSpace, SepSpace}
+	wantTexts := []string{"Hello", "World", "second", "-line", "wrapped", "outlined", "child"}
+	wantSeps := []byte{SepBreak, SepSpace, SepSpace, SepNone, SepNone, SepSpace, SepSpace}
 	if strings.Join(texts, "|") != strings.Join(wantTexts, "|") {
 		t.Fatalf("texts = %v", texts)
 	}
@@ -177,11 +178,11 @@ func TestExtractTextAndIndex(t *testing.T) {
 			t.Errorf("run %d (%q) sep = %d, want %d", i, texts[i], seps[i], wantSeps[i])
 		}
 	}
-	if runs[5].X != 100 || runs[5].Y != 100 || runs[5].Font.Family != "serif" {
-		t.Fatalf("child run = %+v", runs[5])
+	if runs[6].X != 100 || runs[6].Y != 100 || runs[6].Font.Family != "serif" {
+		t.Fatalf("child run = %+v", runs[6])
 	}
-	if runs[4].X != 5 || runs[4].Y != 30 || !runs[4].AltText {
-		t.Fatalf("alt run = %+v", runs[4])
+	if runs[5].X != 5 || runs[5].Y != 45 || !runs[5].AltText {
+		t.Fatalf("alt run = %+v", runs[5])
 	}
 
 	v := d.NewView("v", ViewFixed, "")
@@ -197,7 +198,7 @@ func TestExtractTextAndIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := PlainText(idx); got != "Hello World second-line outlined child" {
+	if got := PlainText(idx); got != "Hello World second-linewrapped outlined child" {
 		t.Fatalf("plain text = %q", got)
 	}
 	if idx[5].Ordinal != 5 || idx[0].A != 0 || idx[0].B != 0 {

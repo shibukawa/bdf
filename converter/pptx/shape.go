@@ -156,12 +156,32 @@ func (sh *shape) xform() (xform, bool) {
 	for _, n := range sh.inh {
 		cands = append(cands, n.path("spPr", "xfrm"), n.child("xfrm"))
 	}
+	// Offset and size are taken separately, so that a shape that only
+	// resizes its placeholder keeps the inherited position.
+	var first, off, ext *node
 	for _, x := range cands {
-		if xf, ok := parseXfrm(x); ok {
-			return sh.grp.place(xf), true
+		if x == nil {
+			continue
+		}
+		if first == nil {
+			first = x
+		}
+		if off == nil {
+			off = x.child("off")
+		}
+		if ext == nil {
+			ext = x.child("ext")
 		}
 	}
-	return xform{}, false
+	if off == nil && ext == nil {
+		return xform{}, false
+	}
+	xf := xform{
+		X: off.emuAttr("x", 0), Y: off.emuAttr("y", 0), W: ext.emuAttr("cx", 0), H: ext.emuAttr("cy", 0),
+		Rot:   float64(first.attrInt("rot", 0)) / 60000,
+		FlipH: first.attrBool("flipH", false), FlipV: first.attrBool("flipV", false),
+	}
+	return sh.grp.place(xf), true
 }
 
 func (sh *shape) style() *node {

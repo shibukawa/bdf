@@ -84,8 +84,12 @@ func (ch *chartCtx) draw() {
 	}
 	// title
 	top, bottom, left, right := 7.0, ch.h-7, 7.0, ch.w-7
-	if t := chart.child("title"); t != nil && chart.child("autoTitleDeleted").attrStr("val", "0") != "1" {
+	autoDeleted := chart.child("autoTitleDeleted").attrStr("val", "0") == "1"
+	if t := chart.child("title"); t != nil && !autoDeleted {
 		top += ch.title(t, plots, top)
+	} else if t == nil && !autoDeleted && len(plots) == 1 && len(plots[0].series) == 1 {
+		// Office titles a single-series chart with the series name
+		top += ch.title(&node{Name: "title"}, plots, top)
 	}
 	// legend
 	if lg := chart.child("legend"); lg != nil && len(plots) > 0 {
@@ -621,7 +625,7 @@ func (ch *chartCtx) marker(se *chartSeries, f fill, x, y float64, symbol string,
 		if symbol == "auto" {
 			symbol = autoMarkers[se.idx%len(autoMarkers)]
 		}
-		size = se.marker.child("size").attrFloat("val", 5) * 0.75 * 1.5
+		size = se.marker.child("size").attrFloat("val", 5) * 1.4
 	}
 	if symbol == "none" {
 		return
@@ -1434,5 +1438,5 @@ func (ch *chartCtx) pieLabel(p *chartPlot, se *chartSeries, i int, v, frac, x, y
 		return
 	}
 	st := ch.textStyle(d.child("txPr"), ch.baseSize(), false)
-	ch.label(st, strings.Join(parts, " "), x, y, 'c', 'm')
+	ch.label(st, strings.Join(parts, "\u00a0"), x, y, 'c', 'm')
 }

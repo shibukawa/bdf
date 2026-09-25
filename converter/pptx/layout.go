@@ -25,7 +25,7 @@ func canBreak(a, b rune) bool {
 	if isBreakSpace(a) {
 		return !isBreakSpace(b)
 	}
-	if isBreakSpace(b) || a == ' ' || b == ' ' {
+	if isBreakSpace(b) || a == '\u00a0' || b == '\u00a0' {
 		return false
 	}
 	if strings.ContainsRune(noStart, b) || strings.ContainsRune(noEnd, a) {
@@ -313,7 +313,8 @@ type textEmitter struct {
 	ls       float64
 	links    []linkRect
 	m        matrix // text space → slide, for link rectangles
-	upright  bool   // East Asian vertical text: CJK characters stand upright
+	upright  bool   // East Asian vertical text: lines go to child objects
+	vchars   bool   // inside such a line: CJK characters stand upright
 }
 
 type linkRect struct {
@@ -371,8 +372,46 @@ func (e *textEmitter) emitLines(lines []*textLine, dx, dy float64) {
 				e.cv.obj.Mark(bdf.MarkLine, "")
 			}
 		}
-		e.emitItems(ln, dx+ln.offset, base)
+		if e.upright {
+			e.emitVerticalLine(ln, dx+ln.offset, base)
+		} else {
+			e.emitItems(ln, dx+ln.offset, base)
+		}
 	}
+}
+
+// emitVerticalLine draws a line of East Asian vertical text in a child
+// object placed with USE_AT at the start of its baseline, where upright
+// characters are turned back one by one; an ALT_TEXT before the USE_AT
+// carries the line's text, so that extraction sees one run per line.
+func (e *textEmitter) emitVerticalLine(ln *textLine, dx, base float64) {
+	var b strings.Builder
+	first := -1
+	for i, it := range ln.items {
+		if it.kind != itemChar {
+			if it.kind == itemTab {
+				b.WriteRune('\t')
+			}
+			continue
+		}
+		if first < 0 {
+			first = i
+		}
+		b.WriteRune(it.r)
+	}
+	text := strings.TrimRight(b.String(), " \u3000\t")
+	if first < 0 || text == "" {
+		return
+	}
+	x0 := dx + ln.items[first].x
+	size := ln.asc + ln.desc
+	ch, ref := e.cv.child(bdf.Rect{X: 0, Y: f32(-ln.asc), W: f32(ln.width), H: f32(size)})
+	ch.obj.SetBBox(-f32(size), f32(-ln.asc-size), f32(ln.width+2*size), f32(3*size))
+	che := &textEmitter{cv: ch, m: e.m.mul(translate(x0, base)), vchars: true}
+	che.emitItems(ln, dx-x0, 0)
+	e.links = append(e.links, che.links...)
+	e.cv.obj.Mark(bdf.MarkAltText, text)
+	e.cv.obj.UseAt(ref, f32(x0), f32(base))
 }
 
 // emitItems draws a line's characters as runs of equal style.
@@ -390,7 +429,7 @@ func (e *textEmitter) emitItems(ln *textLine, dx, base float64) {
 			if n.kind != itemChar || n.ls < 0 || (n.st != it.st && n.st.key != it.st.key) || n.fc != it.fc || n.ls != it.ls {
 				break
 			}
-			if e.upright && fontdb.IsCJK(n.r) != fontdb.IsCJK(it.r) {
+			if e.vchars && uprightInVertical(n.r) != uprightInVertical(it.r) {
 				break
 			}
 			j++
@@ -438,8 +477,8 @@ func (e *textEmitter) emitRun(run []item, dx, base float64) {
 	}
 	e.setFont(it.fc, size)
 	e.setColor(c.bdf())
-	if e.upright && fontdb.IsCJK(it.r) {
-		e.emitUpright(run, x, y, size, text)
+	if e.vchars && uprightInVertical(it.r) {
+		e.emitUpright(run, x, y, size)
 	} else {
 		e.setLetterSpacing(st.spacing + it.ls)
 		e.cv.obj.FillText(text, f32(x), f32(y), f32(adv))
@@ -477,33 +516,45 @@ func (e *textEmitter) emitRun(run []item, dx, base float64) {
 	}
 }
 
-// emitUpright draws East Asian characters of vertical text standing
-// upright, one by one, in a child object placed with USE_AT at the run's
-// start; an ALT_TEXT before it carries the run's text for extraction.
-func (e *textEmitter) emitUpright(run []item, x, y, size float64, text string) {
-	fc := run[0].fc
-	adv := 0.0
-	for _, r := range run {
-		adv += r.w + r.ls
+// uprightInVertical reports whether a character stands upright in East
+// Asian vertical text; Latin text, long vowel marks, dashes, brackets and
+// ellipses are turned with the line instead.
+func uprightInVertical(r rune) bool {
+	if !fontdb.IsCJK(r) {
+		return false
 	}
-	ch, ref := e.cv.child(bdf.Rect{X: 0, Y: f32(-fc.asc * size), W: f32(adv), H: f32((fc.asc + fc.desc) * size)})
-	ch.obj.SetBBox(-f32(size), -f32(2*size), f32(adv+2*size), f32(4*size))
-	che := &textEmitter{cv: ch}
-	che.setFont(fc, size)
-	che.setColor(e.color)
-	ch.obj.TextStyle(bdf.AlignLeft, bdf.BaselineAlphabetic, bdf.DirInherit, 0)
-	// Each character's em box is turned back by 90° around its center.
+	return !strings.ContainsRune("ー－―‐〜～…‥（）「」『』【】〔〕［］｛｝〈〉《》〘〙〖〗＝｜＿", r)
+}
+
+// verticalForms are the vertical presentation forms of East Asian
+// punctuation; without them the horizontal glyph moves to the top right of
+// its square, where vertical text puts it.
+var verticalForms = map[rune]rune{'、': '︑', '。': '︒', '，': '︐', '．': '︒', '：': '︓', '；': '︔', '！': '︕', '？': '︖'}
+
+// emitUpright draws East Asian characters of vertical text standing
+// upright: each character's em box is turned back by 90° around its center.
+func (e *textEmitter) emitUpright(run []item, x, y, size float64) {
+	e.setLetterSpacing(0)
+	fc := run[0].fc
 	half := (fc.asc - fc.desc) * size / 2
 	for _, r := range run {
-		cx := r.x - run[0].x + r.w/2
-		ch.obj.Save()
-		ch.obj.Transform(0, -1, 1, 0, f32(cx), f32(-half))
-		ch.obj.FillText(string(r.r), f32(-r.w/2), f32(half), f32(r.w-r.st.spacing))
-		ch.obj.Restore()
+		cx := r.x - run[0].x + x + r.w/2
+		glyph, gfc := r.r, r.fc
+		dx, dy := 0.0, 0.0
+		if v, ok := verticalForms[r.r]; ok {
+			if vf := e.cv.c.faceFor(r.st, v); vf.l != nil && vf.l.Has(v) {
+				glyph, gfc = v, vf
+				e.cv.c.advance(vf, v)
+			} else {
+				dx, dy = 0.55*size, -0.55*size
+			}
+		}
+		e.setFont(gfc, size)
+		e.cv.obj.Save()
+		e.cv.obj.Transform(0, -1, 1, 0, f32(cx), f32(y-half))
+		e.cv.obj.FillText(string(glyph), f32(-r.w/2+dx), f32(half+dy), f32(r.w-r.st.spacing))
+		e.cv.obj.Restore()
 	}
-	ch.drawn = true
-	e.cv.obj.Mark(bdf.MarkAltText, text)
-	e.cv.obj.UseAt(ref, f32(x), f32(y))
 }
 
 func (e *textEmitter) link(x0, y0, x1, y1 float64, url string) {

@@ -1,6 +1,8 @@
 package pptx
 
 import (
+	"unicode"
+
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 )
 
@@ -132,8 +134,11 @@ func (c *converter) advance(fc *faceChoice, r rune) float64 {
 			return fc.l.Advance(g)
 		}
 	}
+	if fc.l != nil && !unicode.IsSpace(r) && r >= 0x20 && r != 0x200b && r != 0xfeff {
+		c.missing[r] = true
+	}
 	switch {
-	case r == ' ' || r == ' ':
+	case r == ' ' || r == '\u00a0':
 		return 0.25
 	case fontdb.IsCJK(r):
 		return 1

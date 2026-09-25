@@ -22,6 +22,14 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+func TestHeavyName(t *testing.T) {
+	for in, want := range map[string]bool{"Arial Black": true, "Segoe UI Semibold": true, "Calibri": false, "Bodoni": false} {
+		if got := heavyName(in); got != want {
+			t.Errorf("heavyName(%q) = %v", in, got)
+		}
+	}
+}
+
 func TestSystemResolve(t *testing.T) {
 	db := New(nil, true)
 	if len(db.Faces) == 0 {

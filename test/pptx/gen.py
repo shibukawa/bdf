@@ -10,8 +10,12 @@ import os
 import struct
 import zlib
 
+import copy
+
 from pptx import Presentation
+from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
+from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.enum.dml import MSO_LINE_DASH_STYLE
 from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
@@ -176,9 +180,165 @@ def basic():
     return prs
 
 
+def move_to(shape, tree):
+    """Moves a shape created on a slide into another shape tree (a master or layout)."""
+    el = shape._element
+    el.getparent().remove(el)
+    tree.append(el)
+
+
+def features():
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Emu(12192000), Emu(6858000)
+    master = prs.slide_master
+    # master background: a vertical gradient
+    cSld = master._element.find(qn("p:cSld"))
+    bg = cSld.makeelement(qn("p:bg"), {})
+    bg.append(bg.makeelement(qn("p:bgPr"), {}))
+    grad = etree_fromstring('<a:gradFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" rotWithShape="1">'
+                            '<a:gsLst><a:gs pos="0"><a:schemeClr val="bg1"/></a:gs><a:gs pos="100000"><a:schemeClr val="accent1"><a:tint val="30000"/></a:schemeClr></a:gs></a:gsLst>'
+                            '<a:lin ang="5400000" scaled="0"/></a:gradFill>')
+    bg[0].append(grad)
+    bg[0].append(bg.makeelement(qn("a:effectLst"), {}))
+    cSld.insert(0, bg)
+    # the template is 4:3; widen the placeholders of the master and layouts
+    sx = 12192000 / 9144000
+    for owner in [master] + list(prs.slide_layouts):
+        for sh in owner.placeholders:
+            left, top, width, height = sh.left, sh.top, sh.width, sh.height
+            sh.left, sh.top, sh.width, sh.height = int(left * sx), top, int(width * sx), height
+    # master graphics: a band at the bottom and a label, drawn on every slide
+    tmp = prs.slides.add_slide(prs.slide_layouts[6])
+    band = tmp.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, Inches(7.0), prs.slide_width, Inches(0.5))
+    band.fill.solid()
+    band.fill.fore_color.theme_color = 5  # accent1
+    band.line.fill.background()
+    band.text_frame.text = "BDF features deck"
+    band.text_frame.paragraphs[0].font.size = Pt(14)
+    move_to(band, master.shapes._spTree)
+    # the Title and Content layout adds an accent bar
+    bar = tmp.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.5), Inches(1.45), Inches(3), Inches(0.08))
+    bar.fill.solid()
+    bar.fill.fore_color.rgb = RGBColor(0xED, 0x7D, 0x31)
+    bar.line.fill.background()
+    move_to(bar, prs.slide_layouts[1].shapes._spTree)
+    rId = prs.slides._sldIdLst[-1].rId
+    prs.part.drop_rel(rId)
+    del prs.slides._sldIdLst[-1]
+
+    # 1 and 2: same layout; master and layout layers are shared
+    for title, items in [("Master and layout", ["The band at the bottom comes from the slide master",
+                                                   "The orange bar comes from the layout"]),
+                         ("Second slide", ["Same master and layout layers", "Only the body differs"])]:
+        s = prs.slides.add_slide(prs.slide_layouts[1])
+        s.shapes.title.text = title
+        tf = s.placeholders[1].text_frame
+        tf.text = items[0]
+        for it in items[1:]:
+            tf.add_paragraph().text = it
+
+    # 3: charts
+    s = prs.slides.add_slide(prs.slide_layouts[5])
+    s.shapes.title.text = "Charts"
+    cd = CategoryChartData()
+    cd.categories = ["Q1", "Q2", "Q3", "Q4"]
+    cd.add_series("East", (20.4, 27.4, 90, 20.4))
+    cd.add_series("West", (30.6, 38.6, 34.6, 31.6))
+    cd.add_series("North", (45.9, 46.9, 45, 43.9))
+    ch = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.4), Inches(1.6), Inches(4.2), Inches(3.4), cd).chart
+    ch.has_legend = True
+    ch.legend.position = XL_LEGEND_POSITION.BOTTOM
+    ch.legend.include_in_layout = False
+    ch = s.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(4.7), Inches(1.6), Inches(4.2), Inches(3.4), cd).chart
+    ch.has_legend = True
+    pd = CategoryChartData()
+    pd.categories = ["Alpha", "Beta", "Gamma", "Delta"]
+    pd.add_series("Share", (0.45, 0.25, 0.2, 0.1))
+    ch = s.shapes.add_chart(XL_CHART_TYPE.PIE, Inches(9.0), Inches(1.6), Inches(4.0), Inches(3.4), pd).chart
+    ch.has_legend = True
+    ch.plots[0].has_data_labels = True
+    ch.plots[0].data_labels.show_percentage = True
+    ch.plots[0].data_labels.show_value = False
+    ch.plots[0].data_labels.number_format = "0%"
+    sd = CategoryChartData()
+    sd.categories = ["A", "B", "C"]
+    sd.add_series("Stacked 1", (3, 5, 2))
+    sd.add_series("Stacked 2", (2, 1, 4))
+    ch = s.shapes.add_chart(XL_CHART_TYPE.BAR_STACKED, Inches(0.4), Inches(5.1), Inches(6), Inches(1.8), sd).chart
+    ch.has_legend = False
+
+    # 4: Japanese
+    s = prs.slides.add_slide(prs.slide_layouts[1])
+    s.shapes.title.text = "日本語のスライド"
+    tf = s.placeholders[1].text_frame
+    tf.text = "箇条書きの一行目です。長い文章は枠の幅で折り返され、句読点は行頭に来ません。"
+    p = tf.add_paragraph()
+    p.text = "二段目の項目"
+    p.level = 1
+    p = tf.add_paragraph()
+    p.text = "英数字 ABC と 123 の混在"
+    body = s.placeholders[1]
+    left, top, height = body.left, body.top, body.height
+    body.left, body.top, body.width, body.height = left, top, Inches(8.5), height
+    tb = s.shapes.add_textbox(Inches(11.2), Inches(1.6), Inches(1.4), Inches(5.0))
+    tb.text_frame.text = "縦書きで、読みます。"
+    tb.text_frame._txBody.bodyPr.set("vert", "eaVert")
+    tb.text_frame.paragraphs[0].font.size = Pt(28)
+    tb.line.color.rgb = RGBColor(0x99, 0x99, 0x99)
+    t = s.shapes.add_table(3, 2, Inches(0.8), Inches(5.4), Inches(6), Inches(1.2)).table
+    for r, (a, b) in enumerate([("項目", "説明"), ("図形", "プリセット形状"), ("表", "表のスタイル")]):
+        t.cell(r, 0).text = a
+        t.cell(r, 1).text = b
+
+    # 5: fills, lines and effects
+    s = prs.slides.add_slide(prs.slide_layouts[5])
+    s.shapes.title.text = "Fills and lines"
+    sh = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.5), Inches(1.7), Inches(2.6), Inches(1.6))
+    sh.fill.patterned()
+    sh.fill.fore_color.rgb = RGBColor(0x44, 0x72, 0xC4)
+    sh.fill.back_color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    sh.text_frame.text = "Pattern"
+    sh.text_frame.paragraphs[0].font.color.rgb = RGBColor(0, 0, 0)
+    sh = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(3.5), Inches(1.7), Inches(2.6), Inches(1.6))
+    img = png(32, 32, lambda x, y: (255, 200, 0) if (x // 8 + y // 8) % 2 else (40, 80, 160))
+    part, rid = s.part.get_or_add_image_part(io.BytesIO(img))
+    spPr = sh._element.spPr
+    for f in spPr.findall(qn("a:solidFill")):
+        spPr.remove(f)
+    bf = etree_fromstring('<a:blipFill xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+                          'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" rotWithShape="1">'
+                          '<a:blip r:embed="%s"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>' % rid)
+    spPr.insert(2, bf)
+    for i, dash in enumerate([MSO_LINE_DASH_STYLE.DASH, MSO_LINE_DASH_STYLE.ROUND_DOT, MSO_LINE_DASH_STYLE.LONG_DASH_DOT]):
+        ln = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(6.6), Inches(1.9 + i * 0.6), Inches(9.6), Inches(1.9 + i * 0.6))
+        ln.line.width = Pt(3)
+        ln.line.dash_style = dash
+        ln.line.color.rgb = RGBColor(0x20, 0x20, 0x20)
+        x = ln.line._get_or_add_ln()
+        x.append(x.makeelement(qn("a:headEnd"), {"type": ["oval", "diamond", "stealth"][i]}))
+        x.append(x.makeelement(qn("a:tailEnd"), {"type": ["triangle", "arrow", "triangle"][i], "w": "lg", "len": "lg"}))
+    ff = s.shapes.build_freeform(10.2, 3.2, scale=Inches(1))
+    ff.add_line_segments([(11.0, 1.7), (11.8, 3.2), (11.4, 2.6), (10.6, 2.6)], close=True)
+    shp = ff.convert_to_shape()
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = RGBColor(0x70, 0xAD, 0x47)
+    for i, k in enumerate([MSO_SHAPE.CHEVRON, MSO_SHAPE.DONUT, MSO_SHAPE.LIGHTNING_BOLT, MSO_SHAPE.CLOUD, MSO_SHAPE.BLOCK_ARC, MSO_SHAPE.RECTANGULAR_CALLOUT]):
+        sh = s.shapes.add_shape(k, Inches(0.5 + i * 2.1), Inches(4.2), Inches(1.8), Inches(1.4))
+        if k == MSO_SHAPE.RECTANGULAR_CALLOUT:
+            sh.text_frame.text = "Callout"
+    prs.core_properties.title = "Features"
+    return prs
+
+
+def etree_fromstring(xml):
+    from lxml import etree
+    return etree.fromstring(xml)
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
     basic().save(os.path.join(OUT, "basic.pptx"))
+    features().save(os.path.join(OUT, "features.pptx"))
 
 
 if __name__ == "__main__":

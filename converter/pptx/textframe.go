@@ -44,6 +44,10 @@ func (s *slideCtx) drawShapeText(cv *canvas, sh *shape, xf xform, geo *geometry)
 	x, y, w, h := r[0], r[1], r[2]-r[0], r[3]-r[1]
 	m := xf.textMatrix()
 	if tx, ok := parseXfrm(sh.n.child("txXfrm")); ok {
+		// the text transform of a SmartArt drawing turns with its shape
+		if own, ok := parseXfrm(sh.spPr().child("xfrm")); ok {
+			tx.Rot += own.Rot
+		}
 		tx = sh.grp.place(tx)
 		m = tx.textMatrix()
 		x, y, w, h = 0, 0, tx.W, tx.H

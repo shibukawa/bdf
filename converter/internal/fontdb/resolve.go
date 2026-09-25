@@ -119,6 +119,16 @@ func Classify(name string) string {
 	return Sans
 }
 
+func heavyName(family string) bool {
+	n := Normalize(family)
+	for _, w := range []string{"black", "heavy", "bold", "extrabold", "ultrabold", "semibold", "demibold"} {
+		if strings.HasSuffix(n, w) || strings.Contains(n, w+"italic") {
+			return true
+		}
+	}
+	return false
+}
+
 // Resolved is a family request mapped to an available face.
 type Resolved struct {
 	Face        *Face // nil when no font is available at all
@@ -148,6 +158,11 @@ func (db *DB) Resolve(family string, bold, italic, cjk bool) Resolved {
 	}
 	if try(substitutes[Normalize(family)]...) {
 		return res
+	}
+	// A heavy family ("Arial Black", "Meiryo UI Bold") stands in as the
+	// bold face of its substitute.
+	if heavyName(family) {
+		bold = true
 	}
 	if cjk {
 		chain := jaGothic

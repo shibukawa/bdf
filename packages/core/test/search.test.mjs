@@ -74,3 +74,22 @@ test("fallback index without a text index part", async () => {
   assert.equal(ts.search("BDF fixture deck").length, 3);
   assert.equal(ts.search("advance correction").length, 1);
 });
+
+test("MARK WRAP joins East Asian lines without a separator", async () => {
+  const pptx = new Uint8Array(await readFile(new URL("../../../fixtures/pptx/basic.bdf", import.meta.url)));
+  const doc = await BdfDocument.open(new BufferSource(pptx));
+  const view = doc.view("slides");
+  const runs = await doc.textIndex(view);
+  // the index and a walk of the objects agree
+  const page = view.pages[3];
+  const bodyLayer = page.layers.findIndex((l) => l.role === "body");
+  const body = await doc.ensure(page.layers[bodyLayer].obj);
+  const extracted = extractText(body, (h) => doc.objectSync(h));
+  const indexed = runs.filter((r) => r.a === 3 && r.b === bodyLayer);
+  assert.deepEqual(indexed.map((r) => [r.text, r.sep]).slice(1), extracted.map((r) => [r.text, r.sep]).slice(1));
+  const wrapped = extracted.filter((r) => r.sep === Sep.NONE && /[\u3040-\u9fff]/.test(r.text));
+  assert.ok(wrapped.length >= 2, "wrapped Japanese lines");
+  const hits = new TextSearch(runs).search("改行します");
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].segments.length, 2);
+});

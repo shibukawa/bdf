@@ -34,6 +34,15 @@ export const CASES: Case[] = [
   { name: "pdf-master-1", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-master-2", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "pdf-master-3", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  // PowerPoint decks rendered by converter/pptx with the test fonts; see test/pptx.
+  { name: "pptx-basic-2", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 1, scale: 1 },
+  { name: "pptx-basic-3", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
+  { name: "pptx-basic-4", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
+  { name: "pptx-basic-5", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 4, scale: 1 },
+  { name: "pptx-features-1", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 0, scale: 1 },
+  { name: "pptx-features-3", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
+  { name: "pptx-features-4", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
+  { name: "pptx-features-5", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 4, scale: 0.75 },
 ];
 
 const DEFAULT_SRC = "/fixtures/demo.bdf";
@@ -172,7 +181,11 @@ async function main() {
   const rects = await client.locate("doc", hits);
   const sheetHits = await client.search("sheet1", "row 150");
   const sheetRects = await client.locate("sheet1", sheetHits);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects };
+  // Japanese text wrapped between characters: the hit spans two lines.
+  const { client: pptx } = await open("/fixtures/pptx/basic.bdf");
+  const pptxHits = await pptx.search("slides", "改行します");
+  const pptxRects = await pptx.locate("slides", pptxHits);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }

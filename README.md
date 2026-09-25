@@ -12,7 +12,10 @@ Office 系ファイルをサーバーで変換しておき、フロントエン�
 - 透明 DOM のテキスト選択層とコピー（空白・改行は MARK 境界から復元、ページまたぎ、連続モード対応）
 - 1 ファイル形式と分割ファイル形式を相互変換可能
 
-PDF からの変換（`pdf2bdf`）は、埋め込みフォントをブラウザが読める形に組み直し、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。詳細は design.md の §3.1 を参照してください。
+変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / PowerPoint）は中身から判別します。
+
+- **PDF**（`converter/pdf`）: 埋め込みフォントをブラウザが読める形に組み直し、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。詳細は design.md の §3.1。
+- **PowerPoint .pptx**（`converter/pptx`）: DrawingML を直接描画します。スライドマスターとレイアウトの図形はスライド間で共有されるレイヤー Object になり、プリセット図形は ECMA-376 の図形定義式から、テキストは変換側で折り返し（和文の禁則・縦書き・箇条書き・段落書式）、表・グラフ・SmartArt も描きます。レイアウトに使ったフォントはサブセットにして埋め込むので、閲覧環境のフォントに依存しません。詳細は design.md の §3.3。
 
 ドキュメント:
 
@@ -23,10 +26,13 @@ PDF からの変換（`pdf2bdf`）は、埋め込みフォントをブラウザ�
 
 | 場所 | 内容 |
 |---|---|
-| `*.go`, `cmd/bdf` | Go のエンコーダ・デコーダ・コンテナ I/O と CLI |
+| `*.go`, `cmd/bdf` | Go のエンコーダ・デコーダ・コンテナ I/O と CLI（`bdf generate` で変換） |
 | `fixture/` | サンプル文書の生成（埋め込みフォント付き） |
 | `imgconv/` | 画像の格納方針（そのまま / WebP に変換）。純 Go の libwebp を同梱 |
-| `pdf2bdf/`, `cmd/pdf2bdf` | PDF → BDF 変換器と CLI |
+| `converter/` | 変換器の共通部分（入力形式の判別、ページ指定） |
+| `converter/pdf` | PDF → BDF 変換器 |
+| `converter/pptx` | PowerPoint (.pptx) → BDF 変換器 |
+| `converter/internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書き（`sfnt`） |
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
 | `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画、Worker |
 | `examples/viewer` | デモビューア |
@@ -42,12 +48,16 @@ go run ./cmd/bdf ls out.bdf          # Part 一覧
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # 分割形式へ
 
-# PDF → BDF
-go run ./cmd/pdf2bdf in.pdf out.bdf     # 1 ファイル形式
-go run ./cmd/pdf2bdf in.pdf out/        # 分割形式
-go run ./cmd/pdf2bdf -pages 1-3 -kind flow in.pdf out.bdf
-go run ./cmd/pdf2bdf -images keep in.pdf out.bdf   # 画像を変換しない
-go run ./cmd/pdf2bdf -no-share in.pdf out.bdf      # ページ共通の先頭部分（マスター）を共有 Object にしない
+# PDF / PowerPoint → BDF（形式は中身から判別。-format pdf|pptx で指定も可）
+go run ./cmd/bdf generate in.pdf out.bdf      # 1 ファイル形式
+go run ./cmd/bdf generate in.pptx out/        # 分割形式
+go run ./cmd/bdf generate -pages 1-3 in.pptx out.bdf   # ページ（スライド）を選ぶ
+go run ./cmd/bdf generate -images keep in.pdf out.bdf  # 画像を変換しない
+go run ./cmd/bdf generate -kind flow in.pdf out.bdf    # PDF: flow View にする
+go run ./cmd/bdf generate -no-share in.pdf out.bdf     # PDF: ページ共通の先頭部分（マスター）を共有 Object にしない
+go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf         # PowerPoint: フォントを探すディレクトリを追加
+go run ./cmd/bdf generate -fonts system in.pptx out.bdf            # PowerPoint: フォントを埋め込まず名前で参照
+go run ./cmd/bdf generate -hidden in.pptx out.bdf                  # PowerPoint: 非表示スライドも含める
 go build -tags bdf_noconv ./...                    # コーデックを含めないビルド（ブラウザ向け）
 GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD 版コーデック（amd64 は AVX2 必須）
 
@@ -57,6 +67,7 @@ npm test                             # デコーダのテスト（Node）
 npm run test:golden                  # Chromium で描画して golden 画像と比較
 npm run test:golden:update           # golden 画像を更新
 npm run fixtures                     # fixtures/ を再生成（Go が必要）
+npm run test:pptx:gen                # PowerPoint のテスト用デッキを再生成（python-pptx が必要）
 node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に描画
 
 # デモビューア
