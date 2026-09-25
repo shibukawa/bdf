@@ -1,111 +1,120 @@
 # bdf
 
-ブラウザの Canvas 2D にそのまま描画できる、プレビュー用の文書フォーマット（ドラフト）。
+English | [日本語](README.ja.md)
 
-Office 系ファイルをサーバーで変換しておき、フロントエンドの Worker で描画する用途を想定しています。PDF が持つ機能のうちブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
+**bdf** (Browser-specific Document Format) is a draft document format for previews that browsers can draw straight onto Canvas 2D.
 
-- 固定サイズページ（スライド）、無限平面（シート）、ページ分割かつ連続表示可能な文書（ワープロ）の 3 モデル
-- 命令セットは `CanvasRenderingContext2D` に 1:1 対応
-- `DecompressionStream` で展開、Worker + `OffscreenCanvas` で描画
-- 内容アドレスの Part によりマスターや繰り返し部品を自動共有
-- テキスト索引 Part と Worker 内の全文検索（行またぎ、NFKC・かな正規化、ヒット矩形）
-- 透明 DOM のテキスト選択層とコピー（空白・改行は MARK 境界から復元、ページまたぎ、連続モード対応）
-- 1 ファイル形式と分割ファイル形式を相互変換可能
+Office-style files (PDF, Excel, PowerPoint, Word) are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
 
-PDF からの変換（`pdf2bdf`）は、埋め込みフォント（TrueType、CFF、OpenType、Type1）を使うグリフだけの WOFF2 に組み直し（OS/2 の埋め込み許諾 `fsType` を確認し、著作権表示は引き継ぐ）、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。詳細は design.md の §3.1 を参照してください。
+## How it works
 
-ドキュメント:
+```mermaid
+flowchart TB
+    SRC["PDF · Excel · PowerPoint · Word"]
 
-- [docs/spec.md](docs/spec.md) — フォーマット仕様ドラフト
-- [docs/design.md](docs/design.md) — 設計判断の理由と実装方針
+    subgraph SERVER["Go server process"]
+        direction TB
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx"]
+        BUNDLE["bdf bundle (packed)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
+        SCONV --> BUNDLE
+    end
 
-## 構成
+    subgraph BROWSER["Browser"]
+        direction TB
+        subgraph CWORKER["Converter Worker (wasm)"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx"]
+        end
+        PARTS["bdf parts (unpacked)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
+        subgraph RWORKER["Renderer Worker"]
+            LOADER["Loader<br/>fetch · Range<br/>DecompressionStream"]
+            STORE["Part cache"]
+            RENDER["Renderer<br/>OffscreenCanvas<br/>FontFace · Path2D"]
+            TEXT["Text extraction · search"]
+            LOADER --> STORE
+            STORE --> RENDER
+            STORE --> TEXT
+        end
+        UI["Viewer UI<br/>(main thread)<br/>canvas · text selection layer"]
+        WCONV --> PARTS
+    end
 
-| 場所 | 内容 |
+    SRC -- "① server-side conversion" --> SCONV
+    SRC -- "② in-browser conversion" --> WCONV
+    BUNDLE -- "single file or split files<br/>HTTP · CDN" --> LOADER
+    PARTS -- "postMessage" --> STORE
+    RENDER -- "ImageBitmap" --> UI
+    TEXT -- "text runs · hit rects" --> UI
+```
+
+There are two paths. Both produce the same bdf parts and share the same renderer.
+
+1. **Server-side conversion**: packages such as `converter/pdf` and `converter/pptx` run inside a Go server process and convert the source into a **bdf bundle** that packs the manifest, the drawing commands, the images and the fonts. The bundle is served either as a single file (streamed from the start, or fetched part by part with Range requests) or as split files that can sit on object storage or a CDN as they are. In the browser, the renderer in a Worker loads the parts it needs and draws them onto an `OffscreenCanvas`; the main thread only places the resulting bitmaps and a transparent text layer.
+2. **In-browser conversion**: the same converter packages, built as wasm, run in a Worker and break the file the user opened into bdf parts (drawing commands, images, fonts). The parts go to the renderer as they are, without being packed into a bundle, so conversion and rendering both finish inside the browser and the file never leaves it.
+
+## Features
+
+- Three layout models: fixed-size pages (slides), an infinite plane (spreadsheets), and documents that are paginated but can also be read as one continuous scroll (word processing)
+- The instruction set maps 1:1 onto `CanvasRenderingContext2D`
+- Decompressed with `DecompressionStream` and drawn with `OffscreenCanvas` in a Worker
+- Content-addressed parts, so masters and repeated elements are shared automatically
+- A text index part and full-text search in the Worker (matches across lines, NFKC and kana normalization, hit rectangles)
+- A transparent DOM text layer for selection and copy (spaces and line breaks restored from MARK boundaries; works across pages and in continuous mode)
+- The single-file and split-file forms convert into each other without re-encoding
+
+The PDF converter (`pdf2bdf`) rebuilds embedded fonts (TrueType, CFF, OpenType, Type1) into WOFF2 files that hold only the glyphs in use. It checks the OS/2 embedding permission (`fsType`) and carries the copyright notices over. It also turns form XObjects into shared objects and text into searchable runs, and moves the content common to the top of every page (the master) into a shared object. See §3.1 of design.md for details.
+
+## Documentation
+
+The documents are in Japanese.
+
+- [docs/spec.md](docs/spec.md): draft format specification
+- [docs/design.md](docs/design.md): the reasoning behind the design and how it is implemented
+
+## Repository layout
+
+| Path | Contents |
 |---|---|
-| `*.go`, `cmd/bdf` | Go のエンコーダ・デコーダ・コンテナ I/O と CLI |
-| `fixture/` | サンプル文書の生成（埋め込みフォント付き） |
-| `imgconv/` | 画像の格納方針（そのまま / WebP に変換）。純 Go の libwebp を同梱 |
-| `woff2/` | TrueType/OpenType → WOFF2（glyf 変換と Brotli） |
-| `pdf2bdf/`, `cmd/pdf2bdf` | PDF → BDF 変換器と CLI |
-| `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
-| `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画、Worker |
-| `examples/viewer` | デモビューア |
-| `fixtures/` | 生成済みサンプルと golden 画像 |
+| `*.go`, `cmd/bdf` | Go encoder, decoder, container I/O and CLI |
+| `fixture/` | Generates the sample document (with embedded fonts) |
+| `imgconv/` | How images are stored (as is, or converted to WebP). Bundles a pure-Go libwebp |
+| `woff2/` | TrueType/OpenType → WOFF2 (glyf transform and Brotli) |
+| `pdf2bdf/`, `cmd/pdf2bdf` | PDF → bdf converter and CLI |
+| `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
+| `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering, Worker |
+| `examples/viewer` | Demo viewer |
+| `fixtures/` | Generated samples and golden images |
 
-## 使い方
+## Usage
 
 ```sh
-# Go: テストと CLI
+# Go: tests and CLI
 go test ./...
-go run ./cmd/bdf demo out.bdf        # サンプル文書を生成
-go run ./cmd/bdf ls out.bdf          # Part 一覧
+go run ./cmd/bdf demo out.bdf        # generate the sample document
+go run ./cmd/bdf ls out.bdf          # list parts
 go run ./cmd/bdf disasm out.bdf <hash>
-go run ./cmd/bdf split out.bdf out/  # 分割形式へ
+go run ./cmd/bdf split out.bdf out/  # convert to the split form
 
-# PDF → BDF
-go run ./cmd/pdf2bdf in.pdf out.bdf     # 1 ファイル形式
-go run ./cmd/pdf2bdf in.pdf out/        # 分割形式
+# PDF → bdf
+go run ./cmd/pdf2bdf in.pdf out.bdf     # single-file form
+go run ./cmd/pdf2bdf in.pdf out/        # split form
 go run ./cmd/pdf2bdf -pages 1-3 -kind flow in.pdf out.bdf
-go run ./cmd/pdf2bdf -images keep in.pdf out.bdf   # 画像を変換しない
-go run ./cmd/pdf2bdf -no-share in.pdf out.bdf      # ページ共通の先頭部分（マスター）を共有 Object にしない
-go run ./cmd/pdf2bdf -no-woff2 in.pdf out.bdf      # フォントを WOFF2 にせず TTF/OTF のまま格納
-go run ./cmd/pdf2bdf -ignore-fstype in.pdf out.bdf # fsType が埋め込みやサブセット化を禁じるフォントも埋め込む（権利がある場合のみ）
-go build -tags bdf_noconv ./...                    # コーデック（WebP、WOFF2 の Brotli）を含めないビルド（ブラウザ向け）
-GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD 版コーデック（amd64 は AVX2 必須）
+go run ./cmd/pdf2bdf -images keep in.pdf out.bdf   # do not convert images
+go run ./cmd/pdf2bdf -no-share in.pdf out.bdf      # do not move the common top of each page (the master) into a shared object
+go run ./cmd/pdf2bdf -no-woff2 in.pdf out.bdf      # store fonts as TTF/OTF instead of WOFF2
+go run ./cmd/pdf2bdf -ignore-fstype in.pdf out.bdf # embed fonts even when fsType forbids embedding or subsetting (only if you hold the rights)
+go build -tags bdf_noconv ./...                    # build without codecs (WebP, Brotli for WOFF2), for the browser
+GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD codecs (AVX2 required on amd64)
 
-# TypeScript: ビルドとテスト
+# TypeScript: build and test
 npm ci
-npm test                             # デコーダのテスト（Node）
-npm run test:golden                  # Chromium で描画して golden 画像と比較
-npm run test:golden:update           # golden 画像を更新
-npm run fixtures                     # fixtures/ を再生成（Go が必要）
-node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に描画
+npm test                             # decoder tests (Node)
+npm run test:golden                  # render in Chromium and compare with the golden images
+npm run test:golden:update           # update the golden images
+npm run fixtures                     # regenerate fixtures/ (requires Go)
+node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium
 
-# デモビューア
+# Demo viewer
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
 ```
 
-Go は 1.27 以上が必要です。golden テストは `playwright-core`（固定バージョン。golden 画像はその Chromium ビルドの headless shell で描いたもの）を使います。`npx playwright-core install chromium` で入れるか、同じビルドの headless shell を `CHROMIUM_PATH` で指定してください。
-
-## エンコーダ API の雰囲気（Go）
-
-```go
-d := bdf.NewDocument()
-font := d.AddFont(woff2Bytes)
-
-master := bdf.NewObject()
-bg := master.AddPaint(bdf.LinearGradient(0, 0, 0, 540,
-    bdf.Stop{Offset: 0, Color: bdf.RGB(0xf7, 0xf9, 0xfc)},
-    bdf.Stop{Offset: 1, Color: bdf.RGB(0xdc, 0xe6, 0xf2)}))
-master.FillPaint(bg).FillRect(0, 0, 960, 540)
-masterHash, _ := d.AddObject(master)
-
-body := bdf.NewObject()
-f := body.AddFont(bdf.EmbeddedFont(font, 700, bdf.StyleNormal))
-body.Font(f, 36).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).FillText("Hello", 48, 80, advance)
-bodyHash, _ := d.AddObject(body)
-
-v := d.NewView("slides", bdf.ViewFixed, "Slides")
-v.AddPage(960, 540,
-    bdf.Layer{Role: bdf.RoleMaster, Obj: masterHash},
-    bdf.Layer{Role: bdf.RoleBody, Obj: bodyHash})
-d.WriteSingle(w)
-```
-
-## ビューア API の雰囲気（TypeScript）
-
-```ts
-import { BdfWorkerClient } from "@bdf/render";
-const client = new BdfWorkerClient(new Worker(workerUrl, { type: "module" }));
-const manifest = await client.open({ kind: "single", url: "/doc.bdf", range: true });
-const bitmap = await client.page("slides", 0, devicePixelRatio); // ImageBitmap
-const runs = await client.text("slides", 0);                      // 選択・コピー用テキスト
-const hits = await client.search("doc", "list of objects");         // 全文検索（正規化つき）
-const rects = await client.locate("doc", hits);                    // ハイライト矩形（ページ座標）
-
-// 選択層: ページの上に透明な span を置き、コピーは run の区切りから組み立てる
-import { buildTextLayer, installCopyHandler, TEXT_LAYER_CSS } from "@bdf/render";
-pageElement.append(canvas, buildTextLayer(runs, zoom));          // TEXT_LAYER_CSS を読み込んでおく
-installCopyHandler(stage);                                         // copy で選択範囲のテキストを整形
-```
+Go 1.27 or later is required. The golden tests use `playwright-core` at a pinned version; the golden images were drawn with the headless shell of that Chromium build. Install it with `npx playwright-core install chromium`, or point `CHROMIUM_PATH` at a headless shell of the same build.
