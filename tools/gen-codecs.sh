@@ -21,7 +21,7 @@ SIMD=${SIMD:-0}
 mkdir -p "$WORK"
 
 FORK_REPO=https://github.com/shibukawa/wasm2go-fork
-FORK_REF=2868889b72ed3895dcd5a5b55073e3547e9e79dd   # pgmem: -simd=go127
+FORK_REF=636a813ef228f05627198ae8b0bebc12788439ce   # pgmem: -simd=go127
 WASI_SDK_VER=25
 LIBWEBP_VER=v1.6.0
 
