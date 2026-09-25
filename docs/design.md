@@ -110,15 +110,16 @@ Canvas にはグリフ ID で描く API がないので、「サブセットフ�
 
 ```
 bdf/
-├── docs/            spec.md, design.md
-├── go/              module github.com/shibukawa/bdf
-│   ├── bdf/         Writer, Object builder, Part エンコード
-│   ├── pdf2bdf/     PDF → BDF
-│   ├── xlsx2bdf/    XLSX → BDF
-│   └── cmd/bdf/     CLI: convert / ls / extract / split / join
+├── docs/              spec.md, design.md
+├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
+├── cmd/bdf/           CLI: ls / manifest / disasm / extract / split / join / demo
+├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
-│   ├── core/        デコーダ・型定義（依存なし）
-│   ├── render/      Canvas バックエンド、Worker
-│   └── viewer/      UI（フレームワーク非依存の Web Component か素の DOM）
-└── fixtures/        Go が生成するテストファイルと期待画像
+│   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
+│   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画、Worker とクライアント
+├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）
+├── fixtures/          Go が生成した demo.bdf / demo-split と golden PNG
+└── test/              Playwright による golden テスト
 ```
+
+将来の変換器（pdf2bdf, xlsx2bdf）は Go のサブパッケージとして追加する。

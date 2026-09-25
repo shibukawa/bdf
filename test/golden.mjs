@@ -27,6 +27,8 @@ await build({
 await copyFile(join(root, "test/page/index.html"), join(outDir, "page.html"));
 
 const { server, port } = await serve(root);
+// Use an explicit Chromium (CHROMIUM_PATH, or the one preinstalled in some sandboxes);
+// otherwise fall back to the browser installed by `npx playwright-core install chromium`.
 const executablePath = process.env.CHROMIUM_PATH ?? ["/opt/pw-browsers/chromium-1194/chrome-linux/chrome"].find((p) => existsSync(p));
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 let failed = 0;

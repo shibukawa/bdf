@@ -14,3 +14,72 @@ Office 系ファイルをサーバーで変換しておき、フロントエン�
 
 - [docs/spec.md](docs/spec.md) — フォーマット仕様ドラフト
 - [docs/design.md](docs/design.md) — 設計判断の理由と実装方針
+
+## 構成
+
+| 場所 | 内容 |
+|---|---|
+| `*.go`, `cmd/bdf` | Go のエンコーダ・デコーダ・コンテナ I/O と CLI |
+| `fixture/` | サンプル文書の生成（埋め込みフォント付き） |
+| `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
+| `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画、Worker |
+| `examples/viewer` | デモビューア |
+| `fixtures/` | 生成済みサンプルと golden 画像 |
+
+## 使い方
+
+```sh
+# Go: テストと CLI
+go test ./...
+go run ./cmd/bdf demo out.bdf        # サンプル文書を生成
+go run ./cmd/bdf ls out.bdf          # Part 一覧
+go run ./cmd/bdf disasm out.bdf <hash>
+go run ./cmd/bdf split out.bdf out/  # 分割形式へ
+
+# TypeScript: ビルドとテスト
+npm ci
+npm test                             # デコーダのテスト（Node）
+npm run test:golden                  # Chromium で描画して golden 画像と比較
+npm run test:golden:update           # golden 画像を更新
+npm run fixtures                     # fixtures/ を再生成（Go が必要）
+
+# デモビューア
+npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
+```
+
+golden テストは `playwright-core` を使います。Chromium は `CHROMIUM_PATH` で指定するか、`npx playwright-core install chromium` で入れてください。
+
+## エンコーダ API の雰囲気（Go）
+
+```go
+d := bdf.NewDocument()
+font := d.AddFont(woff2Bytes)
+
+master := bdf.NewObject()
+bg := master.AddPaint(bdf.LinearGradient(0, 0, 0, 540,
+    bdf.Stop{Offset: 0, Color: bdf.RGB(0xf7, 0xf9, 0xfc)},
+    bdf.Stop{Offset: 1, Color: bdf.RGB(0xdc, 0xe6, 0xf2)}))
+master.FillPaint(bg).FillRect(0, 0, 960, 540)
+masterHash, _ := d.AddObject(master)
+
+body := bdf.NewObject()
+f := body.AddFont(bdf.EmbeddedFont(font, 700, bdf.StyleNormal))
+body.Font(f, 36).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).FillText("Hello", 48, 80, advance)
+bodyHash, _ := d.AddObject(body)
+
+v := d.NewView("slides", bdf.ViewFixed, "Slides")
+v.AddPage(960, 540,
+    bdf.Layer{Role: bdf.RoleMaster, Obj: masterHash},
+    bdf.Layer{Role: bdf.RoleBody, Obj: bodyHash})
+d.WriteSingle(w)
+```
+
+## ビューア API の雰囲気（TypeScript）
+
+```ts
+import { BdfWorkerClient } from "@bdf/render";
+const client = new BdfWorkerClient(new Worker(workerUrl, { type: "module" }));
+const manifest = await client.open({ kind: "single", url: "/doc.bdf", range: true });
+const bitmap = await client.page("slides", 0, devicePixelRatio); // ImageBitmap
+const runs = await client.text("slides", 0);                      // 選択・検索用テキスト
+```
