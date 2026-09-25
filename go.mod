@@ -5,6 +5,7 @@ go 1.27
 require (
 	github.com/pdfcpu/pdfcpu v0.11.0
 	golang.org/x/image v0.30.0
+	golang.org/x/text v0.28.0
 )
 
 require (
@@ -15,6 +16,5 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

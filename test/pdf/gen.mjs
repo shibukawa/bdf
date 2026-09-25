@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = dirname(dirname(here));
-const out = join(root, "pdf2bdf/testdata");
+const out = join(root, "converter/pdf/testdata");
 const executablePath = process.env.CHROMIUM_PATH ?? ["/opt/pw-browsers/chromium-1194/chrome-linux/chrome"].find((p) => existsSync(p));
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const page = await browser.newPage();

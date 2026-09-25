@@ -24,13 +24,13 @@ export const CASES: Case[] = [
   { name: "doc-continuous", kind: "continuous", view: "doc", viewport: { x: 0, y: 600, w: 451.3, h: 400 }, scale: 1 },
   { name: "sheet-tile-boundary", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 1800, w: 800, h: 500 }, scale: 1 },
   { name: "sheet-zoomed", kind: "sheet", view: "sheet1", viewport: { x: 64, y: 20, w: 300, h: 150 }, scale: 2 },
-  // Documents converted from PDF (pdf2bdf); see test/pdf.
+  // Documents converted from PDF (converter/pdf); see test/pdf.
   { name: "pdf-chrome-slides-1", src: "/fixtures/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-chrome-slides-2", src: "/fixtures/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "pdf-chrome-doc-1", src: "/fixtures/pdf/chrome-doc.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-reportlab-1", src: "/fixtures/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-reportlab-2", src: "/fixtures/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 1, scale: 1.5 },
-  // Three pages that share a master prefix (pdf2bdf prefix sharing); the pages must render as if unshared.
+  // Three pages that share a master prefix (PDF converter prefix sharing); the pages must render as if unshared.
   { name: "pdf-master-1", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-master-2", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "pdf-master-3", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 2, scale: 1 },

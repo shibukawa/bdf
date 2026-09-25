@@ -1,6 +1,6 @@
 """Generates reportlab-master.pdf: pages drawn from one "master" (header band,
 logo, footer rule) followed by page-specific content, the shape a PDF exported
-from a slide layout or a letterhead has. pdf2bdf's prefix sharing must turn
+from a slide layout or a letterhead has. the PDF converter's prefix sharing must turn
 the common start of every page into one shared object."""
 import os
 from reportlab.lib.pagesizes import A4
@@ -9,7 +9,7 @@ from reportlab.lib.colors import HexColor
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-out = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "pdf2bdf", "testdata")
+out = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "converter", "pdf", "testdata")
 pdfmetrics.registerFont(TTFont("DejaVu", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
 
 c = canvas.Canvas(os.path.join(out, "reportlab-master.pdf"), pagesize=A4)
