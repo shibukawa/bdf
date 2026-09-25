@@ -13,6 +13,7 @@ export type WorkerRequest =
   | { id: number; type: "continuous"; view: string; viewport: Rect; scale: number }
   | { id: number; type: "sheet"; view: string; viewport: Rect; scale: number }
   | { id: number; type: "text"; view: string; page: number }
+  | { id: number; type: "continuousText"; view: string; viewport: Rect }
   | { id: number; type: "search"; view: string; query: string; options?: SearchOptions }
   | { id: number; type: "locate"; view: string; hits: SearchHit[] }
   | { id: number; type: "close" };

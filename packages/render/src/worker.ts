@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
-import { BdfDocument, BufferSource, RangeSource, SplitSource, fetchSingle, extractText, type TextRun, type Manifest } from "@bdf/core";
+import { BdfDocument, BufferSource, RangeSource, SplitSource, fetchSingle, extractText, type TextRun, type Manifest, type Page, type Rect } from "@bdf/core";
+import { fontString } from "./resources.js";
 import { PageRenderer } from "./page.js";
 import { DocumentSearch } from "./search.js";
 import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource } from "./protocol.js";
@@ -23,6 +24,44 @@ async function open(source: OpenSource): Promise<Manifest> {
   pages = new PageRenderer(doc!, {}, (self as unknown as { fonts?: FontFaceSet }).fonts);
   search = new DocumentSearch(doc!, measure);
   return doc!.manifest;
+}
+
+/**
+ * Text runs of a page in the given space. Fonts are loaded first so runs
+ * without an advance get one measured with the embedded font; the text layer
+ * on the main thread stretches its fallback rendering to that width.
+ */
+async function pageText(page: Page, matrix?: [number, number, number, number, number, number]): Promise<TextRun[]> {
+  await pages!.preparePage(page);
+  const runs: TextRun[] = [];
+  for (const layer of page.layers) {
+    const obj = doc!.objectSync(layer.obj)!;
+    runs.push(...extractText(obj, (h) => doc!.objectSync(h), matrix));
+  }
+  for (const r of runs) {
+    if (r.advance === 0 && r.font && r.text) r.advance = measure(fontString(r.font, r.size), r.text);
+  }
+  return runs;
+}
+
+/** Runs of the pages whose body intersects viewport, moved into viewport coordinates. */
+async function continuousText(view: ReturnType<BdfDocument["view"]>, viewport: Rect): Promise<TextRun[]> {
+  const { offsets } = pages!.continuousLayout(view);
+  const out: TextRun[] = [];
+  const list = view.pages ?? [];
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    const b = p.body ?? { x: 0, y: 0, w: p.w, h: p.h };
+    if (offsets[i] >= viewport.y + viewport.h || offsets[i] + b.h <= viewport.y) continue;
+    const dx = -b.x - viewport.x, dy = offsets[i] - b.y - viewport.y;
+    for (const r of await pageText(p, [1, 0, 0, 1, dx, dy])) {
+      // Keep the runs whose anchor lies inside the body rectangle (the band clips to it).
+      const px = r.x - dx, py = r.y - dy;
+      if (px < b.x || px >= b.x + b.w || py < b.y || py > b.y + b.h) continue;
+      out.push(r);
+    }
+  }
+  return out;
 }
 
 function canvasFor(w: number, h: number): OffscreenCanvas {
@@ -63,13 +102,10 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
     case "text": {
       const page = view.pages?.[req.page];
       if (!page) throw new Error(`bdf: no page ${req.page}`);
-      const runs: TextRun[] = [];
-      for (const layer of page.layers) {
-        const obj = await doc.ensure(layer.obj);
-        runs.push(...extractText(obj, (h) => doc!.objectSync(h)));
-      }
-      return { result: runs, transfer: [] };
+      return { result: await pageText(page), transfer: [] };
     }
+    case "continuousText":
+      return { result: await continuousText(view, req.viewport), transfer: [] };
     case "search":
       return { result: await search.search(view, req.query, req.options), transfer: [] };
     case "locate": {

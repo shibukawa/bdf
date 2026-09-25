@@ -12,9 +12,11 @@
   .pages { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 16px; }
   .page { position: relative; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
   .page canvas { display: block; }
-  .textLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; }
-  .textLayer span { position: absolute; color: transparent; white-space: pre; transform-origin: 0 0; cursor: text; }
-  .textLayer span::selection { background: rgba(0, 120, 255, .35); }
+  .textLayer { position: absolute; inset: 0; overflow: hidden; }
+  /* the selectable text layer (@bdf/render TEXT_LAYER_CSS) */
+  .bdfTextLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; }
+  .bdfTextLayer span { position: absolute; color: transparent; white-space: pre; transform-origin: 0 0; cursor: text; }
+  .bdfTextLayer span::selection { background: rgba(0, 120, 255, .35); }
   .hl { position: absolute; background: rgba(255, 210, 0, .45); outline: 1px solid rgba(200, 140, 0, .8); pointer-events: none; border-radius: 2px; }
   .hl.current { background: rgba(255, 120, 0, .5); outline-color: #c04000; }
   .search { display: flex; gap: 4px; align-items: center; }

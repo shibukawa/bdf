@@ -9,6 +9,7 @@ Office 系ファイルをサーバーで変換しておき、フロントエン�
 - `DecompressionStream` で展開、Worker + `OffscreenCanvas` で描画
 - 内容アドレスの Part によりマスターや繰り返し部品を自動共有
 - テキスト索引 Part と Worker 内の全文検索（行またぎ、NFKC・かな正規化、ヒット矩形）
+- 透明 DOM のテキスト選択層とコピー（空白・改行は MARK 境界から復元、ページまたぎ、連続モード対応）
 - 1 ファイル形式と分割ファイル形式を相互変換可能
 
 PDF からの変換（`pdf2bdf`）は、埋め込みフォントをブラウザが読める形に組み直し、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換します。詳細は design.md の §3.1 を参照してください。
@@ -98,4 +99,9 @@ const bitmap = await client.page("slides", 0, devicePixelRatio); // ImageBitmap
 const runs = await client.text("slides", 0);                      // 選択・コピー用テキスト
 const hits = await client.search("doc", "list of objects");         // 全文検索（正規化つき）
 const rects = await client.locate("doc", hits);                    // ハイライト矩形（ページ座標）
+
+// 選択層: ページの上に透明な span を置き、コピーは run の区切りから組み立てる
+import { buildTextLayer, installCopyHandler, TEXT_LAYER_CSS } from "@bdf/render";
+pageElement.append(canvas, buildTextLayer(runs, zoom));          // TEXT_LAYER_CSS を読み込んでおく
+installCopyHandler(stage);                                         // copy で選択範囲のテキストを整形
 ```

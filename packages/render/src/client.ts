@@ -37,8 +37,13 @@ export class BdfWorkerClient {
   sheet(view: string, viewport: Rect, scale: number): Promise<ImageBitmap> {
     return this.call<ImageBitmap>({ type: "sheet", view, viewport, scale });
   }
+  /** Text runs of a page in page units; advances are measured with the embedded fonts. */
   text(view: string, page: number): Promise<TextRun[]> {
     return this.call<TextRun[]>({ type: "text", view, page });
+  }
+  /** Text runs of the continuous layout inside viewport, in viewport coordinates. */
+  continuousText(view: string, viewport: Rect): Promise<TextRun[]> {
+    return this.call<TextRun[]>({ type: "continuousText", view, viewport });
   }
   search(view: string, query: string, options?: SearchOptions): Promise<SearchHit[]> {
     return this.call<SearchHit[]>({ type: "search", view, query, options });

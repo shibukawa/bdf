@@ -1,7 +1,7 @@
 // Demo viewer: everything is decoded and rendered in a worker; the main thread
 // only places bitmaps and a selectable text layer.
-import type { Manifest, View, TextRun, SearchHit } from "@bdf/core";
-import { BdfWorkerClient, fontString, type HitRect } from "@bdf/render";
+import type { Manifest, View, SearchHit } from "@bdf/core";
+import { BdfWorkerClient, buildTextLayer, installCopyHandler, type HitRect } from "@bdf/render";
 
 const params = new URLSearchParams(location.search);
 const src = params.get("src") ?? "/fixtures/demo.bdf";
@@ -24,6 +24,10 @@ const sheetCanvases = new WeakMap<View, { canvas: HTMLCanvasElement; viewport: (
 const dpr = () => window.devicePixelRatio || 1;
 
 function setStatus(s: string) { status.textContent = s; }
+
+// Copy puts the selected runs' text (with the document's spaces and line
+// breaks) on the clipboard, across pages.
+installCopyHandler(stage);
 
 async function main() {
   const source = src.endsWith("/") ? { kind: "split" as const, base: new URL(src, location.href).href } : { kind: "single" as const, url: new URL(src, location.href).href, range: params.has("range") };
@@ -92,7 +96,7 @@ async function renderPage(v: View, index: number, el: HTMLDivElement) {
   canvas.style.height = `${page.h * zoom}px`;
   canvas.getContext("2d")!.drawImage(bmp, 0, 0);
   bmp.close();
-  el.replaceChildren(canvas, textLayer(runs, zoom), highlightLayer(index));
+  el.replaceChildren(canvas, buildTextLayer(runs, zoom), highlightLayer(index));
   setStatus(`page ${index + 1} rendered in ${(performance.now() - t0).toFixed(0)} ms (${runs.length} text runs)`);
 }
 
@@ -156,29 +160,6 @@ function drawSheetHighlights(canvas: HTMLCanvasElement, viewport: { x: number; y
   ctx.restore();
 }
 
-/** Transparent, selectable text positioned over the bitmap (pdf.js style). */
-function textLayer(runs: TextRun[], scale: number): HTMLDivElement {
-  const layer = document.createElement("div");
-  layer.className = "textLayer";
-  const meas = document.createElement("canvas").getContext("2d")!;
-  for (const r of runs) {
-    if (!r.font) continue;
-    const span = document.createElement("span");
-    span.textContent = r.text;
-    const font = fontString(r.font, r.size);
-    span.style.font = font;
-    meas.font = font;
-    const w = meas.measureText(r.text).width;
-    const sx = r.advance > 0 && w > 0 ? r.advance / w : 1;
-    const anchor = r.align === 1 ? -r.advance : r.align === 2 ? -r.advance / 2 : 0;
-    const m = r.matrix;
-    // matrix maps object space to page space; scale to CSS px.
-    span.style.transform = `matrix(${m[0] * scale}, ${m[1] * scale}, ${m[2] * scale}, ${m[3] * scale}, ${r.x * scale}, ${r.y * scale}) translate(${anchor}px, -${r.size * 0.8}px) scaleX(${sx})`;
-    layer.appendChild(span);
-  }
-  return layer;
-}
-
 /** Continuous flow: body rectangles stacked, rendered in 800-unit bands on demand. */
 function showContinuous(v: View) {
   const gap = v.continuous?.gap ?? 0;
@@ -199,7 +180,8 @@ function showContinuous(v: View) {
       const el = e.target as HTMLDivElement;
       const y = Number(el.dataset.y);
       const h = Math.min(band, height - y);
-      void client.continuous(v.id, { x: 0, y, w: width, h }, zoom * dpr()).then((bmp) => {
+      const viewport = { x: 0, y, w: width, h };
+      void Promise.all([client.continuous(v.id, viewport, zoom * dpr()), client.continuousText(v.id, viewport)]).then(([bmp, runs]) => {
         const canvas = document.createElement("canvas");
         canvas.width = bmp.width;
         canvas.height = bmp.height;
@@ -207,7 +189,7 @@ function showContinuous(v: View) {
         canvas.style.height = `${h * zoom}px`;
         canvas.getContext("2d")!.drawImage(bmp, 0, 0);
         bmp.close();
-        el.replaceChildren(canvas);
+        el.replaceChildren(canvas, buildTextLayer(runs, zoom));
       });
     }
   }, { root: stage, rootMargin: "400px" });

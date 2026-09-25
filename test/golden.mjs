@@ -42,6 +42,11 @@ try {
   if (error) throw new Error(error);
   const results = await page.evaluate(() => window.bdfResults);
   const search = await page.evaluate(() => window.bdfSearch);
+  const selection = await page.evaluate(() => window.bdfSelection);
+  const selectionOk = selection.spans > 4 && selection.allText === selection.wantAll && selection.partText === selection.wantPart
+    && selection.breaks > 0 && selection.allText.includes(" ");
+  if (!selectionOk) failed++;
+  console.log(`selection: ${selectionOk ? "ok" : "FAIL"} (${selection.spans} spans, ${selection.breaks} line breaks, partial ${JSON.stringify(selection.partText)})`);
   const docPage = 0;
   const searchOk = search.hits.length === 6 && search.rects.length === 6 && search.rects[0].length === 2
     && search.rects[0].every((r) => r.a === docPage && r.w > 5 && r.h > 5 && r.x >= 72 && r.x + r.w <= 595.3 - 72)

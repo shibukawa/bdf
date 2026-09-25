@@ -1,7 +1,7 @@
 // Test harness: renders fixture pages on the main thread and via the worker,
 // and compares canvases against golden PNGs. Driven by test/golden.mjs.
 import { BdfDocument, fetchSingle, RangeSource, SplitSource, type Rect } from "@bdf/core";
-import { PageRenderer, BdfWorkerClient } from "@bdf/render";
+import { PageRenderer, BdfWorkerClient, buildTextLayer, selectionText, joinRuns, TEXT_LAYER_CSS } from "@bdf/render";
 
 export interface Case {
   name: string;
@@ -160,6 +160,9 @@ async function main() {
       textRuns,
     });
   }
+  // text layer: select runs of the first doc page through the DOM and
+  // rebuild the text; compare with the runs joined directly.
+  (window as unknown as { bdfSelection: unknown }).bdfSelection = await selectionCheck(client);
   // search through the worker: hits, then rectangles
   const hits = await client.search("doc", "list of objects");
   const rects = await client.locate("doc", hits);
@@ -168,6 +171,40 @@ async function main() {
   (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
+}
+
+async function selectionCheck(client: BdfWorkerClient) {
+  const style = document.createElement("style");
+  style.textContent = TEXT_LAYER_CSS;
+  document.head.appendChild(style);
+  const runs = await client.text("doc", 0);
+  const layer = buildTextLayer(runs, 1);
+  const host = document.createElement("div");
+  host.style.cssText = "position: relative; width: 600px; height: 850px;";
+  host.appendChild(layer);
+  document.body.appendChild(host);
+  const spans = layer.querySelectorAll("span");
+  const sel = getSelection()!;
+  // all runs
+  sel.removeAllRanges();
+  const all = document.createRange();
+  all.selectNodeContents(layer);
+  sel.addRange(all);
+  const allText = selectionText(sel, host);
+  const drawn = runs.filter((r) => r.text && !r.altText).map((r) => ({ ordinal: r.ordinal, sep: r.sep, text: r.text, layer }));
+  const wantAll = joinRuns(drawn);
+  // a partial range: from the third character of the second run to the
+  // second character of the fourth run
+  sel.removeAllRanges();
+  const part = document.createRange();
+  part.setStart(spans[1].firstChild!, 2);
+  part.setEnd(spans[3].firstChild!, 2);
+  sel.addRange(part);
+  const partText = selectionText(sel, host);
+  const wantPart = joinRuns([{ ...drawn[1], text: drawn[1].text.slice(2) }, drawn[2], { ...drawn[3], text: drawn[3].text.slice(0, 2) }]);
+  sel.removeAllRanges();
+  host.remove();
+  return { spans: spans.length, allText, wantAll, partText, wantPart, breaks: (allText.match(/\n/g) ?? []).length };
 }
 
 main().catch((e) => {
