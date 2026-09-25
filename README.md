@@ -47,6 +47,7 @@ go run ./cmd/pdf2bdf in.pdf out/        # 分割形式
 go run ./cmd/pdf2bdf -pages 1-3 -kind flow in.pdf out.bdf
 go run ./cmd/pdf2bdf -images keep in.pdf out.bdf   # 画像を変換しない
 go build -tags bdf_noconv ./...                    # コーデックを含めないビルド（ブラウザ向け）
+GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD 版コーデック（amd64 は AVX2 必須）
 
 # TypeScript: ビルドとテスト
 npm ci

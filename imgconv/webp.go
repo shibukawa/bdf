@@ -6,8 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"image"
-
-	"github.com/shibukawa/bdf/imgconv/internal/webpw"
 )
 
 // Available reports whether the WebP codec is compiled in.
@@ -27,28 +25,27 @@ func encodeWebP(img *image.NRGBA, quality, method int, lossless bool) ([]byte, e
 			copy(pix[y*w*4:(y+1)*w*4], img.Pix[y*img.Stride:y*img.Stride+w*4])
 		}
 	}
-	m := webpw.New()
-	webpw.Initialize(m)
-	inPtr := webpw.Malloc(m, int32(len(pix)))
+	m := codecNew()
+	inPtr := codecMalloc(m, int32(len(pix)))
 	if inPtr == 0 {
 		return nil, errors.New("imgconv: webp: out of memory")
 	}
-	copy(webpw.Memory(m)[inPtr:], pix)
-	sizePtr := webpw.Malloc(m, 8)
+	copy(codecMemory(m)[inPtr:], pix)
+	sizePtr := codecMalloc(m, 8)
 	ll := int32(0)
 	if lossless {
 		ll = 1
 	}
-	out := webpw.Encode(m, inPtr, int32(w), int32(h), sizePtr, int32(quality), int32(method), ll, 0)
-	mem := webpw.Memory(m)
+	out := codecEncode(m, inPtr, int32(w), int32(h), sizePtr, int32(quality), int32(method), ll, 0)
+	mem := codecMemory(m)
 	if out == 0 {
 		return nil, errors.New("imgconv: webp: encode failed")
 	}
 	size := binary.LittleEndian.Uint32(mem[sizePtr:])
 	res := make([]byte, size)
 	copy(res, mem[out:out+int32(size)])
-	webpw.Free(m, out)
-	webpw.Free(m, sizePtr)
-	webpw.Free(m, inPtr)
+	codecFree(m, out)
+	codecFree(m, sizePtr)
+	codecFree(m, inPtr)
 	return res, nil
 }

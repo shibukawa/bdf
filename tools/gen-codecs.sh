@@ -4,20 +4,28 @@
 # fork, producing per-subject files with symbol names and named data addresses
 # so that a rebuild changes as little of the checked-in tree as possible.
 #
-# SIMD=1 builds the SIMD variant instead: libwebp's SSE2/SSE4.1 kernels
-# compiled to wasm SIMD through the emscripten compat headers in
-# tools/webp/emcompat, and every v128 function emitted twice, over [2]uint64
-# pairs and, for a GOEXPERIMENT=simd build on Go 1.27, over simd/archsimd
-# vector registers (wasm2go -simd=go127). It is not what is checked in: see
-# docs/design.md 3.2 for the measurements.
+# SIMD=1 builds imgconv/internal/webpwsimd instead: libwebp's SSE2/SSE4.1
+# kernels compiled to wasm SIMD through the emscripten compat headers in
+# tools/webp/emcompat, and every v128 function emitted over simd/archsimd
+# vector registers (wasm2go -simd=go127). That package is compiled only for
+# a GOEXPERIMENT=simd build on Go 1.27 (amd64/arm64); imgconv selects it by
+# build tag and falls back to the scalar webpw everywhere else. The pair
+# variants wasm2go also emits are dropped, since the scalar package covers
+# that case. See docs/design.md 3.2 for the measurements.
 #
 # Usage: tools/gen-codecs.sh            (WORK=dir keeps the toolchain between runs;
-#                                        OUT=dir writes the package elsewhere)
+#        SIMD=1 tools/gen-codecs.sh      OUT=dir writes the package elsewhere)
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK=${WORK:-"$ROOT/../bdf-codec-work"}
-OUT=${OUT:-"$ROOT/imgconv/internal/webpw"}
 SIMD=${SIMD:-0}
+if [ "$SIMD" = 1 ]; then
+  PKG=webpwsimd
+  SIMD_TAG='goexperiment.simd && go1.27 && !go1.28 && (amd64 || arm64)'
+else
+  PKG=webpw
+fi
+OUT=${OUT:-"$ROOT/imgconv/internal/$PKG"}
 mkdir -p "$WORK"
 
 FORK_REPO=https://github.com/shibukawa/wasm2go-fork
@@ -73,8 +81,15 @@ MODFILE="$WORK/gen-webp.go.mod"
 cp "$ROOT/tools/gen-webp/go.mod" "$MODFILE"
 ( cd "$ROOT/tools/gen-webp" && go mod edit -modfile="$MODFILE" -replace "github.com/goccy/wasm2go=$WORK/wasm2go-fork" \
   && go mod tidy -modfile="$MODFILE" >/dev/null 2>&1 \
-  && go run -modfile="$MODFILE" . -i "$WORK/webp.wasm" -out-dir "$OUT" -simd="$SIMD_TARGET" )
+  && go run -modfile="$MODFILE" . -i "$WORK/webp.wasm" -out-dir "$OUT" -simd="$SIMD_TARGET" \
+       -pkg "$PKG" -import "github.com/shibukawa/bdf/imgconv/internal/$PKG" )
 cp "$WORK/libwebp/COPYING" "$OUT/LICENSE.libwebp"
+if [ "$SIMD" = 1 ]; then
+  # The whole package exists only for the archsimd build; the pair
+  # variants are the scalar package's job.
+  find "$OUT" -name '*_nosimd.go' -delete
+  python3 "$ROOT/tools/add-build-tag.py" "$OUT" "$SIMD_TAG"
+fi
 python3 "$ROOT/tools/add-build-tag.py" "$OUT" '!bdf_noconv'
 gofmt -w "$OUT"
 echo "done: $(find "$OUT" -type f | wc -l) files"
