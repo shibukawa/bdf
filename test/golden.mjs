@@ -30,10 +30,12 @@ const { server, port } = await serve(root);
 // Use an explicit Chromium (CHROMIUM_PATH, or the one preinstalled in some sandboxes);
 // otherwise fall back to the browser installed by `npx playwright-core install chromium`.
 const executablePath = process.env.CHROMIUM_PATH ?? ["/opt/pw-browsers/chromium-1194/chrome-linux/chrome"].find((p) => existsSync(p));
-// Text is rasterized without hinting or LCD filtering so that the fontconfig defaults of the
-// machine (hint style, subpixel order) do not leak into the pixels; playwright-core is pinned
-// to the release whose Chromium build matches the goldens.
-const launch = { args: ["--font-render-hinting=none", "--disable-lcd-text"] };
+// The pixels must not depend on the machine: Canvas 2D is rasterized in software (no GPU or
+// SwiftShader path, which also makes the worker's OffscreenCanvas match the main thread), text
+// is drawn without hinting or LCD filtering so the fontconfig defaults (hint style, subpixel
+// order) do not leak in, and playwright-core is pinned to the release whose Chromium build
+// matches the goldens.
+const launch = { args: ["--disable-gpu", "--disable-accelerated-2d-canvas", "--font-render-hinting=none", "--disable-lcd-text"] };
 if (executablePath) launch.executablePath = executablePath;
 const browser = await chromium.launch(launch);
 let failed = 0;

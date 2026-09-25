@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
       - run: npm ci
       - run: npm test
@@ -46,3 +46,4 @@ jobs:
         with:
           name: golden-diffs
           path: test/.out/*.png
+          include-hidden-files: true
