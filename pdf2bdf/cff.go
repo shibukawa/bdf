@@ -18,6 +18,9 @@ type cffFont struct {
 	encoding   map[int]int // code → gid (built-in encoding)
 	fontMatrix matrix
 	strings    []string
+	// Notice and Copyright strings of the Top DICT (the only license text a
+	// bare CFF program carries).
+	notice, copyright string
 }
 
 func cffReadIndex(b []byte, pos int) ([][]byte, int, error) {
@@ -157,6 +160,12 @@ func parseCFF(data []byte) (*cffFont, error) {
 	if _, ok := top[1230]; ok {
 		f.isCID = true
 	}
+	if v := top[1]; len(v) == 1 {
+		f.notice = f.sidName(int(v[0]))
+	}
+	if v := top[1200]; len(v) == 1 {
+		f.copyright = f.sidName(int(v[0]))
+	}
 	csOff := top[17]
 	if len(csOff) == 0 {
 		return nil, errors.New("cff: no CharStrings")
@@ -166,6 +175,9 @@ func parseCFF(data []byte) (*cffFont, error) {
 		return nil, err
 	}
 	f.numGlyphs = len(charStrings)
+	if f.numGlyphs == 0 {
+		return nil, errors.New("cff: no glyphs")
+	}
 
 	// charset: gid → SID/CID
 	f.charset = make([]int, f.numGlyphs)
@@ -180,7 +192,7 @@ func parseCFF(data []byte) (*cffFont, error) {
 		}
 	default:
 		p := charsetOff
-		if p < len(data) {
+		if p >= 0 && p < len(data) {
 			format := data[p]
 			p++
 			f.charset[0] = 0
@@ -244,7 +256,7 @@ func parseCFF(data []byte) (*cffFont, error) {
 			}
 		default:
 			p := encOff
-			if p < len(data) {
+			if p >= 0 && p+1 < len(data) {
 				format := data[p]
 				p++
 				switch format & 0x7f {
@@ -286,6 +298,9 @@ func parseCFF(data []byte) (*cffFont, error) {
 }
 
 func (f *cffFont) sidName(sid int) string {
+	if sid < 0 {
+		return ""
+	}
 	if sid < len(cffStandardStrings) {
 		return cffStandardStrings[sid]
 	}
