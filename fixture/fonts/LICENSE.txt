@@ -1,0 +1,3 @@
+DejaVu Sans (subset, ASCII range) — DejaVu Fonts License.
+https://dejavu-fonts.github.io/License.html
+Bitstream Vera Fonts Copyright (c) 2003 by Bitstream, Inc. DejaVu changes are in public domain.

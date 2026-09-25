@@ -72,11 +72,11 @@ offset 16  : manifestLen    u64     manifest の圧縮後長
 offset 24  : manifestEnc    u8      0=identity, 1=deflate-raw
 offset 25  : reserved       u8[7]
 offset 32  : manifest
-offset ... : parts（manifest.parts に記載された順に連続配置）
+offset ... : parts 領域（manifest 直後から始まり、manifest.parts に記載された順に連続配置）
 ```
 
 - すべてリトルエンディアン。
-- `manifest.parts[i]` は `off`（ファイル先頭からのオフセット）と `len` を持つ。
+- `manifest.parts[i]` は `off`（**parts 領域の先頭**、すなわち `manifestOff + manifestLen` からのオフセット）と `len` を持つ。manifest の内容が自身の長さに依存しないようにするため。
 - **推奨配置順**: manifest → Font → 共有 Object（マスター等）→ View の先頭ページから順。先頭から読むだけで 1 ページ目が描けるようにする。
 - 書き手は全 Part を確定してから書き出す（サーバー変換なので問題ない）。
 
@@ -131,8 +131,8 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
   ],
 
   "parts": [
-    { "h": "3f9a…", "t": "obj",  "enc": "deflate-raw", "len": 1234, "size": 5678, "off": 32 },
-    { "h": "c0ff…", "t": "font", "enc": "identity",    "len": 40210, "size": 40210, "off": 1266 },
+    { "h": "3f9a…", "t": "obj",  "enc": "deflate-raw", "len": 1234, "size": 5678, "off": 0 },
+    { "h": "c0ff…", "t": "font", "enc": "identity",    "len": 40210, "size": 40210, "off": 1234 },
     …
   ]
 }
@@ -193,7 +193,7 @@ u8[opsLen]       ; 命令列（§7）
 ```
 u8      kind        0=embedded, 1=system
 u8[16]  hash        embedded のときのみ（Font Part。WOFF2 推奨、TTF/OTF も可）
-string  family      system のときの CSS フォントファミリー文字列（フォールバック列を含む）
+string  family      CSS フォントファミリー文字列（フォールバック列を含む）。embedded では空でよく、空でなければ埋め込みフォントの後ろにフォールバックとして付ける
 u16     weight      100–900
 u8      style       0=normal, 1=italic, 2=oblique
 ```
