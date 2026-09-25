@@ -11,6 +11,8 @@ Office 系ファイルをサーバーで変換しておき、フロントエン�
 - テキスト索引 Part と Worker 内の全文検索（行またぎ、NFKC・かな正規化、ヒット矩形）
 - 1 ファイル形式と分割ファイル形式を相互変換可能
 
+PDF からの変換（`pdf2bdf`）は、埋め込みフォントをブラウザが読める形に組み直し、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換します。詳細は design.md の §3.1 を参照してください。
+
 ドキュメント:
 
 - [docs/spec.md](docs/spec.md) — フォーマット仕様ドラフト
@@ -22,6 +24,7 @@ Office 系ファイルをサーバーで変換しておき、フロントエン�
 |---|---|
 | `*.go`, `cmd/bdf` | Go のエンコーダ・デコーダ・コンテナ I/O と CLI |
 | `fixture/` | サンプル文書の生成（埋め込みフォント付き） |
+| `pdf2bdf/`, `cmd/pdf2bdf` | PDF → BDF 変換器と CLI |
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
 | `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画、Worker |
 | `examples/viewer` | デモビューア |
@@ -37,12 +40,18 @@ go run ./cmd/bdf ls out.bdf          # Part 一覧
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # 分割形式へ
 
+# PDF → BDF
+go run ./cmd/pdf2bdf in.pdf out.bdf     # 1 ファイル形式
+go run ./cmd/pdf2bdf in.pdf out/        # 分割形式
+go run ./cmd/pdf2bdf -pages 1-3 -kind flow in.pdf out.bdf
+
 # TypeScript: ビルドとテスト
 npm ci
 npm test                             # デコーダのテスト（Node）
 npm run test:golden                  # Chromium で描画して golden 画像と比較
 npm run test:golden:update           # golden 画像を更新
 npm run fixtures                     # fixtures/ を再生成（Go が必要）
+node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に描画
 
 # デモビューア
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/

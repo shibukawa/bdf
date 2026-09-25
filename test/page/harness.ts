@@ -5,6 +5,8 @@ import { PageRenderer, BdfWorkerClient } from "@bdf/render";
 
 export interface Case {
   name: string;
+  /** Document path (default: the generated fixture). */
+  src?: string;
   kind: "page" | "continuous" | "sheet";
   view: string;
   page?: number;
@@ -22,7 +24,15 @@ export const CASES: Case[] = [
   { name: "doc-continuous", kind: "continuous", view: "doc", viewport: { x: 0, y: 600, w: 451.3, h: 400 }, scale: 1 },
   { name: "sheet-tile-boundary", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 1800, w: 800, h: 500 }, scale: 1 },
   { name: "sheet-zoomed", kind: "sheet", view: "sheet1", viewport: { x: 64, y: 20, w: 300, h: 150 }, scale: 2 },
+  // Documents converted from PDF (pdf2bdf); see test/pdf.
+  { name: "pdf-chrome-slides-1", src: "/fixtures/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pdf-chrome-slides-2", src: "/fixtures/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "pdf-chrome-doc-1", src: "/fixtures/pdf/chrome-doc.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pdf-reportlab-1", src: "/fixtures/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pdf-reportlab-2", src: "/fixtures/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 1, scale: 1.5 },
 ];
+
+const DEFAULT_SRC = "/fixtures/demo.bdf";
 
 function canvasSize(c: Case, doc: BdfDocument): [number, number] {
   if (c.kind === "page") {
@@ -107,21 +117,34 @@ export interface Result {
   textRuns: number;
 }
 
+interface Opened { doc: BdfDocument; pr: PageRenderer; client: BdfWorkerClient }
+
 async function main() {
   const params = new URLSearchParams(location.search);
   const sourceKind = params.get("source") ?? "single";
   const workerUrl = params.get("worker") ?? "./worker.js";
-  const doc = await BdfDocument.open(
-    sourceKind === "split" ? new SplitSource("/fixtures/demo-split/")
-      : sourceKind === "range" ? new RangeSource("/fixtures/demo.bdf")
-        : await fetchSingle("/fixtures/demo.bdf"),
-  );
-  const pr = new PageRenderer(doc, {}, document.fonts);
-  const client = new BdfWorkerClient(new Worker(workerUrl, { type: "module" }));
-  await client.open(sourceKind === "split" ? { kind: "split", base: location.origin + "/fixtures/demo-split/" } : { kind: "single", url: location.origin + "/fixtures/demo.bdf", range: sourceKind === "range" });
+  const opened = new Map<string, Opened>();
+  const open = async (src: string): Promise<Opened> => {
+    let o = opened.get(src);
+    if (o) return o;
+    const isDefault = src === DEFAULT_SRC;
+    const doc = await BdfDocument.open(
+      isDefault && sourceKind === "split" ? new SplitSource("/fixtures/demo-split/")
+        : isDefault && sourceKind === "range" ? new RangeSource(src)
+          : await fetchSingle(src),
+    );
+    const pr = new PageRenderer(doc, {}, document.fonts);
+    const client = new BdfWorkerClient(new Worker(workerUrl, { type: "module" }));
+    await client.open(isDefault && sourceKind === "split" ? { kind: "split", base: location.origin + "/fixtures/demo-split/" } : { kind: "single", url: location.origin + src, range: isDefault && sourceKind === "range" });
+    o = { doc, pr, client };
+    opened.set(src, o);
+    return o;
+  };
+  const { client } = await open(DEFAULT_SRC);
 
   const results: Result[] = [];
   for (const c of CASES) {
+    const { doc, pr, client } = await open(c.src ?? DEFAULT_SRC);
     const main = await renderMain(doc, pr, c);
     main.title = c.name;
     document.body.appendChild(main);

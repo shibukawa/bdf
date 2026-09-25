@@ -144,6 +144,13 @@ func (o *Object) AddFont(f Font) FontRef {
 	return FontRef(len(o.fonts) - 1)
 }
 
+// UpdateFont replaces a registered font (used by converters that finalize
+// font programs after the object has been built).
+func (o *Object) UpdateFont(ref FontRef, f Font) { o.fonts[ref] = f }
+
+// UpdateObject replaces the hash of a registered child object.
+func (o *Object) UpdateObject(ref ObjRef, h Hash) { o.objects[ref] = h }
+
 // AddImage registers an image part reference.
 func (o *Object) AddImage(h Hash) ImageRef {
 	o.images = append(o.images, h)

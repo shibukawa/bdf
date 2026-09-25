@@ -48,11 +48,22 @@ class Extraction {
   runs: TextRun[] = [];
   pending = Sep.NONE as number;
   hasMark = false;
+  /** ALT_TEXT waiting for the drawing op it describes. */
+  alt: string | undefined;
   constructor(readonly resolve: (h: Hash) => ObjectPart | undefined) {}
 
   mark(sep: number) {
     if (!this.hasMark || sep > this.pending) this.pending = sep;
     this.hasMark = true;
+  }
+
+  /** Emit an ALT_TEXT that no drawing op consumed, without a position. */
+  flushAlt(st: State) {
+    if (this.alt !== undefined) {
+      const t = this.alt;
+      this.alt = undefined;
+      this.emit(t, 0, 0, 0, st, true);
+    }
   }
 
   emit(text: string, x: number, y: number, advance: number, st: State, altText: boolean) {
@@ -96,15 +107,26 @@ class TextSink extends NoopSink {
   override textStyle(align: number) { this.st.align = align; }
   override mark(kind: number, payload: string) {
     switch (kind) {
-      case Mark.LINE: this.ex.mark(Sep.SPACE); break;
-      case Mark.PARAGRAPH: case Mark.CELL: case Mark.BOX: this.ex.mark(Sep.BREAK); break;
-      case Mark.ALT_TEXT: this.ex.emit(payload, 0, 0, 0, this.st, true); break;
+      case Mark.LINE: this.ex.flushAlt(this.st); this.ex.mark(Sep.SPACE); break;
+      case Mark.PARAGRAPH: case Mark.CELL: case Mark.BOX: this.ex.flushAlt(this.st); this.ex.mark(Sep.BREAK); break;
+      case Mark.ALT_TEXT: this.ex.flushAlt(this.st); this.ex.alt = payload; break;
     }
   }
-  override fillText(text: string, x: number, y: number, advance: number) { this.ex.emit(text, x, y, advance, this.st, false); }
-  override strokeText(text: string, x: number, y: number, advance: number) { this.ex.emit(text, x, y, advance, this.st, false); }
+  /** The drawing op right after ALT_TEXT renders that text; returns true when consumed. */
+  private takeAlt(x: number, y: number, advance: number): boolean {
+    if (this.ex.alt === undefined) return false;
+    const t = this.ex.alt;
+    this.ex.alt = undefined;
+    this.ex.emit(t, x, y, advance, this.st, true);
+    return true;
+  }
+  override fillText(text: string, x: number, y: number, advance: number) { if (!this.takeAlt(x, y, advance)) this.ex.emit(text, x, y, advance, this.st, false); }
+  override strokeText(text: string, x: number, y: number, advance: number) { if (!this.takeAlt(x, y, advance)) this.ex.emit(text, x, y, advance, this.st, false); }
+  override fillPathAt(_path: number, _rule: number, x: number, y: number) { this.takeAlt(x, y, 0); }
+  override fillPathRun(_rule: number, glyphs: { x: number; y: number }[]) { this.takeAlt(glyphs[0]?.x ?? 0, glyphs[0]?.y ?? 0, 0); }
   override use(obj: number) { this.useAt(obj, 0, 0); }
   override useAt(obj: number, x: number, y: number) {
+    if (this.takeAlt(x, y, 0)) return;
     const child = this.ex.resolve(this.obj.objects[obj]);
     if (!child) return;
     walk(child, new TextSink(this.ex, child, mul(this.st.m, [1, 0, 0, 1, x, y])));
@@ -119,5 +141,6 @@ class TextSink extends NoopSink {
 export function extractText(obj: ObjectPart, resolve: (h: Hash) => ObjectPart | undefined, matrix: Matrix = [1, 0, 0, 1, 0, 0]): TextRun[] {
   const ex = new Extraction(resolve);
   walk(obj, new TextSink(ex, obj, matrix));
+  ex.flushAlt({ m: matrix, font: undefined, size: 10, align: 0 });
   return ex.runs;
 }

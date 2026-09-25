@@ -148,7 +148,7 @@ func TestExtractTextAndIndex(t *testing.T) {
 	o.Mark(MarkParagraph, "").FillText("Hello", 0, 0, 30).FillText("World", 35, 0, 30) // gap 5 > 0.2*size => space
 	o.Mark(MarkLine, "").FillText("second", 0, 15, 40)
 	o.FillText("-line", 40, 15, 20) // adjacent => none
-	o.Mark(MarkAltText, "outlined").FillRect(0, 0, 1, 1)
+	o.Mark(MarkAltText, "outlined").FillPathAt(p, NonZero, 5, 30) // alt text describes the next drawing op
 	o.Save().Translate(100, 100).Use(o.AddObject(childH, childBB)).Restore()
 	h, _ := d.AddObject(o)
 
@@ -178,6 +178,9 @@ func TestExtractTextAndIndex(t *testing.T) {
 	}
 	if runs[5].X != 100 || runs[5].Y != 100 || runs[5].Font.Family != "serif" {
 		t.Fatalf("child run = %+v", runs[5])
+	}
+	if runs[4].X != 5 || runs[4].Y != 30 || !runs[4].AltText {
+		t.Fatalf("alt run = %+v", runs[4])
 	}
 
 	v := d.NewView("v", ViewFixed, "")

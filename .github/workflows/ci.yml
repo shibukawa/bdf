@@ -12,10 +12,15 @@ jobs:
           go-version: "1.24"
       - run: go vet ./...
       - run: go test ./...
-      - name: fixture is up to date
+      - name: fixtures are up to date
         run: |
           go run ./cmd/bdf demo /tmp/demo.bdf
           cmp /tmp/demo.bdf fixtures/demo.bdf
+          for f in pdf2bdf/testdata/*.pdf; do
+            n=$(basename "$f" .pdf)
+            go run ./cmd/pdf2bdf -q "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "fixtures/pdf/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:

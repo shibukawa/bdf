@@ -55,6 +55,20 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
    - 長期課題。PPTX は絶対配置なので DOCX より先に手が届く（テキストボックス内の折り返しは必要）。
    - マスター・レイアウト・スライドの継承構造が BDF の共有 Object にそのまま対応するので、直接変換できればサイズ面の効果が最も大きい。
 
+## 3.1 PDF → BDF 変換器（pdf2bdf）の構造
+
+`pdf2bdf` パッケージは PDF オブジェクト層に pdfcpu を使い、内容ストリームの解釈は自前で行う。
+
+- **命令の対応**: `q`/`Q` → SAVE/RESTORE、`cm` → TRANSFORM、パス演算子 → Path、`W n` → CLIP_PATH、`Do`（Form）→ 共有 Object + USE、`Do`（Image）→ IMAGE、`sh` と shading パターン → Paint、tiling パターン → セル Object を USE_AT で敷き詰め、ExtGState の `ca`/`CA`/`BM` → ALPHA/BLEND、透明グループ → GROUP。座標は PDF のユーザー空間をそのまま TRANSFORM で写す（ページ先頭で y 反転と回転を 1 回かける）。
+- **状態の遅延出力**: 色・線・アルファなどは描画命令の直前に、前回出力した値と違うときだけ書く。SAVE/RESTORE で出力済み状態のスタックも巻き戻す。
+- **テキスト**: 行列（Tm/Td/T*）ごとに SAVE + TRANSFORM のブロックを開き、その中で x オフセットだけで FILL_TEXT を並べる。`advance` には PDF の幅を入れる。Skia のように 1 グリフずつ `Td` で位置決めする PDF は、同じ行で筆記位置が連続していれば同じ run に結合する（カーニング分は run の advance に吸収）。`Tz`/`Ts` は変換行列、`Tc` は letterSpacing、`Tw` はスペースを独立 run にして advance 補正で広げる。不可視テキスト（Tr 3）は透明色で描いて検索可能にする。`/ActualText` は run の文字列に使う。
+- **フォント**: 埋め込み TrueType/CFF/OpenType は、使われたコードごとに (Unicode, GID) を集め、Unicode → GID の cmap を合成して TTF/OTF に組み直す（name、OS/2、post も生成し、ブラウザのサニタイザを通す）。同じ Unicode に別のグリフが割り当たる場合や合字（ToUnicode が複数文字）は私用領域 U+E000〜 に逃がし、`ALT_TEXT` で本来の文字列を持つ。Type1 (FontFile) は変換せずシステムフォントに落とす。非埋め込みフォントは名前とフラグから serif/sans-serif/monospace と太さ・斜体を決める。Type3 はグリフ手続きを Object にして USE する。
+- **画像**: DCT はそのまま JPEG、それ以外はデコードして PNG（SMask/ステンシルマスクはアルファに合成、ImageMask は塗り色で PNG 化）。JPX と JBIG2 は未対応。
+- **注釈**: リンクは LINK 命令、外観ストリームは Form として描く。
+- **未対応（警告を出して無視）**: ExtGState のソフトマスク、メッシュ系シェーディング（平均色で代用）、Type 4 関数（中央値で代用）、埋め込みでない定義済み CMap。
+
+テスト用 PDF は Chromium（Skia）と reportlab で生成し（`npm run test:pdf:gen`）、変換結果は `fixtures/pdf/` に置いて golden テストで描画を比較する。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -111,7 +125,7 @@ Canvas にはグリフ ID で描く API がないので、「サブセットフ�
 
 1. **仕様固め**: `spec.md` の opset 1 を確定。Go のエンコーダ + TS のデコーダを最小実装し、手書きの Object で Canvas に描けるところまで。
 2. **フィクスチャと golden テスト**: Go でフィクスチャ生成 → Playwright でスクリーンショット比較。
-3. **PDF → BDF**: 最初の実用変換。pdfcpu か独自パーサで内容ストリームを解釈。フォント抽出 → WOFF2。
+3. **PDF → BDF**: 最初の実用変換（実装済み、§3.1）。
 4. **ビューア**: Worker + OffscreenCanvas、ページ/連続/シートの 3 モード、テキストレイヤー、検索。
 5. **XLSX → BDF**: 直接変換、Tile 化、固定ペイン。
 6. **PPTX 直接変換**: マスター共有の本領。
@@ -123,6 +137,8 @@ bdf/
 ├── docs/              spec.md, design.md
 ├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
 ├── cmd/bdf/           CLI: ls / manifest / disasm / extract / split / join / demo
+├── pdf2bdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
+├── cmd/pdf2bdf/       変換 CLI
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
@@ -132,4 +148,4 @@ bdf/
 └── test/              Playwright による golden テスト
 ```
 
-将来の変換器（pdf2bdf, xlsx2bdf）は Go のサブパッケージとして追加する。
+将来の変換器（xlsx2bdf など）も同じように Go のサブパッケージとして追加する。

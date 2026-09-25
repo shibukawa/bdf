@@ -33,7 +33,7 @@ export function serve(root, port = 0) {
       res.writeHead(status, {
         "Content-Type": type, "Content-Length": buf.length, "Accept-Ranges": "bytes",
         ...(status === 206 ? { "Content-Range": `bytes ${start}-${end}/${st.size}` } : {}),
-        "Cache-Control": "no-store",
+        "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*",
       });
       res.end(buf);
     } catch (e) {

@@ -45,6 +45,31 @@ interface Group {
   dy: number;
 }
 
+/** Put a context back into the Canvas 2D initial drawing state (docs/spec.md §8). */
+export function resetState(ctx: Ctx2D): void {
+  ctx.fillStyle = "#000000";
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 1;
+  ctx.lineCap = "butt";
+  ctx.lineJoin = "miter";
+  ctx.miterLimit = 10;
+  ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.shadowColor = "rgba(0,0,0,0)";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.direction = "inherit";
+  if ("letterSpacing" in ctx) (ctx as CanvasRenderingContext2D).letterSpacing = "0px";
+  if ("filter" in ctx) (ctx as CanvasRenderingContext2D).filter = "none";
+  ctx.imageSmoothingEnabled = true;
+}
+
 /**
  * Executes object instructions against a Canvas 2D context.
  * All referenced resources must be loaded first (ResourceCache.prepare).
@@ -61,12 +86,17 @@ export class CanvasRenderer implements OpSink {
     this.createCanvas = opts.createCanvas ?? defaultCreateCanvas;
   }
 
-  /** Draw an object with the context's current transform and clip. */
-  draw(ctx: Ctx2D, obj: ObjectPart): void {
+  /**
+   * Draw an object with the context's current transform and clip. Top-level
+   * objects (pages, tiles) start from the initial drawing state; USE'd children
+   * inherit the state of their parent.
+   */
+  draw(ctx: Ctx2D, obj: ObjectPart, reset = true): void {
     const prevCtx = this.ctx, prevObj = this.obj;
     this.ctx = ctx;
     this.obj = obj;
     ctx.save();
+    if (reset) resetState(ctx);
     try {
       walk(obj, this);
     } finally {

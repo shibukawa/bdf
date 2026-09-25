@@ -1,0 +1,55 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@page { size: 960px 540px; margin: 0; }
+html, body { margin: 0; }
+.slide { width: 960px; height: 540px; position: relative; overflow: hidden; page-break-after: always;
+  background: linear-gradient(180deg, #f7f9fc 0%, #dce6f2 100%); font-family: "DejaVu Sans", sans-serif; color: #1f3a5f; }
+.footer { position: absolute; left: 0; right: 0; bottom: 0; height: 36px; background: #1f3a5f; color: #fff; font-size: 12px; line-height: 36px; padding: 0 24px; }
+h1 { position: absolute; left: 48px; top: 30px; margin: 0; font-size: 36px; font-weight: bold; }
+.box { position: absolute; border-radius: 18px; }
+p { position: absolute; margin: 0; }
+.serif { font-family: "DejaVu Serif", serif; }
+.mono { font-family: "DejaVu Sans Mono", monospace; }
+</style></head><body>
+<div class="slide">
+  <h1>Shapes, gradients and text</h1>
+  <div class="box" style="left:60px;top:130px;width:260px;height:160px;background:#4c9be8;border:4px dashed #1f3a5f"></div>
+  <div class="box" style="left:390px;top:130px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle at 40% 40%, #fff2b0, #e07a1f)"></div>
+  <svg style="position:absolute;left:600px;top:120px" width="300" height="200" viewBox="0 0 300 200">
+    <path d="M0 160 C80 0, 160 240, 280 40 L280 180 Z" fill="rgba(46,160,108,0.63)" stroke="#1c6040" stroke-width="3"/>
+    <circle cx="60" cy="60" r="30" fill="#9b59b6" fill-rule="evenodd"/>
+  </svg>
+  <div class="box" style="left:440px;top:360px;width:120px;height:80px;background:#e74c3c;transform:skewX(-25deg);border:2px solid #401010;border-radius:0"></div>
+  <p style="left:48px;top:330px;font-size:16px;color:#333">Regular 16px — The quick brown fox jumps over the lazy dog</p>
+  <p class="serif" style="left:48px;top:360px;font-size:20px;font-style:italic">Serif italic 20px with <b>bold</b> and <span style="color:#c0392b">color</span></p>
+  <p class="mono" style="left:48px;top:400px;font-size:14px">Mono 14px: fi fl ffi — ligatures &amp; kerning AVAWAY</p>
+  <p style="left:48px;top:440px;font-size:14px;opacity:0.5">50% opacity paragraph</p>
+  <div class="footer">Chrome PDF fixture <span style="float:right">1 / 2</span></div>
+</div>
+<div class="slide">
+  <h1>Images, clips and blending</h1>
+  <img id="png" style="position:absolute;left:60px;top:130px;width:200px;height:200px" alt="">
+  <img id="jpg" style="position:absolute;left:290px;top:130px;width:200px;height:200px;border-radius:50%" alt="">
+  <div style="position:absolute;left:540px;top:130px;width:200px;height:200px;overflow:hidden;clip-path:circle(50%)"><img id="png2" style="width:400px;height:400px;margin:-100px" alt=""></div>
+  <div style="position:absolute;left:60px;top:360px;width:160px;height:120px;background:rgba(255,0,0,0.5)"></div>
+  <div style="position:absolute;left:140px;top:400px;width:160px;height:120px;background:#0080ff;mix-blend-mode:multiply"></div>
+  <div style="position:absolute;left:400px;top:370px;width:200px;height:120px;background:#fff;box-shadow:6px 6px 12px rgba(0,0,0,0.5)"></div>
+  <table style="position:absolute;left:660px;top:370px;border-collapse:collapse;font-size:12px">
+    <tr style="background:#e8eef6"><th style="border:1px solid #999;padding:2px 6px">R1C1</th><th style="border:1px solid #999;padding:2px 6px">R1C2</th></tr>
+    <tr><td style="border:1px solid #999;padding:2px 6px">R2C1</td><td style="border:1px solid #999;padding:2px 6px">R2C2</td></tr>
+  </table>
+  <a href="https://example.com/" style="position:absolute;left:660px;top:440px;font-size:14px">a link to example.com</a>
+  <div class="footer">Chrome PDF fixture <span style="float:right">2 / 2</span></div>
+</div>
+<script>
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const d = ((x >> 3) + (y >> 3)) % 2 === 0 ? 0.5 : 1;
+    ctx.fillStyle = `rgb(${255 * x / 64 * d | 0},${255 * y / 64 * d | 0},${d === 1 ? 160 : 90})`;
+    ctx.fillRect(x, y, 1, 1);
+  }
+  document.getElementById("png").src = c.toDataURL("image/png");
+  document.getElementById("png2").src = c.toDataURL("image/png");
+  document.getElementById("jpg").src = c.toDataURL("image/jpeg", 0.9);
+</script>
+</body></html>

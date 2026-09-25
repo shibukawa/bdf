@@ -58,6 +58,7 @@ type textExtractor struct {
 	resolve func(Hash) *ObjectPart
 	pending byte // separator requested by a MARK for the next run
 	hasMark bool
+	alt     *string // ALT_TEXT waiting for the drawing op it describes
 }
 
 func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
@@ -90,15 +91,48 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 			payload := in.Args[1].(string)
 			switch kind {
 			case MarkLine:
+				t.flushAlt(st)
 				t.mark(SepSpace)
 			case MarkParagraph, MarkCell, MarkBox:
+				t.flushAlt(st)
 				t.mark(SepBreak)
 			case MarkAltText:
-				t.emit(payload, 0, 0, 0, st, true)
+				t.flushAlt(st)
+				p := payload
+				t.alt = &p
 			}
 		case OpFillText, OpStrokeText:
+			if t.alt != nil {
+				// The drawing op right after ALT_TEXT renders that text.
+				t.emit(*t.alt, f(in, 1), f(in, 2), f(in, 3), st, true)
+				t.alt = nil
+				return
+			}
 			t.emit(in.Args[0].(string), f(in, 1), f(in, 2), f(in, 3), st, false)
+		case OpFillPathAt:
+			if t.alt != nil {
+				t.emit(*t.alt, f(in, 2), f(in, 3), 0, st, true)
+				t.alt = nil
+			}
+		case OpFillPathRun:
+			if t.alt != nil {
+				if gl := in.Args[1].([]Glyph); len(gl) > 0 {
+					t.emit(*t.alt, gl[0].X, gl[0].Y, 0, st, true)
+				} else {
+					t.emit(*t.alt, 0, 0, 0, st, true)
+				}
+				t.alt = nil
+			}
 		case OpUse, OpUseAt:
+			if t.alt != nil {
+				x, y := float32(0), float32(0)
+				if in.Op == OpUseAt {
+					x, y = f(in, 1), f(in, 2)
+				}
+				t.emit(*t.alt, x, y, 0, st, true)
+				t.alt = nil
+				return
+			}
 			child := t.resolve(o.Objects[int(in.Args[0].(uint64))])
 			if child == nil {
 				return
@@ -113,6 +147,14 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 }
 
 func f(in Instr, i int) float32 { return in.Args[i].(float32) }
+
+// flushAlt emits an ALT_TEXT that no drawing op consumed, without a position.
+func (t *textExtractor) flushAlt(st textState) {
+	if t.alt != nil {
+		t.emit(*t.alt, 0, 0, 0, st, true)
+		t.alt = nil
+	}
+}
 
 func (t *textExtractor) mark(sep byte) {
 	if !t.hasMark || sep > t.pending {
@@ -159,5 +201,6 @@ func float64To32(v float64) float32 { return float32(v) }
 func ExtractText(o *ObjectPart, resolve func(Hash) *ObjectPart) ([]TextRun, error) {
 	t := &textExtractor{resolve: resolve}
 	err := t.walk(o, matrix{1, 0, 0, 1, 0, 0})
+	t.flushAlt(textState{m: matrix{1, 0, 0, 1, 0, 0}, size: 10})
 	return t.runs, err
 }

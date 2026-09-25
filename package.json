@@ -10,7 +10,8 @@
     "test": "npm run build && node --test packages/core/test/*.test.mjs",
     "test:golden": "npm run build && node test/golden.mjs",
     "test:golden:update": "npm run build && node test/golden.mjs --update",
-    "fixtures": "go run ./cmd/bdf demo fixtures/demo.bdf && go run ./cmd/bdf demo fixtures/demo-split/",
+    "fixtures": "go run ./cmd/bdf demo fixtures/demo.bdf && go run ./cmd/bdf demo fixtures/demo-split/ && node test/pdf/fixtures.mjs",
+    "test:pdf:gen": "node test/pdf/gen.mjs && python3 test/pdf/gen_reportlab.py",
     "demo": "node examples/viewer/serve.mjs"
   },
   "devDependencies": {
