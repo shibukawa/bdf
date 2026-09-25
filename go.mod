@@ -1,6 +1,6 @@
 module github.com/shibukawa/bdf
 
-go 1.24
+go 1.26
 
 require (
 	github.com/pdfcpu/pdfcpu v0.11.0

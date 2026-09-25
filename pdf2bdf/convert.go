@@ -16,6 +16,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/imgconv"
 )
 
 // Options controls the conversion.
@@ -33,6 +34,9 @@ type Options struct {
 	// NoSubset keeps every glyph of embedded TrueType fonts instead of
 	// dropping the outlines of unused ones (CFF fonts are never subset).
 	NoSubset bool
+	// Images controls whether raster images are re-encoded (see imgconv).
+	// The zero value keeps images as they are.
+	Images imgconv.Options
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.
 	Warn func(msg string)
 }

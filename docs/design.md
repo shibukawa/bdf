@@ -63,11 +63,40 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 - **状態の遅延出力**: 色・線・アルファなどは描画命令の直前に、前回出力した値と違うときだけ書く。SAVE/RESTORE で出力済み状態のスタックも巻き戻す。
 - **テキスト**: 行列（Tm/Td/T*）ごとに SAVE + TRANSFORM のブロックを開き、その中で x オフセットだけで FILL_TEXT を並べる。`advance` には PDF の幅を入れる。Skia のように 1 グリフずつ `Td` で位置決めする PDF は、同じ行で筆記位置が連続していれば同じ run に結合する（カーニング分は run の advance に吸収）。`Tz`/`Ts` は変換行列、`Tc` は letterSpacing、`Tw` はスペースを独立 run にして advance 補正で広げる。不可視テキスト（Tr 3）は透明色で描いて検索可能にする。`/ActualText` は run の文字列に使う。
 - **フォント**: 埋め込み TrueType/CFF/OpenType は、使われたコードごとに (Unicode, GID) を集め、Unicode → GID の cmap を合成して TTF/OTF に組み直す（name、OS/2、post も生成し、ブラウザのサニタイザを通す）。同じ Unicode に別のグリフが割り当たる場合や合字（ToUnicode が複数文字）は私用領域 U+E000〜 に逃がし、`ALT_TEXT` で本来の文字列を持つ。TrueType は使ったグリフ（合成グリフの構成要素を含む）以外のアウトラインを空にして `glyf` を縮める（GID は付け替えないので `loca`/`hmtx` の長さはグリフ数のまま。フルフォント埋め込みの PDF で 611KB → 56KB 程度になる。`-no-subset` で無効化）。CFF は CharStrings INDEX と各オフセットの書き換えが必要なので現状は縮めない。Type1 (FontFile) は変換せずシステムフォントに落とす。非埋め込みフォントは名前とフラグから serif/sans-serif/monospace と太さ・斜体を決める。Type3 はグリフ手続きを Object にして USE する。
-- **画像**: DCT はそのまま JPEG、それ以外はデコードして PNG（SMask/ステンシルマスクはアルファに合成、ImageMask は塗り色で PNG 化）。JPX と JBIG2 は未対応。
+- **画像**: DCT はそのまま JPEG、それ以外はデコードして PNG（SMask/ステンシルマスクはアルファに合成、ImageMask は塗り色で PNG 化）。JPX と JBIG2 は未対応。格納前に `imgconv`（§3.2）を通す。
 - **注釈**: リンクは LINK 命令、外観ストリームは Form として描く。
 - **未対応（警告を出して無視）**: ExtGState のソフトマスク、メッシュ系シェーディング（平均色で代用）、Type 4 関数（中央値で代用）、埋め込みでない定義済み CMap。
 
 テスト用 PDF は Chromium（Skia）と reportlab で生成し（`npm run test:pdf:gen`）、変換結果は `fixtures/pdf/` に置いて golden テストで描画を比較する。
+
+## 3.2 画像の格納と変換（imgconv）
+
+画像の扱いは「そのまま」と「変換あり」の 2 モードで、`pdf2bdf.Options.Images`（CLI は `-images keep|convert`）で選ぶ。今後の Office 変換器も同じパッケージを使う。
+
+- **Keep**: 元ファイルにある JPEG/PNG などをそのまま Part にする。デコードした画素は PNG にする。ブラウザ内で変換を走らせる場合はこちらを使う。
+- **Convert**: サーバー側の事前変換用。時間は掛けてよい前提で、次の順に決める。
+  1. WebP / AVIF / SVG はそのまま。
+  2. JPEG は WebP 非可逆（既定 q80, method 6）を試す。
+  3. PNG / GIF / BMP と、PDF からデコードした画素は WebP 可逆を試す。色数が多く写真らしい画像（標本で 4096 色超）は非可逆も試す。
+  4. 元より小さくなった候補のうち最小のものを採用し、小さくならなければ元のまま。
+
+コーデックは libwebp（エンコーダのみ）を wasi-sdk で wasm にし、[shibukawa/wasm2go-fork](https://github.com/shibukawa/wasm2go-fork)（pgmem ブランチ、v0.5.15-fork.7）で純 Go に変換したもので、cgo も wasm ランタイムも使わない。生成物は `imgconv/internal/webpw`（約 5MB、44 ファイル）で、`tools/gen-codecs.sh` で再生成する。フォークの `-symbol-names`（関数名を wasm の name セクションから付ける）、`-group-files`（`vp8_enc.go` のように主題ごとのファイルに分ける）、`-addr-consts`（静的データのアドレスを名前付き定数にする）を使い、libwebp を更新しても差分が小さく収まるようにしている。gen2brain 同梱の wasm は name セクションが落とされているので、自前でビルドしている。
+
+**ビルドタグ**
+
+| タグ | 効果 |
+|---|---|
+| （なし） | WebP 可逆・非可逆を同梱 |
+| `bdf_noconv` | コーデックを一切リンクしない。Convert を指定しても Keep として動き、`ErrNotAvailable` を返す。tinygo でブラウザ向けに wasm 化するときはこれを使う |
+
+**測定（1024×768、純 Go、4 コアのコンテナ）**
+
+| 画像 | PNG | JPEG q80 | WebP 可逆 | WebP q80 m6 | AVIF q60 s10 | AVIF q60 s6 | AVIF 可逆 |
+|---|---|---|---|---|---|---|---|
+| 図版（少色数） | 6.7 KB | 64 KB | 0.3 KB / 87 ms | 14 KB / 150 ms | 28 KB / 155 ms | 3.2 KB / 1.0 s | 63 KB / 0.2 s |
+| 写真風 | 1463 KB | 90 KB | 1405 KB / 0.5 s | 43 KB / 0.35 s | 41 KB / 0.16 s | 39 KB / 1.35 s | 1422 KB / 0.4 s |
+
+フォークで変換したコードは、gen2brain 同梱の Go 化コードより WebP で 1.6〜2 倍、wazero 実行の AVIF より 3〜4 倍速く、出力はバイト単位で同一だった。AVIF も評価したが採用しなかった。可逆は図版で WebP の 200 倍大きく、非可逆は speed 6 で図版に効くものの 3〜4 倍遅く、生成コードが 47MB になるためである。
 
 ## 4. テキストの扱い
 
@@ -137,6 +166,7 @@ bdf/
 ├── docs/              spec.md, design.md
 ├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
 ├── cmd/bdf/           CLI: ls / manifest / disasm / extract / split / join / demo
+├── imgconv/           画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
 ├── pdf2bdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
 ├── cmd/pdf2bdf/       変換 CLI
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）

@@ -7,6 +7,8 @@ import (
 	"image/jpeg"
 	"image/png"
 
+	"github.com/shibukawa/bdf/imgconv"
+
 	"github.com/pdfcpu/pdfcpu/pkg/filter"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
@@ -14,7 +16,8 @@ import (
 
 // decodedImage is an image ready to be stored as a part.
 type decodedImage struct {
-	data   []byte // PNG or JPEG bytes
+	data   []byte // encoded bytes (PNG/JPEG, or WebP/AVIF after conversion)
+	format string
 	w, h   int
 	isMask bool
 }
@@ -44,9 +47,9 @@ func (c *converter) loadImage(d types.Dict, raw []byte, filters []types.PDFFilte
 	switch codec {
 	case filter.DCT:
 		if !isMask && d["SMask"] == nil && d["Mask"] == nil && len(decodeArr) == 0 {
-			// Pass JPEG bytes through untouched.
+			// Pass JPEG bytes through untouched (or let imgconv try a smaller encoding).
 			if cfg, err := jpeg.DecodeConfig(bytes.NewReader(data)); err == nil {
-				return &decodedImage{data: data, w: cfg.Width, h: cfg.Height}, nil
+				return c.storeEncoded(data, cfg.Width, cfg.Height), nil
 			}
 		}
 		img, err := jpeg.Decode(bytes.NewReader(data))
@@ -55,7 +58,7 @@ func (c *converter) loadImage(d types.Dict, raw []byte, filters []types.PDFFilte
 		}
 		nrgba := toNRGBA(img)
 		c.applyMasks(nrgba, d, res)
-		return encodePNG(nrgba), nil
+		return c.storePixels(nrgba, false), nil
 	case filter.JPX:
 		return nil, errf("JPXDecode images are not supported")
 	case filter.JBIG2:
@@ -118,7 +121,9 @@ func (c *converter) loadImage(d types.Dict, raw []byte, filters []types.PDFFilte
 				}
 			}
 		}
-		return &decodedImage{data: encodePNG(out).data, w: w, h: h, isMask: true}, nil
+		di := c.storePixels(out, true)
+		di.isMask = true
+		return di, nil
 	}
 
 	csObj := d["ColorSpace"]
@@ -200,7 +205,26 @@ func (c *converter) loadImage(d types.Dict, raw []byte, filters []types.PDFFilte
 		}
 	}
 	c.applyMasks(out, d, res)
-	return encodePNG(out), nil
+	return c.storePixels(out, true), nil
+}
+
+// storePixels encodes decoded pixels according to the image options.
+func (c *converter) storePixels(img *image.NRGBA, lossless bool) *decodedImage {
+	r, err := imgconv.EncodeImage(img, lossless, c.opts.Images)
+	if err != nil {
+		c.warnOnce("imgconv", "image conversion: %v", err)
+	}
+	b := img.Bounds()
+	return &decodedImage{data: r.Data, format: r.Format, w: b.Dx(), h: b.Dy()}
+}
+
+// storeEncoded keeps already encoded bytes, letting imgconv shrink them in Convert mode.
+func (c *converter) storeEncoded(data []byte, w, h int) *decodedImage {
+	r, err := imgconv.Optimize(data, c.opts.Images)
+	if err != nil {
+		c.warnOnce("imgconv", "image conversion: %v", err)
+	}
+	return &decodedImage{data: r.Data, format: r.Format, w: w, h: h}
 }
 
 // applyMasks applies /SMask (soft mask) or /Mask (stencil or colour key) to img.
@@ -211,7 +235,7 @@ func (c *converter) applyMasks(img *image.NRGBA, d types.Dict, res types.Dict) {
 	if sm := p.stream(d["SMask"]); sm != nil {
 		mask, err := c.loadImage(sm.Dict, sm.Raw, sm.FilterPipeline, res, 0)
 		if err == nil {
-			if mimg, err := png.Decode(bytes.NewReader(mask.data)); err == nil {
+			if mimg, err := decodeStored(mask); err == nil {
 				for y := 0; y < h; y++ {
 					for x := 0; x < w; x++ {
 						mx, my := x*mask.w/w, y*mask.h/h
@@ -231,7 +255,7 @@ func (c *converter) applyMasks(img *image.NRGBA, d types.Dict, res types.Dict) {
 		sd := p.stream(d["Mask"])
 		mask, err := c.loadImage(sd.Dict, sd.Raw, sd.FilterPipeline, res, bdf.RGB(0, 0, 0))
 		if err == nil {
-			if mimg, err := png.Decode(bytes.NewReader(mask.data)); err == nil {
+			if mimg, err := decodeStored(mask); err == nil {
 				for y := 0; y < h; y++ {
 					for x := 0; x < w; x++ {
 						mx, my := x*mask.w/w, y*mask.h/h
@@ -266,12 +290,15 @@ func toNRGBA(img image.Image) *image.NRGBA {
 	return out
 }
 
-func encodePNG(img *image.NRGBA) *decodedImage {
-	var buf bytes.Buffer
-	enc := png.Encoder{CompressionLevel: png.BestCompression}
-	_ = enc.Encode(&buf, img)
-	b := img.Bounds()
-	return &decodedImage{data: buf.Bytes(), w: b.Dx(), h: b.Dy()}
+// decodeStored decodes an image produced by storePixels (PNG or WebP).
+func decodeStored(di *decodedImage) (image.Image, error) {
+	switch di.format {
+	case "png":
+		return png.Decode(bytes.NewReader(di.data))
+	case "jpeg":
+		return jpeg.Decode(bytes.NewReader(di.data))
+	}
+	return imgconv.Decode(di.data)
 }
 
 type convError string

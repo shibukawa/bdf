@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/shibukawa/bdf/imgconv"
 	"github.com/shibukawa/bdf/pdf2bdf"
 )
 
@@ -16,6 +17,8 @@ func main() {
 	kind := flag.String("kind", "fixed", "view kind: fixed or flow")
 	quiet := flag.Bool("q", false, "do not print warnings")
 	noSubset := flag.Bool("no-subset", false, "keep unused glyphs of embedded TrueType fonts")
+	images := flag.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
+	quality := flag.Int("quality", 80, "lossy WebP quality (1-100)")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: pdf2bdf [flags] in.pdf out.bdf|outdir/\n  an output path ending with / writes the split form")
 		flag.PrintDefaults()
@@ -27,6 +30,16 @@ func main() {
 	}
 	in, out := flag.Arg(0), flag.Arg(1)
 	opts := &pdf2bdf.Options{Title: *title, Kind: *kind, NoSubset: *noSubset}
+	opts.Images = imgconv.Options{Quality: *quality}
+	switch *images {
+	case "keep":
+		opts.Images.Mode = imgconv.Keep
+	case "convert":
+		opts.Images.Mode = imgconv.Convert
+	default:
+		fmt.Fprintln(os.Stderr, "pdf2bdf: -images must be keep or convert")
+		os.Exit(2)
+	}
 	if *pages != "" {
 		sel, err := pdf2bdf.PageRange(*pages, 1<<30)
 		if err != nil {

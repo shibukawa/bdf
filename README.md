@@ -24,6 +24,7 @@ PDF からの変換（`pdf2bdf`）は、埋め込みフォントをブラウザ�
 |---|---|
 | `*.go`, `cmd/bdf` | Go のエンコーダ・デコーダ・コンテナ I/O と CLI |
 | `fixture/` | サンプル文書の生成（埋め込みフォント付き） |
+| `imgconv/` | 画像の格納方針（そのまま / WebP に変換）。純 Go の libwebp を同梱 |
 | `pdf2bdf/`, `cmd/pdf2bdf` | PDF → BDF 変換器と CLI |
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
 | `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画、Worker |
@@ -44,6 +45,8 @@ go run ./cmd/bdf split out.bdf out/  # 分割形式へ
 go run ./cmd/pdf2bdf in.pdf out.bdf     # 1 ファイル形式
 go run ./cmd/pdf2bdf in.pdf out/        # 分割形式
 go run ./cmd/pdf2bdf -pages 1-3 -kind flow in.pdf out.bdf
+go run ./cmd/pdf2bdf -images keep in.pdf out.bdf   # 画像を変換しない
+go build -tags bdf_noconv ./...                    # コーデックを含めないビルド（ブラウザ向け）
 
 # TypeScript: ビルドとテスト
 npm ci
@@ -57,7 +60,7 @@ node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に�
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
 ```
 
-golden テストは `playwright-core` を使います。Chromium は `CHROMIUM_PATH` で指定するか、`npx playwright-core install chromium` で入れてください。
+Go は 1.26 以上が必要です。golden テストは `playwright-core` を使います。Chromium は `CHROMIUM_PATH` で指定するか、`npx playwright-core install chromium` で入れてください。
 
 ## エンコーダ API の雰囲気（Go）
 
