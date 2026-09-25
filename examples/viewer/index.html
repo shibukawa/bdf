@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<title>BDF viewer demo</title>
+<style>
+  :root { color-scheme: light; font: 13px system-ui, sans-serif; }
+  body { margin: 0; display: grid; grid-template-rows: auto 1fr; height: 100vh; background: #e9ecef; }
+  header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #ccc; }
+  header .tabs button { margin-right: 4px; }
+  header .tabs button[aria-selected="true"] { font-weight: bold; background: #1f3a5f; color: #fff; }
+  #stage { overflow: auto; position: relative; }
+  .pages { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 16px; }
+  .page { position: relative; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+  .page canvas { display: block; }
+  .textLayer { position: absolute; inset: 0; overflow: hidden; }
+  /* the selectable text layer (@bdf/render TEXT_LAYER_CSS) */
+  .bdfTextLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; }
+  .bdfTextLayer span { position: absolute; color: transparent; white-space: pre; transform-origin: 0 0; cursor: text; }
+  .bdfTextLayer span::selection { background: rgba(0, 120, 255, .35); }
+  .hl { position: absolute; background: rgba(255, 210, 0, .45); outline: 1px solid rgba(200, 140, 0, .8); pointer-events: none; border-radius: 2px; }
+  .hl.current { background: rgba(255, 120, 0, .5); outline-color: #c04000; }
+  .search { display: flex; gap: 4px; align-items: center; }
+  .sheet { position: relative; }
+  .sheet canvas { position: sticky; top: 0; left: 0; display: block; }
+  #status { color: #666; margin-left: auto; }
+</style>
+<body>
+<header>
+  <strong>BDF viewer</strong>
+  <span class="tabs" id="tabs"></span>
+  <label>zoom <input id="zoom" type="range" min="0.25" max="3" step="0.25" value="1"> <span id="zoomv">100%</span></label>
+  <label id="modeBox" hidden><input id="continuous" type="checkbox"> continuous</label>
+  <span class="search">
+    <input id="q" type="search" placeholder="search…" size="18">
+    <button id="prev" title="previous">▲</button><button id="next" title="next">▼</button>
+    <span id="hits"></span>
+  </span>
+  <span id="status"></span>
+</header>
+<div id="stage"></div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

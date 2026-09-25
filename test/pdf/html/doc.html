@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@page { size: A4; margin: 25mm; }
+body { font-family: "DejaVu Serif", serif; font-size: 11pt; line-height: 1.4; color: #222; margin: 0; }
+h1 { font-family: "DejaVu Sans", sans-serif; color: #1f3a5f; font-size: 20pt; }
+h2 { font-family: "DejaVu Sans", sans-serif; color: #1f3a5f; font-size: 14pt; page-break-before: always; }
+table { border-collapse: collapse; margin-top: 12pt; }
+td, th { border: 0.75pt solid #999; padding: 3pt 8pt; }
+th { background: #e8eef6; }
+.note { border-left: 3pt solid #4c9be8; padding-left: 8pt; color: #555; }
+</style></head><body>
+<h1>BDF conversion fixture</h1>
+<p>BDF is a display-list format for browsers. Each page is a list of objects, and each object is a stream of instructions that map directly onto the Canvas 2D API. Fonts and images are stored as the browser already understands them, so the decoder stays small.</p>
+<p>Repeated content such as headers and footers is stored once and referenced by hash from every page. The body of each page is its own object, laid out inside the body rectangle so that a viewer can stack bodies vertically for a continuous reading mode.</p>
+<p class="note">This paragraph is a note with a colored rule. It contains <em>emphasis</em>, <strong>strong text</strong>, <code>monospace code</code> and a <a href="https://example.com/doc">hyperlink</a>.</p>
+<ul><li>First bullet item</li><li>Second bullet item with more words to wrap onto the next line when the column is narrow enough to force it</li><li>Third</li></ul>
+<table><tr><th>Name</th><th>Value</th><th>Note</th></tr>
+<tr><td>alpha</td><td>1.00</td><td>first</td></tr><tr><td>beta</td><td>2.50</td><td>second</td></tr><tr><td>gamma</td><td>10.25</td><td>third</td></tr></table>
+<h2>Second page</h2>
+<p>Text on the second page, followed by a justified paragraph.</p>
+<p style="text-align:justify">Justified text uses word-spacing adjustments in the PDF content stream, which the converter must reproduce by positioning each word so that the right edge lines up. This paragraph is long enough to fill several lines and thereby exercise that code path with a variety of word lengths and spacing amounts.</p>
+</body></html>

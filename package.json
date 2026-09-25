@@ -1,0 +1,22 @@
+{
+  "name": "bdf-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b packages/core packages/render",
+    "test": "npm run build && node --test packages/core/test/*.test.mjs packages/render/test/*.test.mjs",
+    "test:golden": "npm run build && node test/golden.mjs",
+    "test:golden:update": "npm run build && node test/golden.mjs --update",
+    "fixtures": "go run ./cmd/bdf demo fixtures/demo.bdf && go run ./cmd/bdf demo fixtures/demo-split/ && node test/pdf/fixtures.mjs",
+    "test:pdf:gen": "node test/pdf/gen.mjs && python3 test/pdf/gen_reportlab.py && python3 test/pdf/gen_master.py",
+    "demo": "node examples/viewer/serve.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "playwright-core": "1.56.1",
+    "typescript": "^5.9.0"
+  }
+}

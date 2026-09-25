@@ -1,0 +1,49 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      # Go 1.27's unreachable analyzer flags the goto-shaped bodies of the
+      # generated codec (imgconv/internal/webpw), so that check is off.
+      - run: go vet -unreachable=false ./...
+      - run: go test ./...
+      - name: image codecs over simd/archsimd (GOEXPERIMENT=simd)
+        run: go test ./imgconv/...
+        env:
+          GOEXPERIMENT: simd
+      - name: build without image codecs (browser / tinygo profile)
+        run: go test -tags bdf_noconv ./imgconv/ ./pdf2bdf/
+      - name: fixtures are up to date
+        run: |
+          go run ./cmd/bdf demo /tmp/demo.bdf
+          cmp /tmp/demo.bdf fixtures/demo.bdf
+          for f in pdf2bdf/testdata/*.pdf; do
+            n=$(basename "$f" .pdf)
+            go run ./cmd/pdf2bdf -q "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "fixtures/pdf/$n.bdf"
+          done
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run test:golden
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: golden-diffs
+          path: test/.out/*.png
+          include-hidden-files: true
