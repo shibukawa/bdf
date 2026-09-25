@@ -7,6 +7,7 @@ type theme struct {
 	minor  fontScheme
 	// format scheme: style matrices referenced by p:style (1-based indices)
 	fills, lines, effects, bgFills []*node
+	part                           string // relationships of blip fills
 }
 
 type fontScheme struct {

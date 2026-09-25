@@ -272,6 +272,9 @@ func (c *converter) theme(masterPart string) *theme {
 		n = nil
 	}
 	th := parseTheme(n)
+	if th != defaultTheme {
+		th.part = r.Target
+	}
 	c.themes[r.Target] = th
 	return th
 }

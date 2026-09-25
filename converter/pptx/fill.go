@@ -30,6 +30,7 @@ type fill struct {
 	fg    rgba       // pattern foreground
 	bg    rgba       // pattern background
 	part  string     // part the blip's relationship belongs to
+	cc    *colorCtx  // colors of the blip's effects (phClr of style references)
 }
 
 type gradStop struct {
@@ -78,7 +79,7 @@ func (s *slideCtx) resolveFill(n *node, part string, cc *colorCtx, grp *groupCtx
 		}
 		return f
 	case "blipFill":
-		return fill{kind: fillBlip, blip: n, part: part}
+		return fill{kind: fillBlip, blip: n, part: part, cc: cc}
 	case "pattFill":
 		f := fill{kind: fillPatt, patt: n.attrStr("prst", "pct5"), fg: black, bg: white}
 		if c, ok := cc.color(n.child("fgClr")); ok {
@@ -131,7 +132,7 @@ func (s *slideCtx) styleFill(ref *node, cc *colorCtx) fill {
 		}
 		return fill{}
 	}
-	return s.resolveFill(e, "", cc, nil)
+	return s.resolveFill(e, s.th.part, cc, nil)
 }
 
 // adjust applies a path's lighten/darken fill mode.

@@ -219,7 +219,7 @@ func (s *slideCtx) drawTable(cv *canvas, sh *shape, xf xform, tbl *node) {
 			x1, y1 := colX[min(nc, c+cl.cols)], rowY[min(nr, r+cl.rows)]
 			f := s.cellFill(cl.tc, parts(r, c), sh.part)
 			if f.kind == fillBlip {
-				s.drawBlip(cv, f.blip, f.part, x0, y0, x1-x0, y1-y0, false)
+				s.drawBlip(cv, f.blip, f.part, f.cc, x0, y0, x1-x0, y1-y0, false)
 			} else if f.kind != fillNone && cv.setFill(f, x1-x0, y1-y0) {
 				cv.obj.Save()
 				cv.obj.Translate(f32(x0), f32(y0))

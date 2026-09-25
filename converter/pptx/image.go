@@ -3,6 +3,7 @@ package pptx
 import (
 	"bytes"
 	"image"
+	"image/draw"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -19,9 +20,12 @@ import (
 
 // imageEntry is an image part stored in the document.
 type imageEntry struct {
-	hash bdf.Hash
-	w, h float64 // intrinsic size in pixels (0 when unknown)
-	ok   bool
+	target string
+	hash   bdf.Hash
+	w, h   float64 // intrinsic size in pixels (0 when unknown)
+	ok     bool
+	mf     []byte // a Windows metafile, replayed instead of stored
+	mfKind string
 }
 
 // image loads the image a blip relationship points to.
@@ -36,7 +40,7 @@ func (c *converter) image(part, rid string) *imageEntry {
 	if e, ok := c.images[r.Target]; ok {
 		return e
 	}
-	e := &imageEntry{}
+	e := &imageEntry{target: r.Target}
 	c.images[r.Target] = e
 	data, err := c.pkg.read(r.Target)
 	if err != nil {
@@ -54,9 +58,8 @@ func (c *converter) image(part, rid string) *imageEntry {
 		}
 		res, _ := imgconv.EncodeImage(toNRGBA(img), true, c.opts.Images)
 		data, format = res.Data, res.Format
-	case len(data) >= 44 && data[0] == 1 && data[1] == 0 && data[2] == 0 && data[3] == 0 && string(data[40:44]) == " EMF",
-		len(data) >= 4 && (bytes.HasPrefix(data, []byte{0xd7, 0xcd, 0xc6, 0x9a}) || bytes.HasPrefix(data, []byte{1, 0, 9, 0})):
-		c.warnOnce("emf", "EMF/WMF images are not supported (%s)", r.Target)
+	case metafileKind(data) != "":
+		e.mf, e.mfKind, e.ok = data, metafileKind(data), true
 		return e
 	default:
 		c.warnOnce("imgfmt:"+r.Target, "unsupported image format (%s)", r.Target)
@@ -83,11 +86,7 @@ func toNRGBA(img image.Image) *image.NRGBA {
 	}
 	b := img.Bounds()
 	out := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	for y := 0; y < b.Dy(); y++ {
-		for x := 0; x < b.Dx(); x++ {
-			out.Set(x, y, img.At(b.Min.X+x, b.Min.Y+y))
-		}
-	}
+	draw.Draw(out, out.Bounds(), img, b.Min, draw.Src)
 	return out
 }
 

@@ -402,7 +402,7 @@ func (s *slideCtx) fillPath(cv *canvas, ref bdf.PathRef, f fill, w, h float64) {
 	if f.kind == fillBlip {
 		cv.obj.Save()
 		cv.obj.ClipPath(ref, 0)
-		s.drawBlip(cv, f.blip, f.part, 0, 0, w, h, true)
+		s.drawBlip(cv, f.blip, f.part, f.cc, 0, 0, w, h, true)
 		cv.obj.Restore()
 		return
 	}
@@ -413,7 +413,7 @@ func (s *slideCtx) fillPath(cv *canvas, ref bdf.PathRef, f fill, w, h float64) {
 
 // drawBlip draws the image of an a:blipFill / p:blipFill into x,y,w,h
 // (stretched, cropped by srcRect, or tiled).
-func (s *slideCtx) drawBlip(cv *canvas, bf *node, part string, x, y, w, h float64, clipped bool) bool {
+func (s *slideCtx) drawBlip(cv *canvas, bf *node, part string, cc *colorCtx, x, y, w, h float64, clipped bool) bool {
 	blip := bf.child("blip")
 	rid := blip.rid("embed")
 	if rid == "" {
@@ -423,28 +423,21 @@ func (s *slideCtx) drawBlip(cv *canvas, bf *node, part string, x, y, w, h float6
 	if !e.ok {
 		return false
 	}
-	ref := cv.image(e.hash)
 	cv.drawn = true
+	if cc == nil {
+		cc = s.cc
+	}
+	rc := blipRecolor(blip, cc)
+	if e.mf != nil {
+		s.drawMetafileBlip(cv, bf, e, rc, x, y, w, h)
+		return true
+	}
+	if rc != nil {
+		e = s.c.recolored(e, rc)
+	}
+	ref := cv.image(e.hash)
 	if a := blip.child("alphaModFix"); a != nil {
 		cv.obj.Alpha(f32(pct(a, "amt", 1)))
-	}
-	var filters []string
-	if blip.child("grayscl") != nil {
-		filters = append(filters, "grayscale(1)")
-	}
-	if l := blip.child("lum"); l != nil {
-		if b := pct(l, "bright", 0); b != 0 {
-			filters = append(filters, "brightness("+ftoa(1+b)+")")
-		}
-		if c := pct(l, "contrast", 0); c != 0 {
-			filters = append(filters, "contrast("+ftoa(1+c)+")")
-		}
-	}
-	if blip.child("duotone") != nil || blip.child("clrChange") != nil || blip.child("biLevel") != nil {
-		s.c.warnOnce("blipfx", "picture recoloring effects are not supported")
-	}
-	if len(filters) > 0 {
-		cv.obj.Filter(strings.Join(filters, " "))
 	}
 	if t := bf.child("tile"); t != nil && e.w > 0 {
 		sx, sy := pct(t, "sx", 1), pct(t, "sy", 1)
@@ -508,6 +501,33 @@ func (s *slideCtx) drawBlip(cv *canvas, bf *node, part string, x, y, w, h float6
 	return true
 }
 
+// drawMetafileBlip replays a metafile picture into x,y,w,h, cropped by
+// srcRect and inset by fillRect.
+func (s *slideCtx) drawMetafileBlip(cv *canvas, bf *node, e *imageEntry, rc *recolor, x, y, w, h float64) {
+	if fr := bf.path("stretch", "fillRect"); fr != nil {
+		l, t, r, b := pct(fr, "l", 0), pct(fr, "t", 0), pct(fr, "r", 0), pct(fr, "b", 0)
+		x, y, w, h = x+l*w, y+t*h, w*(1-l-r), h*(1-t-b)
+	}
+	cx, cy, cw, ch := x, y, w, h
+	if sr := bf.child("srcRect"); sr != nil {
+		// the whole picture is scaled so that the source window fills the box
+		l, t, r, b := pct(sr, "l", 0), pct(sr, "t", 0), pct(sr, "r", 0), pct(sr, "b", 0)
+		if fw, fh := 1-l-r, 1-t-b; fw > 0 && fh > 0 {
+			w, h = w/fw, h/fh
+			x, y = x-l*w, y-t*h
+		}
+	}
+	if a := bf.path("blip", "alphaModFix"); a != nil {
+		cv.obj.Save()
+		cv.obj.Alpha(f32(pct(a, "amt", 1)))
+		defer cv.obj.Restore()
+	}
+	cv.obj.Save()
+	cv.obj.ClipRect(f32(cx), f32(cy), f32(cw), f32(ch))
+	s.drawMetafile(cv, e.mf, e.mfKind, rc, x, y, w, h)
+	cv.obj.Restore()
+}
+
 func (s *slideCtx) drawPic(cv *canvas, sh *shape) {
 	if xf, ok := sh.xform(); ok {
 		s.drawPicAt(cv, sh, xf)
@@ -547,7 +567,7 @@ func (s *slideCtx) drawPicAt(cv *canvas, sh *shape, xf xform) {
 				}
 			}
 		}
-		s.drawBlip(cv, bf, sh.part, 0, 0, xf.W, xf.H, !rect)
+		s.drawBlip(cv, bf, sh.part, s.cc, 0, 0, xf.W, xf.H, !rect)
 		cv.obj.Restore()
 	}
 	if ln != nil {
@@ -643,7 +663,7 @@ func (s *slideCtx) fillPage(cv *canvas, f fill) {
 	case fillNone:
 		return
 	case fillBlip:
-		s.drawBlip(cv, f.blip, f.part, 0, 0, w, h, false)
+		s.drawBlip(cv, f.blip, f.part, f.cc, 0, 0, w, h, false)
 	default:
 		if cv.setFill(f, w, h) {
 			cv.obj.FillRect(0, 0, f32(w), f32(h))
