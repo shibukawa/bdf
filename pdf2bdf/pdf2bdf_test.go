@@ -2,6 +2,8 @@ package pdf2bdf
 
 import (
 	"bytes"
+	"encoding/binary"
+	"fmt"
 	"io"
 	"maps"
 	"os"
@@ -769,5 +771,259 @@ func TestT2Exec(t *testing.T) {
 	// A subroutine number out of range is an error too.
 	if _, err := (&t2State{}).exec([]byte{num(50), 10, 14}, local, global, 0); err == nil {
 		t.Fatal("out-of-range subroutine was followed")
+	}
+}
+
+func TestConvertType1(t *testing.T) {
+	for _, c := range []struct {
+		file  string
+		fonts int
+		text  []string
+	}{
+		{"cairo-type1.pdf", 3, []string{"Type1 via cairo: Hello, world", "café naïve Ångström — fi", "Courier 10 Pitch: mono"}},
+		{"reportlab-type1.pdf", 1, []string{"Whole Type1 font: café naïve Ærø", "0123456789 (reportlab embeds every glyph)"}},
+	} {
+		res, r := convert(t, c.file)
+		if len(res.Warnings) != 0 {
+			t.Fatalf("%s: warnings: %v", c.file, res.Warnings)
+		}
+		text := pageText(t, r)
+		for _, want := range c.text {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s: text index lacks %q in %q", c.file, want, text)
+			}
+		}
+		n := 0
+		for _, e := range r.Manifest.Parts {
+			if e.T == bdf.PartFont {
+				n++
+			}
+		}
+		if n != c.fonts {
+			t.Fatalf("%s: %d fonts embedded, want %d", c.file, n, c.fonts)
+		}
+		fonts := fontParts(t, r)
+		for name, sf := range fonts {
+			cf, err := parseCFF(sf.tables["CFF "])
+			if err != nil || cf.isCID {
+				t.Fatalf("%s %s: %v", c.file, name, err)
+			}
+			// Only the glyphs the page uses (plus .notdef and seac parts) are kept.
+			if cf.numGlyphs > 45 {
+				t.Errorf("%s %s: %d glyphs", c.file, name, cf.numGlyphs)
+			}
+			if !strings.Contains(nameString(sf, 0)+nameString(sf, 7), "Bitstream") || sf.fsType != fsPreviewPrint {
+				t.Errorf("%s %s: notice %q, fsType %#x", c.file, name, nameString(sf, 0), sf.fsType)
+			}
+		}
+	}
+}
+
+// type1Programs returns the FontFile programs of a testdata PDF.
+func type1Programs(t *testing.T, name string) [][]byte {
+	t.Helper()
+	f, err := os.Open(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	conf := model.NewDefaultConfiguration()
+	conf.ValidationMode = model.ValidationRelaxed
+	ctx, err := api.ReadContext(f, conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &pdf{ctx: ctx}
+	var out [][]byte
+	for nr := range ctx.XRefTable.Table {
+		d := p.dict(*types.NewIndirectRef(nr, 0))
+		if d == nil || p.name(d["Type"]) != "FontDescriptor" {
+			continue
+		}
+		if sd := p.stream(d["FontFile"]); sd != nil {
+			data, _, err := p.decodeStream(sd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, data)
+		}
+	}
+	return out
+}
+
+func TestType1Forms(t *testing.T) {
+	progs := type1Programs(t, "reportlab-type1.pdf")
+	if len(progs) != 1 {
+		t.Fatalf("%d Type1 programs", len(progs))
+	}
+	data := progs[0]
+	want, cf, failed, err := type1ToCFF(data)
+	if err != nil || failed != 0 {
+		t.Fatalf("convert: %v, %d failed", err, failed)
+	}
+	if cf.numGlyphs < 200 || cf.notice == "" {
+		t.Fatalf("%d glyphs, notice %q", cf.numGlyphs, cf.notice)
+	}
+	// PFB segments and hex (PFA) eexec data must give the same font.
+	i := bytes.Index(data, []byte("eexec")) + len("eexec")
+	for data[i] == '\r' || data[i] == '\n' {
+		i++
+	}
+	clear, enc := data[:i], data[i:]
+	seg := func(typ byte, b []byte) []byte {
+		return append(binary.LittleEndian.AppendUint32([]byte{0x80, typ}, uint32(len(b))), b...)
+	}
+	pfb := append(append(seg(1, clear), seg(2, enc)...), 0x80, 3)
+	var hex []byte
+	for k, b := range enc {
+		hex = fmt.Appendf(hex, "%02x", b)
+		if k%32 == 31 {
+			hex = append(hex, '\n')
+		}
+	}
+	pfa := append(append([]byte(nil), clear...), hex...)
+	for form, b := range map[string][]byte{"pfb": pfb, "pfa": pfa} {
+		got, _, _, err := type1ToCFF(b)
+		if err != nil || !bytes.Equal(got, want) {
+			t.Errorf("%s: %v, same font %v", form, err, bytes.Equal(got, want))
+		}
+	}
+	if _, _, _, err := type1ToCFF(data[:i-20]); err == nil {
+		t.Error("a program cut before eexec was accepted")
+	}
+}
+
+// t1cs encodes a Type 1 charstring: ints are operands, strings are operators.
+func t1cs(items ...any) []byte {
+	ops := map[string][]byte{"hstem": {1}, "rmoveto": {21}, "rlineto": {5}, "hsbw": {13}, "endchar": {14}, "callsubr": {10}, "return": {11},
+		"closepath": {9}, "seac": {12, 6}, "div": {12, 12}, "callothersubr": {12, 16}, "pop": {12, 17}, "setcurrentpoint": {12, 33}}
+	var b []byte
+	for _, it := range items {
+		switch v := it.(type) {
+		case int:
+			switch {
+			case v >= -107 && v <= 107:
+				b = append(b, byte(v+139))
+			case v >= 108 && v <= 1131:
+				b = append(b, byte((v-108)>>8+247), byte(v-108))
+			case v <= -108 && v >= -1131:
+				b = append(b, byte((-v-108)>>8+251), byte(-v-108))
+			default:
+				b = binary.BigEndian.AppendUint32(append(b, 255), uint32(int32(v)))
+			}
+		case string:
+			b = append(b, ops[v]...)
+		}
+	}
+	return b
+}
+
+// t2Outline decodes the Type 2 charstrings the converter writes (rmoveto,
+// rlineto, rrcurveto, endchar) into a width and absolute points per contour.
+func t2Outline(t *testing.T, cs []byte) (float64, [][][2]float64) {
+	t.Helper()
+	var stack []float64
+	var contours [][][2]float64
+	x, y, width := 0.0, 0.0, 0.0
+	first := true
+	for i := 0; i < len(cs); {
+		v := cs[i]
+		switch {
+		case v >= 32 && v <= 246:
+			stack = append(stack, float64(int(v)-139))
+			i++
+			continue
+		case v >= 247 && v <= 250:
+			stack = append(stack, float64((int(v)-247)*256+int(cs[i+1])+108))
+			i += 2
+			continue
+		case v >= 251 && v <= 254:
+			stack = append(stack, float64(-(int(v)-251)*256-int(cs[i+1])-108))
+			i += 2
+			continue
+		case v == 28:
+			stack = append(stack, float64(int16(binary.BigEndian.Uint16(cs[i+1:]))))
+			i += 3
+			continue
+		case v == 255:
+			stack = append(stack, float64(int32(binary.BigEndian.Uint32(cs[i+1:])))/65536)
+			i += 5
+			continue
+		}
+		i++
+		n := map[byte]int{21: 2, 5: 2, 8: 6, 14: 0}[v]
+		if first && (v == 21 || v == 14) && len(stack)%max(n, 1) == 1 || first && v == 14 && len(stack) == 1 {
+			width, stack = stack[0], stack[1:]
+		}
+		first = false
+		switch v {
+		case 21:
+			x, y = x+stack[0], y+stack[1]
+			contours = append(contours, [][2]float64{{x, y}})
+		case 5, 8:
+			for k := 0; k+1 < len(stack); k += 2 {
+				x, y = x+stack[k], y+stack[k+1]
+				contours[len(contours)-1] = append(contours[len(contours)-1], [2]float64{x, y})
+			}
+		case 14:
+			return width, contours
+		default:
+			t.Fatalf("unexpected operator %d", v)
+		}
+		stack = stack[:0]
+	}
+	t.Fatal("no endchar")
+	return 0, nil
+}
+
+func TestType1Charstrings(t *testing.T) {
+	font := &type1Font{
+		subrs: [][]byte{
+			t1cs(3, 0, "callothersubr", "pop", "pop", "setcurrentpoint", "return"), // 0: end flex
+			t1cs(0, 1, "callothersubr", "return"),                                  // 1: start flex
+			t1cs(0, 2, "callothersubr", "return"),                                  // 2: flex point
+			t1cs("return"),                                                         // 3
+			t1cs(0, 50, "hstem", "return"),                                         // 4: replacement hints
+		},
+		charString: map[string][]byte{
+			// Flex from (100,0) to (400,0), a hint replacement, then a line up.
+			"flex": t1cs(0, 500, "hsbw", 100, 0, "rmoveto", 1, "callsubr",
+				150, 0, "rmoveto", 2, "callsubr", -100, 20, "rmoveto", 2, "callsubr", 50, 0, "rmoveto", 2, "callsubr",
+				50, 0, "rmoveto", 2, "callsubr", 50, 0, "rmoveto", 2, "callsubr", 50, 0, "rmoveto", 2, "callsubr",
+				50, -20, "rmoveto", 2, "callsubr", 50, 400, 0, 0, "callsubr",
+				4, 1, 3, "callothersubr", "pop", "callsubr", 0, 100, "rlineto", "closepath", "endchar"),
+			"A":     t1cs(20, 600, "hsbw", 0, 0, "rmoveto", 100, 0, "rlineto", "closepath", "endchar"),
+			"grave": t1cs(5, 300, "hsbw", 0, 500, "rmoveto", 50, 0, "rlineto", "closepath", "endchar"),
+			// seac: the accent's sidebearing point goes to sbx + adx - asb + its own sbx.
+			"Agrave": t1cs(20, 600, "hsbw", 5, 150, 200, 65, 193, "seac"),
+			// div and a line without a preceding moveto (starts at the sidebearing point).
+			"div": t1cs(10, 1200, "hsbw", 7, 2, "div", 0, "rlineto", "endchar"),
+		},
+	}
+	for name, want := range map[string][][][2]float64{
+		"flex":   {{{100, 0}, {150, 20}, {200, 20}, {250, 20}, {300, 20}, {350, 20}, {400, 0}, {400, 100}}},
+		"Agrave": {{{20, 0}, {120, 0}}, {{170, 700}, {220, 700}}},
+		"div":    {{{10, 0}, {13.5, 0}}},
+	} {
+		cs, err := font.convert(name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		width, got := t2Outline(t, cs)
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s: outline %v, want %v", name, got, want)
+		}
+		if w := map[string]float64{"flex": 500, "Agrave": 600, "div": 1200}[name]; width != w {
+			t.Errorf("%s: width %v, want %v", name, width, w)
+		}
+	}
+	// Multiple master blends and a seac whose base is a seac are not converted.
+	font.charString["mm"] = t1cs(0, 500, "hsbw", 1, 2, 1, 14, "callothersubr", "endchar")
+	font.charString["A"] = t1cs(0, 500, "hsbw", 0, 0, 0, 193, 193, "seac")
+	font.charString["nested"] = t1cs(0, 500, "hsbw", 0, 0, 0, 65, 193, "seac")
+	for _, name := range []string{"mm", "nested"} {
+		if _, err := font.convert(name); err == nil {
+			t.Errorf("%s was converted", name)
+		}
 	}
 }

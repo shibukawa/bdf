@@ -37,6 +37,9 @@ export const CASES: Case[] = [
   // OpenType CFF web fonts (.otf, .woff2) and license-restricted TrueType; bare Type1C and CIDFontType0C from cairo.
   { name: "pdf-webfonts-1", src: "/fixtures/pdf/weasyprint-webfonts.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-cairo-cff-1", src: "/fixtures/pdf/cairo-cff.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  // Type 1 programs (FontFile) converted to CFF: cairo subsets (seac accents, built-in encoding) and a whole font.
+  { name: "pdf-cairo-type1-1", src: "/fixtures/pdf/cairo-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  { name: "pdf-reportlab-type1-1", src: "/fixtures/pdf/reportlab-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
 ];
 
 const DEFAULT_SRC = "/fixtures/demo.bdf";

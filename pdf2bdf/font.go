@@ -12,7 +12,7 @@ import (
 
 // fontProgram is an embedded font file.
 type fontProgram struct {
-	kind string // "ttf", "cff", "otf", "type1"
+	kind string // "ttf", "cff", "otf", "type1" (converted to CFF in data/cff)
 	data []byte
 	sf   *sfnt
 	cff  *cffFont
@@ -290,8 +290,16 @@ func (c *converter) loadDescriptor(f *pdfFont, desc types.Dict) {
 			}
 			prog.cff = cf
 		case "type1":
-			c.warnf("font %s: Type1 font programs are not embedded; using a system font", f.baseFont)
-			continue
+			// Converted to CFF; from here on it is handled as a bare CFF program.
+			cffData, cf, failed, err := type1ToCFF(data)
+			if err != nil {
+				c.warnf("font %s: Type1 font program not converted (%v); using a system font", f.baseFont, err)
+				continue
+			}
+			if failed > 0 {
+				c.warnf("font %s: %d Type1 glyph(s) could not be converted and are left empty", f.baseFont, failed)
+			}
+			prog.data, prog.cff = cffData, cf
 		}
 		f.prog = prog
 		// Decided before any text is drawn: a font drawn with a system font
@@ -463,6 +471,12 @@ func (f *pdfFont) unicode(g glyphCode) string {
 	}
 	if !f.composite {
 		name := f.glyphName(g.code)
+		if name == "" && f.prog != nil && f.prog.cff != nil && !f.prog.cff.isCID {
+			// The program's built-in encoding names the glyph (Type1, Type1C).
+			if gid, ok := f.prog.cff.encoding[int(g.code)]; ok && gid > 0 {
+				name = f.prog.cff.sidName(f.prog.cff.charset[gid])
+			}
+		}
 		if name == "" && f.symbolic {
 			name = standardEncoding[g.code]
 		}
@@ -769,8 +783,10 @@ func (c *converter) cffSFNT(f *pdfFont, cm map[uint32]uint16, subset bool) (*sfn
 		}
 	} else {
 		// Bare CFF: metrics come from the PDF font (FontMatrix, descriptor, Widths).
-		if m := prog.cff.fontMatrix; m[0] != 0 {
-			sf.unitsPerEm = int(1/m[0] + 0.5)
+		if m := prog.cff.fontMatrix; m[0] > 0 {
+			if upm := int(1/m[0] + 0.5); upm >= 16 && upm <= 16384 { // the range head allows
+				sf.unitsPerEm = upm
+			}
 		}
 		sf.ascent, sf.descent = int16(f.ascent), int16(f.descent)
 		if sf.ascent == 0 {
