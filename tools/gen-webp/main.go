@@ -19,6 +19,7 @@ func main() {
 	pkg := flag.String("pkg", "webpw", "package name")
 	importPath := flag.String("import", "github.com/shibukawa/bdf/imgconv/internal/webpw", "import path")
 	chunks := flag.Int("chunks", 1, "number of chunk packages")
+	simd := flag.String("simd", "", "wasm2go -simd target (go127): also emit each v128 function over simd/archsimd registers for a GOEXPERIMENT=simd build")
 	flag.Parse()
 	if *in == "" || *outDir == "" {
 		fmt.Fprintln(os.Stderr, "usage: gen-webp -i webp.wasm -out-dir DIR")
@@ -45,6 +46,7 @@ func main() {
 		Chunks:           *chunks,
 		GroupFiles:       true,
 		AddrConsts:       true,
+		SIMD:             *simd,
 		EntryExports:     []string{"_initialize", "encode", "malloc", "free"},
 	})
 	if err != nil {

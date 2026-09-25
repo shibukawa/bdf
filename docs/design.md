@@ -80,7 +80,7 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
   3. PNG / GIF / BMP と、PDF からデコードした画素は WebP 可逆を試す。色数が多く写真らしい画像（標本で 4096 色超）は非可逆も試す。
   4. 元より小さくなった候補のうち最小のものを採用し、小さくならなければ元のまま。
 
-コーデックは libwebp（エンコーダのみ）を wasi-sdk で wasm にし、[shibukawa/wasm2go-fork](https://github.com/shibukawa/wasm2go-fork)（pgmem ブランチ、v0.5.15-fork.7）で純 Go に変換したもので、cgo も wasm ランタイムも使わない。生成物は `imgconv/internal/webpw`（約 5MB、44 ファイル）で、`tools/gen-codecs.sh` で再生成する。フォークの `-symbol-names`（関数名を wasm の name セクションから付ける）、`-group-files`（`vp8_enc.go` のように主題ごとのファイルに分ける）、`-addr-consts`（静的データのアドレスを名前付き定数にする）を使い、libwebp を更新しても差分が小さく収まるようにしている。gen2brain 同梱の wasm は name セクションが落とされているので、自前でビルドしている。
+コーデックは libwebp（エンコーダのみ）を wasi-sdk で wasm にし、[shibukawa/wasm2go-fork](https://github.com/shibukawa/wasm2go-fork)（pgmem ブランチ）で純 Go に変換したもので、cgo も wasm ランタイムも使わない。生成物は `imgconv/internal/webpw`（約 5MB、44 ファイル）で、`tools/gen-codecs.sh` で再生成する。フォークの `-symbol-names`（関数名を wasm の name セクションから付ける）、`-group-files`（`vp8_enc.go` のように主題ごとのファイルに分ける）、`-addr-consts`（静的データのアドレスを名前付き定数にする）を使い、libwebp を更新しても差分が小さく収まるようにしている。gen2brain 同梱の wasm は name セクションが落とされているので、自前でビルドしている。
 
 **ビルドタグ**
 
@@ -98,14 +98,25 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 
 フォークで変換したコードは、gen2brain 同梱の Go 化コードより WebP で 1.6〜2 倍、wazero 実行の AVIF より 3〜4 倍速く、出力はバイト単位で同一だった。
 
-**SIMD は使わない**（測定の結果）。同梱の wasm はスカラーでビルドしている。wasm SIMD を有効にした 2 種類のビルド（clang の自動ベクトル化のみ、および emscripten の SSE 互換ヘッダで libwebp 自身の SSE2/SSE4.1 経路を有効化したもの）を、wasm2go の純 Go モードと asm バックエンド（`-fuse-loops`、SIMD 命令 10,866 箇所をインライン展開）で変換して比べたが、いずれもスカラーより遅かった。
+**同梱の wasm はスカラーでビルドしている**（測定の結果）。wasm SIMD を有効にした 2 種類のビルド（clang の自動ベクトル化のみ、および emscripten の SSE 互換ヘッダで libwebp 自身の SSE2/SSE4.1 経路を有効化したもの）を、wasm2go の純 Go モードと asm バックエンド（`-fuse-loops`、SIMD 命令 10,866 箇所をインライン展開）で変換して比べたが、いずれもスカラーより遅かった。v128 を `[2]uint64` の組で運ぶこれらのバックエンドでは、4×4〜16×16 ブロック単位の短い SIMD カーネルの命令 1 つごとに汎用レジスタとの往復が入り、ベクトル化の利得を上回る。
 
 | 1024×768 写真風 q80 m6 | スカラー | 自動ベクトル化 | SSE2/SSE4.1 経路 |
 |---|---|---|---|
 | 純 Go モード（GOAMD64=v2） | 0.35 s | 0.75 s | 2.4 s |
 | asm バックエンド | 0.35 s | 0.39 s | 0.52 s |
 
-libwebp の SIMD カーネルは 4×4〜16×16 ブロック単位の短い関数で、v128 命令 1 つごとの変換オーバーヘッドがベクトル化の利得を上回る。asm バックエンド自体もスカラーでは純 Go と同速だったので、生成物は純 Go（`-pure`）のままにしている。AVIF も評価したが採用しなかった。可逆は図版で WebP の 200 倍大きく、非可逆は speed 6 で図版に効くものの 3〜4 倍遅く、生成コードが 47MB になるためである。
+この往復をなくすため、フォークに `-simd=go127` を追加した。Go 1.27 の `GOEXPERIMENT=simd` で入る `simd/archsimd` の 128 bit ベクトル型で v128 を運び、SIMD 命令ごとにインライン展開される `base.Simd_g_*` メソッド連鎖を生成する（amd64 は AVX/AVX2、arm64 は NEON）。v128 に触れる関数は `[2]uint64` 版と archsimd 版の 2 本が出力され、`goexperiment.simd && go1.27 && !go1.28 && (amd64 || arm64)` のビルドタグで切り替わる。archsimd は互換性保証がなく 1.26 と 1.27 で API が変わったため、対象の Go リリースを明示し、生成コード本体は `base.V128` と `base.Simd_g_*` だけを参照する。移植性を重視した `simd` パッケージも検討したが、ベクトル長が実行時に決まり（AVX2 機で 256 bit）、shuffle や narrow などの命令が無く、simd 型を使う関数が 4 本にクローンされるため、128 bit 固定の v128 には使えなかった。
+
+SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` でビルドして測った結果（各 5 回、出力はスカラー版とバイト単位で同一）:
+
+| | スカラー（同梱） | SSE 経路 + archsimd |
+|---|---|---|
+| 写真風 q80 m6 | 0.37 s | 0.29 s |
+| 図版 q80 m6 | 0.16 s | 0.12 s |
+| 図版 可逆 | 38 ms | 38 ms |
+| 写真風 可逆 | 0.49 s | 0.74 s |
+
+非可逆は 1.3 倍速くなるが、可逆は 1.5 倍遅くなる（プロファイルでは `VP8LGetBackwardReferences` と残差計算に時間が移っており、libwebp の可逆 SSE41 経路は wasm SIMD 向きでない）。また同じ wasm から出る `[2]uint64` 版は 2.4 s のもので、`GOEXPERIMENT=simd` を付けない通常のビルドが 7 倍遅くなる。そのため同梱はスカラー版のままとし、SIMD 版は `SIMD=1 tools/gen-codecs.sh` で生成する選択肢にしている（生成物は約 14MB）。AVIF も評価したが採用しなかった。可逆は図版で WebP の 200 倍大きく、非可逆は speed 6 で図版に効くものの 3〜4 倍遅く、生成コードが 47MB になるためである。
 
 ## 4. テキストの扱い
 
