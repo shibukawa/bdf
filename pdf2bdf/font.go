@@ -673,6 +673,13 @@ func (c *converter) finalizeFont(f *pdfFont) bdf.Font {
 		if prog.sf.isCFF && prog.sf.tables["CFF "] == nil {
 			return f.final
 		}
+		if !prog.sf.isCFF && !c.opts.NoSubset {
+			keep := make(map[uint16]bool, len(cm))
+			for _, gid := range cm {
+				keep[gid] = true
+			}
+			prog.sf.pruneGlyphs(keep)
+		}
 		data = prog.sf.rebuild(cm, family, int(f.weight), f.style != bdf.StyleNormal)
 	case prog.cff != nil:
 		sf := &sfnt{tables: map[string][]byte{"CFF ": prog.data}, isCFF: true, numGlyphs: prog.cff.numGlyphs, unitsPerEm: 1000}

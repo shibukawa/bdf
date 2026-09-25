@@ -30,6 +30,9 @@ type Options struct {
 	NoTextIndex bool
 	// NoAnnotations skips annotation appearance streams and links.
 	NoAnnotations bool
+	// NoSubset keeps every glyph of embedded TrueType fonts instead of
+	// dropping the outlines of unused ones (CFF fonts are never subset).
+	NoSubset bool
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.
 	Warn func(msg string)
 }

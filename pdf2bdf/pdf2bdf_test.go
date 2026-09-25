@@ -304,3 +304,53 @@ func TestDeterministic(t *testing.T) {
 		t.Fatal("conversion is not deterministic")
 	}
 }
+
+func TestPruneGlyphs(t *testing.T) {
+	data, err := os.ReadFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+	if err != nil {
+		data, err = os.ReadFile("../fixture/fonts/DejaVuSans-sub.ttf")
+		if err != nil {
+			t.Skip("no font available")
+		}
+	}
+	sf, err := parseSFNT(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := len(sf.tables["glyf"])
+	// é is a composite of e and acute in DejaVu; both components must survive.
+	keep := map[uint16]bool{sf.cmap['A']: true, sf.cmap[0xE9]: true}
+	sf.pruneGlyphs(keep)
+	after := len(sf.tables["glyf"])
+	if after >= before/4 {
+		t.Fatalf("glyf not pruned: %d -> %d", before, after)
+	}
+	out := sf.rebuild(map[uint32]uint16{'A': sf.cmap['A'], 0xE9: sf.cmap[0xE9]}, "Pruned", 400, false)
+	sf2, err := parseSFNT(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sf2.numGlyphs != sf.numGlyphs {
+		t.Fatal("glyph count changed")
+	}
+	loca, head := sf2.tables["loca"], sf2.tables["head"]
+	long := be16(head, 50) != 0
+	off := func(g uint16) (uint32, uint32) {
+		if long {
+			return be32(loca, int(g)*4), be32(loca, int(g)*4+4)
+		}
+		return uint32(be16(loca, int(g)*2)) * 2, uint32(be16(loca, int(g)*2+2)) * 2
+	}
+	if s, e := off(sf.cmap['A']); e <= s {
+		t.Fatal("kept glyph is empty")
+	}
+	if s, e := off(sf.cmap['Z']); e != s {
+		t.Fatal("unused glyph still has data")
+	}
+	// Components of the composite: the accent glyph must still have outlines.
+	if acute, ok := sf.cmap[0xB4]; ok {
+		if s, e := off(acute); e <= s {
+			t.Fatal("composite component was pruned")
+		}
+	}
+}
