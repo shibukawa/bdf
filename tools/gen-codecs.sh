@@ -29,7 +29,7 @@ OUT=${OUT:-"$ROOT/imgconv/internal/$PKG"}
 mkdir -p "$WORK"
 
 FORK_REPO=https://github.com/shibukawa/wasm2go-fork
-FORK_REF=6f872ef08ff70011ce335f52b3536752193ab336   # pgmem: -simd=go127
+FORK_REF=6f872ef08ff70011ce335f52b3536752193ab336   # v0.5.15-fork.8 (-simd=go127)
 WASI_SDK_VER=25
 LIBWEBP_VER=v1.6.0
 
