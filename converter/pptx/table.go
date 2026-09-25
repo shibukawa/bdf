@@ -48,7 +48,7 @@ func (c *converter) tableStyle(tblPr *node) *node {
 	if st := tblPr.child("tableStyle"); st != nil {
 		return st
 	}
-	id := strings.ToUpper(strings.TrimSpace(tblPr.child("tableStyleId").Text))
+	id := strings.ToUpper(strings.TrimSpace(tblPr.child("tableStyleId").text()))
 	if id == "" {
 		// no style: plain table
 		return nil

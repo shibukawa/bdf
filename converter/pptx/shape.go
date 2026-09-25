@@ -232,7 +232,7 @@ func cNvPr(n *node) *node {
 // drawTree draws the shapes of a p:spTree. Placeholders are only drawn on
 // slides: on masters and layouts they are prompts for the slides.
 func (s *slideCtx) drawTree(cv *canvas, tree *node, part string, isSlide bool) {
-	for _, k := range tree.Kids {
+	for _, k := range tree.kids() {
 		s.drawElem(cv, k, part, isSlide, nil)
 	}
 }
@@ -705,7 +705,7 @@ func (s *slideCtx) drawDiagram(cv *canvas, sh *shape, xf xform, relIds *node) {
 	// xf is already on the slide; the drawing's coordinates are relative to
 	// the frame.
 	g := &groupCtx{xf: xform{X: xf.X, Y: xf.Y, W: xf.W, H: xf.H}, chExt: [2]float64{xf.W, xf.H}, part: drawingPart}
-	for _, k := range d.path("spTree").Kids {
+	for _, k := range d.path("spTree").kids() {
 		s.drawElem(cv, k, drawingPart, false, g)
 	}
 }

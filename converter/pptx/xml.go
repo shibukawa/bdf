@@ -104,6 +104,30 @@ func (n *node) resolveAlternates() {
 	}
 }
 
+// text returns the character data of an element ("" for nil).
+func (n *node) text() string {
+	if n == nil {
+		return ""
+	}
+	return n.Text
+}
+
+// kids returns the child elements (nil for nil).
+func (n *node) kids() []*node {
+	if n == nil {
+		return nil
+	}
+	return n.Kids
+}
+
+// attrs returns the attributes (nil for nil).
+func (n *node) attrs() []xml.Attr {
+	if n == nil {
+		return nil
+	}
+	return n.Attr
+}
+
 // child returns the first child element with the local name, or nil.
 func (n *node) child(name string) *node {
 	if n == nil {

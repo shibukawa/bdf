@@ -48,10 +48,10 @@ func parseTheme(root *node) *theme {
 	th.major = parseFontScheme(fs.child("majorFont"), defaultTheme.major)
 	th.minor = parseFontScheme(fs.child("minorFont"), defaultTheme.minor)
 	fm := te.child("fmtScheme")
-	th.fills = fm.child("fillStyleLst").Kids
-	th.lines = fm.child("lnStyleLst").Kids
-	th.effects = fm.child("effectStyleLst").Kids
-	th.bgFills = fm.child("bgFillStyleLst").Kids
+	th.fills = fm.child("fillStyleLst").kids()
+	th.lines = fm.child("lnStyleLst").kids()
+	th.effects = fm.child("effectStyleLst").kids()
+	th.bgFills = fm.child("bgFillStyleLst").kids()
 	return th
 }
 

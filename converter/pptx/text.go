@@ -1,6 +1,7 @@
 package pptx
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -120,6 +121,7 @@ type runStyle struct {
 	highlight    *rgba
 	link         string
 	lang         string
+	key          string // identity of the visible properties, for merging runs
 }
 
 func (s *slideCtx) runStyle(tf *textFrame, rc chain, scale float64, rPr *node) *runStyle {
@@ -189,6 +191,7 @@ func (s *slideCtx) runStyle(tf *textFrame, rc chain, scale float64, rPr *node) *
 			st.highlight = &c
 		}
 	}
+	defer st.setKey()
 	st.textFill = st.fill
 	if h := rPr.child("hlinkClick"); h != nil {
 		st.link = s.linkTarget(h, tf.part)
@@ -204,6 +207,28 @@ func (s *slideCtx) runStyle(tf *textFrame, rc chain, scale float64, rPr *node) *
 		}
 	}
 	return st
+}
+
+// setKey records the properties that affect drawing, so that runs split in
+// the markup (spell checking, language tags) are drawn as one.
+func (st *runStyle) setKey() {
+	c, _ := st.fill.average()
+	var b strings.Builder
+	fmt.Fprintf(&b, "%g|%v|%v|%s|%s|%s|%d|%v|%s|%s|%g|%g|%s|%s|%v", st.size, st.bold, st.italic, st.latin, st.ea, st.sym,
+		st.fill.kind, c, st.underline, st.strike, st.baseline, st.spacing, st.caps, st.link, st.outline != nil)
+	if st.uColor != nil {
+		fmt.Fprintf(&b, "|u%v", *st.uColor)
+	}
+	if st.highlight != nil {
+		fmt.Fprintf(&b, "|h%v", *st.highlight)
+	}
+	if st.outline != nil {
+		fmt.Fprintf(&b, "|o%p", st.outline)
+	}
+	if st.fill.kind == fillGrad {
+		fmt.Fprintf(&b, "|g%p", st.fill.grad)
+	}
+	st.key = b.String()
 }
 
 func scriptOf(lang string) string {
@@ -330,7 +355,7 @@ func (s *slideCtx) paragraphs(tf *textFrame, fontScale, lnReduce float64) []*par
 			case "r", "fld":
 				rPr := k.child("rPr")
 				st := s.runStyle(tf, tf.rChain(rPr, pc), fontScale, rPr)
-				text := k.child("t").Text
+				text := k.child("t").text()
 				if k.Name == "fld" && strings.HasPrefix(k.attrStr("type", ""), "slidenum") {
 					text = itoa(s.num)
 				}
@@ -412,6 +437,7 @@ func (s *slideCtx) addText(pa *para, st *runStyle, text string) {
 		// small capitals: lower-case letters become smaller capitals
 		small := *st
 		small.size = st.size * 0.8
+		small.setKey()
 		var buf []rune
 		bufSmall := false
 		flush := func() {
@@ -505,6 +531,7 @@ func (s *slideCtx) makeBullet(tf *textFrame, pa *para, text, font string, fontSc
 			st.fill = fill{kind: fillSolid, color: c}
 		}
 	}
+	st.setKey()
 	b := &bullet{text: text, st: &st}
 	for _, r := range text {
 		b.fc = s.c.faceFor(&st, r)

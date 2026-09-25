@@ -367,6 +367,8 @@ func (e *textEmitter) emitLines(lines []*textLine, dx, dy float64) {
 				e.setColor(c.bdf())
 				e.cv.obj.FillText(b.text, f32(bx+dx), f32(base), f32(b.w))
 				e.cv.drawn = true
+				// the bullet and the text are separate words
+				e.cv.obj.Mark(bdf.MarkLine, "")
 			}
 		}
 		e.emitItems(ln, dx+ln.offset, base)
@@ -385,7 +387,7 @@ func (e *textEmitter) emitItems(ln *textLine, dx, base float64) {
 		j := i + 1
 		for j < len(items) {
 			n := items[j]
-			if n.kind != itemChar || n.ls < 0 || n.st != it.st || n.fc != it.fc || n.ls != it.ls {
+			if n.kind != itemChar || n.ls < 0 || (n.st != it.st && n.st.key != it.st.key) || n.fc != it.fc || n.ls != it.ls {
 				break
 			}
 			if e.upright && fontdb.IsCJK(n.r) != fontdb.IsCJK(it.r) {

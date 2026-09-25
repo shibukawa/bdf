@@ -175,7 +175,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		if n < 1 || n > len(slides) {
 			return nil, fmt.Errorf("pptx: slide %d out of range (1-%d)", n, len(slides))
 		}
-		layers, err := c.renderSlide(slides[n-1], c.firstSlide+n-1)
+		layers, err := c.renderSlideSafe(slides[n-1], c.firstSlide+n-1)
 		if err != nil {
 			return nil, fmt.Errorf("pptx: slide %d: %w", n, err)
 		}
@@ -237,7 +237,7 @@ func (c *converter) coreTitle() string {
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(n.child("title").Text)
+	return strings.TrimSpace(n.child("title").text())
 }
 
 func (c *converter) theme(masterPart string) *theme {
@@ -277,6 +277,19 @@ type slideCtx struct {
 	layoutPh, masterPh    []*node
 }
 
+// renderSlideSafe renders a slide; a malformed slide that trips the
+// renderer becomes an empty page and a warning instead of failing the
+// whole conversion.
+func (c *converter) renderSlideSafe(part string, num int) (layers []layer, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.warnf("slide %s: internal error: %v", part, r)
+			layers, err = nil, nil
+		}
+	}()
+	return c.renderSlide(part, num)
+}
+
 func (c *converter) renderSlide(part string, num int) ([]layer, error) {
 	p := c.pkg
 	slide, err := p.xml(part)
@@ -299,7 +312,7 @@ func (c *converter) renderSlide(part string, num int) ([]layer, error) {
 	for k, v := range defaultClrMap {
 		clrMap[k] = v
 	}
-	for _, a := range s.master.child("clrMap").Attr {
+	for _, a := range s.master.child("clrMap").attrs() {
 		clrMap[a.Name.Local] = a.Value
 	}
 	for _, src := range []*node{s.layout, s.slide} {
@@ -337,7 +350,7 @@ func (c *converter) renderSlide(part string, num int) ([]layer, error) {
 // placeholders lists the placeholder shapes of a layout or master.
 func placeholders(root *node) []*node {
 	var out []*node
-	for _, k := range root.path("cSld", "spTree").Kids {
+	for _, k := range root.path("cSld", "spTree").kids() {
 		if phOf(k) != nil {
 			out = append(out, k)
 		}
