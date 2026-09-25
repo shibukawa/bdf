@@ -94,66 +94,75 @@ func (o *ObjectPart) Instructions() ([]Instr, error) {
 func (o *ObjectPart) Walk(fn func(Instr)) error {
 	r := &reader{b: o.Ops}
 	for !r.eof() {
-		code := r.u8()
-		info, ok := opTable[code]
-		if !ok {
-			return &FormatError{Offset: r.pos - 1, Msg: fmt.Sprintf("unknown opcode 0x%02x", code)}
-		}
-		in := Instr{Op: code}
-		switch info.Sig {
-		case "D":
-			n := int(r.varuint())
-			if n > len(o.Ops) {
-				r.fail("bad dash count")
-				break
-			}
-			segs := make([]float32, n)
-			for i := range segs {
-				segs[i] = r.f32()
-			}
-			in.Args = append(in.Args, segs, r.f32())
-		case "R":
-			rule := uint64(r.u8())
-			n := int(r.varuint())
-			if n > len(o.Ops) {
-				r.fail("bad run count")
-				break
-			}
-			glyphs := make([]Glyph, n)
-			for i := range glyphs {
-				glyphs[i] = Glyph{PathRef(r.varuint()), r.f32(), r.f32()}
-			}
-			in.Args = append(in.Args, rule, glyphs)
-		case "X":
-			n := int(r.u32())
-			in.Args = append(in.Args, r.bytes(n))
-		default:
-			for _, c := range info.Sig {
-				switch c {
-				case 'f':
-					in.Args = append(in.Args, r.f32())
-				case 'b':
-					in.Args = append(in.Args, uint64(r.u8()))
-				case 'c':
-					in.Args = append(in.Args, uint64(r.u32()))
-				case 'v':
-					in.Args = append(in.Args, r.varuint())
-				case 's':
-					i := r.varuint()
-					if i >= uint64(len(o.Strings)) {
-						r.fail("bad string ref")
-					} else {
-						in.Args = append(in.Args, o.Strings[i])
-					}
-				}
-			}
-		}
-		if r.err != nil {
-			return r.err
+		in, err := o.readInstr(r)
+		if err != nil {
+			return err
 		}
 		fn(in)
 	}
 	return r.err
+}
+
+// readInstr decodes the instruction at the reader's position.
+func (o *ObjectPart) readInstr(r *reader) (Instr, error) {
+	code := r.u8()
+	info, ok := opTable[code]
+	if !ok {
+		return Instr{}, &FormatError{Offset: r.pos - 1, Msg: fmt.Sprintf("unknown opcode 0x%02x", code)}
+	}
+	in := Instr{Op: code}
+	switch info.Sig {
+	case "D":
+		n := int(r.varuint())
+		if n > len(o.Ops) {
+			r.fail("bad dash count")
+			break
+		}
+		segs := make([]float32, n)
+		for i := range segs {
+			segs[i] = r.f32()
+		}
+		in.Args = append(in.Args, segs, r.f32())
+	case "R":
+		rule := uint64(r.u8())
+		n := int(r.varuint())
+		if n > len(o.Ops) {
+			r.fail("bad run count")
+			break
+		}
+		glyphs := make([]Glyph, n)
+		for i := range glyphs {
+			glyphs[i] = Glyph{PathRef(r.varuint()), r.f32(), r.f32()}
+		}
+		in.Args = append(in.Args, rule, glyphs)
+	case "X":
+		n := int(r.u32())
+		in.Args = append(in.Args, r.bytes(n))
+	default:
+		for _, c := range info.Sig {
+			switch c {
+			case 'f':
+				in.Args = append(in.Args, r.f32())
+			case 'b':
+				in.Args = append(in.Args, uint64(r.u8()))
+			case 'c':
+				in.Args = append(in.Args, uint64(r.u32()))
+			case 'v':
+				in.Args = append(in.Args, r.varuint())
+			case 's':
+				i := r.varuint()
+				if i >= uint64(len(o.Strings)) {
+					r.fail("bad string ref")
+				} else {
+					in.Args = append(in.Args, o.Strings[i])
+				}
+			}
+		}
+	}
+	if r.err != nil {
+		return Instr{}, r.err
+	}
+	return in, nil
 }
 
 // Disassemble renders an Object part as human-readable text.

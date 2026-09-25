@@ -19,6 +19,7 @@ func main() {
 	noSubset := flag.Bool("no-subset", false, "keep unused glyphs of embedded TrueType fonts")
 	images := flag.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
 	quality := flag.Int("quality", 80, "lossy WebP quality (1-100)")
+	noShare := flag.Bool("no-share", false, "do not move the instruction prefix pages have in common into a shared object")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: pdf2bdf [flags] in.pdf out.bdf|outdir/\n  an output path ending with / writes the split form")
 		flag.PrintDefaults()
@@ -29,7 +30,7 @@ func main() {
 		os.Exit(2)
 	}
 	in, out := flag.Arg(0), flag.Arg(1)
-	opts := &pdf2bdf.Options{Title: *title, Kind: *kind, NoSubset: *noSubset}
+	opts := &pdf2bdf.Options{Title: *title, Kind: *kind, NoSubset: *noSubset, NoSharePrefix: *noShare}
 	opts.Images = imgconv.Options{Quality: *quality}
 	switch *images {
 	case "keep":
@@ -72,5 +73,5 @@ func main() {
 		fmt.Fprintln(os.Stderr, "pdf2bdf:", err)
 		os.Exit(1)
 	}
-	fmt.Fprintf(os.Stderr, "%s: %d page(s), %d warning(s)\n", out, res.Pages, len(res.Warnings))
+	fmt.Fprintf(os.Stderr, "%s: %d page(s), %d warning(s), %d shared prefix(es) saving %d bytes\n", out, res.Pages, len(res.Warnings), res.SharedPrefixes, res.SharedBytes)
 }

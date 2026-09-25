@@ -37,6 +37,10 @@ type Options struct {
 	// Images controls whether raster images are re-encoded (see imgconv).
 	// The zero value keeps images as they are.
 	Images imgconv.Options
+	// NoSharePrefix keeps each page body whole instead of moving the
+	// instruction prefix that two or more pages have in common (a master
+	// slide, a letterhead) into one shared object.
+	NoSharePrefix bool
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.
 	Warn func(msg string)
 }
@@ -46,6 +50,10 @@ type Result struct {
 	Doc      *bdf.Document
 	Warnings []string
 	Pages    int
+	// SharedPrefixes counts the prefix objects shared between pages, and
+	// SharedBytes the op-stream bytes the pages no longer carry.
+	SharedPrefixes int
+	SharedBytes    int
 }
 
 type imageEntry struct {
@@ -61,14 +69,16 @@ type converter struct {
 	warnings []string
 	warned   map[string]bool
 
-	fonts      map[string]*pdfFont
-	forms      map[string]*pending
-	images     map[string]*imageEntry
-	shadings   map[string]*shading
-	pendings   []*pending
-	pageBox    rect // current page box in object space
-	deflt      *pdfFont
-	pageBodies []pageRef
+	fonts          map[string]*pdfFont
+	forms          map[string]*pending
+	images         map[string]*imageEntry
+	shadings       map[string]*shading
+	pendings       []*pending
+	pageBox        rect // current page box in object space
+	deflt          *pdfFont
+	pageBodies     []pageRef
+	sharedPrefixes int
+	sharedBytes    int
 }
 
 // ConvertFile converts a PDF file.
@@ -127,13 +137,16 @@ func Convert(rs io.ReadSeeker, opts *Options) (*Result, error) {
 			return nil, fmt.Errorf("pdf2bdf: page %d: %w", n, err)
 		}
 	}
+	if !opts.NoSharePrefix {
+		c.sharePagePrefixes()
+	}
 	c.finalize()
 	if !opts.NoTextIndex {
 		if _, err := c.doc.BuildTextIndex(view); err != nil {
 			c.warnf("text index: %v", err)
 		}
 	}
-	return &Result{Doc: c.doc, Warnings: c.warnings, Pages: len(pages)}, nil
+	return &Result{Doc: c.doc, Warnings: c.warnings, Pages: len(pages), SharedPrefixes: c.sharedPrefixes, SharedBytes: c.sharedBytes}, nil
 }
 
 func (c *converter) warnf(format string, args ...any) {

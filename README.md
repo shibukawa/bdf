@@ -12,7 +12,7 @@ Office 系ファイルをサーバーで変換しておき、フロントエン�
 - 透明 DOM のテキスト選択層とコピー（空白・改行は MARK 境界から復元、ページまたぎ、連続モード対応）
 - 1 ファイル形式と分割ファイル形式を相互変換可能
 
-PDF からの変換（`pdf2bdf`）は、埋め込みフォントをブラウザが読める形に組み直し、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換します。詳細は design.md の §3.1 を参照してください。
+PDF からの変換（`pdf2bdf`）は、埋め込みフォントをブラウザが読める形に組み直し、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。詳細は design.md の §3.1 を参照してください。
 
 ドキュメント:
 
@@ -47,6 +47,7 @@ go run ./cmd/pdf2bdf in.pdf out.bdf     # 1 ファイル形式
 go run ./cmd/pdf2bdf in.pdf out/        # 分割形式
 go run ./cmd/pdf2bdf -pages 1-3 -kind flow in.pdf out.bdf
 go run ./cmd/pdf2bdf -images keep in.pdf out.bdf   # 画像を変換しない
+go run ./cmd/pdf2bdf -no-share in.pdf out.bdf      # ページ共通の先頭部分（マスター）を共有 Object にしない
 go build -tags bdf_noconv ./...                    # コーデックを含めないビルド（ブラウザ向け）
 GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD 版コーデック（amd64 は AVX2 必須）
 
