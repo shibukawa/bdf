@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"sort"
+	"unicode/utf16"
 )
 
 // Minimal TrueType/OpenType table reader and writer, enough to rebuild an
@@ -21,17 +22,35 @@ type sfnt struct {
 	cmapSymbol map[uint32]uint16 // (3,0)
 	postNames  map[string]uint16
 	advances   []uint16
+	lsbs       []int16 // left side bearings when known (one per glyph); zero otherwise
+
+	// License information: OS/2 fsType (hasFSType is false without an OS/2
+	// table) and the copyright, trademark and license strings of the name table.
+	fsType    uint16
+	hasFSType bool
+	notices   []nameRecord
 }
 
+// nameRecord is one string of a name table.
+type nameRecord struct {
+	id   uint16
+	text string
+}
+
+// noticeNameIDs are the name table strings a rebuilt font carries over:
+// copyright, trademark, manufacturer, designer, vendor and designer URLs,
+// license description and license URL.
+var noticeNameIDs = []uint16{0, 7, 8, 9, 11, 12, 13, 14}
+
 func be16(b []byte, i int) uint16 {
-	if i+1 >= len(b) {
+	if i < 0 || i+1 >= len(b) {
 		return 0
 	}
 	return binary.BigEndian.Uint16(b[i:])
 }
 
 func be32(b []byte, i int) uint32 {
-	if i+3 >= len(b) {
+	if i < 0 || i+3 >= len(b) {
 		return 0
 	}
 	return binary.BigEndian.Uint32(b[i:])
@@ -96,11 +115,100 @@ func parseSFNT(data []byte) (*sfnt, error) {
 			for i := 0; i < nhm; i++ {
 				f.advances[i] = be16(hmtx, i*4)
 			}
+			if nhm > 0 && len(hmtx) >= nhm*4+(f.numGlyphs-nhm)*2 && nhm <= f.numGlyphs {
+				f.lsbs = make([]int16, f.numGlyphs)
+				for i := range f.lsbs {
+					if i < nhm {
+						f.lsbs[i] = int16(be16(hmtx, i*4+2))
+					} else {
+						f.lsbs[i] = int16(be16(hmtx, nhm*4+(i-nhm)*2))
+					}
+				}
+			}
 		}
+	}
+	if os2 := f.tables["OS/2"]; len(os2) >= 10 {
+		f.fsType, f.hasFSType = be16(os2, 8), true
 	}
 	f.parseCmap()
 	f.parsePost()
+	f.parseNotices()
 	return f, nil
+}
+
+// advance returns the advance width of a glyph (hmtx repeats the last one).
+func (f *sfnt) advance(gid int) uint16 {
+	switch {
+	case gid < len(f.advances):
+		return f.advances[gid]
+	case len(f.advances) > 0:
+		return f.advances[len(f.advances)-1]
+	}
+	return uint16(f.unitsPerEm / 2)
+}
+
+// parseNotices collects the copyright and license strings (English Windows
+// records first, then any Windows or Unicode record, then ASCII Mac records).
+func (f *sfnt) parseNotices() {
+	nt := f.tables["name"]
+	if len(nt) < 6 {
+		return
+	}
+	count, strOff := int(be16(nt, 2)), int(be16(nt, 4))
+	best := map[uint16]int{}
+	text := map[uint16]string{}
+	for i := 0; i < count; i++ {
+		rec := 6 + i*12
+		if rec+12 > len(nt) {
+			break
+		}
+		pid, lang, id := be16(nt, rec), be16(nt, rec+4), be16(nt, rec+6)
+		length, off := int(be16(nt, rec+8)), strOff+int(be16(nt, rec+10))
+		if off+length > len(nt) {
+			continue
+		}
+		keep := false
+		for _, want := range noticeNameIDs {
+			keep = keep || id == want
+		}
+		if !keep {
+			continue
+		}
+		raw := nt[off : off+length]
+		var s string
+		score := 0
+		switch pid {
+		case 0, 3:
+			u := make([]uint16, len(raw)/2)
+			for k := range u {
+				u[k] = be16(raw, k*2)
+			}
+			s = string(utf16.Decode(u))
+			score = 2
+			if pid == 3 && lang == 0x0409 {
+				score = 3
+			}
+		case 1:
+			ascii := true
+			for _, c := range raw {
+				ascii = ascii && c < 0x80
+			}
+			if !ascii {
+				continue
+			}
+			s, score = string(raw), 1
+		default:
+			continue
+		}
+		if s != "" && score > best[id] {
+			best[id], text[id] = score, s
+		}
+	}
+	for _, id := range noticeNameIDs {
+		if s, ok := text[id]; ok {
+			f.notices = append(f.notices, nameRecord{id, s})
+		}
+	}
 }
 
 func (f *sfnt) parseCmap() {
@@ -430,36 +538,51 @@ func buildCmapTable(m map[uint32]uint16) []byte {
 	return out
 }
 
-// buildNameTable writes a name table with the given family and style.
-func buildNameTable(family, style string) []byte {
+// buildNameTable writes a name table with the given family and style, plus
+// the notices (copyright, license …) carried over from the original font.
+func buildNameTable(family, style string, notices []nameRecord) []byte {
 	full := family
 	if style != "Regular" {
 		full += " " + style
 	}
-	recs := []struct {
+	recs := []nameRecord{{1, family}, {2, style}, {3, family + ";" + style}, {4, full}, {5, "Version 1.0"}, {6, sanitizePS(family + "-" + style)}}
+	for _, n := range notices {
+		if n.id < 1 || n.id > 6 {
+			recs = append(recs, n)
+		}
+	}
+	sort.SliceStable(recs, func(i, j int) bool { return recs[i].id < recs[j].id })
+	// String offsets are 16-bit: a notice that would not fit (a very long
+	// license text) is left out rather than corrupting the table.
+	type encoded struct {
 		id  uint16
-		val string
-	}{{1, family}, {2, style}, {3, family + ";" + style}, {4, full}, {5, "Version 1.0"}, {6, sanitizePS(family + "-" + style)}}
+		off int
+		u16 []byte
+	}
 	var strs []byte
-	out := make([]byte, 0)
-	out = binary.BigEndian.AppendUint16(out, 0)
-	out = binary.BigEndian.AppendUint16(out, uint16(len(recs)))
-	out = binary.BigEndian.AppendUint16(out, uint16(6+len(recs)*12))
+	var enc []encoded
 	for _, r := range recs {
 		var u16 []byte
-		for _, ch := range r.val {
-			if ch > 0xffff {
-				ch = '?'
-			}
-			u16 = binary.BigEndian.AppendUint16(u16, uint16(ch))
+		for _, ch := range utf16.Encode([]rune(r.text)) {
+			u16 = binary.BigEndian.AppendUint16(u16, ch)
 		}
+		if len(strs)+len(u16) > 0xffff {
+			continue
+		}
+		enc = append(enc, encoded{r.id, len(strs), u16})
+		strs = append(strs, u16...)
+	}
+	out := make([]byte, 0, 6+len(enc)*12+len(strs))
+	out = binary.BigEndian.AppendUint16(out, 0)
+	out = binary.BigEndian.AppendUint16(out, uint16(len(enc)))
+	out = binary.BigEndian.AppendUint16(out, uint16(6+len(enc)*12))
+	for _, e := range enc {
 		out = binary.BigEndian.AppendUint16(out, 3)
 		out = binary.BigEndian.AppendUint16(out, 1)
 		out = binary.BigEndian.AppendUint16(out, 0x0409)
-		out = binary.BigEndian.AppendUint16(out, r.id)
-		out = binary.BigEndian.AppendUint16(out, uint16(len(u16)))
-		out = binary.BigEndian.AppendUint16(out, uint16(len(strs)))
-		strs = append(strs, u16...)
+		out = binary.BigEndian.AppendUint16(out, e.id)
+		out = binary.BigEndian.AppendUint16(out, uint16(len(e.u16)))
+		out = binary.BigEndian.AppendUint16(out, uint16(e.off))
 	}
 	return append(out, strs...)
 }
@@ -479,12 +602,13 @@ func sanitizePS(s string) string {
 }
 
 // buildOS2Table writes a version 3 OS/2 table.
-func buildOS2Table(weight int, italic bool, ascent, descent int16, unitsPerEm int) []byte {
+func buildOS2Table(weight int, italic bool, ascent, descent int16, unitsPerEm int, fsType uint16) []byte {
 	b := make([]byte, 96)
 	binary.BigEndian.PutUint16(b[0:], 3)
 	binary.BigEndian.PutUint16(b[2:], uint16(unitsPerEm/2)) // xAvgCharWidth
 	binary.BigEndian.PutUint16(b[4:], uint16(weight))
 	binary.BigEndian.PutUint16(b[6:], 5) // usWidthClass normal
+	binary.BigEndian.PutUint16(b[8:], fsType)
 	// subscript/superscript metrics
 	em := uint16(unitsPerEm)
 	for i, v := range []uint16{em * 65 / 100, em * 60 / 100, 0, em * 75 / 1000 * 10 / 10, em * 65 / 100, em * 60 / 100, 0, em * 35 / 100, em * 5 / 100, em * 26 / 100} {
@@ -550,11 +674,15 @@ func buildHheaTable(ascent, descent int16, numHMetrics int, advanceMax uint16) [
 	return b
 }
 
-func buildHmtxTable(advances []uint16) []byte {
+func buildHmtxTable(advances []uint16, lsbs []int16) []byte {
 	b := make([]byte, 0, len(advances)*4)
-	for _, a := range advances {
+	for i, a := range advances {
 		b = binary.BigEndian.AppendUint16(b, a)
-		b = binary.BigEndian.AppendUint16(b, 0)
+		var lsb int16
+		if i < len(lsbs) {
+			lsb = lsbs[i]
+		}
+		b = binary.BigEndian.AppendUint16(b, uint16(lsb))
 	}
 	return b
 }
@@ -585,12 +713,26 @@ func buildMaxpTable(numGlyphs int, cff bool) []byte {
 	return b
 }
 
+// fontInfo is what the name and OS/2 tables of a rebuilt font say about it.
+type fontInfo struct {
+	family string
+	weight int
+	italic bool
+	// fsType is the embedding permission written to OS/2: the original
+	// font's, or Preview & Print when the original did not say (see license.go).
+	fsType uint16
+	// notices are the copyright and license strings of the original font.
+	notices []nameRecord
+}
+
 // rebuild produces a font program with a synthesized cmap (unicode → gid).
-// Existing glyph data, metrics and hinting tables are kept; cmap, name, OS/2
-// and post are replaced so the result is sanitizer-friendly.
-func (f *sfnt) rebuild(cmap map[uint32]uint16, family string, weight int, italic bool) []byte {
+// Existing glyph data, horizontal metrics and hinting tables are kept; cmap,
+// name, OS/2 and post are replaced so the result is sanitizer-friendly.
+// Vertical metrics are dropped: Canvas 2D only lays text out horizontally.
+func (f *sfnt) rebuild(cmap map[uint32]uint16, info fontInfo) []byte {
+	weight, italic := info.weight, info.italic
 	tables := map[string][]byte{}
-	keep := []string{"glyf", "loca", "head", "hhea", "hmtx", "maxp", "cvt ", "fpgm", "prep", "CFF ", "gasp", "vhea", "vmtx"}
+	keep := []string{"glyf", "loca", "head", "hhea", "hmtx", "maxp", "cvt ", "fpgm", "prep", "CFF ", "gasp"}
 	for _, t := range keep {
 		if b, ok := f.tables[t]; ok {
 			tables[t] = append([]byte(nil), b...)
@@ -627,7 +769,7 @@ func (f *sfnt) rebuild(cmap map[uint32]uint16, family string, weight int, italic
 			}
 		}
 		tables["hhea"] = buildHheaTable(ascent, descent, len(adv), uint16(f.unitsPerEm))
-		tables["hmtx"] = buildHmtxTable(adv)
+		tables["hmtx"] = buildHmtxTable(adv, f.lsbs)
 	}
 	if tables["maxp"] == nil {
 		tables["maxp"] = buildMaxpTable(f.numGlyphs, f.isCFF)
@@ -642,8 +784,8 @@ func (f *sfnt) rebuild(cmap map[uint32]uint16, family string, weight int, italic
 		style = "Italic"
 	}
 	tables["cmap"] = buildCmapTable(cmap)
-	tables["name"] = buildNameTable(family, style)
-	tables["OS/2"] = buildOS2Table(weight, italic, ascent, descent, f.unitsPerEm)
+	tables["name"] = buildNameTable(info.family, style, info.notices)
+	tables["OS/2"] = buildOS2Table(weight, italic, ascent, descent, f.unitsPerEm, info.fsType)
 	tables["post"] = buildPostTable()
 	return buildSFNT(tables, f.isCFF)
 }

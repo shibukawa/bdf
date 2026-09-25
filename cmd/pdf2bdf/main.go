@@ -16,7 +16,9 @@ func main() {
 	pages := flag.String("pages", "", "pages to convert, e.g. 1-3,5 (default: all)")
 	kind := flag.String("kind", "fixed", "view kind: fixed or flow")
 	quiet := flag.Bool("q", false, "do not print warnings")
-	noSubset := flag.Bool("no-subset", false, "keep unused glyphs of embedded TrueType fonts")
+	noSubset := flag.Bool("no-subset", false, "keep unused glyphs of embedded fonts")
+	noWOFF2 := flag.Bool("no-woff2", false, "store rebuilt fonts as TrueType/OpenType instead of WOFF2")
+	ignoreFSType := flag.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
 	images := flag.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
 	quality := flag.Int("quality", 80, "lossy WebP quality (1-100)")
 	noShare := flag.Bool("no-share", false, "do not move the instruction prefix pages have in common into a shared object")
@@ -30,7 +32,7 @@ func main() {
 		os.Exit(2)
 	}
 	in, out := flag.Arg(0), flag.Arg(1)
-	opts := &pdf2bdf.Options{Title: *title, Kind: *kind, NoSubset: *noSubset, NoSharePrefix: *noShare}
+	opts := &pdf2bdf.Options{Title: *title, Kind: *kind, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType, NoSharePrefix: *noShare}
 	opts.Images = imgconv.Options{Quality: *quality}
 	switch *images {
 	case "keep":

@@ -150,16 +150,16 @@
   {
    "h": "2111522c0a6938872d5bfcdc5e45535f",
    "t": "font",
-   "enc": "identity",
-   "len": 40076,
+   "enc": "deflate-raw",
+   "len": 25418,
    "size": 40076,
    "off": 0
   },
   {
    "h": "b89210f5c3e7afbac0a73319144959c3",
    "t": "font",
-   "enc": "identity",
-   "len": 35464,
+   "enc": "deflate-raw",
+   "len": 23550,
    "size": 35464,
    "off": 0
   },

@@ -4,8 +4,10 @@ import "encoding/binary"
 
 // pruneGlyphs empties every TrueType glyph that is not in keep (plus the
 // components of kept composite glyphs and glyph 0). Glyph indices are left
-// unchanged so cmap, hmtx and post stay valid; the glyf table shrinks and
-// loca is rewritten.
+// unchanged so cmap, hmtx and post stay valid; the glyf table shrinks, loca
+// is rewritten and the metrics of dropped glyphs are zeroed. WOFF2 rebuilds
+// loca instead of storing it, and runs of empty glyphs and zero metrics
+// compress to almost nothing, so keeping the indices costs little.
 func (f *sfnt) pruneGlyphs(keep map[uint16]bool) {
 	glyf, loca, head := f.tables["glyf"], f.tables["loca"], f.tables["head"]
 	if glyf == nil || loca == nil || len(head) < 54 || f.numGlyphs == 0 {
@@ -92,6 +94,23 @@ func (f *sfnt) pruneGlyphs(keep map[uint16]bool) {
 		} else {
 			newLoca = binary.BigEndian.AppendUint16(newLoca, uint16(o/2))
 		}
+	}
+	if hmtx, hhea := f.tables["hmtx"], f.tables["hhea"]; hmtx != nil && len(hhea) >= 36 {
+		nhm := int(be16(hhea, 34))
+		zeroed := append([]byte(nil), hmtx...)
+		for g := 0; g < f.numGlyphs; g++ {
+			if needed[uint16(g)] {
+				continue
+			}
+			p, size := g*4, 4 // advance and lsb
+			if g >= nhm {
+				p, size = nhm*4+(g-nhm)*2, 2 // lsb only
+			}
+			if p+size <= len(zeroed) {
+				clear(zeroed[p : p+size])
+			}
+		}
+		f.tables["hmtx"] = zeroed
 	}
 	newHead := append([]byte(nil), head...)
 	if useLong {

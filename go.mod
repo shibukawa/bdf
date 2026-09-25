@@ -3,6 +3,7 @@ module github.com/shibukawa/bdf
 go 1.27
 
 require (
+	github.com/andybalholm/brotli v1.2.5
 	github.com/pdfcpu/pdfcpu v0.11.0
 	golang.org/x/image v0.30.0
 )

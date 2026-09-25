@@ -19,7 +19,7 @@ jobs:
         env:
           GOEXPERIMENT: simd
       - name: build without image codecs (browser / tinygo profile)
-        run: go test -tags bdf_noconv ./imgconv/ ./pdf2bdf/
+        run: go test -tags bdf_noconv ./imgconv/ ./pdf2bdf/ ./woff2/
       - name: fixtures are up to date
         run: |
           go run ./cmd/bdf demo /tmp/demo.bdf
