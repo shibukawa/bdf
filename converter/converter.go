@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -80,9 +81,15 @@ type Options struct {
 	// The fonts of formats whose text the converter lays out (Office
 	// documents, metafiles):
 
+	// FontFS holds fonts (.ttf, .otf, .ttc and .otc files) that are not in
+	// the local file system, such as fonts embedded in the program or
+	// fetched over the network; it is searched before FontDirs. It is
+	// scanned on each conversion, reading the files with ReadAt when they
+	// have it, and the files of the faces used are then read whole.
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding them.
 	SystemFonts bool

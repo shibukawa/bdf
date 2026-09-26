@@ -5,10 +5,13 @@
 package fontdb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -33,6 +36,7 @@ type Face struct {
 	CFF    bool
 
 	names []string // normalized family names in every language
+	fsys  fs.FS    // the file system Path is in; nil for the local one
 
 	once   sync.Once
 	loaded *Loaded
@@ -71,14 +75,18 @@ func SystemDirs() []string {
 	}
 }
 
-// New scans dirs (and the system directories when system is true). Scans
-// of a directory are cached for the life of the process.
-func New(dirs []string, system bool) *DB {
+// New scans the fonts in fsys (when it is not nil), then those under dirs
+// and, when system is true, the system directories. Scans of a directory
+// are cached for the life of the process; fsys is scanned on every call.
+func New(fsys fs.FS, dirs []string, system bool) *DB {
 	all := append([]string(nil), dirs...)
 	if system {
 		all = append(all, SystemDirs()...)
 	}
 	db := &DB{byName: map[string][]*Face{}}
+	if fsys != nil {
+		db.Faces = scanFS(fsys)
+	}
 	seen := map[string]bool{}
 	for _, d := range all {
 		for _, f := range scanDir(d) {
@@ -98,6 +106,15 @@ func New(dirs []string, system bool) *DB {
 	return db
 }
 
+// isFontFile reports whether a file name extension is that of a font file.
+func isFontFile(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".ttf", ".otf", ".ttc", ".otc":
+		return true
+	}
+	return false
+}
+
 func scanDir(dir string) []*Face {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -110,14 +127,7 @@ func scanDir(dir string) []*Face {
 	}
 	var paths []string
 	filepath.WalkDir(abs, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		switch strings.ToLower(filepath.Ext(p)) {
-		case ".ttf", ".otf", ".ttc", ".otc":
+		if err == nil && !d.IsDir() && isFontFile(filepath.Ext(p)) {
 			paths = append(paths, p)
 		}
 		return nil
@@ -131,6 +141,42 @@ func scanDir(dir string) []*Face {
 	return faces
 }
 
+// scanFS is scanDir for the fonts of a file system other than the local
+// one (embedded in the program, or fetched). Its files are read with ReadAt
+// when they have it, so that only the tables scanFaces needs are read.
+func scanFS(fsys fs.FS) []*Face {
+	var paths []string
+	fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && isFontFile(path.Ext(p)) {
+			paths = append(paths, p)
+		}
+		return nil
+	})
+	sort.Strings(paths)
+	var faces []*Face
+	for _, p := range paths {
+		f, err := fsys.Open(p)
+		if err != nil {
+			continue
+		}
+		r, ok := f.(io.ReaderAt)
+		if !ok {
+			data, err := io.ReadAll(f)
+			if err != nil {
+				f.Close()
+				continue
+			}
+			r = bytes.NewReader(data)
+		}
+		for _, face := range scanFaces(r, p) {
+			face.fsys = fsys
+			faces = append(faces, face)
+		}
+		f.Close()
+	}
+	return faces
+}
+
 // scanFile reads the naming and style information of every face in a file
 // without loading the glyph data.
 func scanFile(path string) []*Face {
@@ -139,8 +185,13 @@ func scanFile(path string) []*Face {
 		return nil
 	}
 	defer f.Close()
+	return scanFaces(f, path)
+}
+
+// scanFaces is scanFile for a file opened as r.
+func scanFaces(r io.ReaderAt, path string) []*Face {
 	var hdr [12]byte
-	if _, err := f.ReadAt(hdr[:], 0); err != nil {
+	if _, err := r.ReadAt(hdr[:], 0); err != nil {
 		return nil
 	}
 	offsets := []int64{0}
@@ -150,7 +201,7 @@ func scanFile(path string) []*Face {
 			return nil
 		}
 		buf := make([]byte, 4*n)
-		if _, err := f.ReadAt(buf, 12); err != nil {
+		if _, err := r.ReadAt(buf, 12); err != nil {
 			return nil
 		}
 		offsets = offsets[:0]
@@ -160,7 +211,7 @@ func scanFile(path string) []*Face {
 	}
 	var out []*Face
 	for i, off := range offsets {
-		if face := scanFace(f, off); face != nil {
+		if face := scanFace(r, off); face != nil {
 			face.Path, face.Index = path, i
 			out = append(out, face)
 		}
@@ -362,7 +413,13 @@ var ErrNoGlyphs = errors.New("fontdb: font has no usable glyph data")
 // Load reads and parses the face's font program (once).
 func (f *Face) Load() (*Loaded, error) {
 	f.once.Do(func() {
-		data, err := os.ReadFile(f.Path)
+		var data []byte
+		var err error
+		if f.fsys != nil {
+			data, err = fs.ReadFile(f.fsys, f.Path)
+		} else {
+			data, err = os.ReadFile(f.Path)
+		}
 		if err != nil {
 			f.err = err
 			return

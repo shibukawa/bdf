@@ -26,7 +26,7 @@ func init() {
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool { return detect(head, r, size) },
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
 			opts := &Options{Charset: o.Param("charset"), TableStyle: o.Param("table"), Title: o.Title,
-				FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
+				FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
 				NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn}
 			if o.FileName != "" {
 				opts.Name = sheetName(o.FileName)

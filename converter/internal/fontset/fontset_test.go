@@ -14,7 +14,7 @@ const testFonts = "../../pptx/testdata/fonts"
 
 func TestEstimatedMetrics(t *testing.T) {
 	var warnings []string
-	s := New(fontdb.New(nil, false), func(msg string) { warnings = append(warnings, msg) })
+	s := New(fontdb.New(nil, nil, false), func(msg string) { warnings = append(warnings, msg) })
 	fc := s.FaceFor("Calibri", "ＭＳ 明朝", true, false, 'a')
 	if fc.Loaded != nil || fc.Use.Requested != "Calibri" || !fc.Use.Bold {
 		t.Errorf("choice = %+v", fc)
@@ -43,7 +43,7 @@ func TestEstimatedMetrics(t *testing.T) {
 
 func TestEmbed(t *testing.T) {
 	var warnings []string
-	s := New(fontdb.New([]string{testFonts}, false), func(msg string) { warnings = append(warnings, msg) })
+	s := New(fontdb.New(nil, []string{testFonts}, false), func(msg string) { warnings = append(warnings, msg) })
 	fc := s.FaceFor("M PLUS 1p", "", false, false, 'A')
 	if fc.Loaded == nil {
 		t.Fatal("test font not found")

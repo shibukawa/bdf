@@ -15,6 +15,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
@@ -40,9 +41,12 @@ type Options struct {
 	// Images controls whether raster images are re-encoded (see imgconv).
 	// The zero value keeps images as they are.
 	Images imgconv.Options
+	// FontFS holds fonts that are not in the local file system; it is
+	// searched before FontDirs (see converter.Options.FontFS).
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding the
 	// fonts used for layout. Viewers then substitute their own fonts; the
@@ -214,7 +218,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 func newConverter(p *ooxml.Package, opts *Options) *converter {
 	c := &converter{pkg: p, opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{}, patterns: map[string]bdf.Hash{},
 		parsed: map[string]*worksheet{}, chartsFilled: map[string]bool{}}
-	db := fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
+	db := fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
 	c.fonts = fontset.New(db, func(msg string) { c.warnf("%s", msg) })
 	c.cvs = canvas.NewBuilder(c.doc, c.fonts)
 	if len(db.Faces) == 0 && !opts.SystemFonts {

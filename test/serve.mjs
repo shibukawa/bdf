@@ -6,6 +6,7 @@ import { join, extname, normalize } from "node:path";
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".map": "application/json",
   ".json": "application/json", ".png": "image/png", ".bdf": "application/octet-stream", ".css": "text/css", ".ts": "text/plain",
+  ".wasm": "application/wasm", ".ttf": "font/ttf", ".otf": "font/otf", ".ttc": "font/collection", ".otc": "font/collection",
 };
 
 export function serve(root, port = 0) {

@@ -15,6 +15,7 @@ package csv
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,9 +61,12 @@ type Options struct {
 	TableStyle string
 	// Title sets the document title.
 	Title string
+	// FontFS holds fonts that are not in the local file system; it is
+	// searched before FontDirs (see converter.Options.FontFS).
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding the
 	// fonts used for layout.
@@ -216,7 +220,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if res.Header {
 		g.HeaderRows = 1
 	}
-	xr, err := xlsx.ConvertGrid(g, &xlsx.Options{Title: opts.Title, FontDirs: opts.FontDirs, NoSystemFonts: opts.NoSystemFonts,
+	xr, err := xlsx.ConvertGrid(g, &xlsx.Options{Title: opts.Title, FontFS: opts.FontFS, FontDirs: opts.FontDirs, NoSystemFonts: opts.NoSystemFonts,
 		SystemFonts: opts.SystemFonts, NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2, IgnoreFSType: opts.IgnoreFSType,
 		NoTextIndex: opts.NoTextIndex, Warn: opts.Warn})
 	if err != nil {
