@@ -143,32 +143,13 @@ func (s *shape) textRotation(t textProps) float64 {
 	return rot
 }
 
-// labelBounds lets the shape adjust the label rectangle (mxShape.getLabelBounds).
-func (s *shape) labelBounds(r rect, textInverted bool) rect {
+// labelBounds lets the shape adjust the label rectangle
+// (mxShape.getLabelBounds or the shape's override).
+func (s *shape) labelBounds(r rect) rect {
 	if s.def.labelBounds != nil {
 		return s.def.labelBounds(s, r)
 	}
-	d := s.style.get("direction", "east")
-	b := r
-	if d != "south" && d != "north" && textInverted {
-		b.w, b.h = b.h, b.w
-	}
-	var m *rect
-	if s.stencil != nil {
-		m = s.stencil.labelMargins(s, b)
-	}
-	if m == nil && s.def.labelMargins != nil {
-		m = s.def.labelMargins(s, b)
-	}
-	if m == nil {
-		return r
-	}
-	flipH, flipV := s.style.is("flipH"), s.style.is("flipV")
-	if textInverted {
-		m.x, m.y, m.w, m.h = m.h, m.x, m.y, m.w
-		flipH, flipV = flipV, flipH
-	}
-	return directedBounds(r, *m, s.style, flipH, flipV)
+	return shapeLabelBounds(s, r)
 }
 
 // layoutLabel lays out the label of a cell; nil when it has none.
@@ -216,7 +197,7 @@ func (c *converter) layoutLabel(st *cellState, s *shape) *labelBox {
 	hpos := st.style.get("labelPosition", "center")
 	vpos := st.style.get("verticalLabelPosition", "middle")
 	if hpos == "center" && vpos == "middle" {
-		b = s.labelBounds(b, inverted)
+		b = s.labelBounds(b)
 	}
 	lw, hasLW := st.style["labelWidth"]
 	if hasLW {

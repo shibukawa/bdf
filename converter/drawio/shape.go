@@ -24,8 +24,9 @@ type shapeDef struct {
 	paintForeground func(s *shape, c *c2d, x, y, w, h float64)
 	// paintEdge paints an edge through its points (mxShape.paintEdgeShape).
 	paintEdge func(s *shape, c *c2d, pts []point)
-	// labelBounds adjusts the label rectangle (mxShape.getLabelBounds,
-	// after getLabelMargins); nil keeps it.
+	// labelBounds adjusts the label rectangle for shapes that override
+	// mxShape.getLabelBounds; nil means mxShape.getLabelBounds itself,
+	// which is shapeLabelBounds (labelMargins turned for the direction).
 	labelBounds func(s *shape, r rect) rect
 	// labelMargins returns the insets of the label rectangle
 	// (mxShape.getLabelMargins, as left, top, right, bottom); nil for none.
@@ -37,6 +38,10 @@ type shapeDef struct {
 	noRotation bool
 	// roundable marks shapes the rounded style applies to.
 	roundable bool
+	// augmentBounds grows r, a rectangle around what the shape paints, for
+	// parts drawn outside the bounds or wider than the stroke
+	// (augmentBoundingBox, getShapeBoundingBox); nil keeps it.
+	augmentBounds func(s *shape, r rect) rect
 }
 
 var shapeRegistry = map[string]*shapeDef{}
@@ -153,6 +158,7 @@ func (s *shape) apply() {
 	s.isDashed = st.is("dashed")
 	s.isRounded = st.is("rounded")
 	s.glass = st.is("glass")
+	s.resolveColors()
 }
 
 func colorOrNone(v string) string {
@@ -344,7 +350,7 @@ func (s *shape) paintExtent() rect {
 		if m == 0 {
 			m = defaultMarkerSize
 		}
-		return r.grow(2*m + 2*s.strokewidth + 20)
+		return s.augmented(r).grow(2*m + 2*s.strokewidth + 20)
 	}
 	r = s.bounds
 	if rot := s.shapeRotation(); rot != 0 {
@@ -352,7 +358,15 @@ func (s *shape) paintExtent() rect {
 		d := math.Hypot(r.w, r.h) / 2
 		r = rect{r.cx() - d, r.cy() - d, 2 * d, 2 * d}
 	}
-	return r.grow(2*s.strokewidth + 10)
+	return s.augmented(r).grow(2*s.strokewidth + 10)
+}
+
+// augmented applies the shape's augmentBounds to r.
+func (s *shape) augmented(r rect) rect {
+	if s.def.augmentBounds != nil {
+		return s.def.augmentBounds(s, r)
+	}
+	return r
 }
 
 // addPoints adds a polyline with optional rounded corners to the path

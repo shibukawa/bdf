@@ -24,14 +24,7 @@ func init() {
 		labelBounds: rectangleLabelBounds,
 		roundable:   true,
 	})
-	registerShape("ellipse", &shapeDef{paintVertex: func(s *shape, c *c2d, x, y, w, h float64) {
-		c.ellipse(x, y, w, h)
-		c.fillAndStroke()
-		paintEllipseCenter(s, c, x, y, w, h)
-		if s.glass && s.fill != "" {
-			s.paintGlassEffect(c, x, y, w, h, 0)
-		}
-	}})
+	registerShape("ellipse", &shapeDef{paintVertex: paintEllipseShape})
 	registerShape("doubleEllipse", &shapeDef{
 		paintBackground: func(s *shape, c *c2d, x, y, w, h float64) {
 			c.ellipse(x, y, w, h)
@@ -45,44 +38,19 @@ func init() {
 			}
 			c.stroke()
 		},
-		labelBounds: func(s *shape, r rect) rect {
-			m := s.style.num("margin", math.Min(3+s.strokewidth, math.Min(r.w/5, r.h/5)))
-			return rect{r.x + m, r.y + m, r.w - 2*m, r.h - 2*m}
-		},
+		labelBounds: doubleEllipseLabelBounds,
 	})
 	registerShape("rhombus", &shapeDef{
-		paintVertex: func(s *shape, c *c2d, x, y, w, h float64) {
-			paintRhombus(s, c, x, y, w, h)
-			if s.style.is("double") {
-				m := math.Max(2, s.strokewidth+1)*2 + s.style.num("margin", 0)
-				if w-2*m > 0 && h-2*m > 0 {
-					paintRhombus(s, c, x+m, y+m, w-2*m, h-2*m)
-				}
-			}
-			if s.glass && s.fill != "" {
-				s.paintGlassEffect(c, x, y, w, h, 0)
-			}
-		},
-		labelBounds: func(s *shape, r rect) rect {
-			if s.style.is("double") {
-				m := math.Max(2, s.strokewidth+1)*2 + s.style.num("margin", 0)
-				return rect{r.x + m, r.y + m, r.w - 2*m, r.h - 2*m}
-			}
-			return r
-		},
-		roundable: true,
+		paintVertex: paintRhombusShape,
+		labelBounds: rhombusLabelBounds,
+		roundable:   true,
 	})
+	// mxLine.vertical is only set by its constructor, never from the style
 	registerShape("line", &shapeDef{paintVertex: func(s *shape, c *c2d, x, y, w, h float64) {
 		c.begin()
-		if s.style.is("vertical") {
-			mid := x + w/2
-			c.moveTo(mid, y)
-			c.lineTo(mid, y+h)
-		} else {
-			mid := y + h/2
-			c.moveTo(x, mid)
-			c.lineTo(x+w, mid)
-		}
+		mid := y + h/2
+		c.moveTo(x, mid)
+		c.lineTo(x+w, mid)
 		c.stroke()
 	}})
 	registerShape("image", &shapeDef{paintVertex: paintImageShape, roundable: true})
@@ -121,13 +89,7 @@ func init() {
 			cylinderPath(s, c, w, h, true)
 			c.stroke()
 		},
-		labelMargins: func(s *shape, r rect) *rect {
-			if s.style.is("boundedLbl") {
-				size := cylinderSize(s, r.h) * 2
-				return &rect{0, size, 0, 0}
-			}
-			return nil
-		},
+		labelMargins: cylinderLabelMargins,
 	})
 	registerShape("connector", &shapeDef{paintEdge: paintConnector, noRotation: true, noInvert: true, roundable: true})
 }
@@ -264,6 +226,73 @@ func paintRhombus(s *shape, c *c2d, x, y, w, h float64) {
 	c.fillAndStroke()
 }
 
+// paintEllipseShape paints an mxEllipse with draw.io's glass effect.
+func paintEllipseShape(s *shape, c *c2d, x, y, w, h float64) {
+	c.ellipse(x, y, w, h)
+	c.fillAndStroke()
+	paintEllipseCenter(s, c, x, y, w, h)
+	if s.glass && s.fill != "" {
+		paintGlassEffectPath(s, c, x, y, w, h, func(sw float64) {
+			// the top half of the ellipse, then a wave back through the middle
+			const kappa = 0.5522847498
+			rx, ry := w/2+sw, h/2+sw
+			cx, cy := x+w/2, y+h/2
+			c.moveTo(cx-rx, cy)
+			c.curveTo(cx-rx, cy-ry*kappa, cx-rx*kappa, cy-ry, cx, cy-ry)
+			c.curveTo(cx+rx*kappa, cy-ry, cx+rx, cy-ry*kappa, cx+rx, cy)
+			c.quadTo(cx, cy+h*0.2, cx-rx, cy)
+		})
+	}
+}
+
+// rhombusMargin is the inset of the inner rhombus of double=1.
+func rhombusMargin(s *shape) float64 {
+	return math.Max(2, s.strokewidth+1)*2 + s.style.num("margin", 0)
+}
+
+// paintRhombusShape paints an mxRhombus with draw.io's double and glass styles.
+func paintRhombusShape(s *shape, c *c2d, x, y, w, h float64) {
+	paintRhombus(s, c, x, y, w, h)
+	if s.style.num("double", 0) == 1 {
+		m := rhombusMargin(s)
+		if w-2*m > 0 && h-2*m > 0 {
+			paintRhombus(s, c, x+m, y+m, w-2*m, h-2*m)
+		}
+	}
+	if s.glass && s.fill != "" {
+		paintGlassEffectPath(s, c, x, y, w, h, func(sw float64) {
+			hw, hh := w/2, h/2
+			s.addPoints(c, []point{{x, y + hh}, {x + hw, y}, {x + w, y + hh}}, s.isRounded, s.style.num("arcSize", lineArcSize)/2, false, nil, true)
+			c.quadTo(x+hw, y+h*0.7, x, y+hh)
+		})
+	}
+}
+
+func rhombusLabelBounds(s *shape, r rect) rect {
+	if s.style.num("double", 0) == 1 {
+		m := rhombusMargin(s)
+		return rect{r.x + m, r.y + m, r.w - 2*m, r.h - 2*m}
+	}
+	return r
+}
+
+func doubleEllipseLabelBounds(s *shape, r rect) rect {
+	m := s.style.num("margin", math.Min(3+s.strokewidth, math.Min(r.w/5, r.h/5)))
+	return rect{r.x + m, r.y + m, r.w - 2*m, r.h - 2*m}
+}
+
+// paintGlassEffectPath is mxShape.paintGlassEffect with the highlight path
+// of a shape other than the rectangle (draw.io's paintGlassEffectPath of
+// mxEllipse and mxRhombus).
+func paintGlassEffectPath(s *shape, c *c2d, x, y, w, h float64, path func(sw float64)) {
+	sw := math.Ceil(s.strokewidth / 2)
+	c.setGradient("#ffffff", "#ffffff", x, y, w, h*0.6, "south", 0.9, 0.1)
+	c.begin()
+	path(sw)
+	c.close()
+	c.fill()
+}
+
 // paintImageShape draws an image shape (mxImageShape.paintVertexShape).
 func paintImageShape(s *shape, c *c2d, x, y, w, h float64) {
 	src := s.style.get("image", "")
@@ -310,14 +339,15 @@ func paintImageShape(s *shape, c *c2d, x, y, w, h float64) {
 }
 
 // cylinderSize is the height of the cylinder's top ellipse (mxCylinder.getCylinderSize,
-// as draw.io changes it: the size style, else a fifth of the height up to 40).
+// as draw.io changes it: the size style as a fraction of the height, else a
+// fifth of the height up to maxHeight).
 func cylinderSize(s *shape, h float64) float64 {
 	if v, ok := s.style["size"]; ok {
 		if f, ok := parseFloat(v); ok {
-			return f
+			return h * clamp(f, 0, 1)
 		}
 	}
-	return math.Min(40, math.Round(h/5))
+	return math.Min(cylinderMaxHeight, jsRound(h/5))
 }
 
 func cylinderPath(s *shape, c *c2d, w, h float64, foreground bool) {

@@ -736,7 +736,14 @@ func calloutPerimeter(bounds rect, vertex *cellState, next point, orthogonal boo
 // bottom as x, y, w and h), turned and flipped with the style's direction
 // and flips (mxUtils.getDirectedBounds).
 func directedBounds(r rect, m rect, s style, flipH, flipV bool) rect {
-	d := s.get("direction", "east")
+	return directedBoundsDir(r, m, s.get("direction", "east"), flipH, flipV)
+}
+
+// directedBoundsDir is directedBounds for a direction ("" is east).
+func directedBoundsDir(r rect, m rect, d string, flipH, flipV bool) rect {
+	if d == "" {
+		d = "east"
+	}
 	m.x = jsRound(math.Max(0, math.Min(r.w, m.x)))
 	m.y = jsRound(math.Max(0, math.Min(r.h, m.y)))
 	m.w = jsRound(math.Max(0, math.Min(r.w, m.w)))
