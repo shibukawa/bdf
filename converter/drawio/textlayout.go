@@ -87,7 +87,7 @@ type tline struct {
 	items    []titem
 	first    bool    // first line of its paragraph
 	hardPrev bool    // the previous line ended with a forced break
-	cjkWrap  bool    // wrapped between East Asian characters (no separator)
+	cjkWrap  bool    // the previous line wrapped between East Asian characters (no separator)
 	x        float64 // left of the line in the content box
 	width    float64
 	top      float64
@@ -740,7 +740,10 @@ func breakLines(p *tpara, width float64) []*tline {
 	var lines []*tline
 	items := p.items
 	start := 0
-	hardPrev := false
+	hardPrev, cjkPrev := false, false
+	// emit ends a line before end; hard and cjk say how the next line
+	// follows it (after a forced break, or a wrap between East Asian
+	// characters).
 	emit := func(end int, cjk bool, hard bool) {
 		seg := items[start:end]
 		// drop leading and trailing collapsible spaces and the break itself
@@ -750,12 +753,12 @@ func breakLines(p *tpara, width float64) []*tline {
 		for len(seg) > 0 && (seg[len(seg)-1].space || seg[len(seg)-1].hard) {
 			seg = seg[:len(seg)-1]
 		}
-		ln := &tline{items: seg, cjkWrap: cjk, hardPrev: hardPrev}
+		ln := &tline{items: seg, cjkWrap: cjkPrev, hardPrev: hardPrev}
 		for _, it := range seg {
 			ln.width += it.w
 		}
 		lines = append(lines, ln)
-		hardPrev = hard
+		hardPrev, cjkPrev = hard, cjk
 	}
 	for start < len(items) {
 		x := 0.0

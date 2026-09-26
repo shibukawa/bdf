@@ -94,6 +94,18 @@ type converter struct {
 	pageShadow bool
 }
 
+func newConverter(opts *Options) *converter {
+	c := &converter{opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{},
+		faceRunes: map[*fontdb.Face]map[rune]bool{}, choices: map[resolveKey]*faceChoice{},
+		fallback: map[fallbackKey]*faceChoice{}, fallbackLists: map[fallbackListKey][]fontdb.Resolved{},
+		missing: map[rune]bool{}, images: map[string]*imageRef{}, viewOf: map[string]string{}}
+	c.db = fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
+	if len(c.db.Faces) == 0 && !opts.SystemFonts {
+		c.warnf("no fonts found; text is laid out with estimated metrics and not embedded")
+	}
+	return c
+}
+
 // ConvertFile converts a .drawio (or .drawio.svg, .drawio.png, .xml) file.
 func ConvertFile(path string, opts *Options) (*Result, error) {
 	data, err := os.ReadFile(path)
@@ -112,14 +124,7 @@ func Convert(data []byte, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("drawio: %w", err)
 	}
-	c := &converter{opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{},
-		faceRunes: map[*fontdb.Face]map[rune]bool{}, choices: map[resolveKey]*faceChoice{},
-		fallback: map[fallbackKey]*faceChoice{}, fallbackLists: map[fallbackListKey][]fontdb.Resolved{},
-		missing: map[rune]bool{}, images: map[string]*imageRef{}, viewOf: map[string]string{}}
-	c.db = fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
-	if len(c.db.Faces) == 0 && !opts.SystemFonts {
-		c.warnf("no fonts found; text is laid out with estimated metrics and not embedded")
-	}
+	c := newConverter(opts)
 	c.doc.Meta.Source = "drawio"
 	if opts.Title != "" {
 		c.doc.Meta.DC.Title = bdf.DCValues{opts.Title}

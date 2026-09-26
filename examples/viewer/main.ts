@@ -1,7 +1,7 @@
 // Demo viewer: everything is decoded and rendered in a worker; the main thread
 // only places bitmaps and a selectable, accessible text layer.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
-import { BdfWorkerClient, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type TextLayerOptions } from "@bdf/render";
+import { BdfWorkerClient, buildTextLayer, installCopyHandler, internalLink, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type TextLayerOptions } from "@bdf/render";
 
 const params = new URLSearchParams(location.search);
 const src = params.get("src") ?? "/testdata/demo.bdf";
@@ -40,12 +40,24 @@ document.head.appendChild(style);
 // breaks) on the clipboard, across pages.
 installCopyHandler(stage);
 
-// Links to a page ("#page=N") scroll there and move the focus to it.
+// Links to a page ("#page=N") scroll there and move the focus to it; links
+// to another view ("#view=ID", e.g. another page of a diagram) switch to it
+// like picking its sheet tab.
 stage.addEventListener("click", (e) => {
-  const a = (e.target as Element).closest(`a[${RUN_ATTR.page}]`);
+  const a = (e.target as Element).closest(`a[${RUN_ATTR.page}], a[${RUN_ATTR.view}]`);
   if (!a) return;
   e.preventDefault();
-  goToPage(Number(a.getAttribute(RUN_ATTR.page)) - 1);
+  const viewId = a.getAttribute(RUN_ATTR.view);
+  const page = a.hasAttribute(RUN_ATTR.page) ? Number(a.getAttribute(RUN_ATTR.page)) - 1 : undefined;
+  if (viewId !== null) {
+    const v = manifest.views.find((x) => x.id === viewId);
+    if (!v) return;
+    show(v);
+    focusTab(v);
+    if (page !== undefined) requestAnimationFrame(() => goToPage(page));
+    return;
+  }
+  if (page !== undefined) goToPage(page);
 });
 
 /** Text layer options: the document's language (the UI around it is English). */
@@ -86,9 +98,12 @@ async function main() {
   setStatus("loading…");
   manifest = await client.open(source);
   document.title = `${dcValues(manifest.meta?.dc?.title)[0] ?? "BDF"} – viewer`;
+  // One tab per view along the bottom, like the sheets of a spreadsheet
+  // (the pages of a diagram are views of their own).
   manifest.views.forEach((v, i) => {
     const b = document.createElement("button");
-    b.textContent = `${v.title ?? v.id} (${v.kind})`;
+    b.textContent = v.title || v.id;
+    b.title = `${v.title || v.id} (${v.kind}, ${describe(v)})`;
     b.onclick = () => show(v);
     b.id = `tab-${i}`;
     b.dataset.id = v.id;
@@ -98,16 +113,18 @@ async function main() {
   });
   // tablist keys: arrows, Home and End move to a view and show it
   tabs.onkeydown = (e) => {
-    const all = [...tabs.querySelectorAll<HTMLButtonElement>("[role=tab]")];
-    const i = all.findIndex((b) => b.dataset.id === current.id);
-    const keys: Record<string, number> = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: all.length - 1 };
+    const i = manifest.views.indexOf(current);
+    const n = manifest.views.length;
+    const keys: Record<string, number> = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: n - 1 };
     const to = keys[e.key];
     if (to === undefined) return;
     e.preventDefault();
-    const b = all[(to + all.length) % all.length];
-    b.focus();
-    show(manifest.views.find((v) => v.id === b.dataset.id)!);
+    const v = manifest.views[(to + n) % n];
+    show(v);
+    focusTab(v);
   };
+  $("prevView").onclick = () => step(-1);
+  $("nextView").onclick = () => step(1);
   const q = $<HTMLInputElement>("q");
   q.onkeydown = (e) => { if (e.key === "Enter") void runSearch(q.value, e.shiftKey ? -1 : 1); };
   q.oninput = () => { if (!q.value) void runSearch("", 0); };
@@ -121,7 +138,20 @@ async function main() {
     show(current);
   };
   continuousBox.onchange = () => show(current);
-  show(manifest.views[0]);
+  // "#view=ID" in the address shows that view first
+  const start = internalLink(location.hash);
+  show(manifest.views.find((v) => v.id === start?.view) ?? manifest.views[0]);
+}
+
+/** Show the view before or after the current one. */
+function step(delta: number) {
+  const i = manifest.views.indexOf(current) + delta;
+  if (i >= 0 && i < manifest.views.length) show(manifest.views[i]);
+}
+
+/** Move the keyboard focus to a view's tab. */
+function focusTab(v: View) {
+  tabs.querySelector<HTMLButtonElement>(`[role=tab][data-id="${CSS.escape(v.id)}"]`)?.focus();
 }
 
 function show(v: View) {
@@ -134,8 +164,16 @@ function show(v: View) {
     const selected = b.dataset.id === v.id;
     b.setAttribute("aria-selected", String(selected));
     b.tabIndex = selected ? 0 : -1;
-    if (selected) stage.setAttribute("aria-labelledby", b.id);
+    if (selected) {
+      stage.setAttribute("aria-labelledby", b.id);
+      b.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   }
+  const index = manifest.views.indexOf(v);
+  $<HTMLButtonElement>("prevView").disabled = index <= 0;
+  $<HTMLButtonElement>("nextView").disabled = index >= manifest.views.length - 1;
+  // keep the view in the address, so that reloading or sharing it comes back here
+  if (manifest.views.length > 1) history.replaceState(null, "", `#view=${encodeURIComponent(v.id)}`);
   $("modeBox").hidden = v.kind !== "flow";
   generation++;
   stage.onscroll = null;
@@ -176,7 +214,8 @@ function showPages(v: View) {
     el.className = "page";
     el.dataset.index = String(i);
     el.setAttribute("role", "group");
-    el.setAttribute("aria-label", `${noun} ${i + 1} of ${pagesOf.length}`);
+    // a view of one page (a diagram page) is named by its title
+    el.setAttribute("aria-label", pagesOf.length === 1 && v.title ? v.title : `${noun} ${i + 1} of ${pagesOf.length}`);
     el.tabIndex = -1; // target of page links
     el.style.width = `${p.w * zoom}px`;
     el.style.height = `${p.h * zoom}px`;
