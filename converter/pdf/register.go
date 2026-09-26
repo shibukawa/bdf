@@ -15,6 +15,7 @@ func init() {
 		Extensions:  []string{".pdf"},
 		Params: []conv.Param{
 			{Name: "kind", Usage: "view kind: fixed (default) or flow"},
+			{Name: "box", Usage: "page boundary: crop (default), media, bleed, trim or art"},
 			{Name: "no-share", Usage: "true: do not move the instruction prefix pages have in common into a shared object"},
 		},
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool {
@@ -29,7 +30,7 @@ func init() {
 			if err != nil {
 				return nil, fmt.Errorf("pdf: %w", err)
 			}
-			res, err := Convert(io.NewSectionReader(r, 0, size), &Options{Pages: o.Pages, Title: o.Title, Kind: o.Param("kind"),
+			res, err := Convert(io.NewSectionReader(r, 0, size), &Options{Pages: o.Pages, Title: o.Title, Kind: o.Param("kind"), Box: o.Param("box"),
 				NoTextIndex: o.NoTextIndex, NoSubset: o.NoSubset, NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType,
 				Images: o.Images, NoSharePrefix: noShare, Password: o.Password, Warn: o.Warn})
 			if err != nil {

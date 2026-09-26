@@ -9,6 +9,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/dxf"
 	_ "github.com/shibukawa/bdf/converter/emf"
 	_ "github.com/shibukawa/bdf/converter/pptx"
+	_ "github.com/shibukawa/bdf/converter/psd"
 	_ "github.com/shibukawa/bdf/converter/visio"
 	_ "github.com/shibukawa/bdf/converter/xlsx"
 )

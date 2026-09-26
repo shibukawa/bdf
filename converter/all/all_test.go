@@ -43,6 +43,12 @@ func TestDetect(t *testing.T) {
 		want string
 	}{
 		{"pdf", []byte("%PDF-1.7\n..."), "pdf"},
+		{"ai", []byte("%PDF-1.6\n1 0 obj\n<x:xmpmeta><illustrator:Type>Document</illustrator:Type>"), "ai"},
+		// A PDF saved by Illustrator is a PDF, even with Illustrator's data in it.
+		{"pdf from Illustrator", []byte("%PDF-1.6\n<xmp:CreatorTool>Adobe Illustrator 30.6</xmp:CreatorTool><illustrator:CreatorSubTool>"), "pdf"},
+		{"ai 8", []byte("%!PS-Adobe-3.0 \r%%Creator: Adobe Illustrator(R) 8.0\r"), "ai"},
+		{"psd", []byte("8BPS\x00\x01\x00\x00\x00\x00\x00\x00"), "psd"},
+		{"psb", []byte("8BPS\x00\x02\x00\x00\x00\x00\x00\x00"), "psd"},
 		{"pptx", pptx.Bytes(), "pptx"},
 		{"xlsx", xlsx.Bytes(), "xlsx"},
 		{"docx", docx.Bytes(), "docx"},

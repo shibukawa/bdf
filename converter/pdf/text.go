@@ -145,6 +145,23 @@ func (in *interp) showText(s []byte) {
 	}
 	h := nonZero(in.gs.hscale)
 	codes := f.decode(s)
+	if in.hidden > 0 {
+		// Hidden optional content: the glyphs are not drawn, but they still
+		// move the pen.
+		for _, g := range codes {
+			sp := in.gs.charSp
+			if g.nbytes == 1 && g.code == 32 {
+				sp += in.gs.wordSp
+			}
+			if f.vertical() {
+				w1, _, _ := f.vmetrics(g, f.width(g))
+				in.text.ty += w1*in.gs.size + sp
+			} else {
+				in.text.tx += (f.width(g)*in.gs.size + sp) * h
+			}
+		}
+		return
+	}
 	if f.vertical() {
 		in.showVertical(f, codes)
 		return

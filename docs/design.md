@@ -92,6 +92,8 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
   - **JPXDecode**（`converter/internal/jpx`、ITU-T T.800 Part 1）: 素のコードストリームと JP2/JPX のボックス（colr、pclr + cmap、cdef）。タイルとタイルパート、画像・タイルのオフセット、成分のサブサンプリング、5 つのプログレッション順と POC、プリシンクト、PPM/PPT、SOP/EPH、コードブロックのスタイルすべて、3 種の量子化、ROI（maxshift）、5/3 と 9/7 のウェーブレット、RCT/ICT。途中で切れたコードストリームは読めた分だけデコードする。色空間は画像辞書の `/ColorSpace` を優先し、なければ JP2 の colr（sRGB・グレー・sYCC・CMYK）か成分数で決める。`/SMaskInData` なら不透明度の成分をソフトマスクにする（`2` と cdef の乗算済みは戻す）。OpenJPEG の `opj_compress` で作った 169 通りの符号化（全プログレッション順、コードブロックの大きさとスタイル、プリシンクト、タイルとオフセット、ROI、多層、12/16 ビット、サブサンプリング）で `opj_decompress` と比べ、可逆は完全一致、9/7 は ±1 以内。9/7 の定数は規格どおり（OpenJPEG は 2/K の近似値を使うので 12/16 ビットの非可逆で最大 3 違う）。arm64 の積和の融合で結果が変わらないよう、9/7 と色変換では丸めを明示する。2000×1500 の非可逆で 0.12 秒程度。
   - **JBIG2Decode**（`converter/internal/jbig2`、ITU-T T.88）: PDF に埋め込まれた形（ファイルヘッダなしのシーケンシャル）と `/JBIG2Globals`。ジェネリック領域（算術符号のテンプレート 0〜3、AT 画素、TPGDON、MMR、長さ不明の即時領域）、リファインメント領域、シンボル辞書（算術・Huffman、リファインメント/集約、高さクラスの一括ビットマップ、カスタム Huffman 表）、テキスト領域（全参照角、転置、合成演算子、ストリップ）、パターン辞書とハーフトーン領域、ストライプで高さ不明のページ。MMR は読んだバイト数が要るので T.6 のデコーダも自前で持つ。フィルタの出力は 1 が白（JBIG2 の 1 は黒）なので反転して 1 ビットの画像として続きを通す（ImageMask にも使える）。テスト用の符号化器を書いて 24 通りのストリームを作り、Ghostscript（jbig2dec）と画素単位で一致することを確かめた（jbig2dec の不具合で読めない 4 通りは自前の参照描画と比べる）。A4 300dpi のテキストページで 5 ms 程度。
 - **注釈**: リンクは LINK 命令、外観ストリームは Form として描く。LINK の宛先は URI、`/GoTo`、明示・名前付きの宛先（`/Names /Dests` と旧式の `/Dests`）で、ページは変換したページの中の番号（`#page=N`）に直す。注釈は既定のユーザー空間にあるが、Chrome の内容はどの `q` にも入らない `cm` を残すので、注釈の前にそれを打ち消す変換を置く。
+- **オプショナルコンテンツ（レイヤー）**: `/OCProperties` の既定の設定（`/D` の `BaseState`・`ON`・`OFF`）で各グループの表示・非表示を決め、非表示のグループに属するものは描かない。BDF の文書には表示を切り替える仕組みがないので、ビューアが文書を開いたときに見える状態に固定する。対象は `BDC /OC` の marked content（OCG と、`/P` の方針や `/VE` の論理式を持つ OCMD）と、`/OC` を持つ XObject と注釈。非表示の中身でもグラフィックス状態とクリップは効き、テキストは描かずに送りだけ進める（PDF 32000-1 §8.11.3.2）。Illustrator は .ai の PDF 部分でレイヤーをこの形で書き、非表示のレイヤーも含める（§3.13）。`/Intent`、`/Usage` と `/AS` による自動の切り替え、印刷用の状態は見ない。
+- **ページの枠**: ページは既定でクロップボックス（ビューアが表示する範囲）。`-param box=media|bleed|trim|art`（`Options.Box`）でほかの枠にできる。ページがその枠を持たなければクロップボックスを使う。
 - **タグ付き PDF の構造**（読み上げ用、spec §7.8）: `/StructTreeRoot` の ParentTree（なければ `/K` と `/Pg`）で MCID から構造要素を引き、RoleMap で標準の型に直す。H1〜H6 は HEADING、P 類は PARAGRAPH、L / LI は LIST / LIST_ITEM、Table は TABLE、TH / TD は構造順に並べた格子から求めたセル参照（RowSpan / ColSpan、Scope）の CELL、Figure は `/Alt` の FIGURE、`/Lang` は LANG、カタログの `/Lang` は（文書情報に言語が無ければ）`meta.dc.language` にする。MARK は BDC では出さず、テキストの run の直前（と図に属する描画の直前）に、出力済みの構造との差分として出す。背景や罫線だけの MCID、Artifact、MCID の無い内容は構造を変えない。描画の順は変えないので、内容の順と構造の順が違う文書では構造が分かれることがある。タグの無い PDF では従来どおり marked content のタグ名から段落の区切りだけを推定する。
 - **ページをまたぐ共通プレフィックスの共有**: PDF はマスター（ヘッダ・ロゴ・フッタ）を各ページの内容ストリームに展開してしまうので、変換後の各ページ Object の先頭から一致するバイト列を切り出して共有 Object にする（`bdf.SharePrefixes`）。切れる位置は「深さ 0 の命令境界」に限る（SAVE/RESTORE と GROUP が釣り合っていて、それより前の深さ 0 に CLIP/SHADOW/FILTER がなく、直前が MARK でない）。共有部分は USE で呼ぶが USE は暗黙の save/restore を持つので、残り部分の先頭で切断時点の状態（正味の変換行列、最後に出力した塗り・線・アルファ・フォントなど）を書き直してから続きを出す。候補の鍵は命令列と参照リソース（Path、Paint、フォント、画像、子 Object）の内容の累積ハッシュで、同じ鍵を持つページの組を「(ページ数 − 1) × 切り出すバイト数」の大きい順に貪欲に採用する（3 ページで共有できる短い接頭辞を、2 ページだけで共有できる長い接頭辞より優先する）。512 バイト未満の接頭辞は Part のオーバーヘッドの方が大きいので共有しない。`-no-share` で無効化。
 - **ソフトマスク**（ExtGState の `/SMask`）: マスクが設定されてから最初の描画命令の前に GROUP_BEGIN を開き、マスクが変わるか、設定した深さの `Q` で閉じる。閉じる直前に MASK_BEGIN 〜 MASK_END（spec §7.6）でマスクのグループ XObject を、`gs` のときの CTM に戻して描く。`/S /Alpha` はアルファ、`/S /Luminosity` は `/BC` の色を背景にした輝度、`/TR` は 256 段の表にする（Chrome は `{1 exch sub}` で反転したマスクを使う）。グループの範囲はマスクの BBox とクリップの共通部分（マスクの外の値が 0 でないときはクリップだけ）。PDF では描画命令ごとにマスクが掛かるが、グループは同じ深さの描画をまとめて 1 回掛ける。重なった半透明の描画が同じマスクの下にあると違いが出るが、`q /GS gs … Do Q` の形（Chrome、Illustrator、Office など）では同じになる。より深い `q` の中でマスクが変わると外側のマスクも掛かったままになる。
@@ -186,7 +188,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 ## 3.5 入力形式の登録と EMF/WMF 変換器（converter/emf）
 
-入力形式は static plugin 方式で登録する。`converter` パッケージが形式の登録簿を持ち、各変換器のパッケージは `init` で `converter.Register` に名前・拡張子・判別関数・変換関数・形式固有のオプション（`Params`）を渡す。プログラムは import したパッケージの形式だけを扱えるので、PDF だけのサーバーは pptx やフォント処理をリンクせずに済む（全部なら `converter/all`）。`converter.Detect` は登録された形式の判別関数を名前順に試し（先頭 1 KiB と入力全体を渡す）、`converter.Options` は各形式に共通の設定（ページ指定、画像、フォント）と、名前で引く形式固有の設定（PDF の `kind`・`no-share`、PowerPoint の `hidden`、Word の `views`）を持つ。CLI の `bdf generate` はこの登録簿で形式を判別・選択し、`-h` で登録された形式とその `-param` を一覧する。各パッケージの `Convert` と `Options` はそのまま直接使える。
+入力形式は static plugin 方式で登録する。`converter` パッケージが形式の登録簿を持ち、各変換器のパッケージは `init` で `converter.Register` に名前・拡張子・判別関数・変換関数・形式固有のオプション（`Params`）を渡す。プログラムは import したパッケージの形式だけを扱えるので、PDF だけのサーバーは pptx やフォント処理をリンクせずに済む（全部なら `converter/all`）。`converter.Detect` は登録された形式の判別関数を名前順に試す（先頭 1 KiB と入力全体を渡す）。ほかの形式の特殊な場合である形式（PDF である Illustrator の .ai）は `Format.Refines` にその形式を書き、先に試される。`converter.Options` は各形式に共通の設定（ページ指定、画像、フォント）と、名前で引く形式固有の設定（PDF の `kind`・`box`・`no-share`、Illustrator の `box`、Photoshop の `artboards`、PowerPoint の `hidden`、Word の `views`）を持つ。CLI の `bdf generate` はこの登録簿で形式を判別・選択し、`-h` で登録された形式とその `-param` を一覧する。各パッケージの `Convert` と `Options` はそのまま直接使える。
 
 `converter/emf` は Windows メタファイル（.emf、.wmf）を 1 ページの文書にする。再生は Office 文書の中の図と同じ `converter/internal/metafile`（§3.4 の EMF/WMF）。ページの大きさは EMF ならヘッダーの frame（0.01 mm 単位）、placeable WMF なら範囲と 1 インチあたりの単位数から求め、単位の分からない WMF は 96 dpi のピクセルとみなす。EMF ヘッダーの説明文字列にある図の名前を題名にする。テキストは PowerPoint と同じくフォントを解決してレイアウトし、サブセットを埋め込む（`-font-dir`、`-fonts system` なども同じ）。
 
@@ -307,6 +309,28 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 テスト用の図面は `test/dxf/gen.py` が ezdxf で作る（`npm run test:dxf:gen`、要 ezdxf。ezdxf の固定のメタデータで書くので毎回同じファイルになる）。shapes.dxf は各種の図形・文字・寸法・ハッチング・ブロックを、layout.dxf は平面図と A3 のレイアウト（表題欄と縮尺の違う 2 つのビューポート、片方で凍結した画層）を、r12-sjis.dxf は Shift_JIS の R12 図面を持つ。shapes-bin.dxf は shapes.dxf のバイナリ形式で、Go のテストは両者が同じ Object になることを確かめる。変換結果は `testdata/dxf/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は、公開されている AutoCAD 2004 形式の図面（Shift_JIS の日本語、寸法、ブロック、マルチ引出線を含む）でも変換を確かめた。
 
+## 3.13 Illustrator → BDF 変換器（converter/ai）
+
+`converter/ai` は Illustrator 9 以降の .ai を読む。この .ai は PDF に Illustrator 独自のデータ（ページの `/PieceInfo /Illustrator` の下の非公開ストリーム。ネイティブ形式そのもので、新しい版は Zstandard で圧縮する）を添えたもので、「PDF 互換ファイルを作成」（既定でオン）で保存すると PDF 部分のページがアートボードになる。変換は PDF 部分を `converter/pdf` で描き、独自データは読まない。
+
+- **判別**: PDF としては、Illustrator から「Illustrator の編集機能を保持」で PDF に保存したファイル（同じ独自データを持つ）と区別がつかない。そこで .ai が先頭近くに書く XMP の `<illustrator:Type>Document</illustrator:Type>` で見分ける（PDF に保存したものには無い）。無ければ PDF として変換する。`Format.Refines` で PDF より先に判別する。
+- **アートボード = ページ**: ページのメディアボックス（とブリードボックス）は文書の裁ち落としを含み、トリムボックスがアートボードそのもの。既定ではトリムボックスをページにする（`-param box=bleed` で裁ち落としを含める）。ページの順は PDF のページの順（アートボードの順）。アートボードの名前は独自データにしかないので使わない（BDF のページは名前を持たない）。
+- **レイヤー**: Illustrator のレイヤーは PDF のオプショナルコンテンツ（レイヤーごとの OCG と `/OC /MCn BDC`）で、非表示のレイヤーは `/D /OFF` に入る。PDF 変換器がそれに従うので、非表示のレイヤーは描かれない（§3.1）。
+- **変換しないもの**: 「PDF 互換ファイルを作成」をオフにして保存したファイルの PDF 部分は、その旨を伝える 1 ページだけ（その文言で見分けて `ErrNoPDFContent`）。Illustrator 8 以前の PostScript ベースの .ai（`%!PS-Adobe` と `%%Creator: Adobe Illustrator`）も PDF を持たない（`ErrPostScript`）。どちらも独自データを解釈しないと描けないので、エラーにして保存し直してもらう。
+
+テスト用の .ai は `test/ai/gen.py` が Illustrator の書き方をまねた PDF を直接書いて作り（`npm run test:ai:gen`、標準ライブラリのみ）、変換結果は `testdata/ai/` に置いて golden テストで描画を比較する。開発中は Illustrator CC 2015 と 2024 で保存された実ファイルで、非表示のレイヤーが消えることと、描画が Ghostscript のトリムボックスでの描画（`-dUseTrimBox`）と合うことを確かめた。
+
+## 3.14 Photoshop → BDF 変換器（converter/psd）
+
+`converter/psd` は Photoshop の文書（.psd と、大きな文書の形式 .psb）を読み、Photoshop が合成した画像をページの画像にする。レイヤーの構造は BDF の命令に写さない。見た目は合成済みの画像で決まっており、テキストやベクトルのレイヤーも Photoshop が描いたピクセルとして持っているからである。
+
+- **ページ**: アートボードの無い文書はカンバス全体を 1 ページにする。大きさは解像度（画像リソース 1005）から求め、72 ppi なら 1 ピクセルが 1 pt。アートボード（レイヤーグループの追加情報 `artb`・`artd`・`abdd` の記述子にある `artboardRect`）のある文書は、表示されているアートボードごとに 1 ページにし、合成画像から切り出す。順はレイヤーパネルの下から（ファイルに記録された順で、ふつうは追加した順）。非表示のアートボードは合成画像に描かれていないので飛ばす。`-param artboards=false` でカンバス全体を 1 ページにする。
+- **合成画像**: 画像データ部（RAW、RLE、ZIP、予測付き ZIP）をチャンネルごとにデコードする。16 bit は 8 bit に、32 bit（リニア）は sRGB の曲線で 8 bit に、1 bit は白黒にする。CMYK（インクの量を反転して格納）はプロファイルを使わない単純な式で、Lab は D50 から sRGB に変換し、インデックスカラーはカラーテーブルと透明色のインデックス（画像リソース 1047）で、ダブルトーンとマルチチャンネルは最初のチャンネルをグレーとして描く。カラープロファイルは適用しない。レイヤー数が負のとき（16・32 bit では `Mt16`・`Mt32`・`Mtrn` があるとき）は最初の余分なチャンネルが合成画像の透明度で、色は白の上に合成して格納されているので元に戻す。
+- **合成画像がないとき**: 「互換性を優先」をオフにして保存したファイル（画像リソース 1057 の `hasRealMergedData` が 0）は合成画像を持たないので、変換器がレイヤーを合成し、警告を出す。描くのはピクセルレイヤー（テキストとスマートオブジェクトのレイヤーも描画済みのピクセルを持つ）とベタ塗りの塗りつぶしレイヤーで、不透明度、塗り、描画モード（W3C の合成とブレンド。ソフトライトは Photoshop の式）、レイヤーマスク（マスクチャンネルに描かれたベクトルマスクも）、クリッピングマスク、グループ（通過と分離）、アートボードの背景と切り抜きを扱う。調整レイヤー、レイヤー効果、グラデーションとパターンの塗りつぶし、マスクチャンネルに描かれていないベクトルマスクは描かず、警告する。
+- **メタデータ**: XMP（画像リソース 1060）の Dublin Core（`dc:title` など。`xmp:CreateDate`・`xmp:ModifyDate` は created・modified）を `meta.dc` にする（`converter/internal/xmp`）。
+
+テスト用の文書は `test/psd/gen.py` が Photoshop の書き方で直接書いて作る（`npm run test:psd:gen`、標準ライブラリのみ）。合成画像はスクリプトの中の小さな合成器で求め、Go のテストは合成画像が無いことにしたときの変換器の合成をそれと比べる。開発中は Photoshop などで保存された実ファイル（CMYK、グループ、クリッピングマスク、スマートオブジェクト、82 レイヤーのスプライトシートなど）で、変換器の合成が Photoshop の合成画像と各サンプル 2/255 以内で一致することを確かめた。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -387,6 +411,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
 9. **draw.io 直接変換**: ページごとの View とシートのような切り替え（実装済み、§3.11）。
 10. **CAD 図面**: DXF（実装済み、§3.12）。続けて JWW（Jw_cad）、SXF（電子納品の SFC と P21）、CGM を、共通の `converter/internal/cad` の上に作る。
+11. **Illustrator・Photoshop**: アートボードをページに（実装済み、§3.13・§3.14）。
 
 ## 9. リポジトリ構成（案）
 
@@ -400,6 +425,8 @@ bdf/
 ├── woff2/             TrueType/OpenType → WOFF2（glyf 変換と Brotli）
 ├── converter/         入力形式の登録（static plugin）、共通のオプション、形式の判別、ページ指定
 │   ├── pdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
+│   ├── ai/            Illustrator（.ai）→ BDF 変換器（PDF 部分を pdf で描く。testdata/ にテスト用 .ai）
+│   ├── psd/           Photoshop（.psd、.psb）→ BDF 変換器（testdata/ にテスト用文書）
 │   ├── pptx/          PowerPoint → BDF 変換器（testdata/ にテスト用デッキとフォント）
 │   ├── xlsx/          Excel → BDF 変換器（testdata/ にテスト用ブック。フォントは pptx のものを使う）
 │   ├── csv/           CSV・TSV → BDF 変換器（描画は xlsx。testdata/ にテスト用ファイル）
@@ -415,13 +442,13 @@ bdf/
 │                      フォント選択・計測・サブセット埋め込み。draw.io も使う）、canvas（組み立て中の Object。draw.io も使う）、
 │                      metafile（EMF/WMF の再生）、
 │                      暗号化された Office 文書を開く cfb（複合ファイル）と offcrypto（Agile / Standard 暗号化の復号）、
-│                      linebreak（行分割の規則）、CAD の変換器で共有する cad（図面をページに描く）
+│                      linebreak（行分割の規則）、CAD の変換器で共有する cad（図面をページに描く）、xmp（XMP の Dublin Core）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画（scroll View は連続描画）、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）とデモサイト（ブラウザ内変換）
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word・DXF の変換結果と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・Illustrator・Photoshop・PowerPoint・Excel・Visio・Word・DXF の変換結果と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

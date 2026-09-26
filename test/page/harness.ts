@@ -93,6 +93,15 @@ export const CASES: Case[] = [
   { name: "dxf-shapes-1", src: "/testdata/dxf/shapes.bdf", kind: "page", view: "model", page: 0, scale: 0.75 },
   { name: "dxf-layout-1", src: "/testdata/dxf/layout.bdf", kind: "page", view: "layout1", page: 0, scale: 0.75 },
   { name: "dxf-r12-sjis-1", src: "/testdata/dxf/r12-sjis.bdf", kind: "page", view: "model", page: 0, scale: 0.5 },
+  // Illustrator artboards (converter/ai): each page cut to its artboard, the hidden layer left out; see test/ai.
+  { name: "ai-artboards-1", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "ai-artboards-2", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "ai-artboards-3", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  // Photoshop composites (converter/psd): a 144 ppi document, and three artboards cut from a transparent canvas; see test/psd.
+  { name: "psd-layers-1", src: "/testdata/psd/layers.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "psd-artboards-1", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "psd-artboards-2", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "psd-artboards-3", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

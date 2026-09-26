@@ -41,6 +41,8 @@ const SAMPLES = [
   { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },
   { path: "converter/drawio/testdata/aws.drawio", label: "draw.io (AWS)" },
   { path: "converter/dxf/testdata/layout.dxf", label: "DXF (model space and a layout)" },
+  { path: "converter/ai/testdata/artboards.ai", label: "Illustrator (3 artboards)" },
+  { path: "converter/psd/testdata/artboards.psd", label: "Photoshop (3 artboards)" },
   { path: "testdata/demo.bdf", label: "bdf" },
 ];
 

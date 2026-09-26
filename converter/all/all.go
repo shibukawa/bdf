@@ -8,6 +8,7 @@
 package all
 
 import (
+	_ "github.com/shibukawa/bdf/converter/ai"     // Illustrator
 	_ "github.com/shibukawa/bdf/converter/csv"    // CSV and TSV
 	_ "github.com/shibukawa/bdf/converter/docx"   // Word
 	_ "github.com/shibukawa/bdf/converter/drawio" // draw.io
@@ -15,6 +16,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/emf"    // Windows metafiles
 	_ "github.com/shibukawa/bdf/converter/pdf"    // PDF
 	_ "github.com/shibukawa/bdf/converter/pptx"   // PowerPoint
+	_ "github.com/shibukawa/bdf/converter/psd"    // Photoshop
 	_ "github.com/shibukawa/bdf/converter/visio"  // Visio
 	_ "github.com/shibukawa/bdf/converter/xlsx"   // Excel
 )

@@ -160,6 +160,7 @@ type interp struct {
 	vrun       vertRun // vertical text being accumulated (vertical.go)
 	actual     *actualText
 	mcStack    []mcEntry
+	hidden     int // open marked-content sequences of hidden optional content
 	inText     bool
 	compat     int
 	type3Glyph bool
@@ -378,6 +379,10 @@ func (in *interp) endPath(fill bool, rule byte, stroke bool) {
 			added = true
 		}
 		return ref
+	}
+	if in.hidden > 0 {
+		// Hidden optional content paints nothing, but its clip still applies.
+		fill, stroke = false, false
 	}
 	if !in.pathEmpty {
 		if fill || stroke {
@@ -821,6 +826,9 @@ func (in *interp) exec(op string, args []types.Object) {
 	case "EMC":
 		if n := len(in.mcStack); n > 0 {
 			prev := in.curTarget()
+			if in.mcStack[n-1].hidden {
+				in.hidden--
+			}
 			in.mcStack = in.mcStack[:n-1]
 			in.actual = nil
 			for i := n - 2; i >= 0; i-- {
@@ -855,15 +863,22 @@ func (in *interp) markedContent(tag string, props types.Object) {
 	// unescaped their strings; named ones are resources parsed by pdfcpu.
 	d := p.dict(props)
 	text := func(o types.Object) string { return decodeText(literalBytes(o)) }
+	ref := props
 	if nm, ok := props.(types.Name); ok {
-		d, text = p.dict(p.dict(in.res["Properties"])[nm.Value()]), p.text
+		ref = p.dict(in.res["Properties"])[nm.Value()]
+		d, text = p.dict(ref), p.text
+	}
+	e := mcEntry{}
+	if tag == "OC" && !in.c.oc.visible(ref) {
+		in.flushRun()
+		e.hidden = true
+		in.hidden++
 	}
 	if in.c.tree == nil && blockTags[tag] {
 		// Untagged document: guess paragraphs from the tag names.
 		in.flushRun()
 		in.obj.Mark(bdf.MarkParagraph, tag)
 	}
-	e := mcEntry{}
 	if v, ok := d["ActualText"]; ok {
 		e.actual = &actualText{text: text(v)}
 		// The replacement applies to the glyphs that follow, which may span runs.
@@ -891,7 +906,7 @@ func (in *interp) doXObject(name string) {
 	}
 	ref := xd[name]
 	sd := p.stream(ref)
-	if sd == nil {
+	if sd == nil || in.hidden > 0 || !in.c.oc.visible(sd.Dict["OC"]) {
 		return
 	}
 	switch p.name(sd.Dict["Subtype"]) {
@@ -1013,7 +1028,7 @@ func (in *interp) drawForm(key string, sd *types.StreamDict, extra matrix) {
 func (in *interp) doShading(name string) {
 	p := in.c.pdf
 	shd := p.dict(in.res["Shading"])
-	if shd == nil {
+	if shd == nil || in.hidden > 0 {
 		return
 	}
 	sh := in.c.shadingFor(objKey(shd[name]), shd[name], in.res)
@@ -1246,6 +1261,9 @@ func (in *interp) inlineImage(l *lexer) {
 		length = lv
 	}
 	data := l.readInlineImageData(length)
+	if in.hidden > 0 {
+		return
+	}
 	if cso, ok := d["ColorSpace"]; ok {
 		d["ColorSpace"] = expandCSAbbrev(cso)
 	}
