@@ -80,7 +80,8 @@ type Options struct {
 	// it, or give a Fetch that limits what can be reached.
 	NoRemote bool
 	// Fetch loads an http: or https: URL; nil uses an HTTP client with a
-	// timeout and a size limit.
+	// timeout and a size limit. It is called for several images at the same
+	// time.
 	Fetch func(url string) ([]byte, error)
 
 	// The reader style:

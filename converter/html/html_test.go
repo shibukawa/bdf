@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/shibukawa/bdf"
@@ -241,12 +242,16 @@ func onePixel() []byte {
 }
 
 func TestImages(t *testing.T) {
+	// images are fetched several at a time
+	var mu sync.Mutex
 	var fetched []string
 	opts := testOptions()
 	opts.NoRemote = false
 	opts.Dir = "testdata"
 	opts.Fetch = func(u string) ([]byte, error) {
+		mu.Lock()
 		fetched = append(fetched, u)
+		mu.Unlock()
 		if strings.HasSuffix(u, "missing.png") {
 			return nil, errors.New("HTTP 404 Not Found")
 		}
