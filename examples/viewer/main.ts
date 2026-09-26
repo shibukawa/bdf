@@ -1,11 +1,22 @@
 // Demo viewer: everything is decoded and rendered in a worker; the main thread
-// only places bitmaps and a selectable, accessible text layer.
+// only places bitmaps and a selectable, accessible text layer. Files opened
+// or dropped on the page are converted into bdf in another worker, by the Go
+// converters built as wasm (examples/viewer/site.mjs builds them).
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
 import { BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type OpenSource, type TextLayerOptions } from "@bdf/render";
+import { ConverterClient, ConvertError, sniff, type Converted } from "./convert.js";
+
+/** The document shown when the URL has no ?src= (set by the build); "" shows the start page. */
+declare const DEFAULT_SRC: string;
 
 const params = new URLSearchParams(location.search);
-const src = params.get("src") ?? "/testdata/demo.bdf";
+const src = params.get("src") ?? DEFAULT_SRC;
 const client = new BdfWorkerClient(new Worker("./worker.js", { type: "module" }));
+/** The converter worker, started with the first file that needs converting. */
+let converter: ConverterClient | undefined;
+/** Converter modules, one for PDF and one for the Office formats, and the fonts the latter lay text out with. */
+const MODULES = { pdf: "bdf-pdf.wasm", office: "bdf-office.wasm" };
+const FONTS = "fonts/";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const stage = $<HTMLDivElement>("stage");
@@ -15,9 +26,12 @@ const continuousBox = $<HTMLInputElement>("continuous");
 const status = $<HTMLSpanElement>("status");
 const timing = $<HTMLSpanElement>("timing");
 const hitsBox = $<HTMLSpanElement>("hits");
+/** The start page (kept: the stage drops it when a document opens). */
+const landing = $<HTMLDivElement>("landing");
 
 let manifest: Manifest;
-let current: View;
+/** The view shown; undefined while no document is open. */
+let current: View | undefined;
 let zoom = 1;
 /** Bumped by show(): work started for an earlier view or zoom is dropped. */
 let generation = 0;
@@ -32,6 +46,9 @@ const dpr = () => window.devicePixelRatio || 1;
 function setStatus(s: string) { status.textContent = s; }
 /** Render timings: shown only, as they change on every scroll. */
 function setTiming(s: string) { timing.textContent = s; }
+const showError = (e: unknown) => setStatus(`error: ${(e as Error).message ?? e}`);
+/** A failure of work started for a view no longer shown is expected: its document may be gone. */
+const unlessStale = (gen: number) => (e: unknown) => { if (gen === generation) showError(e); };
 
 const style = document.createElement("style");
 style.textContent = TEXT_LAYER_CSS;
@@ -98,15 +115,18 @@ function askPassword(message: string, error: boolean): Promise<string | undefine
   });
 }
 
+/** Why a worker call failed, when it is about a password. */
+const errorCode = (e: unknown) => (e instanceof BdfWorkerError || e instanceof ConvertError ? e.code : undefined);
+
 /**
- * Open the document. An encrypted one stays locked in the worker while the
- * reader is asked for its password, as many times as it takes.
+ * Run first; when it needs a password, ask the reader for one and run retry
+ * with it, as many times as it takes. undefined when the reader cancels.
  */
-async function openDocument(source: OpenSource): Promise<Manifest | undefined> {
+async function withPassword<T>(first: () => Promise<T>, retry: (password: string) => Promise<T>, busy: string): Promise<T | undefined> {
   try {
-    return await client.open(source);
+    return await first();
   } catch (e) {
-    if (!(e instanceof BdfWorkerError) || e.code !== "password-required") throw e;
+    if (errorCode(e) !== "password-required") throw e;
   }
   let message = "This document is encrypted. Enter its password to open it.";
   let error = false;
@@ -114,27 +134,36 @@ async function openDocument(source: OpenSource): Promise<Manifest | undefined> {
     setStatus("encrypted document: waiting for the password");
     const password = await askPassword(message, error);
     if (password === undefined) return undefined;
-    setStatus("unlocking…");
+    setStatus(busy);
     try {
-      return await client.unlock(password);
+      return await retry(password);
     } catch (e) {
-      if (!(e instanceof BdfWorkerError) || e.code !== "wrong-password") throw e;
+      if (errorCode(e) !== "wrong-password") throw e;
       message = "Wrong password. Try again.";
       error = true;
     }
   }
 }
 
-async function main() {
-  const source: OpenSource = src.endsWith("/") ? { kind: "split", base: new URL(src, location.href).href } : { kind: "single", url: new URL(src, location.href).href, range: params.has("range") };
+/** Bumped by each open: a file opened while another is still loading wins. */
+let opening = 0;
+
+/**
+ * Open a document and show its first view. An encrypted one stays locked in
+ * the worker while the reader is asked for its password.
+ */
+async function load(source: OpenSource, name?: string, token = ++opening) {
+  closeDocument();
   setStatus("loading…");
-  const opened = await openDocument(source);
+  const opened = await withPassword(() => client.open(source), (password) => client.unlock(password), "unlocking…");
+  if (token !== opening) return;
   if (!opened) {
     setStatus("encrypted document: not opened");
     return;
   }
   manifest = opened;
-  document.title = `${dcValues(manifest.meta?.dc?.title)[0] ?? "BDF"} – viewer`;
+  document.title = `${dcValues(manifest.meta?.dc?.title)[0] ?? name ?? "BDF"} – viewer`;
+  $<HTMLInputElement>("q").value = "";
   manifest.views.forEach((v, i) => {
     const b = document.createElement("button");
     b.textContent = `${v.title ?? v.id} (${v.kind})`;
@@ -145,10 +174,133 @@ async function main() {
     b.setAttribute("aria-controls", stage.id);
     tabs.appendChild(b);
   });
+  show(manifest.views[0]);
+}
+
+/**
+ * Open a file: a bdf document as it is, anything else converted into one
+ * first (asking for the password of an encrypted file).
+ */
+async function openFile(name: string, data: ArrayBuffer) {
+  const token = ++opening;
+  closeDocument();
+  setWarnings([]);
+  setDownload();
+  setTiming("");
+  const kind = sniff(new Uint8Array(data, 0, Math.min(1024, data.byteLength)));
+  if (kind === "bdf") return load({ kind: "buffer", buffer: data }, name, token);
+  const busy = `converting ${name}…`;
+  setStatus(busy);
+  converter ??= new ConverterClient(new Worker("./convert-worker.js"));
+  const conv = converter;
+  const module = new URL(MODULES[kind], location.href).href;
+  const fonts = new URL(FONTS, location.href).href;
+  let t0 = 0; // of the last attempt: the reader's typing is not part of the conversion
+  const convert = (password?: string) => {
+    t0 = performance.now();
+    return conv.convert(module, data, { fonts, password });
+  };
+  let res: Converted | undefined;
+  try {
+    res = await withPassword(() => convert(), convert, busy);
+  } catch (e) {
+    if (errorCode(e) !== "unknown-format") throw e;
+    throw new Error(`${name} is not in a format this page converts`);
+  }
+  if (token !== opening) return;
+  if (!res) {
+    setStatus("encrypted file: not opened");
+    return;
+  }
+  const took = `${name} converted in ${(performance.now() - t0).toFixed(0)} ms: ${res.summary}`;
+  setDownload(res.bdf, name);
+  setWarnings(res.warnings);
+  await load({ kind: "buffer", buffer: res.bdf.buffer as ArrayBuffer }, name, token);
+  if (token === opening) setStatus(took);
+}
+
+/** Take down the document shown, before another one opens: work started for it is dropped. */
+function closeDocument() {
+  current = undefined;
+  generation++;
+  stage.onscroll = null;
+  stage.replaceChildren();
+  tabs.replaceChildren();
+  $("modeBox").hidden = true;
+  found.query = ""; found.hits = []; found.rects = []; found.index = -1; hitsBox.textContent = "";
+}
+
+/** A file that did not open leaves the start page, when no other document is open. */
+function openFailed(e: unknown) {
+  showError(e);
+  if (current || landing.isConnected) return;
+  landing.hidden = false;
+  stage.replaceChildren(landing);
+}
+
+/** Open a file the reader chose or dropped. */
+function openLocal(file: File) {
+  file.arrayBuffer().then((data) => openFile(file.name, data)).catch(openFailed);
+}
+
+let downloadURL: string | undefined;
+
+/** Offer the converted document for download (none when bdf is absent). */
+function setDownload(bdf?: Uint8Array, name = "") {
+  const a = $<HTMLAnchorElement>("download");
+  if (downloadURL) URL.revokeObjectURL(downloadURL);
+  downloadURL = undefined;
+  a.hidden = !bdf;
+  if (!bdf) return;
+  // the Blob copies the bytes, which then go to the worker
+  downloadURL = URL.createObjectURL(new Blob([bdf as BlobPart], { type: "application/octet-stream" }));
+  a.href = downloadURL;
+  a.download = `${name.replace(/\.[^.]*$/, "")}.bdf`;
+}
+
+/** The warnings of the conversion, in a disclosure next to the status. */
+function setWarnings(list: string[]) {
+  const box = $<HTMLDetailsElement>("warnings");
+  box.hidden = list.length === 0;
+  box.open = false;
+  box.querySelector("summary")!.textContent = `${list.length} ${list.length === 1 ? "warning" : "warnings"}`;
+  box.querySelector("ul")!.replaceChildren(...list.map((w) => {
+    const li = document.createElement("li");
+    li.textContent = w;
+    return li;
+  }));
+}
+
+/** The start page: a file picker, drag and drop, and the samples published with the page. */
+async function showLanding() {
+  landing.hidden = false;
+  setStatus("no document open");
+  const res = await fetch("samples/index.json").catch(() => undefined);
+  if (!res?.ok) return;
+  const samples = (await res.json()) as { name: string; label: string }[];
+  const box = landing.querySelector<HTMLDivElement>("#samples")!;
+  box.querySelector(".samples")!.replaceChildren(...samples.map((s) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = s.label;
+    b.title = s.name;
+    b.onclick = () => {
+      setStatus(`fetching ${s.name}…`);
+      fetch(`samples/${s.name}`)
+        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${s.name}: HTTP ${r.status}`))))
+        .then((data) => openFile(s.name, data))
+        .catch(openFailed);
+    };
+    return b;
+  }));
+  box.hidden = false;
+}
+
+function init() {
   // tablist keys: arrows, Home and End move to a view and show it
   tabs.onkeydown = (e) => {
     const all = [...tabs.querySelectorAll<HTMLButtonElement>("[role=tab]")];
-    const i = all.findIndex((b) => b.dataset.id === current.id);
+    const i = all.findIndex((b) => b.dataset.id === current?.id);
     const keys: Record<string, number> = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: all.length - 1 };
     const to = keys[e.key];
     if (to === undefined) return;
@@ -158,19 +310,55 @@ async function main() {
     show(manifest.views.find((v) => v.id === b.dataset.id)!);
   };
   const q = $<HTMLInputElement>("q");
-  q.onkeydown = (e) => { if (e.key === "Enter") void runSearch(q.value, e.shiftKey ? -1 : 1); };
-  q.oninput = () => { if (!q.value) void runSearch("", 0); };
-  $("next").onclick = () => void runSearch(q.value, 1);
-  $("prev").onclick = () => void runSearch(q.value, -1);
+  // nothing to search, zoom or lay out before a document is open
+  const search = (query: string, step: number) => { if (current) runSearch(query, step).catch(showError); };
+  q.onkeydown = (e) => { if (e.key === "Enter") search(q.value, e.shiftKey ? -1 : 1); };
+  q.oninput = () => { if (!q.value) search("", 0); };
+  $("next").onclick = () => search(q.value, 1);
+  $("prev").onclick = () => search(q.value, -1);
   zoomInput.oninput = () => {
     zoom = Number(zoomInput.value);
     const pct = `${Math.round(zoom * 100)}%`;
     $("zoomv").textContent = pct;
     zoomInput.setAttribute("aria-valuetext", pct);
-    show(current);
+    if (current) show(current);
   };
-  continuousBox.onchange = () => show(current);
-  show(manifest.views[0]);
+  continuousBox.onchange = () => { if (current) show(current); };
+
+  // files: the picker, and drag and drop anywhere on the page
+  const picker = $<HTMLInputElement>("file");
+  picker.onchange = () => {
+    const file = picker.files?.[0];
+    picker.value = "";
+    if (file) openLocal(file);
+  };
+  $("openFile").onclick = () => picker.click();
+  landing.querySelector<HTMLButtonElement>("#chooseFile")!.onclick = () => picker.click();
+  const carriesFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
+  let depth = 0; // dragenter and dragleave fire for every element crossed
+  const dragging = (on: boolean) => document.body.classList.toggle("dragging", on);
+  window.addEventListener("dragenter", (e) => { if (carriesFiles(e)) dragging(++depth > 0); });
+  window.addEventListener("dragleave", (e) => { if (carriesFiles(e)) dragging(--depth > 0); });
+  window.addEventListener("dragover", (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "copy";
+  });
+  window.addEventListener("drop", (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    depth = 0;
+    dragging(false);
+    const file = e.dataTransfer!.files[0];
+    if (file) openLocal(file);
+  });
+}
+
+function main() {
+  init();
+  if (!src) return showLanding();
+  const source: OpenSource = src.endsWith("/") ? { kind: "split", base: new URL(src, location.href).href } : { kind: "single", url: new URL(src, location.href).href, range: params.has("range") };
+  return load(source);
 }
 
 function show(v: View) {
@@ -218,8 +406,8 @@ function showPages(v: View) {
   list.className = "pages";
   const pagesOf = v.pages ?? [];
   const noun = manifest.meta?.source === "pptx" ? "Slide" : "Page";
-  const bitmaps = onNear(BITMAP_MARGIN, (el) => void renderPage(v, Number(el.dataset.index), el, gen));
-  const texts = onNear(TEXT_MARGIN, (el) => void renderText(v, Number(el.dataset.index), el, gen));
+  const bitmaps = onNear(BITMAP_MARGIN, (el) => renderPage(v, Number(el.dataset.index), el, gen).catch(unlessStale(gen)));
+  const texts = onNear(TEXT_MARGIN, (el) => renderText(v, Number(el.dataset.index), el, gen).catch(unlessStale(gen)));
   pagesOf.forEach((p, i) => {
     const el = document.createElement("div");
     el.className = "page";
@@ -253,6 +441,7 @@ async function renderText(v: View, index: number, el: HTMLDivElement, gen: numbe
 
 /** Follow a link to a page (0-based): scroll to it and focus it. */
 function goToPage(index: number) {
+  if (!current) return;
   if (current.kind === "flow" && continuousBox.checked) {
     const { top, band } = continuousPosition(current, index);
     stage.scrollTo({ top: top * zoom });
@@ -266,10 +455,15 @@ function goToPage(index: number) {
 
 /** Search: ask the worker for hits, locate them once, then highlight and step through them. */
 async function runSearch(query: string, step: number) {
+  const v = current;
+  if (!v) return;
   if (query !== found.query) {
     found.query = query;
-    found.hits = query ? await client.search(current.id, query, { limit: 500, context: 30 }) : [];
-    found.rects = found.hits.length ? await client.locate(current.id, found.hits) : [];
+    const hits = query ? await client.search(v.id, query, { limit: 500, context: 30 }) : [];
+    const rects = hits.length ? await client.locate(v.id, hits) : [];
+    if (v !== current) return;
+    found.hits = hits;
+    found.rects = rects;
     found.index = -1;
   }
   if (found.hits.length) found.index = (found.index + step + found.hits.length) % found.hits.length;
@@ -279,12 +473,12 @@ async function runSearch(query: string, step: number) {
     const old = el.querySelector(".hlLayer");
     if (old) old.replaceWith(highlightLayer(Number(el.dataset.index)));
   }
-  sheetViews.get(current)?.redraw();
+  sheetViews.get(v)?.redraw();
   // scroll to the current hit
   const rect = found.rects[found.index]?.[0];
   if (!rect) return;
-  if (current.kind === "sheet") {
-    sheetViews.get(current)?.reveal(rect);
+  if (v.kind === "sheet") {
+    sheetViews.get(v)?.reveal(rect);
   } else {
     const el = stage.querySelector<HTMLDivElement>(`.page[data-index="${rect.a}"]`);
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -300,7 +494,7 @@ function showHitCount(query: string) {
   if (!query) { hitsBox.textContent = ""; return; }
   if (!found.hits.length) { hitsBox.textContent = "no matches"; return; }
   const hit = found.hits[found.index];
-  const page = current.kind === "sheet" ? "" : `, page ${hit.segments[0].a + 1}`;
+  const page = current?.kind === "sheet" ? "" : `, page ${hit.segments[0].a + 1}`;
   const detail = document.createElement("span");
   detail.className = "sr-only";
   detail.textContent = `${page}: ${hit.context.replace(/ ⏎ /g, " ")}`;
@@ -360,10 +554,10 @@ function showContinuous(v: View) {
   };
   const bitmaps = onNear(BITMAP_MARGIN, (el) => {
     const vp = viewportOf(el);
-    void client.continuous(v.id, vp, zoom * dpr()).then((bmp) => (gen === generation ? placeBitmap(el, bmp, vp.w, vp.h) : bmp.close()));
+    client.continuous(v.id, vp, zoom * dpr()).then((bmp) => (gen === generation ? placeBitmap(el, bmp, vp.w, vp.h) : bmp.close())).catch(unlessStale(gen));
   });
   const texts = onNear(TEXT_MARGIN, (el) => {
-    void client.continuousContent(v.id, viewportOf(el)).then((c) => { if (gen === generation) el.append(buildTextLayer(c, zoom, layerOptions())); });
+    client.continuousContent(v.id, viewportOf(el)).then((c) => { if (gen === generation) el.append(buildTextLayer(c, zoom, layerOptions())); }).catch(unlessStale(gen));
   });
   for (let y = 0; y < height; y += BAND) {
     const el = document.createElement("div");
@@ -465,15 +659,17 @@ function showSheet(v: View) {
     const inside = covered && vp.x >= covered.x && vp.y >= covered.y && vp.x + vp.w <= covered.x + covered.w && vp.y + vp.h <= covered.y + covered.h;
     if (inside) return;
     clearTimeout(textTimer);
-    textTimer = setTimeout(async () => {
+    textTimer = setTimeout(() => {
+      if (gen !== generation) return;
       const region = { x: Math.max(0, vp.x - vp.w), y: Math.max(0, vp.y - vp.h), w: vp.w * 3, h: vp.h * 3 };
       // the frozen panes along the region
       const frozen = [{ x: region.x, y: 0, w: region.w, h: fh }, { x: 0, y: region.y, w: fw, h: region.h }, { x: 0, y: 0, w: fw, h: fh }];
-      const content: TextContent = await client.sheetContent(v.id, [region, ...frozen]);
-      if (gen !== generation) return;
-      covered = region;
-      const layer = buildTextLayer(content, zoom, { ...layerOptions(), sheet, onSpan: pin });
-      layerHost.replaceChildren(layer);
+      client.sheetContent(v.id, [region, ...frozen]).then((content: TextContent) => {
+        if (gen !== generation) return;
+        covered = region;
+        const layer = buildTextLayer(content, zoom, { ...layerOptions(), sheet, onSpan: pin });
+        layerHost.replaceChildren(layer);
+      }).catch(unlessStale(gen));
     }, 150);
   };
 
@@ -594,11 +790,12 @@ function showSheet(v: View) {
       });
     },
   });
-  stage.onscroll = () => { if (current === v) void draw(); };
+  const redraw = () => draw().catch(unlessStale(gen));
+  stage.onscroll = () => { if (current === v) redraw(); };
   // the visible region changes with the window too
-  const resize = new ResizeObserver(() => { if (current === v && gen === generation) void draw(); else resize.disconnect(); });
+  const resize = new ResizeObserver(() => { if (current === v && gen === generation) redraw(); else resize.disconnect(); });
   resize.observe(stage);
-  void draw();
+  redraw();
 }
 
-main().catch((e) => setStatus(`error: ${e.message ?? e}`));
+main().catch(showError);

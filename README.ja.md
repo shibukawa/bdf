@@ -6,6 +6,8 @@
 
 Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
 
+**デモ**: <https://shibukawa.github.io/bdf/>。PDF、PowerPoint、Excel、Visio のファイルや Windows メタファイルをページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。
+
 ## 処理の流れ
 
 ```mermaid
@@ -24,7 +26,7 @@ flowchart TB
         subgraph CWORKER["変換 Worker（wasm）"]
             WCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/visio"]
         end
-        PARTS["bdf の Part<br/>（ばらばらのまま）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
+        PARTS["bdf 文書<br/>（メモリ上）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
         subgraph RWORKER["レンダラ Worker"]
             LOADER["ローダ<br/>fetch・Range<br/>DecompressionStream"]
             STORE["Part キャッシュ"]
@@ -41,7 +43,7 @@ flowchart TB
     SRC -- "① サーバーで変換" --> SCONV
     SRC -- "② ブラウザ内で変換" --> WCONV
     BUNDLE -- "1 ファイル形式 / 分割形式<br/>HTTP・CDN" --> LOADER
-    PARTS -- "postMessage" --> STORE
+    PARTS -- "postMessage" --> LOADER
     RENDER -- "ImageBitmap" --> UI
     TEXT -- "テキスト run・ヒット矩形" --> UI
 ```
@@ -49,7 +51,7 @@ flowchart TB
 経路は 2 つあります。どちらも同じ bdf の Part を作り、同じレンダラで描画します。
 
 1. **サーバーで変換**: Go のサーバープロセス内で `converter/pdf`、`converter/pptx`、`converter/xlsx` などのパッケージが元ファイルを変換し、manifest・描画命令・画像・フォントをパックした **bdf バンドル**にします。バンドルは 1 ファイル形式（先頭からのストリーミング読み、または Range による Part 単位の取得）か、オブジェクトストレージや CDN にそのまま置ける分割形式で配信します。ブラウザでは Worker 内のレンダラが必要な Part だけを読み込んで `OffscreenCanvas` に描画し、メインスレッドは受け取ったビットマップと透明なテキスト層を配置するだけです。
-2. **ブラウザ内で変換**: 同じ変換パッケージを wasm にしたものが Worker で動き、ユーザーが開いたファイルを bdf の Part（描画命令、画像、フォント）に分解します。Part はバンドルにパックせず、ばらばらのままレンダラに渡すので、変換から描画までがブラウザ内で完結し、ファイルは外に出ません。
+2. **ブラウザ内で変換**: 同じ変換パッケージを wasm にしたもの（`cmd/bdfwasm`）が Worker で動き、ユーザーが開いたファイルをメモリ上の bdf 文書に変換して、そのままレンダラに渡します。変換から描画までがブラウザ内で完結し、ファイルは外に出ません。デモサイトはこの経路で動いています。Office 系の変換器は、サイトと一緒に公開したフリーフォントでテキストをレイアウトします（文書が使うものだけを取得します）。
 
 ## 特徴
 
@@ -120,7 +122,8 @@ if res.Protected {
 | `woff2/` | TrueType/OpenType → WOFF2（glyf 変換と Brotli） |
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
 | `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画、Worker |
-| `examples/viewer` | デモビューア |
+| `cmd/bdfwasm` | ブラウザ内変換用に wasm にした変換器（PDF 用と Office 系用の 2 モジュール） |
+| `examples/viewer` | デモビューアとデモサイト（`site.mjs`: ビューア、wasm の変換器、フォント、サンプル）。GitHub Pages で公開 |
 | `testdata/` | 生成済みサンプルと golden 画像 |
 
 ## 使い方
@@ -170,6 +173,9 @@ node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に�
 
 # デモビューア
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
+npm run site:serve                   # ブラウザ内変換つきのデモサイト（Go が必要）: http://127.0.0.1:8766/
+npm run test:site                    # サイトのサンプルを wasm モジュールで変換してみる（npm run site の後）
+BDF_SITE_FONTS=dir1:dir2 npm run site  # これらのフォントをサイトと一緒に公開する（既定はテスト用フォント）
 ```
 
 Go は 1.27 以上が必要です。golden テストは `playwright-core`（固定バージョン。golden 画像はその Chromium ビルドの headless shell で描いたもの）を使います。`npx playwright-core install chromium` で入れるか、同じビルドの headless shell を `CHROMIUM_PATH` で指定してください。

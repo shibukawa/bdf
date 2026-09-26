@@ -6,6 +6,8 @@ English | [日本語](README.ja.md)
 
 Office-style files (PDF, Excel, PowerPoint, Word, Visio) are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
 
+**Demo**: <https://shibukawa.github.io/bdf/>. Drop a PDF, PowerPoint, Excel or Visio file, or a Windows metafile, on the page: it is converted into bdf and drawn inside the browser, without being uploaded.
+
 ## How it works
 
 ```mermaid
@@ -24,7 +26,7 @@ flowchart TB
         subgraph CWORKER["Converter Worker (wasm)"]
             WCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/visio"]
         end
-        PARTS["bdf parts (unpacked)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
+        PARTS["bdf document (in memory)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         subgraph RWORKER["Renderer Worker"]
             LOADER["Loader<br/>fetch · Range<br/>DecompressionStream"]
             STORE["Part cache"]
@@ -41,7 +43,7 @@ flowchart TB
     SRC -- "① server-side conversion" --> SCONV
     SRC -- "② in-browser conversion" --> WCONV
     BUNDLE -- "single file or split files<br/>HTTP · CDN" --> LOADER
-    PARTS -- "postMessage" --> STORE
+    PARTS -- "postMessage" --> LOADER
     RENDER -- "ImageBitmap" --> UI
     TEXT -- "text runs · hit rects" --> UI
 ```
@@ -49,7 +51,7 @@ flowchart TB
 There are two paths. Both produce the same bdf parts and share the same renderer.
 
 1. **Server-side conversion**: packages such as `converter/pdf`, `converter/pptx` and `converter/xlsx` run inside a Go server process and convert the source into a **bdf bundle** that packs the manifest, the drawing commands, the images and the fonts. The bundle is served either as a single file (streamed from the start, or fetched part by part with Range requests) or as split files that can sit on object storage or a CDN as they are. In the browser, the renderer in a Worker loads the parts it needs and draws them onto an `OffscreenCanvas`; the main thread only places the resulting bitmaps and a transparent text layer.
-2. **In-browser conversion**: the same converter packages, built as wasm, run in a Worker and break the file the user opened into bdf parts (drawing commands, images, fonts). The parts go to the renderer as they are, without being packed into a bundle, so conversion and rendering both finish inside the browser and the file never leaves it.
+2. **In-browser conversion**: the same converter packages, built as wasm (`cmd/bdfwasm`), run in a Worker and convert the file the user opened into a bdf document in memory, which goes to the renderer as it is. Conversion and rendering both finish inside the browser and the file never leaves it. The demo site works this way; the Office converters lay text out with free fonts published with the site, fetched when a document uses them.
 
 ## Features
 
@@ -122,7 +124,8 @@ The documents are in Japanese.
 | `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`), objects under construction (`canvas`), EMF/WMF replay (`metafile`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering, Worker |
-| `examples/viewer` | Demo viewer |
+| `cmd/bdfwasm` | The converters built as wasm for in-browser conversion (a module for PDF, one for the Office formats) |
+| `examples/viewer` | Demo viewer, and the demo site (`site.mjs`: the viewer, the converters as wasm, fonts and samples), published on GitHub Pages |
 | `testdata/` | Generated samples and golden images |
 
 ## Usage
@@ -172,6 +175,9 @@ node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium (shee
 
 # Demo viewer
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
+npm run site:serve                   # demo site with in-browser conversion (requires Go): http://127.0.0.1:8766/
+npm run test:site                    # convert the site's samples with its wasm modules (after npm run site)
+BDF_SITE_FONTS=dir1:dir2 npm run site  # publish these fonts with the site (default: the test fonts)
 ```
 
 Go 1.27 or later is required. The golden tests use `playwright-core` at a pinned version; the golden images were drawn with the headless shell of that Chromium build. Install it with `npx playwright-core install chromium`, or point `CHROMIUM_PATH` at a headless shell of the same build.

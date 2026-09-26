@@ -6,7 +6,7 @@
 <style>
   :root { color-scheme: light; font: 13px system-ui, sans-serif; }
   body { margin: 0; display: grid; grid-template-rows: auto 1fr; height: 100vh; background: #e9ecef; }
-  header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #ccc; }
+  header { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #ccc; }
   header .tabs button { margin-right: 4px; }
   header .tabs button[aria-selected="true"] { font-weight: bold; background: #1f3a5f; color: #fff; }
   #stage { overflow: auto; position: relative; }
@@ -30,11 +30,22 @@
   #pwDialog h2 { font-size: 15px; margin: 0 0 8px; }
   #pwDialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   #pwMessage[data-error] { color: #b00020; }
+  #warnings { position: relative; }
+  #warnings summary { cursor: pointer; color: #8a5a00; }
+  #warnings ul { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: min(560px, 80vw); max-height: 50vh; overflow: auto; margin: 0; padding: 8px 8px 8px 24px; background: #fff; color: #222; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  /* the start page, and the outline while a file is dragged over the window */
+  .landing { max-width: 640px; margin: 48px auto; padding: 32px; background: #fff; border: 2px dashed #9aa4b1; border-radius: 12px; line-height: 1.6; }
+  .landing h1 { font-size: 20px; margin: 0 0 8px; }
+  .landing .samples { display: flex; flex-wrap: wrap; gap: 6px; }
+  .landing .note { color: #666; font-size: 12px; }
+  body.dragging #stage { outline: 3px dashed #1a73e8; outline-offset: -6px; background: #dde8f7; }
   .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 </style>
 <body>
 <header>
   <strong>BDF viewer</strong>
+  <button id="openFile" type="button">Open file…</button>
+  <input id="file" type="file" hidden accept=".pdf,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.bdf">
   <span class="tabs" id="tabs" role="tablist" aria-label="views"></span>
   <label>zoom <input id="zoom" type="range" min="0.25" max="3" step="0.25" value="1" aria-valuetext="100%"> <span id="zoomv">100%</span></label>
   <label id="modeBox" hidden><input id="continuous" type="checkbox"> continuous</label>
@@ -46,10 +57,22 @@
   <span class="info">
     <!-- status is announced (loading, what a view holds, errors); timing is not, since it changes on every scroll -->
     <span id="status" role="status"></span>
+    <details id="warnings" hidden><summary></summary><ul></ul></details>
     <span id="timing"></span>
+    <a id="download" hidden>Download .bdf</a>
   </span>
 </header>
-<div id="stage" role="tabpanel" tabindex="0"></div>
+<div id="stage" role="tabpanel" tabindex="0">
+  <div class="landing" id="landing" hidden>
+    <h1>Drop a file here to preview it</h1>
+    <p>PDF, PowerPoint (.pptx), Excel (.xlsx), Visio (.vsdx, .vdx), Windows metafiles (.emf, .wmf) or bdf.
+      The file is converted to bdf and drawn inside your browser, by the Go converters built as WebAssembly: it is not uploaded anywhere.</p>
+    <p><button type="button" id="chooseFile">Choose a file…</button></p>
+    <div id="samples" hidden><p>Or open a sample:</p><p class="samples"></p></div>
+    <p class="note">Password-protected files open with their password. Office documents are laid out with the free fonts published with this page
+      (fetched when a document uses them), which stand in for the fonts the document names.</p>
+  </div>
+</div>
 <dialog id="pwDialog" aria-labelledby="pwTitle" aria-describedby="pwMessage">
   <form method="dialog">
     <h2 id="pwTitle">Encrypted document</h2>

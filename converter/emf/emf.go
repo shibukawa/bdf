@@ -8,6 +8,7 @@ package emf
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 
 	"github.com/shibukawa/bdf"
@@ -26,9 +27,12 @@ type Options struct {
 	// Images controls whether the bitmaps of the metafile are re-encoded
 	// (see imgconv). The zero value stores them as PNG.
 	Images imgconv.Options
+	// FontFS holds fonts that are not in the local file system; it is
+	// searched before FontDirs (see converter.Options.FontFS).
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding the
 	// fonts used for layout.
@@ -114,7 +118,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if opts.Title != "" {
 		doc.Meta.DC.Title = bdf.DCValues{opts.Title}
 	}
-	db := fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
+	db := fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
 	fonts := fontset.New(db, warn)
 	b := canvas.NewBuilder(doc, fonts)
 	cv := b.New()
