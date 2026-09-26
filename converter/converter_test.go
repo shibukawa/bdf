@@ -1,8 +1,9 @@
 package converter
 
 import (
-	"archive/zip"
 	"bytes"
+	"io"
+	"strings"
 	"testing"
 )
 
@@ -15,21 +16,59 @@ func TestPageRange(t *testing.T) {
 	}
 }
 
-func TestDetect(t *testing.T) {
-	pdf := []byte("%PDF-1.7\n...")
-	if f := Detect(bytes.NewReader(pdf), int64(len(pdf))); f != PDF {
-		t.Fatalf("pdf detected as %q", f)
+func TestRegistry(t *testing.T) {
+	var got *Options
+	f := &Format{
+		Name:   "test-magic",
+		Detect: func(head []byte, r io.ReaderAt, size int64) bool { return bytes.HasPrefix(head, []byte("MAGIC")) },
+		Convert: func(r io.ReaderAt, size int64, o *Options) (*Result, error) {
+			got = o
+			return &Result{Summary: "ok"}, nil
+		},
 	}
-	var b bytes.Buffer
-	zw := zip.NewWriter(&b)
-	w, _ := zw.Create("ppt/presentation.xml")
-	w.Write([]byte("<p:presentation/>"))
-	zw.Close()
-	if f := Detect(bytes.NewReader(b.Bytes()), int64(b.Len())); f != PPTX {
-		t.Fatalf("pptx detected as %q", f)
+	Register(f)
+	defer func() {
+		mu.Lock()
+		delete(formats, f.Name)
+		mu.Unlock()
+	}()
+	if Lookup("test-magic") != f {
+		t.Error("Lookup")
+	}
+	found := false
+	for _, g := range Formats() {
+		found = found || g == f
+	}
+	if !found {
+		t.Error("Formats does not list the format")
+	}
+	in := []byte("MAGIC and more")
+	if Detect(bytes.NewReader(in), int64(len(in))) != f {
+		t.Error("not detected")
 	}
 	junk := []byte("hello")
-	if f := Detect(bytes.NewReader(junk), int64(len(junk))); f != Unknown {
-		t.Fatalf("junk detected as %q", f)
+	if g := Detect(bytes.NewReader(junk), int64(len(junk))); g != nil {
+		t.Errorf("junk detected as %s", g.Name)
 	}
+	res, err := f.Convert(bytes.NewReader(in), int64(len(in)), &Options{Params: map[string]string{"flag": "true", "bad": "maybe"}})
+	if err != nil || res.Summary != "ok" {
+		t.Fatal(res, err)
+	}
+	if v, err := got.BoolParam("flag"); !v || err != nil {
+		t.Errorf("BoolParam(flag) = %v, %v", v, err)
+	}
+	if v, err := got.BoolParam("unset"); v || err != nil {
+		t.Errorf("BoolParam(unset) = %v, %v", v, err)
+	}
+	if _, err := got.BoolParam("bad"); err == nil {
+		t.Error("BoolParam accepted maybe")
+	}
+	func() {
+		defer func() {
+			if r := recover(); r == nil || !strings.Contains(r.(string), "twice") {
+				t.Errorf("registering twice: %v", r)
+			}
+		}()
+		Register(f)
+	}()
 }

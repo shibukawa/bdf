@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates converter/pptx/presets.xml.gz from presetShapeDefinitions.xml.
+"""Generates converter/internal/ooxml/drawingml/presets.xml.gz from presetShapeDefinitions.xml.
 
 The input is the preset shape definition file of ECMA-376 Part 1 (Annex D,
 "presetShapeDefinitions.xml"), e.g. the copy in LibreOffice:
@@ -29,7 +29,7 @@ for shape in root:
                 copy(c, d)
         copy(part, p)
 data = ET.tostring(out, encoding="utf-8")
-dst = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "converter", "pptx", "presets.xml.gz")
+dst = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "converter", "internal", "ooxml", "drawingml", "presets.xml.gz")
 with open(dst, "wb") as f:
     with gzip.GzipFile(filename="", mode="wb", fileobj=f, mtime=0, compresslevel=9) as g:
         g.write(data)

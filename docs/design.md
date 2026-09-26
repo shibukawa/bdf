@@ -144,25 +144,33 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 ## 3.4 PowerPoint → BDF 変換器（converter/pptx）の構造
 
-`converter/pptx` は .pptx（OPC の zip）を読み、DrawingML を直接 BDF の命令に落とす。Office から PDF を経由する経路と比べると、マスター・レイアウトの共有とテキストの構造（段落・箇条書き・行の継ぎ目）が残る。XML は構造体にデコードせず汎用の要素木として読む（DrawingML は省略可能な要素と多段の継承が多いため）。`mc:AlternateContent` は Fallback を使う。
+`converter/pptx` は .pptx（OPC の zip）を読み、DrawingML を直接 BDF の命令に落とす。Office から PDF を経由する経路と比べると、マスター・レイアウトの共有とテキストの構造（段落・箇条書き・行の継ぎ目）が残る。XML は構造体にデコードせず汎用の要素木として読む（DrawingML は省略可能な要素と多段の継承が多いため）。`mc:AlternateContent` は Fallback を使う。OPC パッケージ（パート、リレーションシップ）と要素木の読み込みは `converter/internal/ooxml` にあり、今後の Word・Excel の変換器も同じものを使う。
+
+以下のうち DrawingML の描画（テーマと配色、図形、テキスト、表、グラフ、画像、SmartArt の描画パート、メタファイル）は `converter/internal/ooxml/drawingml` にあり、Word・Excel の図形やグラフにも使える。文書の種類に依存するもの、つまりプレースホルダーの継承元、マスターのテキストスタイルと既定のテキストスタイル、スライド間のリンク（`#page=N`）、スライド番号のフィールドは、`drawingml.Host` インターフェースとして `converter/pptx` が与える。スライド・レイアウト・マスターの構成と背景（`p:bg`）の探索も pptx 側にある。描画先の Object は `converter/internal/canvas` で組み立てる。フォントの参照は文書全体のレイアウトが終わってサブセットが決まるまで仮のもので、最後にまとめて解決する。
 
 - **レイヤー構成**: 各ページは `background`（スライド → レイアウト → マスターの順で最初に見つかった背景）、`master`（マスターのプレースホルダー以外の図形）、`master`（レイアウトの同様の図形）、`body`（スライドの図形）の 4 レイヤー。マスターとレイアウトのレイヤーはスライドの配色マップで描くので、同じマスター・レイアウトを使うスライドどうしでは同一の Object になり、内容アドレスで 1 回だけ格納される。`showMasterSp="0"` で隠されたものは載せず、描くもののないレイヤーは省く。
 - **プレースホルダーの継承**: スライドのプレースホルダーはレイアウトのものに idx → type の順で、レイアウトのものはマスターのものに type（`ctrTitle` → `title`、`subTitle`/`obj` → `body`）で対応付け、位置（xfrm の off と ext は別々に）、形状、塗り・線・効果、`bodyPr`（属性単位）、`lstStyle`（レベル単位）を継承する。マスターとレイアウトのプレースホルダーそのものは描かない。
 - **テキストの書式**: 段落の `pPr` → 図形の `lstStyle` →（図形スタイル `p:style` の `fontRef`、表スタイルの `tcTxStyle`）→ 継承元プレースホルダーの `lstStyle` → マスターの `txStyles`（タイトル／本文／その他）またはプレゼンテーションの `defaultTextStyle` の順に、属性ごとに最初に見つかったものを使う。`+mj-lt` などのテーマフォントと `schemeClr` はスライドの配色マップで解決し、色の修飾（`lumMod`/`lumOff`、`tint`/`shade` は線形 RGB で、`alpha` など）を順に適用する。
 - **図形**: プリセット図形 187 種は ECMA-376 Part 1 の `presetShapeDefinitions.xml` を圧縮して埋め込み（`presets.xml.gz`、`tools/gen-presets.py` で生成、30 KB）、ガイド式を評価してパスにする。`arcTo` の角度は楕円の見かけの角度なので Canvas の媒介変数角に直す。`custGeom` も同じ評価器を通す。塗りは単色・グラデーション（線形は角度と `scaled`、パスは放射状で近似）・画像（伸縮、`srcRect` の切り抜き、タイル）・パターン（8×8 の PNG を作ってパターン Paint に）、パスごとの `lighten`/`darken`。線は幅・端・結合・破線・矢印（三角・ステルス・菱形・楕円・開いた矢印）、外側の影は SHADOW。グループは子の配置をスライド座標に畳み込み（変換行列を入れ子にしない）、回転・反転は図形ごとの TRANSFORM で表す。テキストは反転させない（上下反転は 180° 回転）。
 - **テキストレイアウト**: BDF に再レイアウトはないので行分割は変換側で行う。空白の後・和文の文字間・和文と欧文の間・語中のハイフンの後で改行でき、閉じ括弧・句読点・小書きの仮名・長音の前と開き括弧の後では改行しない（禁則）。インデントと箇条書き（記号、Wingdings/Symbol の文字は Unicode に置き換え、自動番号）、タブ、行間（割合・固定）、段落前後の間隔（先頭段落の前は取らない）、左・中央・右・両端揃え（欧文は語間、和文は字間を TEXT_STYLE の letterSpacing で広げる）、上・中央・下の配置、自動調整（保存されている `fontScale`/`lnSpcReduction`）、上付き・下付き、下線・取り消し線・ハイライト、段組み（列の高さを超えた行を次の列へ）、縦書き（`vert`/`vert270` は枠の回転、`eaVert` は漢字・仮名を 1 文字ずつ正立させ、句読点は縦書き用字形 U+FE10〜 に、括弧・長音・欧文は回転したまま）を扱う。行の高さは Office と同じくフォントの Windows 用メトリクス（OS/2 winAscent + winDescent）に行間を掛けたもの。
-- **フォント**: `converter/internal/fontdb` がフォントディレクトリ（既定でシステムのもの、`-font-dir` で追加、`-no-system-fonts` で限定）の name テーブルから索引を作り、要求されたファミリーを実物 → 計量互換の代替（Calibri → Carlito、Arial → Liberation Sans、游ゴシック → Noto Sans CJK JP / IPAexGothic など）→ 同系統の汎用フォント（serif / sans-serif / monospace、和文は明朝／ゴシック）→ 任意のフォント の順に解決する。文字ごとに欧文は latin、和文は ea のフォントを使い、グリフがなければもう一方、さらにフォールバック列から探す（どこにもなければ警告）。計測したフォントは使った文字だけのサブセット（TrueType はグリフを詰め直し、CFF は 2 MB までならそのまま）にして埋め込むので、閲覧側でも計測と同じ字幅で描かれる。ブラウザに登録する FontFace は太さ・斜体の記述子を持たないので、太字のフェイスそのものを埋め込んだときは FONT の weight を 400 にし、フェイスがなく合成が必要なときだけ 700 や italic を指定する。`-fonts system` では埋め込まずにファミリー名（要求名、代替名、汎用名の順）で参照し、`advance` 補正で行幅を保つ。ライセンス（OS/2 fsType）が埋め込みを禁じるフォントも名前で参照し、サブセット化を禁じるフォントは丸ごと埋め込む（`-ignore-fstype` で無視できる）。埋め込むフォントは PDF と同じく元の `fsType` と著作権・ライセンスの文字列（§3.1）を引き継ぎ、WOFF2 にして格納する（§3.3、`-no-woff2` で TTF/OTF のまま）。
+- **フォント**: `converter/internal/fontdb` がフォントディレクトリ（既定でシステムのもの、`-font-dir` で追加、`-no-system-fonts` で限定）の name テーブルから索引を作り、要求されたファミリーを実物 → 計量互換の代替（Calibri → Carlito、Arial → Liberation Sans、游ゴシック → Noto Sans CJK JP / IPAexGothic など）→ 同系統の汎用フォント（serif / sans-serif / monospace、和文は明朝／ゴシック）→ 任意のフォント の順に解決する。文字ごとに欧文は latin、和文は ea のフォントを使い、グリフがなければもう一方、さらにフォールバック列から探す（どこにもなければ警告）。この文字ごとの選択・計測と、使った文字の記録・埋め込みは `converter/internal/fontset` が文書単位で受け持ち、他の Office 変換器と共有する。計測したフォントは使った文字だけのサブセット（TrueType はグリフを詰め直し、CFF は 2 MB までならそのまま）にして埋め込むので、閲覧側でも計測と同じ字幅で描かれる。ブラウザに登録する FontFace は太さ・斜体の記述子を持たないので、太字のフェイスそのものを埋め込んだときは FONT の weight を 400 にし、フェイスがなく合成が必要なときだけ 700 や italic を指定する。`-fonts system` では埋め込まずにファミリー名（要求名、代替名、汎用名の順）で参照し、`advance` 補正で行幅を保つ。ライセンス（OS/2 fsType）が埋め込みを禁じるフォントも名前で参照し、サブセット化を禁じるフォントは丸ごと埋め込む（`-ignore-fstype` で無視できる）。埋め込むフォントは PDF と同じく元の `fsType` と著作権・ライセンスの文字列（§3.1）を引き継ぎ、WOFF2 にして格納する（§3.3、`-no-woff2` で TTF/OTF のまま）。
 - **テキストの構造**: テキスト枠ごとに MARK BOX、段落と `a:br` に PARAGRAPH、折り返しに LINE（和文どうしの折り返しは区切りを入れない WRAP、spec §7.8）、箇条書きの記号の後に LINE を置く。書式が同じで分割されているだけの run（スペルチェックや言語タグ）は 1 つの FILL_TEXT にまとめる。縦書きの行は子 Object に描いて ALT_TEXT に行の文字列を持たせるので、検索では横書きと同じく 1 行 1 run になる。ハイパーリンク（外部 URL、スライドへのジャンプは `#page=N`）は LINK。
 - **読み上げ用の構造**（spec §7.8）: タイトル（title / ctrTitle）の段落は HEADING、箇条書きの段落は `lvl` で入れ子にした LIST / LIST_ITEM、表はセルごとの CELL（結合は範囲、firstRow / firstCol は見出し）を TABLE で囲む。画像・グラフ・グループ・図形の塗りと線は `cNvPr` の `descr`（なければ `title`）を代替テキストにした FIGURE で囲む（装飾指定のものは除く）。`meta.dc.language` はコアプロパティの `dc:language`、無ければ既定のテキストスタイルの `lang`。描画のまとまりごとに言語を決めて変わるところで LANG を出す。和文を含むまとまりは東アジアの `lang` / `altLang`、なければかな・ハングルから推定する（テンプレートの既定 `lang="en-US"` を受け継いだ和文を英語として読ませないため）。
 - **表**: `tblGrid` と行から格子を作り、結合セル、セルの余白・配置、塗り・罫線（セルの `tcPr` が表スタイルより優先）を描く。表スタイルは `tableStyles.xml` から全体・縞模様の行／列・先頭／末尾の行／列・角のセルの順に重ね、ファイルにない既定スタイル（Medium Style 2 - Accent 1）は内蔵する。行の高さはセルのテキストに合わせて伸ばす。
 - **グラフ**: グラフパートにキャッシュされた値（`numCache`/`strCache`）から、縦棒・横棒（集合・積み上げ・100%）、折れ線、面、円・ドーナツ、散布図を描く。軸の範囲と目盛の単位は Office と同じ規則（データが 0 から遠くなければ 0 を含め、端に 5% の余白を取り、1・2・5×10^n の単位で目盛の数を図の大きさに合わせる）。系列の色はアクセント色の循環で、凡例、タイトル（単一系列なら系列名）、データラベル、数値の書式コード（%、桁区切り、小数桁）を扱う。3-D グラフは平面で描く。
 - **SmartArt**: PowerPoint がデータモデルと一緒に保存している描画パート（`diagrams/drawingN.xml`）の図形を、グラフィックフレームを枠とするグループとして描く（テキストは `txXfrm` の枠に置き、その回転は図形の回転に足す）。
-- **EMF/WMF**: ブラウザは Windows メタファイルを表示できないので、画像として格納せずに GDI の状態機械（マップモード、ワールド変換、ペン・ブラシ・フォント、クリップ、パス、保存と復元）で記録を再生し、パス・テキスト・画像（DIB は PNG に）の命令にする。EMF はヘッダーの frame、WMF は placeable ヘッダーの範囲（なければ最初のウィンドウの原点と大きさ）を図の枠に合わせる。テキストは出力空間で正立させ、`dx` の文字送りと文字揃えに従う（WMF の ANSI 文字列は文字セットに応じて Shift_JIS などとして読む）。コメントに埋め込まれた EMF+ の記録は読まず、Office が並べて書く EMF の記録を使う。OLE オブジェクトのプレビューの多くはこれで描ける。
+- **EMF/WMF**: ブラウザは Windows メタファイルを表示できないので、画像として格納せずに GDI の状態機械（マップモード、ワールド変換、ペン・ブラシ・フォント、クリップ、パス、保存と復元）で記録を再生し、パス・テキスト・画像（DIB は PNG に）の命令にする。EMF はヘッダーの frame、WMF は placeable ヘッダーの範囲（なければ最初のウィンドウの原点と大きさ）を図の枠に合わせる。テキストは出力空間で正立させ、`dx` の文字送りと文字揃えに従う（WMF の ANSI 文字列は文字セットに応じて Shift_JIS などとして読む）。コメントに埋め込まれた EMF+ の記録は読まず、Office が並べて書く EMF の記録を使う。OLE オブジェクトのプレビューの多くはこれで描ける。再生は `converter/internal/metafile` にあり、描き込む先（Object とフォント・画像・言語の登録）とピクチャの色変更を渡せば他の変換器からも使える。
 - **画像の色効果**: 色の変更（`clrChange`、透明色の指定）、単色化（`clrRepl`）、複色（`duotone`）、二値化（`biLevel`）、グレースケール、明るさ・コントラスト（`lum`、PowerPoint と同じく明るさの半分をコントラストの前、半分を後に掛ける）を文書順に画素へ適用し、画像を作り直して格納する（`clrChange` の許容差は LibreOffice と同じく JPEG 15、PNG・TIFF 1、BMP 0、その他 9）。メタファイルでは記録の色と DIB に同じ効果を掛ける。
 - **その他**: 非表示スライドは既定で除く（`-hidden` で含める）。OLE オブジェクトはプレビュー画像を描く。画像は `imgconv`（§3.2）を通し、TIFF は PNG にデコードする。構造の壊れたスライドで描画が失敗した場合は空のページにして警告する。
 - **未対応（警告を出す）**: EMF+ だけで書かれたメタファイル、レーダー・バブル・等高線グラフ、光彩・反射・ぼかしなどの効果、インク、旧形式（VML のみ）の OLE プレビュー、リンクされた（埋め込まれていない）画像、描画パートのない SmartArt。
 
 テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`）、変換結果は `testdata/pptx/` に置いて golden テストで描画を比較する。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセットだけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
+
+## 3.5 入力形式の登録と EMF/WMF 変換器（converter/emf）
+
+入力形式は static plugin 方式で登録する。`converter` パッケージが形式の登録簿を持ち、各変換器のパッケージは `init` で `converter.Register` に名前・拡張子・判別関数・変換関数・形式固有のオプション（`Params`）を渡す。プログラムは import したパッケージの形式だけを扱えるので、PDF だけのサーバーは pptx やフォント処理をリンクせずに済む（全部なら `converter/all`）。`converter.Detect` は登録された形式の判別関数を名前順に試し（先頭 1 KiB と入力全体を渡す）、`converter.Options` は各形式に共通の設定（ページ指定、画像、フォント）と、名前で引く形式固有の設定（PDF の `kind`・`no-share`、PowerPoint の `hidden`）を持つ。CLI の `bdf generate` はこの登録簿で形式を判別・選択し、`-h` で登録された形式とその `-param` を一覧する。各パッケージの `Convert` と `Options` はそのまま直接使える。
+
+`converter/emf` は Windows メタファイル（.emf、.wmf）を 1 ページの文書にする。再生は Office 文書の中の図と同じ `converter/internal/metafile`（§3.4 の EMF/WMF）。ページの大きさは EMF ならヘッダーの frame（0.01 mm 単位）、placeable WMF なら範囲と 1 インチあたりの単位数から求め、単位の分からない WMF は 96 dpi のピクセルとみなす。EMF ヘッダーの説明文字列にある図の名前を題名にする。テキストは PowerPoint と同じくフォントを解決してレイアウトし、サブセットを埋め込む（`-font-dir`、`-fonts system` なども同じ）。
 
 ## 4. テキストの扱い
 
@@ -247,10 +255,15 @@ bdf/
 ├── cmd/bdf/           CLI: generate / ls / manifest / disasm / extract / split / join / demo
 ├── imgconv/           画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
 ├── woff2/             TrueType/OpenType → WOFF2（glyf 変換と Brotli）
-├── converter/         変換器の共通部分（入力形式の判別、ページ指定）
+├── converter/         入力形式の登録（static plugin）、共通のオプション、形式の判別、ページ指定
 │   ├── pdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
 │   ├── pptx/          PowerPoint → BDF 変換器（testdata/ にテスト用デッキとフォント）
-│   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）
+│   ├── emf/           Windows メタファイル（.emf、.wmf）→ BDF 変換器
+│   ├── all/           すべての形式を登録する
+│   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
+│                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
+│                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
+│                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
