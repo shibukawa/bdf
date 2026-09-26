@@ -133,6 +133,8 @@ node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に�
 
 # デモビューア
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
+# ?src= で別の文書を開く（リポジトリ内のパス）。例: ページが下部のタブで切り替わる draw.io の図
+# http://127.0.0.1:8765/examples/viewer/.out/?src=/testdata/drawio/multipage.bdf
 ```
 
 Go は 1.27 以上が必要です。golden テストは `playwright-core`（固定バージョン。golden 画像はその Chromium ビルドの headless shell で描いたもの）を使います。`npx playwright-core install chromium` で入れるか、同じビルドの headless shell を `CHROMIUM_PATH` で指定してください。

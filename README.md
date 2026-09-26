@@ -135,6 +135,8 @@ node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium
 
 # Demo viewer
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
+# open another document with ?src= (a path under the repository), e.g. a draw.io diagram whose pages
+# appear as tabs along the bottom: http://127.0.0.1:8765/examples/viewer/.out/?src=/testdata/drawio/multipage.bdf
 ```
 
 Go 1.27 or later is required. The golden tests use `playwright-core` at a pinned version; the golden images were drawn with the headless shell of that Chromium build. Install it with `npx playwright-core install chromium`, or point `CHROMIUM_PATH` at a headless shell of the same build.
