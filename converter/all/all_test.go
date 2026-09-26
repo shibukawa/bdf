@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/binary"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/shibukawa/bdf/converter"
@@ -49,6 +51,11 @@ func TestDetect(t *testing.T) {
 		{"emf", emf, "emf"},
 		{"wmf", wmf, "emf"},
 		{"csv", []byte("id,name\n1,Ann\n2,Bob\n"), "csv"},
+		{"drawio", read(t, "multipage.drawio"), "drawio"},
+		{"drawio svg", read(t, "embedded.drawio.svg"), "drawio"},
+		{"drawio png", read(t, "embedded.drawio.png"), "drawio"},
+		{"mxGraphModel", []byte("\ufeff<?xml version=\"1.0\"?>\n<mxGraphModel><root/></mxGraphModel>"), "drawio"},
+		{"plain svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), ""},
 		{"tsv", []byte("id\tname\n1\tAnn\n"), "csv"},
 		{"junk", []byte("hello"), ""},
 	} {
@@ -60,4 +67,14 @@ func TestDetect(t *testing.T) {
 			t.Errorf("%s detected as %q, want %q", c.name, got, c.want)
 		}
 	}
+}
+
+// read returns a file of the draw.io converter's test data.
+func read(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "drawio", "testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

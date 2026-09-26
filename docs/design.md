@@ -270,6 +270,24 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 テスト用のファイル（`converter/csv/testdata/`: Excel の「CSV UTF-8」と同じく BOM と CRLF の付いた basic.csv と、Shift_JIS の japanese.tsv）の変換結果は `testdata/csv/` に置き、golden テストで描画を比較する。フォントは Excel と同じく PowerPoint のテストのものだけを使う。
 
+## 3.11 draw.io → BDF 変換器（converter/drawio）の構造
+
+`converter/drawio` は draw.io（diagrams.net）の図を読み、mxGraphModel の XML から直接 BDF の命令を作る。draw.io 自身の SVG・PDF 出力を経由しないのは、HTML ラベルが SVG の foreignObject（HTML）で出力され、そのままでは Canvas に描けないことと、ページ・レイヤー・リンク・テキストの構造を残すため。
+
+- **入力**: `.drawio` / `.xml`（`<mxfile>` の `<diagram>` がページ。中身は `<mxGraphModel>` 要素か、Graph.compress で圧縮した文字列＝URL エンコードした XML を raw deflate して base64）、裸の `<mxGraphModel>`、図を埋め込んだ SVG（ルート要素の `content` 属性）と PNG（`mxfile` または `mxGraphModel` という名前の tEXt / zTXt チャンク）。`converter.Detect` は中身からこれらを判別する。
+- **ページ → View**: ページごとに `fixed` View（ページ 1 枚）を作る。View の `id` は図の `id`（なければ `pageN`）、`title` はページ名。ビューアは View をシート見出しのようなタブで切り替えるので（spec §4.1）、Excel のシートと同じ操作感で複数ページを行き来できる。図の中のページへのリンク（`data:page/id,…`）は `#view=ID` の LINK にする（spec §7.7）。http / https / mailto 以外のリンク（`data:action/…` など）は捨てる。
+- **ページの大きさと座標**: ページは描いたものの外接矩形に余白（既定 10px、`-param border=`）を足した大きさ。draw.io の座標は CSS px なので、各レイヤー Object の先頭で 0.75 倍（pt）と原点の移動を 1 回かけ、以降は draw.io の座標のまま命令を出す。背景色（`background`）は `background` レイヤー、draw.io のレイヤー（ルートの子）はそれぞれ `body` レイヤーの Object にし、非表示のレイヤー・セル、折りたたんだコンテナの子は描かない。`shadow="1"` のページはすべての図形に影を付ける。
+- **スタイル**: スタイル文字列は mxStylesheet と同じ規則で読む（`key=value` の上書き、名前だけの項目は draw.io の `styles/default.xml` の名前付きスタイルを合成、`none` はキーを消す、先頭の `;` は既定スタイルを使わない）。`default` の色はライトテーマの色（塗りは白、線と文字は黒）に、`light-dark(a, b)` は `a` にする。
+- **セルの配置（mxGraphView）**: 入れ子のジオメトリ（コンテナの子は親の原点から、`relative` なジオメトリは親の大きさやエッジ上の位置の割合から）を絶対座標にし、ラベルの位置（`labelPosition`、`verticalLabelPosition`）を足す。描く順は draw.io と同じくモデルの深さ優先の順で、セルごとに図形、ラベルの順。
+- **エッジの経路**: 端点の固定（`exitX`/`entryX` などの接続制約、ポート）、エッジスタイル（直交・エルボー・ER・セグメント・ループなど mxEdgeStyle）、端点の浮動（図形の外周との交点、mxPerimeter と draw.io の外周関数）を mxGraph と同じ手順で計算する。draw.io は計算した経路をファイルに保存しないので、ここが描画の見た目を大きく左右する。`jumpStyle` のあるエッジは、モデルの順で前にあるエッジとの交差にジャンプ（弧・隙間・段差・線）を入れる（Graph.js の updateLineJumps と mxConnector.paintLine）。
+- **図形**: mxAbstractCanvas2D と同じ API（パスは変換側で平行移動・拡大、回転と反転は TRANSFORM、save/restore は SAVE/RESTORE）の Go のキャンバスを用意し、mxGraph と draw.io の Shapes.js の図形・矢印をほぼ行単位で移植した。ステンシル（`mxgraph.flowchart.*` など XML で定義された図形と、スタイルに埋め込まれた `stencil(…)`）は mxStencil の解釈器で描く。ライブラリは draw.io の `stencils/*.xml` から flowchart・basic・arrows・AWS（aws4、1,037 アイコン）・bpmn・networks・eip・lean_mapping・floorplan・rack・Cisco・旧 Azure・電気回路・P&ID を選び、`//go:embed` して、名前が引かれたときにファイル単位で展開する。`tools/gen-drawio-stencils` が接続点とコメントを落とし、座標をステンシルの大きさの 2000 分の 1 未満の誤差で丸め、パスの各ステップを `d` 属性の短い表記（`M44 11L44 9C…`、読み込むときに元の要素に戻す）にしてから gzip にする。数値が中身の 4 割を占めるので効きが大きく、aws4 は 1.06 MB が 0.67 MB に、ほかのライブラリは 266 KB が 216 KB になり（合計約 0.89 MB）、ステンシルのテストの描画はピクセル単位で変わらない。ステンシルには Apache 2.0 に加えて draw.io の追加条件（Atlassian 製品や Atlassian Marketplace で配布される製品に組み込むには draw.io の書面による明示的な許可が要る。利用者が作った図の出力＝書き出した画像や文書は対象外）があり、`converter/drawio/stencils/NOTICE` に原文を載せる。JavaScript で定義された `mxgraph.*` 図形のうち、Basic（`mxgraph.basic.*`、mxBasic.js）、Arrows（`mxgraph.arrows2.*`、mxArrows.js）、BPMN（`mxgraph.bpmn.*`、mxBpmnShape2.js）、AWS（`mxgraph.aws4.resourceIcon` などアイコンとグループ枠、mxAWS4.js）のライブラリも移植した。古い世代の AWS アイコン（`mxgraph.aws.*`、`aws2`、`aws3`、`aws3d`）はライブラリを埋め込まず、現行の aws4 の対応するアイコンで描く。対応表（`aws_legacy_table.go`、718 名のうち 659 名に対応先）は `tools/gen-drawio-awsmap` が draw.io のサイドバー（旧パレットと現行パレットの項目の題名・タグ・名前）を照らし合わせて作り、改名されたサービスやグループ枠は手で補正する（`overrides.txt`）。変換の前にスタイルを書き換え、図形・アイコン・色は現行パレットのものに、ラベルと配置のキーはセルのものを残す。アイコンは元の枠の中央に対応先の縦横比（サービスアイコンなら正方形）で収め、エッジと子セルはその位置に追従させる。対応先のないもの（SimpleDB、Mechanical Turk、SWF など）は矩形と警告にする。そのほかの JavaScript の図形とサイズの大きいステンシルライブラリ（GCP、Office など）は対象外で、矩形と警告にする。draw.io の影は図形全体に掛かる CSS の drop-shadow なので、図形を GROUP で描き、合成するときに SHADOW を掛けて同じ見た目にする。グラデーションは SVG の objectBoundingBox と同じく塗る範囲の外接矩形に合わせる。
+- **ラベル**: draw.io は HTML ラベルを foreignObject の中の HTML（line-height 1.2 の inline-block を flex で配置、mxSvgCanvas2D.createCss）として描くので、その CSS レイアウトを再現する。ラベルの位置（mxCellRenderer.getLabelBounds、rotateLabelBounds、mxText.getSpacing）を移植し、HTML は許容的なパーサで読んで、ラベルが使う範囲の CSS（ブロックと余白の相殺、リスト（記号は Blink と同じく図形で描く）、見出し、インラインの太字・斜体・下線・色・大きさ・フォント・背景、`<br>`、空白の畳み込み、`white-space`）を扱う。行分割は空白の後と和文の文字間（禁則つき）で行い、`word-wrap: normal` なので長い語ははみ出す。行の高さは Blink と同じく、フォントのアセント・ディセントを整数 px に丸め、半行送りを切り捨てて上に足し、残りを下にする。macOS の Chrome は Helvetica・Times・Courier のアセントを高さの 15% 増やす（Windows の Arial などに合わせるため）ので、それにも合わせる。HTML でないラベルは SVG の text と同じく改行で分けた行を 1.2 倍の行送りで置く。構造は PowerPoint と同じく、ラベルごとに BOX、段落と `<br>` に PARAGRAPH、折り返しに LINE / WRAP、見出しに HEADING、リストに LIST / LIST_ITEM / END を出す。
+- **フォント**: Office 系の変換器と同じ `fontset`（`fontdb` で解決・計測し、使った文字だけのサブセットを WOFF2 で埋め込む）と `canvas`（フォントの参照は全ページのレイアウトが済んでから確定する）を使う。ラベルのフォントは CSS の font-family リストなので、先頭のフォントにない文字はリストの残りから、なければ先頭のフォントの総称ファミリーの代替フォントから探す（`fontset.Set.FaceForFamilies`）。draw.io の既定の Helvetica は、ない環境では Liberation Sans / Arimo / Arial で置き換わる。
+- **画像**: スタイルの `image=` の data URI（base64、URL エンコードした SVG）は Part に格納する。URL で参照する画像はネットワークに依存しないよう取得せず、警告を出して描かない。
+- **未対応（警告を出す）**: 手書き風（`sketch=1`、rough.js の塗り）は通常の描画にする。縦書き（`textDirection=vertical-*`）は横書きで描く。数式（`math=1`）、HTML ラベル内の画像、JavaScript で定義された `mxgraph.*` の図形の多く。
+
+テスト用の図は `converter/drawio/testdata/` にあり、draw.io デスクトップ版のコマンドライン書き出し（`draw.io -x -f svg|png`）の結果と見比べて調整した。エッジの経路は、書き出した SVG（`testdata/route/*.svg`）のパスと 15 の図の 684 本で比べ、最大の差は 0.007px（Loop スタイルで draw.io 自身の結果が表示位置に依存する 2 本を除く）。ラベルの行の位置は Chrome で同じ HTML をレイアウトした結果と比べた。移植したコードの出典は `converter/drawio/NOTICE`。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -302,7 +320,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 - **構造は MARK から作る**（spec §7.8）。`extractContent()` が run と同じ走査で構造ノード（段落・見出し・リスト・表とセル・図）とリンクを集め、`buildTextLayer(content, scale)` がそれぞれを `role=paragraph` / `heading`（`aria-level`）/ `list`・`listitem` / `table`・`row`・`cell`・`columnheader`・`rowheader` / `img` の要素にする。構造の要素は大きさを持たず、中の span の配置は変わらない。例外は図とリンクで、図は代替テキストを名前に持つ `role=img` をその範囲に、リンクは `<a>` をリンク領域に絶対配置し、中の span をそこからの相対位置に置く（読み上げカーソルの枠が描画と合う）。
 - **DOM の順は run の順**のまま（選択とコピーが DOM 順で区切りを復元するため）。表の行もセルの開始行が変わるところで区切るだけで並べ替えない。ノードは命令列の順に作られ、run はいつも最新のノードに属するので、run を順に置けば構造の要素も読み順に並ぶ。
 - **構造の状態は走査順に一直線**（`USE` や SAVE/RESTORE をまたぐ）。PDF 変換の共有プレフィックス（§5）で命令列が子 Object に分かれても同じ結果になるためで、Go の抽出器は区切り（sep）だけを扱い、構造は持たない。区切りは MARK の種類だけで決まるので、Go の索引と TS の抽出が一致する（テストで全レイヤーを突き合わせる）。
-- **リンク**は `http:` / `https:` / `mailto:` と `#page=N` だけを `<a>` にする（文書に埋め込まれた `javascript:` などを実行させない）。リンク領域に中心が入る連続した run を包み、run の無いリンク（画像のリンク）は名前付きの `<a>` にする。`#page=N` はビューアがページ移動とフォーカス移動に置き換える。
+- **リンク**は `http:` / `https:` / `mailto:` と `#page=N`、`#view=ID` だけを `<a>` にする（文書に埋め込まれた `javascript:` などを実行させない）。リンク領域に中心が入る連続した run を包み、run の無いリンク（画像のリンク）は名前付きの `<a>` にする。`#page=N` はビューアがページ移動とフォーカス移動に、`#view=ID` は View の切り替え（シート見出しのタブを選ぶのと同じ）に置き換える。
 - **言語**は `meta.dc.language` の最初の値を層の `lang` に、`MARK LANG` の run を span の `lang` にする。ビューアの UI の言語と文書の言語は別なので、`html lang` ではなく層に付ける。
 - **先読み**: テキスト層はビットマップより広い範囲（前後 3 画面）で作る。スクリーンリーダーのカーソルが進むとページがスクロールされ、その先の層が作られるので読み進められる。全ページを一度に作ると分割形式や Range 取得で全 Object を読んでしまうので避ける。
 - **ビューア**はページに `role=group` と「Page n of N」の名前を付け（ページ数だけのランドマークを作らない）、Canvas には `aria-hidden` を付ける。
@@ -348,6 +366,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 6. **PPTX 直接変換**: マスター共有の本領（実装済み、§3.4）。
 7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
+9. **draw.io 直接変換**: ページごとの View とシートのような切り替え（実装済み、§3.11）。
 
 ## 9. リポジトリ構成（案）
 
@@ -367,11 +386,13 @@ bdf/
 │   ├── docx/          Word → BDF 変換器（testdata/ にテスト用文書とフォント）
 │   ├── emf/           Windows メタファイル（.emf、.wmf）→ BDF 変換器
 │   ├── visio/         Visio（.vsdx、.vdx）→ BDF 変換器（testdata/ にテスト用図面）
+│   ├── drawio/        draw.io → BDF 変換器（testdata/ にテスト用の図、stencils/ に同梱のステンシル）
 │   ├── all/           すべての形式を登録する
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
 │                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
-│                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）、
+│                      フォント選択・計測・サブセット埋め込み。draw.io も使う）、canvas（組み立て中の Object。draw.io も使う）、
+│                      metafile（EMF/WMF の再生）、
 │                      暗号化された Office 文書を開く cfb（複合ファイル）と offcrypto（Agile / Standard 暗号化の復号）、
 │                      linebreak（行分割の規則）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）

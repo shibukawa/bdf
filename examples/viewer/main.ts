@@ -3,7 +3,7 @@
 // or dropped on the page are converted into bdf in another worker, by the Go
 // converters built as wasm (examples/viewer/site.mjs builds them).
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
-import { BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type OpenSource, type TextLayerOptions } from "@bdf/render";
+import { BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, internalLink, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type OpenSource, type TextLayerOptions } from "@bdf/render";
 import { ConverterClient, ConvertError, sniff, type Converted } from "./convert.js";
 
 /** The document shown when the URL has no ?src= (set by the build); "" shows the start page. */
@@ -58,12 +58,24 @@ document.head.appendChild(style);
 // breaks) on the clipboard, across pages.
 installCopyHandler(stage);
 
-// Links to a page ("#page=N") scroll there and move the focus to it.
+// Links to a page ("#page=N") scroll there and move the focus to it; links
+// to a view ("#view=ID", as between draw.io pages) switch to that view first.
 stage.addEventListener("click", (e) => {
-  const a = (e.target as Element).closest(`a[${RUN_ATTR.page}]`);
+  const a = (e.target as Element).closest(`a[${RUN_ATTR.page}], a[${RUN_ATTR.view}]`);
   if (!a) return;
   e.preventDefault();
-  goToPage(Number(a.getAttribute(RUN_ATTR.page)) - 1);
+  const page = a.getAttribute(RUN_ATTR.page);
+  const id = a.getAttribute(RUN_ATTR.view);
+  if (id !== null) {
+    const v = manifest.views.find((v) => v.id === id);
+    if (!v) return;
+    show(v);
+    focusTab(v);
+    // the pages are laid out by show: scroll once they are in place
+    if (page !== null) requestAnimationFrame(() => goToPage(Number(page) - 1));
+    return;
+  }
+  goToPage(Number(page) - 1);
 });
 
 /** Text layer options: the document's language (the UI around it is English). */
@@ -166,7 +178,8 @@ async function load(source: OpenSource, name?: string, token = ++opening) {
   $<HTMLInputElement>("q").value = "";
   manifest.views.forEach((v, i) => {
     const b = document.createElement("button");
-    b.textContent = `${v.title ?? v.id} (${v.kind})`;
+    b.textContent = v.title || v.id;
+    b.title = `${v.title || v.id} (${v.kind}, ${describe(v)})`;
     b.onclick = () => show(v);
     b.id = `tab-${i}`;
     b.dataset.id = v.id;
@@ -174,7 +187,9 @@ async function load(source: OpenSource, name?: string, token = ++opening) {
     b.setAttribute("aria-controls", stage.id);
     tabs.appendChild(b);
   });
-  show(manifest.views[0]);
+  // "#view=ID" in the address opens that view
+  const start = internalLink(location.hash);
+  show(manifest.views.find((v) => v.id === start?.view) ?? manifest.views[0]);
 }
 
 /**
@@ -184,6 +199,8 @@ async function load(source: OpenSource, name?: string, token = ++opening) {
 async function openFile(name: string, data: ArrayBuffer) {
   const token = ++opening;
   closeDocument();
+  // a view named in the address belongs to the document shown before
+  history.replaceState(null, "", location.pathname + location.search);
   setWarnings([]);
   setDownload();
   setTiming("");
@@ -226,6 +243,7 @@ function closeDocument() {
   stage.onscroll = null;
   stage.replaceChildren();
   tabs.replaceChildren();
+  $<HTMLButtonElement>("prevView").disabled = $<HTMLButtonElement>("nextView").disabled = true;
   $("modeBox").hidden = true;
   found.query = ""; found.hits = []; found.rects = []; found.index = -1; hitsBox.textContent = "";
 }
@@ -309,6 +327,8 @@ function init() {
     b.focus();
     show(manifest.views.find((v) => v.id === b.dataset.id)!);
   };
+  $("prevView").onclick = () => step(-1);
+  $("nextView").onclick = () => step(1);
   const q = $<HTMLInputElement>("q");
   // nothing to search, zoom or lay out before a document is open
   const search = (query: string, step: number) => { if (current) runSearch(query, step).catch(showError); };
@@ -371,8 +391,16 @@ function show(v: View) {
     const selected = b.dataset.id === v.id;
     b.setAttribute("aria-selected", String(selected));
     b.tabIndex = selected ? 0 : -1;
-    if (selected) stage.setAttribute("aria-labelledby", b.id);
+    if (selected) {
+      stage.setAttribute("aria-labelledby", b.id);
+      b.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   }
+  const i = manifest.views.indexOf(v);
+  $<HTMLButtonElement>("prevView").disabled = i <= 0;
+  $<HTMLButtonElement>("nextView").disabled = i >= manifest.views.length - 1;
+  // the address names the view, for a link to it or a reload
+  if (manifest.views.length > 1) history.replaceState(null, "", `#view=${encodeURIComponent(v.id)}`);
   $("modeBox").hidden = v.kind !== "flow";
   generation++;
   stage.onscroll = null;
@@ -381,6 +409,20 @@ function show(v: View) {
   if (v.kind === "sheet") showSheet(v);
   else if (continuous(v)) showContinuous(v);
   else showPages(v);
+}
+
+/** Show the view before (delta -1) or after (+1) the current one. */
+function step(delta: number) {
+  const i = current ? manifest.views.indexOf(current) : -1;
+  const v = manifest.views[i + delta];
+  if (!v) return;
+  show(v);
+  focusTab(v);
+}
+
+/** Move the focus to the tab of a view. */
+function focusTab(v: View) {
+  tabs.querySelector<HTMLButtonElement>(`[role=tab][data-id="${CSS.escape(v.id)}"]`)?.focus();
 }
 
 /** Whether a view is shown as one continuous scroll: a scroll view always, a flow view on request. */
@@ -417,7 +459,8 @@ function showPages(v: View) {
     el.className = "page";
     el.dataset.index = String(i);
     el.setAttribute("role", "group");
-    el.setAttribute("aria-label", `${noun} ${i + 1} of ${pagesOf.length}`);
+    // a view of one page (a draw.io page) is named by its title
+    el.setAttribute("aria-label", pagesOf.length === 1 && v.title ? v.title : `${noun} ${i + 1} of ${pagesOf.length}`);
     el.tabIndex = -1; // target of page links
     el.style.width = `${p.w * zoom}px`;
     el.style.height = `${p.h * zoom}px`;

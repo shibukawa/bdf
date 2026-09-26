@@ -1,0 +1,9 @@
+<mxfile host="test"><diagram id="j" name="Jumps"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="v1" style="endArrow=none;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="100" y="20" as="sourcePoint"/><mxPoint x="100" y="200" as="targetPoint"/></mxGeometry></mxCell>
+<mxCell id="v2" style="endArrow=none;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="200" y="20" as="sourcePoint"/><mxPoint x="200" y="200" as="targetPoint"/></mxGeometry></mxCell>
+<mxCell id="v3" style="endArrow=none;html=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="300" y="20" as="sourcePoint"/><mxPoint x="300" y="200" as="targetPoint"/></mxGeometry></mxCell>
+<mxCell id="h1" style="endArrow=classic;html=1;jumpStyle=arc;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="40" y="50" as="sourcePoint"/><mxPoint x="360" y="50" as="targetPoint"/></mxGeometry></mxCell>
+<mxCell id="h2" style="endArrow=classic;html=1;jumpStyle=gap;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="40" y="90" as="sourcePoint"/><mxPoint x="360" y="90" as="targetPoint"/></mxGeometry></mxCell>
+<mxCell id="h3" style="endArrow=classic;html=1;jumpStyle=sharp;jumpSize=10;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="40" y="130" as="sourcePoint"/><mxPoint x="360" y="130" as="targetPoint"/></mxGeometry></mxCell>
+<mxCell id="h4" style="endArrow=classic;html=1;jumpStyle=line;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="40" y="170" as="sourcePoint"/><Array as="points"><mxPoint x="250" y="170"/><mxPoint x="250" y="190"/></Array><mxPoint x="360" y="190" as="targetPoint"/></mxGeometry></mxCell>
+</root></mxGraphModel></diagram></mxfile>
