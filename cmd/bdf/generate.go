@@ -35,7 +35,7 @@ func generate(args []string) {
 	fs.Var(&dcFlags, "dc", "Dublin Core element as name=value, e.g. creator=Alice (repeatable; replaces the element read from the input, name= removes it)")
 	pages := fs.String("pages", "", "pages, slides or sheets to convert, e.g. 1-3,5,8- (8-: from 8 to the last; default: all)")
 	quiet := fs.Bool("q", false, "do not print warnings")
-	images := fs.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
+	images := fs.String("images", "convert", "raster images in documents: keep (store as is) or convert (try WebP, keep when smaller); an image file browsers display (PNG, JPEG, SVG …) as input is always stored as it is")
 	quality := fs.Int("quality", 80, "lossy WebP quality (1-100); also the JPEG quality of re-encoded images under -images keep")
 	maxDPI := fs.Float64("max-dpi", imgconv.DefaultMaxDPI, "image inputs (TIFF): scale pages down to at most this many pixels per inch (0: no limit)")
 	maxPixels := fs.Int("max-pixels", imgconv.DefaultMaxPixels, "image inputs (TIFF): scale pages down to at most this many pixels, width × height (0: no limit)")

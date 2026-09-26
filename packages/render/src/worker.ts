@@ -3,7 +3,8 @@ import { BdfDocument, BdfPasswordError, BufferSource, RangeSource, SplitSource, 
 import { fontString } from "./resources.js";
 import { PageRenderer } from "./page.js";
 import { DocumentSearch } from "./search.js";
-import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource, WorkerOpenOptions } from "./protocol.js";
+import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource, WorkerOpenOptions, RasterizeRequest, RasterizeResponse } from "./protocol.js";
+import type { SvgRasterizer } from "./svg.js";
 
 let doc: BdfDocument | undefined;
 /** A source opened but still locked: kept for "unlock", so nothing is fetched or sent again. */
@@ -17,6 +18,27 @@ const measure = (font: string, text: string) => {
   measureCtx.font = font;
   return measureCtx.measureText(text).width;
 };
+
+/** SVG images being drawn by the page, by request id. */
+const rasterizing = new Map<number, { resolve: (b: ImageBitmap) => void; reject: (e: Error) => void }>();
+let nextRid = 1;
+
+/**
+ * Workers cannot decode SVG: the page draws SVG images for them
+ * (BdfWorkerClient). A page that does not answer leaves them undrawn.
+ */
+const rasterizeOnPage: SvgRasterizer = (hash, data, width, height) =>
+  new Promise((resolve, reject) => {
+    const rid = nextRid++;
+    const timer = setTimeout(() => {
+      rasterizing.delete(rid);
+      reject(new Error("the page did not draw the SVG image"));
+    }, 30000);
+    const done = () => { clearTimeout(timer); rasterizing.delete(rid); };
+    rasterizing.set(rid, { resolve: (b) => { done(); resolve(b); }, reject: (e) => { done(); reject(e); } });
+    const req: RasterizeRequest = { type: "rasterize", rid, hash, data, width, height };
+    (self as unknown as Worker).postMessage(req);
+  });
 
 /** Forget the document, closing its decoded images. */
 function close(): void {
@@ -40,7 +62,7 @@ async function unlock(password?: string): Promise<Manifest> {
   if (!locked) throw new Error("bdf: no document to unlock");
   doc = await BdfDocument.open(locked, { password });
   locked = undefined;
-  pages = new PageRenderer(doc!, {}, (self as unknown as { fonts?: FontFaceSet }).fonts, { imageBudget: settings.imageBudget });
+  pages = new PageRenderer(doc!, {}, (self as unknown as { fonts?: FontFaceSet }).fonts, { imageBudget: settings.imageBudget, rasterizeSvg: rasterizeOnPage });
   search = new DocumentSearch(doc!, measure);
   return doc!.manifest;
 }
@@ -193,7 +215,17 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
   }
 }
 
-self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
+self.onmessage = async (ev: MessageEvent<WorkerRequest | RasterizeResponse>) => {
+  if ("rid" in ev.data) {
+    const res = ev.data;
+    const p = rasterizing.get(res.rid);
+    if (res.ok) {
+      if (p) p.resolve(res.bitmap); else res.bitmap.close(); // too late
+    } else {
+      p?.reject(new Error(res.error));
+    }
+    return;
+  }
   const req = ev.data;
   try {
     const { result, transfer } = await handle(req);

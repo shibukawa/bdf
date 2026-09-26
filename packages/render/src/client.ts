@@ -1,6 +1,7 @@
 import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdf/core";
 import type { HitRect } from "./search.js";
-import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode, WorkerOpenOptions } from "./protocol.js";
+import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode, WorkerOpenOptions, RasterizeRequest, RasterizeResponse } from "./protocol.js";
+import { domSvgRasterizer } from "./svg.js";
 
 /** An error from the worker; code says when the document needs a password. */
 export class BdfWorkerError extends Error {
@@ -10,19 +11,38 @@ export class BdfWorkerError extends Error {
   }
 }
 
-/** Main-thread handle to a rendering worker. */
+/**
+ * Main-thread handle to a rendering worker. It also draws the SVG images
+ * the worker asks for, which workers cannot decode.
+ */
 export class BdfWorkerClient {
   private next = 1;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  private svg = domSvgRasterizer();
 
   constructor(readonly worker: Worker) {
-    worker.onmessage = (ev: MessageEvent<WorkerResponse>) => {
-      const res = ev.data;
+    worker.onmessage = (ev: MessageEvent<WorkerResponse | RasterizeRequest>) => {
+      if ("type" in ev.data && ev.data.type === "rasterize") {
+        this.rasterize(ev.data);
+        return;
+      }
+      const res = ev.data as WorkerResponse;
       const p = this.pending.get(res.id);
       if (!p) return;
       this.pending.delete(res.id);
       if (res.ok) p.resolve(res.result); else p.reject(new BdfWorkerError(res.error, res.code));
     };
+  }
+
+  private async rasterize(req: RasterizeRequest): Promise<void> {
+    let res: RasterizeResponse;
+    try {
+      if (!this.svg) throw new Error("no DOM to draw SVG images with");
+      res = { rid: req.rid, ok: true, bitmap: await this.svg(req.hash, req.data, req.width, req.height) };
+    } catch (e) {
+      res = { rid: req.rid, ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+    this.worker.postMessage(res, res.ok ? [res.bitmap] : []);
   }
 
   private call<T>(req: WorkerCall, transfer: Transferable[] = []): Promise<T> {

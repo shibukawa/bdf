@@ -8,10 +8,11 @@
 //
 // and run it with Go's wasm_exec.js (in a Worker: a conversion keeps the
 // thread busy). -tags pdfonly or officeonly leaves out the Office
-// converters (Word, PowerPoint, Excel, CSV, Visio, draw.io, DXF, metafiles) or
-// the PDF one, for smaller modules. bdf_noconv leaves out the image and
-// WOFF2 encoders: a document drawn where it is converted gains nothing from
-// them.
+// converters (Word, PowerPoint, Excel, CSV, Visio, draw.io, DXF, metafiles
+// and images) or the PDF one, for smaller modules; imageonly keeps only the
+// images browsers display by themselves (PNG, JPEG, SVG …), which are
+// stored as they are. bdf_noconv leaves out the image and WOFF2 encoders: a
+// document drawn where it is converted gains nothing from them.
 //
 // The program sets globalThis.bdfConverter and waits for calls:
 //
@@ -20,6 +21,7 @@
 //	  format?: string,   // a format name; detected from the content when absent
 //	  password?: string, // the open password of an encrypted input
 //	  fonts?: string,    // URL of a font directory (see below)
+//	  name?: string,     // the file name: its extension tells formats the content does not, and some formats name things after it
 //	}): Promise<{bdf: Uint8Array, format: string, summary: string, warnings: string[], protected: boolean}>
 //
 // A failed conversion rejects with an Error whose code is
@@ -96,9 +98,9 @@ func convert(_ js.Value, args []js.Value) any {
 		}
 		return ""
 	}
-	format, password, fontURL := str("format"), str("password"), str("fonts")
+	format, password, fontURL, name := str("format"), str("password"), str("fonts"), str("name")
 	return promise(func() (any, error) {
-		opts := &converter.Options{Password: password, NoSystemFonts: true}
+		opts := &converter.Options{Password: password, NoSystemFonts: true, FileName: name}
 		if fontURL != "" {
 			fsys, err := fonts(fontURL)
 			if err != nil {

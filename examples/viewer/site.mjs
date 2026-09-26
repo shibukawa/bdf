@@ -1,7 +1,8 @@
 // Builds the static demo site (published on GitHub Pages): the viewer, the
 // converters as wasm (cmd/bdfwasm: one module for PDF, one for the Office
-// formats), the fonts the Office converters lay text out with, and sample
-// files. Files opened on the site are converted inside the browser.
+// formats, one for images), the fonts the Office converters lay text out
+// with, and sample files. Files opened on the site are converted inside the
+// browser.
 //
 //   node examples/viewer/site.mjs [--serve] [--out dir]
 //
@@ -25,6 +26,7 @@ const out = resolve(outArg >= 0 ? args[outArg + 1] : join(root, "examples/viewer
 const MODULES = [
   { file: "bdf-pdf.wasm", tags: "pdfonly" },
   { file: "bdf-office.wasm", tags: "officeonly" },
+  { file: "bdf-image.wasm", tags: "imageonly" },
 ];
 
 /** Samples offered on the start page: repository path and label. */
@@ -41,6 +43,8 @@ const SAMPLES = [
   { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },
   { path: "converter/drawio/testdata/aws.drawio", label: "draw.io (AWS)" },
   { path: "converter/dxf/testdata/layout.dxf", label: "DXF (model space and a layout)" },
+  { path: "converter/image/testdata/drawing.svg", label: "SVG image" },
+  { path: "converter/image/testdata/photo.jpg", label: "JPEG (EXIF)" },
   { path: "testdata/demo.bdf", label: "bdf" },
 ];
 

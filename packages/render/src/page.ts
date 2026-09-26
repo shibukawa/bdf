@@ -11,7 +11,13 @@ export interface PageRenderOptions extends RenderOptions {
   background?: string | null;
 }
 
-/** Renders pages, continuous flow regions and sheet regions of one document. */
+/**
+ * Renders pages, continuous flow regions and sheet regions of one document.
+ *
+ * A region with SVG images is drawn twice when it needs rasters of them
+ * that were not drawn yet: the first pass finds the sizes the images are
+ * drawn at (ResourceCache.settle).
+ */
 export class PageRenderer {
   readonly res: ResourceCache;
   readonly renderer: CanvasRenderer;
@@ -35,6 +41,25 @@ export class PageRenderer {
     await Promise.all(page.layers.map((l) => this.res.prepareText(l.obj)));
   }
 
+  /**
+   * Run draw, and again once the SVG rasters it asked for are drawn. The
+   * region is cleared first when the background is transparent.
+   */
+  private async drawSettled(ctx: Ctx2D, opts: PageRenderOptions, region: Rect, draw: () => void): Promise<void> {
+    this.res.takeMisses(); // those of draws run directly
+    draw();
+    const misses = this.res.takeMisses();
+    if (!misses.length || !(await this.res.settle(misses))) return;
+    if (opts.background === null) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(region.x, region.y, region.w, region.h);
+      ctx.restore();
+    }
+    draw();
+    this.res.takeMisses(); // rasters dropped meanwhile by other renders: the next render draws them
+  }
+
   /** Run a render: prepare with a hold on the images, draw, release. */
   private async held(render: (hold: ImageHold) => Promise<void>): Promise<void> {
     const hold = this.res.hold();
@@ -52,7 +77,8 @@ export class PageRenderer {
   renderPage(ctx: Ctx2D, page: Page, opts: PageRenderOptions, dx = 0, dy = 0): Promise<void> {
     return this.held(async (hold) => {
       await this.preparePage(page, hold);
-      this.drawPageSync(ctx, page, opts, dx, dy);
+      const region = { x: dx, y: dy, w: page.w * opts.scale, h: page.h * opts.scale };
+      await this.drawSettled(ctx, opts, region, () => this.drawPageSync(ctx, page, opts, dx, dy));
     });
   }
 
@@ -98,10 +124,10 @@ export class PageRenderer {
    * with viewport's top-left at device (0,0).
    */
   renderContinuous(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions): Promise<void> {
-    return this.held((hold) => this.drawContinuous(ctx, view, viewport, opts, hold));
+    return this.held((hold) => this.continuousHeld(ctx, view, viewport, opts, hold));
   }
 
-  private async drawContinuous(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, hold: ImageHold): Promise<void> {
+  private async continuousHeld(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, hold: ImageHold): Promise<void> {
     const pages = view.pages ?? [];
     const { offsets } = this.continuousLayout(view);
     const roles = opts.roles ?? ["body", "annotation"];
@@ -111,6 +137,12 @@ export class PageRenderer {
       if (offsets[i] < viewport.y + viewport.h && offsets[i] + b.h > viewport.y) visible.push(i);
     });
     await Promise.all(visible.map((i) => this.preparePage(pages[i], hold)));
+    const region = { x: 0, y: 0, w: viewport.w * opts.scale, h: viewport.h * opts.scale };
+    await this.drawSettled(ctx, opts, region, () => this.drawContinuous(ctx, view, viewport, opts, visible, offsets, roles));
+  }
+
+  private drawContinuous(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, visible: number[], offsets: number[], roles: Iterable<string>): void {
+    const pages = view.pages ?? [];
     for (const i of visible) {
       const p = pages[i];
       const b = p.body ?? { x: 0, y: 0, w: p.w, h: p.h };
@@ -145,10 +177,10 @@ export class PageRenderer {
    * row/column headers and frozen panes are the viewer's job.
    */
   renderSheet(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions): Promise<void> {
-    return this.held((hold) => this.drawSheet(ctx, view, viewport, opts, hold));
+    return this.held((hold) => this.sheetHeld(ctx, view, viewport, opts, hold));
   }
 
-  private async drawSheet(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, hold: ImageHold): Promise<void> {
+  private async sheetHeld(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, hold: ImageHold): Promise<void> {
     const tile = view.tile ?? 2048;
     const tiles = view.tiles ?? {};
     const tx0 = Math.floor(viewport.x / tile), ty0 = Math.floor(viewport.y / tile);
@@ -159,7 +191,12 @@ export class PageRenderer {
       if (h) keys.push([tx, ty, h]);
     }
     await Promise.all(keys.map(([, , h]) => this.res.prepare(h, hold)));
+    const region = { x: 0, y: 0, w: viewport.w * opts.scale, h: viewport.h * opts.scale };
+    await this.drawSettled(ctx, opts, region, () => this.drawSheet(ctx, view, viewport, opts, keys));
+  }
 
+  private drawSheet(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, keys: [number, number, string][]): void {
+    const tile = view.tile ?? 2048;
     const s = opts.scale;
     ctx.save();
     ctx.setTransform(s, 0, 0, s, -viewport.x * s, -viewport.y * s);

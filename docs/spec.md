@@ -42,7 +42,7 @@ BDF
 └── parts/<hash>                  … 内容アドレスの Part 群
     ├── Object（描画命令列）
     ├── Font（WOFF2 等、そのままのバイト列）
-    ├── Image（PNG/JPEG/WebP/AVIF、そのままのバイト列）
+    ├── Image（PNG/JPEG/WebP/AVIF/SVG など、そのままのバイト列）
     ├── Path collection（パス群のバイナリ）
     └── Index（大きなページ表・タイル表）
 ```
@@ -58,7 +58,7 @@ BDF
 - Part ごとに独立して圧縮する。方式は `identity`（無圧縮）または `deflate-raw`。
 - 読み手は `new DecompressionStream("deflate-raw")` で展開する。
 - 独立圧縮にするのは Range 取得・部分取得・タイル単位キャッシュを可能にするため。Part をまたぐ冗長性は 3.1 の共有で吸収する。
-- 目安: 展開後 512 バイト未満、または画像・WOFF2 のような既圧縮データは `identity`。
+- 目安: 展開後 512 バイト未満、または画像（PNG、JPEG など）・WOFF2 のような既圧縮データは `identity`。SVG と BMP（ICO の中のものを含む）は圧縮されていないので `deflate-raw` が効く。
 
 ### 3.3 1ファイル形式（single）
 
@@ -249,7 +249,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `dxf` / `emf` / `wmf` / `tiff` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `dxf` / `emf` / `wmf` / `tiff` / `png` / `jpeg` / `gif` / `webp` / `avif` / `bmp` / `ico` / `svg` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -301,7 +301,22 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | `created` | `CreationDate`（W3CDTF に変換） | `dcterms:created` | – | – |
 | `modified` | `ModDate`（W3CDTF に変換） | `dcterms:modified` | `mxfile` の `modified` | `DateTime`（W3CDTF に変換） |
 
-PDF と TIFF の対応は、XMP が文書情報辞書と TIFF のタグを写す方法に合わせている（TIFF の `DocumentName` は XMP にないので題名にした）。`bdf generate` の `-dc 要素名=値`（繰り返し可）で要素を上書きでき、`-dc 要素名=` でその要素を消せる。
+PDF と TIFF の対応は、XMP が文書情報辞書と TIFF のタグを写す方法に合わせている（TIFF の `DocumentName` は XMP にないので題名にした）。
+
+画像（ブラウザがそのまま表示できる画像をそのまま格納したもの）は、XMP、EXIF、IPTC、形式自身の情報の順に、要素ごとに先にあるものを使う。XMP（SVG では `metadata` 要素の RDF）の `dc:*` はその要素に写す（`dc:format` を除く。`rdf:Alt` は既定の言語の値）。
+
+| 要素 | XMP | EXIF | IPTC | 形式自身 |
+|---|---|---|---|---|
+| `title` | `dc:title` | `XPTitle` | Object Name（なければ Headline） | PNG の `Title`、SVG の `title` 要素 |
+| `creator` | `dc:creator`（なければ `tiff:Artist`） | `Artist`（なければ `XPAuthor`。`;` で分割） | By-line | PNG の `Author` |
+| `subject` | `dc:subject` | `XPKeywords`（`;` で分割） | Keywords | – |
+| `description` | `dc:description`（なければ `tiff:ImageDescription`） | `ImageDescription`、`XPSubject`、`XPComment`、`UserComment` の順（カメラが既定で書く文字列は除く） | Caption/Abstract | PNG の `Description`（なければ `Comment`）、GIF のコメント、SVG の `desc` 要素 |
+| `rights` | `dc:rights`（なければ `tiff:Copyright`） | `Copyright`（撮影者と編集者） | Copyright Notice | PNG の `Copyright` |
+| `language` | `dc:language` | – | – | SVG のルートの `xml:lang`（なければ `lang`） |
+| `created` | `dcterms:created`、`photoshop:DateCreated`、`exif:DateTimeOriginal`（なければ `xmp:CreateDate`、`exif:DateTimeDigitized`） | `DateTimeOriginal`（なければ `DateTimeDigitized`）と `OffsetTime*` | Date Created と Time Created | PNG の `Creation Time` |
+| `modified` | `xmp:ModifyDate`、`dcterms:modified`（なければ `tiff:DateTime`） | `DateTime` と `OffsetTime` | – | PNG の `tIME` |
+
+`bdf generate` の `-dc 要素名=値`（繰り返し可）で要素を上書きでき、`-dc 要素名=` でその要素を消せる。
 
 ## 5. Object Part
 
@@ -343,7 +358,11 @@ u8      style       0=normal, 1=italic, 2=oblique
 
 ### 6.2 Image
 
-Part の生バイト列（PNG / JPEG / WebP / AVIF / SVG）。再エンコードしない。読み手は `createImageBitmap(new Blob([bytes]))` でデコードする。
+Part の生バイト列。ブラウザが画像要素で表示できる形式（PNG / JPEG / GIF / WebP / AVIF / BMP / ICO / SVG）で、再エンコードしない。読み手はビットマップ画像を `createImageBitmap(new Blob([bytes]))` でデコードする。デコードした大きさが画像の画素の大きさで、EXIF の向き（JPEG、PNG）や AVIF の `irot` はブラウザが適用したものになる。
+
+**SVG**（先頭が `<`。バイト順マークと空白は飛ばす。UTF-16 のバイト順マークで始まるものも）は `createImageBitmap` ではデコードできない（Blob からはビットマップ画像だけ）。読み手は画像要素（`HTMLImageElement`）で読み込み、Canvas に `drawImage` で描いてビットマップにする。拡大してもぼけないよう、描くたびに必要な画素数（現在の変換で画像の 1 画素が覆うデバイス画素）で描き直してよい。Worker には画像要素がないので、ページに描かせる。SVG は画像要素の中で描かれるので、スクリプトは動かず、外部の資源は読み込まれない。
+
+SVG の画素の大きさ（`IMAGE_SUB` の元の矩形と、パターンの 1 画素の単位）は、画像要素での大きさ（CSS px）とする: ルート要素の `width` と `height`（CSS の絶対長さ。単位がなければ px）。一方がないか相対値なら、もう一方と `viewBox` の縦横比から求める。両方なければ `viewBox` の幅と高さ、`viewBox` もなければ 300 × 150（置換要素の既定の大きさ）。
 
 ### 6.3 Path
 
@@ -546,7 +565,7 @@ Viewer UI                            Loader      fetch / DecompressionStream / P
 - 検索はビューアではなくライブラリ（Worker）が提供する。索引 Part（§7.9）があればそれを、なければ Object を走査して同じ形の run 列を作り、正規化して検索し、ヒットの矩形を返す。ビューアはヒット一覧とハイライトの描画だけを担当する。
 - 大きな文書ではページ表を Index Part にして、可視範囲のページだけ Part を取得する。single 形式でも `off`/`len` により Range 取得できる。
 
-必要なブラウザ機能（いずれも 2023 年時点の主要ブラウザで利用可能）: `DecompressionStream("deflate-raw")`、Worker 内 `OffscreenCanvas`、Worker 内 `FontFace` / `self.fonts`、`createImageBitmap`、`Path2D`、`roundRect`。暗号化した文書（§3.5）には `crypto.subtle` が要る（HTTPS か localhost の安全なコンテキストでだけ使える）。`letterSpacing`、`filter` は任意機能とし、非対応環境では無視または代替描画する。
+必要なブラウザ機能（いずれも 2023 年時点の主要ブラウザで利用可能）: `DecompressionStream("deflate-raw")`、Worker 内 `OffscreenCanvas`、Worker 内 `FontFace` / `self.fonts`、`createImageBitmap`、`Path2D`、`roundRect`。SVG の画像にはページの画像要素が要る（§6.2。Worker はページに描かせる）。暗号化した文書（§3.5）には `crypto.subtle` が要る（HTTPS か localhost の安全なコンテキストでだけ使える）。`letterSpacing`、`filter` は任意機能とし、非対応環境では無視または代替描画する。
 
 ## 9. 書き手（エンコーダ）の責務
 

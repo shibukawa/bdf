@@ -99,6 +99,11 @@ export const CASES: Case[] = [
   { name: "tiff-scan-2", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "tiff-fax-1", src: "/testdata/tiff/fax.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
   { name: "tiff-orientation-6", src: "/testdata/tiff/orientation.bdf", kind: "page", view: "pages", page: 5, scale: 2 },
+  // Images stored as they are by converter/image: a JPEG turned by its EXIF orientation, an AVIF turned by irot,
+  // and an SVG drawn at the size it is shown (by the page for the worker, which cannot decode SVG).
+  { name: "image-photo", src: "/testdata/image/photo.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "image-rotated", src: "/testdata/image/rotated.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "image-drawing", src: "/testdata/image/drawing.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

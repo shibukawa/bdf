@@ -68,6 +68,11 @@ jobs:
             go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/tiff/$n.bdf"
           done
+          for f in converter/image/testdata/*; do
+            n=$(basename "${f%.*}")
+            go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/image/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:
