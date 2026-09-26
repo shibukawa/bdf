@@ -343,10 +343,11 @@ func (c *converter) checkUnsupported(st *cellState) {
 	if s.is("sketch") || s.get("comic", "") == "1" {
 		c.warnOnce("sketch", "hand-drawn styles (sketch) are drawn with straight lines")
 	}
-	switch s.get("fillStyle", "") {
-	case "", "auto", "solid":
-	default:
-		c.warnOnce("fillStyle", "fill style %q is drawn as a solid fill", s.get("fillStyle", ""))
+	// the patterns of mxSvgCanvas2D.getFillPattern; draw.io fills solid
+	// for other values (such as those of mxgraph.basic.patternFillRect)
+	switch v := s.get("fillStyle", ""); v {
+	case "hatch", "dots", "cross-hatch", "dashed", "zigzag", "zigzag-line":
+		c.warnOnce("fillStyle", "fill style %q is drawn as a solid fill", v)
 	}
 }
 
