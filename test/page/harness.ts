@@ -54,6 +54,9 @@ export const CASES: Case[] = [
   { name: "drawio-multipage-1", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "overview", page: 0, scale: 1.5 },
   { name: "drawio-multipage-2", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "details", page: 0, scale: 1.5 },
   { name: "drawio-multipage-3", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "layers", page: 0, scale: 1.5 },
+  // shapes, stencils, markers and edge shapes; swimlanes, orthogonal and curved routing, line jumps, a table
+  { name: "drawio-showcase-1", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "shapes", page: 0, scale: 1.5 },
+  { name: "drawio-showcase-2", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "flow", page: 0, scale: 1.5 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";
