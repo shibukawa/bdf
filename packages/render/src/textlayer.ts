@@ -6,11 +6,18 @@
 // serialization of unrelated spans.
 import { Sep, type TextRun } from "@bdf/core";
 import { fontString } from "./resources.js";
+import { hasExtent } from "./search.js";
 
 export interface TextLayerOptions {
   /** Class of the layer element (default "bdfTextLayer"). */
   className?: string;
-  /** Include ALT_TEXT runs (text that was not drawn as glyphs) at their anchor; default false. */
+  /**
+   * Include ALT_TEXT runs; default true. They carry the real text of what was
+   * drawn: ligatures and other glyphs mapped to private-use characters (placed
+   * like any run), and text drawn as paths or child objects (placed at their
+   * anchor along the baseline direction). Leaving them out drops that text
+   * from selection and from screen readers.
+   */
   altText?: boolean;
   /** Width measurement in CSS px for a CSS font string (default: a shared 2D context). */
   measure?: (font: string, text: string) => number;
@@ -44,13 +51,13 @@ export function buildTextLayer(runs: TextRun[], scale: number, opts: TextLayerOp
   const measure = opts.measure ?? defaultMeasure();
   for (const r of runs) {
     if (!r.text) continue;
-    if (r.altText && !opts.altText) continue;
+    if (r.altText && opts.altText === false) continue;
     const span = document.createElement("span");
     span.textContent = r.text;
     span.setAttribute(RUN_ATTR.ordinal, String(r.ordinal));
     span.setAttribute(RUN_ATTR.sep, String(r.sep));
-    if (r.font) {
-      const font = fontString(r.font, r.size);
+    if (hasExtent(r)) {
+      const font = fontString(r.font!, r.size);
       span.style.font = font;
       // The main thread may not have the embedded font: stretch the fallback
       // rendering to the advance the worker measured with the real one.
@@ -61,18 +68,25 @@ export function buildTextLayer(runs: TextRun[], scale: number, opts: TextLayerOp
       const m = r.matrix;
       span.style.transform = `matrix(${m[0] * scale}, ${m[1] * scale}, ${m[2] * scale}, ${m[3] * scale}, ${r.x * scale}, ${r.y * scale}) translate(${anchor}px, ${-r.size * 0.8}px) scaleX(${sx})`;
     } else {
-      // ALT_TEXT without a font: invisible but selectable at its anchor.
-      span.style.font = `${Math.max(1, r.size) || 10}px sans-serif`;
-      span.style.transform = `translate(${r.x * scale}px, ${r.y * scale}px)`;
+      // ALT_TEXT for paths, a child object or no drawing op: only the anchor
+      // and the baseline direction are known, so lay the text there.
+      const size = (r.size > 0 ? r.size : 10) * scale;
+      const angle = Math.atan2(r.matrix[1], r.matrix[0]);
+      span.style.font = `${size}px sans-serif`;
+      span.style.transform = `translate(${r.x * scale}px, ${r.y * scale}px) rotate(${angle}rad) translate(0, ${-size * 0.8}px)`;
     }
     layer.appendChild(span);
   }
   return layer;
 }
 
-/** CSS that a text layer needs; the class names follow TextLayerOptions.className. */
+/**
+ * CSS that a text layer needs; the class names follow TextLayerOptions.className.
+ * forced-color-adjust keeps the text transparent in forced colors (Windows
+ * high contrast), which would otherwise paint it opaque over the canvas.
+ */
 export const TEXT_LAYER_CSS = `
-.bdfTextLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; }
+.bdfTextLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; forced-color-adjust: none; }
 .bdfTextLayer span { position: absolute; color: transparent; white-space: pre; transform-origin: 0 0; cursor: text; }
 .bdfTextLayer span::selection { background: rgba(0, 120, 255, .35); }
 `;

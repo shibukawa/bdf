@@ -1,7 +1,7 @@
 // Test harness: renders fixture pages on the main thread and via the worker,
 // and compares canvases against golden PNGs. Driven by test/golden.mjs.
 import { BdfDocument, fetchSingle, RangeSource, SplitSource, type Rect } from "@bdf/core";
-import { PageRenderer, BdfWorkerClient, buildTextLayer, selectionText, joinRuns, TEXT_LAYER_CSS } from "@bdf/render";
+import { PageRenderer, BdfWorkerClient, buildTextLayer, selectionText, joinRuns, TEXT_LAYER_CSS, RUN_ATTR } from "@bdf/render";
 
 export interface Case {
   name: string;
@@ -182,6 +182,10 @@ async function main() {
   // text layer: select runs of the first doc page through the DOM and
   // rebuild the text; compare with the runs joined directly.
   (window as unknown as { bdfSelection: unknown }).bdfSelection = await selectionCheck(client);
+  // ALT_TEXT runs (ligatures drawn as one private-use glyph) are in the text layer
+  const { client: chromeDoc } = await open("/testdata/pdf/chrome-doc.bdf");
+  (window as unknown as { bdfAltText: unknown }).bdfAltText = await altTextCheck(chromeDoc);
+  (window as unknown as { bdfForcedColors: unknown }).bdfForcedColors = forcedColorsCheck;
   // search through the worker: hits, then rectangles
   const hits = await client.search("doc", "list of objects");
   const rects = await client.locate("doc", hits);
@@ -191,7 +195,10 @@ async function main() {
   const { client: pptx } = await open("/testdata/pptx/basic.bdf");
   const pptxHits = await pptx.search("slides", "改行します");
   const pptxRects = await pptx.locate("slides", pptxHits);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects };
+  // "fixture" is drawn with an fi ligature: the hit is on an ALT_TEXT run.
+  const ligHits = await chromeDoc.search("pages", "fixture");
+  const ligRects = await chromeDoc.locate("pages", ligHits);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }
@@ -214,7 +221,7 @@ async function selectionCheck(client: BdfWorkerClient) {
   all.selectNodeContents(layer);
   sel.addRange(all);
   const allText = selectionText(sel, host);
-  const drawn = runs.filter((r) => r.text && !r.altText).map((r) => ({ ordinal: r.ordinal, sep: r.sep, text: r.text, layer }));
+  const drawn = runs.filter((r) => r.text).map((r) => ({ ordinal: r.ordinal, sep: r.sep, text: r.text, layer }));
   const wantAll = joinRuns(drawn);
   // a partial range: from the third character of the second run to the
   // second character of the fourth run
@@ -228,6 +235,32 @@ async function selectionCheck(client: BdfWorkerClient) {
   sel.removeAllRanges();
   host.remove();
   return { spans: spans.length, allText, wantAll, partText, wantPart, breaks: (allText.match(/\n/g) ?? []).length };
+}
+
+async function altTextCheck(client: BdfWorkerClient) {
+  const runs = await client.text("pages", 0);
+  const layer = buildTextLayer(runs, 1);
+  const host = document.createElement("div");
+  host.style.cssText = "position: relative; width: 800px; height: 1100px;";
+  host.appendChild(layer);
+  document.body.appendChild(host);
+  const spans = [...layer.querySelectorAll("span")];
+  // each ALT_TEXT run has its span, as wide as the ligature run it stands for
+  const alt = runs.filter((r) => r.text && r.altText).map((r) => {
+    const span = spans.find((s) => s.getAttribute(RUN_ATTR.ordinal) === String(r.ordinal));
+    return { text: r.text, span: span?.textContent ?? null, width: span?.getBoundingClientRect().width ?? 0, want: r.advance * r.matrix[0] };
+  });
+  host.remove();
+  return { runs: runs.filter((r) => r.text).length, spans: spans.length, alt };
+}
+
+/** Called by test/golden.mjs with forced colors emulated: the text layer's color. */
+function forcedColorsCheck() {
+  const layer = buildTextLayer([{ text: "x", x: 0, y: 10, advance: 0, size: 10, font: undefined, align: 0, matrix: [1, 0, 0, 1, 0, 0], sep: 0, ordinal: 0, altText: false }], 1);
+  document.body.appendChild(layer);
+  const out = { forced: matchMedia("(forced-colors: active)").matches, color: getComputedStyle(layer.firstElementChild!).color };
+  layer.remove();
+  return out;
 }
 
 main().catch((e) => {
