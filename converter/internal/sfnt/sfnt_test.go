@@ -6,7 +6,7 @@ import (
 )
 
 func TestSFNTRebuild(t *testing.T) {
-	data, err := os.ReadFile("../../../fixture/fonts/DejaVuSans-sub.ttf")
+	data, err := os.ReadFile("../../../fixture/testdata/fonts/DejaVuSans-sub.ttf")
 	if err != nil {
 		t.Skip("fixture font missing")
 	}
@@ -42,7 +42,7 @@ func TestSFNTRebuild(t *testing.T) {
 func TestPruneGlyphs(t *testing.T) {
 	data, err := os.ReadFile("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 	if err != nil {
-		data, err = os.ReadFile("../../../fixture/fonts/DejaVuSans-sub.ttf")
+		data, err = os.ReadFile("../../../fixture/testdata/fonts/DejaVuSans-sub.ttf")
 		if err != nil {
 			t.Skip("no font available")
 		}

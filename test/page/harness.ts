@@ -25,33 +25,33 @@ export const CASES: Case[] = [
   { name: "sheet-tile-boundary", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 1800, w: 800, h: 500 }, scale: 1 },
   { name: "sheet-zoomed", kind: "sheet", view: "sheet1", viewport: { x: 64, y: 20, w: 300, h: 150 }, scale: 2 },
   // Documents converted from PDF (converter/pdf); see test/pdf.
-  { name: "pdf-chrome-slides-1", src: "/fixtures/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-chrome-slides-2", src: "/fixtures/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "pdf-chrome-doc-1", src: "/fixtures/pdf/chrome-doc.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-reportlab-1", src: "/fixtures/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-reportlab-2", src: "/fixtures/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 1, scale: 1.5 },
+  { name: "pdf-chrome-slides-1", src: "/testdata/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pdf-chrome-slides-2", src: "/testdata/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "pdf-chrome-doc-1", src: "/testdata/pdf/chrome-doc.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pdf-reportlab-1", src: "/testdata/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pdf-reportlab-2", src: "/testdata/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 1, scale: 1.5 },
   // Three pages that share a master prefix (PDF converter prefix sharing); the pages must render as if unshared.
-  { name: "pdf-master-1", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-master-2", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "pdf-master-3", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  { name: "pdf-master-1", src: "/testdata/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pdf-master-2", src: "/testdata/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "pdf-master-3", src: "/testdata/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
   // OpenType CFF web fonts (.otf, .woff2) and license-restricted TrueType; bare Type1C and CIDFontType0C from cairo.
-  { name: "pdf-webfonts-1", src: "/fixtures/pdf/weasyprint-webfonts.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-cairo-cff-1", src: "/fixtures/pdf/cairo-cff.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  { name: "pdf-webfonts-1", src: "/testdata/pdf/weasyprint-webfonts.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pdf-cairo-cff-1", src: "/testdata/pdf/cairo-cff.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
   // Type 1 programs (FontFile) converted to CFF: cairo subsets (seac accents, built-in encoding) and a whole font.
-  { name: "pdf-cairo-type1-1", src: "/fixtures/pdf/cairo-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
-  { name: "pdf-reportlab-type1-1", src: "/fixtures/pdf/reportlab-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  { name: "pdf-cairo-type1-1", src: "/testdata/pdf/cairo-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  { name: "pdf-reportlab-type1-1", src: "/testdata/pdf/reportlab-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
   // PowerPoint decks rendered by converter/pptx with the test fonts; see test/pptx.
-  { name: "pptx-basic-2", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 1, scale: 1 },
-  { name: "pptx-basic-3", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
-  { name: "pptx-basic-4", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
-  { name: "pptx-basic-5", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 4, scale: 1 },
-  { name: "pptx-features-1", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 0, scale: 1 },
-  { name: "pptx-features-3", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
-  { name: "pptx-features-4", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
-  { name: "pptx-features-5", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 4, scale: 0.75 },
+  { name: "pptx-basic-2", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 1, scale: 1 },
+  { name: "pptx-basic-3", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
+  { name: "pptx-basic-4", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
+  { name: "pptx-basic-5", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 4, scale: 1 },
+  { name: "pptx-features-1", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 0, scale: 1 },
+  { name: "pptx-features-3", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
+  { name: "pptx-features-4", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
+  { name: "pptx-features-5", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 4, scale: 0.75 },
 ];
 
-const DEFAULT_SRC = "/fixtures/demo.bdf";
+const DEFAULT_SRC = "/testdata/demo.bdf";
 
 function canvasSize(c: Case, doc: BdfDocument): [number, number] {
   if (c.kind === "page") {
@@ -148,13 +148,13 @@ async function main() {
     if (o) return o;
     const isDefault = src === DEFAULT_SRC;
     const doc = await BdfDocument.open(
-      isDefault && sourceKind === "split" ? new SplitSource("/fixtures/demo-split/")
+      isDefault && sourceKind === "split" ? new SplitSource("/testdata/demo-split/")
         : isDefault && sourceKind === "range" ? new RangeSource(src)
           : await fetchSingle(src),
     );
     const pr = new PageRenderer(doc, {}, document.fonts);
     const client = new BdfWorkerClient(new Worker(workerUrl, { type: "module" }));
-    await client.open(isDefault && sourceKind === "split" ? { kind: "split", base: location.origin + "/fixtures/demo-split/" } : { kind: "single", url: location.origin + src, range: isDefault && sourceKind === "range" });
+    await client.open(isDefault && sourceKind === "split" ? { kind: "split", base: location.origin + "/testdata/demo-split/" } : { kind: "single", url: location.origin + src, range: isDefault && sourceKind === "range" });
     o = { doc, pr, client };
     opened.set(src, o);
     return o;
@@ -168,7 +168,7 @@ async function main() {
     main.title = c.name;
     document.body.appendChild(main);
     const worker = toCanvas(await renderWorker(client, c));
-    const golden = await loadImage(`/fixtures/golden/${c.name}.png`);
+    const golden = await loadImage(`/testdata/golden/${c.name}.png`);
     const textRuns = c.kind === "page" ? (await client.text(c.view, c.page!)).length : 0;
     results.push({
       name: c.name,
@@ -188,7 +188,7 @@ async function main() {
   const sheetHits = await client.search("sheet1", "row 150");
   const sheetRects = await client.locate("sheet1", sheetHits);
   // Japanese text wrapped between characters: the hit spans two lines.
-  const { client: pptx } = await open("/fixtures/pptx/basic.bdf");
+  const { client: pptx } = await open("/testdata/pptx/basic.bdf");
   const pptxHits = await pptx.search("slides", "改行します");
   const pptxRects = await pptx.locate("slides", pptxHits);
   (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects };

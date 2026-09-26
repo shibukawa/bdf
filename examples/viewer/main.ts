@@ -4,7 +4,7 @@ import type { Manifest, View, SearchHit } from "@bdf/core";
 import { BdfWorkerClient, buildTextLayer, installCopyHandler, type HitRect } from "@bdf/render";
 
 const params = new URLSearchParams(location.search);
-const src = params.get("src") ?? "/fixtures/demo.bdf";
+const src = params.get("src") ?? "/testdata/demo.bdf";
 const client = new BdfWorkerClient(new Worker("./worker.js", { type: "module" }));
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
