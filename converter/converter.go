@@ -5,8 +5,8 @@
 // The converters themselves are its subpackages (converter/pdf,
 // converter/pptx, converter/xlsx, converter/csv, converter/docx,
 // converter/visio, converter/drawio, converter/dxf, converter/jww,
-// converter/emf). Each registers its format when it is imported, so a
-// program supports the formats whose packages it links in:
+// converter/sxf, converter/emf). Each registers its format when it is
+// imported, so a program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format

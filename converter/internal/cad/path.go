@@ -49,6 +49,14 @@ type Path struct {
 // Empty reports whether the path has no segments.
 func (p *Path) Empty() bool { return p == nil || len(p.verbs) == 0 }
 
+// Size returns the number of points of the path (control points included).
+func (p *Path) Size() int {
+	if p == nil {
+		return 0
+	}
+	return len(p.pts)
+}
+
 // Current returns the current point.
 func (p *Path) Current() Point { return p.cur }
 
@@ -352,4 +360,28 @@ func (r Rect) H() float64 { return r.Max.Y - r.Min.Y }
 // its determinant's magnitude): how lengths change on average.
 func Scale(m canvas.Matrix) float64 {
 	return math.Sqrt(math.Abs(m[0]*m[3] - m[1]*m[2]))
+}
+
+// Flatten samples a path into points: its lines as they are and each curve
+// in n steps. Subpaths are joined.
+func Flatten(p *Path, n int) []Point {
+	var out []Point
+	var cur Point
+	p.walk(func(v byte, pts []Point) {
+		switch v {
+		case moveTo, lineTo:
+			cur = pts[0]
+			out = append(out, cur)
+		case cubicTo:
+			a, b, c := pts[0], pts[1], pts[2]
+			for i := 1; i <= n; i++ {
+				t := float64(i) / float64(n)
+				u := 1 - t
+				k0, k1, k2, k3 := u*u*u, 3*u*u*t, 3*u*t*t, t*t*t
+				out = append(out, Point{k0*cur.X + k1*a.X + k2*b.X + k3*c.X, k0*cur.Y + k1*a.Y + k2*b.Y + k3*c.Y})
+			}
+			cur = c
+		}
+	})
+	return out
 }
