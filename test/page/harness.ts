@@ -88,6 +88,11 @@ export const CASES: Case[] = [
   // AWS: current icons and groups (aws4), and a diagram in an older icon set drawn with them
   { name: "drawio-aws-1", src: "/testdata/drawio/aws.bdf", kind: "page", view: "current", page: 0, scale: 1.5 },
   { name: "drawio-aws-2", src: "/testdata/drawio/aws.bdf", kind: "page", view: "legacy", page: 0, scale: 1 },
+  // DXF drawings rendered by converter/dxf with the test fonts; see test/dxf. Model space on its dark
+  // background, and a layout with a title block and two viewports at different scales.
+  { name: "dxf-shapes-1", src: "/testdata/dxf/shapes.bdf", kind: "page", view: "model", page: 0, scale: 0.75 },
+  { name: "dxf-layout-1", src: "/testdata/dxf/layout.bdf", kind: "page", view: "layout1", page: 0, scale: 0.75 },
+  { name: "dxf-r12-sjis-1", src: "/testdata/dxf/r12-sjis.bdf", kind: "page", view: "model", page: 0, scale: 0.5 },
   // Images stored as they are by converter/image: a JPEG turned by its EXIF orientation, an AVIF turned by irot,
   // and an SVG drawn at the size it is shown (by the page for the worker, which cannot decode SVG).
   { name: "image-photo", src: "/testdata/image/photo.bdf", kind: "page", view: "pages", page: 0, scale: 2 },

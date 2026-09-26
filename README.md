@@ -4,19 +4,19 @@ English | [日本語](README.ja.md)
 
 **bdf** (Browser-specific Document Format) is a draft document format for previews that browsers can draw straight onto Canvas 2D.
 
-Office-style files (PDF, Excel, PowerPoint, Word, Visio), draw.io diagrams and images are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
+Office-style files (PDF, Excel, PowerPoint, Word, Visio), draw.io diagrams, CAD drawings (DXF) and images are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
 
-**Demo**: <https://shibukawa.github.io/bdf/>. Drop a PDF, Word, PowerPoint, Excel, CSV or Visio file, a draw.io diagram, a Windows metafile or an image on the page: it is converted into bdf and drawn inside the browser, without being uploaded.
+**Demo**: <https://shibukawa.github.io/bdf/>. Drop a PDF, Word, PowerPoint, Excel, CSV or Visio file, a draw.io diagram, a DXF drawing, a Windows metafile or an image on the page: it is converted into bdf and drawn inside the browser, without being uploaded.
 
 ## How it works
 
 ```mermaid
 flowchart TB
-    SRC["PDF · Excel · CSV · PowerPoint · Word · Visio · draw.io · images"]
+    SRC["PDF · Excel · CSV · PowerPoint · Word · Visio · draw.io · DXF · images"]
 
     subgraph SERVER["Go server process"]
         direction TB
-        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/image"]
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/image"]
         BUNDLE["bdf bundle (packed)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         SCONV --> BUNDLE
     end
@@ -24,7 +24,7 @@ flowchart TB
     subgraph BROWSER["Browser"]
         direction TB
         subgraph CWORKER["Converter Worker (wasm)"]
-            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/image"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/image"]
         end
         PARTS["bdf document (in memory)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         subgraph RWORKER["Renderer Worker"]
@@ -76,8 +76,9 @@ Documents are converted with the `bdf generate` subcommand, which tells the inpu
 - **Visio .vsdx / .vdx** (`converter/visio`): Visio 2013 packages (.vsdx, .vsdm, .vstx) and the XML drawings of Visio 2003 to 2010 (.vdx), read into one ShapeSheet model. Shapes inherit from masters and styles, and the cells a dynamic theme sets are resolved from the theme and the shapes' quick styles. Every geometry row, fill pattern, gradient, line pattern and the 45 arrowheads are drawn; background pages become background layers shared between pages. Text is laid out by the DrawingML text engine the PowerPoint converter uses, with its fonts embedded as WOFF2 subsets. The binary .vsd format is not read. See §3.8 of design.md for details.
 - **draw.io** (`converter/drawio`): draws diagrams from their mxGraphModel XML: `.drawio` files (compressed pages too) and `.drawio.svg` / `.drawio.png` exports with the diagram embedded. Every page becomes a view of its own, so the viewer switches between pages with tabs the way a spreadsheet switches sheets; draw.io layers become the view's layer objects and links to pages become `#view=` links. Cell geometry, edge routing (orthogonal, elbow and the other edge styles, perimeters), shapes, arrows, stencils and the wrapping and formatting of HTML labels are ported from draw.io's (mxGraph's) own rendering code, and fonts are embedded as subsets as for PowerPoint. AWS diagrams are drawn with the current AWS icons, also those made with older AWS icon sets, whose shapes are mapped to their current counterparts. Hand-drawn styles (`sketch=1`) are drawn normally. See §3.11 of design.md for details.
 - **Word .docx** (`converter/docx`): lays the document out in the converter, which is what Word does each time it opens a file: lines (Japanese line breaking rules and spacing, tab stops and leaders, justification, the document grid), lists, tables (table styles, merged cells, rows split across pages, repeated header rows), floating pictures and text boxes with text wrapping around them, columns, sections, headers and footers with page numbers, footnotes, and East Asian vertical text (upright characters, vertical punctuation, turned Latin text and tables). Two views come out of it: the pages (a flow view with header, body and footer layers), and a scroll view laid out once more without pages as one long column of the text width, like Word's draft and web layouts. Drawings go through the same DrawingML renderer as PowerPoint, and the fonts are embedded the same way. See §3.9 of design.md for details.
+- **AutoCAD .dxf** (`converter/dxf`): DXF drawings in text or binary, from R12 to 2018 (DWG, whose format is not published, is not read). Model space becomes a page fitted to the drawing on the dark background of CAD programs, and each paper space layout a page of its paper, where the viewports show model space at their scale. Layers, colors, line types and lineweights are resolved as a plotter would draw them; polylines with bulges and widths, splines (as exact Bézier curves), hatches (patterns, islands, gradients), blocks and block arrays with attributes, dimensions, leaders and multileaders, single-line and multiline text (formatting codes, wrapping with Japanese line breaking rules, stacked fractions) are drawn. SHX fonts are replaced by sans-serif fonts and big fonts by East Asian ones, and the fonts in use are embedded as WOFF2 subsets. Strings in older files are read in their code page (Shift_JIS and others). See §3.12 of design.md for details.
 - **Windows metafiles .emf / .wmf** (`converter/emf`): one page the size of the picture, drawn by replaying the metafile's records (the replay that also draws the metafile pictures inside Office documents). Text is laid out and its fonts embedded as for PowerPoint.
-- **Images .png / .jpg / .gif / .webp / .avif / .bmp / .ico / .svg** (`converter/image`): images that browsers display by themselves pass through. They are stored as they are, neither decoded nor re-encoded, and drawn on one page their size, so they look as they do when the browser opens the file. The converter reads only their size (with the EXIF orientation of JPEG and PNG images and the `irot` of AVIF) and their metadata: XMP, EXIF and IPTC, PNG text chunks and an SVG file's title, description and RDF become Dublin Core as other formats' properties do, and the description is the figure's alternative text. Workers cannot decode SVG, so the page draws SVG images at the size they are shown, sharp at every zoom (the SVG pictures of Office documents and draw.io diagrams too). See §3.12 of design.md for details.
+- **Images .png / .jpg / .gif / .webp / .avif / .bmp / .ico / .svg** (`converter/image`): images that browsers display by themselves pass through. They are stored as they are, neither decoded nor re-encoded, and drawn on one page their size, so they look as they do when the browser opens the file. The converter reads only their size (with the EXIF orientation of JPEG and PNG images and the `irot` of AVIF) and their metadata: XMP, EXIF and IPTC, PNG text chunks and an SVG file's title, description and RDF become Dublin Core as other formats' properties do, and the description is the figure's alternative text. Workers cannot decode SVG, so the page draws SVG images at the size they are shown, sharp at every zoom (the SVG pictures of Office documents and draw.io diagrams too). See §3.13 of design.md for details.
 
 The input formats are static plugins: each converter package registers its format with the `converter` package when it is imported, and a program supports the formats whose packages it links in.
 
@@ -126,11 +127,12 @@ The documents are in Japanese.
 | `converter/csv` | CSV and TSV → bdf converter (drawn by `converter/xlsx`) |
 | `converter/docx` | Word (.docx) → bdf converter |
 | `converter/visio` | Visio (.vsdx, .vdx) → bdf converter |
+| `converter/dxf` | AutoCAD DXF → bdf converter |
 | `converter/emf` | Windows metafile (.emf, .wmf) → bdf converter |
 | `converter/drawio` | draw.io (.drawio / .drawio.svg / .drawio.png) → bdf converter |
 | `converter/image` | Image (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG) → bdf converter (stores the image as it is and reads its metadata) |
 | `converter/all` | Registers every input format (import for its side effect) |
-| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`, draw.io too), objects under construction (`canvas`, draw.io too), EMF/WMF replay (`metafile`), line breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`); for PDF, Adobe's predefined CJK CMaps (`cjkcmap`) and the JPEG 2000 and JBIG2 decoders (`jpx`, `jbig2`) |
+| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`, draw.io too), objects under construction (`canvas`, draw.io too), EMF/WMF replay (`metafile`), CAD drawings plotted onto pages (`cad`), line breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`); for PDF, Adobe's predefined CJK CMaps (`cjkcmap`) and the JPEG 2000 and JBIG2 decoders (`jpx`, `jbig2`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering (scroll views render as continuous), Worker (SVG images are drawn on the main thread) |
 | `cmd/bdfwasm` | The converters built as wasm for in-browser conversion (a module for PDF, one for the Office formats, one for images) |
@@ -147,7 +149,7 @@ go run ./cmd/bdf ls out.bdf          # list parts
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # convert to the split form
 
-# PDF / PowerPoint / Excel / CSV / Word / Visio / draw.io / metafiles / images → bdf (the format is detected from the content, else from the extension; -format pdf|pptx|xlsx|csv|docx|visio|drawio|emf|image forces it)
+# PDF / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / metafiles / images → bdf (the format is detected from the content, else from the extension; -format pdf|pptx|xlsx|csv|docx|visio|drawio|dxf|emf|image forces it)
 go run ./cmd/bdf generate -h                  # flags and the input formats with their -param options
 go run ./cmd/bdf generate in.pdf out.bdf      # single-file form
 go run ./cmd/bdf generate in.pptx out/        # split form
@@ -167,6 +169,9 @@ go run ./cmd/bdf generate -param charset=shift_jis -param delimiter=tab -param h
 go run ./cmd/bdf generate in.docx out.bdf                    # Word: the pages and the scroll view
 go run ./cmd/bdf generate -param views=pages in.docx out.bdf # Word: only the pages (views=scroll: only the scroll view)
 go run ./cmd/bdf generate in.vsdx out.bdf                    # Visio (.vsdx or .vdx): a page for each foreground page
+go run ./cmd/bdf generate in.dxf out.bdf                     # DXF: model space and each layout as a view of one page
+go run ./cmd/bdf generate -param views=model in.dxf out.bdf # DXF: model space only (views=layouts: the layouts only)
+go run ./cmd/bdf generate -param background=light in.dxf out.bdf # DXF: model space on white paper instead of a dark background
 go run ./cmd/bdf generate in.emf out.bdf                     # Windows metafile (.emf or .wmf) as one page
 go run ./cmd/bdf generate photo.jpg out.bdf                  # image (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG) as it is on one page, its metadata as Dublin Core
 go run ./cmd/bdf generate diagram.drawio out.bdf             # draw.io: a view per page (switched like sheets)
@@ -189,6 +194,7 @@ npm run test:pptx:gen                # regenerate the PowerPoint test decks (req
 npm run test:xlsx:gen                # regenerate the Excel test workbooks (requires openpyxl)
 npm run test:docx:gen                # regenerate the Word test documents
 npm run test:visio:gen               # regenerate the Visio test drawings
+npm run test:dxf:gen                 # regenerate the DXF test drawings (requires ezdxf)
 npm run test:image:gen               # regenerate the image test files (requires ImageMagick, exiftool, cwebp and avifenc)
 node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium (sheets: up to 4096 px from the top left)
 

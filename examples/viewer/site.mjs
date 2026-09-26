@@ -42,6 +42,7 @@ const SAMPLES = [
   { path: "converter/visio/testdata/flow.vdx", label: "Visio XML (.vdx)" },
   { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },
   { path: "converter/drawio/testdata/aws.drawio", label: "draw.io (AWS)" },
+  { path: "converter/dxf/testdata/layout.dxf", label: "DXF (model space and a layout)" },
   { path: "converter/image/testdata/drawing.svg", label: "SVG image" },
   { path: "converter/image/testdata/photo.jpg", label: "JPEG (EXIF)" },
   { path: "testdata/demo.bdf", label: "bdf" },

@@ -28,6 +28,7 @@ type OS2 struct {
 	TypoAscent  int
 	TypoDescent int
 	TypoLineGap int
+	CapHeight   int // 0 when the table (before version 2) does not have it
 }
 
 // OS2 parses the OS/2 table; ok is false when it is missing.
@@ -44,6 +45,9 @@ func (f *Font) OS2() (o OS2, ok bool) {
 	o.TypoLineGap = int(int16(be16(b, 72)))
 	o.WinAscent = int(be16(b, 74))
 	o.WinDescent = int(be16(b, 76))
+	if be16(b, 0) >= 2 && len(b) >= 90 {
+		o.CapHeight = int(int16(be16(b, 88)))
+	}
 	return o, true
 }
 
