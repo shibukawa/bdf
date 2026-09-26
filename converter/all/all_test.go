@@ -55,7 +55,16 @@ func TestDetect(t *testing.T) {
 		{"drawio svg", read(t, "embedded.drawio.svg"), "drawio"},
 		{"drawio png", read(t, "embedded.drawio.png"), "drawio"},
 		{"mxGraphModel", []byte("\ufeff<?xml version=\"1.0\"?>\n<mxGraphModel><root/></mxGraphModel>"), "drawio"},
-		{"plain svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), ""},
+		// images come after the formats that read some of them (draw.io's exports)
+		{"plain svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), "image"},
+		{"svg with commas", []byte("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0,0,10,10\">\n<path d=\"M1,1 L2,2\"/>\n<path d=\"M3,3 L4,4\"/>\n</svg>\n"), "image"},
+		{"png", readImage(t, "tags.png"), "image"},
+		{"jpeg", readImage(t, "photo.jpg"), "image"},
+		{"gif", readImage(t, "anim.gif"), "image"},
+		{"webp", readImage(t, "scene.webp"), "image"},
+		{"avif", readImage(t, "rotated.avif"), "image"},
+		{"bmp", readImage(t, "flag.bmp"), "image"},
+		{"ico", readImage(t, "icon.ico"), "image"},
 		{"tsv", []byte("id\tname\n1\tAnn\n"), "csv"},
 		{"junk", []byte("hello"), ""},
 	} {
@@ -73,6 +82,16 @@ func TestDetect(t *testing.T) {
 func read(t *testing.T, name string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "drawio", "testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// readImage returns a file of the image converter's test data.
+func readImage(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "image", "testdata", name))
 	if err != nil {
 		t.Fatal(err)
 	}

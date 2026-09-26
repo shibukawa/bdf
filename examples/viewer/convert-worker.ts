@@ -6,7 +6,7 @@ import type { ConvertRequest, ConvertResponse, Converted } from "./convert.js";
 
 /** What cmd/bdfwasm sets on globalThis. */
 interface Converter {
-  convert(data: Uint8Array, options: { format?: string; password?: string; fonts?: string }): Promise<Converted>;
+  convert(data: Uint8Array, options: { format?: string; password?: string; fonts?: string; name?: string }): Promise<Converted>;
 }
 declare class Go {
   importObject: WebAssembly.Imports;

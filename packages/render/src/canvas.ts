@@ -3,6 +3,7 @@ import {
   BLEND_NAMES, LINE_CAPS, LINE_JOINS, TEXT_ALIGNS, TEXT_BASELINES, TEXT_DIRECTIONS, FILL_RULES, REPEATS, SMOOTHING_QUALITIES, PaintKind, MaskKind,
 } from "@bdf/core";
 import { ResourceCache, fontString } from "./resources.js";
+import type { SvgRasterizer } from "./svg.js";
 
 /** Any 2D context: on-screen canvas or OffscreenCanvas. */
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -26,6 +27,8 @@ export interface RenderOptions {
   advanceTolerance?: number;
   /** Factory for temporary canvases used by GROUP_BEGIN and MASK_BEGIN. */
   createCanvas?: (w: number, h: number) => OffscreenCanvas | HTMLCanvasElement;
+  /** Draws SVG images (PageRenderer; the default uses an image element, which workers do not have). */
+  rasterizeSvg?: SvgRasterizer;
 }
 
 function defaultCreateCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
@@ -120,7 +123,7 @@ export class CanvasRenderer implements OpSink {
     }
   }
 
-  private paint(index: number): CanvasGradient | CanvasPattern {
+  private paint(index: number): CanvasGradient | CanvasPattern | string {
     const p: Paint | undefined = this.obj.paints[index];
     if (!p) throw new Error(`bdf: bad paint ref ${index}`);
     const ctx = this.ctx;
@@ -131,12 +134,24 @@ export class CanvasRenderer implements OpSink {
       case PaintKind.RADIAL: g = ctx.createRadialGradient(c[0], c[1], c[2], c[3], c[4], c[5]); break;
       case PaintKind.CONIC: g = ctx.createConicGradient(c[0], c[1], c[2]); break;
       case PaintKind.PATTERN: {
-        const img = this.res.image(this.obj.images[p.image]);
+        const hash = this.obj.images[p.image];
+        const m = p.matrix;
+        let img: ImageBitmap | undefined, kx = 1, ky = 1;
+        const vec = this.res.vector(hash);
+        if (vec) {
+          // an SVG cell as large as it is drawn: device pixels per image pixel
+          const t = ctx.getTransform();
+          const a = t.a * m[0] + t.c * m[1], b = t.b * m[0] + t.d * m[1], c = t.a * m[2] + t.c * m[3], d = t.b * m[2] + t.d * m[3];
+          img = this.res.svgRaster(vec, Math.max(Math.hypot(a, b), Math.hypot(c, d)))?.bitmap;
+          if (img) [kx, ky] = [img.width / vec.width, img.height / vec.height];
+        } else {
+          img = this.res.image(hash);
+        }
+        if (!img) return "rgba(0,0,0,0)"; // an SVG image not drawn yet: the page is drawn again
         const pat = ctx.createPattern(img, REPEATS[p.repeat] ?? "repeat");
         if (!pat) throw new Error("bdf: createPattern failed");
-        const m = p.matrix;
-        if (!(m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0)) {
-          pat.setTransform(new DOMMatrix([m[0], m[1], m[2], m[3], m[4], m[5]]));
+        if (!(m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0 && kx === 1 && ky === 1)) {
+          pat.setTransform(new DOMMatrix([m[0], m[1], m[2], m[3], m[4], m[5]]).scale(1 / kx, 1 / ky));
         }
         return pat;
       }
@@ -247,10 +262,32 @@ export class CanvasRenderer implements OpSink {
 
   // --- images ---
   image(img: number, x: number, y: number, w: number, h: number) {
-    this.ctx.drawImage(this.res.image(this.obj.images[img]), x, y, w, h);
+    const hash = this.obj.images[img];
+    const vec = this.res.vector(hash);
+    if (!vec) {
+      this.ctx.drawImage(this.res.image(hash), x, y, w, h);
+      return;
+    }
+    const r = this.res.svgRaster(vec, this.deviceScale(w / vec.width, h / vec.height));
+    if (r) this.ctx.drawImage(r.bitmap, x, y, w, h);
   }
   imageSub(img: number, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number) {
-    this.ctx.drawImage(this.res.image(this.obj.images[img]), sx, sy, sw, sh, dx, dy, dw, dh);
+    const hash = this.obj.images[img];
+    const vec = this.res.vector(hash);
+    if (!vec) {
+      this.ctx.drawImage(this.res.image(hash), sx, sy, sw, sh, dx, dy, dw, dh);
+      return;
+    }
+    const r = this.res.svgRaster(vec, this.deviceScale(dw / sw, dh / sh));
+    if (!r) return;
+    // the source rectangle is in the image's pixels (spec §6.2), the raster has more or fewer
+    const kx = r.bitmap.width / vec.width, ky = r.bitmap.height / vec.height;
+    this.ctx.drawImage(r.bitmap, sx * kx, sy * ky, sw * kx, sh * ky, dx, dy, dw, dh);
+  }
+  /** Device pixels one image pixel covers, drawn sx by sy units per image pixel. */
+  private deviceScale(sx: number, sy: number): number {
+    const m = this.ctx.getTransform();
+    return Math.max(Math.hypot(m.a, m.b) * Math.abs(sx), Math.hypot(m.c, m.d) * Math.abs(sy)) || 1;
   }
   smoothing(enabled: boolean, quality: number) {
     this.ctx.imageSmoothingEnabled = enabled;

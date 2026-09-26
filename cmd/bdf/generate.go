@@ -35,7 +35,7 @@ func generate(args []string) {
 	fs.Var(&dcFlags, "dc", "Dublin Core element as name=value, e.g. creator=Alice (repeatable; replaces the element read from the input, name= removes it)")
 	pages := fs.String("pages", "", "pages, slides or sheets to convert, e.g. 1-3,5 (default: all)")
 	quiet := fs.Bool("q", false, "do not print warnings")
-	images := fs.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
+	images := fs.String("images", "convert", "raster images in documents: keep (store as is) or convert (try WebP, keep when smaller); an image file as input is always stored as it is")
 	quality := fs.Int("quality", 80, "lossy WebP quality (1-100)")
 	noSubset := fs.Bool("no-subset", false, "embed whole fonts instead of the glyphs in use")
 	noWOFF2 := fs.Bool("no-woff2", false, "store embedded fonts as TrueType/OpenType instead of WOFF2")

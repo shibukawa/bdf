@@ -1,4 +1,5 @@
 import { type BdfDocument, type ObjectPart, type PathData, type PartEntry, type Hash, type Font, Verb, FontKind, FONT_STYLES } from "@bdf/core";
+import { VectorImage, domSvgRasterizer, isSvg, type Raster, type SvgRasterizer } from "./svg.js";
 
 /** Build a Path2D from path data. */
 export function buildPath2D(p: PathData): Path2D {
@@ -41,16 +42,25 @@ export function fontString(f: Font, size: number): string {
 /**
  * Caches of browser objects derived from parts: Path2D, ImageBitmap, FontFace.
  * One cache can serve many contexts; it is bound to a document.
+ *
+ * SVG images are drawn by a rasterizer at the sizes draws ask for (see
+ * vector() and settle()): by default with an image element, which workers
+ * do not have; the worker asks the page (BdfWorkerClient).
  */
 export class ResourceCache {
   private inlinePaths = new WeakMap<ObjectPart, (Path2D | undefined)[]>();
   private extPaths = new Map<Hash, Path2D[]>();
   private images = new Map<Hash, ImageBitmap>();
+  private vectors = new Map<Hash, VectorImage>();
   private fonts = new Map<Hash, FontFace>();
   private fontSet: FontFaceSet | undefined;
+  private rasterize: SvgRasterizer | undefined;
+  /** SVG rasters the draws since takeMisses() did not find, by image and scale. */
+  private misses = new Map<string, { vec: VectorImage; k: number }>();
 
-  constructor(readonly doc: BdfDocument, fontSet?: FontFaceSet) {
+  constructor(readonly doc: BdfDocument, fontSet?: FontFaceSet, rasterize?: SvgRasterizer) {
     this.fontSet = fontSet ?? (globalThis as { fonts?: FontFaceSet }).fonts ?? (globalThis as { document?: { fonts?: FontFaceSet } }).document?.fonts;
+    this.rasterize = rasterize ?? domSvgRasterizer();
   }
 
   /** Load an object, its children, and every font/image/path part they use. */
@@ -61,7 +71,11 @@ export class ResourceCache {
   private async load(e: PartEntry, bytes: Uint8Array): Promise<void> {
     switch (e.t) {
       case "img": {
-        if (this.images.has(e.h)) return;
+        if (this.images.has(e.h) || this.vectors.has(e.h)) return;
+        if (isSvg(bytes)) {
+          this.vectors.set(e.h, new VectorImage(e.h, bytes));
+          return;
+        }
         const bmp = await createImageBitmap(new Blob([bytes as BlobPart]));
         this.images.set(e.h, bmp);
         return;
@@ -106,10 +120,43 @@ export class ResourceCache {
     return p;
   }
 
+  /** A bitmap image; for an SVG image, the raster drawn last. */
   image(hash: Hash): ImageBitmap {
-    const img = this.images.get(hash);
+    const img = this.images.get(hash) ?? this.vectors.get(hash)?.latest();
     if (!img) throw new Error(`bdf: image ${hash} not loaded`);
     return img;
+  }
+
+  /** An SVG image, or undefined for a bitmap. */
+  vector(hash: Hash): VectorImage | undefined {
+    return this.vectors.get(hash);
+  }
+
+  /**
+   * A raster of an SVG image for drawing at scale (device pixels per image
+   * pixel). When none fits, the closest one (or none) is returned and the
+   * miss is noted for settle().
+   */
+  svgRaster(vec: VectorImage, scale: number): Raster | undefined {
+    const { raster, missing } = vec.raster(scale);
+    if (missing !== undefined) this.misses.set(`${vec.hash} ${missing}`, { vec, k: missing });
+    return raster;
+  }
+
+  /**
+   * The SVG rasters the draws since the last call did not find. Draws are
+   * synchronous, so taking them before and after a draw gives its own.
+   */
+  takeMisses(): { vec: VectorImage; k: number }[] {
+    const m = [...this.misses.values()];
+    this.misses.clear();
+    return m;
+  }
+
+  /** Draw the rasters a draw missed; true when any was drawn, and the draw should be run again. */
+  async settle(misses: { vec: VectorImage; k: number }[]): Promise<boolean> {
+    const drawn = await Promise.all(misses.map(({ vec, k }) => vec.draw(k, this.rasterize)));
+    return drawn.includes(true);
   }
 
   object(hash: Hash): ObjectPart {

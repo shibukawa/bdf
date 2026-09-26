@@ -14,8 +14,12 @@ const src = params.get("src") ?? DEFAULT_SRC;
 const client = new BdfWorkerClient(new Worker("./worker.js", { type: "module" }));
 /** The converter worker, started with the first file that needs converting. */
 let converter: ConverterClient | undefined;
-/** Converter modules, one for PDF and one for the Office formats, and the fonts the latter lay text out with. */
-const MODULES = { pdf: "bdf-pdf.wasm", office: "bdf-office.wasm" };
+/**
+ * Converter modules, one for PDF, one for the Office formats and one for the
+ * images browsers display by themselves, and the fonts the Office
+ * converters lay text out with.
+ */
+const MODULES = { pdf: "bdf-pdf.wasm", office: "bdf-office.wasm", image: "bdf-image.wasm" };
 const FONTS = "fonts/";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -204,18 +208,19 @@ async function openFile(name: string, data: ArrayBuffer) {
   setWarnings([]);
   setDownload();
   setTiming("");
-  const kind = sniff(new Uint8Array(data, 0, Math.min(1024, data.byteLength)));
+  const kind = sniff(new Uint8Array(data));
   if (kind === "bdf") return load({ kind: "buffer", buffer: data }, name, token);
   const busy = `converting ${name}…`;
   setStatus(busy);
   converter ??= new ConverterClient(new Worker("./convert-worker.js"));
   const conv = converter;
   const module = new URL(MODULES[kind], location.href).href;
-  const fonts = new URL(FONTS, location.href).href;
+  // images are stored as they are: no text to lay out
+  const fonts = kind === "image" ? undefined : new URL(FONTS, location.href).href;
   let t0 = 0; // of the last attempt: the reader's typing is not part of the conversion
   const convert = (password?: string) => {
     t0 = performance.now();
-    return conv.convert(module, data, { fonts, password });
+    return conv.convert(module, data, { fonts, password, name });
   };
   let res: Converted | undefined;
   try {

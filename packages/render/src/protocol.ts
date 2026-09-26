@@ -33,5 +33,13 @@ export type WorkerResponse =
   | { id: number; ok: true; result: WorkerResult }
   | { id: number; ok: false; error: string; code?: WorkerErrorCode };
 
+/**
+ * The worker asks the page to draw an SVG image into a bitmap of width ×
+ * height pixels: workers cannot decode SVG (spec §6.2). BdfWorkerClient
+ * answers with a RasterizeResponse.
+ */
+export type RasterizeRequest = { type: "rasterize"; rid: number; hash: string; data: Uint8Array; width: number; height: number };
+export type RasterizeResponse = { rid: number; ok: true; bitmap: ImageBitmap } | { rid: number; ok: false; error: string };
+
 /** A request without its id; the id is assigned by the client. */
 export type WorkerCall = WorkerRequest extends infer R ? (R extends { id: number } ? Omit<R, "id"> : never) : never;

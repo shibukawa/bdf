@@ -43,7 +43,7 @@ wasm が意味を持つケース:
 
 変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の bdf を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`examples/viewer/site.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
 
-- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Visio・メタファイル。約 14 MB、gzip 4.0 MB）に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
+- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Visio・draw.io・メタファイル・画像。約 18 MB、gzip 5.5 MB）に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。画像（§3.12）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）もあり、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
 - **フォントは fs.FS で渡す**: ブラウザにはフォントのディレクトリが無い。`converter.Options.FontFS` で任意の `fs.FS` をフォントの探索元にできるようにし（`FontDirs` より先に探す）、wasm 側では Web 上のディレクトリをそれとして実装した。`index.json` にファイル名、サイズと、フォントの走査が読む範囲（テーブルディレクトリと name・OS/2・post テーブル）を書いておき、最初の変換でその範囲だけを並列に Range で取得する。フォント全体は文書がそのフェイスを使うときに初めて取得し、取得したものはモジュールが生きている間保持する（2 回目以降の変換は通信しない）。サイトのフォントは CI が Ubuntu のパッケージから集める: Liberation（Arial、Times New Roman、Courier New の代替）、Carlito（Calibri）、Caladea（Cambria）、IPAex（日本語）、DejaVu（記号）。
 - **pdfcpu の設定ファイル**: pdfcpu は既定でユーザーの設定ディレクトリに config.yml を書いて読み直すが、js 版のパーサは自分が書いた 16 進の permissions を読めずに終了する。js のビルドでは `model.ConfigPath = "disable"` にして組み込みの既定値を使う。
 
@@ -186,7 +186,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 ## 3.5 入力形式の登録と EMF/WMF 変換器（converter/emf）
 
-入力形式は static plugin 方式で登録する。`converter` パッケージが形式の登録簿を持ち、各変換器のパッケージは `init` で `converter.Register` に名前・拡張子・判別関数・変換関数・形式固有のオプション（`Params`）を渡す。プログラムは import したパッケージの形式だけを扱えるので、PDF だけのサーバーは pptx やフォント処理をリンクせずに済む（全部なら `converter/all`）。`converter.Detect` は登録された形式の判別関数を名前順に試し（先頭 1 KiB と入力全体を渡す）、`converter.Options` は各形式に共通の設定（ページ指定、画像、フォント）と、名前で引く形式固有の設定（PDF の `kind`・`no-share`、PowerPoint の `hidden`、Word の `views`）を持つ。CLI の `bdf generate` はこの登録簿で形式を判別・選択し、`-h` で登録された形式とその `-param` を一覧する。各パッケージの `Convert` と `Options` はそのまま直接使える。
+入力形式は static plugin 方式で登録する。`converter` パッケージが形式の登録簿を持ち、各変換器のパッケージは `init` で `converter.Register` に名前・拡張子・判別関数・変換関数・形式固有のオプション（`Params`）を渡す。プログラムは import したパッケージの形式だけを扱えるので、PDF だけのサーバーは pptx やフォント処理をリンクせずに済む（全部なら `converter/all`）。`converter.Detect` は登録された形式の判別関数を名前順に試し（先頭 1 KiB と入力全体を渡す。ほかの形式の入力も受け付けてしまう形式は `Fallback` にして最後に試す。draw.io の PNG・SVG 書き出しは画像でもある）、`converter.Options` は各形式に共通の設定（ページ指定、画像、フォント）と、名前で引く形式固有の設定（PDF の `kind`・`no-share`、PowerPoint の `hidden`、Word の `views`）を持つ。CLI の `bdf generate` はこの登録簿で形式を判別・選択し、`-h` で登録された形式とその `-param` を一覧する。各パッケージの `Convert` と `Options` はそのまま直接使える。
 
 `converter/emf` は Windows メタファイル（.emf、.wmf）を 1 ページの文書にする。再生は Office 文書の中の図と同じ `converter/internal/metafile`（§3.4 の EMF/WMF）。ページの大きさは EMF ならヘッダーの frame（0.01 mm 単位）、placeable WMF なら範囲と 1 インチあたりの単位数から求め、単位の分からない WMF は 96 dpi のピクセルとみなす。EMF ヘッダーの説明文字列にある図の名前を題名にする。テキストは PowerPoint と同じくフォントを解決してレイアウトし、サブセットを埋め込む（`-font-dir`、`-fonts system` なども同じ）。
 
@@ -288,6 +288,28 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 テスト用の図は `converter/drawio/testdata/` にあり、draw.io デスクトップ版のコマンドライン書き出し（`draw.io -x -f svg|png`）の結果と見比べて調整した。エッジの経路は、書き出した SVG（`testdata/route/*.svg`）のパスと 15 の図の 684 本で比べ、最大の差は 0.007px（Loop スタイルで draw.io 自身の結果が表示位置に依存する 2 本を除く）。ラベルの行の位置は Chrome で同じ HTML をレイアウトした結果と比べた。移植したコードの出典は `converter/drawio/NOTICE`。
 
+## 3.12 画像 → BDF 変換器（converter/image）の構造
+
+`converter/image` は、ブラウザが画像要素でそのまま表示できる画像（PNG・APNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG）を、画像の大きさのページ 1 枚の文書にする。画像はパススルーで、デコードも再エンコードもせずに Image Part に格納し（`-images convert` でも変換しない）、ページは IMAGE 命令 1 つでそれを描く。ブラウザはファイルを開いたときと同じデコーダで描くので、見た目はブラウザでファイルを表示したときと同じになる。変換器が読むのは大きさとメタデータだけで、メタデータはほかの形式の文書のプロパティと同じく manifest の Dublin Core にする（spec §4.3）。こうすると、画像もほかの文書と同じ形（View・ページ・`meta`・図の代替テキスト）で扱え、ビューア・検索・一覧の側に画像専用の経路を作らずに済む。
+
+- **ページ**: 画像の CSS px を 96 dpi として 1 px = 0.75 pt（draw.io と同じ）。命令は `MARK FIGURE`（代替テキストは説明、なければ題名、なければファイル名）、`SMOOTHING`（high。縮小表示が画像要素と同じくらいきれいになる。SVG には付けない）、`IMAGE`、`MARK END`。テキスト索引は作らない。
+- **大きさ**: PNG は IHDR、JPEG は最初の SOF、GIF は論理画面、WebP は VP8X（なければ VP8・VP8L のフレームヘッダ）、BMP は DIB ヘッダ（負の高さはトップダウン）、ICO はブラウザが描く最大のエントリ、AVIF は HEIF の主アイテムの `ispe`（`irot` が 90°・270° なら縦横を入れ替える。主アイテムのない画像シーケンスはトラックの `tkhd`）。SVG はルート要素の `width`・`height`・`viewBox` から、画像要素での大きさの規則で決める（spec §6.2。mm・pt などの絶対単位は px に直す）。
+- **向き**: ブラウザは JPEG と PNG（`eXIf`）の EXIF の Orientation を適用して描くが、WebP の EXIF の Orientation は適用しない（Chrome で `createImageBitmap` と画像要素の大きさを確かめた）。AVIF は `irot` を適用する。ページはブラウザが描く向きの大きさにし、WebP の向きは警告する。
+- **メタデータ**: XMP、EXIF、IPTC、形式自身の情報の順に、要素ごとに先にあるものを使う（XMP は EXIF・IPTC と同期させて書かれることが多く、Unicode で多言語の値を持てるので先）。どこから何を読むかは spec §4.3 の表のとおり。
+  - XMP: JPEG の APP1、PNG の iTXt `XML:com.adobe.xmp`、WebP の `XMP ` チャンク、GIF のアプリケーション拡張 `XMP DataXMP`、AVIF の `mime`（`application/rdf+xml`）アイテム。SVG の `metadata` 要素の RDF（Inkscape の文書のプロパティ。`cc:Work` の `dc:*` で、人は `cc:Agent` の `dc:title`）も同じ読み方をする。`rdf:Alt` は既定の言語（`x-default`）の値を使う。
+  - EXIF: JPEG の APP1、PNG の `eXIf`、WebP の `EXIF` チャンク、AVIF の `Exif` アイテム、ImageMagick の `Raw profile type exif`（16 進のテキスト）。ASCII の値は UTF-8 として正しければ UTF-8、そうでなければ Latin-1 として読み、Windows のタグ（`XPTitle` など）は UTF-16LE。カメラが既定で書く説明（`OLYMPUS DIGITAL CAMERA` など）は使わない。日付は `OffsetTime*` があれば時差を付ける。
+  - IPTC: JPEG の APP13（Photoshop の画像リソース 0x0404）。文字コードは記録 1 の CodedCharacterSet が UTF-8 なら UTF-8、そうでなければ UTF-8 として正しいかどうかで決める。
+  - 形式自身: PNG のテキストチャンク（`Title`、`Author`、`Description`、`Copyright`、`Creation Time`、`Comment`。tEXt と zTXt は Latin-1、iTXt は UTF-8）と `tIME`、GIF のコメント、SVG のルートの `title`・`desc` 要素と `xml:lang`。
+- **アニメーション**: APNG（`acTL`）、アニメーション GIF・WebP、AVIF の画像シーケンスは、ブラウザがデコードする最初のフレームを描き、警告する。
+- **判別**: 署名（SVG はルート要素が `svg` であること。XML 宣言・コメント・文書型宣言の後）で判別する。PNG と SVG は draw.io の書き出しでもあるので、`Fallback` の形式として draw.io の後に試す（§3.5）。
+- **格納**: 画像の Part は圧縮済みなので `identity` だが、SVG（テキスト）と BMP、BMP を含む ICO は deflate が効くので圧縮する（ほかの変換器が格納する画像も同じ）。
+
+**SVG の描画（@bdf/render）**: `createImageBitmap` は SVG の Blob をデコードしない（Chrome で Worker でもページでも失敗する。仕様上、Blob からはビットマップ画像だけ）。画像要素で読み込んだ SVG を Canvas に `drawImage` すればビットマップにできるが、Worker には画像要素がない。そこで ResourceCache は SVG を `VectorImage` として持ち、描くときに現在の変換から 1 画素が覆うデバイス画素を求めて、その大きさのラスタを要求する。ラスタはページ（`BdfWorkerClient`）が画像要素と `OffscreenCanvas` で描いて `ImageBitmap` を Worker に転送する。描画は同期なので、1 回目の描画で足りなかった大きさを集め、ページに描かせてから描き直す（ラスタがそろっていれば 1 回）。ラスタは必要な大きさの 1.25 倍までは使い回し、画像ごとに最近使った 4 つを残し、4096×4096 画素を上限にする。拡大してもぼけず、ズームを変えるたびに SVG をブラウザが描き直す。SVG は画像要素の中で描かれるので、スクリプトは動かず、外部の資源も読み込まれない（ブラウザで画像として開いたときと同じ）。これで draw.io や PowerPoint の文書に含まれる SVG の画像も描けるようになった（以前は `createImageBitmap` の失敗でそのページの描画が失敗していた）。
+
+`createImageBitmap(img, {resizeWidth, resizeHeight})` は大きさを持たない SVG（`viewBox` だけ）を描かないので、使わない。SVG をパスに変換して命令にする方法もあるが、SVG の描画系（CSS、テキスト、フィルタ、マスク）をもう 1 つ実装することになり、ブラウザが描けるものをそのまま渡すという狙いに反する。
+
+テスト用の画像（`converter/image/testdata/`）は `test/image/gen.sh`（ImageMagick、exiftool、cwebp、avifenc）で作り、変換結果を `testdata/image/` に置く。golden テストでは、EXIF で回転する JPEG、`irot` で回転する AVIF、2 倍で描く SVG を、メインスレッドと Worker（ページが SVG を描く）の両方で描いて比べる。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -367,6 +389,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
 9. **draw.io 直接変換**: ページごとの View とシートのような切り替え（実装済み、§3.11）。
+10. **画像**: ブラウザが表示できる画像はそのまま格納し、メタデータだけを読む。SVG はページが描く（実装済み、§3.12）。
 
 ## 9. リポジトリ構成（案）
 
@@ -387,6 +410,7 @@ bdf/
 │   ├── emf/           Windows メタファイル（.emf、.wmf）→ BDF 変換器
 │   ├── visio/         Visio（.vsdx、.vdx）→ BDF 変換器（testdata/ にテスト用図面）
 │   ├── drawio/        draw.io → BDF 変換器（testdata/ にテスト用の図、stencils/ に同梱のステンシル）
+│   ├── image/         画像（PNG・JPEG・GIF・WebP・AVIF・BMP・ICO・SVG）→ BDF 変換器（そのまま格納してメタデータを読む。testdata/ にテスト用画像）
 │   ├── all/           すべての形式を登録する
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
 │                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
@@ -398,9 +422,9 @@ bdf/
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
-│   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画（scroll View は連続描画）、Worker とクライアント
+│   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画（scroll View は連続描画）、Worker とクライアント（SVG の画像はクライアントが描く）
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）とデモサイト（ブラウザ内変換）
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word の変換結果と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word・画像などの変換結果と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

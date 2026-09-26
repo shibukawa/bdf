@@ -11,14 +11,39 @@ export interface PageRenderOptions extends RenderOptions {
   background?: string | null;
 }
 
-/** Renders pages, continuous flow regions and sheet regions of one document. */
+/**
+ * Renders pages, continuous flow regions and sheet regions of one document.
+ *
+ * A region with SVG images is drawn twice when it needs rasters of them
+ * that were not drawn yet: the first pass finds the sizes the images are
+ * drawn at (ResourceCache.settle).
+ */
 export class PageRenderer {
   readonly res: ResourceCache;
   readonly renderer: CanvasRenderer;
 
   constructor(readonly doc: BdfDocument, opts: RenderOptions = {}, fontSet?: FontFaceSet) {
-    this.res = new ResourceCache(doc, fontSet);
+    this.res = new ResourceCache(doc, fontSet, opts.rasterizeSvg);
     this.renderer = new CanvasRenderer(this.res, opts);
+  }
+
+  /**
+   * Run draw, and again once the SVG rasters it asked for are drawn. The
+   * region is cleared first when the background is transparent.
+   */
+  private async drawSettled(ctx: Ctx2D, opts: PageRenderOptions, region: Rect, draw: () => void): Promise<void> {
+    this.res.takeMisses(); // those of draws run directly
+    draw();
+    const misses = this.res.takeMisses();
+    if (!misses.length || !(await this.res.settle(misses))) return;
+    if (opts.background === null) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(region.x, region.y, region.w, region.h);
+      ctx.restore();
+    }
+    draw();
+    this.res.takeMisses(); // rasters dropped meanwhile by other renders: the next render draws them
   }
 
   /** Load everything a page needs. */
@@ -32,7 +57,8 @@ export class PageRenderer {
    */
   async renderPage(ctx: Ctx2D, page: Page, opts: PageRenderOptions, dx = 0, dy = 0): Promise<void> {
     await this.preparePage(page);
-    this.drawPageSync(ctx, page, opts, dx, dy);
+    const region = { x: dx, y: dy, w: page.w * opts.scale, h: page.h * opts.scale };
+    await this.drawSettled(ctx, opts, region, () => this.drawPageSync(ctx, page, opts, dx, dy));
   }
 
   drawPageSync(ctx: Ctx2D, page: Page, opts: PageRenderOptions, dx = 0, dy = 0): void {
@@ -86,6 +112,12 @@ export class PageRenderer {
       if (offsets[i] < viewport.y + viewport.h && offsets[i] + b.h > viewport.y) visible.push(i);
     });
     await Promise.all(visible.map((i) => this.preparePage(pages[i])));
+    const region = { x: 0, y: 0, w: viewport.w * opts.scale, h: viewport.h * opts.scale };
+    await this.drawSettled(ctx, opts, region, () => this.drawContinuous(ctx, view, viewport, opts, visible, offsets, roles));
+  }
+
+  private drawContinuous(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, visible: number[], offsets: number[], roles: Iterable<string>): void {
+    const pages = view.pages ?? [];
     for (const i of visible) {
       const p = pages[i];
       const b = p.body ?? { x: 0, y: 0, w: p.w, h: p.h };
@@ -130,7 +162,12 @@ export class PageRenderer {
       if (h) keys.push([tx, ty, h]);
     }
     await Promise.all(keys.map(([, , h]) => this.res.prepare(h)));
+    const region = { x: 0, y: 0, w: viewport.w * opts.scale, h: viewport.h * opts.scale };
+    await this.drawSettled(ctx, opts, region, () => this.drawSheet(ctx, view, viewport, opts, keys));
+  }
 
+  private drawSheet(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, keys: [number, number, string][]): void {
+    const tile = view.tile ?? 2048;
     const s = opts.scale;
     ctx.save();
     ctx.setTransform(s, 0, 0, s, -viewport.x * s, -viewport.y * s);

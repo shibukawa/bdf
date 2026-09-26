@@ -4,8 +4,9 @@
 //
 // The converters themselves are its subpackages (converter/pdf,
 // converter/pptx, converter/xlsx, converter/csv, converter/docx,
-// converter/visio, converter/emf). Each registers its format when it is
-// imported, so a program supports the formats whose packages it links in:
+// converter/visio, converter/emf, converter/drawio, converter/image). Each
+// registers its format when it is imported, so a program supports the
+// formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -52,6 +53,10 @@ type Format struct {
 	// Detect reports whether an input is in the format; head holds its
 	// first bytes (up to 1 KiB).
 	Detect func(head []byte, r io.ReaderAt, size int64) bool
+	// Fallback formats are detected after the others: their Detect also
+	// accepts inputs that a more specific format reads (images, which
+	// draw.io's PNG and SVG exports are).
+	Fallback bool
 	// Convert converts an input.
 	Convert func(r io.ReaderAt, size int64, opts *Options) (*Result, error)
 	// CheckPassword, for formats with their own encryption, reports
@@ -195,14 +200,17 @@ func Lookup(name string) *Format {
 }
 
 // Detect returns the registered format of an input, or nil when no format
-// recognizes it.
+// recognizes it. Fallback formats are tried last.
 func Detect(r io.ReaderAt, size int64) *Format {
 	head := make([]byte, 1024)
 	n, _ := r.ReadAt(head, 0)
 	head = head[:n]
-	for _, f := range Formats() {
-		if f.Detect(head, r, size) {
-			return f
+	all := Formats()
+	for _, fallback := range []bool{false, true} {
+		for _, f := range all {
+			if f.Fallback == fallback && f.Detect(head, r, size) {
+				return f
+			}
 		}
 	}
 	return nil

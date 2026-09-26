@@ -23,22 +23,25 @@ async function load(file) {
   delete globalThis.bdfConverter;
   return conv;
 }
-const modules = { pdf: await load("bdf-pdf.wasm"), office: await load("bdf-office.wasm") };
+const modules = { pdf: await load("bdf-pdf.wasm"), office: await load("bdf-office.wasm"), image: await load("bdf-image.wasm") };
 assert.deepEqual(modules.pdf.formats.map((f) => f.name), ["pdf"]);
-assert.deepEqual(modules.office.formats.map((f) => f.name), ["csv", "docx", "drawio", "emf", "pptx", "visio", "xlsx"]);
+assert.deepEqual(modules.office.formats.map((f) => f.name), ["csv", "docx", "drawio", "emf", "image", "pptx", "visio", "xlsx"]);
+assert.deepEqual(modules.image.formats.map((f) => f.name), ["image"]);
+const imageExtensions = modules.image.formats[0].extensions;
 
 let failed = 0;
 const samples = JSON.parse(await readFile(join(site, "samples/index.json"), "utf8"));
 for (const { name } of samples) {
   if (name.endsWith(".bdf")) continue;
   const data = new Uint8Array(await readFile(join(site, "samples", name)));
-  const conv = name.endsWith(".pdf") ? modules.pdf : modules.office;
+  const image = imageExtensions.some((e) => name.endsWith(e));
+  const conv = name.endsWith(".pdf") ? modules.pdf : image ? modules.image : modules.office;
   const t0 = performance.now();
   try {
-    const res = await conv.convert(data, { fonts: `${base}fonts/` });
+    const res = await conv.convert(data, { fonts: image ? undefined : `${base}fonts/`, name });
     assert.deepEqual([...res.bdf.subarray(0, 4)], [0x62, 0x64, 0x66, 0], "bdf magic");
     // the Office converters found the site's fonts and embedded them
-    if (res.format !== "pdf") assert.match(res.summary, /[1-9]\d* embedded font/);
+    if (conv === modules.office) assert.match(res.summary, /[1-9]\d* embedded font/);
     console.log(`ok   ${name}: ${res.format}, ${res.summary}, ${res.bdf.length} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
     for (const w of res.warnings) console.log(`     warning: ${w}`);
   } catch (e) {
