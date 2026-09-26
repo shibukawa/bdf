@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -48,8 +49,10 @@ func generate(args []string) {
 	hidden := fs.Bool("hidden", false, "PowerPoint, Excel: include hidden slides or sheets (the same as -param hidden=true)")
 	var paramFlags stringList
 	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")
+	passwordFile := fs.String("password-file", "", "read the password of an encrypted input from this file (- for the standard input; default: $"+passwordEnv+")")
+	encrypt := fs.String("encrypt", "auto", "encrypt the output with the password: auto (when the input needs it), always or never")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: bdf generate [flags] <input> <out.bdf | outdir/>\n  an output path ending with / writes the split form")
+		fmt.Fprintln(os.Stderr, "usage: bdf generate [flags] <input> <out.bdf | outdir/>\n  an output path ending with / writes the split form\n  a password-protected input is converted with its password and the output encrypted with it")
 		fs.PrintDefaults()
 		fmt.Fprintln(os.Stderr, "\ninput formats:")
 		for _, f := range converter.Formats() {
@@ -106,25 +109,39 @@ func generate(args []string) {
 		}
 		opts.Params[name] = value
 	}
-	var f *converter.Format
-	if *format == "auto" {
-		f, err = converter.DetectFile(in)
-		check(err)
-		if f == nil {
-			switch ext := strings.ToLower(filepath.Ext(in)); ext {
-			case ".ppt":
-				usageError(in + ": legacy .ppt files are not supported; save as .pptx first")
-			case ".xls":
-				usageError(in + ": legacy .xls files are not supported; save as .xlsx first")
-			case ".vsd", ".vss", ".vst":
-				usageError(in + ": legacy binary Visio files (" + ext + ") are not supported; save as .vsdx first")
-			}
-			usageError(in + ": unknown input format (want one of " + strings.Join(names, ", ") + ")")
-		}
-	} else if f = converter.Lookup(*format); f == nil {
-		usageError("-format " + *format + ": unknown format (want auto or one of " + strings.Join(names, ", ") + ")")
+	if *encrypt != "auto" && *encrypt != "always" && *encrypt != "never" {
+		usageError("-encrypt must be auto, always or never")
 	}
-	res, err := converter.ConvertFile(in, f.Name, opts)
+	password, err := readPassword(*passwordFile)
+	check(err)
+	if *encrypt == "always" && password == "" {
+		usageError("-encrypt always needs a password (-password-file or $" + passwordEnv + ")")
+	}
+	opts.Password = password
+	name := ""
+	if *format != "auto" {
+		if converter.Lookup(*format) == nil {
+			usageError("-format " + *format + ": unknown format (want auto or one of " + strings.Join(names, ", ") + ")")
+		}
+		name = *format
+	}
+	res, err := converter.ConvertFile(in, name, opts)
+	switch {
+	case errors.Is(err, converter.ErrUnknownFormat):
+		switch ext := strings.ToLower(filepath.Ext(in)); ext {
+		case ".ppt":
+			usageError(in + ": legacy .ppt files are not supported; save as .pptx first")
+		case ".xls":
+			usageError(in + ": legacy .xls files are not supported; save as .xlsx first")
+		case ".vsd", ".vss", ".vst":
+			usageError(in + ": legacy binary Visio files (" + ext + ") are not supported; save as .vsdx first")
+		}
+		usageError(in + ": unknown input format (want one of " + strings.Join(names, ", ") + ")")
+	case errors.Is(err, converter.ErrPasswordRequired):
+		check(fmt.Errorf("%s is encrypted: give its password with -password-file or $%s", in, passwordEnv))
+	case errors.Is(err, converter.ErrWrongPassword):
+		check(fmt.Errorf("the password does not open %s", in))
+	}
 	check(err)
 	doc, warnings := res.Doc, res.Warnings
 	for _, name := range bdf.DCTerms {
@@ -137,12 +154,14 @@ func generate(args []string) {
 			fmt.Fprintln(os.Stderr, "warning:", w)
 		}
 	}
-	if strings.HasSuffix(out, "/") || strings.HasSuffix(out, string(filepath.Separator)) {
-		check(doc.WriteSplit(out))
-	} else {
-		check(writeSingle(doc, out))
+	summary := res.Summary
+	if *encrypt == "always" || *encrypt == "auto" && res.Protected {
+		doc.Lock, err = bdf.NewPasswordLock(password, 0)
+		check(err)
+		summary += ", encrypted"
 	}
-	fmt.Fprintf(os.Stderr, "%s: %s, %d warning(s)\n", out, res.Summary, len(warnings))
+	check(write(doc, out))
+	fmt.Fprintf(os.Stderr, "%s: %s, %d warning(s)\n", out, summary, len(warnings))
 }
 
 // parseDC reads -dc name=value flags into the elements they replace. An

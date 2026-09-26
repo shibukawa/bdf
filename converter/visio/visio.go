@@ -10,7 +10,7 @@
 // dynamic theme for the cells it sets (see sheet.go and theme.go). Text is
 // laid out by the DrawingML renderer the Office converters share, with the
 // metrics of the fonts that are then embedded as subsets. See
-// docs/design.md §3.7.
+// docs/design.md §3.8.
 package visio
 
 import (
