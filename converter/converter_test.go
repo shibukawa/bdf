@@ -2,9 +2,12 @@ package converter
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"testing"
+
+	"github.com/shibukawa/bdf"
 )
 
 func TestPageRange(t *testing.T) {
@@ -71,4 +74,72 @@ func TestRegistry(t *testing.T) {
 		}()
 		Register(f)
 	}()
+}
+
+// fakeStream is a stream of two empty pages.
+type fakeStream struct{}
+
+func (s *fakeStream) Outline() *bdf.Document { return bdf.NewDocument() }
+func (s *fakeStream) Pages() int             { return 2 }
+func (s *fakeStream) Page(i int) (*bdf.Document, error) {
+	return bdf.NewDocument(), nil
+}
+func (s *fakeStream) Finish() (*Result, error) {
+	return &Result{Summary: "streamed", Warnings: []string{"from the stream"}}, nil
+}
+
+func TestOpenStream(t *testing.T) {
+	whole := &Format{
+		Name:   "test-whole",
+		Detect: func(head []byte, r io.ReaderAt, size int64) bool { return bytes.HasPrefix(head, []byte("WHOLE")) },
+		Convert: func(r io.ReaderAt, size int64, o *Options) (*Result, error) {
+			return &Result{Doc: bdf.NewDocument(), Summary: "whole"}, nil
+		},
+	}
+	paged := &Format{
+		Name:   "test-paged",
+		Detect: func(head []byte, r io.ReaderAt, size int64) bool { return bytes.HasPrefix(head, []byte("PAGED")) },
+		Convert: func(r io.ReaderAt, size int64, o *Options) (*Result, error) {
+			return nil, errors.New("converted whole")
+		},
+		Stream: func(r io.ReaderAt, size int64, o *Options) (Stream, error) { return &fakeStream{}, nil },
+	}
+	Register(whole)
+	Register(paged)
+	defer func() {
+		mu.Lock()
+		delete(formats, whole.Name)
+		delete(formats, paged.Name)
+		mu.Unlock()
+	}()
+
+	in := []byte("WHOLE document")
+	s, err := OpenStream(bytes.NewReader(in), int64(len(in)), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Finish()
+	if err != nil || s.Pages() != 0 || res.Summary != "whole" || s.Outline() != res.Doc {
+		t.Fatalf("a format without Stream: %d pages, %v, %v", s.Pages(), res, err)
+	}
+	if _, err := s.Page(0); err == nil {
+		t.Error("Page of a document converted whole")
+	}
+
+	in = []byte("PAGED document")
+	s, err = OpenStream(bytes.NewReader(in), int64(len(in)), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Pages() != 2 {
+		t.Fatalf("Pages() = %d", s.Pages())
+	}
+	if res, err = s.Finish(); err != nil || res.Summary != "streamed" || len(res.Warnings) != 1 {
+		t.Fatalf("Finish: %v, %v", res, err)
+	}
+
+	junk := []byte("junk")
+	if _, err := OpenStream(bytes.NewReader(junk), int64(len(junk)), "", nil); !errors.Is(err, ErrUnknownFormat) {
+		t.Errorf("junk: %v", err)
+	}
 }

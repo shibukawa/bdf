@@ -92,9 +92,12 @@ type converter struct {
 	pendings       []*pending
 	pageBox        rect // current page box in object space
 	deflt          *pdfFont
-	pageBodies     []pageRef
+	pageBodies     []*pageRef // the pages of the view, in order
 	sharedPrefixes int
 	sharedBytes    int
+	// pageCodes collects the codes each font draws while a Stream converts
+	// a page (nil otherwise).
+	pageCodes map[*pdfFont]map[uint32]bool
 
 	tree       *structTree // nil for untagged documents
 	docLang    string      // catalog /Lang
@@ -146,15 +149,25 @@ func readContext(rs io.ReadSeeker, password string) (ctx *model.Context, protect
 
 // Convert converts a PDF read from rs.
 func Convert(rs io.ReadSeeker, opts *Options) (*Result, error) {
+	s, err := NewStream(rs, opts)
+	if err != nil {
+		return nil, err
+	}
+	return s.Finish()
+}
+
+// newConverter reads the PDF and sets up its view: every page selected,
+// sized, with a body layer that finalize fills in.
+func newConverter(rs io.ReadSeeker, opts *Options) (*converter, bool, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
 	ctx, protected, err := readContext(rs, opts.Password)
 	if err != nil {
-		return nil, err
+		return nil, protected, err
 	}
 	if err := ctx.EnsurePageCount(); err != nil {
-		return nil, fmt.Errorf("pdf: %w", err)
+		return nil, protected, fmt.Errorf("pdf: %w", err)
 	}
 	c := &converter{pdf: &pdf{ctx: ctx}, doc: bdf.NewDocument(), opts: opts, warned: map[string]bool{},
 		fonts: map[string]*pdfFont{}, forms: map[string]*pending{}, images: map[string]*imageEntry{}, shadings: map[string]*shading{}}
@@ -189,31 +202,41 @@ func Convert(rs io.ReadSeeker, opts *Options) (*Result, error) {
 	c.outPages, c.outPageNrs = map[int]int{}, map[int]int{}
 	for i, n := range pages {
 		if n < 1 || n > ctx.PageCount {
-			return nil, fmt.Errorf("pdf: page %d out of range (1-%d)", n, ctx.PageCount)
+			return nil, protected, fmt.Errorf("pdf: page %d out of range (1-%d)", n, ctx.PageCount)
 		}
-		if _, ok := c.outPageNrs[n]; ok {
-			continue
+		pr := &pageRef{nr: n}
+		pr.dict, pr.ref, pr.attrs, pr.err = ctx.PageDict(n, false)
+		if pr.err == nil && pr.dict == nil {
+			pr.err = fmt.Errorf("page dict missing")
 		}
-		c.outPageNrs[n] = i + 1
-		if _, ref, _, err := ctx.PageDict(n, false); err == nil && ref != nil {
-			c.outPages[ref.ObjectNumber.Value()] = i + 1
+		if _, ok := c.outPageNrs[n]; !ok {
+			c.outPageNrs[n] = i + 1
+			if pr.err == nil && pr.ref != nil {
+				c.outPages[pr.ref.ObjectNumber.Value()] = i + 1
+			}
 		}
+		pr.geometry()
+		pr.page = view.AddPage(float32(pr.w), float32(pr.h), bdf.Layer{Role: bdf.RoleBody, Obj: bdf.Hash{}}) // Obj: patched in finalize
+		if view.Kind == bdf.ViewFlow {
+			pr.page.Body = &bdf.RectDef{X: 0, Y: 0, W: float32(pr.w), H: float32(pr.h)}
+		}
+		c.pageBodies = append(c.pageBodies, pr)
 	}
-	for _, n := range pages {
-		if err := c.convertPage(view, n); err != nil {
-			return nil, fmt.Errorf("pdf: page %d: %w", n, err)
-		}
-	}
-	if !opts.NoSharePrefix {
+	return c, protected, nil
+}
+
+// finish makes the document once every page is converted.
+func (c *converter) finish(protected bool) *Result {
+	if !c.opts.NoSharePrefix {
 		c.sharePagePrefixes()
 	}
 	c.finalize()
-	if !opts.NoTextIndex {
-		if _, err := c.doc.BuildTextIndex(view); err != nil {
+	if !c.opts.NoTextIndex {
+		if _, err := c.doc.BuildTextIndex(c.doc.Views[0]); err != nil {
 			c.warnf("text index: %v", err)
 		}
 	}
-	return &Result{Doc: c.doc, Warnings: c.warnings, Pages: len(pages), Protected: protected, SharedPrefixes: c.sharedPrefixes, SharedBytes: c.sharedBytes}, nil
+	return &Result{Doc: c.doc, Warnings: c.warnings, Pages: len(c.pageBodies), Protected: protected, SharedPrefixes: c.sharedPrefixes, SharedBytes: c.sharedBytes}
 }
 
 func (c *converter) warnf(format string, args ...any) {
@@ -243,45 +266,51 @@ func (c *converter) defaultFont() *pdfFont {
 	return c.deflt
 }
 
-// convertPage converts one page into a body object and appends it to the view.
-func (c *converter) convertPage(view *bdf.View, pageNr int) error {
-	p := c.pdf
-	pageDict, pageIRef, attrs, err := c.pdf.ctx.PageDict(pageNr, false)
-	if err != nil {
-		return err
-	}
-	if pageDict == nil {
-		return fmt.Errorf("page dict missing")
-	}
-	// Boxes and rotation.
+// geometry sets the page's size and the transform from PDF user space
+// (y up) to page space (y down): the crop box, clipped to the media box,
+// turned by /Rotate. A page whose dictionary did not load gets a Letter page.
+func (pr *pageRef) geometry() {
 	box := rect{0, 0, 612, 792}
-	if attrs.MediaBox != nil {
-		box = rect{attrs.MediaBox.LL.X, attrs.MediaBox.LL.Y, attrs.MediaBox.UR.X, attrs.MediaBox.UR.Y}
-	}
-	if attrs.CropBox != nil {
-		cb := rect{attrs.CropBox.LL.X, attrs.CropBox.LL.Y, attrs.CropBox.UR.X, attrs.CropBox.UR.Y}
-		if !cb.intersect(box).empty() {
-			box = cb.intersect(box)
+	rotate := 0
+	if attrs := pr.attrs; attrs != nil {
+		if attrs.MediaBox != nil {
+			box = rect{attrs.MediaBox.LL.X, attrs.MediaBox.LL.Y, attrs.MediaBox.UR.X, attrs.MediaBox.UR.Y}
 		}
+		if attrs.CropBox != nil {
+			cb := rect{attrs.CropBox.LL.X, attrs.CropBox.LL.Y, attrs.CropBox.UR.X, attrs.CropBox.UR.Y}
+			if !cb.intersect(box).empty() {
+				box = cb.intersect(box)
+			}
+		}
+		rotate = ((attrs.Rotate % 360) + 360) % 360
 	}
 	if box.empty() || box.x1-box.x0 > 20000 || box.y1-box.y0 > 20000 {
 		box = rect{0, 0, 612, 792}
 	}
 	w, h := box.x1-box.x0, box.y1-box.y0
-	rotate := ((attrs.Rotate % 360) + 360) % 360
 	// PDF user space → page space (y down), then rotation.
-	base := matrix{1, 0, 0, -1, -box.x0, box.y1}
-	pw, ph := w, h
+	pr.base = matrix{1, 0, 0, -1, -box.x0, box.y1}
+	pr.w, pr.h = w, h
 	switch rotate {
 	case 90:
-		base = base.mul(matrix{0, 1, -1, 0, h, 0})
-		pw, ph = h, w
+		pr.base = pr.base.mul(matrix{0, 1, -1, 0, h, 0})
+		pr.w, pr.h = h, w
 	case 180:
-		base = base.mul(matrix{-1, 0, 0, -1, w, h})
+		pr.base = pr.base.mul(matrix{-1, 0, 0, -1, w, h})
 	case 270:
-		base = base.mul(matrix{0, -1, 1, 0, 0, w})
-		pw, ph = h, w
+		pr.base = pr.base.mul(matrix{0, -1, 1, 0, 0, w})
+		pr.w, pr.h = h, w
 	}
+}
+
+// convertPage converts one page of the view into its body object.
+func (c *converter) convertPage(pr *pageRef) error {
+	if pr.err != nil {
+		return pr.err
+	}
+	p := c.pdf
+	pageNr, pageDict, pageIRef, attrs := pr.nr, pr.dict, pr.ref, pr.attrs
+	pw, ph, base := pr.w, pr.h, pr.base
 	c.pageBox = rect{0, 0, pw, ph}
 
 	body := newPending(bdf.Rect{X: 0, Y: 0, W: float32(pw), H: float32(ph)})
@@ -328,18 +357,24 @@ func (c *converter) convertPage(view *bdf.View, pageNr int) error {
 			in.restore()
 		}
 	}
-	page := view.AddPage(float32(pw), float32(ph), bdf.Layer{Role: bdf.RoleBody, Obj: bdf.Hash{}})
-	page.Layers[0].Obj = bdf.Hash{} // patched in finalize
-	c.pageBodies = append(c.pageBodies, pageRef{page: page, body: body})
-	if view.Kind == bdf.ViewFlow {
-		page.Body = &bdf.RectDef{X: 0, Y: 0, W: float32(pw), H: float32(ph)}
-	}
+	pr.body = body
 	return nil
 }
 
+// pageRef is a page of the view: the PDF page it converts, and its body
+// object once converted.
 type pageRef struct {
+	nr    int // PDF page number
+	dict  types.Dict
+	ref   *types.IndirectRef
+	attrs *model.InheritedPageAttrs
+	err   error // the page dictionary did not load
+
+	w, h float64 // size in page space
+	base matrix  // PDF user space → page space
+
 	page *bdf.Page
-	body *pending
+	body *pending // nil until converted
 }
 
 // annotations draws annotation appearance streams and emits link areas.

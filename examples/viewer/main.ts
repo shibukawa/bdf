@@ -1,10 +1,12 @@
 // Demo viewer: everything is decoded and rendered in a worker; the main thread
 // only places bitmaps and a selectable, accessible text layer. Files opened
 // or dropped on the page are converted into bdf in another worker, by the Go
-// converters built as wasm (examples/viewer/site.mjs builds them).
+// converters built as wasm (examples/viewer/site.mjs builds them). A PDF is
+// converted a page at a time: its pages are shown sized at once and drawn as
+// they are converted, those near the visible area first.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
 import { BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type OpenSource, type TextLayerOptions } from "@bdf/render";
-import { ConverterClient, ConvertError, sniff, type Converted } from "./convert.js";
+import { ConverterClient, ConvertError, sniff, type Opened } from "./convert.js";
 
 /** The document shown when the URL has no ?src= (set by the build); "" shows the start page. */
 declare const DEFAULT_SRC: string;
@@ -26,6 +28,7 @@ const continuousBox = $<HTMLInputElement>("continuous");
 const status = $<HTMLSpanElement>("status");
 const timing = $<HTMLSpanElement>("timing");
 const hitsBox = $<HTMLSpanElement>("hits");
+const progress = $<HTMLProgressElement>("progress");
 /** The start page (kept: the stage drops it when a document opens). */
 const landing = $<HTMLDivElement>("landing");
 
@@ -36,8 +39,35 @@ let zoom = 1;
 /** Bumped by show(): work started for an earlier view or zoom is dropped. */
 let generation = 0;
 
-/** Search state for the current view. */
-const found = { query: "", hits: [] as SearchHit[], rects: [] as HitRect[][], index: -1 };
+/** Search state for the current view; pages is how many were converted when it searched (streaming). */
+const found = { query: "", hits: [] as SearchHit[], rects: [] as HitRect[][], index: -1, pages: -1 };
+
+/** Where each page of a streamed view is. */
+const enum PageState { Pending, Converting, Done, Failed }
+
+/**
+ * A conversion running a page at a time: its outline is open, and the pages
+ * of its first view come in as the converter gets to them.
+ */
+interface Streaming {
+  /** The converter's stream. */
+  id: number;
+  /** The open (see opening) that started it. */
+  token: number;
+  /** The view whose pages come in. */
+  view: string;
+  state: PageState[];
+  /** Pages not converted yet. */
+  left: number;
+  warnings: string[];
+}
+/** The conversion the document shown comes from, while pages are still coming. */
+let streaming: Streaming | undefined;
+/** Pages of the view shown that are in the visible area: converted first. */
+const visible = new Set<number>();
+let visibility: IntersectionObserver | undefined;
+/** Whether a page of a view is still to come. */
+const pending = (v: View, index: number) => streaming?.view === v.id && streaming.state[index] !== PageState.Done;
 /** Shown sheets: redraw (with the search highlights) and scroll a hit into view. */
 const sheetViews = new WeakMap<View, { redraw: () => void; reveal: (r: { x: number; y: number }) => void }>();
 const dpr = () => window.devicePixelRatio || 1;
@@ -150,9 +180,10 @@ let opening = 0;
 
 /**
  * Open a document and show its first view. An encrypted one stays locked in
- * the worker while the reader is asked for its password.
+ * the worker while the reader is asked for its password. With stream, the
+ * document is the outline of a conversion whose pages are still to come.
  */
-async function load(source: OpenSource, name?: string, token = ++opening) {
+async function load(source: OpenSource, name?: string, token = ++opening, stream?: Streaming) {
   closeDocument();
   setStatus("loading…");
   const opened = await withPassword(() => client.open(source), (password) => client.unlock(password), "unlocking…");
@@ -162,6 +193,10 @@ async function load(source: OpenSource, name?: string, token = ++opening) {
     return;
   }
   manifest = opened;
+  if (stream) {
+    stream.view = manifest.views[0].id;
+    streaming = stream;
+  }
   document.title = `${dcValues(manifest.meta?.dc?.title)[0] ?? name ?? "BDF"} – viewer`;
   $<HTMLInputElement>("q").value = "";
   manifest.views.forEach((v, i) => {
@@ -194,40 +229,172 @@ async function openFile(name: string, data: ArrayBuffer) {
   converter ??= new ConverterClient(new Worker("./convert-worker.js"));
   const conv = converter;
   const module = new URL(MODULES[kind], location.href).href;
-  const fonts = new URL(FONTS, location.href).href;
+  // the PDF converter draws with the fonts a PDF embeds: it has no use for the font directory
+  const fonts = kind === "office" ? new URL(FONTS, location.href).href : undefined;
   let t0 = 0; // of the last attempt: the reader's typing is not part of the conversion
-  const convert = (password?: string) => {
+  const open = (password?: string) => {
     t0 = performance.now();
-    return conv.convert(module, data, { fonts, password });
+    return conv.open(module, data, { fonts, password });
   };
-  let res: Converted | undefined;
+  let res: Opened | undefined;
   try {
-    res = await withPassword(() => convert(), convert, busy);
+    res = await withPassword(() => open(), open, busy);
   } catch (e) {
     if (errorCode(e) !== "unknown-format") throw e;
     throw new Error(`${name} is not in a format this page converts`);
   }
-  if (token !== opening) return;
+  if (token !== opening) {
+    if (res?.stream) conv.close(res.stream).catch(() => {});
+    return;
+  }
   if (!res) {
     setStatus("encrypted file: not opened");
     return;
   }
-  const took = `${name} converted in ${(performance.now() - t0).toFixed(0)} ms: ${res.summary}`;
-  setDownload(res.bdf, name);
   setWarnings(res.warnings);
-  await load({ kind: "buffer", buffer: res.bdf.buffer as ArrayBuffer }, name, token);
-  if (token === opening) setStatus(took);
+  const buffer = res.bdf.buffer as ArrayBuffer;
+  if (!res.stream) {
+    // converted whole
+    const took = `${name} converted in ${(performance.now() - t0).toFixed(0)} ms: ${res.summary}`;
+    setDownload(res.bdf, name);
+    await load({ kind: "buffer", buffer }, name, token);
+    if (token === opening) setStatus(took);
+    return;
+  }
+  const st: Streaming = { id: res.stream, token, view: "", state: new Array<PageState>(res.pages).fill(PageState.Pending), left: res.pages, warnings: res.warnings };
+  await load({ kind: "buffer", buffer }, name, token, st).finally(() => {
+    // the outline did not open, or another file did meanwhile
+    if (streaming !== st) conv.close(st.id).catch(() => {});
+  });
+  if (streaming !== st) return;
+  setStatus(`${name}: ${res.pages} ${res.pages === 1 ? "page" : "pages"}, converted as they come into view`);
+  showProgress(st);
+  convertPages(st, name, t0).catch(openFailed);
+}
+
+/**
+ * Convert the pages of a stream one by one, each time the one nearest to
+ * the visible area, and put them in the document shown; then swap in the
+ * finished document, which is also the one to download.
+ */
+async function convertPages(st: Streaming, name: string, t0: number) {
+  const conv = converter!;
+  const live = () => streaming === st;
+  const arrived = (i: number, state: PageState) => {
+    st.state[i] = state;
+    st.left--;
+    showProgress(st);
+    pageArrived(i);
+  };
+  const failed = (i: number) => (e: unknown) => {
+    if (!live()) return;
+    setStatus(`page ${i + 1} could not be converted: ${(e as Error).message ?? e}`);
+    arrived(i, PageState.Failed);
+  };
+  // the page being put into the document while the converter goes on with the next
+  let adding: Promise<void> = Promise.resolve();
+  for (let i = nextPage(st); i >= 0; i = nextPage(st)) {
+    st.state[i] = PageState.Converting;
+    const t1 = performance.now();
+    const page = await conv.page(st.id, i).catch(failed(i));
+    await adding;
+    if (!live()) return;
+    if (!page) continue;
+    if (page.warnings.length) setWarnings(st.warnings = [...st.warnings, ...page.warnings]);
+    adding = client.addPage(st.view, i, page.bdf.buffer as ArrayBuffer).then(() => {
+      if (!live()) return;
+      setTiming(`page ${i + 1} converted in ${(performance.now() - t1).toFixed(0)} ms`);
+      arrived(i, PageState.Done);
+    }, failed(i));
+  }
+  await adding;
+  if (!live()) return;
+  streaming = undefined;
+  showProgress();
+  const lost = st.state.filter((s) => s === PageState.Failed).length;
+  if (lost) {
+    // the whole document would fail on the same pages: nothing to download
+    conv.close(st.id).catch(() => {});
+    setStatus(`${name}: ${lost} of ${st.state.length} pages could not be converted`);
+    return;
+  }
+  setTiming("finishing the document…");
+  try {
+    const res = await conv.finish(st.id);
+    if (opening !== st.token) return;
+    setDownload(res.bdf, name);
+    setWarnings(res.warnings);
+    await client.replace({ kind: "buffer", buffer: res.bdf.buffer as ArrayBuffer });
+    if (opening !== st.token) return;
+    setStatus(`${name} converted in ${(performance.now() - t0).toFixed(0)} ms: ${res.summary}`);
+  } catch (e) {
+    if (opening === st.token) setStatus(`${name}: the document could not be finished: ${(e as Error).message ?? e}`);
+  } finally {
+    conv.close(st.id).catch(() => {});
+    if (opening === st.token) setTiming("");
+  }
+}
+
+/**
+ * The page to convert next: the first visible one still to come, otherwise
+ * the nearest one below the visible pages, then above them.
+ */
+function nextPage(st: Streaming): number {
+  const vis = [...visible].sort((a, b) => a - b);
+  for (const i of vis) if (st.state[i] === PageState.Pending) return i;
+  const lo = vis[0] ?? 0, hi = vis.at(-1) ?? -1;
+  for (let d = 1; d <= st.state.length; d++) {
+    if (st.state[hi + d] === PageState.Pending) return hi + d;
+    if (st.state[lo - d] === PageState.Pending) return lo - d;
+  }
+  return st.state.indexOf(PageState.Pending);
+}
+
+/** The pages converted so far, next to the status; hidden without a stream. */
+function showProgress(st?: Streaming) {
+  progress.hidden = !st;
+  if (!st) return;
+  progress.max = st.state.length;
+  progress.value = st.state.length - st.left;
+  progress.title = `${progress.value} of ${progress.max} pages converted`;
+}
+
+/** A page came in: draw what was waiting for it, or say that it failed. */
+function pageArrived(index: number) {
+  if (!current || !streaming || current.id !== streaming.view || continuous(current)) return;
+  const el = stage.querySelector<HTMLDivElement>(`.page[data-index="${index}"]`);
+  if (!el) return;
+  el.removeAttribute("aria-busy");
+  const gen = generation;
+  if (streaming.state[index] === PageState.Failed) {
+    const p = document.createElement("p");
+    p.className = "pageError";
+    p.textContent = "This page could not be converted.";
+    el.append(p);
+    return;
+  }
+  if (el.dataset.waitBitmap !== undefined) {
+    delete el.dataset.waitBitmap;
+    renderPage(current, index, el, gen).catch(unlessStale(gen));
+  }
+  if (el.dataset.waitText !== undefined) {
+    delete el.dataset.waitText;
+    renderText(current, index, el, gen).catch(unlessStale(gen));
+  }
 }
 
 /** Take down the document shown, before another one opens: work started for it is dropped. */
 function closeDocument() {
+  if (streaming) converter?.close(streaming.id).catch(() => {});
+  streaming = undefined;
+  showProgress();
   current = undefined;
   generation++;
   stage.onscroll = null;
   stage.replaceChildren();
   tabs.replaceChildren();
   $("modeBox").hidden = true;
-  found.query = ""; found.hits = []; found.rects = []; found.index = -1; hitsBox.textContent = "";
+  found.query = ""; found.hits = []; found.rects = []; found.index = -1; found.pages = -1; hitsBox.textContent = "";
 }
 
 /** A file that did not open leaves the start page, when no other document is open. */
@@ -363,7 +530,7 @@ function main() {
 
 function show(v: View) {
   if (current !== v) {
-    found.query = ""; found.hits = []; found.rects = []; found.index = -1; hitsBox.textContent = "";
+    found.query = ""; found.hits = []; found.rects = []; found.index = -1; found.pages = -1; hitsBox.textContent = "";
     setStatus(describe(v));
   }
   current = v;
@@ -378,6 +545,8 @@ function show(v: View) {
   stage.onscroll = null;
   stage.replaceChildren();
   stage.scrollTop = 0;
+  visibility?.disconnect();
+  visible.clear();
   if (v.kind === "sheet") showSheet(v);
   else if (continuous(v)) showContinuous(v);
   else showPages(v);
@@ -410,20 +579,39 @@ function showPages(v: View) {
   list.className = "pages";
   const pagesOf = v.pages ?? [];
   const noun = manifest.meta?.source === "pptx" ? "Slide" : "Page";
-  const bitmaps = onNear(BITMAP_MARGIN, (el) => renderPage(v, Number(el.dataset.index), el, gen).catch(unlessStale(gen)));
-  const texts = onNear(TEXT_MARGIN, (el) => renderText(v, Number(el.dataset.index), el, gen).catch(unlessStale(gen)));
+  // a page still to come is drawn when it comes in (pageArrived)
+  const bitmaps = onNear(BITMAP_MARGIN, (el) => {
+    const i = Number(el.dataset.index);
+    if (pending(v, i)) el.dataset.waitBitmap = "";
+    else renderPage(v, i, el, gen).catch(unlessStale(gen));
+  });
+  const texts = onNear(TEXT_MARGIN, (el) => {
+    const i = Number(el.dataset.index);
+    if (pending(v, i)) el.dataset.waitText = "";
+    else renderText(v, i, el, gen).catch(unlessStale(gen));
+  });
+  // which pages are visible, so that a stream converts them first
+  visibility = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      const i = Number((e.target as HTMLElement).dataset.index);
+      if (e.isIntersecting) visible.add(i); else visible.delete(i);
+    }
+  }, { root: stage });
   pagesOf.forEach((p, i) => {
     const el = document.createElement("div");
     el.className = "page";
     el.dataset.index = String(i);
     el.setAttribute("role", "group");
     el.setAttribute("aria-label", `${noun} ${i + 1} of ${pagesOf.length}`);
+    if (pending(v, i)) el.setAttribute("aria-busy", "true");
     el.tabIndex = -1; // target of page links
     el.style.width = `${p.w * zoom}px`;
     el.style.height = `${p.h * zoom}px`;
     list.appendChild(el);
     bitmaps.observe(el);
     texts.observe(el);
+    visibility!.observe(el);
+    if (streaming?.view === v.id && streaming.state[i] === PageState.Failed) pageArrived(i);
   });
   stage.appendChild(list);
 }
@@ -461,14 +649,23 @@ function goToPage(index: number) {
 async function runSearch(query: string, step: number) {
   const v = current;
   if (!v) return;
-  if (query !== found.query) {
+  // while pages are coming in, a search covers those converted so far: search again once there are more
+  const converted = streaming?.view === v.id ? streaming.state.length - streaming.left : -1;
+  if (query !== found.query || converted !== found.pages) {
+    // the same query over more pages goes on from the hit it was at
+    const at = query === found.query ? found.hits[found.index]?.segments[0] : undefined;
     found.query = query;
+    found.pages = converted;
     const hits = query ? await client.search(v.id, query, { limit: 500, context: 30 }) : [];
     const rects = hits.length ? await client.locate(v.id, hits) : [];
     if (v !== current) return;
     found.hits = hits;
     found.rects = rects;
     found.index = -1;
+    if (at) {
+      const same = hits.findIndex(({ segments: [s] }) => s.a === at.a && s.b === at.b && s.ordinal === at.ordinal && s.start === at.start);
+      if (same >= 0) found.index = same;
+    }
   }
   if (found.hits.length) found.index = (found.index + step + found.hits.length) % found.hits.length;
   showHitCount(query);
@@ -503,14 +700,15 @@ async function runSearch(query: string, step: number) {
  */
 function showHitCount(query: string) {
   if (!query) { hitsBox.textContent = ""; return; }
-  if (!found.hits.length) { hitsBox.textContent = "no matches"; return; }
+  const partial = found.pages >= 0 ? ` (in ${found.pages} of ${current?.pages?.length ?? 0} pages converted)` : "";
+  if (!found.hits.length) { hitsBox.textContent = `no matches${partial}`; return; }
   const hit = found.hits[found.index];
   // the strips of a scroll view are not pages
   const page = current?.kind === "sheet" || current?.kind === "scroll" ? "" : `, page ${hit.segments[0].a + 1}`;
   const detail = document.createElement("span");
   detail.className = "sr-only";
   detail.textContent = `${page}: ${hit.context.replace(/ ⏎ /g, " ")}`;
-  hitsBox.replaceChildren(`${found.index + 1} of ${found.hits.length}`, detail);
+  hitsBox.replaceChildren(`${found.index + 1} of ${found.hits.length}${partial}`, detail);
 }
 
 /** Highlight rectangles of the hits on one page. */

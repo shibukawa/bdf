@@ -21,6 +21,11 @@ export class PageRenderer {
     this.renderer = new CanvasRenderer(this.res, opts);
   }
 
+  /** Let the fonts and images go: the document is not drawn any more. */
+  dispose(): void {
+    this.res.dispose();
+  }
+
   /** Load everything a page needs. */
   async preparePage(page: Page): Promise<void> {
     await Promise.all(page.layers.map((l) => this.res.prepare(l.obj)));

@@ -2,6 +2,7 @@ package pdf
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 	"unicode"
 
@@ -747,25 +748,34 @@ func (f *pdfFont) use(g glyphCode) (draw string, text string) {
 	}
 }
 
-// finalize builds the bdf.Font (and font part) after all pages were processed.
+// finalizeFont builds the bdf.Font (and font part) after all pages were processed.
 func (c *converter) finalizeFont(f *pdfFont) bdf.Font {
 	if f.finalized {
 		return f.final
 	}
 	f.finalized = true
-	f.final = bdf.SystemFont(f.family, f.weight, f.style)
+	f.final = c.embedFont(f, f.used, c.doc.AddFont)
+	return f.final
+}
+
+// embedFont rebuilds the program of f for the codes in used (with only
+// their glyphs unless the options or the font's license say otherwise) and
+// stores the font file with add. Fonts drawn with a system font, and those
+// whose codes map to no glyph, come back as system fonts.
+func (c *converter) embedFont(f *pdfFont, used map[uint32]*usedGlyph, add func([]byte) bdf.Hash) bdf.Font {
+	system := bdf.SystemFont(f.family, f.weight, f.style)
 	if f.prog == nil || f.type3 || f.noEmbed {
-		return f.final
+		return system
 	}
 	cm := map[uint32]uint16{}
-	for _, u := range f.used {
+	for _, u := range used {
 		if u.char != 0 && u.gid > 0 {
 			cm[uint32(u.char)] = uint16(u.gid)
 		}
 	}
 	cm[0] = 0
 	if len(cm) == 1 {
-		return f.final
+		return system
 	}
 	family := f.baseFont
 	if i := strings.Index(family, "+"); i == 6 {
@@ -788,19 +798,24 @@ func (c *converter) finalizeFont(f *pdfFont) bdf.Font {
 		sf, cm2 := c.cffSFNT(f, cm, subset)
 		data = sf.Rebuild(cm2, info)
 	case prog.sf != nil:
-		if prog.sf.IsCFF && prog.sf.Tables["CFF "] == nil {
-			return f.final // CFF2 and other outlines browsers cannot take from here
+		sf := prog.sf
+		if sf.IsCFF && sf.Tables["CFF "] == nil {
+			return system // CFF2 and other outlines browsers cannot take from here
 		}
-		if !prog.sf.IsCFF && subset {
+		if !sf.IsCFF && subset {
 			keep := make(map[uint16]bool, len(cm))
 			for _, gid := range cm {
 				keep[gid] = true
 			}
-			prog.sf.PruneGlyphs(keep)
+			// pruned on a copy: a Stream rebuilds the font for other codes
+			pruned := *sf
+			pruned.Tables = maps.Clone(sf.Tables)
+			pruned.PruneGlyphs(keep)
+			sf = &pruned
 		}
-		data = prog.sf.Rebuild(cm, info)
+		data = sf.Rebuild(cm, info)
 	default:
-		return f.final
+		return system
 	}
 	if !c.opts.NoWOFF2 {
 		if w, err := woff2.Encode(data); err == nil {
@@ -809,10 +824,9 @@ func (c *converter) finalizeFont(f *pdfFont) bdf.Font {
 			f.warnOnce(c, "woff2", "font %s: not stored as WOFF2: %v", f.baseFont, err)
 		}
 	}
-	h := c.doc.AddFont(data)
-	f.final = bdf.EmbeddedFont(h, f.weight, f.style)
-	f.final.Family = f.family
-	return f.final
+	font := bdf.EmbeddedFont(add(data), f.weight, f.style)
+	font.Family = f.family
+	return font
 }
 
 // cffSFNT wraps a CFF program (bare, or the CFF table of an OpenType font) as

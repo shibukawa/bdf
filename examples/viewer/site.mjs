@@ -1,7 +1,8 @@
 // Builds the static demo site (published on GitHub Pages): the viewer, the
 // converters as wasm (cmd/bdfwasm: one module for PDF, one for the Office
-// formats), the fonts the Office converters lay text out with, and sample
-// files. Files opened on the site are converted inside the browser.
+// formats), the fonts the Office converters lay text out with, sample files,
+// and the documentation (docs.mjs: the READMEs and docs/ as HTML under docs/).
+// Files opened on the site are converted inside the browser.
 //
 //   node examples/viewer/site.mjs [--serve] [--out dir]
 //
@@ -15,6 +16,7 @@ import { basename, delimiter, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { serve } from "../../test/serve.mjs";
 import { buildViewer, root } from "./build.mjs";
+import { buildDocs } from "./docs.mjs";
 
 const execFile = promisify(execFileCb);
 const args = process.argv.slice(2);
@@ -133,7 +135,7 @@ async function copySamples() {
 
 await rm(out, { recursive: true, force: true });
 await buildViewer(out, { defaultSrc: "" });
-await Promise.all([buildModules(), copyFonts(), copySamples()]);
+await Promise.all([buildModules(), copyFonts(), copySamples(), buildDocs(out)]);
 console.log(`site: ${out}`);
 
 if (args.includes("--serve")) {

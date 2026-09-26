@@ -58,6 +58,34 @@ type Format struct {
 	// whether an input needs a password to open and checks password
 	// against it (see the package's CheckPassword).
 	CheckPassword func(r io.ReaderAt, size int64, password string) (protected bool, err error)
+	// Stream, for formats that can convert a page at a time, starts such a
+	// conversion (see OpenStream).
+	Stream func(r io.ReaderAt, size int64, opts *Options) (Stream, error)
+}
+
+// Stream is a conversion done a page at a time, for a viewer that shows
+// the pages as they are converted and converts first the ones the reader
+// looks at. Outline is the document before any page is converted; each
+// Page call converts a page of the first view and returns what a reader
+// holding the outline and the pages returned before needs to draw it;
+// Finish converts the pages left and returns the document Convert makes.
+// A Stream is not safe for concurrent use.
+type Stream interface {
+	// Outline returns the document with every view and page, the pages
+	// that Page converts sized but without layers.
+	Outline() *bdf.Document
+	// Pages is the number of pages Page converts: the pages of the first
+	// view, or 0 when the input was converted whole and Outline is the
+	// whole document.
+	Pages() int
+	// Page converts page i of the first view (0-based), unless an earlier
+	// call did, and returns a document whose only view holds that page,
+	// with the parts it needs that no earlier call returned: the reader
+	// puts the page in its outline and adds the parts to those it has.
+	Page(i int) (*bdf.Document, error)
+	// Finish converts the pages no Page call converted and returns the
+	// document. The stream is done with.
+	Finish() (*Result, error)
 }
 
 // Param is a format-specific option.
@@ -251,11 +279,56 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 // Convert converts an input in the named format (detected when name is
 // ""). An encrypted Office document is decrypted with opts.Password first.
 func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, error) {
+	in, err := prepare(r, size, name, opts)
+	if err != nil {
+		return nil, err
+	}
+	res, err := in.format.Convert(in.r, in.size, in.opts)
+	if err != nil {
+		return nil, err
+	}
+	return in.result(res), nil
+}
+
+// OpenStream starts a conversion done a page at a time of an input in the
+// named format (detected when name is ""), which it reads as Convert does.
+// An input whose format cannot is converted whole: its stream's Outline is
+// the document, and Pages is 0.
+func OpenStream(r io.ReaderAt, size int64, name string, opts *Options) (Stream, error) {
+	in, err := prepare(r, size, name, opts)
+	if err != nil {
+		return nil, err
+	}
+	if in.format.Stream == nil {
+		res, err := in.format.Convert(in.r, in.size, in.opts)
+		if err != nil {
+			return nil, err
+		}
+		return &wholeStream{res: in.result(res)}, nil
+	}
+	s, err := in.format.Stream(in.r, in.size, in.opts)
+	if err != nil {
+		return nil, err
+	}
+	return &inputStream{Stream: s, in: in}, nil
+}
+
+// input is an input ready for its converter: decrypted, its format known.
+type input struct {
+	r        io.ReaderAt
+	size     int64
+	format   *Format
+	opts     *Options
+	warnings []string // of the decryption, when opts.Warn is nil
+	// protected reports that the input was decrypted with opts.Password.
+	protected bool
+}
+
+func prepare(r io.ReaderAt, size int64, name string, opts *Options) (*input, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
-	var warnings []string
-	protected := false
+	in := &input{r: r, size: size, opts: opts}
 	if offcrypto.IsEncrypted(r, size) {
 		if opts.Password == "" {
 			return nil, ErrPasswordRequired
@@ -267,36 +340,61 @@ func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, er
 		case errors.Is(err, offcrypto.ErrIntegrity):
 			// The package decrypted and is still a ZIP file with its own
 			// checksums; say so, and convert it.
-			warnings = append(warnings, err.Error())
+			in.warnings = append(in.warnings, err.Error())
 		case err != nil:
 			return nil, err
 		}
-		r, size, protected = bytes.NewReader(b), int64(len(b)), true
+		in.r, in.size, in.protected = bytes.NewReader(b), int64(len(b)), true
 	}
-	var format *Format
 	if name == "" {
-		if format = Detect(r, size); format == nil {
-			if format = byExtension(opts.FileName); format == nil {
+		if in.format = Detect(in.r, in.size); in.format == nil {
+			if in.format = byExtension(opts.FileName); in.format == nil {
 				return nil, ErrUnknownFormat
 			}
 		}
-	} else if format = Lookup(name); format == nil {
+	} else if in.format = Lookup(name); in.format == nil {
 		return nil, fmt.Errorf("unknown format %q", name)
 	}
 	if opts.Warn != nil {
-		for _, w := range warnings {
+		for _, w := range in.warnings {
 			opts.Warn(w)
 		}
-		warnings = nil
+		in.warnings = nil
 	}
-	res, err := format.Convert(r, size, opts)
+	return in, nil
+}
+
+// result adds what reading the input found to a converter's result.
+func (in *input) result(res *Result) *Result {
+	res.Warnings = append(in.warnings, res.Warnings...)
+	res.Protected = res.Protected || in.protected
+	return res
+}
+
+// inputStream is a format's stream, whose result gets what reading the
+// input found.
+type inputStream struct {
+	Stream
+	in *input
+}
+
+func (s *inputStream) Finish() (*Result, error) {
+	res, err := s.Stream.Finish()
 	if err != nil {
 		return nil, err
 	}
-	res.Warnings = append(warnings, res.Warnings...)
-	res.Protected = res.Protected || protected
-	return res, nil
+	return s.in.result(res), nil
 }
+
+// wholeStream is the stream of an input converted whole.
+type wholeStream struct{ res *Result }
+
+func (s *wholeStream) Outline() *bdf.Document { return s.res.Doc }
+func (s *wholeStream) Pages() int             { return 0 }
+func (s *wholeStream) Page(i int) (*bdf.Document, error) {
+	return nil, fmt.Errorf("converter: no page %d to convert: the document was converted whole", i)
+}
+func (s *wholeStream) Finish() (*Result, error) { return s.res, nil }
 
 // byExtension returns the format whose usual extension a file name has,
 // or nil.

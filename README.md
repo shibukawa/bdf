@@ -6,7 +6,14 @@ English | [日本語](README.ja.md)
 
 Office-style files (PDF, Excel, PowerPoint, Word, Visio) are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
 
-**Demo**: <https://shibukawa.github.io/bdf/>. Drop a PDF, Word, PowerPoint, Excel, CSV or Visio file, or a Windows metafile, on the page: it is converted into bdf and drawn inside the browser, without being uploaded.
+**Demo**: <https://shibukawa.github.io/bdf/>. Drop a PDF, Word, PowerPoint, Excel, CSV or Visio file, or a Windows metafile, on the page: it is converted into bdf and drawn inside the browser, without being uploaded. A PDF shows its pages as they are converted, the ones in view first. The documentation is there too: <https://shibukawa.github.io/bdf/docs/>.
+
+## Why bdf
+
+- **No office suite to run.** The usual way to preview Office files in a browser is to convert them into PDF with LibreOffice or OpenOffice running headless on a server: an installation of a gigabyte or more, and a process to start, keep alive and isolate. bdf's converters are Go packages without cgo or external programs. One binary converts PDF, Word, PowerPoint, Excel, CSV, Visio and metafiles, and the same code built as WebAssembly converts files inside the browser (about 7 MB gzip for PDF, 4 MB for the Office formats), so the files need not be uploaded at all.
+- **Shown the way the content is laid out.** A PDF cuts everything into sheets of paper. A spreadsheet printed into pages splits a wide table across them, so a row is hard to follow and a cell hard to find; the frozen headers and the gridlines go, and the sheets you switch between in a workbook become one run of pages. A Word document can only be read page by page. bdf has a layout model for each kind of content: fixed pages for slides, drawings and PDFs; a sheet view for each worksheet, an unbounded plane drawn in tiles with frozen panes, row and column headers and gridlines; and flow views for word processing, read as pages or as one continuous scroll, with a second view laid out without pages as one long column. The sheets and views of a document are tabs in the viewer.
+- **Made for the browser.** The instruction set is Canvas 2D, one to one. Fonts are WOFF2 handed to `FontFace`, images are formats the browser decodes, and parts are compressed so that `DecompressionStream` inflates them. The browser does the font rasterizing, image decoding and inflating that a PDF viewer such as pdf.js implements in tens of thousands of lines; the bdf decoder and renderer are about 3,000 lines of TypeScript (the renderer's Worker is 20 KB gzip) and draw on an `OffscreenCanvas` in a Worker, while the main thread only places bitmaps. Parts are content-addressed, so masters and repeated objects are stored once, and a viewer fetches only the parts of the pages in view, by Range requests or from the split form on a CDN. A PDF converted in the browser is shown page by page as it is converted, the pages in view first.
+- **Many formats, one renderer.** PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Visio (.vsdx and .vdx) and Windows metafiles (.emf, .wmf), password-protected Office documents and PDFs included, all become the same format. One renderer draws them, with the same search, text selection and accessible text layers (headings, lists, tables, alternative text) for every format.
 
 ## How it works
 
@@ -51,7 +58,7 @@ flowchart TB
 There are two paths. Both produce the same bdf parts and share the same renderer.
 
 1. **Server-side conversion**: packages such as `converter/pdf`, `converter/pptx` and `converter/xlsx` run inside a Go server process and convert the source into a **bdf bundle** that packs the manifest, the drawing commands, the images and the fonts. The bundle is served either as a single file (streamed from the start, or fetched part by part with Range requests) or as split files that can sit on object storage or a CDN as they are. In the browser, the renderer in a Worker loads the parts it needs and draws them onto an `OffscreenCanvas`; the main thread only places the resulting bitmaps and a transparent text layer.
-2. **In-browser conversion**: the same converter packages, built as wasm (`cmd/bdfwasm`), run in a Worker and convert the file the user opened into a bdf document in memory, which goes to the renderer as it is. Conversion and rendering both finish inside the browser and the file never leaves it. The demo site works this way; the Office converters lay text out with free fonts published with the site, fetched when a document uses them.
+2. **In-browser conversion**: the same converter packages, built as wasm (`cmd/bdfwasm`), run in a Worker and convert the file the user opened into a bdf document in memory, which goes to the renderer as it is. Conversion and rendering both finish inside the browser and the file never leaves it. The demo site works this way; the Office converters lay text out with free fonts published with the site, fetched when a document uses them. A PDF is converted a page at a time (`converter.OpenStream`): the viewer gets the page sizes first and each page as it is converted, the ones in view first, and the finished document takes their place at the end.
 
 ## Features
 
@@ -103,8 +110,9 @@ if res.Protected {
 
 ## Documentation
 
-The documents are in Japanese.
+The documents are in Japanese. They are also published, with this README, at <https://shibukawa.github.io/bdf/docs/>.
 
+- [docs/api.md](docs/api.md): the APIs, package by package (Go converters and writer, the command, the wasm converters, `@bdf/core`, `@bdf/render`)
 - [docs/spec.md](docs/spec.md): draft format specification
 - [docs/design.md](docs/design.md): the reasoning behind the design and how it is implemented
 
@@ -129,7 +137,7 @@ The documents are in Japanese.
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering (scroll views render as continuous), Worker |
 | `cmd/bdfwasm` | The converters built as wasm for in-browser conversion (a module for PDF, one for the Office formats) |
-| `examples/viewer` | Demo viewer, and the demo site (`site.mjs`: the viewer, the converters as wasm, fonts and samples), published on GitHub Pages |
+| `examples/viewer` | Demo viewer, and the demo site (`site.mjs`: the viewer, the converters as wasm, fonts, samples and the documentation as HTML), published on GitHub Pages |
 | `testdata/` | Generated samples and golden images |
 
 ## Usage

@@ -53,6 +53,15 @@ export class ResourceCache {
     this.fontSet = fontSet ?? (globalThis as { fonts?: FontFaceSet }).fonts ?? (globalThis as { document?: { fonts?: FontFaceSet } }).document?.fonts;
   }
 
+  /** Remove the fonts from the font set and close the images. */
+  dispose(): void {
+    for (const face of this.fonts.values()) this.fontSet?.delete(face);
+    for (const bmp of this.images.values()) bmp.close();
+    this.fonts.clear();
+    this.images.clear();
+    this.extPaths.clear();
+  }
+
   /** Load an object, its children, and every font/image/path part they use. */
   async prepare(hash: Hash): Promise<ObjectPart> {
     return this.doc.ensure(hash, (e, bytes) => this.load(e, bytes));

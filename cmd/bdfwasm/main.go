@@ -20,6 +20,24 @@
 //	  password?: string, // the open password of an encrypted input
 //	  fonts?: string,    // URL of a font directory (see below)
 //	}): Promise<{bdf: Uint8Array, format: string, summary: string, warnings: string[], protected: boolean}>
+//	bdfConverter.open(data, options?): Promise<{bdf, format, pages: number, warnings, stream?}>
+//
+// convert converts the input whole into a single-file bdf. open starts a
+// conversion done a page at a time (converter.OpenStream), for a viewer that
+// draws the pages as they are converted: with pages > 0, bdf is the outline
+// (every page sized, the pages of the first view without layers) and
+// stream converts the rest:
+//
+//	stream.page(i: number): Promise<{bdf: Uint8Array, warnings: string[]}>
+//	stream.finish(): Promise<{bdf, format, summary, warnings, protected}>
+//	stream.close(): void
+//
+// page converts page i of the first view and returns a single-file bdf
+// whose only page is that page, with the parts no earlier call returned;
+// warnings are the new ones. finish returns the whole document, as convert
+// makes it, with every warning. close lets the stream go (call it after
+// finish too). A format that is not converted a page at a time comes back
+// whole from open, with pages 0, a summary and no stream.
 //
 // A failed conversion rejects with an Error whose code is
 // "password-required", "wrong-password" or "unknown-format" when it is one
@@ -41,6 +59,7 @@ import (
 	"sync"
 	"syscall/js"
 
+	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
 )
 
@@ -55,6 +74,7 @@ func main() {
 	}
 	api := js.ValueOf(map[string]any{"formats": formats})
 	api.Set("convert", js.FuncOf(convert))
+	api.Set("open", js.FuncOf(open))
 	js.Global().Set("bdfConverter", api)
 	select {}
 }
@@ -80,12 +100,18 @@ func fonts(url string) (*httpFS, error) {
 	return f, nil
 }
 
-func convert(_ js.Value, args []js.Value) any {
+// request is the input of convert and open.
+type request struct {
+	data                      []byte
+	format, password, fontURL string
+}
+
+func readRequest(args []js.Value) (*request, error) {
 	if len(args) == 0 || args[0].Type() != js.TypeObject {
-		return reject(errors.New("convert: want the input bytes as a Uint8Array"))
+		return nil, errors.New("want the input bytes as a Uint8Array")
 	}
-	data := make([]byte, args[0].Get("length").Int())
-	js.CopyBytesToGo(data, args[0])
+	req := &request{data: make([]byte, args[0].Get("length").Int())}
+	js.CopyBytesToGo(req.data, args[0])
 	str := func(name string) string {
 		if len(args) < 2 || args[1].Type() != js.TypeObject {
 			return ""
@@ -95,36 +121,183 @@ func convert(_ js.Value, args []js.Value) any {
 		}
 		return ""
 	}
-	format, password, fontURL := str("format"), str("password"), str("fonts")
-	return promise(func() (any, error) {
-		opts := &converter.Options{Password: password, NoSystemFonts: true}
-		if fontURL != "" {
-			fsys, err := fonts(fontURL)
-			if err != nil {
-				return nil, fmt.Errorf("fonts: %w", err)
-			}
-			opts.FontFS = fsys
+	req.format, req.password, req.fontURL = str("format"), str("password"), str("fonts")
+	return req, nil
+}
+
+func (req *request) options() (*converter.Options, error) {
+	opts := &converter.Options{Password: req.password, NoSystemFonts: true}
+	if req.fontURL != "" {
+		fsys, err := fonts(req.fontURL)
+		if err != nil {
+			return nil, fmt.Errorf("fonts: %w", err)
 		}
-		res, err := converter.Convert(bytes.NewReader(data), int64(len(data)), format, opts)
+		opts.FontFS = fsys
+	}
+	return opts, nil
+}
+
+func convert(_ js.Value, args []js.Value) any {
+	req, err := readRequest(args)
+	if err != nil {
+		return reject(fmt.Errorf("convert: %w", err))
+	}
+	return promise(func() (any, error) {
+		opts, err := req.options()
 		if err != nil {
 			return nil, err
 		}
-		// Parts are compressed quickly: the document is drawn where it is
-		// made, and only a download would gain from smaller parts.
-		res.Doc.CompressionLevel = flate.BestSpeed
-		var out bytes.Buffer
-		if err := res.Doc.WriteSingle(&out); err != nil {
+		res, err := converter.Convert(bytes.NewReader(req.data), int64(len(req.data)), req.format, opts)
+		if err != nil {
 			return nil, err
 		}
-		b := js.Global().Get("Uint8Array").New(out.Len())
-		js.CopyBytesToJS(b, out.Bytes())
-		warnings := make([]any, len(res.Warnings))
-		for i, w := range res.Warnings {
-			warnings[i] = w
-		}
-		return map[string]any{"bdf": b, "format": res.Doc.Meta.Source, "summary": res.Summary,
-			"warnings": warnings, "protected": res.Protected}, nil
+		return result(res, res.Warnings)
 	})
+}
+
+func open(_ js.Value, args []js.Value) any {
+	req, err := readRequest(args)
+	if err != nil {
+		return reject(fmt.Errorf("open: %w", err))
+	}
+	return promise(func() (any, error) {
+		opts, err := req.options()
+		if err != nil {
+			return nil, err
+		}
+		w := &warnings{}
+		opts.Warn = w.add
+		s, err := converter.OpenStream(bytes.NewReader(req.data), int64(len(req.data)), req.format, opts)
+		if err != nil {
+			return nil, err
+		}
+		if s.Pages() == 0 {
+			res, err := s.Finish()
+			if err != nil {
+				return nil, err
+			}
+			out, err := result(res, w.all())
+			if err != nil {
+				return nil, err
+			}
+			out["pages"] = 0
+			return out, nil
+		}
+		outline := s.Outline()
+		b, err := single(outline)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"bdf": b, "format": outline.Meta.Source, "pages": s.Pages(), "warnings": w.fresh(), "stream": streamValue(s, w)}, nil
+	})
+}
+
+// streamValue is the JavaScript side of a stream: page, finish and close.
+func streamValue(s converter.Stream, w *warnings) js.Value {
+	var mu sync.Mutex // the calls run in goroutines of their own
+	var funcs []js.Func
+	method := func(fn func(args []js.Value) any) js.Func {
+		f := js.FuncOf(func(_ js.Value, args []js.Value) any { return fn(args) })
+		funcs = append(funcs, f)
+		return f
+	}
+	v := js.Global().Get("Object").New()
+	v.Set("page", method(func(args []js.Value) any {
+		if len(args) == 0 || args[0].Type() != js.TypeNumber {
+			return reject(errors.New("page: want a page index"))
+		}
+		i := args[0].Int()
+		return promise(func() (any, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			doc, err := s.Page(i)
+			if err != nil {
+				return nil, err
+			}
+			b, err := single(doc)
+			if err != nil {
+				return nil, err
+			}
+			return map[string]any{"bdf": b, "warnings": w.fresh()}, nil
+		})
+	}))
+	v.Set("finish", method(func([]js.Value) any {
+		return promise(func() (any, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			res, err := s.Finish()
+			if err != nil {
+				return nil, err
+			}
+			return result(res, w.all())
+		})
+	}))
+	v.Set("close", method(func([]js.Value) any {
+		for _, f := range funcs {
+			f.Release()
+		}
+		return nil
+	}))
+	return v
+}
+
+// warnings collects what a conversion warns about as it goes.
+type warnings struct {
+	mu   sync.Mutex
+	list []string
+	seen int
+}
+
+func (w *warnings) add(msg string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.list = append(w.list, msg)
+}
+
+// fresh returns the warnings added since the last call.
+func (w *warnings) fresh() []any {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	out := anys(w.list[w.seen:])
+	w.seen = len(w.list)
+	return out
+}
+
+func (w *warnings) all() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.list
+}
+
+func anys(list []string) []any {
+	out := make([]any, len(list))
+	for i, s := range list {
+		out[i] = s
+	}
+	return out
+}
+
+// single writes a document in the single-file form. Parts are compressed
+// quickly: the document is drawn where it is made, and only a download
+// would gain from smaller parts.
+func single(doc *bdf.Document) (js.Value, error) {
+	doc.CompressionLevel = flate.BestSpeed
+	var out bytes.Buffer
+	if err := doc.WriteSingle(&out); err != nil {
+		return js.Value{}, err
+	}
+	b := js.Global().Get("Uint8Array").New(out.Len())
+	js.CopyBytesToJS(b, out.Bytes())
+	return b, nil
+}
+
+func result(res *converter.Result, warnings []string) (map[string]any, error) {
+	b, err := single(res.Doc)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"bdf": b, "format": res.Doc.Meta.Source, "summary": res.Summary,
+		"warnings": anys(warnings), "protected": res.Protected}, nil
 }
 
 // promise runs fn in a goroutine, which may block (on fetches), and settles

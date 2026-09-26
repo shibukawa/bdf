@@ -165,7 +165,7 @@ func (in *interp) showText(s []byte) {
 		if isSpace {
 			adv += in.gs.wordSp
 		}
-		draw, text := f.use(g)
+		draw, text := in.use(f, g)
 		if in.actual != nil {
 			// /ActualText marked content overrides the Unicode of the glyphs it wraps.
 			text = ""
@@ -258,7 +258,7 @@ func (in *interp) showType3(f *pdfFont, codes []glyphCode) {
 	}
 	var text strings.Builder
 	for _, g := range codes {
-		_, uni := f.use(g)
+		_, uni := in.use(f, g)
 		text.WriteString(uni)
 	}
 	altPending := text.Len() > 0
