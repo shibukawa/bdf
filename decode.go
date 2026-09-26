@@ -156,6 +156,13 @@ func (o *ObjectPart) readInstr(r *reader) (Instr, error) {
 				} else {
 					in.Args = append(in.Args, o.Strings[i])
 				}
+			case 'B':
+				n := r.varuint()
+				if n > uint64(len(o.Ops)) {
+					r.fail("bad byte count")
+				} else {
+					in.Args = append(in.Args, r.bytes(int(n)))
+				}
 			}
 		}
 	}

@@ -7,8 +7,8 @@ import (
 )
 
 // pdfFunction evaluates PDF functions of type 0 (sampled), 2 (exponential),
-// 3 (stitching) and, approximately, 4 (PostScript calculator: unsupported,
-// returns mid-range values).
+// 3 (stitching) and 4 (PostScript calculator; mid-range values when the
+// program cannot be run).
 type pdfFunction struct {
 	kind   int
 	domain []float64
@@ -26,6 +26,9 @@ type pdfFunction struct {
 	decode  []float64
 	samples []byte
 	nOut    int
+	// type 4
+	prog  []psOp
+	cache map[float64][]float64 // results for one input (image samples repeat)
 	// arrays of functions (one per output)
 	parts []*pdfFunction
 }
@@ -92,7 +95,11 @@ func (p *pdf) loadFunction(o types.Object) *pdfFunction {
 			return nil
 		}
 	case 4:
-		// PostScript calculator functions are not evaluated.
+		if sd := p.stream(o); sd != nil {
+			if data, _, err := p.decodeStream(sd); err == nil {
+				f.prog = compilePS(data)
+			}
+		}
 	default:
 		return nil
 	}
@@ -181,11 +188,7 @@ func (f *pdfFunction) eval(in ...float64) []float64 {
 	case 0:
 		out = f.evalSampled(in)
 	case 4:
-		n := len(f.rng) / 2
-		out = make([]float64, n)
-		for i := range out {
-			out[i] = (f.rng[2*i] + f.rng[2*i+1]) / 2
-		}
+		out = f.evalPS(in)
 	}
 	if len(f.rng) >= 2 {
 		for i := range out {
@@ -273,6 +276,34 @@ func (f *pdfFunction) evalSampled(in []float64) []float64 {
 			dmin, dmax = f.rng[2*j], f.rng[2*j+1]
 		}
 		out[j] = dmin + s*(dmax-dmin)
+	}
+	return out
+}
+
+// evalPS runs a calculator function; its outputs are the top of the stack.
+func (f *pdfFunction) evalPS(in []float64) []float64 {
+	n := len(f.rng) / 2
+	if len(in) == 1 && f.cache != nil {
+		if r, ok := f.cache[in[0]]; ok {
+			return append([]float64(nil), r...)
+		}
+	}
+	out := runPS(f.prog, in)
+	if f.prog == nil || len(out) < n {
+		out = make([]float64, n)
+		for i := range out {
+			out[i] = (f.rng[2*i] + f.rng[2*i+1]) / 2
+		}
+		return out
+	}
+	out = out[len(out)-n:]
+	if len(in) == 1 {
+		if f.cache == nil {
+			f.cache = map[float64][]float64{}
+		}
+		if len(f.cache) < 4096 {
+			f.cache[in[0]] = append([]float64(nil), out...)
+		}
 	}
 	return out
 }
