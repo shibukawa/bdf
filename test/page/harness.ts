@@ -49,6 +49,11 @@ export const CASES: Case[] = [
   { name: "pptx-features-3", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
   { name: "pptx-features-4", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
   { name: "pptx-features-5", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 4, scale: 0.75 },
+  // draw.io diagrams rendered by converter/drawio with the test fonts: every page is a view of its own.
+  { name: "drawio-labels", src: "/testdata/drawio/labels.bdf", kind: "page", view: "text", page: 0, scale: 1.5 },
+  { name: "drawio-multipage-1", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "overview", page: 0, scale: 1.5 },
+  { name: "drawio-multipage-2", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "details", page: 0, scale: 1.5 },
+  { name: "drawio-multipage-3", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "layers", page: 0, scale: 1.5 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";
@@ -199,7 +204,13 @@ async function main() {
   // "fixture" is drawn with an fi ligature: the hit is on an ALT_TEXT run.
   const ligHits = await chromeDoc.search("pages", "fixture");
   const ligRects = await chromeDoc.locate("pages", ligHits);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects };
+  // draw.io: a page of the diagram is a view; the search runs in it, and
+  // links to other pages are #view= links
+  const { client: drawio } = await open("/testdata/drawio/multipage.bdf");
+  const drawioHits = await drawio.search("details", "日本語の説明");
+  const drawioRects = await drawio.locate("details", drawioHits);
+  const drawioLinks = (await drawio.content("overview", 0)).links.map((l) => l.url);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, drawioHits, drawioRects, drawioLinks };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }

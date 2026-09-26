@@ -65,7 +65,7 @@ func TestLabelWrap(t *testing.T) {
 }
 
 func TestLabelKinsoku(t *testing.T) {
-	_, l := labelOf(t, `<mxCell id="a" value="日本語のラベルは文字単位で折り返されます。句読点の禁則も。" style="whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="0" y="0" width="100" height="80" as="geometry"/></mxCell>`, "a")
+	_, l := labelOf(t, `<mxCell id="a" value="日本語のラベルは文字ごとに折り返されます。句読点は行頭に来ません。" style="whiteSpace=wrap;html=1;" vertex="1" parent="1"><mxGeometry x="0" y="0" width="100" height="80" as="geometry"/></mxCell>`, "a")
 	lines := lineTexts(l)
 	if len(lines) < 3 {
 		t.Fatalf("lines %q", lines)

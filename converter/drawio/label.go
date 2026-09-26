@@ -30,6 +30,8 @@ type labelBox struct {
 	alpha     float64
 	plain     bool
 	pad       []float64 // labelPadding: top, right, bottom, left
+	shadow    bool      // textShadow: a drop shadow like the shapes'
+	style     style
 }
 
 // textProps are the label properties of mxText (as it reads them from the style).
@@ -250,6 +252,9 @@ func (c *converter) layoutLabel(st *cellState, s *shape) *labelBox {
 		}
 	}
 	rotation := s.textRotation(t)
+	if a, ok := c.labelAutoRotation(st); ok {
+		rotation = a
+	}
 	if !st.cell.edge {
 		// rotateLabelBounds
 		m := alignmentPoint(t.align, t.valign)
@@ -289,6 +294,8 @@ func (c *converter) layoutLabel(st *cellState, s *shape) *labelBox {
 		l.border = &col
 	}
 	l.pad = cssSpacing(st.style.get("labelPadding", ""))
+	l.shadow = st.style.is("textShadow")
+	l.style = st.style
 	if t.html {
 		c.layoutHTML(l, value, root, t, b)
 	} else {
@@ -611,6 +618,50 @@ func (c *converter) layoutPlain(l *labelBox, value string, root *tstyle, t textP
 	}
 }
 
+// labelAutoRotation returns the angle of the edge segment nearest to an
+// edge's label, or to a label cell on an edge, turned to stay upright, when
+// the style sets labelAutoRotate (Graph.getLabelAutoRotation). Curved
+// edges use their control polygon.
+func (c *converter) labelAutoRotation(st *cellState) (float64, bool) {
+	if st.style.get("labelAutoRotate", "0") != "1" {
+		return 0, false
+	}
+	var edge *cellState
+	var p point
+	switch {
+	case st.cell.edge:
+		edge, p = st, st.absoluteOffset
+	case st.parent != nil && st.parent.cell.edge:
+		edge, p = st.parent, point{st.cx(), st.cy()}
+	default:
+		return 0, false
+	}
+	pts := edge.edgePoints()
+	if len(pts) < 2 {
+		return 0, false
+	}
+	angle, best := 0.0, math.Inf(1)
+	for i := 1; i < len(pts); i++ {
+		p0, pe := pts[i-1], pts[i]
+		dx, dy := pe.x-p0.x, pe.y-p0.y
+		l2 := dx*dx + dy*dy
+		t := 0.0
+		if l2 != 0 {
+			t = clamp(((p.x-p0.x)*dx+(p.y-p0.y)*dy)/l2, 0, 1)
+		}
+		ddx, ddy := p.x-(p0.x+t*dx), p.y-(p0.y+t*dy)
+		if d := ddx*ddx + ddy*ddy; d < best {
+			best = d
+			angle = math.Atan2(dy, dx) * 180 / math.Pi
+		}
+	}
+	angle = math.Mod(math.Mod(angle, 360)+360, 360)
+	if angle > 90 && angle < 270 {
+		angle -= 180
+	}
+	return angle, true
+}
+
 // extent is the rectangle the label paints over (for the page size).
 func (l *labelBox) extent() rect {
 	r := l.bgBox
@@ -645,6 +696,18 @@ func (r rect) intersect(o rect) rect {
 func (c *converter) drawLabel(c2 *c2d, l *labelBox) {
 	obj := c2.obj
 	cv := c2.cv
+	if l.shadow {
+		// draw.io puts the shapes' drop-shadow filter on the text (mxText.isShadowEnabled)
+		dx, dy, blur, col := (&shape{style: l.style}).shadowStyle()
+		r := l.extent().grow(blur + math.Abs(dx) + math.Abs(dy) + 2)
+		obj.Save()
+		obj.Shadow(col.bdf(), f32(blur), f32(dx), f32(dy))
+		obj.GroupBegin(1, bdf.BlendSourceOver, f32(r.x), f32(r.y), f32(r.w), f32(r.h))
+		defer func() {
+			obj.GroupEnd()
+			obj.Restore()
+		}()
+	}
 	obj.Save()
 	cv.drawn = true
 	if l.rotation != 0 {

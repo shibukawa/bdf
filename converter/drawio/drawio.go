@@ -265,6 +265,9 @@ func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas, error) {
 	m := parseModel(p.model)
 	c.m = m
 	c.pageShadow = m.attrs["shadow"] == "1"
+	if m.attrs["math"] == "1" {
+		c.warnOnce("math", "mathematical typesetting (math=1) is drawn as plain text")
+	}
 	v := newView(m, c.warnOnce, c.stencil)
 
 	// shapes and label layouts, then the bounds of the drawing
@@ -277,6 +280,7 @@ func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas, error) {
 		if st.cell.edge && st.absPoints == nil {
 			continue
 		}
+		c.checkUnsupported(st)
 		it := &item{st: st, shape: c.newShape(st)}
 		it.label = c.layoutLabel(st, it.shape)
 		items = append(items, it)
@@ -330,6 +334,22 @@ func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas, error) {
 		}
 	}
 	return pg, layers, nil
+}
+
+// checkUnsupported warns about styles drawn differently from draw.io.
+func (c *converter) checkUnsupported(st *cellState) {
+	s := st.style
+	if s.is("sketch") || s.get("comic", "") == "1" {
+		c.warnOnce("sketch", "hand-drawn styles (sketch) are drawn with straight lines")
+	}
+	switch s.get("fillStyle", "") {
+	case "", "auto", "solid":
+	default:
+		c.warnOnce("fillStyle", "fill style %q is drawn as a solid fill", s.get("fillStyle", ""))
+	}
+	if s.get("jumpStyle", "none") != "none" {
+		c.warnOnce("jumps", "line jumps (jumpStyle) at edge crossings are not drawn")
+	}
 }
 
 // drawItem draws a cell's shape and label, and its link.

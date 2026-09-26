@@ -34,6 +34,11 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/pptx/$n.bdf"
           done
+          for f in converter/drawio/testdata/*.drawio; do
+            n=$(basename "$f" .drawio)
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/drawio/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:
