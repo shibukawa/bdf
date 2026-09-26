@@ -10,12 +10,13 @@
     "test": "npm run build && node --test packages/core/test/*.test.mjs packages/render/test/*.test.mjs",
     "test:golden": "npm run build && node test/golden.mjs",
     "test:golden:update": "npm run build && node test/golden.mjs --update",
-    "testdata": "go run ./cmd/bdf demo testdata/demo.bdf && go run ./cmd/bdf demo testdata/demo-split/ && BDF_PASSWORD=demo-パスワード go run ./cmd/bdf encrypt testdata/demo.bdf testdata/demo-encrypted.bdf && node test/pdf/testdata.mjs && node test/pptx/testdata.mjs && node test/xlsx/testdata.mjs && node test/visio/testdata.mjs",
+    "testdata": "go run ./cmd/bdf demo testdata/demo.bdf && go run ./cmd/bdf demo testdata/demo-split/ && BDF_PASSWORD=demo-パスワード go run ./cmd/bdf encrypt testdata/demo.bdf testdata/demo-encrypted.bdf && node test/pdf/testdata.mjs && node test/pptx/testdata.mjs && node test/xlsx/testdata.mjs && node test/visio/testdata.mjs && node test/docx/testdata.mjs",
     "test:pdf:gen": "node test/pdf/gen.mjs && python3 test/pdf/gen_reportlab.py && python3 test/pdf/gen_master.py && python3 test/pdf/gen_cff.py && python3 test/pdf/gen_type1.py",
     "demo": "node examples/viewer/serve.mjs",
     "test:pptx:gen": "python3 test/pptx/gen.py && python3 test/pptx/gen_encrypted.py",
     "test:xlsx:gen": "python3 test/xlsx/gen.py",
-    "test:visio:gen": "python3 test/visio/gen.py"
+    "test:visio:gen": "python3 test/visio/gen.py",
+    "test:docx:gen": "python3 test/docx/gen.py"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

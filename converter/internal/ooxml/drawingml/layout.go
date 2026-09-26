@@ -3,46 +3,16 @@ package drawingml
 import (
 	"math"
 	"strings"
-	"unicode"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/converter/internal/linebreak"
 )
 
-// Line breaking follows the simple rules Office applies: breaks after runs
-// of spaces, between East Asian characters (except before closing
-// punctuation and small kana, and after opening brackets: kinsoku), between
-// East Asian and other text, and after hyphens inside words.
+// Line breaking follows the rules of package linebreak.
 
-const noStart = "、。，．,.:;?!)]}」』】〕〉》）］｝〙〗〟”’ゝゞヽヾーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ々〻‐゠–〜？！：；・…‥%％°℃"
-const noEnd = "([{「『【〔〈《（［｛〘〖〝“‘¥$£＄￥"
-
-// IsBreakSpace reports whether r is a space after which a line may break.
-func IsBreakSpace(r rune) bool {
-	return r == ' ' || r == '　' || r == ' ' || r == ' ' || r == ' '
-}
-
-// CanBreak reports whether a line may break between the characters a and b.
-func CanBreak(a, b rune) bool {
-	if IsBreakSpace(a) {
-		return !IsBreakSpace(b)
-	}
-	if IsBreakSpace(b) || a == '\u00a0' || b == '\u00a0' {
-		return false
-	}
-	if strings.ContainsRune(noStart, b) || strings.ContainsRune(noEnd, a) {
-		return false
-	}
-	if fontdb.IsCJK(a) || fontdb.IsCJK(b) {
-		return true
-	}
-	if (a == '-' || a == '‐') && unicode.IsLetter(b) {
-		return true
-	}
-	return false
-}
+func isBreakSpace(r rune) bool { return linebreak.IsSpace(r) }
 
 // markBreaks sets the break opportunities of a paragraph's items.
 func markBreaks(items []item) {
@@ -54,7 +24,7 @@ func markBreaks(items []item) {
 			items[i].brk = true
 			continue
 		}
-		items[i].brk = CanBreak(items[i].r, items[i+1].r)
+		items[i].brk = linebreak.Allowed(items[i].r, items[i+1].r)
 	}
 }
 
@@ -117,7 +87,7 @@ func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 			if it.kind == itemTab {
 				it.w = nextTab(pa, x) - x
 			}
-			if wrap && x+it.w > width+1e-6 && !(it.kind == itemChar && IsBreakSpace(it.r)) && i > 0 {
+			if wrap && x+it.w > width+1e-6 && !(it.kind == itemChar && isBreakSpace(it.r)) && i > 0 {
 				if lastBrk >= 0 {
 					end = lastBrk + 1
 				} else {
@@ -145,7 +115,7 @@ func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 		ln.width = start
 		for i := len(ln.items) - 1; i >= 0; i-- {
 			it := ln.items[i]
-			if it.kind == itemChar && IsBreakSpace(it.r) {
+			if it.kind == itemChar && isBreakSpace(it.r) {
 				continue
 			}
 			ln.width = it.x + it.w
@@ -164,7 +134,7 @@ func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 			break
 		}
 		prev, next := items[end-1].r, items[end].r
-		cjkWrap = !IsBreakSpace(prev) && (fontdb.IsCJK(prev) || fontdb.IsCJK(next))
+		cjkWrap = linebreak.Joins(prev, next)
 		items = items[end:]
 		first, afterBr = false, false
 	}
@@ -233,12 +203,12 @@ func (ln *textLine) align(width float64, wrap bool) {
 		// Spread over the spaces between words, or over the characters
 		// when there are none (East Asian text).
 		n := len(ln.items)
-		for n > 0 && ln.items[n-1].kind == itemChar && IsBreakSpace(ln.items[n-1].r) {
+		for n > 0 && ln.items[n-1].kind == itemChar && isBreakSpace(ln.items[n-1].r) {
 			n--
 		}
 		spaces := 0
 		for i := 0; i < n; i++ {
-			if ln.items[i].kind == itemChar && IsBreakSpace(ln.items[i].r) {
+			if ln.items[i].kind == itemChar && isBreakSpace(ln.items[i].r) {
 				spaces++
 			}
 		}
@@ -247,7 +217,7 @@ func (ln *textLine) align(width float64, wrap bool) {
 			shift := 0.0
 			for i := 0; i < len(ln.items); i++ {
 				ln.items[i].x += shift
-				if i < n && ln.items[i].kind == itemChar && IsBreakSpace(ln.items[i].r) {
+				if i < n && ln.items[i].kind == itemChar && isBreakSpace(ln.items[i].r) {
 					ln.items[i].w += add
 					ln.items[i].ls = -1 // stretched space: not drawn
 					shift += add
@@ -493,11 +463,15 @@ func (e *textEmitter) emitVerticalLine(ln *textLine, dx, base float64) {
 	}
 	x0 := dx + ln.items[first].x
 	size := ln.asc + ln.desc
+	// The bbox spans the line along its length, which is the extent of the
+	// ALT_TEXT run (spec §7.8); across it there is room for turned glyphs.
 	ch, ref := e.cv.Child(bdf.Rect{X: 0, Y: f32(-ln.asc), W: f32(ln.width), H: f32(size)})
-	ch.Obj.SetBBox(-f32(size), f32(-ln.asc-size), f32(ln.width+2*size), f32(3*size))
+	ch.Obj.SetBBox(0, f32(-ln.asc-size), f32(ln.width), f32(3*size))
 	che := &textEmitter{c: e.c, cv: ch, m: e.m.Mul(canvas.Translate(x0, base)), vchars: true}
 	che.emitItems(ln, dx-x0, 0)
 	e.links = append(e.links, che.links...)
+	// the font the text is measured with for search highlights
+	e.setFont(ln.items[first].fc, ln.items[first].st.size)
 	e.setLang(runLang(ln.items[first:], ln.pa))
 	e.cv.Obj.Mark(bdf.MarkAltText, text)
 	e.cv.Obj.UseAt(ref, f32(x0), f32(base))
@@ -528,7 +502,7 @@ func (e *textEmitter) runs(items []item) [][2]int {
 			if n.kind != itemChar || n.ls < 0 || (n.st != it.st && n.st.key != it.st.key) || n.fc != it.fc || n.ls != it.ls {
 				break
 			}
-			if e.vchars && uprightInVertical(n.r) != uprightInVertical(it.r) {
+			if e.vchars && fontset.Upright(n.r) != fontset.Upright(it.r) {
 				break
 			}
 			j++
@@ -536,7 +510,7 @@ func (e *textEmitter) runs(items []item) [][2]int {
 		// trailing spaces at the end of the line are not drawn
 		k := j
 		if j == len(items) {
-			for k > i && IsBreakSpace(items[k-1].r) {
+			for k > i && isBreakSpace(items[k-1].r) {
 				k--
 			}
 		}
@@ -577,7 +551,7 @@ func (e *textEmitter) emitRun(run []item, dx, base float64) {
 	}
 	e.setFont(it.fc, size)
 	e.setColor(c.bdf())
-	if e.vchars && uprightInVertical(it.r) {
+	if e.vchars && fontset.Upright(it.r) {
 		e.emitUpright(run, x, y, size)
 	} else {
 		e.setLetterSpacing(st.spacing + it.ls)
@@ -616,21 +590,6 @@ func (e *textEmitter) emitRun(run []item, dx, base float64) {
 	}
 }
 
-// uprightInVertical reports whether a character stands upright in East
-// Asian vertical text; Latin text, long vowel marks, dashes, brackets and
-// ellipses are turned with the line instead.
-func uprightInVertical(r rune) bool {
-	if !fontdb.IsCJK(r) {
-		return false
-	}
-	return !strings.ContainsRune("ー－―‐〜～…‥（）「」『』【】〔〕［］｛｝〈〉《》〘〙〖〗＝｜＿", r)
-}
-
-// verticalForms are the vertical presentation forms of East Asian
-// punctuation; without them the horizontal glyph moves to the top right of
-// its square, where vertical text puts it.
-var verticalForms = map[rune]rune{'、': '︑', '。': '︒', '，': '︐', '．': '︒', '：': '︓', '；': '︔', '！': '︕', '？': '︖'}
-
 // emitUpright draws East Asian characters of vertical text standing
 // upright: each character's em box is turned back by 90° around its center.
 func (e *textEmitter) emitUpright(run []item, x, y, size float64) {
@@ -641,7 +600,7 @@ func (e *textEmitter) emitUpright(run []item, x, y, size float64) {
 		cx := r.x - run[0].x + x + r.w/2
 		glyph, gfc := r.r, r.fc
 		dx, dy := 0.0, 0.0
-		if v, ok := verticalForms[r.r]; ok {
+		if v, ok := fontset.VerticalForm(r.r); ok {
 			if vf := e.c.faceFor(r.st, v); vf.Loaded != nil && vf.Loaded.Has(v) {
 				glyph, gfc = v, vf
 				e.c.fonts.Advance(vf, v)

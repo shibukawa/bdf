@@ -142,7 +142,13 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 				if in.Op == OpUseAt {
 					x, y = f(in, 1), f(in, 2)
 				}
-				t.emit(*t.alt, x, y, 0, st, true)
+				// The text the child draws spans its bbox along the baseline.
+				var advance float32
+				if child := t.resolve(o.Objects[int(in.Args[0].(uint64))]); child != nil {
+					x += child.BBox.X
+					advance = child.BBox.W
+				}
+				t.emit(*t.alt, x, y, advance, st, true)
 				t.alt = nil
 				return
 			}

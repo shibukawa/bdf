@@ -2,9 +2,10 @@ package bdf
 
 // View kinds.
 const (
-	ViewFixed = "fixed"
-	ViewFlow  = "flow"
-	ViewSheet = "sheet"
+	ViewFixed  = "fixed"
+	ViewFlow   = "flow"
+	ViewSheet  = "sheet"
+	ViewScroll = "scroll"
 )
 
 // Layer roles.
