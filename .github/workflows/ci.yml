@@ -34,6 +34,11 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/pptx/$n.bdf"
           done
+          for f in converter/xlsx/testdata/*.xlsx; do
+            n=$(basename "$f" .xlsx)
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/xlsx/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:

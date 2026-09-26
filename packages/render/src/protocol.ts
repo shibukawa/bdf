@@ -16,7 +16,7 @@ export type WorkerRequest =
   | { id: number; type: "continuousText"; view: string; viewport: Rect }
   | { id: number; type: "content"; view: string; page: number }
   | { id: number; type: "continuousContent"; view: string; viewport: Rect }
-  | { id: number; type: "sheetContent"; view: string; viewport: Rect }
+  | { id: number; type: "sheetContent"; view: string; viewport: Rect | Rect[] }
   | { id: number; type: "search"; view: string; query: string; options?: SearchOptions }
   | { id: number; type: "locate"; view: string; hits: SearchHit[] }
   | { id: number; type: "close" };

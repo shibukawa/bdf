@@ -159,7 +159,8 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 - `cols` / `rows` はランレングス `[count, size]` の配列。ビューアは行・列ヘッダー、グリッド線、固定ペイン（`freeze`）をこの情報から自前で描く。
 - 内容は `tile` unit 四方の Tile に分割され、各 Tile は 1 Object。Tile 内の座標は **Tile 原点を基準**にする（f32 の精度限界を超えないため）。
-- 複数 Tile にまたがるオブジェクト（結合セル、画像、グラフ）は共有 Object にして、触れる各 Tile から `USE` で参照する。ビューアは Tile 矩形でクリップして描くので重複描画は正しく処理される。
+- 複数 Tile にまたがるオブジェクト（結合セル、画像、グラフ）は共有 Object にして、触れる各 Tile から `USE` で参照する。ビューアは Tile 矩形でクリップして描くので重複描画は正しく処理される。小さな描画（セルの塗りや罫線、隣のセルにはみ出したテキスト）は共有せず、触れる各 Tile にその Tile の原点で描いてもよい。
+- テキストの抽出（テキスト索引、テキスト層、検索）では、run はアンカー（`FILL_TEXT` などの x, y を変換したもの）が含まれる Tile に属し、他の Tile が重ねて描いた同じ run は除く。Tile の範囲は左上の辺を含み、右下の辺を含まない。
 - 空 Tile は表に載せない。
 - `tiles` の Index Part 形式（`t: idx`）: `[u32 tx, u32 ty, u8[16] hash]` を (ty, tx) 昇順に並べた固定長レコード列。二分探索で引く。
 
@@ -172,7 +173,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `pptx` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -212,7 +213,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 変換器は入力文書のメタデータを次のように写す。
 
-| 要素 | PDF（文書情報辞書） | PowerPoint（コアプロパティ） |
+| 要素 | PDF（文書情報辞書） | PowerPoint、Excel（コアプロパティ） |
 |---|---|---|
 | `title` | `Title` | `dc:title` |
 | `creator` | `Author` | `dc:creator` |
@@ -415,7 +416,7 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 
 - **葉の MARK**（PARAGRAPH、BOX、HEADING、LIST の外の LIST_ITEM、TABLE の外の CELL）は次の run が属する段落の種類を予約する。run を挟まずに続いた場合は最後のものが決める（BOX の直後の HEADING は見出しの段落）。
 - **構造の MARK**（LIST、TABLE、FIGURE、END、最も内側が LIST のときの LIST_ITEM、最も内側が TABLE のときの CELL）はその場で効き、予約を取り消す。LIST や TABLE の中で項目・セルの前に現れた run は、それぞれ暗黙の項目、表の見出し（caption）になる。
-- 最も内側が TABLE のときの CELL の payload は、表の左上を `A1` とする参照か範囲（`B2:C2`、結合セル）で、後ろに ` col`（列見出し）か ` row`（行見出し）を付けられる（例 `A1 col`）。セルは左上の位置の行優先の順に並べる。TABLE の外の CELL は従来どおりシートのセル参照（例 `B12`）。
+- 最も内側が TABLE のときの CELL の payload は、表の左上を `A1` とする参照か範囲（`B2:C2`、結合セル）で、後ろに ` col`（列見出し）か ` row`（行見出し）を付けられる（例 `A1 col`）。セルは左上の位置の行優先の順に並べる。TABLE の外の CELL はシートのセル参照（例 `B12`、結合セルは範囲 `B2:C3`）で、同じく ` col` / ` row` を付けて見出しのセルにできる（シートの中の表の見出し行）。
 - 開いている構造と LANG は、`USE` した子 Object や SAVE/RESTORE をまたいで走査順に一直線に続き、最上位の Object（ページのレイヤー、シートのタイル）ごとに初期状態（構造なし、言語は文書の既定）に戻る。最上位 Object の終わりで開いている構造は閉じる。共有プレフィックス（§5 の `USE`）で命令列が分かれても同じ結果になるための規則である。エンコーダは開いた構造を END で閉じ、言語を持つ子 Object を `USE` した後は必要なら LANG を出し直す。
 - FIGURE の範囲は、中の描画命令（画像、矩形、パス、子 Object の中身、テキスト）を現在の変換で移した外接矩形を、その時点のクリップの外接矩形と交わらせたもの。中身が空なら大きさ 0 とする。FIGURE の中のテキストは検索・選択・コピーの対象のままだが、代替テキストがあれば読み上げには代替テキストを使う。
 
@@ -430,7 +431,7 @@ varuint nRuns
 run ×n:
   varuint a        fixed/flow: ページ番号   sheet: タイル x
   varuint b        fixed/flow: レイヤー番号 sheet: タイル y
-  varuint ordinal  その Object のテキスト抽出（§8 のテキストバックエンド、USE の子を含む走査順）における run の通し番号
+  varuint ordinal  その Object のテキスト抽出（§8 のテキストバックエンド、USE の子を含む走査順）における run の通し番号。シートでは §4.1 の規則でその Tile に属さない run を載せないので、番号は飛ぶことがある
   u8      sep      前の run との結合: 0=連結 1=空白 2=段落境界（一致は境界をまたがない）
   str     text     run の文字列（ALT_TEXT の場合はその文字列）
 ```
