@@ -38,6 +38,23 @@ func (c *cursor) seek(code int) (tag, bool) {
 	return tag{}, false
 }
 
+// fitCount reads the count of the fit points of a spline edge: a 97 that
+// fit points (11) follow, or a 97 of 0 followed by the boundary's own 97.
+func (c *cursor) fitCount() (float64, bool) {
+	if c.i >= len(c.tags) || c.tags[c.i].code != 97 {
+		return 0, false
+	}
+	next := 0
+	if c.i+1 < len(c.tags) {
+		next = c.tags[c.i+1].code
+	}
+	if next == 11 || c.tags[c.i].f == 0 && next == 97 {
+		c.i++
+		return c.tags[c.i-1].f, true
+	}
+	return 0, false
+}
+
 func (c *cursor) point(code int) (cad.Point, bool) {
 	x, ok := c.want(code)
 	if !ok {
@@ -121,7 +138,9 @@ func (c *converter) readHatch(e *entity, dark bool) *hatchData {
 		}
 		if ns, ok := cur.want(97); ok {
 			for range int(ns) {
-				cur.want(330)
+				if _, ok := cur.want(330); !ok {
+					break
+				}
 			}
 		}
 		h.paths = append(h.paths, boundary{flags: flags, path: path})
@@ -137,7 +156,10 @@ func (c *converter) readHatch(e *entity, dark bool) *hatchData {
 		if nl, ok := cur.want(78); ok {
 			for range int(nl) {
 				var pl cad.PatternLine
-				a, _ := cur.want(53)
+				a, ok := cur.want(53)
+				if !ok {
+					break
+				}
 				pl.Angle = a * math.Pi / 180
 				pl.Base.X, _ = cur.want(43)
 				pl.Base.Y, _ = cur.want(44)
@@ -145,7 +167,10 @@ func (c *converter) readHatch(e *entity, dark bool) *hatchData {
 				pl.Offset.Y, _ = cur.want(46)
 				nd, _ := cur.want(79)
 				for range int(nd) {
-					d, _ := cur.want(49)
+					d, ok := cur.want(49)
+					if !ok {
+						break
+					}
 					pl.Dash = append(pl.Dash, d)
 				}
 				h.lines = append(h.lines, pl)
@@ -211,7 +236,10 @@ func readEdge(cur *cursor, typ int, path *cad.Path) {
 		s, _ := cur.want(50)
 		e, _ := cur.want(51)
 		ccw, _ := cur.want(73)
-		a0, a1 := arcAngles(s, e, ccw != 0)
+		a0, a1, ok := arcAngles(s, e, ccw != 0)
+		if !ok {
+			return
+		}
 		start := cad.Point{X: ctr.X + r*math.Cos(a0), Y: ctr.Y + r*math.Sin(a0)}
 		join(start)
 		path.Arc(ctr, r, a0, a1)
@@ -222,7 +250,10 @@ func readEdge(cur *cursor, typ int, path *cad.Path) {
 		s, _ := cur.want(50)
 		e, _ := cur.want(51)
 		ccw, _ := cur.want(73)
-		a0, a1 := arcAngles(s, e, ccw != 0)
+		a0, a1, ok := arcAngles(s, e, ccw != 0)
+		if !ok {
+			return
+		}
 		// angles to the parameters of the ellipse
 		t0, t1 := angleToParam(ratio, a0), angleToParam(ratio, a1)
 		if ccw != 0 {
@@ -247,7 +278,10 @@ func readEdge(cur *cursor, typ int, path *cad.Path) {
 		var knots, weights []float64
 		var ctrl []cad.Point
 		for range int(nk) {
-			k, _ := cur.want(40)
+			k, ok := cur.want(40)
+			if !ok {
+				break
+			}
 			knots = append(knots, k)
 		}
 		for range int(nc) {
@@ -261,7 +295,9 @@ func readEdge(cur *cursor, typ int, path *cad.Path) {
 			}
 		}
 		var fit []cad.Point
-		if nf, ok := cur.want(97); ok {
+		// the fit points came with AutoCAD 2010: before, a 97 here is the
+		// count of the boundary's source objects
+		if nf, ok := cur.fitCount(); ok {
 			for range int(nf) {
 				p, ok := cur.point(11)
 				if !ok {
@@ -293,26 +329,20 @@ func readEdge(cur *cursor, typ int, path *cad.Path) {
 }
 
 // arcAngles returns the start and end angles in radians of a hatch edge
-// arc, in its direction: clockwise arcs store their angles negated.
-func arcAngles(s, e float64, ccw bool) (float64, float64) {
-	a0, a1 := s*math.Pi/180, e*math.Pi/180
-	if ccw {
-		for a1 <= a0 {
-			a1 += 2 * math.Pi
-		}
-		if a1-a0 > 2*math.Pi {
-			a1 -= 2 * math.Pi
-		}
-		return a0, a1
+// arc, in its direction (a1 < a0 when it turns clockwise), less than a
+// turn apart: clockwise arcs store their angles negated. ok is false when
+// an angle is not a finite number.
+func arcAngles(s, e float64, ccw bool) (a0, a1 float64, ok bool) {
+	a0, a1, ok = ccwSpan(s*math.Pi/180, e*math.Pi/180)
+	if !ok || ccw {
+		return a0, a1, ok
 	}
-	a0, a1 = -a0, -a1
-	for a1 >= a0 {
+	// clockwise: from −s down to −e
+	a0, a1 = -math.Mod(s*math.Pi/180, 2*math.Pi), -math.Mod(e*math.Pi/180, 2*math.Pi)
+	if a1 >= a0 {
 		a1 -= 2 * math.Pi
 	}
-	if a0-a1 > 2*math.Pi {
-		a1 += 2 * math.Pi
-	}
-	return a0, a1
+	return a0, a1, true
 }
 
 // angleToParam converts an angle on an ellipse into its parameter.

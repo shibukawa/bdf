@@ -160,6 +160,10 @@ func (c *converter) text(e *entity, x *ctx, p props) {
 		return // an invisible attribute
 	}
 	raw := e.str(1)
+	if e.typ == "ATTDEF" && e.int(70, 0)&2 == 0 {
+		// a definition outside its block shows its tag
+		raw = e.str(2)
+	}
 	if e.typ == "ATTRIB" && e.has(101) {
 		// an attribute holding multiline text (AutoCAD 2018)
 		if m := embeddedMText(e); m != nil {
@@ -182,28 +186,23 @@ func (c *converter) text(e *entity, x *ctx, p props) {
 	if h <= 0 {
 		h = 2.5
 	}
-	wf := e.num(41, st.width)
+	// a text leaves out the codes that hold their defaults (not the
+	// style's: those are the defaults of new text in a CAD program)
+	wf := e.num(41, 1)
 	if wf <= 0 {
 		wf = 1
 	}
 	rot := e.num(50, 0) * math.Pi / 180
-	obl := e.num(51, st.oblique) * math.Pi / 180
+	obl := e.num(51, 0) * math.Pi / 180
 	gen := e.int(71, 0)
-	if !e.has(71) {
-		if st.backward {
-			gen |= 2
-		}
-		if st.upset {
-			gen |= 4
-		}
-	}
 	ha := e.int(72, 0)
 	vcode := 73
 	if e.typ != "TEXT" {
 		vcode = 74
 	}
 	va := e.int(vcode, 0)
-	p1, p2 := e.vec3(10, [3]float64{}), e.vec3(11, [3]float64{})
+	p1 := e.vec3(10, [3]float64{})
+	p2 := e.vec3(11, p1)
 	m := x.m.Mul(ocs(e, p1[2]))
 	em := h / capH
 	adv := 0.0

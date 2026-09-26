@@ -351,8 +351,10 @@ func allUTF8(tags []tag) bool {
 }
 
 // validSJIS reports whether the non-ASCII strings decode as Shift_JIS into
-// Japanese text: kana or kanji, not only the half-width katakana that the
-// letters of Western code pages would also decode to.
+// Japanese text: with kana or the common (JIS level 1) kanji, which the
+// accented letters of Western code pages do not make (0xE0 to 0xFF are
+// the lead bytes of level 2 kanji, and single bytes 0xA1 to 0xDF are
+// half-width katakana).
 func validSJIS(tags []tag) bool {
 	dec := japanese.ShiftJIS.NewDecoder()
 	found := 0
@@ -364,10 +366,18 @@ func validSJIS(tags []tag) bool {
 		if err != nil || strings.ContainsRune(out, utf8.RuneError) {
 			return false
 		}
-		for _, r := range out {
-			if r >= 0x3040 && r < 0x3100 || r >= 0x4e00 && r < 0xa000 {
+		s := t.s
+		for i := 0; i < len(s); i++ {
+			b := s[i]
+			if b < 0x81 || b >= 0xa0 && b < 0xe0 {
+				continue // ASCII or a half-width katakana
+			}
+			// the first byte of a pair: 0x82 and 0x83 hold the kana, 0x88
+			// to 0x9f the level 1 kanji
+			if b == 0x82 || b == 0x83 || b >= 0x88 && b <= 0x9f {
 				found++
 			}
+			i++
 		}
 	}
 	return found >= 2

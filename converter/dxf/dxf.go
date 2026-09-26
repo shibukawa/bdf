@@ -84,6 +84,7 @@ type converter struct {
 	ltscale   float64
 	psltscale bool
 	model     []*entity // the entities of model space
+	count     int       // entities drawn for the view being made
 }
 
 // ConvertFile converts a DXF file.
@@ -264,6 +265,7 @@ func hasContent(ents []*entity) bool {
 
 func (c *converter) renderSafe(s sheet, view *bdf.View) (page *bdf.Page, cv *canvas.Canvas) {
 	cv = c.cvs.New()
+	c.count = 0
 	defer func() {
 		if r := recover(); r != nil {
 			c.warnf("%s: internal error: %v", s.title, r)
@@ -443,21 +445,22 @@ func (c *converter) viewport(vp *entity, s sheet, out *cad.Drawing) {
 	} else if id <= 1 {
 		return
 	}
-	dir := vp.vec3(16, [3]float64{0, 0, 1})
+	view := viewportView(vp)
+	dir := view.dir
 	if math.Abs(dir[0]) > 1e-9 || math.Abs(dir[1]) > 1e-9 || dir[2] <= 0 {
 		c.warnOnce("vp3d", "viewports that show model space other than from the top are not drawn")
 		return
 	}
 	ctr := vp.pt(10)
 	vw, vh := vp.num(40, 0), vp.num(41, 0)
-	viewH := vp.num(45, 0)
+	viewH := view.height
 	if vw <= 0 || vh <= 0 || viewH <= 0 {
 		return
 	}
 	scale := vh / viewH
-	viewCtr := vp.pt(12)
-	target := vp.vec3(17, [3]float64{})
-	twist := vp.num(51, 0)
+	viewCtr := view.center
+	target := view.target
+	twist := view.twist
 	m := canvas.Translate(ctr.X-viewCtr.X*scale, ctr.Y-viewCtr.Y*scale).Mul(canvas.Rotate(twist)).
 		Mul(canvas.Scale(scale, scale)).Mul(canvas.Translate(-target[0], -target[1]))
 	clip := (&cad.Path{}).Polyline([]cad.Point{
@@ -478,6 +481,9 @@ func (c *converter) viewport(vp *entity, s sheet, out *cad.Drawing) {
 			}
 		}
 	}
+	for _, name := range view.frozen {
+		frozen[key(name)] = true
+	}
 	var deferred []func(cad.Rect)
 	x := c.topCtx(out, false, true, &deferred)
 	x.m = m
@@ -491,6 +497,72 @@ func (c *converter) viewport(vp *entity, s sheet, out *cad.Drawing) {
 		f(clip.Bounds())
 	}
 	out.End()
+}
+
+// vpView is what a viewport shows of model space.
+type vpView struct {
+	target, dir   [3]float64
+	center        cad.Point
+	height, twist float64
+	frozen        []string // layer names (R12)
+}
+
+// viewportView reads the view of a viewport: from its codes, or in R12
+// files from the MVIEW list of its extended data (target, direction, twist,
+// height, centre, ..., frozen layers).
+func viewportView(vp *entity) vpView {
+	v := vpView{target: vp.vec3(17, [3]float64{}), dir: vp.vec3(16, [3]float64{0, 0, 1}), center: vp.pt(12),
+		height: vp.num(45, 0), twist: vp.num(51, 0)}
+	if vp.has(45) {
+		return v
+	}
+	xd := vp.xdata("ACAD")
+	i := 0
+	for i < len(xd) && !(xd[i].code == 1000 && strings.EqualFold(xd[i].s, "MVIEW")) {
+		i++
+	}
+	if i == len(xd) {
+		return v
+	}
+	// the values of the list, a point (1010, 1020, 1030) counting as one
+	var vals []tag
+	var pts [][3]float64
+	depth := 0
+	for i++; i < len(xd); i++ {
+		t := xd[i]
+		switch {
+		case t.code == 1002 && strings.TrimSpace(t.s) == "{":
+			depth++
+			continue
+		case t.code == 1002:
+			depth--
+			continue
+		case t.code == 1003 && depth == 2:
+			v.frozen = append(v.frozen, t.s)
+			continue
+		case t.code == 1010:
+			pts = append(pts, [3]float64{t.f})
+			vals = append(vals, tag{code: 1010, f: float64(len(pts) - 1)})
+			continue
+		case t.code == 1020 && len(pts) > 0:
+			pts[len(pts)-1][1] = t.f
+			continue
+		case t.code == 1030 && len(pts) > 0:
+			pts[len(pts)-1][2] = t.f
+			continue
+		}
+		if depth == 1 {
+			vals = append(vals, t)
+		}
+	}
+	// version, target, direction, twist, height, centre x, centre y
+	if len(vals) < 7 || vals[1].code != 1010 || vals[2].code != 1010 {
+		return v
+	}
+	v.target, v.dir = pts[int(vals[1].f)], pts[int(vals[2].f)]
+	v.twist, v.height = vals[3].f, vals[4].f
+	v.center = cad.Point{X: vals[5].f, Y: vals[6].f}
+	return v
 }
 
 // outline returns the outline of a paper space entity that clips a

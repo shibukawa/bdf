@@ -149,6 +149,8 @@ func TestDashPattern(t *testing.T) {
 		{[]float64{-1, 2, -3}, []float64{2, 4}, 5},
 		{[]float64{1, 1, -1}, []float64{2, 1}, 0},
 		{[]float64{0, -0.5}, []float64{0, 0.5}, 0},
+		{[]float64{1, -2, 1}, []float64{2, 2}, 1}, // a dash at both ends
+		{[]float64{-1}, nil, 0},
 	} {
 		dash, off := DashPattern(c.in)
 		if !slices.Equal(dash, c.dash) || off != c.offset {

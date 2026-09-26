@@ -2,6 +2,7 @@ package dxf
 
 import (
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -38,9 +39,29 @@ type ctx struct {
 	// deferred are drawn once the extent of the drawing is known
 	// (construction lines, points sized relative to the view)
 	deferred *[]func(view cad.Rect)
+	// blocks are the blocks being drawn, outermost first (upper-case
+	// names): a block that inserts itself is not drawn again
+	blocks []string
 }
 
 const maxDepth = 24
+
+// maxEntities bounds the entities drawn for one view, blocks included.
+const maxEntities = 5_000_000
+
+// ccwSpan reduces the angles of an arc turning counter-clockwise from a0
+// to a1 (radians) to a span of at most a turn; ok is false when an angle
+// is not a finite number.
+func ccwSpan(a0, a1 float64) (float64, float64, bool) {
+	if math.IsNaN(a0) || math.IsInf(a0, 0) || math.IsNaN(a1) || math.IsInf(a1, 0) {
+		return 0, 0, false
+	}
+	a0, a1 = math.Mod(a0, 2*math.Pi), math.Mod(a1, 2*math.Pi)
+	if a1 <= a0 {
+		a1 += 2 * math.Pi
+	}
+	return a0, a1, true
+}
 
 var defaultLayer = &layer{name: "0", color: 7, trueColor: -1, ltype: "CONTINUOUS", lineweight: -3, alpha: 1}
 
@@ -60,19 +81,25 @@ func (c *converter) visible(e *entity, x *ctx) (*layer, bool) {
 	if e.int(60, 0) == 1 {
 		return nil, false
 	}
-	own := c.layer(e.str(8))
-	if own.frozen || x.frozen[key(own.name)] {
+	// (a layer missing from the table has the properties of layer 0 but
+	// keeps its name)
+	name := key(e.str(8))
+	if name == "" {
+		name = "0"
+	}
+	own := c.layer(name)
+	if own.frozen || x.frozen[name] {
 		return nil, false
 	}
 	eff := own
-	if key(own.name) == "0" && x.insLayer != nil {
+	if name == "0" && x.insLayer != nil {
 		eff = x.insLayer
 	}
 	if eff.color < 0 && e.typ != "INSERT" {
 		// off; the entities of an inserted block on other layers stay
 		return nil, false
 	}
-	if (x.plot || strings.EqualFold(eff.name, "Defpoints")) && eff.noPlot {
+	if name == "DEFPOINTS" || x.plot && eff.noPlot {
 		// the definition points of dimensions are never shown
 		return nil, false
 	}
@@ -216,6 +243,10 @@ func (c *converter) entity(e *entity, x *ctx) {
 		c.warnOnce("depth", "blocks nested deeper than %d levels are not drawn", maxDepth)
 		return
 	}
+	if c.count++; c.count > maxEntities {
+		c.warnOnce("budget", "only the first %d entities of a view are drawn", maxEntities)
+		return
+	}
 	l, ok := c.visible(e, x)
 	if !ok {
 		return
@@ -238,9 +269,9 @@ func (c *converter) entity(e *entity, x *ctx) {
 		if e.typ == "CIRCLE" {
 			path.Circle(pt2(ctr), r)
 		} else {
-			a0, a1 := e.num(50, 0)*math.Pi/180, e.num(51, 360)*math.Pi/180
-			for a1 <= a0 {
-				a1 += 2 * math.Pi
+			a0, a1, ok := ccwSpan(e.num(50, 0)*math.Pi/180, e.num(51, 360)*math.Pi/180)
+			if !ok {
+				return
 			}
 			path.Arc(pt2(ctr), r, a0, a1)
 		}
@@ -269,8 +300,9 @@ func (c *converter) entity(e *entity, x *ctx) {
 	case "TEXT", "ATTRIB":
 		c.text(e, x, p)
 	case "ATTDEF":
-		// only constant attributes show in the inserts of their block
-		if f := e.int(70, 0); f&2 != 0 && f&1 == 0 {
+		// outside a block the definition shows its tag; in the inserts of
+		// its block only a constant attribute shows (its value)
+		if f := e.int(70, 0); x.depth == 0 && len(x.blocks) == 0 || f&2 != 0 && f&1 == 0 {
 			c.text(e, x, p)
 		}
 	case "MTEXT":
@@ -364,7 +396,7 @@ func (c *converter) construction(e *entity, x *ctx, p props) {
 
 func (c *converter) point(e *entity, x *ctx, p props) {
 	mode := int(c.d.hnum("$PDMODE", 0))
-	if mode&31 == 1 {
+	if mode&31 == 1 && mode&96 == 0 {
 		return
 	}
 	loc := e.vec3(10, [3]float64{})
@@ -424,9 +456,9 @@ func (c *converter) ellipse(e *entity, x *ctx, p props) {
 	for i := range mn {
 		mn[i] *= ratio
 	}
-	t0, t1 := e.num(41, 0), e.num(42, 2*math.Pi)
-	for t1 <= t0 {
-		t1 += 2 * math.Pi
+	t0, t1, ok := ccwSpan(e.num(41, 0), e.num(42, 2*math.Pi))
+	if !ok {
+		return
 	}
 	path := &cad.Path{}
 	path.EllipseArcAxes(pt2(ctr), pt2(maj), pt2(mn), t0, t1)
@@ -524,7 +556,7 @@ func (c *converter) insert(e *entity, x *ctx, p props, l *layer) {
 	ins := e.vec3(10, [3]float64{})
 	sx, sy := e.num(41, 1), e.num(42, 1)
 	rot := e.num(50, 0)
-	cols, rows := max(e.int(70, 1), 1), max(e.int(71, 1), 1)
+	cols, rows := min(max(e.int(70, 1), 1), 32767), min(max(e.int(71, 1), 1), 32767)
 	cs, rs := e.num(44, 0), e.num(45, 0)
 	if cols*rows > 10000 {
 		c.warnOnce("minsert", "block arrays of more than 10000 inserts are drawn once")
@@ -549,7 +581,13 @@ func (c *converter) insert(e *entity, x *ctx, p props, l *layer) {
 // block draws the entities of a block through m, as inserted by an entity
 // with the properties p on the layer l.
 func (c *converter) block(b *block, x *ctx, m canvas.Matrix, p props, l *layer) {
+	k := key(b.name)
+	if slices.Contains(x.blocks, k) {
+		c.warnOnce("cycle:"+k, "block %q inserts itself; the inner inserts are not drawn", b.name)
+		return
+	}
 	sub := *x
+	sub.blocks = append(slices.Clone(x.blocks), k)
 	sub.m = m
 	sub.insLayer = l
 	sub.byBlock = p

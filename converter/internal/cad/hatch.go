@@ -102,66 +102,45 @@ func (d *Drawing) Hatch(boundary *Path, lines []PatternLine, pen Pen) bool {
 // alternates dashes and gaps, and the offset into it at which the pattern
 // begins. It returns nil for a continuous line.
 func DashPattern(elems []float64) (dash []float64, offset float64) {
-	var out []float64 // alternating, starting with a dash (possibly a gap first, handled below)
-	lastDash := false
-	started := false
-	lead := 0.0 // leading gap
+	type seg struct {
+		dash bool
+		l    float64
+	}
+	var segs []seg
 	for _, v := range elems {
-		isDash := v >= 0
-		l := math.Abs(v)
-		if !started {
-			if !isDash {
-				lead += l
-				continue
-			}
-			started = true
-			out = append(out, l)
-			lastDash = true
+		d := v >= 0
+		if n := len(segs); n > 0 && segs[n-1].dash == d {
+			segs[n-1].l += math.Abs(v)
 			continue
 		}
-		if isDash == lastDash {
-			out[len(out)-1] += l
-			continue
-		}
-		out = append(out, l)
-		lastDash = isDash
+		segs = append(segs, seg{d, math.Abs(v)})
 	}
-	if !started {
-		return nil, 0
+	// the pattern repeats: a last element of the kind of the first one
+	// continues it, and the pattern then begins that far into it
+	phase := 0.0
+	if n := len(segs); n >= 2 && segs[0].dash == segs[n-1].dash {
+		phase = segs[n-1].l
+		segs[0].l += segs[n-1].l
+		segs = segs[:n-1]
 	}
-	if lastDash {
-		// the pattern ends with a dash: the leading gap follows it
-		if lead > 0 {
-			out = append(out, lead)
-		} else {
-			// dashes only: continuous, unless there are dots
-			allSolid := true
-			for _, v := range out {
-				if v == 0 {
-					allSolid = false
-				}
-			}
-			if allSolid {
-				return nil, 0
-			}
-			out = append(out, 0)
-		}
-	} else {
-		out[len(out)-1] += lead
-	}
-	if len(out)%2 == 1 {
-		out = append(out, 0)
+	if len(segs) < 2 {
+		return nil, 0 // continuous (or nothing but a gap)
 	}
 	total := 0.0
-	for _, v := range out {
-		total += v
+	for _, s := range segs {
+		total += s.l
 	}
 	if total <= 0 {
 		return nil, 0
 	}
-	if lead > 0 {
-		// the pattern starts in the gap that closes the array
-		offset = total - lead
+	if !segs[0].dash {
+		// start with the dash: the leading gap moves to the end
+		phase += total - segs[0].l
+		segs = append(segs[1:], segs[0])
 	}
-	return out, offset
+	dash = make([]float64, len(segs))
+	for i, s := range segs {
+		dash[i] = s.l
+	}
+	return dash, math.Mod(phase, total)
 }

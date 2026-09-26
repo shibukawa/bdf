@@ -79,6 +79,14 @@ type Item struct {
 	bounds  Rect
 }
 
+// Text returns the string of a text item ("" for other items).
+func (it Item) Text() string {
+	if it.kind == kText && it.text != nil {
+		return it.text.S
+	}
+	return ""
+}
+
 // Drawing is a display list in drawing coordinates.
 type Drawing struct {
 	Items []Item
