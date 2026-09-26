@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, extractText, objectDeps, SplitSource, dcValues } from "../dist/index.js";
+import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, extractText, extractContent, parseCellRef, objectDeps, SplitSource, dcValues } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
 const fixture = new Uint8Array(await readFile(new URL("testdata/demo.bdf", root)));
@@ -93,6 +93,61 @@ test("text extraction follows transforms and USE", async () => {
   const master = await doc.ensure(page.layers[0].obj);
   const mruns = extractText(master, (h) => doc.objectSync(h));
   assert.equal(mruns[0].text, "BDF fixture deck");
+});
+
+test("cell references", () => {
+  assert.deepEqual(parseCellRef("B12"), { row: 11, col: 1, rows: 1, cols: 1 });
+  assert.deepEqual(parseCellRef("A4:B5 col"), { row: 3, col: 0, rows: 2, cols: 2, scope: "col" });
+  assert.deepEqual(parseCellRef("AA1 row"), { row: 0, col: 26, rows: 1, cols: 1, scope: "row" });
+  assert.equal(parseCellRef("R1C1"), undefined);
+  assert.equal(parseCellRef("A0"), undefined);
+});
+
+test("content: headings, lists, tables, figures and links", async () => {
+  const doc = await BdfDocument.open(new BufferSource(fixture));
+  const content = async (view, page, layer) => {
+    const o = await doc.ensure(doc.view(view).pages[page].layers[layer].obj);
+    return extractContent(o, (h) => doc.objectSync(h));
+  };
+  const nodeOf = (c, text) => c.nodes[c.runs.find((r) => r.text.startsWith(text)).node];
+  // flow page: heading, then a table whose first row holds column headers
+  const flow = await content("doc", 0, 1);
+  assert.deepEqual(nodeOf(flow, "Section 1"), { kind: "heading", level: 1, parent: -1 });
+  const cell = flow.nodes[nodeOf(flow, "R1C2").parent];
+  assert.deepEqual({ kind: cell.kind, row: cell.row, col: cell.col, scope: cell.scope }, { kind: "cell", row: 0, col: 1, scope: "col" });
+  const r3 = flow.nodes[nodeOf(flow, "R3C1").parent];
+  assert.equal(r3.scope, undefined);
+  assert.equal(flow.nodes[r3.parent].kind, "table");
+  // slide 3: a list of four items, and links moved into page space
+  const slide = await content("slides", 2, 1);
+  const items = slide.runs.filter((r) => r.text.startsWith("Regular")).map((r) => slide.nodes[slide.nodes[r.node].parent]);
+  assert.deepEqual(items.map((n) => n.kind), ["item", "item", "item", "item"]);
+  assert.equal(new Set(items.map((n) => n.parent)).size, 1);
+  assert.equal(slide.nodes[items[0].parent].kind, "list");
+  assert.deepEqual(slide.links.map((l) => l.url), ["https://example.com/", "#page=1"]);
+  // slide 2: figures bounded by what they draw, clipped
+  const figs = (await content("slides", 1, 1)).nodes.filter((n) => n.kind === "figure");
+  assert.deepEqual(figs.map((f) => [f.alt, f.bounds]), [
+    ["Checkerboard", { x: 60, y: 130, w: 200, h: 200 }],
+    ["Enlarged corner of the checkerboard", { x: 780, y: 130, w: 120, h: 200 }],
+  ]);
+  // footer: a figure drawn by a USE_AT child
+  const logo = (await content("doc", 0, 2)).nodes.find((n) => n.kind === "figure");
+  assert.equal(logo.alt, "BDF logo");
+  assert.ok(logo.bounds.w > 20 && logo.bounds.w < 25 && logo.bounds.y > 780);
+});
+
+test("converted PDF: structure from the tagged tree, and links over their text", async () => {
+  // Chrome's content leaves a cm in effect; the LINK must still land on its text
+  const doc = await BdfDocument.open(new BufferSource(new Uint8Array(await readFile(new URL("testdata/pdf/chrome-doc.bdf", root)))));
+  assert.equal(dcValues(doc.manifest.meta.dc.language)[0], "en-US");
+  const c = extractContent(await doc.ensure(doc.view("pages").pages[0].layers[0].obj), (h) => doc.objectSync(h));
+  const kinds = new Set(c.nodes.map((n) => n.kind));
+  for (const k of ["heading", "paragraph", "list", "item", "table", "cell"]) assert.ok(kinds.has(k), k);
+  assert.equal(c.links.length, 1);
+  const [l] = c.links, run = c.runs.find((r) => r.text === "hyperlink");
+  const cx = run.x + run.matrix[0] * run.advance / 2, cy = run.y - run.matrix[3] * run.size * 0.3;
+  assert.ok(cx > l.x && cx < l.x + l.w && cy > l.y && cy < l.y + l.h, JSON.stringify({ l, cx, cy }));
 });
 
 test("split source with a fake fetch", async () => {

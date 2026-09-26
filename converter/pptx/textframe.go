@@ -33,6 +33,7 @@ func (s *slideCtx) drawShapeText(cv *canvas, sh *shape, xf xform, geo *geometry)
 		if phType == "" {
 			phType = "obj"
 		}
+		tf.phType = phType
 		tf.lists = append(tf.lists, s.txStyleFor(phType))
 	} else {
 		tf.lists = append(tf.lists, s.c.defTextStyle)
@@ -102,6 +103,7 @@ type textBlock struct {
 	cols       int     // number of columns (0 or 1: one)
 	colW       float64 // column width
 	colGap     float64 // space between columns
+	heading    string  // heading level of its paragraphs ("" for none)
 }
 
 // renderText lays out a text frame in the box x,y,w,h of the coordinate
@@ -132,6 +134,9 @@ func (s *slideCtx) layoutText(tf *textFrame, x, y, w, h float64, m matrix) *text
 		return nil
 	}
 	b := &textBlock{}
+	if tf.phType == "title" || tf.phType == "ctrTitle" {
+		b.heading = "1"
+	}
 	b.ins = [4]float64{emuChain(bp, "lIns", 7.2), emuChain(bp, "tIns", 3.6), emuChain(bp, "rIns", 7.2), emuChain(bp, "bIns", 3.6)}
 	b.anchor, _ = bp.attr("anchor")
 	wrapV, _ := bp.attr("wrap")
@@ -201,8 +206,9 @@ func (s *slideCtx) drawTextBlock(cv *canvas, b *textBlock) {
 	cv.obj.Save()
 	cv.transform(b.fm)
 	cv.obj.Mark(bdf.MarkBox, "")
-	em := &textEmitter{cv: cv, m: b.fm, upright: b.upright}
+	em := &textEmitter{cv: cv, m: b.fm, upright: b.upright, heading: b.heading}
 	em.emitLines(b.lo.lines, ix, dy)
+	em.closeLists(-1)
 	cv.obj.Restore()
 	for _, l := range em.links {
 		cv.obj.Link(f32(l.x0), f32(l.y0), f32(l.x1-l.x0), f32(l.y1-l.y0), l.url)

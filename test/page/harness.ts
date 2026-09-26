@@ -1,7 +1,7 @@
 // Test harness: renders fixture pages on the main thread and via the worker,
 // and compares canvases against golden PNGs. Driven by test/golden.mjs.
 import { BdfDocument, fetchSingle, RangeSource, SplitSource, type Rect } from "@bdf/core";
-import { PageRenderer, BdfWorkerClient, buildTextLayer, selectionText, joinRuns, TEXT_LAYER_CSS } from "@bdf/render";
+import { PageRenderer, BdfWorkerClient, buildTextLayer, selectionText, joinRuns, TEXT_LAYER_CSS, RUN_ATTR } from "@bdf/render";
 
 export interface Case {
   name: string;
@@ -182,6 +182,11 @@ async function main() {
   // text layer: select runs of the first doc page through the DOM and
   // rebuild the text; compare with the runs joined directly.
   (window as unknown as { bdfSelection: unknown }).bdfSelection = await selectionCheck(client);
+  // ALT_TEXT runs (ligatures drawn as one private-use glyph) are in the text layer
+  const { client: chromeDoc } = await open("/testdata/pdf/chrome-doc.bdf");
+  (window as unknown as { bdfAltText: unknown }).bdfAltText = await altTextCheck(chromeDoc);
+  (window as unknown as { bdfForcedColors: unknown }).bdfForcedColors = forcedColorsCheck;
+  (window as unknown as { bdfStructure: unknown }).bdfStructure = await structureCheck(client);
   // search through the worker: hits, then rectangles
   const hits = await client.search("doc", "list of objects");
   const rects = await client.locate("doc", hits);
@@ -191,7 +196,10 @@ async function main() {
   const { client: pptx } = await open("/testdata/pptx/basic.bdf");
   const pptxHits = await pptx.search("slides", "改行します");
   const pptxRects = await pptx.locate("slides", pptxHits);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects };
+  // "fixture" is drawn with an fi ligature: the hit is on an ALT_TEXT run.
+  const ligHits = await chromeDoc.search("pages", "fixture");
+  const ligRects = await chromeDoc.locate("pages", ligHits);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }
@@ -200,8 +208,10 @@ async function selectionCheck(client: BdfWorkerClient) {
   const style = document.createElement("style");
   style.textContent = TEXT_LAYER_CSS;
   document.head.appendChild(style);
-  const runs = await client.text("doc", 0);
-  const layer = buildTextLayer(runs, 1);
+  // the structured layer: runs nested in paragraphs, headings and table cells
+  const content = await client.content("doc", 0);
+  const runs = content.runs;
+  const layer = buildTextLayer(content, 1);
   const host = document.createElement("div");
   host.style.cssText = "position: relative; width: 600px; height: 850px;";
   host.appendChild(layer);
@@ -214,7 +224,7 @@ async function selectionCheck(client: BdfWorkerClient) {
   all.selectNodeContents(layer);
   sel.addRange(all);
   const allText = selectionText(sel, host);
-  const drawn = runs.filter((r) => r.text && !r.altText).map((r) => ({ ordinal: r.ordinal, sep: r.sep, text: r.text, layer }));
+  const drawn = runs.filter((r) => r.text).map((r) => ({ ordinal: r.ordinal, sep: r.sep, text: r.text, layer }));
   const wantAll = joinRuns(drawn);
   // a partial range: from the third character of the second run to the
   // second character of the fourth run
@@ -228,6 +238,70 @@ async function selectionCheck(client: BdfWorkerClient) {
   sel.removeAllRanges();
   host.remove();
   return { spans: spans.length, allText, wantAll, partText, wantPart, breaks: (allText.match(/\n/g) ?? []).length };
+}
+
+async function altTextCheck(client: BdfWorkerClient) {
+  const runs = await client.text("pages", 0);
+  const layer = buildTextLayer(runs, 1);
+  const host = document.createElement("div");
+  host.style.cssText = "position: relative; width: 800px; height: 1100px;";
+  host.appendChild(layer);
+  document.body.appendChild(host);
+  const spans = [...layer.querySelectorAll("span")];
+  // each ALT_TEXT run has its span, as wide as the ligature run it stands for
+  const alt = runs.filter((r) => r.text && r.altText).map((r) => {
+    const span = spans.find((s) => s.getAttribute(RUN_ATTR.ordinal) === String(r.ordinal));
+    return { text: r.text, span: span?.textContent ?? null, width: span?.getBoundingClientRect().width ?? 0, want: r.advance * r.matrix[0] };
+  });
+  host.remove();
+  return { runs: runs.filter((r) => r.text).length, spans: spans.length, alt };
+}
+
+/** Roles, links and languages of structured text layers (spec §7.8). */
+async function structureCheck(client: BdfWorkerClient) {
+  const roles = (el: Element) => {
+    const out: Record<string, number> = {};
+    for (const e of el.querySelectorAll("[role]")) out[e.getAttribute("role")!] = (out[e.getAttribute("role")!] ?? 0) + 1;
+    return out;
+  };
+  const slide = buildTextLayer(await client.content("slides", 2), 1, { lang: "en" });
+  const flow = buildTextLayer(await client.content("doc", 0), 1);
+  const figures = buildTextLayer(await client.content("slides", 1), 2);
+  const fig = figures.querySelectorAll<HTMLElement>("[role=img]")[1];
+  const sheet = buildTextLayer(await client.sheetContent("sheet1", { x: 0, y: 0, w: 800, h: 500 }), 1, { sheet: { rows: 200, cols: 26, headerRows: 1, headerCols: 1 } });
+  // links a document must not turn into anchors, and a run in another language
+  const run = (text: string, x: number, lang?: string) => ({ text, x, y: 20, advance: 40, size: 10, font: undefined, align: 0, matrix: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number], sep: 1, ordinal: 0, altText: false, node: 0, lang });
+  const unsafe = buildTextLayer({
+    runs: [run("safe", 0), run("日本語", 100, "ja"), run("evil", 200)],
+    nodes: [{ kind: "paragraph", parent: -1 }],
+    links: [
+      { x: 0, y: 0, w: 60, h: 30, url: "https://example.com/", after: 2, node: 0 },
+      { x: 200, y: 0, w: 60, h: 30, url: "javascript:alert(1)", after: 2, node: 0 },
+      { x: 300, y: 0, w: 60, h: 30, url: "data:text/html,x", after: 2, node: 0 },
+    ],
+  }, 1, { lang: "en" });
+  return {
+    slide: roles(slide),
+    headingLevel: slide.querySelector("[role=heading]")?.getAttribute("aria-level"),
+    links: [...slide.querySelectorAll("a")].map((a) => [a.getAttribute("href"), a.getAttribute("data-bdf-page"), a.textContent]),
+    flow: roles(flow),
+    headers: [...flow.querySelectorAll("[role=columnheader]")].map((e) => e.textContent),
+    figures: [...figures.querySelectorAll("[role=img]")].map((e) => e.getAttribute("aria-label")),
+    figureBox: [fig.style.left, fig.style.top, fig.style.width, fig.style.height],
+    sheet: roles(sheet),
+    sheetCell: sheet.querySelector("[role=row]:nth-child(3) [role=cell]")?.getAttribute("aria-colindex"),
+    unsafeAnchors: [...unsafe.querySelectorAll("a")].map((a) => a.getAttribute("href")),
+    lang: [unsafe.lang, ...[...unsafe.querySelectorAll("span")].map((s) => s.lang)],
+  };
+}
+
+/** Called by test/golden.mjs with forced colors emulated: the text layer's color. */
+function forcedColorsCheck() {
+  const layer = buildTextLayer([{ text: "x", x: 0, y: 10, advance: 0, size: 10, font: undefined, align: 0, matrix: [1, 0, 0, 1, 0, 0], sep: 0, ordinal: 0, altText: false }], 1);
+  document.body.appendChild(layer);
+  const out = { forced: matchMedia("(forced-colors: active)").matches, color: getComputedStyle(layer.firstElementChild!).color };
+  layer.remove();
+  return out;
 }
 
 main().catch((e) => {

@@ -128,25 +128,65 @@ func (p *pdf) str(o types.Object) []byte {
 
 // text returns a PDF text string (PDFDocEncoding, or UTF-16BE or UTF-8 with
 // a byte order mark) as UTF-8.
-func (p *pdf) text(o types.Object) string {
-	b := p.str(o)
-	if len(b) >= 2 && b[0] == 0xfe && b[1] == 0xff {
-		var out []rune
-		for i := 2; i+1 < len(b); i += 2 {
-			u := rune(b[i])<<8 | rune(b[i+1])
-			if u >= 0xd800 && u < 0xdc00 && i+3 < len(b) {
-				lo := rune(b[i+2])<<8 | rune(b[i+3])
-				u = 0x10000 + (u-0xd800)<<10 + (lo - 0xdc00)
-				i += 2
-			}
-			out = append(out, u)
+func (p *pdf) text(o types.Object) string { return decodeText(p.str(o)) }
+
+// treeBudget bounds the nodes visited by one number or name tree lookup
+// (a malformed tree may share or loop its kids).
+const treeBudget = 4096
+
+// numberTree returns the value of key in the number tree rooted at o.
+func (p *pdf) numberTree(o types.Object, key int) types.Object {
+	budget := treeBudget
+	var find func(o types.Object) types.Object
+	find = func(o types.Object) types.Object {
+		d := p.dict(o)
+		if d == nil || budget <= 0 {
+			return nil
 		}
-		return string(out)
+		budget--
+		if lim := p.nums(d["Limits"]); len(lim) == 2 && (float64(key) < lim[0] || float64(key) > lim[1]) {
+			return nil
+		}
+		nums := p.array(d["Nums"])
+		for i := 0; i+1 < len(nums); i += 2 {
+			if k, ok := p.num(nums[i]); ok && int(k) == key {
+				return nums[i+1]
+			}
+		}
+		for _, kid := range p.array(d["Kids"]) {
+			if v := find(kid); v != nil {
+				return v
+			}
+		}
+		return nil
 	}
-	if len(b) >= 3 && b[0] == 0xef && b[1] == 0xbb && b[2] == 0xbf {
-		return string(b[3:])
+	return find(o)
+}
+
+// nameTree returns the value of key in the name tree rooted at o.
+func (p *pdf) nameTree(o types.Object, key string) types.Object {
+	budget := treeBudget
+	var find func(o types.Object) types.Object
+	find = func(o types.Object) types.Object {
+		d := p.dict(o)
+		if d == nil || budget <= 0 {
+			return nil
+		}
+		budget--
+		names := p.array(d["Names"])
+		for i := 0; i+1 < len(names); i += 2 {
+			if string(p.str(names[i])) == key {
+				return names[i+1]
+			}
+		}
+		for _, kid := range p.array(d["Kids"]) {
+			if v := find(kid); v != nil {
+				return v
+			}
+		}
+		return nil
 	}
-	return pdfDocText(b)
+	return find(o)
 }
 
 // key identifies an object for caching: its indirect reference if it has one,

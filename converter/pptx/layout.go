@@ -317,6 +317,8 @@ type textEmitter struct {
 	m        matrix // text space → slide, for link rectangles
 	upright  bool   // East Asian vertical text: lines go to child objects
 	vchars   bool   // inside such a line: CJK characters stand upright
+	heading  string // heading level of the paragraphs ("" for none)
+	lists    []int  // paragraph levels of the open lists, outermost first
 }
 
 type linkRect struct {
@@ -346,12 +348,35 @@ func (e *textEmitter) setLetterSpacing(ls float64) {
 	}
 }
 
-// emitLines draws laid-out lines whose baselines are offset by dy.
+// setLang sets the language of the text that follows (see runLang). East
+// Asian text of unknown language keeps an East Asian language in effect
+// and otherwise takes the document's. Lines of vertical text have none of
+// their own: the ALT_TEXT that stands for them in the parent object is the
+// text, and the parent sets its language.
+func (e *textEmitter) setLang(lang string, known bool) {
+	if e.vchars {
+		return
+	}
+	if !known {
+		if scriptOf(e.cv.lang) != "" {
+			return
+		}
+		lang = ""
+	}
+	e.cv.setLang(lang)
+}
+
+// emitLines draws laid-out lines whose baselines are offset by dy. Close
+// the lists it leaves open with closeLists.
 func (e *textEmitter) emitLines(lines []*textLine, dx, dy float64) {
 	for i, ln := range lines {
 		switch {
-		case i == 0:
-		case ln.first || ln.afterBr:
+		case ln.first:
+			e.startParagraph(ln.pa, i == 0)
+		case ln.afterBr && e.heading != "":
+			e.cv.obj.Mark(bdf.MarkHeading, e.heading)
+		case ln.afterBr:
+			// in a list item, a paragraph that continues the item
 			e.cv.obj.Mark(bdf.MarkParagraph, "")
 		case ln.cjkWrap:
 			e.cv.obj.Mark(bdf.MarkWrap, "")
@@ -366,6 +391,9 @@ func (e *textEmitter) emitLines(lines []*textLine, dx, dy float64) {
 				bx = ln.start + ln.offset - b.w
 			}
 			if c, ok := b.st.color(); ok {
+				if run := e.firstRun(ln); run != nil {
+					e.setLang(runLang(run, ln.pa))
+				}
 				e.setLetterSpacing(0)
 				e.setFont(b.fc, b.st.size)
 				e.setColor(c.bdf())
@@ -381,6 +409,58 @@ func (e *textEmitter) emitLines(lines []*textLine, dx, dy float64) {
 			e.emitItems(ln, dx+ln.offset, base)
 		}
 	}
+}
+
+// startParagraph emits the MARK that starts a paragraph: a heading, an item
+// of the list for its level (lists of deeper levels nest in the items of
+// the list above them), or a plain paragraph. The first paragraph of a text
+// block follows its BOX, which stands for a plain paragraph.
+func (e *textEmitter) startParagraph(pa *para, first bool) {
+	switch {
+	case e.heading != "":
+		e.cv.obj.Mark(bdf.MarkHeading, e.heading)
+	case pa.bullet != nil:
+		e.closeLists(pa.lvl)
+		if n := len(e.lists); n == 0 || e.lists[n-1] < pa.lvl {
+			e.cv.obj.Mark(bdf.MarkList, "")
+			e.lists = append(e.lists, pa.lvl)
+		}
+		e.cv.obj.Mark(bdf.MarkListItem, "")
+	default:
+		if pa.hasText {
+			// empty paragraphs do not end lists
+			e.closeLists(-1)
+		}
+		if !first {
+			e.cv.obj.Mark(bdf.MarkParagraph, "")
+		}
+	}
+}
+
+// closeLists closes the open lists of levels deeper than lvl (all for -1).
+func (e *textEmitter) closeLists(lvl int) {
+	for n := len(e.lists); n > 0 && e.lists[n-1] > lvl; n-- {
+		e.cv.obj.Mark(bdf.MarkEnd, "")
+		e.lists = e.lists[:n-1]
+	}
+}
+
+// firstRun returns the items of the first text run of a line (the whole
+// line in vertical text, which is extracted as one run); nil when the line
+// draws no text.
+func (e *textEmitter) firstRun(ln *textLine) []item {
+	if e.upright {
+		for i, it := range ln.items {
+			if it.kind == itemChar {
+				return ln.items[i:]
+			}
+		}
+		return nil
+	}
+	if rs := e.runs(ln.items); len(rs) > 0 {
+		return ln.items[rs[0][0]:rs[0][1]]
+	}
+	return nil
 }
 
 // emitVerticalLine draws a line of East Asian vertical text in a child
@@ -413,13 +493,24 @@ func (e *textEmitter) emitVerticalLine(ln *textLine, dx, base float64) {
 	che := &textEmitter{cv: ch, m: e.m.mul(translate(x0, base)), vchars: true}
 	che.emitItems(ln, dx-x0, 0)
 	e.links = append(e.links, che.links...)
+	e.setLang(runLang(ln.items[first:], ln.pa))
 	e.cv.obj.Mark(bdf.MarkAltText, text)
 	e.cv.obj.UseAt(ref, f32(x0), f32(base))
 }
 
 // emitItems draws a line's characters as runs of equal style.
 func (e *textEmitter) emitItems(ln *textLine, dx, base float64) {
-	items := ln.items
+	for _, r := range e.runs(ln.items) {
+		run := ln.items[r[0]:r[1]]
+		e.setLang(runLang(run, ln.pa))
+		e.emitRun(run, dx, base)
+	}
+}
+
+// runs splits a line's items into the runs that are drawn with one text
+// instruction each, as ranges [start, end).
+func (e *textEmitter) runs(items []item) [][2]int {
+	var out [][2]int
 	for i := 0; i < len(items); {
 		it := items[i]
 		if it.kind != itemChar || it.ls < 0 {
@@ -445,10 +536,11 @@ func (e *textEmitter) emitItems(ln *textLine, dx, base float64) {
 			}
 		}
 		if k > i {
-			e.emitRun(items[i:k], dx, base)
+			out = append(out, [2]int{i, k})
 		}
 		i = j
 	}
+	return out
 }
 
 func (e *textEmitter) emitRun(run []item, dx, base float64) {

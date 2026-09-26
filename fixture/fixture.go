@@ -173,7 +173,7 @@ func buildSlides(d *bdf.Document, fonts *Fonts, img bdf.Hash, iconH bdf.Hash, ic
 		body := bdf.NewObject()
 		fb := body.AddFont(fonts.BoldRef)
 		fr := body.AddFont(fonts.RegularRef)
-		body.Mark(bdf.MarkBox, "title").Font(fb, 36).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).
+		body.Mark(bdf.MarkBox, "title").Mark(bdf.MarkHeading, "1").Font(fb, 36).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).
 			FillText(title, 48, 80, fonts.BoldM.Advance(title, 36))
 		num := fmt.Sprintf("%d / %d", i+1, len(titles))
 		body.Mark(bdf.MarkBox, "page-number").Font(fr, 12).FillColor(bdf.RGB(0xff, 0xff, 0xff)).TextStyle(bdf.AlignRight, bdf.BaselineAlphabetic, bdf.DirInherit, 0).
@@ -209,11 +209,14 @@ func buildSlides(d *bdf.Document, fonts *Fonts, img bdf.Hash, iconH bdf.Hash, ic
 					fonts.RegularM.Advance("dashed round rect, radial circle, bezier, even-odd ring, skewed rect", 16))
 		case 1:
 			im := body.AddImage(img)
-			body.Image(im, 60, 130, 200, 200)
+			body.Mark(bdf.MarkFigure, "Checkerboard").Image(im, 60, 130, 200, 200).Mark(bdf.MarkEnd, "")
 			body.Smoothing(false, 0).Image(im, 290, 130, 200, 200).Smoothing(true, 2)
 			clip := body.AddPath((&bdf.Path{}).Circle(640, 230, 100))
 			body.Save().ClipPath(clip, bdf.NonZero).Image(im, 540, 130, 200, 200).Restore()
-			body.Save().ClipRect(780, 130, 120, 200).ImageSub(im, 16, 16, 32, 32, 760, 130, 200, 200).Restore()
+			// the figure's bounds are clipped to 780..900
+			body.Mark(bdf.MarkFigure, "Enlarged corner of the checkerboard").
+				Save().ClipRect(780, 130, 120, 200).ImageSub(im, 16, 16, 32, 32, 760, 130, 200, 200).Restore().
+				Mark(bdf.MarkEnd, "")
 			body.Save().Alpha(0.5).FillColor(bdf.RGB(0xff, 0x00, 0x00)).FillRect(60, 360, 160, 120).
 				Blend(bdf.BlendMultiply).FillColor(bdf.RGB(0x00, 0x80, 0xff)).FillRect(140, 400, 160, 120).Restore()
 			body.Save().Shadow(bdf.RGBA(0, 0, 0, 0x80), 12, 6, 6).FillColor(bdf.RGB(0xff, 0xff, 0xff)).
@@ -225,11 +228,13 @@ func buildSlides(d *bdf.Document, fonts *Fonts, img bdf.Hash, iconH bdf.Hash, ic
 			body.FillPaint(pat).FillRect(60, 500, 840, 20)
 		case 2:
 			y := float32(140)
+			body.Mark(bdf.MarkList, "")
 			for _, sz := range []float32{12, 18, 24, 36} {
 				s := fmt.Sprintf("Regular %gpt — The quick brown fox", sz)
-				body.Font(fr, sz).FillColor(bdf.RGB(0x22, 0x22, 0x22)).FillText(s, 60, y, fonts.RegularM.Advance(s, sz))
+				body.Mark(bdf.MarkListItem, "").Font(fr, sz).FillColor(bdf.RGB(0x22, 0x22, 0x22)).FillText(s, 60, y, fonts.RegularM.Advance(s, sz))
 				y += sz * 1.4
 			}
+			body.Mark(bdf.MarkEnd, "")
 			s := "Bold 28pt with stroke"
 			body.Font(fb, 28).FillColor(bdf.RGB(0x4c, 0x9b, 0xe8)).FillText(s, 60, y+20, fonts.BoldM.Advance(s, 28))
 			body.StrokeColor(bdf.RGB(0x1f, 0x3a, 0x5f)).Line(1, bdf.CapButt, bdf.JoinMiter, 10).StrokeText(s, 60, y+20, fonts.BoldM.Advance(s, 28))
@@ -243,6 +248,7 @@ func buildSlides(d *bdf.Document, fonts *Fonts, img bdf.Hash, iconH bdf.Hash, ic
 			s = "system serif italic (no correction)"
 			body.Font(sysf, 18).FillColor(bdf.RGB(0x22, 0x22, 0x22)).FillText(s, 60, y+150, 0)
 			body.Link(60, y+130, 300, 24, "https://example.com/")
+			body.Link(48, 50, 300, 40, "#page=1")
 		}
 		bodyH, _ := d.AddObject(body)
 		v.AddPage(w, h, bdf.Layer{Role: bdf.RoleMaster, Obj: masterH}, bdf.Layer{Role: bdf.RoleBody, Obj: bodyH})
@@ -266,7 +272,7 @@ func buildFlow(d *bdf.Document, fonts *Fonts, iconH bdf.Hash, iconBB bdf.Rect) {
 
 	footer := bdf.NewObject()
 	ic := footer.AddObject(iconH, iconBB)
-	footer.UseAt(ic, w/2-12, h-52)
+	footer.Mark(bdf.MarkFigure, "BDF logo").UseAt(ic, w/2-12, h-52).Mark(bdf.MarkEnd, "")
 	footerH, _ := d.AddObject(footer)
 
 	lorem := []string{
@@ -286,7 +292,7 @@ func buildFlow(d *bdf.Document, fonts *Fonts, iconH bdf.Hash, iconBB bdf.Rect) {
 		fr := body.AddFont(fonts.RegularRef)
 		y := float32(my + 20)
 		title := fmt.Sprintf("Section %d", page+1)
-		body.Mark(bdf.MarkParagraph, "heading").Font(fb, 20).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).FillText(title, mx, y, fonts.BoldM.Advance(title, 20))
+		body.Mark(bdf.MarkHeading, "1").Font(fb, 20).FillColor(bdf.RGB(0x1f, 0x3a, 0x5f)).FillText(title, mx, y, fonts.BoldM.Advance(title, 20))
 		y += 32
 		body.Font(fr, 11).FillColor(bdf.RGB(0x22, 0x22, 0x22))
 		for rep := 0; rep < 3; rep++ {
@@ -305,6 +311,7 @@ func buildFlow(d *bdf.Document, fonts *Fonts, iconH bdf.Hash, iconBB bdf.Rect) {
 		body.StrokeColor(bdf.RGB(0x99, 0x99, 0x99)).Line(0.75, bdf.CapButt, bdf.JoinMiter, 10)
 		tx, ty := float32(mx), y
 		cw, rh := float32(120), float32(18)
+		body.Mark(bdf.MarkTable, "")
 		for r := 0; r < 4; r++ {
 			for c := 0; c < 3; c++ {
 				if r == 0 {
@@ -312,9 +319,14 @@ func buildFlow(d *bdf.Document, fonts *Fonts, iconH bdf.Hash, iconBB bdf.Rect) {
 				}
 				body.StrokeRect(tx+float32(c)*cw, ty+float32(r)*rh, cw, rh)
 				cell := fmt.Sprintf("R%dC%d", r+1, c+1)
-				body.Mark(bdf.MarkCell, fmt.Sprintf("%c%d", 'A'+c, r+1)).FillColor(bdf.RGB(0x22, 0x22, 0x22)).FillText(cell, tx+float32(c)*cw+6, ty+float32(r)*rh+13, fonts.RegularM.Advance(cell, 11))
+				ref := fmt.Sprintf("%c%d", 'A'+c, r+1)
+				if r == 0 {
+					ref += " col"
+				}
+				body.Mark(bdf.MarkCell, ref).FillColor(bdf.RGB(0x22, 0x22, 0x22)).FillText(cell, tx+float32(c)*cw+6, ty+float32(r)*rh+13, fonts.RegularM.Advance(cell, 11))
 			}
 		}
+		body.Mark(bdf.MarkEnd, "")
 		bodyH, _ := d.AddObject(body)
 		p := v.AddPage(w, h, bdf.Layer{Role: bdf.RoleHeader, Obj: headerH}, bdf.Layer{Role: bdf.RoleBody, Obj: bodyH}, bdf.Layer{Role: bdf.RoleFooter, Obj: footerH})
 		p.Body = &bdf.RectDef{X: mx, Y: my, W: w - 2*mx, H: h - 2*my}

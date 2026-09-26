@@ -32,6 +32,25 @@ test("text index matches the extractor's ordinals", async () => {
   assert.equal(cell.sep, Sep.BREAK);
 });
 
+test("Go text index and TS extractor agree on every page layer", async () => {
+  // the demo uses every structure MARK kind; both extractors must derive the same separators
+  const doc = await BdfDocument.open(new BufferSource(fixture));
+  for (const view of doc.manifest.views.filter((v) => v.pages)) {
+    const index = await doc.textIndex(view);
+    for (const [a, page] of view.pages.entries()) {
+      for (const [b, layer] of page.layers.entries()) {
+        const extracted = extractText(await doc.ensure(layer.obj), (h) => doc.objectSync(h));
+        const indexed = index.filter((r) => r.a === a && r.b === b);
+        assert.equal(indexed.length, extracted.length, `${view.id} ${a}/${b}`);
+        indexed.forEach((r, i) => {
+          assert.equal(r.text, extracted[i].text);
+          if (i > 0) assert.equal(r.sep, extracted[i].sep, `${view.id} ${a}/${b} run ${i} ${r.text}`);
+        });
+      }
+    }
+  }
+});
+
 test("search across line breaks, case-insensitively, with locations", async () => {
   const doc = await BdfDocument.open(new BufferSource(fixture));
   const view = doc.view("doc");

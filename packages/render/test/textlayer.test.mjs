@@ -18,3 +18,13 @@ test("joinRuns drops the first run's own separator", () => {
 test("joinRuns separates pages with a blank line", () => {
   assert.equal(joinRuns([run("end of page", 0, "p1"), run("top of next", 2, "p2")]), "end of page\n\ntop of next");
 });
+
+test("linkHref allows web and mail URLs and page links only", async () => {
+  const { linkHref } = await import("../dist/textlayer.js");
+  assert.equal(linkHref("https://example.com/a?b"), "https://example.com/a?b");
+  assert.equal(linkHref("mailto:a@example.com"), "mailto:a@example.com");
+  assert.equal(linkHref("#page=12"), "#page=12");
+  for (const bad of ["javascript:alert(1)", " JavaScript:alert(1)", "data:text/html,x", "file:///etc/passwd", "/relative", "#page=0", "#page=x", "vbscript:x"]) {
+    assert.equal(linkHref(bad), undefined, bad);
+  }
+});

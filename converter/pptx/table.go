@@ -3,6 +3,8 @@ package pptx
 import (
 	"math"
 	"strings"
+
+	"github.com/shibukawa/bdf"
 )
 
 // Tables: the grid comes from a:tblGrid and the rows; cell fills, borders
@@ -230,7 +232,9 @@ func (s *slideCtx) drawTable(cv *canvas, sh *shape, xf xform, tbl *node) {
 		}
 	}
 	cv.obj.Restore()
-	// text
+	// text, in a TABLE with a CELL for each cell that has text (in row-major
+	// order of their top left corners)
+	inTable := false
 	for r := 0; r < nr; r++ {
 		for c := 0; c < nc; c++ {
 			cl := cells[r][c]
@@ -250,8 +254,26 @@ func (s *slideCtx) drawTable(cv *canvas, sh *shape, xf xform, tbl *node) {
 				b.h = y1 - y0
 			}
 			b.fm = m.mul(translate(x0, y0)).mul(b.fm)
+			if !inTable {
+				cv.obj.Mark(bdf.MarkTable, "")
+				inTable = true
+			}
+			ref := cellRef(r, c)
+			if r1, c1 := min(nr, r+cl.rows)-1, min(nc, c+cl.cols)-1; r1 > r || c1 > c {
+				ref += ":" + cellRef(r1, c1)
+			}
+			switch {
+			case flags["firstRow"] && r == 0:
+				ref += " col"
+			case flags["firstCol"] && c == 0:
+				ref += " row"
+			}
+			cv.obj.Mark(bdf.MarkCell, ref)
 			s.drawTextBlock(cv, b)
 		}
+	}
+	if inTable {
+		cv.obj.Mark(bdf.MarkEnd, "")
 	}
 	// borders: each edge once, the cell's own line winning over the style
 	cv.obj.Save()
@@ -444,4 +466,13 @@ func (s *slideCtx) cellFill(tc *node, parts []stylePart, part string) fill {
 		}
 	}
 	return f
+}
+
+// cellRef returns the A1-style reference of a cell (0-based row and column).
+func cellRef(r, c int) string {
+	var col []byte
+	for c++; c > 0; c = (c - 1) / 26 {
+		col = append([]byte{byte('A' + (c-1)%26)}, col...)
+	}
+	return string(col) + itoa(r+1)
 }

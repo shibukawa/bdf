@@ -63,7 +63,7 @@ export class DocumentSearch {
       const hash = this.objectFor(view, seg.a, seg.b);
       if (!hash) continue;
       const run = (await this.runsOf(hash))[seg.ordinal];
-      if (!run || run.altText || !run.font) continue;
+      if (!run || !hasExtent(run)) continue;
       const r = runRect(run, seg.start, seg.end, this.measure);
       if (!r) continue;
       if (view.kind === "sheet") {
@@ -74,6 +74,16 @@ export class DocumentSearch {
     }
     return out;
   }
+}
+
+/**
+ * Whether the extent of a run's text is known: text drawn with a font, or an
+ * ALT_TEXT that stands for such a drawing (a ligature). An ALT_TEXT for paths
+ * or a child object has only an anchor; the font state it carries did not
+ * draw it.
+ */
+export function hasExtent(run: TextRun): boolean {
+  return run.font !== undefined && (!run.altText || run.advance > 0);
 }
 
 /** Bounding box of text[start:end] of a run, in the run's coordinate space. */

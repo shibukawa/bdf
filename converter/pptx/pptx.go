@@ -150,6 +150,12 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if opts.Title != "" {
 		c.doc.Meta.DC.Title = bdf.DCValues{opts.Title}
 	}
+	if len(c.doc.Meta.DC.Language) == 0 {
+		// the default of the text (spec §7.8), when the core properties name none
+		if l := c.textStyleLang(); l != "" {
+			c.doc.Meta.DC.Language = bdf.DCValues{l}
+		}
+	}
 	view := c.doc.NewView("slides", bdf.ViewFixed, c.doc.Meta.DC.Title.First())
 
 	var slides []string
@@ -279,6 +285,26 @@ func (c *converter) coreProps() bdf.DublinCore {
 	}
 	dc.Subject = append(dc.Subject, bdf.SplitKeywords(n.child("keywords").text())...)
 	return dc
+}
+
+// textStyleLang returns the language of the presentation's default text
+// style: that of text whose runs name no language.
+func (c *converter) textStyleLang() string {
+	for _, name := range []string{"defPPr", "lvl1pPr"} {
+		if l := normLang(c.defTextStyle.path(name, "defRPr").attrStr("lang", "")); l != "" {
+			return l
+		}
+	}
+	return ""
+}
+
+// normLang cleans up a language tag from the markup; "" means unknown.
+func normLang(l string) string {
+	l = strings.TrimSpace(l)
+	if strings.EqualFold(l, "x-none") {
+		return ""
+	}
+	return l
 }
 
 func (c *converter) theme(masterPart string) *theme {

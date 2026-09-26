@@ -2,6 +2,7 @@ package bdf
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -207,5 +208,37 @@ func TestExtractTextAndIndex(t *testing.T) {
 	}
 	if idx[5].Ordinal != 5 || idx[0].A != 0 || idx[0].B != 0 {
 		t.Fatalf("index entry = %+v", idx[5])
+	}
+}
+
+// Structure marks separate runs like PARAGRAPH; LANG leaves the separator to
+// the position guess and keeps a pending ALT_TEXT for its drawing op.
+func TestExtractTextStructureMarks(t *testing.T) {
+	o := NewObject()
+	f := o.AddFont(SystemFont("sans-serif", 400, StyleNormal))
+	sq := o.AddPath((&Path{}).Rect(0, 0, 1, 1))
+	o.Font(f, 10)
+	o.Mark(MarkHeading, "1").FillText("Title", 0, 0, 25)
+	o.Mark(MarkList, "").Mark(MarkListItem, "").FillText("one", 0, 15, 15)
+	o.Mark(MarkLang, "ja").FillText("two", 17, 15, 15) // same line, gap 2 < 0.2*size => none
+	o.Mark(MarkEnd, "").Mark(MarkTable, "").Mark(MarkCell, "A1 col").FillText("head", 0, 30, 20)
+	o.Mark(MarkCell, "A2").FillText("cell", 0, 45, 20)
+	o.Mark(MarkEnd, "").Mark(MarkAltText, "icon").Mark(MarkLang, "").FillPathAt(sq, NonZero, 0, 60)
+	o.Mark(MarkFigure, "chart").FillText("label", 0, 75, 25).Mark(MarkEnd, "")
+	obj, _ := DecodeObject(o.Encode())
+	runs, err := ExtractText(obj, func(Hash) *ObjectPart { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range runs {
+		got = append(got, fmt.Sprintf("%s:%d:%v", r.Text, r.Sep, r.AltText))
+	}
+	want := "Title:2:false one:2:false two:0:false head:2:false cell:2:false icon:2:true label:2:false"
+	if strings.Join(got, " ") != want {
+		t.Fatalf("runs = %v\nwant  %s", got, want)
+	}
+	if runs[5].Y != 60 {
+		t.Fatalf("ALT_TEXT run lost its drawing op across LANG: %+v", runs[5])
 	}
 }

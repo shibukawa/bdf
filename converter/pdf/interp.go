@@ -19,6 +19,7 @@ type pending struct {
 	encoded  bool
 	building bool
 	bbox     bdf.Rect
+	st       *formStruct // structure state a form was converted under
 }
 
 func newPending(bbox bdf.Rect) *pending {
@@ -155,10 +156,17 @@ type interp struct {
 	text       textState
 	curRun     textRun
 	actual     *actualText
-	mcStack    []*actualText
+	mcStack    []mcEntry
 	inText     bool
 	compat     int
 	type3Glyph bool
+
+	// Structure (structure.go). st is nil where no structure or language
+	// MARKs are emitted (glyph procedures, pattern cells, annotations).
+	st         *structState
+	mcids      *mcidTable
+	inherit    *mcTarget // target of content outside marked content (the caller's for a form)
+	structUsed bool
 }
 
 func (c *converter) newInterp(p *pending, res types.Dict, base matrix, depth int) *interp {
@@ -366,6 +374,9 @@ func (in *interp) endPath(fill bool, rule byte, stroke bool) {
 		return ref
 	}
 	if !in.pathEmpty {
+		if fill || stroke {
+			in.syncDraw(in.curTarget())
+		}
 		if fill {
 			if in.gs.fillCS != nil && in.gs.fillCS.family == "Pattern" {
 				in.patternFill(addPath(), rule)
@@ -799,13 +810,17 @@ func (in *interp) exec(op string, args []types.Object) {
 		}
 	case "EMC":
 		if n := len(in.mcStack); n > 0 {
+			prev := in.curTarget()
 			in.mcStack = in.mcStack[:n-1]
 			in.actual = nil
 			for i := n - 2; i >= 0; i-- {
-				if in.mcStack[i] != nil {
-					in.actual = in.mcStack[i]
+				if in.mcStack[i].actual != nil {
+					in.actual = in.mcStack[i].actual
 					break
 				}
+			}
+			if !sameTarget(prev, in.curTarget()) {
+				in.flushRun()
 			}
 		}
 	case "MP", "DP":
@@ -825,20 +840,34 @@ var blockTags = map[string]bool{"P": true, "H": true, "H1": true, "H2": true, "H
 	"Note": true, "Figure": true, "TOCI": true, "Title": true, "Formula": true, "Sect": true, "Art": true}
 
 func (in *interp) markedContent(tag string, props types.Object) {
-	if blockTags[tag] {
+	p := in.c.pdf
+	// Inline properties come from the content lexer, which has already
+	// unescaped their strings; named ones are resources parsed by pdfcpu.
+	d := p.dict(props)
+	text := func(o types.Object) string { return decodeText(literalBytes(o)) }
+	if nm, ok := props.(types.Name); ok {
+		d, text = p.dict(p.dict(in.res["Properties"])[nm.Value()]), p.text
+	}
+	if in.c.tree == nil && blockTags[tag] {
+		// Untagged document: guess paragraphs from the tag names.
+		in.flushRun()
 		in.obj.Mark(bdf.MarkParagraph, tag)
 	}
-	var at *actualText
-	if d := in.c.pdf.dict(props); d != nil {
-		if v, ok := d["ActualText"]; ok {
-			at = &actualText{text: in.c.pdf.text(v)}
-			// The replacement applies to the glyphs that follow, which may span runs.
+	e := mcEntry{}
+	if v, ok := d["ActualText"]; ok {
+		e.actual = &actualText{text: text(v)}
+		// The replacement applies to the glyphs that follow, which may span runs.
+		in.flushRun()
+	}
+	if in.st != nil {
+		e.tgt, e.set = in.markedTarget(tag, d, text)
+		if e.set && !sameTarget(e.tgt, in.curTarget()) {
 			in.flushRun()
 		}
 	}
-	in.mcStack = append(in.mcStack, at)
-	if at != nil {
-		in.actual = at
+	in.mcStack = append(in.mcStack, e)
+	if e.actual != nil {
+		in.actual = e.actual
 	}
 }
 
@@ -899,6 +928,7 @@ func (in *interp) drawImage(key string, sd *types.StreamDict) {
 	if !ok {
 		return
 	}
+	in.syncDraw(in.targetOf(sd.Dict))
 	ref := in.obj.AddImage(h)
 	in.syncAlpha(false)
 	in.save()
@@ -921,9 +951,24 @@ func (in *interp) drawForm(key string, sd *types.StreamDict, extra matrix) {
 		in.c.warnOnce("form-depth", "form XObjects nested too deeply; skipping")
 		return
 	}
-	child := in.c.formObject(key, sd, in.res, in.depth+1)
+	var fs *formStruct
+	if in.st != nil {
+		tgt := in.targetOf(sd.Dict)
+		in.syncDraw(tgt)
+		// The form continues the caller's walk: it starts in the caller's
+		// state and leaves its own for what follows the USE.
+		fs = &formStruct{mcids: in.mcids, inherit: tgt, entry: in.st.clone()}
+		if sp, ok := p.num(sd.Dict["StructParents"]); ok && in.c.tree != nil {
+			fs.mcids = in.c.tree.contentTable(int(sp), true, 0)
+		}
+	}
+	child := in.c.formObject(key, sd, in.res, in.depth+1, fs)
 	if child == nil {
 		return
+	}
+	if fs != nil && child.st != nil && child.st.used {
+		*in.st = child.st.exit.clone()
+		in.structUsed = true
 	}
 	mat := p.matrixOr(sd.Dict["Matrix"], identity)
 	bbox := p.rectOr(sd.Dict["BBox"], rect{})
@@ -979,6 +1024,7 @@ func (in *interp) doShading(name string) {
 	if r.empty() {
 		return
 	}
+	in.syncDraw(in.curTarget())
 	in.syncAlpha(false)
 	in.paintShading(sh, r)
 }
@@ -1064,7 +1110,7 @@ func (in *interp) tilingFill(d types.Dict, patObj types.Object, area rect) {
 	if sd == nil {
 		return
 	}
-	cell := in.c.formObject(objKey(patObj), sd, in.res, in.depth+1)
+	cell := in.c.formObject(objKey(patObj), sd, in.res, in.depth+1, nil)
 	if cell == nil {
 		return
 	}
@@ -1196,6 +1242,7 @@ func (in *interp) inlineImage(l *lexer) {
 		return
 	}
 	h := in.c.doc.AddImage(img.data)
+	in.syncDraw(in.curTarget())
 	ref := in.obj.AddImage(h)
 	in.syncAlpha(false)
 	in.save()

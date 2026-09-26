@@ -1,4 +1,4 @@
-import type { Manifest, Rect, TextRun, SearchHit, SearchOptions } from "@bdf/core";
+import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdf/core";
 import type { HitRect } from "./search.js";
 import type { WorkerCall, WorkerResponse, OpenSource } from "./protocol.js";
 
@@ -44,6 +44,18 @@ export class BdfWorkerClient {
   /** Text runs of the continuous layout inside viewport, in viewport coordinates. */
   continuousText(view: string, viewport: Rect): Promise<TextRun[]> {
     return this.call<TextRun[]>({ type: "continuousText", view, viewport });
+  }
+  /** Runs of a page with its structure and links (for accessible text layers), in page units. */
+  content(view: string, page: number): Promise<TextContent> {
+    return this.call<TextContent>({ type: "content", view, page });
+  }
+  /** Content of the continuous layout inside viewport, in viewport coordinates. */
+  continuousContent(view: string, viewport: Rect): Promise<TextContent> {
+    return this.call<TextContent>({ type: "continuousContent", view, viewport });
+  }
+  /** Content of the sheet tiles that intersect viewport, in sheet coordinates. */
+  sheetContent(view: string, viewport: Rect): Promise<TextContent> {
+    return this.call<TextContent>({ type: "sheetContent", view, viewport });
   }
   search(view: string, query: string, options?: SearchOptions): Promise<SearchHit[]> {
     return this.call<SearchHit[]>({ type: "search", view, query, options });
