@@ -151,6 +151,8 @@ export function walk(o: ObjectPart, sink: OpSink): void {
       case Op.USE_AT: sink.useAt(r.varuint(), r.f32(), r.f32()); break;
       case Op.GROUP_BEGIN: sink.groupBegin(r.f32(), r.u8(), r.f32(), r.f32(), r.f32(), r.f32()); break;
       case Op.GROUP_END: sink.groupEnd(); break;
+      case Op.MASK_BEGIN: sink.maskBegin(r.u8(), r.u32(), r.bytesN(r.varuint())); break;
+      case Op.MASK_END: sink.maskEnd(); break;
       case Op.LINK: sink.link(r.f32(), r.f32(), r.f32(), r.f32(), str()); break;
       case Op.MARK: sink.mark(r.u8(), str()); break;
       case Op.EXT: sink.ext(r.bytesN(r.u32())); break;
@@ -197,6 +199,8 @@ export class NoopSink implements OpSink {
   useAt(_obj: number, _x: number, _y: number): void {}
   groupBegin(_alpha: number, _blend: number, _x: number, _y: number, _w: number, _h: number): void {}
   groupEnd(): void {}
+  maskBegin(_kind: number, _backdrop: number, _transfer: Uint8Array): void {}
+  maskEnd(): void {}
   link(_x: number, _y: number, _w: number, _h: number, _url: string): void {}
   mark(_kind: number, _payload: string): void {}
   ext(_payload: Uint8Array): void {}

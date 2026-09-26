@@ -40,6 +40,12 @@ export const CASES: Case[] = [
   // Type 1 programs (FontFile) converted to CFF: cairo subsets (seac accents, built-in encoding) and a whole font.
   { name: "pdf-cairo-type1-1", src: "/testdata/pdf/cairo-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
   { name: "pdf-reportlab-type1-1", src: "/testdata/pdf/reportlab-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  // ExtGState soft masks from CSS mask-image (alpha, luminance, SVG <mask>), with Chrome's inverted /TR masks.
+  { name: "pdf-chrome-masks-1", src: "/testdata/pdf/chrome-masks.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  // Non-embedded CID fonts through predefined CJK CMaps (horizontal and -V vertical), and Identity-V with an embedded font.
+  { name: "pdf-cjk-1", src: "/testdata/pdf/cjk-cmaps.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  // JPEG 2000 (lossy, lossless, SMaskInData) and JBIG2 (halftone; text with JBIG2Globals as a stencil mask) images.
+  { name: "pdf-images-1", src: "/testdata/pdf/images-jpx-jbig2.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
   // PowerPoint decks rendered by converter/pptx with the test fonts; see test/pptx.
   { name: "pptx-basic-2", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 1, scale: 1 },
   { name: "pptx-basic-3", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 2, scale: 1 },

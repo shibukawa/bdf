@@ -37,6 +37,8 @@ const (
 	OpUseAt       byte = 0x51
 	OpGroupBegin  byte = 0x52
 	OpGroupEnd    byte = 0x53
+	OpMaskBegin   byte = 0x54
+	OpMaskEnd     byte = 0x55
 	OpLink        byte = 0x70
 	OpMark        byte = 0x71
 	OpExt         byte = 0xFF
@@ -124,6 +126,12 @@ const (
 	BlendLighter         byte = 25
 )
 
+// Soft mask kinds (MASK_BEGIN). See docs/spec.md §7.6.
+const (
+	MaskAlpha      byte = 0 // the mask's alpha
+	MaskLuminosity byte = 1 // the luminosity of the mask drawn over the backdrop colour
+)
+
 // BlendNames maps blend mode values to globalCompositeOperation strings.
 var BlendNames = []string{
 	"source-over", "multiply", "screen", "overlay", "darken", "lighten",
@@ -135,7 +143,8 @@ var BlendNames = []string{
 
 // opInfo describes the operand signature of an opcode.
 //
-// Signature characters: f=f32, b=u8, c=u32 color, v=varuint, s=string ref.
+// Signature characters: f=f32, b=u8, c=u32 color, v=varuint, s=string ref,
+// B=varuint length and that many bytes.
 // Special signatures: "D" (DASH), "R" (FILL_PATH_RUN), "X" (EXT).
 type opInfo struct {
 	Name string
@@ -178,6 +187,8 @@ var opTable = map[byte]opInfo{
 	OpUseAt:       {"USE_AT", "vff"},
 	OpGroupBegin:  {"GROUP_BEGIN", "fbffff"},
 	OpGroupEnd:    {"GROUP_END", ""},
+	OpMaskBegin:   {"MASK_BEGIN", "bcB"},
+	OpMaskEnd:     {"MASK_END", ""},
 	OpLink:        {"LINK", "ffffs"},
 	OpMark:        {"MARK", "bs"},
 	OpExt:         {"EXT", "X"},

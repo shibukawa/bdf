@@ -150,6 +150,30 @@ test("converted PDF: structure from the tagged tree, and links over their text",
   assert.ok(cx > l.x && cx < l.x + l.w && cy > l.y && cy < l.y + l.h, JSON.stringify({ l, cx, cy }));
 });
 
+test("converted PDF: soft masks are drawn with MASK_BEGIN/MASK_END and are not text", async () => {
+  const doc = await BdfDocument.open(new BufferSource(new Uint8Array(await readFile(new URL("testdata/pdf/chrome-masks.bdf", root)))));
+  const page = await doc.ensure(doc.view("pages").pages[0].layers[0].obj);
+  // Chrome puts each masked element in a form: count the MASK ops of every object.
+  const counts = {}, seen = new Set();
+  const visit = (o) => {
+    for (const [k, v] of Object.entries(opHistogram(o))) counts[k] = (counts[k] ?? 0) + v;
+    for (const h of o.objects) if (!seen.has(h)) { seen.add(h); visit(doc.objectSync(h)); }
+  };
+  visit(page);
+  assert.ok(counts.maskBegin >= 5 && counts.maskBegin === counts.maskEnd, JSON.stringify(counts));
+  const text = extractText(page, (h) => doc.objectSync(h)).map((r) => r.text).join(" ");
+  assert.match(text, /Soft masks fade this heading out/);
+  assert.match(text, /luminance: white to black/);
+
+  // A MASK_BEGIN … MASK_END section keeps its text out and its transform in.
+  let masked = 0;
+  class Sink extends NoopSink {
+    maskBegin(kind, backdrop, transfer) { masked++; assert.ok(kind === 0 || kind === 1); assert.ok(transfer.length === 0 || transfer.length === 256); }
+  }
+  for (const h of seen) walk(doc.objectSync(h), new Sink());
+  assert.equal(masked, counts.maskBegin);
+});
+
 test("split source with a fake fetch", async () => {
   const base = new URL("testdata/demo-split/", root);
   const realFetch = globalThis.fetch;

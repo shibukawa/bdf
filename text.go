@@ -72,7 +72,19 @@ type textExtractor struct {
 func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 	st := textState{m: m, size: 10}
 	var stack []textState
+	masking := 0 // inside MASK_BEGIN … MASK_END: a soft mask, not content
 	return o.Walk(func(in Instr) {
+		switch in.Op {
+		case OpMaskBegin:
+			masking++
+			return
+		case OpMaskEnd:
+			masking--
+			return
+		}
+		if masking > 0 {
+			return
+		}
 		switch in.Op {
 		case OpSave:
 			stack = append(stack, st)
