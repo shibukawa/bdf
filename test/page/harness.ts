@@ -57,6 +57,9 @@ export const CASES: Case[] = [
   // shapes, stencils, markers and edge shapes; swimlanes, orthogonal and curved routing, line jumps, a table
   { name: "drawio-showcase-1", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "shapes", page: 0, scale: 1.5 },
   { name: "drawio-showcase-2", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "flow", page: 0, scale: 1.5 },
+  // AWS: current icons and groups (aws4), and a diagram in an older icon set drawn with them
+  { name: "drawio-aws-1", src: "/testdata/drawio/aws.bdf", kind: "page", view: "current", page: 0, scale: 1.5 },
+  { name: "drawio-aws-2", src: "/testdata/drawio/aws.bdf", kind: "page", view: "legacy", page: 0, scale: 1 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";
