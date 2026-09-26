@@ -3,7 +3,8 @@ The *.xml.gz files in this directory are draw.io's stencil libraries
 Copyright (c) JGraph Ltd, licensed under the Apache License 2.0 (see
 LICENSE). They were modified by tools/gen-drawio-stencils: the
 <connections> elements, comments and the whitespace between elements
-were removed, and each file was compressed with gzip.
+were removed, coordinates were rounded, the steps of paths were written
+in a compact form, and each file was compressed with gzip.
 
 draw.io's stencils/LICENSE reads:
 

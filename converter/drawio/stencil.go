@@ -116,6 +116,9 @@ func parseStencilXML(data []byte) (*stencilNode, error) {
 		switch t := t.(type) {
 		case xml.StartElement:
 			n := &stencilNode{name: t.Name.Local, attrs: t.Copy().Attr}
+			if n.name == "path" {
+				expandPath(n)
+			}
 			if len(stack) > 0 {
 				p := stack[len(stack)-1]
 				p.kids = append(p.kids, n)
@@ -133,6 +136,51 @@ func parseStencilXML(data []byte) (*stencilNode, error) {
 		return nil, errors.New("no root element")
 	}
 	return root, nil
+}
+
+// compactSteps maps the letters of a compact path (the d attribute that
+// tools/gen-drawio-stencils writes for the embedded libraries) to the step
+// elements and the attributes of their numbers.
+var compactSteps = map[byte]struct {
+	name  string
+	attrs []string
+}{
+	'M': {"move", []string{"x", "y"}},
+	'L': {"line", []string{"x", "y"}},
+	'Q': {"quad", []string{"x1", "y1", "x2", "y2"}},
+	'C': {"curve", []string{"x1", "y1", "x2", "y2", "x3", "y3"}},
+	'A': {"arc", []string{"rx", "ry", "x-axis-rotation", "large-arc-flag", "sweep-flag", "x", "y"}},
+	'Z': {"close", nil},
+}
+
+// expandPath turns the d attribute of a path into its step elements, so
+// that the embedded libraries draw exactly like draw.io's files.
+func expandPath(n *stencilNode) {
+	d, ok := n.attr("d")
+	if !ok {
+		return
+	}
+	for i := 0; i < len(d); {
+		spec, ok := compactSteps[d[i]]
+		if !ok {
+			i++
+			continue
+		}
+		i++
+		k := &stencilNode{name: spec.name}
+		for _, name := range spec.attrs {
+			for i < len(d) && d[i] == ' ' {
+				i++
+			}
+			j := i
+			for j < len(d) && d[j] != ' ' && compactSteps[d[j]].name == "" {
+				j++
+			}
+			k.attrs = append(k.attrs, xml.Attr{Name: xml.Name{Local: name}, Value: d[i:j]})
+			i = j
+		}
+		n.kids = append(n.kids, k)
+	}
 }
 
 // newStencil parses a <shape> element (mxStencil.parseDescription and the

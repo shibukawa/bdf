@@ -2,7 +2,10 @@
 // drawio converter embeds (converter/drawio/stencils): it reads the stencil
 // XML files of a draw.io release, drops what drawing does not use (the
 // <connections> elements, comments and the whitespace between elements),
-// and stores each file gzip-compressed, together with the license.
+// rounds coordinates to a precision the stencil's size cannot show, writes
+// the steps of each <path> as a compact d attribute ("M44 11L44 9C…", which
+// the converter expands back into elements when it parses the file), and
+// stores each file gzip-compressed, together with the license.
 //
 // Usage (from the repository root):
 //
@@ -19,9 +22,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -30,13 +35,14 @@ const release = "v31.4.4"
 
 // libraries are the stencil files embedded, relative to
 // src/main/webapp/stencils. They are the general-purpose libraries
-// (flowchart, basic shapes, arrows), the network, rack, Cisco and legacy
-// Azure icons of everyday IT diagrams, BPMN, integration patterns, lean
-// mapping, floor plans, electrical circuits and P&ID. Big vendor sets
-// (aws3, aws4, cisco19, gcp2, office, ...) are left out to keep the
-// package small; most of the newer ones draw their icons through
-// JavaScript shapes (such as mxgraph.aws4.resourceIcon) anyway.
+// (flowchart, basic shapes, arrows), the AWS icons (aws4: the current
+// generation, which the converter also draws older AWS icons with), the
+// network, rack, Cisco and legacy Azure icons of everyday IT diagrams,
+// BPMN, integration patterns, lean mapping, floor plans, electrical
+// circuits and P&ID. Other big vendor sets (aws3, cisco19, gcp2, office,
+// ...) are left out to keep the package small.
 var libraries = []string{
+	"aws4.xml",
 	"flowchart.xml",
 	"basic.xml",
 	"arrows.xml",
@@ -159,7 +165,8 @@ func main() {
 	fmt.Fprintf(&b, "Copyright (c) JGraph Ltd, licensed under the Apache License 2.0 (see\n")
 	fmt.Fprintf(&b, "LICENSE). They were modified by tools/gen-drawio-stencils: the\n")
 	fmt.Fprintf(&b, "<connections> elements, comments and the whitespace between elements\n")
-	fmt.Fprintf(&b, "were removed, and each file was compressed with gzip.\n\n")
+	fmt.Fprintf(&b, "were removed, coordinates were rounded, the steps of paths were written\n")
+	fmt.Fprintf(&b, "in a compact form, and each file was compressed with gzip.\n\n")
 	fmt.Fprintf(&b, "draw.io's stencils/LICENSE reads:\n\n")
 	b.Write(bytes.TrimSpace(notice))
 	b.WriteString("\n")
@@ -191,6 +198,7 @@ func minify(src []byte) ([]byte, error) {
 	d := xml.NewDecoder(bytes.NewReader(src))
 	var toks []xml.Token
 	skip := 0
+	prec := 2
 	for {
 		t, err := d.Token()
 		if err == io.EOF {
@@ -205,7 +213,12 @@ func minify(src []byte) ([]byte, error) {
 				skip++
 				continue
 			}
-			toks = append(toks, t.Copy())
+			t = t.Copy()
+			if t.Name.Local == "shape" {
+				prec = precision(t)
+			}
+			roundAttrs(t, prec)
+			toks = append(toks, t)
 		case xml.EndElement:
 			if skip > 0 {
 				skip--
@@ -218,6 +231,7 @@ func minify(src []byte) ([]byte, error) {
 			}
 		}
 	}
+	toks = compactPaths(toks)
 	var b bytes.Buffer
 	for i := 0; i < len(toks); i++ {
 		switch t := toks[i].(type) {
@@ -244,6 +258,149 @@ func minify(src []byte) ([]byte, error) {
 	}
 	b.WriteString("\n")
 	return b.Bytes(), nil
+}
+
+// precision returns the decimals coordinates of a <shape> are rounded to:
+// two, or more for small stencils, so that the rounding stays below a
+// two-thousandth of the stencil's size.
+func precision(shape xml.StartElement) int {
+	size := 0.0
+	for _, a := range shape.Attr {
+		if a.Name.Local == "w" || a.Name.Local == "h" {
+			if v, err := strconv.ParseFloat(a.Value, 64); err == nil {
+				size = math.Max(size, v)
+			}
+		}
+	}
+	if size <= 0 {
+		return 4
+	}
+	return max(2, int(math.Ceil(math.Log10(2000/size))))
+}
+
+// geometryAttrs are the coordinate attributes of the drawing elements.
+var geometryAttrs = map[string]map[string]bool{
+	"move": {"x": true, "y": true}, "line": {"x": true, "y": true},
+	"quad":  {"x1": true, "y1": true, "x2": true, "y2": true},
+	"curve": {"x1": true, "y1": true, "x2": true, "y2": true, "x3": true, "y3": true},
+	"arc":   {"rx": true, "ry": true, "x": true, "y": true},
+	"rect":  {"x": true, "y": true, "w": true, "h": true}, "roundrect": {"x": true, "y": true, "w": true, "h": true},
+	"ellipse": {"x": true, "y": true, "w": true, "h": true},
+}
+
+// roundAttrs rounds the coordinates of a drawing element.
+func roundAttrs(t xml.StartElement, prec int) {
+	keys := geometryAttrs[t.Name.Local]
+	for i, a := range t.Attr {
+		if keys[a.Name.Local] {
+			if r, ok := roundNum(a.Value, prec); ok {
+				t.Attr[i].Value = r
+			}
+		}
+	}
+}
+
+// roundNum rounds a plain decimal number; ok is false for anything else,
+// which is kept as it is.
+func roundNum(s string, prec int) (string, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.ContainsAny(s, "eExX") {
+		return "", false
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+		return "", false
+	}
+	r := strconv.FormatFloat(v, 'f', prec, 64)
+	if strings.Contains(r, ".") {
+		r = strings.TrimRight(strings.TrimRight(r, "0"), ".")
+	}
+	if r == "-0" || r == "" {
+		r = "0"
+	}
+	return r, true
+}
+
+// pathSteps are the steps a compact path holds, with their letters and
+// the attributes of their numbers in order.
+var pathSteps = map[string]struct {
+	letter byte
+	attrs  []string
+}{
+	"move":  {'M', []string{"x", "y"}},
+	"line":  {'L', []string{"x", "y"}},
+	"quad":  {'Q', []string{"x1", "y1", "x2", "y2"}},
+	"curve": {'C', []string{"x1", "y1", "x2", "y2", "x3", "y3"}},
+	"arc":   {'A', []string{"rx", "ry", "x-axis-rotation", "large-arc-flag", "sweep-flag", "x", "y"}},
+	"close": {'Z', nil},
+}
+
+// compactPaths writes the steps of each <path> as its d attribute: a
+// letter per step followed by its numbers, separated by spaces. Paths with
+// other elements, attributes a step does not have, or values that are not
+// plain numbers are kept as elements.
+func compactPaths(toks []xml.Token) []xml.Token {
+	var out []xml.Token
+	for i := 0; i < len(toks); i++ {
+		start, ok := toks[i].(xml.StartElement)
+		if !ok || start.Name.Local != "path" {
+			out = append(out, toks[i])
+			continue
+		}
+		var d strings.Builder
+		j := i + 1
+		for ; j < len(toks); j++ {
+			if _, end := toks[j].(xml.EndElement); end {
+				break
+			}
+			step, ok := toks[j].(xml.StartElement)
+			spec, known := pathSteps[step.Name.Local]
+			if !ok || !known || j+1 >= len(toks) {
+				d.Reset()
+				break
+			}
+			if _, end := toks[j+1].(xml.EndElement); !end {
+				d.Reset()
+				break
+			}
+			vals := map[string]string{}
+			for _, a := range step.Attr {
+				vals[a.Name.Local] = a.Value
+			}
+			if len(vals) > len(spec.attrs) {
+				d.Reset()
+				break
+			}
+			d.WriteByte(spec.letter)
+			valid := true
+			for k, name := range spec.attrs {
+				v, ok := vals[name]
+				if !ok {
+					v = "0" // Number("") is 0, as for a missing attribute
+				} else if _, err := strconv.ParseFloat(v, 64); err != nil || strings.ContainsAny(v, "eExX ") {
+					valid = false
+					break
+				}
+				if k > 0 {
+					d.WriteByte(' ')
+				}
+				d.WriteString(v)
+			}
+			if !valid {
+				d.Reset()
+				break
+			}
+			j++ // the step's end element
+		}
+		if d.Len() == 0 || j >= len(toks) {
+			out = append(out, toks[i])
+			continue
+		}
+		start.Attr = append(append([]xml.Attr(nil), start.Attr...), xml.Attr{Name: xml.Name{Local: "d"}, Value: d.String()})
+		out = append(out, start, toks[j])
+		i = j
+	}
+	return out
 }
 
 func fail(err error) {
