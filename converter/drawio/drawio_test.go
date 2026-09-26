@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter"
 )
 
 // testFonts lays text out with the PowerPoint converter's test fonts only,
@@ -239,7 +240,7 @@ func TestConvertMultipage(t *testing.T) {
 
 func TestPageSelection(t *testing.T) {
 	opts := testOptions()
-	opts.Pages = []int{2}
+	opts.Pages = conv.PageList(2)
 	res, err := ConvertFile(filepath.Join("testdata", "multipage.drawio"), opts)
 	if err != nil {
 		t.Fatal(err)
@@ -247,7 +248,7 @@ func TestPageSelection(t *testing.T) {
 	if len(res.Doc.Views) != 1 || res.Doc.Views[0].ID != "details" {
 		t.Fatalf("views %+v", res.Doc.Views)
 	}
-	opts.Pages = []int{4}
+	opts.Pages = conv.PageList(4)
 	if _, err := ConvertFile(filepath.Join("testdata", "multipage.drawio"), opts); err == nil {
 		t.Fatal("page 4 of 3 accepted")
 	}

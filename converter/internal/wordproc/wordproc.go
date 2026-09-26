@@ -24,7 +24,7 @@
 // layouts show), stored as strips cut between lines. The views share fonts
 // and images. Sections of East Asian vertical text are laid out as pages
 // turned by 90° in the page view, and horizontally in the scroll view. See
-// docs/design.md §3.9 and §3.13.
+// docs/design.md §3.9 and §3.16.
 package wordproc
 
 import (
@@ -32,6 +32,7 @@ import (
 	"io/fs"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
@@ -49,9 +50,9 @@ const (
 
 // Options controls the conversion.
 type Options struct {
-	// Pages selects 1-based pages of the page view; nil keeps every page.
-	// The scroll view always holds the whole document.
-	Pages []int
+	// Pages selects 1-based pages of the page view (see converter.Pages);
+	// nil keeps every page. The scroll view always holds the whole document.
+	Pages conv.Pages
 	// Views selects the views to make: ViewsBoth, ViewsPages or
 	// ViewsScroll. "" takes the input's default: both views for Word
 	// documents, the scroll view for HTML.

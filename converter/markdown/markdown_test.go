@@ -175,9 +175,6 @@ func TestEncodings(t *testing.T) {
 	if c.text != "plain" {
 		t.Errorf("BOM: %q", c.text)
 	}
-	if IsText([]byte("\x00binary")) || !IsText([]byte("text\n")) || IsText(nil) {
-		t.Error("IsText")
-	}
 }
 
 func TestRawHTML(t *testing.T) {
@@ -190,8 +187,8 @@ func TestRawHTML(t *testing.T) {
 
 func TestRegistered(t *testing.T) {
 	f := conv.Lookup("markdown")
-	if f == nil || !f.Fallback || !slices.Contains(f.Extensions, ".md") {
-		t.Fatal("markdown is not registered as the fallback format")
+	if f == nil || !slices.Contains(f.Extensions, ".md") {
+		t.Fatal("markdown is not registered")
 	}
 	res, err := conv.ConvertFile("testdata/basic.md", "", &conv.Options{FontDirs: []string{"../docx/testdata/fonts"}, NoSystemFonts: true,
 		Params: map[string]string{"remote": "false", "views": "both"}})

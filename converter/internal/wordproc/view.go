@@ -33,7 +33,7 @@ func (c *converter) pageView(v *bdf.View, count *int) func() {
 	f.sections(c.sections)
 	c.endnotes(f)
 	pages := f.pages
-	sel := c.opts.Pages
+	sel := c.opts.Pages.Numbers(len(pages))
 	keep := make([]bool, len(pages))
 	for i := range pages {
 		keep[i] = sel == nil || slices.Contains(sel, i+1)

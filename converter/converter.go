@@ -4,9 +4,10 @@
 //
 // The converters themselves are its subpackages (converter/pdf,
 // converter/pptx, converter/xlsx, converter/csv, converter/docx,
-// converter/visio, converter/drawio, converter/dxf, converter/emf,
-// converter/html, converter/markdown). Each registers its format when it is
-// imported, so a program supports the formats whose packages it links in:
+// converter/visio, converter/drawio, converter/dxf, converter/jww,
+// converter/sxf, converter/emf, converter/tiff, converter/html,
+// converter/markdown). Each registers its format when it is imported, so a
+// program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -55,16 +56,40 @@ type Format struct {
 	// Detect reports whether an input is in the format; head holds its
 	// first bytes (up to 1 KiB).
 	Detect func(head []byte, r io.ReaderAt, size int64) bool
-	// Fallback formats take inputs that no other format recognizes (any
-	// text is a Markdown document): Detect tries them last, and a file
-	// whose extension another format lists goes to that format.
-	Fallback bool
 	// Convert converts an input.
 	Convert func(r io.ReaderAt, size int64, opts *Options) (*Result, error)
 	// CheckPassword, for formats with their own encryption, reports
 	// whether an input needs a password to open and checks password
 	// against it (see the package's CheckPassword).
 	CheckPassword func(r io.ReaderAt, size int64, password string) (protected bool, err error)
+	// Stream, for formats that can convert a page at a time, starts such a
+	// conversion (see OpenStream).
+	Stream func(r io.ReaderAt, size int64, opts *Options) (Stream, error)
+}
+
+// Stream is a conversion done a page at a time, for a viewer that shows
+// the pages as they are converted and converts first the ones the reader
+// looks at. Outline is the document before any page is converted; each
+// Page call converts a page of the first view and returns what a reader
+// holding the outline and the pages returned before needs to draw it;
+// Finish converts the pages left and returns the document Convert makes.
+// A Stream is not safe for concurrent use.
+type Stream interface {
+	// Outline returns the document with every view and page, the pages
+	// that Page converts sized but without layers.
+	Outline() *bdf.Document
+	// Pages is the number of pages Page converts: the pages of the first
+	// view, or 0 when the input was converted whole and Outline is the
+	// whole document.
+	Pages() int
+	// Page converts page i of the first view (0-based), unless an earlier
+	// call did, and returns a document whose only view holds that page,
+	// with the parts it needs that no earlier call returned: the reader
+	// puts the page in its outline and adds the parts to those it has.
+	Page(i int) (*bdf.Document, error)
+	// Finish converts the pages no Page call converted and returns the
+	// document. The stream is done with.
+	Finish() (*Result, error)
 }
 
 // Param is a format-specific option.
@@ -80,9 +105,11 @@ type Options struct {
 	Title string
 	// Pages selects 1-based pages (or slides, or sheets); nil converts all
 	// of them.
-	Pages []int
-	// Images controls whether raster images are re-encoded (see imgconv).
-	// The zero value keeps images as they are.
+	Pages Pages
+	// Images controls whether raster images are re-encoded (see imgconv),
+	// and the resolution cap (MaxDPI, MaxPixels) that image inputs such as
+	// TIFF pages are scaled down to. The zero value keeps images as they
+	// are, capped at imgconv.DefaultMaxDPI and imgconv.DefaultMaxPixels.
 	Images imgconv.Options
 
 	// The fonts of formats whose text the converter lays out (Office
@@ -123,9 +150,9 @@ type Options struct {
 
 	// FileName is the input's file name, when it has one (ConvertFile sets
 	// it). Its extension tells the format of inputs whose content does not
-	// (a CSV file of one line or one column, an HTML fragment that would be
-	// taken for Markdown), and formats that name what they convert after
-	// the file use it: a CSV file's sheet.
+	// (a CSV file of one line or one column, a Markdown document, an HTML
+	// fragment), and formats that name what they convert after the file use
+	// it: a CSV file's sheet.
 	FileName string
 	// Dir is the directory that relative references of the input resolve
 	// in (the images of HTML and Markdown documents); "" reads no files
@@ -216,32 +243,26 @@ func Detect(r io.ReaderAt, size int64) *Format {
 	head := make([]byte, 1024)
 	n, _ := r.ReadAt(head, 0)
 	head = head[:n]
-	formats := Formats()
-	for _, fallback := range []bool{false, true} {
-		for _, f := range formats {
-			if f.Fallback == fallback && f.Detect(head, r, size) {
-				return f
-			}
+	for _, f := range Formats() {
+		if f.Detect(head, r, size) {
+			return f
 		}
 	}
 	return nil
 }
 
-// detectNamed is Detect for an input with a file name: when no format but
-// a fallback one recognizes the content (a CSV file of one line, an HTML
-// fragment in a .html file), the format that lists the file's extension
-// takes it.
+// detectNamed is Detect for an input with a file name: when no format
+// recognizes the content (a CSV file of one line, a Markdown document, an
+// HTML fragment), the format that lists the file's extension takes it.
 func detectNamed(fileName string, r io.ReaderAt, size int64) *Format {
-	f := Detect(r, size)
-	if f == nil || f.Fallback {
-		if g := byExtension(fileName); g != nil {
-			return g
-		}
+	if f := Detect(r, size); f != nil {
+		return f
 	}
-	return f
+	return byExtension(fileName)
 }
 
-// DetectFile is Detect for a file path.
+// DetectFile is Detect for a file path, with the file's extension for the
+// inputs no format recognizes by their content (see Options.FileName).
 func DetectFile(path string) (*Format, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -287,11 +308,56 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 // Convert converts an input in the named format (detected when name is
 // ""). An encrypted Office document is decrypted with opts.Password first.
 func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, error) {
+	in, err := prepare(r, size, name, opts)
+	if err != nil {
+		return nil, err
+	}
+	res, err := in.format.Convert(in.r, in.size, in.opts)
+	if err != nil {
+		return nil, err
+	}
+	return in.result(res), nil
+}
+
+// OpenStream starts a conversion done a page at a time of an input in the
+// named format (detected when name is ""), which it reads as Convert does.
+// An input whose format cannot is converted whole: its stream's Outline is
+// the document, and Pages is 0.
+func OpenStream(r io.ReaderAt, size int64, name string, opts *Options) (Stream, error) {
+	in, err := prepare(r, size, name, opts)
+	if err != nil {
+		return nil, err
+	}
+	if in.format.Stream == nil {
+		res, err := in.format.Convert(in.r, in.size, in.opts)
+		if err != nil {
+			return nil, err
+		}
+		return &wholeStream{res: in.result(res)}, nil
+	}
+	s, err := in.format.Stream(in.r, in.size, in.opts)
+	if err != nil {
+		return nil, err
+	}
+	return &inputStream{Stream: s, in: in}, nil
+}
+
+// input is an input ready for its converter: decrypted, its format known.
+type input struct {
+	r        io.ReaderAt
+	size     int64
+	format   *Format
+	opts     *Options
+	warnings []string // of the decryption, when opts.Warn is nil
+	// protected reports that the input was decrypted with opts.Password.
+	protected bool
+}
+
+func prepare(r io.ReaderAt, size int64, name string, opts *Options) (*input, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
-	var warnings []string
-	protected := false
+	in := &input{r: r, size: size, opts: opts}
 	if offcrypto.IsEncrypted(r, size) {
 		if opts.Password == "" {
 			return nil, ErrPasswordRequired
@@ -303,48 +369,70 @@ func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, er
 		case errors.Is(err, offcrypto.ErrIntegrity):
 			// The package decrypted and is still a ZIP file with its own
 			// checksums; say so, and convert it.
-			warnings = append(warnings, err.Error())
+			in.warnings = append(in.warnings, err.Error())
 		case err != nil:
 			return nil, err
 		}
-		r, size, protected = bytes.NewReader(b), int64(len(b)), true
+		in.r, in.size, in.protected = bytes.NewReader(b), int64(len(b)), true
 	}
-	var format *Format
 	if name == "" {
-		if format = detectNamed(opts.FileName, r, size); format == nil {
+		if in.format = detectNamed(opts.FileName, in.r, in.size); in.format == nil {
 			return nil, ErrUnknownFormat
 		}
-	} else if format = Lookup(name); format == nil {
+	} else if in.format = Lookup(name); in.format == nil {
 		return nil, fmt.Errorf("unknown format %q", name)
 	}
 	if opts.Warn != nil {
-		for _, w := range warnings {
+		for _, w := range in.warnings {
 			opts.Warn(w)
 		}
-		warnings = nil
+		in.warnings = nil
 	}
-	res, err := format.Convert(r, size, opts)
+	return in, nil
+}
+
+// result adds what reading the input found to a converter's result.
+func (in *input) result(res *Result) *Result {
+	res.Warnings = append(in.warnings, res.Warnings...)
+	res.Protected = res.Protected || in.protected
+	return res
+}
+
+// inputStream is a format's stream, whose result gets what reading the
+// input found.
+type inputStream struct {
+	Stream
+	in *input
+}
+
+func (s *inputStream) Finish() (*Result, error) {
+	res, err := s.Stream.Finish()
 	if err != nil {
 		return nil, err
 	}
-	res.Warnings = append(warnings, res.Warnings...)
-	res.Protected = res.Protected || protected
-	return res, nil
+	return s.in.result(res), nil
 }
 
+// wholeStream is the stream of an input converted whole.
+type wholeStream struct{ res *Result }
+
+func (s *wholeStream) Outline() *bdf.Document { return s.res.Doc }
+func (s *wholeStream) Pages() int             { return 0 }
+func (s *wholeStream) Page(i int) (*bdf.Document, error) {
+	return nil, fmt.Errorf("converter: no page %d to convert: the document was converted whole", i)
+}
+func (s *wholeStream) Finish() (*Result, error) { return s.res, nil }
+
 // byExtension returns the format whose usual extension a file name has,
-// or nil. Formats that recognize their content come before fallback ones.
+// or nil.
 func byExtension(fileName string) *Format {
 	ext := strings.ToLower(filepath.Ext(fileName))
 	if ext == "" {
 		return nil
 	}
-	formats := Formats()
-	for _, fallback := range []bool{false, true} {
-		for _, f := range formats {
-			if f.Fallback == fallback && slices.Contains(f.Extensions, ext) {
-				return f
-			}
+	for _, f := range Formats() {
+		if slices.Contains(f.Extensions, ext) {
+			return f
 		}
 	}
 	return nil
@@ -372,37 +460,112 @@ func CheckPassword(r io.ReaderAt, size int64, password string) (protected bool, 
 	return false, nil
 }
 
-// PageRange parses "1-3,5,8-" style selections of 1-based page (or slide)
-// numbers, clamped to 1..count.
-func PageRange(spec string, count int) ([]int, error) {
-	var out []int
+// Pages selects 1-based pages (or slides, or sheets) as ranges, in the
+// order given; nil selects all of them. A selection can end with "the last
+// page" without knowing how many there are: each converter expands it with
+// Numbers once it has read the input.
+type Pages []PageSpan
+
+// PageSpan is the pages From to To. To 0 is an open end: up to the last
+// page. A single page n is PageSpan{n, n}.
+type PageSpan struct{ From, To int }
+
+// PageList selects single pages, in the order given.
+func PageList(pages ...int) Pages {
+	out := make(Pages, len(pages))
+	for i, n := range pages {
+		out[i] = PageSpan{n, n}
+	}
+	return out
+}
+
+// ParsePages parses a selection such as "1-3,5,8-": page numbers and
+// ranges separated by commas. A range without a start begins at page 1,
+// one without an end runs to the last page. Pages are numbered from 1. An
+// empty spec selects every page (nil).
+func ParsePages(spec string) (Pages, error) {
+	var out Pages
 	for _, part := range strings.Split(spec, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
-		lo, hi := 1, count
-		if i := strings.IndexByte(part, '-'); i >= 0 {
-			if i > 0 {
-				if _, err := fmt.Sscanf(part[:i], "%d", &lo); err != nil {
-					return nil, fmt.Errorf("bad page range %q", part)
-				}
+		num := func(s string) (int, error) {
+			n, err := strconv.Atoi(strings.TrimSpace(s))
+			if err != nil || n < 1 {
+				return 0, fmt.Errorf("bad page %q in %q: pages are numbered from 1", strings.TrimSpace(s), part)
 			}
-			if i+1 < len(part) {
-				if _, err := fmt.Sscanf(part[i+1:], "%d", &hi); err != nil {
-					return nil, fmt.Errorf("bad page range %q", part)
-				}
-			}
-		} else {
-			if _, err := fmt.Sscanf(part, "%d", &lo); err != nil {
-				return nil, fmt.Errorf("bad page %q", part)
-			}
-			hi = lo
+			return n, nil
 		}
-		lo, hi = max(1, lo), min(count, hi)
+		lo, hi, isRange := strings.Cut(part, "-")
+		if !isRange {
+			n, err := num(part)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, PageSpan{n, n})
+			continue
+		}
+		s := PageSpan{From: 1}
+		var err error
+		if strings.TrimSpace(lo) != "" {
+			if s.From, err = num(lo); err != nil {
+				return nil, err
+			}
+		}
+		if strings.TrimSpace(hi) != "" {
+			if s.To, err = num(hi); err != nil {
+				return nil, err
+			}
+			if s.To < s.From {
+				return nil, fmt.Errorf("bad page range %q: it ends before it starts", part)
+			}
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// Numbers returns the page numbers a selection names in an input of count
+// pages, in the order given; nil when p is nil. Open ranges stop at the
+// last page. Numbers past the last page are kept for the converter to
+// report (or skip), but no more of them than that takes: a closed range
+// reaching past the last page keeps only the first page after it, and an
+// open range starting past the last page keeps its start.
+func (p Pages) Numbers(count int) []int {
+	if p == nil {
+		return nil
+	}
+	out := []int{}
+	for _, s := range p {
+		lo, hi := max(1, s.From), s.To
+		switch {
+		case hi == 0 && lo > count:
+			hi = lo
+		case hi == 0:
+			hi = count
+		case hi > count:
+			hi = max(lo, count+1)
+		}
 		for n := lo; n <= hi; n++ {
 			out = append(out, n)
 		}
 	}
-	return out, nil
+	return out
+}
+
+// String formats the selection as ParsePages reads it.
+func (p Pages) String() string {
+	parts := make([]string, len(p))
+	for i, s := range p {
+		switch {
+		case s.To == s.From:
+			parts[i] = strconv.Itoa(s.From)
+		case s.To == 0:
+			parts[i] = strconv.Itoa(s.From) + "-"
+		default:
+			parts[i] = strconv.Itoa(s.From) + "-" + strconv.Itoa(s.To)
+		}
+	}
+	return strings.Join(parts, ",")
 }

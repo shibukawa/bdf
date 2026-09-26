@@ -7,7 +7,9 @@
 // holds (<p align="center">, <details>, <img width>) is laid out with the
 // rest. Headings get the ids GitHub gives them, so that links to them
 // ("#見出し") work. YAML or TOML front matter becomes the document's
-// metadata. See docs/design.md §3.13.
+// metadata. Any text could be Markdown, so the registry takes a file as
+// Markdown by its extension (converter.Options.FileName), not its content.
+// See docs/design.md §3.16.
 package markdown
 
 import (
@@ -119,24 +121,6 @@ func toUTF8(b []byte) []byte {
 	}
 	d, _ := charmap.Windows1252.NewDecoder().Bytes(b)
 	return d
-}
-
-// IsText reports whether data looks like text: no NUL bytes and few other
-// control characters.
-func IsText(data []byte) bool {
-	if len(data) == 0 {
-		return false
-	}
-	ctl := 0
-	for _, c := range data {
-		switch {
-		case c == 0:
-			return false
-		case c < 0x20 && c != '\n' && c != '\r' && c != '\t' && c != '\f' && c != 0x1b:
-			ctl++
-		}
-	}
-	return ctl*100 < len(data)
 }
 
 // githubIDs gives headings the ids GitHub does: the text in lower case,

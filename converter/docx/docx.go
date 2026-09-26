@@ -27,6 +27,7 @@ import (
 	"os"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/wordproc"
 	"github.com/shibukawa/bdf/imgconv"
 )
@@ -40,9 +41,9 @@ const (
 
 // Options controls the conversion.
 type Options struct {
-	// Pages selects 1-based pages of the page view; nil keeps every page.
-	// The scroll view always holds the whole document.
-	Pages []int
+	// Pages selects 1-based pages of the page view (see converter.Pages);
+	// nil keeps every page. The scroll view always holds the whole document.
+	Pages conv.Pages
 	// Views selects the views to make: ViewsBoth (the default when ""),
 	// ViewsPages or ViewsScroll.
 	Views string

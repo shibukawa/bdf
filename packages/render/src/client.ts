@@ -1,6 +1,6 @@
 import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdf/core";
 import type { HitRect } from "./search.js";
-import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode } from "./protocol.js";
+import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode, WorkerOpenOptions } from "./protocol.js";
 
 /** An error from the worker; code says when the document needs a password. */
 export class BdfWorkerError extends Error {
@@ -38,12 +38,28 @@ export class BdfWorkerClient {
    * code is "password-required" (no password given) or "wrong-password";
    * the worker keeps it, so unlock() can try other passwords.
    */
-  open(source: OpenSource, password?: string): Promise<Manifest> {
-    return this.call<Manifest>({ type: "open", source, password }, source.kind === "buffer" ? [source.buffer] : []);
+  open(source: OpenSource, password?: string, options?: WorkerOpenOptions): Promise<Manifest> {
+    return this.call<Manifest>({ type: "open", source, password, options }, source.kind === "buffer" ? [source.buffer] : []);
   }
   /** Try a password on the encrypted document the last open() left locked. */
   unlock(password: string): Promise<Manifest> {
     return this.call<Manifest>({ type: "unlock", password });
+  }
+  /**
+   * Put a page that a streamed conversion returned (a single-file bdf whose
+   * only page is that page, with the parts it brings) in place of page
+   * index of a view of the open document. The buffer is transferred.
+   */
+  addPage(view: string, page: number, buffer: ArrayBuffer): Promise<null> {
+    return this.call<null>({ type: "addPage", view, page, buffer }, [buffer]);
+  }
+  /**
+   * Swap in another document with the same views and pages, such as the
+   * finished conversion of a streamed document; requests already running
+   * finish on the old one.
+   */
+  replace(source: OpenSource): Promise<Manifest> {
+    return this.call<Manifest>({ type: "replace", source }, source.kind === "buffer" ? [source.buffer] : []);
   }
   page(view: string, page: number, scale: number, roles?: string[]): Promise<ImageBitmap> {
     return this.call<ImageBitmap>({ type: "page", view, page, scale, roles });

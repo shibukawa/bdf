@@ -13,7 +13,7 @@
 //
 // Images are read from the files beside the document, from an MHTML
 // archive, from data: URLs and, unless Options.NoRemote is set, from the
-// network. See docs/design.md §3.13.
+// network. See docs/design.md §3.16.
 package html
 
 import (
@@ -29,6 +29,7 @@ import (
 
 	"codeberg.org/readeck/go-readability/v2"
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/wordproc"
 	"github.com/shibukawa/bdf/imgconv"
 	xhtml "golang.org/x/net/html"
@@ -60,8 +61,9 @@ type Options struct {
 	// Views selects the views to make: ViewsScroll (the default when ""),
 	// ViewsPages (A4 pages) or ViewsBoth.
 	Views string
-	// Pages selects 1-based pages of the page view; nil keeps every page.
-	Pages []int
+	// Pages selects 1-based pages of the page view (see converter.Pages);
+	// nil keeps every page.
+	Pages conv.Pages
 	// Title overrides the document title.
 	Title string
 	// Extract controls how the article is picked out of the page:

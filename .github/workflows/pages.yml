@@ -1,8 +1,9 @@
 name: pages
 # Builds the demo site (examples/viewer/site.mjs) and publishes it on GitHub
 # Pages from main: the viewer with the converters built as wasm, which
-# convert the files opened on the page inside the browser. Pull requests
-# build and test the site without publishing it.
+# convert the files opened on the page inside the browser, and the
+# documentation as HTML (docs/). Pull requests build and test the site
+# without publishing it.
 on:
   push:
     branches: [main]
