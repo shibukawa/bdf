@@ -41,7 +41,7 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | `Detect(r, size) *Format` / `DetectFile(path)` | 形式を判定する（`nil` は不明） |
 | `Formats() []*Format` / `Lookup(name) *Format` | 登録されている形式 |
 | `Register(f *Format)` | 形式を登録する（変換器パッケージが `init` で呼ぶ） |
-| `PageRange(spec string, count int) ([]int, error)` | `"1-3,5,8-"` のようなページ指定を 1 始まりの番号にする |
+| `Pages` / `ParsePages(spec)` / `PageList(n...)` | ページ（スライド、シート）の選択。`"1-3,5,8-"` のような範囲を指定順に持ち、末尾までの範囲は総数を知らなくてよい。`Numbers(count)` で 1 始まりの番号にする |
 | `ErrUnknownFormat` / `ErrPasswordRequired` / `ErrWrongPassword` | `errors.Is` で調べるエラー |
 
 `Result` は `Doc *bdf.Document`、`Warnings []string`（`Options.Warn` が無いとき）、`Summary`（1 行の要約）、`Protected`（パスワードで開いた入力。同じパスワードで `bdf.NewPasswordLock` して暗号化するとよい）を持つ。
@@ -51,8 +51,8 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | 項目 | 内容 |
 |---|---|
 | `Title` | 文書のタイトルを上書きする |
-| `Pages []int` | 変換するページ・スライド・シート（1 始まり、`nil` は全部） |
-| `Images imgconv.Options` | ラスター画像を再エンコードするか（ゼロ値はそのまま格納） |
+| `Pages Pages` | 変換するページ・スライド・シート（`ParsePages("1-3,5")`、`PageList(2)` など。`nil` は全部） |
+| `Images imgconv.Options` | ラスター画像を再エンコードするか（ゼロ値はそのまま格納）と、解像度の上限 |
 | `FontFS fs.FS` / `FontDirs []string` / `NoSystemFonts` | テキストをレイアウトする形式（Office 系、メタファイル）のフォントの探し先。`FontFS` が最初、次に `FontDirs`、最後にシステムのフォント |
 | `SystemFonts` | フォントを埋め込まず名前で参照する |
 | `NoSubset` / `NoWOFF2` / `IgnoreFSType` | フォントを subset しない / WOFF2 にしない / OS/2 の fsType が禁じていても埋め込む（権利がある場合だけ） |
@@ -64,16 +64,19 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 
 ### 形式ごとのパッケージ
 
-直接呼ぶと、`converter.Options` に無い形式固有の設定も使える。どのパッケージも `Convert` と `ConvertFile` を持ち、`Options` にはフォントまわり（`FontFS`、`FontDirs` など）と `Title`、`Images`、`NoTextIndex`、`Warn` がある。
+直接呼ぶと、`converter.Options` に無い形式固有の設定も使える。どのパッケージも `Convert` と `ConvertFile` を持ち、`Options` には `Title` と `Warn`、テキストをレイアウトする形式ならフォントまわり（`FontFS`、`FontDirs` など）と `NoTextIndex`、画像を持つ形式なら `Images` がある。ページの選択は `converter.Pages` 型である。
 
 | パッケージ | 形式 | 固有の入口と設定 |
 |---|---|---|
 | `converter/pdf` | PDF | `Convert(rs io.ReadSeeker, opts)`、`NewStream(rs, opts)`（ページ単位の変換）。`Kind`（`fixed` か `flow`）、`NoSharePrefix`（共通プレフィックスを共有しない）、`NoAnnotations`、`Password` |
-| `converter/pptx` | PowerPoint | `Slides`、`Hidden`（非表示スライドも含める） |
-| `converter/xlsx` | Excel | `Sheets`、`Hidden`。`ConvertGrid(*Grid, opts)` は書式のない値の表（`Grid`）を Excel の新しいブックのように見せる |
+| `converter/pptx` | PowerPoint | `Slides`（`converter.Pages`）、`Hidden`（非表示スライドも含める） |
+| `converter/xlsx` | Excel | `Sheets`（`converter.Pages`）、`Hidden`。`ConvertGrid(*Grid, opts)` は書式のない値の表（`Grid`）を Excel の新しいブックのように見せる |
 | `converter/csv` | CSV・TSV | `Charset`、`Delimiter`、`Quote`、`Header`（`HeaderAuto` / `HeaderYes` / `HeaderNo`）、`TableStyle`、`Name`（シート名）。指定しなかったものは推測する |
 | `converter/docx` | Word | `Pages`、`Views`（`ViewsBoth` / `ViewsPages` / `ViewsScroll`） |
 | `converter/visio` | Visio（.vsdx、.vdx） | `Pages` |
+| `converter/drawio` | draw.io（.drawio、図を埋め込んだ .drawio.svg・.drawio.png） | `Convert(data []byte, opts)`（入力をバイト列で渡す）。`Pages`、`Border`（図の周りの余白） |
+| `converter/dxf` | AutoCAD DXF | `Pages`、`Views`（`all` / `model` / `layouts`）、`Light`（モデル空間を白い紙に描く）。`Detect(head)` |
+| `converter/tiff` | TIFF | `Pages`、`DPI`（解像度の無いページに仮定する値）、`Images`（解像度の上限もここ） |
 | `converter/emf` | EMF・WMF | — |
 | `converter/all` | 全形式を登録するだけ（`import _`） | — |
 
@@ -149,7 +152,7 @@ res, err := s.Finish() // Convert と同じ完成した文書
 
 | パッケージ | 内容 |
 |---|---|
-| `imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`Optimize(data, opts)`、`Available()`（`bdf_noconv` ビルドでは false） |
+| `imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false） |
 | `woff2` | TrueType・OpenType を WOFF2 にする。`Encode(font)`、`Available()`、`IsWOFF(data)` |
 
 ## コマンド（bdf）
@@ -251,7 +254,7 @@ installCopyHandler(container);
 
 | メソッド | 内容 |
 |---|---|
-| `open(source, password?)` | 文書を開く。`source` は `{kind: "single", url, range?}`、`{kind: "split", base}`、`{kind: "buffer", buffer}`（転送される） |
+| `open(source, password?, options?)` | 文書を開く。`source` は `{kind: "single", url, range?}`、`{kind: "split", base}`、`{kind: "buffer", buffer}`（転送される）。`options.imageBudget` はデコードした画像を保持するバイト数 |
 | `unlock(password)` | パスワードが要る・違うと `open` が `BdfWorkerError`（`code` が `"password-required"` / `"wrong-password"`）で失敗したあと、同じ文書を別のパスワードで開く |
 | `page(view, index, scale, roles?)` | ページを `ImageBitmap` に描く。`scale` は 1 単位あたりのデバイスピクセル |
 | `continuous(view, viewport, scale)` | flow・scroll View を縦に続けた配置の矩形を描く |
@@ -271,7 +274,7 @@ installCopyHandler(container);
 | `TEXT_LAYER_CSS` | テキスト層の CSS |
 | `installCopyHandler(container)` | ページをまたいだ選択を、文書の空白と改行を戻してコピーする |
 | `selectionText` / `selectedRuns` / `joinRuns` | 選択範囲のテキスト |
-| `RUN_ATTR` / `linkHref` | run の要素に付く属性名 / リンク先として安全な URL |
+| `RUN_ATTR` / `linkHref` / `internalLink` | run の要素に付く属性名 / リンク先として安全な URL / 文書内リンク（`#page=N`、`#view=ID&page=N`）の解釈 |
 
 ### 同じスレッドで描く
 
@@ -279,8 +282,8 @@ Worker を使わない場合や、自前の Worker に組み込む場合の部�
 
 | 名前 | 内容 |
 |---|---|
-| `PageRenderer(doc, options?, fontSet?)` | `renderPage(ctx, page, {scale, roles?, background?})`、`renderContinuous`、`renderSheet`、`continuousLayout`、`sheetSize`、`preparePage`、`dispose` |
+| `PageRenderer(doc, options?, fontSet?, resources?)` | `renderPage(ctx, page, {scale, roles?, background?})`、`renderContinuous`、`renderSheet`、`continuousLayout`、`sheetSize`、`preparePage`、`preparePageText`、`dispose` |
 | `CanvasRenderer(res, options?)` | Object 1 つを 2D コンテキストに描く（`draw(ctx, obj)`） |
-| `ResourceCache(doc, fontSet?)` | Part から作る `Path2D`、`ImageBitmap`、`FontFace` のキャッシュ |
+| `ResourceCache(doc, fontSet?, {imageBudget?, decodeImage?})` | Part から作る `Path2D`、`ImageBitmap`、`FontFace` のキャッシュ。デコードした画像は `imageBudget`（既定 `DEFAULT_IMAGE_BUDGET` = 256 MiB）まで保持し、描画中のものは `hold()` / `release()`（`ImageHold`）で守る |
 | `DocumentSearch(doc, measure)` | 検索とヒットの矩形（`search`、`locate`、`text`、`forget`） |
 | `fontString` / `embeddedFamily` / `buildPath2D` / `cssColor` / `resetState` | 描画の小さな部品 |
