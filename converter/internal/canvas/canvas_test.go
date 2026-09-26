@@ -25,7 +25,7 @@ func TestIsDocLang(t *testing.T) {
 func TestBuilder(t *testing.T) {
 	doc := bdf.NewDocument()
 	doc.Meta.DC.Language = bdf.DCValues{"ja-JP"}
-	fonts := fontset.New(fontdb.New(nil, false), nil)
+	fonts := fontset.New(fontdb.New(nil, nil, false), nil)
 	b := NewBuilder(doc, fonts)
 	cv := b.New()
 	fc := fonts.Choose("Arial", false, false, false)

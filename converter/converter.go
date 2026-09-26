@@ -3,9 +3,9 @@
 // format detection and page selection.
 //
 // The converters themselves are its subpackages (converter/pdf,
-// converter/pptx, converter/xlsx, converter/docx, converter/visio,
-// converter/emf). Each registers its format when it is imported, so a
-// program supports the formats whose packages it links in:
+// converter/pptx, converter/xlsx, converter/csv, converter/docx,
+// converter/visio, converter/emf). Each registers its format when it is
+// imported, so a program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -26,7 +26,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -79,9 +81,15 @@ type Options struct {
 	// The fonts of formats whose text the converter lays out (Office
 	// documents, metafiles):
 
+	// FontFS holds fonts (.ttf, .otf, .ttc and .otc files) that are not in
+	// the local file system, such as fonts embedded in the program or
+	// fetched over the network; it is searched before FontDirs. It is
+	// scanned on each conversion, reading the files with ReadAt when they
+	// have it, and the files of the faces used are then read whole.
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding them.
 	SystemFonts bool
@@ -101,6 +109,12 @@ type Options struct {
 	// document, the user (or owner) password of a PDF. Inputs that open
 	// without one ignore it.
 	Password string
+
+	// FileName is the input's file name, when it has one (ConvertFile sets
+	// it). Its extension tells the format of inputs whose content does not
+	// (a CSV file of one line or one column), and formats that name what
+	// they convert after the file use it: a CSV file's sheet.
+	FileName string
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
@@ -220,7 +234,14 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := Convert(f, st.Size(), name, opts)
+	o := Options{}
+	if opts != nil {
+		o = *opts
+	}
+	if o.FileName == "" {
+		o.FileName = filepath.Base(path)
+	}
+	res, err := Convert(f, st.Size(), name, &o)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -255,7 +276,9 @@ func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, er
 	var format *Format
 	if name == "" {
 		if format = Detect(r, size); format == nil {
-			return nil, ErrUnknownFormat
+			if format = byExtension(opts.FileName); format == nil {
+				return nil, ErrUnknownFormat
+			}
 		}
 	} else if format = Lookup(name); format == nil {
 		return nil, fmt.Errorf("unknown format %q", name)
@@ -273,6 +296,21 @@ func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, er
 	res.Warnings = append(warnings, res.Warnings...)
 	res.Protected = res.Protected || protected
 	return res, nil
+}
+
+// byExtension returns the format whose usual extension a file name has,
+// or nil.
+func byExtension(fileName string) *Format {
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext == "" {
+		return nil
+	}
+	for _, f := range Formats() {
+		if slices.Contains(f.Extensions, ext) {
+			return f
+		}
+	}
+	return nil
 }
 
 // CheckPassword reports whether an input needs a password to open, and

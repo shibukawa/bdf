@@ -183,6 +183,7 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 	}
 	s := &sheetCtx{c: c, ws: ws, tiles: map[[2]int]*tileCv{}, base: map[int]*cellFmt{}, formulas: map[string]fnode{}}
 	s.loadTables()
+	s.loadGridTables()
 	s.loadDrawings()
 	s.loadComments()
 	s.extent()
@@ -276,6 +277,13 @@ func (s *sheetCtx) geometry() {
 				cw[i] = colWidthPt(cd.width, c.mdw)
 			default:
 				cw[i] = defCol
+			}
+		}
+	}
+	if ws.fitCols {
+		for i, w := range s.fitWidths(defCol) {
+			if _, ok := cw[i]; !ok {
+				cw[i] = w
 			}
 		}
 	}
