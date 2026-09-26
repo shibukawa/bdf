@@ -33,10 +33,12 @@ func generate(args []string) {
 	title := fs.String("title", "", "document title (default: from the input); the same as -dc title=...")
 	var dcFlags stringList
 	fs.Var(&dcFlags, "dc", "Dublin Core element as name=value, e.g. creator=Alice (repeatable; replaces the element read from the input, name= removes it)")
-	pages := fs.String("pages", "", "pages, slides or sheets to convert, e.g. 1-3,5 (default: all)")
+	pages := fs.String("pages", "", "pages, slides or sheets to convert, e.g. 1-3,5,8- (8-: from 8 to the last; default: all)")
 	quiet := fs.Bool("q", false, "do not print warnings")
 	images := fs.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
-	quality := fs.Int("quality", 80, "lossy WebP quality (1-100)")
+	quality := fs.Int("quality", 80, "lossy WebP quality (1-100); also the JPEG quality of re-encoded images under -images keep")
+	maxDPI := fs.Float64("max-dpi", imgconv.DefaultMaxDPI, "image inputs (TIFF): scale pages down to at most this many pixels per inch (0: no limit)")
+	maxPixels := fs.Int("max-pixels", imgconv.DefaultMaxPixels, "image inputs (TIFF): scale pages down to at most this many pixels, width × height (0: no limit)")
 	noSubset := fs.Bool("no-subset", false, "embed whole fonts instead of the glyphs in use")
 	noWOFF2 := fs.Bool("no-woff2", false, "store embedded fonts as TrueType/OpenType instead of WOFF2")
 	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
@@ -69,7 +71,16 @@ func generate(args []string) {
 	}
 	in, out := fs.Arg(0), fs.Arg(1)
 
-	imgOpts := imgconv.Options{Quality: *quality}
+	imgOpts := imgconv.Options{Quality: *quality, MaxDPI: *maxDPI, MaxPixels: *maxPixels}
+	if *maxDPI == 0 {
+		imgOpts.MaxDPI = -1 // no limit (0 in imgconv.Options is the default)
+	}
+	if *maxPixels == 0 {
+		imgOpts.MaxPixels = -1
+	}
+	if *maxDPI < 0 || *maxPixels < 0 {
+		usageError("-max-dpi and -max-pixels must not be negative")
+	}
 	switch *images {
 	case "keep":
 		imgOpts.Mode = imgconv.Keep
@@ -78,12 +89,9 @@ func generate(args []string) {
 	default:
 		usageError("-images must be keep or convert")
 	}
-	var sel []int
-	if *pages != "" {
-		var err error
-		if sel, err = converter.PageRange(*pages, 1<<30); err != nil {
-			usageError(err.Error())
-		}
+	sel, err := converter.ParsePages(*pages)
+	if err != nil {
+		usageError("-pages: " + err.Error())
 	}
 	dc, err := parseDC(dcFlags)
 	if err != nil {

@@ -249,7 +249,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `dxf` / `emf` / `wmf` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `dxf` / `emf` / `wmf` / `tiff` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -289,18 +289,19 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 変換器は入力文書のメタデータを次のように写す。
 
-| 要素 | PDF（文書情報辞書） | PowerPoint、Excel、Word（コアプロパティ） | draw.io |
-|---|---|---|---|
-| `title` | `Title` | `dc:title` | – |
-| `creator` | `Author` | `dc:creator` | – |
-| `subject` | `Keywords`（`,` `;` `、` などで分割） | `dc:subject`、`cp:keywords`（同様に分割） | – |
-| `description` | `Subject` | `dc:description` | – |
-| `identifier` | – | `dc:identifier` | – |
-| `language` | – | `dc:language`（なければ PowerPoint は既定のテキストスタイルの、Word は既定の run の言語。Word は本文の多くが和文なら東アジアの言語） | – |
-| `created` | `CreationDate`（W3CDTF に変換） | `dcterms:created` | – |
-| `modified` | `ModDate`（W3CDTF に変換） | `dcterms:modified` | `mxfile` の `modified` |
+| 要素 | PDF（文書情報辞書） | PowerPoint、Excel、Word（コアプロパティ） | draw.io | TIFF（先頭のページのタグ） |
+|---|---|---|---|---|
+| `title` | `Title` | `dc:title` | – | `DocumentName` |
+| `creator` | `Author` | `dc:creator` | – | `Artist`（`;` で分割） |
+| `subject` | `Keywords`（`,` `;` `、` などで分割） | `dc:subject`、`cp:keywords`（同様に分割） | – | – |
+| `description` | `Subject` | `dc:description` | – | `ImageDescription` |
+| `identifier` | – | `dc:identifier` | – | – |
+| `language` | – | `dc:language`（なければ PowerPoint は既定のテキストスタイルの、Word は既定の run の言語。Word は本文の多くが和文なら東アジアの言語） | – | – |
+| `rights` | – | – | – | `Copyright` |
+| `created` | `CreationDate`（W3CDTF に変換） | `dcterms:created` | – | – |
+| `modified` | `ModDate`（W3CDTF に変換） | `dcterms:modified` | `mxfile` の `modified` | `DateTime`（W3CDTF に変換） |
 
-PDF の対応は XMP が文書情報辞書を写す方法に合わせている。`bdf generate` の `-dc 要素名=値`（繰り返し可）で要素を上書きでき、`-dc 要素名=` でその要素を消せる。
+PDF と TIFF の対応は、XMP が文書情報辞書と TIFF のタグを写す方法に合わせている（TIFF の `DocumentName` は XMP にないので題名にした）。`bdf generate` の `-dc 要素名=値`（繰り返し可）で要素を上書きでき、`-dc 要素名=` でその要素を消せる。
 
 ## 5. Object Part
 

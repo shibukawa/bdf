@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	"github.com/shibukawa/bdf/converter/internal/tiff"
 	"github.com/shibukawa/bdf/imgconv"
-	"golang.org/x/image/tiff"
 )
 
 // recolor is the chain of per-pixel effects of a blip (a:clrChange,
@@ -192,6 +192,8 @@ func (c *Renderer) recolored(e *imageEntry, rc *recolor) *imageEntry {
 	}
 	var img image.Image
 	format := imgconv.Sniff(data)
+	// A photograph (a JPEG, or a JPEG page of a TIFF file) is stored as JPEG again.
+	photo := format == "jpeg"
 	tol := 9 // same guesses as LibreOffice (tdf#149670)
 	switch format {
 	case "jpeg":
@@ -203,8 +205,12 @@ func (c *Renderer) recolored(e *imageEntry, rc *recolor) *imageEntry {
 	}
 	switch {
 	case format == "svg" || format == "avif" || format == "":
-		if bytes.HasPrefix(data, []byte("II*\x00")) || bytes.HasPrefix(data, []byte("MM\x00*")) {
-			img, err = tiff.Decode(bytes.NewReader(data))
+		if tiff.Sniff(data) {
+			var d *tiff.IFD
+			if d, err = tiff.FirstPage(data); err == nil {
+				img, _, err = d.Decode()
+				photo = d.Compression() == tiff.CompressionJPEG
+			}
 			tol = 1
 			break
 		}
@@ -224,7 +230,7 @@ func (c *Renderer) recolored(e *imageEntry, rc *recolor) *imageEntry {
 	}
 	rc.pixels(n, tol)
 	var out []byte
-	if format == "jpeg" && opaque(n) {
+	if photo && opaque(n) {
 		// a photograph stays a JPEG: much smaller and faster than PNG
 		var buf bytes.Buffer
 		if err := jpeg.Encode(&buf, n, &jpeg.Options{Quality: 90}); err == nil {
@@ -235,7 +241,7 @@ func (c *Renderer) recolored(e *imageEntry, rc *recolor) *imageEntry {
 		}
 	}
 	if out == nil {
-		res, _ := imgconv.EncodeImage(n, format != "jpeg", c.imgOpts)
+		res, _ := imgconv.EncodeImage(n, !photo, c.imgOpts)
 		out = res.Data
 	}
 	r.hash = c.doc.AddImage(out)

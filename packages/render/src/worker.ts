@@ -3,13 +3,14 @@ import { BdfDocument, BdfPasswordError, BufferSource, RangeSource, SplitSource, 
 import { fontString } from "./resources.js";
 import { PageRenderer } from "./page.js";
 import { DocumentSearch } from "./search.js";
-import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource } from "./protocol.js";
+import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource, WorkerOpenOptions } from "./protocol.js";
 
 let doc: BdfDocument | undefined;
 /** A source opened but still locked: kept for "unlock", so nothing is fetched or sent again. */
 let locked: PartSource | undefined;
 let pages: PageRenderer | undefined;
 let search: DocumentSearch | undefined;
+let settings: WorkerOpenOptions = {};
 
 const measureCtx = new OffscreenCanvas(1, 1).getContext("2d")!;
 const measure = (font: string, text: string) => {
@@ -17,8 +18,15 @@ const measure = (font: string, text: string) => {
   return measureCtx.measureText(text).width;
 };
 
-async function open(source: OpenSource, password?: string): Promise<Manifest> {
+/** Forget the document, closing its decoded images. */
+function close(): void {
+  pages?.res.dispose();
   doc = pages = search = locked = undefined;
+}
+
+async function open(source: OpenSource, password?: string, options: WorkerOpenOptions = {}): Promise<Manifest> {
+  close();
+  settings = options;
   switch (source.kind) {
     case "buffer": locked = new BufferSource(new Uint8Array(source.buffer)); break;
     case "single": locked = source.range ? new RangeSource(source.url) : await fetchSingle(source.url); break;
@@ -32,7 +40,7 @@ async function unlock(password?: string): Promise<Manifest> {
   if (!locked) throw new Error("bdf: no document to unlock");
   doc = await BdfDocument.open(locked, { password });
   locked = undefined;
-  pages = new PageRenderer(doc!, {}, (self as unknown as { fonts?: FontFaceSet }).fonts);
+  pages = new PageRenderer(doc!, {}, (self as unknown as { fonts?: FontFaceSet }).fonts, { imageBudget: settings.imageBudget });
   search = new DocumentSearch(doc!, measure);
   return doc!.manifest;
 }
@@ -75,7 +83,7 @@ function within(c: TextContent, r: Rect, dx = 0, dy = 0): TextContent {
  * runs keep theirs: only text drawn with a font has a known extent.
  */
 async function pageContent(page: Page, matrix?: Matrix, roles?: string[]): Promise<TextContent> {
-  await pages!.preparePage(page);
+  await pages!.preparePageText(page);
   const layers = roles ? page.layers.filter((l) => roles.includes(l.role)) : page.layers;
   const c = concat(layers.map((layer) => extractContent(doc!.objectSync(layer.obj)!, (h) => doc!.objectSync(h), matrix)));
   for (const r of c.runs) {
@@ -118,7 +126,7 @@ async function sheetContent(view: View, viewport: Rect | Rect[]): Promise<TextCo
   for (const [tx, ty] of [...keys.values()].sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
     const h = view.tiles?.[`${tx},${ty}`];
     if (!h) continue;
-    await pages!.res.prepare(h);
+    await pages!.res.prepareText(h);
     const c = extractContent(doc!.objectSync(h)!, (hh) => doc!.objectSync(hh), [1, 0, 0, 1, tx * tile, ty * tile]);
     parts.push(within(c, { x: 0, y: 0, w: tile, h: tile - 1e-6 }, tx * tile, ty * tile)); // the rule of the text index (spec §4.1)
   }
@@ -132,11 +140,11 @@ function canvasFor(w: number, h: number): OffscreenCanvas {
 async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; transfer: Transferable[] }> {
   switch (req.type) {
     case "open":
-      return { result: await open(req.source, req.password), transfer: [] };
+      return { result: await open(req.source, req.password, req.options), transfer: [] };
     case "unlock":
       return { result: await unlock(req.password), transfer: [] };
     case "close":
-      doc = pages = search = locked = undefined;
+      close();
       return { result: null, transfer: [] };
   }
   if (!doc || !pages || !search) throw new Error("bdf: no document open");
