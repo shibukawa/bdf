@@ -164,6 +164,24 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`）、変換結果は `testdata/pptx/` に置いて golden テストで描画を比較する。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセットだけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
 
+## 3.5 draw.io → BDF 変換器（converter/drawio）の構造
+
+`converter/drawio` は draw.io（diagrams.net）の図を読み、mxGraphModel の XML から直接 BDF の命令を作る。draw.io 自身の SVG・PDF 出力を経由しないのは、HTML ラベルが SVG の foreignObject（HTML）で出力され、そのままでは Canvas に描けないことと、ページ・レイヤー・リンク・テキストの構造を残すため。
+
+- **入力**: `.drawio` / `.xml`（`<mxfile>` の `<diagram>` がページ。中身は `<mxGraphModel>` 要素か、Graph.compress で圧縮した文字列＝URL エンコードした XML を raw deflate して base64）、裸の `<mxGraphModel>`、図を埋め込んだ SVG（ルート要素の `content` 属性）と PNG（`mxfile` または `mxGraphModel` という名前の tEXt / zTXt チャンク）。`converter.Detect` は中身からこれらを判別する。
+- **ページ → View**: ページごとに `fixed` View（ページ 1 枚）を作る。View の `id` は図の `id`（なければ `pageN`）、`title` はページ名。ビューアは View をシート見出しのようなタブで切り替えるので（spec §4.1）、Excel のシートと同じ操作感で複数ページを行き来できる。図の中のページへのリンク（`data:page/id,…`）は `#view=ID` の LINK にする（spec §7.7）。http / https / mailto 以外のリンク（`data:action/…` など）は捨てる。
+- **ページの大きさと座標**: ページは描いたものの外接矩形に余白（既定 10px、`-border`）を足した大きさ。draw.io の座標は CSS px なので、各レイヤー Object の先頭で 0.75 倍（pt）と原点の移動を 1 回かけ、以降は draw.io の座標のまま命令を出す。背景色（`background`）は `background` レイヤー、draw.io のレイヤー（ルートの子）はそれぞれ `body` レイヤーの Object にし、非表示のレイヤー・セル、折りたたんだコンテナの子は描かない。`shadow="1"` のページはすべての図形に影を付ける。
+- **スタイル**: スタイル文字列は mxStylesheet と同じ規則で読む（`key=value` の上書き、名前だけの項目は draw.io の `styles/default.xml` の名前付きスタイルを合成、`none` はキーを消す、先頭の `;` は既定スタイルを使わない）。`default` の色はライトテーマの色（塗りは白、線と文字は黒）に、`light-dark(a, b)` は `a` にする。
+- **セルの配置（mxGraphView）**: 入れ子のジオメトリ（コンテナの子は親の原点から、`relative` なジオメトリは親の大きさやエッジ上の位置の割合から）を絶対座標にし、ラベルの位置（`labelPosition`、`verticalLabelPosition`）を足す。描く順は draw.io と同じくモデルの深さ優先の順で、セルごとに図形、ラベルの順。
+- **エッジの経路**: 端点の固定（`exitX`/`entryX` などの接続制約、ポート）、エッジスタイル（直交・エルボー・ER・セグメント・ループなど mxEdgeStyle）、端点の浮動（図形の外周との交点、mxPerimeter と draw.io の外周関数）を mxGraph と同じ手順で計算する。draw.io は計算した経路をファイルに保存しないので、ここが描画の見た目を大きく左右する。
+- **図形**: mxAbstractCanvas2D と同じ API（パスは変換側で平行移動・拡大、回転と反転は TRANSFORM、save/restore は SAVE/RESTORE）の Go のキャンバスを用意し、mxGraph と draw.io の Shapes.js の図形・矢印をほぼ行単位で移植した。ステンシル（`mxgraph.flowchart.*` など XML で定義された図形と、スタイルに埋め込まれた `stencil(…)`）は mxStencil の解釈器で描き、よく使うライブラリを圧縮して埋め込む。draw.io の影は図形全体に掛かる CSS の drop-shadow なので、図形を GROUP で描き、合成するときに SHADOW を掛けて同じ見た目にする。グラデーションは SVG の objectBoundingBox と同じく塗る範囲の外接矩形に合わせる。
+- **ラベル**: draw.io は HTML ラベルを foreignObject の中の HTML（line-height 1.2 の inline-block を flex で配置、mxSvgCanvas2D.createCss）として描くので、その CSS レイアウトを再現する。ラベルの位置（mxCellRenderer.getLabelBounds、rotateLabelBounds、mxText.getSpacing）を移植し、HTML は許容的なパーサで読んで、ラベルが使う範囲の CSS（ブロックと余白の相殺、リスト（記号は Blink と同じく図形で描く）、見出し、インラインの太字・斜体・下線・色・大きさ・フォント・背景、`<br>`、空白の畳み込み、`white-space`）を扱う。行分割は空白の後と和文の文字間（禁則つき）で行い、`word-wrap: normal` なので長い語ははみ出す。行の高さは Blink と同じく、フォントのアセント・ディセントを整数 px に丸め、半行送りを切り捨てて上に足し、残りを下にする。macOS の Chrome は Helvetica・Times・Courier のアセントを高さの 15% 増やす（Windows の Arial などに合わせるため）ので、それにも合わせる。HTML でないラベルは SVG の text と同じく改行で分けた行を 1.2 倍の行送りで置く。構造は PowerPoint と同じく、ラベルごとに BOX、段落と `<br>` に PARAGRAPH、折り返しに LINE / WRAP、見出しに HEADING、リストに LIST / LIST_ITEM / END を出す。
+- **フォント**: PowerPoint と同じ方法（`fontdb` で解決・計測し、使った文字だけのサブセットを WOFF2 で埋め込む）。draw.io の既定の Helvetica は、ない環境では Liberation Sans / Arimo / Arial で置き換わる。
+- **画像**: スタイルの `image=` の data URI（base64、URL エンコードした SVG）は Part に格納する。URL で参照する画像はネットワークに依存しないよう取得せず、警告を出して描かない。
+- **未対応（警告を出す）**: 手書き風（`sketch=1`、rough.js の塗り）は通常の描画にする。縦書き（`textDirection=vertical-*`）は横書きで描く。数式（`math=1`）、線の交差のジャンプ（`jumpStyle`）、HTML ラベル内の画像、JavaScript で定義された `mxgraph.*` の図形の多く。
+
+テスト用の図は `converter/drawio/testdata/` にあり、draw.io デスクトップ版のコマンドライン書き出し（`draw.io -x -f svg|png`）の結果と見比べて調整した。エッジの経路は書き出した SVG のパスから取り出した点列と比べるテストを持つ。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -196,7 +214,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 - **構造は MARK から作る**（spec §7.8）。`extractContent()` が run と同じ走査で構造ノード（段落・見出し・リスト・表とセル・図）とリンクを集め、`buildTextLayer(content, scale)` がそれぞれを `role=paragraph` / `heading`（`aria-level`）/ `list`・`listitem` / `table`・`row`・`cell`・`columnheader`・`rowheader` / `img` の要素にする。構造の要素は大きさを持たず、中の span の配置は変わらない。例外は図とリンクで、図は代替テキストを名前に持つ `role=img` をその範囲に、リンクは `<a>` をリンク領域に絶対配置し、中の span をそこからの相対位置に置く（読み上げカーソルの枠が描画と合う）。
 - **DOM の順は run の順**のまま（選択とコピーが DOM 順で区切りを復元するため）。表の行もセルの開始行が変わるところで区切るだけで並べ替えない。ノードは命令列の順に作られ、run はいつも最新のノードに属するので、run を順に置けば構造の要素も読み順に並ぶ。
 - **構造の状態は走査順に一直線**（`USE` や SAVE/RESTORE をまたぐ）。PDF 変換の共有プレフィックス（§5）で命令列が子 Object に分かれても同じ結果になるためで、Go の抽出器は区切り（sep）だけを扱い、構造は持たない。区切りは MARK の種類だけで決まるので、Go の索引と TS の抽出が一致する（テストで全レイヤーを突き合わせる）。
-- **リンク**は `http:` / `https:` / `mailto:` と `#page=N` だけを `<a>` にする（文書に埋め込まれた `javascript:` などを実行させない）。リンク領域に中心が入る連続した run を包み、run の無いリンク（画像のリンク）は名前付きの `<a>` にする。`#page=N` はビューアがページ移動とフォーカス移動に置き換える。
+- **リンク**は `http:` / `https:` / `mailto:` と `#page=N`、`#view=ID` だけを `<a>` にする（文書に埋め込まれた `javascript:` などを実行させない）。リンク領域に中心が入る連続した run を包み、run の無いリンク（画像のリンク）は名前付きの `<a>` にする。`#page=N` はビューアがページ移動とフォーカス移動に、`#view=ID` は View の切り替え（シート見出しのタブを選ぶのと同じ）に置き換える。
 - **言語**は `meta.dc.language` の最初の値を層の `lang` に、`MARK LANG` の run を span の `lang` にする。ビューアの UI の言語と文書の言語は別なので、`html lang` ではなく層に付ける。
 - **先読み**: テキスト層はビットマップより広い範囲（前後 3 画面）で作る。スクリーンリーダーのカーソルが進むとページがスクロールされ、その先の層が作られるので読み進められる。全ページを一度に作ると分割形式や Range 取得で全 Object を読んでしまうので避ける。
 - **ビューア**はページに `role=group` と「Page n of N」の名前を付け（ページ数だけのランドマークを作らない）、Canvas には `aria-hidden` を付ける。
@@ -237,6 +255,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 4. **ビューア**: Worker + OffscreenCanvas、ページ/連続/シートの 3 モード、テキストレイヤー、検索。
 5. **XLSX → BDF**: 直接変換、Tile 化、固定ペイン。
 6. **PPTX 直接変換**: マスター共有の本領（実装済み、§3.4）。
+7. **draw.io 直接変換**: ページごとの View とシートのような切り替え（実装済み、§3.5）。
 
 ## 9. リポジトリ構成（案）
 
@@ -250,6 +269,7 @@ bdf/
 ├── converter/         変換器の共通部分（入力形式の判別、ページ指定）
 │   ├── pdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
 │   ├── pptx/          PowerPoint → BDF 変換器（testdata/ にテスト用デッキとフォント）
+│   ├── drawio/        draw.io → BDF 変換器（testdata/ にテスト用の図）
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/

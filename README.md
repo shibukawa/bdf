@@ -4,17 +4,17 @@ English | [日本語](README.ja.md)
 
 **bdf** (Browser-specific Document Format) is a draft document format for previews that browsers can draw straight onto Canvas 2D.
 
-Office-style files (PDF, Excel, PowerPoint, Word) are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
+Office-style files (PDF, Excel, PowerPoint, Word) and draw.io diagrams are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
 
 ## How it works
 
 ```mermaid
 flowchart TB
-    SRC["PDF · Excel · PowerPoint · Word"]
+    SRC["PDF · Excel · PowerPoint · Word · draw.io"]
 
     subgraph SERVER["Go server process"]
         direction TB
-        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx"]
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/drawio"]
         BUNDLE["bdf bundle (packed)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         SCONV --> BUNDLE
     end
@@ -22,7 +22,7 @@ flowchart TB
     subgraph BROWSER["Browser"]
         direction TB
         subgraph CWORKER["Converter Worker (wasm)"]
-            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/drawio"]
         end
         PARTS["bdf parts (unpacked)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         subgraph RWORKER["Renderer Worker"]
@@ -54,6 +54,7 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 ## Features
 
 - Three layout models: fixed-size pages (slides), an infinite plane (spreadsheets), and documents that are paginated but can also be read as one continuous scroll (word processing)
+- Several views per document (the sheets of a workbook, the pages of a draw.io diagram), which the viewer switches between with tabs like sheet tabs; links can point to another view (`#view=ID`)
 - The instruction set maps 1:1 onto `CanvasRenderingContext2D`
 - Decompressed with `DecompressionStream` and drawn with `OffscreenCanvas` in a Worker
 - Content-addressed parts, so masters and repeated elements are shared automatically
@@ -63,10 +64,11 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 - The single-file and split-file forms convert into each other without re-encoding (the single file starts with the magic `bdf\0`)
 - The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information and a PowerPoint deck's core properties
 
-Documents are converted with the `bdf generate` subcommand, which tells PDF and PowerPoint input apart by its content.
+Documents are converted with the `bdf generate` subcommand, which tells PDF, PowerPoint and draw.io input apart by its content.
 
 - **PDF** (`converter/pdf`): rebuilds embedded fonts (TrueType, CFF, OpenType, Type1) into WOFF2 files that hold only the glyphs in use. It checks the OS/2 embedding permission (`fsType`) and carries the copyright notices over. It also turns form XObjects into shared objects and text into searchable runs, and moves the content common to the top of every page (the master) into a shared object. See §3.1 of design.md for details.
 - **PowerPoint .pptx** (`converter/pptx`): draws DrawingML directly. The shapes of slide masters and layouts become layer objects shared between slides, preset shapes come from the ECMA-376 shape formulas, and text is wrapped by the converter (Japanese line breaking rules, vertical text, bullets, paragraph formatting). Tables, charts, SmartArt and EMF/WMF pictures are drawn too. The fonts used for layout are embedded as WOFF2 subsets, so the result does not depend on the viewer's fonts. See §3.4 of design.md for details.
+- **draw.io** (`converter/drawio`): draws diagrams from their mxGraphModel XML: `.drawio` files (compressed pages too) and `.drawio.svg` / `.drawio.png` exports with the diagram embedded. Every page becomes a view of its own, so the viewer switches between pages with tabs the way a spreadsheet switches sheets; draw.io layers become the view's layer objects and links to pages become `#view=` links. Cell geometry, edge routing (orthogonal, elbow and the other edge styles, perimeters), shapes, arrows, stencils and the wrapping and formatting of HTML labels are ported from draw.io's (mxGraph's) own rendering code, and fonts are embedded as subsets as for PowerPoint. Hand-drawn styles (`sketch=1`) are drawn normally. See §3.5 of design.md for details.
 
 ## Documentation
 
@@ -86,6 +88,7 @@ The documents are in Japanese.
 | `converter/` | Shared converter code (input format detection, page ranges) |
 | `converter/pdf` | PDF → bdf converter |
 | `converter/pptx` | PowerPoint (.pptx) → bdf converter |
+| `converter/drawio` | draw.io (.drawio / .drawio.svg / .drawio.png) → bdf converter |
 | `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering, Worker |
@@ -102,7 +105,7 @@ go run ./cmd/bdf ls out.bdf          # list parts
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # convert to the split form
 
-# PDF / PowerPoint → bdf (the format is detected from the content; -format pdf|pptx forces it)
+# PDF / PowerPoint / draw.io → bdf (the format is detected from the content; -format pdf|pptx|drawio forces it)
 go run ./cmd/bdf generate in.pdf out.bdf      # single-file form
 go run ./cmd/bdf generate in.pptx out/        # split form
 go run ./cmd/bdf generate -pages 1-3 in.pptx out.bdf   # select pages (slides)
@@ -115,6 +118,9 @@ go run ./cmd/bdf generate -no-share in.pdf out.bdf     # PDF: do not move the co
 go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf   # PowerPoint: add a directory to search for fonts
 go run ./cmd/bdf generate -fonts system in.pptx out.bdf      # PowerPoint: refer to fonts by name instead of embedding them
 go run ./cmd/bdf generate -hidden in.pptx out.bdf            # PowerPoint: include hidden slides
+go run ./cmd/bdf generate diagram.drawio out.bdf             # draw.io: a view per page (switched like sheets)
+go run ./cmd/bdf generate -pages 2 diagram.drawio.svg out.bdf  # draw.io: page 2 only (SVG and PNG exports with the diagram embedded work too)
+go run ./cmd/bdf generate -border 0 diagram.drawio out.bdf   # draw.io: no margin around the drawing (px, default 10)
 go build -tags bdf_noconv ./...                    # build without codecs (WebP, Brotli for WOFF2), for the browser
 GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD codecs (AVX2 required on amd64)
 

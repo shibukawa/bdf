@@ -42,7 +42,7 @@ func generate(args []string) {
 	fs.Var(&fontDirs, "font-dir", "PowerPoint, draw.io: directory searched for fonts before the system ones (repeatable)")
 	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, draw.io: use only the fonts under -font-dir")
 	hidden := fs.Bool("hidden", false, "PowerPoint: include hidden slides")
-	border := fs.Float64("border", 0, "draw.io: margin around each page's drawing in pixels (default 10; -1 for none)")
+	border := fs.Float64("border", 10, "draw.io: margin around each page's drawing in pixels")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: bdf generate [flags] <in.pdf | in.pptx | in.drawio> <out.bdf | outdir/>\n  an output path ending with / writes the split form")
 		fs.PrintDefaults()
@@ -111,7 +111,11 @@ func generate(args []string) {
 		doc, warnings = res.Doc, res.Warnings
 		summary = fmt.Sprintf("%d slide(s), %d embedded font(s)", res.Slides, res.EmbeddedFonts)
 	case converter.Drawio:
-		opts := &drawio.Options{Title: dc.Title.First(), Pages: sel, Border: *border, Images: imgOpts,
+		b := *border
+		if b <= 0 {
+			b = -1 // Options.Border: negative for none, zero for the default
+		}
+		opts := &drawio.Options{Title: dc.Title.First(), Pages: sel, Border: b, Images: imgOpts,
 			FontDirs: fontDirs, NoSystemFonts: *noSystemFonts, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType}
 		switch *fonts {
 		case "embed":
