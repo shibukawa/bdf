@@ -1,0 +1,133 @@
+<mxfile>
+  <diagram id="aws" name="aws">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="i0" value="CloudWatch" style="shape=mxgraph.aws.compute.cloudwatch;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="53.5" y="12.33" width="53.01" height="55.35" as="geometry"/>
+        </mxCell>
+        <mxCell id="i1" value="EC2" style="shape=mxgraph.aws.compute.ec2;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="212.15" y="11.6" width="55.7" height="56.81" as="geometry"/>
+        </mxCell>
+        <mxCell id="i2" value="EC2 DB on Instance" style="shape=mxgraph.aws.compute.ec2_db_on_instance;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="369.12" y="11.02" width="61.77" height="57.96" as="geometry"/>
+        </mxCell>
+        <mxCell id="i3" value="EC2 Instance" style="shape=mxgraph.aws.compute.ec2_instance;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="532.16" y="11.6" width="55.69" height="56.81" as="geometry"/>
+        </mxCell>
+        <mxCell id="i4" value="EC2 Instances" style="shape=mxgraph.aws.compute.ec2_instances;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="690.84" y="10.22" width="58.32" height="59.57" as="geometry"/>
+        </mxCell>
+        <mxCell id="i5" value="Elastic MapReduce Auto Scaling" style="shape=mxgraph.aws.compute.elastic_mapreduce_auto_scaling;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="848.33" y="8.7" width="63.35" height="62.6" as="geometry"/>
+        </mxCell>
+        <mxCell id="i6" value="Elastic MapReduce HDFS Cluster" style="shape=mxgraph.aws.compute.elastic_mapreduce_hdfs_cluster;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="51.43" y="172" width="57.15" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="i7" value="CloudFront Download Distribution" style="shape=mxgraph.aws.content_delivery.cloudfront_download_distribution;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="211" y="171" width="58.01" height="58.01" as="geometry"/>
+        </mxCell>
+        <mxCell id="i8" value="CloudFront Streaming Distribution" style="shape=mxgraph.aws.content_delivery.cloudfront_streaming_distribution;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="371" y="171" width="58.01" height="58.01" as="geometry"/>
+        </mxCell>
+        <mxCell id="i9" value="RDS" style="shape=mxgraph.aws.database.rds;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="535.3" y="170.12" width="49.39" height="59.76" as="geometry"/>
+        </mxCell>
+        <mxCell id="i10" value="RDS DB Instance Read Replica" style="shape=mxgraph.aws.database.rds_db_instance_read_replica;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="689.12" y="171.02" width="61.77" height="57.96" as="geometry"/>
+        </mxCell>
+        <mxCell id="i11" value="RDS MySQL DB Instance" style="shape=mxgraph.aws.database.rds_mysql_db_instance;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="849.12" y="171.02" width="61.77" height="57.96" as="geometry"/>
+        </mxCell>
+        <mxCell id="i12" value="SimpleDB" style="shape=mxgraph.aws.database.simpledb;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="51.84" y="332.49" width="56.32" height="55.03" as="geometry"/>
+        </mxCell>
+        <mxCell id="i13" value="SimpleDB Attribute" style="shape=mxgraph.aws.database.simpledb_attribute;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="211.97" y="332.61" width="56.07" height="54.78" as="geometry"/>
+        </mxCell>
+        <mxCell id="i14" value="AWS CloudFormation" style="shape=mxgraph.aws.deployment_management.aws_cloudformation;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="375.92" y="332.97" width="48.17" height="54.06" as="geometry"/>
+        </mxCell>
+        <mxCell id="i15" value="AWS CloudFormation Template" style="shape=mxgraph.aws.deployment_management.aws_cloudformation_template;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="535.92" y="332.97" width="48.17" height="54.06" as="geometry"/>
+        </mxCell>
+        <mxCell id="i16" value="AWS Elastic BeanStalk Applicaton" style="shape=mxgraph.aws.deployment_management.aws_elastic_beanstalk_applicaton;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="704.45" y="333.06" width="31.1" height="53.89" as="geometry"/>
+        </mxCell>
+        <mxCell id="i17" value="Corporate Data Center Icon" style="dashed=0;html=1;shape=mxgraph.aws.groups.corporate_data_center_icon;strokeColor=none;fillColor=#6D6F70;gradientColor=none;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="865" y="340" width="30" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="i18" value="Elastic Beanstalk Container Icon" style="dashed=0;html=1;shape=mxgraph.aws.groups.elastic_beanstalk_container_icon;strokeColor=none;fillColor=#2A6A35;gradientColor=none;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="60" y="500" width="40" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="i19" value="VPC Subnet Icon" style="dashed=0;html=1;shape=mxgraph.aws.groups.vpc_subnet_icon;strokeColor=none;fillColor=#282560;gradientColor=none;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="220" y="500" width="40" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="i20" value="SES Email" style="shape=mxgraph.aws.messaging.ses_email;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="366.33" y="496.31" width="67.35" height="47.38" as="geometry"/>
+        </mxCell>
+        <mxCell id="i21" value="SNS Email Notification" style="shape=mxgraph.aws.messaging.sns_email_notification;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="526.29" y="499.73" width="67.41" height="40.54" as="geometry"/>
+        </mxCell>
+        <mxCell id="i22" value="SNS Topic" style="shape=mxgraph.aws.messaging.sns_topic;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="689.22" y="501.34" width="61.56" height="37.33" as="geometry"/>
+        </mxCell>
+        <mxCell id="i23" value="SQS Message" style="shape=mxgraph.aws.messaging.sqs_message;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="862.08" y="501.22" width="35.85" height="37.57" as="geometry"/>
+        </mxCell>
+        <mxCell id="i24" value="AWS Cloud" style="shape=mxgraph.aws.misc.aws_cloud;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="60.25" y="667.68" width="39.51" height="24.64" as="geometry"/>
+        </mxCell>
+        <mxCell id="i25" value="VPC Subnet" style="shape=mxgraph.aws.misc.vpc_subnet;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="231.7" y="670.8" width="16.6" height="18.4" as="geometry"/>
+        </mxCell>
+        <mxCell id="i26" value="Elastic Load Balancer" style="shape=mxgraph.aws.networking.elastic_load_balancer;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="371.34" y="651.34" width="57.33" height="57.33" as="geometry"/>
+        </mxCell>
+        <mxCell id="i27" value="Route 53 HostedZone" style="shape=mxgraph.aws.networking.route_53_hostedzone;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="531" y="652.72" width="58.01" height="54.56" as="geometry"/>
+        </mxCell>
+        <mxCell id="i28" value="VPC" style="shape=mxgraph.aws.networking.vpc;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="685.96" y="658.77" width="68.09" height="42.46" as="geometry"/>
+        </mxCell>
+        <mxCell id="i29" value="VPC Internet Gateway" style="shape=mxgraph.aws.networking.vpc_internet_gateway;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="862.09" y="662.09" width="35.82" height="35.82" as="geometry"/>
+        </mxCell>
+        <mxCell id="i30" value="VPC VPN Connection" style="shape=mxgraph.aws.networking.vpc_vpn_connection;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="47.65" y="814.01" width="64.71" height="51.99" as="geometry"/>
+        </mxCell>
+        <mxCell id="i31" value="AWS Management Console" style="shape=mxgraph.aws.non_service_specific.aws_management_console;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="211.74" y="813.43" width="56.52" height="53.14" as="geometry"/>
+        </mxCell>
+        <mxCell id="i32" value="Corporate Data Center" style="shape=mxgraph.aws.non_service_specific.corporate_data_center;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="379.61" y="813.12" width="40.79" height="53.76" as="geometry"/>
+        </mxCell>
+        <mxCell id="i33" value="Internet" style="shape=mxgraph.aws.non_service_specific.internet;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="526.87" y="819.34" width="66.26" height="41.32" as="geometry"/>
+        </mxCell>
+        <mxCell id="i34" value="Multimedia" style="shape=mxgraph.aws.non_service_specific.multimedia;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="694.18" y="816.05" width="51.64" height="47.91" as="geometry"/>
+        </mxCell>
+        <mxCell id="i35" value="User" style="shape=mxgraph.aws.non_service_specific.user;html=1;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="857.12" y="809.49" width="45.77" height="61.03" as="geometry"/>
+        </mxCell>
+        <mxCell id="e0" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i0" target="i1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i1" target="i2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i2" target="i3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i3" target="i4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i4" target="i5">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

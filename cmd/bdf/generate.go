@@ -42,10 +42,10 @@ func generate(args []string) {
 	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
 	kind := fs.String("kind", "fixed", "PDF: view kind, fixed or flow")
 	noShare := fs.Bool("no-share", false, "PDF: do not move the instruction prefix pages have in common into a shared object")
-	fonts := fs.String("fonts", "", "PowerPoint, Excel, Word, metafiles, HTML, Markdown: embed (subset and embed the fonts used for layout) or system (refer to fonts by name; the default for HTML and Markdown, which leave text to the viewer's fonts as web pages do)")
+	fonts := fs.String("fonts", "", "PowerPoint, Excel, Word, CSV, metafiles, HTML, Markdown: embed (subset and embed the fonts used for layout) or system (refer to fonts by name; the default for HTML and Markdown, which leave text to the viewer's fonts as web pages do)")
 	var fontDirs stringList
-	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, Word, metafiles, HTML, Markdown: directory searched for fonts before the system ones (repeatable)")
-	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, Word, metafiles, HTML, Markdown: use only the fonts under -font-dir")
+	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, Word, CSV, metafiles, HTML, Markdown: directory searched for fonts before the system ones (repeatable)")
+	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, Word, CSV, metafiles, HTML, Markdown: use only the fonts under -font-dir")
 	hidden := fs.Bool("hidden", false, "PowerPoint, Excel: include hidden slides or sheets (the same as -param hidden=true)")
 	var paramFlags stringList
 	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")
@@ -139,6 +139,8 @@ func generate(args []string) {
 			usageError(in + ": legacy .doc files are not supported; save as .docx first")
 		case ".vsd", ".vss", ".vst":
 			usageError(in + ": legacy binary Visio files (" + ext + ") are not supported; save as .vsdx first")
+		case ".dwg":
+			usageError(in + ": AutoCAD DWG files are not supported; save as .dxf first")
 		}
 		usageError(in + ": unknown input format (want one of " + strings.Join(names, ", ") + ")")
 	case errors.Is(err, converter.ErrPasswordRequired):

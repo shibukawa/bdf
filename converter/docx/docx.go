@@ -23,6 +23,7 @@ package docx
 
 import (
 	"io"
+	"io/fs"
 	"os"
 
 	"github.com/shibukawa/bdf"
@@ -50,9 +51,12 @@ type Options struct {
 	// Images controls whether raster images are re-encoded (see imgconv).
 	// The zero value keeps images as they are.
 	Images imgconv.Options
+	// FontFS holds fonts that are not in the local file system; it is
+	// searched before FontDirs (see converter.Options.FontFS).
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding the
 	// fonts used for layout. Viewers then substitute their own fonts; the

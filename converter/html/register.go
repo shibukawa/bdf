@@ -46,7 +46,7 @@ func init() {
 // FromConverter maps the registry's options (and Params) onto Options.
 func FromConverter(o *conv.Options) (*Options, error) {
 	opts := &Options{Views: o.Param("views"), Pages: o.Pages, Title: o.Title, Dir: o.Dir, BaseURL: o.Param("base"),
-		Font: o.Param("font"), MonoFont: o.Param("mono"), Images: o.Images, FontDirs: o.FontDirs,
+		Font: o.Param("font"), MonoFont: o.Param("mono"), Images: o.Images, FontFS: o.FontFS, FontDirs: o.FontDirs,
 		NoSystemFonts: o.NoSystemFonts, EmbedFonts: o.EmbedFonts && !o.SystemFonts, NoSubset: o.NoSubset, NoWOFF2: o.NoWOFF2,
 		IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn}
 	for _, p := range []struct {

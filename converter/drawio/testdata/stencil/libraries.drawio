@@ -1,0 +1,22 @@
+<mxfile><diagram id="p1" name="Page-1"><mxGraphModel dx="800" dy="600" grid="1" gridSize="10" page="1" pageWidth="850" pageHeight="1100"><root><mxCell id="0"/><mxCell id="1" parent="0"/>
+<mxCell id="c2" value="" style="shape=mxgraph.networks.cloud;fillColor=#dae8fc;html=1;" vertex="1" parent="1"><mxGeometry x="20" y="20" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c3" value="" style="shape=mxgraph.networks.firewall;fillColor=#f8cecc;html=1;" vertex="1" parent="1"><mxGeometry x="140" y="20" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c4" value="" style="shape=mxgraph.networks.desktop_pc;fillColor=#ffffff;html=1;" vertex="1" parent="1"><mxGeometry x="260" y="20" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c5" value="" style="shape=mxgraph.networks.server;fillColor=#e6e6e6;html=1;" vertex="1" parent="1"><mxGeometry x="380" y="20" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c6" value="" style="shape=mxgraph.cisco.routers.router;fillColor=#036897;strokeColor=#ffffff;html=1;" vertex="1" parent="1"><mxGeometry x="500" y="20" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c7" value="" style="shape=mxgraph.cisco.switches.workgroup_switch;fillColor=#036897;strokeColor=#ffffff;html=1;" vertex="1" parent="1"><mxGeometry x="20" y="120" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c8" value="" style="shape=mxgraph.cisco.computers_and_peripherals.pc;fillColor=#036897;strokeColor=#ffffff;html=1;" vertex="1" parent="1"><mxGeometry x="140" y="120" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c9" value="" style="shape=mxgraph.cisco.misc.access_point;fillColor=#036897;strokeColor=#ffffff;strokeColor2=#ff0000;html=1;" vertex="1" parent="1"><mxGeometry x="260" y="120" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c10" value="" style="shape=mxgraph.electrical.resistors.resistor_1;html=1;" vertex="1" parent="1"><mxGeometry x="380" y="120" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c11" value="" style="shape=mxgraph.electrical.capacitors.capacitor_1;html=1;" vertex="1" parent="1"><mxGeometry x="500" y="120" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c12" value="" style="shape=mxgraph.electrical.logic_gates.and;html=1;" vertex="1" parent="1"><mxGeometry x="20" y="220" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c13" value="" style="shape=mxgraph.electrical.transistors.npn_transistor_1;html=1;" vertex="1" parent="1"><mxGeometry x="140" y="220" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c14" value="" style="shape=mxgraph.rack.general.1u_rack_server;html=1;" vertex="1" parent="1"><mxGeometry x="260" y="220" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c15" value="" style="shape=mxgraph.pid.valves.gate_valve;html=1;" vertex="1" parent="1"><mxGeometry x="380" y="220" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c16" value="" style="shape=mxgraph.pid.compressors_-_iso.compressor_(centrifugal);html=1;" vertex="1" parent="1"><mxGeometry x="500" y="220" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c17" value="" style="shape=mxgraph.azure.computer;fillColor=#00BCF2;html=1;" vertex="1" parent="1"><mxGeometry x="20" y="320" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c18" value="" style="shape=mxgraph.eip.message_1;fillColor=#fff2cc;strokeColor1=#ff0000;html=1;" vertex="1" parent="1"><mxGeometry x="140" y="320" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c19" value="" style="shape=mxgraph.lean_mapping.kaizen_lightening_burst;fillColor=#f8cecc;html=1;" vertex="1" parent="1"><mxGeometry x="260" y="320" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c20" value="" style="shape=mxgraph.floorplan.office_chair;html=1;" vertex="1" parent="1"><mxGeometry x="380" y="320" width="90" height="70" as="geometry"/></mxCell>
+<mxCell id="c21" value="" style="shape=mxgraph.bpmn.user_task;html=1;" vertex="1" parent="1"><mxGeometry x="500" y="320" width="90" height="70" as="geometry"/></mxCell>
+</root></mxGraphModel></diagram></mxfile>

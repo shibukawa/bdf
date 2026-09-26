@@ -24,11 +24,12 @@
 // layouts show), stored as strips cut between lines. The views share fonts
 // and images. Sections of East Asian vertical text are laid out as pages
 // turned by 90° in the page view, and horizontally in the scroll view. See
-// docs/design.md §3.9 and §3.10.
+// docs/design.md §3.9 and §3.13.
 package wordproc
 
 import (
 	"fmt"
+	"io/fs"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
@@ -60,9 +61,12 @@ type Options struct {
 	// Images controls whether raster images are re-encoded (see imgconv).
 	// The zero value keeps images as they are.
 	Images imgconv.Options
+	// FontFS holds fonts that are not in the local file system; it is
+	// searched before FontDirs (see converter.Options.FontFS).
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding the
 	// fonts used for layout. Viewers then substitute their own fonts; the
@@ -163,7 +167,7 @@ func newConverter(opts *Options, defViews string) (*converter, string, error) {
 		notes: map[string]*note{}, notesUsed: map[string]int{}, hf: map[string][]block{}, boxes: map[*ooxml.Node][]block{},
 		noteCache: map[noteKey]*flow{}, hfCache: map[hfKey]*flow{}, bmPage: map[string][2]int{}, bmY: map[string]float64{},
 		defTab: 36, compatMode: 12, footFmt: "decimal", endFmt: "lowerRoman"}
-	c.db = fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
+	c.db = fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
 	c.fonts = fontset.New(c.db, c.warn)
 	c.cvs = canvas.NewBuilder(c.doc, c.fonts)
 	return c, views, nil

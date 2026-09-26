@@ -13,13 +13,14 @@
 //
 // Images are read from the files beside the document, from an MHTML
 // archive, from data: URLs and, unless Options.NoRemote is set, from the
-// network. See docs/design.md §3.10.
+// network. See docs/design.md §3.13.
 package html
 
 import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -95,9 +96,12 @@ type Options struct {
 	// Images controls whether raster images are re-encoded (see imgconv).
 	// The zero value keeps images as they are.
 	Images imgconv.Options
+	// FontFS holds fonts that are not in the local file system; it is
+	// searched before FontDirs (see converter.Options.FontFS).
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// EmbedFonts embeds the fonts the text is laid out with, as subsets.
 	// By default the fonts are referred to by name (the text families as
@@ -243,7 +247,7 @@ func convert(doc *xhtml.Node, opts *Options, res *resources) (*Result, error) {
 			return b, err
 		}}
 	wo := &wordproc.Options{Pages: opts.Pages, Views: opts.Views, Title: opts.Title, Images: opts.Images,
-		FontDirs: opts.FontDirs, NoSystemFonts: opts.NoSystemFonts, SystemFonts: !opts.EmbedFonts, NoSubset: opts.NoSubset,
+		FontFS: opts.FontFS, FontDirs: opts.FontDirs, NoSystemFonts: opts.NoSystemFonts, SystemFonts: !opts.EmbedFonts, NoSubset: opts.NoSubset,
 		NoWOFF2: opts.NoWOFF2, IgnoreFSType: opts.IgnoreFSType, NoTextIndex: opts.NoTextIndex, Warn: opts.Warn}
 	r, err := wordproc.ConvertHTML(d, wo)
 	if err != nil {

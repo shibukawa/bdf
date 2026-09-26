@@ -3,10 +3,10 @@
 // format detection and page selection.
 //
 // The converters themselves are its subpackages (converter/pdf,
-// converter/pptx, converter/xlsx, converter/docx, converter/visio,
-// converter/emf, converter/html, converter/markdown). Each registers its
-// format when it is imported, so a program supports the formats whose
-// packages it links in:
+// converter/pptx, converter/xlsx, converter/csv, converter/docx,
+// converter/visio, converter/drawio, converter/dxf, converter/emf,
+// converter/html, converter/markdown). Each registers its format when it is
+// imported, so a program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -16,7 +16,8 @@
 // charts), fontset (fonts for text layout and their embedding), canvas
 // (objects under construction), metafile (EMF/WMF pictures) and linebreak
 // (line breaking rules); the Word, HTML and Markdown converters share the
-// layout engine wordproc.
+// layout engine wordproc, the CAD converters share cad (drawings plotted
+// onto pages).
 //
 // Password-protected inputs open with Options.Password. Encrypted Office
 // documents are decrypted here (converter/internal/offcrypto), before their
@@ -28,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -86,9 +88,15 @@ type Options struct {
 	// The fonts of formats whose text the converter lays out (Office
 	// documents, metafiles):
 
+	// FontFS holds fonts (.ttf, .otf, .ttc and .otc files) that are not in
+	// the local file system, such as fonts embedded in the program or
+	// fetched over the network; it is searched before FontDirs. It is
+	// scanned on each conversion, reading the files with ReadAt when they
+	// have it, and the files of the faces used are then read whole.
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding them.
 	SystemFonts bool
@@ -108,14 +116,21 @@ type Options struct {
 	NoTextIndex bool
 	// Params holds format-specific options by name (see Format.Params).
 	Params map[string]string
-	// Dir is the directory that relative references of the input resolve
-	// in (the images of HTML and Markdown documents); "" reads no files
-	// beside the input. ConvertFile sets it to the input's directory.
-	Dir string
 	// Password opens an encrypted input: the open password of an Office
 	// document, the user (or owner) password of a PDF. Inputs that open
 	// without one ignore it.
 	Password string
+
+	// FileName is the input's file name, when it has one (ConvertFile sets
+	// it). Its extension tells the format of inputs whose content does not
+	// (a CSV file of one line or one column, an HTML fragment that would be
+	// taken for Markdown), and formats that name what they convert after
+	// the file use it: a CSV file's sheet.
+	FileName string
+	// Dir is the directory that relative references of the input resolve
+	// in (the images of HTML and Markdown documents); "" reads no files
+	// beside the input. ConvertFile sets it to the input's directory.
+	Dir string
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
@@ -212,16 +227,14 @@ func Detect(r io.ReaderAt, size int64) *Format {
 	return nil
 }
 
-// detectPath is Detect for a file: a fallback format gives way to a format
-// that lists the file's extension (an HTML fragment in a .html file).
-func detectPath(path string, r io.ReaderAt, size int64) *Format {
+// detectNamed is Detect for an input with a file name: when no format but
+// a fallback one recognizes the content (a CSV file of one line, an HTML
+// fragment in a .html file), the format that lists the file's extension
+// takes it.
+func detectNamed(fileName string, r io.ReaderAt, size int64) *Format {
 	f := Detect(r, size)
-	if f == nil || !f.Fallback {
-		return f
-	}
-	ext := strings.ToLower(filepath.Ext(path))
-	for _, g := range Formats() {
-		if g != f && slices.Contains(g.Extensions, ext) {
+	if f == nil || f.Fallback {
+		if g := byExtension(fileName); g != nil {
 			return g
 		}
 	}
@@ -239,7 +252,7 @@ func DetectFile(path string) (*Format, error) {
 	if err != nil {
 		return nil, err
 	}
-	return detectPath(path, f, st.Size()), nil
+	return detectNamed(filepath.Base(path), f, st.Size()), nil
 }
 
 // ConvertFile converts a file in the named format (detected when name is
@@ -258,13 +271,11 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 	if opts != nil {
 		o = *opts
 	}
+	if o.FileName == "" {
+		o.FileName = filepath.Base(path)
+	}
 	if o.Dir == "" {
 		o.Dir = filepath.Dir(path)
-	}
-	if name == "" && !offcrypto.IsEncrypted(f, st.Size()) {
-		if g := detectPath(path, f, st.Size()); g != nil {
-			name = g.Name
-		}
 	}
 	res, err := Convert(f, st.Size(), name, &o)
 	if err != nil {
@@ -300,7 +311,7 @@ func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, er
 	}
 	var format *Format
 	if name == "" {
-		if format = Detect(r, size); format == nil {
+		if format = detectNamed(opts.FileName, r, size); format == nil {
 			return nil, ErrUnknownFormat
 		}
 	} else if format = Lookup(name); format == nil {
@@ -319,6 +330,24 @@ func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, er
 	res.Warnings = append(warnings, res.Warnings...)
 	res.Protected = res.Protected || protected
 	return res, nil
+}
+
+// byExtension returns the format whose usual extension a file name has,
+// or nil. Formats that recognize their content come before fallback ones.
+func byExtension(fileName string) *Format {
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext == "" {
+		return nil
+	}
+	formats := Formats()
+	for _, fallback := range []bool{false, true} {
+		for _, f := range formats {
+			if f.Fallback == fallback && slices.Contains(f.Extensions, ext) {
+				return f
+			}
+		}
+	}
+	return nil
 }
 
 // CheckPassword reports whether an input needs a password to open, and

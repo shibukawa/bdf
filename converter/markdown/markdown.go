@@ -7,7 +7,7 @@
 // holds (<p align="center">, <details>, <img width>) is laid out with the
 // rest. Headings get the ids GitHub gives them, so that links to them
 // ("#見出し") work. YAML or TOML front matter becomes the document's
-// metadata. See docs/design.md §3.10.
+// metadata. See docs/design.md §3.13.
 package markdown
 
 import (

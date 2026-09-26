@@ -9,7 +9,7 @@ export const Op = {
   FILL_PATH_AT: 0x24, FILL_PATH_RUN: 0x25, CLEAR_RECT: 0x26,
   FILL_TEXT: 0x30, STROKE_TEXT: 0x31,
   IMAGE: 0x40, IMAGE_SUB: 0x41, SMOOTHING: 0x42,
-  USE: 0x50, USE_AT: 0x51, GROUP_BEGIN: 0x52, GROUP_END: 0x53,
+  USE: 0x50, USE_AT: 0x51, GROUP_BEGIN: 0x52, GROUP_END: 0x53, MASK_BEGIN: 0x54, MASK_END: 0x55,
   LINK: 0x70, MARK: 0x71, EXT: 0xff,
 } as const;
 
@@ -19,6 +19,9 @@ export const FORMAT_VERSION = 1;
 export const OP_NAMES: Record<number, string> = Object.fromEntries(
   Object.entries(Op).map(([k, v]) => [v, k]),
 );
+
+/** Soft mask kinds of MASK_BEGIN (docs/spec.md §7.6). */
+export const MaskKind = { ALPHA: 0, LUMINOSITY: 1 } as const;
 
 export const BLEND_NAMES: GlobalCompositeOperation[] = [
   "source-over", "multiply", "screen", "overlay", "darken", "lighten",
