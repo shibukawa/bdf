@@ -54,11 +54,12 @@ export class PageRenderer {
   }
 
   /**
-   * Continuous layout of a flow view: body rectangles stacked vertically.
+   * Continuous layout of a flow view: body rectangles stacked vertically
+   * (for a scroll view, its strips, without gaps).
    * Returns the y offset of each page's body and the total height, in units.
    */
   continuousLayout(view: View): { offsets: number[]; width: number; height: number } {
-    const gap = view.continuous?.gap ?? 0;
+    const gap = view.kind === "scroll" ? 0 : view.continuous?.gap ?? 0;
     const offsets: number[] = [];
     let y = 0;
     let width = 0;

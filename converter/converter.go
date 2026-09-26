@@ -3,9 +3,9 @@
 // format detection and page selection.
 //
 // The converters themselves are its subpackages (converter/pdf,
-// converter/pptx, converter/xlsx, converter/csv, converter/visio,
-// converter/emf). Each registers its format when it is imported, so a
-// program supports the formats whose packages it links in:
+// converter/pptx, converter/xlsx, converter/csv, converter/docx,
+// converter/visio, converter/emf). Each registers its format when it is
+// imported, so a program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -13,7 +13,8 @@
 // What the Office converters share is in converter/internal: ooxml (OPC
 // packages and their XML) with ooxml/drawingml (shapes, text, tables,
 // charts), fontset (fonts for text layout and their embedding), canvas
-// (objects under construction) and metafile (EMF/WMF pictures).
+// (objects under construction), metafile (EMF/WMF pictures) and linebreak
+// (line breaking rules).
 //
 // Password-protected inputs open with Options.Password. Encrypted Office
 // documents are decrypted here (converter/internal/offcrypto), before their

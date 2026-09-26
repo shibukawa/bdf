@@ -191,12 +191,16 @@ function show(v: View) {
   stage.replaceChildren();
   stage.scrollTop = 0;
   if (v.kind === "sheet") showSheet(v);
-  else if (v.kind === "flow" && continuousBox.checked) showContinuous(v);
+  else if (continuous(v)) showContinuous(v);
   else showPages(v);
 }
 
+/** Whether a view is shown as one continuous scroll: a scroll view always, a flow view on request. */
+const continuous = (v: View) => v.kind === "scroll" || (v.kind === "flow" && continuousBox.checked);
+
 /** What a view holds, for the status line. */
 function describe(v: View): string {
+  if (v.kind === "scroll") return "one column without pages";
   if (v.kind !== "sheet") {
     const n = v.pages?.length ?? 0;
     return `${n} ${n === 1 ? "page" : "pages"}`;
@@ -253,7 +257,7 @@ async function renderText(v: View, index: number, el: HTMLDivElement, gen: numbe
 
 /** Follow a link to a page (0-based): scroll to it and focus it. */
 function goToPage(index: number) {
-  if (current.kind === "flow" && continuousBox.checked) {
+  if (continuous(current)) {
     const { top, band } = continuousPosition(current, index);
     stage.scrollTo({ top: top * zoom });
     stage.querySelector<HTMLElement>(`.page[data-y="${band}"]`)?.focus({ preventScroll: true });
@@ -280,11 +284,18 @@ async function runSearch(query: string, step: number) {
     if (old) old.replaceWith(highlightLayer(Number(el.dataset.index)));
   }
   sheetViews.get(current)?.redraw();
+  for (const el of stage.querySelectorAll<HTMLDivElement>(".page[data-y]")) {
+    const old = el.querySelector(".hlLayer");
+    if (old) old.replaceWith(bandHighlightLayer(current, Number(el.dataset.y), el));
+  }
   // scroll to the current hit
   const rect = found.rects[found.index]?.[0];
   if (!rect) return;
   if (current.kind === "sheet") {
     sheetViews.get(current)?.reveal(rect);
+  } else if (continuous(current)) {
+    const y = continuousRect(current, rect).y;
+    stage.scrollTo({ top: Math.max(0, y * zoom - stage.clientHeight / 2), behavior: "smooth" });
   } else {
     const el = stage.querySelector<HTMLDivElement>(`.page[data-index="${rect.a}"]`);
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -300,7 +311,8 @@ function showHitCount(query: string) {
   if (!query) { hitsBox.textContent = ""; return; }
   if (!found.hits.length) { hitsBox.textContent = "no matches"; return; }
   const hit = found.hits[found.index];
-  const page = current.kind === "sheet" ? "" : `, page ${hit.segments[0].a + 1}`;
+  // the strips of a scroll view are not pages
+  const page = current.kind === "sheet" || current.kind === "scroll" ? "" : `, page ${hit.segments[0].a + 1}`;
   const detail = document.createElement("span");
   detail.className = "sr-only";
   detail.textContent = `${page}: ${hit.context.replace(/ ⏎ /g, " ")}`;
@@ -328,9 +340,9 @@ function highlightLayer(pageIndex: number): HTMLDivElement {
 
 const BAND = 800;
 
-/** Continuous layout: stacked body rectangles. */
+/** Continuous layout: stacked body rectangles (the strips of a scroll view, without gaps). */
 function continuousSize(v: View) {
-  const gap = v.continuous?.gap ?? 0;
+  const gap = v.kind === "scroll" ? 0 : v.continuous?.gap ?? 0;
   let height = 0, width = 0;
   const tops: number[] = [];
   for (const p of v.pages ?? []) {
@@ -340,6 +352,34 @@ function continuousSize(v: View) {
     width = Math.max(width, b.w);
   }
   return { width, height: Math.max(0, height - gap), tops };
+}
+
+/** A rectangle of a page (a hit) in continuous coordinates. */
+function continuousRect(v: View, r: { a: number; x: number; y: number; w: number; h: number }) {
+  const p = v.pages![r.a];
+  const b = p.body ?? { x: 0, y: 0, w: p.w, h: p.h };
+  return { x: r.x - b.x, y: continuousSize(v).tops[r.a] + r.y - b.y, w: r.w, h: r.h };
+}
+
+/** Highlight rectangles of the hits in one band of the continuous layout. */
+function bandHighlightLayer(v: View, y0: number, el: HTMLElement): HTMLDivElement {
+  const layer = document.createElement("div");
+  layer.className = "textLayer hlLayer";
+  const h = el.offsetHeight / zoom;
+  found.rects.forEach((rects, hi) => {
+    for (const r of rects) {
+      const c = continuousRect(v, r);
+      if (c.y + c.h < y0 || c.y > y0 + h) continue;
+      const d = document.createElement("div");
+      d.className = hi === found.index ? "hl current" : "hl";
+      d.style.left = `${c.x * zoom}px`;
+      d.style.top = `${(c.y - y0) * zoom}px`;
+      d.style.width = `${c.w * zoom}px`;
+      d.style.height = `${c.h * zoom}px`;
+      layer.appendChild(d);
+    }
+  });
+  return layer;
 }
 
 /** Where a page starts in the continuous layout, and the band that holds it. */
@@ -363,7 +403,9 @@ function showContinuous(v: View) {
     void client.continuous(v.id, vp, zoom * dpr()).then((bmp) => (gen === generation ? placeBitmap(el, bmp, vp.w, vp.h) : bmp.close()));
   });
   const texts = onNear(TEXT_MARGIN, (el) => {
-    void client.continuousContent(v.id, viewportOf(el)).then((c) => { if (gen === generation) el.append(buildTextLayer(c, zoom, layerOptions())); });
+    void client.continuousContent(v.id, viewportOf(el)).then((c) => {
+      if (gen === generation) el.append(buildTextLayer(c, zoom, layerOptions()), bandHighlightLayer(v, Number(el.dataset.y), el));
+    });
   });
   for (let y = 0; y < height; y += BAND) {
     const el = document.createElement("div");

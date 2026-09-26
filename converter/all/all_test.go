@@ -43,7 +43,7 @@ func TestDetect(t *testing.T) {
 		{"pdf", []byte("%PDF-1.7\n..."), "pdf"},
 		{"pptx", pptx.Bytes(), "pptx"},
 		{"xlsx", xlsx.Bytes(), "xlsx"},
-		{"docx", docx.Bytes(), ""},
+		{"docx", docx.Bytes(), "docx"},
 		{"vsdx", vsdx.Bytes(), "visio"},
 		{"vdx", vdx, "visio"},
 		{"emf", emf, "emf"},

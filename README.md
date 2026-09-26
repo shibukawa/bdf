@@ -53,15 +53,15 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 
 ## Features
 
-- Three layout models: fixed-size pages (slides), an infinite plane (spreadsheets), and documents that are paginated but can also be read as one continuous scroll (word processing)
+- Three layout models: fixed-size pages (slides), an infinite plane (spreadsheets), and documents that are paginated but can also be read as one continuous scroll (word processing), optionally with a second view laid out without pages as one long column
 - The instruction set maps 1:1 onto `CanvasRenderingContext2D`
 - Decompressed with `DecompressionStream` and drawn with `OffscreenCanvas` in a Worker
 - Content-addressed parts, so masters and repeated elements are shared automatically
 - A text index part and full-text search in the Worker (matches across lines, NFKC and kana normalization, hit rectangles)
 - A transparent DOM text layer for selection and copy (spaces and line breaks restored from MARK boundaries; works across pages and in continuous mode)
-- Accessible text layers: headings, lists, tables, figures with alternative text, links and languages from structure MARKs, exposed to screen readers (tagged PDF, PowerPoint structure and Excel and CSV cells, with table headers, are converted)
+- Accessible text layers: headings, lists, tables, figures with alternative text, links and languages from structure MARKs, exposed to screen readers (tagged PDF, PowerPoint and Word structure and Excel and CSV cells, with table headers, are converted)
 - The single-file and split-file forms convert into each other without re-encoding (the single file starts with the magic `bdf\0`)
-- The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information, the core properties of PowerPoint and Excel files and a Visio drawing's document properties
+- The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information, the core properties of PowerPoint, Excel and Word files and a Visio drawing's document properties
 - Password-protected inputs (Office documents with an open password, PDFs with a user password) are converted with their password, and the bdf is encrypted with the same password. Each part is sealed on its own (AES-256-GCM), so Range requests and the split form still work; the viewer decrypts with WebCrypto, and the server does not keep the password (spec §3.5)
 
 Documents are converted with the `bdf generate` subcommand, which tells the input formats apart by their content.
@@ -69,8 +69,9 @@ Documents are converted with the `bdf generate` subcommand, which tells the inpu
 - **PDF** (`converter/pdf`): rebuilds embedded fonts (TrueType, CFF, OpenType, Type1) into WOFF2 files that hold only the glyphs in use. It checks the OS/2 embedding permission (`fsType`) and carries the copyright notices over. It also turns form XObjects into shared objects and text into searchable runs, and moves the content common to the top of every page (the master) into a shared object. See §3.1 of design.md for details.
 - **PowerPoint .pptx** (`converter/pptx`): draws DrawingML directly. The shapes of slide masters and layouts become layer objects shared between slides, preset shapes come from the ECMA-376 shape formulas, and text is wrapped by the converter (Japanese line breaking rules, vertical text, bullets, paragraph formatting). Tables, charts, SmartArt and EMF/WMF pictures are drawn too. The fonts used for layout are embedded as WOFF2 subsets, so the result does not depend on the viewer's fonts. See §3.4 of design.md for details.
 - **Excel .xlsx** (`converter/xlsx`): each worksheet becomes a sheet view whose cells are laid out by the converter and drawn into tiles: number formats (dates, Japanese eras, fractions, accounting), fonts and rich text, fills, borders, alignment (wrapping with Japanese line breaking rules, overflow into empty cells, rotation, shrink to fit), merged cells, conditional formats (color scales, data bars, icon sets, rules with formulas), tables with their styles, and pictures, shapes and charts drawn once and used by the tiles they cover. Chart sheets become pages. Column widths and row heights follow Excel's rules; frozen panes and gridlines go to the manifest. See §3.6 of design.md for details.
-- **CSV / TSV** (`converter/csv`): one sheet view that looks like the file opened in Excel, drawn by the Excel converter. The character encoding (a byte order mark, UTF-8, UTF-16, Shift_JIS, EUC-JP, ISO-2022-JP, Windows-1252), the delimiter (comma, tab, semicolon, vertical bar), the quoting (double, single or none, doubled or backslash-escaped quotes) and whether the first row is a header row are guessed, and `-param` overrides each guess. Numbers and dates are aligned right as they are written (unlike Excel, `007` stays `007`), the columns are as wide as their values, values with line breaks wrap, and a header row is bold, frozen and marked as column headers; `-param table=TableStyleMedium2` formats the values as an Excel table. See §3.9 of design.md for details.
+- **CSV / TSV** (`converter/csv`): one sheet view that looks like the file opened in Excel, drawn by the Excel converter. The character encoding (a byte order mark, UTF-8, UTF-16, Shift_JIS, EUC-JP, ISO-2022-JP, Windows-1252), the delimiter (comma, tab, semicolon, vertical bar), the quoting (double, single or none, doubled or backslash-escaped quotes) and whether the first row is a header row are guessed, and `-param` overrides each guess. Numbers and dates are aligned right as they are written (unlike Excel, `007` stays `007`), the columns are as wide as their values, values with line breaks wrap, and a header row is bold, frozen and marked as column headers; `-param table=TableStyleMedium2` formats the values as an Excel table. See §3.10 of design.md for details.
 - **Visio .vsdx / .vdx** (`converter/visio`): Visio 2013 packages (.vsdx, .vsdm, .vstx) and the XML drawings of Visio 2003 to 2010 (.vdx), read into one ShapeSheet model. Shapes inherit from masters and styles, and the cells a dynamic theme sets are resolved from the theme and the shapes' quick styles. Every geometry row, fill pattern, gradient, line pattern and the 45 arrowheads are drawn; background pages become background layers shared between pages. Text is laid out by the DrawingML text engine the PowerPoint converter uses, with its fonts embedded as WOFF2 subsets. The binary .vsd format is not read. See §3.8 of design.md for details.
+- **Word .docx** (`converter/docx`): lays the document out in the converter, which is what Word does each time it opens a file: lines (Japanese line breaking rules and spacing, tab stops and leaders, justification, the document grid), lists, tables (table styles, merged cells, rows split across pages, repeated header rows), floating pictures and text boxes with text wrapping around them, columns, sections, headers and footers with page numbers, footnotes, and East Asian vertical text (upright characters, vertical punctuation, turned Latin text and tables). Two views come out of it: the pages (a flow view with header, body and footer layers), and a scroll view laid out once more without pages as one long column of the text width, like Word's draft and web layouts. Drawings go through the same DrawingML renderer as PowerPoint, and the fonts are embedded the same way. See §3.9 of design.md for details.
 - **Windows metafiles .emf / .wmf** (`converter/emf`): one page the size of the picture, drawn by replaying the metafile's records (the replay that also draws the metafile pictures inside Office documents). Text is laid out and its fonts embedded as for PowerPoint.
 
 The input formats are static plugins: each converter package registers its format with the `converter` package when it is imported, and a program supports the formats whose packages it links in.
@@ -118,12 +119,13 @@ The documents are in Japanese.
 | `converter/pptx` | PowerPoint (.pptx) → bdf converter |
 | `converter/xlsx` | Excel (.xlsx) → bdf converter |
 | `converter/csv` | CSV and TSV → bdf converter (drawn by `converter/xlsx`) |
+| `converter/docx` | Word (.docx) → bdf converter |
 | `converter/visio` | Visio (.vsdx, .vdx) → bdf converter |
 | `converter/emf` | Windows metafile (.emf, .wmf) → bdf converter |
 | `converter/all` | Registers every input format (import for its side effect) |
-| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`), objects under construction (`canvas`), EMF/WMF replay (`metafile`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`) |
+| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`), objects under construction (`canvas`), EMF/WMF replay (`metafile`), line breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
-| `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering, Worker |
+| `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering (scroll views render as continuous), Worker |
 | `examples/viewer` | Demo viewer |
 | `testdata/` | Generated samples and golden images |
 
@@ -137,7 +139,7 @@ go run ./cmd/bdf ls out.bdf          # list parts
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # convert to the split form
 
-# PDF / PowerPoint / Excel / CSV / Visio / metafiles → bdf (the format is detected from the content, else from the extension; -format pdf|pptx|xlsx|csv|visio|emf forces it)
+# PDF / PowerPoint / Excel / CSV / Word / Visio / metafiles → bdf (the format is detected from the content, else from the extension; -format pdf|pptx|xlsx|csv|docx|visio|emf forces it)
 go run ./cmd/bdf generate -h                  # flags and the input formats with their -param options
 go run ./cmd/bdf generate in.pdf out.bdf      # single-file form
 go run ./cmd/bdf generate in.pptx out/        # split form
@@ -148,12 +150,14 @@ go run ./cmd/bdf generate -no-woff2 in.pdf out.bdf     # store fonts as TTF/OTF 
 go run ./cmd/bdf generate -ignore-fstype in.pdf out.bdf # embed fonts even when fsType forbids embedding or subsetting (only if you hold the rights)
 go run ./cmd/bdf generate -kind flow in.pdf out.bdf    # PDF: make a flow view
 go run ./cmd/bdf generate -no-share in.pdf out.bdf     # PDF: do not move the common top of each page (the master) into a shared object
-go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf   # PowerPoint, Excel: add a directory to search for fonts
-go run ./cmd/bdf generate -fonts system in.pptx out.bdf      # PowerPoint, Excel: refer to fonts by name instead of embedding them
+go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf   # PowerPoint, Excel, Word: add a directory to search for fonts
+go run ./cmd/bdf generate -fonts system in.pptx out.bdf      # PowerPoint, Excel, Word: refer to fonts by name instead of embedding them
 go run ./cmd/bdf generate -hidden in.pptx out.bdf            # PowerPoint, Excel: include hidden slides or sheets (-param hidden=true)
 go run ./cmd/bdf generate in.xlsx out.bdf                    # Excel workbook: a sheet view per worksheet
 go run ./cmd/bdf generate in.csv out.bdf                     # CSV or TSV: one sheet view (encoding, delimiter, quotes and header row detected)
 go run ./cmd/bdf generate -param charset=shift_jis -param delimiter=tab -param header=false in.txt out.bdf  # CSV: override the guesses
+go run ./cmd/bdf generate in.docx out.bdf                    # Word: the pages and the scroll view
+go run ./cmd/bdf generate -param views=pages in.docx out.bdf # Word: only the pages (views=scroll: only the scroll view)
 go run ./cmd/bdf generate in.vsdx out.bdf                    # Visio (.vsdx or .vdx): a page for each foreground page
 go run ./cmd/bdf generate in.emf out.bdf                     # Windows metafile (.emf or .wmf) as one page
 go run ./cmd/bdf generate -password-file pw.txt in.pptx out.bdf  # password-protected input (- reads stdin; default $BDF_PASSWORD); out.bdf is encrypted with the same password
@@ -171,6 +175,7 @@ npm run test:golden:update           # update the golden images
 npm run testdata                     # regenerate testdata/ (requires Go)
 npm run test:pptx:gen                # regenerate the PowerPoint test decks (requires python-pptx and msoffcrypto-tool)
 npm run test:xlsx:gen                # regenerate the Excel test workbooks (requires openpyxl)
+npm run test:docx:gen                # regenerate the Word test documents
 npm run test:visio:gen               # regenerate the Visio test drawings
 node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium (sheets: up to 4096 px from the top left)
 
