@@ -137,6 +137,8 @@ func generate(args []string) {
 			usageError(in + ": legacy .doc files are not supported; save as .docx first")
 		case ".vsd", ".vss", ".vst":
 			usageError(in + ": legacy binary Visio files (" + ext + ") are not supported; save as .vsdx first")
+		case ".dwg":
+			usageError(in + ": AutoCAD DWG files are not supported; save as .dxf first")
 		}
 		usageError(in + ": unknown input format (want one of " + strings.Join(names, ", ") + ")")
 	case errors.Is(err, converter.ErrPasswordRequired):

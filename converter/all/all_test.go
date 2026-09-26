@@ -57,6 +57,8 @@ func TestDetect(t *testing.T) {
 		{"mxGraphModel", []byte("\ufeff<?xml version=\"1.0\"?>\n<mxGraphModel><root/></mxGraphModel>"), "drawio"},
 		{"plain svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), ""},
 		{"tsv", []byte("id\tname\n1\tAnn\n"), "csv"},
+		{"dxf", []byte("  0\r\nSECTION\r\n  2\r\nHEADER\r\n"), "dxf"},
+		{"binary dxf", []byte("AutoCAD Binary DXF\r\n\x1a\x00\x00\x00"), "dxf"},
 		{"junk", []byte("hello"), ""},
 	} {
 		got := ""

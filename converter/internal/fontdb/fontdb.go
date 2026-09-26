@@ -404,7 +404,10 @@ type Loaded struct {
 	// vertical metrics in em
 	Ascent, Descent       float64
 	UnderlinePos, UnderTh float64
-	embed, subset         bool
+	// CapHeight is the height of capital letters in em (estimated when
+	// the font does not say).
+	CapHeight     float64
+	embed, subset bool
 }
 
 // ErrNoGlyphs is returned for faces whose glyph data cannot be read.
@@ -446,6 +449,10 @@ func (f *Face) Load() (*Loaded, error) {
 		}
 		if ok {
 			l.embed, l.subset = os2.Embeddable()
+		}
+		l.CapHeight = 0.7
+		if ok && os2.CapHeight > 0 {
+			l.CapHeight = float64(os2.CapHeight) / l.upem
 		}
 		pos, th := sf.Underline()
 		l.UnderlinePos, l.UnderTh = float64(pos)/l.upem, float64(th)/l.upem
