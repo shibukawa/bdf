@@ -6,6 +6,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/canvas"
 )
 
 // basicShapeNames are the shapes mxBasic.js registers.
@@ -33,7 +36,7 @@ func TestBasicShapesResolve(t *testing.T) {
 	}
 	m := parseModel(root)
 	v := newView(m, nil, nil)
-	c := &converter{warned: map[string]bool{}}
+	c := &converter{warned: map[string]bool{}, objs: canvas.NewBuilder(bdf.NewDocument(), nil)}
 	for i, n := range basicShapeNames {
 		name := "mxgraph.basic." + n
 		d := shapeRegistry[name]
@@ -133,9 +136,9 @@ func paintTestShape(t *testing.T, name, st string, w, h float64) (*shape, bool) 
 	s := testShape(t, name, st)
 	s.conv.opts = &Options{}
 	s.bounds = rect{0, 0, w, h}
-	cv := s.conv.newCanvas()
+	cv := s.conv.objs.New()
 	s.paint(newC2D(cv))
-	return s, cv.drawn
+	return s, cv.Drawn
 }
 
 // TestBasicPolygon checks which polyCoords and polyCurves draw: draw.io

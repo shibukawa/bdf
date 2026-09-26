@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/canvas"
 )
 
 // Labels: where draw.io puts a cell's text (mxCellRenderer.getLabelBounds,
@@ -659,9 +660,9 @@ func (c *converter) drawLabel(c2 *c2d, l *labelBox) {
 		}()
 	}
 	obj.Save()
-	cv.drawn = true
+	cv.Drawn = true
 	if l.rotation != 0 {
-		cv.transform(rotateAbout(l.rotation, l.anchor.x, l.anchor.y))
+		cv.Transform(canvas.Matrix(rotateAbout(l.rotation, l.anchor.x, l.anchor.y)))
 	}
 	if l.bg != nil {
 		obj.FillColor(l.bg.withAlpha(l.alpha).bdf())
@@ -740,7 +741,7 @@ func (c *converter) drawLabel(c2 *c2d, l *labelBox) {
 // textEmitter writes text instructions, avoiding repeated state.
 type textEmitter struct {
 	c     *converter
-	cv    *canvas
+	cv    *canvas.Canvas
 	alpha float64
 	font  bdf.FontRef
 	size  float64
@@ -772,7 +773,7 @@ func (e *textEmitter) emitItems(obj *bdf.Object, items []titem, x, base float64)
 			e.fill = 0
 			obj.FillRect(f32(x), f32(y-asc*st.size), f32(w), f32((asc+desc)*st.size))
 		}
-		ref := e.cv.font(fc.use)
+		ref := e.cv.Font(fc.Use)
 		if !e.set || ref != e.font || st.size != e.size {
 			obj.Font(ref, f32(st.size))
 			e.font, e.size, e.set = ref, st.size, true
@@ -786,9 +787,9 @@ func (e *textEmitter) emitItems(obj *bdf.Object, items []titem, x, base float64)
 		if strings.TrimSpace(text) != "" || len(run) > 0 {
 			obj.FillText(text, f32(x), f32(y), f32(w))
 		}
-		th := math.Max(1, fc.ulTh*st.size)
+		th := math.Max(1, fc.ULThick*st.size)
 		if st.underline {
-			obj.FillRect(f32(x), f32(y-fc.ulPos*st.size-th/2), f32(w), f32(th))
+			obj.FillRect(f32(x), f32(y-fc.ULPos*st.size-th/2), f32(w), f32(th))
 		}
 		if st.strike {
 			obj.FillRect(f32(x), f32(y-0.3*st.size-th/2), f32(w), f32(th))

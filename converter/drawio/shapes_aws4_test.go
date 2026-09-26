@@ -107,9 +107,9 @@ func paintAws4(t *testing.T, name, st string, b rect) *bdf.ObjectPart {
 	s := testShape(t, name, st)
 	s.conv.opts = &Options{}
 	s.bounds = b
-	cv := s.conv.newCanvas()
+	cv := s.conv.objs.New()
 	s.paint(newC2D(cv))
-	part, err := bdf.DecodeObject(cv.obj.Encode())
+	part, err := bdf.DecodeObject(cv.Obj.Encode())
 	if err != nil {
 		t.Fatal(err)
 	}

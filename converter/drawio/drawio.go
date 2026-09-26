@@ -16,12 +16,13 @@ import (
 	"math"
 	"net/url"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
+	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/imgconv"
 )
 
@@ -80,12 +81,8 @@ type converter struct {
 	warnings []string
 	warned   map[string]bool
 
-	canvases      []*canvas
-	faceRunes     map[*fontdb.Face]map[rune]bool
-	choices       map[resolveKey]*faceChoice
-	fallback      map[fallbackKey]*faceChoice
-	fallbackLists map[fallbackListKey][]fontdb.Resolved
-	missing       map[rune]bool
+	fonts         *fontset.Set
+	objs          *canvas.Builder
 	images        map[string]*imageRef
 	embeddedFonts int
 
@@ -104,10 +101,10 @@ type converter struct {
 
 func newConverter(opts *Options) *converter {
 	c := &converter{opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{},
-		faceRunes: map[*fontdb.Face]map[rune]bool{}, choices: map[resolveKey]*faceChoice{},
-		fallback: map[fallbackKey]*faceChoice{}, fallbackLists: map[fallbackListKey][]fontdb.Resolved{},
-		missing: map[rune]bool{}, images: map[string]*imageRef{}, viewOf: map[string]string{}}
+		images: map[string]*imageRef{}, viewOf: map[string]string{}}
 	c.db = fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
+	c.fonts = fontset.New(c.db, func(msg string) { c.warnf("%s", msg) })
+	c.objs = canvas.NewBuilder(c.doc, c.fonts)
 	if len(c.db.Faces) == 0 && !opts.SystemFonts {
 		c.warnf("no fonts found; text is laid out with estimated metrics and not embedded")
 	}
@@ -173,7 +170,7 @@ func Convert(data []byte, opts *Options) (*Result, error) {
 	type pending struct {
 		view   *bdf.View
 		page   *bdf.Page
-		layers []*canvas
+		layers []*canvas.Canvas
 	}
 	var views []pending
 	for i, n := range sel {
@@ -192,11 +189,11 @@ func Convert(data []byte, opts *Options) (*Result, error) {
 		views = append(views, pending{view, pg, layers})
 	}
 	c.finalize()
-	c.reportMissing()
+	c.fonts.ReportMissing()
 	c.reportAWSLegacy()
 	for _, v := range views {
 		for i, cv := range v.layers {
-			v.page.Layers[i].Obj = cv.hash
+			v.page.Layers[i].Obj = cv.Hash()
 		}
 		if len(v.page.Layers) == 0 {
 			o := bdf.NewObject()
@@ -211,26 +208,6 @@ func Convert(data []byte, opts *Options) (*Result, error) {
 		}
 	}
 	return &Result{Doc: c.doc, Warnings: c.warnings, Pages: len(sel), EmbeddedFonts: c.embeddedFonts}, nil
-}
-
-func (c *converter) reportMissing() {
-	if len(c.missing) == 0 {
-		return
-	}
-	var rs []rune
-	for r := range c.missing {
-		rs = append(rs, r)
-	}
-	slices.Sort(rs)
-	var b strings.Builder
-	for i, r := range rs {
-		if i == 20 {
-			fmt.Fprintf(&b, " … (%d more)", len(rs)-20)
-			break
-		}
-		fmt.Fprintf(&b, " %c U+%04X", r, r)
-	}
-	c.warnf("no available font has glyphs for:%s; viewers draw them with their own fonts", b.String())
 }
 
 func (c *converter) warnf(format string, args ...any) {
@@ -253,7 +230,7 @@ func (c *converter) warnOnce(key, format string, args ...any) {
 // renderPageSafe renders a page; a malformed diagram that trips the
 // renderer becomes an empty page and a warning instead of failing the
 // whole conversion.
-func (c *converter) renderPageSafe(p *page) (pg *bdf.Page, layers []*canvas, err error) {
+func (c *converter) renderPageSafe(p *page) (pg *bdf.Page, layers []*canvas.Canvas, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			c.warnf("page %q: internal error: %v", c.page.name, r)
@@ -270,7 +247,7 @@ type item struct {
 	label *labelBox
 }
 
-func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas, error) {
+func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas.Canvas, error) {
 	m := parseModel(p.model)
 	c.m = m
 	c.pageShadow = m.attrs["shadow"] == "1"
@@ -315,12 +292,12 @@ func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas, error) {
 	pg := &bdf.Page{W: f32(math.Ceil(bounds.w * ptPerUnit)), H: f32(math.Ceil(bounds.h * ptPerUnit))}
 	origin := matrix{ptPerUnit, 0, 0, ptPerUnit, -bounds.x * ptPerUnit, -bounds.y * ptPerUnit}
 
-	var layers []*canvas
+	var layers []*canvas.Canvas
 	if bg, ok := parseColor(m.attrs["background"]); ok && bg.a > 0 {
-		cv := c.newCanvas()
-		cv.obj.SetBBox(0, 0, pg.W, pg.H)
-		cv.obj.FillColor(bg.bdf()).FillRect(0, 0, pg.W, pg.H)
-		cv.drawn = true
+		cv := c.objs.New()
+		cv.Obj.SetBBox(0, 0, pg.W, pg.H)
+		cv.Obj.FillColor(bg.bdf()).FillRect(0, 0, pg.W, pg.H)
+		cv.Drawn = true
 		pg.Layers = append(pg.Layers, bdf.Layer{Role: bdf.RoleBackground})
 		layers = append(layers, cv)
 	}
@@ -328,9 +305,9 @@ func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas, error) {
 		if !l.visible || v.state(l) == nil {
 			continue
 		}
-		cv := c.newCanvas()
-		cv.obj.SetBBox(0, 0, pg.W, pg.H)
-		cv.transform(origin)
+		cv := c.objs.New()
+		cv.Obj.SetBBox(0, 0, pg.W, pg.H)
+		cv.Transform(canvas.Matrix(origin))
 		c2 := newC2D(cv)
 		for _, it := range items {
 			if it.st.layer != l {
@@ -338,7 +315,7 @@ func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas, error) {
 			}
 			c.drawItem(c2, it)
 		}
-		if cv.drawn {
+		if cv.Drawn {
 			pg.Layers = append(pg.Layers, bdf.Layer{Role: bdf.RoleBody})
 			layers = append(layers, cv)
 		}

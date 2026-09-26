@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/canvas"
 )
 
 // shapeStyles are style variants every shape is painted with.
@@ -79,7 +82,7 @@ func testShape(t *testing.T, name, st string) *shape {
 	if d == nil {
 		t.Fatalf("shape %q is not registered", name)
 	}
-	s := &shape{conv: &converter{warned: map[string]bool{}}, style: parseStyle("shape="+name+";"+st, false), def: d, name: name}
+	s := &shape{conv: &converter{warned: map[string]bool{}, objs: canvas.NewBuilder(bdf.NewDocument(), nil)}, style: parseStyle("shape="+name+";"+st, false), def: d, name: name}
 	s.apply()
 	return s
 }
@@ -233,7 +236,7 @@ func TestResolveColors(t *testing.T) {
 	}
 	m := parseModel(root)
 	v := newView(m, nil, nil)
-	c := &converter{warned: map[string]bool{}}
+	c := &converter{warned: map[string]bool{}, objs: canvas.NewBuilder(bdf.NewDocument(), nil)}
 	row := c.newShape(v.state(m.cells["r"]))
 	if row.stroke != "#ff0000" || row.fill != "#00ff00" {
 		t.Errorf("row: stroke %q fill %q", row.stroke, row.fill)

@@ -7,6 +7,7 @@ import (
 	"unicode"
 
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
+	"github.com/shibukawa/bdf/converter/internal/fontset"
 )
 
 // Label text layout. draw.io renders HTML labels as HTML in a
@@ -27,12 +28,12 @@ type tstyle struct {
 	bg                *rgba   // background-color of an inline element
 	shift             float64 // baseline shift (positive: down), for sub and sup
 	link              string
-	pre               bool        // white-space: pre / pre-wrap / break-spaces
-	nowrap            bool        // white-space: nowrap / pre
-	lhFactor          float64     // line-height as a multiple of the font size (0 with lhPx)
-	lhPx              float64     // line-height in px
-	align             string      // text-align of the block (inherited)
-	primary           *faceChoice // the face of the first family, for line metrics
+	pre               bool            // white-space: pre / pre-wrap / break-spaces
+	nowrap            bool            // white-space: nowrap / pre
+	lhFactor          float64         // line-height as a multiple of the font size (0 with lhPx)
+	lhPx              float64         // line-height in px
+	align             string          // text-align of the block (inherited)
+	primary           *fontset.Choice // the face of the first family, for line metrics
 }
 
 func (s *tstyle) clone() *tstyle { c := *s; return &c }
@@ -53,7 +54,7 @@ func (s *tstyle) lineHeight() float64 {
 type titem struct {
 	r     rune
 	st    *tstyle
-	fc    *faceChoice
+	fc    *fontset.Choice
 	w     float64 // advance in px
 	brk   bool    // a line may break after this item
 	hard  bool    // a forced line break (<br>)
@@ -186,14 +187,14 @@ func (b *textBuilder) text(s string, st *tstyle) {
 
 func (b *textBuilder) add(r rune, st *tstyle, space bool) {
 	p := b.para(st)
-	fc := b.c.faceFor(st.families, st.bold, st.italic, r)
-	w := b.c.advance(fc, r) * st.size
+	fc := b.c.fonts.FaceForFamilies(st.families, st.bold, st.italic, r)
+	w := b.c.fonts.Advance(fc, r) * st.size
 	p.items = append(p.items, titem{r: r, st: st, fc: fc, w: w, space: space})
 }
 
 func (b *textBuilder) hardBreak(st *tstyle) {
 	p := b.para(st)
-	fc := b.c.faceFor(st.families, st.bold, st.italic, ' ')
+	fc := b.c.fonts.FaceForFamilies(st.families, st.bold, st.italic, ' ')
 	p.items = append(p.items, titem{r: '\n', st: st, fc: fc, hard: true})
 	b.space = true
 }
@@ -220,8 +221,8 @@ func (b *textBuilder) makeMarker(st *tstyle) ([]titem, string) {
 	}
 	var out []titem
 	for _, r := range listNumber(l.typ, l.n) + ". " {
-		fc := b.c.faceFor(st.families, st.bold, st.italic, r)
-		out = append(out, titem{r: r, st: st, fc: fc, w: b.c.advance(fc, r) * st.size})
+		fc := b.c.fonts.FaceForFamilies(st.families, st.bold, st.italic, r)
+		out = append(out, titem{r: r, st: st, fc: fc, w: b.c.fonts.Advance(fc, r) * st.size})
 	}
 	return out, ""
 }
@@ -481,7 +482,7 @@ func (c *converter) setPrimary(st *tstyle) {
 	if len(st.families) > 0 {
 		fam = st.families[0]
 	}
-	st.primary = c.choice(fam, st.bold, st.italic, false)
+	st.primary = c.fonts.Choose(fam, st.bold, st.italic, false)
 }
 
 // fontSizeAttr reads <font size>: 1-7, or relative +n/-n from 3.
@@ -848,10 +849,10 @@ func (st *tstyle) fontHeight() (float64, float64) {
 	}
 	a, d := cssMetrics(st.primary)
 	asc, desc := math.Round(a*st.size), math.Round(d*st.size)
-	switch fontdb.Normalize(st.primary.use.requested) {
+	switch fontdb.Normalize(st.primary.Use.Requested) {
 	case "helvetica", "times", "courier":
-		if st.primary.l != nil {
-			switch fontdb.Normalize(st.primary.l.Face.Family) {
+		if st.primary.Loaded != nil {
+			switch fontdb.Normalize(st.primary.Loaded.Face.Family) {
 			case "helvetica", "times", "courier":
 				asc += math.Floor((asc+desc)*0.15 + 0.5)
 			}
@@ -863,14 +864,14 @@ func (st *tstyle) fontHeight() (float64, float64) {
 // cssMetrics returns the ascent and descent (em) browsers use for the
 // content area of text in a face: the typographic metrics when the font
 // asks for them (USE_TYPO_METRICS), else the hhea ones.
-func cssMetrics(fc *faceChoice) (float64, float64) {
+func cssMetrics(fc *fontset.Choice) (float64, float64) {
 	if fc == nil {
 		return 0.9, 0.25
 	}
-	if fc.l == nil {
-		return fc.asc, fc.desc
+	if fc.Loaded == nil {
+		return fc.Asc, fc.Desc
 	}
-	f := fc.l.Font
+	f := fc.Loaded.Font
 	upem := float64(f.UnitsPerEm)
 	if os2, ok := f.OS2(); ok && os2.FsSelection&0x80 != 0 && os2.TypoAscent-os2.TypoDescent > 0 {
 		return float64(os2.TypoAscent) / upem, float64(-os2.TypoDescent) / upem
@@ -878,5 +879,5 @@ func cssMetrics(fc *faceChoice) (float64, float64) {
 	if f.Ascent != 0 || f.Descent != 0 {
 		return float64(f.Ascent) / upem, float64(-f.Descent) / upem
 	}
-	return fc.asc, fc.desc
+	return fc.Asc, fc.Desc
 }

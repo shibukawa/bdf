@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/canvas"
 )
 
 func TestStencilBasename(t *testing.T) {
@@ -128,7 +129,8 @@ func compressGraph(t *testing.T, xmlText string) string {
 }
 
 func testConverter() *converter {
-	return &converter{opts: &Options{}, doc: bdf.NewDocument(), warned: map[string]bool{}, images: map[string]*imageRef{}}
+	doc := bdf.NewDocument()
+	return &converter{opts: &Options{}, doc: doc, objs: canvas.NewBuilder(doc, nil), warned: map[string]bool{}, images: map[string]*imageRef{}}
 }
 
 func TestInlineStencil(t *testing.T) {
@@ -167,10 +169,10 @@ func paintStencil(t *testing.T, c *converter, styleStr string, b rect) (*bdf.Obj
 	s.def = &shapeDef{}
 	s.apply()
 	s.bounds = b
-	cv := c.newCanvas()
+	cv := c.objs.New()
 	c2 := newC2D(cv)
 	s.paint(c2)
-	part, err := bdf.DecodeObject(cv.obj.Encode())
+	part, err := bdf.DecodeObject(cv.Obj.Encode())
 	if err != nil {
 		t.Fatal(err)
 	}

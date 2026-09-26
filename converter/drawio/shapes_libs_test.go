@@ -8,6 +8,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/canvas"
 )
 
 // The shapes of mxBpmnShape2.js and mxArrows.js.
@@ -182,15 +185,15 @@ func TestArrows2Undefined(t *testing.T) {
 		{"mxgraph.arrows2.arrow", "", true},
 		{"mxgraph.arrows2.arrow", "dy=abc;", false},
 	} {
-		c := &converter{warned: map[string]bool{}}
+		c := &converter{warned: map[string]bool{}, objs: canvas.NewBuilder(bdf.NewDocument(), nil)}
 		s := testShape(t, tc.name, tc.style)
 		s.conv = c
-		cv := c.newCanvas()
+		cv := c.objs.New()
 		c2 := newC2D(cv)
 		s.configureCanvas(c2, 0, 0, 100, 100)
 		s.def.paintVertex(s, c2, 0, 0, 100, 100)
-		if cv.drawn != tc.drawn {
-			t.Errorf("%s %q: drawn %v, want %v", tc.name, tc.style, cv.drawn, tc.drawn)
+		if cv.Drawn != tc.drawn {
+			t.Errorf("%s %q: drawn %v, want %v", tc.name, tc.style, cv.Drawn, tc.drawn)
 		}
 	}
 	if v := jsStyleFloat(style{"a": "12px", "b": "x"}, "a", 0); v != 12 {

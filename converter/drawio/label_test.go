@@ -89,10 +89,10 @@ func TestPlainLabel(t *testing.T) {
 
 func TestHTMLStructure(t *testing.T) {
 	c, l := labelOf(t, `<mxCell id="a" value="&lt;h2&gt;Title&lt;/h2&gt;one&lt;br&gt;two&lt;ul&gt;&lt;li&gt;x&lt;/li&gt;&lt;li&gt;y&lt;/li&gt;&lt;/ul&gt;" style="text;html=1;" vertex="1" parent="1"><mxGeometry x="0" y="0" width="200" height="100" as="geometry"/></mxCell>`, "a")
-	cv := c.newCanvas()
+	cv := c.objs.New()
 	c.drawLabel(newC2D(cv), l)
 	c.finalize()
-	o, err := bdf.DecodeObject(c.doc.Part(cv.hash).Data)
+	o, err := bdf.DecodeObject(c.doc.Part(cv.Hash()).Data)
 	if err != nil {
 		t.Fatal(err)
 	}

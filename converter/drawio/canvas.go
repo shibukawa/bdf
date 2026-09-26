@@ -5,60 +5,8 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/canvas"
 )
-
-// canvas is a layer object under construction. Font references stay
-// placeholders until every page has been laid out, because the embedded
-// fonts are subsets of all the characters used anywhere.
-type canvas struct {
-	c       *converter
-	obj     *bdf.Object
-	fonts   []fontUse
-	fontIdx map[fontUse]bdf.FontRef
-	images  map[bdf.Hash]bdf.ImageRef
-	drawn   bool
-
-	encoded bool
-	hash    bdf.Hash
-	bbox    bdf.Rect
-}
-
-func (c *converter) newCanvas() *canvas {
-	cv := &canvas{c: c, obj: bdf.NewObject(), fontIdx: map[fontUse]bdf.FontRef{}, images: map[bdf.Hash]bdf.ImageRef{}}
-	c.canvases = append(c.canvases, cv)
-	return cv
-}
-
-func (cv *canvas) font(u fontUse) bdf.FontRef {
-	if r, ok := cv.fontIdx[u]; ok {
-		return r
-	}
-	r := cv.obj.AddFont(bdf.SystemFont("\x00pending", 0, 0))
-	cv.fonts = append(cv.fonts, u)
-	cv.fontIdx[u] = r
-	return r
-}
-
-func (cv *canvas) image(h bdf.Hash) bdf.ImageRef {
-	if r, ok := cv.images[h]; ok {
-		return r
-	}
-	r := cv.obj.AddImage(h)
-	cv.images[h] = r
-	return r
-}
-
-// transform emits m (as TRANSLATE when it is one).
-func (cv *canvas) transform(m matrix) {
-	if m == identity {
-		return
-	}
-	if m[0] == 1 && m[1] == 0 && m[2] == 0 && m[3] == 1 {
-		cv.obj.Translate(f32(m[4]), f32(m[5]))
-		return
-	}
-	cv.obj.Transform(f32(m[0]), f32(m[1]), f32(m[2]), f32(m[3]), f32(m[4]), f32(m[5]))
-}
 
 func f32(v float64) float32 {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
@@ -77,7 +25,7 @@ func f32(v float64) float32 {
 // stack follows the canvas's. Fill and stroke state is written before each
 // fill or stroke when it differs from what the object has in effect.
 type c2d struct {
-	cv    *canvas
+	cv    *canvas.Canvas
 	obj   *bdf.Object
 	st    c2dState
 	stack []c2dState
@@ -111,8 +59,8 @@ type c2dState struct {
 	eAlpha         float64
 }
 
-func newC2D(cv *canvas) *c2d {
-	return &c2d{cv: cv, obj: cv.obj, st: c2dState{
+func newC2D(cv *canvas.Canvas) *c2d {
+	return &c2d{cv: cv, obj: cv.Obj, st: c2dState{
 		scale: 1, alpha: 1, fillAlpha: 1, strokeAlpha: 1, gradientFillAlpha: 1, gradientAlpha: 1,
 		strokeWidth: 1, dashPattern: "3 3", lineCap: "flat", lineJoin: "miter", miterLimit: 10,
 		eFill: bdf.RGB(0, 0, 0), eStroke: bdf.RGB(0, 0, 0), eLine: [4]float64{1, 0, 0, 10}, eAlpha: 1,
@@ -169,7 +117,7 @@ func (c *c2d) rotate(theta float64, flipH, flipV bool, cx, cy float64) {
 		m = m.mul(rotateAbout(theta, cx, cy))
 	}
 	s.rotation += theta
-	c.cv.transform(m)
+	c.cv.Transform(canvas.Matrix(m))
 }
 
 func (c *c2d) setAlpha(v float64)       { c.st.alpha = v }
@@ -346,7 +294,7 @@ func (c *c2d) paint(fill, stroke bool) {
 		return
 	}
 	ref := c.obj.AddPath(path)
-	c.cv.drawn = true
+	c.cv.Drawn = true
 	if doFill {
 		c.fillPath(ref, path, box)
 	}
@@ -570,8 +518,8 @@ func (c *c2d) image(x, y, w, h float64, img *imageRef, aspect, flipH, flipV bool
 		y += (h - nh) / 2
 		w, h = nw, nh
 	}
-	ref := c.cv.image(img.hash)
-	c.cv.drawn = true
+	ref := c.cv.Image(img.hash)
+	c.cv.Drawn = true
 	alpha := c.st.alpha
 	needSave := flipH || flipV || alpha < 1
 	if needSave {
@@ -588,7 +536,7 @@ func (c *c2d) image(x, y, w, h float64, img *imageRef, aspect, flipH, flipV bool
 			if flipV {
 				sy, ty = -1, 2*y+h
 			}
-			c.cv.transform(matrix{sx, 0, 0, sy, tx, ty})
+			c.cv.Transform(canvas.Matrix{sx, 0, 0, sy, tx, ty})
 		}
 	}
 	c.obj.Image(ref, f32(x), f32(y), f32(w), f32(h))
