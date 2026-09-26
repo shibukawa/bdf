@@ -79,7 +79,7 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 - **ページをまたぐ共通プレフィックスの共有**: PDF はマスター（ヘッダ・ロゴ・フッタ）を各ページの内容ストリームに展開してしまうので、変換後の各ページ Object の先頭から一致するバイト列を切り出して共有 Object にする（`bdf.SharePrefixes`）。切れる位置は「深さ 0 の命令境界」に限る（SAVE/RESTORE と GROUP が釣り合っていて、それより前の深さ 0 に CLIP/SHADOW/FILTER がなく、直前が MARK でない）。共有部分は USE で呼ぶが USE は暗黙の save/restore を持つので、残り部分の先頭で切断時点の状態（正味の変換行列、最後に出力した塗り・線・アルファ・フォントなど）を書き直してから続きを出す。候補の鍵は命令列と参照リソース（Path、Paint、フォント、画像、子 Object）の内容の累積ハッシュで、同じ鍵を持つページの組を「(ページ数 − 1) × 切り出すバイト数」の大きい順に貪欲に採用する（3 ページで共有できる短い接頭辞を、2 ページだけで共有できる長い接頭辞より優先する）。512 バイト未満の接頭辞は Part のオーバーヘッドの方が大きいので共有しない。`-no-share` で無効化。
 - **未対応（警告を出して無視）**: ExtGState のソフトマスク、メッシュ系シェーディング（平均色で代用）、Type 4 関数（中央値で代用）、埋め込みでない定義済み CMap。
 
-テスト用 PDF は Chromium（Skia）と reportlab で生成し（`npm run test:pdf:gen`）、変換結果は `fixtures/pdf/` に置いて golden テストで描画を比較する。
+テスト用 PDF は Chromium（Skia）と reportlab で生成し（`npm run test:pdf:gen`）、変換結果は `testdata/pdf/` に置いて golden テストで描画を比較する。
 
 ## 3.2 画像の格納と変換（imgconv）
 
@@ -160,7 +160,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **その他**: 非表示スライドは既定で除く（`-hidden` で含める）。OLE オブジェクトはプレビュー画像を描く。画像は `imgconv`（§3.2）を通し、TIFF は PNG にデコードする。構造の壊れたスライドで描画が失敗した場合は空のページにして警告する。
 - **未対応（警告を出す）**: EMF+ だけで書かれたメタファイル、レーダー・バブル・等高線グラフ、光彩・反射・ぼかしなどの効果、インク、旧形式（VML のみ）の OLE プレビュー、リンクされた（埋め込まれていない）画像、描画パートのない SmartArt。
 
-テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`）、変換結果は `fixtures/pptx/` に置いて golden テストで描画を比較する。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセットだけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
+テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`）、変換結果は `testdata/pptx/` に置いて golden テストで描画を比較する。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセットだけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
 
 ## 4. テキストの扱い
 
@@ -242,7 +242,7 @@ bdf/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）
-├── fixtures/          Go が生成した demo.bdf / demo-split と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

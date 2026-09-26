@@ -87,7 +87,7 @@ flowchart TB
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
 | `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画、Worker |
 | `examples/viewer` | デモビューア |
-| `fixtures/` | 生成済みサンプルと golden 画像 |
+| `testdata/` | 生成済みサンプルと golden 画像 |
 
 ## 使い方
 
@@ -120,7 +120,7 @@ npm ci
 npm test                             # デコーダのテスト（Node）
 npm run test:golden                  # Chromium で描画して golden 画像と比較
 npm run test:golden:update           # golden 画像を更新
-npm run fixtures                     # fixtures/ を再生成（Go が必要）
+npm run testdata                     # testdata/ を再生成（Go が必要）
 npm run test:pptx:gen                # PowerPoint のテスト用デッキを再生成（python-pptx が必要）
 node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に描画
 

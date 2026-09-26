@@ -89,7 +89,7 @@ The documents are in Japanese.
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering, Worker |
 | `examples/viewer` | Demo viewer |
-| `fixtures/` | Generated samples and golden images |
+| `testdata/` | Generated samples and golden images |
 
 ## Usage
 
@@ -122,7 +122,7 @@ npm ci
 npm test                             # decoder tests (Node)
 npm run test:golden                  # render in Chromium and compare with the golden images
 npm run test:golden:update           # update the golden images
-npm run fixtures                     # regenerate fixtures/ (requires Go)
+npm run testdata                     # regenerate testdata/ (requires Go)
 npm run test:pptx:gen                # regenerate the PowerPoint test decks (requires python-pptx)
 node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium
 

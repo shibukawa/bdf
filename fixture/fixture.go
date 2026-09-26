@@ -15,7 +15,7 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-//go:embed fonts/*.ttf
+//go:embed testdata/fonts/*.ttf
 var fontFS embed.FS
 
 // Measurer computes text advances from an sfnt font.
@@ -60,11 +60,11 @@ type Fonts struct {
 
 // LoadFonts adds the fixture fonts to d.
 func LoadFonts(d *bdf.Document) (*Fonts, error) {
-	reg, err := fontFS.ReadFile("fonts/DejaVuSans-sub.ttf")
+	reg, err := fontFS.ReadFile("testdata/fonts/DejaVuSans-sub.ttf")
 	if err != nil {
 		return nil, err
 	}
-	bold, err := fontFS.ReadFile("fonts/DejaVuSans-Bold-sub.ttf")
+	bold, err := fontFS.ReadFile("testdata/fonts/DejaVuSans-Bold-sub.ttf")
 	if err != nil {
 		return nil, err
 	}
