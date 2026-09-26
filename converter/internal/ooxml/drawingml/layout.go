@@ -19,15 +19,17 @@ import (
 const noStart = "、。，．,.:;?!)]}」』】〕〉》）］｝〙〗〟”’ゝゞヽヾーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ々〻‐゠–〜？！：；・…‥%％°℃"
 const noEnd = "([{「『【〔〈《（［｛〘〖〝“‘¥$£＄￥"
 
-func isBreakSpace(r rune) bool {
+// IsBreakSpace reports whether r is a space after which a line may break.
+func IsBreakSpace(r rune) bool {
 	return r == ' ' || r == '　' || r == ' ' || r == ' ' || r == ' '
 }
 
-func canBreak(a, b rune) bool {
-	if isBreakSpace(a) {
-		return !isBreakSpace(b)
+// CanBreak reports whether a line may break between the characters a and b.
+func CanBreak(a, b rune) bool {
+	if IsBreakSpace(a) {
+		return !IsBreakSpace(b)
 	}
-	if isBreakSpace(b) || a == '\u00a0' || b == '\u00a0' {
+	if IsBreakSpace(b) || a == '\u00a0' || b == '\u00a0' {
 		return false
 	}
 	if strings.ContainsRune(noStart, b) || strings.ContainsRune(noEnd, a) {
@@ -52,7 +54,7 @@ func markBreaks(items []item) {
 			items[i].brk = true
 			continue
 		}
-		items[i].brk = canBreak(items[i].r, items[i+1].r)
+		items[i].brk = CanBreak(items[i].r, items[i+1].r)
 	}
 }
 
@@ -115,7 +117,7 @@ func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 			if it.kind == itemTab {
 				it.w = nextTab(pa, x) - x
 			}
-			if wrap && x+it.w > width+1e-6 && !(it.kind == itemChar && isBreakSpace(it.r)) && i > 0 {
+			if wrap && x+it.w > width+1e-6 && !(it.kind == itemChar && IsBreakSpace(it.r)) && i > 0 {
 				if lastBrk >= 0 {
 					end = lastBrk + 1
 				} else {
@@ -143,7 +145,7 @@ func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 		ln.width = start
 		for i := len(ln.items) - 1; i >= 0; i-- {
 			it := ln.items[i]
-			if it.kind == itemChar && isBreakSpace(it.r) {
+			if it.kind == itemChar && IsBreakSpace(it.r) {
 				continue
 			}
 			ln.width = it.x + it.w
@@ -162,7 +164,7 @@ func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 			break
 		}
 		prev, next := items[end-1].r, items[end].r
-		cjkWrap = !isBreakSpace(prev) && (fontdb.IsCJK(prev) || fontdb.IsCJK(next))
+		cjkWrap = !IsBreakSpace(prev) && (fontdb.IsCJK(prev) || fontdb.IsCJK(next))
 		items = items[end:]
 		first, afterBr = false, false
 	}
@@ -231,12 +233,12 @@ func (ln *textLine) align(width float64, wrap bool) {
 		// Spread over the spaces between words, or over the characters
 		// when there are none (East Asian text).
 		n := len(ln.items)
-		for n > 0 && ln.items[n-1].kind == itemChar && isBreakSpace(ln.items[n-1].r) {
+		for n > 0 && ln.items[n-1].kind == itemChar && IsBreakSpace(ln.items[n-1].r) {
 			n--
 		}
 		spaces := 0
 		for i := 0; i < n; i++ {
-			if ln.items[i].kind == itemChar && isBreakSpace(ln.items[i].r) {
+			if ln.items[i].kind == itemChar && IsBreakSpace(ln.items[i].r) {
 				spaces++
 			}
 		}
@@ -245,7 +247,7 @@ func (ln *textLine) align(width float64, wrap bool) {
 			shift := 0.0
 			for i := 0; i < len(ln.items); i++ {
 				ln.items[i].x += shift
-				if i < n && ln.items[i].kind == itemChar && isBreakSpace(ln.items[i].r) {
+				if i < n && ln.items[i].kind == itemChar && IsBreakSpace(ln.items[i].r) {
 					ln.items[i].w += add
 					ln.items[i].ls = -1 // stretched space: not drawn
 					shift += add
@@ -534,7 +536,7 @@ func (e *textEmitter) runs(items []item) [][2]int {
 		// trailing spaces at the end of the line are not drawn
 		k := j
 		if j == len(items) {
-			for k > i && isBreakSpace(items[k-1].r) {
+			for k > i && IsBreakSpace(items[k-1].r) {
 				k--
 			}
 		}

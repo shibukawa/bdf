@@ -40,7 +40,9 @@ func Open(r io.ReaderAt, size int64) (*Package, error) {
 	}
 	p := &Package{files: map[string]*zip.File{}, xmls: map[string]*Node{}, rels: map[string]map[string]Rel{}}
 	for _, f := range zr.File {
-		p.files[strings.ToLower(strings.TrimPrefix(f.Name, "/"))] = f
+		// some producers write Windows separators in the zip (xl\workbook.xml)
+		name := strings.ReplaceAll(f.Name, "\\", "/")
+		p.files[strings.ToLower(strings.TrimPrefix(name, "/"))] = f
 	}
 	return p, nil
 }

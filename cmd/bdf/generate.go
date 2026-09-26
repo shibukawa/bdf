@@ -32,7 +32,7 @@ func generate(args []string) {
 	title := fs.String("title", "", "document title (default: from the input); the same as -dc title=...")
 	var dcFlags stringList
 	fs.Var(&dcFlags, "dc", "Dublin Core element as name=value, e.g. creator=Alice (repeatable; replaces the element read from the input, name= removes it)")
-	pages := fs.String("pages", "", "pages or slides to convert, e.g. 1-3,5 (default: all)")
+	pages := fs.String("pages", "", "pages, slides or sheets to convert, e.g. 1-3,5 (default: all)")
 	quiet := fs.Bool("q", false, "do not print warnings")
 	images := fs.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
 	quality := fs.Int("quality", 80, "lossy WebP quality (1-100)")
@@ -41,11 +41,11 @@ func generate(args []string) {
 	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
 	kind := fs.String("kind", "fixed", "PDF: view kind, fixed or flow")
 	noShare := fs.Bool("no-share", false, "PDF: do not move the instruction prefix pages have in common into a shared object")
-	fonts := fs.String("fonts", "embed", "PowerPoint, metafiles: embed (subset and embed the fonts used for layout) or system (refer to fonts by name)")
+	fonts := fs.String("fonts", "embed", "PowerPoint, Excel, metafiles: embed (subset and embed the fonts used for layout) or system (refer to fonts by name)")
 	var fontDirs stringList
-	fs.Var(&fontDirs, "font-dir", "PowerPoint, metafiles: directory searched for fonts before the system ones (repeatable)")
-	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, metafiles: use only the fonts under -font-dir")
-	hidden := fs.Bool("hidden", false, "PowerPoint: include hidden slides (the same as -param hidden=true)")
+	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, metafiles: directory searched for fonts before the system ones (repeatable)")
+	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, metafiles: use only the fonts under -font-dir")
+	hidden := fs.Bool("hidden", false, "PowerPoint, Excel: include hidden slides or sheets (the same as -param hidden=true)")
 	var paramFlags stringList
 	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")
 	fs.Usage = func() {
@@ -114,6 +114,8 @@ func generate(args []string) {
 			switch ext := strings.ToLower(filepath.Ext(in)); ext {
 			case ".ppt":
 				usageError(in + ": legacy .ppt files are not supported; save as .pptx first")
+			case ".xls":
+				usageError(in + ": legacy .xls files are not supported; save as .xlsx first")
 			case ".vsd", ".vss", ".vst":
 				usageError(in + ": legacy binary Visio files (" + ext + ") are not supported; save as .vsdx first")
 			}

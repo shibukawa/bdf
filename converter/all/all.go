@@ -12,4 +12,5 @@ import (
 	_ "github.com/shibukawa/bdf/converter/pdf"   // PDF
 	_ "github.com/shibukawa/bdf/converter/pptx"  // PowerPoint
 	_ "github.com/shibukawa/bdf/converter/visio" // Visio
+	_ "github.com/shibukawa/bdf/converter/xlsx"  // Excel
 )

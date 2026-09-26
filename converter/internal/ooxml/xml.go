@@ -50,12 +50,30 @@ const (
 func Parse(data []byte) (*Node, error) {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	d.Strict = false
-	var stack []*Node
-	var root *Node
 	for {
 		tok, err := d.Token()
 		if err == io.EOF {
-			break
+			return nil, io.ErrUnexpectedEOF
+		}
+		if err != nil {
+			return nil, err
+		}
+		if start, ok := tok.(xml.StartElement); ok {
+			return ReadElement(d, start)
+		}
+	}
+}
+
+// ReadElement reads the element that start opens from d, up to its end,
+// into a node tree (with mc:AlternateContent resolved as Parse does). It
+// lets a reader stream the bulk of a large part and keep the rest as trees.
+func ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
+	root := &Node{Space: start.Name.Space, Name: start.Name.Local, Attrs: start.Attr}
+	stack := []*Node{root}
+	for len(stack) > 0 {
+		tok, err := d.Token()
+		if err == io.EOF {
+			return nil, io.ErrUnexpectedEOF
 		}
 		if err != nil {
 			return nil, err
@@ -63,34 +81,23 @@ func Parse(data []byte) (*Node, error) {
 		switch t := tok.(type) {
 		case xml.StartElement:
 			n := &Node{Space: t.Name.Space, Name: t.Name.Local, Attrs: t.Attr}
-			if len(stack) > 0 {
-				p := stack[len(stack)-1]
-				p.Kids = append(p.Kids, n)
-			} else if root == nil {
-				root = n
-			}
+			p := stack[len(stack)-1]
+			p.Kids = append(p.Kids, n)
 			stack = append(stack, n)
 		case xml.EndElement:
-			if len(stack) > 0 {
-				if n := stack[len(stack)-1]; len(n.Kids) == 0 {
-					n.runs = nil // Text alone says it all
-				}
-				stack = stack[:len(stack)-1]
+			if n := stack[len(stack)-1]; len(n.Kids) == 0 {
+				n.runs = nil // Text alone says it all
 			}
+			stack = stack[:len(stack)-1]
 		case xml.CharData:
-			if len(stack) > 0 {
-				n := stack[len(stack)-1]
-				n.Text += string(t)
-				if k := len(n.runs) - 1; k >= 0 && n.runs[k].before == len(n.Kids) {
-					n.runs[k].text += string(t)
-				} else {
-					n.runs = append(n.runs, textRun{len(n.Kids), string(t)})
-				}
+			n := stack[len(stack)-1]
+			n.Text += string(t)
+			if k := len(n.runs) - 1; k >= 0 && n.runs[k].before == len(n.Kids) {
+				n.runs[k].text += string(t)
+			} else {
+				n.runs = append(n.runs, textRun{len(n.Kids), string(t)})
 			}
 		}
-	}
-	if root == nil {
-		return nil, io.ErrUnexpectedEOF
 	}
 	root.resolveAlternates()
 	return root, nil
