@@ -2,6 +2,7 @@ package drawio
 
 import (
 	"math"
+	"strings"
 
 	"github.com/shibukawa/bdf"
 )
@@ -94,7 +95,9 @@ func (c *converter) newShape(st *cellState) *shape {
 		} else {
 			s.def = shapeRegistry["rectangle"]
 		}
-		if s.name != "" {
+		// draw.io falls back to these silently for names it does not know;
+		// library shapes (mxgraph.*) it does know, so they are reported
+		if strings.Contains(s.name, ".") || strings.HasPrefix(s.name, "stencil(") {
 			c.warnOnce("shape:"+s.name, "shape %q is not supported; drawn as a %s", s.name, map[bool]string{true: "line", false: "rectangle"}[st.cell.edge])
 		}
 	}

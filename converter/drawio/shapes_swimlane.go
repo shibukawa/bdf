@@ -836,4 +836,3 @@ func shapeLabelBounds(s *shape, r rect) rect {
 	}
 	return directedBoundsDir(r, m, s.direction, flipH, flipV)
 }
-

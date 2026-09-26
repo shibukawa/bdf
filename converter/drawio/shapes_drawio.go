@@ -91,8 +91,6 @@ func styleBool(st style, key string, def bool) bool {
 	return v != ""
 }
 
-
-
 // lineArc is the corner radius of rounded polygons
 // (mxUtils.getValue(style, 'arcSize', LINE_ARCSIZE) / 2).
 func (s *shape) lineArc() float64 { return s.style.num("arcSize", lineArcSize) / 2 }

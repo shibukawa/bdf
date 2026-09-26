@@ -50,7 +50,11 @@ func (c *converter) imageFor(src string) *imageRef {
 	format := imgconv.Sniff(data)
 	switch format {
 	case "":
-		c.warnOnce("imgfmt", "unsupported image format in a data URI")
+		mt := src
+		if i := strings.IndexAny(mt, ";,"); i >= 0 {
+			mt = mt[:i]
+		}
+		c.warnOnce("imgfmt:"+mt, "unsupported image format in a data URI (%s, %q…)", mt, truncate(string(data), 24))
 		return nil
 	case "svg":
 		ref = &imageRef{}
@@ -94,15 +98,21 @@ func decodeDataURI(s string) ([]byte, error) {
 		}
 		return b, err
 	}
-	if u, err := url.PathUnescape(payload); err == nil {
-		payload = u
-	}
-	// draw.io also writes "data:image/png,<base64>" without the ;base64 marker
-	// (Graph.postProcessCellStyle adds it)
-	if !strings.HasPrefix(meta, "image/svg") {
-		if b, err := base64.StdEncoding.DecodeString(payload); err == nil {
+	// draw.io writes data URIs without the ;base64 marker, which
+	// Graph.postProcessCellStyle adds to all but SVG written as markup
+	// ("data:image/svg+xml,<svg…" or URL-encoded "%3Csvg…")
+	markup := strings.HasPrefix(meta, "image/svg") &&
+		(strings.HasPrefix(payload, "<") || len(payload) >= 3 && strings.EqualFold(payload[:3], "%3C"))
+	if !markup {
+		if b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(payload)); err == nil {
 			return b, nil
 		}
+		if b, err := base64.RawStdEncoding.DecodeString(strings.TrimRight(strings.TrimSpace(payload), "=")); err == nil {
+			return b, nil
+		}
+	}
+	if u, err := url.PathUnescape(payload); err == nil {
+		payload = u
 	}
 	return []byte(payload), nil
 }
