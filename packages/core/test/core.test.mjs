@@ -192,3 +192,30 @@ test("split source with a fake fetch", async () => {
     globalThis.fetch = realFetch;
   }
 });
+
+test("addPage puts a streamed page in, with the parts it brings", async () => {
+  const source = new BufferSource(fixture);
+  const m = await source.manifest();
+  const page = m.views.find((v) => v.id === "slides").pages[1];
+  // an outline (no parts, no layers) and a page document holding page 1 and every part
+  const outlineManifest = structuredClone(m);
+  outlineManifest.parts = [];
+  for (const p of outlineManifest.views.find((v) => v.id === "slides").pages) p.layers = [];
+  const outline = await BdfDocument.open({ manifest: async () => outlineManifest, stored: (e) => source.stored(e) });
+  const pageManifest = { ...structuredClone(m), views: [{ id: "slides", kind: "fixed", pages: [structuredClone(page)] }] };
+  const pageDoc = await BdfDocument.open({ manifest: async () => pageManifest, stored: (e) => source.stored(e) });
+  assert.throws(() => outline.entry(page.layers[0].obj), /unknown part/);
+
+  outline.addPage("slides", 1, pageDoc);
+  const pages = outline.view("slides").pages;
+  assert.deepEqual(pages[1], page);
+  assert.equal(pages[0].layers.length, 0);
+  // the page's objects load from the page document's parts
+  for (const l of page.layers) await outline.ensure(l.obj);
+  assert.equal(outline.manifest.parts.length, m.parts.length);
+  // parts it has already are not added again
+  outline.addPage("slides", 2, pageDoc);
+  assert.equal(outline.manifest.parts.length, m.parts.length);
+  assert.throws(() => outline.addPage("slides", 3, pageDoc), /no page 3/);
+  assert.throws(() => outline.addPage("slides", 0, outline), /not a page document/);
+});

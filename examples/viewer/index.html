@@ -25,6 +25,9 @@
   .page { position: relative; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
   .page canvas { display: block; }
   .page:focus-visible { outline: 3px solid #1a73e8; outline-offset: 2px; }
+  /* a page still being converted, and one that could not be */
+  .page[aria-busy="true"]::after { content: "converting…"; position: absolute; inset: 0; display: grid; place-items: center; color: #8a939e; }
+  .page .pageError { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; color: #b00020; }
   .textLayer { position: absolute; inset: 0; overflow: hidden; }
   /* the selectable text layer's CSS is @bdf/render TEXT_LAYER_CSS, added by main.ts */
   /* highlights sit on the canvas, which forced colors leave alone: keep theirs too */
@@ -36,7 +39,8 @@
   .sheet canvas { position: sticky; top: 0; left: 0; display: block; }
   /* the text layer of a sheet, under its headers; frozen cells are pinned with --sx and --sy */
   .sheetText { position: absolute; }
-  .info { color: #666; margin-left: auto; display: flex; gap: 12px; }
+  .info { color: #666; margin-left: auto; display: flex; gap: 12px; align-items: center; }
+  #progress { width: 96px; }
   #pwDialog { border: 1px solid #999; border-radius: 6px; padding: 16px 20px; }
   #pwDialog h2 { font-size: 15px; margin: 0 0 8px; }
   #pwDialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
@@ -55,6 +59,7 @@
 <body>
 <header>
   <strong>BDF viewer</strong>
+  <a href="docs/">Docs</a>
   <button id="openFile" type="button">Open file…</button>
   <input id="file" type="file" hidden accept=".pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.csv,.tsv,.tab,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.drawio,.dio,.svg,.png,.dxf,.bdf">
   <label>zoom <input id="zoom" type="range" min="0.25" max="3" step="0.25" value="1" aria-valuetext="100%"> <span id="zoomv">100%</span></label>
@@ -67,6 +72,7 @@
   <span class="info">
     <!-- status is announced (loading, what a view holds, errors); timing is not, since it changes on every scroll -->
     <span id="status" role="status"></span>
+    <progress id="progress" hidden aria-label="pages converted"></progress>
     <details id="warnings" hidden><summary></summary><ul></ul></details>
     <span id="timing"></span>
     <a id="download" hidden>Download .bdf</a>
@@ -79,8 +85,9 @@
       The file is converted to bdf and drawn inside your browser, by the Go converters built as WebAssembly: it is not uploaded anywhere.</p>
     <p><button type="button" id="chooseFile">Choose a file…</button></p>
     <div id="samples" hidden><p>Or open a sample:</p><p class="samples"></p></div>
-    <p class="note">Password-protected files open with their password. Office documents are laid out with the free fonts published with this page
-      (fetched when a document uses them), which stand in for the fonts the document names.</p>
+    <p class="note">Password-protected files open with their password. A PDF shows its pages as they are converted, the ones in view first.
+      Office documents are laid out with the free fonts published with this page (fetched when a document uses them), which stand in for the fonts the document names.</p>
+    <p class="note">What bdf is and how it works: <a href="docs/">documentation</a> (format specification and design notes).</p>
   </div>
 </div>
 <nav class="sheetbar" aria-label="views">

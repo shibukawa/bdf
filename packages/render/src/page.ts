@@ -21,6 +21,11 @@ export class PageRenderer {
     this.renderer = new CanvasRenderer(this.res, opts);
   }
 
+  /** Let the fonts and images go: the document is not drawn any more. */
+  dispose(): void {
+    this.res.dispose();
+  }
+
   /**
    * Load everything a page needs. To draw it afterwards with drawPageSync,
    * pass a hold (ResourceCache.hold) and release it after drawing, so that
