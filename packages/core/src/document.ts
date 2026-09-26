@@ -1,8 +1,14 @@
 import { decode, type PartSource } from "./container.js";
+import { BdfPasswordError, SealedSource } from "./crypto.js";
 import { decodeObject, decodePathCollection, objectDeps } from "./object.js";
 import { decodeTextIndex, type IndexRun } from "./search.js";
 import { extractText } from "./text.js";
 import type { Manifest, PartEntry, ObjectPart, PathData, Hash, View } from "./types.js";
+
+export interface OpenOptions {
+  /** Password of an encrypted document (spec §3.5). */
+  password?: string;
+}
 
 /** A loaded document: manifest plus a cache of decoded parts. */
 export class BdfDocument {
@@ -15,8 +21,18 @@ export class BdfDocument {
     for (const e of manifest.parts) this.entries.set(e.h, e);
   }
 
-  static async open(source: PartSource): Promise<BdfDocument> {
-    return new BdfDocument(source, await source.manifest());
+  /**
+   * Open a document. An encrypted one needs options.password: without it
+   * BdfPasswordError("required") is thrown, and BdfPasswordError("wrong")
+   * when it does not open the document. The source's manifest is cached, so
+   * the same source can be opened again with another password.
+   */
+  static async open(source: PartSource, options: OpenOptions = {}): Promise<BdfDocument> {
+    const manifest = await source.manifest();
+    if (!manifest.encryption) return new BdfDocument(source, manifest);
+    if (options.password === undefined) throw new BdfPasswordError("required");
+    const sealed = await SealedSource.unlock(source, options.password);
+    return new BdfDocument(sealed, await sealed.manifest());
   }
 
   entry(hash: Hash): PartEntry {

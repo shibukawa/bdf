@@ -187,9 +187,21 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **図形・画像・グラフ**: 描画パートのアンカー（2 つのセルの隅、1 つのセルの隅と大きさ、絶対位置。オフセットは EMU）を列幅・行の高さから sheet 座標に直し、図形をその枠に描く（`drawingml.Drawing.DrawAnchored`。アンカーが図形自身の `xfrm` の位置と大きさに優先し、回転と反転は残る。グラフの枠は `xfrm` が空のことが多い）。図形は 1 つずつ子 Object に 1 回だけ描き、重なる Tile から `USE_AT` で使う（`canvas.Share`）。子 Object の中の LANG は `USE` の後も続くので、Tile 側の言語の状態を子の最後の言語に合わせる（`canvas.Used`）。グラフの値のキャッシュがない系列（openpyxl などが書くブック）は、系列の参照（`'Sheet 1'!$B$2:$B$9`）の先のセルから値を補ってから描く（数値の参照が文字列のセルを指す項目は文字列の項目にする）。グラフシートはグラフを 1 ページにした `fixed` View にする。
 - **その他**: メモのあるセルには右上に赤い三角を描く（メモの本文は描かない）。外部 URL（http、https、mailto）へのハイパーリンクはセル範囲に LINK を置く（ブック内の場所へのリンクは置かない）。非表示のシートは既定で除く（`-hidden` で含める）。ページの選択（`-pages`）はシートの番号（グラフシートを含むブック内の順）。zip の中のパス区切りが `\` のファイルも読む（`ooxml.Open`）。
 - **読み上げ用の構造**（spec §7.8）: 値のあるセルごとに MARK CELL（セル参照、結合セルは範囲）を置き、テキスト層はシートのセルを 1 つの表にする。テーブルの見出し行のセルには ` col` を付けて列見出しにする（固定した行・列はビューアが見出しにする）。折り返した行は LINE（和文どうしは WRAP）、縦書きの文字の間は WRAP で結ぶ。画像・図形・グラフは PowerPoint と同じく `descr`（なければ `title`）を代替テキストにした FIGURE で囲む。Excel はブックに言語を記録しないので、`meta.dc.language` はコアプロパティにあるときだけ書き、セルごとにかな・ハングルから言語を推定して LANG を出す（漢字だけのセルは既定のフォントから推定したブックの東アジアの言語。游ゴシックなら日本語）。
-- **未対応**: 右から左のシート（左から右に描く）、`timePeriod` などの評価しない条件付き書式、マクロシート・ダイアログシート（ここまでは警告を出す）、ピボットテーブルのスタイル（値はセルとして描く）、スパークライン、フォームコントロール、旧形式（VML）の図形、セル内の画像、データの入力規則のドロップダウン、印刷の設定（ヘッダー・フッター・改ページ）。暗号化されたブックと旧形式の .xls は読めない。
+- **未対応**: 右から左のシート（左から右に描く）、`timePeriod` などの評価しない条件付き書式、マクロシート・ダイアログシート（ここまでは警告を出す）、ピボットテーブルのスタイル（値はセルとして描く）、スパークライン、フォームコントロール、旧形式（VML）の図形、セル内の画像、データの入力規則のドロップダウン、印刷の設定（ヘッダー・フッター・改ページ）。旧形式の .xls は読めない（暗号化されたブックは §3.7 のとおり復号してから読む）。
 
 テスト用のブックは openpyxl で生成し（`npm run test:xlsx:gen`、`test/xlsx/gen.py`。openpyxl が書かない DrawingML の図形は後から描画パートに足す）、変換結果は `testdata/xlsx/` に置いて golden テストで描画を比較する。フォントは PowerPoint のテストと同じ M PLUS 1p のサブセットだけを使う。開発中は Apache POI のテストデータ（Excel などで作られた実ファイル 355 本）をすべて変換し、壊れた zip と暗号化されたファイル以外が内部エラーなしに変換できること、条件付き書式や表示形式の見本が期待どおりに描かれることを確かめた。
+
+## 3.7 パスワードで保護された入力
+
+保護された入力は、変換のときだけパスワードで開き、出力の BDF を同じパスワードで暗号化する（spec §3.5）。パスワードを知っている人だけが読める、という元のファイルの性質をプレビューでも保つためで、サーバーはパスワードを保存しない。表示のときはブラウザが入力されたパスワードで復号するので、サーバーは閲覧時にパスワードに関わらず、暗号化した BDF をそのまま配ればよい。
+
+- **Office**: 暗号化された .pptx/.docx/.xlsx は ZIP ではなく、複合ファイル（CFB）の中に `EncryptionInfo`（鍵の導き方）と `EncryptedPackage`（暗号化された ZIP）を持つ。`converter` が形式の判別より前にこれを見つけて復号し（`converter/internal/cfb`、`converter/internal/offcrypto`）、復号した ZIP で形式を判別する。暗号化の方式は Agile（Office 2010 以降。既定は AES-256、SHA-512 を 10 万回）と Standard（Office 2007。AES-128、SHA-1 を 5 万回）。Agile の HMAC（`dataIntegrity`）が合わないときは、ZIP 自身にも CRC があるので変換は続けて警告を出す。権利管理（IRM）と証明書による保護、Extensible 暗号化、AES 以外の暗号は扱わない。テスト用のファイルは msoffcrypto-tool で作り（`test/pptx/gen_encrypted.py`）、msoffcrypto-tool で復号できることを確かめてから保存している。
+- **PDF**: pdfcpu に復号させる。まずパスワードなしで開き、ユーザーパスワードが要るときだけ `Options.Password` で開き直す（オーナーパスワードでも開ける）。オーナーパスワードだけの PDF はパスワードなしで開けるので、保護されたものとは扱わない。
+- **API**: `converter.Options.Password` で開き、`Result.Protected` が「パスワードがなければ開けなかった」ことを表す。これが立っていたら `bdf.NewPasswordLock` で同じパスワードのロックを作り、`Document.Lock` に設定して書き出す。パスワードの過不足は `converter.ErrPasswordRequired` / `ErrWrongPassword`。`converter.CheckPassword` は変換せずにパスワードを確かめるので、アップロードを受けたときにすぐ答えを返せる。
+- **CLI**: `bdf generate` はパスワードを `-password-file`（`-` で標準入力）か `$BDF_PASSWORD` から読む（コマンドライン引数はほかのユーザーから見えるので受け付けない）。出力は `-encrypt auto`（既定。入力が保護されていたとき）、`always`、`never` で暗号化する。`ls`・`manifest`・`disasm`・`extract` は `$BDF_PASSWORD` で暗号化した文書を開き、`split`・`join` は封印された Part をそのままコピーするのでパスワードが要らない。`encrypt`・`decrypt` は既存の BDF を暗号化・復号する。
+- **ビューア**: `BdfDocument.open(source, { password })` がパスワードを受け取り、なければ `BdfPasswordError("required")`、違えば `("wrong")` を投げる。Worker は開けなかったソースを持ったまま `unlock` を待つので、パスワードを聞き直してもファイルを取り直さない。
+
+暗号化した文書はサーバー側の全文検索の対象にしない（索引が平文になるため）。文書の中の検索は、テキスト索引 Part も暗号化されて BDF の中にあるので、復号した後にブラウザでこれまでどおり動く。サムネイルのように平文が要るものは、サーバーが変換のとき（パスワードと平文を持っている間）に作る。
 
 ## 4. テキストの扱い
 
@@ -272,7 +284,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 bdf/
 ├── docs/              spec.md, design.md
 ├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
-├── cmd/bdf/           CLI: generate / ls / manifest / disasm / extract / split / join / demo
+├── cmd/bdf/           CLI: generate / ls / manifest / disasm / extract / split / join / encrypt / decrypt / demo
 ├── imgconv/           画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
 ├── woff2/             TrueType/OpenType → WOFF2（glyf 変換と Brotli）
 ├── converter/         入力形式の登録（static plugin）、共通のオプション、形式の判別、ページ指定
@@ -284,13 +296,14 @@ bdf/
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
 │                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
-│                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）
+│                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）、
+│                      暗号化された Office 文書を開く cfb（複合ファイル）と offcrypto（Agile / Standard 暗号化の復号）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）
-├── testdata/          Go が生成した demo.bdf / demo-split と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf と golden PNG
 └── test/              Playwright による golden テスト
 ```
 
