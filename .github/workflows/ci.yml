@@ -44,10 +44,24 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/visio/testdata/$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/visio/$n.bdf"
           done
+          for n in shapes layout r12-sjis; do
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/dxf/testdata/$n.dxf" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/dxf/$n.bdf"
+          done
           for f in converter/docx/testdata/*.docx; do
             n=$(basename "$f" .docx)
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/docx/$n.bdf"
+          done
+          for f in converter/csv/testdata/*.csv converter/csv/testdata/*.tsv; do
+            n=$(basename "${f%.*}")
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/csv/$n.bdf"
+          done
+          for f in converter/drawio/testdata/*.drawio; do
+            n=$(basename "$f" .drawio)
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/drawio/$n.bdf"
           done
           for f in converter/tiff/testdata/*.tif; do
             n=$(basename "$f" .tif)

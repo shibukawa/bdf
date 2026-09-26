@@ -1,0 +1,227 @@
+# Curated mappings for gen-drawio-awsmap: what the automatic matching of
+# names gets wrong or misses. Each line names a shape of an older AWS
+# generation and its target in the current AWS palette (Sidebar-AWS4.js):
+#
+#   res:<resIcon>          a service icon (shape=mxgraph.aws4.resourceIcon)
+#   <stencil>              a resource icon (shape=mxgraph.aws4.<stencil>)
+#   group:<grIcon>         a group (shape=mxgraph.aws4.group or groupCenter)
+#   rect:<title>           a group drawn as a rectangle (Availability Zone,
+#                          Security group), title lowercased with _
+#   groupicon:<grIcon>     the icon of a group alone, colored as in the group
+#   builtin:<style>        a draw.io shape that keeps the cell's colors
+#   -                      no current counterpart: drawn as a rectangle
+#
+# A palette entry that appears in several categories is picked with
+# @<Category> (spaces as _); otherwise the first in palette order is used.
+# Run go run ./tools/gen-drawio-awsmap -v to see every decision.
+
+# --- mxgraph.aws (stencils/aws/*.xml, the first icon set) ---
+
+mxgraph.aws.compute.ec2_elastic_ip                        elastic_ip_address
+mxgraph.aws.database.rds_db_instance_read_replica         rds_instance        # no read replica icon
+mxgraph.aws.database.rds_db_instance_standby              rds_multi_az        # the standby of a Multi-AZ deployment
+mxgraph.aws.database.rds_mysql_db_instance                rds_mysql_instance
+mxgraph.aws.database.rds_oracle_db_instance               rds_oracle_instance
+mxgraph.aws.database.simpledb                             -                   # SimpleDB has no current icon
+mxgraph.aws.database.simpledb_attribute                   -                   # SimpleDB
+mxgraph.aws.database.simpledb_attributes                  -                   # SimpleDB
+mxgraph.aws.database.simpledb_domain                      -                   # SimpleDB
+mxgraph.aws.database.simpledb_item                        -                   # SimpleDB
+mxgraph.aws.database.simpledb_items                       -                   # SimpleDB
+mxgraph.aws.deployment_management.aws_elastic_beanstalk_applicaton application
+mxgraph.aws.messaging.ses_email                           email               # the SES email of Business Applications
+mxgraph.aws.on_demand_workforce.mechanical_turk           -                   # Mechanical Turk has no current icon
+mxgraph.aws.on_demand_workforce.mechanical_turk_assignment_task -             # Mechanical Turk
+mxgraph.aws.on_demand_workforce.mechanical_turk_hit       -                   # Mechanical Turk
+mxgraph.aws.on_demand_workforce.mechanical_turk_requester -                   # Mechanical Turk
+mxgraph.aws.on_demand_workforce.mechanical_turk_workers   -                   # Mechanical Turk
+
+# groups (containers) and the icons of groups
+mxgraph.aws.groups.auto_scaling_group                     group:group_auto_scaling_group
+mxgraph.aws.groups.availability_zone                      rect:availability_zone
+mxgraph.aws.groups.aws_cloud                              group:group_aws_cloud_alt
+mxgraph.aws.groups.corporate_data_center                  group:group_corporate_data_center
+mxgraph.aws.groups.ec2_instance_contents                  group:group_ec2_instance_contents
+mxgraph.aws.groups.elastic_beanstalk_container            group:group_elastic_beanstalk
+mxgraph.aws.groups.region                                 group:group_region
+mxgraph.aws.groups.security_group                         rect:security_group
+mxgraph.aws.groups.server_contents                        group:group_on_premise
+mxgraph.aws.groups.virtual_private_cloud                  group:group_vpc2
+mxgraph.aws.groups.vpc_subnet                             group:group_security_group   # a private subnet
+mxgraph.aws.groups.rrect                                  builtin:rounded=1;arcSize=10 # the plain frame of composite groups
+mxgraph.aws.groups.aws_cloud_icon                         groupicon:group_aws_cloud_alt
+mxgraph.aws.groups.corporate_data_center_icon             groupicon:group_corporate_data_center
+mxgraph.aws.groups.elastic_beanstalk_container_icon       groupicon:group_elastic_beanstalk
+mxgraph.aws.groups.virtual_private_cloud_icon             groupicon:group_vpc2
+mxgraph.aws.groups.vpc_subnet_icon                        groupicon:group_security_group
+mxgraph.aws.misc.aws_cloud                                groupicon:group_aws_cloud_alt
+mxgraph.aws.misc.virtual_private_cloud                    groupicon:group_vpc2
+mxgraph.aws.misc.vpc_subnet                               groupicon:group_security_group
+
+# --- mxgraph.aws2 (stencils/aws2/*.xml, Sidebar-AWS.js) ---
+
+mxgraph.aws2.analytics.kinesis_enabledapp                 -                   # no Kinesis-enabled app icon
+mxgraph.aws2.compute_and_networking.kinesis_enabled_app   -                   # no Kinesis-enabled app icon
+mxgraph.aws2.app_services.cloudsearch_sdf_metadata        search_documents
+mxgraph.aws2.app_services.email                           email
+mxgraph.aws2.app_services.swf                             -                   # SWF has no current icon
+mxgraph.aws2.app_services.swf_decider                     -                   # SWF
+mxgraph.aws2.app_services.swf_worker                      -                   # SWF
+mxgraph.aws2.compute_and_networking.ec2_cloudwatch        instance_with_cloudwatch2
+mxgraph.aws2.compute_and_networking.ec2_elastic_ip        elastic_ip_address
+mxgraph.aws2.compute_and_networking.elastic_network_instance elastic_network_interface
+mxgraph.aws2.compute_and_networking.emr_mapr_m3_engine    emr_engine_mapr_m3
+mxgraph.aws2.compute_and_networking.emr_mapr_m5_engine    emr_engine_mapr_m5
+mxgraph.aws2.compute_and_networking.emr_mapr_m7_engine    emr_engine_mapr_m7
+mxgraph.aws2.compute_and_networking.final_style_amazon_workspaces res:workspaces
+mxgraph.aws2.database.elasticcache_memcache               elasticache_for_memcached
+mxgraph.aws2.database.elasticcache_node                   cache_node
+mxgraph.aws2.database.elasticcache_redis                  elasticache_for_redis
+mxgraph.aws2.database.rds_instance_read_replica           rds_instance        # no read replica icon
+mxgraph.aws2.database.rds_instance_standby                rds_multi_az
+mxgraph.aws2.database.rds_mastersql                       rds_instance
+mxgraph.aws2.database.rds_slavesql                        rds_instance
+mxgraph.aws2.database.rds_ms_sql_instance                 rds_sql_server_instance_alt
+mxgraph.aws2.database.rds_ms_sql_instance_2               rds_sql_server_instance
+mxgraph.aws2.database.rds_mysql_db_instance               rds_mysql_instance_alt
+mxgraph.aws2.database.rds_oracle_db_instance              rds_oracle_instance_alt
+mxgraph.aws2.database.rds_postgresql                      rds_postgresql_instance_alt
+mxgraph.aws2.database.rds_replica_sets_with_piop          rds_piops
+mxgraph.aws2.database.redshift_dw1_cluster                dense_storage_node@Database  # DW1 became Dense Storage
+mxgraph.aws2.database.redshift_dw2_cluster                dense_compute_node@Database  # DW2 became Dense Compute
+mxgraph.aws2.database.redshift_ssd_family_cluster         dense_compute_node@Database
+mxgraph.aws2.database.simpledb                            -                   # SimpleDB
+mxgraph.aws2.database.simpledb_domain                     -                   # SimpleDB
+mxgraph.aws2.deployment_and_management.iam_credentials    long_term_security_credential
+mxgraph.aws2.deployment_and_management.iam_security_token_service sts_alternate
+mxgraph.aws2.deployment_and_management.opsworks_stack     stack2
+mxgraph.aws2.internet_of_things.aws-iot                   res:iot_core
+mxgraph.aws2.internet_of_things.bicycle                   bycicle
+mxgraph.aws2.internet_of_things.generic_iot_thing         generic
+mxgraph.aws2.non-service_specific.cloud                   groupicon:group_aws_cloud
+mxgraph.aws2.non-service_specific.virtual_private_cloud   vpc_virtual_private_cloud_vpc
+mxgraph.aws2.on-demand_workforce.mechanical_turk          -                   # Mechanical Turk
+mxgraph.aws2.on-demand_workforce.mechanical_turk_assignment_task -            # Mechanical Turk
+mxgraph.aws2.on-demand_workforce.mechanical_turk_human_intelligence_tasks - # Mechanical Turk
+mxgraph.aws2.on-demand_workforce.mechanical_turk_requester -                  # Mechanical Turk
+mxgraph.aws2.on-demand_workforce.mechanical_turk_workers  -                   # Mechanical Turk
+mxgraph.aws2.sdks.android                                 external_sdk        # SDKs: the generic SDK icon
+mxgraph.aws2.sdks.ios                                     external_sdk
+mxgraph.aws2.sdks.java                                    external_sdk
+mxgraph.aws2.sdks.javascript                              external_sdk
+mxgraph.aws2.sdks.net                                     external_sdk
+mxgraph.aws2.sdks.nodejs                                  external_sdk
+mxgraph.aws2.sdks.php                                     external_sdk
+mxgraph.aws2.sdks.python                                  external_sdk
+mxgraph.aws2.sdks.ruby                                    external_sdk
+mxgraph.aws2.sdks.xamarin                                 external_sdk
+mxgraph.aws2.sdks.aws_toolkit_for_eclipse                 external_toolkit
+mxgraph.aws2.sdks.aws_toolkit_for_visual_studio           external_toolkit
+mxgraph.aws2.sdks.tools_for_windows_powershell            external_toolkit
+mxgraph.aws2.security_and_identity.acm_certificate_manager certificate_manager_2
+mxgraph.aws2.security_and_identity.service_catalog        res:inspector       # the Inspector icon (the palette's title)
+mxgraph.aws2.storage_and_content_delivery.s3_objects      object
+
+# --- mxgraph.aws3 (stencils/aws3.xml, Sidebar-AWS3.js) ---
+
+mxgraph.aws3.alexa_smart_home_skill                       alexa_skill
+mxgraph.aws3.android                                      external_sdk        # SDKs: the generic SDK icon
+mxgraph.aws3.ios                                          external_sdk
+mxgraph.aws3.toolkit_for_eclipse                          external_toolkit
+mxgraph.aws3.toolkit_for_visual_studio                    external_toolkit
+mxgraph.aws3.toolkit_for_windows_powershell               external_toolkit
+mxgraph.aws3.assignment_task                              -                   # Mechanical Turk
+mxgraph.aws3.human_intelligence_tasks_hit                 -                   # Mechanical Turk
+mxgraph.aws3.mechanical_turk                              -                   # Mechanical Turk
+mxgraph.aws3.requester                                    -                   # Mechanical Turk
+mxgraph.aws3.aws_iot                                      res:iot_core
+mxgraph.aws3.bicycle                                      bycicle
+mxgraph.aws3.checklist_fault_tolerance                    checklist_fault_tolerant
+mxgraph.aws3.cloud                                        groupicon:group_aws_cloud
+mxgraph.aws3.cloud_2                                      groupicon:group_aws_cloud_alt
+mxgraph.aws3.config_rule                                  rule_2
+mxgraph.aws3.db_accelerator                               dynamodb_dax
+mxgraph.aws3.decider                                      -                   # SWF
+mxgraph.aws3.swf                                          -                   # SWF
+mxgraph.aws3.worker                                       -                   # SWF
+mxgraph.aws3.ec2_compute_container                        container_1
+mxgraph.aws3.ec2_compute_container_2                      container_2
+mxgraph.aws3.ec2_compute_container_3                      container_3
+mxgraph.aws3.ecr_registry                                 registry
+mxgraph.aws3.efs_share                                    file_system
+mxgraph.aws3.el_load_balancer                             res:elastic_load_balancing
+mxgraph.aws3.elastic_ip                                   elastic_ip_address
+mxgraph.aws3.email                                        email
+mxgraph.aws3.http_2_protocol                              http2_protocol
+mxgraph.aws3.internet                                     internet_alt2
+mxgraph.aws3.internet_3                                   internet_alt1
+mxgraph.aws3.kinesis_enabled_app                          -                   # no Kinesis-enabled app icon
+mxgraph.aws3.maintenance_window                           maintenance_windows
+mxgraph.aws3.memcached                                    elasticache_for_memcached
+mxgraph.aws3.redis                                        elasticache_for_redis
+mxgraph.aws3.ms_sql_instance                              rds_sql_server_instance
+mxgraph.aws3.ms_sql_instance_2                            rds_sql_server_instance_alt
+mxgraph.aws3.mysql_db_instance                            rds_mysql_instance
+mxgraph.aws3.mysql_db_instance_2                          rds_mysql_instance_alt
+mxgraph.aws3.oracle_db_instance_2                         rds_oracle_instance_alt
+mxgraph.aws3.postgre_sql_instance                         rds_postgresql_instance_alt
+mxgraph.aws3.network_access_controllist                   network_access_control_list
+mxgraph.aws3.piop                                         rds_piops
+mxgraph.aws3.rds_db_instance_read_replica                 rds_instance        # no read replica icon
+mxgraph.aws3.rds_db_instance_standby_multi_az             rds_multi_az
+mxgraph.aws3.sql_master                                   rds_instance
+mxgraph.aws3.sql_slave                                    rds_instance
+mxgraph.aws3.stack_aws_cloudformation                     stack
+mxgraph.aws3.stack_aws_opsworks                           stack2
+mxgraph.aws3.sts_2                                        sts_alternate
+mxgraph.aws3.virtual_private_cloud                        vpc_virtual_private_cloud_vpc
+
+# --- mxgraph.aws3d (stencils/aws3d.xml and mxAWS3D.js, Sidebar-AWS3D.js) ---
+
+mxgraph.aws3d.application                                 generic_application
+mxgraph.aws3d.application2                                generic_application
+mxgraph.aws3d.content                                     document
+mxgraph.aws3d.file                                        document
+mxgraph.aws3d.dataCenter                                  corporate_data_center
+mxgraph.aws3d.oracleDataCenter                            corporate_data_center
+mxgraph.aws3d.dataServer                                  servers
+mxgraph.aws3d.webServer                                   traditional_server
+mxgraph.aws3d.oracleServer                                traditional_server
+mxgraph.aws3d.oracleDbServer                              generic_database
+mxgraph.aws3d.email_service                               res:simple_email_service
+mxgraph.aws3d.image                                       multimedia
+mxgraph.aws3d.kinesisStream                               res:kinesis_data_streams
+mxgraph.aws3d.mobile_worker                               mobile_client
+mxgraph.aws3d.rdsMaster                                   rds_instance
+mxgraph.aws3d.rdsSlave                                    rds_instance
+mxgraph.aws3d.searchEngine                                res:cloudsearch2
+mxgraph.aws3d.secureConnection                            ssl_padlock
+mxgraph.aws3d.vpcGateway                                  vpn_gateway
+mxgraph.aws3d.decider                                     -                   # SWF
+mxgraph.aws3d.worker                                      -                   # SWF
+mxgraph.aws3d.workflowService                             -                   # SWF
+mxgraph.aws3d.simpleDb                                    -                   # SimpleDB
+mxgraph.aws3d.simpleDb2                                   -                   # SimpleDB
+mxgraph.aws3d.spot                                        -                   # a decoration (a spot on the floor)
+mxgraph.aws3d.spot2                                       -                   # a decoration
+mxgraph.aws3d.arrowNE                                     -                   # a 3D decoration
+mxgraph.aws3d.arrowNW                                     -                   # a 3D decoration
+mxgraph.aws3d.arrowSE                                     -                   # a 3D decoration
+mxgraph.aws3d.arrowSW                                     -                   # a 3D decoration
+mxgraph.aws3d.arrowlessNE                                 -                   # a 3D decoration
+mxgraph.aws3d.arrowhead                                   -                   # a 3D decoration
+mxgraph.aws3d.arrowhead2                                  -                   # a 3D decoration
+mxgraph.aws3d.dashedArrowlessEdge                         -                   # a 3D decoration
+mxgraph.aws3d.dashedArrowlessEdge2                        -                   # a 3D decoration
+mxgraph.aws3d.dashedEdge                                  -                   # a 3D decoration
+mxgraph.aws3d.dashedEdge2                                 -                   # a 3D decoration
+mxgraph.aws3d.dashedEdgeDouble                            -                   # a 3D decoration
+mxgraph.aws3d.dashedEdgeDouble2                           -                   # a 3D decoration
+mxgraph.aws3d.edge                                        -                   # a 3D decoration
+mxgraph.aws3d.edge2                                       -                   # a 3D decoration
+mxgraph.aws3d.flatDoubleEdge                              -                   # a 3D decoration
+mxgraph.aws3d.flatDoubleEdge2                             -                   # a 3D decoration
+mxgraph.aws3d.flatEdge                                    -                   # a 3D decoration
+mxgraph.aws3d.flatEdge2                                   -                   # a 3D decoration
+mxgraph.aws3d.reference                                   -                   # a 3D decoration
+mxgraph.aws3d.reference2                                  -                   # a 3D decoration

@@ -69,7 +69,7 @@ type gstate struct {
 	fillAlpha   float64
 	strokeAlpha float64
 	blend       byte
-	softMask    bool
+	softMask    *softMask
 
 	font    *pdfFont
 	size    float64
@@ -120,6 +120,7 @@ type textState struct {
 	tm, tlm  matrix
 	base     matrix  // origin of tx: the line matrix at which the current block/run started
 	tx       float64 // displacement along the baseline since base was set (text space)
+	ty       float64 // vertical writing: displacement along the text space y axis
 	open     bool    // a SAVE/TRANSFORM block for the current line matrix is open
 	openTlm  matrix
 	openH    float64
@@ -146,6 +147,7 @@ type interp struct {
 	ctmStack [][2]any
 	base     matrix // initial ctm (pattern space reference)
 	depth    int
+	masks    []maskGroup // groups open for soft masks (softmask.go)
 
 	path       *bdf.Path
 	pathBBox   rect
@@ -155,6 +157,7 @@ type interp struct {
 
 	text       textState
 	curRun     textRun
+	vrun       vertRun // vertical text being accumulated (vertical.go)
 	actual     *actualText
 	mcStack    []mcEntry
 	inText     bool
@@ -196,6 +199,9 @@ func (in *interp) save() {
 func (in *interp) restore() {
 	if len(in.stack) == 0 {
 		return
+	}
+	for n := len(in.masks); n > 0 && in.masks[n-1].depth >= len(in.stack); n = len(in.masks) {
+		in.closeMask(true)
 	}
 	in.gs = in.stack[len(in.stack)-1]
 	in.stack = in.stack[:len(in.stack)-1]
@@ -376,6 +382,7 @@ func (in *interp) endPath(fill bool, rule byte, stroke bool) {
 	if !in.pathEmpty {
 		if fill || stroke {
 			in.syncDraw(in.curTarget())
+			in.enterMask()
 		}
 		if fill {
 			if in.gs.fillCS != nil && in.gs.fillCS.family == "Pattern" {
@@ -506,10 +513,9 @@ func (in *interp) applyExtGState(name string) {
 			}
 		case "SMask":
 			if p.name(v) == "None" || p.deref(v) == nil {
-				in.gs.softMask = false
+				in.setSoftMask(nil)
 			} else {
-				in.gs.softMask = true
-				in.c.warnOnce("smask", "soft masks (ExtGState /SMask) are ignored")
+				in.setSoftMask(in.loadSoftMask(v))
 			}
 		}
 	}
@@ -581,6 +587,10 @@ func (in *interp) run(content []byte) {
 	for len(in.stack) > 0 {
 		in.restore()
 	}
+	for len(in.masks) > 0 {
+		in.closeMask(false)
+	}
+	in.gs.softMask = nil
 }
 
 func fnum(p *pdf, args []types.Object, i int) float64 {
@@ -929,6 +939,7 @@ func (in *interp) drawImage(key string, sd *types.StreamDict) {
 		return
 	}
 	in.syncDraw(in.targetOf(sd.Dict))
+	in.enterMask()
 	ref := in.obj.AddImage(h)
 	in.syncAlpha(false)
 	in.save()
@@ -973,6 +984,7 @@ func (in *interp) drawForm(key string, sd *types.StreamDict, extra matrix) {
 	mat := p.matrixOr(sd.Dict["Matrix"], identity)
 	bbox := p.rectOr(sd.Dict["BBox"], rect{})
 	group := p.dict(sd.Dict["Group"]) != nil && (in.gs.fillAlpha < 1 || in.gs.blend != bdf.BlendSourceOver)
+	in.enterMask()
 	in.syncAlpha(false)
 	in.save()
 	if !extra.isIdentity() {
@@ -1025,6 +1037,7 @@ func (in *interp) doShading(name string) {
 		return
 	}
 	in.syncDraw(in.curTarget())
+	in.enterMask()
 	in.syncAlpha(false)
 	in.paintShading(sh, r)
 }
@@ -1243,6 +1256,7 @@ func (in *interp) inlineImage(l *lexer) {
 	}
 	h := in.c.doc.AddImage(img.data)
 	in.syncDraw(in.curTarget())
+	in.enterMask()
 	ref := in.obj.AddImage(h)
 	in.syncAlpha(false)
 	in.save()

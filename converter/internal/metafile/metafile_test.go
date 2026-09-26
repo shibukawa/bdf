@@ -33,7 +33,7 @@ type output struct {
 func replay(t *testing.T, data []byte, rc Recolor) *output {
 	t.Helper()
 	d := &output{doc: bdf.NewDocument(), ops: map[byte]int{}}
-	fonts := fontset.New(fontdb.New(nil, false), nil)
+	fonts := fontset.New(fontdb.New(nil, nil, false), nil)
 	b := canvas.NewBuilder(d.doc, fonts)
 	cv := b.New()
 	Draw(cv, data, 0, 0, 100, 100, &Options{Doc: d.doc, Fonts: fonts, Recolor: rc,

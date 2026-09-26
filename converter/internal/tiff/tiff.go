@@ -1,5 +1,5 @@
 // Package tiff reads TIFF files: the image file directories (IFDs) of a
-// multi-page file, their tags and their pixels (docs/design.md §3.10).
+// multi-page file, their tags and their pixels (docs/design.md §3.13).
 //
 // It covers what scanners, fax software and image editors write: classic
 // TIFF and BigTIFF; strips and tiles, chunky or planar; no compression,
