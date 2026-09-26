@@ -68,7 +68,7 @@ func TestLookupStencil(t *testing.T) {
 		"mxgraph.flowchart.nonexistent",
 		"mxgraph.flowchart.Decision",   // registry names are lowercase
 		"mxgraph.arrows2.arrow",        // a JavaScript shape
-		"mxgraph.aws4.resourceIcon",    // library not embedded
+		"mxgraph.aws4.resourceIcon",    // a JavaScript shape (mxAWS4.js)
 		"mxgraph.basic.rect",           // a JavaScript shape of a stencil library
 		"mxgraph.nosuchlibrary.x",      // no such file
 		"mxgraph.../../stencils/x.y.z", // not a file name

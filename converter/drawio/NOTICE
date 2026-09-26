@@ -9,7 +9,7 @@ Copyright (c) 2006-2026 JGraph Ltd, licensed under the Apache License 2.0
   marker*.go, edgeshapes.go, jumps.go, stencil*.go) from mxAbstractCanvas2D,
   mxSvgCanvas2D, mxShape and its subclasses, mxMarker, mxStencil and
   draw.io's Graph.js, Shapes.js and the shape libraries shapes/mxBasic.js,
-  shapes/mxArrows.js and shapes/bpmn/mxBpmnShape2.js;
+  shapes/mxArrows.js, shapes/bpmn/mxBpmnShape2.js and shapes/mxAWS4.js;
 - the placement of labels (label.go) from mxCellRenderer, mxText and
   mxSvgCanvas2D, and the default stylesheet (style.go) from styles/default.xml.
 
