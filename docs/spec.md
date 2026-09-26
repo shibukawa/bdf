@@ -446,9 +446,17 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 | 0x51 | USE_AT | varuint objRef, f32 x y | translate(x,y) して USE |
 | 0x52 | GROUP_BEGIN | f32 alpha, u8 blend, f32 x y w h | グループ透過。読み手は一時キャンバスに描いて合成する |
 | 0x53 | GROUP_END | – | |
+| 0x54 | MASK_BEGIN | u8 kind, u32 backdrop, varuint n, u8[n] transfer | ソフトマスクの描画を始める |
+| 0x55 | MASK_END | – | グループの内容にソフトマスクを掛ける |
 
 - `USE` の対象 Object は読み手が `(hash, 現在の拡大率)` をキーにビットマップキャッシュしてよい（マスタースライド等の高速化）。
-- `GROUP_BEGIN`/`END` は入れ子可。`x y w h` は一時キャンバスの範囲。
+- `GROUP_BEGIN`/`END` は入れ子可。`x y w h` は一時キャンバスの範囲。一時キャンバスは現在の変換を引き継ぎ、そのほかの状態（塗り・線の色、線幅、フォントを除く）は初期状態から始まる。
+- `MASK_BEGIN` 〜 `MASK_END` はソフトマスク（PDF の ExtGState `/SMask`）で、グループの中の最後、`GROUP_END` の直前に 1 つだけ置く。読み手は最も内側のグループの一時キャンバスと同じ大きさのマスク用キャンバスを用意し、現在の変換だけを引き継いで初期状態から、間の命令をそこに描く。`MASK_END` でマスク用キャンバスの各画素から値 m（0〜255）を求め、グループの一時キャンバスの各画素のアルファに m/255 を掛ける（`source-in` で合成してよい）。
+  - `kind` 0（alpha）: m はマスクのアルファ。マスク用キャンバスは透明から始まる。
+  - `kind` 1（luminosity）: マスク用キャンバスを `backdrop` の色（`0xRRGGBBAA`、アルファは無視）で塗ってから描き、m はその輝度 `0.3 R + 0.59 G + 0.11 B`（PDF の非分離ブレンドモードと同じ重み）。
+  - `transfer` は空か 256 バイトで、256 バイトなら m を `transfer[m]` に置き換える（PDF の `/TR`。反転したマスクなど）。
+  - マスク用キャンバスのクリップと状態は `MASK_END` で捨てる。グループに残ったクリップはマスクの範囲を狭めない。
+  - マスクの中の命令は内容ではないので、テキスト抽出（MARK・LINK を含む）は `MASK_BEGIN` 〜 `MASK_END` を読み飛ばす。
 
 ### 7.7 メタ・拡張
 

@@ -318,6 +318,7 @@ export function guessSep(prev: TextRun, cur: TextRun): number {
 class TextSink extends NoopSink {
   private stack: State[] = [];
   private st: State;
+  private masking = 0; // inside MASK_BEGIN … MASK_END: a soft mask, not content
 
   constructor(private ex: Extraction, private obj: ObjectPart, m: Matrix, clip?: Rect) {
     super();
@@ -330,7 +331,10 @@ class TextSink extends NoopSink {
   override scale(x: number, y: number) { this.transform(x, 0, 0, y, 0, 0); }
   override font(font: number, size: number) { this.st.font = this.obj.fonts[font]; this.st.size = size; }
   override textStyle(align: number) { this.st.align = align; }
+  override maskBegin() { this.save(); this.masking++; }
+  override maskEnd() { if (this.masking) { this.masking--; this.restore(); } }
   override mark(kind: number, payload: string) {
+    if (this.masking) return;
     switch (kind) {
       case Mark.LINE: this.ex.flushAlt(this.st); this.ex.mark(Sep.SPACE); break;
       case Mark.PARAGRAPH: case Mark.CELL: case Mark.BOX:
@@ -342,7 +346,7 @@ class TextSink extends NoopSink {
       case Mark.LANG: this.ex.lang = payload; break;
     }
   }
-  override link(x: number, y: number, w: number, h: number, url: string) { this.ex.link(x, y, w, h, url, this.st.m); }
+  override link(x: number, y: number, w: number, h: number, url: string) { if (!this.masking) this.ex.link(x, y, w, h, url, this.st.m); }
 
   // --- figure bounds: only computed while a figure is open ---
   private path(i: number): PathData | undefined {
@@ -350,7 +354,7 @@ class TextSink extends NoopSink {
     return p && "inline" in p ? p.inline : undefined;
   }
   private grow(x: number, y: number, w: number, h: number) {
-    if (this.ex.figures.length) this.ex.grow(boxOf(this.st.m, x, y, w, h), this.st.clip);
+    if (this.ex.figures.length && !this.masking) this.ex.grow(boxOf(this.st.m, x, y, w, h), this.st.clip);
   }
   private growPath(i: number, dx = 0, dy = 0) {
     if (!this.ex.figures.length) return;
@@ -371,14 +375,14 @@ class TextSink extends NoopSink {
 
   /** The drawing op right after ALT_TEXT renders that text; returns true when consumed. */
   private takeAlt(x: number, y: number, advance: number): boolean {
-    if (this.ex.alt === undefined) return false;
+    if (this.ex.alt === undefined || this.masking) return false;
     const t = this.ex.alt;
     this.ex.alt = undefined;
     this.ex.emit(t, x, y, advance, this.st, true);
     return true;
   }
-  override fillText(text: string, x: number, y: number, advance: number) { if (!this.takeAlt(x, y, advance)) this.ex.emit(text, x, y, advance, this.st, false); }
-  override strokeText(text: string, x: number, y: number, advance: number) { if (!this.takeAlt(x, y, advance)) this.ex.emit(text, x, y, advance, this.st, false); }
+  override fillText(text: string, x: number, y: number, advance: number) { if (!this.masking && !this.takeAlt(x, y, advance)) this.ex.emit(text, x, y, advance, this.st, false); }
+  override strokeText(text: string, x: number, y: number, advance: number) { if (!this.masking && !this.takeAlt(x, y, advance)) this.ex.emit(text, x, y, advance, this.st, false); }
   override fillPathAt(path: number, _rule: number, x: number, y: number) {
     this.growPath(path, x, y);
     this.takeAlt(x, y, 0);
@@ -389,6 +393,7 @@ class TextSink extends NoopSink {
   }
   override use(obj: number) { this.useAt(obj, 0, 0); }
   override useAt(obj: number, x: number, y: number) {
+    if (this.masking) return;
     if (this.ex.alt !== undefined) {
       // text drawn by the child: it spans the child's bbox along the
       // baseline, and its extent still counts for a figure

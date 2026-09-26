@@ -190,6 +190,8 @@ export interface OpSink {
   useAt(obj: number, x: number, y: number): void;
   groupBegin(alpha: number, blend: number, x: number, y: number, w: number, h: number): void;
   groupEnd(): void;
+  maskBegin(kind: number, backdrop: number, transfer: Uint8Array): void;
+  maskEnd(): void;
   link(x: number, y: number, w: number, h: number, url: string): void;
   mark(kind: number, payload: string): void;
   ext(payload: Uint8Array): void;

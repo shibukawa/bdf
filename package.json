@@ -11,7 +11,7 @@
     "test:golden": "npm run build && node test/golden.mjs",
     "test:golden:update": "npm run build && node test/golden.mjs --update",
     "testdata": "go run ./cmd/bdf demo testdata/demo.bdf && go run ./cmd/bdf demo testdata/demo-split/ && BDF_PASSWORD=demo-パスワード go run ./cmd/bdf encrypt testdata/demo.bdf testdata/demo-encrypted.bdf && node test/pdf/testdata.mjs && node test/pptx/testdata.mjs && node test/xlsx/testdata.mjs && node test/visio/testdata.mjs && node test/docx/testdata.mjs && node test/csv/testdata.mjs",
-    "test:pdf:gen": "node test/pdf/gen.mjs && python3 test/pdf/gen_reportlab.py && python3 test/pdf/gen_master.py && python3 test/pdf/gen_cff.py && python3 test/pdf/gen_type1.py",
+    "test:pdf:gen": "node test/pdf/gen.mjs && python3 test/pdf/gen_reportlab.py && python3 test/pdf/gen_master.py && python3 test/pdf/gen_cff.py && python3 test/pdf/gen_type1.py && python3 test/pdf/gen_cjk.py && python3 test/pdf/gen_images.py",
     "demo": "node examples/viewer/serve.mjs",
     "site": "npm run build && node examples/viewer/site.mjs",
     "site:serve": "npm run build && node examples/viewer/site.mjs --serve",
