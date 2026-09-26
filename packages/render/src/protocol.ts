@@ -1,4 +1,4 @@
-import type { Manifest, Rect, TextRun, SearchHit, SearchOptions } from "@bdf/core";
+import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdf/core";
 import type { HitRect } from "./search.js";
 
 /** How the worker should open a document. */
@@ -14,11 +14,14 @@ export type WorkerRequest =
   | { id: number; type: "sheet"; view: string; viewport: Rect; scale: number }
   | { id: number; type: "text"; view: string; page: number }
   | { id: number; type: "continuousText"; view: string; viewport: Rect }
+  | { id: number; type: "content"; view: string; page: number }
+  | { id: number; type: "continuousContent"; view: string; viewport: Rect }
+  | { id: number; type: "sheetContent"; view: string; viewport: Rect }
   | { id: number; type: "search"; view: string; query: string; options?: SearchOptions }
   | { id: number; type: "locate"; view: string; hits: SearchHit[] }
   | { id: number; type: "close" };
 
-export type WorkerResult = Manifest | ImageBitmap | TextRun[] | SearchHit[] | HitRect[][] | null;
+export type WorkerResult = Manifest | ImageBitmap | TextRun[] | TextContent | SearchHit[] | HitRect[][] | null;
 
 export type WorkerResponse =
   | { id: number; ok: true; result: WorkerResult }

@@ -249,6 +249,40 @@ func cNvPr(n *node) *node {
 	return nil
 }
 
+// altText returns the alternative text of a shape, picture, graphic frame
+// or group (its description, else its title); false when it has none or is
+// marked as decorative.
+func altText(n *node) (string, bool) {
+	pr := cNvPr(n)
+	for _, ext := range pr.path("extLst").children("ext") {
+		if ext.child("decorative").attrBool("val", false) {
+			return "", false
+		}
+	}
+	for _, name := range []string{"descr", "title"} {
+		if v := strings.TrimSpace(pr.attrStr(name, "")); v != "" {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+// beginFigure opens a FIGURE for what n draws when it has alternative text;
+// endFigure closes it.
+func beginFigure(cv *canvas, n *node) bool {
+	alt, ok := altText(n)
+	if ok {
+		cv.obj.Mark(bdf.MarkFigure, alt)
+	}
+	return ok
+}
+
+func endFigure(cv *canvas, open bool) {
+	if open {
+		cv.obj.Mark(bdf.MarkEnd, "")
+	}
+}
+
 // drawTree draws the shapes of a p:spTree. Placeholders are only drawn on
 // slides: on masters and layouts they are prompts for the slides.
 func (s *slideCtx) drawTree(cv *canvas, tree *node, part string, isSlide bool) {
@@ -314,9 +348,11 @@ func (s *slideCtx) drawGroup(cv *canvas, sh *shape, isSlide bool) {
 		g.xf = xform{W: 1, H: 1}
 		g.chExt = [2]float64{1, 1}
 	}
+	fig := beginFigure(cv, sh.n)
 	for _, k := range sh.n.Kids {
 		s.drawElem(cv, k, sh.part, isSlide, g)
 	}
+	endFigure(cv, fig)
 }
 
 func (s *slideCtx) drawSp(cv *canvas, sh *shape) {
@@ -331,10 +367,13 @@ func (s *slideCtx) drawSp(cv *canvas, sh *shape) {
 	fl := s.shapeFill(sh)
 	ln := s.shapeLine(sh)
 	if fl.kind != fillNone || ln != nil {
+		// the alternative text describes the drawing; the text stays text
+		fig := beginFigure(cv, sh.n)
 		cv.obj.Save()
 		cv.transform(xf.matrix())
 		s.paintGeometry(cv, geo, fl, ln, s.shapeShadow(sh), xf.W, xf.H)
 		cv.obj.Restore()
+		endFigure(cv, fig)
 		cv.drawn = true
 	}
 	s.drawShapeText(cv, sh, xf, geo)
@@ -530,7 +569,9 @@ func (s *slideCtx) drawMetafileBlip(cv *canvas, bf *node, e *imageEntry, rc *rec
 
 func (s *slideCtx) drawPic(cv *canvas, sh *shape) {
 	if xf, ok := sh.xform(); ok {
+		fig := beginFigure(cv, sh.n)
 		s.drawPicAt(cv, sh, xf)
+		endFigure(cv, fig)
 	}
 }
 
@@ -681,9 +722,14 @@ func (s *slideCtx) drawFrame(cv *canvas, sh *shape) {
 	}
 	gd := sh.n.path("graphic", "graphicData")
 	uri := gd.attrStr("uri", "")
-	switch {
-	case gd.child("tbl") != nil:
+	if gd.child("tbl") != nil {
+		// tables have their own structure
 		s.drawTable(cv, sh, xf, gd.child("tbl"))
+		return
+	}
+	fig := beginFigure(cv, sh.n)
+	defer func() { endFigure(cv, fig) }()
+	switch {
 	case strings.HasSuffix(uri, "/chart"):
 		s.drawChart(cv, sh, xf, gd.child("chart").rid("id"))
 	case strings.HasSuffix(uri, "/diagram"):
@@ -710,6 +756,9 @@ func (s *slideCtx) drawFrame(cv *canvas, sh *shape) {
 			return
 		}
 		ps := &shape{n: pic, part: sh.part, grp: sh.grp}
+		if !fig {
+			fig = beginFigure(cv, pic) // the preview's own description
+		}
 		if pxf, ok := ps.xform(); ok {
 			s.drawPicAt(cv, ps, pxf)
 		} else {

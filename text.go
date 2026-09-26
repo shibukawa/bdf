@@ -10,6 +10,13 @@ const (
 	MarkBox       byte = 3
 	MarkAltText   byte = 4
 	MarkWrap      byte = 5
+	MarkHeading   byte = 6  // payload: level "1"-"6"
+	MarkList      byte = 7  // opens a list, closed by MarkEnd
+	MarkListItem  byte = 8  // starts an item of the innermost list
+	MarkTable     byte = 9  // opens a table, closed by MarkEnd
+	MarkFigure    byte = 10 // payload: alternative text; opens a figure, closed by MarkEnd
+	MarkEnd       byte = 11 // closes the innermost list, table or figure
+	MarkLang      byte = 12 // payload: BCP 47 language of the runs that follow ("" = document default)
 )
 
 // Separators between consecutive text runs (docs/spec.md §7.9).
@@ -94,7 +101,7 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 			case MarkLine:
 				t.flushAlt(st)
 				t.mark(SepSpace)
-			case MarkParagraph, MarkCell, MarkBox:
+			case MarkParagraph, MarkCell, MarkBox, MarkHeading, MarkList, MarkListItem, MarkTable, MarkFigure, MarkEnd:
 				t.flushAlt(st)
 				t.mark(SepBreak)
 			case MarkWrap:
@@ -105,6 +112,8 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 				p := payload
 				t.alt = &p
 			}
+			// MarkLang and unknown kinds leave the separator to the next MARK
+			// or to the position guess.
 		case OpFillText, OpStrokeText:
 			if t.alt != nil {
 				// The drawing op right after ALT_TEXT renders that text.

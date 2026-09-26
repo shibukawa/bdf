@@ -186,6 +186,7 @@ async function main() {
   const { client: chromeDoc } = await open("/testdata/pdf/chrome-doc.bdf");
   (window as unknown as { bdfAltText: unknown }).bdfAltText = await altTextCheck(chromeDoc);
   (window as unknown as { bdfForcedColors: unknown }).bdfForcedColors = forcedColorsCheck;
+  (window as unknown as { bdfStructure: unknown }).bdfStructure = await structureCheck(client);
   // search through the worker: hits, then rectangles
   const hits = await client.search("doc", "list of objects");
   const rects = await client.locate("doc", hits);
@@ -207,8 +208,10 @@ async function selectionCheck(client: BdfWorkerClient) {
   const style = document.createElement("style");
   style.textContent = TEXT_LAYER_CSS;
   document.head.appendChild(style);
-  const runs = await client.text("doc", 0);
-  const layer = buildTextLayer(runs, 1);
+  // the structured layer: runs nested in paragraphs, headings and table cells
+  const content = await client.content("doc", 0);
+  const runs = content.runs;
+  const layer = buildTextLayer(content, 1);
   const host = document.createElement("div");
   host.style.cssText = "position: relative; width: 600px; height: 850px;";
   host.appendChild(layer);
@@ -252,6 +255,44 @@ async function altTextCheck(client: BdfWorkerClient) {
   });
   host.remove();
   return { runs: runs.filter((r) => r.text).length, spans: spans.length, alt };
+}
+
+/** Roles, links and languages of structured text layers (spec §7.8). */
+async function structureCheck(client: BdfWorkerClient) {
+  const roles = (el: Element) => {
+    const out: Record<string, number> = {};
+    for (const e of el.querySelectorAll("[role]")) out[e.getAttribute("role")!] = (out[e.getAttribute("role")!] ?? 0) + 1;
+    return out;
+  };
+  const slide = buildTextLayer(await client.content("slides", 2), 1, { lang: "en" });
+  const flow = buildTextLayer(await client.content("doc", 0), 1);
+  const figures = buildTextLayer(await client.content("slides", 1), 2);
+  const fig = figures.querySelectorAll<HTMLElement>("[role=img]")[1];
+  const sheet = buildTextLayer(await client.sheetContent("sheet1", { x: 0, y: 0, w: 800, h: 500 }), 1, { sheet: { rows: 200, cols: 26, headerRows: 1, headerCols: 1 } });
+  // links a document must not turn into anchors, and a run in another language
+  const run = (text: string, x: number, lang?: string) => ({ text, x, y: 20, advance: 40, size: 10, font: undefined, align: 0, matrix: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number], sep: 1, ordinal: 0, altText: false, node: 0, lang });
+  const unsafe = buildTextLayer({
+    runs: [run("safe", 0), run("日本語", 100, "ja"), run("evil", 200)],
+    nodes: [{ kind: "paragraph", parent: -1 }],
+    links: [
+      { x: 0, y: 0, w: 60, h: 30, url: "https://example.com/", after: 2, node: 0 },
+      { x: 200, y: 0, w: 60, h: 30, url: "javascript:alert(1)", after: 2, node: 0 },
+      { x: 300, y: 0, w: 60, h: 30, url: "data:text/html,x", after: 2, node: 0 },
+    ],
+  }, 1, { lang: "en" });
+  return {
+    slide: roles(slide),
+    headingLevel: slide.querySelector("[role=heading]")?.getAttribute("aria-level"),
+    links: [...slide.querySelectorAll("a")].map((a) => [a.getAttribute("href"), a.getAttribute("data-bdf-page"), a.textContent]),
+    flow: roles(flow),
+    headers: [...flow.querySelectorAll("[role=columnheader]")].map((e) => e.textContent),
+    figures: [...figures.querySelectorAll("[role=img]")].map((e) => e.getAttribute("aria-label")),
+    figureBox: [fig.style.left, fig.style.top, fig.style.width, fig.style.height],
+    sheet: roles(sheet),
+    sheetCell: sheet.querySelector("[role=row]:nth-child(3) [role=cell]")?.getAttribute("aria-colindex"),
+    unsafeAnchors: [...unsafe.querySelectorAll("a")].map((a) => a.getAttribute("href")),
+    lang: [unsafe.lang, ...[...unsafe.querySelectorAll("span")].map((s) => s.lang)],
+  };
 }
 
 /** Called by test/golden.mjs with forced colors emulated: the text layer's color. */

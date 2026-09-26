@@ -3,6 +3,7 @@ package pptx
 import (
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
@@ -21,6 +22,10 @@ type canvas struct {
 	images   map[bdf.Hash]bdf.ImageRef
 	children []*canvas
 	drawn    bool
+	// lang is the language in effect at the end of the instructions so far
+	// ("" = the document's): LANG marks carry over in drawing order, and
+	// each top-level object starts with the document's language.
+	lang string
 
 	encoded bool
 	hash    bdf.Hash
@@ -63,6 +68,30 @@ func (cv *canvas) image(h bdf.Hash) bdf.ImageRef {
 	r := cv.obj.AddImage(h)
 	cv.images[h] = r
 	return r
+}
+
+// setLang makes lang (a language tag, "" for the document's) the language
+// of the text that follows, with a LANG mark when it changes.
+func (cv *canvas) setLang(lang string) {
+	lang = normLang(lang)
+	if isDocLang(lang, cv.c.doc.Meta.DC.Language.First()) {
+		lang = ""
+	}
+	if lang != cv.lang {
+		cv.obj.Mark(bdf.MarkLang, lang)
+		cv.lang = lang
+	}
+}
+
+// isDocLang reports whether lang stands for the document's language doc:
+// the same tag, or its language subtag alone (as the script of East Asian
+// text implies: "ja" in a "ja-JP" document).
+func isDocLang(lang, doc string) bool {
+	if strings.EqualFold(lang, doc) {
+		return true
+	}
+	n := len(lang)
+	return n > 0 && !strings.Contains(lang, "-") && len(doc) > n && doc[n] == '-' && strings.EqualFold(doc[:n], lang)
 }
 
 // child adds a child object and returns its canvas and reference.

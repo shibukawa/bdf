@@ -60,6 +60,16 @@ try {
   const altOk = alt.alt.length > 0 && alt.spans === alt.runs && alt.alt.every((a) => a.span === a.text && Math.abs(a.width - a.want) < 1);
   if (!altOk) failed++;
   console.log(`alt text: ${altOk ? "ok" : "FAIL"} (${alt.spans} spans for ${alt.runs} runs, ${JSON.stringify(alt.alt)})`);
+  const st = await page.evaluate(() => window.bdfStructure);
+  const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const structureOk = st.slide.heading === 1 && st.headingLevel === "1" && st.slide.list === 1 && st.slide.listitem === 4
+    && eq(st.links, [["#page=1", "1", "Text styles"], ["https://example.com/", null, "system serif italic (no correction)"]])
+    && st.flow.table === 1 && st.flow.row === 4 && st.flow.cell === 9 && eq(st.headers, ["R1C1", "R1C2", "R1C3"])
+    && eq(st.figures, ["Checkerboard", "Enlarged corner of the checkerboard"]) && eq(st.figureBox, ["1560px", "260px", "240px", "400px"])
+    && st.sheet.table === 1 && st.sheet.columnheader === 26 && st.sheet.rowheader > 50 && st.sheetCell === "2"
+    && eq(st.unsafeAnchors, ["https://example.com/"]) && eq(st.lang, ["en", "", "ja", ""]);
+  if (!structureOk) failed++;
+  console.log(`structure: ${structureOk ? "ok" : "FAIL"} (${JSON.stringify(st)})`);
   // Windows high contrast: forced colors must not paint the text layer over the canvas
   await page.emulateMedia({ forcedColors: "active" });
   const forced = await page.evaluate(() => window.bdfForcedColors());

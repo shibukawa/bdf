@@ -59,6 +59,7 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 - Content-addressed parts, so masters and repeated elements are shared automatically
 - A text index part and full-text search in the Worker (matches across lines, NFKC and kana normalization, hit rectangles)
 - A transparent DOM text layer for selection and copy (spaces and line breaks restored from MARK boundaries; works across pages and in continuous mode)
+- Accessible text layers: headings, lists, tables, figures with alternative text, links and languages from structure MARKs, exposed to screen readers (tagged PDF and PowerPoint structure are converted)
 - The single-file and split-file forms convert into each other without re-encoding (the single file starts with the magic `bdf\0`)
 - The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information and a PowerPoint deck's core properties
 

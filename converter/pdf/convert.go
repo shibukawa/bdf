@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
@@ -86,6 +87,11 @@ type converter struct {
 	pageBodies     []pageRef
 	sharedPrefixes int
 	sharedBytes    int
+
+	tree       *structTree // nil for untagged documents
+	docLang    string      // catalog /Lang
+	outPages   map[int]int // page object number → 1-based page index in the view
+	outPageNrs map[int]int // PDF page number → 1-based page index in the view
 }
 
 // ConvertFile converts a PDF file.
@@ -120,6 +126,15 @@ func Convert(rs io.ReadSeeker, opts *Options) (*Result, error) {
 	if opts.Title != "" {
 		c.doc.Meta.DC.Title = bdf.DCValues{opts.Title}
 	}
+	if cat, err := ctx.Catalog(); err == nil && cat != nil {
+		// the catalog's /Lang is the document's language (the default of
+		// its text, spec §7.8), unless the metadata already names one
+		if lang := strings.TrimSpace(c.pdf.text(cat["Lang"])); lang != "" && len(c.doc.Meta.DC.Language) == 0 {
+			c.doc.Meta.DC.Language = bdf.DCValues{lang}
+		}
+		c.docLang = c.doc.Meta.DC.Language.First()
+		c.tree = newStructTree(c.pdf, cat, c.docLang)
+	}
 	kind := opts.Kind
 	if kind == "" {
 		kind = bdf.ViewFixed
@@ -134,10 +149,20 @@ func Convert(rs io.ReadSeeker, opts *Options) (*Result, error) {
 			pages = append(pages, i)
 		}
 	}
-	for _, n := range pages {
+	c.outPages, c.outPageNrs = map[int]int{}, map[int]int{}
+	for i, n := range pages {
 		if n < 1 || n > ctx.PageCount {
 			return nil, fmt.Errorf("pdf: page %d out of range (1-%d)", n, ctx.PageCount)
 		}
+		if _, ok := c.outPageNrs[n]; ok {
+			continue
+		}
+		c.outPageNrs[n] = i + 1
+		if _, ref, _, err := ctx.PageDict(n, false); err == nil && ref != nil {
+			c.outPages[ref.ObjectNumber.Value()] = i + 1
+		}
+	}
+	for _, n := range pages {
 		if err := c.convertPage(view, n); err != nil {
 			return nil, fmt.Errorf("pdf: page %d: %w", n, err)
 		}
@@ -184,7 +209,7 @@ func (c *converter) defaultFont() *pdfFont {
 // convertPage converts one page into a body object and appends it to the view.
 func (c *converter) convertPage(view *bdf.View, pageNr int) error {
 	p := c.pdf
-	pageDict, _, attrs, err := c.pdf.ctx.PageDict(pageNr, false)
+	pageDict, pageIRef, attrs, err := c.pdf.ctx.PageDict(pageNr, false)
 	if err != nil {
 		return err
 	}
@@ -233,12 +258,38 @@ func (c *converter) convertPage(view *bdf.View, pageNr int) error {
 		c.warnf("page %d content: %v", pageNr, err)
 	}
 	in := c.newInterp(body, res, base, 0)
+	in.st = &structState{}
+	if c.tree != nil {
+		sp, ok := p.num(pageDict["StructParents"])
+		pageObj := 0
+		if pageIRef != nil {
+			pageObj = pageIRef.ObjectNumber.Value()
+		}
+		in.mcids = c.tree.contentTable(int(sp), ok, pageObj)
+	}
 	in.transform(base)
+	userSpace := in.gs.ctm
 	if len(content) > 0 {
 		in.run(content)
 	}
-	if !c.opts.NoAnnotations {
-		c.annotations(in, pageDict, base)
+	in.closeStructure()
+	in.st = nil
+	if !c.opts.NoAnnotations && len(c.pdf.array(pageDict["Annots"])) > 0 {
+		// Annotations are in default user space, but the content may leave a
+		// cm in effect outside any q (Chrome's does): undo it around them.
+		undo := in.gs.ctm != userSpace
+		if undo {
+			inv, ok := in.gs.ctm.inverse()
+			undo = ok
+			if ok {
+				in.save()
+				in.transform(userSpace.mul(inv))
+			}
+		}
+		c.annotations(in, pageDict)
+		if undo {
+			in.restore()
+		}
 	}
 	page := view.AddPage(float32(pw), float32(ph), bdf.Layer{Role: bdf.RoleBody, Obj: bdf.Hash{}})
 	page.Layers[0].Obj = bdf.Hash{} // patched in finalize
@@ -255,7 +306,8 @@ type pageRef struct {
 }
 
 // annotations draws annotation appearance streams and emits link areas.
-func (c *converter) annotations(in *interp, pageDict types.Dict, base matrix) {
+// The current transform is the page's user space.
+func (c *converter) annotations(in *interp, pageDict types.Dict) {
 	p := c.pdf
 	for _, a := range p.array(pageDict["Annots"]) {
 		ad := p.dict(a)
@@ -272,24 +324,8 @@ func (c *converter) annotations(in *interp, pageDict types.Dict, base matrix) {
 			continue
 		}
 		if sub == "Link" {
-			target := ""
-			if act := p.dict(ad["A"]); act != nil {
-				if p.name(act["S"]) == "URI" {
-					target = string(p.str(act["URI"]))
-				}
-			}
-			if target == "" {
-				if dest := p.array(ad["Dest"]); len(dest) > 0 {
-					if ref, ok := dest[0].(types.IndirectRef); ok {
-						if n, err := c.pdf.ctx.PageNumber(ref.ObjectNumber.Value()); err == nil {
-							target = fmt.Sprintf("#page=%d", n)
-						}
-					}
-				}
-			}
-			if target != "" {
-				lr := base.transformRect(r)
-				in.obj.Link(float32(lr.x0), float32(lr.y0), float32(lr.x1-lr.x0), float32(lr.y1-lr.y0), target)
+			if target := c.linkTarget(ad); target != "" {
+				in.obj.Link(float32(r.x0), float32(r.y0), float32(r.x1-r.x0), float32(r.y1-r.y0), target)
 			}
 			continue
 		}
@@ -327,15 +363,82 @@ func (c *converter) annotations(in *interp, pageDict types.Dict, base matrix) {
 	}
 }
 
-// formObject converts a form XObject (or pattern cell) into a shared pending object.
-func (c *converter) formObject(key string, sd *types.StreamDict, parentRes types.Dict, depth int) *pending {
+// linkTarget returns the url of a link annotation: a URI action, or
+// "#page=N" for a destination on a converted page.
+func (c *converter) linkTarget(ad types.Dict) string {
+	p := c.pdf
+	if act := p.dict(ad["A"]); act != nil {
+		switch p.name(act["S"]) {
+		case "URI":
+			return string(p.str(act["URI"]))
+		case "GoTo":
+			return c.destTarget(act["D"])
+		}
+		return ""
+	}
+	return c.destTarget(ad["Dest"])
+}
+
+// destTarget resolves an explicit or named destination to "#page=N".
+func (c *converter) destTarget(o types.Object) string {
+	p := c.pdf
+	for i := 0; i < 4; i++ {
+		switch v := p.deref(o).(type) {
+		case types.Name:
+			o = c.namedDest(v.Value())
+		case types.StringLiteral, types.HexLiteral:
+			o = c.namedDest(string(p.str(v)))
+		case types.Dict:
+			o = v["D"]
+		case types.Array:
+			if len(v) == 0 {
+				return ""
+			}
+			n, ok := 0, false
+			switch pg := v[0].(type) {
+			case types.IndirectRef:
+				n, ok = c.outPages[pg.ObjectNumber.Value()]
+			case types.Integer: // a page index, as some producers write
+				n, ok = c.outPageNrs[int(pg)+1]
+			}
+			if !ok {
+				return ""
+			}
+			return fmt.Sprintf("#page=%d", n)
+		default:
+			return ""
+		}
+	}
+	return ""
+}
+
+// namedDest looks a destination name up in the catalog's /Dests name tree
+// (PDF 1.2) and /Dests dictionary (PDF 1.1).
+func (c *converter) namedDest(name string) types.Object {
+	p := c.pdf
+	cat, err := p.ctx.Catalog()
+	if err != nil || cat == nil {
+		return nil
+	}
+	if v := p.nameTree(p.dict(cat["Names"])["Dests"], name); v != nil {
+		return v
+	}
+	return p.dict(cat["Dests"])[name]
+}
+
+// formObject converts a form XObject (or pattern cell) into a shared pending
+// object. fs is the caller's structure state (nil: no structure MARKs).
+func (c *converter) formObject(key string, sd *types.StreamDict, parentRes types.Dict, depth int, fs *formStruct) *pending {
 	p := c.pdf
 	if key != "" {
 		if f, ok := c.forms[key]; ok {
 			if f == nil || f.building {
 				return nil // in progress (cycle) or failed
 			}
-			return f
+			if f.st == nil || !f.st.used || f.st.reusableFor(fs) {
+				return f
+			}
+			key = "" // its MARKs were made for another state: convert it again
 		}
 	}
 	bbox := p.rectOr(sd.Dict["BBox"], rect{0, 0, 1, 1})
@@ -360,7 +463,15 @@ func (c *converter) formObject(key string, sd *types.StreamDict, parentRes types
 		return nil
 	}
 	in := c.newInterp(f, res, identity, depth)
+	if fs != nil {
+		st := fs.entry.clone()
+		in.st, in.mcids, in.inherit = &st, fs.mcids, fs.inherit
+	}
 	in.run(data)
+	if fs != nil {
+		fs.used, fs.exit = in.structUsed, in.st.clone()
+		f.st = fs
+	}
 	f.building = false
 	c.pendings = append(c.pendings, f)
 	return f

@@ -92,6 +92,7 @@ type textRun struct {
 	alt   bool
 	empty bool
 	font  *pdfFont
+	tgt   *mcTarget // structure of the marked content the run started in
 }
 
 // flushRun emits the run that is being accumulated across TJ elements.
@@ -167,6 +168,7 @@ func (in *interp) showText(s []byte) {
 			in.curRun.x0 = in.text.tx / h
 			in.curRun.empty = false
 			in.curRun.font = f
+			in.curRun.tgt = in.curTarget()
 		}
 		in.curRun.draw.WriteString(draw)
 		in.curRun.text.WriteString(text)
@@ -182,6 +184,7 @@ func (in *interp) showText(s []byte) {
 }
 
 func (in *interp) emitRun(f *pdfFont, run *textRun) {
+	in.syncText(run.tgt)
 	mode := in.gs.render
 	if mode == 7 || in.gs.size == 0 {
 		mode = 3
@@ -241,6 +244,13 @@ func (in *interp) showType3(f *pdfFont, codes []glyphCode) {
 		text.WriteString(uni)
 	}
 	altPending := text.Len() > 0
+	synced := false
+	sync := func() {
+		if !synced {
+			in.syncText(in.curTarget())
+			synced = true
+		}
+	}
 	for _, g := range codes {
 		w0 := f.width(g)
 		adv := w0*in.gs.size + in.gs.charSp
@@ -249,6 +259,7 @@ func (in *interp) showType3(f *pdfFont, codes []glyphCode) {
 		}
 		glyph := in.c.type3Glyph(f, f.glyphName(g.code), in.depth+1)
 		if glyph != nil && in.gs.render != 3 && in.gs.render != 7 {
+			sync()
 			in.ensureTextBlock(false)
 			if altPending {
 				in.obj.Mark(bdf.MarkAltText, text.String())
@@ -267,6 +278,7 @@ func (in *interp) showType3(f *pdfFont, codes []glyphCode) {
 	}
 	if altPending {
 		// Nothing was drawn (invisible or missing glyphs): keep the text for search.
+		sync()
 		in.obj.Mark(bdf.MarkAltText, text.String())
 	}
 }

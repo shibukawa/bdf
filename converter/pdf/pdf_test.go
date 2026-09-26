@@ -183,7 +183,17 @@ func TestConvertChromeSlides(t *testing.T) {
 			t.Errorf("text index lacks %q", want)
 		}
 	}
+	if m := r.Manifest.Meta; m.DC.Title.First() != "slides.html" || m.DC.Language.First() != "en-US" {
+		t.Errorf("meta = %+v", m)
+	}
 	// The page content is a form XObject reused as a shared object; links are emitted on page 2.
+	// The form's marked content belongs to the page's structure.
+	seq := markSeq(t, r, v.Pages[1].Layers[0].Obj)
+	for _, want := range []string{"HEADING 1|text Images, clips and blending", "TABLE|CELL A1 col|text R1C1|CELL B1 col|text R1C2|CELL A2|text R2C1|CELL B2|text R2C2|fill|END|PARAGRAPH Div|text a link to example.com"} {
+		if !strings.Contains(seq, want) {
+			t.Errorf("page 2 lacks %q:\n%s", want, seq)
+		}
+	}
 	counts := opCounts(t, r, v.Pages[1].Layers[0].Obj)
 	if counts[bdf.OpLink] != 1 || counts[bdf.OpUse] < 1 {
 		t.Fatalf("page 2 ops: %v", counts)
@@ -198,17 +208,44 @@ func TestConvertChromeDoc(t *testing.T) {
 			t.Errorf("text index lacks %q", want)
 		}
 	}
-	// Block-level marked content (P, TH …) becomes MARK PARAGRAPH. Chrome tags most
-	// text as NonStruct/Span, so only a few marks are expected here.
+	if m := r.Manifest.Meta; m.DC.Title.First() != "doc.html" || m.DC.Language.First() != "en-US" {
+		t.Errorf("meta = %+v", m)
+	}
+	// Chrome tags all text as NonStruct; headings, paragraphs, the list and the
+	// table come from the structure tree. Paragraph breaks are the only change
+	// to the text.
+	want := []string{
+		"BDF conversion fixture",
+		"BDF is a display-list format for browsers. Each page is a list of objects, and each object is a stream of instructions that map directly onto the Canvas 2D API. Fonts and images are stored as the browser already understands them, so the decoder stays small.",
+		"Repeated content such as headers and footers is stored once and referenced by hash from every page. The body of each page is its own object, laid out inside the body rectangle so that a viewer can stack bodies vertically for a continuous reading mode.",
+		"This paragraph is a note with a colored rule. It contains emphasis, strong text, monospace code and a hyperlink.",
+		"First bullet item",
+		"Second bullet item with more words to wrap onto the next line when the column is narrow enough to force it",
+		"Third", "Name", "Value", "Note", "alpha", "1.00", "first", "beta", "2.50", "second", "gamma", "10.25", "third",
+		"Second page",
+		"Text on the second page, followed by a justified paragraph.",
+		"Justified text uses word-spacing adjustments in the PDF content stream, which the converter must reproduce by positioning each word so that the right edge lines up. This paragraph is long enough to fill several lines and thereby exercise that code path with a variety of word lengths and spacing amounts.",
+	}
+	if got := strings.Split(text, "\n"); !slices.Equal(got, want) {
+		t.Errorf("text lines:\n%s", strings.Join(got, "\n"))
+	}
+	seq := markSeq(t, r, r.Manifest.Views[0].Pages[0].Layers[0].Obj)
+	for _, want := range []string{
+		"HEADING 1|text BDF conversion |ALT_TEXT fixture",
+		"PARAGRAPH P|text BDF is a display-list",
+		"LIST|LIST_ITEM|text First bullet item|fill|LIST_ITEM|text Second bullet",
+		"fill|LIST_ITEM|text Third|END|TABLE|CELL A1 col|text Name|CELL B1 col|text Value|CELL C1 col|text Note|CELL A2|text alpha",
+		"CELL C4|text third|END|link 242.25 542.67 53.25 12.75 https://example.com/doc",
+	} {
+		if !strings.Contains(seq, want) {
+			t.Errorf("page 1 lacks %q:\n%s", want, seq)
+		}
+	}
+	if seq := markSeq(t, r, r.Manifest.Views[0].Pages[1].Layers[0].Obj); !strings.HasPrefix(seq, "HEADING 2|text Second page|PARAGRAPH P|") {
+		t.Errorf("page 2: %s", seq)
+	}
 	counts := opCounts(t, r, r.Manifest.Views[0].Pages[0].Layers[0].Obj)
 	obj, _ := r.Object(r.Manifest.Views[0].Pages[0].Layers[0].Obj)
-	marks := 0
-	for _, child := range obj.Objects {
-		marks += opCounts(t, r, child)[bdf.OpMark]
-	}
-	if counts[bdf.OpMark]+marks < 3 {
-		t.Fatalf("expected paragraph marks, got %d", counts[bdf.OpMark]+marks)
-	}
 	// Kerned glyphs are merged into runs rather than one FILL_TEXT per glyph.
 	if n := counts[bdf.OpFillText] + func() int {
 		s := 0
@@ -948,5 +985,248 @@ func TestType1Charstrings(t *testing.T) {
 		if _, err := font.convert(name); err == nil {
 			t.Errorf("%s was converted", name)
 		}
+	}
+}
+
+var markNames = map[byte]string{bdf.MarkParagraph: "PARAGRAPH", bdf.MarkLine: "LINE", bdf.MarkCell: "CELL", bdf.MarkBox: "BOX",
+	bdf.MarkAltText: "ALT_TEXT", bdf.MarkWrap: "WRAP", bdf.MarkHeading: "HEADING", bdf.MarkList: "LIST", bdf.MarkListItem: "LIST_ITEM",
+	bdf.MarkTable: "TABLE", bdf.MarkFigure: "FIGURE", bdf.MarkEnd: "END", bdf.MarkLang: "LANG"}
+
+// markSeq lists the MARKs, text runs, path drawings, images and links of an
+// object and the objects it USEs in walk order, joined by "|".
+func markSeq(t *testing.T, r *bdf.Reader, h bdf.Hash) string {
+	t.Helper()
+	var out []string
+	var walk func(h bdf.Hash)
+	walk = func(h bdf.Hash) {
+		o, err := r.Object(h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = o.Walk(func(in bdf.Instr) {
+			switch in.Op {
+			case bdf.OpMark:
+				out = append(out, strings.TrimSpace(markNames[byte(in.Args[0].(uint64))]+" "+in.Args[1].(string)))
+			case bdf.OpFillText, bdf.OpStrokeText:
+				out = append(out, "text "+in.Args[0].(string))
+			case bdf.OpFillPath, bdf.OpFillRect:
+				out = append(out, "fill")
+			case bdf.OpStrokePath, bdf.OpStrokeRect:
+				out = append(out, "stroke")
+			case bdf.OpImage:
+				out = append(out, "image")
+			case bdf.OpLink:
+				out = append(out, fmt.Sprintf("link %v %v %v %v %s", in.Args[0], in.Args[1], in.Args[2], in.Args[3], in.Args[4]))
+			case bdf.OpUse, bdf.OpUseAt:
+				walk(o.Objects[int(in.Args[0].(uint64))])
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	walk(h)
+	return strings.Join(out, "|")
+}
+
+// buildPDF assembles a PDF from objects numbered from 1; a [2]string is a
+// stream (dictionary entries, data).
+func buildPDF(objs []any, trailer string) []byte {
+	var b bytes.Buffer
+	b.WriteString("%PDF-1.7\n")
+	offsets := make([]int, len(objs))
+	for i, o := range objs {
+		offsets[i] = b.Len()
+		fmt.Fprintf(&b, "%d 0 obj\n", i+1)
+		switch v := o.(type) {
+		case string:
+			b.WriteString(v)
+		case [2]string:
+			fmt.Fprintf(&b, "<< %s /Length %d >>\nstream\n%s\nendstream", v[0], len(v[1]), v[1])
+		}
+		b.WriteString("\nendobj\n")
+	}
+	xref := b.Len()
+	fmt.Fprintf(&b, "xref\n0 %d\n0000000000 65535 f \n", len(objs)+1)
+	for _, off := range offsets {
+		fmt.Fprintf(&b, "%010d 00000 n \n", off)
+	}
+	fmt.Fprintf(&b, "trailer\n<< /Size %d %s >>\nstartxref\n%d\n%%%%EOF\n", len(objs)+1, trailer, xref)
+	return b.Bytes()
+}
+
+// taggedPDF is a two-page tagged PDF with the structure types the converter
+// maps, a role-mapped heading, languages, a figure and links. Without a
+// parent tree, MCIDs are found by walking the structure tree.
+func taggedPDF(parentTree bool) []byte {
+	root := `<< /Type /StructTreeRoot /K 12 0 R /ParentTree 13 0 R /RoleMap << /MyHead /H2 >> >>`
+	if !parentTree {
+		root = `<< /Type /StructTreeRoot /K 12 0 R /RoleMap << /MyHead /H2 >> >>`
+	}
+	page1 := `/Artifact BMC BT /F1 10 Tf 72 770 Td (header) Tj ET EMC
+/H1 <</MCID 0>> BDC BT /F1 24 Tf 72 720 Td /Span <</ActualText (T\\itle)>> BDC (Title) Tj EMC ET EMC
+/P <</MCID 1>> BDC BT /F1 12 Tf 72 690 Td (Para one) Tj ET EMC
+/LBody <</MCID 2>> BDC BT /F1 12 Tf 72 670 Td (Item one) Tj ET EMC
+/LBody <</MCID 3>> BDC BT /F1 12 Tf 90 655 Td (Nested) Tj ET EMC
+/Lbl <</MCID 12>> BDC BT /F1 12 Tf 72 640 Td (2.) Tj ET EMC
+/P <</MCID 4>> BDC BT /F1 12 Tf 90 640 Td (Item two) Tj ET EMC
+/TH <</MCID 5>> BDC 0.9 g 72 605 150 15 re f BT 0 g /F1 12 Tf 72 610 Td (Head) Tj ET EMC
+/TH <</MCID 6>> BDC BT /F1 12 Tf 72 595 Td (Row) Tj ET EMC
+/TD <</MCID 7>> BDC BT /F1 12 Tf 150 595 Td (Cell) Tj ET EMC
+/Figure <</MCID 8>> BDC 0 0 1 rg 72 500 50 50 re f EMC
+/Artifact BMC 0 G 72 480 m 300 480 l S EMC
+/P <</MCID 9>> BDC BT 0 g /F1 12 Tf 72 450 Td (Mixed) Tj ET EMC
+/Span <</MCID 10>> BDC BT /F1 12 Tf 110 450 Td (english) Tj ET EMC
+/P <</MCID 11>> BDC BT /F1 12 Tf 160 450 Td (tail ) Tj /Span /Pr1 BDC (deutsch) Tj EMC ET EMC`
+	page2 := `/MyHead <</MCID 0>> BDC BT /F1 18 Tf 72 720 Td (Chapter 2) Tj ET EMC
+/P <</MCID 1>> BDC q 1 0 0 1 72 690 cm /Fm1 Do Q EMC
+/P <</MCID 2>> BDC q 1 0 0 1 72 670 cm /Fm1 Do Q EMC`
+	elem := func(s, parent, rest string) string {
+		return "<< /Type /StructElem /S /" + s + " /P " + parent + " 0 R " + rest + " >>"
+	}
+	return buildPDF([]any{
+		/* 1 */ `<< /Type /Catalog /Pages 2 0 R /Lang (ja) /MarkInfo << /Marked true >> /StructTreeRoot 11 0 R
+			/Names << /Dests 9 0 R >> /Dests << /Legacy [3 0 R /Fit] >> >>`,
+		/* 2 */ `<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>`,
+		/* 3 */ `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 5 0 R /StructParents 0
+			/Resources << /Font << /F1 7 0 R >> /Properties << /Pr1 << /Lang (de) >> >> >> /Annots [37 0 R 38 0 R 39 0 R] >>`,
+		/* 4 */ `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 6 0 R /StructParents 1
+			/Resources << /Font << /F1 7 0 R >> /XObject << /Fm1 40 0 R >> >> >>`,
+		/* 5 */ [2]string{"", page1},
+		/* 6 */ [2]string{"", page2},
+		/* 7 */ `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>`,
+		/* 8 */ `<< /Title (Tagged \(test\)) >>`,
+		/* 9 */ `<< /Kids [10 0 R] >>`,
+		/* 10 */ `<< /Limits [(chap2) (chap2)] /Names [(chap2) << /D [4 0 R /Fit] >>] >>`,
+		/* 11 */ root,
+		/* 12 */ `<< /Type /StructElem /S /Document /P 11 0 R /K [15 0 R 16 0 R 17 0 R 25 0 R 31 0 R 32 0 R 34 0 R 35 0 R 36 0 R] >>`,
+		/* 13 */ `<< /Kids [14 0 R] >>`,
+		/* 14 */ `<< /Limits [0 1] /Nums [0 [15 0 R 16 0 R 19 0 R 22 0 R 42 0 R 27 0 R 29 0 R 30 0 R 31 0 R 32 0 R 33 0 R 32 0 R 41 0 R] 1 [34 0 R 35 0 R 36 0 R]] >>`,
+		/* 15 */ elem("H1", "12", "/K 0 /Pg 3 0 R"),
+		/* 16 */ elem("P", "12", "/K 1 /Pg 3 0 R"),
+		/* 17 */ elem("L", "12", "/K [18 0 R 23 0 R]"),
+		/* 18 */ elem("LI", "17", "/K 19 0 R"),
+		/* 19 */ elem("LBody", "18", "/K [2 20 0 R] /Pg 3 0 R"),
+		/* 20 */ elem("L", "19", "/K 21 0 R"),
+		/* 21 */ elem("LI", "20", "/K 22 0 R"),
+		/* 22 */ elem("LBody", "21", "/K 3 /Pg 3 0 R"),
+		/* 23 */ elem("LI", "17", "/K [41 0 R 24 0 R]"),
+		/* 24 */ elem("LBody", "23", "/K 42 0 R"),
+		/* 25 */ elem("Table", "12", "/K [26 0 R 28 0 R]"),
+		/* 26 */ elem("TR", "25", "/K 27 0 R"),
+		/* 27 */ elem("TH", "26", "/K 5 /Pg 3 0 R /A << /O /Table /ColSpan 2 >>"),
+		/* 28 */ elem("TR", "25", "/K [29 0 R 30 0 R]"),
+		/* 29 */ elem("TH", "28", "/K 6 /Pg 3 0 R /A [<< /O /Table /Scope /Row >> 0]"),
+		/* 30 */ elem("TD", "28", "/K 7 /Pg 3 0 R"),
+		/* 31 */ elem("Figure", "12", "/K 8 /Pg 3 0 R /Alt (A blue square)"),
+		/* 32 */ elem("P", "12", "/K [9 33 0 R 11] /Pg 3 0 R"),
+		/* 33 */ elem("Span", "32", "/K 10 /Pg 3 0 R /Lang (en)"),
+		/* 34 */ elem("MyHead", "12", "/K 0 /Pg 4 0 R"),
+		/* 35 */ elem("P", "12", "/K 1 /Pg 4 0 R"),
+		/* 36 */ elem("P", "12", "/K 2 /Pg 4 0 R"),
+		/* 37 */ `<< /Type /Annot /Subtype /Link /Rect [72 100 172 120] /A << /S /GoTo /D [4 0 R /XYZ 0 792 0] >> >>`,
+		/* 38 */ `<< /Type /Annot /Subtype /Link /Rect [200 100 300 120] /Dest (chap2) >>`,
+		/* 39 */ `<< /Type /Annot /Subtype /Link /Rect [320 100 420 120] /Dest /Legacy >>`,
+		/* 40 */ [2]string{"/Type /XObject /Subtype /Form /BBox [0 0 200 20] /Resources << /Font << /F1 7 0 R >> >>", "BT /F1 12 Tf 0 5 Td (inform) Tj ET"},
+		/* 41 */ elem("Lbl", "23", "/K 12 /Pg 3 0 R"),
+		/* 42 */ elem("P", "24", "/K 4 /Pg 3 0 R"),
+	}, "/Root 1 0 R /Info 8 0 R")
+}
+
+func convertBytes(t *testing.T, data []byte, opts *Options) (*Result, *bdf.Reader) {
+	t.Helper()
+	res, err := Convert(bytes.NewReader(data), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := res.Doc.WriteSingle(&buf); err != nil {
+		t.Fatal(err)
+	}
+	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res, r
+}
+
+func TestConvertTagged(t *testing.T) {
+	res, r := convertBytes(t, taggedPDF(true), nil)
+	if len(res.Warnings) != 0 {
+		t.Errorf("warnings: %v", res.Warnings)
+	}
+	if m := r.Manifest.Meta; m.DC.Title.First() != "Tagged (test)" || m.DC.Language.First() != "ja" {
+		t.Errorf("meta = %+v", m)
+	}
+	pages := r.Manifest.Views[0].Pages
+	want1 := strings.Join([]string{
+		"text header",
+		"HEADING 1", `ALT_TEXT T\itle`, "text Title",
+		"PARAGRAPH P", "text Para one",
+		"LIST", "LIST_ITEM", "text Item one",
+		"LIST", "LIST_ITEM", "text Nested",
+		// The item's label and first paragraph stay together.
+		"END", "LIST_ITEM", "text 2.", "text Item two",
+		// The TH background draws no figure: its MARKs wait for the text.
+		"fill", "END", "TABLE", "CELL A1:B1 col", "text Head",
+		"CELL A2 row", "text Row",
+		"CELL B2", "text Cell",
+		"END", "FIGURE A blue square", "fill",
+		"END", "stroke", // the artifact line is not part of the figure
+		"PARAGRAPH P", "text Mixed",
+		"LANG en", "text english",
+		"LANG", "text tail ",
+		"LANG de", "text deutsch",
+		"link 72 100 100 20 #page=2", "link 200 100 100 20 #page=2", "link 320 100 100 20 #page=1",
+	}, "|")
+	if got := markSeq(t, r, pages[0].Layers[0].Obj); got != want1 {
+		t.Errorf("page 1:\n got %s\nwant %s", got, want1)
+	}
+	// The form is drawn in two paragraphs: each use gets its own MARKs.
+	want2 := "HEADING 2|text Chapter 2|PARAGRAPH P|text inform|PARAGRAPH P|text inform"
+	if got := markSeq(t, r, pages[1].Layers[0].Obj); got != want2 {
+		t.Errorf("page 2:\n got %s\nwant %s", got, want2)
+	}
+	_, r2 := convertBytes(t, taggedPDF(false), nil)
+	for i, pg := range r2.Manifest.Views[0].Pages {
+		if got, want := markSeq(t, r2, pg.Layers[0].Obj), markSeq(t, r, pages[i].Layers[0].Obj); got != want {
+			t.Errorf("page %d without parent tree:\n got %s\nwant %s", i+1, got, want)
+		}
+	}
+	lines := strings.Split(pageText(t, r), "\n")
+	if want := []string{"header", `T\itle`, "Para one", "Item one", "Nested", "2. Item two", "Head", "Row", "Cell", "Mixed english tail deutsch", "Chapter 2", "inform", "inform"}; !slices.Equal(lines, want) {
+		t.Errorf("text = %q", lines)
+	}
+
+	// Links point at page indexes of the output view; pages left out drop theirs.
+	_, r = convertBytes(t, taggedPDF(true), &Options{Pages: []int{2, 1}})
+	if got := markSeq(t, r, r.Manifest.Views[0].Pages[1].Layers[0].Obj); !strings.HasSuffix(got, "link 72 100 100 20 #page=1|link 200 100 100 20 #page=1|link 320 100 100 20 #page=2") {
+		t.Errorf("reordered pages: %s", got)
+	}
+	_, r = convertBytes(t, taggedPDF(true), &Options{Pages: []int{1}})
+	if got := markSeq(t, r, r.Manifest.Views[0].Pages[0].Layers[0].Obj); !strings.HasSuffix(got, "LANG de|text deutsch|link 320 100 100 20 #page=1") {
+		t.Errorf("single page: %s", got)
+	}
+}
+
+func TestConvertUntaggedMarks(t *testing.T) {
+	// Without a structure tree, block tags still give paragraphs, after the
+	// run before them; marked content /Lang gives the language of its runs.
+	content := `BT /F1 12 Tf 72 700 Td (one ) Tj /P BMC (two) Tj EMC ET
+BT /F1 12 Tf 72 680 Td /Span <</Lang (fr) /ActualText (tr\\ois)>> BDC (trois) Tj EMC ( four) Tj ET`
+	data := buildPDF([]any{
+		`<< /Type /Catalog /Pages 2 0 R >>`,
+		`<< /Type /Pages /Kids [3 0 R] /Count 1 >>`,
+		`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>`,
+		[2]string{"", content},
+		`<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>`,
+	}, "/Root 1 0 R")
+	_, r := convertBytes(t, data, nil)
+	if m := r.Manifest.Meta; m.DC.Title.First() != "" || m.DC.Language.First() != "" {
+		t.Errorf("meta = %+v", m)
+	}
+	want := `text one |PARAGRAPH P|text two|LANG fr|ALT_TEXT tr\ois|text trois|LANG|text  four`
+	if got := markSeq(t, r, r.Manifest.Views[0].Pages[0].Layers[0].Obj); got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
 	}
 }

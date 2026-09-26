@@ -64,6 +64,7 @@ func (c chain) boolAttr(name string, def bool) bool {
 // textFrame is a text body and the styles it inherits.
 type textFrame struct {
 	body    *node
+	phType  string  // placeholder type ("" for other shapes)
 	bodyPrs chain   // own bodyPr, then inherited ones
 	own     *node   // the shape's own list style (may be nil)
 	lists   []*node // inherited list styles, most specific first
@@ -120,7 +121,8 @@ type runStyle struct {
 	caps         string
 	highlight    *rgba
 	link         string
-	lang         string
+	lang         string // not part of key: runs split by language are drawn as one
+	altLang      string
 	key          string // identity of the visible properties, for merging runs
 }
 
@@ -149,10 +151,10 @@ func (s *slideCtx) runStyle(tf *textFrame, rc chain, scale float64, rPr *node) *
 		st.caps = v
 	}
 	st.lang, _ = rc.attr("lang")
-	altLang, _ := rc.attr("altLang")
+	st.altLang, _ = rc.attr("altLang")
 	script := scriptOf(st.lang)
 	if script == "" {
-		script = scriptOf(altLang)
+		script = scriptOf(st.altLang)
 	}
 	if script == "" {
 		script = "Jpan"
@@ -246,6 +248,52 @@ func scriptOf(lang string) string {
 	return ""
 }
 
+// runLang returns the language of a run of text: its lang attribute, and
+// for East Asian text an East Asian lang or altLang, or else the language
+// that its kana or hangul, or those of its paragraph pa (may be nil), imply.
+// It returns false for East Asian text that nothing assigns a language:
+// Han characters alone could be Chinese as well as Japanese or Korean.
+func runLang(run []item, pa *para) (string, bool) {
+	var st *runStyle
+	for _, it := range run {
+		if it.kind == itemChar && fontdb.IsCJK(it.r) {
+			st = it.st
+			break
+		}
+	}
+	switch {
+	case st == nil:
+		return run[0].st.lang, true
+	case scriptOf(st.lang) != "":
+		return st.lang, true
+	case scriptOf(st.altLang) != "":
+		return st.altLang, true
+	}
+	if l := scriptLang(run); l != "" {
+		return l, true
+	}
+	if pa != nil && pa.eaLang != "" {
+		return pa.eaLang, true
+	}
+	return "", false
+}
+
+// scriptLang returns "ja" for text with kana and "ko" for text with hangul.
+func scriptLang(items []item) string {
+	for _, it := range items {
+		if it.kind != itemChar {
+			continue
+		}
+		switch {
+		case unicode.In(it.r, unicode.Hiragana, unicode.Katakana):
+			return "ja"
+		case unicode.Is(unicode.Hangul, it.r):
+			return "ko"
+		}
+	}
+	return ""
+}
+
 // color returns the solid color text is drawn with (gradients use their
 // average), or false for invisible text.
 func (st *runStyle) color() (rgba, bool) {
@@ -275,6 +323,7 @@ type para struct {
 	end     *runStyle // paragraph end properties (for empty paragraphs)
 	endFace *faceChoice
 	hasText bool
+	eaLang  string // language its kana or hangul imply (see scriptLang)
 }
 
 // item is one character (or tab / line break) with its style and face.
@@ -375,6 +424,7 @@ func (s *slideCtx) paragraphs(tf *textFrame, fontScale, lnReduce float64) []*par
 				break
 			}
 		}
+		pa.eaLang = scriptLang(pa.items)
 		// bullets and numbering
 		bu := pc.first("buNone", "buAutoNum", "buChar", "buBlip")
 		if pa.hasText {
