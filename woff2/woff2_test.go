@@ -400,7 +400,7 @@ func sfntTables(font []byte) map[string][]byte {
 
 func testFonts(t *testing.T) map[string][]byte {
 	fonts := map[string][]byte{}
-	for _, p := range []string{"../fixture/fonts/DejaVuSans-sub.ttf", "../fixture/fonts/DejaVuSans-Bold-sub.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"} {
+	for _, p := range []string{"../fixture/testdata/fonts/DejaVuSans-sub.ttf", "../fixture/testdata/fonts/DejaVuSans-Bold-sub.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"} {
 		if b, err := os.ReadFile(p); err == nil {
 			fonts[p] = b
 		}
@@ -464,7 +464,7 @@ func TestEncodeFallsBackForUnusualGlyf(t *testing.T) {
 	if !Available() {
 		t.Skip("built without the Brotli encoder")
 	}
-	font := testFonts(t)["../fixture/fonts/DejaVuSans-sub.ttf"]
+	font := testFonts(t)["../fixture/testdata/fonts/DejaVuSans-sub.ttf"]
 	if font == nil {
 		t.Skip("fixture font missing")
 	}

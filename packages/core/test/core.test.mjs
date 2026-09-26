@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, extractText, objectDeps, SplitSource } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
-const fixture = new Uint8Array(await readFile(new URL("fixtures/demo.bdf", root)));
+const fixture = new Uint8Array(await readFile(new URL("testdata/demo.bdf", root)));
 
 test("header parses", () => {
   const h = parseHeader(fixture);
@@ -81,7 +81,7 @@ test("text extraction follows transforms and USE", async () => {
 });
 
 test("split source with a fake fetch", async () => {
-  const base = new URL("fixtures/demo-split/", root);
+  const base = new URL("testdata/demo-split/", root);
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
     const path = fileURLToPath(new URL(url));

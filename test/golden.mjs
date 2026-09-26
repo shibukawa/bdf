@@ -1,4 +1,4 @@
-// Renders the fixture in headless Chromium and compares against fixtures/golden/*.png.
+// Renders the fixture in headless Chromium and compares against testdata/golden/*.png.
 // Usage: node test/golden.mjs [--update] [--source single|split|range]
 import { build } from "esbuild";
 import { chromium } from "playwright-core";
@@ -64,7 +64,7 @@ try {
   if (!searchOk) failed++;
   console.log(`search: ${searchOk ? "ok" : "FAIL"} (${search.hits.length} hits, first hit rects ${JSON.stringify(search.rects[0])}, sheet ${JSON.stringify(search.sheetRects[0])}, pptx ${JSON.stringify(search.pptxRects[0])})`);
   for (const r of results) {
-    const goldenPath = join(root, "fixtures/golden", `${r.name}.png`);
+    const goldenPath = join(root, "testdata/golden", `${r.name}.png`);
     const png = Buffer.from(r.png.split(",")[1], "base64");
     let status;
     if (update || !r.golden) {

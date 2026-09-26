@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { BufferSource, BdfDocument, TextSearch, normalizeQuery, extractText, Sep } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
-const fixture = new Uint8Array(await readFile(new URL("fixtures/demo.bdf", root)));
+const fixture = new Uint8Array(await readFile(new URL("testdata/demo.bdf", root)));
 
 test("normalization folds width, case and kana", () => {
   assert.equal(normalizeQuery("ＡＢＣ ｶﾀｶﾅ Ⅸ"), "abc かたかな ix");
@@ -76,7 +76,7 @@ test("fallback index without a text index part", async () => {
 });
 
 test("MARK WRAP joins East Asian lines without a separator", async () => {
-  const pptx = new Uint8Array(await readFile(new URL("../../../fixtures/pptx/basic.bdf", import.meta.url)));
+  const pptx = new Uint8Array(await readFile(new URL("../../../testdata/pptx/basic.bdf", import.meta.url)));
   const doc = await BdfDocument.open(new BufferSource(pptx));
   const view = doc.view("slides");
   const runs = await doc.textIndex(view);
