@@ -88,6 +88,9 @@ type converter struct {
 	// viewOf maps diagram ids to the ids of the views made from them, for
 	// links between pages.
 	viewOf map[string]string
+	// awsLegacy counts the shapes of older AWS icon sets drawn with their
+	// current counterparts (aws_legacy.go).
+	awsLegacy int
 
 	// per page
 	m          *model
@@ -186,6 +189,7 @@ func Convert(data []byte, opts *Options) (*Result, error) {
 	}
 	c.finalize()
 	c.reportMissing()
+	c.reportAWSLegacy()
 	for _, v := range views {
 		for i, cv := range v.layers {
 			v.page.Layers[i].Obj = cv.hash
@@ -269,6 +273,7 @@ func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas, error) {
 	if m.attrs["math"] == "1" {
 		c.warnOnce("math", "mathematical typesetting (math=1) is drawn as plain text")
 	}
+	c.awsLegacy += c.substituteAWSLegacy(m)
 	v := newView(m, c.warnOnce, c.stencil)
 
 	// shapes and label layouts, then the bounds of the drawing
