@@ -41,9 +41,9 @@ wasm が意味を持つケース:
 
 ### ブラウザ内変換（cmd/bdfwasm）
 
-変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・PowerPoint・Excel・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の bdf を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`examples/viewer/site.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
+変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の bdf を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`examples/viewer/site.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
 
-- **モジュールを分ける**: 全形式を 1 つにすると約 25 MB（gzip で約 8.4 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（約 12.5 MB、gzip 3.6 MB）に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
+- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Visio・メタファイル。約 14 MB、gzip 4.0 MB）に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
 - **フォントは fs.FS で渡す**: ブラウザにはフォントのディレクトリが無い。`converter.Options.FontFS` で任意の `fs.FS` をフォントの探索元にできるようにし（`FontDirs` より先に探す）、wasm 側では Web 上のディレクトリをそれとして実装した。`index.json` にファイル名、サイズと、フォントの走査が読む範囲（テーブルディレクトリと name・OS/2・post テーブル）を書いておき、最初の変換でその範囲だけを並列に Range で取得する。フォント全体は文書がそのフェイスを使うときに初めて取得し、取得したものはモジュールが生きている間保持する（2 回目以降の変換は通信しない）。サイトのフォントは CI が Ubuntu のパッケージから集める: Liberation（Arial、Times New Roman、Courier New の代替）、Carlito（Calibri）、Caladea（Cambria）、IPAex（日本語）、DejaVu（記号）。
 - **pdfcpu の設定ファイル**: pdfcpu は既定でユーザーの設定ディレクトリに config.yml を書いて読み直すが、js 版のパーサは自分が書いた 16 進の permissions を読めずに終了する。js のビルドでは `model.ConfigPath = "disable"` にして組み込みの既定値を使う。
 
