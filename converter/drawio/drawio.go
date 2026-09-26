@@ -348,9 +348,6 @@ func (c *converter) checkUnsupported(st *cellState) {
 	default:
 		c.warnOnce("fillStyle", "fill style %q is drawn as a solid fill", s.get("fillStyle", ""))
 	}
-	if s.get("jumpStyle", "none") != "none" {
-		c.warnOnce("jumps", "line jumps (jumpStyle) at edge crossings are not drawn")
-	}
 }
 
 // drawItem draws a cell's shape and label, and its link.

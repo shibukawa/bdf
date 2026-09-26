@@ -32,6 +32,8 @@ type cellState struct {
 	segments         []float64
 	visibleSource    *cellState
 	visibleTarget    *cellState
+	// routedPoints is the route with line jumps (jumpStyle), see jumps.go.
+	routedPoints []routedPoint
 
 	parent *cellState // state of the parent cell (nil for layers)
 	layer  *cell      // the layer the cell belongs to
@@ -136,6 +138,7 @@ func newView(m *model, warn func(key, format string, args ...any), stencilOf fun
 	for _, st := range v.order {
 		v.validate(st)
 	}
+	v.updateLineJumps()
 	return v
 }
 

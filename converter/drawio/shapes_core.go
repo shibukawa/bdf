@@ -392,6 +392,9 @@ func paintPolyline(s *shape, c *c2d, pts []point) {
 		c.quadTo(p0.x, p0.y, p1.x, p1.y)
 		c.stroke()
 	default:
+		if paintLineJumps(s, c, pts, s.isRounded) {
+			return
+		}
 		arc := s.style.num("arcSize", lineArcSize) / 2
 		c.begin()
 		s.addPoints(c, pts, s.isRounded, arc, false, nil, true)
