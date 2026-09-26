@@ -213,10 +213,6 @@ type stencilPainter struct {
 	depth int
 }
 
-// labelMargins returns the insets of the label rectangle a stencil's
-// labelBounds define (draw.io's mxShape.getLabelMargins override), or nil.
-func (st *stencil) labelMargins(s *shape, r rect) *rect { return nil }
-
 // drawShape paints the stencil in the box x, y, w, h (mxStencil.drawShape).
 // The shape's paint has rotated and flipped the canvas and configured its
 // colors; directions are applied here by computeAspect.
