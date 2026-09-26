@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
@@ -30,9 +31,10 @@ import (
 
 // Options controls the conversion.
 type Options struct {
-	// Sheets selects 1-based sheet numbers (in workbook order, chart sheets
-	// included); nil converts every sheet (hidden ones only with Hidden).
-	Sheets []int
+	// Sheets selects 1-based sheets (in workbook order, chart sheets
+	// included; see converter.Pages); nil converts every sheet (hidden ones
+	// only with Hidden).
+	Sheets conv.Pages
 	// Hidden includes hidden sheets when Sheets is nil.
 	Hidden bool
 	// Title overrides the document title.
@@ -187,7 +189,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		sheets = append(sheets, ref)
 	}
 	c.sheets = sheets
-	sel := opts.Sheets
+	sel := opts.Sheets.Numbers(len(sheets))
 	if sel == nil {
 		for i, s := range sheets {
 			if !s.hidden || opts.Hidden {

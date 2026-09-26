@@ -48,6 +48,9 @@ func TestDetect(t *testing.T) {
 		{"vdx", vdx, "visio"},
 		{"emf", emf, "emf"},
 		{"wmf", wmf, "emf"},
+		{"tiff", []byte("II*\x00\x08\x00\x00\x00"), "tiff"},
+		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
+		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
 		{"junk", []byte("hello"), ""},
 	} {
 		got := ""

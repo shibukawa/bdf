@@ -29,6 +29,7 @@ import (
 	"strconv"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
@@ -46,9 +47,9 @@ const (
 
 // Options controls the conversion.
 type Options struct {
-	// Pages selects 1-based pages of the page view; nil keeps every page.
-	// The scroll view always holds the whole document.
-	Pages []int
+	// Pages selects 1-based pages of the page view (see converter.Pages);
+	// nil keeps every page. The scroll view always holds the whole document.
+	Pages conv.Pages
 	// Views selects the views to make: ViewsBoth (the default when ""),
 	// ViewsPages or ViewsScroll.
 	Views string
@@ -547,7 +548,7 @@ func (c *converter) pageView(v *bdf.View, count *int) func() {
 	f.sections(c.sections)
 	c.endnotes(f)
 	pages := f.pages
-	sel := c.opts.Pages
+	sel := c.opts.Pages.Numbers(len(pages))
 	keep := make([]bool, len(pages))
 	for i := range pages {
 		keep[i] = sel == nil || slices.Contains(sel, i+1)

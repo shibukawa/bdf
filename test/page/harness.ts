@@ -68,6 +68,12 @@ export const CASES: Case[] = [
   // The page view's bodies stacked (continuous mode), and the scroll view across the boundary of its strips.
   { name: "docx-basic-continuous", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "pages", viewport: { x: 0, y: 500, w: 451.3, h: 400 }, scale: 1 },
   { name: "docx-basic-scroll", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 850, w: 769.9, h: 350 }, scale: 1 },
+  // TIFF pages converted by converter/tiff; see test/tiff. A 300 dpi bilevel scan scaled down to 192 dpi, JPEG strips
+  // stored as one JPEG, a fax at 204 × 98 dpi, and a picture stored turned with Orientation 6.
+  { name: "tiff-scan-1", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  { name: "tiff-scan-2", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "tiff-fax-1", src: "/testdata/tiff/fax.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "tiff-orientation-6", src: "/testdata/tiff/orientation.bdf", kind: "page", view: "pages", page: 5, scale: 2 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

@@ -49,6 +49,11 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/docx/$n.bdf"
           done
+          for f in converter/tiff/testdata/*.tif; do
+            n=$(basename "$f" .tif)
+            go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/tiff/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:

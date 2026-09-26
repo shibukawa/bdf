@@ -93,6 +93,10 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
   3. PNG / GIF / BMP と、PDF からデコードした画素は WebP 可逆を試す。色数が多く写真らしい画像（標本で 4096 色超）は非可逆も試す。
   4. 元より小さくなった候補のうち最小のものを採用し、小さくならなければ元のまま。
 
+デコードした画素の格納は、任意の画像型を受け取る `EncodePixels` でも行える。Keep では、可逆の元の画素は色数に合わせた最小の PNG（二色なら 1 ビットのパレット、グレー、256 色までのパレット）に、JPEG など非可逆の元の画素は JPEG（`Quality`）にする。Convert では、それより小さければ WebP にする。二値のスキャンの 1 ページ（A4 300dpi）は、RGB の PNG では 131KB、1 ビットの PNG では 67KB（元の G4 は 58KB）、WebP 可逆では 53KB になる。
+
+**解像度の上限**: ページ上の大きさが分かっているラスター入力（TIFF のページ）は、`Options.MaxDPI`（既定 192dpi）と `MaxPixels`（既定 3840 × 3840 画素）の両方を超えないよう縮小する（`FitSize` が大きさを決め、`Resize` が縮小する）。Keep と Convert のどちらでも効き、負の値で上限をなくす。考え方と実測は §3.10。
+
 コーデックは libwebp（エンコーダのみ）を wasi-sdk で wasm にし、[shibukawa/wasm2go-fork](https://github.com/shibukawa/wasm2go-fork)（pgmem ブランチ）で純 Go に変換したもので、cgo も wasm ランタイムも使わない。生成物は `imgconv/internal/webpw`（スカラー、約 5MB、44 ファイル）と `imgconv/internal/webpwsimd`（SIMD、`GOEXPERIMENT=simd` 専用、後述）で、`tools/gen-codecs.sh` で再生成する。フォークの `-symbol-names`（関数名を wasm の name セクションから付ける）、`-group-files`（`vp8_enc.go` のように主題ごとのファイルに分ける）、`-addr-consts`（静的データのアドレスを名前付き定数にする）を使い、libwebp を更新しても差分が小さく収まるようにしている。gen2brain 同梱の wasm は name セクションが落とされているので、自前でビルドしている。
 
 **ビルドタグ**
@@ -161,7 +165,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **SmartArt**: PowerPoint がデータモデルと一緒に保存している描画パート（`diagrams/drawingN.xml`）の図形を、グラフィックフレームを枠とするグループとして描く（テキストは `txXfrm` の枠に置き、その回転は図形の回転に足す）。
 - **EMF/WMF**: ブラウザは Windows メタファイルを表示できないので、画像として格納せずに GDI の状態機械（マップモード、ワールド変換、ペン・ブラシ・フォント、クリップ、パス、保存と復元）で記録を再生し、パス・テキスト・画像（DIB は PNG に）の命令にする。EMF はヘッダーの frame、WMF は placeable ヘッダーの範囲（なければ最初のウィンドウの原点と大きさ）を図の枠に合わせる。テキストは出力空間で正立させ、`dx` の文字送りと文字揃えに従う（WMF の ANSI 文字列は文字セットに応じて Shift_JIS などとして読む）。コメントに埋め込まれた EMF+ の記録は読まず、Office が並べて書く EMF の記録を使う。OLE オブジェクトのプレビューの多くはこれで描ける。再生は `converter/internal/metafile` にあり、描き込む先（Object とフォント・画像・言語の登録）とピクチャの色変更を渡せば他の変換器からも使える。
 - **画像の色効果**: 色の変更（`clrChange`、透明色の指定）、単色化（`clrRepl`）、複色（`duotone`）、二値化（`biLevel`）、グレースケール、明るさ・コントラスト（`lum`、PowerPoint と同じく明るさの半分をコントラストの前、半分を後に掛ける）を文書順に画素へ適用し、画像を作り直して格納する（`clrChange` の許容差は LibreOffice と同じく JPEG 15、PNG・TIFF 1、BMP 0、その他 9）。メタファイルでは記録の色と DIB に同じ効果を掛ける。
-- **その他**: 非表示スライドは既定で除く（`-hidden` で含める）。OLE オブジェクトはプレビュー画像を描く。画像は `imgconv`（§3.2）を通し、TIFF は PNG にデコードする。構造の壊れたスライドで描画が失敗した場合は空のページにして警告する。
+- **その他**: 非表示スライドは既定で除く（`-hidden` で含める）。OLE オブジェクトはプレビュー画像を描く。画像は `imgconv`（§3.2）を通す。TIFF の画像は `converter/internal/tiff`（§3.10）で先頭のページを読み、ストリップを 1 本につなげる JPEG はそのまま、ほかはデコードして PNG（JPEG のページは JPEG）にしてから同じく `imgconv` を通す。色効果を掛けるときも同じ読み取りでデコードする。構造の壊れたスライドで描画が失敗した場合は空のページにして警告する。
 - **未対応（警告を出す）**: EMF+ だけで書かれたメタファイル、レーダー・バブル・等高線グラフ、光彩・反射・ぼかしなどの効果、インク、旧形式（VML のみ）の OLE プレビュー、リンクされた（埋め込まれていない）画像、描画パートのない SmartArt。
 
 テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`）、変換結果は `testdata/pptx/` に置いて golden テストで描画を比較する。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセットだけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
@@ -214,7 +218,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **ジオメトリ**: `MoveTo`・`LineTo`・`ArcTo`（弓の高さが正なら進行方向の右に膨らむ）・`EllipticalArcTo`（楕円を円に戻す空間で 3 点を通る円弧を求める）・`Ellipse`（共役な半径 2 本）・`PolylineTo`・`NURBSTo`・`SplineStart`/`SplineKnot`（Visio が格納する節点を両端で固定した節点ベクトルに補って標本化する）・相対座標の `Rel*` 行をパスにする。`MoveTo` で始まらないセクションは最後の点から始める。閉じた図形だけを（セクションごとに偶奇規則で）塗り、`NoFill`・`NoLine`・`NoShow` に従う。
 - **塗り・線・影**: 塗りは単色（透明度つき）、パターン 2〜24（[MS-VSDX] の図から起こした 8×8 のタイル）、グラデーション（`FillGradient` の分岐点。線形は `FillGradientAngle`、放射状と矩形は 13 通りの起点。矩形は円で近似）、旧版のグラデーション（パターン 25〜40）。線は幅、色と透明度、線種 2〜23（仕様の図から測った破線で、線幅に比例させる）、端（丸・角・延長）、`Rounding`（多角形の角を丸める）、矢印 45 種を描く。矢印の形は仕様の図から自前で定義した。先端を覆う矢印の下では線を切り詰める。影は `ShdwPattern`、`ShapeShdwShow`、オフセット（種類 0 はページの既定の影）、ぼかしを SHADOW で描く。
 - **線の飛び越し**: Visio は飛び越しを保存せず、ページを描くときにコネクタの交差から置く（[MS-VSDX] でも関係するセルは「式の評価にだけ使う」とされている）。同じことをページを描く前に行う。ルーティング可能な 1-D 図形（`ObjType`）の経路をページ座標で集め（曲線は折れ線にして交差の相手にだけ使う）、交点ごとに飛ぶ側を決める。ページの `LineJumpCode` は水平な線（既定）、垂直な線、上または下に描かれた線（最後に経路を引いた線は上の線で代える）を選ぶ。コネクタの `ConLineJumpCode` は常に飛ぶ、飛ばない、相手が飛ぶ、どちらも飛ばないを選び、ページの規則より優先される。形は `LineJumpStyle`（コネクタの `ConLineJumpStyle` が優先）の円弧・切れ目・四角・2〜7 辺の多角形、幅は `LineJumpFactorX` × `LineToLineX`（垂直な線は Y）、高さは幅の半分とする。向きは水平な線が上か下（`ConLineJumpDirX`、`PageLineJumpDirX`）、垂直な線が左か右。重なる飛び越しは 1 つにまとめ、切れ目は図形を分ける。角の近くで幅が収まらない交差は飛ばない。
-- **画像と埋め込み**: `ForeignData` の PNG・JPEG・GIF・BMP・TIFF・DIB（.vdx は base64）を `ImgOffsetX` などの矩形に置き、図形の枠で切り抜く。EMF/WMF は `converter/internal/metafile` で再生し、OLE オブジェクトはプレビュー画像（埋め込みパートからの画像リレーションシップ）を描く。
+- **画像と埋め込み**: `ForeignData` の PNG・JPEG・GIF・BMP・TIFF・DIB（.vdx は base64）を `ImgOffsetX` などの矩形に置き、図形の枠で切り抜く。TIFF は PowerPoint と同じく `converter/internal/tiff` で先頭のページを読む（§3.4）。EMF/WMF は `converter/internal/metafile` で再生し、OLE オブジェクトはプレビュー画像（埋め込みパートからの画像リレーションシップ）を描く。
 - **テキスト**: `Text` 要素の `cp`・`pp`・`tp` マーカーが Character・Paragraph・Tabs の行を選び、`fld` は最後に表示された文字列を持つ。`\n` で段落、U+2028 で段落内の改行とする。テキストは DrawingML のテキスト本体（`bodyPr` の余白・垂直位置・`TextDirection` 1 の `eaVert`、`pPr` の揃え・インデント・行間・段落前後の間隔・箇条書き・タブ、`rPr` の大きさ・太字・斜体・下線・取り消し線・大文字化・上付き・下付き・字間・色・フォント・言語）に写し、`drawingml.Drawing.LayoutText` でレイアウトする。そのため禁則、フォントの解決と埋め込み、構造の MARK は PowerPoint と同じになる。行間の `SpLine` は、負ならその段落で最大の文字の大きさの倍数として扱う。テキストブロックは `TextXForm` のセルで図形の中に置く。文字は鏡像にしない（`FlipY` は上下逆さになる）。`TextBkgnd` は行の範囲（`TextBody.Bounds`）を塗る。言語は `LangID`（古い図面の Windows ロケール ID も読む）、図面の言語はコアプロパティ、なければルートのスタイルの言語とする。ハイパーリンクは図形の範囲の LINK にする。`Address` の URL（http、https、mailto）と、`SubAddress` のページ名（`#page=N`）を扱う。
 - **未対応**: .vsd、インク（警告を出す）。面取り・光彩・反射・ぼかし・3D・スケッチの効果、線のグラデーション、文字の横幅の拡大縮小（`FontScale`）、右インデント、右揃え・中央揃え・小数点揃えのタブは描かない。
 
@@ -237,6 +241,22 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **未対応（警告を出す）**: 割注（`eastAsianLayout` の `combine`、普通の文字列として描く）、行番号、数式（平文として描く）、埋め込み文書（`altChunk`）、VML のテキストボックス、ルビ（親文字だけを描く）、連続セクション区切りの前の段の高さの均等化、ページをまたぐ縦結合セル（結合の最初の行に描く）。
 
 テスト用の文書は `test/docx/gen.py` が WordprocessingML を直接書いて作り（`npm run test:docx:gen`、標準ライブラリのみ）、変換結果は `testdata/docx/` に置いて golden テストで描画を比較する。フォントは `converter/docx/testdata/fonts` の M PLUS 1p のサブセットだけを使う。開発中は Apache POI のテストデータ（Word などで作られた実ファイル約 130 本）がすべて変換できること（暗号化・破損したファイルを除く）と、描画が文書の内容どおりであることを確かめた。5,000 段入れ子の表のような極端な文書では、入れ子の深さに比例して op を写すため時間がかかる（10 秒程度）。
+
+## 3.10 TIFF → BDF 変換器（converter/tiff）の構造
+
+`converter/tiff` は TIFF のページごとに `fixed` View のページを作り、解像度から決まる大きさの画像 1 枚で描く。多ページの TIFF の多くはスキャナの出力と FAX の受信ファイルで、中身は画像だけ（テキストはない）。読み取りは `converter/internal/tiff` に自前で書いた。golang.org/x/image/tiff は先頭の IFD しか読まず、JPEG 圧縮も YCbCr も読まない。FAX ソフトの既定である G3 の 2 次元符号と詰め物ビットも読めず、BlackIsZero の CCITT データは白黒を反転して読む。Office 文書と Visio 図面の中の TIFF の画像も、同じ読み取りで先頭のページを読む（`tiff.Picture`。Orientation タグは掛けず、解像度の上限も掛けない）。
+
+- **ページ**: IFD のチェーンを先頭からたどり、NewSubfileType が縮小版（bit 0）かマスク（bit 2）のものを除いた IFD をページにする。SubIFDs と PageNumber タグは見ない。チェーンが途中で壊れていれば、そこまでのページで変換して警告する。循環するチェーンと、ファイルの外を指すオフセットは検出する。DNG は変換を断り、Canon の CR2 は形式判別で除く。
+- **大きさ**: 画素数を XResolution と YResolution で割って pt にする。単位が cm なら換算する。単位なし（ResolutionUnit 1）の値は、50 以上なら dpi とみなし（ImageMagick は 300dpi のスキャンをこう書く。tiff2pdf と同じ扱い）、50 未満なら画素の縦横比だけに使う。解像度のないページは 96dpi とする（CSS の 1px が 1 画素になる。`-param dpi=` で変える）。204 × 98 dpi の FAX のように縦横で解像度が違うページも、IMAGE の幅と高さで伸ばして描くだけでよい。Orientation タグ（2〜8）は画素を並べ替えず、画像を描く前の TRANSFORM にする（5〜8 ではページの幅と高さを入れ替える）。
+- **解像度の上限**: ページの画素が `imgconv.Options` の MaxDPI と MaxPixels の両方を超えないよう縮小する（`FitSize`）。既定の MaxDPI は 192 で、CSS の 96dpi の 2 倍にあたり、Retina の画面で実寸表示したとき 1 画素が 1 デバイス画素になる。既定の MaxPixels は 3840 × 3840（4K 画面の幅の正方形、RGBA で約 56MB）。dpi は軸ごとに、画素数は縦横同じ比率で抑え、拡大はしない。A4 のカラースキャンを 300dpi から 200dpi にすると、WebP は 373KB から 203KB に、ブラウザでデコードした後のメモリは 35MB から 15MB になる（写真とスキャンのノイズを含むページでの実測）。上限はラスター画像の入力に共通の設定で、CLI では `-max-dpi` と `-max-pixels` で変え、0 で上限をなくす。
+- **縮小**: 面積平均（box フィルタ）で縮小する。目標の画素が覆う元画素の重なりを 1/m 画素単位で数えると整数になるので、重み付きの和を整数のまま計算し、最後に 1 回だけ丸める。このため出力はアーキテクチャによらず同じバイト列になる。二値の画像はグレーに縮小すると PNG が 4〜5 倍になるので、二値のまま縮小する。インク（少ない方の色）が 2/5 以上覆う画素をインクにする（1/2 では細い線が切れやすく、1/3 では文字が太る）。
+- **格納**: 縮小しない JPEG のページは、ストリップを再エンコードせずに 1 本の JPEG につなぐ（`IFD.JPEG`）。TIFF の JPEG はストリップごとに独立した JPEG で、量子化表とハフマン表は JPEGTables タグにある。各ストリップは DC 予測を新しく始め、バイト境界で終わるので、リスタート区間と同じ形をしている。そこで、表を戻し、SOF の高さをページの高さに書き換え、DRI でリスタート区間をストリップ 1 本分にして、ストリップの間に RST マーカーを入れる。これで 1 本のベースライン JPEG になる（tiff2pdf と同じ方法）。そのためにはストリップの行数が MCU の高さの倍数でなければならない。RGB のページは JFIF マーカーを除き、成分名が R・G・B でなければ Adobe マーカー（transform 0）を足して、YCbCr として読まれないようにする。つなげないページ（タイル、表の違うストリップ、プログレッシブ）と縮小するページはデコードし、`imgconv.EncodePixels` で格納する（§3.2）。
+- **デコーダ**: classic TIFF と BigTIFF、ストリップとタイル、chunky と planar を読む。圧縮は無圧縮・PackBits・LZW（`x/image/tiff/lzw`）・Deflate・JPEG・CCITT で、predictor 2 と FillOrder 2 も扱う。画素は 1〜16 ビットの二値・グレー・パレット・RGB・CMYK と alpha（associated / unassociated）を読む。libtiff は CMYK の JPEG を Adobe マーカーなしで書くので、マーカーを足して読み、Go のデコーダが行う反転を戻す。CMYK は色管理をせずに RGB にし、警告する。デコード後に 1GiB を超えるページは読まない。壊れたストリップは空白にしてページを変換し、警告する。
+- **CCITT**: デコーダを自前で書いた（符号表は x/image/ccitt のもの）。T.4 の 1 次元と 2 次元（EOL の前の詰め物ビットの有無を問わない）、T.6（G4）、Modified Huffman（圧縮 2）を読む。EOL は 11 個以上の 0 に続く 1 として探すので、詰め物の有無を区別しなくてよい。T.4 で壊れた行は白のまま残し、次の EOL から続ける（FAX の受信機と同じ）。黒の符号は 1 のビットにし、Photometric で解釈する（libtiff と同じで、WhiteIsZero なら 1 が黒）。
+- **メタデータ**: 先頭のページの DocumentName を `title`、ImageDescription を `description`、Artist（`;` で分ける）を `creator`、Copyright を `rights`、DateTime を `modified` にする（DocumentName 以外は XMP の対応と同じ）。
+- **テキスト**: ページは画像だけなので、テキスト索引を作らず、検索と選択の対象もない（OCR はしない）。
+
+テスト用のファイルは `test/tiff/gen.sh` が ImageMagick と libtiff のツールで作る（`npm run test:tiff:gen`）。`converter/internal/tiff/testdata` には、同じ絵を格納方法を変えて各ページに入れたファイルと、ImageMagick が libtiff で読んだ参照 PNG を置く。可逆のページはすべて参照と画素単位で一致する。`converter/tiff/testdata` にはスキャン、FAX、8 通りの向きのファイルを置き、変換結果を `testdata/tiff/` に置いて golden テストで描画を比べる。向きは Go のテストでも確かめる。保存された画像をページの行列で紙面に写し、1 ページ目と比べる。
 
 ## 4. テキストの扱い
 
@@ -286,6 +306,18 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 
 さらに読み手側では `USE` 対象を `(hash, scale)` でビットマップキャッシュできるので、共有はサイズだけでなくスクロール時の描画コストも下げる。
 
+### 5.1 デコードした画像の保持（ビューア）
+
+レンダラ（`@bdf/render` の `ResourceCache`）は、Path2D・FontFace・ImageBitmap を文書ごとにキャッシュする。このうち ImageBitmap は桁違いに大きい。A4 のスキャンを 192dpi にしたページ 1 枚は、RGBA にデコードすると 14MB になる。スキャンの TIFF や PDF を読み進めると 100 ページで 1.4GB になり、タブが落ちる。そこで、デコードした画像だけは予算の中で持つ。
+
+- **予算**: 幅 × 高さ × 4 バイトで数え、既定は 256MiB（`DEFAULT_IMAGE_BUDGET`）。超えた分は、最も前に準備された画像から `close()` する。Map の挿入順を LRU の順に使い、`prepare` で触れた画像を末尾へ移す。予算は `ResourceOptions.imageBudget` で変え、ワーカーには `BdfWorkerClient.open` の `options.imageBudget` で渡す。
+- **読み直し**: 閉じた画像は、次にそれを使う描画の `prepare` がもう一度デコードする。`BdfDocument.ensure` は読み込み済みの印を持たず、呼ぶたびに依存パーツを `onResource` に渡し直すので、読み直しの仕組みは要らない。符号化されたバイト列（画像の Part）は `BdfDocument` が持ち続ける。デコード後の数十分の一の大きさなので、Range 取得をやり直さずに済む方を取った。
+- **描画中の画像は閉じない**: ワーカーの要求は非同期に重なる。描画 A が画像を準備して別の画像のデコードを待つ間に、描画 B が終わることがある。B の終わりで予算まで削ると、A が準備済みでまだ描いていない画像を閉じてしまう。そこで描画ごとに `hold()` を取り、`prepare` が触れた画像をその hold に入れ、描き終えて `release()` するまで閉じない。削るのは、デコードで予算を超えたときと hold を外したとき。押さえられた画像だけで予算を超えるときは、超えたまま持つ。
+- **同じ画像の同時デコード**: 1 回のデコードを共有する（以前は重なると先の ImageBitmap を閉じずに捨てていた）。
+- **テキストだけの要求は画像を読まない**: テキスト層・連続モードのテキスト・シートのテキストは `prepareText` で Object・フォント・パスだけを準備する。前後の画面のテキスト層を先に作っても、描かない画像をデコードして予算を使うことはない。
+- **文書を閉じる・開き直す**: ワーカーはキャッシュの `dispose()` で画像を閉じる。その文書の描画がまだ途中なら、押さえている画像はその描画が終わってから閉じる。
+- **縮小デコードはしない**: `createImageBitmap` の `resizeWidth` で小さくデコードする手もあるが、キャッシュは倍率をまたいで共有しており、ズームのたびにデコードし直すことになるので見送った。画像の大きさは変換側の解像度の上限（§3.2、§3.10）で抑える。
+
 ## 6. Excel シートの Tile 化
 
 - Tile サイズは 2048 unit（≈ 28 インチ）を既定にする。標準行高 20pt なら 100 行、標準列幅 64pt なら 32 列がおおむね 1 Tile。
@@ -316,6 +348,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 6. **PPTX 直接変換**: マスター共有の本領（実装済み、§3.4）。
 7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
+9. **TIFF**: 多ページのスキャンと FAX、画像の入力に共通の解像度の上限（実装済み、§3.10）。
 
 ## 9. リポジトリ構成（案）
 
@@ -333,19 +366,20 @@ bdf/
 │   ├── docx/          Word → BDF 変換器（testdata/ にテスト用文書とフォント）
 │   ├── emf/           Windows メタファイル（.emf、.wmf）→ BDF 変換器
 │   ├── visio/         Visio（.vsdx、.vdx）→ BDF 変換器（testdata/ にテスト用図面）
+│   ├── tiff/          TIFF（.tif、.tiff）→ BDF 変換器（testdata/ にテスト用のスキャン・FAX・向きのファイル）
 │   ├── all/           すべての形式を登録する
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
 │                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
 │                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）、
 │                      暗号化された Office 文書を開く cfb（複合ファイル）と offcrypto（Agile / Standard 暗号化の復号）、
-│                      linebreak（行分割の規則）
+│                      linebreak（行分割の規則）、tiff（TIFF の読み取りと CCITT のデコーダ）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画（scroll View は連続描画）、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word の変換結果と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word・TIFF の変換結果と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

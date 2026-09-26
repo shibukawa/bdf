@@ -4,8 +4,8 @@
 //
 // The converters themselves are its subpackages (converter/pdf,
 // converter/pptx, converter/xlsx, converter/docx, converter/visio,
-// converter/emf). Each registers its format when it is imported, so a
-// program supports the formats whose packages it links in:
+// converter/emf, converter/tiff). Each registers its format when it is
+// imported, so a program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -71,9 +71,11 @@ type Options struct {
 	Title string
 	// Pages selects 1-based pages (or slides, or sheets); nil converts all
 	// of them.
-	Pages []int
-	// Images controls whether raster images are re-encoded (see imgconv).
-	// The zero value keeps images as they are.
+	Pages Pages
+	// Images controls whether raster images are re-encoded (see imgconv),
+	// and the resolution cap (MaxDPI, MaxPixels) that image inputs such as
+	// TIFF pages are scaled down to. The zero value keeps images as they
+	// are, capped at imgconv.DefaultMaxDPI and imgconv.DefaultMaxPixels.
 	Images imgconv.Options
 
 	// The fonts of formats whose text the converter lays out (Office
@@ -297,37 +299,112 @@ func CheckPassword(r io.ReaderAt, size int64, password string) (protected bool, 
 	return false, nil
 }
 
-// PageRange parses "1-3,5,8-" style selections of 1-based page (or slide)
-// numbers, clamped to 1..count.
-func PageRange(spec string, count int) ([]int, error) {
-	var out []int
+// Pages selects 1-based pages (or slides, or sheets) as ranges, in the
+// order given; nil selects all of them. A selection can end with "the last
+// page" without knowing how many there are: each converter expands it with
+// Numbers once it has read the input.
+type Pages []PageSpan
+
+// PageSpan is the pages From to To. To 0 is an open end: up to the last
+// page. A single page n is PageSpan{n, n}.
+type PageSpan struct{ From, To int }
+
+// PageList selects single pages, in the order given.
+func PageList(pages ...int) Pages {
+	out := make(Pages, len(pages))
+	for i, n := range pages {
+		out[i] = PageSpan{n, n}
+	}
+	return out
+}
+
+// ParsePages parses a selection such as "1-3,5,8-": page numbers and
+// ranges separated by commas. A range without a start begins at page 1,
+// one without an end runs to the last page. Pages are numbered from 1. An
+// empty spec selects every page (nil).
+func ParsePages(spec string) (Pages, error) {
+	var out Pages
 	for _, part := range strings.Split(spec, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
-		lo, hi := 1, count
-		if i := strings.IndexByte(part, '-'); i >= 0 {
-			if i > 0 {
-				if _, err := fmt.Sscanf(part[:i], "%d", &lo); err != nil {
-					return nil, fmt.Errorf("bad page range %q", part)
-				}
+		num := func(s string) (int, error) {
+			n, err := strconv.Atoi(strings.TrimSpace(s))
+			if err != nil || n < 1 {
+				return 0, fmt.Errorf("bad page %q in %q: pages are numbered from 1", strings.TrimSpace(s), part)
 			}
-			if i+1 < len(part) {
-				if _, err := fmt.Sscanf(part[i+1:], "%d", &hi); err != nil {
-					return nil, fmt.Errorf("bad page range %q", part)
-				}
-			}
-		} else {
-			if _, err := fmt.Sscanf(part, "%d", &lo); err != nil {
-				return nil, fmt.Errorf("bad page %q", part)
-			}
-			hi = lo
+			return n, nil
 		}
-		lo, hi = max(1, lo), min(count, hi)
+		lo, hi, isRange := strings.Cut(part, "-")
+		if !isRange {
+			n, err := num(part)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, PageSpan{n, n})
+			continue
+		}
+		s := PageSpan{From: 1}
+		var err error
+		if strings.TrimSpace(lo) != "" {
+			if s.From, err = num(lo); err != nil {
+				return nil, err
+			}
+		}
+		if strings.TrimSpace(hi) != "" {
+			if s.To, err = num(hi); err != nil {
+				return nil, err
+			}
+			if s.To < s.From {
+				return nil, fmt.Errorf("bad page range %q: it ends before it starts", part)
+			}
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// Numbers returns the page numbers a selection names in an input of count
+// pages, in the order given; nil when p is nil. Open ranges stop at the
+// last page. Numbers past the last page are kept for the converter to
+// report (or skip), but no more of them than that takes: a closed range
+// reaching past the last page keeps only the first page after it, and an
+// open range starting past the last page keeps its start.
+func (p Pages) Numbers(count int) []int {
+	if p == nil {
+		return nil
+	}
+	out := []int{}
+	for _, s := range p {
+		lo, hi := max(1, s.From), s.To
+		switch {
+		case hi == 0 && lo > count:
+			hi = lo
+		case hi == 0:
+			hi = count
+		case hi > count:
+			hi = max(lo, count+1)
+		}
 		for n := lo; n <= hi; n++ {
 			out = append(out, n)
 		}
 	}
-	return out, nil
+	return out
+}
+
+// String formats the selection as ParsePages reads it.
+func (p Pages) String() string {
+	parts := make([]string, len(p))
+	for i, s := range p {
+		switch {
+		case s.To == s.From:
+			parts[i] = strconv.Itoa(s.From)
+		case s.To == 0:
+			parts[i] = strconv.Itoa(s.From) + "-"
+		default:
+			parts[i] = strconv.Itoa(s.From) + "-" + strconv.Itoa(s.To)
+		}
+	}
+	return strings.Join(parts, ",")
 }
