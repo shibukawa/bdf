@@ -5,10 +5,21 @@
 <title>BDF viewer demo</title>
 <style>
   :root { color-scheme: light; font: 13px system-ui, sans-serif; }
-  body { margin: 0; display: grid; grid-template-rows: auto 1fr; height: 100vh; background: #e9ecef; }
-  header { display: flex; gap: 12px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #ccc; }
-  header .tabs button { margin-right: 4px; }
-  header .tabs button[aria-selected="true"] { font-weight: bold; background: #1f3a5f; color: #fff; }
+  body { margin: 0; display: grid; grid-template-rows: auto 1fr auto; height: 100vh; background: #e9ecef; }
+  header { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #ccc; }
+  /* views switch like the sheets of a spreadsheet: tabs along the bottom edge */
+  .sheetbar { display: flex; align-items: stretch; min-width: 0; height: 30px; background: #f3f3f3; border-top: 1px solid #c8c8c8; }
+  .sheetbar .step { flex: none; width: 28px; border: 0; border-right: 1px solid #d6d6d6; background: transparent; color: #555; font-size: 11px; cursor: pointer; }
+  .sheetbar .step:hover:not(:disabled) { background: #e2e2e2; }
+  .sheetbar .step:disabled { color: #bbb; cursor: default; }
+  .tabs { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; padding-left: 6px; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { flex: none; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0 -1px 0 0;
+    padding: 0 16px; border: 1px solid #c8c8c8; border-top: 0; background: #e6e6e6; color: #333; font: inherit; cursor: pointer; }
+  .tabs button:hover { background: #ededed; }
+  .tabs button[aria-selected="true"] { position: relative; z-index: 1; margin-top: -1px; background: #fff; color: #1d6b40; font-weight: 600;
+    border-color: #c8c8c8; box-shadow: inset 0 -2px 0 #1d6b40; }
+  .tabs button:focus-visible { outline: 2px solid #1a73e8; outline-offset: -3px; }
   #stage { overflow: auto; position: relative; }
   .pages { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 16px; }
   .page { position: relative; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
@@ -30,12 +41,22 @@
   #pwDialog h2 { font-size: 15px; margin: 0 0 8px; }
   #pwDialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   #pwMessage[data-error] { color: #b00020; }
+  #warnings { position: relative; }
+  #warnings summary { cursor: pointer; color: #8a5a00; }
+  #warnings ul { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: min(560px, 80vw); max-height: 50vh; overflow: auto; margin: 0; padding: 8px 8px 8px 24px; background: #fff; color: #222; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  /* the start page, and the outline while a file is dragged over the window */
+  .landing { max-width: 640px; margin: 48px auto; padding: 32px; background: #fff; border: 2px dashed #9aa4b1; border-radius: 12px; line-height: 1.6; }
+  .landing h1 { font-size: 20px; margin: 0 0 8px; }
+  .landing .samples { display: flex; flex-wrap: wrap; gap: 6px; }
+  .landing .note { color: #666; font-size: 12px; }
+  body.dragging #stage { outline: 3px dashed #1a73e8; outline-offset: -6px; background: #dde8f7; }
   .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 </style>
 <body>
 <header>
   <strong>BDF viewer</strong>
-  <span class="tabs" id="tabs" role="tablist" aria-label="views"></span>
+  <button id="openFile" type="button">Open file…</button>
+  <input id="file" type="file" hidden accept=".pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.csv,.tsv,.tab,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.drawio,.dio,.svg,.png,.dxf,.ai,.psd,.psb,.bdf">
   <label>zoom <input id="zoom" type="range" min="0.25" max="3" step="0.25" value="1" aria-valuetext="100%"> <span id="zoomv">100%</span></label>
   <label id="modeBox" hidden><input id="continuous" type="checkbox"> continuous</label>
   <span class="search" role="search">
@@ -46,10 +67,26 @@
   <span class="info">
     <!-- status is announced (loading, what a view holds, errors); timing is not, since it changes on every scroll -->
     <span id="status" role="status"></span>
+    <details id="warnings" hidden><summary></summary><ul></ul></details>
     <span id="timing"></span>
+    <a id="download" hidden>Download .bdf</a>
   </span>
 </header>
-<div id="stage" role="tabpanel" tabindex="0"></div>
+<div id="stage" role="tabpanel" tabindex="0">
+  <div class="landing" id="landing" hidden>
+    <h1>Drop a file here to preview it</h1>
+    <p>PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Visio (.vsdx, .vdx), draw.io (.drawio, and SVG and PNG exports with the diagram), AutoCAD DXF, Illustrator (.ai), Photoshop (.psd, .psb), Windows metafiles (.emf, .wmf) or bdf.
+      The file is converted to bdf and drawn inside your browser, by the Go converters built as WebAssembly: it is not uploaded anywhere.</p>
+    <p><button type="button" id="chooseFile">Choose a file…</button></p>
+    <div id="samples" hidden><p>Or open a sample:</p><p class="samples"></p></div>
+    <p class="note">Password-protected files open with their password. Office documents are laid out with the free fonts published with this page
+      (fetched when a document uses them), which stand in for the fonts the document names.</p>
+  </div>
+</div>
+<nav class="sheetbar" aria-label="views">
+  <button class="step" id="prevView" title="previous view" aria-label="previous view" disabled>◀</button><button class="step" id="nextView" title="next view" aria-label="next view" disabled>▶</button>
+  <span class="tabs" id="tabs" role="tablist" aria-label="views"></span>
+</nav>
 <dialog id="pwDialog" aria-labelledby="pwTitle" aria-describedby="pwMessage">
   <form method="dialog">
     <h2 id="pwTitle">Encrypted document</h2>

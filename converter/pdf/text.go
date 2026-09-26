@@ -47,11 +47,15 @@ func (in *interp) setLineMatrix(m matrix) {
 			}
 		}
 	}
+	if in.continueVertical(m) {
+		return
+	}
 	in.flushRun()
 	t.tlm = m
 	t.tm = m
 	t.base = m
 	t.tx = 0
+	t.ty = 0
 }
 
 // closeTextBlock ends the SAVE/TRANSFORM block opened for the current line matrix.
@@ -97,6 +101,7 @@ type textRun struct {
 
 // flushRun emits the run that is being accumulated across TJ elements.
 func (in *interp) flushRun() {
+	in.flushVertical()
 	if in.curRun.empty {
 		return
 	}
@@ -107,6 +112,11 @@ func (in *interp) flushRun() {
 // adjustText applies a TJ number: a horizontal shift in thousandths of text space.
 // Small shifts (kerning) are absorbed into the current run; large ones end it.
 func (in *interp) adjustText(v float64) {
+	if f := in.gs.font; f != nil && f.vertical() {
+		// In vertical writing the number moves the pen down.
+		in.text.ty -= v / 1000 * in.gs.size
+		return
+	}
 	shift := -v / 1000 * in.gs.size * in.gs.hscale
 	if math.Abs(v) <= 150 && !in.curRun.empty && !in.curRun.font.type3 {
 		in.curRun.adv += shift / nonZero(in.gs.hscale)
@@ -139,14 +149,24 @@ func (in *interp) showText(s []byte) {
 		// Hidden optional content: the glyphs are not drawn, but they still
 		// move the pen.
 		for _, g := range codes {
-			adv := f.width(g)*in.gs.size + in.gs.charSp
+			sp := in.gs.charSp
 			if g.nbytes == 1 && g.code == 32 {
-				adv += in.gs.wordSp
+				sp += in.gs.wordSp
 			}
-			in.text.tx += adv * h
+			if f.vertical() {
+				w1, _, _ := f.vmetrics(g, f.width(g))
+				in.text.ty += w1*in.gs.size + sp
+			} else {
+				in.text.tx += (f.width(g)*in.gs.size + sp) * h
+			}
 		}
 		return
 	}
+	if f.vertical() {
+		in.showVertical(f, codes)
+		return
+	}
+	in.flushVertical()
 	if f.type3 {
 		in.flushRun()
 		in.showType3(f, codes)
@@ -200,6 +220,9 @@ func (in *interp) emitRun(f *pdfFont, run *textRun) {
 	mode := in.gs.render
 	if mode == 7 || in.gs.size == 0 {
 		mode = 3
+	}
+	if mode != 3 {
+		in.enterMask()
 	}
 	in.ensureTextBlock(true)
 	ref := in.p.fontRef(f)
@@ -272,6 +295,7 @@ func (in *interp) showType3(f *pdfFont, codes []glyphCode) {
 		glyph := in.c.type3Glyph(f, f.glyphName(g.code), in.depth+1)
 		if glyph != nil && in.gs.render != 3 && in.gs.render != 7 {
 			sync()
+			in.enterMask()
 			in.ensureTextBlock(false)
 			if altPending {
 				in.obj.Mark(bdf.MarkAltText, text.String())

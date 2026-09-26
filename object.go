@@ -356,6 +356,21 @@ func (o *Object) GroupBegin(alpha float32, blend byte, x, y, w, h float32) *Obje
 }
 func (o *Object) GroupEnd() *Object { o.op(OpGroupEnd); return o }
 
+// MaskBegin starts drawing a soft mask for the innermost group (kind is
+// MaskAlpha or MaskLuminosity; backdrop is the luminosity backdrop colour;
+// transfer is nil or 256 entries mapping each mask value).
+func (o *Object) MaskBegin(kind byte, backdrop Color, transfer []byte) *Object {
+	b := o.op(OpMaskBegin)
+	b.u8(kind)
+	b.u32(uint32(backdrop))
+	b.varuint(uint64(len(transfer)))
+	b.bytes(transfer)
+	return o
+}
+
+// MaskEnd multiplies the alpha of what the innermost group holds by the mask.
+func (o *Object) MaskEnd() *Object { o.op(OpMaskEnd); return o }
+
 func (o *Object) Link(x, y, w, h float32, url string) *Object {
 	b := o.op(OpLink)
 	b.f32s(x, y, w, h)

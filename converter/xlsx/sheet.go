@@ -93,6 +93,11 @@ type worksheet struct {
 	// autoFilter is the range of the sheet's AutoFilter (tables have their own)
 	autoFilter *cellRange
 	noValue    int // formula cells saved without a value
+
+	// grids (ConvertGrid)
+	fitCols    bool // columns are as wide as their text
+	headerRows int  // rows at the top that head the columns
+	gridTables []gridTable
 }
 
 // readWorksheet parses a worksheet part.

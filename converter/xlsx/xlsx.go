@@ -15,6 +15,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
@@ -40,9 +41,12 @@ type Options struct {
 	// Images controls whether raster images are re-encoded (see imgconv).
 	// The zero value keeps images as they are.
 	Images imgconv.Options
+	// FontFS holds fonts that are not in the local file system; it is
+	// searched before FontDirs (see converter.Options.FontFS).
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding the
 	// fonts used for layout. Viewers then substitute their own fonts; the
@@ -129,16 +133,8 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("xlsx: %w", err)
 	}
-	c := &converter{pkg: p, opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{}, patterns: map[string]bdf.Hash{},
-		parsed: map[string]*worksheet{}, chartsFilled: map[string]bool{}}
-	warn := func(msg string) { c.warnf("%s", msg) }
-	db := fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
-	c.fonts = fontset.New(db, warn)
-	c.cvs = canvas.NewBuilder(c.doc, c.fonts)
-	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, Warn: warn})
-	if len(db.Faces) == 0 && !opts.SystemFonts {
-		c.warnf("no fonts found; text is laid out with estimated metrics and not embedded")
-	}
+	c := newConverter(p, opts)
+	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, Warn: func(msg string) { c.warnf("%s", msg) }})
 
 	c.wbPart = "xl/workbook.xml"
 	if r, ok := p.RelOfType("", "/officeDocument"); ok {
@@ -195,12 +191,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			}
 		}
 	}
-	type pending struct {
-		view   *bdf.View
-		tiles  map[string]*canvas.Canvas
-		layers []*canvas.Canvas
-	}
-	var views []pending
+	var views []pendingView
 	for _, n := range sel {
 		if n < 1 || n > len(sheets) {
 			return nil, fmt.Errorf("xlsx: sheet %d out of range (1-%d)", n, len(sheets))
@@ -209,15 +200,45 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		id := "sheet" + strconv.Itoa(n)
 		if ref.chart {
 			v, layers := c.chartSheetSafe(ref, id)
-			views = append(views, pending{view: v, layers: layers})
+			views = append(views, pendingView{view: v, layers: layers})
 			continue
 		}
 		v, tiles, err := c.worksheetSafe(ref, id)
 		if err != nil {
 			return nil, fmt.Errorf("xlsx: sheet %q: %w", ref.name, err)
 		}
-		views = append(views, pending{view: v, tiles: tiles})
+		views = append(views, pendingView{view: v, tiles: tiles})
 	}
+	c.finish(views)
+	return &Result{Doc: c.doc, Warnings: c.warnings, Sheets: len(sel), EmbeddedFonts: c.embeddedFonts}, nil
+}
+
+// newConverter sets up a conversion: the document, the fonts and the
+// object builder. p is nil for grids, which come from no workbook.
+func newConverter(p *ooxml.Package, opts *Options) *converter {
+	c := &converter{pkg: p, opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{}, patterns: map[string]bdf.Hash{},
+		parsed: map[string]*worksheet{}, chartsFilled: map[string]bool{}}
+	db := fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
+	c.fonts = fontset.New(db, func(msg string) { c.warnf("%s", msg) })
+	c.cvs = canvas.NewBuilder(c.doc, c.fonts)
+	if len(db.Faces) == 0 && !opts.SystemFonts {
+		c.warnf("no fonts found; text is laid out with estimated metrics and not embedded")
+	}
+	return c
+}
+
+// pendingView is a converted sheet whose objects get their hashes when the
+// fonts are known.
+type pendingView struct {
+	view   *bdf.View
+	tiles  map[string]*canvas.Canvas
+	layers []*canvas.Canvas
+}
+
+// finish embeds the fonts, encodes the objects, points the views at them
+// and indexes their text.
+func (c *converter) finish(views []pendingView) {
+	opts := c.opts
 	if !opts.SystemFonts {
 		c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2, IgnoreFSType: opts.IgnoreFSType})
 	}
@@ -238,7 +259,6 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			}
 		}
 	}
-	return &Result{Doc: c.doc, Warnings: c.warnings, Sheets: len(sel), EmbeddedFonts: c.embeddedFonts}, nil
 }
 
 func (c *converter) warnf(format string, args ...any) {

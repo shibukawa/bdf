@@ -1,0 +1,76 @@
+<mxfile>
+  <diagram id="groups" name="Groups (first AWS icons)">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="cloud" value="" style="dashed=0;html=1;shape=mxgraph.aws.groups.rrect;fillColor=none;gradientColor=none;" vertex="1" parent="1">
+          <mxGeometry x="20" y="60" width="1000" height="640" as="geometry"/>
+        </mxCell>
+        <mxCell id="cloudIcon" value="" style="dashed=0;html=1;shape=mxgraph.aws.groups.aws_cloud_icon;strokeColor=none;fillColor=#F69721;gradientColor=none;" vertex="1" parent="1">
+          <mxGeometry x="30" y="30" width="70" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="region" value="Region us-east-1" style="dashed=0;html=1;shape=mxgraph.aws.groups.region;fillColor=none;gradientColor=none;verticalAlign=top;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="50" y="110" width="620" height="560" as="geometry"/>
+        </mxCell>
+        <mxCell id="vpc" value="VPC" style="dashed=0;html=1;shape=mxgraph.aws.groups.virtual_private_cloud;fillColor=none;gradientColor=none;verticalAlign=top;align=left;spacingLeft=30;" vertex="1" parent="region">
+          <mxGeometry x="20" y="40" width="580" height="500" as="geometry"/>
+        </mxCell>
+        <mxCell id="azA" value="AZ a" style="dashed=0;html=1;shape=mxgraph.aws.groups.availability_zone;strokeColor=#f69721;fillColor=none;gradientColor=none;verticalAlign=top;" vertex="1" parent="vpc">
+          <mxGeometry x="20" y="40" width="260" height="440" as="geometry"/>
+        </mxCell>
+        <mxCell id="subnet" value="Public subnet" style="dashed=0;html=1;shape=mxgraph.aws.groups.vpc_subnet;fillColor=none;gradientColor=none;verticalAlign=top;align=left;spacingLeft=24;fontSize=11;" vertex="1" parent="azA">
+          <mxGeometry x="15" y="35" width="230" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="web" value="web" style="dashed=0;html=1;shape=mxgraph.aws2.compute_and_networking.ec2_instance;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="subnet">
+          <mxGeometry x="89" y="60" width="52" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="asg" value="Auto Scaling group" style="dashed=0;html=1;shape=mxgraph.aws.groups.auto_scaling_group;fillColor=none;gradientColor=none;verticalAlign=top;fontSize=11;" vertex="1" parent="azA">
+          <mxGeometry x="15" y="235" width="230" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="app" value="app" style="dashed=0;html=1;shape=mxgraph.aws2.compute_and_networking.ec2_instances;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="asg">
+          <mxGeometry x="90" y="60" width="50" height="57" as="geometry"/>
+        </mxCell>
+        <mxCell id="azB" value="AZ b" style="dashed=0;html=1;shape=mxgraph.aws.groups.availability_zone;strokeColor=#f69721;fillColor=none;gradientColor=none;verticalAlign=top;" vertex="1" parent="vpc">
+          <mxGeometry x="300" y="40" width="260" height="440" as="geometry"/>
+        </mxCell>
+        <mxCell id="ebc" value="Beanstalk container" style="dashed=0;html=1;shape=mxgraph.aws.groups.elastic_beanstalk_container;fillColor=none;gradientColor=none;verticalAlign=top;fontSize=11;" vertex="1" parent="azB">
+          <mxGeometry x="15" y="35" width="230" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="ebapp" value="worker" style="dashed=0;html=1;shape=mxgraph.aws2.compute_and_networking.elastic_beanstalk_application;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="ebc">
+          <mxGeometry x="100" y="60" width="31" height="57" as="geometry"/>
+        </mxCell>
+        <mxCell id="sg" value="DB security group" style="dashed=0;html=1;shape=mxgraph.aws.groups.security_group;fillColor=none;gradientColor=none;verticalAlign=top;fontSize=11;" vertex="1" parent="azB">
+          <mxGeometry x="15" y="235" width="230" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="rds" value="RDS" style="dashed=0;html=1;shape=mxgraph.aws2.database.rds_db_instance;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="sg">
+          <mxGeometry x="93" y="60" width="43" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="dc" value="Corporate data center" style="dashed=0;html=1;shape=mxgraph.aws.groups.corporate_data_center;fillColor=none;gradientColor=none;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="700" y="110" width="290" height="250" as="geometry"/>
+        </mxCell>
+        <mxCell id="server" value="server" style="dashed=0;html=1;shape=mxgraph.aws2.non-service_specific.traditional_server;strokeColor=none;verticalLabelPosition=bottom;verticalAlign=top;" vertex="1" parent="dc">
+          <mxGeometry x="125" y="90" width="41" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="contents" value="Server contents" style="dashed=0;html=1;shape=mxgraph.aws.groups.server_contents;fillColor=#F2F2F2;gradientColor=none;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="700" y="400" width="290" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec2c" value="EC2 instance contents" style="dashed=0;html=1;shape=mxgraph.aws.groups.ec2_instance_contents;fillColor=none;gradientColor=none;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="700" y="560" width="290" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="web" target="app">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="app" target="rds">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" value="VPN" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;dashed=1;" edge="1" parent="1" source="server" target="web">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="ebapp" target="rds">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

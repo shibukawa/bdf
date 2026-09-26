@@ -17,7 +17,7 @@ func init() {
 			return metafile.Kind(head) != ""
 		},
 		Convert: func(r io.ReaderAt, size int64, o *converter.Options) (*converter.Result, error) {
-			res, err := Convert(r, size, &Options{Title: o.Title, Images: o.Images, FontDirs: o.FontDirs,
+			res, err := Convert(r, size, &Options{Title: o.Title, Images: o.Images, FontFS: o.FontFS, FontDirs: o.FontDirs,
 				NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset, NoWOFF2: o.NoWOFF2,
 				IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn})
 			if err != nil {

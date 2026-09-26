@@ -7,6 +7,7 @@ import (
 
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/cjkcmap"
 	"github.com/shibukawa/bdf/converter/internal/sfnt"
 	"github.com/shibukawa/bdf/woff2"
 )
@@ -35,15 +36,18 @@ type pdfFont struct {
 	type3     bool
 	baseFont  string
 
-	enc   *cmap // composite fonts: code → CID
-	toUni *cmap
+	enc        *cmap // composite fonts: code → CID
+	toUni      *cmap
+	collection string // composite fonts: the CID collection ("Adobe-Japan1")
 
 	firstChar    int
 	widths       []float64 // simple fonts, glyph space (/1000)
 	missingWidth float64
 	defaultWidth float64
 	cidWidths    map[uint32]float64
-	fontMatrix   matrix // Type3
+	dw2          [2]float64            // vertical: default position vector y and displacement (/DW2)
+	cidVMetrics  map[uint32][3]float64 // vertical: displacement w1, position vector vx, vy (/W2)
+	fontMatrix   matrix                // Type3
 
 	baseNames   [256]string
 	diffNames   [256]string
@@ -125,6 +129,9 @@ func (c *converter) loadFont(ref types.Object, res types.Dict) *pdfFont {
 	}
 	if f.composite {
 		c.loadDescriptor(f, desc)
+		if f.collection == "" && f.enc != nil && f.enc.pre != nil {
+			f.collection = f.enc.pre.Collection
+		}
 	}
 	c.styleFromName(f)
 	return f
@@ -134,24 +141,30 @@ func (c *converter) loadType0(f *pdfFont, d types.Dict) {
 	p := c.pdf
 	switch e := p.deref(d["Encoding"]).(type) {
 	case types.Name:
-		switch e.Value() {
-		case "Identity-H":
-			f.enc = identityCMap()
-		case "Identity-V":
-			f.enc = identityCMap()
-			f.enc.vertical = true
-		default:
+		f.enc = predefinedCMap(e.Value())
+		if f.enc == nil {
 			c.warnf("predefined CMap %s is not available; treating as Identity", e.Value())
 			f.enc = identityCMap()
 		}
 	default:
 		if sd := p.stream(d["Encoding"]); sd != nil {
 			if data, _, err := p.decodeStream(sd); err == nil {
-				f.enc = parseCMap(data)
-				if um := p.deref(sd.Dict["UseCMap"]); um != nil {
-					if n, ok := um.(types.Name); ok && strings.HasPrefix(n.Value(), "Identity") {
-						f.enc.identity = true
+				// The parent is the usecmap operand, or the /UseCMap entry: a
+				// predefined name or another CMap stream.
+				var parent *cmap
+				switch um := p.deref(sd.Dict["UseCMap"]).(type) {
+				case types.Name:
+					parent = predefinedCMap(um.Value())
+				default:
+					if psd := p.stream(sd.Dict["UseCMap"]); psd != nil && psd != sd {
+						if pdata, _, err := p.decodeStream(psd); err == nil {
+							parent = parseCMap(pdata)
+						}
 					}
+				}
+				f.enc = parseCMapParent(data, parent)
+				if v, ok := p.num(sd.Dict["WMode"]); ok && v == 1 {
+					f.enc.vertical = true
 				}
 			}
 		}
@@ -163,6 +176,11 @@ func (c *converter) loadType0(f *pdfFont, d types.Dict) {
 
 func (c *converter) loadCIDFont(f *pdfFont, cid types.Dict) {
 	p := c.pdf
+	if si := p.dict(cid["CIDSystemInfo"]); si != nil {
+		if reg, ord := p.text(si["Registry"]), p.text(si["Ordering"]); reg != "" && ord != "" {
+			f.collection = reg + "-" + ord
+		}
+	}
 	f.defaultWidth = p.numOr(cid["DW"], 1000)
 	f.cidWidths = map[uint32]float64{}
 	w := p.array(cid["W"])
@@ -189,6 +207,40 @@ func (c *converter) loadCIDFont(f *pdfFont, cid types.Dict) {
 					}
 				}
 				i += 3
+				continue
+			}
+		}
+		i++
+	}
+	f.dw2 = [2]float64{880, -1000}
+	if dw2 := p.nums(cid["DW2"]); len(dw2) == 2 {
+		f.dw2 = [2]float64{dw2[0], dw2[1]}
+	}
+	f.cidVMetrics = map[uint32][3]float64{}
+	w2 := p.array(cid["W2"])
+	for i := 0; i < len(w2); {
+		start, ok := p.num(w2[i])
+		if !ok {
+			i++
+			continue
+		}
+		if i+1 < len(w2) {
+			if arr := p.nums(w2[i+1]); arr != nil && p.array(w2[i+1]) != nil {
+				for k := 0; k+2 < len(arr); k += 3 {
+					f.cidVMetrics[uint32(start)+uint32(k/3)] = [3]float64{arr[k], arr[k+1], arr[k+2]}
+				}
+				i += 2
+				continue
+			}
+			if i+4 < len(w2) {
+				end := p.numOr(w2[i+1], start)
+				m := [3]float64{p.numOr(w2[i+2], f.dw2[1]), p.numOr(w2[i+3], 500), p.numOr(w2[i+4], f.dw2[0])}
+				if end-start < 65536 {
+					for cc := start; cc <= end; cc++ {
+						f.cidVMetrics[uint32(cc)] = m
+					}
+				}
+				i += 5
 				continue
 			}
 		}
@@ -393,7 +445,8 @@ func (c *converter) styleFromName(f *pdfFont) {
 	switch {
 	case strings.Contains(lower, "courier"), strings.Contains(lower, "mono"), f.flags&1 != 0:
 		f.family = "monospace"
-	case strings.Contains(lower, "times"), strings.Contains(lower, "serif") && !strings.Contains(lower, "sans"), strings.Contains(lower, "georgia"), strings.Contains(lower, "book"), strings.Contains(lower, "garamond"), strings.Contains(lower, "mincho"), strings.Contains(lower, "roman"):
+	case strings.Contains(lower, "times"), strings.Contains(lower, "serif") && !strings.Contains(lower, "sans"), strings.Contains(lower, "georgia"), strings.Contains(lower, "book"), strings.Contains(lower, "garamond"), strings.Contains(lower, "mincho"), strings.Contains(lower, "roman"),
+		f.composite && (strings.Contains(lower, "ryumin") || strings.Contains(lower, "ming") || strings.Contains(lower, "song") || strings.Contains(lower, "batang") || strings.Contains(lower, "myeongjo")):
 		f.family = "serif"
 	case f.flags&2 != 0 && !strings.Contains(lower, "arial") && !strings.Contains(lower, "helvetica") && !strings.Contains(lower, "gothic"):
 		f.family = "serif"
@@ -449,6 +502,23 @@ func (f *pdfFont) width(g glyphCode) float64 {
 	return standardWidth(f, g.code)
 }
 
+// vertical reports whether the font writes vertically (WMode 1).
+func (f *pdfFont) vertical() bool { return f.composite && f.enc != nil && f.enc.vertical }
+
+// vmetrics returns a code's vertical displacement w1 (negative: down) and
+// the position vector from its horizontal to its vertical origin, per unit
+// font size; w0 is its horizontal advance.
+func (f *pdfFont) vmetrics(g glyphCode, w0 float64) (w1, vx, vy float64) {
+	if m, ok := f.cidVMetrics[g.cid]; ok {
+		return m[0] / 1000, m[1] / 1000, m[2] / 1000
+	}
+	dw2 := f.dw2
+	if dw2 == [2]float64{} {
+		dw2 = [2]float64{880, -1000}
+	}
+	return dw2[1] / 1000, w0 / 2, dw2[0] / 1000
+}
+
 // glyphName returns the encoding glyph name for a simple-font code.
 func (f *pdfFont) glyphName(code uint32) string {
 	if code >= 256 {
@@ -487,6 +557,17 @@ func (f *pdfFont) unicode(g glyphCode) string {
 		if name == "" && g.code >= 32 && g.code < 127 {
 			return string(rune(g.code))
 		}
+		return ""
+	}
+	// A Unicode CMap's codes are the text; otherwise the CID collection's
+	// character (Adobe-Japan1 and the other CJK collections).
+	if f.enc != nil && f.enc.pre != nil {
+		if r, ok := f.enc.pre.CodePoint(g.code); ok && r >= 0x20 {
+			return string(r)
+		}
+	}
+	if r, _, ok := cjkcmap.Unicode(f.collection, g.cid); ok && r >= 0x20 {
+		return string(r)
 	}
 	return ""
 }

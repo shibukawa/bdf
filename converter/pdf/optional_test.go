@@ -147,3 +147,49 @@ func TestPageBox(t *testing.T) {
 		t.Error("an unknown box converted")
 	}
 }
+
+func TestOptionalContentVertical(t *testing.T) {
+	// Hidden vertical text moves the pen down the line, as drawn text does:
+	// the third 亜 starts where it does when the second is drawn invisibly.
+	build := func(content string) []byte {
+		return buildPDF([]any{
+			/* 1 */ `<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [6 0 R] /D << /OFF [6 0 R] >> >> >>`,
+			/* 2 */ `<< /Type /Pages /Kids [3 0 R] /Count 1 >>`,
+			/* 3 */ `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 400] /Contents 4 0 R
+				/Resources << /Font << /F1 5 0 R >> /Properties << /B 6 0 R >> >> >>`,
+			/* 4 */ [2]string{"", content},
+			/* 5 */ `<< /Type /Font /Subtype /Type0 /BaseFont /Ryumin-Light-Identity-V /Encoding /Identity-V /DescendantFonts [7 0 R] >>`,
+			/* 6 */ `<< /Type /OCG /Name (B) >>`,
+			/* 7 */ `<< /Type /Font /Subtype /CIDFontType0 /BaseFont /Ryumin-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (Japan1) /Supplement 2 >>
+				/FontDescriptor << /Type /FontDescriptor /FontName /Ryumin-Light /Flags 6 /FontBBox [0 -141 1000 859] /ItalicAngle 0 /Ascent 859 /Descent -141 /CapHeight 709 /StemV 69 >> >>`,
+		}, "/Root 1 0 R")
+	}
+	// the text and the line position (the TRANSFORM before it) of each vertical run
+	runs := func(r *bdf.Reader) []string {
+		o, err := r.Object(r.Manifest.Views[0].Pages[0].Layers[0].Obj)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		var at string
+		if err := o.Walk(func(in bdf.Instr) {
+			switch in.Op {
+			case bdf.OpTransform:
+				at = fmt.Sprintf("%.2f,%.2f", in.Args[4], in.Args[5])
+			case bdf.OpMark:
+				if byte(in.Args[0].(uint64)) == bdf.MarkAltText {
+					out = append(out, in.Args[1].(string)+"@"+at)
+				}
+			}
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	_, hidden := convertBytes(t, build(`BT /F1 20 Tf 100 350 Td <0465> Tj /OC /B BDC <0465> Tj EMC <0465> Tj ET`), nil)
+	_, shown := convertBytes(t, build(`BT /F1 20 Tf 100 350 Td <0465> Tj 3 Tr <0465> Tj 0 Tr <0465> Tj ET`), nil)
+	got, ref := runs(hidden), runs(shown)
+	if len(got) != 2 || len(ref) != 3 || got[0] != ref[0] || got[1] != ref[2] || ref[1] == ref[2] {
+		t.Errorf("hidden: %q, drawn invisibly: %q", got, ref)
+	}
+}

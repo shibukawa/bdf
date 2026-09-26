@@ -32,7 +32,7 @@ func init() {
 		},
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
 			res, err := Convert(r, size, &Options{Pages: o.Pages, Views: o.Param("views"), Title: o.Title, Images: o.Images,
-				FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
+				FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
 				NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn})
 			if err != nil {
 				return nil, err

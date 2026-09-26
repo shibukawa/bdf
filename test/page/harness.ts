@@ -40,6 +40,12 @@ export const CASES: Case[] = [
   // Type 1 programs (FontFile) converted to CFF: cairo subsets (seac accents, built-in encoding) and a whole font.
   { name: "pdf-cairo-type1-1", src: "/testdata/pdf/cairo-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
   { name: "pdf-reportlab-type1-1", src: "/testdata/pdf/reportlab-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  // ExtGState soft masks from CSS mask-image (alpha, luminance, SVG <mask>), with Chrome's inverted /TR masks.
+  { name: "pdf-chrome-masks-1", src: "/testdata/pdf/chrome-masks.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  // Non-embedded CID fonts through predefined CJK CMaps (horizontal and -V vertical), and Identity-V with an embedded font.
+  { name: "pdf-cjk-1", src: "/testdata/pdf/cjk-cmaps.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  // JPEG 2000 (lossy, lossless, SMaskInData) and JBIG2 (halftone; text with JBIG2Globals as a stencil mask) images.
+  { name: "pdf-images-1", src: "/testdata/pdf/images-jpx-jbig2.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
   // PowerPoint decks rendered by converter/pptx with the test fonts; see test/pptx.
   { name: "pptx-basic-2", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 1, scale: 1 },
   { name: "pptx-basic-3", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
@@ -68,6 +74,25 @@ export const CASES: Case[] = [
   // The page view's bodies stacked (continuous mode), and the scroll view across the boundary of its strips.
   { name: "docx-basic-continuous", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "pages", viewport: { x: 0, y: 500, w: 451.3, h: 400 }, scale: 1 },
   { name: "docx-basic-scroll", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 850, w: 769.9, h: 350 }, scale: 1 },
+  // CSV and TSV files rendered by converter/csv with the test fonts; see test/csv.
+  { name: "csv-basic-1", src: "/testdata/csv/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1240, h: 240 }, scale: 1 },
+  { name: "csv-japanese-1", src: "/testdata/csv/japanese.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 460, h: 180 }, scale: 1.5 },
+  // draw.io diagrams rendered by converter/drawio with the test fonts: every page is a view of its own.
+  { name: "drawio-labels", src: "/testdata/drawio/labels.bdf", kind: "page", view: "text", page: 0, scale: 1.5 },
+  { name: "drawio-multipage-1", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "overview", page: 0, scale: 1.5 },
+  { name: "drawio-multipage-2", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "details", page: 0, scale: 1.5 },
+  { name: "drawio-multipage-3", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "layers", page: 0, scale: 1.5 },
+  // shapes, stencils, markers and edge shapes; swimlanes, orthogonal and curved routing, line jumps, a table
+  { name: "drawio-showcase-1", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "shapes", page: 0, scale: 1.5 },
+  { name: "drawio-showcase-2", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "flow", page: 0, scale: 1.5 },
+  // AWS: current icons and groups (aws4), and a diagram in an older icon set drawn with them
+  { name: "drawio-aws-1", src: "/testdata/drawio/aws.bdf", kind: "page", view: "current", page: 0, scale: 1.5 },
+  { name: "drawio-aws-2", src: "/testdata/drawio/aws.bdf", kind: "page", view: "legacy", page: 0, scale: 1 },
+  // DXF drawings rendered by converter/dxf with the test fonts; see test/dxf. Model space on its dark
+  // background, and a layout with a title block and two viewports at different scales.
+  { name: "dxf-shapes-1", src: "/testdata/dxf/shapes.bdf", kind: "page", view: "model", page: 0, scale: 0.75 },
+  { name: "dxf-layout-1", src: "/testdata/dxf/layout.bdf", kind: "page", view: "layout1", page: 0, scale: 0.75 },
+  { name: "dxf-r12-sjis-1", src: "/testdata/dxf/r12-sjis.bdf", kind: "page", view: "model", page: 0, scale: 0.5 },
   // Illustrator artboards (converter/ai): each page cut to its artboard, the hidden layer left out; see test/ai.
   { name: "ai-artboards-1", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "ai-artboards-2", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
@@ -232,7 +257,13 @@ async function main() {
   const { client: xlsxBasic } = await open("/testdata/xlsx/basic.bdf");
   const xlsxHits = await xlsxBasic.search("sheet3", "straddles the tile");
   const xlsxRects = await xlsxBasic.locate("sheet3", xlsxHits);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects };
+  // draw.io: a page of the diagram is a view; the search runs in it, and
+  // links to other pages are #view= links
+  const { client: drawio } = await open("/testdata/drawio/multipage.bdf");
+  const drawioHits = await drawio.search("details", "日本語の説明");
+  const drawioRects = await drawio.locate("details", drawioHits);
+  const drawioLinks = (await drawio.content("overview", 0)).links.map((l) => l.url);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects, drawioHits, drawioRects, drawioLinks };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }
