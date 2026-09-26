@@ -13,9 +13,9 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/metafile"
+	"github.com/shibukawa/bdf/converter/internal/tiff"
 	"github.com/shibukawa/bdf/imgconv"
 	_ "golang.org/x/image/bmp"
-	"golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 )
 
@@ -50,14 +50,17 @@ func (c *Renderer) image(part, rid string) *imageEntry {
 	format := imgconv.Sniff(data)
 	switch {
 	case format != "":
-	case bytes.HasPrefix(data, []byte("II*\x00")) || bytes.HasPrefix(data, []byte("MM\x00*")):
-		img, err := tiff.Decode(bytes.NewReader(data))
+	case tiff.Sniff(data):
+		// The first page, as JPEG or PNG; Optimize below converts it.
+		pic, damaged, err := tiff.Picture(data, c.imgOpts)
 		if err != nil {
 			c.warnf("image %s: %v", r.Target, err)
 			return e
 		}
-		res, _ := imgconv.EncodeImage(toNRGBA(img), true, c.imgOpts)
-		data, format = res.Data, res.Format
+		if damaged {
+			c.warnf("image %s: the pixel data is damaged; what is missing is left blank", r.Target)
+		}
+		data, format = pic, imgconv.Sniff(pic)
 	case metafile.Kind(data) != "":
 		e.mf, e.ok = data, true
 		return e

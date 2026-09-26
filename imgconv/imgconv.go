@@ -6,6 +6,11 @@
 // that makes them smaller; otherwise the original bytes are kept. Lossless sources stay lossless unless they look like
 // photographs. The codecs are pure Go (see internal/README.md); building
 // with -tags bdf_noconv leaves them out and Convert behaves like Keep.
+//
+// Raster inputs whose size on the page is known (a scanned page) are also
+// capped in resolution, in either mode: Options.FitSize says how far to scale
+// one down (at most MaxDPI pixels per inch and MaxPixels pixels) and Resize
+// scales it.
 package imgconv
 
 import (
@@ -33,7 +38,8 @@ const (
 // Options configures conversion.
 type Options struct {
 	Mode Mode
-	// Quality for lossy WebP, 1-100 (default 80).
+	// Quality for lossy WebP (and for JPEG, which EncodePixels writes in
+	// Keep mode), 1-100 (default 80).
 	Quality int
 	// Method is the WebP effort, 0 (fast) to 6 (small); default 6.
 	Method int
@@ -42,6 +48,14 @@ type Options struct {
 	// PhotoColors is the number of distinct sampled colours above which an
 	// image counts as a photograph (default 4096).
 	PhotoColors int
+
+	// MaxDPI caps the resolution of the raster inputs that are scaled down
+	// to fit (see FitSize), in pixels per inch of the page: 0 is
+	// DefaultMaxDPI, a negative value removes the cap.
+	MaxDPI float64
+	// MaxPixels caps the pixel count (width × height) of those inputs: 0 is
+	// DefaultMaxPixels, a negative value removes the cap.
+	MaxPixels int
 }
 
 func (o Options) quality() int {

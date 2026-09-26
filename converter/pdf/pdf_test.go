@@ -17,6 +17,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/sfnt"
 	"github.com/shibukawa/bdf/woff2"
 )
@@ -1199,11 +1200,11 @@ func TestConvertTagged(t *testing.T) {
 	}
 
 	// Links point at page indexes of the output view; pages left out drop theirs.
-	_, r = convertBytes(t, taggedPDF(true), &Options{Pages: []int{2, 1}})
+	_, r = convertBytes(t, taggedPDF(true), &Options{Pages: conv.PageList(2, 1)})
 	if got := markSeq(t, r, r.Manifest.Views[0].Pages[1].Layers[0].Obj); !strings.HasSuffix(got, "link 72 100 100 20 #page=1|link 200 100 100 20 #page=1|link 320 100 100 20 #page=2") {
 		t.Errorf("reordered pages: %s", got)
 	}
-	_, r = convertBytes(t, taggedPDF(true), &Options{Pages: []int{1}})
+	_, r = convertBytes(t, taggedPDF(true), &Options{Pages: conv.PageList(1)})
 	if got := markSeq(t, r, r.Manifest.Views[0].Pages[0].Layers[0].Obj); !strings.HasSuffix(got, "LANG de|text deutsch|link 320 100 100 20 #page=1") {
 		t.Errorf("single page: %s", got)
 	}

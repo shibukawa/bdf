@@ -4,7 +4,7 @@ English | [日本語](README.ja.md)
 
 **bdf** (Browser-specific Document Format) is a draft document format for previews that browsers can draw straight onto Canvas 2D.
 
-Office-style files (PDF, Excel, PowerPoint, Word, Visio), draw.io diagrams and CAD drawings (DXF, Jw_cad, SXF) are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
+Office-style files (PDF, Excel, PowerPoint, Word, Visio), draw.io diagrams, CAD drawings (DXF, Jw_cad, SXF) and scanned or faxed TIFF images are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
 
 **Demo**: <https://shibukawa.github.io/bdf/>. Drop a PDF, Word, PowerPoint, Excel, CSV or Visio file, a draw.io diagram, a DXF, Jw_cad or SXF drawing or a Windows metafile on the page: it is converted into bdf and drawn inside the browser, without being uploaded.
 
@@ -12,11 +12,11 @@ Office-style files (PDF, Excel, PowerPoint, Word, Visio), draw.io diagrams and C
 
 ```mermaid
 flowchart TB
-    SRC["PDF · Excel · CSV · PowerPoint · Word · Visio · draw.io · DXF · Jw_cad · SXF"]
+    SRC["PDF · Excel · CSV · PowerPoint · Word · Visio · draw.io · DXF · Jw_cad · SXF · TIFF"]
 
     subgraph SERVER["Go server process"]
         direction TB
-        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf"]
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/tiff"]
         BUNDLE["bdf bundle (packed)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         SCONV --> BUNDLE
     end
@@ -24,7 +24,7 @@ flowchart TB
     subgraph BROWSER["Browser"]
         direction TB
         subgraph CWORKER["Converter Worker (wasm)"]
-            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/tiff"]
         end
         PARTS["bdf document (in memory)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         subgraph RWORKER["Renderer Worker"]
@@ -80,6 +80,7 @@ Documents are converted with the `bdf generate` subcommand, which tells the inpu
 - **Jw_cad .jww** (`converter/jww`): the drawings of Jw_cad, read by its published data format from version 2 to version 7 and later files. A drawing is one page of its sheet (grown to hold what lies outside it), drawn in the screen colors saved in the file on its background (`-param colors=print` for the printer colors on white, `colors=mono` for black on white), with the printed line widths and line types: lines, arcs and ellipses, points, text in Jw_cad's fixed pitch (full-width characters as wide as the text size, half-width ones half as wide, vertical text), dimensions, solids including circle solids, and nested blocks. Hidden layers and auxiliary lines are left out, as Jw_cad does not print them. See §3.13 of design.md for details.
 - **SXF .p21 / .p2z / .sfc** (`converter/sxf`): the CAD exchange format of Japanese public works deliveries (電子納品), SXF Ver.2 to Ver.3.1, in both its encodings: the STEP AP202 files (.p21, and .p2z, a zipped P21 file) that deliveries hold, and the feature comment files (.sfc) of CAD programs. A drawing is one page of its sheet (grown to hold what lies outside it) on the background color the drawing names, black when it does not, as SXF viewers show drawings (`-param background=light` for white paper). The predefined and user-defined colors, line types and widths, lines, polylines, circles, arcs, ellipses, splines, clothoids, point markers, text at its nine anchors (turned, slanted, spaced, vertical), compound figures (placed, scaled, nested, in geodetic coordinates), dimensions, leaders and balloons, color fills, hatching and blank areas are drawn; hidden layers are left out. The files written by the SCADEC library, which most SXF writers use, are read the way it reads them back. See §3.14 of design.md for details.
 - **Windows metafiles .emf / .wmf** (`converter/emf`): one page the size of the picture, drawn by replaying the metafile's records (the replay that also draws the metafile pictures inside Office documents). Text is laid out and its fonts embedded as for PowerPoint.
+- **TIFF .tif / .tiff** (`converter/tiff`): a page for each page of the file, the size its resolution gives, drawn by one image. The TIFF reader is the module's own: classic TIFF and BigTIFF, strips and tiles, no compression, PackBits, LZW, Deflate, JPEG, and CCITT fax coding (Group 3 one- and two-dimensional, with or without fill bits, and Group 4), in bilevel, grey, palette, RGB and CMYK pixels of 1 to 16 bits. The Orientation tag turns the page. Pages finer than the resolution cap (192 dpi and 3840 × 3840 pixels by default, `-max-dpi` and `-max-pixels`) are scaled down to it, bilevel pages staying bilevel; JPEG pages that need no scaling are stored as one JPEG joined from their strips without re-encoding. See §3.15 of design.md for details.
 
 The input formats are static plugins: each converter package registers its format with the `converter` package when it is imported, and a program supports the formats whose packages it links in.
 
@@ -133,8 +134,9 @@ The documents are in Japanese.
 | `converter/sxf` | SXF (.p21, .p2z, .sfc) → bdf converter |
 | `converter/emf` | Windows metafile (.emf, .wmf) → bdf converter |
 | `converter/drawio` | draw.io (.drawio / .drawio.svg / .drawio.png) → bdf converter |
+| `converter/tiff` | TIFF (.tif, .tiff) → bdf converter |
 | `converter/all` | Registers every input format (import for its side effect) |
-| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`, draw.io too), objects under construction (`canvas`, draw.io too), EMF/WMF replay (`metafile`), CAD drawings plotted onto pages (`cad`), line breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`); for PDF, Adobe's predefined CJK CMaps (`cjkcmap`) and the JPEG 2000 and JBIG2 decoders (`jpx`, `jbig2`) |
+| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`, draw.io too), objects under construction (`canvas`, draw.io too), EMF/WMF replay (`metafile`), CAD drawings plotted onto pages (`cad`), line breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`); for PDF, Adobe's predefined CJK CMaps (`cjkcmap`) and the JPEG 2000 and JBIG2 decoders (`jpx`, `jbig2`); the TIFF reader with its CCITT fax decoder (`tiff`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering (scroll views render as continuous), Worker |
 | `cmd/bdfwasm` | The converters built as wasm for in-browser conversion (a module for PDF, one for the Office formats) |
@@ -151,11 +153,12 @@ go run ./cmd/bdf ls out.bdf          # list parts
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # convert to the split form
 
-# PDF / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Jw_cad / SXF / metafiles → bdf (the format is detected from the content, else from the extension; -format pdf|pptx|xlsx|csv|docx|visio|drawio|dxf|jww|sxf|emf forces it)
+# PDF / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Jw_cad / SXF / metafiles / TIFF → bdf (the format is detected from the content, else from the extension; -format pdf|pptx|xlsx|csv|docx|visio|drawio|dxf|jww|sxf|emf|tiff forces it)
 go run ./cmd/bdf generate -h                  # flags and the input formats with their -param options
 go run ./cmd/bdf generate in.pdf out.bdf      # single-file form
 go run ./cmd/bdf generate in.pptx out/        # split form
 go run ./cmd/bdf generate -pages 1-3 in.pptx out.bdf   # select pages (slides, sheets)
+go run ./cmd/bdf generate -pages 2,5- in.pdf out.bdf    # page 2 and page 5 to the last
 go run ./cmd/bdf generate -images keep in.pdf out.bdf  # do not convert images
 go run ./cmd/bdf generate -dc creator=Alice -dc language=ja in.pdf out.bdf  # set Dublin Core elements (-dc name= removes one)
 go run ./cmd/bdf generate -no-woff2 in.pdf out.bdf     # store fonts as TTF/OTF instead of WOFF2
@@ -182,6 +185,9 @@ go run ./cmd/bdf generate in.emf out.bdf                     # Windows metafile 
 go run ./cmd/bdf generate diagram.drawio out.bdf             # draw.io: a view per page (switched like sheets)
 go run ./cmd/bdf generate -pages 2 diagram.drawio.svg out.bdf  # draw.io: page 2 only (SVG and PNG exports with the diagram embedded work too)
 go run ./cmd/bdf generate -param border=0 diagram.drawio out.bdf  # draw.io: no margin around the drawing (px, default 10)
+go run ./cmd/bdf generate in.tif out.bdf                     # TIFF: a page for each page (multi-page scans, faxes)
+go run ./cmd/bdf generate -max-dpi 300 -max-pixels 0 in.tif out.bdf  # image inputs: the resolution cap (default 192 dpi, 3840 × 3840 pixels; 0: no cap)
+go run ./cmd/bdf generate -param dpi=72 in.tif out.bdf       # TIFF: the resolution of pages that do not give one (default 96)
 go run ./cmd/bdf generate -password-file pw.txt in.pptx out.bdf  # password-protected input (- reads stdin; default $BDF_PASSWORD); out.bdf is encrypted with the same password
 go run ./cmd/bdf generate -encrypt never in.pdf out.bdf      # -encrypt auto (default: when the input needs the password), always or never
 BDF_PASSWORD=… go run ./cmd/bdf ls out.bdf                   # ls, manifest, disasm and extract read encrypted documents with $BDF_PASSWORD
@@ -202,6 +208,7 @@ npm run test:visio:gen               # regenerate the Visio test drawings
 npm run test:dxf:gen                 # regenerate the DXF test drawings (requires ezdxf)
 npm run test:jww:gen                 # regenerate the Jw_cad test drawings
 npm run test:sxf:gen                 # regenerate the SXF test drawings
+npm run test:tiff:gen                # regenerate the TIFF test files (requires ImageMagick and the libtiff tools)
 node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium (sheets: up to 4096 px from the top left)
 
 # Demo viewer

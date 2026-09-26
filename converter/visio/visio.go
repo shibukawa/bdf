@@ -21,6 +21,7 @@ import (
 	"os"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
@@ -31,8 +32,9 @@ import (
 
 // Options controls the conversion.
 type Options struct {
-	// Pages selects 1-based foreground pages; nil converts every one.
-	Pages []int
+	// Pages selects 1-based foreground pages (see converter.Pages); nil
+	// converts every one.
+	Pages conv.Pages
 	// Title overrides the document title.
 	Title string
 	// Images controls whether raster images are re-encoded (see imgconv).
@@ -166,7 +168,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			fg = append(fg, pg)
 		}
 	}
-	sel := opts.Pages
+	sel := opts.Pages.Numbers(len(fg))
 	if sel == nil {
 		for i := range fg {
 			sel = append(sel, i+1)

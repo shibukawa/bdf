@@ -72,6 +72,9 @@ func TestDetect(t *testing.T) {
 		{"sxf p21 of regular lines", []byte(step + "FILE_SCHEMA(('ASSOCIATIVE_DRAUGHTING'));\nENDSEC;\nDATA;\n" +
 			strings.Repeat("#10=CARTESIAN_POINT('',(1.,2.));\n", 40)), "sxf"},
 		{"step ap214", []byte(step + "FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\n"), ""},
+		{"tiff", []byte("II*\x00\x08\x00\x00\x00"), "tiff"},
+		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
+		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
 		{"junk", []byte("hello"), ""},
 	} {
 		got := ""

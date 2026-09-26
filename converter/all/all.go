@@ -17,6 +17,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/pdf"    // PDF
 	_ "github.com/shibukawa/bdf/converter/pptx"   // PowerPoint
 	_ "github.com/shibukawa/bdf/converter/sxf"    // SXF (P21, SFC)
+	_ "github.com/shibukawa/bdf/converter/tiff"   // TIFF images
 	_ "github.com/shibukawa/bdf/converter/visio"  // Visio
 	_ "github.com/shibukawa/bdf/converter/xlsx"   // Excel
 )
