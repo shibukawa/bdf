@@ -16,3 +16,7 @@ Copyright (c) 2006-2026 JGraph Ltd, licensed under the Apache License 2.0
 The code was translated from JavaScript to Go and adapted to write BDF
 instructions instead of SVG. The embedded stencil libraries and their
 additional terms are described in stencils/NOTICE.
+
+The styles that shapes of older AWS icon sets are drawn with
+(aws_legacy_table.go) are taken from the AWS palettes of draw.io's sidebar
+(js/diagramly/sidebar/Sidebar-AWS*.js) by tools/gen-drawio-awsmap.
