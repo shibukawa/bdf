@@ -14,7 +14,7 @@ const testFonts = "../../pptx/testdata/fonts"
 
 func TestEstimatedMetrics(t *testing.T) {
 	var warnings []string
-	s := New(fontdb.New(nil, false), func(msg string) { warnings = append(warnings, msg) })
+	s := New(fontdb.New(nil, nil, false), func(msg string) { warnings = append(warnings, msg) })
 	fc := s.FaceFor("Calibri", "ＭＳ 明朝", true, false, 'a')
 	if fc.Loaded != nil || fc.Use.Requested != "Calibri" || !fc.Use.Bold {
 		t.Errorf("choice = %+v", fc)
@@ -43,7 +43,7 @@ func TestEstimatedMetrics(t *testing.T) {
 
 func TestEmbed(t *testing.T) {
 	var warnings []string
-	s := New(fontdb.New([]string{testFonts}, false), func(msg string) { warnings = append(warnings, msg) })
+	s := New(fontdb.New(nil, []string{testFonts}, false), func(msg string) { warnings = append(warnings, msg) })
 	fc := s.FaceFor("M PLUS 1p", "", false, false, 'A')
 	if fc.Loaded == nil {
 		t.Fatal("test font not found")
@@ -72,6 +72,27 @@ func TestEmbed(t *testing.T) {
 	// a face that measured nothing is referred to by name
 	if f := s.Font(Use{Requested: "Nowhere", Generic: "serif"}); f.Kind != bdf.FontSystem || f.Family != `"Nowhere", serif` {
 		t.Errorf("font record = %+v", f)
+	}
+}
+
+func TestFaceForFamilies(t *testing.T) {
+	s := New(fontdb.New(nil, []string{testFonts}, false), nil)
+	list := []string{"M PLUS 1p", "Nowhere"}
+	// the first family draws what it has, CJK or not
+	fc := s.FaceForFamilies(list, false, false, 'A')
+	if fc.Loaded == nil || fc.Use.Requested != "M PLUS 1p" {
+		t.Errorf("choice = %+v", fc.Use)
+	}
+	if ea := s.FaceForFamilies(list, false, false, 'あ'); ea.Loaded == nil || ea.Use.Requested != "M PLUS 1p" {
+		t.Errorf("East Asian text: choice = %+v", ea.Use)
+	}
+	// a character no font has stays with the first family
+	if o := s.FaceForFamilies(list, false, false, '𝄞'); o != fc {
+		t.Errorf("choice = %+v", o.Use)
+	}
+	// no list: draw.io's default family
+	if fc := s.FaceForFamilies(nil, true, false, 'A'); fc.Use.Requested != "Helvetica" || !fc.Use.Bold {
+		t.Errorf("choice = %+v", fc.Use)
 	}
 }
 

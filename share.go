@@ -14,10 +14,10 @@ import (
 // renderer can cache its bitmap.
 //
 // A cut is legal only at an instruction boundary where the graphics state
-// stack is at depth 0 (SAVE/RESTORE and GROUP_BEGIN/GROUP_END balanced), no
-// clip, shadow or filter has been set at depth 0 before it, and the
-// previous instruction is not a MARK (an ALT_TEXT belongs to the
-// instruction after it). USE wraps the child in an implicit save/restore,
+// stack is at depth 0 (SAVE/RESTORE, GROUP_BEGIN/GROUP_END and
+// MASK_BEGIN/MASK_END balanced), no clip, shadow or filter has been set at
+// depth 0 before it, and the previous instruction is not a MARK (an
+// ALT_TEXT belongs to the instruction after it). USE wraps the child in an implicit save/restore,
 // so the rest of the object starts with the state the prefix established:
 // its net transform and the last fill, stroke, line, dash, alpha, blend,
 // font, text style and smoothing set at depth 0 are re-emitted first.
@@ -292,6 +292,10 @@ func (m *refMap) emit(in Instr) error {
 		d.GroupBegin(f(0), byte(u(1)), f(2), f(3), f(4), f(5))
 	case OpGroupEnd:
 		d.GroupEnd()
+	case OpMaskBegin:
+		d.MaskBegin(byte(u(0)), Color(u(1)), in.Args[2].([]byte))
+	case OpMaskEnd:
+		d.MaskEnd()
 	case OpLink:
 		d.Link(f(0), f(1), f(2), f(3), s(4))
 	case OpMark:
@@ -329,9 +333,9 @@ func (o *Object) splitAt(spans []instrSpan, part *ObjectPart, i int) (*Split, er
 	for _, sp := range spans[:i] {
 		state.apply(&sp.Instr, depth)
 		switch sp.Op {
-		case OpSave, OpGroupBegin:
+		case OpSave, OpGroupBegin, OpMaskBegin:
 			depth++
-		case OpRestore, OpGroupEnd:
+		case OpRestore, OpGroupEnd, OpMaskEnd:
 			depth--
 		}
 		if err := pm.emit(sp.Instr); err != nil {
@@ -420,9 +424,9 @@ func (o *Object) prefixKeys(spans []instrSpan, part *ObjectPart) (points []split
 		}
 		state.apply(&in, depth)
 		switch in.Op {
-		case OpSave, OpGroupBegin:
+		case OpSave, OpGroupBegin, OpMaskBegin:
 			depth++
-		case OpRestore, OpGroupEnd:
+		case OpRestore, OpGroupEnd, OpMaskEnd:
 			depth--
 		}
 	}

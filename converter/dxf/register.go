@@ -35,7 +35,7 @@ func init() {
 				return nil, fmt.Errorf("parameter background: %q is not dark or light", bg)
 			}
 			res, err := Convert(r, size, &Options{Pages: o.Pages, Title: o.Title, Views: views, Light: light,
-				FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
+				FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
 				NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn})
 			if err != nil {
 				return nil, err

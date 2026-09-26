@@ -1,6 +1,6 @@
 import {
   type ObjectPart, type OpSink, type Glyph, type Paint, walk,
-  BLEND_NAMES, LINE_CAPS, LINE_JOINS, TEXT_ALIGNS, TEXT_BASELINES, TEXT_DIRECTIONS, FILL_RULES, REPEATS, SMOOTHING_QUALITIES, PaintKind,
+  BLEND_NAMES, LINE_CAPS, LINE_JOINS, TEXT_ALIGNS, TEXT_BASELINES, TEXT_DIRECTIONS, FILL_RULES, REPEATS, SMOOTHING_QUALITIES, PaintKind, MaskKind,
 } from "@bdf/core";
 import { ResourceCache, fontString } from "./resources.js";
 
@@ -24,7 +24,7 @@ export function cssColor(rgba: number): string {
 export interface RenderOptions {
   /** Relative tolerance before applying advance correction (default 0.005). */
   advanceTolerance?: number;
-  /** Factory for temporary canvases used by GROUP_BEGIN. */
+  /** Factory for temporary canvases used by GROUP_BEGIN and MASK_BEGIN. */
   createCanvas?: (w: number, h: number) => OffscreenCanvas | HTMLCanvasElement;
 }
 
@@ -43,6 +43,16 @@ interface Group {
   blend: number;
   dx: number;
   dy: number;
+}
+
+/** A soft mask being drawn for a group (MASK_BEGIN … MASK_END). */
+interface Mask {
+  ctx: Ctx2D; // the context drawing resumes on
+  canvas: OffscreenCanvas | HTMLCanvasElement;
+  mctx: Ctx2D;
+  kind: number;
+  transfer: Uint8Array | undefined;
+  group: Group | undefined;
 }
 
 /** Put a context back into the Canvas 2D initial drawing state (docs/spec.md §8). */
@@ -78,6 +88,7 @@ export class CanvasRenderer implements OpSink {
   private ctx!: Ctx2D;
   private obj!: ObjectPart;
   private groups: Group[] = [];
+  private masks: Mask[] = [];
   private readonly tol: number;
   private readonly createCanvas: (w: number, h: number) => OffscreenCanvas | HTMLCanvasElement;
 
@@ -100,7 +111,8 @@ export class CanvasRenderer implements OpSink {
     try {
       walk(obj, this);
     } finally {
-      // Unwind groups left open by a malformed stream.
+      // Unwind groups and masks left open by a malformed stream.
+      this.masks.length = 0;
       while (this.groups.length) this.groupEnd();
       ctx.restore();
       this.ctx = prevCtx;
@@ -292,6 +304,56 @@ export class CanvasRenderer implements OpSink {
     ctx.globalCompositeOperation = BLEND_NAMES[g.blend] ?? "source-over";
     ctx.drawImage(g.canvas, g.dx, g.dy);
     ctx.restore();
+  }
+  maskBegin(kind: number, backdrop: number, transfer: Uint8Array) {
+    // The mask covers the innermost group's canvas and starts from the
+    // initial drawing state with the current transform.
+    const group = this.groups[this.groups.length - 1];
+    const w = group?.canvas.width ?? 1, h = group?.canvas.height ?? 1;
+    const canvas = this.createCanvas(w, h);
+    const mctx = canvas.getContext("2d") as Ctx2D;
+    if (kind === MaskKind.LUMINOSITY) {
+      mctx.fillStyle = cssColor((backdrop | 0xff) >>> 0);
+      mctx.fillRect(0, 0, w, h);
+    }
+    resetState(mctx);
+    mctx.setTransform(this.ctx.getTransform());
+    mctx.save();
+    this.masks.push({ ctx: this.ctx, canvas, mctx, kind, transfer: transfer.length === 256 ? transfer : undefined, group });
+    this.ctx = mctx;
+  }
+  maskEnd() {
+    const m = this.masks.pop();
+    if (!m) return;
+    this.ctx = m.ctx;
+    const g = m.group;
+    if (!g || this.groups[this.groups.length - 1] !== g) return;
+    const { mctx, canvas } = m;
+    mctx.restore();
+    const w = canvas.width, h = canvas.height;
+    const lum = m.kind === MaskKind.LUMINOSITY, tr = m.transfer;
+    if ((lum || tr) && w > 0 && h > 0) {
+      // Luminosity to alpha (the weights of the PDF non-separable blend
+      // modes), then the transfer function.
+      const img = mctx.getImageData(0, 0, w, h);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        let v = lum ? Math.round(0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]) : d[i + 3];
+        if (tr) v = tr[v];
+        d[i + 3] = v;
+        d[i] = d[i + 1] = d[i + 2] = 0;
+      }
+      mctx.putImageData(img, 0, 0);
+    }
+    // Keep the group's pixels where the mask is: the masked result replaces
+    // the group canvas (a clip left on the group context cannot limit it).
+    mctx.save();
+    mctx.setTransform(1, 0, 0, 1, 0, 0);
+    mctx.globalAlpha = 1;
+    mctx.globalCompositeOperation = "source-in";
+    mctx.drawImage(g.canvas, 0, 0);
+    mctx.restore();
+    g.canvas = canvas;
   }
 
   // --- meta ---

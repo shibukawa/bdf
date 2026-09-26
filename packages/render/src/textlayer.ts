@@ -38,7 +38,7 @@ export interface TextLayerOptions {
    * whose reference says they are headers are headers too).
    */
   sheet?: { rows: number; cols: number; headerRows?: number; headerCols?: number };
-  /** Accessible name of a link that covers no text (default: the URL, or "page N"). */
+  /** Accessible name of a link that covers no text (default: the URL, "page N" or "view ID"). */
   linkLabel?: (url: string) => string;
   /**
    * Called for the span of each run once it is placed, e.g. to keep the
@@ -59,16 +59,38 @@ function defaultMeasure(): (font: string, text: string) => number {
   return sharedMeasure;
 }
 
-/** Attribute names: on the run spans, on the layer element, and on links to a page. */
-export const RUN_ATTR = { ordinal: "data-bdf-ordinal", sep: "data-bdf-sep", layer: "data-bdf-layer", page: "data-bdf-page" } as const;
+/** Attribute names: on the run spans, on the layer element, and on links to a page or a view. */
+export const RUN_ATTR = { ordinal: "data-bdf-ordinal", sep: "data-bdf-sep", layer: "data-bdf-layer", page: "data-bdf-page", view: "data-bdf-view" } as const;
+
+/**
+ * A link within the document: "#page=N" (a page of the same view) or
+ * "#view=ID" with an optional "&page=N" (another view, e.g. another page
+ * of a diagram), spec §7.7. Pages are 1-based.
+ */
+export interface InternalLink { view?: string; page?: number }
+
+/** Parse an internal link url; undefined for anything else. */
+export function internalLink(url: string): InternalLink | undefined {
+  const page = /^#page=(\d{1,7})$/.exec(url);
+  if (page) return Number(page[1]) >= 1 ? { page: Number(page[1]) } : undefined;
+  const view = /^#view=([^&#]+)(?:&page=(\d{1,7}))?$/.exec(url);
+  if (!view) return undefined;
+  let id: string;
+  try {
+    id = decodeURIComponent(view[1].replace(/\+/g, " "));
+  } catch {
+    return undefined;
+  }
+  if (view[2] !== undefined && Number(view[2]) < 1) return undefined;
+  return view[2] !== undefined ? { view: id, page: Number(view[2]) } : { view: id };
+}
 
 /**
  * The href of a LINK url, or undefined when a link must not be made: only
- * http, https and mailto URLs and "#page=N" (spec §7.7).
+ * http, https and mailto URLs, "#page=N" and "#view=ID" (spec §7.7).
  */
 export function linkHref(url: string): string | undefined {
-  const page = /^#page=(\d{1,7})$/.exec(url);
-  if (page) return Number(page[1]) >= 1 ? url : undefined;
+  if (url.startsWith("#")) return internalLink(url) ? url : undefined;
   try {
     const u = new URL(url);
     return u.protocol === "http:" || u.protocol === "https:" || u.protocol === "mailto:" ? u.href : undefined;
@@ -266,9 +288,11 @@ class LayerBuilder {
     const href = linkHref(link.url)!;
     a.href = href;
     a.draggable = false;
-    const page = /^#page=(\d+)$/.exec(href);
-    if (page) a.setAttribute(RUN_ATTR.page, page[1]);
-    else {
+    const internal = internalLink(href);
+    if (internal) {
+      if (internal.view !== undefined) a.setAttribute(RUN_ATTR.view, internal.view);
+      if (internal.page !== undefined) a.setAttribute(RUN_ATTR.page, String(internal.page));
+    } else {
       a.target = "_blank";
       a.rel = "noopener noreferrer";
     }
@@ -280,8 +304,9 @@ class LayerBuilder {
     const link = this.c.links[i];
     if (!linkHref(link.url)) return;
     const placed = this.anchorFor(link, this.node(link.node));
-    const page = /^#page=(\d+)$/.exec(link.url);
-    placed.el.setAttribute("aria-label", this.opts.linkLabel?.(link.url) ?? (page ? `page ${page[1]}` : link.url));
+    const internal = internalLink(link.url);
+    const fallback = internal?.view !== undefined ? `view ${internal.view}` : internal?.page !== undefined ? `page ${internal.page}` : link.url;
+    placed.el.setAttribute("aria-label", this.opts.linkLabel?.(link.url) ?? fallback);
   }
 
   private run(r: TextRun, i: number) {

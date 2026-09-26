@@ -1,21 +1,31 @@
 package pdf
 
 import (
+	"sort"
+
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
+	"github.com/shibukawa/bdf/converter/internal/cjkcmap"
 )
 
 // cmap is a parsed CMap: byte-code → CID (encoding CMaps) or byte-code →
-// Unicode string (ToUnicode CMaps).
+// Unicode string (ToUnicode CMaps). An encoding CMap falls back on its
+// parent (usecmap) for codes it does not map.
 type cmap struct {
 	ranges   []codespace // sorted by byte length
 	single   map[uint32]uint32
-	cidRange []cidRange
+	cidRange []cidRange // sorted by lo once parsed
+	overlap  bool       // cidRange has overlapping ranges: scan them in order
 	unicode  map[uint32]string
 	uniRange []bfRange
-	identity bool
+	identity bool // unmapped codes are CIDs (Identity-H/V, or usecmap of them)
 	vertical bool
+	wmodeSet bool // the CMap defines /WMode (else it takes its parent's)
 	seen1    bool
 	seen2    bool
+
+	useName string        // the usecmap operand
+	parent  *cmap         // an embedded parent CMap (/UseCMap stream)
+	pre     *cjkcmap.CMap // a predefined CMap: the encoding itself or the parent
 }
 
 type codespace struct {
@@ -96,18 +106,105 @@ func (cm *cmap) decode(s []byte) []glyphCode {
 }
 
 func (cm *cmap) cid(code uint32) uint32 {
-	if cm.identity {
-		return code
-	}
+	cid, _ := cm.lookup(code, 0)
+	return cid
+}
+
+// lookup maps a code with the CMap's own entries, then its parents.
+func (cm *cmap) lookup(code uint32, depth int) (uint32, bool) {
 	if v, ok := cm.single[code]; ok {
-		return v
+		return v, true
 	}
-	for _, r := range cm.cidRange {
-		if code >= r.lo && code <= r.hi {
-			return r.cid + (code - r.lo)
+	if cm.overlap {
+		for _, r := range cm.cidRange {
+			if code >= r.lo && code <= r.hi {
+				return r.cid + (code - r.lo), true
+			}
+		}
+	} else if i := sort.Search(len(cm.cidRange), func(i int) bool { return cm.cidRange[i].hi >= code }); i < len(cm.cidRange) && cm.cidRange[i].lo <= code {
+		r := cm.cidRange[i]
+		return r.cid + (code - r.lo), true
+	}
+	if cm.parent != nil && depth < 8 {
+		if v, ok := cm.parent.lookup(code, depth+1); ok {
+			return v, true
 		}
 	}
-	return 0
+	if cm.pre != nil {
+		if v, ok := cm.pre.CID(code); ok {
+			return v, true
+		}
+	}
+	if cm.identity {
+		return code, true
+	}
+	return 0, false
+}
+
+// predefinedCMap returns an encoding CMap for a predefined name: Identity-H
+// and Identity-V, or one of Adobe's CJK CMaps; nil for unknown names.
+func predefinedCMap(name string) *cmap {
+	switch name {
+	case "Identity-H":
+		return identityCMap()
+	case "Identity-V":
+		cm := identityCMap()
+		cm.vertical = true
+		return cm
+	}
+	pm := cjkcmap.Lookup(name)
+	if pm == nil {
+		return nil
+	}
+	cm := newCMap()
+	cm.pre = pm
+	cm.vertical = pm.Vertical
+	cm.inherit(pm.Codespace)
+	return cm
+}
+
+// finish resolves the parent named by usecmap (or given as a stream) and
+// settles the code space ranges.
+func (cm *cmap) finish(parent *cmap) {
+	if parent == nil && cm.useName != "" {
+		parent = predefinedCMap(cm.useName)
+	}
+	if parent != nil {
+		if parent.pre != nil && len(parent.single) == 0 && len(parent.cidRange) == 0 {
+			cm.pre = parent.pre // a predefined CMap: look it up directly
+		} else if parent.identity && len(parent.single) == 0 && len(parent.cidRange) == 0 {
+			cm.identity = true
+		} else {
+			cm.parent = parent
+		}
+		if len(cm.ranges) == 0 {
+			cm.ranges = append(cm.ranges, parent.ranges...)
+		}
+		if !cm.wmodeSet {
+			cm.vertical = parent.vertical
+		}
+	}
+	sort.Slice(cm.cidRange, func(i, j int) bool { return cm.cidRange[i].lo < cm.cidRange[j].lo })
+	for i := 1; i < len(cm.cidRange); i++ {
+		if cm.cidRange[i].lo <= cm.cidRange[i-1].hi {
+			cm.overlap = true
+		}
+	}
+	if len(cm.ranges) == 0 {
+		// Infer from the code lengths seen, defaulting to 2 bytes for CID CMaps.
+		if cm.seen2 || (!cm.seen1 && len(cm.unicode) == 0) {
+			cm.ranges = append(cm.ranges, codespace{2, 0, 0xffff})
+		}
+		if cm.seen1 {
+			cm.ranges = append(cm.ranges, codespace{1, 0, 0xff})
+		}
+	}
+}
+
+func (cm *cmap) inherit(cs []cjkcmap.Codespace) {
+	for _, r := range cs {
+		cm.ranges = append(cm.ranges, codespace{nbytes: r.Bytes, low: r.Lo, hi: r.Hi})
+	}
 }
 
 // toUnicode returns the Unicode string for a code, or "" when unmapped.
@@ -154,7 +251,11 @@ func utf16Runes(b []byte) []rune {
 }
 
 // parseCMap parses an embedded CMap or ToUnicode stream.
-func parseCMap(data []byte) *cmap {
+func parseCMap(data []byte) *cmap { return parseCMapParent(data, nil) }
+
+// parseCMapParent parses an embedded CMap whose parent (/UseCMap) may be
+// another embedded one.
+func parseCMapParent(data []byte, parent *cmap) *cmap {
 	cm := newCMap()
 	l := &lexer{b: data}
 	var stack []types.Object
@@ -226,32 +327,24 @@ func parseCMap(data []byte) *cmap {
 				}
 			}
 		case "usecmap":
-			// Only Identity is understood as a parent.
 			if len(stack) > 0 {
-				if n, ok := stack[len(stack)-1].(types.Name); ok && (n.Value() == "Identity-H" || n.Value() == "Identity-V") {
-					cm.identity = true
+				if n, ok := stack[len(stack)-1].(types.Name); ok {
+					cm.useName = n.Value()
 				}
 			}
 		case "def":
 			if len(stack) >= 2 {
 				if n, ok := stack[len(stack)-2].(types.Name); ok && n.Value() == "WMode" {
-					if v, ok := numOf(stack[len(stack)-1]); ok && v == 1 {
-						cm.vertical = true
+					if v, ok := numOf(stack[len(stack)-1]); ok {
+						cm.vertical = v == 1
+						cm.wmodeSet = true
 					}
 				}
 			}
 		}
 		stack = stack[:0]
 	}
-	if len(cm.ranges) == 0 {
-		// Infer from the code lengths seen, defaulting to 2 bytes for CID CMaps.
-		if cm.seen2 || (!cm.seen1 && len(cm.unicode) == 0) {
-			cm.ranges = append(cm.ranges, codespace{2, 0, 0xffff})
-		}
-		if cm.seen1 {
-			cm.ranges = append(cm.ranges, codespace{1, 0, 0xff})
-		}
-	}
+	cm.finish(parent)
 	return cm
 }
 

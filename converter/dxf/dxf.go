@@ -7,12 +7,13 @@
 // viewports show model space at their scale. Lines are drawn with their
 // lineweights as a plotter would, text with fonts that stand in for
 // AutoCAD's (SHX fonts become sans-serif ones, big fonts East Asian ones),
-// and the fonts in use are embedded as subsets. See docs/design.md §3.10.
+// and the fonts in use are embedded as subsets. See docs/design.md §3.12.
 package dxf
 
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"strings"
@@ -37,9 +38,12 @@ type Options struct {
 	// Light draws model space on white paper instead of the dark
 	// background of CAD programs.
 	Light bool
+	// FontFS holds fonts that are not in the local file system; it is
+	// searched before FontDirs (see converter.Options.FontFS).
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
-	// NoSystemFonts restricts font lookup to FontDirs.
+	// NoSystemFonts restricts font lookup to FontFS and FontDirs.
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding the
 	// fonts used for layout.
@@ -144,7 +148,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if opts.Title != "" {
 		c.doc.Meta.DC.Title = bdf.DCValues{opts.Title}
 	}
-	db := fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
+	db := fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
 	set := fontset.New(db, func(msg string) { c.warnf("%s", msg) })
 	c.fonts = &cad.Fonts{Set: set}
 	c.plotter = &cad.Plotter{Fonts: c.fonts, Thin: 0.1 * 72 / 25.4}

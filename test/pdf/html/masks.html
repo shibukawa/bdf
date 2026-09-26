@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@page { size: 800px 450px; margin: 0; }
+html, body { margin: 0; }
+.page { width: 800px; height: 450px; position: relative; overflow: hidden; background: #fdf6e3; font-family: "DejaVu Sans", sans-serif; color: #073642; }
+h1 { position: absolute; left: 40px; top: 20px; margin: 0; font-size: 30px; }
+.box { position: absolute; width: 200px; height: 150px; }
+.stripes { background: linear-gradient(135deg, #268bd2, #d33682); color: #fff; font-size: 28px; font-weight: bold; text-align: center; line-height: 150px; }
+p { position: absolute; margin: 0; font-size: 13px; }
+</style></head><body>
+<div class="page">
+  <h1 style="mask-image: linear-gradient(to right, black 40%, transparent 90%)">Soft masks fade this heading out</h1>
+  <div class="box stripes" style="left:40px;top:90px;mask-image:linear-gradient(to bottom, black, transparent)">Alpha</div>
+  <p style="left:40px;top:250px">alpha: linear gradient</p>
+  <div class="box stripes" style="left:300px;top:90px;mask-image:radial-gradient(circle at 50% 50%, black 30%, transparent 70%)">Radial</div>
+  <p style="left:300px;top:250px">alpha: radial gradient</p>
+  <div class="box stripes" style="left:560px;top:90px;mask-image:linear-gradient(to right, white, black);mask-mode:luminance">Luma</div>
+  <p style="left:560px;top:250px">luminance: white to black</p>
+  <svg style="position:absolute;left:40px;top:280px" width="720" height="150" viewBox="0 0 720 150">
+    <defs>
+      <mask id="lm" maskUnits="userSpaceOnUse" x="0" y="0" width="720" height="150">
+        <rect x="0" y="0" width="720" height="150" fill="#fff"/>
+        <circle cx="120" cy="75" r="50" fill="#000"/>
+        <text x="260" y="95" font-size="56" font-family="DejaVu Sans" fill="#000">MASK</text>
+      </mask>
+    </defs>
+    <rect x="0" y="0" width="720" height="150" fill="#859900" mask="url(#lm)"/>
+  </svg>
+</div>
+</body></html>

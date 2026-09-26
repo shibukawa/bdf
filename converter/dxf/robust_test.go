@@ -32,7 +32,7 @@ func drawing(t *testing.T, data []byte) (*converter, *cad.Drawing) {
 	c := &converter{opts: &Options{}, warned: map[string]bool{}, ltscale: 1}
 	c.opts.Warn = func(m string) { t.Log("warning:", m) }
 	c.d = parse(tags)
-	c.fonts = &cad.Fonts{Set: fontset.New(fontdb.New([]string{"../pptx/testdata/fonts"}, false), nil)}
+	c.fonts = &cad.Fonts{Set: fontset.New(fontdb.New(nil, []string{"../pptx/testdata/fonts"}, false), nil)}
 	out := &cad.Drawing{}
 	var deferred []func(cad.Rect)
 	c.sheets()

@@ -1,7 +1,9 @@
 package fontdb
 
 import (
+	"os"
 	"testing"
+	"testing/fstest"
 
 	"github.com/shibukawa/bdf/converter/internal/sfnt"
 )
@@ -31,7 +33,7 @@ func TestHeavyName(t *testing.T) {
 }
 
 func TestSystemResolve(t *testing.T) {
-	db := New(nil, true)
+	db := New(nil, nil, true)
 	if len(db.Faces) == 0 {
 		t.Skip("no system fonts")
 	}
@@ -62,5 +64,37 @@ func TestSystemResolve(t *testing.T) {
 	}
 	if g, ok := sf.Cmap['H']; !ok || g == 0 {
 		t.Fatal("H missing from subset cmap")
+	}
+}
+
+func TestFS(t *testing.T) {
+	const dir = "../../pptx/testdata/fonts"
+	fsys := fstest.MapFS{"README.md": {Data: []byte("not a font")}}
+	for _, name := range []string{"MPLUS1p-Regular-subset.ttf", "MPLUS1p-Bold-subset.ttf"} {
+		data, err := os.ReadFile(dir + "/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fsys["fonts/"+name] = &fstest.MapFile{Data: data}
+	}
+	db := New(fsys, nil, false)
+	if len(db.Faces) != 2 {
+		t.Fatalf("%d faces, want 2", len(db.Faces))
+	}
+	r := db.Resolve("Meiryo", true, false, true)
+	if r.Face == nil || r.Face.Path != "fonts/MPLUS1p-Bold-subset.ttf" || r.SynthBold {
+		t.Fatalf("Meiryo bold resolved to %+v", r)
+	}
+	l, err := r.Face.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !l.Has('あ') {
+		t.Error("loaded face has no あ")
+	}
+	// The faces of the file system come before those of the directories.
+	db = New(fsys, []string{dir}, false)
+	if len(db.Faces) != 4 || db.Faces[0].Path != "fonts/MPLUS1p-Bold-subset.ttf" {
+		t.Errorf("faces: %d, first %s", len(db.Faces), db.Faces[0].Path)
 	}
 }

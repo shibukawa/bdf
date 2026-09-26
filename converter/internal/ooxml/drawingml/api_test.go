@@ -25,7 +25,7 @@ func TestLayoutText(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc := bdf.NewDocument()
-	fonts := fontset.New(fontdb.New([]string{"../../../pptx/testdata/fonts"}, false), func(msg string) { t.Error(msg) })
+	fonts := fontset.New(fontdb.New(nil, []string{"../../../pptx/testdata/fonts"}, false), func(msg string) { t.Error(msg) })
 	// no package: drawings without one lay out text too
 	d := New(Config{Doc: doc, Fonts: fonts}).NewDrawing("", nil, plainHost{})
 	tb := d.LayoutText(body, "", 0, 0, 200, 100, canvas.Translate(10, 20))

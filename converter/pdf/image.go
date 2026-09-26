@@ -7,6 +7,7 @@ import (
 	"image/jpeg"
 	"image/png"
 
+	"github.com/shibukawa/bdf/converter/internal/jbig2"
 	"github.com/shibukawa/bdf/imgconv"
 
 	"github.com/pdfcpu/pdfcpu/pkg/filter"
@@ -60,9 +61,43 @@ func (c *converter) loadImage(d types.Dict, raw []byte, filters []types.PDFFilte
 		c.applyMasks(nrgba, d, res)
 		return c.storePixels(nrgba, false), nil
 	case filter.JPX:
-		return nil, errf("JPXDecode images are not supported")
+		if isMask {
+			return nil, errf("JPXDecode image masks are not allowed")
+		}
+		return c.loadJPX(d, data, res)
 	case filter.JBIG2:
-		return nil, errf("JBIG2Decode images are not supported")
+		var globals []byte
+		for _, f := range filters {
+			if f.Name == filter.JBIG2 {
+				if gs := p.stream(f.DecodeParms["JBIG2Globals"]); gs != nil {
+					if globals, _, err = p.decodeStream(gs); err != nil {
+						return nil, err
+					}
+				}
+			}
+		}
+		bm, err := jbig2.Decode(data, globals)
+		if err != nil {
+			return nil, err
+		}
+		// The filter's samples are 1 = white (JBIG2's 1 is black), one row
+		// of the image dictionary's width after another.
+		rowBytes := (w + 7) / 8
+		data = make([]byte, rowBytes*h)
+		for y := 0; y < h; y++ {
+			row := data[y*rowBytes : (y+1)*rowBytes]
+			if y < bm.Height {
+				copy(row, bm.Data[y*bm.Stride:y*bm.Stride+min(bm.Stride, rowBytes)])
+			}
+			for i := range row {
+				row[i] = ^row[i]
+			}
+		}
+		bpc = 1
+		if !isMask && d["ColorSpace"] == nil {
+			d = d.Clone().(types.Dict)
+			d["ColorSpace"] = types.Name("DeviceGray")
+		}
 	case filter.CCITTFax:
 		parms := map[string]int{"Columns": w, "Rows": h}
 		var dp types.Dict

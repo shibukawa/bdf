@@ -1,10 +1,10 @@
 // Package fontset picks the fonts that lay out the text of a document being
 // converted, measures the characters with them, and embeds the faces in use
 // as subsets of those characters. BDF has no layout engine, so converters
-// of documents that are laid out when they are opened (Office documents)
-// measure text here with the fonts that are then embedded; the requested
-// families resolve through fontdb, and characters the requested fonts lack
-// fall back to other available fonts.
+// of documents that are laid out when they are opened (Office documents,
+// draw.io diagrams) measure text here with the fonts that are then
+// embedded; the requested families resolve through fontdb, and characters
+// the requested fonts lack fall back to other available fonts.
 package fontset
 
 import (
@@ -156,23 +156,61 @@ func (s *Set) FaceFor(latin, ea string, bold, italic bool, r rune) *Choice {
 		}
 	}
 	if best == fc {
-		fk := fallbackListKey{fc.Use.Generic, bold, italic}
-		list, ok := s.fallbackLists[fk]
-		if !ok {
-			list = s.db.Fallbacks(fc.Use.Generic, bold, italic)
-			s.fallbackLists[fk] = list
-		}
-		for _, res := range list {
-			l, err := res.Face.Load()
-			if err != nil || !l.Has(r) {
-				continue
-			}
-			best = s.fromResolvedCached(res, primary, bold, italic)
-			break
-		}
+		best = s.genericFallback(fc, primary, bold, italic, r)
 	}
 	s.fallback[k] = best
 	return best
+}
+
+// FaceForFamilies picks the face that draws r in text whose font is a CSS
+// font-family list (draw.io labels): the first family, then the first of
+// the others that has r, then the generic fallbacks of the first. Unlike
+// FaceFor, CJK characters are not sent to a separate East Asian font; the
+// list says which family draws them.
+func (s *Set) FaceForFamilies(families []string, bold, italic bool, r rune) *Choice {
+	cjk := fontdb.IsCJK(r)
+	if len(families) == 0 {
+		families = []string{"Helvetica"}
+	}
+	fc := s.Choose(families[0], bold, italic, cjk)
+	if fc.Loaded == nil || fc.Loaded.Has(r) || r == '\t' || r == '\n' {
+		return fc
+	}
+	k := fallbackKey{fc, r}
+	if f, ok := s.fallback[k]; ok {
+		return f
+	}
+	best := fc
+	for _, fam := range families[1:] {
+		if o := s.Choose(fam, bold, italic, cjk); o.Loaded != nil && o.Loaded.Has(r) {
+			best = o
+			break
+		}
+	}
+	if best == fc {
+		best = s.genericFallback(fc, families[0], bold, italic, r)
+	}
+	s.fallback[k] = best
+	return best
+}
+
+// genericFallback returns the first of the fallbacks of fc's generic family
+// that has r, or fc when none has it.
+func (s *Set) genericFallback(fc *Choice, requested string, bold, italic bool, r rune) *Choice {
+	fk := fallbackListKey{fc.Use.Generic, bold, italic}
+	list, ok := s.fallbackLists[fk]
+	if !ok {
+		list = s.db.Fallbacks(fc.Use.Generic, bold, italic)
+		s.fallbackLists[fk] = list
+	}
+	for _, res := range list {
+		l, err := res.Face.Load()
+		if err != nil || !l.Has(r) {
+			continue
+		}
+		return s.fromResolvedCached(res, requested, bold, italic)
+	}
+	return fc
 }
 
 func (s *Set) fromResolvedCached(res fontdb.Resolved, requested string, bold, italic bool) *Choice {
