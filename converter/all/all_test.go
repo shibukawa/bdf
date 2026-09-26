@@ -68,6 +68,9 @@ func TestDetect(t *testing.T) {
 		{"tsv", []byte("id\tname\n1\tAnn\n"), "csv"},
 		{"dxf", []byte("  0\r\nSECTION\r\n  2\r\nHEADER\r\n"), "dxf"},
 		{"binary dxf", []byte("AutoCAD Binary DXF\r\n\x1a\x00\x00\x00"), "dxf"},
+		{"tiff", []byte("II*\x00\x08\x00\x00\x00"), "tiff"},
+		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
+		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
 		{"junk", []byte("hello"), ""},
 	} {
 		got := ""

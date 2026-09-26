@@ -15,9 +15,9 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/metafile"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	"github.com/shibukawa/bdf/converter/internal/tiff"
 	"github.com/shibukawa/bdf/imgconv"
 	_ "golang.org/x/image/bmp" // pictures
-	"golang.org/x/image/tiff"
 )
 
 // Pictures and embedded objects are foreign shapes: their ForeignData is a
@@ -56,7 +56,7 @@ func (c *converter) picture(fd *ooxml.Node, part string) *picture {
 			c.warnf("picture %s: %v", r.Target, err)
 			return pc
 		}
-		if imgconv.Sniff(data) == "" && metafile.Kind(data) == "" && !isTIFF(data) {
+		if imgconv.Sniff(data) == "" && metafile.Kind(data) == "" && !tiff.Sniff(data) {
 			// an embedded object: its preview picture
 			data = nil
 			for _, pr := range c.d.pkg.Rels(r.Target) {
@@ -86,14 +86,20 @@ func (c *converter) picture(fd *ooxml.Node, part string) *picture {
 	case metafile.Kind(data) != "":
 		pc.mf, pc.ok = data, true
 		return pc
-	case isTIFF(data):
-		img, err := tiff.Decode(bytes.NewReader(data))
+	case tiff.Sniff(data):
+		// The first page, as JPEG or PNG, then converted like the others.
+		pic, damaged, err := tiff.Picture(data, c.opts.Images)
 		if err != nil {
 			c.warnf("picture: %v", err)
 			return pc
 		}
-		res, _ := imgconv.EncodeImage(toNRGBA(img), true, c.opts.Images)
-		data = res.Data
+		if damaged {
+			c.warnOnce("tiffdamaged", "a TIFF picture's pixel data is damaged; what is missing is left blank")
+		}
+		data = pic
+		if res, err := imgconv.Optimize(data, c.opts.Images); err == nil || res.Data != nil {
+			data = res.Data
+		}
 	case isDIB(data):
 		data = dibToBMP(data)
 		fallthrough
@@ -115,10 +121,6 @@ func (c *converter) picture(fd *ooxml.Node, part string) *picture {
 	}
 	pc.hash, pc.ok = c.doc.AddImage(data), true
 	return pc
-}
-
-func isTIFF(b []byte) bool {
-	return bytes.HasPrefix(b, []byte("II*\x00")) || bytes.HasPrefix(b, []byte("MM\x00*"))
 }
 
 // isDIB reports whether data is a packed device-independent bitmap (a

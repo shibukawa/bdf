@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter"
 )
 
 // testOptions restricts fonts to the test fonts (shared with the PowerPoint
@@ -271,11 +272,11 @@ func TestOptions(t *testing.T) {
 		t.Errorf("Hidden: %d sheets", res.Sheets)
 	}
 	opts = testOptions()
-	opts.Sheets = []int{3}
+	opts.Sheets = conv.PageList(3)
 	if res, _ := convert(t, "basic.xlsx", opts); res.Sheets != 1 || res.Doc.Views[0].Title != "Big" {
 		t.Errorf("Sheets: %d", res.Sheets)
 	}
-	opts.Sheets = []int{9}
+	opts.Sheets = conv.PageList(9)
 	if _, err := ConvertFile("testdata/basic.xlsx", opts); err == nil {
 		t.Error("sheet 9 of 3 converted")
 	}

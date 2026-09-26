@@ -8,7 +8,7 @@
 // become the document's Dublin Core as other formats' document properties
 // do (docs/spec.md §4.3): XMP, EXIF (with the Windows tags) and IPTC, the
 // text chunks of PNG, the comments of GIF, and the title, description and
-// RDF metadata of SVG. See docs/design.md §3.13.
+// RDF metadata of SVG. See docs/design.md §3.14.
 package image
 
 import (

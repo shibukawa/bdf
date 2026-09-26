@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/cad"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
@@ -27,9 +28,9 @@ import (
 
 // Options controls the conversion.
 type Options struct {
-	// Pages selects 1-based layouts in tab order, model space first; nil
-	// converts every one that has something on it.
-	Pages []int
+	// Pages selects 1-based layouts in tab order, model space first (see
+	// converter.Pages); nil converts every one that has something on it.
+	Pages conv.Pages
 	// Title overrides the document title.
 	Title string
 	// Views selects what to convert: "all" (the default), "model" or
@@ -164,7 +165,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	}
 	var pages []pageRef
 	sheets := c.sheets()
-	sel := opts.Pages
+	sel := opts.Pages.Numbers(len(sheets))
 	if sel == nil {
 		for i := range sheets {
 			sel = append(sel, i+1)

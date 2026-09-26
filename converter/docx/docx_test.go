@@ -472,7 +472,7 @@ func TestOptions(t *testing.T) {
 		t.Errorf("scroll only: %+v", r.Manifest.Views)
 	}
 	opts = testOptions()
-	opts.Pages = []int{2}
+	opts.Pages = conv.PageList(2)
 	_, r = convert(t, "basic.docx", opts)
 	if n := len(r.Manifest.Views[0].Pages); n != 1 || !strings.Contains(pageText(t, r, 0, 0, "header"), "Page 2 of 3") {
 		t.Errorf("page 2: %d pages", n)

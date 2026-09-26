@@ -4,7 +4,7 @@
 
 **bdf**（Browser-specific Document Format）は、ブラウザの Canvas 2D にそのまま描画できる、プレビュー用の文書フォーマット（ドラフト）です。
 
-Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.io の図、CAD の図面（DXF）、画像を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
+Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.io の図、CAD の図面（DXF）、スキャンや FAX の TIFF 画像、ブラウザがそのまま表示できる画像を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
 
 **デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Visio のファイル、draw.io の図、DXF の図面、Windows メタファイルや画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。
 
@@ -12,11 +12,11 @@ Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.i
 
 ```mermaid
 flowchart TB
-    SRC["PDF・Excel・CSV・PowerPoint・Word・Visio・draw.io・DXF・画像"]
+    SRC["PDF・Excel・CSV・PowerPoint・Word・Visio・draw.io・DXF・TIFF・画像"]
 
     subgraph SERVER["Go サーバープロセス"]
         direction TB
-        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/image"]
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/tiff<br/>converter/image"]
         BUNDLE["bdf バンドル<br/>（パック済み）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
         SCONV --> BUNDLE
     end
@@ -24,7 +24,7 @@ flowchart TB
     subgraph BROWSER["ブラウザ"]
         direction TB
         subgraph CWORKER["変換 Worker（wasm）"]
-            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/image"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/tiff<br/>converter/image"]
         end
         PARTS["bdf 文書<br/>（メモリ上）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
         subgraph RWORKER["レンダラ Worker"]
@@ -67,7 +67,7 @@ flowchart TB
 - manifest に Dublin Core のメタデータ（題名・作成者・主題・言語・作成日時など）を持てる。PDF の文書情報、PowerPoint・Excel・Word のコアプロパティ、Visio の文書プロパティ、画像の XMP・EXIF・IPTC などから引き継ぐ
 - パスワードで保護された入力（読み取りパスワード付きの Office 文書、ユーザーパスワード付きの PDF）はパスワードで開いて変換し、bdf を同じパスワードで暗号化する。Part ごとに封印する（AES-256-GCM）ので Range 取得や分割形式はそのまま使える。ビューアは WebCrypto で復号し、サーバーはパスワードを保存しない（spec §3.5）
 
-変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Windows メタファイル / 画像）は中身から、判別できなければ拡張子から決めます。
+変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Windows メタファイル / TIFF / 画像）は中身から、判別できなければ拡張子から決めます。
 
 - **PDF**（`converter/pdf`）: 埋め込みフォント（TrueType、CFF、OpenType、Type1）を使うグリフだけの WOFF2 に組み直し（OS/2 の埋め込み許諾 `fsType` を確認し、著作権表示は引き継ぐ）、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。ソフトマスク（フェード、ドロップシャドウ、Chrome の PDF の CSS `mask-image`）はビューアで描き、JPEG 2000 と JBIG2 の画像は純 Go のデコーダでデコードします。埋め込まれていない CJK フォントの文字は Adobe の定義済み CMap（Shift_JIS、EUC、UCS-2 など）で読み、縦書き（WMode 1）は縦の行として配置します。詳細は design.md の §3.1。
 - **PowerPoint .pptx**（`converter/pptx`）: DrawingML を直接描画します。スライドマスターとレイアウトの図形はスライド間で共有されるレイヤー Object になり、プリセット図形は ECMA-376 の図形定義式から、テキストは変換側で折り返し（和文の禁則・縦書き・箇条書き・段落書式）、表・グラフ・SmartArt・EMF/WMF の図も描きます。レイアウトに使ったフォントはサブセットの WOFF2 にして埋め込むので、閲覧環境のフォントに依存しません。詳細は design.md の §3.4。
@@ -78,7 +78,8 @@ flowchart TB
 - **Word .docx**（`converter/docx`）: Word がファイルを開くたびに行っている組版を変換側で行います。行分割（和文の禁則とアキ、タブとリーダー、両端揃え、文書グリッド）、箇条書きと段落番号、表（表スタイル、セルの結合、ページをまたぐ行の分割、見出し行の繰り返し）、文字列の折り返しを伴う浮動する図とテキストボックス、段組み、セクション、ページ番号付きのヘッダー・フッター、脚注、縦書き（漢字・仮名の正立、縦書き用の句読点、欧文や表の回転）を扱います。View は 2 つで、紙面のページ（ヘッダー・本文・フッターのレイヤーを持つ flow View）と、ページを持たずに本文の幅でもう一度レイアウトした 1 枚の長い面（Word の下書き・Web レイアウト表示にあたる scroll View）です。図は PowerPoint と同じ DrawingML の描画で描き、フォントも同じく埋め込みます。詳細は design.md の §3.9。
 - **AutoCAD .dxf**（`converter/dxf`）: テキスト形式とバイナリ形式の DXF（R12〜2018）を読みます（仕様が公開されていない DWG は読みません）。モデル空間は図面に合わせた 1 ページにして CAD ソフトと同じ暗い背景に、ペーパー空間のレイアウトはそれぞれ用紙の大きさの 1 ページにして、ビューポートがその縮尺でモデル空間を映します。画層・色・線種・線の太さはプロッタが描くとおりに解決し、膨らみと幅のあるポリライン、スプライン（厳密なベジェ曲線として）、ハッチング（模様・島・グラデーション）、属性付きのブロックとその配列、寸法、引出線とマルチ引出線、1 行と複数行の文字（書式コード、和文の禁則付きの折り返し、分数）を描きます。SHX フォントはゴシック体の、ビッグフォントは和文のフォントで代用し、使ったフォントをサブセットの WOFF2 にして埋め込みます。古い図面の文字列はそのコードページ（Shift_JIS など）で読みます。詳細は design.md の §3.12。
 - **Windows メタファイル .emf / .wmf**（`converter/emf`）: 図の大きさの 1 ページにし、メタファイルの記録を再生して描きます（Office 文書の中の EMF/WMF の図を描くのと同じ再生処理）。テキストは PowerPoint と同じくレイアウトしてフォントを埋め込みます。
-- **画像 .png / .jpg / .gif / .webp / .avif / .bmp / .ico / .svg**（`converter/image`）: ブラウザがそのまま表示できる画像はパススルーです。デコードも再エンコードもせずにそのまま格納して画像の大きさの 1 ページで描くので、ブラウザでファイルを開いたときと同じ見た目になります。変換器が読むのは大きさ（JPEG と PNG の EXIF の向き、AVIF の `irot` を含む）とメタデータだけで、XMP・EXIF・IPTC、PNG のテキストチャンク、SVG の title・desc・RDF をほかの形式と同じ Dublin Core にし、説明を図の代替テキストにします。SVG は Worker ではデコードできないので、表示する大きさでページが描き、拡大してもぼけません（Office 文書や draw.io の図の中の SVG の画像も同じ）。詳細は design.md の §3.13。
+- **TIFF .tif / .tiff**（`converter/tiff`）: ファイルのページごとに、解像度から決まる大きさのページを 1 枚の画像で描きます。TIFF の読み取りは自前で、classic TIFF と BigTIFF、ストリップとタイル、無圧縮・PackBits・LZW・Deflate・JPEG・CCITT の FAX 符号（Group 3 の 1 次元と 2 次元、詰め物ビットの有無、Group 4）、1〜16 ビットの二値・グレー・パレット・RGB・CMYK を読みます。Orientation タグでページを回します。解像度の上限（既定は 192dpi と 3840 × 3840 画素。`-max-dpi`、`-max-pixels`）を超えるページは上限まで縮小し、二値のページは二値のまま縮小します。縮小しない JPEG のページは、ストリップを再エンコードせずに 1 つの JPEG につないで格納します。詳細は design.md の §3.13。
+- **画像 .png / .jpg / .gif / .webp / .avif / .bmp / .ico / .svg**（`converter/image`）: ブラウザがそのまま表示できる画像はパススルーです。デコードも再エンコードもせずにそのまま格納して画像の大きさの 1 ページで描くので、ブラウザでファイルを開いたときと同じ見た目になります。変換器が読むのは大きさ（JPEG と PNG の EXIF の向き、AVIF の `irot` を含む）とメタデータだけで、XMP・EXIF・IPTC、PNG のテキストチャンク、SVG の title・desc・RDF をほかの形式と同じ Dublin Core にし、説明を図の代替テキストにします。SVG は Worker ではデコードできないので、表示する大きさでページが描き、拡大してもぼけません（Office 文書や draw.io の図の中の SVG の画像も同じ）。詳細は design.md の §3.14。
 
 入力形式は static plugin 方式です。各変換器のパッケージは import されたときに `converter` パッケージへ自分の形式を登録するので、プログラムはリンクしたパッケージの形式だけを扱えます。
 
@@ -127,9 +128,10 @@ if res.Protected {
 | `converter/dxf` | AutoCAD DXF → BDF 変換器 |
 | `converter/emf` | Windows メタファイル (.emf, .wmf) → BDF 変換器 |
 | `converter/drawio` | draw.io（.drawio / .drawio.svg / .drawio.png）→ BDF 変換器 |
+| `converter/tiff` | TIFF (.tif, .tiff) → BDF 変換器 |
 | `converter/image` | 画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG）→ BDF 変換器（そのまま格納し、メタデータを読む） |
 | `converter/all` | すべての入力形式を登録する（副作用のために import する） |
-| `converter/internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書き（`sfnt`）。Office 系の変換器で共有するもの: OOXML のパッケージと XML（`ooxml`）、DrawingML の図形・テキスト・表・グラフ（`ooxml/drawingml`）、テキストレイアウト用のフォント選択・計測・埋め込み（`fontset`。draw.io も使う）、組み立て中の Object（`canvas`。draw.io も使う）、EMF/WMF の再生（`metafile`）、CAD 図面のページへの描画（`cad`）、行分割の規則（`linebreak`）、複合ファイル（`cfb`）とパスワード付き Office 文書の復号（`offcrypto`）。PDF 用の Adobe の定義済み CJK CMap（`cjkcmap`）と JPEG 2000・JBIG2 のデコーダ（`jpx`、`jbig2`） |
+| `converter/internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書き（`sfnt`）。Office 系の変換器で共有するもの: OOXML のパッケージと XML（`ooxml`）、DrawingML の図形・テキスト・表・グラフ（`ooxml/drawingml`）、テキストレイアウト用のフォント選択・計測・埋め込み（`fontset`。draw.io も使う）、組み立て中の Object（`canvas`。draw.io も使う）、EMF/WMF の再生（`metafile`）、CAD 図面のページへの描画（`cad`）、行分割の規則（`linebreak`）、複合ファイル（`cfb`）とパスワード付き Office 文書の復号（`offcrypto`）。PDF 用の Adobe の定義済み CJK CMap（`cjkcmap`）と JPEG 2000・JBIG2 のデコーダ（`jpx`、`jbig2`）。TIFF の読み取りと CCITT の FAX 符号のデコーダ（`tiff`） |
 | `woff2/` | TrueType/OpenType → WOFF2（glyf 変換と Brotli） |
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
 | `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画（scroll View は連続描画）、Worker（SVG の画像はメインスレッドが描く） |
@@ -147,11 +149,12 @@ go run ./cmd/bdf ls out.bdf          # Part 一覧
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # 分割形式へ
 
-# PDF / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / メタファイル / 画像 → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|pptx|xlsx|csv|docx|visio|drawio|dxf|emf|image で指定も可）
+# PDF / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / メタファイル / TIFF / 画像 → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|pptx|xlsx|csv|docx|visio|drawio|dxf|emf|tiff|image で指定も可）
 go run ./cmd/bdf generate -h                  # フラグと、入力形式ごとの -param オプションの一覧
 go run ./cmd/bdf generate in.pdf out.bdf      # 1 ファイル形式
 go run ./cmd/bdf generate in.pptx out/        # 分割形式
 go run ./cmd/bdf generate -pages 1-3 in.pptx out.bdf   # ページ（スライド、シート）を選ぶ
+go run ./cmd/bdf generate -pages 2,5- in.pdf out.bdf    # 2 ページ目と、5 ページ目から最後まで
 go run ./cmd/bdf generate -images keep in.pdf out.bdf  # 画像を変換しない
 go run ./cmd/bdf generate -dc creator=Alice -dc language=ja in.pdf out.bdf  # Dublin Core の要素を上書き（-dc 要素名= で削除）
 go run ./cmd/bdf generate -kind flow in.pdf out.bdf    # PDF: flow View にする
@@ -173,6 +176,9 @@ go run ./cmd/bdf generate photo.jpg out.bdf                        # 画像（PN
 go run ./cmd/bdf generate diagram.drawio out.bdf                   # draw.io: ページごとに View（シートのように切り替え）
 go run ./cmd/bdf generate -pages 2 diagram.drawio.svg out.bdf      # draw.io: 2 ページ目だけ（図を埋め込んだ SVG / PNG も可）
 go run ./cmd/bdf generate -param border=0 diagram.drawio out.bdf   # draw.io: 図の周りに余白を付けない（px、既定 10）
+go run ./cmd/bdf generate in.tif out.bdf                           # TIFF: ページごとに 1 ページ（多ページのスキャン、FAX）
+go run ./cmd/bdf generate -max-dpi 300 -max-pixels 0 in.tif out.bdf  # 画像の入力: 解像度の上限（既定 192dpi、3840 × 3840 画素。0 で上限なし）
+go run ./cmd/bdf generate -param dpi=72 in.tif out.bdf             # TIFF: 解像度を持たないページの解像度（既定 96）
 go run ./cmd/bdf generate -password-file pw.txt in.pptx out.bdf    # パスワード付きの入力（- で標準入力、既定は $BDF_PASSWORD）。out.bdf は同じパスワードで暗号化される
 go run ./cmd/bdf generate -encrypt never in.pdf out.bdf            # -encrypt auto（既定: 入力にパスワードが要るとき）/ always / never
 BDF_PASSWORD=… go run ./cmd/bdf ls out.bdf                         # ls・manifest・disasm・extract は $BDF_PASSWORD で暗号化した文書を読む
@@ -193,6 +199,7 @@ npm run test:xlsx:gen                # Excel のテスト用ブックを再生�
 npm run test:docx:gen                # Word のテスト用文書を再生成
 npm run test:visio:gen               # Visio のテスト用図面を再生成
 npm run test:dxf:gen                 # DXF のテスト用図面を再生成（要 ezdxf）
+npm run test:tiff:gen                # TIFF のテスト用ファイルを再生成（ImageMagick と libtiff のツールが必要）
 npm run test:image:gen               # 画像のテスト用ファイルを再生成（ImageMagick、exiftool、cwebp、avifenc が必要）
 node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に描画（シートは左上の最大 4096 px 四方）
 

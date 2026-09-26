@@ -77,6 +77,7 @@ export class VectorImage {
   private rasters: Raster[] = [];
   private pending = new Map<number, Promise<boolean>>();
   private failed = new Set<number>();
+  private disposed = false;
 
   readonly data: Uint8Array;
 
@@ -114,6 +115,12 @@ export class VectorImage {
     return this.rasters.at(-1)?.bitmap;
   }
 
+  /** Close the rasters; those still being drawn are closed when they come. */
+  dispose(): void {
+    this.disposed = true;
+    for (const r of this.rasters.splice(0)) r.bitmap.close();
+  }
+
   /** Draw the raster of scale k (once, however many draws missed it); false when it cannot be drawn. */
   draw(k: number, rasterize: SvgRasterizer | undefined): Promise<boolean> {
     if (this.rasters.some((r) => r.k === k)) return Promise.resolve(true);
@@ -123,7 +130,12 @@ export class VectorImage {
       const w = Math.max(1, Math.round(this.width * k)), h = Math.max(1, Math.round(this.height * k));
       try {
         if (!rasterize) throw new Error("no SVG rasterizer (workers need the page to draw SVG images)");
-        this.rasters.push({ bitmap: await rasterize(this.hash, this.data, w, h), k });
+        const bitmap = await rasterize(this.hash, this.data, w, h);
+        if (this.disposed) {
+          bitmap.close();
+          return false;
+        }
+        this.rasters.push({ bitmap, k });
         while (this.rasters.length > KEEP) this.rasters.shift()!.bitmap.close();
         return true;
       } catch (e) {

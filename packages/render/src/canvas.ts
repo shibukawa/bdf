@@ -3,7 +3,6 @@ import {
   BLEND_NAMES, LINE_CAPS, LINE_JOINS, TEXT_ALIGNS, TEXT_BASELINES, TEXT_DIRECTIONS, FILL_RULES, REPEATS, SMOOTHING_QUALITIES, PaintKind, MaskKind,
 } from "@bdf/core";
 import { ResourceCache, fontString } from "./resources.js";
-import type { SvgRasterizer } from "./svg.js";
 
 /** Any 2D context: on-screen canvas or OffscreenCanvas. */
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -27,8 +26,6 @@ export interface RenderOptions {
   advanceTolerance?: number;
   /** Factory for temporary canvases used by GROUP_BEGIN and MASK_BEGIN. */
   createCanvas?: (w: number, h: number) => OffscreenCanvas | HTMLCanvasElement;
-  /** Draws SVG images (PageRenderer; the default uses an image element, which workers do not have). */
-  rasterizeSvg?: SvgRasterizer;
 }
 
 function defaultCreateCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {

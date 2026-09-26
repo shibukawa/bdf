@@ -16,6 +16,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/image"  // images browsers display (PNG, JPEG, SVG …)
 	_ "github.com/shibukawa/bdf/converter/pdf"    // PDF
 	_ "github.com/shibukawa/bdf/converter/pptx"   // PowerPoint
+	_ "github.com/shibukawa/bdf/converter/tiff"   // TIFF images
 	_ "github.com/shibukawa/bdf/converter/visio"  // Visio
 	_ "github.com/shibukawa/bdf/converter/xlsx"   // Excel
 )

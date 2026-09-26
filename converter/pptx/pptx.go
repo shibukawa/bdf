@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
@@ -32,9 +33,9 @@ import (
 
 // Options controls the conversion.
 type Options struct {
-	// Slides selects 1-based slide numbers; nil converts every slide
-	// (hidden ones only with Hidden).
-	Slides []int
+	// Slides selects 1-based slides (see converter.Pages); nil converts
+	// every slide (hidden ones only with Hidden).
+	Slides conv.Pages
 	// Hidden includes slides marked as hidden when Slides is nil.
 	Hidden bool
 	// Title overrides the document title.
@@ -170,7 +171,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			hidden = append(hidden, err == nil && !sn.AttrBool("show", true))
 		}
 	}
-	sel := opts.Slides
+	sel := opts.Slides.Numbers(len(slides))
 	if sel == nil {
 		for i := range slides {
 			if !hidden[i] || opts.Hidden {

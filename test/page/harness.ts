@@ -93,6 +93,12 @@ export const CASES: Case[] = [
   { name: "dxf-shapes-1", src: "/testdata/dxf/shapes.bdf", kind: "page", view: "model", page: 0, scale: 0.75 },
   { name: "dxf-layout-1", src: "/testdata/dxf/layout.bdf", kind: "page", view: "layout1", page: 0, scale: 0.75 },
   { name: "dxf-r12-sjis-1", src: "/testdata/dxf/r12-sjis.bdf", kind: "page", view: "model", page: 0, scale: 0.5 },
+  // TIFF pages converted by converter/tiff; see test/tiff. A 300 dpi bilevel scan scaled down to 192 dpi, JPEG strips
+  // stored as one JPEG, a fax at 204 × 98 dpi, and a picture stored turned with Orientation 6.
+  { name: "tiff-scan-1", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  { name: "tiff-scan-2", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "tiff-fax-1", src: "/testdata/tiff/fax.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "tiff-orientation-6", src: "/testdata/tiff/orientation.bdf", kind: "page", view: "pages", page: 5, scale: 2 },
   // Images stored as they are by converter/image: a JPEG turned by its EXIF orientation, an AVIF turned by irot,
   // and an SVG drawn at the size it is shown (by the page for the worker, which cannot decode SVG).
   { name: "image-photo", src: "/testdata/image/photo.bdf", kind: "page", view: "pages", page: 0, scale: 2 },

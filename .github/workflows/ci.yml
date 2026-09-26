@@ -63,6 +63,11 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/drawio/$n.bdf"
           done
+          for f in converter/tiff/testdata/*.tif; do
+            n=$(basename "$f" .tif)
+            go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/tiff/$n.bdf"
+          done
           for f in converter/image/testdata/*; do
             n=$(basename "${f%.*}")
             go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
