@@ -83,8 +83,7 @@ type c2d struct {
 	stack []c2dState
 
 	path         *bdf.Path // current path, in canvas coordinates (dx, dy and scale applied)
-	pathBox      rect
-	pathEmpty    bool
+	pathBox      extent
 	lastX, lastY float64 // last point before dx, dy and scale (for arcTo)
 }
 
@@ -222,8 +221,7 @@ func (c *c2d) setShadow(bool) {}
 
 func (c *c2d) begin() {
 	c.path = &bdf.Path{}
-	c.pathBox = rect{}
-	c.pathEmpty = true
+	c.pathBox = extent{}
 	c.lastX, c.lastY = 0, 0
 }
 
@@ -233,15 +231,7 @@ func (c *c2d) ty(y float64) float64 { return (y + c.st.dy) * c.st.scale }
 func (c *c2d) addPt(x, y float64) (float32, float32) {
 	c.lastX, c.lastY = x, y
 	px, py := c.tx(x), c.ty(y)
-	if c.pathEmpty {
-		c.pathBox = rect{px, py, 0, 0}
-		c.pathEmpty = false
-	} else {
-		c.pathBox = c.pathBox.addPoint(point{px, py})
-		if c.pathBox.w == 0 && c.pathBox.h == 0 {
-			c.pathBox = rect{px, py, 0, 0}
-		}
-	}
+	c.pathBox.add(point{px, py})
 	return f32(px), f32(py)
 }
 
@@ -298,8 +288,7 @@ func (c *c2d) rect(x, y, w, h float64) {
 	s := c.st.scale
 	px, py := c.tx(x), c.ty(y)
 	c.path.Rect(f32(px), f32(py), f32(w*s), f32(h*s))
-	c.pathBox = rect{px, py, w * s, h * s}
-	c.pathEmpty = false
+	c.pathBox = extent{rect{px, py, w * s, h * s}, true}
 }
 
 func (c *c2d) roundrect(x, y, w, h, dx, dy float64) {
@@ -314,8 +303,7 @@ func (c *c2d) roundrect(x, y, w, h, dx, dy float64) {
 		c.begin()
 		px, py := c.tx(x), c.ty(y)
 		c.path.RoundRect(f32(px), f32(py), f32(w*s), f32(h*s), f32(r*s))
-		c.pathBox = rect{px, py, w * s, h * s}
-		c.pathEmpty = false
+		c.pathBox = extent{rect{px, py, w * s, h * s}, true}
 		return
 	}
 	// elliptical corners, as SVG's rx and ry (clamped to half the sides)
@@ -339,8 +327,7 @@ func (c *c2d) ellipse(x, y, w, h float64) {
 	s := c.st.scale
 	cx, cy := c.tx(x+w/2), c.ty(y+h/2)
 	c.path.Ellipse(f32(cx), f32(cy), f32(math.Abs(w/2*s)), f32(math.Abs(h/2*s)), 0, 0, 2*math.Pi, false)
-	c.pathBox = rect{cx - math.Abs(w/2*s), cy - math.Abs(h/2*s), math.Abs(w * s), math.Abs(h * s)}
-	c.pathEmpty = false
+	c.pathBox = extent{rect{cx - math.Abs(w/2*s), cy - math.Abs(h/2*s), math.Abs(w * s), math.Abs(h * s)}, true}
 }
 
 // --- painting ---
@@ -355,7 +342,7 @@ func (c *c2d) paint(fill, stroke bool) {
 		return
 	}
 	path := c.path
-	box := c.pathBox
+	box := c.pathBox.r
 	c.path = nil
 	s := &c.st
 	doFill := fill && s.fillColor != ""

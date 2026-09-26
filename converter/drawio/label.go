@@ -168,34 +168,7 @@ func (s *shape) labelBounds(r rect, textInverted bool) rect {
 		m.x, m.y, m.w, m.h = m.h, m.x, m.y, m.w
 		flipH, flipV = flipV, flipH
 	}
-	return directedBounds(r, *m, d, flipH, flipV)
-}
-
-// directedBounds applies margins (left, top, right, bottom as x, y, w, h)
-// for a direction and flips (mxUtils.getDirectedBounds).
-func directedBounds(r rect, m rect, d string, flipH, flipV bool) rect {
-	m.x = math.Round(math.Max(0, math.Min(r.w, m.x)))
-	m.y = math.Round(math.Max(0, math.Min(r.h, m.y)))
-	m.w = math.Round(math.Max(0, math.Min(r.w, m.w)))
-	m.h = math.Round(math.Max(0, math.Min(r.h, m.h)))
-	vert := d == "south" || d == "north"
-	horz := d == "east" || d == "west"
-	if flipV && vert || flipH && horz {
-		m.x, m.w = m.w, m.x
-	}
-	if flipH && vert || flipV && horz {
-		m.y, m.h = m.h, m.y
-	}
-	m2 := m
-	switch d {
-	case "south":
-		m2.y, m2.x, m2.w, m2.h = m.x, m.h, m.y, m.w
-	case "west":
-		m2.y, m2.x, m2.w, m2.h = m.h, m.w, m.x, m.y
-	case "north":
-		m2.y, m2.x, m2.w, m2.h = m.w, m.y, m.h, m.x
-	}
-	return rect{r.x + m2.x, r.y + m2.y, r.w - m2.w - m2.x, r.h - m2.h - m2.y}
+	return directedBounds(r, *m, s.style, flipH, flipV)
 }
 
 // layoutLabel lays out the label of a cell; nil when it has none.
@@ -673,12 +646,12 @@ func (l *labelBox) extent() rect {
 	}
 	if l.rotation != 0 {
 		m := rotateAbout(l.rotation, l.anchor.x, l.anchor.y)
-		var out rect
+		var out extent
 		for _, p := range []point{{r.x, r.y}, {r.x + r.w, r.y}, {r.x, r.y + r.h}, {r.x + r.w, r.y + r.h}} {
 			x, y := m.apply(p.x, p.y)
-			out = out.addPoint(point{x, y})
+			out.add(point{x, y})
 		}
-		return out
+		return out.r
 	}
 	return r
 }

@@ -395,10 +395,10 @@ func (s *shape) extent() rect {
 	if s.stroke == "" {
 		sw = 0
 	}
-	if s.points != nil {
-		var r rect
-		for _, p := range s.points {
-			r = r.addPoint(p)
+	if s.edge {
+		r, ok := pointsExtent(s.points)
+		if !ok {
+			return rect{}
 		}
 		m := 0.0
 		if s.startArrow != "" && s.startArrow != "none" || s.endArrow != "" && s.endArrow != "none" {

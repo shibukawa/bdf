@@ -72,7 +72,7 @@ func (n *stencilNode) get(key string) string {
 }
 
 // num returns an attribute as JavaScript's Number(getAttribute(key)) does.
-func (n *stencilNode) num(key string) float64 { return jsNumber(n.get(key)) }
+func (n *stencilNode) num(key string) float64 { return numberJS(n.get(key)) }
 
 // find returns the first element named name below n, in document order
 // (getElementsByTagName(name)[0]).
@@ -143,10 +143,10 @@ func newStencil(desc *stencilNode) *stencil {
 	// Number(getAttribute('w') || 100)
 	st.w0, st.h0 = 100, 100
 	if v := desc.get("w"); v != "" {
-		st.w0 = jsNumber(v)
+		st.w0 = numberJS(v)
 	}
 	if v := desc.get("h"); v != "" {
-		st.h0 = jsNumber(v)
+		st.h0 = numberJS(v)
 	}
 	st.aspect = "variable"
 	if v, ok := desc.attr("aspect"); ok {
@@ -160,19 +160,19 @@ func newStencil(desc *stencilNode) *stencil {
 		lb := stencilLabelBounds{x: n.num("x"), y: n.num("y"), w: st.w0, h: st.h0}
 		lb.cond, lb.hasCond = n.attr("if")
 		if v := n.get("w"); v != "" {
-			lb.w = jsNumber(v)
+			lb.w = numberJS(v)
 		}
 		if v := n.get("h"); v != "" {
-			lb.h = jsNumber(v)
+			lb.h = numberJS(v)
 		}
 		st.labelBounds = append(st.labelBounds, lb)
 	}
 	return st
 }
 
-// jsNumber converts a string to a number as JavaScript's Number() does:
+// numberJS converts a string to a number as JavaScript's Number() does:
 // the empty (or blank) string is 0, anything that is not a number NaN.
-func jsNumber(s string) float64 {
+func numberJS(s string) float64 {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0
@@ -230,7 +230,7 @@ func (st *stencil) draw(c *c2d, s *shape, x, y, w, h float64, depth int) {
 	if st.strokewidth == "inherit" {
 		sw = s.style.num("strokeWidth", 1)
 	} else {
-		sw = jsNumber(st.strokewidth) * minScale
+		sw = numberJS(st.strokewidth) * minScale
 	}
 	c.setStrokeWidth(sw)
 
@@ -421,7 +421,7 @@ func (st *stencil) drawNode(p *stencilPainter, node *stencilNode, aspect rect, d
 			var pat []string
 			for _, t := range strings.Split(v, " ") {
 				if t != "" {
-					pat = append(pat, fmtNum(jsNumber(t)*minScale))
+					pat = append(pat, fmtNum(numberJS(t)*minScale))
 				}
 			}
 			c.setDashPattern(strings.Join(pat, " "))

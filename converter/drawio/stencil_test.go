@@ -214,13 +214,15 @@ func paintedPath(t *testing.T, part *bdf.ObjectPart, idx int) (*bdf.Path, matrix
 // its rectangles and ellipses) under m, rounded to 1/1000, and its first
 // point.
 func pathBox(p *bdf.Path, m matrix) (r rect, first point) {
+	var e extent
+	defer func() { r = e.r }()
 	add := func(x, y float32) {
 		tx, ty := m.apply(float64(x), float64(y))
 		pt := point{math.Round(tx*1000) / 1000, math.Round(ty*1000) / 1000}
-		if r == (rect{}) {
+		if !e.ok {
 			first = pt
 		}
-		r = r.addPoint(pt)
+		e.add(pt)
 	}
 	ai := 0
 	for _, v := range p.Verbs {
@@ -484,13 +486,13 @@ func TestJSNumber(t *testing.T) {
 		{"", 0}, {"  ", 0}, {"12", 12}, {" -1.5 ", -1.5}, {".5", 0.5}, {"5.", 5}, {"1e3", 1000},
 		{"0x10", 16}, {"Infinity", math.Inf(1)},
 	} {
-		if got := jsNumber(tc.s); got != tc.want {
-			t.Errorf("jsNumber(%q) = %g, want %g", tc.s, got, tc.want)
+		if got := numberJS(tc.s); got != tc.want {
+			t.Errorf("numberJS(%q) = %g, want %g", tc.s, got, tc.want)
 		}
 	}
 	for _, s := range []string{"12px", "abc", "1e", "inf", "NaN", "0x", "1_000"} {
-		if got := jsNumber(s); !math.IsNaN(got) {
-			t.Errorf("jsNumber(%q) = %g, want NaN", s, got)
+		if got := numberJS(s); !math.IsNaN(got) {
+			t.Errorf("numberJS(%q) = %g, want NaN", s, got)
 		}
 	}
 }

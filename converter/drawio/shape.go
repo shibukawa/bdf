@@ -55,7 +55,8 @@ type shape struct {
 	stencil *stencil
 
 	bounds rect
-	points []point
+	edge   bool
+	points []point // the painted points of an edge
 
 	fill, gradient, stroke        string // "" = none
 	gradientDirection             string
@@ -93,13 +94,33 @@ func (c *converter) newShape(st *cellState) *shape {
 		}
 	}
 	s.apply()
-	if st.cell.edge {
-		s.points = st.edgePoints()
-		s.bounds = st.bounds()
-	} else {
-		s.bounds = st.bounds()
+	s.edge = st.cell.edge
+	s.bounds = st.bounds()
+	if s.edge {
+		s.points = getWaypoints(st.edgePoints())
 	}
 	return s
+}
+
+// getWaypoints returns the points of a route that are painted: those at
+// least 1 away from their predecessor in the route (mxShape.getWaypoints),
+// or nil when fewer than two remain and the edge is not painted.
+func getWaypoints(pts []point) []point {
+	if len(pts) == 0 {
+		return nil
+	}
+	out := []point{pts[0]}
+	p0 := pts[0]
+	for _, pe := range pts[1:] {
+		if math.Abs(p0.x-pe.x) >= 1 || math.Abs(p0.y-pe.y) >= 1 {
+			out = append(out, pe)
+		}
+		p0 = pe
+	}
+	if len(out) < 2 {
+		return nil
+	}
+	return out
 }
 
 // apply reads the style (mxShape.apply).
@@ -183,7 +204,10 @@ const (
 // around the whole of it.
 func (s *shape) paint(c *c2d) {
 	x, y, w, h := s.bounds.x, s.bounds.y, s.bounds.w, s.bounds.h
-	edge := s.points != nil
+	edge := s.edge
+	if edge && s.points == nil {
+		return
+	}
 	if !edge && (w <= 0 && h <= 0) && s.stencil == nil {
 		// mxShape.checkBounds: nothing to draw
 		if s.def.paintVertex == nil && s.def.paintBackground == nil {
@@ -314,10 +338,8 @@ func (s *shape) endShadow(c *c2d) {
 // the (rotated) bounds or the points, grown by the stroke and markers.
 func (s *shape) paintExtent() rect {
 	var r rect
-	if s.points != nil {
-		for _, p := range s.points {
-			r = r.addPoint(p)
-		}
+	if s.edge {
+		r, _ = pointsExtent(s.points)
 		m := math.Max(s.startSize, s.endSize)
 		if m == 0 {
 			m = defaultMarkerSize

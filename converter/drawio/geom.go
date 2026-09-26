@@ -33,12 +33,29 @@ func (r rect) union(o rect) rect {
 	return rect{x0, y0, x1 - x0, y1 - y0}
 }
 
-// addPoint returns r grown to hold p.
-func (r rect) addPoint(p point) rect {
-	if r == (rect{}) {
-		return rect{p.x, p.y, 0, 0}
+// extent accumulates the bounding box of points (an empty extent has none).
+type extent struct {
+	r  rect
+	ok bool
+}
+
+func (e *extent) add(p point) {
+	if !e.ok {
+		e.r, e.ok = rect{p.x, p.y, 0, 0}, true
+		return
 	}
-	return r.union(rect{p.x, p.y, 0, 0})
+	x0, y0 := math.Min(e.r.x, p.x), math.Min(e.r.y, p.y)
+	x1, y1 := math.Max(e.r.x+e.r.w, p.x), math.Max(e.r.y+e.r.h, p.y)
+	e.r = rect{x0, y0, x1 - x0, y1 - y0}
+}
+
+// pointsExtent returns the bounding box of points; ok is false for none.
+func pointsExtent(pts []point) (rect, bool) {
+	var e extent
+	for _, p := range pts {
+		e.add(p)
+	}
+	return e.r, e.ok
 }
 
 // rotate90 turns r by 90° about its center (mxRectangle.rotate90).

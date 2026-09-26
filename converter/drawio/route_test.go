@@ -96,7 +96,7 @@ func TestRouteReference(t *testing.T) {
 				var got []point
 				st := v.state(c)
 				if st != nil {
-					got = paintedPoints(st.edgePoints())
+					got = getWaypoints(st.edgePoints())
 				}
 				var want []point
 				if pts, ok := ref.paths[c.id]; ok {
@@ -127,27 +127,6 @@ func TestRouteReference(t *testing.T) {
 			t.Logf("%d edges, largest deviation %.3f", edges, worst)
 		})
 	}
-}
-
-// paintedPoints returns the points draw.io paints of a route: the points
-// that are at least 1 away from their predecessor (mxShape.getWaypoints),
-// or nil when fewer than two remain (the edge is not painted).
-func paintedPoints(pts []point) []point {
-	if len(pts) == 0 {
-		return nil
-	}
-	out := []point{pts[0]}
-	p0 := pts[0]
-	for _, pe := range pts[1:] {
-		if math.Abs(p0.x-pe.x) >= 1 || math.Abs(p0.y-pe.y) >= 1 {
-			out = append(out, pe)
-		}
-		p0 = pe
-	}
-	if len(out) < 2 {
-		return nil
-	}
-	return out
 }
 
 // comparePoints reports the largest distance between matching points and
