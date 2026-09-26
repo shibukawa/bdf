@@ -1,0 +1,60 @@
+<mxfile>
+  <diagram id="entity" name="entity">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="ref" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="0" y="0" width="20" height="20" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="s0" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="300" y="300" width="100" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="t0" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="550" y="420" width="80" height="50" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="a0" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="s0" target="t0"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b0" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;segment=12;" edge="1" parent="1" source="s0" target="t0"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="c0" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="s0" target="t0"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="d0" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=1;exitY=0.25;entryX=1;entryY=0.8;" edge="1" parent="1" source="s0" target="t0"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="f0" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="t0" target="s0"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="s1" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="900" y="300" width="100" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="t1" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="650" y="400" width="80" height="50" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="a1" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="s1" target="t1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b1" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;segment=12;" edge="1" parent="1" source="s1" target="t1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="c1" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="s1" target="t1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="d1" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=1;exitY=0.25;entryX=1;entryY=0.8;" edge="1" parent="1" source="s1" target="t1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="f1" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="t1" target="s1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="s2" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="1500" y="300" width="100" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="t2" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="1540" y="450" width="80" height="50" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="a2" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="s2" target="t2"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b2" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;segment=12;" edge="1" parent="1" source="s2" target="t2"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="c2" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="s2" target="t2"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="d2" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=1;exitY=0.25;entryX=1;entryY=0.8;" edge="1" parent="1" source="s2" target="t2"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="f2" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="t2" target="s2"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="s3" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="300" y="800" width="100" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="t3" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="300" y="1000" width="80" height="50" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="a3" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="s3" target="t3"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b3" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;segment=12;" edge="1" parent="1" source="s3" target="t3"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="c3" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="s3" target="t3"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="d3" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=1;exitY=0.25;entryX=1;entryY=0.8;" edge="1" parent="1" source="s3" target="t3"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="f3" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="t3" target="s3"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="s4" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="900" y="800" width="100" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="t4" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="1160" y="770" width="80" height="50" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="a4" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="s4" target="t4"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="b4" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;segment=12;" edge="1" parent="1" source="s4" target="t4"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="c4" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="s4" target="t4"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="d4" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;exitX=1;exitY=0.25;entryX=1;entryY=0.8;" edge="1" parent="1" source="s4" target="t4"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="f4" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="t4" target="s4"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="tbl" value="" style="swimlane;startSize=30;" vertex="1" parent="1"><mxGeometry x="100" y="800" width="160" height="120" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="row1" value="" style="rounded=0;" vertex="1" parent="tbl"><mxGeometry x="0" y="30" width="160" height="30" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="row2" value="" style="rounded=0;portConstraint=eastwest;" vertex="1" parent="tbl"><mxGeometry x="0" y="60" width="160" height="30" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="tb2" value="" style="rounded=0;" vertex="1" parent="1"><mxGeometry x="500" y="900" width="160" height="90" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="rel" value="" style="rounded=0;" vertex="1" parent="tb2"><mxGeometry x="1" y="0.5" width="20" height="20" relative="1" as="geometry"><mxPoint x="-10" y="-10" as="offset"/></mxGeometry></mxCell>
+        <mxCell id="rel2" value="" style="rounded=0;" vertex="1" parent="tb2"><mxGeometry x="0" y="0.5" width="20" height="20" relative="1" as="geometry"><mxPoint x="-10" y="-10" as="offset"/></mxGeometry></mxCell>
+        <mxCell id="r1" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="row1" target="tb2"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="r2" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="row2" target="tb2"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="r3" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="rel" target="row1"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="r4" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="rel2" target="row2"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="pw" value="" style="rounded=0;portConstraint=west;" vertex="1" parent="1"><mxGeometry x="800" y="700" width="100" height="60" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="r5" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="tb2" target="pw"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="r6" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="pw" target="tb2"><mxGeometry relative="1" as="geometry"></mxGeometry></mxCell>
+        <mxCell id="r7" style="endArrow=none;startArrow=none;rounded=0;html=1;edgeStyle=entityRelationEdgeStyle;" edge="1" parent="1" source="row1"><mxGeometry relative="1" as="geometry"><mxPoint x="700" y="700" as="targetPoint"/></mxGeometry></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

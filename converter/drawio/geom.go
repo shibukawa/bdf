@@ -122,14 +122,16 @@ func ptSegDistSq(x1, y1, x2, y2, px, py float64) float64 {
 }
 
 // intersection returns the intersection of the lines through (x0,y0)-(x1,y1)
-// and (x2,y2)-(x3,y3) when it lies on both segments (mxUtils.intersection).
+// and (x2,y2)-(x3,y3) when it lies on both segments, within 1e-6 of their
+// ends against rounding errors (mxUtils.intersection).
 func intersection(x0, y0, x1, y1, x2, y2, x3, y3 float64) (point, bool) {
 	denom := (y3-y2)*(x1-x0) - (x3-x2)*(y1-y0)
 	nume_a := (x3-x2)*(y0-y2) - (y3-y2)*(x0-x2)
 	nume_b := (x1-x0)*(y0-y2) - (y1-y0)*(x0-x2)
 	ua := nume_a / denom
 	ub := nume_b / denom
-	if ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1 {
+	const eps = 0.000001
+	if ua >= -eps && ua <= 1+eps && ub >= -eps && ub <= 1+eps {
 		return point{x0 + ua*(x1-x0), y0 + ua*(y1-y0)}, true
 	}
 	return point{}, false
