@@ -15,12 +15,13 @@
   - 固定サイズページの列（PowerPoint、PDF）
   - 無限サイズの平面（Excel のシート）
   - ページ分割されつつ「縦一枚」としても閲覧できる文書（Word）
+- パスワードで保護された入力からは、同じパスワードで暗号化した BDF を作れる。暗号化しても Part 単位の取得はそのまま使える（§3.5）。
 
 **非目的**
 
 - 編集可能な文書モデル（DOM のような意味構造）を持つこと。BDF は「描画済み表示リスト」であり、再レイアウトはしない。ただし読み上げに必要な最小限の構造（見出し・リスト・表・図の代替テキスト・言語、§7.8）は描画に影響しない `MARK` として持つ。
 - 印刷用の高度な色管理（CMYK、ICC）。sRGB のみ。
-- 暗号化・署名。必要なら配布層（HTTPS、ストレージ）で行う。
+- 署名。必要なら配布層で行う。暗号化（§3.5）は保護された入力の保護を保ち続けるためのもので、配布層のアクセス制御の代わりではない。
 
 ## 2. 用語
 
@@ -66,7 +67,7 @@ BDF
 ```
 offset 0   : magic          u8[4]   "bdf\0"（62 64 66 00）
 offset 4   : version        u16     フォーマットバージョン（1）
-offset 6   : flags          u16     予約（0）
+offset 6   : flags          u16     bit 0: 暗号化（§3.5）。他のビットは予約（0）
 offset 8   : manifestOff    u64     manifest の先頭オフセット（通常 32）
 offset 16  : manifestLen    u64     manifest の圧縮後長
 offset 24  : manifestEnc    u8      0=identity, 1=deflate-raw
@@ -92,6 +93,69 @@ offset ... : parts 領域（manifest 直後から始まり、manifest.parts に�
 - 各 Part ファイルは `enc` に従って**圧縮済みのまま置く**。HTTP の `Content-Encoding` に依存しないので、S3 等のオブジェクトストレージや CDN にそのまま置ける。
 - 読み手は `fetch(base + "/parts/" + hash)` で必要な Part だけを取得する。
 - single ↔ split は Part の再圧縮なしに相互変換できる（ディレクトリの組み替えだけ）。
+
+### 3.5 暗号化
+
+パスワードで保護された入力（Office の読み取りパスワード、PDF のユーザーパスワード）から作った文書は、同じパスワードで暗号化する。Part を 1 つずつ封印するので、Range 取得・split 形式・CDN への配置はそのまま使える。
+
+```
+外側の manifest（平文）  … 暗号方式、鍵スロット、封印された Part の一覧
+封印された Part
+├── manifest             … 文書の manifest（§4。views、meta、parts）
+└── 各 Part              … Part の格納バイト列（圧縮済み）を暗号化したもの
+```
+
+**外側の manifest**
+
+```jsonc
+{
+  "bdf": 1,
+  "encryption": {
+    "cipher": "A256GCM",
+    "keys": [
+      { "type": "password", "kdf": "PBKDF2-SHA256", "iter": 600000,
+        "salt": "<base64, 16 バイト>",
+        "key": "<base64: AES-KW でラップしたコンテンツ鍵, 40 バイト>" }
+    ],
+    "manifest": { "part": "<hash>", "enc": "deflate-raw" }   // 封印された manifest とその符号化
+  },
+  "parts": [
+    { "h": "<hash>", "t": "sealed", "enc": "identity", "len": 1474, "size": 1474, "off": 0 },
+    …
+  ]
+}
+```
+
+- views・meta は持たない。題名などの Dublin Core も封印された manifest の中にある。
+- single 形式ではヘッダの `flags` の bit 0 を立てる（§3.3）。bit 0 と `encryption` の有無が食い違うファイルは不正。
+- 封印された Part の名前は、**格納バイト列（暗号文）** の SHA-256 の先頭 16 バイト。平文のハッシュを外に出すと、よく使われるフォントのサブセットや画像が含まれているかを外から照合できてしまう。格納バイト列のハッシュなので、鍵がなくても名前を検証でき、single ↔ split も鍵なしで組み替えられる（§3.4）。
+- 並び順は、封印された manifest が先頭で、その後は §3.3 の推奨順。
+
+**鍵**
+
+- コンテンツ鍵: 文書ごとにランダムな 256 ビットの鍵。manifest とすべての Part をこの鍵で封印する。
+- 鍵スロット（`keys`）: コンテンツ鍵を AES-KW（RFC 3394）でラップしたもの。`password` スロットのラップ鍵は PBKDF2-HMAC-SHA-256 で導く。入力はパスワードを **NFC に正規化して UTF-8 にしたもの**、salt は 16 バイト、反復回数は `iter`（書き手の既定は 600,000）。
+- 読み手はスロットを順に試し、アンラップの完全性検査を通ったものを使う。どれも通らなければパスワード違い。
+- 読み手は `iter` が 1〜10,000,000 の範囲外なら拒否する。開くだけで長く計算させられるのを防ぐため。
+- スロットを複数持てるのは、パスワードの変更（スロットの差し替えだけで済み、Part は暗号化し直さない）や、回復用の鍵などを後から足すため。
+
+**封印**
+
+- 封印した Part の格納バイト列は `nonce（12 バイト）‖ 暗号文 ‖ tag（16 バイト）`。AES-256-GCM で、nonce はランダム。
+- 追加認証データ（AAD）は、Part なら**平文の Part 名（16 バイト）**、manifest なら ASCII の `manifest`。Part の差し替えや manifest との取り違えは復号で失敗する。
+- 圧縮してから暗号化する。封印を解いた中身は、封印された manifest の `parts[].enc` に従って展開する。
+
+**封印された manifest**
+
+§4 の manifest と同じ形で、`parts[]` の各エントリに `sealed`（その Part を封印した外側の Part の名前）を持つ。`off` は使わず、外側のエントリの `off`/`len` で取得する。
+
+読み手の手順は、外側の manifest を読む → パスワードからラップ鍵を導いてコンテンツ鍵をアンラップ → `encryption.manifest.part` を復号・展開 → 以降は Part 名で引き、`sealed` が指す外側の Part を取得して復号・展開、となる。必要なのは WebCrypto の `PBKDF2`・`AES-KW`・`AES-GCM` だけ。コンテンツ鍵は抽出できない `CryptoKey` として Worker の中に置く。
+
+**守るもの・守らないもの**
+
+- 守る: 配布層（ストレージ、CDN、キャッシュ）からの漏洩。パスワードを知らない人にわかるのは、Part の数と大きさだけ。
+- 守らない: パスワードの総当たり。ファイルを手に入れればオフラインで試せるのは元の Office ファイルや PDF と同じ。PBKDF2-SHA-256 の 60 万回は、元のファイル（Office の Agile 暗号化は SHA-512 を 10 万回）より弱い経路を作らないために選んだ。
+- 変換はパスワードと平文を扱う。変換の後でパスワードを残さないのは運用側の責務。
 
 ## 4. Manifest
 
@@ -142,7 +206,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 }
 ```
 
-`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx`。
+`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx`。暗号化した文書の外側の manifest では `sealed`（§3.5）。
 
 ### 4.1 View の種類
 
@@ -173,7 +237,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `csv` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `emf` / `wmf` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -457,7 +521,7 @@ Viewer UI                            Loader      fetch / DecompressionStream / P
 - 検索はビューアではなくライブラリ（Worker）が提供する。索引 Part（§7.9）があればそれを、なければ Object を走査して同じ形の run 列を作り、正規化して検索し、ヒットの矩形を返す。ビューアはヒット一覧とハイライトの描画だけを担当する。
 - 大きな文書ではページ表を Index Part にして、可視範囲のページだけ Part を取得する。single 形式でも `off`/`len` により Range 取得できる。
 
-必要なブラウザ機能（いずれも 2023 年時点の主要ブラウザで利用可能）: `DecompressionStream("deflate-raw")`、Worker 内 `OffscreenCanvas`、Worker 内 `FontFace` / `self.fonts`、`createImageBitmap`、`Path2D`、`roundRect`。`letterSpacing`、`filter` は任意機能とし、非対応環境では無視または代替描画する。
+必要なブラウザ機能（いずれも 2023 年時点の主要ブラウザで利用可能）: `DecompressionStream("deflate-raw")`、Worker 内 `OffscreenCanvas`、Worker 内 `FontFace` / `self.fonts`、`createImageBitmap`、`Path2D`、`roundRect`。暗号化した文書（§3.5）には `crypto.subtle` が要る（HTTPS か localhost の安全なコンテキストでだけ使える）。`letterSpacing`、`filter` は任意機能とし、非対応環境では無視または代替描画する。
 
 ## 9. 書き手（エンコーダ）の責務
 
@@ -467,6 +531,7 @@ Viewer UI                            Loader      fetch / DecompressionStream / P
 - `FILL_TEXT` の `advance` を必ず埋める。
 - シートは Tile 原点相対で出力し、またがるオブジェクトは共有 Object + `USE` にする。
 - Part の推奨順（§3.3）に従って並べる。
+- パスワードで保護された入力は、同じパスワードで暗号化して出力する（§3.5）。
 
 ## 付録 A. BLEND 値
 
@@ -490,3 +555,6 @@ Viewer UI                            Loader      fetch / DecompressionStream / P
 - **ファイル全体の 1 本圧縮**: Range・Tile 単位取得ができなくなる。
 - **可変長整数の固定小数点座標**: f32 より小さくなりうるが、デコードが複雑になる。deflate で差はかなり縮む。必要なら opset 2 で列指向（opcode 列 / f32 列 / 参照列を分離）を検討する。
 - **テキスト専用 Part**: 命令列を別バックエンドで走査すれば得られるので不要。
+- **ファイル全体の暗号化**: 配布層に任せれば仕様は変えずに済むが、Range 取得・split 形式・CDN への配置という BDF の中心の性質を失う。
+- **Part 名を鍵付き HMAC にする**: 平文のハッシュは隠せるが、名前の検証にも single ↔ split の組み替えにも鍵が要る。格納バイト列のハッシュで足りる。
+- **Argon2 などメモリハードな鍵導出**: 総当たりには強いが WebCrypto にないので、ビューアに wasm が要る。PBKDF2 は WebCrypto でそのまま使える。

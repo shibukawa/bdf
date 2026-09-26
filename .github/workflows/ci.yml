@@ -39,6 +39,11 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/xlsx/$n.bdf"
           done
+          for f in shapes.vsdx flow.vdx; do
+            n=${f%.*}
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/visio/testdata/$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/visio/$n.bdf"
+          done
           for f in converter/csv/testdata/*.csv converter/csv/testdata/*.tsv; do
             n=$(basename "${f%.*}")
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"

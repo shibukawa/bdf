@@ -51,7 +51,7 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 2. **XLSX → BDF**（直接変換）
    - PDF 経由だと無限シートが失われるので、こちらは直接。セルのレイアウトは行列の格子なので、文書レイアウトほど難しくない。実装済み（§3.6）。
    - 図形・画像・グラフは PowerPoint と同じ DrawingML なので、PowerPoint の変換器と描画処理を共有する（画像化はしない）。
-   - CSV・TSV は値だけの表として同じシートの描画に渡す（§3.7）。
+   - CSV・TSV は値だけの表として同じシートの描画に渡す（§3.9）。
 3. **PPTX / DOCX → BDF**（直接変換）
    - PPTX は絶対配置なので DOCX より先に手が届く（テキストボックス内の折り返しは必要）。実装済み（§3.4）。
    - マスター・レイアウト・スライドの継承構造が BDF の共有 Object にそのまま対応するので、直接変換するとサイズ面の効果が最も大きい。
@@ -188,11 +188,40 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **図形・画像・グラフ**: 描画パートのアンカー（2 つのセルの隅、1 つのセルの隅と大きさ、絶対位置。オフセットは EMU）を列幅・行の高さから sheet 座標に直し、図形をその枠に描く（`drawingml.Drawing.DrawAnchored`。アンカーが図形自身の `xfrm` の位置と大きさに優先し、回転と反転は残る。グラフの枠は `xfrm` が空のことが多い）。図形は 1 つずつ子 Object に 1 回だけ描き、重なる Tile から `USE_AT` で使う（`canvas.Share`）。子 Object の中の LANG は `USE` の後も続くので、Tile 側の言語の状態を子の最後の言語に合わせる（`canvas.Used`）。グラフの値のキャッシュがない系列（openpyxl などが書くブック）は、系列の参照（`'Sheet 1'!$B$2:$B$9`）の先のセルから値を補ってから描く（数値の参照が文字列のセルを指す項目は文字列の項目にする）。グラフシートはグラフを 1 ページにした `fixed` View にする。
 - **その他**: メモのあるセルには右上に赤い三角を描く（メモの本文は描かない）。外部 URL（http、https、mailto）へのハイパーリンクはセル範囲に LINK を置く（ブック内の場所へのリンクは置かない）。非表示のシートは既定で除く（`-hidden` で含める）。ページの選択（`-pages`）はシートの番号（グラフシートを含むブック内の順）。zip の中のパス区切りが `\` のファイルも読む（`ooxml.Open`）。
 - **読み上げ用の構造**（spec §7.8）: 値のあるセルごとに MARK CELL（セル参照、結合セルは範囲）を置き、テキスト層はシートのセルを 1 つの表にする。テーブルの見出し行のセルには ` col` を付けて列見出しにする（固定した行・列はビューアが見出しにする）。折り返した行は LINE（和文どうしは WRAP）、縦書きの文字の間は WRAP で結ぶ。画像・図形・グラフは PowerPoint と同じく `descr`（なければ `title`）を代替テキストにした FIGURE で囲む。Excel はブックに言語を記録しないので、`meta.dc.language` はコアプロパティにあるときだけ書き、セルごとにかな・ハングルから言語を推定して LANG を出す（漢字だけのセルは既定のフォントから推定したブックの東アジアの言語。游ゴシックなら日本語）。
-- **未対応**: 右から左のシート（左から右に描く）、`timePeriod` などの評価しない条件付き書式、マクロシート・ダイアログシート（ここまでは警告を出す）、ピボットテーブルのスタイル（値はセルとして描く）、スパークライン、フォームコントロール、旧形式（VML）の図形、セル内の画像、データの入力規則のドロップダウン、印刷の設定（ヘッダー・フッター・改ページ）。暗号化されたブックと旧形式の .xls は読めない。
+- **未対応**: 右から左のシート（左から右に描く）、`timePeriod` などの評価しない条件付き書式、マクロシート・ダイアログシート（ここまでは警告を出す）、ピボットテーブルのスタイル（値はセルとして描く）、スパークライン、フォームコントロール、旧形式（VML）の図形、セル内の画像、データの入力規則のドロップダウン、印刷の設定（ヘッダー・フッター・改ページ）。旧形式の .xls は読めない（暗号化されたブックは §3.7 のとおり復号してから読む）。
 
 テスト用のブックは openpyxl で生成し（`npm run test:xlsx:gen`、`test/xlsx/gen.py`。openpyxl が書かない DrawingML の図形は後から描画パートに足す）、変換結果は `testdata/xlsx/` に置いて golden テストで描画を比較する。フォントは PowerPoint のテストと同じ M PLUS 1p のサブセットだけを使う。開発中は Apache POI のテストデータ（Excel などで作られた実ファイル 355 本）をすべて変換し、壊れた zip と暗号化されたファイル以外が内部エラーなしに変換できること、条件付き書式や表示形式の見本が期待どおりに描かれることを確かめた。
 
-## 3.7 CSV・TSV → BDF 変換器（converter/csv）の構造
+## 3.7 パスワードで保護された入力
+
+保護された入力は、変換のときだけパスワードで開き、出力の BDF を同じパスワードで暗号化する（spec §3.5）。パスワードを知っている人だけが読める、という元のファイルの性質をプレビューでも保つためで、サーバーはパスワードを保存しない。表示のときはブラウザが入力されたパスワードで復号するので、サーバーは閲覧時にパスワードに関わらず、暗号化した BDF をそのまま配ればよい。
+
+- **Office**: 暗号化された .pptx/.docx/.xlsx は ZIP ではなく、複合ファイル（CFB）の中に `EncryptionInfo`（鍵の導き方）と `EncryptedPackage`（暗号化された ZIP）を持つ。`converter` が形式の判別より前にこれを見つけて復号し（`converter/internal/cfb`、`converter/internal/offcrypto`）、復号した ZIP で形式を判別する。暗号化の方式は Agile（Office 2010 以降。既定は AES-256、SHA-512 を 10 万回）と Standard（Office 2007。AES-128、SHA-1 を 5 万回）。Agile の HMAC（`dataIntegrity`）が合わないときは、ZIP 自身にも CRC があるので変換は続けて警告を出す。権利管理（IRM）と証明書による保護、Extensible 暗号化、AES 以外の暗号は扱わない。テスト用のファイルは msoffcrypto-tool で作り（`test/pptx/gen_encrypted.py`）、msoffcrypto-tool で復号できることを確かめてから保存している。
+- **PDF**: pdfcpu に復号させる。まずパスワードなしで開き、ユーザーパスワードが要るときだけ `Options.Password` で開き直す（オーナーパスワードでも開ける）。オーナーパスワードだけの PDF はパスワードなしで開けるので、保護されたものとは扱わない。
+- **API**: `converter.Options.Password` で開き、`Result.Protected` が「パスワードがなければ開けなかった」ことを表す。これが立っていたら `bdf.NewPasswordLock` で同じパスワードのロックを作り、`Document.Lock` に設定して書き出す。パスワードの過不足は `converter.ErrPasswordRequired` / `ErrWrongPassword`。`converter.CheckPassword` は変換せずにパスワードを確かめるので、アップロードを受けたときにすぐ答えを返せる。
+- **CLI**: `bdf generate` はパスワードを `-password-file`（`-` で標準入力）か `$BDF_PASSWORD` から読む（コマンドライン引数はほかのユーザーから見えるので受け付けない）。出力は `-encrypt auto`（既定。入力が保護されていたとき）、`always`、`never` で暗号化する。`ls`・`manifest`・`disasm`・`extract` は `$BDF_PASSWORD` で暗号化した文書を開き、`split`・`join` は封印された Part をそのままコピーするのでパスワードが要らない。`encrypt`・`decrypt` は既存の BDF を暗号化・復号する。
+- **ビューア**: `BdfDocument.open(source, { password })` がパスワードを受け取り、なければ `BdfPasswordError("required")`、違えば `("wrong")` を投げる。Worker は開けなかったソースを持ったまま `unlock` を待つので、パスワードを聞き直してもファイルを取り直さない。
+
+暗号化した文書はサーバー側の全文検索の対象にしない（索引が平文になるため）。文書の中の検索は、テキスト索引 Part も暗号化されて BDF の中にあるので、復号した後にブラウザでこれまでどおり動く。サムネイルのように平文が要るものは、サーバーが変換のとき（パスワードと平文を持っている間）に作る。
+
+## 3.8 Visio → BDF 変換器（converter/visio）の構造
+
+`converter/visio` は Visio 2013 以降のパッケージ（.vsdx、.vsdm、.vstx、.vstm。OPC の zip で [MS-VSDX]）と、Visio 2003〜2010 の XML 図面（.vdx、.vtx。DatadiagramML の 1 ファイル）を読む。旧バイナリの .vsd は読まない（.vsdx に保存し直してもらう）。どちらの形式も同じ ShapeSheet のモデルに読み込む。シート（図形・マスターの図形・スタイルシート・ページシート）はセル（計算済みの値 `V`、式 `F`、表示単位 `U`）と、行を持つセクションからなる。.vsdx は `Cell`・`Section`・`Row` 要素をそのまま読む。.vdx はセルがその名前の要素で、`XForm`・`Line`・`Fill` などのまとまりに入っている。単独のセルのまとまりはシートのセルに平たく展開し、添字や名前のある行（`Char IX`、`Geom IX`、`Prop NameU` など）は対応するセクション（Character、Geometry、Property）の行にする。テキストは文字と書式のマーカーが交互に並ぶ混在内容なので、`ooxml.Node` が文字と子要素の順序を覚えるようにした（`Segments`）。.vdx はパッケージを持たないので、`ooxml.Package` は nil でも空のパッケージとして振る舞う。
+
+- **継承**: 図形は持たないセルを、インスタンス元のマスター図形（グループの子は `MasterShape` で対応付け）、スタイルシートの順に探す。スタイルは `LineStyle`・`FillStyle`・`TextStyle` がそれぞれ線・塗りと効果・テキストのセルを受け持ち、親スタイルをたどってルートの "No Style" に至る。ジオメトリはセクションを `IX` で、行を `IX` で重ね、`Del` の付いた行とセクションは除く。複数の図形からなるマスターのインスタンスはそれらを子図形として持ち、子図形を書いていないインスタンスはマスターの子図形をそのまま持つ。壊れた文書の循環は深さで打ち切る。
+- **式**: Visio が保存した計算済みの値を使い、式は評価しない。ただし Visio 以外のプログラムが作った図面には、マスターのインスタンスの大きさを変えたのに、その大きさに合ったジオメトリを書いていないものがある。そのため、インスタンスが継承したセルのうち式が `Width`・`Height` の四則演算だけのものは、インスタンスの大きさで計算し直す。Visio の図面はこれらの値をインスタンスに持つので、結果は変わらない。テキストブロックの幅が `TEXTWIDTH(TheText)` のもの（ラベルやコネクタの文字）は、Visio が自分のフォントで測った幅なので、折り返さずに置く。
+- **テーマ**（[MS-VSDX] §2.2.7.4）: Visio 2013 以降のテーマ由来のセルは `V="Themed"` と書かれていて、値を持たない。これを図形の QuickStyle セルとテーマから解決する。色の添字は、0〜8 がテーマの dk1・lt1・accent1〜6・背景色、100〜106 と 200〜206 がページの選んだバリエーションの色（varColor1〜7）を指す。線・塗り・効果・フォントの添字 1〜6 は書式スキームのリストを、100〜103 はバリエーションのスタイルスキームを経由してリストを指す。コネクタ（"Connector" という名前のスタイルを継承する図形、または `QuickStyleType` 3）はコネクタ用の書式スキームを使う。線は `lnStyleLst`（幅・色・端・破線）と Visio 拡張の `lineStyles`（矢印・角の丸め・線種。添字 0 の項目から始まる）から、塗りは `fillStyleLst`（`phClr` をテーマ色に置き換えた単色・グラデーション）と `fillStyles` から、影は `effectStyleLst` の `outerShdw` から、文字の色とスタイルは `fontStylesGroup` から求める。色の解決（`schemeClr`、`lumMod`・`shade` などの修飾）は `drawingml.ResolveColor` を使う。`QuickStyleVariation` の、背景と明るさが近い色を差し替える規則も実装した。`ThemeIndex` が 0（テーマなし）の図形はルートのスタイルシートの値を使う。これらの解決は、Visio が保存したサムネイルの色（200 番台のバリエーション色、非単色のバリエーション）と突き合わせて確かめた。
+- **ページとレイヤー**: 前景ページごとに用紙の大きさ（`PageWidth` × `PageScale`/`DrawingScale`）のページを作り、背景ページ（`BackPage` の連鎖）を `background` レイヤー、ページの図形を `body` レイヤーにする。背景ページはどのページでも同じ Object になるので、内容アドレスで 1 回だけ格納される。座標は Visio の内部単位（インチ、y 軸が上向き）で、図形の局所座標は `PinX`/`PinY`・`LocPinX`/`LocPinY`・`Angle`・`FlipX`/`FlipY` でグループ（`DisplayMode` で自分の描画をメンバーの前か後ろに置く）、ページの順に写す。レイヤーの `Visible` が 0 のレイヤーにだけ属する図形は描かない。
+- **ジオメトリ**: `MoveTo`・`LineTo`・`ArcTo`（弓の高さが正なら進行方向の右に膨らむ）・`EllipticalArcTo`（楕円を円に戻す空間で 3 点を通る円弧を求める）・`Ellipse`（共役な半径 2 本）・`PolylineTo`・`NURBSTo`・`SplineStart`/`SplineKnot`（Visio が格納する節点を両端で固定した節点ベクトルに補って標本化する）・相対座標の `Rel*` 行をパスにする。`MoveTo` で始まらないセクションは最後の点から始める。閉じた図形だけを（セクションごとに偶奇規則で）塗り、`NoFill`・`NoLine`・`NoShow` に従う。
+- **塗り・線・影**: 塗りは単色（透明度つき）、パターン 2〜24（[MS-VSDX] の図から起こした 8×8 のタイル）、グラデーション（`FillGradient` の分岐点。線形は `FillGradientAngle`、放射状と矩形は 13 通りの起点。矩形は円で近似）、旧版のグラデーション（パターン 25〜40）。線は幅、色と透明度、線種 2〜23（仕様の図から測った破線で、線幅に比例させる）、端（丸・角・延長）、`Rounding`（多角形の角を丸める）、矢印 45 種を描く。矢印の形は仕様の図から自前で定義した。先端を覆う矢印の下では線を切り詰める。影は `ShdwPattern`、`ShapeShdwShow`、オフセット（種類 0 はページの既定の影）、ぼかしを SHADOW で描く。
+- **線の飛び越し**: Visio は飛び越しを保存せず、ページを描くときにコネクタの交差から置く（[MS-VSDX] でも関係するセルは「式の評価にだけ使う」とされている）。同じことをページを描く前に行う。ルーティング可能な 1-D 図形（`ObjType`）の経路をページ座標で集め（曲線は折れ線にして交差の相手にだけ使う）、交点ごとに飛ぶ側を決める。ページの `LineJumpCode` は水平な線（既定）、垂直な線、上または下に描かれた線（最後に経路を引いた線は上の線で代える）を選ぶ。コネクタの `ConLineJumpCode` は常に飛ぶ、飛ばない、相手が飛ぶ、どちらも飛ばないを選び、ページの規則より優先される。形は `LineJumpStyle`（コネクタの `ConLineJumpStyle` が優先）の円弧・切れ目・四角・2〜7 辺の多角形、幅は `LineJumpFactorX` × `LineToLineX`（垂直な線は Y）、高さは幅の半分とする。向きは水平な線が上か下（`ConLineJumpDirX`、`PageLineJumpDirX`）、垂直な線が左か右。重なる飛び越しは 1 つにまとめ、切れ目は図形を分ける。角の近くで幅が収まらない交差は飛ばない。
+- **画像と埋め込み**: `ForeignData` の PNG・JPEG・GIF・BMP・TIFF・DIB（.vdx は base64）を `ImgOffsetX` などの矩形に置き、図形の枠で切り抜く。EMF/WMF は `converter/internal/metafile` で再生し、OLE オブジェクトはプレビュー画像（埋め込みパートからの画像リレーションシップ）を描く。
+- **テキスト**: `Text` 要素の `cp`・`pp`・`tp` マーカーが Character・Paragraph・Tabs の行を選び、`fld` は最後に表示された文字列を持つ。`\n` で段落、U+2028 で段落内の改行とする。テキストは DrawingML のテキスト本体（`bodyPr` の余白・垂直位置・`TextDirection` 1 の `eaVert`、`pPr` の揃え・インデント・行間・段落前後の間隔・箇条書き・タブ、`rPr` の大きさ・太字・斜体・下線・取り消し線・大文字化・上付き・下付き・字間・色・フォント・言語）に写し、`drawingml.Drawing.LayoutText` でレイアウトする。そのため禁則、フォントの解決と埋め込み、構造の MARK は PowerPoint と同じになる。行間の `SpLine` は、負ならその段落で最大の文字の大きさの倍数として扱う。テキストブロックは `TextXForm` のセルで図形の中に置く。文字は鏡像にしない（`FlipY` は上下逆さになる）。`TextBkgnd` は行の範囲（`TextBody.Bounds`）を塗る。言語は `LangID`（古い図面の Windows ロケール ID も読む）、図面の言語はコアプロパティ、なければルートのスタイルの言語とする。ハイパーリンクは図形の範囲の LINK にする。`Address` の URL（http、https、mailto）と、`SubAddress` のページ名（`#page=N`）を扱う。
+- **未対応**: .vsd、インク（警告を出す）。面取り・光彩・反射・ぼかし・3D・スケッチの効果、線のグラデーション、文字の横幅の拡大縮小（`FontScale`）、右インデント、右揃え・中央揃え・小数点揃えのタブは描かない。
+
+テスト用の図面は `test/visio/gen.py`（標準ライブラリだけ）で 1 つのモデルから両形式に書き出す（`npm run test:visio:gen`）。shapes.vsdx はテーマ、ジオメトリの各行、塗り・線・矢印、テキスト、線の飛び越しを含む。flow.vsdx と flow.vdx は同じフローチャートで、Go のテストは両者が同じ Object になることを確かめる。変換結果は `testdata/visio/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は Apache POI と libvisio のテストデータでも変換を確かめた。比べる相手には、Visio が図面に保存するサムネイル（`docProps/thumbnail.emf`）を `converter/emf` で描いたものを使った。ただし手で編集されたテストファイルには、中身と合わない古いサムネイルもあった。
+
+## 3.9 CSV・TSV → BDF 変換器（converter/csv）の構造
 
 `converter/csv` はテキストの表を読み、Excel で開いたときと同じ見た目の `sheet` View を 1 枚作る。レイアウトと描画は `converter/xlsx` の `ConvertGrid` に任せる（書式のない値の表 `xlsx.Grid` を新規ブックの既定の書式で描く。セルのレイアウト、はみ出し、折り返し、Tile 化、読み上げ用の MARK は §3.6 と同じもの）。このパッケージが受け持つのは、ファイルに書かれていないことの推定である。推定の結果はどれも `-param` で上書きでき、変換の要約（`Result`、CLI の最終行）に出る。
 
@@ -201,7 +230,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **値**: Excel が数値として読むもの（符号、桁区切り、小数点のカンマ、指数、パーセント、通貨記号、負数の括弧）と日付・時刻（`2024-01-02`、`2024/1/2`、`1/2/2024`、`2-Jan-2024`、`2024年1月2日`、`令和6年1月2日`、`R6.1.2`、`9:30`、ISO 8601 の日時）は右に、ほかは左に揃える。表記は書かれたまま（Excel は `1.50` を `1.5` に、`2024/1/2` を日付の表示形式に変える）。先頭が 0 の整数（`007`、郵便番号、コード）は Excel と違って文字列のままにし、そういう値を含む数字だけの列はほかの整数も文字列にして揃える。数値は隣のセルにはみ出さない（列に収まらなければ `###`）。
 - **見出し行**: 先頭レコードの値とその下の値（最大 1,000 レコード）を列ごとに比べて点数を付ける。数値・日付・真偽値・メールアドレス・URL の列の上の文字列は見出し（+2）、同じ種類の値はデータ（−2。ただし 1900〜2100 の 4 桁の整数がほかの数値の上にあれば年の見出し）。文字列の列では、下にも現れる値はデータ（−1）、長さのそろったコードの上の違う長さの名前は見出し（+1）。先頭レコード自体では、空の値（左上の角を除く）、数値、重複する値を減点し、すべて異なる文字列なら少し加点する（文字列だけのファイルにも多くは見出しがある）。合計が正なら見出し行とする。
 - **見た目**（`xlsx.Grid`）: フォントは新規ブックの既定の 11 pt（日本語なら游ゴシック、韓国語は맑은 고딕、中国語は等线・新細明體、ほかは Calibri）。言語は日本語・韓国語・中国語の文字コードか、かな・ハングルの有無から決め、漢字だけのセルの言語にもする。枠線を表示し、列幅は値の幅に左右の余白と 1 ピクセルずつを足した幅に合わせる（既定の幅より狭くはせず、文字列は数字 50 文字分まで。それより長い文字列は空いた隣のセルにはみ出すか、切れる）。改行を含む値は折り返して行を高くする。見出し行は太字にして固定し（ウィンドウ枠の固定）、MARK CELL に ` col` を付けて列見出しにする。`-param table=TableStyleMedium2` などで組み込みのテーブルスタイルの表にもできる（縞模様の行、見出し行のフィルターボタン。ボタンの分だけ見出しの列を広げる。テーマ色は Office の既定のテーマ）。シート名は Excel と同じくファイル名から拡張子を除いたもの（`converter.Options.FileName`）。
-- **形式の判別**: BOM か推定した文字コードで先頭 64 KiB を復号し、制御文字がほとんどなく、2 レコード以上がそろって 2 つ以上のフィールドに分かれれば CSV とする（PDF、zip、XML・HTML は除く）。1 行だけ・1 列だけのファイルは中身から判別できないので、`bdf generate` は判別できなかったファイルの形式を拡張子（`.csv`、`.tsv`、`.tab`）から決める。
+- **形式の判別**: BOM か推定した文字コードで先頭 64 KiB を復号し、制御文字がほとんどなく、2 レコード以上がそろって 2 つ以上のフィールドに分かれれば CSV とする（PDF、zip、XML・HTML は除く）。1 行だけ・1 列だけのファイルは中身から判別できないので、`converter.Convert` は中身から判別できなかった入力の形式を `Options.FileName`（`ConvertFile` が設定する）の拡張子（`.csv`、`.tsv`、`.tab`）から決める。
 - **上限**: Excel と同じく 1,048,576 行・16,384 列まで（超えた分は警告して除く）。ファイルは全体をメモリに読み、UTF-8 に直してから分割する。
 
 テスト用のファイル（`converter/csv/testdata/`: Excel の「CSV UTF-8」と同じく BOM と CRLF の付いた basic.csv と、Shift_JIS の japanese.tsv）の変換結果は `testdata/csv/` に置き、golden テストで描画を比較する。フォントは Excel と同じく PowerPoint のテストのものだけを使う。
@@ -278,8 +307,9 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 2. **フィクスチャと golden テスト**: Go でフィクスチャ生成 → Playwright でスクリーンショット比較。
 3. **PDF → BDF**: 最初の実用変換（実装済み、§3.1）。
 4. **ビューア**: Worker + OffscreenCanvas、ページ/連続/シートの 3 モード、テキストレイヤー、検索。
-5. **XLSX → BDF**: 直接変換、Tile 化、固定ペイン（実装済み、§3.6）。CSV・TSV も同じ描画で（実装済み、§3.7）。
+5. **XLSX → BDF**: 直接変換、Tile 化、固定ペイン（実装済み、§3.6）。CSV・TSV も同じ描画で（実装済み、§3.9）。
 6. **PPTX 直接変換**: マスター共有の本領（実装済み、§3.4）。
+7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 
 ## 9. リポジトリ構成（案）
 
@@ -287,7 +317,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 bdf/
 ├── docs/              spec.md, design.md
 ├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
-├── cmd/bdf/           CLI: generate / ls / manifest / disasm / extract / split / join / demo
+├── cmd/bdf/           CLI: generate / ls / manifest / disasm / extract / split / join / encrypt / decrypt / demo
 ├── imgconv/           画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
 ├── woff2/             TrueType/OpenType → WOFF2（glyf 変換と Brotli）
 ├── converter/         入力形式の登録（static plugin）、共通のオプション、形式の判別、ページ指定
@@ -296,17 +326,19 @@ bdf/
 │   ├── xlsx/          Excel → BDF 変換器（testdata/ にテスト用ブック。フォントは pptx のものを使う）
 │   ├── csv/           CSV・TSV → BDF 変換器（描画は xlsx。testdata/ にテスト用ファイル）
 │   ├── emf/           Windows メタファイル（.emf、.wmf）→ BDF 変換器
+│   ├── visio/         Visio（.vsdx、.vdx）→ BDF 変換器（testdata/ にテスト用図面）
 │   ├── all/           すべての形式を登録する
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
 │                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
-│                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）
+│                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）、
+│                      暗号化された Office 文書を開く cfb（複合ファイル）と offcrypto（Agile / Standard 暗号化の復号）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）
-├── testdata/          Go が生成した demo.bdf / demo-split と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

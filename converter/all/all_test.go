@@ -25,6 +25,12 @@ func TestDetect(t *testing.T) {
 	w, _ = zw.Create("word/document.xml")
 	w.Write([]byte("<w:document/>"))
 	zw.Close()
+	var vsdx bytes.Buffer
+	zw = zip.NewWriter(&vsdx)
+	w, _ = zw.Create("visio/document.xml")
+	w.Write([]byte("<VisioDocument/>"))
+	zw.Close()
+	vdx := []byte(`<?xml version='1.0' encoding='utf-8' ?><VisioDocument xmlns='http://schemas.microsoft.com/visio/2003/core'>`)
 	emf := make([]byte, 88)
 	binary.LittleEndian.PutUint32(emf, 1)
 	copy(emf[40:], " EMF")
@@ -38,6 +44,8 @@ func TestDetect(t *testing.T) {
 		{"pptx", pptx.Bytes(), "pptx"},
 		{"xlsx", xlsx.Bytes(), "xlsx"},
 		{"docx", docx.Bytes(), ""},
+		{"vsdx", vsdx.Bytes(), "visio"},
+		{"vdx", vdx, "visio"},
 		{"emf", emf, "emf"},
 		{"wmf", wmf, "emf"},
 		{"csv", []byte("id,name\n1,Ann\n2,Bob\n"), "csv"},

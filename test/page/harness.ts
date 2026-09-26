@@ -55,6 +55,10 @@ export const CASES: Case[] = [
   { name: "xlsx-basic-overflow", src: "/testdata/xlsx/basic.bdf", kind: "sheet", view: "sheet3", viewport: { x: 1880, y: 0, w: 360, h: 120 }, scale: 1.5 },
   { name: "xlsx-features-1", src: "/testdata/xlsx/features.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 760, h: 600 }, scale: 1 },
   { name: "xlsx-features-chart", src: "/testdata/xlsx/features.bdf", kind: "page", view: "sheet2", page: 0, scale: 0.75 },
+  // Visio drawings rendered by converter/visio with the test fonts; see test/visio.
+  { name: "visio-shapes-1", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "visio-shapes-2", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "visio-flow-1", src: "/testdata/visio/flow.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
   // CSV and TSV files rendered by converter/csv with the test fonts; see test/csv.
   { name: "csv-basic-1", src: "/testdata/csv/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1240, h: 240 }, scale: 1 },
   { name: "csv-japanese-1", src: "/testdata/csv/japanese.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 460, h: 180 }, scale: 1.5 },
