@@ -3,8 +3,9 @@
 // format detection and page selection.
 //
 // The converters themselves are its subpackages (converter/pdf,
-// converter/pptx, converter/emf). Each registers its format when it is
-// imported, so a program supports the formats whose packages it links in:
+// converter/pptx, converter/xlsx, converter/emf). Each registers its format
+// when it is imported, so a program supports the formats whose packages it
+// links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -67,7 +68,8 @@ type Param struct {
 type Options struct {
 	// Title overrides the document title.
 	Title string
-	// Pages selects 1-based pages (or slides); nil converts all of them.
+	// Pages selects 1-based pages (or slides, or sheets); nil converts all
+	// of them.
 	Pages []int
 	// Images controls whether raster images are re-encoded (see imgconv).
 	// The zero value keeps images as they are.

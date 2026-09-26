@@ -24,7 +24,8 @@ let generation = 0;
 
 /** Search state for the current view. */
 const found = { query: "", hits: [] as SearchHit[], rects: [] as HitRect[][], index: -1 };
-const sheetCanvases = new WeakMap<View, { canvas: HTMLCanvasElement; viewport: () => { x: number; y: number } }>();
+/** Shown sheets: redraw (with the search highlights) and scroll a hit into view. */
+const sheetViews = new WeakMap<View, { redraw: () => void; reveal: (r: { x: number; y: number }) => void }>();
 const dpr = () => window.devicePixelRatio || 1;
 
 /** Announced to screen readers (a polite live region). */
@@ -278,13 +279,12 @@ async function runSearch(query: string, step: number) {
     const old = el.querySelector(".hlLayer");
     if (old) old.replaceWith(highlightLayer(Number(el.dataset.index)));
   }
-  const sheet = sheetCanvases.get(current);
-  if (sheet) drawSheetHighlights(sheet.canvas, sheet.viewport());
+  sheetViews.get(current)?.redraw();
   // scroll to the current hit
   const rect = found.rects[found.index]?.[0];
   if (!rect) return;
   if (current.kind === "sheet") {
-    stage.scrollTo({ left: Math.max(0, rect.x * zoom - stage.clientWidth / 2), top: Math.max(0, rect.y * zoom - stage.clientHeight / 2), behavior: "smooth" });
+    sheetViews.get(current)?.reveal(rect);
   } else {
     const el = stage.querySelector<HTMLDivElement>(`.page[data-index="${rect.a}"]`);
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -324,19 +324,6 @@ function highlightLayer(pageIndex: number): HTMLDivElement {
     }
   });
   return layer;
-}
-
-/** Sheets: paint the hits over the bitmap of the visible region. */
-function drawSheetHighlights(canvas: HTMLCanvasElement, viewport: { x: number; y: number }) {
-  const ctx = canvas.getContext("2d")!;
-  const s = zoom * dpr();
-  ctx.save();
-  ctx.setTransform(s, 0, 0, s, -viewport.x * s, -viewport.y * s);
-  found.rects.forEach((rects, hi) => {
-    ctx.fillStyle = hi === found.index ? "rgba(255,120,0,.5)" : "rgba(255,210,0,.45)";
-    for (const r of rects) ctx.fillRect(r.x, r.y, r.w, r.h);
-  });
-  ctx.restore();
 }
 
 const BAND = 800;
@@ -394,26 +381,84 @@ function showContinuous(v: View) {
   stage.appendChild(list);
 }
 
+/** Row or column sizes of a sheet, from the manifest's run-length list. */
+class SheetAxis {
+  readonly count: number;
+  readonly total: number;
+  constructor(private runs: [number, number][] = []) {
+    this.count = runs.reduce((a, [n]) => a + n, 0);
+    this.total = runs.reduce((a, [n, s]) => a + n * s, 0);
+  }
+  /** Where entry i starts. */
+  pos(i: number): number {
+    let p = 0;
+    for (const [n, s] of this.runs) {
+      if (i <= n) return p + i * s;
+      p += n * s;
+      i -= n;
+    }
+    return p;
+  }
+  /** Call fn for the entries with a size that overlap [from, to). */
+  each(from: number, to: number, fn: (i: number, start: number, size: number) => void) {
+    let i = 0, p = 0;
+    for (const [n, s] of this.runs) {
+      if (s > 0 && p + n * s > from) {
+        for (let k = Math.max(0, Math.floor((from - p) / s)); k < n; k++) {
+          const start = p + k * s;
+          if (start >= to) return;
+          fn(i + k, start, s);
+        }
+      }
+      p += n * s;
+      i += n;
+    }
+  }
+}
+
+/** Column letters: A … Z, AA … */
+function columnLabel(c: number): string {
+  let s = "";
+  for (c++; c > 0; c = Math.floor((c - 1) / 26)) s = String.fromCharCode(65 + ((c - 1) % 26)) + s;
+  return s;
+}
+
+const SHEET_HEADER = 20;
+
 /**
- * Sheet: a scroll area the size of the sheet with one sticky canvas showing
- * the visible region, and a text layer (a table of the cells, for screen
- * readers, selection and copy) for the visible region and a screen around it.
+ * Sheet: a scroll area the size of the sheet with one sticky canvas that
+ * shows the column and row headers and the visible region, split into the
+ * frozen panes of the view (each rendered by the worker as a region of its
+ * own). A text layer (a table of the cells, for screen readers, selection
+ * and copy) covers the visible region and a screen around it; the cells of
+ * the frozen panes are pinned with a translation that follows the scroll.
  */
 function showSheet(v: View) {
-  const sum = (runs?: [number, number][]) => (runs ?? []).reduce((a, [n, s]) => a + n * s, 0);
-  const count = (runs?: [number, number][]) => (runs ?? []).reduce((a, [n]) => a + n, 0);
-  const width = sum(v.cols), height = sum(v.rows);
+  const cols = new SheetAxis(v.cols), rows = new SheetAxis(v.rows);
+  const fc = Math.min(v.freeze?.cols ?? 0, cols.count), fr = Math.min(v.freeze?.rows ?? 0, rows.count);
+  const fw = cols.pos(fc), fh = rows.pos(fr); // frozen extent in units
+  const hw = Math.max(32, String(rows.count).length * 7 + 14), hh = SHEET_HEADER; // headers in CSS px
   const wrap = document.createElement("div");
   wrap.className = "sheet";
-  wrap.style.width = `${width * zoom}px`;
-  wrap.style.height = `${height * zoom}px`;
+  wrap.style.width = `${hw + cols.total * zoom}px`;
+  wrap.style.height = `${hh + rows.total * zoom}px`;
   const canvas = document.createElement("canvas");
   canvas.setAttribute("aria-hidden", "true");
-  wrap.appendChild(canvas);
+  const layerHost = document.createElement("div");
+  layerHost.className = "sheetText";
+  layerHost.style.cssText = `left: ${hw}px; top: ${hh}px; width: ${cols.total * zoom}px; height: ${rows.total * zoom}px`;
+  wrap.append(canvas, layerHost);
   stage.appendChild(wrap);
 
   const gen = generation;
-  const sheet = { rows: count(v.rows), cols: count(v.cols), headerRows: v.freeze?.rows ?? 0, headerCols: v.freeze?.cols ?? 0 };
+  const sheet = { rows: rows.count, cols: cols.count, headerRows: fr, headerCols: fc };
+  // cells of the frozen panes stay where they are while the sheet scrolls
+  const pin = (span: HTMLSpanElement, r: { x: number; y: number }) => {
+    const x = r.x < fw, y = r.y < fh;
+    if (!x && !y) return;
+    span.style.translate = `${x ? "var(--sx)" : "0px"} ${y ? "var(--sy)" : "0px"}`;
+    span.style.zIndex = "1";
+  };
   let covered: { x: number; y: number; w: number; h: number } | undefined;
   let textTimer: ReturnType<typeof setTimeout> | undefined;
   const updateText = (vp: { x: number; y: number; w: number; h: number }) => {
@@ -422,17 +467,93 @@ function showSheet(v: View) {
     clearTimeout(textTimer);
     textTimer = setTimeout(async () => {
       const region = { x: Math.max(0, vp.x - vp.w), y: Math.max(0, vp.y - vp.h), w: vp.w * 3, h: vp.h * 3 };
-      const content: TextContent = await client.sheetContent(v.id, region);
+      // the frozen panes along the region
+      const frozen = [{ x: region.x, y: 0, w: region.w, h: fh }, { x: 0, y: region.y, w: fw, h: region.h }, { x: 0, y: 0, w: fw, h: fh }];
+      const content: TextContent = await client.sheetContent(v.id, [region, ...frozen]);
       if (gen !== generation) return;
       covered = region;
-      const layer = buildTextLayer(content, zoom, { ...layerOptions(), sheet });
-      const old = wrap.querySelector(".bdfTextLayer");
-      if (old) old.replaceWith(layer); else wrap.appendChild(layer);
+      const layer = buildTextLayer(content, zoom, { ...layerOptions(), sheet, onSpan: pin });
+      layerHost.replaceChildren(layer);
     }, 150);
   };
 
-  let last = { x: 0, y: 0 };
-  sheetCanvases.set(v, { canvas, viewport: () => last });
+  type Pane = { src: { x: number; y: number; w: number; h: number }; dx: number; dy: number };
+  let panes: Pane[] = [];
+  let bitmaps: ImageBitmap[] = [];
+  const paint = () => {
+    const d = dpr();
+    const vw = Math.min(stage.clientWidth, hw + cols.total * zoom), vh = Math.min(stage.clientHeight, hh + rows.total * zoom);
+    canvas.width = Math.ceil(vw * d);
+    canvas.height = Math.ceil(vh * d);
+    canvas.style.width = `${vw}px`;
+    canvas.style.height = `${vh}px`;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    panes.forEach((p, i) => ctx.drawImage(bitmaps[i], p.dx * d, p.dy * d, p.src.w * zoom * d, p.src.h * zoom * d));
+    // search hits, clipped to each pane
+    ctx.save();
+    ctx.scale(d, d);
+    for (const p of panes) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(p.dx, p.dy, p.src.w * zoom, p.src.h * zoom);
+      ctx.clip();
+      found.rects.forEach((rects, hi) => {
+        ctx.fillStyle = hi === found.index ? "rgba(255,120,0,.5)" : "rgba(255,210,0,.45)";
+        for (const r of rects) ctx.fillRect(p.dx + (r.x - p.src.x) * zoom, p.dy + (r.y - p.src.y) * zoom, r.w * zoom, r.h * zoom);
+      });
+      ctx.restore();
+    }
+    drawHeaders(ctx, vw, vh);
+    ctx.restore();
+  };
+  const drawHeaders = (ctx: CanvasRenderingContext2D, vw: number, vh: number) => {
+    const sx = stage.scrollLeft, sy = stage.scrollTop;
+    ctx.fillStyle = "#f3f4f6";
+    ctx.fillRect(0, 0, vw, hh);
+    ctx.fillRect(0, 0, hw, vh);
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeStyle = "#c8ccd2";
+    ctx.lineWidth = 1;
+    const header = (x: number, y: number, w: number, h: number, label: string) => {
+      ctx.fillStyle = "#444";
+      ctx.fillText(label, x + w / 2, y + h / 2);
+      ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
+    };
+    // frozen columns, then the scrolled ones clipped to their pane
+    const colsIn = (from: number, to: number, shift: number, clipX: number) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(clipX, 0, vw - clipX, hh);
+      ctx.clip();
+      cols.each(from, to, (c, start, size) => header(hw + start * zoom - shift, 0, size * zoom, hh, columnLabel(c)));
+      ctx.restore();
+    };
+    colsIn(0, fw, 0, hw);
+    colsIn(fw + sx / zoom, fw + sx / zoom + (vw - hw) / zoom, sx, hw + fw * zoom);
+    const rowsIn = (from: number, to: number, shift: number, clipY: number) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, clipY, hw, vh - clipY);
+      ctx.clip();
+      rows.each(from, to, (r, start, size) => header(0, hh + start * zoom - shift, hw, size * zoom, String(r + 1)));
+      ctx.restore();
+    };
+    rowsIn(0, fh, 0, hh);
+    rowsIn(fh + sy / zoom, fh + sy / zoom + (vh - hh) / zoom, sy, hh + fh * zoom);
+    ctx.fillStyle = "#e5e7eb";
+    ctx.fillRect(0, 0, hw, hh);
+    // the edges of the frozen panes
+    ctx.strokeStyle = "#8a9099";
+    ctx.beginPath();
+    if (fc > 0) { ctx.moveTo(hw + fw * zoom + 0.5, 0); ctx.lineTo(hw + fw * zoom + 0.5, vh); }
+    if (fr > 0) { ctx.moveTo(0, hh + fh * zoom + 0.5); ctx.lineTo(vw, hh + fh * zoom + 0.5); }
+    ctx.stroke();
+  };
+
   let pending = false;
   const draw = async () => {
     if (pending) return;
@@ -440,21 +561,43 @@ function showSheet(v: View) {
     await new Promise((r) => requestAnimationFrame(r));
     pending = false;
     const vw = stage.clientWidth, vh = stage.clientHeight;
-    const viewport = { x: stage.scrollLeft / zoom, y: stage.scrollTop / zoom, w: Math.min(vw, width * zoom - stage.scrollLeft) / zoom, h: Math.min(vh, height * zoom - stage.scrollTop) / zoom };
+    const sx = stage.scrollLeft, sy = stage.scrollTop;
+    layerHost.style.setProperty("--sx", `${sx}px`);
+    layerHost.style.setProperty("--sy", `${sy}px`);
+    // the scrolled region starts where the frozen panes end
+    const mx = fw + sx / zoom, my = fh + sy / zoom;
+    const pw = Math.max(0, Math.min((vw - hw) / zoom - fw, cols.total - mx)), ph = Math.max(0, Math.min((vh - hh) / zoom - fh, rows.total - my));
+    const next: Pane[] = [
+      { src: { x: mx, y: my, w: pw, h: ph }, dx: hw + fw * zoom, dy: hh + fh * zoom },
+      { src: { x: mx, y: 0, w: pw, h: fh }, dx: hw + fw * zoom, dy: hh },
+      { src: { x: 0, y: my, w: fw, h: ph }, dx: hw, dy: hh + fh * zoom },
+      { src: { x: 0, y: 0, w: fw, h: fh }, dx: hw, dy: hh },
+    ].filter((p) => p.src.w > 0 && p.src.h > 0);
     const t0 = performance.now();
-    const bmp = await client.sheet(v.id, viewport, zoom * dpr());
-    canvas.width = bmp.width;
-    canvas.height = bmp.height;
-    canvas.style.width = `${viewport.w * zoom}px`;
-    canvas.style.height = `${viewport.h * zoom}px`;
-    canvas.getContext("2d")!.drawImage(bmp, 0, 0);
-    bmp.close();
-    last = viewport;
-    drawSheetHighlights(canvas, viewport);
-    updateText(viewport);
-    setTiming(`sheet region ${Math.round(viewport.x)},${Math.round(viewport.y)} rendered in ${(performance.now() - t0).toFixed(0)} ms`);
+    const bmps = await Promise.all(next.map((p) => client.sheet(v.id, p.src, zoom * dpr())));
+    if (gen !== generation) return bmps.forEach((b) => b.close());
+    bitmaps.forEach((b) => b.close());
+    panes = next;
+    bitmaps = bmps;
+    paint();
+    updateText(next[0]?.src ?? { x: 0, y: 0, w: 1, h: 1 });
+    setTiming(`sheet region ${Math.round(mx)},${Math.round(my)} rendered in ${(performance.now() - t0).toFixed(0)} ms`);
   };
+  sheetViews.set(v, {
+    redraw: () => { if (bitmaps.length) paint(); },
+    reveal: (r) => {
+      const pw = stage.clientWidth - hw - fw * zoom, ph = stage.clientHeight - hh - fh * zoom;
+      stage.scrollTo({
+        left: r.x < fw ? stage.scrollLeft : Math.max(0, (r.x - fw) * zoom - pw / 2),
+        top: r.y < fh ? stage.scrollTop : Math.max(0, (r.y - fh) * zoom - ph / 2),
+        behavior: "smooth",
+      });
+    },
+  });
   stage.onscroll = () => { if (current === v) void draw(); };
+  // the visible region changes with the window too
+  const resize = new ResizeObserver(() => { if (current === v && gen === generation) void draw(); else resize.disconnect(); });
+  resize.observe(stage);
   void draw();
 }
 

@@ -127,6 +127,20 @@ func (cv *Canvas) Child(bbox bdf.Rect) (*Canvas, bdf.ObjRef) {
 	return ch, ref
 }
 
+// Share makes ch, a canvas of the same builder, a child of cv as well and
+// returns its reference: an object that several parents draw (a picture
+// over several tiles of a sheet) is stored once. bbox is ch's bounding box.
+func (cv *Canvas) Share(ch *Canvas, bbox bdf.Rect) bdf.ObjRef {
+	ref := cv.Obj.AddObject(bdf.Hash{}, bbox)
+	cv.children = append(cv.children, ch)
+	return ref
+}
+
+// Used records that cv has just used ch: structure and languages carry on
+// through a USE (spec §7.8), so the language in effect is now the one ch
+// ended with.
+func (cv *Canvas) Used(ch *Canvas) { cv.lang = ch.lang }
+
 // Transform emits m (as TRANSLATE when it is one).
 func (cv *Canvas) Transform(m Matrix) {
 	if m[0] == 1 && m[1] == 0 && m[2] == 0 && m[3] == 1 {

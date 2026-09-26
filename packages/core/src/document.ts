@@ -82,11 +82,16 @@ export class BdfDocument {
   async textIndex(view: View): Promise<IndexRun[]> {
     if (view.textIndex) return decodeTextIndex(await this.part(view.textIndex));
     const runs: IndexRun[] = [];
+    // A sheet tile keeps the runs whose anchor lies in it (tiles repeat what straddles them).
+    const tile = view.tile ?? 2048;
+    const keep = (r: { x: number; y: number }) => view.kind !== "sheet" || (r.x >= 0 && r.x < tile && r.y >= 0 && r.y < tile);
     const add = async (a: number, b: number, hash: Hash) => {
       const obj = await this.ensure(hash);
-      extractText(obj, (h) => this.objectSync(h)).forEach((r, i) => {
-        runs.push({ a, b, ordinal: r.ordinal, sep: i === 0 ? 2 : r.sep, text: r.text });
-      });
+      let n = 0;
+      for (const r of extractText(obj, (h) => this.objectSync(h))) {
+        if (!keep(r)) continue;
+        runs.push({ a, b, ordinal: r.ordinal, sep: n++ === 0 ? 2 : r.sep, text: r.text });
+      }
     };
     if (view.kind === "sheet") {
       const keys = Object.keys(view.tiles ?? {}).map((k) => k.split(",").map(Number) as [number, number]);

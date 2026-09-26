@@ -58,8 +58,8 @@ func TestLineBreaking(t *testing.T) {
 		{' ', 'a', true}, {'a', ' ', false}, {'a', 'b', false}, {'-', 'b', true},
 		{'日', '本', true}, {'本', '。', false}, {'「', '本', false}, {'本', 'A', true}, {'ー', 'ト', true}, {'テ', 'ー', false},
 	} {
-		if got := canBreak(c.a, c.b); got != c.want {
-			t.Errorf("canBreak(%q, %q) = %v", c.a, c.b, got)
+		if got := CanBreak(c.a, c.b); got != c.want {
+			t.Errorf("CanBreak(%q, %q) = %v", c.a, c.b, got)
 		}
 	}
 	items := func(s string) []item {

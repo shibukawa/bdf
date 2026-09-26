@@ -23,6 +23,8 @@
   .search { display: flex; gap: 4px; align-items: center; }
   .sheet { position: relative; }
   .sheet canvas { position: sticky; top: 0; left: 0; display: block; }
+  /* the text layer of a sheet, under its headers; frozen cells are pinned with --sx and --sy */
+  .sheetText { position: absolute; }
   .info { color: #666; margin-left: auto; display: flex; gap: 12px; }
   #pwDialog { border: 1px solid #999; border-radius: 6px; padding: 16px 20px; }
   #pwDialog h2 { font-size: 15px; margin: 0 0 8px; }

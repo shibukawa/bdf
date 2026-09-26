@@ -101,20 +101,26 @@ async function continuousContent(view: View, viewport: Rect): Promise<TextConten
 }
 
 /**
- * Content of the sheet tiles that intersect viewport, in sheet coordinates.
+ * Content of the sheet tiles that intersect viewport (or any of several
+ * rectangles), in sheet coordinates, tiles in reading order.
  * A run belongs to the tile its anchor lies in; tiles repeat what straddles them.
  */
-async function sheetContent(view: View, viewport: Rect): Promise<TextContent> {
+async function sheetContent(view: View, viewport: Rect | Rect[]): Promise<TextContent> {
   const tile = view.tile ?? 2048;
-  const tx0 = Math.floor(viewport.x / tile), ty0 = Math.floor(viewport.y / tile);
-  const tx1 = Math.floor((viewport.x + viewport.w - 1e-6) / tile), ty1 = Math.floor((viewport.y + viewport.h - 1e-6) / tile);
+  const keys = new Map<string, [number, number]>();
+  for (const r of Array.isArray(viewport) ? viewport : [viewport]) {
+    if (r.w <= 0 || r.h <= 0) continue;
+    const tx0 = Math.max(0, Math.floor(r.x / tile)), ty0 = Math.max(0, Math.floor(r.y / tile));
+    const tx1 = Math.floor((r.x + r.w - 1e-6) / tile), ty1 = Math.floor((r.y + r.h - 1e-6) / tile);
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) keys.set(`${tx},${ty}`, [tx, ty]);
+  }
   const parts: TextContent[] = [];
-  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+  for (const [tx, ty] of [...keys.values()].sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
     const h = view.tiles?.[`${tx},${ty}`];
     if (!h) continue;
     await pages!.res.prepare(h);
     const c = extractContent(doc!.objectSync(h)!, (hh) => doc!.objectSync(hh), [1, 0, 0, 1, tx * tile, ty * tile]);
-    parts.push(within(c, { x: 0, y: 0, w: tile, h: tile - 1e-6 }, tx * tile, ty * tile));
+    parts.push(within(c, { x: 0, y: 0, w: tile, h: tile - 1e-6 }, tx * tile, ty * tile)); // the rule of the text index (spec §4.1)
   }
   return concat(parts);
 }
