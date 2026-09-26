@@ -75,6 +75,27 @@ func TestEmbed(t *testing.T) {
 	}
 }
 
+func TestFaceForFamilies(t *testing.T) {
+	s := New(fontdb.New(nil, []string{testFonts}, false), nil)
+	list := []string{"M PLUS 1p", "Nowhere"}
+	// the first family draws what it has, CJK or not
+	fc := s.FaceForFamilies(list, false, false, 'A')
+	if fc.Loaded == nil || fc.Use.Requested != "M PLUS 1p" {
+		t.Errorf("choice = %+v", fc.Use)
+	}
+	if ea := s.FaceForFamilies(list, false, false, 'あ'); ea.Loaded == nil || ea.Use.Requested != "M PLUS 1p" {
+		t.Errorf("East Asian text: choice = %+v", ea.Use)
+	}
+	// a character no font has stays with the first family
+	if o := s.FaceForFamilies(list, false, false, '𝄞'); o != fc {
+		t.Errorf("choice = %+v", o.Use)
+	}
+	// no list: draw.io's default family
+	if fc := s.FaceForFamilies(nil, true, false, 'A'); fc.Use.Requested != "Helvetica" || !fc.Use.Bold {
+		t.Errorf("choice = %+v", fc.Use)
+	}
+}
+
 func TestSymbol(t *testing.T) {
 	if !IsSymbol("Wingdings") || !IsSymbol("SYMBOL") || IsSymbol("Arial") {
 		t.Error("IsSymbol")

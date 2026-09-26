@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter"
 )
 
 // testOptions restricts fonts to the test font directory so that output
@@ -437,12 +438,12 @@ func TestOptions(t *testing.T) {
 		t.Errorf("Hidden: %d slides", res.Slides)
 	}
 	opts = testOptions()
-	opts.Slides = []int{2, 4}
+	opts.Slides = conv.PageList(2, 4)
 	res, _ = convert(t, "basic.pptx", opts)
 	if res.Slides != 2 {
 		t.Errorf("Slides: %d", res.Slides)
 	}
-	opts.Slides = []int{9}
+	opts.Slides = conv.PageList(9)
 	if _, err := ConvertFile("testdata/basic.pptx", opts); err == nil {
 		t.Error("out of range slide accepted")
 	}

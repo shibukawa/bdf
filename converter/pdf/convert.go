@@ -24,8 +24,9 @@ import (
 
 // Options controls the conversion.
 type Options struct {
-	// Pages selects 1-based page numbers; nil converts every page.
-	Pages []int
+	// Pages selects 1-based pages (see converter.Pages); nil converts every
+	// page.
+	Pages conv.Pages
 	// Title overrides the document title.
 	Title string
 	// Kind is the view kind: "fixed" (default) or "flow".
@@ -193,7 +194,7 @@ func newConverter(rs io.ReadSeeker, opts *Options) (*converter, bool, error) {
 	if kind == bdf.ViewFlow {
 		view.Continuous = &bdf.Continuous{Gap: 16}
 	}
-	pages := opts.Pages
+	pages := opts.Pages.Numbers(ctx.PageCount)
 	if pages == nil {
 		for i := 1; i <= ctx.PageCount; i++ {
 			pages = append(pages, i)

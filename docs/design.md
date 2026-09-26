@@ -121,6 +121,10 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
   3. PNG / GIF / BMP と、PDF からデコードした画素は WebP 可逆を試す。色数が多く写真らしい画像（標本で 4096 色超）は非可逆も試す。
   4. 元より小さくなった候補のうち最小のものを採用し、小さくならなければ元のまま。
 
+デコードした画素の格納は、任意の画像型を受け取る `EncodePixels` でも行える。Keep では、可逆の元の画素は色数に合わせた最小の PNG（二色なら 1 ビットのパレット、グレー、256 色までのパレット）に、JPEG など非可逆の元の画素は JPEG（`Quality`）にする。Convert では、それより小さければ WebP にする。二値のスキャンの 1 ページ（A4 300dpi）は、RGB の PNG では 131KB、1 ビットの PNG では 67KB（元の G4 は 58KB）、WebP 可逆では 53KB になる。
+
+**解像度の上限**: ページ上の大きさが分かっているラスター入力（TIFF のページ）は、`Options.MaxDPI`（既定 192dpi）と `MaxPixels`（既定 3840 × 3840 画素）の両方を超えないよう縮小する（`FitSize` が大きさを決め、`Resize` が縮小する）。Keep と Convert のどちらでも効き、負の値で上限をなくす。考え方と実測は §3.13。
+
 コーデックは libwebp（エンコーダのみ）を wasi-sdk で wasm にし、[shibukawa/wasm2go-fork](https://github.com/shibukawa/wasm2go-fork)（pgmem ブランチ）で純 Go に変換したもので、cgo も wasm ランタイムも使わない。生成物は `imgconv/internal/webpw`（スカラー、約 5MB、44 ファイル）と `imgconv/internal/webpwsimd`（SIMD、`GOEXPERIMENT=simd` 専用、後述）で、`tools/gen-codecs.sh` で再生成する。フォークの `-symbol-names`（関数名を wasm の name セクションから付ける）、`-group-files`（`vp8_enc.go` のように主題ごとのファイルに分ける）、`-addr-consts`（静的データのアドレスを名前付き定数にする）を使い、libwebp を更新しても差分が小さく収まるようにしている。gen2brain 同梱の wasm は name セクションが落とされているので、自前でビルドしている。
 
 **ビルドタグ**
@@ -189,7 +193,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **SmartArt**: PowerPoint がデータモデルと一緒に保存している描画パート（`diagrams/drawingN.xml`）の図形を、グラフィックフレームを枠とするグループとして描く（テキストは `txXfrm` の枠に置き、その回転は図形の回転に足す）。
 - **EMF/WMF**: ブラウザは Windows メタファイルを表示できないので、画像として格納せずに GDI の状態機械（マップモード、ワールド変換、ペン・ブラシ・フォント、クリップ、パス、保存と復元）で記録を再生し、パス・テキスト・画像（DIB は PNG に）の命令にする。EMF はヘッダーの frame、WMF は placeable ヘッダーの範囲（なければ最初のウィンドウの原点と大きさ）を図の枠に合わせる。テキストは出力空間で正立させ、`dx` の文字送りと文字揃えに従う（WMF の ANSI 文字列は文字セットに応じて Shift_JIS などとして読む）。コメントに埋め込まれた EMF+ の記録は読まず、Office が並べて書く EMF の記録を使う。OLE オブジェクトのプレビューの多くはこれで描ける。再生は `converter/internal/metafile` にあり、描き込む先（Object とフォント・画像・言語の登録）とピクチャの色変更を渡せば他の変換器からも使える。
 - **画像の色効果**: 色の変更（`clrChange`、透明色の指定）、単色化（`clrRepl`）、複色（`duotone`）、二値化（`biLevel`）、グレースケール、明るさ・コントラスト（`lum`、PowerPoint と同じく明るさの半分をコントラストの前、半分を後に掛ける）を文書順に画素へ適用し、画像を作り直して格納する（`clrChange` の許容差は LibreOffice と同じく JPEG 15、PNG・TIFF 1、BMP 0、その他 9）。メタファイルでは記録の色と DIB に同じ効果を掛ける。
-- **その他**: 非表示スライドは既定で除く（`-hidden` で含める）。OLE オブジェクトはプレビュー画像を描く。画像は `imgconv`（§3.2）を通し、TIFF は PNG にデコードする。構造の壊れたスライドで描画が失敗した場合は空のページにして警告する。
+- **その他**: 非表示スライドは既定で除く（`-hidden` で含める）。OLE オブジェクトはプレビュー画像を描く。画像は `imgconv`（§3.2）を通す。TIFF の画像は `converter/internal/tiff`（§3.13）で先頭のページを読み、ストリップを 1 本につなげる JPEG はそのまま、ほかはデコードして PNG（JPEG のページは JPEG）にしてから同じく `imgconv` を通す。色効果を掛けるときも同じ読み取りでデコードする。構造の壊れたスライドで描画が失敗した場合は空のページにして警告する。
 - **未対応（警告を出す）**: EMF+ だけで書かれたメタファイル、レーダー・バブル・等高線グラフ、光彩・反射・ぼかしなどの効果、インク、旧形式（VML のみ）の OLE プレビュー、リンクされた（埋め込まれていない）画像、描画パートのない SmartArt。
 
 テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`）、変換結果は `testdata/pptx/` に置いて golden テストで描画を比較する。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセットだけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
@@ -242,7 +246,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **ジオメトリ**: `MoveTo`・`LineTo`・`ArcTo`（弓の高さが正なら進行方向の右に膨らむ）・`EllipticalArcTo`（楕円を円に戻す空間で 3 点を通る円弧を求める）・`Ellipse`（共役な半径 2 本）・`PolylineTo`・`NURBSTo`・`SplineStart`/`SplineKnot`（Visio が格納する節点を両端で固定した節点ベクトルに補って標本化する）・相対座標の `Rel*` 行をパスにする。`MoveTo` で始まらないセクションは最後の点から始める。閉じた図形だけを（セクションごとに偶奇規則で）塗り、`NoFill`・`NoLine`・`NoShow` に従う。
 - **塗り・線・影**: 塗りは単色（透明度つき）、パターン 2〜24（[MS-VSDX] の図から起こした 8×8 のタイル）、グラデーション（`FillGradient` の分岐点。線形は `FillGradientAngle`、放射状と矩形は 13 通りの起点。矩形は円で近似）、旧版のグラデーション（パターン 25〜40）。線は幅、色と透明度、線種 2〜23（仕様の図から測った破線で、線幅に比例させる）、端（丸・角・延長）、`Rounding`（多角形の角を丸める）、矢印 45 種を描く。矢印の形は仕様の図から自前で定義した。先端を覆う矢印の下では線を切り詰める。影は `ShdwPattern`、`ShapeShdwShow`、オフセット（種類 0 はページの既定の影）、ぼかしを SHADOW で描く。
 - **線の飛び越し**: Visio は飛び越しを保存せず、ページを描くときにコネクタの交差から置く（[MS-VSDX] でも関係するセルは「式の評価にだけ使う」とされている）。同じことをページを描く前に行う。ルーティング可能な 1-D 図形（`ObjType`）の経路をページ座標で集め（曲線は折れ線にして交差の相手にだけ使う）、交点ごとに飛ぶ側を決める。ページの `LineJumpCode` は水平な線（既定）、垂直な線、上または下に描かれた線（最後に経路を引いた線は上の線で代える）を選ぶ。コネクタの `ConLineJumpCode` は常に飛ぶ、飛ばない、相手が飛ぶ、どちらも飛ばないを選び、ページの規則より優先される。形は `LineJumpStyle`（コネクタの `ConLineJumpStyle` が優先）の円弧・切れ目・四角・2〜7 辺の多角形、幅は `LineJumpFactorX` × `LineToLineX`（垂直な線は Y）、高さは幅の半分とする。向きは水平な線が上か下（`ConLineJumpDirX`、`PageLineJumpDirX`）、垂直な線が左か右。重なる飛び越しは 1 つにまとめ、切れ目は図形を分ける。角の近くで幅が収まらない交差は飛ばない。
-- **画像と埋め込み**: `ForeignData` の PNG・JPEG・GIF・BMP・TIFF・DIB（.vdx は base64）を `ImgOffsetX` などの矩形に置き、図形の枠で切り抜く。EMF/WMF は `converter/internal/metafile` で再生し、OLE オブジェクトはプレビュー画像（埋め込みパートからの画像リレーションシップ）を描く。
+- **画像と埋め込み**: `ForeignData` の PNG・JPEG・GIF・BMP・TIFF・DIB（.vdx は base64）を `ImgOffsetX` などの矩形に置き、図形の枠で切り抜く。TIFF は PowerPoint と同じく `converter/internal/tiff` で先頭のページを読む（§3.4）。EMF/WMF は `converter/internal/metafile` で再生し、OLE オブジェクトはプレビュー画像（埋め込みパートからの画像リレーションシップ）を描く。
 - **テキスト**: `Text` 要素の `cp`・`pp`・`tp` マーカーが Character・Paragraph・Tabs の行を選び、`fld` は最後に表示された文字列を持つ。`\n` で段落、U+2028 で段落内の改行とする。テキストは DrawingML のテキスト本体（`bodyPr` の余白・垂直位置・`TextDirection` 1 の `eaVert`、`pPr` の揃え・インデント・行間・段落前後の間隔・箇条書き・タブ、`rPr` の大きさ・太字・斜体・下線・取り消し線・大文字化・上付き・下付き・字間・色・フォント・言語）に写し、`drawingml.Drawing.LayoutText` でレイアウトする。そのため禁則、フォントの解決と埋め込み、構造の MARK は PowerPoint と同じになる。行間の `SpLine` は、負ならその段落で最大の文字の大きさの倍数として扱う。テキストブロックは `TextXForm` のセルで図形の中に置く。文字は鏡像にしない（`FlipY` は上下逆さになる）。`TextBkgnd` は行の範囲（`TextBody.Bounds`）を塗る。言語は `LangID`（古い図面の Windows ロケール ID も読む）、図面の言語はコアプロパティ、なければルートのスタイルの言語とする。ハイパーリンクは図形の範囲の LINK にする。`Address` の URL（http、https、mailto）と、`SubAddress` のページ名（`#page=N`）を扱う。
 - **未対応**: .vsd、インク（警告を出す）。面取り・光彩・反射・ぼかし・3D・スケッチの効果、線のグラデーション、文字の横幅の拡大縮小（`FontScale`）、右インデント、右揃え・中央揃え・小数点揃えのタブは描かない。
 
@@ -280,6 +284,59 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 テスト用のファイル（`converter/csv/testdata/`: Excel の「CSV UTF-8」と同じく BOM と CRLF の付いた basic.csv と、Shift_JIS の japanese.tsv）の変換結果は `testdata/csv/` に置き、golden テストで描画を比較する。フォントは Excel と同じく PowerPoint のテストのものだけを使う。
 
+## 3.11 draw.io → BDF 変換器（converter/drawio）の構造
+
+`converter/drawio` は draw.io（diagrams.net）の図を読み、mxGraphModel の XML から直接 BDF の命令を作る。draw.io 自身の SVG・PDF 出力を経由しないのは、HTML ラベルが SVG の foreignObject（HTML）で出力され、そのままでは Canvas に描けないことと、ページ・レイヤー・リンク・テキストの構造を残すため。
+
+- **入力**: `.drawio` / `.xml`（`<mxfile>` の `<diagram>` がページ。中身は `<mxGraphModel>` 要素か、Graph.compress で圧縮した文字列＝URL エンコードした XML を raw deflate して base64）、裸の `<mxGraphModel>`、図を埋め込んだ SVG（ルート要素の `content` 属性）と PNG（`mxfile` または `mxGraphModel` という名前の tEXt / zTXt チャンク）。`converter.Detect` は中身からこれらを判別する。
+- **ページ → View**: ページごとに `fixed` View（ページ 1 枚）を作る。View の `id` は図の `id`（なければ `pageN`）、`title` はページ名。ビューアは View をシート見出しのようなタブで切り替えるので（spec §4.1）、Excel のシートと同じ操作感で複数ページを行き来できる。図の中のページへのリンク（`data:page/id,…`）は `#view=ID` の LINK にする（spec §7.7）。http / https / mailto 以外のリンク（`data:action/…` など）は捨てる。
+- **ページの大きさと座標**: ページは描いたものの外接矩形に余白（既定 10px、`-param border=`）を足した大きさ。draw.io の座標は CSS px なので、各レイヤー Object の先頭で 0.75 倍（pt）と原点の移動を 1 回かけ、以降は draw.io の座標のまま命令を出す。背景色（`background`）は `background` レイヤー、draw.io のレイヤー（ルートの子）はそれぞれ `body` レイヤーの Object にし、非表示のレイヤー・セル、折りたたんだコンテナの子は描かない。`shadow="1"` のページはすべての図形に影を付ける。
+- **スタイル**: スタイル文字列は mxStylesheet と同じ規則で読む（`key=value` の上書き、名前だけの項目は draw.io の `styles/default.xml` の名前付きスタイルを合成、`none` はキーを消す、先頭の `;` は既定スタイルを使わない）。`default` の色はライトテーマの色（塗りは白、線と文字は黒）に、`light-dark(a, b)` は `a` にする。
+- **セルの配置（mxGraphView）**: 入れ子のジオメトリ（コンテナの子は親の原点から、`relative` なジオメトリは親の大きさやエッジ上の位置の割合から）を絶対座標にし、ラベルの位置（`labelPosition`、`verticalLabelPosition`）を足す。描く順は draw.io と同じくモデルの深さ優先の順で、セルごとに図形、ラベルの順。
+- **エッジの経路**: 端点の固定（`exitX`/`entryX` などの接続制約、ポート）、エッジスタイル（直交・エルボー・ER・セグメント・ループなど mxEdgeStyle）、端点の浮動（図形の外周との交点、mxPerimeter と draw.io の外周関数）を mxGraph と同じ手順で計算する。draw.io は計算した経路をファイルに保存しないので、ここが描画の見た目を大きく左右する。`jumpStyle` のあるエッジは、モデルの順で前にあるエッジとの交差にジャンプ（弧・隙間・段差・線）を入れる（Graph.js の updateLineJumps と mxConnector.paintLine）。
+- **図形**: mxAbstractCanvas2D と同じ API（パスは変換側で平行移動・拡大、回転と反転は TRANSFORM、save/restore は SAVE/RESTORE）の Go のキャンバスを用意し、mxGraph と draw.io の Shapes.js の図形・矢印をほぼ行単位で移植した。ステンシル（`mxgraph.flowchart.*` など XML で定義された図形と、スタイルに埋め込まれた `stencil(…)`）は mxStencil の解釈器で描く。ライブラリは draw.io の `stencils/*.xml` から flowchart・basic・arrows・AWS（aws4、1,037 アイコン）・bpmn・networks・eip・lean_mapping・floorplan・rack・Cisco・旧 Azure・電気回路・P&ID を選び、`//go:embed` して、名前が引かれたときにファイル単位で展開する。`tools/gen-drawio-stencils` が接続点とコメントを落とし、座標をステンシルの大きさの 2000 分の 1 未満の誤差で丸め、パスの各ステップを `d` 属性の短い表記（`M44 11L44 9C…`、読み込むときに元の要素に戻す）にしてから gzip にする。数値が中身の 4 割を占めるので効きが大きく、aws4 は 1.06 MB が 0.67 MB に、ほかのライブラリは 266 KB が 216 KB になり（合計約 0.89 MB）、ステンシルのテストの描画はピクセル単位で変わらない。ステンシルには Apache 2.0 に加えて draw.io の追加条件（Atlassian 製品や Atlassian Marketplace で配布される製品に組み込むには draw.io の書面による明示的な許可が要る。利用者が作った図の出力＝書き出した画像や文書は対象外）があり、`converter/drawio/stencils/NOTICE` に原文を載せる。JavaScript で定義された `mxgraph.*` 図形のうち、Basic（`mxgraph.basic.*`、mxBasic.js）、Arrows（`mxgraph.arrows2.*`、mxArrows.js）、BPMN（`mxgraph.bpmn.*`、mxBpmnShape2.js）、AWS（`mxgraph.aws4.resourceIcon` などアイコンとグループ枠、mxAWS4.js）のライブラリも移植した。古い世代の AWS アイコン（`mxgraph.aws.*`、`aws2`、`aws3`、`aws3d`）はライブラリを埋め込まず、現行の aws4 の対応するアイコンで描く。対応表（`aws_legacy_table.go`、718 名のうち 659 名に対応先）は `tools/gen-drawio-awsmap` が draw.io のサイドバー（旧パレットと現行パレットの項目の題名・タグ・名前）を照らし合わせて作り、改名されたサービスやグループ枠は手で補正する（`overrides.txt`）。変換の前にスタイルを書き換え、図形・アイコン・色は現行パレットのものに、ラベルと配置のキーはセルのものを残す。アイコンは元の枠の中央に対応先の縦横比（サービスアイコンなら正方形）で収め、エッジと子セルはその位置に追従させる。対応先のないもの（SimpleDB、Mechanical Turk、SWF など）は矩形と警告にする。そのほかの JavaScript の図形とサイズの大きいステンシルライブラリ（GCP、Office など）は対象外で、矩形と警告にする。draw.io の影は図形全体に掛かる CSS の drop-shadow なので、図形を GROUP で描き、合成するときに SHADOW を掛けて同じ見た目にする。グラデーションは SVG の objectBoundingBox と同じく塗る範囲の外接矩形に合わせる。
+- **ラベル**: draw.io は HTML ラベルを foreignObject の中の HTML（line-height 1.2 の inline-block を flex で配置、mxSvgCanvas2D.createCss）として描くので、その CSS レイアウトを再現する。ラベルの位置（mxCellRenderer.getLabelBounds、rotateLabelBounds、mxText.getSpacing）を移植し、HTML は許容的なパーサで読んで、ラベルが使う範囲の CSS（ブロックと余白の相殺、リスト（記号は Blink と同じく図形で描く）、見出し、インラインの太字・斜体・下線・色・大きさ・フォント・背景、`<br>`、空白の畳み込み、`white-space`）を扱う。行分割は空白の後と和文の文字間（禁則つき）で行い、`word-wrap: normal` なので長い語ははみ出す。行の高さは Blink と同じく、フォントのアセント・ディセントを整数 px に丸め、半行送りを切り捨てて上に足し、残りを下にする。macOS の Chrome は Helvetica・Times・Courier のアセントを高さの 15% 増やす（Windows の Arial などに合わせるため）ので、それにも合わせる。HTML でないラベルは SVG の text と同じく改行で分けた行を 1.2 倍の行送りで置く。構造は PowerPoint と同じく、ラベルごとに BOX、段落と `<br>` に PARAGRAPH、折り返しに LINE / WRAP、見出しに HEADING、リストに LIST / LIST_ITEM / END を出す。
+- **フォント**: Office 系の変換器と同じ `fontset`（`fontdb` で解決・計測し、使った文字だけのサブセットを WOFF2 で埋め込む）と `canvas`（フォントの参照は全ページのレイアウトが済んでから確定する）を使う。ラベルのフォントは CSS の font-family リストなので、先頭のフォントにない文字はリストの残りから、なければ先頭のフォントの総称ファミリーの代替フォントから探す（`fontset.Set.FaceForFamilies`）。draw.io の既定の Helvetica は、ない環境では Liberation Sans / Arimo / Arial で置き換わる。
+- **画像**: スタイルの `image=` の data URI（base64、URL エンコードした SVG）は Part に格納する。URL で参照する画像はネットワークに依存しないよう取得せず、警告を出して描かない。
+- **未対応（警告を出す）**: 手書き風（`sketch=1`、rough.js の塗り）は通常の描画にする。縦書き（`textDirection=vertical-*`）は横書きで描く。数式（`math=1`）、HTML ラベル内の画像、JavaScript で定義された `mxgraph.*` の図形の多く。
+
+テスト用の図は `converter/drawio/testdata/` にあり、draw.io デスクトップ版のコマンドライン書き出し（`draw.io -x -f svg|png`）の結果と見比べて調整した。エッジの経路は、書き出した SVG（`testdata/route/*.svg`）のパスと 15 の図の 684 本で比べ、最大の差は 0.007px（Loop スタイルで draw.io 自身の結果が表示位置に依存する 2 本を除く）。ラベルの行の位置は Chrome で同じ HTML をレイアウトした結果と比べた。移植したコードの出典は `converter/drawio/NOTICE`。
+
+## 3.12 DXF → BDF 変換器（converter/dxf）の構造
+
+`converter/dxf` は AutoCAD の DXF（テキスト形式とバイナリ形式、R12〜2018）を読む。ネイティブの DWG は仕様が公開されておらず、読めるライブラリ（LibreDWG は GPLv3、ODA は有償の会員制）もこのリポジトリのライセンスでは使えないので扱わない（DXF に保存し直してもらう）。CAD 図面を描く部分は、続く JWW・SXF の変換器と共有するため `converter/internal/cad` に分けた。読み手は図面の座標（y 上向き、float64）のまま線・塗り・文字・クリップのグループを `cad.Drawing` に入れ、`cad.Plotter` がページの座標に写して Object に書く。座標を float32 にするのはページに写すときだけなので、平面直角座標のような大きな座標でも精度が落ちない。円弧・楕円・膨らみのある線分はベジェ曲線にして入れるので、非一様な拡大を含むどんなアフィン変換でも形が崩れない。線の太さは縮尺によらず用紙上の太さ（pt）で、プロッタが描くのと同じになる。
+
+- **読み込み**: グループコードと値の組（タグ）に分け、グループコードの範囲で値の型（文字列・実数・整数・真偽・バイナリ）を決める。バイナリ形式はセンチネルの後に、R12 は 1 バイト、R13 以降は 2 バイトのグループコードが続く（`$ACADVER` の後のバイト列で見分ける）。文字列は AutoCAD 2007（AC1021）以降は UTF-8、それより前は `$DWGCODEPAGE` のコードページで読む。ただし UTF-8 として正しい非 ASCII 文字列はコードページによらず UTF-8 とし、コードページが無いか既定の ANSI_1252 のままで、Shift_JIS として正しく読めて仮名か漢字が 2 文字以上出るものは Shift_JIS とする（日本語の図面を既定のコードページのまま書くプログラムがある。半角カナだけでは欧文の文字化けと区別できないので数えない）。コードページが ANSI_932 なら文書の言語を `ja` にする（936、949、950 はそれぞれ `zh-Hans`、`ko`、`zh-Hant`）。`\U+XXXX` と、古い図面の `\M+nXXXX`（コードページの番号とその 2 バイト）はここで文字に戻す。タグはグループコード 0 で区切ってエンティティにし、POLYLINE には VERTEX、INSERT には ATTRIB を子として付ける。サブクラス（100）ごとに同じグループコードが別の意味を持つもの（LAYOUT の 330 など）はサブクラスを指定して読む。
+- **View とページ**: モデル空間を 1 ページの View（`model`、題名 Model）にし、図面の範囲を A3 の長辺（420 mm）に収める縮尺で描く。CAD のモデル空間の表示にならって暗い背景（AutoCAD の既定の 33,40,48）に描き、ACI 7 は白、暗い色は AutoCAD 2020 と同じく明るくした色で描く（`-param background=light` なら白地に紙の配色で描く）。ペーパー空間のレイアウトは、自分のビューポート（ID 1）のほかに何かが載っているものだけを、タブの順に 1 ページの View（`layout1`、`layout2`…、題名はレイアウト名）にする。用紙は PLOTSETTINGS の大きさと印刷の回転（90° と 270° では縦横を入れ替え、余白も回す）で決め、ペーパー空間の原点は印刷可能領域の左下（余白と印刷のオフセットの分）に置く。用紙単位がインチならペーパー空間の単位もインチとし、ユーザー定義の縮尺（142/143）も掛ける。R12 の図面はレイアウトを持たないので `$PLIMMIN`/`$PLIMMAX` を用紙にする。`-param views=model|layouts` で片方だけにでき、`-pages` はタブの順（モデル空間が 1）で選ぶ。
+- **ビューポート**: 上から見たビューポートだけを描く（視線の向きが Z 軸でないものは警告）。モデル空間からペーパー空間への変換は、ビューポートの中心と高さ、モデル空間でのビューの中心（DCS）と高さ、注視点、ねじれ角から `T(中心 − ビューの中心 × 縮尺) · R(ねじれ角) · S(縮尺) · T(−注視点)` で求め、ビューポートの矩形（非矩形のクリップが指定されていればその境界の図形）で切り抜く。R12 の図面はビューの値をコードではなく拡張データ（ACAD の MVIEW のリスト：注視点、視線の向き、ねじれ角、高さ、中心、凍結した画層）に持つので、そこから読む。モデル空間はビューポートごとに描き直し、ビューポートで凍結した画層（331）を除き、`$PSLTSCALE` が 1 なら線種の長さをペーパー空間の単位にする。ビューポートの中身を先に描き、ペーパー空間の図形を上に重ねる。
+- **画層と属性**: 非表示（色が負）と凍結の画層の図形は描かず、レイアウトでは印刷しない画層も除く。Defpoints（寸法の定義点の画層）は常に描かない。色は ACI（1〜255）、トゥルーカラー（420）、BYLAYER、BYBLOCK、透過（440。画層の透過は拡張データの AcCmTransparency）を解決する。ブロックの中の画層 0 の図形は挿入の画層の属性を受け継ぎ、挿入の画層が非表示ならそれらだけが消える。線種は LTYPE の要素（正が線分、負が空白、0 が点）を `cad.DashPattern` で Canvas の破線（線分から始まる線分と空白の交互）とその開始位置に直し、`$LTSCALE`、図形の線種尺度（48）、挿入の拡大率を掛ける。線種の中の文字や図形は描かず、その分を空白として残す。線の太さ（370、1/100 mm）は用紙上の太さとして使い、既定は 0.25 mm、0 は 0.1 mm にする。模様が線の太さより細かければ実線で描く。
+- **座標**: 2D の図形（円、円弧、ポリライン、文字、挿入、SOLID、HATCH）は押し出し方向（210）の OCS を任意軸アルゴリズムで WCS に写し、上から見た XY に落とす（押し出し方向が (0, 0, −1) の鏡像の図形もこれで正しく描ける）。
+- **図形**: LINE、XLINE・RAY（図面の範囲で切る）、POINT（`$PDMODE`・`$PDSIZE`。0 以下はビューの高さに対する割合）、CIRCLE、ARC、ELLIPSE、LWPOLYLINE と POLYLINE（膨らみの円弧。一定の幅は幅のある線として、変わる幅は区間ごとの帯として塗り、スプラインフィットの枠の点は除く）、ポリフェイスメッシュ・ポリゴンメッシュ・MESH（辺を描く）、SPLINE・HELIX、SOLID・TRACE、3DFACE（見えない辺を除く）、WIPEOUT（背景色で塗る）、MLINE（要素ごとの折れ線。色は MLINESTYLE から）。SPLINE は、非有理で次数 3 以下のクランプされた B スプラインならノット挿入（The NURBS Book の A5.6）で厳密なベジェ曲線にし、それ以外は標本化する。制御点が無くフィット点だけのものは、弦長をパラメータにした C2 の 3 次スプラインで補間する（端の接線があれば使う）。
+- **ブロック**: INSERT は `T(挿入点) · OCS · R(回転) · T(配列の間隔) · S(尺度) · T(−基点)` で描き、MINSERT の配列も展開する（1 万個を超えるものは 1 つだけ描く）。属性（ATTRIB。AutoCAD 2018 の複数行の属性を含む）と、定数の属性定義（ATTDEF）も描く。寸法（DIMENSION など）と表（ACAD_TABLE）は、AutoCAD が書いた匿名ブロック（`*D…`、`*T…`）を描く。寸法のブロックは寸法の OCS にあり、挿入点（12）の分だけずらす。外部参照は図面に含まれないので警告する。
+- **文字**: 文字の高さは AutoCAD と同じく大文字の高さとして扱い、フォントの cap height（OS/2 の sCapHeight、無ければ 0.7 em）で em の大きさに直す（そのために `sfnt`・`fontdb`・`fontset` に cap height を足した）。SHX フォント（txt.shx、romans.shx など）は既定のゴシック体（sans-serif）で、ビッグフォント（extfont2.shx など）は MS ゴシック相当の和文フォントで代用し、TrueType のフォントは拡張データのファミリー名か、ファイル名（msgothic.ttc → MS Gothic など）から選ぶ。TEXT は幅係数、斜体の角度、回転、鏡像（生成フラグ）と揃え（無いコードは既定値の 1、0、0 で、文字スタイルの値ではない。スタイルの値は CAD で新しく書く文字の既定値にすぎない）（左・中央・右・中心（Middle）・両端揃え（Aligned。高さが変わる）・フィット（Fit。幅が変わる）と、ベースライン・下・中・上）を解決し、`%%d`・`%%p`・`%%c`・`%%nnn` と、下線・上線・取り消し線を切り替える `%%u`・`%%o`・`%%k` を扱う。MTEXT は書式コード（`\P`、`\L`、`\O`、`\K`、`\f`、`\H`、`\W`、`\Q`、`\T`、`\C`、`\c`（青・緑・赤の順）、`\S` の分数（`/`、`^`、`#`）、`\p` の揃えとインデント、`{}`、`^J` などのキャレット記法）を読み、参照矩形の幅で折り返し（和文の間では `linebreak` の禁則で、それ以外は空白で）、行送りを大文字の高さの 5/3 倍に行間係数を掛けたものとし、9 つの基準点と背景マスク（90、45）を扱う。幅係数は変換行列ではなく FILL_TEXT の `advance`（読み手が字形をそれに合わせて伸縮する）で表し、変換行列には回転・斜体・鏡像だけを入れる。変換行列に横方向の伸縮があると、テキスト抽出が run の位置（変換後）と字送り（変換前）を比べて、run の間に空白を推定してしまうからである。
+- **ハッチング**: 境界パス（ポリラインか、線分・円弧・楕円弧・スプラインの辺。時計回りの円弧と楕円弧は角度を反転して保存されている）を 1 つのパスにまとめて偶奇規則で塗る。スタイル 1 と 2（外側だけ、島を無視）は外側の境界だけを使う。模様は、HATCH に回転と尺度を済ませた形で入っている線の族（角度、基点、次の線への変位、破線）を境界の外接矩形を覆う本数だけ引き、境界でクリップする（`cad.Drawing.Hatch`）。各線の破線の開始位置を基点から周期の整数倍の点に揃えるので、1 つの族を 1 つのパスで描ける。2 万本を超える模様は、色を薄くした塗りで代える（警告を出す）。グラデーションは LINEAR を線形、CYLINDER を中央が 2 色目の線形、SPHERICAL・HEMISPHERICAL・CURVED を放射状で近似し、INV 付きは色を入れ替える。1 色のグラデーションは濃淡（462）で黒か白に寄せた色を 2 色目にする。
+- **引出線**: LEADER は寸法スタイルの矢印の大きさ（DIMASZ × DIMSCALE。拡張データ DSTYLE の上書きを含む）と矢印のブロック（閉じた塗り矢印、`_DOT`、`_OPEN`、`_ARCHTICK` など）で描き、スプラインの引出線は補間する。MULTILEADER は `CONTEXT_DATA{`・`LEADER{`・`LEADER_LINE{` の入れ子を追って引出線・ドッグレッグ・矢印を描き、文字は MTEXT として、ブロックは挿入として描く。
+- **壊れたファイルへの備え**: 値はそのまま信用しない。角度は 1 周に収まるように直し、無限大や NaN の角度の図形は描かない。自分自身を（間接的にでも）挿入するブロックは内側の挿入を描かず、MINSERT の列と行は 32767 で、HATCH の個数（ノット、模様の線、破線、元の図形）はデータが尽きたところで打ち切る。1 つの View に描く図形はブロックの中身も含めて 500 万個までとする。AutoCAD 2010 より前のスプラインの辺はフィット点の数（97）を持たないので、後ろに続く 97 は、フィット点（11）が続くときだけフィット点の数として読む（境界の元の図形の数と取り違えない）。
+- **未対応（警告を出す）**: DWG、ACIS の立体・領域・面（3DSOLID、REGION、BODY、SURFACE）、ラスター画像（IMAGE は図面の外のファイルを参照する）、OLE オブジェクト、上から見ていないビューポート、縦書きの MTEXT（横書きで描く）、MPOLYGON、TOLERANCE などのここに挙げていない図形、線種の中の文字と図形。
+
+テスト用の図面は `test/dxf/gen.py` が ezdxf で作る（`npm run test:dxf:gen`、要 ezdxf。ezdxf の固定のメタデータで書くので毎回同じファイルになる）。shapes.dxf は各種の図形・文字・寸法・ハッチング・ブロックを、layout.dxf は平面図と A3 のレイアウト（表題欄と縮尺の違う 2 つのビューポート、片方で凍結した画層）を、r12-sjis.dxf は Shift_JIS の R12 図面を持つ。shapes-bin.dxf は shapes.dxf のバイナリ形式で、Go のテストは両者が同じ Object になることを確かめる。変換結果は `testdata/dxf/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は、公開されている AutoCAD 2004 形式の図面（Shift_JIS の日本語、寸法、ブロック、マルチ引出線を含む）でも変換を確かめた。
+
+## 3.13 TIFF → BDF 変換器（converter/tiff）の構造
+
+`converter/tiff` は TIFF のページごとに `fixed` View のページを作り、解像度から決まる大きさの画像 1 枚で描く。多ページの TIFF の多くはスキャナの出力と FAX の受信ファイルで、中身は画像だけ（テキストはない）。読み取りは `converter/internal/tiff` に自前で書いた。golang.org/x/image/tiff は先頭の IFD しか読まず、JPEG 圧縮も YCbCr も読まない。FAX ソフトの既定である G3 の 2 次元符号と詰め物ビットも読めず、BlackIsZero の CCITT データは白黒を反転して読む。Office 文書と Visio 図面の中の TIFF の画像も、同じ読み取りで先頭のページを読む（`tiff.Picture`。Orientation タグは掛けず、解像度の上限も掛けない）。
+
+- **ページ**: IFD のチェーンを先頭からたどり、NewSubfileType が縮小版（bit 0）かマスク（bit 2）のものを除いた IFD をページにする。SubIFDs と PageNumber タグは見ない。チェーンが途中で壊れていれば、そこまでのページで変換して警告する。循環するチェーンと、ファイルの外を指すオフセットは検出する。DNG は変換を断り、Canon の CR2 は形式判別で除く。
+- **大きさ**: 画素数を XResolution と YResolution で割って pt にする。単位が cm なら換算する。単位なし（ResolutionUnit 1）の値は、50 以上なら dpi とみなし（ImageMagick は 300dpi のスキャンをこう書く。tiff2pdf と同じ扱い）、50 未満なら画素の縦横比だけに使う。解像度のないページは 96dpi とする（CSS の 1px が 1 画素になる。`-param dpi=` で変える）。204 × 98 dpi の FAX のように縦横で解像度が違うページも、IMAGE の幅と高さで伸ばして描くだけでよい。Orientation タグ（2〜8）は画素を並べ替えず、画像を描く前の TRANSFORM にする（5〜8 ではページの幅と高さを入れ替える）。
+- **解像度の上限**: ページの画素が `imgconv.Options` の MaxDPI と MaxPixels の両方を超えないよう縮小する（`FitSize`）。既定の MaxDPI は 192 で、CSS の 96dpi の 2 倍にあたり、Retina の画面で実寸表示したとき 1 画素が 1 デバイス画素になる。既定の MaxPixels は 3840 × 3840（4K 画面の幅の正方形、RGBA で約 56MB）。dpi は軸ごとに、画素数は縦横同じ比率で抑え、拡大はしない。A4 のカラースキャンを 300dpi から 200dpi にすると、WebP は 373KB から 203KB に、ブラウザでデコードした後のメモリは 35MB から 15MB になる（写真とスキャンのノイズを含むページでの実測）。上限はラスター画像の入力に共通の設定で、CLI では `-max-dpi` と `-max-pixels` で変え、0 で上限をなくす。
+- **縮小**: 面積平均（box フィルタ）で縮小する。目標の画素が覆う元画素の重なりを 1/m 画素単位で数えると整数になるので、重み付きの和を整数のまま計算し、最後に 1 回だけ丸める。このため出力はアーキテクチャによらず同じバイト列になる。二値の画像はグレーに縮小すると PNG が 4〜5 倍になるので、二値のまま縮小する。インク（少ない方の色）が 2/5 以上覆う画素をインクにする（1/2 では細い線が切れやすく、1/3 では文字が太る）。
+- **格納**: 縮小しない JPEG のページは、ストリップを再エンコードせずに 1 本の JPEG につなぐ（`IFD.JPEG`）。TIFF の JPEG はストリップごとに独立した JPEG で、量子化表とハフマン表は JPEGTables タグにある。各ストリップは DC 予測を新しく始め、バイト境界で終わるので、リスタート区間と同じ形をしている。そこで、表を戻し、SOF の高さをページの高さに書き換え、DRI でリスタート区間をストリップ 1 本分にして、ストリップの間に RST マーカーを入れる。これで 1 本のベースライン JPEG になる（tiff2pdf と同じ方法）。そのためにはストリップの行数が MCU の高さの倍数でなければならない。RGB のページは JFIF マーカーを除き、成分名が R・G・B でなければ Adobe マーカー（transform 0）を足して、YCbCr として読まれないようにする。つなげないページ（タイル、表の違うストリップ、プログレッシブ）と縮小するページはデコードし、`imgconv.EncodePixels` で格納する（§3.2）。
+- **デコーダ**: classic TIFF と BigTIFF、ストリップとタイル、chunky と planar を読む。圧縮は無圧縮・PackBits・LZW（`x/image/tiff/lzw`）・Deflate・JPEG・CCITT で、predictor 2 と FillOrder 2 も扱う。画素は 1〜16 ビットの二値・グレー・パレット・RGB・CMYK と alpha（associated / unassociated）を読む。libtiff は CMYK の JPEG を Adobe マーカーなしで書くので、マーカーを足して読み、Go のデコーダが行う反転を戻す。CMYK は色管理をせずに RGB にし、警告する。デコード後に 1GiB を超えるページは読まない。壊れたストリップは空白にしてページを変換し、警告する。
+- **CCITT**: デコーダを自前で書いた（符号表は x/image/ccitt のもの）。T.4 の 1 次元と 2 次元（EOL の前の詰め物ビットの有無を問わない）、T.6（G4）、Modified Huffman（圧縮 2）を読む。EOL は 11 個以上の 0 に続く 1 として探すので、詰め物の有無を区別しなくてよい。T.4 で壊れた行は白のまま残し、次の EOL から続ける（FAX の受信機と同じ）。黒の符号は 1 のビットにし、Photometric で解釈する（libtiff と同じで、WhiteIsZero なら 1 が黒）。
+- **メタデータ**: 先頭のページの DocumentName を `title`、ImageDescription を `description`、Artist（`;` で分ける）を `creator`、Copyright を `rights`、DateTime を `modified` にする（DocumentName 以外は XMP の対応と同じ）。
+- **テキスト**: ページは画像だけなので、テキスト索引を作らず、検索と選択の対象もない（OCR はしない）。
+
+テスト用のファイルは `test/tiff/gen.sh` が ImageMagick と libtiff のツールで作る（`npm run test:tiff:gen`）。`converter/internal/tiff/testdata` には、同じ絵を格納方法を変えて各ページに入れたファイルと、ImageMagick が libtiff で読んだ参照 PNG を置く。可逆のページはすべて参照と画素単位で一致する。`converter/tiff/testdata` にはスキャン、FAX、8 通りの向きのファイルを置き、変換結果を `testdata/tiff/` に置いて golden テストで描画を比べる。向きは Go のテストでも確かめる。保存された画像をページの行列で紙面に写し、1 ページ目と比べる。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -312,7 +369,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 - **構造は MARK から作る**（spec §7.8）。`extractContent()` が run と同じ走査で構造ノード（段落・見出し・リスト・表とセル・図）とリンクを集め、`buildTextLayer(content, scale)` がそれぞれを `role=paragraph` / `heading`（`aria-level`）/ `list`・`listitem` / `table`・`row`・`cell`・`columnheader`・`rowheader` / `img` の要素にする。構造の要素は大きさを持たず、中の span の配置は変わらない。例外は図とリンクで、図は代替テキストを名前に持つ `role=img` をその範囲に、リンクは `<a>` をリンク領域に絶対配置し、中の span をそこからの相対位置に置く（読み上げカーソルの枠が描画と合う）。
 - **DOM の順は run の順**のまま（選択とコピーが DOM 順で区切りを復元するため）。表の行もセルの開始行が変わるところで区切るだけで並べ替えない。ノードは命令列の順に作られ、run はいつも最新のノードに属するので、run を順に置けば構造の要素も読み順に並ぶ。
 - **構造の状態は走査順に一直線**（`USE` や SAVE/RESTORE をまたぐ）。PDF 変換の共有プレフィックス（§5）で命令列が子 Object に分かれても同じ結果になるためで、Go の抽出器は区切り（sep）だけを扱い、構造は持たない。区切りは MARK の種類だけで決まるので、Go の索引と TS の抽出が一致する（テストで全レイヤーを突き合わせる）。
-- **リンク**は `http:` / `https:` / `mailto:` と `#page=N` だけを `<a>` にする（文書に埋め込まれた `javascript:` などを実行させない）。リンク領域に中心が入る連続した run を包み、run の無いリンク（画像のリンク）は名前付きの `<a>` にする。`#page=N` はビューアがページ移動とフォーカス移動に置き換える。
+- **リンク**は `http:` / `https:` / `mailto:` と `#page=N`、`#view=ID` だけを `<a>` にする（文書に埋め込まれた `javascript:` などを実行させない）。リンク領域に中心が入る連続した run を包み、run の無いリンク（画像のリンク）は名前付きの `<a>` にする。`#page=N` はビューアがページ移動とフォーカス移動に、`#view=ID` は View の切り替え（シート見出しのタブを選ぶのと同じ）に置き換える。
 - **言語**は `meta.dc.language` の最初の値を層の `lang` に、`MARK LANG` の run を span の `lang` にする。ビューアの UI の言語と文書の言語は別なので、`html lang` ではなく層に付ける。
 - **先読み**: テキスト層はビットマップより広い範囲（前後 3 画面）で作る。スクリーンリーダーのカーソルが進むとページがスクロールされ、その先の層が作られるので読み進められる。全ページを一度に作ると分割形式や Range 取得で全 Object を読んでしまうので避ける。
 - **ビューア**はページに `role=group` と「Page n of N」の名前を付け（ページ数だけのランドマークを作らない）、Canvas には `aria-hidden` を付ける。
@@ -327,6 +384,18 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 - 「ほぼ同じだが少し違う」ものは共有されない。マスター＋差分という構造は変換元の情報がある場合（PPTX 直接変換）にのみ作れる。
 
 さらに読み手側では `USE` 対象を `(hash, scale)` でビットマップキャッシュできるので、共有はサイズだけでなくスクロール時の描画コストも下げる。
+
+### 5.1 デコードした画像の保持（ビューア）
+
+レンダラ（`@bdf/render` の `ResourceCache`）は、Path2D・FontFace・ImageBitmap を文書ごとにキャッシュする。このうち ImageBitmap は桁違いに大きい。A4 のスキャンを 192dpi にしたページ 1 枚は、RGBA にデコードすると 14MB になる。スキャンの TIFF や PDF を読み進めると 100 ページで 1.4GB になり、タブが落ちる。そこで、デコードした画像だけは予算の中で持つ。
+
+- **予算**: 幅 × 高さ × 4 バイトで数え、既定は 256MiB（`DEFAULT_IMAGE_BUDGET`）。超えた分は、最も前に準備された画像から `close()` する。Map の挿入順を LRU の順に使い、`prepare` で触れた画像を末尾へ移す。予算は `ResourceOptions.imageBudget` で変え、ワーカーには `BdfWorkerClient.open` の `options.imageBudget` で渡す。
+- **読み直し**: 閉じた画像は、次にそれを使う描画の `prepare` がもう一度デコードする。`BdfDocument.ensure` は読み込み済みの印を持たず、呼ぶたびに依存パーツを `onResource` に渡し直すので、読み直しの仕組みは要らない。符号化されたバイト列（画像の Part）は `BdfDocument` が持ち続ける。デコード後の数十分の一の大きさなので、Range 取得をやり直さずに済む方を取った。
+- **描画中の画像は閉じない**: ワーカーの要求は非同期に重なる。描画 A が画像を準備して別の画像のデコードを待つ間に、描画 B が終わることがある。B の終わりで予算まで削ると、A が準備済みでまだ描いていない画像を閉じてしまう。そこで描画ごとに `hold()` を取り、`prepare` が触れた画像をその hold に入れ、描き終えて `release()` するまで閉じない。削るのは、デコードで予算を超えたときと hold を外したとき。押さえられた画像だけで予算を超えるときは、超えたまま持つ。
+- **同じ画像の同時デコード**: 1 回のデコードを共有する（以前は重なると先の ImageBitmap を閉じずに捨てていた）。
+- **テキストだけの要求は画像を読まない**: テキスト層・連続モードのテキスト・シートのテキストは `prepareText` で Object・フォント・パスだけを準備する。前後の画面のテキスト層を先に作っても、描かない画像をデコードして予算を使うことはない。
+- **文書を閉じる・開き直す**: ワーカーはキャッシュの `dispose()` で画像を閉じる。その文書の描画がまだ途中なら、押さえている画像はその描画が終わってから閉じる。
+- **縮小デコードはしない**: `createImageBitmap` の `resizeWidth` で小さくデコードする手もあるが、キャッシュは倍率をまたいで共有しており、ズームのたびにデコードし直すことになるので見送った。画像の大きさは変換側の解像度の上限（§3.2、§3.13）で抑える。
 
 ## 6. Excel シートの Tile 化
 
@@ -358,6 +427,9 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 6. **PPTX 直接変換**: マスター共有の本領（実装済み、§3.4）。
 7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
+9. **draw.io 直接変換**: ページごとの View とシートのような切り替え（実装済み、§3.11）。
+10. **CAD 図面**: DXF（実装済み、§3.12）。続けて JWW（Jw_cad）、SXF（電子納品の SFC と P21）、CGM を、共通の `converter/internal/cad` の上に作る。
+11. **TIFF**: 多ページのスキャンと FAX、画像の入力に共通の解像度の上限（実装済み、§3.13）。
 
 ## 9. リポジトリ構成（案）
 
@@ -377,19 +449,23 @@ bdf/
 │   ├── docx/          Word → BDF 変換器（testdata/ にテスト用文書とフォント）
 │   ├── emf/           Windows メタファイル（.emf、.wmf）→ BDF 変換器
 │   ├── visio/         Visio（.vsdx、.vdx）→ BDF 変換器（testdata/ にテスト用図面）
+│   ├── drawio/        draw.io → BDF 変換器（testdata/ にテスト用の図、stencils/ に同梱のステンシル）
+│   ├── dxf/           AutoCAD DXF → BDF 変換器（testdata/ にテスト用図面）
+│   ├── tiff/          TIFF（.tif、.tiff）→ BDF 変換器（testdata/ にテスト用のスキャン・FAX・向きのファイル）
 │   ├── all/           すべての形式を登録する
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
 │                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
-│                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）、
+│                      フォント選択・計測・サブセット埋め込み。draw.io も使う）、canvas（組み立て中の Object。draw.io も使う）、
+│                      metafile（EMF/WMF の再生）、
 │                      暗号化された Office 文書を開く cfb（複合ファイル）と offcrypto（Agile / Standard 暗号化の復号）、
-│                      linebreak（行分割の規則）
+│                      linebreak（行分割の規則）、CAD の変換器で共有する cad（図面をページに描く）、tiff（TIFF の読み取りと CCITT のデコーダ）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画（scroll View は連続描画）、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）とデモサイト（ブラウザ内変換）
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word の変換結果と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word・DXF・TIFF の変換結果と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

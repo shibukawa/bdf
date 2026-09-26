@@ -38,48 +38,145 @@ export function fontString(f: Font, size: number): string {
   return `${FONT_STYLES[f.style] ?? "normal"} ${f.weight || 400} ${size}px ${family}`;
 }
 
+/** The decoded images a cache keeps by default: 256 MiB, counted as width × height × 4 bytes. */
+export const DEFAULT_IMAGE_BUDGET = 256 * 1024 * 1024;
+
+export interface ResourceOptions {
+  /**
+   * Bytes of decoded images to keep (width × height × 4 each; default
+   * DEFAULT_IMAGE_BUDGET). The least recently prepared images beyond it are
+   * closed, except those a render holds; they are decoded again from their
+   * part when needed.
+   */
+  imageBudget?: number;
+  /** Decodes an image part (default createImageBitmap). */
+  decodeImage?: (bytes: Uint8Array) => Promise<ImageBitmap>;
+}
+
+/**
+ * The images one render uses, from its prepare() calls until release():
+ * the cache does not close them in between, whatever else it loads.
+ */
+export class ImageHold {
+  readonly images = new Set<Hash>();
+}
+
+const bitmapBytes = (b: ImageBitmap) => b.width * b.height * 4;
+
 /**
  * Caches of browser objects derived from parts: Path2D, ImageBitmap, FontFace.
  * One cache can serve many contexts; it is bound to a document.
+ *
+ * Decoded images take far more memory than anything else (an A4 scan at
+ * 192 dpi is 14 MB as RGBA), so they are kept within a budget, least
+ * recently used first out. A render takes a hold() before preparing and
+ * releases it after drawing, so an image cannot be closed between the two
+ * even when another render finishes in the meantime.
  */
 export class ResourceCache {
   private inlinePaths = new WeakMap<ObjectPart, (Path2D | undefined)[]>();
   private extPaths = new Map<Hash, Path2D[]>();
+  /** Decoded images, least recently prepared first. */
   private images = new Map<Hash, ImageBitmap>();
+  private decoding = new Map<Hash, Promise<void>>();
+  private holds = new Set<ImageHold>();
+  private bytes = 0;
+  private disposed = false;
   private fonts = new Map<Hash, FontFace>();
   private fontSet: FontFaceSet | undefined;
+  readonly imageBudget: number;
+  private decodeImage: (bytes: Uint8Array) => Promise<ImageBitmap>;
 
-  constructor(readonly doc: BdfDocument, fontSet?: FontFaceSet) {
+  constructor(readonly doc: BdfDocument, fontSet?: FontFaceSet, opts: ResourceOptions = {}) {
     this.fontSet = fontSet ?? (globalThis as { fonts?: FontFaceSet }).fonts ?? (globalThis as { document?: { fonts?: FontFaceSet } }).document?.fonts;
+    this.imageBudget = opts.imageBudget ?? DEFAULT_IMAGE_BUDGET;
+    this.decodeImage = opts.decodeImage ?? ((bytes) => createImageBitmap(new Blob([bytes as BlobPart])));
   }
 
-  /** Remove the fonts from the font set and close the images. */
+  /**
+   * Load an object, its children, and every font/image/path part they use.
+   * The images go into hold, when given, and stay decoded until it is released.
+   */
+  async prepare(hash: Hash, hold?: ImageHold): Promise<ObjectPart> {
+    return this.doc.ensure(hash, (e, bytes) => this.load(e, bytes, hold));
+  }
+
+  /**
+   * Load an object with its children, fonts and path collections but not
+   * its images: what extracting its text needs, without decoding pictures
+   * that no render asked for.
+   */
+  async prepareText(hash: Hash): Promise<ObjectPart> {
+    return this.doc.ensure(hash, (e, bytes) => (e.t === "img" ? undefined : this.load(e, bytes)));
+  }
+
+  /** Start holding the images of a render (see prepare). */
+  hold(): ImageHold {
+    const h = new ImageHold();
+    this.holds.add(h);
+    return h;
+  }
+
+  /** End a hold, and close the images over the budget that nothing holds. */
+  release(hold: ImageHold): void {
+    this.holds.delete(hold);
+    this.trim();
+  }
+
+  /** The decoded images and their size in bytes (width × height × 4). */
+  get imageStats(): { count: number; bytes: number } {
+    return { count: this.images.size, bytes: this.bytes };
+  }
+
+  /**
+   * Close the decoded images and take the fonts out of the font set; the
+   * cache is not used for new renders afterwards. Images a render in
+   * progress holds are closed when it releases them, and those still
+   * decoding when they are done; the fonts go at once, so dispose of a
+   * cache whose renders may still draw text only once they are done.
+   */
   dispose(): void {
+    this.disposed = true;
+    this.trim();
     for (const face of this.fonts.values()) this.fontSet?.delete(face);
-    for (const bmp of this.images.values()) bmp.close();
     this.fonts.clear();
-    this.images.clear();
     this.extPaths.clear();
   }
 
-  /** Load an object, its children, and every font/image/path part they use. */
-  async prepare(hash: Hash): Promise<ObjectPart> {
-    return this.doc.ensure(hash, (e, bytes) => this.load(e, bytes));
-  }
-
-  private async load(e: PartEntry, bytes: Uint8Array): Promise<void> {
+  private async load(e: PartEntry, bytes: Uint8Array, hold?: ImageHold): Promise<void> {
     switch (e.t) {
       case "img": {
-        if (this.images.has(e.h)) return;
-        const bmp = await createImageBitmap(new Blob([bytes as BlobPart]));
-        this.images.set(e.h, bmp);
-        return;
+        hold?.images.add(e.h); // held from now, before any await
+        const bmp = this.images.get(e.h);
+        if (bmp) {
+          this.images.delete(e.h); // most recently prepared: to the end
+          this.images.set(e.h, bmp);
+          return;
+        }
+        // Renders that need the same image at once share one decoding.
+        let p = this.decoding.get(e.h);
+        if (!p) {
+          p = this.decodeImage(bytes)
+            .then((bmp) => {
+              if (this.disposed) {
+                bmp.close();
+                return;
+              }
+              this.images.set(e.h, bmp);
+              this.bytes += bitmapBytes(bmp);
+              this.trim();
+            })
+            .finally(() => this.decoding.delete(e.h));
+          this.decoding.set(e.h, p);
+        }
+        return p;
       }
       case "font": {
         if (this.fonts.has(e.h)) return;
         const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
         const face = new FontFace(embeddedFamily(e.h), buffer);
         await face.load();
+        if (this.disposed) return;
         this.fontSet?.add(face);
         this.fonts.set(e.h, face);
         return;
@@ -90,6 +187,21 @@ export class ResourceCache {
         this.extPaths.set(e.h, paths.map(buildPath2D));
         return;
       }
+    }
+  }
+
+  /** Close the least recently prepared images that nothing holds until the rest fit the budget. */
+  private trim(): void {
+    const budget = this.disposed ? 0 : this.imageBudget;
+    if (this.bytes <= budget) return;
+    const held = new Set<Hash>();
+    for (const h of this.holds) for (const i of h.images) held.add(i);
+    for (const [hash, bmp] of this.images) {
+      if (this.bytes <= budget) break;
+      if (held.has(hash)) continue;
+      this.images.delete(hash);
+      this.bytes -= bitmapBytes(bmp);
+      bmp.close();
     }
   }
 

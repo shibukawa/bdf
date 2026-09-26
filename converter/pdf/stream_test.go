@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/sfnt"
 )
 
@@ -238,7 +239,7 @@ func TestStreamFontVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := NewStream(bytes.NewReader(data), &Options{NoWOFF2: true, Pages: slices.Repeat([]int{1, 2}, 4)})
+	s, err := NewStream(bytes.NewReader(data), &Options{NoWOFF2: true, Pages: conv.PageList(slices.Repeat([]int{1, 2}, 4)...)})
 	if err != nil {
 		t.Fatal(err)
 	}

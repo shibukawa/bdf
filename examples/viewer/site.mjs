@@ -40,6 +40,9 @@ const SAMPLES = [
   { path: "converter/csv/testdata/japanese.tsv", label: "TSV (Shift_JIS)" },
   { path: "converter/visio/testdata/shapes.vsdx", label: "Visio" },
   { path: "converter/visio/testdata/flow.vdx", label: "Visio XML (.vdx)" },
+  { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },
+  { path: "converter/drawio/testdata/aws.drawio", label: "draw.io (AWS)" },
+  { path: "converter/dxf/testdata/layout.dxf", label: "DXF (model space and a layout)" },
   { path: "testdata/demo.bdf", label: "bdf" },
 ];
 

@@ -7,9 +7,15 @@ export type OpenSource =
   | { kind: "single"; url: string; range?: boolean }
   | { kind: "split"; base: string };
 
+/** Settings of the worker for a document. */
+export interface WorkerOpenOptions {
+  /** Bytes of decoded images the worker keeps (see ResourceOptions.imageBudget). */
+  imageBudget?: number;
+}
+
 export type WorkerRequest =
   /** Open a document; an encrypted one needs its password, here or with "unlock". */
-  | { id: number; type: "open"; source: OpenSource; password?: string }
+  | { id: number; type: "open"; source: OpenSource; password?: string; options?: WorkerOpenOptions }
   /** Retry the document "open" left locked with another password. */
   | { id: number; type: "unlock"; password: string }
   /** Put a page a streamed conversion returned (a page document) in place of a page of the open document. */

@@ -6,7 +6,7 @@
 
 **目的**
 
-- Office 系ファイル（PowerPoint / Excel / Word 等）を**サーバー側で変換**し、**ブラウザ（Worker）で Canvas 2D にそのまま描画**できる中間フォーマット。
+- Office 系ファイル（PowerPoint / Excel / Word 等）や図（draw.io）を**サーバー側で変換**し、**ブラウザ（Worker）で Canvas 2D にそのまま描画**できる中間フォーマット。
 - 命令セットは `CanvasRenderingContext2D` の API に 1:1 に近い形で対応させ、デコーダが「バイト列を読んで ctx のメソッドを呼ぶだけ」になるようにする。
 - 圧縮・展開は `CompressionStream` / `DecompressionStream`（`deflate-raw`）に任せ、独自実装を持たない。
 - **1ファイル**（配布・キャッシュ向け）と**分割ファイル群**（オンデマンド取得・CDN 向け）を同じ論理構造で表現できる。
@@ -29,7 +29,7 @@
 |---|---|
 | Part | コンテナに格納される1つのバイト列。内容のハッシュで識別される。 |
 | Object | 描画命令列を含む Part。ページ本体・マスター・シートのタイルなど、描けるものはすべて Object。 |
-| View | 閲覧単位。スライド集、シート、文書など。1 BDF に複数の View を持てる（Excel の複数シート等）。 |
+| View | 閲覧単位。スライド集、シート、文書、図のページなど。1 BDF に複数の View を持てる（Excel の複数シート、draw.io の複数ページ等）。 |
 | Page | 固定サイズの矩形。`fixed` / `flow` View を構成する。 |
 | Tile | `sheet` View を格子状に分割した矩形。1 Tile = 1 Object。 |
 | Resource | Object から参照される Font / Image / Path / Paint。 |
@@ -238,6 +238,8 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 - 空 Tile は表に載せない。
 - `tiles` の Index Part 形式（`t: idx`）: `[u32 tx, u32 ty, u8[16] hash]` を (ty, tx) 昇順に並べた固定長レコード列。二分探索で引く。
 
+**複数の View** — `views` の順が表示の順。View が 2 つ以上あるとき、ビューアは表計算ソフトのシート見出しのように View をタブで並べて切り替える（Excel のシート、draw.io のページ）。View の `id` は文書内で一意な任意の文字列で、LINK の `#view=` で参照される（§7.7）。
+
 ### 4.2 レイヤーの役割（role）
 
 `background` / `master` / `header` / `footer` / `body` / `notes` / `annotation`。ビューアは役割ごとの表示切替に使える。未知の role は `body` として扱う。
@@ -247,7 +249,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `emf` / `wmf` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `dxf` / `emf` / `wmf` / `tiff` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -287,18 +289,19 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 変換器は入力文書のメタデータを次のように写す。
 
-| 要素 | PDF（文書情報辞書） | PowerPoint、Excel、Word（コアプロパティ） |
-|---|---|---|
-| `title` | `Title` | `dc:title` |
-| `creator` | `Author` | `dc:creator` |
-| `subject` | `Keywords`（`,` `;` `、` などで分割） | `dc:subject`、`cp:keywords`（同様に分割） |
-| `description` | `Subject` | `dc:description` |
-| `identifier` | – | `dc:identifier` |
-| `language` | – | `dc:language`（なければ PowerPoint は既定のテキストスタイルの、Word は既定の run の言語。Word は本文の多くが和文なら東アジアの言語） |
-| `created` | `CreationDate`（W3CDTF に変換） | `dcterms:created` |
-| `modified` | `ModDate`（W3CDTF に変換） | `dcterms:modified` |
+| 要素 | PDF（文書情報辞書） | PowerPoint、Excel、Word（コアプロパティ） | draw.io | TIFF（先頭のページのタグ） |
+|---|---|---|---|---|
+| `title` | `Title` | `dc:title` | – | `DocumentName` |
+| `creator` | `Author` | `dc:creator` | – | `Artist`（`;` で分割） |
+| `subject` | `Keywords`（`,` `;` `、` などで分割） | `dc:subject`、`cp:keywords`（同様に分割） | – | – |
+| `description` | `Subject` | `dc:description` | – | `ImageDescription` |
+| `identifier` | – | `dc:identifier` | – | – |
+| `language` | – | `dc:language`（なければ PowerPoint は既定のテキストスタイルの、Word は既定の run の言語。Word は本文の多くが和文なら東アジアの言語） | – | – |
+| `rights` | – | – | – | `Copyright` |
+| `created` | `CreationDate`（W3CDTF に変換） | `dcterms:created` | – | – |
+| `modified` | `ModDate`（W3CDTF に変換） | `dcterms:modified` | `mxfile` の `modified` | `DateTime`（W3CDTF に変換） |
 
-PDF の対応は XMP が文書情報辞書を写す方法に合わせている。`bdf generate` の `-dc 要素名=値`（繰り返し可）で要素を上書きでき、`-dc 要素名=` でその要素を消せる。
+PDF と TIFF の対応は、XMP が文書情報辞書と TIFF のタグを写す方法に合わせている（TIFF の `DocumentName` は XMP にないので題名にした）。`bdf generate` の `-dc 要素名=値`（繰り返し可）で要素を上書きでき、`-dc 要素名=` でその要素を消せる。
 
 ## 5. Object Part
 
@@ -466,7 +469,11 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 | 0x71 | MARK | u8 kind, str payload | 構造マーク（§7.8）。描画には影響しない |
 | 0xFF | EXT | u32 len, u8[len] | 拡張。未知なら読み飛ばす |
 
-`LINK` の矩形は他の命令と同じく現在の変換行列の座標系で表す。読み手は 4 隅を変換した外接矩形をリンク領域とし、その領域に重なる run をリンクの文字列とする。`url` は `http:` / `https:` / `mailto:` の絶対 URL か、同じ View のページを指す `#page=N`（1 始まり。`scroll` View では帯）。読み手はそれ以外の `url` をリンクにしない。
+`LINK` の矩形は他の命令と同じく現在の変換行列の座標系で表す。読み手は 4 隅を変換した外接矩形をリンク領域とし、その領域に重なる run をリンクの文字列とする。`url` は次のいずれか。読み手はそれ以外の `url` をリンクにしない。
+
+- `http:` / `https:` / `mailto:` の絶対 URL
+- `#page=N` — 同じ View のページ（1 始まり。`scroll` View では帯）
+- `#view=ID` または `#view=ID&page=N` — 別の View（`ID` は View の `id` を URL エンコードしたもの）とそのページ。ビューアはその View に切り替える（draw.io のページ間リンクなど）
 
 ### 7.8 MARK の種類とテキストの構造
 

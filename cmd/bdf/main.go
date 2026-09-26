@@ -18,7 +18,7 @@ import (
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   bdf generate [flags] <input> <out.bdf | dir/>
-                                     convert a PDF, PowerPoint, Excel, CSV or metafile (bdf generate -h for flags and formats)
+                                     convert a document or a drawing (bdf generate -h for flags and formats)
   bdf ls <file.bdf | dir>            list views and parts
   bdf manifest <file.bdf | dir>      print the manifest as JSON
   bdf disasm <file.bdf | dir> <hash> disassemble an object part

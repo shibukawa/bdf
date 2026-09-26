@@ -3,7 +3,7 @@ import { BdfDocument, BdfPasswordError, BufferSource, RangeSource, SplitSource, 
 import { fontString } from "./resources.js";
 import { PageRenderer } from "./page.js";
 import { DocumentSearch } from "./search.js";
-import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource } from "./protocol.js";
+import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource, WorkerOpenOptions } from "./protocol.js";
 
 /** An open document, with what draws and searches it. */
 interface Opened {
@@ -18,6 +18,8 @@ let locked: PartSource | undefined;
 /** Documents closed or replaced, whose fonts and images go once no request is running. */
 const retired: Opened[] = [];
 let running = 0;
+/** The options of the last open, which a replacing document keeps. */
+let settings: WorkerOpenOptions = {};
 
 const measureCtx = new OffscreenCanvas(1, 1).getContext("2d")!;
 const measure = (font: string, text: string) => {
@@ -34,7 +36,8 @@ function sourceOf(source: OpenSource): PartSource | Promise<PartSource> {
 }
 
 function opened(doc: BdfDocument): Opened {
-  return { doc, pages: new PageRenderer(doc, {}, (self as unknown as { fonts?: FontFaceSet }).fonts), search: new DocumentSearch(doc, measure) };
+  const pages = new PageRenderer(doc, {}, (self as unknown as { fonts?: FontFaceSet }).fonts, { imageBudget: settings.imageBudget });
+  return { doc, pages, search: new DocumentSearch(doc, measure) };
 }
 
 function retire() {
@@ -42,8 +45,9 @@ function retire() {
   open = locked = undefined;
 }
 
-async function openSource(source: OpenSource, password?: string): Promise<Manifest> {
+async function openSource(source: OpenSource, password?: string, options: WorkerOpenOptions = {}): Promise<Manifest> {
   retire();
+  settings = options;
   locked = await sourceOf(source);
   return unlock(password);
 }
@@ -107,7 +111,7 @@ function within(c: TextContent, r: Rect, dx = 0, dy = 0): TextContent {
  * runs keep theirs: only text drawn with a font has a known extent.
  */
 async function pageContent({ doc, pages }: Opened, page: Page, matrix?: Matrix, roles?: string[]): Promise<TextContent> {
-  await pages.preparePage(page);
+  await pages.preparePageText(page);
   const layers = roles ? page.layers.filter((l) => roles.includes(l.role)) : page.layers;
   const c = concat(layers.map((layer) => extractContent(doc.objectSync(layer.obj)!, (h) => doc.objectSync(h), matrix)));
   for (const r of c.runs) {
@@ -150,7 +154,7 @@ async function sheetContent({ doc, pages }: Opened, view: View, viewport: Rect |
   for (const [tx, ty] of [...keys.values()].sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
     const h = view.tiles?.[`${tx},${ty}`];
     if (!h) continue;
-    await pages.res.prepare(h);
+    await pages.res.prepareText(h);
     const c = extractContent(doc.objectSync(h)!, (hh) => doc.objectSync(hh), [1, 0, 0, 1, tx * tile, ty * tile]);
     parts.push(within(c, { x: 0, y: 0, w: tile, h: tile - 1e-6 }, tx * tile, ty * tile)); // the rule of the text index (spec §4.1)
   }
@@ -164,7 +168,7 @@ function canvasFor(w: number, h: number): OffscreenCanvas {
 async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; transfer: Transferable[] }> {
   switch (req.type) {
     case "open":
-      return { result: await openSource(req.source, req.password), transfer: [] };
+      return { result: await openSource(req.source, req.password, req.options), transfer: [] };
     case "unlock":
       return { result: await unlock(req.password), transfer: [] };
     case "replace":

@@ -77,6 +77,28 @@ export const CASES: Case[] = [
   // CSV and TSV files rendered by converter/csv with the test fonts; see test/csv.
   { name: "csv-basic-1", src: "/testdata/csv/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1240, h: 240 }, scale: 1 },
   { name: "csv-japanese-1", src: "/testdata/csv/japanese.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 460, h: 180 }, scale: 1.5 },
+  // draw.io diagrams rendered by converter/drawio with the test fonts: every page is a view of its own.
+  { name: "drawio-labels", src: "/testdata/drawio/labels.bdf", kind: "page", view: "text", page: 0, scale: 1.5 },
+  { name: "drawio-multipage-1", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "overview", page: 0, scale: 1.5 },
+  { name: "drawio-multipage-2", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "details", page: 0, scale: 1.5 },
+  { name: "drawio-multipage-3", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "layers", page: 0, scale: 1.5 },
+  // shapes, stencils, markers and edge shapes; swimlanes, orthogonal and curved routing, line jumps, a table
+  { name: "drawio-showcase-1", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "shapes", page: 0, scale: 1.5 },
+  { name: "drawio-showcase-2", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "flow", page: 0, scale: 1.5 },
+  // AWS: current icons and groups (aws4), and a diagram in an older icon set drawn with them
+  { name: "drawio-aws-1", src: "/testdata/drawio/aws.bdf", kind: "page", view: "current", page: 0, scale: 1.5 },
+  { name: "drawio-aws-2", src: "/testdata/drawio/aws.bdf", kind: "page", view: "legacy", page: 0, scale: 1 },
+  // DXF drawings rendered by converter/dxf with the test fonts; see test/dxf. Model space on its dark
+  // background, and a layout with a title block and two viewports at different scales.
+  { name: "dxf-shapes-1", src: "/testdata/dxf/shapes.bdf", kind: "page", view: "model", page: 0, scale: 0.75 },
+  { name: "dxf-layout-1", src: "/testdata/dxf/layout.bdf", kind: "page", view: "layout1", page: 0, scale: 0.75 },
+  { name: "dxf-r12-sjis-1", src: "/testdata/dxf/r12-sjis.bdf", kind: "page", view: "model", page: 0, scale: 0.5 },
+  // TIFF pages converted by converter/tiff; see test/tiff. A 300 dpi bilevel scan scaled down to 192 dpi, JPEG strips
+  // stored as one JPEG, a fax at 204 × 98 dpi, and a picture stored turned with Orientation 6.
+  { name: "tiff-scan-1", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  { name: "tiff-scan-2", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "tiff-fax-1", src: "/testdata/tiff/fax.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "tiff-orientation-6", src: "/testdata/tiff/orientation.bdf", kind: "page", view: "pages", page: 5, scale: 2 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";
@@ -232,7 +254,13 @@ async function main() {
   const { client: xlsxBasic } = await open("/testdata/xlsx/basic.bdf");
   const xlsxHits = await xlsxBasic.search("sheet3", "straddles the tile");
   const xlsxRects = await xlsxBasic.locate("sheet3", xlsxHits);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects };
+  // draw.io: a page of the diagram is a view; the search runs in it, and
+  // links to other pages are #view= links
+  const { client: drawio } = await open("/testdata/drawio/multipage.bdf");
+  const drawioHits = await drawio.search("details", "日本語の説明");
+  const drawioRects = await drawio.locate("details", drawioHits);
+  const drawioLinks = (await drawio.content("overview", 0)).links.map((l) => l.url);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects, drawioHits, drawioRects, drawioLinks };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }

@@ -1,0 +1,133 @@
+<mxfile>
+  <diagram id="aws2" name="aws2">
+    <mxGraphModel>
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="i0" value="Config" style="dashed=0;html=1;shape=mxgraph.aws2.administration_and_security.config;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="50.5" y="4" width="59" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="i1" value="Kinesis" style="dashed=0;html=1;shape=mxgraph.aws2.analytics.kinesis;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="210.5" y="4" width="59" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="i2" value="Kinesis EnabledApp" style="dashed=0;html=1;shape=mxgraph.aws2.analytics.kinesis_enabledapp;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="371" y="10" width="58" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="i3" value="QuickSight" style="dashed=0;html=1;shape=mxgraph.aws2.analytics.quicksight;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="530" y="7" width="60" height="66" as="geometry"/>
+        </mxCell>
+        <mxCell id="i4" value="SES Email" style="dashed=0;html=1;shape=mxgraph.aws2.app_services.email;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="683.5" y="13" width="73" height="54" as="geometry"/>
+        </mxCell>
+        <mxCell id="i5" value="SQS" style="dashed=0;html=1;shape=mxgraph.aws2.app_services.sqs;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="850.5" y="4" width="59" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="i6" value="SWF" style="dashed=0;html=1;shape=mxgraph.aws2.app_services.swf;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="50.5" y="164" width="59" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="i7" value="Auto Scaling" style="dashed=0;html=1;shape=mxgraph.aws2.compute_and_networking.auto_scaling;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="210.5" y="171.5" width="59" height="57" as="geometry"/>
+        </mxCell>
+        <mxCell id="i8" value="EC2 Container Service" style="dashed=0;html=1;shape=mxgraph.aws2.compute_and_networking.ec2_container_service;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="369.5" y="168.5" width="61" height="63" as="geometry"/>
+        </mxCell>
+        <mxCell id="i9" value="EC2 Spot Instance" style="dashed=0;html=1;shape=mxgraph.aws2.compute_and_networking.ec2_spot_instance;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="533.5" y="171.5" width="53" height="57" as="geometry"/>
+        </mxCell>
+        <mxCell id="i10" value="Elastic Network Instance" style="shape=mxgraph.aws2.compute_and_networking.elastic_network_instance;html=1;" vertex="1" parent="1">
+          <mxGeometry x="693.61" y="172.67" width="52.79" height="54.67" as="geometry"/>
+        </mxCell>
+        <mxCell id="i11" value="EMR MapR M5 Engine" style="dashed=0;html=1;shape=mxgraph.aws2.compute_and_networking.emr_mapr_m5_engine;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="843" y="173.5" width="74" height="53" as="geometry"/>
+        </mxCell>
+        <mxCell id="i12" value="Route 53 Hosted Zone" style="dashed=0;html=1;shape=mxgraph.aws2.compute_and_networking.route_53_hosted_zone;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="51" y="332" width="58" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="i13" value="VPC Router" style="shape=mxgraph.aws2.compute_and_networking.vpc_router;html=1;" vertex="1" parent="1">
+          <mxGeometry x="212.33" y="331.49" width="55.34" height="57.02" as="geometry"/>
+        </mxCell>
+        <mxCell id="i14" value="DynamoDB Attributes" style="dashed=0;html=1;shape=mxgraph.aws2.database.dynamodb_attributes;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="374" y="332" width="52" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="i15" value="ElasticCache MemCache" style="dashed=0;html=1;shape=mxgraph.aws2.database.elasticcache_memcache;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="534" y="332.5" width="52" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="i16" value="RDS Instance Standby" style="dashed=0;html=1;shape=mxgraph.aws2.database.rds_instance_standby;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="698.5" y="332" width="43" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="i17" value="RDS Oracle Instance" style="dashed=0;html=1;shape=mxgraph.aws2.database.rds_oracle_db_instance;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="854" y="332.5" width="52" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="i18" value="Redshift Dense Compute Node" style="dashed=0;html=1;shape=mxgraph.aws2.database.redshift_dense_compute_node;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="55.5" y="492.5" width="49" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="i19" value="CloudWatch Alarm" style="dashed=0;html=1;shape=mxgraph.aws2.deployment_and_management.cloudwatch_alarm;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="216" y="491" width="48" height="58" as="geometry"/>
+        </mxCell>
+        <mxCell id="i20" value="IAM" style="dashed=0;html=1;shape=mxgraph.aws2.deployment_and_management.iam;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="381.5" y="484" width="37" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="i21" value="IAM Permissions" style="dashed=0;html=1;shape=mxgraph.aws2.deployment_and_management.iam_permissions;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="539" y="491.5" width="42" height="57" as="geometry"/>
+        </mxCell>
+        <mxCell id="i22" value="OpsWorks Apps" style="dashed=0;html=1;shape=mxgraph.aws2.deployment_and_management.opsworks_apps;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="684" y="484" width="72" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="i23" value="OpsWorks Resources" style="dashed=0;html=1;shape=mxgraph.aws2.deployment_and_management.opsworks_resources;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="850.5" y="484" width="59" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="i24" value="WorkSpaces" style="dashed=0;html=1;shape=mxgraph.aws2.enterprise_applications.workspaces;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="45.18" y="640" width="69.65" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="i25" value="Bicycle" style="dashed=0;html=1;shape=mxgraph.aws2.internet_of_things.bicycle;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="204.5" y="644.5" width="71" height="71" as="geometry"/>
+        </mxCell>
+        <mxCell id="i26" value="Desired State" style="dashed=0;html=1;shape=mxgraph.aws2.internet_of_things.desired_state;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="373.5" y="651.5" width="53" height="57" as="geometry"/>
+        </mxCell>
+        <mxCell id="i27" value="HTTP2 Protocol" style="dashed=0;html=1;shape=mxgraph.aws2.internet_of_things.http2_protocol;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="532" y="650.5" width="56" height="59" as="geometry"/>
+        </mxCell>
+        <mxCell id="i28" value="Policy" style="dashed=0;html=1;shape=mxgraph.aws2.internet_of_things.policy;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="695.5" y="640.5" width="49" height="79" as="geometry"/>
+        </mxCell>
+        <mxCell id="i29" value="Simulator" style="dashed=0;html=1;shape=mxgraph.aws2.internet_of_things.simulator;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="846.5" y="645" width="67" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="i30" value="Service Catalog" style="dashed=0;html=1;shape=mxgraph.aws2.management_tools.service_catalog;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="50" y="805" width="60" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="i31" value="SNS Email Notification" style="dashed=0;html=1;shape=mxgraph.aws2.mobile_services.sns_email_notification;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="200" y="815.11" width="80" height="49.78" as="geometry"/>
+        </mxCell>
+        <mxCell id="i32" value="VPC Router" style="dashed=0;html=1;shape=mxgraph.aws2.networking.vpc_router;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="369.5" y="808" width="61" height="64" as="geometry"/>
+        </mxCell>
+        <mxCell id="i33" value="Forums" style="dashed=0;html=1;shape=mxgraph.aws2.non-service_specific.forums;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="522" y="803.5" width="76" height="73" as="geometry"/>
+        </mxCell>
+        <mxCell id="i34" value="Tape Storage" style="dashed=0;html=1;shape=mxgraph.aws2.non-service_specific.tape_storage;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="686" y="821" width="68" height="38" as="geometry"/>
+        </mxCell>
+        <mxCell id="i35" value="Toolkit for Visual Studio" style="dashed=0;html=1;shape=mxgraph.aws2.sdks.aws_toolkit_for_visual_studio;strokeColor=none;" vertex="1" parent="1">
+          <mxGeometry x="849" y="804" width="62" height="72" as="geometry"/>
+        </mxCell>
+        <mxCell id="e0" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i0" target="i1">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i1" target="i2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i2" target="i3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i3" target="i4">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;html=1;endArrow=block;endFill=1;" edge="1" parent="1" source="i4" target="i5">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

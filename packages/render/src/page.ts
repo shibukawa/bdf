@@ -1,5 +1,5 @@
 import type { BdfDocument, View, Page, Rect } from "@bdf/core";
-import { ResourceCache } from "./resources.js";
+import { ResourceCache, type ImageHold, type ResourceOptions } from "./resources.js";
 import { CanvasRenderer, type Ctx2D, type RenderOptions } from "./canvas.js";
 
 export interface PageRenderOptions extends RenderOptions {
@@ -16,8 +16,8 @@ export class PageRenderer {
   readonly res: ResourceCache;
   readonly renderer: CanvasRenderer;
 
-  constructor(readonly doc: BdfDocument, opts: RenderOptions = {}, fontSet?: FontFaceSet) {
-    this.res = new ResourceCache(doc, fontSet);
+  constructor(readonly doc: BdfDocument, opts: RenderOptions = {}, fontSet?: FontFaceSet, resources: ResourceOptions = {}) {
+    this.res = new ResourceCache(doc, fontSet, resources);
     this.renderer = new CanvasRenderer(this.res, opts);
   }
 
@@ -26,18 +26,39 @@ export class PageRenderer {
     this.res.dispose();
   }
 
-  /** Load everything a page needs. */
-  async preparePage(page: Page): Promise<void> {
-    await Promise.all(page.layers.map((l) => this.res.prepare(l.obj)));
+  /**
+   * Load everything a page needs. To draw it afterwards with drawPageSync,
+   * pass a hold (ResourceCache.hold) and release it after drawing, so that
+   * its images stay decoded in between.
+   */
+  async preparePage(page: Page, hold?: ImageHold): Promise<void> {
+    await Promise.all(page.layers.map((l) => this.res.prepare(l.obj, hold)));
+  }
+
+  /** Load what extracting a page's text needs: everything but its images. */
+  async preparePageText(page: Page): Promise<void> {
+    await Promise.all(page.layers.map((l) => this.res.prepareText(l.obj)));
+  }
+
+  /** Run a render: prepare with a hold on the images, draw, release. */
+  private async held(render: (hold: ImageHold) => Promise<void>): Promise<void> {
+    const hold = this.res.hold();
+    try {
+      await render(hold);
+    } finally {
+      this.res.release(hold);
+    }
   }
 
   /**
    * Draw one page into ctx. The canvas must be at least page.w*scale by page.h*scale;
    * the page origin is placed at (dx, dy) device pixels.
    */
-  async renderPage(ctx: Ctx2D, page: Page, opts: PageRenderOptions, dx = 0, dy = 0): Promise<void> {
-    await this.preparePage(page);
-    this.drawPageSync(ctx, page, opts, dx, dy);
+  renderPage(ctx: Ctx2D, page: Page, opts: PageRenderOptions, dx = 0, dy = 0): Promise<void> {
+    return this.held(async (hold) => {
+      await this.preparePage(page, hold);
+      this.drawPageSync(ctx, page, opts, dx, dy);
+    });
   }
 
   drawPageSync(ctx: Ctx2D, page: Page, opts: PageRenderOptions, dx = 0, dy = 0): void {
@@ -81,7 +102,11 @@ export class PageRenderer {
    * Draw the part of the continuous layout that intersects viewport (units) into ctx,
    * with viewport's top-left at device (0,0).
    */
-  async renderContinuous(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions): Promise<void> {
+  renderContinuous(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions): Promise<void> {
+    return this.held((hold) => this.drawContinuous(ctx, view, viewport, opts, hold));
+  }
+
+  private async drawContinuous(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, hold: ImageHold): Promise<void> {
     const pages = view.pages ?? [];
     const { offsets } = this.continuousLayout(view);
     const roles = opts.roles ?? ["body", "annotation"];
@@ -90,7 +115,7 @@ export class PageRenderer {
       const b = p.body ?? { x: 0, y: 0, w: p.w, h: p.h };
       if (offsets[i] < viewport.y + viewport.h && offsets[i] + b.h > viewport.y) visible.push(i);
     });
-    await Promise.all(visible.map((i) => this.preparePage(pages[i])));
+    await Promise.all(visible.map((i) => this.preparePage(pages[i], hold)));
     for (const i of visible) {
       const p = pages[i];
       const b = p.body ?? { x: 0, y: 0, w: p.w, h: p.h };
@@ -124,7 +149,11 @@ export class PageRenderer {
    * with viewport's top-left at device (0,0). Draws gridlines when the view asks for them;
    * row/column headers and frozen panes are the viewer's job.
    */
-  async renderSheet(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions): Promise<void> {
+  renderSheet(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions): Promise<void> {
+    return this.held((hold) => this.drawSheet(ctx, view, viewport, opts, hold));
+  }
+
+  private async drawSheet(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, hold: ImageHold): Promise<void> {
     const tile = view.tile ?? 2048;
     const tiles = view.tiles ?? {};
     const tx0 = Math.floor(viewport.x / tile), ty0 = Math.floor(viewport.y / tile);
@@ -134,7 +163,7 @@ export class PageRenderer {
       const h = tiles[`${tx},${ty}`];
       if (h) keys.push([tx, ty, h]);
     }
-    await Promise.all(keys.map(([, , h]) => this.res.prepare(h)));
+    await Promise.all(keys.map(([, , h]) => this.res.prepare(h, hold)));
 
     const s = opts.scale;
     ctx.save();
