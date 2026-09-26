@@ -47,26 +47,33 @@ type Text struct {
 	Font  FontSpec
 	Color bdf.Color
 	M     canvas.Matrix
-	// Advance is the natural advance of S in ems.
+	// Advance is the advance of S in ems: its natural advance, or the sum
+	// of Cells and Spacing.
 	Advance float64
-	// Pos, when not nil, places each character of S: its x in ems
-	// (fixed-pitch text).
-	Pos []float64
+	// Cells, when not nil, are the advances of the characters of S in ems
+	// (fixed-pitch text): each run of characters is stretched to the width
+	// of its cells.
+	Cells []float64
+	// Spacing is added after each character (ems).
+	Spacing float64
 	// Asc, Desc and Cap are the ascent, descent and cap height of the font
 	// in ems.
 	Asc, Desc, Cap float64
 
 	Underline, Overline, Strike bool
 	Break                       Break
+	// Vertical sets the characters upright along the text: x runs down the
+	// column, and each character is turned back a quarter turn, centred
+	// on the x axis in its cell.
+	Vertical bool
 }
 
 // Bounds returns the bounding box of the text in the drawing.
 func (t *Text) Bounds() Rect {
-	w := t.Advance
-	if n := len(t.Pos); n > 0 {
-		w = max(w, t.Pos[n-1]+1)
+	r := Rect{Point{0, -t.Desc}, Point{t.Advance, t.Asc}, true}
+	if t.Vertical {
+		r = Rect{Point{0, -0.5}, Point{t.Advance, 0.5}, true}
 	}
-	r := Rect{Point{0, -t.Desc}, Point{w, t.Asc}, true}
 	return r.Transform(t.M)
 }
 
@@ -107,4 +114,16 @@ func (f *Fonts) Metrics(spec FontSpec) (asc, desc, capHeight float64) {
 func (f *Fonts) NewText(spec FontSpec, s string, color bdf.Color, m canvas.Matrix) *Text {
 	asc, desc, capH := f.Metrics(spec)
 	return &Text{S: s, Font: spec, Color: color, M: m, Advance: f.Measure(spec, s), Asc: asc, Desc: desc, Cap: capH}
+}
+
+// NewCellText measures a text of fixed-pitch characters: cells are the
+// advances of its characters and spacing the space after each, in ems.
+func (f *Fonts) NewCellText(spec FontSpec, s string, cells []float64, spacing float64, color bdf.Color, m canvas.Matrix) *Text {
+	t := f.NewText(spec, s, color, m)
+	t.Cells, t.Spacing = cells, spacing
+	t.Advance = 0
+	for _, c := range cells {
+		t.Advance += c + spacing
+	}
+	return t
 }

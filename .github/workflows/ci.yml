@@ -48,6 +48,10 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/dxf/testdata/$n.dxf" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/dxf/$n.bdf"
           done
+          for n in shapes old; do
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/jww/testdata/$n.jww" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/jww/$n.bdf"
+          done
           for f in converter/docx/testdata/*.docx; do
             n=$(basename "$f" .docx)
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"

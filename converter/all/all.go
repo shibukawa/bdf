@@ -13,6 +13,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/drawio" // draw.io
 	_ "github.com/shibukawa/bdf/converter/dxf"    // AutoCAD DXF
 	_ "github.com/shibukawa/bdf/converter/emf"    // Windows metafiles
+	_ "github.com/shibukawa/bdf/converter/jww"    // Jw_cad
 	_ "github.com/shibukawa/bdf/converter/pdf"    // PDF
 	_ "github.com/shibukawa/bdf/converter/pptx"   // PowerPoint
 	_ "github.com/shibukawa/bdf/converter/visio"  // Visio
