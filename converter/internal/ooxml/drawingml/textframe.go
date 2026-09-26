@@ -12,6 +12,10 @@ import (
 // drawShapeText lays out and draws the text body of a shape in its text
 // rectangle (or, for SmartArt drawings, the separate text transform).
 func (s *Drawing) drawShapeText(cv *canvas.Canvas, sh *shape, xf xform, geo *geometry) {
+	if sh.n.Child("txbx") != nil {
+		s.drawTextBox(cv, sh, xf, geo)
+		return
+	}
 	tb := sh.n.Child("txBody")
 	if tb == nil {
 		return

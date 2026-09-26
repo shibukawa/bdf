@@ -59,6 +59,15 @@ export const CASES: Case[] = [
   { name: "visio-shapes-1", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "visio-shapes-2", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "visio-flow-1", src: "/testdata/visio/flow.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  // Word documents laid out by converter/docx with the test fonts; see test/docx.
+  { name: "docx-basic-1", src: "/testdata/docx/basic.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "docx-basic-2", src: "/testdata/docx/basic.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "docx-grid-2", src: "/testdata/docx/grid.bdf", kind: "page", view: "pages", page: 1, scale: 0.75 },
+  // East Asian vertical text: upright characters, turned Latin text, a turned table, horizontal headers.
+  { name: "docx-vertical-1", src: "/testdata/docx/vertical.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  // The page view's bodies stacked (continuous mode), and the scroll view across the boundary of its strips.
+  { name: "docx-basic-continuous", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "pages", viewport: { x: 0, y: 500, w: 451.3, h: 400 }, scale: 1 },
+  { name: "docx-basic-scroll", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 850, w: 769.9, h: 350 }, scale: 1 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

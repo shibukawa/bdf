@@ -20,6 +20,10 @@ const maxPartSize = 1 << 30
 // *Package is an empty package, for markup that comes without one (such as
 // the single XML file of a Visio 2003 drawing).
 type Package struct {
+	// Supported, when set, makes the parts' mc:AlternateContent resolve to
+	// the choices whose required namespaces it accepts (see ParseChoosing).
+	Supported func(prefix string) bool
+
 	files map[string]*zip.File // by lower-cased part name without leading slash
 	xmls  map[string]*Node
 	rels  map[string]map[string]Rel
@@ -93,7 +97,7 @@ func (p *Package) XML(name string) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	n, err := Parse(b)
+	n, err := ParseChoosing(b, p.Supported)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
