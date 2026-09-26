@@ -6,7 +6,8 @@
 // a layer object per draw.io layer. Shapes, edges and labels are drawn from
 // the mxGraphModel XML the way draw.io itself renders them: the cell
 // geometry, edge routing, shapes and label layout follow mxGraph and
-// draw.io's Graph and Shapes code. See docs/design.md §3.5.
+// draw.io's Graph and Shapes code, ported from JavaScript (Apache License
+// 2.0, see NOTICE). See docs/design.md §3.5.
 package drawio
 
 import (

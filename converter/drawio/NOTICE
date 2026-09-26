@@ -1,0 +1,16 @@
+Parts of this package are ported from draw.io (https://github.com/jgraph/drawio),
+Copyright (c) 2006-2026 JGraph Ltd, licensed under the Apache License 2.0
+(a copy is in stencils/LICENSE):
+
+- the geometry of cells, edge routing, edge styles and perimeters (route.go,
+  edgestyle.go, perimeter.go, view.go) from mxGraph's mxGraphView, mxGraph,
+  mxEdgeStyle and mxPerimeter and draw.io's Graph.js and Shapes.js;
+- the drawing of shapes, markers and stencils (canvas.go, shape*.go,
+  marker*.go, stencil*.go) from mxAbstractCanvas2D, mxSvgCanvas2D, mxShape
+  and its subclasses, mxMarker, mxStencil and draw.io's Shapes.js;
+- the placement of labels (label.go) from mxCellRenderer, mxText and
+  mxSvgCanvas2D, and the default stylesheet (style.go) from styles/default.xml.
+
+The code was translated from JavaScript to Go and adapted to write BDF
+instructions instead of SVG. The embedded stencil libraries and their
+additional terms are described in stencils/NOTICE.
