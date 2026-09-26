@@ -19,15 +19,20 @@ jobs:
         env:
           GOEXPERIMENT: simd
       - name: build without image codecs (browser / tinygo profile)
-        run: go test -tags bdf_noconv ./imgconv/ ./pdf2bdf/ ./woff2/
+        run: go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/
       - name: fixtures are up to date
         run: |
           go run ./cmd/bdf demo /tmp/demo.bdf
           cmp /tmp/demo.bdf fixtures/demo.bdf
-          for f in pdf2bdf/testdata/*.pdf; do
+          for f in converter/pdf/testdata/*.pdf; do
             n=$(basename "$f" .pdf)
-            go run ./cmd/pdf2bdf -q "$f" "/tmp/$n.bdf"
+            go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "fixtures/pdf/$n.bdf"
+          done
+          for f in converter/pptx/testdata/*.pptx; do
+            n=$(basename "$f" .pptx)
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "fixtures/pptx/$n.bdf"
           done
   web:
     runs-on: ubuntu-latest

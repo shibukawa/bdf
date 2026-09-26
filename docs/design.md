@@ -52,12 +52,13 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
    - PDF 経由だと無限シートが失われるので、こちらは直接。Go には excelize があり、セル値・書式・列幅・結合・条件付き書式（一部）が取れる。セルのレイアウトは行列の格子なので、文書レイアウトほど難しくない。
    - グラフや図形は当面画像化（LibreOffice に描かせて PNG）で逃げる。
 3. **PPTX / DOCX → BDF**（直接変換）
-   - 長期課題。PPTX は絶対配置なので DOCX より先に手が届く（テキストボックス内の折り返しは必要）。
-   - マスター・レイアウト・スライドの継承構造が BDF の共有 Object にそのまま対応するので、直接変換できればサイズ面の効果が最も大きい。
+   - PPTX は絶対配置なので DOCX より先に手が届く（テキストボックス内の折り返しは必要）。実装済み（§3.4）。
+   - マスター・レイアウト・スライドの継承構造が BDF の共有 Object にそのまま対応するので、直接変換するとサイズ面の効果が最も大きい。
+   - DOCX は Word 相当のレイアウトエンジンが要るので長期課題。
 
-## 3.1 PDF → BDF 変換器（pdf2bdf）の構造
+## 3.1 PDF → BDF 変換器（converter/pdf）の構造
 
-`pdf2bdf` パッケージは PDF オブジェクト層に pdfcpu を使い、内容ストリームの解釈は自前で行う。
+`converter/pdf` パッケージは PDF オブジェクト層に pdfcpu を使い、内容ストリームの解釈は自前で行う。CLI は `bdf generate`（入力の形式は中身から判別する）。
 
 - **命令の対応**: `q`/`Q` → SAVE/RESTORE、`cm` → TRANSFORM、パス演算子 → Path、`W n` → CLIP_PATH、`Do`（Form）→ 共有 Object + USE、`Do`（Image）→ IMAGE、`sh` と shading パターン → Paint、tiling パターン → セル Object を USE_AT で敷き詰め、ExtGState の `ca`/`CA`/`BM` → ALPHA/BLEND、透明グループ → GROUP。座標は PDF のユーザー空間をそのまま TRANSFORM で写す（ページ先頭で y 反転と回転を 1 回かける）。
 - **状態の遅延出力**: 色・線・アルファなどは描画命令の直前に、前回出力した値と違うときだけ書く。SAVE/RESTORE で出力済み状態のスタックも巻き戻す。
@@ -82,7 +83,7 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 
 ## 3.2 画像の格納と変換（imgconv）
 
-画像の扱いは「そのまま」と「変換あり」の 2 モードで、`pdf2bdf.Options.Images`（CLI は `-images keep|convert`）で選ぶ。今後の Office 変換器も同じパッケージを使う。
+画像の扱いは「そのまま」と「変換あり」の 2 モードで、`pdf.Options.Images` / `pptx.Options.Images`（CLI は `-images keep|convert`）で選ぶ。今後の Office 変換器も同じパッケージを使う。
 
 - **Keep**: 元ファイルにある JPEG/PNG などをそのまま Part にする。デコードした画素は PNG にする。ブラウザ内で変換を走らせる場合はこちらを使う。
 - **Convert**: サーバー側の事前変換用。時間は掛けてよい前提で、次の順に決める。
@@ -139,6 +140,27 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 非可逆は 1.1〜1.3 倍速くなり、可逆は同等である。最初の計測では可逆が 1.5 倍遅かったが、原因は libwebp の可逆 SSE 経路ではなく（ネイティブ C では SSE ありの方が可逆も速い）、Go 1.27 側の 2 つの挙動の組み合わせだった。gc はベクトル型のゼロ値をレガシー SSE の `MOVUPS X15, Xn` で作り、ランタイムの非同期プリエンプションは AVX-512 機でレジスタを `VMOVDQU64 Z0..Z31` で復元して `VZEROUPPER` を実行しないため、最初のプリエンプション以降はレガシー SSE 命令 1 つごとに SSE/AVX 状態遷移（実測で約 300 サイクル）が発生する。可逆の予測器はピクセルごとに `i8x16.narrow_i16x8_u` を呼び、そのエミュレーション中のゼロ値がこれに当たっていた（`GODEBUG=asyncpreemptoff=1` で 30 倍速くなることで確認）。ヘルパーからゼロ値ベクトルをなくして解消したが、gc がスピル/リロードに使う `MOVUPS` は残る（生成コード中に約 1 万箇所）。この libwebp では影響は小さかったが、AVX-512 機で `GOEXPERIMENT=simd` を使う場合は `//go:debug asyncpreemptoff=1` を検討すること。なお `i8x16.narrow_i16x8_u`（VPACKUSWB）自体は Go 1.27 の archsimd が AVX の範囲で公開しておらず 7 命令でエミュレートしているので、ここも将来の改善余地である。
 
 同じ wasm から出る `[2]uint64` 版は 2.4 s のもので、`GOEXPERIMENT=simd` を付けない通常のビルドが 7 倍遅くなる。そのため 2 つのパッケージを同梱し、ビルドタグで切り替えている。`imgconv/internal/webpw` はスカラーの libwebp を `[2]uint64` で運ぶ版（約 5MB）、`imgconv/internal/webpwsimd` は SSE 経路の libwebp を archsimd で運ぶ版で、`goexperiment.simd && go1.27 && !go1.28 && (amd64 || arm64)` のときだけコンパイルされる（`[2]uint64` 側の関数は落としてあり約 8.6MB、git 上は gzip で 1.3MB）。imgconv の `webp_scalar.go` / `webp_simd.go` が同じタグで束ね直し、`imgconv.SIMD()` がどちらが入ったかを返す。利用者は Go 1.27 で `GOEXPERIMENT=simd go build` するだけで SIMD 版になる（amd64 は実行時に AVX2 が必要で、無ければ init で panic する）。再生成は `tools/gen-codecs.sh`（スカラー）と `SIMD=1 tools/gen-codecs.sh`（SIMD）。AVIF も評価したが採用しなかった。可逆は図版で WebP の 200 倍大きく、非可逆は speed 6 で図版に効くものの 3〜4 倍遅く、生成コードが 47MB になるためである。
+
+## 3.4 PowerPoint → BDF 変換器（converter/pptx）の構造
+
+`converter/pptx` は .pptx（OPC の zip）を読み、DrawingML を直接 BDF の命令に落とす。Office から PDF を経由する経路と比べると、マスター・レイアウトの共有とテキストの構造（段落・箇条書き・行の継ぎ目）が残る。XML は構造体にデコードせず汎用の要素木として読む（DrawingML は省略可能な要素と多段の継承が多いため）。`mc:AlternateContent` は Fallback を使う。
+
+- **レイヤー構成**: 各ページは `background`（スライド → レイアウト → マスターの順で最初に見つかった背景）、`master`（マスターのプレースホルダー以外の図形）、`master`（レイアウトの同様の図形）、`body`（スライドの図形）の 4 レイヤー。マスターとレイアウトのレイヤーはスライドの配色マップで描くので、同じマスター・レイアウトを使うスライドどうしでは同一の Object になり、内容アドレスで 1 回だけ格納される。`showMasterSp="0"` で隠されたものは載せず、描くもののないレイヤーは省く。
+- **プレースホルダーの継承**: スライドのプレースホルダーはレイアウトのものに idx → type の順で、レイアウトのものはマスターのものに type（`ctrTitle` → `title`、`subTitle`/`obj` → `body`）で対応付け、位置（xfrm の off と ext は別々に）、形状、塗り・線・効果、`bodyPr`（属性単位）、`lstStyle`（レベル単位）を継承する。マスターとレイアウトのプレースホルダーそのものは描かない。
+- **テキストの書式**: 段落の `pPr` → 図形の `lstStyle` →（図形スタイル `p:style` の `fontRef`、表スタイルの `tcTxStyle`）→ 継承元プレースホルダーの `lstStyle` → マスターの `txStyles`（タイトル／本文／その他）またはプレゼンテーションの `defaultTextStyle` の順に、属性ごとに最初に見つかったものを使う。`+mj-lt` などのテーマフォントと `schemeClr` はスライドの配色マップで解決し、色の修飾（`lumMod`/`lumOff`、`tint`/`shade` は線形 RGB で、`alpha` など）を順に適用する。
+- **図形**: プリセット図形 187 種は ECMA-376 Part 1 の `presetShapeDefinitions.xml` を圧縮して埋め込み（`presets.xml.gz`、`tools/gen-presets.py` で生成、30 KB）、ガイド式を評価してパスにする。`arcTo` の角度は楕円の見かけの角度なので Canvas の媒介変数角に直す。`custGeom` も同じ評価器を通す。塗りは単色・グラデーション（線形は角度と `scaled`、パスは放射状で近似）・画像（伸縮、`srcRect` の切り抜き、タイル）・パターン（8×8 の PNG を作ってパターン Paint に）、パスごとの `lighten`/`darken`。線は幅・端・結合・破線・矢印（三角・ステルス・菱形・楕円・開いた矢印）、外側の影は SHADOW。グループは子の配置をスライド座標に畳み込み（変換行列を入れ子にしない）、回転・反転は図形ごとの TRANSFORM で表す。テキストは反転させない（上下反転は 180° 回転）。
+- **テキストレイアウト**: BDF に再レイアウトはないので行分割は変換側で行う。空白の後・和文の文字間・和文と欧文の間・語中のハイフンの後で改行でき、閉じ括弧・句読点・小書きの仮名・長音の前と開き括弧の後では改行しない（禁則）。インデントと箇条書き（記号、Wingdings/Symbol の文字は Unicode に置き換え、自動番号）、タブ、行間（割合・固定）、段落前後の間隔（先頭段落の前は取らない）、左・中央・右・両端揃え（欧文は語間、和文は字間を TEXT_STYLE の letterSpacing で広げる）、上・中央・下の配置、自動調整（保存されている `fontScale`/`lnSpcReduction`）、上付き・下付き、下線・取り消し線・ハイライト、段組み（列の高さを超えた行を次の列へ）、縦書き（`vert`/`vert270` は枠の回転、`eaVert` は漢字・仮名を 1 文字ずつ正立させ、句読点は縦書き用字形 U+FE10〜 に、括弧・長音・欧文は回転したまま）を扱う。行の高さは Office と同じくフォントの Windows 用メトリクス（OS/2 winAscent + winDescent）に行間を掛けたもの。
+- **フォント**: `converter/internal/fontdb` がフォントディレクトリ（既定でシステムのもの、`-font-dir` で追加、`-no-system-fonts` で限定）の name テーブルから索引を作り、要求されたファミリーを実物 → 計量互換の代替（Calibri → Carlito、Arial → Liberation Sans、游ゴシック → Noto Sans CJK JP / IPAexGothic など）→ 同系統の汎用フォント（serif / sans-serif / monospace、和文は明朝／ゴシック）→ 任意のフォント の順に解決する。文字ごとに欧文は latin、和文は ea のフォントを使い、グリフがなければもう一方、さらにフォールバック列から探す（どこにもなければ警告）。計測したフォントは使った文字だけのサブセット（TrueType はグリフを詰め直し、CFF は 2 MB までならそのまま）にして埋め込むので、閲覧側でも計測と同じ字幅で描かれる。ブラウザに登録する FontFace は太さ・斜体の記述子を持たないので、太字のフェイスそのものを埋め込んだときは FONT の weight を 400 にし、フェイスがなく合成が必要なときだけ 700 や italic を指定する。`-fonts system` では埋め込まずにファミリー名（要求名、代替名、汎用名の順）で参照し、`advance` 補正で行幅を保つ。ライセンス（OS/2 fsType）が埋め込みを禁じるフォントも名前で参照し、サブセット化を禁じるフォントは丸ごと埋め込む（`-ignore-fstype` で無視できる）。埋め込むフォントは PDF と同じく元の `fsType` と著作権・ライセンスの文字列（§3.1）を引き継ぎ、WOFF2 にして格納する（§3.3、`-no-woff2` で TTF/OTF のまま）。
+- **テキストの構造**: テキスト枠ごとに MARK BOX、段落と `a:br` に PARAGRAPH、折り返しに LINE（和文どうしの折り返しは区切りを入れない WRAP、spec §7.8）、箇条書きの記号の後に LINE を置く。書式が同じで分割されているだけの run（スペルチェックや言語タグ）は 1 つの FILL_TEXT にまとめる。縦書きの行は子 Object に描いて ALT_TEXT に行の文字列を持たせるので、検索では横書きと同じく 1 行 1 run になる。ハイパーリンク（外部 URL、スライドへのジャンプは `#page=N`）は LINK。
+- **表**: `tblGrid` と行から格子を作り、結合セル、セルの余白・配置、塗り・罫線（セルの `tcPr` が表スタイルより優先）を描く。表スタイルは `tableStyles.xml` から全体・縞模様の行／列・先頭／末尾の行／列・角のセルの順に重ね、ファイルにない既定スタイル（Medium Style 2 - Accent 1）は内蔵する。行の高さはセルのテキストに合わせて伸ばす。
+- **グラフ**: グラフパートにキャッシュされた値（`numCache`/`strCache`）から、縦棒・横棒（集合・積み上げ・100%）、折れ線、面、円・ドーナツ、散布図を描く。軸の範囲と目盛の単位は Office と同じ規則（データが 0 から遠くなければ 0 を含め、端に 5% の余白を取り、1・2・5×10^n の単位で目盛の数を図の大きさに合わせる）。系列の色はアクセント色の循環で、凡例、タイトル（単一系列なら系列名）、データラベル、数値の書式コード（%、桁区切り、小数桁）を扱う。3-D グラフは平面で描く。
+- **SmartArt**: PowerPoint がデータモデルと一緒に保存している描画パート（`diagrams/drawingN.xml`）の図形を、グラフィックフレームを枠とするグループとして描く（テキストは `txXfrm` の枠に置き、その回転は図形の回転に足す）。
+- **EMF/WMF**: ブラウザは Windows メタファイルを表示できないので、画像として格納せずに GDI の状態機械（マップモード、ワールド変換、ペン・ブラシ・フォント、クリップ、パス、保存と復元）で記録を再生し、パス・テキスト・画像（DIB は PNG に）の命令にする。EMF はヘッダーの frame、WMF は placeable ヘッダーの範囲（なければ最初のウィンドウの原点と大きさ）を図の枠に合わせる。テキストは出力空間で正立させ、`dx` の文字送りと文字揃えに従う（WMF の ANSI 文字列は文字セットに応じて Shift_JIS などとして読む）。コメントに埋め込まれた EMF+ の記録は読まず、Office が並べて書く EMF の記録を使う。OLE オブジェクトのプレビューの多くはこれで描ける。
+- **画像の色効果**: 色の変更（`clrChange`、透明色の指定）、単色化（`clrRepl`）、複色（`duotone`）、二値化（`biLevel`）、グレースケール、明るさ・コントラスト（`lum`、PowerPoint と同じく明るさの半分をコントラストの前、半分を後に掛ける）を文書順に画素へ適用し、画像を作り直して格納する（`clrChange` の許容差は LibreOffice と同じく JPEG 15、PNG・TIFF 1、BMP 0、その他 9）。メタファイルでは記録の色と DIB に同じ効果を掛ける。
+- **その他**: 非表示スライドは既定で除く（`-hidden` で含める）。OLE オブジェクトはプレビュー画像を描く。画像は `imgconv`（§3.2）を通し、TIFF は PNG にデコードする。構造の壊れたスライドで描画が失敗した場合は空のページにして警告する。
+- **未対応（警告を出す）**: EMF+ だけで書かれたメタファイル、レーダー・バブル・等高線グラフ、光彩・反射・ぼかしなどの効果、インク、旧形式（VML のみ）の OLE プレビュー、リンクされた（埋め込まれていない）画像、描画パートのない SmartArt。
+
+テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`）、変換結果は `fixtures/pptx/` に置いて golden テストで描画を比較する。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセットだけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
 
 ## 4. テキストの扱い
 
@@ -200,7 +222,7 @@ Canvas にはグリフ ID で描く API がないので、「サブセットフ�
 3. **PDF → BDF**: 最初の実用変換（実装済み、§3.1）。
 4. **ビューア**: Worker + OffscreenCanvas、ページ/連続/シートの 3 モード、テキストレイヤー、検索。
 5. **XLSX → BDF**: 直接変換、Tile 化、固定ペイン。
-6. **PPTX 直接変換**: マスター共有の本領。
+6. **PPTX 直接変換**: マスター共有の本領（実装済み、§3.4）。
 
 ## 9. リポジトリ構成（案）
 
@@ -208,11 +230,13 @@ Canvas にはグリフ ID で描く API がないので、「サブセットフ�
 bdf/
 ├── docs/              spec.md, design.md
 ├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
-├── cmd/bdf/           CLI: ls / manifest / disasm / extract / split / join / demo
+├── cmd/bdf/           CLI: generate / ls / manifest / disasm / extract / split / join / demo
 ├── imgconv/           画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
 ├── woff2/             TrueType/OpenType → WOFF2（glyf 変換と Brotli）
-├── pdf2bdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
-├── cmd/pdf2bdf/       変換 CLI
+├── converter/         変換器の共通部分（入力形式の判別、ページ指定）
+│   ├── pdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
+│   ├── pptx/          PowerPoint → BDF 変換器（testdata/ にテスト用デッキとフォント）
+│   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
@@ -222,4 +246,4 @@ bdf/
 └── test/              Playwright による golden テスト
 ```
 
-将来の変換器（xlsx2bdf など）も同じように Go のサブパッケージとして追加する。
+将来の変換器（XLSX など）も `converter/` のサブパッケージとして追加し、`bdf generate` から形式を判別して呼ぶ。

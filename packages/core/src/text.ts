@@ -2,7 +2,7 @@ import { NoopSink, walk } from "./object.js";
 import type { ObjectPart, Font, Hash } from "./types.js";
 
 /** MARK kinds (docs/spec.md §7.8). */
-export const Mark = { PARAGRAPH: 0, LINE: 1, CELL: 2, BOX: 3, ALT_TEXT: 4 } as const;
+export const Mark = { PARAGRAPH: 0, LINE: 1, CELL: 2, BOX: 3, ALT_TEXT: 4, WRAP: 5 } as const;
 
 /** Separators between consecutive runs (docs/spec.md §7.9). */
 export const Sep = { NONE: 0, SPACE: 1, BREAK: 2 } as const;
@@ -110,6 +110,7 @@ class TextSink extends NoopSink {
       case Mark.LINE: this.ex.flushAlt(this.st); this.ex.mark(Sep.SPACE); break;
       case Mark.PARAGRAPH: case Mark.CELL: case Mark.BOX: this.ex.flushAlt(this.st); this.ex.mark(Sep.BREAK); break;
       case Mark.ALT_TEXT: this.ex.flushAlt(this.st); this.ex.alt = payload; break;
+      case Mark.WRAP: this.ex.flushAlt(this.st); this.ex.mark(Sep.NONE); break;
     }
   }
   /** The drawing op right after ALT_TEXT renders that text; returns true when consumed. */

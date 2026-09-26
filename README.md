@@ -61,7 +61,10 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 - A transparent DOM text layer for selection and copy (spaces and line breaks restored from MARK boundaries; works across pages and in continuous mode)
 - The single-file and split-file forms convert into each other without re-encoding
 
-The PDF converter (`pdf2bdf`) rebuilds embedded fonts (TrueType, CFF, OpenType, Type1) into WOFF2 files that hold only the glyphs in use. It checks the OS/2 embedding permission (`fsType`) and carries the copyright notices over. It also turns form XObjects into shared objects and text into searchable runs, and moves the content common to the top of every page (the master) into a shared object. See §3.1 of design.md for details.
+Documents are converted with the `bdf generate` subcommand, which tells PDF and PowerPoint input apart by its content.
+
+- **PDF** (`converter/pdf`): rebuilds embedded fonts (TrueType, CFF, OpenType, Type1) into WOFF2 files that hold only the glyphs in use. It checks the OS/2 embedding permission (`fsType`) and carries the copyright notices over. It also turns form XObjects into shared objects and text into searchable runs, and moves the content common to the top of every page (the master) into a shared object. See §3.1 of design.md for details.
+- **PowerPoint .pptx** (`converter/pptx`): draws DrawingML directly. The shapes of slide masters and layouts become layer objects shared between slides, preset shapes come from the ECMA-376 shape formulas, and text is wrapped by the converter (Japanese line breaking rules, vertical text, bullets, paragraph formatting). Tables, charts, SmartArt and EMF/WMF pictures are drawn too. The fonts used for layout are embedded as WOFF2 subsets, so the result does not depend on the viewer's fonts. See §3.4 of design.md for details.
 
 ## Documentation
 
@@ -78,7 +81,10 @@ The documents are in Japanese.
 | `fixture/` | Generates the sample document (with embedded fonts) |
 | `imgconv/` | How images are stored (as is, or converted to WebP). Bundles a pure-Go libwebp |
 | `woff2/` | TrueType/OpenType → WOFF2 (glyf transform and Brotli) |
-| `pdf2bdf/`, `cmd/pdf2bdf` | PDF → bdf converter and CLI |
+| `converter/` | Shared converter code (input format detection, page ranges) |
+| `converter/pdf` | PDF → bdf converter |
+| `converter/pptx` | PowerPoint (.pptx) → bdf converter |
+| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering, Worker |
 | `examples/viewer` | Demo viewer |
@@ -94,14 +100,18 @@ go run ./cmd/bdf ls out.bdf          # list parts
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # convert to the split form
 
-# PDF → bdf
-go run ./cmd/pdf2bdf in.pdf out.bdf     # single-file form
-go run ./cmd/pdf2bdf in.pdf out/        # split form
-go run ./cmd/pdf2bdf -pages 1-3 -kind flow in.pdf out.bdf
-go run ./cmd/pdf2bdf -images keep in.pdf out.bdf   # do not convert images
-go run ./cmd/pdf2bdf -no-share in.pdf out.bdf      # do not move the common top of each page (the master) into a shared object
-go run ./cmd/pdf2bdf -no-woff2 in.pdf out.bdf      # store fonts as TTF/OTF instead of WOFF2
-go run ./cmd/pdf2bdf -ignore-fstype in.pdf out.bdf # embed fonts even when fsType forbids embedding or subsetting (only if you hold the rights)
+# PDF / PowerPoint → bdf (the format is detected from the content; -format pdf|pptx forces it)
+go run ./cmd/bdf generate in.pdf out.bdf      # single-file form
+go run ./cmd/bdf generate in.pptx out/        # split form
+go run ./cmd/bdf generate -pages 1-3 in.pptx out.bdf   # select pages (slides)
+go run ./cmd/bdf generate -images keep in.pdf out.bdf  # do not convert images
+go run ./cmd/bdf generate -no-woff2 in.pdf out.bdf     # store fonts as TTF/OTF instead of WOFF2
+go run ./cmd/bdf generate -ignore-fstype in.pdf out.bdf # embed fonts even when fsType forbids embedding or subsetting (only if you hold the rights)
+go run ./cmd/bdf generate -kind flow in.pdf out.bdf    # PDF: make a flow view
+go run ./cmd/bdf generate -no-share in.pdf out.bdf     # PDF: do not move the common top of each page (the master) into a shared object
+go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf   # PowerPoint: add a directory to search for fonts
+go run ./cmd/bdf generate -fonts system in.pptx out.bdf      # PowerPoint: refer to fonts by name instead of embedding them
+go run ./cmd/bdf generate -hidden in.pptx out.bdf            # PowerPoint: include hidden slides
 go build -tags bdf_noconv ./...                    # build without codecs (WebP, Brotli for WOFF2), for the browser
 GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD codecs (AVX2 required on amd64)
 
@@ -111,6 +121,7 @@ npm test                             # decoder tests (Node)
 npm run test:golden                  # render in Chromium and compare with the golden images
 npm run test:golden:update           # update the golden images
 npm run fixtures                     # regenerate fixtures/ (requires Go)
+npm run test:pptx:gen                # regenerate the PowerPoint test decks (requires python-pptx)
 node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium
 
 # Demo viewer

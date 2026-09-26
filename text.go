@@ -9,6 +9,7 @@ const (
 	MarkCell      byte = 2
 	MarkBox       byte = 3
 	MarkAltText   byte = 4
+	MarkWrap      byte = 5
 )
 
 // Separators between consecutive text runs (docs/spec.md §7.9).
@@ -96,6 +97,9 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 			case MarkParagraph, MarkCell, MarkBox:
 				t.flushAlt(st)
 				t.mark(SepBreak)
+			case MarkWrap:
+				t.flushAlt(st)
+				t.mark(SepNone)
 			case MarkAltText:
 				t.flushAlt(st)
 				p := payload

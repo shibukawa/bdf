@@ -7,7 +7,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.colors import Color, HexColor
 from reportlab.lib.utils import ImageReader
 
-out = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "pdf2bdf", "testdata")
+out = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "converter", "pdf", "testdata")
 pdfmetrics.registerFont(TTFont("DejaVu", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"))
 pdfmetrics.registerFont(TTFont("DejaVu-Bold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"))
 

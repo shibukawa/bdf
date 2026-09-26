@@ -10,9 +10,10 @@
     "test": "npm run build && node --test packages/core/test/*.test.mjs packages/render/test/*.test.mjs",
     "test:golden": "npm run build && node test/golden.mjs",
     "test:golden:update": "npm run build && node test/golden.mjs --update",
-    "fixtures": "go run ./cmd/bdf demo fixtures/demo.bdf && go run ./cmd/bdf demo fixtures/demo-split/ && node test/pdf/fixtures.mjs",
+    "fixtures": "go run ./cmd/bdf demo fixtures/demo.bdf && go run ./cmd/bdf demo fixtures/demo-split/ && node test/pdf/fixtures.mjs && node test/pptx/fixtures.mjs",
     "test:pdf:gen": "node test/pdf/gen.mjs && python3 test/pdf/gen_reportlab.py && python3 test/pdf/gen_master.py && python3 test/pdf/gen_cff.py && python3 test/pdf/gen_type1.py",
-    "demo": "node examples/viewer/serve.mjs"
+    "demo": "node examples/viewer/serve.mjs",
+    "test:pptx:gen": "python3 test/pptx/gen.py"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

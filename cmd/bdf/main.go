@@ -1,4 +1,4 @@
-// Command bdf inspects and converts BDF files.
+// Command bdf generates, inspects and converts BDF files.
 package main
 
 import (
@@ -13,6 +13,8 @@ import (
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
+  bdf generate [flags] <in.pdf | in.pptx> <out.bdf | dir/>
+                                     convert a PDF or PowerPoint file (bdf generate -h for flags)
   bdf ls <file.bdf | dir>            list views and parts
   bdf manifest <file.bdf | dir>      print the manifest as JSON
   bdf disasm <file.bdf | dir> <hash> disassemble an object part
@@ -46,6 +48,8 @@ func main() {
 		usage()
 	}
 	switch os.Args[1] {
+	case "generate":
+		generate(os.Args[2:])
 	case "ls":
 		r, err := open(os.Args[2])
 		check(err)

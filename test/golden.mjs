@@ -59,9 +59,10 @@ try {
   const docPage = 0;
   const searchOk = search.hits.length === 6 && search.rects.length === 6 && search.rects[0].length === 2
     && search.rects[0].every((r) => r.a === docPage && r.w > 5 && r.h > 5 && r.x >= 72 && r.x + r.w <= 595.3 - 72)
-    && search.sheetHits.length === 1 && search.sheetRects[0].length === 1 && Math.abs(search.sheetRects[0][0].y - 149 * 20) < 10;
+    && search.sheetHits.length === 1 && search.sheetRects[0].length === 1 && Math.abs(search.sheetRects[0][0].y - 149 * 20) < 10
+    && search.pptxHits.length === 1 && search.pptxRects[0].length === 2 && search.pptxRects[0].every((r) => r.a === 3);
   if (!searchOk) failed++;
-  console.log(`search: ${searchOk ? "ok" : "FAIL"} (${search.hits.length} hits, first hit rects ${JSON.stringify(search.rects[0])}, sheet ${JSON.stringify(search.sheetRects[0])})`);
+  console.log(`search: ${searchOk ? "ok" : "FAIL"} (${search.hits.length} hits, first hit rects ${JSON.stringify(search.rects[0])}, sheet ${JSON.stringify(search.sheetRects[0])}, pptx ${JSON.stringify(search.pptxRects[0])})`);
   for (const r of results) {
     const goldenPath = join(root, "fixtures/golden", `${r.name}.png`);
     const png = Buffer.from(r.png.split(",")[1], "base64");

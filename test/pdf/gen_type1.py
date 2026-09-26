@@ -1,4 +1,4 @@
-"""Generates test PDFs with Type 1 font programs (FontFile), which pdf2bdf
+"""Generates test PDFs with Type 1 font programs (FontFile), which converter/pdf
 converts to CFF:
 
 - cairo-type1.pdf: cairo subsets Type 1 fonts; one subset uses WinAnsiEncoding,
@@ -14,7 +14,7 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-out = os.path.join(root, "pdf2bdf", "testdata")
+out = os.path.join(root, "converter", "pdf", "testdata")
 t1 = "/usr/share/fonts/X11/Type1/"
 
 s = cairo.PDFSurface(os.path.join(out, "cairo-type1.pdf"), 480, 200)

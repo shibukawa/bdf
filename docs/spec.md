@@ -267,6 +267,8 @@ pattern: varuint imageRef ; u8 repeat(0=repeat 1=repeat-x 2=repeat-y 3=no-repeat
 | 0x1A | FONT | varuint fontRef, f32 size | `font = "<style> <weight> <size>px <family>"` |
 | 0x1B | TEXT_STYLE | u8 align, u8 baseline, u8 dir, f32 letterSpacing | `textAlign/textBaseline/direction/letterSpacing` |
 
+SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行列の影響を受けないので、読み手は設定時の変換の拡大率（行列式の平方根）を掛けて渡す。オフセットの向きはページの向きで、回転には追従しない。
+
 `cap`: 0=butt 1=round 2=square。`join`: 0=miter 1=round 2=bevel。`align`: 0=left 1=right 2=center 3=start 4=end。`baseline`: 0=alphabetic 1=top 2=middle 3=bottom 4=hanging 5=ideographic。
 
 ### 7.3 図形
@@ -331,6 +333,7 @@ pattern: varuint imageRef ; u8 repeat(0=repeat 1=repeat-x 2=repeat-y 3=no-repeat
 | 2 | CELL | セル参照（例 `B12`） | 表・シートのセルの開始。PARAGRAPH と同じ境界 |
 | 3 | BOX | 任意 | テキストボックス・図形内テキストの開始。PARAGRAPH と同じ境界 |
 | 4 | ALT_TEXT | 文字列 | 直後の描画命令 1 つ（`FILL_TEXT` / `STROKE_TEXT` / `FILL_PATH_AT` / `FILL_PATH_RUN` / `USE` / `USE_AT`）が表す文字列。テキスト抽出ではその命令の文字列の代わりにこの文字列を、位置はその命令の位置を使う。合字や私用領域の文字で描いた run の本来の文字列、アウトライン化した文字、1 文字ずつ描いた縦書きなどに使う。描画命令が続かない場合は位置なしの run になる |
+| 5 | WRAP | 任意 | 同じ段落内の行の折り返し。前の run との間に区切りを入れずに結合する。和文など語を空白で区切らない文字の間で折り返した行に使い、行をまたぐ検索を可能にする |
 
 - `MARK` の効果は次の `FILL_TEXT` / `STROKE_TEXT` / `ALT_TEXT` に及び、run どうしの結合規則を決める。同じ行で書式だけが変わった run の間には `MARK` を置かない（結合される）。
 - `MARK` を出さないエンコーダのために、読み手は位置に基づく推定（y が変われば行、同じ行で字送りの 0.2 倍以上の隙間があれば空白）で補ってよい。ただし推定は不正確なので、エンコーダは `MARK` を出すことが強く推奨される。

@@ -24,13 +24,13 @@ export const CASES: Case[] = [
   { name: "doc-continuous", kind: "continuous", view: "doc", viewport: { x: 0, y: 600, w: 451.3, h: 400 }, scale: 1 },
   { name: "sheet-tile-boundary", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 1800, w: 800, h: 500 }, scale: 1 },
   { name: "sheet-zoomed", kind: "sheet", view: "sheet1", viewport: { x: 64, y: 20, w: 300, h: 150 }, scale: 2 },
-  // Documents converted from PDF (pdf2bdf); see test/pdf.
+  // Documents converted from PDF (converter/pdf); see test/pdf.
   { name: "pdf-chrome-slides-1", src: "/fixtures/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-chrome-slides-2", src: "/fixtures/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "pdf-chrome-doc-1", src: "/fixtures/pdf/chrome-doc.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-reportlab-1", src: "/fixtures/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-reportlab-2", src: "/fixtures/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 1, scale: 1.5 },
-  // Three pages that share a master prefix (pdf2bdf prefix sharing); the pages must render as if unshared.
+  // Three pages that share a master prefix (PDF converter prefix sharing); the pages must render as if unshared.
   { name: "pdf-master-1", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "pdf-master-2", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "pdf-master-3", src: "/fixtures/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
@@ -40,6 +40,15 @@ export const CASES: Case[] = [
   // Type 1 programs (FontFile) converted to CFF: cairo subsets (seac accents, built-in encoding) and a whole font.
   { name: "pdf-cairo-type1-1", src: "/fixtures/pdf/cairo-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
   { name: "pdf-reportlab-type1-1", src: "/fixtures/pdf/reportlab-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
+  // PowerPoint decks rendered by converter/pptx with the test fonts; see test/pptx.
+  { name: "pptx-basic-2", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 1, scale: 1 },
+  { name: "pptx-basic-3", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
+  { name: "pptx-basic-4", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
+  { name: "pptx-basic-5", src: "/fixtures/pptx/basic.bdf", kind: "page", view: "slides", page: 4, scale: 1 },
+  { name: "pptx-features-1", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 0, scale: 1 },
+  { name: "pptx-features-3", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
+  { name: "pptx-features-4", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
+  { name: "pptx-features-5", src: "/fixtures/pptx/features.bdf", kind: "page", view: "slides", page: 4, scale: 0.75 },
 ];
 
 const DEFAULT_SRC = "/fixtures/demo.bdf";
@@ -178,7 +187,11 @@ async function main() {
   const rects = await client.locate("doc", hits);
   const sheetHits = await client.search("sheet1", "row 150");
   const sheetRects = await client.locate("sheet1", sheetHits);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects };
+  // Japanese text wrapped between characters: the hit spans two lines.
+  const { client: pptx } = await open("/fixtures/pptx/basic.bdf");
+  const pptxHits = await pptx.search("slides", "改行します");
+  const pptxRects = await pptx.locate("slides", pptxHits);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }

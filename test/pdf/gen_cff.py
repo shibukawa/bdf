@@ -17,7 +17,7 @@ import weasyprint
 from fontTools.ttLib import TTFont
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-out = os.path.join(root, "pdf2bdf", "testdata")
+out = os.path.join(root, "converter", "pdf", "testdata")
 loma = "/usr/share/fonts/opentype/tlwg/Loma.otf"
 dejavu = os.path.join(root, "fixture", "fonts", "DejaVuSans-sub.ttf")
 

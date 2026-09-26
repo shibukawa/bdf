@@ -167,10 +167,14 @@ export class CanvasRenderer implements OpSink {
   blend(mode: number) { this.ctx.globalCompositeOperation = BLEND_NAMES[mode] ?? "source-over"; }
   shadow(rgba: number, blur: number, dx: number, dy: number) {
     const ctx = this.ctx;
+    // Canvas shadows ignore the transform; SHADOW is in units, so scale it
+    // by the current zoom (the offset keeps its page direction).
+    const m = ctx.getTransform();
+    const s = Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) || 1;
     ctx.shadowColor = cssColor(rgba);
-    ctx.shadowBlur = blur;
-    ctx.shadowOffsetX = dx;
-    ctx.shadowOffsetY = dy;
+    ctx.shadowBlur = blur * s;
+    ctx.shadowOffsetX = dx * s;
+    ctx.shadowOffsetY = dy * s;
   }
   filter(css: string) {
     if ("filter" in this.ctx) (this.ctx as CanvasRenderingContext2D).filter = css;
