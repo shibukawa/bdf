@@ -3,6 +3,7 @@ package ooxml
 import (
 	"archive/zip"
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -126,8 +127,58 @@ func TestParse(t *testing.T) {
 	}
 	// nil elements read as empty
 	var none *Node
-	if none.Path("a", "b") != nil || none.Content() != "" || none.Elements() != nil || none.AttrStr("x", "d") != "d" || none.RelID("id") != "" {
+	if none.Path("a", "b") != nil || none.Content() != "" || none.Elements() != nil || none.AttrStr("x", "d") != "d" || none.RelID("id") != "" ||
+		none.Segments() != nil {
 		t.Error("nil node accessors")
+	}
+}
+
+func TestSegments(t *testing.T) {
+	// Visio text: markers among the characters they format
+	n, err := Parse([]byte(`<Text xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"><cp IX="0"/>one <cp IX="1"/>two` +
+		`<mc:AlternateContent><mc:Fallback><fld/><fld/></mc:Fallback></mc:AlternateContent>&amp;<pp/>three</Text>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range n.Segments() {
+		if s.Elem != nil {
+			got = append(got, "<"+s.Elem.Name+">")
+		} else {
+			got = append(got, s.Text)
+		}
+	}
+	want := []string{"<cp>", "one ", "<cp>", "two", "<fld>", "<fld>", "&", "<pp>", "three"}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("segments = %q, want %q", got, want)
+	}
+	if n.Content() != "one two&three" {
+		t.Errorf("content = %q", n.Content())
+	}
+	// text alone, and an empty element
+	n, _ = Parse([]byte(`<t>plain</t>`))
+	if s := n.Segments(); len(s) != 1 || s[0].Text != "plain" || s[0].Elem != nil {
+		t.Errorf("text-only segments = %+v", s)
+	}
+	n, _ = Parse([]byte(`<t/>`))
+	if s := n.Segments(); s != nil {
+		t.Errorf("empty element segments = %+v", s)
+	}
+}
+
+func TestNilPackage(t *testing.T) {
+	var p *Package
+	if p.Has("a.xml") || len(p.Rels("")) != 0 {
+		t.Error("a nil package has parts")
+	}
+	if _, err := p.XML("a.xml"); err == nil {
+		t.Error("a nil package reads a part")
+	}
+	if _, ok := p.RelOfType("", "/theme"); ok {
+		t.Error("a nil package has relationships")
+	}
+	if dc := p.CoreProperties(); len(dc.Title) != 0 {
+		t.Error("a nil package has core properties")
 	}
 }
 

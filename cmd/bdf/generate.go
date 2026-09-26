@@ -128,11 +128,13 @@ func generate(args []string) {
 	res, err := converter.ConvertFile(in, name, opts)
 	switch {
 	case errors.Is(err, converter.ErrUnknownFormat):
-		switch strings.ToLower(filepath.Ext(in)) {
+		switch ext := strings.ToLower(filepath.Ext(in)); ext {
 		case ".ppt":
 			usageError(in + ": legacy .ppt files are not supported; save as .pptx first")
 		case ".xls":
 			usageError(in + ": legacy .xls files are not supported; save as .xlsx first")
+		case ".vsd", ".vss", ".vst":
+			usageError(in + ": legacy binary Visio files (" + ext + ") are not supported; save as .vsdx first")
 		}
 		usageError(in + ": unknown input format (want one of " + strings.Join(names, ", ") + ")")
 	case errors.Is(err, converter.ErrPasswordRequired):
