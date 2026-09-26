@@ -48,6 +48,8 @@ func TestDetect(t *testing.T) {
 		{"vdx", vdx, "visio"},
 		{"emf", emf, "emf"},
 		{"wmf", wmf, "emf"},
+		{"dxf", []byte("  0\r\nSECTION\r\n  2\r\nHEADER\r\n"), "dxf"},
+		{"binary dxf", []byte("AutoCAD Binary DXF\r\n\x1a\x00\x00\x00"), "dxf"},
 		{"junk", []byte("hello"), ""},
 	} {
 		got := ""

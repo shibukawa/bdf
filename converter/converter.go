@@ -4,8 +4,8 @@
 //
 // The converters themselves are its subpackages (converter/pdf,
 // converter/pptx, converter/xlsx, converter/docx, converter/visio,
-// converter/emf). Each registers its format when it is imported, so a
-// program supports the formats whose packages it links in:
+// converter/dxf, converter/emf). Each registers its format when it is
+// imported, so a program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -14,7 +14,8 @@
 // packages and their XML) with ooxml/drawingml (shapes, text, tables,
 // charts), fontset (fonts for text layout and their embedding), canvas
 // (objects under construction), metafile (EMF/WMF pictures) and linebreak
-// (line breaking rules).
+// (line breaking rules); the CAD converters share cad (drawings plotted
+// onto pages).
 //
 // Password-protected inputs open with Options.Password. Encrypted Office
 // documents are decrypted here (converter/internal/offcrypto), before their

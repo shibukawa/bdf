@@ -24,6 +24,7 @@ type Choice struct {
 	Use            Use
 	Asc, Desc      float64 // em
 	ULPos, ULThick float64 // em, underline position (negative: below) and thickness
+	CapHeight      float64 // em, the height of capital letters
 }
 
 // Use is what a FONT instruction asks for: a resolved face (nil when no
@@ -103,7 +104,7 @@ func (s *Set) fromResolved(res fontdb.Resolved, requested string, bold, italic b
 	fc := &Choice{
 		Use: Use{Face: res.Face, Requested: requested, Generic: res.Generic, Bold: bold, Italic: italic,
 			SynthBold: res.SynthBold, SynthItalic: res.SynthItalic},
-		Asc: 0.9, Desc: 0.25, ULPos: -0.1, ULThick: 0.05,
+		Asc: 0.9, Desc: 0.25, ULPos: -0.1, ULThick: 0.05, CapHeight: 0.7,
 	}
 	if fc.Use.Generic == "" {
 		fc.Use.Generic = fontdb.Classify(requested)
@@ -113,6 +114,7 @@ func (s *Set) fromResolved(res fontdb.Resolved, requested string, bold, italic b
 			fc.Loaded = l
 			fc.Asc, fc.Desc = l.Ascent, l.Descent
 			fc.ULPos, fc.ULThick = l.UnderlinePos, l.UnderTh
+			fc.CapHeight = l.CapHeight
 		} else {
 			if key := res.Face.Path; !s.warned[key] {
 				s.warned[key] = true

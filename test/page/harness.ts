@@ -68,6 +68,11 @@ export const CASES: Case[] = [
   // The page view's bodies stacked (continuous mode), and the scroll view across the boundary of its strips.
   { name: "docx-basic-continuous", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "pages", viewport: { x: 0, y: 500, w: 451.3, h: 400 }, scale: 1 },
   { name: "docx-basic-scroll", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 850, w: 769.9, h: 350 }, scale: 1 },
+  // DXF drawings rendered by converter/dxf with the test fonts; see test/dxf. Model space on its dark
+  // background, and a layout with a title block and two viewports at different scales.
+  { name: "dxf-shapes-1", src: "/testdata/dxf/shapes.bdf", kind: "page", view: "model", page: 0, scale: 0.75 },
+  { name: "dxf-layout-1", src: "/testdata/dxf/layout.bdf", kind: "page", view: "layout1", page: 0, scale: 0.75 },
+  { name: "dxf-r12-sjis-1", src: "/testdata/dxf/r12-sjis.bdf", kind: "page", view: "model", page: 0, scale: 0.5 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";
