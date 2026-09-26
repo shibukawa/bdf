@@ -47,7 +47,14 @@ const (
 // replaced by its mc:Fallback (or its first mc:Choice when there is no
 // fallback): fallbacks carry the pictures and plain shapes that stand in
 // for features the converters do not implement.
-func Parse(data []byte) (*Node, error) {
+func Parse(data []byte) (*Node, error) { return ParseChoosing(data, nil) }
+
+// ParseChoosing is Parse that replaces mc:AlternateContent with its first
+// mc:Choice whose required namespaces (the prefixes of its Requires
+// attribute) all pass supported, and with the fallback when none does.
+// Word processing documents need it: they keep their DrawingML shapes in
+// a choice and legacy VML in the fallback.
+func ParseChoosing(data []byte, supported func(prefix string) bool) (*Node, error) {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	d.Strict = false
 	for {
@@ -59,7 +66,7 @@ func Parse(data []byte) (*Node, error) {
 			return nil, err
 		}
 		if start, ok := tok.(xml.StartElement); ok {
-			return ReadElement(d, start)
+			return readElement(d, start, supported)
 		}
 	}
 }
@@ -68,6 +75,10 @@ func Parse(data []byte) (*Node, error) {
 // into a node tree (with mc:AlternateContent resolved as Parse does). It
 // lets a reader stream the bulk of a large part and keep the rest as trees.
 func ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
+	return readElement(d, start, nil)
+}
+
+func readElement(d *xml.Decoder, start xml.StartElement, supported func(prefix string) bool) (*Node, error) {
 	root := &Node{Space: start.Name.Space, Name: start.Name.Local, Attrs: start.Attr}
 	stack := []*Node{root}
 	for len(stack) > 0 {
@@ -99,11 +110,11 @@ func ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
 			}
 		}
 	}
-	root.resolveAlternates()
+	root.resolveAlternates(supported)
 	return root, nil
 }
 
-func (n *Node) resolveAlternates() {
+func (n *Node) resolveAlternates(supported func(prefix string) bool) {
 	var kids []*Node
 	changed := false
 	// start[i] is where old child i starts among the new children, so that
@@ -114,8 +125,16 @@ func (n *Node) resolveAlternates() {
 		if k.Name == "AlternateContent" && strings.HasSuffix(k.Space, nsMC) {
 			changed = true
 			var pick *Node
+			if supported != nil {
+				for _, c := range k.Kids {
+					if c.Name == "Choice" && requiresAll(c.AttrStr("Requires", ""), supported) {
+						pick = c
+						break
+					}
+				}
+			}
 			for _, c := range k.Kids {
-				if c.Name == "Fallback" {
+				if pick == nil && c.Name == "Fallback" {
 					pick = c
 				}
 			}
@@ -129,13 +148,13 @@ func (n *Node) resolveAlternates() {
 			}
 			if pick != nil {
 				for _, c := range pick.Kids {
-					c.resolveAlternates()
+					c.resolveAlternates(supported)
 					kids = append(kids, c)
 				}
 			}
 			continue
 		}
-		k.resolveAlternates()
+		k.resolveAlternates(supported)
 		kids = append(kids, k)
 	}
 	if changed {
@@ -145,6 +164,16 @@ func (n *Node) resolveAlternates() {
 		}
 		n.Kids = kids
 	}
+}
+
+func requiresAll(requires string, supported func(prefix string) bool) bool {
+	fields := strings.Fields(requires)
+	for _, p := range fields {
+		if !supported(p) {
+			return false
+		}
+	}
+	return len(fields) > 0
 }
 
 // Segments returns the content of an element in document order: its child

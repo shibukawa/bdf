@@ -25,7 +25,7 @@ async function load(file) {
 }
 const modules = { pdf: await load("bdf-pdf.wasm"), office: await load("bdf-office.wasm") };
 assert.deepEqual(modules.pdf.formats.map((f) => f.name), ["pdf"]);
-assert.deepEqual(modules.office.formats.map((f) => f.name), ["emf", "pptx", "visio", "xlsx"]);
+assert.deepEqual(modules.office.formats.map((f) => f.name), ["csv", "docx", "emf", "pptx", "visio", "xlsx"]);
 
 let failed = 0;
 const samples = JSON.parse(await readFile(join(site, "samples/index.json"), "utf8"));

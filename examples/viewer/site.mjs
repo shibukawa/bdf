@@ -31,8 +31,11 @@ const MODULES = [
 const SAMPLES = [
   { path: "converter/pdf/testdata/reportlab-master.pdf", label: "PDF (3 pages)" },
   { path: "converter/pdf/testdata/chrome-doc.pdf", label: "PDF from Chrome" },
+  { path: "converter/docx/testdata/basic.docx", label: "Word" },
+  { path: "converter/docx/testdata/vertical.docx", label: "Word (vertical text)" },
   { path: "converter/pptx/testdata/features.pptx", label: "PowerPoint" },
   { path: "converter/xlsx/testdata/features.xlsx", label: "Excel" },
+  { path: "converter/csv/testdata/japanese.tsv", label: "TSV (Shift_JIS)" },
   { path: "converter/visio/testdata/shapes.vsdx", label: "Visio" },
   { path: "converter/visio/testdata/flow.vdx", label: "Visio XML (.vdx)" },
   { path: "testdata/demo.bdf", label: "bdf" },

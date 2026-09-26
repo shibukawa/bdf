@@ -65,7 +65,12 @@ export interface DublinCore {
   modified?: DCValue;
 }
 
-export type ViewKind = "fixed" | "flow" | "sheet";
+/**
+ * fixed: pages; flow: pages with body rectangles, readable as one continuous
+ * scroll; sheet: an unbounded plane of tiles; scroll: one long column without
+ * pages, stored as strips that are shown stacked (docs/spec.md §4.1).
+ */
+export type ViewKind = "fixed" | "flow" | "sheet" | "scroll";
 
 export interface View {
   id: string;

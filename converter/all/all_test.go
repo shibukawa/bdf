@@ -43,11 +43,13 @@ func TestDetect(t *testing.T) {
 		{"pdf", []byte("%PDF-1.7\n..."), "pdf"},
 		{"pptx", pptx.Bytes(), "pptx"},
 		{"xlsx", xlsx.Bytes(), "xlsx"},
-		{"docx", docx.Bytes(), ""},
+		{"docx", docx.Bytes(), "docx"},
 		{"vsdx", vsdx.Bytes(), "visio"},
 		{"vdx", vdx, "visio"},
 		{"emf", emf, "emf"},
 		{"wmf", wmf, "emf"},
+		{"csv", []byte("id,name\n1,Ann\n2,Bob\n"), "csv"},
+		{"tsv", []byte("id\tname\n1\tAnn\n"), "csv"},
 		{"junk", []byte("hello"), ""},
 	} {
 		got := ""

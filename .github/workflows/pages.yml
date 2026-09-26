@@ -44,8 +44,7 @@ jobs:
       - run: npm ci
       - run: npm run site
         env:
-          # the test fonts too, so that the samples look as in the tests
-          BDF_SITE_FONTS: ${{ runner.temp }}/fonts:converter/pptx/testdata/fonts
+          BDF_SITE_FONTS: ${{ runner.temp }}/fonts
       - run: node test/site.mjs
       - uses: actions/upload-pages-artifact@v3
         if: github.event_name != 'pull_request'

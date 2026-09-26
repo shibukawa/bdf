@@ -9,7 +9,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
-	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
+	"github.com/shibukawa/bdf/converter/internal/linebreak"
 )
 
 // Cell text is laid out the way Excel lays it out: in the cell's box less a
@@ -100,6 +100,12 @@ func (s *sheetCtx) layoutCell(r, c int, cl *cell, f *cellFmt, b box, measure boo
 	var fm formatted
 	switch cl.kind {
 	case cellNum:
+		if cl.text != nil {
+			// a number of a grid, shown as it is spelled
+			numeric = true
+			segs = []seg{{s: cl.text.plain}}
+			break
+		}
 		if cl.num == 0 && !s.ws.showZero {
 			return nil
 		}
@@ -470,7 +476,7 @@ func wrapItems(items []titem, width float64) []*tline {
 				end, brokeAt = i, i
 				break
 			}
-			if x+it.w > width+1e-6 && i > 0 && !(it.kind == itemChar && drawingml.IsBreakSpace(it.r)) {
+			if x+it.w > width+1e-6 && i > 0 && !(it.kind == itemChar && linebreak.IsSpace(it.r)) {
 				if lastBrk >= 0 {
 					end = lastBrk + 1
 				} else {
@@ -479,7 +485,7 @@ func wrapItems(items []titem, width float64) []*tline {
 				break
 			}
 			x += it.w
-			if it.kind == itemChar && (i+1 >= len(items) || items[i+1].kind != itemChar || drawingml.CanBreak(it.r, items[i+1].r)) {
+			if it.kind == itemChar && (i+1 >= len(items) || items[i+1].kind != itemChar || linebreak.Allowed(it.r, items[i+1].r)) {
 				lastBrk = i
 			}
 		}
@@ -499,11 +505,11 @@ func wrapItems(items []titem, width float64) []*tline {
 			break
 		}
 		prev, next := items[end-1].r, items[end].r
-		cjk = !drawingml.IsBreakSpace(prev) && (fontdb.IsCJK(prev) || fontdb.IsCJK(next))
+		cjk = linebreak.Joins(prev, next)
 		explicit, wrapped = false, true
 		items = items[end:]
 		// spaces at the start of a wrapped line are dropped
-		for len(items) > 0 && items[0].kind == itemChar && drawingml.IsBreakSpace(items[0].r) {
+		for len(items) > 0 && items[0].kind == itemChar && linebreak.IsSpace(items[0].r) {
 			items = items[1:]
 		}
 		if len(items) == 0 {
@@ -524,7 +530,7 @@ func lineMetrics(ln *tline, base *tstyle, s *sheetCtx) {
 	ln.width = 0
 	for i := len(ln.items) - 1; i >= 0; i-- {
 		it := ln.items[i]
-		if it.kind == itemChar && drawingml.IsBreakSpace(it.r) {
+		if it.kind == itemChar && linebreak.IsSpace(it.r) {
 			continue
 		}
 		ln.width = it.x + it.w
@@ -548,12 +554,12 @@ func spread(ln *tline, extra float64) {
 		return
 	}
 	n := len(ln.items)
-	for n > 0 && ln.items[n-1].kind == itemChar && drawingml.IsBreakSpace(ln.items[n-1].r) {
+	for n > 0 && ln.items[n-1].kind == itemChar && linebreak.IsSpace(ln.items[n-1].r) {
 		n--
 	}
 	spaces := 0
 	for i := 0; i < n; i++ {
-		if ln.items[i].kind == itemChar && drawingml.IsBreakSpace(ln.items[i].r) {
+		if ln.items[i].kind == itemChar && linebreak.IsSpace(ln.items[i].r) {
 			spaces++
 		}
 	}
@@ -563,7 +569,7 @@ func spread(ln *tline, extra float64) {
 		add := extra / float64(spaces)
 		for i := range ln.items {
 			ln.items[i].x += shift
-			if i < n && ln.items[i].kind == itemChar && drawingml.IsBreakSpace(ln.items[i].r) {
+			if i < n && ln.items[i].kind == itemChar && linebreak.IsSpace(ln.items[i].r) {
 				// a widened space is not drawn: the words keep their advances
 				ln.items[i].w += add
 				ln.items[i].kind = itemGap
@@ -787,7 +793,7 @@ func (s *sheetCtx) emitText(t *tileCv, lay *cellLayout, ref string) {
 func (s *sheetCtx) emitLine(t *tileCv, ln *tline, ox, oy float64) {
 	items := ln.items
 	n := len(items)
-	for n > 0 && items[n-1].kind == itemChar && drawingml.IsBreakSpace(items[n-1].r) {
+	for n > 0 && items[n-1].kind == itemChar && linebreak.IsSpace(items[n-1].r) {
 		n--
 	}
 	for i := 0; i < n; {
@@ -885,7 +891,7 @@ func (s *sheetCtx) paintText() {
 			if lay == nil || len(lay.lines) == 0 {
 				continue
 			}
-			if t := s.tableAt(r, cl.col); t != nil && t.isHeader(r) {
+			if t := s.tableAt(r, cl.col); (t != nil && t.isHeader(r)) || r < s.ws.headerRows {
 				ref += " col"
 			}
 			bb := lay.bounds

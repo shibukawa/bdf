@@ -133,6 +133,7 @@ type shape struct {
 	inhPrt []string
 	ph     *ooxml.Node
 	grp    *groupCtx
+	box    *xform // placement given by the host (word processing drawings)
 }
 
 func (sh *shape) spPr() *ooxml.Node {
@@ -154,6 +155,9 @@ func (sh *shape) spPrs() ([]*ooxml.Node, []string) {
 }
 
 func (sh *shape) xform() (xform, bool) {
+	if sh.box != nil {
+		return *sh.box, true
+	}
 	cands := []*ooxml.Node{sh.spPr().Child("xfrm"), sh.n.Child("xfrm")}
 	for _, n := range sh.inh {
 		cands = append(cands, n.Path("spPr", "xfrm"), n.Child("xfrm"))
@@ -287,7 +291,7 @@ func endFigure(cv *canvas.Canvas, open bool) {
 
 func (s *Drawing) drawElem(cv *canvas.Canvas, k *ooxml.Node, part string, grp *groupCtx) {
 	switch k.Name {
-	case "sp", "cxnSp", "pic", "graphicFrame", "grpSp":
+	case "sp", "cxnSp", "pic", "graphicFrame", "grpSp", "wsp", "wgp":
 	case "contentPart":
 		s.c.warnOnce("ink", "ink (content parts) is not supported")
 		return
@@ -309,9 +313,9 @@ func (s *Drawing) drawElem(cv *canvas.Canvas, k *ooxml.Node, part string, grp *g
 		}
 	}
 	switch k.Name {
-	case "grpSp":
+	case "grpSp", "wgp":
 		s.drawGroup(cv, sh)
-	case "sp", "cxnSp":
+	case "sp", "cxnSp", "wsp":
 		s.drawSp(cv, sh)
 	case "pic":
 		s.drawPic(cv, sh)

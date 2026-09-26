@@ -390,10 +390,11 @@ class TextSink extends NoopSink {
   override use(obj: number) { this.useAt(obj, 0, 0); }
   override useAt(obj: number, x: number, y: number) {
     if (this.ex.alt !== undefined) {
-      // text drawn by the child: its extent still counts for a figure
-      const child = this.ex.figures.length ? this.ex.resolve(this.obj.objects[obj]) : undefined;
-      if (child) this.grow(child.bbox.x + x, child.bbox.y + y, child.bbox.w, child.bbox.h);
-      this.takeAlt(x, y, 0);
+      // text drawn by the child: it spans the child's bbox along the
+      // baseline, and its extent still counts for a figure
+      const child = this.ex.resolve(this.obj.objects[obj]);
+      if (child && this.ex.figures.length) this.grow(child.bbox.x + x, child.bbox.y + y, child.bbox.w, child.bbox.h);
+      this.takeAlt(x + (child?.bbox.x ?? 0), y, child?.bbox.w ?? 0);
       return;
     }
     const child = this.ex.resolve(this.obj.objects[obj]);
