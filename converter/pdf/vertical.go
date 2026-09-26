@@ -52,7 +52,7 @@ func (in *interp) showVertical(f *pdfFont, codes []glyphCode) {
 	for _, g := range codes {
 		w0 := f.width(g)
 		w1, vx, vy := f.vmetrics(g, w0)
-		draw, text := f.use(g)
+		draw, text := in.use(f, g)
 		if in.actual != nil {
 			text = ""
 			if !in.actual.used {

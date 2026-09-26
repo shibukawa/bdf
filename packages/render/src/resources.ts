@@ -129,13 +129,18 @@ export class ResourceCache {
   }
 
   /**
-   * Close the decoded images; the cache is not used for new renders
-   * afterwards. Those a render in progress holds are closed when it
-   * releases them, and those still decoding when they are done.
+   * Close the decoded images and take the fonts out of the font set; the
+   * cache is not used for new renders afterwards. Images a render in
+   * progress holds are closed when it releases them, and those still
+   * decoding when they are done; the fonts go at once, so dispose of a
+   * cache whose renders may still draw text only once they are done.
    */
   dispose(): void {
     this.disposed = true;
     this.trim();
+    for (const face of this.fonts.values()) this.fontSet?.delete(face);
+    this.fonts.clear();
+    this.extPaths.clear();
   }
 
   private async load(e: PartEntry, bytes: Uint8Array, hold?: ImageHold): Promise<void> {
@@ -171,6 +176,7 @@ export class ResourceCache {
         const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
         const face = new FontFace(embeddedFamily(e.h), buffer);
         await face.load();
+        if (this.disposed) return;
         this.fontSet?.add(face);
         this.fonts.set(e.h, face);
         return;

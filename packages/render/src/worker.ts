@@ -5,11 +5,20 @@ import { PageRenderer } from "./page.js";
 import { DocumentSearch } from "./search.js";
 import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource, WorkerOpenOptions } from "./protocol.js";
 
-let doc: BdfDocument | undefined;
+/** An open document, with what draws and searches it. */
+interface Opened {
+  doc: BdfDocument;
+  pages: PageRenderer;
+  search: DocumentSearch;
+}
+
+let open: Opened | undefined;
 /** A source opened but still locked: kept for "unlock", so nothing is fetched or sent again. */
 let locked: PartSource | undefined;
-let pages: PageRenderer | undefined;
-let search: DocumentSearch | undefined;
+/** Documents closed or replaced, whose fonts and images go once no request is running. */
+const retired: Opened[] = [];
+let running = 0;
+/** The options of the last open, which a replacing document keeps. */
 let settings: WorkerOpenOptions = {};
 
 const measureCtx = new OffscreenCanvas(1, 1).getContext("2d")!;
@@ -18,31 +27,50 @@ const measure = (font: string, text: string) => {
   return measureCtx.measureText(text).width;
 };
 
-/** Forget the document, closing its decoded images. */
-function close(): void {
-  pages?.res.dispose();
-  doc = pages = search = locked = undefined;
+function sourceOf(source: OpenSource): PartSource | Promise<PartSource> {
+  switch (source.kind) {
+    case "buffer": return new BufferSource(new Uint8Array(source.buffer));
+    case "single": return source.range ? new RangeSource(source.url) : fetchSingle(source.url);
+    case "split": return new SplitSource(source.base);
+  }
 }
 
-async function open(source: OpenSource, password?: string, options: WorkerOpenOptions = {}): Promise<Manifest> {
-  close();
+function opened(doc: BdfDocument): Opened {
+  const pages = new PageRenderer(doc, {}, (self as unknown as { fonts?: FontFaceSet }).fonts, { imageBudget: settings.imageBudget });
+  return { doc, pages, search: new DocumentSearch(doc, measure) };
+}
+
+function retire() {
+  if (open) retired.push(open);
+  open = locked = undefined;
+}
+
+async function openSource(source: OpenSource, password?: string, options: WorkerOpenOptions = {}): Promise<Manifest> {
+  retire();
   settings = options;
-  switch (source.kind) {
-    case "buffer": locked = new BufferSource(new Uint8Array(source.buffer)); break;
-    case "single": locked = source.range ? new RangeSource(source.url) : await fetchSingle(source.url); break;
-    case "split": locked = new SplitSource(source.base); break;
-  }
+  locked = await sourceOf(source);
   return unlock(password);
 }
 
 /** Open the pending source; an encrypted one stays pending until a password opens it. */
 async function unlock(password?: string): Promise<Manifest> {
   if (!locked) throw new Error("bdf: no document to unlock");
-  doc = await BdfDocument.open(locked, { password });
+  const doc = await BdfDocument.open(locked, { password });
   locked = undefined;
-  pages = new PageRenderer(doc!, {}, (self as unknown as { fonts?: FontFaceSet }).fonts, { imageBudget: settings.imageBudget });
-  search = new DocumentSearch(doc!, measure);
-  return doc!.manifest;
+  open = opened(doc);
+  return doc.manifest;
+}
+
+/**
+ * Swap in another document with the same views and pages (the finished
+ * conversion of a streamed one). Requests running on the old one finish
+ * with it.
+ */
+async function replace(source: OpenSource): Promise<Manifest> {
+  const doc = await BdfDocument.open(await sourceOf(source));
+  if (open) retired.push(open);
+  open = opened(doc);
+  return doc.manifest;
 }
 
 type Matrix = [number, number, number, number, number, number];
@@ -82,10 +110,10 @@ function within(c: TextContent, r: Rect, dx = 0, dy = 0): TextContent {
  * on the main thread stretches its fallback rendering to that width. ALT_TEXT
  * runs keep theirs: only text drawn with a font has a known extent.
  */
-async function pageContent(page: Page, matrix?: Matrix, roles?: string[]): Promise<TextContent> {
-  await pages!.preparePageText(page);
+async function pageContent({ doc, pages }: Opened, page: Page, matrix?: Matrix, roles?: string[]): Promise<TextContent> {
+  await pages.preparePageText(page);
   const layers = roles ? page.layers.filter((l) => roles.includes(l.role)) : page.layers;
-  const c = concat(layers.map((layer) => extractContent(doc!.objectSync(layer.obj)!, (h) => doc!.objectSync(h), matrix)));
+  const c = concat(layers.map((layer) => extractContent(doc.objectSync(layer.obj)!, (h) => doc.objectSync(h), matrix)));
   for (const r of c.runs) {
     if (r.advance === 0 && r.font && r.text && !r.altText) r.advance = measure(fontString(r.font, r.size), r.text);
   }
@@ -93,8 +121,8 @@ async function pageContent(page: Page, matrix?: Matrix, roles?: string[]): Promi
 }
 
 /** Content of the pages whose body intersects viewport, moved into viewport coordinates. */
-async function continuousContent(view: View, viewport: Rect): Promise<TextContent> {
-  const { offsets } = pages!.continuousLayout(view);
+async function continuousContent(o: Opened, view: View, viewport: Rect): Promise<TextContent> {
+  const { offsets } = o.pages.continuousLayout(view);
   const parts: TextContent[] = [];
   const list = view.pages ?? [];
   for (let i = 0; i < list.length; i++) {
@@ -103,7 +131,7 @@ async function continuousContent(view: View, viewport: Rect): Promise<TextConten
     if (offsets[i] >= viewport.y + viewport.h || offsets[i] + b.h <= viewport.y) continue;
     const dx = -b.x - viewport.x, dy = offsets[i] - b.y - viewport.y;
     // The layers continuous mode draws, and what lies inside the body rectangle (the band clips to it).
-    parts.push(within(await pageContent(p, [1, 0, 0, 1, dx, dy], ["body", "annotation"]), b, dx, dy));
+    parts.push(within(await pageContent(o, p, [1, 0, 0, 1, dx, dy], ["body", "annotation"]), b, dx, dy));
   }
   return concat(parts);
 }
@@ -113,7 +141,7 @@ async function continuousContent(view: View, viewport: Rect): Promise<TextConten
  * rectangles), in sheet coordinates, tiles in reading order.
  * A run belongs to the tile its anchor lies in; tiles repeat what straddles them.
  */
-async function sheetContent(view: View, viewport: Rect | Rect[]): Promise<TextContent> {
+async function sheetContent({ doc, pages }: Opened, view: View, viewport: Rect | Rect[]): Promise<TextContent> {
   const tile = view.tile ?? 2048;
   const keys = new Map<string, [number, number]>();
   for (const r of Array.isArray(viewport) ? viewport : [viewport]) {
@@ -126,8 +154,8 @@ async function sheetContent(view: View, viewport: Rect | Rect[]): Promise<TextCo
   for (const [tx, ty] of [...keys.values()].sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
     const h = view.tiles?.[`${tx},${ty}`];
     if (!h) continue;
-    await pages!.res.prepareText(h);
-    const c = extractContent(doc!.objectSync(h)!, (hh) => doc!.objectSync(hh), [1, 0, 0, 1, tx * tile, ty * tile]);
+    await pages.res.prepareText(h);
+    const c = extractContent(doc.objectSync(h)!, (hh) => doc.objectSync(hh), [1, 0, 0, 1, tx * tile, ty * tile]);
     parts.push(within(c, { x: 0, y: 0, w: tile, h: tile - 1e-6 }, tx * tile, ty * tile)); // the rule of the text index (spec §4.1)
   }
   return concat(parts);
@@ -140,15 +168,25 @@ function canvasFor(w: number, h: number): OffscreenCanvas {
 async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; transfer: Transferable[] }> {
   switch (req.type) {
     case "open":
-      return { result: await open(req.source, req.password, req.options), transfer: [] };
+      return { result: await openSource(req.source, req.password, req.options), transfer: [] };
     case "unlock":
       return { result: await unlock(req.password), transfer: [] };
+    case "replace":
+      return { result: await replace(req.source), transfer: [] };
     case "close":
-      close();
+      retire();
       return { result: null, transfer: [] };
   }
-  if (!doc || !pages || !search) throw new Error("bdf: no document open");
+  // the document the request started on, even if another replaces it meanwhile
+  const o = open;
+  if (!o) throw new Error("bdf: no document open");
+  const { doc, pages, search } = o;
   const view = doc.view(req.view);
+  if (req.type === "addPage") {
+    doc.addPage(view.id, req.page, await BdfDocument.open(new BufferSource(new Uint8Array(req.buffer))));
+    search.forget(view);
+    return { result: null, transfer: [] };
+  }
   switch (req.type) {
     case "page": {
       const page = view.pages?.[req.page];
@@ -173,15 +211,15 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
     case "text": case "content": {
       const page = view.pages?.[req.page];
       if (!page) throw new Error(`bdf: no page ${req.page}`);
-      const c = await pageContent(page);
+      const c = await pageContent(o, page);
       return { result: req.type === "text" ? c.runs : c, transfer: [] };
     }
     case "continuousText": case "continuousContent": {
-      const c = await continuousContent(view, req.viewport);
+      const c = await continuousContent(o, view, req.viewport);
       return { result: req.type === "continuousText" ? c.runs : c, transfer: [] };
     }
     case "sheetContent":
-      return { result: await sheetContent(view, req.viewport), transfer: [] };
+      return { result: await sheetContent(o, view, req.viewport), transfer: [] };
     case "search":
       return { result: await search.search(view, req.query, req.options), transfer: [] };
     case "locate": {
@@ -195,6 +233,7 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
 
 self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
   const req = ev.data;
+  running++;
   try {
     const { result, transfer } = await handle(req);
     const res: WorkerResponse = { id: req.id, ok: true, result };
@@ -203,5 +242,8 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
     const code = e instanceof BdfPasswordError ? (e.reason === "required" ? "password-required" : "wrong-password") : undefined;
     const res: WorkerResponse = { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e), code };
     (self as unknown as Worker).postMessage(res);
+  } finally {
+    // nothing uses the retired documents any more
+    if (--running === 0) for (const r of retired.splice(0)) r.pages.dispose();
   }
 };
