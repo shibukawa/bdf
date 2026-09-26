@@ -1,0 +1,364 @@
+<mxfile host="gen">
+  <diagram id="p1" name="Page-1">
+    <mxGraphModel grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="c1" value="default" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="80" y="0" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c2" value="outline=none" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="160" y="0" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c3" value="outline=catching" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="240" y="0" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c4" value="outline=end;symbol=multiple" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="320" y="0" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c5" value="strokeWidth=3" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="400" y="0" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c6" value="fillColor=#dae8fc" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="480" y="0" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c7" value="rotation=30" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="560" y="0" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c8" value="direction=south" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="640" y="0" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c9" value="flipH=1" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="720" y="0" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c10" value="exclusive" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="0" y="43" width="76" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c11" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;;" vertex="1" parent="1">
+          <mxGeometry x="90" y="19" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c12" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;outline=none;" vertex="1" parent="1">
+          <mxGeometry x="170" y="19" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c13" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;outline=catching;" vertex="1" parent="1">
+          <mxGeometry x="250" y="19" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c14" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;outline=end;symbol=multiple;" vertex="1" parent="1">
+          <mxGeometry x="330" y="19" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c15" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="410" y="19" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c16" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;fillColor=#dae8fc;" vertex="1" parent="1">
+          <mxGeometry x="490" y="19" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c17" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;rotation=30;" vertex="1" parent="1">
+          <mxGeometry x="570" y="19" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c18" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;direction=south;" vertex="1" parent="1">
+          <mxGeometry x="650" y="19" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c19" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;flipH=1;" vertex="1" parent="1">
+          <mxGeometry x="730" y="19" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c20" value="parallel" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="0" y="113" width="76" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c21" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;;" vertex="1" parent="1">
+          <mxGeometry x="90" y="89" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c22" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;outline=none;" vertex="1" parent="1">
+          <mxGeometry x="170" y="89" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c23" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;outline=catching;" vertex="1" parent="1">
+          <mxGeometry x="250" y="89" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c24" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;outline=end;symbol=multiple;" vertex="1" parent="1">
+          <mxGeometry x="330" y="89" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c25" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="410" y="89" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c26" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;fillColor=#dae8fc;" vertex="1" parent="1">
+          <mxGeometry x="490" y="89" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c27" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;rotation=30;" vertex="1" parent="1">
+          <mxGeometry x="570" y="89" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c28" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;direction=south;" vertex="1" parent="1">
+          <mxGeometry x="650" y="89" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c29" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;flipH=1;" vertex="1" parent="1">
+          <mxGeometry x="730" y="89" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c30" value="complex" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="0" y="183" width="76" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c31" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=complex;;" vertex="1" parent="1">
+          <mxGeometry x="90" y="159" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c32" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=complex;outline=none;" vertex="1" parent="1">
+          <mxGeometry x="170" y="159" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c33" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=complex;outline=catching;" vertex="1" parent="1">
+          <mxGeometry x="250" y="159" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c34" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=complex;outline=end;symbol=multiple;" vertex="1" parent="1">
+          <mxGeometry x="330" y="159" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c35" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=complex;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="410" y="159" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c36" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=complex;fillColor=#dae8fc;" vertex="1" parent="1">
+          <mxGeometry x="490" y="159" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c37" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=complex;rotation=30;" vertex="1" parent="1">
+          <mxGeometry x="570" y="159" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c38" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=complex;direction=south;" vertex="1" parent="1">
+          <mxGeometry x="650" y="159" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c39" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=complex;flipH=1;" vertex="1" parent="1">
+          <mxGeometry x="730" y="159" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c40" value="event" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="0" y="253" width="76" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c41" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=event;;" vertex="1" parent="1">
+          <mxGeometry x="90" y="229" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c42" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=event;outline=none;" vertex="1" parent="1">
+          <mxGeometry x="170" y="229" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c43" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=event;outline=catching;" vertex="1" parent="1">
+          <mxGeometry x="250" y="229" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c44" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=event;outline=end;symbol=multiple;" vertex="1" parent="1">
+          <mxGeometry x="330" y="229" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c45" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=event;strokeWidth=3;" vertex="1" parent="1">
+          <mxGeometry x="410" y="229" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c46" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=event;fillColor=#dae8fc;" vertex="1" parent="1">
+          <mxGeometry x="490" y="229" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c47" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=event;rotation=30;" vertex="1" parent="1">
+          <mxGeometry x="570" y="229" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c48" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=event;direction=south;" vertex="1" parent="1">
+          <mxGeometry x="650" y="229" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c49" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=event;flipH=1;" vertex="1" parent="1">
+          <mxGeometry x="730" y="229" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c50" value="general" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="80" y="310" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c51" value="message" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="160" y="310" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c52" value="timer" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="240" y="310" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c53" value="conditional" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="320" y="310" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c54" value="multiple" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="400" y="310" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c55" value="parallelMultiple" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="480" y="310" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c56" value="signal" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="560" y="310" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c57" value="star" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="640" y="310" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c58" value="standard" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="720" y="310" width="80" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c59" value="catching" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="0" y="353" width="76" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c60" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=general;" vertex="1" parent="1">
+          <mxGeometry x="90" y="329" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c61" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=message;" vertex="1" parent="1">
+          <mxGeometry x="170" y="329" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c62" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=timer;" vertex="1" parent="1">
+          <mxGeometry x="250" y="329" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c63" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=conditional;" vertex="1" parent="1">
+          <mxGeometry x="330" y="329" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c64" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=multiple;" vertex="1" parent="1">
+          <mxGeometry x="410" y="329" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c65" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=parallelMultiple;" vertex="1" parent="1">
+          <mxGeometry x="490" y="329" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c66" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=signal;" vertex="1" parent="1">
+          <mxGeometry x="570" y="329" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c67" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=star;" vertex="1" parent="1">
+          <mxGeometry x="650" y="329" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c68" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=standard;" vertex="1" parent="1">
+          <mxGeometry x="730" y="329" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c69" value="throwing" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="0" y="423" width="76" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c70" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=throwing;symbol=general;" vertex="1" parent="1">
+          <mxGeometry x="90" y="399" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c71" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=throwing;symbol=message;" vertex="1" parent="1">
+          <mxGeometry x="170" y="399" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c72" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=throwing;symbol=timer;" vertex="1" parent="1">
+          <mxGeometry x="250" y="399" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c73" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=throwing;symbol=conditional;" vertex="1" parent="1">
+          <mxGeometry x="330" y="399" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c74" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=throwing;symbol=multiple;" vertex="1" parent="1">
+          <mxGeometry x="410" y="399" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c75" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=throwing;symbol=parallelMultiple;" vertex="1" parent="1">
+          <mxGeometry x="490" y="399" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c76" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=throwing;symbol=signal;" vertex="1" parent="1">
+          <mxGeometry x="570" y="399" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c77" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=throwing;symbol=star;" vertex="1" parent="1">
+          <mxGeometry x="650" y="399" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c78" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=throwing;symbol=standard;" vertex="1" parent="1">
+          <mxGeometry x="730" y="399" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c79" value="boundNonint" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="0" y="493" width="76" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c80" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=boundNonint;symbol=general;" vertex="1" parent="1">
+          <mxGeometry x="90" y="469" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c81" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=boundNonint;symbol=message;" vertex="1" parent="1">
+          <mxGeometry x="170" y="469" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c82" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=boundNonint;symbol=timer;" vertex="1" parent="1">
+          <mxGeometry x="250" y="469" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c83" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=boundNonint;symbol=conditional;" vertex="1" parent="1">
+          <mxGeometry x="330" y="469" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c84" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=boundNonint;symbol=multiple;" vertex="1" parent="1">
+          <mxGeometry x="410" y="469" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c85" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=boundNonint;symbol=parallelMultiple;" vertex="1" parent="1">
+          <mxGeometry x="490" y="469" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c86" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=boundNonint;symbol=signal;" vertex="1" parent="1">
+          <mxGeometry x="570" y="469" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c87" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=boundNonint;symbol=star;" vertex="1" parent="1">
+          <mxGeometry x="650" y="469" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c88" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=boundNonint;symbol=standard;" vertex="1" parent="1">
+          <mxGeometry x="730" y="469" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c89" value="end" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="0" y="563" width="76" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c90" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=end;symbol=general;" vertex="1" parent="1">
+          <mxGeometry x="90" y="539" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c91" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=end;symbol=message;" vertex="1" parent="1">
+          <mxGeometry x="170" y="539" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c92" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=end;symbol=timer;" vertex="1" parent="1">
+          <mxGeometry x="250" y="539" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c93" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=end;symbol=conditional;" vertex="1" parent="1">
+          <mxGeometry x="330" y="539" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c94" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=end;symbol=multiple;" vertex="1" parent="1">
+          <mxGeometry x="410" y="539" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c95" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=end;symbol=parallelMultiple;" vertex="1" parent="1">
+          <mxGeometry x="490" y="539" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c96" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=end;symbol=signal;" vertex="1" parent="1">
+          <mxGeometry x="570" y="539" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c97" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=end;symbol=star;" vertex="1" parent="1">
+          <mxGeometry x="650" y="539" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c98" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=end;symbol=standard;" vertex="1" parent="1">
+          <mxGeometry x="730" y="539" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c99" value="standard" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="0" y="633" width="76" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c100" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=standard;symbol=general;" vertex="1" parent="1">
+          <mxGeometry x="90" y="609" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c101" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=standard;symbol=message;" vertex="1" parent="1">
+          <mxGeometry x="170" y="609" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c102" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=standard;symbol=timer;" vertex="1" parent="1">
+          <mxGeometry x="250" y="609" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c103" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=standard;symbol=conditional;" vertex="1" parent="1">
+          <mxGeometry x="330" y="609" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c104" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=standard;symbol=multiple;" vertex="1" parent="1">
+          <mxGeometry x="410" y="609" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c105" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=standard;symbol=parallelMultiple;" vertex="1" parent="1">
+          <mxGeometry x="490" y="609" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c106" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=standard;symbol=signal;" vertex="1" parent="1">
+          <mxGeometry x="570" y="609" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c107" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=standard;symbol=star;" vertex="1" parent="1">
+          <mxGeometry x="650" y="609" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c108" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=standard;symbol=standard;" vertex="1" parent="1">
+          <mxGeometry x="730" y="609" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c109" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="35" y="690" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c110" value="exclusive none" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="20" y="754" width="90" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c111" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=parallel;strokeColor=#b85450;fillColor=#f8cecc;" vertex="1" parent="1">
+          <mxGeometry x="125" y="690" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c112" value="parallel red" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="110" y="754" width="90" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c113" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=foo;" vertex="1" parent="1">
+          <mxGeometry x="215" y="690" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c114" value="gwType=foo" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="200" y="754" width="90" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c115" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;outline=catching;symbol=message;gwType=parallel;" vertex="1" parent="1">
+          <mxGeometry x="305" y="690" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c116" value="parallel+outline" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="290" y="754" width="90" height="12" as="geometry"/>
+        </mxCell>
+        <mxCell id="c117" value="" style="shape=mxgraph.bpmn.gateway2;html=1;perimeter=rhombusPerimeter;gwType=exclusive;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="395" y="690" width="60" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c118" value="shadow" style="text;html=1;align=center;verticalAlign=top;fontSize=8;spacing=0;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="380" y="754" width="90" height="12" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
