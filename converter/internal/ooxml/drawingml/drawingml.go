@@ -9,7 +9,10 @@
 package drawingml
 
 import (
+	"encoding/xml"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -186,4 +189,91 @@ func PlaceholderOf(sh *ooxml.Node) *ooxml.Node {
 		}
 	}
 	return nil
+}
+
+// ThemeColor returns a color of the drawing's color scheme by name (dk1,
+// lt1, accent1 …, or a mapped name such as bg1), with components in 0..1.
+func (s *Drawing) ThemeColor(name string) (r, g, b float64, ok bool) {
+	c, ok := s.cc.scheme1(name)
+	return c.R, c.G, c.B, ok
+}
+
+// ThemeFont resolves a theme font reference ("+mn-lt", "+mj-ea" …); script
+// picks the font the theme lists for a script ("Jpan", "Hang" …) when its
+// East Asian font is empty. It returns "" when the theme has none.
+func (s *Drawing) ThemeFont(ref, script string) string { return s.th.fontFor(ref, script) }
+
+// DrawAnchored draws a shape element of part (sp, cxnSp, pic, grpSp or
+// graphicFrame) into the box x, y, w, h, the way a spreadsheet drawing's
+// anchor places it: the anchor takes precedence over the offset and size
+// of the shape's own transform (which the frames of charts often leave
+// empty); its rotation and flips stay.
+func (s *Drawing) DrawAnchored(cv *canvas.Canvas, k *ooxml.Node, part string, x, y, w, h float64) {
+	own := ownXfrm(k)
+	if xf, ok := parseXfrm(own); ok && xf.W > 0 && xf.H > 0 {
+		g := &groupCtx{xf: xform{X: x, Y: y, W: w, H: h}, chOff: [2]float64{xf.X, xf.Y}, chExt: [2]float64{xf.W, xf.H}, part: part}
+		s.drawElem(cv, k, part, g)
+		return
+	}
+	s.drawElem(cv, withXfrm(k, own, x, y, w, h), part, nil)
+}
+
+// ownXfrm returns the transform element of a shape.
+func ownXfrm(k *ooxml.Node) *ooxml.Node {
+	switch k.Name {
+	case "graphicFrame":
+		return k.Child("xfrm")
+	case "grpSp":
+		return k.Path("grpSpPr", "xfrm")
+	}
+	return k.Path("spPr", "xfrm")
+}
+
+// withXfrm returns a copy of a shape whose transform places it in a box.
+func withXfrm(k, own *ooxml.Node, x, y, w, h float64) *ooxml.Node {
+	emu := func(v float64) string { return strconv.FormatInt(int64(math.Round(v*ooxml.EMUPerPoint)), 10) }
+	xfrm := &ooxml.Node{Name: "xfrm", Kids: []*ooxml.Node{
+		{Name: "off", Attrs: []xml.Attr{{Name: xml.Name{Local: "x"}, Value: emu(x)}, {Name: xml.Name{Local: "y"}, Value: emu(y)}}},
+		{Name: "ext", Attrs: []xml.Attr{{Name: xml.Name{Local: "cx"}, Value: emu(w)}, {Name: xml.Name{Local: "cy"}, Value: emu(h)}}},
+	}}
+	if own != nil {
+		xfrm.Space, xfrm.Attrs = own.Space, own.Attrs
+	}
+	for _, kid := range own.Elements() {
+		if kid.Name != "off" && kid.Name != "ext" {
+			xfrm.Kids = append(xfrm.Kids, kid)
+		}
+	}
+	replace := func(n *ooxml.Node, name string, with *ooxml.Node) *ooxml.Node {
+		cp := *n
+		cp.Kids = nil
+		found := false
+		for _, kid := range n.Kids {
+			if kid.Name == name {
+				cp.Kids = append(cp.Kids, with)
+				found = true
+				continue
+			}
+			cp.Kids = append(cp.Kids, kid)
+		}
+		if !found {
+			cp.Kids = append([]*ooxml.Node{with}, cp.Kids...)
+		}
+		return &cp
+	}
+	switch k.Name {
+	case "graphicFrame":
+		return replace(k, "xfrm", xfrm)
+	case "grpSp":
+		pr := k.Child("grpSpPr")
+		if pr == nil {
+			pr = &ooxml.Node{Name: "grpSpPr"}
+		}
+		return replace(k, "grpSpPr", replace(pr, "xfrm", xfrm))
+	}
+	pr := k.Child("spPr")
+	if pr == nil {
+		pr = &ooxml.Node{Name: "spPr"}
+	}
+	return replace(k, "spPr", replace(pr, "xfrm", xfrm))
 }

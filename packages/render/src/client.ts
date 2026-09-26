@@ -53,8 +53,12 @@ export class BdfWorkerClient {
   continuousContent(view: string, viewport: Rect): Promise<TextContent> {
     return this.call<TextContent>({ type: "continuousContent", view, viewport });
   }
-  /** Content of the sheet tiles that intersect viewport, in sheet coordinates. */
-  sheetContent(view: string, viewport: Rect): Promise<TextContent> {
+  /**
+   * Content of the sheet tiles that intersect viewport (or any of several
+   * rectangles: the frozen panes and the scrolled region), in sheet
+   * coordinates.
+   */
+  sheetContent(view: string, viewport: Rect | Rect[]): Promise<TextContent> {
     return this.call<TextContent>({ type: "sheetContent", view, viewport });
   }
   search(view: string, query: string, options?: SearchOptions): Promise<SearchHit[]> {

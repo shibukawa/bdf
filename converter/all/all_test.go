@@ -15,6 +15,11 @@ func TestDetect(t *testing.T) {
 	w, _ := zw.Create("ppt/presentation.xml")
 	w.Write([]byte("<p:presentation/>"))
 	zw.Close()
+	var xlsx bytes.Buffer
+	zw = zip.NewWriter(&xlsx)
+	w, _ = zw.Create("xl/workbook.xml")
+	w.Write([]byte("<workbook/>"))
+	zw.Close()
 	var docx bytes.Buffer
 	zw = zip.NewWriter(&docx)
 	w, _ = zw.Create("word/document.xml")
@@ -31,6 +36,7 @@ func TestDetect(t *testing.T) {
 	}{
 		{"pdf", []byte("%PDF-1.7\n..."), "pdf"},
 		{"pptx", pptx.Bytes(), "pptx"},
+		{"xlsx", xlsx.Bytes(), "xlsx"},
 		{"docx", docx.Bytes(), ""},
 		{"emf", emf, "emf"},
 		{"wmf", wmf, "emf"},
