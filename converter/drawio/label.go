@@ -292,7 +292,7 @@ func (c *converter) layoutHTML(l *labelBox, value string, root *tstyle, t textPr
 	}
 	value = htmlLinefeeds(value)
 	doc := parseHTML(value)
-	tb := &textBuilder{c: c}
+	tb := &textBuilder{c: c, block: root}
 	tb.walk(doc, root)
 	tb.endPara()
 	l.trailing = tb.marks
@@ -502,7 +502,7 @@ func (c *converter) layoutPlain(l *labelBox, value string, root *tstyle, t textP
 		}
 	}
 	lo := &tlayout{}
-	tb := &textBuilder{c: c}
+	tb := &textBuilder{c: c, block: root}
 	var maxW float64
 	for i, s := range lines {
 		tb.endPara()

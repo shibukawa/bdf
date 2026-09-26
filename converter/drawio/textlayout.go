@@ -107,6 +107,7 @@ type tlayout struct {
 // textBuilder turns label HTML (or plain text) into paragraphs.
 type textBuilder struct {
 	c       *converter
+	block   *tstyle // style of the innermost block: the strut and alignment of its lines
 	paras   []*tpara
 	cur     *tpara
 	pending float64 // collapsed margin before the next paragraph
@@ -126,7 +127,11 @@ type listState struct {
 
 func (b *textBuilder) para(st *tstyle) *tpara {
 	if b.cur == nil {
-		b.cur = &tpara{st: st, align: st.align, indent: b.indent, top: b.pending, heading: b.heading, marks: b.marks}
+		blk := b.block
+		if blk == nil {
+			blk = st
+		}
+		b.cur = &tpara{st: blk, align: blk.align, indent: b.indent, top: b.pending, heading: b.heading, marks: b.marks}
 		b.marks = nil
 		b.pending = 0
 		b.space = true // leading spaces of a block are dropped
@@ -417,6 +422,9 @@ func (b *textBuilder) element(n *hnode, parent *tstyle) {
 	}
 	b.margin(marginTop)
 	b.indent += padLeft
+	outer := b.block
+	b.block = st
+	defer func() { b.block = outer }()
 	heading := b.heading
 	if strings.HasPrefix(n.tag, "h") && len(n.tag) == 2 && n.tag[1] >= '1' && n.tag[1] <= '6' {
 		b.heading = int(n.tag[1] - '0')
