@@ -159,8 +159,8 @@ func (d *Document) manifest(parts []encodedPart) *Manifest {
 	return m
 }
 
-// Magic is the single-file magic number.
-var Magic = [4]byte{'B', 'D', 'F', '1'}
+// Magic is the single-file magic number: "bdf" and a NUL byte.
+var Magic = [4]byte{'b', 'd', 'f', 0}
 
 // HeaderSize is the fixed header length of the single-file form.
 const HeaderSize = 32

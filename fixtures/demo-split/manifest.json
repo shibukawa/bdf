@@ -3,7 +3,23 @@
  "opset": 1,
  "unit": "pt",
  "meta": {
-  "title": "BDF fixture",
+  "dc": {
+   "title": "BDF fixture",
+   "creator": [
+    "bdf-go",
+    "BDF fixture generator"
+   ],
+   "subject": [
+    "slides",
+    "flow",
+    "sheet"
+   ],
+   "date": "2026-09-26",
+   "language": [
+    "en",
+    "ja"
+   ]
+  },
   "source": "fixture",
   "generator": "bdf-go/0.1"
  },

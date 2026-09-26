@@ -116,17 +116,15 @@ func Convert(rs io.ReadSeeker, opts *Options) (*Result, error) {
 	c := &converter{pdf: &pdf{ctx: ctx}, doc: bdf.NewDocument(), opts: opts, warned: map[string]bool{},
 		fonts: map[string]*pdfFont{}, forms: map[string]*pending{}, images: map[string]*imageEntry{}, shadings: map[string]*shading{}}
 	c.doc.Meta.Source = "pdf"
-	c.doc.Meta.Title = opts.Title
-	if c.doc.Meta.Title == "" {
-		if info := c.pdf.dict(ctx.Info); info != nil {
-			c.doc.Meta.Title = c.pdf.text(info["Title"])
-		}
+	c.doc.Meta.DC = c.pdf.info()
+	if opts.Title != "" {
+		c.doc.Meta.DC.Title = bdf.DCValues{opts.Title}
 	}
 	kind := opts.Kind
 	if kind == "" {
 		kind = bdf.ViewFixed
 	}
-	view := c.doc.NewView("pages", kind, c.doc.Meta.Title)
+	view := c.doc.NewView("pages", kind, c.doc.Meta.DC.Title.First())
 	if kind == bdf.ViewFlow {
 		view.Continuous = &bdf.Continuous{Gap: 16}
 	}

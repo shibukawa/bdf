@@ -45,7 +45,9 @@ type Manifest struct {
 
 // Meta holds document metadata.
 type Meta struct {
-	Title     string `json:"title,omitempty"`
+	// DC describes the document itself (title, creator, dates, ...).
+	DC DublinCore `json:"dc,omitzero"`
+	// Source is the input format the document was converted from ("pdf", "pptx", ...).
 	Source    string `json:"source,omitempty"`
 	Generator string `json:"generator,omitempty"`
 }

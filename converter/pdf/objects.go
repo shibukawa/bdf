@@ -126,7 +126,8 @@ func (p *pdf) str(o types.Object) []byte {
 	return nil
 }
 
-// text returns a PDF text string (PDFDocEncoding or UTF-16) as UTF-8.
+// text returns a PDF text string (PDFDocEncoding, or UTF-16BE or UTF-8 with
+// a byte order mark) as UTF-8.
 func (p *pdf) text(o types.Object) string {
 	b := p.str(o)
 	if len(b) >= 2 && b[0] == 0xfe && b[1] == 0xff {
@@ -142,7 +143,10 @@ func (p *pdf) text(o types.Object) string {
 		}
 		return string(out)
 	}
-	return string(b)
+	if len(b) >= 3 && b[0] == 0xef && b[1] == 0xbb && b[2] == 0xbf {
+		return string(b[3:])
+	}
+	return pdfDocText(b)
 }
 
 // key identifies an object for caching: its indirect reference if it has one,

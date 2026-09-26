@@ -226,6 +226,15 @@ func TestConvertReportlab(t *testing.T) {
 	if len(res.Warnings) != 0 {
 		t.Fatalf("warnings: %v", res.Warnings)
 	}
+	// The information dictionary becomes Dublin Core.
+	dc := r.Manifest.Meta.DC
+	if dc.Title.First() != "reportlab fixture" || dc.Creator.First() != "anonymous" || dc.Description.First() != "unspecified" ||
+		len(dc.Subject) != 0 || dc.Created.First() != "2026-09-25T07:21:16+00:00" || dc.Modified.First() != "2026-09-25T07:21:16+00:00" {
+		t.Errorf("dc = %+v", dc)
+	}
+	if v := r.Manifest.Views[0]; v.Title != "reportlab fixture" {
+		t.Errorf("view title = %q", v.Title)
+	}
 	text := pageText(t, r)
 	for _, want := range []string{"Helvetica: The quick brown fox", "café naïve — “quotes” • bullet ½ ©", "right aligned text", "rotated 30 degrees", "word spacing six between words", "invisible text (searchable)"} {
 		if !strings.Contains(text, want) {

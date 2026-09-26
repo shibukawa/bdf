@@ -2,16 +2,31 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, extractText, objectDeps, SplitSource } from "../dist/index.js";
+import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, extractText, objectDeps, SplitSource, dcValues } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
 const fixture = new Uint8Array(await readFile(new URL("fixtures/demo.bdf", root)));
 
 test("header parses", () => {
+  assert.equal(new TextDecoder().decode(fixture.subarray(0, 4)), "bdf\0");
   const h = parseHeader(fixture);
   assert.equal(h.version, 1);
   assert.equal(h.manifestOff, 32);
   assert.ok(h.manifestLen > 0);
+  const old = fixture.slice(0, 32);
+  old.set([0x42, 0x44, 0x46, 0x31]); // "BDF1"
+  assert.throws(() => parseHeader(old), /bad magic/);
+});
+
+test("Dublin Core metadata", async () => {
+  const doc = await BdfDocument.open(new BufferSource(fixture));
+  const dc = doc.manifest.meta.dc;
+  assert.equal(dc.title, "BDF fixture");
+  assert.deepEqual(dcValues(dc.title), ["BDF fixture"]);
+  assert.deepEqual(dcValues(dc.creator), ["bdf-go", "BDF fixture generator"]);
+  assert.deepEqual(dcValues(dc.language), ["en", "ja"]);
+  assert.deepEqual(dcValues(dc.rights), []);
+  assert.equal(doc.manifest.meta.source, "fixture");
 });
 
 test("manifest and views", async () => {

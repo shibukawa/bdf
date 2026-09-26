@@ -3,6 +3,8 @@ import { FORMAT_VERSION } from "./opcodes.js";
 import type { Manifest, PartEntry, Encoding } from "./types.js";
 
 export const HEADER_SIZE = 32;
+/** Magic number of the single-file form: "bdf" and a NUL byte. */
+export const MAGIC = new Uint8Array([0x62, 0x64, 0x66, 0x00]);
 
 export interface Header {
   version: number;
@@ -15,7 +17,7 @@ export interface Header {
 export function parseHeader(bytes: Uint8Array): Header {
   const r = new ByteReader(bytes);
   const m = r.bytesN(4);
-  if (m[0] !== 0x42 || m[1] !== 0x44 || m[2] !== 0x46 || m[3] !== 0x31) throw new BdfFormatError("bad magic");
+  if (!MAGIC.every((b, i) => m[i] === b)) throw new BdfFormatError("bad magic");
   const version = r.u16();
   if (version > FORMAT_VERSION) throw new BdfFormatError(`unsupported format version ${version}`);
   const flags = r.u16();

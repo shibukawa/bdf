@@ -78,7 +78,8 @@ func TestDocumentDedup(t *testing.T) {
 
 func TestSingleAndSplit(t *testing.T) {
 	d := NewDocument()
-	d.Meta.Title = "t"
+	d.Meta.DC.Title = DCValues{"t"}
+	d.Meta.DC.Creator = DCValues{"a", "b"}
 	big := NewObject()
 	for i := 0; i < 200; i++ {
 		big.FillRect(float32(i), 0, 1, 1)
@@ -108,6 +109,9 @@ func TestSingleAndSplit(t *testing.T) {
 	}
 	if r.Manifest.Views[0].Pages[0].Layers[0].Obj != h {
 		t.Fatal("manifest layer hash mismatch")
+	}
+	if dc := r.Manifest.Meta.DC; dc.Title.First() != "t" || len(dc.Creator) != 2 || dc.Creator[1] != "b" {
+		t.Fatalf("dc = %+v", dc)
 	}
 
 	dir := t.TempDir()

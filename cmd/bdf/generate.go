@@ -24,7 +24,9 @@ func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
 func generate(args []string) {
 	fs := flag.NewFlagSet("generate", flag.ExitOnError)
 	format := fs.String("format", "auto", "input format: auto, pdf or pptx")
-	title := fs.String("title", "", "document title (default: from the input)")
+	title := fs.String("title", "", "document title (default: from the input); the same as -dc title=...")
+	var dcFlags stringList
+	fs.Var(&dcFlags, "dc", "Dublin Core element as name=value, e.g. creator=Alice (repeatable; replaces the element read from the input, name= removes it)")
 	pages := fs.String("pages", "", "pages or slides to convert, e.g. 1-3,5 (default: all)")
 	quiet := fs.Bool("q", false, "do not print warnings")
 	images := fs.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
@@ -66,9 +68,15 @@ func generate(args []string) {
 			usageError(err.Error())
 		}
 	}
+	dc, err := parseDC(dcFlags)
+	if err != nil {
+		usageError(err.Error())
+	}
+	if *title != "" {
+		dc.Title = bdf.DCValues{*title}
+	}
 	f := converter.Format(*format)
 	if *format == "auto" {
-		var err error
 		f, err = converter.DetectFile(in)
 		check(err)
 	}
@@ -80,14 +88,14 @@ func generate(args []string) {
 	)
 	switch f {
 	case converter.PDF:
-		opts := &pdf.Options{Title: *title, Pages: sel, Kind: *kind, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType,
+		opts := &pdf.Options{Title: dc.Title.First(), Pages: sel, Kind: *kind, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType,
 			NoSharePrefix: *noShare, Images: imgOpts}
 		res, err := pdf.ConvertFile(in, opts)
 		check(err)
 		doc, warnings = res.Doc, res.Warnings
 		summary = fmt.Sprintf("%d page(s), %d shared prefix(es) saving %d bytes", res.Pages, res.SharedPrefixes, res.SharedBytes)
 	case converter.PPTX:
-		opts := &pptx.Options{Title: *title, Slides: sel, Hidden: *hidden, Images: imgOpts,
+		opts := &pptx.Options{Title: dc.Title.First(), Slides: sel, Hidden: *hidden, Images: imgOpts,
 			FontDirs: fontDirs, NoSystemFonts: *noSystemFonts, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType}
 		switch *fonts {
 		case "embed":
@@ -106,6 +114,11 @@ func generate(args []string) {
 		}
 		usageError(in + ": unknown input format (want PDF or PowerPoint .pptx)")
 	}
+	for _, name := range bdf.DCTerms {
+		if v := *dc.Field(name); v != nil {
+			*doc.Meta.DC.Field(name) = v
+		}
+	}
 	if !*quiet {
 		for _, w := range warnings {
 			fmt.Fprintln(os.Stderr, "warning:", w)
@@ -117,6 +130,27 @@ func generate(args []string) {
 		check(writeSingle(doc, out))
 	}
 	fmt.Fprintf(os.Stderr, "%s: %s, %d warning(s)\n", out, summary, len(warnings))
+}
+
+// parseDC reads -dc name=value flags into the elements they replace. An
+// element named with an empty value is set to an empty, non-nil list, which
+// removes it.
+func parseDC(flags []string) (bdf.DublinCore, error) {
+	var dc bdf.DublinCore
+	for _, kv := range flags {
+		name, value, _ := strings.Cut(kv, "=")
+		f := dc.Field(name)
+		if f == nil {
+			return dc, fmt.Errorf("-dc %s: unknown element %q (want one of %s)", kv, name, strings.Join(bdf.DCTerms, ", "))
+		}
+		if *f == nil {
+			*f = bdf.DCValues{}
+		}
+		if value != "" {
+			*f = append(*f, value)
+		}
+	}
+	return dc, nil
 }
 
 func usageError(msg string) {
