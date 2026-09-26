@@ -41,6 +41,8 @@ const SAMPLES = [
   { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },
   { path: "converter/drawio/testdata/aws.drawio", label: "draw.io (AWS)" },
   { path: "converter/dxf/testdata/layout.dxf", label: "DXF (model space and a layout)" },
+  { path: "converter/jww/testdata/shapes.jww", label: "Jw_cad" },
+  { path: "converter/sxf/testdata/shapes.p21", label: "SXF (P21)" },
   { path: "testdata/demo.bdf", label: "bdf" },
 ];
 
