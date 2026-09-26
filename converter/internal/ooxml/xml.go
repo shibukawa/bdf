@@ -18,6 +18,24 @@ type Node struct {
 	Attrs []xml.Attr
 	Kids  []*Node
 	Text  string // character data directly inside the element
+	// runs places the character data of an element with child elements
+	// among them, for mixed content (see Segments); nil for others.
+	runs []textRun
+}
+
+// textRun is character data that comes before child element Kids[before]
+// (after the last one when before is len(Kids)).
+type textRun struct {
+	before int
+	text   string
+}
+
+// Segment is a piece of the content of an element: a child element or
+// character data between child elements. Exactly one of Elem and Text is
+// set.
+type Segment struct {
+	Elem *Node
+	Text string
 }
 
 const (
@@ -54,11 +72,20 @@ func Parse(data []byte) (*Node, error) {
 			stack = append(stack, n)
 		case xml.EndElement:
 			if len(stack) > 0 {
+				if n := stack[len(stack)-1]; len(n.Kids) == 0 {
+					n.runs = nil // Text alone says it all
+				}
 				stack = stack[:len(stack)-1]
 			}
 		case xml.CharData:
 			if len(stack) > 0 {
-				stack[len(stack)-1].Text += string(t)
+				n := stack[len(stack)-1]
+				n.Text += string(t)
+				if k := len(n.runs) - 1; k >= 0 && n.runs[k].before == len(n.Kids) {
+					n.runs[k].text += string(t)
+				} else {
+					n.runs = append(n.runs, textRun{len(n.Kids), string(t)})
+				}
 			}
 		}
 	}
@@ -72,7 +99,11 @@ func Parse(data []byte) (*Node, error) {
 func (n *Node) resolveAlternates() {
 	var kids []*Node
 	changed := false
-	for _, k := range n.Kids {
+	// start[i] is where old child i starts among the new children, so that
+	// character data stays in place
+	start := make([]int, len(n.Kids)+1)
+	for i, k := range n.Kids {
+		start[i] = len(kids)
 		if k.Name == "AlternateContent" && strings.HasSuffix(k.Space, nsMC) {
 			changed = true
 			var pick *Node
@@ -101,8 +132,39 @@ func (n *Node) resolveAlternates() {
 		kids = append(kids, k)
 	}
 	if changed {
+		start[len(n.Kids)] = len(kids)
+		for i := range n.runs {
+			n.runs[i].before = start[n.runs[i].before]
+		}
 		n.Kids = kids
 	}
+}
+
+// Segments returns the content of an element in document order: its child
+// elements and the character data around them (mixed content, as in
+// "<a>one<b/>two</a>"). It returns nil for nil.
+func (n *Node) Segments() []Segment {
+	if n == nil {
+		return nil
+	}
+	if len(n.Kids) == 0 {
+		if n.Text == "" {
+			return nil
+		}
+		return []Segment{{Text: n.Text}}
+	}
+	out := make([]Segment, 0, len(n.Kids)+len(n.runs))
+	r := 0
+	for i, k := range n.Kids {
+		for ; r < len(n.runs) && n.runs[r].before <= i; r++ {
+			out = append(out, Segment{Text: n.runs[r].text})
+		}
+		out = append(out, Segment{Elem: k})
+	}
+	for ; r < len(n.runs); r++ {
+		out = append(out, Segment{Text: n.runs[r].text})
+	}
+	return out
 }
 
 // Content returns the character data of an element ("" for nil).

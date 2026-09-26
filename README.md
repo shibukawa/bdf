@@ -4,17 +4,17 @@ English | [日本語](README.ja.md)
 
 **bdf** (Browser-specific Document Format) is a draft document format for previews that browsers can draw straight onto Canvas 2D.
 
-Office-style files (PDF, Excel, PowerPoint, Word) are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
+Office-style files (PDF, Excel, PowerPoint, Word, Visio) are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
 
 ## How it works
 
 ```mermaid
 flowchart TB
-    SRC["PDF · Excel · PowerPoint · Word"]
+    SRC["PDF · Excel · PowerPoint · Word · Visio"]
 
     subgraph SERVER["Go server process"]
         direction TB
-        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx"]
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/visio"]
         BUNDLE["bdf bundle (packed)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         SCONV --> BUNDLE
     end
@@ -22,7 +22,7 @@ flowchart TB
     subgraph BROWSER["Browser"]
         direction TB
         subgraph CWORKER["Converter Worker (wasm)"]
-            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/visio"]
         end
         PARTS["bdf parts (unpacked)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         subgraph RWORKER["Renderer Worker"]
@@ -61,12 +61,13 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 - A transparent DOM text layer for selection and copy (spaces and line breaks restored from MARK boundaries; works across pages and in continuous mode)
 - Accessible text layers: headings, lists, tables, figures with alternative text, links and languages from structure MARKs, exposed to screen readers (tagged PDF and PowerPoint structure are converted)
 - The single-file and split-file forms convert into each other without re-encoding (the single file starts with the magic `bdf\0`)
-- The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information and a PowerPoint deck's core properties
+- The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information, a PowerPoint deck's core properties and a Visio drawing's document properties
 
 Documents are converted with the `bdf generate` subcommand, which tells the input formats apart by their content.
 
 - **PDF** (`converter/pdf`): rebuilds embedded fonts (TrueType, CFF, OpenType, Type1) into WOFF2 files that hold only the glyphs in use. It checks the OS/2 embedding permission (`fsType`) and carries the copyright notices over. It also turns form XObjects into shared objects and text into searchable runs, and moves the content common to the top of every page (the master) into a shared object. See §3.1 of design.md for details.
 - **PowerPoint .pptx** (`converter/pptx`): draws DrawingML directly. The shapes of slide masters and layouts become layer objects shared between slides, preset shapes come from the ECMA-376 shape formulas, and text is wrapped by the converter (Japanese line breaking rules, vertical text, bullets, paragraph formatting). Tables, charts, SmartArt and EMF/WMF pictures are drawn too. The fonts used for layout are embedded as WOFF2 subsets, so the result does not depend on the viewer's fonts. See §3.4 of design.md for details.
+- **Visio .vsdx / .vdx** (`converter/visio`): Visio 2013 packages (.vsdx, .vsdm, .vstx) and the XML drawings of Visio 2003 to 2010 (.vdx), read into one ShapeSheet model. Shapes inherit from masters and styles, and the cells a dynamic theme sets are resolved from the theme and the shapes' quick styles. Every geometry row, fill pattern, gradient, line pattern and the 45 arrowheads are drawn; background pages become background layers shared between pages. Text is laid out by the DrawingML text engine the PowerPoint converter uses, with its fonts embedded as WOFF2 subsets. The binary .vsd format is not read. See §3.6 of design.md for details.
 - **Windows metafiles .emf / .wmf** (`converter/emf`): one page the size of the picture, drawn by replaying the metafile's records (the replay that also draws the metafile pictures inside Office documents). Text is laid out and its fonts embedded as for PowerPoint.
 
 The input formats are static plugins: each converter package registers its format with the `converter` package when it is imported, and a program supports the formats whose packages it links in.
@@ -98,6 +99,7 @@ The documents are in Japanese.
 | `converter/` | Registry of the input formats, shared options, format detection, page ranges |
 | `converter/pdf` | PDF → bdf converter |
 | `converter/pptx` | PowerPoint (.pptx) → bdf converter |
+| `converter/visio` | Visio (.vsdx, .vdx) → bdf converter |
 | `converter/emf` | Windows metafile (.emf, .wmf) → bdf converter |
 | `converter/all` | Registers every input format (import for its side effect) |
 | `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`), objects under construction (`canvas`), EMF/WMF replay (`metafile`) |
@@ -116,7 +118,7 @@ go run ./cmd/bdf ls out.bdf          # list parts
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # convert to the split form
 
-# PDF / PowerPoint / metafiles → bdf (the format is detected from the content; -format pdf|pptx|emf forces it)
+# PDF / PowerPoint / Visio / metafiles → bdf (the format is detected from the content; -format pdf|pptx|visio|emf forces it)
 go run ./cmd/bdf generate -h                  # flags and the input formats with their -param options
 go run ./cmd/bdf generate in.pdf out.bdf      # single-file form
 go run ./cmd/bdf generate in.pptx out/        # split form
@@ -130,6 +132,7 @@ go run ./cmd/bdf generate -no-share in.pdf out.bdf     # PDF: do not move the co
 go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf   # PowerPoint: add a directory to search for fonts
 go run ./cmd/bdf generate -fonts system in.pptx out.bdf      # PowerPoint: refer to fonts by name instead of embedding them
 go run ./cmd/bdf generate -hidden in.pptx out.bdf            # PowerPoint: include hidden slides (-param hidden=true)
+go run ./cmd/bdf generate in.vsdx out.bdf                    # Visio (.vsdx or .vdx): a page for each foreground page
 go run ./cmd/bdf generate in.emf out.bdf                     # Windows metafile (.emf or .wmf) as one page
 go build -tags bdf_noconv ./...                    # build without codecs (WebP, Brotli for WOFF2), for the browser
 GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD codecs (AVX2 required on amd64)
@@ -141,6 +144,7 @@ npm run test:golden                  # render in Chromium and compare with the g
 npm run test:golden:update           # update the golden images
 npm run testdata                     # regenerate testdata/ (requires Go)
 npm run test:pptx:gen                # regenerate the PowerPoint test decks (requires python-pptx)
+npm run test:visio:gen               # regenerate the Visio test drawings
 node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium
 
 # Demo viewer

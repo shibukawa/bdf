@@ -49,6 +49,10 @@ export const CASES: Case[] = [
   { name: "pptx-features-3", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
   { name: "pptx-features-4", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
   { name: "pptx-features-5", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 4, scale: 0.75 },
+  // Visio drawings rendered by converter/visio with the test fonts; see test/visio.
+  { name: "visio-shapes-1", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "visio-shapes-2", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "visio-flow-1", src: "/testdata/visio/flow.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

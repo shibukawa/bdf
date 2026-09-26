@@ -16,7 +16,9 @@ import (
 const maxPartSize = 1 << 30
 
 // Package is an Open Packaging Conventions container (the zip file of an
-// Office document). Part names are matched case-insensitively.
+// Office document). Part names are matched case-insensitively. A nil
+// *Package is an empty package, for markup that comes without one (such as
+// the single XML file of a Visio 2003 drawing).
 type Package struct {
 	files map[string]*zip.File // by lower-cased part name without leading slash
 	xmls  map[string]*Node
@@ -45,12 +47,18 @@ func Open(r io.ReaderAt, size int64) (*Package, error) {
 
 // Has reports whether the package has a part.
 func (p *Package) Has(name string) bool {
+	if p == nil {
+		return false
+	}
 	_, ok := p.files[strings.ToLower(strings.TrimPrefix(name, "/"))]
 	return ok
 }
 
 // Read returns the bytes of a part.
 func (p *Package) Read(name string) ([]byte, error) {
+	if p == nil {
+		return nil, fmt.Errorf("missing part %s", name)
+	}
 	f, ok := p.files[strings.ToLower(strings.TrimPrefix(name, "/"))]
 	if !ok {
 		return nil, fmt.Errorf("missing part %s", name)
@@ -72,6 +80,9 @@ func (p *Package) Read(name string) ([]byte, error) {
 
 // XML returns the parsed XML of a part (cached).
 func (p *Package) XML(name string) (*Node, error) {
+	if p == nil {
+		return nil, fmt.Errorf("missing part %s", name)
+	}
 	key := strings.ToLower(strings.TrimPrefix(name, "/"))
 	if n, ok := p.xmls[key]; ok {
 		return n, nil
@@ -91,6 +102,9 @@ func (p *Package) XML(name string) (*Node, error) {
 // Rels returns the relationships of a part by ID ("" for the package's
 // own relationships).
 func (p *Package) Rels(part string) map[string]Rel {
+	if p == nil {
+		return nil
+	}
 	part = strings.TrimPrefix(part, "/")
 	if m, ok := p.rels[part]; ok {
 		return m

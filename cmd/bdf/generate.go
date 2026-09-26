@@ -111,8 +111,11 @@ func generate(args []string) {
 		f, err = converter.DetectFile(in)
 		check(err)
 		if f == nil {
-			if strings.EqualFold(filepath.Ext(in), ".ppt") {
+			switch ext := strings.ToLower(filepath.Ext(in)); ext {
+			case ".ppt":
 				usageError(in + ": legacy .ppt files are not supported; save as .pptx first")
+			case ".vsd", ".vss", ".vst":
+				usageError(in + ": legacy binary Visio files (" + ext + ") are not supported; save as .vsdx first")
 			}
 			usageError(in + ": unknown input format (want one of " + strings.Join(names, ", ") + ")")
 		}

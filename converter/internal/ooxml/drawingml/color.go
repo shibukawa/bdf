@@ -44,6 +44,29 @@ func hexColor(s string) (rgba, bool) {
 	return rgba{float64(v>>16&0xff) / 255, float64(v>>8&0xff) / 255, float64(v&0xff) / 255, 1}, true
 }
 
+// ResolveColor resolves the color choice among the children of n (srgbClr,
+// schemeClr …, with its modifiers). scheme holds the colors of a theme's
+// color scheme by name (dk1, lt1, accent1 …) and ph the color phClr stands
+// for. Documents that use DrawingML themes with a drawing model of their own
+// (Visio) resolve the colors of the theme's style matrices with it.
+func ResolveColor(n *ooxml.Node, scheme map[string]bdf.Color, ph bdf.Color) (bdf.Color, bool) {
+	cc := &colorCtx{scheme: make(map[string]rgba, len(scheme))}
+	for k, v := range scheme {
+		cc.scheme[k] = fromBDF(v)
+	}
+	p := fromBDF(ph)
+	cc.phClr = &p
+	c, ok := cc.color(n)
+	if !ok {
+		return 0, false
+	}
+	return c.bdf(), true
+}
+
+func fromBDF(c bdf.Color) rgba {
+	return rgba{float64(c>>24) / 255, float64(c>>16&0xff) / 255, float64(c>>8&0xff) / 255, float64(c&0xff) / 255}
+}
+
 // colorCtx resolves DrawingML colors: the theme's scheme, the color map of
 // the page (bg1 → lt1 …) and the placeholder color of style references.
 type colorCtx struct {

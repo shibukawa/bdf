@@ -3,7 +3,7 @@
 // format detection and page selection.
 //
 // The converters themselves are its subpackages (converter/pdf,
-// converter/pptx, converter/emf). Each registers its format when it is
+// converter/pptx, converter/visio, converter/emf). Each registers its format when it is
 // imported, so a program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
