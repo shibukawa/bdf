@@ -96,6 +96,8 @@ export const CASES: Case[] = [
   // Jw_cad drawings rendered by converter/jww with the test fonts; see test/jww.
   { name: "jww-shapes-1", src: "/testdata/jww/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
   { name: "jww-old-1", src: "/testdata/jww/old.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
+  // An SXF drawing (P21) rendered by converter/sxf with the test fonts; see test/sxf.
+  { name: "sxf-shapes-1", src: "/testdata/sxf/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

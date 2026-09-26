@@ -10,6 +10,9 @@
 package cad
 
 import (
+	"fmt"
+	"math"
+
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 )
@@ -177,6 +180,48 @@ func (d *Drawing) Bounds() Rect {
 
 // Empty reports whether the drawing draws nothing.
 func (d *Drawing) Empty() bool { return len(d.Items) == 0 }
+
+// Describe returns a line for each item of the drawing (the items of a
+// group indented under it) with its kind, bounds and style, coordinates
+// rounded to prec: what tests compare drawings by.
+func (d *Drawing) Describe(prec float64) []string {
+	var out []string
+	describe(&out, d.Items, "", prec)
+	return out
+}
+
+func describe(out *[]string, items []Item, indent string, prec float64) {
+	r := func(v float64) float64 { return math.Round(v/prec)*prec + 0 }
+	box := func(b Rect) string {
+		return fmt.Sprintf("%g %g %g %g", r(b.Min.X), r(b.Min.Y), r(b.Max.X), r(b.Max.Y))
+	}
+	for _, it := range items {
+		var s string
+		switch it.kind {
+		case kStroke:
+			dash := make([]float64, len(it.pen.Dash))
+			for i, v := range it.pen.Dash {
+				dash[i] = r(v)
+			}
+			s = fmt.Sprintf("stroke %s color=%08x width=%g dash=%g", box(it.bounds), uint32(it.pen.Color), r(it.pen.Width), dash)
+		case kFill:
+			s = fmt.Sprintf("fill %s color=%08x", box(it.bounds), uint32(it.fill.Color))
+		case kText:
+			t := it.text
+			var m [6]float64
+			for i, v := range t.M {
+				m[i] = r(v)
+			}
+			s = fmt.Sprintf("text %q color=%08x m=%g vertical=%v", t.S, uint32(t.Color), m, t.Vertical)
+		case kGroup:
+			s = "group " + box(it.bounds)
+		}
+		*out = append(*out, indent+s)
+		if it.kind == kGroup {
+			describe(out, it.items, indent+"  ", prec)
+		}
+	}
+}
 
 // Append adds the items of another drawing transformed by m, clipped by
 // clip (in this drawing's coordinates; nil: no clip): the view of a

@@ -320,6 +320,21 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 テスト用の図面は `test/jww/gen.py` が仕様書どおりに CArchive を書いて作る（`npm run test:jww:gen`、標準ライブラリのみ）。shapes.jww は Jw_cad 7 の形式（データ版数 700。SXF の拡張線色・線種、図形ごとの線幅、8 バイトの CTime）で、各種の図形・線色・線種・文字・寸法・ソリッド・入れ子のブロックと、非表示のレイヤグループとレイヤ、補助線を持つ。old.jww は Jw_cad 3 の形式（版数 300、4 バイトの CTime）である。変換結果は `testdata/jww/` に置いて golden テストで描画を比較する。開発中は、公開されている JWW の図面（版数 220 で書かれたもの）でも変換を確かめ、同じ図面の DXF 版と図形と文字の位置が合うことを見た。
 
+## 3.14 SXF → BDF 変換器（converter/sxf）の構造
+
+`converter/sxf` は電子納品の CAD データ交換標準 SXF（Ver.2〜Ver.3.1）の図面を読む。仕様書は電子納品に関する要領・基準の Web サイト（cals-ed.go.jp）で公開されている「SXF Ver.3.1 仕様書・同解説」（フィーチャ仕様編、附属書 SFC 編、STEP AP202 サブセット編、共通既定義要素編）による。SXF には 2 つの書き方があり、納品に使う STEP AP202 の Part 21 ファイル（.p21。ZIP 圧縮したものが .p2z）と、CAD 間の受け渡しに使うフィーチャコメントのファイル（.sfc）である。どちらも読み、同じ `converter/internal/cad` で描く。属性ファイル（.saf）と、図面に添える画像（.tif など）は読まない。
+
+- **SFC**: STEP の DATA 節に、`/*SXF` と `SXF*/` で囲んだコメントとしてフィーチャ（`#10 = line_feature('1','8','1','1',…)`）が並ぶ。引数は `'…'` で囲んだ数値、`\'…\'` で囲んだ文字列（Shift_JIS）、`'(…)'` で囲んだ数値の並びである。複合曲線（`composite_curve_org_feature`）と複合図形（`sfig_org_feature`）と用紙（`drawing_sheet_feature`）は、その前の構造要素から後に書かれた要素をまとめたもので、ファイルの順から組み立てる。色・線種・線幅・文字フォント・レイヤは、既定義のもの（色 1〜16、線種 1〜15、線幅 1〜9）は番号で、ユーザ定義のものは定義の順の番号（色は 17、線種は 17、線幅は 11 から）で参照する。
+- **P21**: ISO 10303-21 の書き方（単純と複合のエンティティインスタンス、文字列の `\X2\`・`\X4\`・`\X\`・`\S\` の指示）を読み、`DRAWING_SHEET_REVISION` の要素から描く。要素は `STYLED_ITEM`（`ANNOTATION_CURVE_OCCURRENCE`・`TEXT_OCCURRENCE`・`SYMBOL_OCCURRENCE`・`FILL_AREA_OCCURRENCE`・`SUBFIGURE_OCCURRENCE`）で、スタイル（`CURVE_STYLE`・`TEXT_STYLE`・`SYMBOL_STYLE`・`FILL_AREA_STYLE`）と形（`LINE`・`POLYLINE`・`CIRCLE`・`ELLIPSE` とその `TRIMMED_CURVE`、`BEZIER_CURVE`・`B_SPLINE_CURVE_WITH_KNOTS`・`COMPOSITE_CURVE`・`CLOTHOID`、`TEXT_LITERAL_WITH_EXTENT`、`DEFINED_SYMBOL`、`ANNOTATION_FILL_AREA`、`MAPPED_ITEM`）を持つ。寸法・引出し線・バルーンは `DRAUGHTING_CALLOUT` の中身を描く。非表示は `INVISIBILITY` が指す要素と、そこが指すレイヤ（`PRESENTATION_LAYER_ASSIGNMENT`）の要素である。
+- **SCADEC の書き方**: SXF に対応した CAD の多くは、SXF の書き読みを OCF の SCADEC ライブラリで行う。SCADEC が書いた P21 ファイル（ヘッダーの FILE_NAME に SCADEC とある）は、同じ図面の SFC と比べると仕様書と違うところがあり、SCADEC が読み戻すとおりに読む。文字の配置点は、仕様書では文字列配置基点（名前の `$$SXF_topline left` などが 9 つの基点のどれかを言う）だが、SCADEC は下段の基点なら文字の高さの半分だけ上に、中段なら半分、上段なら高さだけ下にずらして書く。引出し線の矢印の向きは、引出し線から離れる向きではなく引出し線に向かう向きに書くので、引出し線の端から決める。角度寸法の円弧は、仕様書では反時計回り（`.T.`）に固定だが `.F.` と書くので、反時計回りに描く。SCADEC 以外が書いたファイルは仕様書のとおりに読む。
+- **座標とページ**: 座標は用紙上の mm で、y が上向きである。ページは用紙（A0〜A4 の縦横と、自由な大きさ）で、用紙の外に図形があればそれを含むまで広げる。背景色は、図面が属性（`$$ATRU$$…$$背景色$$色$$R_G_B` という名前の空のグループ）で言っていればその色、なければ SXF のビューアと同じ黒にする（`-param background=light` で白地に。白の線と文字は黒で描く）。背景色のグループ自体は描かない。文書の言語は `ja`、図面名（SFC の図面表題、P21 の `DRAUGHTING_TITLE`）はタイトルにする。
+- **色と線**: 既定義の色は SXF の表の RGB、線種は SXF の表のピッチ（線幅 0.5 mm のときの長さで、線幅に比例させる）、線幅は mm のとおりに描く。ユーザ定義の線種は線分と空白の長さのとおりである。
+- **図形**: 点マーカ、線分、折線、円、円弧、楕円、楕円弧、スプライン（3 次のベジェ曲線をつないだもの）、クロソイド（数値積分で点列にする）、文字、複合図形（配置点・回転角・尺度で。入れ子も、測地座標系の部分図は x と y を入れ替えて）、直線寸法・角度寸法・弧長寸法・半径寸法・直径寸法（寸法線、補助線、矢印 11 種、寸法値）、引出し線とバルーン、塗りつぶし（色、ハッチング 4 本まで、穴も）、背景色で塗る `Area_control` を描く。自分自身を配置する複合図形は 1 度だけ描く（警告を出す）。
+- **文字**: SXF の文字は、文字範囲の幅と高さ（全角の文字が半角の 2 倍の幅を取る固定ピッチ）の枠を、9 つの配置基点のどれかで置いたもので、JWW と同じく `cad.Text` のセルと字間で表す。文字範囲の高さを em にし、ベースラインは枠の下から 0.12 em 上とする。回転角、スラント角、縦書き（文字を 1 字ずつ立てて子 Object に描く、§3.13）にも従う。
+- **未対応（警告を出す）**: 既定義シンボル（`externally_defined_symbol`）、既定義ハッチング（`Area_control` のほかの名前のもの）、パターンのハッチング（`fill_area_style_tiles`）、画像。
+
+テスト用の図面は `test/sxf/gen.py` が作る（`npm run test:sxf:gen`、標準ライブラリのみ）。1 つの図面を SFC（shapes.sfc）と、SCADEC の書き方をまねた P21（shapes.p21）と、それを ZIP にした P2Z（shapes.p2z）で書き、既定義の線種・色・線幅とユーザ定義のもの、各種の図形、9 つの配置基点・回転・スラント・字間・縦書きの文字、複合図形（回転と尺度、入れ子、測地座標系）、寸法・引出し線・バルーン、塗りつぶし・穴のあるハッチング・`Area_control`、非表示のレイヤ、背景色の属性を持つ。Go のテストは SFC と P21 が同じ `cad.Drawing` になることを確かめる。変換結果は `testdata/sxf/` に置いて golden テストで描画を比較する。開発中は、国土交通省の CAD 製図基準に載っている図面作成例（SFC と P21 の両方がある縦断図、標準横断図、平面図、中間対傾構図）でも変換を確かめ、SFC と P21 で文字と線が同じ位置に描かれることを見た。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -399,7 +414,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
 9. **draw.io 直接変換**: ページごとの View とシートのような切り替え（実装済み、§3.11）。
-10. **CAD 図面**: DXF（実装済み、§3.12）と JWW（Jw_cad、実装済み、§3.13）。続けて SXF（電子納品の SFC と P21）、CGM を、共通の `converter/internal/cad` の上に作る。
+10. **CAD 図面**: DXF（実装済み、§3.12）、JWW（Jw_cad、実装済み、§3.13）、SXF（電子納品の P21 と SFC、実装済み、§3.14）。続けて CGM を、共通の `converter/internal/cad` の上に作る。
 
 ## 9. リポジトリ構成（案）
 
@@ -422,6 +437,7 @@ bdf/
 │   ├── drawio/        draw.io → BDF 変換器（testdata/ にテスト用の図、stencils/ に同梱のステンシル）
 │   ├── dxf/           AutoCAD DXF → BDF 変換器（testdata/ にテスト用図面）
 │   ├── jww/           Jw_cad（.jww）→ BDF 変換器（testdata/ にテスト用図面）
+│   ├── sxf/           SXF（.p21、.p2z、.sfc）→ BDF 変換器（testdata/ にテスト用図面）
 │   ├── all/           すべての形式を登録する
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
 │                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
@@ -435,7 +451,7 @@ bdf/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画（scroll View は連続描画）、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）とデモサイト（ブラウザ内変換）
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word・DXF・JWW の変換結果と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word・DXF・JWW・SXF の変換結果と golden PNG
 └── test/              Playwright による golden テスト
 ```
 
