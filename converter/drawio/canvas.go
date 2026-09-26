@@ -135,11 +135,6 @@ func (c *c2d) restore() {
 	c.obj.Restore()
 }
 
-func (c *c2d) scale(v float64) {
-	c.st.scale *= v
-	c.st.strokeWidth *= v
-}
-
 func (c *c2d) translate(dx, dy float64) {
 	c.st.dx += dx
 	c.st.dy += dy

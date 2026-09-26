@@ -765,7 +765,7 @@ func bpmnTaskShape(v2 bool) *shapeDef {
 			c.setStrokeColor("")
 			c.setFillColor(strokeColor)
 			bpmnStencil(s, c, "mxgraph.bpmn.ad_hoc", w*0.5+currXOffset+1, h-offsetY+4, 12, 6, v2)
-			currXOffset += iconSpaceX
+			// (the JS advances currXOffset here too; nothing follows)
 			c.setStrokeColor(strokeColor)
 			c.setFillColor(fillColor)
 			if v2 {
