@@ -14,8 +14,8 @@ Office 系ファイルをサーバーで変換しておき、フロントエン�
 
 変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / PowerPoint）は中身から判別します。
 
-- **PDF**（`converter/pdf`）: 埋め込みフォントをブラウザが読める形に組み直し、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。詳細は design.md の §3.1。
-- **PowerPoint .pptx**（`converter/pptx`）: DrawingML を直接描画します。スライドマスターとレイアウトの図形はスライド間で共有されるレイヤー Object になり、プリセット図形は ECMA-376 の図形定義式から、テキストは変換側で折り返し（和文の禁則・縦書き・箇条書き・段落書式）、表・グラフ・SmartArt・EMF/WMF の図も描きます。レイアウトに使ったフォントはサブセットにして埋め込むので、閲覧環境のフォントに依存しません。詳細は design.md の §3.3。
+- **PDF**（`converter/pdf`）: 埋め込みフォント（TrueType、CFF、OpenType、Type1）を使うグリフだけの WOFF2 に組み直し（OS/2 の埋め込み許諾 `fsType` を確認し、著作権表示は引き継ぐ）、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。詳細は design.md の §3.1。
+- **PowerPoint .pptx**（`converter/pptx`）: DrawingML を直接描画します。スライドマスターとレイアウトの図形はスライド間で共有されるレイヤー Object になり、プリセット図形は ECMA-376 の図形定義式から、テキストは変換側で折り返し（和文の禁則・縦書き・箇条書き・段落書式）、表・グラフ・SmartArt・EMF/WMF の図も描きます。レイアウトに使ったフォントはサブセットの WOFF2 にして埋め込むので、閲覧環境のフォントに依存しません。詳細は design.md の §3.4。
 
 ドキュメント:
 
@@ -33,6 +33,7 @@ Office 系ファイルをサーバーで変換しておき、フロントエン�
 | `converter/pdf` | PDF → BDF 変換器 |
 | `converter/pptx` | PowerPoint (.pptx) → BDF 変換器 |
 | `converter/internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書き（`sfnt`） |
+| `woff2/` | TrueType/OpenType → WOFF2（glyf 変換と Brotli） |
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
 | `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画、Worker |
 | `examples/viewer` | デモビューア |
@@ -58,7 +59,9 @@ go run ./cmd/bdf generate -no-share in.pdf out.bdf     # PDF: ページ共通の
 go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf         # PowerPoint: フォントを探すディレクトリを追加
 go run ./cmd/bdf generate -fonts system in.pptx out.bdf            # PowerPoint: フォントを埋め込まず名前で参照
 go run ./cmd/bdf generate -hidden in.pptx out.bdf                  # PowerPoint: 非表示スライドも含める
-go build -tags bdf_noconv ./...                    # コーデックを含めないビルド（ブラウザ向け）
+go run ./cmd/bdf generate -no-woff2 in.pdf out.bdf     # フォントを WOFF2 にせず TTF/OTF のまま格納
+go run ./cmd/bdf generate -ignore-fstype in.pdf out.bdf # fsType が埋め込みやサブセット化を禁じるフォントも埋め込む（権利がある場合のみ）
+go build -tags bdf_noconv ./...                    # コーデック（WebP、WOFF2 の Brotli）を含めないビルド（ブラウザ向け）
 GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD 版コーデック（amd64 は AVX2 必須）
 
 # TypeScript: ビルドとテスト

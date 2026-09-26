@@ -30,6 +30,8 @@ func generate(args []string) {
 	images := fs.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
 	quality := fs.Int("quality", 80, "lossy WebP quality (1-100)")
 	noSubset := fs.Bool("no-subset", false, "embed whole fonts instead of the glyphs in use")
+	noWOFF2 := fs.Bool("no-woff2", false, "store embedded fonts as TrueType/OpenType instead of WOFF2")
+	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
 	kind := fs.String("kind", "fixed", "PDF: view kind, fixed or flow")
 	noShare := fs.Bool("no-share", false, "PDF: do not move the instruction prefix pages have in common into a shared object")
 	fonts := fs.String("fonts", "embed", "PowerPoint: embed (subset and embed the fonts used for layout) or system (refer to fonts by name)")
@@ -78,14 +80,15 @@ func generate(args []string) {
 	)
 	switch f {
 	case converter.PDF:
-		opts := &pdf.Options{Title: *title, Pages: sel, Kind: *kind, NoSubset: *noSubset, NoSharePrefix: *noShare, Images: imgOpts}
+		opts := &pdf.Options{Title: *title, Pages: sel, Kind: *kind, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType,
+			NoSharePrefix: *noShare, Images: imgOpts}
 		res, err := pdf.ConvertFile(in, opts)
 		check(err)
 		doc, warnings = res.Doc, res.Warnings
 		summary = fmt.Sprintf("%d page(s), %d shared prefix(es) saving %d bytes", res.Pages, res.SharedPrefixes, res.SharedBytes)
 	case converter.PPTX:
 		opts := &pptx.Options{Title: *title, Slides: sel, Hidden: *hidden, Images: imgOpts,
-			FontDirs: fontDirs, NoSystemFonts: *noSystemFonts, NoSubset: *noSubset}
+			FontDirs: fontDirs, NoSystemFonts: *noSystemFonts, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType}
 		switch *fonts {
 		case "embed":
 		case "system":

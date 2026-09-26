@@ -8,11 +8,12 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/woff2"
 )
 
 // fontProgram is an embedded font file.
 type fontProgram struct {
-	kind string // "ttf", "cff", "otf", "type1"
+	kind string // "ttf", "cff", "otf", "type1" (converted to CFF in data/cff)
 	data []byte
 	sf   *sfnt.Font
 	cff  *cffFont
@@ -51,6 +52,7 @@ type pdfFont struct {
 	symbolic    bool
 	flags       int
 	prog        *fontProgram
+	noEmbed     bool   // the program's license forbids embedding: draw with a system font
 	cid2gid     []byte // CIDToGIDMap stream (nil = identity)
 	charProcs   types.Dict
 	t3Resources types.Dict
@@ -289,10 +291,28 @@ func (c *converter) loadDescriptor(f *pdfFont, desc types.Dict) {
 			}
 			prog.cff = cf
 		case "type1":
-			c.warnf("font %s: Type1 font programs are not embedded; using a system font", f.baseFont)
-			continue
+			// Converted to CFF; from here on it is handled as a bare CFF program.
+			cffData, cf, failed, err := type1ToCFF(data)
+			if err != nil {
+				c.warnf("font %s: Type1 font program not converted (%v); using a system font", f.baseFont, err)
+				continue
+			}
+			if failed > 0 {
+				c.warnf("font %s: %d Type1 glyph(s) could not be converted and are left empty", f.baseFont, failed)
+			}
+			prog.data, prog.cff = cffData, cf
 		}
 		f.prog = prog
+		// Decided before any text is drawn: a font drawn with a system font
+		// must carry its Unicode text, not code points of a rebuilt cmap.
+		if lic := prog.license(); !c.opts.IgnoreFSType && (lic.restricted() || lic.bitmapOnly()) {
+			what := "is Restricted License"
+			if !lic.restricted() {
+				what = "allows bitmaps only"
+			}
+			c.warnf("font %s: its embedding permission (OS/2 fsType %#04x) %s; using a system font", f.baseFont, lic.fsType, what)
+			f.noEmbed = true
+		}
 		break
 	}
 }
@@ -452,6 +472,12 @@ func (f *pdfFont) unicode(g glyphCode) string {
 	}
 	if !f.composite {
 		name := f.glyphName(g.code)
+		if name == "" && f.prog != nil && f.prog.cff != nil && !f.prog.cff.isCID {
+			// The program's built-in encoding names the glyph (Type1, Type1C).
+			if gid, ok := f.prog.cff.encoding[int(g.code)]; ok && gid > 0 {
+				name = f.prog.cff.sidName(f.prog.cff.charset[gid])
+			}
+		}
 		if name == "" && f.symbolic {
 			name = standardEncoding[g.code]
 		}
@@ -603,7 +629,7 @@ func (f *pdfFont) use(g glyphCode) (draw string, text string) {
 	uni := f.unicode(g)
 	u := &usedGlyph{unicode: uni}
 	f.used[g.code] = u
-	if f.prog == nil || f.type3 {
+	if f.prog == nil || f.type3 || f.noEmbed {
 		// System font: draw the Unicode text itself.
 		if uni == "" && !f.composite {
 			uni = string(rune(g.code))
@@ -647,7 +673,7 @@ func (c *converter) finalizeFont(f *pdfFont) bdf.Font {
 	}
 	f.finalized = true
 	f.final = bdf.SystemFont(f.family, f.weight, f.style)
-	if f.prog == nil || f.type3 {
+	if f.prog == nil || f.type3 || f.noEmbed {
 		return f.final
 	}
 	cm := map[uint32]uint16{}
@@ -667,49 +693,121 @@ func (c *converter) finalizeFont(f *pdfFont) bdf.Font {
 	if family == "" {
 		family = "PDFFont"
 	}
-	var data []byte
 	prog := f.prog
+	lic := prog.license()
+	subset := !c.opts.NoSubset
+	if lic.noSubsetting() && subset && !c.opts.IgnoreFSType {
+		f.warnOnce(c, "license", "font %s: its embedding permission (OS/2 fsType %#04x) forbids subsetting; embedding every glyph", f.baseFont, lic.fsType)
+		subset = false
+	}
+	info := sfnt.FontInfo{Family: family, Weight: int(f.weight), Italic: f.style != bdf.StyleNormal, FSType: lic.outFSType(), Notices: lic.notices}
+	var data []byte
 	switch {
+	case prog.cff != nil:
+		sf, cm2 := c.cffSFNT(f, cm, subset)
+		data = sf.Rebuild(cm2, info)
 	case prog.sf != nil:
 		if prog.sf.IsCFF && prog.sf.Tables["CFF "] == nil {
-			return f.final
+			return f.final // CFF2 and other outlines browsers cannot take from here
 		}
-		if !prog.sf.IsCFF && !c.opts.NoSubset {
+		if !prog.sf.IsCFF && subset {
 			keep := make(map[uint16]bool, len(cm))
 			for _, gid := range cm {
 				keep[gid] = true
 			}
 			prog.sf.PruneGlyphs(keep)
 		}
-		data = prog.sf.Rebuild(cm, family, int(f.weight), f.style != bdf.StyleNormal)
-	case prog.cff != nil:
-		sf := &sfnt.Font{Tables: map[string][]byte{"CFF ": prog.data}, IsCFF: true, NumGlyphs: prog.cff.numGlyphs, UnitsPerEm: 1000}
-		if m := prog.cff.fontMatrix; m[0] != 0 {
-			sf.UnitsPerEm = int(1/m[0] + 0.5)
-		}
-		sf.Ascent, sf.Descent = int16(f.ascent), int16(f.descent)
-		if sf.Ascent == 0 {
-			sf.Ascent, sf.Descent = int16(sf.UnitsPerEm*8/10), int16(-sf.UnitsPerEm*2/10)
-		}
-		adv := make([]uint16, sf.NumGlyphs)
-		for i := range adv {
-			adv[i] = uint16(sf.UnitsPerEm / 2)
-		}
-		for code, u := range f.used {
-			if u.gid < len(adv) {
-				w := f.width(glyphCode{code: code, cid: f.cidOf(code)})
-				adv[u.gid] = uint16(w * float64(sf.UnitsPerEm))
-			}
-		}
-		sf.Advances = adv
-		data = sf.Rebuild(cm, family, int(f.weight), f.style != bdf.StyleNormal)
+		data = prog.sf.Rebuild(cm, info)
 	default:
 		return f.final
+	}
+	if !c.opts.NoWOFF2 {
+		if w, err := woff2.Encode(data); err == nil {
+			data = w
+		} else if err != woff2.ErrNotAvailable {
+			f.warnOnce(c, "woff2", "font %s: not stored as WOFF2: %v", f.baseFont, err)
+		}
 	}
 	h := c.doc.AddFont(data)
 	f.final = bdf.EmbeddedFont(h, f.weight, f.style)
 	f.final.Family = f.family
 	return f.final
+}
+
+// cffSFNT wraps a CFF program (bare, or the CFF table of an OpenType font) as
+// an OpenType font, dropping the glyphs the document does not use when subset
+// is set. It returns the font and the cmap renumbered to match.
+func (c *converter) cffSFNT(f *pdfFont, cm map[uint32]uint16, subset bool) (*sfnt.Font, map[uint32]uint16) {
+	prog := f.prog
+	cffData := prog.data
+	if prog.sf != nil {
+		cffData = prog.sf.Tables["CFF "]
+	}
+	n := prog.cff.numGlyphs
+	oldGID := func(i int) int { return i }
+	if subset {
+		keep := make(map[int]bool, len(cm))
+		for _, gid := range cm {
+			keep[int(gid)] = true
+		}
+		if sub, order, err := subsetCFF(cffData, keep); err == nil {
+			newGID := make(map[uint16]uint16, len(order))
+			for i, g := range order {
+				newGID[uint16(g)] = uint16(i)
+			}
+			renumbered := make(map[uint32]uint16, len(cm))
+			for r, g := range cm {
+				renumbered[r] = newGID[g]
+			}
+			cffData, cm, n = sub, renumbered, len(order)
+			oldGID = func(i int) int { return order[i] }
+		} else {
+			f.warnOnce(c, "cffsubset", "font %s: CFF not subset: %v", f.baseFont, err)
+		}
+	}
+	sf := &sfnt.Font{Tables: map[string][]byte{"CFF ": cffData}, IsCFF: true, NumGlyphs: n, UnitsPerEm: 1000}
+	adv := make([]uint16, n)
+	if orig := prog.sf; orig != nil {
+		// OpenType: keep its metrics and head (font revision, bbox, flags).
+		if head := orig.Tables["head"]; len(head) >= 54 {
+			sf.Tables["head"] = head
+		}
+		sf.UnitsPerEm, sf.Ascent, sf.Descent = orig.UnitsPerEm, orig.Ascent, orig.Descent
+		if orig.LSBs != nil {
+			sf.LSBs = make([]int16, n)
+		}
+		for i := range adv {
+			adv[i] = uint16(orig.Advance(uint16(oldGID(i))))
+			if sf.LSBs != nil && oldGID(i) < len(orig.LSBs) {
+				sf.LSBs[i] = orig.LSBs[oldGID(i)]
+			}
+		}
+	} else {
+		// Bare CFF: metrics come from the PDF font (FontMatrix, descriptor, Widths).
+		if m := prog.cff.fontMatrix; m[0] > 0 {
+			if upm := int(1/m[0] + 0.5); upm >= 16 && upm <= 16384 { // the range head allows
+				sf.UnitsPerEm = upm
+			}
+		}
+		sf.Ascent, sf.Descent = int16(f.ascent), int16(f.descent)
+		if sf.Ascent == 0 {
+			sf.Ascent, sf.Descent = int16(sf.UnitsPerEm*8/10), int16(-sf.UnitsPerEm*2/10)
+		}
+		width := map[int]uint16{}
+		for code, u := range f.used {
+			w := f.width(glyphCode{code: code, cid: f.cidOf(code)})
+			width[u.gid] = uint16(w * float64(sf.UnitsPerEm))
+		}
+		for i := range adv {
+			if w, ok := width[oldGID(i)]; ok {
+				adv[i] = w
+			} else {
+				adv[i] = uint16(sf.UnitsPerEm / 2)
+			}
+		}
+	}
+	sf.Advances = adv
+	return sf, cm
 }
 
 func (f *pdfFont) cidOf(code uint32) uint32 {

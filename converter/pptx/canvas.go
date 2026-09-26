@@ -6,6 +6,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
+	"github.com/shibukawa/bdf/woff2"
 )
 
 // canvas is an Object under construction. Font references are placeholders
@@ -135,7 +136,7 @@ func (c *converter) finalize() {
 			if err != nil {
 				continue
 			}
-			if !l.CanSubset() && !c.opts.NoSubset && l.Size() > maxWholeFont {
+			if !l.CanSubset(c.opts.IgnoreFSType) && !c.opts.NoSubset && l.Size() > maxWholeFont {
 				c.warnf("font %s is not embedded: its outlines cannot be subset and the file is %d KB", f.Family, l.Size()/1024)
 				continue
 			}
@@ -143,10 +144,17 @@ func (c *converter) finalize() {
 			for r := range c.faceRunes[f] {
 				runes = append(runes, r)
 			}
-			data, ok := l.Program(runes, c.opts.NoSubset)
+			data, ok := l.Program(runes, c.opts.NoSubset, c.opts.IgnoreFSType)
 			if !ok {
 				c.warnf("font %s is not embedded: its license does not allow embedding", f.Family)
 				continue
+			}
+			if !c.opts.NoWOFF2 {
+				if w, err := woff2.Encode(data); err == nil {
+					data = w
+				} else if err != woff2.ErrNotAvailable {
+					c.warnf("font %s: not stored as WOFF2: %v", f.Family, err)
+				}
 			}
 			hashes[f] = c.doc.AddFont(data)
 			embedded[f] = true

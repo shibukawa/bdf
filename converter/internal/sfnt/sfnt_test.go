@@ -18,7 +18,7 @@ func TestSFNTRebuild(t *testing.T) {
 	if !ok || gidA == 0 {
 		t.Fatal("no cmap entry for A")
 	}
-	out := sf.Rebuild(map[uint32]uint16{'Z': gidA, 0xE000: gidA, 0x1F600: gidA}, "Test", 700, true)
+	out := sf.Rebuild(map[uint32]uint16{'Z': gidA, 0xE000: gidA, 0x1F600: gidA}, FontInfo{Family: "Test", Weight: 700, Italic: true})
 	sf2, err := Parse(out)
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestPruneGlyphs(t *testing.T) {
 	if after >= before/4 {
 		t.Fatalf("glyf not pruned: %d -> %d", before, after)
 	}
-	out := sf.Rebuild(map[uint32]uint16{'A': sf.Cmap['A'], 0xE9: sf.Cmap[0xE9]}, "Pruned", 400, false)
+	out := sf.Rebuild(map[uint32]uint16{'A': sf.Cmap['A'], 0xE9: sf.Cmap[0xE9]}, FontInfo{Family: "Pruned", Weight: 400})
 	sf2, err := Parse(out)
 	if err != nil {
 		t.Fatal(err)

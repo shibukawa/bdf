@@ -6,7 +6,7 @@
 // Master and layout layers are identical objects on every slide that uses
 // them, so the container stores them once. Text is laid out here (BDF has
 // no layout engine) with the metrics of the fonts that are then embedded as
-// subsets. See docs/design.md §3.3.
+// subsets. See docs/design.md §3.4.
 package pptx
 
 import (
@@ -44,6 +44,13 @@ type Options struct {
 	SystemFonts bool
 	// NoSubset embeds whole fonts instead of the glyphs in use.
 	NoSubset bool
+	// NoWOFF2 stores embedded fonts as TrueType/OpenType instead of WOFF2
+	// (builds tagged bdf_noconv never produce WOFF2).
+	NoWOFF2 bool
+	// IgnoreFSType embeds fonts whose OS/2 fsType forbids embedding or
+	// subsetting. Without it such fonts are referred to by name or embedded
+	// whole. Set it only when you hold the rights to embed the fonts.
+	IgnoreFSType bool
 	// NoTextIndex skips building the text index part.
 	NoTextIndex bool
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.

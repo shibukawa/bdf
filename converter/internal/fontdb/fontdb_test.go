@@ -48,7 +48,7 @@ func TestSystemResolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prog, ok := l.Program([]rune("Hello あいう"), false)
+	prog, ok := l.Program([]rune("Hello あいう"), false, false)
 	if !ok {
 		t.Fatal("not embeddable")
 	}
@@ -57,7 +57,7 @@ func TestSystemResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("subset %d bytes (from %d), %d glyphs", len(prog), l.Size(), sf.NumGlyphs)
-	if l.CanSubset() && sf.NumGlyphs > 20 {
+	if l.CanSubset(false) && sf.NumGlyphs > 20 {
 		t.Fatalf("subset kept %d glyphs", sf.NumGlyphs)
 	}
 	if g, ok := sf.Cmap['H']; !ok || g == 0 {

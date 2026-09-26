@@ -30,9 +30,17 @@ type Options struct {
 	NoTextIndex bool
 	// NoAnnotations skips annotation appearance streams and links.
 	NoAnnotations bool
-	// NoSubset keeps every glyph of embedded TrueType fonts instead of
-	// dropping the outlines of unused ones (CFF fonts are never subset).
+	// NoSubset keeps every glyph of embedded fonts instead of dropping the
+	// ones the document does not use.
 	NoSubset bool
+	// NoWOFF2 stores rebuilt fonts as TrueType/OpenType instead of WOFF2
+	// (builds tagged bdf_noconv never produce WOFF2).
+	NoWOFF2 bool
+	// IgnoreFSType embeds fonts whose OS/2 fsType forbids it (Restricted
+	// License, bitmap only) or forbids subsetting. Without it such fonts fall
+	// back to a system font or are embedded whole. Set it only when you hold
+	// the rights to embed the fonts of the document.
+	IgnoreFSType bool
 	// Images controls whether raster images are re-encoded (see imgconv).
 	// The zero value keeps images as they are.
 	Images imgconv.Options

@@ -92,8 +92,14 @@ func (d *Document) Parts() []*Part {
 }
 
 func (d *Document) shouldCompress(p *Part) bool {
-	if p.Type == PartFont || p.Type == PartImage {
+	switch p.Type {
+	case PartImage:
 		return false
+	case PartFont:
+		// WOFF and WOFF2 are compressed already; TTF/OTF are not.
+		if len(p.Data) >= 4 && (string(p.Data[:4]) == "wOF2" || string(p.Data[:4]) == "wOFF") {
+			return false
+		}
 	}
 	return len(p.Data) >= d.MinCompress
 }

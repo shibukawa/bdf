@@ -2,13 +2,23 @@ package pdf
 
 import (
 	"bytes"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"maps"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/andybalholm/brotli"
+	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/woff2"
 )
 
 func TestLexer(t *testing.T) {
@@ -236,10 +246,7 @@ func TestConvertReportlab(t *testing.T) {
 		if e.T == bdf.PartFont {
 			embedded++
 			b, _ := r.Part(e.H)
-			sf, err := sfnt.Parse(b)
-			if err != nil {
-				t.Fatal(err)
-			}
+			sf := fontPart(t, b)
 			if len(sf.Cmap) == 0 {
 				t.Fatal("rebuilt font has no unicode cmap")
 			}
@@ -248,6 +255,72 @@ func TestConvertReportlab(t *testing.T) {
 	if embedded != 2 {
 		t.Fatalf("embedded fonts = %d", embedded)
 	}
+}
+
+var woff2KnownTags = strings.Fields("cmap head hhea hmtx maxp name OS/2 post cvt_ fpgm glyf loca prep CFF_ VORG EBDT EBLC gasp hdmx kern LTSH PCLT VDMX vhea vmtx BASE GDEF GPOS GSUB EBSC JSTF MATH CBDT CBLC COLR CPAL SVG_ sbix acnt avar bdat bloc bsln cvar fdsc feat fmtx fvar gvar hsty just lcar mort morx opbd prop trak Zapf Silf Glat Gloc Feat Sill")
+
+// fontPart parses a font part. A WOFF2 part is unpacked into an sfnt without
+// its (transformed) glyf and loca tables, which the tests do not look at.
+func fontPart(t *testing.T, b []byte) *sfnt.Font {
+	t.Helper()
+	if woff2.IsWOFF(b) {
+		if string(b[:4]) != "wOF2" {
+			t.Fatal("WOFF 1 font part")
+		}
+		n := int(be16(b, 12))
+		p := 48
+		base128 := func() int {
+			v := 0
+			for {
+				c := b[p]
+				p++
+				v = v<<7 | int(c&0x7f)
+				if c&0x80 == 0 {
+					return v
+				}
+			}
+		}
+		type entry struct {
+			tag   string
+			len   int
+			xform bool
+		}
+		var entries []entry
+		for i := 0; i < n; i++ {
+			flags := b[p]
+			p++
+			tag := ""
+			if flags&0x3f == 0x3f {
+				tag = string(b[p : p+4])
+				p += 4
+			} else {
+				tag = strings.ReplaceAll(woff2KnownTags[flags&0x3f], "_", " ")
+			}
+			e := entry{tag: tag, len: base128()}
+			if (tag == "glyf" || tag == "loca") && flags>>6 == 0 {
+				e.len, e.xform = base128(), true
+			}
+			entries = append(entries, e)
+		}
+		data, err := io.ReadAll(brotli.NewReader(bytes.NewReader(b[p : p+int(be32(b, 20))])))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tables := map[string][]byte{}
+		off := 0
+		for _, e := range entries {
+			if !e.xform {
+				tables[e.tag] = data[off : off+e.len]
+			}
+			off += e.len
+		}
+		b = sfnt.Build(tables, string(b[4:8]) == "OTTO")
+	}
+	sf, err := sfnt.Parse(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sf
 }
 
 func TestDeterministic(t *testing.T) {
@@ -265,5 +338,606 @@ func TestDeterministic(t *testing.T) {
 	}
 	if !bytes.Equal(outs[0], outs[1]) {
 		t.Fatal("conversion is not deterministic")
+	}
+}
+
+// nameString returns an English Windows record of a name table.
+func nameString(sf *sfnt.Font, id uint16) string {
+	nt := sf.Tables["name"]
+	count, strOff := int(be16(nt, 2)), int(be16(nt, 4))
+	for i := 0; i < count; i++ {
+		rec := 6 + i*12
+		if be16(nt, rec) == 3 && be16(nt, rec+6) == id {
+			off, l := strOff+int(be16(nt, rec+10)), int(be16(nt, rec+8))
+			u := make([]rune, l/2)
+			for k := range u {
+				u[k] = rune(be16(nt, off+k*2))
+			}
+			return string(u)
+		}
+	}
+	return ""
+}
+
+// fontParts returns the font parts of a converted document keyed by family name.
+func fontParts(t *testing.T, r *bdf.Reader) map[string]*sfnt.Font {
+	t.Helper()
+	out := map[string]*sfnt.Font{}
+	for _, e := range r.Manifest.Parts {
+		if e.T != bdf.PartFont {
+			continue
+		}
+		b, err := r.Part(e.H)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// WOFF2 is stored as is; without the encoder (bdf_noconv) the plain
+		// font is deflated by the container instead.
+		if woff2.IsWOFF(b) != woff2.Available() {
+			t.Errorf("font part %s: WOFF2 %v, encoder available %v", e.H, woff2.IsWOFF(b), woff2.Available())
+		}
+		if woff2.IsWOFF(b) == (e.Enc == bdf.EncDeflateRaw) {
+			t.Errorf("font part %s stored as %s", e.H, e.Enc)
+		}
+		sf := fontPart(t, b)
+		out[nameString(sf, 1)] = sf
+	}
+	return out
+}
+
+func TestConvertWebFonts(t *testing.T) {
+	res, r := convert(t, "weasyprint-webfonts.pdf")
+	var restricted, noSubset bool
+	for _, w := range res.Warnings {
+		switch {
+		case strings.Contains(w, "LicRestricted") && strings.Contains(w, "Restricted License"):
+			restricted = true
+		case strings.Contains(w, "LicNoSubset") && strings.Contains(w, "forbids subsetting"):
+			noSubset = true
+		default:
+			t.Errorf("unexpected warning: %s", w)
+		}
+	}
+	if !restricted || !noSubset {
+		t.Fatalf("license warnings missing: %v", res.Warnings)
+	}
+	text := pageText(t, r)
+	for _, want := range []string{"OpenType CFF (.otf): The quick brown fox", "Web font (.woff2): jumps over the lazy dog", "café naïve résumé", "Restricted License: system font", "Preview & Print: embedded"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("text index lacks %q", want)
+		}
+	}
+	fonts := fontParts(t, r)
+	if len(fonts) != 4 || fonts["LicRestricted"] != nil {
+		t.Fatalf("embedded fonts: %v", slices.Sorted(maps.Keys(fonts)))
+	}
+	// The CFF fonts (embedded as FontFile3/OpenType) come back as OpenType CFF
+	// holding only the glyphs the page uses, with Loma's copyright notice.
+	for _, name := range []string{"LomaOTF", "LomaWOFF2"} {
+		sf := fonts[name]
+		if sf == nil || !sf.IsCFF {
+			t.Fatalf("%s: not an OpenType CFF font", name)
+		}
+		cf, err := parseCFF(sf.Tables["CFF "])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cf.numGlyphs < 20 || cf.numGlyphs > 50 || sf.NumGlyphs != cf.numGlyphs {
+			t.Errorf("%s: %d glyphs (maxp %d)", name, cf.numGlyphs, sf.NumGlyphs)
+		}
+		if !strings.Contains(nameString(sf, 0), "NECTEC") || sf.FSType != 0 || !sf.HasFSType {
+			t.Errorf("%s: notice %q, fsType %#x", name, nameString(sf, 0), sf.FSType)
+		}
+		for _, r := range map[string]string{"LomaOTF": "The quick brown fox café", "LomaWOFF2": "jumps over the lazy dog"}[name] {
+			if _, ok := sf.Cmap[uint32(r)]; !ok {
+				t.Errorf("%s: no glyph for %q", name, r)
+			}
+		}
+	}
+	// fsType carries over; the No subsetting font keeps every glyph outline.
+	if sf := fonts["LicPreview"]; sf == nil || sf.FSType != fsPreviewPrint {
+		t.Errorf("LicPreview fsType not carried over")
+	}
+	if sf := fonts["LicNoSubset"]; sf == nil || sf.FSType != fsNoSubsetting {
+		t.Errorf("LicNoSubset fsType not carried over")
+	}
+	if !strings.Contains(nameString(fonts["LicPreview"], 0), "Bitstream") {
+		t.Errorf("DejaVu copyright not carried over: %q", nameString(fonts["LicPreview"], 0))
+	}
+
+	// With -ignore-fstype the Restricted License font is embedded too.
+	res2, err := ConvertFile(filepath.Join("testdata", "weasyprint-webfonts.pdf"), &Options{IgnoreFSType: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res2.Warnings) != 0 {
+		t.Errorf("warnings with IgnoreFSType: %v", res2.Warnings)
+	}
+	n := 0
+	for _, p := range res2.Doc.Parts() {
+		if p.Type == bdf.PartFont {
+			n++
+		}
+	}
+	if n != 5 {
+		t.Errorf("IgnoreFSType: %d fonts embedded, want 5", n)
+	}
+}
+
+func TestConvertCairoCFF(t *testing.T) {
+	res, r := convert(t, "cairo-cff.pdf")
+	if len(res.Warnings) != 0 {
+		t.Fatalf("warnings: %v", res.Warnings)
+	}
+	text := pageText(t, r)
+	for _, want := range []string{"Type1C via cairo: Hello, world", "CIDFontType0C:", "ภาษาไทย", "café — “quotes” ½"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("text index lacks %q", want)
+		}
+	}
+	cid := 0
+	for name, sf := range fontParts(t, r) {
+		if !sf.IsCFF || sf.HasFSType && sf.FSType != fsPreviewPrint {
+			t.Errorf("%s: CFF %v, fsType %#x", name, sf.IsCFF, sf.FSType)
+		}
+		cf, err := parseCFF(sf.Tables["CFF "])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cf.isCID {
+			cid++
+		}
+		if !strings.Contains(nameString(sf, 0), "NECTEC") {
+			t.Errorf("%s: CFF Notice not carried over", name)
+		}
+	}
+	if cid != 1 {
+		t.Errorf("want one CID-keyed font, got %d", cid)
+	}
+}
+
+// cffPrograms returns the FontFile3 programs of a testdata PDF (the CFF table
+// for OpenType ones) keyed by FontName.
+func cffPrograms(t *testing.T, name string) map[string][]byte {
+	t.Helper()
+	f, err := os.Open(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	conf := model.NewDefaultConfiguration()
+	conf.ValidationMode = model.ValidationRelaxed
+	ctx, err := api.ReadContext(f, conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &pdf{ctx: ctx}
+	out := map[string][]byte{}
+	for nr := range ctx.XRefTable.Table {
+		d := p.dict(*types.NewIndirectRef(nr, 0))
+		if d == nil || p.name(d["Type"]) != "FontDescriptor" {
+			continue
+		}
+		if sd := p.stream(d["FontFile3"]); sd != nil {
+			data, _, err := p.decodeStream(sd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data[:4]) == "OTTO" {
+				sf, err := sfnt.Parse(data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = sf.Tables["CFF "]
+			}
+			out[p.name(d["FontName"])] = data
+		}
+	}
+	return out
+}
+
+// cffParts reads the CharStrings INDEX and the local Subrs INDEXes of a CFF program.
+func cffParts(t *testing.T, data []byte) (charStrings [][]byte, subrs [][][]byte) {
+	t.Helper()
+	_, pos, _ := cffReadIndex(data, int(data[2]))
+	tops, _, _ := cffReadIndex(data, pos)
+	top := cffParseDict(tops[0])
+	charStrings, _, err := cffReadIndex(data, int(top[17][0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := func(v []float64) {
+		pd := cffParseDict(data[int(v[1]) : int(v[1])+int(v[0])])
+		if s := pd[19]; len(s) == 1 {
+			items, _, err := cffReadIndex(data, int(v[1])+int(s[0]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			subrs = append(subrs, items)
+		}
+	}
+	if v := top[1236]; len(v) == 1 {
+		fds, _, _ := cffReadIndex(data, int(v[0]))
+		for _, fd := range fds {
+			private(cffParseDict(fd)[18])
+		}
+	} else {
+		private(top[18])
+	}
+	return charStrings, subrs
+}
+
+func TestSubsetCFF(t *testing.T) {
+	progs := cffPrograms(t, "cairo-cff.pdf")
+	for k, v := range cffPrograms(t, "weasyprint-webfonts.pdf") {
+		progs[k] = v
+	}
+	if len(progs) != 4 {
+		t.Fatalf("CFF programs: %v", slices.Sorted(maps.Keys(progs)))
+	}
+	prunedSubrs := 0
+	for name, data := range progs {
+		cf, err := parseCFF(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keep := map[int]bool{1: true, cf.numGlyphs / 2: true, cf.numGlyphs - 1: true}
+		out, order, err := subsetCFF(data, keep)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if order[0] != 0 || !slices.IsSorted(order) || len(order) < len(keep)+1 {
+			t.Fatalf("%s: order %v", name, order)
+		}
+		for g := range keep {
+			if !slices.Contains(order, g) {
+				t.Fatalf("%s: glyph %d dropped", name, g)
+			}
+		}
+		nf, err := parseCFF(out)
+		if err != nil || nf.numGlyphs != len(order) || nf.isCID != cf.isCID {
+			t.Fatalf("%s: subset parses as %+v, %v", name, nf, err)
+		}
+		oldCS, oldSubrs := cffParts(t, data)
+		newCS, newSubrs := cffParts(t, out)
+		for i, g := range order {
+			if !bytes.Equal(newCS[i], oldCS[g]) {
+				t.Errorf("%s: charstring of glyph %d changed", name, g)
+			}
+			if i > 0 && nf.charset[i] != cf.charset[g] {
+				t.Errorf("%s: glyph %d is now SID/CID %d, was %d", name, g, nf.charset[i], cf.charset[g])
+			}
+		}
+		// Subroutine numbers are kept; the ones no kept glyph calls are emptied.
+		if len(newSubrs) != len(oldSubrs) {
+			t.Fatalf("%s: %d Subrs INDEXes, was %d", name, len(newSubrs), len(oldSubrs))
+		}
+		for k := range oldSubrs {
+			if len(newSubrs[k]) != len(oldSubrs[k]) {
+				t.Fatalf("%s: Subrs count changed", name)
+			}
+			for i, s := range newSubrs[k] {
+				if !bytes.Equal(s, oldSubrs[k][i]) {
+					if !bytes.Equal(s, []byte{11}) {
+						t.Fatalf("%s: subr %d rewritten", name, i)
+					}
+					prunedSubrs++
+				}
+			}
+		}
+		if len(out) >= len(data) {
+			t.Errorf("%s: %d -> %d bytes", name, len(data), len(out))
+		}
+		t.Logf("%s: %d glyphs, %d bytes -> %d glyphs, %d bytes", name, cf.numGlyphs, len(data), nf.numGlyphs, len(out))
+	}
+	if prunedSubrs == 0 {
+		t.Error("no subroutine was pruned")
+	}
+}
+
+func TestFontLicense(t *testing.T) {
+	for _, c := range []struct {
+		fsType                               uint16
+		restricted, bitmapOnly, noSubsetting bool
+	}{
+		{0x0000, false, false, false},
+		{0x0002, true, false, false},
+		{0x0004, false, false, false},
+		{0x0006, false, false, false}, // the least restrictive usage bit wins
+		{0x000a, false, false, false},
+		{0x0104, false, false, true},
+		{0x0200, false, true, false},
+		{0x0302, true, true, true},
+	} {
+		l := fontLicense{known: true, fsType: c.fsType}
+		if l.restricted() != c.restricted || l.bitmapOnly() != c.bitmapOnly || l.noSubsetting() != c.noSubsetting || l.outFSType() != c.fsType {
+			t.Errorf("fsType %#04x: restricted %v bitmapOnly %v noSubsetting %v", c.fsType, l.restricted(), l.bitmapOnly(), l.noSubsetting())
+		}
+	}
+	if l := (fontLicense{}); l.restricted() || l.outFSType() != fsPreviewPrint {
+		t.Error("a font without OS/2 must be embeddable and marked Preview & Print")
+	}
+}
+
+func TestT2Exec(t *testing.T) {
+	num := func(v int) byte { return byte(v + 139) } // -107..107
+	local := newSubrSet([][]byte{{11}, {num(5), 11}, {11}})
+	global := newSubrSet([][]byte{{11}})
+	// Two stems, then a hintmask whose mask byte 0xff must not be read as an
+	// operand; subr 1 (biased -106) is called, then seac 'A' + grave (code 193).
+	cs := []byte{num(10), num(20), num(30), num(40), 1, 19, 0xff, num(-106), 10, num(0), num(0), num(65), 247, 193 - 108, 14}
+	st := &t2State{seac: [2]int{-1, -1}}
+	done, err := st.exec(cs, local, global, 0)
+	if err != nil || !done {
+		t.Fatalf("exec = %v, %v", done, err)
+	}
+	if !slices.Equal(local.used, []bool{false, true, false}) || global.used[0] {
+		t.Fatalf("used = %v %v", local.used, global.used)
+	}
+	if st.nStems != 2 || st.seac != [2]int{65, 193} {
+		t.Fatalf("stems %d, seac %v", st.nStems, st.seac)
+	}
+	// Arithmetic can compute subroutine numbers: give up rather than guess.
+	st = &t2State{seac: [2]int{-1, -1}}
+	if _, err := st.exec([]byte{num(1), num(2), 12, 10, 10, 14}, local, global, 0); err == nil {
+		t.Fatal("arithmetic operator was followed")
+	}
+	// A subroutine number out of range is an error too.
+	if _, err := (&t2State{}).exec([]byte{num(50), 10, 14}, local, global, 0); err == nil {
+		t.Fatal("out-of-range subroutine was followed")
+	}
+}
+
+func TestConvertType1(t *testing.T) {
+	for _, c := range []struct {
+		file  string
+		fonts int
+		text  []string
+	}{
+		{"cairo-type1.pdf", 3, []string{"Type1 via cairo: Hello, world", "café naïve Ångström — fi", "Courier 10 Pitch: mono"}},
+		{"reportlab-type1.pdf", 1, []string{"Whole Type1 font: café naïve Ærø", "0123456789 (reportlab embeds every glyph)"}},
+	} {
+		res, r := convert(t, c.file)
+		if len(res.Warnings) != 0 {
+			t.Fatalf("%s: warnings: %v", c.file, res.Warnings)
+		}
+		text := pageText(t, r)
+		for _, want := range c.text {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s: text index lacks %q in %q", c.file, want, text)
+			}
+		}
+		n := 0
+		for _, e := range r.Manifest.Parts {
+			if e.T == bdf.PartFont {
+				n++
+			}
+		}
+		if n != c.fonts {
+			t.Fatalf("%s: %d fonts embedded, want %d", c.file, n, c.fonts)
+		}
+		fonts := fontParts(t, r)
+		for name, sf := range fonts {
+			cf, err := parseCFF(sf.Tables["CFF "])
+			if err != nil || cf.isCID {
+				t.Fatalf("%s %s: %v", c.file, name, err)
+			}
+			// Only the glyphs the page uses (plus .notdef and seac parts) are kept.
+			if cf.numGlyphs > 45 {
+				t.Errorf("%s %s: %d glyphs", c.file, name, cf.numGlyphs)
+			}
+			if !strings.Contains(nameString(sf, 0)+nameString(sf, 7), "Bitstream") || sf.FSType != fsPreviewPrint {
+				t.Errorf("%s %s: notice %q, fsType %#x", c.file, name, nameString(sf, 0), sf.FSType)
+			}
+		}
+	}
+}
+
+// type1Programs returns the FontFile programs of a testdata PDF.
+func type1Programs(t *testing.T, name string) [][]byte {
+	t.Helper()
+	f, err := os.Open(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	conf := model.NewDefaultConfiguration()
+	conf.ValidationMode = model.ValidationRelaxed
+	ctx, err := api.ReadContext(f, conf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := &pdf{ctx: ctx}
+	var out [][]byte
+	for nr := range ctx.XRefTable.Table {
+		d := p.dict(*types.NewIndirectRef(nr, 0))
+		if d == nil || p.name(d["Type"]) != "FontDescriptor" {
+			continue
+		}
+		if sd := p.stream(d["FontFile"]); sd != nil {
+			data, _, err := p.decodeStream(sd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, data)
+		}
+	}
+	return out
+}
+
+func TestType1Forms(t *testing.T) {
+	progs := type1Programs(t, "reportlab-type1.pdf")
+	if len(progs) != 1 {
+		t.Fatalf("%d Type1 programs", len(progs))
+	}
+	data := progs[0]
+	want, cf, failed, err := type1ToCFF(data)
+	if err != nil || failed != 0 {
+		t.Fatalf("convert: %v, %d failed", err, failed)
+	}
+	if cf.numGlyphs < 200 || cf.notice == "" {
+		t.Fatalf("%d glyphs, notice %q", cf.numGlyphs, cf.notice)
+	}
+	// PFB segments and hex (PFA) eexec data must give the same font.
+	i := bytes.Index(data, []byte("eexec")) + len("eexec")
+	for data[i] == '\r' || data[i] == '\n' {
+		i++
+	}
+	clear, enc := data[:i], data[i:]
+	seg := func(typ byte, b []byte) []byte {
+		return append(binary.LittleEndian.AppendUint32([]byte{0x80, typ}, uint32(len(b))), b...)
+	}
+	pfb := append(append(seg(1, clear), seg(2, enc)...), 0x80, 3)
+	var hex []byte
+	for k, b := range enc {
+		hex = fmt.Appendf(hex, "%02x", b)
+		if k%32 == 31 {
+			hex = append(hex, '\n')
+		}
+	}
+	pfa := append(append([]byte(nil), clear...), hex...)
+	for form, b := range map[string][]byte{"pfb": pfb, "pfa": pfa} {
+		got, _, _, err := type1ToCFF(b)
+		if err != nil || !bytes.Equal(got, want) {
+			t.Errorf("%s: %v, same font %v", form, err, bytes.Equal(got, want))
+		}
+	}
+	if _, _, _, err := type1ToCFF(data[:i-20]); err == nil {
+		t.Error("a program cut before eexec was accepted")
+	}
+}
+
+// t1cs encodes a Type 1 charstring: ints are operands, strings are operators.
+func t1cs(items ...any) []byte {
+	ops := map[string][]byte{"hstem": {1}, "rmoveto": {21}, "rlineto": {5}, "hsbw": {13}, "endchar": {14}, "callsubr": {10}, "return": {11},
+		"closepath": {9}, "seac": {12, 6}, "div": {12, 12}, "callothersubr": {12, 16}, "pop": {12, 17}, "setcurrentpoint": {12, 33}}
+	var b []byte
+	for _, it := range items {
+		switch v := it.(type) {
+		case int:
+			switch {
+			case v >= -107 && v <= 107:
+				b = append(b, byte(v+139))
+			case v >= 108 && v <= 1131:
+				b = append(b, byte((v-108)>>8+247), byte(v-108))
+			case v <= -108 && v >= -1131:
+				b = append(b, byte((-v-108)>>8+251), byte(-v-108))
+			default:
+				b = binary.BigEndian.AppendUint32(append(b, 255), uint32(int32(v)))
+			}
+		case string:
+			b = append(b, ops[v]...)
+		}
+	}
+	return b
+}
+
+// t2Outline decodes the Type 2 charstrings the converter writes (rmoveto,
+// rlineto, rrcurveto, endchar) into a width and absolute points per contour.
+func t2Outline(t *testing.T, cs []byte) (float64, [][][2]float64) {
+	t.Helper()
+	var stack []float64
+	var contours [][][2]float64
+	x, y, width := 0.0, 0.0, 0.0
+	first := true
+	for i := 0; i < len(cs); {
+		v := cs[i]
+		switch {
+		case v >= 32 && v <= 246:
+			stack = append(stack, float64(int(v)-139))
+			i++
+			continue
+		case v >= 247 && v <= 250:
+			stack = append(stack, float64((int(v)-247)*256+int(cs[i+1])+108))
+			i += 2
+			continue
+		case v >= 251 && v <= 254:
+			stack = append(stack, float64(-(int(v)-251)*256-int(cs[i+1])-108))
+			i += 2
+			continue
+		case v == 28:
+			stack = append(stack, float64(int16(binary.BigEndian.Uint16(cs[i+1:]))))
+			i += 3
+			continue
+		case v == 255:
+			stack = append(stack, float64(int32(binary.BigEndian.Uint32(cs[i+1:])))/65536)
+			i += 5
+			continue
+		}
+		i++
+		n := map[byte]int{21: 2, 5: 2, 8: 6, 14: 0}[v]
+		if first && (v == 21 || v == 14) && len(stack)%max(n, 1) == 1 || first && v == 14 && len(stack) == 1 {
+			width, stack = stack[0], stack[1:]
+		}
+		first = false
+		switch v {
+		case 21:
+			x, y = x+stack[0], y+stack[1]
+			contours = append(contours, [][2]float64{{x, y}})
+		case 5, 8:
+			for k := 0; k+1 < len(stack); k += 2 {
+				x, y = x+stack[k], y+stack[k+1]
+				contours[len(contours)-1] = append(contours[len(contours)-1], [2]float64{x, y})
+			}
+		case 14:
+			return width, contours
+		default:
+			t.Fatalf("unexpected operator %d", v)
+		}
+		stack = stack[:0]
+	}
+	t.Fatal("no endchar")
+	return 0, nil
+}
+
+func TestType1Charstrings(t *testing.T) {
+	font := &type1Font{
+		subrs: [][]byte{
+			t1cs(3, 0, "callothersubr", "pop", "pop", "setcurrentpoint", "return"), // 0: end flex
+			t1cs(0, 1, "callothersubr", "return"),                                  // 1: start flex
+			t1cs(0, 2, "callothersubr", "return"),                                  // 2: flex point
+			t1cs("return"),                                                         // 3
+			t1cs(0, 50, "hstem", "return"),                                         // 4: replacement hints
+		},
+		charString: map[string][]byte{
+			// Flex from (100,0) to (400,0), a hint replacement, then a line up.
+			"flex": t1cs(0, 500, "hsbw", 100, 0, "rmoveto", 1, "callsubr",
+				150, 0, "rmoveto", 2, "callsubr", -100, 20, "rmoveto", 2, "callsubr", 50, 0, "rmoveto", 2, "callsubr",
+				50, 0, "rmoveto", 2, "callsubr", 50, 0, "rmoveto", 2, "callsubr", 50, 0, "rmoveto", 2, "callsubr",
+				50, -20, "rmoveto", 2, "callsubr", 50, 400, 0, 0, "callsubr",
+				4, 1, 3, "callothersubr", "pop", "callsubr", 0, 100, "rlineto", "closepath", "endchar"),
+			"A":     t1cs(20, 600, "hsbw", 0, 0, "rmoveto", 100, 0, "rlineto", "closepath", "endchar"),
+			"grave": t1cs(5, 300, "hsbw", 0, 500, "rmoveto", 50, 0, "rlineto", "closepath", "endchar"),
+			// seac: the accent's sidebearing point goes to sbx + adx - asb + its own sbx.
+			"Agrave": t1cs(20, 600, "hsbw", 5, 150, 200, 65, 193, "seac"),
+			// div and a line without a preceding moveto (starts at the sidebearing point).
+			"div": t1cs(10, 1200, "hsbw", 7, 2, "div", 0, "rlineto", "endchar"),
+		},
+	}
+	for name, want := range map[string][][][2]float64{
+		"flex":   {{{100, 0}, {150, 20}, {200, 20}, {250, 20}, {300, 20}, {350, 20}, {400, 0}, {400, 100}}},
+		"Agrave": {{{20, 0}, {120, 0}}, {{170, 700}, {220, 700}}},
+		"div":    {{{10, 0}, {13.5, 0}}},
+	} {
+		cs, err := font.convert(name)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		width, got := t2Outline(t, cs)
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s: outline %v, want %v", name, got, want)
+		}
+		if w := map[string]float64{"flex": 500, "Agrave": 600, "div": 1200}[name]; width != w {
+			t.Errorf("%s: width %v, want %v", name, width, w)
+		}
+	}
+	// Multiple master blends and a seac whose base is a seac are not converted.
+	font.charString["mm"] = t1cs(0, 500, "hsbw", 1, 2, 1, 14, "callothersubr", "endchar")
+	font.charString["A"] = t1cs(0, 500, "hsbw", 0, 0, 0, 193, 193, "seac")
+	font.charString["nested"] = t1cs(0, 500, "hsbw", 0, 0, 0, 65, 193, "seac")
+	for _, name := range []string{"mm", "nested"} {
+		if _, err := font.convert(name); err == nil {
+			t.Errorf("%s was converted", name)
+		}
 	}
 }
