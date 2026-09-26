@@ -49,6 +49,28 @@ export const CASES: Case[] = [
   { name: "pptx-features-3", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
   { name: "pptx-features-4", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
   { name: "pptx-features-5", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 4, scale: 0.75 },
+  // Excel workbooks rendered by converter/xlsx with the test fonts; see test/xlsx.
+  { name: "xlsx-basic-1", src: "/testdata/xlsx/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 560, h: 640 }, scale: 1 },
+  { name: "xlsx-basic-tiles", src: "/testdata/xlsx/basic.bdf", kind: "sheet", view: "sheet3", viewport: { x: 100, y: 1990, w: 460, h: 120 }, scale: 1.5 },
+  { name: "xlsx-basic-overflow", src: "/testdata/xlsx/basic.bdf", kind: "sheet", view: "sheet3", viewport: { x: 1880, y: 0, w: 360, h: 120 }, scale: 1.5 },
+  { name: "xlsx-features-1", src: "/testdata/xlsx/features.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 760, h: 600 }, scale: 1 },
+  { name: "xlsx-features-chart", src: "/testdata/xlsx/features.bdf", kind: "page", view: "sheet2", page: 0, scale: 0.75 },
+  // Visio drawings rendered by converter/visio with the test fonts; see test/visio.
+  { name: "visio-shapes-1", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "visio-shapes-2", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "visio-flow-1", src: "/testdata/visio/flow.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  // Word documents laid out by converter/docx with the test fonts; see test/docx.
+  { name: "docx-basic-1", src: "/testdata/docx/basic.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "docx-basic-2", src: "/testdata/docx/basic.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "docx-grid-2", src: "/testdata/docx/grid.bdf", kind: "page", view: "pages", page: 1, scale: 0.75 },
+  // East Asian vertical text: upright characters, turned Latin text, a turned table, horizontal headers.
+  { name: "docx-vertical-1", src: "/testdata/docx/vertical.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  // The page view's bodies stacked (continuous mode), and the scroll view across the boundary of its strips.
+  { name: "docx-basic-continuous", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "pages", viewport: { x: 0, y: 500, w: 451.3, h: 400 }, scale: 1 },
+  { name: "docx-basic-scroll", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 850, w: 769.9, h: 350 }, scale: 1 },
+  // CSV and TSV files rendered by converter/csv with the test fonts; see test/csv.
+  { name: "csv-basic-1", src: "/testdata/csv/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1240, h: 240 }, scale: 1 },
+  { name: "csv-japanese-1", src: "/testdata/csv/japanese.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 460, h: 180 }, scale: 1.5 },
   // draw.io diagrams rendered by converter/drawio with the test fonts: every page is a view of its own.
   { name: "drawio-labels", src: "/testdata/drawio/labels.bdf", kind: "page", view: "text", page: 0, scale: 1.5 },
   { name: "drawio-multipage-1", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "overview", page: 0, scale: 1.5 },
@@ -197,7 +219,8 @@ async function main() {
   const { client: chromeDoc } = await open("/testdata/pdf/chrome-doc.bdf");
   (window as unknown as { bdfAltText: unknown }).bdfAltText = await altTextCheck(chromeDoc);
   (window as unknown as { bdfForcedColors: unknown }).bdfForcedColors = forcedColorsCheck;
-  (window as unknown as { bdfStructure: unknown }).bdfStructure = await structureCheck(client);
+  const { client: xlsx } = await open("/testdata/xlsx/features.bdf");
+  (window as unknown as { bdfStructure: unknown }).bdfStructure = await structureCheck(client, xlsx);
   // search through the worker: hits, then rectangles
   const hits = await client.search("doc", "list of objects");
   const rects = await client.locate("doc", hits);
@@ -210,13 +233,17 @@ async function main() {
   // "fixture" is drawn with an fi ligature: the hit is on an ALT_TEXT run.
   const ligHits = await chromeDoc.search("pages", "fixture");
   const ligRects = await chromeDoc.locate("pages", ligHits);
+  // text over a tile edge of a sheet is drawn in both tiles but found once
+  const { client: xlsxBasic } = await open("/testdata/xlsx/basic.bdf");
+  const xlsxHits = await xlsxBasic.search("sheet3", "straddles the tile");
+  const xlsxRects = await xlsxBasic.locate("sheet3", xlsxHits);
   // draw.io: a page of the diagram is a view; the search runs in it, and
   // links to other pages are #view= links
   const { client: drawio } = await open("/testdata/drawio/multipage.bdf");
   const drawioHits = await drawio.search("details", "日本語の説明");
   const drawioRects = await drawio.locate("details", drawioHits);
   const drawioLinks = (await drawio.content("overview", 0)).links.map((l) => l.url);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, drawioHits, drawioRects, drawioLinks };
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects, drawioHits, drawioRects, drawioLinks };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }
@@ -275,7 +302,7 @@ async function altTextCheck(client: BdfWorkerClient) {
 }
 
 /** Roles, links and languages of structured text layers (spec §7.8). */
-async function structureCheck(client: BdfWorkerClient) {
+async function structureCheck(client: BdfWorkerClient, xlsx: BdfWorkerClient) {
   const roles = (el: Element) => {
     const out: Record<string, number> = {};
     for (const e of el.querySelectorAll("[role]")) out[e.getAttribute("role")!] = (out[e.getAttribute("role")!] ?? 0) + 1;
@@ -286,6 +313,9 @@ async function structureCheck(client: BdfWorkerClient) {
   const figures = buildTextLayer(await client.content("slides", 1), 2);
   const fig = figures.querySelectorAll<HTMLElement>("[role=img]")[1];
   const sheet = buildTextLayer(await client.sheetContent("sheet1", { x: 0, y: 0, w: 800, h: 500 }), 1, { sheet: { rows: 200, cols: 26, headerRows: 1, headerCols: 1 } });
+  // a converted workbook: the header row of a table, a picture and a shape with descriptions
+  let placed = 0;
+  const workbook = buildTextLayer(await xlsx.sheetContent("sheet1", [{ x: 0, y: 0, w: 400, h: 700 }, { x: 400, y: 0, w: 400, h: 700 }]), 1, { sheet: { rows: 41, cols: 14 }, onSpan: () => placed++ });
   // links a document must not turn into anchors, and a run in another language
   const run = (text: string, x: number, lang?: string) => ({ text, x, y: 20, advance: 40, size: 10, font: undefined, align: 0, matrix: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number], sep: 1, ordinal: 0, altText: false, node: 0, lang });
   const unsafe = buildTextLayer({
@@ -307,6 +337,9 @@ async function structureCheck(client: BdfWorkerClient) {
     figureBox: [fig.style.left, fig.style.top, fig.style.width, fig.style.height],
     sheet: roles(sheet),
     sheetCell: sheet.querySelector("[role=row]:nth-child(3) [role=cell]")?.getAttribute("aria-colindex"),
+    xlsxHeaders: [...workbook.querySelectorAll("[role=columnheader]")].map((e) => e.textContent),
+    xlsxFigures: [...workbook.querySelectorAll("[role=img]")].map((e) => e.getAttribute("aria-label")),
+    xlsxSpans: [placed, workbook.querySelectorAll("span").length, workbook.querySelectorAll("[role=table]").length],
     unsafeAnchors: [...unsafe.querySelectorAll("a")].map((a) => a.getAttribute("href")),
     lang: [unsafe.lang, ...[...unsafe.querySelectorAll("span")].map((s) => s.lang)],
   };

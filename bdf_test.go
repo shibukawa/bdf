@@ -157,6 +157,7 @@ func TestExtractTextAndIndex(t *testing.T) {
 	sq := o.AddPath((&Path{}).Rect(0, 0, 1, 1))
 	o.Mark(MarkAltText, "outlined").FillPathAt(sq, NonZero, 5, 45) // alt text describes the next drawing op
 	o.Save().Translate(100, 100).Use(o.AddObject(childH, childBB)).Restore()
+	o.Mark(MarkAltText, "drawn by a child").UseAt(o.AddObject(childH, childBB), 50, 150) // spans the child's bbox
 	h, _ := d.AddObject(o)
 
 	obj, _ := DecodeObject(d.Part(h).Data)
@@ -173,8 +174,8 @@ func TestExtractTextAndIndex(t *testing.T) {
 		texts = append(texts, r.Text)
 		seps = append(seps, r.Sep)
 	}
-	wantTexts := []string{"Hello", "World", "second", "-line", "wrapped", "outlined", "child"}
-	wantSeps := []byte{SepBreak, SepSpace, SepSpace, SepNone, SepNone, SepSpace, SepSpace}
+	wantTexts := []string{"Hello", "World", "second", "-line", "wrapped", "outlined", "child", "drawn by a child"}
+	wantSeps := []byte{SepBreak, SepSpace, SepSpace, SepNone, SepNone, SepSpace, SepSpace, SepSpace}
 	if strings.Join(texts, "|") != strings.Join(wantTexts, "|") {
 		t.Fatalf("texts = %v", texts)
 	}
@@ -188,6 +189,9 @@ func TestExtractTextAndIndex(t *testing.T) {
 	}
 	if runs[5].X != 5 || runs[5].Y != 45 || !runs[5].AltText {
 		t.Fatalf("alt run = %+v", runs[5])
+	}
+	if r := runs[7]; r.X != 50+childBB.X || r.Y != 150 || r.Advance != childBB.W || !r.AltText {
+		t.Fatalf("alt run of a child = %+v, child bbox %+v", r, childBB)
 	}
 
 	v := d.NewView("v", ViewFixed, "")
@@ -203,7 +207,7 @@ func TestExtractTextAndIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := PlainText(idx); got != "Hello World second-linewrapped outlined child" {
+	if got := PlainText(idx); got != "Hello World second-linewrapped outlined child drawn by a child" {
 		t.Fatalf("plain text = %q", got)
 	}
 	if idx[5].Ordinal != 5 || idx[0].A != 0 || idx[0].B != 0 {

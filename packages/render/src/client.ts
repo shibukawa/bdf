@@ -1,6 +1,14 @@
 import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdf/core";
 import type { HitRect } from "./search.js";
-import type { WorkerCall, WorkerResponse, OpenSource } from "./protocol.js";
+import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode } from "./protocol.js";
+
+/** An error from the worker; code says when the document needs a password. */
+export class BdfWorkerError extends Error {
+  constructor(message: string, readonly code?: WorkerErrorCode) {
+    super(message);
+    this.name = "BdfWorkerError";
+  }
+}
 
 /** Main-thread handle to a rendering worker. */
 export class BdfWorkerClient {
@@ -13,7 +21,7 @@ export class BdfWorkerClient {
       const p = this.pending.get(res.id);
       if (!p) return;
       this.pending.delete(res.id);
-      if (res.ok) p.resolve(res.result); else p.reject(new Error(res.error));
+      if (res.ok) p.resolve(res.result); else p.reject(new BdfWorkerError(res.error, res.code));
     };
   }
 
@@ -25,8 +33,17 @@ export class BdfWorkerClient {
     });
   }
 
-  open(source: OpenSource): Promise<Manifest> {
-    return this.call<Manifest>({ type: "open", source }, source.kind === "buffer" ? [source.buffer] : []);
+  /**
+   * Open a document. An encrypted one rejects with a BdfWorkerError whose
+   * code is "password-required" (no password given) or "wrong-password";
+   * the worker keeps it, so unlock() can try other passwords.
+   */
+  open(source: OpenSource, password?: string): Promise<Manifest> {
+    return this.call<Manifest>({ type: "open", source, password }, source.kind === "buffer" ? [source.buffer] : []);
+  }
+  /** Try a password on the encrypted document the last open() left locked. */
+  unlock(password: string): Promise<Manifest> {
+    return this.call<Manifest>({ type: "unlock", password });
   }
   page(view: string, page: number, scale: number, roles?: string[]): Promise<ImageBitmap> {
     return this.call<ImageBitmap>({ type: "page", view, page, scale, roles });
@@ -53,8 +70,12 @@ export class BdfWorkerClient {
   continuousContent(view: string, viewport: Rect): Promise<TextContent> {
     return this.call<TextContent>({ type: "continuousContent", view, viewport });
   }
-  /** Content of the sheet tiles that intersect viewport, in sheet coordinates. */
-  sheetContent(view: string, viewport: Rect): Promise<TextContent> {
+  /**
+   * Content of the sheet tiles that intersect viewport (or any of several
+   * rectangles: the frozen panes and the scrolled region), in sheet
+   * coordinates.
+   */
+  sheetContent(view: string, viewport: Rect | Rect[]): Promise<TextContent> {
     return this.call<TextContent>({ type: "sheetContent", view, viewport });
   }
   search(view: string, query: string, options?: SearchOptions): Promise<SearchHit[]> {

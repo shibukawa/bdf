@@ -7,11 +7,12 @@
 // the mxGraphModel XML the way draw.io itself renders them: the cell
 // geometry, edge routing, shapes and label layout follow mxGraph and
 // draw.io's Graph and Shapes code, ported from JavaScript (Apache License
-// 2.0, see NOTICE). See docs/design.md §3.5.
+// 2.0, see NOTICE). See docs/design.md §3.11.
 package drawio
 
 import (
 	"fmt"
+	"io/fs"
 	"math"
 	"net/url"
 	"os"
@@ -36,6 +37,9 @@ type Options struct {
 	// Images controls whether raster images are re-encoded (see imgconv).
 	// The zero value keeps images as they are.
 	Images imgconv.Options
+	// FontFS holds fonts that are not in the local file system (see
+	// converter.Options.FontFS); it is searched before FontDirs.
+	FontFS fs.FS
 	// FontDirs are searched for fonts before the system font directories.
 	FontDirs []string
 	// NoSystemFonts restricts font lookup to FontDirs.
@@ -103,7 +107,7 @@ func newConverter(opts *Options) *converter {
 		faceRunes: map[*fontdb.Face]map[rune]bool{}, choices: map[resolveKey]*faceChoice{},
 		fallback: map[fallbackKey]*faceChoice{}, fallbackLists: map[fallbackListKey][]fontdb.Resolved{},
 		missing: map[rune]bool{}, images: map[string]*imageRef{}, viewOf: map[string]string{}}
-	c.db = fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
+	c.db = fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
 	if len(c.db.Faces) == 0 && !opts.SystemFonts {
 		c.warnf("no fonts found; text is laid out with estimated metrics and not embedded")
 	}

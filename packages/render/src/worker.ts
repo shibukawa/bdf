@@ -1,11 +1,13 @@
 /// <reference lib="webworker" />
-import { BdfDocument, BufferSource, RangeSource, SplitSource, fetchSingle, extractContent, type TextRun, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdf/core";
+import { BdfDocument, BdfPasswordError, BufferSource, RangeSource, SplitSource, fetchSingle, extractContent, type PartSource, type TextRun, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdf/core";
 import { fontString } from "./resources.js";
 import { PageRenderer } from "./page.js";
 import { DocumentSearch } from "./search.js";
 import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource } from "./protocol.js";
 
 let doc: BdfDocument | undefined;
+/** A source opened but still locked: kept for "unlock", so nothing is fetched or sent again. */
+let locked: PartSource | undefined;
 let pages: PageRenderer | undefined;
 let search: DocumentSearch | undefined;
 
@@ -15,12 +17,21 @@ const measure = (font: string, text: string) => {
   return measureCtx.measureText(text).width;
 };
 
-async function open(source: OpenSource): Promise<Manifest> {
+async function open(source: OpenSource, password?: string): Promise<Manifest> {
+  doc = pages = search = locked = undefined;
   switch (source.kind) {
-    case "buffer": doc = await BdfDocument.open(new BufferSource(new Uint8Array(source.buffer))); break;
-    case "single": doc = await BdfDocument.open(source.range ? new RangeSource(source.url) : await fetchSingle(source.url)); break;
-    case "split": doc = await BdfDocument.open(new SplitSource(source.base)); break;
+    case "buffer": locked = new BufferSource(new Uint8Array(source.buffer)); break;
+    case "single": locked = source.range ? new RangeSource(source.url) : await fetchSingle(source.url); break;
+    case "split": locked = new SplitSource(source.base); break;
   }
+  return unlock(password);
+}
+
+/** Open the pending source; an encrypted one stays pending until a password opens it. */
+async function unlock(password?: string): Promise<Manifest> {
+  if (!locked) throw new Error("bdf: no document to unlock");
+  doc = await BdfDocument.open(locked, { password });
+  locked = undefined;
   pages = new PageRenderer(doc!, {}, (self as unknown as { fonts?: FontFaceSet }).fonts);
   search = new DocumentSearch(doc!, measure);
   return doc!.manifest;
@@ -90,20 +101,26 @@ async function continuousContent(view: View, viewport: Rect): Promise<TextConten
 }
 
 /**
- * Content of the sheet tiles that intersect viewport, in sheet coordinates.
+ * Content of the sheet tiles that intersect viewport (or any of several
+ * rectangles), in sheet coordinates, tiles in reading order.
  * A run belongs to the tile its anchor lies in; tiles repeat what straddles them.
  */
-async function sheetContent(view: View, viewport: Rect): Promise<TextContent> {
+async function sheetContent(view: View, viewport: Rect | Rect[]): Promise<TextContent> {
   const tile = view.tile ?? 2048;
-  const tx0 = Math.floor(viewport.x / tile), ty0 = Math.floor(viewport.y / tile);
-  const tx1 = Math.floor((viewport.x + viewport.w - 1e-6) / tile), ty1 = Math.floor((viewport.y + viewport.h - 1e-6) / tile);
+  const keys = new Map<string, [number, number]>();
+  for (const r of Array.isArray(viewport) ? viewport : [viewport]) {
+    if (r.w <= 0 || r.h <= 0) continue;
+    const tx0 = Math.max(0, Math.floor(r.x / tile)), ty0 = Math.max(0, Math.floor(r.y / tile));
+    const tx1 = Math.floor((r.x + r.w - 1e-6) / tile), ty1 = Math.floor((r.y + r.h - 1e-6) / tile);
+    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) keys.set(`${tx},${ty}`, [tx, ty]);
+  }
   const parts: TextContent[] = [];
-  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+  for (const [tx, ty] of [...keys.values()].sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
     const h = view.tiles?.[`${tx},${ty}`];
     if (!h) continue;
     await pages!.res.prepare(h);
     const c = extractContent(doc!.objectSync(h)!, (hh) => doc!.objectSync(hh), [1, 0, 0, 1, tx * tile, ty * tile]);
-    parts.push(within(c, { x: 0, y: 0, w: tile, h: tile - 1e-6 }, tx * tile, ty * tile));
+    parts.push(within(c, { x: 0, y: 0, w: tile, h: tile - 1e-6 }, tx * tile, ty * tile)); // the rule of the text index (spec §4.1)
   }
   return concat(parts);
 }
@@ -115,9 +132,11 @@ function canvasFor(w: number, h: number): OffscreenCanvas {
 async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; transfer: Transferable[] }> {
   switch (req.type) {
     case "open":
-      return { result: await open(req.source), transfer: [] };
+      return { result: await open(req.source, req.password), transfer: [] };
+    case "unlock":
+      return { result: await unlock(req.password), transfer: [] };
     case "close":
-      doc = pages = search = undefined;
+      doc = pages = search = locked = undefined;
       return { result: null, transfer: [] };
   }
   if (!doc || !pages || !search) throw new Error("bdf: no document open");
@@ -173,7 +192,8 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
     const res: WorkerResponse = { id: req.id, ok: true, result };
     (self as unknown as Worker).postMessage(res, transfer);
   } catch (e) {
-    const res: WorkerResponse = { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) };
+    const code = e instanceof BdfPasswordError ? (e.reason === "required" ? "password-required" : "wrong-password") : undefined;
+    const res: WorkerResponse = { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e), code };
     (self as unknown as Worker).postMessage(res);
   }
 };

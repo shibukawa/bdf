@@ -2,11 +2,35 @@ export type Hash = string; // 32 lowercase hex characters
 
 export interface Manifest {
   bdf: number;
+  /**
+   * Present only in the outer manifest of an encrypted document (spec §3.5),
+   * which has no views: BdfDocument.open reads the sealed manifest with a password.
+   */
+  encryption?: Encryption;
   opset: number;
   unit: string;
   meta?: Meta;
   views: View[];
   parts: PartEntry[];
+}
+
+/** How an encrypted document is sealed (spec §3.5). */
+export interface Encryption {
+  cipher: "A256GCM";
+  keys: KeySlot[];
+  /** The sealed part that holds the manifest, and its encoding inside the seal. */
+  manifest: { part: Hash; enc: Encoding };
+}
+
+/** The content key, wrapped with AES-KW under a key derived from a password. */
+export interface KeySlot {
+  type: "password";
+  kdf: "PBKDF2-SHA256";
+  iter: number;
+  /** base64 */
+  salt: string;
+  /** base64: the wrapped content key */
+  key: string;
 }
 
 export interface Meta {
@@ -41,7 +65,12 @@ export interface DublinCore {
   modified?: DCValue;
 }
 
-export type ViewKind = "fixed" | "flow" | "sheet";
+/**
+ * fixed: pages; flow: pages with body rectangles, readable as one continuous
+ * scroll; sheet: an unbounded plane of tiles; scroll: one long column without
+ * pages, stored as strips that are shown stacked (docs/spec.md §4.1).
+ */
+export type ViewKind = "fixed" | "flow" | "sheet" | "scroll";
 
 export interface View {
   id: string;
@@ -70,7 +99,7 @@ export interface RectDef { x: number; y: number; w: number; h: number }
 
 export interface Layer { role: string; obj: Hash }
 
-export type PartType = "obj" | "font" | "img" | "path" | "idx";
+export type PartType = "obj" | "font" | "img" | "path" | "idx" | "sealed";
 export type Encoding = "identity" | "deflate-raw";
 
 export interface PartEntry {
@@ -80,6 +109,8 @@ export interface PartEntry {
   len: number;
   size: number;
   off?: number;
+  /** Encrypted documents: the outer part that holds this part sealed. */
+  sealed?: Hash;
 }
 
 export interface PathData { verbs: Uint8Array; args: Float32Array }

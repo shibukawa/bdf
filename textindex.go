@@ -71,6 +71,17 @@ func (d *Document) BuildTextIndex(v *View) (Hash, error) {
 		return o
 	}
 	var runs []IndexRun
+	// keep reports whether a run belongs to the object: in a sheet, a tile
+	// keeps the runs whose anchor lies in it (tiles repeat what straddles
+	// them; docs/spec.md §4.1).
+	keep := func(TextRun) bool { return true }
+	if v.Kind == ViewSheet {
+		tile := v.Tile
+		if tile <= 0 {
+			tile = 2048
+		}
+		keep = func(tr TextRun) bool { return tr.X >= 0 && tr.X < tile && tr.Y >= 0 && tr.Y < tile }
+	}
 	add := func(a, b uint32, h Hash, first bool) error {
 		o := resolve(h)
 		if o == nil {
@@ -80,11 +91,16 @@ func (d *Document) BuildTextIndex(v *View) (Hash, error) {
 		if err != nil {
 			return err
 		}
-		for i, tr := range trs {
+		n := 0
+		for _, tr := range trs {
+			if !keep(tr) {
+				continue
+			}
 			sep := tr.Sep
-			if i == 0 {
+			if n == 0 {
 				sep = SepBreak
 			}
+			n++
 			runs = append(runs, IndexRun{A: a, B: b, Ordinal: uint32(tr.Ordinal), Sep: sep, Text: tr.Text})
 		}
 		return nil

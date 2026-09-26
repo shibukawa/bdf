@@ -14,13 +14,14 @@
 - 3種類のレイアウトモデルを表現できる。
   - 固定サイズページの列（PowerPoint、PDF）
   - 無限サイズの平面（Excel のシート）
-  - ページ分割されつつ「縦一枚」としても閲覧できる文書（Word）
+  - ページ分割されつつ「縦一枚」としても閲覧できる文書（Word）。ページを持たずにレイアウトした 1 枚の長い面も持てる
+- パスワードで保護された入力からは、同じパスワードで暗号化した BDF を作れる。暗号化しても Part 単位の取得はそのまま使える（§3.5）。
 
 **非目的**
 
 - 編集可能な文書モデル（DOM のような意味構造）を持つこと。BDF は「描画済み表示リスト」であり、再レイアウトはしない。ただし読み上げに必要な最小限の構造（見出し・リスト・表・図の代替テキスト・言語、§7.8）は描画に影響しない `MARK` として持つ。
 - 印刷用の高度な色管理（CMYK、ICC）。sRGB のみ。
-- 暗号化・署名。必要なら配布層（HTTPS、ストレージ）で行う。
+- 署名。必要なら配布層で行う。暗号化（§3.5）は保護された入力の保護を保ち続けるためのもので、配布層のアクセス制御の代わりではない。
 
 ## 2. 用語
 
@@ -66,7 +67,7 @@ BDF
 ```
 offset 0   : magic          u8[4]   "bdf\0"（62 64 66 00）
 offset 4   : version        u16     フォーマットバージョン（1）
-offset 6   : flags          u16     予約（0）
+offset 6   : flags          u16     bit 0: 暗号化（§3.5）。他のビットは予約（0）
 offset 8   : manifestOff    u64     manifest の先頭オフセット（通常 32）
 offset 16  : manifestLen    u64     manifest の圧縮後長
 offset 24  : manifestEnc    u8      0=identity, 1=deflate-raw
@@ -92,6 +93,69 @@ offset ... : parts 領域（manifest 直後から始まり、manifest.parts に�
 - 各 Part ファイルは `enc` に従って**圧縮済みのまま置く**。HTTP の `Content-Encoding` に依存しないので、S3 等のオブジェクトストレージや CDN にそのまま置ける。
 - 読み手は `fetch(base + "/parts/" + hash)` で必要な Part だけを取得する。
 - single ↔ split は Part の再圧縮なしに相互変換できる（ディレクトリの組み替えだけ）。
+
+### 3.5 暗号化
+
+パスワードで保護された入力（Office の読み取りパスワード、PDF のユーザーパスワード）から作った文書は、同じパスワードで暗号化する。Part を 1 つずつ封印するので、Range 取得・split 形式・CDN への配置はそのまま使える。
+
+```
+外側の manifest（平文）  … 暗号方式、鍵スロット、封印された Part の一覧
+封印された Part
+├── manifest             … 文書の manifest（§4。views、meta、parts）
+└── 各 Part              … Part の格納バイト列（圧縮済み）を暗号化したもの
+```
+
+**外側の manifest**
+
+```jsonc
+{
+  "bdf": 1,
+  "encryption": {
+    "cipher": "A256GCM",
+    "keys": [
+      { "type": "password", "kdf": "PBKDF2-SHA256", "iter": 600000,
+        "salt": "<base64, 16 バイト>",
+        "key": "<base64: AES-KW でラップしたコンテンツ鍵, 40 バイト>" }
+    ],
+    "manifest": { "part": "<hash>", "enc": "deflate-raw" }   // 封印された manifest とその符号化
+  },
+  "parts": [
+    { "h": "<hash>", "t": "sealed", "enc": "identity", "len": 1474, "size": 1474, "off": 0 },
+    …
+  ]
+}
+```
+
+- views・meta は持たない。題名などの Dublin Core も封印された manifest の中にある。
+- single 形式ではヘッダの `flags` の bit 0 を立てる（§3.3）。bit 0 と `encryption` の有無が食い違うファイルは不正。
+- 封印された Part の名前は、**格納バイト列（暗号文）** の SHA-256 の先頭 16 バイト。平文のハッシュを外に出すと、よく使われるフォントのサブセットや画像が含まれているかを外から照合できてしまう。格納バイト列のハッシュなので、鍵がなくても名前を検証でき、single ↔ split も鍵なしで組み替えられる（§3.4）。
+- 並び順は、封印された manifest が先頭で、その後は §3.3 の推奨順。
+
+**鍵**
+
+- コンテンツ鍵: 文書ごとにランダムな 256 ビットの鍵。manifest とすべての Part をこの鍵で封印する。
+- 鍵スロット（`keys`）: コンテンツ鍵を AES-KW（RFC 3394）でラップしたもの。`password` スロットのラップ鍵は PBKDF2-HMAC-SHA-256 で導く。入力はパスワードを **NFC に正規化して UTF-8 にしたもの**、salt は 16 バイト、反復回数は `iter`（書き手の既定は 600,000）。
+- 読み手はスロットを順に試し、アンラップの完全性検査を通ったものを使う。どれも通らなければパスワード違い。
+- 読み手は `iter` が 1〜10,000,000 の範囲外なら拒否する。開くだけで長く計算させられるのを防ぐため。
+- スロットを複数持てるのは、パスワードの変更（スロットの差し替えだけで済み、Part は暗号化し直さない）や、回復用の鍵などを後から足すため。
+
+**封印**
+
+- 封印した Part の格納バイト列は `nonce（12 バイト）‖ 暗号文 ‖ tag（16 バイト）`。AES-256-GCM で、nonce はランダム。
+- 追加認証データ（AAD）は、Part なら**平文の Part 名（16 バイト）**、manifest なら ASCII の `manifest`。Part の差し替えや manifest との取り違えは復号で失敗する。
+- 圧縮してから暗号化する。封印を解いた中身は、封印された manifest の `parts[].enc` に従って展開する。
+
+**封印された manifest**
+
+§4 の manifest と同じ形で、`parts[]` の各エントリに `sealed`（その Part を封印した外側の Part の名前）を持つ。`off` は使わず、外側のエントリの `off`/`len` で取得する。
+
+読み手の手順は、外側の manifest を読む → パスワードからラップ鍵を導いてコンテンツ鍵をアンラップ → `encryption.manifest.part` を復号・展開 → 以降は Part 名で引き、`sealed` が指す外側の Part を取得して復号・展開、となる。必要なのは WebCrypto の `PBKDF2`・`AES-KW`・`AES-GCM` だけ。コンテンツ鍵は抽出できない `CryptoKey` として Worker の中に置く。
+
+**守るもの・守らないもの**
+
+- 守る: 配布層（ストレージ、CDN、キャッシュ）からの漏洩。パスワードを知らない人にわかるのは、Part の数と大きさだけ。
+- 守らない: パスワードの総当たり。ファイルを手に入れればオフラインで試せるのは元の Office ファイルや PDF と同じ。PBKDF2-SHA-256 の 60 万回は、元のファイル（Office の Agile 暗号化は SHA-512 を 10 万回）より弱い経路を作らないために選んだ。
+- 変換はパスワードと平文を扱う。変換の後でパスワードを残さないのは運用側の責務。
 
 ## 4. Manifest
 
@@ -123,6 +187,10 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
       "continuous": { "gap": 24 },
       "textIndex": "<hash>" },                       // 任意: テキスト索引 Part（§7.9）
 
+    { "id": "scroll", "kind": "scroll", "title": "本文",
+      "pages": [ { "w": 523.3, "h": 1014.2, "layers": [ { "role": "body", "obj": "…" } ] },
+                 { "w": 523.3, "h": 988.5,  "layers": [ { "role": "body", "obj": "…" } ] }, … ] },
+
     { "id": "sheet1", "kind": "sheet", "title": "Sheet1",
       "tile": 2048,
       "cols": [[26, 64], [1, 120], [16358, 64]],   // [count, size] のランレングス
@@ -142,7 +210,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 }
 ```
 
-`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx`。
+`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx`。暗号化した文書の外側の manifest では `sealed`（§3.5）。
 
 ### 4.1 View の種類
 
@@ -153,13 +221,20 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 - ページモード: 紙の形で全レイヤーを描く。
 - 連続モード: `role: body` のレイヤーだけを `body` 矩形で切り出し、`continuous.gap` を挟んで縦に積む。ヘッダー・フッター・背景は描かない。
 
-連続モードは**再レイアウトではなく本文矩形の積み上げ**である（BDF は表示リストであり、テキストの折り返し位置は変えられない）。「1 枚の長いページとして再レイアウトしたもの」も欲しい場合、変換側が別 View（`kind: fixed`、ページ 1 枚）を追加で生成する。共有 Object により画像やフォントは二重に格納されない。
+連続モードは**再レイアウトではなく本文矩形の積み上げ**である（BDF は表示リストであり、テキストの折り返し位置は変えられない）。「1 枚の長いページとして再レイアウトしたもの」も欲しい場合、変換側が別 View（`kind: scroll`）を追加で生成する。共有 Object により画像やフォントは二重に格納されない。
+
+**`scroll`** — ページを持たない縦に長い 1 枚の面（Word の下書き・Web レイアウト表示のように、用紙の高さを無限にしてレイアウトした文書）。`pages` はこの面を上から順に水平に切った**帯**（strip）で、形は `fixed` のページと同じ（`w`、`h`、`layers`）。
+
+- ビューアは帯を隙間なく縦に積み、それぞれ帯の矩形で切り抜いて描く（`flow` の連続モードで `continuous.gap` が 0、`body` が帯全体の場合と同じ）。帯はページではないので、ページとして 1 枚ずつ見せたりページ番号を示したりしない。
+- 帯に切るのは、Canvas の大きさの上限を超えないため、また見えている範囲の Part だけを読み込むためである。書き手は帯の境界を行の間に置き（テキストの行を横切らない）、境界をまたぐ図・塗り・罫線は両方の帯に描く。帯の高さはそろっていなくてよい。帯の幅はすべて同じ。
+- 開いている構造（§7.8）は帯ごとに閉じるので、帯をまたぐ表やリストは次の帯で開き直す。LINK の `#page=N` は N 番目の帯を指す。
 
 **`sheet`** — 原点 (0,0) から右下に伸びる無限平面。
 
 - `cols` / `rows` はランレングス `[count, size]` の配列。ビューアは行・列ヘッダー、グリッド線、固定ペイン（`freeze`）をこの情報から自前で描く。
 - 内容は `tile` unit 四方の Tile に分割され、各 Tile は 1 Object。Tile 内の座標は **Tile 原点を基準**にする（f32 の精度限界を超えないため）。
-- 複数 Tile にまたがるオブジェクト（結合セル、画像、グラフ）は共有 Object にして、触れる各 Tile から `USE` で参照する。ビューアは Tile 矩形でクリップして描くので重複描画は正しく処理される。
+- 複数 Tile にまたがるオブジェクト（結合セル、画像、グラフ）は共有 Object にして、触れる各 Tile から `USE` で参照する。ビューアは Tile 矩形でクリップして描くので重複描画は正しく処理される。小さな描画（セルの塗りや罫線、隣のセルにはみ出したテキスト）は共有せず、触れる各 Tile にその Tile の原点で描いてもよい。
+- テキストの抽出（テキスト索引、テキスト層、検索）では、run はアンカー（`FILL_TEXT` などの x, y を変換したもの）が含まれる Tile に属し、他の Tile が重ねて描いた同じ run は除く。Tile の範囲は左上の辺を含み、右下の辺を含まない。
 - 空 Tile は表に載せない。
 - `tiles` の Index Part 形式（`t: idx`）: `[u32 tx, u32 ty, u8[16] hash]` を (ty, tx) 昇順に並べた固定長レコード列。二分探索で引く。
 
@@ -174,7 +249,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `pptx` / `drawio` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `emf` / `wmf` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -214,14 +289,14 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 変換器は入力文書のメタデータを次のように写す。
 
-| 要素 | PDF（文書情報辞書） | PowerPoint（コアプロパティ） | draw.io |
+| 要素 | PDF（文書情報辞書） | PowerPoint、Excel、Word（コアプロパティ） | draw.io |
 |---|---|---|---|
 | `title` | `Title` | `dc:title` | – |
 | `creator` | `Author` | `dc:creator` | – |
 | `subject` | `Keywords`（`,` `;` `、` などで分割） | `dc:subject`、`cp:keywords`（同様に分割） | – |
 | `description` | `Subject` | `dc:description` | – |
 | `identifier` | – | `dc:identifier` | – |
-| `language` | – | `dc:language` | – |
+| `language` | – | `dc:language`（なければ PowerPoint は既定のテキストスタイルの、Word は既定の run の言語。Word は本文の多くが和文なら東アジアの言語） | – |
 | `created` | `CreationDate`（W3CDTF に変換） | `dcterms:created` | – |
 | `modified` | `ModDate`（W3CDTF に変換） | `dcterms:modified` | `mxfile` の `modified` |
 
@@ -388,7 +463,7 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 `LINK` の矩形は他の命令と同じく現在の変換行列の座標系で表す。読み手は 4 隅を変換した外接矩形をリンク領域とし、その領域に重なる run をリンクの文字列とする。`url` は次のいずれか。読み手はそれ以外の `url` をリンクにしない。
 
 - `http:` / `https:` / `mailto:` の絶対 URL
-- `#page=N` — 同じ View のページ（1 始まり）
+- `#page=N` — 同じ View のページ（1 始まり。`scroll` View では帯）
 - `#view=ID` または `#view=ID&page=N` — 別の View（`ID` は View の `id` を URL エンコードしたもの）とそのページ。ビューアはその View に切り替える（draw.io のページ間リンクなど）
 
 ### 7.8 MARK の種類とテキストの構造
@@ -401,7 +476,7 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 | 1 | LINE | 任意 | 同じ段落内の行の開始。前の run との間に空白 1 つがあるものとして扱う |
 | 2 | CELL | セル参照（例 `B12`） | 表・シートのセルの開始。PARAGRAPH と同じ境界 |
 | 3 | BOX | 任意 | テキストボックス・図形内テキストの開始。PARAGRAPH と同じ境界 |
-| 4 | ALT_TEXT | 文字列 | 直後の描画命令 1 つ（`FILL_TEXT` / `STROKE_TEXT` / `FILL_PATH_AT` / `FILL_PATH_RUN` / `USE` / `USE_AT`）が表す文字列。テキスト抽出ではその命令の文字列の代わりにこの文字列を、位置はその命令の位置を使う。合字や私用領域の文字で描いた run の本来の文字列、アウトライン化した文字、1 文字ずつ描いた縦書きなどに使う。描画命令が続かない場合は位置なしの run になる |
+| 4 | ALT_TEXT | 文字列 | 直後の描画命令 1 つ（`FILL_TEXT` / `STROKE_TEXT` / `FILL_PATH_AT` / `FILL_PATH_RUN` / `USE` / `USE_AT`）が表す文字列。テキスト抽出ではその命令の文字列の代わりにこの文字列を、位置はその命令の位置を使う（`USE` / `USE_AT` では、子 Object の bbox の x 方向の範囲をこの文字列の範囲とし、位置を bbox の左端に、字送りを bbox の幅にする）。合字や私用領域の文字で描いた run の本来の文字列、アウトライン化した文字、1 文字ずつ描いた縦書きなどに使う。描画命令が続かない場合は位置なしの run になる |
 | 5 | WRAP | 任意 | 同じ段落内の行の折り返し。前の run との間に区切りを入れずに結合する。和文など語を空白で区切らない文字の間で折り返した行に使い、行をまたぐ検索を可能にする |
 | 6 | HEADING | レベル `1`〜`6` | 見出しの段落の開始。PARAGRAPH と同じ境界 |
 | 7 | LIST | 任意 | リストを開く（END で閉じる） |
@@ -421,7 +496,7 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 
 - **葉の MARK**（PARAGRAPH、BOX、HEADING、LIST の外の LIST_ITEM、TABLE の外の CELL）は次の run が属する段落の種類を予約する。run を挟まずに続いた場合は最後のものが決める（BOX の直後の HEADING は見出しの段落）。
 - **構造の MARK**（LIST、TABLE、FIGURE、END、最も内側が LIST のときの LIST_ITEM、最も内側が TABLE のときの CELL）はその場で効き、予約を取り消す。LIST や TABLE の中で項目・セルの前に現れた run は、それぞれ暗黙の項目、表の見出し（caption）になる。
-- 最も内側が TABLE のときの CELL の payload は、表の左上を `A1` とする参照か範囲（`B2:C2`、結合セル）で、後ろに ` col`（列見出し）か ` row`（行見出し）を付けられる（例 `A1 col`）。セルは左上の位置の行優先の順に並べる。TABLE の外の CELL は従来どおりシートのセル参照（例 `B12`）。
+- 最も内側が TABLE のときの CELL の payload は、表の左上を `A1` とする参照か範囲（`B2:C2`、結合セル）で、後ろに ` col`（列見出し）か ` row`（行見出し）を付けられる（例 `A1 col`）。セルは左上の位置の行優先の順に並べる。TABLE の外の CELL はシートのセル参照（例 `B12`、結合セルは範囲 `B2:C3`）で、同じく ` col` / ` row` を付けて見出しのセルにできる（シートの中の表の見出し行）。
 - 開いている構造と LANG は、`USE` した子 Object や SAVE/RESTORE をまたいで走査順に一直線に続き、最上位の Object（ページのレイヤー、シートのタイル）ごとに初期状態（構造なし、言語は文書の既定）に戻る。最上位 Object の終わりで開いている構造は閉じる。共有プレフィックス（§5 の `USE`）で命令列が分かれても同じ結果になるための規則である。エンコーダは開いた構造を END で閉じ、言語を持つ子 Object を `USE` した後は必要なら LANG を出し直す。
 - FIGURE の範囲は、中の描画命令（画像、矩形、パス、子 Object の中身、テキスト）を現在の変換で移した外接矩形を、その時点のクリップの外接矩形と交わらせたもの。中身が空なら大きさ 0 とする。FIGURE の中のテキストは検索・選択・コピーの対象のままだが、代替テキストがあれば読み上げには代替テキストを使う。
 
@@ -434,9 +509,9 @@ u8[4]   "BTXT"
 u16     version (1)
 varuint nRuns
 run ×n:
-  varuint a        fixed/flow: ページ番号   sheet: タイル x
-  varuint b        fixed/flow: レイヤー番号 sheet: タイル y
-  varuint ordinal  その Object のテキスト抽出（§8 のテキストバックエンド、USE の子を含む走査順）における run の通し番号
+  varuint a        fixed/flow/scroll: ページ（帯）番号   sheet: タイル x
+  varuint b        fixed/flow/scroll: レイヤー番号       sheet: タイル y
+  varuint ordinal  その Object のテキスト抽出（§8 のテキストバックエンド、USE の子を含む走査順）における run の通し番号。シートでは §4.1 の規則でその Tile に属さない run を載せないので、番号は飛ぶことがある
   u8      sep      前の run との結合: 0=連結 1=空白 2=段落境界（一致は境界をまたがない）
   str     text     run の文字列（ALT_TEXT の場合はその文字列）
 ```
@@ -462,7 +537,7 @@ Viewer UI                            Loader      fetch / DecompressionStream / P
 - 検索はビューアではなくライブラリ（Worker）が提供する。索引 Part（§7.9）があればそれを、なければ Object を走査して同じ形の run 列を作り、正規化して検索し、ヒットの矩形を返す。ビューアはヒット一覧とハイライトの描画だけを担当する。
 - 大きな文書ではページ表を Index Part にして、可視範囲のページだけ Part を取得する。single 形式でも `off`/`len` により Range 取得できる。
 
-必要なブラウザ機能（いずれも 2023 年時点の主要ブラウザで利用可能）: `DecompressionStream("deflate-raw")`、Worker 内 `OffscreenCanvas`、Worker 内 `FontFace` / `self.fonts`、`createImageBitmap`、`Path2D`、`roundRect`。`letterSpacing`、`filter` は任意機能とし、非対応環境では無視または代替描画する。
+必要なブラウザ機能（いずれも 2023 年時点の主要ブラウザで利用可能）: `DecompressionStream("deflate-raw")`、Worker 内 `OffscreenCanvas`、Worker 内 `FontFace` / `self.fonts`、`createImageBitmap`、`Path2D`、`roundRect`。暗号化した文書（§3.5）には `crypto.subtle` が要る（HTTPS か localhost の安全なコンテキストでだけ使える）。`letterSpacing`、`filter` は任意機能とし、非対応環境では無視または代替描画する。
 
 ## 9. 書き手（エンコーダ）の責務
 
@@ -472,6 +547,7 @@ Viewer UI                            Loader      fetch / DecompressionStream / P
 - `FILL_TEXT` の `advance` を必ず埋める。
 - シートは Tile 原点相対で出力し、またがるオブジェクトは共有 Object + `USE` にする。
 - Part の推奨順（§3.3）に従って並べる。
+- パスワードで保護された入力は、同じパスワードで暗号化して出力する（§3.5）。
 
 ## 付録 A. BLEND 値
 
@@ -495,3 +571,6 @@ Viewer UI                            Loader      fetch / DecompressionStream / P
 - **ファイル全体の 1 本圧縮**: Range・Tile 単位取得ができなくなる。
 - **可変長整数の固定小数点座標**: f32 より小さくなりうるが、デコードが複雑になる。deflate で差はかなり縮む。必要なら opset 2 で列指向（opcode 列 / f32 列 / 参照列を分離）を検討する。
 - **テキスト専用 Part**: 命令列を別バックエンドで走査すれば得られるので不要。
+- **ファイル全体の暗号化**: 配布層に任せれば仕様は変えずに済むが、Range 取得・split 形式・CDN への配置という BDF の中心の性質を失う。
+- **Part 名を鍵付き HMAC にする**: 平文のハッシュは隠せるが、名前の検証にも single ↔ split の組み替えにも鍵が要る。格納バイト列のハッシュで足りる。
+- **Argon2 などメモリハードな鍵導出**: 総当たりには強いが WebCrypto にないので、ビューアに wasm が要る。PBKDF2 は WebCrypto でそのまま使える。

@@ -34,11 +34,17 @@ export interface TextLayerOptions {
   lang?: string;
   /**
    * Lay out cells outside tables (sheet tiles) as one table of rows sorted by
-   * position, with the sheet's size and its header rows and columns.
+   * position, with the sheet's size and its header rows and columns (cells
+   * whose reference says they are headers are headers too).
    */
   sheet?: { rows: number; cols: number; headerRows?: number; headerCols?: number };
   /** Accessible name of a link that covers no text (default: the URL, "page N" or "view ID"). */
   linkLabel?: (url: string) => string;
+  /**
+   * Called for the span of each run once it is placed, e.g. to keep the
+   * cells of a sheet's frozen panes in place while the rest scrolls.
+   */
+  onSpan?: (span: HTMLSpanElement, run: TextRun) => void;
 }
 
 let sharedMeasure: ((font: string, text: string) => number) | undefined;
@@ -255,7 +261,8 @@ class LayerBuilder {
     cells.sort((a, b) => at(a).row! - at(b).row! || at(a).col! - at(b).col!);
     for (const i of cells) {
       const n = at(i);
-      const scope = n.row! < (sheet.headerRows ?? 0) ? "col" : n.col! < (sheet.headerCols ?? 0) ? "row" : undefined;
+      // a header of its own (" col" after the reference: a table's header row), or the frozen rows and columns
+      const scope = n.scope ?? (n.row! < (sheet.headerRows ?? 0) ? "col" : n.col! < (sheet.headerCols ?? 0) ? "row" : undefined);
       this.placed.set(i, { ...this.root, el: this.cell(n, this.row(table, n.row!), scope) });
     }
   }
@@ -315,7 +322,9 @@ class LayerBuilder {
         target = placed;
       }
     }
-    target.el.appendChild(this.span(r, target));
+    const span = this.span(r, target);
+    target.el.appendChild(span);
+    this.opts.onSpan?.(span, r);
   }
 
   private span(r: TextRun, at: Placed): HTMLSpanElement {

@@ -6,6 +6,7 @@
 package pdf
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,9 +14,11 @@ import (
 	"strings"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/imgconv"
 )
 
@@ -49,6 +52,9 @@ type Options struct {
 	// instruction prefix that two or more pages have in common (a master
 	// slide, a letterhead) into one shared object.
 	NoSharePrefix bool
+	// Password opens a PDF encrypted with a user (open) password; the owner
+	// password opens it too.
+	Password string
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.
 	Warn func(msg string)
 }
@@ -58,6 +64,8 @@ type Result struct {
 	Doc      *bdf.Document
 	Warnings []string
 	Pages    int
+	// Protected reports that the PDF opened only with Options.Password.
+	Protected bool
 	// SharedPrefixes counts the prefix objects shared between pages, and
 	// SharedBytes the op-stream bytes the pages no longer carry.
 	SharedPrefixes int
@@ -104,17 +112,46 @@ func ConvertFile(path string, opts *Options) (*Result, error) {
 	return Convert(f, opts)
 }
 
+// readContext reads the PDF, first without a password. A PDF encrypted with
+// a user password is read again with password, and reported protected.
+// Wrong or missing passwords are converter.ErrWrongPassword and
+// converter.ErrPasswordRequired.
+func readContext(rs io.ReadSeeker, password string) (ctx *model.Context, protected bool, err error) {
+	read := func(pw string) (*model.Context, error) {
+		if _, err := rs.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		conf := model.NewDefaultConfiguration()
+		conf.ValidationMode = model.ValidationRelaxed
+		conf.DecodeAllStreams = false
+		conf.UserPW, conf.OwnerPW = pw, pw
+		return api.ReadContext(rs, conf)
+	}
+	ctx, err = read("")
+	if errors.Is(err, pdfcpu.ErrWrongPassword) {
+		protected = true
+		if password == "" {
+			return nil, true, fmt.Errorf("pdf: %w", conv.ErrPasswordRequired)
+		}
+		ctx, err = read(password)
+		if errors.Is(err, pdfcpu.ErrWrongPassword) {
+			return nil, true, fmt.Errorf("pdf: %w", conv.ErrWrongPassword)
+		}
+	}
+	if err != nil {
+		return nil, protected, fmt.Errorf("pdf: %w", err)
+	}
+	return ctx, protected, nil
+}
+
 // Convert converts a PDF read from rs.
 func Convert(rs io.ReadSeeker, opts *Options) (*Result, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
-	conf := model.NewDefaultConfiguration()
-	conf.ValidationMode = model.ValidationRelaxed
-	conf.DecodeAllStreams = false
-	ctx, err := api.ReadContext(rs, conf)
+	ctx, protected, err := readContext(rs, opts.Password)
 	if err != nil {
-		return nil, fmt.Errorf("pdf: %w", err)
+		return nil, err
 	}
 	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, fmt.Errorf("pdf: %w", err)
@@ -176,7 +213,7 @@ func Convert(rs io.ReadSeeker, opts *Options) (*Result, error) {
 			c.warnf("text index: %v", err)
 		}
 	}
-	return &Result{Doc: c.doc, Warnings: c.warnings, Pages: len(pages), SharedPrefixes: c.sharedPrefixes, SharedBytes: c.sharedBytes}, nil
+	return &Result{Doc: c.doc, Warnings: c.warnings, Pages: len(pages), Protected: protected, SharedPrefixes: c.sharedPrefixes, SharedBytes: c.sharedBytes}, nil
 }
 
 func (c *converter) warnf(format string, args ...any) {
