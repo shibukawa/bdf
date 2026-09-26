@@ -68,6 +68,15 @@ export const CASES: Case[] = [
   // The page view's bodies stacked (continuous mode), and the scroll view across the boundary of its strips.
   { name: "docx-basic-continuous", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "pages", viewport: { x: 0, y: 500, w: 451.3, h: 400 }, scale: 1 },
   { name: "docx-basic-scroll", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 850, w: 769.9, h: 350 }, scale: 1 },
+  // Illustrator artboards (converter/ai): each page cut to its artboard, the hidden layer left out; see test/ai.
+  { name: "ai-artboards-1", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "ai-artboards-2", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "ai-artboards-3", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  // Photoshop composites (converter/psd): a 144 ppi document, and three artboards cut from a transparent canvas; see test/psd.
+  { name: "psd-layers-1", src: "/testdata/psd/layers.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "psd-artboards-1", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "psd-artboards-2", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "psd-artboards-3", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

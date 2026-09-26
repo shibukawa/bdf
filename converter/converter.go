@@ -3,9 +3,10 @@
 // format detection and page selection.
 //
 // The converters themselves are its subpackages (converter/pdf,
-// converter/pptx, converter/xlsx, converter/docx, converter/visio,
-// converter/emf). Each registers its format when it is imported, so a
-// program supports the formats whose packages it links in:
+// converter/ai, converter/psd, converter/pptx, converter/xlsx,
+// converter/docx, converter/visio, converter/emf). Each registers its
+// format when it is imported, so a program supports the formats whose
+// packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -45,6 +46,9 @@ type Format struct {
 	Description string
 	// Extensions are the usual file name extensions, with the dot.
 	Extensions []string
+	// Refines names the format this one is a special case of, as an
+	// Illustrator file is a PDF: detection asks it before that format.
+	Refines string
 	// Params are the format-specific options it reads from Options.Params.
 	Params []Param
 	// Detect reports whether an input is in the format; head holds its
@@ -181,12 +185,22 @@ func Lookup(name string) *Format {
 }
 
 // Detect returns the registered format of an input, or nil when no format
-// recognizes it.
+// recognizes it. Formats that refine another are asked first.
 func Detect(r io.ReaderAt, size int64) *Format {
 	head := make([]byte, 1024)
 	n, _ := r.ReadAt(head, 0)
 	head = head[:n]
-	for _, f := range Formats() {
+	formats := Formats()
+	slices.SortStableFunc(formats, func(a, b *Format) int {
+		switch {
+		case a.Refines != "" && b.Refines == "":
+			return -1
+		case a.Refines == "" && b.Refines != "":
+			return 1
+		}
+		return 0
+	})
+	for _, f := range formats {
 		if f.Detect(head, r, size) {
 			return f
 		}

@@ -33,7 +33,7 @@ func generate(args []string) {
 	title := fs.String("title", "", "document title (default: from the input); the same as -dc title=...")
 	var dcFlags stringList
 	fs.Var(&dcFlags, "dc", "Dublin Core element as name=value, e.g. creator=Alice (repeatable; replaces the element read from the input, name= removes it)")
-	pages := fs.String("pages", "", "pages, slides or sheets to convert, e.g. 1-3,5 (default: all)")
+	pages := fs.String("pages", "", "pages, slides, sheets or artboards to convert, e.g. 1-3,5 (default: all)")
 	quiet := fs.Bool("q", false, "do not print warnings")
 	images := fs.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
 	quality := fs.Int("quality", 80, "lossy WebP quality (1-100)")

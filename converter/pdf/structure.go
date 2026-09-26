@@ -594,6 +594,7 @@ type mcEntry struct {
 	actual *actualText
 	tgt    *mcTarget
 	set    bool // tgt replaces the enclosing target
+	hidden bool // optional content the default configuration hides
 }
 
 // curTarget returns the target of the content being interpreted.

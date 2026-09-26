@@ -4,17 +4,17 @@ English | [日本語](README.ja.md)
 
 **bdf** (Browser-specific Document Format) is a draft document format for previews that browsers can draw straight onto Canvas 2D.
 
-Office-style files (PDF, Excel, PowerPoint, Word, Visio) are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
+Office-style files (PDF, Excel, PowerPoint, Word, Visio) and design files (Illustrator, Photoshop) are converted into bdf, then drawn by a renderer that runs in a Web Worker. Whatever the browser's standard APIs already handle (font rasterization, image decoding, decompression) is left to the browser, so the decoder stays minimal.
 
 ## How it works
 
 ```mermaid
 flowchart TB
-    SRC["PDF · Excel · PowerPoint · Word · Visio"]
+    SRC["PDF · Excel · PowerPoint · Word · Visio · Illustrator · Photoshop"]
 
     subgraph SERVER["Go server process"]
         direction TB
-        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/visio"]
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/ai<br/>converter/psd"]
         BUNDLE["bdf bundle (packed)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         SCONV --> BUNDLE
     end
@@ -22,7 +22,7 @@ flowchart TB
     subgraph BROWSER["Browser"]
         direction TB
         subgraph CWORKER["Converter Worker (wasm)"]
-            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/visio"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/ai<br/>converter/psd"]
         end
         PARTS["bdf parts (unpacked)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
         subgraph RWORKER["Renderer Worker"]
@@ -61,12 +61,14 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 - A transparent DOM text layer for selection and copy (spaces and line breaks restored from MARK boundaries; works across pages and in continuous mode)
 - Accessible text layers: headings, lists, tables, figures with alternative text, links and languages from structure MARKs, exposed to screen readers (tagged PDF, PowerPoint and Word structure and Excel cells, with table headers, are converted)
 - The single-file and split-file forms convert into each other without re-encoding (the single file starts with the magic `bdf\0`)
-- The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information, the core properties of PowerPoint, Excel and Word files and a Visio drawing's document properties
+- The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information, the core properties of PowerPoint, Excel and Word files, a Visio drawing's document properties and the XMP metadata of a Photoshop document
 - Password-protected inputs (Office documents with an open password, PDFs with a user password) are converted with their password, and the bdf is encrypted with the same password. Each part is sealed on its own (AES-256-GCM), so Range requests and the split form still work; the viewer decrypts with WebCrypto, and the server does not keep the password (spec §3.5)
 
 Documents are converted with the `bdf generate` subcommand, which tells the input formats apart by their content.
 
-- **PDF** (`converter/pdf`): rebuilds embedded fonts (TrueType, CFF, OpenType, Type1) into WOFF2 files that hold only the glyphs in use. It checks the OS/2 embedding permission (`fsType`) and carries the copyright notices over. It also turns form XObjects into shared objects and text into searchable runs, and moves the content common to the top of every page (the master) into a shared object. See §3.1 of design.md for details.
+- **PDF** (`converter/pdf`): rebuilds embedded fonts (TrueType, CFF, OpenType, Type1) into WOFF2 files that hold only the glyphs in use. It checks the OS/2 embedding permission (`fsType`) and carries the copyright notices over. It also turns form XObjects into shared objects and text into searchable runs, and moves the content common to the top of every page (the master) into a shared object. Optional content (layers) is shown as a viewer shows it when it opens the document: hidden layers are left out. See §3.1 of design.md for details.
+- **Illustrator .ai** (`converter/ai`): an .ai file of Illustrator 9 or later is a PDF with Illustrator's own data beside it. Its PDF pages are the artboards, drawn by the PDF converter and cut to the artboard (the trim box, without the bleed); hidden layers stay hidden. Files saved without "Create PDF Compatible File" and the PostScript-based .ai of Illustrator 8 and earlier are reported as errors. See §3.10 of design.md for details.
+- **Photoshop .psd / .psb** (`converter/psd`): the image Photoshop composited, one page per visible artboard (or the whole canvas), sized by the document's resolution. Every colour mode and depth is read (RGB, CMYK, grayscale, Lab, indexed, bitmap; 8, 16 and 32 bits), and the large document format too. A file saved without "Maximize Compatibility" has no composite: the converter composites the layers itself (blend modes, masks, clipping masks, groups, fill layers; not adjustment layers or layer effects). See §3.11 of design.md for details.
 - **PowerPoint .pptx** (`converter/pptx`): draws DrawingML directly. The shapes of slide masters and layouts become layer objects shared between slides, preset shapes come from the ECMA-376 shape formulas, and text is wrapped by the converter (Japanese line breaking rules, vertical text, bullets, paragraph formatting). Tables, charts, SmartArt and EMF/WMF pictures are drawn too. The fonts used for layout are embedded as WOFF2 subsets, so the result does not depend on the viewer's fonts. See §3.4 of design.md for details.
 - **Excel .xlsx** (`converter/xlsx`): each worksheet becomes a sheet view whose cells are laid out by the converter and drawn into tiles: number formats (dates, Japanese eras, fractions, accounting), fonts and rich text, fills, borders, alignment (wrapping with Japanese line breaking rules, overflow into empty cells, rotation, shrink to fit), merged cells, conditional formats (color scales, data bars, icon sets, rules with formulas), tables with their styles, and pictures, shapes and charts drawn once and used by the tiles they cover. Chart sheets become pages. Column widths and row heights follow Excel's rules; frozen panes and gridlines go to the manifest. See §3.6 of design.md for details.
 - **Visio .vsdx / .vdx** (`converter/visio`): Visio 2013 packages (.vsdx, .vsdm, .vstx) and the XML drawings of Visio 2003 to 2010 (.vdx), read into one ShapeSheet model. Shapes inherit from masters and styles, and the cells a dynamic theme sets are resolved from the theme and the shapes' quick styles. Every geometry row, fill pattern, gradient, line pattern and the 45 arrowheads are drawn; background pages become background layers shared between pages. Text is laid out by the DrawingML text engine the PowerPoint converter uses, with its fonts embedded as WOFF2 subsets. The binary .vsd format is not read. See §3.8 of design.md for details.
@@ -115,13 +117,15 @@ The documents are in Japanese.
 | `woff2/` | TrueType/OpenType → WOFF2 (glyf transform and Brotli) |
 | `converter/` | Registry of the input formats, shared options, format detection, page ranges |
 | `converter/pdf` | PDF → bdf converter |
+| `converter/ai` | Illustrator (.ai) → bdf converter, over the PDF converter |
+| `converter/psd` | Photoshop (.psd, .psb) → bdf converter |
 | `converter/pptx` | PowerPoint (.pptx) → bdf converter |
 | `converter/xlsx` | Excel (.xlsx) → bdf converter |
 | `converter/docx` | Word (.docx) → bdf converter |
 | `converter/visio` | Visio (.vsdx, .vdx) → bdf converter |
 | `converter/emf` | Windows metafile (.emf, .wmf) → bdf converter |
 | `converter/all` | Registers every input format (import for its side effect) |
-| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`), objects under construction (`canvas`), EMF/WMF replay (`metafile`), line breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`) |
+| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`), objects under construction (`canvas`), EMF/WMF replay (`metafile`), line breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`); the Dublin Core of XMP metadata (`xmp`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering (scroll views render as continuous), Worker |
 | `examples/viewer` | Demo viewer |
@@ -137,7 +141,7 @@ go run ./cmd/bdf ls out.bdf          # list parts
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # convert to the split form
 
-# PDF / PowerPoint / Excel / Word / Visio / metafiles → bdf (the format is detected from the content; -format pdf|pptx|xlsx|docx|visio|emf forces it)
+# PDF / Illustrator / Photoshop / PowerPoint / Excel / Word / Visio / metafiles → bdf (the format is detected from the content; -format pdf|ai|psd|pptx|xlsx|docx|visio|emf forces it)
 go run ./cmd/bdf generate -h                  # flags and the input formats with their -param options
 go run ./cmd/bdf generate in.pdf out.bdf      # single-file form
 go run ./cmd/bdf generate in.pptx out/        # split form
@@ -148,6 +152,10 @@ go run ./cmd/bdf generate -no-woff2 in.pdf out.bdf     # store fonts as TTF/OTF 
 go run ./cmd/bdf generate -ignore-fstype in.pdf out.bdf # embed fonts even when fsType forbids embedding or subsetting (only if you hold the rights)
 go run ./cmd/bdf generate -kind flow in.pdf out.bdf    # PDF: make a flow view
 go run ./cmd/bdf generate -no-share in.pdf out.bdf     # PDF: do not move the common top of each page (the master) into a shared object
+go run ./cmd/bdf generate -param box=trim in.pdf out.bdf     # PDF: pages cut to the trim box (media, bleed, trim, art; default crop)
+go run ./cmd/bdf generate in.ai out.bdf                      # Illustrator: a page per artboard (-param box=bleed keeps the bleed)
+go run ./cmd/bdf generate in.psd out.bdf                     # Photoshop (.psd or .psb): a page per artboard, or the canvas
+go run ./cmd/bdf generate -param artboards=false in.psd out.bdf  # Photoshop: the whole canvas on one page
 go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf   # PowerPoint, Excel, Word: add a directory to search for fonts
 go run ./cmd/bdf generate -fonts system in.pptx out.bdf      # PowerPoint, Excel, Word: refer to fonts by name instead of embedding them
 go run ./cmd/bdf generate -hidden in.pptx out.bdf            # PowerPoint, Excel: include hidden slides or sheets (-param hidden=true)
@@ -173,6 +181,8 @@ npm run test:pptx:gen                # regenerate the PowerPoint test decks (req
 npm run test:xlsx:gen                # regenerate the Excel test workbooks (requires openpyxl)
 npm run test:docx:gen                # regenerate the Word test documents
 npm run test:visio:gen               # regenerate the Visio test drawings
+npm run test:ai:gen                  # regenerate the Illustrator test files
+npm run test:psd:gen                 # regenerate the Photoshop test documents
 node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium (sheets: up to 4096 px from the top left)
 
 # Demo viewer
