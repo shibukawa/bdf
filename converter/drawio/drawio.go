@@ -407,6 +407,10 @@ func (s *shape) extent() rect {
 		return r.grow(math.Max(sw, m/2))
 	}
 	r := s.bounds
+	// the paint box of north and south directions (mxShape.createBoundingBox)
+	if s.isPaintBoundsInverted() || s.stencil != nil && (s.direction == "north" || s.direction == "south") {
+		r = r.rotate90()
+	}
 	if rot := s.shapeRotation(); math.Mod(rot, 360) != 0 {
 		// bounding box of the rotated rectangle
 		rad := toRadians(rot)
