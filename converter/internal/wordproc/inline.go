@@ -1,4 +1,4 @@
-package docx
+package wordproc
 
 import (
 	"math"
@@ -100,17 +100,19 @@ func (lc *lineCtx) breakLine(p *para, start int, first bool, left, right float64
 	}
 	// find the end: fill until the first item that does not fit (placing
 	// the items up to well past the right edge is enough to find it)
-	items := p.items[start:]
+	items := fitObjects(p.items[start:], right-x0)
 	end := len(items)
 	pos := lc.place(p, ln, items, x0, indL, first, right+2*math.Max(right-x0, 100))
 	if len(pos) < len(items) {
 		end = len(pos)
 	}
 	lastBrk := -1
+	forced := false // the line ends with a break
 	for i := range pos {
 		it := &pos[i]
 		if it.kind == kBreak || it.kind == kPage || it.kind == kColumn {
 			end = i + 1
+			forced = true
 			break
 		}
 		overflow := it.x+it.w+it.pad > right+0.01 && i > 0 && !(it.kind == kChar && lbSpace(it.r))
@@ -133,7 +135,8 @@ func (lc *lineCtx) breakLine(p *para, start int, first bool, left, right float64
 		end = 1
 	}
 	// keep what follows a break opportunity that is only spaces on this line
-	for end < len(items) && items[end].kind == kChar && lbSpace(items[end].r) {
+	// (the spaces after a line break start the next line)
+	for !forced && end < len(items) && items[end].kind == kChar && lbSpace(items[end].r) {
 		end++
 	}
 	ln.items = lc.place(p, ln, items[:end], x0, indL, first, math.Inf(1))
@@ -161,6 +164,28 @@ func (lc *lineCtx) breakLine(p *para, start int, first bool, left, right float64
 	ln.align(lc)
 	ln.metrics(lc)
 	return ln
+}
+
+// fitObjects shrinks the pictures that fit the line (inlineObj.fit) and
+// are wider than w.
+func fitObjects(items []item, w float64) []item {
+	copied := false
+	for i := range items {
+		it := &items[i]
+		if it.kind != kObject || !it.obj.fit || it.w <= w+0.01 || w < 1 {
+			continue
+		}
+		if !copied {
+			items = append([]item(nil), items...)
+			it = &items[i]
+			copied = true
+		}
+		o := *it.obj
+		s := w / it.w
+		o.w, o.h, o.ext = o.w*s, o.h*s, [4]float64{}
+		it.obj, it.w = &o, o.w
+	}
+	return items
 }
 
 // hangingPunct are the characters that may hang past the right margin.
@@ -430,6 +455,22 @@ func (ln *line) metrics(lc *lineCtx) {
 	}
 	natural := ln.asc + ln.desc
 	pp := p.pp
+	if pp.lh > 0 {
+		// CSS: the line is line-height times the largest font size, with
+		// the difference split above and below the text
+		size := 0.0
+		for _, it := range ln.items {
+			if it.kind == kChar || it.kind == kField {
+				size = math.Max(size, it.size)
+			}
+		}
+		if size == 0 {
+			size = p.mark.size
+		}
+		ln.height = math.Max(natural, pp.lh*size)
+		ln.baseline = (ln.height-natural)/2 + ln.asc
+		return
+	}
 	grid := 0.0
 	if pp.snapToGrid && lc.grid > 0 {
 		grid = lc.grid

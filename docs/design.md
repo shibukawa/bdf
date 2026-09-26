@@ -55,6 +55,8 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
    - PPTX は絶対配置なので DOCX より先に手が届く（テキストボックス内の折り返しは必要）。実装済み（§3.4）。
    - マスター・レイアウト・スライドの継承構造が BDF の共有 Object にそのまま対応するので、直接変換するとサイズ面の効果が最も大きい。
    - DOCX は Word 相当のレイアウトエンジンを変換側に持って実装した（§3.9）。紙面のページと、ページを持たずにレイアウトし直した 1 枚の長い面の 2 つの View を作る。
+4. **HTML / Markdown → BDF**（リーダー表示）
+   - ページの CSS は捨て、内容を固定のスタイルシートで DOCX と同じレイアウトエンジンに組ませる。Markdown は HTML にしてから同じ道を通す。実装済み（§3.10）。
 
 ## 3.1 PDF → BDF 変換器（converter/pdf）の構造
 
@@ -168,7 +170,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 ## 3.5 入力形式の登録と EMF/WMF 変換器（converter/emf）
 
-入力形式は static plugin 方式で登録する。`converter` パッケージが形式の登録簿を持ち、各変換器のパッケージは `init` で `converter.Register` に名前・拡張子・判別関数・変換関数・形式固有のオプション（`Params`）を渡す。プログラムは import したパッケージの形式だけを扱えるので、PDF だけのサーバーは pptx やフォント処理をリンクせずに済む（全部なら `converter/all`）。`converter.Detect` は登録された形式の判別関数を名前順に試し（先頭 1 KiB と入力全体を渡す）、`converter.Options` は各形式に共通の設定（ページ指定、画像、フォント）と、名前で引く形式固有の設定（PDF の `kind`・`no-share`、PowerPoint の `hidden`、Word の `views`）を持つ。CLI の `bdf generate` はこの登録簿で形式を判別・選択し、`-h` で登録された形式とその `-param` を一覧する。各パッケージの `Convert` と `Options` はそのまま直接使える。
+入力形式は static plugin 方式で登録する。`converter` パッケージが形式の登録簿を持ち、各変換器のパッケージは `init` で `converter.Register` に名前・拡張子・判別関数・変換関数・形式固有のオプション（`Params`）を渡す。プログラムは import したパッケージの形式だけを扱えるので、PDF だけのサーバーは pptx やフォント処理をリンクせずに済む（全部なら `converter/all`）。`converter.Detect` は登録された形式の判別関数を名前順に試し（先頭 1 KiB と入力全体を渡す）、中身から判別できない形式（`Fallback`: どんなテキストも受け取る Markdown）は最後に試す。ファイルを変換するときは、Fallback の形式になった入力の拡張子がほかの形式のもの（.html の断片）ならその形式にする。`converter.Options` は各形式に共通の設定（ページ指定、画像、フォント、入力の隣のファイルを読むディレクトリ `Dir`）と、名前で引く形式固有の設定（PDF の `kind`・`no-share`、PowerPoint の `hidden`、Word の `views`、HTML と Markdown の `width`・`remote` など）を持つ。CLI の `bdf generate` はこの登録簿で形式を判別・選択し、`-h` で登録された形式とその `-param` を一覧する。各パッケージの `Convert` と `Options` はそのまま直接使える。
 
 `converter/emf` は Windows メタファイル（.emf、.wmf）を 1 ページの文書にする。再生は Office 文書の中の図と同じ `converter/internal/metafile`（§3.4 の EMF/WMF）。ページの大きさは EMF ならヘッダーの frame（0.01 mm 単位）、placeable WMF なら範囲と 1 インチあたりの単位数から求め、単位の分からない WMF は 96 dpi のピクセルとみなす。EMF ヘッダーの説明文字列にある図の名前を題名にする。テキストは PowerPoint と同じくフォントを解決してレイアウトし、サブセットを埋め込む（`-font-dir`、`-fonts system` なども同じ）。
 
@@ -222,7 +224,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 ## 3.9 Word → BDF 変換器（converter/docx）の構造
 
-`converter/docx` は .docx を読み、WordprocessingML を変換側でレイアウトする。BDF に再レイアウトはないので、Word がファイルを開くたびに行っている組版（行分割とページ分割）を変換時に済ませる。図（画像・図形・グループ・描画キャンバス・グラフ・SmartArt・メタファイル）は `drawingml` の `Drawing.DrawGraphic` が `wp:inline` / `wp:anchor` の枠に描き、Word の図形のテキストボックス（`wps:txbx` の `w:txbxContent`）は `drawingml.TextBoxHost` として docx 側が段落をレイアウトして描く。Word は DrawingML の図形を `mc:AlternateContent` の Choice（`wps`、`wpg` …）に、VML を Fallback に書くので、docx では対応する名前空間の Choice を選ぶ（`ooxml.Package.Supported`）。フォントの選択・計測・埋め込みは `fontset`、禁則は pptx と共通の `converter/internal/linebreak`。
+`converter/docx` は .docx を読み、WordprocessingML を変換側でレイアウトする。BDF に再レイアウトはないので、Word がファイルを開くたびに行っている組版（行分割とページ分割）を変換時に済ませる。図（画像・図形・グループ・描画キャンバス・グラフ・SmartArt・メタファイル）は `drawingml` の `Drawing.DrawGraphic` が `wp:inline` / `wp:anchor` の枠に描き、Word の図形のテキストボックス（`wps:txbx` の `w:txbxContent`）は `drawingml.TextBoxHost` として docx 側が段落をレイアウトして描く。Word は DrawingML の図形を `mc:AlternateContent` の Choice（`wps`、`wpg` …）に、VML を Fallback に書くので、docx では対応する名前空間の Choice を選ぶ（`ooxml.Package.Supported`）。フォントの選択・計測・埋め込みは `fontset`、禁則は pptx と共通の `converter/internal/linebreak`。レイアウトエンジンは HTML・Markdown の変換器と共有するので `converter/internal/wordproc` にあり（WordprocessingML の読み込みも同じパッケージ）、`converter/docx` は公開 API の薄い層になっている（§3.10）。
 
 - **2 つの View**: 紙面の `flow` View（`pages`）と、ページを持たない `scroll` View（`scroll`、spec §4.1）を作る。scroll View は同じ段落と表を用紙の高さを無限にしてもう一度レイアウトしたもので、Word の下書き・Web レイアウト表示にあたる。ヘッダー・フッター・段組み・改ページ・セクション区切りはなく（セクションごとの本文幅は保つ）、縦書きのセクションも横書きで組み（Word の下書き表示と同じ）、脚注と文末脚注は末尾に並べ、ページを基準にした図の位置は段落と段を基準にする。高さおよそ 1024 pt ごとに、どの行も横切らない位置まで上げて帯（strip）に切り、帯をまたぐ図・塗り・罫線は両方の帯に描く（読み手が帯の矩形で切る）。フォントと画像は 2 つの View で共有されるので、増えるのは命令列だけ。`-param views=pages` / `scroll` で片方だけにできる。
 - **レイアウトの流れ**: 文書を読むときに、段落は文字・タブ・改行・インライン図・フィールドの item の列にしておく（フォントを選んで字幅を測ったもの）。レイアウトはこれを行に分けて段・ページに置き、描く内容を「縦の範囲・テキストかどうか・読み上げ用の構造」を持つ op の列にする。op を Object に書き出すのは最後で、ページの本文、帯、表のセル、テキストボックスで同じ書き出し方を使う。帯の切り方と行の分割位置は op の縦の範囲から決める。
@@ -237,6 +239,23 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **未対応（警告を出す）**: 割注（`eastAsianLayout` の `combine`、普通の文字列として描く）、行番号、数式（平文として描く）、埋め込み文書（`altChunk`）、VML のテキストボックス、ルビ（親文字だけを描く）、連続セクション区切りの前の段の高さの均等化、ページをまたぐ縦結合セル（結合の最初の行に描く）。
 
 テスト用の文書は `test/docx/gen.py` が WordprocessingML を直接書いて作り（`npm run test:docx:gen`、標準ライブラリのみ）、変換結果は `testdata/docx/` に置いて golden テストで描画を比較する。フォントは `converter/docx/testdata/fonts` の M PLUS 1p のサブセットだけを使う。開発中は Apache POI のテストデータ（Word などで作られた実ファイル約 130 本）がすべて変換できること（暗号化・破損したファイルを除く）と、描画が文書の内容どおりであることを確かめた。5,000 段入れ子の表のような極端な文書では、入れ子の深さに比例して op を写すため時間がかかる（10 秒程度）。
+
+## 3.10 HTML・Markdown → BDF 変換器（converter/html、converter/markdown）の構造
+
+ブラウザのリーダー表示と同じく、ページのデザイン（作者の CSS）は捨てて内容だけを固定のスタイルシートで組む。一般の CSS を解釈しないので、必要なのは HTML の要素を段落・表・画像に対応づける読み手と、それを組むレイアウトエンジンだけになる。BDF は再レイアウトしないので、出力は決まった幅（既定は本文の 36 字分、432 pt）の scroll View で、`-param views=pages` で A4 のページ、`both` で両方を作る。
+
+- **エンジンの共有**: Word の変換器（§3.9）のレイアウトエンジンを `converter/internal/wordproc` に移し、WordprocessingML の読み手と HTML の読み手（`html.go`）が同じモデル（字幅を測った item の段落、表）を作る。HTML は CSS の規則で組むので、エンジンに `css` の指定を足した: 隣り合うマージンの相殺（Word は足し算）、領域（段、ページ、セル）の先頭のマージンを落とす、行の高さを line-height × 行の最大のフォントサイズにして余りを上下に等分、表と箱の前後のマージン、hr の rule ブロック、行より広ければ行幅に縮む画像（`inlineObj.fit`）、描画関数を持つインラインオブジェクト（画像、チェックボックス）。Word の文書はこれらを使わないので、docx の出力はバイト単位で変わらない（testdata と、システムフォントでの変換結果で確認した）。行の途中の改行（`<br>`、`w:br`）の直後の空白が前の行に取り込まれて次の行の字下げが消える不具合は、Word 側でも直した。
+- **要素の対応**: 段落と見出し（HEADING、次の段落と離さない）、リスト（ol の `start`・`type`・`reversed`・li の `value`、ul の記号は入れ子の深さで •・◦・▪、チェックボックスで始まる項目は記号の代わりにチェックボックスを描く。LIST / LIST_ITEM）、引用（左に線のある箱、文字を淡く）、pre（網掛けの箱。空白を保ち、タブは 4 桁ごと、長い行は折り返す）、表、figure と figcaption（中央寄せ。alt 属性のない img は図の説明を代替テキストにする）、hr、dl、details / summary（開いた状態で描く）、インライン要素（強調、コード、kbd、mark、sup / sub、del / ins、small、q、br、wbr）、リンク、`lang` 属性（LANG）。`hidden` 属性、`display: none`、script・style・template・フォーム部品（チェックボックスを除く）・iframe・動画・音声は描かない。作者のスタイルで読むのは `text-align`（`align` 属性）、`float`、画像の `width` / `height` だけ。
+- **空白**: CSS の `white-space: normal` と同じく連続する空白を 1 つにし、段落の先頭と末尾の空白を落とす。ソースの改行が和文の文字の間にあるときは空白にしない（CSS Text の segment break transformation。日本語の Markdown に多い書き方）。pre では空白と改行を保つ。
+- **箱と表**: 引用と pre は 1 行 1 セルの構造を持たない表として作る。表と同じくセルの中身を先にレイアウトしてから行としてページに流すので、ページをまたぐ引用やコードは行の間で分かれる。HTML の表は行と列の結合をスロットに割り当てて Word の表のモデル（縦の結合は continue のセル）にし、列の幅は CSS の自動レイアウトで決める: 各セルの中身の最小幅（折り返せない最も長い部分）と最大幅（折り返さない行の幅）を列ごとに集め（結合セルは足りない分を均等に配る）、表の幅に最大幅が収まれば最大幅、最小幅も収まらなければ最小幅を縮め、その間なら余りを（最大幅 − 最小幅）に比例して配る。thead の行と、先頭で th だけの行は見出し行としてページごとに繰り返し、th は列見出し、ほかの行の th は行見出しにする。
+- **画像**: ファイルの隣（`ConvertFile` は入力のディレクトリを基準にする。`..` で出るのは許すが、絶対パスは読まない）、MHTML の部品、data: URL、ネットワークから読む。ネットワークの画像は既定で取得する（Markdown や HTML は Word と違って画像を抱えていないのが普通なので）。8 並列で先に取得し、30 秒のタイムアウトと 50 MiB の上限を付ける。`-param remote=false` で取らない。信頼しない入力を変換するサーバーは、remote=false にするか、`Options.Fetch` で到達先を制限する。大きさは CSS ピクセル（0.75 pt）で、width / height 属性と style に従い、行より広ければ行幅に縮める。`align="left"` / `"right"` と float は Word の浮動する図と同じく文字を回り込ませる。描けない画像は、ブラウザと同じく代替テキストを淡い色で描く。SVG の画像は描かない。Chromium の `createImageBitmap` は SVG の Blob を、メインスレッドでも Worker でも復号できない（v152 で確認）ので、spec §6.2 の SVG の Image は実際には描けない。SVG をパスに変換するのは今後の課題。
+- **フォント**: 既定では埋め込まずに名前で参照する。本文は `sans-serif`、コードはインストールされている等幅のファミリー（なければ `monospace`）で、変換時に解決したフォントで字幅を測り、ビューアのフォントをその字幅に合わせて描く（advance 補正、§4）。Web ページと同じくビューアのフォントで読めればよく、埋め込むとファイルが大きくなるため。`-fonts embed`（`Options.EmbedFonts`）でサブセットを埋め込む。システムフォントの参照では、`sans-serif` などの総称ファミリーを引用符で囲まないようにした（Office の文書では現れない）。
+- **HTML**: 文字コードは BOM、Content-Type、meta 要素の順で決め、どれもなくて UTF-8 として正しければ UTF-8（Shift_JIS や EUC-JP のページも meta で読める）。記事の取り出しは go-readability（Mozilla Readability.js の移植、`codeberg.org/readeck/go-readability/v2`）で、`-param extract=auto`（既定）は Readability の isProbablyReaderable が真のページだけ、`article` は常に、`none` はしない。取り出したときはリーダー表示と同じく、題名（h1）、署名・サイト名・公開日の行、区切り線を先頭に置く。メタデータは title、meta（author、description、keywords、Open Graph、article:published_time など、`DC.*` / `dcterms.*`）、canonical のリンク、html の lang から読み、記事を取り出したときは Readability の結果（サイト名を除いた題名など）を優先する。リンクは `#id` を要素のある帯（ページ）への `#page=N` にし、ほかは基準 URL（`-param base`、`<base>`、MHTML の保存元）で解決した http / https / mailto の絶対 URL だけを残す。MHTML（Chrome の「ウェブページ、1 つのファイルのみ」）は multipart/related の部品を読み、Content-Location と `cid:` で引く。
+- **Markdown**: goldmark で HTML にし（CommonMark、GitHub の拡張の表・タスクリスト・取り消し線・自動リンク、脚注、定義リスト）、HTML の変換器で組む（記事は取り出さない）。raw HTML はそのまま通すので、README によくある `<p align="center">` や `<details>` も組める（スクリプトは実行しないので危険はない）。見出しには GitHub と同じ id（小文字にし、句読点を除き、空白をハイフンに、重複には -1、-2…）を付けるので、`[…](#見出し)` のリンクが帯に飛ぶ。YAML（`---`）/ TOML（`+++`）の front matter の title、author、date、lang、description、tags などは `DC.*` の meta 要素として head に書き、HTML と同じ読み方で Dublin Core にする。UTF-8 でない文書は Shift_JIS、EUC-JP、Windows-1252 の順に試す。
+- **形式の判別**: HTML は、空白・コメント・XML 宣言の後に doctype か html / head 要素で始まる文書全体と、MHTML。`<p align="center">` で始まる README のような断片は HTML にしない（Markdown の raw HTML として組めば同じになる）。Markdown は中身からは判別できない（どんなテキストも Markdown）ので、`Format.Fallback` として他のどの形式も当たらないときに使い、ファイルの拡張子がほかの形式のもの（.html の断片）ならその形式にする。
+- **未対応**: SVG（上記）、作者の CSS（色、フォント、配置）、数式（MathML は文字列として描き、`$…$` はそのまま）、コードブロックの図（Mermaid などはコードとして描く）、ルビ（親文字だけ）、縦書き（`writing-mode`）、ダークテーマ（色は命令列に焼き込まれる）、画面の幅に応じた再レイアウト（幅の違う scroll View を複数持ってビューアが選ぶ形なら、フォントと画像を共有したまま実現できる）。
+
+テスト用の文書は `converter/markdown/testdata/basic.md` と `converter/html/testdata/article.html`（画像は `test/markdown/gen_images.py` が標準ライブラリだけで書く PNG）で、変換結果は `testdata/markdown/`・`testdata/html/` に置く。Word のテスト用フォントの字幅で組み、フォントは名前で参照するので、golden 画像はブラウザのフォントで描いたものになる。
 
 ## 4. テキストの扱い
 
@@ -316,6 +335,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 6. **PPTX 直接変換**: マスター共有の本領（実装済み、§3.4）。
 7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
+9. **HTML / Markdown**: リーダー表示。DOCX のレイアウトエンジンを共有し、固定幅の scroll View を作る（実装済み、§3.10）。
 
 ## 9. リポジトリ構成（案）
 
@@ -331,6 +351,8 @@ bdf/
 │   ├── pptx/          PowerPoint → BDF 変換器（testdata/ にテスト用デッキとフォント）
 │   ├── xlsx/          Excel → BDF 変換器（testdata/ にテスト用ブック。フォントは pptx のものを使う）
 │   ├── docx/          Word → BDF 変換器（testdata/ にテスト用文書とフォント）
+│   ├── html/          HTML（.html、.xhtml、.mhtml）→ BDF 変換器、リーダー表示（testdata/ にテスト用のページ）
+│   ├── markdown/      Markdown → BDF 変換器、HTML を経由（testdata/ にテスト用文書と画像）
 │   ├── emf/           Windows メタファイル（.emf、.wmf）→ BDF 変換器
 │   ├── visio/         Visio（.vsdx、.vdx）→ BDF 変換器（testdata/ にテスト用図面）
 │   ├── all/           すべての形式を登録する
@@ -339,13 +361,13 @@ bdf/
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
 │                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）、
 │                      暗号化された Office 文書を開く cfb（複合ファイル）と offcrypto（Agile / Standard 暗号化の復号）、
-│                      linebreak（行分割の規則）
+│                      linebreak（行分割の規則）、wordproc（Word・HTML・Markdown の組版エンジン）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画（scroll View は連続描画）、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word の変換結果と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word・Markdown・HTML の変換結果と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

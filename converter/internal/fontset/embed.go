@@ -2,6 +2,7 @@ package fontset
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
@@ -85,14 +86,14 @@ func (s *Set) Font(u Use) bdf.Font {
 		f.Family = u.Generic
 		return f
 	}
-	family := cssQuote(u.Requested)
+	var names []string
+	if u.Requested != "" && !isGeneric(u.Requested) {
+		names = append(names, cssQuote(u.Requested))
+	}
 	if u.Face != nil && u.Face.Family != u.Requested {
-		family += ", " + cssQuote(u.Face.Family)
+		names = append(names, cssQuote(u.Face.Family))
 	}
-	if family != "" {
-		family += ", "
-	}
-	family += u.Generic
+	family := strings.Join(append(names, u.Generic), ", ")
 	var w uint16 = 400
 	if u.Bold {
 		w = 700
@@ -102,6 +103,16 @@ func (s *Set) Font(u Use) bdf.Font {
 		st = bdf.StyleItalic
 	}
 	return bdf.SystemFont(family, w, st)
+}
+
+// isGeneric reports whether a family is a CSS generic family keyword,
+// which stays unquoted.
+func isGeneric(s string) bool {
+	switch s {
+	case fontdb.Sans, fontdb.Serif, fontdb.Mono, "cursive", "fantasy", "system-ui", "ui-sans-serif", "ui-serif", "ui-monospace":
+		return true
+	}
+	return false
 }
 
 func cssQuote(s string) string {

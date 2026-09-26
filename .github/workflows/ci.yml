@@ -49,6 +49,12 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/docx/$n.bdf"
           done
+          for f in converter/markdown/testdata/*.md converter/html/testdata/*.html; do
+            k=$(basename "$(dirname "$(dirname "$f")")")
+            n=$(basename "${f%.*}")
+            go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts -param remote=false "$f" "/tmp/$k-$n.bdf"
+            cmp "/tmp/$k-$n.bdf" "testdata/$k/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:

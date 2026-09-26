@@ -42,10 +42,10 @@ func generate(args []string) {
 	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
 	kind := fs.String("kind", "fixed", "PDF: view kind, fixed or flow")
 	noShare := fs.Bool("no-share", false, "PDF: do not move the instruction prefix pages have in common into a shared object")
-	fonts := fs.String("fonts", "embed", "PowerPoint, Excel, Word, metafiles: embed (subset and embed the fonts used for layout) or system (refer to fonts by name)")
+	fonts := fs.String("fonts", "", "PowerPoint, Excel, Word, metafiles, HTML, Markdown: embed (subset and embed the fonts used for layout) or system (refer to fonts by name; the default for HTML and Markdown, which leave text to the viewer's fonts as web pages do)")
 	var fontDirs stringList
-	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, Word, metafiles: directory searched for fonts before the system ones (repeatable)")
-	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, Word, metafiles: use only the fonts under -font-dir")
+	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, Word, metafiles, HTML, Markdown: directory searched for fonts before the system ones (repeatable)")
+	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, Word, metafiles, HTML, Markdown: use only the fonts under -font-dir")
 	hidden := fs.Bool("hidden", false, "PowerPoint, Excel: include hidden slides or sheets (the same as -param hidden=true)")
 	var paramFlags stringList
 	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")
@@ -56,9 +56,9 @@ func generate(args []string) {
 		fs.PrintDefaults()
 		fmt.Fprintln(os.Stderr, "\ninput formats:")
 		for _, f := range converter.Formats() {
-			fmt.Fprintf(os.Stderr, "  %-6s %s (%s)\n", f.Name, f.Description, strings.Join(f.Extensions, " "))
+			fmt.Fprintf(os.Stderr, "  %-8s %s (%s)\n", f.Name, f.Description, strings.Join(f.Extensions, " "))
 			for _, p := range f.Params {
-				fmt.Fprintf(os.Stderr, "         -param %s=…: %s\n", p.Name, p.Usage)
+				fmt.Fprintf(os.Stderr, "           -param %s=…: %s\n", p.Name, p.Usage)
 			}
 		}
 	}
@@ -96,7 +96,9 @@ func generate(args []string) {
 		FontDirs: fontDirs, NoSystemFonts: *noSystemFonts, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType,
 		Params: map[string]string{"kind": *kind, "no-share": strconv.FormatBool(*noShare), "hidden": strconv.FormatBool(*hidden)}}
 	switch *fonts {
+	case "":
 	case "embed":
+		opts.EmbedFonts = true
 	case "system":
 		opts.SystemFonts = true
 	default:

@@ -1,4 +1,4 @@
-package docx
+package wordproc
 
 import (
 	"strconv"

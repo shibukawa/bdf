@@ -1,4 +1,4 @@
-package docx
+package wordproc
 
 import (
 	"fmt"
@@ -23,6 +23,16 @@ type block interface{ isBlock() }
 
 func (*para) isBlock()  {}
 func (*table) isBlock() {}
+func (*rule) isBlock()  {}
+
+// rule is a horizontal line across the column (HTML's hr), with CSS
+// margins.
+type rule struct {
+	before, after float64
+	ind           float64 // left indent
+	width         float64 // thickness
+	color         bdf.Color
+}
 
 // para is a paragraph.
 type para struct {

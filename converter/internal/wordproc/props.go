@@ -1,4 +1,4 @@
-package docx
+package wordproc
 
 import (
 	"math"
@@ -161,6 +161,7 @@ type pprops struct {
 	autoSpaceDE, autoSpaceDN     bool
 	bidi                         bool
 	suppressLineNumbers, framePr bool
+	lh                           float64 // CSS line height, a multiple of the font size (0: Word's line spacing)
 }
 
 // border sides of a paragraph

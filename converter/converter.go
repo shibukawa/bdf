@@ -4,8 +4,9 @@
 //
 // The converters themselves are its subpackages (converter/pdf,
 // converter/pptx, converter/xlsx, converter/docx, converter/visio,
-// converter/emf). Each registers its format when it is imported, so a
-// program supports the formats whose packages it links in:
+// converter/emf, converter/html, converter/markdown). Each registers its
+// format when it is imported, so a program supports the formats whose
+// packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -14,7 +15,8 @@
 // packages and their XML) with ooxml/drawingml (shapes, text, tables,
 // charts), fontset (fonts for text layout and their embedding), canvas
 // (objects under construction), metafile (EMF/WMF pictures) and linebreak
-// (line breaking rules).
+// (line breaking rules); the Word, HTML and Markdown converters share the
+// layout engine wordproc.
 //
 // Password-protected inputs open with Options.Password. Encrypted Office
 // documents are decrypted here (converter/internal/offcrypto), before their
@@ -27,6 +29,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,6 +53,10 @@ type Format struct {
 	// Detect reports whether an input is in the format; head holds its
 	// first bytes (up to 1 KiB).
 	Detect func(head []byte, r io.ReaderAt, size int64) bool
+	// Fallback formats take inputs that no other format recognizes (any
+	// text is a Markdown document): Detect tries them last, and a file
+	// whose extension another format lists goes to that format.
+	Fallback bool
 	// Convert converts an input.
 	Convert func(r io.ReaderAt, size int64, opts *Options) (*Result, error)
 	// CheckPassword, for formats with their own encryption, reports
@@ -85,6 +92,10 @@ type Options struct {
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding them.
 	SystemFonts bool
+	// EmbedFonts embeds the fonts of the formats that refer to them by name
+	// unless told otherwise: HTML and Markdown, whose text is left to the
+	// viewer's fonts as a web page's is.
+	EmbedFonts bool
 
 	// NoSubset embeds whole fonts instead of the glyphs in use.
 	NoSubset bool
@@ -97,6 +108,10 @@ type Options struct {
 	NoTextIndex bool
 	// Params holds format-specific options by name (see Format.Params).
 	Params map[string]string
+	// Dir is the directory that relative references of the input resolve
+	// in (the images of HTML and Markdown documents); "" reads no files
+	// beside the input. ConvertFile sets it to the input's directory.
+	Dir string
 	// Password opens an encrypted input: the open password of an Office
 	// document, the user (or owner) password of a PDF. Inputs that open
 	// without one ignore it.
@@ -186,12 +201,31 @@ func Detect(r io.ReaderAt, size int64) *Format {
 	head := make([]byte, 1024)
 	n, _ := r.ReadAt(head, 0)
 	head = head[:n]
-	for _, f := range Formats() {
-		if f.Detect(head, r, size) {
-			return f
+	formats := Formats()
+	for _, fallback := range []bool{false, true} {
+		for _, f := range formats {
+			if f.Fallback == fallback && f.Detect(head, r, size) {
+				return f
+			}
 		}
 	}
 	return nil
+}
+
+// detectPath is Detect for a file: a fallback format gives way to a format
+// that lists the file's extension (an HTML fragment in a .html file).
+func detectPath(path string, r io.ReaderAt, size int64) *Format {
+	f := Detect(r, size)
+	if f == nil || !f.Fallback {
+		return f
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	for _, g := range Formats() {
+		if g != f && slices.Contains(g.Extensions, ext) {
+			return g
+		}
+	}
+	return f
 }
 
 // DetectFile is Detect for a file path.
@@ -205,7 +239,7 @@ func DetectFile(path string) (*Format, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Detect(f, st.Size()), nil
+	return detectPath(path, f, st.Size()), nil
 }
 
 // ConvertFile converts a file in the named format (detected when name is
@@ -220,7 +254,19 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := Convert(f, st.Size(), name, opts)
+	o := Options{}
+	if opts != nil {
+		o = *opts
+	}
+	if o.Dir == "" {
+		o.Dir = filepath.Dir(path)
+	}
+	if name == "" && !offcrypto.IsEncrypted(f, st.Size()) {
+		if g := detectPath(path, f, st.Size()); g != nil {
+			name = g.Name
+		}
+	}
+	res, err := Convert(f, st.Size(), name, &o)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}

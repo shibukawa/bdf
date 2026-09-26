@@ -1,4 +1,4 @@
-package docx
+package wordproc
 
 import (
 	"math"
@@ -368,7 +368,28 @@ func (f *flow) placeBlock(b block, next block) position {
 		return f.paragraph(b, next)
 	case *table:
 		return f.table(b)
+	case *rule:
+		return f.rule(b)
 	}
+	return f.pos()
+}
+
+// rule places a horizontal rule.
+func (f *flow) rule(r *rule) position {
+	y := f.y
+	if !f.atTop {
+		y += math.Max(f.prevAfter, r.before)
+	}
+	if f.paged && y+r.width > f.limit() && !f.atTop {
+		f.nextColumn(false)
+		y = f.y
+	}
+	x, w, h, col := f.x0+r.ind, f.w-r.ind, r.width, r.color
+	f.emit(op{y0: y, y1: y + h, fn: func(e *emitter, dx, dy float64) {
+		e.fillRect(col, x+dx, y+dy, w, h)
+	}})
+	f.y = y + h
+	f.prevAfter, f.prevPara, f.atTop = r.after, nil, false
 	return f.pos()
 }
 
@@ -458,7 +479,12 @@ func (f *flow) placePara(p *para, next block, force map[int]bool) placed {
 		before = 0
 	}
 	gap := f.prevAfter + before
-	if f.atTop && f.paged {
+	switch {
+	case f.c.css && f.atTop:
+		gap = 0
+	case f.c.css:
+		gap = math.Max(f.prevAfter, before)
+	case f.atTop && f.paged:
 		gap = before
 	}
 	bstart := len(*f.out())
@@ -496,7 +522,10 @@ func (f *flow) placePara(p *para, next block, force map[int]bool) placed {
 			f.nextColumn(false)
 			y = f.y
 			if first {
-				y += before + boxTop
+				if !f.c.css {
+					y += before
+				}
+				y += boxTop
 			}
 			continue
 		}
