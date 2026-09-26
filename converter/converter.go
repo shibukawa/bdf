@@ -3,7 +3,7 @@
 // format detection and page selection.
 //
 // The converters themselves are its subpackages (converter/pdf,
-// converter/pptx, converter/xlsx, converter/emf). Each registers its format
+// converter/pptx, converter/xlsx, converter/csv, converter/emf). Each registers its format
 // when it is imported, so a program supports the formats whose packages it
 // links in:
 //
@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -85,6 +86,10 @@ type Options struct {
 	NoTextIndex bool
 	// Params holds format-specific options by name (see Format.Params).
 	Params map[string]string
+	// FileName is the input's file name, when it has one (ConvertFile sets
+	// it). Formats that name what they convert after it use it: a CSV
+	// file's sheet.
+	FileName string
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
@@ -201,10 +206,14 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 	} else if format = Lookup(name); format == nil {
 		return nil, fmt.Errorf("unknown format %q", name)
 	}
-	if opts == nil {
-		opts = &Options{}
+	o := Options{}
+	if opts != nil {
+		o = *opts
 	}
-	return format.Convert(f, st.Size(), opts)
+	if o.FileName == "" {
+		o.FileName = filepath.Base(path)
+	}
+	return format.Convert(f, st.Size(), &o)
 }
 
 // PageRange parses "1-3,5,8-" style selections of 1-based page (or slide)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -41,10 +42,10 @@ func generate(args []string) {
 	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
 	kind := fs.String("kind", "fixed", "PDF: view kind, fixed or flow")
 	noShare := fs.Bool("no-share", false, "PDF: do not move the instruction prefix pages have in common into a shared object")
-	fonts := fs.String("fonts", "embed", "PowerPoint, Excel, metafiles: embed (subset and embed the fonts used for layout) or system (refer to fonts by name)")
+	fonts := fs.String("fonts", "embed", "PowerPoint, Excel, CSV, metafiles: embed (subset and embed the fonts used for layout) or system (refer to fonts by name)")
 	var fontDirs stringList
-	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, metafiles: directory searched for fonts before the system ones (repeatable)")
-	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, metafiles: use only the fonts under -font-dir")
+	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, CSV, metafiles: directory searched for fonts before the system ones (repeatable)")
+	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, CSV, metafiles: use only the fonts under -font-dir")
 	hidden := fs.Bool("hidden", false, "PowerPoint, Excel: include hidden slides or sheets (the same as -param hidden=true)")
 	var paramFlags stringList
 	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")
@@ -110,6 +111,16 @@ func generate(args []string) {
 	if *format == "auto" {
 		f, err = converter.DetectFile(in)
 		check(err)
+		if f == nil {
+			// content that does not tell its format (a CSV file of one
+			// line or one column): by the file name extension
+			ext := strings.ToLower(filepath.Ext(in))
+			for _, g := range converter.Formats() {
+				if slices.Contains(g.Extensions, ext) {
+					f = g
+				}
+			}
+		}
 		if f == nil {
 			switch strings.ToLower(filepath.Ext(in)) {
 			case ".ppt":

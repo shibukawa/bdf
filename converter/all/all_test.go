@@ -40,6 +40,8 @@ func TestDetect(t *testing.T) {
 		{"docx", docx.Bytes(), ""},
 		{"emf", emf, "emf"},
 		{"wmf", wmf, "emf"},
+		{"csv", []byte("id,name\n1,Ann\n2,Bob\n"), "csv"},
+		{"tsv", []byte("id\tname\n1\tAnn\n"), "csv"},
 		{"junk", []byte("hello"), ""},
 	} {
 		got := ""

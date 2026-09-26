@@ -100,6 +100,12 @@ func (s *sheetCtx) layoutCell(r, c int, cl *cell, f *cellFmt, b box, measure boo
 	var fm formatted
 	switch cl.kind {
 	case cellNum:
+		if cl.text != nil {
+			// a number of a grid, shown as it is spelled
+			numeric = true
+			segs = []seg{{s: cl.text.plain}}
+			break
+		}
 		if cl.num == 0 && !s.ws.showZero {
 			return nil
 		}
@@ -885,7 +891,7 @@ func (s *sheetCtx) paintText() {
 			if lay == nil || len(lay.lines) == 0 {
 				continue
 			}
-			if t := s.tableAt(r, cl.col); t != nil && t.isHeader(r) {
+			if t := s.tableAt(r, cl.col); (t != nil && t.isHeader(r)) || r < s.ws.headerRows {
 				ref += " col"
 			}
 			bb := lay.bounds
