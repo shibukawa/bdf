@@ -59,7 +59,8 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 - Content-addressed parts, so masters and repeated elements are shared automatically
 - A text index part and full-text search in the Worker (matches across lines, NFKC and kana normalization, hit rectangles)
 - A transparent DOM text layer for selection and copy (spaces and line breaks restored from MARK boundaries; works across pages and in continuous mode)
-- The single-file and split-file forms convert into each other without re-encoding
+- The single-file and split-file forms convert into each other without re-encoding (the single file starts with the magic `bdf\0`)
+- The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information and a PowerPoint deck's core properties
 
 Documents are converted with the `bdf generate` subcommand, which tells PDF and PowerPoint input apart by its content.
 
@@ -105,6 +106,7 @@ go run ./cmd/bdf generate in.pdf out.bdf      # single-file form
 go run ./cmd/bdf generate in.pptx out/        # split form
 go run ./cmd/bdf generate -pages 1-3 in.pptx out.bdf   # select pages (slides)
 go run ./cmd/bdf generate -images keep in.pdf out.bdf  # do not convert images
+go run ./cmd/bdf generate -dc creator=Alice -dc language=ja in.pdf out.bdf  # set Dublin Core elements (-dc name= removes one)
 go run ./cmd/bdf generate -no-woff2 in.pdf out.bdf     # store fonts as TTF/OTF instead of WOFF2
 go run ./cmd/bdf generate -ignore-fstype in.pdf out.bdf # embed fonts even when fsType forbids embedding or subsetting (only if you hold the rights)
 go run ./cmd/bdf generate -kind flow in.pdf out.bdf    # PDF: make a flow view

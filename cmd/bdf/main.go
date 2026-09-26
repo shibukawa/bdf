@@ -54,7 +54,7 @@ func main() {
 		r, err := open(os.Args[2])
 		check(err)
 		m := r.Manifest
-		fmt.Printf("bdf %d opset %d unit %s title %q\n", m.BDF, m.Opset, m.Unit, m.Meta.Title)
+		fmt.Printf("bdf %d opset %d unit %s title %q\n", m.BDF, m.Opset, m.Unit, m.Meta.DC.Title.First())
 		for _, v := range m.Views {
 			switch v.Kind {
 			case bdf.ViewSheet:

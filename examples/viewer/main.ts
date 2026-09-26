@@ -1,6 +1,6 @@
 // Demo viewer: everything is decoded and rendered in a worker; the main thread
 // only places bitmaps and a selectable text layer.
-import type { Manifest, View, SearchHit } from "@bdf/core";
+import { dcValues, type Manifest, type View, type SearchHit } from "@bdf/core";
 import { BdfWorkerClient, buildTextLayer, installCopyHandler, type HitRect } from "@bdf/render";
 
 const params = new URLSearchParams(location.search);
@@ -32,7 +32,7 @@ installCopyHandler(stage);
 async function main() {
   const source = src.endsWith("/") ? { kind: "split" as const, base: new URL(src, location.href).href } : { kind: "single" as const, url: new URL(src, location.href).href, range: params.has("range") };
   manifest = await client.open(source);
-  document.title = `${manifest.meta?.title ?? "BDF"} – viewer`;
+  document.title = `${dcValues(manifest.meta?.dc?.title)[0] ?? "BDF"} – viewer`;
   for (const v of manifest.views) {
     const b = document.createElement("button");
     b.textContent = `${v.title ?? v.id} (${v.kind})`;

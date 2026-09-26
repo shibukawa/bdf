@@ -146,11 +146,11 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	c.loadTableStyles()
 
 	c.doc.Meta.Source = "pptx"
-	c.doc.Meta.Title = opts.Title
-	if c.doc.Meta.Title == "" {
-		c.doc.Meta.Title = c.coreTitle()
+	c.doc.Meta.DC = c.coreProps()
+	if opts.Title != "" {
+		c.doc.Meta.DC.Title = bdf.DCValues{opts.Title}
 	}
-	view := c.doc.NewView("slides", bdf.ViewFixed, c.doc.Meta.Title)
+	view := c.doc.NewView("slides", bdf.ViewFixed, c.doc.Meta.DC.Title.First())
 
 	var slides []string
 	var hidden []bool
@@ -252,17 +252,33 @@ func (c *converter) warnOnce(key, format string, args ...any) {
 	c.warnf(format, args...)
 }
 
-// coreTitle reads dc:title from the core properties.
-func (c *converter) coreTitle() string {
+// coreProps reads the core properties, which are mostly Dublin Core
+// already (ECMA-376 Part 2 §11); the keywords become subjects.
+func (c *converter) coreProps() bdf.DublinCore {
+	var dc bdf.DublinCore
 	r, ok := c.pkg.relOfType("", "/core-properties")
 	if !ok {
-		return ""
+		return dc
 	}
 	n, err := c.pkg.xml(r.Target)
 	if err != nil {
-		return ""
+		return dc
 	}
-	return strings.TrimSpace(n.child("title").text())
+	for _, e := range []struct {
+		f    *bdf.DCValues
+		name string
+	}{
+		{&dc.Title, "title"}, {&dc.Creator, "creator"}, {&dc.Subject, "subject"}, {&dc.Description, "description"},
+		{&dc.Identifier, "identifier"}, {&dc.Language, "language"}, {&dc.Created, "created"}, {&dc.Modified, "modified"},
+	} {
+		for _, k := range n.children(e.name) {
+			if s := strings.TrimSpace(k.text()); s != "" {
+				*e.f = append(*e.f, s)
+			}
+		}
+	}
+	dc.Subject = append(dc.Subject, bdf.SplitKeywords(n.child("keywords").text())...)
+	return dc
 }
 
 func (c *converter) theme(masterPart string) *theme {

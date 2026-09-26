@@ -4,9 +4,41 @@ export interface Manifest {
   bdf: number;
   opset: number;
   unit: string;
-  meta?: { title?: string; source?: string; generator?: string };
+  meta?: Meta;
   views: View[];
   parts: PartEntry[];
+}
+
+export interface Meta {
+  /** Dublin Core description of the document (spec §4.3). */
+  dc?: DublinCore;
+  /** Input format the document was converted from ("pdf", "pptx", ...). */
+  source?: string;
+  generator?: string;
+}
+
+/** A Dublin Core element: one value, or an array when the element repeats. Read it with dcValues(). */
+export type DCValue = string | string[];
+
+/** The fifteen Dublin Core Metadata Element Set 1.1 elements plus the DCMI Terms created and modified. */
+export interface DublinCore {
+  title?: DCValue;
+  creator?: DCValue;
+  subject?: DCValue;
+  description?: DCValue;
+  publisher?: DCValue;
+  contributor?: DCValue;
+  date?: DCValue;
+  type?: DCValue;
+  format?: DCValue;
+  identifier?: DCValue;
+  source?: DCValue;
+  language?: DCValue;
+  relation?: DCValue;
+  coverage?: DCValue;
+  rights?: DCValue;
+  created?: DCValue;
+  modified?: DCValue;
 }
 
 export type ViewKind = "fixed" | "flow" | "sheet";

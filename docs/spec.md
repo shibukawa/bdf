@@ -64,7 +64,7 @@ BDF
 先頭にディレクトリを置く。ストリーミング読み（`fetch().body` を先頭から読み進めながら描画開始）と Range 取得の両方に対応する。
 
 ```
-offset 0   : magic          u8[4]   "BDF1"
+offset 0   : magic          u8[4]   "bdf\0"（62 64 66 00）
 offset 4   : version        u16     フォーマットバージョン（1）
 offset 6   : flags          u16     予約（0）
 offset 8   : manifestOff    u64     manifest の先頭オフセット（通常 32）
@@ -76,6 +76,7 @@ offset ... : parts 領域（manifest 直後から始まり、manifest.parts に�
 ```
 
 - すべてリトルエンディアン。
+- マジックは小文字の `bdf` に NUL を 1 バイト続けたもの。NUL があるのでテキストファイルと取り違えない。バージョンは `version` で表し、マジックには含めない。
 - `manifest.parts[i]` は `off`（**parts 領域の先頭**、すなわち `manifestOff + manifestLen` からのオフセット）と `len` を持つ。manifest の内容が自身の長さに依存しないようにするため。
 - **推奨配置順**: manifest → Font → 共有 Object（マスター等）→ View の先頭ページから順。先頭から読むだけで 1 ページ目が描けるようにする。
 - 書き手は全 Part を確定してから書き出す（サーバー変換なので問題ない）。
@@ -101,7 +102,9 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
   "bdf": 1,                     // フォーマットバージョン
   "opset": 1,                   // 命令セットバージョン（§7）
   "unit": "pt",                 // 1 unit = 1/72 inch。座標はすべてこの単位
-  "meta": { "title": "…", "source": "pptx", "generator": "bdf-go/0.1" },
+  "meta": {                     // §4.3
+    "dc": { "title": "…", "creator": ["…", "…"], "language": "ja", "created": "2026-09-25T07:21:16+09:00" },
+    "source": "pptx", "generator": "bdf-go/0.1" },
 
   "views": [
     { "id": "slides", "kind": "fixed", "title": "スライド",
@@ -163,6 +166,64 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 ### 4.2 レイヤーの役割（role）
 
 `background` / `master` / `header` / `footer` / `body` / `notes` / `annotation`。ビューアは役割ごとの表示切替に使える。未知の role は `body` として扱う。
+
+### 4.3 メタデータ（meta）
+
+| キー | 意味 |
+|---|---|
+| `dc` | 文書そのものの記述。Dublin Core（下記） |
+| `source` | 変換元の形式（`pdf` / `pptx` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
+
+`meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
+
+```jsonc
+"dc": {
+  "title": "四半期報告",
+  "creator": ["山田太郎", "佐藤花子"],
+  "subject": ["売上", "予算"],
+  "language": "ja",
+  "created": "2026-09-25T07:21:16+09:00"
+}
+```
+
+- どの要素も省略でき、繰り返せる。値は文字列、または文字列の配列。書き手は値が 1 つなら文字列、2 つ以上なら配列で書く。読み手はどちらも受け付ける。空の配列は要素がないのと同じ。
+- 未知のキーは無視する。
+
+| 要素 | 内容 | 推奨する書き方 |
+|---|---|---|
+| `title` | 題名 | |
+| `creator` | 作成者 | 人・組織ごとに 1 値 |
+| `subject` | 主題・キーワード | キーワードごとに 1 値 |
+| `description` | 概要 | |
+| `publisher` | 発行者 | |
+| `contributor` | 寄与者 | |
+| `date` | 何らかの日付（発行日など） | W3CDTF（ISO 8601 の部分集合）。`2026`、`2026-09`、`2026-09-25`、`2026-09-25T07:21:16+09:00` |
+| `type` | 種類 | DCMI Type Vocabulary（`Text`、`Image` など） |
+| `format` | 形式 | MIME タイプ |
+| `identifier` | 識別子 | URI、ISBN、DOI など |
+| `source` | 派生元の資源 | |
+| `language` | 言語 | BCP 47（`ja`、`en-US`） |
+| `relation` | 関連する資源 | |
+| `coverage` | 範囲（場所・期間） | |
+| `rights` | 権利 | |
+| `created` | 作成日時 | `date` と同じ書き方 |
+| `modified` | 更新日時 | `date` と同じ書き方 |
+
+変換器は入力文書のメタデータを次のように写す。
+
+| 要素 | PDF（文書情報辞書） | PowerPoint（コアプロパティ） |
+|---|---|---|
+| `title` | `Title` | `dc:title` |
+| `creator` | `Author` | `dc:creator` |
+| `subject` | `Keywords`（`,` `;` `、` などで分割） | `dc:subject`、`cp:keywords`（同様に分割） |
+| `description` | `Subject` | `dc:description` |
+| `identifier` | – | `dc:identifier` |
+| `language` | – | `dc:language` |
+| `created` | `CreationDate`（W3CDTF に変換） | `dcterms:created` |
+| `modified` | `ModDate`（W3CDTF に変換） | `dcterms:modified` |
+
+PDF の対応は XMP が文書情報辞書を写す方法に合わせている。`bdf generate` の `-dc 要素名=値`（繰り返し可）で要素を上書きでき、`-dc 要素名=` でその要素を消せる。
 
 ## 5. Object Part
 

@@ -110,8 +110,13 @@ func TestConvertBasic(t *testing.T) {
 	if v.Kind != bdf.ViewFixed || v.Pages[0].W != 720 || v.Pages[0].H != 540 {
 		t.Fatalf("view = %s %gx%g", v.Kind, v.Pages[0].W, v.Pages[0].H)
 	}
-	if r.Manifest.Meta.Title != "PowerPoint test deck" || r.Manifest.Meta.Source != "pptx" {
+	if dc := r.Manifest.Meta.DC; dc.Title.First() != "PowerPoint test deck" || r.Manifest.Meta.Source != "pptx" ||
+		dc.Description.First() != "generated using python-pptx" || len(dc.Creator) != 0 ||
+		dc.Created.First() != "2013-01-27T09:14:16Z" || dc.Modified.First() != "2013-01-27T09:15:58Z" {
 		t.Errorf("meta = %+v", r.Manifest.Meta)
+	}
+	if v.Title != "PowerPoint test deck" {
+		t.Errorf("view title = %q", v.Title)
 	}
 	text := plainText(t, r)
 	for _, want := range []string{

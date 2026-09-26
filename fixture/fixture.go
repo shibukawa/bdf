@@ -102,7 +102,13 @@ func checkerPNG(size int) []byte {
 // Demo builds a document with a slide deck, a flow document and a sheet.
 func Demo() (*bdf.Document, error) {
 	d := bdf.NewDocument()
-	d.Meta.Title = "BDF fixture"
+	d.Meta.DC = bdf.DublinCore{
+		Title:    bdf.DCValues{"BDF fixture"},
+		Creator:  bdf.DCValues{"bdf-go", "BDF fixture generator"},
+		Subject:  bdf.DCValues{"slides", "flow", "sheet"},
+		Language: bdf.DCValues{"en", "ja"},
+		Date:     bdf.DCValues{"2026-09-26"},
+	}
 	d.Meta.Source = "fixture"
 	fonts, err := LoadFonts(d)
 	if err != nil {
