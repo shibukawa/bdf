@@ -89,6 +89,7 @@ type converter struct {
 	viewOf map[string]string
 
 	// per page
+	m          *model
 	page       *pageInfo
 	pageShadow bool
 }
@@ -257,6 +258,7 @@ type item struct {
 
 func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas, error) {
 	m := parseModel(p.model)
+	c.m = m
 	c.pageShadow = m.attrs["shadow"] == "1"
 	v := newView(m, c.warnOnce, c.stencil)
 
