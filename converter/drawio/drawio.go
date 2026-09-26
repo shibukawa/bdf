@@ -377,9 +377,13 @@ func (s *shape) extent() rect {
 		if s.startArrow != "" && s.startArrow != "none" || s.endArrow != "" && s.endArrow != "none" {
 			m = math.Max(s.style.num("startSize", defaultMarkerSize), s.style.num("endSize", defaultMarkerSize)) + s.strokewidth
 		}
-		return r.grow(math.Max(sw, m/2))
+		return s.augmented(r.grow(math.Max(sw, m/2)))
 	}
 	r := s.bounds
+	if s.isPaintBoundsInverted() {
+		// the paint rectangle of north and south (mxShape.createBoundingBox)
+		r = r.rotate90()
+	}
 	if rot := s.shapeRotation(); math.Mod(rot, 360) != 0 {
 		// bounding box of the rotated rectangle
 		rad := toRadians(rot)
@@ -391,7 +395,7 @@ func (s *shape) extent() rect {
 	if !s.hasPaint() {
 		return rect{}
 	}
-	return r.grow(sw)
+	return s.augmented(r.grow(sw))
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }
