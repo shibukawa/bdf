@@ -1,11 +1,13 @@
 /// <reference lib="webworker" />
-import { BdfDocument, BufferSource, RangeSource, SplitSource, fetchSingle, extractContent, type TextRun, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdf/core";
+import { BdfDocument, BdfPasswordError, BufferSource, RangeSource, SplitSource, fetchSingle, extractContent, type PartSource, type TextRun, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdf/core";
 import { fontString } from "./resources.js";
 import { PageRenderer } from "./page.js";
 import { DocumentSearch } from "./search.js";
 import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource } from "./protocol.js";
 
 let doc: BdfDocument | undefined;
+/** A source opened but still locked: kept for "unlock", so nothing is fetched or sent again. */
+let locked: PartSource | undefined;
 let pages: PageRenderer | undefined;
 let search: DocumentSearch | undefined;
 
@@ -15,12 +17,21 @@ const measure = (font: string, text: string) => {
   return measureCtx.measureText(text).width;
 };
 
-async function open(source: OpenSource): Promise<Manifest> {
+async function open(source: OpenSource, password?: string): Promise<Manifest> {
+  doc = pages = search = locked = undefined;
   switch (source.kind) {
-    case "buffer": doc = await BdfDocument.open(new BufferSource(new Uint8Array(source.buffer))); break;
-    case "single": doc = await BdfDocument.open(source.range ? new RangeSource(source.url) : await fetchSingle(source.url)); break;
-    case "split": doc = await BdfDocument.open(new SplitSource(source.base)); break;
+    case "buffer": locked = new BufferSource(new Uint8Array(source.buffer)); break;
+    case "single": locked = source.range ? new RangeSource(source.url) : await fetchSingle(source.url); break;
+    case "split": locked = new SplitSource(source.base); break;
   }
+  return unlock(password);
+}
+
+/** Open the pending source; an encrypted one stays pending until a password opens it. */
+async function unlock(password?: string): Promise<Manifest> {
+  if (!locked) throw new Error("bdf: no document to unlock");
+  doc = await BdfDocument.open(locked, { password });
+  locked = undefined;
   pages = new PageRenderer(doc!, {}, (self as unknown as { fonts?: FontFaceSet }).fonts);
   search = new DocumentSearch(doc!, measure);
   return doc!.manifest;
@@ -115,9 +126,11 @@ function canvasFor(w: number, h: number): OffscreenCanvas {
 async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; transfer: Transferable[] }> {
   switch (req.type) {
     case "open":
-      return { result: await open(req.source), transfer: [] };
+      return { result: await open(req.source, req.password), transfer: [] };
+    case "unlock":
+      return { result: await unlock(req.password), transfer: [] };
     case "close":
-      doc = pages = search = undefined;
+      doc = pages = search = locked = undefined;
       return { result: null, transfer: [] };
   }
   if (!doc || !pages || !search) throw new Error("bdf: no document open");
@@ -173,7 +186,8 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
     const res: WorkerResponse = { id: req.id, ok: true, result };
     (self as unknown as Worker).postMessage(res, transfer);
   } catch (e) {
-    const res: WorkerResponse = { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) };
+    const code = e instanceof BdfPasswordError ? (e.reason === "required" ? "password-required" : "wrong-password") : undefined;
+    const res: WorkerResponse = { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e), code };
     (self as unknown as Worker).postMessage(res);
   }
 };

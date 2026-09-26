@@ -13,9 +13,15 @@
 // packages and their XML) with ooxml/drawingml (shapes, text, tables,
 // charts), fontset (fonts for text layout and their embedding), canvas
 // (objects under construction) and metafile (EMF/WMF pictures).
+//
+// Password-protected inputs open with Options.Password. Encrypted Office
+// documents are decrypted here (converter/internal/offcrypto), before their
+// format is detected; PDF passwords are handled by converter/pdf.
 package converter
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,6 +31,7 @@ import (
 	"sync"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/offcrypto"
 	"github.com/shibukawa/bdf/imgconv"
 )
 
@@ -43,6 +50,10 @@ type Format struct {
 	Detect func(head []byte, r io.ReaderAt, size int64) bool
 	// Convert converts an input.
 	Convert func(r io.ReaderAt, size int64, opts *Options) (*Result, error)
+	// CheckPassword, for formats with their own encryption, reports
+	// whether an input needs a password to open and checks password
+	// against it (see the package's CheckPassword).
+	CheckPassword func(r io.ReaderAt, size int64, password string) (protected bool, err error)
 }
 
 // Param is a format-specific option.
@@ -83,6 +94,10 @@ type Options struct {
 	NoTextIndex bool
 	// Params holds format-specific options by name (see Format.Params).
 	Params map[string]string
+	// Password opens an encrypted input: the open password of an Office
+	// document, the user (or owner) password of a PDF. Inputs that open
+	// without one ignore it.
+	Password string
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
@@ -111,7 +126,18 @@ type Result struct {
 	// Summary describes the result in a line ("5 slide(s), 2 embedded
 	// font(s)").
 	Summary string
+	// Protected reports that the input opened only with Options.Password.
+	// Whoever needed the password to read the input should need it to read
+	// the document too: encrypt it with the same password (bdf.Lock).
+	Protected bool
 }
+
+// Errors of Convert and CheckPassword; test for them with errors.Is.
+var (
+	ErrUnknownFormat    = errors.New("unknown input format")
+	ErrPasswordRequired = errors.New("the input is encrypted and needs a password")
+	ErrWrongPassword    = errors.New("the password does not open the input")
+)
 
 var (
 	mu      sync.RWMutex
@@ -191,18 +217,81 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	res, err := Convert(f, st.Size(), name, opts)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return res, nil
+}
+
+// Convert converts an input in the named format (detected when name is
+// ""). An encrypted Office document is decrypted with opts.Password first.
+func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, error) {
+	if opts == nil {
+		opts = &Options{}
+	}
+	var warnings []string
+	protected := false
+	if offcrypto.IsEncrypted(r, size) {
+		if opts.Password == "" {
+			return nil, ErrPasswordRequired
+		}
+		b, err := offcrypto.Decrypt(r, size, opts.Password)
+		switch {
+		case errors.Is(err, offcrypto.ErrWrongPassword):
+			return nil, ErrWrongPassword
+		case errors.Is(err, offcrypto.ErrIntegrity):
+			// The package decrypted and is still a ZIP file with its own
+			// checksums; say so, and convert it.
+			warnings = append(warnings, err.Error())
+		case err != nil:
+			return nil, err
+		}
+		r, size, protected = bytes.NewReader(b), int64(len(b)), true
+	}
 	var format *Format
 	if name == "" {
-		if format = Detect(f, st.Size()); format == nil {
-			return nil, fmt.Errorf("%s: unknown input format", path)
+		if format = Detect(r, size); format == nil {
+			return nil, ErrUnknownFormat
 		}
 	} else if format = Lookup(name); format == nil {
 		return nil, fmt.Errorf("unknown format %q", name)
 	}
-	if opts == nil {
-		opts = &Options{}
+	if opts.Warn != nil {
+		for _, w := range warnings {
+			opts.Warn(w)
+		}
+		warnings = nil
 	}
-	return format.Convert(f, st.Size(), opts)
+	res, err := format.Convert(r, size, opts)
+	if err != nil {
+		return nil, err
+	}
+	res.Warnings = append(warnings, res.Warnings...)
+	res.Protected = res.Protected || protected
+	return res, nil
+}
+
+// CheckPassword reports whether an input needs a password to open, and
+// checks password against it without converting it: nil when the input
+// opens with password (or needs none), ErrPasswordRequired when it needs
+// one and password is empty, ErrWrongPassword when password does not open
+// it. A server can call it when the file is uploaded and answer at once.
+func CheckPassword(r io.ReaderAt, size int64, password string) (protected bool, err error) {
+	if offcrypto.IsEncrypted(r, size) {
+		if password == "" {
+			return true, ErrPasswordRequired
+		}
+		err := offcrypto.Verify(r, size, password)
+		if errors.Is(err, offcrypto.ErrWrongPassword) {
+			return true, ErrWrongPassword
+		}
+		return true, err
+	}
+	if f := Detect(r, size); f != nil && f.CheckPassword != nil {
+		return f.CheckPassword(r, size, password)
+	}
+	return false, nil
 }
 
 // PageRange parses "1-3,5,8-" style selections of 1-based page (or slide)

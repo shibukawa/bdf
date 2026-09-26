@@ -20,6 +20,10 @@ func init() {
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool {
 			return bytes.Contains(head, []byte("%PDF-"))
 		},
+		CheckPassword: func(r io.ReaderAt, size int64, password string) (bool, error) {
+			_, protected, err := readContext(io.NewSectionReader(r, 0, size), password)
+			return protected, err
+		},
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
 			noShare, err := o.BoolParam("no-share")
 			if err != nil {
@@ -27,11 +31,11 @@ func init() {
 			}
 			res, err := Convert(io.NewSectionReader(r, 0, size), &Options{Pages: o.Pages, Title: o.Title, Kind: o.Param("kind"),
 				NoTextIndex: o.NoTextIndex, NoSubset: o.NoSubset, NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType,
-				Images: o.Images, NoSharePrefix: noShare, Warn: o.Warn})
+				Images: o.Images, NoSharePrefix: noShare, Password: o.Password, Warn: o.Warn})
 			if err != nil {
 				return nil, err
 			}
-			return &conv.Result{Doc: res.Doc, Warnings: res.Warnings,
+			return &conv.Result{Doc: res.Doc, Warnings: res.Warnings, Protected: res.Protected,
 				Summary: fmt.Sprintf("%d page(s), %d shared prefix(es) saving %d bytes", res.Pages, res.SharedPrefixes, res.SharedBytes)}, nil
 		},
 	})

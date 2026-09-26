@@ -62,6 +62,7 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 - Accessible text layers: headings, lists, tables, figures with alternative text, links and languages from structure MARKs, exposed to screen readers (tagged PDF and PowerPoint structure are converted)
 - The single-file and split-file forms convert into each other without re-encoding (the single file starts with the magic `bdf\0`)
 - The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information and a PowerPoint deck's core properties
+- Password-protected inputs (Office documents with an open password, PDFs with a user password) are converted with their password, and the bdf is encrypted with the same password. Each part is sealed on its own (AES-256-GCM), so Range requests and the split form still work; the viewer decrypts with WebCrypto, and the server does not keep the password (spec §3.5)
 
 Documents are converted with the `bdf generate` subcommand, which tells the input formats apart by their content.
 
@@ -78,6 +79,20 @@ import (
 )
 
 res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" detects the format
+```
+
+A password-protected input opens with `Options.Password`. When `res.Protected` reports that it needed the password, encrypt the document with the same one:
+
+```go
+res, err := converter.ConvertFile("in.pptx", "", &converter.Options{Password: password})
+if err != nil {
+	return err // converter.ErrPasswordRequired / ErrWrongPassword: ask for the password (CheckPassword checks one without converting)
+}
+if res.Protected {
+	if res.Doc.Lock, err = bdf.NewPasswordLock(password, 0); err != nil { // 0: the default PBKDF2 iteration count
+		return err
+	}
+}
 ```
 
 ## Documentation
@@ -100,7 +115,7 @@ The documents are in Japanese.
 | `converter/pptx` | PowerPoint (.pptx) → bdf converter |
 | `converter/emf` | Windows metafile (.emf, .wmf) → bdf converter |
 | `converter/all` | Registers every input format (import for its side effect) |
-| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`), objects under construction (`canvas`), EMF/WMF replay (`metafile`) |
+| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`), objects under construction (`canvas`), EMF/WMF replay (`metafile`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering, Worker |
 | `examples/viewer` | Demo viewer |
@@ -131,6 +146,10 @@ go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf   # PowerPoint: add a
 go run ./cmd/bdf generate -fonts system in.pptx out.bdf      # PowerPoint: refer to fonts by name instead of embedding them
 go run ./cmd/bdf generate -hidden in.pptx out.bdf            # PowerPoint: include hidden slides (-param hidden=true)
 go run ./cmd/bdf generate in.emf out.bdf                     # Windows metafile (.emf or .wmf) as one page
+go run ./cmd/bdf generate -password-file pw.txt in.pptx out.bdf  # password-protected input (- reads stdin; default $BDF_PASSWORD); out.bdf is encrypted with the same password
+go run ./cmd/bdf generate -encrypt never in.pdf out.bdf      # -encrypt auto (default: when the input needs the password), always or never
+BDF_PASSWORD=… go run ./cmd/bdf ls out.bdf                   # ls, manifest, disasm and extract read encrypted documents with $BDF_PASSWORD
+BDF_PASSWORD=… go run ./cmd/bdf encrypt in.bdf out.bdf       # encrypt an existing bdf (decrypt removes the encryption); split and join need no password
 go build -tags bdf_noconv ./...                    # build without codecs (WebP, Brotli for WOFF2), for the browser
 GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD codecs (AVX2 required on amd64)
 
@@ -140,7 +159,7 @@ npm test                             # decoder tests (Node)
 npm run test:golden                  # render in Chromium and compare with the golden images
 npm run test:golden:update           # update the golden images
 npm run testdata                     # regenerate testdata/ (requires Go)
-npm run test:pptx:gen                # regenerate the PowerPoint test decks (requires python-pptx)
+npm run test:pptx:gen                # regenerate the PowerPoint test decks (requires python-pptx and msoffcrypto-tool)
 node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium
 
 # Demo viewer

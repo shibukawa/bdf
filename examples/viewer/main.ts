@@ -1,7 +1,7 @@
 // Demo viewer: everything is decoded and rendered in a worker; the main thread
 // only places bitmaps and a selectable, accessible text layer.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
-import { BdfWorkerClient, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type TextLayerOptions } from "@bdf/render";
+import { BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type OpenSource, type TextLayerOptions } from "@bdf/render";
 
 const params = new URLSearchParams(location.search);
 const src = params.get("src") ?? "/testdata/demo.bdf";
@@ -81,10 +81,58 @@ function placeBitmap(el: HTMLElement, bmp: ImageBitmap, w: number, h: number) {
   el.prepend(canvas);
 }
 
+/** Ask for the password of an encrypted document; undefined when the reader cancels. */
+function askPassword(message: string, error: boolean): Promise<string | undefined> {
+  const dialog = $<HTMLDialogElement>("pwDialog");
+  const input = $<HTMLInputElement>("pw");
+  const text = $("pwMessage");
+  text.textContent = message;
+  text.toggleAttribute("data-error", error);
+  input.value = "";
+  dialog.returnValue = "";
+  $("pwCancel").onclick = () => dialog.close("cancel");
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.onclose = () => resolve(dialog.returnValue === "ok" ? input.value : undefined);
+  });
+}
+
+/**
+ * Open the document. An encrypted one stays locked in the worker while the
+ * reader is asked for its password, as many times as it takes.
+ */
+async function openDocument(source: OpenSource): Promise<Manifest | undefined> {
+  try {
+    return await client.open(source);
+  } catch (e) {
+    if (!(e instanceof BdfWorkerError) || e.code !== "password-required") throw e;
+  }
+  let message = "This document is encrypted. Enter its password to open it.";
+  let error = false;
+  for (;;) {
+    setStatus("encrypted document: waiting for the password");
+    const password = await askPassword(message, error);
+    if (password === undefined) return undefined;
+    setStatus("unlocking…");
+    try {
+      return await client.unlock(password);
+    } catch (e) {
+      if (!(e instanceof BdfWorkerError) || e.code !== "wrong-password") throw e;
+      message = "Wrong password. Try again.";
+      error = true;
+    }
+  }
+}
+
 async function main() {
-  const source = src.endsWith("/") ? { kind: "split" as const, base: new URL(src, location.href).href } : { kind: "single" as const, url: new URL(src, location.href).href, range: params.has("range") };
+  const source: OpenSource = src.endsWith("/") ? { kind: "split", base: new URL(src, location.href).href } : { kind: "single", url: new URL(src, location.href).href, range: params.has("range") };
   setStatus("loading…");
-  manifest = await client.open(source);
+  const opened = await openDocument(source);
+  if (!opened) {
+    setStatus("encrypted document: not opened");
+    return;
+  }
+  manifest = opened;
   document.title = `${dcValues(manifest.meta?.dc?.title)[0] ?? "BDF"} – viewer`;
   manifest.views.forEach((v, i) => {
     const b = document.createElement("button");

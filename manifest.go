@@ -25,6 +25,9 @@ const (
 	PartImage  = "img"
 	PartPath   = "path"
 	PartIndex  = "idx"
+	// PartSealed is the type of the parts of an encrypted document's outer
+	// manifest (docs/spec.md §3.5).
+	PartSealed = "sealed"
 )
 
 // Encodings.
@@ -34,13 +37,18 @@ const (
 )
 
 // Manifest is the JSON document directory.
+//
+// An encrypted document stores an outer manifest that holds only BDF,
+// Encryption and the sealed parts; the manifest it is read with is sealed
+// (docs/spec.md §3.5).
 type Manifest struct {
-	BDF   int         `json:"bdf"`
-	Opset int         `json:"opset"`
-	Unit  string      `json:"unit"`
-	Meta  Meta        `json:"meta,omitempty"`
-	Views []*View     `json:"views"`
-	Parts []PartEntry `json:"parts"`
+	BDF        int         `json:"bdf"`
+	Encryption *Encryption `json:"encryption,omitempty"`
+	Opset      int         `json:"opset,omitempty"`
+	Unit       string      `json:"unit,omitempty"`
+	Meta       Meta        `json:"meta,omitzero"`
+	Views      []*View     `json:"views,omitempty"`
+	Parts      []PartEntry `json:"parts"`
 }
 
 // Meta holds document metadata.
@@ -119,6 +127,9 @@ type PartEntry struct {
 	Len  int    `json:"len"`  // stored (possibly compressed) length
 	Size int    `json:"size"` // decoded length
 	Off  int64  `json:"off"`  // offset from the start of the parts region (single form)
+	// Sealed names the part of the outer manifest that holds this part
+	// sealed (encrypted documents only).
+	Sealed Hash `json:"sealed,omitzero"`
 }
 
 // AddPage appends a page to a fixed/flow view.

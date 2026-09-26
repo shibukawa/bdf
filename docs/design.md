@@ -172,6 +172,18 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 `converter/emf` は Windows メタファイル（.emf、.wmf）を 1 ページの文書にする。再生は Office 文書の中の図と同じ `converter/internal/metafile`（§3.4 の EMF/WMF）。ページの大きさは EMF ならヘッダーの frame（0.01 mm 単位）、placeable WMF なら範囲と 1 インチあたりの単位数から求め、単位の分からない WMF は 96 dpi のピクセルとみなす。EMF ヘッダーの説明文字列にある図の名前を題名にする。テキストは PowerPoint と同じくフォントを解決してレイアウトし、サブセットを埋め込む（`-font-dir`、`-fonts system` なども同じ）。
 
+## 3.6 パスワードで保護された入力
+
+保護された入力は、変換のときだけパスワードで開き、出力の BDF を同じパスワードで暗号化する（spec §3.5）。パスワードを知っている人だけが読める、という元のファイルの性質をプレビューでも保つためで、サーバーはパスワードを保存しない。表示のときはブラウザが入力されたパスワードで復号するので、サーバーは閲覧時にパスワードに関わらず、暗号化した BDF をそのまま配ればよい。
+
+- **Office**: 暗号化された .pptx/.docx/.xlsx は ZIP ではなく、複合ファイル（CFB）の中に `EncryptionInfo`（鍵の導き方）と `EncryptedPackage`（暗号化された ZIP）を持つ。`converter` が形式の判別より前にこれを見つけて復号し（`converter/internal/cfb`、`converter/internal/offcrypto`）、復号した ZIP で形式を判別する。暗号化の方式は Agile（Office 2010 以降。既定は AES-256、SHA-512 を 10 万回）と Standard（Office 2007。AES-128、SHA-1 を 5 万回）。Agile の HMAC（`dataIntegrity`）が合わないときは、ZIP 自身にも CRC があるので変換は続けて警告を出す。権利管理（IRM）と証明書による保護、Extensible 暗号化、AES 以外の暗号は扱わない。テスト用のファイルは msoffcrypto-tool で作り（`test/pptx/gen_encrypted.py`）、msoffcrypto-tool で復号できることを確かめてから保存している。
+- **PDF**: pdfcpu に復号させる。まずパスワードなしで開き、ユーザーパスワードが要るときだけ `Options.Password` で開き直す（オーナーパスワードでも開ける）。オーナーパスワードだけの PDF はパスワードなしで開けるので、保護されたものとは扱わない。
+- **API**: `converter.Options.Password` で開き、`Result.Protected` が「パスワードがなければ開けなかった」ことを表す。これが立っていたら `bdf.NewPasswordLock` で同じパスワードのロックを作り、`Document.Lock` に設定して書き出す。パスワードの過不足は `converter.ErrPasswordRequired` / `ErrWrongPassword`。`converter.CheckPassword` は変換せずにパスワードを確かめるので、アップロードを受けたときにすぐ答えを返せる。
+- **CLI**: `bdf generate` はパスワードを `-password-file`（`-` で標準入力）か `$BDF_PASSWORD` から読む（コマンドライン引数はほかのユーザーから見えるので受け付けない）。出力は `-encrypt auto`（既定。入力が保護されていたとき）、`always`、`never` で暗号化する。`ls`・`manifest`・`disasm`・`extract` は `$BDF_PASSWORD` で暗号化した文書を開き、`split`・`join` は封印された Part をそのままコピーするのでパスワードが要らない。`encrypt`・`decrypt` は既存の BDF を暗号化・復号する。
+- **ビューア**: `BdfDocument.open(source, { password })` がパスワードを受け取り、なければ `BdfPasswordError("required")`、違えば `("wrong")` を投げる。Worker は開けなかったソースを持ったまま `unlock` を待つので、パスワードを聞き直してもファイルを取り直さない。
+
+暗号化した文書はサーバー側の全文検索の対象にしない（索引が平文になるため）。文書の中の検索は、テキスト索引 Part も暗号化されて BDF の中にあるので、復号した後にブラウザでこれまでどおり動く。サムネイルのように平文が要るものは、サーバーが変換のとき（パスワードと平文を持っている間）に作る。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -252,7 +264,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 bdf/
 ├── docs/              spec.md, design.md
 ├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
-├── cmd/bdf/           CLI: generate / ls / manifest / disasm / extract / split / join / demo
+├── cmd/bdf/           CLI: generate / ls / manifest / disasm / extract / split / join / encrypt / decrypt / demo
 ├── imgconv/           画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
 ├── woff2/             TrueType/OpenType → WOFF2（glyf 変換と Brotli）
 ├── converter/         入力形式の登録（static plugin）、共通のオプション、形式の判別、ページ指定
@@ -263,13 +275,14 @@ bdf/
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
 │                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
-│                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）
+│                      フォント選択・計測・サブセット埋め込み）、canvas（組み立て中の Object）、metafile（EMF/WMF の再生）、
+│                      暗号化された Office 文書を開く cfb（複合ファイル）と offcrypto（Agile / Standard 暗号化の復号）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）
-├── testdata/          Go が生成した demo.bdf / demo-split と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

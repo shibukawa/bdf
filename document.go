@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // Part is a raw (uncompressed) part.
@@ -16,6 +17,9 @@ type Part struct {
 	Type string
 	Data []byte
 }
+
+// defaultMinCompress is the default of Document.MinCompress.
+const defaultMinCompress = 512
 
 // Document accumulates parts and views and writes them out.
 type Document struct {
@@ -26,6 +30,9 @@ type Document struct {
 	CompressionLevel int
 	// MinCompress is the smallest decoded size that gets compressed (default 512).
 	MinCompress int
+	// Lock, when set, makes WriteSingle and WriteSplit encrypt the document
+	// (docs/spec.md §3.5).
+	Lock *Lock
 
 	parts map[Hash]*Part
 	order []Hash
@@ -35,7 +42,7 @@ type Document struct {
 func NewDocument() *Document {
 	return &Document{
 		CompressionLevel: flate.BestCompression,
-		MinCompress:      512,
+		MinCompress:      defaultMinCompress,
 		parts:            map[Hash]*Part{},
 	}
 }
@@ -104,9 +111,11 @@ func (d *Document) shouldCompress(p *Part) bool {
 	return len(p.Data) >= d.MinCompress
 }
 
-func (d *Document) compress(data []byte) ([]byte, error) {
+func (d *Document) compress(data []byte) ([]byte, error) { return compress(data, d.CompressionLevel) }
+
+func compress(data []byte, level int) ([]byte, error) {
 	var b bytes.Buffer
-	w, err := flate.NewWriter(&b, d.CompressionLevel)
+	w, err := flate.NewWriter(&b, level)
 	if err != nil {
 		return nil, err
 	}
@@ -165,26 +174,95 @@ var Magic = [4]byte{'b', 'd', 'f', 0}
 // HeaderSize is the fixed header length of the single-file form.
 const HeaderSize = 32
 
+// stored builds what is written: the manifest (with offsets), the stored
+// bytes of each part in manifest order, and the header flags. With a Lock
+// the parts and the manifest are sealed and the outer manifest is returned.
+func (d *Document) stored() (*Manifest, [][]byte, uint16, error) {
+	parts, err := d.encodeParts()
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	m := d.manifest(parts)
+	data := make([][]byte, len(parts))
+	for i, p := range parts {
+		data[i] = p.data
+	}
+	if d.Lock == nil {
+		return m, data, 0, nil
+	}
+	a, err := d.Lock.aead()
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	outer := &Manifest{BDF: FormatVersion, Parts: make([]PartEntry, 0, len(parts)+1)}
+	sealed := make([][]byte, 0, len(parts)+1)
+	add := func(b []byte) Hash {
+		h := HashOf(b)
+		outer.Parts = append(outer.Parts, PartEntry{H: h, T: PartSealed, Enc: EncIdentity, Len: len(b), Size: len(b)})
+		sealed = append(sealed, b)
+		return h
+	}
+	add(nil) // the manifest goes first; sealed below, once the part names are known
+	for i := range m.Parts {
+		e := &m.Parts[i]
+		e.Off = 0
+		e.Sealed = add(seal(a, data[i], e.H[:]))
+	}
+	mj, err := json.Marshal(m)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	menc := EncIdentity
+	if c, err := d.compress(mj); err == nil && len(c) < len(mj) {
+		mj, menc = c, EncDeflateRaw
+	}
+	sm := seal(a, mj, manifestAAD)
+	h := HashOf(sm)
+	outer.Parts[0] = PartEntry{H: h, T: PartSealed, Enc: EncIdentity, Len: len(sm), Size: len(sm)}
+	sealed[0] = sm
+	outer.Encryption = &Encryption{Cipher: CipherA256GCM, Keys: d.Lock.slots, Manifest: SealedManifest{Part: h, Enc: menc}}
+	var off int64
+	for i := range outer.Parts {
+		outer.Parts[i].Off = off
+		off += int64(outer.Parts[i].Len)
+	}
+	return outer, sealed, FlagEncrypted, nil
+}
+
 // WriteSingle writes the single-file form.
 func (d *Document) WriteSingle(w io.Writer) error {
-	parts, err := d.encodeParts()
+	m, data, flags, err := d.stored()
 	if err != nil {
 		return err
 	}
-	mj, err := json.Marshal(d.manifest(parts))
+	return writeSingle(w, m, data, flags, d.CompressionLevel, d.MinCompress)
+}
+
+// WriteSplit writes the split form into dir (manifest.json and parts/<hash>).
+func (d *Document) WriteSplit(dir string) error {
+	m, data, _, err := d.stored()
+	if err != nil {
+		return err
+	}
+	return writeSplit(dir, m, data)
+}
+
+// writeSingle writes a manifest whose part offsets follow data, and data.
+func writeSingle(w io.Writer, m *Manifest, data [][]byte, flags uint16, level, minCompress int) error {
+	mj, err := json.Marshal(m)
 	if err != nil {
 		return err
 	}
 	menc := byte(0)
-	if len(mj) >= d.MinCompress {
-		if c, err := d.compress(mj); err == nil && len(c) < len(mj) {
+	if len(mj) >= minCompress {
+		if c, err := compress(mj, level); err == nil && len(c) < len(mj) {
 			mj, menc = c, 1
 		}
 	}
 	var h buf
 	h.bytes(Magic[:])
 	h.u16(FormatVersion)
-	h.u16(0)
+	h.u16(flags)
 	h.u64(HeaderSize)
 	h.u64(uint64(len(mj)))
 	h.u8(menc)
@@ -195,25 +273,22 @@ func (d *Document) WriteSingle(w io.Writer) error {
 	if _, err := w.Write(mj); err != nil {
 		return err
 	}
-	for _, p := range parts {
-		if _, err := w.Write(p.data); err != nil {
+	for _, b := range data {
+		if _, err := w.Write(b); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// WriteSplit writes the split form into dir (manifest.json and parts/<hash>).
-func (d *Document) WriteSplit(dir string) error {
-	parts, err := d.encodeParts()
-	if err != nil {
-		return err
+// writeSplit writes manifest.json (without offsets) and a file per part.
+func writeSplit(dir string, m *Manifest, data [][]byte) error {
+	sm := *m
+	sm.Parts = slices.Clone(m.Parts)
+	for i := range sm.Parts {
+		sm.Parts[i].Off = 0
 	}
-	m := d.manifest(parts)
-	for i := range m.Parts {
-		m.Parts[i].Off = 0
-	}
-	mj, err := json.MarshalIndent(m, "", " ")
+	mj, err := json.MarshalIndent(&sm, "", " ")
 	if err != nil {
 		return err
 	}
@@ -223,8 +298,8 @@ func (d *Document) WriteSplit(dir string) error {
 	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), mj, 0o644); err != nil {
 		return err
 	}
-	for _, p := range parts {
-		if err := os.WriteFile(filepath.Join(dir, "parts", p.entry.H.String()), p.data, 0o644); err != nil {
+	for i, e := range sm.Parts {
+		if err := os.WriteFile(filepath.Join(dir, "parts", e.H.String()), data[i], 0o644); err != nil {
 			return err
 		}
 	}
