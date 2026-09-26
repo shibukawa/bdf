@@ -78,7 +78,8 @@ func TestLookupStencil(t *testing.T) {
 			t.Errorf("%s: found %q", name, st.name)
 		}
 	}
-	if lookupStencil("mxgraph.flowchart.decision") != lookupStencil("mxgraph.flowchart.decision") {
+	first, second := lookupStencil("mxgraph.flowchart.decision"), lookupStencil("mxgraph.flowchart.decision")
+	if first == nil || first != second {
 		t.Error("lookups return different stencils")
 	}
 }

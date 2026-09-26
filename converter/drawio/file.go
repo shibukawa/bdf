@@ -231,14 +231,6 @@ func (n *xmlNode) childrenNamed(name string) []*xmlNode {
 	return out
 }
 
-func (n *xmlNode) attr(name string) (string, bool) {
-	if n == nil {
-		return "", false
-	}
-	v, ok := n.attrs[name]
-	return v, ok
-}
-
 // parseXML reads an XML document into an element tree (names without
 // namespace prefixes).
 func parseXML(data []byte) (*xmlNode, error) {

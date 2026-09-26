@@ -42,8 +42,6 @@ type cellState struct {
 	visiting  bool
 }
 
-func (s *cellState) isEdge() bool   { return s.cell.edge }
-func (s *cellState) isVertex() bool { return s.cell.vertex }
 func (s *cellState) cx() float64    { return s.x + s.w/2 }
 func (s *cellState) cy() float64    { return s.y + s.h/2 }
 func (s *cellState) bounds() rect   { return rect{s.x, s.y, s.w, s.h} }
@@ -56,17 +54,6 @@ func (s *cellState) perimeterBounds(border float64) rect {
 		r = r.grow(border)
 	}
 	return r
-}
-
-// terminalPoint returns the first (source) or last point of an edge.
-func (s *cellState) terminalPoint(source bool) *point {
-	if len(s.absPoints) == 0 {
-		return nil
-	}
-	if source {
-		return s.absPoints[0]
-	}
-	return s.absPoints[len(s.absPoints)-1]
 }
 
 // setAbsoluteTerminalPoint sets the first (source) or last point of an edge.

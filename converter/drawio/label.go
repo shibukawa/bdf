@@ -326,8 +326,6 @@ func (c *converter) layoutHTML(l *labelBox, value string, root *tstyle, t textPr
 		} else {
 			wrapW = fw
 		}
-	} else if fixedItemW >= 0 {
-		// no wrapping, but the item has a width
 	}
 	lo := layoutParagraphs(paras, wrapW)
 	itemW := lo.width
@@ -515,9 +513,7 @@ func (c *converter) layoutPlain(l *labelBox, value string, root *tstyle, t textP
 			tb.paras = append(tb.paras, p)
 		}
 		ln := &tline{para: p, first: true}
-		for _, it := range p.items {
-			ln.items = append(ln.items, it)
-		}
+		ln.items = append(ln.items, p.items...)
 		for len(ln.items) > 0 && ln.items[0].space {
 			ln.items = ln.items[1:]
 		}

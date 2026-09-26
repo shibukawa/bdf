@@ -469,7 +469,7 @@ func visitTableCells(v *graphView, table *cell, visitor func(it *tableIter, colC
 				px = lastCol.point.x
 			}
 			py := start.y + rowStart.y
-			if lastRow != nil && len(lastRow) > 0 && lastRow[0] != nil {
+			if len(lastRow) > 0 && lastRow[0] != nil {
 				py = lastRow[0].point.y
 			}
 			it.point = point{gw + px, gh + py}

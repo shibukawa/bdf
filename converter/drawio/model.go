@@ -165,9 +165,6 @@ func attrNum(n *xmlNode, name string, def float64) float64 {
 	return def
 }
 
-// isLayer reports whether c is a layer: a child of the root.
-func (m *model) isLayer(c *cell) bool { return c != nil && c.parent == m.root && c != m.root }
-
 // label returns the text of a cell's label with placeholders replaced
 // (Graph.getLabel / replacePlaceholders): %name% stands for an attribute
 // of the cell or, failing that, of its ancestors; %page%, %pagenumber% and
