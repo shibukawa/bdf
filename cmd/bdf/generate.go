@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
-	"github.com/shibukawa/bdf/converter/pdf"
-	"github.com/shibukawa/bdf/converter/pptx"
+	_ "github.com/shibukawa/bdf/converter/all" // every input format
 	"github.com/shibukawa/bdf/imgconv"
 )
 
@@ -20,10 +20,15 @@ type stringList []string
 func (l *stringList) String() string     { return strings.Join(*l, ",") }
 func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
 
-// generate converts a PDF or PowerPoint file into a BDF document.
+// generate converts a file in one of the registered input formats into a
+// BDF document.
 func generate(args []string) {
 	fs := flag.NewFlagSet("generate", flag.ExitOnError)
-	format := fs.String("format", "auto", "input format: auto, pdf or pptx")
+	var names []string
+	for _, f := range converter.Formats() {
+		names = append(names, f.Name)
+	}
+	format := fs.String("format", "auto", "input format: auto (detected from the content) or one of "+strings.Join(names, ", "))
 	title := fs.String("title", "", "document title (default: from the input); the same as -dc title=...")
 	var dcFlags stringList
 	fs.Var(&dcFlags, "dc", "Dublin Core element as name=value, e.g. creator=Alice (repeatable; replaces the element read from the input, name= removes it)")
@@ -36,14 +41,23 @@ func generate(args []string) {
 	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
 	kind := fs.String("kind", "fixed", "PDF: view kind, fixed or flow")
 	noShare := fs.Bool("no-share", false, "PDF: do not move the instruction prefix pages have in common into a shared object")
-	fonts := fs.String("fonts", "embed", "PowerPoint: embed (subset and embed the fonts used for layout) or system (refer to fonts by name)")
+	fonts := fs.String("fonts", "embed", "PowerPoint, metafiles: embed (subset and embed the fonts used for layout) or system (refer to fonts by name)")
 	var fontDirs stringList
-	fs.Var(&fontDirs, "font-dir", "PowerPoint: directory searched for fonts before the system ones (repeatable)")
-	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint: use only the fonts under -font-dir")
-	hidden := fs.Bool("hidden", false, "PowerPoint: include hidden slides")
+	fs.Var(&fontDirs, "font-dir", "PowerPoint, metafiles: directory searched for fonts before the system ones (repeatable)")
+	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, metafiles: use only the fonts under -font-dir")
+	hidden := fs.Bool("hidden", false, "PowerPoint: include hidden slides (the same as -param hidden=true)")
+	var paramFlags stringList
+	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: bdf generate [flags] <in.pdf | in.pptx> <out.bdf | outdir/>\n  an output path ending with / writes the split form")
+		fmt.Fprintln(os.Stderr, "usage: bdf generate [flags] <input> <out.bdf | outdir/>\n  an output path ending with / writes the split form")
 		fs.PrintDefaults()
+		fmt.Fprintln(os.Stderr, "\ninput formats:")
+		for _, f := range converter.Formats() {
+			fmt.Fprintf(os.Stderr, "  %-6s %s (%s)\n", f.Name, f.Description, strings.Join(f.Extensions, " "))
+			for _, p := range f.Params {
+				fmt.Fprintf(os.Stderr, "         -param %s=…: %s\n", p.Name, p.Usage)
+			}
+		}
 	}
 	fs.Parse(args)
 	if fs.NArg() != 2 {
@@ -75,45 +89,39 @@ func generate(args []string) {
 	if *title != "" {
 		dc.Title = bdf.DCValues{*title}
 	}
-	f := converter.Format(*format)
+	opts := &converter.Options{Title: dc.Title.First(), Pages: sel, Images: imgOpts,
+		FontDirs: fontDirs, NoSystemFonts: *noSystemFonts, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType,
+		Params: map[string]string{"kind": *kind, "no-share": strconv.FormatBool(*noShare), "hidden": strconv.FormatBool(*hidden)}}
+	switch *fonts {
+	case "embed":
+	case "system":
+		opts.SystemFonts = true
+	default:
+		usageError("-fonts must be embed or system")
+	}
+	for _, kv := range paramFlags {
+		name, value, ok := strings.Cut(kv, "=")
+		if !ok || name == "" {
+			usageError("-param " + kv + ": want name=value")
+		}
+		opts.Params[name] = value
+	}
+	var f *converter.Format
 	if *format == "auto" {
 		f, err = converter.DetectFile(in)
 		check(err)
-	}
-
-	var (
-		doc      *bdf.Document
-		warnings []string
-		summary  string
-	)
-	switch f {
-	case converter.PDF:
-		opts := &pdf.Options{Title: dc.Title.First(), Pages: sel, Kind: *kind, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType,
-			NoSharePrefix: *noShare, Images: imgOpts}
-		res, err := pdf.ConvertFile(in, opts)
-		check(err)
-		doc, warnings = res.Doc, res.Warnings
-		summary = fmt.Sprintf("%d page(s), %d shared prefix(es) saving %d bytes", res.Pages, res.SharedPrefixes, res.SharedBytes)
-	case converter.PPTX:
-		opts := &pptx.Options{Title: dc.Title.First(), Slides: sel, Hidden: *hidden, Images: imgOpts,
-			FontDirs: fontDirs, NoSystemFonts: *noSystemFonts, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType}
-		switch *fonts {
-		case "embed":
-		case "system":
-			opts.SystemFonts = true
-		default:
-			usageError("-fonts must be embed or system")
+		if f == nil {
+			if strings.EqualFold(filepath.Ext(in), ".ppt") {
+				usageError(in + ": legacy .ppt files are not supported; save as .pptx first")
+			}
+			usageError(in + ": unknown input format (want one of " + strings.Join(names, ", ") + ")")
 		}
-		res, err := pptx.ConvertFile(in, opts)
-		check(err)
-		doc, warnings = res.Doc, res.Warnings
-		summary = fmt.Sprintf("%d slide(s), %d embedded font(s)", res.Slides, res.EmbeddedFonts)
-	default:
-		if strings.EqualFold(filepath.Ext(in), ".ppt") {
-			usageError(in + ": legacy .ppt files are not supported; save as .pptx first")
-		}
-		usageError(in + ": unknown input format (want PDF or PowerPoint .pptx)")
+	} else if f = converter.Lookup(*format); f == nil {
+		usageError("-format " + *format + ": unknown format (want auto or one of " + strings.Join(names, ", ") + ")")
 	}
+	res, err := converter.ConvertFile(in, f.Name, opts)
+	check(err)
+	doc, warnings := res.Doc, res.Warnings
 	for _, name := range bdf.DCTerms {
 		if v := *dc.Field(name); v != nil {
 			*doc.Meta.DC.Field(name) = v
@@ -129,7 +137,7 @@ func generate(args []string) {
 	} else {
 		check(writeSingle(doc, out))
 	}
-	fmt.Fprintf(os.Stderr, "%s: %s, %d warning(s)\n", out, summary, len(warnings))
+	fmt.Fprintf(os.Stderr, "%s: %s, %d warning(s)\n", out, res.Summary, len(warnings))
 }
 
 // parseDC reads -dc name=value flags into the elements they replace. An

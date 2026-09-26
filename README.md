@@ -63,10 +63,22 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 - The single-file and split-file forms convert into each other without re-encoding (the single file starts with the magic `bdf\0`)
 - The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information and a PowerPoint deck's core properties
 
-Documents are converted with the `bdf generate` subcommand, which tells PDF and PowerPoint input apart by its content.
+Documents are converted with the `bdf generate` subcommand, which tells the input formats apart by their content.
 
 - **PDF** (`converter/pdf`): rebuilds embedded fonts (TrueType, CFF, OpenType, Type1) into WOFF2 files that hold only the glyphs in use. It checks the OS/2 embedding permission (`fsType`) and carries the copyright notices over. It also turns form XObjects into shared objects and text into searchable runs, and moves the content common to the top of every page (the master) into a shared object. See §3.1 of design.md for details.
 - **PowerPoint .pptx** (`converter/pptx`): draws DrawingML directly. The shapes of slide masters and layouts become layer objects shared between slides, preset shapes come from the ECMA-376 shape formulas, and text is wrapped by the converter (Japanese line breaking rules, vertical text, bullets, paragraph formatting). Tables, charts, SmartArt and EMF/WMF pictures are drawn too. The fonts used for layout are embedded as WOFF2 subsets, so the result does not depend on the viewer's fonts. See §3.4 of design.md for details.
+- **Windows metafiles .emf / .wmf** (`converter/emf`): one page the size of the picture, drawn by replaying the metafile's records (the replay that also draws the metafile pictures inside Office documents). Text is laid out and its fonts embedded as for PowerPoint.
+
+The input formats are static plugins: each converter package registers its format with the `converter` package when it is imported, and a program supports the formats whose packages it links in.
+
+```go
+import (
+	"github.com/shibukawa/bdf/converter"
+	_ "github.com/shibukawa/bdf/converter/pdf" // or converter/all for every format
+)
+
+res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" detects the format
+```
 
 ## Documentation
 
@@ -83,10 +95,12 @@ The documents are in Japanese.
 | `fixture/` | Generates the sample document (with embedded fonts) |
 | `imgconv/` | How images are stored (as is, or converted to WebP). Bundles a pure-Go libwebp |
 | `woff2/` | TrueType/OpenType → WOFF2 (glyf transform and Brotli) |
-| `converter/` | Shared converter code (input format detection, page ranges) |
+| `converter/` | Registry of the input formats, shared options, format detection, page ranges |
 | `converter/pdf` | PDF → bdf converter |
 | `converter/pptx` | PowerPoint (.pptx) → bdf converter |
-| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`) |
+| `converter/emf` | Windows metafile (.emf, .wmf) → bdf converter |
+| `converter/all` | Registers every input format (import for its side effect) |
+| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`), objects under construction (`canvas`), EMF/WMF replay (`metafile`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering, Worker |
 | `examples/viewer` | Demo viewer |
@@ -102,7 +116,8 @@ go run ./cmd/bdf ls out.bdf          # list parts
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # convert to the split form
 
-# PDF / PowerPoint → bdf (the format is detected from the content; -format pdf|pptx forces it)
+# PDF / PowerPoint / metafiles → bdf (the format is detected from the content; -format pdf|pptx|emf forces it)
+go run ./cmd/bdf generate -h                  # flags and the input formats with their -param options
 go run ./cmd/bdf generate in.pdf out.bdf      # single-file form
 go run ./cmd/bdf generate in.pptx out/        # split form
 go run ./cmd/bdf generate -pages 1-3 in.pptx out.bdf   # select pages (slides)
@@ -114,7 +129,8 @@ go run ./cmd/bdf generate -kind flow in.pdf out.bdf    # PDF: make a flow view
 go run ./cmd/bdf generate -no-share in.pdf out.bdf     # PDF: do not move the common top of each page (the master) into a shared object
 go run ./cmd/bdf generate -font-dir fonts/ in.pptx out.bdf   # PowerPoint: add a directory to search for fonts
 go run ./cmd/bdf generate -fonts system in.pptx out.bdf      # PowerPoint: refer to fonts by name instead of embedding them
-go run ./cmd/bdf generate -hidden in.pptx out.bdf            # PowerPoint: include hidden slides
+go run ./cmd/bdf generate -hidden in.pptx out.bdf            # PowerPoint: include hidden slides (-param hidden=true)
+go run ./cmd/bdf generate in.emf out.bdf                     # Windows metafile (.emf or .wmf) as one page
 go build -tags bdf_noconv ./...                    # build without codecs (WebP, Brotli for WOFF2), for the browser
 GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD codecs (AVX2 required on amd64)
 

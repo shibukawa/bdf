@@ -4,21 +4,28 @@
 // gets a background layer, the non-placeholder shapes of its slide master
 // and slide layout as master layers, and its own shapes as the body layer.
 // Master and layout layers are identical objects on every slide that uses
-// them, so the container stores them once. Text is laid out here (BDF has
-// no layout engine) with the metrics of the fonts that are then embedded as
-// subsets. See docs/design.md §3.4.
+// them, so the container stores them once. The shapes are drawn by the
+// DrawingML renderer that the Office converters share
+// (converter/internal/ooxml/drawingml), which lays text out with the
+// metrics of the fonts that are then embedded as subsets; this package adds
+// what PresentationML defines: slides, layouts, masters and their
+// placeholders. See docs/design.md §3.4.
 package pptx
 
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
+	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
 	"github.com/shibukawa/bdf/imgconv"
 )
 
@@ -66,32 +73,24 @@ type Result struct {
 }
 
 type converter struct {
-	pkg      *pkg
+	pkg      *ooxml.Package
 	opts     *Options
 	doc      *bdf.Document
-	db       *fontdb.DB
+	fonts    *fontset.Set
+	cvs      *canvas.Builder
+	r        *drawingml.Renderer
 	warnings []string
 	warned   map[string]bool
 
 	presPart     string
-	pres         *node
+	pres         *ooxml.Node
 	slideW       float64
 	slideH       float64
 	firstSlide   int
-	defTextStyle *node
-	themes       map[string]*theme
+	defTextStyle *ooxml.Node
 
-	canvases      []*canvas
-	faceRunes     map[*fontdb.Face]map[rune]bool
-	choices       map[resolveKey]*faceChoice
-	fallback      map[fallbackKey]*faceChoice
-	fallbackLists map[fallbackListKey][]fontdb.Resolved
-	missing       map[rune]bool  // characters no available font has
 	pageOf        map[string]int // slide part → page number in the output
 	pages         int
-	images        map[string]*imageEntry
-	patterns      map[string]bdf.Hash
-	tableStyles   map[string]*node
 	embeddedFonts int
 }
 
@@ -114,39 +113,39 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
-	p, err := openPkg(r, size)
+	p, err := ooxml.Open(r, size)
 	if err != nil {
 		return nil, fmt.Errorf("pptx: %w", err)
 	}
-	c := &converter{pkg: p, opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{},
-		themes: map[string]*theme{}, faceRunes: map[*fontdb.Face]map[rune]bool{},
-		choices: map[resolveKey]*faceChoice{}, fallback: map[fallbackKey]*faceChoice{},
-		fallbackLists: map[fallbackListKey][]fontdb.Resolved{}, pageOf: map[string]int{}, missing: map[rune]bool{},
-		images: map[string]*imageEntry{}, patterns: map[string]bdf.Hash{}}
-	c.db = fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
-	if len(c.db.Faces) == 0 && !opts.SystemFonts {
+	c := &converter{pkg: p, opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{}, pageOf: map[string]int{}}
+	warn := func(msg string) { c.warnf("%s", msg) }
+	db := fontdb.New(opts.FontDirs, !opts.NoSystemFonts)
+	c.fonts = fontset.New(db, warn)
+	c.cvs = canvas.NewBuilder(c.doc, c.fonts)
+	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, Warn: warn})
+	if len(db.Faces) == 0 && !opts.SystemFonts {
 		c.warnf("no fonts found; text is laid out with estimated metrics and not embedded")
 	}
 
 	c.presPart = "ppt/presentation.xml"
-	if r, ok := p.relOfType("", "/officeDocument"); ok {
+	if r, ok := p.RelOfType("", "/officeDocument"); ok {
 		c.presPart = r.Target
 	}
-	c.pres, err = p.xml(c.presPart)
+	c.pres, err = p.XML(c.presPart)
 	if err != nil {
 		return nil, fmt.Errorf("pptx: %w", err)
 	}
-	sz := c.pres.child("sldSz")
-	c.slideW, c.slideH = sz.emuAttr("cx", 720), sz.emuAttr("cy", 540)
+	sz := c.pres.Child("sldSz")
+	c.slideW, c.slideH = sz.AttrEMU("cx", 720), sz.AttrEMU("cy", 540)
 	if c.slideW <= 0 || c.slideH <= 0 || c.slideW > 20000 || c.slideH > 20000 {
 		c.slideW, c.slideH = 720, 540
 	}
-	c.firstSlide = int(c.pres.attrInt("firstSlideNum", 1))
-	c.defTextStyle = c.pres.child("defaultTextStyle")
-	c.loadTableStyles()
+	c.firstSlide = int(c.pres.AttrInt("firstSlideNum", 1))
+	c.defTextStyle = c.pres.Child("defaultTextStyle")
+	c.r.LoadTableStyles(c.presPart)
 
 	c.doc.Meta.Source = "pptx"
-	c.doc.Meta.DC = c.coreProps()
+	c.doc.Meta.DC = p.CoreProperties()
 	if opts.Title != "" {
 		c.doc.Meta.DC.Title = bdf.DCValues{opts.Title}
 	}
@@ -160,11 +159,11 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 
 	var slides []string
 	var hidden []bool
-	for _, s := range c.pres.path("sldIdLst").children("sldId") {
-		if r, ok := p.target(c.presPart, s.rid("id")); ok {
+	for _, s := range c.pres.Path("sldIdLst").Children("sldId") {
+		if r, ok := p.Target(c.presPart, s.RelID("id")); ok {
 			slides = append(slides, r.Target)
-			sn, err := p.xml(r.Target)
-			hidden = append(hidden, err == nil && !sn.attrBool("show", true))
+			sn, err := p.XML(r.Target)
+			hidden = append(hidden, err == nil && !sn.AttrBool("show", true))
 		}
 	}
 	sel := opts.Slides
@@ -183,7 +182,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	c.pages = len(sel)
 	type pageRef struct {
 		page   *bdf.Page
-		layers []*canvas
+		layers []*canvas.Canvas
 	}
 	var pages []pageRef
 	for _, n := range sel {
@@ -195,9 +194,9 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			return nil, fmt.Errorf("pptx: slide %d: %w", n, err)
 		}
 		page := view.AddPage(f32(c.slideW), f32(c.slideH))
-		var kept []*canvas
+		var kept []*canvas.Canvas
 		for _, l := range layers {
-			if l.cv.drawn {
+			if l.cv.Drawn {
 				page.Layers = append(page.Layers, bdf.Layer{Role: l.role})
 				kept = append(kept, l.cv)
 			}
@@ -205,25 +204,10 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		pages = append(pages, pageRef{page, kept})
 	}
 	c.finalize()
-	if len(c.missing) > 0 {
-		var rs []rune
-		for r := range c.missing {
-			rs = append(rs, r)
-		}
-		slices.Sort(rs)
-		var b strings.Builder
-		for i, r := range rs {
-			if i == 20 {
-				fmt.Fprintf(&b, " … (%d more)", len(rs)-20)
-				break
-			}
-			fmt.Fprintf(&b, " %c U+%04X", r, r)
-		}
-		c.warnf("no available font has glyphs for:%s; viewers draw them with their own fonts", b.String())
-	}
+	c.fonts.ReportMissing()
 	for _, pr := range pages {
 		for i, cv := range pr.layers {
-			pr.page.Layers[i].Obj = cv.hash
+			pr.page.Layers[i].Obj = cv.Hash()
 		}
 		if len(pr.page.Layers) == 0 {
 			// An empty slide still needs something to draw.
@@ -258,93 +242,34 @@ func (c *converter) warnOnce(key, format string, args ...any) {
 	c.warnf(format, args...)
 }
 
-// coreProps reads the core properties, which are mostly Dublin Core
-// already (ECMA-376 Part 2 §11); the keywords become subjects.
-func (c *converter) coreProps() bdf.DublinCore {
-	var dc bdf.DublinCore
-	r, ok := c.pkg.relOfType("", "/core-properties")
-	if !ok {
-		return dc
-	}
-	n, err := c.pkg.xml(r.Target)
-	if err != nil {
-		return dc
-	}
-	for _, e := range []struct {
-		f    *bdf.DCValues
-		name string
-	}{
-		{&dc.Title, "title"}, {&dc.Creator, "creator"}, {&dc.Subject, "subject"}, {&dc.Description, "description"},
-		{&dc.Identifier, "identifier"}, {&dc.Language, "language"}, {&dc.Created, "created"}, {&dc.Modified, "modified"},
-	} {
-		for _, k := range n.children(e.name) {
-			if s := strings.TrimSpace(k.text()); s != "" {
-				*e.f = append(*e.f, s)
-			}
-		}
-	}
-	dc.Subject = append(dc.Subject, bdf.SplitKeywords(n.child("keywords").text())...)
-	return dc
-}
-
 // textStyleLang returns the language of the presentation's default text
 // style: that of text whose runs name no language.
 func (c *converter) textStyleLang() string {
 	for _, name := range []string{"defPPr", "lvl1pPr"} {
-		if l := normLang(c.defTextStyle.path(name, "defRPr").attrStr("lang", "")); l != "" {
+		if l := canvas.NormLang(c.defTextStyle.Path(name, "defRPr").AttrStr("lang", "")); l != "" {
 			return l
 		}
 	}
 	return ""
 }
 
-// normLang cleans up a language tag from the markup; "" means unknown.
-func normLang(l string) string {
-	l = strings.TrimSpace(l)
-	if strings.EqualFold(l, "x-none") {
-		return ""
-	}
-	return l
-}
-
-func (c *converter) theme(masterPart string) *theme {
-	r, ok := c.pkg.relOfType(masterPart, "/theme")
-	if !ok {
-		return defaultTheme
-	}
-	if th, ok := c.themes[r.Target]; ok {
-		return th
-	}
-	n, err := c.pkg.xml(r.Target)
-	if err != nil {
-		c.warnf("theme: %v", err)
-		n = nil
-	}
-	th := parseTheme(n)
-	if th != defaultTheme {
-		th.part = r.Target
-	}
-	c.themes[r.Target] = th
-	return th
-}
-
 // layer is one page layer being drawn.
 type layer struct {
 	role string
-	cv   *canvas
+	cv   *canvas.Canvas
 }
 
-// slideCtx carries what rendering a slide needs from its layout, master
-// and theme.
+// slideCtx is a slide with its layout and master. It is the host of the
+// slide's drawing: placeholders inherit from the layout and the master,
+// whose text styles apply.
 type slideCtx struct {
 	c                     *converter
+	d                     *drawingml.Drawing
 	part, layoutPart      string
 	masterPart            string
-	slide, layout, master *node
-	th                    *theme
-	cc                    *colorCtx
+	slide, layout, master *ooxml.Node
 	num                   int
-	layoutPh, masterPh    []*node
+	layoutPh, masterPh    []*ooxml.Node
 }
 
 // renderSlideSafe renders a slide; a malformed slide that trips the
@@ -362,65 +287,63 @@ func (c *converter) renderSlideSafe(part string, num int) (layers []layer, err e
 
 func (c *converter) renderSlide(part string, num int) ([]layer, error) {
 	p := c.pkg
-	slide, err := p.xml(part)
+	slide, err := p.XML(part)
 	if err != nil {
 		return nil, err
 	}
 	s := &slideCtx{c: c, part: part, slide: slide, num: num}
-	if r, ok := p.relOfType(part, "/slideLayout"); ok {
+	if r, ok := p.RelOfType(part, "/slideLayout"); ok {
 		s.layoutPart = r.Target
-		s.layout, _ = p.xml(r.Target)
+		s.layout, _ = p.XML(r.Target)
 	}
 	if s.layout != nil {
-		if r, ok := p.relOfType(s.layoutPart, "/slideMaster"); ok {
+		if r, ok := p.RelOfType(s.layoutPart, "/slideMaster"); ok {
 			s.masterPart = r.Target
-			s.master, _ = p.xml(r.Target)
+			s.master, _ = p.XML(r.Target)
 		}
 	}
-	s.th = c.theme(s.masterPart)
 	clrMap := map[string]string{}
-	for k, v := range defaultClrMap {
-		clrMap[k] = v
+	if cm := s.master.Child("clrMap"); cm != nil {
+		for _, a := range cm.Attrs {
+			clrMap[a.Name.Local] = a.Value
+		}
 	}
-	for _, a := range s.master.child("clrMap").attrs() {
-		clrMap[a.Name.Local] = a.Value
-	}
-	for _, src := range []*node{s.layout, s.slide} {
-		if ov := src.path("clrMapOvr", "overrideClrMapping"); ov != nil {
-			for _, a := range ov.Attr {
+	for _, src := range []*ooxml.Node{s.layout, s.slide} {
+		if ov := src.Path("clrMapOvr", "overrideClrMapping"); ov != nil {
+			for _, a := range ov.Attrs {
 				clrMap[a.Name.Local] = a.Value
 			}
 		}
 	}
-	s.cc = &colorCtx{scheme: s.th.colors, clrMap: clrMap}
+	s.d = c.r.NewDrawing(s.masterPart, clrMap, s)
 	s.layoutPh = placeholders(s.layout)
 	s.masterPh = placeholders(s.master)
 
 	var layers []layer
-	bg := layer{bdf.RoleBackground, c.newCanvas()}
+	bg := layer{bdf.RoleBackground, c.cvs.New()}
 	s.background(bg.cv)
 	layers = append(layers, bg)
-	showMaster := slide.attrBool("showMasterSp", true)
-	if showMaster && s.layout.attrBool("showMasterSp", true) && s.master != nil {
-		l := layer{bdf.RoleMaster, c.newCanvas()}
-		s.drawTree(l.cv, s.master.path("cSld", "spTree"), s.masterPart, false)
+	showMaster := slide.AttrBool("showMasterSp", true)
+	if showMaster && s.layout.AttrBool("showMasterSp", true) && s.master != nil {
+		l := layer{bdf.RoleMaster, c.cvs.New()}
+		s.d.DrawTree(l.cv, s.master.Path("cSld", "spTree"), s.masterPart)
 		layers = append(layers, l)
 	}
 	if showMaster && s.layout != nil {
-		l := layer{bdf.RoleMaster, c.newCanvas()}
-		s.drawTree(l.cv, s.layout.path("cSld", "spTree"), s.layoutPart, false)
+		l := layer{bdf.RoleMaster, c.cvs.New()}
+		s.d.DrawTree(l.cv, s.layout.Path("cSld", "spTree"), s.layoutPart)
 		layers = append(layers, l)
 	}
-	body := layer{bdf.RoleBody, c.newCanvas()}
-	s.drawTree(body.cv, slide.path("cSld", "spTree"), part, true)
+	body := layer{bdf.RoleBody, c.cvs.New()}
+	s.d.DrawTree(body.cv, slide.Path("cSld", "spTree"), part)
 	layers = append(layers, body)
 	return layers, nil
 }
 
 // placeholders lists the placeholder shapes of a layout or master.
-func placeholders(root *node) []*node {
-	var out []*node
-	for _, k := range root.path("cSld", "spTree").kids() {
+func placeholders(root *ooxml.Node) []*ooxml.Node {
+	var out []*ooxml.Node
+	for _, k := range root.Path("cSld", "spTree").Elements() {
 		if phOf(k) != nil {
 			out = append(out, k)
 		}
@@ -429,16 +352,9 @@ func placeholders(root *node) []*node {
 }
 
 // phOf returns the p:ph element of a shape, or nil.
-func phOf(sh *node) *node {
-	for _, nv := range []string{"nvSpPr", "nvPicPr", "nvGraphicFramePr", "nvGrpSpPr", "nvCxnSpPr"} {
-		if ph := sh.path(nv, "nvPr", "ph"); ph != nil {
-			return ph
-		}
-	}
-	return nil
-}
+func phOf(sh *ooxml.Node) *ooxml.Node { return drawingml.PlaceholderOf(sh) }
 
-func phType(ph *node) string { return ph.attrStr("type", "obj") }
+func phType(ph *ooxml.Node) string { return ph.AttrStr("type", "obj") }
 
 // masterPhType maps a placeholder type to the master placeholder it inherits from.
 func masterPhType(t string) string {
@@ -452,12 +368,12 @@ func masterPhType(t string) string {
 }
 
 // findPh finds the placeholder a shape inherits from: by index, then by type.
-func findPh(list []*node, ph *node, master bool) *node {
+func findPh(list []*ooxml.Node, ph *ooxml.Node, master bool) *ooxml.Node {
 	t := phType(ph)
 	if !master {
-		if idx, ok := ph.attr("idx"); ok {
+		if idx, ok := ph.Attr("idx"); ok {
 			for _, k := range list {
-				if v, ok := phOf(k).attr("idx"); ok && v == idx {
+				if v, ok := phOf(k).Attr("idx"); ok && v == idx {
 					return k
 				}
 			}
@@ -486,15 +402,110 @@ func findPh(list []*node, ph *node, master bool) *node {
 }
 
 // txStyleFor returns the master text style a placeholder type uses.
-func (s *slideCtx) txStyleFor(t string) *node {
-	ts := s.master.child("txStyles")
+func (s *slideCtx) txStyleFor(t string) *ooxml.Node {
+	ts := s.master.Child("txStyles")
 	switch masterPhType(t) {
 	case "title":
-		return ts.child("titleStyle")
+		return ts.Child("titleStyle")
 	case "body":
-		return ts.child("bodyStyle")
+		return ts.Child("bodyStyle")
 	}
-	return ts.child("otherStyle")
+	return ts.Child("otherStyle")
+}
+
+// background fills the page with the first background of slide, layout
+// and master (the color scheme's bg1 when none has one).
+func (s *slideCtx) background(cv *canvas.Canvas) {
+	for _, src := range []struct {
+		n    *ooxml.Node
+		part string
+	}{{s.slide, s.part}, {s.layout, s.layoutPart}, {s.master, s.masterPart}} {
+		if bg := src.n.Path("cSld", "bg"); bg != nil {
+			s.d.DrawBackground(cv, bg, src.part, s.c.slideW, s.c.slideH)
+			return
+		}
+	}
+	s.d.DrawBackground(cv, nil, "", s.c.slideW, s.c.slideH)
+}
+
+// Placeholder implements drawingml.Host: the placeholders of a slide
+// inherit from the layout's placeholder, which inherits from the
+// master's; those of layouts and masters are not drawn.
+func (s *slideCtx) Placeholder(ph *ooxml.Node, part string) ([]drawingml.Inherited, bool) {
+	if part != s.part {
+		return nil, false
+	}
+	var inh []drawingml.Inherited
+	mph := ph
+	if lp := findPh(s.layoutPh, ph, false); lp != nil {
+		inh = append(inh, drawingml.Inherited{Node: lp, Part: s.layoutPart})
+		mph = phOf(lp)
+	}
+	if mp := findPh(s.masterPh, mph, true); mp != nil {
+		inh = append(inh, drawingml.Inherited{Node: mp, Part: s.masterPart})
+	}
+	return inh, true
+}
+
+// TextStyle implements drawingml.Host: placeholders take the master's text
+// style for their type, other shapes the presentation's default text style.
+func (s *slideCtx) TextStyle(phType string) *ooxml.Node {
+	if phType == "" {
+		return s.c.defTextStyle
+	}
+	return s.txStyleFor(phType)
+}
+
+// Field implements drawingml.Host: slide numbers.
+func (s *slideCtx) Field(typ string) (string, bool) {
+	if strings.HasPrefix(typ, "slidenum") {
+		return itoa(s.num), true
+	}
+	return "", false
+}
+
+// Link implements drawingml.Host: jumps to other slides.
+func (s *slideCtx) Link(action string, target ooxml.Rel) string {
+	if strings.HasPrefix(action, "ppaction://hlinkshowjump") {
+		cur := s.c.pageOf[s.part]
+		switch {
+		case strings.Contains(action, "nextslide"):
+			return pageLink(cur + 1)
+		case strings.Contains(action, "previousslide"):
+			return pageLink(cur - 1)
+		case strings.Contains(action, "firstslide"):
+			return pageLink(1)
+		case strings.Contains(action, "lastslide"):
+			return pageLink(s.c.pages)
+		}
+		return ""
+	}
+	if strings.HasSuffix(target.Type, "/slide") {
+		return pageLink(s.c.pageOf[target.Target])
+	}
+	return ""
+}
+
+func pageLink(n int) string {
+	if n < 1 {
+		return ""
+	}
+	return "#page=" + itoa(n)
 }
 
 func itoa(i int) string { return strconv.Itoa(i) }
+
+func f32(v float64) float32 {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0
+	}
+	return float32(v)
+}
+
+// finalize builds the embedded fonts and encodes every canvas.
+func (c *converter) finalize() {
+	if !c.opts.SystemFonts {
+		c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: c.opts.NoSubset, NoWOFF2: c.opts.NoWOFF2, IgnoreFSType: c.opts.IgnoreFSType})
+	}
+	c.cvs.Encode()
+}
