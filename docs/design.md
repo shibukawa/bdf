@@ -113,7 +113,7 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 
 デコードした画素の格納は、任意の画像型を受け取る `EncodePixels` でも行える。Keep では、可逆の元の画素は色数に合わせた最小の PNG（二色なら 1 ビットのパレット、グレー、256 色までのパレット）に、JPEG など非可逆の元の画素は JPEG（`Quality`）にする。Convert では、それより小さければ WebP にする。二値のスキャンの 1 ページ（A4 300dpi）は、RGB の PNG では 131KB、1 ビットの PNG では 67KB（元の G4 は 58KB）、WebP 可逆では 53KB になる。
 
-**解像度の上限**: ページ上の大きさが分かっているラスター入力（TIFF のページ）は、`Options.MaxDPI`（既定 192dpi）と `MaxPixels`（既定 3840 × 3840 画素）の両方を超えないよう縮小する（`FitSize` が大きさを決め、`Resize` が縮小する）。Keep と Convert のどちらでも効き、負の値で上限をなくす。考え方と実測は §3.13。
+**解像度の上限**: ページ上の大きさが分かっているラスター入力（TIFF のページ）は、`Options.MaxDPI`（既定 192dpi）と `MaxPixels`（既定 3840 × 3840 画素）の両方を超えないよう縮小する（`FitSize` が大きさを決め、`Resize` が縮小する）。Keep と Convert のどちらでも効き、負の値で上限をなくす。考え方と実測は §3.15。
 
 コーデックは libwebp（エンコーダのみ）を wasi-sdk で wasm にし、[shibukawa/wasm2go-fork](https://github.com/shibukawa/wasm2go-fork)（pgmem ブランチ）で純 Go に変換したもので、cgo も wasm ランタイムも使わない。生成物は `imgconv/internal/webpw`（スカラー、約 5MB、44 ファイル）と `imgconv/internal/webpwsimd`（SIMD、`GOEXPERIMENT=simd` 専用、後述）で、`tools/gen-codecs.sh` で再生成する。フォークの `-symbol-names`（関数名を wasm の name セクションから付ける）、`-group-files`（`vp8_enc.go` のように主題ごとのファイルに分ける）、`-addr-consts`（静的データのアドレスを名前付き定数にする）を使い、libwebp を更新しても差分が小さく収まるようにしている。gen2brain 同梱の wasm は name セクションが落とされているので、自前でビルドしている。
 
@@ -183,7 +183,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **SmartArt**: PowerPoint がデータモデルと一緒に保存している描画パート（`diagrams/drawingN.xml`）の図形を、グラフィックフレームを枠とするグループとして描く（テキストは `txXfrm` の枠に置き、その回転は図形の回転に足す）。
 - **EMF/WMF**: ブラウザは Windows メタファイルを表示できないので、画像として格納せずに GDI の状態機械（マップモード、ワールド変換、ペン・ブラシ・フォント、クリップ、パス、保存と復元）で記録を再生し、パス・テキスト・画像（DIB は PNG に）の命令にする。EMF はヘッダーの frame、WMF は placeable ヘッダーの範囲（なければ最初のウィンドウの原点と大きさ）を図の枠に合わせる。テキストは出力空間で正立させ、`dx` の文字送りと文字揃えに従う（WMF の ANSI 文字列は文字セットに応じて Shift_JIS などとして読む）。コメントに埋め込まれた EMF+ の記録は読まず、Office が並べて書く EMF の記録を使う。OLE オブジェクトのプレビューの多くはこれで描ける。再生は `converter/internal/metafile` にあり、描き込む先（Object とフォント・画像・言語の登録）とピクチャの色変更を渡せば他の変換器からも使える。
 - **画像の色効果**: 色の変更（`clrChange`、透明色の指定）、単色化（`clrRepl`）、複色（`duotone`）、二値化（`biLevel`）、グレースケール、明るさ・コントラスト（`lum`、PowerPoint と同じく明るさの半分をコントラストの前、半分を後に掛ける）を文書順に画素へ適用し、画像を作り直して格納する（`clrChange` の許容差は LibreOffice と同じく JPEG 15、PNG・TIFF 1、BMP 0、その他 9）。メタファイルでは記録の色と DIB に同じ効果を掛ける。
-- **その他**: 非表示スライドは既定で除く（`-hidden` で含める）。OLE オブジェクトはプレビュー画像を描く。画像は `imgconv`（§3.2）を通す。TIFF の画像は `converter/internal/tiff`（§3.13）で先頭のページを読み、ストリップを 1 本につなげる JPEG はそのまま、ほかはデコードして PNG（JPEG のページは JPEG）にしてから同じく `imgconv` を通す。色効果を掛けるときも同じ読み取りでデコードする。構造の壊れたスライドで描画が失敗した場合は空のページにして警告する。
+- **その他**: 非表示スライドは既定で除く（`-hidden` で含める）。OLE オブジェクトはプレビュー画像を描く。画像は `imgconv`（§3.2）を通す。TIFF の画像は `converter/internal/tiff`（§3.15）で先頭のページを読み、ストリップを 1 本につなげる JPEG はそのまま、ほかはデコードして PNG（JPEG のページは JPEG）にしてから同じく `imgconv` を通す。色効果を掛けるときも同じ読み取りでデコードする。構造の壊れたスライドで描画が失敗した場合は空のページにして警告する。
 - **未対応（警告を出す）**: EMF+ だけで書かれたメタファイル、レーダー・バブル・等高線グラフ、光彩・反射・ぼかしなどの効果、インク、旧形式（VML のみ）の OLE プレビュー、リンクされた（埋め込まれていない）画像、描画パートのない SmartArt。
 
 テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`）、変換結果は `testdata/pptx/` に置いて golden テストで描画を比較する。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセットだけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
@@ -311,7 +311,35 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 テスト用の図面は `test/dxf/gen.py` が ezdxf で作る（`npm run test:dxf:gen`、要 ezdxf。ezdxf の固定のメタデータで書くので毎回同じファイルになる）。shapes.dxf は各種の図形・文字・寸法・ハッチング・ブロックを、layout.dxf は平面図と A3 のレイアウト（表題欄と縮尺の違う 2 つのビューポート、片方で凍結した画層）を、r12-sjis.dxf は Shift_JIS の R12 図面を持つ。shapes-bin.dxf は shapes.dxf のバイナリ形式で、Go のテストは両者が同じ Object になることを確かめる。変換結果は `testdata/dxf/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は、公開されている AutoCAD 2004 形式の図面（Shift_JIS の日本語、寸法、ブロック、マルチ引出線を含む）でも変換を確かめた。
 
-## 3.13 TIFF → BDF 変換器（converter/tiff）の構造
+## 3.13 Jw_cad → BDF 変換器（converter/jww）の構造
+
+`converter/jww` は Jw_cad の図面ファイル（.jww）を読む。形式は作者が公開している「Jw_cad のデータ形式」（Jw_cad 7.02 の説明、jwdatafmt.txt）による。DOS 版の .jwc と、図形ファイルの .jws・.jwk は読まない。描くのは DXF と同じ `converter/internal/cad` である。
+
+- **読み込み**: .jww は MFC の CArchive でシリアライズしたもので、数値はリトルエンディアン、文字列は長さを前に置いた Shift_JIS（長さ 0xFF の後に 16 bit の長さ、その 0xFFFF の後に 32 bit の長さ。0xFFFE は UTF-16 の印）である。ヘッダーは仕様書の順に読み、後の版で増えた項目（Ver.2.23、2.25、2.30、3.00、4.20 以降など）はその版以降のファイルでだけ読む。図形データとブロック定義は CObList で、要素はクラスのタグ（初出は 0xFFFF・スキーマ・クラス名、以後は 0x8000 と番号）の後に続き、クラスとオブジェクトが同じ番号の列を共有する（MFC TN002）。寸法の中の線と文字のように Serialize を直接呼んだメンバーはタグを持たない。ブロック定義の CTime は Jw_cad のビルドによって 4 バイトか 8 バイトなので、両方を試す。読めない図形のクラスがあったり途中で切れていたりするファイルは、読めたところまでを描いて警告する。
+- **座標とページ**: JWW の座標は用紙上の mm（図寸）で、原点は用紙の中心、y が上向きである。レイヤグループの縮尺は寸法値（ファイルには文字として入っている）にしか効かないので、描画には使わない。ページは図面サイズ（A0〜A4、2A〜5A、10m・50m・100m）の用紙で、用紙の外に図形があればそれを含むまで広げる。文書の言語は `ja`、ファイルメモは Dublin Core の description にする。
+- **色と線**: 線色 1〜9（9 はグレー）と SXF の拡張線色（100 番以降）の色を、既定ではファイルに保存された画面の表示色で、画面の背景色の上に描く（Jw_cad の画面の見え方。`-param colors=print` でプリンタ出力色を白地に、`colors=mono` で白地に黒で描く）。線幅はプリンタ出力の線幅（線色ごと。Ver.3.51 以降は図形ごとの線幅が優先）で、「線幅を 1/100 mm 単位とする」設定なら 1/100 mm、そうでなければ 300 dpi（Ver.6.00 以降のファイルが 600 dpi と言っていれば 600 dpi）のドットとする。線種 2〜9 と倍長線種は、1 ユニットのビット数だけのビットパターンの 1 ビットをプリンタ出力ピッチのドットとして破線に直し、SXF の拡張線種は線分と空白の長さ（mm）をそのまま使う。ランダム線は直線で描く。補助線色と補助線種の図形、仮点、非表示のレイヤグループとレイヤの図形は描かない（Jw_cad も印刷しない）。
+- **図形**: 線、円・円弧（扁平率と傾き角の楕円を含む）、実点（プリンタ出力の点半径）、文字、寸法（線と値の文字、Ver.4.20 以降の補助線と端点）、ソリッド（四角形、任意色、円・扇形・弓形・円環・円周のソリッド）、ブロック（基準点・倍率・回転角で、入れ子も）を描く。
+- **文字**: Jw_cad の文字は固定ピッチで、全角の文字（Shift_JIS で 2 バイトの文字）は文字の幅、半角の文字はその半分の幅を取り、文字間隔を足したものが文字列の長さになる（ファイルに入っている終点もそう計算されている）。これを `cad.Text` のセル（文字ごとの送り幅）と字間で表し、フォントが同じ文字の並びごとにそのセルの幅へ伸縮して描く（FILL_TEXT の `advance` と TEXT_STYLE の letterSpacing）。1 文字ずつ位置を決めて描くと、テキスト抽出が字形とセルの隙間を空白と推定してしまうので、並びごとに 1 つの run にする。文字の大きさの縦を em にし、基点は文字の枠の左下（ベースラインは 0.14 em 上）とする。斜体と太字は文字種に足された 10000 と 20000 から、フォントは名前（全角の「ＭＳ ゴシック」なども NFKC で正規化して）から選ぶ。縦字は、文字の枠を基点の周りに時計回りに 90° 回したものとして、文字を 1 字ずつ立てて子 Object に描き、ALT_TEXT と USE_AT で 1 つの run にする（Office の縦書きと同じ方法、§3.4）。
+- **未対応（警告を出す）**: 画像（「^@BM」で始まる文字列と、Ver.7.00 以降のファイルに同梱された画像）、点コードの付いた点（矢印・ポイントマーカー。点として描く）、ランダム線の形、2.5D、.jwc・.jws・.jwk。
+
+テスト用の図面は `test/jww/gen.py` が仕様書どおりに CArchive を書いて作る（`npm run test:jww:gen`、標準ライブラリのみ）。shapes.jww は Jw_cad 7 の形式（データ版数 700。SXF の拡張線色・線種、図形ごとの線幅、8 バイトの CTime）で、各種の図形・線色・線種・文字・寸法・ソリッド・入れ子のブロックと、非表示のレイヤグループとレイヤ、補助線を持つ。old.jww は Jw_cad 3 の形式（版数 300、4 バイトの CTime）である。変換結果は `testdata/jww/` に置いて golden テストで描画を比較する。開発中は、公開されている JWW の図面（版数 220 で書かれたもの）でも変換を確かめ、同じ図面の DXF 版と図形と文字の位置が合うことを見た。
+
+## 3.14 SXF → BDF 変換器（converter/sxf）の構造
+
+`converter/sxf` は電子納品の CAD データ交換標準 SXF（Ver.2〜Ver.3.1）の図面を読む。仕様書は電子納品に関する要領・基準の Web サイト（cals-ed.go.jp）で公開されている「SXF Ver.3.1 仕様書・同解説」（フィーチャ仕様編、附属書 SFC 編、STEP AP202 サブセット編、共通既定義要素編）による。SXF には 2 つの書き方があり、納品に使う STEP AP202 の Part 21 ファイル（.p21。ZIP 圧縮したものが .p2z）と、CAD 間の受け渡しに使うフィーチャコメントのファイル（.sfc）である。どちらも読み、同じ `converter/internal/cad` で描く。属性ファイル（.saf）と、図面に添える画像（.tif など）は読まない。
+
+- **SFC**: STEP の DATA 節に、`/*SXF` と `SXF*/` で囲んだコメントとしてフィーチャ（`#10 = line_feature('1','8','1','1',…)`）が並ぶ。引数は `'…'` で囲んだ数値、`\'…\'` で囲んだ文字列（Shift_JIS）、`'(…)'` で囲んだ数値の並びである。複合曲線（`composite_curve_org_feature`）と複合図形（`sfig_org_feature`）と用紙（`drawing_sheet_feature`）は、その前の構造要素から後に書かれた要素をまとめたもので、ファイルの順から組み立てる。色・線種・線幅・文字フォント・レイヤは、既定義のもの（色 1〜16、線種 1〜15、線幅 1〜9）は番号で、ユーザ定義のものは定義の順の番号（色は 17、線種は 17、線幅は 11 から）で参照する。
+- **P21**: ISO 10303-21 の書き方（単純と複合のエンティティインスタンス、文字列の `\X2\`・`\X4\`・`\X\`・`\S\` の指示）を読み、`DRAWING_SHEET_REVISION` の要素から描く。要素は `STYLED_ITEM`（`ANNOTATION_CURVE_OCCURRENCE`・`TEXT_OCCURRENCE`・`SYMBOL_OCCURRENCE`・`FILL_AREA_OCCURRENCE`・`SUBFIGURE_OCCURRENCE`）で、スタイル（`CURVE_STYLE`・`TEXT_STYLE`・`SYMBOL_STYLE`・`FILL_AREA_STYLE`）と形（`LINE`・`POLYLINE`・`CIRCLE`・`ELLIPSE` とその `TRIMMED_CURVE`、`BEZIER_CURVE`・`B_SPLINE_CURVE_WITH_KNOTS`・`COMPOSITE_CURVE`・`CLOTHOID`、`TEXT_LITERAL_WITH_EXTENT`、`DEFINED_SYMBOL`、`ANNOTATION_FILL_AREA`、`MAPPED_ITEM`）を持つ。寸法・引出し線・バルーンは `DRAUGHTING_CALLOUT` の中身を描く。非表示は `INVISIBILITY` が指す要素と、そこが指すレイヤ（`PRESENTATION_LAYER_ASSIGNMENT`）の要素である。
+- **SCADEC の書き方**: SXF に対応した CAD の多くは、SXF の書き読みを OCF の SCADEC ライブラリで行う。SCADEC が書いた P21 ファイル（ヘッダーの FILE_NAME に SCADEC とある）は、同じ図面の SFC と比べると仕様書と違うところがあり、SCADEC が読み戻すとおりに読む。文字の配置点は、仕様書では文字列配置基点（名前の `$$SXF_topline left` などが 9 つの基点のどれかを言う）だが、SCADEC は下段の基点なら文字の高さの半分だけ上に、中段なら半分、上段なら高さだけ下にずらして書く。引出し線の矢印の向きは、引出し線から離れる向きではなく引出し線に向かう向きに書くので、引出し線の端から決める。角度寸法の円弧は、仕様書では反時計回り（`.T.`）に固定だが `.F.` と書くので、反時計回りに描く。SCADEC 以外が書いたファイルは仕様書のとおりに読む。
+- **座標とページ**: 座標は用紙上の mm で、y が上向きである。ページは用紙（A0〜A4 の縦横と、自由な大きさ）で、用紙の外に図形があればそれを含むまで広げる。背景色は、図面が属性（`$$ATRU$$…$$背景色$$色$$R_G_B` という名前の空のグループ）で言っていればその色、なければ SXF のビューアと同じ黒にする（`-param background=light` で白地に。白の線と文字は黒で描く）。背景色のグループ自体は描かない。文書の言語は `ja`、図面名（SFC の図面表題、P21 の `DRAUGHTING_TITLE`）はタイトルにする。
+- **色と線**: 既定義の色は SXF の表の RGB、線種は SXF の表のピッチ（線幅 0.5 mm のときの長さで、線幅に比例させる）、線幅は mm のとおりに描く。ユーザ定義の線種は線分と空白の長さのとおりである。
+- **図形**: 点マーカ、線分、折線、円、円弧、楕円、楕円弧、スプライン（3 次のベジェ曲線をつないだもの）、クロソイド（数値積分で点列にする）、文字、複合図形（配置点・回転角・尺度で。入れ子も、測地座標系の部分図は x と y を入れ替えて）、直線寸法・角度寸法・弧長寸法・半径寸法・直径寸法（寸法線、補助線、矢印 11 種、寸法値）、引出し線とバルーン、塗りつぶし（色、ハッチング 4 本まで、穴も）、背景色で塗る `Area_control` を描く。自分自身を配置する複合図形は 1 度だけ描く（警告を出す）。
+- **文字**: SXF の文字は、文字範囲の幅と高さ（全角の文字が半角の 2 倍の幅を取る固定ピッチ）の枠を、9 つの配置基点のどれかで置いたもので、JWW と同じく `cad.Text` のセルと字間で表す。文字範囲の高さを em にし、ベースラインは枠の下から 0.12 em 上とする。回転角、スラント角、縦書き（文字を 1 字ずつ立てて子 Object に描く、§3.13）にも従う。
+- **未対応（警告を出す）**: 既定義シンボル（`externally_defined_symbol`）、既定義ハッチング（`Area_control` のほかの名前のもの）、パターンのハッチング（`fill_area_style_tiles`）、画像。
+
+テスト用の図面は `test/sxf/gen.py` が作る（`npm run test:sxf:gen`、標準ライブラリのみ）。1 つの図面を SFC（shapes.sfc）と、SCADEC の書き方をまねた P21（shapes.p21）と、それを ZIP にした P2Z（shapes.p2z）で書き、既定義の線種・色・線幅とユーザ定義のもの、各種の図形、9 つの配置基点・回転・スラント・字間・縦書きの文字、複合図形（回転と尺度、入れ子、測地座標系）、寸法・引出し線・バルーン、塗りつぶし・穴のあるハッチング・`Area_control`、非表示のレイヤ、背景色の属性を持つ。Go のテストは SFC と P21 が同じ `cad.Drawing` になることを確かめる。変換結果は `testdata/sxf/` に置いて golden テストで描画を比較する。開発中は、国土交通省の CAD 製図基準に載っている図面作成例（SFC と P21 の両方がある縦断図、標準横断図、平面図、中間対傾構図）でも変換を確かめ、SFC と P21 で文字と線が同じ位置に描かれることを見た。
+
+## 3.15 TIFF → BDF 変換器（converter/tiff）の構造
 
 `converter/tiff` は TIFF のページごとに `fixed` View のページを作り、解像度から決まる大きさの画像 1 枚で描く。多ページの TIFF の多くはスキャナの出力と FAX の受信ファイルで、中身は画像だけ（テキストはない）。読み取りは `converter/internal/tiff` に自前で書いた。golang.org/x/image/tiff は先頭の IFD しか読まず、JPEG 圧縮も YCbCr も読まない。FAX ソフトの既定である G3 の 2 次元符号と詰め物ビットも読めず、BlackIsZero の CCITT データは白黒を反転して読む。Office 文書と Visio 図面の中の TIFF の画像も、同じ読み取りで先頭のページを読む（`tiff.Picture`。Orientation タグは掛けず、解像度の上限も掛けない）。
 
@@ -385,7 +413,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 - **同じ画像の同時デコード**: 1 回のデコードを共有する（以前は重なると先の ImageBitmap を閉じずに捨てていた）。
 - **テキストだけの要求は画像を読まない**: テキスト層・連続モードのテキスト・シートのテキストは `prepareText` で Object・フォント・パスだけを準備する。前後の画面のテキスト層を先に作っても、描かない画像をデコードして予算を使うことはない。
 - **文書を閉じる・開き直す**: ワーカーはキャッシュの `dispose()` で画像を閉じる。その文書の描画がまだ途中なら、押さえている画像はその描画が終わってから閉じる。
-- **縮小デコードはしない**: `createImageBitmap` の `resizeWidth` で小さくデコードする手もあるが、キャッシュは倍率をまたいで共有しており、ズームのたびにデコードし直すことになるので見送った。画像の大きさは変換側の解像度の上限（§3.2、§3.13）で抑える。
+- **縮小デコードはしない**: `createImageBitmap` の `resizeWidth` で小さくデコードする手もあるが、キャッシュは倍率をまたいで共有しており、ズームのたびにデコードし直すことになるので見送った。画像の大きさは変換側の解像度の上限（§3.2、§3.15）で抑える。
 
 ## 6. Excel シートの Tile 化
 
@@ -418,8 +446,8 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
 9. **draw.io 直接変換**: ページごとの View とシートのような切り替え（実装済み、§3.11）。
-10. **CAD 図面**: DXF（実装済み、§3.12）。続けて JWW（Jw_cad）、SXF（電子納品の SFC と P21）、CGM を、共通の `converter/internal/cad` の上に作る。
-11. **TIFF**: 多ページのスキャンと FAX、画像の入力に共通の解像度の上限（実装済み、§3.13）。
+10. **CAD 図面**: DXF（実装済み、§3.12）、JWW（Jw_cad、実装済み、§3.13）、SXF（電子納品の P21 と SFC、実装済み、§3.14）。続けて CGM を、共通の `converter/internal/cad` の上に作る。
+11. **TIFF**: 多ページのスキャンと FAX、画像の入力に共通の解像度の上限（実装済み、§3.15）。
 
 ## 9. リポジトリ構成（案）
 
@@ -441,6 +469,8 @@ bdf/
 │   ├── visio/         Visio（.vsdx、.vdx）→ BDF 変換器（testdata/ にテスト用図面）
 │   ├── drawio/        draw.io → BDF 変換器（testdata/ にテスト用の図、stencils/ に同梱のステンシル）
 │   ├── dxf/           AutoCAD DXF → BDF 変換器（testdata/ にテスト用図面）
+│   ├── jww/           Jw_cad（.jww）→ BDF 変換器（testdata/ にテスト用図面）
+│   ├── sxf/           SXF（.p21、.p2z、.sfc）→ BDF 変換器（testdata/ にテスト用図面）
 │   ├── tiff/          TIFF（.tif、.tiff）→ BDF 変換器（testdata/ にテスト用のスキャン・FAX・向きのファイル）
 │   ├── all/           すべての形式を登録する
 │   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
@@ -455,7 +485,7 @@ bdf/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画（scroll View は連続描画）、Worker とクライアント
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）とデモサイト（ブラウザ内変換）
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word・DXF・TIFF の変換結果と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・PowerPoint・Excel・Visio・Word・DXF・JWW・SXF・TIFF の変換結果と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

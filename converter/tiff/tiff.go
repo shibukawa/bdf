@@ -1,7 +1,7 @@
 // Package tiff converts TIFF images into BDF documents: each page of the
 // file (each image of the IFD chain that is not a reduced-resolution copy
 // or a mask) becomes a page of a fixed view, drawn by one image the size
-// of the page (see docs/design.md §3.13).
+// of the page (see docs/design.md §3.15).
 //
 // The page size comes from the image's resolution. Pages finer than the
 // resolution cap (imgconv.Options.MaxDPI and MaxPixels) are scaled down to
