@@ -137,6 +137,9 @@ func (s *sheetCtx) paintDrawings() {
 // loadComments finds the cells that have notes.
 func (s *sheetCtx) loadComments() {
 	s.comments = map[[2]int]bool{}
+	if s.c.pkg == nil {
+		return // a grid
+	}
 	r, ok := s.c.pkg.RelOfType(s.ws.part, "/comments")
 	if !ok {
 		return

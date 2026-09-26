@@ -68,6 +68,9 @@ export const CASES: Case[] = [
   // The page view's bodies stacked (continuous mode), and the scroll view across the boundary of its strips.
   { name: "docx-basic-continuous", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "pages", viewport: { x: 0, y: 500, w: 451.3, h: 400 }, scale: 1 },
   { name: "docx-basic-scroll", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 850, w: 769.9, h: 350 }, scale: 1 },
+  // CSV and TSV files rendered by converter/csv with the test fonts; see test/csv.
+  { name: "csv-basic-1", src: "/testdata/csv/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1240, h: 240 }, scale: 1 },
+  { name: "csv-japanese-1", src: "/testdata/csv/japanese.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 460, h: 180 }, scale: 1.5 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";
