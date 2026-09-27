@@ -17,14 +17,21 @@ type inlineObj struct {
 	vmlRID  string      // VML picture: the image relationship
 	part    string
 	w, h    float64
+	desc    float64 // how far below the baseline it reaches (formulas)
+	// central stands the object on the middle of the line in vertical text
+	// (a formula, laid out horizontally as CSS lays out an orthogonal flow);
+	// other objects stand on the baseline, as CSS aligns pictures
+	central bool
 	ext     [4]float64 // effect extent (left, top, right, bottom): room for shadows and glow
 	alt     string     // alternative text ("" for none or decorative)
 	link    string
 
-	// HTML: paint draws the object into its box (instead of a graphic), and
-	// fit shrinks it to the width of the line when it is wider
-	paint func(e *emitter, box drawingml.Box)
-	fit   bool
+	// HTML: paint draws the object into its box (instead of a graphic), fit
+	// shrinks it to the width of the line when it is wider, and fill makes
+	// it as wide as the line (an SVG image with only an aspect ratio, as
+	// browsers lay it out)
+	paint     func(e *emitter, box drawingml.Box)
+	fit, fill bool
 }
 
 // floatObj is a drawing anchored in a paragraph and positioned on the page

@@ -17,6 +17,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
+	"github.com/shibukawa/bdf/converter/internal/equation"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 	"github.com/shibukawa/bdf/imgconv"
@@ -49,6 +50,10 @@ type Renderer struct {
 	images      map[string]*imageEntry
 	patterns    map[string]bdf.Hash
 	tableStyles map[string]*ooxml.Node
+
+	// formulas (see math.go)
+	eq      *equation.Engine
+	mathRun *runStyle // the style of the formula being laid out
 }
 
 // New returns a renderer for a document.

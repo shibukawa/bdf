@@ -281,7 +281,7 @@ func (e *emitter) runs(ln *line, items []item, x, base float64) {
 				continue
 			}
 			o := it.obj
-			ox, oy := x+it.x+o.ext[0], base-o.h-o.ext[3]
+			ox, oy := x+it.x+o.ext[0], base-o.h-o.ext[3]+o.desc
 			e.drawObject(o, drawingml.Box{X: ox, Y: oy, W: o.w, H: o.h})
 			addLink(it, ox, ox+o.w)
 			i++
@@ -556,6 +556,9 @@ func (e *emitter) verticalLine(ln *line, x, y float64) {
 		o := it.obj
 		cx := x + it.x + (o.ext[1]+o.h+o.ext[3])/2
 		cy := base - (o.ext[0]+o.w+o.ext[2])/2
+		if o.central {
+			cy = base - ln.p.middle()
+		}
 		e.cv.Obj.Save()
 		e.cv.Obj.Transform(0, -1, 1, 0, f32(cx), f32(cy))
 		e.drawObject(o, drawingml.Box{X: -o.w / 2, Y: -o.h / 2, W: o.w, H: o.h})

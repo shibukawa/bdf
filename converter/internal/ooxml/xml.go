@@ -55,6 +55,12 @@ func Parse(data []byte) (*Node, error) { return ParseChoosing(data, nil) }
 // Word processing documents need it: they keep their DrawingML shapes in
 // a choice and legacy VML in the fallback.
 func ParseChoosing(data []byte, supported func(prefix string) bool) (*Node, error) {
+	return ParsePicking(data, supportedChoice(supported))
+}
+
+// ParsePicking is Parse that replaces mc:AlternateContent with its first
+// mc:Choice that pick accepts, and with the fallback when it accepts none.
+func ParsePicking(data []byte, pick func(choice *Node) bool) (*Node, error) {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	d.Strict = false
 	for {
@@ -66,7 +72,7 @@ func ParseChoosing(data []byte, supported func(prefix string) bool) (*Node, erro
 			return nil, err
 		}
 		if start, ok := tok.(xml.StartElement); ok {
-			return readElement(d, start, supported)
+			return readElement(d, start, pick)
 		}
 	}
 }
@@ -78,7 +84,38 @@ func ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
 	return readElement(d, start, nil)
 }
 
-func readElement(d *xml.Decoder, start xml.StartElement, supported func(prefix string) bool) (*Node, error) {
+// supportedChoice picks the choices whose required namespaces (the
+// prefixes of their Requires attribute) all pass supported.
+func supportedChoice(supported func(prefix string) bool) func(choice *Node) bool {
+	if supported == nil {
+		return nil
+	}
+	return func(c *Node) bool { return requiresAll(c.AttrStr("Requires", ""), supported) }
+}
+
+// MathChoice picks the choices that hold Office Math in DrawingML text
+// (a14:m, PowerPoint's and Excel's equations), whose fallback is a picture
+// or the formula as plain text, and no other choice.
+func MathChoice(c *Node) bool {
+	if strings.TrimSpace(c.AttrStr("Requires", "")) != "a14" {
+		return false
+	}
+	var find func(n *Node) bool
+	find = func(n *Node) bool {
+		for _, k := range n.Kids {
+			if k.Name == "m" && k.Space == NSA14 || find(k) {
+				return true
+			}
+		}
+		return false
+	}
+	return find(c)
+}
+
+// NSA14 is the namespace of the Office 2010 DrawingML extensions.
+const NSA14 = "http://schemas.microsoft.com/office/drawing/2010/main"
+
+func readElement(d *xml.Decoder, start xml.StartElement, pick func(choice *Node) bool) (*Node, error) {
 	root := &Node{Space: start.Name.Space, Name: start.Name.Local, Attrs: start.Attr}
 	stack := []*Node{root}
 	for len(stack) > 0 {
@@ -110,11 +147,11 @@ func readElement(d *xml.Decoder, start xml.StartElement, supported func(prefix s
 			}
 		}
 	}
-	root.resolveAlternates(supported)
+	root.resolveAlternates(pick)
 	return root, nil
 }
 
-func (n *Node) resolveAlternates(supported func(prefix string) bool) {
+func (n *Node) resolveAlternates(pick func(choice *Node) bool) {
 	var kids []*Node
 	changed := false
 	// start[i] is where old child i starts among the new children, so that
@@ -124,37 +161,37 @@ func (n *Node) resolveAlternates(supported func(prefix string) bool) {
 		start[i] = len(kids)
 		if k.Name == "AlternateContent" && strings.HasSuffix(k.Space, nsMC) {
 			changed = true
-			var pick *Node
-			if supported != nil {
+			var picked *Node
+			if pick != nil {
 				for _, c := range k.Kids {
-					if c.Name == "Choice" && requiresAll(c.AttrStr("Requires", ""), supported) {
-						pick = c
+					if c.Name == "Choice" && pick(c) {
+						picked = c
 						break
 					}
 				}
 			}
 			for _, c := range k.Kids {
-				if pick == nil && c.Name == "Fallback" {
-					pick = c
+				if picked == nil && c.Name == "Fallback" {
+					picked = c
 				}
 			}
-			if pick == nil {
+			if picked == nil {
 				for _, c := range k.Kids {
 					if c.Name == "Choice" {
-						pick = c
+						picked = c
 						break
 					}
 				}
 			}
-			if pick != nil {
-				for _, c := range pick.Kids {
-					c.resolveAlternates(supported)
+			if picked != nil {
+				for _, c := range picked.Kids {
+					c.resolveAlternates(pick)
 					kids = append(kids, c)
 				}
 			}
 			continue
 		}
-		k.resolveAlternates(supported)
+		k.resolveAlternates(pick)
 		kids = append(kids, k)
 	}
 	if changed {

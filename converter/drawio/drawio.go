@@ -22,6 +22,7 @@ import (
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/canvas"
+	"github.com/shibukawa/bdf/converter/internal/equation"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/imgconv"
@@ -99,6 +100,11 @@ type converter struct {
 	m          *model
 	page       *pageInfo
 	pageShadow bool
+	math       bool // the page typesets LaTeX in its labels (math="1")
+
+	// formulas (math.go)
+	eq        *equation.Engine
+	mathStyle *tstyle // the style of the text around the formula being laid out
 }
 
 func newConverter(opts *Options) *converter {
@@ -253,9 +259,7 @@ func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas.Canvas, error) {
 	m := parseModel(p.model)
 	c.m = m
 	c.pageShadow = m.attrs["shadow"] == "1"
-	if m.attrs["math"] == "1" {
-		c.warnOnce("math", "mathematical typesetting (math=1) is drawn as plain text")
-	}
+	c.math = m.attrs["math"] == "1"
 	c.awsLegacy += c.substituteAWSLegacy(m)
 	v := newView(m, c.warnOnce, c.stencil)
 

@@ -16,6 +16,12 @@ feature is in the markup exactly as Word writes it:
   pitch), with 1.5 and exact line spacing, character indents, a vertical
   merge and a long table whose rows split across pages and whose header
   row repeats.
+- math.docx: Office Math (OMML) as Word writes it: formulas inline in
+  Japanese and English text and on lines of their own (fractions of each
+  type, scripts, radicals, n-ary operators with their limits under and
+  over or at the side, functions, limits, delimiters that grow, matrices,
+  cases, equation arrays aligned at their & marks, accents, bars, braces,
+  boxes, phantoms, normal text, colored and bold runs).
 - vertical.docx: East Asian vertical text (tbRl) on a character grid:
   upright characters, punctuation, small kana, turned Latin text and
   numbers, horizontal-in-vertical numbers, emphasis marks and underlines, numbered articles, an inline
@@ -42,6 +48,7 @@ NS = (
     'xmlns:v="urn:schemas-microsoft-com:vml" '
     'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" mc:Ignorable="w14"'
 )
+MNS = NS + ' xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
 REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 
@@ -488,8 +495,180 @@ def vertical():
     }, ct)
 
 
+# Office Math, written as Word writes it: every run in Cambria Math, the
+# properties of each structure in its *Pr element with a ctrlPr.
+
+MRPR = '<w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math"/></w:rPr>'
+CTRL = '<m:ctrlPr><w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math"/><w:i/></w:rPr></m:ctrlPr>'
+
+
+def mr(text, sty=None, extra="", wrpr=""):
+    """A math run: sty p (plain), b, i, bi; extra holds more m:rPr."""
+    m = (f'<m:sty m:val="{sty}"/>' if sty else "") + extra
+    mrpr = f"<m:rPr>{m}</m:rPr>" if m else ""
+    w = f'<w:rPr><w:rFonts w:ascii="Cambria Math" w:hAnsi="Cambria Math"/>{wrpr}</w:rPr>'
+    return f'<m:r>{mrpr}{w}<m:t xml:space="preserve">{esc(text)}</m:t></m:r>'
+
+
+def arg(tag, *content):
+    return f"<m:{tag}>{''.join(content)}</m:{tag}>"
+
+
+def mfrac(num, den, typ=None):
+    t = f'<m:type m:val="{typ}"/>' if typ else ""
+    return f"<m:f><m:fPr>{t}{CTRL}</m:fPr>{arg('num', num)}{arg('den', den)}</m:f>"
+
+
+def ssup(e, sup):
+    return f"<m:sSup><m:sSupPr>{CTRL}</m:sSupPr>{arg('e', e)}{arg('sup', sup)}</m:sSup>"
+
+
+def ssub(e, sub):
+    return f"<m:sSub><m:sSubPr>{CTRL}</m:sSubPr>{arg('e', e)}{arg('sub', sub)}</m:sSub>"
+
+
+def ssubsup(e, sub, sup):
+    return f"<m:sSubSup><m:sSubSupPr>{CTRL}</m:sSubSupPr>{arg('e', e)}{arg('sub', sub)}{arg('sup', sup)}</m:sSubSup>"
+
+
+def rad(e, deg=None):
+    if deg is None:
+        return f'<m:rad><m:radPr><m:degHide m:val="1"/>{CTRL}</m:radPr><m:deg/>{arg("e", e)}</m:rad>'
+    return f"<m:rad><m:radPr>{CTRL}</m:radPr>{arg('deg', deg)}{arg('e', e)}</m:rad>"
+
+
+def delim(*es, beg=None, end=None, sep=None):
+    pr = ""
+    if beg is not None:
+        pr += f'<m:begChr m:val="{esc(beg)}"/>'
+    if sep is not None:
+        pr += f'<m:sepChr m:val="{esc(sep)}"/>'
+    if end is not None:
+        pr += f'<m:endChr m:val="{esc(end)}"/>'
+    return f"<m:d><m:dPr>{pr}{CTRL}</m:dPr>{''.join(arg('e', e) for e in es)}</m:d>"
+
+
+def nary(chr_, sub, sup, e, loc=None):
+    pr = f'<m:chr m:val="{chr_}"/>' + (f'<m:limLoc m:val="{loc}"/>' if loc else "")
+    if sub is None:
+        pr += '<m:subHide m:val="1"/>'
+    if sup is None:
+        pr += '<m:supHide m:val="1"/>'
+    return f"<m:nary><m:naryPr>{pr}{CTRL}</m:naryPr>{arg('sub', sub or '')}{arg('sup', sup or '')}{arg('e', e)}</m:nary>"
+
+
+def mfunc(name, e):
+    return f"<m:func><m:funcPr>{CTRL}</m:funcPr>{arg('fName', name)}{arg('e', e)}</m:func>"
+
+
+def acc(e, chr_=None):
+    c = f'<m:chr m:val="{chr_}"/>' if chr_ else ""
+    return f"<m:acc><m:accPr>{c}{CTRL}</m:accPr>{arg('e', e)}</m:acc>"
+
+
+def mbar(e, pos="top"):
+    return f'<m:bar><m:barPr><m:pos m:val="{pos}"/>{CTRL}</m:barPr>{arg("e", e)}</m:bar>'
+
+
+def limlow(e, lim):
+    return f"<m:limLow><m:limLowPr>{CTRL}</m:limLowPr>{arg('e', e)}{arg('lim', lim)}</m:limLow>"
+
+
+def limupp(e, lim):
+    return f"<m:limUpp><m:limUppPr>{CTRL}</m:limUppPr>{arg('e', e)}{arg('lim', lim)}</m:limUpp>"
+
+
+def groupchr(e, chr_=None, pos=None):
+    pr = (f'<m:chr m:val="{chr_}"/>' if chr_ else "") + (f'<m:pos m:val="{pos}"/><m:vertJc m:val="bot"/>' if pos else "")
+    return f"<m:groupChr><m:groupChrPr>{pr}{CTRL}</m:groupChrPr>{arg('e', e)}</m:groupChr>"
+
+
+def matrix(rows):
+    n = len(rows[0])
+    pr = f'<m:mcs><m:mc><m:mcPr><m:count m:val="{n}"/><m:mcJc m:val="center"/></m:mcPr></m:mc></m:mcs>'
+    body = "".join("<m:mr>" + "".join(arg("e", c) for c in r) + "</m:mr>" for r in rows)
+    return f"<m:m><m:mPr>{pr}{CTRL}</m:mPr>{body}</m:m>"
+
+
+def eqarr(*rows):
+    return f"<m:eqArr><m:eqArrPr>{CTRL}</m:eqArrPr>{''.join(arg('e', r) for r in rows)}</m:eqArr>"
+
+
+def omath(*content):
+    return f"<m:oMath>{''.join(content)}</m:oMath>"
+
+
+def display(*content, jc=None):
+    j = f'<m:oMathParaPr><m:jc m:val="{jc}"/></m:oMathParaPr>' if jc else ""
+    return para(f"<m:oMathPara>{j}{omath(*content)}</m:oMathPara>")
+
+
+def math():
+    x2 = ssup(mr("x"), mr("2"))
+    quadratic = (mr("x=") + mfrac(mr("−b±") + rad(ssup(mr("b"), mr("2")) + mr("−4ac")), mr("2a")))
+    body = []
+    body.append(para(run("数式 (Office Math)"), style="Title"))
+    body.append(para(run("二次方程式 ") + omath(mr("a") + x2 + mr("+bx+c=0")) + run(" の解は、判別式 ")
+                     + omath(mr("D=") + ssup(mr("b"), mr("2")) + mr("−4ac")) + run(" を用いて次のように表されます。")))
+    body.append(display(quadratic))
+    body.append(para(run("Sums, products and integrals take their limits under and over them, or at their side:")))
+    body.append(display(nary("∑", mr("k=1"), mr("n"), ssup(mr("k"), mr("2"))) + mr("=")
+                        + mfrac(mr("n") + delim(mr("n+1")) + delim(mr("2n+1")), mr("6"))))
+    body.append(display(nary("∫", mr("0"), mr("∞"), ssup(mr("e"), mr("−") + x2) + mr("d", "p") + mr("x"))
+                        + mr("=") + mfrac(rad(mr("π")), mr("2"))
+                        + mr(",  ") + nary("∏", mr("i=1"), mr("n"), ssub(mr("x"), mr("i")))
+                        + mr(",  ") + nary("∮", mr("C"), None, mr("F", "b") + mr("⋅d") + mr("r", "b"))))
+    body.append(para(run("Functions, limits, and delimiters that grow with what they hold:")))
+    body.append(display(mfunc(limlow(mr("lim", "p"), mr("h→0")), mfrac(mr("f") + delim(mr("x+h")) + mr("−f") + delim(mr("x")), mr("h")))
+                        + mr("=") + ssup(mr("f"), mr("′")) + delim(mr("x"))))
+    body.append(display(ssup(delim(mfrac(mr("a"), mr("b"))), mr("2")) + mr("+")
+                        + delim(mfrac(mr("1"), mr("2")), beg="{", end="}") + mr("+")
+                        + delim(mfrac(mr("x"), mr("y")), beg="|", end="|") + mr("+")
+                        + delim(mr("a"), mr("b"), beg="⟨", end="⟩") + mr("+")
+                        + mfunc(mr("sin", "p"), mr("θ")) + mr("+") + mfunc(ssup(mr("cos", "p"), mr("2")), mr("θ"))))
+    body.append(para(run("Matrices, cases and aligned equations:")))
+    body.append(display(mr("A=") + delim(matrix([[ssub(mr("a"), mr("11")), ssub(mr("a"), mr("12"))],
+                                                  [ssub(mr("a"), mr("21")), ssub(mr("a"), mr("22"))]])) + mr(",  ")
+                        + mfunc(mr("det", "p"), mr("A")) + mr("=") + delim(matrix([[mr("a"), mr("b")], [mr("c"), mr("d")]]), beg="|", end="|")))
+    body.append(display(mr("f") + delim(mr("x")) + mr("=") + delim(eqarr(x2 + mr(",&x≥0"), mr("−x,&x<0")), beg="{", end="")))
+    body.append(display(eqarr(ssup(delim(mr("a+b")), mr("2")) + mr("&=") + ssup(mr("a"), mr("2")) + mr("+2ab+") + ssup(mr("b"), mr("2")),
+                              mr("&≤2") + delim(ssup(mr("a"), mr("2")) + mr("+") + ssup(mr("b"), mr("2"))))))
+    body.append(para(run("Accents, bars, braces, roots and boxes:")))
+    body.append(display(acc(mr("x")) + mr("+") + acc(mr("y"), "̃") + mr("+") + acc(mr("v"), "⃗") + mr("+")
+                        + acc(mr("a"), "̇") + mr("+") + mbar(mr("AB")) + mr("+") + mbar(mr("z"), "bot") + mr("+")
+                        + acc(mr("xyz"))))
+    body.append(display(limlow(groupchr(mr("a+b+c")), mr("3")) + mr("+") + limupp(groupchr(mr("x+y"), "⏞", "top"), mr("2"))
+                        + mr("+") + rad(mr("x+1"), mr("3")) + mr("+")
+                        + '<m:sPre><m:sPrePr>' + CTRL + '</m:sPrePr>' + arg("sub", mr("n")) + arg("sup", "") + arg("e", ssub(mr("C"), mr("r"))) + '</m:sPre>'))
+    body.append(display('<m:borderBox><m:borderBoxPr>' + CTRL + '</m:borderBoxPr>' + arg("e", mr("E=m") + ssup(mr("c"), mr("2"))) + '</m:borderBox>'
+                        + mr("  ") + mfrac(mr("a"), mr("b"), "skw") + mr("+") + mfrac(mr("a"), mr("b"), "lin") + mr("+")
+                        + mfrac(mr("n"), mr("k"), "noBar")))
+    body.append(para(run("Normal text, color and bold in formulas:")))
+    body.append(display(mr("v=") + mfrac(mr("距離", extra='<m:nor/>'), mr("時間", extra='<m:nor/>'))
+                        + mr(",  ") + mr("F", wrpr='<w:color w:val="C00000"/>') + mr("=m", wrpr='<w:color w:val="C00000"/>')
+                        + mr("a", "b", wrpr='<w:color w:val="C00000"/>')))
+    body.append(para(run("球の体積は ") + omath(mr("V=") + mfrac(mr("4"), mr("3")) + mr("π") + ssup(mr("r"), mr("3")))
+                     + run(" で、表面積は ") + omath(mr("S=4π") + ssup(mr("r"), mr("2"))) + run(" です。Euler: ")
+                     + omath(ssup(mr("e"), mr("iπ")) + mr("+1=0")) + run(".")))
+    last = ('<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"'
+            ' w:header="720" w:footer="720" w:gutter="0"/><w:cols w:space="425"/></w:sectPr>')
+    document = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document {MNS}><w:body>{"".join(body)}{last}</w:body></w:document>'
+    mathpr = ('<m:mathPr><m:mathFont m:val="Cambria Math"/><m:brkBin m:val="before"/><m:brkBinSub m:val="--"/>'
+              '<m:smallFrac m:val="0"/><m:dispDef/><m:lMargin m:val="0"/><m:rMargin m:val="0"/><m:defJc m:val="centerGroup"/>'
+              '<m:wrapIndent m:val="1440"/><m:intLim m:val="subSup"/><m:naryLim m:val="undOvr"/></m:mathPr>')
+    package(os.path.join(OUT, "math.docx"), document, {
+        "word/styles.xml": STYLES, "word/numbering.xml": NUMBERING,
+        "word/settings.xml": settings(mathpr).replace(NS, MNS, 1), "word/theme/theme1.xml": THEME,
+        "docProps/core.xml": core("数式", "BDF"),
+    }, {
+        "rId1": ("styles", "styles.xml"), "rId2": ("numbering", "numbering.xml"), "rId3": ("settings", "settings.xml"),
+        "rId4": ("theme", "theme/theme1.xml"),
+    })
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     basic()
     grid()
     vertical()
+    math()

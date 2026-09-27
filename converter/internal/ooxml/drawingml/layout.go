@@ -159,6 +159,14 @@ func (ln *textLine) metrics() {
 		if it.kind == itemBreak {
 			continue
 		}
+		if it.kind == itemMath {
+			// a formula reaches its own height and depth, and the line is
+			// at least as tall as its text
+			ln.asc = math.Max(ln.asc, math.Max(it.eq.box.Height(), it.fc.Asc*it.st.size))
+			ln.desc = math.Max(ln.desc, math.Max(it.eq.box.Depth(), it.fc.Desc*it.st.size))
+			visible = true
+			continue
+		}
 		size := it.st.size
 		shift := 0.0
 		if it.st.baseline != 0 {
@@ -477,13 +485,25 @@ func (e *textEmitter) emitVerticalLine(ln *textLine, dx, base float64) {
 	e.cv.Obj.UseAt(ref, f32(x0), f32(base))
 }
 
-// emitItems draws a line's characters as runs of equal style.
+// emitItems draws a line's characters as runs of equal style, and its
+// formulas, in the order of the line.
 func (e *textEmitter) emitItems(ln *textLine, dx, base float64) {
-	for _, r := range e.runs(ln.items) {
-		run := ln.items[r[0]:r[1]]
-		e.setLang(runLang(run, ln.pa))
-		e.emitRun(run, dx, base)
+	rs := e.runs(ln.items)
+	k := 0
+	emit := func(upto int) {
+		for ; k < len(rs) && rs[k][0] < upto; k++ {
+			run := ln.items[rs[k][0]:rs[k][1]]
+			e.setLang(runLang(run, ln.pa))
+			e.emitRun(run, dx, base)
+		}
 	}
+	for i, it := range ln.items {
+		if it.kind == itemMath {
+			emit(i)
+			e.emitMath(it, dx, base)
+		}
+	}
+	emit(len(ln.items))
 }
 
 // runs splits a line's items into the runs that are drawn with one text

@@ -6,7 +6,10 @@ fills, borders, alignment (wrapping Latin and Japanese text, overflow,
 rotation, indent, shrink to fit), merged cells, row and column sizes,
 frozen panes, notes and hyperlinks, a hidden sheet, and a sheet large
 enough to span several tiles. features.xlsx exercises conditional formats,
-tables, a chart, a picture, a text box shape and a chart sheet.
+tables, a chart, a picture, a text box shape and a chart sheet. math.xlsx
+holds equation shapes as Excel writes them: Office Math (a14:m) in the
+mc:Choice of an mc:AlternateContent whose fallback holds the formula as
+text, on a line of its own and inline in text.
 """
 import datetime
 import io
@@ -312,8 +315,72 @@ def add_shape(path):
     rewrite(path, {"xl/drawings/drawing1.xml": edit})
 
 
+NS_M = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+
+
+def mr(text, sty=None):
+    """A math run as Excel writes it: the letters styled (𝑥 for an italic x)."""
+    t = text
+    if sty != "p":
+        t = "".join(chr(0x1D44E + ord(c) - 97) if "a" <= c <= "z" and c != "h" else ("\u210e" if c == "h" else c) for c in text)
+    m = f'<m:rPr><m:sty m:val="{sty}"/></m:rPr>' if sty else ""
+    return f'<m:r>{m}<a:rPr lang="en-US" sz="1400" b="0" i="1"><a:latin typeface="Cambria Math"/></a:rPr><m:t>{t}</m:t></m:r>'
+
+
+def equation_anchor(sid, col0, row0, col1, row1, paragraphs, fallback):
+    def anchor(body):
+        return (f'<xdr:twoCellAnchor><xdr:from><xdr:col>{col0}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{row0}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>'
+                f'<xdr:to><xdr:col>{col1}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{row1}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>'
+                f'<xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="{sid}" name="TextBox {sid}"/><xdr:cNvSpPr txBox="1"/></xdr:nvSpPr>'
+                f'<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="3000000" cy="600000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+                f'<a:solidFill><a:schemeClr val="lt1"/></a:solidFill><a:ln w="9525"><a:solidFill><a:schemeClr val="lt1"><a:shade val="50000"/></a:schemeClr></a:solidFill></a:ln></xdr:spPr>'
+                f'<xdr:txBody><a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="square" rtlCol="0" anchor="ctr"/><a:lstStyle/>{body}</xdr:txBody></xdr:sp>'
+                f'<xdr:clientData/></xdr:twoCellAnchor>')
+    return (f'<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+            f'<mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14">{anchor("".join(paragraphs))}</mc:Choice>'
+            f'<mc:Fallback>{anchor(fallback)}</mc:Fallback></mc:AlternateContent>')
+
+
+def math():
+    wb = Workbook()
+    props(wb, "Equations")
+    ws = wb.active
+    ws.title = "Equations"
+    ws["A1"] = "Equation shapes"
+    ws["A1"].font = Font(bold=True, size=13)
+    for i, (a, b, c) in enumerate([(1, -3, 2), (1, 2, 1), (2, 1, -1)], start=3):
+        ws[f"A{i}"], ws[f"B{i}"], ws[f"C{i}"], ws[f"D{i}"] = a, b, c, b * b - 4 * a * c
+    ws["A2"], ws["B2"], ws["C2"], ws["D2"] = "a", "b", "c", "D"
+    img = Image(io.BytesIO(png(16, 16, lambda x, y: (200, 200, 200))))
+    img.anchor = "A12"
+    ws.add_image(img)
+    path = os.path.join(OUT, "math.xlsx")
+    wb.save(path)
+    quad = (mr("x=") + f'<m:f><m:fPr/><m:num>{mr("−b±")}<m:rad><m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/><m:e>'
+            f'<m:sSup><m:e>{mr("b")}</m:e><m:sup>{mr("2")}</m:sup></m:sSup>{mr("−4ac")}</m:e></m:rad></m:num><m:den>{mr("2a")}</m:den></m:f>')
+    disc = f'<m:sSup><m:e>{mr("b")}</m:e><m:sup>{mr("2")}</m:sup></m:sSup>{mr("−4ac")}'
+    shapes = (equation_anchor(20, 5, 1, 10, 6,
+                              [f'<a:p><a14:m><m:oMathPara xmlns:m="{NS_M}"><m:oMathParaPr><m:jc m:val="centerGroup"/></m:oMathParaPr>'
+                               f'<m:oMath>{quad}</m:oMath></m:oMathPara></a14:m><a:endParaRPr lang="en-US" sz="1400"/></a:p>'],
+                              '<a:p><a:r><a:rPr lang="en-US" sz="1100"/><a:t>FALLBACK TEXT x=(−b±√(b^2−4ac))/2a</a:t></a:r></a:p>')
+              + equation_anchor(21, 5, 7, 10, 10,
+                                ['<a:p><a:r><a:rPr lang="ja-JP" altLang="en-US" sz="1100"/><a:t>判別式 </a:t></a:r>'
+                                 f'<a14:m><m:oMath xmlns:m="{NS_M}">{mr("D=")}{disc}</m:oMath></a14:m>'
+                                 '<a:r><a:rPr lang="ja-JP" altLang="en-US" sz="1100"/><a:t> が正なら実数解は二つ。</a:t></a:r></a:p>'],
+                                '<a:p><a:r><a:rPr lang="en-US" sz="1100"/><a:t>FALLBACK TEXT D=b^2−4ac</a:t></a:r></a:p>'))
+
+    def edit(xml):
+        xml = xml.rstrip()
+        shape = shapes.replace("<xdr:", "<").replace("</xdr:", "</")
+        xml = re.sub(r"</wsDr>$", lambda m: shape + m.group(0), xml)
+        return xml.replace("<wsDr ", '<wsDr xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ', 1)
+    rewrite(path, {"xl/drawings/drawing1.xml": edit})
+    fix_core(path)
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     basic()
     features()
+    math()
     print("wrote", OUT)

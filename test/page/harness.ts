@@ -98,6 +98,18 @@ export const CASES: Case[] = [
   { name: "jww-old-1", src: "/testdata/jww/old.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
   // An SXF drawing (P21) rendered by converter/sxf with the test fonts; see test/sxf.
   { name: "sxf-shapes-1", src: "/testdata/sxf/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  // CGM metafiles rendered by converter/cgm with the test fonts; see test/cgm. A CAD-like sheet of every kind of
+  // primitive, a WebCGM-like illustration with a y-down VDC, a hidden layer and tiles, and Shift_JIS text.
+  { name: "cgm-shapes-1", src: "/testdata/cgm/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "cgm-illustration-1", src: "/testdata/cgm/illustration.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "cgm-sjis-1", src: "/testdata/cgm/sjis.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
+  // HP-GL/2 plots rendered by converter/hpgl with the test fonts; see test/hpgl. An A3 plot of every kind of
+  // instruction, a plotter job turned to a portrait sheet with an HP RTL image among its vectors, and the HP-GL
+  // of a pen plotter.
+  { name: "hpgl-shapes-1", src: "/testdata/hpgl/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "hpgl-job-1", src: "/testdata/hpgl/job.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "hpgl-job-2", src: "/testdata/hpgl/job.bdf", kind: "page", view: "pages", page: 1, scale: 2 },
+  { name: "hpgl-hpgl1-1", src: "/testdata/hpgl/hpgl1.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
   // TIFF pages converted by converter/tiff; see test/tiff. A 300 dpi bilevel scan scaled down to 192 dpi, JPEG strips
   // stored as one JPEG, a fax at 204 × 98 dpi, and a picture stored turned with Orientation 6.
   { name: "tiff-scan-1", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
@@ -108,7 +120,51 @@ export const CASES: Case[] = [
   // to fonts by name and is drawn with the browser's fonts, at the advances measured with the test fonts.
   { name: "markdown-basic-scroll", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 700 }, scale: 1 },
   { name: "markdown-basic-strips", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 760, w: 504, h: 460 }, scale: 1 },
+  // Formulas laid out by the formula engine (converter/internal/equation) with the test font STIX Two Math:
+  // Office Math in a Word document, in PowerPoint and Excel text (a14:m, instead of the pictures and text of
+  // their fallbacks), and LaTeX in Markdown.
+  { name: "docx-math-1", src: "/testdata/docx/math.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pptx-math-1", src: "/testdata/pptx/math.bdf", kind: "page", view: "slides", page: 0, scale: 0.75 },
+  { name: "xlsx-math-1", src: "/testdata/xlsx/math.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 620, h: 170 }, scale: 1 },
+  // draw.io labels on a page with math="1": LaTeX between $$ and \( \) in HTML and plain labels
+  { name: "drawio-math", src: "/testdata/drawio/math.bdf", kind: "page", view: "math", page: 0, scale: 1.5 },
+  { name: "markdown-math-scroll", src: "/testdata/markdown/math.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 467 }, scale: 1 },
   { name: "html-article-scroll", src: "/testdata/html/article.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 760 }, scale: 1 },
+  // SVG in Markdown: an inline svg element as wide as the column (its gradient from a sprite sheet further down), two
+  // SVG files and a sprite symbol in the text color; the region above the text, so the browser's fonts do not matter.
+  { name: "markdown-svg", src: "/testdata/markdown/svg.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 180 }, scale: 1.5 },
+  // Illustrator artboards (converter/ai): each page cut to its artboard, the hidden layer left out; see test/ai.
+  { name: "ai-artboards-1", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "ai-artboards-2", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "ai-artboards-3", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  // Photoshop composites (converter/psd): a 144 ppi document, and three artboards cut from a transparent canvas; see test/psd.
+  { name: "psd-layers-1", src: "/testdata/psd/layers.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "psd-artboards-1", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "psd-artboards-2", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "psd-artboards-3", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  // Images stored as they are by converter/image: a JPEG turned by its EXIF orientation, an AVIF turned by irot,
+  // and an SVG drawn at the size it is shown (by the page for the worker, which cannot decode SVG).
+  { name: "image-photo", src: "/testdata/image/photo.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "image-rotated", src: "/testdata/image/rotated.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "image-drawing", src: "/testdata/image/drawing.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  // PCB fabrication data (converter/gerber); see test/gerber. A KiCad-style board drawn as it looks from the top and
+  // from below (mirrored), its bottom copper (a pour with clearances and a thermal relief, clear polarity), and one
+  // file with the apertures, macros, arcs, regions and blocks of the Gerber specification.
+  { name: "gerber-board-top", src: "/testdata/gerber/board.bdf", kind: "page", view: "top", page: 0, scale: 0.75 },
+  { name: "gerber-board-bottom", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom", page: 0, scale: 0.75 },
+  { name: "gerber-board-bottom-copper", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom-copper", page: 0, scale: 0.75 },
+  { name: "gerber-features-1", src: "/testdata/gerber/features.bdf", kind: "page", view: "layer", page: 0, scale: 0.75 },
+  // EPUB (converter/epub); see test/epub. Book pages with page numbers: a chapter in English, one in Japanese
+  // vertical text (tate-chu-yoko, emphasis marks, a gaiji picture), and a page of a fixed-layout book of pictures.
+  { name: "epub-basic-3", src: "/testdata/epub/basic.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  { name: "epub-vertical-2", src: "/testdata/epub/vertical.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "epub-fixed-2", src: "/testdata/epub/fixed.bdf", kind: "page", view: "pages", page: 1, scale: 0.5 },
+  // SVG and formulas in EPUB: an inline svg as wide as the text with the gradient and symbol it uses from a hidden
+  // sprite sheet, MathML inline, displayed, in an epub:switch and beside KaTeX's rendering; a formula standing upright
+  // on the middle of a line of vertical text; a fixed-layout page drawn by an inline svg.
+  { name: "epub-basic-svg", src: "/testdata/epub/basic.bdf", kind: "page", view: "pages", page: 5, scale: 1 },
+  { name: "epub-vertical-math", src: "/testdata/epub/vertical.bdf", kind: "page", view: "pages", page: 4, scale: 1 },
+  { name: "epub-fixed-svg", src: "/testdata/epub/fixed.bdf", kind: "page", view: "pages", page: 4, scale: 0.5 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";
@@ -270,7 +326,11 @@ async function main() {
   const drawioHits = await drawio.search("details", "日本語の説明");
   const drawioRects = await drawio.locate("details", drawioHits);
   const drawioLinks = (await drawio.content("overview", 0)).links.map((l) => l.url);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects, drawioHits, drawioRects, drawioLinks };
+  // formulas are found by their linear notation, typed with a hyphen-minus
+  const { client: math } = await open("/testdata/docx/math.bdf");
+  const mathHits = await math.search("pages", "b^2-4ac");
+  const mathRects = await math.locate("pages", mathHits);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects, drawioHits, drawioRects, drawioLinks, mathHits, mathRects };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }

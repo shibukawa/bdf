@@ -9,6 +9,8 @@ const fixture = new Uint8Array(await readFile(new URL("testdata/demo.bdf", root)
 test("normalization folds width, case and kana", () => {
   assert.equal(normalizeQuery("ＡＢＣ ｶﾀｶﾅ Ⅸ"), "abc かたかな ix");
   assert.equal(normalizeQuery("ABC", true), "ABC");
+  // the minus sign of a formula matches a typed hyphen-minus
+  assert.equal(normalizeQuery("b^2\u22124ac"), "b^2-4ac");
 });
 
 test("text index matches the extractor's ordinals", async () => {

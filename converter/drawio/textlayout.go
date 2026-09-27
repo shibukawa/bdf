@@ -59,6 +59,7 @@ type titem struct {
 	brk   bool    // a line may break after this item
 	hard  bool    // a forced line break (<br>)
 	space bool    // collapsible white space
+	eq    *formula
 }
 
 // tpara is a block's inline content.
@@ -118,6 +119,13 @@ type textBuilder struct {
 	heading int
 	indent  float64
 	liNext  bool // the next paragraph starts a list item
+	// math typesets the LaTeX between the page's math delimiters (the
+	// diagram has math="1"); alpha is the opacity of the label's text.
+	math  bool
+	alpha float64
+	// inlineOnly keeps display formulas in their line (plain labels, which
+	// have no line breaking)
+	inlineOnly bool
 }
 
 type listState struct {
@@ -159,8 +167,28 @@ func (b *textBuilder) margin(m float64) {
 	b.pending = math.Max(b.pending, m)
 }
 
-// text adds text in a style, collapsing white space unless it is preformatted.
+// text adds text in a style, collapsing white space unless it is
+// preformatted, and formulas between math delimiters when the diagram
+// typesets math.
 func (b *textBuilder) text(s string, st *tstyle) {
+	if !b.math || st.pre {
+		b.plainText(s, st)
+		return
+	}
+	for {
+		start, end, display, tex := nextFormula(s)
+		if start < 0 {
+			break
+		}
+		b.plainText(s[:start], st)
+		b.formula(tex, display, st)
+		s = s[end:]
+	}
+	b.plainText(s, st)
+}
+
+// plainText adds text without formulas.
+func (b *textBuilder) plainText(s string, st *tstyle) {
 	for _, r := range s {
 		if !st.pre && (r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f') {
 			if b.space {
@@ -695,6 +723,12 @@ func markBreaks(items []titem) {
 			items[i].brk = true
 			continue
 		}
+		if (items[i].eq != nil || items[i+1].eq != nil) && !(items[i].st.nowrap && items[i+1].st.nowrap) {
+			// a line may break before and after a formula, as around an
+			// inline block
+			items[i].brk = true
+			continue
+		}
 		if items[i].st.nowrap && items[i+1].st.nowrap {
 			if !items[i].brk {
 				items[i].brk = false
@@ -829,6 +863,10 @@ func (ln *tline) metrics() {
 	}
 	for _, it := range ln.items {
 		box(it.st)
+		if it.eq != nil {
+			asc = math.Max(asc, it.eq.box.Height()-it.st.shift)
+			desc = math.Max(desc, it.eq.box.Depth()+it.st.shift)
+		}
 	}
 	ln.asc = asc
 	ln.height = asc + desc

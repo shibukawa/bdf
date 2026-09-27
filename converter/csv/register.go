@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/hpglsniff"
 )
 
 func init() {
@@ -134,6 +135,13 @@ func detect(head []byte, r io.ReaderAt, size int64) bool {
 			return false
 		}
 	}
+	if fabrication(head) {
+		return false
+	}
+	// plot files end their instructions with semicolons
+	if hpglsniff.Is(head) {
+		return false
+	}
 	data := head
 	if size > int64(len(head)) {
 		data = make([]byte, min(size, sniffLen))
@@ -162,4 +170,24 @@ func detect(head []byte, r io.ReaderAt, size int64) bool {
 	}
 	t := sniff(text, int64(len(data)) < size, 0, 0)
 	return t.fields >= 2 && t.records >= 2 && t.score >= 0.9
+}
+
+// fabrication reports whether a file starts like the fabrication data of a
+// circuit board, text whose lines can hold commas as regularly as a CSV
+// file's: a Gerber file (an extended command such as %FSLAX24Y24*%, or a
+// comment G04 ...*) or an Excellon drill file (M48 after comments).
+func fabrication(head []byte) bool {
+	for _, line := range bytes.Split(head, []byte("\n")) {
+		s := bytes.TrimSpace(line)
+		switch {
+		case len(s) == 0 || s[0] == ';' || bytes.Equal(s, []byte("%")):
+			continue
+		case s[0] == '%':
+			return bytes.HasSuffix(s, []byte("*%")) || bytes.HasSuffix(s, []byte("*"))
+		case bytes.HasPrefix(s, []byte("G04")):
+			return bytes.HasSuffix(s, []byte("*"))
+		}
+		return bytes.HasPrefix(s, []byte("M48"))
+	}
+	return false
 }

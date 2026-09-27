@@ -3,11 +3,13 @@
 // format detection and page selection.
 //
 // The converters themselves are its subpackages (converter/pdf,
-// converter/pptx, converter/xlsx, converter/csv, converter/docx,
-// converter/visio, converter/drawio, converter/dxf, converter/jww,
-// converter/sxf, converter/emf, converter/tiff, converter/html,
-// converter/markdown). Each registers its format when it is imported, so a
-// program supports the formats whose packages it links in:
+// converter/ai, converter/psd, converter/pptx, converter/xlsx,
+// converter/csv, converter/docx, converter/visio, converter/drawio,
+// converter/dxf, converter/jww, converter/sxf, converter/cgm,
+// converter/hpgl, converter/gerber, converter/emf, converter/tiff,
+// converter/image, converter/html, converter/markdown, converter/epub).
+// Each registers its format when it is imported, so a program supports the
+// formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -16,8 +18,9 @@
 // packages and their XML) with ooxml/drawingml (shapes, text, tables,
 // charts), fontset (fonts for text layout and their embedding), canvas
 // (objects under construction), metafile (EMF/WMF pictures) and linebreak
-// (line breaking rules); the Word, HTML and Markdown converters share the
-// layout engine wordproc, the CAD converters share cad (drawings plotted
+// (line breaking rules); the Word, HTML, Markdown and EPUB converters share
+// the layout engine wordproc (and the last three webdoc, which parses HTML
+// and XHTML), the CAD converters and HP-GL/2 share cad (drawings plotted
 // onto pages).
 //
 // Password-protected inputs open with Options.Password. Encrypted Office
@@ -51,6 +54,9 @@ type Format struct {
 	Description string
 	// Extensions are the usual file name extensions, with the dot.
 	Extensions []string
+	// Refines names the format this one is a special case of, as an
+	// Illustrator file is a PDF: detection asks it before that format.
+	Refines string
 	// Params are the format-specific options it reads from Options.Params.
 	Params []Param
 	// Detect reports whether an input is in the format; head holds its
@@ -128,8 +134,8 @@ type Options struct {
 	// SystemFonts refers to fonts by family name instead of embedding them.
 	SystemFonts bool
 	// EmbedFonts embeds the fonts of the formats that refer to them by name
-	// unless told otherwise: HTML and Markdown, whose text is left to the
-	// viewer's fonts as a web page's is.
+	// unless told otherwise: HTML, Markdown and EPUB, whose text is left to
+	// the viewer's fonts as a web page's is.
 	EmbedFonts bool
 
 	// NoSubset embeds whole fonts instead of the glyphs in use.
@@ -238,12 +244,22 @@ func Lookup(name string) *Format {
 }
 
 // Detect returns the registered format of an input, or nil when no format
-// recognizes it.
+// recognizes it. Formats that refine another are asked first.
 func Detect(r io.ReaderAt, size int64) *Format {
 	head := make([]byte, 1024)
 	n, _ := r.ReadAt(head, 0)
 	head = head[:n]
-	for _, f := range Formats() {
+	formats := Formats()
+	slices.SortStableFunc(formats, func(a, b *Format) int {
+		switch {
+		case a.Refines != "" && b.Refines == "":
+			return -1
+		case a.Refines == "" && b.Refines != "":
+			return 1
+		}
+		return 0
+	})
+	for _, f := range formats {
 		if f.Detect(head, r, size) {
 			return f
 		}

@@ -135,6 +135,9 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("xlsx: %w", err)
 	}
+	// equations are laid out from their Office Math, not drawn from the
+	// text or pictures of their fallbacks
+	p.Choose = ooxml.MathChoice
 	c := newConverter(p, opts)
 	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, Warn: func(msg string) { c.warnf("%s", msg) }})
 
@@ -241,9 +244,10 @@ type pendingView struct {
 // and indexes their text.
 func (c *converter) finish(views []pendingView) {
 	opts := c.opts
-	if !opts.SystemFonts {
-		c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2, IgnoreFSType: opts.IgnoreFSType})
-	}
+	// with system fonts, the formula font is embedded still: a formula's
+	// layout depends on its glyphs
+	c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2,
+		IgnoreFSType: opts.IgnoreFSType, PinnedOnly: opts.SystemFonts})
 	c.cvs.Encode()
 	c.fonts.ReportMissing()
 	for _, pv := range views {

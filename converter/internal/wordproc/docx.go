@@ -146,6 +146,7 @@ func (c *converter) loadSettings() {
 			}
 		}
 	}
+	c.mathFont = s.Path("mathPr", "mathFont").AttrStr("val", "")
 	if f := s.Path("footnotePr", "numFmt"); f != nil {
 		c.footFmt = val(f)
 	}

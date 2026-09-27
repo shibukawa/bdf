@@ -48,15 +48,15 @@ func (p *fontProgram) license() fontLicense {
 	}
 	if len(l.notices) == 0 && p.cff != nil {
 		// A bare CFF program has only the Top DICT Copyright and Notice.
-		if p.cff.copyright != "" {
-			l.notices = append(l.notices, sfnt.NameRecord{ID: 0, Text: p.cff.copyright})
+		if p.cff.Copyright != "" {
+			l.notices = append(l.notices, sfnt.NameRecord{ID: 0, Text: p.cff.Copyright})
 		}
-		if p.cff.notice != "" && p.cff.notice != p.cff.copyright {
+		if p.cff.Notice != "" && p.cff.Notice != p.cff.Copyright {
 			id := uint16(7) // trademark notice, where Adobe fonts put it
-			if p.cff.copyright == "" {
+			if p.cff.Copyright == "" {
 				id = 0
 			}
-			l.notices = append(l.notices, sfnt.NameRecord{ID: id, Text: p.cff.notice})
+			l.notices = append(l.notices, sfnt.NameRecord{ID: id, Text: p.cff.Notice})
 		}
 	}
 	return l

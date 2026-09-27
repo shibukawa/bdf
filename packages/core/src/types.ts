@@ -79,6 +79,8 @@ export interface View {
   textIndex?: Hash;
   pages?: Page[];
   continuous?: { gap: number };
+  /** The order pages are put side by side in (fixed and flow views): "rtl" for books bound on the right. */
+  direction?: "ltr" | "rtl";
   tile?: number;
   cols?: [number, number][];
   rows?: [number, number][];

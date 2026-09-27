@@ -60,10 +60,10 @@ func type1ToCFF(data []byte) ([]byte, *cffFont, int, error) {
 			}
 		}
 	}
-	cf.encoding = map[int]int{}
+	cf.Encoding = map[int]int{}
 	for code, name := range enc {
-		if gid, ok := cf.nameToGID[name]; ok {
-			cf.encoding[code] = gid
+		if gid, ok := cf.NameToGID[name]; ok {
+			cf.Encoding[code] = gid
 		}
 	}
 	return out, cf, failed, nil
@@ -923,7 +923,7 @@ func (t *type1Font) cff() ([]byte, int, error) {
 		for _, v := range vals {
 			raw = appendDictNumber(raw, v)
 		}
-		top = append(top, cffDictEntry{op: op, args: vals, raw: raw})
+		top = append(top, cffDictEntry{Op: op, Args: vals, Raw: raw})
 	}
 	for _, k := range []struct {
 		key string
@@ -958,12 +958,12 @@ func (t *type1Font) cff() ([]byte, int, error) {
 	offsets := map[int][]int{}
 	encodeTop := func() []byte {
 		return cffEncodeDict(top, func(e cffDictEntry) ([]int, bool) {
-			switch e.op {
+			switch e.Op {
 			case 15, 17, 18:
-				if v, ok := offsets[e.op]; ok {
+				if v, ok := offsets[e.Op]; ok {
 					return v, true
 				}
-				return make([]int, len(e.args)), true
+				return make([]int, len(e.Args)), true
 			}
 			return nil, false
 		})

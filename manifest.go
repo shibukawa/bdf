@@ -8,6 +8,12 @@ const (
 	ViewScroll = "scroll"
 )
 
+// Page progression directions of fixed and flow views.
+const (
+	DirectionLTR = "ltr"
+	DirectionRTL = "rtl"
+)
+
 // Layer roles.
 const (
 	RoleBackground = "background"
@@ -73,6 +79,10 @@ type View struct {
 	// fixed / flow
 	Pages      []*Page     `json:"pages,omitempty"`
 	Continuous *Continuous `json:"continuous,omitempty"`
+	// Direction is the order pages are put side by side in (spreads, a
+	// horizontal row): DirectionLTR (the default when "") or DirectionRTL,
+	// for books bound on the right (docs/spec.md §4.1).
+	Direction string `json:"direction,omitempty"`
 
 	// sheet
 	Tile      float32           `json:"tile,omitempty"`

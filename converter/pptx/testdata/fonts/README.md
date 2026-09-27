@@ -9,3 +9,9 @@ Made with fontTools:
 
     pyftsubset MPLUS1p-Regular.ttf --text-file=chars.txt --layout-features='*' \
       --no-hinting --name-IDs='*' --name-languages='*' --output-file=MPLUS1p-Regular-subset.ttf
+
+STIXTwoMath-subset.ttf is the formula font of the equations in math.pptx and
+math.xlsx: the same subset of STIX Two Math, with its MATH table, as in
+converter/docx/testdata/fonts (SIL Open Font License 1.1, see OFL-STIX.txt;
+how it was made is described there). No other test document uses it: the
+characters they draw are in M PLUS 1p, so their output does not change.

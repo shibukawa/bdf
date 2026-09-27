@@ -85,6 +85,9 @@ func (c *converter) pageView(v *bdf.View, count *int) func() {
 		add(bdf.RoleBackground, c.pageBackground(pg), false)
 		add(bdf.RoleHeader, c.hfLayer(pg, vi, s.hdr, true), false)
 		add(bdf.RoleFooter, c.hfLayer(pg, vi, s.ftr, false), false)
+		if s.folio && !pg.blank {
+			add(bdf.RoleFooter, c.folioLayer(pg), false)
+		}
 		add(bdf.RoleBody, c.bodyLayer(pg, vi), true)
 		refs = append(refs, layerRef{bp, cvs})
 	}
@@ -96,6 +99,31 @@ func (c *converter) pageView(v *bdf.View, count *int) func() {
 			}
 		}
 	}
+}
+
+// folioLayer draws the number of a page of an HTML book at its foot,
+// centered below the body, in the muted color of the reader style.
+func (c *converter) folioLayer(pg *page) *canvas.Canvas {
+	cv := c.cvs.New()
+	s := pg.sec
+	rp := &rprops{fonts: c.folioFonts, sz: c.baseSize * 0.75, color: mutedColor, u: "none", scale: 1}
+	st := c.runStyle(rp, "", false)
+	pp := defaultPProps()
+	pp.jc, pp.lh = "center", 1
+	p := &para{pp: pp, mark: st, markFace: c.face(st, '0')}
+	c.addText(p, st, strconv.Itoa(pg.num))
+	(&walker{c: c}).finishParagraph(p)
+	f := c.subflow(s.textWidth(), s, false)
+	f.blocks([]block{p}, nil)
+	// the line's middle halfway between the body and the paper's edge
+	y := s.pgH - s.bottom/2 - f.y/2
+	e := &emitter{c: c, cv: cv, pg: pg}
+	for _, o := range f.all() {
+		o.shift(s.left, y)
+		e.op(&o)
+	}
+	e.finish()
+	return cv
 }
 
 // endnotes places the endnotes after the last section.

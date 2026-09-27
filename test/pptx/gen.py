@@ -4,6 +4,11 @@ Usage: python3 test/pptx/gen.py   (pip install python-pptx)
 The decks exercise placeholders and their inheritance, bullets and
 numbering, text alignment and wrapping (Latin and Japanese), preset shapes,
 fills, lines and arrowheads, groups, pictures, tables and hyperlinks.
+math.pptx holds equations as PowerPoint writes them: Office Math (a14:m)
+in the mc:Choice of an mc:AlternateContent whose fallback stands in for
+the picture PowerPoint puts there, with the letters stored styled (𝑥), on
+lines of their own and inline in Latin and Japanese text, with a theme
+color and autofit; and an a14 choice without math, whose fallback stays.
 """
 import io
 import os
@@ -330,6 +335,173 @@ def features():
     return prs
 
 
+NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+NS_M = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+NS_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+NS_A14 = "http://schemas.microsoft.com/office/drawing/2010/main"
+
+
+def math_italic(text):
+    """PowerPoint stores the letters of formulas styled: 𝑥 for an italic x."""
+    out = []
+    for c in text:
+        if c == "h":
+            out.append("\u210e")
+        elif "a" <= c <= "z":
+            out.append(chr(0x1D44E + ord(c) - ord("a")))
+        elif "A" <= c <= "Z":
+            out.append(chr(0x1D434 + ord(c) - ord("A")))
+        else:
+            out.append(c)
+    return "".join(out)
+
+
+def mrpr(sz=None, extra=""):
+    size = f' sz="{sz}"' if sz else ""
+    return f'<a:rPr lang="en-US" i="1"{size}><a:latin typeface="Cambria Math"/>{extra}</a:rPr>'
+
+
+def mr(text, sz=None, sty=None, fill=""):
+    """A math run: letters are stored as math italic unless the style is plain."""
+    m = f'<m:rPr><m:sty m:val="{sty}"/></m:rPr>' if sty else ""
+    t = text if sty == "p" else math_italic(text)
+    return f'<m:r>{m}{mrpr(sz, fill)}<m:t>{t}</m:t></m:r>'
+
+
+def mctrl(sz=None):
+    return f"<m:ctrlPr>{mrpr(sz)}</m:ctrlPr>"
+
+
+def marg(tag, *content):
+    return f"<m:{tag}>{''.join(content)}</m:{tag}>"
+
+
+def mfrac(num, den, sz=None):
+    return f"<m:f><m:fPr>{mctrl(sz)}</m:fPr>{marg('num', num)}{marg('den', den)}</m:f>"
+
+
+def msup(e, sup, sz=None):
+    return f"<m:sSup><m:sSupPr>{mctrl(sz)}</m:sSupPr>{marg('e', e)}{marg('sup', sup)}</m:sSup>"
+
+
+def msub(e, sub, sz=None):
+    return f"<m:sSub><m:sSubPr>{mctrl(sz)}</m:sSubPr>{marg('e', e)}{marg('sub', sub)}</m:sSub>"
+
+
+def mrad(e, sz=None):
+    return f'<m:rad><m:radPr><m:degHide m:val="1"/>{mctrl(sz)}</m:radPr><m:deg/>{marg("e", e)}</m:rad>'
+
+
+def mdelim(*es, beg=None, end=None, sz=None):
+    pr = (f'<m:begChr m:val="{beg}"/>' if beg is not None else "") + (f'<m:endChr m:val="{end}"/>' if end is not None else "")
+    return f"<m:d><m:dPr>{pr}{mctrl(sz)}</m:dPr>{''.join(marg('e', e) for e in es)}</m:d>"
+
+
+def mnary(chr_, sub, sup, e, sz=None):
+    return (f'<m:nary><m:naryPr><m:chr m:val="{chr_}"/>{mctrl(sz)}</m:naryPr>'
+            f"{marg('sub', sub)}{marg('sup', sup)}{marg('e', e)}</m:nary>")
+
+
+def mmatrix(rows, sz=None):
+    pr = f'<m:mcs><m:mc><m:mcPr><m:count m:val="{len(rows[0])}"/><m:mcJc m:val="center"/></m:mcPr></m:mc></m:mcs>'
+    body = "".join("<m:mr>" + "".join(marg("e", c) for c in r) + "</m:mr>" for r in rows)
+    return f"<m:m><m:mPr>{pr}{mctrl(sz)}</m:mPr>{body}</m:m>"
+
+
+def omath(*content):
+    return f'<m:oMath xmlns:m="{NS_M}">{"".join(content)}</m:oMath>'
+
+
+def omath_para(*content):
+    return (f'<a14:m><m:oMathPara xmlns:m="{NS_M}"><m:oMathParaPr><m:jc m:val="centerGroup"/></m:oMathParaPr>'
+            f"{omath(*content)}</m:oMathPara></a14:m>")
+
+
+def text_run(text, sz):
+    return f'<a:r><a:rPr lang="ja-JP" altLang="en-US" sz="{sz}"/><a:t>{text}</a:t></a:r>'
+
+
+def text_box(sid, name, x, y, w, h, paragraphs, body_extra="", fill="<a:noFill/>"):
+    return (f'<p:sp><p:nvSpPr><p:cNvPr id="{sid}" name="{name}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+            f'<p:spPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{w}" cy="{h}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>{fill}</p:spPr>'
+            f'<p:txBody><a:bodyPr wrap="square" rtlCol="0">{body_extra}</a:bodyPr><a:lstStyle/>{"".join(paragraphs)}</p:txBody></p:sp>')
+
+
+def alternate(choice, fallback):
+    return (f'<mc:AlternateContent xmlns:mc="{NS_MC}"><mc:Choice xmlns:a14="{NS_A14}" Requires="a14">{choice}</mc:Choice>'
+            f"<mc:Fallback>{fallback}</mc:Fallback></mc:AlternateContent>")
+
+
+def equation(sid, x, y, w, h, paragraphs, body_extra=""):
+    """An equation text box and its fallback: a filled box with a label, where
+    PowerPoint puts a picture of the equations."""
+    fallback = text_box(sid, f"TextBox {sid}", x, y, w, h, ['<a:p><a:r><a:rPr lang="en-US"/><a:t>FALLBACK PICTURE</a:t></a:r></a:p>'],
+                        fill='<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>')
+    return alternate(text_box(sid, f"TextBox {sid}", x, y, w, h, paragraphs, body_extra), fallback)
+
+
+def math_deck():
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Emu(12192000), Emu(6858000)
+    s = prs.slides.add_slide(prs.slide_layouts[5])
+    s.shapes.title.text = "Equations"
+    title = s.shapes.title
+    title.top, title.height, title.left, title.width = Inches(0.2), Inches(1.0), Inches(0.5), Inches(12.3)
+    inch = 914400
+    shapes = []
+    end = lambda sz: f'<a:endParaRPr lang="en-US" sz="{sz}"/>'
+    # a formula on a line of its own
+    quad = (mr("x=", 3200) + mfrac(mr("−b±", 3200) + mrad(msup(mr("b", 3200), mr("2", 3200), 3200) + mr("−4ac", 3200), 3200), mr("2a", 3200), 3200))
+    shapes.append(equation(10, inch // 2, int(1.3 * inch), 6 * inch, int(1.3 * inch), [f"<a:p>{omath_para(quad)}{end(3200)}</a:p>"]))
+    # sums and integrals, with their limits
+    sums = (mnary("∑", mr("k=1", 2400), mr("n", 2400), msup(mr("k", 2400), mr("2", 2400), 2400), 2400) + mr("=", 2400)
+            + mfrac(mr("n", 2400) + mdelim(mr("n+1", 2400), sz=2400) + mdelim(mr("2n+1", 2400), sz=2400), mr("6", 2400), 2400)
+            + mr(",  ", 2400) + mnary("∫", mr("0", 2400), mr("∞", 2400), msup(mr("e", 2400), mr("−", 2400) + msup(mr("x", 2400), mr("2", 2400), 2400), 2400) + mr("d", 2400, "p") + mr("x", 2400), 2400)
+            + mr("=", 2400) + mfrac(mrad(mr("π", 2400), 2400), mr("2", 2400), 2400))
+    shapes.append(equation(11, int(6.8 * inch), int(1.3 * inch), int(5.9 * inch), int(1.3 * inch), [f"<a:p>{omath_para(sums)}{end(2400)}</a:p>"]))
+    # inline in Latin and Japanese text
+    euler = omath(msup(mr("e", 2400), mr("iπ", 2400), 2400) + mr("+1=0", 2400))
+    disc = omath(mr("D=", 2400) + msup(mr("b", 2400), mr("2", 2400), 2400) + mr("−4ac", 2400))
+    paras = [f'<a:p>{text_run("Euler&apos;s identity ", 2400)}<a14:m>{euler}</a14:m>{text_run(" holds for every text line.", 2400)}</a:p>',
+             f'<a:p>{text_run("二次方程式の判別式は ", 2400)}<a14:m>{disc}</a14:m>{text_run(" で、行の中に置かれます。", 2400)}</a:p>']
+    shapes.append(equation(12, inch // 2, int(2.9 * inch), int(12.2 * inch), int(1.2 * inch), paras))
+    # a matrix in a theme color, and autofit: the fonts are scaled down
+    accent = '<a:solidFill><a:schemeClr val="accent2"/></a:solidFill>'
+    mat = (mr("A=", 2800, fill=accent) + mdelim(mmatrix([[mr("1", 2800), mr("2", 2800)], [mr("3", 2800), mr("4", 2800)]], 2800), sz=2800)
+           + mr(",  det", 2800, "p") + mr("A=−2", 2800))
+    shapes.append(equation(13, inch // 2, int(4.4 * inch), 6 * inch, int(1.6 * inch), [f"<a:p>{omath_para(mat)}{end(2800)}</a:p>"],
+                           '<a:normAutofit fontScale="85000"/>'))
+    # an a14 choice without math: its fallback is drawn as before
+    other = alternate(text_box(14, "Choice", int(6.8 * inch), int(4.4 * inch), int(5.9 * inch), int(1.6 * inch),
+                               ['<a:p><a:r><a:rPr lang="en-US" sz="2000"/><a:t>CHOICE WITHOUT MATH</a:t></a:r></a:p>']),
+                      text_box(14, "Fallback", int(6.8 * inch), int(4.4 * inch), int(5.9 * inch), int(1.6 * inch),
+                               ['<a:p><a:r><a:rPr lang="en-US" sz="2000"/><a:t>Other a14 content keeps its fallback</a:t></a:r></a:p>']))
+    tree = s.shapes._spTree
+    wrap = f'<p:spTree xmlns:p="{NS_P}" xmlns:a="{NS_A}">{"".join(shapes)}{other}</p:spTree>'
+    for el in etree_fromstring(wrap):
+        tree.append(el)
+    prs.core_properties.title = "Equations"
+    return prs
+
+
+def fixed_zip(path):
+    """Rewrites a package with fixed times, so that the file is the same on every run."""
+    import zipfile
+    with zipfile.ZipFile(path) as z:
+        items = [(i, z.read(i.filename)) for i in z.infolist()]
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for info, data in items:
+            if info.filename == "docProps/core.xml":
+                import re
+                data = re.sub(rb"(<dcterms:(created|modified)[^>]*>)[^<]*", rb"\g<1>2026-09-27T09:00:00Z", data)
+            info.date_time = (2026, 9, 27, 0, 0, 0)
+            z.writestr(info, data)
+    with open(path, "wb") as f:
+        f.write(buf.getvalue())
+
+
 def etree_fromstring(xml):
     from lxml import etree
     return etree.fromstring(xml)
@@ -339,6 +511,8 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     basic().save(os.path.join(OUT, "basic.pptx"))
     features().save(os.path.join(OUT, "features.pptx"))
+    math_deck().save(os.path.join(OUT, "math.pptx"))
+    fixed_zip(os.path.join(OUT, "math.pptx"))
 
 
 if __name__ == "__main__":

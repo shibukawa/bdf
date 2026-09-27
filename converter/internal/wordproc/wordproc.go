@@ -34,6 +34,7 @@ import (
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
+	"github.com/shibukawa/bdf/converter/internal/equation"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
@@ -148,6 +149,15 @@ type converter struct {
 	// scrollWidth is the text width of the scroll view (0: the widest
 	// section's).
 	scrollWidth float64
+
+	// formulas
+	eq         *equation.Engine
+	mathFont   string    // the formula font the document asks for
+	mathRun    *runStyle // the style of the text around the formula being laid out
+	ommlReader *equation.OMML
+
+	// folioFonts are the fonts of the page numbers of sections with folios.
+	folioFonts [4]string
 }
 
 // newConverter sets up the state of a conversion; views defaults to
@@ -199,9 +209,10 @@ func (c *converter) finish(views string) *Result {
 		v := c.doc.NewView("scroll", bdf.ViewScroll, title)
 		jobs = append(jobs, c.scrollView(v, &res.Strips))
 	}
-	if !opts.SystemFonts {
-		res.EmbeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2, IgnoreFSType: opts.IgnoreFSType})
-	}
+	// with system fonts, the formula font is embedded still: a formula's
+	// layout depends on its glyphs
+	res.EmbeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2,
+		IgnoreFSType: opts.IgnoreFSType, PinnedOnly: opts.SystemFonts})
 	c.cvs.Encode()
 	c.fonts.ReportMissing()
 	for _, job := range jobs {
