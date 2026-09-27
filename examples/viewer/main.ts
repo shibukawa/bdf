@@ -31,6 +31,7 @@ const stage = $<HTMLDivElement>("stage");
 const tabs = $<HTMLSpanElement>("tabs");
 const zoomInput = $<HTMLInputElement>("zoom");
 const layoutSelect = $<HTMLSelectElement>("layout");
+const animateBox = $<HTMLInputElement>("animate");
 const status = $<HTMLSpanElement>("status");
 const timing = $<HTMLSpanElement>("timing");
 const hitsBox = $<HTMLSpanElement>("hits");
@@ -426,7 +427,7 @@ function closeDocument() {
   stage.replaceChildren();
   tabs.replaceChildren();
   $<HTMLButtonElement>("prevView").disabled = $<HTMLButtonElement>("nextView").disabled = true;
-  $("layoutBox").hidden = $("pageNav").hidden = true;
+  $("layoutBox").hidden = $("pageNav").hidden = $("animateBox").hidden = true;
   found.query = ""; found.hits = []; found.rects = []; found.index = -1; found.pages = -1; hitsBox.textContent = "";
 }
 
@@ -537,6 +538,9 @@ function init() {
   };
   $("prevPage").onclick = () => book?.turnBy(-1);
   $("nextPage").onclick = () => book?.turnBy(1);
+  // pages curl as they turn, unless the reader asks for less motion
+  animateBox.checked = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  animateBox.onchange = () => book?.setAnimate(animateBox.checked);
 
   // files: the picker, and drag and drop anywhere on the page
   const picker = $<HTMLInputElement>("file");
@@ -601,7 +605,7 @@ function show(v: View) {
   generation++;
   book?.destroy();
   book = undefined;
-  $("pageNav").hidden = true;
+  $("pageNav").hidden = $("animateBox").hidden = true;
   stage.onscroll = null;
   stage.replaceChildren();
   stage.scrollTop = 0;
@@ -735,6 +739,7 @@ function showBook(v: View, start: number) {
     layout: layoutSelect.value === "single" ? "single" : "spread",
     rtl,
     zoom,
+    animate: animateBox.checked,
     start,
     label: (i) => (pagesOf.length === 1 && v.title ? v.title : `${noun} ${i + 1} of ${pagesOf.length}`),
     bitmap: (i, scale) => client.page(v.id, i, scale),
@@ -750,7 +755,7 @@ function showBook(v: View, start: number) {
   $("pageNav").classList.toggle("rtl", rtl);
   $("prevPage").textContent = rtl ? "›" : "‹";
   $("nextPage").textContent = rtl ? "‹" : "›";
-  $("pageNav").hidden = false;
+  $("pageNav").hidden = $("animateBox").hidden = false;
   turned(b, b.pages, noun);
 }
 
