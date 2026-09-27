@@ -201,7 +201,7 @@ func convert(doc *xhtml.Node, opts *Options, res *resources) (*Result, error) {
 		}
 	}
 	meta := readMeta(doc)
-	normalizeMath(doc)
+	webdoc.NormalizeMath(doc)
 	body := doc
 	extracted := false
 	switch opts.Extract {

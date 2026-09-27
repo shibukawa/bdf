@@ -159,9 +159,11 @@ export const CASES: Case[] = [
   { name: "epub-basic-3", src: "/testdata/epub/basic.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
   { name: "epub-vertical-2", src: "/testdata/epub/vertical.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "epub-fixed-2", src: "/testdata/epub/fixed.bdf", kind: "page", view: "pages", page: 1, scale: 0.5 },
-  // SVG in EPUB: an inline svg as wide as the text with the gradient and symbol it uses from a hidden sprite sheet
-  // (its caption the only text), and a fixed-layout page drawn by an inline svg.
+  // SVG and formulas in EPUB: an inline svg as wide as the text with the gradient and symbol it uses from a hidden
+  // sprite sheet, MathML inline, displayed, in an epub:switch and beside KaTeX's rendering; a formula standing upright
+  // on the middle of a line of vertical text; a fixed-layout page drawn by an inline svg.
   { name: "epub-basic-svg", src: "/testdata/epub/basic.bdf", kind: "page", view: "pages", page: 5, scale: 1 },
+  { name: "epub-vertical-math", src: "/testdata/epub/vertical.bdf", kind: "page", view: "pages", page: 4, scale: 1 },
   { name: "epub-fixed-svg", src: "/testdata/epub/fixed.bdf", kind: "page", view: "pages", page: 4, scale: 0.5 },
 ];
 

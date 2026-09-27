@@ -449,9 +449,15 @@ func (ln *line) metrics(lc *lineCtx) {
 				visible = true
 			}
 		case kObject:
-			if lc.vertical {
+			switch {
+			case lc.vertical && it.obj.central:
+				// centered on the middle of the characters' squares
+				across, mid := it.obj.w+it.obj.ext[0]+it.obj.ext[2], p.middle()
+				ln.asc = math.Max(ln.asc, mid+across/2)
+				ln.desc = math.Max(ln.desc, across/2-mid)
+			case lc.vertical:
 				ln.asc = math.Max(ln.asc, it.obj.w+it.obj.ext[0]+it.obj.ext[2])
-			} else {
+			default:
 				ln.asc = math.Max(ln.asc, it.obj.h+it.obj.ext[1]+it.obj.ext[3]-it.obj.desc)
 				ln.desc = math.Max(ln.desc, it.obj.desc)
 			}

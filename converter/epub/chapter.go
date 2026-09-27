@@ -124,6 +124,8 @@ func (c *converter) load(ch *chapter) error {
 	if err != nil {
 		return err
 	}
+	// formulas written for KaTeX or MathJax: their MathML (or TeX) alone
+	webdoc.NormalizeMath(doc)
 	var rules []cssRule
 	c.rewrite(ch, doc, &rules)
 	st := newStyler(rules)
@@ -172,16 +174,13 @@ func (c *converter) load(ch *chapter) error {
 func (c *converter) rewrite(ch *chapter, n *html.Node, rules *[]cssRule) {
 	for k := n.FirstChild; k != nil; {
 		if k.Type == html.ElementNode && isOPS(k, "switch") {
-			// epub:switch: its default content in its place (the cases need
-			// MathML and the like)
+			// epub:switch: in its place, the content of the first case whose
+			// namespace is drawn (MathML, SVG), else the default content
 			var first *html.Node
-			for d := k.FirstChild; d != nil; d = d.NextSibling {
-				if d.Type != html.ElementNode || !isOPS(d, "default") {
-					continue
-				}
-				for g := d.FirstChild; g != nil; {
+			if chosen := switchCase(k); chosen != nil {
+				for g := chosen.FirstChild; g != nil; {
 					next := g.NextSibling
-					d.RemoveChild(g)
+					chosen.RemoveChild(g)
 					n.InsertBefore(g, k)
 					if first == nil {
 						first = g
@@ -203,6 +202,27 @@ func (c *converter) rewrite(ch *chapter, n *html.Node, rules *[]cssRule) {
 		}
 		k = k.NextSibling
 	}
+}
+
+// drawnNamespaces are the namespaces of the epub:case elements that are
+// chosen over the default content.
+var drawnNamespaces = map[string]bool{"http://www.w3.org/1998/Math/MathML": true, "http://www.w3.org/2000/svg": true,
+	"http://www.w3.org/1999/xhtml": true}
+
+// switchCase returns the part of an epub:switch to lay out: the first
+// epub:case that needs a namespace that is drawn, else epub:default.
+func switchCase(sw *html.Node) *html.Node {
+	var def *html.Node
+	for d := sw.FirstChild; d != nil; d = d.NextSibling {
+		switch {
+		case d.Type != html.ElementNode:
+		case isOPS(d, "case") && drawnNamespaces[attrVal(d, "required-namespace")]:
+			return d
+		case isOPS(d, "default") && def == nil:
+			def = d
+		}
+	}
+	return def
 }
 
 func isOPS(n *html.Node, local string) bool {

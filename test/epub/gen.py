@@ -8,11 +8,13 @@ with the standard library only:
   as an empty element, a paragraph hidden by a class of the style sheet, a
   class that centers, an SVG file and an inline SVG that uses a gradient and
   a symbol of a hidden sprite sheet and carries attributes of other
-  namespaces) and notes outside the reading order.
+  namespaces, MathML inline and on a line of its own, in an epub:switch
+  and beside KaTeX's rendering) and notes outside the reading order.
 - vertical.epub: a Japanese book bound on the right, written like the
   Denshoken (電書協) guide: html class="vrtl" and a style sheet that imports
   the rules (vertical-rl, tate-chu-yoko, emphasis marks, gaiji pictures);
-  a horizontal cover and colophon (class="hltr"), ruby.
+  a horizontal cover and colophon (class="hltr"), ruby, a formula in the
+  vertical text.
 - fixed.epub: a fixed-layout book of pictures bound on the right (a comic):
   a cover as an SVG content document's picture, pages of one img each with
   their viewports, a page drawn by an inline SVG and one by an SVG file.
@@ -228,6 +230,16 @@ the chapter is read as XML. The <a href="ch2.xhtml#sec2">section on tables</a> i
 </svg>
 <figcaption>Figure 2. An inline SVG with definitions shared by the chapter.</figcaption>
 </figure>
+<h2 id="math">Formulas</h2>
+<p>The area of a circle is <math xmlns="http://www.w3.org/1998/Math/MathML"><mi>A</mi><mo>=</mo><mi>π</mi><msup><mi>r</mi><mn>2</mn></msup></math>,
+and the roots of a quadratic are</p>
+<math xmlns="http://www.w3.org/1998/Math/MathML" display="block" alttext="x = (-b ± √(b²-4ac)) / 2a">
+<mi>x</mi><mo>=</mo><mfrac><mrow><mo>−</mo><mi>b</mi><mo>±</mo><msqrt><msup><mi>b</mi><mn>2</mn></msup><mo>−</mo><mn>4</mn><mi>a</mi><mi>c</mi></msqrt></mrow><mrow><mn>2</mn><mi>a</mi></mrow></mfrac>
+</math>
+<p>A switch keeps its MathML case:
+<epub:switch id="sw1"><epub:case required-namespace="http://www.w3.org/1998/Math/MathML"><math xmlns="http://www.w3.org/1998/Math/MathML"><munderover><mo>∑</mo><mrow><mi>k</mi><mo>=</mo><mn>1</mn></mrow><mi>n</mi></munderover><mi>k</mi><mo>=</mo><mfrac><mrow><mi>n</mi><mo>(</mo><mi>n</mi><mo>+</mo><mn>1</mn><mo>)</mo></mrow><mn>2</mn></mfrac></math></epub:case><epub:default><span>[a formula the reader cannot show]</span></epub:default></epub:switch>,
+and KaTeX's rendering beside its MathML is left out:
+<span class="katex"><span class="katex-mathml"><math xmlns="http://www.w3.org/1998/Math/MathML"><msqrt><mn>2</mn></msqrt></math></span><span class="katex-html" aria-hidden="true"><span class="mord sqrt">√2 drawn twice</span></span></span>.</p>
 <svg xmlns="http://www.w3.org/2000/svg" style="display: none"><defs>
 <linearGradient id="bg"><stop offset="0" stop-color="#cfe3ff"/><stop offset="1" stop-color="#ffe2c4"/></linearGradient>
 <circle id="dot" r="14" fill="#0969da"/></defs></svg>
@@ -336,7 +348,7 @@ img.gaiji { width: 1em; height: 1em; }
         "ページをめくると、つぎの行がはじまります。ひとつの行に入りきらないことばは、つぎの行に回ります。",
         "「かぎかっこ」や『ふたえかぎ』のなかの文も、縦書きのまま読めます。",
         "句読点は行の頭に来ないように、行の末に残されるか、その上の字といっしょにつぎの行に回ります。",
-    ] * 6)
+    ] * 6) + """<p>数の<math xmlns="http://www.w3.org/1998/Math/MathML"><msup><mi>x</mi><mn>2</mn></msup><mo>+</mo><mn>1</mn></math>も正立させて組みます。</p>\n"""
     p2 = xhtml("２", """<body class="p-text">
 <div class="main">
 <h2 id="toc-002">２　ページ</h2>

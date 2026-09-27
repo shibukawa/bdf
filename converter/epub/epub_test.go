@@ -261,6 +261,22 @@ func TestBasic(t *testing.T) {
 	if strings.Contains(dots, "inkscape") || strings.Contains(dots, "epub:type") {
 		t.Errorf("attributes of other namespaces kept:\n%s", dots)
 	}
+	// formulas: MathML inline and on a line of its own, the MathML case of
+	// an epub:switch, and the MathML beside KaTeX's rendering, laid out by
+	// the formula engine (their text is their linear notation)
+	for _, f := range []string{"A=πr^2", "x=(−b±√(b^2−4ac))/(2a)", "∑_(k=1)^n k=(n(n+1))/2", "√2"} {
+		if !strings.Contains(all, f) {
+			t.Errorf("no formula %q in\n%s", f, all)
+		}
+	}
+	for _, s := range []string{"cannot show", "drawn twice"} {
+		if strings.Contains(all, s) {
+			t.Errorf("the text %q of a fallback is drawn", s)
+		}
+	}
+	if res.EmbeddedFonts != 1 {
+		t.Errorf("%d embedded fonts (the formula font)", res.EmbeddedFonts)
+	}
 	// the inline svg with only a view box is as wide as the text
 	svgPage := pages[pageOf(pages, "Figure 2.")-1]
 	if len(svgPage.images) != 1 || svgPage.images[0][2] != float32(A5.Width*0.8) {
@@ -314,6 +330,11 @@ func TestVertical(t *testing.T) {
 	}
 	if strings.Contains(p1.text, "かんじ") || !strings.Contains(p1.text, "漢字のように") {
 		t.Errorf("ruby: %q", p1.text)
+	}
+	// a formula in the vertical text stands upright on the middle of its line
+	pm := pages[pageOf(pages, "も正立させて")-1]
+	if !strings.Contains(pm.text, "x^2+1") {
+		t.Errorf("formula in vertical text: %q", pm.text)
 	}
 	// the colophon is horizontal (class hltr): no lines as child objects
 	col := pages[pageOf(pages, "書名")-1]
@@ -482,7 +503,8 @@ func TestEPUB2(t *testing.T) {
 	data := makeEPUB(t, opf,
 		file{"OEBPS/a.html", `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml"><head><title>a</title></head><body><p>A&nbsp;&mdash;&nbsp;B</p></body></html>`},
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>a</title></head><body><p>A&nbsp;&mdash;&nbsp;B</p>
+<p>Prefixed MathML: <m:math xmlns:m="http://www.w3.org/1998/Math/MathML"><m:msub><m:mi>a</m:mi><m:mn>1</m:mn></m:msub></m:math></p></body></html>`},
 		file{"OEBPS/b.html", `<html><head><title>b</title></head><body><p>Broken<br>markup</p></body></html>`},
 		file{"OEBPS/s.html", sjis},
 		file{"OEBPS/p.png", string(tinyPNG)},
@@ -501,7 +523,7 @@ func TestEPUB2(t *testing.T) {
 	for _, p := range pages {
 		all += p.text + "\n"
 	}
-	for _, s := range []string{"A — B", "Broken\nmarkup", "日本語の文書"} {
+	for _, s := range []string{"A — B", "Prefixed MathML: a_1", "Broken\nmarkup", "日本語の文書"} {
 		if !strings.Contains(all, s) {
 			t.Errorf("missing %q in %q", s, all)
 		}

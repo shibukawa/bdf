@@ -13,7 +13,10 @@
 // vertical-rl, as most Japanese books are) are laid out vertically there.
 // A scroll view, horizontal throughout, can be added or made instead. SVG
 // is drawn as the HTML converter draws it: SVG files as they are, svg
-// elements and SVG content documents as SVG documents of their own.
+// elements and SVG content documents as SVG documents of their own. MathML
+// formulas are laid out by the formula engine (converter/internal/equation),
+// upright on the middle of the line in vertical text; an epub:switch takes
+// its MathML case.
 //
 // A fixed-layout book (rendition:layout pre-paginated) whose pages are
 // pictures (comics, photo books) converts into a fixed view of those

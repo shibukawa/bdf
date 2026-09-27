@@ -1,9 +1,9 @@
-package html
+package webdoc
 
 import (
 	"strings"
 
-	xhtml "golang.org/x/net/html"
+	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
 
@@ -11,29 +11,29 @@ import (
 // write the MathML beside a rendering of their own in HTML, SVG or an
 // image (which a reader view would show a second time, and garbled), and
 // hide one of them with their style sheets, which reader mode does not
-// read. normalizeMath rewrites these into the math element alone before
-// the article is picked out (which drops the class names they are told
-// apart by). LaTeX sources (MathJax 2's scripts, GitHub's math-renderer
+// read. NormalizeMath rewrites these into the math element alone (the HTML
+// converter does so before the article is picked out, which drops the
+// class names they are told apart by). LaTeX sources (MathJax 2's scripts, GitHub's math-renderer
 // elements) become math elements that hold the source as a TeX
 // annotation, which the formula reader parses.
-func normalizeMath(n *xhtml.Node) {
+func NormalizeMath(n *html.Node) {
 	for k := n.FirstChild; k != nil; {
 		next := k.NextSibling
-		if k.Type == xhtml.ElementNode {
+		if k.Type == html.ElementNode {
 			normalizeMathElement(k)
 		}
 		k = next
 	}
 }
 
-func normalizeMathElement(n *xhtml.Node) {
-	cls := " " + attr(n, "class") + " "
+func normalizeMathElement(n *html.Node) {
+	cls := " " + attrStr(n, "class") + " "
 	switch {
 	case strings.Contains(cls, " mwe-math-element "), n.Data == "mjx-container":
 		// Wikipedia, MathJax 3: the MathML (hidden or assistive) beside an
 		// image or glyphs drawn with CSS
 		if m := findMath(n); m != nil {
-			if n.Data == "mjx-container" && attr(n, "display") == "true" {
+			if n.Data == "mjx-container" && attrStr(n, "display") == "true" {
 				setAttr(m, "display", "block")
 			}
 			m.Parent.RemoveChild(m)
@@ -51,7 +51,7 @@ func normalizeMathElement(n *xhtml.Node) {
 			return
 		}
 	case n.DataAtom == atom.Script:
-		t := strings.ToLower(attr(n, "type"))
+		t := strings.ToLower(attrStr(n, "type"))
 		if strings.HasPrefix(t, "math/tex") {
 			m := texMath(textContent(n), strings.Contains(t, "mode=display"))
 			n.Parent.InsertBefore(m, n)
@@ -73,21 +73,21 @@ func normalizeMathElement(n *xhtml.Node) {
 	case n.DataAtom == atom.Math:
 		return
 	}
-	normalizeMath(n)
+	NormalizeMath(n)
 }
 
 // hasMathSource reports whether the element's parent holds the formula as
 // MathML or TeX besides the element.
-func hasMathSource(n *xhtml.Node) bool {
+func hasMathSource(n *html.Node) bool {
 	p := n.Parent
 	if p == nil {
 		return false
 	}
 	for k := p.FirstChild; k != nil; k = k.NextSibling {
-		if k == n || k.Type != xhtml.ElementNode {
+		if k == n || k.Type != html.ElementNode {
 			continue
 		}
-		if findMath(k) != nil || k.DataAtom == atom.Script && strings.HasPrefix(strings.ToLower(attr(k, "type")), "math/tex") {
+		if findMath(k) != nil || k.DataAtom == atom.Script && strings.HasPrefix(strings.ToLower(attrStr(k, "type")), "math/tex") {
 			return true
 		}
 	}
@@ -95,8 +95,8 @@ func hasMathSource(n *xhtml.Node) bool {
 }
 
 // findMath returns the first math element in n (n itself included).
-func findMath(n *xhtml.Node) *xhtml.Node {
-	if n.Type == xhtml.ElementNode && n.DataAtom == atom.Math {
+func findMath(n *html.Node) *html.Node {
+	if n.Type == html.ElementNode && n.DataAtom == atom.Math {
 		return n
 	}
 	for k := n.FirstChild; k != nil; k = k.NextSibling {
@@ -108,21 +108,21 @@ func findMath(n *xhtml.Node) *xhtml.Node {
 }
 
 // texMath makes a math element holding LaTeX as its annotation.
-func texMath(src string, display bool) *xhtml.Node {
-	m := &xhtml.Node{Type: xhtml.ElementNode, Data: "math", DataAtom: atom.Math, Namespace: "math"}
+func texMath(src string, display bool) *html.Node {
+	m := &html.Node{Type: html.ElementNode, Data: "math", DataAtom: atom.Math, Namespace: "math"}
 	if display {
-		m.Attr = []xhtml.Attribute{{Key: "display", Val: "block"}}
+		m.Attr = []html.Attribute{{Key: "display", Val: "block"}}
 	}
-	sem := &xhtml.Node{Type: xhtml.ElementNode, Data: "semantics", Namespace: "math"}
-	ann := &xhtml.Node{Type: xhtml.ElementNode, Data: "annotation", Namespace: "math",
-		Attr: []xhtml.Attribute{{Key: "encoding", Val: "application/x-tex"}}}
-	ann.AppendChild(&xhtml.Node{Type: xhtml.TextNode, Data: src})
+	sem := &html.Node{Type: html.ElementNode, Data: "semantics", Namespace: "math"}
+	ann := &html.Node{Type: html.ElementNode, Data: "annotation", Namespace: "math",
+		Attr: []html.Attribute{{Key: "encoding", Val: "application/x-tex"}}}
+	ann.AppendChild(&html.Node{Type: html.TextNode, Data: src})
 	sem.AppendChild(ann)
 	m.AppendChild(sem)
 	return m
 }
 
-func replaceChildren(n, only *xhtml.Node) {
+func replaceChildren(n, only *html.Node) {
 	for k := n.FirstChild; k != nil; {
 		next := k.NextSibling
 		n.RemoveChild(k)
@@ -131,22 +131,22 @@ func replaceChildren(n, only *xhtml.Node) {
 	n.AppendChild(only)
 }
 
-func setAttr(n *xhtml.Node, key, val string) {
+func setAttr(n *html.Node, key, val string) {
 	for i, a := range n.Attr {
 		if a.Key == key {
 			n.Attr[i].Val = val
 			return
 		}
 	}
-	n.Attr = append(n.Attr, xhtml.Attribute{Key: key, Val: val})
+	n.Attr = append(n.Attr, html.Attribute{Key: key, Val: val})
 }
 
-func textContent(n *xhtml.Node) string {
+func textContent(n *html.Node) string {
 	var b strings.Builder
-	var walk func(*xhtml.Node)
-	walk = func(n *xhtml.Node) {
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
 		for k := n.FirstChild; k != nil; k = k.NextSibling {
-			if k.Type == xhtml.TextNode {
+			if k.Type == html.TextNode {
 				b.WriteString(k.Data)
 			} else {
 				walk(k)

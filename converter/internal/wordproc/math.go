@@ -58,13 +58,23 @@ func (c *converter) addFormula(p *para, n equation.Node, st *runStyle, display b
 	c.mathRun = nil
 	text := equation.Linear(n)
 	h := b.Height()
-	o := &inlineObj{w: b.Width(), h: h + b.Depth(), desc: b.Depth(), paint: func(e *emitter, box drawingml.Box) {
+	o := &inlineObj{w: b.Width(), h: h + b.Depth(), desc: b.Depth(), central: c.css, paint: func(e *emitter, box drawingml.Box) {
 		equation.Place(e.cv, b, box.X, box.Y+h, text)
 	}}
 	p.items = append(p.items, item{kind: kObject, obj: o, st: st, w: o.w})
 	if st.link != "" {
 		o.link = st.link
 	}
+}
+
+// middle returns how far above the baseline the middle of the paragraph's
+// character squares is, where upright characters of vertical text are
+// centered.
+func (p *para) middle() float64 {
+	if p.markFace == nil {
+		return 0
+	}
+	return (p.markFace.Asc - p.markFace.Desc) * p.mark.size / 2
 }
 
 // omml returns the reader of the document's Office Math.
