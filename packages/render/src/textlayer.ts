@@ -7,7 +7,8 @@
 // links, which cover their area. Copying goes through selectionText(), which
 // rebuilds the text from the runs' separators (spaces at line breaks, line
 // breaks at paragraph/cell/box boundaries) instead of the browser's
-// serialization of unrelated spans.
+// serialization of unrelated spans. A selection dragged off the text does
+// not jump (see trackSelections).
 import { Sep, type TextRun, type TextContent, type TextNode, type TextLink } from "@bdf/core";
 import { fontString } from "./resources.js";
 import { hasExtent } from "./search.js";
@@ -42,7 +43,8 @@ export interface TextLayerOptions {
   linkLabel?: (url: string) => string;
   /**
    * Called for the span of each run once it is placed, e.g. to keep the
-   * cells of a sheet's frozen panes in place while the rest scrolls.
+   * cells of a sheet's frozen panes in place while the rest scrolls (with
+   * z-index 2, above the other runs).
    */
   onSpan?: (span: HTMLSpanElement, run: TextRun) => void;
 }
@@ -59,8 +61,12 @@ function defaultMeasure(): (font: string, text: string) => number {
   return sharedMeasure;
 }
 
-/** Attribute names: on the run spans, on the layer element, and on links to a page or a view. */
-export const RUN_ATTR = { ordinal: "data-bdf-ordinal", sep: "data-bdf-sep", layer: "data-bdf-layer", page: "data-bdf-page", view: "data-bdf-view" } as const;
+/**
+ * Attribute names: on the run spans, on the layer element, on links to a page
+ * or a view, on the element that ends a layer, and on a layer and its end
+ * element while a selection is dragged in it.
+ */
+export const RUN_ATTR = { ordinal: "data-bdf-ordinal", sep: "data-bdf-sep", layer: "data-bdf-layer", page: "data-bdf-page", view: "data-bdf-view", end: "data-bdf-end", selecting: "data-bdf-selecting" } as const;
 
 /**
  * A link within the document: "#page=N" (a page of the same view) or
@@ -116,7 +122,135 @@ export function buildTextLayer(input: TextRun[] | TextContent, scale: number, op
   if (opts.lang !== undefined) layer.lang = opts.lang;
   const content: TextContent = Array.isArray(input) ? { runs: input, nodes: [], links: [] } : input;
   new LayerBuilder(layer, content, scale, opts).build();
+  const end = document.createElement("div");
+  end.setAttribute(RUN_ATTR.end, "");
+  end.setAttribute("aria-hidden", "true");
+  layer.appendChild(end);
+  trackSelections();
   return layer;
+}
+
+// A selection dragged off the text. Over empty space (a margin, the space
+// around a page) the browser resolves the pointer to a position far away,
+// typically the start of the page, as the runs are absolutely positioned:
+// the selection jumps or collapses. While a selection is dragged, as in
+// pdf.js, the end element of the layer where it ends covers the scroll area
+// under the runs (which have z-index 1), and it moves in the DOM next to the
+// run where the selection ends: before it when the selection runs backward.
+// Over empty space the pointer is on that element, which cannot be selected:
+// the selection stays where it is, or at most reaches the element, taking in
+// the rest of that run. Firefox keeps the selection where it is over such an
+// element, so there it stays at the end of its layer (as in pdf.js). Outside
+// the scroll area the browser's own dragging goes on, which scrolls it.
+
+/** Whether a button is down (mouse or pen), and the end element that covers the scroll area. */
+const drag: { down: boolean; end: HTMLElement | undefined } = { down: false, end: undefined };
+let tracking = false;
+let gecko: boolean | undefined;
+/** The run spans of each layer, in document order. */
+const layerRuns = new WeakMap<Element, HTMLElement[]>();
+
+function trackSelections() {
+  if (tracking || typeof document === "undefined") return;
+  tracking = true;
+  document.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "touch" || e.button !== 0) return;
+    drag.down = true;
+    // pressed on a run: cover before the drag leaves it
+    const run = e.target instanceof Element ? e.target.closest<HTMLElement>(`[${RUN_ATTR.ordinal}]`) : null;
+    const layer = run?.closest(`[${RUN_ATTR.layer}]`);
+    if (run && layer) cover(layer, run, false);
+  }, true);
+  const up = () => {
+    drag.down = false;
+    uncover();
+  };
+  document.addEventListener("pointerup", up, true);
+  document.addEventListener("pointercancel", up, true);
+  window.addEventListener("blur", up);
+  document.addEventListener("selectionchange", follow);
+}
+
+/** Keep the cover next to the end of the selection that moves. */
+function follow() {
+  if (!drag.down) return;
+  const sel = getSelection();
+  if (!sel?.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  // a press off the runs covers once the selection reaches them
+  if (range.collapsed && !drag.end) return;
+  const back = !range.collapsed && sel.focusNode === range.startContainer && sel.focusOffset === range.startOffset;
+  const node = back ? range.startContainer : range.endContainer;
+  const offset = back ? range.startOffset : range.endOffset;
+  const layer = (node instanceof Element ? node : node.parentElement)?.closest(`[${RUN_ATTR.layer}]`);
+  if (!layer) return;
+  const run = runAt(layer, node, offset, back);
+  if (run) cover(layer, run, back);
+}
+
+/**
+ * The run a boundary point of the selection is in or next to, on the side
+ * the selection covers: the last run starting before an end, the first
+ * ending after a start.
+ */
+function runAt(layer: Element, node: Node, offset: number, start: boolean): HTMLElement | undefined {
+  let runs = layerRuns.get(layer);
+  if (!runs) layerRuns.set(layer, (runs = [...layer.querySelectorAll<HTMLElement>(`[${RUN_ATTR.ordinal}]`)]));
+  const at = document.createRange();
+  at.setStart(node, offset);
+  // runs are in document order: a binary search for the first run past the point
+  const past = (run: HTMLElement) => {
+    const text = run.firstChild!;
+    return start ? at.comparePoint(text, text.textContent!.length) > 0 : at.comparePoint(text, 0) >= 0;
+  };
+  let lo = 0, hi = runs.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (past(runs[mid])) hi = mid;
+    else lo = mid + 1;
+  }
+  return start ? runs[lo] : runs[lo - 1];
+}
+
+/** Show a layer's end element over the scroll area, next to a run (before it, or after it). */
+function cover(layer: Element, run: HTMLElement, before: boolean) {
+  const end = layer.querySelector<HTMLElement>(`[${RUN_ATTR.end}]`);
+  if (!end) return;
+  if (drag.end !== end) {
+    uncover();
+    drag.end = end;
+    const r = scrollArea(layer);
+    end.style.cssText = `left: ${r.x}px; top: ${r.y}px; width: ${r.w}px; height: ${r.h}px`;
+    end.setAttribute(RUN_ATTR.selecting, "");
+    layer.setAttribute(RUN_ATTR.selecting, "");
+  }
+  gecko ??= typeof CSS !== "undefined" && CSS.supports("-moz-user-select", "none");
+  if (gecko || (before ? run.previousSibling : run.nextSibling) === end) return;
+  run.parentNode!.insertBefore(end, before ? run : run.nextSibling);
+}
+
+/** Put the end element back at the end of its layer, hidden. */
+function uncover() {
+  const end = drag.end;
+  if (!end) return;
+  drag.end = undefined;
+  end.removeAttribute(RUN_ATTR.selecting);
+  end.style.cssText = "";
+  const layer = end.closest(`[${RUN_ATTR.layer}]`);
+  if (!layer) return;
+  layer.removeAttribute(RUN_ATTR.selecting);
+  if (layer.lastChild !== end) layer.appendChild(end);
+}
+
+/** The visible area of the element that scrolls the layer (the window when none does), in CSS px of the window. */
+function scrollArea(layer: Element): { x: number; y: number; w: number; h: number } {
+  for (let el = layer.parentElement; el && el !== document.documentElement && el !== document.body; el = el.parentElement) {
+    const s = getComputedStyle(el);
+    if (!/auto|scroll|overlay/.test(`${s.overflowX} ${s.overflowY}`)) continue;
+    const r = el.getBoundingClientRect();
+    return { x: r.left + el.clientLeft, y: r.top + el.clientTop, w: el.clientWidth, h: el.clientHeight };
+  }
+  return { x: 0, y: 0, w: document.documentElement.clientWidth, h: document.documentElement.clientHeight };
 }
 
 class LayerBuilder {
@@ -367,17 +501,24 @@ const ROLE: Record<TextNode["kind"], string> = {
  * forced-color-adjust keeps the text transparent in forced colors (Windows
  * high contrast), which would otherwise paint it opaque over the canvas.
  * Figures and links are positioned boxes; a figure lets pointer events
- * through to what lies under it, except on its text.
+ * through to what lies under it, except on its text. Runs have z-index 1, so
+ * that they stay above the end element, which covers the scroll area while a
+ * selection is dragged; that also lets links through then, except their text.
+ * A run meant to lie above others (a cell of a frozen pane) needs z-index 2.
  */
 export const TEXT_LAYER_CSS = `
 .bdfTextLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; forced-color-adjust: none; }
-.bdfTextLayer span { position: absolute; color: transparent; white-space: pre; transform-origin: 0 0; cursor: text; }
+.bdfTextLayer span { position: absolute; z-index: 1; color: transparent; white-space: pre; transform-origin: 0 0; cursor: text; }
 .bdfTextLayer span::selection { background: rgba(0, 120, 255, .35); }
 .bdfTextLayer [role=img], .bdfTextLayer a { position: absolute; }
 .bdfTextLayer [role=img] { pointer-events: none; }
 .bdfTextLayer [role=img] span { pointer-events: auto; }
 .bdfTextLayer a, .bdfTextLayer a span { cursor: pointer; -webkit-user-drag: none; }
 .bdfTextLayer a:focus-visible { outline: 2px solid #1a73e8; outline-offset: 1px; }
+.bdfTextLayer [data-bdf-end] { display: none; position: fixed; inset: 0; z-index: 0; cursor: text; -webkit-user-select: none; user-select: none; }
+.bdfTextLayer [data-bdf-end][data-bdf-selecting] { display: block; }
+.bdfTextLayer[data-bdf-selecting] a { pointer-events: none; }
+.bdfTextLayer[data-bdf-selecting] a span { pointer-events: auto; }
 `;
 
 /** A selected piece of a run. */
