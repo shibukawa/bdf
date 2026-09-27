@@ -90,6 +90,11 @@ jobs:
             go run ./cmd/bdf generate -q "converter/psd/testdata/$n.psd" "/tmp/$n-psd.bdf"
             cmp "/tmp/$n-psd.bdf" "testdata/psd/$n.bdf"
           done
+          for f in converter/image/testdata/*; do
+            n=$(basename "${f%.*}")
+            go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/image/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:

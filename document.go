@@ -101,7 +101,11 @@ func (d *Document) Parts() []*Part {
 func (d *Document) shouldCompress(p *Part) bool {
 	switch p.Type {
 	case PartImage:
-		return false
+		// Encoded images are compressed already, but not SVG (text) or the
+		// pixels of BMP and of the BMP images in icons.
+		if !uncompressedImage(p.Data) {
+			return false
+		}
 	case PartFont:
 		// WOFF and WOFF2 are compressed already; TTF/OTF are not.
 		if len(p.Data) >= 4 && (string(p.Data[:4]) == "wOF2" || string(p.Data[:4]) == "wOFF") {
@@ -109,6 +113,20 @@ func (d *Document) shouldCompress(p *Part) bool {
 		}
 	}
 	return len(p.Data) >= d.MinCompress
+}
+
+// uncompressedImage reports whether an image part is SVG, BMP or an icon,
+// which compress well (spec §3.2).
+func uncompressedImage(b []byte) bool {
+	switch {
+	case len(b) >= 2 && b[0] == 'B' && b[1] == 'M':
+		return true
+	case len(b) >= 4 && b[0] == 0 && b[1] == 0 && b[2] == 1 && b[3] == 0:
+		return true
+	}
+	// SVG: markup, possibly after a byte order mark
+	t := bytes.TrimLeft(bytes.TrimPrefix(b, []byte("\xef\xbb\xbf")), " \t\r\n")
+	return len(t) > 0 && t[0] == '<'
 }
 
 func (d *Document) compress(data []byte) ([]byte, error) { return compress(data, d.CompressionLevel) }
