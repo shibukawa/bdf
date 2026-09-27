@@ -40,3 +40,57 @@ func TestDublinCore(t *testing.T) {
 		t.Error("malformed packet gave values")
 	}
 }
+
+// TestDates: the created date comes from the original's date (Photoshop,
+// EXIF) before XMP's CreateDate (the digitizing); dates are normalized, and
+// the dc schema has no created element.
+func TestDates(t *testing.T) {
+	packet := `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+ <rdf:Description xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"
+   xmlns:dc="http://purl.org/dc/elements/1.1/" xmp:CreateDate="2026-09-03T12:00:00Z" xmp:ModifyDate="2026:09:04 08:00:00+0900"
+   photoshop:DateCreated="2026-09-01">
+  <dc:date><rdf:Seq><rdf:li>2026-09</rdf:li><rdf:li>yesterday</rdf:li></rdf:Seq></dc:date>
+  <dc:created>2026-01-01</dc:created>
+ </rdf:Description></rdf:RDF></x:xmpmeta>`
+	dc := DublinCore([]byte(packet))
+	if !slices.Equal(dc.Created, []string{"2026-09-01"}) || !slices.Equal(dc.Modified, []string{"2026-09-04T08:00:00+09:00"}) ||
+		!slices.Equal(dc.Date, []string{"2026-09"}) {
+		t.Errorf("created %q, modified %q, date %q", dc.Created, dc.Modified, dc.Date)
+	}
+	for _, c := range []struct{ in, want string }{
+		{"2026", "2026"},
+		{"2026-09-01T10:20", "2026-09-01T10:20"},
+		{"2026-09-01T10:20:30.25+0900", "2026-09-01T10:20:30.25+09:00"},
+		{"2026:09:01 10:20:30Z", "2026-09-01T10:20:30Z"},
+		{"2026-13-01", ""},
+		{"0000", ""},
+	} {
+		if got := Date(c.in); got != c.want {
+			t.Errorf("Date(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestRDF: typed node elements and resources described in place
+// (Inkscape's metadata in SVG files), named resources, and the TIFF schema
+// filling in what the dc schema leaves out; a camera's placeholder
+// description is no description.
+func TestRDF(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:cc="http://creativecommons.org/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/"><metadata><rdf:RDF>
+  <cc:Work rdf:about=""><dc:title>Shapes</dc:title><dc:creator><cc:Agent><dc:title>Hanako Sato</dc:title></cc:Agent></dc:creator>
+   <dc:source rdf:resource="https://example.com/src"/></cc:Work></rdf:RDF></metadata><rect/></svg>`
+	dc := DublinCore([]byte(svg))
+	if dc.Title.First() != "Shapes" || dc.Creator.First() != "Hanako Sato" || dc.Source.First() != "https://example.com/src" {
+		t.Errorf("svg: %+v", dc)
+	}
+	packet := `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description
+  xmlns:tiff="http://ns.adobe.com/tiff/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/"
+  tiff:Artist="Ann; Bob" tiff:Copyright="CC0" tiff:ImageDescription="A cat">
+  <dc:description><rdf:Alt><rdf:li xml:lang="x-default">OLYMPUS DIGITAL CAMERA</rdf:li></rdf:Alt></dc:description>
+  <dc:rights><rdf:Alt><rdf:li xml:lang="x-default">© Ann</rdf:li></rdf:Alt></dc:rights></rdf:Description></rdf:RDF>`
+	dc = DublinCore([]byte(packet))
+	if !slices.Equal(dc.Creator, []string{"Ann", "Bob"}) || !slices.Equal(dc.Rights, []string{"© Ann"}) || !slices.Equal(dc.Description, []string{"A cat"}) {
+		t.Errorf("tiff: %+v", dc)
+	}
+}

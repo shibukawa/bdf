@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/xmp"
 )
 
 // Options controls the conversion.
@@ -123,21 +124,21 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	// metadata, in order of precedence: XMP, EXIF, IPTC, the format's own
 	var dc bdf.DublinCore
 	for _, x := range p.xmp {
-		merge(&dc, parseXMP(x))
+		xmp.Merge(&dc, xmp.DublinCore(x))
 	}
 	orientation := 0
 	for _, e := range p.exif {
 		if info, ok := parseEXIF(e); ok {
-			merge(&dc, info.dc)
+			xmp.Merge(&dc, info.dc)
 			if orientation == 0 {
 				orientation = info.orientation
 			}
 		}
 	}
 	if p.iptc != nil {
-		merge(&dc, parseIPTC(p.iptc))
+		xmp.Merge(&dc, parseIPTC(p.iptc))
 	}
-	merge(&dc, p.native)
+	xmp.Merge(&dc, p.native)
 
 	// Browsers turn JPEG and PNG images by their EXIF orientation (5 to 8
 	// swap the sides), but not WebP images; AVIF has its own (irot).

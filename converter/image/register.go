@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/xmp"
 )
 
 func init() {
@@ -83,7 +84,7 @@ const maxWhole = 8 << 20
 // SVG picture) make it something else, as they make browsers reject an SVG
 // file. A root element that is not well formed is taken as an SVG file.
 func wholeSVG(data []byte) bool {
-	d := decoder(utf8Text(data), nil)
+	d := xmp.Decoder(utf8Text(data), nil)
 	for {
 		tok, err := d.Token()
 		if err != nil {
