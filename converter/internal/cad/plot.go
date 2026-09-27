@@ -23,7 +23,7 @@ type Plotter struct {
 type state struct {
 	fill, stroke       bdf.Color
 	fillSet, strokeSet bool
-	width              float64
+	width, miter       float64
 	cap, join          byte
 	lineSet            bool
 	dash               []float64
@@ -162,7 +162,7 @@ func (p *plot) strokeItem(it Item, m canvas.Matrix) {
 		}
 	}
 	p.setStroke(pen.Color)
-	p.setLine(w, pen.Cap, pen.Join)
+	p.setLine(w, pen.Cap, pen.Join, pen.Miter)
 	p.setDash(dash, off)
 	p.obj.StrokePath(p.obj.AddPath(toBDF(it.path, m)))
 	p.cv.Drawn = true
@@ -235,10 +235,13 @@ func (p *plot) setStroke(c bdf.Color) {
 	}
 }
 
-func (p *plot) setLine(w float64, cap, join byte) {
-	if !p.st.lineSet || p.st.width != w || p.st.cap != cap || p.st.join != join {
-		p.obj.Line(f32(w), cap, join, 10)
-		p.st.width, p.st.cap, p.st.join, p.st.lineSet = w, cap, join, true
+func (p *plot) setLine(w float64, cap, join byte, miter float64) {
+	if miter <= 0 {
+		miter = 10
+	}
+	if !p.st.lineSet || p.st.width != w || p.st.cap != cap || p.st.join != join || p.st.miter != miter {
+		p.obj.Line(f32(w), cap, join, f32(miter))
+		p.st.width, p.st.cap, p.st.join, p.st.miter, p.st.lineSet = w, cap, join, miter, true
 	}
 }
 
