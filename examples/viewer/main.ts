@@ -490,6 +490,8 @@ function closeDocument() {
   generation++;
   book?.destroy();
   book = undefined;
+  sheetChunks?.drop();
+  sheetChunks = undefined;
   stage.onscroll = stage.onkeydown = stage.onfocus = null;
   stage.replaceChildren();
   tabs.replaceChildren();
@@ -808,6 +810,10 @@ function show(v: View) {
   generation++;
   book?.destroy();
   book = undefined;
+  if (sheetChunks?.view !== v) {
+    sheetChunks?.drop();
+    sheetChunks = undefined;
+  }
   $("pageNav").hidden = $("animateBox").hidden = true;
   stage.onscroll = stage.onkeydown = stage.onfocus = null;
   stage.replaceChildren();
@@ -1404,16 +1410,117 @@ function columnLabel(c: number): string {
 
 const SHEET_HEADER = 20;
 
+/** The side of the chunks a sheet is drawn in, in CSS px. */
+const SHEET_CHUNK = 512;
+/** Bytes of chunk bitmaps kept (width × height × 4), unless those in view take more. */
+const SHEET_CHUNK_BUDGET = 192 * 1024 * 1024;
+/** Chunks asked of the worker at once. */
+const SHEET_CHUNK_REQUESTS = 4;
+
+/**
+ * The chunks a sheet is drawn in at one scale: squares of SHEET_CHUNK CSS px
+ * from the sheet's origin, each a region the worker draws once. Scrolling
+ * puts the chunks drawn already on the canvas and asks only for those that
+ * come into view: drawing the whole visible region again at every step of
+ * a scroll took the worker, and the transfer of its bitmap, longer than a
+ * frame. The chunks are whole device pixels, so that they meet without
+ * seams. The least recently shown go beyond the budget.
+ */
+class SheetChunks {
+  /** A chunk's side in device pixels, and in sheet units. */
+  readonly px: number;
+  readonly unit: number;
+  /** Bitmaps by key, least recently shown first. */
+  private bitmaps = new Map<string, ImageBitmap>();
+  private bytes = 0;
+  private loading = new Set<string>();
+  private dropped = false;
+
+  constructor(readonly view: View, readonly scale: number, d: number) {
+    this.px = Math.max(1, Math.round(SHEET_CHUNK * d));
+    this.unit = this.px / scale;
+  }
+
+  static key(cx: number, cy: number) { return `${cx},${cy}`; }
+
+  /** The chunks a region of the sheet (in units) lies in, row by row. */
+  within(r: { x: number; y: number; w: number; h: number }, out: [number, number][] = []): [number, number][] {
+    if (r.w <= 0 || r.h <= 0) return out;
+    const u = this.unit;
+    for (let cy = Math.max(0, Math.floor(r.y / u)); cy * u < r.y + r.h; cy++) {
+      for (let cx = Math.max(0, Math.floor(r.x / u)); cx * u < r.x + r.w; cx++) out.push([cx, cy]);
+    }
+    return out;
+  }
+
+  /** A chunk drawn already, now the most recently shown. */
+  get(cx: number, cy: number): ImageBitmap | undefined {
+    const key = SheetChunks.key(cx, cy);
+    const b = this.bitmaps.get(key);
+    if (b) {
+      this.bitmaps.delete(key);
+      this.bitmaps.set(key, b);
+    }
+    return b;
+  }
+
+  /**
+   * Ask the worker for the first of the chunks wanted that are neither
+   * drawn nor being drawn, SHEET_CHUNK_REQUESTS at a time; arrived runs as
+   * each comes (the chunks in view are those wanted first, and kept).
+   */
+  fetch(wanted: [number, number][], keep: number, arrived: (ms: number) => void, failed: (e: unknown) => void) {
+    for (const [cx, cy] of wanted) {
+      if (this.loading.size >= SHEET_CHUNK_REQUESTS) return;
+      const key = SheetChunks.key(cx, cy);
+      if (this.bitmaps.has(key) || this.loading.has(key)) continue;
+      this.loading.add(key);
+      const t0 = performance.now();
+      client.sheet(this.view.id, { x: cx * this.unit, y: cy * this.unit, w: this.unit, h: this.unit }, this.scale).then((b) => {
+        this.loading.delete(key);
+        if (this.dropped) return b.close();
+        this.bitmaps.set(key, b);
+        this.bytes += b.width * b.height * 4;
+        this.trim(Math.max(SHEET_CHUNK_BUDGET, 2 * keep * this.px * this.px * 4));
+        arrived(performance.now() - t0);
+      }, (e) => {
+        this.loading.delete(key);
+        failed(e);
+      });
+    }
+  }
+
+  private trim(budget: number) {
+    for (const [key, b] of this.bitmaps) {
+      if (this.bytes <= budget) return;
+      this.bitmaps.delete(key);
+      this.bytes -= b.width * b.height * 4;
+      b.close();
+    }
+  }
+
+  /** Let the bitmaps go: the sheet is not shown at this scale any more. */
+  drop() {
+    this.dropped = true;
+    for (const b of this.bitmaps.values()) b.close();
+    this.bitmaps.clear();
+    this.bytes = 0;
+  }
+}
+
+/** The chunks of the sheet shown last, kept while it is shown again at the same scale. */
+let sheetChunks: SheetChunks | undefined;
+
 /** A cell's name: B12. */
 const cellName = (r: number, c: number) => `${columnLabel(c)}${r + 1}`;
 
 /**
  * Sheet: a scroll area the size of the sheet with one sticky canvas that
  * shows the column and row headers and the visible region, split into the
- * frozen panes of the view (each rendered by the worker as a region of its
- * own). A text layer (a table of the cells, for screen readers) covers the
- * visible region and a screen around it; the cells of the frozen panes are
- * pinned with a translation that follows the scroll.
+ * frozen panes of the view (each put together from the chunks the worker
+ * drew, see SheetChunks). A text layer (a table of the cells, for screen
+ * readers) covers the visible region and a screen around it; the cells of
+ * the frozen panes are pinned with a translation that follows the scroll.
  *
  * Cells are selected as in a spreadsheet, not as text: a press on a cell
  * and a drag (scrolling at the edges), Shift with a press to extend, the
@@ -1449,12 +1556,23 @@ function showSheet(v: View) {
 
   const gen = generation;
   const sheet = { rows: rows.count, cols: cols.count, headerRows: fr, headerCols: fc };
-  // cells of the frozen panes stay where they are while the sheet scrolls
+  // Cells of the frozen panes stay where they are while the sheet scrolls:
+  // each is moved by the scroll offset. (A custom property on the layer
+  // would restyle all its runs at every step of a scroll.)
+  let pinned: { span: HTMLSpanElement; x: boolean; y: boolean }[] = [];
+  let building: typeof pinned = [];
+  /** The scroll offset the pinned cells are moved by (read once: reading it after a move lays the page out again). */
+  let scrolled = { x: 0, y: 0 };
+  const place = (p: (typeof pinned)[number]) => {
+    p.span.style.translate = `${p.x ? scrolled.x : 0}px ${p.y ? scrolled.y : 0}px`;
+  };
   const pin = (span: HTMLSpanElement, r: { x: number; y: number }) => {
     const x = r.x < fw, y = r.y < fh;
     if (!x && !y) return;
-    span.style.translate = `${x ? "var(--sx)" : "0px"} ${y ? "var(--sy)" : "0px"}`;
+    const p = { span, x, y };
+    place(p);
     span.style.zIndex = "2"; // above the other runs (TEXT_LAYER_CSS)
+    building.push(p);
   };
   /** The text layer's content, the rectangles it covers, and its cells by position. */
   let loaded: { content: TextContent; rects: { x: number; y: number; w: number; h: number }[]; cells: Map<string, CellText> } | undefined;
@@ -1480,7 +1598,9 @@ function showSheet(v: View) {
           if (c.rows > 1 || c.cols > 1) merges.set(`${c.row},${c.col}`, c);
         }
         loaded = { content, rects: [region, ...frozen], cells };
+        building = [];
         const layer = buildTextLayer(content, zoom, { ...layerOptions(), sheet, onSpan: pin, selectable: false });
+        pinned = building;
         layerHost.replaceChildren(layer);
       }).catch(unlessStale(gen));
     }, 150);
@@ -1570,7 +1690,7 @@ function showSheet(v: View) {
   };
   const select = (s: CellSelection) => {
     cellSelections.set(v, s);
-    if (bitmaps.length) paint();
+    if (panes.length) paint();
   };
   /** A selection made: hold the page's selection, get the cells ready to copy and say what is selected. */
   const settle = () => {
@@ -1584,7 +1704,7 @@ function showSheet(v: View) {
     cellSelections.delete(v);
     const ds = getSelection();
     if (ds && hold.contains(ds.anchorNode)) ds.removeAllRanges();
-    if (bitmaps.length) paint();
+    if (panes.length) paint();
     setStatus(describe(v));
   };
 
@@ -1756,18 +1876,59 @@ function showSheet(v: View) {
 
   type Pane = { src: { x: number; y: number; w: number; h: number }; dx: number; dy: number };
   let panes: Pane[] = [];
-  let bitmaps: ImageBitmap[] = [];
   const paint = () => {
     const d = dpr();
     const vw = Math.min(stage.clientWidth, hw + cols.total * zoom), vh = Math.min(stage.clientHeight, hh + rows.total * zoom);
-    canvas.width = Math.ceil(vw * d);
-    canvas.height = Math.ceil(vh * d);
-    canvas.style.width = `${vw}px`;
-    canvas.style.height = `${vh}px`;
+    const cw = Math.ceil(vw * d), ch = Math.ceil(vh * d);
+    // a new size clears the canvas and its state (the same one would, too, at a cost on every scroll)
+    if (canvas.width !== cw || canvas.height !== ch) {
+      canvas.width = cw;
+      canvas.height = ch;
+      canvas.style.width = `${vw}px`;
+      canvas.style.height = `${vh}px`;
+    }
     const ctx = canvas.getContext("2d")!;
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    panes.forEach((p, i) => ctx.drawImage(bitmaps[i], p.dx * d, p.dy * d, p.src.w * zoom * d, p.src.h * zoom * d));
+    // the chunks drawn already, at whole device pixels; those still to come show the gridlines meanwhile
+    const chunks = sheetChunks;
+    if (chunks?.view === v) {
+      const k = chunks.scale, px = chunks.px, u = chunks.unit;
+      ctx.strokeStyle = "#d9d9d9"; // as the worker draws them (PageRenderer)
+      ctx.lineWidth = 1;
+      for (const p of panes) {
+        const x0 = Math.round(p.dx * d), y0 = Math.round(p.dy * d);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x0, y0, Math.round((p.dx + p.src.w * zoom) * d) - x0, Math.round((p.dy + p.src.h * zoom) * d) - y0);
+        ctx.clip();
+        const bx = Math.round(p.dx * d - p.src.x * k), by = Math.round(p.dy * d - p.src.y * k);
+        ctx.beginPath();
+        for (const [cx, cy] of chunks.within(p.src)) {
+          const b = chunks.get(cx, cy);
+          if (b) {
+            ctx.drawImage(b, bx + cx * px, by + cy * px);
+            continue;
+          }
+          if (!v.gridlines) continue;
+          const top = by + cy * px, left = bx + cx * px;
+          cols.each(cx * u, (cx + 1) * u, (_, start, size) => {
+            if (start + size > (cx + 1) * u) return;
+            const x = Math.round(bx + (start + size) * k) + 0.5;
+            ctx.moveTo(x, top);
+            ctx.lineTo(x, top + px);
+          });
+          rows.each(cy * u, (cy + 1) * u, (_, start, size) => {
+            if (start + size > (cy + 1) * u) return;
+            const y = Math.round(by + (start + size) * k) + 0.5;
+            ctx.moveTo(left, y);
+            ctx.lineTo(left + px, y);
+          });
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
     // search hits and the selected cells, clipped to each pane
     ctx.save();
     ctx.scale(d, d);
@@ -1861,16 +2022,51 @@ function showSheet(v: View) {
     ctx.stroke();
   };
 
+  /**
+   * The chunks the panes show (the frozen ones first: a few, with the
+   * column names), then those a chunk around the scrolled region (drawn
+   * ahead of a scroll).
+   */
+  const wanted = (chunks: SheetChunks) => {
+    const shown: [number, number][] = [];
+    for (const p of [...panes].reverse()) chunks.within(p.src, shown);
+    const main = panes[0]?.src, u = chunks.unit;
+    const around = main ? chunks.within({ x: main.x - u, y: main.y - u, w: main.w + 2 * u, h: main.h + 2 * u }) : [];
+    return { list: [...shown, ...around], shown: shown.length };
+  };
+  let painting = false;
+  const repaint = () => {
+    if (painting) return;
+    painting = true;
+    requestAnimationFrame(() => {
+      painting = false;
+      if (gen === generation) paint();
+    });
+  };
+  /** Ask for the chunks that are wanted and not drawn yet; paint each as it comes. */
+  const fetchChunks = () => {
+    const chunks = sheetChunks;
+    if (gen !== generation || chunks?.view !== v) return;
+    const { list, shown } = wanted(chunks);
+    chunks.fetch(list, shown, (ms) => {
+      if (gen !== generation) return;
+      repaint();
+      fetchChunks();
+      setTiming(`sheet chunk rendered in ${ms.toFixed(0)} ms`);
+    }, unlessStale(gen));
+  };
+
   let pending = false;
   const draw = async () => {
     if (pending) return;
     pending = true;
     await new Promise((r) => requestAnimationFrame(r));
     pending = false;
+    if (gen !== generation) return;
     const vw = stage.clientWidth, vh = stage.clientHeight;
     const sx = stage.scrollLeft, sy = stage.scrollTop;
-    layerHost.style.setProperty("--sx", `${sx}px`);
-    layerHost.style.setProperty("--sy", `${sy}px`);
+    scrolled = { x: sx, y: sy };
+    pinned.forEach(place);
     // the scrolled region starts where the frozen panes end
     const mx = fw + sx / zoom, my = fh + sy / zoom;
     const pw = Math.max(0, Math.min((vw - hw) / zoom - fw, cols.total - mx)), ph = Math.max(0, Math.min((vh - hh) / zoom - fh, rows.total - my));
@@ -1880,18 +2076,19 @@ function showSheet(v: View) {
       { src: { x: 0, y: my, w: fw, h: ph }, dx: hw, dy: hh + fh * zoom },
       { src: { x: 0, y: 0, w: fw, h: fh }, dx: hw, dy: hh },
     ].filter((p) => p.src.w > 0 && p.src.h > 0);
-    const t0 = performance.now();
-    const bmps = await Promise.all(next.map((p) => client.sheet(v.id, p.src, zoom * dpr())));
-    if (gen !== generation) return bmps.forEach((b) => b.close());
-    bitmaps.forEach((b) => b.close());
     panes = next;
-    bitmaps = bmps;
+    // the chunks of another view or scale (a zoom, or a screen of another resolution) are drawn anew
+    const scale = zoom * dpr();
+    if (sheetChunks?.view !== v || sheetChunks.scale !== scale) {
+      sheetChunks?.drop();
+      sheetChunks = new SheetChunks(v, scale, dpr());
+    }
     paint();
+    fetchChunks();
     updateText(next[0]?.src ?? { x: 0, y: 0, w: 1, h: 1 });
-    setTiming(`sheet region ${Math.round(mx)},${Math.round(my)} rendered in ${(performance.now() - t0).toFixed(0)} ms`);
   };
   sheetViews.set(v, {
-    redraw: () => { if (bitmaps.length) paint(); },
+    redraw: () => { if (panes.length) paint(); },
     reveal: (r) => {
       const pw = stage.clientWidth - hw - fw * zoom, ph = stage.clientHeight - hh - fh * zoom;
       stage.scrollTo({
