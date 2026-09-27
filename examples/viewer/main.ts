@@ -46,6 +46,8 @@ let zoom = 1;
 let generation = 0;
 /** The view shown one or two pages at a time. */
 let book: Book | undefined;
+/** The reader picked the layout (the menu, or ?layout=); otherwise each document opens in its own. */
+let layoutChosen = false;
 
 /** Search state for the current view; pages is how many were converted when it searched (streaming). */
 const found = { query: "", hits: [] as SearchHit[], rects: [] as HitRect[][], index: -1, pages: -1 };
@@ -213,6 +215,8 @@ async function load(source: OpenSource, name?: string, token = ++opening, stream
     return;
   }
   manifest = opened;
+  // a book opens as facing pages
+  if (!layoutChosen) layoutSelect.value = manifest.meta?.source === "epub" ? "spread" : "pages";
   if (stream) {
     stream.view = manifest.views[0].id;
     streaming = stream;
@@ -523,8 +527,14 @@ function init() {
   };
   // "?layout=spread" opens documents in that layout
   const start = params.get("layout");
-  if (start && [...layoutSelect.options].some((o) => o.value === start)) layoutSelect.value = start;
-  layoutSelect.onchange = () => { if (current) show(current); };
+  if (start && [...layoutSelect.options].some((o) => o.value === start)) {
+    layoutSelect.value = start;
+    layoutChosen = true;
+  }
+  layoutSelect.onchange = () => {
+    layoutChosen = true;
+    if (current) show(current);
+  };
   $("prevPage").onclick = () => book?.turnBy(-1);
   $("nextPage").onclick = () => book?.turnBy(1);
 
@@ -711,13 +721,15 @@ async function renderText(v: View, index: number, el: HTMLDivElement, gen: numbe
 /**
  * Pages one or two at a time, fitted to the stage (times the zoom), with the
  * page buttons in the header. The pages shown are the visible ones, which a
- * stream converts first.
+ * stream converts first. A view of a book bound on the right (direction
+ * "rtl", spec §4.1) is laid out and turned right to left; the menu can make
+ * any view do so.
  */
 function showBook(v: View, start: number) {
   const gen = generation;
   const pagesOf = v.pages ?? [];
   const noun = manifest.meta?.source === "pptx" ? "Slide" : "Page";
-  const rtl = layoutSelect.value === "spread-rtl";
+  const rtl = layoutSelect.value === "spread-rtl" || v.direction === "rtl";
   const b = new Book(stage, {
     pages: pagesOf,
     layout: layoutSelect.value === "single" ? "single" : "spread",
