@@ -68,6 +68,10 @@ func TestDetect(t *testing.T) {
 		{"drawio svg", read(t, "embedded.drawio.svg"), "drawio"},
 		{"drawio png", read(t, "embedded.drawio.png"), "drawio"},
 		{"mxGraphModel", []byte("\ufeff<?xml version=\"1.0\"?>\n<mxGraphModel><root/></mxGraphModel>"), "drawio"},
+		{"cgm", []byte{0x00, 0x23, 0x02, 'm', 'f', 0x00, 0x10, 0x22, 0x00, 0x04, 0x00, 0x40}, "cgm"},
+		{"cgm clear text", []byte("BEGMF 'drawing';\nMFVERSION 1;\n"), "cgm"},
+		// a comma on every line, as CSV has
+		{"cgm clear text of points", []byte("BEGMF 'a,b';\nVDCEXT (0,0) (100,100);\nLINE (0,0) (10,10);\nLINE (5,0) (5,10);\n"), "cgm"},
 		{"tsv", []byte("id\tname\n1\tAnn\n"), "csv"},
 		{"dxf", []byte("  0\r\nSECTION\r\n  2\r\nHEADER\r\n"), "dxf"},
 		{"binary dxf", []byte("AutoCAD Binary DXF\r\n\x1a\x00\x00\x00"), "dxf"},

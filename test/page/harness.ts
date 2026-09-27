@@ -98,6 +98,11 @@ export const CASES: Case[] = [
   { name: "jww-old-1", src: "/testdata/jww/old.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
   // An SXF drawing (P21) rendered by converter/sxf with the test fonts; see test/sxf.
   { name: "sxf-shapes-1", src: "/testdata/sxf/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  // CGM metafiles rendered by converter/cgm with the test fonts; see test/cgm. A CAD-like sheet of every kind of
+  // primitive, a WebCGM-like illustration with a y-down VDC, a hidden layer and tiles, and Shift_JIS text.
+  { name: "cgm-shapes-1", src: "/testdata/cgm/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "cgm-illustration-1", src: "/testdata/cgm/illustration.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "cgm-sjis-1", src: "/testdata/cgm/sjis.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
   // TIFF pages converted by converter/tiff; see test/tiff. A 300 dpi bilevel scan scaled down to 192 dpi, JPEG strips
   // stored as one JPEG, a fax at 204 × 98 dpi, and a picture stored turned with Orientation 6.
   { name: "tiff-scan-1", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },

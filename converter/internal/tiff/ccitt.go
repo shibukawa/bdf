@@ -196,6 +196,21 @@ func (r *bitReader) run(white bool) (int, error) {
 	}
 }
 
+// DecodeFax decodes CCITT fax data outside TIFF files (the tiles of CGM
+// metafiles): T.6 when t6 is set, T.4 otherwise (two-dimensional with
+// twoD), rows of width pixels into packed rows (1 bits for black, rows
+// padded to bytes). damaged reports rows that did not decode, which are
+// left white.
+func DecodeFax(src []byte, t6, twoD bool, width, rows int) (out []byte, damaged bool) {
+	if width <= 0 || rows <= 0 {
+		return nil, true
+	}
+	if t6 {
+		return decodeCCITT(src, ccittT6, false, false, width, rows)
+	}
+	return decodeCCITT(src, ccittT4, twoD, false, width, rows)
+}
+
 // decodeCCITT decodes rows of width pixels into packed rows (1 bits for
 // black, rows padded to bytes). lsb reverses the bits of each byte first
 // (FillOrder 2). damaged reports rows that did not decode, which are left
