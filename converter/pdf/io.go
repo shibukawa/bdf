@@ -2,7 +2,7 @@ package pdf
 
 import (
 	"bytes"
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/sfnt"
 	"io"
 )
 

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/sfnt"
 )
 
 func TestNormalize(t *testing.T) {
@@ -68,7 +68,7 @@ func TestSystemResolve(t *testing.T) {
 }
 
 func TestFS(t *testing.T) {
-	const dir = "../../pptx/testdata/fonts"
+	const dir = "../../converter/pptx/testdata/fonts"
 	fsys := fstest.MapFS{"README.md": {Data: []byte("not a font")}}
 	for _, name := range []string{"MPLUS1p-Regular-subset.ttf", "MPLUS1p-Bold-subset.ttf"} {
 		data, err := os.ReadFile(dir + "/" + name)
@@ -104,7 +104,7 @@ func TestFS(t *testing.T) {
 // they draw by index (the parts of delimiters) mapped from private use
 // characters, CFF outlines included.
 func TestMathFont(t *testing.T) {
-	for _, name := range []string{"../sfnt/testdata/STIXTwoMath-cff-subset.otf", "../../docx/testdata/fonts/STIXTwoMath-subset.ttf"} {
+	for _, name := range []string{"../sfnt/testdata/STIXTwoMath-cff-subset.otf", "../../converter/docx/testdata/fonts/STIXTwoMath-subset.ttf"} {
 		data, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
@@ -140,7 +140,7 @@ func TestMathFont(t *testing.T) {
 			t.Errorf("%s: part of ( mapped to glyph %d", name, g)
 		}
 	}
-	data, err := os.ReadFile("../../pptx/testdata/fonts/MPLUS1p-Regular-subset.ttf")
+	data, err := os.ReadFile("../../converter/pptx/testdata/fonts/MPLUS1p-Regular-subset.ttf")
 	if err != nil {
 		t.Fatal(err)
 	}

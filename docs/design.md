@@ -37,7 +37,7 @@ wasm が意味を持つケース:
 
 - Go: `bdf` パッケージ（Writer / Object builder / 各 Part のエンコード）と変換 CLI。エンコーダは `io.Writer` に対して決定的に出力する。
 - TypeScript: `@bdf/core`（デコード・型定義）、`@bdf/render`（Canvas バックエンド、Worker）、`@bdf/viewer`（UI）。
-- 両者の契約は**ワイヤフォーマットとフィクスチャ**。Go でエンコードしたテストファイルを TS がデコードし、Playwright でスクリーンショットを golden 比較する。Go 側に描画は持たない。
+- 両者の契約は**ワイヤフォーマットとフィクスチャ**。Go でエンコードしたテストファイルを TS がデコードし、Playwright でスクリーンショットを golden 比較する。ビューアの描画は TS だけが持つ。Go の `raster` はサーバーでサムネイルやページの画像を作るための別の描き手で（§3.25）、同じ golden 画像と比べて確かめる。
 
 ### ブラウザ内変換（cmd/bdfwasm）
 
@@ -89,7 +89,7 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 - **縦書き**（WMode 1: `Identity-V`、`-V` の定義済み CMap、`/WMode 1` の埋め込み CMap）: グリフは送り `W2`/`DW2`（既定 `[880 −1000]`）の w1 でテキスト空間の下へ進み、位置ベクトル v の分だけ横書きの原点からずらして置く。`TJ` の数値は下への移動になる。行（次に run を切るまでの縦の並び）を 1 つの子 Object に描き、親では行の起点に 90° 回した座標系で `ALT_TEXT`（行の文字列）+ `USE_AT` を置く（PowerPoint・Word の縦書きと同じ形。spec §7.8）ので、抽出・検索・選択では 1 行 1 run になる。子 Object の中では 1 字ずつ回転を戻して正立させる。埋め込みフォントは縦書き用のグリフ（CID）をそのまま描く。システムフォントで描くときは、CID が縦書き用の字形なら Unicode の縦書き用字形（︑ ︵ ﹁ など）を描き、それがない長音・波ダッシュなどは行と一緒に回したまま描く。1 字ずつ `Td` で置く PDF も、同じ列で筆記位置が続いていれば同じ行にまとめる。
 - **フォント**: 埋め込み TrueType/CFF/OpenType（`FontFile2`、`FontFile3` の `Type1C`/`CIDFontType0C`/`OpenType`）と Type1（`FontFile`、CFF に変換してから同じ扱い）は、使われたコードごとに (Unicode, GID) を集め、Unicode → GID の cmap を合成して TTF/OTF に組み直す（name、OS/2、post も生成し、ブラウザのサニタイザを通す）。同じ Unicode に別のグリフが割り当たる場合や合字（ToUnicode が複数文字）は私用領域 U+E000〜 に逃がし、`ALT_TEXT` で本来の文字列を持つ。組み直したフォントは WOFF2 にして格納する（§3.3）。サブセット化（`-no-subset` で無効化）の方法は形式で違う。
   - TrueType は使ったグリフ（合成グリフの構成要素を含む）以外のアウトラインを空にし、`hmtx` の値も 0 にする。GID は付け替えない。`loca` の長さはグリフ数のままだが、WOFF2 は `loca` を送らずに復元させ、空グリフと 0 の並びは Brotli でほぼ消える。フルフォント埋め込みの PDF で 611KB → 56KB 程度（WOFF2 前）、IPA ゴシック（6.2MB、12,728 グリフ）から 20 字なら WOFF2 で 3.9KB。
-  - CFF（素の CFF と OpenType の `CFF ` 表、名前キー・CID キーとも）は使ったグリフ（seac のアクセント部品を含む）だけを残して GID を詰め直し、cmap と `hmtx` もそれに合わせる。CFF の CharStrings INDEX はグリフごとにオフセットを持ち、WOFF2 にも `loca` のような変換がないので、空にするだけでは CJK フォントでオフセット表が残る（57,000 グリフで 170KB）。サブルーチンは番号が変わると呼び出し側の書き換えが要るので番号は保ち、残したグリフが呼ばないものを `return` だけにする。どれが呼ばれるかは Type 2 charstring をスタックとステム数（hintmask の長さが決まる）だけ追う小さな解釈器で調べ、算術演算子などで追えないときは全サブルーチンを残す。charset はグリフ名/CID を保ち、FDSelect は作り直し、独自 Encoding は旧 GID を指すので StandardEncoding に置き換える（ブラウザは cmap しか見ない）。Unifont JP（CID キー、4.8MB）から 22 字なら CFF は 1KB 弱になる。CFF の読み取りとサブセット化は `converter/internal/cff` にあり、Office 系の変換器のフォント埋め込み（`fontdb`、§3.4）も同じものを使う。
+  - CFF（素の CFF と OpenType の `CFF ` 表、名前キー・CID キーとも）は使ったグリフ（seac のアクセント部品を含む）だけを残して GID を詰め直し、cmap と `hmtx` もそれに合わせる。CFF の CharStrings INDEX はグリフごとにオフセットを持ち、WOFF2 にも `loca` のような変換がないので、空にするだけでは CJK フォントでオフセット表が残る（57,000 グリフで 170KB）。サブルーチンは番号が変わると呼び出し側の書き換えが要るので番号は保ち、残したグリフが呼ばないものを `return` だけにする。どれが呼ばれるかは Type 2 charstring をスタックとステム数（hintmask の長さが決まる）だけ追う小さな解釈器で調べ、算術演算子などで追えないときは全サブルーチンを残す。charset はグリフ名/CID を保ち、FDSelect は作り直し、独自 Encoding は旧 GID を指すので StandardEncoding に置き換える（ブラウザは cmap しか見ない）。Unifont JP（CID キー、4.8MB）から 22 字なら CFF は 1KB 弱になる。CFF の読み取りとサブセット化は `internal/cff` にあり、Office 系の変換器のフォント埋め込み（`fontdb`、§3.4）も同じものを使う。
   - Type1 は名前キーの CFF に変換する。eexec と charstring の暗号を解き（PFB の区切りと hex の eexec も読む）、charstring は命令を 1 つずつ置き換えるのではなく解釈して絶対座標の輪郭を作り、Type 2 の rmoveto/rlineto/rrcurveto/endchar で書き直す。サブルーチンは展開し、flex（OtherSubrs 0–2）は 2 本の曲線に、seac はアクセントを `sbx + adx − asb` だけずらした基底文字との合成輪郭にする（ラスタライザの seac 対応に頼らない）。ヒントとヒント置換（OtherSubrs 3）は捨てる（pdf.js も同じ。画面ではアンチエイリアスで描くので差は小さい）。組み込みエンコーディングは CFF には書かず、PDF 側のグリフ引きと Unicode の推定（ToUnicode がないとき）に使う。マルチプルマスター（OtherSubrs 14–18）や解釈できないグリフは空にして警告する。Bitstream Charter/Courier の 8 書体 1,832 グリフで、fontTools の Type1 解釈と輪郭の点が一致することを確かめた（seac 合成 448 グリフを含む）。
   - 縦書きメトリクス（`vhea`/`vmtx`）と GSUB/GPOS は落とす（Canvas 2D は横書きだけで、グリフは合成 cmap で直接指す）。
   - 定義済み CMap: `Identity-H`/`-V` に加えて、Adobe-Japan1・Japan2・GB1・CNS1・Korea1 の符号化 CMap 153 個（`90ms-RKSJ-H`、`EUC-H`、`UniJIS-UCS2-H`、`UniGB-UTF16-V`、`KSCms-UHC-H` など）を `converter/internal/cjkcmap` に持つ。Adobe の cmap-resources（BSD 3 条項）から `tools/gen-cmaps.py` で作り、gzip で 197KB。UCS-2・UTF-16・UTF-8 の Unicode CMap は UTF-32 のものと同じ符号位置 → CID の対応なので、デコード方法と差分だけを持つ（UCS-2 の違いは数十件）。似た CMap（`GBKp-EUC-H` と `GBK-EUC-H` など）も差分で持つ。埋め込み CMap の `usecmap` と `/UseCMap` もこれを親にできる。
@@ -189,7 +189,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **テキストの書式**: 段落の `pPr` → 図形の `lstStyle` →（図形スタイル `p:style` の `fontRef`、表スタイルの `tcTxStyle`）→ 継承元プレースホルダーの `lstStyle` → マスターの `txStyles`（タイトル／本文／その他）またはプレゼンテーションの `defaultTextStyle` の順に、属性ごとに最初に見つかったものを使う。`+mj-lt` などのテーマフォントと `schemeClr` はスライドの配色マップで解決し、色の修飾（`lumMod`/`lumOff`、`tint`/`shade` は線形 RGB で、`alpha` など）を順に適用する。
 - **図形**: プリセット図形 187 種は ECMA-376 Part 1 の `presetShapeDefinitions.xml` を圧縮して埋め込み（`presets.xml.gz`、`tools/gen-presets.py` で生成、30 KB）、ガイド式を評価してパスにする。`arcTo` の角度は楕円の見かけの角度なので Canvas の媒介変数角に直す。`custGeom` も同じ評価器を通す。塗りは単色・グラデーション（線形は角度と `scaled`、パスは放射状で近似）・画像（伸縮、`srcRect` の切り抜き、タイル）・パターン（8×8 の PNG を作ってパターン Paint に）、パスごとの `lighten`/`darken`。線は幅・端・結合・破線・矢印（三角・ステルス・菱形・楕円・開いた矢印）、外側の影は SHADOW。グループは子の配置をスライド座標に畳み込み（変換行列を入れ子にしない）、回転・反転は図形ごとの TRANSFORM で表す。テキストは反転させない（上下反転は 180° 回転）。
 - **テキストレイアウト**: BDF に再レイアウトはないので行分割は変換側で行う。空白の後・和文の文字間・和文と欧文の間・語中のハイフンの後で改行でき、閉じ括弧・句読点・小書きの仮名・長音の前と開き括弧の後では改行しない（禁則）。インデントと箇条書き（記号、Wingdings/Symbol の文字は Unicode に置き換え、自動番号）、タブ、行間（割合・固定）、段落前後の間隔（先頭段落の前は取らない）、左・中央・右・両端揃え（欧文は語間、和文は字間を TEXT_STYLE の letterSpacing で広げる）、上・中央・下の配置、自動調整（保存されている `fontScale`/`lnSpcReduction`）、上付き・下付き、下線・取り消し線・ハイライト、段組み（列の高さを超えた行を次の列へ）、縦書き（`vert`/`vert270` は枠の回転、`eaVert` は漢字・仮名を 1 文字ずつ正立させ、句読点は縦書き用字形 U+FE10〜 に、括弧・長音・欧文は回転したまま）を扱う。行の高さは Office と同じくフォントの Windows 用メトリクス（OS/2 winAscent + winDescent）に行間を掛けたもの。
-- **フォント**: `converter/internal/fontdb` がフォントディレクトリ（既定でシステムのもの、`-font-dir` で追加、`-no-system-fonts` で限定）の name テーブルから索引を作り、要求されたファミリーを実物 → 計量互換の代替（Calibri → Carlito、Arial → Liberation Sans、游ゴシック → Noto Sans CJK JP / IPAexGothic など）→ 同系統の汎用フォント（serif / sans-serif / monospace、和文は明朝／ゴシック）→ 任意のフォント の順に解決する。文字ごとに欧文は latin、和文は ea のフォントを使い、グリフがなければもう一方、さらにフォールバック列から探す（どこにもなければ警告）。この文字ごとの選択・計測と、使った文字の記録・埋め込みは `converter/internal/fontset` が文書単位で受け持ち、他の Office 変換器と共有する。計測したフォントは使った文字だけのサブセット（TrueType はグリフを詰め直し、CFF は PDF と同じ方法で詰め直す（§3.1）。詰め直せない CFF は 2 MB までならそのまま）にして埋め込むので、閲覧側でも計測と同じ字幅で描かれる。ブラウザに登録する FontFace は太さ・斜体の記述子を持たないので、太字のフェイスそのものを埋め込んだときは FONT の weight を 400 にし、フェイスがなく合成が必要なときだけ 700 や italic を指定する。`-fonts system` では埋め込まずにファミリー名（要求名、代替名、汎用名の順）で参照し、`advance` 補正で行幅を保つ。ライセンス（OS/2 fsType）が埋め込みを禁じるフォントも名前で参照し、サブセット化を禁じるフォントは丸ごと埋め込む（`-ignore-fstype` で無視できる）。埋め込むフォントは PDF と同じく元の `fsType` と著作権・ライセンスの文字列（§3.1）を引き継ぎ、WOFF2 にして格納する（§3.3、`-no-woff2` で TTF/OTF のまま）。
+- **フォント**: `internal/fontdb` がフォントディレクトリ（既定でシステムのもの、`-font-dir` で追加、`-no-system-fonts` で限定）の name テーブルから索引を作り、要求されたファミリーを実物 → 計量互換の代替（Calibri → Carlito、Arial → Liberation Sans、游ゴシック → Noto Sans CJK JP / IPAexGothic など）→ 同系統の汎用フォント（serif / sans-serif / monospace、和文は明朝／ゴシック）→ 任意のフォント の順に解決する。文字ごとに欧文は latin、和文は ea のフォントを使い、グリフがなければもう一方、さらにフォールバック列から探す（どこにもなければ警告）。この文字ごとの選択・計測と、使った文字の記録・埋め込みは `converter/internal/fontset` が文書単位で受け持ち、他の Office 変換器と共有する。計測したフォントは使った文字だけのサブセット（TrueType はグリフを詰め直し、CFF は PDF と同じ方法で詰め直す（§3.1）。詰め直せない CFF は 2 MB までならそのまま）にして埋め込むので、閲覧側でも計測と同じ字幅で描かれる。ブラウザに登録する FontFace は太さ・斜体の記述子を持たないので、太字のフェイスそのものを埋め込んだときは FONT の weight を 400 にし、フェイスがなく合成が必要なときだけ 700 や italic を指定する。`-fonts system` では埋め込まずにファミリー名（要求名、代替名、汎用名の順）で参照し、`advance` 補正で行幅を保つ。ライセンス（OS/2 fsType）が埋め込みを禁じるフォントも名前で参照し、サブセット化を禁じるフォントは丸ごと埋め込む（`-ignore-fstype` で無視できる）。埋め込むフォントは PDF と同じく元の `fsType` と著作権・ライセンスの文字列（§3.1）を引き継ぎ、WOFF2 にして格納する（§3.3、`-no-woff2` で TTF/OTF のまま）。
 - **テキストの構造**: テキスト枠ごとに MARK BOX、段落と `a:br` に PARAGRAPH、折り返しに LINE（和文どうしの折り返しは区切りを入れない WRAP、spec §7.8）、箇条書きの記号の後に LINE を置く。書式が同じで分割されているだけの run（スペルチェックや言語タグ）は 1 つの FILL_TEXT にまとめる。縦書きの行は子 Object に描いて ALT_TEXT に行の文字列を持たせるので、検索では横書きと同じく 1 行 1 run になる。子 Object の bbox の横幅を行の長さにし、ALT_TEXT の前に行のフォントを設定しておくので、ヒットの矩形も行の上に描ける。ハイパーリンク（外部 URL、スライドへのジャンプは `#page=N`）は LINK。
 - **読み上げ用の構造**（spec §7.8）: タイトル（title / ctrTitle）の段落は HEADING、箇条書きの段落は `lvl` で入れ子にした LIST / LIST_ITEM、表はセルごとの CELL（結合は範囲、firstRow / firstCol は見出し）を TABLE で囲む。画像・グラフ・グループ・図形の塗りと線は `cNvPr` の `descr`（なければ `title`）を代替テキストにした FIGURE で囲む（装飾指定のものは除く）。`meta.dc.language` はコアプロパティの `dc:language`、無ければ既定のテキストスタイルの `lang`。描画のまとまりごとに言語を決めて変わるところで LANG を出す。和文を含むまとまりは東アジアの `lang` / `altLang`、なければかな・ハングルから推定する（テンプレートの既定 `lang="en-US"` を受け継いだ和文を英語として読ませないため）。
 - **表**: `tblGrid` と行から格子を作り、結合セル、セルの余白・配置、塗り・罫線（セルの `tcPr` が表スタイルより優先）を描く。表スタイルは `tableStyles.xml` から全体・縞模様の行／列・先頭／末尾の行／列・角のセルの順に重ね、ファイルにない既定スタイル（Medium Style 2 - Accent 1）は内蔵する。行の高さはセルのテキストに合わせて伸ばす。
@@ -238,7 +238,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **CLI**: `bdf generate` はパスワードを `-password-file`（`-` で標準入力）か `$BDF_PASSWORD` から読む（コマンドライン引数はほかのユーザーから見えるので受け付けない）。出力は `-encrypt auto`（既定。入力が保護されていたとき）、`always`、`never` で暗号化する。`ls`・`manifest`・`disasm`・`extract` は `$BDF_PASSWORD` で暗号化した文書を開き、`split`・`join` は封印された Part をそのままコピーするのでパスワードが要らない。`encrypt`・`decrypt` は既存の BDF を暗号化・復号する。
 - **ビューア**: `BdfDocument.open(source, { password })` がパスワードを受け取り、なければ `BdfPasswordError("required")`、違えば `("wrong")` を投げる。Worker は開けなかったソースを持ったまま `unlock` を待つので、パスワードを聞き直してもファイルを取り直さない。
 
-暗号化した文書はサーバー側の全文検索の対象にしない（索引が平文になるため）。文書の中の検索は、テキスト索引 Part も暗号化されて BDF の中にあるので、復号した後にブラウザでこれまでどおり動く。サムネイルのように平文が要るものは、サーバーが変換のとき（パスワードと平文を持っている間）に作る。
+暗号化した文書はサーバー側の全文検索の対象にしない（索引が平文になるため）。文書の中の検索は、テキスト索引 Part も暗号化されて BDF の中にあるので、復号した後にブラウザでこれまでどおり動く。サムネイルのように平文が要るものは、サーバーが変換のとき（パスワードと平文を持っている間）に作るしかない。ただしサムネイルも 1 ページ目の中身を見せるので、`bdf` コマンドは暗号化した文書のサムネイルと検索用テキストを、頼まれたとき（`-allow-plaintext`）だけ書く（§3.25）。
 
 ## 3.8 Visio → BDF 変換器（converter/visio）の構造
 
@@ -496,7 +496,7 @@ Word・PowerPoint・Excel の Office Math（OMML）、HTML の MathML、Markdown
 - **伸びるグリフ**: 区切り（TeX の `\left`、OMML の `m:d`、MathML の伸びる mo）は同じ行の他の要素の高さと深さまで伸びる。異体字に十分大きいものがなければ、部品（端と継ぎ）を MinConnectorOverlap 以上重ねて積む（継ぎの繰り返しは最小の回数に、重なりは均等に）。TeX の `\left` と `\right` は TeX と同じく少し短くする（delimiterfactor 901、delimitershortfall 5pt）。根号も同じく伸ばし、横に伸びる括弧・矢印・広いアクセントは横に同じことをする。
 - **描画**: 数式を子 Object に描き、親には線形表記（Office の linear format に近い `x=(−b±√(b^2−4ac))/(2a)`）の ALT_TEXT と USE_AT で置く。抽出・検索・コピーでは数式が 1 つの run になり、子 Object の bbox の幅に文字列が広がる（縦書きの行と同じ方式、§3.9）。字は FILL_TEXT、線は FILL_RECT で描く。符号位置のない異体字と部品は私用領域の U+F0000 + GID の文字で描き、埋め込むサブセットの cmap にその文字 → グリフを足す（`fontset.Set.GlyphRune`）。子 Object は使われる場所の状態を引き継ぐので、先頭で TEXT_STYLE を初期値に戻す。同じ数式は同じ Object になって 1 回だけ格納される。
 - **数式フォント**: 文書が求めるもの（Word は `m:mathFont`、既定は Cambria Math。HTML と Markdown は指定なし）を MATH 表を持つフェイスに解決する: そのもの → STIX Two Math（Cambria Math に最も近い Times 系の字形）、XITS Math、Latin Modern Math、Libertinus Math、TeX Gyre の Math、Noto Sans Math など → MATH 表を持つ任意のフェイス（`fontdb.DB.ResolveMath`。MATH 表の有無は索引を作るときテーブルディレクトリから読むので、デモサイトのフォントの読み取り範囲は変わらない）。数式フォントにない字（和文など）は周りの文字のフォントで描く。数式フォントがなければ本文のフォントと TeX の既定値（Computer Modern の値）で組み、根号と伸びる括弧・中括弧は線で描き、ほかの伸びる字は拡大する（警告を出す）。HTML と Markdown の本文はフォントを名前で参照するが、数式フォントは埋め込む（配置がそのフォントの字形で決まり、異体字は私用領域の文字で描くため。`fontset.Set.Pin`）。Web の数式は本文の x の高さに合わせて最大 1.25 倍にする（MathJax と同じ考え方）。デモサイトは STIX Two Math（OFL）を公開する。
-- **CFF のサブセット化**: 数式フォントの多く（STIX Two Math、Latin Modern Math、macOS の STIXTwoMath.otf）は CFF なので、PDF の変換器の CFF サブセット化（§3.1）を `converter/internal/cff` に移し、フォントの埋め込み（`fontdb`）でも使うようにした。STIX Two Math（838 KB）は math.docx で 31 KB の WOFF2 になる。Office 系の変換器でも、CFF の OpenType フォント（和文の OTF など）がサブセットで埋め込まれるようになった。
+- **CFF のサブセット化**: 数式フォントの多く（STIX Two Math、Latin Modern Math、macOS の STIXTwoMath.otf）は CFF なので、PDF の変換器の CFF サブセット化（§3.1）を `internal/cff` に移し、フォントの埋め込み（`fontdb`）でも使うようにした。STIX Two Math（838 KB）は math.docx で 31 KB の WOFF2 になる。Office 系の変換器でも、CFF の OpenType フォント（和文の OTF など）がサブセットで埋め込まれるようになった。
 - **行の中の数式**: `wordproc` のインラインオブジェクトにベースラインより下の深さを足し、行の高さを数式の高さと深さで広げる。OMML の `m:oMathPara` は数式ごとに行を分け、段落が数式だけなら `m:jc`（既定は中央）で揃える。MathML の `display="block"` と Markdown の `$$` は中央に置いた段落になる。PowerPoint と Excel の図形のテキスト（DrawingML のテキストエンジン）と draw.io のラベルでは、数式は数式の幅の item になり、同じ規則で行に置く（§3.4、§3.11）。
 - **Office の文書ごとの違い**: Word は run の書式を `w:rPr` に、`m:t` に文字を普通に書く。PowerPoint と Excel は `mc:AlternateContent` の Choice の `a14:m` に数式を書き（Fallback は画像か線形表記の文字列）、run の書式は継承のある `a:rPr`（読み手に `OMML.RunStyle` を渡して解決する）、文字は数学用英数字（𝑥）で書く。読み手は数学用英数字を元の文字と書体（𝑥 → イタリックの x）に戻すので、どれも同じ木になる。
 - **Web ページの数式**: KaTeX（`katex-mathml` と見た目用の `katex-html`）、MathJax 3（`mjx-assistive-mml`）、Wikipedia（隠した MathML と数式の画像）は、MathML の横に独自の描画を置いてスタイルシートで片方を隠す。リーダー表示はスタイルシートを読まないので、記事を取り出す前に（Readability はクラス名を消す）MathML だけを残す。MathJax 2 の `script type="math/tex"` と GitHub の `math-renderer` は、LaTeX を TeX の注釈として持つ math 要素にする。書き換えは `converter/internal/webdoc` の `NormalizeMath` で、EPUB も使う（§3.24）。
@@ -522,6 +522,39 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 - **未対応**: ルビ（親文字だけ）、上に挙げた以外の作者の CSS（書体、色、字下げ、余白、float、絶対配置）、html・body 以外の要素の書字方向（縦書きの中の横組みの表など）、音声・動画・スクリプト・メディアオーバーレイ、見開き、文字を含む固定レイアウトのページ（リフローで組む）、右から左へ書く文字（アラビア文字など）、DRM で保護された本。目次（nav）は spine にあれば本文として組み、なければ組まない。
 
 テスト用の本は `test/epub/gen.py`（`npm run test:epub:gen`、標準ライブラリのみ）が書く 3 冊。`basic.epub`（英語。表紙、spine の中の目次、見出し・リスト・引用・図・表・コード・脚注、章をまたぐリンク、空要素のページ位置、CSS のクラスで隠す段落と中央寄せ、SVG ファイルと、隠したスプライトのグラデーションとシンボルを使うインラインの SVG、spine の外の注）、`vertical.epub`（電書協の作り方の縦書きの本。`@import` した CSS の `vrtl` / `hltr`、縦中横、傍点、ルビ、外字の画像）、`fixed.epub`（右綴じの固定レイアウトのマンガ。SVG の文書の表紙、画像のページ、インラインの SVG と SVG ファイルのページ）。変換結果は `testdata/epub/` に置く。和文は Word のテスト用フォントのサブセットにある漢字だけで書いた。開発中は、市販の技術書（日本語と英語、数百ページ）が変換でき、ページの内容が元の本どおりであることも確かめた（1 冊 0.2 秒ほど）。
+
+## 3.25 サーバー側のサムネイルと検索用テキスト（raster、thumbnail、SearchText）
+
+文書の一覧にはサムネイルが、サーバー側の全文検索には文書のテキストが要る。どちらも bdf を作るのと同時に作れば、元のファイルを読み直さずに済む。パスワード付きの入力なら、平文を持っているのは変換の間だけでもある（§3.7）。
+
+**描き方**: ヘッドレス Chromium で `@bdf/render` を動かせば、ビューアと 1 画素も違わない画像が得られる（golden テストの `test/render.mjs` がそうしている）。しかしそれにはサーバーに Chromium（数百 MB）を入れ、プロセスを起動・維持・隔離しなければならない。LibreOffice をやめる理由（README の Why bdf）と同じ重さを、サムネイルのために背負い直すことになる。そこで純 Go のラスタライザ `raster` を書いた。変換器と同じく cgo も外部プログラムも使わず、変換と同じプロセスで、変換した `*bdf.Document` をそのまま描く。§2 の「ビューアで Go/wasm は使わない」は変わらない。ビューアは TS のままで、`raster` はサーバーでだけ使う第 2 の描き手である。
+
+**命令の解釈**は TS の `CanvasRenderer` と同じ状態機械にした。SAVE・RESTORE のスタック、USE の暗黙の save/restore、トップレベルの Object（ページのレイヤー、シートのタイル）は変換とクリップ以外を初期状態から始めること、グループの一時キャンバスは変換と塗り・線・線幅・フォントだけを引き継ぐこと、ソフトマスク（輝度・アルファ・転送関数）、影の大きさを設定時の変換の拡大率で決めること（spec §7.2）。どれも TS の実装を写した。
+
+- **塗り**: 1 画素を 16 本の走査線で標本化し、横方向は区間の被覆を正確に積む。nonzero と evenodd の両方を扱う。軸に平行な矩形（FILL_RECT と CLIP_RECT が多い）は走査せず、被覆を直接計算する。曲線は出力の画素で 0.1 画素以内に折れ線にする。
+- **合成**: 乗算済みの float32 で持ち、Canvas の合成演算とブレンドモード（W3C Compositing and Blending）をすべて実装した。`source-in`、`destination-in`、`copy` などの、描いたものの外も変える演算は、Canvas と同じくクリップの全体に効かせる。
+- **線**: 輪郭をユーザー空間で作ってから変換する。非一様な変換でも Canvas と同じ太さになる。結合（マイター・丸・ベベル）、端、破線（サブパスごとにやり直し）を扱う。1 画素より細い線は 1 画素の幅で、太さの分だけ薄く描く。Skia のヘアラインと同じで、CAD の細線が縮小しても消えない。
+- **画像**: `imgconv` のデコーダ（PNG、JPEG、GIF、BMP、WebP）で読み、JPEG と PNG は EXIF の向きに回す（ブラウザがそうする。`imgconv.Orientation`）。大きく縮小するときはミップマップを作り、描く大きさに近い段からバイリニアで取る。ブラウザの既定（`imageSmoothingQuality` が low）はミップマップなしのバイリニアだが、ページ全体を 256 画素に縮めるサムネイルではエイリアスが目立つので、ここは描き方を変えた。AVIF は純 Go のデコーダがないので描かない。1 億画素を超える画像も描かない。
+- **テキスト**: 埋め込みフォントの WOFF2 は `woff2.Decode` で戻す（glyf・loca・hmtx の変換を逆にする。エンコーダと対にした）。グリフの輪郭は `internal/sfnt` から取る。TrueType は glyf（複合グリフを含む）を読み、CFF はサブセット化のために持っていた Type 2 charstring の解釈器を、境界だけでなく輪郭も出せるようにした。名前で参照するフォント（HTML、Markdown、EPUB、`-fonts system`）は `fontdb` で探す。変換器と同じ解決（代替フォントと総称ファミリー）を使うため、`fontdb`・`sfnt`・`cff` を `converter/internal/` からモジュール直下の `internal/` に移した。ブラウザに登録する FontFace は太さと斜体の記述子を持たない（§3.4）。そこで FONT の weight が 600 以上なら太字を、italic なら斜体を合成する。太字は Skia と同じく字の大きさの 1/24〜1/32 だけ輪郭を太らせ、斜体は 1/4 傾ける。字形のない字は、ファミリーのリストの残りと総称ファミリーの代替から探す。`advance` 補正、揃え、ベースライン（Blink と同じく em ボックスから求める）、字間はビューアと同じにした。シェーピングはしないので、カーニング・合字・アラビア文字の字形変化はない。右から左の文字はランを反転するだけにした（Unicode の双方向アルゴリズムの全部ではない）。縦書きは変換器が 1 字ずつ回して置くので、そのまま描ける。
+- **SVG の画像**: ビューアではブラウザが描くが（§3.19）、Go には SVG を描くものがない。EPUB の表紙の多くは画像を包んだ SVG なので、これを描かないと EPUB のサムネイルが白紙になる。そこでプレビューに出てくる範囲の SVG を描く小さなレンダラを書いた。図形とパス（円弧を含む）、塗りと線、線形・放射グラデーション（`href` の継承、`objectBoundingBox`）、変換、`use` と `symbol`、入れ子の `svg`、`viewBox` と `preserveAspectRatio`、クリップパス、不透明度、`<style>` の型・クラス・ID・子孫セレクタ、`currentColor`、テキスト、data: URL の画像（入れ子の SVG を含む）を扱う。マスク、フィルター、パターン、マーカーは描かない。大きさはビューアと同じく SVG の自然な大きさ（ルートの幅・高さ、なければ viewBox、なければ 300 × 150）で測り、描く大きさのラスターを作って（√2 刻み）画像として描く。`use` で要素が指数的に増える SVG に備え、1 枚で描く要素を 20 万までにした。
+- **大きさの上限**: 描く画像は 64 M 画素まで（`raster.MaxPixels`）。キャンバスは 1 画素 16 バイトで持つ。
+
+**確かめ方**: Go のテスト（`raster/golden_test.go`）は、ブラウザの golden テストのケース（`test/page/harness.ts`）を読んで同じページ・範囲を描き、Chromium の golden PNG と比べる。どちらも 4 分の 1 に縮めてから、チャンネルの平均の差（4/255 未満）と、差が 48 を超える画素の割合（3 % 未満）を測る。縮めるのは、ヒンティングやアンチエイリアスの画素単位の違いではなく、サムネイルとして見える違いを測るためである。フォントはリポジトリのテスト用のものだけにして（`NoSystemFonts`）、どのマシンでも同じ結果にした。基準を緩めたケースは 3 つある。192 dpi のスキャンを 2.7 分の 1 に縮めるページ（ミップマップとバイリニアの違い）、チェッカーボードの画像を 2 倍にするページ（縁が半画素ずれる）、テスト用のフォントにない中国語と韓国語のページ（名前で参照する CJK フォント）である。AVIF のケースは描かないので飛ばす。初めて比べたとき、JPEG の EXIF の向きを見ていないことが見つかった。実物の本（EPUB）と Illustrator・Photoshop のファイルでもサムネイルを確かめた。変換とサムネイルとテキストを合わせて、900 ページの本で 1 秒かからない。
+
+**サムネイルのレイアウト**（`thumbnail`）は文書の種類で決める。種類は変換器が書く `Meta.Source`（既存の bdf からでも分かる）と View の種類で見る。
+
+| 種類 | レイアウト |
+|---|---|
+| Word、HTML、Markdown | 1 ページ目（scroll View は先頭）の左上から、ページの幅の正方形（Crop） |
+| Excel、CSV | 最初のシートの A1 から、シートの短い辺の正方形。上限は 480 単位で、既定の列幅なら 10 列・32 行ほど。枠線はビューアと同じく描く |
+| PDF、TIFF | 縦長のページは文書として Crop、横長のページはスライドとして全体（Fit） |
+| PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB | 1 ページ目の全体を、長辺が指定の大きさになるように（Fit）。EPUB は 1 ページ目が表紙 |
+
+`-thumbnail-mode crop|fit`（`Options.Mode`）で指定もできる。Fit の出力は正方形にしない（縦横比を保つ）。並べるときは CSS の `object-fit: contain` で収めればよい。出力は PNG、JPEG、WebP（`imgconv` の純 Go のエンコーダ）。
+
+**検索用テキスト**（`Document.SearchText`）はテキスト索引 Part（§4、spec §7.9）から作る。ビューアの検索と同じものなので、変換器が MARK で付けた区切り（行・段落・セル）がそのまま使える。索引のない View は Object から取り出す。ページ番号（1 始まり）は検索のヒットから `#page=N` で開くのに使える。シートはシート全体で 1 つにする。Word・Markdown・EPUB は同じ本文を page View と scroll View の両方に組むことがあるので、flow View がある文書では scroll View を除く。正規化（NFKC、かな）は検索エンジンに任せ、テキストはそのまま出す。
+
+**パスワード付きの入力**: サムネイルもテキストも暗号化されない。サムネイルは 1 ページ目の中身を見せるので、テキストと同じ扱いにした。`bdf generate` は、暗号化して書き出す文書（既定ではパスワード付きの入力のもの）について、`-allow-plaintext` がなければどちらも書かない。`bdf thumbnail`・`text`・`render` も、暗号化された bdf は `$BDF_PASSWORD` と `-allow-plaintext` の両方がなければ描かない。ライブラリの API（`thumbnail.Make`、`SearchText`）は復号した文書を受け取るだけなので、作るかどうかは呼び出し側が `Result.Protected` や `Document.Lock` を見て決める。
 
 ## 4. テキストの扱い
 
@@ -624,6 +657,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 15. **プリント基板**: Gerber（RS-274X、X2）と Excellon。ZIP にまとめたファイルの組を、基板の表と裏の見た目と層ごとの View に（実装済み、§3.21）。
 16. **数式**: Office Math・MathML・LaTeX を OpenType MATH のフォントで組む共通のエンジン（Word・PowerPoint・Excel・HTML・Markdown・draw.io・EPUB は実装済み、§3.23）。
 17. **EPUB**: リフロー型の本は同じリーダー表示で本のページに組み（縦書きを含む）、固定レイアウトの本は画像のページにする（実装済み、§3.24）。
+18. **サーバー側のプレビュー**: 純 Go のラスタライザで描くサムネイルとページの画像、検索エンジン向けのテキスト（実装済み、§3.25）。
 
 ## 9. リポジトリ構成（案）
 
@@ -631,10 +665,14 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 bdf/
 ├── docs/              spec.md, design.md
 ├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
-├── cmd/bdf/           CLI: generate / ls / manifest / disasm / extract / split / join / encrypt / decrypt / demo
+├── cmd/bdf/           CLI: generate / thumbnail / text / render / ls / manifest / disasm / extract / split / join / encrypt / decrypt / demo
 ├── cmd/bdfwasm/       ブラウザ内変換用の wasm モジュール（§2）
 ├── imgconv/           画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
-├── woff2/             TrueType/OpenType → WOFF2（glyf 変換と Brotli）
+├── woff2/             TrueType/OpenType ↔ WOFF2（glyf 変換と Brotli）
+├── raster/            ページを画像に描く純 Go のラスタライザと SVG レンダラ（§3.25）
+├── thumbnail/         文書のサムネイル（文書の種類によるレイアウト、PNG・JPEG・WebP）
+├── internal/          fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書きとグリフの輪郭）、
+│                      cff（CFF の読み取りとサブセット化）。変換器と raster が共有する
 ├── converter/         入力形式の登録（static plugin）、共通のオプション、形式の判別、ページ指定
 │   ├── pdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
 │   ├── ai/            Illustrator（.ai）→ BDF 変換器（PDF 部分を pdf で描く。testdata/ にテスト用 .ai）
@@ -657,14 +695,13 @@ bdf/
 │   ├── tiff/          TIFF（.tif、.tiff）→ BDF 変換器（testdata/ にテスト用のスキャン・FAX・向きのファイル）
 │   ├── image/         画像（PNG・JPEG・GIF・WebP・AVIF・BMP・ICO・SVG）→ BDF 変換器（そのまま格納してメタデータを読む。testdata/ にテスト用画像）
 │   ├── all/           すべての形式を登録する
-│   └── internal/      fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書き）、
-│                      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
+│   └── internal/      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
 │                      フォント選択・計測・サブセット埋め込み。draw.io も使う）、canvas（組み立て中の Object。draw.io も使う）、
 │                      metafile（EMF/WMF の再生）、
 │                      暗号化された Office 文書を開く cfb（複合ファイル）と offcrypto（Agile / Standard 暗号化の復号）、
 │                      linebreak（行分割の規則）、CAD の変換器で共有する cad（図面をページに描く）、tiff（TIFF の読み取りと CCITT のデコーダ）、wordproc（Word・HTML・Markdown・EPUB の組版エンジン）、xmp（XMP の Dublin Core）、
-│                      equation（数式の読み手と組版）、cff（CFF の読み取りとサブセット化。PDF とフォントの埋め込みが使う）、
+│                      equation（数式の読み手と組版）、
 │                      webdoc（HTML と XHTML の読み込み、svg 要素の SVG 文書化、KaTeX・MathJax の数式の書き方の正規化、data: URL。HTML・Markdown・EPUB が使う）
 ├── fixture/           フィクスチャ生成（埋め込みフォント、計測、サンプル文書）
 ├── packages/

@@ -1,7 +1,7 @@
 // The book layouts of the demo viewer. A view is shown one page at a time,
 // or as two facing pages with the first page alone like a book's cover,
-// fitted to the stage. Pages are turned with the keys, the page buttons, or
-// by pulling a corner or the outer edge of a page.
+// fitted to the stage. Pages are turned with the keys, the page buttons, a
+// tap on a page, or by pulling a corner or the outer edge of a page.
 //
 // The pages are the viewer's usual page elements (a bitmap under a text
 // layer), so text is selected, copied and searched as in the scrolled
@@ -9,6 +9,7 @@
 // mostly in the page margins. While a page turns, a WebGL canvas takes the
 // place of the page elements and curls the page (pageflip.ts). Its textures
 // are the bitmaps of the spreads before and after, rendered ahead of time.
+// With animate off (or without WebGL 2), pages change at once.
 
 import type { Page, TextContent } from "@bdf/core";
 import { FlipRenderer, foldAt, reach, type Leaf, type Point, type Rect } from "./pageflip.js";
@@ -22,6 +23,8 @@ export interface BookOptions {
   rtl: boolean;
   /** Times the size that fits the stage. */
   zoom: number;
+  /** Pages curl over as they turn; otherwise they change at once. */
+  animate: boolean;
   /** The page to open at. */
   start: number;
   /** Accessible name of a page element. */
@@ -96,6 +99,10 @@ interface Anim { from: Point; to: Point; t0: number; dur: number; lift: number; 
 const PAD = 24;
 /** How far a press moves before it is a drag, CSS px. */
 const TAP = 4;
+/** A press held longer is not a tap (a long press selects text on a touch screen), ms. */
+const LONG = 500;
+/** How long a click on text waits for a second click, which selects a word instead of turning, ms. */
+const DOUBLE = 300;
 /** Half the width of an edge handle, CSS px. */
 const EDGE = 12;
 const easeOut = (t: number) => 1 - (1 - t) ** 3;
@@ -176,6 +183,8 @@ export class Book {
   private zonesStale = false;
   /** A press on a handle while pages change without turning. */
   private click: { id: number; dir: Dir } | undefined;
+  /** A tap on text waiting to see whether a second click follows. */
+  private tapTimer: ReturnType<typeof setTimeout> | undefined;
   /** A page to focus once it is shown (the target of a link). */
   private focusPage = -1;
   private dead = false;
@@ -192,6 +201,7 @@ export class Book {
     this.layout();
     this.showSpread();
     stage.addEventListener("keydown", this.onKey);
+    this.el.addEventListener("pointerdown", this.onPress);
     // a selection dragged over a handle goes on as over the margin around it
     this.leaves.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
@@ -222,12 +232,18 @@ export class Book {
     return k >= 0 && k < this.spreads.length;
   }
 
-  /** Turn to the spread before (-1) or after (+1). */
-  turnBy(delta: 1 | -1) {
+  /** Whether pages curl over as they turn. */
+  setAnimate(on: boolean) {
+    this.o.animate = on;
+    if (!on) this.finish();
+  }
+
+  /** Turn to the spread before (-1) or after (+1), pulled by a corner. */
+  turnBy(delta: 1 | -1, corner: "top" | "bottom" = "bottom") {
     if (this.turn?.drag) return;
     this.finish();
     if (!this.canTurn(delta)) return;
-    const t = this.animates() ? this.begin(delta > 0 ? "next" : "prev", "bottom", 0) : undefined;
+    const t = this.animates() ? this.begin(delta > 0 ? "next" : "prev", corner, 0) : undefined;
     if (!t) return this.jump(this.at + delta);
     this.animate(t.done, 650, this.lift(t), easeInOut, () => this.land(true));
   }
@@ -258,6 +274,7 @@ export class Book {
     this.dead = true;
     cancelAnimationFrame(this.frame);
     clearTimeout(this.resizeTimer);
+    clearTimeout(this.tapTimer);
     this.observer.disconnect();
     this.stage.removeEventListener("keydown", this.onKey);
     for (const b of this.bitmaps.values()) b.close();
@@ -294,8 +311,11 @@ export class Book {
     const fit = Math.max(0.02, Math.min((ow - 2 * PAD) / (cols * maxW), (oh - 2 * PAD) / maxH));
     const scale = fit * this.o.zoom;
     const cw = this.stage.clientWidth, ch = this.stage.clientHeight;
-    this.width = Math.max(cw, Math.ceil(cols * maxW * scale + 2 * PAD));
-    this.height = Math.max(ch, Math.ceil(maxH * scale + 2 * PAD));
+    // fitted, the pages fill the stage give or take a rounding error, which
+    // must not make it scroll (nor stop the pages turning)
+    const size = (px: number, room: number) => (px > room + 0.5 ? Math.ceil(px) : room);
+    this.width = size(cols * maxW * scale + 2 * PAD, cw);
+    this.height = size(maxH * scale + 2 * PAD, ch);
     this.overflow = this.width > cw || this.height > ch;
     this.slotH = maxH * scale;
     this.top = (this.height - this.slotH) / 2;
@@ -553,7 +573,7 @@ export class Book {
   }
 
   private animates(): boolean {
-    if (this.overflow || matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
+    if (!this.o.animate || this.overflow) return false;
     if (this.renderer === undefined) {
       this.renderer = FlipRenderer.create(this.canvas) ?? null;
       this.renderer?.resize(this.width, this.height, dpr());
@@ -772,6 +792,35 @@ export class Book {
     t.hover = false;
     this.animate(t.rest, 160, 0, easeOut, () => this.land(false));
   }
+
+  /**
+   * A tap on the pages (not a drag, which selects text, nor a long press)
+   * turns them: forward beyond the spine, back before it (a page alone, its
+   * halves), by the corner on the side of the tap. A press that clears a
+   * selection does not, nor one on a link or a handle. A click on text waits
+   * a moment: a second click selects a word instead.
+   */
+  private readonly onPress = (e: PointerEvent) => {
+    clearTimeout(this.tapTimer);
+    const target = e.target as Element;
+    if (e.button !== 0 || !e.isPrimary || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (this.zones.contains(target) || target.closest("a") || !(getSelection()?.isCollapsed ?? true)) return;
+    const up = (u: PointerEvent) => {
+      if (u.pointerId !== e.pointerId) return;
+      removeEventListener("pointerup", up, true);
+      removeEventListener("pointercancel", up, true);
+      if (u.type !== "pointerup" || this.dead || u.timeStamp - e.timeStamp > LONG) return;
+      if (Math.hypot(u.clientX - e.clientX, u.clientY - e.clientY) >= TAP || !(getSelection()?.isCollapsed ?? true)) return;
+      const q = this.point(e, this.o.rtl);
+      const s = this.spreads[this.at];
+      const mid = this.o.layout === "single" && s.second !== null ? this.spine + this.rectOf(s.second, "second").w / 2 : this.spine;
+      const turn = () => this.turnBy(q.x >= mid ? 1 : -1, q.y < this.top + this.slotH / 2 ? "top" : "bottom");
+      if (e.pointerType !== "touch" && target.closest(".bdfTextLayer span")) this.tapTimer = setTimeout(turn, DOUBLE);
+      else turn();
+    };
+    addEventListener("pointerup", up, true);
+    addEventListener("pointercancel", up, true);
+  };
 
   private readonly onKey = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;

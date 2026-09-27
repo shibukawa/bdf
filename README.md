@@ -10,7 +10,7 @@ Office-style files (PDF, Excel, PowerPoint, Word, Visio), draw.io diagrams, CAD 
 
 ## Why bdf
 
-- **No office suite to run.** The usual way to preview Office files in a browser is to convert them into PDF with LibreOffice or OpenOffice running headless on a server: an installation of a gigabyte or more, and a process to start, keep alive and isolate. bdf's converters are Go packages without cgo or external programs. One binary converts PDF, Word, PowerPoint, Excel, CSV, Visio, draw.io, DXF, Jw_cad, SXF, CGM, HP-GL/2, Gerber, Excellon, TIFF, Illustrator, Photoshop, metafiles, HTML, Markdown and EPUB, and the same code built as WebAssembly converts files inside the browser (about 7 MB gzip for PDF, 5.5 MB for the Office formats, draw.io and DXF), so the files need not be uploaded at all.
+- **No office suite to run.** The usual way to preview Office files in a browser is to convert them into PDF with LibreOffice or OpenOffice running headless on a server: an installation of a gigabyte or more, and a process to start, keep alive and isolate. bdf's converters are Go packages without cgo or external programs. One binary converts PDF, Word, PowerPoint, Excel, CSV, Visio, draw.io, DXF, Jw_cad, SXF, CGM, HP-GL/2, Gerber, Excellon, TIFF, Illustrator, Photoshop, metafiles, HTML, Markdown and EPUB, and the same code built as WebAssembly converts files inside the browser (about 7 MB gzip for PDF, 5.5 MB for the Office formats, draw.io and DXF), so the files need not be uploaded at all. Thumbnails and the text for a search index come out of the same process: a pure-Go rasterizer draws the pages without a browser.
 - **Shown the way the content is laid out.** A PDF cuts everything into sheets of paper. A spreadsheet printed into pages splits a wide table across them, so a row is hard to follow and a cell hard to find; the frozen headers and the gridlines go, and the sheets you switch between in a workbook become one run of pages. A Word document can only be read page by page. bdf has a layout model for each kind of content: fixed pages for slides, drawings and PDFs; a sheet view for each worksheet, an unbounded plane drawn in tiles with frozen panes, row and column headers and gridlines; and flow views for word processing, read as pages or as one continuous scroll, with a second view laid out without pages as one long column. The artboards of Illustrator and Photoshop files are pages; the sheets of a workbook, the pages of a draw.io diagram, the model space and layouts of a DXF drawing, and the top, the bottom and the layers of a circuit board are views, switched with tabs in the viewer.
 - **Made for the browser.** The instruction set is Canvas 2D, one to one. Fonts are WOFF2 handed to `FontFace`, images are formats the browser decodes, and parts are compressed so that `DecompressionStream` inflates them. The browser does the font rasterizing, image decoding and inflating that a PDF viewer such as pdf.js implements in tens of thousands of lines; the bdf decoder and renderer are about 3,400 lines of TypeScript (the renderer's Worker is 21 KB gzip) and draw on an `OffscreenCanvas` in a Worker, while the main thread only places bitmaps. Parts are content-addressed, so masters and repeated objects are stored once, and a viewer fetches only the parts of the pages in view, by Range requests or from the split form on a CDN. A PDF converted in the browser is shown page by page as it is converted, the pages in view first.
 - **Many formats, one renderer.** PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Visio (.vsdx and .vdx), draw.io (.drawio and the SVG and PNG exports that embed the diagram), AutoCAD DXF, Jw_cad (.jww), SXF (.p21, .p2z, .sfc), CGM (.cgm), HP-GL/2 plot files (.plt), Gerber (RS-274X) and Excellon drill files (one by one, or a board's files in a zip), TIFF, Illustrator (.ai), Photoshop (.psd, .psb), Windows metafiles (.emf, .wmf), HTML (in reader mode), Markdown, EPUB (reflowable books, in Japanese vertical text too, and fixed-layout comics) and images (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG, stored as they are), password-protected Office documents and PDFs included, all become the same format. One renderer draws them, with the same search, text selection and accessible text layers (headings, lists, tables, alternative text) for every format.
@@ -25,7 +25,9 @@ flowchart TB
         direction TB
         SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/ai<br/>converter/psd<br/>converter/image"]
         BUNDLE["bdf bundle (packed)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
+        PREVIEW["raster · thumbnail · SearchText<br/>thumbnail image<br/>text for a search index"]
         SCONV --> BUNDLE
+        BUNDLE --> PREVIEW
     end
 
     subgraph BROWSER["Browser"]
@@ -60,11 +62,13 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 1. **Server-side conversion**: packages such as `converter/pdf`, `converter/pptx` and `converter/xlsx` run inside a Go server process and convert the source into a **bdf bundle** that packs the manifest, the drawing commands, the images and the fonts. The bundle is served either as a single file (streamed from the start, or fetched part by part with Range requests) or as split files that can sit on object storage or a CDN as they are. In the browser, the renderer in a Worker loads the parts it needs and draws them onto an `OffscreenCanvas`; the main thread only places the resulting bitmaps and a transparent text layer.
 2. **In-browser conversion**: the same converter packages, built as wasm (`cmd/bdfwasm`), run in a Worker and convert the file the user opened into a bdf document in memory, which goes to the renderer as it is. Conversion and rendering both finish inside the browser and the file never leaves it. The demo site works this way; the Office converters lay text out with free fonts published with the site, fetched when a document uses them. A PDF is converted a page at a time (`converter.OpenStream`): the viewer gets the page sizes first and each page as it is converted, the ones in view first, and the finished document takes their place at the end.
 
+Next to the bundle, the server can make what a list of documents and a search engine need, while it holds the document (and, for a password-protected input, the password): a thumbnail image drawn by the Go rasterizer (`raster`, `thumbnail`), and the text of each page with the document's metadata as JSON (`Document.SearchText`).
+
 ## Features
 
 - Three layout models: fixed-size pages (slides), an infinite plane (spreadsheets), and documents that are paginated but can also be read as one continuous scroll (word processing), optionally with a second view laid out without pages as one long column
 - Several views per document (the sheets of a workbook, the pages of a draw.io diagram), which the viewer switches between with tabs like sheet tabs; links can point to another view (`#view=ID`)
-- The demo viewer scrolls through pages, or fits them to the window one or two at a time, as facing pages read left to right or right to left. A page turns with the keys and the page buttons, or when a corner or the outer edge of the page is pulled. The page curls in WebGL, textured with the pages before and after it, which are rendered ahead of time. The rest of the page keeps its text selection. Books bound on the right (views with `direction: "rtl"`, as in Japanese vertical EPUB books and right-to-left comics) are laid out and turned right to left, and EPUB books open as facing pages (`?layout=pages`, `single`, `spread` or `spread-rtl` opens documents in a given layout)
+- The demo viewer scrolls through pages, or fits them to the window one or two at a time, as facing pages read left to right or right to left. A page turns with the keys, the page buttons or a tap on the page (forward beyond the spine, back before it), or when a corner or the outer edge of the page is pulled. The page curls in WebGL, textured with the pages before and after it, which are rendered ahead of time; with the animate box unchecked (at first when the system asks for reduced motion), pages change at once. The rest of the page keeps its text selection. Books bound on the right (views with `direction: "rtl"`, as in Japanese vertical EPUB books and right-to-left comics) are laid out and turned right to left, and EPUB books open as facing pages (`?layout=pages`, `single`, `spread` or `spread-rtl` opens documents in a given layout)
 - The instruction set maps 1:1 onto `CanvasRenderingContext2D`
 - Decompressed with `DecompressionStream` and drawn with `OffscreenCanvas` in a Worker
 - Content-addressed parts, so masters and repeated elements are shared automatically
@@ -76,6 +80,7 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 - Formulas: Office Math in Word documents and in PowerPoint and Excel text (rather than the pictures those keep as fallbacks), MathML in HTML pages and EPUB books (and the MathML beside KaTeX's, MathJax's and Wikipedia's own renderings) and LaTeX in Markdown and in draw.io labels (`math=1`) are laid out by one formula engine, with the parameters and glyph variants of an OpenType MATH font (STIX Two Math, Cambria Math, Latin Modern Math …): fractions, radicals, scripts and limits, large operators, delimiters and radicals that grow from larger variants and assemblies of parts, matrices, aligned equations and accents. Search and copy see a formula in a linear notation such as `x=(−b±√(b^2−4ac))/(2a)` (typed with a hyphen-minus, it is found). See §3.23 of design.md for details
 - The manifest can carry Dublin Core metadata (title, creator, subject, language, creation date and so on), taken over from a PDF's document information, the core properties of PowerPoint, Excel and Word files, a Visio drawing's document properties, the XMP metadata of a Photoshop document, an HTML page's meta elements, a Markdown document's front matter, an EPUB book's package document and an image's XMP, EXIF and IPTC metadata
 - Password-protected inputs (Office documents with an open password, PDFs with a user password) are converted with their password, and the bdf is encrypted with the same password. Each part is sealed on its own (AES-256-GCM), so Range requests and the split form still work; the viewer decrypts with WebCrypto, and the server does not keep the password (spec §3.5)
+- Thumbnails and search text on the server: `raster` draws any page (or a region of a sheet or a scroll view) into an image in pure Go, with the same instructions the viewer runs: anti-aliased paths, strokes, clips, gradients and patterns, images, text in the embedded fonts (WOFF2 decoded) and in the system's fonts for fonts referred to by name, groups, soft masks, shadows, and SVG images. A Go test draws the pages of the browser's golden test and compares them with Chromium's once both are scaled down: most differ by less than 4/255 on average (text is not hinted, kerned or joined into ligatures, and AVIF images are not drawn). `thumbnail` picks the layout from the kind of document: the top-left square of the first page for Word, HTML, Markdown and portrait PDFs, the top-left corner from A1 for Excel and CSV, the whole first page for slides, drawings, images and EPUB covers; PNG, JPEG or WebP. `Document.SearchText` gives the metadata and the text of each page (a sheet whole) for a search engine. Neither is written for an encrypted document unless asked for (`-allow-plaintext`), since they are not encrypted. See §3.25 of design.md
 
 Documents are converted with the `bdf generate` subcommand, which tells the input formats apart by their content, else by their extension (the extension decides for Markdown, which could be any text).
 
@@ -126,6 +131,17 @@ if res.Protected {
 }
 ```
 
+A thumbnail and the text for a search index are made from the document, before it is written or from a bdf read back (`Reader.ToDocument`):
+
+```go
+th, err := thumbnail.Make(res.Doc, &thumbnail.Options{Size: 256}) // Mode: thumbnail.Crop or Fit instead of the layout of the kind of document
+if err != nil {
+	return err
+}
+err = thumbnail.Encode(w, th.Image, thumbnail.WebP) // or thumbnail.PNG, thumbnail.JPEG
+text, err := res.Doc.SearchText() // metadata, and the text of each view page by page; encode it as JSON
+```
+
 ## Documentation
 
 The documents are in Japanese. They are also published, with this README, at <https://shibukawa.github.io/bdf/docs/>.
@@ -141,7 +157,10 @@ The documents are in Japanese. They are also published, with this README, at <ht
 | `*.go`, `cmd/bdf` | Go encoder, decoder, container I/O and CLI |
 | `fixture/` | Generates the sample document (with embedded fonts) |
 | `imgconv/` | How images are stored (as is, or converted to WebP). Bundles a pure-Go libwebp |
-| `woff2/` | TrueType/OpenType → WOFF2 (glyf transform and Brotli) |
+| `woff2/` | TrueType/OpenType ↔ WOFF2 (glyf transform and Brotli) |
+| `raster/` | Draws pages into images in pure Go, as the viewer does: the software rasterizer, and an SVG renderer for SVG images |
+| `thumbnail/` | Thumbnails of documents: the layout by the kind of document, and PNG, JPEG or WebP |
+| `internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading, writing and glyph outlines (`sfnt`), CFF reading and subsetting (`cff`): shared by the converters and `raster` |
 | `converter/` | Registry of the input formats, shared options, format detection, page ranges |
 | `converter/pdf` | PDF → bdf converter |
 | `converter/ai` | Illustrator (.ai) → bdf converter, over the PDF converter |
@@ -165,7 +184,7 @@ The documents are in Japanese. They are also published, with this README, at <ht
 | `converter/tiff` | TIFF (.tif, .tiff) → bdf converter |
 | `converter/image` | Image (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG) → bdf converter (stores the image as it is and reads its metadata) |
 | `converter/all` | Registers every input format (import for its side effect) |
-| `converter/internal/` | Font lookup, measurement and subsetting (`fontdb`), TrueType/OpenType reading and writing (`sfnt`); shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`, draw.io too), objects under construction (`canvas`, draw.io too), EMF/WMF replay (`metafile`), CAD drawings plotted onto pages (`cad`), line breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`); for PDF, Adobe's predefined CJK CMaps (`cjkcmap`) and the JPEG 2000 and JBIG2 decoders (`jpx`, `jbig2`); the TIFF reader with its CCITT fax decoder (`tiff`); the layout engine of Word, HTML, Markdown and EPUB documents (`wordproc`: paragraphs, tables, pages and scroll views) and the HTML and XHTML reader they share (`webdoc`); the Dublin Core of XMP metadata (`xmp`) |
+| `converter/internal/` | Shared by the Office converters: OOXML packages and XML (`ooxml`), DrawingML shapes, text, tables and charts (`ooxml/drawingml`), font choice, measuring and embedding for text layout (`fontset`, draw.io too), objects under construction (`canvas`, draw.io too), EMF/WMF replay (`metafile`), CAD drawings plotted onto pages (`cad`), line breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`); for PDF, Adobe's predefined CJK CMaps (`cjkcmap`) and the JPEG 2000 and JBIG2 decoders (`jpx`, `jbig2`); the TIFF reader with its CCITT fax decoder (`tiff`); the layout engine of Word, HTML, Markdown and EPUB documents (`wordproc`: paragraphs, tables, pages and scroll views) and the HTML and XHTML reader they share (`webdoc`); the Dublin Core of XMP metadata (`xmp`) |
 | `packages/core` | `@bdf/core`: TypeScript decoder, container loading, text extraction |
 | `packages/render` | `@bdf/render`: Canvas renderer, page/continuous/sheet rendering (scroll views render as continuous), Worker (SVG images are drawn on the main thread) |
 | `cmd/bdfwasm` | The converters built as wasm for in-browser conversion (modules for PDF, the Office formats, HTML and Markdown, and images) |
@@ -239,6 +258,14 @@ go run ./cmd/bdf generate -password-file pw.txt in.pptx out.bdf  # password-prot
 go run ./cmd/bdf generate -encrypt never in.pdf out.bdf      # -encrypt auto (default: when the input needs the password), always or never
 BDF_PASSWORD=… go run ./cmd/bdf ls out.bdf                   # ls, manifest, disasm and extract read encrypted documents with $BDF_PASSWORD
 BDF_PASSWORD=… go run ./cmd/bdf encrypt in.bdf out.bdf       # encrypt an existing bdf (decrypt removes the encryption); split and join need no password
+
+# thumbnails, search text and page images (drawn in Go, no browser)
+go run ./cmd/bdf generate -thumbnail thumb.webp -text text.json in.docx out.bdf  # also write a thumbnail (.png, .jpg, .webp) and the text as JSON
+go run ./cmd/bdf generate -thumbnail thumb.png -thumbnail-size 512 -thumbnail-mode fit in.pptx out.bdf  # 512 px; crop, fit or auto (default: by the kind of document)
+go run ./cmd/bdf thumbnail -size 256 out.bdf thumb.png       # the thumbnail of a bdf (-mode, -view, -font-dir, -no-system-fonts)
+go run ./cmd/bdf text out.bdf text.json                      # the metadata and the text of each page as JSON (default: to stdout)
+go run ./cmd/bdf render -page 2 -scale 2 out.bdf page2.png   # a page at 2 pixels per unit (sheets: -width, -height from A1)
+BDF_PASSWORD=… go run ./cmd/bdf thumbnail -allow-plaintext enc.bdf thumb.png  # an encrypted document only with -allow-plaintext (generate: the same flag)
 go build -tags bdf_noconv ./...                    # build without codecs (WebP, Brotli for WOFF2), for the browser
 GOEXPERIMENT=simd go build ./...                   # Go 1.27 amd64/arm64: SIMD codecs (AVX2 required on amd64)
 

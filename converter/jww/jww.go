@@ -24,8 +24,8 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/cad"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/internal/fontdb"
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/width"
 )

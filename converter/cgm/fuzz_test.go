@@ -7,8 +7,8 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/cad"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // FuzzInterp feeds damaged metafiles to both readers and the interpreter,

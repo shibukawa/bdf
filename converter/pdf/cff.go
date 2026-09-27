@@ -4,11 +4,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/shibukawa/bdf/converter/internal/cff"
+	"github.com/shibukawa/bdf/internal/cff"
 )
 
 // The CFF font programs of PDF files are read and subset by
-// converter/internal/cff, which the font embedding of the other converters
+// internal/cff, which the font embedding of the other converters
 // shares.
 type (
 	cffFont      = cff.Font

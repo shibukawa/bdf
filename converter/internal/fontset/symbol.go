@@ -1,6 +1,6 @@
 package fontset
 
-import "github.com/shibukawa/bdf/converter/internal/fontdb"
+import "github.com/shibukawa/bdf/internal/fontdb"
 
 // IsSymbol reports whether a family is a symbol font (Wingdings, Symbol,
 // Webdings), whose character codes are not Unicode.

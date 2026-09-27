@@ -18,8 +18,8 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
-	"github.com/shibukawa/bdf/converter/internal/cff"
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/cff"
+	"github.com/shibukawa/bdf/internal/sfnt"
 	"github.com/shibukawa/bdf/woff2"
 )
 

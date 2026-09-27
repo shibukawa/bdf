@@ -3,7 +3,7 @@ package fontdb
 import (
 	"sort"
 
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/sfnt"
 )
 
 // fsPreviewPrint is the OS/2 fsType written when the original font does not

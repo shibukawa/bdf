@@ -6,8 +6,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // Label text layout. draw.io renders HTML labels as HTML in a
