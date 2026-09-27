@@ -137,6 +137,8 @@ func TestDetectFile(t *testing.T) {
 		{"fragment.html", "<div>\n\n    <p>indented</p>\n</div>", "html"},
 		{"notes.md", "<div>\n\n    <p>indented</p>\n</div>", "markdown"},
 		{"README.md", "# Title\n\ntext", "markdown"},
+		// a Markdown file that starts with an SVG picture is not an SVG file
+		{"logo.md", "<svg viewBox=\"0 0 1 1\"><rect/></svg>\n\n# Title\n\ntext", "markdown"},
 		{"notes.txt", "plain text", ""},
 		// a CSV file of one line is text that only its extension tells
 		{"one.csv", "a,b,c", "csv"},

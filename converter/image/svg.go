@@ -5,9 +5,9 @@ import (
 	"encoding/xml"
 	"errors"
 	"regexp"
-	"strconv"
-	"strings"
 	"unicode/utf16"
+
+	"github.com/shibukawa/bdf/imgconv"
 )
 
 // utf8Text converts a document with a UTF-16 byte order mark to UTF-8 and
@@ -119,7 +119,7 @@ func readSVG(data []byte) (*picture, error) {
 	if root.Name.Space != nsSVG {
 		p.warnings = append(p.warnings, `the root svg element is not in the SVG namespace (xmlns="`+nsSVG+`"): browsers do not draw it`)
 	}
-	p.w, p.h = svgSize(rn.attr("", "width"), rn.attr("", "height"), rn.attr("", "viewBox"))
+	p.w, p.h = imgconv.ParseSVGSize(rn.attr("", "width"), rn.attr("", "height"), rn.attr("", "viewBox")).Pixels()
 	if lang := rn.attr(nsXML, "lang"); lang != "" {
 		add(&p.native.Language, lang)
 	} else {
@@ -178,75 +178,4 @@ func allText(n *node) string {
 		s += " " + allText(c)
 	}
 	return s
-}
-
-// svgSize computes the size of an SVG image from the width, height and
-// viewBox of its root, as for an image element (CSS px): a missing or
-// relative width or height follows from the other and the view box's
-// proportions, or is the view box's; without a view box it is 300 × 150
-// (the default size of replaced elements).
-func svgSize(width, height, viewBox string) (w, h float64) {
-	w, okW := svgLength(width)
-	h, okH := svgLength(height)
-	var vw, vh float64
-	if f := strings.FieldsFunc(viewBox, func(r rune) bool { return r == ' ' || r == ',' || r == '\t' || r == '\n' || r == '\r' }); len(f) == 4 {
-		vw, _ = strconv.ParseFloat(f[2], 64)
-		vh, _ = strconv.ParseFloat(f[3], 64)
-	}
-	ratio := vw > 0 && vh > 0
-	switch {
-	case okW && okH:
-	case okW && ratio:
-		h = w * vh / vw
-	case okH && ratio:
-		w = h * vw / vh
-	case ratio:
-		w, h = vw, vh
-	default:
-		if !okW {
-			w = 300
-		}
-		if !okH {
-			h = 150
-		}
-	}
-	return w, h
-}
-
-// lengthRE matches a CSS length: a number and a unit.
-var lengthRE = regexp.MustCompile(`^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([A-Za-z%]*)\s*$`)
-
-// svgLength reads an absolute length in CSS px; percentages and invalid
-// lengths are not.
-func svgLength(s string) (float64, bool) {
-	m := lengthRE.FindStringSubmatch(s)
-	if m == nil {
-		return 0, false
-	}
-	v, err := strconv.ParseFloat(m[1], 64)
-	if err != nil || v <= 0 {
-		return 0, false
-	}
-	switch strings.ToLower(m[2]) {
-	case "", "px":
-	case "pt":
-		v *= 96.0 / 72
-	case "pc":
-		v *= 16
-	case "in":
-		v *= 96
-	case "cm":
-		v *= 96 / 2.54
-	case "mm":
-		v *= 96 / 25.4
-	case "q":
-		v *= 96 / 101.6
-	case "em":
-		v *= 16
-	case "ex":
-		v *= 8
-	default:
-		return 0, false
-	}
-	return v, true
 }

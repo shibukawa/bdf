@@ -109,6 +109,9 @@ export const CASES: Case[] = [
   { name: "markdown-basic-scroll", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 700 }, scale: 1 },
   { name: "markdown-basic-strips", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 760, w: 504, h: 460 }, scale: 1 },
   { name: "html-article-scroll", src: "/testdata/html/article.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 760 }, scale: 1 },
+  // SVG in Markdown: an inline svg element as wide as the column (its gradient from a sprite sheet further down), two
+  // SVG files and a sprite symbol in the text color; the region above the text, so the browser's fonts do not matter.
+  { name: "markdown-svg", src: "/testdata/markdown/svg.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 180 }, scale: 1.5 },
   // Illustrator artboards (converter/ai): each page cut to its artboard, the hidden layer left out; see test/ai.
   { name: "ai-artboards-1", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "ai-artboards-2", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },

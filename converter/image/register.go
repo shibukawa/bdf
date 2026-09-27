@@ -2,6 +2,7 @@ package image
 
 import (
 	"bytes"
+	"encoding/xml"
 	"io"
 
 	"github.com/shibukawa/bdf/converter"
@@ -60,8 +61,56 @@ func sniff(head []byte, r io.ReaderAt, size int64) string {
 		n, _ := r.ReadAt(more, 0)
 		isSVG, _ = svgRoot(more[:n])
 	}
-	if isSVG {
-		return "svg"
+	if !isSVG {
+		return ""
 	}
-	return ""
+	if size <= maxWhole {
+		data := make([]byte, size)
+		n, _ := r.ReadAt(data, 0)
+		if !wholeSVG(data[:n]) {
+			return ""
+		}
+	}
+	return "svg"
+}
+
+// maxWhole bounds the SVG files read whole to check that they end with
+// their root element.
+const maxWhole = 8 << 20
+
+// wholeSVG reports whether a document that starts with an svg element ends
+// with it: text or elements after it (a Markdown file that begins with an
+// SVG picture) make it something else, as they make browsers reject an SVG
+// file. A root element that is not well formed is taken as an SVG file.
+func wholeSVG(data []byte) bool {
+	d := decoder(utf8Text(data), nil)
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return true
+		}
+		if _, ok := tok.(xml.StartElement); ok {
+			break
+		}
+	}
+	if d.Skip() != nil {
+		return true
+	}
+	for {
+		tok, err := d.Token()
+		if err == io.EOF {
+			return true
+		}
+		if err != nil {
+			return false
+		}
+		switch t := tok.(type) {
+		case xml.CharData:
+			if len(bytes.TrimSpace(t)) > 0 {
+				return false
+			}
+		case xml.StartElement:
+			return false
+		}
+	}
 }

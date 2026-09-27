@@ -153,6 +153,9 @@ func TestSniff(t *testing.T) {
 		{"prolog", "\xef\xbb\xbf<?xml version=\"1.0\"?>\n<!-- a comment -->\n<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"x.dtd\" [\n<!ENTITY a \"<b>\">\n]>\n<svg>", "svg"},
 		{"prefixed", `<svg:svg xmlns:svg="http://www.w3.org/2000/svg"/>`, "svg"},
 		{"html", `<!DOCTYPE html><html><svg/></html>`, ""},
+		// text after the root: a Markdown file that starts with a picture
+		{"markdown", "<svg viewBox=\"0 0 1 1\"><rect/></svg>\n\n# Title\n\ntext\n", ""},
+		{"trailing comment", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>\n<!-- end -->\n", "svg"},
 		{"xml", `<?xml version="1.0"?><mxfile/>`, ""},
 		{"text", `svg`, ""},
 		{"bm text", "BM is not a bitmap", ""},
@@ -167,28 +170,6 @@ func TestSniff(t *testing.T) {
 	long := "<!--" + strings.Repeat("x", 3000) + "--><svg/>"
 	if got := sniff([]byte(long[:1024]), strings.NewReader(long), int64(len(long))); got != "svg" {
 		t.Errorf("long comment: %q", got)
-	}
-}
-
-func TestSVGSize(t *testing.T) {
-	for _, c := range []struct {
-		width, height, viewBox string
-		w, h                   float64
-	}{
-		{"200", "100", "", 200, 100},
-		{"200px", "1in", "0 0 10 10", 200, 96},
-		{"72pt", "2.54cm", "", 96, 96},
-		{"1e2", "5em", "", 100, 80},
-		{"", "", "0 0 40 30", 40, 30},
-		{"80", "", "0,0,40,30", 80, 60},
-		{"100%", "50", "0 0 40 20", 100, 50},
-		{"", "", "", 300, 150},
-		{"50", "", "", 50, 150},
-		{"-5", "abc", "0 0 0 0", 300, 150},
-	} {
-		if w, h := svgSize(c.width, c.height, c.viewBox); w != c.w || h != c.h {
-			t.Errorf("svgSize(%q, %q, %q) = %v × %v, want %v × %v", c.width, c.height, c.viewBox, w, h, c.w, c.h)
-		}
 	}
 }
 

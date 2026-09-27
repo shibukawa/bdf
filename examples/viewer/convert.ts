@@ -63,19 +63,20 @@ export class ConvertError extends Error {
 const WEB = [".html", ".htm", ".xhtml", ".mhtml", ".mht", ".md", ".markdown", ".mdown", ".mkd", ".mdx"];
 
 /**
- * What a file is, from its content and its name: a bdf document, an image
- * the browser displays by itself (stored as it is by a small module), a
- * PDF, an HTML or Markdown document (by its extension), or (possibly) an
- * Office document or a diagram. draw.io's PNG and SVG exports are diagrams.
+ * What a file is, from its content and its name: a bdf document, an HTML
+ * or Markdown document (by its extension: a README may start with an SVG
+ * picture), an image the browser displays by itself (stored as it is by a
+ * small module), a PDF, or (possibly) an Office document or a diagram.
+ * draw.io's PNG and SVG exports are diagrams.
  */
 export function sniff(data: Uint8Array, name = ""): "bdf" | "image" | "pdf" | "web" | "office" {
   if (data[0] === 0x62 && data[1] === 0x64 && data[2] === 0x66 && data[3] === 0) return "bdf";
+  const dot = name.lastIndexOf(".");
+  if (dot >= 0 && WEB.includes(name.slice(dot).toLowerCase())) return "web";
   if (isImage(data)) return "image";
   // the header may follow some garbage in the first 1024 bytes
   const text = String.fromCharCode(...data.subarray(0, 1024));
-  if (text.includes("%PDF-")) return "pdf";
-  const dot = name.lastIndexOf(".");
-  return dot >= 0 && WEB.includes(name.slice(dot).toLowerCase()) ? "web" : "office";
+  return text.includes("%PDF-") ? "pdf" : "office";
 }
 
 /** Whether data is a PNG, JPEG, GIF, WebP, AVIF, BMP, ICO or SVG image (and not a draw.io export). */
