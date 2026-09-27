@@ -1,8 +1,10 @@
 /// <reference lib="webworker" />
 // Converter worker: runs the converter modules (cmd/bdfwasm, built as wasm)
 // and converts the files the page sends into bdf documents, whole or a page
-// at a time. A classic worker, so that it can load Go's wasm_exec.js.
-import type { ConvertRequest, ConvertResponse, ConvertOptions, Converted, ConvertedPage, Opened } from "./convert.js";
+// at a time; the preview module draws the thumbnails of bdf documents and
+// gives their text for a search index. A classic worker, so that it can
+// load Go's wasm_exec.js.
+import type { ConvertRequest, ConvertResponse, ConvertOptions, ConvertResult, Converted, ConvertedPage, Opened, SearchText, Thumbnail, ThumbnailOptions } from "./convert.js";
 
 /** A conversion done a page at a time, as cmd/bdfwasm returns it. */
 interface GoStream {
@@ -10,10 +12,12 @@ interface GoStream {
   finish(): Promise<Converted>;
   close(): void;
 }
-/** What cmd/bdfwasm sets on globalThis. */
+/** What cmd/bdfwasm sets on globalThis; thumbnail and text are the preview module's. */
 interface Converter {
   convert(data: Uint8Array, options: ConvertOptions): Promise<Converted>;
   open(data: Uint8Array, options: ConvertOptions): Promise<Omit<Opened, "stream"> & { stream?: GoStream }>;
+  thumbnail?(data: Uint8Array, options: ThumbnailOptions): Promise<Thumbnail>;
+  text?(data: Uint8Array, options: { password?: string }): Promise<SearchText>;
 }
 declare class Go {
   importObject: WebAssembly.Imports;
@@ -57,7 +61,14 @@ function stream(id: number): GoStream {
   return s;
 }
 
-async function handle(req: ConvertRequest): Promise<Converted | Opened | ConvertedPage | null> {
+/** The preview module at a URL. */
+async function preview(url: string): Promise<Required<Converter>> {
+  const m = await load(url);
+  if (!m.thumbnail || !m.text) throw new Error(`${url}: not the preview module`);
+  return m as Required<Converter>;
+}
+
+async function handle(req: ConvertRequest): Promise<ConvertResult> {
   switch (req.type) {
     case "convert":
       return (await load(req.module)).convert(new Uint8Array(req.data), req.options);
@@ -76,6 +87,10 @@ async function handle(req: ConvertRequest): Promise<Converted | Opened | Convert
       streams.get(req.stream)?.close();
       streams.delete(req.stream);
       return null;
+    case "thumbnail":
+      return (await preview(req.module)).thumbnail(new Uint8Array(req.data), req.options);
+    case "text":
+      return (await preview(req.module)).text(new Uint8Array(req.data), req.options);
   }
 }
 
@@ -86,7 +101,8 @@ self.onmessage = async (ev: MessageEvent<ConvertRequest>) => {
   try {
     const result = await handle(ev.data);
     res = { id, ok: true, result };
-    if (result) transfer.push(result.bdf.buffer);
+    if (result && "bdf" in result) transfer.push(result.bdf.buffer);
+    if (result && "image" in result) transfer.push(result.image.buffer);
   } catch (e) {
     const err = e as Error & { code?: string };
     res = { id, ok: false, error: err.message ?? String(e), code: err.code };

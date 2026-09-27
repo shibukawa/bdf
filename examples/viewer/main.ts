@@ -5,9 +5,12 @@
 // converted a page at a time: its pages are shown sized at once and drawn as
 // they are converted, those near the visible area first. Pages are scrolled
 // through, or shown one or two at a time and turned like a book's (book.ts).
+// The thumbnail and the search text of the document shown are made, when the
+// reader asks for them, by the Go packages a server makes them with, built
+// as wasm too.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
 import { BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, internalLink, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type OpenSource, type TextLayerOptions } from "@bdf/render";
-import { ConverterClient, ConvertError, sniff, type Opened } from "./convert.js";
+import { ConverterClient, ConvertError, sniff, type Opened, type ThumbnailOptions } from "./convert.js";
 import { Book } from "./book.js";
 
 /** The document shown when the URL has no ?src= (set by the build); "" shows the start page. */
@@ -21,10 +24,15 @@ let converter: ConverterClient | undefined;
 /**
  * Converter modules, one for PDF, one for the Office formats, one for HTML
  * and Markdown and one for the images browsers display by themselves, and
- * the fonts the Office converters lay text out with.
+ * the fonts the Office converters lay text out with. The preview module
+ * draws thumbnails and gives the text for a search index.
  */
 const MODULES = { pdf: "bdf-pdf.wasm", office: "bdf-office.wasm", web: "bdf-web.wasm", image: "bdf-image.wasm" };
+const PREVIEW = "bdf-preview.wasm";
 const FONTS = "fonts/";
+const siteURL = (path: string) => new URL(path, location.href).href;
+/** The converter worker, started when it is first needed. */
+const converterWorker = () => (converter ??= new ConverterClient(new Worker("./convert-worker.js")));
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const stage = $<HTMLDivElement>("stage");
@@ -205,11 +213,16 @@ let opening = 0;
  * Open a document and show its first view. An encrypted one stays locked in
  * the worker while the reader is asked for its password. With stream, the
  * document is the outline of a conversion whose pages are still to come.
+ * Returns the password that unlocked the document (none when it is not
+ * encrypted), or undefined when it did not open or another one opened
+ * meanwhile.
  */
-async function load(source: OpenSource, name?: string, token = ++opening, stream?: Streaming) {
+async function load(source: OpenSource, name?: string, token = ++opening, stream?: Streaming): Promise<{ password?: string } | undefined> {
   closeDocument();
   setStatus("loading…");
-  const opened = await withPassword(() => client.open(source), (password) => client.unlock(password), "unlocking…");
+  let password: string | undefined;
+  const unlock = (pw: string) => client.unlock(pw).then((m) => { password = pw; return m; });
+  const opened = await withPassword(() => client.open(source), unlock, "unlocking…");
   if (token !== opening) return;
   if (!opened) {
     setStatus("encrypted document: not opened");
@@ -238,6 +251,7 @@ async function load(source: OpenSource, name?: string, token = ++opening, stream
   // "#view=ID" in the address opens that view
   const start = internalLink(location.hash);
   show(manifest.views.find((v) => v.id === start?.view) ?? manifest.views[0]);
+  return { password };
 }
 
 /**
@@ -251,16 +265,22 @@ async function openFile(name: string, data: ArrayBuffer) {
   history.replaceState(null, "", location.pathname + location.search);
   setWarnings([]);
   setDownload();
+  setPreview();
   setTiming("");
+  const base = name.replace(/\.[^.]*$/, "");
   const kind = sniff(new Uint8Array(data), name);
-  if (kind === "bdf") return load({ kind: "buffer", buffer: data }, name, token);
+  if (kind === "bdf") {
+    const file = new Blob([data]); // a copy: the buffer goes to the worker
+    const opened = await load({ kind: "buffer", buffer: data }, name, token);
+    if (opened) setPreview({ file: async () => file, base, password: opened.password, note: opened.password === undefined ? undefined : ENCRYPTED });
+    return;
+  }
   const busy = `converting ${name}…`;
   setStatus(busy);
-  converter ??= new ConverterClient(new Worker("./convert-worker.js"));
-  const conv = converter;
-  const module = new URL(MODULES[kind], location.href).href;
+  const conv = converterWorker();
+  const module = siteURL(MODULES[kind]);
   // only the Office converters lay text out with the font directory (PDFs embed their fonts, images have no text)
-  const fonts = kind === "office" ? new URL(FONTS, location.href).href : undefined;
+  const fonts = kind === "office" ? siteURL(FONTS) : undefined;
   let t0 = 0; // of the last attempt: the reader's typing is not part of the conversion
   const open = (password?: string) => {
     t0 = performance.now();
@@ -286,9 +306,11 @@ async function openFile(name: string, data: ArrayBuffer) {
   if (!res.stream) {
     // converted whole
     const took = `${name} converted in ${(performance.now() - t0).toFixed(0)} ms: ${res.summary}`;
-    setDownload(res.bdf, name);
-    await load({ kind: "buffer", buffer }, name, token);
-    if (token === opening) setStatus(took);
+    const file = bdfFile(res.bdf);
+    setDownload(file, base);
+    if (!(await load({ kind: "buffer", buffer }, name, token))) return;
+    setStatus(took);
+    setPreview({ file: async () => file, base, note: res.protected ? PROTECTED : undefined });
     return;
   }
   const st: Streaming = { id: res.stream, token, view: "", state: new Array<PageState>(res.pages).fill(PageState.Pending), left: res.pages, warnings: res.warnings };
@@ -299,7 +321,7 @@ async function openFile(name: string, data: ArrayBuffer) {
   if (streaming !== st) return;
   setStatus(`${name}: ${res.pages} ${res.pages === 1 ? "page" : "pages"}, converted as they come into view`);
   showProgress(st);
-  convertPages(st, name, t0).catch(openFailed);
+  convertPages(st, name, base, t0).catch(openFailed);
 }
 
 /**
@@ -307,7 +329,7 @@ async function openFile(name: string, data: ArrayBuffer) {
  * the visible area, and put them in the document shown; then swap in the
  * finished document, which is also the one to download.
  */
-async function convertPages(st: Streaming, name: string, t0: number) {
+async function convertPages(st: Streaming, name: string, base: string, t0: number) {
   const conv = converter!;
   const live = () => streaming === st;
   const arrived = (i: number, state: PageState) => {
@@ -352,7 +374,9 @@ async function convertPages(st: Streaming, name: string, t0: number) {
   try {
     const res = await conv.finish(st.id);
     if (opening !== st.token) return;
-    setDownload(res.bdf, name);
+    const file = bdfFile(res.bdf);
+    setDownload(file, base);
+    setPreview({ file: async () => file, base, note: res.protected ? PROTECTED : undefined });
     setWarnings(res.warnings);
     await client.replace({ kind: "buffer", buffer: res.bdf.buffer as ArrayBuffer });
     if (opening !== st.token) return;
@@ -444,19 +468,133 @@ function openLocal(file: File) {
   file.arrayBuffer().then((data) => openFile(file.name, data)).catch(openFailed);
 }
 
-let downloadURL: string | undefined;
+/** A converted document as a file; the Blob copies the bytes, which then go to the worker. */
+const bdfFile = (bdf: Uint8Array) => new Blob([bdf as BlobPart], { type: "application/octet-stream" });
 
-/** Offer the converted document for download (none when bdf is absent). */
-function setDownload(bdf?: Uint8Array, name = "") {
-  const a = $<HTMLAnchorElement>("download");
-  if (downloadURL) URL.revokeObjectURL(downloadURL);
-  downloadURL = undefined;
-  a.hidden = !bdf;
-  if (!bdf) return;
-  // the Blob copies the bytes, which then go to the worker
-  downloadURL = URL.createObjectURL(new Blob([bdf as BlobPart], { type: "application/octet-stream" }));
-  a.href = downloadURL;
-  a.download = `${name.replace(/\.[^.]*$/, "")}.bdf`;
+/** Object URLs of the download links, by link id: revoked when replaced. */
+const objectURLs = new Map<string, string>();
+
+/** Point the download link with that id at file, named name (the link is hidden without a file). */
+function setLink(id: string, file?: Blob, name = "") {
+  const a = $<HTMLAnchorElement>(id);
+  const old = objectURLs.get(id);
+  if (old) URL.revokeObjectURL(old);
+  objectURLs.delete(id);
+  a.hidden = !file;
+  if (!file) {
+    a.removeAttribute("href");
+    return "";
+  }
+  const url = URL.createObjectURL(file);
+  objectURLs.set(id, url);
+  a.href = url;
+  a.download = name;
+  return url;
+}
+
+/** Offer the converted document for download (none without file); base is the name without its extension. */
+function setDownload(file?: Blob, base = "") {
+  setLink("download", file, `${base}.bdf`);
+}
+
+/**
+ * The document shown as a single-file bdf, for its thumbnail and its text
+ * for a search index, made by the preview module when the reader opens
+ * the panel.
+ */
+interface Saved {
+  /** The file (fetched the first time for a document opened by its URL). */
+  file: () => Promise<Blob>;
+  /** Names of the downloads start with it. */
+  base: string;
+  /** The password of an encrypted document. */
+  password?: string;
+  /** Why what is made of the document is not protected like it. */
+  note?: string;
+  /** The options of the thumbnail made (or being made). */
+  thumbnail?: string;
+  /** Whether the text is made (or being made). */
+  text?: boolean;
+}
+let saved: Saved | undefined;
+const ENCRYPTED = "The document is encrypted: its thumbnail and text are not.";
+const PROTECTED = "The file was password-protected: the converted document, its thumbnail and its text are not.";
+
+/** Offer the thumbnail and text of the document shown (none without s). */
+function setPreview(s?: Saved) {
+  saved = s;
+  const box = $<HTMLDetailsElement>("preview");
+  box.hidden = !s;
+  box.open = false;
+  setLink("thumbLink");
+  setLink("textLink");
+  $<HTMLImageElement>("thumbImg").hidden = true;
+  $("thumbInfo").textContent = $("textInfo").textContent = "";
+  $("thumbWarnings").hidden = true;
+  const note = $("previewNote");
+  note.textContent = s?.note ?? "";
+  note.hidden = !s?.note;
+}
+
+const kb = (n: number) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`);
+
+/** Draw the thumbnail with the options chosen, unless it is drawn already. */
+async function makeThumbnail() {
+  const s = saved;
+  if (!s) return;
+  const size = Number($<HTMLSelectElement>("thumbSize").value);
+  const mode = $<HTMLSelectElement>("thumbMode").value as ThumbnailOptions["mode"];
+  const format = $<HTMLSelectElement>("thumbFormat").value as ThumbnailOptions["format"];
+  const key = `${size} ${mode} ${format}`;
+  if (s.thumbnail === key) return;
+  s.thumbnail = key;
+  const live = () => saved === s && s.thumbnail === key;
+  const img = $<HTMLImageElement>("thumbImg"), info = $("thumbInfo"), warn = $("thumbWarnings");
+  info.textContent = "drawing…";
+  setLink("thumbLink");
+  try {
+    const data = await (await s.file()).arrayBuffer();
+    // HTML, Markdown and EPUB documents name their fonts: they come from the site's fonts, as there are no others
+    const t = await converterWorker().thumbnail(siteURL(PREVIEW), data, { size, mode, format, password: s.password, fonts: siteURL(FONTS) });
+    if (!live()) return;
+    const file = new Blob([t.image as BlobPart], { type: `image/${t.format}` });
+    img.src = setLink("thumbLink", file, `${s.base}-thumbnail-${size}.${t.format === "jpeg" ? "jpg" : "png"}`);
+    img.width = t.width;
+    img.height = t.height;
+    img.alt = `thumbnail of ${s.base}`;
+    img.hidden = false;
+    info.textContent = `${t.width} × ${t.height} ${t.format.toUpperCase()}, ${t.mode}, ${kb(file.size)}`;
+    warn.textContent = t.warnings.length ? `Warnings: ${t.warnings.join("; ")}` : "";
+    warn.hidden = !t.warnings.length;
+  } catch (e) {
+    if (!live()) return;
+    s.thumbnail = undefined; // tried again when the panel opens or the options change
+    img.hidden = true;
+    info.textContent = `the thumbnail could not be drawn: ${(e as Error).message ?? e}`;
+  }
+}
+
+/** Get the text for a search index, unless it is there already. */
+async function makeText() {
+  const s = saved;
+  if (!s || s.text) return;
+  s.text = true;
+  const info = $("textInfo");
+  info.textContent = "extracting…";
+  try {
+    const data = await (await s.file()).arrayBuffer();
+    const { json } = await converterWorker().text(siteURL(PREVIEW), data, { password: s.password });
+    if (saved !== s) return;
+    const st = JSON.parse(json) as { views: { pages: { text: string }[] }[] };
+    const chars = st.views.reduce((n, v) => v.pages.reduce((n, p) => n + p.text.length, n), 0);
+    const file = new Blob([json], { type: "application/json" });
+    setLink("textLink", file, `${s.base}-text.json`);
+    info.textContent = `${chars.toLocaleString("en")} characters, ${kb(file.size)}`;
+  } catch (e) {
+    if (saved !== s) return;
+    s.text = false;
+    info.textContent = `the text could not be extracted: ${(e as Error).message ?? e}`;
+  }
 }
 
 /** The warnings of the conversion, in a disclosure next to the status. */
@@ -536,6 +674,14 @@ function init() {
     layoutChosen = true;
     if (current) show(current);
   };
+  // the thumbnail and text are made when the panel opens, the thumbnail again when its options change
+  const previewBox = $<HTMLDetailsElement>("preview");
+  previewBox.addEventListener("toggle", () => {
+    if (!previewBox.open) return;
+    makeThumbnail();
+    makeText();
+  });
+  for (const id of ["thumbSize", "thumbMode", "thumbFormat"]) $(id).onchange = () => makeThumbnail();
   $("prevPage").onclick = () => book?.turnBy(-1);
   $("nextPage").onclick = () => book?.turnBy(1);
   // pages curl as they turn, unless the reader asks for less motion
@@ -571,11 +717,22 @@ function init() {
   });
 }
 
-function main() {
+async function main() {
   init();
   if (!src) return showLanding();
-  const source: OpenSource = src.endsWith("/") ? { kind: "split", base: new URL(src, location.href).href } : { kind: "single", url: new URL(src, location.href).href, range: params.has("range") };
-  return load(source);
+  const source: OpenSource = src.endsWith("/") ? { kind: "split", base: siteURL(src) } : { kind: "single", url: siteURL(src), range: params.has("range") };
+  const opened = await load(source);
+  // a split document is not one file to make a thumbnail of
+  if (!opened || source.kind !== "single") return;
+  const url = source.url;
+  let file: Promise<Blob> | undefined;
+  const fetchFile = () => fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`${url}: HTTP ${r.status}`))));
+  setPreview({
+    file: () => (file ??= fetchFile().catch((e) => { file = undefined; throw e; })),
+    base: decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "").replace(/\.[^.]*$/, "") || "document",
+    password: opened.password,
+    note: opened.password === undefined ? undefined : ENCRYPTED,
+  });
 }
 
 function show(v: View) {
