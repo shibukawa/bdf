@@ -11,7 +11,7 @@
 // shows them, and a view of each layer. Colors are those of KiCad's
 // default theme; text is drawn with NewStroke, the stroke font KiCad draws
 // text with (CJK characters, which it lacks, with TrueType fonts), or with
-// the TrueType font a text names. See docs/design.md §3.28.
+// the TrueType font a text names. See docs/design.md §3.29.
 package kicad
 
 import (

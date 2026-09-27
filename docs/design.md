@@ -43,7 +43,7 @@ wasm が意味を持つケース:
 
 変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の bdf を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`examples/viewer/site.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
 
-- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・楽譜・メタファイル・Photoshop・画像。約 25.7 MB、gzip 7.5 MB。Parquet で約 1.1 MB、KiCad で約 1 MB（gzip 0.3 MB）増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。サムネイルと検索用テキスト（§3.25）は、変換器を持たない `previewonly` のモジュールにした。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
+- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・楽譜・フォント・メタファイル・Photoshop・画像。約 26.6 MB、gzip 7.8 MB。Parquet で約 1.1 MB、KiCad で約 1 MB（gzip 0.3 MB）増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。サムネイルと検索用テキスト（§3.25）は、変換器を持たない `previewonly` のモジュールにした。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
 - **フォントは fs.FS で渡す**: ブラウザにはフォントのディレクトリが無い。`converter.Options.FontFS` で任意の `fs.FS` をフォントの探索元にできるようにし（`FontDirs` より先に探す）、wasm 側では Web 上のディレクトリをそれとして実装した。`index.json` にファイル名、サイズと、フォントの走査が読む範囲（テーブルディレクトリと name・OS/2・post テーブル）を書いておき、最初の変換でその範囲だけを並列に Range で取得する。フォント全体は文書がそのフェイスを使うときに初めて取得し、取得したものはモジュールが生きている間保持する（2 回目以降の変換は通信しない）。サイトのフォントは CI が Ubuntu のパッケージから集める: Liberation（Arial、Times New Roman、Courier New の代替）、Carlito（Calibri）、Caladea（Cambria）、IPAex（日本語）、DejaVu（記号）。
 - **pdfcpu の設定ファイル**: pdfcpu は既定でユーザーの設定ディレクトリに config.yml を書いて読み直すが、js 版のパーサは自分が書いた 16 進の permissions を読めずに終了する。js のビルドでは `model.ConfigPath = "disable"` にして組み込みの既定値を使う。
 
@@ -600,7 +600,23 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 
 テストは、記譜（`Notate`）の結果を音符の並びの文字列で、`Build` の cue（時刻の順、段の矩形の中、繰り返しの展開と分解能の変換）と SMF の書き出しを確かめ、読み手ごとに MML・MIDI・MusicXML の小さな入力（パブリックドメインの曲を手で書いたもの。`converter/musicxml/testdata/gen.py`）から `Performance` と `Score` を確かめる。`converter/mml/testdata/frere.mml`（PPMCK の 4 声の輪唱）、`ode.mml`（マビノギ）、`converter/midi/testdata/twinkle.kar`（歌詞）、`converter/musicxml/testdata/minuet.musicxml`（大譜表）、`ode_to_joy.mxl` の変換結果を `testdata/music/` に置いて golden で描画を比べる。`MUSIC_SAMPLES=dir go test ./converter/internal/music -run 'TestSamples|TestFeatures'` は見本の楽譜と、組版が描くすべての記号を使った楽譜を PNG に描く。
 
-## 3.28 KiCad → BDF 変換器（converter/kicad）の構造
+## 3.28 フォントファイル → BDF 変換器（converter/font）の構造
+
+フォントファイル（TrueType・OpenType、そのコレクション、WOFF・WOFF2）を、フォントビューアのように見せる。どの文字とグリフがあり、どの OpenType フィーチャーが何をするかが分かる文書にする。問題は BDF が Canvas 2D の上にあることだ。`fillText` はブラウザの既定のフィーチャー（`liga`、`kern` など）しか適用せず、文書が `font-feature-settings` を指定する手段がない。フィーチャーの働きはシェーピングした文ではなく、グリフの前後として描く。
+
+- **View**: フォントごとに scroll View（§4.1）を 4 つ作る。概要（overview）・文字（characters）・グリフ（glyphs）・フィーチャー（features）で、フィーチャーは GSUB も GPOS もなければ作らない。コレクションはフォントの数だけ組を作り、id に `-1`、`-2` … を付け、題にフォント名を冠する。`-param font=2,3` で選べ、指定しなければ先頭から合計 262,144 グリフまでにする（65,535 グリフの CJK フォントを 10 本束ねたコレクションもある）。どの View も幅 720 pt の段に行を積み、1,024 pt ほどごとに行の境目で帯に切る。見出しは次の行と同じ帯に置く。目次（Unicode ブロックの一覧、フィーチャーの一覧）は `#page=N` のリンクで該当の帯に飛ぶ。
+- **2 つの埋め込みフォント**: グリフはフォント自身を埋め込んで描く。1 つ目のグリフ用フォントは、レイアウトテーブル（GSUB、GPOS、GDEF、BASE、JSTF、MATH、kern、AAT の morx・kerx ほか、Graphite）と縦書きのメトリクスを除き、cmap を差し替えたものだ。新しい cmap はグリフ g を私用領域の文字 U+F0000+g に割り当てる。最後の 2 つのグリフ ID は非文字になるので面 16 に回す。グリフのセルはこの文字 1 つの FILL_TEXT で、テキスト抽出には ALT_TEXT で割り当てられた文字（なければ空）を与える。ブラウザはヒンティングもカラーグリフ（COLR/CPAL、sbix、CBDT、SVG）もそのまま描く。レイアウトテーブルを除くのは、単独の文字でもシェーパーが置換しうるからだ。`calt` の語末形や `ccmp` の分解がその例で、ID で指したグリフでないものが描かれてしまう。グリフ 0（.notdef）は cmap で割り当てられない（グリフ 0 に割り当てた文字はブラウザにとって「ない文字」）ので、パスで描く。sbix は 1 つのストライク（64 ppem 以上で最小のもの）だけを残す。絵文字のフォントは十数の大きさのビットマップを持ち、Apple Color Emoji は 180 MB あるが、残せば 20 MB になる。コレクションでグリフのデータ（glyf・CFF・hmtx・カラーテーブルなど）を共有するフォントは、グリフ用フォントも共有する。2 つ目の見本用フォントは、レイアウトテーブルを残して見本文に要るグリフだけにしたものだ。見本文はこれで描くので、ブラウザがアプリケーションと同じようにシェーピングする（アラビア文字の連結、インド系文字の結合、既定のカーニングと合字）。FILL_TEXT の期待幅は 0 で、幅はシェーピングが決める。要るグリフは、見本文の文字のグリフから GSUB の全置換を文脈を見ずにたどった閉包で、それ以外を番号を保ったまま空にする。TrueType は glyf を空にして loca を書き直し（`sfnt.PruneGlyphs`）、CFF は charstring を endchar に替えて使われないサブルーチンを空にする（`cff.Prune`、`sfnt.PruneCFF`）。CFF の CharStrings INDEX はグリフごとにオフセットを持つので、CJK フォントでは空のグリフも数百 KB になる。それでも元の 16 MB に比べれば小さい。置換をたどれない AAT・Graphite のフォントと CFF2 は、4 MB までなら丸ごと埋め込む。それより大きいフォントやカラービットマップの大きいフォントには見本用フォントを作らず、見本文をグリフ用フォントで 1 グリフずつ（シェーピングなしで）描く。
+- **埋め込みが許されないフォント**: OS/2 の fsType が埋め込みを禁じるフォント（Restricted License、Bitmap embedding only）は埋め込まない（ユーザーの判断）。グリフは `sfnt.Outlines` の輪郭をパスにして描き（仕様 §6.1 の方針）、Object ごとに使うグリフのパスを持つ。見本文は 1 グリフずつで、シェーピングもヒンティングもない。輪郭のないグリフ（カラービットマップ）は描けない。`-ignore-fstype`（`Options.IgnoreFSType`）で埋め込む。
+- **GSUB・GPOS の読み取り（internal/otlayout）**: ScriptList・FeatureList・LookupList を読む。拡張ルックアップはほどき、スタイリスティックセットと文字異体の FeatureParams（UI 名と対象の文字）も読む。ルックアップごとに次のものを取り出す。GSUB は単一（両形式）・複数・代替・合字・逆連鎖の置換、文脈と連鎖文脈（3 形式）のルール数と適用するルックアップ。GPOS はペア（個別の形式と、クラスの形式。後者のペア数はクラスの大きさの積）、単一調整、カーシブ、マークの基底字とマークへのアンカー、合字へのマークの数。GDEF はグリフのクラス、マークの付くクラス、マークの集合。フォントは信用しない入力なので、個数は表の大きさで切り、カバレッジとクラスの展開は 65,536 グリフまでにする。クラスの形式のペア表はレコードが表に収まらなければ読まない。値の 0 のペアは列挙の前に除く（クラスが多く値がほぼ 0 の表で、カバレッジ × クラスの空回りが数十億回になった）。macOS のフォント 14 本（ラテン、日本語と中国語のコレクション、アラビア文字、インド系、ミャンマー文字、絵文字）とテスト用フォントについて、ルックアップの種類・置換の数・ルールと入れ子のルックアップ・ペアの数・マークと基底字の数を fontTools と照合した。読み取りと変換にファズテストがある。
+- **フィーチャーの見せ方**: 同じタグの FeatureRecord（スクリプト・言語ごとにある）を 1 つにまとめ、使うスクリプトと言語、ルックアップを並べる。ブラウザ（HarfBuzz）が指定なしに適用するかどうか（常に、スクリプトのシェーパーが、縦書きで）も添える。例は次のように描く。GSUB はルックアップの置換を前 → 後で並べる。代替は選択肢として、文脈ルックアップは文脈そのものは描かずにルールが適用するルックアップの置換を、1 フィーチャーに 200 まで（`-param examples=`）。カーニングは見本文の隣り合う文字の組とルックアップのペアから値の大きい順に、値を添えて。単一調整は送り幅の箱の前後で。マークは各クラスのマークを見本文の字母などに付けた前後で描く。フィーチャーを適用した見本文は描かない（シェーピングエンジンが要る。ユーザーの判断で見送った）。
+- **見本文**: スクリプトごとのパングラムや定番の一節（ラテン、日本語のいろは歌、簡体字・繁体字の千字文、ハングル、キリル、ギリシャ、アラビア、ヘブライ、タイ、デーヴァナーガリー、ベンガル、タミル、アルメニア、ジョージア）を、フォントが全文字を持つものだけ並べる。漢字の見本は 1 つだけにする。大きな見本とサイズ別の見本文（8〜72 pt）に使う主のスクリプトは、meta テーブルの設計言語（dlng）が最優先で、次に欧州のアルファベット以外で最初に持つもの（デーヴァナーガリーのフォントもラテン文字は持つ）、最後にラテンとする。`-param text=` はサイズ別の見本文を差し替える。どれも持たない記号のフォントは、最初の文字を並べる。右から左の文字は右揃えで描く。
+- **概要の表**: name テーブルは全プラットフォームを読む。Mac の Roman・日本語・中国語・韓国語、Windows の旧来の東アジアのエンコーディングも含み、言語 ID を BCP 47 に直して、ファミリー名とフルネームは各言語で並べる。ほかに OS/2（ウェイト、幅、fsSelection、PANOSE、ベンダー、埋め込み許可、光学サイズ）、head（改版、作成・更新日。Dublin Core の created・modified にもする）、post、hhea のメトリクス、fvar の軸と名前付きインスタンス、カラーの形式（COLR v0/v1、CPAL のパレット、sbix・CBDT のストライク、SVG の文書数）、埋め込みビットマップ、cmap format 14 の異体字シーケンスの数、meta の設計言語と対応言語、テーブルの一覧を載せる。
+- **文字**: Unicode のブロック（Go の unicode パッケージと同じ 17.0。`tools/gen-unicode-blocks.py` が Blocks.txt から生成）ごとに、割り当て済みの文字（制御文字とサロゲートを除く）に対する被覆率を出す。Unicode のコード表の形で、行の見出しとセル 16 個を並べる。割り当てのない行は省き、省いたところに印を置く。ない文字と未割り当てのコードポイントは灰色の濃さで分ける。全コードポイントを割り当てる Last Resort のようなフォントに備え、コード表は 150,000 文字までにする。format 13 の cmap は読まない。
+- **サムネイル**: 概要は名前と字形見本から始まるので、先頭の正方形を切り出す（§3.25）。Go のラスタライザはシェーピングもカラーグリフも CFF2 の輪郭も描かないので、それらのフォントのサムネイルは貧しい。
+- **ブラウザ**: Office 系のモジュールに入れた（+0.9 MB）。wasm のビルドは Brotli を外しているので、WOFF2 は読めない（入れると 1.7 MB 増える）。WOFF と、コレクションでない TrueType・OpenType は読める。
+- **可変フォント**: Canvas 2D では font-variation-settings を指定できないので、既定のインスタンスで描き、軸と名前付きインスタンスを一覧にする（ユーザーの判断。インスタンスごとの描画は後の課題）。埋め込むときは TrueType の gvar などを除き（既定の輪郭は glyf にある）、CFF2 は charstring の blend を読むために fvar と avar を残す。
+
+## 3.29 KiCad → BDF 変換器（converter/kicad）の構造
 
 `converter/kicad` は KiCad 6 以降の回路図（.kicad_sch）と基板（.kicad_pcb）を読む。どちらも S 式のテキストで、ファイルの `version`（日付）が 20211014 より前のもの（KiCad 5 の S 式の基板）と KiCad 5 以前の独自形式（.sch・.lib）は「KiCad 6 以降で開いて保存し直す」ように案内して断る。入力は回路図、基板、プロジェクトファイル（.kicad_pro。JSON で、隣の同名の回路図と基板を読む）、プロジェクトを入れた ZIP のどれでもよい。色は KiCad の既定のテーマ、文字は KiCad の描き方を再現する。
 
@@ -617,6 +633,7 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 - **未対応**: KiCad 5 以前の形式、3D の表示、ネットクラスの色で配線を塗ること（接続の解析が要る）、シート間参照（`${INTERSHEET_REFS}` は空にする）、ライブラリのファイルからシンボルを引くこと（ファイルに埋め込まれたものだけ使う）、シミュレーションの結果の表示。
 
 テストは、S 式、記法、シンボルの変換、ラベルの向き、ReadRef と FileMap（`fstest.TestFS`）の単体テストと、KiCad の出力から取った座標（KiCad のデモの文字と自作の小さな回路図）で文字の線の範囲を確かめるテスト、`test/kicad/gen.py` が書くテスト用のプロジェクト（2 回使う階層のシート、全種類のピンとラベル、ハッチ、表、テキストボックス、日本語、4 層の基板、独自の図枠）の変換、数値を極端な値に置き換えたファイルと自分を含むシートの変換、fuzz である。
+
 
 ## 4. テキストの扱い
 
@@ -723,8 +740,9 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 18. **サーバー側のプレビュー**: 純 Go のラスタライザで描くサムネイルとページの画像、検索エンジン向けのテキスト（実装済み、§3.25）。
 19. **Parquet**: 列指向のデータファイルを表のシートに。読み込みは仕様から自前で書く（実装済み、§3.26）。
 20. **楽譜と演奏**: MML・MIDI・MusicXML を五線譜に組み、View に SMF と cue を持たせてビューアで演奏する（実装済み、§3.27）。
-21. **KiCad**: KiCad 6 以降の回路図と基板。階層のシートをページに、基板を表・裏と層ごとの View に、KiCad の線の字体（CC0 の newstroke）で描く。参照するファイルはサーバーでは列挙して渡し、ウェブでは ZIP で（実装済み、§3.28）。
-22. **化学構造式**（予定）: MOL・SDF（SDF は表のシート）、ChemDraw の CDXML・CDX を ACS 1996 の描き方で。
+21. **フォントファイル**: 文字・グリフ・OpenType フィーチャーのプレビュー。GSUB・GPOS は自前で読む（実装済み、§3.28）。
+22. **KiCad**: KiCad 6 以降の回路図と基板。階層のシートをページに、基板を表・裏と層ごとの View に、KiCad の線の字体（CC0 の newstroke）で描く。参照するファイルはサーバーでは列挙して渡し、ウェブでは ZIP で（実装済み、§3.29）。
+23. **化学構造式**（予定）: MOL・SDF（SDF は表のシート）、ChemDraw の CDXML・CDX を ACS 1996 の描き方で。
 
 ## 9. リポジトリ構成（案）
 
@@ -739,7 +757,7 @@ bdf/
 ├── raster/            ページを画像に描く純 Go のラスタライザと SVG レンダラ（§3.25）
 ├── thumbnail/         文書のサムネイル（文書の種類によるレイアウト、PNG・JPEG・WebP）
 ├── internal/          fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書きとグリフの輪郭）、
-│                      cff（CFF の読み取りとサブセット化）。変換器と raster が共有する
+│                      cff（CFF の読み取りとサブセット化）、otlayout（GSUB・GPOS・GDEF の読み取り）。変換器と raster が共有する
 ├── converter/         入力形式の登録（static plugin）、共通のオプション、形式の判別、ページ指定
 │   ├── pdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
 │   ├── ai/            Illustrator（.ai）→ BDF 変換器（PDF 部分を pdf で描く。testdata/ にテスト用 .ai）
@@ -766,6 +784,7 @@ bdf/
 │   ├── mml/           MML（汎用・マビノギ・PPMCK）→ BDF 変換器、楽譜にする（testdata/ にテスト用の曲）
 │   ├── midi/          Standard MIDI File → BDF 変換器、楽譜にする（testdata/ にテスト用の曲）
 │   ├── musicxml/      MusicXML（.musicxml、.mxl）→ BDF 変換器（testdata/ にテスト用の楽譜と gen.py）
+│   ├── font/          フォントファイル → BDF 変換器（testdata/ にテスト用フォント。test/font/gen.py が作る）
 │   ├── all/           すべての形式を登録する
 │   └── internal/      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の

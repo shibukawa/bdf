@@ -184,6 +184,12 @@ export const CASES: Case[] = [
   { name: "kicad-board-back", src: "/testdata/kicad/demo.bdf", kind: "page", view: "board-back", page: 0, scale: 0.75 },
   { name: "kicad-board-f-cu", src: "/testdata/kicad/demo.bdf", kind: "page", view: "layer-F.Cu", page: 0, scale: 0.75 },
   { name: "kicad-frame-1", src: "/testdata/kicad/frame.bdf", kind: "page", view: "schematic", page: 0, scale: 1 },
+  // Font files (converter/font) with the test fonts; see test/font. The overview of a CFF font: its specimen and sample
+  // text in the font embedded with its layout tables; its glyphs by glyph ID, drawn from the glyph font by their private
+  // use characters (.notdef as a path); and the code charts of a font whose license forbids embedding it, drawn as outlines.
+  { name: "font-stix-overview", src: "/testdata/font/stix.bdf", kind: "continuous", view: "overview", viewport: { x: 0, y: 0, w: 720, h: 560 }, scale: 1 },
+  { name: "font-stix-glyphs", src: "/testdata/font/stix.bdf", kind: "continuous", view: "glyphs", viewport: { x: 0, y: 0, w: 720, h: 420 }, scale: 1 },
+  { name: "font-restricted-characters", src: "/testdata/font/restricted.bdf", kind: "continuous", view: "characters", viewport: { x: 0, y: 90, w: 720, h: 420 }, scale: 1 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

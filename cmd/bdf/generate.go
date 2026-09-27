@@ -42,13 +42,13 @@ func generate(args []string) {
 	maxPixels := fs.Int("max-pixels", imgconv.DefaultMaxPixels, "image inputs (TIFF, Photoshop): scale pages down to at most this many pixels, width × height (0: no limit)")
 	noSubset := fs.Bool("no-subset", false, "embed whole fonts instead of the glyphs in use")
 	noWOFF2 := fs.Bool("no-woff2", false, "store embedded fonts as TrueType/OpenType instead of WOFF2")
-	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
+	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so); a font file shown whose fsType forbids embedding it is otherwise drawn as outlines")
 	kind := fs.String("kind", "fixed", "PDF: view kind, fixed or flow")
 	noShare := fs.Bool("no-share", false, "PDF: do not move the instruction prefix pages have in common into a shared object")
-	fonts := fs.String("fonts", "", "PowerPoint, Excel, Word, CSV, Parquet, metafiles, HTML, Markdown, EPUB: embed (subset and embed the fonts used for layout) or system (refer to fonts by name; the default for HTML, Markdown and EPUB, which leave text to the viewer's fonts as web pages do)")
+	fonts := fs.String("fonts", "", "PowerPoint, Excel, Word, CSV, Parquet, metafiles, HTML, Markdown, EPUB, font files (the text of their views): embed (subset and embed the fonts used for layout) or system (refer to fonts by name; the default for HTML, Markdown and EPUB, which leave text to the viewer's fonts as web pages do)")
 	var fontDirs stringList
-	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, Word, CSV, Parquet, metafiles, HTML, Markdown, EPUB: directory searched for fonts before the system ones (repeatable)")
-	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, Word, CSV, Parquet, metafiles, HTML, Markdown, EPUB: use only the fonts under -font-dir")
+	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, Word, CSV, Parquet, metafiles, HTML, Markdown, EPUB, font files: directory searched for fonts before the system ones (repeatable)")
+	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, Word, CSV, Parquet, metafiles, HTML, Markdown, EPUB, font files: use only the fonts under -font-dir")
 	hidden := fs.Bool("hidden", false, "PowerPoint, Excel: include hidden slides or sheets (the same as -param hidden=true)")
 	var paramFlags stringList
 	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")

@@ -16,6 +16,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/dxf"      // AutoCAD DXF
 	_ "github.com/shibukawa/bdf/converter/emf"      // Windows metafiles
 	_ "github.com/shibukawa/bdf/converter/epub"     // EPUB, in reader mode
+	_ "github.com/shibukawa/bdf/converter/font"     // font files (TrueType, OpenType, WOFF)
 	_ "github.com/shibukawa/bdf/converter/gerber"   // Gerber and Excellon (PCB fabrication data)
 	_ "github.com/shibukawa/bdf/converter/hpgl"     // HP-GL/2 plot files
 	_ "github.com/shibukawa/bdf/converter/html"     // HTML, in reader mode

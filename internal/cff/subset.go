@@ -22,6 +22,19 @@ import (
 // When a charstring cannot be followed (arithmetic operators, a subroutine
 // number out of range) every subroutine is kept and only the glyphs are dropped.
 func Subset(data []byte, keep map[int]bool) (out []byte, order []int, err error) {
+	return subset(data, keep, false)
+}
+
+// Prune is Subset that keeps the glyph numbers: the glyphs not in keep (nor
+// glyph 0 or a component of a kept seac accent) stay in the font, empty,
+// so that tables which refer to glyphs by number (GSUB, GPOS, hmtx) stay
+// valid. The subroutines only they call become a bare return.
+func Prune(data []byte, keep map[int]bool) ([]byte, error) {
+	out, _, err := subset(data, keep, true)
+	return out, err
+}
+
+func subset(data []byte, keep map[int]bool, keepNumbers bool) (out []byte, order []int, err error) {
 	cf, err := Parse(data)
 	if err != nil {
 		return nil, nil, err
@@ -206,9 +219,10 @@ func Subset(data []byte, keep map[int]bool) (out []byte, order []int, err error)
 		}
 	}
 
-	// Renumber: kept glyphs in their original order.
+	// Renumber: kept glyphs in their original order (all of them, the
+	// others emptied, when the numbers are kept).
 	for gid := 0; gid < n; gid++ {
-		if kept[gid] {
+		if kept[gid] || keepNumbers {
 			order = append(order, gid)
 		}
 	}
@@ -216,6 +230,9 @@ func Subset(data []byte, keep map[int]bool) (out []byte, order []int, err error)
 	charset := []byte{0} // format 0: SID (or CID) of every glyph after .notdef
 	for i, gid := range order {
 		newCS[i] = charStrings[gid]
+		if !kept[gid] {
+			newCS[i] = []byte{14} // endchar
+		}
 		if i > 0 {
 			charset = binary.BigEndian.AppendUint16(charset, uint16(cf.Charset[gid]))
 		}
