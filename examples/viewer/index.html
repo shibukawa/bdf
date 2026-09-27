@@ -50,11 +50,19 @@
   .hl { position: absolute; background: rgba(255, 210, 0, .45); outline: 1px solid rgba(200, 140, 0, .8); pointer-events: none; border-radius: 2px; }
   .hl.current { background: rgba(255, 120, 0, .5); outline-color: #c04000; }
   .search { display: flex; gap: 4px; align-items: center; }
-  .sheet { position: relative; }
+  /* cells are selected, not text (main.ts showSheet) */
+  .sheet { position: relative; cursor: cell; -webkit-user-select: none; user-select: none; }
   .sheet canvas { position: sticky; top: 0; left: 0; display: block; }
   /* the text layer of a sheet, under its headers; frozen cells are pinned with --sx and --sy */
   .sheetText { position: absolute; }
-  .info { color: #666; margin-left: auto; display: flex; gap: 12px; align-items: center; }
+  /* holds the page's selection while cells are selected, so that copy fires: selectable, out of sight */
+  .cellHold { position: fixed; left: 0; top: 0; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: pre; -webkit-user-select: text; user-select: text; }
+  /* the status and the timing change as the reader works (a cell's text when cells are selected): they are cut to
+     the room left on the header's line, so that the header keeps its height and the stage does not move under the pointer */
+  .info { color: #666; flex: 1 1 0; min-width: 16em; display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
+  #status, #timing { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #status { max-width: 32em; }
+  #timing { flex-shrink: 100; } /* gives way first */
   #progress { width: 96px; }
   #pwDialog { border: 1px solid #999; border-radius: 6px; padding: 16px 20px; }
   #pwDialog h2 { font-size: 15px; margin: 0 0 8px; }

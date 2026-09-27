@@ -274,10 +274,12 @@ installCopyHandler(container);
 
 | 名前 | 内容 |
 |---|---|
-| `buildTextLayer(content, scale, options?)` | 透明なテキスト層の要素を作る。選択、コピー、検索のハイライト位置合わせ、読み上げ（見出し、リスト、表、代替テキスト、リンク、言語）に使う。`options` は `lang`、`sheet`（シートを表として並べる）、`altText`、`measure`、`linkLabel`、`onSpan`、`className` |
+| `buildTextLayer(content, scale, options?)` | 透明なテキスト層の要素を作る。選択、コピー、検索のハイライト位置合わせ、読み上げ（見出し、リスト、表、代替テキスト、リンク、言語）に使う。`options` は `lang`、`sheet`（シートを表として並べる）、`selectable`（`false` でテキストを選択できなくする。セルを自前で選ぶシート用）、`altText`、`measure`、`linkLabel`、`onSpan`、`className`。表のあるセルから別のセルへ届いた選択は、その間の矩形のセルの選択になる |
 | `TEXT_LAYER_CSS` | テキスト層の CSS。run の span は z-index 1（他の run より上に置く span は 2）。選択をドラッグしてテキストのない所へ出ても選択が飛ばないように、層の末尾の要素がドラッグの間だけスクロール領域を覆う |
-| `installCopyHandler(container)` | ページをまたいだ選択を、文書の空白と改行を戻してコピーする |
+| `installCopyHandler(container)` | ページをまたいだ選択を、文書の空白と改行を戻してコピーする。表のセルの選択はタブ区切りと HTML の表にする |
 | `selectionText` / `selectedRuns` / `joinRuns` | 選択範囲のテキスト |
+| `selectionCells(selection?, root?)` | 選択が表のセルを選んでいれば、その矩形の `{text, html}`（タブ区切りと HTML の表）。テキストの選択なら `undefined` |
+| `tableCells(content, table?, keep?)` / `cellClipboard(cells, range, options?)` | `TextContent` の表（`table` は表のノードの番号。`-1` で表の外のセル、つまりシートのセル）のセルとそのテキスト（`CellText`）/ セルの矩形（`CellRange`、0 始まりで両端を含む）を表計算ソフトが貼り付けられるタブ区切りと HTML の表にする。`options` は `trim`（列・行全体の選択を、テキストのある最後の行・列までにする）、`skipRow` / `skipCol`（非表示の行・列を除く） |
 | `RUN_ATTR` / `linkHref` / `internalLink` | run の要素に付く属性名 / リンク先として安全な URL / 文書内リンク（`#page=N`、`#view=ID&page=N`）の解釈 |
 
 ### 同じスレッドで描く

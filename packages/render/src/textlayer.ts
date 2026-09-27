@@ -8,10 +8,13 @@
 // rebuilds the text from the runs' separators (spaces at line breaks, line
 // breaks at paragraph/cell/box boundaries) instead of the browser's
 // serialization of unrelated spans. A selection dragged off the text does
-// not jump (see trackSelections).
-import { Sep, type TextRun, type TextContent, type TextNode, type TextLink } from "@bdf/core";
+// not jump (see trackSelections). A selection from one cell of a table to
+// another selects the rectangle of cells between them, which copy puts on
+// the clipboard as tab-separated values and an HTML table (see selectCells).
+import { Sep, type TextRun, type TextContent, type TextNode, type TextLink, type Rect } from "@bdf/core";
 import { fontString } from "./resources.js";
 import { hasExtent } from "./search.js";
+import { tableCells, cellClipboard, type CellRange, type CellClipboard } from "./cells.js";
 
 export interface TextLayerOptions {
   /** Class of the layer element (default "bdfTextLayer"). */
@@ -47,6 +50,12 @@ export interface TextLayerOptions {
    * z-index 2, above the other runs).
    */
   onSpan?: (span: HTMLSpanElement, run: TextRun) => void;
+  /**
+   * Whether the text can be selected (default true). A viewer that selects
+   * the cells of a sheet itself turns it off; links still work, and screen
+   * readers read the layer as before.
+   */
+  selectable?: boolean;
 }
 
 let sharedMeasure: ((font: string, text: string) => number) | undefined;
@@ -63,10 +72,15 @@ function defaultMeasure(): (font: string, text: string) => number {
 
 /**
  * Attribute names: on the run spans, on the layer element, on links to a page
- * or a view, on the element that ends a layer, and on a layer and its end
- * element while a selection is dragged in it.
+ * or a view, on the element that ends a layer, on a layer and its end
+ * element while a selection is dragged in it, on a layer whose text cannot
+ * be selected, and on a table whose cells are selected and the element that
+ * shows them.
  */
-export const RUN_ATTR = { ordinal: "data-bdf-ordinal", sep: "data-bdf-sep", layer: "data-bdf-layer", page: "data-bdf-page", view: "data-bdf-view", end: "data-bdf-end", selecting: "data-bdf-selecting" } as const;
+export const RUN_ATTR = {
+  ordinal: "data-bdf-ordinal", sep: "data-bdf-sep", layer: "data-bdf-layer", page: "data-bdf-page", view: "data-bdf-view", end: "data-bdf-end",
+  selecting: "data-bdf-selecting", noselect: "data-bdf-noselect", cells: "data-bdf-cells", cellBox: "data-bdf-cellbox",
+} as const;
 
 /**
  * A link within the document: "#page=N" (a page of the same view) or
@@ -119,6 +133,7 @@ export function buildTextLayer(input: TextRun[] | TextContent, scale: number, op
   const layer = document.createElement("div");
   layer.className = opts.className ?? "bdfTextLayer";
   layer.setAttribute(RUN_ATTR.layer, "");
+  if (opts.selectable === false) layer.setAttribute(RUN_ATTR.noselect, "");
   if (opts.lang !== undefined) layer.lang = opts.lang;
   const content: TextContent = Array.isArray(input) ? { runs: input, nodes: [], links: [] } : input;
   new LayerBuilder(layer, content, scale, opts).build();
@@ -159,7 +174,7 @@ function trackSelections() {
     // pressed on a run: cover before the drag leaves it
     const run = e.target instanceof Element ? e.target.closest<HTMLElement>(`[${RUN_ATTR.ordinal}]`) : null;
     const layer = run?.closest(`[${RUN_ATTR.layer}]`);
-    if (run && layer) cover(layer, run, false);
+    if (run && layer && !layer.hasAttribute(RUN_ATTR.noselect)) cover(layer, run, false);
   }, true);
   const up = () => {
     drag.down = false;
@@ -168,7 +183,10 @@ function trackSelections() {
   document.addEventListener("pointerup", up, true);
   document.addEventListener("pointercancel", up, true);
   window.addEventListener("blur", up);
-  document.addEventListener("selectionchange", follow);
+  document.addEventListener("selectionchange", () => {
+    follow();
+    selectCells();
+  });
 }
 
 /** Keep the cover next to the end of the selection that moves. */
@@ -253,6 +271,158 @@ function scrollArea(layer: Element): { x: number; y: number; w: number; h: numbe
   return { x: 0, y: 0, w: document.documentElement.clientWidth, h: document.documentElement.clientHeight };
 }
 
+// Cells of a table. A selection dragged from one cell of a table into
+// another (or extended there with the keys) selects the rectangle of cells
+// between them, as in a word processor or a spreadsheet: a box shows it
+// instead of the browser's highlight of the runs, and copy puts the cells on
+// the clipboard (selectionCells). A selection within one cell, or going out
+// of the table, stays a text selection. The box covers the text of the rows
+// and columns selected, up to the text of the next ones (the layer does not
+// know where cells end). A layer whose text cannot be selected keeps none of
+// this.
+
+/** A cell of a table in a layer, with the bounding box of its text (CSS px in the layer). */
+interface LayerCell { row: number; col: number; rows: number; cols: number; box?: Rect }
+
+/** A table of a layer: its node (-1 for the cells of a sheet), and its cells that hold text. */
+interface LayerTable {
+  layer: HTMLElement;
+  content: TextContent;
+  node: number;
+  keep: (run: TextRun) => boolean;
+  cells: LayerCell[];
+  /** Font size of its first run (CSS px), for the margin of the box. */
+  size: number;
+}
+
+const layerTables = new WeakMap<Element, LayerTable>();
+const layerCells = new WeakMap<Element, LayerCell>();
+
+/** The cells selected, and the element that shows them. */
+let cellSelection: { table: Element; info: LayerTable; range: CellRange; box: HTMLElement } | undefined;
+
+/** The tables around a node, innermost first, each with the cell of it that holds the node. */
+function cellsAround(node: Node | null): Map<Element, LayerCell> {
+  const out = new Map<Element, LayerCell>();
+  let cell: LayerCell | undefined;
+  for (let el = node instanceof Element ? node : node?.parentElement ?? null; el; el = el.parentElement) {
+    cell = layerCells.get(el) ?? cell;
+    if (layerTables.has(el)) {
+      if (cell) out.set(el, cell);
+      cell = undefined;
+    }
+    if (el.hasAttribute(RUN_ATTR.layer)) break;
+  }
+  return out;
+}
+
+/** The table whose cells a selection selects: its ends lie in two cells of it. */
+function selectedTable(sel: Selection): { table: Element; info: LayerTable; range: CellRange } | undefined {
+  if (sel.isCollapsed || !sel.rangeCount) return undefined;
+  const from = cellsAround(sel.anchorNode);
+  if (!from.size) return undefined;
+  for (const [table, to] of cellsAround(sel.focusNode)) {
+    const start = from.get(table);
+    if (!start) continue;
+    if (start === to) return undefined;
+    const info = layerTables.get(table)!;
+    return { table, info, range: cellRange(info, start, to) };
+  }
+  return undefined;
+}
+
+/** The rectangle of cells between two cells, grown to take in the merged cells it cuts. */
+function cellRange(info: LayerTable, a: LayerCell, b: LayerCell): CellRange {
+  const r: CellRange = {
+    row0: Math.min(a.row, b.row), col0: Math.min(a.col, b.col),
+    row1: Math.max(a.row + a.rows, b.row + b.rows) - 1, col1: Math.max(a.col + a.cols, b.col + b.cols) - 1,
+  };
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const c of info.cells) {
+      if (c.rows === 1 && c.cols === 1) continue;
+      if (c.row > r.row1 || c.row + c.rows - 1 < r.row0 || c.col > r.col1 || c.col + c.cols - 1 < r.col0) continue;
+      const next = { row0: Math.min(r.row0, c.row), col0: Math.min(r.col0, c.col), row1: Math.max(r.row1, c.row + c.rows - 1), col1: Math.max(r.col1, c.col + c.cols - 1) };
+      if (next.row0 !== r.row0 || next.col0 !== r.col0 || next.row1 !== r.row1 || next.col1 !== r.col1) {
+        Object.assign(r, next);
+        grew = true;
+      }
+    }
+  }
+  return r;
+}
+
+/**
+ * Where a rectangle of cells lies (CSS px in the layer): across the text of
+ * every cell within its columns, and down the text of every cell within its
+ * rows, so that the edges of a column are the same on every row, with a
+ * margin. The right and bottom edges go on to the text of the next column
+ * and row: cells end there when their text starts at their left and top,
+ * as it usually does.
+ */
+function rangeBox(info: LayerTable, r: CellRange): Rect | undefined {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, next = Infinity, below = Infinity;
+  for (const c of info.cells) {
+    const b = c.box;
+    if (!b) continue;
+    if (c.col >= r.col0 && c.col + c.cols - 1 <= r.col1) { x0 = Math.min(x0, b.x); x1 = Math.max(x1, b.x + b.w); }
+    if (c.row >= r.row0 && c.row + c.rows - 1 <= r.row1) { y0 = Math.min(y0, b.y); y1 = Math.max(y1, b.y + b.h); }
+    if (c.col > r.col1) next = Math.min(next, b.x);
+    if (c.row > r.row1) below = Math.min(below, b.y);
+  }
+  if (x0 > x1 || y0 > y1) return undefined;
+  const m = info.size * 0.3;
+  x1 = next < Infinity ? Math.max(x1 + m, next - m) : x1 + m;
+  y1 = below < Infinity ? Math.max(y1 + m, below - m) : y1 + m;
+  return { x: x0 - m, y: y0 - m, w: x1 - x0 + m, h: y1 - y0 + m };
+}
+
+/** Follow the selection: show the cells it selects, or stop showing them. */
+function selectCells() {
+  const sel = getSelection();
+  const found = sel ? selectedTable(sel) : undefined;
+  const cur = cellSelection;
+  if (cur && found && cur.table === found.table && sameRange(cur.range, found.range)) return;
+  if (cur) {
+    cur.box.remove();
+    cur.table.removeAttribute(RUN_ATTR.cells);
+    cellSelection = undefined;
+  }
+  if (!found) return;
+  const box = document.createElement("div");
+  box.setAttribute(RUN_ATTR.cellBox, "");
+  box.setAttribute("aria-hidden", "true");
+  const b = rangeBox(found.info, found.range);
+  if (b) box.style.cssText = `left: ${b.x}px; top: ${b.y}px; width: ${b.w}px; height: ${b.h}px`;
+  found.info.layer.prepend(box);
+  found.table.setAttribute(RUN_ATTR.cells, "");
+  cellSelection = { ...found, box };
+}
+
+const sameRange = (a: CellRange, b: CellRange) => a.row0 === b.row0 && a.col0 === b.col0 && a.row1 === b.row1 && a.col1 === b.col1;
+
+/** Bounding box of a run's text in its space: the span's box before the layer's scale. */
+function runBox(r: TextRun, measure: (font: string, text: string) => number): Rect {
+  let m: readonly number[] = r.matrix, x0 = 0, x1: number;
+  const size = r.size > 0 ? r.size : 10;
+  if (hasExtent(r)) {
+    const width = r.advance > 0 ? r.advance : measure(fontString(r.font!, r.size), r.text);
+    x0 = r.align === 1 ? -width : r.align === 2 ? -width / 2 : 0;
+    x1 = x0 + width;
+  } else {
+    // only the anchor and the baseline direction are known (as the span is laid)
+    const angle = Math.atan2(m[1], m[0]);
+    m = [Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle)];
+    x1 = size * r.text.length * 0.5;
+  }
+  let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+  for (const dx of [x0, x1]) for (const dy of [-size * 0.8, size * 0.2]) {
+    const px = m[0] * dx + m[2] * dy + r.x, py = m[1] * dx + m[3] * dy + r.y;
+    bx0 = Math.min(bx0, px); by0 = Math.min(by0, py); bx1 = Math.max(bx1, px); by1 = Math.max(by1, py);
+  }
+  return { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 };
+}
+
 class LayerBuilder {
   private readonly root: Placed;
   private readonly measure: (font: string, text: string) => number;
@@ -264,15 +434,20 @@ class LayerBuilder {
   private textLinks = new Set<number>();
   /** The anchor the previous run went into, to continue it. */
   private anchor: { parent: HTMLElement; link: number; placed: Placed } | undefined;
+  /** The runs placed in the layer. */
+  private readonly keep: (r: TextRun) => boolean;
+  /** The table cell each node lies in (null: none). */
+  private readonly cellOf = new Map<number, { cell: LayerCell; table: LayerTable } | null>();
 
   constructor(layer: HTMLElement, private c: TextContent, private scale: number, private opts: TextLayerOptions) {
     this.root = { el: layer, ox: 0, oy: 0 };
     this.measure = opts.measure ?? defaultMeasure();
+    this.keep = (r) => !!r.text && !(r.altText && opts.altText === false);
   }
 
   build() {
     const { runs, nodes, links } = this.c;
-    const keep = (r: TextRun) => !!r.text && !(r.altText && this.opts.altText === false);
+    const keep = this.keep;
     this.linkOf = runs.map((r) => (keep(r) ? this.coveringLink(r) : -1));
     for (const l of this.linkOf) if (l >= 0) this.textLinks.add(l);
     if (this.opts.sheet) this.sheetTable();
@@ -311,6 +486,7 @@ class LayerBuilder {
     let placed: Placed;
     if (n.kind === "cell" && parentNode?.kind === "table") {
       placed = { ...parent, el: this.cell(n, this.row(parent.el, n.row ?? 0), n.scope) };
+      this.tableCell(placed.el, n, parent.el);
     } else if (n.kind === "cell") {
       // a sheet cell outside sheet mode (sheetTable places the others)
       placed = { ...parent, el: this.div(parent.el, "paragraph") };
@@ -326,7 +502,10 @@ class LayerBuilder {
     } else {
       const el = this.div(parent.el, ROLE[n.kind]);
       if (n.kind === "heading" && n.level) el.setAttribute("aria-level", String(n.level));
-      if (n.kind === "table") this.tableSize(el, i);
+      if (n.kind === "table") {
+        this.tableSize(el, i);
+        this.table(el, i);
+      }
       placed = { ...parent, el };
     }
     this.placed.set(i, placed);
@@ -348,6 +527,48 @@ class LayerBuilder {
     el.style.width = `${w * s}px`;
     el.style.height = `${h * s}px`;
     return { el, ox: x * s, oy: y * s };
+  }
+
+  /** Register a table element for selecting its cells. */
+  private table(el: HTMLElement, node: number) {
+    if (this.opts.selectable === false) return;
+    layerTables.set(el, { layer: this.root.el, content: this.c, node, keep: this.keep, cells: [], size: 0 });
+  }
+
+  /** Register the element of a cell of a table. */
+  private tableCell(el: HTMLElement, n: TextNode, table: HTMLElement) {
+    const info = layerTables.get(table);
+    if (!info) return;
+    const cell: LayerCell = { row: n.row ?? 0, col: n.col ?? 0, rows: n.rows ?? 1, cols: n.cols ?? 1 };
+    layerCells.set(el, cell);
+    info.cells.push(cell);
+  }
+
+  /** Grow the box of the table cell a run lies in by the run's. */
+  private cellText(r: TextRun) {
+    if (this.opts.selectable === false) return;
+    const at = this.cellAt(r.node);
+    if (!at) return;
+    const b = runBox(r, this.measure), s = this.scale;
+    const box = { x: b.x * s, y: b.y * s, w: b.w * s, h: b.h * s };
+    const c = at.cell.box;
+    at.cell.box = c ? { x: Math.min(c.x, box.x), y: Math.min(c.y, box.y), w: Math.max(c.x + c.w, box.x + box.w) - Math.min(c.x, box.x), h: Math.max(c.y + c.h, box.y + box.h) - Math.min(c.y, box.y) } : box;
+    at.table.size ||= (r.size > 0 ? r.size : 10) * s;
+  }
+
+  /** The table cell a node lies in: the nearest ancestor placed as one. */
+  private cellAt(i: number | undefined): { cell: LayerCell; table: LayerTable } | null {
+    if (i === undefined || i < 0 || i >= this.c.nodes.length) return null;
+    let got = this.cellOf.get(i);
+    if (got === undefined) {
+      const el = this.placed.get(i)?.el;
+      const cell = el && layerCells.get(el);
+      const table = cell && el.closest("[role=table]");
+      const info = table && layerTables.get(table);
+      got = cell && info ? { cell, table: info } : this.cellAt(this.c.nodes[i].parent);
+      this.cellOf.set(i, got);
+    }
+    return got;
   }
 
   private tableSize(el: HTMLElement, table: number) {
@@ -391,13 +612,16 @@ class LayerBuilder {
     const table = this.div(this.root.el, "table");
     table.setAttribute("aria-rowcount", String(sheet.rows));
     table.setAttribute("aria-colcount", String(sheet.cols));
+    this.table(table, -1);
     const at = (i: number) => this.c.nodes[i];
     cells.sort((a, b) => at(a).row! - at(b).row! || at(a).col! - at(b).col!);
     for (const i of cells) {
       const n = at(i);
       // a header of its own (" col" after the reference: a table's header row), or the frozen rows and columns
       const scope = n.scope ?? (n.row! < (sheet.headerRows ?? 0) ? "col" : n.col! < (sheet.headerCols ?? 0) ? "row" : undefined);
-      this.placed.set(i, { ...this.root, el: this.cell(n, this.row(table, n.row!), scope) });
+      const el = this.cell(n, this.row(table, n.row!), scope);
+      this.tableCell(el, n, table);
+      this.placed.set(i, { ...this.root, el });
     }
   }
 
@@ -458,6 +682,7 @@ class LayerBuilder {
     }
     const span = this.span(r, target);
     target.el.appendChild(span);
+    this.cellText(r);
     this.opts.onSpan?.(span, r);
   }
 
@@ -505,6 +730,9 @@ const ROLE: Record<TextNode["kind"], string> = {
  * that they stay above the end element, which covers the scroll area while a
  * selection is dragged; that also lets links through then, except their text.
  * A run meant to lie above others (a cell of a frozen pane) needs z-index 2.
+ * The text of a layer that cannot be selected takes the cursor of what lies
+ * around it. Selected cells are one box under the runs, which then do not
+ * show the browser's highlight.
  */
 export const TEXT_LAYER_CSS = `
 .bdfTextLayer { position: absolute; inset: 0; overflow: hidden; line-height: 1; forced-color-adjust: none; }
@@ -519,6 +747,9 @@ export const TEXT_LAYER_CSS = `
 .bdfTextLayer [data-bdf-end][data-bdf-selecting] { display: block; }
 .bdfTextLayer[data-bdf-selecting] a { pointer-events: none; }
 .bdfTextLayer[data-bdf-selecting] a span { pointer-events: auto; }
+.bdfTextLayer[data-bdf-noselect] span { -webkit-user-select: none; user-select: none; cursor: inherit; }
+.bdfTextLayer [data-bdf-cells] span::selection { background: transparent; }
+.bdfTextLayer [data-bdf-cellbox] { position: absolute; z-index: 0; pointer-events: none; background: rgba(0, 120, 255, .18); outline: 2px solid rgba(0, 100, 230, .8); }
 `;
 
 /** A selected piece of a run. */
@@ -582,14 +813,36 @@ export function selectionText(sel: Selection | null = typeof getSelection === "f
 }
 
 /**
+ * The cells the selection selects within root, when it goes from one cell
+ * of a table to another: the rectangle of cells between them as
+ * tab-separated values and an HTML table (what spreadsheets paste as cells).
+ * Undefined for a text selection.
+ */
+export function selectionCells(sel: Selection | null = typeof getSelection === "function" ? getSelection() : null, root: Node = document): CellClipboard | undefined {
+  const found = sel ? selectedTable(sel) : undefined;
+  if (!found || !root.contains(found.table)) return undefined;
+  const { info, range } = found;
+  return cellClipboard(tableCells(info.content, info.node, info.keep), range);
+}
+
+/**
  * Make copy (and cut) inside container put the selection's run text on the
- * clipboard instead of the browser's serialization. Returns a function that
+ * clipboard instead of the browser's serialization, and selected cells of a
+ * table as tab-separated values and an HTML table. Returns a function that
  * removes the handler.
  */
 export function installCopyHandler(container: HTMLElement): () => void {
   const onCopy = (e: ClipboardEvent) => {
+    if (!e.clipboardData) return;
+    const cells = selectionCells(getSelection(), container);
+    if (cells) {
+      e.clipboardData.setData("text/plain", cells.text);
+      e.clipboardData.setData("text/html", cells.html);
+      e.preventDefault();
+      return;
+    }
     const text = selectionText(getSelection(), container);
-    if (!text || !e.clipboardData) return;
+    if (!text) return;
     e.clipboardData.setData("text/plain", text);
     e.preventDefault();
   };
