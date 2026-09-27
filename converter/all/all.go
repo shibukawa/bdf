@@ -22,6 +22,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/image"    // images browsers display (PNG, JPEG, SVG …)
 	_ "github.com/shibukawa/bdf/converter/jww"      // Jw_cad
 	_ "github.com/shibukawa/bdf/converter/markdown" // Markdown, in reader mode
+	_ "github.com/shibukawa/bdf/converter/parquet"  // Apache Parquet
 	_ "github.com/shibukawa/bdf/converter/pdf"      // PDF
 	_ "github.com/shibukawa/bdf/converter/pptx"     // PowerPoint
 	_ "github.com/shibukawa/bdf/converter/psd"      // Photoshop

@@ -43,6 +43,7 @@ const SAMPLES = [
   { path: "converter/pptx/testdata/features.pptx", label: "PowerPoint" },
   { path: "converter/xlsx/testdata/features.xlsx", label: "Excel" },
   { path: "converter/csv/testdata/japanese.tsv", label: "TSV (Shift_JIS)" },
+  { path: "converter/parquet/testdata/basic.parquet", label: "Parquet" },
   { path: "converter/visio/testdata/shapes.vsdx", label: "Visio" },
   { path: "converter/visio/testdata/flow.vdx", label: "Visio XML (.vdx)" },
   { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },

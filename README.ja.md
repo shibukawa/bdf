@@ -6,20 +6,20 @@
 
 Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.io の図、CAD の図面とプロットファイル（DXF、Jw_cad、SXF、CGM、HP-GL/2）、プリント基板の製造データ（Gerber、Excellon）、スキャンや FAX の TIFF 画像、デザインのファイル（Illustrator、Photoshop）、HTML のページ、Markdown の文書、EPUB の本、ブラウザがそのまま表示できる画像を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
 
-**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF・CGM の図面、HP-GL/2 のプロットファイル、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページ、Markdown の文書、EPUB の本や画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
+**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF・CGM の図面、HP-GL/2 のプロットファイル、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページ、Markdown の文書、EPUB の本や画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
 
 ## Why bdf
 
-- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Visio、draw.io、DXF、Jw_cad、SXF、CGM、HP-GL/2、Gerber、Excellon、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown、EPUB を 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7 MB、Office 系・draw.io・DXF 用が約 5.5 MB）、ファイルをアップロードする必要すらありません。サムネイルと検索用のテキストも同じプロセスで作れます。ページを描くのは純 Go のラスタライザで、ブラウザは要りません。
+- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio、draw.io、DXF、Jw_cad、SXF、CGM、HP-GL/2、Gerber、Excellon、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown、EPUB を 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7 MB、Office 系・draw.io・DXF 用が約 5.5 MB）、ファイルをアップロードする必要すらありません。サムネイルと検索用のテキストも同じプロセスで作れます。ページを描くのは純 Go のラスタライザで、ブラウザは要りません。
 - **内容に合った形で見せる**: PDF はすべてを紙に切り分けます。スプレッドシートを印刷したページでは、横に長い表がページをまたいで分断されて行を追えず、目当てのセルも見つけにくくなります。固定した見出しや枠線は消え、ブックの中で切り替えていたシートは一続きのページになります。Word の文書もページ単位でしか読めません。bdf は内容の種類ごとにレイアウトのモデルを持ちます。スライド・図面・PDF には固定サイズのページ、ワークシートにはシートごとの無限平面（タイルで描画し、ウィンドウ枠の固定、行・列見出し、枠線つき）、ワープロ文書にはページでも一続きのスクロールでも読めるフローと、ページなしで 1 本の長い列に組み直した表示を用意しています。Illustrator と Photoshop のアートボードはページになります。ブックのシート、draw.io の図のページ、DXF のモデル空間とレイアウト、プリント基板の表・裏と各層はそれぞれ 1 つの表示になり、ビューアのタブで切り替えます。
 - **ブラウザ表示に特化している**: 命令セットは Canvas 2D と 1 対 1 に対応します。フォントは `FontFace` に渡す WOFF2、画像はブラウザがデコードできる形式で、Part の圧縮は `DecompressionStream` で展開できる形式です。pdf.js のような PDF ビューアが数万行かけて実装しているフォントのラスタライズ、画像のデコード、展開はブラウザに任せ、bdf のデコーダとレンダラは TypeScript で約 3,400 行です（レンダラの Worker は gzip で 21 KB）。描画は Worker の `OffscreenCanvas` で行い、メインスレッドはビットマップを置くだけです。Part は内容アドレスなので、マスターや繰り返し現れる要素は 1 度だけ格納され、ビューアは表示中のページに要る Part だけを Range リクエストや CDN 上の分割形式から取得します。ブラウザ内で変換する PDF は、表示中のページを優先して変換できたページから表示します。
-- **多くの形式を 1 つのレンダラで**: PDF、Word（.docx）、PowerPoint（.pptx）、Excel（.xlsx）、CSV・TSV、Visio（.vsdx、.vdx）、draw.io（.drawio と、図を埋め込んだ SVG・PNG の書き出し）、AutoCAD DXF、Jw_cad（.jww）、SXF（.p21、.p2z、.sfc）、CGM（.cgm）、HP-GL/2 のプロットファイル（.plt）、Gerber（RS-274X）と Excellon の穴あけファイル（1 つずつでも、基板のファイルをまとめた ZIP でも）、TIFF、Illustrator（.ai）、Photoshop（.psd、.psb）、Windows メタファイル（.emf、.wmf）、HTML（リーダー表示）、Markdown、EPUB（リフロー型の本は和文の縦書きも、固定レイアウトのマンガも）、画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG。そのまま格納）を、パスワード付きの Office 文書や PDF も含めて同じフォーマットにします。どの形式も同じレンダラで描き、検索、テキスト選択、読み上げ用のテキスト層（見出し、リスト、表、代替テキスト）も共通です。
+- **多くの形式を 1 つのレンダラで**: PDF、Word（.docx）、PowerPoint（.pptx）、Excel（.xlsx）、CSV・TSV、Apache Parquet、Visio（.vsdx、.vdx）、draw.io（.drawio と、図を埋め込んだ SVG・PNG の書き出し）、AutoCAD DXF、Jw_cad（.jww）、SXF（.p21、.p2z、.sfc）、CGM（.cgm）、HP-GL/2 のプロットファイル（.plt）、Gerber（RS-274X）と Excellon の穴あけファイル（1 つずつでも、基板のファイルをまとめた ZIP でも）、TIFF、Illustrator（.ai）、Photoshop（.psd、.psb）、Windows メタファイル（.emf、.wmf）、HTML（リーダー表示）、Markdown、EPUB（リフロー型の本は和文の縦書きも、固定レイアウトのマンガも）、画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG。そのまま格納）を、パスワード付きの Office 文書や PDF も含めて同じフォーマットにします。どの形式も同じレンダラで描き、検索、テキスト選択、読み上げ用のテキスト層（見出し、リスト、表、代替テキスト）も共通です。
 
 ## 処理の流れ
 
 ```mermaid
 flowchart TB
-    SRC["PDF・Excel・CSV・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・TIFF<br/>Illustrator・Photoshop・HTML・Markdown・EPUB・画像"]
+    SRC["PDF・Excel・CSV・Parquet・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・TIFF<br/>Illustrator・Photoshop・HTML・Markdown・EPUB・画像"]
 
     subgraph SERVER["Go サーバープロセス"]
         direction TB
@@ -74,15 +74,15 @@ flowchart TB
 - 内容アドレスの Part によりマスターや繰り返し部品を自動共有
 - テキスト索引 Part と Worker 内の全文検索（行またぎ、NFKC・かな正規化、ヒット矩形）
 - 透明 DOM のテキスト選択層とコピー（空白・改行は MARK 境界から復元、ページまたぎ、連続モード対応）
-- 表はセル単位で選べる: 表のあるセルから別のセルへドラッグすると、その間の矩形のセルの選択になる。デモビューアのシート（Excel、CSV）は表計算ソフトと同じようにセルを選ぶ（ドラッグ、Shift、行・列の見出し、矢印キー）。コピーするとセルをタブ区切りと HTML の表でクリップボードに置くので、表計算ソフトにそのままセルとして貼り付けられる
-- 読み上げ可能なテキスト層: 構造 MARK の見出し・リスト・表・代替テキスト付きの図・リンク・言語をスクリーンリーダーに伝える（タグ付き PDF、PowerPoint と Word の構造、Excel と CSV のセルと表の見出し、HTML・Markdown・EPUB の要素を変換）
+- 表はセル単位で選べる: 表のあるセルから別のセルへドラッグすると、その間の矩形のセルの選択になる。デモビューアのシート（Excel、CSV、Parquet）は表計算ソフトと同じようにセルを選ぶ（ドラッグ、Shift、行・列の見出し、矢印キー）。コピーするとセルをタブ区切りと HTML の表でクリップボードに置くので、表計算ソフトにそのままセルとして貼り付けられる
+- 読み上げ可能なテキスト層: 構造 MARK の見出し・リスト・表・代替テキスト付きの図・リンク・言語をスクリーンリーダーに伝える（タグ付き PDF、PowerPoint と Word の構造、Excel・CSV・Parquet のセルと表の見出し、HTML・Markdown・EPUB の要素を変換）
 - 1 ファイル形式と分割ファイル形式を相互変換可能（1 ファイル形式はマジック `bdf\0` で始まる）
 - 数式: Word の Office Math、PowerPoint と Excel の数式（代替として保存された画像ではなく Office Math から組む）、HTML と EPUB の MathML（KaTeX・MathJax・Wikipedia が独自の描画の横に置く MathML も）、Markdown と draw.io のラベル（`math=1`）の LaTeX を 1 つの数式エンジンで組む。OpenType MATH のフォント（STIX Two Math、Cambria Math、Latin Modern Math など）の定数と異体字を使い、分数、根号、添字と極限、大型演算子、大きな異体字と部品の組み立てで伸びる括弧と根号、行列、揃えた数式、アクセントを扱う。検索とコピーでは `x=(−b±√(b^2−4ac))/(2a)` のような線形表記になる（ハイフンマイナスで打っても見つかる）。詳細は design.md の §3.23
 - manifest に Dublin Core のメタデータ（題名・作成者・主題・言語・作成日時など）を持てる。PDF の文書情報、PowerPoint・Excel・Word のコアプロパティ、Visio の文書プロパティ、Photoshop の文書の XMP メタデータ、HTML の meta 要素、Markdown の front matter、EPUB のパッケージ文書、画像の XMP・EXIF・IPTC などから引き継ぐ
 - パスワードで保護された入力（読み取りパスワード付きの Office 文書、ユーザーパスワード付きの PDF）はパスワードで開いて変換し、bdf を同じパスワードで暗号化する。Part ごとに封印する（AES-256-GCM）ので Range 取得や分割形式はそのまま使える。ビューアは WebCrypto で復号し、サーバーはパスワードを保存しない（spec §3.5）
 - サーバー側のサムネイルと検索用テキスト: `raster` はビューアと同じ命令を純 Go で実行し、任意のページ（シートや scroll View なら任意の範囲）を画像に描く。アンチエイリアスつきのパス、線、クリップ、グラデーションとパターン、画像、埋め込みフォント（WOFF2 を展開する）と名前で参照するフォント（システムのフォントを探す）のテキスト、グループ、ソフトマスク、影、SVG の画像を描く。ブラウザの golden テストと同じページを Go のテストで描き、両方を縮小して Chromium の描画と比べると、ほとんどのページで平均の差が 4/255 未満に収まる（違いはヒンティング・カーニング・合字をしないことと、AVIF の画像を描かないこと）。`thumbnail` は文書の種類からレイアウトを選ぶ。Word・HTML・Markdown・縦長の PDF は 1 ページ目の左上の正方形、Excel と CSV は A1 から始まる左上の範囲、スライド・図面・画像・EPUB の表紙は 1 ページ目の全体で、PNG・JPEG・WebP で書き出す。`Document.SearchText` は検索エンジン向けにメタデータとページごと（シートは丸ごと）のテキストを返す。どちらも暗号化されないので、暗号化した文書については頼まれない限り（`-allow-plaintext`）書き出さない。詳細は design.md の §3.25
 
-変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / Windows メタファイル / TIFF / HTML / Markdown / EPUB / 画像）は中身から、判別できなければ拡張子から決めます（Markdown はどんなテキストでもありうるので拡張子で決まります）。
+変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / Windows メタファイル / TIFF / HTML / Markdown / EPUB / 画像）は中身から、判別できなければ拡張子から決めます（Markdown はどんなテキストでもありうるので拡張子で決まります）。
 
 - **PDF**（`converter/pdf`）: 埋め込みフォント（TrueType、CFF、OpenType、Type1）を使うグリフだけの WOFF2 に組み直し（OS/2 の埋め込み許諾 `fsType` を確認し、著作権表示は引き継ぐ）、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。ソフトマスク（フェード、ドロップシャドウ、Chrome の PDF の CSS `mask-image`）はビューアで描き、JPEG 2000 と JBIG2 の画像は純 Go のデコーダでデコードします。埋め込まれていない CJK フォントの文字は Adobe の定義済み CMap（Shift_JIS、EUC、UCS-2 など）で読み、縦書き（WMode 1）は縦の行として配置します。オプショナルコンテンツ（レイヤー）はビューアが文書を開いたときの表示どおりにし、非表示のレイヤーは描きません。詳細は design.md の §3.1。
 - **Illustrator .ai**（`converter/ai`）: Illustrator 9 以降の .ai は、PDF に Illustrator 独自のデータを添えたものです。PDF のページがアートボードなので、PDF 変換器で描いてアートボード（裁ち落としを除いたトリムボックス）で切り抜きます。非表示のレイヤーは描きません。「PDF 互換ファイルを作成」をオフにして保存したファイルと、Illustrator 8 以前の PostScript ベースの .ai はエラーにします。詳細は design.md の §3.17。
@@ -90,6 +90,7 @@ flowchart TB
 - **PowerPoint .pptx**（`converter/pptx`）: DrawingML を直接描画します。スライドマスターとレイアウトの図形はスライド間で共有されるレイヤー Object になり、プリセット図形は ECMA-376 の図形定義式から、テキストは変換側で折り返し（和文の禁則・縦書き・箇条書き・段落書式）、表・グラフ・SmartArt・EMF/WMF の図・数式も描きます。レイアウトに使ったフォントはサブセットの WOFF2 にして埋め込むので、閲覧環境のフォントに依存しません。詳細は design.md の §3.4。
 - **Excel .xlsx**（`converter/xlsx`）: ワークシートごとにシート View にし、セルを変換側でレイアウトしてタイルに描きます。表示形式（日付・和暦・分数・会計）、フォントとリッチテキスト、塗り、罫線、配置（和文の禁則付きの折り返し、空きセルへのはみ出し、回転、縮小して全体を表示）、セル結合、条件付き書式（カラースケール・データバー・アイコンセット・数式のルール）、テーブルとそのスタイルを扱い、画像・図形・グラフは 1 回だけ描いた Object を重なるタイルから使います。グラフシートはページになります。列幅と行の高さは Excel の規則に従い、ウィンドウ枠の固定と枠線は manifest に書きます。詳細は design.md の §3.6。
 - **CSV / TSV**（`converter/csv`）: Excel で開いたときのような 1 枚のシート View にし、Excel の変換器で描きます。文字コード（BOM、UTF-8、UTF-16、Shift_JIS、EUC-JP、ISO-2022-JP、Windows-1252）、区切り文字（カンマ・タブ・セミコロン・縦棒）、クオート（ダブル・シングル・なし、二重化またはバックスラッシュでのエスケープ）、先頭行が見出し行かどうかを推定し、それぞれ `-param` で指定もできます。数値と日付は書かれたままの表記で右に揃え（Excel と違い `007` は `007` のまま）、列幅は値に合わせ、改行を含む値は折り返し、見出し行は太字にして固定し列見出しとして読み上げます。`-param table=TableStyleMedium2` で Excel のテーブルの書式にもできます。詳細は design.md の §3.10。
+- **Apache Parquet**（`converter/parquet`）: 表を 1 枚のシート View にし、Excel の変換器で描きます。列名を太字にして固定し、その下に列の型を灰色の行で示し、先頭の 10,000 行を並べます（`-param rows=` で増やせ、`all` で全行）。読み込みは Arrow を使わず仕様から Go で書いたもので、すべてのエンコーディング（辞書、RLE/ビットパック、DELTA 系、BYTE_STREAM_SPLIT）、データページの v1 と v2、Snappy・gzip・Zstandard・Brotli（ブラウザ版を除く）・LZ4 の圧縮、繰り返しレベルと定義レベルから組み立てる入れ子の値（古い書き出し方のリストとマップも）を読みます。値はデータツールと同じように示します。decimal は全桁、タイムスタンプは UTC で列に要るだけの小数桁、UUID、interval、リスト・マップ・構造体は JSON、Variant（分解保存も）は中身の値、ジオメトリ（GEOMETRY、GEOGRAPHY、GeoParquet の WKB 列）は WKT。表示する行のページしか読みません。フッターが暗号化されたファイルは読みません。詳細は design.md の §3.26。
 - **Visio .vsdx / .vdx**（`converter/visio`）: Visio 2013 以降のパッケージ（.vsdx、.vsdm、.vstx）と Visio 2003〜2010 の XML 図面（.vdx）を、同じ ShapeSheet のモデルに読みます。図形はマスターとスタイルから継承し、動的テーマが決めるセルはテーマと図形のクイックスタイルから解決します。ジオメトリの各行、塗りのパターン、グラデーション、線種、45 種の矢印を描き、背景ページはページ間で共有される背景レイヤーにします。テキストは PowerPoint と同じ DrawingML のテキストエンジンでレイアウトし、フォントをサブセットの WOFF2 にして埋め込みます。バイナリの .vsd は読みません。詳細は design.md の §3.8。
 - **draw.io**（`converter/drawio`）: `.drawio`（圧縮されたページも）、図を埋め込んだ `.drawio.svg` / `.drawio.png` の mxGraphModel XML から図を描きます。ページごとに View を作るので、ビューアでは Excel のシートのようにタブでページを切り替えられ、draw.io のレイヤーは View のレイヤー Object に、ページへのリンクは `#view=` リンクになります。セルの配置、エッジの経路（直交・エルボーなどのエッジスタイルと外周）、図形・矢印・ステンシル、HTML ラベルの折り返しと書式は draw.io（mxGraph）の描画処理をそのまま移植し、フォントは PowerPoint と同じくサブセットで埋め込みます。AWS の図は現行の AWS アイコンで描き、古い世代の AWS アイコンで描かれた図も現行の対応するアイコンに置き換えて描きます。手書き風（`sketch=1`）は通常の描画になります。数式の組版（`math=1`）ではラベルの LaTeX を数式として組みます。詳細は design.md の §3.11。
 - **Word .docx**（`converter/docx`）: Word がファイルを開くたびに行っている組版を変換側で行います。行分割（和文の禁則とアキ、タブとリーダー、両端揃え、文書グリッド）、箇条書きと段落番号、表（表スタイル、セルの結合、ページをまたぐ行の分割、見出し行の繰り返し）、文字列の折り返しを伴う浮動する図とテキストボックス、段組み、セクション、ページ番号付きのヘッダー・フッター、脚注、縦書き（漢字・仮名の正立、縦書き用の句読点、欧文や表の回転）、数式（Office Math）を扱います。View は 2 つで、紙面のページ（ヘッダー・本文・フッターのレイヤーを持つ flow View）と、ページを持たずに本文の幅でもう一度レイアウトした 1 枚の長い面（Word の下書き・Web レイアウト表示にあたる scroll View）です。図は PowerPoint と同じ DrawingML の描画で描き、フォントも同じく埋め込みます。詳細は design.md の §3.9。
@@ -163,6 +164,7 @@ text, err := res.Doc.SearchText() // メタデータと、View ごと・ペー�
 | `converter/pptx` | PowerPoint (.pptx) → BDF 変換器 |
 | `converter/xlsx` | Excel (.xlsx) → BDF 変換器 |
 | `converter/csv` | CSV・TSV → BDF 変換器（描画は `converter/xlsx`） |
+| `converter/parquet` | Apache Parquet → BDF 変換器（描画は `converter/xlsx`） |
 | `converter/docx` | Word (.docx) → BDF 変換器 |
 | `converter/visio` | Visio (.vsdx, .vdx) → BDF 変換器 |
 | `converter/dxf` | AutoCAD DXF → BDF 変換器 |
@@ -200,7 +202,7 @@ go run ./cmd/bdf ls out.bdf          # Part 一覧
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # 分割形式へ
 
-# PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / メタファイル / TIFF / HTML / Markdown / EPUB / 画像 → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|ai|psd|pptx|xlsx|csv|docx|visio|drawio|dxf|jww|sxf|cgm|hpgl|gerber|emf|tiff|html|markdown|epub|image で指定も可）
+# PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / メタファイル / TIFF / HTML / Markdown / EPUB / 画像 → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|ai|psd|pptx|xlsx|csv|parquet|docx|visio|drawio|dxf|jww|sxf|cgm|hpgl|gerber|emf|tiff|html|markdown|epub|image で指定も可）
 go run ./cmd/bdf generate -h                  # フラグと、入力形式ごとの -param オプションの一覧
 go run ./cmd/bdf generate in.pdf out.bdf      # 1 ファイル形式
 go run ./cmd/bdf generate in.pptx out/        # 分割形式
@@ -221,6 +223,8 @@ go run ./cmd/bdf generate -hidden in.pptx out.bdf                  # PowerPoint,
 go run ./cmd/bdf generate in.xlsx out.bdf                          # Excel ブック: ワークシートごとにシート View
 go run ./cmd/bdf generate in.csv out.bdf                           # CSV・TSV: シート View 1 枚（文字コード・区切り・クオート・見出し行を推定）
 go run ./cmd/bdf generate -param charset=shift_jis -param delimiter=tab -param header=false in.txt out.bdf  # CSV: 推定の代わりに指定
+go run ./cmd/bdf generate in.parquet out.bdf                       # Parquet: 先頭 10,000 行のシート View 1 枚（列の型の行つき）
+go run ./cmd/bdf generate -param rows=all -param types=false in.parquet out.bdf  # Parquet: 全行、型の行なし
 go run ./cmd/bdf generate in.docx out.bdf                          # Word: 紙面のページと scroll View
 go run ./cmd/bdf generate -param views=pages in.docx out.bdf       # Word: ページだけ（views=scroll なら scroll View だけ）
 go run ./cmd/bdf generate in.vsdx out.bdf                          # Visio（.vsdx / .vdx）: 前景ページごとに 1 ページ

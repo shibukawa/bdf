@@ -98,7 +98,7 @@ type Result struct {
 }
 
 // cropSources are the formats whose first page is text read from the top.
-var cropSources = map[string]bool{"docx": true, "html": true, "markdown": true, "xlsx": true, "csv": true}
+var cropSources = map[string]bool{"docx": true, "html": true, "markdown": true, "xlsx": true, "csv": true, "parquet": true}
 
 // shapeSources are the formats whose pages may be documents or slides:
 // those taller than wide are cropped.

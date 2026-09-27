@@ -43,7 +43,7 @@ wasm が意味を持つケース:
 
 変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の bdf を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`examples/viewer/site.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
 
-- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Visio・draw.io・DXF・Jw_cad・SXF・CGM・メタファイル・Photoshop・画像。約 19.5 MB、gzip 5.9 MB）に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
+- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・メタファイル・Photoshop・画像。約 23 MB、gzip 6.9 MB。Parquet で約 1.1 MB 増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
 - **フォントは fs.FS で渡す**: ブラウザにはフォントのディレクトリが無い。`converter.Options.FontFS` で任意の `fs.FS` をフォントの探索元にできるようにし（`FontDirs` より先に探す）、wasm 側では Web 上のディレクトリをそれとして実装した。`index.json` にファイル名、サイズと、フォントの走査が読む範囲（テーブルディレクトリと name・OS/2・post テーブル）を書いておき、最初の変換でその範囲だけを並列に Range で取得する。フォント全体は文書がそのフェイスを使うときに初めて取得し、取得したものはモジュールが生きている間保持する（2 回目以降の変換は通信しない）。サイトのフォントは CI が Ubuntu のパッケージから集める: Liberation（Arial、Times New Roman、Courier New の代替）、Carlito（Calibri）、Caladea（Cambria）、IPAex（日本語）、DejaVu（記号）。
 - **pdfcpu の設定ファイル**: pdfcpu は既定でユーザーの設定ディレクトリに config.yml を書いて読み直すが、js 版のパーサは自分が書いた 16 進の permissions を読めずに終了する。js のビルドでは `model.ConfigPath = "disable"` にして組み込みの既定値を使う。
 
@@ -71,7 +71,7 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 2. **XLSX → BDF**（直接変換）
    - PDF 経由だと無限シートが失われるので、こちらは直接。セルのレイアウトは行列の格子なので、文書レイアウトほど難しくない。実装済み（§3.6）。
    - 図形・画像・グラフは PowerPoint と同じ DrawingML なので、PowerPoint の変換器と描画処理を共有する（画像化はしない）。
-   - CSV・TSV は値だけの表として同じシートの描画に渡す（§3.10）。
+   - CSV・TSV は値だけの表として同じシートの描画に渡す（§3.10）。Parquet も値を文字にして同じように渡す（§3.26）。
 3. **PPTX / DOCX → BDF**（直接変換）
    - PPTX は絶対配置なので DOCX より先に手が届く（テキストボックス内の折り返しは必要）。実装済み（§3.4）。
    - マスター・レイアウト・スライドの継承構造が BDF の共有 Object にそのまま対応するので、直接変換するとサイズ面の効果が最も大きい。
@@ -546,7 +546,7 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 | 種類 | レイアウト |
 |---|---|
 | Word、HTML、Markdown | 1 ページ目（scroll View は先頭）の左上から、ページの幅の正方形（Crop） |
-| Excel、CSV | 最初のシートの A1 から、シートの短い辺の正方形。上限は 480 単位で、既定の列幅なら 10 列・32 行ほど。枠線はビューアと同じく描く |
+| Excel、CSV、Parquet | 最初のシートの A1 から、シートの短い辺の正方形。上限は 480 単位で、既定の列幅なら 10 列・32 行ほど。枠線はビューアと同じく描く |
 | PDF、TIFF | 縦長のページは文書として Crop、横長のページはスライドとして全体（Fit） |
 | PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB | 1 ページ目の全体を、長辺が指定の大きさになるように（Fit）。EPUB は 1 ページ目が表紙 |
 
@@ -555,6 +555,26 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 **検索用テキスト**（`Document.SearchText`）はテキスト索引 Part（§4、spec §7.9）から作る。ビューアの検索と同じものなので、変換器が MARK で付けた区切り（行・段落・セル）がそのまま使える。索引のない View は Object から取り出す。ページ番号（1 始まり）は検索のヒットから `#page=N` で開くのに使える。シートはシート全体で 1 つにする。Word・Markdown・EPUB は同じ本文を page View と scroll View の両方に組むことがあるので、flow View がある文書では scroll View を除く。正規化（NFKC、かな）は検索エンジンに任せ、テキストはそのまま出す。
 
 **パスワード付きの入力**: サムネイルもテキストも暗号化されない。サムネイルは 1 ページ目の中身を見せるので、テキストと同じ扱いにした。`bdf generate` は、暗号化して書き出す文書（既定ではパスワード付きの入力のもの）について、`-allow-plaintext` がなければどちらも書かない。`bdf thumbnail`・`text`・`render` も、暗号化された bdf は `$BDF_PASSWORD` と `-allow-plaintext` の両方がなければ描かない。ライブラリの API（`thumbnail.Make`、`SearchText`）は復号した文書を受け取るだけなので、作るかどうかは呼び出し側が `Result.Protected` や `Document.Lock` を見て決める。
+
+## 3.26 Parquet → BDF 変換器（converter/parquet）の構造
+
+Parquet は分析用のデータを列ごとに圧縮して持つ形式で、pandas・Polars・DuckDB・Spark が書き、Hugging Face のデータセットもこの形で配られる。中身は 1 つの表なので、CSV（§3.10）と同じく `xlsx.Grid` にして `sheet` View を 1 枚作る。CSV と違って推定するものはない。型はファイルに書いてあり、値をどう文字にするかを決めればよい。
+
+- **読み込みは自前で書く**: Go の既存の実装（apache/arrow-go の parquet、parquet-go/parquet-go）は、wasm にすると何もしないプログラムの 2.6 MB に対して 22〜34 MB になり、Office 系のモジュール（§2）がほぼ倍になる。仕様（parquet-format の parquet.thrift、Encodings.md、LogicalTypes.md、VariantEncoding.md、VariantShredding.md）から、表示に要る部分だけを書いた。フッターとページヘッダーは Thrift の compact protocol で、知らないフィールドは読み飛ばす（`thrift.go`）。依存は伸張だけで、Zstandard は `github.com/klauspost/compress/zstd`（速い。Polars と Databricks の既定の圧縮）、Brotli はすでに使っている `andybalholm/brotli`（wasm のビルドでは外す。パッケージが表を初期化するだけで Office 系のモジュールが 1.7 MB 増え、Brotli で圧縮した Parquet は少ない。ブラウザではその列を空にして警告を出す。`brotli_js.go`）、gzip は標準ライブラリ。Snappy（pyarrow・DuckDB・Spark の既定）と LZ4 のブロックは短いので自前で書いた（klauspost の s2 は Snappy の伸張だけでも wasm を 1.3 MB 増やす）。
+- **読む範囲**: 末尾の `PAR1` の前の長さからフッター（FileMetaData）を読み、スキーマの木、行グループ、列チャンクの位置を得る。列チャンクはページのヘッダーとページを 1 つずつ読み、表示する行に達したらやめる（入れ子でない列は値 1 つが 1 行、入れ子の列は繰り返しレベル 0 が行の始まり）。ファイル全体をメモリに読むことはない。`dictionary_page_offset` が 0 のファイル、辞書ページのヘッダーを列チャンクの大きさに数えなかった parquet-mr 1.2.8 までのファイルも読む。
+- **ページとエンコーディング**: 辞書ページと、データページの v1（レベルと値をまとめて圧縮）と v2（値だけを圧縮。`is_compressed` が false なら無圧縮、値の部分が空なら伸張しない）。PLAIN、RLE/ビットパックのハイブリッド（レベル、辞書の添字、RLE の真偽値）、非推奨の BIT_PACKED（レベル）、PLAIN_DICTIONARY と RLE_DICTIONARY、DELTA_BINARY_PACKED、DELTA_LENGTH_BYTE_ARRAY、DELTA_BYTE_ARRAY、BYTE_STREAM_SPLIT。どれも値を 1 つずつ取り出すストリームにしたので、「数十億の値がある」と書いた小さなページも、読まれるまでは何も作らない。非推奨の LZ4 は書き手によって枠組みが違うので、Arrow と同じく Hadoop の枠組み（大きさが 2 つ並ぶブロックの列）、LZ4 のフレーム形式、生のブロックの順に試す。
+- **入れ子の値**: 葉の列の値ごとの繰り返しレベルと定義レベルから行の値を組み立てる（`nested.go`）。定義レベルは経路のどこまでが存在するか（null か空のリストか）、繰り返しレベルはどの繰り返しフィールドで新しい要素が始まるかを表す。構造体の葉は同じ値を要素ごとに埋めていく。LIST の注釈は LogicalTypes.md の後方互換の規則 5 つ（2 段のリスト、`array` や `…_tuple` という名前、要素の名前を問わない）で要素を決め、`MAP_KEY_VALUE` は MAP として、値のない MAP は Arrow と同じくキーのリストとして、注釈のない repeated のフィールドもリストとして読む。表示は JSON の書き方にそろえる（リストは `[1, 2]`、構造体とマップは `{"x": 1}`、文字列・日付・時刻・UUID は引用符で囲み、数値と真偽値はそのまま）。数字でないマップのキーは `{1: "a"}` のように書く。
+- **Variant**: 値の型が行ごとに違う列（Spark 4、Iceberg v3、DuckDB が書く）。metadata（フィールド名の辞書）と value（型の付いたバイナリ）を読んで JSON にする。分解保存（shredding）された列は、typed_value の型付きの列（プリミティブ、フィールドごとの value と typed_value のグループ、要素ごとの value と typed_value のリスト）と value の残りから値を組み立て直す（VariantShredding.md の `construct_variant`）。typed_value のフィールドと同じ名前が value にもある不正なファイルは、Iceberg と同じく型付きの方を採る。注釈のない、binary の `metadata` と `value` だけのグループ（注釈ができる前の Spark）も Variant として読む。
+- **値の文字**: 整数と decimal は全桁（decimal は INT32・INT64・固定長・可変長のどれでも。32 桁を超えても丸めない）。浮動小数点数は元の精度で読み戻せる最短の表記で、JavaScript と同じく 1e21 以上と 1e-6 未満だけ指数表記（NaN、Infinity）。FLOAT16 も半精度で最短。日付は `2026-09-27`、時刻とタイムスタンプは `2026-09-27 12:00:00`（isAdjustedToUTC のものは UTC。時差はファイルにない）で、秒の小数は列の値が要る桁数（0・3・6・9 桁、単位の精度まで）に列全体をそろえる（すべて整数の秒なら小数を付けない。右寄せの列で桁がそろう）。INT96（Spark と Impala の古いタイムスタンプ）はユリウス日とその日のナノ秒から。UUID は標準の表記、INTERVAL は ISO 8601 の期間（`P1Y2M3DT4H5M6.5S`）。文字列の注釈がないバイト列は、UTF-8 の文字列として正しく制御文字を含まなければ文字列として（注釈なしで文字列を書いた古い書き手）、そうでなければ 16 進（`0x…`、32 バイトまで。長いものはバイト数を添える）で示す。BSON は 16 進。ジオメトリ（GEOMETRY と GEOGRAPHY の注釈、GeoParquet のメタデータ `geo` が WKB と言う列）は WKB を WKT にする（ISO の Z・M・ZM と PostGIS の EWKB のフラグと SRID、空のジオメトリ、GeometryCollection）。数値・日付・時刻・期間は Excel と同じく右に、ほかは左に揃える。1 つのセルは Excel と同じく 32,767 バイトまでで、長い値は切って `…` を付ける。
+- **見た目**: 1 行目に列名（上位のフィールド。構造体は開かずに JSON の 1 列）、2 行目に型（`int64`、`decimal(10, 2)`、`timestamp[ms, UTC]`、`list<string>`、`struct<w: int32, h: int32>`、`variant`、`geometry` など）を置き、2 行を見出しとして固定する。型の行は `xlsx.Grid.SubHeader` で太字でなく灰色（Office の「テキスト 1、白 + 基本色 50%」）にする。論理型が物理型に合わない列（INT32 に UUID など）は、値と同じく物理型の名前にする。`-param types=false` で型の行を外し、`-param table=` で CSV と同じくテーブルスタイルを付ける。シート名はファイル名から拡張子を除いたもの。フォントと言語は CSV と同じ（かな・ハングルを列名と値から数える）。
+- **行数の上限**: 既定では先頭の 10,000 行（`-param rows=` で指定、`all` でシートの上限の 1,048,574 行まで）。読むのは速いが（100 万行・8 列で 0.6 秒）、シートの組版が 10 万行で 3 秒・690 MB、100 万行で 45 秒・2.7 GB かかるため（CSV も同じだが、Parquet は数百万行が普通）。既定では 400 万セルも上限にし、列の多い表は行を減らす。列はシートと同じく 16,384 列まで。超えた分は警告を出す。
+- **壊れたファイルへの備え**: ページの大きさ（512 MiB まで）やヘッダーが言う伸張後の大きさを信じてメモリを確保しない（Snappy と LZ4 は入力が伸びうる大きさまで、Zstandard・gzip・Brotli は伸張しながら確保する）。Thrift の入れ子、スキーマの深さ、1 行の 1 つのリストの要素数（100 万）、入れ子の値の書き出し（128 段）に上限がある。読めない列（未対応の圧縮やエンコーディング、壊れたページ）は空にして警告を出し、ほかの列は読む。テストには、テストファイルの各バイトを変えたものと途中で切ったものの読み込みと、fuzz テスト（1 入力 1 秒以内）がある。
+- **形式の判別**: 先頭と末尾の `PAR1`。フッターを暗号化したファイル（両端が `PARE`）も Parquet と判別し、未対応のエラーにする（`ErrEncrypted`）。フッターが平文で一部の列を暗号化したファイルは、その列を空にして警告を出す。
+- **未対応**: 暗号化（Parquet Modular Encryption。鍵はパスワードではなく AES の鍵そのもので、KMS から取り出すか呼び出し側が渡す）、ブラウザ版の Brotli、LZO、parquet-format 2.14 で試行扱いの ALP エンコーディング、ほかのファイルにある列チャンク（`file_path`）、Arrow のスキーマ（`ARROW:schema`）が持つ時差や辞書の情報。ページインデックス、ブルームフィルター、統計は値の表示に要らないので読まない。
+
+Parquet 以外の列指向の形式も調べた（2026-09）。Arrow IPC（Feather）、ORC、Avro は読む側の仕様がそろっている。Lance はデータセットがディレクトリで、ファイル形式（2.0、2.1、2.2、不安定な 2.3）が数週間ごとに変わり、2.0 のエンコーディングは文書がなく Rust の実装が仕様になっている。Vortex は 1.0 前で、ファイルの互換は新しい版が古いファイルを読むことしか保証されず、30 余りのエンコーディングに言語によらない仕様がない。Nimble は安定性を保証しておらず、仕様もなく、Meta の中の圧縮で書いたファイルは外では読めない。いずれも見送った。
+
+テスト用のファイルは `test/parquet/gen.py`（`npm run test:parquet:gen`。pyarrow 25.0.1 と DuckDB 1.5.5）が書く 9 つ。basic（pyarrow の既定の出力: Snappy、辞書、v1。英語と日本語、改行を含む値、null、decimal、日付、ミリ秒のタイムスタンプ、リスト、構造体）、types（Zstandard。整数の端の値、float16、NaN と無限大、INT32・INT64・固定長の decimal、UUID、JSON、全単位の時刻とタイムスタンプ、辞書の文字列、null の列）、nested（空・null・null を含むリスト、リストのリスト、構造体のリスト、マップ、固定長のリスト）、encodings（v2 のデータページ、gzip。各エンコーディングの列と同じ値の PLAIN の列）、codecs（同じ値を圧縮ごとの列に）、legacy（INT96、準拠しない要素名のリスト）、duckdb（分解保存された Variant、UUID、INTERVAL、GEOMETRY、PLAIN_DICTIONARY）、variant（オブジェクトとリストに分解保存された Variant）、geo（GeoParquet の WKB）。今の書き手が作らない構造（2 段のリスト、`MAP_KEY_VALUE`、BIT_PACKED のレベル、Hadoop の LZ4）は、テストの中の小さな書き出し器で作る。開発中は、これらと Apache の parquet-testing（77 ファイル、約 23 万セル）の値を pyarrow が読む値とセルごとに突き合わせ（pyarrow 自身が読めない列と、int64 に収まらない INT96 を除いてすべて一致）、Variant は parquet-testing の分解保存の 138 例がすべて一致することも確かめた。変換結果は `testdata/parquet/` に置き（CI が変換し直して比べる）、basic と nested は golden テストで描画を比較する。フォントは CSV と同じく PowerPoint のテストのものだけを使う。
 
 ## 4. テキストの扱い
 
@@ -658,6 +678,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 16. **数式**: Office Math・MathML・LaTeX を OpenType MATH のフォントで組む共通のエンジン（Word・PowerPoint・Excel・HTML・Markdown・draw.io・EPUB は実装済み、§3.23）。
 17. **EPUB**: リフロー型の本は同じリーダー表示で本のページに組み（縦書きを含む）、固定レイアウトの本は画像のページにする（実装済み、§3.24）。
 18. **サーバー側のプレビュー**: 純 Go のラスタライザで描くサムネイルとページの画像、検索エンジン向けのテキスト（実装済み、§3.25）。
+19. **Parquet**: 列指向のデータファイルを表のシートに。読み込みは仕様から自前で書く（実装済み、§3.26）。
 
 ## 9. リポジトリ構成（案）
 
@@ -680,6 +701,7 @@ bdf/
 │   ├── pptx/          PowerPoint → BDF 変換器（testdata/ にテスト用デッキとフォント）
 │   ├── xlsx/          Excel → BDF 変換器（testdata/ にテスト用ブック。フォントは pptx のものを使う）
 │   ├── csv/           CSV・TSV → BDF 変換器（描画は xlsx。testdata/ にテスト用ファイル）
+│   ├── parquet/       Apache Parquet → BDF 変換器（描画は xlsx。testdata/ にテスト用ファイル）
 │   ├── docx/          Word → BDF 変換器（testdata/ にテスト用文書とフォント）
 │   ├── html/          HTML（.html、.xhtml、.mhtml）→ BDF 変換器、リーダー表示（testdata/ にテスト用のページ）
 │   ├── markdown/      Markdown → BDF 変換器、HTML を経由（testdata/ にテスト用文書と画像）

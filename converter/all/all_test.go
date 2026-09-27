@@ -127,6 +127,11 @@ func TestDetect(t *testing.T) {
 		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
 		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
 		{"epub", epub.Bytes(), "epub"},
+		{"parquet", readParquet(t, "basic.parquet"), "parquet"},
+		// a file whose footer is encrypted, turned down by the converter
+		{"encrypted parquet", []byte("PARE\x00\x00\x00\x00\x00\x00\x00\x00\x04\x00\x00\x00PARE"), "parquet"},
+		// the magic number at one end only
+		{"truncated parquet", readParquet(t, "basic.parquet")[:1000], ""},
 		{"html", []byte("\n<!DOCTYPE html>\n<html><body>x</body></html>"), "html"},
 		{"xhtml", []byte(`<?xml version="1.0" encoding="utf-8"?>` + "\n<!-- c -->\n" + `<html xmlns="http://www.w3.org/1999/xhtml">`), "html"},
 		{"mhtml", []byte("From: <Saved by Blink>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/related;\r\n\ttype=\"text/html\";\r\n\tboundary=\"b\"\r\n\r\n--b\r\n"), "html"},
@@ -150,6 +155,16 @@ func TestDetect(t *testing.T) {
 func read(t *testing.T, name string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "drawio", "testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// readParquet returns a file of the Parquet converter's test data.
+func readParquet(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "parquet", "testdata", name))
 	if err != nil {
 		t.Fatal(err)
 	}
