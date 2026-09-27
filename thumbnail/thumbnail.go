@@ -8,8 +8,10 @@
 //     MIDI and MusicXML; PDF and TIFF pages taller than wide): a square
 //     from the top-left corner of the first page, as wide as the page,
 //     scaled to Size × Size. A scroll view is cut from
-//     its top; a sheet from cell A1, the square as large as the smaller
-//     side of the sheet but at most MaxSheetSide units, with gridlines.
+//     its top; a sheet from cell A1, with gridlines: the square is
+//     Size pixels at SheetDPI, so that a smaller thumbnail shows fewer
+//     cells instead of smaller ones, from MinSheetSide to MaxSheetSide
+//     units and no larger than the sheet.
 //   - Fit (PowerPoint, Visio, draw.io, CAD drawings and plots, circuit
 //     boards, Illustrator, Photoshop, images, EPUB covers; other PDF and
 //     TIFF pages): the whole first page scaled so that its longer side is
@@ -73,8 +75,17 @@ func (m Mode) String() string {
 // DefaultSize is the default side of a thumbnail in pixels.
 const DefaultSize = 256
 
-// MaxSheetSide is the largest square of a sheet a thumbnail shows, in units.
-const MaxSheetSide = 480
+// DefaultSheetDPI is the default resolution of a sheet in a thumbnail: a
+// unit (1/72 inch) is a pixel.
+const DefaultSheetDPI = 72
+
+// MinSheetSide and MaxSheetSide bound the square of a sheet a thumbnail
+// shows, in units: a small thumbnail still shows a few rows and columns (6
+// rows of 15 units), a large one shows the corner at A1 in more detail.
+const (
+	MinSheetSide = 96
+	MaxSheetSide = 480
+)
 
 // Options configures a thumbnail.
 type Options struct {
@@ -85,6 +96,11 @@ type Options struct {
 	Mode Mode
 	// View is the id of the view to draw (default: the first one).
 	View string
+	// SheetDPI is the resolution a sheet is drawn at (default
+	// DefaultSheetDPI): the square from A1 is Size / SheetDPI inches,
+	// bounded by MinSheetSide and MaxSheetSide. A lower value shows more
+	// cells, smaller.
+	SheetDPI float64
 	// Raster configures the drawing: fonts and background.
 	Raster raster.Options
 }
@@ -115,6 +131,9 @@ func Make(doc *bdf.Document, opts *Options) (*Result, error) {
 	if o.Size <= 0 {
 		o.Size = DefaultSize
 	}
+	if !(o.SheetDPI > 0) {
+		o.SheetDPI = DefaultSheetDPI
+	}
 	v, err := pickView(doc, o.View)
 	if err != nil {
 		return nil, err
@@ -127,12 +146,8 @@ func Make(doc *bdf.Document, opts *Options) (*Result, error) {
 	var img *image.RGBA
 	switch {
 	case v.Kind == bdf.ViewSheet:
-		w, h := raster.SheetSize(v)
 		// a sheet has no page to fit: both layouts show the corner at A1
-		side := math.Min(math.Min(w, h), MaxSheetSide)
-		if !(side > 0) {
-			side = MaxSheetSide
-		}
+		side := sheetSide(v, o.Size, o.SheetDPI)
 		img, err = r.Region(v, 0, bdf.Rect{W: float32(side), H: float32(side)}, o.Size, o.Size)
 	case v.Kind == bdf.ViewScroll:
 		pw, ph := scrollSize(v)
@@ -189,6 +204,16 @@ func autoMode(source string, v *bdf.View) Mode {
 		return Crop
 	}
 	return Fit
+}
+
+// sheetSide is the side of the square of a sheet a thumbnail of size
+// pixels shows at dpi, in units.
+func sheetSide(v *bdf.View, size int, dpi float64) float64 {
+	side := min(max(float64(size)*72/dpi, MinSheetSide), MaxSheetSide)
+	if w, h := raster.SheetSize(v); w > 0 && h > 0 {
+		side = min(side, w, h)
+	}
+	return side
 }
 
 // scrollSize is the width of a scroll view and the height of its strips.

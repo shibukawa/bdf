@@ -177,8 +177,8 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 
 | 名前 | 内容 |
 |---|---|
-| `thumbnail.Make(doc, *Options) (*Result, error)` | サムネイルを描く。`Options` は `Size`（既定 256 px。切り抜きなら一辺、全体なら長辺）、`Mode`（`Auto`・`Crop`・`Fit`）、`View`（既定は最初の View）、`Raster`（フォントと背景）。`Result` は `Image`、選んだ `Mode`、`Warnings` |
-| `Auto` の選び方 | Word・HTML・Markdown・Excel・CSV と、縦長のページの PDF・TIFF は `Crop`: 1 ページ目の左上から、ページの幅（横長ならページの高さ）の正方形。scroll View は先頭から、シートは A1 から、シートの短い辺（最大 `MaxSheetSide` = 480 単位）の正方形を枠線つきで。それ以外（PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB の表紙、横長の PDF・TIFF）は `Fit`: 1 ページ目の全体。判定は `Meta.Source` と View の種類による |
+| `thumbnail.Make(doc, *Options) (*Result, error)` | サムネイルを描く。`Options` は `Size`（既定 256 px。切り抜きなら一辺、全体なら長辺）、`Mode`（`Auto`・`Crop`・`Fit`）、`View`（既定は最初の View）、`SheetDPI`（シートを描く解像度。既定 `DefaultSheetDPI` = 72 で 1 単位が 1 画素）、`Raster`（フォントと背景）。`Result` は `Image`、選んだ `Mode`、`Warnings` |
+| `Auto` の選び方 | Word・HTML・Markdown・Excel・CSV と、縦長のページの PDF・TIFF は `Crop`: 1 ページ目の左上から、ページの幅（横長ならページの高さ）の正方形。scroll View は先頭から、シートは A1 から、`Size` 画素を `SheetDPI` で描く大きさ（`MinSheetSide` = 96 〜 `MaxSheetSide` = 480 単位。シートより大きくはしない）の正方形を枠線つきで。小さいサムネイルほど狭い範囲を見せ、字が潰れないようにする。それ以外（PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB の表紙、横長の PDF・TIFF）は `Fit`: 1 ページ目の全体。判定は `Meta.Source` と View の種類による |
 | `thumbnail.Encode(w, img, format)` / `FormatOf(name)` | `PNG`・`JPEG`（品質 85）・`WebP`（非可逆、品質 80）で書く / ファイル名の拡張子から形式を決める |
 | `raster.New(doc, *Options) *Renderer` | 文書を描くレンダラ。`Options` は `FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントと、埋め込みフォントにない字の探し先）と `Background`（既定は白）。デコードした Object・画像・フォントを保持する。並行には使えない |
 | `(*Renderer).Page(v, page, scale)` | fixed・flow View のページ（scroll View の帯）を、1 単位 `scale` 画素で描く |
@@ -200,11 +200,11 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 | `split` / `join` | 1 ファイル形式と分割形式の変換（パスワード不要） |
 | `encrypt` / `decrypt` | パスワードで暗号化する / 暗号化を外す |
 | `demo` | サンプル文書（testdata/demo.bdf と同じもの）を書く |
-| `thumbnail [flags] <file> <out.png \| .jpg \| .webp>` | サムネイルを描く。`-size`（既定 256）、`-mode auto\|crop\|fit`、`-view`、`-font-dir`、`-no-system-fonts` |
+| `thumbnail [flags] <file> <out.png \| .jpg \| .webp>` | サムネイルを描く。`-size`（既定 256）、`-mode auto\|crop\|fit`、`-view`、`-sheet-dpi`（既定 72）、`-font-dir`、`-no-system-fonts` |
 | `text [flags] <file> [out.json]` | メタデータとページごとのテキストを JSON で書く（既定は標準出力） |
 | `render [flags] <file> <out.png \| .jpg \| .webp>` | ページを描く。`-view`、`-page`（1 始まり）、`-scale`、シートは A1 からの `-width`・`-height` |
 
-`generate` の `-thumbnail <file>`（`-thumbnail-size`、`-thumbnail-mode`）と `-text <file>`（`-` で標準出力）は、変換と同時にサムネイルとテキストを書く。サムネイルとテキストは暗号化されないので、暗号化した文書（`generate` では暗号化して書き出す文書。既定ではパスワード付きの入力のもの）については書かない。`-allow-plaintext` を付けたときだけ書く（`thumbnail`・`text`・`render` も同じ）。
+`generate` の `-thumbnail <file>`（`-thumbnail-size`、`-thumbnail-mode`、`-thumbnail-sheet-dpi`）と `-text <file>`（`-` で標準出力）は、変換と同時にサムネイルとテキストを書く。サムネイルとテキストは暗号化されないので、暗号化した文書（`generate` では暗号化して書き出す文書。既定ではパスワード付きの入力のもの）については書かない。`-allow-plaintext` を付けたときだけ書く（`thumbnail`・`text`・`render` も同じ）。
 
 ## ブラウザ内変換（cmd/bdfwasm）
 
@@ -218,7 +218,7 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 | `stream.page(i)` | ページ i を変換し、`{bdf, warnings}`（そのページだけのページ文書と新しい警告）を返す |
 | `stream.finish()` | 残りを変換し、`convert` と同じ形の完成した文書を返す |
 | `stream.close()` | ストリームを手放す（`finish` のあとも呼ぶ） |
-| `thumbnail(bdf: Uint8Array, options?)` | `previewonly` のみ。単一ファイル形式の bdf のサムネイルを描き、`{image, format, width, height, mode, warnings}` を返す。`options` は `{size?, mode?, format?, view?, password?, fonts?}`（`size` は既定 256・最大 2048、`mode` は `auto`・`crop`・`fit`、`format` は `png`・`jpeg`。`bdf_noconv` でなければ `webp` も） |
+| `thumbnail(bdf: Uint8Array, options?)` | `previewonly` のみ。単一ファイル形式の bdf のサムネイルを描き、`{image, format, width, height, mode, warnings}` を返す。`options` は `{size?, mode?, format?, view?, sheetDpi?, password?, fonts?}`（`size` は既定 256・最大 2048、`sheetDpi` は既定 72、`mode` は `auto`・`crop`・`fit`、`format` は `png`・`jpeg`。`bdf_noconv` でなければ `webp` も） |
 | `text(bdf: Uint8Array, options?)` | `previewonly` のみ。`bdf text` と同じ JSON（メタデータとページごとのテキスト）を `{json}` で返す。`options` は `{password?}` |
 
 `options` は `{format?, password?, fonts?}`。`fonts` はフォントのディレクトリの URL で、`index.json` にファイルとフォントの走査が読む範囲を並べておく（`examples/viewer/site.mjs` が作る）。失敗した Promise の Error は、パスワードが要る・違う・形式が分からないときに `code` が `"password-required"`、`"wrong-password"`、`"unknown-format"` になる。返す文書は入力が暗号化されていても暗号化しない。
