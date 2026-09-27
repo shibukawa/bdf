@@ -1,0 +1,16 @@
+#TITLE Frere Jacques
+#COMPOSER Traditional
+#MAKER Public domain
+#PROGRAMER bdf
+
+; a round in three voices for the NES
+@v0 = { 15 14 13 12 | 11 }   ; a volume envelope (not played)
+@EN0 = {
+  0 0 1 -1
+}
+
+ABC t112 l4
+A o4 @2 v12 [cdec]2 [efg2]2 [g8a8g8f8ec]2 [c<g>c2]2
+B o4 @1 v10 r1r1 [cdec]2 [efg2]2 [g8a8g8f8ec]2 [c<g>c2]2
+C o3 [c2g2]8
+D @0 v8 l8 [c r c r]8   // the noise keeps time

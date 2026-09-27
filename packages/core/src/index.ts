@@ -8,3 +8,5 @@ export { BdfDocument, type OpenOptions } from "./document.js";
 export { BdfPasswordError, SealedSource, MAX_ITERATIONS } from "./crypto.js";
 export { extractText, extractContent, parseCellRef, guessSep, Mark, Sep, type TextRun, type TextNode, type TextNodeKind, type TextLink, type TextContent, type CellRef } from "./text.js";
 export { decodeTextIndex, TextSearch, normalizeQuery, normalizeChar, type IndexRun, type SearchHit, type HitSegment, type SearchOptions } from "./search.js";
+export { decodeCues, type Cues, type Cue, type CueSystem } from "./cues.js";
+export { parseSmf, tickToSeconds, secondsToTick, MAX_MIDI_EVENTS, type MidiSequence, type MidiEvent, type NoteEvent, type ProgramEvent, type ControlEvent, type BendEvent, type TempoEvent, type TimeSignatureEvent, type KeySignatureEvent, type TempoPoint } from "./smf.js";

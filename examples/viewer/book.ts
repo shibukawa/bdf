@@ -39,6 +39,11 @@ export interface BookOptions {
   failed(index: number): boolean;
   /** The pages shown have changed. */
   onTurn(pages: number[]): void;
+  /**
+   * A tap on a page at (x, y) in page units: true when it did something of
+   * its own (played a score from there), and the pages do not turn.
+   */
+  tap?(index: number, x: number, y: number): boolean;
   onError(e: unknown): void;
 }
 
@@ -797,8 +802,9 @@ export class Book {
    * A tap on the pages (not a drag, which selects text, nor a long press)
    * turns them: forward beyond the spine, back before it (a page alone, its
    * halves), by the corner on the side of the tap. A press that clears a
-   * selection does not, nor one on a link or a handle. A click on text waits
-   * a moment: a second click selects a word instead.
+   * selection does not, nor one on a link or a handle, nor one the tap option
+   * takes. A click on text waits a moment: a second click selects a word
+   * instead.
    */
   private readonly onPress = (e: PointerEvent) => {
     clearTimeout(this.tapTimer);
@@ -811,6 +817,11 @@ export class Book {
       removeEventListener("pointercancel", up, true);
       if (u.type !== "pointerup" || this.dead || u.timeStamp - e.timeStamp > LONG) return;
       if (Math.hypot(u.clientX - e.clientX, u.clientY - e.clientY) >= TAP || !(getSelection()?.isCollapsed ?? true)) return;
+      const page = target.closest<HTMLElement>(".page[data-index]");
+      if (page && this.o.tap) {
+        const r = page.getBoundingClientRect();
+        if (this.o.tap(Number(page.dataset.index), (e.clientX - r.left) / this.scale, (e.clientY - r.top) / this.scale)) return;
+      }
       const q = this.point(e, this.o.rtl);
       const s = this.spreads[this.at];
       const mid = this.o.layout === "single" && s.second !== null ? this.spine + this.rectOf(s.second, "second").w / 2 : this.spine;

@@ -123,6 +123,11 @@ func TestDetect(t *testing.T) {
 		{"hpgl in lines", []byte("IN;\nSP1;\nPU0,0;\nPD1000,0;\nPD1000,1000;\nPU;\n"), "hpgl"},
 		{"hpgl job", []byte("\x1b%-12345X@PJL ENTER LANGUAGE=HPGL2\r\n\x1bE\x1b%-1BBP;IN;PS1000,1000;"), "hpgl"},
 		{"csv with semicolons", []byte("id;name;price\n1;apple;120\n2;pear;90\n"), "csv"},
+		// MML: Mabinogi's parts are separated by commas, but the file is not
+		// CSV (CSV guesses, so it is asked last)
+		{"mabinogi mml", []byte("MML@t120l8cdefgab,o3l2ceg,l4rcrc;\nMML@t120l8gfedcba,o3l2gec,l4rgrg;\n"), "mml"},
+		{"ppmck mml", []byte("#TITLE Frere Jacques\n#COMPOSER Traditional\n\nA t120 l4 o4 cdec cdec\nB l4 o3 r1 cdec\n"), "mml"},
+		{"midi", []byte("MThd\x00\x00\x00\x06\x00\x01\x00\x02\x01\xe0MTrk"), "midi"},
 		{"tiff", []byte("II*\x00\x08\x00\x00\x00"), "tiff"},
 		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
 		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
@@ -200,6 +205,11 @@ func TestDetectFile(t *testing.T) {
 		// by its extension (the HP-GL/2 converter then turns down a gnuplot
 		// script)
 		{"graph.plt", "set terminal png\nplot sin(x)\n", "hpgl"},
+		// tracks separated by semicolons look like CSV; the extension wins
+		// over CSV's guess
+		{"song.mml", "t120o4l8cdefgab>c;\no3l2cegc;\nl4rcrcrcrc;\n", "mml"},
+		{"table.csv", "t120o4l8cdefgab>c;\no3l2cegc;\nl4rcrcrcrc;\n", "csv"},
+		{"table.txt", "a;b;c\n1;2;3\n4;5;6\n", "csv"},
 	} {
 		path := filepath.Join(dir, c.name)
 		if err := os.WriteFile(path, []byte(c.data), 0o644); err != nil {

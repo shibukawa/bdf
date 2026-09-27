@@ -5,14 +5,15 @@
 // converted a page at a time: its pages are shown sized at once and drawn as
 // they are converted, those near the visible area first. Pages are scrolled
 // through, or shown one or two at a time and turned like a book's (book.ts).
+// A score's music plays with Web Audio, a bar on the pages following it.
 // The cells of a sheet are selected as in a spreadsheet, and copied as
 // tab-separated values and an HTML table. The thumbnail and the search text
 // of the document shown are made, when the reader asks for them, by the Go
 // packages a server makes them with, built as wasm too.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
 import {
-  BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
-  type HitRect, type OpenSource, type TextLayerOptions, type CellText, type CellRange, type CellClipboard,
+  BdfWorkerClient, BdfWorkerError, MusicPlayer, buildTextLayer, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
+  type Cursor, type HitRect, type OpenSource, type TextLayerOptions, type CellText, type CellRange, type CellClipboard,
 } from "@bdf/render";
 import { ConverterClient, ConvertError, sniff, type Opened, type ThumbnailOptions } from "./convert.js";
 import { Book } from "./book.js";
@@ -61,6 +62,20 @@ let generation = 0;
 let book: Book | undefined;
 /** The reader picked the layout (the menu, or ?layout=); otherwise each document opens in its own. */
 let layoutChosen = false;
+
+/** The music of the view shown (spec §4.4), once the worker has sent it. */
+let player: MusicPlayer | undefined;
+/** Bumped as the view with music changes: music that comes for another view is dropped. */
+let music = 0;
+/** The bar on the page where the music is. */
+const cursor = document.createElement("div");
+cursor.className = "playCursor";
+cursor.setAttribute("aria-hidden", "true");
+/** The system the cursor was last put on: coming to another brings it into view. */
+let followed: { page: number; system: number } | undefined;
+/** Whether the cursor was across the visible part of the stage (zoomed in, it scrolls along). */
+let cursorInView = true;
+let playFrame = 0;
 
 /** Search state for the current view; pages is how many were converted when it searched (streaming). */
 const found = { query: "", hits: [] as SearchHit[], rects: [] as HitRect[][], index: -1, pages: -1 };
@@ -467,6 +482,7 @@ function pageArrived(index: number) {
 
 /** Take down the document shown, before another one opens: work started for it is dropped. */
 function closeDocument() {
+  stopMusic();
   if (streaming) converter?.close(streaming.id).catch(() => {});
   streaming = undefined;
   showProgress();
@@ -701,6 +717,7 @@ function init() {
     layoutChosen = true;
     if (current) show(current);
   };
+  initMusic();
   // the thumbnail and text are made when the panel opens, the thumbnail again when its options change
   const previewBox = $<HTMLDetailsElement>("preview");
   previewBox.addEventListener("toggle", () => {
@@ -768,6 +785,8 @@ function show(v: View) {
   if (current !== v) {
     found.query = ""; found.hits = []; found.rects = []; found.index = -1; found.pages = -1; hitsBox.textContent = "";
     setStatus(describe(v));
+    stopMusic();
+    if (v.play) loadMusic(v);
   }
   current = v;
   for (const b of tabs.querySelectorAll<HTMLButtonElement>("[role=tab]")) {
@@ -802,6 +821,9 @@ function show(v: View) {
     showPages(v);
     if (keep > 0) stage.querySelector(`.page[data-index="${keep}"]`)?.scrollIntoView({ block: "start" });
   }
+  // the cursor goes on the new layout, which is brought to it
+  followed = undefined;
+  if (player) follow();
 }
 
 /** The first page in view (in the book layouts, of the spread shown). */
@@ -933,6 +955,8 @@ function showBook(v: View, start: number) {
     failed: (i) => streaming?.view === v.id && streaming.state[i] === PageState.Failed,
     onTurn: (pages) => turned(b, pages, noun),
     onError: unlessStale(gen),
+    // while the music plays or pauses, a tap on a system plays from there
+    tap: (i, x, y) => !!player && player.state !== "stopped" && playFrom(i, x, y),
   });
   book = b;
   // the buttons point the way the pages turn
@@ -958,6 +982,8 @@ function turned(b: Book, pages: number[], noun: string) {
   $("pageNum").replaceChildren(shown, spoken);
   $<HTMLButtonElement>("prevPage").disabled = !b.canTurn(-1);
   $<HTMLButtonElement>("nextPage").disabled = !b.canTurn(1);
+  // the pages were made anew: the cursor goes back on (while playing, the next frame puts it)
+  if (player && !player.playing) follow();
 }
 
 /** Follow a link to a page (0-based): scroll to it and focus it. */
@@ -1060,6 +1086,172 @@ function highlightLayer(pageIndex: number, scale = zoom): HTMLDivElement {
     }
   });
   return layer;
+}
+
+// Music (spec §4.4): a view of a score can play. Its controls are in the
+// header; Space plays and pauses. While it plays or pauses, a bar the height
+// of the system shows where the music is (in the scrolled pages and in the
+// book layouts), and the pages follow it: the stage scrolls to the system the
+// music comes to, the book turns to its page. A click on a system plays from
+// there.
+
+/** The controls, the keys, and clicks on the pages. */
+function initMusic() {
+  $("play").onclick = togglePlay;
+  $("stopPlay").onclick = () => player?.stop();
+  // Space plays and pauses (before the stage scrolls or the book turns), unless typing or on a control
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== " " || !player || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const t = e.target as HTMLElement;
+    if (t.isContentEditable || t.closest?.("input, textarea, select, button, summary, dialog")) return;
+    e.preventDefault();
+    if (!e.repeat) togglePlay();
+  }, true);
+  // a click on a system of the scrolled pages plays from there (the book layouts: see showBook);
+  // not the end of a drag, nor a click that clears a selection
+  let press: { x: number; y: number; selected: boolean } | undefined;
+  stage.addEventListener("pointerdown", (e) => {
+    press = { x: e.clientX, y: e.clientY, selected: !(getSelection()?.isCollapsed ?? true) };
+  });
+  stage.addEventListener("click", (e) => {
+    const p = press;
+    press = undefined;
+    if (!player || book || !p || p.selected || e.button !== 0 || Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 4) return;
+    const target = e.target as Element;
+    const el = target.closest<HTMLElement>(".page[data-index]");
+    if (!el || target.closest("a") || !(getSelection()?.isCollapsed ?? true)) return;
+    const r = el.getBoundingClientRect();
+    playFrom(Number(el.dataset.index), (e.clientX - r.left) / zoom, (e.clientY - r.top) / zoom);
+  });
+}
+
+/** Ask the worker for the music of a view, and make its player. */
+function loadMusic(v: View) {
+  const token = music;
+  $("playBox").hidden = false;
+  $<HTMLButtonElement>("play").disabled = $<HTMLButtonElement>("stopPlay").disabled = true;
+  $("playTime").textContent = "";
+  client.play(v.id).then((data) => {
+    if (token !== music || !data) return;
+    player = new MusicPlayer(new Uint8Array(data.seq), data.cues);
+    player.onUpdate = musicChanged;
+    musicChanged();
+  }).catch((e) => {
+    if (token === music) setStatus(`the music could not be read: ${(e as Error).message ?? e}`);
+  });
+}
+
+/** Take the music of the view shown down: another view or document is shown. */
+function stopMusic() {
+  music++;
+  player?.dispose();
+  player = undefined;
+  cancelAnimationFrame(playFrame);
+  playFrame = 0;
+  cursor.remove();
+  followed = undefined;
+  $("playBox").hidden = true;
+}
+
+function togglePlay() {
+  const p = player;
+  if (!p) return;
+  if (p.playing) return p.pause();
+  try {
+    p.play().catch(showError);
+  } catch (e) {
+    showError(e); // no Web Audio
+  }
+}
+
+/** The player started, paused, stopped or jumped: the controls and the cursor. */
+function musicChanged() {
+  const p = player;
+  if (!p) return;
+  const b = $<HTMLButtonElement>("play");
+  b.disabled = false;
+  b.textContent = p.playing ? "❚❚" : "▶";
+  b.title = p.playing ? "pause (Space)" : "play (Space)";
+  b.setAttribute("aria-label", p.playing ? "pause" : "play");
+  $<HTMLButtonElement>("stopPlay").disabled = p.state === "stopped";
+  follow();
+}
+
+/** The time and the cursor, every frame while the music plays. */
+function follow() {
+  cancelAnimationFrame(playFrame);
+  playFrame = 0;
+  const p = player;
+  if (!p) return;
+  const at = p.position;
+  $("playTime").textContent = `${minutes(at)} / ${minutes(p.duration)}`;
+  placeCursor(p.state === "stopped" ? null : p.cursorAt(at));
+  if (p.playing) playFrame = requestAnimationFrame(follow);
+}
+
+/** Seconds as m:ss (h:mm:ss from an hour). */
+function minutes(seconds: number): string {
+  const s = Math.floor(seconds);
+  const ss = String(s % 60).padStart(2, "0");
+  return s < 3600 ? `${Math.floor(s / 60)}:${ss}` : `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${ss}`;
+}
+
+/**
+ * Put the bar where the music is, the height of its system, on its page.
+ * Coming to another system brings it into view: the book turns to its page,
+ * the scrolled pages scroll to it.
+ */
+function placeCursor(c: Cursor | null) {
+  const v = current;
+  if (!c || !v?.pages?.[c.page] || continuous(v)) {
+    cursor.remove();
+    if (!c) followed = undefined;
+    return;
+  }
+  const moved = !followed || followed.page !== c.page || followed.system !== c.system;
+  followed = { page: c.page, system: c.system };
+  if (book && moved && !book.pages.includes(c.page)) book.go(c.page, true);
+  const el = stage.querySelector<HTMLElement>(`.page[data-index="${c.page}"]`);
+  if (!el) {
+    cursor.remove();
+    return;
+  }
+  const scale = book?.scale ?? zoom;
+  if (cursor.parentElement !== el) el.append(cursor);
+  cursor.style.left = `${c.x * scale}px`;
+  cursor.style.top = `${c.y * scale}px`;
+  cursor.style.height = `${c.h * scale}px`;
+  if (!book) reveal(el, c, moved);
+}
+
+/**
+ * Scroll the stage to the system the music has come to when it is not all
+ * in view, and along with the cursor when it runs off the side (zoomed in).
+ */
+function reveal(el: HTMLElement, c: Cursor, moved: boolean) {
+  const s = stage.getBoundingClientRect(), r = el.getBoundingClientRect();
+  const top = r.top - s.top + c.y * zoom, h = c.h * zoom;
+  const x = r.left - s.left + c.x * zoom;
+  const vw = stage.clientWidth, vh = stage.clientHeight;
+  const across = x >= 16 && x <= vw - 16;
+  let left = stage.scrollLeft, down = stage.scrollTop;
+  // a quarter down the stage, or centered when it is tall
+  if (moved && (top < 0 || top + h > vh)) down += top - Math.max(0, Math.min(vh / 4, (vh - h) / 2));
+  if (!across && (moved || cursorInView)) left += x - vw / 4;
+  cursorInView = across;
+  if (left !== stage.scrollLeft || down !== stage.scrollTop) stage.scrollTo({ left, top: down, behavior: "smooth" });
+}
+
+/** Play from the place of a system clicked on (page units); false when no system of the music is there. */
+function playFrom(page: number, x: number, y: number): boolean {
+  const p = player;
+  if (!p?.cues) return false;
+  const pad = 4;
+  const i = p.cues.systems.findIndex((s) => s.page === page && x >= s.x - pad && x <= s.x + s.w + pad && y >= s.y - pad && y <= s.y + s.h + pad);
+  const t = i < 0 ? null : p.timeAt(i, x);
+  if (t === null) return false;
+  p.seek(t);
+  return true;
 }
 
 const BAND = 800;

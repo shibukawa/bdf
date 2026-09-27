@@ -169,6 +169,11 @@ export const CASES: Case[] = [
   { name: "epub-basic-svg", src: "/testdata/epub/basic.bdf", kind: "page", view: "pages", page: 5, scale: 1 },
   { name: "epub-vertical-math", src: "/testdata/epub/vertical.bdf", kind: "page", view: "pages", page: 4, scale: 1 },
   { name: "epub-fixed-svg", src: "/testdata/epub/fixed.bdf", kind: "page", view: "pages", page: 4, scale: 0.5 },
+  // Scores engraved by the music converters with the test fonts; see test/music. A round in four parts for the NES
+  // (MML), a karaoke MIDI file with its words, and a piano minuet on a grand staff (MusicXML).
+  { name: "music-frere-1", src: "/testdata/music/frere-mml.bdf", kind: "page", view: "score", page: 0, scale: 1 },
+  { name: "music-twinkle-kar-1", src: "/testdata/music/twinkle-kar.bdf", kind: "page", view: "score", page: 0, scale: 1 },
+  { name: "music-minuet-1", src: "/testdata/music/minuet-musicxml.bdf", kind: "page", view: "score", page: 0, scale: 1 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

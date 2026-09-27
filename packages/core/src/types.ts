@@ -88,6 +88,19 @@ export interface View {
   gridlines?: boolean;
   tiles?: Record<string, Hash>;
   tilesRef?: Hash;
+  /** The music the view plays (docs/spec.md §4.4). */
+  play?: Play;
+}
+
+/**
+ * The music of a view (docs/spec.md §4.4): a Standard MIDI File, and cues
+ * that tie its time to places on the pages. Read it with BdfDocument.play.
+ */
+export interface Play {
+  /** The "seq" part: a Standard MIDI File. */
+  seq: Hash;
+  /** The cue index part ("idx"), if any. */
+  cues?: Hash;
 }
 
 export interface Page {
@@ -101,7 +114,7 @@ export interface RectDef { x: number; y: number; w: number; h: number }
 
 export interface Layer { role: string; obj: Hash }
 
-export type PartType = "obj" | "font" | "img" | "path" | "idx" | "sealed";
+export type PartType = "obj" | "font" | "img" | "path" | "idx" | "seq" | "sealed";
 export type Encoding = "identity" | "deflate-raw";
 
 export interface PartEntry {

@@ -1,4 +1,4 @@
-import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdf/core";
+import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions, Cues } from "@bdf/core";
 import type { HitRect } from "./search.js";
 
 /** How the worker should open a document. */
@@ -6,6 +6,12 @@ export type OpenSource =
   | { kind: "buffer"; buffer: ArrayBuffer }
   | { kind: "single"; url: string; range?: boolean }
   | { kind: "split"; base: string };
+
+/** The music of a view (spec §4.4): its Standard MIDI File, and its cues when it has them. */
+export interface PlayData {
+  seq: ArrayBuffer;
+  cues: Cues | null;
+}
 
 /** Settings of the worker for a document. */
 export interface WorkerOpenOptions {
@@ -32,9 +38,11 @@ export type WorkerRequest =
   | { id: number; type: "sheetContent"; view: string; viewport: Rect | Rect[] }
   | { id: number; type: "search"; view: string; query: string; options?: SearchOptions }
   | { id: number; type: "locate"; view: string; hits: SearchHit[] }
+  /** The music of a view; null when it has none. */
+  | { id: number; type: "play"; view: string }
   | { id: number; type: "close" };
 
-export type WorkerResult = Manifest | ImageBitmap | TextRun[] | TextContent | SearchHit[] | HitRect[][] | null;
+export type WorkerResult = Manifest | ImageBitmap | TextRun[] | TextContent | SearchHit[] | HitRect[][] | PlayData | null;
 
 /** Why an open or unlock failed, when the viewer should ask for a password. */
 export type WorkerErrorCode = "password-required" | "wrong-password";

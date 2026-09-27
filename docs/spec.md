@@ -44,7 +44,8 @@ BDF
     ├── Font（WOFF2 等、そのままのバイト列）
     ├── Image（PNG/JPEG/WebP/AVIF/SVG など、そのままのバイト列）
     ├── Path collection（パス群のバイナリ）
-    └── Index（大きなページ表・タイル表）
+    ├── Index（大きなページ表・タイル表・テキスト索引・再生の cue）
+    └── Seq（View が演奏する音楽。Standard MIDI File）
 ```
 
 ### 3.1 内容アドレス（content addressing）
@@ -210,7 +211,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 }
 ```
 
-`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx`。暗号化した文書の外側の manifest では `sealed`（§3.5）。
+`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx` / `seq`（§4.4）。暗号化した文書の外側の manifest では `sealed`（§3.5）。
 
 ### 4.1 View の種類
 
@@ -251,7 +252,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `ai` / `psd` / `pptx` / `xlsx` / `csv` / `parquet` / `vsdx` / `vdx` / `drawio` / `dxf` / `jww` / `sfc` / `p21` / `cgm` / `hpgl` / `gerber` / `emf` / `wmf` / `tiff` / `png` / `jpeg` / `gif` / `webp` / `avif` / `bmp` / `ico` / `svg` / `html` / `markdown` / `epub` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `ai` / `psd` / `pptx` / `xlsx` / `csv` / `parquet` / `vsdx` / `vdx` / `drawio` / `dxf` / `jww` / `sfc` / `p21` / `cgm` / `hpgl` / `gerber` / `emf` / `wmf` / `tiff` / `png` / `jpeg` / `gif` / `webp` / `avif` / `bmp` / `ico` / `svg` / `html` / `markdown` / `epub` / `mml` / `midi` / `musicxml` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -321,6 +322,46 @@ PDF と TIFF の対応は、XMP が文書情報辞書と TIFF のタグを写す
 | `modified` | `xmp:ModifyDate`、`dcterms:modified`（なければ `tiff:DateTime`） | `DateTime` と `OffsetTime` | – | PNG の `tIME` |
 
 `bdf generate` の `-dc 要素名=値`（繰り返し可）で要素を上書きでき、`-dc 要素名=` でその要素を消せる。
+
+### 4.4 演奏（play）
+
+楽譜（MML、MIDI、MusicXML から組んだもの）の View は、その音楽を `play` に持てる。BDF に音楽の命令はなく、楽譜は線・パス・文字の描画になる（§7）。`play` は描画とは別に、ビューアが音を鳴らし、鳴っている位置をページの上に示すためのもの。
+
+```jsonc
+{ "id": "score", "kind": "fixed", "title": "楽譜",
+  "pages": [ … ],
+  "play": { "seq": "<hash>",      // t: seq の Part（Standard MIDI File）
+            "cues": "<hash>" } }  // 任意: t: idx の cue 索引 Part
+```
+
+**`seq` Part** — Standard MIDI File（SMF、フォーマット 0 か 1）のバイト列そのもの。MIDI の入力はそのファイルをそのまま格納し、MML と MusicXML は変換器が書き出す。ビューアは SMF を読み、テンポ（`FF 51`）に従って音を合成する（Web Audio API）。音色は General MIDI のプログラム番号（チャンネル 10 は打楽器）で、ビューアはそれに近い音で鳴らせばよい（音源は規定しない）。次のコントローラーも解釈してよい。
+
+| CC | 意味 |
+|---|---|
+| 7 | チャンネルの音量 |
+| 10 | パン |
+| 11 | エクスプレッション |
+| 70 | 矩形波のデューティー比（プログラム 80 Square Lead のとき。0〜31 = 50%、32〜63 = 12.5%、64〜95 = 25%、96〜127 = 75%）。MML の矩形波の音色の区別 |
+
+**cue 索引 Part** — 演奏の時刻とページの上の位置を結ぶ表。
+
+```
+u8[4]   "BCUE"
+u16     version (1)
+varuint nSystems
+system ×n:
+  varuint page     View のページ番号（0 始まり）
+  f32     x y w h  鳴っている位置が動く矩形（楽譜の段。unit）
+varuint nCues
+cue ×n（時刻順）:
+  varuint dt       前の cue からの時刻の差（最初は 0 から）。単位は seq の SMF の tick（ヘッダーの division）
+  varuint system   段の番号
+  f32     x        その時刻に鳴っている位置の x（unit、ページの座標）
+```
+
+- 時刻 t の位置は、tick が t 以下の最後の cue の段の上にある。次の cue が同じ段にあれば x は 2 つの cue の間を tick で線形に補間し、別の段にある（または次がない）なら x のまま動かない。同じ tick の cue が続くときは後のものが効く（小節の終わりと次の段の始まり）。
+- 繰り返し記号などで同じ場所を 2 回以上演奏するときは、その回数だけ cue が並ぶ。
+- ビューアは位置を段の矩形の高さの縦線などで示し、位置のある段が見えるようにページを送る。
 
 ## 5. Object Part
 

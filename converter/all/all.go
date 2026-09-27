@@ -22,6 +22,9 @@ import (
 	_ "github.com/shibukawa/bdf/converter/image"    // images browsers display (PNG, JPEG, SVG …)
 	_ "github.com/shibukawa/bdf/converter/jww"      // Jw_cad
 	_ "github.com/shibukawa/bdf/converter/markdown" // Markdown, in reader mode
+	_ "github.com/shibukawa/bdf/converter/midi"     // Standard MIDI Files, as scores
+	_ "github.com/shibukawa/bdf/converter/mml"      // Music Macro Language, as scores
+	_ "github.com/shibukawa/bdf/converter/musicxml" // MusicXML scores
 	_ "github.com/shibukawa/bdf/converter/parquet"  // Apache Parquet
 	_ "github.com/shibukawa/bdf/converter/pdf"      // PDF
 	_ "github.com/shibukawa/bdf/converter/pptx"     // PowerPoint

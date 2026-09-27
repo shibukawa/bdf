@@ -32,6 +32,8 @@ const (
 	PartImage  = "img"
 	PartPath   = "path"
 	PartIndex  = "idx"
+	// PartSeq is a Standard MIDI File that a view plays (docs/spec.md §4.4).
+	PartSeq = "seq"
 	// PartSealed is the type of the parts of an encrypted document's outer
 	// manifest (docs/spec.md §3.5).
 	PartSealed = "sealed"
@@ -92,6 +94,18 @@ type View struct {
 	Gridlines bool              `json:"gridlines,omitempty"`
 	Tiles     map[string]string `json:"tiles,omitempty"`
 	TilesRef  string            `json:"tilesRef,omitempty"`
+
+	// Play is the music a view plays (docs/spec.md §4.4).
+	Play *Play `json:"play,omitempty"`
+}
+
+// Play is the music of a view: a Standard MIDI File, and cues that tie its
+// time to places on the pages (docs/spec.md §4.4).
+type Play struct {
+	// Seq is the hash of the PartSeq part.
+	Seq string `json:"seq"`
+	// Cues is the hash of the cue index part (PartIndex), if any.
+	Cues string `json:"cues,omitempty"`
 }
 
 // Run is a run-length entry [count, size] for sheet rows/columns.
