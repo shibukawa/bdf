@@ -248,6 +248,19 @@ export class ResourceCache {
     return p;
   }
 
+  /**
+   * Whether text in a CSS font is drawn in the font's own faces: none of
+   * them in the font set is still to load (the embedded fonts are loaded
+   * by prepare; a page's own web fonts may load later).
+   */
+  fontLoaded(font: string): boolean {
+    try {
+      return this.fontSet?.check(font) ?? true;
+    } catch {
+      return false;
+    }
+  }
+
   /** A bitmap image; for an SVG image, the raster drawn last. */
   image(hash: Hash): ImageBitmap {
     const img = this.images.get(hash) ?? this.vectors.get(hash)?.latest();

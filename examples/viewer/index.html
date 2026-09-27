@@ -60,7 +60,7 @@
   /* cells are selected, not text (main.ts showSheet) */
   .sheet { position: relative; cursor: cell; -webkit-user-select: none; user-select: none; }
   .sheet canvas { position: sticky; top: 0; left: 0; display: block; }
-  /* the text layer of a sheet, under its headers; frozen cells are pinned with --sx and --sy */
+  /* the text layer of a sheet, under its headers; frozen cells are moved with the scroll (main.ts showSheet) */
   .sheetText { position: absolute; }
   /* holds the page's selection while cells are selected, so that copy fires: selectable, out of sight */
   .cellHold { position: fixed; left: 0; top: 0; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: pre; -webkit-user-select: text; user-select: text; }

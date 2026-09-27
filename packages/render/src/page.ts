@@ -162,9 +162,11 @@ export class PageRenderer {
       }
       ctx.translate(-b.x, -b.y);
       const roleSet = new Set(roles);
+      // the part of the page in the viewport, in page units
+      const seen = { x: viewport.x + b.x, y: viewport.y - offsets[i] + b.y, w: viewport.w, h: viewport.h };
       for (const layer of p.layers) {
         if (!roleSet.has(layer.role)) continue;
-        this.renderer.draw(ctx, this.res.object(layer.obj));
+        this.renderer.draw(ctx, this.res.object(layer.obj), true, seen);
       }
       ctx.restore();
     }
@@ -216,7 +218,8 @@ export class PageRenderer {
       ctx.beginPath();
       ctx.rect(0, 0, tile, tile);
       ctx.clip();
-      this.renderer.draw(ctx, this.res.object(h));
+      // a region shows a part of a tile: the rest of its cells are skipped
+      this.renderer.draw(ctx, this.res.object(h), true, { x: viewport.x - tx * tile, y: viewport.y - ty * tile, w: viewport.w, h: viewport.h });
       ctx.restore();
     }
     ctx.restore();
