@@ -546,11 +546,11 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 | 種類 | レイアウト |
 |---|---|
 | Word、HTML、Markdown | 1 ページ目（scroll View は先頭）の左上から、ページの幅の正方形（Crop） |
-| Excel、CSV、Parquet | 最初のシートの A1 から、シートの短い辺の正方形。上限は 480 単位で、既定の列幅なら 10 列・32 行ほど。枠線はビューアと同じく描く |
+| Excel、CSV、Parquet | 最初のシートの A1 から、サムネイルの大きさを 72 dpi（1 単位が 1 画素）で描く正方形。96〜480 単位で、シートより大きくはしない。既定の行の高さ（15 単位）なら 64 画素で 6 行、128 画素で 8 行、256 画素で 17 行、512 画素以上で 32 行ほど。枠線はビューアと同じく描く |
 | PDF、TIFF | 縦長のページは文書として Crop、横長のページはスライドとして全体（Fit） |
 | PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB | 1 ページ目の全体を、長辺が指定の大きさになるように（Fit）。EPUB は 1 ページ目が表紙 |
 
-`-thumbnail-mode crop|fit`（`Options.Mode`）で指定もできる。Fit の出力は正方形にしない（縦横比を保つ）。並べるときは CSS の `object-fit: contain` で収めればよい。出力は PNG、JPEG、WebP（`imgconv` の純 Go のエンコーダ）。
+`-thumbnail-mode crop|fit`（`Options.Mode`）で指定もできる。シートの範囲を初めはシートの短い辺（480 単位まで）にしていたが、256 画素のサムネイルでは 1 行が 8 画素ほどになり字が潰れた。行や列の数ではなく解像度で決めれば、小さいサムネイルほど狭い範囲を、同じ大きさの字で見せられる。下限は 64 画素でも表に見えるだけの行と列（既定の列幅で 1 列半）を残すため、上限は大きいサムネイルでも A1 の角を見せるためである。解像度は `-thumbnail-sheet-dpi`（`Options.SheetDPI`）で変えられる。Fit の出力は正方形にしない（縦横比を保つ）。並べるときは CSS の `object-fit: contain` で収めればよい。出力は PNG、JPEG、WebP（`imgconv` の純 Go のエンコーダ）。
 
 **検索用テキスト**（`Document.SearchText`）はテキスト索引 Part（§4、spec §7.9）から作る。ビューアの検索と同じものなので、変換器が MARK で付けた区切り（行・段落・セル）がそのまま使える。索引のない View は Object から取り出す。ページ番号（1 始まり）は検索のヒットから `#page=N` で開くのに使える。シートはシート全体で 1 つにする。Word・Markdown・EPUB は同じ本文を page View と scroll View の両方に組むことがあるので、flow View がある文書では scroll View を除く。正規化（NFKC、かな）は検索エンジンに任せ、テキストはそのまま出す。
 

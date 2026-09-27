@@ -275,7 +275,7 @@ BDF_PASSWORD=… go run ./cmd/bdf encrypt in.bdf out.bdf       # encrypt an exis
 # thumbnails, search text and page images (drawn in Go, no browser)
 go run ./cmd/bdf generate -thumbnail thumb.webp -text text.json in.docx out.bdf  # also write a thumbnail (.png, .jpg, .webp) and the text as JSON
 go run ./cmd/bdf generate -thumbnail thumb.png -thumbnail-size 512 -thumbnail-mode fit in.pptx out.bdf  # 512 px; crop, fit or auto (default: by the kind of document)
-go run ./cmd/bdf thumbnail -size 256 out.bdf thumb.png       # the thumbnail of a bdf (-mode, -view, -font-dir, -no-system-fonts)
+go run ./cmd/bdf thumbnail -size 256 out.bdf thumb.png       # the thumbnail of a bdf (-mode, -view, -sheet-dpi, -font-dir, -no-system-fonts)
 go run ./cmd/bdf text out.bdf text.json                      # the metadata and the text of each page as JSON (default: to stdout)
 go run ./cmd/bdf render -page 2 -scale 2 out.bdf page2.png   # a page at 2 pixels per unit (sheets: -width, -height from A1)
 BDF_PASSWORD=… go run ./cmd/bdf thumbnail -allow-plaintext enc.bdf thumb.png  # an encrypted document only with -allow-plaintext (generate: the same flag)

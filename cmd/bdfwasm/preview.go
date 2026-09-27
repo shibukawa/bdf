@@ -60,6 +60,9 @@ func thumbnailCall(_ js.Value, args []js.Value) any {
 	if opts.Size < 1 || opts.Size > maxThumbnail {
 		return reject(fmt.Errorf("thumbnail: size must be from 1 to %d", maxThumbnail))
 	}
+	if v := option(args, "sheetDpi"); v.Type() == js.TypeNumber {
+		opts.SheetDPI = v.Float()
+	}
 	mode, err := thumbnail.ParseMode(str(args, "mode"))
 	if err != nil {
 		return reject(err)

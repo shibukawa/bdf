@@ -272,7 +272,7 @@ BDF_PASSWORD=… go run ./cmd/bdf encrypt in.bdf out.bdf             # 既存の
 # サムネイル・検索用テキスト・ページの画像（Go で描く。ブラウザは要らない）
 go run ./cmd/bdf generate -thumbnail thumb.webp -text text.json in.docx out.bdf  # サムネイル（.png、.jpg、.webp）とテキストの JSON も書き出す
 go run ./cmd/bdf generate -thumbnail thumb.png -thumbnail-size 512 -thumbnail-mode fit in.pptx out.bdf  # 512 px。crop、fit、auto（既定: 文書の種類で決める）
-go run ./cmd/bdf thumbnail -size 256 out.bdf thumb.png             # bdf のサムネイル（-mode、-view、-font-dir、-no-system-fonts）
+go run ./cmd/bdf thumbnail -size 256 out.bdf thumb.png             # bdf のサムネイル（-mode、-view、-sheet-dpi、-font-dir、-no-system-fonts）
 go run ./cmd/bdf text out.bdf text.json                            # メタデータとページごとのテキストを JSON で（既定は標準出力）
 go run ./cmd/bdf render -page 2 -scale 2 out.bdf page2.png         # 2 ページ目を 1 単位 2 画素で（シートは A1 から -width、-height の範囲）
 BDF_PASSWORD=… go run ./cmd/bdf thumbnail -allow-plaintext enc.bdf thumb.png  # 暗号化した文書は -allow-plaintext のときだけ（generate も同じフラグ）

@@ -91,6 +91,37 @@ func TestCropIsTopLeft(t *testing.T) {
 	}
 }
 
+// TestSheetSide checks the square of a sheet a thumbnail shows: Size pixels
+// at SheetDPI, from MinSheetSide to MaxSheetSide units.
+func TestSheetSide(t *testing.T) {
+	d := open(t, "../testdata/xlsx/basic.bdf")
+	v := d.Views[0]
+	for _, c := range []struct {
+		size int
+		dpi  float64
+		side float32
+	}{
+		{512, 0, 480}, // at most MaxSheetSide
+		{256, 0, 256}, // a unit a pixel
+		{128, 0, 128},
+		{64, 0, 96},     // at least MinSheetSide
+		{256, 144, 128}, // twice as fine: half as many cells
+		{256, 36, 480},
+	} {
+		res, err := Make(d, &Options{Size: c.size, SheetDPI: c.dpi, Raster: testRaster})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := raster.New(d, &testRaster).Region(v, 0, bdf.Rect{W: c.side, H: c.side}, c.size, c.size)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(res.Image.Pix, want.Pix) {
+			t.Errorf("size %d at %g dpi: not the %g-unit square from A1", c.size, c.dpi, c.side)
+		}
+	}
+}
+
 func TestSizeAndView(t *testing.T) {
 	d := open(t, "../testdata/drawio/multipage.bdf")
 	res, err := Make(d, &Options{Size: 100, View: "details", Raster: testRaster})

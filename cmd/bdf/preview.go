@@ -24,6 +24,7 @@ type previewFlags struct {
 	thumbnail      *string
 	size           *int
 	mode           *string
+	sheetDPI       *float64
 	text           *string
 	allowPlaintext *bool
 }
@@ -33,6 +34,7 @@ func addPreviewFlags(fs *flag.FlagSet) *previewFlags {
 		thumbnail:      fs.String("thumbnail", "", "also write a thumbnail image of the document (.png, .jpg or .webp; see bdf thumbnail)"),
 		size:           fs.Int("thumbnail-size", thumbnail.DefaultSize, "thumbnail size in pixels: the side of a cropped one, the longer side of a fitted one"),
 		mode:           fs.String("thumbnail-mode", "auto", "thumbnail layout: auto, crop (a square from the top-left of the first page) or fit (the whole first page)"),
+		sheetDPI:       fs.Float64("thumbnail-sheet-dpi", thumbnail.DefaultSheetDPI, sheetDPIUsage),
 		text:           fs.String("text", "", "also write the text of the document for a search index, as JSON (- for the standard output; see bdf text)"),
 		allowPlaintext: fs.Bool("allow-plaintext", false, "write the thumbnail and text of an encrypted document too (they are not encrypted)"),
 	}
@@ -52,12 +54,15 @@ func (p *previewFlags) write(doc *bdf.Document, ropts raster.Options, quiet bool
 		if err != nil {
 			usageError(err.Error())
 		}
-		check(writeThumbnail(doc, *p.thumbnail, &thumbnail.Options{Size: *p.size, Mode: mode, Raster: ropts}, quiet))
+		check(writeThumbnail(doc, *p.thumbnail, &thumbnail.Options{Size: *p.size, Mode: mode, SheetDPI: *p.sheetDPI, Raster: ropts}, quiet))
 	}
 	if *p.text != "" {
 		check(writeText(doc, *p.text))
 	}
 }
+
+// sheetDPIUsage explains -sheet-dpi and -thumbnail-sheet-dpi.
+const sheetDPIUsage = "resolution of a sheet in the thumbnail: the square from A1 is the size at this dpi (a smaller thumbnail shows fewer cells), 96 to 480 units"
 
 func writeThumbnail(doc *bdf.Document, out string, opts *thumbnail.Options, quiet bool) error {
 	format := thumbnail.FormatOf(out)
@@ -137,6 +142,7 @@ func thumbnailCmd(args []string) {
 	size := fs.Int("size", thumbnail.DefaultSize, "size in pixels: the side of a cropped thumbnail, the longer side of a fitted one")
 	mode := fs.String("mode", "auto", "layout: auto (from the kind of document), crop (a square from the top-left of the first page) or fit (the whole first page)")
 	view := fs.String("view", "", "id of the view to draw (default: the first)")
+	sheetDPI := fs.Float64("sheet-dpi", thumbnail.DefaultSheetDPI, sheetDPIUsage)
 	allow := fs.Bool("allow-plaintext", false, "draw an encrypted document (read with $"+passwordEnv+"); the thumbnail is not encrypted")
 	quiet := fs.Bool("q", false, "do not print warnings")
 	ropts := fontFlags(fs)
@@ -154,7 +160,7 @@ func thumbnailCmd(args []string) {
 		badUsage("thumbnail", err.Error())
 	}
 	doc := loadDocument(fs.Arg(0), *allow)
-	check(writeThumbnail(doc, fs.Arg(1), &thumbnail.Options{Size: *size, Mode: m, View: *view, Raster: ropts()}, *quiet))
+	check(writeThumbnail(doc, fs.Arg(1), &thumbnail.Options{Size: *size, Mode: m, View: *view, SheetDPI: *sheetDPI, Raster: ropts()}, *quiet))
 }
 
 // textCmd writes the text of a document for a search index.
