@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/xmp"
 )
 
 // picture is what the reader of a format found in an image.
@@ -98,10 +99,8 @@ func readPNG(b []byte) (*picture, error) {
 			p.exif = append(p.exif, data)
 		case "tIME":
 			if len(data) == 7 {
-				f := [6]int{int(be.Uint16(data)), int(data[2]), int(data[3]), int(data[4]), int(data[5]), int(data[6])}
-				if validDate(f, 6) {
-					p.setText(&p.native.Modified, w3cdtf(f, 6, "Z"))
-				}
+				p.setText(&p.native.Modified, isoDate(fmt.Sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ",
+					be.Uint16(data), data[2], data[3], data[4], data[5], data[6])))
 			}
 		case "acTL":
 			p.animated = len(data) >= 4 && be.Uint32(data) > 1
@@ -109,7 +108,7 @@ func readPNG(b []byte) (*picture, error) {
 			off = len(b)
 		}
 	}
-	if len(p.native.Description) == 0 && !placeholder(comment) {
+	if len(p.native.Description) == 0 && !xmp.Placeholder(comment) {
 		p.setText(&p.native.Description, comment)
 	}
 	return p, nil
@@ -287,7 +286,7 @@ loop:
 		}
 	}
 	p.animated = frames > 1
-	if !placeholder(comment) {
+	if !xmp.Placeholder(comment) {
 		add(&p.native.Description, comment)
 	}
 	return p, nil

@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/xmp"
 )
 
 // photoshopIPTC returns the IPTC-IIM block of Photoshop image resources
@@ -91,7 +92,7 @@ func parseIPTC(b []byte) bdf.DublinCore {
 				add(&dc.Rights, v)
 			}
 		case 120: // caption / abstract
-			if len(dc.Description) == 0 && !placeholder(v) {
+			if len(dc.Description) == 0 && !xmp.Placeholder(v) {
 				add(&dc.Description, v)
 			}
 		}
