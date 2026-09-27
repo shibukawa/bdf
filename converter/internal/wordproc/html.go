@@ -23,6 +23,10 @@ type HTMLDocument struct {
 	// Body holds the content: a parsed document, its body, or the element
 	// that holds the article.
 	Body *html.Node
+	// Chapters, when there are any, hold the content instead of Body: the
+	// documents of a book, laid out one after the other, each from the top
+	// of a page in the page view.
+	Chapters []HTMLChapter
 	// DC is the document's metadata. Its language is that of the text
 	// whose elements do not say.
 	DC bdf.DublinCore
@@ -43,7 +47,38 @@ type HTMLDocument struct {
 	// Links to elements of the document itself ("#id") are resolved by the
 	// layout.
 	Link func(href string) string
+	// Page is the paper of the page view; the zero value is A4 with margins
+	// of 2 cm.
+	Page PageSetup
+	// Folios numbers the pages of the page view at their foot.
+	Folios bool
 }
+
+// HTMLChapter is a document of a book (a content document of an EPUB).
+type HTMLChapter struct {
+	// Body holds the chapter: a parsed document or its body.
+	Body *html.Node
+	// ID is a target of links at the chapter's start ("#" + ID).
+	ID string
+	// Vertical lays the chapter out as East Asian vertical text in the page
+	// view (the scroll view is horizontal).
+	Vertical bool
+	// NoFolio leaves the page numbers off the chapter's pages.
+	NoFolio bool
+	// Picture lays out a chapter that is one picture (a cover, a full-page
+	// illustration) on a page without margins, the picture fitted to the
+	// page and centered on it.
+	Picture bool
+}
+
+// PageSetup is the paper of the page view: its size and margins in points.
+type PageSetup struct {
+	Width, Height            float64
+	Top, Bottom, Left, Right float64
+}
+
+// A4 is the default paper of HTML documents: A4 with margins of 2 cm.
+var A4 = PageSetup{Width: 595.3, Height: 841.9, Top: 56.7, Bottom: 56.7, Left: 56.7, Right: 56.7}
 
 // The reader style sheet. Lengths are in ems of the text size.
 var (
@@ -131,19 +166,89 @@ func ConvertHTML(d *HTMLDocument, opts *Options) (res *Result, err error) {
 	if r.mono == "" {
 		r.mono = c.monoFamily()
 	}
+	c.folioFonts = [4]string{r.font, r.font, r.font, r.font}
 	lang := d.DC.Language.First()
 	root := &hstyle{rp: &rprops{fonts: [4]string{r.font, r.font, r.font, r.font}, sz: size, color: textColor, u: "none", scale: 1,
 		lang: [3]string{lang, lang, ""}}, jc: "left", lh: bodyLH}
-	var blocks []block
-	if d.Body != nil {
-		blocks = r.read(d.Body, root, false)
+	pg := d.Page
+	if pg.Width <= 0 || pg.Height <= 0 {
+		pg = A4
 	}
-	// A4 pages with margins of 2 cm; the scroll view is c.scrollWidth wide
-	sec := &section{pgW: 595.3, pgH: 841.9, top: 56.7, bottom: 56.7, left: 56.7, right: 56.7, header: 28.35, footer: 28.35,
-		typ: "nextPage", pgStart: -1, pgFmt: "decimal", hdr: map[string]string{}, ftr: map[string]string{}, blocks: blocks}
-	sec.cols = []column{{0, sec.textWidth()}}
-	c.sections = []*section{sec}
+	// the scroll view is c.scrollWidth wide
+	newSection := func(blocks []block, vertical, folio bool) *section {
+		sec := &section{pgW: pg.Width, pgH: pg.Height, top: pg.Top, bottom: pg.Bottom, left: pg.Left, right: pg.Right,
+			header: pg.Top / 2, footer: pg.Bottom / 2, typ: "nextPage", pgStart: -1, pgFmt: "decimal",
+			hdr: map[string]string{}, ftr: map[string]string{}, blocks: blocks, vertical: vertical, folio: folio}
+		sec.cols = []column{{0, sec.lineLength()}}
+		return sec
+	}
+	if len(d.Chapters) == 0 {
+		var blocks []block
+		if d.Body != nil {
+			blocks = r.read(d.Body, root, false)
+		}
+		c.sections = []*section{newSection(blocks, false, d.Folios)}
+	}
+	for _, ch := range d.Chapters {
+		if ch.ID != "" {
+			r.bookmark(ch.ID)
+		}
+		st := root
+		if ch.Vertical {
+			st = root.child()
+			st.tight = true
+		}
+		var blocks []block
+		if ch.Body != nil {
+			blocks = r.read(ch.Body, st, false)
+		}
+		sec := newSection(blocks, ch.Vertical, d.Folios && !ch.NoFolio)
+		if ch.Picture {
+			sec.vertical = false
+			sec.left, sec.right, sec.top, sec.bottom = 0, 0, 0, 0
+			sec.cols = []column{{0, sec.lineLength()}}
+			if h := pictureHeight(blocks, sec.pgW, sec.pgH); h > 0 {
+				sec.top = (sec.pgH - h) / 2
+			}
+		}
+		c.sections = append(c.sections, sec)
+	}
+	if len(c.sections) == 0 {
+		c.sections = []*section{newSection(nil, false, false)}
+	}
 	return c.finish(views), nil
+}
+
+// pictureHeight returns the height a chapter that is one picture takes on
+// a page: the picture's, shrunk to fit the page, or for a picture that
+// fills the line (an SVG with only a view box) as large as the page allows
+// (0 when the blocks are not one picture).
+func pictureHeight(blocks []block, w, h float64) float64 {
+	if len(blocks) != 1 {
+		return 0
+	}
+	p, ok := blocks[0].(*para)
+	if !ok {
+		return 0
+	}
+	var o *inlineObj
+	for _, it := range p.items {
+		switch {
+		case it.kind == kObject && o == nil:
+			o = it.obj
+		case it.kind == kChar && isHTMLSpace(it.r):
+		default:
+			return 0
+		}
+	}
+	if o == nil || o.w <= 0 || o.h <= 0 {
+		return 0
+	}
+	s := min(w/o.w, h/o.h)
+	if !o.fill {
+		s = min(s, 1)
+	}
+	return o.h * s
 }
 
 // monoFamily picks an installed family for code: a known one, else the
@@ -182,6 +287,7 @@ type hstyle struct {
 	frames    []*frame // structure the content is in
 	listDepth int
 	figAlt    string // the caption of the figure the content is in
+	tight     bool   // paragraphs have no margins (East Asian vertical text)
 	tables    int    // tables and boxes the content is in
 	depth     int
 
@@ -507,6 +613,16 @@ func (r *htmlReader) node(n *html.Node, st *hstyle) {
 		st = st.chars()
 		st.rp.lang = [3]string{strings.TrimSpace(l), strings.TrimSpace(l), ""}
 	}
+	if emphasized(css) {
+		st = st.chars()
+		st.rp.em = "dot"
+	}
+	if combinedUpright(css) && !st.pre {
+		s := st.chars()
+		s.rp.tcyFit = true
+		r.combine(func() { r.children(n, s) })
+		return
+	}
 	switch n.DataAtom {
 	case atom.Svg:
 		r.inlineSVG(n, css, st)
@@ -516,7 +632,10 @@ func (r *htmlReader) node(n *html.Node, st *hstyle) {
 	case atom.P:
 		r.block(0, 0, func() {
 			s := r.blockStyle(n, css, st)
-			s.before, s.after = r.em(blockGap), r.em(blockGap)
+			if !st.tight {
+				// Japanese books set paragraphs one after the other
+				s.before, s.after = r.em(blockGap), r.em(blockGap)
+			}
 			r.children(n, s)
 		})
 	case atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6:
@@ -673,6 +792,47 @@ func (r *htmlReader) node(n *html.Node, st *hstyle) {
 	default:
 		// span, abbr, time, label, font, custom elements …: their content
 		r.children(n, st.child())
+	}
+}
+
+// combinedUpright reports whether an element's text is set horizontally in
+// one square of vertical text (tate-chu-yoko): CSS text-combine-upright,
+// or the older -webkit-text-combine and -epub-text-combine.
+func combinedUpright(css map[string]string) bool {
+	v := css["text-combine-upright"]
+	return v == "all" || strings.HasPrefix(v, "digits") ||
+		css["-webkit-text-combine"] == "horizontal" || css["-epub-text-combine"] == "horizontal"
+}
+
+// emphasized reports whether an element's text has emphasis marks
+// (text-emphasis, drawn as dots).
+func emphasized(css map[string]string) bool {
+	for _, k := range []string{"text-emphasis-style", "text-emphasis", "-webkit-text-emphasis-style", "-webkit-text-emphasis",
+		"-epub-text-emphasis-style"} {
+		if v := css[k]; v != "" && v != "none" && v != "initial" && v != "inherit" && v != "unset" {
+			return true
+		}
+	}
+	return false
+}
+
+// combine sets the characters that fn adds to the paragraph being filled
+// in one square of vertical text (horizontal text lines ignore it).
+func (r *htmlReader) combine(fn func()) {
+	p0, start := r.p, 0
+	if p0 != nil {
+		start = len(p0.items)
+	}
+	fn()
+	p := r.p
+	if p == nil || p0 != nil && p != p0 {
+		return
+	}
+	r.c.tcyGroups++
+	for i := start; i < len(p.items); i++ {
+		if it := &p.items[i]; it.kind == kChar && !isHTMLSpace(it.r) {
+			it.tcy = r.c.tcyGroups
+		}
 	}
 }
 

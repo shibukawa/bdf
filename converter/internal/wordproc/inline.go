@@ -39,6 +39,7 @@ type lineCtx struct {
 	allChars  bool    // every character takes whole cells, not only East Asian ones
 	expand    bool    // justify lines that end with a line break
 	vertical  bool    // East Asian vertical text: inline objects stand upright in the turned line
+	maxObj    float64 // how far across the lines a picture that fits (inlineObj.fit) may reach (0: no limit)
 }
 
 // indents returns a paragraph's left, right and first-line indents in
@@ -100,7 +101,7 @@ func (lc *lineCtx) breakLine(p *para, start int, first bool, left, right float64
 	}
 	// find the end: fill until the first item that does not fit (placing
 	// the items up to well past the right edge is enough to find it)
-	items := fitObjects(p.items[start:], right-x0)
+	items := lc.fitObjects(p.items[start:], right-x0)
 	end := len(items)
 	pos := lc.place(p, ln, items, x0, indL, first, right+2*math.Max(right-x0, 100))
 	if len(pos) < len(items) {
@@ -167,12 +168,29 @@ func (lc *lineCtx) breakLine(p *para, start int, first bool, left, right float64
 }
 
 // fitObjects shrinks the pictures that fit the line (inlineObj.fit) and
-// are wider than w, and scales those that fill it (inlineObj.fill) to w.
-func fitObjects(items []item, w float64) []item {
+// are longer than w along it, scales those that fill it (inlineObj.fill)
+// to w, and shrinks them further when they reach further across the lines
+// than lc.maxObj (the page, in the page view). Pictures in vertical text
+// stand upright: their height goes along the line.
+func (lc *lineCtx) fitObjects(items []item, w float64) []item {
 	copied := false
 	for i := range items {
 		it := &items[i]
-		if it.kind != kObject || w < 1 || !(it.obj.fit && it.w > w+0.01 || it.obj.fill && math.Abs(it.w-w) > 0.01) {
+		if it.kind != kObject || !it.obj.fit && !it.obj.fill || w < 1 {
+			continue
+		}
+		along, across := it.obj.w, it.obj.h
+		if lc.vertical {
+			along, across = across, along
+		}
+		s := 1.0
+		if it.obj.fill && math.Abs(along-w) > 0.01 || it.obj.fit && along > w+0.01 {
+			s = w / along
+		}
+		if lc.maxObj >= 1 && across*s > lc.maxObj+0.01 {
+			s = lc.maxObj / across
+		}
+		if s == 1 {
 			continue
 		}
 		if !copied {
@@ -181,7 +199,6 @@ func fitObjects(items []item, w float64) []item {
 			copied = true
 		}
 		o := *it.obj
-		s := w / it.w
 		o.w, o.h, o.ext = o.w*s, o.h*s, [4]float64{}
 		it.obj, it.w = &o, o.w
 	}
@@ -432,9 +449,15 @@ func (ln *line) metrics(lc *lineCtx) {
 				visible = true
 			}
 		case kObject:
-			if lc.vertical {
+			switch {
+			case lc.vertical && it.obj.central:
+				// centered on the middle of the characters' squares
+				across, mid := it.obj.w+it.obj.ext[0]+it.obj.ext[2], p.middle()
+				ln.asc = math.Max(ln.asc, mid+across/2)
+				ln.desc = math.Max(ln.desc, across/2-mid)
+			case lc.vertical:
 				ln.asc = math.Max(ln.asc, it.obj.w+it.obj.ext[0]+it.obj.ext[2])
-			} else {
+			default:
 				ln.asc = math.Max(ln.asc, it.obj.h+it.obj.ext[1]+it.obj.ext[3]-it.obj.desc)
 				ln.desc = math.Max(ln.desc, it.obj.desc)
 			}

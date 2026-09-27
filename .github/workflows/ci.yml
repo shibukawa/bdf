@@ -103,6 +103,11 @@ jobs:
           cmp /tmp/board-gerber.bdf testdata/gerber/board.bdf
           go run ./cmd/bdf generate -q converter/gerber/testdata/features.gbr /tmp/features-gerber.bdf
           cmp /tmp/features-gerber.bdf testdata/gerber/features.bdf
+          for f in converter/epub/testdata/*.epub; do
+            n=$(basename "$f" .epub)
+            go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts "$f" "/tmp/epub-$n.bdf"
+            cmp "/tmp/epub-$n.bdf" "testdata/epub/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:

@@ -7,9 +7,9 @@
 // converter/csv, converter/docx, converter/visio, converter/drawio,
 // converter/dxf, converter/jww, converter/sxf, converter/cgm,
 // converter/hpgl, converter/gerber, converter/emf, converter/tiff,
-// converter/image, converter/html, converter/markdown). Each registers its
-// format when it is imported, so a program supports the formats whose
-// packages it links in:
+// converter/image, converter/html, converter/markdown, converter/epub).
+// Each registers its format when it is imported, so a program supports the
+// formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -18,9 +18,10 @@
 // packages and their XML) with ooxml/drawingml (shapes, text, tables,
 // charts), fontset (fonts for text layout and their embedding), canvas
 // (objects under construction), metafile (EMF/WMF pictures) and linebreak
-// (line breaking rules); the Word, HTML and Markdown converters share the
-// layout engine wordproc, the CAD converters and HP-GL/2 share cad
-// (drawings plotted onto pages).
+// (line breaking rules); the Word, HTML, Markdown and EPUB converters share
+// the layout engine wordproc (and the last three webdoc, which parses HTML
+// and XHTML), the CAD converters and HP-GL/2 share cad (drawings plotted
+// onto pages).
 //
 // Password-protected inputs open with Options.Password. Encrypted Office
 // documents are decrypted here (converter/internal/offcrypto), before their
@@ -133,8 +134,8 @@ type Options struct {
 	// SystemFonts refers to fonts by family name instead of embedding them.
 	SystemFonts bool
 	// EmbedFonts embeds the fonts of the formats that refer to them by name
-	// unless told otherwise: HTML and Markdown, whose text is left to the
-	// viewer's fonts as a web page's is.
+	// unless told otherwise: HTML, Markdown and EPUB, whose text is left to
+	// the viewer's fonts as a web page's is.
 	EmbedFonts bool
 
 	// NoSubset embeds whole fonts instead of the glyphs in use.

@@ -155,6 +155,9 @@ type converter struct {
 	mathFont   string    // the formula font the document asks for
 	mathRun    *runStyle // the style of the text around the formula being laid out
 	ommlReader *equation.OMML
+
+	// folioFonts are the fonts of the page numbers of sections with folios.
+	folioFonts [4]string
 }
 
 // newConverter sets up the state of a conversion; views defaults to

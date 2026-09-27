@@ -154,6 +154,17 @@ export const CASES: Case[] = [
   { name: "gerber-board-bottom", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom", page: 0, scale: 0.75 },
   { name: "gerber-board-bottom-copper", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom-copper", page: 0, scale: 0.75 },
   { name: "gerber-features-1", src: "/testdata/gerber/features.bdf", kind: "page", view: "layer", page: 0, scale: 0.75 },
+  // EPUB (converter/epub); see test/epub. Book pages with page numbers: a chapter in English, one in Japanese
+  // vertical text (tate-chu-yoko, emphasis marks, a gaiji picture), and a page of a fixed-layout book of pictures.
+  { name: "epub-basic-3", src: "/testdata/epub/basic.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  { name: "epub-vertical-2", src: "/testdata/epub/vertical.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "epub-fixed-2", src: "/testdata/epub/fixed.bdf", kind: "page", view: "pages", page: 1, scale: 0.5 },
+  // SVG and formulas in EPUB: an inline svg as wide as the text with the gradient and symbol it uses from a hidden
+  // sprite sheet, MathML inline, displayed, in an epub:switch and beside KaTeX's rendering; a formula standing upright
+  // on the middle of a line of vertical text; a fixed-layout page drawn by an inline svg.
+  { name: "epub-basic-svg", src: "/testdata/epub/basic.bdf", kind: "page", view: "pages", page: 5, scale: 1 },
+  { name: "epub-vertical-math", src: "/testdata/epub/vertical.bdf", kind: "page", view: "pages", page: 4, scale: 1 },
+  { name: "epub-fixed-svg", src: "/testdata/epub/fixed.bdf", kind: "page", view: "pages", page: 4, scale: 0.5 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

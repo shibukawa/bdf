@@ -17,7 +17,11 @@ type inlineObj struct {
 	vmlRID  string      // VML picture: the image relationship
 	part    string
 	w, h    float64
-	desc    float64    // how far below the baseline it reaches (formulas)
+	desc    float64 // how far below the baseline it reaches (formulas)
+	// central stands the object on the middle of the line in vertical text
+	// (a formula, laid out horizontally as CSS lays out an orthogonal flow);
+	// other objects stand on the baseline, as CSS aligns pictures
+	central bool
 	ext     [4]float64 // effect extent (left, top, right, bottom): room for shadows and glow
 	alt     string     // alternative text ("" for none or decorative)
 	link    string

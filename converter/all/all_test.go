@@ -53,6 +53,13 @@ func TestDetect(t *testing.T) {
 	w, _ = zw.Create("NCDRILL.TXT")
 	w.Write([]byte("M48\nMETRIC\nT1C0.8\n%\n"))
 	zw.Close()
+	var epub bytes.Buffer
+	zw = zip.NewWriter(&epub)
+	w, _ = zw.CreateHeader(&zip.FileHeader{Name: "mimetype", Method: zip.Store})
+	w.Write([]byte("application/epub+zip"))
+	w, _ = zw.Create("META-INF/container.xml")
+	w.Write([]byte("<container/>"))
+	zw.Close()
 	step := "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('a','',(''),(''),'','','');\n"
 	for _, c := range []struct {
 		name string
@@ -119,6 +126,7 @@ func TestDetect(t *testing.T) {
 		{"tiff", []byte("II*\x00\x08\x00\x00\x00"), "tiff"},
 		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
 		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
+		{"epub", epub.Bytes(), "epub"},
 		{"html", []byte("\n<!DOCTYPE html>\n<html><body>x</body></html>"), "html"},
 		{"xhtml", []byte(`<?xml version="1.0" encoding="utf-8"?>` + "\n<!-- c -->\n" + `<html xmlns="http://www.w3.org/1999/xhtml">`), "html"},
 		{"mhtml", []byte("From: <Saved by Blink>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/related;\r\n\ttype=\"text/html\";\r\n\tboundary=\"b\"\r\n\r\n--b\r\n"), "html"},

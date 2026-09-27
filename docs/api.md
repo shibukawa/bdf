@@ -79,6 +79,9 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | `converter/gerber` | Gerber（RS-274X）・Excellon と、基板のファイルをまとめた ZIP | `Views`（`ViewsAll` / `ViewsBoard` / `ViewsLayers`）、`Mask`・`Silkscreen`・`Finish`（基板の表と裏の色）、`FileName`（1 つのファイルの層を名前から見分ける）。`Detect`、`IsGerber(head)`、`IsExcellon(head)` |
 | `converter/tiff` | TIFF | `Pages`、`DPI`（解像度の無いページに仮定する値）、`Images`（解像度の上限もここ） |
 | `converter/emf` | EMF・WMF | — |
+| `converter/html` | HTML・XHTML・MHTML（リーダー表示） | `ConvertBytes(data, opts)`、`ConvertNode(*html.Node, opts)`。`Views`、`Extract`（`auto` / `article` / `none`）、`Dir`・`BaseURL`（参照の基準）、`NoRemote`・`Fetch`（ネットワークの画像）、`Width`・`FontSize`・`Font`・`MonoFont`、`EmbedFonts` |
+| `converter/markdown` | Markdown | `ConvertBytes(data, opts)`、`ToHTML(data)`。`Options` は html と同じ |
+| `converter/epub` | EPUB | `Views`（既定は `ViewsPages`）、`Paper`（`ParsePaper("b6")` など。既定は A5）、`Width`・`FontSize`・`Font`・`MonoFont`、`EmbedFonts`。暗号化された本は `ErrDRM`。`Result.FixedLayout`・`Vertical` |
 | `converter/all` | 全形式を登録するだけ（`import _`） | — |
 
 ページ単位の変換の使い方:
@@ -110,7 +113,7 @@ res, err := s.Finish() // Convert と同じ完成した文書
 |---|---|
 | `NewDocument() *Document` | 空の文書。`Meta`（Dublin Core の `DC`、`Source`）、`Views`、`CompressionLevel`、`MinCompress`、`Lock`（暗号化）を持つ |
 | `(*Document).NewView(id, kind, title) *View` | View を足す。`kind` は `ViewFixed`、`ViewFlow`、`ViewSheet`、`ViewScroll` |
-| `(*View).AddPage(w, h, layers...) *Page` | ページを足す（fixed・flow・scroll）。シートは `Tiles`、`Cols`、`Rows`、`Freeze` などの項目を直接設定する |
+| `(*View).AddPage(w, h, layers...) *Page` | ページを足す（fixed・flow・scroll）。シートは `Tiles`、`Cols`、`Rows`、`Freeze` などの項目を直接設定する。右綴じの本は `Direction` を `DirectionRTL` にする |
 | `(*Document).AddObject(*Object) (Hash, Rect)` | Object を格納し、ハッシュと外接矩形を返す（参照先の Part が先に要る） |
 | `AddFont` / `AddImage` / `AddPaths` / `AddPart` | フォント、画像、パス集合、任意の Part を格納する。同じ内容は 1 度だけ格納される |
 | `(*Document).BuildTextIndex(*View) (Hash, error)` | テキスト索引の Part を作って View に設定する |

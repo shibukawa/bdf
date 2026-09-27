@@ -146,6 +146,7 @@ type section struct {
 	linePitch                     float64
 	charSpace                     float64 // character grid: pitch added to the default font size, points
 	vertical                      bool    // East Asian vertical text: lines top to bottom, right to left
+	folio                         bool    // the page number at the foot of the pages (HTML books)
 	blocks                        []block
 	borders                       [4]*border
 	bordersOffsetFromText         bool
