@@ -13,7 +13,7 @@
 // made; structs; Variants, shredded or not). Lists, maps and structs are
 // shown as JSON, and geometries (GEOMETRY and GEOGRAPHY, and the WKB
 // columns of GeoParquet) as WKT. The file is read a page at a time, and
-// only as far as the rows shown. See docs/design.md §3.25.
+// only as far as the rows shown. See docs/design.md §3.26.
 package parquet
 
 import (

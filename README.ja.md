@@ -10,7 +10,7 @@ Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.i
 
 ## Why bdf
 
-- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio、draw.io、DXF、Jw_cad、SXF、CGM、HP-GL/2、Gerber、Excellon、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown、EPUB を 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7 MB、Office 系・draw.io・DXF 用が約 5.5 MB）、ファイルをアップロードする必要すらありません。
+- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio、draw.io、DXF、Jw_cad、SXF、CGM、HP-GL/2、Gerber、Excellon、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown、EPUB を 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7 MB、Office 系・draw.io・DXF 用が約 5.5 MB）、ファイルをアップロードする必要すらありません。サムネイルと検索用のテキストも同じプロセスで作れます。ページを描くのは純 Go のラスタライザで、ブラウザは要りません。
 - **内容に合った形で見せる**: PDF はすべてを紙に切り分けます。スプレッドシートを印刷したページでは、横に長い表がページをまたいで分断されて行を追えず、目当てのセルも見つけにくくなります。固定した見出しや枠線は消え、ブックの中で切り替えていたシートは一続きのページになります。Word の文書もページ単位でしか読めません。bdf は内容の種類ごとにレイアウトのモデルを持ちます。スライド・図面・PDF には固定サイズのページ、ワークシートにはシートごとの無限平面（タイルで描画し、ウィンドウ枠の固定、行・列見出し、枠線つき）、ワープロ文書にはページでも一続きのスクロールでも読めるフローと、ページなしで 1 本の長い列に組み直した表示を用意しています。Illustrator と Photoshop のアートボードはページになります。ブックのシート、draw.io の図のページ、DXF のモデル空間とレイアウト、プリント基板の表・裏と各層はそれぞれ 1 つの表示になり、ビューアのタブで切り替えます。
 - **ブラウザ表示に特化している**: 命令セットは Canvas 2D と 1 対 1 に対応します。フォントは `FontFace` に渡す WOFF2、画像はブラウザがデコードできる形式で、Part の圧縮は `DecompressionStream` で展開できる形式です。pdf.js のような PDF ビューアが数万行かけて実装しているフォントのラスタライズ、画像のデコード、展開はブラウザに任せ、bdf のデコーダとレンダラは TypeScript で約 3,400 行です（レンダラの Worker は gzip で 21 KB）。描画は Worker の `OffscreenCanvas` で行い、メインスレッドはビットマップを置くだけです。Part は内容アドレスなので、マスターや繰り返し現れる要素は 1 度だけ格納され、ビューアは表示中のページに要る Part だけを Range リクエストや CDN 上の分割形式から取得します。ブラウザ内で変換する PDF は、表示中のページを優先して変換できたページから表示します。
 - **多くの形式を 1 つのレンダラで**: PDF、Word（.docx）、PowerPoint（.pptx）、Excel（.xlsx）、CSV・TSV、Apache Parquet、Visio（.vsdx、.vdx）、draw.io（.drawio と、図を埋め込んだ SVG・PNG の書き出し）、AutoCAD DXF、Jw_cad（.jww）、SXF（.p21、.p2z、.sfc）、CGM（.cgm）、HP-GL/2 のプロットファイル（.plt）、Gerber（RS-274X）と Excellon の穴あけファイル（1 つずつでも、基板のファイルをまとめた ZIP でも）、TIFF、Illustrator（.ai）、Photoshop（.psd、.psb）、Windows メタファイル（.emf、.wmf）、HTML（リーダー表示）、Markdown、EPUB（リフロー型の本は和文の縦書きも、固定レイアウトのマンガも）、画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG。そのまま格納）を、パスワード付きの Office 文書や PDF も含めて同じフォーマットにします。どの形式も同じレンダラで描き、検索、テキスト選択、読み上げ用のテキスト層（見出し、リスト、表、代替テキスト）も共通です。
@@ -25,7 +25,9 @@ flowchart TB
         direction TB
         SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/ai<br/>converter/psd<br/>converter/image"]
         BUNDLE["bdf バンドル<br/>（パック済み）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
+        PREVIEW["raster・thumbnail・SearchText<br/>サムネイル画像<br/>検索用のテキスト"]
         SCONV --> BUNDLE
+        BUNDLE --> PREVIEW
     end
 
     subgraph BROWSER["ブラウザ"]
@@ -60,6 +62,8 @@ flowchart TB
 1. **サーバーで変換**: Go のサーバープロセス内で `converter/pdf`、`converter/pptx`、`converter/xlsx` などのパッケージが元ファイルを変換し、manifest・描画命令・画像・フォントをパックした **bdf バンドル**にします。バンドルは 1 ファイル形式（先頭からのストリーミング読み、または Range による Part 単位の取得）か、オブジェクトストレージや CDN にそのまま置ける分割形式で配信します。ブラウザでは Worker 内のレンダラが必要な Part だけを読み込んで `OffscreenCanvas` に描画し、メインスレッドは受け取ったビットマップと透明なテキスト層を配置するだけです。
 2. **ブラウザ内で変換**: 同じ変換パッケージを wasm にしたもの（`cmd/bdfwasm`）が Worker で動き、ユーザーが開いたファイルをメモリ上の bdf 文書に変換して、そのままレンダラに渡します。変換から描画までがブラウザ内で完結し、ファイルは外に出ません。デモサイトはこの経路で動いています。Office 系の変換器は、サイトと一緒に公開したフリーフォントでテキストをレイアウトします（文書が使うものだけを取得します）。PDF はページ単位で変換し（`converter.OpenStream`）、ビューアはまずページの大きさを受け取ってから、表示中のページを優先して変換できたページを順に描画し、最後に完成した文書と差し替えます。
 
+サーバーはバンドルと一緒に、文書の一覧や検索エンジンが必要とするものも作れます。作るのは文書（パスワード付きの入力ならパスワードも）を持っている間です。Go のラスタライザ（`raster`、`thumbnail`）で描いたサムネイル画像と、文書のメタデータ・ページごとのテキストの JSON（`Document.SearchText`）です。
+
 ## 特徴
 
 - 固定サイズページ（スライド）、無限平面（シート）、ページ分割かつ連続表示可能な文書（ワープロ。ページを持たずに 1 枚の長い面としてレイアウトした View も持てる）の 3 モデル
@@ -70,11 +74,13 @@ flowchart TB
 - 内容アドレスの Part によりマスターや繰り返し部品を自動共有
 - テキスト索引 Part と Worker 内の全文検索（行またぎ、NFKC・かな正規化、ヒット矩形）
 - 透明 DOM のテキスト選択層とコピー（空白・改行は MARK 境界から復元、ページまたぎ、連続モード対応）
+- 表はセル単位で選べる: 表のあるセルから別のセルへドラッグすると、その間の矩形のセルの選択になる。デモビューアのシート（Excel、CSV、Parquet）は表計算ソフトと同じようにセルを選ぶ（ドラッグ、Shift、行・列の見出し、矢印キー）。コピーするとセルをタブ区切りと HTML の表でクリップボードに置くので、表計算ソフトにそのままセルとして貼り付けられる
 - 読み上げ可能なテキスト層: 構造 MARK の見出し・リスト・表・代替テキスト付きの図・リンク・言語をスクリーンリーダーに伝える（タグ付き PDF、PowerPoint と Word の構造、Excel・CSV・Parquet のセルと表の見出し、HTML・Markdown・EPUB の要素を変換）
 - 1 ファイル形式と分割ファイル形式を相互変換可能（1 ファイル形式はマジック `bdf\0` で始まる）
 - 数式: Word の Office Math、PowerPoint と Excel の数式（代替として保存された画像ではなく Office Math から組む）、HTML と EPUB の MathML（KaTeX・MathJax・Wikipedia が独自の描画の横に置く MathML も）、Markdown と draw.io のラベル（`math=1`）の LaTeX を 1 つの数式エンジンで組む。OpenType MATH のフォント（STIX Two Math、Cambria Math、Latin Modern Math など）の定数と異体字を使い、分数、根号、添字と極限、大型演算子、大きな異体字と部品の組み立てで伸びる括弧と根号、行列、揃えた数式、アクセントを扱う。検索とコピーでは `x=(−b±√(b^2−4ac))/(2a)` のような線形表記になる（ハイフンマイナスで打っても見つかる）。詳細は design.md の §3.23
 - manifest に Dublin Core のメタデータ（題名・作成者・主題・言語・作成日時など）を持てる。PDF の文書情報、PowerPoint・Excel・Word のコアプロパティ、Visio の文書プロパティ、Photoshop の文書の XMP メタデータ、HTML の meta 要素、Markdown の front matter、EPUB のパッケージ文書、画像の XMP・EXIF・IPTC などから引き継ぐ
 - パスワードで保護された入力（読み取りパスワード付きの Office 文書、ユーザーパスワード付きの PDF）はパスワードで開いて変換し、bdf を同じパスワードで暗号化する。Part ごとに封印する（AES-256-GCM）ので Range 取得や分割形式はそのまま使える。ビューアは WebCrypto で復号し、サーバーはパスワードを保存しない（spec §3.5）
+- サーバー側のサムネイルと検索用テキスト: `raster` はビューアと同じ命令を純 Go で実行し、任意のページ（シートや scroll View なら任意の範囲）を画像に描く。アンチエイリアスつきのパス、線、クリップ、グラデーションとパターン、画像、埋め込みフォント（WOFF2 を展開する）と名前で参照するフォント（システムのフォントを探す）のテキスト、グループ、ソフトマスク、影、SVG の画像を描く。ブラウザの golden テストと同じページを Go のテストで描き、両方を縮小して Chromium の描画と比べると、ほとんどのページで平均の差が 4/255 未満に収まる（違いはヒンティング・カーニング・合字をしないことと、AVIF の画像を描かないこと）。`thumbnail` は文書の種類からレイアウトを選ぶ。Word・HTML・Markdown・縦長の PDF は 1 ページ目の左上の正方形、Excel と CSV は A1 から始まる左上の範囲、スライド・図面・画像・EPUB の表紙は 1 ページ目の全体で、PNG・JPEG・WebP で書き出す。`Document.SearchText` は検索エンジン向けにメタデータとページごと（シートは丸ごと）のテキストを返す。どちらも暗号化されないので、暗号化した文書については頼まれない限り（`-allow-plaintext`）書き出さない。詳細は design.md の §3.25
 
 変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / Windows メタファイル / TIFF / HTML / Markdown / EPUB / 画像）は中身から、判別できなければ拡張子から決めます（Markdown はどんなテキストでもありうるので拡張子で決まります）。
 
@@ -84,7 +90,7 @@ flowchart TB
 - **PowerPoint .pptx**（`converter/pptx`）: DrawingML を直接描画します。スライドマスターとレイアウトの図形はスライド間で共有されるレイヤー Object になり、プリセット図形は ECMA-376 の図形定義式から、テキストは変換側で折り返し（和文の禁則・縦書き・箇条書き・段落書式）、表・グラフ・SmartArt・EMF/WMF の図・数式も描きます。レイアウトに使ったフォントはサブセットの WOFF2 にして埋め込むので、閲覧環境のフォントに依存しません。詳細は design.md の §3.4。
 - **Excel .xlsx**（`converter/xlsx`）: ワークシートごとにシート View にし、セルを変換側でレイアウトしてタイルに描きます。表示形式（日付・和暦・分数・会計）、フォントとリッチテキスト、塗り、罫線、配置（和文の禁則付きの折り返し、空きセルへのはみ出し、回転、縮小して全体を表示）、セル結合、条件付き書式（カラースケール・データバー・アイコンセット・数式のルール）、テーブルとそのスタイルを扱い、画像・図形・グラフは 1 回だけ描いた Object を重なるタイルから使います。グラフシートはページになります。列幅と行の高さは Excel の規則に従い、ウィンドウ枠の固定と枠線は manifest に書きます。詳細は design.md の §3.6。
 - **CSV / TSV**（`converter/csv`）: Excel で開いたときのような 1 枚のシート View にし、Excel の変換器で描きます。文字コード（BOM、UTF-8、UTF-16、Shift_JIS、EUC-JP、ISO-2022-JP、Windows-1252）、区切り文字（カンマ・タブ・セミコロン・縦棒）、クオート（ダブル・シングル・なし、二重化またはバックスラッシュでのエスケープ）、先頭行が見出し行かどうかを推定し、それぞれ `-param` で指定もできます。数値と日付は書かれたままの表記で右に揃え（Excel と違い `007` は `007` のまま）、列幅は値に合わせ、改行を含む値は折り返し、見出し行は太字にして固定し列見出しとして読み上げます。`-param table=TableStyleMedium2` で Excel のテーブルの書式にもできます。詳細は design.md の §3.10。
-- **Apache Parquet**（`converter/parquet`）: 表を 1 枚のシート View にし、Excel の変換器で描きます。列名を太字にして固定し、その下に列の型を灰色の行で示し、先頭の 10,000 行を並べます（`-param rows=` で増やせ、`all` で全行）。読み込みは Arrow を使わず仕様から Go で書いたもので、すべてのエンコーディング（辞書、RLE/ビットパック、DELTA 系、BYTE_STREAM_SPLIT）、データページの v1 と v2、Snappy・gzip・Zstandard・Brotli（ブラウザ版を除く）・LZ4 の圧縮、繰り返しレベルと定義レベルから組み立てる入れ子の値（古い書き出し方のリストとマップも）を読みます。値はデータツールと同じように示します。decimal は全桁、タイムスタンプは UTC で列に要るだけの小数桁、UUID、interval、リスト・マップ・構造体は JSON、Variant（分解保存も）は中身の値、ジオメトリ（GEOMETRY、GEOGRAPHY、GeoParquet の WKB 列）は WKT。表示する行のページしか読みません。フッターが暗号化されたファイルは読みません。詳細は design.md の §3.25。
+- **Apache Parquet**（`converter/parquet`）: 表を 1 枚のシート View にし、Excel の変換器で描きます。列名を太字にして固定し、その下に列の型を灰色の行で示し、先頭の 10,000 行を並べます（`-param rows=` で増やせ、`all` で全行）。読み込みは Arrow を使わず仕様から Go で書いたもので、すべてのエンコーディング（辞書、RLE/ビットパック、DELTA 系、BYTE_STREAM_SPLIT）、データページの v1 と v2、Snappy・gzip・Zstandard・Brotli（ブラウザ版を除く）・LZ4 の圧縮、繰り返しレベルと定義レベルから組み立てる入れ子の値（古い書き出し方のリストとマップも）を読みます。値はデータツールと同じように示します。decimal は全桁、タイムスタンプは UTC で列に要るだけの小数桁、UUID、interval、リスト・マップ・構造体は JSON、Variant（分解保存も）は中身の値、ジオメトリ（GEOMETRY、GEOGRAPHY、GeoParquet の WKB 列）は WKT。表示する行のページしか読みません。フッターが暗号化されたファイルは読みません。詳細は design.md の §3.26。
 - **Visio .vsdx / .vdx**（`converter/visio`）: Visio 2013 以降のパッケージ（.vsdx、.vsdm、.vstx）と Visio 2003〜2010 の XML 図面（.vdx）を、同じ ShapeSheet のモデルに読みます。図形はマスターとスタイルから継承し、動的テーマが決めるセルはテーマと図形のクイックスタイルから解決します。ジオメトリの各行、塗りのパターン、グラデーション、線種、45 種の矢印を描き、背景ページはページ間で共有される背景レイヤーにします。テキストは PowerPoint と同じ DrawingML のテキストエンジンでレイアウトし、フォントをサブセットの WOFF2 にして埋め込みます。バイナリの .vsd は読みません。詳細は design.md の §3.8。
 - **draw.io**（`converter/drawio`）: `.drawio`（圧縮されたページも）、図を埋め込んだ `.drawio.svg` / `.drawio.png` の mxGraphModel XML から図を描きます。ページごとに View を作るので、ビューアでは Excel のシートのようにタブでページを切り替えられ、draw.io のレイヤーは View のレイヤー Object に、ページへのリンクは `#view=` リンクになります。セルの配置、エッジの経路（直交・エルボーなどのエッジスタイルと外周）、図形・矢印・ステンシル、HTML ラベルの折り返しと書式は draw.io（mxGraph）の描画処理をそのまま移植し、フォントは PowerPoint と同じくサブセットで埋め込みます。AWS の図は現行の AWS アイコンで描き、古い世代の AWS アイコンで描かれた図も現行の対応するアイコンに置き換えて描きます。手書き風（`sketch=1`）は通常の描画になります。数式の組版（`math=1`）ではラベルの LaTeX を数式として組みます。詳細は design.md の §3.11。
 - **Word .docx**（`converter/docx`）: Word がファイルを開くたびに行っている組版を変換側で行います。行分割（和文の禁則とアキ、タブとリーダー、両端揃え、文書グリッド）、箇条書きと段落番号、表（表スタイル、セルの結合、ページをまたぐ行の分割、見出し行の繰り返し）、文字列の折り返しを伴う浮動する図とテキストボックス、段組み、セクション、ページ番号付きのヘッダー・フッター、脚注、縦書き（漢字・仮名の正立、縦書き用の句読点、欧文や表の回転）、数式（Office Math）を扱います。View は 2 つで、紙面のページ（ヘッダー・本文・フッターのレイヤーを持つ flow View）と、ページを持たずに本文の幅でもう一度レイアウトした 1 枚の長い面（Word の下書き・Web レイアウト表示にあたる scroll View）です。図は PowerPoint と同じ DrawingML の描画で描き、フォントも同じく埋め込みます。詳細は design.md の §3.9。
@@ -126,6 +132,17 @@ if res.Protected {
 }
 ```
 
+サムネイルと検索用のテキストは文書から作る。書き出す前の文書でも、読み直した bdf（`Reader.ToDocument`）でもよい。
+
+```go
+th, err := thumbnail.Make(res.Doc, &thumbnail.Options{Size: 256}) // Mode: thumbnail.Crop か Fit で、文書の種類によるレイアウトの代わりに
+if err != nil {
+	return err
+}
+err = thumbnail.Encode(w, th.Image, thumbnail.WebP) // thumbnail.PNG、thumbnail.JPEG も
+text, err := res.Doc.SearchText() // メタデータと、View ごと・ページごとのテキスト。JSON にして使う
+```
+
 ## ドキュメント
 
 - この README とあわせて <https://shibukawa.github.io/bdf/docs/> でも読めます。
@@ -164,8 +181,11 @@ if res.Protected {
 | `converter/tiff` | TIFF (.tif, .tiff) → BDF 変換器 |
 | `converter/image` | 画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG）→ BDF 変換器（そのまま格納し、メタデータを読む） |
 | `converter/all` | すべての入力形式を登録する（副作用のために import する） |
-| `converter/internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書き（`sfnt`）。Office 系の変換器で共有するもの: OOXML のパッケージと XML（`ooxml`）、DrawingML の図形・テキスト・表・グラフ（`ooxml/drawingml`）、テキストレイアウト用のフォント選択・計測・埋め込み（`fontset`。draw.io も使う）、組み立て中の Object（`canvas`。draw.io も使う）、EMF/WMF の再生（`metafile`）、CAD 図面のページへの描画（`cad`）、行分割の規則（`linebreak`）、複合ファイル（`cfb`）とパスワード付き Office 文書の復号（`offcrypto`）。PDF 用の Adobe の定義済み CJK CMap（`cjkcmap`）と JPEG 2000・JBIG2 のデコーダ（`jpx`、`jbig2`）。TIFF の読み取りと CCITT の FAX 符号のデコーダ（`tiff`）。Word・HTML・Markdown・EPUB の組版エンジン（`wordproc`: 段落・表・ページ・scroll View）と、それらが共有する HTML・XHTML の読み込み（`webdoc`）。XMP メタデータの Dublin Core（`xmp`） |
-| `woff2/` | TrueType/OpenType → WOFF2（glyf 変換と Brotli） |
+| `converter/internal/` | Office 系の変換器で共有するもの: OOXML のパッケージと XML（`ooxml`）、DrawingML の図形・テキスト・表・グラフ（`ooxml/drawingml`）、テキストレイアウト用のフォント選択・計測・埋め込み（`fontset`。draw.io も使う）、組み立て中の Object（`canvas`。draw.io も使う）、EMF/WMF の再生（`metafile`）、CAD 図面のページへの描画（`cad`）、行分割の規則（`linebreak`）、複合ファイル（`cfb`）とパスワード付き Office 文書の復号（`offcrypto`）。PDF 用の Adobe の定義済み CJK CMap（`cjkcmap`）と JPEG 2000・JBIG2 のデコーダ（`jpx`、`jbig2`）。TIFF の読み取りと CCITT の FAX 符号のデコーダ（`tiff`）。Word・HTML・Markdown・EPUB の組版エンジン（`wordproc`: 段落・表・ページ・scroll View）と、それらが共有する HTML・XHTML の読み込み（`webdoc`）。XMP メタデータの Dublin Core（`xmp`） |
+| `woff2/` | TrueType/OpenType ↔ WOFF2（glyf 変換と Brotli） |
+| `raster/` | ページを純 Go で画像に描く（ビューアと同じ描き方）。ソフトウェアのラスタライザと、SVG の画像を描く SVG レンダラ |
+| `thumbnail/` | 文書のサムネイル。文書の種類によるレイアウトと、PNG・JPEG・WebP |
+| `internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書きとグリフの輪郭（`sfnt`）、CFF の読み取りとサブセット化（`cff`）。変換器と `raster` が共有する |
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
 | `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画（scroll View は連続描画）、Worker（SVG の画像はメインスレッドが描く） |
 | `cmd/bdfwasm` | ブラウザ内変換用に wasm にした変換器（PDF 用、Office 系用、HTML・Markdown 用、画像用のモジュール） |
@@ -239,6 +259,14 @@ go run ./cmd/bdf generate -password-file pw.txt in.pptx out.bdf    # パスワ�
 go run ./cmd/bdf generate -encrypt never in.pdf out.bdf            # -encrypt auto（既定: 入力にパスワードが要るとき）/ always / never
 BDF_PASSWORD=… go run ./cmd/bdf ls out.bdf                         # ls・manifest・disasm・extract は $BDF_PASSWORD で暗号化した文書を読む
 BDF_PASSWORD=… go run ./cmd/bdf encrypt in.bdf out.bdf             # 既存の bdf を暗号化（decrypt で解除）。split と join はパスワードなしで使える
+
+# サムネイル・検索用テキスト・ページの画像（Go で描く。ブラウザは要らない）
+go run ./cmd/bdf generate -thumbnail thumb.webp -text text.json in.docx out.bdf  # サムネイル（.png、.jpg、.webp）とテキストの JSON も書き出す
+go run ./cmd/bdf generate -thumbnail thumb.png -thumbnail-size 512 -thumbnail-mode fit in.pptx out.bdf  # 512 px。crop、fit、auto（既定: 文書の種類で決める）
+go run ./cmd/bdf thumbnail -size 256 out.bdf thumb.png             # bdf のサムネイル（-mode、-view、-font-dir、-no-system-fonts）
+go run ./cmd/bdf text out.bdf text.json                            # メタデータとページごとのテキストを JSON で（既定は標準出力）
+go run ./cmd/bdf render -page 2 -scale 2 out.bdf page2.png         # 2 ページ目を 1 単位 2 画素で（シートは A1 から -width、-height の範囲）
+BDF_PASSWORD=… go run ./cmd/bdf thumbnail -allow-plaintext enc.bdf thumb.png  # 暗号化した文書は -allow-plaintext のときだけ（generate も同じフラグ）
 go run ./cmd/bdf generate -no-woff2 in.pdf out.bdf     # フォントを WOFF2 にせず TTF/OTF のまま格納
 go run ./cmd/bdf generate -ignore-fstype in.pdf out.bdf # fsType が埋め込みやサブセット化を禁じるフォントも埋め込む（権利がある場合のみ）
 go build -tags bdf_noconv ./...                    # コーデック（WebP、WOFF2 の Brotli）を含めないビルド（ブラウザ向け）

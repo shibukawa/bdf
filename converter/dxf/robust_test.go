@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/converter/internal/cad"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/internal/fontdb"
 	"golang.org/x/text/encoding/charmap"
 )
 

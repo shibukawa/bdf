@@ -70,7 +70,7 @@ func near(a, b Rect) bool {
 }
 
 func TestTrueTypeBounds(t *testing.T) {
-	data, err := os.ReadFile("../../docx/testdata/fonts/STIXTwoMath-subset.ttf")
+	data, err := os.ReadFile("../../converter/docx/testdata/fonts/STIXTwoMath-subset.ttf")
 	if err != nil {
 		t.Fatal(err)
 	}

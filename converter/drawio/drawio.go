@@ -23,9 +23,9 @@ import (
 	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/equation"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // Options controls the conversion.

@@ -16,8 +16,8 @@ import (
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/cad"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/internal/fontdb"
 	"golang.org/x/text/encoding/japanese"
 )
 

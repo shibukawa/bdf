@@ -10,7 +10,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/sfnt"
 )
 
 // streamReader is what a viewer holding the page documents of a Stream has.

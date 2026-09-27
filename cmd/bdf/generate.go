@@ -13,6 +13,7 @@ import (
 	"github.com/shibukawa/bdf/converter"
 	_ "github.com/shibukawa/bdf/converter/all" // every input format
 	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/raster"
 )
 
 // stringList is a repeatable string flag.
@@ -53,8 +54,9 @@ func generate(args []string) {
 	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")
 	passwordFile := fs.String("password-file", "", "read the password of an encrypted input from this file (- for the standard input; default: $"+passwordEnv+")")
 	encrypt := fs.String("encrypt", "auto", "encrypt the output with the password: auto (when the input needs it), always or never")
+	preview := addPreviewFlags(fs)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: bdf generate [flags] <input> <out.bdf | outdir/>\n  an output path ending with / writes the split form\n  a password-protected input is converted with its password and the output encrypted with it")
+		fmt.Fprintln(os.Stderr, "usage: bdf generate [flags] <input> <out.bdf | outdir/>\n  an output path ending with / writes the split form\n  a password-protected input is converted with its password and the output encrypted with it\n  -thumbnail and -text write previews next to it, but not of an encrypted output unless -allow-plaintext")
 		fs.PrintDefaults()
 		fmt.Fprintln(os.Stderr, "\ninput formats:")
 		for _, f := range converter.Formats() {
@@ -176,6 +178,7 @@ func generate(args []string) {
 	}
 	check(write(doc, out))
 	fmt.Fprintf(os.Stderr, "%s: %s, %d warning(s)\n", out, summary, len(warnings))
+	preview.write(doc, raster.Options{FontDirs: fontDirs, NoSystemFonts: *noSystemFonts}, *quiet)
 }
 
 // parseDC reads -dc name=value flags into the elements they replace. An

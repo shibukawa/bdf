@@ -7,10 +7,10 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/linebreak"
 	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // emitter writes ops into one object (a page layer, a strip of the scroll

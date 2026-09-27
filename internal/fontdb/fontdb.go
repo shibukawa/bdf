@@ -20,7 +20,7 @@ import (
 	"sync"
 	"unicode/utf16"
 
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/sfnt"
 	"golang.org/x/text/unicode/norm"
 )
 

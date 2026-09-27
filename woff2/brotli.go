@@ -4,6 +4,7 @@ package woff2
 
 import (
 	"bytes"
+	"io"
 
 	"github.com/andybalholm/brotli"
 )
@@ -27,4 +28,8 @@ func compress(b []byte) ([]byte, error) {
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+func decompress(b []byte) ([]byte, error) {
+	return io.ReadAll(brotli.NewReader(bytes.NewReader(b)))
 }

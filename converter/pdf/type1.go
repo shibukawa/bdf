@@ -8,7 +8,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/sfnt"
 )
 
 // Type 1 font programs (FontFile) are converted to a name-keyed CFF so they

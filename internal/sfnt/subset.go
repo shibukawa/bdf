@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"sort"
 
-	"github.com/shibukawa/bdf/converter/internal/cff"
+	"github.com/shibukawa/bdf/internal/cff"
 )
 
 // Advance returns the advance width of a glyph in font units. Glyphs past

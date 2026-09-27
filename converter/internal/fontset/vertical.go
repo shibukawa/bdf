@@ -3,7 +3,7 @@ package fontset
 import (
 	"strings"
 
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // East Asian vertical text: the converters lay a vertical line out as a
