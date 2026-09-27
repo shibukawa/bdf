@@ -8,9 +8,10 @@
 //
 // and run it with Go's wasm_exec.js (in a Worker: a conversion keeps the
 // thread busy). -tags pdfonly, officeonly or webonly builds a smaller
-// module of the PDF converter, the Office converters (Word, PowerPoint,
-// Excel, CSV, Visio, draw.io, DXF, Jw_cad, metafiles) or the HTML and
-// Markdown converters only. bdf_noconv leaves out the image and
+// module of the PDF converters (PDF, and Illustrator, whose files are
+// PDFs), the Office converters (Word, PowerPoint, Excel, CSV, Visio,
+// draw.io, DXF, Jw_cad, metafiles, Photoshop) or the HTML and Markdown
+// converters only. bdf_noconv leaves out the image and
 // WOFF2 encoders: a document drawn where it is converted gains nothing from
 // them.
 //

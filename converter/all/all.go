@@ -8,6 +8,7 @@
 package all
 
 import (
+	_ "github.com/shibukawa/bdf/converter/ai"       // Illustrator
 	_ "github.com/shibukawa/bdf/converter/csv"      // CSV and TSV
 	_ "github.com/shibukawa/bdf/converter/docx"     // Word
 	_ "github.com/shibukawa/bdf/converter/drawio"   // draw.io
@@ -18,6 +19,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/markdown" // Markdown, in reader mode
 	_ "github.com/shibukawa/bdf/converter/pdf"      // PDF
 	_ "github.com/shibukawa/bdf/converter/pptx"     // PowerPoint
+	_ "github.com/shibukawa/bdf/converter/psd"      // Photoshop
 	_ "github.com/shibukawa/bdf/converter/sxf"      // SXF (P21, SFC)
 	_ "github.com/shibukawa/bdf/converter/tiff"     // TIFF images
 	_ "github.com/shibukawa/bdf/converter/visio"    // Visio

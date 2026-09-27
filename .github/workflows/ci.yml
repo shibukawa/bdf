@@ -80,6 +80,12 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts -param remote=false "$f" "/tmp/$k-$n.bdf"
             cmp "/tmp/$k-$n.bdf" "testdata/$k/$n.bdf"
           done
+          go run ./cmd/bdf generate -q converter/ai/testdata/artboards.ai /tmp/artboards-ai.bdf
+          cmp /tmp/artboards-ai.bdf testdata/ai/artboards.bdf
+          for n in layers artboards; do
+            go run ./cmd/bdf generate -q "converter/psd/testdata/$n.psd" "/tmp/$n-psd.bdf"
+            cmp "/tmp/$n-psd.bdf" "testdata/psd/$n.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:
