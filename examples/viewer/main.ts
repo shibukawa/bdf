@@ -5,11 +5,15 @@
 // converted a page at a time: its pages are shown sized at once and drawn as
 // they are converted, those near the visible area first. Pages are scrolled
 // through, or shown one or two at a time and turned like a book's (book.ts).
-// The thumbnail and the search text of the document shown are made, when the
-// reader asks for them, by the Go packages a server makes them with, built
-// as wasm too.
+// The cells of a sheet are selected as in a spreadsheet, and copied as
+// tab-separated values and an HTML table. The thumbnail and the search text
+// of the document shown are made, when the reader asks for them, by the Go
+// packages a server makes them with, built as wasm too.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
-import { BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, internalLink, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type OpenSource, type TextLayerOptions } from "@bdf/render";
+import {
+  BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
+  type HitRect, type OpenSource, type TextLayerOptions, type CellText, type CellRange, type CellClipboard,
+} from "@bdf/render";
 import { ConverterClient, ConvertError, sniff, type Opened, type ThumbnailOptions } from "./convert.js";
 import { Book } from "./book.js";
 
@@ -87,12 +91,19 @@ const visible = new Set<number>();
 let visibility: IntersectionObserver | undefined;
 /** Whether a page of a view is still to come. */
 const pending = (v: View, index: number) => streaming?.view === v.id && streaming.state[index] !== PageState.Done;
-/** Shown sheets: redraw (with the search highlights) and scroll a hit into view. */
-const sheetViews = new WeakMap<View, { redraw: () => void; reveal: (r: { x: number; y: number }) => void }>();
+/** Shown sheets: redraw (with the search highlights), scroll a hit into view, and copy the selected cells (true when it did). */
+const sheetViews = new WeakMap<View, { redraw: () => void; reveal: (r: { x: number; y: number }) => void; copy: (e: ClipboardEvent) => boolean }>();
+/** The cells selected in a sheet: from the active cell, where the selection started, to the cell it reaches (0-based). */
+interface CellSelection { anchor: { r: number; c: number }; focus: { r: number; c: number } }
+/** The cells selected in each sheet, kept while another view is shown, as a spreadsheet keeps them. */
+const cellSelections = new WeakMap<View, CellSelection>();
 const dpr = () => window.devicePixelRatio || 1;
 
 /** Announced to screen readers (a polite live region). */
-function setStatus(s: string) { status.textContent = s; }
+function setStatus(s: string) {
+  status.textContent = s;
+  status.title = s; // cut to one line
+}
 /** Render timings: shown only, as they change on every scroll. */
 function setTiming(s: string) { timing.textContent = s; }
 const showError = (e: unknown) => setStatus(`error: ${(e as Error).message ?? e}`);
@@ -104,8 +115,24 @@ style.textContent = TEXT_LAYER_CSS;
 document.head.appendChild(style);
 
 // Copy puts the selected runs' text (with the document's spaces and line
-// breaks) on the clipboard, across pages.
+// breaks) on the clipboard, across pages; cells selected in a table as
+// tab-separated values and an HTML table. In a sheet, the selected cells.
 installCopyHandler(stage);
+document.addEventListener("copy", (e) => { if (current) sheetViews.get(current)?.copy(e); });
+
+/**
+ * Write cells to the clipboard once they are ready, after the copy event
+ * that asked for them: as one item whose data comes later where the
+ * browser takes that (Safari takes nothing else after an event), otherwise
+ * the text alone.
+ */
+function writeClipboard(data: Promise<CellClipboard>): Promise<void> {
+  if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+    const blob = (type: string, pick: (d: CellClipboard) => string) => data.then((d) => new Blob([pick(d)], { type }));
+    return navigator.clipboard.write([new ClipboardItem({ "text/plain": blob("text/plain", (d) => d.text), "text/html": blob("text/html", (d) => d.html) })]);
+  }
+  return data.then((d) => navigator.clipboard.writeText(d.text));
+}
 
 // Links to a page ("#page=N") scroll there and move the focus to it; links
 // to a view ("#view=ID", as between draw.io pages) switch to that view first.
@@ -447,7 +474,7 @@ function closeDocument() {
   generation++;
   book?.destroy();
   book = undefined;
-  stage.onscroll = null;
+  stage.onscroll = stage.onkeydown = stage.onfocus = null;
   stage.replaceChildren();
   tabs.replaceChildren();
   $<HTMLButtonElement>("prevView").disabled = $<HTMLButtonElement>("nextView").disabled = true;
@@ -763,7 +790,7 @@ function show(v: View) {
   book?.destroy();
   book = undefined;
   $("pageNav").hidden = $("animateBox").hidden = true;
-  stage.onscroll = null;
+  stage.onscroll = stage.onkeydown = stage.onfocus = null;
   stage.replaceChildren();
   stage.scrollTop = 0;
   visibility?.disconnect();
@@ -1138,6 +1165,27 @@ class SheetAxis {
     }
     return p;
   }
+  /** The size of entry i (0: hidden). */
+  size(i: number): number {
+    for (const [n, s] of this.runs) {
+      if (i < n) return s;
+      i -= n;
+    }
+    return 0;
+  }
+  /** The entry with a size at position p (the first or the last one outside). */
+  at(p: number): number {
+    let i = 0, start = 0, last = 0;
+    for (const [n, s] of this.runs) {
+      if (s > 0) {
+        if (p < start + n * s) return i + Math.max(0, Math.floor((p - start) / s));
+        last = i + n - 1;
+      }
+      start += n * s;
+      i += n;
+    }
+    return last;
+  }
   /** Call fn for the entries with a size that overlap [from, to). */
   each(from: number, to: number, fn: (i: number, start: number, size: number) => void) {
     let i = 0, p = 0;
@@ -1164,13 +1212,25 @@ function columnLabel(c: number): string {
 
 const SHEET_HEADER = 20;
 
+/** A cell's name: B12. */
+const cellName = (r: number, c: number) => `${columnLabel(c)}${r + 1}`;
+
 /**
  * Sheet: a scroll area the size of the sheet with one sticky canvas that
  * shows the column and row headers and the visible region, split into the
  * frozen panes of the view (each rendered by the worker as a region of its
- * own). A text layer (a table of the cells, for screen readers, selection
- * and copy) covers the visible region and a screen around it; the cells of
- * the frozen panes are pinned with a translation that follows the scroll.
+ * own). A text layer (a table of the cells, for screen readers) covers the
+ * visible region and a screen around it; the cells of the frozen panes are
+ * pinned with a translation that follows the scroll.
+ *
+ * Cells are selected as in a spreadsheet, not as text: a press on a cell
+ * and a drag (scrolling at the edges), Shift with a press to extend, the
+ * headers for whole columns and rows (the corner for all), the arrow keys
+ * (with Shift to extend), Ctrl or Cmd+A, and Escape. A merged cell is
+ * selected whole. Copy puts the cells on the clipboard as tab-separated
+ * values and an HTML table, which spreadsheets paste as cells; hidden rows
+ * and columns are left out, and a selection of whole rows or columns ends
+ * with the last cell with text.
  */
 function showSheet(v: View) {
   const cols = new SheetAxis(v.cols), rows = new SheetAxis(v.rows);
@@ -1186,8 +1246,14 @@ function showSheet(v: View) {
   const layerHost = document.createElement("div");
   layerHost.className = "sheetText";
   layerHost.style.cssText = `left: ${hw}px; top: ${hh}px; width: ${cols.total * zoom}px; height: ${rows.total * zoom}px`;
+  // The page's selection is on this element while cells are selected: copy
+  // then fires in every browser (Safari fires it only with a selection) and
+  // the browser's Copy is offered. It says which cells.
+  const hold = document.createElement("div");
+  hold.className = "cellHold";
+  hold.setAttribute("aria-hidden", "true");
   wrap.append(canvas, layerHost);
-  stage.appendChild(wrap);
+  stage.append(wrap, hold);
 
   const gen = generation;
   const sheet = { rows: rows.count, cols: cols.count, headerRows: fr, headerCols: fc };
@@ -1198,6 +1264,10 @@ function showSheet(v: View) {
     span.style.translate = `${x ? "var(--sx)" : "0px"} ${y ? "var(--sy)" : "0px"}`;
     span.style.zIndex = "2"; // above the other runs (TEXT_LAYER_CSS)
   };
+  /** The text layer's content, the rectangles it covers, and its cells by position. */
+  let loaded: { content: TextContent; rects: { x: number; y: number; w: number; h: number }[]; cells: Map<string, CellText> } | undefined;
+  /** Merged cells seen so far, by position. */
+  const merges = new Map<string, CellText>();
   let covered: { x: number; y: number; w: number; h: number } | undefined;
   let textTimer: ReturnType<typeof setTimeout> | undefined;
   const updateText = (vp: { x: number; y: number; w: number; h: number }) => {
@@ -1212,10 +1282,284 @@ function showSheet(v: View) {
       client.sheetContent(v.id, [region, ...frozen]).then((content: TextContent) => {
         if (gen !== generation) return;
         covered = region;
-        const layer = buildTextLayer(content, zoom, { ...layerOptions(), sheet, onSpan: pin });
+        const cells = new Map<string, CellText>();
+        for (const c of tableCells(content)) {
+          cells.set(`${c.row},${c.col}`, c);
+          if (c.rows > 1 || c.cols > 1) merges.set(`${c.row},${c.col}`, c);
+        }
+        loaded = { content, rects: [region, ...frozen], cells };
+        const layer = buildTextLayer(content, zoom, { ...layerOptions(), sheet, onSpan: pin, selectable: false });
         layerHost.replaceChildren(layer);
       }).catch(unlessStale(gen));
     }, 150);
+  };
+
+  // --- the cells selected ---
+  const sel = () => cellSelections.get(v);
+  const lastRow = rows.count - 1, lastCol = cols.count - 1;
+  /** The merged cell at a position, or the cell itself. */
+  const cellAt = (r: number, c: number): CellRange => {
+    for (const m of merges.values()) {
+      if (r >= m.row && r < m.row + m.rows && c >= m.col && c < m.col + m.cols) return { row0: m.row, col0: m.col, row1: m.row + m.rows - 1, col1: m.col + m.cols - 1 };
+    }
+    return { row0: r, col0: c, row1: r, col1: c };
+  };
+  /** The rectangle a selection covers, grown to take in the merged cells it cuts. */
+  const rangeOf = (s: CellSelection): CellRange => {
+    const g = {
+      row0: Math.min(s.anchor.r, s.focus.r), col0: Math.min(s.anchor.c, s.focus.c),
+      row1: Math.max(s.anchor.r, s.focus.r), col1: Math.max(s.anchor.c, s.focus.c),
+    };
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const m of merges.values()) {
+        if (m.row > g.row1 || m.row + m.rows - 1 < g.row0 || m.col > g.col1 || m.col + m.cols - 1 < g.col0) continue;
+        const r0 = Math.min(g.row0, m.row), c0 = Math.min(g.col0, m.col), r1 = Math.max(g.row1, m.row + m.rows - 1), c1 = Math.max(g.col1, m.col + m.cols - 1);
+        if (r0 !== g.row0 || c0 !== g.col0 || r1 !== g.row1 || c1 !== g.col1) {
+          Object.assign(g, { row0: r0, col0: c0, row1: r1, col1: c1 });
+          grew = true;
+        }
+      }
+    }
+    return g;
+  };
+  /** Where a rectangle of cells lies, in sheet units. */
+  const boxOf = (g: CellRange) => {
+    const x = cols.pos(g.col0), y = rows.pos(g.row0);
+    return { x, y, w: cols.pos(g.col1 + 1) - x, h: rows.pos(g.row1 + 1) - y };
+  };
+  const allRows = (g: CellRange) => g.row0 === 0 && g.row1 === lastRow;
+  const allCols = (g: CellRange) => g.col0 === 0 && g.col1 === lastCol;
+  /** A1 notation: B2:D5, whole columns B:D, whole rows 2:5. */
+  const rangeName = (g: CellRange) => {
+    if (allRows(g) && allCols(g)) return "all cells";
+    if (allRows(g)) return `${columnLabel(g.col0)}:${columnLabel(g.col1)}`;
+    if (allCols(g)) return `${g.row0 + 1}:${g.row1 + 1}`;
+    const a = cellName(g.row0, g.col0), b = cellName(g.row1, g.col1);
+    return a === b ? a : `${a}:${b}`;
+  };
+  /** What the status says of a selection: a cell's name and text, or the rectangle and its size. */
+  const describeSelection = (s: CellSelection) => {
+    const g = rangeOf(s), a = cellAt(s.anchor.r, s.anchor.c);
+    if (g.row0 === a.row0 && g.col0 === a.col0 && g.row1 === a.row1 && g.col1 === a.col1) {
+      const text = loaded?.cells.get(`${a.row0},${a.col0}`)?.text;
+      return text ? `${cellName(a.row0, a.col0)}: ${text}` : cellName(a.row0, a.col0);
+    }
+    return `${rangeName(g)} selected, ${g.row1 - g.row0 + 1} × ${g.col1 - g.col0 + 1} cells`;
+  };
+
+  /** The selected cells for the clipboard: made when a selection settles, from the text layer's content when it has them. */
+  let clip: { key: string; data?: CellClipboard; promise: Promise<CellClipboard> } | undefined;
+  const clipboardFor = (g: CellRange) => {
+    const key = `${g.row0},${g.col0},${g.row1},${g.col1}`;
+    if (clip?.key === key) return clip;
+    const box = boxOf(g);
+    const opts = { trim: allRows(g) || allCols(g), skipRow: (r: number) => rows.size(r) === 0, skipCol: (c: number) => cols.size(c) === 0 };
+    const inside = (r: { x: number; y: number; w: number; h: number }) => box.x >= r.x && box.y >= r.y && box.x + box.w <= r.x + r.w && box.y + box.h <= r.y + r.h;
+    const entry: { key: string; data?: CellClipboard; promise: Promise<CellClipboard> } = { key, promise: Promise.resolve({ text: "", html: "" }) };
+    if (loaded?.rects.some(inside)) {
+      const data = cellClipboard(tableCells(loaded.content), g, opts);
+      entry.data = data;
+      entry.promise = Promise.resolve(data);
+    } else {
+      entry.promise = client.sheetContent(v.id, box).then((c) => (entry.data = cellClipboard(tableCells(c), g, opts)));
+      entry.promise.catch(() => { if (clip === entry) clip = undefined; }); // tried again on copy, which reports the error
+    }
+    clip = entry;
+    return entry;
+  };
+
+  /** Put the page's selection on the holding element (the name of the cells in it). */
+  const holdSelection = () => {
+    const s = sel();
+    if (!s) return;
+    hold.textContent = rangeName(rangeOf(s));
+    getSelection()?.selectAllChildren(hold);
+  };
+  const select = (s: CellSelection) => {
+    cellSelections.set(v, s);
+    if (bitmaps.length) paint();
+  };
+  /** A selection made: hold the page's selection, get the cells ready to copy and say what is selected. */
+  const settle = () => {
+    const s = sel();
+    if (!s) return;
+    holdSelection();
+    clipboardFor(rangeOf(s));
+    setStatus(describeSelection(s));
+  };
+  const clear = () => {
+    cellSelections.delete(v);
+    const ds = getSelection();
+    if (ds && hold.contains(ds.anchorNode)) ds.removeAllRanges();
+    if (bitmaps.length) paint();
+    setStatus(describe(v));
+  };
+
+  /** Where a point of the window lies on the sheet: its zone, and the cell under it (clamped into the cells when clamp). */
+  type Zone = "cells" | "cols" | "rows" | "all";
+  const hit = (x: number, y: number, clamp = false) => {
+    const b = stage.getBoundingClientRect();
+    let vx = x - b.left - stage.clientLeft, vy = y - b.top - stage.clientTop;
+    const zone: Zone = vy < hh ? (vx < hw ? "all" : "cols") : vx < hw ? "rows" : "cells";
+    if (clamp) {
+      vx = Math.min(Math.max(vx, hw), stage.clientWidth - 1);
+      vy = Math.min(Math.max(vy, hh), stage.clientHeight - 1);
+    }
+    // the frozen panes do not scroll
+    const ux = vx - hw < fw * zoom ? (vx - hw) / zoom : (vx - hw + stage.scrollLeft) / zoom;
+    const uy = vy - hh < fh * zoom ? (vy - hh) / zoom : (vy - hh + stage.scrollTop) / zoom;
+    return { zone, r: rows.at(uy), c: cols.at(ux) };
+  };
+  /** A press: a cell, whole columns or rows, or all; with extend (Shift) from the active cell. */
+  const press = (zone: Zone, at: { r: number; c: number }, extend: boolean) => {
+    const s = extend ? sel() : undefined;
+    if (zone === "all") select({ anchor: { r: 0, c: 0 }, focus: { r: lastRow, c: lastCol } });
+    else if (zone === "cols") select({ anchor: { r: 0, c: s?.anchor.c ?? at.c }, focus: { r: lastRow, c: at.c } });
+    else if (zone === "rows") select({ anchor: { r: s?.anchor.r ?? at.r, c: 0 }, focus: { r: at.r, c: lastCol } });
+    else select({ anchor: s?.anchor ?? at, focus: at });
+  };
+
+  let drag: { zone: Zone; id: number; x: number; y: number } | undefined;
+  let tap: { id: number; x: number; y: number } | undefined;
+  let scrollFrame = 0;
+  /** Move the end of the selection being dragged to the cell under the pointer. */
+  const dragTo = () => {
+    const s = sel();
+    if (!drag || drag.zone === "all" || !s) return;
+    const h = hit(drag.x, drag.y, true);
+    const focus = drag.zone === "cols" ? { r: lastRow, c: h.c } : drag.zone === "rows" ? { r: h.r, c: lastCol } : { r: h.r, c: h.c };
+    if (focus.r !== s.focus.r || focus.c !== s.focus.c) select({ anchor: s.anchor, focus });
+  };
+  /** While the pointer is past an edge of the cells, scroll that way (faster further out). */
+  const autoscroll = () => {
+    if (scrollFrame) return;
+    const tick = () => {
+      scrollFrame = 0;
+      if (!drag) return;
+      const b = stage.getBoundingClientRect();
+      const vx = drag.x - b.left - stage.clientLeft, vy = drag.y - b.top - stage.clientTop;
+      const past = (p: number, lo: number, hi: number) => Math.max(-40, Math.min(40, p < lo ? p - lo : p > hi ? p - hi : 0));
+      const dx = drag.zone === "rows" || drag.zone === "all" ? 0 : past(vx, hw, stage.clientWidth);
+      const dy = drag.zone === "cols" || drag.zone === "all" ? 0 : past(vy, hh, stage.clientHeight);
+      if (!dx && !dy) return;
+      stage.scrollBy(dx, dy);
+      dragTo();
+      scrollFrame = requestAnimationFrame(tick);
+    };
+    scrollFrame = requestAnimationFrame(tick);
+  };
+  wrap.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const h = hit(e.clientX, e.clientY);
+    // a link in a cell is followed
+    if (h.zone === "cells" && (e.target as Element).closest("a")) return;
+    // a finger scrolls; a tap selects
+    if (e.pointerType === "touch") {
+      tap = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      return;
+    }
+    // the press also focuses the stage, for the keys (the sheet's text cannot be selected: index.html)
+    press(h.zone, h, e.shiftKey);
+    drag = { zone: h.zone, id: e.pointerId, x: e.clientX, y: e.clientY };
+    wrap.setPointerCapture(e.pointerId);
+  });
+  // a link of a cell scrolled under the headers is not followed from them
+  const underHeader = (e: MouseEvent) => hit(e.clientX, e.clientY).zone !== "cells" && !!(e.target as Element).closest("a");
+  wrap.addEventListener("mousedown", (e) => { if (underHeader(e)) e.preventDefault(); });
+  wrap.addEventListener("click", (e) => { if (underHeader(e)) e.preventDefault(); }, true);
+  wrap.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    dragTo();
+    autoscroll();
+  });
+  const release = (e: PointerEvent) => {
+    if (tap?.id === e.pointerId) {
+      const t = tap;
+      tap = undefined;
+      if (e.type !== "pointerup" || Math.hypot(e.clientX - t.x, e.clientY - t.y) > 10) return;
+      const h = hit(e.clientX, e.clientY);
+      if (h.zone === "cells" && (e.target as Element).closest("a")) return;
+      press(h.zone, h, false);
+      settle();
+      return;
+    }
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = undefined;
+    cancelAnimationFrame(scrollFrame);
+    scrollFrame = 0;
+    settle();
+  };
+  wrap.addEventListener("pointerup", release);
+  wrap.addEventListener("pointercancel", release);
+
+  /** The next cell with a size from at along d (past a merged cell), or at itself at the edge. */
+  const step = (at: { r: number; c: number }, [dr, dc]: [number, number], leaveMerge: boolean) => {
+    let { r, c } = at;
+    if (leaveMerge) {
+      const m = cellAt(r, c);
+      r = dr > 0 ? m.row1 : dr < 0 ? m.row0 : r;
+      c = dc > 0 ? m.col1 : dc < 0 ? m.col0 : c;
+    }
+    do {
+      r += dr;
+      c += dc;
+    } while (r >= 0 && r <= lastRow && c >= 0 && c <= lastCol && (dr ? rows.size(r) : cols.size(c)) === 0);
+    return r >= 0 && r <= lastRow && c >= 0 && c <= lastCol ? { r, c } : at;
+  };
+  /** Scroll so that a cell is in view (cells of a frozen pane always are). */
+  const bring = (at: { r: number; c: number }) => {
+    const g = boxOf(cellAt(at.r, at.c));
+    const pw = (stage.clientWidth - hw) / zoom - fw, ph = (stage.clientHeight - hh) / zoom - fh; // the scrolled pane, in units
+    let left = stage.scrollLeft, top = stage.scrollTop;
+    if (at.c >= fc) {
+      const x = fw + left / zoom;
+      if (g.x < x || g.w > pw) left = (g.x - fw) * zoom;
+      else if (g.x + g.w > x + pw) left = (g.x + g.w - fw - pw) * zoom;
+    }
+    if (at.r >= fr) {
+      const y = fh + top / zoom;
+      if (g.y < y || g.h > ph) top = (g.y - fh) * zoom;
+      else if (g.y + g.h > y + ph) top = (g.y + g.h - fh - ph) * zoom;
+    }
+    if (left !== stage.scrollLeft || top !== stage.scrollTop) stage.scrollTo({ left, top });
+  };
+  const KEYS: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+  stage.onkeydown = (e) => {
+    if (e.target !== stage || current !== v) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      press("all", { r: 0, c: 0 }, false);
+      return settle();
+    }
+    if (e.key === "Escape" && sel()) {
+      e.preventDefault();
+      return clear();
+    }
+    const d = KEYS[e.key];
+    if (!d || mod || e.altKey) return;
+    e.preventDefault();
+    const s = sel();
+    if (!s) {
+      // the first key selects the top left cell in view
+      const at = { r: fr > 0 ? 0 : rows.at(stage.scrollTop / zoom), c: fc > 0 ? 0 : cols.at(stage.scrollLeft / zoom) };
+      select({ anchor: at, focus: at });
+    } else if (e.shiftKey) {
+      select({ anchor: s.anchor, focus: step(s.focus, d, false) });
+    } else {
+      const at = step(s.anchor, d, true);
+      select({ anchor: at, focus: at });
+    }
+    bring(sel()!.focus);
+    settle();
+  };
+  // back to the sheet with the keys: its cells are what copy takes again
+  stage.onfocus = () => {
+    const ds = getSelection();
+    if (current === v && sel() && ds && (ds.isCollapsed || !wrap.contains(ds.anchorNode))) holdSelection();
   };
 
   type Pane = { src: { x: number; y: number; w: number; h: number }; dx: number; dy: number };
@@ -1232,9 +1576,11 @@ function showSheet(v: View) {
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     panes.forEach((p, i) => ctx.drawImage(bitmaps[i], p.dx * d, p.dy * d, p.src.w * zoom * d, p.src.h * zoom * d));
-    // search hits, clipped to each pane
+    // search hits and the selected cells, clipped to each pane
     ctx.save();
     ctx.scale(d, d);
+    const s = sel();
+    const g = s && rangeOf(s);
     for (const p of panes) {
       ctx.save();
       ctx.beginPath();
@@ -1244,12 +1590,33 @@ function showSheet(v: View) {
         ctx.fillStyle = hi === found.index ? "rgba(255,120,0,.5)" : "rgba(255,210,0,.45)";
         for (const r of rects) ctx.fillRect(p.dx + (r.x - p.src.x) * zoom, p.dy + (r.y - p.src.y) * zoom, r.w * zoom, r.h * zoom);
       });
+      if (s && g) drawSelection(ctx, p, g, cellAt(s.anchor.r, s.anchor.c));
       ctx.restore();
     }
-    drawHeaders(ctx, vw, vh);
+    drawHeaders(ctx, vw, vh, g);
     ctx.restore();
   };
-  const drawHeaders = (ctx: CanvasRenderingContext2D, vw: number, vh: number) => {
+  /** The selected cells in a pane: shaded but for the active cell, and outlined. */
+  const drawSelection = (ctx: CanvasRenderingContext2D, p: Pane, g: CellRange, active: CellRange) => {
+    // in CSS px of the canvas, cut to the pane (a whole column is millions of pixels long)
+    const place = (r: CellRange) => {
+      const b = boxOf(r);
+      const x0 = Math.max(p.dx - 4, p.dx + (b.x - p.src.x) * zoom), y0 = Math.max(p.dy - 4, p.dy + (b.y - p.src.y) * zoom);
+      const x1 = Math.min(p.dx + p.src.w * zoom + 4, p.dx + (b.x + b.w - p.src.x) * zoom), y1 = Math.min(p.dy + p.src.h * zoom + 4, p.dy + (b.y + b.h - p.src.y) * zoom);
+      return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    };
+    const b = place(g), a = place(active);
+    if (b.w <= 0 || b.h <= 0) return;
+    ctx.beginPath();
+    ctx.rect(b.x, b.y, b.w, b.h);
+    if (a.w > 0 && a.h > 0) ctx.rect(a.x, a.y, a.w, a.h);
+    ctx.fillStyle = "rgba(26, 115, 232, .12)";
+    ctx.fill("evenodd");
+    ctx.strokeStyle = "#1a73e8";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+  };
+  const drawHeaders = (ctx: CanvasRenderingContext2D, vw: number, vh: number, g: CellRange | undefined) => {
     const sx = stage.scrollLeft, sy = stage.scrollTop;
     ctx.fillStyle = "#f3f4f6";
     ctx.fillRect(0, 0, vw, hh);
@@ -1259,18 +1626,25 @@ function showSheet(v: View) {
     ctx.textBaseline = "middle";
     ctx.strokeStyle = "#c8ccd2";
     ctx.lineWidth = 1;
-    const header = (x: number, y: number, w: number, h: number, label: string) => {
+    // the headers of the selected cells are shaded, darker when whole columns or rows are selected
+    const header = (x: number, y: number, w: number, h: number, label: string, on: 0 | 1 | 2) => {
+      if (on) {
+        ctx.fillStyle = on === 2 ? "#c2d6f6" : "#dfe8f7";
+        ctx.fillRect(x, y, w, h);
+      }
       ctx.fillStyle = "#444";
       ctx.fillText(label, x + w / 2, y + h / 2);
       ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(w), Math.round(h));
     };
+    const colOn = (c: number) => (!g || c < g.col0 || c > g.col1 ? 0 : allRows(g) ? 2 : 1);
+    const rowOn = (r: number) => (!g || r < g.row0 || r > g.row1 ? 0 : allCols(g) ? 2 : 1);
     // frozen columns, then the scrolled ones clipped to their pane
     const colsIn = (from: number, to: number, shift: number, clipX: number) => {
       ctx.save();
       ctx.beginPath();
       ctx.rect(clipX, 0, vw - clipX, hh);
       ctx.clip();
-      cols.each(from, to, (c, start, size) => header(hw + start * zoom - shift, 0, size * zoom, hh, columnLabel(c)));
+      cols.each(from, to, (c, start, size) => header(hw + start * zoom - shift, 0, size * zoom, hh, columnLabel(c), colOn(c)));
       ctx.restore();
     };
     colsIn(0, fw, 0, hw);
@@ -1280,12 +1654,12 @@ function showSheet(v: View) {
       ctx.beginPath();
       ctx.rect(0, clipY, hw, vh - clipY);
       ctx.clip();
-      rows.each(from, to, (r, start, size) => header(0, hh + start * zoom - shift, hw, size * zoom, String(r + 1)));
+      rows.each(from, to, (r, start, size) => header(0, hh + start * zoom - shift, hw, size * zoom, String(r + 1), rowOn(r)));
       ctx.restore();
     };
     rowsIn(0, fh, 0, hh);
     rowsIn(fh + sy / zoom, fh + sy / zoom + (vh - hh) / zoom, sy, hh + fh * zoom);
-    ctx.fillStyle = "#e5e7eb";
+    ctx.fillStyle = g && allRows(g) && allCols(g) ? "#c2d6f6" : "#e5e7eb";
     ctx.fillRect(0, 0, hw, hh);
     // the edges of the frozen panes
     ctx.strokeStyle = "#8a9099";
@@ -1334,6 +1708,23 @@ function showSheet(v: View) {
         behavior: "smooth",
       });
     },
+    copy: (e) => {
+      const s = sel(), ds = getSelection();
+      if (!s || !ds || ds.isCollapsed || !hold.contains(ds.anchorNode)) return false;
+      e.preventDefault();
+      const g = rangeOf(s);
+      const c = clipboardFor(g);
+      const done = () => setStatus(`copied ${rangeName(g)}`);
+      if (c.data && e.clipboardData) {
+        e.clipboardData.setData("text/plain", c.data.text);
+        e.clipboardData.setData("text/html", c.data.html);
+        done();
+      } else {
+        setStatus(`copying ${rangeName(g)}…`);
+        writeClipboard(c.promise).then(done, unlessStale(gen));
+      }
+      return true;
+    },
   });
   const redraw = () => draw().catch(unlessStale(gen));
   stage.onscroll = () => { if (current === v) redraw(); };
@@ -1341,6 +1732,12 @@ function showSheet(v: View) {
   const resize = new ResizeObserver(() => { if (current === v && gen === generation) redraw(); else resize.disconnect(); });
   resize.observe(stage);
   redraw();
+  // the cells selected when the sheet was last shown, ready to copy
+  const s = sel();
+  if (s) {
+    holdSelection();
+    clipboardFor(rangeOf(s));
+  }
 }
 
 main().catch(showError);
