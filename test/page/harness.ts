@@ -98,6 +98,13 @@ export const CASES: Case[] = [
   { name: "jww-old-1", src: "/testdata/jww/old.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
   // An SXF drawing (P21) rendered by converter/sxf with the test fonts; see test/sxf.
   { name: "sxf-shapes-1", src: "/testdata/sxf/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  // HP-GL/2 plots rendered by converter/hpgl with the test fonts; see test/hpgl. An A3 plot of every kind of
+  // instruction, a plotter job turned to a portrait sheet with an HP RTL image among its vectors, and the HP-GL
+  // of a pen plotter.
+  { name: "hpgl-shapes-1", src: "/testdata/hpgl/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "hpgl-job-1", src: "/testdata/hpgl/job.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "hpgl-job-2", src: "/testdata/hpgl/job.bdf", kind: "page", view: "pages", page: 1, scale: 2 },
+  { name: "hpgl-hpgl1-1", src: "/testdata/hpgl/hpgl1.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
   // TIFF pages converted by converter/tiff; see test/tiff. A 300 dpi bilevel scan scaled down to 192 dpi, JPEG strips
   // stored as one JPEG, a fax at 204 × 98 dpi, and a picture stored turned with Orientation 6.
   { name: "tiff-scan-1", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },

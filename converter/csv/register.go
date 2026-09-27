@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/hpglsniff"
 )
 
 func init() {
@@ -133,6 +134,10 @@ func detect(head []byte, r io.ReaderAt, size int64) bool {
 		if bytes.HasPrefix(head, []byte(sig)) {
 			return false
 		}
+	}
+	// plot files end their instructions with semicolons
+	if hpglsniff.Is(head) {
+		return false
 	}
 	data := head
 	if size > int64(len(head)) {

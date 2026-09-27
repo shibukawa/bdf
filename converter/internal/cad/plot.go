@@ -23,7 +23,7 @@ type Plotter struct {
 type state struct {
 	fill, stroke       bdf.Color
 	fillSet, strokeSet bool
-	width              float64
+	width, miter       float64
 	cap, join          byte
 	lineSet            bool
 	dash               []float64
@@ -93,6 +93,8 @@ func (p *plot) item(it Item, m canvas.Matrix) {
 		p.fillItem(it, m)
 	case kText:
 		p.text(it.text, m)
+	case kImage:
+		p.image(it.image, m)
 	case kGroup:
 		p.save()
 		if it.clip != nil {
@@ -160,7 +162,7 @@ func (p *plot) strokeItem(it Item, m canvas.Matrix) {
 		}
 	}
 	p.setStroke(pen.Color)
-	p.setLine(w, pen.Cap, pen.Join)
+	p.setLine(w, pen.Cap, pen.Join, pen.Miter)
 	p.setDash(dash, off)
 	p.obj.StrokePath(p.obj.AddPath(toBDF(it.path, m)))
 	p.cv.Drawn = true
@@ -182,10 +184,31 @@ func (p *plot) fillItem(it Item, m canvas.Matrix) {
 		}
 		p.obj.FillPaint(p.obj.AddPaint(paint))
 		p.st.fillSet = false
+	} else if pt := it.fill.Pattern; pt != nil {
+		paint := bdf.Pattern(p.cv.Image(pt.Image), bdf.RepeatBoth)
+		pm := m.Mul(pt.M)
+		for i, v := range pm {
+			paint.Matrix[i] = f32(v)
+		}
+		p.obj.FillPaint(p.obj.AddPaint(paint))
+		p.st.fillSet = false
 	} else {
 		p.setFill(it.fill.Color)
 	}
 	p.obj.FillPath(p.obj.AddPath(toBDF(it.path, m)), rule)
+	p.cv.Drawn = true
+}
+
+// image draws an image through its transform, in a state of its own.
+func (p *plot) image(img *Image, m canvas.Matrix) {
+	im := m.Mul(img.M)
+	if math.Abs(im[0]*im[3]-im[1]*im[2]) < 1e-12 {
+		return
+	}
+	p.obj.Save()
+	p.cv.Transform(im)
+	p.obj.Image(p.cv.Image(img.Image), 0, 0, 1, 1)
+	p.obj.Restore()
 	p.cv.Drawn = true
 }
 
@@ -203,10 +226,13 @@ func (p *plot) setStroke(c bdf.Color) {
 	}
 }
 
-func (p *plot) setLine(w float64, cap, join byte) {
-	if !p.st.lineSet || p.st.width != w || p.st.cap != cap || p.st.join != join {
-		p.obj.Line(f32(w), cap, join, 10)
-		p.st.width, p.st.cap, p.st.join, p.st.lineSet = w, cap, join, true
+func (p *plot) setLine(w float64, cap, join byte, miter float64) {
+	if miter <= 0 {
+		miter = 10
+	}
+	if !p.st.lineSet || p.st.width != w || p.st.cap != cap || p.st.join != join || p.st.miter != miter {
+		p.obj.Line(f32(w), cap, join, f32(miter))
+		p.st.width, p.st.cap, p.st.join, p.st.miter, p.st.lineSet = w, cap, join, miter, true
 	}
 }
 

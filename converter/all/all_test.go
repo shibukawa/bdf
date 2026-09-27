@@ -77,6 +77,11 @@ func TestDetect(t *testing.T) {
 		{"sxf p21 of regular lines", []byte(step + "FILE_SCHEMA(('ASSOCIATIVE_DRAUGHTING'));\nENDSEC;\nDATA;\n" +
 			strings.Repeat("#10=CARTESIAN_POINT('',(1.,2.));\n", 40)), "sxf"},
 		{"step ap214", []byte(step + "FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\n"), ""},
+		{"hpgl", []byte("IN;SP1;PA0,0;PD1000,0,1000,1000;PU;"), "hpgl"},
+		// semicolons end the instructions, but a plot is not CSV
+		{"hpgl in lines", []byte("IN;\nSP1;\nPU0,0;\nPD1000,0;\nPD1000,1000;\nPU;\n"), "hpgl"},
+		{"hpgl job", []byte("\x1b%-12345X@PJL ENTER LANGUAGE=HPGL2\r\n\x1bE\x1b%-1BBP;IN;PS1000,1000;"), "hpgl"},
+		{"csv with semicolons", []byte("id;name;price\n1;apple;120\n2;pear;90\n"), "csv"},
 		{"tiff", []byte("II*\x00\x08\x00\x00\x00"), "tiff"},
 		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
 		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
@@ -121,6 +126,9 @@ func TestDetectFile(t *testing.T) {
 		// a CSV file of one line is text that only its extension tells
 		{"one.csv", "a,b,c", "csv"},
 		{"page.htm", "<!DOCTYPE html><p>x", "html"},
+		// by its extension (the HP-GL/2 converter then turns down a gnuplot
+		// script)
+		{"graph.plt", "set terminal png\nplot sin(x)\n", "hpgl"},
 	} {
 		path := filepath.Join(dir, c.name)
 		if err := os.WriteFile(path, []byte(c.data), 0o644); err != nil {
