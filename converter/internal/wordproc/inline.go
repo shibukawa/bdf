@@ -167,12 +167,12 @@ func (lc *lineCtx) breakLine(p *para, start int, first bool, left, right float64
 }
 
 // fitObjects shrinks the pictures that fit the line (inlineObj.fit) and
-// are wider than w.
+// are wider than w, and scales those that fill it (inlineObj.fill) to w.
 func fitObjects(items []item, w float64) []item {
 	copied := false
 	for i := range items {
 		it := &items[i]
-		if it.kind != kObject || !it.obj.fit || it.w <= w+0.01 || w < 1 {
+		if it.kind != kObject || w < 1 || !(it.obj.fit && it.w > w+0.01 || it.obj.fill && math.Abs(it.w-w) > 0.01) {
 			continue
 		}
 		if !copied {

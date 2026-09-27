@@ -109,6 +109,9 @@ export const CASES: Case[] = [
   { name: "markdown-basic-scroll", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 700 }, scale: 1 },
   { name: "markdown-basic-strips", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 760, w: 504, h: 460 }, scale: 1 },
   { name: "html-article-scroll", src: "/testdata/html/article.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 760 }, scale: 1 },
+  // SVG in Markdown: an inline svg element as wide as the column (its gradient from a sprite sheet further down), two
+  // SVG files and a sprite symbol in the text color; the region above the text, so the browser's fonts do not matter.
+  { name: "markdown-svg", src: "/testdata/markdown/svg.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 180 }, scale: 1.5 },
   // Illustrator artboards (converter/ai): each page cut to its artboard, the hidden layer left out; see test/ai.
   { name: "ai-artboards-1", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "ai-artboards-2", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
@@ -118,6 +121,11 @@ export const CASES: Case[] = [
   { name: "psd-artboards-1", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "psd-artboards-2", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "psd-artboards-3", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  // Images stored as they are by converter/image: a JPEG turned by its EXIF orientation, an AVIF turned by irot,
+  // and an SVG drawn at the size it is shown (by the page for the worker, which cannot decode SVG).
+  { name: "image-photo", src: "/testdata/image/photo.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "image-rotated", src: "/testdata/image/rotated.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "image-drawing", src: "/testdata/image/drawing.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

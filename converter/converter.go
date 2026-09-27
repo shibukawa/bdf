@@ -6,9 +6,9 @@
 // converter/ai, converter/psd, converter/pptx, converter/xlsx,
 // converter/csv, converter/docx, converter/visio, converter/drawio,
 // converter/dxf, converter/jww, converter/sxf, converter/emf,
-// converter/tiff, converter/html, converter/markdown). Each registers its
-// format when it is imported, so a program supports the formats whose
-// packages it links in:
+// converter/tiff, converter/image, converter/html, converter/markdown).
+// Each registers its format when it is imported, so a program supports the
+// formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format

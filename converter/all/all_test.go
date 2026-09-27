@@ -68,6 +68,16 @@ func TestDetect(t *testing.T) {
 		{"drawio svg", read(t, "embedded.drawio.svg"), "drawio"},
 		{"drawio png", read(t, "embedded.drawio.png"), "drawio"},
 		{"mxGraphModel", []byte("\ufeff<?xml version=\"1.0\"?>\n<mxGraphModel><root/></mxGraphModel>"), "drawio"},
+		// draw.io's PNG and SVG exports refine images: they are asked first
+		{"plain svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), "image"},
+		{"svg with commas", []byte("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0,0,10,10\">\n<path d=\"M1,1 L2,2\"/>\n<path d=\"M3,3 L4,4\"/>\n</svg>\n"), "image"},
+		{"png", readImage(t, "tags.png"), "image"},
+		{"jpeg", readImage(t, "photo.jpg"), "image"},
+		{"gif", readImage(t, "anim.gif"), "image"},
+		{"webp", readImage(t, "scene.webp"), "image"},
+		{"avif", readImage(t, "rotated.avif"), "image"},
+		{"bmp", readImage(t, "flag.bmp"), "image"},
+		{"ico", readImage(t, "icon.ico"), "image"},
 		{"tsv", []byte("id\tname\n1\tAnn\n"), "csv"},
 		{"dxf", []byte("  0\r\nSECTION\r\n  2\r\nHEADER\r\n"), "dxf"},
 		{"binary dxf", []byte("AutoCAD Binary DXF\r\n\x1a\x00\x00\x00"), "dxf"},
@@ -109,6 +119,16 @@ func read(t *testing.T, name string) []byte {
 	return b
 }
 
+// readImage returns a file of the image converter's test data.
+func readImage(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "image", "testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
 // TestDetectFile checks that a file's extension tells the format of text
 // whose content no format recognizes.
 func TestDetectFile(t *testing.T) {
@@ -117,6 +137,8 @@ func TestDetectFile(t *testing.T) {
 		{"fragment.html", "<div>\n\n    <p>indented</p>\n</div>", "html"},
 		{"notes.md", "<div>\n\n    <p>indented</p>\n</div>", "markdown"},
 		{"README.md", "# Title\n\ntext", "markdown"},
+		// a Markdown file that starts with an SVG picture is not an SVG file
+		{"logo.md", "<svg viewBox=\"0 0 1 1\"><rect/></svg>\n\n# Title\n\ntext", "markdown"},
 		{"notes.txt", "plain text", ""},
 		// a CSV file of one line is text that only its extension tells
 		{"one.csv", "a,b,c", "csv"},

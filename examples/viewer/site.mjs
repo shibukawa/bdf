@@ -1,7 +1,7 @@
 // Builds the static demo site (published on GitHub Pages): the viewer, the
 // converters as wasm (cmd/bdfwasm: one module for PDF, one for the Office
-// formats, one for HTML and Markdown), the fonts the Office, HTML and
-// Markdown converters lay text out with, sample files, and the
+// formats, one for HTML and Markdown, one for images), the fonts the Office,
+// HTML and Markdown converters lay text out with, sample files, and the
 // documentation (docs.mjs: the READMEs and docs/ as HTML under docs/).
 // Files opened on the site are converted inside the browser.
 //
@@ -29,6 +29,7 @@ const MODULES = [
   { file: "bdf-pdf.wasm", tags: "pdfonly" },
   { file: "bdf-office.wasm", tags: "officeonly" },
   { file: "bdf-web.wasm", tags: "webonly" },
+  { file: "bdf-image.wasm", tags: "imageonly" },
 ];
 
 /** Samples offered on the start page: repository path and label. */
@@ -49,6 +50,8 @@ const SAMPLES = [
   { path: "converter/sxf/testdata/shapes.p21", label: "SXF (P21)" },
   { path: "converter/ai/testdata/artboards.ai", label: "Illustrator (3 artboards)" },
   { path: "converter/psd/testdata/artboards.psd", label: "Photoshop (3 artboards)" },
+  { path: "converter/image/testdata/drawing.svg", label: "SVG image" },
+  { path: "converter/image/testdata/photo.jpg", label: "JPEG (EXIF)" },
   { path: "testdata/demo.bdf", label: "bdf" },
 ];
 
