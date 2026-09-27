@@ -54,6 +54,10 @@ jobs:
           done
           go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts converter/sxf/testdata/shapes.p21 /tmp/shapes.bdf
           cmp /tmp/shapes.bdf testdata/sxf/shapes.bdf
+          for n in shapes illustration sjis; do
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/cgm/testdata/$n.cgm" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/cgm/$n.bdf"
+          done
           for f in converter/docx/testdata/*.docx; do
             n=$(basename "$f" .docx)
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
@@ -80,6 +84,21 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts -param remote=false "$f" "/tmp/$k-$n.bdf"
             cmp "/tmp/$k-$n.bdf" "testdata/$k/$n.bdf"
           done
+          go run ./cmd/bdf generate -q converter/ai/testdata/artboards.ai /tmp/artboards-ai.bdf
+          cmp /tmp/artboards-ai.bdf testdata/ai/artboards.bdf
+          for n in layers artboards; do
+            go run ./cmd/bdf generate -q "converter/psd/testdata/$n.psd" "/tmp/$n-psd.bdf"
+            cmp "/tmp/$n-psd.bdf" "testdata/psd/$n.bdf"
+          done
+          for f in converter/image/testdata/*; do
+            n=$(basename "${f%.*}")
+            go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/image/$n.bdf"
+          done
+          go run ./cmd/bdf generate -q converter/gerber/testdata/board.zip /tmp/board-gerber.bdf
+          cmp /tmp/board-gerber.bdf testdata/gerber/board.bdf
+          go run ./cmd/bdf generate -q converter/gerber/testdata/features.gbr /tmp/features-gerber.bdf
+          cmp /tmp/features-gerber.bdf testdata/gerber/features.bdf
   web:
     runs-on: ubuntu-latest
     steps:

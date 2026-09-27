@@ -223,15 +223,17 @@ type htmlReader struct {
 	font, mono string
 	images     map[string]*htmlImage
 
-	out        *[]block   // where finished blocks go
-	p          *para      // the paragraph being filled
-	space      bool       // collapsed white space is pending
-	spaceNL    bool       // … and it held a line break
-	spaceSt    *hstyle    // the style of the pending space
-	pendBefore float64    // margin of elements opened since the last block
-	pendLabel  *label     // the label of the list item whose first paragraph is next
-	bookmarks  []string   // ids of elements waiting for their paragraph
-	check      *inlineObj // the last checkbox, which the space after it goes into
+	out        *[]block              // where finished blocks go
+	p          *para                 // the paragraph being filled
+	space      bool                  // collapsed white space is pending
+	spaceNL    bool                  // … and it held a line break
+	spaceSt    *hstyle               // the style of the pending space
+	pendBefore float64               // margin of elements opened since the last block
+	pendLabel  *label                // the label of the list item whose first paragraph is next
+	bookmarks  []string              // ids of elements waiting for their paragraph
+	check      *inlineObj            // the last checkbox, which the space after it goes into
+	ids        map[string]*html.Node // the elements of idsOf by id (inline SVG references)
+	idsOf      *html.Node
 }
 
 // read reads the content of n into blocks; self reads n itself.
@@ -507,7 +509,7 @@ func (r *htmlReader) node(n *html.Node, st *hstyle) {
 	}
 	switch n.DataAtom {
 	case atom.Svg:
-		r.c.warnOnce("svg", "SVG images are not drawn")
+		r.inlineSVG(n, css, st)
 		return
 	case atom.Math:
 		r.math(n, st)

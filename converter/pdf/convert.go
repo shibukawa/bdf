@@ -31,6 +31,11 @@ type Options struct {
 	Title string
 	// Kind is the view kind: "fixed" (default) or "flow".
 	Kind string
+	// Box is the page boundary that becomes the page: "crop" (the default,
+	// what viewers show), "media", "bleed", "trim" (the finished page, an
+	// Illustrator artboard) or "art". Boxes a page does not define default
+	// to its crop box.
+	Box string
 	// NoTextIndex skips building the text index part.
 	NoTextIndex bool
 	// NoAnnotations skips annotation appearance streams and links.
@@ -100,10 +105,11 @@ type converter struct {
 	// a page (nil otherwise).
 	pageCodes map[*pdfFont]map[uint32]bool
 
-	tree       *structTree // nil for untagged documents
-	docLang    string      // catalog /Lang
-	outPages   map[int]int // page object number → 1-based page index in the view
-	outPageNrs map[int]int // PDF page number → 1-based page index in the view
+	tree       *structTree      // nil for untagged documents
+	oc         *optionalContent // nil without optional content
+	docLang    string           // catalog /Lang
+	outPages   map[int]int      // page object number → 1-based page index in the view
+	outPageNrs map[int]int      // PDF page number → 1-based page index in the view
 }
 
 // ConvertFile converts a PDF file.
@@ -170,6 +176,11 @@ func newConverter(rs io.ReadSeeker, opts *Options) (*converter, bool, error) {
 	if err := ctx.EnsurePageCount(); err != nil {
 		return nil, protected, fmt.Errorf("pdf: %w", err)
 	}
+	switch opts.Box {
+	case "", "crop", "media", "bleed", "trim", "art":
+	default:
+		return nil, protected, fmt.Errorf("pdf: unknown page box %q (crop, media, bleed, trim or art)", opts.Box)
+	}
 	c := &converter{pdf: &pdf{ctx: ctx}, doc: bdf.NewDocument(), opts: opts, warned: map[string]bool{},
 		fonts: map[string]*pdfFont{}, forms: map[string]*pending{}, images: map[string]*imageEntry{}, shadings: map[string]*shading{}}
 	c.doc.Meta.Source = "pdf"
@@ -185,6 +196,7 @@ func newConverter(rs io.ReadSeeker, opts *Options) (*converter, bool, error) {
 		}
 		c.docLang = c.doc.Meta.DC.Language.First()
 		c.tree = newStructTree(c.pdf, cat, c.docLang)
+		c.oc = newOptionalContent(c.pdf, cat)
 	}
 	kind := opts.Kind
 	if kind == "" {
@@ -216,7 +228,7 @@ func newConverter(rs io.ReadSeeker, opts *Options) (*converter, bool, error) {
 				c.outPages[pr.ref.ObjectNumber.Value()] = i + 1
 			}
 		}
-		pr.geometry()
+		pr.geometry(c.pdf, opts.Box)
 		pr.page = view.AddPage(float32(pr.w), float32(pr.h), bdf.Layer{Role: bdf.RoleBody, Obj: bdf.Hash{}}) // Obj: patched in finalize
 		if view.Kind == bdf.ViewFlow {
 			pr.page.Body = &bdf.RectDef{X: 0, Y: 0, W: float32(pr.w), H: float32(pr.h)}
@@ -269,21 +281,28 @@ func (c *converter) defaultFont() *pdfFont {
 
 // geometry sets the page's size and the transform from PDF user space
 // (y up) to page space (y down): the crop box, clipped to the media box,
-// turned by /Rotate. A page whose dictionary did not load gets a Letter page.
-func (pr *pageRef) geometry() {
+// turned by /Rotate (or the page boundary Options.Box names). A page whose
+// dictionary did not load gets a Letter page.
+func (pr *pageRef) geometry(p *pdf, which string) {
 	box := rect{0, 0, 612, 792}
 	rotate := 0
 	if attrs := pr.attrs; attrs != nil {
 		if attrs.MediaBox != nil {
 			box = rect{attrs.MediaBox.LL.X, attrs.MediaBox.LL.Y, attrs.MediaBox.UR.X, attrs.MediaBox.UR.Y}
 		}
-		if attrs.CropBox != nil {
+		if attrs.CropBox != nil && which != "media" {
 			cb := rect{attrs.CropBox.LL.X, attrs.CropBox.LL.Y, attrs.CropBox.UR.X, attrs.CropBox.UR.Y}
 			if !cb.intersect(box).empty() {
 				box = cb.intersect(box)
 			}
 		}
 		rotate = ((attrs.Rotate % 360) + 360) % 360
+	}
+	if key := map[string]string{"bleed": "BleedBox", "trim": "TrimBox", "art": "ArtBox"}[which]; key != "" && pr.dict != nil {
+		// These boxes are not inherited, and the crop box bounds them.
+		if b := p.rectOr(pr.dict[key], rect{}).intersect(box); !b.empty() {
+			box = b
+		}
 	}
 	if box.empty() || box.x1-box.x0 > 20000 || box.y1-box.y0 > 20000 {
 		box = rect{0, 0, 612, 792}
@@ -389,7 +408,7 @@ func (c *converter) annotations(in *interp, pageDict types.Dict) {
 		}
 		sub := p.name(ad["Subtype"])
 		flags := p.intOr(ad["F"], 0)
-		if sub == "Popup" || flags&2 != 0 || flags&32 != 0 {
+		if sub == "Popup" || flags&2 != 0 || flags&32 != 0 || !c.oc.visible(ad["OC"]) {
 			continue
 		}
 		r := p.rectOr(ad["Rect"], rect{})

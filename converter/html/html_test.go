@@ -264,12 +264,12 @@ func TestImages(t *testing.T) {
 		`<img src="https://example.com/missing.png" alt="[missing]"> <img src="https://example.com/badge.svg" alt="build passing">`+
 		`<img src="images/icon.png"> <img src="/etc/hosts" alt="[absolute]"></p>`, opts)
 	c := viewContent(t, r, 0)
-	// fetched once each, the SVG left out with its alternative text
+	// fetched once each
 	slices.Sort(fetched)
 	if !slices.Equal(fetched, []string{"https://example.com/a.png", "https://example.com/badge.svg", "https://example.com/missing.png"}) {
 		t.Errorf("fetched %v", fetched)
 	}
-	if len(c.images) != 3 || res.Images != 3 {
+	if len(c.images) != 4 || res.Images != 3 {
 		t.Fatalf("images %v (%d)", c.images, res.Images)
 	}
 	// width="100" is 100 CSS pixels; the 400 × 240 px chart is 300 × 180 pt
@@ -279,7 +279,11 @@ func TestImages(t *testing.T) {
 	if im := c.images[1]; im[2] != 300 || im[3] != 180 {
 		t.Errorf("natural image %v", im)
 	}
-	for _, alt := range []string{"[missing]", "build passing", "[absolute]"} {
+	// the SVG badge is stored as it is; without a size it is 300 × 150 CSS pixels
+	if im := c.images[2]; im[2] != 225 || im[3] != 112.5 {
+		t.Errorf("SVG image %v", im)
+	}
+	for _, alt := range []string{"[missing]", "[absolute]"} {
 		if !strings.Contains(c.text, alt) {
 			t.Errorf("text %q lacks %q", c.text, alt)
 		}
@@ -302,6 +306,74 @@ func TestImages(t *testing.T) {
 	_, r = convertHTML(t, `<p><img src="images/icon.png" width="1000">`, opts)
 	if im := viewContent(t, r, 0).images[0]; im[2] != 200 || im[3] != 200 {
 		t.Errorf("fitted image %v", im)
+	}
+}
+
+// TestSVG: SVG images, in img elements and inline, are stored as SVG
+// documents and sized as browsers size them.
+func TestSVG(t *testing.T) {
+	opts := testOptions()
+	opts.Width = 300
+	opts.Fetch = nil
+	opts.Dir = "testdata"
+	svgImages := func(res *Result) []string {
+		var out []string
+		for _, p := range res.Doc.Parts() {
+			if p.Type == bdf.PartImage && bytes.Contains(p.Data, []byte("<svg")) {
+				out = append(out, string(p.Data))
+			}
+		}
+		return out
+	}
+	res, r := convertHTML(t, `<!DOCTYPE html>`+
+		// a file with a size; one with only a view box, as wide as the column
+		`<p><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='20'/%3E" alt="sized">`+
+		`<p><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 400'/%3E">`+
+		// inline: a width and the view box's proportions; only a view box
+		`<p><svg width="24" viewBox="0 0 16 8" aria-label="icon"><path d="M0 0h16v8z"/></svg>`+
+		`<p>text <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#dot"/></svg> text`+
+		// a sprite sheet and an empty box draw nothing
+		`<svg style="display:none"><symbol id="dot" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="url(#g)"/></symbol>`+
+		`<linearGradient id="g"><stop offset="0" stop-color="red"/></linearGradient></svg>`+
+		`<svg width="0" height="0"><defs><path id="unused" d="M0 0"/></defs></svg>`+
+		`<p><svg viewBox="0 0 10 10"><title>With a picture</title><image href="images/icon.png" width="10" height="10"/>`+
+		`<foreignObject width="10" height="10"><div>html <br> inside</div></foreignObject><script>alert(1)</script></svg>`, opts)
+	c := viewContent(t, r, 0)
+	want := [][2]float32{{30, 15}, {300, 150}, {18, 9}, {300, 300}, {300, 300}}
+	if len(c.images) != len(want) {
+		t.Fatalf("images %v", c.images)
+	}
+	for i, w := range want {
+		if c.images[i][2] != w[0] || c.images[i][3] != w[1] {
+			t.Errorf("image %d: %v, want %v", i, c.images[i], w)
+		}
+	}
+	// alternative text: alt, aria-label, title; none for the decorative ones
+	if figs := c.marks[bdf.MarkFigure]; !slices.Equal(figs, []string{"sized", "icon", "With a picture"}) {
+		t.Errorf("figures %q", figs)
+	}
+	docs := svgImages(res)
+	if len(docs) != 5 {
+		t.Fatalf("%d SVG parts: %q", len(docs), docs)
+	}
+	// the inline ones are SVG files: the namespaces, the text color for
+	// currentColor, the symbol and gradient the icon uses, the picture as a
+	// data: URL, HTML in the SVG with its namespace, no scripts
+	icon, pic := docs[3], docs[4]
+	for _, s := range []string{`<svg viewBox="0 0 16 16" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" color="#1f2328">`,
+		`<defs><symbol id="dot" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="url(#g)"></circle></symbol><linearGradient id="g">`} {
+		if !strings.Contains(icon, s) {
+			t.Errorf("icon lacks %s:\n%s", s, icon)
+		}
+	}
+	if !strings.Contains(pic, `<image href="data:image/png;base64,`) || !strings.Contains(pic, `<div xmlns="http://www.w3.org/1999/xhtml">html <br></br> inside</div>`) ||
+		strings.Contains(pic, "script") {
+		t.Errorf("picture SVG:\n%s", pic)
+	}
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "SVG") {
+			t.Errorf("warning %q", w)
+		}
 	}
 }
 

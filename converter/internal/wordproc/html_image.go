@@ -2,6 +2,7 @@ package wordproc
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"image"
 	_ "image/gif"
@@ -20,8 +21,9 @@ import (
 
 // htmlImage is an image the document refers to, stored in the BDF.
 type htmlImage struct {
-	hash bdf.Hash
-	w, h float64 // intrinsic size in points (0: unknown)
+	hash  bdf.Hash
+	w, h  float64 // natural size in points (0: none)
+	ratio float64 // natural aspect ratio, width / height (0: none)
 }
 
 // img reads an img: a picture in the line, shrunk to the line when it is
@@ -39,7 +41,9 @@ func (r *htmlReader) img(n *html.Node, css map[string]string, st *hstyle) {
 		}
 		return
 	}
-	w, h := im.w, im.h
+	if !hasAlt && st.figAlt != "" {
+		alt = st.figAlt
+	}
 	aw, ah := r.length(attrStr(n, "width")), r.length(attrStr(n, "height"))
 	if v := r.length(css["width"]); v > 0 {
 		aw = v
@@ -47,29 +51,17 @@ func (r *htmlReader) img(n *html.Node, css map[string]string, st *hstyle) {
 	if v := r.length(css["height"]); v > 0 {
 		ah = v
 	}
-	switch {
-	case aw > 0 && ah > 0:
-		w, h = aw, ah
-	case aw > 0:
-		if w > 0 {
-			h *= aw / w
-		}
-		w = aw
-	case ah > 0:
-		if h > 0 {
-			w *= ah / h
-		}
-		h = ah
-	}
-	if w <= 0 || h <= 0 {
-		// the size of a replaced element that says none
-		w, h = 300*pxToPt, 150*pxToPt
-	}
-	if !hasAlt && st.figAlt != "" {
-		alt = st.figAlt
-	}
+	r.picture(n, css, st, im, aw, ah, alt)
+}
+
+// picture places an image in the text: in the line, shrunk to the line
+// when it is wider, or floating left or right with the text beside it. aw
+// and ah are the width and height its attributes and style ask for (0:
+// not said).
+func (r *htmlReader) picture(n *html.Node, css map[string]string, st *hstyle, im *htmlImage, aw, ah float64, alt string) {
+	w, h, fill := replacedSize(im.w, im.h, im.ratio, aw, ah)
 	hash := im.hash
-	o := &inlineObj{w: w, h: h, alt: alt, fit: true, paint: func(e *emitter, box drawingml.Box) {
+	o := &inlineObj{w: w, h: h, alt: alt, fit: true, fill: fill, paint: func(e *emitter, box drawingml.Box) {
 		e.cv.Obj.Image(e.cv.Image(hash), f32(box.X), f32(box.Y), f32(box.W), f32(box.H))
 	}}
 	float := css["float"]
@@ -96,6 +88,37 @@ func (r *htmlReader) img(n *html.Node, css map[string]string, st *hstyle) {
 		r.space, r.spaceNL = false, false
 	}
 	p.items = append(p.items, item{kind: kObject, obj: o, st: r.style(st), w: o.w})
+}
+
+// replacedSize sizes a picture as CSS sizes replaced elements: the width
+// and height asked for (aw, ah; 0 when not said), a missing one following
+// from the natural aspect ratio, else the natural size (w, h), else 300 ×
+// 150 CSS pixels. fill reports a picture with a ratio but no size at all
+// (an SVG image with only a view box), which browsers make as wide as the
+// line; its size is then a nominal 300 pixels wide.
+func replacedSize(w, h, ratio, aw, ah float64) (float64, float64, bool) {
+	dw, dh := 300*pxToPt, 150*pxToPt
+	switch {
+	case aw > 0 && ah > 0:
+		return aw, ah, false
+	case aw > 0 && ratio > 0:
+		return aw, aw / ratio, false
+	case ah > 0 && ratio > 0:
+		return ah * ratio, ah, false
+	case aw > 0:
+		return aw, cmp.Or(h, dh), false
+	case ah > 0:
+		return cmp.Or(w, dw), ah, false
+	case w > 0 && h > 0:
+		return w, h, false
+	case w > 0:
+		return w, dh, false
+	case h > 0:
+		return dw, h, false
+	case ratio > 0:
+		return dw, dw / ratio, true
+	}
+	return dw, dh, false
 }
 
 // imageSource returns the address of an img's picture: src, else the
@@ -151,8 +174,12 @@ func (r *htmlReader) image(src string) *htmlImage {
 	format := imgconv.Sniff(data)
 	switch format {
 	case "svg":
-		r.c.warnOnce("svgimg", "SVG images are not drawn (%s)", name)
-		return nil
+		// stored as it is: the viewer draws it (spec §6.2)
+		width, height, viewBox, _ := imgconv.SVGRoot(data)
+		s := imgconv.ParseSVGSize(width, height, viewBox)
+		im := &htmlImage{hash: r.c.doc.AddImage(data), w: s.W * pxToPt, h: s.H * pxToPt, ratio: s.Ratio()}
+		r.images[src] = im
+		return im
 	case "":
 		r.c.warnf("image %s: unsupported format", name)
 		return nil
@@ -164,6 +191,9 @@ func (r *htmlReader) image(src string) *htmlImage {
 		im.w, im.h = float64(cfg.Width), float64(cfg.Height)
 	}
 	im.w, im.h = im.w*pxToPt, im.h*pxToPt
+	if im.w > 0 && im.h > 0 {
+		im.ratio = im.w / im.h
+	}
 	if res, err := imgconv.Optimize(data, r.c.opts.Images); err == nil || res.Data != nil {
 		data = res.Data
 	}
