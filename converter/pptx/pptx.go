@@ -122,6 +122,9 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pptx: %w", err)
 	}
+	// equations are laid out from their Office Math, not drawn from the
+	// pictures of their fallbacks
+	p.Choose = ooxml.MathChoice
 	c := &converter{pkg: p, opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{}, pageOf: map[string]int{}}
 	warn := func(msg string) { c.warnf("%s", msg) }
 	db := fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
@@ -509,8 +512,9 @@ func f32(v float64) float32 {
 
 // finalize builds the embedded fonts and encodes every canvas.
 func (c *converter) finalize() {
-	if !c.opts.SystemFonts {
-		c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: c.opts.NoSubset, NoWOFF2: c.opts.NoWOFF2, IgnoreFSType: c.opts.IgnoreFSType})
-	}
+	// with system fonts, the formula font is embedded still: a formula's
+	// layout depends on its glyphs
+	c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: c.opts.NoSubset, NoWOFF2: c.opts.NoWOFF2,
+		IgnoreFSType: c.opts.IgnoreFSType, PinnedOnly: c.opts.SystemFonts})
 	c.cvs.Encode()
 }

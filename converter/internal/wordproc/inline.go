@@ -435,7 +435,8 @@ func (ln *line) metrics(lc *lineCtx) {
 			if lc.vertical {
 				ln.asc = math.Max(ln.asc, it.obj.w+it.obj.ext[0]+it.obj.ext[2])
 			} else {
-				ln.asc = math.Max(ln.asc, it.obj.h+it.obj.ext[1]+it.obj.ext[3])
+				ln.asc = math.Max(ln.asc, it.obj.h+it.obj.ext[1]+it.obj.ext[3]-it.obj.desc)
+				ln.desc = math.Max(ln.desc, it.obj.desc)
 			}
 			visible = true
 		}

@@ -293,7 +293,7 @@ func (c *converter) layoutHTML(l *labelBox, value string, root *tstyle, t textPr
 	}
 	value = htmlLinefeeds(value)
 	doc := parseHTML(value)
-	tb := &textBuilder{c: c, block: root}
+	tb := &textBuilder{c: c, block: root, math: c.math, alpha: l.alpha}
 	tb.walk(doc, root)
 	tb.endPara()
 	l.trailing = tb.marks
@@ -486,7 +486,30 @@ func (c *converter) layoutPlain(l *labelBox, value string, root *tstyle, t textP
 	size := root.size
 	lines := strings.Split(value, "\n")
 	lh := math.Round(size * 1.2)
-	textHeight := size + float64(len(lines)-1)*lh
+	// the paragraphs of the lines, and the room formulas taller than the
+	// text need above and below their lines (0 without formulas)
+	tb := &textBuilder{c: c, block: root, math: c.math, alpha: l.alpha, inlineOnly: true}
+	paras := make([]*tpara, len(lines))
+	above, below := make([]float64, len(lines)), make([]float64, len(lines))
+	extra := 0.0
+	for i, s := range lines {
+		tb.endPara()
+		tb.text(s, root)
+		p := tb.cur
+		if p == nil {
+			p = &tpara{st: root}
+			tb.paras = append(tb.paras, p)
+		}
+		paras[i] = p
+		for _, it := range p.items {
+			if it.eq != nil {
+				above[i] = math.Max(above[i], it.eq.box.Height()-size)
+				below[i] = math.Max(below[i], it.eq.box.Depth()-(lh-size))
+			}
+		}
+		extra += above[i] + below[i]
+	}
+	textHeight := size + float64(len(lines)-1)*lh + extra
 	cy := y + size - 1
 	switch t.valign {
 	case "middle":
@@ -503,15 +526,12 @@ func (c *converter) layoutPlain(l *labelBox, value string, root *tstyle, t textP
 		}
 	}
 	lo := &tlayout{}
-	tb := &textBuilder{c: c, block: root}
 	var maxW float64
-	for i, s := range lines {
-		tb.endPara()
-		tb.text(s, root)
-		p := tb.cur
-		if p == nil {
-			p = &tpara{st: root}
-			tb.paras = append(tb.paras, p)
+	shift := 0.0 // the room formulas took above this line
+	for i, p := range paras {
+		shift += above[i]
+		if i > 0 {
+			shift += below[i-1]
 		}
 		ln := &tline{para: p, first: true}
 		ln.items = append(ln.items, p.items...)
@@ -525,7 +545,7 @@ func (c *converter) layoutPlain(l *labelBox, value string, root *tstyle, t textP
 			ln.width += it.w
 		}
 		ln.asc = 0
-		ln.top = cy + float64(i)*lh // baseline, see drawLabel (plain)
+		ln.top = cy + float64(i)*lh + shift // baseline, see drawLabel (plain)
 		switch t.align {
 		case "center":
 			ln.x = -ln.width / 2
@@ -750,9 +770,15 @@ type textEmitter struct {
 }
 
 // emitItems draws a line's items from x on the baseline base, as runs of
-// one font and style.
+// one font and style, and its formulas.
 func (e *textEmitter) emitItems(obj *bdf.Object, items []titem, x, base float64) {
 	for i := 0; i < len(items); {
+		if it := items[i]; it.eq != nil {
+			e.emitFormula(obj, it, x, base)
+			x += it.w
+			i++
+			continue
+		}
 		j := i + 1
 		for j < len(items) && sameRun(items[i], items[j]) {
 			j++
@@ -839,7 +865,7 @@ func (e *textEmitter) bullet(obj *bdf.Object, p *tpara, x, base float64) {
 
 // sameRun reports whether two adjacent items are drawn by one text instruction.
 func sameRun(a, b titem) bool {
-	return a.fc == b.fc && a.st.size == b.st.size && a.st.color == b.st.color && a.st.shift == b.st.shift &&
+	return a.eq == nil && b.eq == nil && a.fc == b.fc && a.st.size == b.st.size && a.st.color == b.st.color && a.st.shift == b.st.shift &&
 		a.st.underline == b.st.underline && a.st.strike == b.st.strike && a.st.link == b.st.link &&
 		(a.st.bg == nil) == (b.st.bg == nil) && (a.st.bg == nil || *a.st.bg == *b.st.bg)
 }

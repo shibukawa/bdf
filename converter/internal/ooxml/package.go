@@ -23,6 +23,9 @@ type Package struct {
 	// Supported, when set, makes the parts' mc:AlternateContent resolve to
 	// the choices whose required namespaces it accepts (see ParseChoosing).
 	Supported func(prefix string) bool
+	// Choose, when set, makes mc:AlternateContent resolve to the choices it
+	// accepts as well (such as MathChoice).
+	Choose func(choice *Node) bool
 
 	files map[string]*zip.File // by lower-cased part name without leading slash
 	xmls  map[string]*Node
@@ -97,7 +100,12 @@ func (p *Package) XML(name string) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	n, err := ParseChoosing(b, p.Supported)
+	pick := supportedChoice(p.Supported)
+	if p.Choose != nil {
+		supported := pick
+		pick = func(c *Node) bool { return supported != nil && supported(c) || p.Choose(c) }
+	}
+	n, err := ParsePicking(b, pick)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}

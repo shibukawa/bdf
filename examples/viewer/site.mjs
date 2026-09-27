@@ -37,6 +37,7 @@ const SAMPLES = [
   { path: "converter/pdf/testdata/chrome-doc.pdf", label: "PDF from Chrome" },
   { path: "converter/docx/testdata/basic.docx", label: "Word" },
   { path: "converter/docx/testdata/vertical.docx", label: "Word (vertical text)" },
+  { path: "converter/docx/testdata/math.docx", label: "Word (formulas)" },
   { path: "converter/pptx/testdata/features.pptx", label: "PowerPoint" },
   { path: "converter/xlsx/testdata/features.xlsx", label: "Excel" },
   { path: "converter/csv/testdata/japanese.tsv", label: "TSV (Shift_JIS)" },

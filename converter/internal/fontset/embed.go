@@ -18,10 +18,13 @@ type EmbedOptions struct {
 	// IgnoreFSType embeds fonts whose OS/2 fsType forbids embedding or
 	// subsetting.
 	IgnoreFSType bool
+	// PinnedOnly embeds only the pinned faces (Set.Pin), which what is
+	// drawn needs exactly; the others are referred to by name.
+	PinnedOnly bool
 }
 
 // maxWholeFont is the largest font file embedded whole when it cannot be
-// subset (CFF outlines).
+// subset.
 const maxWholeFont = 2 << 20
 
 // Embed adds the faces that measured characters to doc, as subsets of those
@@ -40,6 +43,9 @@ func (s *Set) Embed(doc *bdf.Document, opts EmbedOptions) int {
 		return faces[i].Index < faces[j].Index
 	})
 	for _, f := range faces {
+		if opts.PinnedOnly && !s.pinned[f] {
+			continue
+		}
 		l, err := f.Load()
 		if err != nil {
 			continue
@@ -52,9 +58,14 @@ func (s *Set) Embed(doc *bdf.Document, opts EmbedOptions) int {
 		for r := range s.runes[f] {
 			runes = append(runes, r)
 		}
-		data, ok := l.Program(runes, opts.NoSubset, opts.IgnoreFSType)
+		data, ok := l.Program(runes, s.glyphs[f], opts.NoSubset, opts.IgnoreFSType)
 		if !ok {
 			s.warnf("font %s is not embedded: its license does not allow embedding", f.Family)
+			continue
+		}
+		if l.Font.IsCFF && !opts.NoSubset && l.Size() > maxWholeFont && len(data) > l.Size()/2 {
+			// the CFF program could not be subset: the font came out whole
+			s.warnf("font %s is not embedded: its outlines could not be subset and the file is %d KB", f.Family, l.Size()/1024)
 			continue
 		}
 		if !opts.NoWOFF2 {

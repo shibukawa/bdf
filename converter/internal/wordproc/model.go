@@ -492,7 +492,8 @@ func latinLetter(r rune) bool {
 // field, content control … inside it); link is the hyperlink it is in.
 func (w *walker) inlines(p *para, n *ooxml.Node, link string) {
 	c := w.c
-	for _, k := range n.Elements() {
+	kids := n.Elements()
+	for i, k := range kids {
 		switch k.Name {
 		case "r":
 			w.run(p, k, link)
@@ -521,7 +522,7 @@ func (w *walker) inlines(p *para, n *ooxml.Node, link string) {
 				p.bookmarks = append(p.bookmarks, name)
 			}
 		case "oMath", "oMathPara":
-			w.math(p, k, link)
+			w.math(p, k, link, moreContent(kids, i))
 		}
 	}
 }
@@ -534,22 +535,6 @@ func (w *walker) linkOf(link string) string {
 		}
 	}
 	return link
-}
-
-// math draws the text of an Office Math object linearly.
-func (w *walker) math(p *para, n *ooxml.Node, link string) {
-	w.c.warnOnce("math", "equations are drawn as plain text")
-	var walk func(n *ooxml.Node)
-	walk = func(n *ooxml.Node) {
-		for _, k := range n.Elements() {
-			if k.Name == "r" {
-				w.run(p, k, link)
-				continue
-			}
-			walk(k)
-		}
-	}
-	walk(n)
 }
 
 func safeURL(s string) string {

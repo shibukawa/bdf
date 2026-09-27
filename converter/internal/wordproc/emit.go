@@ -281,7 +281,7 @@ func (e *emitter) runs(ln *line, items []item, x, base float64) {
 				continue
 			}
 			o := it.obj
-			ox, oy := x+it.x+o.ext[0], base-o.h-o.ext[3]
+			ox, oy := x+it.x+o.ext[0], base-o.h-o.ext[3]+o.desc
 			e.drawObject(o, drawingml.Box{X: ox, Y: oy, W: o.w, H: o.h})
 			addLink(it, ox, ox+o.w)
 			i++

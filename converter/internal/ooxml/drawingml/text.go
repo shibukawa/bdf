@@ -316,22 +316,25 @@ type para struct {
 	eaLang  string // language its kana or hangul imply (see scriptLang)
 }
 
-// item is one character (or tab / line break) with its style and face.
+// item is one character (or tab / line break / formula) with its style
+// and face.
 type item struct {
 	r    rune
 	st   *runStyle
 	fc   *fontset.Choice
 	w    float64 // advance in points, letter spacing included
 	brk  bool    // a line may break after this item
-	kind byte    // itemChar, itemTab, itemBreak
+	kind byte    // itemChar, itemTab, itemBreak, itemMath
 	x    float64 // position in the line (set by layout)
 	ls   float64 // extra letter spacing from justification
+	eq   *formula
 }
 
 const (
 	itemChar = iota
 	itemTab
 	itemBreak
+	itemMath
 )
 
 type bullet struct {
@@ -389,7 +392,7 @@ func (s *Drawing) paragraphs(tf *textFrame, fontScale, lnReduce float64) []*para
 			}
 		}
 		// runs
-		for _, k := range p.Kids {
+		for i, k := range p.Kids {
 			switch k.Name {
 			case "r", "fld":
 				rPr := k.Child("rPr")
@@ -405,13 +408,17 @@ func (s *Drawing) paragraphs(tf *textFrame, fontScale, lnReduce float64) []*para
 				rPr := k.Child("rPr")
 				st := s.runStyle(tf, tf.rChain(rPr, pc), fontScale, rPr)
 				pa.items = append(pa.items, item{r: '\n', st: st, fc: s.c.faceFor(st, ' '), kind: itemBreak})
+			case "m":
+				if k.Space == ooxml.NSA14 {
+					s.addMath(tf, pa, pc, fontScale, k, p.Kids[i+1:])
+				}
 			}
 		}
 		endPr := p.Child("endParaRPr")
 		pa.end = s.runStyle(tf, tf.rChain(endPr, pc), fontScale, endPr)
 		pa.endFace = s.c.faceFor(pa.end, 'x')
 		for _, it := range pa.items {
-			if it.kind == itemChar {
+			if it.kind == itemChar || it.kind == itemMath {
 				pa.hasText = true
 				break
 			}

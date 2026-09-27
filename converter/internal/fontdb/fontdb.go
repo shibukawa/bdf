@@ -34,6 +34,7 @@ type Face struct {
 	Italic bool
 	Mono   bool
 	CFF    bool
+	Math   bool // has a MATH table (a font for formulas)
 
 	names []string // normalized family names in every language
 	fsys  fs.FS    // the file system Path is in; nil for the local one
@@ -252,6 +253,11 @@ func scanFace(r io.ReaderAt, off int64) *Face {
 		return nil
 	}
 	face := &Face{Weight: 400, CFF: tag == "OTTO"}
+	for i := 0; i < n; i++ {
+		if string(dir[i*16:i*16+4]) == "MATH" {
+			face.Math = true
+		}
+	}
 	names := parseNames(table("name"))
 	if len(names[1]) == 0 {
 		return nil
@@ -408,6 +414,11 @@ type Loaded struct {
 	// the font does not say).
 	CapHeight     float64
 	embed, subset bool
+
+	mathOnce sync.Once
+	math     *sfnt.Math
+	outOnce  sync.Once
+	outlines *sfnt.Outlines
 }
 
 // ErrNoGlyphs is returned for faces whose glyph data cannot be read.
@@ -478,3 +489,23 @@ func (l *Loaded) Advance(g uint16) float64 { return float64(l.Font.Advance(g)) /
 
 // Embeddable reports whether the license bits allow embedding, and subsetting.
 func (l *Loaded) Embeddable() (embed, subset bool) { return l.embed, l.subset }
+
+// UnitsPerEm returns the size of the em in font units.
+func (l *Loaded) UnitsPerEm() float64 { return l.upem }
+
+// Math returns the font's MATH table (read once), or nil.
+func (l *Loaded) Math() *sfnt.Math {
+	l.mathOnce.Do(func() { l.math = sfnt.ParseMath(l.Font) })
+	return l.math
+}
+
+// Bounds returns the bounding box of glyph g's outline in em (y up); ok is
+// false for glyphs without an outline.
+func (l *Loaded) Bounds(g uint16) (r sfnt.Rect, ok bool) {
+	l.outOnce.Do(func() { l.outlines = sfnt.NewOutlines(l.Font) })
+	r, ok = l.outlines.Bounds(g)
+	if ok {
+		r = sfnt.Rect{XMin: r.XMin / l.upem, YMin: r.YMin / l.upem, XMax: r.XMax / l.upem, YMax: r.YMax / l.upem}
+	}
+	return r, ok
+}

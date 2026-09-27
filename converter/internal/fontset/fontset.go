@@ -51,8 +51,10 @@ type Set struct {
 	choices       map[resolveKey]*Choice
 	fallback      map[fallbackKey]*Choice
 	fallbackLists map[fallbackListKey][]fontdb.Resolved
-	runes         map[*fontdb.Face]map[rune]bool // characters measured per face
-	missing       map[rune]bool                  // characters no available font has
+	runes         map[*fontdb.Face]map[rune]bool   // characters measured per face
+	glyphs        map[*fontdb.Face]map[rune]uint16 // glyphs drawn by index: private use character → glyph
+	pinned        map[*fontdb.Face]bool            // faces embedded even when the others are referred to by name
+	missing       map[rune]bool                    // characters no available font has
 	embedded      map[*fontdb.Face]bdf.Hash
 }
 
@@ -77,7 +79,7 @@ func New(db *fontdb.DB, warn func(msg string)) *Set {
 	return &Set{db: db, warn: warn, warned: map[string]bool{},
 		choices: map[resolveKey]*Choice{}, fallback: map[fallbackKey]*Choice{},
 		fallbackLists: map[fallbackListKey][]fontdb.Resolved{},
-		runes:         map[*fontdb.Face]map[rune]bool{}, missing: map[rune]bool{},
+		runes:         map[*fontdb.Face]map[rune]bool{}, glyphs: map[*fontdb.Face]map[rune]uint16{}, pinned: map[*fontdb.Face]bool{}, missing: map[rune]bool{},
 		embedded: map[*fontdb.Face]bdf.Hash{}}
 }
 
@@ -122,6 +124,20 @@ func (s *Set) fromResolved(res fontdb.Resolved, requested string, bold, italic b
 			}
 			fc.Use.Face = nil
 		}
+	}
+	return fc
+}
+
+// ChooseMath resolves a request for a formula font to a face with a MATH
+// table (cached); nil when no available font has one.
+func (s *Set) ChooseMath(name string) *Choice {
+	f := s.db.ResolveMath(name)
+	if f == nil {
+		return nil
+	}
+	fc := s.fromResolvedCached(fontdb.Resolved{Face: f, Generic: fontdb.Serif, Exact: fontdb.Normalize(f.Family) == fontdb.Normalize(name)}, name, false, false)
+	if fc.Loaded == nil || fc.Loaded.Math() == nil {
+		return nil
 	}
 	return fc
 }
@@ -249,6 +265,43 @@ func (s *Set) Advance(fc *Choice, r rune) float64 {
 		return 0
 	}
 	return 0.55
+}
+
+// glyphPUA is where GlyphRune puts glyphs: Supplementary Private Use
+// Area-A, offset by the glyph index.
+const glyphPUA = 0xF0000
+
+// GlyphRune returns the character that draws glyph g of fc's face, for
+// glyphs no character maps to (the larger variants and the parts of a math
+// font's delimiters): a private use character that the embedded subset
+// maps to g. Text drawn with it needs an ALT_TEXT for extraction. It
+// returns false when fc has no font file or g is out of range.
+func (s *Set) GlyphRune(fc *Choice, g uint16) (rune, bool) {
+	if fc.Loaded == nil || int(g) >= fc.Loaded.Font.NumGlyphs || g > 0xFFFD {
+		return 0, false
+	}
+	f := fc.Loaded.Face
+	if s.runes[f] == nil {
+		s.runes[f] = map[rune]bool{}
+	}
+	m := s.glyphs[f]
+	if m == nil {
+		m = map[rune]uint16{}
+		s.glyphs[f] = m
+	}
+	r := rune(glyphPUA + int(g))
+	m[r] = g
+	s.pinned[f] = true
+	return r, true
+}
+
+// Pin makes fc's face one that Embed embeds even with PinnedOnly: text
+// whose layout depends on the exact font (formulas, and glyphs drawn by
+// index) cannot be drawn with a viewer's own fonts.
+func (s *Set) Pin(fc *Choice) {
+	if fc.Loaded != nil {
+		s.pinned[fc.Loaded.Face] = true
+	}
 }
 
 // ReportMissing warns about the characters that no available font has.

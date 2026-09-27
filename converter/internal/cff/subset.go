@@ -1,4 +1,4 @@
-package pdf
+package cff
 
 import (
 	"encoding/binary"
@@ -6,7 +6,7 @@ import (
 	"math"
 )
 
-// subsetCFF returns a CFF font program that holds only the glyphs in keep,
+// Subset returns a CFF font program that holds only the glyphs in keep,
 // glyph 0 and the components of seac accents, renumbered in their original
 // order; order[newGID] is the old GID. Subroutines the kept glyphs do not call
 // become a bare return (their numbers must not change). The charset keeps
@@ -21,8 +21,8 @@ import (
 //
 // When a charstring cannot be followed (arithmetic operators, a subroutine
 // number out of range) every subroutine is kept and only the glyphs are dropped.
-func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err error) {
-	cf, err := parseCFF(data)
+func Subset(data []byte, keep map[int]bool) (out []byte, order []int, err error) {
+	cf, err := Parse(data)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -30,34 +30,34 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 	if hdrSize < 4 || hdrSize > len(data) {
 		return nil, nil, errors.New("cff: bad header")
 	}
-	names, pos, err := cffReadIndex(data, hdrSize)
+	names, pos, err := ReadIndex(data, hdrSize)
 	if err != nil || len(names) != 1 {
 		return nil, nil, errors.New("cff: only single-font CFF is subset")
 	}
 	nameIdx := data[hdrSize:pos]
-	topDicts, pos, err := cffReadIndex(data, pos)
+	topDicts, pos, err := ReadIndex(data, pos)
 	if err != nil || len(topDicts) != 1 {
 		return nil, nil, errors.New("cff: no top dict")
 	}
 	strStart := pos
-	if _, pos, err = cffReadIndex(data, pos); err != nil {
+	if _, pos, err = ReadIndex(data, pos); err != nil {
 		return nil, nil, err
 	}
 	strIdx := data[strStart:pos]
-	gsubrs, _, err := cffReadIndex(data, pos)
+	gsubrs, _, err := ReadIndex(data, pos)
 	if err != nil {
 		return nil, nil, err
 	}
-	top, err := cffDictEntries(topDicts[0])
+	top, err := DictEntries(topDicts[0])
 	if err != nil {
 		return nil, nil, err
 	}
-	if cf.isCID {
+	if cf.IsCID {
 		// A CID-keyed font's Private DICTs hang off its Font DICTs; a stray
 		// Private in the Top DICT would point into the old layout.
 		kept := top[:0:0]
 		for _, e := range top {
-			if e.op != 18 {
+			if e.Op != 18 {
 				kept = append(kept, e)
 			}
 		}
@@ -65,8 +65,8 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 	}
 	topVal := func(op int) []float64 {
 		for _, e := range top {
-			if e.op == op {
-				return e.args
+			if e.Op == op {
+				return e.Args
 			}
 		}
 		return nil
@@ -82,22 +82,22 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 	if !ok {
 		return nil, nil, errors.New("cff: no CharStrings")
 	}
-	charStrings, _, err := cffReadIndex(data, csOff)
+	charStrings, _, err := ReadIndex(data, csOff)
 	if err != nil {
 		return nil, nil, err
 	}
 	n := len(charStrings)
-	if n != cf.numGlyphs || len(cf.charset) != n {
+	if n != cf.NumGlyphs || len(cf.Charset) != n {
 		return nil, nil, errors.New("cff: inconsistent glyph count")
 	}
 	// The renumbered font always has a custom charset.
 	if topVal(15) == nil {
-		top = append(top, cffDictEntry{op: 15, args: []float64{0}})
+		top = append(top, DictEntry{Op: 15, Args: []float64{0}})
 	}
 	// Private DICTs with their local subroutines: one for a name-keyed font,
 	// one per Font DICT for a CID-keyed font.
 	type private struct {
-		dict  []cffDictEntry
+		dict  []DictEntry
 		subrs *subrSet
 	}
 	readPrivate := func(sizeOff []float64) (*private, error) {
@@ -108,14 +108,14 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 		if size < 0 || o < 0 || o+size > len(data) {
 			return nil, errors.New("cff: Private out of range")
 		}
-		d, err := cffDictEntries(data[o : o+size])
+		d, err := DictEntries(data[o : o+size])
 		if err != nil {
 			return nil, err
 		}
 		p := &private{dict: d, subrs: &subrSet{}}
 		for _, e := range d {
-			if e.op == 19 && len(e.args) == 1 {
-				items, _, err := cffReadIndex(data, o+int(e.args[0]))
+			if e.Op == 19 && len(e.Args) == 1 {
+				items, _, err := ReadIndex(data, o+int(e.Args[0]))
 				if err != nil {
 					return nil, err
 				}
@@ -125,27 +125,27 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 		return p, nil
 	}
 	var privates []*private
-	var fdDicts [][]cffDictEntry
+	var fdDicts [][]DictEntry
 	fdOf := func(int) int { return 0 }
-	if cf.isCID {
+	if cf.IsCID {
 		fdaOff, ok1 := off(1236, 0)
 		fdsOff, ok2 := off(1237, 0)
 		if !ok1 || !ok2 {
 			return nil, nil, errors.New("cff: CID font without FDArray/FDSelect")
 		}
-		fds, _, err := cffReadIndex(data, fdaOff)
+		fds, _, err := ReadIndex(data, fdaOff)
 		if err != nil || len(fds) == 0 || len(fds) > 255 {
 			return nil, nil, errors.New("cff: bad FDArray")
 		}
 		for _, fd := range fds {
-			d, err := cffDictEntries(fd)
+			d, err := DictEntries(fd)
 			if err != nil {
 				return nil, nil, err
 			}
 			var p *private
 			for _, e := range d {
-				if e.op == 18 {
-					if p, err = readPrivate(e.args); err != nil {
+				if e.Op == 18 {
+					if p, err = readPrivate(e.Args); err != nil {
 						return nil, nil, err
 					}
 				}
@@ -156,7 +156,7 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 			fdDicts = append(fdDicts, d)
 			privates = append(privates, p)
 		}
-		sel, err := cffFDSelect(data, fdsOff, n)
+		sel, err := fdSelect(data, fdsOff, n)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -194,10 +194,10 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 		if _, err := st.exec(charStrings[gid], privates[fdOf(gid)].subrs, global, 0); err != nil {
 			followed = false
 		}
-		if st.seac[0] >= 0 && !cf.isCID {
+		if st.seac[0] >= 0 && !cf.IsCID {
 			for _, code := range st.seac {
 				if code >= 0 && code < 256 {
-					if g, ok := cf.nameToGID[standardEncoding[code]]; ok && !kept[g] {
+					if g, ok := cf.NameToGID[StandardEncoding[code]]; ok && !kept[g] {
 						kept[g] = true
 						queue = append(queue, g)
 					}
@@ -217,11 +217,11 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 	for i, gid := range order {
 		newCS[i] = charStrings[gid]
 		if i > 0 {
-			charset = binary.BigEndian.AppendUint16(charset, uint16(cf.charset[gid]))
+			charset = binary.BigEndian.AppendUint16(charset, uint16(cf.Charset[gid]))
 		}
 	}
 	var fdSelect []byte // format 3: ranges of glyphs sharing a Font DICT
-	if cf.isCID {
+	if cf.IsCID {
 		var ranges []byte
 		nRanges := 0
 		for i, gid := range order {
@@ -241,8 +241,8 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 		}
 		return s.items
 	}
-	gsubrIdx := cffIndex(prune(global))
-	csIdx := cffIndex(newCS)
+	gsubrIdx := Index(prune(global))
+	csIdx := Index(newCS)
 	privBlocks := make([][]byte, len(privates)) // Private DICT followed by its Subrs INDEX
 	privSizes := make([]int, len(privates))
 	for i, p := range privates {
@@ -252,18 +252,18 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 		// Subrs is relative to the Private DICT: the INDEX follows the DICT directly.
 		hasSubrs := false
 		for _, e := range p.dict {
-			hasSubrs = hasSubrs || e.op == 19
+			hasSubrs = hasSubrs || e.Op == 19
 		}
-		size := len(cffEncodeDict(p.dict, func(e cffDictEntry) ([]int, bool) { return nil, e.op == 19 }))
-		d := cffEncodeDict(p.dict, func(e cffDictEntry) ([]int, bool) {
-			if e.op == 19 {
+		size := len(EncodeDict(p.dict, func(e DictEntry) ([]int, bool) { return nil, e.Op == 19 }))
+		d := EncodeDict(p.dict, func(e DictEntry) ([]int, bool) {
+			if e.Op == 19 {
 				return []int{size}, true
 			}
 			return nil, false
 		})
 		privBlocks[i] = d
 		if hasSubrs {
-			privBlocks[i] = append(d, cffIndex(prune(p.subrs))...)
+			privBlocks[i] = append(d, Index(prune(p.subrs))...)
 		}
 		privSizes[i] = len(d)
 	}
@@ -274,10 +274,10 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 	// known before the offsets are.
 	offsets := map[int][]int{}
 	encodeTop := func() []byte {
-		return cffEncodeDict(top, func(e cffDictEntry) ([]int, bool) {
-			switch e.op {
+		return EncodeDict(top, func(e DictEntry) ([]int, bool) {
+			switch e.Op {
 			case 16:
-				if len(e.args) == 1 && e.args[0] <= 1 {
+				if len(e.Args) == 1 && e.Args[0] <= 1 {
 					return nil, false // predefined encoding: codes map to names, still valid
 				}
 				return []int{0}, true
@@ -285,25 +285,25 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 			default:
 				return nil, false
 			}
-			if v, ok := offsets[e.op]; ok {
+			if v, ok := offsets[e.Op]; ok {
 				return v, true
 			}
-			return make([]int, len(e.args)), true
+			return make([]int, len(e.Args)), true
 		})
 	}
 	encodeFDs := func(privOff []int) []byte {
 		items := make([][]byte, len(fdDicts))
 		for i, d := range fdDicts {
-			items[i] = cffEncodeDict(d, func(e cffDictEntry) ([]int, bool) {
-				if e.op == 18 {
+			items[i] = EncodeDict(d, func(e DictEntry) ([]int, bool) {
+				if e.Op == 18 {
 					return []int{privSizes[i], privOff[i]}, true
 				}
 				return nil, false
 			})
 		}
-		return cffIndex(items)
+		return Index(items)
 	}
-	topLen := len(cffIndex([][]byte{encodeTop()}))
+	topLen := len(Index([][]byte{encodeTop()}))
 	p := hdrSize + len(nameIdx) + topLen + len(strIdx) + len(gsubrIdx)
 	offsets[15] = []int{p}
 	p += len(charset)
@@ -315,7 +315,7 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 	p += len(csIdx)
 	privOff := make([]int, len(privates))
 	var fdArray []byte
-	if cf.isCID {
+	if cf.IsCID {
 		offsets[1236] = []int{p}
 		p += len(encodeFDs(privOff))
 	}
@@ -323,16 +323,16 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 		privOff[i] = p
 		p += len(b)
 	}
-	if !cf.isCID && privates[0].dict != nil {
+	if !cf.IsCID && privates[0].dict != nil {
 		offsets[18] = []int{privSizes[0], privOff[0]}
 	}
-	if cf.isCID {
+	if cf.IsCID {
 		fdArray = encodeFDs(privOff)
 	}
 	out = make([]byte, 0, p)
 	out = append(out, data[:hdrSize]...)
 	out = append(out, nameIdx...)
-	out = append(out, cffIndex([][]byte{encodeTop()})...)
+	out = append(out, Index([][]byte{encodeTop()})...)
 	out = append(out, strIdx...)
 	out = append(out, gsubrIdx...)
 	out = append(out, charset...)
@@ -345,21 +345,21 @@ func subsetCFF(data []byte, keep map[int]bool) (out []byte, order []int, err err
 	if len(out) != p {
 		return nil, nil, errors.New("cff: layout mismatch")
 	}
-	if check, err := parseCFF(out); err != nil || check.numGlyphs != len(order) || check.isCID != cf.isCID {
+	if check, err := Parse(out); err != nil || check.NumGlyphs != len(order) || check.IsCID != cf.IsCID {
 		return nil, nil, errors.New("cff: subset does not parse")
 	}
 	return out, order, nil
 }
 
-// cffDictEntry is one operator of a DICT with its operands, kept as written.
-type cffDictEntry struct {
-	op   int // 12 x is 1200+x
-	args []float64
-	raw  []byte // operand bytes
+// DictEntry is one operator of a DICT with its operands, kept as written.
+type DictEntry struct {
+	Op   int // 12 x is 1200+x
+	Args []float64
+	Raw  []byte // operand bytes
 }
 
-func cffDictEntries(b []byte) ([]cffDictEntry, error) {
-	var out []cffDictEntry
+func DictEntries(b []byte) ([]DictEntry, error) {
+	var out []DictEntry
 	start := 0
 	for i := 0; i < len(b); {
 		c := int(b[i])
@@ -375,8 +375,8 @@ func cffDictEntries(b []byte) ([]cffDictEntry, error) {
 				end++
 			}
 			raw := b[start:i]
-			args := cffParseDict(append(append([]byte(nil), raw...), 0))[0] // operands only
-			out = append(out, cffDictEntry{op: op, args: args, raw: raw})
+			args := ParseDict(append(append([]byte(nil), raw...), 0))[0] // operands only
+			out = append(out, DictEntry{Op: op, Args: args, Raw: raw})
 			i = end
 			start = end
 		case c == 28:
@@ -408,7 +408,7 @@ func cffDictEntries(b []byte) ([]cffDictEntry, error) {
 
 // cffEncodeDict writes entries back; replace returns new integer operands
 // for an entry (written as 5-byte integers) or false to keep it as it was.
-func cffEncodeDict(entries []cffDictEntry, replace func(cffDictEntry) ([]int, bool)) []byte {
+func EncodeDict(entries []DictEntry, replace func(DictEntry) ([]int, bool)) []byte {
 	var out []byte
 	for _, e := range entries {
 		if v, ok := replace(e); ok {
@@ -420,19 +420,19 @@ func cffEncodeDict(entries []cffDictEntry, replace func(cffDictEntry) ([]int, bo
 				out = binary.BigEndian.AppendUint32(out, uint32(int32(x)))
 			}
 		} else {
-			out = append(out, e.raw...)
+			out = append(out, e.Raw...)
 		}
-		if e.op >= 1200 {
-			out = append(out, 12, byte(e.op-1200))
+		if e.Op >= 1200 {
+			out = append(out, 12, byte(e.Op-1200))
 		} else {
-			out = append(out, byte(e.op))
+			out = append(out, byte(e.Op))
 		}
 	}
 	return out
 }
 
 // cffIndex writes an INDEX.
-func cffIndex(items [][]byte) []byte {
+func Index(items [][]byte) []byte {
 	if len(items) == 0 {
 		return []byte{0, 0}
 	}
@@ -465,7 +465,7 @@ func cffIndex(items [][]byte) []byte {
 }
 
 // cffFDSelect returns the font DICT index of every glyph.
-func cffFDSelect(data []byte, off, numGlyphs int) ([]int, error) {
+func fdSelect(data []byte, off, numGlyphs int) ([]int, error) {
 	if off >= len(data) {
 		return nil, errors.New("cff: FDSelect out of range")
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/equation"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
 	"golang.org/x/net/html"
@@ -509,8 +510,7 @@ func (r *htmlReader) node(n *html.Node, st *hstyle) {
 		r.c.warnOnce("svg", "SVG images are not drawn")
 		return
 	case atom.Math:
-		r.c.warnOnce("math", "equations are drawn as plain text")
-		r.children(n, st)
+		r.math(n, st)
 	case atom.P:
 		r.block(0, 0, func() {
 			s := r.blockStyle(n, css, st)
@@ -990,4 +990,29 @@ func (r *htmlReader) checkbox(checked bool, st *hstyle) {
 	}
 	p.items = append(p.items, item{kind: kObject, obj: o, st: r.style(st), w: o.w + o.ext[0] + o.ext[2]})
 	r.space, r.check = false, o
+}
+
+// math lays a MathML formula out: inline in the paragraph, or centered on
+// lines of its own (display="block").
+func (r *htmlReader) math(n *html.Node, st *hstyle) {
+	f, display := equation.ParseMathML(n)
+	if f == nil {
+		return
+	}
+	if display {
+		r.block(r.em(blockGap), r.em(blockGap), func() {
+			s := st.block()
+			s.jc = "center"
+			r.c.addFormula(r.para(s), f, r.style(s), true)
+		})
+		return
+	}
+	p := r.para(st)
+	if r.space {
+		if k := len(p.items); k > 0 && p.items[k-1].kind != kBreak {
+			r.c.addChar(p, r.style(r.spaceSt), ' ')
+		}
+		r.space, r.spaceNL = false, false
+	}
+	r.c.addFormula(p, f, r.style(st), false)
 }

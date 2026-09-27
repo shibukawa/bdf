@@ -185,6 +185,48 @@ func (db *DB) Resolve(family string, bold, italic, cjk bool) Resolved {
 	return res
 }
 
+// mathFamilies are fonts with a MATH table, in the order they stand in for
+// a formula font that is not available. STIX Two Math comes first: its
+// Times-like design is the closest to Cambria Math, which Office uses.
+var mathFamilies = []string{"Cambria Math", "STIX Two Math", "XITS Math", "STIX Math", "Latin Modern Math",
+	"Libertinus Math", "TeX Gyre Termes Math", "TeX Gyre Pagella Math", "TeX Gyre Bonum Math", "TeX Gyre Schola Math",
+	"DejaVu Math TeX Gyre", "New Computer Modern Math", "Noto Sans Math", "Fira Math", "Asana Math", "Garamond-Math"}
+
+// ResolveMath maps a request for a formula font to a face with a MATH
+// table: the family itself, then the other math fonts, then any face that
+// has one. It returns nil when no available font has a MATH table.
+func (db *DB) ResolveMath(family string) *Face {
+	pick := func(name string) *Face {
+		var faces []*Face
+		for _, f := range db.Family(name) {
+			if f.Math {
+				faces = append(faces, f)
+			}
+		}
+		if len(faces) == 0 {
+			return nil
+		}
+		f, _, _ := Match(faces, false, false)
+		return f
+	}
+	if family != "" {
+		if f := pick(family); f != nil {
+			return f
+		}
+	}
+	for _, n := range mathFamilies {
+		if f := pick(n); f != nil {
+			return f
+		}
+	}
+	for _, f := range db.Faces {
+		if f.Math {
+			return pick(f.Family)
+		}
+	}
+	return nil
+}
+
 // firstFamily returns the faces of the alphabetically first family, the
 // deterministic last resort.
 func (db *DB) firstFamily() []*Face {

@@ -28,8 +28,9 @@ jobs:
           cache: npm
       # Free fonts that stand in for the ones Office documents name
       # (Liberation for Arial, Times New Roman and Courier New, Carlito for
-      # Calibri, Caladea for Cambria, IPAex for Japanese, DejaVu for symbols),
-      # published with their licenses. The page fetches the ones a document uses.
+      # Calibri, Caladea for Cambria, IPAex for Japanese, DejaVu for symbols,
+      # STIX Two Math for Cambria Math), published with their licenses. The
+      # page fetches the ones a document uses.
       - name: fonts
         run: |
           pkgs="fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea fonts-ipaexfont-gothic fonts-ipaexfont-mincho fonts-dejavu-core"
@@ -41,6 +42,12 @@ jobs:
             dpkg -L "$pkg" | grep -E '\.(ttf|otf|ttc)$' | xargs -r cp -L -t "$dir"
             cp "/usr/share/doc/$pkg/copyright" "$dir/$pkg.copyright.txt"
           done
+          # STIX Two Math, the formula font: formulas are laid out with
+          # the parameters and glyph variants of its OpenType MATH table
+          stix=stixfonts-2.13b171
+          curl -fsSL -o "$RUNNER_TEMP/stix.zip" https://github.com/stipub/stixfonts/archive/refs/tags/v2.13b171.zip
+          unzip -j -o "$RUNNER_TEMP/stix.zip" "$stix/fonts/static_otf/STIXTwoMath-Regular.otf" -d "$dir"
+          unzip -p "$RUNNER_TEMP/stix.zip" "$stix/OFL.txt" > "$dir/STIXTwoMath.OFL.txt"
           ls -l "$dir"
       - run: npm ci
       - run: npm run site

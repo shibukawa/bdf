@@ -219,7 +219,7 @@ bdf を読むためのパッケージ（`packages/core`）。DOM に依存しな
 | `extractText(obj, resolve, matrix?)` | テキストの run（位置、フォント、区切り）を取り出す |
 | `extractContent(obj, resolve, matrix?)` | run に構造（見出し、リスト、表、図）とリンクを付けた `TextContent` |
 | `parseCellRef` / `guessSep` / `Mark` / `Sep` | セル参照の解釈、run の区切りの推測、MARK と区切りの定数 |
-| `TextSearch(runs)` / `decodeTextIndex(bytes)` | テキスト索引から検索する（NFKC、大文字小文字、小書きのかなを同一視し、行をまたいで一致する）。`search(query, {limit, caseSensitive, context})` は `SearchHit[]` |
+| `TextSearch(runs)` / `decodeTextIndex(bytes)` | テキスト索引から検索する（NFKC、大文字小文字、小書きのかな、数式のマイナス記号とハイフンマイナスを同一視し、行をまたいで一致する）。`search(query, {limit, caseSensitive, context})` は `SearchHit[]` |
 | `normalizeQuery` / `normalizeChar` | 検索と同じ正規化 |
 | `dcValues(value)` | Dublin Core の値（文字列または配列）を配列にする |
 | `parseHeader` / `decode` / `MAGIC` / `HEADER_SIZE` | 1 ファイル形式のヘッダと Part の展開 |
