@@ -271,7 +271,7 @@ installCopyHandler(container);
 | 名前 | 内容 |
 |---|---|
 | `buildTextLayer(content, scale, options?)` | 透明なテキスト層の要素を作る。選択、コピー、検索のハイライト位置合わせ、読み上げ（見出し、リスト、表、代替テキスト、リンク、言語）に使う。`options` は `lang`、`sheet`（シートを表として並べる）、`altText`、`measure`、`linkLabel`、`onSpan`、`className` |
-| `TEXT_LAYER_CSS` | テキスト層の CSS |
+| `TEXT_LAYER_CSS` | テキスト層の CSS。run の span は z-index 1（他の run より上に置く span は 2）。選択をドラッグしてテキストのない所へ出ても選択が飛ばないように、層の末尾の要素がドラッグの間だけスクロール領域を覆う |
 | `installCopyHandler(container)` | ページをまたいだ選択を、文書の空白と改行を戻してコピーする |
 | `selectionText` / `selectedRuns` / `joinRuns` | 選択範囲のテキスト |
 | `RUN_ATTR` / `linkHref` / `internalLink` | run の要素に付く属性名 / リンク先として安全な URL / 文書内リンク（`#page=N`、`#view=ID&page=N`）の解釈 |

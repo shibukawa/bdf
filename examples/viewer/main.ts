@@ -3,10 +3,12 @@
 // or dropped on the page are converted into bdf in another worker, by the Go
 // converters built as wasm (examples/viewer/site.mjs builds them). A PDF is
 // converted a page at a time: its pages are shown sized at once and drawn as
-// they are converted, those near the visible area first.
+// they are converted, those near the visible area first. Pages are scrolled
+// through, or shown one or two at a time and turned like a book's (book.ts).
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
 import { BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, internalLink, TEXT_LAYER_CSS, RUN_ATTR, type HitRect, type OpenSource, type TextLayerOptions } from "@bdf/render";
 import { ConverterClient, ConvertError, sniff, type Opened } from "./convert.js";
+import { Book } from "./book.js";
 
 /** The document shown when the URL has no ?src= (set by the build); "" shows the start page. */
 declare const DEFAULT_SRC: string;
@@ -24,7 +26,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const stage = $<HTMLDivElement>("stage");
 const tabs = $<HTMLSpanElement>("tabs");
 const zoomInput = $<HTMLInputElement>("zoom");
-const continuousBox = $<HTMLInputElement>("continuous");
+const layoutSelect = $<HTMLSelectElement>("layout");
 const status = $<HTMLSpanElement>("status");
 const timing = $<HTMLSpanElement>("timing");
 const hitsBox = $<HTMLSpanElement>("hits");
@@ -38,6 +40,8 @@ let current: View | undefined;
 let zoom = 1;
 /** Bumped by show(): work started for an earlier view or zoom is dropped. */
 let generation = 0;
+/** The view shown one or two pages at a time. */
+let book: Book | undefined;
 
 /** Search state for the current view; pages is how many were converted when it searched (streaming). */
 const found = { query: "", hits: [] as SearchHit[], rects: [] as HitRect[][], index: -1, pages: -1 };
@@ -379,6 +383,7 @@ function showProgress(st?: Streaming) {
 /** A page came in: draw what was waiting for it, or say that it failed. */
 function pageArrived(index: number) {
   if (!current || !streaming || current.id !== streaming.view || continuous(current)) return;
+  if (book) return book.arrived(index);
   const el = stage.querySelector<HTMLDivElement>(`.page[data-index="${index}"]`);
   if (!el) return;
   el.removeAttribute("aria-busy");
@@ -407,11 +412,13 @@ function closeDocument() {
   showProgress();
   current = undefined;
   generation++;
+  book?.destroy();
+  book = undefined;
   stage.onscroll = null;
   stage.replaceChildren();
   tabs.replaceChildren();
   $<HTMLButtonElement>("prevView").disabled = $<HTMLButtonElement>("nextView").disabled = true;
-  $("modeBox").hidden = true;
+  $("layoutBox").hidden = $("pageNav").hidden = true;
   found.query = ""; found.hits = []; found.rects = []; found.index = -1; found.pages = -1; hitsBox.textContent = "";
 }
 
@@ -510,7 +517,12 @@ function init() {
     zoomInput.setAttribute("aria-valuetext", pct);
     if (current) show(current);
   };
-  continuousBox.onchange = () => { if (current) show(current); };
+  // "?layout=spread" opens documents in that layout
+  const start = params.get("layout");
+  if (start && [...layoutSelect.options].some((o) => o.value === start)) layoutSelect.value = start;
+  layoutSelect.onchange = () => { if (current) show(current); };
+  $("prevPage").onclick = () => book?.turnBy(-1);
+  $("nextPage").onclick = () => book?.turnBy(1);
 
   // files: the picker, and drag and drop anywhere on the page
   const picker = $<HTMLInputElement>("file");
@@ -549,6 +561,8 @@ function main() {
 }
 
 function show(v: View) {
+  // a layout or zoom change goes on from the page in view
+  const keep = current === v ? pageInView() : 0;
   if (current !== v) {
     found.query = ""; found.hits = []; found.rects = []; found.index = -1; found.pages = -1; hitsBox.textContent = "";
     setStatus(describe(v));
@@ -568,8 +582,12 @@ function show(v: View) {
   $<HTMLButtonElement>("nextView").disabled = i >= manifest.views.length - 1;
   // the address names the view, for a link to it or a reload
   if (manifest.views.length > 1) history.replaceState(null, "", `#view=${encodeURIComponent(v.id)}`);
-  $("modeBox").hidden = v.kind !== "flow";
+  $("layoutBox").hidden = v.kind === "sheet" || v.kind === "scroll";
+  layoutSelect.querySelector<HTMLOptionElement>("[value=continuous]")!.disabled = v.kind !== "flow";
   generation++;
+  book?.destroy();
+  book = undefined;
+  $("pageNav").hidden = true;
   stage.onscroll = null;
   stage.replaceChildren();
   stage.scrollTop = 0;
@@ -577,7 +595,17 @@ function show(v: View) {
   visible.clear();
   if (v.kind === "sheet") showSheet(v);
   else if (continuous(v)) showContinuous(v);
-  else showPages(v);
+  else if (inBook(v)) showBook(v, keep);
+  else {
+    showPages(v);
+    if (keep > 0) stage.querySelector(`.page[data-index="${keep}"]`)?.scrollIntoView({ block: "start" });
+  }
+}
+
+/** The first page in view (in the book layouts, of the spread shown). */
+function pageInView(): number {
+  if (book) return book.pages[0] ?? 0;
+  return visible.size ? Math.min(...visible) : 0;
 }
 
 /** Show the view before (delta -1) or after (+1) the current one. */
@@ -595,7 +623,9 @@ function focusTab(v: View) {
 }
 
 /** Whether a view is shown as one continuous scroll: a scroll view always, a flow view on request. */
-const continuous = (v: View) => v.kind === "scroll" || (v.kind === "flow" && continuousBox.checked);
+const continuous = (v: View) => v.kind === "scroll" || (v.kind === "flow" && layoutSelect.value === "continuous");
+/** Whether a view of pages is shown one or two pages at a time. */
+const inBook = (v: View) => (v.kind === "fixed" || v.kind === "flow") && ["single", "spread", "spread-rtl"].includes(layoutSelect.value);
 
 /** What a view holds, for the status line. */
 function describe(v: View): string {
@@ -674,9 +704,61 @@ async function renderText(v: View, index: number, el: HTMLDivElement, gen: numbe
   el.append(buildTextLayer(content, zoom, layerOptions()), highlightLayer(index));
 }
 
+/**
+ * Pages one or two at a time, fitted to the stage (times the zoom), with the
+ * page buttons in the header. The pages shown are the visible ones, which a
+ * stream converts first.
+ */
+function showBook(v: View, start: number) {
+  const gen = generation;
+  const pagesOf = v.pages ?? [];
+  const noun = manifest.meta?.source === "pptx" ? "Slide" : "Page";
+  const rtl = layoutSelect.value === "spread-rtl";
+  const b = new Book(stage, {
+    pages: pagesOf,
+    layout: layoutSelect.value === "single" ? "single" : "spread",
+    rtl,
+    zoom,
+    start,
+    label: (i) => (pagesOf.length === 1 && v.title ? v.title : `${noun} ${i + 1} of ${pagesOf.length}`),
+    bitmap: (i, scale) => client.page(v.id, i, scale),
+    content: (i) => client.content(v.id, i),
+    layers: (i, content, scale) => [buildTextLayer(content, scale, layerOptions()), highlightLayer(i, scale)],
+    pending: (i) => pending(v, i),
+    failed: (i) => streaming?.view === v.id && streaming.state[i] === PageState.Failed,
+    onTurn: (pages) => turned(b, pages, noun),
+    onError: unlessStale(gen),
+  });
+  book = b;
+  // the buttons point the way the pages turn
+  $("pageNav").classList.toggle("rtl", rtl);
+  $("prevPage").textContent = rtl ? "›" : "‹";
+  $("nextPage").textContent = rtl ? "‹" : "›";
+  $("pageNav").hidden = false;
+  turned(b, b.pages, noun);
+}
+
+/** The pages of a book shown: the page number next to its buttons, and what a stream converts first. */
+function turned(b: Book, pages: number[], noun: string) {
+  visible.clear();
+  for (const i of pages) visible.add(i);
+  const n = current?.pages?.length ?? 0;
+  const range = pages.length > 1 ? `${pages[0] + 1}–${pages[pages.length - 1] + 1}` : `${(pages[0] ?? 0) + 1}`;
+  const shown = document.createElement("span");
+  shown.setAttribute("aria-hidden", "true");
+  shown.textContent = `${range} / ${n}`;
+  const spoken = document.createElement("span");
+  spoken.className = "sr-only";
+  spoken.textContent = `${noun}${pages.length > 1 ? "s" : ""} ${range} of ${n}`;
+  $("pageNum").replaceChildren(shown, spoken);
+  $<HTMLButtonElement>("prevPage").disabled = !b.canTurn(-1);
+  $<HTMLButtonElement>("nextPage").disabled = !b.canTurn(1);
+}
+
 /** Follow a link to a page (0-based): scroll to it and focus it. */
 function goToPage(index: number) {
   if (!current) return;
+  if (book) return book.go(index, true, true);
   if (continuous(current)) {
     const { top, band } = continuousPosition(current, index);
     stage.scrollTo({ top: top * zoom });
@@ -715,7 +797,7 @@ async function runSearch(query: string, step: number) {
   // refresh highlights on everything that is rendered
   for (const el of stage.querySelectorAll<HTMLDivElement>(".page[data-index]")) {
     const old = el.querySelector(".hlLayer");
-    if (old) old.replaceWith(highlightLayer(Number(el.dataset.index)));
+    if (old) old.replaceWith(highlightLayer(Number(el.dataset.index), book?.scale ?? zoom));
   }
   sheetViews.get(v)?.redraw();
   for (const el of stage.querySelectorAll<HTMLDivElement>(".page[data-y]")) {
@@ -730,6 +812,8 @@ async function runSearch(query: string, step: number) {
   } else if (continuous(v)) {
     const y = continuousRect(v, rect).y;
     stage.scrollTo({ top: Math.max(0, y * zoom - stage.clientHeight / 2), behavior: "smooth" });
+  } else if (book) {
+    book.go(rect.a, true);
   } else {
     const el = stage.querySelector<HTMLDivElement>(`.page[data-index="${rect.a}"]`);
     el?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -754,8 +838,8 @@ function showHitCount(query: string) {
   hitsBox.replaceChildren(`${found.index + 1} of ${found.hits.length}${partial}`, detail);
 }
 
-/** Highlight rectangles of the hits on one page. */
-function highlightLayer(pageIndex: number): HTMLDivElement {
+/** Highlight rectangles of the hits on one page; scale is CSS px per unit. */
+function highlightLayer(pageIndex: number, scale = zoom): HTMLDivElement {
   const layer = document.createElement("div");
   layer.className = "textLayer hlLayer";
   found.rects.forEach((rects, hi) => {
@@ -763,10 +847,10 @@ function highlightLayer(pageIndex: number): HTMLDivElement {
       if (r.a !== pageIndex) continue;
       const d = document.createElement("div");
       d.className = hi === found.index ? "hl current" : "hl";
-      d.style.left = `${r.x * zoom}px`;
-      d.style.top = `${r.y * zoom}px`;
-      d.style.width = `${r.w * zoom}px`;
-      d.style.height = `${r.h * zoom}px`;
+      d.style.left = `${r.x * scale}px`;
+      d.style.top = `${r.y * scale}px`;
+      d.style.width = `${r.w * scale}px`;
+      d.style.height = `${r.h * scale}px`;
       layer.appendChild(d);
     }
   });
@@ -934,7 +1018,7 @@ function showSheet(v: View) {
     const x = r.x < fw, y = r.y < fh;
     if (!x && !y) return;
     span.style.translate = `${x ? "var(--sx)" : "0px"} ${y ? "var(--sy)" : "0px"}`;
-    span.style.zIndex = "1";
+    span.style.zIndex = "2"; // above the other runs (TEXT_LAYER_CSS)
   };
   let covered: { x: number; y: number; w: number; h: number } | undefined;
   let textTimer: ReturnType<typeof setTimeout> | undefined;

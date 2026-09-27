@@ -28,6 +28,21 @@
   /* a page still being converted, and one that could not be */
   .page[aria-busy="true"]::after { content: "converting…"; position: absolute; inset: 0; display: grid; place-items: center; color: #8a939e; }
   .page .pageError { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; color: #b00020; }
+  /* one or two pages at a time (book.ts): pages turn on a canvas that takes their place meanwhile */
+  .book { position: relative; overflow: hidden; }
+  .book .leaves { position: absolute; inset: 0; }
+  .book .page { position: absolute; }
+  .book > canvas { position: absolute; left: 0; top: 0; display: none; pointer-events: none; }
+  .book.turning > canvas { display: block; }
+  /* not visibility: hidden, which would take the focus away from the pages */
+  .book.turning .leaves { opacity: 0; pointer-events: none; }
+  /* handles on the corners and outer edges of the pages */
+  .book .zones > div { position: absolute; z-index: 2; touch-action: none; -webkit-user-select: none; user-select: none; cursor: grab; }
+  .book .zones > div.grabbing { cursor: grabbing; }
+  .book.selecting .zones > div { pointer-events: none; }
+  #pageNav:not([hidden]) { display: inline-flex; gap: 4px; align-items: center; }
+  #pageNav.rtl { flex-direction: row-reverse; }
+  #pageNum { min-width: 5.5em; text-align: center; font-variant-numeric: tabular-nums; }
   .textLayer { position: absolute; inset: 0; overflow: hidden; }
   /* the selectable text layer's CSS is @bdf/render TEXT_LAYER_CSS, added by main.ts */
   /* highlights sit on the canvas, which forced colors leave alone: keep theirs too */
@@ -63,7 +78,18 @@
   <button id="openFile" type="button">Open file…</button>
   <input id="file" type="file" hidden accept=".pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.csv,.tsv,.tab,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.drawio,.dio,.svg,.png,.dxf,.jww,.p21,.p2z,.sfc,.html,.htm,.xhtml,.mhtml,.mht,.md,.markdown,.bdf">
   <label>zoom <input id="zoom" type="range" min="0.25" max="3" step="0.25" value="1" aria-valuetext="100%"> <span id="zoomv">100%</span></label>
-  <label id="modeBox" hidden><input id="continuous" type="checkbox"> continuous</label>
+  <label id="layoutBox" hidden>layout <select id="layout">
+    <option value="pages">scroll pages</option>
+    <option value="continuous">continuous</option>
+    <option value="single">one page</option>
+    <option value="spread">two pages</option>
+    <option value="spread-rtl">two pages, right to left</option>
+  </select></label>
+  <span id="pageNav" hidden>
+    <button id="prevPage" type="button" title="previous page" aria-label="previous page">‹</button>
+    <span id="pageNum" aria-live="polite"></span>
+    <button id="nextPage" type="button" title="next page" aria-label="next page">›</button>
+  </span>
   <span class="search" role="search">
     <input id="q" type="search" placeholder="search…" aria-label="search" size="18">
     <button id="prev" title="previous match" aria-label="previous match">▲</button><button id="next" title="next match" aria-label="next match">▼</button>

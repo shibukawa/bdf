@@ -64,6 +64,7 @@ There are two paths. Both produce the same bdf parts and share the same renderer
 
 - Three layout models: fixed-size pages (slides), an infinite plane (spreadsheets), and documents that are paginated but can also be read as one continuous scroll (word processing), optionally with a second view laid out without pages as one long column
 - Several views per document (the sheets of a workbook, the pages of a draw.io diagram), which the viewer switches between with tabs like sheet tabs; links can point to another view (`#view=ID`)
+- The demo viewer scrolls through pages, or fits them to the window one or two at a time, as facing pages read left to right or right to left. A page turns with the keys and the page buttons, or when a corner or the outer edge of the page is pulled. The page curls in WebGL, textured with the pages before and after it, which are rendered ahead of time. The rest of the page keeps its text selection (`?layout=single`, `spread` or `spread-rtl` opens documents that way)
 - The instruction set maps 1:1 onto `CanvasRenderingContext2D`
 - Decompressed with `DecompressionStream` and drawn with `OffscreenCanvas` in a Worker
 - Content-addressed parts, so masters and repeated elements are shared automatically
@@ -233,6 +234,7 @@ node test/render.mjs out.bdf pngdir/  # render any .bdf to PNG in Chromium (shee
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
 # open another document with ?src= (a path under the repository), e.g. a draw.io diagram whose pages
 # appear as tabs along the bottom: http://127.0.0.1:8765/examples/viewer/.out/?src=/testdata/drawio/multipage.bdf
+# pages two at a time, turned like a book's: http://127.0.0.1:8765/examples/viewer/.out/?src=/testdata/docx/basic.bdf&layout=spread
 npm run site:serve                   # demo site with in-browser conversion (requires Go): http://127.0.0.1:8766/
 npm run test:site                    # convert the site's samples with its wasm modules (after npm run site)
 BDF_SITE_FONTS=dir1:dir2 npm run site  # publish these fonts with the site (default: the test fonts)

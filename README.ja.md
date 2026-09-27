@@ -64,6 +64,7 @@ flowchart TB
 
 - 固定サイズページ（スライド）、無限平面（シート）、ページ分割かつ連続表示可能な文書（ワープロ。ページを持たずに 1 枚の長い面としてレイアウトした View も持てる）の 3 モデル
 - 1 文書に複数の View（Excel のシート、draw.io のページ）を持ち、ビューアはシート見出しのようなタブで切り替える。View 間のリンク（`#view=ID`）も張れる
+- デモビューアはページをスクロールで並べるほか、1 ページずつ、または見開き（左開き・右開き）で画面に合わせて表示できる。キーやページボタンで、またはページの角や外側の端を引っ張るとページがめくれる。めくれる紙は WebGL で描き、前後のページを先に描いておいてテクスチャにする。ページの内側ではそのままテキストを選択できる（`?layout=single`・`spread`・`spread-rtl` で最初からその表示で開く）
 - 命令セットは `CanvasRenderingContext2D` に 1:1 対応
 - `DecompressionStream` で展開、Worker + `OffscreenCanvas` で描画
 - 内容アドレスの Part によりマスターや繰り返し部品を自動共有
@@ -232,6 +233,7 @@ node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に�
 npm run demo                         # http://127.0.0.1:8765/examples/viewer/.out/
 # ?src= で別の文書を開く（リポジトリ内のパス）。例: ページが下部のタブで切り替わる draw.io の図
 # http://127.0.0.1:8765/examples/viewer/.out/?src=/testdata/drawio/multipage.bdf
+# 見開きで表示して本のようにめくる: http://127.0.0.1:8765/examples/viewer/.out/?src=/testdata/docx/basic.bdf&layout=spread
 npm run site:serve                   # ブラウザ内変換つきのデモサイト（Go が必要）: http://127.0.0.1:8766/
 npm run test:site                    # サイトのサンプルを wasm モジュールで変換してみる（npm run site の後）
 BDF_SITE_FONTS=dir1:dir2 npm run site  # これらのフォントをサイトと一緒に公開する（既定はテスト用フォント）
