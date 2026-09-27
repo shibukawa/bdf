@@ -41,7 +41,7 @@ export interface ConvertOptions {
   password?: string;
   /** URL of the font directory the Office converters lay text out with. */
   fonts?: string;
-  /** The file name, whose extension tells the format of a file whose content does not. */
+  /** The file name: its extension tells the format of a file whose content does not, and images are named after it. */
   name?: string;
 }
 
@@ -63,17 +63,56 @@ export class ConvertError extends Error {
 const WEB = [".html", ".htm", ".xhtml", ".mhtml", ".mht", ".md", ".markdown", ".mdown", ".mkd", ".mdx"];
 
 /**
- * What a file is, from its first bytes and its name: a bdf document, a PDF,
- * an HTML or Markdown document (by its extension), or (possibly) an Office
- * document.
+ * What a file is, from its content and its name: a bdf document, an HTML
+ * or Markdown document (by its extension: a README may start with an SVG
+ * picture), an image the browser displays by itself (stored as it is by a
+ * small module), a PDF, or (possibly) an Office document or a diagram.
+ * draw.io's PNG and SVG exports are diagrams.
  */
-export function sniff(head: Uint8Array, name = ""): "bdf" | "pdf" | "web" | "office" {
-  if (head[0] === 0x62 && head[1] === 0x64 && head[2] === 0x66 && head[3] === 0) return "bdf";
-  // the header may follow some garbage in the first 1024 bytes
-  const text = String.fromCharCode(...head.subarray(0, 1024));
-  if (text.includes("%PDF-")) return "pdf";
+export function sniff(data: Uint8Array, name = ""): "bdf" | "image" | "pdf" | "web" | "office" {
+  if (data[0] === 0x62 && data[1] === 0x64 && data[2] === 0x66 && data[3] === 0) return "bdf";
   const dot = name.lastIndexOf(".");
-  return dot >= 0 && WEB.includes(name.slice(dot).toLowerCase()) ? "web" : "office";
+  if (dot >= 0 && WEB.includes(name.slice(dot).toLowerCase())) return "web";
+  if (isImage(data)) return "image";
+  // the header may follow some garbage in the first 1024 bytes
+  const text = String.fromCharCode(...data.subarray(0, 1024));
+  return text.includes("%PDF-") ? "pdf" : "office";
+}
+
+/** Whether data is a PNG, JPEG, GIF, WebP, AVIF, BMP, ICO or SVG image (and not a draw.io export). */
+function isImage(b: Uint8Array): boolean {
+  const s = (at: number, n: number) => String.fromCharCode(...b.subarray(at, at + n));
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  if (s(0, 8) === "\x89PNG\r\n\x1a\n") {
+    // draw.io keeps the diagram in a text chunk
+    for (let at = 8; at + 12 <= b.length; at += 12 + dv.getUint32(at)) {
+      const type = s(at + 4, 4);
+      if ((type === "tEXt" || type === "zTXt") && /^(mxfile|mxGraphModel)\0/.test(s(at + 8, 13))) return false;
+      if (type === "IEND") break;
+    }
+    return true;
+  }
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return true;
+  if (s(0, 6) === "GIF87a" || s(0, 6) === "GIF89a") return true;
+  if (s(0, 4) === "RIFF" && s(8, 4) === "WEBP") return true;
+  if (b.length >= 16 && s(4, 4) === "ftyp") {
+    // the major brand, then the compatible ones
+    for (let at = 8; at + 4 <= Math.min(b.length, dv.getUint32(0)); at += 4) if (at !== 12 && /^avi[fs]$/.test(s(at, 4))) return true;
+    return false;
+  }
+  if (b.length >= 18 && s(0, 2) === "BM" && [12, 16, 40, 52, 56, 64, 108, 124].includes(dv.getUint32(14, true))) return true;
+  if (b.length >= 22 && dv.getUint16(0, true) === 0 && dv.getUint16(2, true) === 1 && dv.getUint16(4, true) > 0 && b[9] === 0) {
+    const size = dv.getUint32(14, true), at = dv.getUint32(18, true);
+    return size > 0 && at + size <= b.length; // an icon
+  }
+  // SVG: the root element, after the XML declaration, comments and the document type
+  let text = new TextDecoder().decode(b.subarray(0, 65536));
+  for (let prev = ""; prev !== text; ) {
+    prev = text;
+    text = text.replace(/^\s+|^<\?[\s\S]*?\?>|^<!--[\s\S]*?-->|^<!DOCTYPE[^[>]*(\[[\s\S]*?\])?\s*>/i, "");
+  }
+  const root = /^<(?:[\w.-]+:)?svg[\s/>][^>]*/.exec(text);
+  return !!root && !/\scontent="[^"]*&lt;(mxfile|mxGraphModel)/.test(root[0]);
 }
 
 type Call = ConvertRequest extends infer R ? (R extends { id: number } ? Omit<R, "id"> : never) : never;

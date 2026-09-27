@@ -9,6 +9,7 @@ package all
 
 import (
 	_ "github.com/shibukawa/bdf/converter/ai"       // Illustrator
+	_ "github.com/shibukawa/bdf/converter/cgm"      // CGM
 	_ "github.com/shibukawa/bdf/converter/csv"      // CSV and TSV
 	_ "github.com/shibukawa/bdf/converter/docx"     // Word
 	_ "github.com/shibukawa/bdf/converter/drawio"   // draw.io
@@ -16,6 +17,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/emf"      // Windows metafiles
 	_ "github.com/shibukawa/bdf/converter/gerber"   // Gerber and Excellon (PCB fabrication data)
 	_ "github.com/shibukawa/bdf/converter/html"     // HTML, in reader mode
+	_ "github.com/shibukawa/bdf/converter/image"    // images browsers display (PNG, JPEG, SVG …)
 	_ "github.com/shibukawa/bdf/converter/jww"      // Jw_cad
 	_ "github.com/shibukawa/bdf/converter/markdown" // Markdown, in reader mode
 	_ "github.com/shibukawa/bdf/converter/pdf"      // PDF

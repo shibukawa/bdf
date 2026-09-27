@@ -93,6 +93,8 @@ func (p *plot) item(it Item, m canvas.Matrix) {
 		p.fillItem(it, m)
 	case kText:
 		p.text(it.text, m)
+	case kImage:
+		p.image(it.image, m)
 	case kGroup:
 		p.save()
 		if it.clip != nil {
@@ -182,10 +184,40 @@ func (p *plot) fillItem(it Item, m canvas.Matrix) {
 		}
 		p.obj.FillPaint(p.obj.AddPaint(paint))
 		p.st.fillSet = false
+	} else if pt := it.fill.Pattern; pt != nil {
+		paint := bdf.Pattern(p.cv.Image(pt.Image), bdf.RepeatBoth)
+		for i, v := range m.Mul(pt.M) {
+			paint.Matrix[i] = f32(v)
+		}
+		if !pt.Smooth {
+			p.save()
+			p.obj.Smoothing(false, 0)
+		}
+		p.obj.FillPaint(p.obj.AddPaint(paint))
+		p.st.fillSet = false
+		p.obj.FillPath(p.obj.AddPath(toBDF(it.path, m)), rule)
+		if !pt.Smooth {
+			p.restore()
+		}
+		p.cv.Drawn = true
+		return
 	} else {
 		p.setFill(it.fill.Color)
 	}
 	p.obj.FillPath(p.obj.AddPath(toBDF(it.path, m)), rule)
+	p.cv.Drawn = true
+}
+
+// image draws a raster image, its pixel space mapped by the image's
+// transform.
+func (p *plot) image(img *Image, m canvas.Matrix) {
+	p.save()
+	p.cv.Transform(m.Mul(img.M))
+	if !img.Smooth {
+		p.obj.Smoothing(false, 0)
+	}
+	p.obj.Image(p.cv.Image(img.Image), 0, 0, float32(img.W), float32(img.H))
+	p.restore()
 	p.cv.Drawn = true
 }
 

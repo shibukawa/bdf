@@ -1,4 +1,4 @@
-//go:build js && wasm && !officeonly && !webonly
+//go:build js && wasm && !officeonly && !webonly && !imageonly
 
 package main
 

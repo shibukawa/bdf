@@ -4,26 +4,26 @@
 
 **bdf**（Browser-specific Document Format）は、ブラウザの Canvas 2D にそのまま描画できる、プレビュー用の文書フォーマット（ドラフト）です。
 
-Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.io の図、CAD の図面（DXF、Jw_cad、SXF）、プリント基板の製造データ（Gerber、Excellon）、スキャンや FAX の TIFF 画像、デザインのファイル（Illustrator、Photoshop）、HTML のページ、Markdown の文書を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
+Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.io の図、CAD の図面（DXF、Jw_cad、SXF、CGM）、プリント基板の製造データ（Gerber、Excellon）、スキャンや FAX の TIFF 画像、デザインのファイル（Illustrator、Photoshop）、HTML のページ、Markdown の文書、ブラウザがそのまま表示できる画像を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
 
-**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF の図面、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページや Markdown の文書をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
+**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF・CGM の図面、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページ、Markdown の文書や画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
 
 ## Why bdf
 
-- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Visio、draw.io、DXF、Jw_cad、SXF、Gerber、Excellon、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown を 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7 MB、Office 系・draw.io・DXF 用が約 5.5 MB）、ファイルをアップロードする必要すらありません。
+- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Visio、draw.io、DXF、Jw_cad、SXF、CGM、Gerber、Excellon、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown を 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7 MB、Office 系・draw.io・DXF 用が約 5.5 MB）、ファイルをアップロードする必要すらありません。
 - **内容に合った形で見せる**: PDF はすべてを紙に切り分けます。スプレッドシートを印刷したページでは、横に長い表がページをまたいで分断されて行を追えず、目当てのセルも見つけにくくなります。固定した見出しや枠線は消え、ブックの中で切り替えていたシートは一続きのページになります。Word の文書もページ単位でしか読めません。bdf は内容の種類ごとにレイアウトのモデルを持ちます。スライド・図面・PDF には固定サイズのページ、ワークシートにはシートごとの無限平面（タイルで描画し、ウィンドウ枠の固定、行・列見出し、枠線つき）、ワープロ文書にはページでも一続きのスクロールでも読めるフローと、ページなしで 1 本の長い列に組み直した表示を用意しています。Illustrator と Photoshop のアートボードはページになります。ブックのシート、draw.io の図のページ、DXF のモデル空間とレイアウト、プリント基板の表・裏と各層はそれぞれ 1 つの表示になり、ビューアのタブで切り替えます。
 - **ブラウザ表示に特化している**: 命令セットは Canvas 2D と 1 対 1 に対応します。フォントは `FontFace` に渡す WOFF2、画像はブラウザがデコードできる形式で、Part の圧縮は `DecompressionStream` で展開できる形式です。pdf.js のような PDF ビューアが数万行かけて実装しているフォントのラスタライズ、画像のデコード、展開はブラウザに任せ、bdf のデコーダとレンダラは TypeScript で約 3,400 行です（レンダラの Worker は gzip で 21 KB）。描画は Worker の `OffscreenCanvas` で行い、メインスレッドはビットマップを置くだけです。Part は内容アドレスなので、マスターや繰り返し現れる要素は 1 度だけ格納され、ビューアは表示中のページに要る Part だけを Range リクエストや CDN 上の分割形式から取得します。ブラウザ内で変換する PDF は、表示中のページを優先して変換できたページから表示します。
-- **多くの形式を 1 つのレンダラで**: PDF、Word（.docx）、PowerPoint（.pptx）、Excel（.xlsx）、CSV・TSV、Visio（.vsdx、.vdx）、draw.io（.drawio と、図を埋め込んだ SVG・PNG の書き出し）、AutoCAD DXF、Jw_cad（.jww）、SXF（.p21、.p2z、.sfc）、Gerber（RS-274X）と Excellon の穴あけファイル（1 つずつでも、基板のファイルをまとめた ZIP でも）、TIFF、Illustrator（.ai）、Photoshop（.psd、.psb）、Windows メタファイル（.emf、.wmf）、HTML（リーダー表示）、Markdown を、パスワード付きの Office 文書や PDF も含めて同じフォーマットにします。どの形式も同じレンダラで描き、検索、テキスト選択、読み上げ用のテキスト層（見出し、リスト、表、代替テキスト）も共通です。
+- **多くの形式を 1 つのレンダラで**: PDF、Word（.docx）、PowerPoint（.pptx）、Excel（.xlsx）、CSV・TSV、Visio（.vsdx、.vdx）、draw.io（.drawio と、図を埋め込んだ SVG・PNG の書き出し）、AutoCAD DXF、Jw_cad（.jww）、SXF（.p21、.p2z、.sfc）、CGM（.cgm）、Gerber（RS-274X）と Excellon の穴あけファイル（1 つずつでも、基板のファイルをまとめた ZIP でも）、TIFF、Illustrator（.ai）、Photoshop（.psd、.psb）、Windows メタファイル（.emf、.wmf）、HTML（リーダー表示）、Markdown、画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG。そのまま格納）を、パスワード付きの Office 文書や PDF も含めて同じフォーマットにします。どの形式も同じレンダラで描き、検索、テキスト選択、読み上げ用のテキスト層（見出し、リスト、表、代替テキスト）も共通です。
 
 ## 処理の流れ
 
 ```mermaid
 flowchart TB
-    SRC["PDF・Excel・CSV・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・Gerber・TIFF<br/>Illustrator・Photoshop・HTML・Markdown"]
+    SRC["PDF・Excel・CSV・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・CGM・Gerber・TIFF<br/>Illustrator・Photoshop・HTML・Markdown・画像"]
 
     subgraph SERVER["Go サーバープロセス"]
         direction TB
-        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/ai<br/>converter/psd"]
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/ai<br/>converter/psd<br/>converter/image"]
         BUNDLE["bdf バンドル<br/>（パック済み）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
         SCONV --> BUNDLE
     end
@@ -31,7 +31,7 @@ flowchart TB
     subgraph BROWSER["ブラウザ"]
         direction TB
         subgraph CWORKER["変換 Worker（wasm）"]
-            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/ai<br/>converter/psd"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/ai<br/>converter/psd<br/>converter/image"]
         end
         PARTS["bdf 文書<br/>（メモリ上）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
         subgraph RWORKER["レンダラ Worker"]
@@ -71,10 +71,10 @@ flowchart TB
 - 透明 DOM のテキスト選択層とコピー（空白・改行は MARK 境界から復元、ページまたぎ、連続モード対応）
 - 読み上げ可能なテキスト層: 構造 MARK の見出し・リスト・表・代替テキスト付きの図・リンク・言語をスクリーンリーダーに伝える（タグ付き PDF、PowerPoint と Word の構造、Excel と CSV のセルと表の見出し、HTML と Markdown の要素を変換）
 - 1 ファイル形式と分割ファイル形式を相互変換可能（1 ファイル形式はマジック `bdf\0` で始まる）
-- manifest に Dublin Core のメタデータ（題名・作成者・主題・言語・作成日時など）を持てる。PDF の文書情報、PowerPoint・Excel・Word のコアプロパティ、Visio の文書プロパティ、Photoshop の文書の XMP メタデータ、HTML の meta 要素、Markdown の front matter から引き継ぐ
+- manifest に Dublin Core のメタデータ（題名・作成者・主題・言語・作成日時など）を持てる。PDF の文書情報、PowerPoint・Excel・Word のコアプロパティ、Visio の文書プロパティ、Photoshop の文書の XMP メタデータ、HTML の meta 要素、Markdown の front matter、画像の XMP・EXIF・IPTC などから引き継ぐ
 - パスワードで保護された入力（読み取りパスワード付きの Office 文書、ユーザーパスワード付きの PDF）はパスワードで開いて変換し、bdf を同じパスワードで暗号化する。Part ごとに封印する（AES-256-GCM）ので Range 取得や分割形式はそのまま使える。ビューアは WebCrypto で復号し、サーバーはパスワードを保存しない（spec §3.5）
 
-変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Jw_cad / SXF / Gerber / Windows メタファイル / TIFF / HTML / Markdown）は中身から、判別できなければ拡張子から決めます（Markdown はどんなテキストでもありうるので拡張子で決まります）。
+変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / Gerber / Windows メタファイル / TIFF / HTML / Markdown / 画像）は中身から、判別できなければ拡張子から決めます（Markdown はどんなテキストでもありうるので拡張子で決まります）。
 
 - **PDF**（`converter/pdf`）: 埋め込みフォント（TrueType、CFF、OpenType、Type1）を使うグリフだけの WOFF2 に組み直し（OS/2 の埋め込み許諾 `fsType` を確認し、著作権表示は引き継ぐ）、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。ソフトマスク（フェード、ドロップシャドウ、Chrome の PDF の CSS `mask-image`）はビューアで描き、JPEG 2000 と JBIG2 の画像は純 Go のデコーダでデコードします。埋め込まれていない CJK フォントの文字は Adobe の定義済み CMap（Shift_JIS、EUC、UCS-2 など）で読み、縦書き（WMode 1）は縦の行として配置します。オプショナルコンテンツ（レイヤー）はビューアが文書を開いたときの表示どおりにし、非表示のレイヤーは描きません。詳細は design.md の §3.1。
 - **Illustrator .ai**（`converter/ai`）: Illustrator 9 以降の .ai は、PDF に Illustrator 独自のデータを添えたものです。PDF のページがアートボードなので、PDF 変換器で描いてアートボード（裁ち落としを除いたトリムボックス）で切り抜きます。非表示のレイヤーは描きません。「PDF 互換ファイルを作成」をオフにして保存したファイルと、Illustrator 8 以前の PostScript ベースの .ai はエラーにします。詳細は design.md の §3.17。
@@ -88,11 +88,13 @@ flowchart TB
 - **AutoCAD .dxf**（`converter/dxf`）: テキスト形式とバイナリ形式の DXF（R12〜2018）を読みます（仕様が公開されていない DWG は読みません）。モデル空間は図面に合わせた 1 ページにして CAD ソフトと同じ暗い背景に、ペーパー空間のレイアウトはそれぞれ用紙の大きさの 1 ページにして、ビューポートがその縮尺でモデル空間を映します。画層・色・線種・線の太さはプロッタが描くとおりに解決し、膨らみと幅のあるポリライン、スプライン（厳密なベジェ曲線として）、ハッチング（模様・島・グラデーション）、属性付きのブロックとその配列、寸法、引出線とマルチ引出線、1 行と複数行の文字（書式コード、和文の禁則付きの折り返し、分数）を描きます。SHX フォントはゴシック体の、ビッグフォントは和文のフォントで代用し、使ったフォントをサブセットの WOFF2 にして埋め込みます。古い図面の文字列はそのコードページ（Shift_JIS など）で読みます。詳細は design.md の §3.12。
 - **Jw_cad .jww**（`converter/jww`）: Jw_cad の図面を、公開されているデータ形式に従って読みます（Ver.2 の形式から Ver.7 以降のファイルまで）。図面は用紙の大きさの 1 ページ（用紙の外の図形も入るように広げる）で、ファイルに保存された画面の色と背景色で描き（`-param colors=print` でプリンタ出力色を白地に、`colors=mono` で白地に黒で）、線幅と線種は印刷のとおりにします。線、円弧と楕円、点、Jw_cad の固定ピッチの文字（全角は文字の幅、半角はその半分。縦字も）、寸法、円ソリッドを含むソリッド、入れ子のブロックを描きます。非表示のレイヤと補助線は Jw_cad が印刷しないので描きません。詳細は design.md の §3.13。
 - **SXF .p21 / .p2z / .sfc**（`converter/sxf`）: 電子納品の CAD データ交換標準 SXF（Ver.2〜Ver.3.1）を、納品に使う STEP AP202 のファイル（.p21、それを ZIP 圧縮した .p2z）と、CAD 間の受け渡しに使うフィーチャコメントのファイル（.sfc）の両方で読みます。図面は用紙の大きさの 1 ページ（用紙の外の図形も入るように広げる）で、図面が指定する背景色（指定がなければ SXF のビューアと同じ黒）の上に描きます（`-param background=light` で白地に）。既定義とユーザ定義の色・線種・線幅、線分、折線、円、円弧、楕円、スプライン、クロソイド、点マーカ、9 つの配置基点の文字（回転、スラント、文字間隔、縦書き）、複合図形（配置、尺度、入れ子、測地座標系）、寸法、引出し線とバルーン、塗りつぶし、ハッチング、背景色で塗る領域を描き、非表示のレイヤは描きません。多くの SXF 対応 CAD が使う SCADEC ライブラリが書いたファイルは、SCADEC が読み戻すとおりに読みます。詳細は design.md の §3.14。
-- **Gerber・Excellon（プリント基板）**（`converter/gerber`）: プリント基板の製造データ、Gerber（X2 属性つきの RS-274X と、古いファイルの非推奨の命令）と Excellon の穴あけファイルを、1 つずつ、または基板のファイルをまとめた ZIP（ジョブファイルも）で読みます。基板は、表と裏（裏から見るので左右反転）をそれぞれ実物の見た目で描いた View になります。基材、ソルダーマスク越しの銅箔、マスクの開口から見えるパッドの仕上げ、シルク、穴を、外形（外形の層の線をつないだ基板の形。切り抜きも）で切り抜いて描きます。続けてファイルごとの View を、基板 CAD の配色で暗い背景に描きます。各ファイルが何の層かは、X2 属性、ジョブファイル、KiCad・Altium（Protel）・Eagle・EasyEDA などのファイル名の付け方から決めます。すべてのアパーチャとマクロのプリミティブ、両方の象限モードの円弧、領域、クリアの極性、ステップ＆リピート、ブロックアパーチャ、アパーチャの変換を描き、パッドはグリフと同じように共有したパスを並べて描きます。`-param mask=`・`silkscreen=`・`finish=` で色を（既定はジョブファイルの色、無ければ緑・白・金）、`-param views=board` か `views=layers` で片方の View だけを選べます。詳細は design.md の §3.19。
-- **HTML .html / .xhtml / .mhtml**（`converter/html`）: ブラウザのリーダー表示のように、ページのデザイン（CSS）は捨てて内容を固定のスタイルシートで組みます。Web ページからは go-readability（Mozilla Readability の移植）で記事を取り出し、見出し・段落・リスト・引用・コード・表（行と列の結合、内容に合わせた列幅）・図・リンクを、Word と共通のレイアウトエンジンで組みます。BDF は再レイアウトしないので、決まった幅の scroll View（既定は本文の 36 字分）になります（A4 のページも作れる）。画像はファイルの隣、MHTML の中、data: URL、ネットワーク（既定で取得。`-param remote=false` で取らない）から読みます。SVG の画像は描かず、代替テキストを示します。フォントは埋め込まずに名前で参照し、Web ページと同じくビューアのフォントで描きます（`-fonts embed` で埋め込む）。詳細は design.md の §3.16。
+- **CGM .cgm**（`converter/cgm`）: ISO/IEC 8632 の Computer Graphics Metafile（バージョン 1〜4）を、CAD のプロッタ出力や技術図（S1000D、ATA）、WebCGM が使うバイナリ符号化と、クリアテキスト符号化の両方で読みます（gzip で圧縮した .cgz も）。ピクチャごとに、その縮尺どおりの大きさの 1 ページにします（縮尺のない abstract のピクチャは A4 に合わせます）。線種・線幅・端点の形を持つ線、マーカー、塗り（中空、塗りつぶし、ハッチング、パターン、グラデーション）とその縁、穴のある閉じた図形、円、楕円、円弧・楕円弧・双曲線・放物線の弧、ベジェ曲線と B スプライン、文字（向きのベクトルによる回転と斜体、縦書きを含む 4 つの方向、揃え、箱に収める文字、続きの文字）、セル配列とタイル（JPEG、PNG、CCITT の FAX 符号）、セグメントとその複写を描き、WebCGM のアプリケーション構造で visibility が off のものは描きません。文字列は宣言された文字集合（JIS X 0208 などの ISO 2022 の文字集合、UTF-8、UTF-16）で読み、日本の CAD が宣言なしで書く Shift_JIS の文字も判別します。詳細は design.md の §3.20。
+- **Gerber・Excellon（プリント基板）**（`converter/gerber`）: プリント基板の製造データ、Gerber（X2 属性つきの RS-274X と、古いファイルの非推奨の命令）と Excellon の穴あけファイルを、1 つずつ、または基板のファイルをまとめた ZIP（ジョブファイルも）で読みます。基板は、表と裏（裏から見るので左右反転）をそれぞれ実物の見た目で描いた View になります。基材、ソルダーマスク越しの銅箔、マスクの開口から見えるパッドの仕上げ、シルク、穴を、外形（外形の層の線をつないだ基板の形。切り抜きも）で切り抜いて描きます。続けてファイルごとの View を、基板 CAD の配色で暗い背景に描きます。各ファイルが何の層かは、X2 属性、ジョブファイル、KiCad・Altium（Protel）・Eagle・EasyEDA などのファイル名の付け方から決めます。すべてのアパーチャとマクロのプリミティブ、両方の象限モードの円弧、領域、クリアの極性、ステップ＆リピート、ブロックアパーチャ、アパーチャの変換を描き、パッドはグリフと同じように共有したパスを並べて描きます。`-param mask=`・`silkscreen=`・`finish=` で色を（既定はジョブファイルの色、無ければ緑・白・金）、`-param views=board` か `views=layers` で片方の View だけを選べます。詳細は design.md の §3.21。
+- **HTML .html / .xhtml / .mhtml**（`converter/html`）: ブラウザのリーダー表示のように、ページのデザイン（CSS）は捨てて内容を固定のスタイルシートで組みます。Web ページからは go-readability（Mozilla Readability の移植）で記事を取り出し、見出し・段落・リスト・引用・コード・表（行と列の結合、内容に合わせた列幅）・図・リンクを、Word と共通のレイアウトエンジンで組みます。BDF は再レイアウトしないので、決まった幅の scroll View（既定は本文の 36 字分）になります（A4 のページも作れる）。画像はファイルの隣、MHTML の中、data: URL、ネットワーク（既定で取得。`-param remote=false` で取らない）から読みます。SVG の画像は、SVG ファイルもページの中の svg 要素もそのまま格納してビューアが描き、大きさはブラウザと同じ規則で決まります。フォントは埋め込まずに名前で参照し、Web ページと同じくビューアのフォントで描きます（`-fonts embed` で埋め込む）。詳細は design.md の §3.16。
 - **Markdown .md**（`converter/markdown`）: goldmark で HTML にし（CommonMark と GitHub の拡張の表・タスクリスト・取り消し線・自動リンク、脚注、定義リスト）、HTML と同じく組みます。README によくある raw HTML（`<p align="center">`、`<details>`）もそのまま組み、見出しには GitHub と同じ id を付けるので `#見出し` へのリンクが効きます。YAML / TOML の front matter は Dublin Core のメタデータになります。
 - **Windows メタファイル .emf / .wmf**（`converter/emf`）: 図の大きさの 1 ページにし、メタファイルの記録を再生して描きます（Office 文書の中の EMF/WMF の図を描くのと同じ再生処理）。テキストは PowerPoint と同じくレイアウトしてフォントを埋め込みます。
 - **TIFF .tif / .tiff**（`converter/tiff`）: ファイルのページごとに、解像度から決まる大きさのページを 1 枚の画像で描きます。TIFF の読み取りは自前で、classic TIFF と BigTIFF、ストリップとタイル、無圧縮・PackBits・LZW・Deflate・JPEG・CCITT の FAX 符号（Group 3 の 1 次元と 2 次元、詰め物ビットの有無、Group 4）、1〜16 ビットの二値・グレー・パレット・RGB・CMYK を読みます。Orientation タグでページを回します。解像度の上限（既定は 192dpi と 3840 × 3840 画素。`-max-dpi`、`-max-pixels`）を超えるページは上限まで縮小し、二値のページは二値のまま縮小します。縮小しない JPEG のページは、ストリップを再エンコードせずに 1 つの JPEG につないで格納します。詳細は design.md の §3.15。
+- **画像 .png / .jpg / .gif / .webp / .avif / .bmp / .ico / .svg**（`converter/image`）: ブラウザがそのまま表示できる画像はパススルーです。デコードも再エンコードもせずにそのまま格納して画像の大きさの 1 ページで描くので、ブラウザでファイルを開いたときと同じ見た目になります。変換器が読むのは大きさ（JPEG と PNG の EXIF の向き、AVIF の `irot` を含む）とメタデータだけで、XMP・EXIF・IPTC、PNG のテキストチャンク、SVG の title・desc・RDF をほかの形式と同じ Dublin Core にし、説明を図の代替テキストにします。SVG は Worker ではデコードできないので、表示する大きさでページが描き、拡大してもぼけません（Office 文書や draw.io の図の中の SVG の画像も同じ）。詳細は design.md の §3.19。
 
 入力形式は static plugin 方式です。各変換器のパッケージは import されたときに `converter` パッケージへ自分の形式を登録するので、プログラムはリンクしたパッケージの形式だけを扱えます。
 
@@ -145,18 +147,20 @@ if res.Protected {
 | `converter/dxf` | AutoCAD DXF → BDF 変換器 |
 | `converter/jww` | Jw_cad (.jww) → BDF 変換器 |
 | `converter/sxf` | SXF (.p21, .p2z, .sfc) → BDF 変換器 |
+| `converter/cgm` | CGM (.cgm, .cgz) → BDF 変換器 |
 | `converter/gerber` | Gerber・Excellon（と基板のファイルをまとめた ZIP）→ BDF 変換器 |
 | `converter/html` | HTML (.html, .xhtml, .mhtml) → BDF 変換器（リーダー表示） |
 | `converter/markdown` | Markdown → BDF 変換器（HTML を経由） |
 | `converter/emf` | Windows メタファイル (.emf, .wmf) → BDF 変換器 |
 | `converter/drawio` | draw.io（.drawio / .drawio.svg / .drawio.png）→ BDF 変換器 |
 | `converter/tiff` | TIFF (.tif, .tiff) → BDF 変換器 |
+| `converter/image` | 画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG）→ BDF 変換器（そのまま格納し、メタデータを読む） |
 | `converter/all` | すべての入力形式を登録する（副作用のために import する） |
 | `converter/internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書き（`sfnt`）。Office 系の変換器で共有するもの: OOXML のパッケージと XML（`ooxml`）、DrawingML の図形・テキスト・表・グラフ（`ooxml/drawingml`）、テキストレイアウト用のフォント選択・計測・埋め込み（`fontset`。draw.io も使う）、組み立て中の Object（`canvas`。draw.io も使う）、EMF/WMF の再生（`metafile`）、CAD 図面のページへの描画（`cad`）、行分割の規則（`linebreak`）、複合ファイル（`cfb`）とパスワード付き Office 文書の復号（`offcrypto`）。PDF 用の Adobe の定義済み CJK CMap（`cjkcmap`）と JPEG 2000・JBIG2 のデコーダ（`jpx`、`jbig2`）。TIFF の読み取りと CCITT の FAX 符号のデコーダ（`tiff`）。Word・HTML・Markdown の組版エンジン（`wordproc`: 段落・表・ページ・scroll View）。XMP メタデータの Dublin Core（`xmp`） |
 | `woff2/` | TrueType/OpenType → WOFF2（glyf 変換と Brotli） |
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
-| `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画（scroll View は連続描画）、Worker |
-| `cmd/bdfwasm` | ブラウザ内変換用に wasm にした変換器（PDF 用と Office 系用の 2 モジュール） |
+| `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画（scroll View は連続描画）、Worker（SVG の画像はメインスレッドが描く） |
+| `cmd/bdfwasm` | ブラウザ内変換用に wasm にした変換器（PDF 用、Office 系用、HTML・Markdown 用、画像用のモジュール） |
 | `examples/viewer` | デモビューアとデモサイト（`site.mjs`: ビューア、wasm の変換器、フォント、サンプル、ドキュメント HTML）。GitHub Pages で公開 |
 | `testdata/` | 生成済みサンプルと golden 画像 |
 
@@ -170,7 +174,7 @@ go run ./cmd/bdf ls out.bdf          # Part 一覧
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # 分割形式へ
 
-# PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Jw_cad / SXF / Gerber / メタファイル / TIFF / HTML / Markdown → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|ai|psd|pptx|xlsx|csv|docx|visio|drawio|dxf|jww|sxf|gerber|emf|tiff|html|markdown で指定も可）
+# PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / Gerber / メタファイル / TIFF / HTML / Markdown / 画像 → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|ai|psd|pptx|xlsx|csv|docx|visio|drawio|dxf|jww|sxf|cgm|gerber|emf|tiff|html|markdown|image で指定も可）
 go run ./cmd/bdf generate -h                  # フラグと、入力形式ごとの -param オプションの一覧
 go run ./cmd/bdf generate in.pdf out.bdf      # 1 ファイル形式
 go run ./cmd/bdf generate in.pptx out/        # 分割形式
@@ -201,6 +205,7 @@ go run ./cmd/bdf generate in.jww out.bdf                           # Jw_cad: 用
 go run ./cmd/bdf generate -param colors=print in.jww out.bdf       # Jw_cad: プリンタ出力色で白地に（colors=mono なら黒）
 go run ./cmd/bdf generate in.p21 out.bdf                           # SXF（.p21・.p2z・.sfc）: 用紙の 1 ページを、図面の背景色で
 go run ./cmd/bdf generate -param background=light in.p21 out.bdf   # SXF: 白地に
+go run ./cmd/bdf generate in.cgm out.bdf                           # CGM（バイナリとクリアテキスト、.cgz も）: ピクチャごとに 1 ページ
 go run ./cmd/bdf generate board.zip out.bdf                        # プリント基板（Gerber・Excellon・ジョブファイルの ZIP）: 表、裏、ファイルごとの View
 go run ./cmd/bdf generate board-F_Cu.gbr out.bdf                   # Gerber や穴あけのファイル 1 つ: その層の View
 go run ./cmd/bdf generate -param mask=black -param finish=silver board.zip out.bdf  # プリント基板: ソルダーマスクとパッドの色（silkscreen= も）
@@ -209,6 +214,7 @@ go run ./cmd/bdf generate page.mhtml out.bdf                       # Web アー�
 go run ./cmd/bdf generate README.md out.bdf                        # Markdown: 画像はファイルの隣から（ネットワークの画像も取得）
 go run ./cmd/bdf generate -param remote=false -param width=480 -param views=both in.md out.bdf  # 画像を取りに行かない、本文の幅 480 pt、A4 のページも作る
 go run ./cmd/bdf generate in.emf out.bdf                           # Windows メタファイル（.emf / .wmf）を 1 ページに
+go run ./cmd/bdf generate photo.jpg out.bdf                        # 画像（PNG / JPEG / GIF / WebP / AVIF / BMP / ICO / SVG）をそのまま 1 ページに。メタデータは Dublin Core に
 go run ./cmd/bdf generate diagram.drawio out.bdf                   # draw.io: ページごとに View（シートのように切り替え）
 go run ./cmd/bdf generate -pages 2 diagram.drawio.svg out.bdf      # draw.io: 2 ページ目だけ（図を埋め込んだ SVG / PNG も可）
 go run ./cmd/bdf generate -param border=0 diagram.drawio out.bdf   # draw.io: 図の周りに余白を付けない（px、既定 10）
@@ -237,11 +243,13 @@ npm run test:visio:gen               # Visio のテスト用図面を再生成
 npm run test:dxf:gen                 # DXF のテスト用図面を再生成（要 ezdxf）
 npm run test:jww:gen                 # Jw_cad のテスト用図面を再生成
 npm run test:sxf:gen                 # SXF のテスト用図面を再生成
+npm run test:cgm:gen                 # CGM のテスト用メタファイルを再生成
 npm run test:gerber:gen              # Gerber のテスト用の基板とファイルを再生成
 npm run test:tiff:gen                # TIFF のテスト用ファイルを再生成（ImageMagick と libtiff のツールが必要）
 npm run test:markdown:gen            # Markdown と HTML のテスト用画像を再生成
 npm run test:ai:gen                  # Illustrator のテスト用ファイルを再生成
 npm run test:psd:gen                 # Photoshop のテスト用文書を再生成
+npm run test:image:gen               # 画像のテスト用ファイルを再生成（ImageMagick、exiftool、cwebp、avifenc が必要）
 node test/render.mjs out.bdf pngdir/  # 任意の .bdf を Chromium で PNG に描画（シートは左上の最大 4096 px 四方）
 
 # デモビューア

@@ -16,7 +16,9 @@ func init() {
 		// .drawio.svg and .drawio.png exports are told apart by their content
 		Extensions: []string{".drawio", ".dio"},
 		Params:     []conv.Param{{Name: "border", Usage: "margin around each page's drawing in pixels (default 10; 0 for none)"}},
-		Detect:     isDrawio,
+		// draw.io's PNG and SVG exports are images with the diagram in them
+		Refines: "image",
+		Detect:  isDrawio,
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
 			opts := &Options{Pages: o.Pages, Title: o.Title, Images: o.Images,
 				FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,

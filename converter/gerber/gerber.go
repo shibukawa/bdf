@@ -12,7 +12,7 @@
 // becomes a view of its layer. What each file is (top copper, bottom
 // solder mask, ...) comes from its X2 file attributes, the job file, the
 // naming conventions of KiCad, Altium (Protel), Eagle and others, or its
-// content (drill files). See docs/design.md §3.19.
+// content (drill files). See docs/design.md §3.21.
 package gerber
 
 import (
