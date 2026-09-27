@@ -1,6 +1,10 @@
 package sfnt
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+
+	"github.com/shibukawa/bdf/internal/cff"
+)
 
 // PruneGlyphs empties every TrueType glyph that is not in keep (plus the
 // components of kept composite glyphs and glyph 0). Glyph indices are left
@@ -119,4 +123,25 @@ func (f *Font) PruneGlyphs(keep map[uint16]bool) {
 		binary.BigEndian.PutUint16(newHead[50:], 0)
 	}
 	f.Tables["glyf"], f.Tables["loca"], f.Tables["head"] = newGlyf, newLoca, newHead
+}
+
+// PruneCFF is PruneGlyphs for fonts with CFF outlines: the charstrings of
+// the glyphs not in keep (nor their accent components) are emptied and the
+// glyph numbers kept (see cff.Prune). It reports whether the CFF program
+// could be pruned.
+func (f *Font) PruneCFF(keep map[uint16]bool) bool {
+	data := f.Tables["CFF "]
+	if !f.IsCFF || data == nil {
+		return false
+	}
+	k := make(map[int]bool, len(keep))
+	for g := range keep {
+		k[int(g)] = true
+	}
+	out, err := cff.Prune(data, k)
+	if err != nil {
+		return false
+	}
+	f.Tables["CFF "] = out
+	return true
 }

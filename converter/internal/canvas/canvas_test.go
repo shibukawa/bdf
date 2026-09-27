@@ -68,3 +68,31 @@ func TestBuilder(t *testing.T) {
 		t.Errorf("LANG marks = %q", marks)
 	}
 }
+
+// TestFixedFont mixes a font record of the converter's own with the fonts
+// of the font set: each keeps its reference.
+func TestFixedFont(t *testing.T) {
+	doc := bdf.NewDocument()
+	fonts := fontset.New(fontdb.New(nil, nil, false), nil)
+	b := NewBuilder(doc, fonts)
+	cv := b.New()
+	own := bdf.EmbeddedFont(doc.AddFont([]byte("font")), 400, bdf.StyleNormal)
+	fc := fonts.Choose("Arial", false, false, false)
+	r1 := cv.Font(fc.Use)
+	r2 := cv.FixedFont(own)
+	if cv.FixedFont(own) != r2 || cv.Font(fc.Use) != r1 || r1 == r2 {
+		t.Fatalf("references %d %d", r1, r2)
+	}
+	cv.Obj.Font(r1, 10)
+	cv.Obj.FillText("a", 0, 0, 5)
+	cv.Obj.Font(r2, 10)
+	cv.Obj.FillText("b", 0, 0, 5)
+	b.Encode()
+	o, err := bdf.DecodeObject(doc.Part(cv.Hash()).Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.Fonts[r2] != own || o.Fonts[r1] == own || o.Fonts[r1].Family == "\x00pending" {
+		t.Errorf("fonts %+v", o.Fonts)
+	}
+}

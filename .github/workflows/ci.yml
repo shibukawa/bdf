@@ -118,6 +118,10 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/${f%%:*}" "/tmp/${f##*:}.bdf"
             cmp "/tmp/${f##*:}.bdf" "testdata/music/${f##*:}.bdf"
           done
+          for f in stix.otf:stix restricted.ttf:restricted; do
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/font/testdata/${f%%:*}" "/tmp/${f##*:}-font.bdf"
+            cmp "/tmp/${f##*:}-font.bdf" "testdata/font/${f##*:}.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:

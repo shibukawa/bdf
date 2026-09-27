@@ -313,15 +313,20 @@ func parseCmapSubtable(b []byte) map[uint32]uint16 {
 			}
 		}
 	case 12:
+		// at most as many mappings as there are code points: groups that
+		// overlap or reach past Unicode must not make the loop run long
+		budget := 0x110000
 		ngroups := int(be32(b, 12))
-		for i := 0; i < ngroups && 16+i*12+12 <= len(b); i++ {
+		for i := 0; i < ngroups && 16+i*12+12 <= len(b) && budget > 0; i++ {
 			rec := 16 + i*12
 			start, end, gid := be32(b, rec), be32(b, rec+4), be32(b, rec+8)
-			if end-start > 0xffff {
-				end = start + 0xffff
+			if start > 0x10ffff || end < start {
+				continue
 			}
-			for c := start; c <= end; c++ {
+			end = min(end, 0x10ffff, start+0xffff)
+			for c := start; c <= end && budget > 0; c++ {
 				m[c] = uint16(gid + (c - start))
+				budget--
 			}
 		}
 	default:
@@ -436,6 +441,10 @@ func buildSFNT(tables map[string][]byte, isCFF bool) []byte {
 	}
 	return out
 }
+
+// BuildCmap writes a cmap table mapping characters to glyphs: a (3,1)
+// format 4 subtable and, for characters past the BMP, a (3,10) format 12 one.
+func BuildCmap(m map[uint32]uint16) []byte { return buildCmapTable(m) }
 
 // buildCmapTable writes a cmap with a (3,1) format 4 subtable and, when needed, a (3,10) format 12 one.
 func buildCmapTable(m map[uint32]uint16) []byte {
