@@ -46,8 +46,12 @@ export interface SearchOptions {
   context?: number;
 }
 
-/** Normalize one character for matching: NFKC, case folding, and small kana to full-size kana are treated alike. */
+/**
+ * Normalize one character for matching: NFKC, case folding, and small kana to full-size kana are treated alike.
+ * The minus sign of formulas matches the hyphen-minus that queries are typed with.
+ */
 export function normalizeChar(ch: string, caseSensitive: boolean): string {
+  if (ch === "\u2212") return "-";
   let s = ch.normalize("NFKC");
   if (!caseSensitive) s = s.toLowerCase();
   // Katakana to hiragana so that both scripts match each other.

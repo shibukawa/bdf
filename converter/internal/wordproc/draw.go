@@ -17,6 +17,7 @@ type inlineObj struct {
 	vmlRID  string      // VML picture: the image relationship
 	part    string
 	w, h    float64
+	desc    float64    // how far below the baseline it reaches (formulas)
 	ext     [4]float64 // effect extent (left, top, right, bottom): room for shadows and glow
 	alt     string     // alternative text ("" for none or decorative)
 	link    string

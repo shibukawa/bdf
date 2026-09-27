@@ -3,6 +3,8 @@ package sfnt
 import (
 	"encoding/binary"
 	"sort"
+
+	"github.com/shibukawa/bdf/converter/internal/cff"
 )
 
 // Advance returns the advance width of a glyph in font units. Glyphs past
@@ -224,4 +226,41 @@ func forComponents(d []byte, fn func(p int, idx uint16)) {
 			return
 		}
 	}
+}
+
+// SubsetCFF is Subset for fonts with CFF outlines: the CFF program keeps
+// only the given glyphs (plus glyph 0 and the components of accented
+// glyphs), renumbered in their original order, and the horizontal metrics
+// follow. It returns nil when the font has no CFF table or it cannot be
+// subset.
+func (f *Font) SubsetCFF(gids []uint16) (*Font, map[uint16]uint16) {
+	data := f.Tables["CFF "]
+	if !f.IsCFF || data == nil {
+		return nil, nil
+	}
+	keep := make(map[int]bool, len(gids))
+	for _, g := range gids {
+		keep[int(g)] = true
+	}
+	sub, order, err := cff.Subset(data, keep)
+	if err != nil {
+		return nil, nil
+	}
+	remap := make(map[uint16]uint16, len(order))
+	out := &Font{Tables: map[string][]byte{"CFF ": sub}, IsCFF: true, NumGlyphs: len(order), UnitsPerEm: f.UnitsPerEm,
+		Ascent: f.Ascent, Descent: f.Descent, LineGap: f.LineGap, Advances: make([]uint16, len(order))}
+	if head := f.Tables["head"]; len(head) >= 54 {
+		out.Tables["head"] = head
+	}
+	if f.LSBs != nil {
+		out.LSBs = make([]int16, len(order))
+	}
+	for i, g := range order {
+		remap[uint16(g)] = uint16(i)
+		out.Advances[i] = uint16(f.Advance(uint16(g)))
+		if out.LSBs != nil && g < len(f.LSBs) {
+			out.LSBs[i] = f.LSBs[g]
+		}
+	}
+	return out, remap
 }

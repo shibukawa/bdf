@@ -95,7 +95,7 @@ func ToHTML(src []byte) ([]byte, error) {
 	out.WriteString("<body>\n")
 	md := goldmark.New(
 		goldmark.WithExtensions(extension.GFM, extension.DefinitionList,
-			extension.NewFootnote(extension.WithFootnoteBacklinkHTML("↑"))),
+			extension.NewFootnote(extension.WithFootnoteBacklinkHTML("↑")), mathExtension{}),
 		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
 		goldmark.WithRendererOptions(gmhtml.WithUnsafe()),
 	)

@@ -14,10 +14,10 @@ import (
 // finalize embeds the fonts the labels were measured with and encodes every
 // layer object, whose font references stay placeholders until then.
 func (c *converter) finalize() {
-	if !c.opts.SystemFonts {
-		c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{
-			NoSubset: c.opts.NoSubset, NoWOFF2: c.opts.NoWOFF2, IgnoreFSType: c.opts.IgnoreFSType})
-	}
+	// with system fonts, the formula font is embedded still: a formula's
+	// layout depends on its glyphs
+	c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{
+		NoSubset: c.opts.NoSubset, NoWOFF2: c.opts.NoWOFF2, IgnoreFSType: c.opts.IgnoreFSType, PinnedOnly: c.opts.SystemFonts})
 	c.objs.Encode()
 }
 

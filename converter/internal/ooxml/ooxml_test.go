@@ -213,3 +213,26 @@ func TestCoreProperties(t *testing.T) {
 		t.Errorf("no core properties: %+v", dc)
 	}
 }
+
+// MathChoice picks the a14 choices that hold Office Math, and no other.
+func TestMathChoice(t *testing.T) {
+	const doc = `<root xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+<mc:AlternateContent><mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14"><a:p><a14:m/></a:p></mc:Choice><mc:Fallback><fallback1/></mc:Fallback></mc:AlternateContent>
+<mc:AlternateContent><mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14"><a:p><a14:other/></a:p></mc:Choice><mc:Fallback><fallback2/></mc:Fallback></mc:AlternateContent>
+<mc:AlternateContent><mc:Choice xmlns:a14="http://schemas.microsoft.com/office/drawing/2010/main" Requires="a14 p14"><a:p><a14:m/></a:p></mc:Choice><mc:Fallback><fallback3/></mc:Fallback></mc:AlternateContent>
+</root>`
+	n, err := ParsePicking([]byte(doc), MathChoice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, k := range n.Elements() {
+		names = append(names, k.Name)
+	}
+	if got := strings.Join(names, " "); got != "p fallback2 fallback3" {
+		t.Errorf("resolved to %q", got)
+	}
+	if n, _ := Parse([]byte(doc)); n.Elements()[0].Name != "fallback1" {
+		t.Error("Parse picked a choice")
+	}
+}

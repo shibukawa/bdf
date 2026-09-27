@@ -120,6 +120,15 @@ export const CASES: Case[] = [
   // to fonts by name and is drawn with the browser's fonts, at the advances measured with the test fonts.
   { name: "markdown-basic-scroll", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 700 }, scale: 1 },
   { name: "markdown-basic-strips", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 760, w: 504, h: 460 }, scale: 1 },
+  // Formulas laid out by the formula engine (converter/internal/equation) with the test font STIX Two Math:
+  // Office Math in a Word document, in PowerPoint and Excel text (a14:m, instead of the pictures and text of
+  // their fallbacks), and LaTeX in Markdown.
+  { name: "docx-math-1", src: "/testdata/docx/math.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "pptx-math-1", src: "/testdata/pptx/math.bdf", kind: "page", view: "slides", page: 0, scale: 0.75 },
+  { name: "xlsx-math-1", src: "/testdata/xlsx/math.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 620, h: 170 }, scale: 1 },
+  // draw.io labels on a page with math="1": LaTeX between $$ and \( \) in HTML and plain labels
+  { name: "drawio-math", src: "/testdata/drawio/math.bdf", kind: "page", view: "math", page: 0, scale: 1.5 },
+  { name: "markdown-math-scroll", src: "/testdata/markdown/math.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 467 }, scale: 1 },
   { name: "html-article-scroll", src: "/testdata/html/article.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 760 }, scale: 1 },
   // SVG in Markdown: an inline svg element as wide as the column (its gradient from a sprite sheet further down), two
   // SVG files and a sprite symbol in the text color; the region above the text, so the browser's fonts do not matter.
@@ -306,7 +315,11 @@ async function main() {
   const drawioHits = await drawio.search("details", "日本語の説明");
   const drawioRects = await drawio.locate("details", drawioHits);
   const drawioLinks = (await drawio.content("overview", 0)).links.map((l) => l.url);
-  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects, drawioHits, drawioRects, drawioLinks };
+  // formulas are found by their linear notation, typed with a hyphen-minus
+  const { client: math } = await open("/testdata/docx/math.bdf");
+  const mathHits = await math.search("pages", "b^2-4ac");
+  const mathRects = await math.locate("pages", mathHits);
+  (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects, drawioHits, drawioRects, drawioLinks, mathHits, mathRects };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
   document.title = "done";
 }

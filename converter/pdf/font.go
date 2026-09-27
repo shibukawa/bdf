@@ -543,10 +543,10 @@ func (f *pdfFont) unicode(g glyphCode) string {
 	}
 	if !f.composite {
 		name := f.glyphName(g.code)
-		if name == "" && f.prog != nil && f.prog.cff != nil && !f.prog.cff.isCID {
+		if name == "" && f.prog != nil && f.prog.cff != nil && !f.prog.cff.IsCID {
 			// The program's built-in encoding names the glyph (Type1, Type1C).
-			if gid, ok := f.prog.cff.encoding[int(g.code)]; ok && gid > 0 {
-				name = f.prog.cff.sidName(f.prog.cff.charset[gid])
+			if gid, ok := f.prog.cff.Encoding[int(g.code)]; ok && gid > 0 {
+				name = f.prog.cff.SIDName(f.prog.cff.Charset[gid])
 			}
 		}
 		if name == "" && f.symbolic {
@@ -587,8 +587,8 @@ func (f *pdfFont) gid(g glyphCode) (int, bool) {
 			}
 			return 0, false
 		}
-		if prog.cff != nil && prog.cff.isCID {
-			gid, ok := prog.cff.cidToGID[cid]
+		if prog.cff != nil && prog.cff.IsCID {
+			gid, ok := prog.cff.CIDToGID[cid]
 			return gid, ok
 		}
 		return cid, true
@@ -598,27 +598,27 @@ func (f *pdfFont) gid(g glyphCode) (int, bool) {
 	if prog.cff != nil {
 		cf := prog.cff
 		if name != "" {
-			if gid, ok := cf.nameToGID[name]; ok {
+			if gid, ok := cf.NameToGID[name]; ok {
 				return gid, true
 			}
 			if r, ok := glyphNameToRune(name); ok {
 				// Try the standard name for the same code point.
-				for n2, gid := range cf.nameToGID {
+				for n2, gid := range cf.NameToGID {
 					if r2, ok := glyphNameToRune(n2); ok && r2 == r {
 						return gid, true
 					}
 				}
 			}
-			if i, ok := glyphNameIndex(name); ok && i < cf.numGlyphs {
+			if i, ok := glyphNameIndex(name); ok && i < cf.NumGlyphs {
 				return i, true
 			}
 		}
-		if gid, ok := cf.encoding[code]; ok {
+		if gid, ok := cf.Encoding[code]; ok {
 			return gid, true
 		}
 		if name == "" {
 			if std := standardEncoding[code]; std != "" {
-				if gid, ok := cf.nameToGID[std]; ok {
+				if gid, ok := cf.NameToGID[std]; ok {
 					return gid, true
 				}
 			}
@@ -838,7 +838,7 @@ func (c *converter) cffSFNT(f *pdfFont, cm map[uint32]uint16, subset bool) (*sfn
 	if prog.sf != nil {
 		cffData = prog.sf.Tables["CFF "]
 	}
-	n := prog.cff.numGlyphs
+	n := prog.cff.NumGlyphs
 	oldGID := func(i int) int { return i }
 	if subset {
 		keep := make(map[int]bool, len(cm))
@@ -879,7 +879,7 @@ func (c *converter) cffSFNT(f *pdfFont, cm map[uint32]uint16, subset bool) (*sfn
 		}
 	} else {
 		// Bare CFF: metrics come from the PDF font (FontMatrix, descriptor, Widths).
-		if m := prog.cff.fontMatrix; m[0] > 0 {
+		if m := prog.cff.FontMatrix; m[0] > 0 {
 			if upm := int(1/m[0] + 0.5); upm >= 16 && upm <= 16384 { // the range head allows
 				sf.UnitsPerEm = upm
 			}

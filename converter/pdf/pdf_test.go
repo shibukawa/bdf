@@ -18,6 +18,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/cff"
 	"github.com/shibukawa/bdf/converter/internal/sfnt"
 	"github.com/shibukawa/bdf/woff2"
 )
@@ -469,8 +470,8 @@ func TestConvertWebFonts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cf.numGlyphs < 20 || cf.numGlyphs > 50 || sf.NumGlyphs != cf.numGlyphs {
-			t.Errorf("%s: %d glyphs (maxp %d)", name, cf.numGlyphs, sf.NumGlyphs)
+		if cf.NumGlyphs < 20 || cf.NumGlyphs > 50 || sf.NumGlyphs != cf.NumGlyphs {
+			t.Errorf("%s: %d glyphs (maxp %d)", name, cf.NumGlyphs, sf.NumGlyphs)
 		}
 		if !strings.Contains(nameString(sf, 0), "NECTEC") || sf.FSType != 0 || !sf.HasFSType {
 			t.Errorf("%s: notice %q, fsType %#x", name, nameString(sf, 0), sf.FSType)
@@ -531,7 +532,7 @@ func TestConvertCairoCFF(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cf.isCID {
+		if cf.IsCID {
 			cid++
 		}
 		if !strings.Contains(nameString(sf, 0), "NECTEC") {
@@ -586,17 +587,17 @@ func cffPrograms(t *testing.T, name string) map[string][]byte {
 // cffParts reads the CharStrings INDEX and the local Subrs INDEXes of a CFF program.
 func cffParts(t *testing.T, data []byte) (charStrings [][]byte, subrs [][][]byte) {
 	t.Helper()
-	_, pos, _ := cffReadIndex(data, int(data[2]))
-	tops, _, _ := cffReadIndex(data, pos)
-	top := cffParseDict(tops[0])
-	charStrings, _, err := cffReadIndex(data, int(top[17][0]))
+	_, pos, _ := cff.ReadIndex(data, int(data[2]))
+	tops, _, _ := cff.ReadIndex(data, pos)
+	top := cff.ParseDict(tops[0])
+	charStrings, _, err := cff.ReadIndex(data, int(top[17][0]))
 	if err != nil {
 		t.Fatal(err)
 	}
 	private := func(v []float64) {
-		pd := cffParseDict(data[int(v[1]) : int(v[1])+int(v[0])])
+		pd := cff.ParseDict(data[int(v[1]) : int(v[1])+int(v[0])])
 		if s := pd[19]; len(s) == 1 {
-			items, _, err := cffReadIndex(data, int(v[1])+int(s[0]))
+			items, _, err := cff.ReadIndex(data, int(v[1])+int(s[0]))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -604,9 +605,9 @@ func cffParts(t *testing.T, data []byte) (charStrings [][]byte, subrs [][][]byte
 		}
 	}
 	if v := top[1236]; len(v) == 1 {
-		fds, _, _ := cffReadIndex(data, int(v[0]))
+		fds, _, _ := cff.ReadIndex(data, int(v[0]))
 		for _, fd := range fds {
-			private(cffParseDict(fd)[18])
+			private(cff.ParseDict(fd)[18])
 		}
 	} else {
 		private(top[18])
@@ -628,7 +629,7 @@ func TestSubsetCFF(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		keep := map[int]bool{1: true, cf.numGlyphs / 2: true, cf.numGlyphs - 1: true}
+		keep := map[int]bool{1: true, cf.NumGlyphs / 2: true, cf.NumGlyphs - 1: true}
 		out, order, err := subsetCFF(data, keep)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
@@ -642,7 +643,7 @@ func TestSubsetCFF(t *testing.T) {
 			}
 		}
 		nf, err := parseCFF(out)
-		if err != nil || nf.numGlyphs != len(order) || nf.isCID != cf.isCID {
+		if err != nil || nf.NumGlyphs != len(order) || nf.IsCID != cf.IsCID {
 			t.Fatalf("%s: subset parses as %+v, %v", name, nf, err)
 		}
 		oldCS, oldSubrs := cffParts(t, data)
@@ -651,8 +652,8 @@ func TestSubsetCFF(t *testing.T) {
 			if !bytes.Equal(newCS[i], oldCS[g]) {
 				t.Errorf("%s: charstring of glyph %d changed", name, g)
 			}
-			if i > 0 && nf.charset[i] != cf.charset[g] {
-				t.Errorf("%s: glyph %d is now SID/CID %d, was %d", name, g, nf.charset[i], cf.charset[g])
+			if i > 0 && nf.Charset[i] != cf.Charset[g] {
+				t.Errorf("%s: glyph %d is now SID/CID %d, was %d", name, g, nf.Charset[i], cf.Charset[g])
 			}
 		}
 		// Subroutine numbers are kept; the ones no kept glyph calls are emptied.
@@ -675,7 +676,7 @@ func TestSubsetCFF(t *testing.T) {
 		if len(out) >= len(data) {
 			t.Errorf("%s: %d -> %d bytes", name, len(data), len(out))
 		}
-		t.Logf("%s: %d glyphs, %d bytes -> %d glyphs, %d bytes", name, cf.numGlyphs, len(data), nf.numGlyphs, len(out))
+		t.Logf("%s: %d glyphs, %d bytes -> %d glyphs, %d bytes", name, cf.NumGlyphs, len(data), nf.NumGlyphs, len(out))
 	}
 	if prunedSubrs == 0 {
 		t.Error("no subroutine was pruned")
@@ -703,35 +704,6 @@ func TestFontLicense(t *testing.T) {
 	}
 	if l := (fontLicense{}); l.restricted() || l.outFSType() != fsPreviewPrint {
 		t.Error("a font without OS/2 must be embeddable and marked Preview & Print")
-	}
-}
-
-func TestT2Exec(t *testing.T) {
-	num := func(v int) byte { return byte(v + 139) } // -107..107
-	local := newSubrSet([][]byte{{11}, {num(5), 11}, {11}})
-	global := newSubrSet([][]byte{{11}})
-	// Two stems, then a hintmask whose mask byte 0xff must not be read as an
-	// operand; subr 1 (biased -106) is called, then seac 'A' + grave (code 193).
-	cs := []byte{num(10), num(20), num(30), num(40), 1, 19, 0xff, num(-106), 10, num(0), num(0), num(65), 247, 193 - 108, 14}
-	st := &t2State{seac: [2]int{-1, -1}}
-	done, err := st.exec(cs, local, global, 0)
-	if err != nil || !done {
-		t.Fatalf("exec = %v, %v", done, err)
-	}
-	if !slices.Equal(local.used, []bool{false, true, false}) || global.used[0] {
-		t.Fatalf("used = %v %v", local.used, global.used)
-	}
-	if st.nStems != 2 || st.seac != [2]int{65, 193} {
-		t.Fatalf("stems %d, seac %v", st.nStems, st.seac)
-	}
-	// Arithmetic can compute subroutine numbers: give up rather than guess.
-	st = &t2State{seac: [2]int{-1, -1}}
-	if _, err := st.exec([]byte{num(1), num(2), 12, 10, 10, 14}, local, global, 0); err == nil {
-		t.Fatal("arithmetic operator was followed")
-	}
-	// A subroutine number out of range is an error too.
-	if _, err := (&t2State{}).exec([]byte{num(50), 10, 14}, local, global, 0); err == nil {
-		t.Fatal("out-of-range subroutine was followed")
 	}
 }
 
@@ -766,12 +738,12 @@ func TestConvertType1(t *testing.T) {
 		fonts := fontParts(t, r)
 		for name, sf := range fonts {
 			cf, err := parseCFF(sf.Tables["CFF "])
-			if err != nil || cf.isCID {
+			if err != nil || cf.IsCID {
 				t.Fatalf("%s %s: %v", c.file, name, err)
 			}
 			// Only the glyphs the page uses (plus .notdef and seac parts) are kept.
-			if cf.numGlyphs > 45 {
-				t.Errorf("%s %s: %d glyphs", c.file, name, cf.numGlyphs)
+			if cf.NumGlyphs > 45 {
+				t.Errorf("%s %s: %d glyphs", c.file, name, cf.NumGlyphs)
 			}
 			if !strings.Contains(nameString(sf, 0)+nameString(sf, 7), "Bitstream") || sf.FSType != fsPreviewPrint {
 				t.Errorf("%s %s: notice %q, fsType %#x", c.file, name, nameString(sf, 0), sf.FSType)
@@ -822,8 +794,8 @@ func TestType1Forms(t *testing.T) {
 	if err != nil || failed != 0 {
 		t.Fatalf("convert: %v, %d failed", err, failed)
 	}
-	if cf.numGlyphs < 200 || cf.notice == "" {
-		t.Fatalf("%d glyphs, notice %q", cf.numGlyphs, cf.notice)
+	if cf.NumGlyphs < 200 || cf.Notice == "" {
+		t.Fatalf("%d glyphs, notice %q", cf.NumGlyphs, cf.Notice)
 	}
 	// PFB segments and hex (PFA) eexec data must give the same font.
 	i := bytes.Index(data, []byte("eexec")) + len("eexec")
