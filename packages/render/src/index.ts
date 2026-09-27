@@ -6,4 +6,5 @@ export type { WorkerRequest, WorkerResponse, WorkerResult, WorkerCall, WorkerErr
 export { MusicPlayer, cursorAtTick, tickAt, type Cursor, type PlayState, type MusicPlayerOptions } from "./player.js";
 export { VectorImage, domSvgRasterizer, isSvg, svgSize, type SvgRasterizer } from "./svg.js";
 export { DocumentSearch, runRect, hasExtent, type HitRect, type Measure } from "./search.js";
-export { buildTextLayer, linkHref, internalLink, selectedRuns, selectionText, joinRuns, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR, type TextLayerOptions, type SelectedRun, type InternalLink } from "./textlayer.js";
+export { buildTextLayer, linkHref, internalLink, selectedRuns, selectionText, selectionCells, joinRuns, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR, type TextLayerOptions, type SelectedRun, type InternalLink } from "./textlayer.js";
+export { tableCells, cellClipboard, type CellText, type CellRange, type CellClipboard, type CellClipboardOptions } from "./cells.js";

@@ -1,4 +1,4 @@
-//go:build js && wasm && !pdfonly && !webonly && !imageonly
+//go:build js && wasm && !pdfonly && !webonly && !imageonly && !previewonly
 
 package main
 
@@ -15,6 +15,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/midi"
 	_ "github.com/shibukawa/bdf/converter/mml"
 	_ "github.com/shibukawa/bdf/converter/musicxml"
+	_ "github.com/shibukawa/bdf/converter/parquet"
 	_ "github.com/shibukawa/bdf/converter/pptx"
 	_ "github.com/shibukawa/bdf/converter/psd"
 	_ "github.com/shibukawa/bdf/converter/sxf"

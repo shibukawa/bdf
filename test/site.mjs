@@ -2,7 +2,9 @@
 // its converter modules in Node with Go's wasm_exec.js, and converts each
 // sample with the site's fonts, fetched from the server as in a browser.
 // PDFs are also converted a page at a time, as the viewer does, and the
-// pages put into the outline with @bdf/core (npm run build first).
+// pages put into the outline with @bdf/core (npm run build first). The
+// preview module draws the thumbnail of each converted sample and gives its
+// text.
 //
 //   node test/site.mjs [site dir]
 import assert from "node:assert/strict";
@@ -28,15 +30,19 @@ async function load(file) {
 }
 const modules = {
   pdf: await load("bdf-pdf.wasm"), office: await load("bdf-office.wasm"), image: await load("bdf-image.wasm"), web: await load("bdf-web.wasm"),
+  preview: await load("bdf-preview.wasm"),
 };
 assert.deepEqual(modules.pdf.formats.map((f) => f.name), ["ai", "pdf"]);
-assert.deepEqual(modules.office.formats.map((f) => f.name), ["cgm", "csv", "docx", "drawio", "dxf", "emf", "gerber", "hpgl", "image", "jww", "midi", "mml", "musicxml", "pptx", "psd", "sxf", "visio", "xlsx"]);
+assert.deepEqual(modules.office.formats.map((f) => f.name), ["cgm", "csv", "docx", "drawio", "dxf", "emf", "gerber", "hpgl", "image", "jww", "midi", "mml", "musicxml", "parquet", "pptx", "psd", "sxf", "visio", "xlsx"]);
 assert.deepEqual(modules.image.formats.map((f) => f.name), ["image"]);
 assert.deepEqual(modules.web.formats.map((f) => f.name), ["epub", "html", "markdown"]);
+assert.deepEqual(modules.preview.formats, []);
 const imageExtensions = modules.image.formats[0].extensions;
 const webExtensions = modules.web.formats.flatMap((f) => f.extensions);
 
 let failed = 0;
+/** The converted samples, for the preview module. */
+const converted = [];
 const samples = JSON.parse(await readFile(join(site, "samples/index.json"), "utf8"));
 for (const { name } of samples) {
   if (name.endsWith(".bdf")) continue;
@@ -53,6 +59,7 @@ for (const { name } of samples) {
     if (conv !== modules.image && conv !== modules.web && !["pdf", "ai", "psd", "gerber"].includes(res.format)) {
       assert.match(res.summary, /[1-9]\d* embedded font/);
     }
+    converted.push({ name, format: res.format, bdf: res.bdf });
     console.log(`ok   ${name}: ${res.format}, ${res.summary}, ${res.bdf.length} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
     for (const w of res.warnings) console.log(`     warning: ${w}`);
   } catch (e) {
@@ -121,6 +128,54 @@ for (const { name } of samples) {
   assert.equal(opened.pages, 0);
   assert.equal(opened.stream, undefined);
   assert.match(opened.summary, /slide/);
+}
+
+/** The width and height of a PNG image. */
+function pngSize(b) {
+  assert.deepEqual([...b.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], "PNG signature");
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  return [dv.getUint32(16), dv.getUint32(20)];
+}
+/** The layout the thumbnail package picks for the formats that have one. */
+const LAYOUT = { docx: "crop", html: "crop", markdown: "crop", xlsx: "crop", csv: "crop", parquet: "crop", pptx: "fit", vsdx: "fit", vdx: "fit", drawio: "fit", epub: "fit", svg: "fit", jpeg: "fit" };
+for (const { name, format, bdf } of converted) {
+  const t0 = performance.now();
+  try {
+    const th = await modules.preview.thumbnail(bdf, { size: 64, fonts: `${base}fonts/` });
+    assert.equal(th.format, "png");
+    assert.deepEqual(pngSize(th.image), [th.width, th.height]);
+    assert.equal(Math.max(th.width, th.height), 64);
+    if (th.mode === "crop") assert.deepEqual([th.width, th.height], [64, 64]);
+    if (LAYOUT[format]) assert.equal(th.mode, LAYOUT[format], "layout");
+    const text = JSON.parse((await modules.preview.text(bdf)).json);
+    assert.equal(text.meta.source, format);
+    const pages = text.views.reduce((n, v) => n + v.pages.length, 0);
+    console.log(`ok   ${name}: ${th.width}×${th.height} thumbnail (${th.mode}), text of ${pages} page(s), ${(performance.now() - t0).toFixed(0)} ms`);
+    for (const w of th.warnings) console.log(`     warning: ${w}`);
+  } catch (e) {
+    failed++;
+    console.log(`FAIL ${name} thumbnail and text: ${e.message}`);
+  }
+}
+// JPEG, the other sizes, and an encrypted document with its password
+{
+  const plain = new Uint8Array(await readFile(new URL("../testdata/demo.bdf", import.meta.url)));
+  const enc = new Uint8Array(await readFile(new URL("../testdata/demo-encrypted.bdf", import.meta.url)));
+  const jpeg = await modules.preview.thumbnail(plain, { size: 256, format: "jpeg", mode: "fit" });
+  assert.deepEqual([...jpeg.image.subarray(0, 3)], [0xff, 0xd8, 0xff], "JPEG signature");
+  assert.equal(jpeg.mode, "fit");
+  assert.equal(Math.max(jpeg.width, jpeg.height), 256);
+  await assert.rejects(modules.preview.thumbnail(enc, {}), { code: "password-required" });
+  await assert.rejects(modules.preview.text(enc, { password: "wrong" }), { code: "wrong-password" });
+  const password = "demo-パスワード"; // package.json's testdata script
+  const th = await modules.preview.thumbnail(enc, { size: 128, password });
+  assert.deepEqual(pngSize(th.image), [th.width, th.height]);
+  assert.deepEqual((await modules.preview.thumbnail(plain, { size: 128 })).image, th.image, "the encrypted document's thumbnail");
+  assert.equal((await modules.preview.text(enc, { password })).json, (await modules.preview.text(plain)).json);
+  await assert.rejects(modules.preview.thumbnail(plain, { size: 0 }), /size/);
+  await assert.rejects(modules.preview.thumbnail(plain, { format: "gif" }), /format/);
+  await assert.rejects(modules.preview.text(new Uint8Array([1, 2, 3])));
+  console.log("ok   testdata/demo.bdf and demo-encrypted.bdf: JPEG, sizes, passwords");
 }
 
 // the documentation pages

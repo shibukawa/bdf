@@ -4,11 +4,11 @@
 //
 // The converters themselves are its subpackages (converter/pdf,
 // converter/ai, converter/psd, converter/pptx, converter/xlsx,
-// converter/csv, converter/docx, converter/visio, converter/drawio,
-// converter/dxf, converter/jww, converter/sxf, converter/cgm,
-// converter/hpgl, converter/gerber, converter/emf, converter/tiff,
-// converter/image, converter/html, converter/markdown, converter/epub,
-// converter/mml, converter/midi, converter/musicxml).
+// converter/csv, converter/parquet, converter/docx, converter/visio,
+// converter/drawio, converter/dxf, converter/jww, converter/sxf,
+// converter/cgm, converter/hpgl, converter/gerber, converter/emf,
+// converter/tiff, converter/image, converter/html, converter/markdown,
+// converter/epub, converter/mml, converter/midi, converter/musicxml).
 // Each registers its format when it is imported, so a program supports the
 // formats whose packages it links in:
 //

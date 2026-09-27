@@ -26,6 +26,8 @@ export interface Opened {
   warnings: string[];
   /** The whole document's summary (pages 0). */
   summary?: string;
+  /** The input needed its password (pages 0). */
+  protected?: boolean;
   stream?: number;
 }
 
@@ -45,11 +47,44 @@ export interface ConvertOptions {
   name?: string;
 }
 
+/** A thumbnail the preview module drew (see cmd/bdfwasm), as the thumbnail package does on a server. */
+export interface Thumbnail {
+  /** The encoded image. */
+  image: Uint8Array;
+  format: "png" | "jpeg";
+  width: number;
+  height: number;
+  /** The layout used. */
+  mode: "crop" | "fit";
+  /** What the drawing left out. */
+  warnings: string[];
+}
+
+export interface ThumbnailOptions {
+  /** The side of a cropped thumbnail, the longer side of a fitted one, in pixels (default 256). */
+  size?: number;
+  /** The layout: auto (default: from the kind of document), crop or fit. */
+  mode?: "auto" | "crop" | "fit";
+  format?: "png" | "jpeg";
+  /** The password of an encrypted document. */
+  password?: string;
+  /** URL of the font directory, for text in fonts referred to by name. */
+  fonts?: string;
+}
+
+/** The text of a document for a search index, as bdf text writes it (JSON). */
+export interface SearchText {
+  json: string;
+}
+
 export type ConvertRequest =
   | { id: number; type: "convert" | "open"; module: string; data: ArrayBuffer; options: ConvertOptions }
   | { id: number; type: "page"; stream: number; index: number }
-  | { id: number; type: "finish" | "close"; stream: number };
-export type ConvertResponse = { id: number; ok: true; result: Converted | Opened | ConvertedPage | null } | { id: number; ok: false; error: string; code?: string };
+  | { id: number; type: "finish" | "close"; stream: number }
+  | { id: number; type: "thumbnail"; module: string; data: ArrayBuffer; options: ThumbnailOptions }
+  | { id: number; type: "text"; module: string; data: ArrayBuffer; options: { password?: string } };
+export type ConvertResult = Converted | Opened | ConvertedPage | Thumbnail | SearchText | null;
+export type ConvertResponse = { id: number; ok: true; result: ConvertResult } | { id: number; ok: false; error: string; code?: string };
 
 /** A failed conversion; code is "password-required", "wrong-password" or "unknown-format" when it is one of those. */
 export class ConvertError extends Error {
@@ -141,12 +176,12 @@ export class ConverterClient {
     };
   }
 
-  private call<T>(req: Call): Promise<T> {
+  private call<T>(req: Call, transfer: Transferable[] = []): Promise<T> {
     if (this.failed) return Promise.reject(this.failed);
     const id = this.next++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
-      this.worker.postMessage({ id, ...req });
+      this.worker.postMessage({ id, ...req }, transfer);
     });
   }
 
@@ -169,5 +204,13 @@ export class ConverterClient {
   /** Let a stream go (finished or not). */
   close(stream: number): Promise<null> {
     return this.call<null>({ type: "close", stream });
+  }
+  /** Draw the thumbnail of a single-file bdf (transferred) with the preview module at the URL. */
+  thumbnail(module: string, data: ArrayBuffer, options: ThumbnailOptions = {}): Promise<Thumbnail> {
+    return this.call<Thumbnail>({ type: "thumbnail", module, data, options }, [data]);
+  }
+  /** The text of a single-file bdf (transferred) for a search index, with the preview module at the URL. */
+  text(module: string, data: ArrayBuffer, options: { password?: string } = {}): Promise<SearchText> {
+    return this.call<SearchText>({ type: "text", module, data, options }, [data]);
   }
 }

@@ -108,6 +108,11 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts "$f" "/tmp/epub-$n.bdf"
             cmp "/tmp/epub-$n.bdf" "testdata/epub/$n.bdf"
           done
+          for f in converter/parquet/testdata/*.parquet; do
+            n=$(basename "$f" .parquet)
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/parquet-$n.bdf"
+            cmp "/tmp/parquet-$n.bdf" "testdata/parquet/$n.bdf"
+          done
           for f in mml/testdata/frere.mml:frere-mml mml/testdata/ode.mml:ode-mml midi/testdata/twinkle.kar:twinkle-kar \
             musicxml/testdata/minuet.musicxml:minuet-musicxml musicxml/testdata/ode_to_joy.mxl:ode-mxl; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/${f%%:*}" "/tmp/${f##*:}.bdf"

@@ -57,11 +57,19 @@
   .hl { position: absolute; background: rgba(255, 210, 0, .45); outline: 1px solid rgba(200, 140, 0, .8); pointer-events: none; border-radius: 2px; }
   .hl.current { background: rgba(255, 120, 0, .5); outline-color: #c04000; }
   .search { display: flex; gap: 4px; align-items: center; }
-  .sheet { position: relative; }
+  /* cells are selected, not text (main.ts showSheet) */
+  .sheet { position: relative; cursor: cell; -webkit-user-select: none; user-select: none; }
   .sheet canvas { position: sticky; top: 0; left: 0; display: block; }
   /* the text layer of a sheet, under its headers; frozen cells are pinned with --sx and --sy */
   .sheetText { position: absolute; }
-  .info { color: #666; margin-left: auto; display: flex; gap: 12px; align-items: center; }
+  /* holds the page's selection while cells are selected, so that copy fires: selectable, out of sight */
+  .cellHold { position: fixed; left: 0; top: 0; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: pre; -webkit-user-select: text; user-select: text; }
+  /* the status and the timing change as the reader works (a cell's text when cells are selected): they are cut to
+     the room left on the header's line, so that the header keeps its height and the stage does not move under the pointer */
+  .info { color: #666; flex: 1 1 0; min-width: 16em; display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
+  #status, #timing { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #status { max-width: 32em; }
+  #timing { flex-shrink: 100; } /* gives way first */
   #progress { width: 96px; }
   #pwDialog { border: 1px solid #999; border-radius: 6px; padding: 16px 20px; }
   #pwDialog h2 { font-size: 15px; margin: 0 0 8px; }
@@ -70,6 +78,17 @@
   #warnings { position: relative; }
   #warnings summary { cursor: pointer; color: #8a5a00; }
   #warnings ul { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: min(560px, 80vw); max-height: 50vh; overflow: auto; margin: 0; padding: 8px 8px 8px 24px; background: #fff; color: #222; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  /* the thumbnail and the search text, made as a server makes them */
+  #preview { position: relative; }
+  #preview summary { cursor: pointer; }
+  #preview .panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: min(300px, 90vw); box-sizing: border-box; padding: 4px 12px; background: #fff; color: #222; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  #preview .panel p { margin: 8px 0; }
+  #preview h2 { font-size: 13px; margin: 10px 0 6px; }
+  #preview .options { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+  /* at their size, or scaled down to 256 pixels (a percentage would let the grid row grow) */
+  #preview .thumb { display: grid; place-items: center; height: 256px; margin: 8px 0; background: #eef0f2; border-radius: 3px; }
+  #preview .thumb img { width: auto; height: auto; max-width: 100%; max-height: 256px; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  #preview .note { color: #666; font-size: 12px; }
   /* the start page, and the outline while a file is dragged over the window */
   .landing { max-width: 640px; margin: 48px auto; padding: 32px; background: #fff; border: 2px dashed #9aa4b1; border-radius: 12px; line-height: 1.6; }
   .landing h1 { font-size: 20px; margin: 0 0 8px; }
@@ -83,7 +102,7 @@
   <strong>BDF viewer</strong>
   <a href="docs/">Docs</a>
   <button id="openFile" type="button">Open file…</button>
-  <input id="file" type="file" hidden accept=".pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.csv,.tsv,.tab,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.drawio,.dio,.svg,.png,.dxf,.jww,.p21,.p2z,.sfc,.cgm,.cgz,.plt,.hpgl,.hgl,.hpg,.hp2,.rtl,.gbr,.ger,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gtp,.gbp,.gko,.gm1,.drl,.xln,.zip,.ai,.psd,.psb,.apng,.jpg,.jpeg,.jpe,.jfif,.gif,.webp,.avif,.bmp,.ico,.html,.htm,.xhtml,.mhtml,.mht,.md,.markdown,.mdown,.mkd,.mdx,.epub,.mml,.mid,.midi,.smf,.kar,.rmi,.musicxml,.mxl,.xml,.bdf">
+  <input id="file" type="file" hidden accept=".pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.csv,.tsv,.tab,.parquet,.parq,.pqt,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.drawio,.dio,.svg,.png,.dxf,.jww,.p21,.p2z,.sfc,.cgm,.cgz,.plt,.hpgl,.hgl,.hpg,.hp2,.rtl,.gbr,.ger,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gtp,.gbp,.gko,.gm1,.drl,.xln,.zip,.ai,.psd,.psb,.apng,.jpg,.jpeg,.jpe,.jfif,.gif,.webp,.avif,.bmp,.ico,.html,.htm,.xhtml,.mhtml,.mht,.md,.markdown,.mdown,.mkd,.mdx,.epub,.mml,.mid,.midi,.smf,.kar,.rmi,.musicxml,.mxl,.xml,.bdf">
   <label>zoom <input id="zoom" type="range" min="0.25" max="3" step="0.25" value="1" aria-valuetext="100%"> <span id="zoomv">100%</span></label>
   <label id="layoutBox" hidden>layout <select id="layout">
     <option value="pages">scroll pages</option>
@@ -115,12 +134,42 @@
     <details id="warnings" hidden><summary></summary><ul></ul></details>
     <span id="timing"></span>
     <a id="download" hidden>Download .bdf</a>
+    <details id="preview" hidden>
+      <summary>Thumbnail and text</summary>
+      <div class="panel">
+        <h2>Thumbnail</h2>
+        <div class="options">
+          <label>size <select id="thumbSize" title="a fitted thumbnail keeps the shape of the page within the square">
+            <option value="64">64 × 64</option>
+            <option value="128">128 × 128</option>
+            <option value="256" selected>256 × 256</option>
+            <option value="512">512 × 512</option>
+          </select></label>
+          <label>layout <select id="thumbMode" title="auto: by the kind of document; crop: a square from the top-left of the first page; fit: the whole first page">
+            <option value="auto">auto</option>
+            <option value="crop">crop</option>
+            <option value="fit">fit</option>
+          </select></label>
+          <label>format <select id="thumbFormat">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPEG</option>
+          </select></label>
+        </div>
+        <div class="thumb"><img id="thumbImg" hidden alt=""></div>
+        <p><a id="thumbLink" hidden>Save the thumbnail</a> <span id="thumbInfo"></span></p>
+        <p id="thumbWarnings" class="note" hidden></p>
+        <h2>Search text</h2>
+        <p><a id="textLink" hidden>Save the text (JSON)</a> <span id="textInfo"></span></p>
+        <p class="note">The metadata and the text of each page, for a search index. Both are made by the Go packages a server makes them with (thumbnail, Document.SearchText), built as WebAssembly.</p>
+        <p id="previewNote" class="note" hidden></p>
+      </div>
+    </details>
   </span>
 </header>
 <div id="stage" role="tabpanel" tabindex="0">
   <div class="landing" id="landing" hidden>
     <h1>Drop a file here to preview it</h1>
-    <p>PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Visio (.vsdx, .vdx), draw.io (.drawio, and SVG and PNG exports with the diagram), AutoCAD DXF, Jw_cad (.jww), SXF (.p21, .p2z, .sfc), CGM (.cgm), HP-GL/2 plot files (.plt), Gerber and Excellon PCB files (one by one, or a board's files in a .zip), Illustrator (.ai), Photoshop (.psd, .psb), Windows metafiles (.emf, .wmf), images (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG: shown as they are, with their metadata), HTML and web archives (.html, .mhtml) and Markdown (.md) and EPUB (.epub), laid out in reader mode, music (MML, MIDI and MusicXML: .mml, .mid, .kar, .musicxml, .mxl), engraved as scores that play, or bdf.
+    <p>PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Apache Parquet (the first 10,000 rows), Visio (.vsdx, .vdx), draw.io (.drawio, and SVG and PNG exports with the diagram), AutoCAD DXF, Jw_cad (.jww), SXF (.p21, .p2z, .sfc), CGM (.cgm), HP-GL/2 plot files (.plt), Gerber and Excellon PCB files (one by one, or a board's files in a .zip), Illustrator (.ai), Photoshop (.psd, .psb), Windows metafiles (.emf, .wmf), images (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG: shown as they are, with their metadata), HTML and web archives (.html, .mhtml) and Markdown (.md) and EPUB (.epub), laid out in reader mode, music (MML, MIDI and MusicXML: .mml, .mid, .kar, .musicxml, .mxl), engraved as scores that play, or bdf.
       The file is converted to bdf and drawn inside your browser, by the Go converters built as WebAssembly: it is not uploaded anywhere.</p>
     <p><button type="button" id="chooseFile">Choose a file…</button></p>
     <div id="samples" hidden><p>Or open a sample:</p><p class="samples"></p></div>

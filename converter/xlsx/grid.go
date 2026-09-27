@@ -25,6 +25,9 @@ type Grid struct {
 	// they are bold, stay in view (a frozen pane) and are marked as column
 	// headers for screen readers.
 	HeaderRows int
+	// SubHeader makes the last of the header rows a subheading under the
+	// column names (such as the columns' types): gray instead of bold.
+	SubHeader bool
 	// Lang is the language of the text ("ja", "ko", "zh-CN", "zh-TW" or
 	// others; "" when unknown). It picks the font, as Excel's default font
 	// depends on the language of Office, and tells the language of East
@@ -51,8 +54,10 @@ type GridCell struct {
 const (
 	gridPlain = iota
 	gridHeader
-	gridWrap
+	gridSub
+	gridWrap // added to the formats above for values with line breaks
 	gridHeaderWrap
+	gridSubWrap
 )
 
 // fitMaxDigits caps the width of the columns fitted to their text.
@@ -84,13 +89,15 @@ func ConvertGrid(g *Grid, opts *Options) (*Result, error) {
 	font := xfont{name: gridFont(g.Lang), size: 11, family: 2}
 	bold := font
 	bold.bold = true
+	gray := font
+	gray.color = colorRef{kind: colorRGB, rgb: hexRGB(0x7F7F7F)} // Text 1, lighter 50%
 	c.st = loadStyles(c, nil, defaultThemeColor)
-	c.st.fonts = []xfont{font, bold}
+	c.st.fonts = []xfont{font, bold, gray}
 	plain := xalign{h: "general", v: "bottom"}
 	wrap := plain
 	wrap.wrap = true
-	c.st.cellXfs = []xf{gridPlain: {align: plain}, gridHeader: {font: 1, align: plain},
-		gridWrap: {align: wrap}, gridHeaderWrap: {font: 1, align: wrap}}
+	c.st.cellXfs = []xf{gridPlain: {align: plain}, gridHeader: {font: 1, align: plain}, gridSub: {font: 2, align: plain},
+		gridWrap: {align: wrap}, gridHeaderWrap: {font: 1, align: wrap}, gridSubWrap: {font: 2, align: wrap}}
 	c.mdw = c.maxDigitWidth(c.st.font(0))
 
 	name := g.Name
@@ -118,7 +125,10 @@ func ConvertGrid(g *Grid, opts *Options) (*Result, error) {
 				text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
 			}
 			style := gridPlain
-			if i < g.HeaderRows {
+			switch {
+			case g.SubHeader && i == g.HeaderRows-1:
+				style = gridSub
+			case i < g.HeaderRows:
 				style = gridHeader
 			}
 			if strings.Contains(text, "\n") {

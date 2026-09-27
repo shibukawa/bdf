@@ -9,14 +9,17 @@
 // and run it with Go's wasm_exec.js (in a Worker: a conversion keeps the
 // thread busy). -tags pdfonly, officeonly, webonly or imageonly builds a
 // smaller module of the PDF converters (PDF, and Illustrator, whose files
-// are PDFs), the Office converters (Word, PowerPoint, Excel, CSV, Visio,
-// draw.io, DXF, Jw_cad, SXF, CGM, Gerber, metafiles, Photoshop, the music
-// formats MML, MIDI and MusicXML, and images),
-// the HTML, Markdown and EPUB converters, or the images browsers display by
-// themselves (PNG, JPEG, SVG …, stored as they are) only. bdf_noconv leaves
-// out the image and WOFF2 encoders: a document drawn where it is converted
-// gains nothing from them. The demo site (examples/viewer/site.mjs) builds
-// it with a copy of goldmark (the Markdown converter's parser) whose
+// are PDFs), the Office converters (Word, PowerPoint, Excel, CSV, Parquet,
+// Visio, draw.io, DXF, Jw_cad, SXF, CGM, Gerber, metafiles, Photoshop, the
+// music formats MML, MIDI and MusicXML, and images), the HTML, Markdown and
+// EPUB converters, or the images browsers display by themselves (PNG, JPEG,
+// SVG …, stored as they are) only; previewonly builds one without
+// converters that makes the thumbnail and the search text of a bdf document
+// (see the end of this comment). bdf_noconv leaves out the image and WOFF2
+// encoders: a document drawn where it is converted gains nothing from them.
+// The Parquet converter reads no Brotli in any js build
+// (converter/parquet/brotli_js.go). The demo site (examples/viewer/site.mjs)
+// builds it with a copy of goldmark (the Markdown converter's parser) whose
 // linkify patterns it rewrites: compiled when the program starts, they
 // overflow the stack of a worker in Safari.
 //
@@ -57,6 +60,24 @@
 // scan holds the [offset, length] ranges of the tables the font scan reads
 // (the table directories, name, OS/2 and post), fetched ahead in parallel.
 // A font's whole file is fetched when a document uses it.
+//
+// The preview module (-tags previewonly) makes of a single-file bdf what a
+// server makes with packages thumbnail and bdf (Document.SearchText):
+//
+//	bdfConverter.thumbnail(bdf: Uint8Array, options?: {
+//	  size?: number,     // pixels: the side of a cropped thumbnail, the longer side of a fitted one (default 256, at most 2048)
+//	  mode?: string,     // "auto" (from the kind of document, as thumbnail.Auto), "crop" or "fit"
+//	  format?: string,   // "png" (default), "jpeg", or "webp" (not with bdf_noconv)
+//	  view?: string,     // the id of the view to draw (default: the first)
+//	  password?: string, // the password of an encrypted document
+//	  fonts?: string,    // URL of a font directory, for text in fonts referred to by name
+//	}): Promise<{image: Uint8Array, format: string, width: number, height: number, mode: "crop" | "fit", warnings: string[]}>
+//	bdfConverter.text(bdf: Uint8Array, options?: {password?: string}): Promise<{json: string}>
+//
+// text returns what bdf text writes: the metadata and the text of each
+// page, as JSON. Neither the thumbnail nor the text is encrypted when the
+// document is; an encrypted document without its password rejects with
+// "password-required".
 package main
 
 import (
@@ -82,11 +103,16 @@ func main() {
 		formats = append(formats, map[string]any{"name": f.Name, "description": f.Description, "extensions": exts})
 	}
 	api := js.ValueOf(map[string]any{"formats": formats})
-	api.Set("convert", js.FuncOf(convert))
-	api.Set("open", js.FuncOf(open))
+	for name, fn := range methods {
+		api.Set(name, js.FuncOf(fn))
+	}
 	js.Global().Set("bdfConverter", api)
 	select {}
 }
+
+// methods are the calls bdfConverter takes; the preview module adds its own
+// (preview.go).
+var methods = map[string]func(js.Value, []js.Value) any{"convert": convert, "open": open}
 
 var (
 	fontMu sync.Mutex
@@ -122,17 +148,24 @@ func readRequest(args []js.Value) (*request, error) {
 	}
 	req := &request{data: make([]byte, args[0].Get("length").Int())}
 	js.CopyBytesToGo(req.data, args[0])
-	str := func(name string) string {
-		if len(args) < 2 || args[1].Type() != js.TypeObject {
-			return ""
-		}
-		if v := args[1].Get(name); v.Type() == js.TypeString {
-			return v.String()
-		}
-		return ""
-	}
-	req.format, req.password, req.fontURL, req.name = str("format"), str("password"), str("fonts"), str("name")
+	req.format, req.password, req.fontURL, req.name = str(args, "format"), str(args, "password"), str(args, "fonts"), str(args, "name")
 	return req, nil
+}
+
+// option returns the named option of a call (data, options?), or undefined.
+func option(args []js.Value, name string) js.Value {
+	if len(args) < 2 || args[1].Type() != js.TypeObject {
+		return js.Undefined()
+	}
+	return args[1].Get(name)
+}
+
+// str returns a string option, or "".
+func str(args []js.Value, name string) string {
+	if v := option(args, name); v.Type() == js.TypeString {
+		return v.String()
+	}
+	return ""
 }
 
 func (req *request) options() (*converter.Options, error) {
@@ -345,9 +378,9 @@ func reject(err error) js.Value {
 func jsError(err error) js.Value {
 	e := js.Global().Get("Error").New(err.Error())
 	switch {
-	case errors.Is(err, converter.ErrPasswordRequired):
+	case errors.Is(err, converter.ErrPasswordRequired), errors.Is(err, bdf.ErrLocked):
 		e.Set("code", "password-required")
-	case errors.Is(err, converter.ErrWrongPassword):
+	case errors.Is(err, converter.ErrWrongPassword), errors.Is(err, bdf.ErrWrongPassword):
 		e.Set("code", "wrong-password")
 	case errors.Is(err, converter.ErrUnknownFormat):
 		e.Set("code", "unknown-format")

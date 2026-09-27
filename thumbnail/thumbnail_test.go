@@ -42,6 +42,7 @@ func TestLayouts(t *testing.T) {
 		{"pdf/chrome-doc", Auto, Crop, 256, 256},   // portrait ones documents
 		{"xlsx/basic", Auto, Crop, 256, 256},       // a sheet from A1
 		{"csv/basic", Fit, Fit, 256, 256},          // a sheet has no page to fit
+		{"parquet/basic", Auto, Crop, 256, 256},    // a table from A1
 		{"markdown/basic", Auto, Crop, 256, 256},   // a scroll view from its top
 		{"epub/basic", Auto, Fit, 180, 256},        // a book's cover, whole
 		{"visio/flow", Auto, Fit, 198, 256},

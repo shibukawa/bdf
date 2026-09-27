@@ -1,7 +1,8 @@
 // Builds the static demo site (published on GitHub Pages): the viewer, the
 // converters as wasm (cmd/bdfwasm: one module for PDF, one for the Office
-// formats, one for HTML and Markdown, one for images), the fonts the Office,
-// HTML and Markdown converters lay text out with, sample files, and the
+// formats, one for HTML and Markdown, one for images, and one without
+// converters for thumbnails and search text), the fonts the Office, HTML and
+// Markdown converters lay text out with, sample files, and the
 // documentation (docs.mjs: the READMEs and docs/ as HTML under docs/).
 // Files opened on the site are converted inside the browser.
 //
@@ -31,6 +32,7 @@ const MODULES = [
   { file: "bdf-office.wasm", tags: "officeonly" },
   { file: "bdf-web.wasm", tags: "webonly" },
   { file: "bdf-image.wasm", tags: "imageonly" },
+  { file: "bdf-preview.wasm", tags: "previewonly" },
 ];
 
 /** Samples offered on the start page: repository path and label. */
@@ -43,6 +45,7 @@ const SAMPLES = [
   { path: "converter/pptx/testdata/features.pptx", label: "PowerPoint" },
   { path: "converter/xlsx/testdata/features.xlsx", label: "Excel" },
   { path: "converter/csv/testdata/japanese.tsv", label: "TSV (Shift_JIS)" },
+  { path: "converter/parquet/testdata/basic.parquet", label: "Parquet" },
   { path: "converter/visio/testdata/shapes.vsdx", label: "Visio" },
   { path: "converter/visio/testdata/flow.vdx", label: "Visio XML (.vdx)" },
   { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },
