@@ -3,11 +3,13 @@
 package main
 
 import (
+	_ "github.com/shibukawa/bdf/converter/cgm"
 	_ "github.com/shibukawa/bdf/converter/csv"
 	_ "github.com/shibukawa/bdf/converter/docx"
 	_ "github.com/shibukawa/bdf/converter/drawio"
 	_ "github.com/shibukawa/bdf/converter/dxf"
 	_ "github.com/shibukawa/bdf/converter/emf"
+	_ "github.com/shibukawa/bdf/converter/gerber"
 	_ "github.com/shibukawa/bdf/converter/hpgl"
 	_ "github.com/shibukawa/bdf/converter/jww"
 	_ "github.com/shibukawa/bdf/converter/pptx"

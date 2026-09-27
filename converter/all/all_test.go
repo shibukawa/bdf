@@ -43,6 +43,16 @@ func TestDetect(t *testing.T) {
 	w, _ = zw.Create("D0PL001Z.P21")
 	w.Write([]byte("ISO-10303-21;\nHEADER;\n"))
 	zw.Close()
+	var gerberZip bytes.Buffer
+	zw = zip.NewWriter(&gerberZip)
+	w, _ = zw.Create("board/board-F_Cu.gbr")
+	w.Write([]byte("%FSLAX46Y46*%\n%MOMM*%\n"))
+	zw.Close()
+	var drillZip bytes.Buffer
+	zw = zip.NewWriter(&drillZip)
+	w, _ = zw.Create("NCDRILL.TXT")
+	w.Write([]byte("M48\nMETRIC\nT1C0.8\n%\n"))
+	zw.Close()
 	step := "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('a','',(''),(''),'','','');\n"
 	for _, c := range []struct {
 		name string
@@ -68,6 +78,10 @@ func TestDetect(t *testing.T) {
 		{"drawio svg", read(t, "embedded.drawio.svg"), "drawio"},
 		{"drawio png", read(t, "embedded.drawio.png"), "drawio"},
 		{"mxGraphModel", []byte("\ufeff<?xml version=\"1.0\"?>\n<mxGraphModel><root/></mxGraphModel>"), "drawio"},
+		{"cgm", []byte{0x00, 0x23, 0x02, 'm', 'f', 0x00, 0x10, 0x22, 0x00, 0x04, 0x00, 0x40}, "cgm"},
+		{"cgm clear text", []byte("BEGMF 'drawing';\nMFVERSION 1;\n"), "cgm"},
+		// a comma on every line, as CSV has
+		{"cgm clear text of points", []byte("BEGMF 'a,b';\nVDCEXT (0,0) (100,100);\nLINE (0,0) (10,10);\nLINE (5,0) (5,10);\n"), "cgm"},
 		// draw.io's PNG and SVG exports refine images: they are asked first
 		{"plain svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), "image"},
 		{"svg with commas", []byte("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0,0,10,10\">\n<path d=\"M1,1 L2,2\"/>\n<path d=\"M3,3 L4,4\"/>\n</svg>\n"), "image"},
@@ -87,6 +101,16 @@ func TestDetect(t *testing.T) {
 		{"sxf p21 of regular lines", []byte(step + "FILE_SCHEMA(('ASSOCIATIVE_DRAUGHTING'));\nENDSEC;\nDATA;\n" +
 			strings.Repeat("#10=CARTESIAN_POINT('',(1.,2.));\n", 40)), "sxf"},
 		{"step ap214", []byte(step + "FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\n"), ""},
+		{"gerber", []byte("%TF.GenerationSoftware,KiCad,Pcbnew,7.0.10*%\n%FSLAX46Y46*%\n%MOMM*%\n"), "gerber"},
+		{"gerber of Eagle", []byte("G75*\nG70*\n%OFA0B0*%\n%FSLAX24Y24*%\n%IPPOS*%\n"), "gerber"},
+		// a file of aperture definitions, one comma to a line, is not CSV
+		{"gerber of apertures", []byte(strings.Repeat("%ADD10R,0.0500X0.0550*%\n", 60) + "%FSLAX24Y24*%\n"), "gerber"},
+		{"excellon with commas", []byte("M48\nINCH,LZ,00.0000\n" + strings.Repeat("T1C0.0100\n", 30)), "gerber"},
+		{"gerber after a long header", []byte(strings.Repeat("G04 Altium header comment*\n", 60) + "%FSLAX25Y25*%\n%MOIN*%\n"), "gerber"},
+		{"excellon", []byte("M48\n; DRILL file {KiCad 7.0.10}\nFMAT,2\nMETRIC\nT1C0.300\n%\n"), "gerber"},
+		{"excellon of Eagle", []byte("%\nM48\nM72\nT01C0.0236\n%\n"), "gerber"},
+		{"gerber zip", gerberZip.Bytes(), "gerber"},
+		{"drill zip", drillZip.Bytes(), "gerber"},
 		{"hpgl", []byte("IN;SP1;PA0,0;PD1000,0,1000,1000;PU;"), "hpgl"},
 		// semicolons end the instructions, but a plot is not CSV
 		{"hpgl in lines", []byte("IN;\nSP1;\nPU0,0;\nPD1000,0;\nPD1000,1000;\nPU;\n"), "hpgl"},
@@ -148,6 +172,8 @@ func TestDetectFile(t *testing.T) {
 		// a CSV file of one line is text that only its extension tells
 		{"one.csv", "a,b,c", "csv"},
 		{"page.htm", "<!DOCTYPE html><p>x", "html"},
+		// a drill file without a header
+		{"NCDRILL.drl", "T1C0.8\nX1.0Y1.0\nM30\n", "gerber"},
 		// by its extension (the HP-GL/2 converter then turns down a gnuplot
 		// script)
 		{"graph.plt", "set terminal png\nplot sin(x)\n", "hpgl"},

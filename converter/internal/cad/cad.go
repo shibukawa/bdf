@@ -1,5 +1,5 @@
-// Package cad draws the 2D drawings of CAD formats (DXF, JWW, SXF) and the
-// plots of HP-GL/2. A
+// Package cad draws the 2D drawings of CAD formats (DXF, JWW, SXF, CGM)
+// and the plots of HP-GL/2. A
 // reader puts what a drawing shows into a Drawing, in the drawing's own
 // coordinates (y up, float64, so that survey coordinates keep their
 // precision), and Plotter writes the Drawing onto a page the way a plotter
@@ -7,8 +7,8 @@
 //
 // Curves are cubic Bézier curves (see Path), text is measured and drawn
 // with the fonts of the document (fontset), and fills can be clipped
-// groups, which is how hatch patterns are drawn (see Hatch), or image
-// patterns; raster images are placed by a transform (see Image).
+// groups, which is how hatch patterns are drawn (see Hatch). Raster images
+// and image patterns refer to images the reader has added to the document.
 package cad
 
 import (
@@ -48,18 +48,32 @@ type Pen struct {
 	Miter float64
 }
 
-// Fill is a solid color, a gradient or an image pattern.
+// Fill is a solid color, a gradient or a pattern.
 type Fill struct {
 	Color    bdf.Color
 	Gradient *Gradient
 	Pattern  *Pattern
 }
 
-// Pattern is an image repeated over the plane: M maps its pixel space (x
-// right, y down, one unit a pixel) into the drawing.
+// Pattern is an image repeated in both directions.
 type Pattern struct {
-	Image bdf.Hash
-	M     canvas.Matrix
+	Image bdf.Hash // a document image
+	// M maps the image's pixel space (x along its rows, y down its
+	// columns) into the drawing.
+	M canvas.Matrix
+	// Smooth interpolates the pixels; otherwise they stay sharp cells.
+	Smooth bool
+}
+
+// Image is a raster image drawn into a parallelogram.
+type Image struct {
+	Image bdf.Hash // a document image
+	W, H  int      // pixels
+	// M maps the image's pixel space (x along its rows, y down its
+	// columns) into the drawing.
+	M canvas.Matrix
+	// Smooth interpolates the pixels; otherwise they stay sharp cells.
+	Smooth bool
 }
 
 // Gradient is a gradient in drawing coordinates.
@@ -90,18 +104,10 @@ type Item struct {
 	fill    Fill
 	evenOdd bool
 	text    *Text
+	image   *Image
 	clip    *Path // group: the clip (nil: none)
 	items   []Item
-	image   *Image
 	bounds  Rect
-}
-
-// Image is a raster image placed in the drawing: M maps the unit square
-// (x right, y down: the image's top left corner at 0,0, its bottom right
-// corner at 1,1) into the drawing.
-type Image struct {
-	Image bdf.Hash
-	M     canvas.Matrix
 }
 
 // Text returns the string of a text item ("" for other items).
@@ -154,13 +160,12 @@ func (d *Drawing) Text(t *Text) {
 
 // Image draws a raster image.
 func (d *Drawing) Image(img *Image) {
-	if img == nil {
+	if img == nil || img.W <= 0 || img.H <= 0 {
 		return
 	}
-	d.add(Item{kind: kImage, image: img, bounds: unitSquare.Transform(img.M)})
+	r := Rect{Point{}, Point{float64(img.W), float64(img.H)}, true}
+	d.add(Item{kind: kImage, image: img, bounds: r.Transform(img.M)})
 }
-
-var unitSquare = Rect{Point{0, 0}, Point{1, 1}, true}
 
 // Begin opens a group clipped by clip (even-odd; nil: no clip) that holds
 // what is drawn until End.
@@ -241,6 +246,8 @@ func describe(out *[]string, items []Item, indent string, prec float64) {
 			if it.fill.Pattern != nil {
 				s += " pattern"
 			}
+		case kImage:
+			s = fmt.Sprintf("image %s %dx%d", box(it.bounds), it.image.W, it.image.H)
 		case kText:
 			t := it.text
 			var m [6]float64
@@ -250,8 +257,6 @@ func describe(out *[]string, items []Item, indent string, prec float64) {
 			s = fmt.Sprintf("text %q color=%08x m=%g vertical=%v", t.S, uint32(t.Color), m, t.Vertical)
 		case kGroup:
 			s = "group " + box(it.bounds)
-		case kImage:
-			s = "image " + box(it.bounds)
 		}
 		*out = append(*out, indent+s)
 		if it.kind == kGroup {
@@ -299,7 +304,9 @@ func transformItem(it Item, m canvas.Matrix, s float64) Item {
 			out.fill.Gradient = &ng
 		}
 		if pt := it.fill.Pattern; pt != nil {
-			out.fill.Pattern = &Pattern{Image: pt.Image, M: m.Mul(pt.M)}
+			np := *pt
+			np.M = m.Mul(pt.M)
+			out.fill.Pattern = &np
 		}
 	case kImage:
 		img := *it.image

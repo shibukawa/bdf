@@ -249,7 +249,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `ai` / `psd` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `dxf` / `jww` / `sfc` / `p21` / `hpgl` / `emf` / `wmf` / `tiff` / `png` / `jpeg` / `gif` / `webp` / `avif` / `bmp` / `ico` / `svg` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `ai` / `psd` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `dxf` / `jww` / `sfc` / `p21` / `cgm` / `hpgl` / `gerber` / `emf` / `wmf` / `tiff` / `png` / `jpeg` / `gif` / `webp` / `avif` / `bmp` / `ico` / `svg` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -303,7 +303,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 PDF と TIFF の対応は、XMP が文書情報辞書と TIFF のタグを写す方法に合わせている（TIFF の `DocumentName` は XMP にないので題名にした）。
 
-画像（ブラウザがそのまま表示できる画像をそのまま格納したもの）は、XMP、EXIF、IPTC、形式自身の情報の順に、要素ごとに先にあるものを使う。XMP（SVG では `metadata` 要素の RDF）の `dc:*` はその要素に写す（`dc:format` を除く。`rdf:Alt` は既定の言語の値）。
+画像（ブラウザがそのまま表示できる画像をそのまま格納したもの）は、XMP、EXIF、IPTC、形式自身の情報の順に、要素ごとに先にあるものを使う。XMP（SVG では `metadata` 要素の RDF）の `dc:*` はその要素に写す（`rdf:Alt` は既定の言語の値）。Photoshop の文書の XMP も同じ読み方をする。
 
 | 要素 | XMP | EXIF | IPTC | 形式自身 |
 |---|---|---|---|---|

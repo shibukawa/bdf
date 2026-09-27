@@ -5,8 +5,10 @@ import (
 	"encoding/xml"
 	"errors"
 	"regexp"
+	"strings"
 	"unicode/utf16"
 
+	"github.com/shibukawa/bdf/converter/internal/xmp"
 	"github.com/shibukawa/bdf/imgconv"
 )
 
@@ -99,7 +101,7 @@ func readSVG(data []byte) (*picture, error) {
 	for _, m := range entityRE.FindAllSubmatch(head, -1) {
 		entities[string(m[1])] = string(m[2]) + string(m[3])
 	}
-	d := decoder(data, entities)
+	d := xmp.Decoder(data, entities)
 	var root xml.StartElement
 	for {
 		tok, err := d.Token()
@@ -115,18 +117,18 @@ func readSVG(data []byte) (*picture, error) {
 		return nil, errors.New("the root element is not svg")
 	}
 	p := &picture{format: "svg"}
-	rn := &node{name: root.Name, attrs: root.Attr}
+	rn := &xmp.Node{Name: root.Name, Attrs: root.Attr}
 	if root.Name.Space != nsSVG {
 		p.warnings = append(p.warnings, `the root svg element is not in the SVG namespace (xmlns="`+nsSVG+`"): browsers do not draw it`)
 	}
-	p.w, p.h = imgconv.ParseSVGSize(rn.attr("", "width"), rn.attr("", "height"), rn.attr("", "viewBox")).Pixels()
-	if lang := rn.attr(nsXML, "lang"); lang != "" {
+	p.w, p.h = imgconv.ParseSVGSize(rn.Attr("", "width"), rn.Attr("", "height"), rn.Attr("", "viewBox")).Pixels()
+	if lang := rn.Attr(nsXML, "lang"); lang != "" {
 		add(&p.native.Language, lang)
 	} else {
-		add(&p.native.Language, rn.attr("", "lang"))
+		add(&p.native.Language, rn.Attr("", "lang"))
 	}
 	// title, desc and metadata among the root's children
-	var meta *node
+	var meta *xmp.Node
 	for {
 		tok, err := d.Token()
 		if err != nil {
@@ -145,7 +147,7 @@ func readSVG(data []byte) (*picture, error) {
 		}
 		switch s.Name.Local {
 		case "title", "desc":
-			n, _ := subtree(d, s)
+			n, _ := xmp.Subtree(d, s)
 			f := &p.native.Title
 			if s.Name.Local == "desc" {
 				f = &p.native.Description
@@ -153,7 +155,7 @@ func readSVG(data []byte) (*picture, error) {
 			p.setText(f, collapse(allText(n)))
 		case "metadata":
 			if meta == nil {
-				meta, _ = subtree(d, s)
+				meta, _ = xmp.Subtree(d, s)
 			} else {
 				d.Skip()
 			}
@@ -164,18 +166,27 @@ func readSVG(data []byte) (*picture, error) {
 	if meta != nil {
 		// RDF metadata (Inkscape's document properties) comes before the
 		// title and description, as XMP does in the raster formats
-		rdf := rdfDC(meta)
-		merge(&rdf, p.native)
+		rdf := xmp.RDF(meta)
+		xmp.Merge(&rdf, p.native)
 		p.native = rdf
 	}
 	return p, nil
 }
 
 // allText returns the text of an element and its descendants.
-func allText(n *node) string {
-	s := n.text
-	for _, c := range n.children {
+func allText(n *xmp.Node) string {
+	s := n.Text
+	for _, c := range n.Children {
 		s += " " + allText(c)
 	}
 	return s
 }
+
+// collapse trims text and collapses its runs of white space.
+func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// Namespaces of the elements and attributes of an SVG root read.
+const (
+	nsSVG = "http://www.w3.org/2000/svg"
+	nsXML = "http://www.w3.org/XML/1998/namespace"
+)

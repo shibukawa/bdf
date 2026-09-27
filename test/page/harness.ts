@@ -98,6 +98,11 @@ export const CASES: Case[] = [
   { name: "jww-old-1", src: "/testdata/jww/old.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
   // An SXF drawing (P21) rendered by converter/sxf with the test fonts; see test/sxf.
   { name: "sxf-shapes-1", src: "/testdata/sxf/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  // CGM metafiles rendered by converter/cgm with the test fonts; see test/cgm. A CAD-like sheet of every kind of
+  // primitive, a WebCGM-like illustration with a y-down VDC, a hidden layer and tiles, and Shift_JIS text.
+  { name: "cgm-shapes-1", src: "/testdata/cgm/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "cgm-illustration-1", src: "/testdata/cgm/illustration.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "cgm-sjis-1", src: "/testdata/cgm/sjis.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
   // HP-GL/2 plots rendered by converter/hpgl with the test fonts; see test/hpgl. An A3 plot of every kind of
   // instruction, a plotter job turned to a portrait sheet with an HP RTL image among its vectors, and the HP-GL
   // of a pen plotter.
@@ -133,6 +138,13 @@ export const CASES: Case[] = [
   { name: "image-photo", src: "/testdata/image/photo.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
   { name: "image-rotated", src: "/testdata/image/rotated.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
   { name: "image-drawing", src: "/testdata/image/drawing.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  // PCB fabrication data (converter/gerber); see test/gerber. A KiCad-style board drawn as it looks from the top and
+  // from below (mirrored), its bottom copper (a pour with clearances and a thermal relief, clear polarity), and one
+  // file with the apertures, macros, arcs, regions and blocks of the Gerber specification.
+  { name: "gerber-board-top", src: "/testdata/gerber/board.bdf", kind: "page", view: "top", page: 0, scale: 0.75 },
+  { name: "gerber-board-bottom", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom", page: 0, scale: 0.75 },
+  { name: "gerber-board-bottom-copper", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom-copper", page: 0, scale: 0.75 },
+  { name: "gerber-features-1", src: "/testdata/gerber/features.bdf", kind: "page", view: "layer", page: 0, scale: 0.75 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

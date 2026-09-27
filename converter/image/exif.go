@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/xmp"
 )
 
 // exifInfo is what an EXIF block (a TIFF structure) tells about an image.
@@ -132,12 +133,12 @@ func parseEXIF(b []byte) (exifInfo, bool) {
 	dc := &info.dc
 	xp := func(tag uint16) string { return utf16Text(ifd0[tag], false) }
 	add(&dc.Title, xp(tagXPTitle))
-	if dc.Creator = splitList(text(ifd0[tagArtist])); len(dc.Creator) == 0 {
-		dc.Creator = splitList(xp(tagXPAuthor))
+	if dc.Creator = xmp.SplitList(text(ifd0[tagArtist])); len(dc.Creator) == 0 {
+		dc.Creator = xmp.SplitList(xp(tagXPAuthor))
 	}
-	dc.Subject = splitList(xp(tagXPKeywords))
+	dc.Subject = xmp.SplitList(xp(tagXPKeywords))
 	for _, d := range []string{text(ifd0[tagImageDescription]), xp(tagXPSubject), xp(tagXPComment), userComment(ex[tagUserComment], t.order)} {
-		if !placeholder(d) {
+		if !xmp.Placeholder(d) {
 			add(&dc.Description, d)
 			break
 		}

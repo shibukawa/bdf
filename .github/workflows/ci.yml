@@ -54,6 +54,10 @@ jobs:
           done
           go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts converter/sxf/testdata/shapes.p21 /tmp/shapes.bdf
           cmp /tmp/shapes.bdf testdata/sxf/shapes.bdf
+          for n in shapes illustration sjis; do
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/cgm/testdata/$n.cgm" "/tmp/$n.bdf"
+            cmp "/tmp/$n.bdf" "testdata/cgm/$n.bdf"
+          done
           for n in shapes job hpgl1; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/hpgl/testdata/$n.plt" "/tmp/$n-hpgl.bdf"
             cmp "/tmp/$n-hpgl.bdf" "testdata/hpgl/$n.bdf"
@@ -95,6 +99,10 @@ jobs:
             go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
             cmp "/tmp/$n.bdf" "testdata/image/$n.bdf"
           done
+          go run ./cmd/bdf generate -q converter/gerber/testdata/board.zip /tmp/board-gerber.bdf
+          cmp /tmp/board-gerber.bdf testdata/gerber/board.bdf
+          go run ./cmd/bdf generate -q converter/gerber/testdata/features.gbr /tmp/features-gerber.bdf
+          cmp /tmp/features-gerber.bdf testdata/gerber/features.bdf
   web:
     runs-on: ubuntu-latest
     steps:

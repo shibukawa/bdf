@@ -561,7 +561,7 @@ func (g *gl) patternImage(index int, penColor bool) (*cad.Pattern, bool) {
 	a := g.anchorPoint()
 	ex := linear(g.dev, cad.Point{X: dot})
 	ey := linear(g.dev, cad.Point{Y: -dot})
-	return &cad.Pattern{Image: h, M: canvas.Matrix{ex.X, ex.Y, ey.X, ey.Y, a.X, a.Y}}, true
+	return &cad.Pattern{Image: h, M: canvas.Matrix{ex.X, ex.Y, ey.X, ey.Y, a.X, a.Y}, Smooth: true}, true
 }
 
 // --- the window (IW) ---

@@ -468,10 +468,11 @@ func (r *rtl) end() {
 	if !c.budget() {
 		return
 	}
-	// the unit square onto the image in RTL space, then the drawing
-	m := r.toDrawing().Mul(canvas.Matrix{w, 0, 0, h, img.origin.X, img.origin.Y})
+	// the stored pixels onto the image in RTL space, then the drawing
+	pw, ph := pix.Bounds().Dx(), pix.Bounds().Dy()
+	m := r.toDrawing().Mul(canvas.Matrix{w / float64(pw), 0, 0, h / float64(ph), img.origin.X, img.origin.Y})
 	c.gl.flush()
-	c.cur.d.Image(&cad.Image{Image: hash, M: m})
+	c.cur.d.Image(&cad.Image{Image: hash, W: pw, H: ph, M: m, Smooth: true})
 }
 
 // transfer receives a plane (V) or a row (W) of raster data.

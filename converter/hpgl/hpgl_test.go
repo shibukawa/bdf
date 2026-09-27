@@ -164,7 +164,7 @@ func TestJob(t *testing.T) {
 	}
 	// in the drawing (unturned): x = 11880 − y′, y = x′
 	w, h := 240*1016/150.0, 180*1016/150.0
-	want := fmt.Sprintf("image %g %g %g %g", 11880-6000.0, 1000.0, math.Round(11880-6000+h), math.Round(1000+w))
+	want := fmt.Sprintf("image %g %g %g %g 240x180", 11880-6000.0, 1000.0, math.Round(11880-6000+h), math.Round(1000+w))
 	if img != want {
 		t.Errorf("%s, want %s", img, want)
 	}
