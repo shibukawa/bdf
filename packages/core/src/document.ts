@@ -1,5 +1,6 @@
 import { decode, type PartSource } from "./container.js";
 import { BdfPasswordError, SealedSource } from "./crypto.js";
+import { decodeCues, type Cues } from "./cues.js";
 import { decodeObject, decodePathCollection, objectDeps } from "./object.js";
 import { decodeTextIndex, type IndexRun } from "./search.js";
 import { extractText } from "./text.js";
@@ -125,6 +126,17 @@ export class BdfDocument {
       }
     }
     return runs;
+  }
+
+  /**
+   * The music of a view (docs/spec.md §4.4): its Standard MIDI File as it is
+   * stored, and its cues when it has them; null for a view without play.
+   */
+  async play(view: View): Promise<{ seq: Uint8Array; cues: Cues | null } | null> {
+    if (!view.play) return null;
+    const { seq, cues } = view.play;
+    const [bytes, decoded] = await Promise.all([this.part(seq), cues ? this.part(cues).then(decodeCues) : null]);
+    return { seq: bytes, cues: decoded };
   }
 
   pathCollection(hash: Hash): Promise<PathData[]> {

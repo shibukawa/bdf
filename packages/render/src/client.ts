@@ -1,6 +1,6 @@
 import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdf/core";
 import type { HitRect } from "./search.js";
-import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode, WorkerOpenOptions, RasterizeRequest, RasterizeResponse } from "./protocol.js";
+import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode, WorkerOpenOptions, RasterizeRequest, RasterizeResponse, PlayData } from "./protocol.js";
 import { domSvgRasterizer } from "./svg.js";
 
 /** An error from the worker; code says when the document needs a password. */
@@ -120,6 +120,13 @@ export class BdfWorkerClient {
   /** Rectangles for each hit, in page or sheet coordinates. */
   locate(view: string, hits: SearchHit[]): Promise<HitRect[][]> {
     return this.call<HitRect[][]>({ type: "locate", view, hits });
+  }
+  /**
+   * The music of a view (spec §4.4): its Standard MIDI File (for
+   * MusicPlayer) and its cues; null when the view plays nothing.
+   */
+  play(view: string): Promise<PlayData | null> {
+    return this.call<PlayData | null>({ type: "play", view });
   }
   close(): Promise<null> {
     return this.call<null>({ type: "close" });

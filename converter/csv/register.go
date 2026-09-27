@@ -17,6 +17,7 @@ func init() {
 		Name:        "csv",
 		Description: "CSV or TSV (comma-, tab-, semicolon- or bar-separated values)",
 		Extensions:  []string{".csv", ".tsv", ".tab"},
+		Guess:       true,
 		Params: []conv.Param{
 			{Name: "charset", Usage: "character encoding: utf-8, shift_jis, euc-jp, euc-kr, gb18030, big5, windows-1252 … (default: detected)"},
 			{Name: "delimiter", Usage: "comma, tab, semicolon, pipe or another character (default: detected)"},

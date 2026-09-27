@@ -60,6 +60,9 @@ const SAMPLES = [
   { path: "converter/epub/testdata/basic.epub", label: "EPUB" },
   { path: "converter/epub/testdata/vertical.epub", label: "EPUB (Japanese, vertical)" },
   { path: "converter/epub/testdata/fixed.epub", label: "EPUB (fixed layout)" },
+  { path: "converter/mml/testdata/frere.mml", label: "MML (NES, a round in four parts)" },
+  { path: "converter/midi/testdata/twinkle.kar", label: "MIDI (karaoke, with words)" },
+  { path: "converter/musicxml/testdata/minuet.musicxml", label: "MusicXML (piano)" },
   { path: "testdata/demo.bdf", label: "bdf" },
 ];
 

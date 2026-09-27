@@ -1,0 +1,15 @@
+#TITLE Twinkle, Twinkle, Little Star
+#ARTIST Traditional
+#CODING bdf
+/* "Ah! vous dirai-je, maman", a French folk tune.
+   FlMML: < raises the octave. */
+$A=c c g g a a g2 f f e e d d c2;
+$B=g g f f e e d2;
+
+// melody on a pulse wave
+t100 @3 @W25 v12 l4 o4
+$A /:2 $B :/ $A;
+
+// bass on a triangle wave
+@2 v10 l2 o3
+c<c >f<c >f<c >g c /:2 c>g<c>g< :/ c<c >f<c >f<c >g c;

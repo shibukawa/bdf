@@ -21,7 +21,10 @@
     border-color: #c8c8c8; box-shadow: inset 0 -2px 0 #1d6b40; }
   .tabs button:focus-visible { outline: 2px solid #1a73e8; outline-offset: -3px; }
   #stage { overflow: auto; position: relative; }
-  .pages { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 16px; }
+  /* as wide as the widest page (at least the stage): a page zoomed wider than the stage would otherwise be centred
+     into negative overflow on the left, which cannot be scrolled to */
+  .pages { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 16px;
+    box-sizing: border-box; width: fit-content; min-width: 100%; }
   .page { position: relative; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
   .page canvas { display: block; }
   .page:focus-visible { outline: 3px solid #1a73e8; outline-offset: 2px; }
@@ -43,6 +46,10 @@
   #pageNav:not([hidden]) { display: inline-flex; gap: 4px; align-items: center; }
   #pageNav.rtl { flex-direction: row-reverse; }
   #pageNum { min-width: 5.5em; text-align: center; font-variant-numeric: tabular-nums; }
+  /* the music of a score (spec §4.4): its controls, and a bar on the page where the music is */
+  #playBox:not([hidden]) { display: inline-flex; gap: 4px; align-items: center; }
+  #playTime { min-width: 7.5em; text-align: center; font-variant-numeric: tabular-nums; }
+  .playCursor { position: absolute; z-index: 2; width: 2px; margin-left: -1px; background: rgba(26, 115, 232, .75); pointer-events: none; forced-color-adjust: none; }
   .textLayer { position: absolute; inset: 0; overflow: hidden; }
   /* the selectable text layer's CSS is @bdf/render TEXT_LAYER_CSS, added by main.ts */
   /* highlights sit on the canvas, which forced colors leave alone: keep theirs too */
@@ -76,7 +83,7 @@
   <strong>BDF viewer</strong>
   <a href="docs/">Docs</a>
   <button id="openFile" type="button">Open file…</button>
-  <input id="file" type="file" hidden accept=".pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.csv,.tsv,.tab,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.drawio,.dio,.svg,.png,.dxf,.jww,.p21,.p2z,.sfc,.cgm,.cgz,.plt,.hpgl,.hgl,.hpg,.hp2,.rtl,.gbr,.ger,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gtp,.gbp,.gko,.gm1,.drl,.xln,.zip,.ai,.psd,.psb,.apng,.jpg,.jpeg,.jpe,.jfif,.gif,.webp,.avif,.bmp,.ico,.html,.htm,.xhtml,.mhtml,.mht,.md,.markdown,.mdown,.mkd,.mdx,.epub,.bdf">
+  <input id="file" type="file" hidden accept=".pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.csv,.tsv,.tab,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.drawio,.dio,.svg,.png,.dxf,.jww,.p21,.p2z,.sfc,.cgm,.cgz,.plt,.hpgl,.hgl,.hpg,.hp2,.rtl,.gbr,.ger,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gtp,.gbp,.gko,.gm1,.drl,.xln,.zip,.ai,.psd,.psb,.apng,.jpg,.jpeg,.jpe,.jfif,.gif,.webp,.avif,.bmp,.ico,.html,.htm,.xhtml,.mhtml,.mht,.md,.markdown,.mdown,.mkd,.mdx,.epub,.mml,.mid,.midi,.smf,.kar,.rmi,.musicxml,.mxl,.xml,.bdf">
   <label>zoom <input id="zoom" type="range" min="0.25" max="3" step="0.25" value="1" aria-valuetext="100%"> <span id="zoomv">100%</span></label>
   <label id="layoutBox" hidden>layout <select id="layout">
     <option value="pages">scroll pages</option>
@@ -91,6 +98,11 @@
     <button id="nextPage" type="button" title="next page" aria-label="next page">›</button>
   </span>
   <label id="animateBox" hidden title="pages curl over as they turn; off: they change at once"><input id="animate" type="checkbox" checked> animate</label>
+  <span id="playBox" hidden>
+    <button id="play" type="button" title="play (Space)" aria-label="play" disabled>▶</button>
+    <button id="stopPlay" type="button" title="stop" aria-label="stop" disabled>■</button>
+    <span id="playTime"></span>
+  </span>
   <span class="search" role="search">
     <input id="q" type="search" placeholder="search…" aria-label="search" size="18">
     <button id="prev" title="previous match" aria-label="previous match">▲</button><button id="next" title="next match" aria-label="next match">▼</button>
@@ -108,11 +120,11 @@
 <div id="stage" role="tabpanel" tabindex="0">
   <div class="landing" id="landing" hidden>
     <h1>Drop a file here to preview it</h1>
-    <p>PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Visio (.vsdx, .vdx), draw.io (.drawio, and SVG and PNG exports with the diagram), AutoCAD DXF, Jw_cad (.jww), SXF (.p21, .p2z, .sfc), CGM (.cgm), HP-GL/2 plot files (.plt), Gerber and Excellon PCB files (one by one, or a board's files in a .zip), Illustrator (.ai), Photoshop (.psd, .psb), Windows metafiles (.emf, .wmf), images (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG: shown as they are, with their metadata), HTML and web archives (.html, .mhtml) and Markdown (.md) and EPUB (.epub), laid out in reader mode, or bdf.
+    <p>PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Visio (.vsdx, .vdx), draw.io (.drawio, and SVG and PNG exports with the diagram), AutoCAD DXF, Jw_cad (.jww), SXF (.p21, .p2z, .sfc), CGM (.cgm), HP-GL/2 plot files (.plt), Gerber and Excellon PCB files (one by one, or a board's files in a .zip), Illustrator (.ai), Photoshop (.psd, .psb), Windows metafiles (.emf, .wmf), images (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG: shown as they are, with their metadata), HTML and web archives (.html, .mhtml) and Markdown (.md) and EPUB (.epub), laid out in reader mode, music (MML, MIDI and MusicXML: .mml, .mid, .kar, .musicxml, .mxl), engraved as scores that play, or bdf.
       The file is converted to bdf and drawn inside your browser, by the Go converters built as WebAssembly: it is not uploaded anywhere.</p>
     <p><button type="button" id="chooseFile">Choose a file…</button></p>
     <div id="samples" hidden><p>Or open a sample:</p><p class="samples"></p></div>
-    <p class="note">Password-protected files open with their password. A PDF shows its pages as they are converted, the ones in view first.
+    <p class="note">Password-protected files open with their password. A PDF shows its pages as they are converted, the ones in view first. A score plays with ▶ (or the space bar), a click on a system plays from there.
       Office documents are laid out with the free fonts published with this page (fetched when a document uses them), which stand in for the fonts the document names.</p>
     <p class="note">What bdf is and how it works: <a href="docs/">documentation</a> (format specification and design notes).</p>
   </div>

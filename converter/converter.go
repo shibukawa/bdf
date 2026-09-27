@@ -7,7 +7,8 @@
 // converter/csv, converter/docx, converter/visio, converter/drawio,
 // converter/dxf, converter/jww, converter/sxf, converter/cgm,
 // converter/hpgl, converter/gerber, converter/emf, converter/tiff,
-// converter/image, converter/html, converter/markdown, converter/epub).
+// converter/image, converter/html, converter/markdown, converter/epub,
+// converter/mml, converter/midi, converter/musicxml).
 // Each registers its format when it is imported, so a program supports the
 // formats whose packages it links in:
 //
@@ -21,7 +22,8 @@
 // (line breaking rules); the Word, HTML, Markdown and EPUB converters share
 // the layout engine wordproc (and the last three webdoc, which parses HTML
 // and XHTML), the CAD converters and HP-GL/2 share cad (drawings plotted
-// onto pages).
+// onto pages), and the music converters share music (scores engraved in
+// staff notation, with the music the viewer plays).
 //
 // Password-protected inputs open with Options.Password. Encrypted Office
 // documents are decrypted here (converter/internal/offcrypto), before their
@@ -57,6 +59,11 @@ type Format struct {
 	// Refines names the format this one is a special case of, as an
 	// Illustrator file is a PDF: detection asks it before that format.
 	Refines string
+	// Guess marks a format whose Detect is a heuristic that other formats'
+	// signatures should win over (CSV: text whose lines have the same
+	// number of separators): detection asks it after the other formats,
+	// and a file name with another format's extension overrides it.
+	Guess bool
 	// Params are the format-specific options it reads from Options.Params.
 	Params []Param
 	// Detect reports whether an input is in the format; head holds its
@@ -244,21 +251,23 @@ func Lookup(name string) *Format {
 }
 
 // Detect returns the registered format of an input, or nil when no format
-// recognizes it. Formats that refine another are asked first.
+// recognizes it. Formats that refine another are asked first, formats that
+// guess last.
 func Detect(r io.ReaderAt, size int64) *Format {
 	head := make([]byte, 1024)
 	n, _ := r.ReadAt(head, 0)
 	head = head[:n]
 	formats := Formats()
-	slices.SortStableFunc(formats, func(a, b *Format) int {
+	rank := func(f *Format) int {
 		switch {
-		case a.Refines != "" && b.Refines == "":
-			return -1
-		case a.Refines == "" && b.Refines != "":
-			return 1
+		case f.Refines != "":
+			return 0
+		case f.Guess:
+			return 2
 		}
-		return 0
-	})
+		return 1
+	}
+	slices.SortStableFunc(formats, func(a, b *Format) int { return rank(a) - rank(b) })
 	for _, f := range formats {
 		if f.Detect(head, r, size) {
 			return f
@@ -269,12 +278,18 @@ func Detect(r io.ReaderAt, size int64) *Format {
 
 // detectNamed is Detect for an input with a file name: when no format
 // recognizes the content (a CSV file of one line, a Markdown document, an
-// HTML fragment), the format that lists the file's extension takes it.
+// HTML fragment), or only a format that guesses does (MML whose tracks are
+// separated by semicolons looks like CSV), the format that lists the
+// file's extension takes it.
 func detectNamed(fileName string, r io.ReaderAt, size int64) *Format {
-	if f := Detect(r, size); f != nil {
+	f := Detect(r, size)
+	if f != nil && !f.Guess {
 		return f
 	}
-	return byExtension(fileName)
+	if g := byExtension(fileName); g != nil {
+		return g
+	}
+	return f
 }
 
 // DetectFile is Detect for a file path, with the file's extension for the

@@ -250,6 +250,13 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
       for (const hit of req.hits) rects.push(await search.locate(view, hit));
       return { result: rects, transfer: [] };
     }
+    case "play": {
+      const play = await doc.play(view);
+      if (!play) return { result: null, transfer: [] };
+      // a copy: the document keeps its part (which may be a view of the whole file)
+      const seq = play.seq.slice().buffer;
+      return { result: { seq, cues: play.cues }, transfer: [seq] };
+    }
   }
 }
 
