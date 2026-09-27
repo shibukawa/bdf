@@ -28,7 +28,7 @@ async function load(file) {
 }
 const modules = { pdf: await load("bdf-pdf.wasm"), office: await load("bdf-office.wasm"), image: await load("bdf-image.wasm") };
 assert.deepEqual(modules.pdf.formats.map((f) => f.name), ["ai", "pdf"]);
-assert.deepEqual(modules.office.formats.map((f) => f.name), ["cgm", "csv", "docx", "drawio", "dxf", "emf", "gerber", "image", "jww", "pptx", "psd", "sxf", "visio", "xlsx"]);
+assert.deepEqual(modules.office.formats.map((f) => f.name), ["cgm", "csv", "docx", "drawio", "dxf", "emf", "gerber", "hpgl", "image", "jww", "pptx", "psd", "sxf", "visio", "xlsx"]);
 assert.deepEqual(modules.image.formats.map((f) => f.name), ["image"]);
 const imageExtensions = modules.image.formats[0].extensions;
 

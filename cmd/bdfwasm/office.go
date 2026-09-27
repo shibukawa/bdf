@@ -10,6 +10,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/dxf"
 	_ "github.com/shibukawa/bdf/converter/emf"
 	_ "github.com/shibukawa/bdf/converter/gerber"
+	_ "github.com/shibukawa/bdf/converter/hpgl"
 	_ "github.com/shibukawa/bdf/converter/jww"
 	_ "github.com/shibukawa/bdf/converter/pptx"
 	_ "github.com/shibukawa/bdf/converter/psd"

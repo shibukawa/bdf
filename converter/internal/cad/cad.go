@@ -1,4 +1,5 @@
-// Package cad draws the 2D drawings of CAD formats (DXF, JWW, SXF, CGM). A
+// Package cad draws the 2D drawings of CAD formats (DXF, JWW, SXF, CGM)
+// and the plots of HP-GL/2. A
 // reader puts what a drawing shows into a Drawing, in the drawing's own
 // coordinates (y up, float64, so that survey coordinates keep their
 // precision), and Plotter writes the Drawing onto a page the way a plotter
@@ -43,6 +44,8 @@ type Pen struct {
 	// DashOffset shifts the pattern along the path (drawing units).
 	DashOffset float64
 	Cap, Join  byte
+	// Miter is the miter limit of mitered joins (0: 10).
+	Miter float64
 }
 
 // Fill is a solid color, a gradient or a pattern.

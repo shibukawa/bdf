@@ -49,6 +49,7 @@ const SAMPLES = [
   { path: "converter/jww/testdata/shapes.jww", label: "Jw_cad" },
   { path: "converter/sxf/testdata/shapes.p21", label: "SXF (P21)" },
   { path: "converter/cgm/testdata/shapes.cgm", label: "CGM" },
+  { path: "converter/hpgl/testdata/shapes.plt", label: "HP-GL/2 (.plt)" },
   { path: "converter/gerber/testdata/board.zip", label: "Gerber and Excellon (a board, zipped)" },
   { path: "converter/ai/testdata/artboards.ai", label: "Illustrator (3 artboards)" },
   { path: "converter/psd/testdata/artboards.psd", label: "Photoshop (3 artboards)" },
