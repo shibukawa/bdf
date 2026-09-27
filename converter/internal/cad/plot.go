@@ -4,6 +4,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
@@ -265,22 +266,30 @@ func (p *plot) text(t *Text, m canvas.Matrix) {
 	for _, r := range t.S {
 		fc := fonts.face(t.Font, r)
 		w := fonts.Set.Advance(fc, r)
-		rx := x
-		if t.Pos != nil && i < len(t.Pos) {
-			rx = t.Pos[i]
+		if t.Cells != nil {
+			w = 0
+			if i < len(t.Cells) {
+				w = t.Cells[i]
+			}
 		}
+		w += t.Spacing
 		n := len(runs)
-		if n > 0 && runs[n-1].fc.Use == fc.Use && (t.Pos == nil || math.Abs(runs[n-1].x+runs[n-1].w-rx) < 1e-6) {
+		if n > 0 && runs[n-1].fc.Use == fc.Use {
 			runs[n-1].s = append(runs[n-1].s, r)
 			runs[n-1].w += w
 		} else {
-			runs = append(runs, run{fc: fc, s: []rune{r}, x: rx, w: w})
+			runs = append(runs, run{fc: fc, s: []rune{r}, x: x, w: w})
 		}
-		x = rx + w
+		x += w
 		i++
 	}
 	p.save()
 	p.cv.Transform(norm)
+	if t.Vertical {
+		p.vertical(t, runs, size, hx, x)
+		p.restore()
+		return
+	}
 	switch t.Break {
 	case BreakBox:
 		p.obj.Mark(bdf.MarkBox, "")
@@ -292,6 +301,9 @@ func (p *plot) text(t *Text, m canvas.Matrix) {
 		p.obj.Mark(bdf.MarkWrap, "")
 	}
 	k := size * hx // ems to units along the baseline
+	if t.Spacing != 0 {
+		p.obj.TextStyle(0, 0, 0, f32(t.Spacing*k))
+	}
 	for _, r := range runs {
 		s := string(r.s)
 		if strings.TrimSpace(s) == "" {
@@ -319,6 +331,65 @@ func (p *plot) text(t *Text, m canvas.Matrix) {
 		}
 	}
 	p.restore()
+}
+
+// vertical draws a column of upright characters into a child object
+// whose x axis runs down the column (the current transform), and uses it
+// after an ALT_TEXT with the column's text, so that text extraction sees
+// one run (spec §7.8), as the vertical text of the Office converters.
+func (p *plot) vertical(t *Text, runs []run, size, hx, total float64) {
+	k := size * hx
+	ch, ref := p.cv.Child(bdf.Rect{X: 0, Y: f32(-size / 2), W: f32(total * k), H: f32(size)})
+	ch.Obj.SetBBox(0, f32(-size), f32(total*k), f32(2*size))
+	sub := &plot{pl: p.pl, cv: ch, obj: ch.Obj}
+	fonts := p.pl.Fonts
+	x := 0.0
+	for _, r := range runs {
+		// each character of the run in its share of the run's cells
+		natural := 0.0
+		for _, c := range r.s {
+			natural += fonts.Set.Advance(r.fc, c) + t.Spacing
+		}
+		for _, c := range r.s {
+			cell := fonts.Set.Advance(r.fc, c) + t.Spacing
+			if natural > 0 {
+				cell *= r.w / natural
+			}
+			adv := fonts.Set.Advance(r.fc, c)
+			if !unicode.IsSpace(c) {
+				sub.save()
+				// turned back a quarter turn about the centre of its cell
+				ch.Transform(canvas.Translate((x+cell/2)*k, 0).Mul(canvas.Rotate(-90)))
+				sub.setLang([]rune{c})
+				sub.setFont(ch.Font(r.fc.Use), size)
+				sub.setFill(t.Color)
+				// the em box centred: its middle is 0.38 em above the baseline
+				ch.Obj.FillText(string(c), f32(-adv*size/2), f32(0.38*size), f32(adv*size))
+				ch.Drawn = true
+				sub.restore()
+			}
+			x += cell
+		}
+	}
+	switch t.Break {
+	case BreakBox:
+		p.obj.Mark(bdf.MarkBox, "")
+	case BreakParagraph:
+		p.obj.Mark(bdf.MarkParagraph, "")
+	case BreakLine:
+		p.obj.Mark(bdf.MarkLine, "")
+	case BreakWrap:
+		p.obj.Mark(bdf.MarkWrap, "")
+	}
+	if len(runs) > 0 {
+		// the font the text is measured with for search highlights
+		p.setLang(runs[0].s)
+		p.setFont(p.cv.Font(runs[0].fc.Use), size)
+	}
+	p.obj.Mark(bdf.MarkAltText, t.S)
+	p.obj.UseAt(ref, 0, 0)
+	p.cv.Used(ch)
+	p.cv.Drawn = true
 }
 
 // setLang sets the language of a run: East Asian text takes the language

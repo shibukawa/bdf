@@ -36,6 +36,9 @@ func init() {
 			if res.Artboards > 0 {
 				summary = fmt.Sprintf("%d artboard(s)", res.Artboards)
 			}
+			if res.Scaled > 0 {
+				summary += fmt.Sprintf(", %d scaled down to the resolution cap", res.Scaled)
+			}
 			if res.Composited {
 				summary += ", layers composited by the converter"
 			}

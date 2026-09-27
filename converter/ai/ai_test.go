@@ -95,7 +95,7 @@ func TestConvertArtboards(t *testing.T) {
 	}
 
 	// The bleed box includes the bleed; pages select artboards.
-	res, err = Convert(bytes.NewReader(data), int64(len(data)), &Options{Box: "bleed", Pages: []int{2}})
+	res, err = Convert(bytes.NewReader(data), int64(len(data)), &Options{Box: "bleed", Pages: converter.PageList(2)})
 	if err != nil {
 		t.Fatal(err)
 	}

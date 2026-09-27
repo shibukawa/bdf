@@ -3,7 +3,9 @@
 // it, one page per artboard.
 //
 // A document without artboards becomes one page, the size of its canvas at
-// its resolution (a 72 ppi image is one point per pixel). A document with
+// its resolution (a 72 ppi image is one point per pixel). Pages finer than
+// the resolution cap of image inputs (imgconv.Options.MaxDPI and
+// MaxPixels) are scaled down to it. A document with
 // artboards becomes a page per visible artboard, cut from the composite, in
 // the order of the Layers panel from the bottom up: the order they were
 // added in, unless they were moved.
@@ -22,21 +24,24 @@ import (
 	"os"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/xmp"
 	"github.com/shibukawa/bdf/imgconv"
 )
 
 // Options controls the conversion.
 type Options struct {
-	// Pages selects 1-based pages (artboards); nil converts all of them.
-	Pages []int
+	// Pages selects 1-based pages (artboards; see converter.Pages); nil
+	// converts all of them.
+	Pages converter.Pages
 	// Title overrides the document title.
 	Title string
 	// NoArtboards puts the whole canvas on one page even when the document
 	// has artboards.
 	NoArtboards bool
-	// Images controls how the page images are stored (see imgconv). The
-	// zero value stores them as PNG.
+	// Images controls how the page images are stored and the resolution
+	// cap they are scaled down to (see imgconv). The zero value stores them
+	// as PNG, capped at imgconv.DefaultMaxDPI and imgconv.DefaultMaxPixels.
 	Images imgconv.Options
 	// NoTextIndex skips building the (empty) text index part.
 	NoTextIndex bool
@@ -52,6 +57,8 @@ type Result struct {
 	Pages    int
 	// Artboards counts the pages that are artboards (0: the canvas is the page).
 	Artboards int
+	// Scaled counts the pages scaled down to the resolution cap.
+	Scaled int
 	// Composited reports that the file had no composite image and the
 	// converter composited the layers.
 	Composited bool
@@ -142,7 +149,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if len(regions) == 0 {
 		regions = []region{{r: canvas}}
 	}
-	pages := opts.Pages
+	pages := opts.Pages.Numbers(len(regions))
 	if pages == nil {
 		for i := range regions {
 			pages = append(pages, i+1)
@@ -169,11 +176,16 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		for y := 0; y < rg.r.Dy(); y++ {
 			copy(crop.Pix[y*crop.Stride:(y+1)*crop.Stride], img.Pix[img.PixOffset(rg.r.Min.X, rg.r.Min.Y+y):])
 		}
-		enc, err := imgconv.EncodeImage(crop, true, opts.Images)
+		w, h := float32(float64(rg.r.Dx())*72/xres), float32(float64(rg.r.Dy())*72/yres)
+		var pix image.Image = crop
+		if tw, th := opts.Images.FitSize(rg.r.Dx(), rg.r.Dy(), float64(w), float64(h)); tw != rg.r.Dx() || th != rg.r.Dy() {
+			pix = imgconv.Resize(crop, tw, th)
+			res.Scaled++
+		}
+		enc, err := imgconv.EncodePixels(pix, true, opts.Images)
 		if err != nil && enc.Data == nil {
 			return nil, fmt.Errorf("psd: page %d: %w", n, err)
 		}
-		w, h := float32(float64(rg.r.Dx())*72/xres), float32(float64(rg.r.Dy())*72/yres)
 		obj := bdf.NewObject()
 		obj.SetBBox(0, 0, w, h)
 		obj.Image(obj.AddImage(doc.AddImage(enc.Data)), 0, 0, w, h)

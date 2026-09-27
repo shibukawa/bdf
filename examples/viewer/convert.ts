@@ -12,15 +12,44 @@ export interface Converted {
   protected: boolean;
 }
 
+/**
+ * A conversion done a page at a time (see cmd/bdfwasm's open): with pages
+ * > 0, bdf is the outline (every page sized, the pages of the first view
+ * without layers) and stream names the conversion for page() and finish();
+ * otherwise bdf is the whole document.
+ */
+export interface Opened {
+  bdf: Uint8Array;
+  format: string;
+  /** Pages left to convert with page(); 0 when bdf is the whole document. */
+  pages: number;
+  warnings: string[];
+  /** The whole document's summary (pages 0). */
+  summary?: string;
+  stream?: number;
+}
+
+/** A page a stream converted: a bdf whose only page is that page, with the parts it brings. */
+export interface ConvertedPage {
+  bdf: Uint8Array;
+  /** Warnings since the last call. */
+  warnings: string[];
+}
+
 export interface ConvertOptions {
   format?: string;
   password?: string;
   /** URL of the font directory the Office converters lay text out with. */
   fonts?: string;
+  /** The file name, whose extension tells the format of a file whose content does not. */
+  name?: string;
 }
 
-export type ConvertRequest = { id: number; module: string; data: ArrayBuffer; options: ConvertOptions };
-export type ConvertResponse = { id: number; ok: true; result: Converted } | { id: number; ok: false; error: string; code?: string };
+export type ConvertRequest =
+  | { id: number; type: "convert" | "open"; module: string; data: ArrayBuffer; options: ConvertOptions }
+  | { id: number; type: "page"; stream: number; index: number }
+  | { id: number; type: "finish" | "close"; stream: number };
+export type ConvertResponse = { id: number; ok: true; result: Converted | Opened | ConvertedPage | null } | { id: number; ok: false; error: string; code?: string };
 
 /** A failed conversion; code is "password-required", "wrong-password" or "unknown-format" when it is one of those. */
 export class ConvertError extends Error {
@@ -30,17 +59,28 @@ export class ConvertError extends Error {
   }
 }
 
-/** What a file is, from its first bytes: a bdf document, a PDF, or (possibly) an Office document. */
-export function sniff(head: Uint8Array): "bdf" | "pdf" | "office" {
+/** Extensions of the files the web module converts (HTML and Markdown). */
+const WEB = [".html", ".htm", ".xhtml", ".mhtml", ".mht", ".md", ".markdown", ".mdown", ".mkd", ".mdx"];
+
+/**
+ * What a file is, from its first bytes and its name: a bdf document, a PDF,
+ * an HTML or Markdown document (by its extension), or (possibly) an Office
+ * document.
+ */
+export function sniff(head: Uint8Array, name = ""): "bdf" | "pdf" | "web" | "office" {
   if (head[0] === 0x62 && head[1] === 0x64 && head[2] === 0x66 && head[3] === 0) return "bdf";
   // the header may follow some garbage in the first 1024 bytes
   const text = String.fromCharCode(...head.subarray(0, 1024));
-  return text.includes("%PDF-") ? "pdf" : "office";
+  if (text.includes("%PDF-")) return "pdf";
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 && WEB.includes(name.slice(dot).toLowerCase()) ? "web" : "office";
 }
+
+type Call = ConvertRequest extends infer R ? (R extends { id: number } ? Omit<R, "id"> : never) : never;
 
 export class ConverterClient {
   private next = 1;
-  private pending = new Map<number, { resolve: (v: Converted) => void; reject: (e: Error) => void }>();
+  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   /** Why the worker stopped (it could not load wasm_exec.js, say); later calls fail with it. */
   private failed?: ConvertError;
 
@@ -59,13 +99,33 @@ export class ConverterClient {
     };
   }
 
-  /** Convert data (copied, so that it can be converted again) with the module at the URL. */
-  convert(module: string, data: ArrayBuffer, options: ConvertOptions = {}): Promise<Converted> {
+  private call<T>(req: Call): Promise<T> {
     if (this.failed) return Promise.reject(this.failed);
     const id = this.next++;
-    return new Promise<Converted>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, module, data, options } satisfies ConvertRequest);
+    return new Promise<T>((resolve, reject) => {
+      this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      this.worker.postMessage({ id, ...req });
     });
+  }
+
+  /** Convert data (copied, so that it can be converted again) with the module at the URL. */
+  convert(module: string, data: ArrayBuffer, options: ConvertOptions = {}): Promise<Converted> {
+    return this.call<Converted>({ type: "convert", module, data, options });
+  }
+  /** Start a conversion done a page at a time (data is copied); formats that cannot come back whole. */
+  open(module: string, data: ArrayBuffer, options: ConvertOptions = {}): Promise<Opened> {
+    return this.call<Opened>({ type: "open", module, data, options });
+  }
+  /** Convert page index of the first view of an opened stream. */
+  page(stream: number, index: number): Promise<ConvertedPage> {
+    return this.call<ConvertedPage>({ type: "page", stream, index });
+  }
+  /** Convert the pages left and return the whole document. */
+  finish(stream: number): Promise<Converted> {
+    return this.call<Converted>({ type: "finish", stream });
+  }
+  /** Let a stream go (finished or not). */
+  close(stream: number): Promise<null> {
+    return this.call<null>({ type: "close", stream });
   }
 }

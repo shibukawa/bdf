@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
@@ -28,8 +29,9 @@ import (
 
 // Options controls the conversion.
 type Options struct {
-	// Pages selects 1-based page numbers; nil converts every page.
-	Pages []int
+	// Pages selects 1-based pages (see converter.Pages); nil converts every
+	// page.
+	Pages conv.Pages
 	// Title overrides the document title.
 	Title string
 	// Border is the margin around the drawing in diagram units (pixels);
@@ -138,7 +140,7 @@ func Convert(data []byte, opts *Options) (*Result, error) {
 		c.doc.Meta.DC.Modified = bdf.DCValues{f.modified}
 	}
 
-	sel := opts.Pages
+	sel := opts.Pages.Numbers(len(f.pages))
 	if sel == nil {
 		for i := range f.pages {
 			sel = append(sel, i+1)

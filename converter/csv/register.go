@@ -129,7 +129,7 @@ func detect(head []byte, r io.ReaderAt, size int64) bool {
 	if len(head) == 0 {
 		return false
 	}
-	for _, sig := range []string{"%PDF", "PK\x03\x04", "{\\rtf", "<?xml", "<!DOCTYPE", "<!doctype", "<html"} {
+	for _, sig := range []string{"%PDF", "PK\x03\x04", "{\\rtf", "<?xml", "<!DOCTYPE", "<!doctype", "<html", "ISO-10303-21"} {
 		if bytes.HasPrefix(head, []byte(sig)) {
 			return false
 		}

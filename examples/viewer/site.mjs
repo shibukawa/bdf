@@ -1,7 +1,9 @@
 // Builds the static demo site (published on GitHub Pages): the viewer, the
 // converters as wasm (cmd/bdfwasm: one module for PDF, one for the Office
-// formats), the fonts the Office converters lay text out with, and sample
-// files. Files opened on the site are converted inside the browser.
+// formats, one for HTML and Markdown), the fonts the Office, HTML and
+// Markdown converters lay text out with, sample files, and the
+// documentation (docs.mjs: the READMEs and docs/ as HTML under docs/).
+// Files opened on the site are converted inside the browser.
 //
 //   node examples/viewer/site.mjs [--serve] [--out dir]
 //
@@ -15,6 +17,7 @@ import { basename, delimiter, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { serve } from "../../test/serve.mjs";
 import { buildViewer, root } from "./build.mjs";
+import { buildDocs } from "./docs.mjs";
 
 const execFile = promisify(execFileCb);
 const args = process.argv.slice(2);
@@ -25,6 +28,7 @@ const out = resolve(outArg >= 0 ? args[outArg + 1] : join(root, "examples/viewer
 const MODULES = [
   { file: "bdf-pdf.wasm", tags: "pdfonly" },
   { file: "bdf-office.wasm", tags: "officeonly" },
+  { file: "bdf-web.wasm", tags: "webonly" },
 ];
 
 /** Samples offered on the start page: repository path and label. */
@@ -41,6 +45,8 @@ const SAMPLES = [
   { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },
   { path: "converter/drawio/testdata/aws.drawio", label: "draw.io (AWS)" },
   { path: "converter/dxf/testdata/layout.dxf", label: "DXF (model space and a layout)" },
+  { path: "converter/jww/testdata/shapes.jww", label: "Jw_cad" },
+  { path: "converter/sxf/testdata/shapes.p21", label: "SXF (P21)" },
   { path: "converter/ai/testdata/artboards.ai", label: "Illustrator (3 artboards)" },
   { path: "converter/psd/testdata/artboards.psd", label: "Photoshop (3 artboards)" },
   { path: "testdata/demo.bdf", label: "bdf" },
@@ -138,7 +144,7 @@ async function copySamples() {
 
 await rm(out, { recursive: true, force: true });
 await buildViewer(out, { defaultSrc: "" });
-await Promise.all([buildModules(), copyFonts(), copySamples()]);
+await Promise.all([buildModules(), copyFonts(), copySamples(), buildDocs(out)]);
 console.log(`site: ${out}`);
 
 if (args.includes("--serve")) {

@@ -33,19 +33,21 @@ func generate(args []string) {
 	title := fs.String("title", "", "document title (default: from the input); the same as -dc title=...")
 	var dcFlags stringList
 	fs.Var(&dcFlags, "dc", "Dublin Core element as name=value, e.g. creator=Alice (repeatable; replaces the element read from the input, name= removes it)")
-	pages := fs.String("pages", "", "pages, slides, sheets or artboards to convert, e.g. 1-3,5 (default: all)")
+	pages := fs.String("pages", "", "pages, slides, sheets or artboards to convert, e.g. 1-3,5,8- (8-: from 8 to the last; default: all)")
 	quiet := fs.Bool("q", false, "do not print warnings")
 	images := fs.String("images", "convert", "raster images: keep (store as is) or convert (try WebP, keep when smaller)")
-	quality := fs.Int("quality", 80, "lossy WebP quality (1-100)")
+	quality := fs.Int("quality", 80, "lossy WebP quality (1-100); also the JPEG quality of re-encoded images under -images keep")
+	maxDPI := fs.Float64("max-dpi", imgconv.DefaultMaxDPI, "image inputs (TIFF, Photoshop): scale pages down to at most this many pixels per inch (0: no limit)")
+	maxPixels := fs.Int("max-pixels", imgconv.DefaultMaxPixels, "image inputs (TIFF, Photoshop): scale pages down to at most this many pixels, width × height (0: no limit)")
 	noSubset := fs.Bool("no-subset", false, "embed whole fonts instead of the glyphs in use")
 	noWOFF2 := fs.Bool("no-woff2", false, "store embedded fonts as TrueType/OpenType instead of WOFF2")
 	ignoreFSType := fs.Bool("ignore-fstype", false, "embed fonts whose OS/2 fsType forbids embedding or subsetting (only with the rights to do so)")
 	kind := fs.String("kind", "fixed", "PDF: view kind, fixed or flow")
 	noShare := fs.Bool("no-share", false, "PDF: do not move the instruction prefix pages have in common into a shared object")
-	fonts := fs.String("fonts", "embed", "PowerPoint, Excel, Word, CSV, metafiles: embed (subset and embed the fonts used for layout) or system (refer to fonts by name)")
+	fonts := fs.String("fonts", "", "PowerPoint, Excel, Word, CSV, metafiles, HTML, Markdown: embed (subset and embed the fonts used for layout) or system (refer to fonts by name; the default for HTML and Markdown, which leave text to the viewer's fonts as web pages do)")
 	var fontDirs stringList
-	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, Word, CSV, metafiles: directory searched for fonts before the system ones (repeatable)")
-	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, Word, CSV, metafiles: use only the fonts under -font-dir")
+	fs.Var(&fontDirs, "font-dir", "PowerPoint, Excel, Word, CSV, metafiles, HTML, Markdown: directory searched for fonts before the system ones (repeatable)")
+	noSystemFonts := fs.Bool("no-system-fonts", false, "PowerPoint, Excel, Word, CSV, metafiles, HTML, Markdown: use only the fonts under -font-dir")
 	hidden := fs.Bool("hidden", false, "PowerPoint, Excel: include hidden slides or sheets (the same as -param hidden=true)")
 	var paramFlags stringList
 	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")
@@ -56,9 +58,9 @@ func generate(args []string) {
 		fs.PrintDefaults()
 		fmt.Fprintln(os.Stderr, "\ninput formats:")
 		for _, f := range converter.Formats() {
-			fmt.Fprintf(os.Stderr, "  %-6s %s (%s)\n", f.Name, f.Description, strings.Join(f.Extensions, " "))
+			fmt.Fprintf(os.Stderr, "  %-8s %s (%s)\n", f.Name, f.Description, strings.Join(f.Extensions, " "))
 			for _, p := range f.Params {
-				fmt.Fprintf(os.Stderr, "         -param %s=…: %s\n", p.Name, p.Usage)
+				fmt.Fprintf(os.Stderr, "           -param %s=…: %s\n", p.Name, p.Usage)
 			}
 		}
 	}
@@ -69,7 +71,16 @@ func generate(args []string) {
 	}
 	in, out := fs.Arg(0), fs.Arg(1)
 
-	imgOpts := imgconv.Options{Quality: *quality}
+	imgOpts := imgconv.Options{Quality: *quality, MaxDPI: *maxDPI, MaxPixels: *maxPixels}
+	if *maxDPI == 0 {
+		imgOpts.MaxDPI = -1 // no limit (0 in imgconv.Options is the default)
+	}
+	if *maxPixels == 0 {
+		imgOpts.MaxPixels = -1
+	}
+	if *maxDPI < 0 || *maxPixels < 0 {
+		usageError("-max-dpi and -max-pixels must not be negative")
+	}
 	switch *images {
 	case "keep":
 		imgOpts.Mode = imgconv.Keep
@@ -78,12 +89,9 @@ func generate(args []string) {
 	default:
 		usageError("-images must be keep or convert")
 	}
-	var sel []int
-	if *pages != "" {
-		var err error
-		if sel, err = converter.PageRange(*pages, 1<<30); err != nil {
-			usageError(err.Error())
-		}
+	sel, err := converter.ParsePages(*pages)
+	if err != nil {
+		usageError("-pages: " + err.Error())
 	}
 	dc, err := parseDC(dcFlags)
 	if err != nil {
@@ -96,7 +104,9 @@ func generate(args []string) {
 		FontDirs: fontDirs, NoSystemFonts: *noSystemFonts, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType,
 		Params: map[string]string{"kind": *kind, "no-share": strconv.FormatBool(*noShare), "hidden": strconv.FormatBool(*hidden)}}
 	switch *fonts {
+	case "":
 	case "embed":
+		opts.EmbedFonts = true
 	case "system":
 		opts.SystemFonts = true
 	default:

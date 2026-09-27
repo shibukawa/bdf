@@ -11,6 +11,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/imgconv"
 )
 
 func read(t *testing.T, name string) []byte {
@@ -153,6 +154,16 @@ func TestConvertLayers(t *testing.T) {
 		t.Errorf("hidden layer drawn: %v", px)
 	}
 
+	// Finer than the resolution cap of image inputs: scaled down to it, the
+	// page keeping its size.
+	capped := convert(t, data, &Options{Images: imgconv.Options{MaxDPI: 72}})
+	if b := capped.pages[0].Bounds(); b.Dx() != 80 || b.Dy() != 60 || capped.res.Scaled != 1 {
+		t.Errorf("capped at 72 ppi: image %v, %d scaled", b, capped.res.Scaled)
+	}
+	if p := capped.r.Manifest.Views[0].Pages[0]; p.W != 80 || p.H != 60 {
+		t.Errorf("capped page %v × %v", p.W, p.H)
+	}
+
 	// Without the composite, the converter composites the layers: groups,
 	// clipping, masks, a fill layer, blend modes, fill opacity.
 	d := convert(t, withoutComposite(t, data), nil)
@@ -199,7 +210,7 @@ func TestConvertArtboards(t *testing.T) {
 	}
 
 	// Pages select artboards; without artboards the canvas is one page.
-	sel := convert(t, data, &Options{Pages: []int{3, 1}})
+	sel := convert(t, data, &Options{Pages: converter.PageList(3, 1)})
 	if p := sel.r.Manifest.Views[0].Pages; len(p) != 2 || p[0].W != 160 || p[1].W != 200 {
 		t.Errorf("selected pages: %+v", p)
 	}
@@ -207,7 +218,7 @@ func TestConvertArtboards(t *testing.T) {
 	if p := whole.r.Manifest.Views[0].Pages; len(p) != 1 || p[0].W != 400 || p[0].H != 260 || whole.res.Artboards != 0 {
 		t.Errorf("no artboards: %+v", p)
 	}
-	if _, err := Convert(bytes.NewReader(data), int64(len(data)), &Options{Pages: []int{4}}); err == nil {
+	if _, err := Convert(bytes.NewReader(data), int64(len(data)), &Options{Pages: converter.PageList(4)}); err == nil {
 		t.Error("page 4 of 3 converted")
 	}
 

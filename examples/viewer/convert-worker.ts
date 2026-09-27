@@ -1,12 +1,19 @@
 /// <reference lib="webworker" />
 // Converter worker: runs the converter modules (cmd/bdfwasm, built as wasm)
-// and converts the files the page sends into bdf documents. A classic worker,
-// so that it can load Go's wasm_exec.js.
-import type { ConvertRequest, ConvertResponse, Converted } from "./convert.js";
+// and converts the files the page sends into bdf documents, whole or a page
+// at a time. A classic worker, so that it can load Go's wasm_exec.js.
+import type { ConvertRequest, ConvertResponse, ConvertOptions, Converted, ConvertedPage, Opened } from "./convert.js";
 
+/** A conversion done a page at a time, as cmd/bdfwasm returns it. */
+interface GoStream {
+  page(index: number): Promise<ConvertedPage>;
+  finish(): Promise<Converted>;
+  close(): void;
+}
 /** What cmd/bdfwasm sets on globalThis. */
 interface Converter {
-  convert(data: Uint8Array, options: { format?: string; password?: string; fonts?: string }): Promise<Converted>;
+  convert(data: Uint8Array, options: ConvertOptions): Promise<Converted>;
+  open(data: Uint8Array, options: ConvertOptions): Promise<Omit<Opened, "stream"> & { stream?: GoStream }>;
 }
 declare class Go {
   importObject: WebAssembly.Imports;
@@ -17,6 +24,9 @@ importScripts("./wasm_exec.js");
 
 /** Loaded modules by URL. Several can run in the worker, each a Go program of its own. */
 const modules = new Map<string, Promise<Converter>>();
+/** Streams opened, by the number the page knows them by. */
+const streams = new Map<number, GoStream>();
+let nextStream = 1;
 
 function load(url: string): Promise<Converter> {
   let p = modules.get(url);
@@ -38,15 +48,42 @@ function load(url: string): Promise<Converter> {
   return p;
 }
 
+function stream(id: number): GoStream {
+  const s = streams.get(id);
+  if (!s) throw new Error(`no conversion ${id}`);
+  return s;
+}
+
+async function handle(req: ConvertRequest): Promise<Converted | Opened | ConvertedPage | null> {
+  switch (req.type) {
+    case "convert":
+      return (await load(req.module)).convert(new Uint8Array(req.data), req.options);
+    case "open": {
+      const { stream: s, ...opened } = await (await load(req.module)).open(new Uint8Array(req.data), req.options);
+      if (!s) return opened;
+      const id = nextStream++;
+      streams.set(id, s);
+      return { ...opened, stream: id };
+    }
+    case "page":
+      return stream(req.stream).page(req.index);
+    case "finish":
+      return stream(req.stream).finish();
+    case "close":
+      streams.get(req.stream)?.close();
+      streams.delete(req.stream);
+      return null;
+  }
+}
+
 self.onmessage = async (ev: MessageEvent<ConvertRequest>) => {
-  const { id, module, data, options } = ev.data;
+  const { id } = ev.data;
   let res: ConvertResponse;
   const transfer: Transferable[] = [];
   try {
-    const converter = await load(module);
-    const result = await converter.convert(new Uint8Array(data), options);
+    const result = await handle(ev.data);
     res = { id, ok: true, result };
-    transfer.push(result.bdf.buffer);
+    if (result) transfer.push(result.bdf.buffer);
   } catch (e) {
     const err = e as Error & { code?: string };
     res = { id, ok: false, error: err.message ?? String(e), code: err.code };

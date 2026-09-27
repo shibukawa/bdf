@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shibukawa/bdf/converter"
@@ -37,6 +38,12 @@ func TestDetect(t *testing.T) {
 	binary.LittleEndian.PutUint32(emf, 1)
 	copy(emf[40:], " EMF")
 	wmf := []byte{1, 0, 9, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	var p2z bytes.Buffer
+	zw = zip.NewWriter(&p2z)
+	w, _ = zw.Create("D0PL001Z.P21")
+	w.Write([]byte("ISO-10303-21;\nHEADER;\n"))
+	zw.Close()
+	step := "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('a','',(''),(''),'','','');\n"
 	for _, c := range []struct {
 		name string
 		data []byte
@@ -61,10 +68,25 @@ func TestDetect(t *testing.T) {
 		{"drawio svg", read(t, "embedded.drawio.svg"), "drawio"},
 		{"drawio png", read(t, "embedded.drawio.png"), "drawio"},
 		{"mxGraphModel", []byte("\ufeff<?xml version=\"1.0\"?>\n<mxGraphModel><root/></mxGraphModel>"), "drawio"},
-		{"plain svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), ""},
 		{"tsv", []byte("id\tname\n1\tAnn\n"), "csv"},
 		{"dxf", []byte("  0\r\nSECTION\r\n  2\r\nHEADER\r\n"), "dxf"},
 		{"binary dxf", []byte("AutoCAD Binary DXF\r\n\x1a\x00\x00\x00"), "dxf"},
+		{"jww", []byte("JwwData.\xbc\x02\x00\x00"), "jww"},
+		{"sxf p21", []byte(step + "FILE_SCHEMA(('ASSOCIATIVE_DRAUGHTING'));\nENDSEC;\n"), "sxf"},
+		{"sxf p2z", p2z.Bytes(), "sxf"},
+		{"sxf p21 of regular lines", []byte(step + "FILE_SCHEMA(('ASSOCIATIVE_DRAUGHTING'));\nENDSEC;\nDATA;\n" +
+			strings.Repeat("#10=CARTESIAN_POINT('',(1.,2.));\n", 40)), "sxf"},
+		{"step ap214", []byte(step + "FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\n"), ""},
+		{"tiff", []byte("II*\x00\x08\x00\x00\x00"), "tiff"},
+		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
+		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
+		{"html", []byte("\n<!DOCTYPE html>\n<html><body>x</body></html>"), "html"},
+		{"xhtml", []byte(`<?xml version="1.0" encoding="utf-8"?>` + "\n<!-- c -->\n" + `<html xmlns="http://www.w3.org/1999/xhtml">`), "html"},
+		{"mhtml", []byte("From: <Saved by Blink>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/related;\r\n\ttype=\"text/html\";\r\n\tboundary=\"b\"\r\n\r\n--b\r\n"), "html"},
+		// Markdown and HTML fragments (a README's raw HTML) are text that
+		// only a file's extension tells (see TestDetectFile)
+		{"markdown", []byte("# Title\n\ntext"), ""},
+		{"fragment", []byte(`<p align="center"><img src="logo.png"></p>`), ""},
 		{"junk", []byte("hello"), ""},
 	} {
 		got := ""
@@ -85,4 +107,32 @@ func read(t *testing.T, name string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// TestDetectFile checks that a file's extension tells the format of text
+// whose content no format recognizes.
+func TestDetectFile(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct{ name, data, want string }{
+		{"fragment.html", "<div>\n\n    <p>indented</p>\n</div>", "html"},
+		{"notes.md", "<div>\n\n    <p>indented</p>\n</div>", "markdown"},
+		{"README.md", "# Title\n\ntext", "markdown"},
+		{"notes.txt", "plain text", ""},
+		// a CSV file of one line is text that only its extension tells
+		{"one.csv", "a,b,c", "csv"},
+		{"page.htm", "<!DOCTYPE html><p>x", "html"},
+	} {
+		path := filepath.Join(dir, c.name)
+		if err := os.WriteFile(path, []byte(c.data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		f, err := converter.DetectFile(path)
+		got := ""
+		if f != nil {
+			got = f.Name
+		}
+		if err != nil || got != c.want {
+			t.Errorf("%s detected as %q (%v), want %q", c.name, got, err, c.want)
+		}
+	}
 }

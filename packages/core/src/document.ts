@@ -12,13 +12,14 @@ export interface OpenOptions {
 
 /** A loaded document: manifest plus a cache of decoded parts. */
 export class BdfDocument {
-  private entries = new Map<Hash, PartEntry>();
+  /** Part entries, with the source that holds each (addPage brings parts of other sources). */
+  private entries = new Map<Hash, { entry: PartEntry; source: PartSource }>();
   private parts = new Map<Hash, Promise<Uint8Array>>();
   private objects = new Map<Hash, Promise<ObjectPart>>();
   private pathSets = new Map<Hash, Promise<PathData[]>>();
 
   private constructor(readonly source: PartSource, readonly manifest: Manifest) {
-    for (const e of manifest.parts) this.entries.set(e.h, e);
+    for (const e of manifest.parts) this.entries.set(e.h, { entry: e, source });
   }
 
   /**
@@ -38,7 +39,26 @@ export class BdfDocument {
   entry(hash: Hash): PartEntry {
     const e = this.entries.get(hash);
     if (!e) throw new Error(`bdf: unknown part ${hash}`);
-    return e;
+    return e.entry;
+  }
+
+  /**
+   * Put the page of a page document (the only page of its only view: a page
+   * a streamed conversion returned) in place of page index of a view, and
+   * add the parts it brings. The page's objects may use parts added before.
+   */
+  addPage(viewId: string, index: number, from: BdfDocument): void {
+    const pages = this.view(viewId).pages;
+    if (!pages || index < 0 || index >= pages.length) throw new Error(`bdf: no page ${index} in view ${viewId}`);
+    const views = from.manifest.views;
+    if (views.length !== 1 || views[0].pages?.length !== 1) throw new Error("bdf: not a page document");
+    const page = views[0].pages[0];
+    for (const e of from.manifest.parts) {
+      if (this.entries.has(e.h)) continue;
+      this.entries.set(e.h, { entry: e, source: from.source });
+      this.manifest.parts.push(e);
+    }
+    pages[index] = page;
   }
 
   view(id: string): View {
@@ -51,8 +71,9 @@ export class BdfDocument {
   part(hash: Hash): Promise<Uint8Array> {
     let p = this.parts.get(hash);
     if (!p) {
-      const e = this.entry(hash);
-      p = this.source.stored(e).then((b) => decode(b, e.enc));
+      const e = this.entries.get(hash);
+      if (!e) throw new Error(`bdf: unknown part ${hash}`);
+      p = e.source.stored(e.entry).then((b) => decode(b, e.entry.enc));
       this.parts.set(hash, p);
     }
     return p;

@@ -23,14 +23,16 @@ import (
 	"unicode"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/pdf"
 	"github.com/shibukawa/bdf/imgconv"
 )
 
 // Options controls the conversion.
 type Options struct {
-	// Pages selects 1-based artboards; nil converts every artboard.
-	Pages []int
+	// Pages selects 1-based artboards (see converter.Pages); nil converts
+	// every artboard.
+	Pages converter.Pages
 	// Title overrides the document title.
 	Title string
 	// Box is the page boundary that becomes the page (see pdf.Options.Box):

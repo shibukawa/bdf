@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 )
@@ -440,7 +441,7 @@ func TestDeterministic(t *testing.T) {
 
 func TestPagesOption(t *testing.T) {
 	opts := testOptions()
-	opts.Pages = []int{2}
+	opts.Pages = conv.PageList(2)
 	res, err := ConvertFile(filepath.Join("testdata", "shapes.vsdx"), opts)
 	if err != nil {
 		t.Fatal(err)
@@ -448,7 +449,7 @@ func TestPagesOption(t *testing.T) {
 	if n := len(res.Doc.Views[0].Pages); n != 1 || res.Pages != 1 {
 		t.Errorf("%d pages", n)
 	}
-	opts.Pages = []int{3}
+	opts.Pages = conv.PageList(3)
 	if _, err := ConvertFile(filepath.Join("testdata", "shapes.vsdx"), opts); err == nil {
 		t.Error("page 3 of 2 converted")
 	}
