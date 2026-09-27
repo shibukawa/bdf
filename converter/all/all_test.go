@@ -43,6 +43,16 @@ func TestDetect(t *testing.T) {
 	w, _ = zw.Create("D0PL001Z.P21")
 	w.Write([]byte("ISO-10303-21;\nHEADER;\n"))
 	zw.Close()
+	var gerberZip bytes.Buffer
+	zw = zip.NewWriter(&gerberZip)
+	w, _ = zw.Create("board/board-F_Cu.gbr")
+	w.Write([]byte("%FSLAX46Y46*%\n%MOMM*%\n"))
+	zw.Close()
+	var drillZip bytes.Buffer
+	zw = zip.NewWriter(&drillZip)
+	w, _ = zw.Create("NCDRILL.TXT")
+	w.Write([]byte("M48\nMETRIC\nT1C0.8\n%\n"))
+	zw.Close()
 	step := "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('a','',(''),(''),'','','');\n"
 	for _, c := range []struct {
 		name string
@@ -77,6 +87,16 @@ func TestDetect(t *testing.T) {
 		{"sxf p21 of regular lines", []byte(step + "FILE_SCHEMA(('ASSOCIATIVE_DRAUGHTING'));\nENDSEC;\nDATA;\n" +
 			strings.Repeat("#10=CARTESIAN_POINT('',(1.,2.));\n", 40)), "sxf"},
 		{"step ap214", []byte(step + "FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\n"), ""},
+		{"gerber", []byte("%TF.GenerationSoftware,KiCad,Pcbnew,7.0.10*%\n%FSLAX46Y46*%\n%MOMM*%\n"), "gerber"},
+		{"gerber of Eagle", []byte("G75*\nG70*\n%OFA0B0*%\n%FSLAX24Y24*%\n%IPPOS*%\n"), "gerber"},
+		// a file of aperture definitions, one comma to a line, is not CSV
+		{"gerber of apertures", []byte(strings.Repeat("%ADD10R,0.0500X0.0550*%\n", 60) + "%FSLAX24Y24*%\n"), "gerber"},
+		{"excellon with commas", []byte("M48\nINCH,LZ,00.0000\n" + strings.Repeat("T1C0.0100\n", 30)), "gerber"},
+		{"gerber after a long header", []byte(strings.Repeat("G04 Altium header comment*\n", 60) + "%FSLAX25Y25*%\n%MOIN*%\n"), "gerber"},
+		{"excellon", []byte("M48\n; DRILL file {KiCad 7.0.10}\nFMAT,2\nMETRIC\nT1C0.300\n%\n"), "gerber"},
+		{"excellon of Eagle", []byte("%\nM48\nM72\nT01C0.0236\n%\n"), "gerber"},
+		{"gerber zip", gerberZip.Bytes(), "gerber"},
+		{"drill zip", drillZip.Bytes(), "gerber"},
 		{"tiff", []byte("II*\x00\x08\x00\x00\x00"), "tiff"},
 		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
 		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
@@ -121,6 +141,8 @@ func TestDetectFile(t *testing.T) {
 		// a CSV file of one line is text that only its extension tells
 		{"one.csv", "a,b,c", "csv"},
 		{"page.htm", "<!DOCTYPE html><p>x", "html"},
+		// a drill file without a header
+		{"NCDRILL.drl", "T1C0.8\nX1.0Y1.0\nM30\n", "gerber"},
 	} {
 		path := filepath.Join(dir, c.name)
 		if err := os.WriteFile(path, []byte(c.data), 0o644); err != nil {

@@ -28,7 +28,7 @@ async function load(file) {
 }
 const modules = { pdf: await load("bdf-pdf.wasm"), office: await load("bdf-office.wasm") };
 assert.deepEqual(modules.pdf.formats.map((f) => f.name), ["ai", "pdf"]);
-assert.deepEqual(modules.office.formats.map((f) => f.name), ["csv", "docx", "drawio", "dxf", "emf", "jww", "pptx", "psd", "sxf", "visio", "xlsx"]);
+assert.deepEqual(modules.office.formats.map((f) => f.name), ["csv", "docx", "drawio", "dxf", "emf", "gerber", "jww", "pptx", "psd", "sxf", "visio", "xlsx"]);
 
 let failed = 0;
 const samples = JSON.parse(await readFile(join(site, "samples/index.json"), "utf8"));
@@ -41,7 +41,7 @@ for (const { name } of samples) {
     const res = await conv.convert(data, { fonts: `${base}fonts/` });
     assert.deepEqual([...res.bdf.subarray(0, 4)], [0x62, 0x64, 0x66, 0], "bdf magic");
     // the converters that lay text out found the site's fonts and embedded them
-    if (!["pdf", "ai", "psd"].includes(res.format)) assert.match(res.summary, /[1-9]\d* embedded font/);
+    if (!["pdf", "ai", "psd", "gerber"].includes(res.format)) assert.match(res.summary, /[1-9]\d* embedded font/);
     console.log(`ok   ${name}: ${res.format}, ${res.summary}, ${res.bdf.length} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
     for (const w of res.warnings) console.log(`     warning: ${w}`);
   } catch (e) {

@@ -118,6 +118,13 @@ export const CASES: Case[] = [
   { name: "psd-artboards-1", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "psd-artboards-2", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "psd-artboards-3", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  // PCB fabrication data (converter/gerber); see test/gerber. A KiCad-style board drawn as it looks from the top and
+  // from below (mirrored), its bottom copper (a pour with clearances and a thermal relief, clear polarity), and one
+  // file with the apertures, macros, arcs, regions and blocks of the Gerber specification.
+  { name: "gerber-board-top", src: "/testdata/gerber/board.bdf", kind: "page", view: "top", page: 0, scale: 0.75 },
+  { name: "gerber-board-bottom", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom", page: 0, scale: 0.75 },
+  { name: "gerber-board-bottom-copper", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom-copper", page: 0, scale: 0.75 },
+  { name: "gerber-features-1", src: "/testdata/gerber/features.bdf", kind: "page", view: "layer", page: 0, scale: 0.75 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

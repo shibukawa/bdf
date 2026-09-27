@@ -86,6 +86,10 @@ jobs:
             go run ./cmd/bdf generate -q "converter/psd/testdata/$n.psd" "/tmp/$n-psd.bdf"
             cmp "/tmp/$n-psd.bdf" "testdata/psd/$n.bdf"
           done
+          go run ./cmd/bdf generate -q converter/gerber/testdata/board.zip /tmp/board-gerber.bdf
+          cmp /tmp/board-gerber.bdf testdata/gerber/board.bdf
+          go run ./cmd/bdf generate -q converter/gerber/testdata/features.gbr /tmp/features-gerber.bdf
+          cmp /tmp/features-gerber.bdf testdata/gerber/features.bdf
   web:
     runs-on: ubuntu-latest
     steps:
