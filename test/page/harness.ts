@@ -77,6 +77,10 @@ export const CASES: Case[] = [
   // CSV and TSV files rendered by converter/csv with the test fonts; see test/csv.
   { name: "csv-basic-1", src: "/testdata/csv/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1240, h: 240 }, scale: 1 },
   { name: "csv-japanese-1", src: "/testdata/csv/japanese.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 460, h: 180 }, scale: 1.5 },
+  // Parquet files rendered by converter/parquet with the test fonts; see test/parquet. The column names bold and
+  // frozen over a gray row of their types; numbers, dates and timestamps on the right; lists and structs as JSON.
+  { name: "parquet-basic-1", src: "/testdata/parquet/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1040, h: 226 }, scale: 1 },
+  { name: "parquet-nested-1", src: "/testdata/parquet/nested.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1300, h: 120 }, scale: 1 },
   // draw.io diagrams rendered by converter/drawio with the test fonts: every page is a view of its own.
   { name: "drawio-labels", src: "/testdata/drawio/labels.bdf", kind: "page", view: "text", page: 0, scale: 1.5 },
   { name: "drawio-multipage-1", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "overview", page: 0, scale: 1.5 },

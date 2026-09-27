@@ -59,7 +59,7 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | `NoTextIndex` | テキスト索引の Part を作らない |
 | `Params map[string]string` | 形式ごとの設定（`Format.Params` に一覧。`bdf generate -h` でも表示される） |
 | `Password` | パスワード付き入力を開くパスワード |
-| `FileName` | 入力のファイル名（内容で判定できない CSV の判定、CSV のシート名） |
+| `FileName` | 入力のファイル名（内容で判定できない CSV の判定、CSV と Parquet のシート名） |
 | `Warn func(string)` | 警告を受け取る（無ければ `Result.Warnings` に集める） |
 
 ### 形式ごとのパッケージ
@@ -72,6 +72,7 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | `converter/pptx` | PowerPoint | `Slides`（`converter.Pages`）、`Hidden`（非表示スライドも含める） |
 | `converter/xlsx` | Excel | `Sheets`（`converter.Pages`）、`Hidden`。`ConvertGrid(*Grid, opts)` は書式のない値の表（`Grid`）を Excel の新しいブックのように見せる |
 | `converter/csv` | CSV・TSV | `Charset`、`Delimiter`、`Quote`、`Header`（`HeaderAuto` / `HeaderYes` / `HeaderNo`）、`TableStyle`、`Name`（シート名）。指定しなかったものは推測する |
+| `converter/parquet` | Apache Parquet | `Rows`（表示する行数。0 は `DefaultRows`、-1 は全行）、`NoTypes`（型の行を付けない）、`TableStyle`、`Name`（シート名）。フッターが暗号化されたファイルは `ErrEncrypted` |
 | `converter/docx` | Word | `Pages`、`Views`（`ViewsBoth` / `ViewsPages` / `ViewsScroll`） |
 | `converter/visio` | Visio（.vsdx、.vdx） | `Pages` |
 | `converter/drawio` | draw.io（.drawio、図を埋め込んだ .drawio.svg・.drawio.png） | `Convert(data []byte, opts)`（入力をバイト列で渡す）。`Pages`、`Border`（図の周りの余白） |

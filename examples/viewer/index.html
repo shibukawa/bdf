@@ -76,7 +76,7 @@
   <strong>BDF viewer</strong>
   <a href="docs/">Docs</a>
   <button id="openFile" type="button">Open file…</button>
-  <input id="file" type="file" hidden accept=".pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.csv,.tsv,.tab,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.drawio,.dio,.svg,.png,.dxf,.jww,.p21,.p2z,.sfc,.cgm,.cgz,.plt,.hpgl,.hgl,.hpg,.hp2,.rtl,.gbr,.ger,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gtp,.gbp,.gko,.gm1,.drl,.xln,.zip,.ai,.psd,.psb,.apng,.jpg,.jpeg,.jpe,.jfif,.gif,.webp,.avif,.bmp,.ico,.html,.htm,.xhtml,.mhtml,.mht,.md,.markdown,.mdown,.mkd,.mdx,.epub,.bdf">
+  <input id="file" type="file" hidden accept=".pdf,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.ppsx,.ppsm,.potx,.potm,.xlsx,.xlsm,.xltx,.xltm,.csv,.tsv,.tab,.parquet,.parq,.pqt,.vsdx,.vsdm,.vstx,.vstm,.vdx,.vtx,.emf,.wmf,.drawio,.dio,.svg,.png,.dxf,.jww,.p21,.p2z,.sfc,.cgm,.cgz,.plt,.hpgl,.hgl,.hpg,.hp2,.rtl,.gbr,.ger,.gtl,.gbl,.gto,.gbo,.gts,.gbs,.gtp,.gbp,.gko,.gm1,.drl,.xln,.zip,.ai,.psd,.psb,.apng,.jpg,.jpeg,.jpe,.jfif,.gif,.webp,.avif,.bmp,.ico,.html,.htm,.xhtml,.mhtml,.mht,.md,.markdown,.mdown,.mkd,.mdx,.epub,.bdf">
   <label>zoom <input id="zoom" type="range" min="0.25" max="3" step="0.25" value="1" aria-valuetext="100%"> <span id="zoomv">100%</span></label>
   <label id="layoutBox" hidden>layout <select id="layout">
     <option value="pages">scroll pages</option>
@@ -108,7 +108,7 @@
 <div id="stage" role="tabpanel" tabindex="0">
   <div class="landing" id="landing" hidden>
     <h1>Drop a file here to preview it</h1>
-    <p>PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Visio (.vsdx, .vdx), draw.io (.drawio, and SVG and PNG exports with the diagram), AutoCAD DXF, Jw_cad (.jww), SXF (.p21, .p2z, .sfc), CGM (.cgm), HP-GL/2 plot files (.plt), Gerber and Excellon PCB files (one by one, or a board's files in a .zip), Illustrator (.ai), Photoshop (.psd, .psb), Windows metafiles (.emf, .wmf), images (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG: shown as they are, with their metadata), HTML and web archives (.html, .mhtml) and Markdown (.md) and EPUB (.epub), laid out in reader mode, or bdf.
+    <p>PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Apache Parquet (the first 10,000 rows), Visio (.vsdx, .vdx), draw.io (.drawio, and SVG and PNG exports with the diagram), AutoCAD DXF, Jw_cad (.jww), SXF (.p21, .p2z, .sfc), CGM (.cgm), HP-GL/2 plot files (.plt), Gerber and Excellon PCB files (one by one, or a board's files in a .zip), Illustrator (.ai), Photoshop (.psd, .psb), Windows metafiles (.emf, .wmf), images (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG: shown as they are, with their metadata), HTML and web archives (.html, .mhtml) and Markdown (.md) and EPUB (.epub), laid out in reader mode, or bdf.
       The file is converted to bdf and drawn inside your browser, by the Go converters built as WebAssembly: it is not uploaded anywhere.</p>
     <p><button type="button" id="chooseFile">Choose a file…</button></p>
     <div id="samples" hidden><p>Or open a sample:</p><p class="samples"></p></div>

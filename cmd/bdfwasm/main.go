@@ -9,12 +9,14 @@
 // and run it with Go's wasm_exec.js (in a Worker: a conversion keeps the
 // thread busy). -tags pdfonly, officeonly, webonly or imageonly builds a
 // smaller module of the PDF converters (PDF, and Illustrator, whose files
-// are PDFs), the Office converters (Word, PowerPoint, Excel, CSV, Visio,
-// draw.io, DXF, Jw_cad, SXF, CGM, Gerber, metafiles, Photoshop, and images),
+// are PDFs), the Office converters (Word, PowerPoint, Excel, CSV, Parquet,
+// Visio, draw.io, DXF, Jw_cad, SXF, CGM, Gerber, metafiles, Photoshop, and
+// images),
 // the HTML, Markdown and EPUB converters, or the images browsers display by
 // themselves (PNG, JPEG, SVG …, stored as they are) only. bdf_noconv leaves
 // out the image and WOFF2 encoders: a document drawn where it is converted
-// gains nothing from them. The demo site (examples/viewer/site.mjs) builds
+// gains nothing from them. The Parquet converter reads no Brotli in any js
+// build (converter/parquet/brotli_js.go). The demo site (examples/viewer/site.mjs) builds
 // it with a copy of goldmark (the Markdown converter's parser) whose
 // linkify patterns it rewrites: compiled when the program starts, they
 // overflow the stack of a worker in Safari.
