@@ -246,77 +246,119 @@ func subrBias(n int) int {
 	return 32768
 }
 
-// t2Bounds runs a Type 2 charstring, collecting the bounds of what it draws.
-type t2Bounds struct {
+// t2Sink receives what a Type 2 charstring draws, in font units (y up).
+// moveTo starts a contour only once something is drawn from it.
+type t2Sink interface {
+	moveTo(x, y float64)
+	lineTo(x, y float64)
+	cubeTo(x1, y1, x2, y2, x3, y3 float64)
+	closeContour()
+}
+
+// t2Run runs a Type 2 charstring, passing what it draws to a sink.
+type t2Run struct {
 	g          *cffGlyphs
 	local      [][]byte
+	sink       t2Sink
 	stack      []float64
 	x, y       float64
 	sx, sy     float64 // the start of the contour, drawn once something follows it
 	open       bool
 	nStems     int
 	widthSeen  bool
-	r          Rect
-	any        bool
 	done       bool
 	callDepth  int
 	operations int
 }
 
-func (c *cffGlyphs) bounds(gid int) (Rect, bool) {
+// run runs the charstring of a glyph; false when the font has no such glyph.
+func (c *cffGlyphs) run(gid int, sink t2Sink) bool {
 	if gid < 0 || gid >= len(c.charStrings) {
-		return Rect{}, false
+		return false
 	}
 	fd := 0
 	if c.fdSelect != nil && int(c.fdSelect[gid]) < len(c.local) {
 		fd = int(c.fdSelect[gid])
 	}
-	t := &t2Bounds{g: c, local: c.local[fd], r: Rect{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}}
+	t := &t2Run{g: c, local: c.local[fd], sink: sink}
 	t.run(c.charStrings[gid])
-	return t.r, t.any
+	t.closeContour()
+	return true
 }
 
-func (t *t2Bounds) point(x, y float64) {
-	t.r.XMin, t.r.XMax = math.Min(t.r.XMin, x), math.Max(t.r.XMax, x)
-	t.r.YMin, t.r.YMax = math.Min(t.r.YMin, y), math.Max(t.r.YMax, y)
-	t.any = true
+func (c *cffGlyphs) bounds(gid int) (Rect, bool) {
+	b := &boundsSink{r: Rect{math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)}}
+	if !c.run(gid, b) {
+		return Rect{}, false
+	}
+	return b.r, b.any
 }
 
-func (t *t2Bounds) moveTo(dx, dy float64) {
+// boundsSink collects the bounds of an outline, curve extrema included.
+type boundsSink struct {
+	r      Rect
+	any    bool
+	lx, ly float64 // the current point
+}
+
+func (b *boundsSink) point(x, y float64) {
+	b.r.XMin, b.r.XMax = math.Min(b.r.XMin, x), math.Max(b.r.XMax, x)
+	b.r.YMin, b.r.YMax = math.Min(b.r.YMin, y), math.Max(b.r.YMax, y)
+	b.any = true
+	b.lx, b.ly = x, y
+}
+
+func (b *boundsSink) moveTo(x, y float64) { b.point(x, y) }
+func (b *boundsSink) lineTo(x, y float64) { b.point(x, y) }
+func (b *boundsSink) closeContour()       {}
+
+func (b *boundsSink) cubeTo(x1, y1, x2, y2, x3, y3 float64) {
+	x0, y0 := b.lx, b.ly
+	for _, s := range cubicExtrema(x0, x1, x2, x3) {
+		b.point(cubicAt(x0, x1, x2, x3, s), cubicAt(y0, y1, y2, y3, s))
+	}
+	for _, s := range cubicExtrema(y0, y1, y2, y3) {
+		b.point(cubicAt(x0, x1, x2, x3, s), cubicAt(y0, y1, y2, y3, s))
+	}
+	b.point(x3, y3)
+}
+
+func (t *t2Run) moveTo(dx, dy float64) {
+	t.closeContour()
 	t.x += dx
 	t.y += dy
-	t.sx, t.sy, t.open = t.x, t.y, false
+	t.sx, t.sy = t.x, t.y
 }
 
-func (t *t2Bounds) start() {
+func (t *t2Run) closeContour() {
+	if t.open {
+		t.sink.closeContour()
+		t.open = false
+	}
+}
+
+func (t *t2Run) start() {
 	if !t.open {
-		t.point(t.sx, t.sy)
+		t.sink.moveTo(t.sx, t.sy)
 		t.open = true
 	}
 }
 
-func (t *t2Bounds) lineTo(dx, dy float64) {
+func (t *t2Run) lineTo(dx, dy float64) {
 	t.start()
 	t.x += dx
 	t.y += dy
-	t.point(t.x, t.y)
+	t.sink.lineTo(t.x, t.y)
 }
 
 // curveTo adds a cubic Bézier curve from the current point with the given
-// relative control points, including its extrema.
-func (t *t2Bounds) curveTo(dx1, dy1, dx2, dy2, dx3, dy3 float64) {
+// relative control points.
+func (t *t2Run) curveTo(dx1, dy1, dx2, dy2, dx3, dy3 float64) {
 	t.start()
-	x0, y0 := t.x, t.y
-	x1, y1 := x0+dx1, y0+dy1
+	x1, y1 := t.x+dx1, t.y+dy1
 	x2, y2 := x1+dx2, y1+dy2
 	x3, y3 := x2+dx3, y2+dy3
-	t.point(x3, y3)
-	for _, s := range cubicExtrema(x0, x1, x2, x3) {
-		t.point(cubicAt(x0, x1, x2, x3, s), cubicAt(y0, y1, y2, y3, s))
-	}
-	for _, s := range cubicExtrema(y0, y1, y2, y3) {
-		t.point(cubicAt(x0, x1, x2, x3, s), cubicAt(y0, y1, y2, y3, s))
-	}
+	t.sink.cubeTo(x1, y1, x2, y2, x3, y3)
 	t.x, t.y = x3, y3
 }
 
@@ -356,7 +398,7 @@ func cubicExtrema(p0, p1, p2, p3 float64) []float64 {
 // takeWidth drops the advance width that the first stack-clearing
 // operator of a charstring may carry: it is there when the operator has
 // one operand more than it takes (evenArgs: it takes pairs).
-func (t *t2Bounds) takeWidth(want int, evenArgs bool) {
+func (t *t2Run) takeWidth(want int, evenArgs bool) {
 	if t.widthSeen {
 		return
 	}
@@ -367,7 +409,7 @@ func (t *t2Bounds) takeWidth(want int, evenArgs bool) {
 	}
 }
 
-func (t *t2Bounds) run(cs []byte) {
+func (t *t2Run) run(cs []byte) {
 	if t.callDepth > 10 {
 		t.done = true
 		return
@@ -544,7 +586,7 @@ func (t *t2Bounds) run(cs []byte) {
 
 // escape runs the two-byte operators: the flexes draw curves; the others
 // (arithmetic, storage) are not used by the fonts this reads.
-func (t *t2Bounds) escape(op byte, s []float64) {
+func (t *t2Run) escape(op byte, s []float64) {
 	switch op {
 	case 35: // flex
 		if len(s) >= 12 {

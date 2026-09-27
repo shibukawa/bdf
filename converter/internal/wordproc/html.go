@@ -10,8 +10,8 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/equation"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
+	"github.com/shibukawa/bdf/internal/fontdb"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )

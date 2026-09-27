@@ -4,8 +4,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/linebreak"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 func lbAllowed(a, b rune) bool { return linebreak.Allowed(a, b) }

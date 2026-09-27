@@ -54,6 +54,18 @@ func DecodeTextIndex(data []byte) ([]IndexRun, error) {
 // BuildTextIndex extracts the text of a view from the document's objects,
 // stores it as a text index part and records it in v.TextIndex.
 func (d *Document) BuildTextIndex(v *View) (Hash, error) {
+	runs, err := d.indexRuns(v)
+	if err != nil {
+		return Hash{}, err
+	}
+	h := d.AddPart(PartIndex, EncodeTextIndex(runs))
+	v.TextIndex = h.String()
+	return h, nil
+}
+
+// indexRuns extracts the text of a view from the document's objects as the
+// runs of a text index.
+func (d *Document) indexRuns(v *View) ([]IndexRun, error) {
 	decoded := map[Hash]*ObjectPart{}
 	resolve := func(h Hash) *ObjectPart {
 		if o, ok := decoded[h]; ok {
@@ -112,7 +124,7 @@ func (d *Document) BuildTextIndex(v *View) (Hash, error) {
 		for k := range v.Tiles {
 			var kk key
 			if _, err := fmt.Sscanf(k, "%d,%d", &kk.x, &kk.y); err != nil {
-				return Hash{}, fmt.Errorf("bdf: bad tile key %q", k)
+				return nil, fmt.Errorf("bdf: bad tile key %q", k)
 			}
 			keys = append(keys, kk)
 		}
@@ -125,24 +137,22 @@ func (d *Document) BuildTextIndex(v *View) (Hash, error) {
 		for _, k := range keys {
 			h, err := ParseHash(v.Tiles[strconv.Itoa(k.x)+","+strconv.Itoa(k.y)])
 			if err != nil {
-				return Hash{}, err
+				return nil, err
 			}
 			if err := add(uint32(k.x), uint32(k.y), h, true); err != nil {
-				return Hash{}, err
+				return nil, err
 			}
 		}
 	default:
 		for pi, p := range v.Pages {
 			for li, l := range p.Layers {
 				if err := add(uint32(pi), uint32(li), l.Obj, true); err != nil {
-					return Hash{}, err
+					return nil, err
 				}
 			}
 		}
 	}
-	h := d.AddPart(PartIndex, EncodeTextIndex(runs))
-	v.TextIndex = h.String()
-	return h, nil
+	return runs, nil
 }
 
 // PlainText joins index runs into a readable string (for tools and tests).

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // testFonts are the M PLUS 1p subsets of the PowerPoint converter's tests

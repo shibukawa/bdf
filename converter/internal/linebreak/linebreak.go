@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // noStart are the characters that may not start a line, noEnd those that

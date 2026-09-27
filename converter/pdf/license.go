@@ -1,6 +1,6 @@
 package pdf
 
-import "github.com/shibukawa/bdf/converter/internal/sfnt"
+import "github.com/shibukawa/bdf/internal/sfnt"
 
 // Embedding permissions of the OS/2 fsType field (OpenType spec). Bits 0–3
 // hold one usage permission; when several are set the least restrictive one
