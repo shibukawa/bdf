@@ -3,6 +3,7 @@
 package main
 
 import (
+	_ "github.com/shibukawa/bdf/converter/cgm"
 	_ "github.com/shibukawa/bdf/converter/csv"
 	_ "github.com/shibukawa/bdf/converter/docx"
 	_ "github.com/shibukawa/bdf/converter/drawio"

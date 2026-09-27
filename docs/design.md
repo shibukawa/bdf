@@ -43,7 +43,7 @@ wasm が意味を持つケース:
 
 変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の bdf を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`examples/viewer/site.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
 
-- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Visio・draw.io・DXF・Jw_cad・SXF・メタファイル・Photoshop・画像。約 19.5 MB、gzip 5.9 MB）に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML と Markdown（§3.16）は `webonly` の 3 つ目のモジュール（約 22 MB、gzip 5.6 MB。goldmark、go-readability、組版エンジン）にし、ファイルの拡張子（.html、.mhtml、.md など）で読み込むので、Office 系のモジュールは大きくならない。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
+- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Visio・draw.io・DXF・Jw_cad・SXF・CGM・メタファイル・Photoshop・画像。約 19.5 MB、gzip 5.9 MB）に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML と Markdown（§3.16）は `webonly` の 3 つ目のモジュール（約 22 MB、gzip 5.6 MB。goldmark、go-readability、組版エンジン）にし、ファイルの拡張子（.html、.mhtml、.md など）で読み込むので、Office 系のモジュールは大きくならない。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
 - **フォントは fs.FS で渡す**: ブラウザにはフォントのディレクトリが無い。`converter.Options.FontFS` で任意の `fs.FS` をフォントの探索元にできるようにし（`FontDirs` より先に探す）、wasm 側では Web 上のディレクトリをそれとして実装した。`index.json` にファイル名、サイズと、フォントの走査が読む範囲（テーブルディレクトリと name・OS/2・post テーブル）を書いておき、最初の変換でその範囲だけを並列に Range で取得する。フォント全体は文書がそのフェイスを使うときに初めて取得し、取得したものはモジュールが生きている間保持する（2 回目以降の変換は通信しない）。サイトのフォントは CI が Ubuntu のパッケージから集める: Liberation（Arial、Times New Roman、Courier New の代替）、Carlito（Calibri）、Caladea（Cambria）、IPAex（日本語）、DejaVu（記号）。
 - **pdfcpu の設定ファイル**: pdfcpu は既定でユーザーの設定ディレクトリに config.yml を書いて読み直すが、js 版のパーサは自分が書いた 16 進の permissions を読めずに終了する。js のビルドでは `model.ConfigPath = "disable"` にして組み込みの既定値を使う。
 
@@ -431,6 +431,23 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 テスト用の画像（`converter/image/testdata/`）は `test/image/gen.sh`（ImageMagick、exiftool、cwebp、avifenc）で作り、変換結果を `testdata/image/` に置く。golden テストでは、EXIF で回転する JPEG、`irot` で回転する AVIF、2 倍で描く SVG を、メインスレッドと Worker（ページが SVG を描く）の両方で描いて比べる。
 
+## 3.20 CGM → BDF 変換器（converter/cgm）の構造
+
+`converter/cgm` は ISO/IEC 8632 の Computer Graphics Metafile（CGM、バージョン 1〜4）を読む。CAD のプロッタ出力や、技術図（S1000D・ATA の図、WebCGM）の交換に使われる形式で、バイナリ符号化（Part 3）とクリアテキスト符号化（Part 4）の両方を読み、gzip で圧縮したもの（.cgz）も読む。文字符号化（Part 2）は 1999 年版で廃止されたので読まない。描くのは DXF・JWW・SXF と同じ `converter/internal/cad` である。
+
+- **読み込み**: バイナリは 16 bit の要素ヘッダ（クラス 4 bit、要素番号 7 bit、パラメータ長 5 bit。31 なら 15 bit の長さと続きの印を持つパーティションが続く）で要素に分け、パラメータは要素を解釈するときに、その時点の精度（整数・索引・色・色索引・名前の精度、実数の固定小数点と浮動小数点の 32/64 bit、VDC の型と精度）で読む。クリアテキストは要素名（`_` と `$` は無視する）と、セミコロンかスラッシュまでのパラメータ（数値、基数付きの数値、引用符の文字列、列挙の語）に分ける。解釈器は 1 つで、パラメータの読み手を符号化ごとに差し替える。点の列を相対座標で書く INCR の要素も読む。SCALING MODE の縮尺は Part 3 では実数精度によらず浮動小数点だが、実数精度で書く書き手もあるので、もっともらしい値になる方の読み方をとる。METAFILE DEFAULTS REPLACEMENT の要素は、ピクチャの始めごとに既定値の後で適用する。
+- **ピクチャとページ**: ピクチャごとに `fixed` View の 1 ページにする。大きさは、SCALING MODE が metric なら VDC 範囲に縮尺（1 VDC 単位の mm）を掛けたもの、DEVICE VIEWPORT がミリメートルで指定されていればその大きさ、どちらでもない abstract のピクチャは長辺を 297 mm（A4 の長辺）に合わせる。VDC 範囲の最初の点が左下で、y が下向きの範囲（最初の点の y が大きい）もそのまま写す。背景は BACKGROUND COLOUR。`-pages` はピクチャを選ぶ。ページの中は既定でクリップ矩形（VDC 範囲）で切られるので、ページより小さい CLIP RECTANGLE だけをクリップのグループにする。
+- **属性**: 線・マーカー・文字・塗り・縁の属性、束（LINE REPRESENTATION など）と ASPECT SOURCE FLAGS、索引色（COLOUR TABLE。設定されていない 0 は背景色、1 は黒）と直接色（COLOUR VALUE EXTENT で正規化する。CMYK も）、SAVE / RESTORE PRIMITIVE CONTEXT を扱う。線幅と大きさの指定モードは absolute（VDC）・scaled・fractional・mm で、scaled の基準は用紙上の 0.25 mm（線と縁）と 2.5 mm（マーカー）、fractional は VDC 範囲の長辺に対する割合とする。線種 2〜5（破線、点線、一点鎖線、二点鎖線）は、0.35 mm までの線では長さ 3 mm の線分の用紙上の模様とし、それより太い線では太さに比例させる。LINE AND EDGE TYPE DEFINITION の負の線種は、線分と空白の比を周期の長さに合わせる。端点と角の形（LINE CAP、LINE JOIN）の unspecified は、プロッタのペンと同じく丸にする。
+- **図形**: POLYLINE、DISJOINT POLYLINE、POLYMARKER（5 種）、POLYGON、POLYGON SET（見えない辺と穴）、RECTANGLE、CIRCLE、3 点の円弧と中心の円弧（逆回りも）とそれを扇形か弓形に閉じたもの、ELLIPSE と楕円弧（共役直径の端点で与えられるので、その 2 つのベクトルを軸とする媒介変数表示の弧をそのままベジェ曲線にする）、双曲線の弧（標本化）、放物線の弧（2 次のベジェ曲線）、POLYBEZIER、NON-UNIFORM B-SPLINE と NURBS（媒介変数の範囲が定義域全体なら DXF と同じ厳密なベジェ曲線に、一部なら標本化）を描く。閉じた図形（BEGIN FIGURE〜END FIGURE）は、途中の開いた図形をつないで 1 つの境界にし（NEW REGION で次の領域に移る）、偶奇規則で塗る。複合線（BEGIN COMPOUND LINE）は 1 本のパスとして引く。塗りは内部様式に従い、hollow（塗りの色の細線で境界を描く）、solid、hatch（6 つの標準のハッチング（水平、垂直、±45°、2 種の格子）を用紙上 2 mm 間隔で。HATCH STYLE DEFINITION の定義も）、pattern（PATTERN TABLE の画像を FILL REFERENCE POINT から PATTERN SIZE ごとに繰り返す）、interpolated（平行は線形、楕円は放射状のグラデーション）、empty を描き分ける。縁は EDGE VISIBILITY が on のときに描く。
+- **文字**: 文字の高さは CGM の定義どおりベースラインからキャップラインまでで、フォントの cap height で em の大きさに直す（DXF と同じ、§3.12）。CHARACTER ORIENTATION の上向きと基線の 2 つのベクトルの向きに文字を置き（直交しなければ文字が傾き、長さの比は文字の幅の比になる）、CHARACTER EXPANSION FACTOR、CHARACTER SPACING、TEXT PATH（右、左、上、下。上下は文字を立てた縦の列にする、§3.13）、TEXT ALIGNMENT（左・中央・右、上・キャップ・中央・ベースライン・下と、連続値）に従う。RESTRICTED TEXT は RESTRICTED TEXT TYPE に従って箱に収める（basic は大きすぎるときだけ縮め、boxed は縦横別に、isotropic は縦横同じ比で伸縮し、justified は字間で箱の幅を埋める）。APPEND TEXT は直前の TEXT の続きとして、色やフォントを変えて同じ行に描く。フォントは FONT LIST の名前から選ぶ。Helvetica・Times・Courier などの PostScript のフォントはその系統のフォントに、Hershey などの CGM のストロークフォントは既定のゴシック体に、明朝とゴシックの和文フォントは和文のフォントにする。
+- **文字コード**: 文字列は CHARACTER SET LIST と CHARACTER SET INDEX（G0）・ALTERNATE CHARACTER SET INDEX（G1）で読む。7 bit の符号では SO と SI で、8 bit の符号では上位の半分で G1 に切り替える。94 文字集合（ASCII、JIS X 0201）、96 文字集合（ISO 8859 の各部）、94² 文字集合（JIS X 0208、JIS X 0212、GB 2312、KS X 1001）と、WebCGM の UTF-8・UTF-16（complete code の指示）を扱う。文字集合の宣言がない（または ASCII と Latin-1 だけの）メタファイルの文字列の上位バイトは Latin-1 として読むが、全部が UTF-8 として正しければ UTF-8、Shift_JIS として読めて仮名か第 1 水準の漢字が 2 文字以上出れば Shift_JIS とする（日本の CAD が書く CGM に多い。判定は DXF と同じ、§3.12）。そのために、描く前にメタファイル全体の文字列を集める。JIS X 0208 を宣言するか Shift_JIS と判定したメタファイルの言語は `ja` にする（GB 2312 は `zh-Hans`、KS X 1001 は `ko`）。
+- **ラスター**: CELL ARRAY は P・Q・R の平行四辺形に置く画像にし、補間せずにセルのまま描く。セルの色は、行ごとに語境界から始まる詰めた色か、ランレングスで読む（行を語境界に揃えない書き手のものは、要素の長さで見分ける）。TRANSPARENT CELL COLOUR の色は透明にする。タイル配列（BEGIN TILE ARRAY）の TILE と BITONAL TILE は、JPEG と PNG はそのまま格納し、CCITT の T.4・T.6（TIFF の変換器と同じデコーダ、§3.15）と非圧縮のタイルは復号して格納する。
+- **構造**: セグメント（BEGIN SEGMENT）は描きながら記録し、COPY SEGMENT の変換行列で複写する。WebCGM のアプリケーション構造（BEGIN APPLICATION STRUCTURE）のうち、visibility 属性が off のものは描かない。
+- **壊れたファイルへの備え**: パラメータの足りない要素は無視して警告し、途中で切れたファイルはそこまでを描く。数バイトの要素が大量の描画を生まないよう、描く点（ハッチングの線とセグメントの複写が足す分も数える）は 1000 万個まで、セル配列とタイルは 1 つ 4096 × 4096 セルまで・メタファイル全体で 6400 万セルまで、パターンは 65536 セルまで、ピクチャは 1 万枚まで、ピクチャごとに適用し直す METAFILE DEFAULTS REPLACEMENT は 1024 要素まで、ページは 1 辺 5080 mm までとする。パターンの画像は、パターンと色表が変わるまで使い回す。両方の読み手と解釈器には Go の fuzz テスト（`FuzzInterp`）がある。
+- **未対応（警告を出す）**: シンボル（POLYSYMBOL）、GDP、幾何パターン（塗りの色で塗る）、三角形の補間内部様式、セグメントの変換（SEGMENT TRANSFORMATION）、登録された線種（6 以降。実線で描く）、ランレングスや LZW などのタイルの圧縮。文字の精度（string / character / stroke）は区別しない。保護領域、クリップの継承、ハイライト、ピック識別子は描画に関係しないので読み捨てる。
+
+テスト用のメタファイルは `test/cgm/gen.py` が作る（`npm run test:cgm:gen`、標準ライブラリのみ）。要素を型付きのパラメータの列として 1 度書き、バイナリとクリアテキストに書き出す。shapes.cgm（とそのクリアテキスト shapes-text.cgm）は A3 の CAD 風の図面で、線種・線幅・端点、5 種のマーカー、各内部様式の塗り、穴と見えない辺のある POLYGON SET、各種の円弧と曲線、穴のある閉じた図形、9 つの揃えの文字と、回転・拡幅・字間・縦書き・箱に収める文字、APPEND TEXT、JIS X 0208 の和文、セル配列、クリップ、セグメントの複写を持つ。Go のテストは両者が同じ `cad.Drawing` になることを確かめる。illustration.cgm は WebCGM 風の図（実数の VDC で y が下向き、abstract、直接色、UTF-8、非表示のアプリケーション構造、タイル、2 つのピクチャ）、sjis.cgm は宣言のない Shift_JIS の文字を持つ A4 の図面である。変換結果は `testdata/cgm/` に置いて golden テストで描画を比較する。符号化の細部（SCALING MODE の縮尺、タイル配列のパラメータ、SDR の形、セル配列の行の揃え）は、公開されている実装（jcgm）の読み方とも照らし合わせた。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -522,7 +539,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
 9. **draw.io 直接変換**: ページごとの View とシートのような切り替え（実装済み、§3.11）。
-10. **CAD 図面**: DXF（実装済み、§3.12）、JWW（Jw_cad、実装済み、§3.13）、SXF（電子納品の P21 と SFC、実装済み、§3.14）。続けて CGM を、共通の `converter/internal/cad` の上に作る。
+10. **CAD 図面**: DXF（実装済み、§3.12）、JWW（Jw_cad、実装済み、§3.13）、SXF（電子納品の P21 と SFC、実装済み、§3.14）、CGM（バイナリとクリアテキスト、実装済み、§3.20）。いずれも共通の `converter/internal/cad` の上に作った。
 11. **TIFF**: 多ページのスキャンと FAX、画像の入力に共通の解像度の上限（実装済み、§3.15）。
 12. **HTML / Markdown**: リーダー表示。DOCX のレイアウトエンジンを共有し、固定幅の scroll View を作る（実装済み、§3.16）。
 13. **Illustrator・Photoshop**: アートボードをページに（実装済み、§3.17・§3.18）。
@@ -554,6 +571,7 @@ bdf/
 │   ├── dxf/           AutoCAD DXF → BDF 変換器（testdata/ にテスト用図面）
 │   ├── jww/           Jw_cad（.jww）→ BDF 変換器（testdata/ にテスト用図面）
 │   ├── sxf/           SXF（.p21、.p2z、.sfc）→ BDF 変換器（testdata/ にテスト用図面）
+│   ├── cgm/           CGM（.cgm、.cgz）→ BDF 変換器（testdata/ にテスト用メタファイル）
 │   ├── tiff/          TIFF（.tif、.tiff）→ BDF 変換器（testdata/ にテスト用のスキャン・FAX・向きのファイル）
 │   ├── image/         画像（PNG・JPEG・GIF・WebP・AVIF・BMP・ICO・SVG）→ BDF 変換器（そのまま格納してメタデータを読む。testdata/ にテスト用画像）
 │   ├── all/           すべての形式を登録する
@@ -569,7 +587,7 @@ bdf/
 │   ├── core/          @bdf/core  デコーダ・コンテナ読み込み・テキスト抽出（依存なし）
 │   └── render/        @bdf/render Canvas バックエンド、ページ/連続/シート描画（scroll View は連続描画）、Worker とクライアント（SVG の画像はクライアントが描く）
 ├── examples/viewer/   デモビューア（Worker 描画、テキストレイヤー）とデモサイト（ブラウザ内変換）
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・Illustrator・Photoshop・PowerPoint・Excel・Visio・Word・DXF・JWW・SXF・TIFF・Markdown・HTML・画像の変換結果と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・Illustrator・Photoshop・PowerPoint・Excel・Visio・Word・DXF・JWW・SXF・CGM・TIFF・Markdown・HTML・画像の変換結果と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

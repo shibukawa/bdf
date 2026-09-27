@@ -85,6 +85,44 @@ func (p *Path) BSpline(degree int, knots []float64, ctrl []Point, weights []floa
 	return p
 }
 
+// BSplineRange adds the part of a B-spline curve from parameter t0 to t1
+// (within the curve's domain) as a new subpath. A range that covers the
+// domain, or that is empty or invalid, draws the whole curve as BSpline
+// does; a part of it is sampled.
+func (p *Path) BSplineRange(degree int, knots []float64, ctrl []Point, weights []float64, t0, t1 float64) *Path {
+	n := len(ctrl)
+	if n == 0 || degree < 1 || degree >= n || degree > maxDegree || len(knots) != n+degree+1 || !nonDecreasing(knots) ||
+		knots[degree] >= knots[n] || math.IsNaN(t0) || math.IsNaN(t1) {
+		return p.BSpline(degree, knots, ctrl, weights)
+	}
+	lo, hi := knots[degree], knots[n]
+	t0, t1 = max(t0, lo), min(t1, hi)
+	eps := (hi - lo) * 1e-9
+	if t0 >= t1 || t0 <= lo+eps && t1 >= hi-eps {
+		return p.BSpline(degree, knots, ctrl, weights)
+	}
+	if len(weights) != n {
+		weights = nil
+	}
+	p.open = false
+	spans := 0
+	for i := degree; i < n; i++ {
+		if knots[i+1] > t0 && knots[i] < t1 {
+			spans++
+		}
+	}
+	steps := min(max(spans*16, 8), 4096)
+	for i := 0; i <= steps; i++ {
+		q := deBoor(degree, knots, ctrl, weights, t0+(t1-t0)*float64(i)/float64(steps))
+		if i == 0 {
+			p.MoveTo(q.X, q.Y)
+		} else {
+			p.LineTo(q.X, q.Y)
+		}
+	}
+	return p
+}
+
 func nonDecreasing(v []float64) bool {
 	for i := 1; i < len(v); i++ {
 		if v[i] < v[i-1] || math.IsNaN(v[i]) {

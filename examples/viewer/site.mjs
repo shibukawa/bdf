@@ -48,6 +48,7 @@ const SAMPLES = [
   { path: "converter/dxf/testdata/layout.dxf", label: "DXF (model space and a layout)" },
   { path: "converter/jww/testdata/shapes.jww", label: "Jw_cad" },
   { path: "converter/sxf/testdata/shapes.p21", label: "SXF (P21)" },
+  { path: "converter/cgm/testdata/shapes.cgm", label: "CGM" },
   { path: "converter/ai/testdata/artboards.ai", label: "Illustrator (3 artboards)" },
   { path: "converter/psd/testdata/artboards.psd", label: "Photoshop (3 artboards)" },
   { path: "converter/image/testdata/drawing.svg", label: "SVG image" },

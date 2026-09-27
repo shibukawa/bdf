@@ -1,4 +1,4 @@
-// Package cad draws the 2D drawings of CAD formats (DXF, JWW, SXF). A
+// Package cad draws the 2D drawings of CAD formats (DXF, JWW, SXF, CGM). A
 // reader puts what a drawing shows into a Drawing, in the drawing's own
 // coordinates (y up, float64, so that survey coordinates keep their
 // precision), and Plotter writes the Drawing onto a page the way a plotter
@@ -6,7 +6,8 @@
 //
 // Curves are cubic Bézier curves (see Path), text is measured and drawn
 // with the fonts of the document (fontset), and fills can be clipped
-// groups, which is how hatch patterns are drawn (see Hatch).
+// groups, which is how hatch patterns are drawn (see Hatch). Raster images
+// and image patterns refer to images the reader has added to the document.
 package cad
 
 import (
@@ -44,10 +45,32 @@ type Pen struct {
 	Cap, Join  byte
 }
 
-// Fill is a solid color or a gradient.
+// Fill is a solid color, a gradient or a pattern.
 type Fill struct {
 	Color    bdf.Color
 	Gradient *Gradient
+	Pattern  *Pattern
+}
+
+// Pattern is an image repeated in both directions.
+type Pattern struct {
+	Image bdf.Hash // a document image
+	// M maps the image's pixel space (x along its rows, y down its
+	// columns) into the drawing.
+	M canvas.Matrix
+	// Smooth interpolates the pixels; otherwise they stay sharp cells.
+	Smooth bool
+}
+
+// Image is a raster image drawn into a parallelogram.
+type Image struct {
+	Image bdf.Hash // a document image
+	W, H  int      // pixels
+	// M maps the image's pixel space (x along its rows, y down its
+	// columns) into the drawing.
+	M canvas.Matrix
+	// Smooth interpolates the pixels; otherwise they stay sharp cells.
+	Smooth bool
 }
 
 // Gradient is a gradient in drawing coordinates.
@@ -67,6 +90,7 @@ const (
 	kFill
 	kText
 	kGroup
+	kImage
 )
 
 // Item is one thing a Drawing draws.
@@ -77,6 +101,7 @@ type Item struct {
 	fill    Fill
 	evenOdd bool
 	text    *Text
+	image   *Image
 	clip    *Path // group: the clip (nil: none)
 	items   []Item
 	bounds  Rect
@@ -128,6 +153,15 @@ func (d *Drawing) Text(t *Text) {
 		return
 	}
 	d.add(Item{kind: kText, text: t, bounds: t.Bounds()})
+}
+
+// Image draws a raster image.
+func (d *Drawing) Image(img *Image) {
+	if img == nil || img.W <= 0 || img.H <= 0 {
+		return
+	}
+	r := Rect{Point{}, Point{float64(img.W), float64(img.H)}, true}
+	d.add(Item{kind: kImage, image: img, bounds: r.Transform(img.M)})
 }
 
 // Begin opens a group clipped by clip (even-odd; nil: no clip) that holds
@@ -206,6 +240,11 @@ func describe(out *[]string, items []Item, indent string, prec float64) {
 			s = fmt.Sprintf("stroke %s color=%08x width=%g dash=%g", box(it.bounds), uint32(it.pen.Color), r(it.pen.Width), dash)
 		case kFill:
 			s = fmt.Sprintf("fill %s color=%08x", box(it.bounds), uint32(it.fill.Color))
+			if it.fill.Pattern != nil {
+				s += " pattern"
+			}
+		case kImage:
+			s = fmt.Sprintf("image %s %dx%d", box(it.bounds), it.image.W, it.image.H)
 		case kText:
 			t := it.text
 			var m [6]float64
@@ -261,6 +300,15 @@ func transformItem(it Item, m canvas.Matrix, s float64) Item {
 			ng.R0, ng.R1 = g.R0*s, g.R1*s
 			out.fill.Gradient = &ng
 		}
+		if pt := it.fill.Pattern; pt != nil {
+			np := *pt
+			np.M = m.Mul(pt.M)
+			out.fill.Pattern = &np
+		}
+	case kImage:
+		img := *it.image
+		img.M = m.Mul(img.M)
+		out.image = &img
 	case kText:
 		t := *it.text
 		t.M = m.Mul(t.M)

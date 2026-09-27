@@ -68,6 +68,10 @@ func TestDetect(t *testing.T) {
 		{"drawio svg", read(t, "embedded.drawio.svg"), "drawio"},
 		{"drawio png", read(t, "embedded.drawio.png"), "drawio"},
 		{"mxGraphModel", []byte("\ufeff<?xml version=\"1.0\"?>\n<mxGraphModel><root/></mxGraphModel>"), "drawio"},
+		{"cgm", []byte{0x00, 0x23, 0x02, 'm', 'f', 0x00, 0x10, 0x22, 0x00, 0x04, 0x00, 0x40}, "cgm"},
+		{"cgm clear text", []byte("BEGMF 'drawing';\nMFVERSION 1;\n"), "cgm"},
+		// a comma on every line, as CSV has
+		{"cgm clear text of points", []byte("BEGMF 'a,b';\nVDCEXT (0,0) (100,100);\nLINE (0,0) (10,10);\nLINE (5,0) (5,10);\n"), "cgm"},
 		// draw.io's PNG and SVG exports refine images: they are asked first
 		{"plain svg", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), "image"},
 		{"svg with commas", []byte("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0,0,10,10\">\n<path d=\"M1,1 L2,2\"/>\n<path d=\"M3,3 L4,4\"/>\n</svg>\n"), "image"},
