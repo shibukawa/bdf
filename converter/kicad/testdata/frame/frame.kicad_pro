@@ -1,0 +1,5 @@
+{
+  "meta": {"filename": "frame.kicad_pro", "version": 3},
+  "schematic": {"page_layout_descr_file": "frame.kicad_wks"},
+  "text_variables": {"PROJECT": "Demo project", "DESIGNER": "bdf tests"}
+}

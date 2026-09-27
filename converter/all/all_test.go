@@ -53,6 +53,14 @@ func TestDetect(t *testing.T) {
 	w, _ = zw.Create("NCDRILL.TXT")
 	w.Write([]byte("M48\nMETRIC\nT1C0.8\n%\n"))
 	zw.Close()
+	// a KiCad project with its plots: KiCad, not Gerber
+	var kicadZip bytes.Buffer
+	zw = zip.NewWriter(&kicadZip)
+	for _, name := range []string{"proj/proj.kicad_pro", "proj/proj.kicad_sch", "proj/gerbers/proj-F_Cu.gbr"} {
+		w, _ = zw.Create(name)
+		w.Write([]byte("%FSLAX46Y46*%\n"))
+	}
+	zw.Close()
 	var epub bytes.Buffer
 	zw = zip.NewWriter(&epub)
 	w, _ = zw.CreateHeader(&zip.FileHeader{Name: "mimetype", Method: zip.Store})
@@ -118,6 +126,11 @@ func TestDetect(t *testing.T) {
 		{"excellon of Eagle", []byte("%\nM48\nM72\nT01C0.0236\n%\n"), "gerber"},
 		{"gerber zip", gerberZip.Bytes(), "gerber"},
 		{"drill zip", drillZip.Bytes(), "gerber"},
+		{"kicad schematic", []byte("(kicad_sch\n\t(version 20250114)\n\t(generator \"eeschema\")\n"), "kicad"},
+		{"kicad board", []byte("\ufeff\n(kicad_pcb (version 20240108) (generator \"pcbnew\")\n"), "kicad"},
+		{"kicad project zip", kicadZip.Bytes(), "kicad"},
+		// KiCad 5's formats are not read
+		{"kicad 5 schematic", []byte("EESchema Schematic File Version 4\nEELAYER 30 0\nEELAYER END\n"), ""},
 		{"hpgl", []byte("IN;SP1;PA0,0;PD1000,0,1000,1000;PU;"), "hpgl"},
 		// semicolons end the instructions, but a plot is not CSV
 		{"hpgl in lines", []byte("IN;\nSP1;\nPU0,0;\nPD1000,0;\nPD1000,1000;\nPU;\n"), "hpgl"},
@@ -202,6 +215,8 @@ func TestDetectFile(t *testing.T) {
 		{"page.htm", "<!DOCTYPE html><p>x", "html"},
 		// a drill file without a header
 		{"NCDRILL.drl", "T1C0.8\nX1.0Y1.0\nM30\n", "gerber"},
+		// a KiCad project file (JSON) names the schematic and board beside it
+		{"demo.kicad_pro", "{\n  \"meta\": {\"filename\": \"demo.kicad_pro\", \"version\": 3}\n}\n", "kicad"},
 		// by its extension (the HP-GL/2 converter then turns down a gnuplot
 		// script)
 		{"graph.plt", "set terminal png\nplot sin(x)\n", "hpgl"},

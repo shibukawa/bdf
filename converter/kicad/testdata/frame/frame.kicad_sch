@@ -1,0 +1,5 @@
+(kicad_sch (version 20250114) (generator "eeschema") (generator_version "9.0") (uuid "00000000-0000-0000-0000-0000000010b2") (paper "A5")
+(title_block (title "Custom frame") (date "2026-09-28"))
+(lib_symbols)
+(text "A sheet with the project's own drawing sheet" (exclude_from_sim no) (at 30 70 0) (effects (font (size 2 2)) (justify left bottom)) (uuid "00000000-0000-0000-0000-0000000010b3"))
+(sheet_instances (path "/" (page "1"))) (embedded_fonts no))

@@ -43,7 +43,7 @@ wasm が意味を持つケース:
 
 変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の bdf を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`examples/viewer/site.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
 
-- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・メタファイル・Photoshop・画像。約 23 MB、gzip 6.9 MB。Parquet で約 1.1 MB 増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。サムネイルと検索用テキスト（§3.25）は、変換器を持たない `previewonly` のモジュールにした。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
+- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・楽譜・フォント・メタファイル・Photoshop・画像。約 26.6 MB、gzip 7.8 MB。Parquet で約 1.1 MB、KiCad で約 1 MB（gzip 0.3 MB）増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。サムネイルと検索用テキスト（§3.25）は、変換器を持たない `previewonly` のモジュールにした。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
 - **フォントは fs.FS で渡す**: ブラウザにはフォントのディレクトリが無い。`converter.Options.FontFS` で任意の `fs.FS` をフォントの探索元にできるようにし（`FontDirs` より先に探す）、wasm 側では Web 上のディレクトリをそれとして実装した。`index.json` にファイル名、サイズと、フォントの走査が読む範囲（テーブルディレクトリと name・OS/2・post テーブル）を書いておき、最初の変換でその範囲だけを並列に Range で取得する。フォント全体は文書がそのフェイスを使うときに初めて取得し、取得したものはモジュールが生きている間保持する（2 回目以降の変換は通信しない）。サイトのフォントは CI が Ubuntu のパッケージから集める: Liberation（Arial、Times New Roman、Courier New の代替）、Carlito（Calibri）、Caladea（Cambria）、IPAex（日本語）、DejaVu（記号）。
 - **pdfcpu の設定ファイル**: pdfcpu は既定でユーザーの設定ディレクトリに config.yml を書いて読み直すが、js 版のパーサは自分が書いた 16 進の permissions を読めずに終了する。js のビルドでは `model.ConfigPath = "disable"` にして組み込みの既定値を使う。
 
@@ -616,6 +616,25 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 - **ブラウザ**: Office 系のモジュールに入れた（+0.9 MB）。wasm のビルドは Brotli を外しているので、WOFF2 は読めない（入れると 1.7 MB 増える）。WOFF と、コレクションでない TrueType・OpenType は読める。
 - **可変フォント**: Canvas 2D では font-variation-settings を指定できないので、既定のインスタンスで描き、軸と名前付きインスタンスを一覧にする（ユーザーの判断。インスタンスごとの描画は後の課題）。埋め込むときは TrueType の gvar などを除き（既定の輪郭は glyf にある）、CFF2 は charstring の blend を読むために fvar と avar を残す。
 
+## 3.29 KiCad → BDF 変換器（converter/kicad）の構造
+
+`converter/kicad` は KiCad 6 以降の回路図（.kicad_sch）と基板（.kicad_pcb）を読む。どちらも S 式のテキストで、ファイルの `version`（日付）が 20211014 より前のもの（KiCad 5 の S 式の基板）と KiCad 5 以前の独自形式（.sch・.lib）は「KiCad 6 以降で開いて保存し直す」ように案内して断る。入力は回路図、基板、プロジェクトファイル（.kicad_pro。JSON で、隣の同名の回路図と基板を読む）、プロジェクトを入れた ZIP のどれでもよい。色は KiCad の既定のテーマ、文字は KiCad の描き方を再現する。
+
+- **参照するファイル**: 階層の回路図はシートごとに別ファイルで、プロジェクトファイル（テキスト変数、図枠ファイルの指定、描画の設定）や図枠（.kicad_wks）も別にある。これらは `converter.Options` の `Files`（`fs.FS`。サーバーはアップロードされたファイルを `converter.FileMap` で列挙して渡す）と `Dir`（CLI と `ConvertFile` は入力のディレクトリ。`bdf generate -with` でファイルを足せる）から `Options.ReadRef` で読む。参照は参照するファイルの位置からの相対パスで解決し、`Files` に同じパスがなければ同じ名前のファイルを探す（アップロードではディレクトリが失われるため）。絶対パスは読まない。ZIP（ウェブのデモの入力）は、中の ZIP 自体を `Files` として同じ仕組みで読み、アーカイブの最も浅いプロジェクトファイル、なければほかのシートから参照されない回路図を根とする。どのファイルも一度だけ読み、1 ファイル 256 MiB、合わせて 1 GiB で打ち切る。形式ごとに何を読むかは `Format.Files` に書く。
+- **判別**: 先頭（BOM と空白の後）が `(kicad_sch` か `(kicad_pcb`、または .kicad_sch・.kicad_pcb・.kicad_pro を持つ ZIP。KiCad のプロジェクトの ZIP には製造用の Gerber が入っていることが多いので、Gerber の ZIP の判別はこれらを持つ ZIP を除く。.kicad_pro は拡張子で判別する。
+- **回路図の View**: `schematic` の 1 つの fixed View で、ページはシートのインスタンスである。同じファイルを 2 か所で使えば 2 ページになり、部品の番号（R101 と R201 など）は KiCad 7 以降はシンボルの `instances` のパス、KiCad 6 は根の `symbol_instances` から引く。ページの順はページ番号の順（数なら数の順）で、番号の重複と欠けは KiCad と同じく直す（階層の順に最初のシートが番号を取り、後のものには空いている最小の番号を振る）。シートの箱はそのページへのリンク（`#page=N`）になる。用紙は KiCad 10 の表（A5 は 210×148 mm を mil に丸めたもの）、縦置き、User。各ページは、用紙と図枠の変わらない部分（同じ大きさのページで共有される）を background のレイヤー、変数を含む図枠の文字と回路を body のレイヤーにする。
+- **図枠**: 既定の図枠（KiCad の既定と同じ S 式を埋め込む）か、プロジェクトが指定する .kicad_wks（旧名 page_layout も）を解釈する。四隅からの位置、繰り返し（増分と番号の増加。200 回まで）、1 ページ目だけ・以外、線・矩形・文字・多角形・画像。文字の変数は題名欄（`${TITLE}` など）、ページ番号と総数（`${#}`・`${##}`）、`${SHEETNAME}`・`${SHEETPATH}`・`${FILENAME}`、プロジェクトのテキスト変数で、`${KICAD_VERSION}` は保存した KiCad の版（`generator_version`）にする。旧式の `%T` などの記号は変数に直す。
+- **プロジェクトの設定**: 回路図の描画の設定（既定の線幅、ラベルとピンの文字の離れ（text_offset_ratio）、グローバルラベルの枠の余白（label_size_ratio）、ピンの記号の大きさ、接合点の大きさ（Default のネットクラスの配線の幅の倍数）、破線の長さと間隔）と、Default のネットクラスの配線とバスの幅を読む。古いデモでは text_offset_ratio が 0.3 のものもあり、ラベルの位置が変わる。
+- **回路図の描画**: KiCad の描く順（画像、シートと部品の背景、図形・テキストボックス・表、部品、シート、配線、接合点、ラベル、フィールド、DNP の印）で、1 つの `cad.Drawing` に描いて Canvas の Object にする。部品はファイルに埋め込まれたライブラリ（`lib_symbols`）から、ユニットとボディスタイル（De Morgan）と代替ピン名を選び、回転と鏡映は KiCad の TRANSFORM の合成（反時計回り、時計回り、鏡映の順）で置く。ピンの形（反転、クロック、立ち下がり、アクティブロー、非論理、未接続）と名前・番号はプロッタ（`SCH_PIN::PlotPinType`・`PlotPinTexts`）の位置に描く。ラベルは読み込み時に角度を正立させ、位置揃えから向き（spin）を決める KiCad の規則に従い、グローバル・階層ラベルの枠、ネットクラスの旗を描く。フィールドは部品の変換の中で文字の箱を求め、その中心に水平か上向きに描く（部品以外のフィールドは自分の位置揃えのまま）。図形の塗りは KiCad 10 のハッチ（線幅の半分の線を 40 倍の間隔、100 本まで）も描く。DNP の部品は色を薄め赤い × を重ねる。
+- **文字**: KiCad の線の字体 newstroke を使う。KiCad の版は GPL なので、vovanium の CC0 の版を `tools/gen-newstroke` が KiCad の `fontconv.awk` と同じ形に変換して `newstroke.txt.gz`（11,232 字形、ラテン・ギリシャ・キリル・記号）として埋め込む。この版にない CJK の字は TrueType のフォント（sans-serif の代替）で KiCad の字送りの枠の中央に描く。配置は KiCad 10 の `FONT::getLinePositions` と `EDA_TEXT::GetTextBox` を再現する（字形の原点の補正、行間、線幅による補正、上付き・下付き・上線の記法 `^{}`・`_{}`・`~{}`、タブ、`{slash}` などのエスケープ、末尾の改行は行にしない）。線で描いた文字は 1 行を子 Object にし、`ALT_TEXT` で文字列を持たせるので、検索と選択ができる（`cad.StrokeText`）。フォントを指定した文字（`(face …)`）は fontset の TrueType で、KiCad と同じ大きさ（高さの 1.4 倍の em）で組む。KiCad のデモ 16 件のすべての文字（約 74,000）の線の範囲が kicad-cli の SVG 出力と 5 µm 以内で一致することを確かめた。
+- **基板の View**: `board-front`（表から見た、全層の重ね描き）、`board-back`（裏から見た、鏡映）、使われている層ごとの `layer-<名前>`（`-param layers=board` で前の 2 つだけ、`layers` で層だけ）。層ごとの描画を 1 つの Object にし、各 View で共有する（`canvas.Share`）。倍率は Gerber と同じ（A3 に収まる）で、範囲はすべての図形の和、外形（Edge.Cuts）の 4 倍を超える範囲なら外形の 1.2 倍にする。パッド（円、矩形、長円、台形、角丸と面取り、カスタムのプリミティブ）、穴（長穴、メッキなし）、ビア（貫通・ブラインド・マイクロの色）、配線と円弧の配線、ゾーン（塗り潰しの多角形を 6 割の不透明度で）、図形、文字（TrueType の文字は `render_cache` の多角形を塗り、検索用に見えない文字を重ねる。フットプリントの文字は正立させる）、寸法、表、テキストボックス、画像を描く。
+- **オプション**: `-param views=all|schematic|board`、`-param layers=all|board|layers`、`-pages`（回路図のページ）。サマリーはシート数、基板、埋め込んだフォント数。
+- **上限**: シートの入れ子 32 段、インスタンス 2,000 まで、自分を含むシートは除く（KiCad も開かない）。多数のインスタンスや繰り返しの多い図枠で描く量が 1 GiB 相当（ファイルの大きさと図形の数による見積もり）を超えると、残りのページは白紙にして警告する。
+- **未対応**: KiCad 5 以前の形式、3D の表示、ネットクラスの色で配線を塗ること（接続の解析が要る）、シート間参照（`${INTERSHEET_REFS}` は空にする）、ライブラリのファイルからシンボルを引くこと（ファイルに埋め込まれたものだけ使う）、シミュレーションの結果の表示。
+
+テストは、S 式、記法、シンボルの変換、ラベルの向き、ReadRef と FileMap（`fstest.TestFS`）の単体テストと、KiCad の出力から取った座標（KiCad のデモの文字と自作の小さな回路図）で文字の線の範囲を確かめるテスト、`test/kicad/gen.py` が書くテスト用のプロジェクト（2 回使う階層のシート、全種類のピンとラベル、ハッチ、表、テキストボックス、日本語、4 層の基板、独自の図枠）の変換、数値を極端な値に置き換えたファイルと自分を含むシートの変換、fuzz である。
+
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -722,6 +741,8 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 19. **Parquet**: 列指向のデータファイルを表のシートに。読み込みは仕様から自前で書く（実装済み、§3.26）。
 20. **楽譜と演奏**: MML・MIDI・MusicXML を五線譜に組み、View に SMF と cue を持たせてビューアで演奏する（実装済み、§3.27）。
 21. **フォントファイル**: 文字・グリフ・OpenType フィーチャーのプレビュー。GSUB・GPOS は自前で読む（実装済み、§3.28）。
+22. **KiCad**: KiCad 6 以降の回路図と基板。階層のシートをページに、基板を表・裏と層ごとの View に、KiCad の線の字体（CC0 の newstroke）で描く。参照するファイルはサーバーでは列挙して渡し、ウェブでは ZIP で（実装済み、§3.29）。
+23. **化学構造式**（予定）: MOL・SDF（SDF は表のシート）、ChemDraw の CDXML・CDX を ACS 1996 の描き方で。
 
 ## 9. リポジトリ構成（案）
 
@@ -757,6 +778,7 @@ bdf/
 │   ├── sxf/           SXF（.p21、.p2z、.sfc）→ BDF 変換器（testdata/ にテスト用図面）
 │   ├── cgm/           CGM（.cgm、.cgz）→ BDF 変換器（testdata/ にテスト用メタファイル）
 │   ├── gerber/        Gerber・Excellon（とその ZIP）→ BDF 変換器（testdata/ にテスト用の基板とファイル）
+│   ├── kicad/         KiCad の回路図・基板・プロジェクト（とその ZIP）→ BDF 変換器（CC0 の newstroke の字形を埋め込む。testdata/ にテスト用のプロジェクト）
 │   ├── tiff/          TIFF（.tif、.tiff）→ BDF 変換器（testdata/ にテスト用のスキャン・FAX・向きのファイル）
 │   ├── image/         画像（PNG・JPEG・GIF・WebP・AVIF・BMP・ICO・SVG）→ BDF 変換器（そのまま格納してメタデータを読む。testdata/ にテスト用画像）
 │   ├── mml/           MML（汎用・マビノギ・PPMCK）→ BDF 変換器、楽譜にする（testdata/ にテスト用の曲）

@@ -22,6 +22,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/html"     // HTML, in reader mode
 	_ "github.com/shibukawa/bdf/converter/image"    // images browsers display (PNG, JPEG, SVG …)
 	_ "github.com/shibukawa/bdf/converter/jww"      // Jw_cad
+	_ "github.com/shibukawa/bdf/converter/kicad"    // KiCad schematics and boards
 	_ "github.com/shibukawa/bdf/converter/markdown" // Markdown, in reader mode
 	_ "github.com/shibukawa/bdf/converter/midi"     // Standard MIDI Files, as scores
 	_ "github.com/shibukawa/bdf/converter/mml"      // Music Macro Language, as scores

@@ -10,17 +10,18 @@
 // thread busy). -tags pdfonly, officeonly, webonly or imageonly builds a
 // smaller module of the PDF converters (PDF, and Illustrator, whose files
 // are PDFs), the Office converters (Word, PowerPoint, Excel, CSV, Parquet,
-// Visio, draw.io, DXF, Jw_cad, SXF, CGM, Gerber, metafiles, Photoshop, the
-// music formats MML, MIDI and MusicXML, font files, and images), the HTML,
-// Markdown and EPUB converters, or the images browsers display by
-// themselves (PNG, JPEG, SVG …, stored as they are) only; previewonly
-// builds one without converters that makes the thumbnail and the search
-// text of a bdf document (see the end of this comment). bdf_noconv leaves
-// out the image and WOFF2 encoders: a document drawn where it is converted
-// gains nothing from them. It leaves out Brotli altogether, whose tables
-// alone would add 1.7 MB to the Office module: the Parquet converter reads
-// no Brotli in any js build (converter/parquet/brotli_js.go), and the font
-// converter no WOFF2 file. The demo site (examples/viewer/site.mjs)
+// Visio, draw.io, DXF, Jw_cad, SXF, CGM, Gerber, KiCad, metafiles,
+// Photoshop, the music formats MML, MIDI and MusicXML, font files, and
+// images), the HTML, Markdown and EPUB converters, or the images browsers
+// display by themselves (PNG, JPEG, SVG …, stored as they are) only;
+// previewonly builds one without converters that makes the thumbnail and
+// the search text of a bdf document (see the end of this comment).
+// bdf_noconv leaves out the image and WOFF2 encoders: a document drawn
+// where it is converted gains nothing from them. It leaves out Brotli
+// altogether, whose tables alone would add 1.7 MB to the Office module:
+// the Parquet converter reads no Brotli in any js build
+// (converter/parquet/brotli_js.go), and the font converter no WOFF2 file.
+// The demo site (examples/viewer/site.mjs)
 // builds it with a copy of goldmark (the Markdown converter's parser) whose
 // linkify patterns it rewrites: compiled when the program starts, they
 // overflow the stack of a worker in Safari.

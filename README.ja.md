@@ -4,26 +4,26 @@
 
 **bdf**（Browser-specific Document Format）は、ブラウザの Canvas 2D にそのまま描画できる、プレビュー用の文書フォーマット（ドラフト）です。
 
-Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.io の図、CAD の図面とプロットファイル（DXF、Jw_cad、SXF、CGM、HP-GL/2）、プリント基板の製造データ（Gerber、Excellon）、スキャンや FAX の TIFF 画像、デザインのファイル（Illustrator、Photoshop）、HTML のページ、Markdown の文書、EPUB の本、音楽（MML、MIDI、MusicXML。ビューアで演奏できる楽譜に組む）、ブラウザがそのまま表示できる画像を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
+Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.io の図、CAD の図面とプロットファイル（DXF、Jw_cad、SXF、CGM、HP-GL/2）、プリント基板の製造データ（Gerber、Excellon）、KiCad の回路図と基板、スキャンや FAX の TIFF 画像、デザインのファイル（Illustrator、Photoshop）、HTML のページ、Markdown の文書、EPUB の本、音楽（MML、MIDI、MusicXML。ビューアで演奏できる楽譜に組む）、ブラウザがそのまま表示できる画像を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
 
-**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF・CGM の図面、HP-GL/2 のプロットファイル、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページ、Markdown の文書、EPUB の本、音楽のファイル（MML、MIDI、MusicXML）、フォントファイルや画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。楽譜は演奏でき、演奏している位置にカーソルが付いていきます。表示中の文書のサムネイル（64〜512 ピクセル、PNG か JPEG）と検索用のテキストもダウンロードできます。作るのはサーバーと同じ Go のパッケージです。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
+**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF・CGM の図面、HP-GL/2 のプロットファイル、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、KiCad の回路図や基板（プロジェクトを ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページ、Markdown の文書、EPUB の本、音楽のファイル（MML、MIDI、MusicXML）、フォントファイルや画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。楽譜は演奏でき、演奏している位置にカーソルが付いていきます。表示中の文書のサムネイル（64〜512 ピクセル、PNG か JPEG）と検索用のテキストもダウンロードできます。作るのはサーバーと同じ Go のパッケージです。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
 
 ## Why bdf
 
-- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio、draw.io、DXF、Jw_cad、SXF、CGM、HP-GL/2、Gerber、Excellon、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown、EPUB、MML、MIDI、MusicXML、フォントファイルを 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7 MB、Office 系・draw.io・DXF 用が約 5.5 MB）、ファイルをアップロードする必要すらありません。サムネイルと検索用のテキストも同じプロセスで作れます。ページを描くのは純 Go のラスタライザで、ブラウザは要りません。
+- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio、draw.io、DXF、Jw_cad、SXF、CGM、HP-GL/2、Gerber、Excellon、KiCad、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown、EPUB、MML、MIDI、MusicXML、フォントファイルを 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7.3 MB、Office 系・draw.io・CAD・KiCad・フォント用が約 7.8 MB）、ファイルをアップロードする必要すらありません。サムネイルと検索用のテキストも同じプロセスで作れます。ページを描くのは純 Go のラスタライザで、ブラウザは要りません。
 - **内容に合った形で見せる**: PDF はすべてを紙に切り分けます。スプレッドシートを印刷したページでは、横に長い表がページをまたいで分断されて行を追えず、目当てのセルも見つけにくくなります。固定した見出しや枠線は消え、ブックの中で切り替えていたシートは一続きのページになります。Word の文書もページ単位でしか読めません。bdf は内容の種類ごとにレイアウトのモデルを持ちます。スライド・図面・PDF には固定サイズのページ、ワークシートにはシートごとの無限平面（タイルで描画し、ウィンドウ枠の固定、行・列見出し、枠線つき）、ワープロ文書にはページでも一続きのスクロールでも読めるフローと、ページなしで 1 本の長い列に組み直した表示を用意しています。Illustrator と Photoshop のアートボードはページになります。ブックのシート、draw.io の図のページ、DXF のモデル空間とレイアウト、プリント基板の表・裏と各層はそれぞれ 1 つの表示になり、ビューアのタブで切り替えます。
 - **ブラウザ表示に特化している**: 命令セットは Canvas 2D と 1 対 1 に対応します。フォントは `FontFace` に渡す WOFF2、画像はブラウザがデコードできる形式で、Part の圧縮は `DecompressionStream` で展開できる形式です。pdf.js のような PDF ビューアが数万行かけて実装しているフォントのラスタライズ、画像のデコード、展開はブラウザに任せ、bdf のデコーダとレンダラは TypeScript で約 3,400 行です（レンダラの Worker は gzip で 21 KB）。描画は Worker の `OffscreenCanvas` で行い、メインスレッドはビットマップを置くだけです。Part は内容アドレスなので、マスターや繰り返し現れる要素は 1 度だけ格納され、ビューアは表示中のページに要る Part だけを Range リクエストや CDN 上の分割形式から取得します。ブラウザ内で変換する PDF は、表示中のページを優先して変換できたページから表示します。
-- **多くの形式を 1 つのレンダラで**: PDF、Word（.docx）、PowerPoint（.pptx）、Excel（.xlsx）、CSV・TSV、Apache Parquet、Visio（.vsdx、.vdx）、draw.io（.drawio と、図を埋め込んだ SVG・PNG の書き出し）、AutoCAD DXF、Jw_cad（.jww）、SXF（.p21、.p2z、.sfc）、CGM（.cgm）、HP-GL/2 のプロットファイル（.plt）、Gerber（RS-274X）と Excellon の穴あけファイル（1 つずつでも、基板のファイルをまとめた ZIP でも）、TIFF、Illustrator（.ai）、Photoshop（.psd、.psb）、Windows メタファイル（.emf、.wmf）、HTML（リーダー表示）、Markdown、EPUB（リフロー型の本は和文の縦書きも、固定レイアウトのマンガも）、楽譜に組む MML（.mml）・MIDI（.mid、.kar）・MusicXML（.musicxml、.mxl）、文字・グリフ・OpenType フィーチャーを見せるフォントファイル（.ttf、.otf、.ttc、.woff、.woff2）、画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG。そのまま格納）を、パスワード付きの Office 文書や PDF も含めて同じフォーマットにします。どの形式も同じレンダラで描き、検索、テキスト選択、読み上げ用のテキスト層（見出し、リスト、表、代替テキスト）も共通です。
+- **多くの形式を 1 つのレンダラで**: PDF、Word（.docx）、PowerPoint（.pptx）、Excel（.xlsx）、CSV・TSV、Apache Parquet、Visio（.vsdx、.vdx）、draw.io（.drawio と、図を埋め込んだ SVG・PNG の書き出し）、AutoCAD DXF、Jw_cad（.jww）、SXF（.p21、.p2z、.sfc）、CGM（.cgm）、HP-GL/2 のプロットファイル（.plt）、Gerber（RS-274X）と Excellon の穴あけファイル（1 つずつでも、基板のファイルをまとめた ZIP でも）、KiCad の回路図と基板（.kicad_sch、.kicad_pcb、プロジェクトの .kicad_pro、プロジェクトの ZIP）、TIFF、Illustrator（.ai）、Photoshop（.psd、.psb）、Windows メタファイル（.emf、.wmf）、HTML（リーダー表示）、Markdown、EPUB（リフロー型の本は和文の縦書きも、固定レイアウトのマンガも）、楽譜に組む MML（.mml）・MIDI（.mid、.kar）・MusicXML（.musicxml、.mxl）、文字・グリフ・OpenType フィーチャーを見せるフォントファイル（.ttf、.otf、.ttc、.woff、.woff2）、画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG。そのまま格納）を、パスワード付きの Office 文書や PDF も含めて同じフォーマットにします。どの形式も同じレンダラで描き、検索、テキスト選択、読み上げ用のテキスト層（見出し、リスト、表、代替テキスト）も共通です。
 
 ## 処理の流れ
 
 ```mermaid
 flowchart TB
-    SRC["PDF・Excel・CSV・Parquet・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・TIFF<br/>Illustrator・Photoshop・HTML・Markdown・EPUB・MML・MIDI・MusicXML・フォント・画像"]
+    SRC["PDF・Excel・CSV・Parquet・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・TIFF<br/>Illustrator・Photoshop・HTML・Markdown・EPUB・MML・MIDI・MusicXML・フォント・画像"]
 
     subgraph SERVER["Go サーバープロセス"]
         direction TB
-        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/mml<br/>converter/midi<br/>converter/musicxml<br/>converter/font<br/>converter/ai<br/>converter/psd<br/>converter/image"]
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/kicad<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/mml<br/>converter/midi<br/>converter/musicxml<br/>converter/font<br/>converter/ai<br/>converter/psd<br/>converter/image"]
         BUNDLE["bdf バンドル<br/>（パック済み）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
         PREVIEW["raster・thumbnail・SearchText<br/>サムネイル画像<br/>検索用のテキスト"]
         SCONV --> BUNDLE
@@ -33,7 +33,7 @@ flowchart TB
     subgraph BROWSER["ブラウザ"]
         direction TB
         subgraph CWORKER["変換 Worker（wasm）"]
-            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/mml<br/>converter/midi<br/>converter/musicxml<br/>converter/font<br/>converter/ai<br/>converter/psd<br/>converter/image"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/kicad<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/mml<br/>converter/midi<br/>converter/musicxml<br/>converter/font<br/>converter/ai<br/>converter/psd<br/>converter/image"]
         end
         PARTS["bdf 文書<br/>（メモリ上）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
         subgraph RWORKER["レンダラ Worker"]
@@ -83,7 +83,7 @@ flowchart TB
 - パスワードで保護された入力（読み取りパスワード付きの Office 文書、ユーザーパスワード付きの PDF）はパスワードで開いて変換し、bdf を同じパスワードで暗号化する。Part ごとに封印する（AES-256-GCM）ので Range 取得や分割形式はそのまま使える。ビューアは WebCrypto で復号し、サーバーはパスワードを保存しない（spec §3.5）
 - サーバー側のサムネイルと検索用テキスト: `raster` はビューアと同じ命令を純 Go で実行し、任意のページ（シートや scroll View なら任意の範囲）を画像に描く。アンチエイリアスつきのパス、線、クリップ、グラデーションとパターン、画像、埋め込みフォント（WOFF2 を展開する）と名前で参照するフォント（システムのフォントを探す）のテキスト、グループ、ソフトマスク、影、SVG の画像を描く。ブラウザの golden テストと同じページを Go のテストで描き、両方を縮小して Chromium の描画と比べると、ほとんどのページで平均の差が 4/255 未満に収まる（違いはヒンティング・カーニング・合字をしないことと、AVIF の画像を描かないこと）。`thumbnail` は文書の種類からレイアウトを選ぶ。Word・HTML・Markdown・楽譜・縦長の PDF は 1 ページ目の左上の正方形、Excel と CSV は A1 から始まる左上の範囲、スライド・図面・画像・EPUB の表紙は 1 ページ目の全体で、PNG・JPEG・WebP で書き出す。`Document.SearchText` は検索エンジン向けにメタデータとページごと（シートは丸ごと）のテキストを返す。どちらも暗号化されないので、暗号化した文書については頼まれない限り（`-allow-plaintext`）書き出さない。詳細は design.md の §3.25
 
-変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / Windows メタファイル / TIFF / HTML / Markdown / EPUB / MML / MIDI / MusicXML / フォント / 画像）は中身から、判別できなければ拡張子から決めます（Markdown はどんなテキストでもありうるので拡張子で決まります）。
+変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / KiCad / Windows メタファイル / TIFF / HTML / Markdown / EPUB / MML / MIDI / MusicXML / フォント / 画像）は中身から、判別できなければ拡張子から決めます（Markdown はどんなテキストでもありうるので拡張子で決まります）。
 
 - **PDF**（`converter/pdf`）: 埋め込みフォント（TrueType、CFF、OpenType、Type1）を使うグリフだけの WOFF2 に組み直し（OS/2 の埋め込み許諾 `fsType` を確認し、著作権表示は引き継ぐ）、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。ソフトマスク（フェード、ドロップシャドウ、Chrome の PDF の CSS `mask-image`）はビューアで描き、JPEG 2000 と JBIG2 の画像は純 Go のデコーダでデコードします。埋め込まれていない CJK フォントの文字は Adobe の定義済み CMap（Shift_JIS、EUC、UCS-2 など）で読み、縦書き（WMode 1）は縦の行として配置します。オプショナルコンテンツ（レイヤー）はビューアが文書を開いたときの表示どおりにし、非表示のレイヤーは描きません。詳細は design.md の §3.1。
 - **Illustrator .ai**（`converter/ai`）: Illustrator 9 以降の .ai は、PDF に Illustrator 独自のデータを添えたものです。PDF のページがアートボードなので、PDF 変換器で描いてアートボード（裁ち落としを除いたトリムボックス）で切り抜きます。非表示のレイヤーは描きません。「PDF 互換ファイルを作成」をオフにして保存したファイルと、Illustrator 8 以前の PostScript ベースの .ai はエラーにします。詳細は design.md の §3.17。
@@ -101,6 +101,7 @@ flowchart TB
 - **CGM .cgm**（`converter/cgm`）: ISO/IEC 8632 の Computer Graphics Metafile（バージョン 1〜4）を、CAD のプロッタ出力や技術図（S1000D、ATA）、WebCGM が使うバイナリ符号化と、クリアテキスト符号化の両方で読みます（gzip で圧縮した .cgz も）。ピクチャごとに、その縮尺どおりの大きさの 1 ページにします（縮尺のない abstract のピクチャは A4 に合わせます）。線種・線幅・端点の形を持つ線、マーカー、塗り（中空、塗りつぶし、ハッチング、パターン、グラデーション）とその縁、穴のある閉じた図形、円、楕円、円弧・楕円弧・双曲線・放物線の弧、ベジェ曲線と B スプライン、文字（向きのベクトルによる回転と斜体、縦書きを含む 4 つの方向、揃え、箱に収める文字、続きの文字）、セル配列とタイル（JPEG、PNG、CCITT の FAX 符号）、セグメントとその複写を描き、WebCGM のアプリケーション構造で visibility が off のものは描きません。文字列は宣言された文字集合（JIS X 0208 などの ISO 2022 の文字集合、UTF-8、UTF-16）で読み、日本の CAD が宣言なしで書く Shift_JIS の文字も判別します。詳細は design.md の §3.20。
 - **HP-GL/2 .plt**（`converter/hpgl`）: HP のプロッタとプリンタのプロットファイルを読みます。HP-GL/2 と、古いペンプロッタやカッティングプロッタの HP-GL を、そのままのファイルでも、大判プロッタ（DesignJet のドライバでファイルに印刷したもの）や PCL プリンタ向けのファイルのように PJL のジョブと PCL・HP RTL のエスケープシーケンスに包まれていても読み、HP RTL のラスター画像も描きます。描かれたページごとに 1 ページにし、大きさはプロットサイズ（PS）を外の図形も入るように広げたものです。向きは RO で回した座標系で見せます（ドライバはそうしてプロットを用紙に合わせます）。PCL プリンタ向けならその用紙とピクチャーフレームに置きます。ペンはファイルのパレットの色と太さで描き（`-param colors=mono` で黒に）、固定・適応・ユーザ定義の線種、線端と角の形、円弧と円（粗い弦角はプロッタと同じ弦で）、ベジェ曲線、符号化折れ線、多角形・矩形・扇形の塗り（単色、ハッチング、クロスハッチング、網掛け、ラスターパターン）、網掛けのベクトル、ユーザ単位の座標、クリップのウィンドウを扱います。ラベルはテキストにします。プロッタのスティックフォントは固定ピッチのフォントで大文字の高さとピッチのとおりに、指定されたフォントは同じ系統のフォントで描き、回転、斜体、鏡像、4 つの文字の進む向き、ラベル原点にも従います。Roman-8 などの文字セットと、日本語（Shift_JIS、16 ビットの JIS）も読みます。ラスター画像（圧縮方式 0〜3、5、9、インデックスカラーとダイレクトカラー）は受け取りながら解像度の上限まで縮小します。詳細は design.md の §3.22。
 - **Gerber・Excellon（プリント基板）**（`converter/gerber`）: プリント基板の製造データ、Gerber（X2 属性つきの RS-274X と、古いファイルの非推奨の命令）と Excellon の穴あけファイルを、1 つずつ、または基板のファイルをまとめた ZIP（ジョブファイルも）で読みます。基板は、表と裏（裏から見るので左右反転）をそれぞれ実物の見た目で描いた View になります。基材、ソルダーマスク越しの銅箔、マスクの開口から見えるパッドの仕上げ、シルク、穴を、外形（外形の層の線をつないだ基板の形。切り抜きも）で切り抜いて描きます。続けてファイルごとの View を、基板 CAD の配色で暗い背景に描きます。各ファイルが何の層かは、X2 属性、ジョブファイル、KiCad・Altium（Protel）・Eagle・EasyEDA などのファイル名の付け方から決めます。すべてのアパーチャとマクロのプリミティブ、両方の象限モードの円弧、領域、クリアの極性、ステップ＆リピート、ブロックアパーチャ、アパーチャの変換を描き、パッドはグリフと同じように共有したパスを並べて描きます。`-param mask=`・`silkscreen=`・`finish=` で色を（既定はジョブファイルの色、無ければ緑・白・金）、`-param views=board` か `views=layers` で片方の View だけを選べます。詳細は design.md の §3.21。
+- **KiCad .kicad_sch / .kicad_pcb / .kicad_pro**（`converter/kicad`）: KiCad 6 以降の回路図と基板を、ファイル 1 つ、プロジェクトファイル、プロジェクトを入れた ZIP のどれからでも変換します（KiCad 5 のファイルは新しい KiCad で保存し直すよう案内して断ります）。回路図はシートをページ番号の順に並べた View になり、2 か所で使う階層のシートはそれぞれの部品番号で 2 ページになり、シートの箱はそのページへのリンクになります。各ページは用紙と図枠（KiCad の既定のもの、またはプロジェクトが指定する .kicad_wks。題名欄とプロジェクトのテキスト変数を埋める）の上に、KiCad の既定の色とプロジェクトの描画の設定で描きます: ユニットと代替のボディスタイルとピンの形のあるシンボル、フィールド、配線、バス、接合点、あらゆる種類のラベル、テキスト、テキストボックス、表、ハッチで塗った図形、画像、実装しない部品（DNP）の印。文字は KiCad の線の字体 NewStroke で、KiCad と同じように組みます（上線・下付き・上付きの記法も。KiCad のデモのプロジェクトのすべての文字の線が KiCad 自身の出力と 5 µm 以内で一致します）。字体は CC0 の版を埋め込み、その版にない CJK の字は TrueType のフォントで描きます。基板は表から見た View と裏から見た（鏡映した）View に KiCad の基板エディタのように全層を重ねて描き、層ごとの View も作ります。`-param views=schematic|board` と `layers=board|layers` で View を選べます。回路図が参照するシートや図枠は別のファイルで、入力のディレクトリ、ZIP の中、またはサーバーが入力と一緒に列挙して渡すファイル（`converter.Options.Files`。`bdf generate -with`）から読みます。詳しくは design.md の §3.29 を参照してください。
 - **HTML .html / .xhtml / .mhtml**（`converter/html`）: ブラウザのリーダー表示のように、ページのデザイン（CSS）は捨てて内容を固定のスタイルシートで組みます。Web ページからは go-readability（Mozilla Readability の移植）で記事を取り出し、見出し・段落・リスト・引用・コード・表（行と列の結合、内容に合わせた列幅）・図・リンク・MathML の数式を、Word と共通のレイアウトエンジンで組みます。BDF は再レイアウトしないので、決まった幅の scroll View（既定は本文の 36 字分）になります（A4 のページも作れる）。画像はファイルの隣、MHTML の中、data: URL、ネットワーク（既定で取得。`-param remote=false` で取らない）から読みます。SVG の画像は、SVG ファイルもページの中の svg 要素もそのまま格納してビューアが描き、大きさはブラウザと同じ規則で決まります。フォントは埋め込まずに名前で参照し、Web ページと同じくビューアのフォントで描きます（`-fonts embed` で埋め込む）。詳細は design.md の §3.16。
 - **Markdown .md**（`converter/markdown`）: goldmark で HTML にし（CommonMark と GitHub の拡張の表・タスクリスト・取り消し線・自動リンク、脚注、定義リスト）、HTML と同じく組みます。README によくある raw HTML（`<p align="center">`、`<details>`）もそのまま組み、見出しには GitHub と同じ id を付けるので `#見出し` へのリンクが効きます。数式は GitHub と同じく `$…$`、`$$…$$`、`math` のコードブロックに LaTeX で書きます。YAML / TOML の front matter は Dublin Core のメタデータになります。
 - **EPUB .epub**（`converter/epub`）: EPUB 3 と EPUB 2 の本。リフロー型の本は HTML と同じリーダー表示で、読む順の文書を章ごとに改ページしながら、ページ番号の付いた本のページ（既定は A5、`-param paper=`）に組みます。表紙や全面の挿絵はページいっぱいに置きます。本文の文書は XML として読みます（空要素の `<a id="p5"/>` が後ろを取り込まない）。本の CSS は捨てますが、本の中身に関わるものだけは読みます。書字方向（電書協の作り方の `writing-mode: vertical-rl` の縦書きの本は縦書きで組む）、縦中横、傍点、行揃え、非表示の要素、外字の画像の大きさです。SVG（SVG ファイル、svg 要素、SVG のページ）も描き、MathML の数式は数式エンジンで組みます（縦書きの中では正立させる）。章をまたぐリンクはそのページへ飛びます。画像のページからなる固定レイアウトの本（マンガ、写真集）は、viewport の大きさの画像のページにします。右綴じの本は View の `direction` を `rtl` にします（spec §4.1）。暗号化された（DRM の）本は変換しません。詳細は design.md の §3.24。
@@ -176,6 +177,7 @@ text, err := res.Doc.SearchText() // メタデータと、View ごと・ペー�
 | `converter/cgm` | CGM (.cgm, .cgz) → BDF 変換器 |
 | `converter/hpgl` | HP-GL/2 のプロットファイル（.plt。HP-GL、PJL、PCL、HP RTL）→ BDF 変換器 |
 | `converter/gerber` | Gerber・Excellon（と基板のファイルをまとめた ZIP）→ BDF 変換器 |
+| `converter/kicad` | KiCad の回路図・基板・プロジェクト（とプロジェクトをまとめた ZIP）→ BDF 変換器 |
 | `converter/html` | HTML (.html, .xhtml, .mhtml) → BDF 変換器（リーダー表示） |
 | `converter/markdown` | Markdown → BDF 変換器（HTML を経由） |
 | `converter/epub` | EPUB → BDF 変換器（リフロー型の本はリーダー表示、固定レイアウトの本は画像のページ） |
@@ -209,7 +211,7 @@ go run ./cmd/bdf ls out.bdf          # Part 一覧
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # 分割形式へ
 
-# PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / メタファイル / TIFF / HTML / Markdown / EPUB / MML / MIDI / MusicXML / フォント / 画像 → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|ai|psd|pptx|xlsx|csv|parquet|docx|visio|drawio|dxf|jww|sxf|cgm|hpgl|gerber|emf|tiff|html|markdown|epub|mml|midi|musicxml|font|image で指定も可）
+# PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / KiCad / メタファイル / TIFF / HTML / Markdown / EPUB / MML / MIDI / MusicXML / フォント / 画像 → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|ai|psd|pptx|xlsx|csv|parquet|docx|visio|drawio|dxf|jww|sxf|cgm|hpgl|gerber|kicad|emf|tiff|html|markdown|epub|mml|midi|musicxml|font|image で指定も可）
 go run ./cmd/bdf generate -h                  # フラグと、入力形式ごとの -param オプションの一覧
 go run ./cmd/bdf generate in.pdf out.bdf      # 1 ファイル形式
 go run ./cmd/bdf generate in.pptx out/        # 分割形式
@@ -248,6 +250,10 @@ go run ./cmd/bdf generate -param colors=mono in.plt out.bdf        # HP-GL/2: �
 go run ./cmd/bdf generate board.zip out.bdf                        # プリント基板（Gerber・Excellon・ジョブファイルの ZIP）: 表、裏、ファイルごとの View
 go run ./cmd/bdf generate board-F_Cu.gbr out.bdf                   # Gerber や穴あけのファイル 1 つ: その層の View
 go run ./cmd/bdf generate -param mask=black -param finish=silver board.zip out.bdf  # プリント基板: ソルダーマスクとパッドの色（silkscreen= も）
+go run ./cmd/bdf generate project.zip out.bdf                      # KiCad のプロジェクトの ZIP: 回路図のシート、基板の表・裏・層
+go run ./cmd/bdf generate demo.kicad_pro out.bdf                   # KiCad のプロジェクト: 隣の回路図と基板、そのシートと図枠をディレクトリから
+go run ./cmd/bdf generate -param views=schematic -pages 2-3 top.kicad_sch out.bdf  # KiCad: 回路図のシート 2 と 3 だけ
+go run ./cmd/bdf generate -with sheets/power.kicad_sch -with io.kicad_sch top.kicad_sch out.bdf  # 入力が参照するファイルをサーバーのように列挙して渡す（入力のディレクトリからの相対パス）
 go run ./cmd/bdf generate page.html out.bdf                        # HTML: 記事を取り出して 1 段組の scroll View に（-param extract=none なら全体、article なら常に取り出す）
 go run ./cmd/bdf generate page.mhtml out.bdf                       # Web アーカイブ（MHTML）: 画像はアーカイブの中から
 go run ./cmd/bdf generate README.md out.bdf                        # Markdown: 画像はファイルの隣から（ネットワークの画像も取得）
@@ -301,6 +307,7 @@ npm run test:sxf:gen                 # SXF のテスト用図面を再生成
 npm run test:cgm:gen                 # CGM のテスト用メタファイルを再生成
 npm run test:hpgl:gen                # HP-GL/2 のテスト用プロットを再生成
 npm run test:gerber:gen              # Gerber のテスト用の基板とファイルを再生成
+npm run test:kicad:gen               # KiCad のテスト用のプロジェクトを再生成
 npm run test:tiff:gen                # TIFF のテスト用ファイルを再生成（ImageMagick と libtiff のツールが必要）
 npm run test:markdown:gen            # Markdown と HTML のテスト用画像を再生成
 npm run test:ai:gen                  # Illustrator のテスト用ファイルを再生成

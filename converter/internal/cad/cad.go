@@ -94,6 +94,7 @@ const (
 	kText
 	kGroup
 	kImage
+	kStrokeText
 )
 
 // Item is one thing a Drawing draws.
@@ -104,6 +105,7 @@ type Item struct {
 	fill    Fill
 	evenOdd bool
 	text    *Text
+	stroke  *StrokeText
 	image   *Image
 	clip    *Path // group: the clip (nil: none)
 	items   []Item
@@ -112,8 +114,11 @@ type Item struct {
 
 // Text returns the string of a text item ("" for other items).
 func (it Item) Text() string {
-	if it.kind == kText && it.text != nil {
+	switch {
+	case it.kind == kText && it.text != nil:
 		return it.text.S
+	case it.kind == kStrokeText && it.stroke != nil:
+		return it.stroke.S
 	}
 	return ""
 }
@@ -156,6 +161,48 @@ func (d *Drawing) Text(t *Text) {
 		return
 	}
 	d.add(Item{kind: kText, text: t, bounds: t.Bounds()})
+}
+
+// StrokeText is a line of text drawn with a stroke (plotter) font, such as
+// KiCad's: the strokes of its glyphs, and the parts that TrueType fonts draw
+// (characters the stroke font lacks), in the text's own space: x along the
+// baseline from the start of the line, y up, in drawing units. M maps that
+// space into the drawing. The plotter writes the line into a child object
+// that it uses after an ALT_TEXT holding S, so that text extraction sees
+// one run (spec §7.8) and lines drawn alike are stored once.
+type StrokeText struct {
+	S string
+	M canvas.Matrix
+	// Strokes are the glyphs' strokes; Pen strokes them, its WorldWidth
+	// the width of the strokes in drawing units.
+	Strokes *Path
+	Pen     Pen
+	// Parts are the characters drawn with TrueType fonts, their M relative
+	// to the text's space.
+	Parts []*Text
+	Break Break
+}
+
+// bounds returns the bounding box of the line in its own space.
+func (t *StrokeText) bounds() Rect {
+	var r Rect
+	if !t.Strokes.Empty() {
+		r = t.Strokes.Bounds()
+		w := t.Pen.WorldWidth / 2
+		r = r.Add(Point{r.Min.X - w, r.Min.Y - w}).Add(Point{r.Max.X + w, r.Max.Y + w})
+	}
+	for _, p := range t.Parts {
+		r = r.Union(p.Bounds())
+	}
+	return r
+}
+
+// StrokeText draws a line of text in a stroke font.
+func (d *Drawing) StrokeText(t *StrokeText) {
+	if t == nil || (t.Strokes.Empty() && len(t.Parts) == 0) {
+		return
+	}
+	d.add(Item{kind: kStrokeText, stroke: t, bounds: t.bounds().Transform(t.M)})
 }
 
 // Image draws a raster image.
@@ -255,6 +302,13 @@ func describe(out *[]string, items []Item, indent string, prec float64) {
 				m[i] = r(v)
 			}
 			s = fmt.Sprintf("text %q color=%08x m=%g vertical=%v", t.S, uint32(t.Color), m, t.Vertical)
+		case kStrokeText:
+			t := it.stroke
+			var m [6]float64
+			for i, v := range t.M {
+				m[i] = r(v)
+			}
+			s = fmt.Sprintf("stroke-text %q %s color=%08x width=%g m=%g parts=%d", t.S, box(it.bounds), uint32(t.Pen.Color), r(t.Pen.WorldWidth), m, len(t.Parts))
 		case kGroup:
 			s = "group " + box(it.bounds)
 		}
@@ -316,6 +370,10 @@ func transformItem(it Item, m canvas.Matrix, s float64) Item {
 		t := *it.text
 		t.M = m.Mul(t.M)
 		out.text = &t
+	case kStrokeText:
+		t := *it.stroke
+		t.M = m.Mul(t.M)
+		out.stroke = &t
 	case kGroup:
 		out.items = make([]Item, len(it.items))
 		for i, c := range it.items {

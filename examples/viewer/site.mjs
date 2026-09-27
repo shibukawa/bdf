@@ -56,6 +56,7 @@ const SAMPLES = [
   { path: "converter/cgm/testdata/shapes.cgm", label: "CGM" },
   { path: "converter/hpgl/testdata/shapes.plt", label: "HP-GL/2 (.plt)" },
   { path: "converter/gerber/testdata/board.zip", label: "Gerber and Excellon (a board, zipped)" },
+  { path: "converter/kicad/testdata/demo.zip", label: "KiCad (a project: schematic and board, zipped)" },
   { path: "converter/ai/testdata/artboards.ai", label: "Illustrator (3 artboards)" },
   { path: "converter/psd/testdata/artboards.psd", label: "Photoshop (3 artboards)" },
   { path: "converter/image/testdata/drawing.svg", label: "SVG image" },

@@ -44,6 +44,8 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | `Register(f *Format)` | 形式を登録する（変換器パッケージが `init` で呼ぶ） |
 | `Pages` / `ParsePages(spec)` / `PageList(n...)` | ページ（スライド、シート）の選択。`"1-3,5,8-"` のような範囲を指定順に持ち、末尾までの範囲は総数を知らなくてよい。`Numbers(count)` で 1 始まりの番号にする |
 | `ErrUnknownFormat` / `ErrPasswordRequired` / `ErrWrongPassword` | `errors.Is` で調べるエラー |
+| `FileMap` | メモリ上のファイルの `fs.FS`（名前はスラッシュ区切りのパス）。`Options.Files` に、入力と一緒にアップロードされたファイルを列挙して渡す |
+| `(*Options).ReadRef(from, rel string) ([]byte, string, error)` | 入力が参照するファイルを `Files`、次に `Dir` から読む。`rel` は参照するファイル `from` の位置からの相対パスで、`Files` に同じパスがなければ同じ名前のファイルを使う。絶対パスは読まない。読んだファイルのパス（入力のディレクトリから）も返す |
 
 `Result` は `Doc *bdf.Document`、`Warnings []string`（`Options.Warn` が無いとき）、`Summary`（1 行の要約）、`Protected`（パスワードで開いた入力。同じパスワードで `bdf.NewPasswordLock` して暗号化するとよい）を持つ。
 
@@ -61,6 +63,8 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | `Params map[string]string` | 形式ごとの設定（`Format.Params` に一覧。`bdf generate -h` でも表示される） |
 | `Password` | パスワード付き入力を開くパスワード |
 | `FileName` | 入力のファイル名（内容で判定できない CSV の判定、CSV と Parquet のシート名） |
+| `Dir` | 入力が参照するファイル（HTML・Markdown の画像、KiCad のシート）を探すディレクトリ。`ConvertFile` は入力のディレクトリにする |
+| `Files fs.FS` | 入力が参照するファイル。ディレクトリから読まない入力（サーバーへのアップロード）に使い、`Dir` より先に探す。どの形式が何を読むかは `Format.Files` |
 | `Warn func(string)` | 警告を受け取る（無ければ `Result.Warnings` に集める） |
 
 ### 形式ごとのパッケージ
@@ -79,6 +83,7 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | `converter/drawio` | draw.io（.drawio、図を埋め込んだ .drawio.svg・.drawio.png） | `Convert(data []byte, opts)`（入力をバイト列で渡す）。`Pages`、`Border`（図の周りの余白） |
 | `converter/dxf` | AutoCAD DXF | `Pages`、`Views`（`all` / `model` / `layouts`）、`Light`（モデル空間を白い紙に描く）。`Detect(head)` |
 | `converter/gerber` | Gerber（RS-274X）・Excellon と、基板のファイルをまとめた ZIP | `Views`（`ViewsAll` / `ViewsBoard` / `ViewsLayers`）、`Mask`・`Silkscreen`・`Finish`（基板の表と裏の色）、`FileName`（1 つのファイルの層を名前から見分ける）。`Detect`、`IsGerber(head)`、`IsExcellon(head)` |
+| `converter/kicad` | KiCad 6 以降の回路図・基板・プロジェクトと、プロジェクトの ZIP | `Views`（`all` / `schematic` / `board`）、`Layers`（`all` / `board` / `layers`）、`Pages`（回路図のページ）、`FileName`、`Refs func(from, rel string) ([]byte, string, error)`（参照するファイルを読む。`converter.Options.ReadRef` を渡す。`nil` は読まない）。`Result.Sheets`・`Boards`。`Detect` |
 | `converter/tiff` | TIFF | `Pages`、`DPI`（解像度の無いページに仮定する値）、`Images`（解像度の上限もここ） |
 | `converter/emf` | EMF・WMF | — |
 | `converter/html` | HTML・XHTML・MHTML（リーダー表示） | `ConvertBytes(data, opts)`、`ConvertNode(*html.Node, opts)`。`Views`、`Extract`（`auto` / `article` / `none`）、`Dir`・`BaseURL`（参照の基準）、`NoRemote`・`Fetch`（ネットワークの画像）、`Width`・`FontSize`・`Font`・`MonoFont`、`EmbedFonts` |
