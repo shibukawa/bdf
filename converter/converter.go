@@ -66,6 +66,10 @@ type Format struct {
 	Guess bool
 	// Params are the format-specific options it reads from Options.Params.
 	Params []Param
+	// Files describes the other files an input of the format refers to and
+	// that it reads from Options.Files and Options.Dir ("" when it reads
+	// none).
+	Files string
 	// Detect reports whether an input is in the format; head holds its
 	// first bytes (up to 1 KiB).
 	Detect func(head []byte, r io.ReaderAt, size int64) bool
@@ -168,9 +172,19 @@ type Options struct {
 	// it: a CSV file's sheet.
 	FileName string
 	// Dir is the directory that relative references of the input resolve
-	// in (the images of HTML and Markdown documents); "" reads no files
-	// beside the input. ConvertFile sets it to the input's directory.
+	// in (the images of HTML and Markdown documents, the sheets of a KiCad
+	// schematic); "" reads no files beside the input. ConvertFile sets it
+	// to the input's directory.
 	Dir string
+	// Files holds the files an input refers to, for an input that is not
+	// read from a directory: a server passes the files uploaded with it
+	// (the sheets of a hierarchical KiCad schematic and its project file),
+	// as a FileMap or any file system. Names are paths relative to the
+	// input's directory, with slashes ("power.kicad_sch",
+	// "sub/io.kicad_sch"); a reference that no name matches takes the file
+	// of the same base name, when there is one. Files are looked for here
+	// first, then in Dir. The formats that read them say so (Format.Files).
+	Files fs.FS
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)

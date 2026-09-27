@@ -118,6 +118,10 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/${f%%:*}" "/tmp/${f##*:}.bdf"
             cmp "/tmp/${f##*:}.bdf" "testdata/music/${f##*:}.bdf"
           done
+          for f in demo.zip:demo frame/frame.kicad_pro:frame; do
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/kicad/testdata/${f%%:*}" "/tmp/kicad-${f##*:}.bdf"
+            cmp "/tmp/kicad-${f##*:}.bdf" "testdata/kicad/${f##*:}.bdf"
+          done
   web:
     runs-on: ubuntu-latest
     steps:

@@ -13,8 +13,8 @@ import (
 )
 
 // Detect reports whether an input is a Gerber file, an Excellon drill file,
-// or a zip archive holding them (and not an Office document or an SXF
-// drawing, which are zip archives too).
+// or a zip archive holding them (and not an Office document, an SXF
+// drawing or a KiCad project, which are zip archives too).
 func Detect(head []byte, r io.ReaderAt, size int64) bool {
 	if bytes.HasPrefix(head, []byte("PK\x03\x04")) {
 		zr, err := zip.NewReader(r, size)
@@ -25,7 +25,8 @@ func Detect(head []byte, r io.ReaderAt, size int64) bool {
 		for _, f := range zr.File {
 			name := strings.ToLower(f.Name)
 			switch {
-			case name == "[content_types].xml" || strings.HasSuffix(name, ".p21") || strings.HasSuffix(name, ".sfc"):
+			case name == "[content_types].xml" || strings.HasSuffix(name, ".p21") || strings.HasSuffix(name, ".sfc"),
+				strings.HasSuffix(name, ".kicad_sch") || strings.HasSuffix(name, ".kicad_pcb") || strings.HasSuffix(name, ".kicad_pro"):
 				return false
 			}
 		}

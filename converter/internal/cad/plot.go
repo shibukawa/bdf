@@ -93,6 +93,8 @@ func (p *plot) item(it Item, m canvas.Matrix) {
 		p.fillItem(it, m)
 	case kText:
 		p.text(it.text, m)
+	case kStrokeText:
+		p.strokeText(it.stroke, m)
 	case kImage:
 		p.image(it.image, m)
 	case kGroup:
@@ -366,6 +368,44 @@ func (p *plot) text(t *Text, m canvas.Matrix) {
 		}
 	}
 	p.restore()
+}
+
+// strokeText draws a line of stroke text into a child object in the line's
+// own space, turned and scaled as on the page but not moved, and uses it at
+// the line's place after an ALT_TEXT with its text.
+func (p *plot) strokeText(t *StrokeText, m canvas.Matrix) {
+	pm := m.Mul(t.M)
+	lin := canvas.Matrix{pm[0], pm[1], pm[2], pm[3], 0, 0}
+	b := t.bounds().Transform(lin)
+	if !b.ok {
+		return
+	}
+	bbox := bdf.Rect{X: f32(b.Min.X), Y: f32(b.Min.Y), W: f32(b.W()), H: f32(b.H())}
+	ch, ref := p.cv.Child(bbox)
+	ch.Obj.SetBBox(bbox.X, bbox.Y, bbox.W, bbox.H)
+	sub := &plot{pl: p.pl, cv: ch, obj: ch.Obj}
+	if !t.Strokes.Empty() {
+		sub.strokeItem(Item{kind: kStroke, path: t.Strokes, pen: t.Pen}, lin)
+	}
+	for _, part := range t.Parts {
+		pt := *part
+		pt.Break = BreakNone
+		sub.text(&pt, lin)
+	}
+	switch t.Break {
+	case BreakBox:
+		p.obj.Mark(bdf.MarkBox, "")
+	case BreakParagraph:
+		p.obj.Mark(bdf.MarkParagraph, "")
+	case BreakLine:
+		p.obj.Mark(bdf.MarkLine, "")
+	case BreakWrap:
+		p.obj.Mark(bdf.MarkWrap, "")
+	}
+	p.obj.Mark(bdf.MarkAltText, t.S)
+	p.obj.UseAt(ref, f32(pm[4]), f32(pm[5]))
+	p.cv.Used(ch)
+	p.cv.Drawn = true
 }
 
 // vertical draws a column of upright characters into a child object

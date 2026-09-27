@@ -1,0 +1,5 @@
+{
+  "meta": {"filename": "demo.kicad_pro", "version": 3},
+  "schematic": {},
+  "text_variables": {"PROJECT": "Demo project", "DESIGNER": "bdf tests"}
+}

@@ -52,6 +52,8 @@ func generate(args []string) {
 	hidden := fs.Bool("hidden", false, "PowerPoint, Excel: include hidden slides or sheets (the same as -param hidden=true)")
 	var paramFlags stringList
 	fs.Var(&paramFlags, "param", "format-specific option as name=value (repeatable; see the formats below)")
+	var withFiles stringList
+	fs.Var(&withFiles, "with", "a file the input refers to, such as a sheet of a hierarchical KiCad schematic (repeatable; the files beside the input are read too)")
 	passwordFile := fs.String("password-file", "", "read the password of an encrypted input from this file (- for the standard input; default: $"+passwordEnv+")")
 	encrypt := fs.String("encrypt", "auto", "encrypt the output with the password: auto (when the input needs it), always or never")
 	preview := addPreviewFlags(fs)
@@ -63,6 +65,9 @@ func generate(args []string) {
 			fmt.Fprintf(os.Stderr, "  %-8s %s (%s)\n", f.Name, f.Description, strings.Join(f.Extensions, " "))
 			for _, p := range f.Params {
 				fmt.Fprintf(os.Stderr, "           -param %s=…: %s\n", p.Name, p.Usage)
+			}
+			if f.Files != "" {
+				fmt.Fprintf(os.Stderr, "           -with: %s\n", f.Files)
 			}
 		}
 	}
@@ -105,6 +110,21 @@ func generate(args []string) {
 	opts := &converter.Options{Title: dc.Title.First(), Pages: sel, Images: imgOpts,
 		FontDirs: fontDirs, NoSystemFonts: *noSystemFonts, NoSubset: *noSubset, NoWOFF2: *noWOFF2, IgnoreFSType: *ignoreFSType,
 		Params: map[string]string{"kind": *kind, "no-share": strconv.FormatBool(*noShare), "hidden": strconv.FormatBool(*hidden)}}
+	if len(withFiles) > 0 {
+		files := converter.FileMap{}
+		dir := filepath.Dir(in)
+		for _, p := range withFiles {
+			b, err := os.ReadFile(p)
+			check(err)
+			// by the path from the input's directory, or the file's name
+			name := filepath.Base(p)
+			if rel, err := filepath.Rel(dir, p); err == nil && !strings.HasPrefix(rel, "..") {
+				name = filepath.ToSlash(rel)
+			}
+			files[name] = b
+		}
+		opts.Files = files
+	}
 	switch *fonts {
 	case "":
 	case "embed":

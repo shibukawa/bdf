@@ -174,6 +174,16 @@ export const CASES: Case[] = [
   { name: "music-frere-1", src: "/testdata/music/frere-mml.bdf", kind: "page", view: "score", page: 0, scale: 1 },
   { name: "music-twinkle-kar-1", src: "/testdata/music/twinkle-kar.bdf", kind: "page", view: "score", page: 0, scale: 1 },
   { name: "music-minuet-1", src: "/testdata/music/minuet-musicxml.bdf", kind: "page", view: "score", page: 0, scale: 1 },
+  // KiCad projects (converter/kicad) drawn in KiCad's default theme with its stroke font; see test/kicad. The root
+  // sheet (symbols with every pin shape, labels of every kind and spin, hatched shapes, a table, a text box, marked-up
+  // and Japanese text), one of the two instances of a sub-sheet on A5, the board from the front and from below
+  // (mirrored), its front copper, and a sheet in the project's own drawing sheet.
+  { name: "kicad-demo-1", src: "/testdata/kicad/demo.bdf", kind: "page", view: "schematic", page: 0, scale: 1 },
+  { name: "kicad-demo-2", src: "/testdata/kicad/demo.bdf", kind: "page", view: "schematic", page: 1, scale: 1.5 },
+  { name: "kicad-board-front", src: "/testdata/kicad/demo.bdf", kind: "page", view: "board-front", page: 0, scale: 0.75 },
+  { name: "kicad-board-back", src: "/testdata/kicad/demo.bdf", kind: "page", view: "board-back", page: 0, scale: 0.75 },
+  { name: "kicad-board-f-cu", src: "/testdata/kicad/demo.bdf", kind: "page", view: "layer-F.Cu", page: 0, scale: 0.75 },
+  { name: "kicad-frame-1", src: "/testdata/kicad/frame.bdf", kind: "page", view: "schematic", page: 0, scale: 1 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";
