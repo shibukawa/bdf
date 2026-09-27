@@ -5,10 +5,10 @@
 // The converters themselves are its subpackages (converter/pdf,
 // converter/ai, converter/psd, converter/pptx, converter/xlsx,
 // converter/csv, converter/docx, converter/visio, converter/drawio,
-// converter/dxf, converter/jww, converter/sxf, converter/cgm, converter/emf,
-// converter/tiff, converter/image, converter/html, converter/markdown).
-// Each registers its format when it is imported, so a program supports the
-// formats whose packages it links in:
+// converter/dxf, converter/jww, converter/sxf, converter/cgm,
+// converter/gerber, converter/emf, converter/tiff, converter/image,
+// converter/html, converter/markdown). Each registers its format when it is
+// imported, so a program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
