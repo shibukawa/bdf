@@ -325,7 +325,7 @@ Worker を使わない場合や、自前の Worker に組み込む場合の部�
 | 名前 | 内容 |
 |---|---|
 | `PageRenderer(doc, options?, fontSet?, resources?)` | `renderPage(ctx, page, {scale, roles?, background?})`、`renderContinuous`、`renderSheet`、`continuousLayout`、`sheetSize`、`preparePage`、`preparePageText`、`dispose` |
-| `CanvasRenderer(res, options?)` | Object 1 つを 2D コンテキストに描く（`draw(ctx, obj)`） |
+| `CanvasRenderer(res, options?)` | Object 1 つを 2D コンテキストに描く（`draw(ctx, obj, reset?, visible?)`。`visible` は Object の座標で見える矩形で、そこから十分に離れたテキストを飛ばす） |
 | `ResourceCache(doc, fontSet?, {imageBudget?, decodeImage?})` | Part から作る `Path2D`、`ImageBitmap`、`FontFace` のキャッシュ。デコードした画像は `imageBudget`（既定 `DEFAULT_IMAGE_BUDGET` = 256 MiB）まで保持し、描画中のものは `hold()` / `release()`（`ImageHold`）で守る |
 | `DocumentSearch(doc, measure)` | 検索とヒットの矩形（`search`、`locate`、`text`、`forget`） |
 | `fontString` / `embeddedFamily` / `buildPath2D` / `cssColor` / `resetState` | 描画の小さな部品 |

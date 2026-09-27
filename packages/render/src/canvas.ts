@@ -1,5 +1,5 @@
 import {
-  type ObjectPart, type OpSink, type Glyph, type Paint, walk,
+  type ObjectPart, type OpSink, type Glyph, type Paint, type Rect, walk,
   BLEND_NAMES, LINE_CAPS, LINE_JOINS, TEXT_ALIGNS, TEXT_BASELINES, TEXT_DIRECTIONS, FILL_RULES, REPEATS, SMOOTHING_QUALITIES, PaintKind, MaskKind,
 } from "@bdf/core";
 import { ResourceCache, fontString } from "./resources.js";
@@ -28,6 +28,41 @@ export interface RenderOptions {
   createCanvas?: (w: number, h: number) => OffscreenCanvas | HTMLCanvasElement;
 }
 
+/** A rectangle as its edges. */
+interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** The size of a CSS font, in px (10 when it cannot be told). */
+function fontSize(font: string): number {
+  const m = /(\d*\.?\d+(?:e[+-]?\d+)?)px/i.exec(font);
+  return m ? Number(m[1]) : 10;
+}
+
+/** The text widths a renderer keeps before it starts over. */
+const MAX_WIDTHS = 200_000;
+
+/**
+ * How far from its anchor, in font sizes, the ink of a run may reach
+ * besides its advance (on either side, for every alignment): for the
+ * baseline (top, middle, alphabetic, bottom), accents and stacked
+ * combining marks, and italic overhang.
+ */
+const INK_REACH = 4;
+
+/**
+ * The drawing state that decides what text can be skipped: the visible
+ * box in the current coordinates (none once they cannot be told, or a
+ * shadow or a filter spreads the ink), and the font size.
+ */
+interface Cull {
+  box: Box | undefined;
+  size: number;
+}
+
 function defaultCreateCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
   if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(w, h);
   const c = document.createElement("canvas");
@@ -43,6 +78,7 @@ interface Group {
   blend: number;
   dx: number;
   dy: number;
+  cull: Cull; // that of ctx, where drawing resumes
 }
 
 /** A soft mask being drawn for a group (MASK_BEGIN … MASK_END). */
@@ -53,6 +89,7 @@ interface Mask {
   kind: number;
   transfer: Uint8Array | undefined;
   group: Group | undefined;
+  cull: Cull; // that of ctx
 }
 
 /** Put a context back into the Canvas 2D initial drawing state (docs/spec.md §8). */
@@ -91,6 +128,16 @@ export class CanvasRenderer implements OpSink {
   private masks: Mask[] = [];
   private readonly tol: number;
   private readonly createCanvas: (w: number, h: number) => OffscreenCanvas | HTMLCanvasElement;
+  /** What text can be skipped now, and as of each SAVE not restored yet. */
+  private cull: Cull = { box: undefined, size: 10 };
+  private culls: Cull[] = [];
+  /**
+   * Widths that measureText gave, by font (with the letter spacing and
+   * direction) and text: the advance correction measures every run each
+   * time it is drawn, and measuring takes longer than drawing.
+   */
+  private widths = new Map<string, Map<string, number>>();
+  private widthCount = 0;
 
   constructor(readonly res: ResourceCache, opts: RenderOptions = {}) {
     this.tol = opts.advanceTolerance ?? 0.005;
@@ -100,14 +147,21 @@ export class CanvasRenderer implements OpSink {
   /**
    * Draw an object with the context's current transform and clip. Top-level
    * objects (pages, tiles) start from the initial drawing state; USE'd children
-   * inherit the state of their parent.
+   * inherit the state of their parent. visible is the part of the object
+   * that can be seen, in its coordinates: text wholly outside it is skipped
+   * (a tile of a sheet has thousands of runs, and a region shows a few).
    */
-  draw(ctx: Ctx2D, obj: ObjectPart, reset = true): void {
-    const prevCtx = this.ctx, prevObj = this.obj;
+  draw(ctx: Ctx2D, obj: ObjectPart, reset = true, visible?: Rect): void {
+    const prevCtx = this.ctx, prevObj = this.obj, prevCull = this.cull, prevCulls = this.culls;
     this.ctx = ctx;
     this.obj = obj;
     ctx.save();
     if (reset) resetState(ctx);
+    this.cull = {
+      box: visible && { x0: visible.x, y0: visible.y, x1: visible.x + visible.w, y1: visible.y + visible.h },
+      size: fontSize(ctx.font),
+    };
+    this.culls = [];
     try {
       walk(obj, this);
     } finally {
@@ -117,7 +171,64 @@ export class CanvasRenderer implements OpSink {
       ctx.restore();
       this.ctx = prevCtx;
       this.obj = prevObj;
+      this.cull = prevCull;
+      this.culls = prevCulls;
     }
+  }
+
+  /** Map the visible box into the coordinates a transform sets up (their bounding box when it rotates or skews). */
+  private transformCull(a: number, b: number, c: number, d: number, e: number, f: number) {
+    const v = this.cull.box;
+    if (!v) return;
+    const det = a * d - b * c;
+    if (!det || !Number.isFinite(det)) {
+      this.cull = { ...this.cull, box: undefined };
+      return;
+    }
+    // the inverse of the transform, for the corners
+    const ia = d / det, ib = -b / det, ic = -c / det, id = a / det;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [px, py] of [[v.x0, v.y0], [v.x1, v.y0], [v.x0, v.y1], [v.x1, v.y1]]) {
+      const x = ia * (px - e) + ic * (py - f), y = ib * (px - e) + id * (py - f);
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+    this.cull = { ...this.cull, box: { x0, y0, x1, y1 } };
+  }
+
+  /** Whether a run with its anchor at x, y and that advance cannot reach the visible box. */
+  private unseen(x: number, y: number, advance: number): boolean {
+    const v = this.cull.box;
+    if (!v) return false;
+    const m = this.cull.size * INK_REACH;
+    if (y - m > v.y1 || y + m < v.y0) return true;
+    // an unknown advance: the run may be of any length
+    return advance > 0 && (x - advance - m > v.x1 || x + advance + m < v.x0);
+  }
+
+  /** measureText's width of a text in the current font, remembered while the font is loaded. */
+  private width(text: string): number {
+    const ctx = this.ctx;
+    let key = ctx.font;
+    const ls = (ctx as CanvasRenderingContext2D).letterSpacing;
+    if (ls && ls !== "0px") key += ` ${ls}`;
+    if (ctx.direction === "rtl") key += " rtl";
+    let widths = this.widths.get(key);
+    if (!widths) {
+      // a font still loading is measured in another for now
+      if (!this.res.fontLoaded(ctx.font)) return ctx.measureText(text).width;
+      this.widths.set(key, (widths = new Map()));
+    }
+    let w = widths.get(text);
+    if (w === undefined) {
+      w = ctx.measureText(text).width;
+      if (++this.widthCount > MAX_WIDTHS) {
+        this.widths.clear();
+        this.widths.set(key, (widths = new Map()));
+        this.widthCount = 1;
+      }
+      widths.set(text, w);
+    }
+    return w;
   }
 
   private paint(index: number): CanvasGradient | CanvasPattern | string {
@@ -159,11 +270,27 @@ export class CanvasRenderer implements OpSink {
   }
 
   // --- state ---
-  save() { this.ctx.save(); }
-  restore() { this.ctx.restore(); }
-  transform(a: number, b: number, c: number, d: number, e: number, f: number) { this.ctx.transform(a, b, c, d, e, f); }
-  translate(x: number, y: number) { this.ctx.translate(x, y); }
-  scale(x: number, y: number) { this.ctx.scale(x, y); }
+  save() {
+    this.culls.push(this.cull);
+    this.ctx.save();
+  }
+  restore() {
+    // one RESTORE too many restores the state draw() started from, whose box is not known here
+    this.cull = this.culls.pop() ?? { ...this.cull, box: undefined };
+    this.ctx.restore();
+  }
+  transform(a: number, b: number, c: number, d: number, e: number, f: number) {
+    this.ctx.transform(a, b, c, d, e, f);
+    this.transformCull(a, b, c, d, e, f);
+  }
+  translate(x: number, y: number) {
+    this.ctx.translate(x, y);
+    this.transformCull(1, 0, 0, 1, x, y);
+  }
+  scale(x: number, y: number) {
+    this.ctx.scale(x, y);
+    this.transformCull(x, 0, 0, y, 0, 0);
+  }
   clipPath(path: number, rule: number) { this.ctx.clip(this.res.path(this.obj, path), FILL_RULES[rule]); }
   clipRect(x: number, y: number, w: number, h: number) {
     this.ctx.beginPath();
@@ -199,14 +326,18 @@ export class CanvasRenderer implements OpSink {
     ctx.shadowBlur = blur * s;
     ctx.shadowOffsetX = dx * s;
     ctx.shadowOffsetY = dy * s;
+    // a shadow off the text is ink away from it
+    if ((rgba & 0xff) !== 0 && (blur !== 0 || dx !== 0 || dy !== 0)) this.cull = { ...this.cull, box: undefined };
   }
   filter(css: string) {
     if ("filter" in this.ctx) (this.ctx as CanvasRenderingContext2D).filter = css;
+    if (css && css !== "none") this.cull = { ...this.cull, box: undefined }; // a blur or a drop shadow spreads the ink
   }
   font(font: number, size: number) {
     const f = this.obj.fonts[font];
     if (!f) throw new Error(`bdf: bad font ref ${font}`);
     this.ctx.font = fontString(f, size);
+    this.cull = { ...this.cull, size: Math.abs(size) };
   }
   textStyle(align: number, baseline: number, dir: number, letterSpacing: number) {
     const ctx = this.ctx;
@@ -242,7 +373,7 @@ export class CanvasRenderer implements OpSink {
   private text(text: string, x: number, y: number, advance: number, stroke: boolean) {
     const ctx = this.ctx;
     if (advance > 0) {
-      const measured = ctx.measureText(text).width;
+      const measured = this.width(text);
       if (measured > 0 && Math.abs(measured - advance) / advance > this.tol) {
         ctx.save();
         ctx.translate(x, y);
@@ -254,7 +385,10 @@ export class CanvasRenderer implements OpSink {
     }
     if (stroke) ctx.strokeText(text, x, y); else ctx.fillText(text, x, y);
   }
-  fillText(text: string, x: number, y: number, advance: number) { this.text(text, x, y, advance, false); }
+  fillText(text: string, x: number, y: number, advance: number) {
+    if (!this.unseen(x, y, advance)) this.text(text, x, y, advance, false);
+  }
+  // always drawn: the ink of a stroke reaches as far as its line is wide
   strokeText(text: string, x: number, y: number, advance: number) { this.text(text, x, y, advance, true); }
 
   // --- images ---
@@ -299,7 +433,8 @@ export class CanvasRenderer implements OpSink {
     const child = this.res.object(hash);
     const ctx = this.ctx;
     ctx.save();
-    if (x !== 0 || y !== 0) ctx.translate(x, y);
+    const cull = this.cull, depth = this.culls.length;
+    if (x !== 0 || y !== 0) this.translate(x, y);
     const parent = this.obj;
     this.obj = child;
     try {
@@ -307,6 +442,9 @@ export class CanvasRenderer implements OpSink {
     } finally {
       this.obj = parent;
       ctx.restore();
+      // a child that leaves a SAVE open leaves ctx in its state
+      this.cull = this.culls.length === depth ? cull : { ...cull, box: undefined };
+      this.culls.length = Math.min(this.culls.length, depth);
     }
   }
   groupBegin(alpha: number, blend: number, x: number, y: number, w: number, h: number) {
@@ -324,7 +462,7 @@ export class CanvasRenderer implements OpSink {
     gctx.fillStyle = ctx.fillStyle;
     gctx.strokeStyle = ctx.strokeStyle;
     gctx.lineWidth = ctx.lineWidth;
-    this.groups.push({ ctx, canvas, alpha, blend, dx: x0, dy: y0 });
+    this.groups.push({ ctx, canvas, alpha, blend, dx: x0, dy: y0, cull: this.cull });
     this.ctx = gctx;
   }
   groupEnd() {
@@ -332,6 +470,7 @@ export class CanvasRenderer implements OpSink {
     if (!g) return;
     const ctx = g.ctx;
     this.ctx = ctx;
+    this.cull = g.cull;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = g.alpha;
@@ -353,13 +492,15 @@ export class CanvasRenderer implements OpSink {
     resetState(mctx);
     mctx.setTransform(this.ctx.getTransform());
     mctx.save();
-    this.masks.push({ ctx: this.ctx, canvas, mctx, kind, transfer: transfer.length === 256 ? transfer : undefined, group });
+    this.masks.push({ ctx: this.ctx, canvas, mctx, kind, transfer: transfer.length === 256 ? transfer : undefined, group, cull: this.cull });
     this.ctx = mctx;
+    this.cull = { ...this.cull, size: 10 };
   }
   maskEnd() {
     const m = this.masks.pop();
     if (!m) return;
     this.ctx = m.ctx;
+    this.cull = m.cull;
     const g = m.group;
     if (!g || this.groups[this.groups.length - 1] !== g) return;
     const { mctx, canvas } = m;
