@@ -6,7 +6,7 @@
 
 Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.io の図、CAD の図面とプロットファイル（DXF、Jw_cad、SXF、CGM、HP-GL/2）、プリント基板の製造データ（Gerber、Excellon）、スキャンや FAX の TIFF 画像、デザインのファイル（Illustrator、Photoshop）、HTML のページ、Markdown の文書、EPUB の本、ブラウザがそのまま表示できる画像を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
 
-**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF・CGM の図面、HP-GL/2 のプロットファイル、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページ、Markdown の文書、EPUB の本や画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
+**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF・CGM の図面、HP-GL/2 のプロットファイル、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページ、Markdown の文書、EPUB の本や画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。表示中の文書のサムネイル（64〜512 ピクセル、PNG か JPEG）と検索用のテキストもダウンロードできます。作るのはサーバーと同じ Go のパッケージです。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
 
 ## Why bdf
 
@@ -62,7 +62,7 @@ flowchart TB
 1. **サーバーで変換**: Go のサーバープロセス内で `converter/pdf`、`converter/pptx`、`converter/xlsx` などのパッケージが元ファイルを変換し、manifest・描画命令・画像・フォントをパックした **bdf バンドル**にします。バンドルは 1 ファイル形式（先頭からのストリーミング読み、または Range による Part 単位の取得）か、オブジェクトストレージや CDN にそのまま置ける分割形式で配信します。ブラウザでは Worker 内のレンダラが必要な Part だけを読み込んで `OffscreenCanvas` に描画し、メインスレッドは受け取ったビットマップと透明なテキスト層を配置するだけです。
 2. **ブラウザ内で変換**: 同じ変換パッケージを wasm にしたもの（`cmd/bdfwasm`）が Worker で動き、ユーザーが開いたファイルをメモリ上の bdf 文書に変換して、そのままレンダラに渡します。変換から描画までがブラウザ内で完結し、ファイルは外に出ません。デモサイトはこの経路で動いています。Office 系の変換器は、サイトと一緒に公開したフリーフォントでテキストをレイアウトします（文書が使うものだけを取得します）。PDF はページ単位で変換し（`converter.OpenStream`）、ビューアはまずページの大きさを受け取ってから、表示中のページを優先して変換できたページを順に描画し、最後に完成した文書と差し替えます。
 
-サーバーはバンドルと一緒に、文書の一覧や検索エンジンが必要とするものも作れます。作るのは文書（パスワード付きの入力ならパスワードも）を持っている間です。Go のラスタライザ（`raster`、`thumbnail`）で描いたサムネイル画像と、文書のメタデータ・ページごとのテキストの JSON（`Document.SearchText`）です。
+サーバーはバンドルと一緒に、文書の一覧や検索エンジンが必要とするものも作れます。作るのは文書（パスワード付きの入力ならパスワードも）を持っている間です。Go のラスタライザ（`raster`、`thumbnail`）で描いたサムネイル画像と、文書のメタデータ・ページごとのテキストの JSON（`Document.SearchText`）です。デモサイトはこれらのパッケージも wasm にして動かし（変換器を持たないモジュールで、頼まれたときに読み込みます）、表示中の文書のサムネイルとテキストをダウンロードできるようにしています。
 
 ## 特徴
 

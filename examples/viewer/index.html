@@ -71,6 +71,17 @@
   #warnings { position: relative; }
   #warnings summary { cursor: pointer; color: #8a5a00; }
   #warnings ul { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: min(560px, 80vw); max-height: 50vh; overflow: auto; margin: 0; padding: 8px 8px 8px 24px; background: #fff; color: #222; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  /* the thumbnail and the search text, made as a server makes them */
+  #preview { position: relative; }
+  #preview summary { cursor: pointer; }
+  #preview .panel { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; width: min(300px, 90vw); box-sizing: border-box; padding: 4px 12px; background: #fff; color: #222; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  #preview .panel p { margin: 8px 0; }
+  #preview h2 { font-size: 13px; margin: 10px 0 6px; }
+  #preview .options { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+  /* at their size, or scaled down to 256 pixels (a percentage would let the grid row grow) */
+  #preview .thumb { display: grid; place-items: center; height: 256px; margin: 8px 0; background: #eef0f2; border-radius: 3px; }
+  #preview .thumb img { width: auto; height: auto; max-width: 100%; max-height: 256px; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  #preview .note { color: #666; font-size: 12px; }
   /* the start page, and the outline while a file is dragged over the window */
   .landing { max-width: 640px; margin: 48px auto; padding: 32px; background: #fff; border: 2px dashed #9aa4b1; border-radius: 12px; line-height: 1.6; }
   .landing h1 { font-size: 20px; margin: 0 0 8px; }
@@ -111,6 +122,36 @@
     <details id="warnings" hidden><summary></summary><ul></ul></details>
     <span id="timing"></span>
     <a id="download" hidden>Download .bdf</a>
+    <details id="preview" hidden>
+      <summary>Thumbnail and text</summary>
+      <div class="panel">
+        <h2>Thumbnail</h2>
+        <div class="options">
+          <label>size <select id="thumbSize" title="a fitted thumbnail keeps the shape of the page within the square">
+            <option value="64">64 × 64</option>
+            <option value="128">128 × 128</option>
+            <option value="256" selected>256 × 256</option>
+            <option value="512">512 × 512</option>
+          </select></label>
+          <label>layout <select id="thumbMode" title="auto: by the kind of document; crop: a square from the top-left of the first page; fit: the whole first page">
+            <option value="auto">auto</option>
+            <option value="crop">crop</option>
+            <option value="fit">fit</option>
+          </select></label>
+          <label>format <select id="thumbFormat">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPEG</option>
+          </select></label>
+        </div>
+        <div class="thumb"><img id="thumbImg" hidden alt=""></div>
+        <p><a id="thumbLink" hidden>Save the thumbnail</a> <span id="thumbInfo"></span></p>
+        <p id="thumbWarnings" class="note" hidden></p>
+        <h2>Search text</h2>
+        <p><a id="textLink" hidden>Save the text (JSON)</a> <span id="textInfo"></span></p>
+        <p class="note">The metadata and the text of each page, for a search index. Both are made by the Go packages a server makes them with (thumbnail, Document.SearchText), built as WebAssembly.</p>
+        <p id="previewNote" class="note" hidden></p>
+      </div>
+    </details>
   </span>
 </header>
 <div id="stage" role="tabpanel" tabindex="0">
