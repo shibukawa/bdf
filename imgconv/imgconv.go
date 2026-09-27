@@ -273,3 +273,12 @@ func encodePNG(img *image.NRGBA) []byte {
 	_ = enc.Encode(&buf, img)
 	return buf.Bytes()
 }
+
+// EncodeWebP encodes an image as WebP: lossless, or lossy at a quality
+// from 1 to 100. It returns ErrNotAvailable in builds without the codecs.
+func EncodeWebP(img *image.NRGBA, quality int, lossless bool) ([]byte, error) {
+	if !Available() {
+		return nil, ErrNotAvailable
+	}
+	return encodeWebP(img, Options{Quality: quality}.quality(), Options{}.method(), lossless)
+}

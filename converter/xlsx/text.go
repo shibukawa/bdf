@@ -7,9 +7,9 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/linebreak"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // Cell text is laid out the way Excel lays it out: in the cell's box less a

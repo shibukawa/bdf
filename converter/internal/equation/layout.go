@@ -5,7 +5,7 @@ import (
 	"unicode"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/sfnt"
 )
 
 // Style is how a whole formula is set.

@@ -9,9 +9,9 @@ import (
 	"unicode"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // The document is read into blocks (paragraphs and tables) whose text is

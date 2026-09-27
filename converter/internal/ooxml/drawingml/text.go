@@ -5,9 +5,9 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // Text properties are inherited along a chain: the paragraph's own a:pPr,

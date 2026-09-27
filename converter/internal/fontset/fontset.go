@@ -15,7 +15,7 @@ import (
 	"unicode"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // Choice is a font face picked for some text, with its metrics.

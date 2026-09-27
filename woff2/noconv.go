@@ -6,3 +6,5 @@ package woff2
 func Available() bool { return false }
 
 func compress([]byte) ([]byte, error) { return nil, ErrNotAvailable }
+
+func decompress([]byte) ([]byte, error) { return nil, ErrDecodeNotAvailable }

@@ -5,9 +5,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/fontdb"
+	"github.com/shibukawa/bdf/internal/sfnt"
 )
 
 // Fonts are what formulas are laid out with.

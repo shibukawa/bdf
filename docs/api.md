@@ -11,6 +11,7 @@ bdf の公開 API をパッケージごとにまとめる。引数や細かい�
 | bdf を自分で組み立てる・読む | Go の [`bdf`](#go-文書の組み立てと読み込みbdf) パッケージ |
 | bdf をブラウザに表示する | [`@bdf/render`](#typescript-bdfrender) の Worker とテキスト層 |
 | bdf を読んでテキストや構造を取り出す（Node でも） | [`@bdf/core`](#typescript-bdfcore) |
+| サーバーでサムネイル・ページの画像・検索用のテキストを作る | Go の [`thumbnail` と `raster`](#go-サムネイルとページの画像thumbnailraster)、[`Document.SearchText`](#読み込み)、または [`bdf` コマンド](#コマンドbdf) |
 
 ## Go: 変換（converter）
 
@@ -148,6 +149,7 @@ res, err := s.Finish() // Convert と同じ完成した文書
 | `Disassemble(data) (string, error)` | Object を人が読める命令列にする |
 | `ExtractText(o, resolve) ([]TextRun, error)` | Object（と子 Object）のテキストを取り出す |
 | `DecodeTextIndex` / `EncodeTextIndex` / `PlainText` | テキスト索引の読み書きと、索引からの平文 |
+| `(*Document).SearchText() (*SearchText, error)` | 検索エンジンに入れるテキスト。`Meta`（Dublin Core と入力形式）と、View ごとの `Pages`（`Page` は 1 始まりのページ番号、シートは 0 で丸ごと、`Text` は平文）。テキスト索引の Part があればそれを、なければ Object から取り出す。テキストのないページは除き、flow View のある文書の scroll View（同じ本文の別レイアウト）も除く。JSON にできる |
 | `DecodePathCollection` / `EncodePathCollection` | パス集合の Part |
 | `SharePrefixes(objs, minBytes)` | 複数の Object に共通する先頭部分を共有 Object に切り出す |
 | `HashOf` / `ParseHash` | Part のハッシュ |
@@ -157,7 +159,33 @@ res, err := s.Finish() // Convert と同じ完成した文書
 | パッケージ | 内容 |
 |---|---|
 | `imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false） |
-| `woff2` | TrueType・OpenType を WOFF2 にする。`Encode(font)`、`Available()`、`IsWOFF(data)` |
+| `woff2` | TrueType・OpenType を WOFF2 にする、WOFF2 を戻す。`Encode(font)`、`Decode(data)`（glyf・loca・hmtx の変換を戻す。フォントコレクションは扱わない）、`Available()`、`IsWOFF(data)` |
+
+## Go: サムネイルとページの画像（thumbnail、raster）
+
+`github.com/shibukawa/bdf/thumbnail` は文書のサムネイルを、`github.com/shibukawa/bdf/raster` は任意のページや範囲の画像を、ブラウザを使わずに Go で描く（design.md §3.25）。
+
+```go
+d, _ := r.ToDocument() // 変換した結果なら res.Doc
+th, err := thumbnail.Make(d, &thumbnail.Options{Size: 256, Raster: raster.Options{FontDirs: dirs}})
+if err != nil {
+	return err
+}
+err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
+```
+
+| 名前 | 内容 |
+|---|---|
+| `thumbnail.Make(doc, *Options) (*Result, error)` | サムネイルを描く。`Options` は `Size`（既定 256 px。切り抜きなら一辺、全体なら長辺）、`Mode`（`Auto`・`Crop`・`Fit`）、`View`（既定は最初の View）、`Raster`（フォントと背景）。`Result` は `Image`、選んだ `Mode`、`Warnings` |
+| `Auto` の選び方 | Word・HTML・Markdown・Excel・CSV と、縦長のページの PDF・TIFF は `Crop`: 1 ページ目の左上から、ページの幅（横長ならページの高さ）の正方形。scroll View は先頭から、シートは A1 から、シートの短い辺（最大 `MaxSheetSide` = 480 単位）の正方形を枠線つきで。それ以外（PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB の表紙、横長の PDF・TIFF）は `Fit`: 1 ページ目の全体。判定は `Meta.Source` と View の種類による |
+| `thumbnail.Encode(w, img, format)` / `FormatOf(name)` | `PNG`・`JPEG`（品質 85）・`WebP`（非可逆、品質 80）で書く / ファイル名の拡張子から形式を決める |
+| `raster.New(doc, *Options) *Renderer` | 文書を描くレンダラ。`Options` は `FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントと、埋め込みフォントにない字の探し先）と `Background`（既定は白）。デコードした Object・画像・フォントを保持する。並行には使えない |
+| `(*Renderer).Page(v, page, scale)` | fixed・flow View のページ（scroll View の帯）を、1 単位 `scale` 画素で描く |
+| `(*Renderer).Region(v, page, rect, w, h)` | 範囲を `w` × `h` 画素に描く。fixed・flow はそのページの座標、scroll View は帯を積んだ連続の座標、シートはシートの座標（枠線も描く） |
+| `(*Renderer).Warnings()` | ビューアどおりに描けなかったもの（AVIF の画像、FILTER、フォントが見つからないテキストなど） |
+| `raster.MaxPixels` / `ErrTooLarge` / `ErrNoPage` / `SheetSize(v)` | 描く画像の大きさの上限（64 M 画素）とそのエラー、ないページ、シートの大きさ |
+
+描けるもの: パス（nonzero・evenodd、アンチエイリアス）、線（端・結合・破線。1 画素より細い線はビューアと同じく 1 画素幅で薄く）、クリップ、単色・線形・放射・扇形のグラデーションとパターン、画像（PNG、JPEG と EXIF の向き、GIF、BMP、WebP、SVG）、埋め込みフォントと名前で参照するフォントのテキスト（`advance` 補正、揃え、ベースライン、字間、太字・斜体の合成、字ごとのフォールバック、右から左の文字の並べ替え）、グループの透明度とブレンド、ソフトマスク、影。描かないもの: AVIF の画像、FILTER、ヒンティング、カーニング、合字、アラビア文字の字形の変化。
 
 ## コマンド（bdf）
 
@@ -171,6 +199,11 @@ res, err := s.Finish() // Convert と同じ完成した文書
 | `split` / `join` | 1 ファイル形式と分割形式の変換（パスワード不要） |
 | `encrypt` / `decrypt` | パスワードで暗号化する / 暗号化を外す |
 | `demo` | サンプル文書（testdata/demo.bdf と同じもの）を書く |
+| `thumbnail [flags] <file> <out.png \| .jpg \| .webp>` | サムネイルを描く。`-size`（既定 256）、`-mode auto\|crop\|fit`、`-view`、`-font-dir`、`-no-system-fonts` |
+| `text [flags] <file> [out.json]` | メタデータとページごとのテキストを JSON で書く（既定は標準出力） |
+| `render [flags] <file> <out.png \| .jpg \| .webp>` | ページを描く。`-view`、`-page`（1 始まり）、`-scale`、シートは A1 からの `-width`・`-height` |
+
+`generate` の `-thumbnail <file>`（`-thumbnail-size`、`-thumbnail-mode`）と `-text <file>`（`-` で標準出力）は、変換と同時にサムネイルとテキストを書く。サムネイルとテキストは暗号化されないので、暗号化した文書（`generate` では暗号化して書き出す文書。既定ではパスワード付きの入力のもの）については書かない。`-allow-plaintext` を付けたときだけ書く（`thumbnail`・`text`・`render` も同じ）。
 
 ## ブラウザ内変換（cmd/bdfwasm）
 

@@ -19,6 +19,12 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   bdf generate [flags] <input> <out.bdf | dir/>
                                      convert a document or a drawing (bdf generate -h for flags and formats)
+  bdf thumbnail [flags] <file.bdf | dir> <out.png | .jpg | .webp>
+                                     draw a thumbnail: the top of the first page or the whole slide
+  bdf text [flags] <file.bdf | dir> [out.json]
+                                     write the metadata and the text of each page for a search index
+  bdf render [flags] <file.bdf | dir> <out.png | .jpg | .webp>
+                                     draw a page (bdf thumbnail -h, text -h, render -h for flags)
   bdf ls <file.bdf | dir>            list views and parts
   bdf manifest <file.bdf | dir>      print the manifest as JSON
   bdf disasm <file.bdf | dir> <hash> disassemble an object part
@@ -129,6 +135,12 @@ func main() {
 	switch os.Args[1] {
 	case "generate":
 		generate(os.Args[2:])
+	case "thumbnail":
+		thumbnailCmd(os.Args[2:])
+	case "text":
+		textCmd(os.Args[2:])
+	case "render":
+		renderCmd(os.Args[2:])
 	case "ls":
 		r, err := open(os.Args[2])
 		check(err)

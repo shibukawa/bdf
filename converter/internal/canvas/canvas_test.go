@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 func TestIsDocLang(t *testing.T) {

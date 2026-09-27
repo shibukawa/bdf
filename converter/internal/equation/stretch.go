@@ -4,7 +4,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/shibukawa/bdf/converter/internal/sfnt"
+	"github.com/shibukawa/bdf/internal/sfnt"
 )
 
 // stretchV returns a box of the character r grown vertically to at least

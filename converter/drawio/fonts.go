@@ -3,8 +3,8 @@ package drawio
 import (
 	"strings"
 
-	"github.com/shibukawa/bdf/converter/internal/fontdb"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // Fonts: labels are laid out here with the metrics of real fonts, which
