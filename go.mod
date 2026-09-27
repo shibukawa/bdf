@@ -5,6 +5,7 @@ go 1.27
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.2
 	github.com/andybalholm/brotli v1.2.5
+	github.com/klauspost/compress v1.20.1
 	github.com/pdfcpu/pdfcpu v0.11.0
 	github.com/yuin/goldmark v1.8.6
 	golang.org/x/image v0.30.0

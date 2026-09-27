@@ -12,6 +12,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/gerber"
 	_ "github.com/shibukawa/bdf/converter/hpgl"
 	_ "github.com/shibukawa/bdf/converter/jww"
+	_ "github.com/shibukawa/bdf/converter/parquet"
 	_ "github.com/shibukawa/bdf/converter/pptx"
 	_ "github.com/shibukawa/bdf/converter/psd"
 	_ "github.com/shibukawa/bdf/converter/sxf"
