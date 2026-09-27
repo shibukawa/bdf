@@ -15,8 +15,6 @@ func init() {
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool {
 			return sniff(head, r, size) != ""
 		},
-		// draw.io's PNG and SVG exports are images too
-		Fallback: true,
 		Convert: func(r io.ReaderAt, size int64, o *converter.Options) (*converter.Result, error) {
 			res, err := Convert(r, size, &Options{Title: o.Title, FileName: o.FileName, Warn: o.Warn})
 			if err != nil {

@@ -3,10 +3,12 @@
 // format detection and page selection.
 //
 // The converters themselves are its subpackages (converter/pdf,
-// converter/pptx, converter/xlsx, converter/csv, converter/docx,
-// converter/visio, converter/drawio, converter/dxf, converter/emf,
-// converter/tiff, converter/image). Each registers its format when it is
-// imported, so a program supports the formats whose packages it links in:
+// converter/ai, converter/psd, converter/pptx, converter/xlsx,
+// converter/csv, converter/docx, converter/visio, converter/drawio,
+// converter/dxf, converter/jww, converter/sxf, converter/emf,
+// converter/tiff, converter/image, converter/html, converter/markdown).
+// Each registers its format when it is imported, so a program supports the
+// formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -15,7 +17,8 @@
 // packages and their XML) with ooxml/drawingml (shapes, text, tables,
 // charts), fontset (fonts for text layout and their embedding), canvas
 // (objects under construction), metafile (EMF/WMF pictures) and linebreak
-// (line breaking rules); the CAD converters share cad (drawings plotted
+// (line breaking rules); the Word, HTML and Markdown converters share the
+// layout engine wordproc, the CAD converters share cad (drawings plotted
 // onto pages).
 //
 // Password-protected inputs open with Options.Password. Encrypted Office
@@ -49,21 +52,48 @@ type Format struct {
 	Description string
 	// Extensions are the usual file name extensions, with the dot.
 	Extensions []string
+	// Refines names the format this one is a special case of, as an
+	// Illustrator file is a PDF: detection asks it before that format.
+	Refines string
 	// Params are the format-specific options it reads from Options.Params.
 	Params []Param
 	// Detect reports whether an input is in the format; head holds its
 	// first bytes (up to 1 KiB).
 	Detect func(head []byte, r io.ReaderAt, size int64) bool
-	// Fallback formats are detected after the others: their Detect also
-	// accepts inputs that a more specific format reads (images, which
-	// draw.io's PNG and SVG exports are).
-	Fallback bool
 	// Convert converts an input.
 	Convert func(r io.ReaderAt, size int64, opts *Options) (*Result, error)
 	// CheckPassword, for formats with their own encryption, reports
 	// whether an input needs a password to open and checks password
 	// against it (see the package's CheckPassword).
 	CheckPassword func(r io.ReaderAt, size int64, password string) (protected bool, err error)
+	// Stream, for formats that can convert a page at a time, starts such a
+	// conversion (see OpenStream).
+	Stream func(r io.ReaderAt, size int64, opts *Options) (Stream, error)
+}
+
+// Stream is a conversion done a page at a time, for a viewer that shows
+// the pages as they are converted and converts first the ones the reader
+// looks at. Outline is the document before any page is converted; each
+// Page call converts a page of the first view and returns what a reader
+// holding the outline and the pages returned before needs to draw it;
+// Finish converts the pages left and returns the document Convert makes.
+// A Stream is not safe for concurrent use.
+type Stream interface {
+	// Outline returns the document with every view and page, the pages
+	// that Page converts sized but without layers.
+	Outline() *bdf.Document
+	// Pages is the number of pages Page converts: the pages of the first
+	// view, or 0 when the input was converted whole and Outline is the
+	// whole document.
+	Pages() int
+	// Page converts page i of the first view (0-based), unless an earlier
+	// call did, and returns a document whose only view holds that page,
+	// with the parts it needs that no earlier call returned: the reader
+	// puts the page in its outline and adds the parts to those it has.
+	Page(i int) (*bdf.Document, error)
+	// Finish converts the pages no Page call converted and returns the
+	// document. The stream is done with.
+	Finish() (*Result, error)
 }
 
 // Param is a format-specific option.
@@ -101,6 +131,10 @@ type Options struct {
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding them.
 	SystemFonts bool
+	// EmbedFonts embeds the fonts of the formats that refer to them by name
+	// unless told otherwise: HTML and Markdown, whose text is left to the
+	// viewer's fonts as a web page's is.
+	EmbedFonts bool
 
 	// NoSubset embeds whole fonts instead of the glyphs in use.
 	NoSubset bool
@@ -120,9 +154,14 @@ type Options struct {
 
 	// FileName is the input's file name, when it has one (ConvertFile sets
 	// it). Its extension tells the format of inputs whose content does not
-	// (a CSV file of one line or one column), and formats that name what
-	// they convert after the file use it: a CSV file's sheet.
+	// (a CSV file of one line or one column, a Markdown document, an HTML
+	// fragment), and formats that name what they convert after the file use
+	// it: a CSV file's sheet.
 	FileName string
+	// Dir is the directory that relative references of the input resolve
+	// in (the images of HTML and Markdown documents); "" reads no files
+	// beside the input. ConvertFile sets it to the input's directory.
+	Dir string
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
@@ -203,23 +242,41 @@ func Lookup(name string) *Format {
 }
 
 // Detect returns the registered format of an input, or nil when no format
-// recognizes it. Fallback formats are tried last.
+// recognizes it. Formats that refine another are asked first.
 func Detect(r io.ReaderAt, size int64) *Format {
 	head := make([]byte, 1024)
 	n, _ := r.ReadAt(head, 0)
 	head = head[:n]
-	all := Formats()
-	for _, fallback := range []bool{false, true} {
-		for _, f := range all {
-			if f.Fallback == fallback && f.Detect(head, r, size) {
-				return f
-			}
+	formats := Formats()
+	slices.SortStableFunc(formats, func(a, b *Format) int {
+		switch {
+		case a.Refines != "" && b.Refines == "":
+			return -1
+		case a.Refines == "" && b.Refines != "":
+			return 1
+		}
+		return 0
+	})
+	for _, f := range formats {
+		if f.Detect(head, r, size) {
+			return f
 		}
 	}
 	return nil
 }
 
-// DetectFile is Detect for a file path.
+// detectNamed is Detect for an input with a file name: when no format
+// recognizes the content (a CSV file of one line, a Markdown document, an
+// HTML fragment), the format that lists the file's extension takes it.
+func detectNamed(fileName string, r io.ReaderAt, size int64) *Format {
+	if f := Detect(r, size); f != nil {
+		return f
+	}
+	return byExtension(fileName)
+}
+
+// DetectFile is Detect for a file path, with the file's extension for the
+// inputs no format recognizes by their content (see Options.FileName).
 func DetectFile(path string) (*Format, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -230,7 +287,7 @@ func DetectFile(path string) (*Format, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Detect(f, st.Size()), nil
+	return detectNamed(filepath.Base(path), f, st.Size()), nil
 }
 
 // ConvertFile converts a file in the named format (detected when name is
@@ -252,6 +309,9 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 	if o.FileName == "" {
 		o.FileName = filepath.Base(path)
 	}
+	if o.Dir == "" {
+		o.Dir = filepath.Dir(path)
+	}
 	res, err := Convert(f, st.Size(), name, &o)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -262,11 +322,56 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 // Convert converts an input in the named format (detected when name is
 // ""). An encrypted Office document is decrypted with opts.Password first.
 func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, error) {
+	in, err := prepare(r, size, name, opts)
+	if err != nil {
+		return nil, err
+	}
+	res, err := in.format.Convert(in.r, in.size, in.opts)
+	if err != nil {
+		return nil, err
+	}
+	return in.result(res), nil
+}
+
+// OpenStream starts a conversion done a page at a time of an input in the
+// named format (detected when name is ""), which it reads as Convert does.
+// An input whose format cannot is converted whole: its stream's Outline is
+// the document, and Pages is 0.
+func OpenStream(r io.ReaderAt, size int64, name string, opts *Options) (Stream, error) {
+	in, err := prepare(r, size, name, opts)
+	if err != nil {
+		return nil, err
+	}
+	if in.format.Stream == nil {
+		res, err := in.format.Convert(in.r, in.size, in.opts)
+		if err != nil {
+			return nil, err
+		}
+		return &wholeStream{res: in.result(res)}, nil
+	}
+	s, err := in.format.Stream(in.r, in.size, in.opts)
+	if err != nil {
+		return nil, err
+	}
+	return &inputStream{Stream: s, in: in}, nil
+}
+
+// input is an input ready for its converter: decrypted, its format known.
+type input struct {
+	r        io.ReaderAt
+	size     int64
+	format   *Format
+	opts     *Options
+	warnings []string // of the decryption, when opts.Warn is nil
+	// protected reports that the input was decrypted with opts.Password.
+	protected bool
+}
+
+func prepare(r io.ReaderAt, size int64, name string, opts *Options) (*input, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
-	var warnings []string
-	protected := false
+	in := &input{r: r, size: size, opts: opts}
 	if offcrypto.IsEncrypted(r, size) {
 		if opts.Password == "" {
 			return nil, ErrPasswordRequired
@@ -278,36 +383,59 @@ func Convert(r io.ReaderAt, size int64, name string, opts *Options) (*Result, er
 		case errors.Is(err, offcrypto.ErrIntegrity):
 			// The package decrypted and is still a ZIP file with its own
 			// checksums; say so, and convert it.
-			warnings = append(warnings, err.Error())
+			in.warnings = append(in.warnings, err.Error())
 		case err != nil:
 			return nil, err
 		}
-		r, size, protected = bytes.NewReader(b), int64(len(b)), true
+		in.r, in.size, in.protected = bytes.NewReader(b), int64(len(b)), true
 	}
-	var format *Format
 	if name == "" {
-		if format = Detect(r, size); format == nil {
-			if format = byExtension(opts.FileName); format == nil {
-				return nil, ErrUnknownFormat
-			}
+		if in.format = detectNamed(opts.FileName, in.r, in.size); in.format == nil {
+			return nil, ErrUnknownFormat
 		}
-	} else if format = Lookup(name); format == nil {
+	} else if in.format = Lookup(name); in.format == nil {
 		return nil, fmt.Errorf("unknown format %q", name)
 	}
 	if opts.Warn != nil {
-		for _, w := range warnings {
+		for _, w := range in.warnings {
 			opts.Warn(w)
 		}
-		warnings = nil
+		in.warnings = nil
 	}
-	res, err := format.Convert(r, size, opts)
+	return in, nil
+}
+
+// result adds what reading the input found to a converter's result.
+func (in *input) result(res *Result) *Result {
+	res.Warnings = append(in.warnings, res.Warnings...)
+	res.Protected = res.Protected || in.protected
+	return res
+}
+
+// inputStream is a format's stream, whose result gets what reading the
+// input found.
+type inputStream struct {
+	Stream
+	in *input
+}
+
+func (s *inputStream) Finish() (*Result, error) {
+	res, err := s.Stream.Finish()
 	if err != nil {
 		return nil, err
 	}
-	res.Warnings = append(warnings, res.Warnings...)
-	res.Protected = res.Protected || protected
-	return res, nil
+	return s.in.result(res), nil
 }
+
+// wholeStream is the stream of an input converted whole.
+type wholeStream struct{ res *Result }
+
+func (s *wholeStream) Outline() *bdf.Document { return s.res.Doc }
+func (s *wholeStream) Pages() int             { return 0 }
+func (s *wholeStream) Page(i int) (*bdf.Document, error) {
+	return nil, fmt.Errorf("converter: no page %d to convert: the document was converted whole", i)
+}
+func (s *wholeStream) Finish() (*Result, error) { return s.res, nil }
 
 // byExtension returns the format whose usual extension a file name has,
 // or nil.

@@ -2,10 +2,14 @@ package cad
 
 import "math"
 
+// maxDegree is the highest degree of B-spline evaluated.
+const maxDegree = 25
+
 // BSpline adds a B-spline curve (a NURBS curve when weights are given) as
 // a new subpath. Non-rational curves of degree 3 or less with clamped knot
 // vectors become their exact Bézier segments; other curves are sampled.
 // Missing or inconsistent knots are replaced by a clamped uniform vector.
+// Curves of a degree above maxDegree are drawn as their control polygon.
 func (p *Path) BSpline(degree int, knots []float64, ctrl []Point, weights []float64) *Path {
 	n := len(ctrl)
 	if n == 0 {
@@ -19,6 +23,11 @@ func (p *Path) BSpline(degree int, knots []float64, ctrl []Point, weights []floa
 	}
 	if degree == 0 {
 		return p.MoveTo(ctrl[0].X, ctrl[0].Y)
+	}
+	if degree > maxDegree {
+		// evaluating costs the square of the degree: no drawing needs so
+		// high a degree, so draw the control polygon
+		return p.Polyline(ctrl, false)
 	}
 	if len(knots) != n+degree+1 || !nonDecreasing(knots) || knots[degree] >= knots[n] {
 		knots = clampedKnots(n, degree)

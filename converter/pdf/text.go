@@ -145,6 +145,23 @@ func (in *interp) showText(s []byte) {
 	}
 	h := nonZero(in.gs.hscale)
 	codes := f.decode(s)
+	if in.hidden > 0 {
+		// Hidden optional content: the glyphs are not drawn, but they still
+		// move the pen.
+		for _, g := range codes {
+			sp := in.gs.charSp
+			if g.nbytes == 1 && g.code == 32 {
+				sp += in.gs.wordSp
+			}
+			if f.vertical() {
+				w1, _, _ := f.vmetrics(g, f.width(g))
+				in.text.ty += w1*in.gs.size + sp
+			} else {
+				in.text.tx += (f.width(g)*in.gs.size + sp) * h
+			}
+		}
+		return
+	}
 	if f.vertical() {
 		in.showVertical(f, codes)
 		return
@@ -165,7 +182,7 @@ func (in *interp) showText(s []byte) {
 		if isSpace {
 			adv += in.gs.wordSp
 		}
-		draw, text := f.use(g)
+		draw, text := in.use(f, g)
 		if in.actual != nil {
 			// /ActualText marked content overrides the Unicode of the glyphs it wraps.
 			text = ""
@@ -258,7 +275,7 @@ func (in *interp) showType3(f *pdfFont, codes []glyphCode) {
 	}
 	var text strings.Builder
 	for _, g := range codes {
-		_, uni := f.use(g)
+		_, uni := in.use(f, g)
 		text.WriteString(uni)
 	}
 	altPending := text.Len() > 0

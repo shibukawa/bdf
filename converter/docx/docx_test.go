@@ -441,23 +441,6 @@ func TestFieldsAndSections(t *testing.T) {
 	}
 }
 
-func TestNumberFormats(t *testing.T) {
-	for _, c := range []struct {
-		n      int
-		format string
-		want   string
-	}{
-		{4, "upperRoman", "IV"}, {14, "lowerRoman", "xiv"}, {28, "upperLetter", "BB"}, {3, "lowerLetter", "c"},
-		{12, "decimalFullWidth", "１２"}, {3, "decimalEnclosedCircle", "③"}, {21, "japaneseCounting", "二十一"},
-		{105, "ideographDigital", "一〇五"}, {2, "aiueoFullWidth", "イ"}, {3, "iroha", "ﾊ"}, {7, "decimalZero", "07"},
-		{22, "ordinal", "22nd"}, {1234, "japaneseCounting", "千二百三十四"}, {12000, "japaneseCounting", "一万二千"},
-	} {
-		if got := formatNumber(c.n, c.format); got != c.want {
-			t.Errorf("formatNumber(%d, %s) = %q, want %q", c.n, c.format, got, c.want)
-		}
-	}
-}
-
 func TestOptions(t *testing.T) {
 	opts := testOptions()
 	opts.Views = ViewsPages

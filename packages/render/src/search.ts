@@ -31,6 +31,11 @@ export class DocumentSearch {
     return p;
   }
 
+  /** Drop the index of a view whose pages changed; the next search builds it again. */
+  forget(view: View): void {
+    this.indexes.delete(view.id);
+  }
+
   async search(view: View, query: string, opts?: SearchOptions): Promise<SearchHit[]> {
     return (await this.index(view)).search(query, opts);
   }

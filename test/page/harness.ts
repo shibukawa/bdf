@@ -93,12 +93,31 @@ export const CASES: Case[] = [
   { name: "dxf-shapes-1", src: "/testdata/dxf/shapes.bdf", kind: "page", view: "model", page: 0, scale: 0.75 },
   { name: "dxf-layout-1", src: "/testdata/dxf/layout.bdf", kind: "page", view: "layout1", page: 0, scale: 0.75 },
   { name: "dxf-r12-sjis-1", src: "/testdata/dxf/r12-sjis.bdf", kind: "page", view: "model", page: 0, scale: 0.5 },
+  // Jw_cad drawings rendered by converter/jww with the test fonts; see test/jww.
+  { name: "jww-shapes-1", src: "/testdata/jww/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "jww-old-1", src: "/testdata/jww/old.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
+  // An SXF drawing (P21) rendered by converter/sxf with the test fonts; see test/sxf.
+  { name: "sxf-shapes-1", src: "/testdata/sxf/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
   // TIFF pages converted by converter/tiff; see test/tiff. A 300 dpi bilevel scan scaled down to 192 dpi, JPEG strips
   // stored as one JPEG, a fax at 204 × 98 dpi, and a picture stored turned with Orientation 6.
   { name: "tiff-scan-1", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
   { name: "tiff-scan-2", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "tiff-fax-1", src: "/testdata/tiff/fax.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
   { name: "tiff-orientation-6", src: "/testdata/tiff/orientation.bdf", kind: "page", view: "pages", page: 5, scale: 2 },
+  // Markdown and HTML in reader mode (converter/markdown, converter/html); see test/markdown. Their text refers
+  // to fonts by name and is drawn with the browser's fonts, at the advances measured with the test fonts.
+  { name: "markdown-basic-scroll", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 700 }, scale: 1 },
+  { name: "markdown-basic-strips", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 760, w: 504, h: 460 }, scale: 1 },
+  { name: "html-article-scroll", src: "/testdata/html/article.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 760 }, scale: 1 },
+  // Illustrator artboards (converter/ai): each page cut to its artboard, the hidden layer left out; see test/ai.
+  { name: "ai-artboards-1", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "ai-artboards-2", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "ai-artboards-3", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
+  // Photoshop composites (converter/psd): a 144 ppi document, and three artboards cut from a transparent canvas; see test/psd.
+  { name: "psd-layers-1", src: "/testdata/psd/layers.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
+  { name: "psd-artboards-1", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "psd-artboards-2", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "psd-artboards-3", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
   // Images stored as they are by converter/image: a JPEG turned by its EXIF orientation, an AVIF turned by irot,
   // and an SVG drawn at the size it is shown (by the page for the worker, which cannot decode SVG).
   { name: "image-photo", src: "/testdata/image/photo.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
