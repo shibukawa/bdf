@@ -16,6 +16,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/dxf"      // AutoCAD DXF
 	_ "github.com/shibukawa/bdf/converter/emf"      // Windows metafiles
 	_ "github.com/shibukawa/bdf/converter/html"     // HTML, in reader mode
+	_ "github.com/shibukawa/bdf/converter/image"    // images browsers display (PNG, JPEG, SVG …)
 	_ "github.com/shibukawa/bdf/converter/jww"      // Jw_cad
 	_ "github.com/shibukawa/bdf/converter/markdown" // Markdown, in reader mode
 	_ "github.com/shibukawa/bdf/converter/pdf"      // PDF

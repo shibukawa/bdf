@@ -11,7 +11,7 @@
 // solid, hatched, patterned and interpolated), closed figures, arcs,
 // ellipses, conics, Bézier curves and B-splines, text (with its path,
 // alignment, restricted boxes and character sets), cell arrays and tiles
-// are drawn with converter/internal/cad. See docs/design.md §3.19.
+// are drawn with converter/internal/cad. See docs/design.md §3.20.
 package cgm
 
 import (
