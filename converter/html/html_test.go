@@ -377,6 +377,16 @@ func TestSVG(t *testing.T) {
 	}
 }
 
+// XHTML is read as XML: an empty element does not take in what follows.
+func TestXHTML(t *testing.T) {
+	_, r := convertHTML(t, `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title><script src="x.js"/></head>
+<body><p>One<a id="x"/> two.</p><p>Three.</p></body></html>`, testOptions())
+	if c := viewContent(t, r, 0); c.text != "One two.\nThree." {
+		t.Errorf("text %q", c.text)
+	}
+}
+
 func TestLinks(t *testing.T) {
 	opts := testOptions()
 	opts.BaseURL = "https://example.com/docs/page.html"

@@ -56,6 +56,9 @@ const SAMPLES = [
   { path: "converter/psd/testdata/artboards.psd", label: "Photoshop (3 artboards)" },
   { path: "converter/image/testdata/drawing.svg", label: "SVG image" },
   { path: "converter/image/testdata/photo.jpg", label: "JPEG (EXIF)" },
+  { path: "converter/epub/testdata/basic.epub", label: "EPUB" },
+  { path: "converter/epub/testdata/vertical.epub", label: "EPUB (Japanese, vertical)" },
+  { path: "converter/epub/testdata/fixed.epub", label: "EPUB (fixed layout)" },
   { path: "testdata/demo.bdf", label: "bdf" },
 ];
 

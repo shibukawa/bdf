@@ -11,7 +11,7 @@
 // smaller module of the PDF converters (PDF, and Illustrator, whose files
 // are PDFs), the Office converters (Word, PowerPoint, Excel, CSV, Visio,
 // draw.io, DXF, Jw_cad, SXF, CGM, Gerber, metafiles, Photoshop, and images),
-// the HTML and Markdown converters, or the images browsers display by
+// the HTML, Markdown and EPUB converters, or the images browsers display by
 // themselves (PNG, JPEG, SVG …, stored as they are) only. bdf_noconv leaves
 // out the image and WOFF2 encoders: a document drawn where it is converted
 // gains nothing from them.

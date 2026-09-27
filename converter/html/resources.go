@@ -1,7 +1,6 @@
 package html
 
 import (
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shibukawa/bdf/converter/internal/webdoc"
 	xhtml "golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -78,8 +78,8 @@ func (r *resources) link(href string) string {
 // image returns the bytes of an image by its src.
 func (r *resources) image(src string) ([]byte, error) {
 	src = strings.TrimSpace(src)
-	if strings.HasPrefix(strings.ToLower(src), "data:") {
-		return dataURL(src)
+	if webdoc.IsDataURL(src) {
+		return webdoc.DataURL(src)
 	}
 	if b, ok := r.parts[src]; ok {
 		return b, nil
@@ -209,27 +209,4 @@ func httpGet(u string) ([]byte, error) {
 		return nil, fmt.Errorf("HTTP %s", resp.Status)
 	}
 	return readLimited(resp.Body)
-}
-
-// dataURL decodes a data: URL.
-func dataURL(s string) ([]byte, error) {
-	_, rest, _ := strings.Cut(s, ":")
-	meta, data, ok := strings.Cut(rest, ",")
-	if !ok {
-		return nil, errors.New("malformed data: URL")
-	}
-	if strings.HasSuffix(strings.ToLower(meta), ";base64") {
-		data = strings.Map(func(r rune) rune {
-			if r == ' ' || r == '\n' || r == '\r' || r == '\t' {
-				return -1
-			}
-			return r
-		}, data)
-		if b, err := base64.StdEncoding.DecodeString(data); err == nil {
-			return b, nil
-		}
-		return base64.RawStdEncoding.DecodeString(strings.TrimRight(data, "="))
-	}
-	d, err := url.PathUnescape(data)
-	return []byte(d), err
 }

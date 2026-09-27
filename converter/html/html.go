@@ -17,7 +17,6 @@
 package html
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
@@ -25,16 +24,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf8"
 
 	"codeberg.org/readeck/go-readability/v2"
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/webdoc"
 	"github.com/shibukawa/bdf/converter/internal/wordproc"
 	"github.com/shibukawa/bdf/imgconv"
 	xhtml "golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
-	"golang.org/x/net/html/charset"
 )
 
 // View selections.
@@ -180,25 +178,11 @@ func ConvertBytes(data []byte, opts *Options) (*Result, error) {
 			res.setBase(m.location)
 		}
 	}
-	doc, err := parse(data, contentType)
+	doc, err := webdoc.Parse(data, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("html: %w", err)
 	}
 	return convert(doc, opts, res)
-}
-
-// parse decodes a document to UTF-8 by its byte order mark, the charset of
-// its content type or of its meta element, and parses it.
-func parse(data []byte, contentType string) (*xhtml.Node, error) {
-	enc, _, certain := charset.DetermineEncoding(data, contentType)
-	if !certain && utf8.Valid(data) {
-		enc = nil
-	}
-	var r io.Reader = bytes.NewReader(data)
-	if enc != nil {
-		r = enc.NewDecoder().Reader(r)
-	}
-	return xhtml.Parse(r)
 }
 
 // ConvertNode converts a parsed document.

@@ -216,6 +216,8 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 **`fixed`** — 固定サイズページの列。ページごとに `w`,`h` が異なってよい。ビューアはページを縦または横に並べる、あるいは 1 ページずつ表示する。
 
+- `direction`（任意、`fixed` と `flow`）: ページを横に並べる・見開きにするときの順序。`"ltr"`（既定）は左から右、`"rtl"` は右から左で、右綴じの本（縦書きの日本語の本、右から読むマンガ）に使う。見開きでは `rtl` の本の奇数ページが左、偶数ページが右に来る（`ltr` は逆）。ページを縦に並べる・1 ページずつ見せるときには関係しない。
+
 **`flow`** — `fixed` に加え、各ページが `body`（余白を除いた本文矩形）を持ち、レイヤーに役割（`role`）が付く。ビューアは 2 つの表示モードを提供できる。
 
 - ページモード: 紙の形で全レイヤーを描く。
@@ -249,7 +251,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `ai` / `psd` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `dxf` / `jww` / `sfc` / `p21` / `cgm` / `hpgl` / `gerber` / `emf` / `wmf` / `tiff` / `png` / `jpeg` / `gif` / `webp` / `avif` / `bmp` / `ico` / `svg` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `ai` / `psd` / `pptx` / `xlsx` / `csv` / `vsdx` / `vdx` / `drawio` / `dxf` / `jww` / `sfc` / `p21` / `cgm` / `hpgl` / `gerber` / `emf` / `wmf` / `tiff` / `png` / `jpeg` / `gif` / `webp` / `avif` / `bmp` / `ico` / `svg` / `html` / `markdown` / `epub` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -289,17 +291,19 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 変換器は入力文書のメタデータを次のように写す。
 
-| 要素 | PDF（文書情報辞書） | PowerPoint、Excel、Word（コアプロパティ） | draw.io | TIFF（先頭のページのタグ） |
-|---|---|---|---|---|
-| `title` | `Title` | `dc:title` | – | `DocumentName` |
-| `creator` | `Author` | `dc:creator` | – | `Artist`（`;` で分割） |
-| `subject` | `Keywords`（`,` `;` `、` などで分割） | `dc:subject`、`cp:keywords`（同様に分割） | – | – |
-| `description` | `Subject` | `dc:description` | – | `ImageDescription` |
-| `identifier` | – | `dc:identifier` | – | – |
-| `language` | – | `dc:language`（なければ PowerPoint は既定のテキストスタイルの、Word は既定の run の言語。Word は本文の多くが和文なら東アジアの言語） | – | – |
-| `rights` | – | – | – | `Copyright` |
-| `created` | `CreationDate`（W3CDTF に変換） | `dcterms:created` | – | – |
-| `modified` | `ModDate`（W3CDTF に変換） | `dcterms:modified` | `mxfile` の `modified` | `DateTime`（W3CDTF に変換） |
+| 要素 | PDF（文書情報辞書） | PowerPoint、Excel、Word（コアプロパティ） | draw.io | TIFF（先頭のページのタグ） | EPUB（パッケージ文書） |
+|---|---|---|---|---|---|
+| `title` | `Title` | `dc:title` | – | `DocumentName` | `dc:title`（EPUB 3 の `title-type` が `main` のものが先） |
+| `creator` | `Author` | `dc:creator` | – | `Artist`（`;` で分割） | `dc:creator` |
+| `subject` | `Keywords`（`,` `;` `、` などで分割） | `dc:subject`、`cp:keywords`（同様に分割） | – | – | `dc:subject` |
+| `description` | `Subject` | `dc:description` | – | `ImageDescription` | `dc:description`（HTML ならその文字列） |
+| `identifier` | – | `dc:identifier` | – | – | `dc:identifier`（`unique-identifier` が指すものが先） |
+| `language` | – | `dc:language`（なければ PowerPoint は既定のテキストスタイルの、Word は既定の run の言語。Word は本文の多くが和文なら東アジアの言語） | – | – | `dc:language` |
+| `rights` | – | – | – | `Copyright` | `dc:rights` |
+| `created` | `CreationDate`（W3CDTF に変換） | `dcterms:created` | – | – | EPUB 2 の `opf:event="creation"` の `dc:date` |
+| `modified` | `ModDate`（W3CDTF に変換） | `dcterms:modified` | `mxfile` の `modified` | `DateTime`（W3CDTF に変換） | `dcterms:modified` の meta（EPUB 2 は `opf:event="modification"` の `dc:date`） |
+
+EPUB はほかの Dublin Core の要素（`publisher`、`contributor`、`date`、`type`、`format`、`source`、`relation`、`coverage`）もそのまま写す。
 
 PDF と TIFF の対応は、XMP が文書情報辞書と TIFF のタグを写す方法に合わせている（TIFF の `DocumentName` は XMP にないので題名にした）。
 

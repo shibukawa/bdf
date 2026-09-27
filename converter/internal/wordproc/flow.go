@@ -273,6 +273,13 @@ func (f *flow) sections(secs []*section) {
 		prev := f.sec
 		f.sec, f.secNo = s, i
 		f.lc = f.c.lineCtx(s, s.vertical)
+		if f.c.css {
+			// pictures shrink to the page
+			f.lc.maxObj = s.pgH - s.top - s.bottom
+			if s.vertical {
+				f.lc.maxObj = s.textWidth()
+			}
+		}
 		if s.pgStart >= 0 {
 			f.pageStart = s.pgStart
 		}

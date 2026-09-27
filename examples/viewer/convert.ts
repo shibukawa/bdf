@@ -59,18 +59,21 @@ export class ConvertError extends Error {
   }
 }
 
-/** Extensions of the files the web module converts (HTML and Markdown). */
-const WEB = [".html", ".htm", ".xhtml", ".mhtml", ".mht", ".md", ".markdown", ".mdown", ".mkd", ".mdx"];
+/** Extensions of the files the web module converts (HTML, Markdown and EPUB). */
+const WEB = [".html", ".htm", ".xhtml", ".mhtml", ".mht", ".md", ".markdown", ".mdown", ".mkd", ".mdx", ".epub"];
 
 /**
- * What a file is, from its content and its name: a bdf document, an HTML
- * or Markdown document (by its extension: a README may start with an SVG
- * picture), an image the browser displays by itself (stored as it is by a
- * small module), a PDF, or (possibly) an Office document or a diagram.
+ * What a file is, from its content and its name: a bdf document, an EPUB,
+ * an HTML or Markdown document (by its extension: a README may start with
+ * an SVG picture), an image the browser displays by itself (stored as it is
+ * by a small module), a PDF, or (possibly) an Office document or a diagram.
  * draw.io's PNG and SVG exports are diagrams.
  */
 export function sniff(data: Uint8Array, name = ""): "bdf" | "image" | "pdf" | "web" | "office" {
   if (data[0] === 0x62 && data[1] === 0x64 && data[2] === 0x66 && data[3] === 0) return "bdf";
+  // an EPUB starts with its mimetype file, stored
+  const zip = String.fromCharCode(...data.subarray(0, 58));
+  if (zip.startsWith("PK\x03\x04") && zip.slice(30) === "mimetypeapplication/epub+zip") return "web";
   const dot = name.lastIndexOf(".");
   if (dot >= 0 && WEB.includes(name.slice(dot).toLowerCase())) return "web";
   if (isImage(data)) return "image";
