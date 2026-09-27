@@ -35,12 +35,15 @@ function load(url: string): Promise<Converter> {
       const go = new Go();
       const { instance } = await WebAssembly.instantiateStreaming(fetch(url), go.importObject);
       // run() executes main until it waits for calls, so the global is set when it returns
-      go.run(instance).catch(() => {}).finally(() => modules.delete(url)); // the program ended: load it again next time
+      let failure: unknown;
+      go.run(instance).catch((e) => { failure = e; }).finally(() => modules.delete(url)); // the program ended: load it again next time
       const g = self as unknown as { bdfConverter?: Converter };
       const converter = g.bdfConverter;
       delete g.bdfConverter;
-      if (!converter) throw new Error(`${url}: not a bdf converter module`);
-      return converter;
+      if (converter) return converter;
+      // why main stopped (the stack overflowed, say): run() has rejected, the catch comes a task later
+      await new Promise((r) => setTimeout(r, 0));
+      throw new Error(failure ? `${url} did not start: ${failure}` : `${url}: not a bdf converter module`);
     })();
     p.catch(() => modules.delete(url));
     modules.set(url, p);

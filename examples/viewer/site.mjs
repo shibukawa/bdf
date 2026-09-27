@@ -12,8 +12,9 @@
 // other files (licenses) are copied as they are. It defaults to the test
 // fonts of converter/pptx/testdata/fonts. Requires Go.
 import { execFile as execFileCb } from "node:child_process";
-import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { basename, delimiter, join, resolve } from "node:path";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, delimiter, dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { serve } from "../../test/serve.mjs";
 import { buildViewer, root } from "./build.mjs";
@@ -102,14 +103,51 @@ async function goEnv(name) {
   return (await execFile("go", ["env", name], { cwd: root })).stdout.trim();
 }
 
+/**
+ * Write into dir a copy of goldmark (the Markdown converter's parser) whose
+ * linkify extension compiles shallower patterns, and a go.mod that replaces
+ * goldmark with it; return that go.mod's path, for go build -modfile.
+ * regexp/syntax turns [...]{1,256} into 255 nested groups and compiles them
+ * recursing once a group, deeper than Safari lets a worker's stack go: the
+ * web module, which compiles the patterns when it starts, stopped with
+ * "Maximum call stack size exceeded" before it set bdfConverter. [...]+
+ * finds the same links, but for host names longer than 256 characters. (A
+ * -overlay cannot replace files in the module cache.)
+ */
+async function patchGoldmark(dir) {
+  const { Dir: src } = JSON.parse((await execFile("go", ["mod", "download", "-json", "github.com/yuin/goldmark"], { cwd: root })).stdout);
+  const dst = join(dir, "goldmark");
+  // copied file by file: the module cache's directories are read-only, and so would be the copy's
+  for (const e of await readdir(src, { recursive: true, withFileTypes: true })) {
+    if (!e.isFile()) continue;
+    const to = join(dst, relative(src, join(e.parentPath, e.name)));
+    await mkdir(dirname(to), { recursive: true });
+    await writeFile(to, await readFile(join(e.parentPath, e.name)));
+  }
+  const linkify = join(dst, "extension/linkify.go");
+  const code = await readFile(linkify, "utf8");
+  if (code.split("]{1,256}").length !== 3) throw new Error(`${join(src, "extension/linkify.go")}: not the two patterns patchGoldmark rewrites`);
+  await writeFile(linkify, code.replaceAll("]{1,256}", "]+"));
+  const mod = join(dir, "go.mod");
+  await writeFile(mod, `${await readFile(join(root, "go.mod"), "utf8")}\nreplace github.com/yuin/goldmark => ${dst}\n`);
+  await copyFile(join(root, "go.sum"), join(dir, "go.sum"));
+  return mod;
+}
+
 async function buildModules() {
   const env = { ...process.env, GOOS: "js", GOARCH: "wasm" };
-  await Promise.all(MODULES.map(async (m) => {
-    const t0 = performance.now();
-    await execFile("go", ["build", "-tags", `bdf_noconv,${m.tags}`, "-trimpath", "-ldflags=-s -w", "-o", join(out, m.file), "./cmd/bdfwasm"], { cwd: root, env });
-    const { size } = await stat(join(out, m.file));
-    console.log(`${m.file}: ${(size / 1e6).toFixed(1)} MB (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
-  }));
+  const tmp = await mkdtemp(join(tmpdir(), "bdf-site-"));
+  try {
+    const mod = await patchGoldmark(tmp);
+    await Promise.all(MODULES.map(async (m) => {
+      const t0 = performance.now();
+      await execFile("go", ["build", "-tags", `bdf_noconv,${m.tags}`, "-trimpath", `-modfile=${mod}`, "-ldflags=-s -w", "-o", join(out, m.file), "./cmd/bdfwasm"], { cwd: root, env });
+      const { size } = await stat(join(out, m.file));
+      console.log(`${m.file}: ${(size / 1e6).toFixed(1)} MB (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
+    }));
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
   // wasm_exec.js moved from misc/wasm to lib/wasm in Go 1.24
   const goroot = await goEnv("GOROOT");
   for (const dir of ["lib/wasm", "misc/wasm"]) {

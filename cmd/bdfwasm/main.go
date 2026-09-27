@@ -14,7 +14,10 @@
 // the HTML, Markdown and EPUB converters, or the images browsers display by
 // themselves (PNG, JPEG, SVG …, stored as they are) only. bdf_noconv leaves
 // out the image and WOFF2 encoders: a document drawn where it is converted
-// gains nothing from them.
+// gains nothing from them. The demo site (examples/viewer/site.mjs) builds
+// it with a copy of goldmark (the Markdown converter's parser) whose
+// linkify patterns it rewrites: compiled when the program starts, they
+// overflow the stack of a worker in Safari.
 //
 // The program sets globalThis.bdfConverter and waits for calls:
 //
