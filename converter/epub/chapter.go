@@ -8,6 +8,7 @@ import (
 
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
 	"github.com/shibukawa/bdf/converter/internal/wordproc"
+	"github.com/shibukawa/bdf/imgconv"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -26,9 +27,11 @@ type chapter struct {
 	text     bool // holds text
 }
 
-// picture is a picture of a chapter.
+// picture is a picture of a chapter: an image by its address, or an svg
+// element that draws more than one image.
 type picture struct {
-	src  string // as rewritten: a path in the container or a data: URL
+	src  string     // as rewritten: a path in the container or a data: URL
+	svg  *html.Node // an svg element drawn as an SVG document
 	alt  string
 	w, h float64 // the size it is drawn at in CSS pixels (0: unknown)
 }
@@ -207,8 +210,13 @@ func isOPS(n *html.Node, local string) bool {
 }
 
 // targets makes the id of an element (and the name of an a element) a
-// bookmark unique in the book: the chapter's path, "#", the id.
+// bookmark unique in the book: the chapter's path, "#", the id. The ids of
+// SVG and MathML elements stay as they are: SVG refers to them ("#icon",
+// "url(#gradient)").
 func targets(ch *chapter, n *html.Node) {
+	if n.Namespace != "" {
+		return
+	}
 	for i := range n.Attr {
 		if a := &n.Attr[i]; a.Namespace == "" && (a.Key == "id" || a.Key == "name" && n.DataAtom == atom.A) {
 			a.Val = bookmark(ch.path, strings.TrimSpace(a.Val))
@@ -337,7 +345,7 @@ func (c *converter) linkRef(base, href string) (string, bool) {
 // container; data: URLs and absolute URLs stay as they are.
 func (c *converter) pictureRef(base, src string) string {
 	src = strings.TrimSpace(src)
-	if src == "" || webdoc.IsDataURL(src) {
+	if src == "" || webdoc.IsDataURL(src) || strings.HasPrefix(src, "#") {
 		return src
 	}
 	if p := c.pub.canonical(c.pub.resolve(base, src)); p != "" {
@@ -370,11 +378,11 @@ func parseViewport(s string) (vp [2]float64) {
 
 // analyze finds the pictures of a chapter and whether it holds text.
 func (c *converter) analyze(ch *chapter) {
-	var walk func(n *html.Node, svg *html.Node)
-	walk = func(n *html.Node, svg *html.Node) {
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
 		switch n.Type {
 		case html.TextNode:
-			if svg == nil && strings.TrimSpace(strings.ReplaceAll(n.Data, " ", " ")) != "" {
+			if strings.TrimSpace(strings.ReplaceAll(n.Data, " ", " ")) != "" {
 				ch.text = true
 			}
 			return
@@ -383,19 +391,11 @@ func (c *converter) analyze(ch *chapter) {
 				return
 			}
 			switch {
-			case n.Namespace == "svg" && n.Data == "svg" && svg == nil:
-				svg = n
-				ch.pictures = append(ch.pictures, svgPicture(n))
-			case n.Namespace == "svg" && n.Data == "image":
-				if svg != nil && len(ch.pictures) > 0 {
-					p := &ch.pictures[len(ch.pictures)-1]
-					if p.src == "" {
-						p.src = svgHref(n)
-					} else {
-						p.src = "\x00" // more than one image: not a single picture
-					}
+			case n.Namespace == "svg" && n.Data == "svg":
+				// a picture (the text in it is the picture's)
+				if p, ok := svgPicture(n); ok {
+					ch.pictures = append(ch.pictures, p)
 				}
-			case n.Namespace == "svg" && (n.Data == "text" || n.Data == "title" || n.Data == "desc"):
 				return
 			case n.DataAtom == atom.Img && n.Namespace == "":
 				w, _ := strconv.ParseFloat(attrVal(n, "width"), 64)
@@ -407,36 +407,79 @@ func (c *converter) analyze(ch *chapter) {
 			}
 		}
 		for k := n.FirstChild; k != nil; k = k.NextSibling {
-			walk(k, svg)
+			walk(k)
 		}
 	}
-	walk(ch.body, nil)
+	walk(ch.body)
 }
 
-// svgPicture reads the picture an svg element fits into its viewBox: the
-// size is that of the viewBox (else of the svg); the image is found as the
-// walk goes on.
-func svgPicture(n *html.Node) picture {
+// svgPicture reads the picture an svg element is: the one image it fits
+// into its view box (the way EPUB covers and the pages of comics are
+// written), drawn as that image, or else the svg itself, drawn as an SVG
+// document. The size is the svg's (its view box's when it has no absolute
+// one). False for an svg that draws nothing (a hidden sprite sheet).
+func svgPicture(n *html.Node) (picture, bool) {
+	if inlineStyle(n, "display") == "none" || zeroLength(attrVal(n, "width")) || zeroLength(attrVal(n, "height")) {
+		return picture{}, false
+	}
+	var images []*html.Node
+	other, title := false, ""
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
+		for k := n.FirstChild; k != nil; k = k.NextSibling {
+			if k.Type != html.ElementNode {
+				continue
+			}
+			switch k.Data {
+			case "image":
+				images = append(images, k)
+			case "g", "a", "switch":
+				walk(k)
+			case "title":
+				if title == "" {
+					title = strings.Join(strings.Fields(textOf(k)), " ")
+				}
+			case "desc", "metadata", "defs", "style", "script", "symbol", "linearGradient", "radialGradient", "pattern",
+				"clipPath", "mask", "filter", "marker":
+			default:
+				other = true
+			}
+		}
+	}
+	walk(n)
+	if len(images) == 0 && !other {
+		return picture{}, false
+	}
 	p := picture{alt: attrVal(n, "aria-label")}
-	if vb := strings.FieldsFunc(attrVal(n, "viewBox"), func(r rune) bool { return r == ' ' || r == ',' }); len(vb) == 4 {
-		p.w, _ = strconv.ParseFloat(vb[2], 64)
-		p.h, _ = strconv.ParseFloat(vb[3], 64)
+	if p.alt == "" {
+		p.alt = title
 	}
-	if p.w <= 0 || p.h <= 0 {
-		p.w, _ = strconv.ParseFloat(strings.TrimSuffix(attrVal(n, "width"), "px"), 64)
-		p.h, _ = strconv.ParseFloat(strings.TrimSuffix(attrVal(n, "height"), "px"), 64)
+	p.w, p.h = imgconv.ParseSVGSize(attrVal(n, "width"), attrVal(n, "height"), attrVal(n, "viewBox")).Pixels()
+	if len(images) == 1 && !other {
+		p.src = svgHref(images[0])
 	}
-	return p
+	if p.src == "" {
+		p.svg = n
+	}
+	return p, true
 }
 
+// zeroLength reports a length written as zero ("0", "0px").
+func zeroLength(v string) bool {
+	f, err := strconv.ParseFloat(strings.TrimRight(strings.TrimSpace(v), "abcdefghijklmnopqrstuvwxyz%"), 64)
+	return err == nil && f == 0
+}
+
+// svgHref returns the address of an SVG image element: href, else
+// xlink:href.
 func svgHref(n *html.Node) string {
 	xlink := ""
 	for _, a := range n.Attr {
 		switch {
 		case a.Key == "href" && a.Namespace == "":
-			return a.Val
+			return strings.TrimSpace(a.Val)
 		case a.Key == "href" && a.Namespace == "xlink", a.Key == "xlink:href":
-			xlink = a.Val
+			xlink = strings.TrimSpace(a.Val)
 		}
 	}
 	return xlink
@@ -462,7 +505,7 @@ func (ch *chapter) singlePicture() (picture, bool) {
 		return picture{}, false
 	}
 	p := ch.pictures[0]
-	return p, p.src != "" && p.src != "\x00"
+	return p, p.src != "" || p.svg != nil
 }
 
 // pictureOnly reports whether a chapter holds pictures and no text (a

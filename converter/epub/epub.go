@@ -11,15 +11,19 @@
 // of pictures. The default view is one of book pages (A5, with page
 // numbers); chapters in East Asian vertical text (writing-mode:
 // vertical-rl, as most Japanese books are) are laid out vertically there.
-// A scroll view, horizontal throughout, can be added or made instead.
+// A scroll view, horizontal throughout, can be added or made instead. SVG
+// is drawn as the HTML converter draws it: SVG files as they are, svg
+// elements and SVG content documents as SVG documents of their own.
 //
 // A fixed-layout book (rendition:layout pre-paginated) whose pages are
 // pictures (comics, photo books) converts into a fixed view of those
-// pictures, a page each, at the size of the page's viewport. Books bound on
-// the right (page-progression-direction rtl) have views whose direction is
-// rtl. Metadata comes from the package document. Encrypted publications
-// (DRM) are refused; fonts obfuscated as the EPUB specification describes
-// are left out like other embedded fonts. See docs/design.md §3.17.
+// pictures, a page each, at the size of the page's viewport: raster
+// images, SVG files, and svg elements (drawn as the image they fit into
+// their view box, when that is all they hold). Books bound on the right
+// (page-progression-direction rtl) have views whose direction is rtl.
+// Metadata comes from the package document. Encrypted publications (DRM)
+// are refused; fonts obfuscated as the EPUB specification describes are
+// left out like other embedded fonts. See docs/design.md §3.24.
 package epub
 
 import (

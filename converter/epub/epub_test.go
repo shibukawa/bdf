@@ -3,10 +3,12 @@ package epub
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"math"
 	"os"
 	"slices"
@@ -168,7 +170,7 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("views %+v", m.Views[0])
 	}
 	pages := viewPages(t, r, "pages")
-	if res.Pages != len(pages) || res.Chapters != 5 || res.Images != 2 || res.Vertical || res.FixedLayout {
+	if res.Pages != len(pages) || res.Chapters != 5 || res.Images != 3 || res.Vertical || res.FixedLayout {
 		t.Errorf("result %+v", res)
 	}
 	if p := pages[0]; p.w != float32(A5.Width) || p.h != float32(A5.Height) {
@@ -225,11 +227,69 @@ func TestBasic(t *testing.T) {
 		figures = append(figures, p.marks[bdf.MarkFigure]...)
 		headings = append(headings, p.marks[bdf.MarkHeading]...)
 	}
-	if !slices.Contains(figures, "Three bars rising from left to right") || !slices.Contains(figures, "A Small Book") {
-		t.Errorf("figures %q", figures)
+	for _, f := range []string{"Three bars rising from left to right", "A Small Book", "Two boxes joined by an arrow", "Three dots on a gradient"} {
+		if !slices.Contains(figures, f) {
+			t.Errorf("figures %q lack %q", figures, f)
+		}
 	}
 	if !slices.Contains(headings, "1") || !slices.Contains(headings, "2") {
 		t.Errorf("headings %q", headings)
+	}
+	// SVG: the cover (an svg that fits a picture), an SVG file stored as it
+	// is, and an inline svg with the gradient and symbol it uses from a
+	// hidden sprite sheet, their ids as written, without the attributes of
+	// other namespaces
+	svgs := svgParts(res.Doc)
+	if len(svgs) != 3 {
+		t.Fatalf("%d SVG parts", len(svgs))
+	}
+	var dots string
+	for _, s := range svgs {
+		if strings.Contains(s, "Three dots") {
+			dots = s
+		}
+		if !wellFormed(s) {
+			t.Errorf("malformed SVG:\n%s", s)
+		}
+	}
+	for _, want := range []string{`<defs><linearGradient id="bg">`, `<circle id="dot" r="14" fill="#0969da"></circle>`, `fill="url(#bg)"`,
+		`<use href="#dot" x="30" y="30">`, `<use xlink:href="#dot" x="170" y="30">`} {
+		if !strings.Contains(dots, want) {
+			t.Errorf("inline SVG lacks %s:\n%s", want, dots)
+		}
+	}
+	if strings.Contains(dots, "inkscape") || strings.Contains(dots, "epub:type") {
+		t.Errorf("attributes of other namespaces kept:\n%s", dots)
+	}
+	// the inline svg with only a view box is as wide as the text
+	svgPage := pages[pageOf(pages, "Figure 2.")-1]
+	if len(svgPage.images) != 1 || svgPage.images[0][2] != float32(A5.Width*0.8) {
+		t.Errorf("inline SVG drawn at %v", svgPage.images)
+	}
+}
+
+// svgParts returns the SVG images of a document.
+func svgParts(doc *bdf.Document) []string {
+	var out []string
+	for _, p := range doc.Parts() {
+		if p.Type == bdf.PartImage && bytes.Contains(p.Data[:min(len(p.Data), 200)], []byte("<svg")) {
+			out = append(out, string(p.Data))
+		}
+	}
+	return out
+}
+
+// wellFormed reports whether a document is well-formed XML.
+func wellFormed(s string) bool {
+	d := xml.NewDecoder(strings.NewReader(s))
+	for {
+		_, err := d.Token()
+		if err == io.EOF {
+			return true
+		}
+		if err != nil {
+			return false
+		}
 	}
 }
 
@@ -283,7 +343,7 @@ func TestVertical(t *testing.T) {
 
 func TestFixed(t *testing.T) {
 	res, r := convertFile(t, "fixed.epub", nil)
-	if !res.FixedLayout || res.Pages != 4 || res.Images != 4 {
+	if !res.FixedLayout || res.Pages != 6 || res.Images != 6 {
 		t.Errorf("result %+v", res)
 	}
 	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "outside the reading order") {
@@ -297,6 +357,15 @@ func TestFixed(t *testing.T) {
 		if p.w != 450 || p.h != 600 || len(p.images) != 1 || p.images[0] != [4]float32{0, 0, 450, 600} {
 			t.Errorf("page %d: %v × %v, images %v", i+1, p.w, p.h, p.images)
 		}
+	}
+	// the page drawn in SVG, and the one whose picture is an SVG file: SVG
+	// images, the page's with its gradient
+	svgs := svgParts(res.Doc)
+	if len(svgs) != 2 || !strings.Contains(svgs[0]+svgs[1], `fill="url(#sky)"`) || !strings.Contains(svgs[0]+svgs[1], `<linearGradient id="sky"`) {
+		t.Errorf("SVG parts %q", svgs)
+	}
+	if m := r.Manifest.Views[0].Pages; len(m) != 6 {
+		t.Errorf("%d pages", len(m))
 	}
 	// the pages of the same picture share it; selected pages
 	res, _ = convertFile(t, "fixed.epub", &Options{Pages: conv.Pages{{From: 2, To: 3}}})

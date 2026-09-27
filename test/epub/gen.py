@@ -6,14 +6,16 @@ with the standard library only:
   lists, a quotation, a figure, a table, code, a footnote, links between
   chapters and to an element of another chapter, a page marker written
   as an empty element, a paragraph hidden by a class of the style sheet, a
-  class that centers) and notes outside the reading order.
+  class that centers, an SVG file and an inline SVG that uses a gradient and
+  a symbol of a hidden sprite sheet and carries attributes of other
+  namespaces) and notes outside the reading order.
 - vertical.epub: a Japanese book bound on the right, written like the
   Denshoken (電書協) guide: html class="vrtl" and a style sheet that imports
   the rules (vertical-rl, tate-chu-yoko, emphasis marks, gaiji pictures);
   a horizontal cover and colophon (class="hltr"), ruby.
 - fixed.epub: a fixed-layout book of pictures bound on the right (a comic):
-  a cover as an SVG content document's picture and pages of one img each,
-  with their viewports.
+  a cover as an SVG content document's picture, pages of one img each with
+  their viewports, a page drawn by an inline SVG and one by an SVG file.
 
 The Japanese text keeps to the kanji of the Word converter's test fonts
 (converter/docx/testdata/fonts), which the testdata lays text out with.
@@ -123,6 +125,27 @@ def xhtml(title, body, lang="en", cls="", head="", ns=""):
 """.format(title=title, body=body, lang=lang, c=c, head=head, ns=ns)
 
 
+# an SVG file of a chapter: two boxes and an arrow
+DIAGRAM = """<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="90" viewBox="0 0 240 90">
+<rect x="10" y="20" width="60" height="50" rx="6" fill="#1a7f37"/>
+<path d="M76 45H150" stroke="#1f2328" stroke-width="4"/>
+<path d="M150 35L166 45L150 55Z" fill="#1f2328"/>
+<rect x="170" y="20" width="60" height="50" rx="6" fill="#cf222e"/>
+</svg>
+"""
+
+# the SVG file of the last page of the comic: frames and a moon
+LAST_PAGE = """<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800">
+<rect width="600" height="800" fill="#1d2b53"/>
+<circle cx="300" cy="330" r="150" fill="#fff1c1"/>
+<circle cx="360" cy="290" r="130" fill="#1d2b53"/>
+<rect x="30" y="30" width="540" height="740" fill="none" stroke="#fff1c1" stroke-width="6"/>
+</svg>
+"""
+
+
 def basic():
     css = """@charset "UTF-8";
 /* the reader style replaces these */
@@ -194,6 +217,20 @@ the chapter is read as XML. The <a href="ch2.xhtml#sec2">section on tables</a> i
 	fmt.Println("hello, epub")
 }</code></pre>
 <p>Back to <a href="ch1.xhtml">the first chapter</a>, or on to <a href="https://example.com/">a web page</a>.</p>
+<h2 id="svg">Pictures in SVG</h2>
+<p>An SVG file: <img src="../images/diagram.svg" alt="Two boxes joined by an arrow"/></p>
+<figure>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" viewBox="0 0 200 60"
+     inkscape:label="Layer 1" epub:type="illustration" role="img" aria-label="Three dots on a gradient">
+<rect width="200" height="60" rx="8" fill="url(#bg)"/>
+<use href="#dot" x="30" y="30"/><use href="#dot" x="100" y="30"/><use xlink:href="#dot" x="170" y="30"/>
+</svg>
+<figcaption>Figure 2. An inline SVG with definitions shared by the chapter.</figcaption>
+</figure>
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none"><defs>
+<linearGradient id="bg"><stop offset="0" stop-color="#cfe3ff"/><stop offset="1" stop-color="#ffe2c4"/></linearGradient>
+<circle id="dot" r="14" fill="#0969da"/></defs></svg>
 </section>
 </body>""", head=link)
     notes = xhtml("Notes", """<body>
@@ -226,6 +263,7 @@ the chapter is read as XML. The <a href="ch2.xhtml#sec2">section on tables</a> i
     <item id="cover" href="text/cover.xhtml" media-type="application/xhtml+xml" properties="svg"/>
     <item id="cover-image" href="images/cover.png" media-type="image/png" properties="cover-image"/>
     <item id="figure" href="images/figure.png" media-type="image/png"/>
+    <item id="diagram" href="images/diagram.svg" media-type="image/svg+xml"/>
     <item id="css" href="css/style.css" media-type="text/css"/>
     <item id="ch1" href="text/ch1.xhtml" media-type="application/xhtml+xml"/>
     <item id="ch2" href="text/ch2.xhtml" media-type="application/xhtml+xml"/>
@@ -251,6 +289,7 @@ the chapter is read as XML. The <a href="ch2.xhtml#sec2">section on tables</a> i
         ("OEBPS/css/style.css", css),
         ("OEBPS/images/cover.png", png(600, 800, cover((32, 60, 110), (240, 200, 90)))),
         ("OEBPS/images/figure.png", png(320, 200, figure)),
+        ("OEBPS/images/diagram.svg", DIAGRAM),
     ])
 
 
@@ -373,10 +412,24 @@ def fixed():
 </svg>
 """
     pages = []
+    viewport = '<meta name="viewport" content="width=600, height=800"/>\n'
     for i in range(1, 4):
         pages.append(("item/xhtml/p-{:03d}.xhtml".format(i), xhtml("{}".format(i), """<body>
 <div class="main"><img src="../image/i-{:03d}.png" alt=""/></div>
-</body>""".format(i), lang="ja", head='<meta name="viewport" content="width=600, height=800"/>\n')))
+</body>""".format(i), lang="ja", head=viewport)))
+    # a page drawn in SVG, and one whose picture is an SVG file
+    pages.append(("item/xhtml/p-004.xhtml", xhtml("4", """<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 600 800">
+<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9ecbff"/><stop offset="1" stop-color="#ffffff"/></linearGradient></defs>
+<rect width="600" height="800" fill="url(#sky)"/>
+<circle cx="440" cy="170" r="70" fill="#f2c94c"/>
+<path d="M0 620 Q150 520 300 600 T600 580 V800 H0 Z" fill="#2e7d32"/>
+<rect x="30" y="30" width="540" height="740" fill="none" stroke="#1f2328" stroke-width="6"/>
+</svg>
+</body>""", lang="ja", head=viewport)))
+    pages.append(("item/xhtml/p-005.xhtml", xhtml("5", """<body>
+<div class="main"><img src="../image/i-005.svg" alt="The last page"/></div>
+</body>""", lang="ja", head=viewport)))
     opf = """<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" xml:lang="ja" unique-identifier="unique-id"
          prefix="rendition: http://www.idpf.org/vocab/rendition/#">
@@ -395,12 +448,17 @@ def fixed():
     <item media-type="image/png" id="cover" href="image/cover.png" properties="cover-image"/>
 """ + "".join("""    <item media-type="image/png" id="i-{0:03d}" href="image/i-{0:03d}.png"/>
     <item media-type="application/xhtml+xml" id="p-{0:03d}" href="xhtml/p-{0:03d}.xhtml"/>
-""".format(i) for i in range(1, 4)) + """  </manifest>
+""".format(i) for i in range(1, 4)) + """    <item media-type="application/xhtml+xml" id="p-004" href="xhtml/p-004.xhtml" properties="svg"/>
+    <item media-type="image/svg+xml" id="i-005" href="image/i-005.svg"/>
+    <item media-type="application/xhtml+xml" id="p-005" href="xhtml/p-005.xhtml"/>
+  </manifest>
   <spine page-progression-direction="rtl">
     <itemref linear="yes" idref="p-cover" properties="rendition:page-spread-center"/>
     <itemref linear="yes" idref="p-001" properties="page-spread-left"/>
     <itemref linear="yes" idref="p-002" properties="page-spread-right"/>
     <itemref linear="yes" idref="p-003" properties="page-spread-left"/>
+    <itemref linear="yes" idref="p-004" properties="page-spread-right"/>
+    <itemref linear="yes" idref="p-005" properties="page-spread-left"/>
     <itemref linear="no" idref="toc"/>
   </spine>
 </package>
@@ -417,6 +475,7 @@ def fixed():
     ]
     for i in range(1, 4):
         files.append(("item/image/i-{:03d}.png".format(i), png(600, 800, comic(i))))
+    files.append(("item/image/i-005.svg", LAST_PAGE))
     write("fixed.epub", files + pages)
 
 

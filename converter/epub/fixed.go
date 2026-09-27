@@ -2,6 +2,7 @@ package epub
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -11,9 +12,11 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/webdoc"
 	"github.com/shibukawa/bdf/imgconv"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/webp"
+	"golang.org/x/net/html"
 )
 
 // pxToPt converts CSS pixels to points.
@@ -77,7 +80,13 @@ func (c *converter) pictures() (*Result, error) {
 			continue
 		}
 		pic, _ := ch.singlePicture()
-		im, err := c.store(doc, pic.src, stored)
+		var im *storedImage
+		var err error
+		if pic.svg != nil {
+			im = c.storeSVG(doc, pic.svg)
+		} else {
+			im, err = c.store(doc, pic.src, stored)
+		}
 		if err != nil {
 			c.warn(fmt.Sprintf("%s: %v; the page is left blank", ch.path, err))
 		}
@@ -128,6 +137,45 @@ func (c *converter) pictures() (*Result, error) {
 	return res, nil
 }
 
+// storeSVG stores an svg element of a page as an SVG document (see
+// webdoc.SVGDocument), with the elements it uses from elsewhere in its
+// document and its images as data: URLs.
+func (c *converter) storeSVG(doc *bdf.Document, n *html.Node) *storedImage {
+	top := n
+	for top.Parent != nil {
+		top = top.Parent
+	}
+	ids := map[string]*html.Node{}
+	webdoc.WalkElements(top, func(e *html.Node) {
+		if id := attrVal(e, "id"); id != "" && ids[id] == nil {
+			ids[id] = e
+		}
+	})
+	data := webdoc.SVGDocument(n, "", func(id string) *html.Node { return ids[id] }, c.embed)
+	im := &storedImage{hash: doc.AddImage(data)}
+	im.w, im.h = imgconv.ParseSVGSize(attrVal(n, "width"), attrVal(n, "height"), attrVal(n, "viewBox")).Pixels()
+	return im
+}
+
+// embed returns a picture of the publication as a data: URL, for an SVG
+// document drawn as an image, which loads nothing ("" when it cannot be
+// read).
+func (c *converter) embed(href string) string {
+	if href == "" || strings.HasPrefix(href, "#") || webdoc.IsDataURL(href) {
+		return ""
+	}
+	data, err := c.image(href)
+	if err != nil {
+		c.warn(fmt.Sprintf("image %s in an SVG: %v", href, err))
+		return ""
+	}
+	format := imgconv.Sniff(data)
+	if format == "" {
+		return ""
+	}
+	return "data:" + imgconv.MIME(format) + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
 // store stores a picture once.
 func (c *converter) store(doc *bdf.Document, src string, stored map[string]*storedImage) (*storedImage, error) {
 	if im, ok := stored[src]; ok {
@@ -139,7 +187,12 @@ func (c *converter) store(doc *bdf.Document, src string, stored map[string]*stor
 	}
 	switch imgconv.Sniff(data) {
 	case "svg":
-		return nil, fmt.Errorf("%s: SVG pictures are not drawn", src)
+		// stored as it is: the viewer draws it (spec §6.2)
+		width, height, viewBox, _ := imgconv.SVGRoot(data)
+		im := &storedImage{hash: doc.AddImage(data)}
+		im.w, im.h = imgconv.ParseSVGSize(width, height, viewBox).Pixels()
+		stored[src] = im
+		return im, nil
 	case "":
 		return nil, fmt.Errorf("%s: unsupported picture format", src)
 	}

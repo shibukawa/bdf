@@ -1,6 +1,7 @@
 // Package webdoc reads web documents for the converters that lay them out
 // in reader mode (converter/html, converter/markdown, converter/epub): HTML
-// and XHTML into the node tree of golang.org/x/net/html, and data: URLs.
+// and XHTML into the node tree of golang.org/x/net/html, svg elements into
+// SVG documents of their own, and data: URLs.
 //
 // XHTML is XML, and the HTML parser misreads it where the two differ: an
 // element written as empty (<a id="p5"/>, <div/>, <script src="…"/>) stays
