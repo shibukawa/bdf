@@ -66,6 +66,7 @@ const SAMPLES = [
   { path: "converter/mml/testdata/frere.mml", label: "MML (NES, a round in four parts)" },
   { path: "converter/midi/testdata/twinkle.kar", label: "MIDI (karaoke, with words)" },
   { path: "converter/musicxml/testdata/minuet.musicxml", label: "MusicXML (piano)" },
+  { path: "converter/font/testdata/stix.otf", label: "Font (OpenType, STIX Two Text)" },
   { path: "testdata/demo.bdf", label: "bdf" },
 ];
 

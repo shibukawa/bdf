@@ -88,3 +88,72 @@ func TestPruneGlyphs(t *testing.T) {
 		}
 	}
 }
+
+// TestPruneCFF empties the glyphs not kept of a CFF font, keeping their
+// numbers: the kept glyphs keep their outlines.
+func TestPruneCFF(t *testing.T) {
+	data, err := os.ReadFile("testdata/STIXTwoMath-cff-subset.otf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x, a := f.Cmap['x'], f.Cmap['a']
+	before := NewOutlines(f)
+	want, ok := before.Bounds(x)
+	if !ok || x == 0 || a == 0 {
+		t.Fatal("no x or a")
+	}
+	pruned := *f
+	pruned.Tables = map[string][]byte{}
+	for tag, b := range f.Tables {
+		pruned.Tables[tag] = b
+	}
+	if !pruned.PruneCFF(map[uint16]bool{x: true}) {
+		t.Fatal("not pruned")
+	}
+	g, err := Parse(Build(pruned.Tables, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.NumGlyphs != f.NumGlyphs || len(g.Tables["CFF "]) >= len(f.Tables["CFF "]) {
+		t.Fatalf("%d glyphs (of %d), CFF %d bytes (of %d)", g.NumGlyphs, f.NumGlyphs, len(g.Tables["CFF "]), len(f.Tables["CFF "]))
+	}
+	after := NewOutlines(g)
+	if got, ok := after.Bounds(x); !ok || got != want {
+		t.Errorf("x: %v %v, want %v", got, ok, want)
+	}
+	if _, ok := after.Bounds(a); ok {
+		t.Error("a is not emptied")
+	}
+}
+
+// TestCmapGroups reads format 12 groups that overlap and reach past
+// Unicode: at most as many mappings as there are code points.
+func TestCmapGroups(t *testing.T) {
+	format12 := func(groups [][3]uint32) []byte {
+		b := make([]byte, 16+len(groups)*12)
+		be := func(i int, v uint32) { b[i], b[i+1], b[i+2], b[i+3] = byte(v>>24), byte(v>>16), byte(v>>8), byte(v) }
+		b[1] = 12
+		be(12, uint32(len(groups)))
+		for i, g := range groups {
+			be(16+i*12, g[0])
+			be(16+i*12+4, g[1])
+			be(16+i*12+8, g[2])
+		}
+		return b
+	}
+	var overlapping [][3]uint32
+	for i := range uint32(1000) {
+		overlapping = append(overlapping, [3]uint32{i * 16, 0xFFFFFFFF, 1})
+	}
+	if m := parseCmapSubtable(format12(overlapping)); len(m) > 0x110000 {
+		t.Errorf("overlapping groups: %d mappings", len(m))
+	}
+	m := parseCmapSubtable(format12([][3]uint32{{0x10FFF0, 0xFFFFFFFF, 5}, {0x110000, 0x120000, 5}}))
+	if len(m) != 16 || m[0x10FFFF] != 20 {
+		t.Errorf("groups past Unicode: %d mappings, U+10FFFF → %d", len(m), m[0x10FFFF])
+	}
+}

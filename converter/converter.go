@@ -8,7 +8,8 @@
 // converter/drawio, converter/dxf, converter/jww, converter/sxf,
 // converter/cgm, converter/hpgl, converter/gerber, converter/emf,
 // converter/tiff, converter/image, converter/html, converter/markdown,
-// converter/epub, converter/mml, converter/midi, converter/musicxml).
+// converter/epub, converter/mml, converter/midi, converter/musicxml,
+// converter/font).
 // Each registers its format when it is imported, so a program supports the
 // formats whose packages it links in:
 //

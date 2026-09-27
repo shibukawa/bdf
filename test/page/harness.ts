@@ -174,6 +174,12 @@ export const CASES: Case[] = [
   { name: "music-frere-1", src: "/testdata/music/frere-mml.bdf", kind: "page", view: "score", page: 0, scale: 1 },
   { name: "music-twinkle-kar-1", src: "/testdata/music/twinkle-kar.bdf", kind: "page", view: "score", page: 0, scale: 1 },
   { name: "music-minuet-1", src: "/testdata/music/minuet-musicxml.bdf", kind: "page", view: "score", page: 0, scale: 1 },
+  // Font files (converter/font) with the test fonts; see test/font. The overview of a CFF font: its specimen and sample
+  // text in the font embedded with its layout tables; its glyphs by glyph ID, drawn from the glyph font by their private
+  // use characters (.notdef as a path); and the code charts of a font whose license forbids embedding it, drawn as outlines.
+  { name: "font-stix-overview", src: "/testdata/font/stix.bdf", kind: "continuous", view: "overview", viewport: { x: 0, y: 0, w: 720, h: 560 }, scale: 1 },
+  { name: "font-stix-glyphs", src: "/testdata/font/stix.bdf", kind: "continuous", view: "glyphs", viewport: { x: 0, y: 0, w: 720, h: 420 }, scale: 1 },
+  { name: "font-restricted-characters", src: "/testdata/font/restricted.bdf", kind: "continuous", view: "characters", viewport: { x: 0, y: 90, w: 720, h: 420 }, scale: 1 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

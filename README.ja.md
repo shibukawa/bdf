@@ -6,24 +6,24 @@
 
 Office 系のファイル（PDF、Excel、PowerPoint、Word、Visio）や draw.io の図、CAD の図面とプロットファイル（DXF、Jw_cad、SXF、CGM、HP-GL/2）、プリント基板の製造データ（Gerber、Excellon）、スキャンや FAX の TIFF 画像、デザインのファイル（Illustrator、Photoshop）、HTML のページ、Markdown の文書、EPUB の本、音楽（MML、MIDI、MusicXML。ビューアで演奏できる楽譜に組む）、ブラウザがそのまま表示できる画像を bdf に変換し、Web Worker 内で動くレンダラで描画します。ブラウザが標準 API で代替できるもの（フォントラスタライズ、画像デコード、圧縮）はブラウザに任せ、デコーダを最小にします。
 
-**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF・CGM の図面、HP-GL/2 のプロットファイル、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページ、Markdown の文書、EPUB の本、音楽のファイル（MML、MIDI、MusicXML）や画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。楽譜は演奏でき、演奏している位置にカーソルが付いていきます。表示中の文書のサムネイル（64〜512 ピクセル、PNG か JPEG）と検索用のテキストもダウンロードできます。作るのはサーバーと同じ Go のパッケージです。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
+**デモ**: <https://shibukawa.github.io/bdf/>。PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio のファイル、draw.io の図、DXF・Jw_cad・SXF・CGM の図面、HP-GL/2 のプロットファイル、プリント基板の Gerber・Excellon のファイル（1 つずつでも、ZIP にまとめても）、Illustrator や Photoshop のファイル、Windows メタファイル、HTML のページ、Markdown の文書、EPUB の本、音楽のファイル（MML、MIDI、MusicXML）、フォントファイルや画像をページにドロップすると、ブラウザ内で bdf に変換して描画します（ファイルはアップロードされません）。PDF は変換できたページから、表示中のページを優先して描画します。楽譜は演奏でき、演奏している位置にカーソルが付いていきます。表示中の文書のサムネイル（64〜512 ピクセル、PNG か JPEG）と検索用のテキストもダウンロードできます。作るのはサーバーと同じ Go のパッケージです。ドキュメントも <https://shibukawa.github.io/bdf/docs/> で読めます。
 
 ## Why bdf
 
-- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio、draw.io、DXF、Jw_cad、SXF、CGM、HP-GL/2、Gerber、Excellon、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown、EPUB、MML、MIDI、MusicXML を 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7 MB、Office 系・draw.io・DXF 用が約 5.5 MB）、ファイルをアップロードする必要すらありません。サムネイルと検索用のテキストも同じプロセスで作れます。ページを描くのは純 Go のラスタライザで、ブラウザは要りません。
+- **オフィススイートを動かさなくてよい**: Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、プロセスの起動・維持・隔離も必要です。bdf の変換器は cgo も外部プログラムも使わない Go のパッケージで、PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio、draw.io、DXF、Jw_cad、SXF、CGM、HP-GL/2、Gerber、Excellon、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown、EPUB、MML、MIDI、MusicXML、フォントファイルを 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7 MB、Office 系・draw.io・DXF 用が約 5.5 MB）、ファイルをアップロードする必要すらありません。サムネイルと検索用のテキストも同じプロセスで作れます。ページを描くのは純 Go のラスタライザで、ブラウザは要りません。
 - **内容に合った形で見せる**: PDF はすべてを紙に切り分けます。スプレッドシートを印刷したページでは、横に長い表がページをまたいで分断されて行を追えず、目当てのセルも見つけにくくなります。固定した見出しや枠線は消え、ブックの中で切り替えていたシートは一続きのページになります。Word の文書もページ単位でしか読めません。bdf は内容の種類ごとにレイアウトのモデルを持ちます。スライド・図面・PDF には固定サイズのページ、ワークシートにはシートごとの無限平面（タイルで描画し、ウィンドウ枠の固定、行・列見出し、枠線つき）、ワープロ文書にはページでも一続きのスクロールでも読めるフローと、ページなしで 1 本の長い列に組み直した表示を用意しています。Illustrator と Photoshop のアートボードはページになります。ブックのシート、draw.io の図のページ、DXF のモデル空間とレイアウト、プリント基板の表・裏と各層はそれぞれ 1 つの表示になり、ビューアのタブで切り替えます。
 - **ブラウザ表示に特化している**: 命令セットは Canvas 2D と 1 対 1 に対応します。フォントは `FontFace` に渡す WOFF2、画像はブラウザがデコードできる形式で、Part の圧縮は `DecompressionStream` で展開できる形式です。pdf.js のような PDF ビューアが数万行かけて実装しているフォントのラスタライズ、画像のデコード、展開はブラウザに任せ、bdf のデコーダとレンダラは TypeScript で約 3,400 行です（レンダラの Worker は gzip で 21 KB）。描画は Worker の `OffscreenCanvas` で行い、メインスレッドはビットマップを置くだけです。Part は内容アドレスなので、マスターや繰り返し現れる要素は 1 度だけ格納され、ビューアは表示中のページに要る Part だけを Range リクエストや CDN 上の分割形式から取得します。ブラウザ内で変換する PDF は、表示中のページを優先して変換できたページから表示します。
-- **多くの形式を 1 つのレンダラで**: PDF、Word（.docx）、PowerPoint（.pptx）、Excel（.xlsx）、CSV・TSV、Apache Parquet、Visio（.vsdx、.vdx）、draw.io（.drawio と、図を埋め込んだ SVG・PNG の書き出し）、AutoCAD DXF、Jw_cad（.jww）、SXF（.p21、.p2z、.sfc）、CGM（.cgm）、HP-GL/2 のプロットファイル（.plt）、Gerber（RS-274X）と Excellon の穴あけファイル（1 つずつでも、基板のファイルをまとめた ZIP でも）、TIFF、Illustrator（.ai）、Photoshop（.psd、.psb）、Windows メタファイル（.emf、.wmf）、HTML（リーダー表示）、Markdown、EPUB（リフロー型の本は和文の縦書きも、固定レイアウトのマンガも）、楽譜に組む MML（.mml）・MIDI（.mid、.kar）・MusicXML（.musicxml、.mxl）、画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG。そのまま格納）を、パスワード付きの Office 文書や PDF も含めて同じフォーマットにします。どの形式も同じレンダラで描き、検索、テキスト選択、読み上げ用のテキスト層（見出し、リスト、表、代替テキスト）も共通です。
+- **多くの形式を 1 つのレンダラで**: PDF、Word（.docx）、PowerPoint（.pptx）、Excel（.xlsx）、CSV・TSV、Apache Parquet、Visio（.vsdx、.vdx）、draw.io（.drawio と、図を埋め込んだ SVG・PNG の書き出し）、AutoCAD DXF、Jw_cad（.jww）、SXF（.p21、.p2z、.sfc）、CGM（.cgm）、HP-GL/2 のプロットファイル（.plt）、Gerber（RS-274X）と Excellon の穴あけファイル（1 つずつでも、基板のファイルをまとめた ZIP でも）、TIFF、Illustrator（.ai）、Photoshop（.psd、.psb）、Windows メタファイル（.emf、.wmf）、HTML（リーダー表示）、Markdown、EPUB（リフロー型の本は和文の縦書きも、固定レイアウトのマンガも）、楽譜に組む MML（.mml）・MIDI（.mid、.kar）・MusicXML（.musicxml、.mxl）、文字・グリフ・OpenType フィーチャーを見せるフォントファイル（.ttf、.otf、.ttc、.woff、.woff2）、画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG。そのまま格納）を、パスワード付きの Office 文書や PDF も含めて同じフォーマットにします。どの形式も同じレンダラで描き、検索、テキスト選択、読み上げ用のテキスト層（見出し、リスト、表、代替テキスト）も共通です。
 
 ## 処理の流れ
 
 ```mermaid
 flowchart TB
-    SRC["PDF・Excel・CSV・Parquet・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・TIFF<br/>Illustrator・Photoshop・HTML・Markdown・EPUB・MML・MIDI・MusicXML・画像"]
+    SRC["PDF・Excel・CSV・Parquet・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・TIFF<br/>Illustrator・Photoshop・HTML・Markdown・EPUB・MML・MIDI・MusicXML・フォント・画像"]
 
     subgraph SERVER["Go サーバープロセス"]
         direction TB
-        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/mml<br/>converter/midi<br/>converter/musicxml<br/>converter/ai<br/>converter/psd<br/>converter/image"]
+        SCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/mml<br/>converter/midi<br/>converter/musicxml<br/>converter/font<br/>converter/ai<br/>converter/psd<br/>converter/image"]
         BUNDLE["bdf バンドル<br/>（パック済み）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
         PREVIEW["raster・thumbnail・SearchText<br/>サムネイル画像<br/>検索用のテキスト"]
         SCONV --> BUNDLE
@@ -33,7 +33,7 @@ flowchart TB
     subgraph BROWSER["ブラウザ"]
         direction TB
         subgraph CWORKER["変換 Worker（wasm）"]
-            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/mml<br/>converter/midi<br/>converter/musicxml<br/>converter/ai<br/>converter/psd<br/>converter/image"]
+            WCONV["converter/pdf<br/>converter/xlsx<br/>converter/csv<br/>converter/pptx<br/>converter/docx<br/>converter/visio<br/>converter/drawio<br/>converter/dxf<br/>converter/jww<br/>converter/sxf<br/>converter/cgm<br/>converter/hpgl<br/>converter/gerber<br/>converter/tiff<br/>converter/html<br/>converter/markdown<br/>converter/epub<br/>converter/mml<br/>converter/midi<br/>converter/musicxml<br/>converter/font<br/>converter/ai<br/>converter/psd<br/>converter/image"]
         end
         PARTS["bdf 文書<br/>（メモリ上）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
         subgraph RWORKER["レンダラ Worker"]
@@ -83,7 +83,7 @@ flowchart TB
 - パスワードで保護された入力（読み取りパスワード付きの Office 文書、ユーザーパスワード付きの PDF）はパスワードで開いて変換し、bdf を同じパスワードで暗号化する。Part ごとに封印する（AES-256-GCM）ので Range 取得や分割形式はそのまま使える。ビューアは WebCrypto で復号し、サーバーはパスワードを保存しない（spec §3.5）
 - サーバー側のサムネイルと検索用テキスト: `raster` はビューアと同じ命令を純 Go で実行し、任意のページ（シートや scroll View なら任意の範囲）を画像に描く。アンチエイリアスつきのパス、線、クリップ、グラデーションとパターン、画像、埋め込みフォント（WOFF2 を展開する）と名前で参照するフォント（システムのフォントを探す）のテキスト、グループ、ソフトマスク、影、SVG の画像を描く。ブラウザの golden テストと同じページを Go のテストで描き、両方を縮小して Chromium の描画と比べると、ほとんどのページで平均の差が 4/255 未満に収まる（違いはヒンティング・カーニング・合字をしないことと、AVIF の画像を描かないこと）。`thumbnail` は文書の種類からレイアウトを選ぶ。Word・HTML・Markdown・楽譜・縦長の PDF は 1 ページ目の左上の正方形、Excel と CSV は A1 から始まる左上の範囲、スライド・図面・画像・EPUB の表紙は 1 ページ目の全体で、PNG・JPEG・WebP で書き出す。`Document.SearchText` は検索エンジン向けにメタデータとページごと（シートは丸ごと）のテキストを返す。どちらも暗号化されないので、暗号化した文書については頼まれない限り（`-allow-plaintext`）書き出さない。詳細は design.md の §3.25
 
-変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / Windows メタファイル / TIFF / HTML / Markdown / EPUB / MML / MIDI / MusicXML / 画像）は中身から、判別できなければ拡張子から決めます（Markdown はどんなテキストでもありうるので拡張子で決まります）。
+変換は `bdf generate` サブコマンドで行い、入力の形式（PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / Windows メタファイル / TIFF / HTML / Markdown / EPUB / MML / MIDI / MusicXML / フォント / 画像）は中身から、判別できなければ拡張子から決めます（Markdown はどんなテキストでもありうるので拡張子で決まります）。
 
 - **PDF**（`converter/pdf`）: 埋め込みフォント（TrueType、CFF、OpenType、Type1）を使うグリフだけの WOFF2 に組み直し（OS/2 の埋め込み許諾 `fsType` を確認し、著作権表示は引き継ぐ）、フォーム XObject を共有オブジェクトに、テキストを検索可能な run に変換し、各ページ先頭の共通部分（マスター）を共有 Object に切り出します。ソフトマスク（フェード、ドロップシャドウ、Chrome の PDF の CSS `mask-image`）はビューアで描き、JPEG 2000 と JBIG2 の画像は純 Go のデコーダでデコードします。埋め込まれていない CJK フォントの文字は Adobe の定義済み CMap（Shift_JIS、EUC、UCS-2 など）で読み、縦書き（WMode 1）は縦の行として配置します。オプショナルコンテンツ（レイヤー）はビューアが文書を開いたときの表示どおりにし、非表示のレイヤーは描きません。詳細は design.md の §3.1。
 - **Illustrator .ai**（`converter/ai`）: Illustrator 9 以降の .ai は、PDF に Illustrator 独自のデータを添えたものです。PDF のページがアートボードなので、PDF 変換器で描いてアートボード（裁ち落としを除いたトリムボックス）で切り抜きます。非表示のレイヤーは描きません。「PDF 互換ファイルを作成」をオフにして保存したファイルと、Illustrator 8 以前の PostScript ベースの .ai はエラーにします。詳細は design.md の §3.17。
@@ -105,6 +105,7 @@ flowchart TB
 - **Markdown .md**（`converter/markdown`）: goldmark で HTML にし（CommonMark と GitHub の拡張の表・タスクリスト・取り消し線・自動リンク、脚注、定義リスト）、HTML と同じく組みます。README によくある raw HTML（`<p align="center">`、`<details>`）もそのまま組み、見出しには GitHub と同じ id を付けるので `#見出し` へのリンクが効きます。数式は GitHub と同じく `$…$`、`$$…$$`、`math` のコードブロックに LaTeX で書きます。YAML / TOML の front matter は Dublin Core のメタデータになります。
 - **EPUB .epub**（`converter/epub`）: EPUB 3 と EPUB 2 の本。リフロー型の本は HTML と同じリーダー表示で、読む順の文書を章ごとに改ページしながら、ページ番号の付いた本のページ（既定は A5、`-param paper=`）に組みます。表紙や全面の挿絵はページいっぱいに置きます。本文の文書は XML として読みます（空要素の `<a id="p5"/>` が後ろを取り込まない）。本の CSS は捨てますが、本の中身に関わるものだけは読みます。書字方向（電書協の作り方の `writing-mode: vertical-rl` の縦書きの本は縦書きで組む）、縦中横、傍点、行揃え、非表示の要素、外字の画像の大きさです。SVG（SVG ファイル、svg 要素、SVG のページ）も描き、MathML の数式は数式エンジンで組みます（縦書きの中では正立させる）。章をまたぐリンクはそのページへ飛びます。画像のページからなる固定レイアウトの本（マンガ、写真集）は、viewport の大きさの画像のページにします。右綴じの本は View の `direction` を `rtl` にします（spec §4.1）。暗号化された（DRM の）本は変換しません。詳細は design.md の §3.24。
 - **音楽: MML .mml、MIDI .mid / .kar、MusicXML .musicxml / .mxl**（`converter/mml`、`converter/midi`、`converter/musicxml`）: 楽譜を A4 のページに五線譜で組み、ビューアで演奏する音楽を格納します。記号は SMuFL のフォント Bravura の字形を共有のパスで描きます。MML（FlMML と BASIC の PLAY 文の汎用の方言、マビノギの `MML@…;`、ファミコンの MCK・PPMCK のトラック行）と MIDI は演奏のデータなので、音を音価に量子化し（拍と小節線をまたぐタイ、付点、3 連符）、小節と 1 段 2 声部に分け、調（ファイルのもの、なければ音から推定）で綴り、音域で音部記号を選びます（鍵盤楽器は大譜表）。MIDI の歌詞とカラオケの文字は音符の下に付けます。MusicXML は書かれたとおりに読みます。複数の段のパート、声部、和音、連桁、連符、装飾音、臨時記号、タイとスラー、アーティキュレーションと装飾記号、強弱記号とヘアピン、文字の指示、コードネーム、ペダルとオクターブ線、節ごとの歌詞、音部記号・調号・拍子の変更、繰り返しと括弧、速度記号とリハーサルマーク、段の区切りです。演奏は繰り返しを展開します。MIDI はファイルをそのまま演奏し、MML と MusicXML は Standard MIDI File に書き出します。詳細は design.md の §3.27。
+- **フォントファイル .ttf / .otf / .ttc / .woff / .woff2**（`converter/font`）: フォントのプレビューです。フォントごとにスクロールの View の組を作ります（コレクションはフォントの数だけ）。概要には、名前を大きく、字形見本と文字セット、フォントが対応するスクリプトの見本文を 8〜72 pt の大きさで（そのスクリプトのパングラム、または `-param text=`）、各言語の name テーブル、ライセンスと OS/2 の埋め込み許可、メトリクス、可変フォントの軸と名前付きインスタンス、レイアウトテーブルのスクリプトとフィーチャー、カラーパレット、テーブルの一覧を並べます。文字は Unicode ブロックごとのコード表で、ブロックの被覆率つき。グリフは全グリフを ID 順に、名前・文字・GDEF のクラスつきで。フィーチャーは GSUB と GPOS の全フィーチャーを、スクリプトと言語、ブラウザが指定なしに適用するか、ルックアップとともに示し、働きをグリフで描きます。置換（合字、代替字形、スモールキャピタル、文脈ルールが適用するルックアップ）、カーニングのペアの前後と値、単一調整の送り幅の箱、マークの基底字への付き方です。GSUB・GPOS の読み取りは自前（`internal/otlayout`）で、ルックアップごとに fontTools と照合しました。Canvas 2D は文書が指定するフィーチャーを適用できないので、フォントを 2 つの形で埋め込んで描きます。レイアウトテーブルを除いて全グリフを私用領域の文字に割り当てたもの（各グリフをそのまま描く。カラーグリフも）と、レイアウトテーブルを残して見本文の届くグリフだけにしたもの（ブラウザが見本文をシェーピングする。アラビア文字の連結、インド系文字の結合）です。OS/2 の fsType が埋め込みを禁じるフォントは、代わりにアウトラインで描きます（`-ignore-fstype` で埋め込み）。可変フォントは既定のインスタンスで描きます。ブラウザでは Brotli を外しているので WOFF2 は読めません。詳細は design.md の §3.28。
 - **Windows メタファイル .emf / .wmf**（`converter/emf`）: 図の大きさの 1 ページにし、メタファイルの記録を再生して描きます（Office 文書の中の EMF/WMF の図を描くのと同じ再生処理）。テキストは PowerPoint と同じくレイアウトしてフォントを埋め込みます。
 - **TIFF .tif / .tiff**（`converter/tiff`）: ファイルのページごとに、解像度から決まる大きさのページを 1 枚の画像で描きます。TIFF の読み取りは自前で、classic TIFF と BigTIFF、ストリップとタイル、無圧縮・PackBits・LZW・Deflate・JPEG・CCITT の FAX 符号（Group 3 の 1 次元と 2 次元、詰め物ビットの有無、Group 4）、1〜16 ビットの二値・グレー・パレット・RGB・CMYK を読みます。Orientation タグでページを回します。解像度の上限（既定は 192dpi と 3840 × 3840 画素。`-max-dpi`、`-max-pixels`）を超えるページは上限まで縮小し、二値のページは二値のまま縮小します。縮小しない JPEG のページは、ストリップを再エンコードせずに 1 つの JPEG につないで格納します。詳細は design.md の §3.15。
 - **画像 .png / .jpg / .gif / .webp / .avif / .bmp / .ico / .svg**（`converter/image`）: ブラウザがそのまま表示できる画像はパススルーです。デコードも再エンコードもせずにそのまま格納して画像の大きさの 1 ページで描くので、ブラウザでファイルを開いたときと同じ見た目になります。変換器が読むのは大きさ（JPEG と PNG の EXIF の向き、AVIF の `irot` を含む）とメタデータだけで、XMP・EXIF・IPTC、PNG のテキストチャンク、SVG の title・desc・RDF をほかの形式と同じ Dublin Core にし、説明を図の代替テキストにします。SVG は Worker ではデコードできないので、表示する大きさでページが描き、拡大してもぼけません（Office 文書や draw.io の図の中の SVG の画像も同じ）。詳細は design.md の §3.19。
@@ -181,6 +182,7 @@ text, err := res.Doc.SearchText() // メタデータと、View ごと・ペー�
 | `converter/mml` | MML（.mml。汎用、マビノギ、PPMCK）→ BDF 変換器（楽譜にする） |
 | `converter/midi` | Standard MIDI File（.mid、.kar、.rmi）→ BDF 変換器（楽譜にする） |
 | `converter/musicxml` | MusicXML（.musicxml、.mxl）→ BDF 変換器 |
+| `converter/font` | フォントファイル（.ttf、.otf、.ttc、.woff、.woff2）→ BDF 変換器。文字・グリフ・OpenType フィーチャーのプレビュー |
 | `converter/emf` | Windows メタファイル (.emf, .wmf) → BDF 変換器 |
 | `converter/drawio` | draw.io（.drawio / .drawio.svg / .drawio.png）→ BDF 変換器 |
 | `converter/tiff` | TIFF (.tif, .tiff) → BDF 変換器 |
@@ -190,7 +192,7 @@ text, err := res.Doc.SearchText() // メタデータと、View ごと・ペー�
 | `woff2/` | TrueType/OpenType ↔ WOFF2（glyf 変換と Brotli） |
 | `raster/` | ページを純 Go で画像に描く（ビューアと同じ描き方）。ソフトウェアのラスタライザと、SVG の画像を描く SVG レンダラ |
 | `thumbnail/` | 文書のサムネイル。文書の種類によるレイアウトと、PNG・JPEG・WebP |
-| `internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書きとグリフの輪郭（`sfnt`）、CFF の読み取りとサブセット化（`cff`）。変換器と `raster` が共有する |
+| `internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書きとグリフの輪郭（`sfnt`）、CFF の読み取りとサブセット化（`cff`）、OpenType のレイアウトテーブル GSUB・GPOS・GDEF の読み取り（`otlayout`）。変換器と `raster` が共有する |
 | `packages/core` | `@bdf/core`: TypeScript のデコーダ、コンテナ読み込み、テキスト抽出 |
 | `packages/render` | `@bdf/render`: Canvas レンダラ、ページ/連続/シート描画（scroll View は連続描画）、Worker（SVG の画像はメインスレッドが描く） |
 | `cmd/bdfwasm` | ブラウザ内変換用に wasm にした変換器（PDF 用、Office 系用、HTML・Markdown 用、画像用のモジュール） |
@@ -207,7 +209,7 @@ go run ./cmd/bdf ls out.bdf          # Part 一覧
 go run ./cmd/bdf disasm out.bdf <hash>
 go run ./cmd/bdf split out.bdf out/  # 分割形式へ
 
-# PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / メタファイル / TIFF / HTML / Markdown / EPUB / MML / MIDI / MusicXML / 画像 → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|ai|psd|pptx|xlsx|csv|parquet|docx|visio|drawio|dxf|jww|sxf|cgm|hpgl|gerber|emf|tiff|html|markdown|epub|mml|midi|musicxml|image で指定も可）
+# PDF / Illustrator / Photoshop / PowerPoint / Excel / CSV / Parquet / Word / Visio / draw.io / DXF / Jw_cad / SXF / CGM / HP-GL/2 / Gerber / メタファイル / TIFF / HTML / Markdown / EPUB / MML / MIDI / MusicXML / フォント / 画像 → BDF（形式は中身から、判別できなければ拡張子から。-format pdf|ai|psd|pptx|xlsx|csv|parquet|docx|visio|drawio|dxf|jww|sxf|cgm|hpgl|gerber|emf|tiff|html|markdown|epub|mml|midi|musicxml|font|image で指定も可）
 go run ./cmd/bdf generate -h                  # フラグと、入力形式ごとの -param オプションの一覧
 go run ./cmd/bdf generate in.pdf out.bdf      # 1 ファイル形式
 go run ./cmd/bdf generate in.pptx out/        # 分割形式
@@ -256,6 +258,8 @@ go run ./cmd/bdf generate song.mid out.bdf                         # MIDI: 楽�
 go run ./cmd/bdf generate -param time=3/4 -param key=F song.mid out.bdf  # MIDI・MML: 拍子と調号をファイルのもの（または推定した調）の代わりに指定
 go run ./cmd/bdf generate tune.mml out.bdf                         # MML: 方言は中身から（-param dialect=generic|mabinogi|ppmck、octave=reverse）
 go run ./cmd/bdf generate score.mxl out.bdf                        # MusicXML（.musicxml と圧縮した .mxl）: 書かれたとおりの楽譜、繰り返しを展開して演奏
+go run ./cmd/bdf generate font.otf out.bdf                         # フォントファイル（.ttf / .otf / .ttc / .woff / .woff2）: 概要・文字・グリフ・OpenType フィーチャー
+go run ./cmd/bdf generate -param font=2 -param text=あいうえお fonts.ttc out.bdf  # フォントコレクション: 2 番目のフォントだけ、見本文を指定して
 go run ./cmd/bdf generate in.emf out.bdf                           # Windows メタファイル（.emf / .wmf）を 1 ページに
 go run ./cmd/bdf generate photo.jpg out.bdf                        # 画像（PNG / JPEG / GIF / WebP / AVIF / BMP / ICO / SVG）をそのまま 1 ページに。メタデータは Dublin Core に
 go run ./cmd/bdf generate diagram.drawio out.bdf                   # draw.io: ページごとに View（シートのように切り替え）

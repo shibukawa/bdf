@@ -28,7 +28,7 @@ func NewBuilder(doc *bdf.Document, fonts *fontset.Set) *Builder {
 
 // New starts an object.
 func (b *Builder) New() *Canvas {
-	cv := &Canvas{b: b, Obj: bdf.NewObject(), fontIdx: map[fontset.Use]bdf.FontRef{}, images: map[bdf.Hash]bdf.ImageRef{}}
+	cv := &Canvas{b: b, Obj: bdf.NewObject(), fontIdx: map[fontset.Use]bdf.FontRef{}, fixedIdx: map[bdf.Font]bdf.FontRef{}, images: map[bdf.Hash]bdf.ImageRef{}}
 	b.canvases = append(b.canvases, cv)
 	return cv
 }
@@ -46,8 +46,9 @@ func (b *Builder) Encode() {
 type Canvas struct {
 	b        *Builder
 	Obj      *bdf.Object
-	fonts    []fontset.Use
+	fonts    []fontEntry
 	fontIdx  map[fontset.Use]bdf.FontRef
+	fixedIdx map[bdf.Font]bdf.FontRef
 	images   map[bdf.Hash]bdf.ImageRef
 	children []*Canvas
 	// Drawn records that something visible was drawn.
@@ -61,14 +62,33 @@ type Canvas struct {
 	hash    bdf.Hash
 }
 
+// fontEntry is a font of the object: one of the font set, resolved when
+// the object is encoded, or a font record the converter made itself.
+type fontEntry struct {
+	use   fontset.Use
+	fixed *bdf.Font
+}
+
 // Font returns the reference of a font in the object.
 func (cv *Canvas) Font(u fontset.Use) bdf.FontRef {
 	if r, ok := cv.fontIdx[u]; ok {
 		return r
 	}
 	r := cv.Obj.AddFont(bdf.SystemFont("\x00pending", 0, 0))
-	cv.fonts = append(cv.fonts, u)
+	cv.fonts = append(cv.fonts, fontEntry{use: u})
 	cv.fontIdx[u] = r
+	return r
+}
+
+// FixedFont returns the reference of a font record that does not come from
+// the font set, such as a font part the converter added itself.
+func (cv *Canvas) FixedFont(f bdf.Font) bdf.FontRef {
+	if r, ok := cv.fixedIdx[f]; ok {
+		return r
+	}
+	r := cv.Obj.AddFont(f)
+	cv.fonts = append(cv.fonts, fontEntry{fixed: &f})
+	cv.fixedIdx[f] = r
 	return r
 }
 
@@ -160,8 +180,10 @@ func (cv *Canvas) encode() bdf.Hash {
 		return cv.hash
 	}
 	cv.encoded = true
-	for i, u := range cv.fonts {
-		cv.Obj.UpdateFont(bdf.FontRef(i), cv.b.fonts.Font(u))
+	for i, e := range cv.fonts {
+		if e.fixed == nil {
+			cv.Obj.UpdateFont(bdf.FontRef(i), cv.b.fonts.Font(e.use))
+		}
 	}
 	for i, ch := range cv.children {
 		cv.Obj.UpdateObject(bdf.ObjRef(i), ch.encode())
