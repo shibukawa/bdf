@@ -1,4 +1,4 @@
-package docx
+package wordproc
 
 import (
 	"math"
@@ -25,6 +25,11 @@ type table struct {
 	rowBand   int
 	colBand   int
 	cellSpace float64
+
+	// HTML: the margins above and below (CSS rules, see converter.css),
+	// and the column widths chosen by the content (nil: grid)
+	before, after float64
+	auto          *autoColumns
 }
 
 // table border sides
@@ -334,6 +339,9 @@ type cellLayout struct {
 func (c *converter) layoutTable(t *table, w float64, sec *section, vertical bool) *tableLayout {
 	lay := &tableLayout{t: t, cells: map[*cell]*cellLayout{}}
 	grid := append([]float64(nil), t.grid...)
+	if t.auto != nil {
+		grid = t.auto.widths(w - t.ind)
+	}
 	total := 0.0
 	for _, g := range grid {
 		total += g
@@ -411,7 +419,12 @@ func (c *converter) layoutTable(t *table, w float64, sec *section, vertical bool
 // the header rows repeat at the top of each column.
 func (f *flow) table(t *table) position {
 	lay := f.c.layoutTable(t, f.w, f.sec, f.lc.vertical)
-	if !f.atTop || !f.paged {
+	switch {
+	case f.c.css:
+		if !f.atTop {
+			f.y += math.Max(f.prevAfter, t.before)
+		}
+	case !f.atTop || !f.paged:
 		f.y += f.prevAfter
 	}
 	f.prevAfter = 0
@@ -456,6 +469,7 @@ func (f *flow) table(t *table) position {
 			fresh = f.repeatHeaders(lay, nh, ri)
 		}
 	}
+	f.prevAfter = t.after
 	return start
 }
 

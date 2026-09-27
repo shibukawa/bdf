@@ -16,8 +16,8 @@ const src = params.get("src") ?? DEFAULT_SRC;
 const client = new BdfWorkerClient(new Worker("./worker.js", { type: "module" }));
 /** The converter worker, started with the first file that needs converting. */
 let converter: ConverterClient | undefined;
-/** Converter modules, one for PDF and one for the Office formats, and the fonts the latter lay text out with. */
-const MODULES = { pdf: "bdf-pdf.wasm", office: "bdf-office.wasm" };
+/** Converter modules, one for PDF, one for the Office formats and one for HTML and Markdown, and the fonts the latter two lay text out with. */
+const MODULES = { pdf: "bdf-pdf.wasm", office: "bdf-office.wasm", web: "bdf-web.wasm" };
 const FONTS = "fonts/";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -239,7 +239,7 @@ async function openFile(name: string, data: ArrayBuffer) {
   setWarnings([]);
   setDownload();
   setTiming("");
-  const kind = sniff(new Uint8Array(data, 0, Math.min(1024, data.byteLength)));
+  const kind = sniff(new Uint8Array(data, 0, Math.min(1024, data.byteLength)), name);
   if (kind === "bdf") return load({ kind: "buffer", buffer: data }, name, token);
   const busy = `converting ${name}…`;
   setStatus(busy);
@@ -251,7 +251,7 @@ async function openFile(name: string, data: ArrayBuffer) {
   let t0 = 0; // of the last attempt: the reader's typing is not part of the conversion
   const open = (password?: string) => {
     t0 = performance.now();
-    return conv.open(module, data, { fonts, password });
+    return conv.open(module, data, { fonts, password, name });
   };
   let res: Opened | undefined;
   try {

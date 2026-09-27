@@ -1,4 +1,4 @@
-package docx
+package wordproc
 
 import (
 	"strconv"
@@ -20,6 +20,11 @@ type inlineObj struct {
 	ext     [4]float64 // effect extent (left, top, right, bottom): room for shadows and glow
 	alt     string     // alternative text ("" for none or decorative)
 	link    string
+
+	// HTML: paint draws the object into its box (instead of a graphic), and
+	// fit shrinks it to the width of the line when it is wider
+	paint func(e *emitter, box drawingml.Box)
+	fit   bool
 }
 
 // floatObj is a drawing anchored in a paragraph and positioned on the page
@@ -214,9 +219,12 @@ func (e *emitter) drawObject(o *inlineObj, box drawingml.Box) {
 	c := e.c
 	prev := c.curEmitter
 	c.curEmitter = e
-	if o.graphic != nil {
+	switch {
+	case o.paint != nil:
+		o.paint(e, box)
+	case o.graphic != nil:
 		c.dr.DrawGraphic(e.cv, o.graphic, o.part, box)
-	} else {
+	default:
 		c.dr.DrawImage(e.cv, o.part, o.vmlRID, box)
 	}
 	c.curEmitter = prev

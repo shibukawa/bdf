@@ -1,7 +1,8 @@
 // Builds the static demo site (published on GitHub Pages): the viewer, the
 // converters as wasm (cmd/bdfwasm: one module for PDF, one for the Office
-// formats), the fonts the Office converters lay text out with, sample files,
-// and the documentation (docs.mjs: the READMEs and docs/ as HTML under docs/).
+// formats, one for HTML and Markdown), the fonts the Office, HTML and
+// Markdown converters lay text out with, sample files, and the
+// documentation (docs.mjs: the READMEs and docs/ as HTML under docs/).
 // Files opened on the site are converted inside the browser.
 //
 //   node examples/viewer/site.mjs [--serve] [--out dir]
@@ -27,6 +28,7 @@ const out = resolve(outArg >= 0 ? args[outArg + 1] : join(root, "examples/viewer
 const MODULES = [
   { file: "bdf-pdf.wasm", tags: "pdfonly" },
   { file: "bdf-office.wasm", tags: "officeonly" },
+  { file: "bdf-web.wasm", tags: "webonly" },
 ];
 
 /** Samples offered on the start page: repository path and label. */

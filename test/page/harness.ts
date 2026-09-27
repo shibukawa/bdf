@@ -104,6 +104,11 @@ export const CASES: Case[] = [
   { name: "tiff-scan-2", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "tiff-fax-1", src: "/testdata/tiff/fax.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
   { name: "tiff-orientation-6", src: "/testdata/tiff/orientation.bdf", kind: "page", view: "pages", page: 5, scale: 2 },
+  // Markdown and HTML in reader mode (converter/markdown, converter/html); see test/markdown. Their text refers
+  // to fonts by name and is drawn with the browser's fonts, at the advances measured with the test fonts.
+  { name: "markdown-basic-scroll", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 700 }, scale: 1 },
+  { name: "markdown-basic-strips", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 760, w: 504, h: 460 }, scale: 1 },
+  { name: "html-article-scroll", src: "/testdata/html/article.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 760 }, scale: 1 },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";

@@ -7,9 +7,10 @@
 //	GOOS=js GOARCH=wasm go build -tags bdf_noconv -o bdf.wasm ./cmd/bdfwasm
 //
 // and run it with Go's wasm_exec.js (in a Worker: a conversion keeps the
-// thread busy). -tags pdfonly or officeonly leaves out the Office
-// converters (Word, PowerPoint, Excel, CSV, Visio, draw.io, DXF, Jw_cad, metafiles) or
-// the PDF one, for smaller modules. bdf_noconv leaves out the image and
+// thread busy). -tags pdfonly, officeonly or webonly builds a smaller
+// module of the PDF converter, the Office converters (Word, PowerPoint,
+// Excel, CSV, Visio, draw.io, DXF, Jw_cad, metafiles) or the HTML and
+// Markdown converters only. bdf_noconv leaves out the image and
 // WOFF2 encoders: a document drawn where it is converted gains nothing from
 // them.
 //
@@ -20,6 +21,7 @@
 //	  format?: string,   // a format name; detected from the content when absent
 //	  password?: string, // the open password of an encrypted input
 //	  fonts?: string,    // URL of a font directory (see below)
+//	  name?: string,     // the file name, whose extension tells what the content does not (Markdown, a CSV file of one line)
 //	}): Promise<{bdf: Uint8Array, format: string, summary: string, warnings: string[], protected: boolean}>
 //	bdfConverter.open(data, options?): Promise<{bdf, format, pages: number, warnings, stream?}>
 //
@@ -105,6 +107,7 @@ func fonts(url string) (*httpFS, error) {
 type request struct {
 	data                      []byte
 	format, password, fontURL string
+	name                      string
 }
 
 func readRequest(args []js.Value) (*request, error) {
@@ -122,12 +125,12 @@ func readRequest(args []js.Value) (*request, error) {
 		}
 		return ""
 	}
-	req.format, req.password, req.fontURL = str("format"), str("password"), str("fonts")
+	req.format, req.password, req.fontURL, req.name = str("format"), str("password"), str("fonts"), str("name")
 	return req, nil
 }
 
 func (req *request) options() (*converter.Options, error) {
-	opts := &converter.Options{Password: req.password, NoSystemFonts: true}
+	opts := &converter.Options{Password: req.password, NoSystemFonts: true, FileName: req.name}
 	if req.fontURL != "" {
 		fsys, err := fonts(req.fontURL)
 		if err != nil {

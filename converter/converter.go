@@ -5,9 +5,9 @@
 // The converters themselves are its subpackages (converter/pdf,
 // converter/pptx, converter/xlsx, converter/csv, converter/docx,
 // converter/visio, converter/drawio, converter/dxf, converter/jww,
-// converter/sxf, converter/emf, converter/tiff). Each registers its format
-// when it is imported, so a program supports the formats whose packages it
-// links in:
+// converter/sxf, converter/emf, converter/tiff, converter/html,
+// converter/markdown). Each registers its format when it is imported, so a
+// program supports the formats whose packages it links in:
 //
 //	import _ "github.com/shibukawa/bdf/converter/pdf"  // PDF only
 //	import _ "github.com/shibukawa/bdf/converter/all"  // every format
@@ -16,7 +16,8 @@
 // packages and their XML) with ooxml/drawingml (shapes, text, tables,
 // charts), fontset (fonts for text layout and their embedding), canvas
 // (objects under construction), metafile (EMF/WMF pictures) and linebreak
-// (line breaking rules); the CAD converters share cad (drawings plotted
+// (line breaking rules); the Word, HTML and Markdown converters share the
+// layout engine wordproc, the CAD converters share cad (drawings plotted
 // onto pages).
 //
 // Password-protected inputs open with Options.Password. Encrypted Office
@@ -126,6 +127,10 @@ type Options struct {
 	NoSystemFonts bool
 	// SystemFonts refers to fonts by family name instead of embedding them.
 	SystemFonts bool
+	// EmbedFonts embeds the fonts of the formats that refer to them by name
+	// unless told otherwise: HTML and Markdown, whose text is left to the
+	// viewer's fonts as a web page's is.
+	EmbedFonts bool
 
 	// NoSubset embeds whole fonts instead of the glyphs in use.
 	NoSubset bool
@@ -145,9 +150,14 @@ type Options struct {
 
 	// FileName is the input's file name, when it has one (ConvertFile sets
 	// it). Its extension tells the format of inputs whose content does not
-	// (a CSV file of one line or one column), and formats that name what
-	// they convert after the file use it: a CSV file's sheet.
+	// (a CSV file of one line or one column, a Markdown document, an HTML
+	// fragment), and formats that name what they convert after the file use
+	// it: a CSV file's sheet.
 	FileName string
+	// Dir is the directory that relative references of the input resolve
+	// in (the images of HTML and Markdown documents); "" reads no files
+	// beside the input. ConvertFile sets it to the input's directory.
+	Dir string
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
@@ -241,7 +251,18 @@ func Detect(r io.ReaderAt, size int64) *Format {
 	return nil
 }
 
-// DetectFile is Detect for a file path.
+// detectNamed is Detect for an input with a file name: when no format
+// recognizes the content (a CSV file of one line, a Markdown document, an
+// HTML fragment), the format that lists the file's extension takes it.
+func detectNamed(fileName string, r io.ReaderAt, size int64) *Format {
+	if f := Detect(r, size); f != nil {
+		return f
+	}
+	return byExtension(fileName)
+}
+
+// DetectFile is Detect for a file path, with the file's extension for the
+// inputs no format recognizes by their content (see Options.FileName).
 func DetectFile(path string) (*Format, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -252,7 +273,7 @@ func DetectFile(path string) (*Format, error) {
 	if err != nil {
 		return nil, err
 	}
-	return Detect(f, st.Size()), nil
+	return detectNamed(filepath.Base(path), f, st.Size()), nil
 }
 
 // ConvertFile converts a file in the named format (detected when name is
@@ -273,6 +294,9 @@ func ConvertFile(path, name string, opts *Options) (*Result, error) {
 	}
 	if o.FileName == "" {
 		o.FileName = filepath.Base(path)
+	}
+	if o.Dir == "" {
+		o.Dir = filepath.Dir(path)
 	}
 	res, err := Convert(f, st.Size(), name, &o)
 	if err != nil {
@@ -352,10 +376,8 @@ func prepare(r io.ReaderAt, size int64, name string, opts *Options) (*input, err
 		in.r, in.size, in.protected = bytes.NewReader(b), int64(len(b)), true
 	}
 	if name == "" {
-		if in.format = Detect(in.r, in.size); in.format == nil {
-			if in.format = byExtension(opts.FileName); in.format == nil {
-				return nil, ErrUnknownFormat
-			}
+		if in.format = detectNamed(opts.FileName, in.r, in.size); in.format == nil {
+			return nil, ErrUnknownFormat
 		}
 	} else if in.format = Lookup(name); in.format == nil {
 		return nil, fmt.Errorf("unknown format %q", name)

@@ -41,6 +41,8 @@ export interface ConvertOptions {
   password?: string;
   /** URL of the font directory the Office converters lay text out with. */
   fonts?: string;
+  /** The file name, whose extension tells the format of a file whose content does not. */
+  name?: string;
 }
 
 export type ConvertRequest =
@@ -57,12 +59,21 @@ export class ConvertError extends Error {
   }
 }
 
-/** What a file is, from its first bytes: a bdf document, a PDF, or (possibly) an Office document. */
-export function sniff(head: Uint8Array): "bdf" | "pdf" | "office" {
+/** Extensions of the files the web module converts (HTML and Markdown). */
+const WEB = [".html", ".htm", ".xhtml", ".mhtml", ".mht", ".md", ".markdown", ".mdown", ".mkd", ".mdx"];
+
+/**
+ * What a file is, from its first bytes and its name: a bdf document, a PDF,
+ * an HTML or Markdown document (by its extension), or (possibly) an Office
+ * document.
+ */
+export function sniff(head: Uint8Array, name = ""): "bdf" | "pdf" | "web" | "office" {
   if (head[0] === 0x62 && head[1] === 0x64 && head[2] === 0x66 && head[3] === 0) return "bdf";
   // the header may follow some garbage in the first 1024 bytes
   const text = String.fromCharCode(...head.subarray(0, 1024));
-  return text.includes("%PDF-") ? "pdf" : "office";
+  if (text.includes("%PDF-")) return "pdf";
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 && WEB.includes(name.slice(dot).toLowerCase()) ? "web" : "office";
 }
 
 type Call = ConvertRequest extends infer R ? (R extends { id: number } ? Omit<R, "id"> : never) : never;
