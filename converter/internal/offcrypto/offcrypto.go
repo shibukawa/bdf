@@ -283,8 +283,14 @@ func (p *agileParams) check() error {
 	if p.newHash() == nil {
 		return fmt.Errorf("offcrypto: hash %q is not supported", p.HashAlgorithm)
 	}
-	if len(p.SaltValue) == 0 {
-		return errors.New("offcrypto: missing salt")
+	// MS-OFFCRYPTO 2.3.4.10 defines SaltSize as 1..65536, with the
+	// decoded saltValue exactly that size. In particular, a negative size
+	// must not reach secretKey's verifier slice.
+	if p.SaltSize < 1 || p.SaltSize > 65536 {
+		return fmt.Errorf("offcrypto: salt size %d out of range", p.SaltSize)
+	}
+	if len(p.SaltValue) != p.SaltSize {
+		return fmt.Errorf("offcrypto: salt has %d bytes, want %d", len(p.SaltValue), p.SaltSize)
 	}
 	return nil
 }

@@ -18,6 +18,9 @@ export function decodeTextIndex(bytes: Uint8Array): IndexRun[] {
   const version = r.u16();
   if (version > 1) throw new BdfFormatError(`unsupported text index version ${version}`);
   const n = r.varuint();
+  // Three references, a separator and a string length take at least five
+  // bytes per run, even when every reference and string is empty.
+  r.need(n * 5);
   const out: IndexRun[] = new Array(n);
   for (let i = 0; i < n; i++) {
     out[i] = { a: r.varuint(), b: r.varuint(), ordinal: r.varuint(), sep: r.u8(), text: r.str() };

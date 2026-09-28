@@ -52,6 +52,24 @@ test("a manifest inflates to 256 MiB at most", async () => {
   await assert.rejects(open(file), formatError(/inflates to more/));
 });
 
+test("a stored manifest is bounded before its bytes are requested", async () => {
+  const file = single({});
+  new DataView(file.buffer, file.byteOffset).setBigUint64(16, BigInt(MAX_MANIFEST_SIZE + 1), true);
+  await assert.rejects(open(file), formatError(/manifest too large/));
+  const realFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    return new Response(file.subarray(0, 32), { status: 206 });
+  };
+  try {
+    await assert.rejects(new RangeSource("https://example.com/doc.bdf").manifest(), formatError(/manifest too large/));
+    assert.equal(requests, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test("parts and the manifest lie within the file", async () => {
   const file = single({}, [{ h: name(1), t: "img", bytes: bytes(1, 2, 3), entry: { off: -2 } }, { h: name(2), t: "img", bytes: bytes(1, 2, 3), entry: { len: 1e9 } }]);
   const doc = await open(file);
@@ -173,6 +191,38 @@ test("a server that answers ranges is asked for each", async () => {
     assert.deepEqual([...await doc.part(name(1))], [1, 2, 3]);
     assert.equal(ranges.length, 4);
     assert.deepEqual(ranges[0], [0, 31]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("range responses must contain exactly the requested bytes", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    for (const [body, headers, message] of [
+      [new Uint8Array(31), {}, /shorter than its stated size/],
+      [new Uint8Array(33), {}, /exceeds its stated size/],
+      [new Uint8Array(32), { "Content-Range": "bytes 1-32/100" }, /does not match the request/],
+    ]) {
+      globalThis.fetch = async () => new Response(body, { status: 206, headers });
+      await assert.rejects(new RangeSource("https://example.com/doc.bdf").manifest(), formatError(message));
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("split responses cannot exceed the sizes in the manifest", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response("abc", { status: 200 });
+    const source = new SplitSource("https://example.com/doc/");
+    await assert.rejects(source.stored({ h: name(1), t: "img", enc: "identity", len: 2, size: 2 }), formatError(/exceeds its stated size/));
+    await assert.rejects(source.stored({ h: name(1), t: "img", enc: "identity", len: 4, size: 4 }), formatError(/shorter than its stated size/));
+    globalThis.fetch = async () => new Response("abc", { status: 200, headers: { "Content-Encoding": "gzip", "Content-Length": "23" } });
+    assert.deepEqual([...await source.stored({ h: name(1), t: "img", enc: "identity", len: 3, size: 3 })], [97, 98, 99]);
+    globalThis.fetch = async () => new Response("x", { status: 200, headers: { "Content-Length": String(MAX_MANIFEST_SIZE + 1) } });
+    await assert.rejects(source.manifest(), formatError(/manifest exceeds its stated size/));
   } finally {
     globalThis.fetch = realFetch;
   }

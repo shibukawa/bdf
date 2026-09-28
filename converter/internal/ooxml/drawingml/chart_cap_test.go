@@ -2,6 +2,8 @@ package drawingml
 
 import (
 	"encoding/xml"
+	"math"
+	"slices"
 	"testing"
 
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
@@ -49,5 +51,57 @@ func TestAlphaCapped(t *testing.T) {
 	}
 	if got := alpha(2000000000); got != itoa(2000000000) {
 		t.Errorf("alpha(2000000000) = %q, want the decimal fallback", got)
+	}
+}
+
+func TestChartAxisTicks(t *testing.T) {
+	axisNode := func(step string) *ooxml.Node {
+		return node("valAx", nil,
+			node("scaling", nil, node("min", attr("val", "0")), node("max", attr("val", "1"))),
+			node("majorUnit", attr("val", step)))
+	}
+	// Ordinary custom spacing is retained exactly.
+	a := niceAxis(0, 1, axisNode("0.25"), 10)
+	if got, want := a.ticks(), []float64{0, .25, .5, .75, 1}; !slices.Equal(got, want) {
+		t.Fatalf("custom ticks = %v, want %v", got, want)
+	}
+	// A tiny custom unit would previously allocate labels without a useful
+	// bound. Use the same spacing as an automatic axis instead.
+	auto := niceAxis(0, 1, axisNode("0"), 10)
+	for _, step := range []string{"1e-300", "NaN", "Inf"} {
+		a := niceAxis(0, 1, axisNode(step), 10)
+		if a.step != auto.step || !slices.Equal(a.ticks(), auto.ticks()) {
+			t.Errorf("major unit %s: got step %g and ticks %v, want automatic step %g", step, a.step, a.ticks(), auto.step)
+		}
+	}
+}
+
+func TestChartAxisMalformedTicks(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		a    axis
+	}{
+		{"rounding cannot advance", axis{lo: 1e16, hi: 1e16 + 10, step: .25}},
+		{"tiny step", axis{lo: 0, hi: 1, step: 1e-300}},
+		{"overflowing span", axis{lo: -math.MaxFloat64, hi: math.MaxFloat64, step: 1}},
+		{"overflowing next tick", axis{lo: math.MaxFloat64, hi: math.MaxFloat64, step: math.MaxFloat64}},
+		{"zero step", axis{lo: 0, hi: 1}},
+		{"negative step", axis{lo: 0, hi: 1, step: -1}},
+		{"NaN step", axis{lo: 0, hi: 1, step: math.NaN()}},
+		{"infinite step", axis{lo: 0, hi: 1, step: math.Inf(1)}},
+		{"NaN lower bound", axis{lo: math.NaN(), hi: 1, step: 1}},
+		{"infinite upper bound", axis{lo: 0, hi: math.Inf(1), step: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ticks := tc.a.ticks()
+			if len(ticks) > maxAxisTicks {
+				t.Fatalf("%d ticks exceeds limit %d", len(ticks), maxAxisTicks)
+			}
+			for i, v := range ticks {
+				if math.IsNaN(v) || math.IsInf(v, 0) || i > 0 && v <= ticks[i-1] {
+					t.Fatalf("tick %d = %g is nonfinite or does not advance", i, v)
+				}
+			}
+		})
 	}
 }

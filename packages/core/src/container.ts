@@ -6,8 +6,8 @@ export const HEADER_SIZE = 32;
 /** Magic number of the single-file form: "bdf" and a NUL byte. */
 export const MAGIC = new Uint8Array([0x62, 0x64, 0x66, 0x00]);
 /**
- * The manifest JSON inflates to this much at most: a manifest states no size
- * of its own, so a small file could otherwise ask for any amount of memory.
+ * The stored and decoded manifest JSON are this large at most: a manifest
+ * states no size of its own, so a file could otherwise ask for any amount of memory.
  */
 export const MAX_MANIFEST_SIZE = 256 << 20;
 
@@ -71,6 +71,46 @@ function inRange(off: number, n: number, size: number): boolean {
   return Number.isInteger(off) && Number.isInteger(n) && off >= 0 && n >= 0 && off <= size && n <= size - off;
 }
 
+/** Read a response without letting it exceed the size advertised by the document. */
+async function readBounded(res: Response, limit: number, what: string): Promise<Uint8Array> {
+  if (!inRange(0, limit, Number.MAX_SAFE_INTEGER)) throw new BdfFormatError(`${what} size out of range`);
+  const declared = res.headers.get("Content-Length");
+  // Fetch exposes decoded body bytes, while Content-Length can describe the
+  // compressed transfer. Only use it for an identity response.
+  const encoding = res.headers.get("Content-Encoding");
+  if ((!encoding || encoding === "identity") && declared !== null && /^\d+$/.test(declared) && Number(declared) > limit) {
+    await res.body?.cancel();
+    throw new BdfFormatError(`${what} exceeds its stated size`);
+  }
+  const reader = res.body?.getReader();
+  if (!reader) return new Uint8Array(0);
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value.length > limit - size) {
+      await reader.cancel();
+      throw new BdfFormatError(`${what} exceeds its stated size`);
+    }
+    size += value.length;
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
+}
+
+async function readExact(res: Response, size: number, what: string): Promise<Uint8Array> {
+  const bytes = await readBounded(res, size, what);
+  if (bytes.length !== size) throw new BdfFormatError(`${what} is shorter than its stated size`);
+  return bytes;
+}
+
 /**
  * Part names are 32 lowercase hex characters (spec §3.1). They go into the
  * URLs of a split document, so any other name is refused: a manifest could
@@ -99,6 +139,7 @@ export class BufferSource implements PartSource {
   manifest(): Promise<Manifest> {
     this.manifestPromise ??= (async () => {
       const h = this.header;
+      if (h.manifestLen > MAX_MANIFEST_SIZE) throw new BdfFormatError("manifest too large");
       if (!inRange(h.manifestOff, h.manifestLen, this.bytes.length)) throw new BdfFormatError("manifest out of range");
       const raw = this.bytes.subarray(h.manifestOff, h.manifestOff + h.manifestLen);
       return JSON.parse(utf8.decode(await decode(raw, h.manifestEnc, MAX_MANIFEST_SIZE))) as Manifest;
@@ -122,9 +163,21 @@ export class RangeSource implements PartSource {
   constructor(private readonly url: string, private readonly init: RequestInit = {}) {}
 
   private async range(off: number, len: number): Promise<Uint8Array> {
+    if (!inRange(off, len, Number.MAX_SAFE_INTEGER)) throw new BdfFormatError("part out of range");
+    if (len === 0) return new Uint8Array(0);
     if (!this.whole) {
       const res = await fetch(this.url, { ...this.init, headers: { ...(this.init.headers as Record<string, string>), Range: `bytes=${off}-${off + len - 1}` } });
-      if (res.status === 206) return new Uint8Array(await res.arrayBuffer());
+      if (res.status === 206) {
+        const contentRange = res.headers.get("Content-Range");
+        if (contentRange !== null) {
+          const match = /^bytes (\d+)-(\d+)\/(?:\d+|\*)$/.exec(contentRange);
+          if (!match || Number(match[1]) !== off || Number(match[2]) !== off + len - 1) {
+            await res.body?.cancel();
+            throw new BdfFormatError("range response does not match the request");
+          }
+        }
+        return readExact(res, len, "range response");
+      }
       if (res.status !== 200) throw new Error(`bdf: range request failed with ${res.status}`);
       // The server ignored the range and sent the file: it is kept, and the
       // ranges are taken from it (every part would fetch the file again).
@@ -144,6 +197,7 @@ export class RangeSource implements PartSource {
     this.manifestPromise ??= (async () => {
       this.header = parseHeader(await this.range(0, HEADER_SIZE));
       const h = this.header;
+      if (h.manifestLen > MAX_MANIFEST_SIZE) throw new BdfFormatError("manifest too large");
       const raw = await this.range(h.manifestOff, h.manifestLen);
       return JSON.parse(utf8.decode(await decode(raw, h.manifestEnc, MAX_MANIFEST_SIZE))) as Manifest;
     })();
@@ -165,9 +219,9 @@ export class SplitSource implements PartSource {
     if (!this.base.endsWith("/")) this.base += "/";
   }
   manifest(): Promise<Manifest> {
-    this.manifestPromise ??= fetch(this.base + "manifest.json", this.init).then((res) => {
+    this.manifestPromise ??= fetch(this.base + "manifest.json", this.init).then(async (res) => {
       if (!res.ok) throw new Error(`bdf: manifest fetch failed with ${res.status}`);
-      return res.json() as Promise<Manifest>;
+      return JSON.parse(utf8.decode(await readBounded(res, MAX_MANIFEST_SIZE, "manifest"))) as Manifest;
     });
     return this.manifestPromise;
   }
@@ -175,7 +229,7 @@ export class SplitSource implements PartSource {
     checkHash(e.h); // it goes into the URL
     const res = await fetch(this.base + "parts/" + e.h, this.init);
     if (!res.ok) throw new Error(`bdf: part ${e.h} fetch failed with ${res.status}`);
-    return new Uint8Array(await res.arrayBuffer());
+    return readExact(res, e.len, `part ${e.h}`);
   }
 }
 

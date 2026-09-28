@@ -694,6 +694,29 @@ type axis struct {
 	reverse      bool
 }
 
+// Automatic axes use at most ten intervals. A thousand labels already
+// overlap on a normal chart, so denser custom units use automatic spacing.
+const maxAxisTicks = 1000
+
+// ticks also bounds malformed ranges and steps that cannot advance a
+// float64 at the axis's magnitude. Neither can make rendering loop forever.
+func (a *axis) ticks() []float64 {
+	if a.step <= 0 || math.IsNaN(a.step) || math.IsInf(a.step, 0) ||
+		math.IsNaN(a.lo) || math.IsInf(a.lo, 0) || math.IsNaN(a.hi) || math.IsInf(a.hi, 0) {
+		return nil
+	}
+	var ticks []float64
+	for v := a.lo; len(ticks) < maxAxisTicks && v <= a.hi+a.step*1e-6; {
+		ticks = append(ticks, v)
+		next := v + a.step
+		if next <= v || math.IsInf(next, 0) {
+			break
+		}
+		v = next
+	}
+	return ticks
+}
+
 func (a *axis) pos(v float64) float64 {
 	if a.hi == a.lo {
 		return 0
@@ -743,7 +766,7 @@ func niceAxis(lo, hi float64, n *ooxml.Node, maxSteps int) *axis {
 		lo -= span / 20
 	}
 	step := n.Child("majorUnit").AttrFloat("val", 0)
-	if step <= 0 {
+	if step <= 0 || math.IsNaN(step) || math.IsInf(step, 0) || (hi-lo)/step > maxAxisTicks-1 {
 		maxSteps = min(10, max(maxSteps, 2))
 		mag := math.Pow(10, math.Floor(math.Log10((hi-lo)/float64(maxSteps))))
 		for _, m := range []float64{1, 2, 5, 10, 20, 50} {
@@ -935,16 +958,15 @@ func (ch *chartCtx) axesChart(pa *ooxml.Node, plots []*chartPlot, px, py, pw, ph
 	showCat := !catDeleted && catAxNode.Child("tickLblPos").AttrStr("val", "nextTo") != "none"
 	// tick labels
 	var valLabels []string
-	var valTicks []float64
-	for v := va.lo; v <= va.hi+va.step*1e-6; v += va.step {
-		valTicks = append(valTicks, v)
+	valTicks := va.ticks()
+	for _, v := range valTicks {
 		valLabels = append(valLabels, formatNumber(v, va.format))
 	}
 	var catLabels []string
 	var catTicks []float64
 	if scatter {
-		for v := xa.lo; v <= xa.hi+xa.step*1e-6; v += xa.step {
-			catTicks = append(catTicks, v)
+		catTicks = xa.ticks()
+		for _, v := range catTicks {
 			catLabels = append(catLabels, formatNumber(v, xa.format))
 		}
 	} else {
