@@ -120,11 +120,18 @@ func (it Item) Text() string {
 
 // Drawing is a display list in drawing coordinates.
 type Drawing struct {
-	Items []Item
-	open  []*Item // groups being filled
+	Items  []Item
+	open   []*Item // groups being filled
+	points int     // of the paths and clips drawn
 }
 
+// Points returns the number of points of the paths drawn so far, those
+// of groups and their clips included: what a converter counts to bound
+// the drawing of an input that draws little data many times.
+func (d *Drawing) Points() int { return d.points }
+
 func (d *Drawing) add(it Item) {
+	d.points += it.path.Size()
 	if n := len(d.open); n > 0 {
 		g := d.open[n-1]
 		g.items = append(g.items, it)
@@ -170,6 +177,7 @@ func (d *Drawing) Image(img *Image) {
 // Begin opens a group clipped by clip (even-odd; nil: no clip) that holds
 // what is drawn until End.
 func (d *Drawing) Begin(clip *Path) {
+	d.points += clip.Size()
 	it := &Item{kind: kGroup, clip: clip}
 	d.open = append(d.open, it)
 }

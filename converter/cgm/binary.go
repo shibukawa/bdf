@@ -81,7 +81,9 @@ func (r *binReader) next() (element, bool) {
 				if data == nil {
 					data = part
 				} else {
-					data = append(data[:len(data):len(data)], part...)
+					// the first partition is a piece of the file without
+					// room after it, so the first append copies it
+					data = append(data, part...)
 				}
 				if w&0x8000 == 0 || r.truncated {
 					break

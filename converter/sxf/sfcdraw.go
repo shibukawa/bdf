@@ -374,6 +374,9 @@ func (r *sfcRenderer) hatchFeature(f *feature, m canvas.Matrix) {
 	area := (&cad.Path{}).Append(bound)
 	for _, h := range holes {
 		if hp := r.boundary(int(h)); hp != nil {
+			if !r.fits(area.Size() + hp.Size()) {
+				return
+			}
 			area.Append(hp)
 		}
 	}
