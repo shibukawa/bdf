@@ -30,7 +30,7 @@ Word の Office Math、PowerPoint と Excel の数式（代替として保存さ
 
 ## 音楽
 
-MML・MIDI・MusicXML を変換器が五線譜に組み、View はその音楽を Standard MIDI File として、演奏の時刻とページの上の位置を結ぶ cue と一緒に持ちます（[spec §4.4](spec.html#44-演奏play)）。デモビューアは Web Audio API で演奏し（General MIDI の音色の系統ごとのオシレーター、合成した打楽器、チップチューンの MML の矩形波）、演奏している段にカーソルを示してそれに合わせてページをめくり・スクロールし、段をクリックするとそこから演奏します。詳細は[design.md §3.27](design.html#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic)を参照してください。
+MML・MIDI・MusicXML は変換器が五線譜に組みます。View はその音楽を Standard MIDI File として、演奏の時刻とページの上の位置を結ぶ cue と一緒に持ちます（[spec §4.4](spec.html#44-演奏play)）。デモビューアは Web Audio API で演奏します（General MIDI の音色の系統ごとのオシレーター、合成した打楽器、チップチューンの MML の矩形波）。演奏している段にカーソルを示し、それに合わせてページをめくり・スクロールします。段をクリックすると、そこから演奏します。詳細は[design.md §3.27](design.html#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic)を参照してください。
 
 ## メタデータ
 
@@ -38,7 +38,7 @@ manifest に Dublin Core のメタデータ（題名・作成者・主題・言�
 
 ## パスワードで保護された入力
 
-パスワードで保護された入力（読み取りパスワード付きの Office 文書、ユーザーパスワード付きの PDF）はパスワードで開いて変換し、bdf を同じパスワードで暗号化します。Part ごとに封印する（AES-256-GCM）ので Range 取得や分割形式はそのまま使えます。ビューアは WebCrypto で復号し、サーバーはパスワードを保存しません（[spec §3.5](spec.html#35-暗号化)）。
+パスワードで保護された入力（読み取りパスワード付きの Office 文書、ユーザーパスワード付きの PDF）は、パスワードで開いて変換します。bdf の出力は同じパスワードで暗号化します。Part ごとに封印する（AES-256-GCM）ので、Range 取得や分割形式はそのまま使えます。ビューアは WebCrypto で復号し、サーバーはパスワードを保存しません（[spec §3.5](spec.html#35-暗号化)）。
 
 ## サーバー側のサムネイルと検索用テキスト
 

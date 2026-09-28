@@ -1,6 +1,6 @@
 # Scores
 
-MML, MIDI and MusicXML all become staff notation, engraved by a shared layout engine (`converter/internal/music`) onto A4 pages with the SMuFL font Bravura, and each view carries the underlying music as a Standard MIDI File so the demo viewer can play it back — see [Features → Music](../features.html#music) for what that playback looks like in the viewer. This page covers what each of the three converters reads and how it turns into notation.
+MML, MIDI and MusicXML all end up as staff notation, engraved by a shared layout engine (`converter/internal/music`) onto A4 pages with the SMuFL font Bravura, and each view carries the underlying music as a Standard MIDI File so the demo viewer can play it back — see [Features → Music](../features.html#music) for what that playback looks like in the viewer. What the three converters share ends there: two of them have to invent the notation from raw performance data, and one just reads what's already on the page.
 
 ## Try it
 
@@ -8,7 +8,7 @@ Drop a file on the [viewer](../../viewer/), or try a sample: an [MML chiptune](.
 
 ## MML (converter/mml)
 
-MML and MIDI are both performance data — timed notes rather than notated ones — so both go through the same notation step (`Notate`) before layout: notes are quantized onto rhythmic values (ties across beats and bar lines, dots, triplets), split into measures and up to two voices per staff, spelled in a key (the file's own, or one estimated from the notes), and placed on a clef chosen from their pitch range (keyboard instruments get a grand staff).
+MML and MIDI are both performance data — timed notes rather than notated ones — so both go through the same notation step (`Notate`) before layout. Notes are quantized onto rhythmic values (ties across beats and bar lines, dots, triplets), split into measures and up to two voices per staff, spelled in a key (the file's own, or one estimated from the notes), and placed on a clef chosen from their pitch range (keyboard instruments get a grand staff).
 
 `converter/mml` reads three dialects, detected from the content: generic (FlMML and the BASIC `PLAY` statement), Mabinogi's `MML@…;`, and the NES MCK/PPMCK track-line format. A signature-less `.mml` file with fewer than two recognizable MML lines converts as MML only by extension, since there's nothing in the content to detect.
 

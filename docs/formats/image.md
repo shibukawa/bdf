@@ -1,6 +1,6 @@
 # Images, Photoshop
 
-Four converters share this page because they all end up as a picture on a page rather than a laid-out document: plain images that browsers can already decode, Photoshop's composited artwork, scanned or faxed TIFF, and the pictures held in Windows metafiles. Each becomes one page (or one page per artboard, for Photoshop) sized to the image itself.
+Four converters share this page for the same reason: each one turns its input into a picture on a page, not a laid-out document — plain images a browser can already decode, Photoshop's composited artwork, scanned or faxed TIFF, and the pictures held in Windows metafiles. Each becomes one page, sized to the image itself (one page per artboard, for Photoshop).
 
 ## Try it
 

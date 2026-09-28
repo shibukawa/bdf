@@ -1,6 +1,6 @@
 # Documentation
 
-bdf is a document format made for previews in the browser. This section explains why it exists, what it does, and how the pieces fit together; the [demo site](https://shibukawa.github.io/bdf/) itself is the best way to see it work.
+bdf is a document format made for previews in the browser. The [demo site](https://shibukawa.github.io/bdf/) is the fastest way to see that idea work; the pages below explain why it exists and how the pieces underneath it fit together.
 
 ## Read next
 

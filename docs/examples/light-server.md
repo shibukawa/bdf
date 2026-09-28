@@ -20,7 +20,7 @@ open http://127.0.0.1:8081/
 
 ## What the browser does
 
-`web/main.ts` reads `?file=`, fetches the bytes from `/files/`, and converts them with the same wasm converter modules the demo site uses (`examples/common/convert.ts`'s `ConverterClient`, loaded from `web/lib/bdf-*.wasm`) — then opens the result in [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer). This is the same `sniff → convert → open` sequence [`examples/viewer/main.ts`](https://github.com/shibukawa/bdf/blob/main/examples/viewer/main.ts) uses, pared down to one file with no page-turning, cell selection, or streaming PDF pages.
+`web/main.ts` reads `?file=`, fetches the bytes from `/files/`, and converts them with the same wasm converter modules the demo site uses (`examples/common/convert.ts`'s `ConverterClient`, loaded from `web/lib/bdf-*.wasm`), then opens the result in [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer). The sequence itself is nothing new — the same `sniff → convert → open` that [`examples/viewer/main.ts`](https://github.com/shibukawa/bdf/blob/main/examples/viewer/main.ts) uses, pared down here to one file with no page-turning, cell selection, or streaming PDF pages.
 
 `web/build.mjs` builds this front end by calling into [`examples/common/build.mjs`](https://github.com/shibukawa/bdf/blob/main/examples/common/build.mjs) — the same helper [the demo site](../architecture/browser.html) is built with — for the rendering worker, the converter worker, the wasm modules (every one but the preview-only module, which this server never needs), and the fonts the Office converters lay text out with.
 

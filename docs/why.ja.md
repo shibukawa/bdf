@@ -2,7 +2,7 @@
 
 ## オフィススイートを動かさなくてよい
 
-Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールだけで 1 GB を超え、何もしていない状態でこの大きさです。プロセスの起動・維持・隔離も必要で、壊れたファイル 1 つでプロセスが詰まることもあります。
+Office のファイルをブラウザでプレビューするには、サーバーで LibreOffice や OpenOffice をヘッドレスで動かして PDF にするのが定番です。これはインストールしただけで、何もしていないうちから 1 GB を超えます。プロセスの起動・維持・隔離も必要で、壊れたファイル 1 つでプロセスが詰まることもあります。
 
 bdf の変換器は cgo も外部プログラムも使わない Go のパッケージです。PDF、Word、PowerPoint、Excel、CSV、Parquet、Visio、draw.io、DXF、Jw_cad、SXF、CGM、HP-GL/2、Gerber、Excellon、KiCad、TIFF、Illustrator、Photoshop、メタファイル、HTML、Markdown、EPUB、MML、MIDI、MusicXML、フォントファイルを 1 つのバイナリで変換します。同じコードを WebAssembly にすればブラウザの中でも変換でき（PDF 用が gzip で約 7.3 MB、Office 系・draw.io・CAD・KiCad・フォント用が約 7.8 MB）、ファイルをアップロードする必要すらありません。サムネイルと検索用のテキストも同じプロセスで作れます。ページを描くのは純 Go のラスタライザで、サーバー側にもブラウザは要りません。
 

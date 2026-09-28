@@ -11,7 +11,7 @@ go build -tags bdf_noconv ./...        # without the image/WOFF2 codecs (the bro
 GOEXPERIMENT=simd go build ./...       # Go 1.27, amd64/arm64: SIMD codec variants (amd64 needs AVX2)
 ```
 
-`bdf_noconv` leaves out the codecs the browser doesn't need (see [design.md §2](../design.html#2-go-と-wasm-について)) — CI builds and tests this configuration separately, so a change that only works with them compiled in won't surface until CI unless you check it locally too.
+`bdf_noconv` leaves out the codecs the browser doesn't need (see [design.md §2](../design.html#2-go-と-wasm-について)). CI builds and tests this configuration separately, so a change that only works with them compiled in won't surface until CI unless you check it locally too.
 
 ## TypeScript
 
@@ -23,7 +23,7 @@ npm run test:golden     # render fixtures with Chromium, compare against testdat
 npm run test:golden:update  # replace the golden PNGs with what's rendered now
 ```
 
-Golden tests need a pinned Chromium build (`playwright-core`'s headless shell — the full Chromium binary rasterizes text slightly differently, so goldens only match the exact build they were made with): `npx playwright-core install chromium`, or point `CHROMIUM_PATH` at an equivalent headless shell already on the machine.
+Golden tests need a pinned Chromium build (`playwright-core`'s headless shell) — the full Chromium binary rasterizes text slightly differently, so goldens only match the exact build they were made with. Get it with `npx playwright-core install chromium`, or point `CHROMIUM_PATH` at an equivalent headless shell already on the machine.
 
 ## Regenerating fixtures
 
@@ -59,6 +59,8 @@ go run ./cmd/bdf render -page 2 out.bdf page2.png  # render one page, in pure Go
 
 ## Matching CI's output exactly
 
-CI's `testdata is up to date` step compares `bdf generate` output byte-for-byte on `ubuntu-latest` (amd64). Go's floating-point contraction differs by architecture, so on Apple Silicon the same command can produce a few different low bits in an object's bounding boxes — cross-compile with `GOARCH=amd64 go build` and run that binary (under Rosetta) to reproduce CI's bytes locally before assuming a diff is a real regression. New golden PNGs need the same headless-shell Chromium build CI uses; running the golden tests inside a matching container (`mcr.microsoft.com/playwright:v1.56.1-noble`, or `node:24-bookworm` with Chromium installed) reproduces that.
+CI's `testdata is up to date` step compares `bdf generate` output byte-for-byte on `ubuntu-latest` (amd64). Go's floating-point contraction differs by architecture, though, so the same command run on Apple Silicon can produce a few different low bits in an object's bounding boxes. Cross-compile with `GOARCH=amd64 go build` and run that binary under Rosetta to reproduce CI's bytes locally, before assuming a diff is a real regression.
+
+New golden PNGs raise a separate concern: they need the same headless-shell Chromium build CI uses, and running the golden tests inside a matching container (`mcr.microsoft.com/playwright:v1.56.1-noble`, or `node:24-bookworm` with Chromium installed) reproduces that build.
 
 See the [API reference](../api.html) for what each package and command exposes, and [The bdf command](cli.html) for `bdf`'s subcommands.

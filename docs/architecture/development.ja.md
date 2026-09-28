@@ -11,7 +11,7 @@ go build -tags bdf_noconv ./...        # 画像・WOFF2 のコーデックを含
 GOEXPERIMENT=simd go build ./...       # Go 1.27、amd64/arm64: SIMD 版コーデック（amd64 は AVX2 必須）
 ```
 
-`bdf_noconv` はブラウザに要らないコーデックを除きます（[design.md §2](../design.html#2-go-と-wasm-について)を参照）。CI はこの構成も別にビルド・テストしているので、コーデックを含めた状態でしか動かない変更は、手元でもこの構成を確かめないと CI まで気づきません。
+`bdf_noconv` はブラウザに要らないコーデックを除きます（[design.md §2](../design.html#2-go-と-wasm-について)を参照）。CI はこの構成も別にビルド・テストしています。コーデックを含めた状態でしか動かない変更は、手元でもこの構成を確かめないと、CI まで気づきません。
 
 ## TypeScript
 
@@ -59,6 +59,8 @@ go run ./cmd/bdf render -page 2 out.bdf page2.png  # 1 ページを純 Go で描
 
 ## CI の出力とバイト単位で一致させる
 
-CI の「testdata is up to date」ステップは、`ubuntu-latest`（amd64）上の `bdf generate` の出力をコミット済みのものとバイト単位で比較します。Go の浮動小数点の融合積和はアーキテクチャによって異なるため、Apple Silicon では同じコマンドでも Object の境界ボックスなどの下位ビットが数箇所変わることがあります。`GOARCH=amd64 go build` でクロスビルドし、その（Rosetta 上の）バイナリを使えば、手元でも CI と同じバイト列を再現でき、差分が本当の回帰かどうかを先に確かめられます。新しい golden の PNG には CI と同じ headless shell の Chromium ビルドが要ります。それに合うコンテナ（`mcr.microsoft.com/playwright:v1.56.1-noble`、または Chromium を入れた `node:24-bookworm`）の中で golden テストを動かせば再現できます。
+CI の「testdata is up to date」ステップは、`ubuntu-latest`（amd64）上の `bdf generate` の出力をコミット済みのものとバイト単位で比較します。ただ、Go の浮動小数点の融合積和はアーキテクチャによって異なるため、Apple Silicon では同じコマンドでも Object の境界ボックスなどの下位ビットが数箇所変わることがあります。`GOARCH=amd64 go build` でクロスビルドし、その（Rosetta 上の）バイナリを使えば、手元でも CI と同じバイト列を再現でき、差分が本当の回帰かどうかを先に確かめられます。
+
+新しい golden の PNG には、これとは別に、CI と同じ headless shell の Chromium ビルドが要ります。それに合うコンテナ（`mcr.microsoft.com/playwright:v1.56.1-noble`、または Chromium を入れた `node:24-bookworm`）の中で golden テストを動かせば再現できます。
 
 各パッケージ・コマンドが公開するものは [API 一覧](../api.html)を、`bdf` のサブコマンドは [bdf コマンド](cli.ja.html)を参照してください。

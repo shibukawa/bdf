@@ -10,7 +10,7 @@ bdf's converters are Go packages that use no cgo and no external program: PDF, W
 
 A PDF cuts everything into sheets of paper. Print a spreadsheet and a wide table is sliced across page boundaries, so you lose the row you were following and can't find the cell you wanted; frozen headers and gridlines disappear, and the sheets you switched between in the workbook become one run of pages. A Word document is stuck reading page by page too.
 
-bdf has a layout model for each kind of content. Slides, drawings and PDFs get fixed-size pages. Worksheets get an endless plane per sheet, drawn in tiles, with frozen panes, row and column headers, and gridlines. Word processor documents get a flow you can read as pages or as one continuous scroll, and a page-free view re-laid-out as one long column. Illustrator and Photoshop artboards become pages. A workbook's sheets, a draw.io diagram's pages, a DXF drawing's model space and layouts, and a circuit board's front, back and each layer each become one view, switched with tabs in the viewer.
+bdf has a layout model for each kind of content. Slides, drawings and PDFs get fixed-size pages; worksheets get an endless plane per sheet instead, drawn in tiles, with frozen panes, row and column headers, and gridlines. Word processor documents get a flow you can read as pages or as one continuous scroll, and a page-free view re-laid-out as one long column, while Illustrator and Photoshop artboards become pages too. A workbook's sheets, a draw.io diagram's pages, a DXF drawing's model space and layouts, and a circuit board's front, back and each layer each become one view, switched with tabs in the viewer.
 
 ## Made for browsers
 

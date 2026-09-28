@@ -1,6 +1,6 @@
 # 楽譜
 
-MML・MIDI・MusicXML は、いずれも共通の組版エンジン（`converter/internal/music`）が SMuFL のフォント Bravura で A4 のページに五線譜として組む。各 View はその音楽を Standard MIDI File として持つので、デモビューアで演奏できる。ビューアでの演奏の様子は[特徴 → 音楽](../features.ja.html)を参照（ここでは繰り返さない）。このページでは、3 つの変換器がそれぞれ何を読み、どう記譜にするかを説明する。
+MML・MIDI・MusicXML は、いずれも共通の組版エンジン（`converter/internal/music`）が SMuFL のフォント Bravura で A4 のページに五線譜として組む。各 View はその音楽を Standard MIDI File として持つので、デモビューアで演奏できる。演奏の様子は[特徴 → 音楽](../features.ja.html)を参照してほしい。共通なのはそこまでで、MML と MIDI は演奏データから記譜そのものを組み立て直す必要があるのに対し、MusicXML はすでに書かれた記譜をそのまま読む。
 
 ## 試す
 

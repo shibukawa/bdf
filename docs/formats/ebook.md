@@ -1,6 +1,6 @@
 # EPUB
 
-EPUB is a zip archive of XHTML, CSS and images, so a reflowable book converts through much the same reader-mode layout as HTML. What's different is that a book is several documents read in order, its reader wants book pages rather than a scrolling web page, many Japanese books are set vertically, and comics and photo books use a fixed layout with no text to flow at all. `converter/epub` handles both EPUB 3 and EPUB 2.
+EPUB is a zip archive of XHTML, CSS and images, so a reflowable book converts through much the same reader-mode layout as HTML. What's different: a book is several documents read in order, and its reader wants book pages, not a scrolling web page. Many Japanese books are set vertically, and comics and photo books use a fixed layout with no text to flow at all. `converter/epub` handles both EPUB 3 and EPUB 2.
 
 ## Try it
 
@@ -10,7 +10,7 @@ Drop a file on the [viewer](../../viewer/), or try a sample: a [reflowable book]
 
 ### Reflowable books
 
-The package document (found through `META-INF/container.xml`) gives the metadata, manifest and reading order (spine). Content documents are read in spine order — documents marked `linear="no"`, such as end notes only reached by a link, are moved to the end — and each becomes a section that starts a new page, the way a Word section does. Because EPUB's XHTML breaks a standard HTML parser (an empty `<a id="p5"/>` swallows what follows, for instance), it's read as XML into the same tree shape the HTML converter uses. Links between chapters resolve to the right page; images load straight from the zip archive, and since EPUB doesn't allow documents to pull in outside images, none are fetched from the network.
+The package document (found through `META-INF/container.xml`) gives the metadata, manifest and reading order (spine). Content documents are read in spine order — documents marked `linear="no"`, such as end notes only reached by a link, are moved to the end — and each becomes a section that starts a new page, the way a Word section does. Because EPUB's XHTML breaks a standard HTML parser (an empty `<a id="p5"/>` swallows what follows, for instance), it's read as XML into the same tree shape the HTML converter uses. Links between chapters resolve to the right page, and images load straight from the zip archive. EPUB doesn't allow documents to pull in outside images, so none are fetched from the network.
 
 Almost none of a book's own CSS is kept — layout, colors and fonts stay whatever the reader-mode stylesheet gives them — except for a handful of properties that carry meaning for how a book is meant to be read: `writing-mode` (see below), tate-chu-yoko, emphasis marks, text alignment, `display: none`, and the pixel size an image is meant to render at (used for full-page illustrations and the "gaiji" character images some Japanese publishers embed). MathML formulas are laid out by bdf's formula engine, matching Word and HTML.
 

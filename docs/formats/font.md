@@ -1,6 +1,6 @@
 # Font files
 
-A font file dropped on bdf isn't used to render something else — it's rendered *as itself*: the converter is a font previewer, turning `.ttf`, `.otf`, `.ttc`, `.woff` and `.woff2` files into pages that show what characters and glyphs a font has and what its OpenType features actually do. bdf runs on Canvas 2D, and `fillText` only applies a browser's own default features (`liga`, `kern`, …) with no way for a document to ask for others, so a feature's effect is drawn glyph by glyph rather than by shaping real text.
+A font file dropped on bdf isn't used to render something else — it's rendered *as itself*: the converter is a font previewer, turning `.ttf`, `.otf`, `.ttc`, `.woff` and `.woff2` files into pages that show what characters and glyphs a font has and what its OpenType features actually do. bdf runs on Canvas 2D, and `fillText` only applies a browser's own default features (`liga`, `kern`, …); there's no way for a document to ask for others. So a feature's effect gets drawn glyph by glyph, rather than by shaping real text.
 
 ## Try it
 
@@ -17,7 +17,7 @@ Drop a file on the [viewer](../../viewer/), or try a sample: [an OpenType font](
 
 The GSUB/GPOS reader behind the features view is bdf's own (`internal/otlayout`), checked lookup by lookup against fontTools.
 
-Glyphs are drawn by embedding the font itself twice. One embedding keeps the outlines but drops the layout tables and remaps `cmap` so each glyph sits at its own private-use codepoint — a shaper could otherwise still substitute something else for a lone character, and this is the only way to guarantee glyph *N* draws as glyph *N* (color glyphs included). The other embedding keeps the layout tables but prunes the glyph set down to what the sample text can reach, so the browser shapes that text itself (Arabic joining, Indic conjuncts, default kerning and ligatures). Variable fonts draw at their default instance. A font whose OS/2 `fsType` forbids embedding is drawn as outlines instead, unless `-ignore-fstype` is given (only with the rights to do so). The browser build carries no Brotli, so it can't read WOFF2 files.
+Glyphs are drawn by embedding the font itself twice. One embedding keeps the outlines but drops the layout tables and remaps `cmap` so each glyph sits at its own private-use codepoint — a shaper could otherwise still substitute something else for a lone character, and this is the only way to guarantee glyph *N* draws as glyph *N* (color glyphs included). The other embedding keeps the layout tables but prunes the glyph set down to what the sample text can reach, so the browser shapes that text itself (Arabic joining, Indic conjuncts, default kerning and ligatures). Variable fonts draw at their default instance, and a font whose OS/2 `fsType` forbids embedding is drawn as outlines instead — unless `-ignore-fstype` is given, and only with the rights to do so. The browser build carries no Brotli, so it can't read WOFF2 files.
 
 | Option | Values | Default |
 |---|---|---|

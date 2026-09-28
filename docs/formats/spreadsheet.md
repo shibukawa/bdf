@@ -1,6 +1,6 @@
 # Excel, CSV, Parquet
 
-Excel workbooks, CSV/TSV tables and Apache Parquet files all end up as the same thing in bdf: a `sheet` View, the endless-plane layout bdf uses for tabular data ([spec.md §4.1](../spec.html#41-view-の種類)). CSV/TSV and Parquet have no drawing code of their own — `converter/csv` and `converter/parquet` build a plain grid of values and hand it to `converter/xlsx`'s grid layout and drawing code, the same code that lays out and draws worksheet cells. That means a CSV or Parquet file looks and behaves exactly like an Excel sheet in the viewer: a bold, frozen header row, gridlines and frozen panes, and cells you select the way you'd select cells in a spreadsheet (drag, Shift, row/column headers, arrow keys), which copy out as tab-separated values and an HTML table rather than as a picture.
+Excel workbooks, CSV/TSV tables and Apache Parquet files all end up as the same thing in bdf: a `sheet` View, the endless-plane layout bdf uses for tabular data ([spec.md §4.1](../spec.html#41-view-の種類)). CSV/TSV and Parquet have no drawing code of their own — `converter/csv` and `converter/parquet` build a plain grid of values and hand it to `converter/xlsx`'s grid layout and drawing code, the same code that lays out and draws worksheet cells. That means a CSV or Parquet file looks and behaves exactly like an Excel sheet in the viewer: a bold, frozen header row, gridlines and frozen panes, and cells you select the way you'd select cells in a spreadsheet (drag, Shift, row/column headers, arrow keys). They copy out as tab-separated values and an HTML table rather than as a picture.
 
 ## Try it
 
@@ -8,7 +8,7 @@ Drop a file on the [viewer](../../viewer/), or try a sample: [Excel workbook](..
 
 ## Excel (.xlsx)
 
-`converter/xlsx` reads the OPC zip package (.xlsx, .xlsm, .xltx, .xltm) and turns each worksheet into a `sheet` View. Cell layout, formatting and number-format rendering are all done by the converter itself — bdf has no relayout, so this is the one place that interpretation happens — and the sheet is drawn into Tiles. Cell values are the ones stored in the file (a formula's cached result); formulas themselves are not recalculated.
+`converter/xlsx` reads the OPC zip package (.xlsx, .xlsm, .xltx, .xltm) and turns each worksheet into a `sheet` View. Cell layout, formatting and number-format rendering are all done by the converter itself. BDF has no relayout, so this is the one place that interpretation happens; the sheet is then drawn into Tiles. Cell values are the ones stored in the file (a formula's cached result); formulas themselves are not recalculated.
 
 What's read:
 - Number formats (dates, Japanese eras, fractions, accounting formats and the rest of Excel's format-code language), fonts and rich text, fills and borders, alignment (wrapping with Japanese line-breaking rules, overflow into empty neighboring cells, rotation, shrink-to-fit), and merged cells.
@@ -36,7 +36,7 @@ What's guessed:
 - **Dialect**: the delimiter (comma, tab, semicolon, pipe) and the quoting style (double, single or no quotes; doubled or backslash-escaped), chosen by trying each combination against the first 64 KiB and picking the one that gives the most consistent field count.
 - **Header row**: scored column by column — a string sitting above a column of numbers, dates, booleans, emails or URLs scores as a header; a value that also occurs lower in the same column scores as data.
 
-Values are shown exactly as written (unlike Excel, which normalizes `1.50` to `1.5`); numbers with leading zeros (`007`, postal codes) stay strings rather than becoming numbers, and are aligned right the same as real numbers. Column widths follow the content, cells with line breaks wrap and grow taller, and — since it's drawn by the Excel converter — a detected header row is bold, frozen, and marked as a column header for the accessible text layer, exactly as in an Excel sheet with frozen panes.
+Values are shown exactly as written (unlike Excel, which normalizes `1.50` to `1.5`); numbers with leading zeros (`007`, postal codes) stay strings rather than becoming numbers, and are aligned right the same as real numbers. Column widths follow the content, and cells with line breaks wrap and grow taller. Because it's drawn by the Excel converter, a detected header row is bold, frozen, and marked as a column header for the accessible text layer — exactly as in an Excel sheet with frozen panes.
 
 Options (`-param`, from `bdf generate -h`):
 

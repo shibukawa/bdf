@@ -1,6 +1,6 @@
 # light-server: ブラウザで変換する
 
-[`examples/light-server`](https://github.com/shibukawa/bdf/tree/main/examples/light-server) — サーバーは文書を bdf に変換しません。文書をそのまま配り、それぞれのサムネイル画像を配ります。変換と描画はブラウザが行います。
+[`examples/light-server`](https://github.com/shibukawa/bdf/tree/main/examples/light-server) — サーバーは文書を bdf に変換しません。文書をそのまま配り、それぞれのサムネイル画像を添えるだけで、変換と描画はブラウザ側の仕事です。
 
 ```sh
 cd examples/light-server
@@ -11,7 +11,7 @@ open http://127.0.0.1:8081/
 
 ## サーバーがすること
 
-`main.go` は文書のディレクトリ（`-dir`。既定は `../sample-files`）を走査し、サムネイルがまだない文書ごとに `converter.ConvertFile` でメモリ上に変換し、`thumbnail.Make` で 320px のサムネイルを描いてから、**変換した bdf を捨てます**。残るのは `-thumbs` の下の PNG だけです。サーバーは bdf を一切保持しません。同じファイルを 2 度目に変換したら同じ結果になるかさえ関知しません。公開するのは:
+`main.go` は文書のディレクトリ（`-dir`。既定は `../sample-files`）を走査し、サムネイルがまだない文書ごとに `converter.ConvertFile` でメモリ上に変換し、`thumbnail.Make` で 320px のサムネイルを描いてから、**変換した bdf を捨てます**。残るのは `-thumbs` の下の PNG だけで、bdf そのものはサーバーのどこにも残りません。同じファイルをもう一度変換したら同じ結果になるかどうかさえ、サーバーは関知しないのです。公開するのは:
 
 - `GET /` — サムネイルがある文書の一覧 HTML。それぞれ `/view/?file=NAME` にリンク
 - `GET /files/NAME` — 元のファイル（ただの `http.FileServer`）
@@ -20,7 +20,7 @@ open http://127.0.0.1:8081/
 
 ## ブラウザがすること
 
-`web/main.ts` は `?file=` を読み、`/files/` からバイト列を取得して、デモサイトと同じ wasm の変換モジュール（`examples/common/convert.ts` の `ConverterClient`。`web/lib/bdf-*.wasm` から読み込む）で変換し、結果を [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) で開きます。[`examples/viewer/main.ts`](https://github.com/shibukawa/bdf/blob/main/examples/viewer/main.ts) の `sniff → convert → open` と同じ流れを、ページめくり・セル選択・PDF のストリーミング変換なしの 1 ファイルに切り詰めたものです。
+`web/main.ts` は `?file=` を読み、`/files/` からバイト列を取得して、デモサイトと同じ wasm の変換モジュール（`examples/common/convert.ts` の `ConverterClient`。`web/lib/bdf-*.wasm` から読み込む）で変換し、結果を [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) で開きます。流れそのものは [`examples/viewer/main.ts`](https://github.com/shibukawa/bdf/blob/main/examples/viewer/main.ts) の `sniff → convert → open` と変わりません。ページめくり、セル選択、PDF のストリーミング変換をすべて外し、1 ファイルに切り詰めてあるだけです。
 
 `web/build.mjs` は [`examples/common/build.mjs`](https://github.com/shibukawa/bdf/blob/main/examples/common/build.mjs)（[デモサイト](../architecture/browser.ja.html)のビルドにも使うのと同じ補助）を呼んで、レンダラ Worker、変換 Worker、wasm モジュール（このサーバーには要らないプレビュー専用モジュールを除く全部）、Office 系変換器がテキストをレイアウトするフォントをビルドします。
 

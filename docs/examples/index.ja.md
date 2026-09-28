@@ -1,6 +1,6 @@
 # 構成のサンプル
 
-[`examples/`](https://github.com/shibukawa/bdf/tree/main/examples) 以下に、実際に動く小さな Go サーバーが 3 つあります。どれも同じトレードオフの上で選択が違うだけです: サーバーがあらかじめどこまで変換しておくか、文書を実際に開いたときにブラウザがどこまでするか。3 つとも [`examples/sample-files/`](https://github.com/shibukawa/bdf/tree/main/examples/sample-files) の同じ 6 ファイルを配信し、小さな埋め込みビューア [`examples/miniviewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer)（[ブラウザ側](../architecture/browser.ja.html)で説明）を共有しています。
+[`examples/`](https://github.com/shibukawa/bdf/tree/main/examples) 以下に、実際に動く小さな Go サーバーが 3 つあります。どれも同じトレードオフの上に立っていて、選ぶ点が違うだけです——サーバーがあらかじめどこまで変換しておくか、文書を実際に開いたときにブラウザがどこまでするか。3 つとも [`examples/sample-files/`](https://github.com/shibukawa/bdf/tree/main/examples/sample-files) の同じ 6 ファイルを配信し、小さな埋め込みビューア [`examples/miniviewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer)（[ブラウザ側](../architecture/browser.ja.html)で説明）を共有しています。
 
 | | [light-server](light-server.ja.html) | [preview-server](preview-server.ja.html) | [search](search.ja.html) |
 |---|---|---|---|

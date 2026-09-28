@@ -30,14 +30,14 @@ type meiliDoc struct {
 }
 ```
 
-これらは起動時に一括で Meilisearch に送り（`POST /indexes/{index}/documents`）、サーバーはインデックス作成のタスクが終わるのを待ってからリクエストに応え始めます。そのため起動直後の最初の検索から、Meilisearch がそこまで処理し終えたものだけでなく、すべてが見つかります（インデックス作成は通常は非同期です）。
+これらは起動時に一括で Meilisearch に送られます（`POST /indexes/{index}/documents`）。サーバーはインデックス作成のタスクが終わるのを待ってからリクエストに応え始めるので、起動直後の最初の検索から、Meilisearch がそこまで処理し終えたものだけでなく、すべてが見つかります（インデックス作成は通常は非同期です）。
 
 `GET /search?q=` はクエリを Meilisearch 自身の `/search` エンドポイントに取り次ぎ、一致箇所を切り出して `<mark>` でハイライトしたスニペットを頼み（`attributesToCrop`、`attributesToHighlight`）、小さな JSON の配列（ファイル、bdf、View、ページ、題名、スニペット）を返します。検索そのものの仕組みについては何も語りません。API キーはサーバー側にとどまり、ブラウザが Meilisearch と直接話すことはありません。
 
 ## ブラウザがすること
 
-ホームページの検索ボックス（`web/search.ts`）は `/search` を呼び、返ってきたものを一覧にして、それぞれのヒットを `/view/?src=/cache/NAME.bdf#view=ID&page=N` にリンクします。`web/main.ts`（preview-server のものとほぼ同じ）は、文書を開いた後で URL のフラグメントから `view` と `page` を読み取り、`viewer.show(view, page - 1)` を呼んでそこへ直接移動します。これは [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) の上に作るどんなビューアでも、ディープリンクに使う API です。
+ホームページの検索ボックス（`web/search.ts`）は `/search` を呼び、返ってきたものを一覧にして、それぞれのヒットを `/view/?src=/cache/NAME.bdf#view=ID&page=N` にリンクします。`web/main.ts`（preview-server のものとほぼ同じ）は、文書を開いた後で URL のフラグメントから `view` と `page` を読み取り、`viewer.show(view, page - 1)` を呼んでそこへ直接移動します。ディープリンクを扱うビューアなら、[`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) の上に作るどんなものでもこの API を使うはずです。
 
 ## この形にした理由
 
-検索に要るのは文書のテキストだけで、描画そのものは要らないため、すでに使っている変換の構成とうまく組み合わせられます。この例は都合上 preview-server の上に作りましたが、light-server の上でも動きます。SearchText には変換済みの bdf があればよく、それは文書をインデックスする（または再インデックスする）ときに 1 度作ればよいからです。検索の API キーをサーバー側に留め、クエリを取り次ぐことで、ブラウザは検索エンジンの資格情報を一切持たずに済みます。
+検索に要るのは文書のテキストだけで、描画そのものは要りません。だからこそ、すでに使っている変換の構成とうまく組み合わせられます。この例は都合上 preview-server の上に作りましたが、light-server の上でも動きます。SearchText には変換済みの bdf があればよく、それは文書をインデックスする（または再インデックスする）ときに 1 度作ればよいからです。検索の API キーをサーバー側に留め、クエリを取り次ぐことで、ブラウザは検索エンジンの資格情報を一切持たずに済みます。

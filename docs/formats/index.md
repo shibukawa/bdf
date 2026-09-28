@@ -1,6 +1,6 @@
 # Formats
 
-bdf converts each input from its own package under `converter/`; a program only handles the formats it links.
+bdf converts each input from its own package under `converter/` — a program only handles the formats it links.
 
 ```go
 import (
@@ -11,7 +11,7 @@ import (
 res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" detects the format
 ```
 
-The format is detected from the input's content where that's possible; Markdown, which can look like any text, is picked from the `.md`/`.markdown` extension. A password-protected input opens with `Options.Password`; when `res.Protected` says the input needed one, the output is encrypted with the same password (see [Features → Encrypted input](../features.html#encrypted-input)).
+The format is detected from the input's content where that's possible; Markdown, which can look like any text, is picked from the `.md`/`.markdown` extension. A password-protected input opens with `Options.Password`. When `res.Protected` says the input needed one, the output is encrypted with the same password (see [Features → Encrypted input](../features.html#encrypted-input)).
 
 ## By category
 

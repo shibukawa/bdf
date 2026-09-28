@@ -1,6 +1,6 @@
 # Getting started
 
-The fastest way to see bdf work is the [demo site](https://shibukawa.github.io/bdf/viewer/): drop a file on the page and it converts and draws inside your browser, without uploading anything. This page is for running it yourself.
+The fastest way to see bdf work is the [demo site](https://shibukawa.github.io/bdf/viewer/): drop a file on the page and it converts and draws inside your browser, without uploading anything. From here, you build and run bdf on your own machine instead.
 
 ## The CLI
 
