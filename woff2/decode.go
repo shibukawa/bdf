@@ -12,6 +12,13 @@ var ErrDecodeNotAvailable = errors.New("woff2: decoder not available in this bui
 
 var errFormat = errors.New("woff2: malformed font")
 
+// maxSize bounds the tables of a font once decompressed.
+const maxSize = 256 << 20
+
+// ErrTooLarge is returned by Decode for a font whose tables are larger
+// than 256 MiB together.
+var ErrTooLarge = errors.New("woff2: the tables of the font are too large")
+
 // Decode unpacks a WOFF2 font into an sfnt font (TrueType or CFF-flavored
 // OpenType), rebuilding the transformed glyf, loca and hmtx tables. Font
 // collections are not supported.
@@ -33,6 +40,7 @@ func Decode(data []byte) ([]byte, error) {
 		offset, streamSize int
 	}
 	pos := 48
+	size := 0 // of the decompressed stream: the tables one after the other
 	entries := make([]entry, numTables)
 	for i := range entries {
 		if pos >= len(data) {
@@ -69,12 +77,15 @@ func Decode(data []byte) ([]byte, error) {
 			}
 			e.streamSize = e.transLen
 		}
+		if size += e.streamSize; size > maxSize {
+			return nil, ErrTooLarge
+		}
 		entries[i] = e
 	}
 	if compressedLen < 0 || pos+compressedLen > len(data) {
 		return nil, errFormat
 	}
-	stream, err := decompress(data[pos : pos+compressedLen])
+	stream, err := decompress(data[pos:pos+compressedLen], size)
 	if err != nil {
 		return nil, err
 	}
@@ -350,10 +361,12 @@ func rebuildGlyf(t []byte) (glyf, loca []byte, err error) {
 		for len(glyf)%4 != 0 {
 			glyf = append(glyf, 0)
 		}
-	}
-	for _, s := range ss {
-		if s.err {
-			return nil, nil, errFormat
+		// a stream that ended reads as zeros: stop at the glyph that read
+		// past it, before the glyphs after it are made of nothing
+		for _, s := range ss {
+			if s.err {
+				return nil, nil, errFormat
+			}
 		}
 	}
 	loca = binary.BigEndian.AppendUint32(loca, uint32(len(glyf)))

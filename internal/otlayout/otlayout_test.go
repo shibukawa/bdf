@@ -1,6 +1,8 @@
 package otlayout
 
 import (
+	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -282,4 +284,136 @@ func FuzzParse(f *testing.F) {
 		}
 	}
 	f.Fuzz(func(t *testing.T, b []byte) { exercise(b) })
+}
+
+// words writes 16-bit numbers.
+func words(v ...int) []byte {
+	var b []byte
+	for _, x := range v {
+		b = binary.BigEndian.AppendUint16(b, uint16(x))
+	}
+	return b
+}
+
+// repeat writes n records of a tag and an offset, or of an offset alone
+// when the tag is empty.
+func repeat(n int, tag string, offset int) []byte {
+	var b []byte
+	for range n {
+		b = append(append(b, tag...), words(offset)...)
+	}
+	return b
+}
+
+// everyGlyph is a coverage table of the 65536 glyphs.
+var everyGlyph = words(2, 1, 0, 0xffff, 0)
+
+// TestTooLarge reads tables whose records share what they point at: a few
+// kilobytes that say they hold millions of features or subtables.
+func TestTooLarge(t *testing.T) {
+	// 100 scripts that are one script of 100 languages that are one
+	// language system of 1000 features
+	scripts := append(words(100), repeat(100, "latn", 2+6*100)...)
+	scripts = append(append(scripts, words(0, 100)...), repeat(100, "ENG ", 4+6*100)...)
+	scripts = append(append(scripts, words(0, 0xffff, 1000)...), make([]byte, 2000)...)
+	// 100 features that are one feature of 20000 lookups
+	features := append(words(100), repeat(100, "liga", 2+6*100)...)
+	features = append(append(features, words(0, 20000)...), make([]byte, 40000)...)
+	// 100 lookups that are one lookup of 20000 subtables
+	lookups := append(words(100), repeat(100, "", 2+2*100)...)
+	lookups = append(append(lookups, words(SubstSingle, 0, 20000)...), repeat(20000, "", 6)...)
+	for name, b := range map[string][]byte{
+		"scripts":  append(words(1, 0, 10, 0, 0), scripts...),
+		"features": append(words(1, 0, 0, 10, 0), features...),
+		"lookups":  append(words(1, 0, 0, 0, 10), lookups...),
+	} {
+		var err error
+		allocs := testing.AllocsPerRun(1, func() { _, err = ParseGSUB(b) })
+		if !errors.Is(err, ErrTooLarge) {
+			t.Errorf("%s: error %v, want ErrTooLarge", name, err)
+		}
+		if allocs > 20000 {
+			t.Errorf("%s: %v allocations for a table of %d bytes", name, allocs, len(b))
+		}
+	}
+	// the tables of fonts stay far under the limit
+	for _, name := range []string{"features.ttf", "stix.otf"} {
+		tables(t, name)
+	}
+}
+
+// TestTruncated lists a lookup whose subtables are one substitution of
+// every glyph: the list stops when the table has listed all it may.
+func TestTruncated(t *testing.T) {
+	subtable := append(words(1, 6, 1), everyGlyph...) // single substitution, format 1
+	lookup := append(words(SubstSingle, 0, 100), repeat(100, "", 6+2*100)...)
+	b := append(words(1, 0, 0, 0, 10, 1, 4), append(lookup, subtable...)...)
+	gsub, err := ParseGSUB(b)
+	if err != nil || len(gsub.Lookups) != 1 || len(gsub.Lookups[0].subtables) != 100 {
+		t.Fatalf("%v, lookups %+v", err, gsub)
+	}
+	if gsub.steps != maxSteps(len(b)) || gsub.Truncated() {
+		t.Fatalf("a table of %d bytes may list %d entries", len(b), gsub.steps)
+	}
+	// all it may list is three times the glyphs: the first two subtables
+	gsub.steps = 3 << 16
+	n := 0
+	gsub.Substs(0, func(Subst) bool { n++; return true })
+	if n != 1<<16 || !gsub.Truncated() {
+		t.Errorf("%d substitutions listed, truncated %v", n, gsub.Truncated())
+	}
+	// and nothing after that
+	if s := allSubsts(gsub, 0); len(s) != 0 || len(gsub.Covered(0)) != 0 {
+		t.Errorf("%d substitutions listed of a table that listed all it may", len(s))
+	}
+
+	// the other lists are counted too
+	gpos, err := ParseGPOS(append(words(1, 0, 0, 0, 10, 1, 4), append(append(words(PosSingle, 0, 100), repeat(100, "", 6+2*100)...), append(words(1, 8, 4, 10), everyGlyph...)...)...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gpos.steps = 3 << 16
+	n = 0
+	gpos.Singles(0, func(uint16, Value) bool { n++; return true })
+	gpos.MarkCounts(0)
+	gpos.PairCount(0)
+	if n != 1<<16 || !gpos.Truncated() {
+		t.Errorf("%d adjustments listed, truncated %v", n, gpos.Truncated())
+	}
+	// fonts are listed whole
+	for _, name := range []string{"features.ttf", "stix.ttf"} {
+		gsub, gpos := tables(t, name)
+		for _, tb := range []*Table{gsub, gpos} {
+			before := tb.steps
+			for range 3 {
+				for i := range tb.Lookups {
+					tb.Substs(i, func(Subst) bool { return true })
+					tb.Context(i)
+					tb.Covered(i)
+					tb.PairCount(i)
+					tb.Pairs(i, func(p Pair) bool { tb.PairValue(i, p.First, p.Second); return true })
+					tb.Singles(i, func(uint16, Value) bool { return true })
+					tb.Attachments(i)
+					tb.MarkCounts(i)
+				}
+			}
+			if spent := before - tb.steps; tb.Truncated() || spent > 1<<20 {
+				t.Errorf("%s: %d entries listed", name, spent)
+			}
+		}
+	}
+}
+
+// TestMarkSetsBounded reads mark glyph sets that share a coverage table
+// of every glyph.
+func TestMarkSetsBounded(t *testing.T) {
+	const sets = 1000
+	b := append(words(1, 2, 0, 0, 0, 0, 14), words(1, sets)...)
+	for range sets {
+		b = binary.BigEndian.AppendUint32(b, 4+4*sets)
+	}
+	g := ParseGDEF(append(b, everyGlyph...))
+	if g == nil || len(g.MarkSets) == 0 || len(g.MarkSets)<<16 > maxElements {
+		t.Fatalf("%d mark glyph sets", len(g.MarkSets))
+	}
 }

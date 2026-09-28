@@ -148,3 +148,33 @@ func TestMathFont(t *testing.T) {
 		t.Error("a font without a MATH table resolved as a formula font")
 	}
 }
+
+// TestCollectionBytes loads the faces of a collection: the file is read
+// once, and its faces share the bytes.
+func TestCollectionBytes(t *testing.T) {
+	data, err := os.ReadFile("../../converter/font/testdata/bold.ttc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := New(fstest.MapFS{"bold.ttc": {Data: data}}, nil, false)
+	if len(db.Faces) < 2 {
+		t.Fatalf("%d faces", len(db.Faces))
+	}
+	var first *Loaded
+	for _, f := range db.Faces {
+		l, err := f.Load()
+		if err != nil {
+			t.Fatalf("face %d: %v", f.Index, err)
+		}
+		if first == nil {
+			first = l
+		} else if &l.Data[0] != &first.Data[0] || l.Font == first.Font {
+			t.Errorf("face %d: the bytes of the file are read again", f.Index)
+		}
+	}
+	// a face that no scan made reads its file itself
+	l, err := (&Face{Path: "../../converter/font/testdata/bold.ttc", Index: 1}).Load()
+	if err != nil || l.Font.NumGlyphs == 0 {
+		t.Errorf("face without a scan: %v", err)
+	}
+}

@@ -20,8 +20,15 @@ func (o *Outlines) Outline(gid uint16, pen Pen) (ok bool) {
 	if o.f.IsCFF {
 		return false
 	}
-	return o.glyf(gid, pen, affine{1, 0, 0, 1, 0, 0}, 0)
+	left := maxOutline
+	return o.glyf(gid, pen, affine{1, 0, 0, 1, 0, 0}, 0, &left)
 }
+
+// maxOutline bounds the points and components of a glyph's outline, those
+// of its components included: four times what maxp can say of a composite
+// glyph (maxCompositePoints is 16 bits). Components that are composite
+// glyphs of many components themselves multiply what a few bytes draw.
+const maxOutline = 1 << 18
 
 // penSink passes what a charstring draws to a Pen.
 type penSink struct{ p Pen }
@@ -85,7 +92,9 @@ const (
 	haveTwoByTwo   = 0x0080
 )
 
-func (o *Outlines) glyf(gid uint16, pen Pen, m affine, depth int) bool {
+// glyf draws a glyph; left is how many points and components the outline
+// may still have.
+func (o *Outlines) glyf(gid uint16, pen Pen, m affine, depth int, left *int) bool {
 	g, ok := o.glyfData(gid)
 	if !ok {
 		return false
@@ -95,7 +104,7 @@ func (o *Outlines) glyf(gid uint16, pen Pen, m affine, depth int) bool {
 	}
 	n := int(int16(be16(g, 0)))
 	if n >= 0 {
-		return simpleGlyph(g, n, pen, m)
+		return simpleGlyph(g, n, pen, m, left)
 	}
 	if depth > 8 {
 		return false
@@ -146,7 +155,10 @@ func (o *Outlines) glyf(gid uint16, pen Pen, m affine, depth int) bool {
 			c.a, c.b, c.c, c.d = f2(pos), f2(pos+2), f2(pos+4), f2(pos+6)
 			pos += 8
 		}
-		if !o.glyf(comp, pen, m.mul(c), depth+1) {
+		if *left--; *left < 0 {
+			return false
+		}
+		if !o.glyf(comp, pen, m.mul(c), depth+1, left) {
 			return false
 		}
 		if flags&moreComponents == 0 {
@@ -166,7 +178,7 @@ const (
 	maxPoint = 1 << 16
 )
 
-func simpleGlyph(g []byte, contours int, pen Pen, m affine) bool {
+func simpleGlyph(g []byte, contours int, pen Pen, m affine, left *int) bool {
 	pos := 10
 	if pos+2*contours+2 > len(g) {
 		return false
@@ -179,6 +191,9 @@ func simpleGlyph(g []byte, contours int, pen Pen, m affine) bool {
 			return false
 		}
 		points = ends[i] + 1
+	}
+	if *left -= points; *left < 0 {
+		return false
 	}
 	pos += 2 * contours
 	pos += 2 + int(be16(g, pos)) // instructions

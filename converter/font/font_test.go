@@ -193,6 +193,7 @@ func TestGlyphFont(t *testing.T) {
 		t.Fatal(err)
 	}
 	fc := fl.faces[0]
+	fc.prepare()
 	f, err := sfnt.Parse(glyphProgram(fc))
 	if err != nil {
 		t.Fatal(err)
@@ -222,6 +223,7 @@ func TestSampleFont(t *testing.T) {
 			t.Fatal(err)
 		}
 		fc := fl.faces[0]
+		fc.prepare()
 		data, ok := sampleProgram(fc, "af", true)
 		if !ok {
 			t.Fatalf("%s: no sample font", name)
@@ -248,8 +250,8 @@ func TestSampleFont(t *testing.T) {
 		} else if _, ok := out.Bounds(uint16(g)); !ok {
 			t.Errorf("%s: a.smcp is dropped", name)
 		}
-		if len(data) >= len(fc.data) {
-			t.Errorf("%s: the sample font (%d bytes) is not smaller than the font (%d)", name, len(data), len(fc.data))
+		if len(data) >= fc.size {
+			t.Errorf("%s: the sample font (%d bytes) is not smaller than the font (%d)", name, len(data), fc.size)
 		}
 	}
 }
@@ -352,6 +354,7 @@ func TestWebFonts(t *testing.T) {
 			t.Fatal(err)
 		}
 		fc := fl.faces[0]
+		fc.prepare()
 		if fl.container == "" || fc.f.NumGlyphs != 292 || len(fc.runes) != 95 || fc.gsub == nil {
 			t.Errorf("%s: %s, %d glyphs, %d characters", name, fl.container, fc.f.NumGlyphs, len(fc.runes))
 		}
@@ -388,6 +391,7 @@ func TestFeatureExamples(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &converter{fc: fl.faces[0], examples: defaultExamples}
+	c.fc.prepare()
 	c.plan = c.fc.plan("")
 	groups := map[string]*featureGroup{}
 	for _, g := range c.fc.featureGroups() {
@@ -507,6 +511,7 @@ func FuzzLoad(f *testing.F) {
 			if i == 4 || fc.f.NumGlyphs > 5000 {
 				return // slow to read, and made of the same damage
 			}
+			fc.prepare()
 			c := &converter{fc: fc, examples: 50}
 			c.plan = fc.plan("")
 			fc.sections(fl, false)

@@ -160,22 +160,38 @@ func ParseIndex(data []byte, index int) (*Font, error) {
 	if os2 := f.Tables["OS/2"]; len(os2) >= 10 {
 		f.FSType, f.HasFSType = be16(os2, 8), true
 	}
-	f.parseCmap()
+	if err := f.parseCmap(); err != nil {
+		return nil, err
+	}
 	f.parsePost()
-	f.parseNotices()
+	if err := f.parseNotices(); err != nil {
+		return nil, err
+	}
 	return f, nil
 }
 
+// maxNotices bounds the bytes of the name table read for the notices. The
+// strings of a name table take 128 KiB at most, but records may share
+// them, and each record would be decoded.
+const maxNotices = 4 << 20
+
+// maxCmap bounds the characters the subtables of a cmap map together:
+// four times those of Unicode. A font of every character (a last resort
+// font) may have a subtable of them for each of two platforms, and the
+// subtables of the older platforms beside them.
+const maxCmap = 4 * 0x110000
+
 // parseNotices collects the copyright and license strings (English Windows
 // records first, then any Windows or Unicode record, then ASCII Mac records).
-func (f *Font) parseNotices() {
+func (f *Font) parseNotices() error {
 	nt := f.Tables["name"]
 	if len(nt) < 6 {
-		return
+		return nil
 	}
 	count, strOff := int(be16(nt, 2)), int(be16(nt, 4))
 	best := map[uint16]int{}
 	text := map[uint16]string{}
+	left := maxNotices
 	for i := 0; i < count; i++ {
 		rec := 6 + i*12
 		if rec+12 > len(nt) {
@@ -193,21 +209,28 @@ func (f *Font) parseNotices() {
 		if !keep {
 			continue
 		}
-		raw := nt[off : off+length]
-		var s string
+		// a record that would not replace the one kept is not decoded
 		score := 0
 		switch pid {
 		case 0, 3:
-			u := make([]uint16, len(raw)/2)
-			for k := range u {
-				u[k] = be16(raw, k*2)
-			}
-			s = string(utf16.Decode(u))
 			score = 2
 			if pid == 3 && lang == 0x0409 {
 				score = 3
 			}
 		case 1:
+			score = 1
+		default:
+			continue
+		}
+		if score <= best[id] {
+			continue
+		}
+		raw := nt[off : off+length]
+		if left -= len(raw); left < 0 {
+			return errors.New("sfnt: the records of the name table are too long together")
+		}
+		var s string
+		if pid == 1 {
 			ascii := true
 			for _, c := range raw {
 				ascii = ascii && c < 0x80
@@ -215,11 +238,15 @@ func (f *Font) parseNotices() {
 			if !ascii {
 				continue
 			}
-			s, score = string(raw), 1
-		default:
-			continue
+			s = string(raw)
+		} else {
+			u := make([]uint16, len(raw)/2)
+			for k := range u {
+				u[k] = be16(raw, k*2)
+			}
+			s = string(utf16.Decode(u))
 		}
-		if s != "" && score > best[id] {
+		if s != "" {
 			best[id], text[id] = score, s
 		}
 	}
@@ -228,22 +255,33 @@ func (f *Font) parseNotices() {
 			f.Notices = append(f.Notices, NameRecord{id, s})
 		}
 	}
+	return nil
 }
 
-func (f *Font) parseCmap() {
+func (f *Font) parseCmap() error {
 	cm := f.Tables["cmap"]
 	if len(cm) < 4 {
-		return
+		return nil
 	}
 	n := int(be16(cm, 2))
 	best := -1
+	left := maxCmap
+	// the records of several platforms share subtables: each is read once
+	read := map[int]map[uint32]uint16{}
 	for i := 0; i < n; i++ {
 		rec := 4 + i*8
 		pid, eid, off := be16(cm, rec), be16(cm, rec+2), int(be32(cm, rec+4))
 		if off >= len(cm) {
 			continue
 		}
-		m := parseCmapSubtable(cm[off:])
+		m, ok := read[off]
+		if !ok {
+			m = parseCmapSubtable(cm[off:], &left)
+			if left < 0 {
+				return errors.New("sfnt: the cmap table maps too many characters")
+			}
+			read[off] = m
+		}
 		if m == nil {
 			continue
 		}
@@ -265,13 +303,17 @@ func (f *Font) parseCmap() {
 			}
 		}
 	}
+	return nil
 }
 
-func parseCmapSubtable(b []byte) map[uint32]uint16 {
+// parseCmapSubtable reads a subtable; left is how many characters the
+// subtables of the table may still map, below zero when b maps more.
+func parseCmapSubtable(b []byte, left *int) map[uint32]uint16 {
 	format := be16(b, 0)
 	m := map[uint32]uint16{}
 	switch format {
 	case 0:
+		*left -= 256
 		for c := 0; c < 256 && 6+c < len(b); c++ {
 			if g := uint16(b[6+c]); g != 0 {
 				m[uint32(c)] = g
@@ -285,6 +327,11 @@ func parseCmapSubtable(b []byte) map[uint32]uint16 {
 			delta, ro := be16(b, deltas+s*2), int(be16(b, rangeOffs+s*2))
 			if start > end || end-start > 0xffff {
 				continue
+			}
+			// segments do not overlap in a font that is well made: those
+			// that do count as many times as they map a character
+			if *left -= int(end-start) + 1; *left < 0 {
+				return nil
 			}
 			for c := start; c <= end && c != 0xffff; c++ {
 				var g uint16
@@ -307,6 +354,7 @@ func parseCmapSubtable(b []byte) map[uint32]uint16 {
 		}
 	case 6:
 		first, count := uint32(be16(b, 6)), int(be16(b, 8))
+		*left -= count
 		for i := 0; i < count; i++ {
 			if g := be16(b, 10+i*2); g != 0 {
 				m[first+uint32(i)] = g
@@ -329,6 +377,7 @@ func parseCmapSubtable(b []byte) map[uint32]uint16 {
 				budget--
 			}
 		}
+		*left -= 0x110000 - budget
 	default:
 		return nil
 	}

@@ -204,8 +204,8 @@ func (fc *face) sections(fl *file, outlines bool) []section {
 	info.add("File size", bytesize(fl.size))
 	info.add("Glyphs", num(f.NumGlyphs))
 	info.add("Characters", num(len(fc.runes)))
-	if n := variationSequences(t["cmap"]); n > 0 {
-		info.add("Variation sequences", num(n))
+	if n, more := variationSequences(t["cmap"]); n > 0 {
+		info.add("Variation sequences", moreThan(more)+num(n))
 	}
 	info.add("Units per em", num(f.UnitsPerEm))
 	if head := t["head"]; len(head) >= 54 {
@@ -393,9 +393,14 @@ func strikes(b []byte, size int) string {
 	return strings.Join(s, ", ")
 }
 
+// maxRanges bounds the ranges of default variation sequences that are
+// counted: the variation selectors of a subtable may share their ranges, or
+// have ranges that overlap.
+const maxRanges = 1 << 22
+
 // variationSequences counts the variation sequences of a cmap's format 14
-// subtable.
-func variationSequences(cm []byte) int {
+// subtable; more is true when it has more ranges than are counted.
+func variationSequences(cm []byte) (count int, more bool) {
 	n := be16(cm, 2)
 	for i := range n {
 		rec := 4 + i*8
@@ -406,23 +411,40 @@ func variationSequences(cm []byte) int {
 		if be16(st, 0) != 14 {
 			continue
 		}
-		count := 0
+		left := maxRanges
+		defaults := map[int]int{} // the sequences of a table of ranges, by its offset
 		m := min(be32(st, 6), max(len(st)-10, 0)/11)
 		for j := range m {
 			r := 10 + j*11
 			if d := be32(st, r+3); d > 0 && d+4 <= len(st) {
-				ranges := min(be32(st, d), (len(st)-d-4)/4)
-				for k := range ranges {
-					count += int(st[d+4+k*4+3]) + 1
+				sum, ok := defaults[d]
+				if !ok {
+					ranges := min(be32(st, d), (len(st)-d-4)/4)
+					if left -= ranges; left < 0 {
+						return count, true
+					}
+					for k := range ranges {
+						sum += int(st[d+4+k*4+3]) + 1
+					}
+					defaults[d] = sum
 				}
+				count += sum
 			}
 			if u := be32(st, r+7); u > 0 && u+4 <= len(st) {
 				count += min(be32(st, u), 1<<20)
 			}
 		}
-		return count
+		return count, false
 	}
-	return 0
+	return 0, false
+}
+
+// moreThan starts a number that is a lower bound.
+func moreThan(more bool) string {
+	if more {
+		return "more than "
+	}
+	return ""
 }
 
 // metaLangs reads the design and supported languages of the meta table.
