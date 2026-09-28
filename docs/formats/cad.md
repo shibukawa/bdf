@@ -4,7 +4,7 @@ CAD drawings and plotter output carry vector geometry drawn to scale on paper, w
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: an [AutoCAD DXF drawing](../../viewer/?file=samples/layout.dxf) with a model-space page and a paper-space layout, a [Jw_cad drawing](../../viewer/?file=samples/shapes.jww), an [SXF drawing](../../viewer/?file=samples/shapes.p21), a [CGM drawing](../../viewer/?file=samples/shapes.cgm), or an [HP-GL/2 plot](../../viewer/?file=samples/shapes.plt).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: an [AutoCAD DXF drawing](https://shibukawa.github.io/bdf/viewer/?file=samples/layout.dxf) with a model-space page and a paper-space layout, a [Jw_cad drawing](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.jww), an [SXF drawing](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.p21), a [CGM drawing](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.cgm), or an [HP-GL/2 plot](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.plt).
 
 ## AutoCAD DXF
 
@@ -17,7 +17,7 @@ Model space becomes one page fitted to the drawing, drawn on the dark background
 | `-param views=` | `all`, `model`, `layouts` | `all` |
 | `-param background=` | `dark`, `light` | `dark` |
 
-See [design.md §3.12](../design.html#312-dxf--bdf-変換器converterdxfの構造) for the internals.
+See [design.md §3.12](../design.md#312-dxf--bdf-変換器converterdxfの構造) for the internals.
 
 ## Jw_cad
 
@@ -29,7 +29,7 @@ A drawing becomes one page of its sheet, grown to include anything drawn outside
 |---|---|---|
 | `-param colors=` | `screen`, `print`, `mono` | `screen` |
 
-See [design.md §3.13](../design.html#313-jw_cad--bdf-変換器converterjwwの構造) for the internals.
+See [design.md §3.13](../design.md#313-jw_cad--bdf-変換器converterjwwの構造) for the internals.
 
 ## SXF
 
@@ -41,7 +41,7 @@ A drawing becomes one page of its sheet, grown to include anything drawn outside
 |---|---|---|
 | `-param background=` | `file`, `light` | `file` |
 
-See [design.md §3.14](../design.html#314-sxf--bdf-変換器convertersxfの構造) for the internals.
+See [design.md §3.14](../design.md#314-sxf--bdf-変換器convertersxfの構造) for the internals.
 
 ## CGM
 
@@ -51,7 +51,7 @@ Each picture in the metafile becomes one page, sized to its own metric scale whe
 
 `converter/cgm` has no `-param` options.
 
-See [design.md §3.20](../design.html#320-cgm--bdf-変換器convertercgmの構造) for the internals.
+See [design.md §3.20](../design.md#320-cgm--bdf-変換器convertercgmの構造) for the internals.
 
 ## HP-GL/2
 
@@ -63,4 +63,4 @@ Each plotted page becomes a page, sized from the plot size (PS) grown to include
 |---|---|---|
 | `-param colors=` | `pens`, `mono` | `pens` (the file's own pen colors) |
 
-See [design.md §3.22](../design.html#322-hp-gl2--bdf-変換器converterhpgl) for the internals.
+See [design.md §3.22](../design.md#322-hp-gl2--bdf-変換器converterhpgl) for the internals.

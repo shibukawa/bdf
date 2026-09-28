@@ -63,7 +63,10 @@ for (const file of await files(out, ".html")) {
     }
     if (hash) {
       const set = await ids(target);
-      if (set && !set.has(hash)) {
+      // browsers match the fragment as written, then percent-decoded
+      let decoded = hash;
+      try { decoded = decodeURIComponent(hash); } catch {}
+      if (set && !set.has(hash) && !set.has(decoded)) {
         console.log(`${posix.relative(out, file)}: broken anchor ${href} (no id="${hash}" in ${posix.relative(out, target)})`);
         problems++;
       }

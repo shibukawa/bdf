@@ -4,7 +4,7 @@ Visio and draw.io (diagrams.net) diagrams are shapes connected by routed edges, 
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: a Visio drawing ([shapes.vsdx](../../viewer/?file=samples/shapes.vsdx)), a draw.io diagram of three pages ([multipage.drawio](../../viewer/?file=samples/multipage.drawio)), or an [AWS architecture diagram](../../viewer/?file=samples/aws.drawio).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: a Visio drawing ([shapes.vsdx](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.vsdx)), a draw.io diagram of three pages ([multipage.drawio](https://shibukawa.github.io/bdf/viewer/?file=samples/multipage.drawio)), or an [AWS architecture diagram](https://shibukawa.github.io/bdf/viewer/?file=samples/aws.drawio).
 
 ## Visio (.vsdx, .vdx)
 
@@ -14,7 +14,7 @@ Each foreground page becomes a page, sized from the page's own width and scale; 
 
 `converter/visio` has no `-param` options.
 
-See [design.md §3.8](../design.html#38-visio--bdf-変換器convertervisioの構造) for the internals.
+See [design.md §3.8](../design.md#38-visio--bdf-変換器convertervisioの構造) for the internals.
 
 ## draw.io
 
@@ -26,4 +26,4 @@ Every page becomes its own page in bdf, so the viewer switches between them with
 |---|---|---|
 | `-param border=` | margin around each page's drawing, in pixels | `10` (`0` for none) |
 
-See [design.md §3.11](../design.html#311-drawio--bdf-変換器converterdrawioの構造) for the internals.
+See [design.md §3.11](../design.md#311-drawio--bdf-変換器converterdrawioの構造) for the internals.

@@ -60,9 +60,13 @@ function rewrite(href, src, out, image) {
   if (page) return relative(out, page) + tail;
   if (path.startsWith(IMAGES)) return relative(out, path) + tail;
   if (path.startsWith("..")) return href;
+  // a link to a file that is not there (say a page's .html, which is not in
+  // the repository) would be a dead link on GitHub
+  const entry = statSync(join(root, decodeURI(path)), { throwIfNoEntry: false });
+  if (!entry) throw new Error(`${src}: the link ${href} points at ${path}, which is neither a page nor a file of the repository`);
   let kind = "blob";
   if (image) kind = "raw";
-  else if (statSync(join(root, decodeURI(path)), { throwIfNoEntry: false })?.isDirectory()) kind = "tree";
+  else if (entry.isDirectory()) kind = "tree";
   return `${REPO}/${kind}/main/${path}${tail}`;
 }
 
@@ -252,8 +256,11 @@ export async function buildDocs(out) {
     written.push(file);
   })));
   await cp(join(root, IMAGES), join(out, IMAGES), { recursive: true });
-  // the Japanese overview was docs/ja.html
+  // the Japanese overview was docs/ja.html; the features were a page of their
+  // own before they went into why and the architecture
   await writeFile(join(out, "docs/ja.html"), moved("index.ja.html"));
+  await writeFile(join(out, "docs/features.html"), moved("why.html"));
+  await writeFile(join(out, "docs/features.ja.html"), moved("why.ja.html"));
   console.log(`docs: ${written.length} pages`);
   return written.sort();
 }

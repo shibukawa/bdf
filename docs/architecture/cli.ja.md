@@ -26,7 +26,7 @@ bdf demo <file.bdf | dir/>         フィクスチャ文書を書き出す（dir
 
 ## generate
 
-1 つの入力を bdf に変換します。形式は入力の中身から判別するか、`-format` で明示します。出力は 1 ファイル、または末尾が `/` のディレクトリで分割形式になります。`-pages 1-3,5,8-` でページ・スライド・シート・アートボードを選び、`-thumbnail` と `-text` は出力と一緒にプレビューを書き出します（暗号化した出力には `-allow-plaintext` のときだけ）。`-dc 要素名=値` は Dublin Core の要素を上書きします（`-dc 要素名=` で削除）。入力形式ごとの `-param` オプションは[対応形式](../formats/index.ja.html)を、現在の完全な一覧は `bdf generate -h` を参照してください。
+1 つの入力を bdf に変換します。形式は入力の中身から判別するか、`-format` で明示します。出力は 1 ファイル、または末尾が `/` のディレクトリで分割形式になります。`-pages 1-3,5,8-` でページ・スライド・シート・アートボードを選び、`-thumbnail` と `-text` は出力と一緒にプレビューを書き出します（暗号化した出力には `-allow-plaintext` のときだけ）。`-dc 要素名=値` は Dublin Core の要素を上書きします（`-dc 要素名=` で削除）。入力形式ごとの `-param` オプションは[対応形式](../formats/index.ja.md)を、現在の完全な一覧は `bdf generate -h` を参照してください。
 
 ```sh
 bdf generate report.pptx report.bdf              # 1 ファイル形式
@@ -45,7 +45,7 @@ bdf text out.bdf text.json                   # メタデータとページごと
 bdf render -page 2 -scale 2 out.bdf page2.png  # シートは -width/-height も（A1 から）
 ```
 
-暗号化した文書には `thumbnail` と `text` に `-allow-plaintext` が必要です（`$BDF_PASSWORD` で先に復号）。どちらの出力も暗号化されないため、明示的に許可する仕組みです。それぞれが何を描く・抽出するかは[特徴 → サーバー側のサムネイルと検索用テキスト](../features.ja.html#サーバー側のサムネイルと検索用テキスト)を参照してください。
+暗号化した文書には `thumbnail` と `text` に `-allow-plaintext` が必要です（`$BDF_PASSWORD` で先に復号）。どちらの出力も暗号化されないため、明示的に許可する仕組みです。それぞれが何を描く・抽出するかは[変換と出力 → サーバー側のサムネイルと検索用テキスト](conversion.ja.md#サーバー側のサムネイルと検索用テキスト)を参照してください。
 
 ## 文書の中身を見る
 
@@ -94,4 +94,4 @@ bdf demo out/         # その分割形式
 | `-no-subset` | 使う字形だけでなくフォントファイル全体を埋め込む |
 | `-ignore-fstype` | OS/2 の `fsType` が埋め込みやサブセット化を禁じるフォントも埋め込む（権利がある場合のみ） |
 
-対応する Go の呼び出しは [API 一覧](../api.html)を、`bdf generate` と `bdf demo` で `testdata/` のフィクスチャを再生成する方法は[ビルドとテスト](development.ja.html)を参照してください。
+対応する Go の呼び出しは [API 一覧](../api.md)を、`bdf generate` と `bdf demo` で `testdata/` のフィクスチャを再生成する方法は[ビルドとテスト](development.ja.md)を参照してください。

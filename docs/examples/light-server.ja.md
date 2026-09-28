@@ -22,8 +22,8 @@ open http://127.0.0.1:8081/
 
 `web/main.ts` は `?file=` を読み、`/files/` からバイト列を取得して、デモサイトと同じ wasm の変換モジュール（`examples/common/convert.ts` の `ConverterClient`。`web/lib/bdf-*.wasm` から読み込む）で変換し、結果を [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) で開きます。流れそのものは [`examples/viewer/main.ts`](https://github.com/shibukawa/bdf/blob/main/examples/viewer/main.ts) の `sniff → convert → open` と変わりません。ページめくり、セル選択、PDF のストリーミング変換をすべて外し、1 ファイルに切り詰めてあるだけです。
 
-`web/build.mjs` は [`examples/common/build.mjs`](https://github.com/shibukawa/bdf/blob/main/examples/common/build.mjs)（[デモサイト](../architecture/browser.ja.html)のビルドにも使うのと同じ補助）を呼んで、レンダラ Worker、変換 Worker、wasm モジュール（このサーバーには要らないプレビュー専用モジュールを除く全部）、Office 系変換器がテキストをレイアウトするフォントをビルドします。
+`web/build.mjs` は [`examples/common/build.mjs`](https://github.com/shibukawa/bdf/blob/main/examples/common/build.mjs)（[デモサイト](../architecture/browser.ja.md)のビルドにも使うのと同じ補助）を呼んで、レンダラ Worker、変換 Worker、wasm モジュール（このサーバーには要らないプレビュー専用モジュールを除く全部）、Office 系変換器がテキストをレイアウトするフォントをビルドします。
 
 ## この形にした理由
 
-[なぜ bdf か](../why.ja.html)を参照してください。変換器を WebAssembly でビルドできるのは、まさにサーバーをこれだけ薄くできるようにするためです。その分の負担はブラウザに移ります。wasm モジュールの取得（形式によって 7〜27 MB。gzip されていて、同じ種類の文書を一度開けばキャッシュされます）と、開くたびの（最初の 1 回だけでなく毎回の）手元での変換です。文書が多い、サーバーに変換する余力がない、文書がめったに開かれずすべて事前変換するのは無駄になる、といった場面ではこちらが向いています。逆のトレードオフは [preview-server](preview-server.ja.html) を参照してください。
+[なぜ bdf か](../why.ja.md)を参照してください。変換器を WebAssembly でビルドできるのは、まさにサーバーをこれだけ薄くできるようにするためです。その分の負担はブラウザに移ります。wasm モジュールの取得（形式によって 7〜27 MB。gzip されていて、同じ種類の文書を一度開けばキャッシュされます）と、開くたびの（最初の 1 回だけでなく毎回の）手元での変換です。向いているのは、大量に作られるのに、開かれることはまれな文書です。典型は監査のために残す記録で、取引ごとの帳票や報告書、署名済みの書類は作られるたびに保管されますが、実際に開かれるのは監査で求められたごく一部だけです。すべてを事前に変換すると、サーバーの処理時間と置き場所のほとんどを、だれも開かない文書のために使うことになります。この構成なら、サーバーは文書が届いたときにサムネイルを描くだけで、変換は開かれたときに、開いた人のブラウザで行います。サーバーに変換の余力がまったくない場合にも向いています。逆のトレードオフは [preview-server](preview-server.ja.md) を参照してください。

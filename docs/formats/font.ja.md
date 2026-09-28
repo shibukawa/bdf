@@ -4,7 +4,7 @@ bdf にフォントファイルをドロップしても、そのフォントで�
 
 ## 試してみる
 
-ファイルを[ビューア](../../viewer/)にドロップするか、サンプルを試してください。[OpenType フォント](../../viewer/?file=samples/stix.otf)（STIX Two Text）。
+ファイルを[ビューア](https://shibukawa.github.io/bdf/viewer/)にドロップするか、サンプルを試してください。[OpenType フォント](https://shibukawa.github.io/bdf/viewer/?file=samples/stix.otf)（STIX Two Text）。
 
 ## フォントファイル（.ttf、.otf、.ttc、.woff、.woff2）
 
@@ -26,4 +26,4 @@ bdf にフォントファイルをドロップしても、そのフォントで�
 | `-param examples=` | フィーチャーごとに見せる置換とペアの数、または `all` | 200 |
 | `-ignore-fstype` | OS/2 の `fsType` が埋め込みや部分集合化を禁じるフォントも埋め込む | オフ |
 
-内部の実装は [design.md §3.28](../design.html#328-フォントファイル--bdf-変換器converterfontの構造) を参照してください。
+内部の実装は [design.md §3.28](../design.md#328-フォントファイル--bdf-変換器converterfontの構造) を参照してください。

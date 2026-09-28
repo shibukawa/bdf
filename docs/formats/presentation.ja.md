@@ -4,7 +4,7 @@ PowerPoint のスライドは DrawingML でできている。図形やテキス�
 
 ## 試す
 
-ファイルを[ビューア](../../viewer/)にドロップするか、サンプルを試せる: [PowerPoint のデッキ](../../viewer/?file=samples/features.pptx)。
+ファイルを[ビューア](https://shibukawa.github.io/bdf/viewer/)にドロップするか、サンプルを試せる: [PowerPoint のデッキ](https://shibukawa.github.io/bdf/viewer/?file=samples/features.pptx)。
 
 ## PowerPoint（.pptx）
 
@@ -29,4 +29,4 @@ PowerPoint のスライドは DrawingML でできている。図形やテキス�
 
 `-hidden` は `-param hidden=true` の短縮形（Excel の `-hidden` も非表示シートに同じことをする）。`-pages` で変換するスライドを選べ、フォント関連の一般オプション `-font-dir`、`-fonts system`、`-no-subset`、`-no-woff2`、`-no-system-fonts`、`-ignore-fstype` は Word・Excel と同じように PowerPoint にも効く。
 
-詳細は [design.md §3.4](../design.html#34-powerpoint--bdf-変換器converterpptxの構造) を参照。
+詳細は [design.md §3.4](../design.md#34-powerpoint--bdf-変換器converterpptxの構造) を参照。

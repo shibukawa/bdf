@@ -4,7 +4,7 @@ PDF のページは文書のモデルではなく描画命令の並びなので�
 
 ## 試してみる
 
-[ビューア](../../viewer/)にファイルをドロップするか、サンプルを試してください。[PDF](../../viewer/?file=samples/demo.pdf)、[reportlab で作った 3 ページの PDF](../../viewer/?file=samples/reportlab-master.pdf)、[3 つのアートボードを持つ Illustrator ファイル](../../viewer/?file=samples/artboards.ai)です。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試してください。[PDF](https://shibukawa.github.io/bdf/viewer/?file=samples/demo.pdf)、[reportlab で作った 3 ページの PDF](https://shibukawa.github.io/bdf/viewer/?file=samples/reportlab-master.pdf)、[3 つのアートボードを持つ Illustrator ファイル](https://shibukawa.github.io/bdf/viewer/?file=samples/artboards.ai)です。
 
 ## PDF（`converter/pdf`）
 
@@ -18,7 +18,7 @@ PDF の各ページは既定で bdf の 1 ページ（`fixed` View）になり�
 | `-param box=` | `crop`、`media`、`bleed`、`trim`、`art` | `crop` |
 | `-no-share` / `-param no-share=` | `true`: ページ共通の先頭部分を共有オブジェクトにしない | 共有する |
 
-詳細は[design.md §3.1](../design.html#31-pdf--bdf-変換器converterpdfの構造)を参照してください。
+詳細は[design.md §3.1](../design.md#31-pdf--bdf-変換器converterpdfの構造)を参照してください。
 
 ## Illustrator .ai（`converter/ai`）
 
@@ -30,4 +30,4 @@ PDF の各ページは既定で bdf の 1 ページ（`fixed` View）になり�
 |---|---|---|
 | `-param box=` | `trim`、`bleed`、`media`、`crop`、`art` | `trim`（裁ち落としを除いたアートボード） |
 
-詳細は[design.md §3.17](../design.html#317-illustrator--bdf-変換器converterai)を参照してください。
+詳細は[design.md §3.17](../design.md#317-illustrator--bdf-変換器converterai)を参照してください。

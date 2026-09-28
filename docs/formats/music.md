@@ -1,10 +1,10 @@
 # Scores
 
-MML, MIDI and MusicXML all end up as staff notation, engraved by a shared layout engine (`converter/internal/music`) onto A4 pages with the SMuFL font Bravura, and each view carries the underlying music as a Standard MIDI File so the demo viewer can play it back — see [Features → Music](../features.html#music) for what that playback looks like in the viewer. What the three converters share ends there: two of them have to invent the notation from raw performance data, and one just reads what's already on the page.
+MML, MIDI and MusicXML all end up as staff notation, engraved by a shared layout engine (`converter/internal/music`) onto A4 pages with the SMuFL font Bravura, and each view carries the underlying music as a Standard MIDI File so the demo viewer can play it back — see [Conversion and output → Scores and playback](../architecture/conversion.md#scores-and-playback) for how that playback works. What the three converters share ends there: two of them have to invent the notation from raw performance data, and one just reads what's already on the page.
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: an [MML chiptune](../../viewer/?file=samples/frere.mml), a [MIDI karaoke file](../../viewer/?file=samples/twinkle.kar), or a [MusicXML piano score](../../viewer/?file=samples/minuet.musicxml).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: an [MML chiptune](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml), a [MIDI karaoke file](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar), or a [MusicXML piano score](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml).
 
 ## MML (converter/mml)
 
@@ -35,4 +35,4 @@ MusicXML, unlike MML and MIDI, is read as written rather than re-notated: parts 
 
 MusicXML has no `-param` options — the score converts as written.
 
-See [design.md §3.27](../design.html#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic) for how the shared engraving engine — measure spacing, stems and beams, ties and slurs, lyric wrapping — actually works.
+See [design.md §3.27](../design.md#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic) for how the shared engraving engine — measure spacing, stems and beams, ties and slurs, lyric wrapping — actually works.

@@ -30,9 +30,9 @@ bdfConverter.open(data, options?) → Promise<{bdf, format, pages, warnings, str
   // pages > 0: bdf はアウトライン（全ページの大きさだけでレイヤーはまだ空）、stream が残りを変換する
 ```
 
-`-tags pdfonly|officeonly|webonly|imageonly` でより小さなモジュールをビルドできます — PDF と Illustrator用、Office 系・CAD・KiCad・音楽・フォント用、HTML・Markdown・EPUB 用、ブラウザ自身がデコードできる画像用 — ページは必要なものだけを取得します。`-tags previewonly` は変換器を持たないモジュールで、`thumbnail()` と `text()` を公開します。サーバーが使うのと同じ Go のコード（`thumbnail`、`Document.SearchText`）で、[サムネイル](../thumbnail/)と[検索テキスト](../text/)のページに使われます。`examples/common/convert-worker.ts` はクライアント側のつなぎで、必要になったときにこれらのモジュールを読み込み、`convert`・`open`・`page`・`finish`・`thumbnail`・`text` を `postMessage` 越しに公開します。どのモジュールが要るかは、`examples/common/convert.ts` の `sniff()` がドロップされたファイルの中身と拡張子から判定します。
+`-tags pdfonly|officeonly|webonly|imageonly` でより小さなモジュールをビルドできます — PDF と Illustrator用、Office 系・CAD・KiCad・音楽・フォント用、HTML・Markdown・EPUB 用、ブラウザ自身がデコードできる画像用 — ページは必要なものだけを取得します。`-tags previewonly` は変換器を持たないモジュールで、`thumbnail()` と `text()` を公開します。サーバーが使うのと同じ Go のコード（`thumbnail`、`Document.SearchText`）で、[サムネイル](https://shibukawa.github.io/bdf/thumbnail/)と[検索テキスト](https://shibukawa.github.io/bdf/text/)のページに使われます。`examples/common/convert-worker.ts` はクライアント側のつなぎで、必要になったときにこれらのモジュールを読み込み、`convert`・`open`・`page`・`finish`・`thumbnail`・`text` を `postMessage` 越しに公開します。どのモジュールが要るかは、`examples/common/convert.ts` の `sniff()` がドロップされたファイルの中身と拡張子から判定します。
 
-PDF はページ単位で変換します。`open()` はまずページの大きさだけ入った空の文書を返し、`page(i)` が変換の進みに合わせて各ページを埋めていきます（表示中のページを優先）。`finish()` は完成した文書を返し、ストリーミング中のものと差し替えます。この形にした理由は[design.md §2](../design.html#2-go-と-wasm-について)を、呼び出しの全体像は [API 一覧](../api.html#ブラウザ内変換cmdbdfwasm)を参照してください。
+PDF はページ単位で変換します。`open()` はまずページの大きさだけ入った空の文書を返し、`page(i)` が変換の進みに合わせて各ページを埋めていきます（表示中のページを優先）。`finish()` は完成した文書を返し、ストリーミング中のものと差し替えます。この形にした理由は[design.md §2](../design.md#2-go-と-wasm-について)を、呼び出しの全体像は [API 一覧](../api.md#ブラウザ内変換cmdbdfwasm)を参照してください。
 
 ## ブラウザでのフォント
 
@@ -40,4 +40,4 @@ Office 系・CAD・HTML・Markdown・EPUB の変換器は、ページを変換�
 
 ## サイトのビルド
 
-[`site/build.mjs`](https://github.com/shibukawa/bdf/blob/main/site/build.mjs) が GitHub Pages で公開しているすべて（トップページ、フル機能のビューア、サムネイル・検索テキストのページ、描画済みのドキュメント、各ページが取得する共有の `lib/`・`fonts/`・`samples/`）をビルドします。`npm run site` で手元に `site/dist` としてビルドし、`npm run site:serve` は配信もします。コマンドの全体像は[ビルドとテスト](development.ja.html)を参照してください。Go のビルドが要らないスタンドアロンのビューア（`npm run demo`）もあります。
+[`site/build.mjs`](https://github.com/shibukawa/bdf/blob/main/site/build.mjs) が GitHub Pages で公開しているすべて（トップページ、フル機能のビューア、サムネイル・検索テキストのページ、描画済みのドキュメント、各ページが取得する共有の `lib/`・`fonts/`・`samples/`）をビルドします。`npm run site` で手元に `site/dist` としてビルドし、`npm run site:serve` は配信もします。コマンドの全体像は[ビルドとテスト](development.ja.md)を参照してください。Go のビルドが要らないスタンドアロンのビューア（`npm run demo`）もあります。

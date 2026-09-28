@@ -4,7 +4,7 @@ PDF pages are a sequence of drawing instructions, not a document model, so bdf r
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: a [PDF](../../viewer/?file=samples/demo.pdf), a [three-page PDF made with reportlab](../../viewer/?file=samples/reportlab-master.pdf), or an [Illustrator file with three artboards](../../viewer/?file=samples/artboards.ai).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: a [PDF](https://shibukawa.github.io/bdf/viewer/?file=samples/demo.pdf), a [three-page PDF made with reportlab](https://shibukawa.github.io/bdf/viewer/?file=samples/reportlab-master.pdf), or an [Illustrator file with three artboards](https://shibukawa.github.io/bdf/viewer/?file=samples/artboards.ai).
 
 ## PDF (`converter/pdf`)
 
@@ -18,7 +18,7 @@ Each PDF page becomes one bdf page by default (a `fixed` view); `-kind flow` mak
 | `-param box=` | `crop`, `media`, `bleed`, `trim`, `art` | `crop` |
 | `-no-share` / `-param no-share=` | `true`: don't move the prefix pages have in common into a shared object | shared |
 
-See [design.md §3.1](../design.html#31-pdf--bdf-変換器converterpdfの構造) for the internals.
+See [design.md §3.1](../design.md#31-pdf--bdf-変換器converterpdfの構造) for the internals.
 
 ## Illustrator .ai (`converter/ai`)
 
@@ -30,4 +30,4 @@ Files saved with "Create PDF Compatible File" turned off keep only a one-page PD
 |---|---|---|
 | `-param box=` | `trim`, `bleed`, `media`, `crop`, `art` | `trim` (the artboard, without the bleed) |
 
-See [design.md §3.17](../design.html#317-illustrator--bdf-変換器converterai) for the internals.
+See [design.md §3.17](../design.md#317-illustrator--bdf-変換器converterai) for the internals.

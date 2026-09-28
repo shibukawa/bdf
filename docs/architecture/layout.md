@@ -63,7 +63,7 @@
 |---|---|
 | `examples/viewer` | The full demo viewer (Worker-based rendering, the accessible text layer, page turning) |
 | `examples/common` | What the viewer and the rest of the site share: the converter Worker's client, and the site's esbuild helpers |
-| `examples/miniviewer` | A small, embeddable viewer (used by the top page and the sample architectures below) |
+| `examples/miniviewer` | A small, embeddable viewer (used by the sample architectures below) |
 | `site/` | The site published on GitHub Pages: the top page, the thumbnail and search-text pages, and the documentation renderer (`site/docs.mjs`, which builds this page from `docs/*.md`) |
 | `docs/` | This documentation, as Markdown |
 
@@ -71,10 +71,10 @@
 
 | Path | Contents |
 |---|---|
-| `examples/light-server`, `examples/preview-server`, `examples/search`, `examples/secure-reader` | Four small Go servers, each built around a different way of fitting bdf into a system — see [Sample architectures](../examples/index.html) |
-| `cmd/bdf` | The `bdf` CLI: `generate`, `thumbnail`, `text`, `render`, `ls`, `manifest`, `disasm`, `extract`, `split`, `join`, `encrypt`, `decrypt`, `demo` — see [The bdf command](cli.html) |
+| `examples/light-server`, `examples/preview-server`, `examples/search`, `examples/secure-reader` | Four small Go servers, each built around a different way of fitting bdf into a system — see [Sample architectures](../examples/index.md) |
+| `cmd/bdf` | The `bdf` CLI: `generate`, `thumbnail`, `text`, `render`, `ls`, `manifest`, `disasm`, `extract`, `split`, `join`, `encrypt`, `decrypt`, `demo` — see [The bdf command](cli.md) |
 | `tools/` | One-off generators run by hand when their source changes: Unicode data, SMuFL glyph paths, draw.io stencils and the AWS icon map, table styles, cmaps, and the pure-Go WebP codec's generated tables |
 | `testdata/` | Generated samples and golden images, checked byte-for-byte (or pixel-for-pixel) in CI |
 | `test/` | The Playwright-driven golden tests and the fixture generators for each format's `testdata/` |
 
-See the [API reference](../api.html) for what each package exports, and [Building and testing](development.html) for how these pieces are built, tested and regenerated.
+See the [API reference](../api.md) for what each package exports, and [Building and testing](development.md) for how these pieces are built, tested and regenerated.

@@ -1,10 +1,10 @@
 # 楽譜
 
-MML・MIDI・MusicXML は、いずれも共通の組版エンジン（`converter/internal/music`）が SMuFL のフォント Bravura で A4 のページに五線譜として組む。各 View はその音楽を Standard MIDI File として持つので、デモビューアで演奏できる。演奏の様子は[特徴 → 音楽](../features.ja.html)を参照してほしい。共通なのはそこまでで、MML と MIDI は演奏データから記譜そのものを組み立て直す必要があるのに対し、MusicXML はすでに書かれた記譜をそのまま読む。
+MML・MIDI・MusicXML は、いずれも共通の組版エンジン（`converter/internal/music`）が SMuFL のフォント Bravura で A4 のページに五線譜として組む。各 View はその音楽を Standard MIDI File として持つので、デモビューアで演奏できる。演奏の仕組みは[変換と出力 → 楽譜と演奏](../architecture/conversion.ja.md#楽譜と演奏)を参照してほしい。共通なのはそこまでで、MML と MIDI は演奏データから記譜そのものを組み立て直す必要があるのに対し、MusicXML はすでに書かれた記譜をそのまま読む。
 
 ## 試す
 
-[ビューア](../../viewer/)にファイルをドロップするか、サンプルを試せる。[MML のチップチューン](../../viewer/?file=samples/frere.mml)、[歌詞付きの MIDI カラオケ](../../viewer/?file=samples/twinkle.kar)、[MusicXML のピアノ譜](../../viewer/?file=samples/minuet.musicxml)。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試せる。[MML のチップチューン](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml)、[歌詞付きの MIDI カラオケ](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar)、[MusicXML のピアノ譜](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml)。
 
 ## MML（converter/mml）
 
@@ -35,4 +35,4 @@ MusicXML は MML や MIDI と違い、演奏データから記譜し直すので
 
 MusicXML に `-param` オプションは無い。楽譜は書かれたとおりに変換される。
 
-共通の組版エンジン（小節の間隔、符幹と連桁、タイとスラー、歌詞の折り返しなど）の内部は [design.md §3.27](../design.html#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic) を参照。
+共通の組版エンジン（小節の間隔、符幹と連桁、タイとスラー、歌詞の折り返しなど）の内部は [design.md §3.27](../design.md#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic) を参照。

@@ -4,7 +4,7 @@ Visio と draw.io（diagrams.net）の図は、線で結んだ図形を、作図
 
 ## 試してみる
 
-[ビューア](../../viewer/)にファイルをドロップするか、サンプルを試してください。Visio の図面（[shapes.vsdx](../../viewer/?file=samples/shapes.vsdx)）、3 ページの draw.io の図（[multipage.drawio](../../viewer/?file=samples/multipage.drawio)）、[AWS の構成図](../../viewer/?file=samples/aws.drawio)などです。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試してください。Visio の図面（[shapes.vsdx](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.vsdx)）、3 ページの draw.io の図（[multipage.drawio](https://shibukawa.github.io/bdf/viewer/?file=samples/multipage.drawio)）、[AWS の構成図](https://shibukawa.github.io/bdf/viewer/?file=samples/aws.drawio)などです。
 
 ## Visio（.vsdx、.vdx）
 
@@ -14,7 +14,7 @@ Visio と draw.io（diagrams.net）の図は、線で結んだ図形を、作図
 
 `converter/visio` に `-param` オプションはありません。
 
-詳細は[design.md §3.8](../design.html#38-visio--bdf-変換器convertervisioの構造)を参照してください。
+詳細は[design.md §3.8](../design.md#38-visio--bdf-変換器convertervisioの構造)を参照してください。
 
 ## draw.io
 
@@ -26,4 +26,4 @@ Visio と draw.io（diagrams.net）の図は、線で結んだ図形を、作図
 |---|---|---|
 | `-param border=` | 各ページの図のまわりの余白（ピクセル） | `10`（`0` で余白なし） |
 
-詳細は[design.md §3.11](../design.html#311-drawio--bdf-変換器converterdrawioの構造)を参照してください。
+詳細は[design.md §3.11](../design.md#311-drawio--bdf-変換器converterdrawioの構造)を参照してください。

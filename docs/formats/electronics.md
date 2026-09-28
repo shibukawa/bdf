@@ -4,7 +4,7 @@ Two converters read printed-circuit-board data: `converter/gerber` for the fabri
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: a fabricated [circuit board (Gerber and Excellon, zipped)](../../viewer/?file=samples/board.zip), or a [KiCad project (schematic and board, zipped)](../../viewer/?file=samples/demo.zip).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: a fabricated [circuit board (Gerber and Excellon, zipped)](https://shibukawa.github.io/bdf/viewer/?file=samples/board.zip), or a [KiCad project (schematic and board, zipped)](https://shibukawa.github.io/bdf/viewer/?file=samples/demo.zip).
 
 ## Gerber, Excellon (converter/gerber)
 
@@ -21,7 +21,7 @@ When there are two or more files and at least one is copper, mask or silkscreen,
 | `silkscreen` | `white`, `black`, `yellow`, or `#rrggbb` | the job file's, else `white` |
 | `finish` | `gold`, `silver`, `copper` | the job file's finish, else `gold` |
 
-See [design.md §3.21](../design.html#321-gerberexcellon--bdf-変換器convertergerberの構造) for the internals.
+See [design.md §3.21](../design.md#321-gerberexcellon--bdf-変換器convertergerberの構造) for the internals.
 
 ## KiCad (converter/kicad)
 
@@ -38,4 +38,4 @@ A board becomes a `front` view and a `back` view (mirrored, seen from below) wit
 
 `-with` adds files a schematic refers to (the sheets of a hierarchical design, or the project file) by their path relative to the input, when the server or CLI invocation doesn't have them alongside it already.
 
-See [design.md §3.29](../design.html#329-kicad--bdf-変換器converterkicadの構造) for the internals.
+See [design.md §3.29](../design.md#329-kicad--bdf-変換器converterkicadの構造) for the internals.

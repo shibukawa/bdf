@@ -4,7 +4,7 @@
 
 ## 試す
 
-[ビューア](../../viewer/)にファイルをドロップするか、サンプルを試せる。基板の製造データなら[基板（Gerber と Excellon、ZIP）](../../viewer/?file=samples/board.zip)、KiCad のプロジェクトなら[KiCad プロジェクト（回路図と基板、ZIP）](../../viewer/?file=samples/demo.zip)。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試せる。基板の製造データなら[基板（Gerber と Excellon、ZIP）](https://shibukawa.github.io/bdf/viewer/?file=samples/board.zip)、KiCad のプロジェクトなら[KiCad プロジェクト（回路図と基板、ZIP）](https://shibukawa.github.io/bdf/viewer/?file=samples/demo.zip)。
 
 ## Gerber・Excellon（converter/gerber）
 
@@ -21,7 +21,7 @@
 | `silkscreen` | `white`、`black`、`yellow`、`#rrggbb` | ジョブファイルの色、無ければ `white` |
 | `finish` | `gold`、`silver`、`copper` | ジョブファイルの仕上げ、無ければ `gold` |
 
-内部の詳細は [design.md §3.21](../design.html#321-gerberexcellon--bdf-変換器convertergerberの構造) を参照。
+内部の詳細は [design.md §3.21](../design.md#321-gerberexcellon--bdf-変換器convertergerberの構造) を参照。
 
 ## KiCad（converter/kicad）
 
@@ -38,4 +38,4 @@
 
 `-with` は、サーバーやコマンド実行時に入力と一緒に置かれていないファイル（階層回路図のシートや、プロジェクトファイル）を、入力からの相対パスで足すためのオプションである。
 
-内部の詳細は [design.md §3.29](../design.html#329-kicad--bdf-変換器converterkicadの構造) を参照。
+内部の詳細は [design.md §3.29](../design.md#329-kicad--bdf-変換器converterkicadの構造) を参照。

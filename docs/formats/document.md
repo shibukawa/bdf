@@ -4,7 +4,7 @@ Word documents, HTML pages and Markdown files are all prose laid out into lines,
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: a [Word document](../../viewer/?file=samples/basic.docx), the same kind of document [set in Japanese vertical text](../../viewer/?file=samples/vertical.docx), an [HTML article in reader mode](../../viewer/?file=samples/article.html), or a [Markdown file](../../viewer/?file=samples/basic.md).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: a [Word document](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.docx), the same kind of document [set in Japanese vertical text](https://shibukawa.github.io/bdf/viewer/?file=samples/vertical.docx), an [HTML article in reader mode](https://shibukawa.github.io/bdf/viewer/?file=samples/article.html), or a [Markdown file](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.md).
 
 ## Word .docx (`converter/docx`)
 
@@ -16,7 +16,7 @@ Two views come out of a single document: the pages themselves (a flow view with 
 |---|---|---|
 | `-param views=` | `both`, `pages`, `scroll` | `both` — pages and the scroll view |
 
-See [design.md §3.9](../design.html#39-word--bdf-変換器converterdocxの構造) for the internals.
+See [design.md §3.9](../design.md#39-word--bdf-変換器converterdocxの構造) for the internals.
 
 ## HTML .html / .xhtml / .mhtml (`converter/html`)
 
@@ -33,7 +33,7 @@ See [design.md §3.9](../design.html#39-word--bdf-変換器converterdocxの構�
 | `-param remote=` | `true`, `false` | `true` — fetch images from the network |
 | `-param base=` | URL the document came from, for resolving relative links and images | — |
 
-See [design.md §3.16](../design.html#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造) for the internals.
+See [design.md §3.16](../design.md#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造) for the internals.
 
 ## Markdown .md (`converter/markdown`)
 
@@ -49,4 +49,4 @@ See [design.md §3.16](../design.html#316-htmlmarkdown--bdf-変換器converterht
 | `-param remote=` | `true`, `false` | `true` — fetch images from the network |
 | `-param base=` | URL the document came from, for resolving relative links and images | — |
 
-See [design.md §3.16](../design.html#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造) for the internals — the HTML and Markdown converters share one design-notes section, since Markdown is rendered to HTML before this layout stage.
+See [design.md §3.16](../design.md#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造) for the internals — the HTML and Markdown converters share one design-notes section, since Markdown is rendered to HTML before this layout stage.

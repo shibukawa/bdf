@@ -12,7 +12,7 @@ cd bdf
 go run ./cmd/bdf generate report.pptx report.bdf
 ```
 
-`generate` picks the input format from the file's content (Markdown, which can't be told from its bytes, is picked from the `.md` extension). The output can also be a directory ending in `/`, which writes the [split form](spec.html#34-分割形式split) instead of one file — the shape a file server or CDN serves without repacking.
+`generate` picks the input format from the file's content (Markdown, which can't be told from its bytes, is picked from the `.md` extension). The output can also be a directory ending in `/`, which writes the [split form](spec.md#34-分割形式split) instead of one file — the shape a file server or CDN serves without repacking.
 
 ```sh
 go run ./cmd/bdf generate report.pptx out/          # split form: manifest.json and one file per part
@@ -56,10 +56,10 @@ if err != nil {
 // res.Doc is a *bdf.Document; write it with res.Doc.WriteSingle(w) or WriteSplit(dir)
 ```
 
-Each converter package registers its format as a side effect of being imported, so a program only handles the formats it links. See the [API reference](api.html) for the full surface (Go, the CLI, the browser wasm modules, and the two TypeScript packages), and [Sample architectures](examples/index.html) for three small servers built around this.
+Each converter package registers its format as a side effect of being imported, so a program only handles the formats it links. See the [API reference](api.md) for the full surface (Go, the CLI, the browser wasm modules, and the two TypeScript packages), and [Sample architectures](examples/index.md) for three small servers built around this.
 
 ## Next
 
-- **[Features](features.html)** — what stays usable after conversion: search, selection, accessible text, music
-- **[Formats](formats/index.html)** — every input format and its layout
-- **[Architecture](architecture/index.html)** — how conversion and rendering fit together, and how to build and test the repository
+- **[Why bdf](why.md)** — the formats at a glance, and what stays usable after conversion: page turning, search, selection, accessibility
+- **[Formats](formats/index.md)** — every input format and its layout
+- **[Architecture](architecture/index.md)** — how conversion and rendering fit together, and how to build and test the repository

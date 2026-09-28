@@ -4,7 +4,7 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 
 ## 試してみる
 
-[ビューア](../../viewer/)にファイルをドロップするか、サンプルを試してください。[Word の文書](../../viewer/?file=samples/basic.docx)、同じ種類の文書を[日本語の縦書きにしたもの](../../viewer/?file=samples/vertical.docx)、[リーダー表示の HTML 記事](../../viewer/?file=samples/article.html)、[Markdown のファイル](../../viewer/?file=samples/basic.md)です。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試してください。[Word の文書](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.docx)、同じ種類の文書を[日本語の縦書きにしたもの](https://shibukawa.github.io/bdf/viewer/?file=samples/vertical.docx)、[リーダー表示の HTML 記事](https://shibukawa.github.io/bdf/viewer/?file=samples/article.html)、[Markdown のファイル](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.md)です。
 
 ## Word .docx（`converter/docx`）
 
@@ -16,7 +16,7 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 |---|---|---|
 | `-param views=` | `both`、`pages`、`scroll` | `both`（ページと scroll View の両方） |
 
-詳細は[design.md §3.9](../design.html#39-word--bdf-変換器converterdocxの構造)を参照してください。
+詳細は[design.md §3.9](../design.md#39-word--bdf-変換器converterdocxの構造)を参照してください。
 
 ## HTML .html / .xhtml / .mhtml（`converter/html`）
 
@@ -33,7 +33,7 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 | `-param remote=` | `true`、`false` | `true`（ネットワークから画像を取得する） |
 | `-param base=` | 文書の取得元 URL（相対リンクと画像の基準にする） | — |
 
-詳細は[design.md §3.16](../design.html#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造)を参照してください。
+詳細は[design.md §3.16](../design.md#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造)を参照してください。
 
 ## Markdown .md（`converter/markdown`）
 
@@ -49,4 +49,4 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 | `-param remote=` | `true`、`false` | `true`（ネットワークから画像を取得する） |
 | `-param base=` | 文書の取得元 URL（相対リンクと画像の基準にする） | — |
 
-詳細は[design.md §3.16](../design.html#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造)を参照してください。HTML と Markdown の変換器は、Markdown をこのレイアウトの手前で HTML にしてしまうため、design.md でも 1 つの節を共有しています。
+詳細は[design.md §3.16](../design.md#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造)を参照してください。HTML と Markdown の変換器は、Markdown をこのレイアウトの手前で HTML にしてしまうため、design.md でも 1 つの節を共有しています。
