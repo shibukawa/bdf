@@ -158,7 +158,10 @@ func (c *converter) layoutLabel(st *cellState, s *shape) *labelBox {
 	if st.style.is("noLabel") {
 		return nil
 	}
-	value := c.m.label(st.cell, st.style, c.page)
+	value, cut := c.m.label(st.cell, st.style, c.page)
+	if cut {
+		c.warnOnce("placeholders", "the placeholders of a label stand for more than %d bytes; the rest are not replaced", maxLabel)
+	}
 	if value == "" {
 		return nil
 	}

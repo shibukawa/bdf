@@ -122,9 +122,7 @@ func parseHTML(s string) *hnode {
 			stack = append(stack, n)
 			if name == "script" || name == "style" {
 				// raw text up to the end tag, dropped
-				endTag := "</" + name
-				k := strings.Index(strings.ToLower(s), endTag)
-				if k < 0 {
+				if k := indexCloseTag(s, "</"+name); k < 0 {
 					s = ""
 				} else {
 					s = s[k:]
@@ -153,6 +151,24 @@ var autoCloseBy = func() map[string]map[string]bool {
 var blocksAutoClose = map[string]bool{"ul": true, "ol": true, "table": true, "div": true, "blockquote": true, "td": true, "th": true}
 
 func isLetter(b byte) bool { return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' }
+
+// indexCloseTag returns the index in s of the case-insensitive end tag
+// (e.g. "</script"), or -1. It scans for each "<" instead of lowercasing
+// the whole of s, which is quadratic when a label has many script or style
+// elements.
+func indexCloseTag(s, tag string) int {
+	for from := 0; ; {
+		i := strings.IndexByte(s[from:], '<')
+		if i < 0 {
+			return -1
+		}
+		i += from
+		if i+len(tag) <= len(s) && strings.EqualFold(s[i:i+len(tag)], tag) {
+			return i
+		}
+		from = i + 1
+	}
+}
 
 // tagEnd returns the index of the ">" that ends the tag starting s,
 // skipping quoted attribute values; -1 when there is none.

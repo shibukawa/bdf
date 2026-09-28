@@ -126,7 +126,14 @@ type textBuilder struct {
 	// inlineOnly keeps display formulas in their line (plain labels, which
 	// have no line breaking)
 	inlineOnly bool
+	// depth is how deeply the current element is nested (maxLabelDepth).
+	depth int
 }
+
+// maxLabelDepth limits how deeply the elements of a label may nest, so that
+// a label with deeply nested markup (a span inside a span inside a span…)
+// does not overflow the stack. Real labels nest only a few levels.
+const maxLabelDepth = 256
 
 type listState struct {
 	ordered bool
@@ -324,6 +331,12 @@ func (b *textBuilder) walk(n *hnode, st *tstyle) {
 }
 
 func (b *textBuilder) element(n *hnode, parent *tstyle) {
+	if b.depth >= maxLabelDepth {
+		b.c.warnOnce("labeldepth", "deeply nested label markup is truncated")
+		return
+	}
+	b.depth++
+	defer func() { b.depth-- }()
 	switch n.tag {
 	case "script", "style", "head", "title", "template":
 		return

@@ -251,6 +251,12 @@ func numberJS(s string) float64 {
 // that includes itself).
 const maxStencilDepth = 8
 
+// maxStencilNest limits how deeply the elements of a stencil description may
+// nest (a path inside a path inside a path…), so that a shape=stencil(...)
+// style with deeply nested XML does not overflow the stack. Real stencils
+// nest only a few levels.
+const maxStencilNest = 256
+
 // stencilPainter holds what the painting of one stencil shares.
 type stencilPainter struct {
 	c *c2d
@@ -259,6 +265,8 @@ type stencilPainter struct {
 	// started: restore elements do not pop states from before.
 	base  int
 	depth int
+	// nest is how deeply the current element is nested (maxStencilNest).
+	nest int
 }
 
 // drawShape paints the stencil in the box x, y, w, h (mxStencil.drawShape).
@@ -344,6 +352,14 @@ func (st *stencil) computeAspect(x, y, w, h float64, direction string) rect {
 
 // drawNode runs one element of a stencil (mxStencil.drawNode).
 func (st *stencil) drawNode(p *stencilPainter, node *stencilNode, aspect rect, disableShadow, paint bool) {
+	if p.nest >= maxStencilNest {
+		if p.s.conv != nil {
+			p.s.conv.warnOnce("stencil-deep", "deeply nested stencil shape %q is truncated", st.name)
+		}
+		return
+	}
+	p.nest++
+	defer func() { p.nest-- }()
 	c, s := p.c, p.s
 	name := node.name
 	x0, y0 := aspect.x, aspect.y

@@ -1383,7 +1383,7 @@ var zigzagShape = &shapeDef{
 		}
 		topY, bottomY := inset, h-inset
 		numFull := math.Max(1, jsRound(w/size)-1)
-		if !finite(numFull) || numFull > maxZigzagTeeth {
+		if !finite(numFull) || numFull > maxZigzagTeeth || !s.repeats(numFull) {
 			return // degenerate widths
 		}
 		halfWave := w / (numFull + 1)

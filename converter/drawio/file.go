@@ -39,6 +39,25 @@ type page struct {
 // errNotDrawio is returned for input that holds no draw.io diagram.
 var errNotDrawio = errors.New("not a draw.io file")
 
+// maxDecompressed bounds the size a compressed diagram or inline stencil in
+// the input may inflate to, so that a small but highly compressed payload
+// cannot exhaust memory (a decompression bomb). It is a var so tests can
+// lower it; the default is far above any real diagram.
+var maxDecompressed = 64 << 20
+
+// readAllLimited reads r up to maxDecompressed bytes and errors when the
+// stream is larger.
+func readAllLimited(r io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, int64(maxDecompressed)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxDecompressed {
+		return nil, fmt.Errorf("decompressed data exceeds %d bytes", maxDecompressed)
+	}
+	return data, nil
+}
+
 // readFile parses draw.io data in any of the supported containers.
 func readFile(data []byte) (*file, error) {
 	if bytes.HasPrefix(data, []byte("\x89PNG\r\n\x1a\n")) {
@@ -137,14 +156,14 @@ func decompress(s string) (string, error) {
 			return "", fmt.Errorf("bad base64: %v", err)
 		}
 	}
-	inflated, err := io.ReadAll(flate.NewReader(bytes.NewReader(raw)))
+	inflated, err := readAllLimited(flate.NewReader(bytes.NewReader(raw)))
 	if err != nil {
 		// some writers use a zlib stream
 		zr, zerr := zlib.NewReader(bytes.NewReader(raw))
 		if zerr != nil {
 			return "", fmt.Errorf("bad deflate data: %v", err)
 		}
-		if inflated, err = io.ReadAll(zr); err != nil {
+		if inflated, err = readAllLimited(zr); err != nil {
 			return "", fmt.Errorf("bad deflate data: %v", err)
 		}
 	}
@@ -185,7 +204,7 @@ func pngText(data []byte) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("drawio: PNG zTXt chunk: %v", err)
 			}
-			if val, err = io.ReadAll(zr); err != nil {
+			if val, err = readAllLimited(zr); err != nil {
 				return nil, fmt.Errorf("drawio: PNG zTXt chunk: %v", err)
 			}
 		}
