@@ -134,9 +134,34 @@ th:not([align]) { text-align: start; }
 .demo .tools { display: flex; flex-wrap: wrap; gap: .4rem .75rem; align-items: center; padding: .4rem .75rem; background: var(--subtle); border-bottom: 1px solid var(--border); font-size: .875rem; }
 .demo .tools .name { flex: 1 1 8rem; min-width: 0; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .demo .tools input { width: 11rem; max-width: 100%; padding: .15rem .5rem; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.demo .tools select { padding: .15rem .3rem; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
 .demo .tools button { min-width: 2rem; padding: .15rem .5rem; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
 .demo .tools [role="status"] { min-width: 4.5rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-.demo .view { height: min(72vh, 46rem); min-height: 20rem; }
+.demo .tools button:disabled { opacity: .4; cursor: default; }
+.demo .tools .pager { display: inline-flex; gap: .25rem; align-items: center; }
+.demo .tools #pageNum { min-width: 4.5rem; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+.demo .view { position: relative; overflow: auto; height: min(72vh, 46rem); min-height: 20rem; background: #e9ecef; color: #222; }
+.demo .view:focus-visible { outline: 2px solid var(--link, #1a73e8); outline-offset: -2px; }
+.demo .page { position: relative; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.demo .page canvas { display: block; }
+.demo .page:focus-visible { outline: 3px solid #1a73e8; outline-offset: 2px; }
+/* pages to scroll through (the room of the scroll bar is kept, so that the width they fit does not change as it comes) */
+.demo .view:has(> .scroll) { scrollbar-gutter: stable; }
+.demo .scroll { display: flex; flex-direction: column; align-items: center; gap: 12px; width: fit-content; min-width: 100%; padding: 12px; box-sizing: border-box; }
+/* the pages, one or two at a time (examples/viewer/book.ts): a canvas takes their place while one turns */
+.demo .book { position: relative; overflow: hidden; }
+.demo .book .leaves { position: absolute; inset: 0; }
+.demo .book .page { position: absolute; }
+.demo .book > canvas { position: absolute; left: 0; top: 0; display: none; pointer-events: none; }
+.demo .book.turning > canvas { display: block; }
+.demo .book.turning .leaves { opacity: 0; pointer-events: none; }
+.demo .book .zones > div { position: absolute; z-index: 2; touch-action: none; -webkit-user-select: none; user-select: none; cursor: grab; }
+.demo .book .zones > div.grabbing { cursor: grabbing; }
+.demo .book.selecting .zones > div { pointer-events: none; }
+.demo .hits { position: absolute; inset: 0; overflow: hidden; pointer-events: none; forced-color-adjust: none; }
+.demo .hit { position: absolute; background: rgba(255, 210, 0, .45); outline: 1px solid rgba(200, 140, 0, .8); border-radius: 2px; }
+.demo .hit.current { background: rgba(255, 120, 0, .5); outline-color: #c04000; }
+.demo .view > p { margin: 0; padding: 24px; color: #555; text-align: center; }
 .demo + .note { margin: .6rem 0 0; color: var(--muted); font-size: .875rem; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(16.5rem, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
