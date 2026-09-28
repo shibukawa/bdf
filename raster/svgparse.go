@@ -3,8 +3,10 @@ package raster
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,17 +22,47 @@ type svgNode struct {
 	parent   *svgNode
 	sheet    map[string]string // declarations of the style sheets that match
 	text     string
+
+	// what drawing the element found, kept for the next time it is drawn
+	// (a use element draws it again): the path of its data, and the
+	// picture or the SVG image of its data: URL
+	path  *path
+	pic   *picture
+	image *svgImage
+	tried bool // the data: URL was read, with an image or without
 }
 
 // svgDoc is a parsed SVG document.
 type svgDoc struct {
 	root *svgNode
 	ids  map[string]*svgNode
+	// warnings say what was left out of a document past the limits
+	warnings []string
 }
+
+// Limits of an SVG document. Its elements are kept in memory, each many
+// times larger than its markup, and the functions that go through them
+// call themselves for the elements inside.
+const (
+	// svgDepth is how deep elements may be in elements (the limit of
+	// libxml2, the parser of browsers, is 256 too).
+	svgDepth = 256
+	// svgNodes is the most elements and runs of text.
+	svgNodes = 1 << 20
+	// svgMatches is the most elements that the rules of the style sheets
+	// are matched against, one rule and one element at a time.
+	svgMatches = 1 << 22
+)
 
 // parseSVG reads an SVG document; it is lenient, as browsers are with the
 // SVG images of web pages.
 func parseSVG(data []byte) (*svgDoc, bool) {
+	return parseSVGWithin(data, svgDepth, svgNodes, svgMatches)
+}
+
+// parseSVGWithin is parseSVG with its limits: the depth of the elements,
+// their number and the matches of the rules of the style sheets.
+func parseSVGWithin(data []byte, depth, most, matches int) (*svgDoc, bool) {
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.Strict = false
 	dec.AutoClose = xml.HTMLAutoClose
@@ -39,6 +71,8 @@ func parseSVG(data []byte) (*svgDoc, bool) {
 	doc := &svgDoc{ids: map[string]*svgNode{}}
 	var stack []*svgNode
 	var styles []string
+	nodes := 0
+read:
 	for {
 		tok, err := dec.Token()
 		if err == io.EOF {
@@ -52,6 +86,15 @@ func parseSVG(data []byte) (*svgDoc, bool) {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
+			// what passes a limit ends the reading as an error does
+			if len(stack) >= depth {
+				doc.warnings = append(doc.warnings, fmt.Sprintf("the elements of an SVG image are more than %d deep: the rest are not read", depth))
+				break read
+			}
+			if nodes++; nodes > most {
+				doc.warnings = append(doc.warnings, fmt.Sprintf("an SVG image has more than %d elements: the rest are not read", most))
+				break read
+			}
 			n := &svgNode{name: t.Name.Local, attr: make(map[string]string, len(t.Attr))}
 			for _, a := range t.Attr {
 				if a.Name.Space == "xmlns" || a.Name.Local == "xmlns" {
@@ -88,6 +131,9 @@ func parseSVG(data []byte) (*svgDoc, bool) {
 			case "style":
 				styles = append(styles, string(t))
 			case "text", "tspan", "textPath", "a":
+				if nodes++; nodes > most {
+					continue
+				}
 				p.children = append(p.children, &svgNode{name: "#text", text: string(t), parent: p})
 			}
 		}
@@ -96,7 +142,11 @@ func parseSVG(data []byte) (*svgDoc, bool) {
 		return nil, false
 	}
 	if len(styles) > 0 {
-		applySheet(doc.root, parseCSS(strings.Join(styles, "\n")))
+		sheet := newStyleSheet(parseCSS(strings.Join(styles, "\n")), matches)
+		sheet.apply(doc.root)
+		if sheet.matches > sheet.most {
+			doc.warnings = append(doc.warnings, "the style sheets of an SVG image have too many rules for its elements: the rest of the elements are drawn without them")
+		}
 	}
 	return doc, true
 }
@@ -119,17 +169,23 @@ type cssCompound struct {
 // selectors of type, id and class, and descendant combinators. At-rules
 // are skipped.
 func parseCSS(src string) []cssRule {
-	for {
-		i := strings.Index(src, "/*")
-		if i < 0 {
-			break
+	if strings.Contains(src, "/*") {
+		// without the comments, in one pass
+		var b strings.Builder
+		for {
+			i := strings.Index(src, "/*")
+			if i < 0 {
+				b.WriteString(src)
+				break
+			}
+			b.WriteString(src[:i])
+			j := strings.Index(src[i+2:], "*/")
+			if j < 0 {
+				break
+			}
+			src = src[i+2+j+2:]
 		}
-		j := strings.Index(src[i+2:], "*/")
-		if j < 0 {
-			src = src[:i]
-			break
-		}
-		src = src[:i] + src[i+2+j+2:]
+		src = b.String()
 	}
 	var rules []cssRule
 	order := 0
@@ -255,15 +311,63 @@ func (r *cssRule) matches(n *svgNode) bool {
 	return k < 0
 }
 
-// applySheet stores on each element the declarations of the rules that
-// match it, the more specific and later ones winning.
-func applySheet(n *svgNode, rules []cssRule) {
-	var hit []*cssRule
+// styleSheet is the rules of the style sheets of a document, by what the
+// last part of their selector asks for: an element is matched against the
+// rules that ask for its id, one of its classes or its name, and those that
+// ask for none.
+type styleSheet struct {
+	byID, byClass, byTag map[string][]*cssRule
+	others               []*cssRule
+	// matches counts the rules matched against elements, and most is the
+	// most there may be (svgMatches)
+	matches, most int
+}
+
+func newStyleSheet(rules []cssRule, most int) *styleSheet {
+	s := &styleSheet{byID: map[string][]*cssRule{}, byClass: map[string][]*cssRule{}, byTag: map[string][]*cssRule{}, most: most}
 	for i := range rules {
-		if rules[i].matches(n) {
-			hit = append(hit, &rules[i])
+		r := &rules[i]
+		switch last := r.sel[len(r.sel)-1]; {
+		case last.id != "":
+			s.byID[last.id] = append(s.byID[last.id], r)
+		case len(last.classes) > 0:
+			s.byClass[last.classes[0]] = append(s.byClass[last.classes[0]], r)
+		case last.tag != "":
+			s.byTag[last.tag] = append(s.byTag[last.tag], r)
+		default:
+			s.others = append(s.others, r)
 		}
 	}
+	return s
+}
+
+// apply stores on each element the declarations of the rules that match
+// it, the more specific and later ones winning.
+func (s *styleSheet) apply(n *svgNode) {
+	var hit []*cssRule
+	match := func(rules []*cssRule) {
+		for _, r := range rules {
+			if s.matches++; s.matches > s.most {
+				return
+			}
+			if r.matches(n) {
+				hit = append(hit, r)
+			}
+		}
+	}
+	if id := n.attr["id"]; id != "" {
+		match(s.byID[id])
+	}
+	if class := n.attr["class"]; class != "" {
+		classes := strings.Fields(class)
+		for i, c := range classes {
+			if !slices.Contains(classes[:i], c) {
+				match(s.byClass[c])
+			}
+		}
+	}
+	match(s.byTag[n.name])
+	match(s.others)
 	if len(hit) > 0 {
 		sort.SliceStable(hit, func(i, j int) bool {
 			if hit[i].spec != hit[j].spec {
@@ -279,8 +383,8 @@ func applySheet(n *svgNode, rules []cssRule) {
 		}
 	}
 	for _, c := range n.children {
-		if c.name != "#text" {
-			applySheet(c, rules)
+		if c.name != "#text" && s.matches <= s.most {
+			s.apply(c)
 		}
 	}
 }

@@ -80,9 +80,20 @@ type (
 
 var errUnsupported = fmt.Errorf("unsupported formula")
 
+// maxFormulaDepth bounds how deeply a formula may nest, in the parser (the
+// expression tree it builds) and in the evaluator (the recursion over that
+// tree). It keeps a hostile formula (deeply nested parentheses, a long chain
+// of operators, many unary signs) from overflowing the goroutine stack,
+// which recover() cannot catch. Real conditional-format formulas are far
+// shallower than this (Excel itself allows 64 levels of function nesting).
+const maxFormulaDepth = 128
+
+var errFormulaDepth = fmt.Errorf("formula nested too deeply")
+
 type fparser struct {
-	s   string
-	pos int
+	s     string
+	pos   int
+	depth int
 }
 
 // parseFormula parses a formula (with or without its leading "=").
@@ -143,6 +154,13 @@ func (p *fparser) expr(minPrec int) (fnode, error) {
 }
 
 func (p *fparser) unary() (fnode, error) {
+	// every recursion of the parser (parentheses, unary signs, call
+	// arguments, the right side of a binary operator) descends through unary,
+	// so bounding its depth here bounds the whole parse.
+	if p.depth++; p.depth > maxFormulaDepth {
+		return nil, errFormulaDepth
+	}
+	defer func() { p.depth-- }()
 	p.space()
 	if p.pos < len(p.s) && (p.s[p.pos] == '-' || p.s[p.pos] == '+') {
 		op := p.s[p.pos : p.pos+1]
@@ -384,6 +402,7 @@ type fenv struct {
 	dr, dc int
 	row    int // the evaluated cell
 	col    int
+	depth  int
 }
 
 func (e *fenv) sheet(name string) *worksheet {
@@ -570,6 +589,13 @@ func cmpVals(a, b fval) int {
 }
 
 func (e *fenv) eval(n fnode) (fval, error) {
+	// bound the recursion over the expression tree (a long chain of binary
+	// operators makes a tree as deep as the chain is long) so evaluation
+	// cannot overflow the stack.
+	if e.depth++; e.depth > maxFormulaDepth {
+		return fval{}, errFormulaDepth
+	}
+	defer func() { e.depth-- }()
 	switch n := n.(type) {
 	case fLit:
 		return n.v, nil
@@ -1100,32 +1126,34 @@ func criterion(c fval) func(fval) bool {
 	}
 }
 
+// wildMatch reports whether s matches pat, where "*" stands for any run of
+// characters and "?" for one. It scans both once, greedily, remembering the
+// last "*" and where it was tried so a mismatch resumes from the character
+// after it; this is linear in the lengths and gives the same answer as a
+// backtracking match without its exponential blow-up on patterns of several
+// stars.
 func wildMatch(pat, s string) bool {
 	p, t := []rune(pat), []rune(s)
-	var match func(i, j int) bool
-	match = func(i, j int) bool {
-		for i < len(p) {
-			switch p[i] {
-			case '*':
-				for k := j; k <= len(t); k++ {
-					if match(i+1, k) {
-						return true
-					}
-				}
-				return false
-			case '?':
-				if j >= len(t) {
-					return false
-				}
-			default:
-				if j >= len(t) || p[i] != t[j] {
-					return false
-				}
-			}
+	i, j := 0, 0
+	star, mark := -1, 0
+	for j < len(t) {
+		switch {
+		case i < len(p) && (p[i] == '?' || p[i] == t[j]):
 			i++
 			j++
+		case i < len(p) && p[i] == '*':
+			star, mark = i, j
+			i++
+		case star >= 0:
+			// the last "*" absorbs one more character and the scan resumes
+			i, mark = star+1, mark+1
+			j = mark
+		default:
+			return false
 		}
-		return j == len(t)
 	}
-	return match(0, 0)
+	for i < len(p) && p[i] == '*' {
+		i++
+	}
+	return i == len(p)
 }

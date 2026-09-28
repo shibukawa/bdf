@@ -1,43 +1,48 @@
 // Demo viewer: everything is decoded and rendered in a worker; the main thread
 // only places bitmaps and a selectable, accessible text layer. Files opened
 // or dropped on the page are converted into bdf in another worker, by the Go
-// converters built as wasm (examples/viewer/site.mjs builds them). A PDF is
+// converters built as wasm (examples/common/build.mjs builds them). A PDF is
 // converted a page at a time: its pages are shown sized at once and drawn as
 // they are converted, those near the visible area first. Pages are scrolled
 // through, or shown one or two at a time and turned like a book's (book.ts).
 // A score's music plays with Web Audio, a bar on the pages following it.
 // The cells of a sheet are selected as in a spreadsheet, and copied as
-// tab-separated values and an HTML table. The thumbnail and the search text
-// of the document shown are made, when the reader asks for them, by the Go
-// packages a server makes them with, built as wasm too.
+// tab-separated values and an HTML table.
+//
+// The address picks the document: ?src= a bdf document (a file, or the
+// directory of a split one, which ends with a slash; &range reads a file by
+// ranges), ?file= a file to convert (samples/basic.docx); ?layout= the
+// layout it opens in.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
 import {
   BdfWorkerClient, BdfWorkerError, MusicPlayer, buildTextLayer, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
   type Cursor, type HitRect, type OpenSource, type TextLayerOptions, type CellText, type CellRange, type CellClipboard,
 } from "@bdf/render";
-import { ConverterClient, ConvertError, sniff, type Opened, type ThumbnailOptions } from "./convert.js";
+import { ConverterClient, ConvertError, sniff, type Opened } from "../common/convert.js";
 import { Book } from "./book.js";
 
 /** The document shown when the URL has no ?src= (set by the build); "" shows the start page. */
 declare const DEFAULT_SRC: string;
+/** Where lib/ (the workers and the converter modules), fonts/ and samples/ are, from the page (set by the build). */
+declare const SITE_ROOT: string;
 
 const params = new URLSearchParams(location.search);
 const src = params.get("src") ?? DEFAULT_SRC;
-const client = new BdfWorkerClient(new Worker("./worker.js", { type: "module" }));
+const siteURL = (path: string) => new URL(path, location.href).href;
+/** What the page shares with the other pages of the site. */
+const shared = (path: string) => siteURL(SITE_ROOT + path);
+const client = new BdfWorkerClient(new Worker(shared("lib/worker.js"), { type: "module" }));
 /** The converter worker, started with the first file that needs converting. */
 let converter: ConverterClient | undefined;
 /**
  * Converter modules, one for PDF, one for the Office formats, one for HTML
  * and Markdown and one for the images browsers display by themselves, and
- * the fonts the Office converters lay text out with. The preview module
- * draws thumbnails and gives the text for a search index.
+ * the fonts the Office converters lay text out with.
  */
-const MODULES = { pdf: "bdf-pdf.wasm", office: "bdf-office.wasm", web: "bdf-web.wasm", image: "bdf-image.wasm" };
-const PREVIEW = "bdf-preview.wasm";
+const MODULES = { pdf: "lib/bdf-pdf.wasm", office: "lib/bdf-office.wasm", web: "lib/bdf-web.wasm", image: "lib/bdf-image.wasm" };
 const FONTS = "fonts/";
-const siteURL = (path: string) => new URL(path, location.href).href;
 /** The converter worker, started when it is first needed. */
-const converterWorker = () => (converter ??= new ConverterClient(new Worker("./convert-worker.js")));
+const converterWorker = () => (converter ??= new ConverterClient(new Worker(shared("lib/convert-worker.js"))));
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const stage = $<HTMLDivElement>("stage");
@@ -79,6 +84,9 @@ let playFrame = 0;
 
 /** Search state for the current view; pages is how many were converted when it searched (streaming). */
 const found = { query: "", hits: [] as SearchHit[], rects: [] as HitRect[][], index: -1, pages: -1 };
+
+/** The bitmaps of the pages shown scrolled (showPages), for the pages of a stream that come in. */
+let pageBitmaps: Bitmaps | undefined;
 
 /** Where each page of a streamed view is. */
 const enum PageState { Pending, Converting, Done, Failed }
@@ -187,6 +195,49 @@ function onNear(margin: string, render: (el: HTMLDivElement) => void): Intersect
   }, { root: stage, rootMargin: margin });
   return observer;
 }
+
+/**
+ * The bitmaps of the pages (or bands) of a view: render is called for each
+ * as it comes near the visible area, and the bitmap it puts there is let go
+ * when the page is some screens away, to be drawn again when the page comes
+ * back. A long document scrolled through would otherwise keep a canvas for
+ * every page (8 MB for an A4 page on a screen of twice the density). The
+ * text layers stay: a selection may run over pages that are far away.
+ */
+function nearBitmaps(render: (el: HTMLDivElement) => void) {
+  const near = onNear(BITMAP_MARGIN, render);
+  const far = new WeakSet<Element>();
+  // three screens around the visible area, and well beyond where the bitmaps are drawn
+  const margin = (px: number) => Math.max(3 * px, 1200);
+  const keep = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        far.delete(e.target);
+        continue;
+      }
+      far.add(e.target);
+      const canvas = e.target.querySelector<HTMLCanvasElement>(":scope > canvas");
+      if (!canvas) continue;
+      canvas.width = canvas.height = 0; // its pixels go now, not when it is collected
+      canvas.remove();
+      near.observe(e.target);
+    }
+  }, { root: stage, rootMargin: `${margin(stage.clientHeight)}px ${margin(stage.clientWidth)}px` });
+  return {
+    observe(el: HTMLElement) {
+      near.observe(el);
+      keep.observe(el);
+    },
+    /** Whether a bitmap that comes for an element is not put there: the page has gone far meanwhile, and is drawn when it comes back. */
+    gone(el: HTMLElement, bmp: ImageBitmap): boolean {
+      if (!far.has(el)) return false;
+      bmp.close();
+      near.observe(el);
+      return true;
+    },
+  };
+}
+type Bitmaps = ReturnType<typeof nearBitmaps>;
 
 /** Put a bitmap on a page or band element, under its text layer. */
 function placeBitmap(el: HTMLElement, bmp: ImageBitmap, w: number, h: number) {
@@ -307,22 +358,19 @@ async function openFile(name: string, data: ArrayBuffer) {
   history.replaceState(null, "", location.pathname + location.search);
   setWarnings([]);
   setDownload();
-  setPreview();
   setTiming("");
   const base = name.replace(/\.[^.]*$/, "");
   const kind = sniff(new Uint8Array(data), name);
   if (kind === "bdf") {
-    const file = new Blob([data]); // a copy: the buffer goes to the worker
-    const opened = await load({ kind: "buffer", buffer: data }, name, token);
-    if (opened) setPreview({ file: async () => file, base, password: opened.password, note: opened.password === undefined ? undefined : ENCRYPTED });
+    await load({ kind: "buffer", buffer: data }, name, token);
     return;
   }
   const busy = `converting ${name}…`;
   setStatus(busy);
   const conv = converterWorker();
-  const module = siteURL(MODULES[kind]);
+  const module = shared(MODULES[kind]);
   // only the Office converters lay text out with the font directory (PDFs embed their fonts, images have no text)
-  const fonts = kind === "office" ? siteURL(FONTS) : undefined;
+  const fonts = kind === "office" ? shared(FONTS) : undefined;
   let t0 = 0; // of the last attempt: the reader's typing is not part of the conversion
   const open = (password?: string) => {
     t0 = performance.now();
@@ -348,11 +396,9 @@ async function openFile(name: string, data: ArrayBuffer) {
   if (!res.stream) {
     // converted whole
     const took = `${name} converted in ${(performance.now() - t0).toFixed(0)} ms: ${res.summary}`;
-    const file = bdfFile(res.bdf);
-    setDownload(file, base);
+    setDownload(bdfFile(res.bdf), base);
     if (!(await load({ kind: "buffer", buffer }, name, token))) return;
     setStatus(took);
-    setPreview({ file: async () => file, base, note: res.protected ? PROTECTED : undefined });
     return;
   }
   const st: Streaming = { id: res.stream, token, view: "", state: new Array<PageState>(res.pages).fill(PageState.Pending), left: res.pages, warnings: res.warnings };
@@ -416,9 +462,7 @@ async function convertPages(st: Streaming, name: string, base: string, t0: numbe
   try {
     const res = await conv.finish(st.id);
     if (opening !== st.token) return;
-    const file = bdfFile(res.bdf);
-    setDownload(file, base);
-    setPreview({ file: async () => file, base, note: res.protected ? PROTECTED : undefined });
+    setDownload(bdfFile(res.bdf), base);
     setWarnings(res.warnings);
     await client.replace({ kind: "buffer", buffer: res.bdf.buffer as ArrayBuffer });
     if (opening !== st.token) return;
@@ -472,7 +516,7 @@ function pageArrived(index: number) {
   }
   if (el.dataset.waitBitmap !== undefined) {
     delete el.dataset.waitBitmap;
-    renderPage(current, index, el, gen).catch(unlessStale(gen));
+    renderPage(current, index, el, gen, pageBitmaps).catch(unlessStale(gen));
   }
   if (el.dataset.waitText !== undefined) {
     delete el.dataset.waitText;
@@ -516,130 +560,21 @@ function openLocal(file: File) {
 /** A converted document as a file; the Blob copies the bytes, which then go to the worker. */
 const bdfFile = (bdf: Uint8Array) => new Blob([bdf as BlobPart], { type: "application/octet-stream" });
 
-/** Object URLs of the download links, by link id: revoked when replaced. */
-const objectURLs = new Map<string, string>();
-
-/** Point the download link with that id at file, named name (the link is hidden without a file). */
-function setLink(id: string, file?: Blob, name = "") {
-  const a = $<HTMLAnchorElement>(id);
-  const old = objectURLs.get(id);
-  if (old) URL.revokeObjectURL(old);
-  objectURLs.delete(id);
-  a.hidden = !file;
-  if (!file) {
-    a.removeAttribute("href");
-    return "";
-  }
-  const url = URL.createObjectURL(file);
-  objectURLs.set(id, url);
-  a.href = url;
-  a.download = name;
-  return url;
-}
+/** The object URL of the download link: revoked when replaced. */
+let downloadURL = "";
 
 /** Offer the converted document for download (none without file); base is the name without its extension. */
 function setDownload(file?: Blob, base = "") {
-  setLink("download", file, `${base}.bdf`);
-}
-
-/**
- * The document shown as a single-file bdf, for its thumbnail and its text
- * for a search index, made by the preview module when the reader opens
- * the panel.
- */
-interface Saved {
-  /** The file (fetched the first time for a document opened by its URL). */
-  file: () => Promise<Blob>;
-  /** Names of the downloads start with it. */
-  base: string;
-  /** The password of an encrypted document. */
-  password?: string;
-  /** Why what is made of the document is not protected like it. */
-  note?: string;
-  /** The options of the thumbnail made (or being made). */
-  thumbnail?: string;
-  /** Whether the text is made (or being made). */
-  text?: boolean;
-}
-let saved: Saved | undefined;
-const ENCRYPTED = "The document is encrypted: its thumbnail and text are not.";
-const PROTECTED = "The file was password-protected: the converted document, its thumbnail and its text are not.";
-
-/** Offer the thumbnail and text of the document shown (none without s). */
-function setPreview(s?: Saved) {
-  saved = s;
-  const box = $<HTMLDetailsElement>("preview");
-  box.hidden = !s;
-  box.open = false;
-  setLink("thumbLink");
-  setLink("textLink");
-  $<HTMLImageElement>("thumbImg").hidden = true;
-  $("thumbInfo").textContent = $("textInfo").textContent = "";
-  $("thumbWarnings").hidden = true;
-  const note = $("previewNote");
-  note.textContent = s?.note ?? "";
-  note.hidden = !s?.note;
-}
-
-const kb = (n: number) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`);
-
-/** Draw the thumbnail with the options chosen, unless it is drawn already. */
-async function makeThumbnail() {
-  const s = saved;
-  if (!s) return;
-  const size = Number($<HTMLSelectElement>("thumbSize").value);
-  const mode = $<HTMLSelectElement>("thumbMode").value as ThumbnailOptions["mode"];
-  const format = $<HTMLSelectElement>("thumbFormat").value as ThumbnailOptions["format"];
-  const key = `${size} ${mode} ${format}`;
-  if (s.thumbnail === key) return;
-  s.thumbnail = key;
-  const live = () => saved === s && s.thumbnail === key;
-  const img = $<HTMLImageElement>("thumbImg"), info = $("thumbInfo"), warn = $("thumbWarnings");
-  info.textContent = "drawing…";
-  setLink("thumbLink");
-  try {
-    const data = await (await s.file()).arrayBuffer();
-    // HTML, Markdown and EPUB documents name their fonts: they come from the site's fonts, as there are no others
-    const t = await converterWorker().thumbnail(siteURL(PREVIEW), data, { size, mode, format, password: s.password, fonts: siteURL(FONTS) });
-    if (!live()) return;
-    const file = new Blob([t.image as BlobPart], { type: `image/${t.format}` });
-    img.src = setLink("thumbLink", file, `${s.base}-thumbnail-${size}.${t.format === "jpeg" ? "jpg" : "png"}`);
-    img.width = t.width;
-    img.height = t.height;
-    img.alt = `thumbnail of ${s.base}`;
-    img.hidden = false;
-    info.textContent = `${t.width} × ${t.height} ${t.format.toUpperCase()}, ${t.mode}, ${kb(file.size)}`;
-    warn.textContent = t.warnings.length ? `Warnings: ${t.warnings.join("; ")}` : "";
-    warn.hidden = !t.warnings.length;
-  } catch (e) {
-    if (!live()) return;
-    s.thumbnail = undefined; // tried again when the panel opens or the options change
-    img.hidden = true;
-    info.textContent = `the thumbnail could not be drawn: ${(e as Error).message ?? e}`;
+  const a = $<HTMLAnchorElement>("download");
+  if (downloadURL) URL.revokeObjectURL(downloadURL);
+  downloadURL = "";
+  a.hidden = !file;
+  if (!file) {
+    a.removeAttribute("href");
+    return;
   }
-}
-
-/** Get the text for a search index, unless it is there already. */
-async function makeText() {
-  const s = saved;
-  if (!s || s.text) return;
-  s.text = true;
-  const info = $("textInfo");
-  info.textContent = "extracting…";
-  try {
-    const data = await (await s.file()).arrayBuffer();
-    const { json } = await converterWorker().text(siteURL(PREVIEW), data, { password: s.password });
-    if (saved !== s) return;
-    const st = JSON.parse(json) as { views: { pages: { text: string }[] }[] };
-    const chars = st.views.reduce((n, v) => v.pages.reduce((n, p) => n + p.text.length, n), 0);
-    const file = new Blob([json], { type: "application/json" });
-    setLink("textLink", file, `${s.base}-text.json`);
-    info.textContent = `${chars.toLocaleString("en")} characters, ${kb(file.size)}`;
-  } catch (e) {
-    if (saved !== s) return;
-    s.text = false;
-    info.textContent = `the text could not be extracted: ${(e as Error).message ?? e}`;
-  }
+  a.href = downloadURL = URL.createObjectURL(file);
+  a.download = `${base}.bdf`;
 }
 
 /** The warnings of the conversion, in a disclosure next to the status. */
@@ -655,11 +590,20 @@ function setWarnings(list: string[]) {
   }));
 }
 
+/** Fetch a file by its URL and open it, converted: a sample, or the file ?file= names. */
+function openURL(url: string, name = decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "")) {
+  setStatus(`fetching ${name}…`);
+  return fetch(url)
+    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${name}: HTTP ${r.status}`))))
+    .then((data) => openFile(name, data))
+    .catch(openFailed);
+}
+
 /** The start page: a file picker, drag and drop, and the samples published with the page. */
 async function showLanding() {
   landing.hidden = false;
   setStatus("no document open");
-  const res = await fetch("samples/index.json").catch(() => undefined);
+  const res = await fetch(shared("samples/index.json")).catch(() => undefined);
   if (!res?.ok) return;
   const samples = (await res.json()) as { name: string; label: string }[];
   const box = landing.querySelector<HTMLDivElement>("#samples")!;
@@ -668,13 +612,7 @@ async function showLanding() {
     b.type = "button";
     b.textContent = s.label;
     b.title = s.name;
-    b.onclick = () => {
-      setStatus(`fetching ${s.name}…`);
-      fetch(`samples/${s.name}`)
-        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${s.name}: HTTP ${r.status}`))))
-        .then((data) => openFile(s.name, data))
-        .catch(openFailed);
-    };
+    b.onclick = () => openURL(shared(`samples/${s.name}`), s.name);
     return b;
   }));
   box.hidden = false;
@@ -720,14 +658,6 @@ function init() {
     if (current) show(current);
   };
   initMusic();
-  // the thumbnail and text are made when the panel opens, the thumbnail again when its options change
-  const previewBox = $<HTMLDetailsElement>("preview");
-  previewBox.addEventListener("toggle", () => {
-    if (!previewBox.open) return;
-    makeThumbnail();
-    makeText();
-  });
-  for (const id of ["thumbSize", "thumbMode", "thumbFormat"]) $(id).onchange = () => makeThumbnail();
   $("prevPage").onclick = () => book?.turnBy(-1);
   $("nextPage").onclick = () => book?.turnBy(1);
   // pages curl as they turn, unless the reader asks for less motion
@@ -765,20 +695,12 @@ function init() {
 
 async function main() {
   init();
+  // a file to convert: the samples are named from the site's root (samples/basic.docx)
+  const file = params.get("file");
+  if (file) return openURL(/^samples\//.test(file) ? shared(file) : siteURL(file));
   if (!src) return showLanding();
   const source: OpenSource = src.endsWith("/") ? { kind: "split", base: siteURL(src) } : { kind: "single", url: siteURL(src), range: params.has("range") };
-  const opened = await load(source);
-  // a split document is not one file to make a thumbnail of
-  if (!opened || source.kind !== "single") return;
-  const url = source.url;
-  let file: Promise<Blob> | undefined;
-  const fetchFile = () => fetch(url).then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`${url}: HTTP ${r.status}`))));
-  setPreview({
-    file: () => (file ??= fetchFile().catch((e) => { file = undefined; throw e; })),
-    base: decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "").replace(/\.[^.]*$/, "") || "document",
-    password: opened.password,
-    note: opened.password === undefined ? undefined : ENCRYPTED,
-  });
+  await load(source);
 }
 
 function show(v: View) {
@@ -882,11 +804,12 @@ function showPages(v: View) {
   const pagesOf = v.pages ?? [];
   const noun = manifest.meta?.source === "pptx" ? "Slide" : "Page";
   // a page still to come is drawn when it comes in (pageArrived)
-  const bitmaps = onNear(BITMAP_MARGIN, (el) => {
+  const bitmaps = nearBitmaps((el) => {
     const i = Number(el.dataset.index);
     if (pending(v, i)) el.dataset.waitBitmap = "";
-    else renderPage(v, i, el, gen).catch(unlessStale(gen));
+    else renderPage(v, i, el, gen, bitmaps).catch(unlessStale(gen));
   });
+  pageBitmaps = bitmaps;
   const texts = onNear(TEXT_MARGIN, (el) => {
     const i = Number(el.dataset.index);
     if (pending(v, i)) el.dataset.waitText = "";
@@ -919,11 +842,12 @@ function showPages(v: View) {
   stage.appendChild(list);
 }
 
-async function renderPage(v: View, index: number, el: HTMLDivElement, gen: number) {
+async function renderPage(v: View, index: number, el: HTMLDivElement, gen: number, bitmaps?: Bitmaps) {
   const page = v.pages![index];
   const t0 = performance.now();
   const bmp = await client.page(v.id, index, zoom * dpr());
   if (gen !== generation) return bmp.close();
+  if (bitmaps?.gone(el, bmp)) return;
   placeBitmap(el, bmp, page.w, page.h);
   setTiming(`page ${index + 1} rendered in ${(performance.now() - t0).toFixed(0)} ms`);
 }
@@ -1320,9 +1244,12 @@ function showContinuous(v: View) {
     const y = Number(el.dataset.y);
     return { x: 0, y, w: width, h: Math.min(BAND, height - y) };
   };
-  const bitmaps = onNear(BITMAP_MARGIN, (el) => {
+  const bitmaps = nearBitmaps((el) => {
     const vp = viewportOf(el);
-    client.continuous(v.id, vp, zoom * dpr()).then((bmp) => (gen === generation ? placeBitmap(el, bmp, vp.w, vp.h) : bmp.close())).catch(unlessStale(gen));
+    client.continuous(v.id, vp, zoom * dpr()).then((bmp) => {
+      if (gen !== generation) return bmp.close();
+      if (!bitmaps.gone(el, bmp)) placeBitmap(el, bmp, vp.w, vp.h);
+    }).catch(unlessStale(gen));
   });
   const texts = onNear(TEXT_MARGIN, (el) => {
     client.continuousContent(v.id, viewportOf(el)).then((c) => {
@@ -1670,13 +1597,17 @@ function showSheet(v: View) {
     const inside = (r: { x: number; y: number; w: number; h: number }) => box.x >= r.x && box.y >= r.y && box.x + box.w <= r.x + r.w && box.y + box.h <= r.y + r.h;
     const entry: { key: string; data?: CellClipboard; promise: Promise<CellClipboard> } = { key, promise: Promise.resolve({ text: "", html: "" }) };
     if (loaded?.rects.some(inside)) {
-      const data = cellClipboard(tableCells(loaded.content), g, opts);
-      entry.data = data;
-      entry.promise = Promise.resolve(data);
+      // a rectangle of too many cells throws: copy reports it, as it does what the worker fails at
+      try {
+        entry.data = cellClipboard(tableCells(loaded.content), g, opts);
+        entry.promise = Promise.resolve(entry.data);
+      } catch (e) {
+        entry.promise = Promise.reject(e);
+      }
     } else {
       entry.promise = client.sheetContent(v.id, box).then((c) => (entry.data = cellClipboard(tableCells(c), g, opts)));
-      entry.promise.catch(() => { if (clip === entry) clip = undefined; }); // tried again on copy, which reports the error
     }
+    entry.promise.catch(() => { if (clip === entry) clip = undefined; }); // tried again on copy, which reports the error
     clip = entry;
     return entry;
   };

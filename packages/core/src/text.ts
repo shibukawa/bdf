@@ -1,4 +1,5 @@
-import { NoopSink, walk } from "./object.js";
+import { BdfFormatError } from "./bytes.js";
+import { NoopSink, UseLimits, walk } from "./object.js";
 import type { ObjectPart, Font, Hash, PathData, Rect, Glyph } from "./types.js";
 
 /** MARK kinds (docs/spec.md §7.8). */
@@ -179,7 +180,7 @@ class Extraction {
   figures: number[] = [];
   /** Where each open figure started, for figures that draw nothing. */
   private origins = new Map<number, Rect>();
-  constructor(readonly resolve: (h: Hash) => ObjectPart | undefined) {}
+  constructor(readonly resolve: (h: Hash) => ObjectPart | undefined, readonly limits: UseLimits) {}
 
   mark(sep: number) {
     if (!this.hasMark || sep > this.pending) this.pending = sep;
@@ -196,6 +197,7 @@ class Extraction {
   }
 
   emit(text: string, x: number, y: number, advance: number, st: State, altText: boolean) {
+    if (this.runs.length >= this.limits.maxRuns) throw new BdfFormatError("too many text runs");
     const m = st.m;
     const run: TextRun = {
       text, advance, size: st.size, font: st.font, align: st.align, matrix: m, altText,
@@ -320,7 +322,8 @@ class TextSink extends NoopSink {
   private st: State;
   private masking = 0; // inside MASK_BEGIN … MASK_END: a soft mask, not content
 
-  constructor(private ex: Extraction, private obj: ObjectPart, m: Matrix, clip?: Rect) {
+  /** depth: of the object in the objects that draw it (0: a top-level one); reused: its instructions are read again. */
+  constructor(private ex: Extraction, private obj: ObjectPart, m: Matrix, clip?: Rect, private depth = 0, private reused = false) {
     super();
     this.st = { m, font: undefined, size: 10, align: 0, clip };
   }
@@ -394,22 +397,27 @@ class TextSink extends NoopSink {
   override use(obj: number) { this.useAt(obj, 0, 0); }
   override useAt(obj: number, x: number, y: number) {
     if (this.masking) return;
+    const hash = this.obj.objects[obj];
+    const child = this.ex.resolve(hash);
+    // a child counts as walked from here on, whatever is made of it (as in the Go reader)
+    const again = child !== undefined && this.ex.limits.enter(hash);
     if (this.ex.alt !== undefined) {
       // text drawn by the child: it spans the child's bbox along the
       // baseline, and its extent still counts for a figure
-      const child = this.ex.resolve(this.obj.objects[obj]);
       if (child && this.ex.figures.length) this.grow(child.bbox.x + x, child.bbox.y + y, child.bbox.w, child.bbox.h);
       this.takeAlt(x + (child?.bbox.x ?? 0), y, child?.bbox.w ?? 0);
       return;
     }
-    const child = this.ex.resolve(this.obj.objects[obj]);
     if (!child) return;
-    walk(child, new TextSink(this.ex, child, mul(this.st.m, [1, 0, 0, 1, x, y]), this.st.clip));
+    this.ex.limits.descend(this.depth);
+    const reused = this.reused || again;
+    const sink = new TextSink(this.ex, child, mul(this.st.m, [1, 0, 0, 1, x, y]), this.st.clip, this.depth + 1, reused);
+    walk(child, sink, reused ? this.ex.limits.count : undefined);
   }
 }
 
-function extract(obj: ObjectPart, resolve: (h: Hash) => ObjectPart | undefined, matrix: Matrix): Extraction {
-  const ex = new Extraction(resolve);
+function extract(obj: ObjectPart, resolve: (h: Hash) => ObjectPart | undefined, matrix: Matrix, limits = new UseLimits()): Extraction {
+  const ex = new Extraction(resolve, limits);
   walk(obj, new TextSink(ex, obj, matrix));
   ex.flushAlt({ m: matrix, font: undefined, size: 10, align: 0 });
   ex.closeAll();
@@ -420,17 +428,23 @@ function extract(obj: ObjectPart, resolve: (h: Hash) => ObjectPart | undefined, 
  * Extract text runs from an object (and the objects it USEs) in the space
  * defined by matrix. resolve must return already-loaded child objects.
  * The order and ordinals match the Go extractor and the text index part.
+ *
+ * The objects may not draw each other deeper than MAX_USE_DEPTH, nor read
+ * more than MAX_REUSED_INSTRUCTIONS from objects that are drawn again, nor
+ * hold more than MAX_TEXT_RUNS runs: BdfFormatError is thrown. limits counts
+ * across the top-level objects it is given for (default: this one alone).
  */
-export function extractText(obj: ObjectPart, resolve: (h: Hash) => ObjectPart | undefined, matrix: Matrix = [1, 0, 0, 1, 0, 0]): TextRun[] {
-  return extract(obj, resolve, matrix).runs;
+export function extractText(obj: ObjectPart, resolve: (h: Hash) => ObjectPart | undefined, matrix: Matrix = [1, 0, 0, 1, 0, 0], limits?: UseLimits): TextRun[] {
+  return extract(obj, resolve, matrix, limits).runs;
 }
 
 /**
  * Extract the runs of an object together with its structure (headings,
  * lists, tables, figures; MARK kinds of spec §7.8) and its links, for
- * accessible text layers. The runs are the same as extractText's.
+ * accessible text layers. The runs are the same as extractText's, and so
+ * are the limits.
  */
-export function extractContent(obj: ObjectPart, resolve: (h: Hash) => ObjectPart | undefined, matrix: Matrix = [1, 0, 0, 1, 0, 0]): TextContent {
-  const ex = extract(obj, resolve, matrix);
+export function extractContent(obj: ObjectPart, resolve: (h: Hash) => ObjectPart | undefined, matrix: Matrix = [1, 0, 0, 1, 0, 0], limits?: UseLimits): TextContent {
+  const ex = extract(obj, resolve, matrix, limits);
   return { runs: ex.runs, nodes: ex.nodes, links: ex.links };
 }

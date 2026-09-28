@@ -1,6 +1,8 @@
 package epub
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -110,10 +112,15 @@ func (c *converter) load(ch *chapter) error {
 	if !contentTypes[mt] {
 		return fmt.Errorf("media type %q is not a content document", mt)
 	}
-	data, err := c.pub.read(ch.path)
+	data, err := c.pub.text(ch.path)
 	if err != nil {
 		return err
 	}
+	tags := bytes.Count(data, []byte("<"))
+	if c.tags+tags > maxTags {
+		return fmt.Errorf("%s: %w", ch.path, errTags)
+	}
+	c.tags += tags
 	var doc *html.Node
 	if mt == "text/html" {
 		doc, err = webdoc.Parse(data, "text/html")
@@ -126,9 +133,9 @@ func (c *converter) load(ch *chapter) error {
 	}
 	// formulas written for KaTeX or MathJax: their MathML (or TeX) alone
 	webdoc.NormalizeMath(doc)
-	var rules []cssRule
-	c.rewrite(ch, doc, &rules)
-	st := newStyler(rules)
+	var sheets []styleSheet
+	c.rewrite(ch, doc, &sheets)
+	st := c.styler(sheets)
 	root, body := documentElement(doc), findElement(doc, "body")
 	if root != nil && root.Namespace == "svg" {
 		// an SVG content document: its svg in a body
@@ -171,7 +178,7 @@ func (c *converter) load(ch *chapter) error {
 // that are not laid out are dropped), and pictures refer to paths in the
 // container. It also reads the chapter's style sheets (link and style
 // elements) and its viewport.
-func (c *converter) rewrite(ch *chapter, n *html.Node, rules *[]cssRule) {
+func (c *converter) rewrite(ch *chapter, n *html.Node, sheets *[]styleSheet) {
 	for k := n.FirstChild; k != nil; {
 		if k.Type == html.ElementNode && isOPS(k, "switch") {
 			// epub:switch: in its place, the content of the first case whose
@@ -197,8 +204,8 @@ func (c *converter) rewrite(ch *chapter, n *html.Node, rules *[]cssRule) {
 			continue
 		}
 		if k.Type == html.ElementNode {
-			c.element(ch, k, rules)
-			c.rewrite(ch, k, rules)
+			c.element(ch, k, sheets)
+			c.rewrite(ch, k, sheets)
 		}
 		k = k.NextSibling
 	}
@@ -245,7 +252,7 @@ func targets(ch *chapter, n *html.Node) {
 }
 
 // element rewrites the references of one element.
-func (c *converter) element(ch *chapter, n *html.Node, rules *[]cssRule) {
+func (c *converter) element(ch *chapter, n *html.Node, sheets *[]styleSheet) {
 	switch {
 	case n.Namespace == "svg" && n.Data == "image":
 		for i := range n.Attr {
@@ -277,11 +284,13 @@ func (c *converter) element(ch *chapter, n *html.Node, rules *[]cssRule) {
 	case n.DataAtom == atom.Link:
 		if rel := strings.ToLower(attrVal(n, "rel")); hasToken(rel, "stylesheet") && !hasToken(rel, "alternate") {
 			if p := c.pub.canonical(c.pub.resolve(ch.path, attrVal(n, "href"))); p != "" {
-				c.styleSheet(p, c.css(p), rules)
+				*sheets = append(*sheets, styleSheet{path: p, file: true})
 			}
 		}
 	case n.DataAtom == atom.Style:
-		c.styleSheet(ch.path, textOf(n), rules)
+		if text := textOf(n); text != "" {
+			*sheets = append(*sheets, styleSheet{path: ch.path, text: text})
+		}
 	case n.DataAtom == atom.Meta:
 		if strings.EqualFold(attrVal(n, "name"), "viewport") {
 			ch.viewport = parseViewport(attrVal(n, "content"))
@@ -289,30 +298,70 @@ func (c *converter) element(ch *chapter, n *html.Node, rules *[]cssRule) {
 	}
 }
 
-// styleSheet reads the rules of a style sheet at path (its imports
-// resolve against it).
-func (c *converter) styleSheet(path, text string, rules *[]cssRule) {
-	if text == "" {
-		return
+// styleSheet is a style sheet of a chapter: a file of the publication, or
+// the text of a style element of the chapter at path.
+type styleSheet struct {
+	path string
+	text string
+	file bool
+}
+
+// styler returns the styler of the rules of the style sheets of a chapter,
+// in their order. Chapters that have the same style sheets, as the
+// chapters of a book do, have the same styler.
+func (c *converter) styler(sheets []styleSheet) *styler {
+	var key strings.Builder
+	for _, s := range sheets {
+		fmt.Fprintf(&key, "%v %d %s %d %s\n", s.file, len(s.path), s.path, len(s.text), s.text)
 	}
-	n := len(*rules)
-	seen := map[string]bool{}
-	parseCSS(text, func(u string) string {
-		// a sheet is imported once
-		p := c.pub.canonical(c.pub.resolve(path, u))
-		if seen[p] {
-			return ""
+	if st, ok := c.stylers[key.String()]; ok {
+		return st
+	}
+	var rules []cssRule
+	for _, s := range sheets {
+		rules = append(rules, c.rules(s)...)
+	}
+	st := newStyler(rules)
+	if st.full {
+		c.warnOnce("rules", fmt.Sprintf("the style sheets of a chapter have more than %d rules; the rules after them are left out", maxRules))
+	}
+	c.stylers[key.String()] = st
+	return st
+}
+
+// rules reads the rules of a style sheet (its imports resolve against its
+// path), those of a file once for the chapters that link to it.
+func (c *converter) rules(s styleSheet) []cssRule {
+	if s.file {
+		if rules, ok := c.parsed[s.path]; ok {
+			return rules
 		}
-		seen[p] = true
-		return c.css(p)
-	}, 0, rules)
-	for _, r := range (*rules)[n:] {
+		s.text = c.css(s.path)
+	}
+	var rules []cssRule
+	if s.text != "" {
+		seen := map[string]bool{}
+		parseCSS(s.text, func(u string) string {
+			// a sheet is imported once
+			p := c.pub.canonical(c.pub.resolve(s.path, u))
+			if seen[p] {
+				return ""
+			}
+			seen[p] = true
+			return c.css(p)
+		}, 0, &rules)
+	}
+	for _, r := range rules {
 		for _, d := range r.decls {
 			if strings.HasSuffix(d[0], "writing-mode") {
 				c.modes = true
 			}
 		}
 	}
+	if s.file {
+		c.parsed[s.path] = rules
+	}
+	return rules
 }
 
 // css returns the text of a style sheet of the container.
@@ -323,10 +372,12 @@ func (c *converter) css(path string) string {
 	if s, ok := c.sheets[path]; ok {
 		return s
 	}
-	b, err := c.pub.read(path)
+	b, err := c.pub.text(path)
 	s := ""
 	if err == nil {
 		s = strings.TrimPrefix(string(b), "\ufeff")
+	} else if errors.Is(err, errInflated) {
+		c.warnLeftOut(err, "")
 	}
 	c.sheets[path] = s
 	return s
@@ -565,11 +616,14 @@ func (c *converter) reflow() (*Result, error) {
 	fixed := 0
 	res := &Result{}
 	d := &wordproc.HTMLDocument{DC: c.dc, Source: "epub", Width: opts.Width, FontSize: opts.FontSize, Font: opts.Font,
-		MonoFont: opts.MonoFont, Link: link, Folios: true,
+		MonoFont: opts.MonoFont, Link: link, Folios: true, MaxSVG: c.maxSVG(),
 		Image: func(src string) ([]byte, error) {
 			b, err := c.image(src)
 			if err == nil {
 				res.Images++
+			} else if errors.Is(err, errInflated) {
+				c.warnLeftOut(err, "")
+				err = &wordproc.LimitError{} // warned of here
 			}
 			return b, err
 		}}

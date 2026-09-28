@@ -358,6 +358,17 @@ func (f *flow) blocks(bs []block, next block) {
 				i = j
 				continue
 			}
+			// The run reaches the end of the blocks: no block follows to keep
+			// with, so place the rest normally without rescanning the tail on
+			// every paragraph (which would be quadratic in a run of them).
+			for ; i < len(bs); i++ {
+				nx := next
+				if i+1 < len(bs) {
+					nx = bs[i+1]
+				}
+				f.placeBlock(bs[i], nx)
+			}
+			return
 		}
 		f.placeBlock(bs[i], after)
 	}

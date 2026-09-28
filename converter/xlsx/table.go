@@ -65,6 +65,28 @@ type table struct {
 	filterButtons          map[int]bool // columns whose button is hidden
 }
 
+// maxTableCells bounds the cells of the tables of a sheet that are not in
+// the file. A table formats its cells one by one, and its range is the
+// file's to state; the cells that the file holds are as many as the file
+// has room for, so a table of cells that are all in the file has its style
+// whatever its size. A million of them take about two seconds and 220 MiB.
+const maxTableCells = 1 << 20
+
+// admitTable reports whether a table over a range has its style: not when
+// the cells of the range that are not in the file are more than what is
+// left of maxTableCells after the tables before it. Its cells are then drawn
+// as they are, and the range does not make the view larger.
+func (s *sheetCtx) admitTable(ref cellRange) bool {
+	ref.r1, ref.c1 = min(ref.r1, maxRows-1), min(ref.c1, maxCols-1)
+	n := (ref.r1-ref.r0+1)*(ref.c1-ref.c0+1) - s.ws.cellsIn(ref)
+	if n > s.tableRoom {
+		s.c.warnOnce("tables:"+s.ws.name, "sheet %q: the tables cover more than %d cells that are not in the file; the rest are drawn without their styles", s.ws.name, maxTableCells)
+		return false
+	}
+	s.tableRoom -= max(n, 0)
+	return true
+}
+
 // loadTables reads the tables of the sheet.
 func (s *sheetCtx) loadTables() {
 	c := s.c
@@ -79,7 +101,7 @@ func (s *sheetCtx) loadTables() {
 			continue
 		}
 		ref, ok := parseRange(n.AttrStr("ref", ""))
-		if !ok {
+		if !ok || !s.admitTable(ref) {
 			continue
 		}
 		t := &table{ref: ref, header: int(n.AttrInt("headerRowCount", 1)), totals: int(n.AttrInt("totalsRowCount", 0)),

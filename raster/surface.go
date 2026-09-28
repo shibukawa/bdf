@@ -11,6 +11,7 @@ import (
 type surface struct {
 	w, h int
 	pix  []float32
+	row  []float32 // the colours of a row being filled
 }
 
 func newSurface(w, h int) *surface {
@@ -63,6 +64,66 @@ func (s *surface) fill(cov *mask, sh shader, alpha float32, mode byte, clip *mas
 	if r.Empty() {
 		return
 	}
+	if unbounded(mode) || plain {
+		s.fillAll(cov, sh, alpha, mode, clip, r)
+		return
+	}
+	// the pixels are all within the coverage: those of a row are told
+	// without asking where each one is
+	n := r.Dx()
+	if cap(s.row) < 4*n {
+		s.row = make([]float32, 4*n)
+	}
+	buf := s.row[:4*n]
+	_, flat := sh.(solid)
+	if flat {
+		sh.shade(r.Min.X, r.Min.Y, n, buf) // the same in every row
+	}
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		if !flat {
+			sh.shade(r.Min.X, y, n, buf)
+		}
+		krow := clip.row(y, r.Min.X, r.Max.X)
+		var crow []float32
+		if cov != nil {
+			crow = cov.row(y, r.Min.X, r.Max.X)
+		}
+		d := s.pix[4*(y*s.w+r.Min.X) : 4*(y*s.w+r.Max.X)]
+		for i := 0; i < n; i++ {
+			c := alpha
+			if crow != nil {
+				c = crow[i] * alpha
+			}
+			k := float32(1)
+			if krow != nil {
+				k = krow[i]
+			}
+			if k == 0 || c == 0 {
+				continue
+			}
+			src := [4]float32{buf[4*i] * c, buf[4*i+1] * c, buf[4*i+2] * c, buf[4*i+3] * c}
+			dst := [4]float32{d[4*i], d[4*i+1], d[4*i+2], d[4*i+3]}
+			var out [4]float32
+			if mode == bdf.BlendSourceOver {
+				ia := 1 - src[3]
+				out = [4]float32{src[0] + dst[0]*ia, src[1] + dst[1]*ia, src[2] + dst[2]*ia, src[3] + dst[3]*ia}
+			} else {
+				out = composite(mode, src, dst)
+			}
+			if k == 1 {
+				copy(d[4*i:4*i+4], out[:])
+				continue
+			}
+			for j := 0; j < 4; j++ {
+				d[4*i+j] = dst[j] + k*(out[j]-dst[j])
+			}
+		}
+	}
+}
+
+// fillAll is fill for the pixels r of the clip, inside the coverage or not:
+// the composite operations that change pixels the source does not cover.
+func (s *surface) fillAll(cov *mask, sh shader, alpha float32, mode byte, clip *mask, r image.Rectangle) {
 	n := r.Dx()
 	buf := make([]float32, 4*n)
 	for y := r.Min.Y; y < r.Max.Y; y++ {
@@ -305,6 +366,10 @@ type surfaceShader struct {
 
 func (ss surfaceShader) shade(x, y, n int, dst []float32) {
 	sy := y - ss.dy
+	if sx := x - ss.dx; sx >= 0 && sy >= 0 && sx+n <= ss.s.w && sy < ss.s.h && !plain {
+		copy(dst[:4*n], ss.s.pix[4*(sy*ss.s.w+sx):]) // the whole row is of the surface
+		return
+	}
 	for i := 0; i < n; i++ {
 		sx := x + i - ss.dx
 		if sx < 0 || sy < 0 || sx >= ss.s.w || sy >= ss.s.h {
@@ -319,7 +384,9 @@ func (ss surfaceShader) shade(x, y, n int, dst []float32) {
 func (s *surface) toRGBA() *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, s.w, s.h))
 	for i, v := range s.pix {
-		img.Pix[i] = uint8(math.Round(float64(min(max(v, 0), 1)) * 255))
+		// rounded to the nearest: a float32 times 255 is exact as a
+		// float64, and so is the half added to what is not far below it
+		img.Pix[i] = uint8(float64(min(max(v, 0), 1))*255 + 0.5)
 	}
 	return img
 }

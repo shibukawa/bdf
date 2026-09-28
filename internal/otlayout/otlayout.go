@@ -7,6 +7,10 @@
 // Fonts are untrusted input: offsets and counts are checked against the
 // table, and what a table expands to (the glyphs of a coverage or class
 // definition, the pairs of a class-based kerning lookup) is bounded.
+// Records may share what they point at, so that a small table says it holds
+// millions of features or subtables: a table is read into maxElements of
+// them at most (ErrTooLarge), and its lookups list so many entries in all
+// the calls made of them (maxSteps), then no more (Truncated).
 package otlayout
 
 import (
@@ -26,6 +30,8 @@ type Table struct {
 
 	gpos      bool
 	pairCache map[int][]*pairSub
+	// steps is how many entries the lookups may still list (see spend).
+	steps int
 }
 
 // Script is a script the table has features for.
@@ -110,6 +116,18 @@ const (
 // a font has at most 65,536 glyphs.
 const maxGlyphs = 1 << 16
 
+// maxElements bounds what a table is read into: the scripts and their
+// language systems, the features of each, the lookups of the features and
+// the subtables of the lookups, counted together.
+const maxElements = 1 << 20
+
+// maxSteps bounds the entries the lookups of a table of n bytes list
+// (glyphs covered, substitutions, pairs, rules, anchors) in all the calls
+// made of the table. Listing every lookup of a font a few times takes
+// less than four entries for a byte of the table, and less than a million
+// in all but the largest fonts.
+func maxSteps(n int) int { return min(1<<22+32*n, 1<<28) }
+
 // data is a table or part of one; reads past its end return 0.
 type data []byte
 
@@ -159,6 +177,29 @@ func (d data) count(n, off, size int) int {
 // ErrNotLayout is returned for data that is not a GSUB or GPOS table.
 var ErrNotLayout = errors.New("otlayout: not a layout table")
 
+// ErrTooLarge is returned for a table that holds more scripts, features,
+// lookups and subtables than a table is read into.
+var ErrTooLarge = errors.New("otlayout: the table holds too many features or lookups")
+
+// take counts n elements against what a table may still be read into; it
+// returns false when they are too many.
+func take(left *int, n int) bool {
+	*left -= n
+	return *left >= 0
+}
+
+// spend counts n entries a lookup lists against what the table may still
+// list (maxSteps); it returns false when they are too many, and the lookup
+// stops there.
+func (t *Table) spend(n int) bool {
+	t.steps -= n
+	return t.steps >= 0
+}
+
+// Truncated reports whether lookups were cut short: the table lists more
+// than any font does, and what was read of it is not all it says.
+func (t *Table) Truncated() bool { return t.steps < 0 }
+
 // ParseGSUB reads a GSUB table.
 func ParseGSUB(b []byte) (*Table, error) { return parse(b, false) }
 
@@ -170,10 +211,14 @@ func parse(b []byte, gpos bool) (*Table, error) {
 	if len(d) < 10 || d.u16(0) != 1 {
 		return nil, ErrNotLayout
 	}
-	t := &Table{gpos: gpos}
-	t.Scripts = parseScripts(d.at(d.u16(4)))
-	t.Features = parseFeatures(d.at(d.u16(6)))
-	t.Lookups = t.parseLookups(d.at(d.u16(8)))
+	t := &Table{gpos: gpos, steps: maxSteps(len(b))}
+	left := maxElements
+	t.Scripts = parseScripts(d.at(d.u16(4)), &left)
+	t.Features = parseFeatures(d.at(d.u16(6)), &left)
+	t.Lookups = t.parseLookups(d.at(d.u16(8)), &left)
+	if left < 0 {
+		return nil, ErrTooLarge
+	}
 	if d.u16(2) >= 1 && len(d) >= 14 {
 		if fv := d.at(d.u32(10)); fv != nil {
 			t.FeatureVariations = fv.count(fv.u32(4), 8, 8)
@@ -215,11 +260,16 @@ func (t *Table) clean(l *LangSys) {
 	l.Features = keep
 }
 
-func parseScripts(d data) []Script {
+// parseScripts reads the script list; left is how many elements the table
+// may still be read into, below zero when the list holds more.
+func parseScripts(d data, left *int) []Script {
 	if d == nil {
 		return nil
 	}
 	n := d.count(d.u16(0), 2, 6)
+	if !take(left, n) {
+		return nil
+	}
 	out := make([]Script, 0, n)
 	for i := range n {
 		rec := 2 + i*6
@@ -229,27 +279,36 @@ func parseScripts(d data) []Script {
 		}
 		sc := Script{Tag: d.tag(rec)}
 		if ls := s.at(s.u16(0)); ls != nil {
-			l := parseLangSys(ls, "")
+			l := parseLangSys(ls, "", left)
 			sc.Default = &l
 		}
 		m := s.count(s.u16(2), 4, 6)
+		if !take(left, m) {
+			return nil
+		}
 		for j := range m {
 			r := 4 + j*6
 			if ls := s.at(s.u16(r + 4)); ls != nil {
-				sc.Langs = append(sc.Langs, parseLangSys(ls, s.tag(r)))
+				sc.Langs = append(sc.Langs, parseLangSys(ls, s.tag(r), left))
 			}
+		}
+		if *left < 0 {
+			return nil
 		}
 		out = append(out, sc)
 	}
 	return out
 }
 
-func parseLangSys(d data, tag string) LangSys {
+func parseLangSys(d data, tag string, left *int) LangSys {
 	l := LangSys{Tag: tag, Required: -1}
 	if r := d.u16(2); r != 0xFFFF {
 		l.Required = r
 	}
 	n := d.count(d.u16(4), 6, 2)
+	if !take(left, n) {
+		return l
+	}
 	l.Features = make([]int, n)
 	for i := range n {
 		l.Features[i] = d.u16(6 + i*2)
@@ -257,24 +316,33 @@ func parseLangSys(d data, tag string) LangSys {
 	return l
 }
 
-func parseFeatures(d data) []Feature {
+func parseFeatures(d data, left *int) []Feature {
 	if d == nil {
 		return nil
 	}
 	n := d.count(d.u16(0), 2, 6)
+	if !take(left, n) {
+		return nil
+	}
 	out := make([]Feature, n)
 	for i := range n {
 		rec := 2 + i*6
 		f := Feature{Tag: d.tag(rec)}
 		if ft := d.at(d.u16(rec + 4)); ft != nil {
 			m := ft.count(ft.u16(2), 4, 2)
+			if !take(left, m) {
+				return nil
+			}
 			f.Lookups = make([]int, m)
 			for j := range m {
 				f.Lookups[j] = ft.u16(4 + j*2)
 			}
 			if p := ft.at(ft.u16(0)); p != nil {
-				f.params(p)
+				f.params(p, left)
 			}
+		}
+		if *left < 0 {
+			return nil
 		}
 		out[i] = f
 	}
@@ -283,7 +351,7 @@ func parseFeatures(d data) []Feature {
 
 // params reads the feature parameters of stylistic sets and character
 // variants.
-func (f *Feature) params(p data) {
+func (f *Feature) params(p data, left *int) {
 	switch {
 	case len(f.Tag) == 4 && f.Tag[:2] == "ss" && digits(f.Tag[2:]):
 		if p.u16(0) == 0 && len(p) >= 4 {
@@ -295,6 +363,9 @@ func (f *Feature) params(p data) {
 		}
 		f.UIName = uint16(p.u16(2))
 		n := p.count(p.u16(12), 14, 3)
+		if !take(left, n) {
+			return
+		}
 		for i := range n {
 			o := 14 + i*3
 			f.Chars = append(f.Chars, rune(int(p[o])<<16|int(p[o+1])<<8|int(p[o+2])))
@@ -311,7 +382,7 @@ func digits(s string) bool {
 	return s != ""
 }
 
-func (t *Table) parseLookups(d data) []Lookup {
+func (t *Table) parseLookups(d data, left *int) []Lookup {
 	if d == nil {
 		return nil
 	}
@@ -320,6 +391,9 @@ func (t *Table) parseLookups(d data) []Lookup {
 		ext = posExtension
 	}
 	n := d.count(d.u16(0), 2, 2)
+	if !take(left, n) {
+		return nil
+	}
 	out := make([]Lookup, n)
 	for i := range n {
 		l := Lookup{MarkSet: -1}
@@ -330,6 +404,9 @@ func (t *Table) parseLookups(d data) []Lookup {
 		}
 		l.Type, l.Flag = lt.u16(0), uint16(lt.u16(2))
 		m := lt.count(lt.u16(4), 6, 2)
+		if !take(left, m) {
+			return nil
+		}
 		if l.Flag&UseMarkFilteringSet != 0 {
 			l.MarkSet = lt.u16(6 + m*2)
 		}

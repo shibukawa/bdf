@@ -48,54 +48,72 @@ func (l *lexer) skipSpace() {
 	}
 }
 
+// maxLexDepth bounds the arrays and dictionaries within one another. The
+// operands of content streams and CMaps nest two or three deep; those of a
+// damaged stream may nest as deep as it is long.
+const maxLexDepth = 32
+
 // next returns the next token. Operators are returned as strings.
-func (l *lexer) next() (tokenKind, types.Object, string) {
-	l.skipSpace()
-	if l.pos >= len(l.b) {
-		return tokEOF, nil, ""
-	}
-	c := l.b[l.pos]
-	switch {
-	case c == '/':
-		l.pos++
-		return tokOperand, types.Name(l.readName()), ""
-	case c == '(':
-		l.pos++
-		return tokOperand, types.StringLiteral(l.readLiteral()), ""
-	case c == '<':
-		if l.pos+1 < len(l.b) && l.b[l.pos+1] == '<' {
-			l.pos += 2
-			return tokOperand, l.readDict(), ""
+func (l *lexer) next() (tokenKind, types.Object, string) { return l.nextAt(0) }
+
+// nextAt is next within depth arrays and dictionaries. At maxLexDepth the
+// brackets of further ones are skipped as stray delimiters are, so that
+// their items become items of the one being read.
+func (l *lexer) nextAt(depth int) (tokenKind, types.Object, string) {
+	for {
+		l.skipSpace()
+		if l.pos >= len(l.b) {
+			return tokEOF, nil, ""
 		}
-		l.pos++
-		return tokOperand, types.HexLiteral(l.readHex()), ""
-	case c == '[':
-		l.pos++
-		return tokOperand, l.readArray(), ""
-	case c == ']' || c == '>' || c == ')' || c == '{' || c == '}':
-		l.pos++ // stray delimiter: skip
-		return l.next()
-	case (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.':
-		return tokOperand, l.readNumber(), ""
+		c := l.b[l.pos]
+		switch {
+		case c == '/':
+			l.pos++
+			return tokOperand, types.Name(l.readName()), ""
+		case c == '(':
+			l.pos++
+			return tokOperand, types.StringLiteral(l.readLiteral()), ""
+		case c == '<':
+			if l.pos+1 < len(l.b) && l.b[l.pos+1] == '<' {
+				l.pos += 2
+				if depth >= maxLexDepth {
+					continue
+				}
+				return tokOperand, l.readDict(depth + 1), ""
+			}
+			l.pos++
+			return tokOperand, types.HexLiteral(l.readHex()), ""
+		case c == '[':
+			l.pos++
+			if depth >= maxLexDepth {
+				continue
+			}
+			return tokOperand, l.readArray(depth + 1), ""
+		case c == ']' || c == '>' || c == ')' || c == '{' || c == '}':
+			l.pos++ // stray delimiter: skip
+			continue
+		case (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.':
+			return tokOperand, l.readNumber(), ""
+		}
+		start := l.pos
+		for l.pos < len(l.b) && !isWhite(l.b[l.pos]) && !isDelim(l.b[l.pos]) {
+			l.pos++
+		}
+		if l.pos == start {
+			l.pos++
+			continue
+		}
+		word := string(l.b[start:l.pos])
+		switch word {
+		case "true":
+			return tokOperand, types.Boolean(true), ""
+		case "false":
+			return tokOperand, types.Boolean(false), ""
+		case "null":
+			return tokOperand, nil, ""
+		}
+		return tokOperator, nil, word
 	}
-	start := l.pos
-	for l.pos < len(l.b) && !isWhite(l.b[l.pos]) && !isDelim(l.b[l.pos]) {
-		l.pos++
-	}
-	if l.pos == start {
-		l.pos++
-		return l.next()
-	}
-	word := string(l.b[start:l.pos])
-	switch word {
-	case "true":
-		return tokOperand, types.Boolean(true), ""
-	case "false":
-		return tokOperand, types.Boolean(false), ""
-	case "null":
-		return tokOperand, nil, ""
-	}
-	return tokOperator, nil, word
 }
 
 func (l *lexer) readName() string {
@@ -234,7 +252,9 @@ func (l *lexer) readHex() string {
 	return string(out)
 }
 
-func (l *lexer) readArray() types.Array {
+// readArray reads the items of an array, the depth-th of those within one
+// another.
+func (l *lexer) readArray(depth int) types.Array {
 	var a types.Array
 	for {
 		l.skipSpace()
@@ -245,7 +265,7 @@ func (l *lexer) readArray() types.Array {
 			l.pos++
 			return a
 		}
-		kind, obj, op := l.next()
+		kind, obj, op := l.nextAt(depth)
 		switch kind {
 		case tokEOF:
 			return a
@@ -258,7 +278,9 @@ func (l *lexer) readArray() types.Array {
 	}
 }
 
-func (l *lexer) readDict() types.Dict {
+// readDict reads the entries of a dictionary, the depth-th of the arrays
+// and dictionaries within one another.
+func (l *lexer) readDict(depth int) types.Dict {
 	d := types.NewDict()
 	for {
 		l.skipSpace()
@@ -272,7 +294,7 @@ func (l *lexer) readDict() types.Dict {
 			}
 			return d
 		}
-		kind, obj, _ := l.next()
+		kind, obj, _ := l.nextAt(depth)
 		if kind == tokEOF {
 			return d
 		}
@@ -280,7 +302,7 @@ func (l *lexer) readDict() types.Dict {
 		if !ok {
 			continue
 		}
-		kind, val, _ := l.next()
+		kind, val, _ := l.nextAt(depth)
 		if kind != tokOperand {
 			return d
 		}
@@ -310,7 +332,7 @@ func (l *lexer) readInlineImageData(length int) []byte {
 		l.pos++
 	}
 	start := l.pos
-	if length >= 0 && start+length <= len(l.b) {
+	if length >= 0 && length <= len(l.b)-start { // start+length may overflow
 		end := start + length
 		// Verify that EI follows (allowing whitespace); otherwise fall back to a search.
 		p := end
@@ -325,7 +347,7 @@ func (l *lexer) readInlineImageData(length int) []byte {
 	// Search for whitespace + EI + (whitespace|EOF).
 	for p := start; p+1 < len(l.b); p++ {
 		if l.b[p] == 'E' && l.b[p+1] == 'I' && (p == 0 || isWhite(l.b[p-1])) && (p+2 >= len(l.b) || isWhite(l.b[p+2]) || isDelim(l.b[p+2])) {
-			end := p - 1
+			end := max(p-1, start) // an image without data: EI follows ID
 			l.pos = p + 2
 			return l.b[start:end]
 		}

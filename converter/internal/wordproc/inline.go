@@ -2,6 +2,7 @@ package wordproc
 
 import (
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/shibukawa/bdf/converter/internal/linebreak"
@@ -100,47 +101,34 @@ func (lc *lineCtx) breakLine(p *para, start int, first bool, left, right float64
 		}
 	}
 	// find the end: fill until the first item that does not fit (placing
-	// the items up to well past the right edge is enough to find it)
-	items := lc.fitObjects(p.items[start:], right-x0)
-	end := len(items)
-	pos := lc.place(p, ln, items, x0, indL, first, right+2*math.Max(right-x0, 100))
-	if len(pos) < len(items) {
-		end = len(pos)
-	}
-	lastBrk := -1
+	// the items up to well past the right edge is enough to find it). The
+	// items of the paragraph that follow are tried some at a time, more
+	// when the line does not end in them: a line seldom needs the rest of
+	// a long paragraph.
+	rest := p.items[start:]
+	end := 0
 	forced := false // the line ends with a break
-	for i := range pos {
-		it := &pos[i]
-		if it.kind == kBreak || it.kind == kPage || it.kind == kColumn {
-			end = i + 1
-			forced = true
+	for n := min(len(rest), lineItems); ; n = min(len(rest), 2*n) {
+		if n < len(rest) && slices.ContainsFunc(rest[:n], func(it item) bool { return it.kind == kTab }) {
+			// what follows a tab, up to the next one, places it: all the rest
+			n = len(rest)
+		}
+		items := lc.fitObjects(rest[:n], right-x0)
+		pos := lc.place(p, ln, items, x0, indL, first, right+2*math.Max(right-x0, 100))
+		var found bool
+		if end, forced, found = lineEnd(p, pos, right); found || len(pos) < n || n == len(rest) {
 			break
-		}
-		overflow := it.x+it.w+it.pad > right+0.01 && i > 0 && !(it.kind == kChar && lbSpace(it.r))
-		if overflow && p.pp.overflowPunct && it.kind == kChar && hangingPunct(it.r) && it.x <= right+0.01 {
-			overflow = false // hanging punctuation
-		}
-		if overflow {
-			if lastBrk >= 0 {
-				end = lastBrk + 1
-			} else {
-				end = i
-			}
-			break
-		}
-		if it.brk {
-			lastBrk = i
 		}
 	}
-	if end == 0 && len(items) > 0 {
+	if end == 0 && len(rest) > 0 {
 		end = 1
 	}
 	// keep what follows a break opportunity that is only spaces on this line
 	// (the spaces after a line break start the next line)
-	for !forced && end < len(items) && items[end].kind == kChar && lbSpace(items[end].r) {
+	for !forced && end < len(rest) && rest[end].kind == kChar && lbSpace(rest[end].r) {
 		end++
 	}
-	ln.items = lc.place(p, ln, items[:end], x0, indL, first, math.Inf(1))
+	ln.items = lc.place(p, ln, lc.fitObjects(rest[:end], right-x0), x0, indL, first, math.Inf(1))
 	if n := len(ln.items); n > 0 {
 		switch last := ln.items[n-1]; last.kind {
 		case kBreak:
@@ -165,6 +153,37 @@ func (lc *lineCtx) breakLine(p *para, start int, first bool, left, right float64
 	ln.align(lc)
 	ln.metrics(lc)
 	return ln
+}
+
+// lineItems is how many items of a paragraph a line is first looked for in.
+const lineItems = 128
+
+// lineEnd returns where a line ends among the items placed for it: after a
+// break (forced), or before the first item that does not fit, at the last
+// break opportunity when there is one. When the line does not end among
+// them (found is false) the items are all on it.
+func lineEnd(p *para, pos []item, right float64) (end int, forced, found bool) {
+	lastBrk := -1
+	for i := range pos {
+		it := &pos[i]
+		if it.kind == kBreak || it.kind == kPage || it.kind == kColumn {
+			return i + 1, true, true
+		}
+		overflow := it.x+it.w+it.pad > right+0.01 && i > 0 && !(it.kind == kChar && lbSpace(it.r))
+		if overflow && p.pp.overflowPunct && it.kind == kChar && hangingPunct(it.r) && it.x <= right+0.01 {
+			overflow = false // hanging punctuation
+		}
+		if overflow {
+			if lastBrk >= 0 {
+				return lastBrk + 1, false, true
+			}
+			return i, false, true
+		}
+		if it.brk {
+			lastBrk = i
+		}
+	}
+	return len(pos), false, false
 }
 
 // fitObjects shrinks the pictures that fit the line (inlineObj.fit) and

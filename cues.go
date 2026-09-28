@@ -55,19 +55,13 @@ func DecodeCues(data []byte) (*Cues, error) {
 		return nil, &FormatError{Msg: fmt.Sprintf("unsupported cue index version %d", v)}
 	}
 	c := &Cues{}
-	n := r.varuint()
-	if n > uint64(len(data)) {
-		return nil, &FormatError{Msg: "bad system count"}
-	}
-	for i := uint64(0); i < n && r.err == nil; i++ {
+	n := r.count(17, "bad system count")
+	for i := 0; i < n && r.err == nil; i++ {
 		c.Systems = append(c.Systems, CueSystem{Page: uint32(r.varuint()), X: r.f32(), Y: r.f32(), W: r.f32(), H: r.f32()})
 	}
-	n = r.varuint()
-	if n > uint64(len(data)) {
-		return nil, &FormatError{Msg: "bad cue count"}
-	}
+	n = r.count(6, "bad cue count")
 	var t uint32
-	for i := uint64(0); i < n && r.err == nil; i++ {
+	for i := 0; i < n && r.err == nil; i++ {
 		t += uint32(r.varuint())
 		q := Cue{Tick: t, System: uint32(r.varuint()), X: r.f32()}
 		if int(q.System) >= len(c.Systems) && r.err == nil {

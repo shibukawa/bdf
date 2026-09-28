@@ -21,21 +21,37 @@ type file struct {
 	collection bool
 	faces      []*face
 	size       int // bytes of the file
+
+	// layout are the layout tables read, by the bytes they are read from:
+	// the fonts of a collection share tables, and what a table may list
+	// (otlayout.Table.Truncated) is then counted once.
+	layout map[tableKey]any
+}
+
+// tableKey identifies a table of a file: its tag and its bytes.
+type tableKey struct {
+	tag   string
+	start *byte
+	size  int
 }
 
 // face is one font of a file.
 type face struct {
+	fl    *file
 	index int // in the collection
-	// data is the font on its own: the file itself, or for a font of a
-	// collection or a web font the sfnt made of its tables.
-	data []byte
+	// size is that of the font on its own: the file itself, or for a font
+	// of a collection or a web font the sfnt made of its tables.
+	size int
 	f    *sfnt.Font
 	out  *sfnt.Outlines
+	// ready is set once prepare has read what the views show.
+	ready bool
 
 	gsub, gpos *otlayout.Table
 	gdef       *otlayout.GDEF
 
 	names    []nameRec  // the name table
+	namesCut bool       // the name table holds more than was read (see parseNames)
 	glyphs   []string   // glyph names by glyph ID ("" when the font has none)
 	chars    [][]rune   // characters by glyph ID
 	runes    []rune     // characters the font maps, ascending
@@ -55,9 +71,10 @@ type glyphBox struct {
 const maxFaces = 64
 
 // load reads a font file: TrueType, OpenType, a collection of either, WOFF
-// or WOFF2.
+// or WOFF2. Its fonts are parsed; prepare reads what the views show of
+// those that are shown.
 func load(data []byte) (*file, error) {
-	fl := &file{size: len(data)}
+	fl := &file{size: len(data), layout: map[tableKey]any{}}
 	switch {
 	case len(data) >= 4 && string(data[:4]) == "wOFF":
 		d, err := unWOFF(data)
@@ -85,17 +102,23 @@ func load(data []byte) (*file, error) {
 	}
 	for i := range n {
 		f, err := sfnt.ParseIndex(data, i)
+		if err == nil && f.NumGlyphs == 0 {
+			err = errors.New("the font has no glyphs")
+		}
 		if err != nil {
 			if n == 1 {
 				return nil, fmt.Errorf("font: %w", err)
 			}
 			continue
 		}
-		fc := &face{index: i, f: f, data: data}
+		fc := &face{fl: fl, index: i, f: f, size: len(data)}
 		if fl.collection || fl.container != "" {
-			fc.data = sfnt.Build(f.Tables, f.IsCFF)
+			// the size of the sfnt made of its tables (sfnt.Build)
+			fc.size = 12 + 16*len(f.Tables)
+			for _, t := range f.Tables {
+				fc.size += (len(t) + 3) &^ 3
+			}
 		}
-		fc.prepare()
 		fl.faces = append(fl.faces, fc)
 	}
 	if len(fl.faces) == 0 {
@@ -104,19 +127,35 @@ func load(data []byte) (*file, error) {
 	return fl, nil
 }
 
-// prepare reads what the views show from the tables.
+// table returns a layout table of the file read with read, which is called
+// once for the fonts that share the table.
+func table[T any](fl *file, tag string, b []byte, read func([]byte) T) T {
+	if len(b) == 0 {
+		return read(b)
+	}
+	k := tableKey{tag, &b[0], len(b)}
+	if t, ok := fl.layout[k]; ok {
+		return t.(T)
+	}
+	t := read(b)
+	fl.layout[k] = t
+	return t
+}
+
+// prepare reads what the views show from the tables (once).
 func (fc *face) prepare() {
+	if fc.ready {
+		return
+	}
+	fc.ready = true
 	f := fc.f
 	fc.upem = float64(f.UnitsPerEm)
 	fc.out = sfnt.NewOutlines(f)
-	if t, err := otlayout.ParseGSUB(f.Tables["GSUB"]); err == nil {
-		fc.gsub = t
-	}
-	if t, err := otlayout.ParseGPOS(f.Tables["GPOS"]); err == nil {
-		fc.gpos = t
-	}
-	fc.gdef = otlayout.ParseGDEF(f.Tables["GDEF"])
-	fc.names = parseNames(f.Tables["name"])
+	// a table that cannot be read is nil
+	fc.gsub = table(fc.fl, "GSUB", f.Tables["GSUB"], func(b []byte) *otlayout.Table { t, _ := otlayout.ParseGSUB(b); return t })
+	fc.gpos = table(fc.fl, "GPOS", f.Tables["GPOS"], func(b []byte) *otlayout.Table { t, _ := otlayout.ParseGPOS(b); return t })
+	fc.gdef = table(fc.fl, "GDEF", f.Tables["GDEF"], otlayout.ParseGDEF)
+	fc.names, fc.namesCut = parseNames(f.Tables["name"])
 	fc.glyphs = glyphNames(f)
 	n := f.NumGlyphs
 	fc.chars = make([][]rune, n)
@@ -179,6 +218,17 @@ func unWOFF(data []byte) ([]byte, error) {
 		return nil, errors.New("font: WOFF font collections are not supported")
 	}
 	n := int(binary.BigEndian.Uint16(data[12:]))
+	// tables may share their compressed bytes: what they decompress to is
+	// bounded together, before any is decompressed
+	total := 0
+	for i := range n {
+		if rec := 44 + i*20; rec+20 <= len(data) {
+			total += int(binary.BigEndian.Uint32(data[rec+12:]))
+		}
+		if total > maxSize {
+			return nil, fmt.Errorf("font: the tables of the WOFF file are larger than %d bytes", maxSize)
+		}
+	}
 	tables := map[string][]byte{}
 	for i := range n {
 		rec := 44 + i*20

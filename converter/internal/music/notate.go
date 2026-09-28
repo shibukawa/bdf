@@ -1,6 +1,7 @@
 package music
 
 import (
+	"fmt"
 	"math"
 	"slices"
 	"sort"
@@ -27,6 +28,22 @@ func Notate(p *Performance, o NotateOptions) *Score {
 
 // maxMeasures bounds the measures of a notated performance.
 const maxMeasures = 20000
+
+// maxStaffMeasures bounds the measures of all the staves of a score
+// together (its staves times its measures): every staff has at least a
+// rest in every measure. It is a variable for the tests.
+var maxStaffMeasures = 1_000_000
+
+// errStaves is the error for a score of more than maxStaves.
+func errStaves() error {
+	return fmt.Errorf("music: the score has more than %d staves", maxStaves)
+}
+
+// errStaffMeasures is the error for a score of more than maxStaffMeasures:
+// n of what (staves, tracks) in its measures.
+func errStaffMeasures(n int, what string, measures int) error {
+	return fmt.Errorf("music: the score has more than %d measures on its staves (%d %s of %d measures)", maxStaffMeasures, n, what, measures)
+}
 
 // measureSpan is a measure of a performance on its timeline.
 type measureSpan struct {
@@ -69,7 +86,8 @@ func notate(p *Performance, o *NotateOptions) *Score {
 	cur := TimeSig{Beats: 4, BeatType: 4}
 	var spans []measureSpan
 	ti := 0
-	for t := 0; (t < end || len(spans) == 0) && len(spans) < maxMeasures; {
+	t := 0
+	for (t < end || len(spans) == 0) && len(spans) < maxMeasures {
 		changed := len(spans) == 0
 		for ti < len(times) && times[ti].Tick <= t {
 			if times[ti].Time.Beats > 0 && times[ti].Time.BeatType > 0 {
@@ -92,6 +110,24 @@ func notate(p *Performance, o *NotateOptions) *Score {
 		t += length
 	}
 	s.Measures[len(s.Measures)-1].Right = BarFinal
+	if t < end {
+		s.warnings = append(s.warnings, fmt.Sprintf("the music is longer than %d measures; the rest is left out", maxMeasures))
+	}
+	// a track is a part of one or two staves, written in every measure
+	tracks := 0
+	for _, t := range p.Tracks {
+		if len(t.Notes) > 0 {
+			tracks++
+		}
+	}
+	switch {
+	case tracks > maxStaves:
+		s.err = errStaves()
+		return s
+	case tracks*len(spans) > maxStaffMeasures:
+		s.err = errStaffMeasures(tracks, "tracks", len(spans))
+		return s
+	}
 
 	measureAt := func(tick int) int {
 		i := sort.Search(len(spans), func(i int) bool { return spans[i].start > tick }) - 1
@@ -151,6 +187,9 @@ func notate(p *Performance, o *NotateOptions) *Score {
 			continue
 		}
 		part := notateTrack(t, spans, keyOfMeasure, measureAt)
+		if part == nil {
+			continue // its notes are all in what is left out
+		}
 		for i, pm := range part.Measures {
 			if keyAt[i] != nil && !part.Percussion {
 				k := *keyAt[i]
@@ -282,7 +321,9 @@ func grids(spans []measureSpan, onsets []int) []beatGrid {
 				best, bestErr = c, sum
 			}
 		}
-		bg.grid, bg.triplet = best.grid, best.triplet
+		// a beat too short for a grid (a time signature that changes a tick
+		// after a bar line) is written as it is
+		bg.grid, bg.triplet = best.grid, best.triplet && best.grid > 0
 		j = k
 	}
 	return beats
@@ -307,7 +348,8 @@ func (bg *beatGrid) snap(tick int) int {
 	return bg.start + roundTo(tick-bg.start, bg.grid)
 }
 
-// notateTrack writes one track as a part.
+// notateTrack writes one track as a part, nil when none of its notes is in
+// the measures.
 func notateTrack(t *Track, spans []measureSpan, keys []KeySig, measureAt func(int) int) *Part {
 	part := &Part{Name: t.Name, Staves: 1, Percussion: t.Channel == 9}
 	last := spans[len(spans)-1]
@@ -350,6 +392,9 @@ func notateTrack(t *Track, spans []measureSpan, keys []KeySig, measureAt func(in
 	})
 	// the same key twice at an onset is one note
 	notes = slices.CompactFunc(notes, func(a, b qnote) bool { return a.on == b.on && a.key == b.key })
+	if len(notes) == 0 {
+		return nil
+	}
 
 	// staves and clefs
 	var clefs []Clef
@@ -665,7 +710,7 @@ func (n *staffNotator) segment(m, a, b int, notes []qnote, voice int, tieIn, tie
 		e := min(b, bg.start+bg.length)
 		// a stretch of a triplet beat that starts and ends on its straight
 		// sixteenths is written straight (the other voice has the triplets)
-		straight := bg.length / 4
+		straight := max(bg.length/4, 1)
 		if bg.triplet && ((x-bg.start)%straight != 0 || (e-bg.start)%straight != 0) {
 			pieces = append(pieces, piece{x, e, bg})
 		} else if k := len(pieces); k > 0 && pieces[k-1].triplet == nil && pieces[k-1].b == x {

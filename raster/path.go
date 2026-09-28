@@ -1,6 +1,7 @@
 package raster
 
 import (
+	"image"
 	"math"
 
 	"github.com/shibukawa/bdf"
@@ -86,6 +87,10 @@ type subpath struct {
 // path is a Path2D: sub-paths in user space.
 type path struct {
 	subs []subpath
+	// box is the bounding box of the points, once extent has found it (a
+	// path is not added to after it is drawn)
+	box   [4]float64
+	boxed bool
 }
 
 func (p *path) cur() *subpath {
@@ -116,6 +121,7 @@ func (p *path) current() (point, bool) {
 }
 
 func (p *path) moveTo(x, y float64) {
+	p.boxed = false
 	p.subs = append(p.subs, subpath{start: point{x, y}})
 }
 
@@ -132,17 +138,20 @@ func (p *path) lineTo(x, y float64) {
 		p.moveTo(x, y)
 		return
 	}
+	p.boxed = false
 	s := p.cur()
 	s.segs = append(s.segs, segment{kind: segLine, p: [6]float64{x, y}})
 }
 
 func (p *path) quadTo(cx, cy, x, y float64) {
+	p.boxed = false
 	p.ensure(cx, cy)
 	s := p.cur()
 	s.segs = append(s.segs, segment{kind: segQuad, p: [6]float64{cx, cy, x, y}})
 }
 
 func (p *path) cubicTo(c1x, c1y, c2x, c2y, x, y float64) {
+	p.boxed = false
 	p.ensure(c1x, c1y)
 	s := p.cur()
 	s.segs = append(s.segs, segment{kind: segCubic, p: [6]float64{c1x, c1y, c2x, c2y, x, y}})
@@ -349,36 +358,131 @@ type polyline struct {
 	closed bool
 }
 
+// extent returns the bounding box of the points of the path (control points
+// included, sub-paths without segments left out, which draw nothing), and
+// whether it has one: whether the path has points and all are finite.
+func (p *path) extent() (box [4]float64, ok bool) {
+	if !p.boxed {
+		x0, y0, x1, y1 := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+		add := func(x, y float64) {
+			x0, y0, x1, y1 = math.Min(x0, x), math.Min(y0, y), math.Max(x1, x), math.Max(y1, y)
+		}
+		for i := range p.subs {
+			s := &p.subs[i]
+			if len(s.segs) == 0 {
+				continue
+			}
+			add(s.start.x, s.start.y)
+			for j := range s.segs {
+				g := &s.segs[j]
+				add(g.p[0], g.p[1])
+				if g.kind != segLine {
+					add(g.p[2], g.p[3])
+				}
+				if g.kind == segCubic {
+					add(g.p[4], g.p[5])
+				}
+			}
+		}
+		p.box = [4]float64{x0, y0, x1, y1}
+		p.boxed = true
+	}
+	b := p.box
+	ok = b[0] <= b[2] && b[1] <= b[3] && !math.IsInf(b[0], 0) && !math.IsInf(b[1], 0) && !math.IsInf(b[2], 0) && !math.IsInf(b[3], 0)
+	return b, ok
+}
+
 // flatten turns the path into polylines through m, with curves split until
 // they deviate from their chords by less than tol (in the output space).
 func (p *path) flatten(m matrix, tol float64) []polyline {
-	out := make([]polyline, 0, len(p.subs))
+	return p.flattenTo(&scratch{}, make([]polyline, 0, len(p.subs)), m, tol)
+}
+
+// flattenTo is flatten with the memory of a renderer: the polylines are
+// added to out and their points to those sc holds, where they last until
+// sc is reset for the next drawing.
+func (p *path) flattenTo(sc *scratch, out []polyline, m matrix, tol float64) []polyline {
+	if plain {
+		sc = &scratch{}
+	}
+	buf := sc.pts
 	for _, s := range p.subs {
+		start := len(buf)
 		x0, y0 := m.apply(s.start.x, s.start.y)
-		pl := polyline{pts: []point{{x0, y0}}, closed: s.closed}
+		buf = append(buf, point{x0, y0})
 		cx, cy := x0, y0
 		for _, g := range s.segs {
 			switch g.kind {
 			case segLine:
 				x, y := m.apply(g.p[0], g.p[1])
-				pl.pts = append(pl.pts, point{x, y})
+				buf = append(buf, point{x, y})
 				cx, cy = x, y
 			case segQuad:
 				qx, qy := m.apply(g.p[0], g.p[1])
 				x, y := m.apply(g.p[2], g.p[3])
-				pl.pts = flattenQuad(pl.pts, cx, cy, qx, qy, x, y, tol)
+				buf = flattenQuad(buf, cx, cy, qx, qy, x, y, tol)
 				cx, cy = x, y
 			case segCubic:
 				ax, ay := m.apply(g.p[0], g.p[1])
 				bx, by := m.apply(g.p[2], g.p[3])
 				x, y := m.apply(g.p[4], g.p[5])
-				pl.pts = flattenCubic(pl.pts, cx, cy, ax, ay, bx, by, x, y, tol)
+				buf = flattenCubic(buf, cx, cy, ax, ay, bx, by, x, y, tol)
 				cx, cy = x, y
 			}
 		}
-		out = append(out, pl)
+		// the polyline keeps the array its points are in now: points added
+		// later go after them, or into a larger array
+		out = append(out, polyline{pts: buf[start:len(buf):len(buf)], closed: s.closed})
 	}
+	sc.pts = buf
 	return out
+}
+
+// reset lets go of the polylines of the drawing before.
+func (sc *scratch) reset() {
+	sc.polys, sc.pts = keep(sc.polys), keep(sc.pts)
+}
+
+// outside reports whether a box in user space (x0, y0, x1, y1), with reach
+// more on every side, lies outside bounds under m by more than a pixel:
+// nothing drawn in it shows. A box whose place cannot be told (a corner
+// that is no number) is not outside.
+func outside(box [4]float64, reach float64, m matrix, bounds image.Rectangle) bool {
+	if bounds.Empty() {
+		return true
+	}
+	x0, y0, x1, y1 := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+	for _, c := range [4][2]float64{{box[0] - reach, box[1] - reach}, {box[2] + reach, box[1] - reach}, {box[0] - reach, box[3] + reach}, {box[2] + reach, box[3] + reach}} {
+		px, py := m.apply(c[0], c[1])
+		if math.IsNaN(px) || math.IsNaN(py) {
+			return false
+		}
+		x0, y0, x1, y1 = math.Min(x0, px), math.Min(y0, py), math.Max(x1, px), math.Max(y1, py)
+	}
+	return x1 < float64(bounds.Min.X)-1 || x0 > float64(bounds.Max.X)+1 || y1 < float64(bounds.Min.Y)-1 || y0 > float64(bounds.Max.Y)+1
+}
+
+// boxUnder returns the bounding box of a box under m.
+func boxUnder(box [4]float64, m matrix) [4]float64 {
+	x0, y0, x1, y1 := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+	for _, c := range [4][2]float64{{box[0], box[1]}, {box[2], box[1]}, {box[0], box[3]}, {box[2], box[3]}} {
+		px, py := m.apply(c[0], c[1])
+		if math.IsNaN(px) || math.IsNaN(py) {
+			return [4]float64{px, py, px, py}
+		}
+		x0, y0, x1, y1 = math.Min(x0, px), math.Min(y0, py), math.Max(x1, px), math.Max(y1, py)
+	}
+	return [4]float64{x0, y0, x1, y1}
+}
+
+// hidden reports whether a path drawn under m lies outside bounds, with
+// what reaches up to reach around it (in its units): the width of a line.
+func hidden(p *path, reach float64, m matrix, bounds image.Rectangle) bool {
+	if plain {
+		return false
+	}
+	box, ok := p.extent()
+	return ok && outside(box, reach, m, bounds)
 }
 
 // segmentsFor returns how many straight pieces keep a curve whose control

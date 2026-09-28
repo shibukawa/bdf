@@ -52,7 +52,22 @@ type HTMLDocument struct {
 	Page PageSetup
 	// Folios numbers the pages of the page view at their foot.
 	Folios bool
+	// MaxSVG is how large the SVG documents made of the svg elements of the
+	// document may be together, in bytes (0: 256 MiB); the svg elements
+	// after them are left out. A publication that holds its pictures may
+	// be allowed what it holds.
+	MaxSVG int
 }
+
+// LimitError is the error of HTMLDocument.Image for a picture that is left
+// out because the document has passed a limit (of the pictures it fetches,
+// of what it reads). The pictures after the limit are many: the warning is
+// given once, or not at all when it is "" (the caller has warned).
+type LimitError struct {
+	Warning string
+}
+
+func (e *LimitError) Error() string { return e.Warning }
 
 // HTMLChapter is a document of a book (a content document of an EPUB).
 type HTMLChapter struct {
@@ -157,7 +172,7 @@ func ConvertHTML(d *HTMLDocument, opts *Options) (res *Result, err error) {
 	if c.opts.Title != "" {
 		c.doc.Meta.DC.Title = bdf.DCValues{c.opts.Title}
 	}
-	r := &htmlReader{c: c, d: d, size: size, images: map[string]*htmlImage{}}
+	r := &htmlReader{c: c, d: d, size: size, images: map[string]*htmlImage{}, used: &htmlUsed{}}
 	r.font = d.Font
 	if r.font == "" {
 		r.font = fontdb.Sans
@@ -340,6 +355,14 @@ type htmlReader struct {
 	check      *inlineObj            // the last checkbox, which the space after it goes into
 	ids        map[string]*html.Node // the elements of idsOf by id (inline SVG references)
 	idsOf      *html.Node
+	used       *htmlUsed
+}
+
+// htmlUsed is what the document has used of what is limited for a
+// document.
+type htmlUsed struct {
+	spanSlots int // slots of cells that span rows or columns (maxSpanSlots)
+	svgBytes  int // bytes of the SVG documents made of svg elements (HTMLDocument.MaxSVG)
 }
 
 // read reads the content of n into blocks; self reads n itself.
@@ -598,7 +621,7 @@ func (r *htmlReader) node(n *html.Node, st *hstyle) {
 		return
 	}
 	if st.depth > maxDepth {
-		r.children(n, st)
+		r.deep(n, st)
 		return
 	}
 	if id := attrStr(n, "id"); id != "" {
@@ -639,7 +662,13 @@ func (r *htmlReader) node(n *html.Node, st *hstyle) {
 			r.children(n, s)
 		})
 	case atom.H1, atom.H2, atom.H3, atom.H4, atom.H5, atom.H6:
-		level := int(n.Data[1] - '0')
+		level := headingLevel(n.Data)
+		if level == 0 {
+			// renamed since it was parsed (Readability makes a div of a
+			// heading by its name alone): a block
+			r.block(0, 0, func() { r.children(n, r.blockStyle(n, css, st)) })
+			break
+		}
 		r.block(0, 0, func() {
 			s := r.blockStyle(n, css, st).chars()
 			s.rp.sz = st.rp.sz * headingSizes[level]
@@ -795,6 +824,42 @@ func (r *htmlReader) node(n *html.Node, st *hstyle) {
 	}
 }
 
+// headingLevel returns the level of a heading by its name ("h1" to "h6"),
+// 0 for other names.
+func headingLevel(name string) int {
+	if len(name) == 2 && (name[0] == 'h' || name[0] == 'H') && name[1] >= '1' && name[1] <= '6' {
+		return int(name[1] - '0')
+	}
+	return 0
+}
+
+// deep reads the content of an element nested deeper than maxDepth: the
+// text of what is drawn, in st. It walks the elements without calling
+// itself, so that a document nested however deeply needs no stack.
+func (r *htmlReader) deep(n *html.Node, st *hstyle) {
+	k := n.FirstChild
+	for k != nil {
+		down := false
+		switch k.Type {
+		case html.TextNode:
+			r.text(k.Data, st)
+		case html.ElementNode:
+			down = !hidden(k, cssDecls(k)) && !skipped(k.DataAtom)
+		}
+		if down && k.FirstChild != nil {
+			k = k.FirstChild
+			continue
+		}
+		for k != n && k.NextSibling == nil {
+			k = k.Parent
+		}
+		if k == n {
+			return
+		}
+		k = k.NextSibling
+	}
+}
+
 // combinedUpright reports whether an element's text is set horizontally in
 // one square of vertical text (tate-chu-yoko): CSS text-combine-upright,
 // or the older -webkit-text-combine and -epub-text-combine.
@@ -834,6 +899,14 @@ func (r *htmlReader) combine(fn func()) {
 			it.tcy = r.c.tcyGroups
 		}
 	}
+}
+
+// Drawn reports whether an element of an HTML document is drawn: it is not
+// hidden (the hidden attribute, display: none, visibility: hidden) and not
+// of a kind that is left out (script, template, video …). What is in an
+// element that is not drawn is not drawn either.
+func Drawn(n *html.Node) bool {
+	return !hidden(n, cssDecls(n)) && !skipped(n.DataAtom)
 }
 
 // skipped reports whether the elements of a kind are not drawn: what is

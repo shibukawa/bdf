@@ -88,12 +88,7 @@ func decodePaint(r *reader) Paint {
 	for i := range p.Coords {
 		p.Coords[i] = r.f32()
 	}
-	n := int(r.varuint())
-	if n > len(r.b) {
-		r.fail("bad stop count")
-		return p
-	}
-	p.Stops = make([]Stop, n)
+	p.Stops = make([]Stop, r.count(8, "bad stop count"))
 	for i := range p.Stops {
 		p.Stops[i] = Stop{Offset: r.f32(), Color: Color(r.u32())}
 	}

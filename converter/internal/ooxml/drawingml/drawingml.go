@@ -163,10 +163,16 @@ func (c *Renderer) NewDrawing(part string, clrMap map[string]string, host Host) 
 	return s
 }
 
+// maxGroupDepth bounds how deeply shapes may nest in groups (and SmartArt
+// drawings): the renderer recurses once per level, and recover() cannot
+// catch a stack overflow. It is far above any real drawing; deeper nesting
+// is dropped with a warning.
+const maxGroupDepth = 100
+
 // DrawTree draws the shapes of a shape tree (p:spTree) of part.
 func (s *Drawing) DrawTree(cv *canvas.Canvas, tree *ooxml.Node, part string) {
 	for _, k := range tree.Elements() {
-		s.drawElem(cv, k, part, nil)
+		s.drawElem(cv, k, part, nil, 0)
 	}
 }
 
@@ -217,10 +223,10 @@ func (s *Drawing) DrawAnchored(cv *canvas.Canvas, k *ooxml.Node, part string, x,
 	own := ownXfrm(k)
 	if xf, ok := parseXfrm(own); ok && xf.W > 0 && xf.H > 0 {
 		g := &groupCtx{xf: xform{X: x, Y: y, W: w, H: h}, chOff: [2]float64{xf.X, xf.Y}, chExt: [2]float64{xf.W, xf.H}, part: part}
-		s.drawElem(cv, k, part, g)
+		s.drawElem(cv, k, part, g, 0)
 		return
 	}
-	s.drawElem(cv, withXfrm(k, own, x, y, w, h), part, nil)
+	s.drawElem(cv, withXfrm(k, own, x, y, w, h), part, nil, 0)
 }
 
 // ownXfrm returns the transform element of a shape.

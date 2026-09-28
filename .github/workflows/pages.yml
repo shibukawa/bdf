@@ -1,5 +1,5 @@
 name: pages
-# Builds the demo site (examples/viewer/site.mjs) and publishes it on GitHub
+# Builds the demo site (site/build.mjs) and publishes it on GitHub
 # Pages from main: the viewer with the converters built as wasm, which
 # convert the files opened on the page inside the browser, and the
 # documentation as HTML (docs/). Pull requests build and test the site
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'
         with:
-          path: examples/viewer/.site
+          path: site/dist
   deploy:
     if: github.event_name != 'pull_request'
     needs: build

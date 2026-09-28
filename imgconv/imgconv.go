@@ -18,11 +18,7 @@ import (
 	"errors"
 	"image"
 	"image/draw"
-	"image/gif"
-	"image/jpeg"
 	"image/png"
-
-	"golang.org/x/image/bmp"
 )
 
 // Mode selects between keeping images and converting them.
@@ -149,26 +145,18 @@ func Optimize(data []byte, opts Options) (Result, error) {
 	if !Available() {
 		return keep, ErrNotAvailable
 	}
-	var img image.Image
-	var err error
-	lossless := true
 	switch format {
-	case "jpeg":
-		img, err = jpeg.Decode(bytes.NewReader(data))
-		lossless = false
-	case "png":
-		img, err = png.Decode(bytes.NewReader(data))
-	case "gif":
-		img, err = gif.Decode(bytes.NewReader(data))
-	case "bmp":
-		img, err = bmp.Decode(bytes.NewReader(data))
+	case "jpeg", "png", "gif", "bmp":
 	default:
 		// webp, avif, svg and unknown formats are kept as they are.
 		return keep, nil
 	}
+	// an image too large to decode (ErrTooLarge) is kept as it is too
+	img, err := Decode(data)
 	if err != nil {
 		return keep, err
 	}
+	lossless := format != "jpeg"
 	best, err := encodeBest(toNRGBA(img), lossless, opts, len(data))
 	if err != nil {
 		return keep, err

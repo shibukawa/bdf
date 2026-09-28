@@ -1,13 +1,12 @@
 package metafile
 
 import (
-	"bytes"
 	"errors"
 	"image"
 	"image/color"
 	"image/draw"
-	_ "image/jpeg" // BI_JPEG bitmaps
-	_ "image/png"  // BI_PNG bitmaps
+
+	"github.com/shibukawa/bdf/imgconv"
 )
 
 var errBadDIB = errors.New("bad DIB")
@@ -29,7 +28,7 @@ func decodeDIB(bmi, bits []byte) (*image.NRGBA, error) {
 		bpp, compression = int(le16(bmi, 14)), int(le32(bmi, 16))
 	}
 	if compression == 4 || compression == 5 { // BI_JPEG, BI_PNG
-		img, _, err := image.Decode(bytes.NewReader(bits))
+		img, err := imgconv.Decode(bits)
 		if err != nil {
 			return nil, err
 		}
@@ -40,6 +39,13 @@ func decodeDIB(bmi, bits []byte) (*image.NRGBA, error) {
 		h = -h
 	}
 	if w <= 0 || h <= 0 || w*h > 1<<26 {
+		return nil, errBadDIB
+	}
+	// A depth that is none of these has rows of no known size: the bits
+	// cannot be checked against it.
+	switch bpp {
+	case 1, 2, 4, 8, 16, 24, 32:
+	default:
 		return nil, errBadDIB
 	}
 	// color table

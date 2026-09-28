@@ -25,19 +25,30 @@ type nameRec struct {
 	rank int // how good a record of its ID it is: Windows, then Unicode, then Macintosh
 }
 
+// maxNames bounds the bytes of a name table that are decoded. The strings
+// of a name table take 128 KiB at most, but records may share them, and
+// each record is a string of its own once decoded.
+const maxNames = 4 << 20
+
 // parseNames reads the strings of a name table, of every platform and
-// language that can be decoded.
-func parseNames(b []byte) []nameRec {
+// language that can be decoded; cut is true when the records are longer
+// than maxNames together, and those past it are left out.
+func parseNames(b []byte) (names []nameRec, cut bool) {
 	if len(b) < 6 {
-		return nil
+		return nil, false
 	}
 	count, strOff := int(sfnt.BE16(b, 2)), int(sfnt.BE16(b, 4))
+	left := maxNames
 	var langTags []string
 	if sfnt.BE16(b, 0) == 1 {
 		p := 6 + count*12
-		n := int(sfnt.BE16(b, p))
+		// the language tags the table holds
+		n := min(int(sfnt.BE16(b, p)), max(len(b)-p-2, 0)/4)
 		for i := range n {
 			l, o := int(sfnt.BE16(b, p+2+i*4)), strOff+int(sfnt.BE16(b, p+4+i*4))
+			if left -= l; left < 0 {
+				return nil, true
+			}
 			if o+l <= len(b) {
 				langTags = append(langTags, utf16be(b[o:o+l]))
 			} else {
@@ -56,6 +67,9 @@ func parseNames(b []byte) []nameRec {
 		l, o := int(sfnt.BE16(b, rec+8)), strOff+int(sfnt.BE16(b, rec+10))
 		if o+l > len(b) || l == 0 {
 			continue
+		}
+		if left -= l; left < 0 {
+			return out, true
 		}
 		raw := b[o : o+l]
 		r := nameRec{id: id}
@@ -113,7 +127,7 @@ func parseNames(b []byte) []nameRec {
 		seen[k] = true
 		out = append(out, r)
 	}
-	return out
+	return out, false
 }
 
 func utf16be(b []byte) string {

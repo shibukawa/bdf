@@ -101,6 +101,7 @@ type converter struct {
 	page       *pageInfo
 	pageShadow bool
 	math       bool // the page typesets LaTeX in its labels (math="1")
+	repeats    int  // lines of patterns drawn (maxPageRepeats)
 
 	// formulas (math.go)
 	eq        *equation.Engine
@@ -258,6 +259,7 @@ type item struct {
 func (c *converter) renderPage(p *page) (*bdf.Page, []*canvas.Canvas, error) {
 	m := parseModel(p.model)
 	c.m = m
+	c.repeats = 0
 	c.pageShadow = m.attrs["shadow"] == "1"
 	c.math = m.attrs["math"] == "1"
 	c.awsLegacy += c.substituteAWSLegacy(m)

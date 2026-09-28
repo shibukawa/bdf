@@ -10,6 +10,13 @@ import (
 	"golang.org/x/net/html"
 )
 
+// maxSVGBytes is how large the SVG documents made of the svg elements of a
+// document may be together (unless HTMLDocument.MaxSVG says); the svg
+// elements after them are left out. The document of an svg element holds
+// what the element borrows from the page (the symbols of a sprite sheet)
+// and its images, again for every element that uses them.
+const maxSVGBytes = 256 << 20
+
 // inlineSVG draws an svg element of the document as an image: its markup,
 // made an SVG document of its own, which the viewer draws (spec §6.2). It
 // is sized as browsers size inline SVG: the width and height its
@@ -33,7 +40,20 @@ func (r *htmlReader) inlineSVG(n *html.Node, css map[string]string, st *hstyle) 
 	if color == 0 {
 		color = textColor
 	}
-	data := webdoc.SVGDocument(n, color.CSS(), r.elementByID(n), r.embedImage)
+	limit := r.d.MaxSVG
+	if limit <= 0 {
+		limit = maxSVGBytes
+	}
+	var data []byte
+	if left := limit - r.used.svgBytes; left > 0 {
+		data, _ = webdoc.SVGDocumentMax(n, color.CSS(), r.elementByID(n), r.embedImage, left)
+	}
+	if data == nil {
+		r.used.svgBytes = limit
+		r.c.warnOnce("svg", "the svg elements make SVG documents of more than %d MiB; the svg elements after them are left out", limit>>20)
+		return
+	}
+	r.used.svgBytes += len(data)
 	s := imgconv.ParseSVGSize("", "", attrStr(n, "viewBox"))
 	im := &htmlImage{hash: r.c.doc.AddImage(data), ratio: s.Ratio()}
 	r.picture(n, css, st, im, aw, ah, svgAlt(n, st))
@@ -96,7 +116,7 @@ func (r *htmlReader) embedImage(href string) string {
 	}
 	data, err := r.d.Image(href)
 	if err != nil {
-		r.c.warnf("image %s in an SVG: %v", href, err)
+		r.warnImage(href, " in an SVG", err)
 		return ""
 	}
 	format := imgconv.Sniff(data)

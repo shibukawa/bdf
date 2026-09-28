@@ -71,7 +71,7 @@ func (s *Drawing) DrawGraphic(cv *canvas.Canvas, graphic *ooxml.Node, part strin
 	case el.Name == "wsp":
 		s.drawSp(cv, sh)
 	case el.Name == "wgp" || el.Name == "grpSp":
-		s.drawGroupAt(cv, sh, xf)
+		s.drawGroupAt(cv, sh, xf, 0)
 	case el.Name == "wpc":
 		// a drawing canvas: its shapes are placed relative to it
 		if bg := el.Child("bg"); bg != nil {
@@ -84,12 +84,12 @@ func (s *Drawing) DrawGraphic(cv *canvas.Canvas, graphic *ooxml.Node, part strin
 		}
 		g := &groupCtx{xf: xf, chExt: [2]float64{xf.W, xf.H}, part: part}
 		for _, k := range el.Kids {
-			s.drawElem(cv, k, part, g)
+			s.drawElem(cv, k, part, g, 0)
 		}
 	case strings.HasSuffix(uri, "/chart") || el.Name == "chart":
 		s.drawChart(cv, sh, xf, el.RelID("id"))
 	case strings.HasSuffix(uri, "/diagram") || el.Name == "relIds":
-		s.drawDiagram(cv, sh, xf, el)
+		s.drawDiagram(cv, sh, xf, el, 0)
 	default:
 		pic := findPic(gd)
 		if pic == nil {
@@ -115,7 +115,7 @@ func findPic(n *ooxml.Node) *ooxml.Node {
 }
 
 // drawGroupAt draws a group whose own box is xf (instead of its xfrm).
-func (s *Drawing) drawGroupAt(cv *canvas.Canvas, sh *shape, xf xform) {
+func (s *Drawing) drawGroupAt(cv *canvas.Canvas, sh *shape, xf xform, depth int) {
 	gp := sh.n.Child("grpSpPr")
 	x := gp.Child("xfrm")
 	g := &groupCtx{parent: sh.grp, xf: xf, spPr: gp, part: sh.part}
@@ -124,7 +124,7 @@ func (s *Drawing) drawGroupAt(cv *canvas.Canvas, sh *shape, xf xform) {
 	g.chOff = [2]float64{chOff.AttrEMU("x", 0), chOff.AttrEMU("y", 0)}
 	g.chExt = [2]float64{chExt.AttrEMU("cx", ext.AttrEMU("cx", xf.W)), chExt.AttrEMU("cy", ext.AttrEMU("cy", xf.H))}
 	for _, k := range sh.n.Kids {
-		s.drawElem(cv, k, sh.part, g)
+		s.drawElem(cv, k, sh.part, g, depth+1)
 	}
 }
 

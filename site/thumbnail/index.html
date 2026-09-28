@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- head -->
+<title>Thumbnails – bdf</title>
+</head>
+<body class="tool">
+<!-- header -->
+<main id="content" class="wrap" tabindex="-1">
+  <h1>Thumbnails</h1>
+  <p class="lead">Drop a file on the page: it is converted into bdf, and its thumbnails are drawn at four sizes at once.
+    They are drawn by the Go package a server draws them with (<code>thumbnail</code>, a rasterizer in pure Go), built as WebAssembly. The file is not uploaded anywhere.</p>
+  <div class="drop">
+    <p><button type="button" class="button primary" id="choose">Choose a file…</button> or drop one anywhere on the page.</p>
+    <input id="file" type="file" hidden>
+    <p class="samples" id="samples" hidden></p>
+  </div>
+  <div class="options">
+    <label>layout <select id="mode" title="auto: by the kind of document; crop: a square from the top-left of the first page; fit: the whole first page">
+      <option value="auto">auto</option>
+      <option value="crop">crop</option>
+      <option value="fit">fit</option>
+    </select></label>
+    <label>format <select id="format">
+      <option value="png">PNG</option>
+      <option value="jpeg">JPEG</option>
+    </select></label>
+    <label title="the resolution a sheet is drawn at: a lower value shows more cells, smaller">sheet resolution
+      <input id="dpi" type="number" min="24" max="288" step="12" value="72"> dpi</label>
+    <span class="hint" id="dpiHint">of Excel, CSV and Parquet sheets</span>
+  </div>
+  <p class="status" id="status" role="status">no document yet</p>
+  <ul class="thumbs" id="thumbs"></ul>
+  <p class="note" id="notes" hidden></p>
+  <section class="how" id="how" hidden>
+    <h2>The same on a server</h2>
+    <pre><code id="cli"></code></pre>
+    <pre><code id="go"></code></pre>
+  </section>
+</main>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

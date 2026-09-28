@@ -20,6 +20,8 @@ type OMML struct {
 	// for normal text. The runs of Word documents have a w:rPr, which the
 	// reader reads itself.
 	RunStyle func(rPr *ooxml.Node) (style *Styled, font string, bold, italic bool)
+
+	depth int // how deeply the argument being read is nested
 }
 
 // alignMark is an alignment point of an equation array (& in a run).
@@ -51,8 +53,14 @@ func (o *OMML) ParseOMML(n *ooxml.Node) Node {
 	return row(o.content(n))
 }
 
-// content reads the elements of an argument.
+// content reads the elements of an argument. Of an argument nested deeper
+// than maxDepth, the runs are read, one after the other.
 func (o *OMML) content(n *ooxml.Node) []Node {
+	if o.depth >= maxDepth {
+		return o.runs(n)
+	}
+	o.depth++
+	defer func() { o.depth-- }()
 	var out []Node
 	for _, k := range n.Elements() {
 		switch k.Name {
@@ -64,6 +72,25 @@ func (o *OMML) content(n *ooxml.Node) []Node {
 			if node := o.element(k); node != nil {
 				out = append(out, node)
 			}
+		}
+	}
+	return out
+}
+
+// runs reads the runs in an element, however deeply they are in it.
+func (o *OMML) runs(n *ooxml.Node) []Node {
+	var out []Node
+	todo := []*ooxml.Node{n}
+	for len(todo) > 0 {
+		k := todo[len(todo)-1]
+		todo = todo[:len(todo)-1]
+		if k.Name == "r" {
+			out = append(out, o.run(k)...)
+			continue
+		}
+		kids := k.Elements()
+		for i := len(kids) - 1; i >= 0; i-- {
+			todo = append(todo, kids[i])
 		}
 	}
 	return out

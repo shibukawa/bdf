@@ -89,6 +89,35 @@ func svgRoot(b []byte) (isSVG, known bool) {
 // entityRE matches the general entities of an internal DTD subset.
 var entityRE = regexp.MustCompile(`<!ENTITY\s+([A-Za-z_][\w.-]*)\s+(?:"([^"]*)"|'([^']*)')\s*>`)
 
+// maxEntityText bounds the text that the entities of a document stand
+// for, all their references taken together. Illustrator's entities name
+// namespaces; an entity of many bytes referred to many times makes a small
+// file a large text.
+const maxEntityText = 1 << 20
+
+// entityText returns the bytes of the entities that the references in
+// data stand for.
+func entityText(data []byte, entities map[string]string) int {
+	if len(entities) == 0 {
+		return 0
+	}
+	longest := 0
+	for name := range entities {
+		longest = max(longest, len(name))
+	}
+	n := 0
+	for {
+		i := bytes.IndexByte(data, '&')
+		if i < 0 {
+			return n
+		}
+		data = data[i+1:]
+		if j := bytes.IndexByte(data[:min(len(data), longest+1)], ';'); j > 0 {
+			n += len(entities[string(data[:j])])
+		}
+	}
+}
+
 // readSVG reads the size of an SVG image as browsers give it to an image
 // element, its title, description and RDF metadata, and its language.
 func readSVG(data []byte) (*picture, error) {
@@ -100,6 +129,11 @@ func readSVG(data []byte) (*picture, error) {
 	}
 	for _, m := range entityRE.FindAllSubmatch(head, -1) {
 		entities[string(m[1])] = string(m[2]) + string(m[3])
+	}
+	var warnings []string
+	if entityText(data, entities) > maxEntityText {
+		warnings = append(warnings, "the entities of the SVG document stand for too much text: they are not replaced")
+		entities = nil
 	}
 	d := xmp.Decoder(data, entities)
 	var root xml.StartElement
@@ -116,7 +150,7 @@ func readSVG(data []byte) (*picture, error) {
 	if root.Name.Local != "svg" {
 		return nil, errors.New("the root element is not svg")
 	}
-	p := &picture{format: "svg"}
+	p := &picture{format: "svg", warnings: warnings}
 	rn := &xmp.Node{Name: root.Name, Attrs: root.Attr}
 	if root.Name.Space != nsSVG {
 		p.warnings = append(p.warnings, `the root svg element is not in the SVG namespace (xmlns="`+nsSVG+`"): browsers do not draw it`)

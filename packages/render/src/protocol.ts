@@ -17,6 +17,10 @@ export interface PlayData {
 export interface WorkerOpenOptions {
   /** Bytes of decoded images the worker keeps (see ResourceOptions.imageBudget). */
   imageBudget?: number;
+  /** Images of more pixels are not decoded (see ResourceOptions.maxImagePixels). */
+  maxImagePixels?: number;
+  /** Bytes of decoded images one render may hold (see ResourceOptions.holdLimit). */
+  holdLimit?: number;
 }
 
 export type WorkerRequest =

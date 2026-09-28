@@ -10,10 +10,12 @@ import (
 
 // ParseMathML reads a MathML math element as golang.org/x/net/html parses
 // it (presentation MathML, with the deprecated elements pages still use:
-// mfenced, mstyle's attributes). display reports display="block".
+// mfenced, mstyle's attributes). display reports display="block". Of the
+// elements nested deeper than maxDepth, the tokens are read, in a row.
 func ParseMathML(n *html.Node) (formula Node, display bool) {
 	display = strings.EqualFold(attrOf(n, "display"), "block") || strings.EqualFold(attrOf(n, "mode"), "display")
-	var f Node = mrow(n)
+	m := &mathReader{}
+	var f Node = m.mrow(n)
 	if v := attrOf(n, "displaystyle"); v != "" {
 		f = &Styled{Kid: f, Display: boolStyle(v)}
 	}
@@ -48,37 +50,87 @@ func elems(n *html.Node) []*html.Node {
 	return out
 }
 
+// mathReader reads the elements of a formula.
+type mathReader struct {
+	depth int // how deeply the element being read is nested
+}
+
 // mrow reads the children of n as a row.
-func mrow(n *html.Node) Node {
+func (m *mathReader) mrow(n *html.Node) Node {
 	var kids []Node
 	for _, k := range elems(n) {
-		if m := mathml(k); m != nil {
-			kids = append(kids, m)
+		if node := m.mathml(k); node != nil {
+			kids = append(kids, node)
 		}
 	}
 	return row(kids)
 }
 
 // arg returns the i-th child of n as a node (an empty row when missing).
-func mathArg(kids []*html.Node, i int) Node {
+func (m *mathReader) mathArg(kids []*html.Node, i int) Node {
 	if i >= len(kids) {
 		return &Row{}
 	}
-	if m := mathml(kids[i]); m != nil {
-		return m
+	if node := m.mathml(kids[i]); node != nil {
+		return node
 	}
 	return &Row{}
 }
 
 // optArg is mathArg, with nil for a missing child or <none/>.
-func optArg(kids []*html.Node, i int) Node {
+func (m *mathReader) optArg(kids []*html.Node, i int) Node {
 	if i >= len(kids) || localName(kids[i]) == "none" {
 		return nil
 	}
-	return mathml(kids[i])
+	return m.mathml(kids[i])
 }
 
-func mathml(n *html.Node) Node {
+// isToken reports whether an element is a token, which holds text.
+func isToken(n *html.Node) bool {
+	switch localName(n) {
+	case "mi", "mn", "mo", "mtext", "ms", "mspace":
+		return true
+	}
+	return false
+}
+
+// tokens reads the tokens in an element nested too deeply for what it
+// makes of them, in a row.
+func (m *mathReader) tokens(n *html.Node) Node {
+	var kids []Node
+	for k := n; k != nil; {
+		down := k.Type == html.ElementNode
+		switch {
+		case !down:
+		case isToken(k):
+			kids = append(kids, m.mathml(k))
+			down = false
+		case localName(k) == "annotation" || localName(k) == "annotation-xml":
+			down = false
+		}
+		if down && k.FirstChild != nil {
+			k = k.FirstChild
+			continue
+		}
+		for k != n && k.NextSibling == nil {
+			k = k.Parent
+		}
+		if k == n {
+			break
+		}
+		k = k.NextSibling
+	}
+	return row(kids)
+}
+
+func (m *mathReader) mathml(n *html.Node) Node {
+	if !isToken(n) {
+		if m.depth >= maxDepth {
+			return m.tokens(n)
+		}
+		m.depth++
+		defer func() { m.depth-- }()
+	}
 	kids := elems(n)
 	var out Node
 	switch localName(n) {
@@ -106,7 +158,7 @@ func mathml(n *html.Node) Node {
 	case "mspace":
 		out = &Space{Width: mathLength(attrOf(n, "width"), 0)}
 	case "mrow", "merror", "mpadded", "mstyle", "math":
-		out = mrow(n)
+		out = m.mrow(n)
 		if localName(n) == "mstyle" {
 			s := &Styled{Kid: out}
 			if v := attrOf(n, "displaystyle"); v != "" {
@@ -125,9 +177,9 @@ func mathml(n *html.Node) Node {
 			out = s
 		}
 	case "mphantom":
-		out = &Phantom{Kid: mrow(n)}
+		out = &Phantom{Kid: m.mrow(n)}
 	case "mfrac":
-		f := &Frac{Num: mathArg(kids, 0), Den: mathArg(kids, 1)}
+		f := &Frac{Num: m.mathArg(kids, 0), Den: m.mathArg(kids, 1)}
 		switch lt := attrOf(n, "linethickness"); lt {
 		case "", "medium":
 		case "thin":
@@ -147,58 +199,58 @@ func mathml(n *html.Node) Node {
 		f.NumAlign, f.DenAlign = mathAlign(attrOf(n, "numalign")), mathAlign(attrOf(n, "denomalign"))
 		out = f
 	case "msqrt":
-		out = &Radical{Base: mrow(n)}
+		out = &Radical{Base: m.mrow(n)}
 	case "mroot":
-		out = &Radical{Base: mathArg(kids, 0), Degree: mathArg(kids, 1)}
+		out = &Radical{Base: m.mathArg(kids, 0), Degree: m.mathArg(kids, 1)}
 	case "msub":
-		out = &Scripts{Base: mathArg(kids, 0), Sub: optArg(kids, 1)}
+		out = &Scripts{Base: m.mathArg(kids, 0), Sub: m.optArg(kids, 1)}
 	case "msup":
-		out = &Scripts{Base: mathArg(kids, 0), Sup: optArg(kids, 1)}
+		out = &Scripts{Base: m.mathArg(kids, 0), Sup: m.optArg(kids, 1)}
 	case "msubsup":
-		out = &Scripts{Base: mathArg(kids, 0), Sub: optArg(kids, 1), Sup: optArg(kids, 2)}
+		out = &Scripts{Base: m.mathArg(kids, 0), Sub: m.optArg(kids, 1), Sup: m.optArg(kids, 2)}
 	case "munder", "mover", "munderover":
-		u := &UnderOver{Base: mathArg(kids, 0)}
+		u := &UnderOver{Base: m.mathArg(kids, 0)}
 		switch localName(n) {
 		case "munder":
-			u.Under = optArg(kids, 1)
+			u.Under = m.optArg(kids, 1)
 		case "mover":
-			u.Over = optArg(kids, 1)
+			u.Over = m.optArg(kids, 1)
 		default:
-			u.Under, u.Over = optArg(kids, 1), optArg(kids, 2)
+			u.Under, u.Over = m.optArg(kids, 1), m.optArg(kids, 2)
 		}
 		u.AccentOver = accentOf(n, "accent", u.Over)
 		u.AccentUnder = accentOf(n, "accentunder", u.Under)
 		out = u
 	case "mmultiscripts":
-		out = multiscripts(kids)
+		out = m.multiscripts(kids)
 	case "mtable":
-		out = mathTable(n)
+		out = m.mathTable(n)
 	case "menclose":
-		out = enclose(n)
+		out = m.enclose(n)
 	case "mfenced":
-		out = mfenced(n, kids)
+		out = m.mfenced(n, kids)
 	case "semantics":
 		for _, k := range kids {
 			switch localName(k) {
 			case "annotation", "annotation-xml":
 				continue
 			}
-			return withStyle(n, mathml(k))
+			return withStyle(n, m.mathml(k))
 		}
 		for _, k := range kids {
 			if localName(k) == "annotation" && strings.Contains(strings.ToLower(attrOf(k, "encoding")), "tex") {
-				return ParseTeX(textOf(k))
+				return parseTeX(textOf(k), m.depth)
 			}
 		}
 		return nil
 	case "maction":
 		if len(kids) > 0 {
-			out = mathml(kids[0])
+			out = m.mathml(kids[0])
 		}
 	case "annotation", "annotation-xml", "none", "mprescripts", "mglyph", "malignmark", "maligngroup":
 		return nil
 	default:
-		out = mrow(n)
+		out = m.mrow(n)
 	}
 	return withStyle(n, out)
 }
@@ -339,8 +391,8 @@ func accentOf(n *html.Node, name string, script Node) bool {
 	return a != nil && a.Kind == Op && a.Accent
 }
 
-func multiscripts(kids []*html.Node) Node {
-	s := &Scripts{Base: mathArg(kids, 0)}
+func (m *mathReader) multiscripts(kids []*html.Node) Node {
+	s := &Scripts{Base: m.mathArg(kids, 0)}
 	var post, pre []*html.Node
 	cur := &post
 	for _, k := range kids[min(1, len(kids)):] {
@@ -353,10 +405,10 @@ func multiscripts(kids []*html.Node) Node {
 	pair := func(list []*html.Node) (sub, sup Node) {
 		var subs, sups []Node
 		for i := 0; i+1 < len(list); i += 2 {
-			if a := optArg(list, i); a != nil {
+			if a := m.optArg(list, i); a != nil {
 				subs = append(subs, a)
 			}
-			if a := optArg(list, i+1); a != nil {
+			if a := m.optArg(list, i+1); a != nil {
 				sups = append(sups, a)
 			}
 		}
@@ -373,7 +425,7 @@ func multiscripts(kids []*html.Node) Node {
 	return s
 }
 
-func mathTable(n *html.Node) Node {
+func (m *mathReader) mathTable(n *html.Node) Node {
 	t := &Table{}
 	for _, a := range strings.Fields(attrOf(n, "columnalign")) {
 		t.ColAlign = append(t.ColAlign, mathAlign(a))
@@ -397,15 +449,15 @@ func mathTable(n *html.Node) Node {
 			if name == "mlabeledtr" && i == 0 {
 				continue
 			}
-			cells = append(cells, withStyle(td, mrow(td)))
+			cells = append(cells, withStyle(td, m.mrow(td)))
 		}
 		t.Rows = append(t.Rows, cells)
 	}
 	return t
 }
 
-func enclose(n *html.Node) Node {
-	kid := mrow(n)
+func (m *mathReader) enclose(n *html.Node) Node {
+	kid := m.mrow(n)
 	e := &Enclose{Kid: kid}
 	notation := strings.Fields(attrOf(n, "notation"))
 	if len(notation) == 0 {
@@ -448,7 +500,7 @@ func enclose(n *html.Node) Node {
 	return e
 }
 
-func mfenced(n *html.Node, kids []*html.Node) Node {
+func (m *mathReader) mfenced(n *html.Node, kids []*html.Node) Node {
 	open, close := "(", ")"
 	if v, ok := attrValue(n, "open"); ok {
 		open = strings.TrimSpace(v)
@@ -467,8 +519,8 @@ func mfenced(n *html.Node, kids []*html.Node) Node {
 			s.Class = Punct
 			inner = append(inner, s)
 		}
-		if m := mathml(k); m != nil {
-			inner = append(inner, m)
+		if node := m.mathml(k); node != nil {
+			inner = append(inner, node)
 		}
 	}
 	if open == "" {

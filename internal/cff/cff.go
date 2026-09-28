@@ -5,6 +5,7 @@ package cff
 import (
 	"encoding/binary"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -30,7 +31,7 @@ type Font struct {
 // ReadIndex reads the INDEX at pos and returns its items and the position
 // after it.
 func ReadIndex(b []byte, pos int) ([][]byte, int, error) {
-	if pos+2 > len(b) {
+	if pos > len(b)-2 {
 		return nil, pos, errors.New("cff: truncated index")
 	}
 	count := int(be16(b, pos))
@@ -169,16 +170,16 @@ func Parse(data []byte) (*Font, error) {
 		f.IsCID = true
 	}
 	if v := top[1]; len(v) == 1 {
-		f.Notice = f.SIDName(int(v[0]))
+		f.Notice = f.SIDName(operand(v[0]))
 	}
 	if v := top[1200]; len(v) == 1 {
-		f.Copyright = f.SIDName(int(v[0]))
+		f.Copyright = f.SIDName(operand(v[0]))
 	}
 	csOff := top[17]
 	if len(csOff) == 0 {
 		return nil, errors.New("cff: no CharStrings")
 	}
-	charStrings, _, err := ReadIndex(data, int(csOff[0]))
+	charStrings, _, err := ReadIndex(data, operand(csOff[0]))
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +192,7 @@ func Parse(data []byte) (*Font, error) {
 	f.Charset = make([]int, f.NumGlyphs)
 	charsetOff := 0
 	if v := top[15]; len(v) > 0 {
-		charsetOff = int(v[0])
+		charsetOff = operand(v[0])
 	}
 	switch charsetOff {
 	case 0, 1, 2: // ISOAdobe / Expert / ExpertSubset: identity SIDs are a good enough approximation
@@ -250,7 +251,7 @@ func Parse(data []byte) (*Font, error) {
 		f.Encoding = map[int]int{}
 		encOff := 0
 		if v := top[16]; len(v) > 0 {
-			encOff = int(v[0])
+			encOff = operand(v[0])
 		}
 		switch encOff {
 		case 0, 1: // standard (expert treated as standard)
@@ -320,15 +321,33 @@ func (f *Font) SIDName(sid int) string {
 }
 
 func be32(b []byte, i int) uint32 {
-	if i < 0 || i+4 > len(b) {
+	if i < 0 || i > len(b)-4 {
 		return 0
 	}
 	return binary.BigEndian.Uint32(b[i:])
 }
 
 func be16(b []byte, i int) uint16 {
-	if i < 0 || i+2 > len(b) {
+	if i < 0 || i > len(b)-2 {
 		return 0
 	}
 	return binary.BigEndian.Uint16(b[i:])
+}
+
+// operand is an operand of a DICT as an integer: an offset, a size or a
+// string ID. DICTs hold real numbers too, which may be as large as 1E300:
+// what no offset can be is cut to 2^40 (to half of what an int holds where
+// that is less), so that adding two operands stays an integer, and what is
+// not a number of 64 bits is negative, which no offset is.
+func operand(v float64) int {
+	const limit = min(1<<40, math.MaxInt/2)
+	switch {
+	case v != v, v >= 1<<63, v < -(1 << 63):
+		return -limit
+	case v > limit:
+		return limit
+	case v < -limit:
+		return -limit
+	}
+	return int(v)
 }

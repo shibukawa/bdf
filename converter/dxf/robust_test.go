@@ -1,6 +1,8 @@
 package dxf
 
 import (
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -208,5 +210,71 @@ func TestR12Viewport(t *testing.T) {
 	}
 	if strings.Contains(text, "FROZEN HERE") {
 		t.Errorf("a layer frozen in the viewport is shown: %q", text)
+	}
+}
+
+// TestMlineElementCount draws a multiline that states more elements than
+// its vertices have parameters for.
+func TestMlineElementCount(t *testing.T) {
+	data := entities("0", "MLINE", "8", "0", "73", "1e18",
+		"11", "0", "21", "0", "74", "1", "41", "0",
+		"11", "5", "21", "5", "74", "1", "41", "0")
+	var out *cad.Drawing
+	within(t, 5*time.Second, "a multiline of 1e18 elements", func() { _, out = drawing(t, data) })
+	if len(out.Items) != 1 {
+		t.Errorf("%d items, want the one element the vertices describe", len(out.Items))
+	}
+}
+
+// TestPolygonMeshCounts draws polygon meshes whose counts of vertices do
+// not fit the vertices that follow: their product may even wrap around to
+// a small number.
+func TestPolygonMeshCounts(t *testing.T) {
+	for _, mn := range [][2]string{{"8589934592", "2147483648"}, {"4294967296", "4294967296"}, {"1", "1e12"}, {"3", "3"}} {
+		data := entities("0", "POLYLINE", "8", "0", "66", "1", "70", "16", "71", mn[0], "72", mn[1],
+			"0", "VERTEX", "8", "0", "10", "0", "20", "0", "70", "64",
+			"0", "VERTEX", "8", "0", "10", "1", "20", "0", "70", "64",
+			"0", "SEQEND")
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		var out *cad.Drawing
+		within(t, 5*time.Second, "a mesh of "+mn[0]+" by "+mn[1], func() { _, out = drawing(t, data) })
+		runtime.ReadMemStats(&after)
+		if n := after.TotalAlloc - before.TotalAlloc; n > 16<<20 {
+			t.Errorf("mesh of %s by %s: %d bytes allocated", mn[0], mn[1], n)
+		}
+		if len(out.Items) != 0 {
+			t.Errorf("mesh of %s by %s: %d items drawn from 2 vertices", mn[0], mn[1], len(out.Items))
+		}
+	}
+}
+
+// TestPointBudget draws a long polyline in a block that a block inserts
+// as an array: few entities, and twenty million points.
+func TestPointBudget(t *testing.T) {
+	const vertices = 2000
+	poly := []string{"0", "LWPOLYLINE", "8", "0", "90", "2000", "70", "0"}
+	for i := range vertices {
+		poly = append(poly, "10", strconv.Itoa(i%50), "20", strconv.Itoa(i/50))
+	}
+	pairs := []string{"0", "SECTION", "2", "BLOCKS",
+		"0", "BLOCK", "8", "0", "2", "A", "70", "0", "10", "0", "20", "0"}
+	pairs = append(pairs, poly...)
+	pairs = append(pairs, "0", "ENDBLK",
+		"0", "BLOCK", "8", "0", "2", "B", "70", "0", "10", "0", "20", "0",
+		"0", "INSERT", "8", "0", "2", "A", "10", "0", "20", "0", "70", "100", "71", "100", "44", "60", "45", "60",
+		"0", "ENDBLK", "0", "ENDSEC",
+		"0", "SECTION", "2", "ENTITIES",
+		"0", "INSERT", "8", "0", "2", "B", "10", "0", "20", "0",
+		"0", "LINE", "8", "0", "10", "0", "20", "0", "11", "1", "21", "1",
+		"0", "ENDSEC", "0", "EOF")
+	var c *converter
+	var out *cad.Drawing
+	within(t, 20*time.Second, "an array of long polylines", func() { c, out = drawing(t, dxfText(pairs...)) })
+	if n := out.Points(); n <= maxPoints-vertices || n > maxPoints+vertices {
+		t.Errorf("%d points drawn, want the %d of the budget", n, maxPoints)
+	}
+	if !c.warned["points"] {
+		t.Error("no warning for the points left out")
 	}
 }

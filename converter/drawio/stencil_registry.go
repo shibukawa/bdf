@@ -271,7 +271,7 @@ func decompressGraph(data string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("base64: %w", err)
 	}
-	inflated, err := io.ReadAll(flate.NewReader(bytes.NewReader(raw)))
+	inflated, err := readAllLimited(flate.NewReader(bytes.NewReader(raw)))
 	if err != nil {
 		return "", fmt.Errorf("inflate: %w", err)
 	}

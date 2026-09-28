@@ -75,11 +75,7 @@ func (p *Path) encode(w *buf) {
 }
 
 func decodePath(r *reader) *Path {
-	n := int(r.varuint())
-	if n > len(r.b) {
-		r.fail("bad path verb count")
-		return nil
-	}
+	n := r.count(1, "bad path verb count")
 	p := &Path{Verbs: append([]byte(nil), r.bytes(n)...)}
 	total := 0
 	for _, v := range p.Verbs {
@@ -88,6 +84,9 @@ func decodePath(r *reader) *Path {
 			return nil
 		}
 		total += verbArgs[v]
+	}
+	if !r.need(4 * total) {
+		return nil
 	}
 	p.Args = make([]float32, total)
 	for i := range p.Args {
@@ -109,10 +108,7 @@ func EncodePathCollection(paths []*Path) []byte {
 // DecodePathCollection decodes a Path collection part.
 func DecodePathCollection(data []byte) ([]*Path, error) {
 	r := &reader{b: data}
-	n := int(r.varuint())
-	if n > len(data) {
-		return nil, &FormatError{Msg: "bad path collection count"}
-	}
+	n := r.count(1, "bad path collection count")
 	out := make([]*Path, 0, n)
 	for i := 0; i < n && r.err == nil; i++ {
 		out = append(out, decodePath(r))

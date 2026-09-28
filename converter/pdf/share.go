@@ -72,17 +72,21 @@ func (c *converter) sharePagePrefixes() {
 // maps follow the new references (fonts[i] / objects[i] give the reference
 // in old that the new reference i came from; -1 is the prefix placeholder).
 func (c *converter) rebindPending(obj *bdf.Object, old *pending, fonts []bdf.FontRef, objects []int, prefix *pending) *pending {
-	p := &pending{obj: obj, fonts: map[bdf.FontRef]*pdfFont{}, fontRefs: map[*pdfFont]bdf.FontRef{}, children: map[bdf.ObjRef]*pending{}, bbox: old.bbox}
+	p := &pending{obj: obj, fonts: map[bdf.FontRef]*pdfFont{}, fontRefs: map[*pdfFont]bdf.FontRef{}, children: map[bdf.ObjRef]*pending{},
+		childRefs: map[*pending]bdf.ObjRef{}, bbox: old.bbox}
 	for i, oldRef := range fonts {
 		f := old.fonts[oldRef]
 		p.fonts[bdf.FontRef(i)] = f
 		p.fontRefs[f] = bdf.FontRef(i)
 	}
 	for i, oldRef := range objects {
-		if oldRef < 0 {
-			p.children[bdf.ObjRef(i)] = prefix
-		} else {
-			p.children[bdf.ObjRef(i)] = old.children[bdf.ObjRef(oldRef)]
+		child := prefix
+		if oldRef >= 0 {
+			child = old.children[bdf.ObjRef(oldRef)]
+		}
+		p.children[bdf.ObjRef(i)] = child
+		if _, ok := p.childRefs[child]; !ok {
+			p.childRefs[child] = bdf.ObjRef(i)
 		}
 	}
 	return p

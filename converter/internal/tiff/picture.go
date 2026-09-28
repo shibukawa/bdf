@@ -3,6 +3,7 @@ package tiff
 import (
 	"bytes"
 	"errors"
+	"fmt"
 
 	"github.com/shibukawa/bdf/imgconv"
 )
@@ -25,6 +26,11 @@ func FirstPage(data []byte) (*IFD, error) {
 	return pages[0], nil
 }
 
+// MaxPicturePixels bounds the pixels of the pictures Picture returns: they
+// are stored as large as they are, for the viewer to decode, and the
+// converters and the rasterizer decode no larger ones.
+var MaxPicturePixels int64 = imgconv.MaxDecodePixels
+
 // Picture returns the first page of a TIFF file as an image file that
 // browsers decode: the page's JPEG strips joined into one JPEG when they
 // allow it (IFD.JPEG), otherwise its pixels, decoded and stored in the
@@ -36,6 +42,9 @@ func Picture(data []byte, opts imgconv.Options) (pic []byte, damaged bool, err e
 	d, err := FirstPage(data)
 	if err != nil {
 		return nil, false, err
+	}
+	if w, h := d.Size(); int64(w)*int64(h) > MaxPicturePixels {
+		return nil, false, fmt.Errorf("tiff: a picture of %d×%d pixels is too large", w, h)
 	}
 	if b, ok := d.JPEG(); ok {
 		return b, false, nil

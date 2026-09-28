@@ -11,19 +11,21 @@ import (
 // pending is a BDF object under construction whose font and child hashes are
 // patched in once every font program has been finalized.
 type pending struct {
-	obj      *bdf.Object
-	fonts    map[bdf.FontRef]*pdfFont
-	fontRefs map[*pdfFont]bdf.FontRef
-	children map[bdf.ObjRef]*pending
-	hash     bdf.Hash
-	encoded  bool
-	building bool
-	bbox     bdf.Rect
-	st       *formStruct // structure state a form was converted under
+	obj       *bdf.Object
+	fonts     map[bdf.FontRef]*pdfFont
+	fontRefs  map[*pdfFont]bdf.FontRef
+	children  map[bdf.ObjRef]*pending
+	childRefs map[*pending]bdf.ObjRef
+	hash      bdf.Hash
+	encoded   bool
+	building  bool
+	bbox      bdf.Rect
+	st        *formStruct // structure state a form was converted under
 }
 
 func newPending(bbox bdf.Rect) *pending {
-	p := &pending{obj: bdf.NewObject(), fonts: map[bdf.FontRef]*pdfFont{}, fontRefs: map[*pdfFont]bdf.FontRef{}, children: map[bdf.ObjRef]*pending{}, bbox: bbox}
+	p := &pending{obj: bdf.NewObject(), fonts: map[bdf.FontRef]*pdfFont{}, fontRefs: map[*pdfFont]bdf.FontRef{}, children: map[bdf.ObjRef]*pending{},
+		childRefs: map[*pending]bdf.ObjRef{}, bbox: bbox}
 	p.obj.SetBBox(bbox.X, bbox.Y, bbox.W, bbox.H)
 	return p
 }
@@ -39,13 +41,12 @@ func (p *pending) fontRef(f *pdfFont) bdf.FontRef {
 }
 
 func (p *pending) childRef(child *pending) bdf.ObjRef {
-	for r, c := range p.children {
-		if c == child {
-			return r
-		}
+	if r, ok := p.childRefs[child]; ok {
+		return r
 	}
 	r := p.obj.AddObject(bdf.Hash{}, child.bbox)
 	p.children[r] = child
+	p.childRefs[child] = r
 	return r
 }
 
@@ -134,6 +135,9 @@ type actualText struct {
 	used bool
 }
 
+// maxSaveDepth bounds the graphics states that q operators save.
+const maxSaveDepth = 1024
+
 // interp executes one content stream into a pending object.
 type interp struct {
 	c        *converter
@@ -142,6 +146,7 @@ type interp struct {
 	res      types.Dict
 	gs       gstate
 	stack    []gstate
+	unsaved  int // q operators ignored beyond maxSaveDepth
 	em       emitted
 	emStack  []emitted
 	ctmStack [][2]any
@@ -613,8 +618,19 @@ func (in *interp) exec(op string, args []types.Object) {
 	switch op {
 	// graphics state
 	case "q":
+		if len(in.stack) >= maxSaveDepth {
+			// Each q keeps a graphics state: a stream of nothing but q
+			// would keep a thousand times its size.
+			in.c.warnOnce("q-depth", "q operators nested more than %d deep; the deeper ones are ignored", maxSaveDepth)
+			in.unsaved++
+			break
+		}
 		in.save()
 	case "Q":
+		if in.unsaved > 0 {
+			in.unsaved-- // the Q of a q that was ignored
+			break
+		}
 		in.restore()
 	case "cm":
 		if n >= 6 {
@@ -829,14 +845,8 @@ func (in *interp) exec(op string, args []types.Object) {
 			if in.mcStack[n-1].hidden {
 				in.hidden--
 			}
+			in.actual = in.mcStack[n-1].outer
 			in.mcStack = in.mcStack[:n-1]
-			in.actual = nil
-			for i := n - 2; i >= 0; i-- {
-				if in.mcStack[i].actual != nil {
-					in.actual = in.mcStack[i].actual
-					break
-				}
-			}
 			if !sameTarget(prev, in.curTarget()) {
 				in.flushRun()
 			}
@@ -889,6 +899,10 @@ func (in *interp) markedContent(tag string, props types.Object) {
 		if e.set && !sameTarget(e.tgt, in.curTarget()) {
 			in.flushRun()
 		}
+	}
+	e.cur, e.outer = in.curTarget(), in.actual
+	if e.set {
+		e.cur = e.tgt
 	}
 	in.mcStack = append(in.mcStack, e)
 	if e.actual != nil {

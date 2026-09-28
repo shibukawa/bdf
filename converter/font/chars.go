@@ -87,8 +87,8 @@ func (c *converter) characters(s *scroll) {
 		p.label("Characters", margin, y+22, 18, true, colText, 0)
 	})
 	summary := fmt.Sprintf("%s characters in %d Unicode blocks", num(len(fc.runes)), len(cov))
-	if n := variationSequences(fc.f.Tables["cmap"]); n > 0 {
-		summary += fmt.Sprintf(", and %s variation sequences", num(n))
+	if n, more := variationSequences(fc.f.Tables["cmap"]); n > 0 {
+		summary += fmt.Sprintf(", and %s%s variation sequences", moreThan(more), num(n))
 	}
 	s.add(18, func(p *pen, y float64) {
 		p.obj().Mark(bdf.MarkParagraph, "")

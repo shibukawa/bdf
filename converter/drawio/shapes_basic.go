@@ -1025,6 +1025,27 @@ func patternSteps(limit, step float64) bool {
 	return step > 0 && limit/step < maxPatternLines
 }
 
+// maxPageRepeats bounds the lines of pattern fills, the teeth of zigzags
+// and the strokes of dashed wedges of a page. Each shape has a limit of
+// its own, which a page of many shapes multiplies. (A variable for the
+// tests, which lower it.)
+var maxPageRepeats = 1_000_000
+
+// repeats counts n lines, teeth or strokes of a shape and reports whether
+// the page has room for them; a shape is drawn without those that do not
+// fit.
+func (s *shape) repeats(n float64) bool {
+	c := s.conv
+	if c == nil {
+		return true
+	}
+	if c.repeats += int(min(max(n, 0), float64(maxPageRepeats))) + 1; c.repeats > maxPageRepeats {
+		c.warnOnce("repeats", "the page has more than %d lines of patterns; the rest are not drawn", maxPageRepeats)
+		return false
+	}
+	return true
+}
+
 // basicPatternFillRectShape ports mxShapeBasicPatternFillRect: a filled
 // rectangle hatched with lines step apart in fillStrokeColor and
 // fillStrokeWidth (fillStyle=diag, diagRev, diagGrid, vert, hor or grid),
@@ -1045,7 +1066,7 @@ var basicPatternFillRectShape = basicShape(func(s *shape, c *c2d, w, h float64) 
 	if fillStyle == "diag" || fillStyle == "diagGrid" {
 		step *= 1.41
 		c.begin()
-		for i := 0.0; i < h+w && patternSteps(h+w, step); i += step {
+		for i, ok := 0.0, patternSteps(h+w, step) && s.repeats((h+w)/step); i < h+w && ok; i += step {
 			if i <= h {
 				c.moveTo(0, i)
 				if i <= w {
@@ -1065,7 +1086,7 @@ var basicPatternFillRectShape = basicShape(func(s *shape, c *c2d, w, h float64) 
 		c.stroke()
 	} else if fillStyle == "vert" || fillStyle == "grid" {
 		c.begin()
-		for i := 0.0; i <= w && patternSteps(w, step); i += step {
+		for i, ok := 0.0, patternSteps(w, step) && s.repeats(w/step); i <= w && ok; i += step {
 			c.moveTo(i, 0)
 			c.lineTo(i, h)
 		}
@@ -1076,7 +1097,7 @@ var basicPatternFillRectShape = basicShape(func(s *shape, c *c2d, w, h float64) 
 			step *= 1.41
 		}
 		c.begin()
-		for i := 0.0; i < h+w && patternSteps(h+w, step); i += step {
+		for i, ok := 0.0, patternSteps(h+w, step) && s.repeats((h+w)/step); i < h+w && ok; i += step {
 			if i <= h {
 				c.moveTo(w, i)
 				if i <= w {
@@ -1096,7 +1117,7 @@ var basicPatternFillRectShape = basicShape(func(s *shape, c *c2d, w, h float64) 
 		c.stroke()
 	} else if fillStyle == "hor" || fillStyle == "grid" {
 		c.begin()
-		for i := 0.0; i <= h && patternSteps(h, step); i += step {
+		for i, ok := 0.0, patternSteps(h, step) && s.repeats(h/step); i <= h && ok; i += step {
 			c.moveTo(0, i)
 			c.lineTo(w, i)
 		}

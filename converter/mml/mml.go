@@ -101,6 +101,7 @@ type Options struct {
 // Budgets that keep hostile files from running away.
 const (
 	maxNotes  = 1_000_000      // notes of the performance
+	maxTracks = 1024           // tracks with notes
 	maxTicks  = 10_000 * whole // length of a track: 10,000 whole notes
 	maxSteps  = 20_000_000     // commands played, loops played out
 	maxDepth  = 64             // nesting of loops and tuplets
@@ -635,6 +636,10 @@ func (s *source) play(dialect string, up, program int) *player {
 	perf := &music.Performance{Title: s.title, Composer: s.composer, Arranger: s.arranger, Lyricist: s.lyricist, Copyright: s.copyright}
 	p.perf = perf
 	for i := range s.tracks {
+		if len(perf.Tracks) == maxTracks {
+			p.w.once("tracks", "the MML has more than %d tracks; the rest are left out", maxTracks)
+			break
+		}
 		ts := &s.tracks[i]
 		v := p.voice(ts)
 		v.run(ts.mml, 0)

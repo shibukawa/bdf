@@ -12,6 +12,12 @@ import (
 // maxSpan limits colspan (and the columns a table may have).
 const maxSpan = 1000
 
+// maxSpanSlots is how many slots the cells that span rows or columns may
+// take in the tables of a document; the cells after them span none. Each
+// slot takes memory, and a few cells can ask for any number of them (a
+// row of cells that span all the rows below).
+var maxSpanSlots = 1 << 18
+
 // table reads a table: its cells take the slots of the grid their row and
 // column spans make, and the columns get the widths their content asks for
 // (autoColumns). A caption goes above the table, inside its structure.
@@ -87,6 +93,14 @@ func (r *htmlReader) table(n *html.Node, css map[string]string, st *hstyle) {
 				rs = len(trs) - ri
 			}
 			rs = min(max(rs, 1), len(trs)-ri)
+			if slots := span * rs; slots > 1 {
+				if r.used.spanSlots+slots > maxSpanSlots {
+					r.c.warnOnce("spans", "the cells of the tables span more than %d rows and columns; the cells after them span none", maxSpanSlots)
+					span, rs = 1, 1
+				} else {
+					r.used.spanSlots += slots
+				}
+			}
 			ce := &cell{col: col, span: span, rowSpan: rs, vAlign: valign(k), mar: t.cellMar}
 			if rs > 1 {
 				ce.vmerge = "restart"

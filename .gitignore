@@ -144,3 +144,23 @@ vite.config.ts.timestamp-*
 test/.out/
 examples/viewer/.out/
 examples/viewer/.site/
+site/dist/
+
+# The three sample-architecture servers (examples/light-server,
+# examples/preview-server, examples/search): each web/build.mjs builds
+# main.js (and search.js), lib/ (workers and, for light-server, the wasm
+# converter modules) and fonts/ into web/, checked out fresh by whoever
+# runs the example; index.html, main.ts and build.mjs are the checked-in
+# source. Each server's own -cache/-thumbs directory (converted bdf files
+# and thumbnails, made at startup) is generated output too.
+examples/light-server/web/main.js*
+examples/light-server/web/lib/
+examples/light-server/web/fonts/
+examples/light-server/thumbs/
+examples/preview-server/web/main.js*
+examples/preview-server/web/lib/
+examples/preview-server/cache/
+examples/search/web/main.js*
+examples/search/web/search.js*
+examples/search/web/lib/
+examples/search/cache/

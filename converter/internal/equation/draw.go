@@ -2,6 +2,7 @@ package equation
 
 import (
 	"math"
+	"strings"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
@@ -62,7 +63,7 @@ func (b *Box) Draw(cv *canvas.Canvas, x, y float64) {
 			}
 			// glyphs that follow each other on a baseline in one font are
 			// one run
-			text, adv := it.text, it.adv
+			adv := it.adv
 			j := i + 1
 			for j < len(items) {
 				n := &items[j]
@@ -71,9 +72,16 @@ func (b *Box) Draw(cv *canvas.Canvas, x, y float64) {
 					n.sx != 1 || n.sy != 1 || math.Abs(p.x+p.adv-n.x) > 1e-3 {
 					break
 				}
-				text += n.text
 				adv += n.adv
 				j++
+			}
+			text := it.text
+			if j > i+1 {
+				var b strings.Builder
+				for k := i; k < j; k++ {
+					b.WriteString(items[k].text)
+				}
+				text = b.String()
 			}
 			cv.Obj.FillText(text, f32(x+it.x), f32(y+it.y), f32(adv))
 			i = j

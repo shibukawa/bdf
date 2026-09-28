@@ -92,7 +92,7 @@ func sampleProgram(fc *face, text string, subset bool) (data []byte, ok bool) {
 	// font is embedded whole
 	whole := t["morx"] != nil || t["mort"] != nil || t["Silf"] != nil
 	if !subset || whole {
-		if len(fc.data) > maxWholeSample {
+		if fc.size > maxWholeSample {
 			return nil, false
 		}
 		return sfnt.Build(t, fc.f.IsCFF), true
@@ -104,12 +104,12 @@ func sampleProgram(fc *face, text string, subset bool) (data []byte, ok bool) {
 	case t["glyf"] != nil:
 		f.PruneGlyphs(keep)
 	case t["CFF "] != nil:
-		if !f.PruneCFF(keep) && len(fc.data) > maxWholeSample {
+		if !f.PruneCFF(keep) && fc.size > maxWholeSample {
 			return nil, false
 		}
 	default:
 		// CFF2 and bitmap fonts are not pruned
-		if len(fc.data) > maxWholeSample {
+		if fc.size > maxWholeSample {
 			return nil, false
 		}
 	}
@@ -130,26 +130,59 @@ func (fc *face) reach(text string) map[uint16]bool {
 	if fc.gsub == nil {
 		return keep
 	}
-	for changed := true; changed; {
-		changed = false
+	closure(keep, func(fn func(otlayout.Subst) bool) {
 		for i := range fc.gsub.Lookups {
-			fc.gsub.Substs(i, func(s otlayout.Subst) bool {
-				for _, g := range s.In {
-					if !keep[g] {
-						return true
-					}
-				}
-				for _, g := range s.Out {
-					if !keep[g] {
-						keep[g] = true
-						changed = true
-					}
-				}
-				return true
-			})
+			fc.gsub.Substs(i, fn)
+		}
+	})
+	return keep
+}
+
+// closure adds to keep what substitutions make of glyphs in it, until
+// nothing is added. list lists the substitutions, and is called once: a
+// substitution whose glyphs are not all in the set waits for those that
+// are missing, and is applied when the last of them is added.
+func closure(keep map[uint16]bool, list func(fn func(otlayout.Subst) bool)) {
+	type waiting struct {
+		missing int
+		out     []uint16
+	}
+	var subs []waiting
+	waits := map[uint16][]int{} // glyph → the substitutions that wait for it
+	var added []uint16
+	add := func(out []uint16) {
+		for _, g := range out {
+			if !keep[g] {
+				keep[g] = true
+				added = append(added, g)
+			}
 		}
 	}
-	return keep
+	for g := range keep {
+		added = append(added, g)
+	}
+	list(func(s otlayout.Subst) bool {
+		if len(s.In) == 0 {
+			add(s.Out)
+			return true
+		}
+		// every glyph waits to be taken from added, those in the set too
+		for _, g := range s.In {
+			waits[g] = append(waits[g], len(subs))
+		}
+		subs = append(subs, waiting{len(s.In), s.Out})
+		return true
+	})
+	for len(added) > 0 {
+		g := added[len(added)-1]
+		added = added[:len(added)-1]
+		for _, i := range waits[g] {
+			if subs[i].missing--; subs[i].missing == 0 {
+				add(subs[i].out)
+			}
+		}
+		delete(waits, g)
+	}
 }
 
 // strikePPEM is the resolution of the one bitmap strike the glyph font

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { BufferSource, BdfDocument, extractContent } from "@bdf/core";
-import { tableCells, cellClipboard } from "../dist/cells.js";
+import { tableCells, cellClipboard, MAX_CLIPBOARD_CELLS } from "../dist/cells.js";
 
 const root = new URL("../../../", import.meta.url);
 const doc = await BdfDocument.open(new BufferSource(new Uint8Array(await readFile(new URL("testdata/demo.bdf", root)))));
@@ -117,4 +117,117 @@ test("cellClipboard leaves out hidden rows and columns, and trims whole rows and
   assert.deepEqual(cellClipboard([], { row0: 5, col0: 5, row1: 9, col1: 9 }, { trim: true }), { text: "", html: '<meta charset="utf-8"><table></table>' });
   // without trim, empty rows and columns stay
   assert.equal(cellClipboard([], { row0: 0, col0: 0, row1: 1, col1: 1 }).text, "\t\n\t");
+});
+
+/** cellClipboard as it was written first: every position of the rectangle looked up by its name. */
+function reference(cells, range, opts = {}) {
+  const field = (s) => (/[\t\n\r"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+  const escapeHTML = (s) => s.replace(/[&<>"]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"));
+  const lowerBound = (list, v) => {
+    const i = list.findIndex((x) => x >= v);
+    return i < 0 ? list.length : i;
+  };
+  const { row0, col0 } = range;
+  let { row1, col1 } = range;
+  const inside = [];
+  let lastRow = row0 - 1, lastCol = col0 - 1;
+  for (const cell of cells) {
+    const r0 = Math.max(cell.row, row0), c0 = Math.max(cell.col, col0);
+    const r1 = Math.min(cell.row + cell.rows - 1, row1), c1 = Math.min(cell.col + cell.cols - 1, col1);
+    if (r0 > r1 || c0 > c1) continue;
+    inside.push({ cell, r0, c0, r1, c1 });
+    if (cell.text) {
+      lastRow = Math.max(lastRow, r0);
+      lastCol = Math.max(lastCol, c0);
+    }
+  }
+  if (opts.trim) {
+    row1 = Math.min(row1, lastRow);
+    col1 = Math.min(col1, lastCol);
+  }
+  const rows = [], cols = [];
+  for (let r = row0; r <= row1; r++) if (!opts.skipRow?.(r)) rows.push(r);
+  for (let c = col0; c <= col1; c++) if (!opts.skipCol?.(c)) cols.push(c);
+  const at = new Map(), covered = new Set();
+  for (const { cell, r0, c0, r1, c1 } of inside) {
+    const ri = lowerBound(rows, r0), ci = lowerBound(cols, c0);
+    const rn = lowerBound(rows, Math.min(r1, row1) + 1) - ri, cn = lowerBound(cols, Math.min(c1, col1) + 1) - ci;
+    if (rn <= 0 || cn <= 0) continue;
+    at.set(`${ri},${ci}`, { cell, rows: rn, cols: cn });
+    for (let i = 0; i < rn; i++) for (let j = 0; j < cn; j++) if (i || j) covered.add(`${ri + i},${ci + j}`);
+  }
+  const lines = [];
+  let html = '<meta charset="utf-8"><table>';
+  for (let i = 0; i < rows.length; i++) {
+    const fields = [];
+    html += "<tr>";
+    for (let j = 0; j < cols.length; j++) {
+      const got = at.get(`${i},${j}`);
+      fields.push(got ? field(got.cell.text) : "");
+      if (covered.has(`${i},${j}`)) continue;
+      if (!got) {
+        html += "<td></td>";
+        continue;
+      }
+      const tag = got.cell.scope ? "th" : "td";
+      let attrs = got.cell.scope ? ` scope="${got.cell.scope}"` : "";
+      if (got.rows > 1) attrs += ` rowspan="${got.rows}"`;
+      if (got.cols > 1) attrs += ` colspan="${got.cols}"`;
+      html += `<${tag}${attrs}>${escapeHTML(got.cell.text).replace(/\n/g, '<br style="mso-data-placement:same-cell">')}</${tag}>`;
+    }
+    html += "</tr>";
+    lines.push(fields.join("\t"));
+  }
+  html += "</table>";
+  return { text: lines.join("\n"), html };
+}
+
+test("cellClipboard gives what it gave, for any cells and rectangle", () => {
+  // the same numbers every time
+  let seed = 12345;
+  const random = (n) => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed % n;
+  };
+  const texts = ["", "a", "two\nlines", 'q"', "t\tab", "<b>&</b>", "0"];
+  for (let round = 0; round < 400; round++) {
+    const size = 1 + random(12);
+    const cells = [];
+    for (let i = random(30); i > 0; i--) {
+      // merged cells and cells that lie on others, as no sheet has them
+      const cell = { row: random(size), col: random(size), rows: 1 + (random(4) ? 0 : random(4)), cols: 1 + (random(4) ? 0 : random(4)), text: texts[random(texts.length)] };
+      if (!random(5)) cell.scope = random(2) ? "col" : "row";
+      cells.push(cell);
+    }
+    const r = [random(size), random(size)].sort((a, b) => a - b), c = [random(size), random(size)].sort((a, b) => a - b);
+    const range = { row0: r[0], col0: c[0], row1: r[1] + random(3), col1: c[1] + random(3) };
+    const hiddenRow = random(3) ? -1 : random(size), hiddenCol = random(3) ? -1 : random(size);
+    const opts = { trim: !random(3), skipRow: (i) => i === hiddenRow, skipCol: (i) => i === hiddenCol };
+    assert.deepEqual(cellClipboard(cells, range, opts), reference(cells, range, opts), JSON.stringify({ cells, range, trim: opts.trim, hiddenRow, hiddenCol }));
+  }
+  // a rectangle upside down, or with no columns left
+  for (const range of [{ row0: 3, col0: 0, row1: 1, col1: 2 }, { row0: 0, col0: 3, row1: 2, col1: 1 }]) {
+    assert.deepEqual(cellClipboard([], range), reference([], range));
+  }
+  const none = { skipCol: () => true };
+  assert.deepEqual(cellClipboard([], { row0: 0, col0: 0, row1: 2, col1: 2 }, none), reference([], { row0: 0, col0: 0, row1: 2, col1: 2 }, none));
+});
+
+test("cellClipboard does not walk a rectangle of too many cells", () => {
+  const cell = (row, col, rows = 1, cols = 1) => ({ row, col, rows, cols, text: "x" });
+  const tooMany = /too many cells to copy/;
+  // two cells whose references are far apart
+  const far = [cell(0, 0), cell(3_999_999_999, 0)];
+  assert.throws(() => cellClipboard(far, { row0: 0, col0: 0, row1: 3_999_999_999, col1: 0 }), tooMany);
+  assert.throws(() => cellClipboard([cell(0, 0), cell(0, 1e12)], { row0: 0, col0: 0, row1: 0, col1: 1e12 }), tooMany);
+  assert.throws(() => cellClipboard([], { row0: 0, col0: 0, row1: Infinity, col1: 0 }), tooMany);
+  // as many as are copied: MAX_CLIPBOARD_CELLS, or 64 for each cell with something in it
+  const column = cellClipboard(far, { row0: 0, col0: 0, row1: MAX_CLIPBOARD_CELLS - 1, col1: 0 });
+  assert.equal(column.text.length, 1 + MAX_CLIPBOARD_CELLS - 1);
+  assert.throws(() => cellClipboard(far, { row0: 0, col0: 0, row1: MAX_CLIPBOARD_CELLS, col1: 0 }), tooMany);
+  // whole columns of a sheet end with the last cell with text
+  assert.equal(cellClipboard([cell(0, 0), cell(2, 1)], { row0: 0, col0: 0, row1: 1e9, col1: 1e9 }, { trim: true }).text, "x\t\n\t\n\tx");
+  // cells that lie on each other are counted as often
+  const merged = Array.from({ length: 100 }, (_, i) => cell(0, i % 10, 2000, 2000));
+  assert.throws(() => cellClipboard(merged, { row0: 0, col0: 0, row1: 1999, col1: 1999 }), tooMany);
 });

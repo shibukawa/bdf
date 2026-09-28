@@ -87,9 +87,12 @@ type engraver struct {
 	def engravingDefaults
 
 	staves []staffRef
+	grand  bool              // a part has more than one staff
 	sm     [][]*staffMeasure // [measure][staff]
 	cols   []*column
-	starts []int // start tick of each measure
+	starts []int      // start tick of each measure
+	times  []*TimeSig // the time signature in effect in each measure
+	counts []int      // the number each measure has by counting
 
 	text  *texter
 	warn  func(string)
@@ -104,16 +107,32 @@ type engravingDefaults struct {
 }
 
 // prepare resolves the clefs, keys, events and accidentals of every staff
-// in every measure.
+// in every measure, and the time signature and number of every measure.
 func (e *engraver) prepare() {
 	for pi, p := range e.s.Parts {
 		for st := 0; st < max(p.Staves, 1); st++ {
 			e.staves = append(e.staves, staffRef{pi, st})
 		}
+		e.grand = e.grand || p.Staves > 1
 	}
 	e.starts = make([]int, len(e.s.Measures)+1)
+	e.times = make([]*TimeSig, len(e.s.Measures))
+	e.counts = make([]int, len(e.s.Measures))
+	sig, n := &TimeSig{Beats: 4, BeatType: 4}, 0
 	for i, m := range e.s.Measures {
 		e.starts[i+1] = e.starts[i] + m.Length
+		if m.Time != nil {
+			sig = m.Time
+		}
+		e.times[i] = sig
+		// a measure counts from the number of the one before, or from its
+		// own when it has one
+		if v, err := strconv.Atoi(m.Number); m.Number != "" && err == nil {
+			n = v
+		} else if !m.Implicit {
+			n++
+		}
+		e.counts[i] = n
 	}
 	e.sm = make([][]*staffMeasure, len(e.s.Measures))
 	clefs := make([]Clef, len(e.staves))
@@ -541,7 +560,9 @@ func (e *engraver) columns() {
 			}
 			for _, c := range sm.clefChanges {
 				if sl := offs[c.Offset]; sl != nil {
-					sl.pre += clefGlyph(c.Clef, true).advance + 0.5
+					if g := clefGlyph(c.Clef, true); g != nil { // no glyph: the clef "none"
+						sl.pre += g.advance + 0.5
+					}
 				}
 			}
 		}
@@ -688,19 +709,19 @@ func placeAccidentals(sm *staffMeasure, ev *Event) []placedAccidental {
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].pos < out[j].pos })
+	// top to bottom, the last accidental of a column is its lowest: the
+	// only one the next can be too near
+	var lowest []int
 	for i := range out {
-		for c := 0; ; c++ {
-			ok := true
-			for j := 0; j < i; j++ {
-				if out[j].col == c && out[i].pos-out[j].pos < 6 {
-					ok = false
-					break
-				}
-			}
-			if ok {
-				out[i].col = c
-				break
-			}
+		c := 0
+		for c < len(lowest) && out[i].pos-lowest[c] < 6 {
+			c++
+		}
+		out[i].col = c
+		if c == len(lowest) {
+			lowest = append(lowest, out[i].pos)
+		} else {
+			lowest[c] = out[i].pos
 		}
 	}
 	return out
@@ -726,12 +747,7 @@ func (e *engraver) systemHeader(mi int, first bool) float64 {
 
 // timeAt returns the time signature in effect in a measure.
 func (e *engraver) timeAt(mi int) *TimeSig {
-	for i := mi; i >= 0; i-- {
-		if t := e.s.Measures[i].Time; t != nil {
-			return t
-		}
-	}
-	return &TimeSig{Beats: 4, BeatType: 4}
+	return e.times[mi]
 }
 
 // measureWidth returns the fixed and stretchable widths of a measure in a

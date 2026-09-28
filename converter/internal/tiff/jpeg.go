@@ -7,7 +7,6 @@ import (
 	"image"
 	"image/draw"
 	"image/jpeg"
-	"io"
 	"slices"
 )
 
@@ -119,6 +118,9 @@ func (l *layout) joinJPEG() ([]byte, bool) {
 	default:
 		return nil, false
 	}
+	if l.d.f.Spent() {
+		return nil, false
+	}
 	tables, _ := l.tables()
 	var first *jpegStream
 	var scans [][]byte
@@ -204,8 +206,15 @@ func (l *layout) joinJPEG() ([]byte, bool) {
 	return out.Bytes(), true
 }
 
+// maxTables bounds the JPEGTables read: four quantization and eight
+// Huffman tables take less than 2 KiB.
+const maxTables = 64 << 10
+
 // tables returns the marker segments of JPEGTables.
 func (l *layout) tables() ([][]byte, bool) {
+	if l.d.count(TagJPEGTables) > maxTables {
+		return nil, false
+	}
 	b := l.d.Bytes(TagJPEGTables)
 	if b == nil {
 		return nil, true
@@ -224,12 +233,7 @@ func (l *layout) rawBlock(i int) ([]byte, bool) {
 	if off >= uint64(f.size) || n == 0 {
 		return nil, false
 	}
-	n = min(n, uint64(f.size)-off)
-	b := make([]byte, n)
-	if _, err := f.r.ReadAt(b, int64(off)); err != nil && err != io.EOF {
-		return nil, false
-	}
-	return b, true
+	return f.read(int64(off), int64(min(n, uint64(f.size)-off)))
 }
 
 func sameSegments(a, b [][]byte) bool {

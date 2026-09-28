@@ -15,6 +15,11 @@ import (
 	"sync"
 )
 
+// MaxManifestSize bounds the manifest JSON a reader inflates: a manifest
+// states no size of its own, so a small file could otherwise ask for any
+// amount of memory.
+const MaxManifestSize = 256 << 20
+
 // Reader reads a document from either form.
 //
 // An encrypted document opens locked: Manifest is then the outer manifest,
@@ -26,6 +31,7 @@ type Reader struct {
 	outer    map[Hash]PartEntry              // stored parts of an encrypted document
 	load     func(PartEntry) ([]byte, error) // stored bytes
 	aead     cipher.AEAD                     // set by Unlock
+	file     io.Closer                       // the file OpenSingleFile opened
 
 	pageMu    sync.Mutex
 	pageParts map[pageKey][]Hash // what each page needs, for WriteSegment
@@ -48,7 +54,7 @@ func OpenSingle(r io.ReaderAt, size int64) (*Reader, error) {
 	moff := int64(rd.u64())
 	mlen := int64(rd.u64())
 	menc := rd.u8()
-	if moff+mlen > size {
+	if !inRange(moff, mlen, size) {
 		return nil, &FormatError{Msg: "manifest out of range"}
 	}
 	mj := make([]byte, mlen)
@@ -57,12 +63,12 @@ func OpenSingle(r io.ReaderAt, size int64) (*Reader, error) {
 	}
 	if menc == 1 {
 		var err error
-		if mj, err = inflate(mj); err != nil {
+		if mj, err = inflate(mj, MaxManifestSize, 0); err != nil {
 			return nil, err
 		}
 	}
 	var m Manifest
-	if err := json.Unmarshal(mj, &m); err != nil {
+	if err := readManifest(mj, &m); err != nil {
 		return nil, err
 	}
 	if (flags&FlagEncrypted != 0) != (m.Encryption != nil) {
@@ -70,7 +76,7 @@ func OpenSingle(r io.ReaderAt, size int64) (*Reader, error) {
 	}
 	base := moff + mlen
 	return newReader(&m, func(e PartEntry) ([]byte, error) {
-		if base+e.Off+int64(e.Len) > size {
+		if !inRange(e.Off, int64(e.Len), size-base) {
 			return nil, &FormatError{Msg: "part out of range"}
 		}
 		b := make([]byte, e.Len)
@@ -79,7 +85,8 @@ func OpenSingle(r io.ReaderAt, size int64) (*Reader, error) {
 	}), nil
 }
 
-// OpenSingleFile opens a single-form file by path.
+// OpenSingleFile opens a single-form file by path. The parts are read from
+// the file as they are asked for, so it stays open until Close.
 func OpenSingleFile(path string) (*Reader, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -90,7 +97,24 @@ func OpenSingleFile(path string) (*Reader, error) {
 		f.Close()
 		return nil, err
 	}
-	return OpenSingle(f, st.Size())
+	r, err := OpenSingle(f, st.Size())
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	r.file = f
+	return r, nil
+}
+
+// Close closes the file of a Reader from OpenSingleFile; the parts cannot be
+// read after it. Readers opened in the other ways hold nothing to close.
+func (r *Reader) Close() error {
+	if r.file == nil {
+		return nil
+	}
+	f := r.file
+	r.file = nil
+	return f.Close()
 }
 
 // OpenSplit opens the split form from a directory.
@@ -100,12 +124,26 @@ func OpenSplit(dir string) (*Reader, error) {
 		return nil, err
 	}
 	var m Manifest
-	if err := json.Unmarshal(mj, &m); err != nil {
+	if err := readManifest(mj, &m); err != nil {
 		return nil, err
 	}
 	return newReader(&m, func(e PartEntry) ([]byte, error) {
 		return os.ReadFile(filepath.Join(dir, "parts", e.H.String()))
 	}), nil
+}
+
+// readManifest parses the JSON of a manifest and checks its numbers.
+func readManifest(b []byte, m *Manifest) error {
+	if err := json.Unmarshal(b, m); err != nil {
+		return err
+	}
+	return m.check()
+}
+
+// inRange reports whether n bytes at off lie within size bytes; the values
+// come from the file, so they may be negative or overflow when added.
+func inRange(off, n, size int64) bool {
+	return off >= 0 && n >= 0 && off <= size && n <= size-off
 }
 
 func newReader(m *Manifest, load func(PartEntry) ([]byte, error)) *Reader {
@@ -176,11 +214,11 @@ func (r *Reader) unlockWith(enc *Encryption, key []byte) error {
 	if b, err = open(a, b, manifestAAD); err != nil {
 		return err
 	}
-	if b, err = decodeStored(b, enc.Manifest.Enc); err != nil {
+	if b, err = decodeStored(b, enc.Manifest.Enc, MaxManifestSize, 0); err != nil {
 		return err
 	}
 	var m Manifest
-	if err := json.Unmarshal(b, &m); err != nil {
+	if err := readManifest(b, &m); err != nil {
 		return err
 	}
 	if m.Encryption != nil {
@@ -212,7 +250,7 @@ func (r *Reader) Part(h Hash) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decodeStored(b, e.Enc)
+	return decodeStored(b, e.Enc, e.Size, e.Size)
 }
 
 // storedPlain returns the stored bytes of a part of Manifest, encoded as its
@@ -231,12 +269,14 @@ func (r *Reader) storedPlain(e PartEntry) ([]byte, error) {
 	return b, nil
 }
 
-func decodeStored(b []byte, enc string) ([]byte, error) {
+// decodeStored decodes stored bytes, which decode to limit bytes at most
+// and are expected to decode to size bytes (0: not known).
+func decodeStored(b []byte, enc string, limit, size int) ([]byte, error) {
 	switch enc {
 	case EncIdentity, "":
 		return b, nil
 	case EncDeflateRaw:
-		return inflate(b)
+		return inflate(b, limit, size)
 	default:
 		return nil, fmt.Errorf("bdf: unknown encoding %q", enc)
 	}
@@ -321,7 +361,7 @@ func (r *Reader) storedParts() (*Manifest, [][]byte, error) {
 		}
 		dec := b
 		if e.T != PartSealed {
-			if dec, err = decodeStored(b, e.Enc); err != nil {
+			if dec, err = decodeStored(b, e.Enc, e.Size, e.Size); err != nil {
 				return nil, nil, err
 			}
 		}
@@ -333,6 +373,24 @@ func (r *Reader) storedParts() (*Manifest, [][]byte, error) {
 	return &m, data, nil
 }
 
-func inflate(b []byte) ([]byte, error) {
-	return io.ReadAll(flate.NewReader(bytes.NewReader(b)))
+// inflate decodes deflate-raw data that holds limit bytes at most (for a
+// part, the size the manifest states). Data that goes on past the limit is an
+// error, so a small file cannot ask for more memory than its manifest says it
+// needs. size is the size to expect, allocated at once (0: not known).
+func inflate(b []byte, limit, size int) ([]byte, error) {
+	if limit < 0 || size < 0 {
+		return nil, &FormatError{Msg: "negative part size"}
+	}
+	var out bytes.Buffer
+	// deflate packs 1032 bytes into one at best, so no more than that is
+	// allocated on the word of the manifest
+	out.Grow(int(min(int64(size), int64(limit), 1032*int64(len(b)))))
+	n, err := io.Copy(&out, io.LimitReader(flate.NewReader(bytes.NewReader(b)), int64(limit)+1))
+	if err != nil {
+		return nil, err
+	}
+	if n > int64(limit) {
+		return nil, &FormatError{Msg: "data inflates to more than its stated size"}
+	}
+	return out.Bytes(), nil
 }

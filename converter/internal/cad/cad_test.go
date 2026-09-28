@@ -4,6 +4,7 @@ import (
 	"math"
 	"slices"
 	"testing"
+	"time"
 )
 
 func near(a, b Point, tol float64) bool { return math.Abs(a.X-b.X) <= tol && math.Abs(a.Y-b.Y) <= tol }
@@ -181,5 +182,30 @@ func TestHatch(t *testing.T) {
 	// too dense
 	if d.Hatch(square, []PatternLine{{Angle: 0, Offset: Point{0, 1e-4}}}, Pen{}) {
 		t.Error("a hatch of 100000 lines was drawn")
+	}
+}
+
+// TestHatchFarBase draws patterns whose base point is so far from the
+// boundary that the numbers of the lines that cross it have no fractions
+// left, or no value: counting from one to the next would never end.
+func TestHatchFarBase(t *testing.T) {
+	square := (&Path{}).Polyline([]Point{{0, 0}, {10, 0}, {10, 10}, {0, 10}}, true)
+	for _, base := range []Point{{0, 1e30}, {0, -1e300}, {0, math.Inf(1)}, {0, math.NaN()}, {math.Inf(-1), 3}} {
+		done := make(chan *Drawing, 1)
+		go func() {
+			d := &Drawing{}
+			d.Hatch(square, []PatternLine{{Angle: 0, Base: base, Offset: Point{0, 1}}}, Pen{})
+			done <- d
+		}()
+		select {
+		case d := <-done:
+			for _, it := range d.Items {
+				if len(it.items) > 0 {
+					t.Errorf("base %v: lines drawn", base)
+				}
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("base %v: the hatch does not end", base)
+		}
 	}
 }

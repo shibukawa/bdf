@@ -1,5 +1,5 @@
 import {
-  type ObjectPart, type OpSink, type Glyph, type Paint, type Rect, walk,
+  type ObjectPart, type OpSink, type Glyph, type Paint, type Rect, walk, UseLimits, BdfFormatError,
   BLEND_NAMES, LINE_CAPS, LINE_JOINS, TEXT_ALIGNS, TEXT_BASELINES, TEXT_DIRECTIONS, FILL_RULES, REPEATS, SMOOTHING_QUALITIES, PaintKind, MaskKind,
 } from "@bdf/core";
 import { ResourceCache, fontString } from "./resources.js";
@@ -61,6 +61,51 @@ const INK_REACH = 4;
 interface Cull {
   box: Box | undefined;
   size: number;
+}
+
+/**
+ * Groups and soft masks open at once: each has a canvas of its own, as large
+ * as the part of it on the canvas it is drawn on.
+ */
+export const MAX_GROUP_DEPTH = 64;
+
+/**
+ * How far from a canvas the ink of a group still shows on it, in device
+ * pixels: the shadow and the filter that the group is composited with spread
+ * it. A page is drawn in bands and regions, so what lies beyond the edge of a
+ * canvas belongs to the page all the same.
+ */
+const MAX_INK_REACH = 4096;
+
+function inkReach(ctx: Ctx2D): number {
+  // the blur of a shadow is twice its standard deviation, which reaches three times itself
+  let reach = Math.max(Math.abs(ctx.shadowOffsetX), Math.abs(ctx.shadowOffsetY)) + 1.5 * ctx.shadowBlur;
+  const filter = "filter" in ctx ? (ctx as CanvasRenderingContext2D).filter : "";
+  if (filter && filter !== "none") {
+    // the lengths of a blur or a drop shadow: as far as all of them together, three times over
+    for (const m of filter.matchAll(/-?\d*\.?\d+/g)) reach += 3 * Math.abs(Number(m[0]));
+  }
+  return Number.isFinite(reach) ? Math.min(Math.ceil(reach), MAX_INK_REACH) : MAX_INK_REACH;
+}
+
+/** Let the pixels of a temporary canvas go now, not when it is collected. */
+function release(canvas: OffscreenCanvas | HTMLCanvasElement): void {
+  canvas.width = canvas.height = 0;
+}
+
+// FILTER: the filter functions of CSS and the colors of a drop shadow. A
+// url() would name a filter of the page around the canvas, or a file.
+const FILTER_FUNCTIONS = new Set([
+  "blur", "brightness", "contrast", "drop-shadow", "grayscale", "hue-rotate", "invert", "opacity", "saturate", "sepia",
+  "rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color",
+]);
+
+/** Whether a FILTER string is a list of filter functions and nothing else. */
+export function filterAllowed(css: string): boolean {
+  // no escapes, strings nor anything else a function name or a url could hide in
+  if (!/^[a-zA-Z0-9\s.,%#()+\/-]*$/.test(css)) return false;
+  for (const m of css.matchAll(/([a-zA-Z-]*)\(/g)) if (!FILTER_FUNCTIONS.has(m[1].toLowerCase())) return false;
+  return true;
 }
 
 function defaultCreateCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
@@ -138,6 +183,10 @@ export class CanvasRenderer implements OpSink {
    */
   private widths = new Map<string, Map<string, number>>();
   private widthCount = 0;
+  /** The limits of the objects drawn with USE, how deep the object drawn now is, and whether it is drawn again. */
+  private limits = new UseLimits();
+  private depth = 0;
+  private reused = false;
 
   constructor(readonly res: ResourceCache, opts: RenderOptions = {}) {
     this.tol = opts.advanceTolerance ?? 0.005;
@@ -150,11 +199,17 @@ export class CanvasRenderer implements OpSink {
    * inherit the state of their parent. visible is the part of the object
    * that can be seen, in its coordinates: text wholly outside it is skipped
    * (a tile of a sheet has thousands of runs, and a region shows a few).
+   * limits counts the objects drawn with USE across the objects of a render
+   * (default: of this object alone); past them BdfFormatError is thrown.
    */
-  draw(ctx: Ctx2D, obj: ObjectPart, reset = true, visible?: Rect): void {
+  draw(ctx: Ctx2D, obj: ObjectPart, reset = true, visible?: Rect, limits = new UseLimits()): void {
     const prevCtx = this.ctx, prevObj = this.obj, prevCull = this.cull, prevCulls = this.culls;
+    const prevLimits = this.limits, prevDepth = this.depth, prevReused = this.reused;
     this.ctx = ctx;
     this.obj = obj;
+    this.limits = limits;
+    this.depth = 0;
+    this.reused = false;
     ctx.save();
     if (reset) resetState(ctx);
     this.cull = {
@@ -166,13 +221,16 @@ export class CanvasRenderer implements OpSink {
       walk(obj, this);
     } finally {
       // Unwind groups and masks left open by a malformed stream.
-      this.masks.length = 0;
+      for (const m of this.masks.splice(0)) release(m.canvas);
       while (this.groups.length) this.groupEnd();
       ctx.restore();
       this.ctx = prevCtx;
       this.obj = prevObj;
       this.cull = prevCull;
       this.culls = prevCulls;
+      this.limits = prevLimits;
+      this.depth = prevDepth;
+      this.reused = prevReused;
     }
   }
 
@@ -255,7 +313,7 @@ export class CanvasRenderer implements OpSink {
         } else {
           img = this.res.image(hash);
         }
-        if (!img) return "rgba(0,0,0,0)"; // an SVG image not drawn yet: the page is drawn again
+        if (!img) return "rgba(0,0,0,0)"; // an SVG image not drawn yet (the page is drawn again), or an image too large
         const pat = ctx.createPattern(img, REPEATS[p.repeat] ?? "repeat");
         if (!pat) throw new Error("bdf: createPattern failed");
         if (!(m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0 && kx === 1 && ky === 1)) {
@@ -330,6 +388,8 @@ export class CanvasRenderer implements OpSink {
     if ((rgba & 0xff) !== 0 && (blur !== 0 || dx !== 0 || dy !== 0)) this.cull = { ...this.cull, box: undefined };
   }
   filter(css: string) {
+    // anything but filter functions is as a filter that is not supported: left out
+    if (!filterAllowed(css)) css = "none";
     if ("filter" in this.ctx) (this.ctx as CanvasRenderingContext2D).filter = css;
     if (css && css !== "none") this.cull = { ...this.cull, box: undefined }; // a blur or a drop shadow spreads the ink
   }
@@ -396,7 +456,8 @@ export class CanvasRenderer implements OpSink {
     const hash = this.obj.images[img];
     const vec = this.res.vector(hash);
     if (!vec) {
-      this.ctx.drawImage(this.res.image(hash), x, y, w, h);
+      const bmp = this.res.image(hash);
+      if (bmp) this.ctx.drawImage(bmp, x, y, w, h);
       return;
     }
     const r = this.res.svgRaster(vec, this.deviceScale(w / vec.width, h / vec.height));
@@ -406,7 +467,8 @@ export class CanvasRenderer implements OpSink {
     const hash = this.obj.images[img];
     const vec = this.res.vector(hash);
     if (!vec) {
-      this.ctx.drawImage(this.res.image(hash), sx, sy, sw, sh, dx, dy, dw, dh);
+      const bmp = this.res.image(hash);
+      if (bmp) this.ctx.drawImage(bmp, sx, sy, sw, sh, dx, dy, dw, dh);
       return;
     }
     const r = this.res.svgRaster(vec, this.deviceScale(dw / sw, dh / sh));
@@ -431,16 +493,22 @@ export class CanvasRenderer implements OpSink {
     const hash = this.obj.objects[obj];
     if (hash === undefined) throw new Error(`bdf: bad object ref ${obj}`);
     const child = this.res.object(hash);
+    const again = this.limits.enter(hash);
+    this.limits.descend(this.depth);
     const ctx = this.ctx;
     ctx.save();
     const cull = this.cull, depth = this.culls.length;
     if (x !== 0 || y !== 0) this.translate(x, y);
-    const parent = this.obj;
+    const parent = this.obj, reused = this.reused;
     this.obj = child;
+    this.depth++;
+    this.reused = reused || again;
     try {
-      walk(child, this);
+      walk(child, this, this.reused ? this.limits.count : undefined);
     } finally {
       this.obj = parent;
+      this.depth--;
+      this.reused = reused;
       ctx.restore();
       // a child that leaves a SAVE open leaves ctx in its state
       this.cull = this.culls.length === depth ? cull : { ...cull, box: undefined };
@@ -448,12 +516,24 @@ export class CanvasRenderer implements OpSink {
     }
   }
   groupBegin(alpha: number, blend: number, x: number, y: number, w: number, h: number) {
+    if (this.groups.length + this.masks.length >= MAX_GROUP_DEPTH) throw new BdfFormatError("groups nested too deep");
     const ctx = this.ctx;
     const m = ctx.getTransform();
     // Device-space bounds of the group rectangle.
     const pts = [m.transformPoint({ x, y }), m.transformPoint({ x: x + w, y }), m.transformPoint({ x, y: y + h }), m.transformPoint({ x: x + w, y: y + h })];
-    const x0 = Math.floor(Math.min(...pts.map((p) => p.x))), y0 = Math.floor(Math.min(...pts.map((p) => p.y)));
-    const x1 = Math.ceil(Math.max(...pts.map((p) => p.x))), y1 = Math.ceil(Math.max(...pts.map((p) => p.y)));
+    let x0 = Math.floor(Math.min(...pts.map((p) => p.x))), y0 = Math.floor(Math.min(...pts.map((p) => p.y)));
+    let x1 = Math.ceil(Math.max(...pts.map((p) => p.x))), y1 = Math.ceil(Math.max(...pts.map((p) => p.y)));
+    // Only the part on the canvas it is drawn on, and as far around it as
+    // its shadow or filter reach: the rest of it is never seen, and the
+    // rectangle is as large as the document says.
+    const on = ctx.canvas as { width: number; height: number } | undefined;
+    if (typeof on?.width === "number" && typeof on.height === "number") {
+      const reach = inkReach(ctx);
+      x0 = Math.max(x0, -reach);
+      y0 = Math.max(y0, -reach);
+      x1 = Math.min(x1, on.width + reach);
+      y1 = Math.min(y1, on.height + reach);
+    }
     const cw = Math.max(1, x1 - x0), ch = Math.max(1, y1 - y0);
     const canvas = this.createCanvas(cw, ch);
     const gctx = canvas.getContext("2d") as Ctx2D;
@@ -477,8 +557,10 @@ export class CanvasRenderer implements OpSink {
     ctx.globalCompositeOperation = BLEND_NAMES[g.blend] ?? "source-over";
     ctx.drawImage(g.canvas, g.dx, g.dy);
     ctx.restore();
+    release(g.canvas);
   }
   maskBegin(kind: number, backdrop: number, transfer: Uint8Array) {
+    if (this.groups.length + this.masks.length >= MAX_GROUP_DEPTH) throw new BdfFormatError("groups nested too deep");
     // The mask covers the innermost group's canvas and starts from the
     // initial drawing state with the current transform.
     const group = this.groups[this.groups.length - 1];
@@ -502,7 +584,7 @@ export class CanvasRenderer implements OpSink {
     this.ctx = m.ctx;
     this.cull = m.cull;
     const g = m.group;
-    if (!g || this.groups[this.groups.length - 1] !== g) return;
+    if (!g || this.groups[this.groups.length - 1] !== g) return release(m.canvas);
     const { mctx, canvas } = m;
     mctx.restore();
     const w = canvas.width, h = canvas.height;
@@ -528,6 +610,7 @@ export class CanvasRenderer implements OpSink {
     mctx.globalCompositeOperation = "source-in";
     mctx.drawImage(g.canvas, 0, 0);
     mctx.restore();
+    release(g.canvas);
     g.canvas = canvas;
   }
 

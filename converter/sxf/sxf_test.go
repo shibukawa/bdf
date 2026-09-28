@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -473,5 +474,61 @@ func TestArcEnds(t *testing.T) {
 		if math.Abs((b-a)-c.sweep) > 1e-9 {
 			t.Errorf("%v → %v (cw %v): sweep %v, want %v", c.t0, c.t1, c.cw, b-a, c.sweep)
 		}
+	}
+}
+
+// TestFillBudget draws fills whose outlines are one long curve named a
+// thousand times, in a drawing with little of its budget left: the
+// outlines are not put together before the budget is looked at.
+func TestFillBudget(t *testing.T) {
+	const points = 5000
+	// P21: the polyline of a fill of the test drawing made longer, and
+	// the fill made of that outline over and over
+	p21 := readText(t, "shapes.p21")
+	var pts strings.Builder
+	var refs []string
+	for i := range points {
+		fmt.Fprintf(&pts, "#%d=CARTESIAN_POINT(' ',(%d.0,%d.0));\n", 900000+i, i%100, i/100)
+		refs = append(refs, fmt.Sprintf("#%d", 900000+i))
+	}
+	line := "#11560=POLYLINE(' ',(#11510,#11520,#11530,#11540,#11550));"
+	area := "#11620=ANNOTATION_FILL_AREA(' ',(#11580));"
+	if !strings.Contains(p21, line) || !strings.Contains(p21, area) {
+		t.Fatal("the test drawing has changed")
+	}
+	p21 = strings.Replace(p21, line, pts.String()+"#11560=POLYLINE(' ',("+strings.Join(refs, ",")+"));", 1)
+	p21 = strings.Replace(p21, area, "#11620=ANNOTATION_FILL_AREA(' ',("+strings.TrimSuffix(strings.Repeat("#11580,", maxList), ",")+"));", 1)
+
+	// SFC: a hatch whose holes are its outline over and over
+	var sfc strings.Builder
+	sfc.WriteString(fmt.Sprintf(stepHeader, "CAD"))
+	xs := strings.TrimSuffix(strings.Repeat("0.0,1.0,", points/2), ",")
+	fmt.Fprintf(&sfc, "/*SXF\n#1 = polyline_feature('1','8','1','1','%d','(%s)','(%s)')\nSXF*/\n", points, xs, xs)
+	fmt.Fprintf(&sfc, "/*SXF\n#2 = composite_curve_org_feature('8','1','1','0')\nSXF*/\n")
+	fmt.Fprintf(&sfc, "/*SXF\n#3 = externally_defined_hatch_feature('1',\\'Area_control\\','1','%d','(%s)')\nSXF*/\n",
+		maxList, strings.TrimSuffix(strings.Repeat("1,", maxList), ","))
+	fmt.Fprintf(&sfc, "/*SXF\n#4 = drawing_sheet_feature(\\'s\\','3','1','0','0')\nSXF*/\n")
+
+	for name, text := range map[string]string{"p21": p21, "sfc": sfc.String()} {
+		t.Run(name, func(t *testing.T) {
+			c := &converter{opts: &Options{}, warned: map[string]bool{}}
+			set := fontset.New(fontdb.New(nil, []string{"../pptx/testdata/fonts"}, false), func(string) {})
+			rend := &renderer{fonts: &cad.Fonts{Set: set}, out: &cad.Drawing{}, bg: bdf.RGB(0, 0, 0), warn: c.warnOnce}
+			// what is left of the budget holds two of the outlines
+			rend.points = maxPoints - 2*points - 100
+			var before, after runtime.MemStats
+			runtime.ReadMemStats(&before)
+			if _, _, _, _, err := c.draw(text, rend); err != nil {
+				t.Fatal(err)
+			}
+			runtime.ReadMemStats(&after)
+			if !strings.Contains(strings.Join(c.warnings, "\n"), "too large") {
+				t.Errorf("warnings %q", c.warnings)
+			}
+			// a thousand outlines take 80 MiB of points
+			if got := after.TotalAlloc - before.TotalAlloc; got > 48<<20 {
+				t.Errorf("%d MiB allocated", got>>20)
+			}
+		})
 	}
 }

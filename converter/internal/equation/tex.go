@@ -6,11 +6,26 @@ import (
 	"unicode"
 )
 
+// maxDepth is how deeply the groups and the arguments of a formula may
+// nest, and the elements of MathML and of Office Math: what is nested
+// deeper is read as a part of what it is in. The readers and the layout
+// call themselves for what is nested, and the layout looks into a row of
+// one for what it holds, which takes the time of the depth at each level.
+const maxDepth = 200
+
 // ParseTeX reads a formula written in LaTeX's math mode, with the commands
 // of amsmath and amssymb that Markdown documents and MathJax and KaTeX
-// pages use. What it does not know it keeps as text.
-func ParseTeX(src string) Node {
-	p := &texParser{s: []rune(src)}
+// pages use. What it does not know it keeps as text. Groups and arguments
+// nested deeper than maxDepth are read without their braces and commands.
+func ParseTeX(src string) Node { return parseTeX(src, 0) }
+
+// parseTeX reads a formula that is nested in another at a depth (the
+// optional argument of a command, which is a formula).
+func parseTeX(src string, depth int) Node {
+	if depth >= maxDepth {
+		return &Atom{Kind: Text, Text: src}
+	}
+	p := &texParser{s: []rune(src), depth: depth}
 	nodes, _ := p.list(texTop)
 	if rows := p.rows; rows != nil {
 		// line breaks at the top level: the lines are centered below each
@@ -22,10 +37,16 @@ func ParseTeX(src string) Node {
 }
 
 type texParser struct {
-	s    []rune
-	i    int
-	rows [][]Node // lines ended by \\ at the top level
+	s     []rune
+	i     int
+	rows  [][]Node // lines ended by \\ at the top level
+	depth int      // how deeply the list being read is nested
+	flat  int      // open braces that were read over, their groups being too deep
 }
+
+// deep reports whether what is read is nested as deeply as it may be:
+// what would nest deeper is read as a part of it.
+func (p *texParser) deep() bool { return p.depth >= maxDepth }
 
 // what ended a list
 const (
@@ -100,8 +121,11 @@ func (p *texParser) peekCommand() string {
 	return c
 }
 
-// list reads nodes until what kind waits for.
+// list reads nodes until what kind waits for. Its callers ask deep before
+// they call it.
 func (p *texParser) list(kind int) ([]Node, texEnd) {
+	p.depth++
+	defer func() { p.depth-- }()
 	var nodes []Node
 	for {
 		p.skipSpace()
@@ -112,6 +136,10 @@ func (p *texParser) list(kind int) ([]Node, texEnd) {
 		switch {
 		case r == '}':
 			p.i++
+			if p.flat > 0 {
+				p.flat-- // of a group read over
+				continue
+			}
 			if kind == texGroup || kind == texTop {
 				return nodes, texEnd{kind: kind, what: "}"}
 			}
@@ -158,6 +186,9 @@ func (p *texParser) list(kind int) ([]Node, texEnd) {
 				continue
 			case "over", "choose", "atop", "brace", "brack":
 				p.i += 1 + len(c)
+				if p.deep() {
+					continue
+				}
 				den, end := p.list(kind)
 				f := &Frac{Num: row(nodes), Den: row(den)}
 				var n Node = f
@@ -177,6 +208,9 @@ func (p *texParser) list(kind int) ([]Node, texEnd) {
 				return []Node{n}, end
 			case "displaystyle", "textstyle", "scriptstyle", "scriptscriptstyle":
 				p.i += 1 + len(c)
+				if p.deep() {
+					continue
+				}
 				rest, end := p.list(kind)
 				s := &Styled{Kid: row(rest)}
 				switch c {
@@ -193,6 +227,9 @@ func (p *texParser) list(kind int) ([]Node, texEnd) {
 			case "color":
 				p.i += 6
 				col, ok := ParseColor(p.colorArg())
+				if p.deep() {
+					continue
+				}
 				rest, end := p.list(kind)
 				var n Node = row(rest)
 				if ok {
@@ -205,6 +242,9 @@ func (p *texParser) list(kind int) ([]Node, texEnd) {
 			}
 			if v, ok := texOldFonts[p.peekCommand()]; ok {
 				p.i += 1 + len(p.peekCommand())
+				if p.deep() {
+					continue
+				}
 				rest, end := p.list(kind)
 				return append(nodes, &Styled{Kid: row(rest), Variant: v}), end
 			}
@@ -319,11 +359,17 @@ func hasLimits(n Node) bool {
 }
 
 // arg reads the argument of a command or script: a group or one token.
+// Nested too deeply, the argument is empty, and what would have been it is
+// read after the command.
 func (p *texParser) arg() Node {
 	p.skipSpace()
 	switch r := p.peek(); {
 	case r == '{':
 		p.i++
+		if p.deep() {
+			p.flat++
+			return &Row{}
+		}
 		nodes, _ := p.list(texGroup)
 		return row(nodes)
 	case r == 0:
@@ -332,10 +378,22 @@ func (p *texParser) arg() Node {
 		p.i++
 		return &Atom{Kind: Number, Text: string(r)}
 	}
-	if n := p.primary(); n != nil {
+	if n := p.nested(); n != nil {
 		return n
 	}
 	return &Row{}
+}
+
+// nested reads one token or construct for a command that takes it (the
+// token after \sqrt, which may be a command that takes one again); nil
+// when it is nested too deeply, and the token is read after the command.
+func (p *texParser) nested() Node {
+	if p.deep() {
+		return nil
+	}
+	p.depth++
+	defer func() { p.depth-- }()
+	return p.primary()
 }
 
 // textArg reads a group as plain text.
@@ -488,6 +546,10 @@ func (p *texParser) primary() Node {
 	switch {
 	case r == '{':
 		p.i++
+		if p.deep() {
+			p.flat++ // read over, with the brace that closes it
+			return nil
+		}
 		nodes, _ := p.list(texGroup)
 		return &Row{Kids: nodes}
 	case r == '\\':
@@ -625,14 +687,17 @@ func (p *texParser) control(c string) Node {
 		return n
 	case "sqrt":
 		if deg, ok := p.optional(); ok {
-			return &Radical{Base: p.arg(), Degree: ParseTeX(deg)}
+			return &Radical{Base: p.arg(), Degree: parseTeX(deg, p.depth)}
 		}
 		return &Radical{Base: p.arg()}
 	case "root":
 		// \root n \of x
+		if p.deep() {
+			return nil
+		}
 		var deg []Node
 		for !p.eof() && p.peekCommand() != "of" {
-			if n := p.primary(); n != nil {
+			if n := p.nested(); n != nil {
 				deg = append(deg, n)
 			}
 			p.skipSpace()
@@ -641,6 +706,15 @@ func (p *texParser) control(c string) Node {
 		return &Radical{Base: p.arg(), Degree: row(deg)}
 	case "left":
 		open := p.delimiter()
+		if p.deep() {
+			// the delimiter as it is; the one of \right is read over
+			if open == "." {
+				return nil
+			}
+			a := NewOp(open)
+			a.Stretchy = false
+			return a
+		}
 		var kids []Node
 		kids = append(kids, texDelim(open, Open))
 		for {
@@ -690,7 +764,7 @@ func (p *texParser) control(c string) Node {
 			"xhookleftarrow": "↩", "xlongequal": "=", "xtwoheadrightarrow": "↠", "xrightleftharpoons": "⇌"}[c]
 		var under Node
 		if s, ok := p.optional(); ok {
-			under = padded(ParseTeX(s))
+			under = padded(parseTeX(s, p.depth))
 		}
 		over := padded(p.arg())
 		a := NewOp(ch)
@@ -767,7 +841,7 @@ func (p *texParser) control(c string) Node {
 		return &Phantom{Kid: p.arg(), Show: true, ZeroAsc: true, ZeroDesc: true}
 	case "not":
 		p.skipSpace()
-		n := p.primary()
+		n := p.nested()
 		if a, ok := n.(*Atom); ok {
 			if neg, ok := texNegated[normalizeOp(a.Text)]; ok {
 				a.Text = neg
@@ -797,7 +871,11 @@ func (p *texParser) control(c string) Node {
 		}
 		return &Space{Width: texLength(s)}
 	case "begin":
-		return p.environment(p.textArg())
+		name := p.textArg()
+		if p.deep() {
+			return nil // its cells are read one after the other
+		}
+		return p.environment(name)
 	case "tag", "label", "ref", "eqref", "notag", "nonumber", "hline", "hdashline", "strut", "mathstrut",
 		"allowbreak", "nolimits", "limits", "displaylimits", "relax", "vphantomstrut":
 		if c == "tag" || c == "label" || c == "ref" || c == "eqref" {

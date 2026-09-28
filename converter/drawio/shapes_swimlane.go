@@ -607,16 +607,27 @@ func (s *shape) resolveColors() {
 	if s.st == nil {
 		return
 	}
-	s.gradient = resolveColor(s.st, s.gradient, "gradientColor")
-	s.stroke = resolveColor(s.st, s.stroke, "strokeColor")
-	s.fill = resolveColor(s.st, s.fill, "fillColor")
+	s.gradient = resolveColor(s.st, s.gradient, "gradientColor", 0)
+	s.stroke = resolveColor(s.st, s.stroke, "strokeColor", 0)
+	s.fill = resolveColor(s.st, s.fill, "fillColor", 0)
 }
+
+// maxColorDepth bounds the chain of color keywords a shape resolves, so
+// that shapes whose inherit/swimlane colors refer to each other in a cycle
+// do not recurse without end (a stack overflow). Real chains are shallow.
+const maxColorDepth = 32
 
 // resolveColor resolves a color keyword in the state's field color
 // (mxCellRenderer.resolveColor): inherit takes the color of the parent's
 // shape, fillColor and strokeColor the parent's style value of that key,
 // swimlane the color of the nearest swimlane's shape.
-func resolveColor(st *cellState, value, field string) string {
+func resolveColor(st *cellState, value, field string, depth int) string {
+	if depth > maxColorDepth {
+		if st.view != nil {
+			st.view.warn("colordepth", "color references are too deeply nested; drawn without the inherited color")
+		}
+		return ""
+	}
 	key := field
 	var referenced *cell
 	switch value {
@@ -648,7 +659,7 @@ func resolveColor(st *cellState, value, field string) string {
 	}
 	if (referenced.vertex || referenced.edge) && value != "strokeColor" && value != "fillColor" {
 		// the color of the referenced shape, resolved in turn
-		return resolveColor(rst, colorOrNone(rst.style.get(field, "")), field)
+		return resolveColor(rst, colorOrNone(rst.style.get(field, "")), field, depth+1)
 	}
 	return colorOrNone(rst.style.get(key, ""))
 }

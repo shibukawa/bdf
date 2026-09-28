@@ -87,6 +87,12 @@ func ConvertBytes(src []byte, opts *Options) (*Result, error) {
 // ToHTML renders a Markdown document as an HTML document, with its front
 // matter in the head.
 func ToHTML(src []byte) ([]byte, error) {
+	return toHTML(src, mathExtension{}, &githubIDs{used: map[string]bool{}, next: map[string]int{}})
+}
+
+// toHTML is ToHTML with the extension that reads formulas and the ids of
+// headings given.
+func toHTML(src []byte, math goldmark.Extender, ids parser.IDs) ([]byte, error) {
 	src = toUTF8(src)
 	fm, body := splitFrontMatter(src)
 	var out bytes.Buffer
@@ -95,11 +101,11 @@ func ToHTML(src []byte) ([]byte, error) {
 	out.WriteString("<body>\n")
 	md := goldmark.New(
 		goldmark.WithExtensions(extension.GFM, extension.DefinitionList,
-			extension.NewFootnote(extension.WithFootnoteBacklinkHTML("↑")), mathExtension{}),
+			extension.NewFootnote(extension.WithFootnoteBacklinkHTML("↑")), math),
 		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
 		goldmark.WithRendererOptions(gmhtml.WithUnsafe()),
 	)
-	ctx := parser.NewContext(parser.WithIDs(&githubIDs{used: map[string]bool{}}))
+	ctx := parser.NewContext(parser.WithIDs(ids))
 	if err := md.Convert(body, &out, parser.WithContext(ctx)); err != nil {
 		return nil, err
 	}
@@ -127,6 +133,7 @@ func toUTF8(b []byte) []byte {
 // without punctuation, with hyphens for spaces; repeated ids get -1, -2 …
 type githubIDs struct {
 	used map[string]bool
+	next map[string]int // by id, the number to try first when it is used: those below are
 }
 
 func (g *githubIDs) Generate(value []byte, kind ast.NodeKind) []byte {
@@ -144,8 +151,13 @@ func (g *githubIDs) Generate(value []byte, kind ast.NodeKind) []byte {
 		slug = "heading"
 	}
 	id := slug
-	for n := 1; g.used[id]; n++ {
-		id = slug + "-" + strconv.Itoa(n)
+	if g.used[id] {
+		n := max(g.next[slug], 1)
+		for g.used[id] {
+			id = slug + "-" + strconv.Itoa(n)
+			n++
+		}
+		g.next[slug] = n
 	}
 	g.used[id] = true
 	return []byte(id)

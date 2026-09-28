@@ -1,4 +1,4 @@
-// Smoke test of the demo site (examples/viewer/site.mjs): serves it, runs
+// Smoke test of the demo site (site/build.mjs): serves it, runs
 // its converter modules in Node with Go's wasm_exec.js, and converts each
 // sample with the site's fonts, fetched from the server as in a browser.
 // PDFs are also converted a page at a time, as the viewer does, and the
@@ -14,15 +14,15 @@ import { pathToFileURL } from "node:url";
 import { BdfDocument, BufferSource, extractText } from "../packages/core/dist/index.js";
 import { serve } from "./serve.mjs";
 
-const site = resolve(process.argv[2] ?? "examples/viewer/.site");
-await import(pathToFileURL(join(site, "wasm_exec.js")).href);
+const site = resolve(process.argv[2] ?? "site/dist");
+await import(pathToFileURL(join(site, "lib/wasm_exec.js")).href);
 const { server, port } = await serve(site);
 const base = `http://127.0.0.1:${port}/`;
 
 /** Load a module; the Go program puts its API on globalThis and waits. */
 async function load(file) {
   const go = new globalThis.Go();
-  const { instance } = await WebAssembly.instantiate(await readFile(join(site, file)), go.importObject);
+  const { instance } = await WebAssembly.instantiate(await readFile(join(site, "lib", file)), go.importObject);
   go.run(instance);
   const conv = globalThis.bdfConverter;
   delete globalThis.bdfConverter;
@@ -179,7 +179,7 @@ for (const { name, format, bdf } of converted) {
 }
 
 // the documentation pages
-for (const page of ["index.html", "ja.html", "api.html", "spec.html", "design.html"]) {
+for (const page of ["index.html", "index.ja.html", "formats/spreadsheet.html", "examples/search.ja.html", "api.html", "spec.html", "design.html"]) {
   const html = await readFile(join(site, "docs", page), "utf8");
   assert.doesNotMatch(html, /href="(?!https?:)[^"]*\.md(#[^"]*)?"/, `docs/${page} links to Markdown`);
 }

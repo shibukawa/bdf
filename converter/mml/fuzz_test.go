@@ -4,12 +4,36 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/shibukawa/bdf/converter/internal/music"
 )
+
+// engrave writes a performance as a score and engraves it, as the
+// converter does: it may fail, but must not panic. Music that takes long
+// is left to the tests of the budgets.
+func engrave(perf *music.Performance, source string) {
+	notes := 0
+	for _, t := range perf.Tracks {
+		notes += len(t.Notes)
+	}
+	if notes > 20_000 || len(perf.Tracks)*(perf.End/music.PPQ+1) > 100_000 {
+		return
+	}
+	score := music.Notate(perf, music.NotateOptions{})
+	staves := 0
+	for _, p := range score.Parts {
+		staves += p.Staves
+	}
+	if staves*len(score.Measures) > 3000 {
+		return
+	}
+	music.Build(score, music.Options{Source: source, NoSystemFonts: true, Warn: func(string) {}})
+}
 
 // FuzzParse feeds damaged MML to the reader: it may fail, but must not
 // panic, and what it reads must be a performance the engine can take
-// (notes in order, in the MIDI range, of positive length). The seeds are
-// the test files and some commands.
+// (notes in order, in the MIDI range, of positive length) and engraves.
+// The seeds are the test files and some commands.
 func FuzzParse(f *testing.F) {
 	files, _ := filepath.Glob("testdata/*.mml")
 	for _, name := range files {
@@ -56,5 +80,6 @@ func FuzzParse(f *testing.F) {
 				}
 			}
 		}
+		engrave(perf, "mml")
 	})
 }

@@ -18,6 +18,10 @@ type PatternLine struct {
 // MaxHatchLines bounds the lines drawn for one hatch.
 const MaxHatchLines = 20000
 
+// maxLineNumber bounds the numbers of the lines of a pattern, counted from
+// its base: a float64 holds every integer up to 2^53.
+const maxLineNumber = 1e15
+
 // Hatch draws the lines of a pattern clipped by boundary (even-odd rule).
 // It reports false, drawing nothing, when the pattern would need more than
 // MaxHatchLines lines: the caller then fills the boundary instead.
@@ -55,9 +59,17 @@ func (d *Drawing) Hatch(boundary *Path, lines []PatternLine, pen Pen) bool {
 			k0, k1 = k1, k0
 		}
 		ka, kb := math.Ceil(k0), math.Floor(k1)
+		// A base this far from the boundary (or without a value) leaves
+		// nothing of the spacing in the places of the lines.
+		if !(math.Abs(ka) <= maxLineNumber && math.Abs(kb) <= maxLineNumber) {
+			continue
+		}
 		count := kb - ka + 1
 		if count <= 0 {
 			continue
+		}
+		if count > MaxHatchLines {
+			return false
 		}
 		total += int(count)
 		if total > MaxHatchLines {
@@ -69,7 +81,8 @@ func (d *Drawing) Hatch(boundary *Path, lines []PatternLine, pen Pen) bool {
 			plen += v
 		}
 		path := &Path{}
-		for k := ka; k <= kb; k++ {
+		for i := range int(count) {
+			k := ka + float64(i)
 			// the start of this line's pattern, along the line
 			su := bu + k*du
 			start := umin

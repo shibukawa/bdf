@@ -36,12 +36,20 @@ type Face struct {
 	CFF    bool
 	Math   bool // has a MATH table (a font for formulas)
 
-	names []string // normalized family names in every language
-	fsys  fs.FS    // the file system Path is in; nil for the local one
+	names []string   // normalized family names in every language
+	fsys  fs.FS      // the file system Path is in; nil for the local one
+	file  *fileBytes // the file, which the faces of a collection share
 
 	once   sync.Once
 	loaded *Loaded
 	err    error
+}
+
+// fileBytes is a font file, read once for the faces of it that are loaded.
+type fileBytes struct {
+	once sync.Once
+	data []byte
+	err  error
 }
 
 // DB is a set of faces indexed by normalized family name.
@@ -211,9 +219,10 @@ func scanFaces(r io.ReaderAt, path string) []*Face {
 		}
 	}
 	var out []*Face
+	file := &fileBytes{}
 	for i, off := range offsets {
 		if face := scanFace(r, off); face != nil {
-			face.Path, face.Index = path, i
+			face.Path, face.Index, face.file = path, i, file
 			out = append(out, face)
 		}
 	}
@@ -427,13 +436,7 @@ var ErrNoGlyphs = errors.New("fontdb: font has no usable glyph data")
 // Load reads and parses the face's font program (once).
 func (f *Face) Load() (*Loaded, error) {
 	f.once.Do(func() {
-		var data []byte
-		var err error
-		if f.fsys != nil {
-			data, err = fs.ReadFile(f.fsys, f.Path)
-		} else {
-			data, err = os.ReadFile(f.Path)
-		}
+		data, err := f.read()
 		if err != nil {
 			f.err = err
 			return
@@ -470,6 +473,23 @@ func (f *Face) Load() (*Loaded, error) {
 		f.loaded = l
 	})
 	return f.loaded, f.err
+}
+
+// read returns the bytes of the face's file, read when the first of its
+// faces is loaded.
+func (f *Face) read() ([]byte, error) {
+	b := f.file
+	if b == nil {
+		b = &fileBytes{}
+	}
+	b.once.Do(func() {
+		if f.fsys != nil {
+			b.data, b.err = fs.ReadFile(f.fsys, f.Path)
+		} else {
+			b.data, b.err = os.ReadFile(f.Path)
+		}
+	})
+	return b.data, b.err
 }
 
 // Glyph returns the glyph index for r.

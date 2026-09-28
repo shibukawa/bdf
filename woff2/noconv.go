@@ -7,4 +7,4 @@ func Available() bool { return false }
 
 func compress([]byte) ([]byte, error) { return nil, ErrNotAvailable }
 
-func decompress([]byte) ([]byte, error) { return nil, ErrDecodeNotAvailable }
+func decompress([]byte, int) ([]byte, error) { return nil, ErrDecodeNotAvailable }

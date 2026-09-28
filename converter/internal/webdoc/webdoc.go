@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/url"
@@ -37,6 +38,12 @@ const (
 	nsXMLNS  = "http://www.w3.org/2000/xmlns/"
 	nsOPS    = "http://www.idpf.org/2007/ops"
 )
+
+// MaxDepth is how deeply the elements of an XHTML document may nest, as
+// many as the HTML parser allows. The readers of the tree call themselves
+// for the content of an element, and a stack that overflows cannot be
+// recovered from.
+const MaxDepth = 512
 
 // prefixes are the usual prefixes of the namespaces attributes are in.
 var prefixes = map[string]string{nsXLink: "xlink", nsXML: "xml", nsOPS: "epub", nsXMLNS: "xmlns"}
@@ -86,7 +93,8 @@ func ParseHTML(data []byte, contentType string) (*html.Node, error) {
 // "xlink" and "xml" namespaces. An xml:lang attribute also gives the
 // element the lang attribute HTML readers look for. Elements of other
 // namespaces keep their namespace's URL and no atom. The encoding comes
-// from the XML declaration (UTF-8 by default).
+// from the XML declaration (UTF-8 by default). A document whose elements
+// nest deeper than MaxDepth is refused.
 func ParseXHTML(data []byte) (*html.Node, error) {
 	d := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))))
 	d.Strict = true
@@ -94,6 +102,18 @@ func ParseXHTML(data []byte) (*html.Node, error) {
 	d.CharsetReader = charset.NewReaderLabel
 	doc := &html.Node{Type: html.DocumentNode}
 	cur := doc
+	depth := 0
+	// the text being read: character data comes in pieces (around CDATA
+	// sections and processing instructions), which are joined when the
+	// text ends
+	var text *html.Node
+	var pieces []byte
+	endText := func() {
+		if text != nil {
+			text.Data = string(pieces)
+			text, pieces = nil, pieces[:0]
+		}
+	}
 	for {
 		tok, err := d.Token()
 		if err == io.EOF {
@@ -107,6 +127,10 @@ func ParseXHTML(data []byte) (*html.Node, error) {
 			if cur == doc && hasElement(doc) {
 				return nil, errors.New("more than one root element")
 			}
+			if depth++; depth > MaxDepth {
+				return nil, fmt.Errorf("elements nested deeper than %d", MaxDepth)
+			}
+			endText()
 			n := element(t)
 			cur.AppendChild(n)
 			cur = n
@@ -114,20 +138,24 @@ func ParseXHTML(data []byte) (*html.Node, error) {
 			if cur.Parent == nil {
 				return nil, errors.New("unbalanced end tag")
 			}
+			endText()
 			cur = cur.Parent
+			depth--
 		case xml.CharData:
 			if cur == doc {
 				continue // white space around the root element
 			}
-			if last := cur.LastChild; last != nil && last.Type == html.TextNode {
-				last.Data += string(t)
-			} else {
-				cur.AppendChild(&html.Node{Type: html.TextNode, Data: string(t)})
+			if text == nil {
+				text = &html.Node{Type: html.TextNode}
+				cur.AppendChild(text)
 			}
+			pieces = append(pieces, t...)
 		case xml.Comment:
+			endText()
 			cur.AppendChild(&html.Node{Type: html.CommentNode, Data: string(t)})
 		}
 	}
+	endText()
 	if !hasElement(doc) {
 		return nil, errors.New("no root element")
 	}

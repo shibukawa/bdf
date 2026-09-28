@@ -1,6 +1,47 @@
-import type { BdfDocument, View, Page, Rect } from "@bdf/core";
+import { type BdfDocument, type View, type Page, type Rect, type Hash, UseLimits, tileSize } from "@bdf/core";
 import { ResourceCache, type ImageHold, type ResourceOptions } from "./resources.js";
 import { CanvasRenderer, type Ctx2D, type RenderOptions } from "./canvas.js";
+
+/** Tile coordinates, from the first to the last of each axis. */
+export interface TileRange { tx0: number; ty0: number; tx1: number; ty1: number }
+
+/** The tiles of each tile table seen, with their coordinates. */
+const tileLists = new WeakMap<object, [number, number, Hash][]>();
+
+/**
+ * The tiles a sheet view has within ranges of tile coordinates, by row and
+ * then by column, each once. The ranges follow from a region and the tile
+ * size, so they may hold far more coordinates than the sheet has tiles (a
+ * whole sheet selected): the tiles are then looked through instead.
+ */
+export function tilesIn(view: View, ranges: TileRange[]): [number, number, Hash][] {
+  const tiles = view.tiles ?? {};
+  let list = tileLists.get(tiles);
+  if (!list) {
+    list = [];
+    for (const [key, h] of Object.entries(tiles)) {
+      const m = /^(-?\d+),(-?\d+)$/.exec(key);
+      // only the keys a lookup by coordinates finds
+      if (m && `${Number(m[1])},${Number(m[2])}` === key && h) list.push([Number(m[1]), Number(m[2]), h]);
+    }
+    tileLists.set(tiles, list);
+  }
+  const count = ranges.reduce((n, r) => n + Math.max(0, r.tx1 - r.tx0 + 1) * Math.max(0, r.ty1 - r.ty0 + 1), 0);
+  const found = new Map<string, [number, number, Hash]>();
+  if (count <= list.length) {
+    for (const r of ranges) {
+      for (let ty = r.ty0; ty <= r.ty1; ty++) for (let tx = r.tx0; tx <= r.tx1; tx++) {
+        const h = tiles[`${tx},${ty}`];
+        if (h) found.set(`${tx},${ty}`, [tx, ty, h]);
+      }
+    }
+  } else {
+    for (const t of list) {
+      if (ranges.some((r) => t[0] >= r.tx0 && t[0] <= r.tx1 && t[1] >= r.ty0 && t[1] <= r.ty1)) found.set(`${t[0]},${t[1]}`, t);
+    }
+  }
+  return [...found.values()].sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+}
 
 export interface PageRenderOptions extends RenderOptions {
   /** Device pixels per unit. */
@@ -89,6 +130,7 @@ export class PageRenderer {
 
   drawPageSync(ctx: Ctx2D, page: Page, opts: PageRenderOptions, dx = 0, dy = 0): void {
     const roles = opts.roles ? new Set(opts.roles) : undefined;
+    const limits = new UseLimits(); // of the render
     ctx.save();
     ctx.setTransform(opts.scale, 0, 0, opts.scale, dx, dy);
     ctx.beginPath();
@@ -100,7 +142,7 @@ export class PageRenderer {
     }
     for (const layer of page.layers) {
       if (roles && !roles.has(layer.role)) continue;
-      this.renderer.draw(ctx, this.res.object(layer.obj));
+      this.renderer.draw(ctx, this.res.object(layer.obj), true, undefined, limits);
     }
     ctx.restore();
   }
@@ -148,6 +190,7 @@ export class PageRenderer {
 
   private drawContinuous(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, visible: number[], offsets: number[], roles: Iterable<string>): void {
     const pages = view.pages ?? [];
+    const limits = new UseLimits(); // of the render
     for (const i of visible) {
       const p = pages[i];
       const b = p.body ?? { x: 0, y: 0, w: p.w, h: p.h };
@@ -166,7 +209,7 @@ export class PageRenderer {
       const seen = { x: viewport.x + b.x, y: viewport.y - offsets[i] + b.y, w: viewport.w, h: viewport.h };
       for (const layer of p.layers) {
         if (!roleSet.has(layer.role)) continue;
-        this.renderer.draw(ctx, this.res.object(layer.obj), true, seen);
+        this.renderer.draw(ctx, this.res.object(layer.obj), true, seen, limits);
       }
       ctx.restore();
     }
@@ -188,23 +231,19 @@ export class PageRenderer {
   }
 
   private async sheetHeld(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, hold: ImageHold): Promise<void> {
-    const tile = view.tile ?? 2048;
-    const tiles = view.tiles ?? {};
+    const tile = tileSize(view);
     const tx0 = Math.floor(viewport.x / tile), ty0 = Math.floor(viewport.y / tile);
     const tx1 = Math.floor((viewport.x + viewport.w - 1e-6) / tile), ty1 = Math.floor((viewport.y + viewport.h - 1e-6) / tile);
-    const keys: [number, number, string][] = [];
-    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
-      const h = tiles[`${tx},${ty}`];
-      if (h) keys.push([tx, ty, h]);
-    }
+    const keys = tilesIn(view, [{ tx0, ty0, tx1, ty1 }]);
     await Promise.all(keys.map(([, , h]) => this.res.prepare(h, hold)));
     const region = { x: 0, y: 0, w: viewport.w * opts.scale, h: viewport.h * opts.scale };
     await this.drawSettled(ctx, opts, region, () => this.drawSheet(ctx, view, viewport, opts, keys));
   }
 
   private drawSheet(ctx: Ctx2D, view: View, viewport: Rect, opts: PageRenderOptions, keys: [number, number, string][]): void {
-    const tile = view.tile ?? 2048;
+    const tile = tileSize(view);
     const s = opts.scale;
+    const limits = new UseLimits(); // of the render
     ctx.save();
     ctx.setTransform(s, 0, 0, s, -viewport.x * s, -viewport.y * s);
     if (opts.background !== null) {
@@ -219,7 +258,7 @@ export class PageRenderer {
       ctx.rect(0, 0, tile, tile);
       ctx.clip();
       // a region shows a part of a tile: the rest of its cells are skipped
-      this.renderer.draw(ctx, this.res.object(h), true, { x: viewport.x - tx * tile, y: viewport.y - ty * tile, w: viewport.w, h: viewport.h });
+      this.renderer.draw(ctx, this.res.object(h), true, { x: viewport.x - tx * tile, y: viewport.y - ty * tile, w: viewport.w, h: viewport.h }, limits);
       ctx.restore();
     }
     ctx.restore();

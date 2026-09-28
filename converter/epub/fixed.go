@@ -8,6 +8,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"math"
 	"slices"
 	"strings"
 
@@ -83,12 +84,12 @@ func (c *converter) pictures() (*Result, error) {
 		var im *storedImage
 		var err error
 		if pic.svg != nil {
-			im = c.storeSVG(doc, pic.svg)
+			im, err = c.storeSVG(doc, pic.svg)
 		} else {
 			im, err = c.store(doc, pic.src, stored)
 		}
 		if err != nil {
-			c.warn(fmt.Sprintf("%s: %v; the page is left blank", ch.path, err))
+			c.warnLeftOut(err, fmt.Sprintf("%s: %v; the page is left blank", ch.path, err))
 		}
 		w, h := ch.viewport[0], ch.viewport[1]
 		if w <= 0 || h <= 0 {
@@ -137,10 +138,18 @@ func (c *converter) pictures() (*Result, error) {
 	return res, nil
 }
 
+// maxSVG is how large the SVG documents made of the svg elements of the
+// publication may be together: what the files read from it may be, and a
+// third more for the pictures, which are written in base64.
+func (c *converter) maxSVG() int {
+	return int(min(2*(c.pub.size+maxInflated), math.MaxInt32))
+}
+
 // storeSVG stores an svg element of a page as an SVG document (see
 // webdoc.SVGDocument), with the elements it uses from elsewhere in its
-// document and its images as data: URLs.
-func (c *converter) storeSVG(doc *bdf.Document, n *html.Node) *storedImage {
+// document and its images as data: URLs. The documents of the pages are
+// at most maxSVG together.
+func (c *converter) storeSVG(doc *bdf.Document, n *html.Node) (*storedImage, error) {
 	top := n
 	for top.Parent != nil {
 		top = top.Parent
@@ -151,10 +160,18 @@ func (c *converter) storeSVG(doc *bdf.Document, n *html.Node) *storedImage {
 			ids[id] = e
 		}
 	})
-	data := webdoc.SVGDocument(n, "", func(id string) *html.Node { return ids[id] }, c.embed)
+	var data []byte
+	if left := c.maxSVG() - c.svgBytes; left > 0 {
+		data, _ = webdoc.SVGDocumentMax(n, "", func(id string) *html.Node { return ids[id] }, c.embed, left)
+	}
+	if data == nil {
+		c.svgBytes = c.maxSVG()
+		return nil, fmt.Errorf("svg: %w", errInflated)
+	}
+	c.svgBytes += len(data)
 	im := &storedImage{hash: doc.AddImage(data)}
 	im.w, im.h = imgconv.ParseSVGSize(attrVal(n, "width"), attrVal(n, "height"), attrVal(n, "viewBox")).Pixels()
-	return im
+	return im, nil
 }
 
 // embed returns a picture of the publication as a data: URL, for an SVG
@@ -166,7 +183,7 @@ func (c *converter) embed(href string) string {
 	}
 	data, err := c.image(href)
 	if err != nil {
-		c.warn(fmt.Sprintf("image %s in an SVG: %v", href, err))
+		c.warnLeftOut(err, fmt.Sprintf("image %s in an SVG: %v", href, err))
 		return ""
 	}
 	format := imgconv.Sniff(data)

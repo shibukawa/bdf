@@ -722,7 +722,7 @@ func paintWedgeArrowDashed(v2 bool) func(s *shape, c *c2d, pts []point) {
 			if stepSize > 0 {
 				steps = math.Floor(math.Sqrt(dx*dx+dy*dy) / stepSize)
 			}
-			if steps > maxWedgeSteps {
+			if steps > maxWedgeSteps || !s.repeats(steps) {
 				return
 			}
 		}

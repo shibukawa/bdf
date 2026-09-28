@@ -174,12 +174,20 @@ func (v cellVal) blank() bool {
 	return v.kind == cellBlank || v.kind == cellStr && strings.TrimSpace(v.text) == ""
 }
 
+// maxCFCells bounds how many cells the conditional formats of a sheet may
+// read in all. A rule's range can cover the whole sheet, and every rule
+// scans its range, so without a budget a wide range over many rows would be
+// read again and again; it matches the 4-million-cell budget the sheet uses
+// elsewhere.
+const maxCFCells = 1 << 22
+
 // evalConditionalFormats evaluates the conditional formats of the sheet.
 func (s *sheetCtx) evalConditionalFormats() *cfResults {
 	ws := s.ws
 	if len(ws.cfs) == 0 && len(ws.x14cfs) == 0 {
 		return nil
 	}
+	s.cfCells = maxCFCells
 	x14 := map[string]*ooxml.Node{}
 	for _, cf := range ws.x14cfs {
 		for _, r := range cf.Children("cfRule") {
@@ -248,6 +256,11 @@ func (s *sheetCtx) rangeValues(ranges []cellRange) []cellVal {
 					continue
 				}
 				seen[k] = true
+				if s.cfCells <= 0 {
+					s.c.warnOnce("cfcells", "sheet %q: conditional formats cover more than %d cells; the rest are left unformatted", s.ws.name, maxCFCells)
+					return out
+				}
+				s.cfCells--
 				v := cellVal{r: r, c: c}
 				if rw != nil {
 					if cl := s.ws.cellAt(r, c); cl != nil {

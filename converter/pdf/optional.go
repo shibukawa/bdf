@@ -53,7 +53,8 @@ func (oc *optionalContent) visible(o types.Object) bool {
 	case "OCG":
 		return oc.groupOn(o)
 	case "OCMD":
-		if v, ok := oc.expression(d["VE"], 0); ok {
+		budget := maxExpressionNodes
+		if v, ok := oc.expression(d["VE"], 0, &budget); ok && budget >= 0 {
 			return v
 		}
 		var groups []types.Object
@@ -99,18 +100,27 @@ func (oc *optionalContent) groupOn(o types.Object) bool {
 	return oc.baseOn
 }
 
+// maxExpressionNodes bounds the expressions within a visibility expression:
+// its operands may be references to the same expression, at every depth.
+const maxExpressionNodes = 4096
+
 // expression evaluates a visibility expression (/VE, PDF 1.6): an array of
 // /And, /Or or /Not and operands that are groups or expressions. ok is
-// false when there is no expression or it is malformed.
-func (oc *optionalContent) expression(o types.Object, depth int) (v, ok bool) {
+// false when there is no expression or it is malformed. budget is the
+// number of expressions that may still be read: it is negative after an
+// expression of more, whose value is not to be used.
+func (oc *optionalContent) expression(o types.Object, depth int, budget *int) (v, ok bool) {
 	a := oc.p.array(o)
-	if len(a) < 2 || depth > 16 {
+	if len(a) < 2 || depth > 16 || *budget < 0 {
+		return false, false
+	}
+	if *budget--; *budget < 0 {
 		return false, false
 	}
 	var vals []bool
 	for _, e := range a[1:] {
 		if sub := oc.p.array(e); sub != nil {
-			if v, ok := oc.expression(sub, depth+1); ok {
+			if v, ok := oc.expression(sub, depth+1, budget); ok {
 				vals = append(vals, v)
 			}
 		} else if oc.p.dict(e) != nil {

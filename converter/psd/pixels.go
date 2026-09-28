@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -145,8 +146,20 @@ func (s planeSpec) unpredict(raw []byte) {
 	}
 }
 
+// A byte of compressed data gives at most this many bytes of samples: what
+// a file holds bounds what is allocated for it.
+const (
+	maxInflate  = 1032 // deflate
+	maxPackBits = 64   // PackBits: a run of 128 bytes takes two
+)
+
+var errShort = errors.New("too little data for the size of the image")
+
 // inflate decompresses ZIP channel data into want bytes.
 func inflate(data []byte, want int) ([]byte, error) {
+	if int64(want) > maxInflate*int64(len(data))+64 {
+		return nil, errShort
+	}
 	zr, err := zlib.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -189,6 +202,20 @@ func (s planeSpec) decodeChannel(data []byte) ([]uint8, error) {
 		}
 		counts := data[:cw*s.h]
 		data = data[cw*s.h:]
+		var total int64
+		for y := 0; y < s.h; y++ {
+			if cw == 4 {
+				total += int64(binary.BigEndian.Uint32(counts[4*y:]))
+			} else {
+				total += int64(binary.BigEndian.Uint16(counts[2*y:]))
+			}
+		}
+		if total > int64(len(data)) {
+			return nil, fmt.Errorf("RLE data too short")
+		}
+		if int64(rb)*int64(s.h) > maxPackBits*total {
+			return nil, fmt.Errorf("RLE data: %w", errShort)
+		}
 		raw := make([]byte, rb*s.h)
 		for y := 0; y < s.h; y++ {
 			n := int(binary.BigEndian.Uint16(counts[cw*y+cw-2:]))
@@ -267,6 +294,9 @@ func (f *file) readPlanes(n int) ([][]uint8, error) {
 			data := c.bytes(total)
 			if c.err != nil {
 				return nil, fmt.Errorf("RLE data too short")
+			}
+			if int64(rb)*int64(h.h) > maxPackBits*total {
+				return nil, fmt.Errorf("RLE data: %w", errShort)
 			}
 			raw := make([]byte, rb*h.h)
 			for y := 0; y < h.h; y++ {

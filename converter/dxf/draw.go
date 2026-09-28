@@ -46,8 +46,13 @@ type ctx struct {
 
 const maxDepth = 24
 
-// maxEntities bounds the entities drawn for one view, blocks included.
-const maxEntities = 5_000_000
+// maxEntities bounds the entities drawn for one view, blocks included,
+// and maxPoints the points of what they draw: a block may hold a long
+// polyline or a hatch of many lines, and be inserted many times.
+const (
+	maxEntities = 5_000_000
+	maxPoints   = 10_000_000
+)
 
 // ccwSpan reduces the angles of an arc turning counter-clockwise from a0
 // to a1 (radians) to a span of at most a turn; ok is false when an angle
@@ -245,6 +250,10 @@ func (c *converter) entity(e *entity, x *ctx) {
 	}
 	if c.count++; c.count > maxEntities {
 		c.warnOnce("budget", "only the first %d entities of a view are drawn", maxEntities)
+		return
+	}
+	if x.out.Points() > maxPoints {
+		c.warnOnce("points", "only the first %d points of a view are drawn", maxPoints)
 		return
 	}
 	l, ok := c.visible(e, x)

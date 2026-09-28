@@ -21,6 +21,8 @@ import (
 //
 // When a charstring cannot be followed (arithmetic operators, a subroutine
 // number out of range) every subroutine is kept and only the glyphs are dropped.
+// Charstrings that run longer than a font's size explains (subroutines that
+// call subroutines many times over) are an error: ErrTooLong.
 func Subset(data []byte, keep map[int]bool) (out []byte, order []int, err error) {
 	return subset(data, keep, false)
 }
@@ -86,10 +88,10 @@ func subset(data []byte, keep map[int]bool, keepNumbers bool) (out []byte, order
 	}
 	off := func(op, i int) (int, bool) {
 		v := topVal(op)
-		if len(v) <= i || v[i] < 0 || int(v[i]) > len(data) {
+		if len(v) <= i || v[i] < 0 || operand(v[i]) > len(data) {
 			return 0, false
 		}
-		return int(v[i]), true
+		return operand(v[i]), true
 	}
 	csOff, ok := off(17, 0)
 	if !ok {
@@ -117,7 +119,7 @@ func subset(data []byte, keep map[int]bool, keepNumbers bool) (out []byte, order
 		if len(sizeOff) != 2 {
 			return nil, errors.New("cff: bad Private operands")
 		}
-		size, o := int(sizeOff[0]), int(sizeOff[1])
+		size, o := operand(sizeOff[0]), operand(sizeOff[1])
 		if size < 0 || o < 0 || o+size > len(data) {
 			return nil, errors.New("cff: Private out of range")
 		}
@@ -128,7 +130,7 @@ func subset(data []byte, keep map[int]bool, keepNumbers bool) (out []byte, order
 		p := &private{dict: d, subrs: &subrSet{}}
 		for _, e := range d {
 			if e.Op == 19 && len(e.Args) == 1 {
-				items, _, err := ReadIndex(data, o+int(e.Args[0]))
+				items, _, err := ReadIndex(data, o+operand(e.Args[0]))
 				if err != nil {
 					return nil, err
 				}
@@ -190,6 +192,10 @@ func subset(data []byte, keep map[int]bool, keepNumbers bool) (out []byte, order
 	}
 
 	// Walk the kept glyphs, following subroutine calls and seac components.
+	// Every byte of a charstring or subroutine is run once for each glyph
+	// that reaches it, which subroutines shared by many glyphs make a few
+	// times the size of the font, not more.
+	left := 32*len(data) + 1<<16
 	global := newSubrSet(gsubrs)
 	kept := map[int]bool{0: true}
 	queue := []int{0}
@@ -203,8 +209,10 @@ func subset(data []byte, keep map[int]bool, keepNumbers bool) (out []byte, order
 	for len(queue) > 0 {
 		gid := queue[len(queue)-1]
 		queue = queue[:len(queue)-1]
-		st := &t2State{seac: [2]int{-1, -1}}
-		if _, err := st.exec(charStrings[gid], privates[fdOf(gid)].subrs, global, 0); err != nil {
+		st := &t2State{seac: [2]int{-1, -1}, left: &left}
+		if _, err := st.exec(charStrings[gid], privates[fdOf(gid)].subrs, global, 0); err == ErrTooLong {
+			return nil, nil, err
+		} else if err != nil {
 			followed = false
 		}
 		if st.seac[0] >= 0 && !cf.IsCID {
@@ -553,9 +561,21 @@ type t2State struct {
 	stack  []float64
 	nStems int
 	seac   [2]int
+	// left is how many operands and operators may still be run, shared by
+	// the glyphs of a font; nil for no limit.
+	left *int
 }
 
 var errT2 = errors.New("cff: charstring cannot be followed")
+
+// ErrTooLong is returned by Subset and Prune for a font whose charstrings
+// run too long to follow, or leave too many operands on the stack.
+var ErrTooLong = errors.New("cff: charstrings run too long")
+
+// maxStack bounds the operands on the stack: sixteen times the 513 of
+// CFF2, the larger of the limits of the formats. A subroutine call keeps
+// the stack, so that calls in a row would grow it without end.
+const maxStack = 16 * 513
 
 // exec interprets cs, marking the subroutines it calls. It reports true when
 // the glyph ended (endchar) and an error for charstrings it cannot follow.
@@ -564,6 +584,14 @@ func (st *t2State) exec(cs []byte, local, global *subrSet, depth int) (bool, err
 		return false, errT2
 	}
 	for i := 0; i < len(cs); {
+		if st.left != nil {
+			if *st.left--; *st.left < 0 {
+				return false, ErrTooLong
+			}
+		}
+		if len(st.stack) > maxStack {
+			return false, ErrTooLong
+		}
 		b := cs[i]
 		switch {
 		case b == 28:

@@ -385,7 +385,13 @@ func (c *converter) mline(e *entity, x *ctx, p props) {
 	if len(vs) < 2 {
 		return
 	}
-	n := e.int(73, len(vs[0].params))
+	// the elements the vertices have parameters for: the count of the
+	// entity may state any number
+	most := 0
+	for _, v := range vs {
+		most = max(most, len(v.params))
+	}
+	n := min(e.int(73, len(vs[0].params)), most)
 	closed := e.int(71, 0)&2 != 0
 	colors := c.mlineColors(e, x.dark)
 	for j := range n {

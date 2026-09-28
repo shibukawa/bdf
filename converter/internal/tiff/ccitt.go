@@ -161,13 +161,19 @@ func (r *bitReader) eol() bool {
 }
 
 // nextEOL moves past the next EOL code, for resynchronizing after a
-// damaged row; it reports whether there was one.
+// damaged row; it reports whether there was one. It goes from one run of
+// zeros to the next: a run too short for a code has none that starts
+// inside it, and zeros up to the end of the data are followed by none.
 func (r *bitReader) nextEOL() bool {
 	for !r.done() {
-		if r.eol() {
+		n := r.zeros()
+		if r.done() {
+			return false
+		}
+		r.pos++ // the 1 after the zeros
+		if n >= 11 {
 			return true
 		}
-		r.pos++
 	}
 	return false
 }

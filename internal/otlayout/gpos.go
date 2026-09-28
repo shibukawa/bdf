@@ -46,6 +46,9 @@ func (t *Table) Singles(i int, fn func(g uint16, v Value) bool) {
 	seen := map[uint16]bool{}
 	for _, st := range t.Lookups[i].subtables {
 		cov := coverage(st.at(st.u16(2)))
+		if !t.spend(1 + len(cov)) {
+			return
+		}
 		f := st.u16(4)
 		format, n := st.u16(0), st.count(st.u16(6), 8, valueSize(f))
 		for k, g := range cov {
@@ -99,7 +102,11 @@ func (t *Table) pairSubs(i int) []*pairSub {
 	var out []*pairSub
 	for _, st := range t.Lookups[i].subtables {
 		p := &pairSub{d: st, format: st.u16(0), vf1: st.u16(4), vf2: st.u16(6), cov: map[uint16]int{}}
-		for k, g := range coverage(st.at(st.u16(2))) {
+		cov := coverage(st.at(st.u16(2)))
+		if !t.spend(1 + len(cov)) {
+			break
+		}
+		for k, g := range cov {
 			if _, dup := p.cov[g]; !dup {
 				p.cov[g] = k
 			}
@@ -109,6 +116,9 @@ func (t *Table) pairSubs(i int) []*pairSub {
 		case 2:
 			p.class1 = classDef(st.at(st.u16(8)))
 			p.class2 = classDef(st.at(st.u16(10)))
+			if !t.spend(len(p.class1) + len(p.class2)) {
+				continue
+			}
 			p.n1, p.n2 = st.u16(12), st.u16(14)
 			rec := valueSize(p.vf1) + valueSize(p.vf2)
 			if rec == 0 || p.n1*p.n2 > (len(st)-16)/rec {
@@ -127,6 +137,9 @@ func (t *Table) pairSubs(i int) []*pairSub {
 // when they meet: the first subtable that has the pair decides.
 func (t *Table) PairValue(i int, first, second uint16) (v1, v2 Value, ok bool) {
 	for _, p := range t.pairSubs(i) {
+		if !t.spend(1) {
+			return
+		}
 		k, covered := p.cov[first]
 		if !covered {
 			continue
@@ -182,6 +195,9 @@ func (t *Table) PairCount(i int) int {
 			for k := range n {
 				set := p.d.at(p.d.u16(10 + k*2))
 				m := set.count(set.u16(0), 2, 2+s1+s2)
+				if !t.spend(1 + m) {
+					return total
+				}
 				for j := range m {
 					r := 2 + j*(2+s1+s2)
 					if !value(set, r+2, p.vf1).Zero() || !value(set, r+2+s1, p.vf2).Zero() {
@@ -190,6 +206,9 @@ func (t *Table) PairCount(i int) int {
 				}
 			}
 		case 2:
+			if !t.spend(len(p.cov) + len(p.class2) + p.n1*p.n2) {
+				return total
+			}
 			size1 := make([]int, p.n1)
 			for g := range p.cov {
 				if c := p.class1[g]; c < p.n1 {
@@ -224,13 +243,20 @@ func (t *Table) Pairs(i int, fn func(Pair) bool) {
 		s1, s2 := valueSize(p.vf1), valueSize(p.vf2)
 		switch p.format {
 		case 1:
-			for _, first := range coverage(p.d.at(p.d.u16(2))) {
+			cov := coverage(p.d.at(p.d.u16(2)))
+			if !t.spend(1 + len(cov)) {
+				return
+			}
+			for _, first := range cov {
 				k := p.cov[first]
 				if k >= p.d.u16(8) {
 					continue
 				}
 				set := p.d.at(p.d.u16(10 + k*2))
 				m := set.count(set.u16(0), 2, 2+s1+s2)
+				if !t.spend(m) {
+					return
+				}
 				for j := range m {
 					r := 2 + j*(2+s1+s2)
 					pr := Pair{First: first, Second: uint16(set.u16(r)), V1: value(set, r+2, p.vf1), V2: value(set, r+2+s1, p.vf2)}
@@ -246,6 +272,10 @@ func (t *Table) Pairs(i int, fn func(Pair) bool) {
 				c2     int
 				v1, v2 Value
 			}
+			cov := coverage(p.d.at(p.d.u16(2)))
+			if !t.spend(1 + len(cov) + len(p.class2) + p.n1*p.n2) {
+				return
+			}
 			glyphs2 := classGlyphs(p.class2)
 			byClass := make([][]adjust, p.n1)
 			for c1 := range p.n1 {
@@ -257,12 +287,15 @@ func (t *Table) Pairs(i int, fn func(Pair) bool) {
 					}
 				}
 			}
-			for _, first := range coverage(p.d.at(p.d.u16(2))) {
+			for _, first := range cov {
 				c1 := p.class1[first]
 				if c1 >= p.n1 {
 					continue
 				}
 				for _, a := range byClass[c1] {
+					if !t.spend(len(glyphs2[a.c2])) {
+						return
+					}
 					for _, second := range glyphs2[a.c2] {
 						if !fn(Pair{First: first, Second: second, V1: a.v1, V2: a.v2}) {
 							return
@@ -317,6 +350,9 @@ func (t *Table) Attachments(i int) []Attachment {
 		bases := coverage(st.at(st.u16(4)))
 		classes := st.u16(6)
 		ma, ba := st.at(st.u16(8)), st.at(st.u16(10))
+		if !t.spend(1 + len(marks) + len(bases)) {
+			break
+		}
 		if ma == nil || ba == nil || classes == 0 {
 			continue
 		}
@@ -332,6 +368,9 @@ func (t *Table) Attachments(i int) []Attachment {
 			}
 		}
 		n = ba.count(ba.u16(0), 2, 2*classes)
+		if !t.spend(min(n, len(bases)) * classes) {
+			break
+		}
 		for k, g := range bases {
 			if k >= n {
 				break
@@ -367,16 +406,24 @@ func (t *Table) MarkCounts(i int) (marks, bases int) {
 		if st.u16(0) != 1 {
 			continue
 		}
+		first, second := coverage(st.at(st.u16(2))), []uint16(nil)
+		switch l.Type {
+		case PosMarkToBase, PosMarkToLig, PosMarkToMark:
+			second = coverage(st.at(st.u16(4)))
+		}
+		if !t.spend(1 + len(first) + len(second)) {
+			break
+		}
 		switch l.Type {
 		case PosCursive:
-			for _, g := range coverage(st.at(st.u16(2))) {
+			for _, g := range first {
 				b[g] = true
 			}
 		case PosMarkToBase, PosMarkToLig, PosMarkToMark:
-			for _, g := range coverage(st.at(st.u16(2))) {
+			for _, g := range first {
 				m[g] = true
 			}
-			for _, g := range coverage(st.at(st.u16(4))) {
+			for _, g := range second {
 				b[g] = true
 			}
 		}

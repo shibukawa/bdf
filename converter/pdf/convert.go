@@ -101,6 +101,10 @@ type converter struct {
 	pageBodies     []*pageRef // the pages of the view, in order
 	sharedPrefixes int
 	sharedBytes    int
+	reconverted    int                     // forms converted again (formObject)
+	stored         int                     // images encoded to be stored, or to be read back as a mask
+	inMask         int                     // the image being read is a mask (of a mask …)
+	dests          map[string]types.Object // named destinations of the name tree, once read
 	// pageCodes collects the codes each font draws while a Stream converts
 	// a page (nil otherwise).
 	pageCodes map[*pdfFont]map[uint32]bool
@@ -127,6 +131,7 @@ func ConvertFile(path string, opts *Options) (*Result, error) {
 // Wrong or missing passwords are converter.ErrWrongPassword and
 // converter.ErrPasswordRequired.
 func readContext(rs io.ReadSeeker, password string) (ctx *model.Context, protected bool, err error) {
+	defer recovered(&err)
 	read := func(pw string) (*model.Context, error) {
 		if _, err := rs.Seek(0, io.SeekStart); err != nil {
 			return nil, err
@@ -154,6 +159,16 @@ func readContext(rs io.ReadSeeker, password string) (ctx *model.Context, protect
 	return ctx, protected, nil
 }
 
+// recovered makes a panic the error of the function that defers it. The
+// values of a damaged file are checked where they are used, but pdfcpu and
+// the decoders of fonts and images read many more, and a conversion must
+// end with an error, not end the program.
+func recovered(err *error) {
+	if r := recover(); r != nil {
+		*err = fmt.Errorf("pdf: the file is damaged: %v", r)
+	}
+}
+
 // Convert converts a PDF read from rs.
 func Convert(rs io.ReadSeeker, opts *Options) (*Result, error) {
 	s, err := NewStream(rs, opts)
@@ -173,9 +188,6 @@ func newConverter(rs io.ReadSeeker, opts *Options) (*converter, bool, error) {
 	if err != nil {
 		return nil, protected, err
 	}
-	if err := ctx.EnsurePageCount(); err != nil {
-		return nil, protected, fmt.Errorf("pdf: %w", err)
-	}
 	switch opts.Box {
 	case "", "crop", "media", "bleed", "trim", "art":
 	default:
@@ -183,6 +195,14 @@ func newConverter(rs io.ReadSeeker, opts *Options) (*converter, bool, error) {
 	}
 	c := &converter{pdf: &pdf{ctx: ctx}, doc: bdf.NewDocument(), opts: opts, warned: map[string]bool{},
 		fonts: map[string]*pdfFont{}, forms: map[string]*pending{}, images: map[string]*imageEntry{}, shadings: map[string]*shading{}}
+	leaves, left, err := c.pdf.pageLeaves()
+	if err != nil {
+		return nil, protected, fmt.Errorf("pdf: %w", err)
+	}
+	if left > 0 {
+		c.warnf("the page tree lists pages more than once: %d of them are left out", left)
+	}
+	ctx.PageCount = len(leaves) // pdfcpu's is the /Count of the root
 	c.doc.Meta.Source = "pdf"
 	c.doc.Meta.DC = c.pdf.info()
 	if opts.Title != "" {
@@ -206,22 +226,19 @@ func newConverter(rs io.ReadSeeker, opts *Options) (*converter, bool, error) {
 	if kind == bdf.ViewFlow {
 		view.Continuous = &bdf.Continuous{Gap: 16}
 	}
-	pages := opts.Pages.Numbers(ctx.PageCount)
+	pages := opts.Pages.Numbers(len(leaves))
 	if pages == nil {
-		for i := 1; i <= ctx.PageCount; i++ {
+		for i := 1; i <= len(leaves); i++ {
 			pages = append(pages, i)
 		}
 	}
 	c.outPages, c.outPageNrs = map[int]int{}, map[int]int{}
 	for i, n := range pages {
-		if n < 1 || n > ctx.PageCount {
-			return nil, protected, fmt.Errorf("pdf: page %d out of range (1-%d)", n, ctx.PageCount)
+		if n < 1 || n > len(leaves) {
+			return nil, protected, fmt.Errorf("pdf: page %d out of range (1-%d)", n, len(leaves))
 		}
-		pr := &pageRef{nr: n}
-		pr.dict, pr.ref, pr.attrs, pr.err = ctx.PageDict(n, false)
-		if pr.err == nil && pr.dict == nil {
-			pr.err = fmt.Errorf("page dict missing")
-		}
+		leaf := leaves[n-1]
+		pr := &pageRef{nr: n, dict: leaf.dict, ref: leaf.ref, attrs: leaf.attrs, err: leaf.err}
 		if _, ok := c.outPageNrs[n]; !ok {
 			c.outPageNrs[n] = i + 1
 			if pr.err == nil && pr.ref != nil {
@@ -339,8 +356,8 @@ func (c *converter) convertPage(pr *pageRef) error {
 	if res == nil {
 		res = p.dict(pageDict["Resources"])
 	}
-	content, err := c.pdf.ctx.PageContent(pageDict, pageNr)
-	if err != nil && err != model.ErrNoContent {
+	content, err := c.pdf.pageContent(pageDict)
+	if err != nil {
 		c.warnf("page %d content: %v", pageNr, err)
 	}
 	in := c.newInterp(body, res, base, 0)
@@ -379,6 +396,49 @@ func (c *converter) convertPage(pr *pageRef) error {
 	}
 	pr.body = body
 	return nil
+}
+
+// pageContent returns the content of a page: its content stream, or its
+// content streams one after the other (as pdfcpu's PageContent joins them),
+// decoded within the limits of decodeStream. A page without content has
+// none and no error.
+func (p *pdf) pageContent(pageDict types.Dict) ([]byte, error) {
+	var streams []types.Object
+	switch v := p.deref(pageDict["Contents"]).(type) {
+	case nil:
+		return nil, nil
+	case types.StreamDict, *types.StreamDict:
+		streams = []types.Object{v}
+	case types.Array:
+		streams = v
+	default:
+		return nil, fmt.Errorf("the content is neither a stream nor an array of streams")
+	}
+	var content []byte
+	for _, o := range streams {
+		if p.deref(o) == nil {
+			continue
+		}
+		sd := p.stream(o)
+		if sd == nil {
+			return nil, fmt.Errorf("the content is not a stream")
+		}
+		data, codec, err := p.decodeStream(sd)
+		if err != nil {
+			return nil, err
+		}
+		if codec != "" {
+			return nil, fmt.Errorf("the content is encoded as an image (%s)", codec)
+		}
+		if len(streams) == 1 {
+			return data, nil
+		}
+		if int64(len(content))+int64(len(data)) > p.streamLimit() {
+			return nil, fmt.Errorf("the content streams decode to more than %d bytes", p.streamLimit())
+		}
+		content = append(content, data...)
+	}
+	return content, nil
 }
 
 // pageRef is a page of the view: the PDF page it converts, and its body
@@ -512,11 +572,18 @@ func (c *converter) namedDest(name string) types.Object {
 	if err != nil || cat == nil {
 		return nil
 	}
-	if v := p.nameTree(p.dict(cat["Names"])["Dests"], name); v != nil {
+	if c.dests == nil {
+		c.dests = p.nameTree(p.dict(cat["Names"])["Dests"])
+	}
+	if v := c.dests[name]; v != nil {
 		return v
 	}
 	return p.dict(cat["Dests"])[name]
 }
+
+// maxReconversions bounds the conversions of forms that were converted
+// before under another structure (see formObject), in a document.
+const maxReconversions = 1 << 16
 
 // formObject converts a form XObject (or pattern cell) into a shared pending
 // object. fs is the caller's structure state (nil: no structure MARKs).
@@ -531,6 +598,12 @@ func (c *converter) formObject(key string, sd *types.StreamDict, parentRes types
 				return f
 			}
 			key = "" // its MARKs were made for another state: convert it again
+			// Nothing keeps a form converted again from being converted
+			// once more by what it draws, but the depth of forms.
+			if c.reconverted++; c.reconverted > maxReconversions {
+				c.warnOnce("form-again", "form XObjects converted for too many structures; skipping")
+				return nil
+			}
 		}
 	}
 	bbox := p.rectOr(sd.Dict["BBox"], rect{0, 0, 1, 1})

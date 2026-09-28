@@ -23,7 +23,9 @@ type svgImage struct {
 	rasters map[int]*picture
 }
 
-// svgRasterPixels bounds the size of a raster of an SVG image.
+// svgRasterPixels bounds the size of a raster of an SVG image: the scale
+// it is drawn at is no more than gives as many pixels, rounded up to a
+// power of √2 (so a raster has up to twice as many).
 const svgRasterPixels = 4096 * 4096
 
 // newSVGImage parses an SVG image part.
@@ -34,6 +36,9 @@ func newSVGImage(data []byte) (*svgImage, bool) {
 	}
 	si := &svgImage{doc: doc, rasters: map[int]*picture{}}
 	si.w, si.h = svgNaturalSize(doc.root)
+	if math.IsInf(si.w, 0) || math.IsInf(si.h, 0) {
+		return nil, false
+	}
 	return si, true
 }
 
@@ -78,24 +83,61 @@ func svgNaturalSize(root *svgNode) (float64, float64) {
 // raster returns a raster of the image drawn with k device pixels per image
 // pixel (rounded up to a power of √2, and bounded).
 func (si *svgImage) raster(r *Renderer, k float64) (*picture, float64) {
+	return si.rasterIn(r, k, 0)
+}
+
+// rasterIn is raster for an image that is inside as many SVG images as
+// inside says. The picture is nil when the renderer has no room for it.
+func (si *svgImage) rasterIn(r *Renderer, k float64, inside int) (*picture, float64) {
+	step, k, w, h := si.rasterSize(k)
+	if w == 0 {
+		return nil, k
+	}
+	if p, ok := si.rasters[step]; ok {
+		p.used = r.drawing
+		return p, k
+	}
+	if !r.makeRoom(w * h) {
+		r.warnf(tooManyPixels, r.room)
+		return nil, k
+	}
+	s := newSurface(w, h)
+	sr := &svgRenderer{r: r, doc: si.doc, budget: svgBudget, inside: inside}
+	sr.render(s, matrix{k, 0, 0, k, 0, 0}, si.w, si.h)
+	p := &picture{w: w, h: h, levels: []*image.RGBA{s.toRGBA()}}
+	si.rasters[step] = p
+	r.keep(p, func() { delete(si.rasters, step) })
+	return p, float64(w) / si.w
+}
+
+// rasterSize returns the scale a raster for k device pixels per image pixel
+// is drawn at, which is 2 to the power of step/2, and its size; no size for
+// an image that has no raster.
+func (si *svgImage) rasterSize(k float64) (step int, scale float64, w, h int) {
 	if !(k > 0) {
 		k = 1
 	}
 	if max := math.Sqrt(svgRasterPixels / (si.w * si.h)); k > max {
 		k = max
 	}
-	step := int(math.Ceil(2 * math.Log2(k)))
-	k = math.Pow(2, float64(step)/2)
-	if p, ok := si.rasters[step]; ok {
-		return p, k
+	// between 2^-32 and 2^32: no raster is scaled more, and the scale of
+	// an image of no size is no number
+	step = int(math.Min(math.Max(math.Ceil(2*math.Log2(k)), -64), 64))
+	size := func() (w, h float64) {
+		k = math.Pow(2, float64(step)/2)
+		return math.Max(1, math.Ceil(si.w*k)), math.Max(1, math.Ceil(si.h*k))
 	}
-	w, h := max(1, int(math.Ceil(si.w*k))), max(1, int(math.Ceil(si.h*k)))
-	s := newSurface(w, h)
-	sr := &svgRenderer{r: r, doc: si.doc, budget: svgBudget}
-	sr.render(s, matrix{k, 0, 0, k, 0, 0}, si.w, si.h)
-	p := &picture{w: w, h: h, levels: []*image.RGBA{s.toRGBA()}}
-	si.rasters[step] = p
-	return p, float64(w) / si.w
+	fw, fh := size()
+	for fw*fh > 2*svgRasterPixels && math.Min(si.w, si.h)*k < 1 && step > -64 {
+		// less than a pixel wide or high, which is one all the same: the
+		// other side gives the scale
+		step--
+		fw, fh = size()
+	}
+	if !(fw*fh <= 4*svgRasterPixels+2) {
+		return step, k, 0, 0
+	}
+	return step, k, int(fw), int(fh)
 }
 
 // svgRenderer draws an SVG document.
@@ -106,10 +148,28 @@ type svgRenderer struct {
 	// budget is the number of elements left to draw: use elements can
 	// repeat content exponentially, as they can in a browser
 	budget int
+	// layers counts the canvases of translucent elements in use, live
+	// their pixels, and layerPixels the pixels of all that were
+	layers, live, layerPixels int
+	// inside is the number of SVG images this one is in
+	inside int
 }
 
-// svgBudget is the number of elements drawn of an SVG image at most.
-const svgBudget = 200000
+// Limits of drawing an SVG image.
+const (
+	// svgBudget is the number of elements drawn of an SVG image at most.
+	svgBudget = 200000
+	// svgLayers is the most translucent elements drawn inside each other:
+	// each is drawn on a canvas of its own, as large as the raster, and
+	// svgLivePixels the most pixels of the canvases in use.
+	svgLayers     = 8
+	svgLivePixels = 4 * svgRasterPixels
+	// svgLayerPixels is the most pixels of the canvases of the translucent
+	// elements of a raster, which are blended in one after the other.
+	svgLayerPixels = 1 << 30
+	// svgInside is how deep SVG images may be in SVG images.
+	svgInside = 4
+)
 
 // svgCtx is where drawing goes: a surface, the user space, the clip and
 // the viewport that percentages refer to.
@@ -417,10 +477,20 @@ func (sr *svgRenderer) node(n *svgNode, ctx *svgCtx, parent svgStyle) {
 	}
 	if opacity < 1 {
 		// draw the element alone, then blend it in with its opacity
+		pixels := c.s.w * c.s.h
+		if sr.layers >= svgLayers || pixels > svgLivePixels-sr.live || pixels > svgLayerPixels-sr.layerPixels {
+			sr.r.warnf("an SVG image has too many translucent elements: the rest of them are not drawn")
+			return
+		}
+		sr.layers++
+		sr.live += pixels
+		sr.layerPixels += pixels
 		layer := newSurface(c.s.w, c.s.h)
 		lc := c
 		lc.s = layer
 		sr.element(n, &lc, st)
+		sr.layers--
+		sr.live -= pixels
 		c.s.fill(&mask{r: c.clip.r}, surfaceShader{s: layer}, float32(opacity), bdf.BlendSourceOver, &mask{r: c.s.bounds()})
 		return
 	}
@@ -495,7 +565,7 @@ func (sr *svgRenderer) nested(content *svgNode, viaUse bool, c *svgCtx, st svgSt
 	if ov, _ := content.declared("overflow"); ov != "visible" && ov != "auto" {
 		p := &path{}
 		p.rect(x, y, w, h)
-		nc.clip = intersect(nc.clip, rasterize(p.flatten(nc.m, flatTol), bdf.NonZero, nc.s.bounds()))
+		nc.clip = intersect(nc.clip, sr.coverage(p, nc.m, bdf.NonZero, nc.s.bounds()))
 	}
 	if vb, ok := viewBox(content.attr["viewBox"]); ok {
 		nc.m = nc.m.mul(aspectTransform(vb, content.attr["preserveAspectRatio"], x, y, w, h))
@@ -531,7 +601,10 @@ func (sr *svgRenderer) shape(n *svgNode, c *svgCtx, st svgStyle) *path {
 	p := &path{}
 	switch n.name {
 	case "path":
-		return parsePathData(a["d"])
+		if n.path == nil {
+			n.path = parsePathData(a["d"])
+		}
+		return n.path
 	case "rect":
 		x, y, w, h := lx("x"), ly("y"), lx("width"), ly("height")
 		if !(w > 0 && h > 0) {
@@ -633,7 +706,7 @@ func (sr *svgRenderer) paint(p *path, c *svgCtx, st svgStyle) {
 	bx0, by0, bx1, by1 := p.bbox()
 	bbox := [4]float64{bx0, by0, bx1 - bx0, by1 - by0}
 	if sh := sr.paintServer(st.fill, st, bbox, c); sh != nil {
-		cov := rasterize(p.flatten(c.m, flatTol), st.fillRule, c.clip.r.Intersect(c.s.bounds()))
+		cov := sr.coverage(p, c.m, st.fillRule, c.clip.r.Intersect(c.s.bounds()))
 		c.s.fill(cov, sh, float32(st.fillOpacity), bdf.BlendSourceOver, c.clip)
 	}
 	if sh := sr.paintServer(st.stroke, st, bbox, c); sh != nil {
@@ -648,9 +721,22 @@ func (sr *svgRenderer) paint(p *path, c *svgCtx, st svgStyle) {
 			}
 			ls.setDash(segs, float32(c.length(st.dashOffset, 'd', st.fontSize)))
 		}
-		cov, alpha := strokeMask(p, c.m, ls, c.clip.r.Intersect(c.s.bounds()))
+		cov, alpha, cut := sr.r.scratch().strokeMask(p, c.m, ls, c.clip.r.Intersect(c.s.bounds()))
+		if cut {
+			sr.r.warnf(strokeCut)
+		}
 		c.s.fill(cov, sh, alpha*float32(st.strokeOpacity), bdf.BlendSourceOver, c.clip)
 	}
+}
+
+// coverage rasterizes a path in user space under m within bounds.
+func (sr *svgRenderer) coverage(p *path, m matrix, rule byte, bounds image.Rectangle) *mask {
+	if hidden(p, 0, m, bounds) {
+		return &mask{}
+	}
+	sc := sr.r.scratch()
+	sc.polys = p.flattenTo(sc, sc.polys, m, flatTol)
+	return sc.rasterize(sc.polys, rule, bounds)
 }
 
 // paintServer returns the shader of a fill or stroke value, or nil for none.
@@ -780,7 +866,7 @@ func (sr *svgRenderer) gradient(g *svgNode, st svgStyle, bbox [4]float64, c *svg
 		}
 		p.Stops = append(p.Stops, bdf.Stop{Offset: float32(off), Color: packColor(col)})
 	}
-	return newGradientShader(p, m)
+	return newGradientShader(p, m, nil)
 }
 
 func packColor(c svgColor) bdf.Color {
@@ -809,6 +895,11 @@ func (sr *svgRenderer) clipMask(cp, el *svgNode, c *svgCtx, st svgStyle) *mask {
 		if d, _ := ch.declared("display"); d == "none" {
 			continue
 		}
+		// the shapes of a clip path count as elements drawn
+		if sr.budget <= 0 {
+			break
+		}
+		sr.budget--
 		cst := sr.compute(ch, st)
 		cm := m
 		if t := ch.attr["transform"]; t != "" {
@@ -828,7 +919,7 @@ func (sr *svgRenderer) clipMask(cp, el *svgNode, c *svgCtx, st svgStyle) *mask {
 		if p == nil {
 			continue
 		}
-		cov := rasterize(p.flatten(cm, flatTol), cst.clipRule, bounds)
+		cov := sr.coverage(p, cm, cst.clipRule, bounds)
 		if out == nil {
 			out = cov
 		} else {
@@ -976,30 +1067,58 @@ func (sr *svgRenderer) glyphs(gs []placed, x, y float64, st svgStyle, c *svgCtx)
 // image draws an image element: an embedded raster image or SVG document
 // (data: URL) fitted into its box.
 func (sr *svgRenderer) image(n *svgNode, c *svgCtx, st svgStyle) {
-	data, ok := dataURL(n.attr["href"])
-	if !ok {
-		if n.attr["href"] != "" {
-			sr.r.warnf("SVG images linking to other files are not drawn")
-		}
-		return
-	}
 	x, y := c.length(n.attr["x"], 'x', st.fontSize), c.length(n.attr["y"], 'y', st.fontSize)
 	var pic *picture
 	var iw, ih float64
-	if isSVG(data) {
-		si, ok := newSVGImage(data)
-		if !ok || sr.depth > 8 {
+	if !n.tried {
+		// the image of the element is kept for the next time it is drawn
+		n.tried = true
+		data, ok := dataURL(n.attr["href"])
+		if !ok {
+			if n.attr["href"] != "" {
+				sr.r.warnf("SVG images linking to other files are not drawn")
+			}
+			return
+		}
+		if isSVG(data) {
+			si, ok := newSVGImage(data)
+			if !ok {
+				return
+			}
+			for _, w := range si.doc.warnings {
+				sr.r.warnf("%s", w)
+			}
+			n.image = si
+		} else {
+			var full bool
+			if n.pic, full = sr.r.decode(data, func() { n.pic, n.tried = nil, false }); n.pic == nil {
+				if !full {
+					sr.r.warnf("an image in an SVG image cannot be decoded")
+				}
+				n.tried = !full // there may be room for it in the next image drawn
+				return
+			}
+		}
+	}
+	if n.pic == nil && n.image == nil {
+		return
+	}
+	if si := n.image; si != nil {
+		if sr.depth > 8 {
+			return
+		}
+		if sr.inside >= svgInside {
+			sr.r.warnf("SVG images are more than %d deep in SVG images: the rest are not drawn", svgInside)
 			return
 		}
 		iw, ih = si.w, si.h
 		w, h := sizeOr(c, n, st, iw, ih)
-		pic, _ = si.raster(sr.r, c.m.maxScale()*math.Max(w/iw, h/ih))
-	} else {
-		var ok bool
-		if pic, _, ok = decodePicture(data); !ok {
-			sr.r.warnf("an image in an SVG image cannot be decoded")
+		if pic, _ = si.rasterIn(sr.r, c.m.maxScale()*math.Max(w/iw, h/ih), sr.inside+1); pic == nil {
 			return
 		}
+	} else {
+		pic = n.pic
+		pic.used = sr.r.drawing
 		iw, ih = float64(pic.w), float64(pic.h)
 	}
 	w, h := sizeOr(c, n, st, iw, ih)

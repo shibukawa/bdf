@@ -9,6 +9,11 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 )
 
+// maxGridCols bounds a table's grid: a cell's gridSpan (or a row's
+// gridBefore) is not trusted as a column count. It is far above any real
+// table; columns past it are clamped into the last one.
+const maxGridCols = 1 << 14
+
 // table is a w:tbl.
 type table struct {
 	style     string
@@ -208,6 +213,12 @@ func (w *walker) table(n *ooxml.Node) *table {
 			n = max(n, ce.col+ce.span)
 		}
 		ncols = max(ncols, n)
+	}
+	if ncols > maxGridCols {
+		// a hostile gridSpan or gridBefore: keep the grid bounded (cells
+		// beyond are clamped into the last column when laid out)
+		c.warnOnce("gridcols", "a table has more than %d columns; the rest are merged into the last", maxGridCols)
+		ncols = maxGridCols
 	}
 	for len(t.grid) < ncols {
 		t.grid = append(t.grid, 0)

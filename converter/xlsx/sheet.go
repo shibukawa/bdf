@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"io"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -98,6 +99,10 @@ type worksheet struct {
 	fitCols    bool // columns are as wide as their text
 	headerRows int  // rows at the top that head the columns
 	gridTables []gridTable
+
+	// the col elements by column (indexCols)
+	colsIndexed      bool
+	colLast, colBase []int32
 }
 
 // readWorksheet parses a worksheet part.
@@ -161,16 +166,18 @@ func (ws *worksheet) element(n *ooxml.Node) {
 			ws.freezeR = int(p.AttrFloat("ySplit", 0))
 		}
 	case "sheetFormatPr":
-		ws.defColW = n.AttrFloat("defaultColWidth", 0)
-		ws.baseColW = n.AttrFloat("baseColWidth", 8)
-		ws.defRowH = n.AttrFloat("defaultRowHeight", 0)
+		ws.defColW = clampColWidth(n.AttrFloat("defaultColWidth", 0))
+		ws.baseColW = clampColWidth(n.AttrFloat("baseColWidth", 8))
+		if h := clampRowHt(n.AttrFloat("defaultRowHeight", 0)); h >= 0 {
+			ws.defRowH = h
+		}
 		ws.zeroH = n.AttrBool("zeroHeight", false)
 	case "cols":
 		for _, k := range n.Children("col") {
 			cd := colDef{min: int(k.AttrInt("min", 1)) - 1, max: int(k.AttrInt("max", 1)) - 1, width: -1,
 				hidden: k.AttrBool("hidden", false), style: int(k.AttrInt("style", -1))}
 			if _, ok := k.Attr("width"); ok {
-				cd.width = k.AttrFloat("width", 0)
+				cd.width = clampColWidth(k.AttrFloat("width", 0))
 			}
 			if cd.min < 0 || cd.max < cd.min {
 				continue
@@ -212,7 +219,34 @@ func (ws *worksheet) element(n *ooxml.Node) {
 const (
 	maxRows = 1048576
 	maxCols = 16384
+	// Excel's own maxima for a row's height (points) and a column's width
+	// (characters, its widest digit). Heights and widths past these, or not
+	// finite (a "ht" or "width" of "Inf"), are clamped, so a hostile file of
+	// a few bytes cannot make the sheet's grid span an unbounded distance.
+	maxRowPt   = 409.5
+	maxColChar = 255
 )
+
+// clampRowHt limits a row height in points: a negative or non-finite value
+// is dropped (returns -1, "not set"), the rest is capped at maxRowPt.
+func clampRowHt(f float64) float64 {
+	if math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {
+		return -1
+	}
+	return math.Min(f, maxRowPt)
+}
+
+// clampColWidth limits a column width in characters: a non-finite value
+// becomes the maximum, a negative one zero, and the rest is capped.
+func clampColWidth(f float64) float64 {
+	switch {
+	case math.IsNaN(f) || f < 0:
+		return 0
+	case math.IsInf(f, 0):
+		return maxColChar
+	}
+	return math.Min(f, maxColChar)
+}
 
 // readSheetData streams the rows and cells of sheetData.
 func (c *converter) readSheetData(d *xml.Decoder, ws *worksheet) error {
@@ -241,8 +275,8 @@ func (c *converter) readSheetData(d *xml.Decoder, ws *worksheet) error {
 							r.idx = n - 1
 						}
 					case "ht":
-						if f, err := strconv.ParseFloat(a.Value, 64); err == nil && f >= 0 {
-							r.ht = f
+						if f, err := strconv.ParseFloat(a.Value, 64); err == nil {
+							r.ht = clampRowHt(f)
 						}
 					case "customHeight":
 						r.custom = xmlBool(a.Value)
@@ -615,12 +649,80 @@ func (ws *worksheet) cellAt(r, c int) *cell {
 	return nil
 }
 
+// cellsIn returns the number of cells of a range that are in the file.
+func (ws *worksheet) cellsIn(rg cellRange) int {
+	n := 0
+	i := sort.Search(len(ws.rows), func(i int) bool { return ws.rows[i].idx >= rg.r0 })
+	for ; i < len(ws.rows) && ws.rows[i].idx <= rg.r1; i++ {
+		cells := ws.rows[i].cells
+		c0 := sort.Search(len(cells), func(k int) bool { return cells[k].col >= rg.c0 })
+		c1 := sort.Search(len(cells), func(k int) bool { return cells[k].col > rg.c1 })
+		n += c1 - c0
+	}
+	return n
+}
+
 // colStyle returns the format of a column's empty cells (-1 for none).
 func (ws *worksheet) colStyle(c int) int {
-	for i := len(ws.cols) - 1; i >= 0; i-- {
-		if cd := ws.cols[i]; c >= cd.min && c <= cd.max {
-			return cd.style
+	ws.indexCols()
+	if c < 0 || c >= len(ws.colLast) || ws.colLast[c] < 0 {
+		return -1
+	}
+	return ws.cols[ws.colLast[c]].style
+}
+
+// indexCols resolves the col elements by column, once: the last element
+// over a column (colLast), whose width and style the column has, and the
+// last one that has a style (colBase), which is the base format of the
+// column's cells. The elements of a sheet do not overlap; those of a
+// malformed one may, and then the last one over a column wins. Looking
+// through the elements for each column takes the product of their numbers.
+func (ws *worksheet) indexCols() {
+	if ws.colsIndexed {
+		return
+	}
+	ws.colsIndexed = true
+	if len(ws.cols) == 0 {
+		return
+	}
+	ws.colLast, _ = lastOver(ws.cols, func(colDef) bool { return true })
+	ws.colBase, _ = lastOver(ws.cols, func(cd colDef) bool { return cd.style >= 0 })
+}
+
+// lastOver returns, for each column of a sheet, the index of the last of the
+// col elements that pick accepts over it (-1 for none). It goes through the
+// elements from the last one and gives each the columns that none has taken
+// yet, so a column is looked at once however many elements are over it;
+// steps is the number of elements and columns it looked at.
+func lastOver(cols []colDef, pick func(colDef) bool) (out []int32, steps int) {
+	out = make([]int32, maxCols)
+	// free[c] is a column at or after c that may be free, and is free when
+	// it is its own
+	free := make([]int32, maxCols+1)
+	for c := range free {
+		free[c] = int32(c)
+		if c < maxCols {
+			out[c] = -1
 		}
 	}
-	return -1
+	find := func(c int32) int32 {
+		for free[c] != c {
+			free[c] = free[free[c]]
+			c = free[c]
+		}
+		return c
+	}
+	for k := len(cols) - 1; k >= 0; k-- {
+		cd := cols[k]
+		steps++
+		if !pick(cd) || cd.min < 0 || cd.min >= maxCols {
+			continue
+		}
+		for c := find(int32(cd.min)); int(c) <= cd.max && c < maxCols; c = find(c + 1) {
+			out[c] = int32(k)
+			free[c] = c + 1
+			steps++
+		}
+	}
+	return out, steps
 }

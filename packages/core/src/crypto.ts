@@ -1,12 +1,16 @@
 import { BdfFormatError } from "./bytes.js";
-import { decode, type PartSource } from "./container.js";
+import { decode, checkHash, MAX_MANIFEST_SIZE, type PartSource } from "./container.js";
 import type { Encryption, Hash, Manifest, PartEntry } from "./types.js";
 
 // Encrypted documents (spec §3.5), decrypted with WebCrypto: PBKDF2 derives
 // the key-encryption key from the password, AES-KW unwraps the content key
 // and AES-GCM opens each sealed part. The content key is not extractable.
 
-/** Iteration counts above this are refused, so a file cannot keep a reader busy for long. */
+/**
+ * Iteration counts above this are refused, so a file cannot keep a reader
+ * busy for long; so is their sum over the key slots tried, as many slots do
+ * what one large count does.
+ */
 export const MAX_ITERATIONS = 10_000_000;
 
 const NONCE_SIZE = 12;
@@ -42,10 +46,13 @@ function hexBytes(h: Hash): Uint8Array<ArrayBuffer> {
 async function contentKey(enc: Encryption, password: string): Promise<CryptoKey> {
   if (enc.cipher !== "A256GCM") throw new BdfFormatError(`unknown cipher ${enc.cipher}`);
   const pw = new TextEncoder().encode(password.normalize("NFC"));
+  let spent = 0;
   for (const slot of enc.keys) {
     if (slot.type !== "password") continue;
     if (slot.kdf !== "PBKDF2-SHA256") throw new BdfFormatError(`unknown key derivation ${slot.kdf}`);
     if (!Number.isInteger(slot.iter) || slot.iter < 1 || slot.iter > MAX_ITERATIONS) throw new BdfFormatError(`iteration count ${slot.iter} out of range`);
+    // each slot is within the range, but many of them are not
+    if ((spent += slot.iter) > MAX_ITERATIONS) throw new BdfFormatError(`the key slots take more than ${MAX_ITERATIONS} iterations`);
     if (pw.length === 0) break; // writers refuse empty passwords, and some browsers refuse empty PBKDF2 keys
     const base = await crypto.subtle.importKey("raw", pw, "PBKDF2", false, ["deriveKey"]);
     const kek = await crypto.subtle.deriveKey(
@@ -91,13 +98,15 @@ export class SealedSource implements PartSource {
     const enc = stored.encryption;
     if (!enc) throw new Error("bdf: the document is not encrypted");
     const key = await contentKey(enc, password);
+    for (const e of stored.parts) checkHash(e.h);
     const outer = new Map(stored.parts.map((e) => [e.h, e]));
     const me = outer.get(enc.manifest.part);
     if (!me) throw new BdfFormatError("sealed manifest part missing");
-    const json = await decode(await open(key, await source.stored(me), MANIFEST_AAD), enc.manifest.enc);
+    const json = await decode(await open(key, await source.stored(me), MANIFEST_AAD), enc.manifest.enc, MAX_MANIFEST_SIZE);
     const inner = JSON.parse(utf8.decode(json)) as Manifest;
     if (inner.encryption) throw new BdfFormatError("sealed manifest is encrypted again");
     for (const e of inner.parts) {
+      checkHash(e.h);
       if (!e.sealed || !outer.has(e.sealed)) throw new BdfFormatError(`part ${e.h}: sealed part missing`);
     }
     return new SealedSource(source, outer, key, inner);

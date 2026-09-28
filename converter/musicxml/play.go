@@ -61,6 +61,25 @@ func (r *reader) playOrder() []played {
 	}
 	var out []played
 	i := 0
+	tick := 0 // where the music has come to
+	// the measures the jumps go to, found once
+	segnos, codas := map[int]int{}, map[int]int{}
+	segnoTarget := func(i int, name string) int {
+		j, ok := segnos[i]
+		if !ok {
+			j = r.segnoTarget(i, name)
+			segnos[i] = j
+		}
+		return j
+	}
+	codaTarget := func(i int, name string) int {
+		j, ok := codas[i]
+		if !ok {
+			j = r.codaTarget(i, name)
+			codas[i] = j
+		}
+		return j
+	}
 	jumped, codaTaken, back := false, false, false
 	alFine, alCoda := false, false // what the last jump goes on to
 	taken := map[int]bool{}        // the jumps taken
@@ -100,6 +119,10 @@ func (r *reader) playOrder() []played {
 				stack = append(stack, section{start: i, pass: 1, explicit: true})
 			}
 		}
+		if tick += mi.m.Length; tick > maxPlayQuarters*music.PPQ {
+			r.warn("the music plays longer than %d quarter notes; the performance stops there", maxPlayQuarters)
+			break
+		}
 		out = append(out, played{i, top().pass})
 
 		if jumped && alFine && mi.fine {
@@ -109,11 +132,11 @@ func (r *reader) playOrder() []played {
 			target := -1
 			switch {
 			case len(mi.tocoda) > 0:
-				target = r.codaTarget(i, mi.tocoda[0])
+				target = codaTarget(i, mi.tocoda[0])
 			case !explicitToCoda && len(mi.coda) > 0:
 				// a coda sign where the music leaves for the coda: the
 				// next coda sign is the coda
-				target = r.codaTarget(i, "")
+				target = codaTarget(i, "")
 			}
 			if target >= 0 {
 				codaTaken = true
@@ -139,7 +162,7 @@ func (r *reader) playOrder() []played {
 			continue
 		}
 		if !taken[i] && mi.dalsegno != nil {
-			if j := r.segnoTarget(i, *mi.dalsegno); j >= 0 {
+			if j := segnoTarget(i, *mi.dalsegno); j >= 0 {
 				jump(i, j)
 				continue
 			}
@@ -160,28 +183,17 @@ func contains(s []int, v int) bool {
 }
 
 // repeatTimes returns the passes of the repeat that ends at a measure: its
-// times, or the highest volta number of the voltas around it.
+// times, or the highest volta number of the voltas around it (the voltas
+// one after the other are a group).
 func (r *reader) repeatTimes(i int) int {
 	times := r.ms[i].m.Times
 	if times <= 0 {
 		times = 2
 	}
-	if r.ms[i].ending == nil {
-		return times
+	if b := r.ms[i].ending; b != nil {
+		times = min(max(times, b.groupMax), 100)
 	}
-	lo, hi := i, i
-	for lo > 0 && r.ms[lo-1].ending != nil {
-		lo--
-	}
-	for hi+1 < len(r.ms) && r.ms[hi+1].ending != nil {
-		hi++
-	}
-	for j := lo; j <= hi; j++ {
-		for _, v := range r.ms[j].ending.numbers {
-			times = max(times, v)
-		}
-	}
-	return min(times, 100)
+	return times
 }
 
 // segnoTarget returns the measure a D.S. at measure i goes back to: the
@@ -253,50 +265,7 @@ func (r *reader) perform() {
 	perf := &music.Performance{Title: s.Title, Subtitle: s.Subtitle, Composer: s.Composer, Lyricist: s.Lyricist,
 		Arranger: s.Arranger, Copyright: s.Rights, End: tick}
 	s.Play = perf
-
-	// tempo: the changes in score order, restated where a jump lands
-	points := make([][]tempoPoint, len(r.ms))
-	startTempo := make([]float64, len(r.ms))
-	cur := 120.0
-	for i, mi := range r.ms {
-		startTempo[i] = cur
-		pts := append([]tempoPoint(nil), mi.tempo...)
-		sort.SliceStable(pts, func(a, b int) bool {
-			if pts[a].offset != pts[b].offset {
-				return pts[a].offset < pts[b].offset
-			}
-			return !pts[a].metronome && pts[b].metronome
-		})
-		for _, p := range pts {
-			if len(points[i]) > 0 && points[i][len(points[i])-1].offset == p.offset {
-				continue
-			}
-			points[i] = append(points[i], p)
-			cur = p.bpm
-		}
-	}
-	last := -1.0
-	for k, pl := range order {
-		t0 := startTempo[pl.measure]
-		for _, p := range points[pl.measure] {
-			if p.offset <= 0 {
-				t0 = p.bpm
-			}
-		}
-		if t0 != last {
-			perf.Tempo = append(perf.Tempo, music.Tempo{Tick: ticks[k], BPM: t0})
-			last = t0
-		}
-		for _, p := range points[pl.measure] {
-			if p.offset > 0 && p.bpm != last {
-				perf.Tempo = append(perf.Tempo, music.Tempo{Tick: ticks[k] + p.offset, BPM: p.bpm})
-				last = p.bpm
-			}
-		}
-	}
-	if len(perf.Tempo) == 0 {
-		perf.Tempo = []music.Tempo{{Tick: 0, BPM: 120}}
-	}
+	perf.Tempo = r.tempos(order, ticks)
 
 	// time and key signatures where they are first played
 	var keyPart *music.Part
@@ -328,6 +297,69 @@ func (r *reader) perform() {
 	}
 
 	r.tracks(perf, order, ticks)
+}
+
+// tempos returns the tempo changes of the measures played from ticks: the
+// changes in score order, restated where a jump lands.
+func (r *reader) tempos(order []played, ticks []int) []music.Tempo {
+	var out []music.Tempo
+	points := make([][]tempoPoint, len(r.ms))
+	startTempo := make([]float64, len(r.ms))
+	cur := 120.0
+	for i, mi := range r.ms {
+		startTempo[i] = cur
+		pts := append([]tempoPoint(nil), mi.tempo...)
+		sort.SliceStable(pts, func(a, b int) bool {
+			if pts[a].offset != pts[b].offset {
+				return pts[a].offset < pts[b].offset
+			}
+			return !pts[a].metronome && pts[b].metronome
+		})
+		for _, p := range pts {
+			if len(points[i]) > 0 && points[i][len(points[i])-1].offset == p.offset {
+				continue
+			}
+			points[i] = append(points[i], p)
+			cur = p.bpm
+		}
+	}
+	// a measure starts at the tempo of a change at its start, and changes
+	// it where a change differs from the tempo before it: the same every
+	// time the measure is played
+	changes := make([][]tempoPoint, len(r.ms))
+	for i := range r.ms {
+		t := startTempo[i]
+		for _, p := range points[i] {
+			switch {
+			case p.offset <= 0:
+				t = p.bpm
+				startTempo[i] = t
+			case p.bpm != t:
+				t = p.bpm
+				changes[i] = append(changes[i], p)
+			}
+		}
+	}
+	last := -1.0
+tempo:
+	for k, pl := range order {
+		if t0 := startTempo[pl.measure]; t0 != last {
+			out = append(out, music.Tempo{Tick: ticks[k], BPM: t0})
+			last = t0
+		}
+		for _, p := range changes[pl.measure] {
+			if len(out) >= maxPlayChanges {
+				r.warn("more than %d tempo changes are played; the rest are not", maxPlayChanges)
+				break tempo
+			}
+			out = append(out, music.Tempo{Tick: ticks[k] + p.offset, BPM: p.bpm})
+			last = p.bpm
+		}
+	}
+	if len(out) == 0 {
+		out = []music.Tempo{{Tick: 0, BPM: 120}}
+	}
+	return out
 }
 
 // tracks makes a track of each part: its channel and program, and its
@@ -373,7 +405,7 @@ func (r *reader) tracks(perf *music.Performance, order []played, ticks []int) {
 		}
 	}
 
-	total := 0
+	total, looked, sung := 0, 0, 0
 	for k, p := range parts {
 		t := &music.Track{Name: p.trackName, Channel: channel[k], Volume: -1, Pan: -1}
 		if t.Name == "" {
@@ -386,15 +418,19 @@ func (r *reader) tracks(perf *music.Performance, order []played, ticks []int) {
 		}
 		perf.Tracks = append(perf.Tracks, t)
 
-		// the dynamics in effect at the start of each measure
+		// the dynamics in effect at the start of each measure, and the
+		// marks in it
 		startVel := make([]int, len(p.play))
-		byMeasure := make([][]dynPoint, len(p.play))
+		marks := make([]*dynamics, len(p.play))
 		vel, d := 80, 0
 		for i := range p.play {
 			startVel[i] = vel
 			for ; d < len(p.dyn) && p.dyn[d].measure <= i; d++ {
 				if p.dyn[d].measure == i {
-					byMeasure[i] = append(byMeasure[i], p.dyn[d])
+					if marks[i] == nil {
+						marks[i] = &dynamics{}
+					}
+					marks[i].add(p.dyn[d])
 				}
 				if p.dyn[d].vel > 0 {
 					vel = p.dyn[d].vel
@@ -410,12 +446,15 @@ func (r *reader) tracks(perf *music.Performance, order []played, ticks []int) {
 			}
 			pm := p.play[pl.measure]
 			base := ticks[k]
-			dyn := byMeasure[pl.measure]
+			dyn := marks[pl.measure]
 			for _, n := range pm.notes {
-				if total >= maxPlayNotes {
+				// the notes looked at count too: tied notes and notes out
+				// of range add none to the track
+				if total >= maxPlayNotes || looked >= 4*maxPlayNotes {
 					r.warn("more than %d notes are played; the rest are not", maxPlayNotes)
 					break
 				}
+				looked++
 				tick := base + n.offset
 				if n.tieStop {
 					if o := ties[n.key]; o != nil && abs(o.end-tick) <= 2 {
@@ -428,17 +467,11 @@ func (r *reader) tracks(perf *music.Performance, order []played, ticks []int) {
 					}
 				}
 				v, accent := startVel[pl.measure], n.ev.accent
-				for _, e := range dyn {
-					if e.offset > n.offset {
-						break
-					}
-					if e.vel > 0 {
-						v = e.vel
-					}
-					if e.offset == n.offset {
-						accent += e.accent
-					}
+				level, a := dyn.at(n.offset)
+				if level > 0 {
+					v = level
 				}
+				accent += a
 				if n.vel > 0 {
 					v = n.vel
 				}
@@ -458,16 +491,23 @@ func (r *reader) tracks(perf *music.Performance, order []played, ticks []int) {
 				}
 			}
 			// verse k on the k-th pass when the measure has it
-			verse := 1
-			for _, l := range pm.lyrics {
-				if l.verse == pl.pass {
-					verse = pl.pass
+			if pm.verses == nil && len(pm.lyrics) > 0 {
+				pm.verses = map[int][]playLyric{}
+				for _, l := range pm.lyrics {
+					pm.verses[l.verse] = append(pm.verses[l.verse], l)
 				}
 			}
-			for _, l := range pm.lyrics {
-				if l.verse == verse {
-					t.Lyrics = append(t.Lyrics, music.Lyric{Tick: base + l.offset, Text: l.text})
+			verse := 1
+			if len(pm.verses[pl.pass]) > 0 {
+				verse = pl.pass
+			}
+			for _, l := range pm.verses[verse] {
+				if sung >= maxPlayChanges {
+					r.warn("more than %d syllables are sung; the rest are not", maxPlayChanges)
+					break
 				}
+				t.Lyrics = append(t.Lyrics, music.Lyric{Tick: base + l.offset, Text: l.text})
+				sung++
 			}
 		}
 		sort.SliceStable(t.Notes, func(a, b int) bool { return t.Notes[a].Tick < t.Notes[b].Tick })
@@ -476,4 +516,44 @@ func (r *reader) tracks(perf *music.Performance, order []played, ticks []int) {
 			perf.End = max(perf.End, n.Tick+n.Dur)
 		}
 	}
+}
+
+// dynamics are the dynamics marks of a part in a measure, in the order of
+// their offsets.
+type dynamics struct {
+	offsets []int
+	levels  []int // the dynamics set by the marks up to each one; 0 when none sets them
+	accents []int // the accents of the marks up to each one, added up
+}
+
+// add adds the next mark of the measure.
+func (d *dynamics) add(e dynPoint) {
+	level, accents := 0, 0
+	if n := len(d.offsets); n > 0 {
+		level, accents = d.levels[n-1], d.accents[n-1]
+	}
+	if e.vel > 0 {
+		level = e.vel
+	}
+	d.offsets = append(d.offsets, e.offset)
+	d.levels = append(d.levels, level)
+	d.accents = append(d.accents, accents+e.accent)
+}
+
+// at returns the dynamics set by the marks up to an offset (0 when none
+// sets them) and the accents of the marks at the offset. d may be nil.
+func (d *dynamics) at(offset int) (level, accent int) {
+	if d == nil {
+		return 0, 0
+	}
+	before := sort.SearchInts(d.offsets, offset) // the marks before the offset
+	upTo := sort.SearchInts(d.offsets, offset+1) // and with those at it
+	if upTo == 0 {
+		return 0, 0
+	}
+	accent = d.accents[upTo-1]
+	if before > 0 {
+		accent -= d.accents[before-1]
+	}
+	return d.levels[upTo-1], accent
 }

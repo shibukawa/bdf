@@ -1,6 +1,8 @@
 package metafile
 
 import (
+	"container/heap"
+
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/charmap"
@@ -50,6 +52,21 @@ func decodeANSI(b []byte, charset byte) string {
 		return string(b)
 	}
 	return string(out)
+}
+
+// freeSlots are the freed entries of the WMF object table, a heap with the
+// lowest on top: finding a free entry does not take a walk over the table.
+type freeSlots []int
+
+func (f freeSlots) Len() int           { return len(f) }
+func (f freeSlots) Less(i, j int) bool { return f[i] < f[j] }
+func (f freeSlots) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
+func (f *freeSlots) Push(x any)        { *f = append(*f, x.(int)) }
+func (f *freeSlots) Pop() any {
+	old := *f
+	x := old[len(old)-1]
+	*f = old[:len(old)-1]
+	return x
 }
 
 // wmfFont carries the charset its text is encoded in.
@@ -127,12 +144,11 @@ func (g *gdi) playWMF(b []byte, x, y, w, h float64) {
 		r := b[p+6 : p+size] // parameters
 		p += size
 		arg := func(i int) float64 { return lei16(r, i*2) }
+		// a new object takes the lowest free entry of the table
 		addObj := func(o any) {
-			for i, s := range g.slots {
-				if s == nil {
-					g.slots[i] = o
-					return
-				}
+			if len(g.free) > 0 {
+				g.slots[heap.Pop(&g.free).(int)] = o
+				return
 			}
 			g.slots = append(g.slots, o)
 		}
@@ -201,8 +217,9 @@ func (g *gdi) playWMF(b []byte, x, y, w, h float64) {
 				}
 			}
 		case 0x01F0: // DELETEOBJECT
-			if i := int(le16(r, 0)); i < len(g.slots) {
+			if i := int(le16(r, 0)); i < len(g.slots) && g.slots[i] != nil {
 				g.slots[i] = nil
+				heap.Push(&g.free, i)
 			}
 		case 0x0324, 0x0325: // POLYGON, POLYLINE
 			n := int(le16(r, 0))
