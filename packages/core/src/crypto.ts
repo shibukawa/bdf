@@ -102,7 +102,11 @@ export class SealedSource implements PartSource {
     const outer = new Map(stored.parts.map((e) => [e.h, e]));
     const me = outer.get(enc.manifest.part);
     if (!me) throw new BdfFormatError("sealed manifest part missing");
+    if (!Number.isSafeInteger(me.len) || me.len < 0 || me.len > MAX_MANIFEST_SIZE + NONCE_SIZE + TAG_SIZE) {
+      throw new BdfFormatError("sealed manifest size out of range");
+    }
     const json = await decode(await open(key, await source.stored(me), MANIFEST_AAD), enc.manifest.enc, MAX_MANIFEST_SIZE);
+    if (json.length > MAX_MANIFEST_SIZE) throw new BdfFormatError("manifest too large");
     const inner = JSON.parse(utf8.decode(json)) as Manifest;
     if (inner.encryption) throw new BdfFormatError("sealed manifest is encrypted again");
     for (const e of inner.parts) {

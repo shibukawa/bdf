@@ -7,7 +7,7 @@ interface Hit {
   view: string;
   page?: number;
   title: string;
-  snippet: string; // HTML: Meilisearch wraps the match in <mark>
+  snippet: string; // Meilisearch wraps the match in <mark>
 }
 
 const form = document.getElementById("searchForm") as HTMLFormElement;
@@ -46,9 +46,25 @@ function hitItem(h: Hit): HTMLLIElement {
   a.textContent = `${h.title}${h.page ? ` — page ${h.page}` : ""}`;
   const p = document.createElement("p");
   p.className = "snippet";
-  p.innerHTML = h.snippet; // Meilisearch's own <mark> highlighting; the query text, not arbitrary input
+  appendSnippet(p, h.snippet);
   li.append(a, p);
   return li;
+}
+
+// The snippet includes text from the indexed document. Treat all of it as
+// text, recognizing only Meilisearch's highlight markers as elements.
+function appendSnippet(parent: HTMLElement, snippet: string): void {
+  let target: HTMLElement = parent;
+  for (const part of snippet.split(/(<mark>|<\/mark>)/g)) {
+    if (part === "<mark>") {
+      target = document.createElement("mark");
+      parent.append(target);
+    } else if (part === "</mark>") {
+      target = parent;
+    } else if (part) {
+      target.append(document.createTextNode(part));
+    }
+  }
 }
 
 function errorItem(message: string): HTMLLIElement {

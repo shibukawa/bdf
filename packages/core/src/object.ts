@@ -185,6 +185,9 @@ export function walk(o: ObjectPart, sink: OpSink, each?: () => void): void {
       case Op.FILL_PATH_RUN: {
         const rule = r.u8();
         const n = r.varuint();
+        // Every glyph needs a path reference and two floats. Refuse a
+        // truncated run before its count can allocate a large array.
+        r.need(n * 9);
         const glyphs: Glyph[] = new Array(n);
         for (let i = 0; i < n; i++) glyphs[i] = { path: r.varuint(), x: r.f32(), y: r.f32() };
         sink.fillPathRun(rule, glyphs);

@@ -13,9 +13,9 @@ import (
 	"slices"
 )
 
-// MaxManifestSize bounds the manifest JSON a reader inflates: a manifest
-// states no size of its own, so a small file could otherwise ask for any
-// amount of memory.
+// MaxManifestSize bounds both the stored and decoded manifest JSON a reader
+// reads: a manifest states no size of its own, so a file could otherwise ask
+// for any amount of memory.
 const MaxManifestSize = 256 << 20
 
 // Reader reads a document from either form.
@@ -51,6 +51,9 @@ func OpenSingle(r io.ReaderAt, size int64) (*Reader, error) {
 	menc := rd.u8()
 	if !inRange(moff, mlen, size) {
 		return nil, &FormatError{Msg: "manifest out of range"}
+	}
+	if mlen > MaxManifestSize {
+		return nil, &FormatError{Msg: "manifest too large"}
 	}
 	mj := make([]byte, mlen)
 	if _, err := r.ReadAt(mj, moff); err != nil {
@@ -114,7 +117,7 @@ func (r *Reader) Close() error {
 
 // OpenSplit opens the split form from a directory.
 func OpenSplit(dir string) (*Reader, error) {
-	mj, err := os.ReadFile(filepath.Join(dir, "manifest.json"))
+	mj, err := readFileLimited(filepath.Join(dir, "manifest.json"), MaxManifestSize)
 	if err != nil {
 		return nil, err
 	}
@@ -123,12 +126,55 @@ func OpenSplit(dir string) (*Reader, error) {
 		return nil, err
 	}
 	return newReader(&m, func(e PartEntry) ([]byte, error) {
-		return os.ReadFile(filepath.Join(dir, "parts", e.H.String()))
+		b, err := readFileLimited(filepath.Join(dir, "parts", e.H.String()), e.Len)
+		if err != nil {
+			return nil, err
+		}
+		if len(b) != e.Len {
+			return nil, &FormatError{Msg: fmt.Sprintf("part %s is %d bytes, not %d", e.H, len(b), e.Len)}
+		}
+		return b, nil
 	}), nil
+}
+
+// readFileLimited checks the file size before allocating and reads exactly
+// that size. A file that changes size during the read is rejected as well.
+// Allocation follows the file size, never an untrusted manifest limit.
+func readFileLimited(path string, limit int) ([]byte, error) {
+	if limit < 0 {
+		return nil, &FormatError{Msg: "negative stored size"}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if st.Size() < 0 || st.Size() > int64(limit) {
+		return nil, &FormatError{Msg: "stored data exceeds its size limit"}
+	}
+	b := make([]byte, int(st.Size()))
+	if _, err := io.ReadFull(f, b); err != nil {
+		return nil, err
+	}
+	// Probe separately to avoid overflowing limit+1 for a maximum int.
+	var extra [1]byte
+	if n, err := f.Read(extra[:]); n != 0 {
+		return nil, &FormatError{Msg: "stored data changed size while reading"}
+	} else if err != nil && err != io.EOF {
+		return nil, err
+	}
+	return b, nil
 }
 
 // readManifest parses the JSON of a manifest and checks its numbers.
 func readManifest(b []byte, m *Manifest) error {
+	if len(b) > MaxManifestSize {
+		return &FormatError{Msg: "manifest too large"}
+	}
 	if err := json.Unmarshal(b, m); err != nil {
 		return err
 	}
@@ -181,6 +227,9 @@ func (r *Reader) Unlock(password string) error {
 	e, ok := outer[enc.Manifest.Part]
 	if !ok {
 		return &FormatError{Msg: "sealed manifest part missing"}
+	}
+	if e.Len < 0 || e.Len > MaxManifestSize+a.NonceSize()+a.Overhead() {
+		return &FormatError{Msg: "sealed manifest size out of range"}
 	}
 	b, err := r.load(e)
 	if err != nil {

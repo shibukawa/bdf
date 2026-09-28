@@ -10,8 +10,10 @@ export class ByteReader {
 
   get eof(): boolean { return this.pos >= this.bytes.length; }
 
-  private need(n: number): void {
-    if (this.pos + n > this.bytes.length) throw new BdfFormatError(`unexpected end of data at ${this.pos}`);
+  /** Check a byte count before reading or allocating space for decoded data. */
+  need(n: number): void {
+    if (!Number.isSafeInteger(n) || n < 0) throw new BdfFormatError("byte count out of range");
+    if (n > this.bytes.length - this.pos) throw new BdfFormatError(`unexpected end of data at ${this.pos}`);
   }
 
   u8(): number { this.need(1); return this.bytes[this.pos++]; }
@@ -35,6 +37,7 @@ export class ByteReader {
         result |= (b & 0x7f) << shift;
       } else {
         result += (b & 0x7f) * 2 ** shift;
+        if (!Number.isSafeInteger(result)) throw new BdfFormatError("varuint out of range");
       }
       if ((b & 0x80) === 0) break;
       shift += 7;
@@ -63,6 +66,8 @@ export class ByteReader {
   }
 
   f32array(n: number): Float32Array {
+    if (!Number.isSafeInteger(n)) throw new BdfFormatError("float count out of range");
+    this.need(n * 4);
     const out = new Float32Array(n);
     for (let i = 0; i < n; i++) out[i] = this.f32();
     return out;

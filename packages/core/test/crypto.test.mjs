@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { BufferSource, RangeSource, BdfDocument, BdfPasswordError, BdfFormatError, MAX_ITERATIONS, parseHeader } from "../dist/index.js";
+import { BufferSource, RangeSource, BdfDocument, BdfPasswordError, BdfFormatError, MAX_ITERATIONS, MAX_MANIFEST_SIZE, parseHeader } from "../dist/index.js";
 
 // testdata/demo-encrypted.bdf is testdata/demo.bdf encrypted by the Go writer
 // (npm run testdata) with this password.
@@ -77,6 +77,16 @@ test("a tampered part fails authentication", async () => {
   const h = parseHeader(bytes);
   bytes[h.manifestOff + h.manifestLen + o.off + 20] ^= 1;
   await assert.rejects(doc.part(e.h), (err) => err instanceof BdfFormatError && /authentication/.test(err.message));
+});
+
+test("a sealed manifest is bounded before its bytes are requested", async () => {
+  const outer = await new BufferSource(sealedBytes).manifest();
+  outer.parts.find((p) => p.h === outer.encryption.manifest.part).len = MAX_MANIFEST_SIZE + 12 + 16 + 1;
+  const source = {
+    manifest: async () => outer,
+    stored: () => assert.fail("oversized sealed manifest must not be loaded"),
+  };
+  await assert.rejects(BdfDocument.open(source, { password: PASSWORD }), (e) => e instanceof BdfFormatError && /sealed manifest size/.test(e.message));
 });
 
 test("the iterations of the key slots are limited one by one and in sum", async () => {
