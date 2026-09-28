@@ -40,12 +40,10 @@ func DecodeTextIndex(data []byte) ([]IndexRun, error) {
 	if v := r.u16(); v > 1 {
 		return nil, &FormatError{Msg: fmt.Sprintf("unsupported text index version %d", v)}
 	}
-	n := r.varuint()
-	if n > uint64(len(data)) {
-		return nil, &FormatError{Msg: "bad run count"}
-	}
+	// a run is three numbers, a separator and a string: 5 bytes or more
+	n := r.count(5, "bad run count")
 	out := make([]IndexRun, 0, n)
-	for i := uint64(0); i < n && r.err == nil; i++ {
+	for i := 0; i < n && r.err == nil; i++ {
 		out = append(out, IndexRun{A: uint32(r.varuint()), B: uint32(r.varuint()), Ordinal: uint32(r.varuint()), Sep: r.u8(), Text: r.str()})
 	}
 	return out, r.err
@@ -83,15 +81,13 @@ func (d *Document) indexRuns(v *View) ([]IndexRun, error) {
 		return o
 	}
 	var runs []IndexRun
+	var limits useLimits // of the whole view
 	// keep reports whether a run belongs to the object: in a sheet, a tile
 	// keeps the runs whose anchor lies in it (tiles repeat what straddles
 	// them; docs/spec.md §4.1).
 	keep := func(TextRun) bool { return true }
 	if v.Kind == ViewSheet {
-		tile := v.Tile
-		if tile <= 0 {
-			tile = 2048
-		}
+		tile := v.TileSize()
 		keep = func(tr TextRun) bool { return tr.X >= 0 && tr.X < tile && tr.Y >= 0 && tr.Y < tile }
 	}
 	add := func(a, b uint32, h Hash, first bool) error {
@@ -99,7 +95,7 @@ func (d *Document) indexRuns(v *View) ([]IndexRun, error) {
 		if o == nil {
 			return fmt.Errorf("bdf: object %s missing or invalid", h)
 		}
-		trs, err := ExtractText(o, resolve)
+		trs, err := extractText(o, resolve, &limits)
 		if err != nil {
 			return err
 		}

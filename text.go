@@ -61,19 +61,94 @@ type textState struct {
 	align byte
 }
 
+// Limits of walking the objects an object draws with USE. A document decides
+// how deep objects draw objects and how often, so a small one could otherwise
+// keep a reader busy without end (ten objects that each draw the next one ten
+// times draw the last one 10^10 times).
+const (
+	// MaxUseDepth bounds how deep objects draw objects.
+	MaxUseDepth = 64
+	// MaxReusedInstructions bounds the instructions read from objects that
+	// were walked before. What is read once is bounded by the size of the
+	// document; this bounds what a document adds by drawing it again.
+	MaxReusedInstructions = 1 << 27
+	// maxTextRuns bounds the runs of a walk, which are kept in memory.
+	maxTextRuns = 1 << 22
+)
+
+// useLimits counts a walk of objects against the limits.
+type useLimits struct {
+	seen   map[Hash]struct{}
+	reused int
+	err    error // the limit that was passed; the walk stops
+}
+
+// enter reports whether the instructions of a child object count as reused:
+// whether it was walked before.
+func (l *useLimits) enter(h Hash) bool {
+	if _, ok := l.seen[h]; ok {
+		return true
+	}
+	if l.seen == nil {
+		l.seen = map[Hash]struct{}{}
+	}
+	l.seen[h] = struct{}{}
+	return false
+}
+
+func (l *useLimits) fail(msg string) {
+	if l.err == nil {
+		l.err = &FormatError{Msg: msg}
+	}
+}
+
 type textExtractor struct {
 	runs    []TextRun
 	resolve func(Hash) *ObjectPart
 	pending byte // separator requested by a MARK for the next run
 	hasMark bool
 	alt     *string // ALT_TEXT waiting for the drawing op it describes
+	limits  *useLimits
+	depth   int // of the object being walked: 0 is the top-level one
 }
 
-func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
+// child returns the child object an instruction draws, nil for one that is
+// missing, and whether it was walked before.
+func (t *textExtractor) child(o *ObjectPart, in Instr) (*ObjectPart, bool) {
+	i := in.Args[0].(uint64)
+	if i >= uint64(len(o.Objects)) {
+		return nil, false
+	}
+	c := t.resolve(o.Objects[i])
+	if c == nil {
+		return nil, false
+	}
+	return c, t.limits.enter(o.Objects[i])
+}
+
+func (t *textExtractor) walk(o *ObjectPart, m matrix, reused bool) error {
 	st := textState{m: m, size: 10}
 	var stack []textState
 	masking := 0 // inside MASK_BEGIN … MASK_END: a soft mask, not content
-	return o.Walk(func(in Instr) {
+	// want counts the instructions and picks those that say something
+	// about text: the others are most of a page, and are not decoded
+	want := func(op byte) bool {
+		if t.limits.err != nil {
+			return false
+		}
+		if reused {
+			if t.limits.reused++; t.limits.reused > MaxReusedInstructions {
+				t.limits.fail("objects are drawn too many times")
+				return false
+			}
+		}
+		switch op {
+		case OpFillPathAt, OpFillPathRun:
+			return t.alt != nil // places of an ALT_TEXT
+		}
+		return textOps[op]
+	}
+	err := o.walk(want, func(in Instr) {
 		switch in.Op {
 		case OpMaskBegin:
 			masking++
@@ -100,7 +175,7 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 		case OpScale:
 			st.m = mul(st.m, matrix{f(in, 0), 0, 0, f(in, 1), 0, 0})
 		case OpFont:
-			if i := int(in.Args[0].(uint64)); i < len(o.Fonts) {
+			if i := in.Args[0].(uint64); i < uint64(len(o.Fonts)) {
 				st.font = &o.Fonts[i]
 			}
 			st.size = f(in, 1)
@@ -156,7 +231,7 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 				}
 				// The text the child draws spans its bbox along the baseline.
 				var advance float32
-				if child := t.resolve(o.Objects[int(in.Args[0].(uint64))]); child != nil {
+				if child, _ := t.child(o, in); child != nil {
 					x += child.BBox.X
 					advance = child.BBox.W
 				}
@@ -164,20 +239,38 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix) error {
 				t.alt = nil
 				return
 			}
-			child := t.resolve(o.Objects[int(in.Args[0].(uint64))])
+			child, again := t.child(o, in)
 			if child == nil {
+				return
+			}
+			if t.depth >= MaxUseDepth {
+				t.limits.fail("objects draw objects too deep")
 				return
 			}
 			cm := st.m
 			if in.Op == OpUseAt {
 				cm = mul(cm, matrix{1, 0, 0, 1, f(in, 1), f(in, 2)})
 			}
-			_ = t.walk(child, cm)
+			t.depth++
+			_ = t.walk(child, cm, reused || again)
+			t.depth--
 		}
 	})
+	if t.limits.err != nil {
+		return t.limits.err
+	}
+	return err
 }
 
 func f(in Instr, i int) float32 { return in.Args[i].(float32) }
+
+// textOps are the instructions the extraction of text reads, besides the
+// paths that an ALT_TEXT describes.
+var textOps = [256]bool{
+	OpSave: true, OpRestore: true, OpTransform: true, OpTranslate: true, OpScale: true,
+	OpFont: true, OpTextStyle: true, OpFillText: true, OpStrokeText: true,
+	OpUse: true, OpUseAt: true, OpMaskBegin: true, OpMaskEnd: true, OpMark: true,
+}
 
 // flushAlt emits an ALT_TEXT that no drawing op consumed, without a position.
 func (t *textExtractor) flushAlt(st textState) {
@@ -206,6 +299,10 @@ func (t *textExtractor) emit(text string, x, y, advance float32, st textState, a
 		run.Sep = guessSep(t.runs[len(t.runs)-1], run)
 	}
 	t.pending, t.hasMark = SepNone, false
+	if len(t.runs) >= maxTextRuns {
+		t.limits.fail("too many text runs")
+		return
+	}
 	t.runs = append(t.runs, run)
 }
 
@@ -229,9 +326,18 @@ func float64To32(v float64) float32 { return float32(v) }
 
 // ExtractText returns the text runs of an object and the objects it USEs, in
 // walk order. resolve must return decoded child objects (nil skips the child).
+//
+// The objects may not draw each other deeper than MaxUseDepth, nor read more
+// than MaxReusedInstructions from objects that are drawn again.
 func ExtractText(o *ObjectPart, resolve func(Hash) *ObjectPart) ([]TextRun, error) {
-	t := &textExtractor{resolve: resolve}
-	err := t.walk(o, matrix{1, 0, 0, 1, 0, 0})
+	return extractText(o, resolve, &useLimits{})
+}
+
+// extractText is ExtractText with limits that count across the top-level
+// objects of a document.
+func extractText(o *ObjectPart, resolve func(Hash) *ObjectPart, limits *useLimits) ([]TextRun, error) {
+	t := &textExtractor{resolve: resolve, limits: limits}
+	err := t.walk(o, matrix{1, 0, 0, 1, 0, 0}, false)
 	t.flushAlt(textState{m: matrix{1, 0, 0, 1, 0, 0}, size: 10})
 	return t.runs, err
 }
