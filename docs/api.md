@@ -11,6 +11,7 @@ bdf の公開 API をパッケージごとにまとめる。引数や細かい�
 | bdf を自分で組み立てる・読む | Go の [`bdf`](#go-文書の組み立てと読み込みbdf) パッケージ |
 | bdf をブラウザに表示する | [`@bdf/render`](#typescript-bdfrender) の Worker とテキスト層 |
 | bdf を読んでテキストや構造を取り出す（Node でも） | [`@bdf/core`](#typescript-bdfcore) |
+| ログインした読者に文書を数ページずつ、要求ごとに封印して渡す | Go の [`segment`](#区間の配信segment) と [`(*Reader).WriteSegment`](#読み込み)、ブラウザは [`SegmentLoader`](#文書を開く)（レンダラの Worker では `{kind: "segments"}`） |
 | サーバーでサムネイル・ページの画像・検索用のテキストを作る | Go の [`thumbnail` と `raster`](#go-サムネイルとページの画像thumbnailraster)、[`Document.SearchText`](#読み込み)、または [`bdf` コマンド](#コマンドbdf) |
 
 ## Go: 変換（converter）
@@ -126,6 +127,7 @@ res, err := s.Finish() // Convert と同じ完成した文書
 | `(*Document).BuildTextIndex(*View) (Hash, error)` | テキスト索引の Part を作って View に設定する |
 | `(*Document).WriteSingle(io.Writer)` / `WriteSplit(dir)` | 1 ファイル形式・分割形式で書く |
 | `NewPasswordLock(password, iter) (*Lock, error)` | `Document.Lock` に入れると、Part ごとに AES-256-GCM で封をして書く |
+| `NewECDHLock(reader *ecdh.PublicKey) (*Lock, error)` | 読者の P-256 の公開鍵でだけ開けるロック（spec §3.5 の `ecdh` スロット）。鍵を合意した自分の秘密鍵は、ロックを作ったら捨てる |
 
 ### 描画命令（Object）
 
@@ -149,9 +151,12 @@ res, err := s.Finish() // Convert と同じ完成した文書
 |---|---|
 | `OpenSingle(r, size)` / `OpenSingleFile(path)` / `OpenSplit(dir)` | 文書を開く（`*Reader`）。`Manifest` を持つ。`OpenSingleFile` は Part を求められたときにファイルから読むので、使い終わったら `(*Reader).Close()` で閉じる。ファイルの外を指す範囲や、数値が範囲の外にある manifest（spec §4。`MaxPageSize`、`MaxSheetEntries`、`MinEntrySize`）は `*FormatError`。manifest は `MaxManifestSize`（256 MiB）まで展開する |
 | `(*Reader).Unlock(password)` | 暗号化された文書を開く（`Encrypted`、`Locked` で状態を調べる。`ErrLocked`、`ErrWrongPassword`）。鍵スロットの反復回数は、1 つでも、試したスロットの合計でも `MaxIterations`（10,000,000）まで |
+| `(*Reader).UnlockECDH(priv *ecdh.PrivateKey)` | 読者の鍵ペアに封印された文書を開く（別の鍵なら `ErrWrongKey`）。試す `ecdh` スロットは `MaxECDHSlots`（16）まで |
+| `(*Reader).WriteSegment(w, SegmentOptions)` | 区間の文書（spec §3.6）を 1 ファイル形式で書く。`SegmentOptions` は `Segment`（`View`、ページ `[From, To)`）、`Have`（読者が持っている区間。そのページが使う Part を省く）、`Lock`（`NewECDHLock`。nil なら平文）。格納バイト列をそのまま封印し、ページごとに使う Part を覚えておく。並行に呼んでよい。シートと演奏のある View の文書は区間にしない |
+| `SegmentAt(view, page, size) Segment` | `page` を含む `size` ページの区間（`[0, size)`、`[size, 2·size)`…） |
 | `(*Reader).Part(h)` / `Object(h)` / `Entry(h)` | Part の中身、デコードした Object、Part の表の項目。Part は manifest の `size` を超えて展開しない（超えるデータは `*FormatError`） |
 | `(*Reader).ToDocument()` / `WriteSingle` / `WriteSplit` | 再エンコードせずに書き出す（1 ファイル形式と分割形式の相互変換） |
-| `DecodeObject(data) (*ObjectPart, error)` | Object Part をデコードする。`Walk` / `Instructions` で命令を読む |
+| `DecodeObject(data) (*ObjectPart, error)` | Object Part をデコードする。`Walk` / `Instructions` で命令を読み、`Deps` で参照する Part を得る |
 | `Disassemble(data) (string, error)` | Object を人が読める命令列にする |
 | `ExtractText(o, resolve) ([]TextRun, error)` | Object（と子 Object）のテキストを取り出す。`USE` の入れ子は `MaxUseDepth`（64）段、描き直す Object から読む命令は `MaxReusedInstructions`（2^27）まで（超えると `*FormatError`）。表にない Object やフォントの番号は無視する |
 | `DecodeTextIndex` / `EncodeTextIndex` / `PlainText` | テキスト索引の読み書きと、索引からの平文 |
@@ -159,6 +164,23 @@ res, err := s.Finish() // Convert と同じ完成した文書
 | `DecodePathCollection` / `EncodePathCollection` | パス集合の Part |
 | `SharePrefixes(objs, minBytes)` | 複数の Object に共通する先頭部分を共有 Object に切り出す |
 | `HashOf` / `ParseHash` | Part のハッシュ |
+
+### 区間の配信（segment）
+
+`github.com/shibukawa/bdf/segment` は、区間を要求ごとに封印して返す `net/http` のハンドラ（design.md §3.30）。
+
+```go
+http.Handle("POST /segments/{name}", &segment.Handler{
+	Open:  func(r *http.Request) (*bdf.Reader, error) { … },        // ログインと権利を確かめて文書を返す
+	Allow: func(r *http.Request, s bdf.Segment) error { … },         // 区間ごとの規則（立ち読み、読む速さ）
+})
+```
+
+| 名前 | 内容 |
+|---|---|
+| `Handler` | `Open`、`Allow`（任意）、`Pages`（区間のページ数、既定 `Pages` = 10）、`Log`（500 で答えたエラー）。`POST` で `Content-Type: application/json` の `Request` だけを受け、`page` を含む区間を要求の鍵に封印して `Cache-Control: no-store` で返す |
+| `Request` | `Key`（読者の公開鍵、非圧縮の点 65 バイト）、`View`（省略時は最初の View）、`Page`（0 始まり）、`Have`（持っている区間） |
+| `StatusError{Status, Err}` | `Open`・`Allow` が返すと、その HTTP の状態で答える（未ログインの 401、速すぎる 429）。`fs.ErrNotExist` は 404、`fs.ErrPermission` は 403、ほかは 500 |
 
 ### その他のパッケージ
 
@@ -204,6 +226,7 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 | `disasm <file> <hash>` / `extract <file> <hash> <out>` | Object の逆アセンブル / Part の取り出し |
 | `split` / `join` | 1 ファイル形式と分割形式の変換（パスワード不要） |
 | `encrypt` / `decrypt` | パスワードで暗号化する / 暗号化を外す |
+| `segment [flags] <file> <out.bdf>` | `-page`（1 始まり）を含む `-size`（既定 10）ページの区間を書く。`-view`、`-have 1-10,…`（持っているページ）、`-key <PEM>`（読者の P-256 の公開鍵に封印する。無ければ平文） |
 | `demo` | サンプル文書（testdata/demo.bdf と同じもの）を書く |
 | `thumbnail [flags] <file> <out.png \| .jpg \| .webp>` | サムネイルを描く。`-size`（既定 256）、`-mode auto\|crop\|fit`、`-view`、`-sheet-dpi`（既定 72）、`-font-dir`、`-no-system-fonts` |
 | `text [flags] <file> [out.json]` | メタデータとページごとのテキストを JSON で書く（既定は標準出力） |
@@ -236,12 +259,13 @@ bdf を読むためのパッケージ（`packages/core`）。DOM に依存しな
 
 | 名前 | 内容 |
 |---|---|
-| `BdfDocument.open(source, {password?})` | 文書を開く。暗号化された文書でパスワードが無い・違うときは `BdfPasswordError`（`reason` が `"required"` / `"wrong"`）。Part 名や数値が範囲の外にある manifest（`checkManifest`、spec §4）は `BdfFormatError` |
+| `BdfDocument.open(source, {password?, keyPair?})` | 文書を開く。暗号化された文書でパスワードが無い・違うときは `BdfPasswordError`（`reason` が `"required"` / `"wrong"`）。読者の鍵ペアに封印された文書（`ecdh` スロット）は `keyPair` で開き、違う鍵や鍵なしは `BdfKeyError`。Part 名や数値が範囲の外にある manifest（`checkManifest`、spec §4）は `BdfFormatError` |
 | `BufferSource(bytes)` | メモリ上の 1 ファイル形式 |
 | `RangeSource(url, init?)` | 1 ファイル形式を HTTP Range で必要な Part だけ取得する |
 | `SplitSource(base, init?)` | 分割形式（`manifest.json` と `parts/<hash>`） |
 | `fetchSingle(url, init?)` | 1 ファイル形式を丸ごと取得して `BufferSource` にする |
 | `PartSource` | 上のソースの共通インターフェース（`manifest()`、`stored(entry)`）。自前の取得方法も実装できる |
+| `SegmentLoader.open(url, {init?, view?, page?, ahead?})` | 区間を配るサーバー（Go の `segment.Handler`）から文書を開く。要求ごとに抽出できない鍵ペアを作り、最初の区間を `doc` にする。`ensure(view, page)` はそのページの区間を（まだなら）取りに行き、`ahead`（既定 3）ページ先も先読みする。`has`、`held`（持っている区間）、`onSegment`、`close()`。サーバーが断ると `BdfSegmentError`（`status`） |
 
 `BdfDocument` のメソッド:
 
@@ -253,6 +277,7 @@ bdf を読むためのパッケージ（`packages/core`）。DOM に依存しな
 | `part(hash)` / `entry(hash)` / `pathCollection(hash)` | 展開した Part、Part の表の項目、パス集合 |
 | `textIndex(view)` | View のテキスト索引（索引の Part が無ければ全ページから作る） |
 | `addPage(viewId, index, pageDoc)` | ページ単位の変換が返したページ文書のページを置き、その Part を加える |
+| `addSegment(segmentDoc)` | 区間の文書（spec §3.6）のページを置き、持っていない Part を加える。View の並び・ページ数が違う文書のものは拒む |
 
 ### Object とテキスト
 
@@ -269,7 +294,7 @@ bdf を読むためのパッケージ（`packages/core`）。DOM に依存しな
 | `normalizeQuery` / `normalizeChar` | 検索と同じ正規化 |
 | `dcValues(value)` | Dublin Core の値（文字列または配列）を配列にする |
 | `parseHeader` / `decode` / `MAGIC` / `HEADER_SIZE` | 1 ファイル形式のヘッダと Part の展開 |
-| `BdfFormatError` / `BdfPasswordError` / `SealedSource` | 形式の誤り、パスワードの誤り、暗号化された文書のソース |
+| `BdfFormatError` / `BdfPasswordError` / `BdfKeyError` / `SealedSource` | 形式の誤り、パスワードの誤り、鍵ペアの誤り、暗号化された文書のソース |
 | `Manifest`、`View`、`Page`、`Layer`、`PartEntry` など | manifest の型（spec.md §4） |
 
 ## TypeScript: @bdf/render
@@ -300,7 +325,7 @@ installCopyHandler(container);
 
 | メソッド | 内容 |
 |---|---|
-| `open(source, password?, options?)` | 文書を開く。`source` は `{kind: "single", url, range?}`、`{kind: "split", base}`、`{kind: "buffer", buffer}`（転送される）。`options.imageBudget` はデコードした画像を保持するバイト数。`options.maxImagePixels` と `options.holdLimit` は `ResourceCache` のものと同じ |
+| `open(source, password?, options?)` | 文書を開く。`source` は `{kind: "single", url, range?}`、`{kind: "split", base}`、`{kind: "buffer", buffer}`（転送される）、`{kind: "segments", url, view?, page?}`（区間を配るサーバー。Worker がページを描く・読む前に要る区間を取りに行く。サーバーが断ると `BdfWorkerError` の `code` が `"not-allowed"`（401・403）/ `"rate-limited"`（429））。`options.imageBudget` はデコードした画像を保持するバイト数。`options.maxImagePixels` と `options.holdLimit` は `ResourceCache` のものと同じ |
 | `unlock(password)` | パスワードが要る・違うと `open` が `BdfWorkerError`（`code` が `"password-required"` / `"wrong-password"`）で失敗したあと、同じ文書を別のパスワードで開く |
 | `page(view, index, scale, roles?)` | ページを `ImageBitmap` に描く。`scale` は 1 単位あたりのデバイスピクセル |
 | `continuous(view, viewport, scale)` | flow・scroll View を縦に続けた配置の矩形を描く |

@@ -3,7 +3,8 @@ import { decode, checkHash, MAX_MANIFEST_SIZE, type PartSource } from "./contain
 import type { Encryption, Hash, Manifest, PartEntry } from "./types.js";
 
 // Encrypted documents (spec §3.5), decrypted with WebCrypto: PBKDF2 derives
-// the key-encryption key from the password, AES-KW unwraps the content key
+// the key-encryption key from the password (or ECDH and HKDF agree it with
+// the key pair the document was sealed for), AES-KW unwraps the content key
 // and AES-GCM opens each sealed part. The content key is not extractable.
 
 /**
@@ -13,9 +14,13 @@ import type { Encryption, Hash, Manifest, PartEntry } from "./types.js";
  */
 export const MAX_ITERATIONS = 10_000_000;
 
+/** At most this many ecdh key slots are tried: each costs a key agreement. */
+export const MAX_ECDH_SLOTS = 16;
+
 const NONCE_SIZE = 12;
 const TAG_SIZE = 16;
 const MANIFEST_AAD = new TextEncoder().encode("manifest");
+const ECDH_INFO = new TextEncoder().encode("bdf ecdh v1");
 const utf8 = new TextDecoder();
 
 /**
@@ -42,14 +47,18 @@ function hexBytes(h: Hash): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-/** The content key a password unwraps from one of the key slots. */
-async function contentKey(enc: Encryption, password: string): Promise<CryptoKey> {
+/** The content key a password, or the key pair the document was sealed for, unwraps from one of the key slots. */
+function contentKey(enc: Encryption, secret: string | CryptoKeyPair): Promise<CryptoKey> {
   if (enc.cipher !== "A256GCM") throw new BdfFormatError(`unknown cipher ${enc.cipher}`);
+  return typeof secret === "string" ? passwordKey(enc, secret) : ecdhKey(enc, secret);
+}
+
+async function passwordKey(enc: Encryption, password: string): Promise<CryptoKey> {
   const pw = new TextEncoder().encode(password.normalize("NFC"));
   let spent = 0;
   for (const slot of enc.keys) {
     if (slot.type !== "password") continue;
-    if (slot.kdf !== "PBKDF2-SHA256") throw new BdfFormatError(`unknown key derivation ${slot.kdf}`);
+    if (slot.kdf !== "PBKDF2-SHA256") throw new BdfFormatError(`unknown key derivation ${(slot as { kdf: string }).kdf}`);
     if (!Number.isInteger(slot.iter) || slot.iter < 1 || slot.iter > MAX_ITERATIONS) throw new BdfFormatError(`iteration count ${slot.iter} out of range`);
     // each slot is within the range, but many of them are not
     if ((spent += slot.iter) > MAX_ITERATIONS) throw new BdfFormatError(`the key slots take more than ${MAX_ITERATIONS} iterations`);
@@ -67,6 +76,49 @@ async function contentKey(enc: Encryption, password: string): Promise<CryptoKey>
   throw new BdfPasswordError("wrong");
 }
 
+/**
+ * The content key a key pair unwraps from one of the ecdh slots: the
+ * shared secret with the writer's key stays inside WebCrypto, as HKDF's
+ * base key.
+ */
+async function ecdhKey(enc: Encryption, keyPair: CryptoKeyPair): Promise<CryptoKey> {
+  const rpk = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey));
+  let tried = 0;
+  for (const slot of enc.keys) {
+    if (slot.type !== "ecdh") continue;
+    if (slot.crv !== "P-256") throw new BdfFormatError(`unknown curve ${(slot as { crv: string }).crv}`);
+    if (slot.kdf !== "HKDF-SHA256") throw new BdfFormatError(`unknown key derivation ${(slot as { kdf: string }).kdf}`);
+    if (++tried > MAX_ECDH_SLOTS) throw new BdfFormatError(`more than ${MAX_ECDH_SLOTS} ecdh key slots`);
+    const epk = base64(slot.epk);
+    let writer: CryptoKey;
+    try {
+      writer = await crypto.subtle.importKey("raw", epk, { name: "ECDH", namedCurve: "P-256" }, false, []);
+    } catch {
+      throw new BdfFormatError("bad public key in an ecdh key slot");
+    }
+    const z = await crypto.subtle.deriveKey({ name: "ECDH", public: writer }, keyPair.privateKey, { name: "HKDF" }, false, ["deriveKey"]);
+    const both = new Uint8Array(epk.length + rpk.length);
+    both.set(epk);
+    both.set(rpk, epk.length);
+    const salt = await crypto.subtle.digest("SHA-256", both);
+    const kek = await crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt, info: ECDH_INFO }, z, { name: "AES-KW", length: 256 }, false, ["unwrapKey"]);
+    try {
+      return await crypto.subtle.unwrapKey("raw", base64(slot.key), kek, "AES-KW", { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    } catch {
+      // the integrity check of the unwrap failed: sealed for another key
+    }
+  }
+  throw new BdfKeyError();
+}
+
+/** Thrown when a document is opened with a key pair it was not sealed for. */
+export class BdfKeyError extends Error {
+  constructor() {
+    super("bdf: the document is not sealed for this key");
+    this.name = "BdfKeyError";
+  }
+}
+
 /** Decrypt a sealed part: a nonce, then the ciphertext and its tag. */
 async function open(key: CryptoKey, sealed: Uint8Array, aad: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
   if (sealed.length < NONCE_SIZE + TAG_SIZE) throw new BdfFormatError("sealed part too short");
@@ -81,8 +133,8 @@ async function open(key: CryptoKey, sealed: Uint8Array, aad: Uint8Array<ArrayBuf
 
 /**
  * The parts of an encrypted document, decrypted, over the source of its
- * stored (sealed) parts. Made by unlocking with a password; BdfDocument.open
- * does that when given one.
+ * stored (sealed) parts. Made by unlocking with a password or a key pair;
+ * BdfDocument.open does that when given one.
  */
 export class SealedSource implements PartSource {
   private constructor(
@@ -92,12 +144,16 @@ export class SealedSource implements PartSource {
     private readonly inner: Manifest,
   ) {}
 
-  /** Unlock an encrypted document; throws BdfPasswordError("wrong") when the password opens no key slot. */
-  static async unlock(source: PartSource, password: string): Promise<SealedSource> {
+  /**
+   * Unlock an encrypted document with its password, or with the key pair it
+   * was sealed for (an ecdh key slot); throws BdfPasswordError("wrong") when
+   * the password opens no key slot, BdfKeyError when the key pair opens none.
+   */
+  static async unlock(source: PartSource, secret: string | CryptoKeyPair): Promise<SealedSource> {
     const stored = await source.manifest();
     const enc = stored.encryption;
     if (!enc) throw new Error("bdf: the document is not encrypted");
-    const key = await contentKey(enc, password);
+    const key = await contentKey(enc, secret);
     for (const e of stored.parts) checkHash(e.h);
     const outer = new Map(stored.parts.map((e) => [e.h, e]));
     const me = outer.get(enc.manifest.part);

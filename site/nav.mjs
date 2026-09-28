@@ -43,6 +43,7 @@ export const SECTIONS = [
       page("examples/light-server", "Convert in the browser", "ブラウザで変換する"),
       page("examples/preview-server", "Convert on the server", "サーバーで変換する"),
       page("examples/search", "With a search engine", "検索エンジンとつなぐ"),
+      page("examples/secure-reader", "Books behind a login", "ログインした読者に読ませる"),
     ],
   },
   {

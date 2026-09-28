@@ -208,12 +208,25 @@ func (d *Document) stored() (*Manifest, [][]byte, uint16, error) {
 	if d.Lock == nil {
 		return m, data, 0, nil
 	}
-	a, err := d.Lock.aead()
+	outer, sealed, err := sealStored(m, data, d.Lock, d.CompressionLevel)
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	outer := &Manifest{BDF: FormatVersion, Parts: make([]PartEntry, 0, len(parts)+1)}
-	sealed := make([][]byte, 0, len(parts)+1)
+	return outer, sealed, FlagEncrypted, nil
+}
+
+// sealStored seals the stored parts of m (data, in manifest order) and m
+// itself with lock, and returns the outer manifest, with offsets, and the
+// sealed parts, the manifest first (docs/spec.md §3.5). It sets the Sealed
+// names of m's entries. level is the flate level the manifest is
+// compressed with.
+func sealStored(m *Manifest, data [][]byte, lock *Lock, level int) (*Manifest, [][]byte, error) {
+	a, err := lock.aead()
+	if err != nil {
+		return nil, nil, err
+	}
+	outer := &Manifest{BDF: FormatVersion, Parts: make([]PartEntry, 0, len(m.Parts)+1)}
+	sealed := make([][]byte, 0, len(m.Parts)+1)
 	add := func(b []byte) Hash {
 		h := HashOf(b)
 		outer.Parts = append(outer.Parts, PartEntry{H: h, T: PartSealed, Enc: EncIdentity, Len: len(b), Size: len(b)})
@@ -228,23 +241,23 @@ func (d *Document) stored() (*Manifest, [][]byte, uint16, error) {
 	}
 	mj, err := json.Marshal(m)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, err
 	}
 	menc := EncIdentity
-	if c, err := d.compress(mj); err == nil && len(c) < len(mj) {
+	if c, err := compress(mj, level); err == nil && len(c) < len(mj) {
 		mj, menc = c, EncDeflateRaw
 	}
 	sm := seal(a, mj, manifestAAD)
 	h := HashOf(sm)
 	outer.Parts[0] = PartEntry{H: h, T: PartSealed, Enc: EncIdentity, Len: len(sm), Size: len(sm)}
 	sealed[0] = sm
-	outer.Encryption = &Encryption{Cipher: CipherA256GCM, Keys: d.Lock.slots, Manifest: SealedManifest{Part: h, Enc: menc}}
+	outer.Encryption = &Encryption{Cipher: CipherA256GCM, Keys: lock.slots, Manifest: SealedManifest{Part: h, Enc: menc}}
 	var off int64
 	for i := range outer.Parts {
 		outer.Parts[i].Off = off
 		off += int64(outer.Parts[i].Len)
 	}
-	return outer, sealed, FlagEncrypted, nil
+	return outer, sealed, nil
 }
 
 // WriteSingle writes the single-file form.

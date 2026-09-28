@@ -35,6 +35,9 @@ func usage() {
                                      encrypt a document with a password
   bdf decrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
                                      write an encrypted document without its encryption
+  bdf segment [flags] <file.bdf | dir> <out.bdf>
+                                     write the segment of pages that holds a page, sealed for a
+                                     reader's public key (bdf segment -h for flags)
   bdf demo <file.bdf | dir/>         write the fixture document (dir/ ends with a slash)
 
 An encrypted document is read with the password in $BDF_PASSWORD; split and
@@ -208,6 +211,8 @@ func main() {
 		check(errors.Join(r.WriteSingle(f), f.Close()))
 	case "encrypt", "decrypt":
 		crypt(os.Args[1], os.Args[2:])
+	case "segment":
+		segmentCmd(os.Args[2:])
 	case "demo":
 		d, err := fixture.Demo()
 		check(err)

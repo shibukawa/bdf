@@ -5,7 +5,14 @@ import type { HitRect } from "./search.js";
 export type OpenSource =
   | { kind: "buffer"; buffer: ArrayBuffer }
   | { kind: "single"; url: string; range?: boolean }
-  | { kind: "split"; base: string };
+  | { kind: "split"; base: string }
+  /**
+   * A document a server hands out a few pages at a time, each segment sealed
+   * for a key pair made for its request (spec §3.6, SegmentLoader): pages
+   * are fetched as they are drawn. view and page name the page whose
+   * segment comes first.
+   */
+  | { kind: "segments"; url: string; view?: string; page?: number };
 
 /** The music of a view (spec §4.4): its Standard MIDI File, and its cues when it has them. */
 export interface PlayData {
@@ -48,8 +55,12 @@ export type WorkerRequest =
 
 export type WorkerResult = Manifest | ImageBitmap | TextRun[] | TextContent | SearchHit[] | HitRect[][] | PlayData | null;
 
-/** Why an open or unlock failed, when the viewer should ask for a password. */
-export type WorkerErrorCode = "password-required" | "wrong-password";
+/**
+ * Why a request failed, when the viewer has something to do about it: ask
+ * for a password, or tell the reader that the server does not give these
+ * pages (401, 403) or not so fast (429).
+ */
+export type WorkerErrorCode = "password-required" | "wrong-password" | "not-allowed" | "rate-limited";
 
 export type WorkerResponse =
   | { id: number; ok: true; result: WorkerResult }

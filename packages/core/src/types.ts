@@ -10,8 +10,17 @@ export interface Manifest {
   opset: number;
   unit: string;
   meta?: Meta;
+  /** Present in a segment document (spec §3.6): the pages it carries. */
+  segment?: Segment;
   views: View[];
   parts: PartEntry[];
+}
+
+/** Pages [from, to) of a view (0-based): those a segment document carries (spec §3.6). */
+export interface Segment {
+  view: string;
+  from: number;
+  to: number;
 }
 
 /** How an encrypted document is sealed (spec §3.5). */
@@ -22,13 +31,30 @@ export interface Encryption {
   manifest: { part: Hash; enc: Encoding };
 }
 
-/** The content key, wrapped with AES-KW under a key derived from a password. */
-export interface KeySlot {
+/** A key slot: the content key, wrapped with AES-KW. */
+export type KeySlot = PasswordSlot | EcdhSlot;
+
+/** The content key wrapped under a key derived from a password. */
+export interface PasswordSlot {
   type: "password";
   kdf: "PBKDF2-SHA256";
   iter: number;
   /** base64 */
   salt: string;
+  /** base64: the wrapped content key */
+  key: string;
+}
+
+/**
+ * The content key wrapped under a key agreed with ECDH between one reader's
+ * public key and the writer's key epk, which the writer forgot (spec §3.5).
+ */
+export interface EcdhSlot {
+  type: "ecdh";
+  kdf: "HKDF-SHA256";
+  crv: "P-256";
+  /** base64: the writer's public key, an uncompressed point */
+  epk: string;
   /** base64: the wrapped content key */
   key: string;
 }

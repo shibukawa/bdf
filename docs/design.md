@@ -662,6 +662,42 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 テストは、S 式、記法、シンボルの変換、ラベルの向き、ReadRef と FileMap（`fstest.TestFS`）の単体テストと、KiCad の出力から取った座標（KiCad のデモの文字と自作の小さな回路図）で文字の線の範囲を確かめるテスト、`test/kicad/gen.py` が書くテスト用のプロジェクト（2 回使う階層のシート、全種類のピンとラベル、ハッチ、表、テキストボックス、日本語、4 層の基板、独自の図枠）の変換、数値を極端な値に置き換えたファイルと自分を含むシートの変換、fuzz である。
 
 
+## 3.30 区間ごとに封印して配る（segment、ログインした読者向け）
+
+ログインした読者に本や PDF を読ませるサイトでは、文書をファイルとして配りたくない。§3.5 の暗号化をファイル全体にかけても、鍵を渡した時点で読者の手元に「いつでも開ける暗号文と鍵」が揃い、通信を記録した人も後で鍵が漏れれば全部開ける。そこで、サーバーは変換した bdf を手元に置いたまま、読者が開いたあたりの数ページ（既定で 10 ページ、区間）だけを、要求ごとに読者が作った使い捨ての鍵で封印して渡す（spec §3.6、§3.5 の `ecdh` スロット）。
+
+**守るもの**
+
+| 後で漏れたもの | 記録された通信（封印された区間） |
+|---|---|
+| 読者のパスワード、セッションの Cookie | 開けない。新しい区間を頼めるだけで、権利と速さはサーバーが確かめる |
+| サーバーの TLS の秘密鍵、TLS を終端する CDN・WAF のログ | 開けない。区間を開ける鍵は要求ごとの鍵の合意からしか出てこない |
+| ログアウト後・タブを閉じた後の端末 | 何も残っていない（`Cache-Control: no-store`、鍵は Worker のメモリの中だけ） |
+| 読者が閲覧中に抜き出した鍵 | その区間 1 つにしか効かない |
+
+守らないもの: サーバーのディスク（本は平文で置く。変換は 1 回だけで、封印は要求のたびにする）、閲覧中の画面とメモリ（描けるものは写せる）、TLS を終端して応答を書き換えられる者（ビューアのスクリプト自体を差し替えられる）。オフラインの閲覧はしない（端末に鍵を残すことになり、前方秘匿性と両立しない）。
+
+**鍵**: ブラウザの Worker が要求ごとに P-256 の鍵ペアを `extractable: false` で作り、公開鍵だけを送る。サーバーは区間ごとに自分の鍵ペアを作って ECDH で鍵を合意し、区間のコンテンツ鍵をラップして自分の秘密鍵を捨てる（`bdf.NewECDHLock`）。Worker は `deriveKey` で同じ鍵を導いて区間を開き、秘密鍵への参照を持たない（ECDH の結果は HKDF の基底鍵のまま WebCrypto の中にあり、JavaScript に出てこない）。ラチェットは使わない。要求ごとに両側が新しい鍵を作れば、どの応答も単独で前方秘匿になり、順序の食い違いや再送を考えなくてよい。サーバーの長期の鍵で状態を包むこともしない（その鍵が漏れれば過去が開く）。HPKE（RFC 9180）は WebCrypto にないので、共有秘密を JavaScript のバイト列として扱うことになるため採らなかった。
+
+**区間の中身**（`Reader.WriteSegment`）: 輪郭（すべての View とページの大きさ、メタデータ）と、区間のページのレイヤー、そのページが使う Part。格納バイト列（圧縮済み）をそのままコピーして封印するので、要求のたびの仕事は読み出しと封印だけで、圧縮し直さない。どのページがどの Part を使うかは、ページごとに一度だけ Object をデコードして調べ、`Reader` が覚えておく（並行に呼んでよい）。読者は持っている区間を要求に書き（`have`）、サーバーはそれらのページが使う Part を省く。フォントや共有の Object（PDF の Form XObject、スライドのマスター）を区間ごとに送り直さないためで、サーバーは読者ごとの状態を持たない（読者が嘘をついても、困るのは読者自身）。テキスト索引は View 全体の本文なので区間には入れない。本の中の検索は受け取ったページだけが対象になる。シートと演奏のある View は区間にしない。
+
+**通信の形**（Go の `segment.Handler` と `@bdf/core` の `SegmentLoader`）: `POST`、`Content-Type: application/json`（フォームと違い、他のサイトからは CORS の問い合わせなしには送れない）で、本体は次の形。
+
+```jsonc
+{ "key": "<base64: 読者の公開鍵、非圧縮の点 65 バイト>",
+  "view": "pages",            // 省略時は最初の View
+  "page": 37,                 // この要求で欲しいページ（0 始まり）
+  "have": [ { "view": "pages", "from": 0, "to": 10 } ] }   // 持っている区間
+```
+
+応答はそのページを含む区間（ページ `⌊page/10⌋·10` から 10 ページ）の単一ファイル形式で、`Cache-Control: no-store`。ログインと権利はアプリケーションの `Open`（どの文書か、読んでよいか）と `Allow`（区間ごとの規則: 立ち読みは最初の区間だけ、読む速さの上限）が決め、エラーは `*segment.StatusError` の状態（未ログインの 401、速すぎる 429）、`fs.ErrNotExist`（404）、`fs.ErrPermission`（403）で返す。`SegmentLoader` は 1 つの区間を同時に 2 度頼まない（区間の大きさは最初の満ちた区間から知る）、頼まれたページの 3 ページ先を先読みする。レンダラの Worker は `{ kind: "segments", url }` で開いた文書について、ページの描画・テキスト・連続表示の範囲を処理する前に要るページを取りに行くので、ビューアは他の文書と同じように使える。サーバーが拒んだ区間は Worker のエラーコード `not-allowed`・`rate-limited` になる。
+
+**費用**（Apple M 系の 1 コア、`WriteSegment` と鍵の合意を合わせて）: 実物の本 2 冊（EPUB から、439 ページと 362 ページ）で 1 区間 0.6 ms 前後（最大 1.1 ms）、ページごとの Part の表を作る最初の一巡が本全体で 30〜50 ms。大半は輪郭の JSON の圧縮で、鍵の合意は 50 µs、AES-GCM は 10〜15 µs。区間の大きさは中央値 25〜50 KB、最大 0.5 MB（大きな図のあるページ）。封印したものは読者ごとに違うので CDN の共有キャッシュは使えないが、本 1 冊が数 MB なら配信の負荷としては小さい。
+
+**サンプル**: `examples/secure-reader` はこれを使ったログイン付きの PDF 閲覧サイトである（パスワードは PBKDF2 で持ち、セッションの Cookie は HttpOnly・SameSite=Strict でサーバーはそのハッシュだけを持つ、`http.CrossOriginProtection`、CSP、立ち読みと読む速さの上限）。
+
+**確かめたこと**: Go のテスト（鍵の往復、別の鍵とパスワードを拒むこと、区間のページと Part、`have` で省かれること、シートを拒むこと、ハンドラの状態）、Go が封印した区間を TS が開いて合わせると元の文書のページと Part に一致するテスト（`testdata/segments/`、テスト専用の鍵で封印）、`SegmentLoader` が同じ区間を 1 度だけ頼み `have` を付けるテスト。ブラウザでは Chrome 153 と WebKit 26 でサンプルの本の 3 つ目の区間まで描けること、立ち読みの境界で 403、21 区間目で 429、ログアウト後に 401 になることを確かめた（Firefox は手元の Playwright で起動しないため未確認）。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -773,7 +809,8 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 20. **楽譜と演奏**: MML・MIDI・MusicXML を五線譜に組み、View に SMF と cue を持たせてビューアで演奏する（実装済み、§3.27）。
 21. **フォントファイル**: 文字・グリフ・OpenType フィーチャーのプレビュー。GSUB・GPOS は自前で読む（実装済み、§3.28）。
 22. **KiCad**: KiCad 6 以降の回路図と基板。階層のシートをページに、基板を表・裏と層ごとの View に、KiCad の線の字体（CC0 の newstroke）で描く。参照するファイルはサーバーでは列挙して渡し、ウェブでは ZIP で（実装済み、§3.29）。
-23. **化学構造式**（予定）: MOL・SDF（SDF は表のシート）、ChemDraw の CDXML・CDX を ACS 1996 の描き方で。
+23. **区間の配信**: ログインした読者に文書を 10 ページずつ、要求ごとの使い捨ての鍵で封印して渡す。記録された通信は後で鍵が漏れても開けない（実装済み、§3.30）。
+24. **化学構造式**（予定）: MOL・SDF（SDF は表のシート）、ChemDraw の CDXML・CDX を ACS 1996 の描き方で。
 
 ## 9. リポジトリ構成（案）
 
@@ -781,7 +818,8 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 bdf/
 ├── docs/              spec.md, design.md
 ├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
-├── cmd/bdf/           CLI: generate / thumbnail / text / render / ls / manifest / disasm / extract / split / join / encrypt / decrypt / demo
+├── cmd/bdf/           CLI: generate / thumbnail / text / render / ls / manifest / disasm / extract / split / join / encrypt / decrypt / segment / demo
+├── segment/           区間を要求ごとに封印して返す HTTP ハンドラ（§3.30。wasm に net/http を持ち込まないよう bdf とは別のパッケージ）
 ├── cmd/bdfwasm/       ブラウザ内変換用の wasm モジュール（§2）
 ├── imgconv/           画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
 ├── woff2/             TrueType/OpenType ↔ WOFF2（glyf 変換と Brotli）
@@ -832,9 +870,11 @@ bdf/
 ├── examples/
 │   ├── viewer/         デモビューア（Worker 描画、テキストレイヤー）
 │   ├── common/         ビューアと site/ が共有するもの（変換 Worker のクライアント、ビルドの補助）
-│   └── miniviewer/     埋め込み用の小さなビューア（トップページ、examples/ のサンプルが使う）
+│   ├── miniviewer/     埋め込み用の小さなビューア（トップページ、examples/ のサンプルが使う）
+│   ├── light-server/、preview-server/、search/  構成のサンプル（変換をブラウザで・サーバーで、検索エンジンと）
+│   └── secure-reader/  ログインした読者に PDF を区間ごとに封印して読ませるサンプル（§3.30）
 ├── site/               デモサイト（トップページ、ビューア、サムネイル・検索テキストのページ、ドキュメント）。GitHub Pages で公開
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、PDF・Illustrator・Photoshop・PowerPoint・Excel・Visio・Word・DXF・JWW・SXF・CGM・Gerber・TIFF・Markdown・HTML・画像・EPUB・楽譜の変換結果と golden PNG
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、区間の文書（segments/、テスト専用の鍵で封印）、PDF・Illustrator・Photoshop・PowerPoint・Excel・Visio・Word・DXF・JWW・SXF・CGM・Gerber・TIFF・Markdown・HTML・画像・EPUB・楽譜の変換結果と golden PNG
 └── test/              Playwright による golden テスト
 ```
 

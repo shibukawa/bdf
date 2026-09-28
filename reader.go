@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"crypto/cipher"
+	"crypto/ecdh"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 )
 
 // MaxManifestSize bounds the manifest JSON a reader inflates: a manifest
@@ -30,6 +32,9 @@ type Reader struct {
 	load     func(PartEntry) ([]byte, error) // stored bytes
 	aead     cipher.AEAD                     // set by Unlock
 	file     io.Closer                       // the file OpenSingleFile opened
+
+	pageMu    sync.Mutex
+	pageParts map[pageKey][]Hash // what each page needs, for WriteSegment
 }
 
 // OpenSingle parses the single-file form.
@@ -173,6 +178,26 @@ func (r *Reader) Unlock(password string) error {
 	if err != nil {
 		return err
 	}
+	return r.unlockWith(enc, key)
+}
+
+// UnlockECDH opens an encrypted document with the private key it was sealed
+// for (an ecdh key slot), as Unlock does with a password. It returns
+// ErrWrongKey when no key slot opens with the key.
+func (r *Reader) UnlockECDH(priv *ecdh.PrivateKey) error {
+	enc := r.stored.Encryption
+	if enc == nil {
+		return errors.New("bdf: the document is not encrypted")
+	}
+	key, err := unlockKeyECDH(enc, priv)
+	if err != nil {
+		return err
+	}
+	return r.unlockWith(enc, key)
+}
+
+// unlockWith opens the sealed manifest with the content key.
+func (r *Reader) unlockWith(enc *Encryption, key []byte) error {
 	a, err := newAEAD(key)
 	if err != nil {
 		return err
@@ -221,19 +246,27 @@ func (r *Reader) Part(h Hash) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("bdf: unknown part %s", h)
 	}
-	var b []byte
-	var err error
-	if r.aead != nil {
-		if b, err = r.load(r.outer[e.Sealed]); err != nil {
-			return nil, err
-		}
-		if b, err = open(r.aead, b, e.H[:]); err != nil {
-			return nil, fmt.Errorf("part %s: %w", e.H, err)
-		}
-	} else if b, err = r.load(e); err != nil {
+	b, err := r.storedPlain(e)
+	if err != nil {
 		return nil, err
 	}
 	return decodeStored(b, e.Enc, e.Size, e.Size)
+}
+
+// storedPlain returns the stored bytes of a part of Manifest, encoded as its
+// entry says: those of an encrypted document with the seal opened.
+func (r *Reader) storedPlain(e PartEntry) ([]byte, error) {
+	if r.aead == nil {
+		return r.load(e)
+	}
+	b, err := r.load(r.outer[e.Sealed])
+	if err != nil {
+		return nil, err
+	}
+	if b, err = open(r.aead, b, e.H[:]); err != nil {
+		return nil, fmt.Errorf("part %s: %w", e.H, err)
+	}
+	return b, nil
 }
 
 // decodeStored decodes stored bytes, which decode to limit bytes at most
