@@ -1,12 +1,15 @@
 package pdf
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"math"
 
 	"github.com/pdfcpu/pdfcpu/pkg/filter"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
+	"github.com/shibukawa/bdf/imgconv"
 )
 
 // Thin helpers over pdfcpu's object model. All of them tolerate missing or
@@ -14,6 +17,37 @@ import (
 
 type pdf struct {
 	ctx *model.Context
+	// maxStream bounds the decoded bytes of a stream (0: maxStreamBytes),
+	// maxSamples those of the samples of an image (0: maxImageBytes), and
+	// maxPixels the pixels of an image that is not reduced (0:
+	// imgconv.MaxDecodePixels).
+	maxStream, maxSamples, maxPixels int64
+	// treeReads counts the nodes of name and number trees that were read.
+	treeReads int
+}
+
+// streamLimit returns the bound of the decoded bytes of a stream.
+func (p *pdf) streamLimit() int64 {
+	if p.maxStream > 0 {
+		return p.maxStream
+	}
+	return maxStreamBytes
+}
+
+// sampleLimit returns the bound of the bytes of the samples of an image.
+func (p *pdf) sampleLimit() int64 {
+	if p.maxSamples > 0 {
+		return p.maxSamples
+	}
+	return maxImageBytes
+}
+
+// pixelLimit returns the pixels beyond which an image is reduced.
+func (p *pdf) pixelLimit() int64 {
+	if p.maxPixels > 0 {
+		return p.maxPixels
+	}
+	return imgconv.MaxDecodePixels
 }
 
 func (p *pdf) deref(o types.Object) types.Object {
@@ -144,6 +178,7 @@ func (p *pdf) numberTree(o types.Object, key int) types.Object {
 			return nil
 		}
 		budget--
+		p.treeReads++
 		if lim := p.nums(d["Limits"]); len(lim) == 2 && (float64(key) < lim[0] || float64(key) > lim[1]) {
 			return nil
 		}
@@ -163,30 +198,34 @@ func (p *pdf) numberTree(o types.Object, key int) types.Object {
 	return find(o)
 }
 
-// nameTree returns the value of key in the name tree rooted at o.
-func (p *pdf) nameTree(o types.Object, key string) types.Object {
+// nameTree returns the names of the name tree rooted at o with their
+// values: for a name given more than once, the first value in the order of
+// the tree. It is read once for all the lookups, which read it each from
+// its root before.
+func (p *pdf) nameTree(o types.Object) map[string]types.Object {
 	budget := treeBudget
-	var find func(o types.Object) types.Object
-	find = func(o types.Object) types.Object {
+	out := map[string]types.Object{}
+	var read func(o types.Object)
+	read = func(o types.Object) {
 		d := p.dict(o)
 		if d == nil || budget <= 0 {
-			return nil
+			return
 		}
 		budget--
+		p.treeReads++
 		names := p.array(d["Names"])
 		for i := 0; i+1 < len(names); i += 2 {
-			if string(p.str(names[i])) == key {
-				return names[i+1]
+			key := string(p.str(names[i]))
+			if _, ok := out[key]; !ok && names[i+1] != nil {
+				out[key] = names[i+1]
 			}
 		}
 		for _, kid := range p.array(d["Kids"]) {
-			if v := find(kid); v != nil {
-				return v
-			}
+			read(kid)
 		}
-		return nil
 	}
-	return find(o)
+	read(o)
+	return out
 }
 
 // key identifies an object for caching: its indirect reference if it has one,
@@ -198,15 +237,28 @@ func objKey(o types.Object) string {
 	return ""
 }
 
+// maxStreamBytes bounds the decoded bytes of a stream: deflate data of a
+// thousand bytes can ask for a gigabyte, and twice deflated for far more.
+const maxStreamBytes = 256 << 20
+
 // decodeStream returns the decoded bytes of a stream, applying all filters
 // except image codecs (DCT, JPX, JBIG2, CCITT), which are reported via the
-// returned filter name so the caller can handle them.
+// returned filter name so the caller can handle them. A stream that decodes
+// to more than maxStreamBytes is an error.
 func (p *pdf) decodeStream(sd *types.StreamDict) ([]byte, string, error) {
+	return p.decodeStreamUpTo(sd, p.streamLimit(), false)
+}
+
+// decodeStreamUpTo is decodeStream with another limit for the decoded
+// bytes. With cut set, the bytes after the limit are left out instead of
+// being an error: the samples of an image, which has no use for more than
+// its rows. The data between two filters is held to maxStreamBytes.
+func (p *pdf) decodeStreamUpTo(sd *types.StreamDict, limit int64, cut bool) ([]byte, string, error) {
 	if sd == nil {
 		return nil, "", fmt.Errorf("nil stream")
 	}
 	data := sd.Raw
-	for _, f := range sd.FilterPipeline {
+	for i, f := range sd.FilterPipeline {
 		switch f.Name {
 		case filter.DCT, filter.JPX, filter.JBIG2:
 			return data, f.Name, nil
@@ -222,20 +274,140 @@ func (p *pdf) decodeStream(sd *types.StreamDict) ([]byte, string, error) {
 				}
 			}
 		}
-		fi, err := filter.NewFilter(f.Name, parms)
-		if err != nil {
-			return nil, "", err
+		last := true
+		for _, g := range sd.FilterPipeline[i+1:] {
+			switch g.Name {
+			case filter.DCT, filter.JPX, filter.JBIG2, filter.CCITTFax:
+			default:
+				last = false
+			}
 		}
-		r, err := fi.Decode(bytesReader(data))
+		max, cutHere := p.streamLimit(), false
+		if last {
+			max, cutHere = limit, cut
+		}
+		out, err := decodeFilter(f.Name, parms, data, max)
 		if err != nil {
 			return nil, "", fmt.Errorf("%s: %w", f.Name, err)
 		}
-		data, err = readAll(r)
-		if err != nil {
-			return nil, "", err
+		if int64(len(out)) > max {
+			if !cutHere {
+				return nil, "", fmt.Errorf("%s: the stream decodes to more than %d bytes", f.Name, max)
+			}
+			out = out[:max]
 		}
+		data = out
 	}
 	return data, "", nil
+}
+
+// decodeFilter decodes data with one filter. It returns a little more than
+// max bytes of a stream that is longer, and may leave the rest undecoded.
+// pdfcpu's filters take the parameters and the data as they are, and panic
+// or never return on some: those are checked or decoded here.
+func decodeFilter(name string, parms map[string]int, data []byte, max int64) ([]byte, error) {
+	switch name {
+	case filter.RunLength:
+		return decodeRunLength(data, max), nil
+	case filter.ASCII85:
+		if len(data) == 0 {
+			return nil, nil // pdfcpu looks at the last byte
+		}
+	case filter.Flate:
+		if err := checkPredictor(parms, len(data)); err != nil {
+			return nil, err
+		}
+	}
+	fi, err := filter.NewFilter(name, parms)
+	if err != nil {
+		return nil, err
+	}
+	switch name {
+	case filter.Flate:
+		// pdfcpu returns what it read with io.EOF for a stream shorter than
+		// the length asked for.
+		r, err := fi.DecodeLength(bytesReader(data), max+1)
+		if b, ok := r.(*bytes.Buffer); ok && b != nil && (err == nil || err == io.EOF) {
+			return b.Bytes(), nil
+		}
+		if err == nil {
+			err = io.ErrUnexpectedEOF
+		}
+		return nil, err
+	case filter.LZW:
+		// pdfcpu returns nothing but io.EOF for a stream shorter than the
+		// length asked for: then the stream is short enough to decode whole.
+		r, err := fi.DecodeLength(bytesReader(data), max+1)
+		if err == nil {
+			return readAll(r)
+		}
+		if err != io.EOF {
+			return nil, err
+		}
+	}
+	// ASCIIHex and ASCII85 give fewer bytes than they take.
+	r, err := fi.Decode(bytesReader(data))
+	if err != nil {
+		return nil, err
+	}
+	return readAll(r)
+}
+
+// checkPredictor checks the parameters of a Flate predictor, which pdfcpu
+// takes as they are: it divides by a row of no bytes, or reads such rows for
+// ever, and makes its rows before it reads any data. n is the number of
+// bytes to decode: deflate gives at most 1032 bytes for one, so that a
+// longer row cannot be a row of this stream.
+func checkPredictor(parms map[string]int, n int) error {
+	if pr, ok := parms["Predictor"]; !ok || pr <= 1 {
+		return nil
+	}
+	get := func(key string, def int) int {
+		if v, ok := parms[key]; ok {
+			return v
+		}
+		return def
+	}
+	columns, colors, bpc := get("Columns", 1), get("Colors", 1), get("BitsPerComponent", 8)
+	if columns < 1 || columns > 1<<24 {
+		return fmt.Errorf("predictor with %d columns", columns)
+	}
+	if colors < 1 || colors > 32 {
+		return fmt.Errorf("predictor with %d colours", colors)
+	}
+	switch bpc {
+	case 1, 2, 4, 8, 16:
+	default:
+		return fmt.Errorf("predictor with %d bits per component", bpc)
+	}
+	if row := (int64(bpc)*int64(colors)*int64(columns) + 7) / 8; row > 1032*int64(n)+64 {
+		return fmt.Errorf("predictor with rows of %d bytes for %d bytes of data", row, n)
+	}
+	return nil
+}
+
+// decodeRunLength decodes RunLengthDecode data up to a little more than max
+// bytes. Data that ends within a run gives the bytes before its end.
+func decodeRunLength(src []byte, max int64) []byte {
+	var out []byte
+	for i := 0; i < len(src) && int64(len(out)) <= max; {
+		b := src[i]
+		i++
+		switch {
+		case b == 0x80: // end of data
+			return out
+		case b < 0x80: // b+1 bytes as they are
+			n := min(int(b)+1, len(src)-i)
+			out = append(out, src[i:i+n]...)
+			i += n
+		case i < len(src): // the next byte 257-b times
+			for k := 257 - int(b); k > 0; k-- {
+				out = append(out, src[i])
+			}
+			i++
+		}
+	}
+	return out
 }
 
 // matrix is a PDF/canvas affine matrix [a b c d e f].

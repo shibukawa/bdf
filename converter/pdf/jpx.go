@@ -12,7 +12,7 @@ import (
 // wins over the JP2 header's (PDF 32000-1 §7.4.9), BitsPerComponent and
 // Decode do not apply, and with /SMaskInData the JPEG 2000 opacity channel
 // is the soft mask.
-func (c *converter) loadJPX(d types.Dict, data []byte, res types.Dict) (*decodedImage, error) {
+func (c *converter) loadJPX(d types.Dict, data []byte, res types.Dict) (*imagePixels, error) {
 	p := c.pdf
 	img, err := jpx.Decode(data)
 	if err != nil {
@@ -84,5 +84,5 @@ func (c *converter) loadJPX(d types.Dict, data []byte, res types.Dict) (*decoded
 		out.SetNRGBA(i%w, i/w, color.NRGBA{to8(r), to8(g), to8(b), to8(a)})
 	}
 	c.applyMasks(out, d, res)
-	return c.storePixels(out, true), nil
+	return &imagePixels{img: out, lossless: true}, nil
 }

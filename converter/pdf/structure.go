@@ -355,12 +355,19 @@ func (t *structTree) cellRef(table, cell *structElem) (string, bool) {
 // possibly grouped in THead/TBody/TFoot) with their row and column spans.
 func (t *structTree) tableGrid(table *structElem) map[*structElem]string {
 	var rows [][]*structElem
+	// A row or a group of rows met again is left out: the kids of a
+	// damaged table may name the same one many times at every depth.
+	seen := map[*structElem]bool{}
 	var collect func(e *structElem, depth int)
 	collect = func(e *structElem, depth int) {
 		for _, k := range t.kids(e.dict) {
 			x := t.elem(k)
-			if x == nil {
+			if x == nil || seen[x] {
 				continue
+			}
+			switch x.typ {
+			case "THead", "TBody", "TFoot", "TR":
+				seen[x] = true
 			}
 			switch x.typ {
 			case "THead", "TBody", "TFoot":
@@ -595,14 +602,17 @@ type mcEntry struct {
 	tgt    *mcTarget
 	set    bool // tgt replaces the enclosing target
 	hidden bool // optional content the default configuration hides
+
+	// What holds within the sequence and after it, kept here so that
+	// sequences nested deeply are not searched for it.
+	cur   *mcTarget   // the target within: tgt, or that of the enclosing sequences
+	outer *actualText // the /ActualText of the enclosing sequences
 }
 
 // curTarget returns the target of the content being interpreted.
 func (in *interp) curTarget() *mcTarget {
-	for i := len(in.mcStack) - 1; i >= 0; i-- {
-		if in.mcStack[i].set {
-			return in.mcStack[i].tgt
-		}
+	if n := len(in.mcStack); n > 0 {
+		return in.mcStack[n-1].cur
 	}
 	return in.inherit
 }

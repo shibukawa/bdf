@@ -1,7 +1,10 @@
 package xmp
 
 import (
+	"encoding/xml"
+	"runtime"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -92,5 +95,68 @@ func TestRDF(t *testing.T) {
 	dc = DublinCore([]byte(packet))
 	if !slices.Equal(dc.Creator, []string{"Ann", "Bob"}) || !slices.Equal(dc.Rights, []string{"© Ann"}) || !slices.Equal(dc.Description, []string{"A cat"}) {
 		t.Errorf("tiff: %+v", dc)
+	}
+}
+
+// TestSubtreeDepth: elements are read as deep as maxDepth, and what follows
+// the deeper ones is read.
+func TestSubtreeDepth(t *testing.T) {
+	const deep = maxDepth + 100
+	data := "<r>" + strings.Repeat("<a>", deep) + "text" + strings.Repeat("</a>", deep) + "<b>after</b></r>"
+	d := Decoder([]byte(data), nil)
+	tok, err := d.Token()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := Subtree(d, tok.(xml.StartElement))
+	if err != nil || len(root.Children) != 2 || root.Children[1].Text != "after" {
+		t.Fatalf("%v, children %+v", err, root.Children)
+	}
+	depth := 0
+	n := root
+	for ; len(n.Children) > 0; n = n.Children[0] {
+		depth++
+	}
+	if depth != maxDepth || n.Text != "" {
+		t.Errorf("elements %d deep, want %d; the last has the text %q", depth, maxDepth, n.Text)
+	}
+	// without the elements that end them
+	if !DublinCore([]byte(strings.Repeat("<a>", deep))).IsZero() {
+		t.Error("values of elements without end")
+	}
+}
+
+// TestDefaultAlternatives: the default of a language alternative comes
+// first, the last of several before the others; many of them are put in
+// order once (200 MB of copies for these before).
+func TestDefaultAlternatives(t *testing.T) {
+	alt := func(items string) *Node {
+		data := `<dc:title xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Alt>` + items + `</rdf:Alt></dc:title>`
+		d := Decoder([]byte(data), nil)
+		tok, err := d.Token()
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, err := Subtree(d, tok.(xml.StartElement))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	n := alt(`<rdf:li xml:lang="en">A</rdf:li><rdf:li xml:lang="x-default">B</rdf:li><rdf:li xml:lang="fr">C</rdf:li><rdf:li xml:lang="x-default">D</rdf:li>`)
+	if got := values(n); !slices.Equal(got, []string{"D", "B", "A", "C"}) {
+		t.Errorf("values %q", got)
+	}
+	if got := values(alt("")); got != nil {
+		t.Errorf("values of no item: %q", got)
+	}
+	const items = 5000
+	n = alt(strings.Repeat(`<rdf:li xml:lang="x-default">t</rdf:li>`, items))
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	got := values(n)
+	runtime.ReadMemStats(&after)
+	if len(got) != items || after.TotalAlloc-before.TotalAlloc > 16<<20 {
+		t.Errorf("%d values, %d bytes allocated", len(got), after.TotalAlloc-before.TotalAlloc)
 	}
 }

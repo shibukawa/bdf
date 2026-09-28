@@ -166,8 +166,21 @@ func labToRGB(v []float64, wp []float64) (float64, float64, float64) {
 	return gam(r), gam(gg), gam(bb)
 }
 
+// maxColorSpaceDepth bounds the colour spaces within colour spaces (the base
+// of an Indexed space, the alternate of a Separation …): a colour space may
+// name itself as its base.
+const maxColorSpaceDepth = 8
+
 // loadColorSpace resolves a colour space object or name (looked up in resources).
 func (c *converter) loadColorSpace(o types.Object, res types.Dict) *colorSpace {
+	return c.loadColorSpaceAt(o, res, 0)
+}
+
+func (c *converter) loadColorSpaceAt(o types.Object, res types.Dict, depth int) *colorSpace {
+	if depth > maxColorSpaceDepth {
+		c.warnOnce("cs-depth", "colour spaces nested too deeply; using DeviceGray")
+		return csGray
+	}
 	p := c.pdf
 	switch v := p.deref(o).(type) {
 	case types.Name:
@@ -186,7 +199,7 @@ func (c *converter) loadColorSpace(o types.Object, res types.Dict) *colorSpace {
 		if res != nil {
 			if csd := p.dict(res["ColorSpace"]); csd != nil {
 				if e, ok := csd[v.Value()]; ok {
-					return c.loadColorSpace(e, nil)
+					return c.loadColorSpaceAt(e, nil, depth+1)
 				}
 			}
 		}
@@ -199,7 +212,7 @@ func (c *converter) loadColorSpace(o types.Object, res types.Dict) *colorSpace {
 		fam := p.name(v[0])
 		switch fam {
 		case "DeviceGray", "G", "DeviceRGB", "RGB", "DeviceCMYK", "CMYK", "CalGray", "CalRGB":
-			return c.loadColorSpace(v[0], res)
+			return c.loadColorSpaceAt(v[0], res, depth+1)
 		case "ICCBased":
 			n := 3
 			if len(v) > 1 {
@@ -207,7 +220,7 @@ func (c *converter) loadColorSpace(o types.Object, res types.Dict) *colorSpace {
 					n = p.intOr(sd.Dict["N"], 0)
 					if n == 0 {
 						if alt, ok := sd.Dict["Alternate"]; ok {
-							return c.loadColorSpace(alt, res)
+							return c.loadColorSpaceAt(alt, res, depth+1)
 						}
 						n = 3
 					}
@@ -225,7 +238,7 @@ func (c *converter) loadColorSpace(o types.Object, res types.Dict) *colorSpace {
 			if len(v) < 4 {
 				return csGray
 			}
-			cs := &colorSpace{family: "Indexed", n: 1, base: c.loadColorSpace(v[1], res), hival: p.intOr(v[2], 0)}
+			cs := &colorSpace{family: "Indexed", n: 1, base: c.loadColorSpaceAt(v[1], res, depth+1), hival: p.intOr(v[2], 0)}
 			if sd := p.stream(v[3]); sd != nil {
 				data, _, err := p.decodeStream(sd)
 				if err == nil {
@@ -241,7 +254,7 @@ func (c *converter) loadColorSpace(o types.Object, res types.Dict) *colorSpace {
 				cs.n = len(p.array(v[1]))
 			}
 			if len(v) > 2 {
-				cs.alt = c.loadColorSpace(v[2], res)
+				cs.alt = c.loadColorSpaceAt(v[2], res, depth+1)
 			}
 			if len(v) > 3 {
 				cs.tint = p.loadFunction(v[3])
@@ -261,7 +274,7 @@ func (c *converter) loadColorSpace(o types.Object, res types.Dict) *colorSpace {
 		case "Pattern":
 			cs := &colorSpace{family: "Pattern", n: 1}
 			if len(v) > 1 {
-				cs.under = c.loadColorSpace(v[1], res)
+				cs.under = c.loadColorSpaceAt(v[1], res, depth+1)
 			}
 			return cs
 		}

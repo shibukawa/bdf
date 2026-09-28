@@ -347,7 +347,8 @@ func parseType1(data []byte) (*type1Font, error) {
 	csRaw := map[string][]byte{}
 	readBinary := func() ([]byte, bool) {
 		n, ok := s.number()
-		if !ok || n < 0 {
+		// not n < 0 || n > …: NaN is a number to strconv
+		if !ok || !(n >= 0 && n <= float64(len(priv))) {
 			return nil, false
 		}
 		s.next() // RD or -|
