@@ -82,7 +82,7 @@ func listFiles(dir string) ([]string, error) {
 
 // makeThumbnails converts each file that has no cached thumbnail yet, draws
 // its thumbnail, and discards the converted bdf: this server never keeps
-// one. A file whose format isn't registered, or that fails to convert, is
+// one, so only the first page, all the thumbnail shows, is converted. A file whose format isn't registered, or that fails to convert, is
 // skipped with a log line rather than stopping the server.
 func makeThumbnails(dir, thumbDir string, files []string) {
 	for _, name := range files {
@@ -90,7 +90,7 @@ func makeThumbnails(dir, thumbDir string, files []string) {
 		if _, err := os.Stat(out); err == nil {
 			continue // already made
 		}
-		res, err := converter.ConvertFile(filepath.Join(dir, name), "", &converter.Options{})
+		res, err := converter.ConvertFile(filepath.Join(dir, name), "", &converter.Options{Pages: converter.PageList(1)})
 		if err != nil {
 			log.Printf("light-server: %s: not converted for its thumbnail: %v", name, err)
 			continue

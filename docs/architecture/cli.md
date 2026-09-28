@@ -3,8 +3,9 @@
 ```
 bdf generate [flags] <input> <out.bdf | dir/>
                                    convert a document or a drawing (bdf generate -h for flags and formats)
-bdf thumbnail [flags] <file.bdf | dir> <out.png | .jpg | .webp>
+bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                    draw a thumbnail: the top of the first page or the whole slide
+                                   (of an input to convert, only the first page is converted)
 bdf text [flags] <file.bdf | dir> [out.json]
                                    write the metadata and the text of each page for a search index
 bdf render [flags] <file.bdf | dir> <out.png | .jpg | .webp>
@@ -41,9 +42,12 @@ Three ways to look at a `.bdf` without a browser, using the same Go code (`raste
 
 ```sh
 bdf thumbnail -size 256 out.bdf thumb.png    # -mode auto|crop|fit, -view, -sheet-dpi, -font-dir, -no-system-fonts
+bdf thumbnail -size 256 book.pdf thumb.png   # an input bdf generate converts: only its first page is converted
 bdf text out.bdf text.json                   # metadata and per-page text as JSON (default: stdout)
 bdf render -page 2 -scale 2 out.bdf page2.png  # a sheet takes -width/-height too (from A1)
 ```
+
+Given an input that is not a `.bdf` (a PDF, a `.docx` …), `thumbnail` converts only its first page, all a thumbnail shows (the whole input with `-view`): a 500-page PDF takes milliseconds instead of seconds. A password-protected input needs `$BDF_PASSWORD` and `-allow-plaintext`, as an encrypted document does.
 
 `-allow-plaintext` is required for `thumbnail` and `text` on an encrypted document (`$BDF_PASSWORD` decrypts it first) — neither output is itself encrypted, so this is opt-in. See [Conversion and output → Server-side thumbnails and search text](conversion.md#server-side-thumbnails-and-search-text) for what each one draws or extracts.
 

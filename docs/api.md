@@ -228,7 +228,7 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 | `encrypt` / `decrypt` | パスワードで暗号化する / 暗号化を外す |
 | `segment [flags] <file> <out.bdf>` | `-page`（1 始まり）を含む `-size`（既定 10）ページの区間を書く。`-view`、`-have 1-10,…`（持っているページ）、`-key <PEM>`（読者の P-256 の公開鍵に封印する。無ければ平文） |
 | `demo` | サンプル文書（testdata/demo.bdf と同じもの）を書く |
-| `thumbnail [flags] <file> <out.png \| .jpg \| .webp>` | サムネイルを描く。`-size`（既定 256）、`-mode auto\|crop\|fit`、`-view`、`-sheet-dpi`（既定 72）、`-font-dir`、`-no-system-fonts` |
+| `thumbnail [flags] <file> <out.png \| .jpg \| .webp>` | サムネイルを描く。`file` は bdf か、`generate` が変換できる入力（そのときは 1 ページ目だけを変換する。`-view` を付けたときは全体。パスワード付きの入力は `$BDF_PASSWORD` と `-allow-plaintext` が要る）。`-size`（既定 256）、`-mode auto\|crop\|fit`、`-view`、`-sheet-dpi`（既定 72）、`-font-dir`、`-no-system-fonts` |
 | `text [flags] <file> [out.json]` | メタデータとページごとのテキストを JSON で書く（既定は標準出力） |
 | `render [flags] <file> <out.png \| .jpg \| .webp>` | ページを描く。`-view`、`-page`（1 始まり）、`-scale`、シートは A1 からの `-width`・`-height` |
 
@@ -249,7 +249,7 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 | `thumbnail(bdf: Uint8Array, options?)` | `previewonly` のみ。単一ファイル形式の bdf のサムネイルを描き、`{image, format, width, height, mode, warnings}` を返す。`options` は `{size?, mode?, format?, view?, sheetDpi?, password?, fonts?}`（`size` は既定 256・最大 2048、`sheetDpi` は既定 72、`mode` は `auto`・`crop`・`fit`、`format` は `png`・`jpeg`。`bdf_noconv` でなければ `webp` も） |
 | `text(bdf: Uint8Array, options?)` | `previewonly` のみ。`bdf text` と同じ JSON（メタデータとページごとのテキスト）を `{json}` で返す。`options` は `{password?}` |
 
-`options` は `{format?, password?, fonts?}`。`fonts` はフォントのディレクトリの URL で、`index.json` にファイルとフォントの走査が読む範囲を並べておく（`site/build.mjs` が作る）。失敗した Promise の Error は、パスワードが要る・違う・形式が分からないときに `code` が `"password-required"`、`"wrong-password"`、`"unknown-format"` になる。返す文書は入力が暗号化されていても暗号化しない。
+`options` は `{format?, password?, fonts?, name?, pages?}`。`pages` は `bdf generate -pages` と同じ書き方で、変換するページ（スライド、シート）を選ぶ（サムネイルだけなら `"1"`）。`fonts` はフォントのディレクトリの URL で、`index.json` にファイルとフォントの走査が読む範囲を並べておく（`site/build.mjs` が作る）。失敗した Promise の Error は、パスワードが要る・違う・形式が分からないときに `code` が `"password-required"`、`"wrong-password"`、`"unknown-format"` になる。返す文書は入力が暗号化されていても暗号化しない。
 
 ## TypeScript: @bdf/core
 

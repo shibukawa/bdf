@@ -11,7 +11,7 @@ open http://127.0.0.1:8081/
 
 ## サーバーがすること
 
-`main.go` は文書のディレクトリ（`-dir`。既定は `../sample-files`）を走査し、サムネイルがまだない文書ごとに `converter.ConvertFile` でメモリ上に変換し、`thumbnail.Make` で 320px のサムネイルを描いてから、**変換した bdf を捨てます**。残るのは `-thumbs` の下の PNG だけで、bdf そのものはサーバーのどこにも残りません。同じファイルをもう一度変換したら同じ結果になるかどうかさえ、サーバーは関知しないのです。公開するのは:
+`main.go` は文書のディレクトリ（`-dir`。既定は `../sample-files`）を走査し、サムネイルがまだない文書ごとに、サムネイルに要る 1 ページ目だけ（`Pages: converter.PageList(1)`）を `converter.ConvertFile` でメモリ上に変換し、`thumbnail.Make` で 320px のサムネイルを描いてから、**変換した bdf を捨てます**。残るのは `-thumbs` の下の PNG だけで、bdf そのものはサーバーのどこにも残りません。同じファイルをもう一度変換したら同じ結果になるかどうかさえ、サーバーは関知しないのです。公開するのは:
 
 - `GET /` — サムネイルがある文書の一覧 HTML。それぞれ `/view/?file=NAME` にリンク
 - `GET /files/NAME` — 元のファイル（ただの `http.FileServer`）

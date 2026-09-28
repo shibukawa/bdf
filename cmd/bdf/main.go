@@ -19,8 +19,9 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   bdf generate [flags] <input> <out.bdf | dir/>
                                      convert a document or a drawing (bdf generate -h for flags and formats)
-  bdf thumbnail [flags] <file.bdf | dir> <out.png | .jpg | .webp>
+  bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                      draw a thumbnail: the top of the first page or the whole slide
+                                     (of an input to convert, only the first page is converted)
   bdf text [flags] <file.bdf | dir> [out.json]
                                      write the metadata and the text of each page for a search index
   bdf render [flags] <file.bdf | dir> <out.png | .jpg | .webp>

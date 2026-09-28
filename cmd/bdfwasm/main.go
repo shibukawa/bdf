@@ -34,6 +34,7 @@
 //	  password?: string, // the open password of an encrypted input
 //	  fonts?: string,    // URL of a font directory (see below)
 //	  name?: string,     // the file name, whose extension tells what the content does not (Markdown, a CSV file of one line)
+//	  pages?: string,    // the pages (slides, sheets) to convert, as bdf generate -pages takes them ("1" for a thumbnail); all when absent
 //	}): Promise<{bdf: Uint8Array, format: string, summary: string, warnings: string[], protected: boolean}>
 //	bdfConverter.open(data, options?): Promise<{bdf, format, pages: number, warnings, stream?}>
 //
@@ -170,6 +171,7 @@ type request struct {
 	data                      []byte
 	format, password, fontURL string
 	name                      string
+	pages                     converter.Pages
 }
 
 func readRequest(args []js.Value) (*request, error) {
@@ -179,6 +181,9 @@ func readRequest(args []js.Value) (*request, error) {
 	}
 	req := &request{data: data}
 	req.format, req.password, req.fontURL, req.name = str(args, "format"), str(args, "password"), str(args, "fonts"), str(args, "name")
+	if req.pages, err = converter.ParsePages(str(args, "pages")); err != nil {
+		return nil, fmt.Errorf("pages: %w", err)
+	}
 	return req, nil
 }
 
@@ -199,7 +204,7 @@ func str(args []js.Value, name string) string {
 }
 
 func (req *request) options() (*converter.Options, error) {
-	opts := &converter.Options{Password: req.password, NoSystemFonts: true, FileName: req.name}
+	opts := &converter.Options{Password: req.password, NoSystemFonts: true, FileName: req.name, Pages: req.pages}
 	if req.fontURL != "" {
 		fsys, err := fonts(req.fontURL)
 		if err != nil {

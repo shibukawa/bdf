@@ -135,3 +135,62 @@ func TestThumbnailAndRender(t *testing.T) {
 		t.Errorf("gif: exit status %d: %s", status, stderr)
 	}
 }
+
+// TestThumbnailOfInput draws the thumbnail of an input that is not a bdf
+// document: converted for it (only its first page), it is the thumbnail of
+// the document bdf generate makes.
+func TestThumbnailOfInput(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join("..", "..", "converter", "pdf", "testdata", "chrome-slides.pdf")
+	doc, direct, via := filepath.Join(dir, "out.bdf"), filepath.Join(dir, "direct.png"), filepath.Join(dir, "via.png")
+	if status, stderr := run(t, append(append([]string{"generate", "-q", "-images", "keep"}, testFontFlags...), in, doc)...); status != 0 {
+		t.Fatalf("generate: exit status %d: %s", status, stderr)
+	}
+	for _, c := range [][2]string{{in, direct}, {doc, via}} {
+		if status, stderr := run(t, append(append([]string{"thumbnail", "-q", "-size", "96"}, testFontFlags...), c[0], c[1])...); status != 0 {
+			t.Fatalf("thumbnail %s: exit status %d: %s", c[0], status, stderr)
+		}
+	}
+	a, err := os.ReadFile(direct)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(via)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a) != string(b) {
+		t.Error("the thumbnail of the PDF differs from that of its bdf document")
+	}
+	if status, stderr := run(t, "thumbnail", filepath.Join("..", "..", "go.mod"), direct); status != 2 || !strings.Contains(stderr, "neither a bdf document") {
+		t.Errorf("unknown input: exit status %d: %s", status, stderr)
+	}
+}
+
+// TestThumbnailOfProtectedInput draws a password-protected input only with
+// -allow-plaintext, as generate writes its previews.
+func TestThumbnailOfProtectedInput(t *testing.T) {
+	dir := t.TempDir()
+	in := filepath.Join("..", "..", "converter", "internal", "offcrypto", "testdata", "agile.pptx")
+	if _, err := os.Stat(in); err != nil {
+		t.Skip(err)
+	}
+	out := filepath.Join(dir, "t.png")
+	args := append([]string{"thumbnail", "-q"}, testFontFlags...)
+	if status, stderr := run(t, append(args, in, out)...); status == 0 || !strings.Contains(stderr, "is encrypted") {
+		t.Errorf("without the password: exit status %d: %s", status, stderr)
+	}
+	env := []string{passwordEnv + "=パスワード🔑bdf"}
+	if status, stderr := runEnv(t, env, append(args, in, out)...); status == 0 || !strings.Contains(stderr, "-allow-plaintext") {
+		t.Errorf("without -allow-plaintext: exit status %d: %s", status, stderr)
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Fatal("a thumbnail of the protected input was written")
+	}
+	if status, stderr := runEnv(t, env, append(append(args, "-allow-plaintext"), in, out)...); status != 0 {
+		t.Fatalf("-allow-plaintext: exit status %d: %s", status, stderr)
+	}
+	if w, h := pngSize(t, out); w != 256 || h != 192 {
+		t.Errorf("thumbnail %d×%d, want the 4:3 slide at 256×192", w, h)
+	}
+}

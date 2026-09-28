@@ -3,8 +3,9 @@
 ```
 bdf generate [flags] <input> <out.bdf | dir/>
                                    文書や図面を変換する（フラグと形式一覧は bdf generate -h）
-bdf thumbnail [flags] <file.bdf | dir> <out.png | .jpg | .webp>
+bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                    サムネイルを描く: 1 ページ目の上部、またはスライド全体
+                                   （変換する入力なら 1 ページ目だけを変換する）
 bdf text [flags] <file.bdf | dir> [out.json]
                                    検索用に、メタデータとページごとのテキストを書き出す
 bdf render [flags] <file.bdf | dir> <out.png | .jpg | .webp>
@@ -41,9 +42,12 @@ bdf generate -password-file pw.txt secret.xlsx out.bdf  # パスワード付き�
 
 ```sh
 bdf thumbnail -size 256 out.bdf thumb.png    # -mode auto|crop|fit, -view, -sheet-dpi, -font-dir, -no-system-fonts
+bdf thumbnail -size 256 book.pdf thumb.png   # generate が変換できる入力なら 1 ページ目だけを変換する
 bdf text out.bdf text.json                   # メタデータとページごとのテキストを JSON で（既定は標準出力）
 bdf render -page 2 -scale 2 out.bdf page2.png  # シートは -width/-height も（A1 から）
 ```
+
+`.bdf` でない入力（PDF、`.docx` など）を渡すと、`thumbnail` はサムネイルに必要な 1 ページ目だけを変換します（`-view` を付けたときは全体）。500 ページの PDF でも数秒ではなく数ミリ秒で済みます。パスワード付きの入力には、暗号化した文書と同じく `$BDF_PASSWORD` と `-allow-plaintext` が要ります。
 
 暗号化した文書には `thumbnail` と `text` に `-allow-plaintext` が必要です（`$BDF_PASSWORD` で先に復号）。どちらの出力も暗号化されないため、明示的に許可する仕組みです。それぞれが何を描く・抽出するかは[変換と出力 → サーバー側のサムネイルと検索用テキスト](conversion.ja.md#サーバー側のサムネイルと検索用テキスト)を参照してください。
 

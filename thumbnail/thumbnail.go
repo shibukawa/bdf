@@ -18,6 +18,11 @@
 //     TIFF pages): the whole first page scaled so that its longer side is
 //     Size pixels.
 //
+// A thumbnail shows the first page of a view only: a document converted for
+// its thumbnail alone needs no more than that page, converted with
+// converter.Options{Pages: converter.PageList(1)} (the whole of a long PDF
+// takes seconds, its first page milliseconds).
+//
 // Thumbnails show the content of a document outside the document: whoever
 // makes one of a password-protected input should keep it as protected as
 // the input (the bdf command does not make one unless asked to).
