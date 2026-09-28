@@ -90,6 +90,24 @@ func (o *ObjectPart) Instructions() ([]Instr, error) {
 	return out, err
 }
 
+// Deps returns the hashes of the parts the object references: embedded
+// fonts, images, path collections and objects.
+func (o *ObjectPart) Deps() []Hash {
+	var out []Hash
+	for _, f := range o.Fonts {
+		if f.Kind == FontEmbedded {
+			out = append(out, f.Hash)
+		}
+	}
+	out = append(out, o.Images...)
+	for _, p := range o.Paths {
+		if p.Inline == nil {
+			out = append(out, p.Hash)
+		}
+	}
+	return append(out, o.Objects...)
+}
+
 // Walk decodes the op stream, calling fn for each instruction.
 func (o *ObjectPart) Walk(fn func(Instr)) error {
 	r := &reader{b: o.Ops}

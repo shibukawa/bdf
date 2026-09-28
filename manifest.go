@@ -56,8 +56,11 @@ type Manifest struct {
 	Opset      int         `json:"opset,omitempty"`
 	Unit       string      `json:"unit,omitempty"`
 	Meta       Meta        `json:"meta,omitzero"`
-	Views      []*View     `json:"views,omitempty"`
-	Parts      []PartEntry `json:"parts"`
+	// Segment, in a segment document, names the pages it carries
+	// (docs/spec.md §3.6).
+	Segment *Segment    `json:"segment,omitempty"`
+	Views   []*View     `json:"views,omitempty"`
+	Parts   []PartEntry `json:"parts"`
 }
 
 // Meta holds document metadata.
