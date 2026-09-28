@@ -4,7 +4,7 @@ Four converters share this page for the same reason: each one turns its input in
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: [an SVG image](../../viewer/?file=samples/drawing.svg), [a JPEG photo with EXIF](../../viewer/?file=samples/photo.jpg), or [a Photoshop file with three artboards](../../viewer/?file=samples/artboards.psd).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: [an SVG image](https://shibukawa.github.io/bdf/viewer/?file=samples/drawing.svg), [a JPEG photo with EXIF](https://shibukawa.github.io/bdf/viewer/?file=samples/photo.jpg), or [a Photoshop file with three artboards](https://shibukawa.github.io/bdf/viewer/?file=samples/artboards.psd).
 
 ## Images (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG)
 
@@ -14,7 +14,7 @@ SVG needs a workaround: `createImageBitmap` can't decode an SVG Blob inside a Wo
 
 There is no `-param` for this format; an image given directly as input is always stored as it is, regardless of the `-images` flag that controls how images *embedded in other documents* are stored.
 
-See [design.md §3.19](../design.html#319-画像--bdf-変換器converterimageの構造) for the internals.
+See [design.md §3.19](../design.md#319-画像--bdf-変換器converterimageの構造) for the internals.
 
 ## Photoshop (.psd, .psb)
 
@@ -26,7 +26,7 @@ See [design.md §3.19](../design.html#319-画像--bdf-変換器converterimageの
 | `-max-dpi` | image inputs (TIFF, Photoshop): scale pages down to at most this many pixels per inch (`0`: no limit) | 192 |
 | `-max-pixels` | image inputs (TIFF, Photoshop): scale pages down to at most this many pixels, width × height (`0`: no limit) | 14745600 |
 
-See [design.md §3.18](../design.html#318-photoshop--bdf-変換器converterpsd) for the internals.
+See [design.md §3.18](../design.md#318-photoshop--bdf-変換器converterpsd) for the internals.
 
 ## TIFF (.tif, .tiff)
 
@@ -38,10 +38,10 @@ See [design.md §3.18](../design.html#318-photoshop--bdf-変換器converterpsd) 
 | `-max-dpi` | image inputs (TIFF, Photoshop): scale pages down to at most this many pixels per inch (`0`: no limit) | 192 |
 | `-max-pixels` | image inputs (TIFF, Photoshop): scale pages down to at most this many pixels, width × height (`0`: no limit) | 14745600 |
 
-See [design.md §3.15](../design.html#315-tiff--bdf-変換器convertertiffの構造) for the internals.
+See [design.md §3.15](../design.md#315-tiff--bdf-変換器convertertiffの構造) for the internals.
 
 ## Windows metafiles (.emf, .wmf)
 
 `converter/emf` turns an EMF or WMF file into one page the size of the picture, replaying its records with the same replayer bdf uses for EMF/WMF pictures embedded inside Office documents. Text is laid out and its fonts embedded the same way as for PowerPoint, so the font flags that apply there (`-font-dir`, `-fonts`, `-no-system-fonts`, `-no-subset`, `-no-woff2`) apply here too. There is no format-specific `-param` for metafiles.
 
-See [design.md §3.5](../design.html#35-入力形式の登録と-emfwmf-変換器converteremf) for the internals.
+See [design.md §3.5](../design.md#35-入力形式の登録と-emfwmf-変換器converteremf) for the internals.

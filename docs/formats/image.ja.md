@@ -4,7 +4,7 @@
 
 ## 試してみる
 
-ファイルを[ビューア](../../viewer/)にドロップするか、サンプルを試してください。[SVG の画像](../../viewer/?file=samples/drawing.svg)、[EXIF 付きの JPEG 写真](../../viewer/?file=samples/photo.jpg)、[3 つのアートボードを持つ Photoshop ファイル](../../viewer/?file=samples/artboards.psd)。
+ファイルを[ビューア](https://shibukawa.github.io/bdf/viewer/)にドロップするか、サンプルを試してください。[SVG の画像](https://shibukawa.github.io/bdf/viewer/?file=samples/drawing.svg)、[EXIF 付きの JPEG 写真](https://shibukawa.github.io/bdf/viewer/?file=samples/photo.jpg)、[3 つのアートボードを持つ Photoshop ファイル](https://shibukawa.github.io/bdf/viewer/?file=samples/artboards.psd)。
 
 ## 画像（PNG、JPEG、GIF、WebP、AVIF、BMP、ICO、SVG）
 
@@ -14,7 +14,7 @@ SVG には工夫が要ります。`createImageBitmap` は Worker の中で SVG �
 
 この形式に `-param` はありません。画像を直接入力したときは常にそのまま格納されます。文書に埋め込まれた画像の格納方法を決める `-images` フラグはここには効きません。
 
-詳しい実装は [design.md §3.19](../design.html#319-画像--bdf-変換器converterimageの構造) を参照してください。
+詳しい実装は [design.md §3.19](../design.md#319-画像--bdf-変換器converterimageの構造) を参照してください。
 
 ## Photoshop（.psd、.psb）
 
@@ -26,7 +26,7 @@ SVG には工夫が要ります。`createImageBitmap` は Worker の中で SVG �
 | `-max-dpi` | 画像の入力（TIFF、Photoshop）のページを縮小する上限、1 インチあたりの画素数（`0` で上限なし） | 192 |
 | `-max-pixels` | 画像の入力のページを縮小する上限、幅 × 高さの画素数（`0` で上限なし） | 14745600 |
 
-詳しい実装は [design.md §3.18](../design.html#318-photoshop--bdf-変換器converterpsd) を参照してください。
+詳しい実装は [design.md §3.18](../design.md#318-photoshop--bdf-変換器converterpsd) を参照してください。
 
 ## TIFF（.tif、.tiff）
 
@@ -38,10 +38,10 @@ SVG には工夫が要ります。`createImageBitmap` は Worker の中で SVG �
 | `-max-dpi` | 画像の入力（TIFF、Photoshop）のページを縮小する上限、1 インチあたりの画素数（`0` で上限なし） | 192 |
 | `-max-pixels` | 画像の入力のページを縮小する上限、幅 × 高さの画素数（`0` で上限なし） | 14745600 |
 
-詳しい実装は [design.md §3.15](../design.html#315-tiff--bdf-変換器convertertiffの構造) を参照してください。
+詳しい実装は [design.md §3.15](../design.md#315-tiff--bdf-変換器convertertiffの構造) を参照してください。
 
 ## Windows メタファイル（.emf、.wmf）
 
 `converter/emf` は EMF・WMF ファイルを、図の大きさの 1 ページにします。描くのは、Office 文書の中に埋め込まれた EMF・WMF の絵を描くのと同じ再生処理で、メタファイルの記録をそのまま再生します。テキストは PowerPoint と同じくフォントを解決してレイアウトし埋め込むので、そちらで使うフォント関連のフラグ（`-font-dir`、`-fonts`、`-no-system-fonts`、`-no-subset`、`-no-woff2`）がここにも効きます。メタファイル専用の `-param` はありません。
 
-詳しい実装は [design.md §3.5](../design.html#35-入力形式の登録と-emfwmf-変換器converteremf) を参照してください。
+詳しい実装は [design.md §3.5](../design.md#35-入力形式の登録と-emfwmf-変換器converteremf) を参照してください。

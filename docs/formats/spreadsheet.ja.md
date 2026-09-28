@@ -1,10 +1,10 @@
 # Excel・CSV・Parquet
 
-Excel のブック、CSV・TSV の表、Apache Parquet のファイルは、bdf の中では同じものになる。表形式のデータのための無限平面のレイアウト、`sheet` View だ（[spec.md §4.1](../spec.html#41-view-の種類)）。CSV・TSV と Parquet は自分の描画コードを持たない。`converter/csv` と `converter/parquet` は値だけの単純な格子を組み立て、それをワークシートのセルを組んで描いている `converter/xlsx` のレイアウト・描画コードにそのまま渡す。だから CSV や Parquet のファイルは、ビューアの中で Excel のシートとまったく同じに見え、同じに振る舞う。太字で固定した見出し行、グリッド線と固定ペイン、表計算ソフトと同じ選び方（ドラッグ、Shift、行・列の見出し、矢印キー）で選べるセル。コピーすれば画像ではなくタブ区切りの値と HTML の表になる。
+Excel のブック、CSV・TSV の表、Apache Parquet のファイルは、bdf の中では同じものになる。表形式のデータのための無限平面のレイアウト、`sheet` View だ（[spec.md §4.1](../spec.md#41-view-の種類)）。CSV・TSV と Parquet は自分の描画コードを持たない。`converter/csv` と `converter/parquet` は値だけの単純な格子を組み立て、それをワークシートのセルを組んで描いている `converter/xlsx` のレイアウト・描画コードにそのまま渡す。だから CSV や Parquet のファイルは、ビューアの中で Excel のシートとまったく同じに見え、同じに振る舞う。太字で固定した見出し行、グリッド線と固定ペイン、表計算ソフトと同じ選び方（ドラッグ、Shift、行・列の見出し、矢印キー）で選べるセル。コピーすれば画像ではなくタブ区切りの値と HTML の表になる。
 
 ## 試す
 
-ファイルを[ビューア](../../viewer/)にドロップするか、サンプルを試せる: [Excel のブック](../../viewer/?file=samples/features.xlsx)、[Shift_JIS の TSV ファイル](../../viewer/?file=samples/japanese.tsv)、[Parquet の表](../../viewer/?file=samples/basic.parquet)。
+ファイルを[ビューア](https://shibukawa.github.io/bdf/viewer/)にドロップするか、サンプルを試せる: [Excel のブック](https://shibukawa.github.io/bdf/viewer/?file=samples/features.xlsx)、[Shift_JIS の TSV ファイル](https://shibukawa.github.io/bdf/viewer/?file=samples/japanese.tsv)、[Parquet の表](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.parquet)。
 
 ## Excel（.xlsx）
 
@@ -25,7 +25,7 @@ Excel のブック、CSV・TSV の表、Apache Parquet のファイルは、bdf 
 |---|---|---|
 | `-param hidden=` | `true` | 非表示シートを除く |
 
-`-hidden`（`-param hidden=true` の短縮形）で非表示シートも含められる。マクロシートとダイアログシートは常に読まず、警告を出す。詳細は [design.md §3.6](../design.html#36-excel--bdf-変換器converterxlsxの構造) を、シートのセルがどのように Tile に分割されるかは [design.md §6](../design.html#6-excel-シートの-tile-化) を参照。
+`-hidden`（`-param hidden=true` の短縮形）で非表示シートも含められる。マクロシートとダイアログシートは常に読まず、警告を出す。詳細は [design.md §3.6](../design.md#36-excel--bdf-変換器converterxlsxの構造) を、シートのセルがどのように Tile に分割されるかは [design.md §6](../design.md#6-excel-シートの-tile-化) を参照。
 
 ## CSV・TSV
 
@@ -48,7 +48,7 @@ Excel のブック、CSV・TSV の表、Apache Parquet のファイルは、bdf 
 | `-param header=` | `true`、`false` | 推定 |
 | `-param table=` | 組み込みの Excel テーブルスタイル（例: `TableStyleMedium2`） | なし |
 
-詳細は [design.md §3.10](../design.html#310-csvtsv--bdf-変換器convertercsvの構造) を参照。
+詳細は [design.md §3.10](../design.md#310-csvtsv--bdf-変換器convertercsvの構造) を参照。
 
 ## Apache Parquet
 
@@ -75,4 +75,4 @@ Excel のブック、CSV・TSV の表、Apache Parquet のファイルは、bdf 
 | `-param types=` | `true`、`false` | `true` |
 | `-param table=` | 組み込みの Excel テーブルスタイル（例: `TableStyleMedium2`） | なし |
 
-詳細は [design.md §3.26](../design.html#326-parquet--bdf-変換器converterparquetの構造) を参照。
+詳細は [design.md §3.26](../design.md#326-parquet--bdf-変換器converterparquetの構造) を参照。

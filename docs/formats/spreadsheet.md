@@ -1,10 +1,10 @@
 # Excel, CSV, Parquet
 
-Excel workbooks, CSV/TSV tables and Apache Parquet files all end up as the same thing in bdf: a `sheet` View, the endless-plane layout bdf uses for tabular data ([spec.md §4.1](../spec.html#41-view-の種類)). CSV/TSV and Parquet have no drawing code of their own — `converter/csv` and `converter/parquet` build a plain grid of values and hand it to `converter/xlsx`'s grid layout and drawing code, the same code that lays out and draws worksheet cells. That means a CSV or Parquet file looks and behaves exactly like an Excel sheet in the viewer: a bold, frozen header row, gridlines and frozen panes, and cells you select the way you'd select cells in a spreadsheet (drag, Shift, row/column headers, arrow keys). They copy out as tab-separated values and an HTML table rather than as a picture.
+Excel workbooks, CSV/TSV tables and Apache Parquet files all end up as the same thing in bdf: a `sheet` View, the endless-plane layout bdf uses for tabular data ([spec.md §4.1](../spec.md#41-view-の種類)). CSV/TSV and Parquet have no drawing code of their own — `converter/csv` and `converter/parquet` build a plain grid of values and hand it to `converter/xlsx`'s grid layout and drawing code, the same code that lays out and draws worksheet cells. That means a CSV or Parquet file looks and behaves exactly like an Excel sheet in the viewer: a bold, frozen header row, gridlines and frozen panes, and cells you select the way you'd select cells in a spreadsheet (drag, Shift, row/column headers, arrow keys). They copy out as tab-separated values and an HTML table rather than as a picture.
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: [Excel workbook](../../viewer/?file=samples/features.xlsx), [Shift_JIS TSV file](../../viewer/?file=samples/japanese.tsv), or [Parquet table](../../viewer/?file=samples/basic.parquet).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: [Excel workbook](https://shibukawa.github.io/bdf/viewer/?file=samples/features.xlsx), [Shift_JIS TSV file](https://shibukawa.github.io/bdf/viewer/?file=samples/japanese.tsv), or [Parquet table](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.parquet).
 
 ## Excel (.xlsx)
 
@@ -25,7 +25,7 @@ Options (`-param`, from `bdf generate -h`):
 |---|---|---|
 | `-param hidden=` | `true` | hidden sheets excluded |
 
-`-hidden` (shorthand for `-param hidden=true`) includes hidden sheets; macro and dialog sheets are always skipped, with a warning. See [design.md §3.6](../design.html#36-excel--bdf-変換器converterxlsxの構造) for the internals, and [design.md §6](../design.html#6-excel-シートの-tile-化) for how a sheet's cells are split into the Tiles a `sheet` View is drawn from.
+`-hidden` (shorthand for `-param hidden=true`) includes hidden sheets; macro and dialog sheets are always skipped, with a warning. See [design.md §3.6](../design.md#36-excel--bdf-変換器converterxlsxの構造) for the internals, and [design.md §6](../design.md#6-excel-シートの-tile-化) for how a sheet's cells are split into the Tiles a `sheet` View is drawn from.
 
 ## CSV and TSV
 
@@ -48,7 +48,7 @@ Options (`-param`, from `bdf generate -h`):
 | `-param header=` | `true`, `false` | guessed |
 | `-param table=` | a built-in Excel table style, e.g. `TableStyleMedium2` | none |
 
-See [design.md §3.10](../design.html#310-csvtsv--bdf-変換器convertercsvの構造) for the internals.
+See [design.md §3.10](../design.md#310-csvtsv--bdf-変換器convertercsvの構造) for the internals.
 
 ## Apache Parquet
 
@@ -75,4 +75,4 @@ Options (`-param`, from `bdf generate -h`):
 | `-param types=` | `true`, `false` | `true` |
 | `-param table=` | a built-in Excel table style, e.g. `TableStyleMedium2` | none |
 
-See [design.md §3.26](../design.html#326-parquet--bdf-変換器converterparquetの構造) for the internals.
+See [design.md §3.26](../design.md#326-parquet--bdf-変換器converterparquetの構造) for the internals.

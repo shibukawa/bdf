@@ -63,7 +63,7 @@
 |---|---|
 | `examples/viewer` | フル機能のデモビューア（Worker による描画、読み上げ用のテキスト層、ページめくり） |
 | `examples/common` | ビューアとサイトの残りが共有するもの（変換 Worker のクライアント、サイトの esbuild 補助） |
-| `examples/miniviewer` | 埋め込み用の小さなビューア（トップページと、下記のサンプルプロジェクトが使う） |
+| `examples/miniviewer` | 埋め込み用の小さなビューア（下記のサンプルプロジェクトが使う） |
 | `site/` | GitHub Pages で公開するサイト本体: トップページ、サムネイル・検索テキストのページ、ドキュメントの描画（`site/docs.mjs` がこのページを `docs/*.md` から作る） |
 | `docs/` | このドキュメント（Markdown） |
 
@@ -71,10 +71,10 @@
 
 | 場所 | 内容 |
 |---|---|
-| `examples/light-server`、`examples/preview-server`、`examples/search`、`examples/secure-reader` | bdf をシステムに組み込む方法ごとの小さな Go サーバー 4 つ。[構成のサンプル](../examples/index.ja.html)を参照 |
-| `cmd/bdf` | `bdf` コマンド: `generate`、`thumbnail`、`text`、`render`、`ls`、`manifest`、`disasm`、`extract`、`split`、`join`、`encrypt`、`decrypt`、`demo`。[bdf コマンド](cli.ja.html)を参照 |
+| `examples/light-server`、`examples/preview-server`、`examples/search`、`examples/secure-reader` | bdf をシステムに組み込む方法ごとの小さな Go サーバー 4 つ。[構成のサンプル](../examples/index.ja.md)を参照 |
+| `cmd/bdf` | `bdf` コマンド: `generate`、`thumbnail`、`text`、`render`、`ls`、`manifest`、`disasm`、`extract`、`split`、`join`、`encrypt`、`decrypt`、`demo`。[bdf コマンド](cli.ja.md)を参照 |
 | `tools/` | ソースが変わったときに手で実行する生成ツール群: Unicode のデータ、SMuFL の字形パス、draw.io のステンシルと AWS アイコンの対応表、テーブルスタイル、cmap、純 Go の WebP コーデックの生成テーブル |
 | `testdata/` | 生成済みサンプルと golden 画像。CI でバイト単位（または画素単位）に照合する |
 | `test/` | Playwright による golden テストと、各形式の `testdata/` を作るフィクスチャ生成スクリプト |
 
-各パッケージが何を公開しているかは [API 一覧](../api.html)を、これらのビルド・テスト・再生成の方法は[ビルドとテスト](development.ja.html)を参照してください。
+各パッケージが何を公開しているかは [API 一覧](../api.md)を、これらのビルド・テスト・再生成の方法は[ビルドとテスト](development.ja.md)を参照してください。

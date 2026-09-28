@@ -4,7 +4,7 @@ EPUB は XHTML と CSS と画像を ZIP に入れたものなので、リフロ�
 
 ## 試す
 
-[ビューア](../../viewer/)にファイルをドロップするか、サンプルを試せる。[リフロー型の本](../../viewer/?file=samples/basic.epub)、[縦書きの日本語の本](../../viewer/?file=samples/vertical.epub)、[固定レイアウトの本](../../viewer/?file=samples/fixed.epub)。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試せる。[リフロー型の本](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.epub)、[縦書きの日本語の本](https://shibukawa.github.io/bdf/viewer/?file=samples/vertical.epub)、[固定レイアウトの本](https://shibukawa.github.io/bdf/viewer/?file=samples/fixed.epub)。
 
 ## EPUB（converter/epub）
 
@@ -16,7 +16,7 @@ EPUB は XHTML と CSS と画像を ZIP に入れたものなので、リフロ�
 
 ### 縦書きの日本語
 
-章の書字方向は body の（無ければ html の）`writing-mode` から決める（出版社がよく使う `-epub-`・`-webkit-` 付きの書き方も読む）。それが無ければ Kindle の `primary-writing-mode`、それも無ければ言語と `page-progression-direction` の組み合わせから決める。縦書きの章は、Word の縦書きのセクションと同じ組み方になる。漢字・仮名は正立させ、句読点は縦書き用の字形にし、欧文は回転させ、短い横組みの文字列は縦中横にし、傍点を打つ。縦書きの日本語や右から読むマンガによくある右綴じの本は、`direction: "rtl"` の View になる（[spec §4.1](../spec.html#41-view-の種類)）。
+章の書字方向は body の（無ければ html の）`writing-mode` から決める（出版社がよく使う `-epub-`・`-webkit-` 付きの書き方も読む）。それが無ければ Kindle の `primary-writing-mode`、それも無ければ言語と `page-progression-direction` の組み合わせから決める。縦書きの章は、Word の縦書きのセクションと同じ組み方になる。漢字・仮名は正立させ、句読点は縦書き用の字形にし、欧文は回転させ、短い横組みの文字列は縦中横にし、傍点を打つ。縦書きの日本語や右から読むマンガによくある右綴じの本は、`direction: "rtl"` の View になる（[spec §4.1](../spec.md#41-view-の種類)）。
 
 ### 固定レイアウトの本
 
@@ -33,4 +33,4 @@ EPUB は XHTML と CSS と画像を ZIP に入れたものなので、リフロ�
 | `mono` | コードのフォントファミリー | インストール済みの等幅フォント |
 | `width` | scroll View の幅（ポイント） | 本文の全角 36 文字分 |
 
-暗号化（DRM）された本は変換しない。内部の詳細は [design.md §3.24](../design.html#324-epub--bdf-変換器converterepubの構造) を参照。
+暗号化（DRM）された本は変換しない。内部の詳細は [design.md §3.24](../design.md#324-epub--bdf-変換器converterepubの構造) を参照。

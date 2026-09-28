@@ -4,7 +4,7 @@ A font file dropped on bdf isn't used to render something else — it's rendered
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: [an OpenType font](../../viewer/?file=samples/stix.otf) (STIX Two Text).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: [an OpenType font](https://shibukawa.github.io/bdf/viewer/?file=samples/stix.otf) (STIX Two Text).
 
 ## Font files (.ttf, .otf, .ttc, .woff, .woff2)
 
@@ -26,4 +26,4 @@ Glyphs are drawn by embedding the font itself twice. One embedding keeps the out
 | `-param examples=` | substitutions and pairs shown per feature, or `all` | 200 |
 | `-ignore-fstype` | embed a font whose OS/2 `fsType` forbids embedding or subsetting | off |
 
-See [design.md §3.28](../design.html#328-フォントファイル--bdf-変換器converterfontの構造) for the internals.
+See [design.md §3.28](../design.md#328-フォントファイル--bdf-変換器converterfontの構造) for the internals.

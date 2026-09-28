@@ -11,7 +11,7 @@ go build -tags bdf_noconv ./...        # 画像・WOFF2 のコーデックを含
 GOEXPERIMENT=simd go build ./...       # Go 1.27、amd64/arm64: SIMD 版コーデック（amd64 は AVX2 必須）
 ```
 
-`bdf_noconv` はブラウザに要らないコーデックを除きます（[design.md §2](../design.html#2-go-と-wasm-について)を参照）。CI はこの構成も別にビルド・テストしています。コーデックを含めた状態でしか動かない変更は、手元でもこの構成を確かめないと、CI まで気づきません。
+`bdf_noconv` はブラウザに要らないコーデックを除きます（[design.md §2](../design.md#2-go-と-wasm-について)を参照）。CI はこの構成も別にビルド・テストしています。コーデックを含めた状態でしか動かない変更は、手元でもこの構成を確かめないと、CI まで気づきません。
 
 ## TypeScript
 
@@ -63,4 +63,4 @@ CI の「testdata is up to date」ステップは、`ubuntu-latest`（amd64）�
 
 新しい golden の PNG には、これとは別に、CI と同じ headless shell の Chromium ビルドが要ります。それに合うコンテナ（`mcr.microsoft.com/playwright:v1.56.1-noble`、または Chromium を入れた `node:24-bookworm`）の中で golden テストを動かせば再現できます。
 
-各パッケージ・コマンドが公開するものは [API 一覧](../api.html)を、`bdf` のサブコマンドは [bdf コマンド](cli.ja.html)を参照してください。
+各パッケージ・コマンドが公開するものは [API 一覧](../api.md)を、`bdf` のサブコマンドは [bdf コマンド](cli.ja.md)を参照してください。

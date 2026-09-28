@@ -1,12 +1,28 @@
 // The top page of the site, in English (index.html) and Japanese
-// (index.ja.html): a PDF shown from bdf (home.ts), pictures of other kinds of
-// documents in the viewer, and the ways on to the demos, the sample
-// architectures and the documentation.
+// (index.ja.html): a PDF shown from bdf as a book whose pages turn
+// (home.ts), pictures of other kinds of documents in the viewer, and the ways
+// on to the demos, the sample architectures and the documentation.
 import { esc, head, header } from "./docs.mjs";
 import { REPO } from "./nav.mjs";
 
 /** The pictures (docs/images/, made by site/shots.mjs), the sample the viewer opens, and the page about the format. */
 const GALLERY = [
+  {
+    shot: "pdf", sample: "demo.pdf", doc: "formats/pdf",
+    title: { en: "PDF", ja: "PDF" },
+    text: {
+      en: "Pages with their fonts, text to select and the structure of tagged PDF. Illustrator files too.",
+      ja: "フォントを埋め込んだページ、選択できるテキスト、タグ付き PDF の構造。Illustrator のファイルも。",
+    },
+  },
+  {
+    shot: "epub", sample: "vertical.epub", doc: "formats/ebook",
+    title: { en: "EPUB", ja: "EPUB" },
+    text: {
+      en: "Books too, with pages that turn: reflowable ones in vertical Japanese, and fixed layouts.",
+      ja: "本も、ページをめくって。リフロー型は和文の縦書きにも、固定レイアウトにも対応。",
+    },
+  },
   {
     shot: "pptx", sample: "features.pptx", doc: "formats/presentation",
     title: { en: "PowerPoint", ja: "PowerPoint" },
@@ -45,11 +61,6 @@ const GALLERY = [
     title: { en: "Scores", ja: "楽譜" },
     text: { en: "MML, MIDI and MusicXML, engraved as scores that the viewer plays.", ja: "MML・MIDI・MusicXML を五線譜に組み、ビューアで演奏。" },
   },
-  {
-    shot: "epub", sample: "vertical.epub", doc: "formats/ebook",
-    title: { en: "EPUB", ja: "EPUB" },
-    text: { en: "Books with pages that turn, vertical Japanese and fixed layouts.", ja: "ページをめくって読む本。縦書きと固定レイアウトにも対応。" },
-  },
 ];
 
 const T = {
@@ -60,10 +71,12 @@ const T = {
     hero: (kb) => `bdf is a document format made for previews. PDF, Office files, diagrams, CAD drawings and more are converted by one Go binary, or inside the browser as WebAssembly, and drawn on a canvas by a renderer of ${kb} KB.`,
     try: "Open the viewer", docs: "Read the docs",
     demoTitle: "A PDF, drawn from bdf",
-    demoLead: "Converted ahead of time, as a server would. Select its text, search it, zoom.",
+    demoLead: "Converted ahead of time, as a server would. Turn its pages, select its text, search it, zoom.",
     demoName: "demo.pdf → demo.bdf",
-    demoNote: (pdf, bdf) => `${pdf} as a PDF, ${bdf} as bdf with its fonts. The pages are fetched by range requests as they come into view.`,
+    demoNote: (pdf, bdf) => `${pdf} as a PDF, ${bdf} as bdf with its fonts. The pages are fetched by range requests as they are about to be shown.`,
     search: "search…", prev: "previous match", next: "next match", zoomIn: "zoom in", zoomOut: "zoom out",
+    layout: "layout", layouts: { spread: "Two pages", single: "One page", scroll: "Scroll" },
+    prevPage: "previous page", nextPage: "next page", pages: "pages",
     galleryTitle: "Each kind of document, in its own shape",
     galleryLead: "A sheet stays a sheet that scrolls; a book turns its pages. All of them are drawn by the same renderer.",
     open: "Open in the viewer", about: "About the format",
@@ -78,7 +91,7 @@ const T = {
     archTitle: "Fit it into your system",
     archLead: "Three sample projects, each a small Go server with its pages.",
     arch: [
-      ["examples/light-server", "Convert in the browser", "A file server that only makes thumbnails. Files are converted where they are viewed."],
+      ["examples/light-server", "Convert in the browser", "For documents made in large numbers but seldom opened, such as records kept for audits. The server only makes thumbnails; a file is converted in the browser of whoever opens it."],
       ["examples/preview-server", "Convert on the server", "The server makes the preview and the thumbnail once. Browsers only draw."],
       ["examples/search", "With a search engine", "The text goes to a search engine page by page. A hit opens the document at its page."],
     ],
@@ -89,6 +102,8 @@ const T = {
       ["In the shape of the content", "Fixed pages for slides and drawings, endless sheets for workbooks, pages or one column for text."],
       ["Made for browsers", "Instructions map onto Canvas 2D. Fonts, images and compression are left to the browser."],
       ["Many formats, one renderer", "Search, text selection and the text for screen readers work the same for every format."],
+      ["Only the converters you need", "Each format is a Go package of its own: link in the ones your service needs, or the browser modules for those kinds of files."],
+      ["Find in page and screen readers", "The text lies over the picture as real text, so the browser's own find (Ctrl+F) finds it, and screen readers read its headings, lists and tables."],
     ],
     whyMore: "More about why",
     license: "MIT License",
@@ -100,10 +115,12 @@ const T = {
     hero: (kb) => `bdf はプレビューのための文書フォーマットです。PDF、Office のファイル、図、CAD の図面などを Go のバイナリ 1 つで、あるいは WebAssembly にしてブラウザの中で変換し、${kb} KB のレンダラが canvas に描きます。`,
     try: "ビューアを開く", docs: "ドキュメントを読む",
     demoTitle: "bdf から描いた PDF",
-    demoLead: "サーバーで変換するのと同じように、あらかじめ変換してあります。テキストの選択、検索、拡大ができます。",
+    demoLead: "サーバーで変換するのと同じように、あらかじめ変換してあります。ページめくり、テキストの選択、検索、拡大ができます。",
     demoName: "demo.pdf → demo.bdf",
-    demoNote: (pdf, bdf) => `PDF で ${pdf}、フォントを含む bdf で ${bdf}。ページは表示されるときに Range リクエストで取得します。`,
+    demoNote: (pdf, bdf) => `PDF で ${pdf}、フォントを含む bdf で ${bdf}。ページは表示の直前に Range リクエストで取得します。`,
     search: "検索…", prev: "前の一致", next: "次の一致", zoomIn: "拡大", zoomOut: "縮小",
+    layout: "表示", layouts: { spread: "見開き", single: "1 ページずつ", scroll: "スクロール" },
+    prevPage: "前のページ", nextPage: "次のページ", pages: "ページ",
     galleryTitle: "文書の種類ごとに、合った形で",
     galleryLead: "シートはスクロールできるシートのまま、本はページをめくって。どれも同じレンダラが描きます。",
     open: "ビューアで開く", about: "形式の説明",
@@ -118,7 +135,7 @@ const T = {
     archTitle: "システムに組み込む",
     archLead: "構成ごとのサンプルプロジェクトが 3 つ。どれも小さな Go のサーバーとページです。",
     arch: [
-      ["examples/light-server", "ブラウザで変換する", "サーバーはファイルを置き、サムネイルだけを作ります。変換は見る人のブラウザで。"],
+      ["examples/light-server", "ブラウザで変換する", "監査のために残す記録のように、大量に作られるが開かれるのはまれな文書に。サーバーはサムネイルだけを作り、変換は開いた人のブラウザで。"],
       ["examples/preview-server", "サーバーで変換する", "プレビューとサムネイルをサーバーが一度だけ作ります。ブラウザは描くだけ。"],
       ["examples/search", "検索エンジンとつなぐ", "テキストをページごとに検索エンジンへ。ヒットからそのページを開きます。"],
     ],
@@ -129,6 +146,8 @@ const T = {
       ["内容に合った形で見せる", "スライドや図面には固定ページ、ブックには無限のシート、文章にはページか一続きの列。"],
       ["ブラウザ表示に特化", "命令は Canvas 2D に対応。フォント、画像、展開はブラウザに任せます。"],
       ["多くの形式を 1 つのレンダラで", "検索、テキスト選択、読み上げ用のテキストは、どの形式でも同じように使えます。"],
+      ["必要な変換器だけを選べる", "変換器は形式ごとに独立した Go のパッケージ。サービスに要るものだけを組み込めます。ブラウザ用のモジュールも種類ごとに分かれています。"],
+      ["ブラウザの検索も、読み上げも", "文字は画像の上に本物のテキストとして重ねてあるので、ブラウザ自身のページ内検索（Ctrl+F）で見つかり、スクリーンリーダーは見出し・リスト・表を読み上げます。"],
     ],
     whyMore: "もっと詳しく",
     license: "MIT ライセンス",
@@ -190,10 +209,14 @@ ${header({ lang, out, other })}
 <button type="button" id="prev" title="${t.prev}" aria-label="${t.prev}">▲</button>
 <button type="button" id="next" title="${t.next}" aria-label="${t.next}">▼</button></span>
 <span id="hits" role="status"></span>
+<select id="layout" aria-label="${t.layout}" title="${t.layout}">${Object.entries(t.layouts).map(([v, label]) => `<option value="${v}">${label}</option>`).join("")}</select>
+<span class="pager" role="group" aria-label="${t.pages}"><button type="button" id="prevPage" title="${t.prevPage}" aria-label="${t.prevPage}">‹</button>
+<span id="pageNum" aria-live="polite"></span>
+<button type="button" id="nextPage" title="${t.nextPage}" aria-label="${t.nextPage}">›</button></span>
 <span><button type="button" id="zoomOut" title="${t.zoomOut}" aria-label="${t.zoomOut}">−</button>
 <button type="button" id="zoomIn" title="${t.zoomIn}" aria-label="${t.zoomIn}">+</button></span>
 </div>
-<div class="view" id="demo" data-src="demo.bdf"></div>
+<div class="view" id="demo" data-src="demo.bdf" role="region" aria-label="demo.pdf" tabindex="0"></div>
 </div>
 <p class="note">${esc(t.demoNote(size(demo.pdf), size(demo.bdf)))}</p>
 </section>

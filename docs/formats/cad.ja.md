@@ -4,7 +4,7 @@ CAD の図面やプロッタの出力は、用紙に合わせて描いたベク�
 
 ## 試してみる
 
-[ビューア](../../viewer/)にファイルをドロップするか、サンプルを試してください。モデル空間とレイアウトを持つ[AutoCAD DXF の図面](../../viewer/?file=samples/layout.dxf)、[Jw_cad の図面](../../viewer/?file=samples/shapes.jww)、[SXF の図面](../../viewer/?file=samples/shapes.p21)、[CGM の図面](../../viewer/?file=samples/shapes.cgm)、[HP-GL/2 のプロット](../../viewer/?file=samples/shapes.plt)などです。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試してください。モデル空間とレイアウトを持つ[AutoCAD DXF の図面](https://shibukawa.github.io/bdf/viewer/?file=samples/layout.dxf)、[Jw_cad の図面](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.jww)、[SXF の図面](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.p21)、[CGM の図面](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.cgm)、[HP-GL/2 のプロット](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.plt)などです。
 
 ## AutoCAD DXF
 
@@ -17,7 +17,7 @@ CAD の図面やプロッタの出力は、用紙に合わせて描いたベク�
 | `-param views=` | `all`、`model`、`layouts` | `all` |
 | `-param background=` | `dark`、`light` | `dark` |
 
-詳細は[design.md §3.12](../design.html#312-dxf--bdf-変換器converterdxfの構造)を参照してください。
+詳細は[design.md §3.12](../design.md#312-dxf--bdf-変換器converterdxfの構造)を参照してください。
 
 ## Jw_cad
 
@@ -29,7 +29,7 @@ CAD の図面やプロッタの出力は、用紙に合わせて描いたベク�
 |---|---|---|
 | `-param colors=` | `screen`、`print`、`mono` | `screen` |
 
-詳細は[design.md §3.13](../design.html#313-jw_cad--bdf-変換器converterjwwの構造)を参照してください。
+詳細は[design.md §3.13](../design.md#313-jw_cad--bdf-変換器converterjwwの構造)を参照してください。
 
 ## SXF
 
@@ -41,7 +41,7 @@ CAD の図面やプロッタの出力は、用紙に合わせて描いたベク�
 |---|---|---|
 | `-param background=` | `file`、`light` | `file` |
 
-詳細は[design.md §3.14](../design.html#314-sxf--bdf-変換器convertersxfの構造)を参照してください。
+詳細は[design.md §3.14](../design.md#314-sxf--bdf-変換器convertersxfの構造)を参照してください。
 
 ## CGM
 
@@ -51,7 +51,7 @@ CAD の図面やプロッタの出力は、用紙に合わせて描いたベク�
 
 `converter/cgm` に `-param` オプションはありません。
 
-詳細は[design.md §3.20](../design.html#320-cgm--bdf-変換器convertercgmの構造)を参照してください。
+詳細は[design.md §3.20](../design.md#320-cgm--bdf-変換器convertercgmの構造)を参照してください。
 
 ## HP-GL/2
 
@@ -63,4 +63,4 @@ CAD の図面やプロッタの出力は、用紙に合わせて描いたベク�
 |---|---|---|
 | `-param colors=` | `pens`、`mono` | `pens`（ファイル自身のペンの色） |
 
-詳細は[design.md §3.22](../design.html#322-hp-gl2--bdf-変換器converterhpgl)を参照してください。
+詳細は[design.md §3.22](../design.md#322-hp-gl2--bdf-変換器converterhpgl)を参照してください。

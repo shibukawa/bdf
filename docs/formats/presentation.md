@@ -4,7 +4,7 @@ A PowerPoint deck is built from DrawingML: shapes, text runs and tables placed o
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: [PowerPoint deck](../../viewer/?file=samples/features.pptx).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: [PowerPoint deck](https://shibukawa.github.io/bdf/viewer/?file=samples/features.pptx).
 
 ## PowerPoint (.pptx)
 
@@ -29,4 +29,4 @@ Options (`-param`, from `bdf generate -h`):
 
 `-hidden` is shorthand for `-param hidden=true` (Excel's `-hidden` does the same for hidden sheets). `-pages` selects which slides to convert, and the general font flags `-font-dir`, `-fonts system`, `-no-subset`, `-no-woff2`, `-no-system-fonts` and `-ignore-fstype` apply to PowerPoint the same way they do to Word and Excel.
 
-See [design.md §3.4](../design.html#34-powerpoint--bdf-変換器converterpptxの構造) for the internals.
+See [design.md §3.4](../design.md#34-powerpoint--bdf-変換器converterpptxの構造) for the internals.

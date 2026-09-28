@@ -1,6 +1,6 @@
 # search: with a search engine
 
-[`examples/search`](https://github.com/shibukawa/bdf/tree/main/examples/search) — builds on [preview-server](preview-server.html)'s server-side conversion and adds full-text search across every document, backed by [Meilisearch](https://www.meilisearch.com/).
+[`examples/search`](https://github.com/shibukawa/bdf/tree/main/examples/search) — builds on [preview-server](preview-server.md)'s server-side conversion and adds full-text search across every document, backed by [Meilisearch](https://www.meilisearch.com/).
 
 ```sh
 docker run --rm -p 7700:7700 getmeili/meilisearch:v1.12 \
@@ -16,7 +16,7 @@ Any HTTP search engine would do the same job here — Meilisearch's plain REST A
 
 ## What the server does
 
-On top of what [preview-server](preview-server.html) does — convert and cache every document as bdf, and draw a thumbnail — it opens each cached bdf back up (`bdf.OpenSingleFile`, `(*Reader).ToDocument`) and calls `(*bdf.Document).SearchText()`, the same call any server would use to make its own converted document searchable without reconverting it. `SearchText` returns the document's metadata and the text of each page, a sheet counting as one entry without a page number. Each page becomes one Meilisearch document: an id, the file and view it came from, its page number, and the document's title.
+On top of what [preview-server](preview-server.md) does — convert and cache every document as bdf, and draw a thumbnail — it opens each cached bdf back up (`bdf.OpenSingleFile`, `(*Reader).ToDocument`) and calls `(*bdf.Document).SearchText()`, the same call any server would use to make its own converted document searchable without reconverting it. `SearchText` returns the document's metadata and the text of each page, a sheet counting as one entry without a page number. Each page becomes one Meilisearch document: an id, the file and view it came from, its page number, and the document's title.
 
 ```go
 type meiliDoc struct {

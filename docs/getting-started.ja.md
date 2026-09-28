@@ -12,7 +12,7 @@ cd bdf
 go run ./cmd/bdf generate report.pptx report.bdf
 ```
 
-`generate` は入力の形式をファイルの中身から判別します（Markdown はバイト列だけでは判別できないので `.md` 拡張子から決めます）。出力先を `/` で終わるディレクトリにすると、1 ファイルの代わりに[分割形式](spec.html#34-分割形式split)を書き出します。ファイルサーバーや CDN がそのまま配信できる形です。
+`generate` は入力の形式をファイルの中身から判別します（Markdown はバイト列だけでは判別できないので `.md` 拡張子から決めます）。出力先を `/` で終わるディレクトリにすると、1 ファイルの代わりに[分割形式](spec.md#34-分割形式split)を書き出します。ファイルサーバーや CDN がそのまま配信できる形です。
 
 ```sh
 go run ./cmd/bdf generate report.pptx out/          # 分割形式: manifest.json と Part ごとのファイル
@@ -56,10 +56,10 @@ if err != nil {
 // res.Doc は *bdf.Document。res.Doc.WriteSingle(w) か WriteSplit(dir) で書き出す
 ```
 
-各変換器のパッケージは import されたときに自分の形式を登録するので、プログラムはリンクした形式だけを扱えます。全体像は [API 一覧](api.html)（Go、CLI、ブラウザの wasm モジュール、2 つの TypeScript パッケージ）を、これを使った小さなサーバーの例は[構成のサンプル](examples/index.ja.html)を参照してください。
+各変換器のパッケージは import されたときに自分の形式を登録するので、プログラムはリンクした形式だけを扱えます。全体像は [API 一覧](api.md)（Go、CLI、ブラウザの wasm モジュール、2 つの TypeScript パッケージ）を、これを使った小さなサーバーの例は[構成のサンプル](examples/index.ja.md)を参照してください。
 
 ## 次に読むもの
 
-- **[特徴](features.ja.html)** — 変換後も使えるもの: 検索、選択、読み上げ用のテキスト、楽譜の演奏
-- **[対応形式](formats/index.ja.html)** — すべての入力形式とそのレイアウト
-- **[アーキテクチャ](architecture/index.ja.html)** — 変換と描画のつながり、ビルドとテストの方法
+- **[なぜ bdf か](why.ja.md)** — 対応形式の一覧と、変換後も使えるもの: ページめくり、検索、選択、読み上げ
+- **[対応形式](formats/index.ja.md)** — すべての入力形式とそのレイアウト
+- **[アーキテクチャ](architecture/index.ja.md)** — 変換と描画のつながり、ビルドとテストの方法

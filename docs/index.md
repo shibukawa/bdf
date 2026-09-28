@@ -4,20 +4,19 @@ bdf is a document format made for previews in the browser. The [demo site](https
 
 ## Read next
 
-- **[Why bdf](why.html)** — what problem this solves, and why not just render a PDF
-- **[Getting started](getting-started.html)** — convert a file and open it, in five minutes
-- **[Features](features.html)** — what a document keeps: search, selection, links, accessible text, music
-- **[Formats](formats/index.html)** — every input format, and how bdf lays each one out
-- **[Sample architectures](examples/index.html)** — three ways to fit bdf into a system, each a small server you can run
-- **[Architecture](architecture/index.html)** — how conversion and rendering work, the repository layout, the `bdf` command, building and testing
+- **[Why bdf](why.md)** — what problem this solves, the formats at a glance, page turning, search and accessibility
+- **[Getting started](getting-started.md)** — convert a file and open it, in five minutes
+- **[Formats](formats/index.md)** — every input format, and how bdf lays each one out
+- **[Sample architectures](examples/index.md)** — three ways to fit bdf into a system, each a small server you can run
+- **[Architecture](architecture/index.md)** — how conversion and rendering work, formulas and thumbnails, passwords and protected mode, the repository layout, the `bdf` command, building and testing
 
 ## Reference (Japanese)
 
 The detailed reference documents are written in Japanese, for now:
 
-- **[Format specification](spec.html)** — the container, the manifest, the instruction set
-- **[API reference](api.html)** — every package and command, by name
-- **[Design notes](design.html)** — why each converter is built the way it is, section by section
+- **[Format specification](spec.md)** — the container, the manifest, the instruction set
+- **[API reference](api.md)** — every package and command, by name
+- **[Design notes](design.md)** — why each converter is built the way it is, section by section
 
 ## Source
 

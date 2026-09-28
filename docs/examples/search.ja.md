@@ -1,6 +1,6 @@
 # search: 検索エンジンとつなぐ
 
-[`examples/search`](https://github.com/shibukawa/bdf/tree/main/examples/search) — [preview-server](preview-server.ja.html) のサーバー側変換の上に、[Meilisearch](https://www.meilisearch.com/) を使った全文書横断の全文検索を足したものです。
+[`examples/search`](https://github.com/shibukawa/bdf/tree/main/examples/search) — [preview-server](preview-server.ja.md) のサーバー側変換の上に、[Meilisearch](https://www.meilisearch.com/) を使った全文書横断の全文検索を足したものです。
 
 ```sh
 docker run --rm -p 7700:7700 getmeili/meilisearch:v1.12 \
@@ -16,7 +16,7 @@ HTTP で使える検索エンジンなら何でも同じ役割を果たせます
 
 ## サーバーがすること
 
-[preview-server](preview-server.ja.html)（すべての文書を bdf に変換してキャッシュし、サムネイルも作る）に加えて、キャッシュ済みの bdf をもう一度開き（`bdf.OpenSingleFile`、`(*Reader).ToDocument`）、`(*bdf.Document).SearchText()` を呼びます。サーバーが自分で変換した文書を、変換し直さずに検索可能にするのと同じ呼び出しです。`SearchText` は文書のメタデータと、ページごとのテキストを返します（シートはページ番号なしで 1 件）。各ページが Meilisearch の 1 ドキュメントになり、id、元のファイルと View、ページ番号、文書の題名を持ちます。
+[preview-server](preview-server.ja.md)（すべての文書を bdf に変換してキャッシュし、サムネイルも作る）に加えて、キャッシュ済みの bdf をもう一度開き（`bdf.OpenSingleFile`、`(*Reader).ToDocument`）、`(*bdf.Document).SearchText()` を呼びます。サーバーが自分で変換した文書を、変換し直さずに検索可能にするのと同じ呼び出しです。`SearchText` は文書のメタデータと、ページごとのテキストを返します（シートはページ番号なしで 1 件）。各ページが Meilisearch の 1 ドキュメントになり、id、元のファイルと View、ページ番号、文書の題名を持ちます。
 
 ```go
 type meiliDoc struct {

@@ -16,7 +16,6 @@ export const SECTIONS = [
       page("index", "Documentation", "ドキュメント"),
       page("why", "Why bdf", "なぜ bdf か"),
       page("getting-started", "Getting started", "はじめかた"),
-      page("features", "Features", "特徴"),
     ],
   },
   {
@@ -43,7 +42,7 @@ export const SECTIONS = [
       page("examples/light-server", "Convert in the browser", "ブラウザで変換する"),
       page("examples/preview-server", "Convert on the server", "サーバーで変換する"),
       page("examples/search", "With a search engine", "検索エンジンとつなぐ"),
-      page("examples/secure-reader", "Books behind a login", "ログインした読者に読ませる"),
+      page("examples/secure-reader", "Protected mode", "保護モードで読ませる"),
     ],
   },
   {
@@ -53,6 +52,8 @@ export const SECTIONS = [
       page("architecture/layout", "Repository layout", "フォルダ構成"),
       page("architecture/cli", "The bdf command", "bdf コマンド"),
       page("architecture/browser", "In the browser", "ブラウザ側"),
+      page("architecture/conversion", "Conversion and output", "変換と出力"),
+      page("architecture/protection", "Passwords and protected mode", "パスワードと保護モード"),
       page("architecture/development", "Building and testing", "ビルドとテスト"),
     ],
   },

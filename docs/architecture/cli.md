@@ -26,7 +26,7 @@ An encrypted document is read with the password in `$BDF_PASSWORD`; `split` and 
 
 ## generate
 
-Converts one input into bdf. The format is detected from the input's content, or set explicitly with `-format`; the output is a single file, or a directory ending in `/` for the split form. `-pages 1-3,5,8-` selects pages, slides, sheets or artboards; `-thumbnail` and `-text` write a preview next to the output (not for an encrypted output, unless `-allow-plaintext`); `-dc name=value` overrides a Dublin Core element (`-dc name=` removes it). See [Formats](../formats/index.html) for the `-param` options specific to each input format, or `bdf generate -h` for the current, complete list.
+Converts one input into bdf. The format is detected from the input's content, or set explicitly with `-format`; the output is a single file, or a directory ending in `/` for the split form. `-pages 1-3,5,8-` selects pages, slides, sheets or artboards; `-thumbnail` and `-text` write a preview next to the output (not for an encrypted output, unless `-allow-plaintext`); `-dc name=value` overrides a Dublin Core element (`-dc name=` removes it). See [Formats](../formats/index.md) for the `-param` options specific to each input format, or `bdf generate -h` for the current, complete list.
 
 ```sh
 bdf generate report.pptx report.bdf              # single file
@@ -45,7 +45,7 @@ bdf text out.bdf text.json                   # metadata and per-page text as JSO
 bdf render -page 2 -scale 2 out.bdf page2.png  # a sheet takes -width/-height too (from A1)
 ```
 
-`-allow-plaintext` is required for `thumbnail` and `text` on an encrypted document (`$BDF_PASSWORD` decrypts it first) — neither output is itself encrypted, so this is opt-in. See [Features → Server-side thumbnails and search text](../features.html#server-side-thumbnails-and-search-text) for what each one draws or extracts.
+`-allow-plaintext` is required for `thumbnail` and `text` on an encrypted document (`$BDF_PASSWORD` decrypts it first) — neither output is itself encrypted, so this is opt-in. See [Conversion and output → Server-side thumbnails and search text](conversion.md#server-side-thumbnails-and-search-text) for what each one draws or extracts.
 
 ## Inspecting a document
 
@@ -94,4 +94,4 @@ A few flags apply to every format that lays out and embeds text (PowerPoint, Exc
 | `-no-subset` | Embed whole font files instead of just the glyphs in use |
 | `-ignore-fstype` | Embed a font whose OS/2 `fsType` forbids embedding or subsetting — only with the rights to do so |
 
-See the [API reference](../api.html) for the equivalent Go calls, and [Building and testing](development.html) for how `bdf generate` and `bdf demo` are used to regenerate the fixtures under `testdata/`.
+See the [API reference](../api.md) for the equivalent Go calls, and [Building and testing](development.md) for how `bdf generate` and `bdf demo` are used to regenerate the fixtures under `testdata/`.

@@ -4,7 +4,7 @@ EPUB is a zip archive of XHTML, CSS and images, so a reflowable book converts th
 
 ## Try it
 
-Drop a file on the [viewer](../../viewer/), or try a sample: a [reflowable book](../../viewer/?file=samples/basic.epub), a [vertical Japanese book](../../viewer/?file=samples/vertical.epub), or a [fixed-layout book](../../viewer/?file=samples/fixed.epub).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: a [reflowable book](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.epub), a [vertical Japanese book](https://shibukawa.github.io/bdf/viewer/?file=samples/vertical.epub), or a [fixed-layout book](https://shibukawa.github.io/bdf/viewer/?file=samples/fixed.epub).
 
 ## EPUB (converter/epub)
 
@@ -16,7 +16,7 @@ Almost none of a book's own CSS is kept — layout, colors and fonts stay whatev
 
 ### Vertical Japanese text
 
-A chapter's writing direction comes from `writing-mode` on `body` or `html` (including the `-epub-`/`-webkit-` prefixed forms publishers commonly use); failing that, from Kindle's `primary-writing-mode`; failing that, from the language and `page-progression-direction` together. A vertically-set chapter lays out the same way Word's vertical sections do: upright kanji and kana, vertical punctuation forms, rotated Latin text, tate-chu-yoko for short horizontal runs, and emphasis dots. Right-bound books (the common case for vertical Japanese, and for right-to-left comics) get a view with `direction: "rtl"` ([spec §4.1](../spec.html#41-view-の種類)).
+A chapter's writing direction comes from `writing-mode` on `body` or `html` (including the `-epub-`/`-webkit-` prefixed forms publishers commonly use); failing that, from Kindle's `primary-writing-mode`; failing that, from the language and `page-progression-direction` together. A vertically-set chapter lays out the same way Word's vertical sections do: upright kanji and kana, vertical punctuation forms, rotated Latin text, tate-chu-yoko for short horizontal runs, and emphasis dots. Right-bound books (the common case for vertical Japanese, and for right-to-left comics) get a view with `direction: "rtl"` ([spec §4.1](../spec.md#41-view-の種類)).
 
 ### Fixed-layout books
 
@@ -33,4 +33,4 @@ A book marked `pre-paginated` (or Kindle's `fixed-layout`) whose every document 
 | `mono` | font family of code | an installed monospaced family |
 | `width` | text width of the scroll view, in points | 36 ems of the text |
 
-DRM-encrypted books are refused. See [design.md §3.24](../design.html#324-epub--bdf-変換器converterepubの構造) for the internals.
+DRM-encrypted books are refused. See [design.md §3.24](../design.md#324-epub--bdf-変換器converterepubの構造) for the internals.

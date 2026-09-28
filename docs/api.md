@@ -11,7 +11,7 @@ bdf の公開 API をパッケージごとにまとめる。引数や細かい�
 | bdf を自分で組み立てる・読む | Go の [`bdf`](#go-文書の組み立てと読み込みbdf) パッケージ |
 | bdf をブラウザに表示する | [`@bdf/render`](#typescript-bdfrender) の Worker とテキスト層 |
 | bdf を読んでテキストや構造を取り出す（Node でも） | [`@bdf/core`](#typescript-bdfcore) |
-| ログインした読者に文書を数ページずつ、要求ごとに封印して渡す | Go の [`segment`](#区間の配信segment) と [`(*Reader).WriteSegment`](#読み込み)、ブラウザは [`SegmentLoader`](#文書を開く)（レンダラの Worker では `{kind: "segments"}`） |
+| ログインした読者に文書を数ページずつ、要求ごとに封印して渡す | Go の [`segment`](#保護モードの配信segment) と [`(*Reader).WriteSegment`](#読み込み)、ブラウザは [`SegmentLoader`](#文書を開く)（レンダラの Worker では `{kind: "segments"}`） |
 | サーバーでサムネイル・ページの画像・検索用のテキストを作る | Go の [`thumbnail` と `raster`](#go-サムネイルとページの画像thumbnailraster)、[`Document.SearchText`](#読み込み)、または [`bdf` コマンド](#コマンドbdf) |
 
 ## Go: 変換（converter）
@@ -165,7 +165,7 @@ res, err := s.Finish() // Convert と同じ完成した文書
 | `SharePrefixes(objs, minBytes)` | 複数の Object に共通する先頭部分を共有 Object に切り出す |
 | `HashOf` / `ParseHash` | Part のハッシュ |
 
-### 区間の配信（segment）
+### 保護モードの配信（segment）
 
 `github.com/shibukawa/bdf/segment` は、区間を要求ごとに封印して返す `net/http` のハンドラ（design.md §3.30）。
 

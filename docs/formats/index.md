@@ -11,23 +11,23 @@ import (
 res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" detects the format
 ```
 
-The format is detected from the input's content where that's possible; Markdown, which can look like any text, is picked from the `.md`/`.markdown` extension. A password-protected input opens with `Options.Password`. When `res.Protected` says the input needed one, the output is encrypted with the same password (see [Features → Encrypted input](../features.html#encrypted-input)).
+The format is detected from the input's content where that's possible; Markdown, which can look like any text, is picked from the `.md`/`.markdown` extension. A password-protected input opens with `Options.Password`. When `res.Protected` says the input needed one, the output is encrypted with the same password (see [Passwords and protected mode](../architecture/protection.md#password-protected-input-and-encryption)).
 
 ## By category
 
 | Category | Formats | Page |
 |---|---|---|
-| Documents | PDF, Illustrator (.ai) | [PDF, Illustrator](pdf.html) |
-| Word processing | Word (.docx), HTML, Markdown | [Word, HTML, Markdown](document.html) |
-| Presentations | PowerPoint (.pptx) | [PowerPoint](presentation.html) |
-| Spreadsheets | Excel (.xlsx), CSV/TSV, Apache Parquet | [Excel, CSV, Parquet](spreadsheet.html) |
-| Diagrams | Visio (.vsdx, .vdx), draw.io | [Visio, draw.io](diagram.html) |
-| CAD drawings and plots | AutoCAD DXF, Jw_cad (.jww), SXF, CGM, HP-GL/2 | [CAD drawings and plots](cad.html) |
-| Electronics | Gerber/Excellon (circuit boards), KiCad | [Circuit boards, KiCad](electronics.html) |
-| Books | EPUB | [EPUB](ebook.html) |
-| Music | MML, MIDI, MusicXML | [Scores](music.html) |
-| Fonts | TrueType/OpenType/WOFF/WOFF2 | [Font files](font.html) |
-| Images and design | PNG/JPEG/GIF/WebP/AVIF/BMP/ICO/SVG, Photoshop, TIFF, Windows metafiles | [Images, Photoshop](image.html) |
+| Documents | PDF, Illustrator (.ai) | [PDF, Illustrator](pdf.md) |
+| Word processing | Word (.docx), HTML, Markdown | [Word, HTML, Markdown](document.md) |
+| Presentations | PowerPoint (.pptx) | [PowerPoint](presentation.md) |
+| Spreadsheets | Excel (.xlsx), CSV/TSV, Apache Parquet | [Excel, CSV, Parquet](spreadsheet.md) |
+| Diagrams | Visio (.vsdx, .vdx), draw.io | [Visio, draw.io](diagram.md) |
+| CAD drawings and plots | AutoCAD DXF, Jw_cad (.jww), SXF, CGM, HP-GL/2 | [CAD drawings and plots](cad.md) |
+| Electronics | Gerber/Excellon (circuit boards), KiCad | [Circuit boards, KiCad](electronics.md) |
+| Books | EPUB | [EPUB](ebook.md) |
+| Music | MML, MIDI, MusicXML | [Scores](music.md) |
+| Fonts | TrueType/OpenType/WOFF/WOFF2 | [Font files](font.md) |
+| Images and design | PNG/JPEG/GIF/WebP/AVIF/BMP/ICO/SVG, Photoshop, TIFF, Windows metafiles | [Images, Photoshop](image.md) |
 
 ## Every input format
 
@@ -61,4 +61,4 @@ The format is detected from the input's content where that's possible; Markdown,
 | Font file | `converter/font` | .ttf, .otf, .ttc, .otc, .woff, .woff2 |
 | Image | `converter/image` | .png, .jpg, .gif, .webp, .avif, .bmp, .ico, .svg |
 
-Each package's `-param` options are listed by `go run ./cmd/bdf generate -h`, and again on the page for that format. For the container format each converter writes into, see the [format specification](../spec.html); for why each converter is built the way it is, [design notes](../design.html).
+Each package's `-param` options are listed by `go run ./cmd/bdf generate -h`, and again on the page for that format. For the container format each converter writes into, see the [format specification](../spec.md); for why each converter is built the way it is, [design notes](../design.md).

@@ -11,7 +11,7 @@ go build -tags bdf_noconv ./...        # without the image/WOFF2 codecs (the bro
 GOEXPERIMENT=simd go build ./...       # Go 1.27, amd64/arm64: SIMD codec variants (amd64 needs AVX2)
 ```
 
-`bdf_noconv` leaves out the codecs the browser doesn't need (see [design.md §2](../design.html#2-go-と-wasm-について)). CI builds and tests this configuration separately, so a change that only works with them compiled in won't surface until CI unless you check it locally too.
+`bdf_noconv` leaves out the codecs the browser doesn't need (see [design.md §2](../design.md#2-go-と-wasm-について)). CI builds and tests this configuration separately, so a change that only works with them compiled in won't surface until CI unless you check it locally too.
 
 ## TypeScript
 
@@ -63,4 +63,4 @@ CI's `testdata is up to date` step compares `bdf generate` output byte-for-byte 
 
 New golden PNGs raise a separate concern: they need the same headless-shell Chromium build CI uses, and running the golden tests inside a matching container (`mcr.microsoft.com/playwright:v1.56.1-noble`, or `node:24-bookworm` with Chromium installed) reproduces that build.
 
-See the [API reference](../api.html) for what each package and command exposes, and [The bdf command](cli.html) for `bdf`'s subcommands.
+See the [API reference](../api.md) for what each package and command exposes, and [The bdf command](cli.md) for `bdf`'s subcommands.
