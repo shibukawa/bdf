@@ -144,6 +144,12 @@ func splitSections(code string) []string {
 	return append(out, code[start:])
 }
 
+// maxSectionTokens bounds the tokens of one format section. A section
+// formats every value it applies to, so a code of tens of thousands of digit
+// or gap placeholders would make every such cell cost that much; real format
+// codes are far shorter, and the excess is dropped.
+const maxSectionTokens = 512
+
 func parseSection(s string, palette []rgb) *section {
 	sec := &section{}
 	lower := strings.ToLower(s)
@@ -151,6 +157,9 @@ func parseSection(s string, palette []rgb) *section {
 		// merge adjacent literals
 		if k == tLit && len(sec.toks) > 0 && sec.toks[len(sec.toks)-1].kind == tLit {
 			sec.toks[len(sec.toks)-1].s += v
+			return
+		}
+		if len(sec.toks) >= maxSectionTokens {
 			return
 		}
 		sec.toks = append(sec.toks, token{k, v})

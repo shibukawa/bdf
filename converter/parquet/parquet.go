@@ -49,6 +49,14 @@ const maxColumns = 16384
 // many columns shows fewer rows.
 const maxCells = 1 << 22
 
+// maxSheetCells is a hard cap on the cells of the grid, whatever Options.Rows
+// asks for. A file can state, in a few bytes, a row group of a huge row count
+// (runs of repeated or null values pack into almost nothing), and the reader
+// allocates rows×columns cells before reading a page; this cap lets the
+// documented large cases through (a million rows of a few columns) but keeps
+// a hostile count from asking for a grid of hundreds of gigabytes.
+const maxSheetCells = 1 << 24
+
 // Options controls the conversion.
 type Options struct {
 	// Name is the sheet name; ConvertFile names the sheet after the file,
@@ -252,16 +260,7 @@ func table(r io.ReaderAt, size int64, opts *Options, warn func(string)) (*xlsx.G
 		warn(fmt.Sprintf("only the first %d of %d columns are shown (the most a sheet has)", maxColumns, len(top)))
 		top = top[:maxColumns]
 	}
-	limit := int64(opts.Rows)
-	switch {
-	case limit == 0:
-		limit = DefaultRows
-		if len(top) > 0 {
-			limit = max(min(limit, maxCells/int64(len(top))), 1)
-		}
-	case limit < 0 || limit > MaxRows:
-		limit = MaxRows
-	}
+	limit := rowLimit(opts.Rows, len(top))
 	res := &Result{Rows: f.meta.numRows, Cols: len(f.root.children), RowGroups: len(f.meta.rowGroups), CreatedBy: f.meta.createdBy}
 	s := newSheet(f, top, limit, warn)
 	s.read()
@@ -288,6 +287,28 @@ func table(r io.ReaderAt, size int64, opts *Options, warn func(string)) (*xlsx.G
 	g := &xlsx.Grid{Name: opts.Name, Rows: append(header, s.rows...), HeaderRows: len(header), SubHeader: !opts.NoTypes,
 		Lang: language(header[0], s.rows), TableStyle: opts.TableStyle}
 	return g, res, nil
+}
+
+// rowLimit is how many rows to read for a table of cols columns when
+// Options.Rows asks for rows (0 the default, negative or too large for all).
+// The default shows DefaultRows but no more than maxCells; any request is
+// then held to maxSheetCells, since read() allocates rows×cols cells up front
+// from a row count the file merely states.
+func rowLimit(rows, cols int) int64 {
+	limit := int64(rows)
+	switch {
+	case limit == 0:
+		limit = DefaultRows
+		if cols > 0 {
+			limit = max(min(limit, maxCells/int64(cols)), 1)
+		}
+	case limit < 0 || limit > MaxRows:
+		limit = MaxRows
+	}
+	if cols > 0 {
+		limit = max(min(limit, maxSheetCells/int64(cols)), 1)
+	}
+	return limit
 }
 
 // sheet reads the rows shown into cells.
