@@ -71,7 +71,7 @@ func (s *Set) Embed(doc *bdf.Document, opts EmbedOptions) int {
 		if !opts.NoWOFF2 {
 			if w, err := woff2.Encode(data); err == nil {
 				data = w
-			} else if err != woff2.ErrNotAvailable {
+			} else if err != woff2.ErrNotAvailable && err != woff2.ErrImplausible {
 				s.warnf("font %s: not stored as WOFF2: %v", f.Family, err)
 			}
 		}

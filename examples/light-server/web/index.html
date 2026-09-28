@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>light-server</title>
+<style>
+  :root { color-scheme: light dark; font: 16px system-ui, sans-serif; }
+  html, body { height: 100%; margin: 0; }
+  body { display: grid; grid-template-rows: auto 1fr; }
+  header { display: flex; gap: 1rem; align-items: baseline; padding: .5rem 1rem; border-bottom: 1px solid #ccc; }
+  header a { color: inherit; }
+  #status { flex: 1; color: #666; font-size: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #stage { min-height: 0; }
+</style>
+<header>
+  <a href="/">← light-server</a>
+  <span id="status" role="status">loading…</span>
+</header>
+<div id="stage"></div>
+<script type="module" src="./main.js"></script>

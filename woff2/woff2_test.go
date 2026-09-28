@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/andybalholm/brotli"
@@ -501,6 +502,53 @@ func TestEncodeFallsBackForUnusualGlyf(t *testing.T) {
 	_, got, _, xform := decode(t, w)
 	if xform["glyf"] || xform["loca"] || !bytes.Equal(got["glyf"], tables["glyf"]) || !bytes.Equal(got["loca"], loca) {
 		t.Fatal("expected untransformed glyf and loca")
+	}
+}
+
+// A few glyphs left of a large font compress hundreds of times: browsers
+// reject the WOFF2 file ("Invalid font data"), so Encode does not make it.
+func TestEncodeRefusesImplausibleRatio(t *testing.T) {
+	if !Available() {
+		t.Skip("built without the Brotli encoder")
+	}
+	font := testFonts(t)["../fixture/testdata/fonts/DejaVuSans-sub.ttf"]
+	if font == nil {
+		t.Skip("fixture font missing")
+	}
+	// the same font with a table of zeros, as the metrics of thousands of empty glyphs are
+	withTable := func(size int) []byte {
+		tables := sfntTables(font)
+		tables["zero"] = make([]byte, size)
+		tags := make([]string, 0, len(tables))
+		for tag := range tables {
+			tags = append(tags, tag)
+		}
+		sort.Strings(tags)
+		head := make([]byte, 12+16*len(tags))
+		copy(head, font[:4])
+		binary.BigEndian.PutUint16(head[4:], uint16(len(tags)))
+		var body []byte
+		for i, tag := range tags {
+			rec := head[12+i*16:]
+			copy(rec, tag)
+			binary.BigEndian.PutUint32(rec[8:], uint32(len(head)+len(body)))
+			binary.BigEndian.PutUint32(rec[12:], uint32(len(tables[tag])))
+			body = append(body, tables[tag]...)
+			for len(body)%4 != 0 {
+				body = append(body, 0)
+			}
+		}
+		return append(head, body...)
+	}
+	w, err := Encode(withTable(16 << 10))
+	if err != nil {
+		t.Fatalf("a font that compresses a few times: %v", err)
+	}
+	if _, tables, _, _ := decode(t, w); len(tables["zero"]) != 16<<10 {
+		t.Fatalf("the table of zeros has %d bytes", len(tables["zero"]))
+	}
+	if _, err := Encode(withTable(4 << 20)); err != ErrImplausible {
+		t.Fatalf("a font that compresses hundreds of times: %v, want ErrImplausible", err)
 	}
 }
 

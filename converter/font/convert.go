@@ -265,7 +265,7 @@ func (c *converter) addFont(data []byte) bdf.Hash {
 	if !c.o.NoWOFF2 {
 		if w, err := woff2.Encode(data); err == nil {
 			data = w
-		} else if err != woff2.ErrNotAvailable {
+		} else if err != woff2.ErrNotAvailable && err != woff2.ErrImplausible {
 			c.warn(fmt.Sprintf("font: not stored as WOFF2: %v", err))
 		}
 	}

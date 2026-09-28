@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>This is a PDF, drawn from bdf</title>
+<meta name="author" content="bdf">
+<meta name="description" content="The document the top page of the bdf site shows">
+<style>
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; }
+html { font-family: "Liberation Sans", sans-serif; font-size: 10.5pt; line-height: 1.5; color: #1f2328; }
+body { margin: 0; }
+:lang(ja) { font-family: "IPAPGothic", "Liberation Sans", sans-serif; line-height: 1.75; }
+.page { position: relative; width: 210mm; height: 297mm; padding: 34mm 22mm 24mm; overflow: hidden; page-break-after: always; }
+.page:last-child { page-break-after: auto; }
+.band { position: absolute; left: 0; top: 0; width: 100%; height: 20mm; padding: 0 22mm; background: #1d6b40; color: #fff; display: flex; align-items: center; justify-content: space-between; }
+.band b { font-size: 15pt; letter-spacing: .04em; }
+.band span { font-size: 9pt; opacity: .85; }
+.footer { position: absolute; left: 22mm; right: 22mm; bottom: 12mm; padding-top: 3mm; border-top: .5pt solid #b8c0c8; color: #59636e; font-size: 8.5pt; display: flex; justify-content: space-between; }
+h1 { margin: 0 0 4mm; font-size: 26pt; line-height: 1.2; color: #14432a; }
+h2 { margin: 9mm 0 3mm; font-size: 14pt; color: #14432a; }
+p { margin: 0 0 3mm; }
+.lead { font-size: 12.5pt; color: #3d444d; }
+a { color: #0969da; }
+code { font-family: "Liberation Mono", monospace; font-size: .92em; background: #eef1f4; padding: 0 .25em; border-radius: 2pt; }
+table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 10pt; }
+th, td { padding: 2mm 3mm; border: .5pt solid #b8c0c8; text-align: left; vertical-align: top; }
+th { background: #e6f2ec; }
+.note { margin: 5mm 0; padding: 3mm 4mm; border-left: 3pt solid #1d6b40; background: #f3f8f5; }
+.cols { display: flex; gap: 8mm; }
+.cols > * { flex: 1; }
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: "Liberation Sans", sans-serif; }
+ul { margin: 0 0 3mm; padding-left: 5mm; }
+li { margin-bottom: 1mm; }
+</style>
+</head>
+<body>
+
+<section class="page">
+  <div class="band"><b>bdf</b><span>Browser-specific Document Format</span></div>
+  <h1>This is a PDF, drawn from bdf</h1>
+  <p class="lead">The pages you are reading were a PDF file. A converter written in Go turned them into bdf, and a small renderer in your browser draws them on a canvas.</p>
+
+  <h2>What happened to this file</h2>
+  <svg viewBox="0 0 660 150" role="img" aria-label="A PDF is converted to bdf on a server, and drawn by a worker in the browser">
+    <defs>
+      <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e6f2ec"/></linearGradient>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#59636e"/></marker>
+    </defs>
+    <g font-size="13" text-anchor="middle">
+      <rect x="4" y="30" width="120" height="70" rx="8" fill="url(#g1)" stroke="#1d6b40" stroke-width="1.5"/>
+      <text x="64" y="61" font-weight="bold">PDF</text><text x="64" y="80" font-size="11" fill="#59636e">the file</text>
+      <rect x="182" y="30" width="120" height="70" rx="8" fill="url(#g1)" stroke="#1d6b40" stroke-width="1.5"/>
+      <text x="242" y="61" font-weight="bold">Converter</text><text x="242" y="80" font-size="11" fill="#59636e">Go, one binary</text>
+      <rect x="360" y="30" width="120" height="70" rx="8" fill="#1d6b40"/>
+      <text x="420" y="61" font-weight="bold" fill="#fff">bdf</text><text x="420" y="80" font-size="11" fill="#d6eadf">parts, by hash</text>
+      <rect x="538" y="30" width="118" height="70" rx="8" fill="url(#g1)" stroke="#1d6b40" stroke-width="1.5"/>
+      <text x="597" y="61" font-weight="bold">Renderer</text><text x="597" y="80" font-size="11" fill="#59636e">a Web Worker</text>
+      <g stroke="#59636e" stroke-width="1.5" marker-end="url(#arrow)"><path d="M126 65H178"/><path d="M304 65H356"/><path d="M482 65H534"/></g>
+      <text x="330" y="130" font-size="11" fill="#59636e">The browser fetches only the parts of the pages in view.</text>
+    </g>
+  </svg>
+
+  <h2>What is kept</h2>
+  <div class="cols">
+    <ul>
+      <li><b>Text.</b> Select it, copy it, search for it.</li>
+      <li><b>Fonts.</b> The glyphs in use, as WOFF2.</li>
+      <li><b>Vector graphics.</b> Zoom in: the lines stay sharp.</li>
+    </ul>
+    <ul>
+      <li><b>Links.</b> Like <a href="https://github.com/shibukawa/bdf">the repository</a>, or <a href="#page=2">page 2</a>.</li>
+      <li><b>Structure.</b> Headings, lists and tables, for screen readers.</li>
+      <li><b>Metadata.</b> Title, author, dates.</li>
+    </ul>
+  </div>
+  <p class="note">Try the search box above the pages: look for <code>canvas</code>, or for <code>フォント</code>.</p>
+  <div class="footer"><span>bdf demo document</span><span>1 / 3</span></div>
+</section>
+
+<section class="page">
+  <div class="band"><b>bdf</b><span>Browser-specific Document Format</span></div>
+  <h2 style="margin-top:0">What the browser already does</h2>
+  <p>A PDF viewer written in JavaScript brings its own font rasterizer, image decoders and decompression. bdf is stored in the forms browsers take as they are, so its renderer has little left to do.</p>
+  <table>
+    <tr><th>What</th><th>Stored as</th><th>Drawn with</th></tr>
+    <tr><td>Drawing instructions</td><td>One to one with Canvas 2D calls</td><td><code>OffscreenCanvas</code> in a worker</td></tr>
+    <tr><td>Fonts</td><td>WOFF2, only the glyphs in use</td><td><code>FontFace</code></td></tr>
+    <tr><td>Images</td><td>JPEG, PNG, WebP, SVG …</td><td><code>createImageBitmap</code></td></tr>
+    <tr><td>Compression</td><td>Deflate, part by part</td><td><code>DecompressionStream</code></td></tr>
+    <tr><td>Encryption</td><td>AES-256-GCM, part by part</td><td>WebCrypto</td></tr>
+  </table>
+
+  <h2 lang="ja">日本語のページ</h2>
+  <p lang="ja">このページは PDF でした。Go で書かれた変換器が bdf に変換し、ブラウザの中の小さなレンダラが canvas に描いています。テキストは選択でき、検索もできます。「ふぉんと」とひらがなで検索しても「フォント」が見つかります。</p>
+  <table lang="ja">
+    <tr><th>対象</th><th>格納する形</th><th>ブラウザの API</th></tr>
+    <tr><td>描画命令</td><td>Canvas 2D の呼び出しと 1 対 1</td><td><code>OffscreenCanvas</code></td></tr>
+    <tr><td>フォント</td><td>使う字だけの WOFF2</td><td><code>FontFace</code></td></tr>
+    <tr><td>画像</td><td>JPEG・PNG・WebP・SVG など</td><td><code>createImageBitmap</code></td></tr>
+  </table>
+  <p class="note" lang="ja">bdf は文書を Part に分け、内容のハッシュで格納します。どのページも使うフォントは 1 度だけ保存され、ブラウザは表示するページに要る Part だけを取得します。</p>
+  <div class="footer"><span>bdf demo document</span><span>2 / 3</span></div>
+</section>
+
+<section class="page">
+  <div class="band"><b>bdf</b><span>Browser-specific Document Format</span></div>
+  <h2 style="margin-top:0">Shapes, gradients and a chart</h2>
+  <p>Paths, clips, gradients and transparency are converted as they are. The chart below is vector art: its labels are text.</p>
+  <svg viewBox="0 0 660 300" role="img" aria-label="A bar chart of four quarters and a line over it">
+    <defs>
+      <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3fb27f"/><stop offset="1" stop-color="#1d6b40"/></linearGradient>
+      <radialGradient id="sun" cx=".35" cy=".35" r=".8"><stop offset="0" stop-color="#fff3c4"/><stop offset="1" stop-color="#f0a020"/></radialGradient>
+    </defs>
+    <g stroke="#d1d9e0" stroke-width="1"><path d="M60 40H640M60 100H640M60 160H640M60 220H640"/></g>
+    <path d="M60 30V250H640" fill="none" stroke="#59636e" stroke-width="1.5"/>
+    <g font-size="11" fill="#59636e" text-anchor="end"><text x="52" y="224">25</text><text x="52" y="164">50</text><text x="52" y="104">75</text><text x="52" y="44">100</text></g>
+    <g fill="url(#bar)"><rect x="100" y="166" width="80" height="84" rx="3"/><rect x="240" y="130" width="80" height="120" rx="3"/><rect x="380" y="94" width="80" height="156" rx="3"/><rect x="520" y="58" width="80" height="192" rx="3"/></g>
+    <g font-size="12" text-anchor="middle"><text x="140" y="270">Spring</text><text x="280" y="270">Summer</text><text x="420" y="270">Autumn</text><text x="560" y="270">Winter</text></g>
+    <path d="M140 190C200 150 230 170 280 150S370 90 420 110S510 60 560 40" fill="none" stroke="#0969da" stroke-width="2.5" stroke-dasharray="7 4"/>
+    <g fill="#fff" stroke="#0969da" stroke-width="2"><circle cx="140" cy="190" r="4.5"/><circle cx="280" cy="150" r="4.5"/><circle cx="420" cy="110" r="4.5"/><circle cx="560" cy="40" r="4.5"/></g>
+  </svg>
+  <div class="cols" style="margin-top:6mm">
+    <svg viewBox="0 0 300 170" role="img" aria-label="A sun over hills">
+      <rect width="300" height="170" rx="8" fill="#e8f1fb"/>
+      <circle cx="220" cy="60" r="38" fill="url(#sun)"/>
+      <path d="M0 130C60 80 110 150 170 110S260 90 300 120V162a8 8 0 0 1-8 8H8a8 8 0 0 1-8-8z" fill="#3fb27f"/>
+      <path d="M0 150C70 120 130 165 200 140S270 135 300 145V162a8 8 0 0 1-8 8H8a8 8 0 0 1-8-8z" fill="#1d6b40" opacity=".8"/>
+    </svg>
+    <div>
+      <p><b>Other kinds of documents</b> are converted into the same format: Word, Excel and PowerPoint files, diagrams, CAD drawings, books and scores.</p>
+      <p>A sheet of a workbook is not cut into pages: it scrolls, as in a spreadsheet.</p>
+    </div>
+  </div>
+  <div class="footer"><span>bdf demo document</span><span>3 / 3</span></div>
+</section>
+
+</body>
+</html>
