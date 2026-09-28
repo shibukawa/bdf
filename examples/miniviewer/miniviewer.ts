@@ -160,8 +160,8 @@ export class MiniViewer {
   /**
    * Open a document: a URL (a single-file bdf, read by ranges; the
    * directory of a split one when it ends with a slash), or what the worker
-   * opens (a buffer, say). Returns its manifest, or undefined when it is
-   * encrypted and no password opened it.
+   * opens (a buffer, or a server's segments). Returns its manifest, or
+   * undefined when it is encrypted and no password opened it.
    */
   async open(source: string | OpenSource, password?: string): Promise<Manifest | undefined> {
     this.generation++;
@@ -177,7 +177,7 @@ export class MiniViewer {
     try {
       manifest = await this.client.open(src, password);
     } catch (e) {
-      if (!(e instanceof BdfWorkerError) || !e.code) {
+      if (!(e instanceof BdfWorkerError) || (e.code !== "password-required" && e.code !== "wrong-password")) {
         this.message(`The document could not be opened: ${(e as Error).message ?? e}`);
         throw e;
       }

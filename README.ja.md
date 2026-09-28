@@ -26,7 +26,7 @@ npm ci && npm run demo                             # ブラウザで開く
 |---|---|
 | `*.go`、`converter/`、`raster/`、`internal/` | Go のエンコーダ・デコーダと、入力形式ごとの変換器パッケージ |
 | `packages/core`、`packages/render` | `@bdf/core`・`@bdf/render`: TypeScript のデコーダと Canvas レンダラ |
-| `examples/`、`site/` | デモビューア、サーバー構成のサンプル 3 つ、GitHub Pages で公開しているサイト |
+| `examples/`、`site/` | デモビューア、サーバー構成のサンプル 4 つ、GitHub Pages で公開しているサイト |
 | `docs/` | このドキュメント |
 
 全体の内訳は[フォルダ構成](https://shibukawa.github.io/bdf/docs/architecture/layout.ja.html)を、`go test`・golden テスト・フィクスチャの再生成は[ビルドとテスト](https://shibukawa.github.io/bdf/docs/architecture/development.ja.html)を参照してください。

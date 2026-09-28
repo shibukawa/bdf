@@ -51,6 +51,9 @@ const (
 	// KDFHKDFSHA256 derives the key-encryption key of an ecdh slot from the
 	// shared secret with HKDF-SHA-256.
 	KDFHKDFSHA256 = "HKDF-SHA256"
+	// MaxECDHSlots bounds the ecdh slots a reader tries: each costs a key
+	// agreement.
+	MaxECDHSlots = 16
 
 	// FlagEncrypted is the single-file header flag of encrypted documents.
 	FlagEncrypted = 1
@@ -225,9 +228,13 @@ func unlockKeyECDH(e *Encryption, priv *ecdh.PrivateKey) ([]byte, error) {
 		return nil, errors.New("bdf: the key is not a P-256 key")
 	}
 	rpk := priv.PublicKey().Bytes()
+	tried := 0
 	for _, s := range e.Keys {
 		if s.Type != KeyECDH {
 			continue
+		}
+		if tried++; tried > MaxECDHSlots {
+			return nil, &FormatError{Msg: fmt.Sprintf("more than %d ecdh key slots", MaxECDHSlots)}
 		}
 		if s.Crv != CurveP256 {
 			return nil, &FormatError{Msg: fmt.Sprintf("unknown curve %q", s.Crv)}

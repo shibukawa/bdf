@@ -33,6 +33,11 @@ func TestShortcutsChangeNoPixel(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if rd.Encrypted() {
+			// the segments of testdata/segments, sealed for a key the tests of @bdf/core hold
+			rd.Close()
+			continue
+		}
 		d, err := rd.ToDocument()
 		rd.Close()
 		if err != nil {

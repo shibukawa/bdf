@@ -1,6 +1,7 @@
+import { BdfFormatError } from "./bytes.js";
 import { decode, type PartSource } from "./container.js";
 import { checkManifest, tileSize } from "./manifest.js";
-import { BdfPasswordError, SealedSource } from "./crypto.js";
+import { BdfKeyError, BdfPasswordError, SealedSource } from "./crypto.js";
 import { decodeCues, type Cues } from "./cues.js";
 import { decodeObject, decodePathCollection, objectDeps, UseLimits } from "./object.js";
 import { decodeTextIndex, type IndexRun } from "./search.js";
@@ -10,6 +11,11 @@ import type { Manifest, PartEntry, ObjectPart, PathData, Hash, View } from "./ty
 export interface OpenOptions {
   /** Password of an encrypted document (spec §3.5). */
   password?: string;
+  /**
+   * The key pair an encrypted document was sealed for (an ecdh key slot,
+   * spec §3.5): a segment a server sealed for one request (SegmentLoader).
+   */
+  keyPair?: CryptoKeyPair;
 }
 
 /** A loaded document: manifest plus a cache of decoded parts. */
@@ -29,15 +35,22 @@ export class BdfDocument {
    * Open a document. An encrypted one needs options.password: without it
    * BdfPasswordError("required") is thrown, and BdfPasswordError("wrong")
    * when it does not open the document. The source's manifest is cached, so
-   * the same source can be opened again with another password. A manifest
-   * with part names or numbers out of range (see checkManifest) is refused
-   * with BdfFormatError.
+   * the same source can be opened again with another password. One sealed
+   * for a key pair needs options.keyPair, and throws BdfKeyError when it is
+   * another. A manifest with part names or numbers out of range (see
+   * checkManifest) is refused with BdfFormatError.
    */
   static async open(source: PartSource, options: OpenOptions = {}): Promise<BdfDocument> {
     const manifest = await source.manifest();
-    if (!manifest.encryption) return new BdfDocument(source, manifest);
-    if (options.password === undefined) throw new BdfPasswordError("required");
-    const sealed = await SealedSource.unlock(source, options.password);
+    const enc = manifest.encryption;
+    if (!enc) return new BdfDocument(source, manifest);
+    const secret: string | CryptoKeyPair | undefined = options.keyPair ?? options.password;
+    if (secret === undefined) {
+      // a password would open nothing: do not ask for one
+      if (Array.isArray(enc.keys) && !enc.keys.some((k) => k.type === "password")) throw new BdfKeyError();
+      throw new BdfPasswordError("required");
+    }
+    const sealed = await SealedSource.unlock(source, secret);
     return new BdfDocument(sealed, await sealed.manifest());
   }
 
@@ -57,13 +70,38 @@ export class BdfDocument {
     if (!pages || index < 0 || index >= pages.length) throw new Error(`bdf: no page ${index} in view ${viewId}`);
     const views = from.manifest.views;
     if (views.length !== 1 || views[0].pages?.length !== 1) throw new Error("bdf: not a page document");
-    const page = views[0].pages[0];
+    this.adopt(from);
+    pages[index] = views[0].pages[0];
+  }
+
+  /**
+   * Put in the pages a segment document carries (spec §3.6): a document with
+   * the same views and pages, whose manifest names the pages it carries.
+   * Its parts are added to those this document has; its pages may use parts
+   * that earlier segments brought.
+   */
+  addSegment(from: BdfDocument): void {
+    const s = from.manifest.segment;
+    if (!s) throw new Error("bdf: not a segment document");
+    const mine = this.manifest.views, theirs = from.manifest.views;
+    if (mine.length !== theirs.length || mine.some((v, i) => v.id !== theirs[i].id || (v.pages?.length ?? 0) !== (theirs[i].pages?.length ?? 0))) {
+      throw new Error("bdf: the segment is of another document");
+    }
+    const src = from.view(s.view).pages ?? [], dst = this.view(s.view).pages ?? [];
+    if (!Number.isInteger(s.from) || !Number.isInteger(s.to) || s.from < 0 || s.from >= s.to || s.to > dst.length) {
+      throw new BdfFormatError(`segment of pages ${s.from} to ${s.to} out of range`);
+    }
+    this.adopt(from);
+    for (let i = s.from; i < s.to; i++) dst[i] = src[i];
+  }
+
+  /** Add the parts of another document that this one does not have, read from its source. */
+  private adopt(from: BdfDocument): void {
     for (const e of from.manifest.parts) {
       if (this.entries.has(e.h)) continue;
       this.entries.set(e.h, { entry: e, source: from.source });
       this.manifest.parts.push(e);
     }
-    pages[index] = page;
   }
 
   view(id: string): View {

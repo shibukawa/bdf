@@ -48,8 +48,8 @@ type Request struct {
 type Handler struct {
 	// Open returns the document a request is for, once it has checked that
 	// the reader may read it (the application's own login and rights). An
-	// error that is fs.ErrNotExist answers 404, fs.ErrPermission 403, others
-	// 500.
+	// error that is a *StatusError answers with its status, fs.ErrNotExist
+	// 404, fs.ErrPermission 403, others 500.
 	Open func(r *http.Request) (*bdf.Reader, error)
 	// Allow, if set, is asked before a segment is sent, for rules on pages
 	// (a sample of the first pages, how fast pages are read). Its error
@@ -151,8 +151,22 @@ func (h *Handler) segment(doc *bdf.Reader, req *Request) (bdf.Segment, error) {
 	return bdf.SegmentAt(v, req.Page, n), nil
 }
 
+// StatusError is an error of Handler.Open or Handler.Allow that answers
+// with an HTTP status of its own: 401 for a reader who is not logged in,
+// 429 for one who reads too fast.
+type StatusError struct {
+	Status int
+	Err    error
+}
+
+func (e *StatusError) Error() string { return e.Err.Error() }
+func (e *StatusError) Unwrap() error { return e.Err }
+
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
+	var se *StatusError
 	switch {
+	case errors.As(err, &se):
+		http.Error(w, http.StatusText(se.Status), se.Status)
 	case errors.Is(err, fs.ErrNotExist):
 		http.Error(w, "no such document", http.StatusNotFound)
 	case errors.Is(err, fs.ErrPermission):

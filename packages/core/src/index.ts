@@ -6,7 +6,8 @@ export { parseHeader, decode, checkHash, BufferSource, RangeSource, SplitSource,
 export { checkManifest, tileSize, MAX_PAGE_SIZE, MAX_SHEET_ENTRIES, MIN_ENTRY_SIZE, DEFAULT_TILE } from "./manifest.js";
 export { dcValues } from "./dublincore.js";
 export { BdfDocument, type OpenOptions } from "./document.js";
-export { BdfPasswordError, SealedSource, MAX_ITERATIONS } from "./crypto.js";
+export { BdfPasswordError, BdfKeyError, SealedSource, MAX_ITERATIONS, MAX_ECDH_SLOTS } from "./crypto.js";
+export { SegmentLoader, BdfSegmentError, type SegmentLoaderOptions } from "./segments.js";
 export { extractText, extractContent, parseCellRef, guessSep, Mark, Sep, type TextRun, type TextNode, type TextNodeKind, type TextLink, type TextContent, type CellRef } from "./text.js";
 export { decodeTextIndex, TextSearch, normalizeQuery, normalizeChar, type IndexRun, type SearchHit, type HitSegment, type SearchOptions } from "./search.js";
 export { decodeCues, type Cues, type Cue, type CueSystem } from "./cues.js";

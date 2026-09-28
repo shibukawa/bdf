@@ -1,10 +1,10 @@
 /// <reference lib="webworker" />
-import { BdfDocument, BdfPasswordError, BufferSource, RangeSource, SplitSource, UseLimits, fetchSingle, extractContent, tileSize, type PartSource, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdf/core";
+import { BdfDocument, BdfPasswordError, BdfSegmentError, SegmentLoader, BufferSource, RangeSource, SplitSource, UseLimits, fetchSingle, extractContent, tileSize, type PartSource, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdf/core";
 import { fontString } from "./resources.js";
 import { PageRenderer, tilesIn, type TileRange } from "./page.js";
 import { concat, within } from "./content.js";
 import { DocumentSearch } from "./search.js";
-import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource, WorkerOpenOptions, RasterizeRequest, RasterizeResponse } from "./protocol.js";
+import type { WorkerRequest, WorkerResponse, WorkerResult, WorkerErrorCode, OpenSource, WorkerOpenOptions, RasterizeRequest, RasterizeResponse } from "./protocol.js";
 import type { SvgRasterizer } from "./svg.js";
 
 /** An open document, with what draws and searches it. */
@@ -12,6 +12,8 @@ interface Opened {
   doc: BdfDocument;
   pages: PageRenderer;
   search: DocumentSearch;
+  /** The server that hands out the pages of a document opened by segments. */
+  segments?: SegmentLoader;
 }
 
 let open: Opened | undefined;
@@ -55,6 +57,7 @@ function sourceOf(source: OpenSource): PartSource | Promise<PartSource> {
     case "buffer": return new BufferSource(new Uint8Array(source.buffer));
     case "single": return source.range ? new RangeSource(source.url) : fetchSingle(source.url);
     case "split": return new SplitSource(source.base);
+    case "segments": throw new Error("bdf: a document of segments is opened, not replaced");
   }
 }
 
@@ -65,15 +68,42 @@ function opened(doc: BdfDocument): Opened {
 }
 
 function retire() {
-  if (open) retired.push(open);
+  if (open) {
+    open.segments?.close();
+    retired.push(open);
+  }
   open = locked = undefined;
 }
 
 async function openSource(source: OpenSource, password?: string, options: WorkerOpenOptions = {}): Promise<Manifest> {
   retire();
   settings = options;
+  if (source.kind === "segments") {
+    const segments = await SegmentLoader.open(source.url, { view: source.view, page: source.page });
+    const o = { ...opened(segments.doc), segments };
+    // the search of a view covers the pages that came
+    segments.onSegment = (s) => o.search.forget(o.doc.view(s.view));
+    open = o;
+    return o.doc.manifest;
+  }
   locked = await sourceOf(source);
   return unlock(password);
+}
+
+/** Fetch the pages of a document of segments that a request draws or reads, unless they came. */
+async function ensurePages(o: Opened, view: View, pages: number[]): Promise<void> {
+  if (o.segments) await Promise.all(pages.map((i) => o.segments!.ensure(view.id, i)));
+}
+
+/** The pages of a continuous layout whose body intersects viewport. */
+function pagesIn(o: Opened, view: View, viewport: Rect): number[] {
+  const { offsets } = o.pages.continuousLayout(view);
+  const out: number[] = [];
+  (view.pages ?? []).forEach((p, i) => {
+    const h = (p.body ?? p).h;
+    if (offsets[i] < viewport.y + viewport.h && offsets[i] + h > viewport.y) out.push(i);
+  });
+  return out;
 }
 
 /** Open the pending source; an encrypted one stays pending until a password opens it. */
@@ -192,6 +222,17 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
     return { result: null, transfer: [] };
   }
   switch (req.type) {
+    case "page": case "text": case "content":
+      await ensurePages(o, view, [req.page]);
+      break;
+    case "continuous": case "continuousText": case "continuousContent":
+      await ensurePages(o, view, pagesIn(o, view, req.viewport));
+      break;
+    case "locate":
+      await ensurePages(o, view, req.hits.flatMap((h) => h.segments.map((s) => s.a)));
+      break;
+  }
+  switch (req.type) {
     case "page": {
       const page = view.pages?.[req.page];
       if (!page) throw new Error(`bdf: no page ${req.page}`);
@@ -242,6 +283,12 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
   }
 }
 
+function errorCode(e: unknown): WorkerErrorCode | undefined {
+  if (e instanceof BdfPasswordError) return e.reason === "required" ? "password-required" : "wrong-password";
+  if (e instanceof BdfSegmentError) return e.status === 429 ? "rate-limited" : e.status === 401 || e.status === 403 ? "not-allowed" : undefined;
+  return undefined;
+}
+
 self.onmessage = async (ev: MessageEvent<WorkerRequest | RasterizeResponse>) => {
   if ("rid" in ev.data) {
     const res = ev.data;
@@ -260,7 +307,7 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest | RasterizeResponse>) => 
     const res: WorkerResponse = { id: req.id, ok: true, result };
     (self as unknown as Worker).postMessage(res, transfer);
   } catch (e) {
-    const code = e instanceof BdfPasswordError ? (e.reason === "required" ? "password-required" : "wrong-password") : undefined;
+    const code = errorCode(e);
     const res: WorkerResponse = { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e), code };
     (self as unknown as Worker).postMessage(res);
   } finally {

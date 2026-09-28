@@ -26,7 +26,7 @@ Go 1.27+ and Node.js are needed to build from source; see [Getting started](http
 |---|---|
 | `*.go`, `converter/`, `raster/`, `internal/` | The Go encoder/decoder and one converter package per input format |
 | `packages/core`, `packages/render` | `@bdf/core` and `@bdf/render`: the TypeScript decoder and Canvas renderer |
-| `examples/`, `site/` | The demo viewer, three sample server architectures, and the site published on GitHub Pages |
+| `examples/`, `site/` | The demo viewer, four sample server architectures, and the site published on GitHub Pages |
 | `docs/` | This documentation |
 
 See [Repository layout](https://shibukawa.github.io/bdf/docs/architecture/layout.html) for the full breakdown, and [Building and testing](https://shibukawa.github.io/bdf/docs/architecture/development.html) for `go test`, the golden tests, and regenerating fixtures.
