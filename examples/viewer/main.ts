@@ -7,7 +7,8 @@
 // through, or shown one or two at a time and turned like a book's (book.ts).
 // A score's music plays with Web Audio, a bar on the pages following it.
 // The cells of a sheet are selected as in a spreadsheet, and copied as
-// tab-separated values and an HTML table.
+// tab-separated values and an HTML table. A pinch on the stage changes the
+// zoom, not the page's.
 //
 // The address picks the document: ?src= a bdf document (a file, or the
 // directory of a split one, which ends with a slash; &range reads a file by
@@ -640,13 +641,8 @@ function init() {
   q.oninput = () => { if (!q.value) search("", 0); };
   $("next").onclick = () => search(q.value, 1);
   $("prev").onclick = () => search(q.value, -1);
-  zoomInput.oninput = () => {
-    zoom = Number(zoomInput.value);
-    const pct = `${Math.round(zoom * 100)}%`;
-    $("zoomv").textContent = pct;
-    zoomInput.setAttribute("aria-valuetext", pct);
-    if (current) show(current);
-  };
+  zoomInput.oninput = () => setZoom(Number(zoomInput.value));
+  initPinch();
   // "?layout=spread" opens documents in that layout
   const start = params.get("layout");
   if (start && [...layoutSelect.options].some((o) => o.value === start)) {
@@ -690,6 +686,155 @@ function init() {
     dragging(false);
     const file = e.dataTransfer!.files[0];
     if (file) openLocal(file);
+  });
+}
+
+/** The zoom slider's range and step: a pinch ends on a step of it too. */
+const ZOOM_MIN = Number(zoomInput.min), ZOOM_MAX = Number(zoomInput.max), ZOOM_STEP = Number(zoomInput.step);
+
+/** Put a zoom in the slider's label (and what screen readers say of it). */
+function showZoom(z: number) {
+  const pct = `${Math.round(z * 100)}%`;
+  $("zoomv").textContent = pct;
+  zoomInput.setAttribute("aria-valuetext", pct);
+}
+
+/** Zoom to z (from the slider, or a pinch) and show the view anew. */
+function setZoom(z: number) {
+  zoom = z;
+  zoomInput.value = String(z);
+  showZoom(z);
+  if (current) show(current);
+}
+
+/** Safari's pinch events (a trackpad's, and on iOS a touch screen's too): not in the DOM typings. */
+interface GestureEvent extends UIEvent { readonly scale: number; readonly clientX: number; readonly clientY: number }
+
+/**
+ * A pinch on the stage zooms the view, not the page: two fingers on a touch
+ * screen, and on a trackpad ctrl+wheel (Chrome, Edge, Firefox; a mouse wheel
+ * with ctrl too) or gesture events (Safari). While it goes on the stage is
+ * only scaled, and the label shows the zoom it comes to; when it ends the
+ * zoom takes the nearest step of the slider and the view is shown anew,
+ * with the point pinched about still under the fingers.
+ */
+function initPinch() {
+  interface Pinch {
+    /** What it comes from: iOS sends gesture events along with the touches, which are left alone. */
+    by: "touch" | "wheel" | "gesture";
+    view: View;
+    /** The zoom it started from, and the scale over it so far. */
+    from: number;
+    scale: number;
+    /** Where it started and where it is now (the fingers pan too), client px. */
+    x0: number; y0: number; x: number; y: number;
+    /** The page (or band) where it started, and where on it (0–1). */
+    anchor?: { key: string; fx: number; fy: number };
+    /** Where it started in the stage's content, for a view with no page there (a sheet). */
+    cx: number; cy: number;
+  }
+  let pinch: Pinch | undefined;
+  const begin = (by: Pinch["by"], x: number, y: number): Pinch => {
+    const s = stage.getBoundingClientRect();
+    const page = document.elementsFromPoint(x, y)
+      .map((el) => el.closest<HTMLElement>(".page[data-index], .page[data-y]"))
+      .find((el) => el && stage.contains(el));
+    let anchor: Pinch["anchor"];
+    if (page) {
+      const r = page.getBoundingClientRect();
+      const key = page.dataset.index !== undefined ? `.page[data-index="${page.dataset.index}"]` : `.page[data-y="${page.dataset.y}"]`;
+      anchor = { key, fx: (x - r.left) / r.width, fy: (y - r.top) / r.height };
+    }
+    return {
+      by, view: current!, from: zoom, scale: 1, x0: x, y0: y, x, y, anchor,
+      cx: stage.scrollLeft + x - s.left - stage.clientLeft, cy: stage.scrollTop + y - s.top - stage.clientTop,
+    };
+  };
+  const update = (p: Pinch, scale: number, x: number, y: number) => {
+    p.scale = Math.min(ZOOM_MAX / p.from, Math.max(ZOOM_MIN / p.from, scale));
+    p.x = x;
+    p.y = y;
+    showZoom(p.from * p.scale);
+    for (const el of [...stage.children] as HTMLElement[]) {
+      el.style.transformOrigin = `${p.cx - el.offsetLeft}px ${p.cy - el.offsetTop}px`;
+      el.style.transform = `translate(${x - p.x0}px, ${y - p.y0}px) scale(${p.scale})`;
+    }
+  };
+  const end = (p: Pinch) => {
+    pinch = undefined;
+    for (const el of [...stage.children] as HTMLElement[]) el.style.transform = el.style.transformOrigin = "";
+    const z = Number((Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, p.from * p.scale)) / ZOOM_STEP) * ZOOM_STEP).toFixed(2));
+    if (p.view !== current || z === zoom) return showZoom(zoom);
+    setZoom(z);
+    const el = p.anchor && stage.querySelector<HTMLElement>(p.anchor.key);
+    if (el) {
+      const r = el.getBoundingClientRect();
+      stage.scrollLeft += r.left + p.anchor!.fx * r.width - p.x;
+      stage.scrollTop += r.top + p.anchor!.fy * r.height - p.y;
+    } else {
+      const s = stage.getBoundingClientRect(), k = z / p.from;
+      stage.scrollLeft = p.cx * k - (p.x - s.left - stage.clientLeft);
+      stage.scrollTop = p.cy * k - (p.y - s.top - stage.clientTop);
+    }
+  };
+
+  // two fingers: what the first went down on (a page's corner, a cell) forgets its drag or tap
+  const down = new Map<number, EventTarget>();
+  stage.addEventListener("pointerdown", (e) => { if (e.pointerType === "touch") down.set(e.pointerId, e.target!); }, true);
+  const lift = (e: PointerEvent) => { if (e.isTrusted) down.delete(e.pointerId); };
+  addEventListener("pointerup", lift, true);
+  addEventListener("pointercancel", lift, true);
+  const span = (t: TouchList) => ({
+    d: Math.max(1, Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY)),
+    x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2,
+  });
+  let d0 = 1;
+  stage.addEventListener("touchstart", (e) => {
+    if (e.touches.length !== 2 || !current || pinch?.by === "touch" || pinch?.by === "wheel") return;
+    e.preventDefault();
+    const s = span(e.touches);
+    d0 = s.d;
+    pinch = begin("touch", s.x, s.y);
+    for (const [pointerId, target] of down) target.dispatchEvent(new PointerEvent("pointercancel", { pointerId, pointerType: "touch", bubbles: true }));
+    down.clear();
+  }, { passive: false });
+  stage.addEventListener("touchmove", (e) => {
+    if (pinch?.by !== "touch") return;
+    e.preventDefault();
+    if (e.touches.length < 2) return;
+    const s = span(e.touches);
+    update(pinch, s.d / d0, s.x, s.y);
+  }, { passive: false });
+  const touchEnd = (e: TouchEvent) => { if (pinch?.by === "touch" && e.touches.length < 2) end(pinch); };
+  stage.addEventListener("touchend", touchEnd);
+  stage.addEventListener("touchcancel", touchEnd);
+
+  // a trackpad's pinch comes as small steps (Chrome's scale is e^(-deltaY/100)), a wheel's as large ones: a notch is about ×1.28
+  let wheelTimer = 0;
+  stage.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey || !current) return;
+    e.preventDefault();
+    if (pinch && pinch.by !== "wheel") return;
+    const p = (pinch ??= begin("wheel", e.clientX, e.clientY));
+    const dy = e.deltaY * (e.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? stage.clientHeight : 1);
+    update(p, p.scale * Math.exp(-Math.max(-25, Math.min(25, dy)) / 100), p.x0, p.y0);
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => { if (pinch === p) end(p); }, 250);
+  }, { passive: false });
+
+  stage.addEventListener("gesturestart", (e) => {
+    e.preventDefault();
+    if (!current || pinch) return;
+    const g = e as GestureEvent;
+    pinch = begin("gesture", g.clientX, g.clientY);
+  });
+  stage.addEventListener("gesturechange", (e) => {
+    e.preventDefault();
+    if (pinch?.by === "gesture") update(pinch, (e as GestureEvent).scale, pinch.x0, pinch.y0);
+  });
+  stage.addEventListener("gestureend", (e) => {
+    e.preventDefault();
+    if (pinch?.by === "gesture") end(pinch);
   });
 }
 
