@@ -20,6 +20,12 @@ type Score struct {
 	// SMF is the Standard MIDI File stored for Play as it is (a MIDI
 	// input). nil writes one from Play.
 	SMF []byte
+
+	// err is why Notate did not write the performance (it is too large);
+	// Build returns it.
+	err error
+	// warnings are what Notate left out; Build reports them.
+	warnings []string
 }
 
 // PlayedMeasure is a measure played from a tick of the performance.

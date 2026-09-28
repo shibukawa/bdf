@@ -1,7 +1,9 @@
 package music
 
 import (
+	"maps"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -306,7 +308,9 @@ func (ctx *staffCtx) slurs() {
 			}
 		}
 	}
-	for _, st := range starts {
+	// the slurs that go on in the next system, in the order of their numbers
+	for _, n := range slices.Sorted(maps.Keys(starts)) {
+		st := starts[n]
 		ctx.slur(st.l, nil, st.i, len(ctx.evs), st.above)
 	}
 }
@@ -616,11 +620,12 @@ func (ctx *staffCtx) directions() {
 			}
 		}
 	}
-	for _, p := range hairpins {
-		drawHairpin(p, ctx.sys.width-0.5)
+	// those that go on in the next system, in the order of their numbers
+	for _, n := range slices.Sorted(maps.Keys(hairpins)) {
+		drawHairpin(hairpins[n], ctx.sys.width-0.5)
 	}
-	for _, p := range octaves {
-		drawOctave(p, ctx.sys.width-0.5)
+	for _, n := range slices.Sorted(maps.Keys(octaves)) {
+		drawOctave(octaves[n], ctx.sys.width-0.5)
 	}
 	_ = pedal
 }
@@ -768,25 +773,13 @@ func indexOf(evs []*evLayout, l *evLayout) int {
 	return -1
 }
 
-// measureNumber returns the number shown for a measure.
+// measureNumber returns the number shown for a measure: its own, or the
+// one it has by counting from the measures before.
 func (e *engraver) measureNumber(mi int) string {
 	if n := e.s.Measures[mi].Number; n != "" {
 		return n
 	}
-	n := 0
-	for i := 0; i <= mi; i++ {
-		m := e.s.Measures[i]
-		if m.Number != "" {
-			if v, err := strconv.Atoi(m.Number); err == nil {
-				n = v
-				continue
-			}
-		}
-		if !m.Implicit {
-			n++
-		}
-	}
-	return strconv.Itoa(n)
+	return strconv.Itoa(e.counts[mi])
 }
 
 // systemMarks draws what belongs above the whole system on its top staff:

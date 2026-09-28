@@ -24,6 +24,13 @@ const (
 // maxNotes bounds the notes engraved (hostile inputs).
 const maxNotes = 2_000_000
 
+// maxStaves bounds the staves of a system.
+const maxStaves = 4096
+
+// maxCues bounds the cues of the playing position: repeats play the
+// measures, and so their cues, many times. It is a variable for the tests.
+var maxCues = 4_000_000
+
 func build(s *Score, o *Options) (*Result, error) {
 	res := &Result{}
 	warn := func(msg string) {
@@ -33,8 +40,21 @@ func build(s *Score, o *Options) (*Result, error) {
 			res.Warnings = append(res.Warnings, msg)
 		}
 	}
+	if s.err != nil {
+		return nil, s.err
+	}
 	if len(s.Parts) == 0 || len(s.Measures) == 0 {
 		return nil, errors.New("music: the score has no notes")
+	}
+	staves := 0
+	for _, p := range s.Parts {
+		staves += max(p.Staves, 1)
+	}
+	if staves > maxStaves {
+		return nil, errStaves()
+	}
+	if staves*len(s.Measures) > maxStaffMeasures {
+		return nil, errStaffMeasures(staves, "staves", len(s.Measures))
 	}
 	count := 0
 	for _, p := range s.Parts {
@@ -46,6 +66,9 @@ func build(s *Score, o *Options) (*Result, error) {
 	}
 	if count > maxNotes {
 		return nil, fmt.Errorf("music: the score has more than %d notes", maxNotes)
+	}
+	for _, w := range s.warnings {
+		warn(w)
 	}
 	pageW, pageH := o.PageWidth, o.PageHeight
 	if pageW <= 0 || pageH <= 0 {
@@ -329,6 +352,7 @@ func (e *engraver) play(doc *bdf.Document, view *bdf.View, cues *bdf.Cues, point
 		}
 	}
 	var list []bdf.Cue
+cues:
 	for _, pm := range order {
 		if pm.Measure < 0 || pm.Measure >= len(points) {
 			continue
@@ -337,6 +361,10 @@ func (e *engraver) play(doc *bdf.Document, view *bdf.View, cues *bdf.Cues, point
 			si := sysIndex[p.system]
 			if si < 0 {
 				continue
+			}
+			if len(list) >= maxCues {
+				e.warn(fmt.Sprintf("the music has more than %d cues; the rest are left out", maxCues))
+				break cues
 			}
 			t := pm.Tick + p.offset
 			tick := uint32((int64(t)*int64(div) + PPQ/2) / PPQ)
@@ -382,22 +410,13 @@ func (e *engraver) systemAlt(sys *system) string {
 // bracketWidth is the room left of the staves for brackets and braces.
 func (e *engraver) bracketWidth() float64 {
 	w := 0.0
-	if len(e.s.Parts) > 1 && !e.anyGrand() {
+	if len(e.s.Parts) > 1 && !e.grand {
 		w = 1.6
 	}
-	if e.anyGrand() {
+	if e.grand {
 		w = 1.2
 	}
 	return w
-}
-
-func (e *engraver) anyGrand() bool {
-	for _, p := range e.s.Parts {
-		if p.Staves > 1 {
-			return true
-		}
-	}
-	return false
 }
 
 // titleHeight is the height of the title block on the first page.
