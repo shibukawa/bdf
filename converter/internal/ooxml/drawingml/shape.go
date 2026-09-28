@@ -289,13 +289,17 @@ func endFigure(cv *canvas.Canvas, open bool) {
 	}
 }
 
-func (s *Drawing) drawElem(cv *canvas.Canvas, k *ooxml.Node, part string, grp *groupCtx) {
+func (s *Drawing) drawElem(cv *canvas.Canvas, k *ooxml.Node, part string, grp *groupCtx, depth int) {
 	switch k.Name {
 	case "sp", "cxnSp", "pic", "graphicFrame", "grpSp", "wsp", "wgp":
 	case "contentPart":
 		s.c.warnOnce("ink", "ink (content parts) is not supported")
 		return
 	default:
+		return
+	}
+	if depth > maxGroupDepth {
+		s.c.warnOnce("groupdepth", "shapes nested deeper than %d are not drawn", maxGroupDepth)
 		return
 	}
 	if cNvPr(k).AttrBool("hidden", false) {
@@ -314,17 +318,17 @@ func (s *Drawing) drawElem(cv *canvas.Canvas, k *ooxml.Node, part string, grp *g
 	}
 	switch k.Name {
 	case "grpSp", "wgp":
-		s.drawGroup(cv, sh)
+		s.drawGroup(cv, sh, depth)
 	case "sp", "cxnSp", "wsp":
 		s.drawSp(cv, sh)
 	case "pic":
 		s.drawPic(cv, sh)
 	case "graphicFrame":
-		s.drawFrame(cv, sh)
+		s.drawFrame(cv, sh, depth)
 	}
 }
 
-func (s *Drawing) drawGroup(cv *canvas.Canvas, sh *shape) {
+func (s *Drawing) drawGroup(cv *canvas.Canvas, sh *shape, depth int) {
 	gp := sh.n.Child("grpSpPr")
 	x := gp.Child("xfrm")
 	own, ok := parseXfrm(x)
@@ -343,7 +347,7 @@ func (s *Drawing) drawGroup(cv *canvas.Canvas, sh *shape) {
 	}
 	fig := beginFigure(cv, sh.n)
 	for _, k := range sh.n.Kids {
-		s.drawElem(cv, k, sh.part, g)
+		s.drawElem(cv, k, sh.part, g, depth+1)
 	}
 	endFigure(cv, fig)
 }
@@ -663,7 +667,7 @@ func (s *Drawing) fillPage(cv *canvas.Canvas, f fill, w, h float64) {
 
 // drawFrame draws a graphic frame: a table, a chart, a SmartArt diagram
 // (from its pre-rendered drawing) or an OLE object's preview picture.
-func (s *Drawing) drawFrame(cv *canvas.Canvas, sh *shape) {
+func (s *Drawing) drawFrame(cv *canvas.Canvas, sh *shape, depth int) {
 	xf, ok := sh.xform()
 	if !ok {
 		return
@@ -681,7 +685,7 @@ func (s *Drawing) drawFrame(cv *canvas.Canvas, sh *shape) {
 	case strings.HasSuffix(uri, "/chart"):
 		s.drawChart(cv, sh, xf, gd.Child("chart").RelID("id"))
 	case strings.HasSuffix(uri, "/diagram"):
-		s.drawDiagram(cv, sh, xf, gd.Child("relIds"))
+		s.drawDiagram(cv, sh, xf, gd.Child("relIds"), depth)
 	default:
 		// OLE objects and other embeddings: draw their preview picture.
 		var pic *ooxml.Node
@@ -717,7 +721,7 @@ func (s *Drawing) drawFrame(cv *canvas.Canvas, sh *shape) {
 
 // drawDiagram draws a SmartArt diagram from the drawing part PowerPoint
 // stores next to its data model (the shapes as last laid out).
-func (s *Drawing) drawDiagram(cv *canvas.Canvas, sh *shape, xf xform, relIds *ooxml.Node) {
+func (s *Drawing) drawDiagram(cv *canvas.Canvas, sh *shape, xf xform, relIds *ooxml.Node, depth int) {
 	var drawingPart string
 	if r, ok := s.c.pkg.Target(sh.part, relIds.RelID("dm")); ok {
 		if dm, err := s.c.pkg.XML(r.Target); err == nil {
@@ -743,6 +747,6 @@ func (s *Drawing) drawDiagram(cv *canvas.Canvas, sh *shape, xf xform, relIds *oo
 	// the frame.
 	g := &groupCtx{xf: xform{X: xf.X, Y: xf.Y, W: xf.W, H: xf.H}, chExt: [2]float64{xf.W, xf.H}, part: drawingPart}
 	for _, k := range d.Path("spTree").Elements() {
-		s.drawElem(cv, k, drawingPart, g)
+		s.drawElem(cv, k, drawingPart, g, depth+1)
 	}
 }

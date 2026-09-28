@@ -304,9 +304,15 @@ func roman(n int) string {
 	return b.String()
 }
 
+// maxLetterReps bounds the repeated letters of a list or page number
+// (A, B … Z, AA … ZZ, AAA …): a hostile start value would otherwise build a
+// huge string. It is far above any real list; beyond it we fall back to a
+// decimal number, as roman does out of its range.
+const maxLetterReps = 1000
+
 // letters numbers A…Z, AA…ZZ as Word does.
 func letters(n int) string {
-	if n < 1 {
+	if n < 1 || (n-1)/26+1 > maxLetterReps {
 		return strconv.Itoa(n)
 	}
 	return strings.Repeat(string(rune('A'+(n-1)%26)), (n-1)/26+1)

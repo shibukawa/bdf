@@ -1,14 +1,10 @@
 package visio
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/binary"
 	"image"
 	"image/draw"
-	_ "image/gif"  // pictures
-	_ "image/jpeg" // pictures
-	_ "image/png"  // pictures
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -17,7 +13,6 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 	"github.com/shibukawa/bdf/converter/internal/tiff"
 	"github.com/shibukawa/bdf/imgconv"
-	_ "golang.org/x/image/bmp" // pictures
 )
 
 // Pictures and embedded objects are foreign shapes: their ForeignData is a
@@ -104,7 +99,7 @@ func (c *converter) picture(fd *ooxml.Node, part string) *picture {
 		data = dibToBMP(data)
 		fallthrough
 	case imgconv.Sniff(data) == "bmp":
-		img, _, err := image.Decode(bytes.NewReader(data))
+		img, err := imgconv.Decode(data)
 		if err != nil {
 			c.warnf("picture: %v", err)
 			return pc

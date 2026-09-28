@@ -2,6 +2,7 @@ package epub
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -314,28 +315,82 @@ func joinURL(base, ref string) string {
 	return ref
 }
 
+// maxRules is how many rules with honored declarations, of selectors that
+// differ, the style sheets of a chapter may have; the rules after them are
+// left out. The rules that may apply to an element are all tried for it.
+var maxRules = 10000
+
 // styler applies the honored declarations of a chapter's rules to its
 // elements.
 type styler struct {
-	rules   []cssRule
+	rules   []styleRule
 	byClass map[string][]int
 	byTag   map[string][]int
 	byID    map[string][]int
 	any     []int
+	full    bool              // there were more than maxRules rules
+	styles  map[string]string // what the rules give the elements of a tag, id and classes
 }
 
+// styleRule is the rules of one selector: their honored declarations,
+// of which the last of a property counts.
+type styleRule struct {
+	sel   selector
+	spec  int
+	decls []styleDecl
+}
+
+// styleDecl is a declaration of a styleRule. Declarations are numbered in
+// the order of the style sheets: of two that apply to an element with the
+// same specificity, the later one wins.
+type styleDecl struct {
+	prop, val string
+	seq       int // of the declaration that counts
+	first     int // of the first declaration of the property in the rules of the selector
+}
+
+// newStyler makes a styler of the rules of a chapter's style sheets, in
+// their order. The rules of a selector become one rule: books repeat
+// selectors, and a style sheet may repeat one without end.
 func newStyler(rules []cssRule) *styler {
-	s := &styler{rules: rules, byClass: map[string][]int{}, byTag: map[string][]int{}, byID: map[string][]int{}}
-	for i, r := range rules {
-		switch {
-		case r.sel.id != "":
-			s.byID[r.sel.id] = append(s.byID[r.sel.id], i)
-		case len(r.sel.classes) > 0:
-			s.byClass[r.sel.classes[0]] = append(s.byClass[r.sel.classes[0]], i)
-		case r.sel.tag != "":
-			s.byTag[r.sel.tag] = append(s.byTag[r.sel.tag], i)
-		default:
-			s.any = append(s.any, i)
+	s := &styler{byClass: map[string][]int{}, byTag: map[string][]int{}, byID: map[string][]int{}, styles: map[string]string{}}
+	bySelector := map[string]int{}
+	seq := 0
+	for _, r := range rules {
+		// :root and html are the same elements, of another specificity
+		key := strconv.Itoa(r.spec) + r.sel.tag + "#" + r.sel.id + "." + strings.Join(r.sel.classes, ".")
+		i, ok := bySelector[key]
+		for _, d := range r.decls {
+			seq++
+			if d[0] == "display" && d[1] != "none" {
+				continue // only hiding is honored
+			}
+			if !ok {
+				if len(s.rules) >= maxRules {
+					s.full = true
+					break
+				}
+				i, ok = len(s.rules), true
+				bySelector[key] = i
+				s.rules = append(s.rules, styleRule{sel: r.sel, spec: r.spec})
+				switch {
+				case r.sel.id != "":
+					s.byID[r.sel.id] = append(s.byID[r.sel.id], i)
+				case len(r.sel.classes) > 0:
+					s.byClass[r.sel.classes[0]] = append(s.byClass[r.sel.classes[0]], i)
+				case r.sel.tag != "":
+					s.byTag[r.sel.tag] = append(s.byTag[r.sel.tag], i)
+				default:
+					s.any = append(s.any, i)
+				}
+			}
+			sr := &s.rules[i]
+			at := slices.IndexFunc(sr.decls, func(sd styleDecl) bool { return sd.prop == d[0] })
+			if at < 0 {
+				sr.decls = append(sr.decls, styleDecl{prop: d[0], val: d[1], seq: seq, first: seq})
+			} else {
+				sr.decls[at].val, sr.decls[at].seq = d[1], seq
+			}
 		}
 	}
 	return s
@@ -347,24 +402,47 @@ func (s *styler) apply(n *html.Node) {
 	if len(s.rules) == 0 || n.Namespace != "" {
 		return
 	}
-	classes := strings.Fields(attrVal(n, "class"))
+	id, class := attrVal(n, "id"), attrVal(n, "class")
+	key := n.Data + "\x00" + id + "\x00" + class
+	style, ok := s.styles[key]
+	if !ok {
+		style = s.style(n, id, strings.Fields(class))
+		s.styles[key] = style
+	}
+	if style == "" {
+		return
+	}
+	for i, a := range n.Attr {
+		if a.Namespace == "" && a.Key == "style" {
+			n.Attr[i].Val = style + a.Val
+			return
+		}
+	}
+	n.Attr = append(n.Attr, html.Attribute{Key: "style", Val: strings.TrimSuffix(style, " ")})
+}
+
+// style returns the declarations that the rules give an element, each
+// followed by "; ": for each property the declaration of the most specific
+// rule, the last of those that are as specific, in the order the properties
+// come in the rules that apply.
+func (s *styler) style(n *html.Node, id string, classes []string) string {
 	var cand []int
 	cand = append(cand, s.any...)
 	cand = append(cand, s.byTag[n.Data]...)
-	if id := attrVal(n, "id"); id != "" {
+	if id != "" {
 		cand = append(cand, s.byID[id]...)
 	}
 	for _, c := range classes {
 		cand = append(cand, s.byClass[c]...)
 	}
 	if len(cand) == 0 {
-		return
+		return ""
 	}
 	slices.Sort(cand)
 	cand = slices.Compact(cand)
 	type winner struct {
-		v           string
-		spec, order int
+		v                string
+		spec, seq, first int
 	}
 	won := map[string]winner{}
 	var keys []string
@@ -374,25 +452,25 @@ func (s *styler) apply(n *html.Node) {
 			continue
 		}
 		for _, d := range r.decls {
-			if pictureOnly[d[0]] && n.Data != "img" {
+			if pictureOnly[d.prop] && n.Data != "img" {
 				continue
 			}
-			if d[0] == "display" && d[1] != "none" {
-				continue
-			}
-			w, ok := won[d[0]]
-			if ok && (w.spec > r.spec || w.spec == r.spec && w.order > r.order) {
-				continue
-			}
+			w, ok := won[d.prop]
 			if !ok {
-				keys = append(keys, d[0])
+				keys = append(keys, d.prop)
+				w = winner{first: d.first}
 			}
-			won[d[0]] = winner{d[1], r.spec, r.order}
+			if !ok || r.spec > w.spec || r.spec == w.spec && d.seq > w.seq {
+				w.v, w.spec, w.seq = d.val, r.spec, d.seq
+			}
+			w.first = min(w.first, d.first)
+			won[d.prop] = w
 		}
 	}
 	if len(keys) == 0 {
-		return
+		return ""
 	}
+	slices.SortFunc(keys, func(a, b string) int { return won[a].first - won[b].first })
 	var b strings.Builder
 	for _, k := range keys {
 		b.WriteString(k)
@@ -400,13 +478,7 @@ func (s *styler) apply(n *html.Node) {
 		b.WriteString(won[k].v)
 		b.WriteString("; ")
 	}
-	for i, a := range n.Attr {
-		if a.Namespace == "" && a.Key == "style" {
-			n.Attr[i].Val = b.String() + a.Val
-			return
-		}
-	}
-	n.Attr = append(n.Attr, html.Attribute{Key: "style", Val: strings.TrimSuffix(b.String(), " ")})
+	return b.String()
 }
 
 // inlineStyle reads a declaration of an element's style attribute (the

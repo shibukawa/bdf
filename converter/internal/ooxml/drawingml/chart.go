@@ -16,6 +16,11 @@ import (
 // tick labels, the legend, the title and simple data labels. 3-D variants
 // are drawn flat.
 
+// maxCachePoints bounds the points a series may claim (c:ptCount, or the
+// largest c:pt idx): the count is not trusted as a size against the points
+// actually present. It is far above any real chart; the rest are ignored.
+const maxCachePoints = 1 << 20
+
 type chartSeries struct {
 	idx    int
 	name   string
@@ -185,11 +190,11 @@ func (ch *chartCtx) parsePlot(k *ooxml.Node) *chartPlot {
 			se.idx = int(v.AttrInt("val", int64(ch.nseries)))
 		}
 		ch.nseries++
-		se.name = strings.Join(cacheStrings(sn.Child("tx")), " ")
-		se.cats = cacheStrings(sn.Child("cat"))
+		se.name = strings.Join(ch.cacheStrings(sn.Child("tx")), " ")
+		se.cats = ch.cacheStrings(sn.Child("cat"))
 		var vals *ooxml.Node
 		if kind == "scatter" {
-			se.xs = cacheNumbers(sn.Child("xVal"), nil)
+			se.xs = ch.cacheNumbers(sn.Child("xVal"), nil)
 			numeric := false
 			for _, x := range se.xs {
 				if !math.IsNaN(x) {
@@ -200,12 +205,12 @@ func (ch *chartCtx) parsePlot(k *ooxml.Node) *chartPlot {
 				// text X values: the points are numbered 1, 2, 3 …
 				se.xs = nil
 			}
-			se.cats = cacheStrings(sn.Child("xVal"))
+			se.cats = ch.cacheStrings(sn.Child("xVal"))
 			vals = sn.Child("yVal")
 		} else {
 			vals = sn.Child("val")
 		}
-		se.vals = cacheNumbers(vals, &se.format)
+		se.vals = ch.cacheNumbers(vals, &se.format)
 		for _, d := range sn.Children("dPt") {
 			se.dPts[int(d.Child("idx").AttrInt("val", -1))] = d.Child("spPr")
 		}
@@ -215,7 +220,7 @@ func (ch *chartCtx) parsePlot(k *ooxml.Node) *chartPlot {
 }
 
 // cacheStrings returns the cached strings of a c:tx / c:cat / c:xVal.
-func cacheStrings(n *ooxml.Node) []string {
+func (ch *chartCtx) cacheStrings(n *ooxml.Node) []string {
 	if n == nil {
 		return nil
 	}
@@ -244,6 +249,7 @@ func cacheStrings(n *ooxml.Node) []string {
 	for _, pt := range pts {
 		count = max(count, int(pt.AttrInt("idx", 0))+1)
 	}
+	count = ch.capPoints(count)
 	out := make([]string, count)
 	for _, pt := range pts {
 		if i := int(pt.AttrInt("idx", -1)); i >= 0 && i < count {
@@ -253,8 +259,18 @@ func cacheStrings(n *ooxml.Node) []string {
 	return out
 }
 
+// capPoints bounds a cached point count so a series cannot state a size
+// larger than the data present.
+func (ch *chartCtx) capPoints(count int) int {
+	if count > maxCachePoints {
+		ch.s.c.warnOnce("chartpoints", "a chart series claims more than %d points; the rest are ignored", maxCachePoints)
+		return maxCachePoints
+	}
+	return count
+}
+
 // cacheNumbers returns cached numbers (NaN for missing points) and the format code.
-func cacheNumbers(n *ooxml.Node, format *string) []float64 {
+func (ch *chartCtx) cacheNumbers(n *ooxml.Node, format *string) []float64 {
 	if n == nil {
 		return nil
 	}
@@ -275,6 +291,7 @@ func cacheNumbers(n *ooxml.Node, format *string) []float64 {
 	for _, pt := range pts {
 		count = max(count, int(pt.AttrInt("idx", 0))+1)
 	}
+	count = ch.capPoints(count)
 	out := make([]float64, count)
 	for i := range out {
 		out[i] = math.NaN()
@@ -450,7 +467,7 @@ func (ch *chartCtx) title(t *ooxml.Node, plots []*chartPlot, top float64) float6
 	}
 	text := ""
 	if v := t.Path("tx", "strRef"); v != nil {
-		text = strings.Join(cacheStrings(t.Child("tx")), " ")
+		text = strings.Join(ch.cacheStrings(t.Child("tx")), " ")
 	} else if len(plots) == 1 && len(plots[0].series) == 1 {
 		text = plots[0].series[0].name
 	} else {

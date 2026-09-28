@@ -61,8 +61,18 @@ type mathInlineParser struct{}
 
 func (mathInlineParser) Trigger() []byte { return []byte{'$'} }
 
+// unclosed is the line in which the end of a formula in backticks was
+// looked for and not found: it is not in the rest of the line either, which
+// is not looked through again for each $` of the line.
+type unclosed struct {
+	stop int // where the line ends in the source
+	from int // where in the source no `$ follows
+}
+
+var unclosedKey = parser.NewContextKey()
+
 func (mathInlineParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
-	line, _ := block.PeekLine()
+	line, seg := block.PeekLine()
 	if len(line) < 2 {
 		return nil
 	}
@@ -77,8 +87,12 @@ func (mathInlineParser) Parse(parent ast.Node, block text.Reader, pc parser.Cont
 		}
 		src, n, display = line[2:2+end], end+4, true
 	case line[1] == '`':
+		if none, _ := pc.Get(unclosedKey).(*unclosed); none != nil && none.stop == seg.Stop && seg.Start >= none.from {
+			return nil
+		}
 		end := bytes.Index(line[2:], []byte("`$"))
 		if end < 0 {
+			pc.Set(unclosedKey, &unclosed{stop: seg.Stop, from: seg.Start})
 			return nil
 		}
 		src, n = line[2:2+end], end+4

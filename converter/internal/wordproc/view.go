@@ -3,6 +3,7 @@ package wordproc
 import (
 	"math"
 	"slices"
+	"sort"
 	"strconv"
 
 	"github.com/shibukawa/bdf"
@@ -279,6 +280,11 @@ const scrollPad = 36
 // cuts move up to the nearest line boundary).
 const stripHeight = 1024
 
+// maxStrips is how high the scroll view may be, in strips of stripHeight
+// (some 120000 pages of A4): what is below is left out. A picture or a
+// formula may say any height.
+var maxStrips = 100000
+
 // scrollView lays the document out as one column without pages and cuts
 // it into strips.
 func (c *converter) scrollView(v *bdf.View, count *int) func() {
@@ -314,19 +320,28 @@ func (c *converter) scrollView(v *bdf.View, count *int) func() {
 		}
 	}
 	ops := f.all()
+	// the height: heights that are not numbers (a formula may have one)
+	// count for nothing
 	total := f.y + scrollPad
+	if math.IsNaN(total) {
+		total = scrollPad
+	}
 	for _, o := range ops {
-		total = math.Max(total, o.y1)
+		if o.y1 > total {
+			total = o.y1
+		}
+	}
+	if limit := float64(maxStrips) * stripHeight; total > limit {
+		c.warnOnce("strips", "the document is higher than the scroll view may be (%d strips); what is below is left out", maxStrips)
+		total = limit
 	}
 	cuts := stripCuts(ops, total)
 	W := width + 2*scrollPad
+	// the strip a position is in, numbered from 1 (the first for positions
+	// above the view, the last for those below)
 	stripOf := func(y float64) int {
-		for i := 1; i < len(cuts); i++ {
-			if y < cuts[i] {
-				return i
-			}
-		}
-		return len(cuts) - 1
+		i := sort.Search(len(cuts), func(k int) bool { return y < cuts[k] })
+		return min(max(i, 1), len(cuts)-1)
 	}
 	vi := &viewInfo{link: func(b string) string {
 		if y, ok := c.bmY[b]; ok {
@@ -336,19 +351,14 @@ func (c *converter) scrollView(v *bdf.View, count *int) func() {
 	}}
 	var pages []*bdf.Page
 	var cvs []*canvas.Canvas
+	in := stripOps(ops, cuts)
 	for i := 0; i+1 < len(cuts); i++ {
 		a, b := cuts[i], cuts[i+1]
 		cv := c.cvs.New()
 		cv.Obj.SetBBox(0, 0, f32(W), f32(b-a))
 		e := &emitter{c: c, cv: cv, view: vi}
-		for _, o := range ops {
-			in := o.y1 > a && o.y0 < b
-			if o.text {
-				in = o.y0 >= a-0.01 && o.y0 < b-0.01 || o.y0 == o.y1 && o.y0 >= a && o.y0 < b
-			}
-			if !in {
-				continue
-			}
+		for _, k := range in[i] {
+			o := ops[k]
 			o.shift(0, -a)
 			e.op(&o)
 		}
@@ -364,13 +374,53 @@ func (c *converter) scrollView(v *bdf.View, count *int) func() {
 	}
 }
 
+// inStrip reports whether an op is drawn in the strip from a to b: what
+// reaches into the strip, and the lines of text that start in it.
+func inStrip(o *op, a, b float64) bool {
+	if o.text {
+		return o.y0 >= a-0.01 && o.y0 < b-0.01 || o.y0 == o.y1 && o.y0 >= a && o.y0 < b
+	}
+	return o.y1 > a && o.y0 < b
+}
+
+// stripAt returns the strip between the cuts that a position is in (the
+// first for positions above the view, the last for those below).
+func stripAt(cuts []float64, y float64) int {
+	i := sort.Search(len(cuts), func(k int) bool { return y < cuts[k] }) - 1
+	return min(max(i, 0), len(cuts)-2)
+}
+
+// stripOps returns the ops drawn in each of the strips between the cuts
+// (see inStrip), in their order. The strips an op is in are looked up, so
+// that a long document does not try every op for every strip.
+func stripOps(ops []op, cuts []float64) [][]int32 {
+	in := make([][]int32, len(cuts)-1)
+	for k := range ops {
+		o := &ops[k]
+		// strips are higher than a point: a line of text is in the strip
+		// its top is in, or (within 0.01) in the next
+		first := stripAt(cuts, o.y0)
+		last := min(first+1, len(in)-1)
+		if !o.text {
+			last = max(stripAt(cuts, o.y1), first)
+		}
+		for i := first; i <= last; i++ {
+			if inStrip(o, cuts[i], cuts[i+1]) {
+				in[i] = append(in[i], int32(k))
+			}
+		}
+	}
+	return in
+}
+
 // stripCuts returns where the scroll view is cut into strips: about every
 // stripHeight, moved up to a position no line of text crosses.
 func stripCuts(ops []op, total float64) []float64 {
 	cuts := []float64{0}
+	lines := newTextBands(ops)
 	y := 0.0
 	for y+stripHeight*1.25 < total {
-		c := safeCutOps(ops, y+stripHeight, y+stripHeight/2)
+		c := lines.safeCut(y+stripHeight, y+stripHeight/2)
 		if c <= y+1 {
 			c = y + stripHeight
 		}
@@ -380,22 +430,87 @@ func stripCuts(ops []op, total float64) []float64 {
 	return append(cuts, total)
 }
 
-// safeCutOps returns the lowest position at or above y (and above min)
-// that no text op crosses.
-func safeCutOps(ops []op, y, min float64) float64 {
+// textBands holds the lines of text of the scroll view by the bands of
+// stripHeight they are in, so that a cut looks at the lines around it and
+// not at the whole document.
+type textBands struct {
+	ops   []op
+	bands [][]int32 // the text ops that reach into each band, in their order
+	tall  []int32   // those that reach into more than tallBands bands
+}
+
+// tallBands is how many bands a line of text is listed in; higher ones (a
+// line that holds a very high picture) are looked at for every cut.
+const tallBands = 16
+
+func newTextBands(ops []op) *textBands {
+	t := &textBands{ops: ops}
+	for k := range ops {
+		o := &ops[k]
+		if !o.text || !(o.y0 < o.y1) {
+			continue // crosses nothing
+		}
+		first, last := t.band(o.y0), t.band(o.y1)
+		if last-first >= tallBands {
+			t.tall = append(t.tall, int32(k))
+			continue
+		}
+		for len(t.bands) <= last {
+			t.bands = append(t.bands, nil)
+		}
+		for b := first; b <= last; b++ {
+			t.bands[b] = append(t.bands[b], int32(k))
+		}
+	}
+	return t
+}
+
+// band returns the band a position is in: the first for positions above
+// the view, one below the strips a view may have for those far below.
+func (t *textBands) band(y float64) int {
+	return int(math.Min(math.Max(y/stripHeight, 0), float64(maxStrips)+1))
+}
+
+// safeCut returns the lowest position at or above y (and above min) that
+// no line of text crosses: a position that a line crosses moves to the top
+// of the line, for the lines in the order of the ops, as often as lines
+// cross it.
+func (t *textBands) safeCut(y, min float64) float64 {
 	for range 1000 {
 		moved := false
-		for _, o := range ops {
-			if o.text && o.y0 < y-0.01 && o.y1 > y+0.01 {
-				y = o.y0
-				moved = true
-			}
+		for k := t.crossing(y, -1); k >= 0; k = t.crossing(y, k) {
+			y = t.ops[k].y0
+			moved = true
 		}
 		if !moved || y <= min {
 			break
 		}
 	}
 	return y
+}
+
+// crossing returns the first line of text after the op k, in the order of
+// the ops, that crosses the position y (-1 when none does): one of the
+// lines in the band of y, or of the high ones.
+func (t *textBands) crossing(y float64, k int) int {
+	lists := [2][]int32{t.tall}
+	if b := t.band(y); b < len(t.bands) {
+		lists[1] = t.bands[b]
+	}
+	first := -1
+	for _, list := range lists {
+		from, _ := slices.BinarySearch(list, int32(k+1))
+		for _, i := range list[from:] {
+			if first >= 0 && int(i) > first {
+				break
+			}
+			if o := &t.ops[i]; o.y0 < y-0.01 && o.y1 > y+0.01 {
+				first = int(i)
+				break
+			}
+		}
+	}
+	return first
 }
 
 func boxAt(x, y, w, h float64) drawingml.Box { return drawingml.Box{X: x, Y: y, W: w, H: h} }

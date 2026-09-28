@@ -192,7 +192,8 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &converter{pub: pub, opts: opts, byPath: map[string]*chapter{}, sheets: map[string]string{}, warned: map[string]bool{}}
+	c := &converter{pub: pub, opts: opts, byPath: map[string]*chapter{}, sheets: map[string]string{}, warned: map[string]bool{},
+		parsed: map[string][]cssRule{}, stylers: map[string]*styler{}}
 	return c.convert()
 }
 
@@ -204,8 +205,12 @@ type converter struct {
 	props    map[string]string
 	chapters []*chapter
 	byPath   map[string]*chapter
-	sheets   map[string]string // style sheets by path
-	modes    bool              // the style sheets say writing modes
+	sheets   map[string]string    // style sheets by path
+	parsed   map[string][]cssRule // their rules
+	stylers  map[string]*styler   // by the style sheets of a chapter (see styler)
+	modes    bool                 // the style sheets say writing modes
+	svgBytes int                  // of the SVG documents made of the svg elements of fixed-layout pages
+	tags     int                  // of the content documents read
 	warnings []string
 	warned   map[string]bool
 }
@@ -226,6 +231,21 @@ func (c *converter) warnOnce(key, msg string) {
 	c.warn(msg)
 }
 
+// warnLeftOut warns of a file that is left out for an error: with msg, or
+// once for the publication when it is left out because the files read
+// before it have reached what may be read (errInflated, errTags).
+func (c *converter) warnLeftOut(err error, msg string) {
+	switch {
+	case errors.Is(err, errInflated):
+		c.warnOnce("inflated", fmt.Sprintf("the files of the publication are more than %d MiB larger than it, decompressed; the files read after them are left out",
+			maxInflated>>20))
+	case errors.Is(err, errTags):
+		c.warnOnce("tags", fmt.Sprintf("the content documents of the publication have more than %d tags; the content documents after them are left out", maxTags))
+	default:
+		c.warn(msg)
+	}
+}
+
 func (c *converter) convert() (*Result, error) {
 	c.dc, c.props = c.pub.metadata()
 	if c.opts.Title != "" {
@@ -239,7 +259,7 @@ func (c *converter) convert() (*Result, error) {
 			if errors.Is(err, ErrDRM) {
 				return nil, err
 			}
-			c.warn(fmt.Sprintf("%s: %v; left out", ch.path, err))
+			c.warnLeftOut(err, fmt.Sprintf("%s: %v; left out", ch.path, err))
 		}
 	}
 	var loaded []*chapter
@@ -290,7 +310,7 @@ func (c *converter) image(src string) ([]byte, error) {
 	if i := strings.IndexByte(src, ':'); i > 0 && !strings.ContainsAny(src[:i], "/.") {
 		return nil, errors.New("pictures outside the publication are not fetched")
 	}
-	return c.pub.read(src)
+	return c.pub.picture(src)
 }
 
 // link keeps the absolute http:, https: and mailto: links.
