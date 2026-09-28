@@ -17,12 +17,26 @@ import (
 // ErrNotAvailable is returned by Encode when the Brotli encoder is not compiled in.
 var ErrNotAvailable = errors.New("woff2: encoder not available in this build")
 
+// ErrImplausible is returned by Encode for a font that compresses more than
+// MaxRatio times: a few glyphs left of a large font, whose tables are mostly
+// zeros. Decoders take such a file for a decompression bomb and reject it,
+// so the caller keeps the plain sfnt, which is as small once its part is
+// deflated.
+var ErrImplausible = errors.New("woff2: the font compresses more than decoders accept")
+
+// MaxRatio is the largest ratio of the table stream to the WOFF2 file that
+// decoders accept (kMaxPlausibleCompressionRatio of the reference decoder,
+// which browsers use).
+const MaxRatio = 100
+
 // IsWOFF reports whether data is a WOFF or WOFF2 file (already compressed).
 func IsWOFF(data []byte) bool {
 	return len(data) >= 4 && (string(data[:4]) == "wOF2" || string(data[:4]) == "wOFF")
 }
 
-// Encode converts an sfnt font (TrueType outlines or CFF) into WOFF2.
+// Encode converts an sfnt font (TrueType outlines or CFF) into WOFF2. It
+// returns ErrImplausible for a font that decoders would reject for its
+// compression ratio.
 func Encode(font []byte) ([]byte, error) {
 	if !Available() {
 		return nil, ErrNotAvailable
@@ -113,6 +127,9 @@ func Encode(font []byte) ([]byte, error) {
 	out = append(out, compressed...)
 	for len(out)%4 != 0 {
 		out = append(out, 0)
+	}
+	if len(stream) >= MaxRatio*len(out) {
+		return nil, ErrImplausible
 	}
 	if totalSfnt < len(out) {
 		totalSfnt = len(out)

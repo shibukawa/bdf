@@ -1,33 +1,24 @@
-// Builds the static demo site (published on GitHub Pages): the viewer, the
+// What the examples and the demo site are built from: the pages' scripts
+// bundled with esbuild, the workers (the rendering worker of @bdf/render and
+// the converter worker, a classic worker that loads Go's wasm_exec.js), the
 // converters as wasm (cmd/bdfwasm: one module for PDF, one for the Office
-// formats, one for HTML and Markdown, one for images, and one without
-// converters for thumbnails and search text), the fonts the Office, HTML and
-// Markdown converters lay text out with, sample files, and the
-// documentation (docs.mjs: the READMEs and docs/ as HTML under docs/).
-// Files opened on the site are converted inside the browser.
-//
-//   node examples/viewer/site.mjs [--serve] [--out dir]
-//
-// BDF_SITE_FONTS lists directories (separated like PATH) whose files are
-// published under fonts/: their font files are listed in fonts/index.json,
-// other files (licenses) are copied as they are. It defaults to the test
-// fonts of converter/pptx/testdata/fonts. Requires Go.
+// formats, one for HTML, Markdown and EPUB, one for images, and one without
+// converters for thumbnails and search text) and the fonts the converters
+// lay text out with.
 import { execFile as execFileCb } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, delimiter, dirname, join, relative, resolve } from "node:path";
+import { delimiter, dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { serve } from "../../test/serve.mjs";
-import { buildViewer, root } from "./build.mjs";
-import { buildDocs } from "./docs.mjs";
+import { build } from "esbuild";
 
 const execFile = promisify(execFileCb);
-const args = process.argv.slice(2);
-const outArg = args.indexOf("--out");
-const out = resolve(outArg >= 0 ? args[outArg + 1] : join(root, "examples/viewer/.site"));
+
+export const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 /** Converter modules: file name and the build tags that select the formats. */
-const MODULES = [
+export const MODULES = [
   { file: "bdf-pdf.wasm", tags: "pdfonly" },
   { file: "bdf-office.wasm", tags: "officeonly" },
   { file: "bdf-web.wasm", tags: "webonly" },
@@ -35,43 +26,41 @@ const MODULES = [
   { file: "bdf-preview.wasm", tags: "previewonly" },
 ];
 
-/** Samples offered on the start page: repository path and label. */
-const SAMPLES = [
-  { path: "converter/pdf/testdata/reportlab-master.pdf", label: "PDF (3 pages)" },
-  { path: "converter/pdf/testdata/chrome-doc.pdf", label: "PDF from Chrome" },
-  { path: "converter/docx/testdata/basic.docx", label: "Word" },
-  { path: "converter/docx/testdata/vertical.docx", label: "Word (vertical text)" },
-  { path: "converter/docx/testdata/math.docx", label: "Word (formulas)" },
-  { path: "converter/pptx/testdata/features.pptx", label: "PowerPoint" },
-  { path: "converter/xlsx/testdata/features.xlsx", label: "Excel" },
-  { path: "converter/csv/testdata/japanese.tsv", label: "TSV (Shift_JIS)" },
-  { path: "converter/parquet/testdata/basic.parquet", label: "Parquet" },
-  { path: "converter/visio/testdata/shapes.vsdx", label: "Visio" },
-  { path: "converter/visio/testdata/flow.vdx", label: "Visio XML (.vdx)" },
-  { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },
-  { path: "converter/drawio/testdata/aws.drawio", label: "draw.io (AWS)" },
-  { path: "converter/dxf/testdata/layout.dxf", label: "DXF (model space and a layout)" },
-  { path: "converter/jww/testdata/shapes.jww", label: "Jw_cad" },
-  { path: "converter/sxf/testdata/shapes.p21", label: "SXF (P21)" },
-  { path: "converter/cgm/testdata/shapes.cgm", label: "CGM" },
-  { path: "converter/hpgl/testdata/shapes.plt", label: "HP-GL/2 (.plt)" },
-  { path: "converter/gerber/testdata/board.zip", label: "Gerber and Excellon (a board, zipped)" },
-  { path: "converter/kicad/testdata/demo.zip", label: "KiCad (a project: schematic and board, zipped)" },
-  { path: "converter/ai/testdata/artboards.ai", label: "Illustrator (3 artboards)" },
-  { path: "converter/psd/testdata/artboards.psd", label: "Photoshop (3 artboards)" },
-  { path: "converter/image/testdata/drawing.svg", label: "SVG image" },
-  { path: "converter/image/testdata/photo.jpg", label: "JPEG (EXIF)" },
-  { path: "converter/epub/testdata/basic.epub", label: "EPUB" },
-  { path: "converter/epub/testdata/vertical.epub", label: "EPUB (Japanese, vertical)" },
-  { path: "converter/epub/testdata/fixed.epub", label: "EPUB (fixed layout)" },
-  { path: "converter/mml/testdata/frere.mml", label: "MML (NES, a round in four parts)" },
-  { path: "converter/midi/testdata/twinkle.kar", label: "MIDI (karaoke, with words)" },
-  { path: "converter/musicxml/testdata/minuet.musicxml", label: "MusicXML (piano)" },
-  { path: "converter/font/testdata/stix.otf", label: "Font (OpenType, STIX Two Text)" },
-  { path: "testdata/demo.bdf", label: "bdf" },
-];
-
 const FONT_EXT = /\.(ttf|otf|ttc|otc)$/i;
+
+/**
+ * Bundle scripts into out: entries are [source (from the repository root),
+ * name of the output without .js]. Modules by default; format "iife" for a
+ * classic worker.
+ */
+export async function bundle(out, entries, { format = "esm", define = {} } = {}) {
+  await mkdir(out, { recursive: true });
+  await build({
+    bundle: true, outdir: out, sourcemap: true, target: "es2022", logLevel: "info", format, define,
+    entryPoints: entries.map(([src, name]) => ({ in: join(root, src), out: name })),
+  });
+}
+
+/**
+ * Copy a page of the examples (from the repository root). Blocks between
+ * <!-- site --> and <!-- /site --> are kept when the page is one of the demo
+ * site's (they link to its other pages), those between <!-- standalone -->
+ * and <!-- /standalone --> when it is built by itself.
+ */
+export async function copyPage(src, dst, { site = false } = {}) {
+  const drop = site ? "standalone" : "site";
+  const html = (await readFile(join(root, src), "utf8"))
+    .replace(new RegExp(`[ \\t]*<!-- ${drop} -->[\\s\\S]*?<!-- /${drop} -->\\n?`, "g"), "")
+    .replace(/[ \t]*<!-- \/?(site|standalone) -->\n?/g, "");
+  await mkdir(dirname(dst), { recursive: true });
+  await writeFile(dst, html);
+}
+
+/** Build the workers into lib: worker.js draws, convert-worker.js (with convert) runs the converter modules. */
+export async function buildWorkers(lib, { convert = true } = {}) {
+  await bundle(lib, [["packages/render/src/worker.ts", "worker"]]);
+  if (convert) await bundle(lib, [["examples/common/convert-worker.ts", "convert-worker"]], { format: "iife" });
+}
 
 /**
  * The byte ranges of a font file that the converters' font scan reads (the
@@ -142,15 +131,17 @@ async function patchGoldmark(dir) {
   return mod;
 }
 
-async function buildModules() {
+/** Build the converter modules (all of them, or those named) and Go's wasm_exec.js into lib. Requires Go. */
+export async function buildModules(lib, files = MODULES.map((m) => m.file)) {
+  await mkdir(lib, { recursive: true });
   const env = { ...process.env, GOOS: "js", GOARCH: "wasm" };
   const tmp = await mkdtemp(join(tmpdir(), "bdf-site-"));
   try {
     const mod = await patchGoldmark(tmp);
-    await Promise.all(MODULES.map(async (m) => {
+    await Promise.all(MODULES.filter((m) => files.includes(m.file)).map(async (m) => {
       const t0 = performance.now();
-      await execFile("go", ["build", "-tags", `bdf_noconv,${m.tags}`, "-trimpath", `-modfile=${mod}`, "-ldflags=-s -w", "-o", join(out, m.file), "./cmd/bdfwasm"], { cwd: root, env });
-      const { size } = await stat(join(out, m.file));
+      await execFile("go", ["build", "-tags", `bdf_noconv,${m.tags}`, "-trimpath", `-modfile=${mod}`, "-ldflags=-s -w", "-o", join(lib, m.file), "./cmd/bdfwasm"], { cwd: root, env });
+      const { size } = await stat(join(lib, m.file));
       console.log(`${m.file}: ${(size / 1e6).toFixed(1)} MB (${((performance.now() - t0) / 1000).toFixed(1)} s)`);
     }));
   } finally {
@@ -160,14 +151,19 @@ async function buildModules() {
   const goroot = await goEnv("GOROOT");
   for (const dir of ["lib/wasm", "misc/wasm"]) {
     const src = join(goroot, dir, "wasm_exec.js");
-    if (await stat(src).catch(() => null)) return copyFile(src, join(out, "wasm_exec.js"));
+    if (await stat(src).catch(() => null)) return copyFile(src, join(lib, "wasm_exec.js"));
   }
   throw new Error(`wasm_exec.js not found under ${goroot}`);
 }
 
-async function copyFonts() {
+/**
+ * Publish fonts under dst: the files of the directories BDF_SITE_FONTS
+ * lists (separated like PATH; the test fonts of converter/pptx/testdata/fonts
+ * by default). Font files are listed in index.json with the ranges the font
+ * scan reads, other files (licenses) are copied as they are.
+ */
+export async function copyFonts(dst) {
   const dirs = (process.env.BDF_SITE_FONTS ?? join(root, "converter/pptx/testdata/fonts")).split(delimiter).filter(Boolean);
-  const dst = join(out, "fonts");
   await mkdir(dst, { recursive: true });
   const index = [];
   for (const dir of dirs) {
@@ -184,26 +180,4 @@ async function copyFonts() {
   await writeFile(join(dst, "index.json"), JSON.stringify(index));
   const total = index.reduce((a, e) => a + e.size, 0);
   console.log(`fonts: ${index.length} files, ${(total / 1e6).toFixed(1)} MB (fetched as documents use them)`);
-}
-
-async function copySamples() {
-  const dst = join(out, "samples");
-  await mkdir(dst, { recursive: true });
-  const index = [];
-  for (const s of SAMPLES) {
-    const name = basename(s.path);
-    await copyFile(join(root, s.path), join(dst, name));
-    index.push({ name, label: s.label });
-  }
-  await writeFile(join(dst, "index.json"), JSON.stringify(index));
-}
-
-await rm(out, { recursive: true, force: true });
-await buildViewer(out, { defaultSrc: "" });
-await Promise.all([buildModules(), copyFonts(), copySamples(), buildDocs(out)]);
-console.log(`site: ${out}`);
-
-if (args.includes("--serve")) {
-  const { port } = await serve(out, Number(process.env.PORT ?? 8766));
-  console.log(`site: http://127.0.0.1:${port}/`);
 }

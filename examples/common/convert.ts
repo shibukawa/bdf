@@ -66,6 +66,10 @@ export interface ThumbnailOptions {
   /** The layout: auto (default: from the kind of document), crop or fit. */
   mode?: "auto" | "crop" | "fit";
   format?: "png" | "jpeg";
+  /** The resolution a sheet is drawn at (default 72): a lower value shows more cells, smaller. */
+  sheetDpi?: number;
+  /** The id of the view to draw (default: the first one). */
+  view?: string;
   /** The password of an encrypted document. */
   password?: string;
   /** URL of the font directory, for text in fonts referred to by name. */
