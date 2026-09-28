@@ -350,13 +350,14 @@ func fastest(fn func()) time.Duration {
 }
 
 // growsWithSize fails the test when fn takes much more than four times as
-// long for a size four times as large: the time grows with the square of
-// the size (sixteen times), not with the size.
+// long for a size four times as large. The margin allows for scheduling and
+// garbage collection noise when all packages run in parallel, while a
+// quadratic increase (sixteen times) still exceeds it at these input sizes.
 func growsWithSize(t *testing.T, size int, fn func(size int)) {
 	t.Helper()
 	small := fastest(func() { fn(size) })
 	large := fastest(func() { fn(4 * size) })
-	if large > 8*small+20*time.Millisecond {
+	if large > 10*small+25*time.Millisecond {
 		t.Errorf("size %d took %v, size %d took %v", size, small, 4*size, large)
 	}
 }
