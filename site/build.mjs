@@ -39,6 +39,7 @@ const SAMPLES = [
   { path: "converter/docx/testdata/vertical.docx", label: "Word (vertical text)" },
   { path: "converter/docx/testdata/math.docx", label: "Word (formulas)" },
   { path: "converter/markdown/testdata/basic.md", label: "Markdown" },
+  { path: "converter/html/testdata/article.html", label: "HTML (article, reader mode)" },
   { path: "converter/pptx/testdata/features.pptx", label: "PowerPoint" },
   { path: "converter/xlsx/testdata/features.xlsx", label: "Excel" },
   { path: "converter/csv/testdata/japanese.tsv", label: "TSV (Shift_JIS)" },
