@@ -17,7 +17,8 @@ type Subst struct {
 // of its subtables and their coverage, until fn returns false. What an
 // earlier subtable substitutes is not listed again from a later one, since
 // the first subtable that applies wins; the substitutions of a reverse
-// chaining lookup depend on their context and are all listed.
+// chaining lookup depend on their context and are all listed. The list is
+// cut short when the table has listed all it may (see Truncated).
 func (t *Table) Substs(i int, fn func(Subst) bool) {
 	if t.gpos || i < 0 || i >= len(t.Lookups) {
 		return
@@ -35,7 +36,7 @@ func (t *Table) Substs(i int, fn func(Subst) bool) {
 		return fn(s)
 	}
 	for _, st := range l.subtables {
-		if !substs(l.Type, st, emit) {
+		if !t.substs(l.Type, st, emit) {
 			return
 		}
 	}
@@ -51,11 +52,18 @@ func key(gs []uint16) string {
 }
 
 // substs lists the substitutions of one subtable; it returns false when
-// fn asked to stop.
-func substs(typ int, d data, fn func(Subst) bool) bool {
+// fn asked to stop, or the table has listed all it may.
+func (t *Table) substs(typ int, d data, fn func(Subst) bool) bool {
+	var cov []uint16
+	switch typ {
+	case SubstSingle, SubstMultiple, SubstAlternate, SubstLigature, SubstReverseChain:
+		cov = coverage(d.at(d.u16(2)))
+	}
+	if !t.spend(1 + len(cov)) {
+		return false
+	}
 	switch typ {
 	case SubstSingle:
-		cov := coverage(d.at(d.u16(2)))
 		switch d.u16(0) {
 		case 1:
 			delta := d.i16(4)
@@ -79,7 +87,6 @@ func substs(typ int, d data, fn func(Subst) bool) bool {
 		if d.u16(0) != 1 {
 			return true
 		}
-		cov := coverage(d.at(d.u16(2)))
 		n := d.count(d.u16(4), 6, 2)
 		for k, g := range cov {
 			if k >= n {
@@ -97,7 +104,6 @@ func substs(typ int, d data, fn func(Subst) bool) bool {
 		if d.u16(0) != 1 {
 			return true
 		}
-		cov := coverage(d.at(d.u16(2)))
 		n := d.count(d.u16(4), 6, 2)
 		for k, g := range cov {
 			if k >= n {
@@ -108,6 +114,9 @@ func substs(typ int, d data, fn func(Subst) bool) bool {
 				continue
 			}
 			m := set.count(set.u16(0), 2, 2)
+			if !t.spend(m) {
+				return false
+			}
 			for j := range m {
 				lig := set.at(set.u16(2 + j*2))
 				if lig == nil {
@@ -128,7 +137,6 @@ func substs(typ int, d data, fn func(Subst) bool) bool {
 		if d.u16(0) != 1 {
 			return true
 		}
-		cov := coverage(d.at(d.u16(2)))
 		p := 4
 		p += 2 + d.u16(p)*2 // backtrack coverages
 		p += 2 + d.u16(p)*2 // lookahead coverages
@@ -180,7 +188,9 @@ func (t *Table) Context(i int) (c Context, ok bool) {
 	case l.Type == ctx || l.Type == chained:
 		seen := map[int]bool{}
 		for _, st := range l.subtables {
-			seqContext(st, l.Type == chained, &c, seen, len(t.Lookups))
+			if !t.seqContext(st, l.Type == chained, &c, seen) {
+				break
+			}
 		}
 		return c, true
 	case !t.gpos && l.Type == SubstReverseChain:
@@ -190,10 +200,15 @@ func (t *Table) Context(i int) (c Context, ok bool) {
 	return c, false
 }
 
-// seqContext reads the rules of a (chained) sequence context subtable.
-func seqContext(d data, chained bool, c *Context, seen map[int]bool, lookups int) {
+// seqContext reads the rules of a (chained) sequence context subtable; it
+// returns false when the table has listed all it may.
+func (t *Table) seqContext(d data, chained bool, c *Context, seen map[int]bool) bool {
+	lookups := len(t.Lookups)
 	records := func(r data, off, n int) {
 		n = r.count(n, off, 4)
+		if !t.spend(n) {
+			return
+		}
 		for k := range n {
 			li := r.u16(off + k*4 + 2)
 			if li < lookups && !seen[li] {
@@ -227,10 +242,16 @@ func seqContext(d data, chained bool, c *Context, seen map[int]bool, lookups int
 				continue
 			}
 			m := set.count(set.u16(0), 2, 2)
+			if !t.spend(1 + m) {
+				return
+			}
 			for j := range m {
 				rule(set.at(set.u16(2 + j*2)))
 			}
 		}
+	}
+	if !t.spend(1) {
+		return false
 	}
 	switch d.u16(0) {
 	case 1:
@@ -246,7 +267,7 @@ func seqContext(d data, chained bool, c *Context, seen map[int]bool, lookups int
 		if !chained {
 			glyphs, n := d.u16(2), d.u16(4)
 			records(d, 6+glyphs*2, n)
-			return
+			return !t.Truncated()
 		}
 		p := 2
 		p += 2 + d.u16(p)*2 // backtrack coverages
@@ -254,6 +275,7 @@ func seqContext(d data, chained bool, c *Context, seen map[int]bool, lookups int
 		p += 2 + d.u16(p)*2 // lookahead coverages
 		records(d, p+2, d.u16(p))
 	}
+	return !t.Truncated()
 }
 
 // Covered returns the glyphs lookup i applies to: those its subtables
@@ -277,6 +299,9 @@ func (t *Table) Covered(i int) []uint16 {
 			cov = coverage(st.at(st.u16(2))) // the marks
 		default:
 			cov = coverage(st.at(st.u16(2)))
+		}
+		if !t.spend(1 + len(cov)) {
+			break
 		}
 		for _, g := range cov {
 			if !seen[g] {

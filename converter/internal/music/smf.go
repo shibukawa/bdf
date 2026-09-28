@@ -153,7 +153,14 @@ type trackWriter struct {
 }
 
 func (w *trackWriter) event(tick int, data []byte) {
-	w.b = varlen(w.b, max(tick-w.tick, 0))
+	delta := max(tick-w.tick, 0)
+	for delta > maxDelta {
+		// a longer wait than a delta time holds: empty text events on the way
+		w.b = append(varlen(w.b, maxDelta), 0xFF, 0x01, 0)
+		w.running = 0
+		delta -= maxDelta
+	}
+	w.b = varlen(w.b, delta)
 	w.tick = max(tick, w.tick)
 	st := data[0]
 	switch {
@@ -179,9 +186,13 @@ func (w *trackWriter) chunk(out []byte) []byte {
 	return append(out, w.b...)
 }
 
+// maxDelta is the longest delta time of a Standard MIDI File: a
+// variable-length quantity of four bytes.
+const maxDelta = 1<<28 - 1
+
 // varlen appends a MIDI variable-length quantity.
 func varlen(b []byte, v int) []byte {
-	var tmp [5]byte
+	var tmp [10]byte
 	i := len(tmp) - 1
 	tmp[i] = byte(v & 0x7F)
 	for v >>= 7; v > 0; v >>= 7 {

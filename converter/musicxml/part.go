@@ -73,7 +73,7 @@ type partState struct {
 	clefs      map[int]music.Clef
 	transpose  int
 	transposed bool
-	voices     map[string]int
+	voices     *numbers
 	wedges     map[int]music.DirectionKind
 	shifts     []*octaveSpan
 	openShifts map[[2]int]*octaveSpan
@@ -107,6 +107,7 @@ type dynPoint struct {
 type playMeasure struct {
 	notes  []*playNote
 	lyrics []playLyric
+	verses map[int][]playLyric // the lyrics by verse, made when the measure is played
 }
 
 // playNote is a note as the part plays it in a measure.
@@ -134,7 +135,7 @@ type playLyric struct {
 
 func newPart(id, name string) *partState {
 	return &partState{id: id, trackName: name, part: &music.Part{Staves: 1}, instByID: map[string]*instrument{},
-		div: 1, time: music.TimeSig{Beats: 4, BeatType: 4}, clefs: map[int]music.Clef{}, voices: map[string]int{},
+		div: 1, time: music.TimeSig{Beats: 4, BeatType: 4}, clefs: map[int]music.Clef{}, voices: newNumbers(0),
 		wedges: map[int]music.DirectionKind{}, openShifts: map[[2]int]*octaveSpan{}}
 }
 
@@ -150,6 +151,18 @@ type mstate struct {
 	lastPlay  *playEvent
 	tuplets   map[int]*tupletState
 	seq       int
+	count     int // what the measure holds, against maxInMeasure
+}
+
+// room reports whether the measure of the part takes one more note, slur,
+// syllable, direction or clef change.
+func (r *reader) room(st *mstate) bool {
+	if st.count >= maxInMeasure {
+		r.warn("more than %d notes, slurs, syllables and directions in a measure of a part; the rest are left out", maxInMeasure)
+		return false
+	}
+	st.count++
+	return true
 }
 
 // tupletState is a tuplet group being read in a voice.
@@ -194,26 +207,46 @@ func (p *partState) quarters(s string) float64 {
 	return min(max(v/p.div, -maxQuarters), maxQuarters)
 }
 
+// numbers gives the voices of a part, or the verses of the lyrics, their
+// numbers by their names in the file.
+type numbers struct {
+	of    map[string]int
+	taken map[int]bool
+	free  int // no number below it is free
+	max   int // the largest number given; 0 for no limit
+}
+
+func newNumbers(max int) *numbers {
+	return &numbers{of: map[string]int{}, taken: map[int]bool{}, free: 1, max: max}
+}
+
+// get returns the number of a name: its own when it is a small number,
+// else the lowest one not taken; 0 when the numbers are used up.
+func (n *numbers) get(name string) int {
+	if name == "" {
+		name = "1"
+	}
+	if v, ok := n.of[name]; ok {
+		return v
+	}
+	v, err := strconv.Atoi(name)
+	if err != nil || v < 1 || v > 99 {
+		for v = n.free; n.taken[v]; v++ {
+		}
+		if n.max > 0 && v > n.max {
+			return 0
+		}
+		n.free = v + 1
+	}
+	n.of[name] = v
+	n.taken[v] = true
+	return v
+}
+
 // voice returns the number of a voice of the part: its own when it is a
 // small number, else one not taken.
 func (p *partState) voice(s string) int {
-	if s == "" {
-		s = "1"
-	}
-	if v, ok := p.voices[s]; ok {
-		return v
-	}
-	v, err := strconv.Atoi(s)
-	if err != nil || v < 1 || v > 99 {
-		taken := map[int]bool{}
-		for _, t := range p.voices {
-			taken[t] = true
-		}
-		for v = 1; taken[v]; v++ {
-		}
-	}
-	p.voices[s] = v
-	return v
+	return p.voices.get(s)
 }
 
 // staff returns the 0-based staff of an element with a <staff> child,
@@ -231,10 +264,17 @@ func (p *partState) staff(n *node) int {
 // measure reads the measure of a part: mn carries the measure's
 // attributes, cn its music (the same element in a partwise score).
 func (r *reader) measure(p *partState, idx int, mn, cn *node) {
+	// the part has a measure for each one up to this
+	grow := max(idx+1-len(p.part.Measures), 0)
+	if r.partMeasures+grow > maxStaffMeasures {
+		r.warn("more than %d measures in the parts; the rest are left out", maxStaffMeasures)
+		return
+	}
 	mi := r.measureAt(idx)
 	if mi == nil {
 		return
 	}
+	r.partMeasures += grow
 	r.gotMusic = true
 	m := mi.m
 	if !mi.numbered {
@@ -341,6 +381,9 @@ func (r *reader) attributes(p *partState, st *mstate, n *node) {
 			if cur, ok := p.clefs[staff]; ok && cur == c {
 				continue
 			}
+			if !r.room(st) {
+				continue
+			}
 			p.clefs[staff] = c
 			off := tickOf(st.pos)
 			cs := st.pm.Clefs[:0]
@@ -359,7 +402,7 @@ func (r *reader) attributes(p *partState, st *mstate, n *node) {
 			p.transpose = min(max(int(math.Round(ch))+12*oc, -48), 48)
 			p.transposed = p.transposed || p.transpose != 0
 		case "directive":
-			if t := collapse(k.text); t != "" {
+			if t := collapse(k.text); t != "" && r.room(st) {
 				above := true
 				st.pm.Directions = append(st.pm.Directions, &music.Direction{Offset: tickOf(st.pos), Kind: music.DirWords, Text: t, Above: &above})
 			}
@@ -483,6 +526,9 @@ var steps = map[string]int{"C": 0, "D": 1, "E": 2, "F": 3, "G": 4, "A": 5, "B": 
 func (r *reader) note(p *partState, st *mstate, n *node) {
 	if r.notes >= maxNotes {
 		r.warn("more than %d notes; the rest are left out", maxNotes)
+		return
+	}
+	if !r.room(st) {
 		return
 	}
 	r.notes++
@@ -884,9 +930,11 @@ func (r *reader) notations(p *partState, st *mstate, n *node, ev *music.Event, p
 					continue
 				}
 				mark.Above = placement(k.attr("placement"))
-				ev.Slurs = append(ev.Slurs, mark)
+				if r.room(st) {
+					ev.Slurs = append(ev.Slurs, mark)
+				}
 			case "dynamics":
-				if t := dynamicsText(k); t != "" {
+				if t := dynamicsText(k); t != "" && r.room(st) {
 					off := tickOf(start)
 					st.pm.Directions = append(st.pm.Directions, &music.Direction{Offset: off, Staff: ev.Staff, Kind: music.DirDynamic,
 						Text: t, Above: placement(k.attr("placement"))})
@@ -904,6 +952,9 @@ func (r *reader) lyrics(st *mstate, n *node, ev *music.Event, start float64) {
 			continue
 		}
 		verse := r.verse(l.attr("number"))
+		if verse == 0 {
+			continue
+		}
 		var text strings.Builder
 		first, last := "", ""
 		extend := false
@@ -938,7 +989,7 @@ func (r *reader) lyrics(st *mstate, n *node, ev *music.Event, start float64) {
 				dup = true
 			}
 		}
-		if dup {
+		if dup || !r.room(st) {
 			continue
 		}
 		starts := first == "" || first == "single" || first == "begin"
@@ -964,24 +1015,13 @@ func (r *reader) lyrics(st *mstate, n *node, ev *music.Event, start float64) {
 }
 
 // verse returns the verse of a lyric number: its own when it is a small
-// number, else the next one not taken, in the order they appear.
+// number, else the next one not taken, in the order they appear; 0 past
+// the budget.
 func (r *reader) verse(num string) int {
-	if num == "" {
-		num = "1"
+	v := r.verses.get(num)
+	if v == 0 {
+		r.warn("more than %d verses of lyrics; the rest are left out", maxVerses)
 	}
-	if v, ok := r.verses[num]; ok {
-		return v
-	}
-	v, err := strconv.Atoi(num)
-	if err != nil || v < 1 || v > 99 {
-		taken := map[int]bool{}
-		for _, t := range r.verses {
-			taken[t] = true
-		}
-		for v = 1; taken[v]; v++ {
-		}
-	}
-	r.verses[num] = v
 	return v
 }
 
@@ -1112,12 +1152,17 @@ func (r *reader) direction(p *partState, st *mstate, n *node) {
 	above := placement(n.attr("placement"))
 	snd := n.child("sound")
 	_, sndTempo := snd.attrOK("tempo")
-	dir := func(d *music.Direction) {
+	// dir adds a direction; false when the measure takes no more
+	dir := func(d *music.Direction) bool {
+		if !r.room(st) {
+			return false
+		}
 		d.Offset, d.Staff = off, staff
 		if d.Above == nil {
 			d.Above = above
 		}
 		st.pm.Directions = append(st.pm.Directions, d)
+		return true
 	}
 	type words struct {
 		text   string
@@ -1147,8 +1192,7 @@ func (r *reader) direction(p *partState, st *mstate, n *node) {
 		for _, k := range dt.kids {
 			switch k.name {
 			case "dynamics":
-				if t := dynamicsText(k); t != "" {
-					dir(&music.Direction{Kind: music.DirDynamic, Text: t})
+				if t := dynamicsText(k); t != "" && dir(&music.Direction{Kind: music.DirDynamic, Text: t}) {
 					p.dynamic(st, off, t)
 				}
 			case "wedge":
@@ -1206,8 +1250,8 @@ func (r *reader) direction(p *partState, st *mstate, n *node) {
 		if metro != nil {
 			mark.Beat, mark.Dots, mark.PerMinute = metro.Beat, metro.Dots, metro.PerMinute
 		}
-		if mark.Text != "" || mark.PerMinute > 0 {
-			st.mi.addTempoMark(mark)
+		if (mark.Text != "" || mark.PerMinute > 0) && !st.mi.addTempoMark(mark) {
+			r.warn("more than %d tempo marks in a measure; the rest are left out", maxTempoMarks)
 		}
 	} else if len(ws) > 0 {
 		dir(&music.Direction{Kind: music.DirWords, Text: strings.Join(texts, " "), Italic: ws[0].italic})
@@ -1224,7 +1268,7 @@ func (r *reader) direction(p *partState, st *mstate, n *node) {
 	}
 	if metro != nil && metro.PerMinute > 0 && !sndTempo {
 		bpm := metro.PerMinute * float64(metro.Beat.Ticks(metro.Dots)) / music.PPQ
-		if bpm > 0 && bpm < 10000 {
+		if bpm > 0 && bpm < 10000 && r.room(st) {
 			st.mi.tempo = append(st.mi.tempo, tempoPoint{offset: off, bpm: bpm, metronome: true})
 		}
 	}
@@ -1261,8 +1305,8 @@ func (r *reader) direction(p *partState, st *mstate, n *node) {
 
 // addTempoMark adds a tempo mark, once for the parts that repeat it and
 // merged with a mark at the same place that has only words or only a
-// metronome mark.
-func (mi *measureInfo) addTempoMark(t music.TempoMark) {
+// metronome mark. It reports false for a mark past the budget.
+func (mi *measureInfo) addTempoMark(t music.TempoMark) bool {
 	for i := range mi.m.Tempo {
 		e := &mi.m.Tempo[i]
 		if e.Offset != t.Offset {
@@ -1270,16 +1314,20 @@ func (mi *measureInfo) addTempoMark(t music.TempoMark) {
 		}
 		switch {
 		case e.Text == t.Text && e.PerMinute == t.PerMinute:
-			return
+			return true
 		case e.Text == "" && t.PerMinute == 0:
 			e.Text = t.Text
-			return
+			return true
 		case e.PerMinute == 0 && t.Text == "":
 			e.Beat, e.Dots, e.PerMinute = t.Beat, t.Dots, t.PerMinute
-			return
+			return true
 		}
 	}
+	if len(mi.m.Tempo) >= maxTempoMarks {
+		return false
+	}
 	mi.m.Tempo = append(mi.m.Tempo, t)
+	return true
 }
 
 // metronome reads a metronome mark: a note value and a count per minute
@@ -1325,7 +1373,7 @@ func metronome(n *node) *music.TempoMark {
 // octaveShift reads an octave line: the Direction, and the span whose
 // notes are written shifted. MusicXML notes carry their sounding pitch;
 // "down" (8va) shows them lower, "up" (8vb) higher.
-func (r *reader) octaveShift(p *partState, st *mstate, k *node, staff, off int, dir func(*music.Direction)) {
+func (r *reader) octaveShift(p *partState, st *mstate, k *node, staff, off int, dir func(*music.Direction) bool) {
 	num := atoiDef(k.attr("number"), 1)
 	size := atoiDef(k.attr("size"), 8)
 	if size != 15 && size != 22 {
@@ -1347,7 +1395,9 @@ func (r *reader) octaveShift(p *partState, st *mstate, k *node, staff, off int, 
 		if k.attr("type") == "up" {
 			d.Size, s.delta = -size, octaves
 		}
-		dir(d)
+		if !dir(d) {
+			return
+		}
 		p.shifts = append(p.shifts, s)
 		p.openShifts[key] = s
 	case "stop":
@@ -1362,7 +1412,7 @@ func (r *reader) harmony(p *partState, st *mstate, n *node) {
 		return
 	}
 	text := harmonyText(n)
-	if text == "" {
+	if text == "" || !r.room(st) {
 		return
 	}
 	pos := st.pos + p.quarters(n.textOf("offset"))
@@ -1506,9 +1556,13 @@ func (r *reader) barline(p *partState, st *mstate, n *node) {
 	for _, k := range n.kids {
 		switch k.name {
 		case "segno":
-			st.pm.Directions = append(st.pm.Directions, &music.Direction{Offset: off, Kind: music.DirSegno})
+			if r.room(st) {
+				st.pm.Directions = append(st.pm.Directions, &music.Direction{Offset: off, Kind: music.DirSegno})
+			}
 		case "coda":
-			st.pm.Directions = append(st.pm.Directions, &music.Direction{Offset: off, Kind: music.DirCoda})
+			if r.room(st) {
+				st.pm.Directions = append(st.pm.Directions, &music.Direction{Offset: off, Kind: music.DirCoda})
+			}
 		}
 	}
 	if v, ok := n.attrOK("segno"); ok {
@@ -1524,10 +1578,10 @@ func (r *reader) barline(p *partState, st *mstate, n *node) {
 func (r *reader) sound(p *partState, st *mstate, n *node, pos float64) bool {
 	mi := st.mi
 	off := max(tickOf(pos), 0)
-	if v, ok := parseFloat(n.attr("tempo")); ok && v > 0 && v < 10000 {
+	if v, ok := parseFloat(n.attr("tempo")); ok && v > 0 && v < 10000 && r.room(st) {
 		mi.tempo = append(mi.tempo, tempoPoint{offset: off, bpm: v})
 	}
-	if v, ok := parseFloat(n.attr("dynamics")); ok && v >= 0 {
+	if v, ok := parseFloat(n.attr("dynamics")); ok && v >= 0 && r.room(st) {
 		p.dyn = append(p.dyn, dynPoint{measure: st.idx, offset: off, seq: st.nextSeq(), vel: min(max(int(math.Round(v*90/100)), 1), 127)})
 	}
 	jumps := false
@@ -1589,7 +1643,11 @@ func (r *reader) endings() {
 				break
 			}
 		}
-		b := &bracket{numbers: endingNumbers(es.number), first: i, last: end}
+		numbers, more := endingNumbers(es.number)
+		if more {
+			r.warn("more than %d numbers on a volta; the rest are left out", maxEndings)
+		}
+		b := &bracket{numbers: numbers, first: i, last: end}
 		if len(b.numbers) == 0 {
 			b.numbers = []int{len(group) + 1}
 		}
@@ -1615,25 +1673,31 @@ func (r *reader) endings() {
 	}
 }
 
-// endingNumbers reads the passes of a volta: "1", "1, 2", "1 2", "1-3".
-func endingNumbers(s string) []int {
-	var out []int
-	for _, f := range strings.FieldsFunc(s, func(c rune) bool { return c == ',' || c == ' ' || c == ';' || c == '.' }) {
+// endingNumbers reads the passes of a volta: "1", "1, 2", "1 2", "1-3". It
+// reads maxEndings of them; more is set when the volta has more.
+func endingNumbers(s string) (out []int, more bool) {
+	for f := range strings.FieldsFuncSeq(s, func(c rune) bool { return c == ',' || c == ' ' || c == ';' || c == '.' }) {
 		if a, b, ok := strings.Cut(f, "-"); ok {
 			x, ok1 := atoi(a)
 			y, ok2 := atoi(b)
 			if ok1 && ok2 && x >= 1 && y >= x && y-x < 100 {
 				for v := x; v <= y; v++ {
+					if len(out) == maxEndings {
+						return out, true
+					}
 					out = append(out, v)
 				}
 			}
 			continue
 		}
 		if v, ok := atoi(f); ok && v >= 1 && v <= 100 {
+			if len(out) == maxEndings {
+				return out, true
+			}
 			out = append(out, v)
 		}
 	}
-	return out
+	return out, false
 }
 
 // finish completes a part: a measure for each of the score, the clefs of
@@ -1725,11 +1789,20 @@ func before(m1, off1, m2, off2 int) bool {
 func graceTiming(notes []*playNote) []*playNote {
 	// a grace note may be on another staff than its principal note
 	type key struct{ voice, offset int }
+	// place is an event among the grace notes before a note
+	type place struct {
+		key
+		ev *playEvent
+	}
 	graces := map[key][]*playEvent{}
+	index := map[place]int{}
 	for _, n := range notes {
 		if n.grace {
 			k := key{n.voice, n.offset}
 			if evs := graces[k]; len(evs) == 0 || evs[len(evs)-1] != n.ev {
+				if _, ok := index[place{k, n.ev}]; !ok {
+					index[place{k, n.ev}] = len(evs)
+				}
 				graces[k] = append(evs, n.ev)
 			}
 		}
@@ -1737,17 +1810,18 @@ func graceTiming(notes []*playNote) []*playNote {
 	if len(graces) == 0 {
 		return notes
 	}
-	step := map[key]int{}
-	for k, evs := range graces {
-		principal := 0
-		for _, n := range notes {
-			if !n.grace && n.voice == k.voice && n.offset == k.offset && n.dur > 0 {
-				if principal == 0 || n.dur < principal {
-					principal = n.dur
-				}
+	// the shortest principal note of each group
+	principal := map[key]int{}
+	for _, n := range notes {
+		if k := (key{n.voice, n.offset}); !n.grace && n.dur > 0 && graces[k] != nil {
+			if d, ok := principal[k]; !ok || n.dur < d {
+				principal[k] = n.dur
 			}
 		}
-		if g := min(music.PPQ/4, principal/(2*len(evs))); g >= 1 {
+	}
+	step := map[key]int{}
+	for k, evs := range graces {
+		if g := min(music.PPQ/4, principal[k]/(2*len(evs))); g >= 1 {
 			step[k] = g
 		}
 	}
@@ -1759,11 +1833,7 @@ func graceTiming(notes []*playNote) []*playNote {
 		case n.grace && !ok:
 			continue
 		case n.grace:
-			i := 0
-			for i < len(graces[k]) && graces[k][i] != n.ev {
-				i++
-			}
-			n.offset += i * g
+			n.offset += index[place{k, n.ev}] * g
 			n.dur, n.grace = g, false
 		case ok:
 			shift := g * len(graces[k])

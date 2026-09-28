@@ -35,7 +35,8 @@ function svgLength(s: string | undefined): number | undefined {
 export function svgSize(data: Uint8Array): { width: number; height: number } {
   const label = data[0] === 0xff && data[1] === 0xfe ? "utf-16le" : data[0] === 0xfe && data[1] === 0xff ? "utf-16be" : "utf-8";
   const head = new TextDecoder(label).decode(data.subarray(0, 65536));
-  const tag = /<(?:[\w.-]+:)?svg\b[^>]*>/.exec(head)?.[0] ?? "";
+  // the root's start tag: no "<" within it, or a head of many "<svg" is looked through from each of them
+  const tag = /<(?:[\w.-]+:)?svg\b[^<>]*>/.exec(head)?.[0] ?? "";
   const attr = (name: string) => {
     const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag);
     return m ? m[1] ?? m[2] : undefined;

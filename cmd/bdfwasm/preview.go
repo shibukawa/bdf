@@ -24,14 +24,7 @@ func init() {
 const maxThumbnail = 2048
 
 // bdfInput copies the single-file bdf of a call (data, options?).
-func bdfInput(args []js.Value) ([]byte, error) {
-	if len(args) == 0 || args[0].Type() != js.TypeObject {
-		return nil, errors.New("want the bdf bytes as a Uint8Array")
-	}
-	data := make([]byte, args[0].Get("length").Int())
-	js.CopyBytesToGo(data, args[0])
-	return data, nil
-}
+func bdfInput(args []js.Value) ([]byte, error) { return input(args, "bdf bytes") }
 
 // readDocument reads a single-file bdf, unlocking an encrypted one with
 // password.

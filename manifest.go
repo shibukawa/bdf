@@ -1,5 +1,7 @@
 package bdf
 
+import "fmt"
+
 // View kinds.
 const (
 	ViewFixed  = "fixed"
@@ -155,6 +157,82 @@ type PartEntry struct {
 	// Sealed names the part of the outer manifest that holds this part
 	// sealed (encrypted documents only).
 	Sealed Hash `json:"sealed,omitzero"`
+}
+
+// Limits of the numbers of a manifest. They decide how long the loops of a
+// reader run and how much it allocates (the tiles of a region, the
+// gridlines of a sheet, the bands of a continuous layout), so a reader
+// checks them once, when it opens the document. What they refuse no writer
+// has a use for.
+const (
+	// MaxPageSize bounds the sides of pages and of their bodies, in units:
+	// the coordinates of objects are f32, which cannot tell whole units
+	// apart beyond it.
+	MaxPageSize = 1 << 24
+	// MaxSheetEntries bounds the rows of a sheet, and its columns (Excel
+	// has 1,048,576 rows).
+	MaxSheetEntries = 1 << 24
+	// MinEntrySize is the smallest size of a row or a column that has one
+	// (0: hidden), in units.
+	MinEntrySize = 1.0 / 64
+	// DefaultTile is the tile size of a sheet view that states none.
+	DefaultTile = 2048
+)
+
+// TileSize returns the size of the tiles of a sheet view: Tile, or
+// DefaultTile for a view that states none.
+func (v *View) TileSize() float32 {
+	if v.Tile > 0 {
+		return v.Tile
+	}
+	return DefaultTile
+}
+
+// check reports what is wrong with the views of a manifest that was read:
+// views and pages that are null, and numbers out of range.
+func (m *Manifest) check() error {
+	size := func(v float32) bool { return v >= 0 && v <= MaxPageSize } // false for NaN
+	for _, v := range m.Views {
+		if v == nil {
+			return &FormatError{Msg: "null view"}
+		}
+		for _, p := range v.Pages {
+			switch {
+			case p == nil:
+				return &FormatError{Msg: fmt.Sprintf("view %s: null page", v.ID)}
+			case !size(p.W) || !size(p.H):
+				return &FormatError{Msg: fmt.Sprintf("view %s: page size %g × %g out of range", v.ID, p.W, p.H)}
+			}
+			if b := p.Body; b != nil && !(size(b.W) && size(b.H) && size(max(b.X, -b.X)) && size(max(b.Y, -b.Y))) {
+				return &FormatError{Msg: fmt.Sprintf("view %s: page body out of range", v.ID)}
+			}
+		}
+		if c := v.Continuous; c != nil && !size(max(c.Gap, -c.Gap)) {
+			return &FormatError{Msg: fmt.Sprintf("view %s: gap %g out of range", v.ID, c.Gap)}
+		}
+		if !(v.Tile <= 0 || v.Tile >= 1 && v.Tile <= MaxPageSize) {
+			return &FormatError{Msg: fmt.Sprintf("view %s: tile size %g out of range", v.ID, v.Tile)}
+		}
+		for _, runs := range [][]Run{v.Cols, v.Rows} {
+			total := 0
+			for _, r := range runs {
+				n := int(r[0])
+				if !(r[0] >= 0 && r[0] <= MaxSheetEntries) || float32(n) != r[0] {
+					return &FormatError{Msg: fmt.Sprintf("view %s: %g rows or columns", v.ID, r[0])}
+				}
+				if total += n; total > MaxSheetEntries {
+					return &FormatError{Msg: fmt.Sprintf("view %s: more than %d rows or columns", v.ID, MaxSheetEntries)}
+				}
+				if !size(r[1]) || r[1] > 0 && r[1] < MinEntrySize {
+					return &FormatError{Msg: fmt.Sprintf("view %s: rows or columns of size %g", v.ID, r[1])}
+				}
+			}
+		}
+		if f := v.Freeze; f != nil && (f.Cols < 0 || f.Rows < 0) {
+			return &FormatError{Msg: fmt.Sprintf("view %s: bad frozen panes", v.ID)}
+		}
+	}
+	return nil
 }
 
 // AddPage appends a page to a fixed/flow view.

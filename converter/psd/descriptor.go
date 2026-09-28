@@ -70,7 +70,7 @@ func readValue(c *cursor, depth int) (any, bool) {
 		if int64(n) > c.left() {
 			return nil, false
 		}
-		list := make([]any, 0, n)
+		list := make([]any, 0, min(n, 1024)) // n is what the list says, not what it holds
 		for i := 0; i < n; i++ {
 			v, ok := readValue(c, depth+1)
 			if !ok {

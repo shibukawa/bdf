@@ -3,6 +3,7 @@ package pdf
 import (
 	"fmt"
 	"maps"
+	"math"
 	"strings"
 	"unicode"
 
@@ -202,8 +203,8 @@ func (c *converter) loadCIDFont(f *pdfFont, cid types.Dict) {
 			if i+2 < len(w) {
 				end := p.numOr(w[i+1], start)
 				width := p.numOr(w[i+2], 1000)
-				if end-start < 65536 {
-					for cc := start; cc <= end; cc++ {
+				if first, last, ok := cidRangeOf(start, end); ok {
+					for cc := first; cc <= last; cc++ {
 						f.cidWidths[uint32(cc)] = width
 					}
 				}
@@ -236,8 +237,8 @@ func (c *converter) loadCIDFont(f *pdfFont, cid types.Dict) {
 			if i+4 < len(w2) {
 				end := p.numOr(w2[i+1], start)
 				m := [3]float64{p.numOr(w2[i+2], f.dw2[1]), p.numOr(w2[i+3], 500), p.numOr(w2[i+4], f.dw2[0])}
-				if end-start < 65536 {
-					for cc := start; cc <= end; cc++ {
+				if first, last, ok := cidRangeOf(start, end); ok {
+					for cc := first; cc <= last; cc++ {
 						f.cidVMetrics[uint32(cc)] = m
 					}
 				}
@@ -252,6 +253,17 @@ func (c *converter) loadCIDFont(f *pdfFont, cid types.Dict) {
 			f.cid2gid = data
 		}
 	}
+}
+
+// cidRangeOf returns the CIDs from start to end of a /W or /W2 range, as
+// integers: counting in the numbers of the file does not end beyond 2^53,
+// where adding one changes nothing. ok is false for a range of more than
+// 65536 CIDs, as before, and for one outside the CIDs there can be.
+func cidRangeOf(start, end float64) (first, last int64, ok bool) {
+	if !(start >= 0 && end <= math.MaxUint32 && end-start < 65536) {
+		return 0, 0, false
+	}
+	return int64(start), int64(end), true
 }
 
 func (c *converter) loadSimpleWidths(f *pdfFont, d types.Dict) {
@@ -545,7 +557,8 @@ func (f *pdfFont) unicode(g glyphCode) string {
 		name := f.glyphName(g.code)
 		if name == "" && f.prog != nil && f.prog.cff != nil && !f.prog.cff.IsCID {
 			// The program's built-in encoding names the glyph (Type1, Type1C).
-			if gid, ok := f.prog.cff.Encoding[int(g.code)]; ok && gid > 0 {
+			// (an encoding may name more glyphs than the program has)
+			if gid, ok := f.prog.cff.Encoding[int(g.code)]; ok && gid > 0 && gid < len(f.prog.cff.Charset) {
 				name = f.prog.cff.SIDName(f.prog.cff.Charset[gid])
 			}
 		}

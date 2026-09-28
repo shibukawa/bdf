@@ -431,6 +431,8 @@ class LayerBuilder {
   private readonly rows = new Map<HTMLElement, { row: number; el: HTMLElement }>();
   /** Link covering each run (-1: none). */
   private linkOf: number[] = [];
+  /** Whether each link is one a link may be made of (linkHref). */
+  private linked: boolean[] = [];
   private textLinks = new Set<number>();
   /** The anchor the previous run went into, to continue it. */
   private anchor: { parent: HTMLElement; link: number; placed: Placed } | undefined;
@@ -448,6 +450,8 @@ class LayerBuilder {
   build() {
     const { runs, nodes, links } = this.c;
     const keep = this.keep;
+    // once a link, not once a run and link: a page of links has many of both
+    this.linked = links.map((l) => linkHref(l.url) !== undefined);
     this.linkOf = runs.map((r) => (keep(r) ? this.coveringLink(r) : -1));
     for (const l of this.linkOf) if (l >= 0) this.textLinks.add(l);
     if (this.opts.sheet) this.sheetTable();
@@ -635,7 +639,7 @@ class LayerBuilder {
     const x = m[0] * cx + m[2] * cy + r.x, y = m[1] * cx + m[3] * cy + r.y;
     let best = -1;
     links.forEach((l, i) => {
-      if (!linkHref(l.url) || x < l.x || x > l.x + l.w || y < l.y || y > l.y + l.h) return;
+      if (x < l.x || x > l.x + l.w || y < l.y || y > l.y + l.h || !this.linked[i]) return;
       if (best < 0 || l.w * l.h < links[best].w * links[best].h) best = i;
     });
     return best;
@@ -660,7 +664,7 @@ class LayerBuilder {
 
   private standaloneLink(i: number) {
     const link = this.c.links[i];
-    if (!linkHref(link.url)) return;
+    if (!this.linked[i]) return;
     const placed = this.anchorFor(link, this.node(link.node));
     const internal = internalLink(link.url);
     const fallback = internal?.view !== undefined ? `view ${internal.view}` : internal?.page !== undefined ? `page ${internal.page}` : link.url;
@@ -834,7 +838,12 @@ export function selectionCells(sel: Selection | null = typeof getSelection === "
 export function installCopyHandler(container: HTMLElement): () => void {
   const onCopy = (e: ClipboardEvent) => {
     if (!e.clipboardData) return;
-    const cells = selectionCells(getSelection(), container);
+    let cells: CellClipboard | undefined;
+    try {
+      cells = selectionCells(getSelection(), container);
+    } catch {
+      // more cells than are copied as cells: the text of the runs is
+    }
     if (cells) {
       e.clipboardData.setData("text/plain", cells.text);
       e.clipboardData.setData("text/html", cells.html);

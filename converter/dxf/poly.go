@@ -215,7 +215,8 @@ func (c *converter) polygonMesh(e *entity, x *ctx, p props, flags int) {
 	for _, v := range e.kids {
 		verts = append(verts, v.pt(10))
 	}
-	if mc <= 0 || nc <= 0 || mc*nc > len(verts) {
+	// each count on its own first: their product may wrap around
+	if mc <= 0 || nc <= 0 || mc > len(verts) || nc > len(verts) || mc*nc > len(verts) {
 		return
 	}
 	at := func(i, j int) cad.Point { return verts[i*nc+j] }

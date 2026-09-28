@@ -151,7 +151,8 @@ type opInfo struct {
 	Sig  string
 }
 
-var opTable = map[byte]opInfo{
+// opTable is indexed by opcode; an entry without a name is not an opcode.
+var opTable = [256]opInfo{
 	OpSave:        {"SAVE", ""},
 	OpRestore:     {"RESTORE", ""},
 	OpTransform:   {"TRANSFORM", "ffffff"},

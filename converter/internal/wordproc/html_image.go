@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"cmp"
 	"encoding/binary"
+	"errors"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"math"
 	"strconv"
 	"strings"
 
@@ -60,6 +62,7 @@ func (r *htmlReader) img(n *html.Node, css map[string]string, st *hstyle) {
 // not said).
 func (r *htmlReader) picture(n *html.Node, css map[string]string, st *hstyle, im *htmlImage, aw, ah float64, alt string) {
 	w, h, fill := replacedSize(im.w, im.h, im.ratio, aw, ah)
+	w, h = math.Min(w, maxLength), math.Min(h, maxLength)
 	hash := im.hash
 	o := &inlineObj{w: w, h: h, alt: alt, fit: true, fill: fill, paint: func(e *emitter, box drawingml.Box) {
 		e.cv.Obj.Image(e.cv.Image(hash), f32(box.X), f32(box.Y), f32(box.W), f32(box.H))
@@ -133,8 +136,13 @@ func imageSource(n *html.Node) string {
 	return ""
 }
 
+// maxLength is the longest length a document may say, in points (some 350
+// meters).
+const maxLength = 1e6
+
 // length reads a CSS length or a size attribute (CSS pixels without a
-// unit) in points; 0 for percentages and what it cannot read.
+// unit) in points; 0 for percentages and what it cannot read, maxLength
+// for longer ones.
 func (r *htmlReader) length(v string) float64 {
 	v = strings.TrimSpace(strings.ToLower(v))
 	for _, u := range []struct {
@@ -143,10 +151,10 @@ func (r *htmlReader) length(v string) float64 {
 	}{{"px", pxToPt}, {"pt", 1}, {"rem", r.size}, {"em", r.size}, {"in", 72}, {"cm", 72 / 2.54}, {"mm", 72 / 25.4}, {"", pxToPt}} {
 		if s, ok := strings.CutSuffix(v, u.suffix); ok {
 			f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
-			if err != nil || f <= 0 {
+			if err != nil || !(f > 0) { // not a number (NaN) neither
 				return 0
 			}
-			return f * u.pt
+			return math.Min(f*u.pt, maxLength)
 		}
 	}
 	return 0
@@ -162,13 +170,10 @@ func (r *htmlReader) image(src string) *htmlImage {
 		return im
 	}
 	r.images[src] = nil
-	name := src
-	if len(name) > 80 {
-		name = name[:77] + "…"
-	}
+	name := imageName(src)
 	data, err := r.d.Image(src)
 	if err != nil {
-		r.c.warnf("image %s: %v", name, err)
+		r.warnImage(src, "", err)
 		return nil
 	}
 	format := imgconv.Sniff(data)
@@ -200,6 +205,34 @@ func (r *htmlReader) image(src string) *htmlImage {
 	im.hash = r.c.doc.AddImage(data)
 	r.images[src] = im
 	return im
+}
+
+// imageName is how warnings name a picture: its address, without the user
+// and password of a URL, shortened.
+func imageName(src string) string {
+	if i := strings.Index(src, "://"); i > 0 {
+		rest := src[i+3:]
+		if at := strings.IndexByte(rest, '@'); at >= 0 && !strings.ContainsAny(rest[:at], "/?#") {
+			src = src[:i+3] + rest[at+1:]
+		}
+	}
+	if len(src) > 80 {
+		src = src[:77] + "…"
+	}
+	return src
+}
+
+// warnImage warns of a picture that is not drawn (where says where it is:
+// " in an SVG"): of each, and once of those left out past a limit of the
+// document (LimitError).
+func (r *htmlReader) warnImage(src, where string, err error) {
+	var limit *LimitError
+	switch {
+	case !errors.As(err, &limit):
+		r.c.warnf("image %s%s: %v", imageName(src), where, err)
+	case limit.Warning != "":
+		r.c.warnOnce("limit: "+limit.Warning, "%s", limit.Warning)
+	}
 }
 
 // avifSize reads the size of an AVIF image from its first image spatial

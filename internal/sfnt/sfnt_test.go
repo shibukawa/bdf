@@ -1,7 +1,9 @@
 package sfnt
 
 import (
+	"encoding/binary"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -149,11 +151,116 @@ func TestCmapGroups(t *testing.T) {
 	for i := range uint32(1000) {
 		overlapping = append(overlapping, [3]uint32{i * 16, 0xFFFFFFFF, 1})
 	}
-	if m := parseCmapSubtable(format12(overlapping)); len(m) > 0x110000 {
+	left := maxCmap
+	if m := parseCmapSubtable(format12(overlapping), &left); len(m) > 0x110000 {
 		t.Errorf("overlapping groups: %d mappings", len(m))
 	}
-	m := parseCmapSubtable(format12([][3]uint32{{0x10FFF0, 0xFFFFFFFF, 5}, {0x110000, 0x120000, 5}}))
+	left = maxCmap
+	m := parseCmapSubtable(format12([][3]uint32{{0x10FFF0, 0xFFFFFFFF, 5}, {0x110000, 0x120000, 5}}), &left)
 	if len(m) != 16 || m[0x10FFFF] != 20 {
 		t.Errorf("groups past Unicode: %d mappings, U+10FFFF → %d", len(m), m[0x10FFFF])
+	}
+}
+
+// words writes 16-bit numbers.
+func words(v ...int) []byte {
+	var b []byte
+	for _, x := range v {
+		b = binary.BigEndian.AppendUint16(b, uint16(x))
+	}
+	return b
+}
+
+// cmapOf makes a cmap table of records of platform 3 that all point at
+// the subtables, in turn.
+func cmapOf(records int, subtables ...[]byte) []byte {
+	cm := words(0, records)
+	off := 4 + records*8
+	offs := make([]int, len(subtables))
+	for i, s := range subtables {
+		offs[i] = off
+		off += len(s)
+	}
+	for i := range records {
+		cm = append(cm, words(3, 1)...)
+		cm = binary.BigEndian.AppendUint32(cm, uint32(offs[i%len(offs)]))
+	}
+	for _, s := range subtables {
+		cm = append(cm, s...)
+	}
+	return cm
+}
+
+// TestCmapBounded reads cmap tables that map more than they hold: records
+// that share a subtable read it once, and segments that map the same
+// characters again and again end in an error.
+func TestCmapBounded(t *testing.T) {
+	format4 := func(segments int) []byte {
+		b := words(4, 0, 0, segments*2, 0, 0, 0)
+		for _, v := range []int{0xfffe, -1, 0, 1, 0} { // ends, a pad, starts, deltas, range offsets
+			if v < 0 {
+				b = append(b, 0, 0)
+				continue
+			}
+			for range segments {
+				b = append(b, words(v)...)
+			}
+		}
+		return b
+	}
+	head := make([]byte, 54)
+	font := func(cm []byte) []byte {
+		return Build(map[string][]byte{"cmap": cm, "head": head}, false)
+	}
+	// 4000 records of one subtable of 65535 characters
+	var f *Font
+	var err error
+	shared := font(cmapOf(4000, format4(1)))
+	allocs := testing.AllocsPerRun(1, func() { f, err = Parse(shared) })
+	if err != nil || len(f.Cmap) != 0xffff || f.Cmap['A'] != 'A'+1 {
+		t.Fatalf("records of one subtable: %d characters, error %v", len(f.Cmap), err)
+	}
+	if allocs > 1000 {
+		t.Errorf("records of one subtable: %v allocations, the subtable is read more than once", allocs)
+	}
+	// segments of the same 65535 characters: more than maxCmap
+	if _, err := Parse(font(cmapOf(1, format4(maxCmap/0xffff+1)))); err == nil || !strings.Contains(err.Error(), "cmap") {
+		t.Errorf("segments that overlap: error %v", err)
+	}
+	// subtables that each stay under the limit pass it together
+	if _, err := Parse(font(cmapOf(40, format4(1), format4(1), format4(2), format4(3), format4(4), format4(5), format4(6), format4(7), format4(8), format4(9), format4(10), format4(11), format4(12)))); err == nil {
+		t.Errorf("subtables that overlap: no error")
+	}
+}
+
+// TestNoticesBounded reads a name table whose records share one long
+// string: the records that cannot replace the notice kept are not decoded,
+// and those that are decoded are bounded together.
+func TestNoticesBounded(t *testing.T) {
+	const length = 60000
+	name := func(records int, platform, lang int, text []byte) []byte {
+		b := words(0, records, 6+records*12)
+		for range records {
+			b = append(b, words(platform, 0, lang, 0, len(text), 0)...)
+		}
+		return append(b, text...)
+	}
+	head := make([]byte, 54)
+	font := func(nt []byte) []byte {
+		return Build(map[string][]byte{"name": nt, "head": head}, false)
+	}
+	var f *Font
+	var err error
+	shared := font(name(2000, 3, 0x0409, []byte(strings.Repeat("\x00c", length/2))))
+	allocs := testing.AllocsPerRun(1, func() { f, err = Parse(shared) })
+	if err != nil || len(f.Notices) != 1 || len(f.Notices[0].Text) != length/2 {
+		t.Fatalf("records of one string: notices %d, error %v", len(f.Notices), err)
+	}
+	if allocs > 100 {
+		t.Errorf("records of one string: %v allocations, the string is decoded more than once", allocs)
+	}
+	// Macintosh records that are not ASCII replace nothing: each is read
+	if _, err := Parse(font(name(100, 1, 0, []byte(strings.Repeat("\xa9", length))))); err == nil || !strings.Contains(err.Error(), "name") {
+		t.Errorf("records that are read again and again: error %v", err)
 	}
 }

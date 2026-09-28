@@ -80,6 +80,9 @@ let playFrame = 0;
 /** Search state for the current view; pages is how many were converted when it searched (streaming). */
 const found = { query: "", hits: [] as SearchHit[], rects: [] as HitRect[][], index: -1, pages: -1 };
 
+/** The bitmaps of the pages shown scrolled (showPages), for the pages of a stream that come in. */
+let pageBitmaps: Bitmaps | undefined;
+
 /** Where each page of a streamed view is. */
 const enum PageState { Pending, Converting, Done, Failed }
 
@@ -187,6 +190,49 @@ function onNear(margin: string, render: (el: HTMLDivElement) => void): Intersect
   }, { root: stage, rootMargin: margin });
   return observer;
 }
+
+/**
+ * The bitmaps of the pages (or bands) of a view: render is called for each
+ * as it comes near the visible area, and the bitmap it puts there is let go
+ * when the page is some screens away, to be drawn again when the page comes
+ * back. A long document scrolled through would otherwise keep a canvas for
+ * every page (8 MB for an A4 page on a screen of twice the density). The
+ * text layers stay: a selection may run over pages that are far away.
+ */
+function nearBitmaps(render: (el: HTMLDivElement) => void) {
+  const near = onNear(BITMAP_MARGIN, render);
+  const far = new WeakSet<Element>();
+  // three screens around the visible area, and well beyond where the bitmaps are drawn
+  const margin = (px: number) => Math.max(3 * px, 1200);
+  const keep = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        far.delete(e.target);
+        continue;
+      }
+      far.add(e.target);
+      const canvas = e.target.querySelector<HTMLCanvasElement>(":scope > canvas");
+      if (!canvas) continue;
+      canvas.width = canvas.height = 0; // its pixels go now, not when it is collected
+      canvas.remove();
+      near.observe(e.target);
+    }
+  }, { root: stage, rootMargin: `${margin(stage.clientHeight)}px ${margin(stage.clientWidth)}px` });
+  return {
+    observe(el: HTMLElement) {
+      near.observe(el);
+      keep.observe(el);
+    },
+    /** Whether a bitmap that comes for an element is not put there: the page has gone far meanwhile, and is drawn when it comes back. */
+    gone(el: HTMLElement, bmp: ImageBitmap): boolean {
+      if (!far.has(el)) return false;
+      bmp.close();
+      near.observe(el);
+      return true;
+    },
+  };
+}
+type Bitmaps = ReturnType<typeof nearBitmaps>;
 
 /** Put a bitmap on a page or band element, under its text layer. */
 function placeBitmap(el: HTMLElement, bmp: ImageBitmap, w: number, h: number) {
@@ -472,7 +518,7 @@ function pageArrived(index: number) {
   }
   if (el.dataset.waitBitmap !== undefined) {
     delete el.dataset.waitBitmap;
-    renderPage(current, index, el, gen).catch(unlessStale(gen));
+    renderPage(current, index, el, gen, pageBitmaps).catch(unlessStale(gen));
   }
   if (el.dataset.waitText !== undefined) {
     delete el.dataset.waitText;
@@ -882,11 +928,12 @@ function showPages(v: View) {
   const pagesOf = v.pages ?? [];
   const noun = manifest.meta?.source === "pptx" ? "Slide" : "Page";
   // a page still to come is drawn when it comes in (pageArrived)
-  const bitmaps = onNear(BITMAP_MARGIN, (el) => {
+  const bitmaps = nearBitmaps((el) => {
     const i = Number(el.dataset.index);
     if (pending(v, i)) el.dataset.waitBitmap = "";
-    else renderPage(v, i, el, gen).catch(unlessStale(gen));
+    else renderPage(v, i, el, gen, bitmaps).catch(unlessStale(gen));
   });
+  pageBitmaps = bitmaps;
   const texts = onNear(TEXT_MARGIN, (el) => {
     const i = Number(el.dataset.index);
     if (pending(v, i)) el.dataset.waitText = "";
@@ -919,11 +966,12 @@ function showPages(v: View) {
   stage.appendChild(list);
 }
 
-async function renderPage(v: View, index: number, el: HTMLDivElement, gen: number) {
+async function renderPage(v: View, index: number, el: HTMLDivElement, gen: number, bitmaps?: Bitmaps) {
   const page = v.pages![index];
   const t0 = performance.now();
   const bmp = await client.page(v.id, index, zoom * dpr());
   if (gen !== generation) return bmp.close();
+  if (bitmaps?.gone(el, bmp)) return;
   placeBitmap(el, bmp, page.w, page.h);
   setTiming(`page ${index + 1} rendered in ${(performance.now() - t0).toFixed(0)} ms`);
 }
@@ -1320,9 +1368,12 @@ function showContinuous(v: View) {
     const y = Number(el.dataset.y);
     return { x: 0, y, w: width, h: Math.min(BAND, height - y) };
   };
-  const bitmaps = onNear(BITMAP_MARGIN, (el) => {
+  const bitmaps = nearBitmaps((el) => {
     const vp = viewportOf(el);
-    client.continuous(v.id, vp, zoom * dpr()).then((bmp) => (gen === generation ? placeBitmap(el, bmp, vp.w, vp.h) : bmp.close())).catch(unlessStale(gen));
+    client.continuous(v.id, vp, zoom * dpr()).then((bmp) => {
+      if (gen !== generation) return bmp.close();
+      if (!bitmaps.gone(el, bmp)) placeBitmap(el, bmp, vp.w, vp.h);
+    }).catch(unlessStale(gen));
   });
   const texts = onNear(TEXT_MARGIN, (el) => {
     client.continuousContent(v.id, viewportOf(el)).then((c) => {
@@ -1670,13 +1721,17 @@ function showSheet(v: View) {
     const inside = (r: { x: number; y: number; w: number; h: number }) => box.x >= r.x && box.y >= r.y && box.x + box.w <= r.x + r.w && box.y + box.h <= r.y + r.h;
     const entry: { key: string; data?: CellClipboard; promise: Promise<CellClipboard> } = { key, promise: Promise.resolve({ text: "", html: "" }) };
     if (loaded?.rects.some(inside)) {
-      const data = cellClipboard(tableCells(loaded.content), g, opts);
-      entry.data = data;
-      entry.promise = Promise.resolve(data);
+      // a rectangle of too many cells throws: copy reports it, as it does what the worker fails at
+      try {
+        entry.data = cellClipboard(tableCells(loaded.content), g, opts);
+        entry.promise = Promise.resolve(entry.data);
+      } catch (e) {
+        entry.promise = Promise.reject(e);
+      }
     } else {
       entry.promise = client.sheetContent(v.id, box).then((c) => (entry.data = cellClipboard(tableCells(c), g, opts)));
-      entry.promise.catch(() => { if (clip === entry) clip = undefined; }); // tried again on copy, which reports the error
     }
+    entry.promise.catch(() => { if (clip === entry) clip = undefined; }); // tried again on copy, which reports the error
     clip = entry;
     return entry;
   };

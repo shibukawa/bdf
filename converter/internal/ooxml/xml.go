@@ -3,6 +3,7 @@ package ooxml
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -42,6 +43,16 @@ const (
 	nsRel = "relationships" // suffix of the relationships namespaces (transitional and strict)
 	nsMC  = "markup-compatibility/2006"
 )
+
+// maxDepth bounds how deeply elements may nest. The tree is never built
+// deeper, so every later recursion over it (resolveAlternates here, and the
+// converters' walks over nested shapes, groups, tables, cells and text
+// boxes) is bounded and cannot overflow the stack; a deeper part is
+// rejected as malformed. The deepest document known is a test file of
+// Apache POI with 5,000 tables one inside the other, which nest 15,000
+// elements deep; the time to lay tables out grows with the square of
+// their depth, so the limit is not far above it.
+const maxDepth = 20000
 
 // Parse reads a document into a node tree. mc:AlternateContent is
 // replaced by its mc:Fallback (or its first mc:Choice when there is no
@@ -128,6 +139,9 @@ func readElement(d *xml.Decoder, start xml.StartElement, pick func(choice *Node)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
+			if len(stack) >= maxDepth {
+				return nil, fmt.Errorf("ooxml: element nesting deeper than %d", maxDepth)
+			}
 			n := &Node{Space: t.Name.Space, Name: t.Name.Local, Attrs: t.Attr}
 			p := stack[len(stack)-1]
 			p.Kids = append(p.Kids, n)

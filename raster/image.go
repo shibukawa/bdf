@@ -2,6 +2,7 @@ package raster
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/draw"
 	"math"
@@ -14,19 +15,21 @@ import (
 type picture struct {
 	w, h   int
 	levels []*image.RGBA
+
+	// used is the image drawn that used the picture last, and drop takes
+	// it from where a renderer keeps it (see Renderer.keep)
+	used int
+	drop func()
 }
 
-// maxImagePixels bounds the images decoded (4 bytes a pixel), against
-// images that would take more memory than a preview is worth.
-const maxImagePixels = 100 << 20
-
 // decodePicture decodes a bitmap image part. AVIF images, and images of
-// more than maxImagePixels pixels, are not decoded (ok is false).
+// more than imgconv.MaxDecodePixels pixels (4 bytes a pixel: more memory
+// than a preview is worth), are not decoded (ok is false).
 func decodePicture(data []byte) (*picture, string, bool) {
-	if c, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil && int64(c.Width)*int64(c.Height) > maxImagePixels {
+	img, err := imgconv.Decode(data)
+	if errors.Is(err, imgconv.ErrTooLarge) {
 		return nil, "too large", false
 	}
-	img, err := imgconv.Decode(data)
 	if err != nil {
 		return nil, imgconv.Sniff(data), false
 	}
@@ -63,7 +66,9 @@ func (p *picture) levelFor(inv matrix) int {
 	if !(f > 2) {
 		return 0
 	}
-	l := int(math.Floor(math.Log2(f)))
+	// bounded as a float64: a scale no int holds is that of an image
+	// drawn in no place at all
+	l := int(math.Min(math.Floor(math.Log2(f)), 31))
 	for len(p.levels) <= l {
 		prev := p.levels[len(p.levels)-1]
 		if prev.Rect.Dx() <= 1 && prev.Rect.Dy() <= 1 {

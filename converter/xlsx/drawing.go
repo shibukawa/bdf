@@ -28,7 +28,8 @@ type anchored struct {
 	pos, ext     [2]float64
 	elem         *ooxml.Node
 	part         string
-	toRow, toCol int // extent of the sheet the anchor needs
+	toRow, toCol int  // extent of the sheet the anchor needs
+	out          bool // left out: it would be drawn into too many tiles
 }
 
 func readAnchorPt(n *ooxml.Node) anchorPt {
@@ -108,12 +109,74 @@ func (s *sheetCtx) anchorBox(a *anchored) box {
 	return box{a.pos[0], a.pos[1], a.ext[0], a.ext[1]}
 }
 
+// maxDrawingTiles bounds the tiles that the drawings of a sheet are drawn
+// into, in all. A drawing is an object of its own, but every tile it touches
+// uses it, and how far it reaches is the file's to state: one anchored from
+// A1 to the last cell of the sheet touches millions of tiles.
+const maxDrawingTiles = 1 << 14
+
+// reach is how far past its box a drawing may paint: rotated shapes,
+// shadows and line widths reach past the box.
+func (b box) reach() float64 { return math.Max(b.w, b.h)*0.5 + 8 }
+
+// drawingTiles returns the number of tiles a drawing in box b is given to;
+// none for a box of a negative size, which is not drawn.
+func (s *sheetCtx) drawingTiles(b box) int {
+	if !(b.w >= 0 && b.h >= 0) {
+		return 0
+	}
+	m := b.reach()
+	tx0, ty0, tx1, ty1, ok := s.tileSpan(b.x-m, b.y-m, b.x+b.w+m, b.y+b.h+m)
+	if !ok {
+		return 0
+	}
+	return (tx1 - tx0) * (ty1 - ty0)
+}
+
+// limitDrawings leaves out the drawings that would be drawn into more tiles
+// than are left of maxDrawingTiles after the drawings before them, with a
+// warning. It reports whether it left any out: they do not make the view
+// larger, which is then set again.
+func (s *sheetCtx) limitDrawings() bool {
+	room, any := maxDrawingTiles, false
+	for _, a := range s.drawings {
+		if a.out {
+			continue
+		}
+		n := s.drawingTiles(s.anchorBox(a))
+		if n > room {
+			s.leaveOut(a)
+			any = true
+			continue
+		}
+		room -= n
+	}
+	return any
+}
+
+func (s *sheetCtx) leaveOut(a *anchored) {
+	a.out = true
+	s.c.warnOnce("drawings:"+s.ws.name, "sheet %q: the drawings cover more than %d tiles; the rest are left out", s.ws.name, maxDrawingTiles)
+}
+
 // paintDrawings draws each anchored shape into an object that the tiles
 // under it use.
 func (s *sheetCtx) paintDrawings() {
+	room := maxDrawingTiles
 	for _, a := range s.drawings {
+		if a.out {
+			continue
+		}
 		b := s.anchorBox(a)
-		if b.w < 0 || b.h < 0 {
+		if !(b.w >= 0 && b.h >= 0) {
+			continue
+		}
+		// the tiles are counted where the drawing is given to them (the
+		// view, and with it the boxes, was set again if limitDrawings left
+		// drawings out)
+		n := s.drawingTiles(b)
+		if n > room {
+			s.leaveOut(a)
 			continue
 		}
 		cv := s.c.cvs.New()
@@ -121,8 +184,8 @@ func (s *sheetCtx) paintDrawings() {
 		if !cv.Drawn {
 			continue
 		}
-		// rotated shapes, shadows and line widths reach past the box
-		m := math.Max(b.w, b.h)*0.5 + 8
+		room -= n
+		m := b.reach()
 		bbox := bdf.Rect{X: f32(-m), Y: f32(-m), W: f32(b.w + 2*m), H: f32(b.h + 2*m)}
 		cv.Obj.SetBBox(bbox.X, bbox.Y, bbox.W, bbox.H)
 		for _, t := range s.tilesIn(b.x-m, b.y-m, b.x+b.w+m, b.y+b.h+m) {
@@ -223,18 +286,46 @@ func (s *sheetCtx) paintLinks() {
 			continue
 		}
 		for _, rg := range parseSqref(h.AttrStr("ref", "")) {
-			if rg.r0 >= s.nRows || rg.c0 >= s.nCols {
-				continue
-			}
-			rg.r1, rg.c1 = min(rg.r1, s.nRows-1), min(rg.c1, s.nCols-1)
-			b := s.rangeBox(rg)
-			if b.w <= 0 || b.h <= 0 {
-				continue
-			}
-			for _, t := range s.tilesIn(b.x, b.y, b.x+b.w, b.y+b.h) {
-				t.cv.Obj.Link(f32(b.x-t.ox), f32(b.y-t.oy), f32(b.w), f32(b.h), target)
-			}
+			s.putLink(rg, target)
 		}
+	}
+}
+
+// maxLinkTiles bounds the tiles that the links of a sheet are put into
+// after their first: a link is put into every tile its range touches, and
+// the range is the file's to state.
+const maxLinkTiles = 1 << 14
+
+// putLink puts a link over a range into the tiles the range touches, or
+// into the first of them only when the others are more than what is left of
+// maxLinkTiles after the links before it. (The tiles of the cells of the
+// range that are in the file would take, for every such link, a walk through
+// those cells.)
+func (s *sheetCtx) putLink(rg cellRange, target string) {
+	if rg.r0 >= s.nRows || rg.c0 >= s.nCols {
+		return
+	}
+	rg.r1, rg.c1 = min(rg.r1, s.nRows-1), min(rg.c1, s.nCols-1)
+	b := s.rangeBox(rg)
+	if b.w <= 0 || b.h <= 0 {
+		return
+	}
+	link := func(t *tileCv) {
+		t.cv.Obj.Link(f32(b.x-t.ox), f32(b.y-t.oy), f32(b.w), f32(b.h), target)
+	}
+	tx0, ty0, tx1, ty1, ok := s.tileSpan(b.x, b.y, b.x+b.w, b.y+b.h)
+	if !ok {
+		return
+	}
+	more := (tx1-tx0)*(ty1-ty0) - 1
+	if more > s.linkRoom {
+		s.c.warnOnce("links:"+s.ws.name, "sheet %q: the links cover more than %d tiles; the rest are in their first tile only", s.ws.name, maxLinkTiles)
+		link(s.tileAt(tx0, ty0))
+		return
+	}
+	s.linkRoom -= more
+	for _, t := range s.tilesIn(b.x, b.y, b.x+b.w, b.y+b.h) {
+		link(t)
 	}
 }
 

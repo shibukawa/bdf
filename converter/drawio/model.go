@@ -98,7 +98,31 @@ func parseModel(n *xmlNode) *model {
 			}
 		}
 	}
-	// break parent cycles: cells not reachable from the root are dropped
+	// Break parent cycles: cut the parent chain of cells not reachable from
+	// the root down its children. A malformed file can have cells that are
+	// each other's parent (the JavaScript model never does); without this,
+	// walks up the tree (visibleTerminal, swimlaneOf, resolveColor) never
+	// terminate. Valid files reach every cell from the root, so nothing is
+	// cut and the output is unchanged.
+	if m.root != nil {
+		reachable := map[*cell]bool{m.root: true}
+		stack := []*cell{m.root}
+		for len(stack) > 0 {
+			c := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			for _, k := range c.children {
+				if !reachable[k] {
+					reachable[k] = true
+					stack = append(stack, k)
+				}
+			}
+		}
+		for _, c := range m.ordered {
+			if !reachable[c] {
+				c.parent = nil
+			}
+		}
+	}
 	return m
 }
 
@@ -169,13 +193,20 @@ func attrNum(n *xmlNode, name string, def float64) float64 {
 // (Graph.getLabel / replacePlaceholders): %name% stands for an attribute
 // of the cell or, failing that, of its ancestors; %page%, %pagenumber% and
 // %pagecount% for the page.
-func (m *model) label(c *cell, st style, pg *pageInfo) string {
-	v := c.value
+//
+// cut reports that the placeholders stand for more than maxLabel bytes:
+// those past the limit are left as they are written.
+func (m *model) label(c *cell, st style, pg *pageInfo) (v string, cut bool) {
+	v = c.value
 	if c.attrs != nil && (c.attrs["placeholders"] == "1" || st.is("placeholders")) && strings.Contains(v, "%") {
-		v = m.replacePlaceholders(c, v, pg)
+		return m.replacePlaceholders(c, v, pg)
 	}
-	return v
+	return v, false
 }
+
+// maxLabel bounds the text that the placeholders of a label are replaced
+// with: a label of n placeholders of an attribute of n bytes is n × n bytes.
+const maxLabel = 1 << 20
 
 // pageInfo identifies the page being converted, for placeholders and links.
 type pageInfo struct {
@@ -184,8 +215,9 @@ type pageInfo struct {
 	count  int
 }
 
-func (m *model) replacePlaceholders(c *cell, s string, pg *pageInfo) string {
+func (m *model) replacePlaceholders(c *cell, s string, pg *pageInfo) (out string, cut bool) {
 	var b strings.Builder
+	added := 0 // bytes that placeholders were replaced with
 	for {
 		i := strings.IndexByte(s, '%')
 		if i < 0 {
@@ -200,6 +232,10 @@ func (m *model) replacePlaceholders(c *cell, s string, pg *pageInfo) string {
 		b.WriteString(s[:i])
 		name := s[i+1 : i+1+j]
 		if val, ok := m.placeholder(c, name, pg); ok {
+			if added += len(val); added > maxLabel {
+				b.WriteString(s[i:])
+				return b.String(), true
+			}
 			b.WriteString(val)
 			s = s[i+2+j:]
 		} else {
@@ -207,7 +243,7 @@ func (m *model) replacePlaceholders(c *cell, s string, pg *pageInfo) string {
 			s = s[i+1:]
 		}
 	}
-	return b.String()
+	return b.String(), false
 }
 
 func (m *model) placeholder(c *cell, name string, pg *pageInfo) (string, bool) {

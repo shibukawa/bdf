@@ -637,8 +637,13 @@ func autoNumber(scheme string, n int) string {
 	return num
 }
 
+// maxLetterReps bounds the repeated letters of a bullet number: a hostile
+// startAt would otherwise build a huge string. It is far above any real
+// list; beyond it we fall back to a decimal number, as roman does.
+const maxLetterReps = 1000
+
 func alpha(n int) string {
-	if n < 1 {
+	if n < 1 || (n-1)/26+1 > maxLetterReps {
 		return itoa(n)
 	}
 	// A..Z, AA..ZZ, AAA… (repeated letters, as Office numbers them)

@@ -1,6 +1,8 @@
 package html
 
 import (
+	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
+	"github.com/shibukawa/bdf/converter/internal/wordproc"
 	xhtml "golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -23,16 +26,27 @@ const maxImage = 50 << 20
 // fetchers is how many images are fetched at the same time.
 const fetchers = 8
 
+// What a document may fetch from the network: so many images, of so many
+// bytes together, in so much time. The images after that are left out. A
+// document can name any number of images, on servers that answer slowly.
+var (
+	maxRemote      = 256
+	maxRemoteBytes = 256 << 20
+	remoteTimeout  = 120 * time.Second
+)
+
 // resources resolves the references of a document: its images and links.
 type resources struct {
 	dir    string
 	base   *url.URL
 	parts  map[string][]byte // parts of an MHTML archive by Content-Location and cid: URL
 	remote bool
-	fetch  func(string) ([]byte, error)
+	fetch  func(string) ([]byte, error) // nil: httpGet
 
 	mu       sync.Mutex
 	fetched  map[string]fetched // remote images by URL
+	bytes    int                // of the images fetched
+	deadline time.Time          // of the fetches, from the first of them
 	warnings []string
 }
 
@@ -43,9 +57,6 @@ type fetched struct {
 
 func newResources(opts *Options) *resources {
 	r := &resources{dir: opts.Dir, remote: !opts.NoRemote, fetch: opts.Fetch, fetched: map[string]fetched{}}
-	if r.fetch == nil {
-		r.fetch = httpGet
-	}
 	if opts.BaseURL != "" {
 		r.setBase(opts.BaseURL)
 	}
@@ -131,22 +142,62 @@ func readLimited(rd io.Reader) ([]byte, error) {
 	return b, nil
 }
 
-// get fetches a remote image once.
+// leftOut is the error of an image that is not fetched, or not kept,
+// because the document has fetched what it may: the layout warns of the
+// limit once.
+func leftOut(format string, args ...any) error {
+	return &wordproc.LimitError{Warning: fmt.Sprintf(format, args...) + "; the images after that are left out"}
+}
+
+// get fetches a remote image once, within what the document may fetch.
 func (r *resources) get(u string) ([]byte, error) {
 	r.mu.Lock()
 	f, ok := r.fetched[u]
-	r.mu.Unlock()
-	if ok {
-		return f.data, f.err
+	var err error
+	switch {
+	case ok:
+	case len(r.fetched) >= maxRemote:
+		err = leftOut("the document has more than %d images on the network", maxRemote)
+	case r.deadline.IsZero():
+		r.deadline = time.Now().Add(remoteTimeout)
+	case !time.Now().Before(r.deadline):
+		err = r.late()
 	}
-	b, err := r.fetch(u)
+	if !ok && err == nil {
+		r.fetched[u] = fetched{err: errors.New("not fetched yet")} // counts as one of the images
+	}
+	deadline := r.deadline
+	r.mu.Unlock()
+	if ok || err != nil {
+		return f.data, cmp.Or(err, f.err)
+	}
+	var b []byte
+	if r.fetch != nil {
+		b, err = r.fetch(u)
+	} else {
+		b, err = httpGet(u, deadline)
+		if errors.Is(err, context.DeadlineExceeded) && !time.Now().Before(deadline) {
+			err = r.late()
+		}
+	}
 	r.mu.Lock()
+	if err == nil && r.bytes+len(b) > maxRemoteBytes {
+		b, err = nil, leftOut("the images on the network are larger than %d MiB", maxRemoteBytes>>20)
+	}
+	r.bytes += len(b)
 	r.fetched[u] = fetched{b, err}
 	r.mu.Unlock()
 	return b, err
 }
 
-// prefetch fetches the remote images of a document, several at a time.
+// late is the error of an image that is not fetched in the time the
+// document has for its images.
+func (r *resources) late() error {
+	return leftOut("the images on the network took more than %v", remoteTimeout)
+}
+
+// prefetch fetches the remote images of a document, several at a time:
+// those of the elements that are drawn, as many as the document may fetch.
 func (r *resources) prefetch(doc *xhtml.Node) {
 	if !r.remote {
 		return
@@ -155,15 +206,28 @@ func (r *resources) prefetch(doc *xhtml.Node) {
 	var urls []string
 	var walk func(n *xhtml.Node)
 	walk = func(n *xhtml.Node) {
-		if n.Type == xhtml.ElementNode && n.DataAtom == atom.Img {
-			src := attr(n, "src")
-			if src == "" {
-				if f := strings.Fields(attr(n, "srcset")); len(f) > 0 {
-					src = strings.TrimSuffix(f[0], ",")
+		if n.Type == xhtml.ElementNode {
+			if !wordproc.Drawn(n) {
+				return
+			}
+			src := ""
+			switch {
+			case n.DataAtom == atom.Img && n.Namespace == "":
+				if src = attr(n, "src"); src == "" {
+					if f := strings.Fields(attr(n, "srcset")); len(f) > 0 {
+						src = strings.TrimSuffix(f[0], ",")
+					}
+				}
+			case n.Namespace == "svg" && (n.Data == "image" || n.Data == "feImage"):
+				// written into the SVG document of the svg element
+				for _, a := range n.Attr {
+					if a.Key == "href" && (a.Namespace == "" || a.Namespace == "xlink") && (src == "" || a.Namespace == "") {
+						src = strings.TrimSpace(a.Val)
+					}
 				}
 			}
-			if u, err := resolve(r.base, src); err == nil && (u.Scheme == "http" || u.Scheme == "https") {
-				if s := u.String(); !seen[s] && r.parts[s] == nil {
+			if u, err := resolve(r.base, src); src != "" && err == nil && (u.Scheme == "http" || u.Scheme == "https") {
+				if s := u.String(); !seen[s] && r.parts[s] == nil && len(urls) < maxRemote {
 					seen[s] = true
 					urls = append(urls, s)
 				}
@@ -192,9 +256,11 @@ func (r *resources) prefetch(doc *xhtml.Node) {
 
 var client = &http.Client{Timeout: 30 * time.Second}
 
-// httpGet fetches an image over HTTP.
-func httpGet(u string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, u, nil)
+// httpGet fetches an image over HTTP, until the deadline at the latest.
+func httpGet(u string, deadline time.Time) ([]byte, error) {
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +268,14 @@ func httpGet(u string) ([]byte, error) {
 	req.Header.Set("Accept", "image/avif,image/webp,image/png,image/jpeg,image/gif,image/*;q=0.8")
 	resp, err := client.Do(req)
 	if err != nil {
+		// the error names the address: without its user and password
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			if a, perr := url.Parse(ue.URL); perr == nil && a.User != nil {
+				a.User = nil
+				ue.URL = a.String()
+			}
+		}
 		return nil, err
 	}
 	defer resp.Body.Close()

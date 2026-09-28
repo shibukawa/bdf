@@ -90,22 +90,51 @@ func hasBorder(f *cellFmt) bool {
 		(b.diagUp || b.diagDown) && b.diag.style != ""
 }
 
+// maxFormatEdges bounds the edges that are kept for the cells that are not
+// in the file: those whose border is that of the format of their row or
+// column. An edge is kept for each side of each cell, and how many cells
+// a format reaches is the view's to say (a column with a border, in a view
+// of a million rows). The cells of the file keep their borders whatever
+// their number.
+const maxFormatEdges = 1 << 20
+
+// cellEdges is the most edges that are kept for a cell: its four sides and
+// a diagonal.
+const cellEdges = 5
+
 // paintBorders collects the edges of every formatted cell and draws them.
 func (s *sheetCtx) paintBorders() {
+	s.edges().draw()
+}
+
+// edges collects the edges of every formatted cell.
+func (s *sheetCtx) edges() *edgeSet {
 	es := &edgeSet{s: s, h: map[[2]int]edge{}, v: map[[2]int]edge{}}
+	kept := func() int { return len(es.h) + len(es.v) + len(es.diags) }
 	for r := 0; r < s.nRows; r++ {
 		if s.rows.at(r) == 0 {
 			continue
 		}
-		s.eachFormatted(r, func(c0, c1 int, f *cellFmt) {
+		s.formattedRuns(r, true, func(c0, c1 int, f *cellFmt, base bool) {
 			if f == nil || !hasBorder(f) {
 				return
 			}
 			for c := c0; c <= c1; c++ {
+				before := kept()
+				if base && s.edgeRoom < cellEdges {
+					// the borders of the formats of rows and columns are
+					// left out from here on
+					s.edgeRoom = 0
+					s.c.warnOnce("borders:"+s.ws.name, "sheet %q: the formats of rows and columns give borders to more than %d edges of cells that are not in the file; the rest are left out", s.ws.name, maxFormatEdges)
+					return
+				}
 				es.sides(r, c, f, true, true, true, true)
 				if f.border.diag.style != "" && (f.border.diagUp || f.border.diagDown) {
 					es.diags = append(es.diags, diagLine{b: s.cellBox(r, c), e: edge{f.border.diag.style, s.c.st.color(f.border.diag.color, black)},
 						up: f.border.diagUp, down: f.border.diagDown})
+				}
+				if base {
+					s.edgeRoom -= kept() - before
 				}
 			}
 		})
@@ -129,7 +158,7 @@ func (s *sheetCtx) paintBorders() {
 			}
 		}
 	}
-	es.draw()
+	return es
 }
 
 type segment struct {

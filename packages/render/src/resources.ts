@@ -1,4 +1,4 @@
-import { type BdfDocument, type ObjectPart, type PathData, type PartEntry, type Hash, type Font, Verb, FontKind, FONT_STYLES } from "@bdf/core";
+import { type BdfDocument, type ObjectPart, type PathData, type PartEntry, type Hash, type Font, BdfFormatError, Verb, FontKind, FONT_STYLES } from "@bdf/core";
 import { VectorImage, domSvgRasterizer, isSvg, type Raster, type SvgRasterizer } from "./svg.js";
 
 /** Build a Path2D from path data. */
@@ -42,6 +42,64 @@ export function fontString(f: Font, size: number): string {
 /** The decoded images a cache keeps by default: 256 MiB, counted as width × height × 4 bytes. */
 export const DEFAULT_IMAGE_BUDGET = 256 * 1024 * 1024;
 
+/**
+ * Images of more pixels than this are not decoded, by default: 1 GiB
+ * decoded, more than the photos of cameras have. The header of an image
+ * states its size, and a few bytes can state any: a PNG of 30 KB decodes
+ * into a gigabyte.
+ */
+export const DEFAULT_MAX_IMAGE_PIXELS = 1 << 28;
+
+/** The decoded images one render holds at most, by default: 4 GiB, counted as width × height × 4 bytes. */
+export const DEFAULT_HOLD_LIMIT = 4 * 1024 * 1024 * 1024;
+
+/**
+ * The size in pixels that the header of a PNG, JPEG, GIF, WebP or BMP image
+ * states (what decoding it allocates); undefined for other images and for
+ * headers cut short.
+ */
+export function imageSize(b: Uint8Array): { width: number; height: number } | undefined {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+  const tag = (at: number, s: string) => at + s.length <= b.length && [...s].every((c, i) => b[at + i] === c.charCodeAt(0));
+  if (tag(0, "\x89PNG\r\n\x1a\n")) {
+    return b.length >= 24 && tag(12, "IHDR") ? { width: dv.getUint32(16), height: dv.getUint32(20) } : undefined;
+  }
+  if (tag(0, "GIF87a") || tag(0, "GIF89a")) {
+    return b.length >= 10 ? { width: dv.getUint16(6, true), height: dv.getUint16(8, true) } : undefined;
+  }
+  if (tag(0, "BM")) {
+    if (b.length < 26) return undefined;
+    // the OS/2 header has 16 bit sizes; a negative height is a top-down image
+    if (dv.getUint32(14, true) === 12) return { width: dv.getUint16(18, true), height: dv.getUint16(20, true) };
+    return { width: Math.abs(dv.getInt32(18, true)), height: Math.abs(dv.getInt32(22, true)) };
+  }
+  if (tag(0, "RIFF") && tag(8, "WEBP")) {
+    if (b.length < 30) return undefined;
+    if (tag(12, "VP8X")) return { width: 1 + (b[24] | (b[25] << 8) | (b[26] << 16)), height: 1 + (b[27] | (b[28] << 8) | (b[29] << 16)) };
+    if (tag(12, "VP8 ")) return { width: dv.getUint16(26, true) & 0x3fff, height: dv.getUint16(28, true) & 0x3fff };
+    if (tag(12, "VP8L")) {
+      const v = dv.getUint32(21, true);
+      return { width: 1 + (v & 0x3fff), height: 1 + ((v >>> 14) & 0x3fff) };
+    }
+    return undefined;
+  }
+  if (b[0] === 0xff && b[1] === 0xd8) {
+    // the first frame header (SOF), after the segments before it
+    for (let at = 2; at + 4 <= b.length; ) {
+      if (b[at] !== 0xff) return undefined;
+      const m = b[at + 1];
+      if (m === 0xff) { at++; continue; } // fill
+      if (m === 0x01 || (m >= 0xd0 && m <= 0xd8)) { at += 2; continue; } // no length
+      if (m === 0xd9 || m === 0xda) return undefined; // the image data, with no frame header before it
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+        return at + 9 <= b.length ? { width: dv.getUint16(at + 7), height: dv.getUint16(at + 5) } : undefined;
+      }
+      at += 2 + dv.getUint16(at + 2);
+    }
+  }
+  return undefined;
+}
+
 export interface ResourceOptions {
   /**
    * Bytes of decoded images to keep (width × height × 4 each; default
@@ -50,6 +108,16 @@ export interface ResourceOptions {
    * part when needed.
    */
   imageBudget?: number;
+  /**
+   * Images of more pixels than this are not decoded, and drawn as nothing
+   * (default DEFAULT_MAX_IMAGE_PIXELS).
+   */
+  maxImagePixels?: number;
+  /**
+   * Bytes of decoded images one render may hold (default
+   * DEFAULT_HOLD_LIMIT): preparing a page whose images take more fails.
+   */
+  holdLimit?: number;
   /** Decodes an image part (default createImageBitmap). */
   decodeImage?: (bytes: Uint8Array) => Promise<ImageBitmap>;
   /**
@@ -65,6 +133,8 @@ export interface ResourceOptions {
  */
 export class ImageHold {
   readonly images = new Set<Hash>();
+  /** What the images take decoded, as far as it is known. */
+  bytes = 0;
 }
 
 const bitmapBytes = (b: ImageBitmap) => b.width * b.height * 4;
@@ -92,10 +162,14 @@ export class ResourceCache {
   private holds = new Set<ImageHold>();
   private bytes = 0;
   private disposed = false;
+  /** Images that are not decoded: too large. */
+  private refused = new Set<Hash>();
   private vectors = new Map<Hash, VectorImage>();
   private fonts = new Map<Hash, FontFace>();
   private fontSet: FontFaceSet | undefined;
   readonly imageBudget: number;
+  readonly maxImagePixels: number;
+  readonly holdLimit: number;
   private decodeImage: (bytes: Uint8Array) => Promise<ImageBitmap>;
   private rasterize: SvgRasterizer | undefined;
   /** SVG rasters the draws since takeMisses() did not find, by image and scale. */
@@ -104,6 +178,8 @@ export class ResourceCache {
   constructor(readonly doc: BdfDocument, fontSet?: FontFaceSet, opts: ResourceOptions = {}) {
     this.fontSet = fontSet ?? (globalThis as { fonts?: FontFaceSet }).fonts ?? (globalThis as { document?: { fonts?: FontFaceSet } }).document?.fonts;
     this.imageBudget = opts.imageBudget ?? DEFAULT_IMAGE_BUDGET;
+    this.maxImagePixels = opts.maxImagePixels ?? DEFAULT_MAX_IMAGE_PIXELS;
+    this.holdLimit = opts.holdLimit ?? DEFAULT_HOLD_LIMIT;
     this.decodeImage = opts.decodeImage ?? ((bytes) => createImageBitmap(new Blob([bytes as BlobPart])));
     this.rasterize = opts.rasterizeSvg ?? domSvgRasterizer();
   }
@@ -167,8 +243,14 @@ export class ResourceCache {
           if (!this.vectors.has(e.h) && !this.disposed) this.vectors.set(e.h, new VectorImage(e.h, bytes));
           return;
         }
-        hold?.images.add(e.h); // held from now, before any await
+        if (this.refused.has(e.h)) return;
         const bmp = this.images.get(e.h);
+        // what decoding allocates is known before: the header states it
+        const stated = bmp ?? imageSize(bytes);
+        if (stated && stated.width * stated.height > this.maxImagePixels) return this.refuse(e.h, stated);
+        const held = hold?.images.has(e.h);
+        hold?.images.add(e.h); // held from now, before any await
+        if (hold && !held && stated) this.pin(hold, stated);
         if (bmp) {
           this.images.delete(e.h); // most recently prepared: to the end
           this.images.set(e.h, bmp);
@@ -183,6 +265,10 @@ export class ResourceCache {
                 bmp.close();
                 return;
               }
+              if (bmp.width * bmp.height > this.maxImagePixels) {
+                bmp.close();
+                return this.refuse(e.h, bmp);
+              }
               this.images.set(e.h, bmp);
               this.bytes += bitmapBytes(bmp);
               this.trim();
@@ -190,7 +276,12 @@ export class ResourceCache {
             .finally(() => this.decoding.delete(e.h));
           this.decoding.set(e.h, p);
         }
-        return p;
+        if (!hold || held || stated) return p;
+        // an image whose header was not read: what it takes is known now
+        return p.then(() => {
+          const decoded = this.images.get(e.h);
+          if (decoded) this.pin(hold, decoded);
+        });
       }
       case "font": {
         if (this.fonts.has(e.h)) return;
@@ -209,6 +300,18 @@ export class ResourceCache {
         return;
       }
     }
+  }
+
+  /** An image that is not decoded: draws find nothing to draw. */
+  private refuse(hash: Hash, size: { width: number; height: number }): void {
+    this.refused.add(hash);
+    console.warn(`bdf: image ${hash} of ${size.width} × ${size.height} pixels is not drawn`);
+  }
+
+  /** Count an image of a hold; a hold of more than the limit fails the render it is for. */
+  private pin(hold: ImageHold, size: { width: number; height: number }): void {
+    hold.bytes += size.width * size.height * 4;
+    if (hold.bytes > this.holdLimit) throw new BdfFormatError(`the images of a render take more than ${this.holdLimit} bytes`);
   }
 
   /** Close the least recently prepared images that nothing holds until the rest fit the budget. */
@@ -261,10 +364,13 @@ export class ResourceCache {
     }
   }
 
-  /** A bitmap image; for an SVG image, the raster drawn last. */
-  image(hash: Hash): ImageBitmap {
+  /**
+   * A bitmap image; for an SVG image, the raster drawn last. Undefined for
+   * an image that was not decoded for its size: it is drawn as nothing.
+   */
+  image(hash: Hash): ImageBitmap | undefined {
     const img = this.images.get(hash) ?? this.vectors.get(hash)?.latest();
-    if (!img) throw new Error(`bdf: image ${hash} not loaded`);
+    if (!img && !this.refused.has(hash)) throw new Error(`bdf: image ${hash} not loaded`);
     return img;
   }
 

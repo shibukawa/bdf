@@ -1,7 +1,8 @@
 /// <reference lib="webworker" />
-import { BdfDocument, BdfPasswordError, BufferSource, RangeSource, SplitSource, fetchSingle, extractContent, type PartSource, type TextRun, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdf/core";
+import { BdfDocument, BdfPasswordError, BufferSource, RangeSource, SplitSource, UseLimits, fetchSingle, extractContent, tileSize, type PartSource, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdf/core";
 import { fontString } from "./resources.js";
-import { PageRenderer } from "./page.js";
+import { PageRenderer, tilesIn, type TileRange } from "./page.js";
+import { concat, within } from "./content.js";
 import { DocumentSearch } from "./search.js";
 import type { WorkerRequest, WorkerResponse, WorkerResult, OpenSource, WorkerOpenOptions, RasterizeRequest, RasterizeResponse } from "./protocol.js";
 import type { SvgRasterizer } from "./svg.js";
@@ -58,8 +59,9 @@ function sourceOf(source: OpenSource): PartSource | Promise<PartSource> {
 }
 
 function opened(doc: BdfDocument): Opened {
-  const pages = new PageRenderer(doc, {}, (self as unknown as { fonts?: FontFaceSet }).fonts, { imageBudget: settings.imageBudget, rasterizeSvg: rasterizeOnPage });
-  return { doc, pages, search: new DocumentSearch(doc, measure) };
+  const pages = new PageRenderer(doc, {}, (self as unknown as { fonts?: FontFaceSet }).fonts, { imageBudget: settings.imageBudget, maxImagePixels: settings.maxImagePixels, holdLimit: settings.holdLimit, rasterizeSvg: rasterizeOnPage });
+  // hits are measured in the fonts of their objects, which are loaded with them
+  return { doc, pages, search: new DocumentSearch(doc, measure, (h) => pages.res.prepareText(h)) };
 }
 
 function retire() {
@@ -97,45 +99,17 @@ async function replace(source: OpenSource): Promise<Manifest> {
 
 type Matrix = [number, number, number, number, number, number];
 
-/** Join the contents of several objects (layers, pages, tiles), renumbering nodes and runs. */
-function concat(parts: TextContent[]): TextContent {
-  const out: TextContent = { runs: [], nodes: [], links: [] };
-  for (const c of parts) {
-    const nodeBase = out.nodes.length, runBase = out.runs.length;
-    const shift = (i: number | undefined) => (i === undefined || i < 0 ? i : i + nodeBase);
-    out.nodes.push(...c.nodes.map((n) => ({ ...n, parent: shift(n.parent)! })));
-    out.runs.push(...c.runs.map((r) => ({ ...r, node: shift(r.node) })));
-    out.links.push(...c.links.map((l) => ({ ...l, after: l.after + runBase, node: shift(l.node)! })));
-  }
-  return out;
-}
-
-/**
- * Keep the runs and links inside a rectangle (by run anchor, by link
- * center), for a band or a tile; the text layer leaves out nodes left empty.
- */
-function within(c: TextContent, r: Rect, dx = 0, dy = 0): TextContent {
-  const inside = (x: number, y: number) => x - dx >= r.x && x - dx < r.x + r.w && y - dy >= r.y && y - dy <= r.y + r.h;
-  const runs: TextRun[] = [];
-  const kept: number[] = []; // new index of the last kept run up to each old index
-  for (const run of c.runs) {
-    if (inside(run.x, run.y)) runs.push(run);
-    kept.push(runs.length - 1);
-  }
-  const links = c.links.filter((l) => inside(l.x + l.w / 2, l.y + l.h / 2)).map((l) => ({ ...l, after: l.after >= 0 ? kept[l.after] : -1 }));
-  return { runs, nodes: c.nodes, links };
-}
-
 /**
  * Text content of a page in the given space. Fonts are loaded first so runs
  * without an advance get one measured with the embedded font; the text layer
  * on the main thread stretches its fallback rendering to that width. ALT_TEXT
- * runs keep theirs: only text drawn with a font has a known extent.
+ * runs keep theirs: only text drawn with a font has a known extent. limits
+ * counts the objects drawn with USE across the pages of a request.
  */
-async function pageContent({ doc, pages }: Opened, page: Page, matrix?: Matrix, roles?: string[]): Promise<TextContent> {
+async function pageContent({ doc, pages }: Opened, page: Page, matrix?: Matrix, roles?: string[], limits = new UseLimits()): Promise<TextContent> {
   await pages.preparePageText(page);
   const layers = roles ? page.layers.filter((l) => roles.includes(l.role)) : page.layers;
-  const c = concat(layers.map((layer) => extractContent(doc.objectSync(layer.obj)!, (h) => doc.objectSync(h), matrix)));
+  const c = concat(layers.map((layer) => extractContent(doc.objectSync(layer.obj)!, (h) => doc.objectSync(h), matrix, limits)));
   for (const r of c.runs) {
     if (r.advance === 0 && r.font && r.text && !r.altText) r.advance = measure(fontString(r.font, r.size), r.text);
   }
@@ -147,13 +121,14 @@ async function continuousContent(o: Opened, view: View, viewport: Rect): Promise
   const { offsets } = o.pages.continuousLayout(view);
   const parts: TextContent[] = [];
   const list = view.pages ?? [];
+  const limits = new UseLimits();
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     const b = p.body ?? { x: 0, y: 0, w: p.w, h: p.h };
     if (offsets[i] >= viewport.y + viewport.h || offsets[i] + b.h <= viewport.y) continue;
     const dx = -b.x - viewport.x, dy = offsets[i] - b.y - viewport.y;
     // The layers continuous mode draws, and what lies inside the body rectangle (the band clips to it).
-    parts.push(within(await pageContent(o, p, [1, 0, 0, 1, dx, dy], ["body", "annotation"]), b, dx, dy));
+    parts.push(within(await pageContent(o, p, [1, 0, 0, 1, dx, dy], ["body", "annotation"], limits), b, dx, dy));
   }
   return concat(parts);
 }
@@ -164,27 +139,34 @@ async function continuousContent(o: Opened, view: View, viewport: Rect): Promise
  * A run belongs to the tile its anchor lies in; tiles repeat what straddles them.
  */
 async function sheetContent({ doc, pages }: Opened, view: View, viewport: Rect | Rect[]): Promise<TextContent> {
-  const tile = view.tile ?? 2048;
-  const keys = new Map<string, [number, number]>();
+  const tile = tileSize(view);
+  const ranges: TileRange[] = [];
   for (const r of Array.isArray(viewport) ? viewport : [viewport]) {
     if (r.w <= 0 || r.h <= 0) continue;
     const tx0 = Math.max(0, Math.floor(r.x / tile)), ty0 = Math.max(0, Math.floor(r.y / tile));
     const tx1 = Math.floor((r.x + r.w - 1e-6) / tile), ty1 = Math.floor((r.y + r.h - 1e-6) / tile);
-    for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) keys.set(`${tx},${ty}`, [tx, ty]);
+    ranges.push({ tx0, ty0, tx1, ty1 });
   }
   const parts: TextContent[] = [];
-  for (const [tx, ty] of [...keys.values()].sort((a, b) => a[1] - b[1] || a[0] - b[0])) {
-    const h = view.tiles?.[`${tx},${ty}`];
-    if (!h) continue;
+  const limits = new UseLimits();
+  for (const [tx, ty, h] of tilesIn(view, ranges)) {
     await pages.res.prepareText(h);
-    const c = extractContent(doc.objectSync(h)!, (hh) => doc.objectSync(hh), [1, 0, 0, 1, tx * tile, ty * tile]);
+    const c = extractContent(doc.objectSync(h)!, (hh) => doc.objectSync(hh), [1, 0, 0, 1, tx * tile, ty * tile], limits);
     parts.push(within(c, { x: 0, y: 0, w: tile, h: tile - 1e-6 }, tx * tile, ty * tile)); // the rule of the text index (spec §4.1)
   }
   return concat(parts);
 }
 
+/**
+ * The pixels of the canvas of a render at most, and those of a side: what
+ * browsers give a canvas. The size of a page is the document's to say.
+ */
+const MAX_CANVAS_PIXELS = 1 << 28, MAX_CANVAS_SIDE = 32767;
+
 function canvasFor(w: number, h: number): OffscreenCanvas {
-  return new OffscreenCanvas(Math.max(1, Math.ceil(w)), Math.max(1, Math.ceil(h)));
+  const cw = Math.max(1, Math.ceil(w)), ch = Math.max(1, Math.ceil(h));
+  if (!(cw <= MAX_CANVAS_SIDE && ch <= MAX_CANVAS_SIDE && cw * ch <= MAX_CANVAS_PIXELS)) throw new Error(`bdf: a canvas of ${cw} by ${ch} pixels is too large`);
+  return new OffscreenCanvas(cw, ch);
 }
 
 async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; transfer: Transferable[] }> {

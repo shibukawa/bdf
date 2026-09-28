@@ -262,8 +262,8 @@ func (ctx *staffCtx) clefChangeWidth(mi, off int) float64 {
 	w := 0.0
 	for _, sm := range ctx.e.sm[mi] {
 		for _, c := range sm.clefChanges {
-			if c.Offset == off {
-				w = max(w, clefGlyph(c.Clef, true).advance+0.5)
+			if g := clefGlyph(c.Clef, true); c.Offset == off && g != nil {
+				w = max(w, g.advance+0.5)
 			}
 		}
 	}
@@ -281,8 +281,8 @@ func (ctx *staffCtx) accWidth(sm *staffMeasure, ev *Event) float64 {
 		cols[a.col] = max(cols[a.col], accidentalGlyph(a.acc).advance+0.2)
 	}
 	w := 0.0
-	for _, v := range cols {
-		w += v
+	for k := range len(cols) { // in the order of the columns: the sum is the same every time
+		w += cols[k]
 	}
 	return w
 }
@@ -344,6 +344,17 @@ func (ctx *staffCtx) place(mi int, sm *staffMeasure, clef Clef, ev *Event, x, sc
 	l.stem = ev.Type >= Half && ev.Stem != StemNone
 	ctx.evs = append(ctx.evs, l)
 	return l
+}
+
+// columnLefts returns the left edges of the columns of accidentals of the
+// widths w (column 0 first), leftwards from x.
+func columnLefts(x float64, w map[int]float64) []float64 {
+	left := make([]float64, len(w))
+	for k := range left {
+		x -= w[k]
+		left[k] = x
+	}
+	return left
 }
 
 // stemUp decides the direction of the stem of an event alone: by the voice
@@ -438,12 +449,10 @@ func (ctx *staffCtx) arrange(l *evLayout) {
 	for _, a := range pa {
 		colW[a.col] = max(colW[a.col], (accidentalGlyph(a.acc).advance+0.2)*s)
 	}
+	left := columnLefts(minX, colW)
 	for _, a := range pa {
 		g := accidentalGlyph(a.acc)
-		x := minX
-		for k := 0; k <= a.col; k++ {
-			x -= colW[k]
-		}
+		x := left[a.col]
 		y := float64(a.pos) / 2
 		if a.note.Cautionary {
 			pl, pr := sym("accidentalParensLeft"), sym("accidentalParensRight")

@@ -1,8 +1,10 @@
 package drawio
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -48,5 +50,41 @@ func TestLineJumps(t *testing.T) {
 	// the last edge turns before the third vertical edge: its second segment crosses it
 	if n, pts := jumps("h4"); n != 3 || len(pts) != 7 || !pts[5].jump || pts[5].y != 190 {
 		t.Errorf("h4: %d jumps in %v", n, pts)
+	}
+}
+
+// TestLineJumpBudget lays out a grid of edges that all cross: the
+// crossings grow with the square of the edges, and past the budget the
+// edges are drawn without jumps.
+func TestLineJumpBudget(t *testing.T) {
+	const n = 1200 // 600 × 600 crossings, more than maxJumps
+	var b strings.Builder
+	for i := range n {
+		x0, y0, x1, y1 := 0, 2*i, 4000, 2*i
+		if i%2 == 1 {
+			x0, y0, x1, y1 = 2*i, 0, 2*i, 4000
+		}
+		fmt.Fprintf(&b, `<mxCell id="e%d" style="jumpStyle=arc" edge="1" parent="1"><mxGeometry relative="1" as="geometry">`+
+			`<mxPoint x="%d" y="%d" as="sourcePoint"/><mxPoint x="%d" y="%d" as="targetPoint"/></mxGeometry></mxCell>`, i, x0, y0, x1, y1)
+	}
+	m := parseModel(mustXML(t, limitsModel(b.String())))
+	warned := false
+	v := newView(m, func(key, _ string, _ ...any) { warned = warned || key == "jumps" }, nil)
+	jumps, plain := 0, 0
+	for _, st := range v.order {
+		if !st.cell.edge {
+			continue
+		}
+		if st.routedPoints == nil {
+			plain++
+		}
+		for _, p := range st.routedPoints {
+			if p.jump {
+				jumps++
+			}
+		}
+	}
+	if !warned || plain == 0 || jumps <= maxJumps || jumps > maxJumps+n {
+		t.Errorf("%d jumps, %d edges without, warned %v", jumps, plain, warned)
 	}
 }

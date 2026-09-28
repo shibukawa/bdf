@@ -256,7 +256,7 @@ func (e *engraver) systemPrims(sys *system) []prim {
 				scale: 1, sx: h / 4 * 1.2, sy: h / 4})
 		}
 	}
-	if len(e.s.Parts) > 1 && !e.anyGrand() {
+	if len(e.s.Parts) > 1 && !e.grand {
 		top, bottom := 0.0, sys.y[last]+4
 		x := -1.0
 		c.rect(x-def.thickBar, top-0.2, def.thickBar, bottom-top+0.4)
@@ -281,26 +281,25 @@ func (e *engraver) systemPrims(sys *system) []prim {
 		}
 	}
 	// bar lines, joined through the staves of a part
+	tops := e.staffTops(sys)
 	for mi := sys.first; mi <= sys.last; mi++ {
 		col := e.cols[mi]
 		for pi := range e.s.Parts {
 			sp := parts[pi]
 			if lb := e.leftBar(mi); lb != BarNone {
-				e.barline(c, lb, col.x, sp.top, sp.bottom, e.staffTops(sys, pi), true)
+				e.barline(c, lb, col.x, sp.top, sp.bottom, tops[pi], true)
 			}
-			e.barline(c, e.rightBar(mi), col.x+col.width, sp.top, sp.bottom, e.staffTops(sys, pi), false)
+			e.barline(c, e.rightBar(mi), col.x+col.width, sp.top, sp.bottom, tops[pi], false)
 		}
 	}
 	return c.prims
 }
 
-// staffTops returns the top lines of the staves of a part in a system.
-func (e *engraver) staffTops(sys *system, part int) []float64 {
-	var out []float64
+// staffTops returns the top lines of the staves of each part in a system.
+func (e *engraver) staffTops(sys *system) [][]float64 {
+	out := make([][]float64, len(e.s.Parts))
 	for si, ref := range e.staves {
-		if ref.part == part {
-			out = append(out, sys.y[si])
-		}
+		out[ref.part] = append(out[ref.part], sys.y[si])
 	}
 	return out
 }

@@ -107,7 +107,7 @@ func main() {
 	}
 	api := js.ValueOf(map[string]any{"formats": formats})
 	for name, fn := range methods {
-		api.Set(name, js.FuncOf(fn))
+		api.Set(name, js.FuncOf(guarded(name, fn)))
 	}
 	js.Global().Set("bdfConverter", api)
 	select {}
@@ -116,6 +116,33 @@ func main() {
 // methods are the calls bdfConverter takes; the preview module adds its own
 // (preview.go).
 var methods = map[string]func(js.Value, []js.Value) any{"convert": convert, "open": open}
+
+// guarded is a method whose panic rejects the Promise it returns. The part
+// of a call that reads its arguments runs where JavaScript called it, not
+// in the goroutine of promise: a panic there ends the program, and every
+// call after it fails.
+func guarded(name string, fn func(js.Value, []js.Value) any) func(js.Value, []js.Value) any {
+	return func(this js.Value, args []js.Value) (res any) {
+		defer func() {
+			if r := recover(); r != nil {
+				res = reject(fmt.Errorf("%s: panic: %v", name, r))
+			}
+		}()
+		return fn(this, args)
+	}
+}
+
+// input copies the bytes of a call (data, options?): a Uint8Array (or a
+// Uint8ClampedArray), which is what js.CopyBytesToGo takes.
+func input(args []js.Value, what string) ([]byte, error) {
+	if len(args) == 0 || args[0].Type() != js.TypeObject ||
+		!args[0].InstanceOf(js.Global().Get("Uint8Array")) && !args[0].InstanceOf(js.Global().Get("Uint8ClampedArray")) {
+		return nil, errors.New("want the " + what + " as a Uint8Array")
+	}
+	data := make([]byte, args[0].Get("length").Int())
+	js.CopyBytesToGo(data, args[0])
+	return data, nil
+}
 
 var (
 	fontMu sync.Mutex
@@ -146,11 +173,11 @@ type request struct {
 }
 
 func readRequest(args []js.Value) (*request, error) {
-	if len(args) == 0 || args[0].Type() != js.TypeObject {
-		return nil, errors.New("want the input bytes as a Uint8Array")
+	data, err := input(args, "input bytes")
+	if err != nil {
+		return nil, err
 	}
-	req := &request{data: make([]byte, args[0].Get("length").Int())}
-	js.CopyBytesToGo(req.data, args[0])
+	req := &request{data: data}
 	req.format, req.password, req.fontURL, req.name = str(args, "format"), str(args, "password"), str(args, "fonts"), str(args, "name")
 	return req, nil
 }
@@ -243,7 +270,7 @@ func streamValue(s converter.Stream, w *warnings) js.Value {
 	var mu sync.Mutex // the calls run in goroutines of their own
 	var funcs []js.Func
 	method := func(fn func(args []js.Value) any) js.Func {
-		f := js.FuncOf(func(_ js.Value, args []js.Value) any { return fn(args) })
+		f := js.FuncOf(guarded("stream", func(_ js.Value, args []js.Value) any { return fn(args) }))
 		funcs = append(funcs, f)
 		return f
 	}

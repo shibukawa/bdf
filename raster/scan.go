@@ -17,6 +17,9 @@ type mask struct {
 
 func (m *mask) empty() bool { return m == nil || m.r.Empty() }
 
+// bytes is the memory the coverage takes.
+func (m *mask) bytes() int { return 4 * len(m.a) }
+
 // at returns the coverage of pixel (x, y), which must lie in m.r.
 func (m *mask) at(x, y int) float32 {
 	if m.a == nil {
@@ -132,10 +135,58 @@ type edge struct {
 // covered exactly along x.
 const subSamples = 16
 
+// crossing is where an edge crosses a scanline.
+type crossing struct {
+	x    float64
+	dir  int8
+	edge int
+}
+
+// scratch is the working memory of the rasterizer, which a renderer keeps
+// from one drawing to the next instead of allocating it for each.
+type scratch struct {
+	edges  []edge
+	active []int
+	xs     []crossing
+	area   []float32
+	cover  []float32
+	// pts holds the points of the paths flattened for a drawing
+	pts   []point
+	polys []polyline
+}
+
+// scratchKept is the most entries of a buffer that are kept for the next
+// drawing: a path of millions of edges does not hold its memory for ever.
+const scratchKept = 1 << 20
+
+func keep[T any](s []T) []T {
+	if cap(s) > scratchKept {
+		return nil
+	}
+	return s[:0]
+}
+
+// insertionLimit is the most crossings of a scanline that are sorted by
+// insertion, which takes the square of their number when the edges come in
+// no order, as those of a path drawn from right to left do. More are sorted
+// by pdqsort, and the edges are kept in the order of their crossings for
+// the next scanline, where they cross in nearly the same. Crossings in the
+// same place may come in another order than by insertion: the spans between
+// them are empty, and the winding after them is the same.
+const insertionLimit = 16
+
 // rasterize returns the coverage of the polylines (each closed implicitly)
 // under a fill rule, limited to bounds.
 func rasterize(polys []polyline, rule byte, bounds image.Rectangle) *mask {
-	var edges []edge
+	return (&scratch{}).rasterize(polys, rule, bounds)
+}
+
+func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle) *mask {
+	if plain {
+		sc = &scratch{}
+	}
+	edges := sc.edges[:0]
+	defer func() { sc.edges = keep(edges) }()
 	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 	add := func(a, b point) {
 		if a.y == b.y || !finite(a) || !finite(b) {
@@ -148,6 +199,9 @@ func rasterize(polys []polyline, rule byte, bounds image.Rectangle) *mask {
 		}
 		e.x0, e.y0, e.y1 = a.x, a.y, b.y
 		e.slope = (b.x - a.x) / (b.y - a.y)
+		if math.IsNaN(e.slope) || math.IsInf(e.slope, 0) {
+			return // the ends are too far apart for a float64 to tell where it crosses
+		}
 		edges = append(edges, e)
 		minX, maxX = math.Min(minX, math.Min(a.x, b.x)), math.Max(maxX, math.Max(a.x, b.x))
 		minY, maxY = math.Min(minY, a.y), math.Max(maxY, b.y)
@@ -180,20 +234,20 @@ func rasterize(polys []polyline, rule byte, bounds image.Rectangle) *mask {
 	})
 	w := r.Dx()
 	m := &mask{r: r, a: make([]float32, w*r.Dy())}
-	area := make([]float32, w+1)
-	cover := make([]float32, w+2)
-	type crossing struct {
-		x   float64
-		dir int8
+	if cap(sc.area) < w+1 || cap(sc.cover) < w+2 {
+		sc.area, sc.cover = make([]float32, w+1), make([]float32, w+2)
 	}
-	var active []int
-	var xs []crossing
+	area, cover := sc.area[:w+1], sc.cover[:w+2]
+	clear(area)
+	clear(cover)
+	active, xs := sc.active[:0], sc.xs[:0]
+	defer func() { sc.active, sc.xs = keep(active), keep(xs) }()
 	next := 0
 	const wgt = 1.0 / subSamples
 	left := float64(r.Min.X)
 	span := func(xa, xb float64) {
 		xa, xb = math.Max(xa-left, 0), math.Min(xb-left, float64(w))
-		if xb <= xa {
+		if !(xb > xa) {
 			return
 		}
 		ia, ib := int(xa), int(xb)
@@ -225,17 +279,35 @@ func rasterize(polys []polyline, rule byte, bounds image.Rectangle) *mask {
 				active[k] = i
 				k++
 				if e.y0 <= sy {
-					xs = append(xs, crossing{e.x0 + (sy-e.y0)*e.slope, e.dir})
+					xs = append(xs, crossing{e.x0 + (sy-e.y0)*e.slope, e.dir, i})
 				}
 			}
 			active = active[:k]
 			if len(xs) < 2 {
 				continue
 			}
-			// insertion sort: the crossings are few and nearly sorted
-			for i := 1; i < len(xs); i++ {
-				for j := i; j > 0 && xs[j].x < xs[j-1].x; j-- {
-					xs[j], xs[j-1] = xs[j-1], xs[j]
+			if len(xs) <= insertionLimit || plain {
+				// insertion sort: the crossings are few and nearly sorted
+				for i := 1; i < len(xs); i++ {
+					for j := i; j > 0 && xs[j].x < xs[j-1].x; j-- {
+						xs[j], xs[j-1] = xs[j-1], xs[j]
+					}
+				}
+			} else {
+				slices.SortFunc(xs, func(a, b crossing) int {
+					switch {
+					case a.x < b.x:
+						return -1
+					case a.x > b.x:
+						return 1
+					}
+					return 0
+				})
+				// every edge that is active crosses: in this order next
+				if len(xs) == len(active) {
+					for i := range xs {
+						active[i] = xs[i].edge
+					}
 				}
 			}
 			wind := 0

@@ -129,6 +129,12 @@ func dark(c bdf.Color) bool {
 	return 0.299*r+0.587*g+0.114*b < 96
 }
 
+// maxTabs bounds the custom tab stops a paragraph keeps: resolving them is
+// quadratic in their number (each stop is deduplicated against the rest and
+// the list is sorted), so an unbounded list would make every paragraph
+// sharing the style slow. It is far above any real paragraph.
+const maxTabs = 200
+
 // tabStop is a custom tab stop of a paragraph.
 type tabStop struct {
 	pos    float64
@@ -234,6 +240,12 @@ func (c *converter) applyPPr(p *pprops, n *ooxml.Node) {
 			p.shd, p.hasShd = c.shading(k)
 		case "tabs":
 			for _, t := range k.Children("tab") {
+				if len(p.tabs) >= maxTabs {
+					// a hostile tab list: stop adding stops so that the
+					// per-tab dedup and the sort stay bounded
+					c.warnOnce("tabs", "a paragraph has more than %d tab stops; the rest are ignored", maxTabs)
+					break
+				}
 				pos := twips(t, "pos", 0)
 				kept := p.tabs[:0]
 				for _, o := range p.tabs {

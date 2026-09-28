@@ -11,6 +11,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/internal/fontdb"
+	"github.com/shibukawa/bdf/internal/otlayout"
 	"github.com/shibukawa/bdf/woff2"
 )
 
@@ -41,6 +42,8 @@ type converter struct {
 	fontParts int
 	// outlined counts the fonts drawn as outlines.
 	outlined int
+	// cut are the layout tables a warning was given for (see face).
+	cut map[*otlayout.Table]bool
 }
 
 // defaultExamples is how many substitutions a feature shows by default.
@@ -64,6 +67,10 @@ func convert(data []byte, o *conv.Options, warn func(string)) (*conv.Result, err
 	faces, err := c.selectFaces(o.Param("font"))
 	if err != nil {
 		return nil, err
+	}
+	// the fonts of a collection that are not shown are not read further
+	for _, fc := range faces {
+		fc.prepare()
 	}
 	c.doc.Meta.Source = "font"
 	c.set = fontset.New(fontdb.New(o.FontFS, o.FontDirs, !o.NoSystemFonts), warn)
@@ -196,6 +203,21 @@ func (c *converter) face(fc *face, several bool) {
 	c.addView("glyphs"+id, prefix+"Glyphs", c.glyphView)
 	if fc.hasFeatures() {
 		c.addView("features"+id, prefix+"Features", c.features)
+	}
+	if fc.namesCut {
+		c.warn(fmt.Sprintf("%s: the records of the name table are longer than %d MB together; those past it are not shown", fc.fullName(), maxNames>>20))
+	}
+	cut := false
+	for _, t := range []*otlayout.Table{fc.gsub, fc.gpos} {
+		if t != nil && t.Truncated() && !c.cut[t] {
+			if c.cut == nil {
+				c.cut = map[*otlayout.Table]bool{}
+			}
+			c.cut[t], cut = true, true
+		}
+	}
+	if cut {
+		c.warn(fmt.Sprintf("%s: the lookups of the layout tables list more than any font does; the features are not shown in full", fc.fullName()))
 	}
 }
 

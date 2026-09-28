@@ -78,6 +78,8 @@ export class TextSearch {
   /** For each code unit of norm: run index and code-unit offset in that run's text (or -1 for separators). */
   private runOf: Int32Array;
   private offOf: Int32Array;
+  /** The plain text, once it was asked for (every hit takes its context from it). */
+  private plain: string | undefined;
 
   constructor(readonly runs: IndexRun[], readonly caseSensitive = false) {
     const runIdx: number[] = [];
@@ -107,7 +109,7 @@ export class TextSearch {
   }
 
   /** The searchable plain text (paragraph breaks as newlines). */
-  get text(): string { return this.norm.replaceAll("\u0000", "\n"); }
+  get text(): string { return (this.plain ??= this.norm.replaceAll("\u0000", "\n")); }
 
   search(query: string, opts: SearchOptions = {}): SearchHit[] {
     const q = normalizeQuery(query, this.caseSensitive).replace(/\s+/g, " ");

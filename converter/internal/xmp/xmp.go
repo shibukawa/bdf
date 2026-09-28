@@ -97,10 +97,23 @@ func Decoder(data []byte, entities map[string]string) *xml.Decoder {
 	return d
 }
 
+// maxDepth bounds the elements within one another that Subtree reads:
+// metadata and drawings nest a few dozen deep, a damaged file as deep as
+// it is long.
+const maxDepth = 512
+
 // Subtree reads the element that start opens, up to its end. What was read
-// before an error is returned with it.
+// before an error is returned with it. An element maxDepth deep is read
+// without what it contains.
 func Subtree(d *xml.Decoder, start xml.StartElement) (*Node, error) {
+	return subtree(d, start, 0)
+}
+
+func subtree(d *xml.Decoder, start xml.StartElement, depth int) (*Node, error) {
 	n := &Node{Name: start.Name, Attrs: start.Attr}
+	if depth >= maxDepth {
+		return n, d.Skip()
+	}
 	var text strings.Builder
 	for {
 		tok, err := d.Token()
@@ -110,7 +123,7 @@ func Subtree(d *xml.Decoder, start xml.StartElement) (*Node, error) {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
-			c, err := Subtree(d, t)
+			c, err := subtree(d, t, depth+1)
 			n.Children = append(n.Children, c)
 			if err != nil {
 				return n, err
@@ -239,19 +252,26 @@ func values(p *Node) []string {
 	for _, c := range p.Children {
 		switch {
 		case c.Is(nsRDF, "Alt"), c.Is(nsRDF, "Seq"), c.Is(nsRDF, "Bag"):
-			var out []string
+			// The default of an alternative comes first (the last of
+			// several defaults before the others).
+			var defaults [][]string
+			var others []string
 			for _, li := range c.Children {
 				if !li.Is(nsRDF, "li") {
 					continue
 				}
 				v := values(li)
 				if c.Is(nsRDF, "Alt") && li.Attr(nsXML, "lang") == "x-default" {
-					out = append(v, out...)
+					defaults = append(defaults, v)
 				} else {
-					out = append(out, v...)
+					others = append(others, v...)
 				}
 			}
-			return out
+			var out []string
+			for i := len(defaults) - 1; i >= 0; i-- {
+				out = append(out, defaults[i]...)
+			}
+			return append(out, others...)
 		case c.Is(nsRDF, "value"):
 			return []string{collapse(c.Text)}
 		default:

@@ -50,7 +50,8 @@ type fontVersion struct {
 const streamFontGrowth = 512
 
 // NewStream reads a PDF for a conversion done a page at a time.
-func NewStream(rs io.ReadSeeker, opts *Options) (*Stream, error) {
+func NewStream(rs io.ReadSeeker, opts *Options) (s *Stream, err error) {
+	defer recovered(&err)
 	c, protected, err := newConverter(rs, opts)
 	if err != nil {
 		return nil, err
@@ -84,7 +85,7 @@ func (s *Stream) Outline() *bdf.Document {
 // and returns a document whose only view holds that page, with the parts it
 // needs that no earlier call returned: a reader puts the page in its outline
 // and adds the parts to those it has.
-func (s *Stream) Page(i int) (*bdf.Document, error) {
+func (s *Stream) Page(i int) (doc *bdf.Document, err error) {
 	c := s.c
 	if s.finished {
 		return nil, errors.New("pdf: the stream is finished")
@@ -92,10 +93,12 @@ func (s *Stream) Page(i int) (*bdf.Document, error) {
 	if i < 0 || i >= len(c.pageBodies) {
 		return nil, fmt.Errorf("pdf: no page %d", i)
 	}
+	defer recovered(&err)
 	pr := c.pageBodies[i]
 	if pr.body == nil {
 		start := len(c.pendings)
 		c.pageCodes = map[*pdfFont]map[uint32]bool{}
+		defer func() { c.pageCodes = nil }() // also when the conversion panics
 		err := c.convertPage(pr)
 		s.codes[i], c.pageCodes = c.pageCodes, nil
 		for _, p := range c.pendings[start:] {
@@ -222,12 +225,13 @@ func covers(have, need map[uint32]bool) bool {
 
 // Finish converts the pages no Page call converted and returns the whole
 // document. The stream is done with.
-func (s *Stream) Finish() (*Result, error) {
+func (s *Stream) Finish() (res *Result, err error) {
 	c := s.c
 	if s.finished {
 		return nil, errors.New("pdf: the stream is finished")
 	}
 	s.finished = true
+	defer recovered(&err)
 	s.sent, s.encoded, s.created, s.codes, s.versions = nil, nil, nil, nil, nil
 	for _, pr := range c.pageBodies {
 		if pr.body != nil {

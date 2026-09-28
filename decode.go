@@ -37,14 +37,7 @@ func DecodeObject(data []byte) (*ObjectPart, error) {
 	}
 	r.u16()
 	o.BBox = Rect{r.f32(), r.f32(), r.f32(), r.f32()}
-	count := func() int {
-		n := r.varuint()
-		if n > uint64(len(data)) {
-			r.fail("bad count")
-			return 0
-		}
-		return int(n)
-	}
+	count := func() int { return r.count(1, "bad count") }
 	for i, n := 0, count(); i < n && r.err == nil; i++ {
 		o.Strings = append(o.Strings, r.str())
 	}
@@ -92,8 +85,21 @@ func (o *ObjectPart) Instructions() ([]Instr, error) {
 
 // Walk decodes the op stream, calling fn for each instruction.
 func (o *ObjectPart) Walk(fn func(Instr)) error {
+	return o.walk(nil, fn)
+}
+
+// walk is Walk for a reader of some of the instructions: want is asked
+// for every opcode, and the instructions it declines are checked like the
+// others but not decoded (their operands take no memory).
+func (o *ObjectPart) walk(want func(op byte) bool, fn func(Instr)) error {
 	r := &reader{b: o.Ops}
 	for !r.eof() {
+		if want != nil && !want(r.b[r.pos]) {
+			if err := o.skipInstr(r); err != nil {
+				return err
+			}
+			continue
+		}
 		in, err := o.readInstr(r)
 		if err != nil {
 			return err
@@ -103,34 +109,67 @@ func (o *ObjectPart) Walk(fn func(Instr)) error {
 	return r.err
 }
 
+// skipInstr reads past the instruction at the reader's position, with the
+// checks of readInstr.
+func (o *ObjectPart) skipInstr(r *reader) error {
+	code := r.u8()
+	info := &opTable[code]
+	if info.Name == "" {
+		return &FormatError{Offset: r.pos - 1, Msg: fmt.Sprintf("unknown opcode 0x%02x", code)}
+	}
+	switch info.Sig {
+	case "D":
+		r.bytes(4*r.count(4, "bad dash count") + 4)
+	case "R":
+		r.u8()
+		for range r.count(9, "bad run count") {
+			r.varuint()
+			r.bytes(8)
+		}
+	case "X":
+		r.bytes(int(r.u32()))
+	default:
+		for _, c := range []byte(info.Sig) {
+			switch c {
+			case 'f', 'c':
+				r.bytes(4)
+			case 'b':
+				r.bytes(1)
+			case 'v':
+				r.varuint()
+			case 's':
+				if r.varuint() >= uint64(len(o.Strings)) {
+					r.fail("bad string ref")
+				}
+			case 'B':
+				r.bytes(r.count(1, "bad byte count"))
+			}
+		}
+	}
+	if r.err != nil {
+		return r.err
+	}
+	return nil
+}
+
 // readInstr decodes the instruction at the reader's position.
 func (o *ObjectPart) readInstr(r *reader) (Instr, error) {
 	code := r.u8()
-	info, ok := opTable[code]
-	if !ok {
+	info := &opTable[code]
+	if info.Name == "" {
 		return Instr{}, &FormatError{Offset: r.pos - 1, Msg: fmt.Sprintf("unknown opcode 0x%02x", code)}
 	}
 	in := Instr{Op: code}
 	switch info.Sig {
 	case "D":
-		n := int(r.varuint())
-		if n > len(o.Ops) {
-			r.fail("bad dash count")
-			break
-		}
-		segs := make([]float32, n)
+		segs := make([]float32, r.count(4, "bad dash count"))
 		for i := range segs {
 			segs[i] = r.f32()
 		}
 		in.Args = append(in.Args, segs, r.f32())
 	case "R":
 		rule := uint64(r.u8())
-		n := int(r.varuint())
-		if n > len(o.Ops) {
-			r.fail("bad run count")
-			break
-		}
-		glyphs := make([]Glyph, n)
+		glyphs := make([]Glyph, r.count(9, "bad run count"))
 		for i := range glyphs {
 			glyphs[i] = Glyph{PathRef(r.varuint()), r.f32(), r.f32()}
 		}
@@ -139,7 +178,8 @@ func (o *ObjectPart) readInstr(r *reader) (Instr, error) {
 		n := int(r.u32())
 		in.Args = append(in.Args, r.bytes(n))
 	default:
-		for _, c := range info.Sig {
+		in.Args = make([]any, 0, len(info.Sig))
+		for _, c := range []byte(info.Sig) {
 			switch c {
 			case 'f':
 				in.Args = append(in.Args, r.f32())
@@ -157,12 +197,7 @@ func (o *ObjectPart) readInstr(r *reader) (Instr, error) {
 					in.Args = append(in.Args, o.Strings[i])
 				}
 			case 'B':
-				n := r.varuint()
-				if n > uint64(len(o.Ops)) {
-					r.fail("bad byte count")
-				} else {
-					in.Args = append(in.Args, r.bytes(int(n)))
-				}
+				in.Args = append(in.Args, r.bytes(r.count(1, "bad byte count")))
 			}
 		}
 	}

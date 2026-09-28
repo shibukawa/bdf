@@ -199,6 +199,9 @@ func parseCFFGlyphs(b []byte) (*cffGlyphs, error) {
 		if err != nil {
 			return nil, err
 		}
+		if len(fds) == 0 {
+			return nil, errors.New("cff: no Font DICT")
+		}
 		for _, fd := range fds {
 			c.local = append(c.local, private(cffDict(fd)[18]))
 		}

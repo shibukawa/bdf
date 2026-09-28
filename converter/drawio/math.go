@@ -53,9 +53,21 @@ func nextFormula(s string) (start, end int, display bool, tex string) {
 	return start, end, display, tex
 }
 
+// maxFormulaLen bounds the length of the LaTeX handed to the formula
+// engine. The engine parses and lays formulas out recursively; a very long
+// (hence very deeply nestable) source could overflow the stack or use an
+// unreasonable amount of memory. A real formula is far shorter, so this
+// only rejects hostile input, which is drawn as plain text instead.
+const maxFormulaLen = 20000
+
 // formula adds a formula in the style of the text around it.
 func (b *textBuilder) formula(tex string, display bool, st *tstyle) {
 	c := b.c
+	if len(tex) > maxFormulaLen {
+		c.warnOnce("formulalen", "a formula is too long to typeset; drawn as text")
+		b.plainText(tex, st)
+		return
+	}
 	n := equation.ParseTeX(tex)
 	eng := c.mathEngine()
 	size := st.size

@@ -1132,6 +1132,9 @@ func (f *p21file) fill(area *instance, styles []*instance, m canvas.Matrix) {
 		}
 		pts := flatten(c)
 		if len(pts) >= 3 {
+			if !f.r.fits(bound.Size() + len(pts)) {
+				return
+			}
 			bound.Polyline(pts, true)
 		}
 	}

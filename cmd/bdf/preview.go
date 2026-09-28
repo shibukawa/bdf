@@ -117,6 +117,7 @@ func writeText(doc *bdf.Document, out string) error {
 func loadDocument(path string, allowPlaintext bool) *bdf.Document {
 	r, err := open(path)
 	check(err)
+	defer r.Close()
 	if r.Locked() {
 		check(fmt.Errorf("%s is encrypted: set $%s", path, passwordEnv))
 	}

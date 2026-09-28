@@ -1,4 +1,4 @@
-import { type BdfDocument, type View, type Rect, type Hash, type TextRun, TextSearch, extractText, type SearchHit, type SearchOptions } from "@bdf/core";
+import { type BdfDocument, type ObjectPart, type View, type Rect, type Hash, type TextRun, TextSearch, extractText, tileSize, type SearchHit, type SearchOptions } from "@bdf/core";
 import { fontString } from "./resources.js";
 
 /** A highlight rectangle for part of a hit, in view coordinates. */
@@ -15,12 +15,20 @@ export type Measure = (font: string, text: string) => number;
 /**
  * Search inside a document's views and locate hits as rectangles.
  * Hit location needs the object that drew the text, so it is lazy.
+ *
+ * prepare loads an object with what measuring its text needs: its fonts,
+ * where measure measures with the fonts a renderer loads
+ * (ResourceCache.prepareText). By default the objects alone are loaded, and
+ * text in embedded fonts that nothing has loaded is measured in another font.
  */
 export class DocumentSearch {
   private indexes = new Map<string, Promise<TextSearch>>();
   private runs = new Map<Hash, TextRun[]>();
+  private readonly prepare: (hash: Hash) => Promise<ObjectPart>;
 
-  constructor(readonly doc: BdfDocument, readonly measure: Measure) {}
+  constructor(readonly doc: BdfDocument, readonly measure: Measure, prepare?: (hash: Hash) => Promise<ObjectPart>) {
+    this.prepare = prepare ?? ((hash) => doc.ensure(hash));
+  }
 
   private index(view: View): Promise<TextSearch> {
     let p = this.indexes.get(view.id);
@@ -53,7 +61,7 @@ export class DocumentSearch {
   private async runsOf(hash: Hash): Promise<TextRun[]> {
     let runs = this.runs.get(hash);
     if (!runs) {
-      const obj = await this.doc.ensure(hash);
+      const obj = await this.prepare(hash);
       runs = extractText(obj, (h) => this.doc.objectSync(h));
       this.runs.set(hash, runs);
     }
@@ -63,7 +71,7 @@ export class DocumentSearch {
   /** Rectangles covering a hit, in page coordinates (or sheet coordinates for sheets). */
   async locate(view: View, hit: SearchHit): Promise<HitRect[]> {
     const out: HitRect[] = [];
-    const tile = view.tile ?? 2048;
+    const tile = tileSize(view);
     for (const seg of hit.segments) {
       const hash = this.objectFor(view, seg.a, seg.b);
       if (!hash) continue;

@@ -164,6 +164,9 @@ func (c *codestream) decodeTile(ti int, t *tile, planes []plane) error {
 		} else if c.main.rgn != nil && c.main.rgn[i] >= 0 {
 			roi = c.main.rgn[i]
 		}
+		if c.levels += cs.levels + 1; c.levels > maxLevels {
+			return errorf("too many tiles and components")
+		}
 		n, err := td.setupComp(&td.comps[i], cp, cs, qt, roi)
 		if err != nil {
 			return err

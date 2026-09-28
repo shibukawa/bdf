@@ -5,7 +5,10 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"math"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/imgconv"
@@ -166,5 +169,60 @@ func TestEncode(t *testing.T) {
 		if got := FormatOf(name); got != want {
 			t.Errorf("FormatOf(%q) = %q", name, got)
 		}
+	}
+}
+
+// TestDocumentsOfPrograms makes thumbnails of documents a reader would not
+// return: views and pages that are nil, sheets whose tiles and rows are no
+// sizes. Each is an error or a thumbnail, made in no time.
+func TestDocumentsOfPrograms(t *testing.T) {
+	if _, err := Make(nil, nil); err == nil {
+		t.Error("no error for no document")
+	}
+	for name, views := range map[string][]*bdf.View{
+		"a nil view":                  {nil},
+		"a nil page":                  {{Kind: bdf.ViewFixed, Pages: []*bdf.Page{nil}}},
+		"a nil page of a scroll view": {{Kind: bdf.ViewScroll, Pages: []*bdf.Page{nil}}},
+		"a page without a size":       {{Kind: bdf.ViewFixed, Pages: []*bdf.Page{{}}}},
+	} {
+		d := bdf.NewDocument()
+		d.Views = views
+		if res, err := Make(d, nil); err == nil {
+			t.Errorf("%s: a thumbnail of %v", name, res.Image.Rect)
+		}
+		// asked for by its id, after a view that is nil
+		d.Views = append([]*bdf.View{nil}, views...)
+		if _, err := Make(d, &Options{View: "none"}); err == nil {
+			t.Errorf("%s: no error for a view there is not", name)
+		}
+	}
+	nan := float32(math.NaN())
+	for name, v := range map[string]*bdf.View{
+		"tiles of no width":      {Tile: 1e-9, Tiles: map[string]string{"0,0": "x"}},
+		"columns without end":    {Gridlines: true, Cols: []bdf.Run{{1e30, 0}, {1e30, 1e-9}}, Rows: []bdf.Run{{nan, 1}, {3e38, nan}}},
+		"rows that are no sizes": {Gridlines: true, Cols: []bdf.Run{{3, 40}}, Rows: []bdf.Run{{2, -5}, {1e9, 1e-7}, {5, float32(math.Inf(1))}}},
+	} {
+		v.Kind = bdf.ViewSheet
+		d := bdf.NewDocument()
+		d.Views = []*bdf.View{v}
+		start := time.Now()
+		res, err := Make(d, &Options{Size: 64})
+		if err != nil || res.Image.Rect.Dx() != 64 || time.Since(start) > 5*time.Second {
+			t.Errorf("%s: %v, in %v", name, err, time.Since(start))
+		}
+	}
+}
+
+// noColor is a colour that cannot be told.
+type noColor struct{}
+
+func (noColor) RGBA() (r, g, b, a uint32) { panic("no colour") }
+
+// TestPanicIsAnError checks that a panic of the drawing is an error of Make.
+func TestPanicIsAnError(t *testing.T) {
+	d := open(t, "../testdata/pptx/basic.bdf")
+	res, err := Make(d, &Options{Raster: raster.Options{Background: noColor{}, NoSystemFonts: true}})
+	if err == nil || res != nil || !strings.Contains(err.Error(), "no colour") {
+		t.Errorf("a background that panics: %v", err)
 	}
 }

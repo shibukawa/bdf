@@ -25,6 +25,7 @@ package thumbnail
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
@@ -123,8 +124,18 @@ var cropSources = map[string]bool{"docx": true, "html": true, "markdown": true, 
 // those taller than wide are cropped.
 var shapeSources = map[string]bool{"pdf": true, "tiff": true, "": true}
 
-// Make draws the thumbnail of a document.
-func Make(doc *bdf.Document, opts *Options) (*Result, error) {
+// Make draws the thumbnail of a document. What a document asks for beyond
+// the limits of package raster is left out, with a warning; a document that
+// cannot be drawn at all is an error, and so is a panic of the drawing.
+func Make(doc *bdf.Document, opts *Options) (res *Result, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			res, err = nil, fmt.Errorf("thumbnail: the drawing failed: %v", p)
+		}
+	}()
+	if doc == nil {
+		return nil, errors.New("thumbnail: no document")
+	}
 	o := Options{}
 	if opts != nil {
 		o = *opts
@@ -162,7 +173,7 @@ func Make(doc *bdf.Document, opts *Options) (*Result, error) {
 		}
 		img, err = r.Region(v, 0, bdf.Rect{W: float32(pw), H: float32(pw)}, o.Size, o.Size)
 	default:
-		if len(v.Pages) == 0 {
+		if len(v.Pages) == 0 || v.Pages[0] == nil {
 			return nil, errors.New("thumbnail: the view has no pages")
 		}
 		p := v.Pages[0]
@@ -182,14 +193,14 @@ func Make(doc *bdf.Document, opts *Options) (*Result, error) {
 }
 
 func pickView(doc *bdf.Document, id string) (*bdf.View, error) {
-	if len(doc.Views) == 0 {
+	if len(doc.Views) == 0 || id == "" && doc.Views[0] == nil {
 		return nil, errors.New("thumbnail: the document has no views")
 	}
 	if id == "" {
 		return doc.Views[0], nil
 	}
 	for _, v := range doc.Views {
-		if v.ID == id {
+		if v != nil && v.ID == id {
 			return v, nil
 		}
 	}
@@ -201,7 +212,7 @@ func autoMode(source string, v *bdf.View) Mode {
 	switch {
 	case v.Kind == bdf.ViewSheet || v.Kind == bdf.ViewScroll || cropSources[source]:
 		return Crop
-	case shapeSources[source] && len(v.Pages) > 0 && v.Pages[0].H > v.Pages[0].W:
+	case shapeSources[source] && len(v.Pages) > 0 && v.Pages[0] != nil && v.Pages[0].H > v.Pages[0].W:
 		return Crop
 	}
 	return Fit
@@ -220,6 +231,9 @@ func sheetSide(v *bdf.View, size int, dpi float64) float64 {
 // scrollSize is the width of a scroll view and the height of its strips.
 func scrollSize(v *bdf.View) (w, h float64) {
 	for _, p := range v.Pages {
+		if p == nil {
+			continue
+		}
 		b := bdf.RectDef{W: p.W, H: p.H}
 		if p.Body != nil {
 			b = *p.Body

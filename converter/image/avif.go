@@ -234,6 +234,9 @@ func readHEIFMeta(p *picture, file []byte, meta []box) {
 	} else {
 		count = r.u32()
 	}
+	// The items read are parts of the file: together they are no larger
+	// than it is, however often the box lists them.
+	room := uint64(len(file))
 	for ; count > 0 && !r.bad; count-- {
 		var id, method uint64
 		if version < 2 {
@@ -264,10 +267,11 @@ func readHEIFMeta(p *picture, file []byte, meta []box) {
 			if length == 0 && off <= uint64(len(src)) {
 				length = uint64(len(src)) - off
 			}
-			if method > 1 || off > uint64(len(src)) || length > uint64(len(src))-off || uint64(len(data))+length > uint64(len(file)) {
+			if method > 1 || off > uint64(len(src)) || length > uint64(len(src))-off || length > room {
 				exif, xmp = false, false
 				continue
 			}
+			room -= length
 			data = append(data, src[off:off+length]...)
 		}
 		switch {

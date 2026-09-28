@@ -255,20 +255,21 @@ loop:
 			}
 			label := b[off+1]
 			off += 2
-			if label == 0xff && off+12 <= len(b) && string(b[off:off+12]) == "\x0bXMP DataXMP" {
+			start := off
+			var data []byte
+			data, off = subBlocks(b, off, label == 0xfe && comment == "")
+			if data != nil {
+				comment = clean(latin1(data))
+			}
+			if label == 0xff && start+12 <= len(b) && string(b[start:start+12]) == "\x0bXMP DataXMP" {
 				// the packet is stored as it is, followed by a trailer that
-				// makes it read as sub-blocks
-				x := b[off+12:]
+				// makes it read as sub-blocks: it ends where they do
+				x := b[start+12 : min(off, len(b))]
 				if i := bytes.Index(x, []byte("<?xpacket end=")); i >= 0 {
 					if j := bytes.Index(x[i:], []byte("?>")); j >= 0 {
 						p.xmp = append(p.xmp, x[:i+j+2])
 					}
 				}
-			}
-			var data []byte
-			data, off = subBlocks(b, off, label == 0xfe && comment == "")
-			if data != nil {
-				comment = clean(latin1(data))
 			}
 		case 0x2c: // image descriptor
 			frames++

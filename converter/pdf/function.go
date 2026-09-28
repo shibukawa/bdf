@@ -33,12 +33,30 @@ type pdfFunction struct {
 	parts []*pdfFunction
 }
 
+// maxFunctionDepth bounds the functions within functions (the parts of a
+// stitching function, the functions of an array), and maxFunctionParts the
+// functions that make one: a function may name itself as one of its parts,
+// or the same function many times at every level.
+const (
+	maxFunctionDepth = 8
+	maxFunctionParts = 4096
+)
+
 func (p *pdf) loadFunction(o types.Object) *pdfFunction {
+	budget := maxFunctionParts
+	return p.loadFunctionAt(o, 0, &budget)
+}
+
+func (p *pdf) loadFunctionAt(o types.Object, depth int, budget *int) *pdfFunction {
+	if depth > maxFunctionDepth || *budget <= 0 {
+		return nil
+	}
+	*budget--
 	if a := p.array(o); a != nil && len(a) > 0 {
 		if _, isNum := p.num(a[0]); !isNum {
 			f := &pdfFunction{}
 			for _, e := range a {
-				if sub := p.loadFunction(e); sub != nil {
+				if sub := p.loadFunctionAt(e, depth+1, budget); sub != nil {
 					f.parts = append(f.parts, sub)
 				}
 			}
@@ -70,7 +88,7 @@ func (p *pdf) loadFunction(o types.Object) *pdfFunction {
 		f.n = p.numOr(d["N"], 1)
 	case 3:
 		for _, e := range p.array(d["Functions"]) {
-			f.funcs = append(f.funcs, p.loadFunction(e))
+			f.funcs = append(f.funcs, p.loadFunctionAt(e, depth+1, budget))
 		}
 		f.bounds = p.nums(d["Bounds"])
 		f.encode = p.nums(d["Encode"])
@@ -92,6 +110,23 @@ func (p *pdf) loadFunction(o types.Object) *pdfFunction {
 		f.decode = p.nums(d["Decode"])
 		f.nOut = len(f.rng) / 2
 		if len(f.size) == 0 || f.nOut == 0 {
+			return nil
+		}
+		// Every input has its domain and its samples; a table of more
+		// samples than an int counts cannot be indexed.
+		if len(f.domain) < 2*len(f.size) {
+			return nil
+		}
+		samples := int64(1)
+		for _, n := range f.size {
+			if n < 1 || int64(n) > math.MaxInt32 {
+				return nil
+			}
+			if samples *= int64(n); samples > math.MaxInt32 {
+				return nil
+			}
+		}
+		if f.bps < 1 || f.bps > 32 {
 			return nil
 		}
 	case 4:
@@ -122,7 +157,7 @@ func clamp(v, lo, hi float64) float64 {
 
 // eval evaluates the function for the given inputs.
 func (f *pdfFunction) eval(in ...float64) []float64 {
-	if f == nil {
+	if f == nil || len(in) == 0 { // no input: a DeviceN space without colorants
 		return nil
 	}
 	if f.parts != nil {
@@ -209,6 +244,9 @@ func (f *pdfFunction) sample(idx []int, j int) float64 {
 		stride *= s
 	}
 	bit := (offset*f.nOut + j) * f.bps
+	if bit < 0 { // beyond what an int counts
+		return 0
+	}
 	maxv := float64(uint64(1)<<uint(f.bps) - 1)
 	switch f.bps {
 	case 8:

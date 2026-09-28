@@ -17,29 +17,60 @@ type routedPoint struct {
 // defaultJumpSize is Graph.defaultJumpSize.
 const defaultJumpSize = 6
 
+// maxJumpWork bounds the work of finding the crossings of a page, counted
+// in the edges and the segments that the segments of the edges are tried
+// against, and maxJumps the crossings found: every edge is tried against
+// every edge before it and may cross it, so both grow with the square of
+// the number of edges. The edges past a limit are drawn without jumps.
+const (
+	maxJumpWork = 1 << 27
+	maxJumps    = 1 << 18
+)
+
+// jumpBudget counts the work and the crossings of a page.
+type jumpBudget struct{ work, jumps int }
+
+func (b *jumpBudget) spent() bool { return b.work > maxJumpWork || b.jumps > maxJumps }
+
+// jumpEdge is an edge that edges after it may jump over.
+type jumpEdge struct {
+	pts    []point
+	bounds rect
+}
+
 // updateLineJumps computes the routed points of the edges with a jump
 // style: each crosses the straight or orthogonal edges before it in the
 // model's order (curved edges neither jump nor are jumped over).
 func (v *graphView) updateLineJumps() {
-	var valid []*cellState
+	var valid []jumpEdge
+	var budget jumpBudget
 	for _, st := range v.order {
 		if !st.cell.edge || st.style.is("curved") || len(st.absPoints) < 2 {
 			continue
 		}
 		if st.style.get("jumpStyle", "none") != "none" {
-			st.routedPoints = lineJumps(st, valid)
+			if budget.spent() {
+				v.warn("jumps", "the diagram has too many edges that cross to draw all the line jumps; the rest of the edges are drawn without")
+			} else {
+				st.routedPoints = lineJumps(st, valid, &budget)
+			}
 		}
-		valid = append(valid, st)
+		// an edge that is not drawn, or not to be jumped over, is none
+		if pts := st.edgePoints(); len(pts) >= 2 && st.style.get("noJump", "") != "1" {
+			valid = append(valid, jumpEdge{pts, st.bounds()})
+		}
 	}
 }
 
 // lineJumps returns the route of an edge with its crossings with the
-// edges in valid inserted, in order along each segment.
-func lineJumps(st *cellState, valid []*cellState) []routedPoint {
+// edges in valid inserted, in order along each segment; budget counts
+// what it tried and found.
+func lineJumps(st *cellState, valid []jumpEdge, budget *jumpBudget) []routedPoint {
 	pts := st.edgePoints()
 	if len(pts) < 2 {
 		return nil
 	}
+	bounds := st.bounds()
 	const thresh = 0.5
 	var out []routedPoint
 	at := func(pts []point, i int) *point {
@@ -60,11 +91,13 @@ func lineJumps(st *cellState, valid []*cellState) []routedPoint {
 		out = append(out, routedPoint{x: p0.x, y: p0.y})
 		type crossing struct{ distSq, x, y float64 }
 		var list []crossing
-		for _, st2 := range valid {
-			pts2 := st2.edgePoints()
-			if len(pts2) < 2 || !intersects(st.bounds(), st2.bounds()) || st2.style.get("noJump", "") == "1" {
+		budget.work += len(valid)
+		for _, e := range valid {
+			if !intersects(bounds, e.bounds) {
 				continue
 			}
+			pts2 := e.pts
+			budget.work += len(pts2)
 			var pl *point
 			for j := 0; j < len(pts2)-1; j++ {
 				p2, p3 := pts2[j], pts2[j+1]
@@ -103,6 +136,7 @@ func lineJumps(st *cellState, valid []*cellState) []routedPoint {
 				pl = &p
 			}
 		}
+		budget.jumps += len(list)
 		for _, c := range list {
 			out = append(out, routedPoint{x: c.x, y: c.y, jump: true})
 		}

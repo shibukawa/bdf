@@ -47,6 +47,36 @@ type sheetCtx struct {
 	base      map[int]*cellFmt // formats by xf index
 	textCols  int              // columns that text reaches (overflowing text)
 	formulas  map[string]fnode // parsed conditional format formulas (nil: unsupported)
+	// advances caches a character's advance (in ems) on the face that draws
+	// it, so measuring the same character again (fitWidths measures a grid's
+	// text, then paintText lays it out) is a lookup by the face and the rune
+	// rather than a glyph metric read. The face itself is resolved by the
+	// font set, which memoizes that.
+	advances map[advanceKey]float64
+	// cfCells is the number of cells left in the budget that conditional
+	// format evaluation may read, across every rule.
+	cfCells int
+	// baseRuns and noWidthRuns are the columns of the view with a base
+	// format and without width, as runs (colRuns), for a view of runsCols
+	// columns.
+	baseRuns, noWidthRuns []colRun
+	runsCols              int
+	// steps counts the columns and the runs of columns that eachFormatted
+	// has looked at: its work, which the tests bound.
+	steps int
+	// What is left of the budgets for what the file states about cells that
+	// it does not hold: the cells of tables (maxTableCells), the edges of
+	// the borders that the formats of rows and columns give
+	// (maxFormatEdges) and the tiles of links after their first
+	// (maxLinkTiles).
+	tableRoom, edgeRoom, linkRoom int
+}
+
+// advanceKey is a character on a resolved face; the face is a stable pointer
+// from the font set, so the key hashes cheaply.
+type advanceKey struct {
+	fc *fontset.Choice
+	r  rune
 }
 
 // tileCv is a tile's canvas and the drawing state emitted into it.
@@ -114,21 +144,33 @@ func f32(v float64) float32 {
 	return float32(v)
 }
 
-// tilesIn returns the tiles a rectangle (sheet coordinates) touches,
-// creating them.
-func (s *sheetCtx) tilesIn(x0, y0, x1, y1 float64) []*tileCv {
-	if x1 <= x0 || y1 <= y0 {
-		return nil
+// tileSpan returns the tiles a rectangle (sheet coordinates) touches: the
+// columns tx0 to tx1-1 of the rows ty0 to ty1-1 of the tiles. It touches
+// none (ok is false) when it is empty or outside the sheet, or when a
+// coordinate is not a number (an anchor of a drawing may say NaN).
+func (s *sheetCtx) tileSpan(x0, y0, x1, y1 float64) (tx0, ty0, tx1, ty1 int, ok bool) {
+	if !(x0 < x1 && y0 < y1) {
+		return 0, 0, 0, 0, false
 	}
 	w, h := s.cols.total(), s.rows.total()
 	x0, y0 = math.Max(x0, 0), math.Max(y0, 0)
 	x1, y1 = math.Min(x1, w), math.Min(y1, h)
-	if x1 <= x0 || y1 <= y0 {
+	if !(x0 < x1 && y0 < y1) {
+		return 0, 0, 0, 0, false
+	}
+	return int(x0 / tileSize), int(y0 / tileSize), int(math.Ceil(x1 / tileSize)), int(math.Ceil(y1 / tileSize)), true
+}
+
+// tilesIn returns the tiles a rectangle (sheet coordinates) touches,
+// creating them.
+func (s *sheetCtx) tilesIn(x0, y0, x1, y1 float64) []*tileCv {
+	tx0, ty0, tx1, ty1, ok := s.tileSpan(x0, y0, x1, y1)
+	if !ok {
 		return nil
 	}
 	var out []*tileCv
-	for ty := int(y0 / tileSize); float64(ty)*tileSize < y1; ty++ {
-		for tx := int(x0 / tileSize); float64(tx)*tileSize < x1; tx++ {
+	for ty := ty0; ty < ty1; ty++ {
+		for tx := tx0; tx < tx1; tx++ {
 			out = append(out, s.tileAt(tx, ty))
 		}
 	}
@@ -181,14 +223,13 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 	if ws.rtl {
 		c.warnOnce("rtl", "sheet %q: right-to-left sheets are drawn left to right", ws.name)
 	}
-	s := &sheetCtx{c: c, ws: ws, tiles: map[[2]int]*tileCv{}, base: map[int]*cellFmt{}, formulas: map[string]fnode{}}
+	s := &sheetCtx{c: c, ws: ws, tiles: map[[2]int]*tileCv{}, base: map[int]*cellFmt{}, formulas: map[string]fnode{},
+		advances: map[advanceKey]float64{}, tableRoom: maxTableCells, edgeRoom: maxFormatEdges, linkRoom: maxLinkTiles}
 	s.loadTables()
 	s.loadGridTables()
 	s.loadDrawings()
 	s.loadComments()
-	s.extent()
-	s.indexMerges()
-	s.geometry()
+	s.layout()
 	s.cf = s.evalConditionalFormats()
 
 	v := c.doc.NewView(id, bdf.ViewSheet, ws.name)
@@ -221,6 +262,25 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 	return v, out, nil
 }
 
+// maxMergedCells bounds the cells of the merged ranges of a sheet that make
+// its view larger, and of those that are kept as merges within it.
+const maxMergedCells = 1 << 22
+
+// layout sets the view, the merged ranges in it and the sizes of its rows
+// and columns. The drawings that reach over too many tiles are then left
+// out (limitDrawings; how many tiles a drawing reaches over is known with
+// the sizes), and the view is set again without them.
+func (s *sheetCtx) layout() {
+	s.extent()
+	s.indexMerges()
+	s.geometry()
+	if s.limitDrawings() {
+		s.extent()
+		s.indexMerges()
+		s.geometry()
+	}
+}
+
 // extent sets the rows and columns of the view: what the sheet uses, and
 // some empty grid around it.
 func (s *sheetCtx) extent() {
@@ -239,14 +299,26 @@ func (s *sheetCtx) extent() {
 			maxR = max(maxR, rw.idx)
 		}
 	}
+	// A merged range is content as far as it reaches (a title merged over
+	// more columns than the table below it has), so it makes the view
+	// larger; but its corner is the file's to state, so the merges do that
+	// only while their cells together are within maxMergedCells. A merge
+	// past that (one that spans the whole sheet) is cut to the view.
+	room := int64(maxMergedCells)
 	for _, m := range ws.merges {
-		use(min(m.r1, maxRows-1), min(m.c1, maxCols-1))
+		r1, c1 := min(m.r1, maxRows-1), min(m.c1, maxCols-1)
+		if n := int64(r1-m.r0+1) * int64(c1-m.c0+1); n > 0 && n <= room {
+			room -= n
+			use(r1, c1)
+		}
 	}
 	for _, t := range s.tables {
 		use(t.ref.r1, t.ref.c1)
 	}
 	for _, d := range s.drawings {
-		use(d.toRow, d.toCol)
+		if !d.out {
+			use(d.toRow, d.toCol)
+		}
 	}
 	for k := range s.comments {
 		use(k[0], k[1])
@@ -268,16 +340,18 @@ func (s *sheetCtx) geometry() {
 	defCol := ws.defaultColPt(c.mdw)
 	cw := map[int]float64{}
 	// the columns of the whole sheet: text may flow past the view (which then grows)
-	for _, cd := range ws.cols {
-		for i := cd.min; i <= cd.max && i < maxCols; i++ {
-			switch {
-			case cd.hidden:
-				cw[i] = 0
-			case cd.width >= 0:
-				cw[i] = colWidthPt(cd.width, c.mdw)
-			default:
-				cw[i] = defCol
-			}
+	ws.indexCols()
+	for i, k := range ws.colLast {
+		if k < 0 {
+			continue
+		}
+		switch cd := ws.cols[k]; {
+		case cd.hidden:
+			cw[i] = 0
+		case cd.width >= 0:
+			cw[i] = colWidthPt(cd.width, c.mdw)
+		default:
+			cw[i] = defCol
 		}
 	}
 	if ws.fitCols {
@@ -288,6 +362,7 @@ func (s *sheetCtx) geometry() {
 		}
 	}
 	s.cols = newAxis(maxCols, defCol, cw)
+	s.runsCols = 0 // the runs of columns are of these columns
 
 	defRow := ws.defRowH
 	if defRow <= 0 {
@@ -314,7 +389,10 @@ func (s *sheetCtx) geometry() {
 			if fit := s.autoHeight(rw, defLine); fit > h {
 				h = fit
 			}
-			rh[rw.idx] = h
+			// Excel caps even an auto-fit row at its maximum height, so text
+			// too tall for it is clipped rather than growing the row (and the
+			// sheet) without bound.
+			rh[rw.idx] = min(h, maxRowPt)
 		}
 	}
 	s.rows = newAxis(s.nRows, visibleDef, rh)
@@ -349,12 +427,20 @@ func (s *sheetCtx) autoHeight(rw *row, defLine float64) float64 {
 }
 
 func (s *sheetCtx) indexMerges() {
-	s.mergeRows = map[int][]int{}
+	s.merges, s.mergeRows = nil, map[int][]int{}
+	room := int64(maxMergedCells)
 	for _, m := range s.ws.merges {
 		if m.r0 >= s.nRows || m.c0 >= s.nCols {
 			continue
 		}
 		m.r1, m.c1 = min(m.r1, s.nRows-1), min(m.c1, s.nCols-1)
+		// what is kept and drawn for a merge grows with its cells
+		if n := int64(m.r1-m.r0+1) * int64(m.c1-m.c0+1); n > room {
+			s.c.warnOnce("merges", "sheet %q: the merged ranges cover more than %d cells; the rest are not merged", s.ws.name, maxMergedCells)
+			continue
+		} else if n > 0 {
+			room -= n
+		}
 		i := len(s.merges)
 		s.merges = append(s.merges, m)
 		for r := m.r0; r <= m.r1; r++ {
@@ -524,6 +610,15 @@ func (s *sheetCtx) paintFills() {
 // merged ranges, as runs of columns with the same format (a nil format for
 // columns that nothing formats is skipped).
 func (s *sheetCtx) eachFormatted(r int, fn func(c0, c1 int, f *cellFmt)) {
+	s.formattedRuns(r, false, func(c0, c1 int, f *cellFmt, _ bool) { fn(c0, c1, f) })
+}
+
+// formattedRuns is eachFormatted that tells fn whether the cells of a run
+// have the base format of their row or column (they are not in the file,
+// nor in a table or a conditional format), when apart keeps such runs apart
+// from the runs of the other cells: what formats give cells that the file
+// does not hold is bounded (maxFormatEdges).
+func (s *sheetCtx) formattedRuns(r int, apart bool, fn func(c0, c1 int, f *cellFmt, base bool)) {
 	rw := s.ws.rowAt(r)
 	// columns with a format of their own: cells, tables, conditional formats
 	special := map[int]bool{}
@@ -555,49 +650,76 @@ func (s *sheetCtx) eachFormatted(r int, fn func(c0, c1 int, f *cellFmt)) {
 		_, ok := s.mergeAt(r, c)
 		return ok
 	}
-	// base formats: the row's, or the columns'
-	type iv struct{ c0, c1, style int }
-	var base []iv
+	// base formats: the row's, or the columns', as runs of columns in order
+	base := s.colRuns()
 	if rw != nil && rw.style >= 0 {
-		base = []iv{{0, s.nCols - 1, rw.style}}
-	} else {
-		for _, cd := range s.ws.cols {
-			if cd.style >= 0 && cd.min < s.nCols {
-				base = append(base, iv{cd.min, min(cd.max, s.nCols-1), cd.style})
-			}
+		base = []colRun{{0, s.nCols - 1, rw.style}}
+	}
+	// what ends a run of columns and is left out of it: the columns without
+	// width, and the merged cells of the row
+	none, merges := s.noWidth(), s.rowMerges(r)
+	ni, mi := 0, 0
+	// nextBreak returns the first columns at or after c that end a run, z
+	// to ze (past the view when there are none).
+	nextBreak := func(c int) (z, ze int) {
+		z, ze = s.nCols, s.nCols
+		for ; ni < len(none) && none[ni].c1 < c; ni++ {
 		}
+		if ni < len(none) {
+			z, ze = max(none[ni].c0, c), none[ni].c1
+		}
+		for ; mi < len(merges) && merges[mi].c1 < c; mi++ {
+		}
+		if mi < len(merges) && max(merges[mi].c0, c) < z {
+			z, ze = max(merges[mi].c0, c), merges[mi].c1
+		}
+		return z, ze
 	}
 	runStart, runEnd := -1, -1
 	var runFmt *cellFmt
+	runBase := false
 	emit := func() {
 		if runStart >= 0 && runFmt != nil {
-			fn(runStart, runEnd, runFmt)
+			fn(runStart, runEnd, runFmt, runBase)
 		}
 		runStart, runFmt = -1, nil
 	}
 	put := func(c int, f *cellFmt) {
+		s.steps++
 		if f == nil || merged(c) || s.cols.at(c) == 0 {
 			emit()
 			return
 		}
-		if runStart >= 0 && runEnd == c-1 && runFmt == f {
+		if runStart >= 0 && runEnd == c-1 && runFmt == f && !(apart && runBase) {
 			runEnd = c
 			return
 		}
 		emit()
-		runStart, runEnd, runFmt = c, c, f
+		runStart, runEnd, runFmt, runBase = c, c, f, false
 	}
-	k := 0
-	baseAt := func(c int) int {
-		style := -1
-		for _, b := range base {
-			if c >= b.c0 && c <= b.c1 {
-				style = b.style
+	// putRun is put for the columns c0 to c1, which have the same format,
+	// by the runs between what ends a run rather than column by column.
+	putRun := func(c0, c1 int, f *cellFmt) {
+		for c0 <= c1 {
+			s.steps++
+			z, ze := nextBreak(c0)
+			if e := min(z-1, c1); e >= c0 {
+				if runStart >= 0 && runEnd == c0-1 && runFmt == f && !(apart && !runBase) {
+					runEnd = e
+				} else {
+					emit()
+					runStart, runEnd, runFmt, runBase = c0, e, f, true
+				}
 			}
+			if z > c1 {
+				return
+			}
+			emit()
+			c0 = ze + 1
 		}
-		return style
 	}
-	// walk the columns that are formatted: special ones and base intervals
+	// walk the columns that are formatted: special ones and base runs
+	k, bi := 0, 0
 	c := 0
 	for c < s.nCols {
 		if k < len(cols) && cols[k] == c {
@@ -616,24 +738,83 @@ func (s *sheetCtx) eachFormatted(r int, fn func(c0, c1 int, f *cellFmt)) {
 		}
 		// the stretch c..next-1 has only base formats
 		for c < next {
-			style := baseAt(c)
-			if style < 0 {
+			for ; bi < len(base) && base[bi].c1 < c; bi++ {
+			}
+			if bi == len(base) || base[bi].c0 >= next {
 				emit()
-				// jump to the next base interval start
-				jump := next
-				for _, b := range base {
-					if b.c0 > c && b.c0 < jump {
-						jump = b.c0
-					}
-				}
-				c = jump
+				c = next
+				break
+			}
+			if b := base[bi]; b.c0 > c {
+				// nothing formats the columns up to the run
+				emit()
+				c = b.c0
 				continue
 			}
-			put(c, s.fmtOf(style))
-			c++
+			end := min(base[bi].c1, next-1)
+			putRun(c, end, s.fmtOf(base[bi].style))
+			c = end + 1
 		}
 	}
 	emit()
+}
+
+// colRun is a run of columns: those with a base format, or without width.
+type colRun struct{ c0, c1, style int }
+
+// colRuns returns the runs of the columns of the view that the col elements
+// give a base format, in order.
+func (s *sheetCtx) colRuns() []colRun {
+	if s.runsCols == s.nCols && s.runsCols > 0 {
+		return s.baseRuns
+	}
+	s.runsCols, s.baseRuns, s.noWidthRuns = s.nCols, nil, nil
+	s.ws.indexCols()
+	for c := 0; c < s.nCols && c < len(s.ws.colBase); c++ {
+		k := s.ws.colBase[c]
+		if k < 0 {
+			continue
+		}
+		style := s.ws.cols[k].style
+		if n := len(s.baseRuns); n > 0 && s.baseRuns[n-1].c1 == c-1 && s.baseRuns[n-1].style == style {
+			s.baseRuns[n-1].c1 = c
+			continue
+		}
+		s.baseRuns = append(s.baseRuns, colRun{c, c, style})
+	}
+	for c := 0; c < s.nCols; c++ {
+		if s.cols.at(c) != 0 {
+			continue
+		}
+		if n := len(s.noWidthRuns); n > 0 && s.noWidthRuns[n-1].c1 == c-1 {
+			s.noWidthRuns[n-1].c1 = c
+			continue
+		}
+		s.noWidthRuns = append(s.noWidthRuns, colRun{c0: c, c1: c})
+	}
+	return s.baseRuns
+}
+
+// noWidth returns the runs of the columns of the view without width
+// (hidden ones), in order.
+func (s *sheetCtx) noWidth() []colRun {
+	s.colRuns()
+	return s.noWidthRuns
+}
+
+// rowMerges returns the columns of the merged cells of a row as runs, in
+// the order of their first columns (they overlap in a malformed sheet).
+func (s *sheetCtx) rowMerges(r int) []colRun {
+	in := s.mergeRows[r]
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]colRun, len(in))
+	for i, m := range in {
+		out[i] = colRun{c0: s.merges[m].c0, c1: s.merges[m].c1}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].c0 < out[j].c0 })
+	return out
 }
 
 // fillKey identifies a fill for joining cells; "" for gradients.

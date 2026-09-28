@@ -34,7 +34,8 @@ const (
 	// DefaultIterations is the PBKDF2 iteration count of new password slots.
 	DefaultIterations = 600_000
 	// MaxIterations bounds the iteration count readers accept, so a file
-	// cannot keep a reader busy for long.
+	// cannot keep a reader busy for long: that of a key slot, and the sum of
+	// those of the slots a reader tries.
 	MaxIterations = 10_000_000
 
 	// FlagEncrypted is the single-file header flag of encrypted documents.
@@ -124,6 +125,7 @@ func unlockKey(e *Encryption, password string) ([]byte, error) {
 	if e.Cipher != CipherA256GCM {
 		return nil, &FormatError{Msg: fmt.Sprintf("unknown cipher %q", e.Cipher)}
 	}
+	spent := 0
 	for _, s := range e.Keys {
 		if s.Type != KeyPassword {
 			continue
@@ -133,6 +135,10 @@ func unlockKey(e *Encryption, password string) ([]byte, error) {
 		}
 		if s.Iter < 1 || s.Iter > MaxIterations {
 			return nil, &FormatError{Msg: fmt.Sprintf("iteration count %d out of range", s.Iter)}
+		}
+		// each slot is within the range, but many of them are not
+		if spent += s.Iter; spent > MaxIterations {
+			return nil, &FormatError{Msg: fmt.Sprintf("the key slots take more than %d iterations", MaxIterations)}
 		}
 		kek, err := passwordKEK(password, s.Salt, s.Iter)
 		if err != nil {

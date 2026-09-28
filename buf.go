@@ -47,11 +47,23 @@ func (r *reader) need(n int) bool {
 	if r.err != nil {
 		return false
 	}
-	if r.pos+n > len(r.b) {
+	if n < 0 || n > len(r.b)-r.pos {
 		r.fail("unexpected end of data")
 		return false
 	}
 	return true
+}
+
+// count reads the number of items that follow, each at least size bytes
+// long: more than the rest of the data can hold is an error (msg), so a
+// count is safe to allocate for.
+func (r *reader) count(size int, msg string) int {
+	n := r.varuint()
+	if n > uint64(len(r.b)-r.pos)/uint64(size) {
+		r.fail(msg)
+		return 0
+	}
+	return int(n)
 }
 
 func (r *reader) eof() bool { return r.err != nil || r.pos >= len(r.b) }
@@ -117,12 +129,7 @@ func (r *reader) bytes(n int) []byte {
 }
 
 func (r *reader) str() string {
-	n := r.varuint()
-	if n > uint64(len(r.b)) {
-		r.fail("bad string length")
-		return ""
-	}
-	return string(r.bytes(int(n)))
+	return string(r.bytes(r.count(1, "bad string length")))
 }
 
 func (r *reader) hash() Hash {

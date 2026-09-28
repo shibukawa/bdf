@@ -134,6 +134,12 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			continue
 		}
 		done[n] = true
+		if f.Spent() {
+			// Pages that share their pixel data, or strips that do, have it
+			// read and decoded over and over.
+			warn(fmt.Sprintf("%v: page %d and those after it are left out", tiff.ErrSpent, n))
+			break
+		}
 		d := pages[n-1]
 		p := newPage(d, dpi)
 		if p.w <= 0 || p.h <= 0 {
@@ -144,6 +150,10 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			warn("CMYK pages are converted to RGB without colour management")
 		}
 		img, scaled, err := storePage(doc, d, p, opts.Images, func(msg string) { warn(fmt.Sprintf("page %d: %s", n, msg)) })
+		if errors.Is(err, tiff.ErrSpent) {
+			warn(fmt.Sprintf("%v: page %d and those after it are left out", err, n))
+			break
+		}
 		if err != nil {
 			warn(fmt.Sprintf("page %d: %v; the page is left blank", n, err))
 			view.AddPage(p.pageW, p.pageH)

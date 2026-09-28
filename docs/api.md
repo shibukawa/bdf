@@ -147,13 +147,13 @@ res, err := s.Finish() // Convert と同じ完成した文書
 
 | 名前 | 内容 |
 |---|---|
-| `OpenSingle(r, size)` / `OpenSingleFile(path)` / `OpenSplit(dir)` | 文書を開く（`*Reader`）。`Manifest` を持つ |
-| `(*Reader).Unlock(password)` | 暗号化された文書を開く（`Encrypted`、`Locked` で状態を調べる。`ErrLocked`、`ErrWrongPassword`） |
-| `(*Reader).Part(h)` / `Object(h)` / `Entry(h)` | Part の中身、デコードした Object、Part の表の項目 |
+| `OpenSingle(r, size)` / `OpenSingleFile(path)` / `OpenSplit(dir)` | 文書を開く（`*Reader`）。`Manifest` を持つ。`OpenSingleFile` は Part を求められたときにファイルから読むので、使い終わったら `(*Reader).Close()` で閉じる。ファイルの外を指す範囲や、数値が範囲の外にある manifest（spec §4。`MaxPageSize`、`MaxSheetEntries`、`MinEntrySize`）は `*FormatError`。manifest は `MaxManifestSize`（256 MiB）まで展開する |
+| `(*Reader).Unlock(password)` | 暗号化された文書を開く（`Encrypted`、`Locked` で状態を調べる。`ErrLocked`、`ErrWrongPassword`）。鍵スロットの反復回数は、1 つでも、試したスロットの合計でも `MaxIterations`（10,000,000）まで |
+| `(*Reader).Part(h)` / `Object(h)` / `Entry(h)` | Part の中身、デコードした Object、Part の表の項目。Part は manifest の `size` を超えて展開しない（超えるデータは `*FormatError`） |
 | `(*Reader).ToDocument()` / `WriteSingle` / `WriteSplit` | 再エンコードせずに書き出す（1 ファイル形式と分割形式の相互変換） |
 | `DecodeObject(data) (*ObjectPart, error)` | Object Part をデコードする。`Walk` / `Instructions` で命令を読む |
 | `Disassemble(data) (string, error)` | Object を人が読める命令列にする |
-| `ExtractText(o, resolve) ([]TextRun, error)` | Object（と子 Object）のテキストを取り出す |
+| `ExtractText(o, resolve) ([]TextRun, error)` | Object（と子 Object）のテキストを取り出す。`USE` の入れ子は `MaxUseDepth`（64）段、描き直す Object から読む命令は `MaxReusedInstructions`（2^27）まで（超えると `*FormatError`）。表にない Object やフォントの番号は無視する |
 | `DecodeTextIndex` / `EncodeTextIndex` / `PlainText` | テキスト索引の読み書きと、索引からの平文 |
 | `(*Document).SearchText() (*SearchText, error)` | 検索エンジンに入れるテキスト。`Meta`（Dublin Core と入力形式）と、View ごとの `Pages`（`Page` は 1 始まりのページ番号、シートは 0 で丸ごと、`Text` は平文）。テキスト索引の Part があればそれを、なければ Object から取り出す。テキストのないページは除き、flow View のある文書の scroll View（同じ本文の別レイアウト）も除く。JSON にできる |
 | `DecodePathCollection` / `EncodePathCollection` | パス集合の Part |
@@ -164,7 +164,7 @@ res, err := s.Finish() // Convert と同じ完成した文書
 
 | パッケージ | 内容 |
 |---|---|
-| `imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false） |
+| `imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false）。`Decode(data)` は `MaxDecodePixels`（100 << 20 画素）を超える画像をデコードせず `ErrTooLarge` を返し、`Optimize` はそういう画像をそのまま残す |
 | `woff2` | TrueType・OpenType を WOFF2 にする、WOFF2 を戻す。`Encode(font)`、`Decode(data)`（glyf・loca・hmtx の変換を戻す。フォントコレクションは扱わない）、`Available()`、`IsWOFF(data)` |
 
 ## Go: サムネイルとページの画像（thumbnail、raster）
@@ -186,9 +186,9 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 | `Auto` の選び方 | Word・HTML・Markdown・Excel・CSV と、縦長のページの PDF・TIFF は `Crop`: 1 ページ目の左上から、ページの幅（横長ならページの高さ）の正方形。scroll View は先頭から、シートは A1 から、`Size` 画素を `SheetDPI` で描く大きさ（`MinSheetSide` = 96 〜 `MaxSheetSide` = 480 単位。シートより大きくはしない）の正方形を枠線つきで。小さいサムネイルほど狭い範囲を見せ、字が潰れないようにする。それ以外（PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB の表紙、横長の PDF・TIFF）は `Fit`: 1 ページ目の全体。判定は `Meta.Source` と View の種類による |
 | `thumbnail.Encode(w, img, format)` / `FormatOf(name)` | `PNG`・`JPEG`（品質 85）・`WebP`（非可逆、品質 80）で書く / ファイル名の拡張子から形式を決める |
 | `raster.New(doc, *Options) *Renderer` | 文書を描くレンダラ。`Options` は `FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントと、埋め込みフォントにない字の探し先）と `Background`（既定は白）。デコードした Object・画像・フォントを保持する。並行には使えない |
-| `(*Renderer).Page(v, page, scale)` | fixed・flow View のページ（scroll View の帯）を、1 単位 `scale` 画素で描く |
+| `(*Renderer).Page(v, page, scale)` | fixed・flow View のページ（scroll View の帯）を、1 単位 `scale` 画素で描く。大きさのないページと 0 以下の `scale` はエラー。描いている途中のパニックもエラーにする（`Region`、`thumbnail.Make` も） |
 | `(*Renderer).Region(v, page, rect, w, h)` | 範囲を `w` × `h` 画素に描く。fixed・flow はそのページの座標、scroll View は帯を積んだ連続の座標、シートはシートの座標（枠線も描く） |
-| `(*Renderer).Warnings()` | ビューアどおりに描けなかったもの（AVIF の画像、FILTER、フォントが見つからないテキストなど） |
+| `(*Renderer).Warnings()` | ビューアどおりに描けなかったもの（AVIF の画像、FILTER、フォントが見つからないテキストなど）と、上限を超えて描かなかったもの（design.md §3.25 の「信頼しない文書への備え」） |
 | `raster.MaxPixels` / `ErrTooLarge` / `ErrNoPage` / `SheetSize(v)` | 描く画像の大きさの上限（64 M 画素）とそのエラー、ないページ、シートの大きさ |
 
 描けるもの: パス（nonzero・evenodd、アンチエイリアス）、線（端・結合・破線。1 画素より細い線はビューアと同じく 1 画素幅で薄く）、クリップ、単色・線形・放射・扇形のグラデーションとパターン、画像（PNG、JPEG と EXIF の向き、GIF、BMP、WebP、SVG）、埋め込みフォントと名前で参照するフォントのテキスト（`advance` 補正、揃え、ベースライン、字間、太字・斜体の合成、字ごとのフォールバック、右から左の文字の並べ替え）、グループの透明度とブレンド、ソフトマスク、影。描かないもの: AVIF の画像、FILTER、ヒンティング、カーニング、合字、アラビア文字の字形の変化。
@@ -236,7 +236,7 @@ bdf を読むためのパッケージ（`packages/core`）。DOM に依存しな
 
 | 名前 | 内容 |
 |---|---|
-| `BdfDocument.open(source, {password?})` | 文書を開く。暗号化された文書でパスワードが無い・違うときは `BdfPasswordError`（`reason` が `"required"` / `"wrong"`） |
+| `BdfDocument.open(source, {password?})` | 文書を開く。暗号化された文書でパスワードが無い・違うときは `BdfPasswordError`（`reason` が `"required"` / `"wrong"`）。Part 名や数値が範囲の外にある manifest（`checkManifest`、spec §4）は `BdfFormatError` |
 | `BufferSource(bytes)` | メモリ上の 1 ファイル形式 |
 | `RangeSource(url, init?)` | 1 ファイル形式を HTTP Range で必要な Part だけ取得する |
 | `SplitSource(base, init?)` | 分割形式（`manifest.json` と `parts/<hash>`） |
@@ -261,7 +261,8 @@ bdf を読むためのパッケージ（`packages/core`）。DOM に依存しな
 | `decodeObject(bytes)` / `walk(obj, sink)` / `NoopSink` | Object のデコードと、命令を `OpSink` に流すループ |
 | `objectDeps(obj)` / `opHistogram(obj)` | 参照している Part / 命令ごとの数 |
 | `decodePath` / `decodePathCollection` | パス |
-| `extractText(obj, resolve, matrix?)` | テキストの run（位置、フォント、区切り）を取り出す |
+| `extractText(obj, resolve, matrix?, limits?)` | テキストの run（位置、フォント、区切り）を取り出す。`USE` の入れ子（`MAX_USE_DEPTH` = 64）、描き直す Object から読む命令（`MAX_REUSED_INSTRUCTIONS` = 2^27）、run の数（`MAX_TEXT_RUNS` = 2^22）を超えると `BdfFormatError`。`limits`（`UseLimits`）を渡すと、View の Object をまたいで数える |
+| `decode(bytes, enc, limit)` / `checkManifest(manifest)` / `checkHash(name)` / `tileSize(view)` | 格納された Part を展開する（`limit` バイトを超えるデータは `BdfFormatError`。Part は manifest の `size`、manifest は `MAX_MANIFEST_SIZE` = 256 MiB）/ manifest の Part 名と数値の範囲を確かめる / Part 名が 32 文字の hex であることを確かめる / シートの Tile の大きさ（0 以下と省略は `DEFAULT_TILE` = 2048） |
 | `extractContent(obj, resolve, matrix?)` | run に構造（見出し、リスト、表、図）とリンクを付けた `TextContent` |
 | `parseCellRef` / `guessSep` / `Mark` / `Sep` | セル参照の解釈、run の区切りの推測、MARK と区切りの定数 |
 | `TextSearch(runs)` / `decodeTextIndex(bytes)` | テキスト索引から検索する（NFKC、大文字小文字、小書きのかな、数式のマイナス記号とハイフンマイナスを同一視し、行をまたいで一致する）。`search(query, {limit, caseSensitive, context})` は `SearchHit[]` |
@@ -299,7 +300,7 @@ installCopyHandler(container);
 
 | メソッド | 内容 |
 |---|---|
-| `open(source, password?, options?)` | 文書を開く。`source` は `{kind: "single", url, range?}`、`{kind: "split", base}`、`{kind: "buffer", buffer}`（転送される）。`options.imageBudget` はデコードした画像を保持するバイト数 |
+| `open(source, password?, options?)` | 文書を開く。`source` は `{kind: "single", url, range?}`、`{kind: "split", base}`、`{kind: "buffer", buffer}`（転送される）。`options.imageBudget` はデコードした画像を保持するバイト数。`options.maxImagePixels` と `options.holdLimit` は `ResourceCache` のものと同じ |
 | `unlock(password)` | パスワードが要る・違うと `open` が `BdfWorkerError`（`code` が `"password-required"` / `"wrong-password"`）で失敗したあと、同じ文書を別のパスワードで開く |
 | `page(view, index, scale, roles?)` | ページを `ImageBitmap` に描く。`scale` は 1 単位あたりのデバイスピクセル |
 | `continuous(view, viewport, scale)` | flow・scroll View を縦に続けた配置の矩形を描く |
@@ -320,7 +321,7 @@ installCopyHandler(container);
 | `installCopyHandler(container)` | ページをまたいだ選択を、文書の空白と改行を戻してコピーする。表のセルの選択はタブ区切りと HTML の表にする |
 | `selectionText` / `selectedRuns` / `joinRuns` | 選択範囲のテキスト |
 | `selectionCells(selection?, root?)` | 選択が表のセルを選んでいれば、その矩形の `{text, html}`（タブ区切りと HTML の表）。テキストの選択なら `undefined` |
-| `tableCells(content, table?, keep?)` / `cellClipboard(cells, range, options?)` | `TextContent` の表（`table` は表のノードの番号。`-1` で表の外のセル、つまりシートのセル）のセルとそのテキスト（`CellText`）/ セルの矩形（`CellRange`、0 始まりで両端を含む）を表計算ソフトが貼り付けられるタブ区切りと HTML の表にする。`options` は `trim`（列・行全体の選択を、テキストのある最後の行・列までにする）、`skipRow` / `skipCol`（非表示の行・列を除く） |
+| `tableCells(content, table?, keep?)` / `cellClipboard(cells, range, options?)` | `TextContent` の表（`table` は表のノードの番号。`-1` で表の外のセル、つまりシートのセル）のセルとそのテキスト（`CellText`）/ セルの矩形（`CellRange`、0 始まりで両端を含む）を表計算ソフトが貼り付けられるタブ区切りと HTML の表にする。`options` は `trim`（列・行全体の選択を、テキストのある最後の行・列までにする）、`skipRow` / `skipCol`（非表示の行・列を除く）。矩形の位置が `MAX_CLIPBOARD_CELLS`（2^22）とセルの数の 64 倍のどちらも超えると、`cellClipboard` は例外を投げる |
 | `RUN_ATTR` / `linkHref` / `internalLink` | run の要素に付く属性名 / リンク先として安全な URL / 文書内リンク（`#page=N`、`#view=ID&page=N`）の解釈 |
 
 ### 同じスレッドで描く
@@ -331,6 +332,6 @@ Worker を使わない場合や、自前の Worker に組み込む場合の部�
 |---|---|
 | `PageRenderer(doc, options?, fontSet?, resources?)` | `renderPage(ctx, page, {scale, roles?, background?})`、`renderContinuous`、`renderSheet`、`continuousLayout`、`sheetSize`、`preparePage`、`preparePageText`、`dispose` |
 | `CanvasRenderer(res, options?)` | Object 1 つを 2D コンテキストに描く（`draw(ctx, obj, reset?, visible?)`。`visible` は Object の座標で見える矩形で、そこから十分に離れたテキストを飛ばす） |
-| `ResourceCache(doc, fontSet?, {imageBudget?, decodeImage?})` | Part から作る `Path2D`、`ImageBitmap`、`FontFace` のキャッシュ。デコードした画像は `imageBudget`（既定 `DEFAULT_IMAGE_BUDGET` = 256 MiB）まで保持し、描画中のものは `hold()` / `release()`（`ImageHold`）で守る |
-| `DocumentSearch(doc, measure)` | 検索とヒットの矩形（`search`、`locate`、`text`、`forget`） |
+| `ResourceCache(doc, fontSet?, {imageBudget?, maxImagePixels?, holdLimit?, decodeImage?})` | Part から作る `Path2D`、`ImageBitmap`、`FontFace` のキャッシュ。デコードした画像は `imageBudget`（既定 `DEFAULT_IMAGE_BUDGET` = 256 MiB）まで保持し、描画中のものは `hold()` / `release()`（`ImageHold`）で守る。`maxImagePixels`（既定 2^28）を超える画像はデコードせず、`image(hash)` は `undefined` を返す（何も描かない）。1 回の描画が押さえる画像が `holdLimit`（既定 4 GiB）を超えると `BdfFormatError` |
+| `DocumentSearch(doc, measure, prepare?)` | 検索とヒットの矩形（`search`、`locate`、`text`、`forget`）。`prepare(hash)` は Object のフォントを読み込む関数で、渡すと、まだ描いていないページのヒットも埋め込みフォントで測る |
 | `fontString` / `embeddedFamily` / `buildPath2D` / `cssColor` / `resetState` | 描画の小さな部品 |

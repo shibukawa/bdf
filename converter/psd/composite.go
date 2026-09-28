@@ -1,6 +1,7 @@
 package psd
 
 import (
+	"fmt"
 	"image"
 	"math"
 	"slices"
@@ -66,18 +67,77 @@ func newRGBA(r image.Rectangle) *rgba {
 func (b *rgba) at(x, y int) int { return 4 * ((y-b.r.Min.Y)*b.r.Dx() + x - b.r.Min.X) }
 
 type compositor struct {
-	f      *file
-	canvas image.Rectangle
+	f *file
+	scale
+	canvas image.Rectangle // what is composited: the canvas of the document, reduced or not
 	warn   func(string)
+	nest   int   // groups being drawn into buffers of their own
+	depth  int   // how many of them there may be, see maxLivePixels
+	work   int64 // pixels of the buffers allocated so far
+}
+
+// Limits of compositing, whose buffers take 16 bytes a pixel. Variables, for
+// the tests.
+var (
+	// maxCompositePixels bounds the canvas as it is composited (see
+	// scale.go): 8192 × 8192 pixels, a buffer of 1 GiB.
+	maxCompositePixels = 1 << 26
+	// maxLayerPixels bounds a layer or a mask as it is stored, which is how
+	// it is decoded.
+	maxLayerPixels = 1 << 26
+	// maxGroupNest bounds the groups inside each other that are drawn into
+	// buffers of their own (Photoshop nests ten).
+	maxGroupNest = 16
+	// maxLivePixels bounds the pixels of the buffers that are alive
+	// together, 4 GiB of them: the canvas and the groups being drawn into
+	// buffers of their own, each the size of the canvas as it is composited.
+	// It leaves a canvas of 4000 × 3000 pixels its maxGroupNest groups, and
+	// the largest canvas three.
+	maxLivePixels int64 = 1 << 28
+	// maxCompositeWork bounds the pixels of all the buffers of a document:
+	// 64 buffers of the largest canvas.
+	maxCompositeWork int64 = 1 << 32
+)
+
+// buffer returns a transparent buffer over r, or nil when the document has
+// used up maxCompositeWork: what would be drawn into it is left out.
+func (cp *compositor) buffer(r image.Rectangle) *rgba {
+	if !cp.spend(r) {
+		return nil
+	}
+	return newRGBA(r)
+}
+
+// spend counts the pixels of a buffer over r and reports whether the
+// document may have it.
+func (cp *compositor) spend(r image.Rectangle) bool {
+	n := int64(r.Dx()) * int64(r.Dy())
+	if n > maxCompositeWork-cp.work {
+		cp.work = maxCompositeWork
+		cp.warn("the layers are too many or too large to composite them all; the rest are not drawn")
+		return false
+	}
+	cp.work += n
+	return true
 }
 
 // adjustmentKeys are the additional information keys of adjustment layers.
 var adjustmentKeys = []string{"levl", "curv", "brit", "blnc", "hue ", "hue2", "selc", "mixr", "grdm", "phfl", "expA",
 	"vibA", "thrs", "nvrt", "post", "CgEd", "clrL", "blwh"}
 
-// compositeLayers draws the layer tree into an image the size of the canvas.
-func (f *file) compositeLayers(warn func(string)) *image.NRGBA {
-	cp := &compositor{f: f, canvas: image.Rect(0, 0, f.hdr.w, f.hdr.h), warn: warn}
+// compositeLayers draws the layer tree into an image of the canvas of the
+// given size: that of the canvas, or less (see scale.go).
+func (f *file) compositeLayers(size image.Point, warn func(string)) (*image.NRGBA, error) {
+	cp := &compositor{f: f, scale: scale{full: image.Pt(f.hdr.w, f.hdr.h), to: size}, canvas: image.Rectangle{Max: size}, warn: warn}
+	pixels := int64(size.X) * int64(size.Y)
+	if pixels > int64(maxCompositePixels) {
+		if cp.reduced() {
+			return nil, fmt.Errorf("the layers of an image of %d × %d pixels are too large to composite, reduced to %d × %d pixels too",
+				f.hdr.w, f.hdr.h, size.X, size.Y)
+		}
+		return nil, fmt.Errorf("the layers of an image of %d × %d pixels are too large to composite", f.hdr.w, f.hdr.h)
+	}
+	cp.depth = groupDepth(pixels)
 	dst := newRGBA(cp.canvas)
 	cp.drawList(dst, layerTree(f.layers))
 	img := image.NewNRGBA(cp.canvas)
@@ -91,7 +151,7 @@ func (f *file) compositeLayers(warn func(string)) *image.NRGBA {
 		}
 		img.Pix[i+3] = clamp8(float64(a) * 255)
 	}
-	return img
+	return img, nil
 }
 
 // drawList draws layers bottom to top. A layer with clipping set is clipped
@@ -123,10 +183,12 @@ func (cp *compositor) drawList(dst *rgba, nodes []*node) {
 			if !c.l.hidden {
 				if src := cp.render(c); src != nil {
 					blend(buf, src, c.l.blend, opacity(c.l), true)
+					cp.release(c)
 				}
 			}
 		}
 		blend(dst, buf, base.l.blend, opacity(base.l), false)
+		cp.release(base)
 	}
 }
 
@@ -140,6 +202,13 @@ func (cp *compositor) drawNode(dst *rgba, n *node) {
 		m := cp.mask(n.l)
 		if n.l.opacity == 255 && m == nil {
 			cp.drawList(dst, n.children)
+			return
+		}
+		if !cp.enter() {
+			return
+		}
+		defer cp.leave()
+		if !cp.spend(dst.r) {
 			return
 		}
 		t := &rgba{r: dst.r, pix: slices.Clone(dst.pix)}
@@ -158,18 +227,27 @@ func (cp *compositor) drawNode(dst *rgba, n *node) {
 	}
 	if src := cp.render(n); src != nil {
 		blend(dst, src, n.l.blend, opacity(n.l), false)
+		cp.release(n)
 	}
 }
 
 // render draws a layer or group alone, with its fill opacity and masks but
-// not its opacity or blend mode.
+// not its opacity or blend mode. The buffer of a group counts as alive
+// until release: it is while the layers clipped to the group are drawn
+// into it.
 func (cp *compositor) render(n *node) *rgba {
 	l := n.l
 	var buf *rgba
 	if n.group {
-		buf = newRGBA(cp.canvas)
+		if !cp.enter() {
+			return nil
+		}
+		if buf = cp.buffer(cp.canvas); buf == nil {
+			cp.leave()
+			return nil
+		}
 		if a := l.artboard; a != nil {
-			r := image.Rect(a.left, a.top, a.right, a.bottom).Intersect(cp.canvas)
+			r := cp.place(image.Rect(a.left, a.top, a.right, a.bottom)).Intersect(cp.canvas)
 			var bg [4]float32
 			switch a.background {
 			case 1:
@@ -239,6 +317,13 @@ func (cp *compositor) renderLayer(l *layer) *rgba {
 		cp.warn("layer " + l.name + ": bad bounds")
 		return nil
 	}
+	if tooLarge(lr) {
+		cp.warn("layer " + l.name + ": too large to draw")
+		return nil
+	}
+	if !cp.spend(cp.place(lr)) {
+		return nil
+	}
 	planes := make([][]uint8, f.hdr.baseChannels())
 	var alpha []uint8
 	var err error
@@ -268,7 +353,10 @@ func (cp *compositor) renderLayer(l *layer) *rgba {
 			cp.warn("shape layers whose vector mask is not rendered into a mask channel are not drawn")
 			return nil
 		}
-		buf := newRGBA(cp.canvas)
+		buf := cp.buffer(cp.canvas)
+		if buf == nil {
+			return nil
+		}
 		c := [4]float32{float32(l.fillColor[0] / 255), float32(l.fillColor[1] / 255), float32(l.fillColor[2] / 255), 1}
 		for i := 0; i < len(buf.pix); i += 4 {
 			copy(buf.pix[i:], c[:])
@@ -281,6 +369,9 @@ func (cp *compositor) renderLayer(l *layer) *rgba {
 		}
 	}
 	img := f.toNRGBA(planes, alpha, lr.Dx(), lr.Dy())
+	if cp.reduced() {
+		return cp.reduce(img, lr)
+	}
 	r := lr.Intersect(cp.canvas)
 	if r.Empty() {
 		return nil
@@ -300,11 +391,46 @@ func (cp *compositor) renderLayer(l *layer) *rgba {
 	return buf
 }
 
+// groupDepth returns how many groups may be drawn into buffers of their own
+// at the same time on a canvas composited with so many pixels:
+// maxGroupNest, or fewer when the canvas is so large that maxLivePixels
+// has room for fewer buffers beside it.
+func groupDepth(pixels int64) int {
+	room := maxLivePixels/max(pixels, 1) - 1
+	return int(max(0, min(int64(maxGroupNest), room)))
+}
+
+// enter starts a group that is drawn into a buffer of its own, and reports
+// whether it may: the buffers of the groups around it are all in use.
+func (cp *compositor) enter() bool {
+	if cp.nest >= cp.depth {
+		cp.warn(fmt.Sprintf("groups more than %d deep are not drawn", cp.depth))
+		return false
+	}
+	cp.nest++
+	return true
+}
+
+func (cp *compositor) leave() { cp.nest-- }
+
+// release ends the use of the buffer that render returned for n.
+func (cp *compositor) release(n *node) {
+	if n.group {
+		cp.leave()
+	}
+}
+
 // plausible reports whether the bounds of a layer or mask are within reach
 // of the canvas: layers may extend past it, not endlessly.
 func (cp *compositor) plausible(r image.Rectangle) bool {
-	w, h := cp.canvas.Dx(), cp.canvas.Dy()
+	w, h := cp.full.X, cp.full.Y
 	return r.Min.X >= -4*w && r.Max.X <= 5*w && r.Min.Y >= -4*h && r.Max.Y <= 5*h
+}
+
+// tooLarge reports whether a layer or mask has more pixels than
+// maxLayerPixels.
+func tooLarge(r image.Rectangle) bool {
+	return int64(r.Dx())*int64(r.Dy()) > int64(maxLayerPixels)
 }
 
 // maskPlane is a decoded layer mask.
@@ -344,6 +470,10 @@ func (cp *compositor) mask(l *layer) *maskPlane {
 			cp.warn("layer " + l.name + " mask: bad bounds")
 			continue
 		}
+		if tooLarge(r) {
+			cp.warn("layer " + l.name + " mask: too large to apply")
+			continue
+		}
 		pix, err := cp.f.layerPlane(ch, r.Dx(), r.Dy(), false)
 		if err != nil {
 			cp.warn("layer " + l.name + " mask: " + err.Error())
@@ -351,6 +481,8 @@ func (cp *compositor) mask(l *layer) *maskPlane {
 		}
 		if pix == nil {
 			r = image.Rectangle{}
+		} else if cp.reduced() {
+			pix, r = cp.reduceMask(pix, r, m.defaultColor)
 		}
 		out = &maskPlane{r: r, pix: pix, deflt: float32(m.defaultColor) / 255, next: out}
 	}

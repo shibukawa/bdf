@@ -15,8 +15,35 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
 )
 
-// maxPart limits the size of a file of the publication that is read.
-const maxPart = 64 << 20
+// maxPart limits the size of a file of the publication that is read, and
+// maxText that of a content document, a style sheet or the package
+// document, which take many times their size when they are read.
+var (
+	maxPart int64 = 64 << 20
+	maxText int64 = 16 << 20
+)
+
+// maxInflated is how much larger than the publication the files read from
+// it may be together, decompressed; what is read after that is left out. A
+// publication is a ZIP file: a small one can hold any number of files that
+// decompress to the size they may have.
+var maxInflated int64 = 256 << 20
+
+// errInflated is the error of a file that is not read because the files
+// read before it have reached maxInflated.
+var errInflated = errors.New("the files of the publication are too large, decompressed")
+
+// maxTags is how many tags the content documents of a publication may
+// have together (some two million elements, several times those of a
+// large dictionary); the content documents after them are left out. The
+// elements are what reading a document takes memory for, a hundred times
+// the size of the shortest of them, and the documents of a publication
+// are all read before they are laid out.
+var maxTags = 4 << 20
+
+// errTags is the error of a content document that is not read because
+// those read before it have reached maxTags.
+var errTags = errors.New("the content documents of the publication have too many elements")
 
 const nsDC = "http://purl.org/dc/elements/1.1/"
 
@@ -29,6 +56,8 @@ var ErrDRM = errors.New("epub: the publication is encrypted (DRM)")
 
 // publication is an opened EPUB: its files and its package document.
 type publication struct {
+	size      int64                // of the publication
+	read      int64                // bytes read from its files, decompressed
 	files     map[string]*zip.File // by path, with forward slashes
 	folded    map[string]string    // paths by their lower case, for references that differ in case
 	encrypted map[string]bool
@@ -102,7 +131,7 @@ func open(r io.ReaderAt, size int64) (*publication, error) {
 	if err != nil {
 		return nil, fmt.Errorf("epub: %w", err)
 	}
-	p := &publication{files: map[string]*zip.File{}, folded: map[string]string{}, encrypted: map[string]bool{},
+	p := &publication{size: size, files: map[string]*zip.File{}, folded: map[string]string{}, encrypted: map[string]bool{},
 		items: map[string]*item{}, byPath: map[string]*item{}}
 	for _, f := range zr.File {
 		name := strings.TrimPrefix(strings.ReplaceAll(f.Name, `\`, "/"), "/")
@@ -118,7 +147,7 @@ func open(r io.ReaderAt, size int64) (*publication, error) {
 	if p.opfPath == "" {
 		return nil, errors.New("epub: no package document (META-INF/container.xml names none, and there is no .opf file)")
 	}
-	data, err := p.read(p.opfPath)
+	data, err := p.text(p.opfPath)
 	if err != nil {
 		return nil, fmt.Errorf("epub: package document: %w", err)
 	}
@@ -150,7 +179,7 @@ func decodeXML(data []byte, v any) error {
 // rootfile returns the path of the package document: the first rootfile
 // of container.xml that is one, else the first .opf file.
 func (p *publication) rootfile() string {
-	if data, err := p.read("META-INF/container.xml"); err == nil {
+	if data, err := p.text("META-INF/container.xml"); err == nil {
 		var c struct {
 			Rootfiles []struct {
 				FullPath  string `xml:"full-path,attr"`
@@ -176,7 +205,7 @@ func (p *publication) rootfile() string {
 // readEncryption reads which files META-INF/encryption.xml says are
 // encrypted, other than obfuscated fonts.
 func (p *publication) readEncryption() error {
-	data, err := p.read("META-INF/encryption.xml")
+	data, err := p.text("META-INF/encryption.xml")
 	if err != nil {
 		return nil
 	}
@@ -214,8 +243,17 @@ func (p *publication) canonical(name string) string {
 	return p.folded[strings.ToLower(name)]
 }
 
-// read reads a file of the container.
-func (p *publication) read(name string) ([]byte, error) {
+// picture reads a file of the container of at most maxPart.
+func (p *publication) picture(name string) ([]byte, error) { return p.file(name, maxPart) }
+
+// text reads a file of the container of at most maxText: a content
+// document, a style sheet, the package document.
+func (p *publication) text(name string) ([]byte, error) { return p.file(name, maxText) }
+
+// file reads a file of the container that is not larger than limit, while
+// the files read are not maxInflated larger than the publication
+// (errInflated).
+func (p *publication) file(name string, limit int64) ([]byte, error) {
 	f := p.files[p.canonical(name)]
 	if f == nil {
 		return nil, fmt.Errorf("%s: not in the publication", name)
@@ -224,20 +262,25 @@ func (p *publication) read(name string) ([]byte, error) {
 	if p.encrypted[name] {
 		return nil, fmt.Errorf("%s: %w", name, ErrDRM)
 	}
-	if f.UncompressedSize64 > maxPart {
-		return nil, fmt.Errorf("%s: larger than %d MiB", name, maxPart>>20)
+	if f.UncompressedSize64 > uint64(limit) {
+		return nil, fmt.Errorf("%s: larger than %d MiB", name, limit>>20)
+	}
+	// the size the file says is the most the ZIP reader gives
+	if p.read+int64(f.UncompressedSize64) > p.size+maxInflated {
+		return nil, fmt.Errorf("%s: %w", name, errInflated)
 	}
 	rc, err := f.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer rc.Close()
-	b, err := io.ReadAll(io.LimitReader(rc, maxPart+1))
+	b, err := io.ReadAll(io.LimitReader(rc, limit+1))
+	p.read += int64(len(b))
 	if err != nil {
 		return nil, err
 	}
-	if len(b) > maxPart {
-		return nil, fmt.Errorf("%s: larger than %d MiB", name, maxPart>>20)
+	if int64(len(b)) > limit {
+		return nil, fmt.Errorf("%s: larger than %d MiB", name, limit>>20)
 	}
 	return b, nil
 }

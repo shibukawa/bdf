@@ -57,6 +57,17 @@ func (r *renderer) budget(n int) bool {
 	return !r.spent()
 }
 
+// fits reports whether n more points fit the budget, for an outline that
+// is put together of pieces before it is drawn and counted: the pieces may
+// be one curve named over and over. Points that do not fit use the budget
+// up.
+func (r *renderer) fits(n int) bool {
+	if r.points+n > maxPoints {
+		r.points = maxPoints + 1
+	}
+	return !r.spent()
+}
+
 // lineStyle is how a curve is drawn: color, width (mm) and dash pattern
 // (mm on the sheet, positive dashes and negative gaps).
 type lineStyle struct {

@@ -19,6 +19,15 @@ var urlRefRE = regexp.MustCompile(`url\(\s*['"]?#([^'")\s]+)['"]?\s*\)`)
 // and its images as data: URLs (embed; images an SVG file refers to are not
 // loaded where it is drawn as an image). Scripts are left out.
 func SVGDocument(root *html.Node, color string, byID func(id string) *html.Node, embed func(href string) string) []byte {
+	data, _ := SVGDocumentMax(root, color, byID, embed, 0)
+	return data
+}
+
+// SVGDocumentMax is SVGDocument for a document of at most max bytes (0: of
+// any size); it returns false, and no document, for an svg element that
+// makes a larger one. The document of an svg element can be much larger
+// than the element: it holds the elements it borrows and its images.
+func SVGDocumentMax(root *html.Node, color string, byID func(id string) *html.Node, embed func(href string) string, max int) ([]byte, bool) {
 	// the ids defined inside, and the elements referred to from outside
 	defined := map[string]bool{}
 	WalkElements(root, func(n *html.Node) {
@@ -28,9 +37,14 @@ func SVGDocument(root *html.Node, color string, byID func(id string) *html.Node,
 	})
 	var borrowed []*html.Node
 	pending := []*html.Node{root}
+	searched := map[*html.Node]bool{}
 	for len(pending) > 0 && len(borrowed) < 1000 {
 		n := pending[0]
 		pending = pending[1:]
+		if inside(n, searched) {
+			continue // its references were found in the element it is in
+		}
+		searched[n] = true
 		WalkElements(n, func(e *html.Node) {
 			for _, a := range e.Attr {
 				var ids []string
@@ -73,6 +87,9 @@ func SVGDocument(root *html.Node, color string, byID func(id string) *html.Node,
 	var b bytes.Buffer
 	var write func(n *html.Node, isRoot, inForeign bool)
 	write = func(n *html.Node, isRoot, inForeign bool) {
+		if max > 0 && b.Len() > max {
+			return
+		}
 		switch n.Type {
 		case html.TextNode:
 			escapeXML(&b, n.Data, false)
@@ -146,7 +163,20 @@ func SVGDocument(root *html.Node, color string, byID func(id string) *html.Node,
 		b.WriteString("</" + n.Data + ">")
 	}
 	write(root, true, false)
-	return b.Bytes()
+	if max > 0 && b.Len() > max {
+		return nil, false
+	}
+	return b.Bytes(), true
+}
+
+// inside reports whether an element is in one of the elements of a set.
+func inside(n *html.Node, set map[*html.Node]bool) bool {
+	for p := n.Parent; p != nil; p = p.Parent {
+		if set[p] {
+			return true
+		}
+	}
+	return false
 }
 
 // WalkElements calls fn for n and every element under it.

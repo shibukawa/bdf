@@ -203,6 +203,12 @@ func (s *sheetCtx) layoutCell(r, c int, cl *cell, f *cellFmt, b box, measure boo
 				if wrap {
 					items = append(items, titem{r: '\n', st: st, fc: s.c.fonts.FaceFor(st.latin, st.ea, st.bold, st.italic, ' '), kind: itemBreak})
 				}
+				// a break counts toward the shown characters too, so a value
+				// of nothing but line breaks cannot make an unbounded number
+				// of lines
+				if shown++; shown >= maxShown {
+					break
+				}
 				continue
 			}
 			if r == '\t' {
@@ -403,14 +409,23 @@ func (s *sheetCtx) textStyle(cellFont, run *xfont, fmtColor *rgb) *tstyle {
 		underline: f.underline, strike: f.strike, vert: f.vert, color: col.bdf()}
 }
 
-// item measures a character.
+// item measures a character. The advance on the character's face is cached
+// (the face is resolved by the font set, which memoizes that), so a
+// character in a given font is measured once for the whole sheet; only the
+// multiplication by the size happens per call.
 func (s *sheetCtx) item(st *tstyle, r rune) titem {
 	fc := s.c.fonts.FaceFor(st.latin, st.ea, st.bold, st.italic, r)
+	k := advanceKey{fc, r}
+	adv, ok := s.advances[k]
+	if !ok {
+		adv = s.c.fonts.Advance(fc, r)
+		s.advances[k] = adv
+	}
 	size := st.size
 	if st.vert != "" {
 		size *= 2.0 / 3
 	}
-	return titem{r: r, st: st, fc: fc, w: s.c.fonts.Advance(fc, r) * size}
+	return titem{r: r, st: st, fc: fc, w: adv * size}
 }
 
 // fitNumber shortens a number that does not fit: General shows fewer

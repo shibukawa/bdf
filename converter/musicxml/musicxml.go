@@ -78,6 +78,22 @@ const (
 	maxQuarters  = 4096 // the furthest position in a measure
 	maxPlays     = 10000
 	maxPlayNotes = 4000000
+
+	maxInMeasure    = 10000   // notes, slurs, syllables, directions and clef changes of a part in a measure
+	maxTempoMarks   = 64      // tempo marks of a measure
+	maxVerses       = 99      // verses of lyrics
+	maxEndings      = 100     // numbers of a volta
+	maxPlayQuarters = 1000000 // the length of the performance in quarter notes
+)
+
+// Budgets that are variables for the tests.
+var (
+	// maxStaffMeasures bounds the staves times the measures of the score,
+	// as the engine does, and the measures of the parts read.
+	maxStaffMeasures = 1_000_000
+	// maxPlayChanges bounds the tempo changes of the performance, and the
+	// syllables sung: repeats play those of a measure many times.
+	maxPlayChanges = 1_000_000
 )
 
 // Parse reads a MusicXML score, uncompressed or compressed. It returns
@@ -123,15 +139,16 @@ type reader struct {
 	rights                   string
 
 	notes                                int
+	partMeasures                         int // the measures of the parts read, against maxStaffMeasures
 	hasBeams, hasAccidentals, hasAltered bool
-	verses                               map[string]int
+	verses                               *numbers
 	gotMusic                             bool
 	timewiseCount                        int // the measures of a timewise score read
 }
 
 func newReader() *reader {
 	return &reader{score: &music.Score{}, warned: map[string]bool{}, byID: map[string]*partState{},
-		credits: map[string]string{}, creators: map[string]string{}, verses: map[string]int{}}
+		credits: map[string]string{}, creators: map[string]string{}, verses: newNumbers(maxVerses)}
 }
 
 // warn reports a problem once.
@@ -582,6 +599,18 @@ func tickOf(q float64) int {
 func (r *reader) finish() {
 	r.setCredits()
 	s := r.score
+	// every staff is laid out in every measure
+	staves := 0
+	for _, p := range r.parts {
+		if p.seen {
+			staves += p.part.Staves
+		}
+	}
+	if n := maxStaffMeasures / max(staves, 1); len(r.ms) > n {
+		r.warn("more than %d measures on the staves (%d staves of %d measures); the measures after %d are left out",
+			maxStaffMeasures, staves, len(r.ms), n)
+		r.ms, s.Measures = r.ms[:n], s.Measures[:n]
+	}
 	cur, free := music.TimeSig{Beats: 4, BeatType: 4}, false
 	for i, mi := range r.ms {
 		m := mi.m

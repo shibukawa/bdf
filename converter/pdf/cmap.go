@@ -13,8 +13,9 @@ import (
 type cmap struct {
 	ranges   []codespace // sorted by byte length
 	single   map[uint32]uint32
-	cidRange []cidRange // sorted by lo once parsed
-	overlap  bool       // cidRange has overlapping ranges: scan them in order
+	cidRange []cidRange        // sorted by lo once parsed
+	overlap  bool              // cidRange has overlapping ranges: scan them in order
+	found    map[uint32]cidHit // overlap: what the scan gave for a code
 	unicode  map[uint32]string
 	uniRange []bfRange
 	identity bool // unmapped codes are CIDs (Identity-H/V, or usecmap of them)
@@ -37,6 +38,11 @@ type cidRange struct {
 	nbytes int
 	lo, hi uint32
 	cid    uint32
+}
+
+type cidHit struct {
+	cid uint32
+	ok  bool
 }
 
 type bfRange struct {
@@ -116,10 +122,23 @@ func (cm *cmap) lookup(code uint32, depth int) (uint32, bool) {
 		return v, true
 	}
 	if cm.overlap {
-		for _, r := range cm.cidRange {
-			if code >= r.lo && code <= r.hi {
-				return r.cid + (code - r.lo), true
+		// The ranges are searched once for a code: text has the same codes
+		// again and again, and a damaged CMap may have many ranges.
+		hit, ok := cm.found[code]
+		if !ok {
+			for _, r := range cm.cidRange {
+				if code >= r.lo && code <= r.hi {
+					hit = cidHit{r.cid + (code - r.lo), true}
+					break
+				}
 			}
+			if cm.found == nil {
+				cm.found = map[uint32]cidHit{}
+			}
+			cm.found[code] = hit
+		}
+		if hit.ok {
+			return hit.cid, true
 		}
 	} else if i := sort.Search(len(cm.cidRange), func(i int) bool { return cm.cidRange[i].hi >= code }); i < len(cm.cidRange) && cm.cidRange[i].lo <= code {
 		r := cm.cidRange[i]

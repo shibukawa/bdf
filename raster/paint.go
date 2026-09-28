@@ -32,6 +32,9 @@ func buildLUT(stops []bdf.Stop) *gradientLUT {
 	// addColorStop keeps stops with the same offset in the order they came
 	sort.SliceStable(ss, func(i, j int) bool { return ss[i].off < ss[j].off })
 	lut := &gradientLUT{}
+	// k is the first stop from the second that t does not pass: it moves
+	// on as t grows
+	k := 1
 	for i := range lut {
 		t := float64(i) / 1024
 		var c [4]float64
@@ -41,17 +44,17 @@ func buildLUT(stops []bdf.Stop) *gradientLUT {
 		case t >= ss[len(ss)-1].off:
 			c = ss[len(ss)-1].c
 		default:
-			for k := 1; k < len(ss); k++ {
-				if t <= ss[k].off {
-					a, b := ss[k-1], ss[k]
-					u := 0.0
-					if b.off > a.off {
-						u = (t - a.off) / (b.off - a.off)
-					}
-					for j := range c {
-						c[j] = a.c[j] + (b.c[j]-a.c[j])*u
-					}
-					break
+			for k < len(ss) && !(t <= ss[k].off) {
+				k++
+			}
+			if k < len(ss) {
+				a, b := ss[k-1], ss[k]
+				u := 0.0
+				if b.off > a.off {
+					u = (t - a.off) / (b.off - a.off)
+				}
+				for j := range c {
+					c[j] = a.c[j] + (b.c[j]-a.c[j])*u
 				}
 			}
 		}
@@ -78,12 +81,36 @@ type gradientShader struct {
 	lut *gradientLUT
 }
 
-func newGradientShader(p *bdf.Paint, m matrix) shader {
+func newGradientShader(p *bdf.Paint, m matrix, lut *gradientLUT) shader {
 	inv, ok := m.invert()
 	if !ok || len(p.Stops) == 0 {
 		return solid{}
 	}
-	return &gradientShader{inv: inv, p: p, lut: buildLUT(p.Stops)}
+	if lut == nil {
+		lut = buildLUT(p.Stops)
+	}
+	return &gradientShader{inv: inv, p: p, lut: lut}
+}
+
+// lutsKept is the most gradients whose colours a renderer keeps (16 KiB
+// each).
+const lutsKept = 1024
+
+// lut returns the colours of a gradient of an object, which are worked out
+// once for all it fills.
+func (r *Renderer) lut(p *bdf.Paint) *gradientLUT {
+	if len(p.Stops) == 0 || plain {
+		return nil
+	}
+	l, ok := r.luts[p]
+	if !ok {
+		if len(r.luts) >= lutsKept {
+			clear(r.luts)
+		}
+		l = buildLUT(p.Stops)
+		r.luts[p] = l
+	}
+	return l
 }
 
 func (g *gradientShader) shade(x, y, n int, dst []float32) {
