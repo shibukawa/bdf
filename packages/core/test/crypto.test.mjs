@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { BufferSource, RangeSource, BdfDocument, BdfPasswordError, BdfFormatError, parseHeader } from "../dist/index.js";
+import { BufferSource, RangeSource, BdfDocument, BdfPasswordError, BdfFormatError, MAX_ITERATIONS, parseHeader } from "../dist/index.js";
 
 // testdata/demo-encrypted.bdf is testdata/demo.bdf encrypted by the Go writer
 // (npm run testdata) with this password.
@@ -77,4 +77,21 @@ test("a tampered part fails authentication", async () => {
   const h = parseHeader(bytes);
   bytes[h.manifestOff + h.manifestLen + o.off + 20] ^= 1;
   await assert.rejects(doc.part(e.h), (err) => err instanceof BdfFormatError && /authentication/.test(err.message));
+});
+
+test("the iterations of the key slots are limited one by one and in sum", async () => {
+  const outer = await new BufferSource(sealedBytes).manifest();
+  const [slot] = outer.encryption.keys;
+  const open = (keys) => BdfDocument.open({ manifest: async () => ({ ...outer, encryption: { ...outer.encryption, keys } }), stored: () => assert.fail("no part is read") }, { password: "wrong" });
+  const tooMany = (e) => e instanceof BdfFormatError && /key slots take more than 10000000 iterations/.test(e.message);
+  for (const iter of [0, MAX_ITERATIONS + 1, 1.5]) {
+    await assert.rejects(open([{ ...slot, iter }]), (e) => e instanceof BdfFormatError && /out of range/.test(e.message), `${iter}`);
+  }
+  // slots that are tried: the second one would take the sum past the limit, and is not
+  const t0 = performance.now();
+  await assert.rejects(open([{ ...slot, iter: 1 }, { ...slot, iter: MAX_ITERATIONS }]), tooMany);
+  await assert.rejects(open([{ ...slot, iter: 1000 }, { ...slot, iter: 1000 }, { ...slot, iter: MAX_ITERATIONS - 1999 }]), tooMany);
+  assert.ok(performance.now() - t0 < 1000, "the last slot was derived");
+  // up to the limit they are all tried
+  await assert.rejects(open([{ ...slot, iter: 1000 }, { ...slot, iter: 1000 }]), (e) => e instanceof BdfPasswordError && e.reason === "wrong");
 });

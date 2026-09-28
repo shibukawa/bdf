@@ -1,7 +1,8 @@
 import { decode, type PartSource } from "./container.js";
+import { checkManifest, tileSize } from "./manifest.js";
 import { BdfPasswordError, SealedSource } from "./crypto.js";
 import { decodeCues, type Cues } from "./cues.js";
-import { decodeObject, decodePathCollection, objectDeps } from "./object.js";
+import { decodeObject, decodePathCollection, objectDeps, UseLimits } from "./object.js";
 import { decodeTextIndex, type IndexRun } from "./search.js";
 import { extractText } from "./text.js";
 import type { Manifest, PartEntry, ObjectPart, PathData, Hash, View } from "./types.js";
@@ -20,6 +21,7 @@ export class BdfDocument {
   private pathSets = new Map<Hash, Promise<PathData[]>>();
 
   private constructor(readonly source: PartSource, readonly manifest: Manifest) {
+    checkManifest(manifest);
     for (const e of manifest.parts) this.entries.set(e.h, { entry: e, source });
   }
 
@@ -27,7 +29,9 @@ export class BdfDocument {
    * Open a document. An encrypted one needs options.password: without it
    * BdfPasswordError("required") is thrown, and BdfPasswordError("wrong")
    * when it does not open the document. The source's manifest is cached, so
-   * the same source can be opened again with another password.
+   * the same source can be opened again with another password. A manifest
+   * with part names or numbers out of range (see checkManifest) is refused
+   * with BdfFormatError.
    */
   static async open(source: PartSource, options: OpenOptions = {}): Promise<BdfDocument> {
     const manifest = await source.manifest();
@@ -74,7 +78,8 @@ export class BdfDocument {
     if (!p) {
       const e = this.entries.get(hash);
       if (!e) throw new Error(`bdf: unknown part ${hash}`);
-      p = e.source.stored(e.entry).then((b) => decode(b, e.entry.enc));
+      // a part inflates to the size its manifest states at most
+      p = e.source.stored(e.entry).then((b) => decode(b, e.entry.enc, e.entry.size ?? 0));
       this.parts.set(hash, p);
     }
     return p;
@@ -105,12 +110,13 @@ export class BdfDocument {
     if (view.textIndex) return decodeTextIndex(await this.part(view.textIndex));
     const runs: IndexRun[] = [];
     // A sheet tile keeps the runs whose anchor lies in it (tiles repeat what straddles them).
-    const tile = view.tile ?? 2048;
+    const tile = tileSize(view);
     const keep = (r: { x: number; y: number }) => view.kind !== "sheet" || (r.x >= 0 && r.x < tile && r.y >= 0 && r.y < tile);
+    const limits = new UseLimits(); // of the whole view
     const add = async (a: number, b: number, hash: Hash) => {
       const obj = await this.ensure(hash);
       let n = 0;
-      for (const r of extractText(obj, (h) => this.objectSync(h))) {
+      for (const r of extractText(obj, (h) => this.objectSync(h), undefined, limits)) {
         if (!keep(r)) continue;
         runs.push({ a, b, ordinal: r.ordinal, sep: n++ === 0 ? 2 : r.sep, text: r.text });
       }

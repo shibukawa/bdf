@@ -1,7 +1,7 @@
 // Minimal static server with Range support, used by tests and the demo.
 import { createServer } from "node:http";
 import { stat, open } from "node:fs/promises";
-import { join, extname, normalize } from "node:path";
+import { join, extname, normalize, resolve, sep } from "node:path";
 
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".map": "application/json",
@@ -10,13 +10,15 @@ const TYPES = {
 };
 
 export function serve(root, port = 0) {
+  root = resolve(root);
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://x");
       let path = decodeURIComponent(url.pathname);
       if (path.endsWith("/")) path += "index.html";
       const file = normalize(join(root, path));
-      if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
+      // under the root: a directory beside it whose name starts with the root's is not
+      if (file !== root && !file.startsWith(root + sep)) { res.writeHead(403).end(); return; }
       const st = await stat(file).catch(() => null);
       if (!st || !st.isFile()) { res.writeHead(404).end("not found"); return; }
       const type = TYPES[extname(file)] ?? "application/octet-stream";

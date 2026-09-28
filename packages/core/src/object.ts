@@ -1,6 +1,6 @@
 import { ByteReader, BdfFormatError } from "./bytes.js";
 import { Op, OPSET_VERSION, OP_NAMES, PaintKind, FontKind, VERB_ARGS } from "./opcodes.js";
-import type { ObjectPart, PathData, PathEntry, Paint, Font, Glyph, OpSink } from "./types.js";
+import type { ObjectPart, PathData, PathEntry, Paint, Font, Glyph, OpSink, Hash } from "./types.js";
 
 const PAINT_COORDS = [4, 6, 3];
 
@@ -90,8 +90,58 @@ export function objectDeps(o: ObjectPart): string[] {
   return out;
 }
 
-/** Execute the op stream of an object against a sink. */
-export function walk(o: ObjectPart, sink: OpSink): void {
+// Limits of walking the objects an object draws with USE. A document decides
+// how deep objects draw objects and how often, so a small one could otherwise
+// keep a reader busy without end (ten objects that each draw the next one ten
+// times draw the last one 10^10 times). The Go reader has the same limits.
+
+/** How deep objects draw objects. */
+export const MAX_USE_DEPTH = 64;
+/**
+ * The instructions read from objects that were walked before. What is read
+ * once is bounded by the size of the document; this bounds what a document
+ * adds by drawing it again.
+ */
+export const MAX_REUSED_INSTRUCTIONS = 1 << 27;
+/** The text runs of a walk, which are kept in memory. */
+export const MAX_TEXT_RUNS = 1 << 22;
+
+/**
+ * Counts a walk of objects against the limits: one for the top-level
+ * objects that are walked together (the layers of a render, the objects of a
+ * view's text index).
+ */
+export class UseLimits {
+  private seen = new Set<Hash>();
+  private reused = 0;
+
+  /** The limits are the constants above, unless a test asks for smaller ones. */
+  constructor(readonly maxReused = MAX_REUSED_INSTRUCTIONS, readonly maxRuns = MAX_TEXT_RUNS) {}
+
+  /** Note that a child object is walked; true when it was walked before, and its instructions count as read again. */
+  enter(h: Hash): boolean {
+    if (this.seen.has(h)) return true;
+    this.seen.add(h);
+    return false;
+  }
+
+  /** Whether an object at depth (0: a top-level one) may draw another; throws when not. */
+  descend(depth: number): void {
+    if (depth >= MAX_USE_DEPTH) throw new BdfFormatError("objects draw objects too deep");
+  }
+
+  /** Count an instruction read from an object walked before (the third argument of walk). */
+  readonly count = (): void => {
+    if (++this.reused > this.maxReused) throw new BdfFormatError("objects are drawn too many times");
+  };
+}
+
+/**
+ * Execute the op stream of an object against a sink. each, when given, is
+ * called before every instruction (UseLimits.count, for an object that is
+ * walked again).
+ */
+export function walk(o: ObjectPart, sink: OpSink, each?: () => void): void {
   const r = new ByteReader(o.ops);
   const S = o.strings;
   const str = () => {
@@ -100,6 +150,7 @@ export function walk(o: ObjectPart, sink: OpSink): void {
     return S[i];
   };
   while (!r.eof) {
+    each?.();
     const code = r.u8();
     switch (code) {
       case Op.SAVE: sink.save(); break;
