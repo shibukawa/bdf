@@ -4,7 +4,7 @@ English | [日本語](README.ja.md)
 
 **bdf** (Browser-specific Document Format) is a draft document format for previews that browsers can draw straight onto Canvas 2D.
 
-PDF, Office files (Word, PowerPoint, Excel, CSV, Parquet, Visio), draw.io diagrams, CAD drawings (DXF, Jw_cad, SXF, CGM, HP-GL/2), circuit boards (Gerber, Excellon, KiCad), Illustrator, Photoshop, HTML, Markdown, EPUB, music (MML, MIDI, MusicXML, playable in the viewer) and font files all convert into bdf and draw with the same renderer, running in a Web Worker. No office suite, no headless browser on the server — the converters are plain Go, buildable as WebAssembly to convert inside the browser too.
+Previewing a PDF, a Word file, or a CAD drawing in a browser usually means running a full office suite, or a headless browser, on the server. bdf's converters need neither: they're plain Go, and the same code also builds as WebAssembly, so it can convert inside the browser too. PDF, Office files (Word, PowerPoint, Excel, CSV, Parquet, Visio), draw.io diagrams, CAD drawings (DXF, Jw_cad, SXF, CGM, HP-GL/2), circuit boards (Gerber, Excellon, KiCad), Illustrator, Photoshop, HTML, Markdown, EPUB, music (MML, MIDI, MusicXML, playable in the viewer) and font files all convert this way, and one renderer, running in a Web Worker, draws every one of them.
 
 **[Try it](https://shibukawa.github.io/bdf/)** — drop a file on the demo site; it converts and draws inside your browser, without being uploaded. **[Read the docs](https://shibukawa.github.io/bdf/docs/)** for why bdf exists, every format it reads, three sample server architectures, and how it's built.
 
