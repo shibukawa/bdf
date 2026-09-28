@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/raster"
 	"github.com/shibukawa/bdf/thumbnail"
 )
@@ -137,18 +138,19 @@ func fontFlags(fs *flag.FlagSet) func() raster.Options {
 	return func() raster.Options { return raster.Options{FontDirs: dirs, NoSystemFonts: *noSystem} }
 }
 
-// thumbnailCmd draws the thumbnail of a document.
+// thumbnailCmd draws the thumbnail of a document, or of an input in a format
+// bdf generate converts.
 func thumbnailCmd(args []string) {
 	fs := flag.NewFlagSet("thumbnail", flag.ExitOnError)
 	size := fs.Int("size", thumbnail.DefaultSize, "size in pixels: the side of a cropped thumbnail, the longer side of a fitted one")
 	mode := fs.String("mode", "auto", "layout: auto (from the kind of document), crop (a square from the top-left of the first page) or fit (the whole first page)")
 	view := fs.String("view", "", "id of the view to draw (default: the first)")
 	sheetDPI := fs.Float64("sheet-dpi", thumbnail.DefaultSheetDPI, sheetDPIUsage)
-	allow := fs.Bool("allow-plaintext", false, "draw an encrypted document (read with $"+passwordEnv+"); the thumbnail is not encrypted")
+	allow := fs.Bool("allow-plaintext", false, "draw an encrypted document or a password-protected input (read with $"+passwordEnv+"); the thumbnail is not encrypted")
 	quiet := fs.Bool("q", false, "do not print warnings")
 	ropts := fontFlags(fs)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: bdf thumbnail [flags] <file.bdf | dir> <out.png | out.jpg | out.webp>")
+		fmt.Fprintln(os.Stderr, "usage: bdf thumbnail [flags] <file.bdf | dir | input> <out.png | out.jpg | out.webp>\n  an input in a format bdf generate converts (a PDF, a .docx …) is converted for the thumbnail: only its first page, unless -view")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -160,8 +162,67 @@ func thumbnailCmd(args []string) {
 	if err != nil {
 		badUsage("thumbnail", err.Error())
 	}
-	doc := loadDocument(fs.Arg(0), *allow)
-	check(writeThumbnail(doc, fs.Arg(1), &thumbnail.Options{Size: *size, Mode: m, View: *view, SheetDPI: *sheetDPI, Raster: ropts()}, *quiet))
+	in, ro := fs.Arg(0), ropts()
+	var doc *bdf.Document
+	if isStored(in) {
+		doc = loadDocument(in, *allow)
+	} else {
+		doc = convertForThumbnail(in, *view, *allow, ro, *quiet)
+	}
+	check(writeThumbnail(doc, fs.Arg(1), &thumbnail.Options{Size: *size, Mode: m, View: *view, SheetDPI: *sheetDPI, Raster: ro}, *quiet))
+}
+
+// isStored reports that path is a BDF document: a directory (the split
+// form) or a file that starts with the magic number. A path that cannot be
+// read is left to open to explain.
+func isStored(path string) bool {
+	st, err := os.Stat(path)
+	if err != nil || st.IsDir() {
+		return true
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return true
+	}
+	defer f.Close()
+	var head [4]byte
+	_, err = io.ReadFull(f, head[:])
+	return err == nil && head == bdf.Magic
+}
+
+// protectedNote explains why the thumbnail of a password-protected input is
+// not drawn by default.
+const protectedNote = "the input is password-protected and the thumbnail would not be (-allow-plaintext draws it anyway)"
+
+// convertForThumbnail converts an input for its thumbnail, which shows the
+// first page of the first view: the pages after it are not converted (the
+// thumbnail is the same, and a long PDF takes seconds instead of
+// milliseconds). Another view is converted whole. A password-protected
+// input is opened with $BDF_PASSWORD, and drawn only when allowed.
+func convertForThumbnail(path, view string, allowPlaintext bool, ropts raster.Options, quiet bool) *bdf.Document {
+	opts := &converter.Options{FontDirs: ropts.FontDirs, NoSystemFonts: ropts.NoSystemFonts, Password: os.Getenv(passwordEnv)}
+	if view == "" {
+		opts.Pages = converter.PageList(1)
+	}
+	res, err := converter.ConvertFile(path, "", opts)
+	switch {
+	case errors.Is(err, converter.ErrUnknownFormat):
+		badUsage("thumbnail", path+": neither a bdf document nor an input format bdf generate converts")
+	case errors.Is(err, converter.ErrPasswordRequired):
+		check(fmt.Errorf("%s is encrypted: set $%s", path, passwordEnv))
+	case errors.Is(err, converter.ErrWrongPassword):
+		check(fmt.Errorf("the password does not open %s", path))
+	}
+	check(err)
+	if res.Protected && !allowPlaintext {
+		check(fmt.Errorf("%s: %s", path, protectedNote))
+	}
+	if !quiet {
+		for _, w := range res.Warnings {
+			fmt.Fprintln(os.Stderr, "warning:", w)
+		}
+	}
+	return res.Doc
 }
 
 // textCmd writes the text of a document for a search index.

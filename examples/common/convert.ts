@@ -45,6 +45,8 @@ export interface ConvertOptions {
   fonts?: string;
   /** The file name: its extension tells the format of a file whose content does not, and images are named after it. */
   name?: string;
+  /** The pages (slides, sheets) to convert, as bdf generate -pages takes them: "1" for a thumbnail. All when absent. */
+  pages?: string;
 }
 
 /** A thumbnail the preview module drew (see cmd/bdfwasm), as the thumbnail package does on a server. */

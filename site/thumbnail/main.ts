@@ -1,5 +1,6 @@
 // The thumbnail page: a file opened or dropped on it is converted into bdf
-// inside the browser, and its thumbnails are drawn at once at several sizes
+// inside the browser (only its first page, all a thumbnail shows), and its
+// thumbnails are drawn at once at several sizes
 // by the preview module (cmd/bdfwasm built with -tags previewonly: the Go
 // packages thumbnail and raster, as a server uses them).
 import type { Thumbnail, ThumbnailOptions } from "../../examples/common/convert.js";
@@ -38,6 +39,8 @@ const intake = new Intake({
   picker: $<HTMLInputElement>("file"),
   buttons: [$("choose")],
   samples: $("samples"),
+  // the pages after the first are not in the thumbnails: a long PDF converts in milliseconds instead of seconds
+  pages: "1",
 });
 
 for (const box of [modeBox, formatBox, dpiBox]) box.onchange = () => { draw().catch((e) => setStatus(`error: ${message(e)}`)); };
@@ -113,14 +116,14 @@ function figure(s: Source, t: Thumbnail, size: number): HTMLLIElement {
 /** How a server makes the same thumbnails: with the bdf command, and with the Go packages. */
 function how(s: Source, o: ReturnType<typeof options>) {
   const ext = o.format === "jpeg" ? "jpg" : "png";
-  const mode = o.mode === "auto" ? "" : ` -thumbnail-mode ${o.mode}`;
-  const dpi = o.sheetDpi === 72 ? "" : ` -thumbnail-sheet-dpi ${o.sheetDpi}`;
+  const mode = o.mode === "auto" ? "" : ` -mode ${o.mode}`;
+  const dpi = o.sheetDpi === 72 ? "" : ` -sheet-dpi ${o.sheetDpi}`;
   const input = s.format === "bdf" ? undefined : s.name;
-  $("cli").textContent = input
-    ? `bdf generate -thumbnail thumb.${ext} -thumbnail-size 256${mode}${dpi} ${input} out.bdf`
-    : `bdf thumbnail -size 256${mode.replace("-thumbnail-mode", "-mode")}${dpi.replace("-thumbnail-sheet-dpi", "-sheet-dpi")} ${s.name} thumb.${ext}`;
+  // of a file to convert, bdf thumbnail converts the first page only, as this page does
+  $("cli").textContent = `bdf thumbnail -size 256${mode}${dpi} ${s.name} thumb.${ext}`;
   const goMode = { auto: "thumbnail.Auto", crop: "thumbnail.Crop", fit: "thumbnail.Fit" }[o.mode ?? "auto"];
-  $("go").textContent = `res, err := converter.ConvertFile(${JSON.stringify(input ?? "in.pptx")}, "", &converter.Options{})
+  // a document converted for its thumbnails only: its first page (a server that keeps the document converts it all)
+  $("go").textContent = `res, err := converter.ConvertFile(${JSON.stringify(input ?? "in.pptx")}, "", &converter.Options{Pages: converter.PageList(1)})
 // …
 for _, size := range []int{${SIZES.join(", ")}} {
 	th, err := thumbnail.Make(res.Doc, &thumbnail.Options{Size: size, Mode: ${goMode}, SheetDPI: ${o.sheetDpi}})

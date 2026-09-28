@@ -11,7 +11,7 @@ open http://127.0.0.1:8081/
 
 ## What the server does
 
-`main.go` walks a directory of documents (`-dir`, `../sample-files` by default) and, for each one that has no cached thumbnail yet, converts it in memory with `converter.ConvertFile` and draws a 320px thumbnail with `thumbnail.Make` — then **throws the converted bdf away**. Only the PNG is kept, under `-thumbs`. The server holds no bdf, ever; it doesn't even know if a file converts a second time the same way. It serves:
+`main.go` walks a directory of documents (`-dir`, `../sample-files` by default) and, for each one that has no cached thumbnail yet, converts its first page (all a thumbnail shows: `Pages: converter.PageList(1)`) in memory with `converter.ConvertFile` and draws a 320px thumbnail with `thumbnail.Make` — then **throws the converted bdf away**. Only the PNG is kept, under `-thumbs`. The server holds no bdf, ever; it doesn't even know if a file converts a second time the same way. It serves:
 
 - `GET /` — an HTML page listing the documents that have a thumbnail, each linking to `/view/?file=NAME`
 - `GET /files/NAME` — the original file, plain `http.FileServer`
