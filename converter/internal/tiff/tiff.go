@@ -104,7 +104,25 @@ const (
 const (
 	maxIFDs    = 1 << 16
 	maxEntries = 1 << 16
+	// readFactor and readSlack give the bytes read from a file once it is
+	// open, tag values and pixel data: readFactor times its size (a JPEG
+	// page is read three times to find out how to store it) and readSlack.
+	// A file whose pages or strips share their data has it read over and
+	// over; past the limit what it asks for is missing.
+	readFactor = 8
+	readSlack  = 1 << 20
+	// maxRatio bounds the bytes a byte of pixel data decodes to (deflate
+	// reaches 1032, LZW 1362), and decodeSlack is what a page may decode to
+	// whatever it holds: a page that states more than its data can give is
+	// not decoded. Over the pages decoded, a file is held to the same for
+	// its size, so that pages that share their data do not multiply it.
+	maxRatio    = 2048
+	decodeSlack = 64 << 10
 )
+
+// ErrSpent is the error of reading pixels from a file that has had the
+// reader read or decode all that its size allows.
+var ErrSpent = errors.New("tiff: the file has its data read or decoded over and over")
 
 // File is an open TIFF file.
 type File struct {
@@ -117,6 +135,28 @@ type File struct {
 	// ChainErr, when not nil, is why the chain ends early: IFDs holds the
 	// directories read before the damaged one.
 	ChainErr error
+	// toRead and toDecode are the bytes that may still be read from the
+	// file and decoded from its pixel data.
+	toRead, toDecode int64
+}
+
+// Spent reports whether the file has had the reader read or decode all
+// that its size allows: its other pages have no pixels to read.
+func (f *File) Spent() bool { return f.toRead <= 0 || f.toDecode <= 0 }
+
+// read returns n bytes at off, fewer at the end of the file; ok is false
+// when they cannot be read or the file may have no more read.
+func (f *File) read(off, n int64) (b []byte, ok bool) {
+	if n > f.toRead {
+		f.toRead = 0
+		return nil, false
+	}
+	f.toRead -= n
+	b = make([]byte, n)
+	if _, err := f.r.ReadAt(b, off); err != nil && err != io.EOF {
+		return nil, false
+	}
+	return b, true
 }
 
 // Sniff reports whether head starts a TIFF file, classic or BigTIFF.
@@ -140,6 +180,8 @@ func Open(r io.ReaderAt, size int64) (*File, error) {
 		return nil, errors.New("tiff: not a TIFF file")
 	}
 	f := &File{r: r, size: size, bo: binary.LittleEndian}
+	f.toRead = readFactor*max(size, 0) + readSlack
+	f.toDecode = maxRatio*max(size, 0) + decodeSlack
 	if h[0] == 'M' {
 		f.bo = binary.BigEndian
 	}
@@ -283,26 +325,36 @@ func (d *IFD) Has(tag uint16) bool {
 	return ok
 }
 
-// raw returns the bytes of a tag's value.
-func (d *IFD) raw(tag uint16) (entry, []byte, bool) {
+// all is the limit of raw and uints for every value of a tag.
+const all = math.MaxUint64
+
+// raw returns the bytes of the first values of a tag, at most limit of
+// them, and the entry with their number as its count: a tag that has more
+// values than are needed does not have them all read.
+func (d *IFD) raw(tag uint16, limit uint64) (entry, []byte, bool) {
 	e, ok := d.entries[tag]
 	if !ok {
 		return e, nil, false
 	}
+	e.count = min(e.count, limit)
+	n := typeSize[e.typ] * e.count
 	if e.inline != nil {
-		return e, e.inline, true
+		return e, e.inline[:n], true
 	}
-	b := make([]byte, typeSize[e.typ]*e.count)
-	if _, err := d.f.r.ReadAt(b, e.off); err != nil && err != io.EOF {
-		return e, nil, false
-	}
-	return e, b, true
+	b, ok := d.f.read(e.off, int64(n))
+	return e, b, ok
 }
+
+// count returns the number of values of a tag, 0 when it is missing.
+func (d *IFD) count(tag uint16) uint64 { return d.entries[tag].count }
 
 // Uints returns the values of an integer tag (nil when it is missing or
 // not an integer).
-func (d *IFD) Uints(tag uint16) []uint64 {
-	e, b, ok := d.raw(tag)
+func (d *IFD) Uints(tag uint16) []uint64 { return d.uints(tag, all) }
+
+// uints returns the first values of an integer tag, at most limit of them.
+func (d *IFD) uints(tag uint16, limit uint64) []uint64 {
+	e, b, ok := d.raw(tag, limit)
 	if !ok {
 		return nil
 	}
@@ -333,7 +385,7 @@ func (d *IFD) Uints(tag uint16) []uint64 {
 
 // Uint returns the first value of an integer tag, or def.
 func (d *IFD) Uint(tag uint16, def uint64) uint64 {
-	if v := d.Uints(tag); len(v) > 0 {
+	if v := d.uints(tag, 1); len(v) > 0 {
 		return v[0]
 	}
 	return def
@@ -341,7 +393,7 @@ func (d *IFD) Uint(tag uint16, def uint64) uint64 {
 
 // Float returns the first value of a numeric tag (a rational for most).
 func (d *IFD) Float(tag uint16) (float64, bool) {
-	e, b, ok := d.raw(tag)
+	e, b, ok := d.raw(tag, 1)
 	if !ok {
 		return 0, false
 	}
@@ -364,7 +416,7 @@ func (d *IFD) Float(tag uint16) (float64, bool) {
 	case 12:
 		return math.Float64frombits(bo.Uint64(b)), true
 	}
-	if v := d.Uints(tag); len(v) > 0 {
+	if v := d.uints(tag, 1); len(v) > 0 {
 		return float64(v[0]), true
 	}
 	return 0, false
@@ -372,7 +424,7 @@ func (d *IFD) Float(tag uint16) (float64, bool) {
 
 // Bytes returns the value of a BYTE or UNDEFINED tag.
 func (d *IFD) Bytes(tag uint16) []byte {
-	e, b, ok := d.raw(tag)
+	e, b, ok := d.raw(tag, all)
 	if !ok || (e.typ != 1 && e.typ != 7) {
 		return nil
 	}
@@ -383,7 +435,7 @@ func (d *IFD) Bytes(tag uint16) []byte {
 // without empty ones and surrounding space. Text that is not UTF-8 is read
 // as Latin-1.
 func (d *IFD) Strings(tag uint16) []string {
-	e, b, ok := d.raw(tag)
+	e, b, ok := d.raw(tag, all)
 	if !ok || (e.typ != 2 && e.typ != 7 && e.typ != 1) {
 		return nil
 	}
@@ -438,7 +490,7 @@ func (d *IFD) Compression() int { return int(d.Uint(TagCompression, CompressionN
 // missing, as it sometimes is in fax files, it is guessed: WhiteIsZero
 // for CCITT data, RGB for three samples, BlackIsZero otherwise.
 func (d *IFD) Photometric() int {
-	if v := d.Uints(TagPhotometric); len(v) > 0 {
+	if v := d.uints(TagPhotometric, 1); len(v) > 0 {
 		return int(v[0])
 	}
 	switch c := d.Compression(); {

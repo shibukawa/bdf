@@ -126,23 +126,7 @@ func (g *gdi) playEMF(b []byte, x, y, w, h float64) {
 		r := b[p : p+size]
 		p += size
 		pt := func(off int) [2]float64 { return [2]float64{lei32(r, off), lei32(r, off+4)} }
-		points := func(off, n int, short bool) [][2]float64 {
-			out := make([][2]float64, 0, n)
-			for i := 0; i < n; i++ {
-				if short {
-					if off+i*4+4 > len(r) {
-						break
-					}
-					out = append(out, [2]float64{lei16(r, off+i*4), lei16(r, off+i*4+2)})
-				} else {
-					if off+i*8+8 > len(r) {
-						break
-					}
-					out = append(out, pt(off+i*8))
-				}
-			}
-			return out
-		}
+		points := func(off, n int, short bool) [][2]float64 { return emfPoints(r, off, n, short) }
 		switch typ {
 		case 14: // EOF
 			return
@@ -353,8 +337,7 @@ func (g *gdi) playEMF(b []byte, x, y, w, h float64) {
 					if le32(r, 8) == 5 {
 						g.st.clips = nil
 					}
-					g.st.clips = append(append([][][2]float64(nil), g.st.clips...), poly)
-					g.clipV++
+					g.addClip(poly)
 				}
 			}
 		case 68: // ABORTPATH
@@ -386,8 +369,7 @@ func (g *gdi) playEMF(b []byte, x, y, w, h float64) {
 				if mode != 1 {
 					g.st.clips = nil
 				}
-				g.st.clips = append(append([][][2]float64(nil), g.st.clips...), polys)
-				g.clipV++
+				g.addClip(polys)
 			} else if mode == 5 {
 				// several rectangles: keep their bounding box
 				minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
@@ -476,6 +458,28 @@ func (g *gdi) playEMF(b []byte, x, y, w, h float64) {
 			}
 		}
 	}
+}
+
+// emfPoints reads the n points of a record at off, 16-bit ones when short
+// is set: as many of them as the record holds, whatever it says.
+func emfPoints(r []byte, off, n int, short bool) [][2]float64 {
+	size := 8
+	if short {
+		size = 4
+	}
+	if off < 0 || off > len(r) {
+		return nil
+	}
+	n = max(0, min(n, (len(r)-off)/size))
+	out := make([][2]float64, 0, n)
+	for i := range n {
+		if short {
+			out = append(out, [2]float64{lei16(r, off+i*4), lei16(r, off+i*4+2)})
+		} else {
+			out = append(out, [2]float64{lei32(r, off+i*8), lei32(r, off+i*8+4)})
+		}
+	}
+	return out
 }
 
 // patBlt fills a rectangle with the brush (or black / white).

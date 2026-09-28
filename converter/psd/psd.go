@@ -83,6 +83,11 @@ func ConvertFile(path string, opts *Options) (*Result, error) {
 	return Convert(f, st.Size(), opts)
 }
 
+// maxPageCanvases bounds the pixels of the pages of a document together,
+// in canvases: the artboards of a document lie beside each other and stay
+// below one. A variable, for the tests.
+var maxPageCanvases int64 = 4
+
 // region is a page: a rectangle of the canvas.
 type region struct {
 	r        image.Rectangle
@@ -119,7 +124,8 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	}
 
 	img, err := f.composite()
-	if err != nil || img == nil {
+	composited := err != nil || img == nil // by the converter, once the pages are known
+	if composited {
 		if len(f.layers) == 0 {
 			if err == nil {
 				err = fmt.Errorf("the file has no composite image and no layers")
@@ -131,8 +137,6 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		} else {
 			warn(`the file was saved without "Maximize Compatibility"; the layers are composited by the converter`)
 		}
-		img = f.compositeLayers(warn)
-		res.Composited = true
 	}
 
 	canvas := image.Rect(0, 0, f.hdr.w, f.hdr.h)
@@ -167,19 +171,48 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	}
 	view := doc.NewView("pages", bdf.ViewFixed, doc.Meta.DC.Title.First())
 	xres, yres := f.resolution()
-	for _, n := range pages {
+	// The pages converted and how each is stored. Each is cropped, scaled
+	// and encoded: artboards that lie on each other would have the canvas
+	// converted over and over.
+	room := maxPageCanvases * int64(canvas.Dx()) * int64(canvas.Dy())
+	counted := map[int]bool{}
+	var fits []fit
+	for i, n := range pages {
 		if n < 1 || n > len(regions) {
 			return nil, fmt.Errorf("psd: page %d out of range (1-%d)", n, len(regions))
 		}
 		rg := regions[n-1]
-		crop := image.NewNRGBA(image.Rect(0, 0, rg.r.Dx(), rg.r.Dy()))
-		for y := 0; y < rg.r.Dy(); y++ {
-			copy(crop.Pix[y*crop.Stride:(y+1)*crop.Stride], img.Pix[img.PixOffset(rg.r.Min.X, rg.r.Min.Y+y):])
+		if !counted[n] {
+			counted[n] = true
+			if room -= int64(rg.r.Dx()) * int64(rg.r.Dy()); room < 0 {
+				warn(fmt.Sprintf("the artboards cover more than %d times the canvas: artboard %d and those after it are left out", maxPageCanvases, n))
+				pages = pages[:i]
+				break
+			}
 		}
-		w, h := float32(float64(rg.r.Dx())*72/xres), float32(float64(rg.r.Dy())*72/yres)
+		fits = append(fits, rg.fit(opts.Images, xres, yres))
+	}
+	// The layers are composited at the resolution the pages are stored at
+	// (scale.go); a composite in the file has that of the document.
+	on := scale{full: canvas.Size(), to: canvas.Size()}
+	if composited {
+		on.to = compositeSize(canvas.Size(), pages, regions, fits)
+		if img, err = f.compositeLayers(on.to, warn); err != nil {
+			return nil, fmt.Errorf("psd: %w", err)
+		}
+		res.Composited = true
+	}
+	for i, n := range pages {
+		rg, ft := regions[n-1], fits[i]
+		at := on.place(rg.r)
+		crop := image.NewNRGBA(image.Rect(0, 0, at.Dx(), at.Dy()))
+		for y := 0; y < at.Dy(); y++ {
+			copy(crop.Pix[y*crop.Stride:(y+1)*crop.Stride], img.Pix[img.PixOffset(at.Min.X, at.Min.Y+y):])
+		}
+		w, h := ft.w, ft.h
 		var pix image.Image = crop
-		if tw, th := opts.Images.FitSize(rg.r.Dx(), rg.r.Dy(), float64(w), float64(h)); tw != rg.r.Dx() || th != rg.r.Dy() {
-			pix = imgconv.Resize(crop, tw, th)
+		if ft.tw != rg.r.Dx() || ft.th != rg.r.Dy() {
+			pix = imgconv.Resize(crop, ft.tw, ft.th)
 			res.Scaled++
 		}
 		enc, err := imgconv.EncodePixels(pix, true, opts.Images)
@@ -195,7 +228,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			res.Artboards++
 		}
 	}
-	res.Pages = len(pages)
+	res.Pages = len(view.Pages)
 	if !opts.NoTextIndex {
 		if _, err := doc.BuildTextIndex(view); err != nil {
 			warn(fmt.Sprintf("text index: %v", err))

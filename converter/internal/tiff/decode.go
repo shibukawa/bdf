@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"io"
+	"math"
 	"math/bits"
 
 	"golang.org/x/image/tiff/lzw"
@@ -49,7 +50,7 @@ func (d *IFD) layout() (*layout, error) {
 	if l.spp < 1 || l.spp > 16 {
 		return nil, fmt.Errorf("tiff: %d samples per pixel", l.spp)
 	}
-	bps := d.Uints(TagBitsPerSample)
+	bps := d.uints(TagBitsPerSample, uint64(l.spp))
 	if len(bps) == 0 {
 		bps = []uint64{1}
 	}
@@ -93,7 +94,7 @@ func (d *IFD) layout() (*layout, error) {
 		if l.bps > 8 {
 			return nil, UnsupportedError("16-bit palette")
 		}
-		if len(d.Uints(TagColorMap)) < 3<<l.bps {
+		if len(d.uints(TagColorMap, 3<<l.bps)) < 3<<l.bps {
 			return nil, errors.New("tiff: palette image without a colour map")
 		}
 	case PhotometricSeparated:
@@ -113,15 +114,16 @@ func (d *IFD) layout() (*layout, error) {
 		return nil, fmt.Errorf("tiff: %d samples per pixel for photometric interpretation %d", l.spp, l.photo)
 	}
 	if l.spp > l.ncolor && l.photo != PhotometricPalette && l.photo != PhotometricSeparated {
-		if es := d.Uints(TagExtraSamples); len(es) > 0 && (es[0] == 1 || es[0] == 2) {
+		if es := d.uints(TagExtraSamples, 1); len(es) > 0 && (es[0] == 1 || es[0] == 2) {
 			l.alpha = int(es[0])
 		}
 	}
 
+	offsets, counts := uint16(TagStripOffsets), uint16(TagStripByteCounts)
 	if d.Has(TagTileWidth) {
 		l.tiled = true
 		l.bw, l.bh = int(min(d.Uint(TagTileWidth, 0), 1<<30)), int(min(d.Uint(TagTileLength, 0), 1<<30))
-		l.offsets, l.counts = d.Uints(TagTileOffsets), d.Uints(TagTileByteCounts)
+		offsets, counts = TagTileOffsets, TagTileByteCounts
 		if l.bw <= 0 || l.bh <= 0 {
 			return nil, errors.New("tiff: bad tile size")
 		}
@@ -130,7 +132,6 @@ func (d *IFD) layout() (*layout, error) {
 		if l.bh <= 0 {
 			l.bh = l.h
 		}
-		l.offsets, l.counts = d.Uints(TagStripOffsets), d.Uints(TagStripByteCounts)
 	}
 	l.across, l.down = (l.w+l.bw-1)/l.bw, (l.h+l.bh-1)/l.bh
 	// A tile may be larger than the image; a damaged file must not make
@@ -138,7 +139,13 @@ func (d *IFD) layout() (*layout, error) {
 	if int64(l.rowBytes())*int64(l.bh) > MaxDecodeBytes {
 		return nil, fmt.Errorf("tiff: %d×%d tiles are too large", l.bw, l.bh)
 	}
-	n := l.blocks()
+	// The offsets are counted before they are read, and no more of them
+	// and of the byte counts are read than there are strips or tiles.
+	if have := d.count(offsets); have < l.blocks() {
+		return nil, fmt.Errorf("tiff: %d strips or tiles for %d", have, l.blocks())
+	}
+	n := int(l.blocks())
+	l.offsets, l.counts = d.uints(offsets, uint64(n)), d.uints(counts, uint64(n))
 	if len(l.offsets) < n {
 		return nil, fmt.Errorf("tiff: %d strips or tiles for %d", len(l.offsets), n)
 	}
@@ -148,16 +155,70 @@ func (d *IFD) layout() (*layout, error) {
 		}
 		l.counts = []uint64{uint64(l.rowBytes()) * uint64(l.bh)}
 	}
+	if err := l.plausible(); err != nil {
+		return nil, err
+	}
 	return l, nil
 }
 
 // blocks returns the number of strips or tiles.
-func (l *layout) blocks() int {
-	n := l.across * l.down
+func (l *layout) blocks() uint64 {
+	n := mul(uint64(l.across), uint64(l.down))
 	if l.planar == 2 {
-		n *= l.spp
+		n = mul(n, uint64(l.spp))
 	}
 	return n
+}
+
+// decoded returns the bytes the strips or tiles of the page decode to.
+func (l *layout) decoded() int64 {
+	n := mul(uint64(l.rowBytes()), uint64(l.h))
+	if l.tiled {
+		n = mul(mul(uint64(l.rowBytes()), uint64(l.bh)), mul(uint64(l.across), uint64(l.down)))
+	}
+	if l.planar == 2 {
+		n = mul(n, uint64(l.spp))
+	}
+	return int64(n)
+}
+
+// mul multiplies sizes a file states; a product that would overflow is
+// larger than any limit.
+func mul(a, b uint64) uint64 {
+	if hi, lo := bits.Mul64(a, b); hi == 0 && lo <= math.MaxInt64 {
+		return lo
+	}
+	return math.MaxInt64
+}
+
+// plausible checks what the page states against the pixel data it holds:
+// a byte of data decodes to at most maxRatio bytes, and a row of fax data
+// takes a bit at least. A damaged page that is within that is decoded as
+// far as its data goes; one that is not would only take memory and time.
+func (l *layout) plausible() error {
+	size := uint64(l.d.f.size)
+	var stored uint64
+	for i, off := range l.offsets[:l.blocks()] {
+		if off < size && stored < size {
+			stored += min(l.counts[i], size-off)
+		}
+	}
+	stored = min(stored, size) // strips or tiles that share their data
+	if uint64(l.decoded()) > mul(uint64(l.ratio()), stored)+decodeSlack {
+		return fmt.Errorf("tiff: %d bytes of pixel data for a %d×%d image", stored, l.w, l.h)
+	}
+	return nil
+}
+
+// ratio returns the most bytes that a byte of the page's pixel data
+// decodes to: maxRatio, and for fax data the bits of a row if they are
+// more (a white row of Group 4 data is one bit).
+func (l *layout) ratio() int64 {
+	switch l.comp {
+	case CompressionCCITTRLE, CompressionG3, CompressionG4:
+		return max(maxRatio, 8*int64(l.rowBytes()))
+	}
+	return maxRatio
 }
 
 // samples returns the samples per pixel in a block (1 when planar).
@@ -187,6 +248,9 @@ func (l *layout) rows(by int) int {
 func (d *IFD) Decode() (img image.Image, damaged bool, err error) {
 	l, err := d.layout()
 	if err != nil {
+		return nil, false, err
+	}
+	if err := l.spend(); err != nil {
 		return nil, false, err
 	}
 	switch l.comp {
@@ -226,6 +290,20 @@ func (d *IFD) Decode() (img image.Image, damaged bool, err error) {
 	return dst, damaged, nil
 }
 
+// spend counts the bytes the page decodes to against what the file may
+// have decoded: maxRatio bytes for each of its own. Fax data that decodes
+// to more counts as if maxRatio were its ratio.
+func (l *layout) spend() error {
+	f := l.d.f
+	n := l.decoded() / l.ratio() * maxRatio
+	if f.Spent() || n > f.toDecode {
+		f.toDecode = 0
+		return ErrSpent
+	}
+	f.toDecode -= n
+	return nil
+}
+
 // newImage allocates the image the page decodes into.
 func (l *layout) newImage() (image.Image, error) {
 	r := image.Rect(0, 0, l.w, l.h)
@@ -239,8 +317,11 @@ func (l *layout) newImage() (image.Image, error) {
 	}
 	switch {
 	case l.photo == PhotometricPalette:
-		cm := l.d.Uints(TagColorMap)
 		n := 1 << l.bps
+		cm := l.d.uints(TagColorMap, uint64(3*n))
+		if len(cm) < 3*n {
+			return nil, ErrSpent // it was there for layout
+		}
 		pal := make(color.Palette, n)
 		for i := range n {
 			pal[i] = color.RGBA{uint8(cm[i] >> 8), uint8(cm[n+i] >> 8), uint8(cm[2*n+i] >> 8), 255}
@@ -278,8 +359,11 @@ func (l *layout) readBlock(i, rows int) (raw []byte, short bool) {
 		return make([]byte, need), true
 	}
 	n = min(n, uint64(f.size)-off)
-	src := make([]byte, n)
-	if _, err := f.r.ReadAt(src, int64(off)); err != nil && err != io.EOF {
+	if l.comp == CompressionNone {
+		n = min(n, uint64(need)) // what follows is not the block's
+	}
+	src, ok := f.read(int64(off), int64(n))
+	if !ok {
 		return make([]byte, need), true
 	}
 	switch l.comp {

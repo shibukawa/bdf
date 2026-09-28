@@ -30,6 +30,13 @@ const (
 	maxPrecincts = 1 << 22 // precincts in a tile
 )
 
+// maxLevels bounds the resolution levels laid out over all the tiles and
+// components of a codestream: each tile that has a tile-part lays out those
+// of every component, whether it has data for them or not. 65535 tiles of
+// four components with six decomposition levels are 1.8 million. A
+// variable, for the tests.
+var maxLevels = 1 << 22
+
 type component struct {
 	prec   int
 	signed bool
@@ -117,6 +124,7 @@ type codestream struct {
 	ppm              bool // packet headers are in PPM marker segments
 	tiles            []*tile
 	idle             int // see maxIdle
+	levels           int // see maxLevels
 
 	// packetHook, when set, is told where each packet of a tile lies in
 	// its packet data: the packet starts at start, its header spans

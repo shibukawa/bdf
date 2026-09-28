@@ -72,6 +72,18 @@ func Draw(cv *canvas.Canvas, data []byte, x, y, w, h float64, opts *Options) {
 	}
 }
 
+// Limits on what a metafile makes the replay keep and write; pictures stay
+// far below them. What goes beyond is left out with a warning.
+var (
+	// maxClips bounds the clip polygons in effect at once.
+	maxClips = 64
+	// maxClipPoints bounds the points of the clip polygons written over the
+	// whole metafile: every drawing group writes the clips in effect again.
+	maxClipPoints = 1 << 22
+	// maxSaved bounds the saved states.
+	maxSaved = 1 << 16
+)
+
 var (
 	black = color.NRGBA{0, 0, 0, 255}
 	white = color.NRGBA{255, 255, 255, 255}
@@ -137,8 +149,10 @@ type gdi struct {
 	openM  canvas.Matrix
 	openC  int
 	clipV  int
+	clipN  int // points of the clip polygons written so far
 	objs   map[uint32]any
-	slots  []any // WMF object table
+	slots  []any     // WMF object table
+	free   freeSlots // its freed entries
 	warned map[string]bool
 	hatch  map[hatchKey]bdf.Hash // tiles of hatched brushes
 }
@@ -210,7 +224,7 @@ func (g *gdi) begin() canvas.Matrix {
 	}
 	g.end()
 	g.obj.Save()
-	for _, poly := range g.st.clips {
+	for _, poly := range g.clips() {
 		p := newPath()
 		for i, pt := range poly {
 			if i == 0 {
@@ -416,8 +430,35 @@ func (g *gdi) clipRect(l, t, r, b float64) {
 		x, y := m.Apply(pt[0], pt[1])
 		poly = append(poly, [2]float64{x, y})
 	}
+	g.addClip(poly)
+}
+
+// addClip intersects the clip with a polygon in output space. The list is
+// replaced, never changed in place: the saved states share it.
+func (g *gdi) addClip(poly [][2]float64) {
+	if len(g.st.clips) >= maxClips {
+		g.warn("a metafile has too many clips in effect; the further ones are not applied")
+		return
+	}
 	g.st.clips = append(append([][][2]float64(nil), g.st.clips...), poly)
 	g.clipV++
+}
+
+// clips returns the clip polygons for a drawing group that is about to
+// write them, and counts their points: past maxClipPoints the rest of the
+// metafile is drawn without its clips.
+func (g *gdi) clips() [][][2]float64 {
+	n := 0
+	for _, poly := range g.st.clips {
+		n += len(poly)
+	}
+	if n > maxClipPoints-g.clipN {
+		g.clipN = maxClipPoints
+		g.warn("the clips of a metafile are too complex; the rest of it is drawn without them")
+		return nil
+	}
+	g.clipN += n
+	return g.st.clips
 }
 
 func (g *gdi) resetClip() {
@@ -426,9 +467,11 @@ func (g *gdi) resetClip() {
 }
 
 func (g *gdi) save() {
-	st := g.st
-	st.clips = append([][][2]float64(nil), g.st.clips...)
-	g.stack = append(g.stack, st)
+	if len(g.stack) >= maxSaved {
+		g.warn("a metafile saves too many states; the further ones are not saved")
+		return
+	}
+	g.stack = append(g.stack, g.st) // with its clips, which are shared
 }
 
 func (g *gdi) restore(n int) {

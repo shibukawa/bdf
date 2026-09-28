@@ -102,7 +102,7 @@ func (g *gdi) text(x, y float64, s []rune, dx []float64, opaque *[4]float64) {
 	rot := math.Atan2(m[1], m[0])*180/math.Pi - f.escapement/10
 	g.end()
 	g.obj.Save()
-	for _, poly := range g.st.clips {
+	for _, poly := range g.clips() {
 		g.obj.ClipPath(g.obj.AddPath(polyPath(poly, true)), 0)
 	}
 	g.cv.Transform(canvas.Translate(px, py).Mul(canvas.Rotate(rot)))
