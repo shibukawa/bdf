@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/klauspost/compress/snappy"
+	kzstd "github.com/klauspost/compress/zstd"
 )
 
 func TestThrift(t *testing.T) {
@@ -382,6 +383,28 @@ func TestSnappy(t *testing.T) {
 	// a copy that reaches before the start
 	if err := snappyBlock(make([]byte, 5), []byte{5, 0x01 | 1<<2, 9}); err == nil {
 		t.Error("bad offset: no error")
+	}
+}
+
+func TestZstdDecompress(t *testing.T) {
+	enc, err := kzstd.NewWriter(nil, kzstd.WithEncoderConcurrency(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer enc.Close()
+
+	want := []byte("tinygodriver public Reader")
+	frame := enc.EncodeAll(want[:10], nil)
+	frame = enc.EncodeAll(want[10:], frame)
+	got, err := decompress(codecZstd, frame, len(want))
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("decoded %q, %v; want %q", got, err, want)
+	}
+	if _, err := decompress(codecZstd, frame, len(want)-1); err == nil {
+		t.Error("accepted output larger than the declared page size")
+	}
+	if _, err := decompress(codecZstd, frame, len(want)+1); err == nil {
+		t.Error("accepted output smaller than the declared page size")
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/klauspost/compress/zstd"
+	"github.com/shibukawa/tinygodriver/compress/zstd"
 )
 
 // maxPageSize bounds the size of a page, compressed or not.
@@ -17,9 +17,27 @@ const maxPageSize = 1 << 29
 
 var errCorrupt = errors.New("corrupt compressed data")
 
-var zstdDecoder = sync.OnceValues(func() (*zstd.Decoder, error) {
-	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxMemory(maxPageSize))
-})
+var zstdReaders sync.Pool
+
+func decompressZstd(src []byte, size int) ([]byte, error) {
+	d, _ := zstdReaders.Get().(*zstd.Reader)
+	if d == nil {
+		var err error
+		d, err = zstd.NewReader(bytes.NewReader(src), zstd.WithMaxWindow(maxPageSize), zstd.WithMaxOutput(maxPageSize))
+		if err != nil {
+			return nil, err
+		}
+	} else if err := d.Reset(bytes.NewReader(src)); err != nil {
+		zstdReaders.Put(d)
+		return nil, err
+	}
+	defer func() {
+		// Do not keep the compressed page alive while the reader is pooled.
+		_ = d.Reset(bytes.NewReader(nil))
+		zstdReaders.Put(d)
+	}()
+	return readSized(d, size)
+}
 
 // decompress decompresses a page (or the values of a v2 data page) of a
 // codec into its size. The size a page says it has is not taken on trust:
@@ -49,10 +67,7 @@ func decompress(codec int32, src []byte, size int) ([]byte, error) {
 	case codecBrotli:
 		out, err = brotliDecompress(src, size)
 	case codecZstd:
-		var d *zstd.Decoder
-		if d, err = zstdDecoder(); err == nil {
-			out, err = d.DecodeAll(src, make([]byte, 0, min(size, 4*len(src)+1024)))
-		}
+		out, err = decompressZstd(src, size)
 	case codecLZ4Raw, codecLZ4:
 		// a byte of 255 adds 255 to the length of a match
 		if size > 256*len(src)+64 {
