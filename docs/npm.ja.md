@@ -88,6 +88,10 @@ converter.terminate();
 | All | 20.48 MiB | 8.92 MiB | 35 |
 <!-- /npm-size-table -->
 
+変換用 Wasm は TinyGo 0.42.0 でビルドしています。`tools/build-npm-converters.mjs` は `tinygo build -target wasm -no-debug` を呼び出し、TinyGo の既定値である `-opt=z` のサイズ最適化を使います。これは小さな言語ランタイムだけではなく、選択した形式のパーサー、レイアウト、ラスタライザー、検索テーブルなどを静的リンクした変換モジュールです。そのため `All` は全変換器を含み、フロントエンドの JavaScript の tree shaking では Wasm 内のコードを削れません。
+
+レンダラーのみの構成なら変換用 Wasm は不要です。ブラウザで変換する場合は小さいプリセットを選ぶか、`--formats` で独自の Wasm を作ります。独自ビルドでは `--without-music` を指定して音楽系変換器を外せます。転送時は `.wasm` を Brotli などの HTTP 圧縮で配信すると、gzip より小さくできます。上表は環境をまたいで再現しやすいよう gzip レベル 9 で計測しています。
+
 上表のファイル数には未使用のエントリも含みます。アプリ側の JS を minify してバンドルした場合、音楽機能を import しない構成は 11.7 KiB（gzip 4.4 KiB）、`@bdfkit/viewer/music` からピアノロールと `MusicPlayer` を import する構成は 29.5 KiB（gzip 10.9 KiB）でした。この比較には描画 Worker と Wasm は含みません。
 
 ## 好きな形式だけを入れた wasm

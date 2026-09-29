@@ -85,6 +85,10 @@ Measured on September 30, 2026 with TinyGo 0.42.0. Run `npm run build && npm run
 | All | 20.48 MiB | 8.92 MiB | 35 |
 <!-- /npm-size-table -->
 
+The converter Wasm files are built with TinyGo 0.42.0. `tools/build-npm-converters.mjs` invokes `tinygo build -target wasm -no-debug`; TinyGo's default `-opt=z` size optimization is used. The Wasm is a statically linked converter module, not only a small language runtime: each selected format contributes its parser, layout code, rasterizer, and lookup data. The `All` preset therefore contains every converter and cannot be reduced by the frontend bundler's JavaScript tree shaking.
+
+The renderer-only profile avoids converter Wasm entirely. When browser conversion is needed, use a narrower preset or build a custom module with `--formats`; `--without-music` removes the music converters from a custom build. For network transfer, serve the `.wasm` with HTTP compression such as Brotli. The table above uses gzip level 9 so that the measurements remain reproducible across environments.
+
 The package file totals include optional entries even when an app does not import them. For minified application JS, the viewer without music was 11.7 KiB (4.4 KiB gzip); importing piano roll and `MusicPlayer` from `@bdfkit/viewer/music` raised this to 29.5 KiB (10.9 KiB gzip). These JS bundle measurements exclude the render Worker and Wasm.
 
 ## Choose formats yourself
