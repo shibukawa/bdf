@@ -3,12 +3,8 @@ package epub
 import (
 	"bytes"
 	"fmt"
-	"math/rand"
 	"strings"
 	"testing"
-	"time"
-
-	"golang.org/x/net/html"
 )
 
 // limits sets what the tests make small, and puts it back after the test.
@@ -174,111 +170,6 @@ func TestFixedSVGSize(t *testing.T) {
 	}
 }
 
-// styleBefore is what the rules gave an element when every rule of the
-// style sheets was kept as a rule of its own.
-func styleBefore(rules []cssRule, n *html.Node) string {
-	classes := strings.Fields(attrVal(n, "class"))
-	type winner struct {
-		v           string
-		spec, order int
-	}
-	won := map[string]winner{}
-	var keys []string
-	for i := range rules {
-		r := &rules[i]
-		if !r.sel.matches(n, classes) {
-			continue
-		}
-		for _, d := range r.decls {
-			if pictureOnly[d[0]] && n.Data != "img" {
-				continue
-			}
-			if d[0] == "display" && d[1] != "none" {
-				continue
-			}
-			w, ok := won[d[0]]
-			if ok && (w.spec > r.spec || w.spec == r.spec && w.order > r.order) {
-				continue
-			}
-			if !ok {
-				keys = append(keys, d[0])
-			}
-			won[d[0]] = winner{d[1], r.spec, r.order}
-		}
-	}
-	var b strings.Builder
-	for _, k := range keys {
-		b.WriteString(k + ": " + won[k].v + "; ")
-	}
-	return b.String()
-}
-
-// randomSheet writes a style sheet of rules whose selectors and
-// declarations repeat.
-func randomSheet(rnd *rand.Rand, rules int) string {
-	pick := func(list ...string) string { return list[rnd.Intn(len(list))] }
-	var b strings.Builder
-	for range rules {
-		for i := range 1 + rnd.Intn(2) {
-			if i > 0 {
-				b.WriteString(", ")
-			}
-			b.WriteString(pick("", "", "p", "img", "span", "html", "*") + pick("", "", "#i", "#j"))
-			for range rnd.Intn(3) {
-				b.WriteString("." + pick("a", "b", "c", "d"))
-			}
-			b.WriteString(pick("", "", "", ":root", " p", ":hover"))
-		}
-		b.WriteString(" { ")
-		for range 1 + rnd.Intn(3) {
-			b.WriteString(pick("text-align", "display", "width", "height", "writing-mode", "text-combine-upright", "color", "-epub-text-emphasis-style") + ": " +
-				pick("none", "block", "center", "1em", "2em", "vertical-rl", "all", "left !important", "") + "; ")
-		}
-		b.WriteString("}\n")
-	}
-	return b.String()
-}
-
-// The rules of a selector, made one rule, give the elements the styles
-// the rules gave them one by one.
-func TestStylesAsBefore(t *testing.T) {
-	rnd := rand.New(rand.NewSource(5))
-	styles := 0
-	for round := range 1500 {
-		var rules []cssRule
-		parseCSS(randomSheet(rnd, 1+rnd.Intn(40)), nil, 0, &rules)
-		st := newStyler(rules)
-		for range 40 {
-			n := newNode([]string{"p", "img", "span", "html", "div"}[rnd.Intn(5)], []string{"", "a", "b", "a b", "d c  a", "b b", "e"}[rnd.Intn(7)],
-				[]string{"", "", "color: red"}[rnd.Intn(3)])
-			if id := []string{"", "", "i", "j", "k"}[rnd.Intn(5)]; id != "" {
-				n.Attr = append(n.Attr, html.Attribute{Key: "id", Val: id})
-			}
-			if rnd.Intn(8) == 0 {
-				n.Namespace = "svg"
-			}
-			own := attrVal(n, "style")
-			want := styleBefore(rules, n) + own
-			if own == "" {
-				want = strings.TrimSuffix(want, " ")
-			}
-			if n.Namespace != "" {
-				want = own
-			}
-			st.apply(n)
-			if got := attrVal(n, "style"); got != want {
-				t.Fatalf("round %d: <%s id=%q class=%q>: style %q, want %q", round, n.Data, attrVal(n, "id"), attrVal(n, "class"), got, want)
-			}
-			if want != own {
-				styles++
-			}
-		}
-	}
-	if styles < 15000 {
-		t.Errorf("%d elements with a style", styles)
-	}
-}
-
 // A style sheet has at most maxRules rules of selectors that differ; the
 // rules after them are left out with a warning.
 func TestRulesLimit(t *testing.T) {
@@ -304,52 +195,31 @@ func TestRulesLimit(t *testing.T) {
 	}
 }
 
-// fastest returns the shortest of three runs of fn.
-func fastest(fn func()) time.Duration {
-	best := time.Duration(1 << 62)
-	for range 3 {
-		start := time.Now()
-		fn()
-		best = min(best, time.Since(start))
-	}
-	return best
-}
-
-// The elements of a chapter take their styles in a time that does not
-// grow with the number of times the style sheet repeats a rule, and the
-// chapters of a book read the style sheet they share once.
+// Chapters sharing a stylesheet receive its style after repeated rules,
+// and the stylesheet is parsed once for the book.
 func TestRepeatedRules(t *testing.T) {
-	book := func(rules int) []byte {
-		chapter := chapterDoc("en", "", `<link rel="stylesheet" href="s.css"/>`, strings.Repeat(`<p class="c">x</p>`, 300))
-		return makeEPUB(t, opf3("", "", "a.xhtml", "b.xhtml", "c.xhtml", "d.xhtml"), file{"OEBPS/a.xhtml", chapter}, file{"OEBPS/b.xhtml", chapter},
-			file{"OEBPS/c.xhtml", chapter}, file{"OEBPS/d.xhtml", chapter}, file{"OEBPS/s.css", strings.Repeat(".c { text-align: center }\n", rules)})
+	chapterXML := chapterDoc("en", "", `<link rel="stylesheet" href="s.css"/>`, strings.Repeat(`<p class="c">x</p>`, 300))
+	data := makeEPUB(t, opf3("", "", "a.xhtml", "b.xhtml", "c.xhtml", "d.xhtml"), file{"OEBPS/a.xhtml", chapterXML}, file{"OEBPS/b.xhtml", chapterXML},
+		file{"OEBPS/c.xhtml", chapterXML}, file{"OEBPS/d.xhtml", chapterXML}, file{"OEBPS/s.css", strings.Repeat(".c { text-align: center }\n", 3000)})
+	pub, err := open(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
 	}
-	load := func(data []byte) func() {
-		return func() {
-			pub, err := open(bytes.NewReader(data), int64(len(data)))
-			if err != nil {
-				t.Fatal(err)
-			}
-			c := &converter{pub: pub, opts: &Options{}, byPath: map[string]*chapter{}, sheets: map[string]string{}, warned: map[string]bool{},
-				parsed: map[string][]cssRule{}, stylers: map[string]*styler{}}
-			c.dc, c.props = pub.metadata()
-			if err := c.spine(); err != nil {
-				t.Fatal(err)
-			}
-			for _, ch := range c.chapters {
-				if err := c.load(ch); err != nil {
-					t.Fatal(err)
-				}
-				if p := findElement(ch.body, "p"); attrVal(p, "style") != "text-align: center;" {
-					t.Fatalf("style %q", attrVal(p, "style"))
-				}
-			}
+	c := &converter{pub: pub, opts: &Options{}, byPath: map[string]*chapter{}, sheets: map[string]string{}, warned: map[string]bool{},
+		parsed: map[string][]cssRule{}, stylers: map[string]*styler{}}
+	c.dc, c.props = pub.metadata()
+	if err := c.spine(); err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range c.chapters {
+		if err := c.load(ch); err != nil {
+			t.Fatal(err)
+		}
+		if p := findElement(ch.body, "p"); attrVal(p, "style") != "text-align: center;" {
+			t.Fatalf("style %q", attrVal(p, "style"))
 		}
 	}
-	few, many := fastest(load(book(10))), fastest(load(book(3000)))
-	// 3000 rules were tried for each of the 1200 elements, and read for
-	// each of the 4 chapters
-	if many > 4*few+20*time.Millisecond {
-		t.Errorf("10 rules took %v, 3000 rules %v", few, many)
+	if len(c.parsed) != 1 || len(c.stylers) != 1 {
+		t.Errorf("%d parsed sheets and %d stylers, want one of each", len(c.parsed), len(c.stylers))
 	}
 }

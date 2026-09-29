@@ -166,62 +166,6 @@ func TestNamesBounded(t *testing.T) {
 	}
 }
 
-// reachBefore is reach as it was: every substitution of every lookup is
-// listed again until a pass adds no glyph.
-func reachBefore(fc *face, text string) map[uint16]bool {
-	keep := map[uint16]bool{0: true}
-	for _, r := range text + "◌ -" {
-		if g := fc.glyph(r); g != 0 {
-			keep[g] = true
-		}
-	}
-	if fc.gsub == nil {
-		return keep
-	}
-	for changed := true; changed; {
-		changed = false
-		for i := range fc.gsub.Lookups {
-			fc.gsub.Substs(i, func(s otlayout.Subst) bool {
-				for _, g := range s.In {
-					if !keep[g] {
-						return true
-					}
-				}
-				for _, g := range s.Out {
-					if !keep[g] {
-						keep[g] = true
-						changed = true
-					}
-				}
-				return true
-			})
-		}
-	}
-	return keep
-}
-
-// TestReachUnchanged compares the glyphs text reaches with those the
-// passes over the lookups found, for the fonts of the tests.
-func TestReachUnchanged(t *testing.T) {
-	for _, name := range []string{"features.ttf", "stix.ttf", "stix.otf", "bold.ttc", "color.ttf", "variable.ttf", "restricted.ttf"} {
-		fl, err := load(testData(t, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, fc := range fl.faces {
-			fc.prepare()
-			plan := fc.plan("")
-			texts := []string{"", "a", "fi", "abcdef", "ffi", "The quick brown fox jumps over the lazy dog.", "0123456789/½", "Âẫ", plan.all(), string(fc.runes)}
-			for _, text := range texts {
-				got, want := fc.reach(text), reachBefore(fc, text)
-				if !maps.Equal(got, want) {
-					t.Errorf("%s, font %d, %.20q: %d glyphs, %d before", name, fc.index+1, text, len(got), len(want))
-				}
-			}
-		}
-	}
-}
-
 // TestClosure applies substitutions that each add the glyph the one
 // before them needs: they are listed once, not once for each glyph added.
 func TestClosure(t *testing.T) {

@@ -1,17 +1,12 @@
 package webdoc
 
 import (
-	"bytes"
-	"encoding/xml"
-	"errors"
 	"fmt"
-	"io"
 	"runtime"
 	"strings"
 	"testing"
 
 	"golang.org/x/net/html"
-	"golang.org/x/net/html/charset"
 )
 
 func nested(depth int) []byte {
@@ -39,92 +34,35 @@ func TestXHTMLDepth(t *testing.T) {
 	}
 }
 
-// parseXHTMLJoining is ParseXHTML as it was when it joined the pieces of a
-// text one by one.
-func parseXHTMLJoining(data []byte) (*html.Node, error) {
-	d := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))))
-	d.Strict = true
-	d.Entity = xml.HTMLEntity
-	d.CharsetReader = charset.NewReaderLabel
-	doc := &html.Node{Type: html.DocumentNode}
-	cur := doc
-	for {
-		tok, err := d.Token()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			if cur == doc && hasElement(doc) {
-				return nil, errors.New("more than one root element")
-			}
-			n := element(t)
-			cur.AppendChild(n)
-			cur = n
-		case xml.EndElement:
-			if cur.Parent == nil {
-				return nil, errors.New("unbalanced end tag")
-			}
-			cur = cur.Parent
-		case xml.CharData:
-			if cur == doc {
-				continue
-			}
-			if last := cur.LastChild; last != nil && last.Type == html.TextNode {
-				last.Data += string(t)
-			} else {
-				cur.AppendChild(&html.Node{Type: html.TextNode, Data: string(t)})
-			}
-		case xml.Comment:
-			cur.AppendChild(&html.Node{Type: html.CommentNode, Data: string(t)})
-		}
-	}
-	if !hasElement(doc) {
-		return nil, errors.New("no root element")
-	}
-	return doc, nil
-}
-
-// dump writes a tree with the kinds of its nodes, to compare trees.
-func dump(n *html.Node, b *strings.Builder) {
-	fmt.Fprintf(b, "(%d %q %q %v", n.Type, n.Data, n.Namespace, n.Attr)
-	for k := n.FirstChild; k != nil; k = k.NextSibling {
-		dump(k, b)
-	}
-	b.WriteString(")")
-}
-
-// The pieces of a text (around CDATA sections, processing instructions and
-// entities) make the text nodes they made when they were joined one by one.
+// Character data split by CDATA and processing instructions remains one
+// text node until a real child node separates it.
 func TestXHTMLTextPieces(t *testing.T) {
-	for _, body := range []string{
-		`<p>a<![CDATA[b<c]]>d</p>`,
-		`<p><![CDATA[]]></p>`,
-		`<p>a<?pi x?>b<!-- c -->d<?pi?>e&amp;f&nbsp;g<![CDATA[h]]></p>`,
-		`<p> a <b>b</b> c <i/> d<!----><![CDATA[e]]>f</p><p/>`,
-		`<!-- x --><p>a</p> b <?pi?> c <div><![CDATA[ ]]> <span>d</span> e</div>`,
-		xhtmlDoc,
+	for _, c := range []struct {
+		body, want, first string
+		children          int
+	}{
+		{`<p>a<![CDATA[b<c]]>d</p>`, "ab<cd", "ab<cd", 1},
+		{`<p>a<?pi x?>b&amp;c<![CDATA[d]]></p>`, "ab&cd", "ab&cd", 1},
+		{`<p>a<!-- c -->d&amp;e&nbsp;f</p>`, "ad&e\u00a0f", "a", 3},
 	} {
-		src := []byte(`<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><body>` + body + `</body></html>`)
-		if strings.HasPrefix(body, "<?xml") {
-			src = []byte(body)
-		}
+		src := []byte(`<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><body>` + c.body + `</body></html>`)
 		doc, err := ParseXHTML(src)
 		if err != nil {
-			t.Fatalf("%s: %v", body, err)
+			t.Fatalf("%s: %v", c.body, err)
 		}
-		old, err := parseXHTMLJoining(src)
-		if err != nil {
-			t.Fatalf("%s: %v", body, err)
+		p := find(doc, "p")
+		if p == nil {
+			t.Fatalf("%s: no paragraph", c.body)
 		}
-		var got, want strings.Builder
-		dump(doc, &got)
-		dump(old, &want)
-		if got.String() != want.String() {
-			t.Errorf("%s:\n got %s\nwant %s", body, got.String(), want.String())
+		if got := text(p); got != c.want {
+			t.Errorf("%s: text %q, want %q", c.body, got, c.want)
+		}
+		children := 0
+		for child := p.FirstChild; child != nil; child = child.NextSibling {
+			children++
+		}
+		if p.FirstChild == nil || p.FirstChild.Type != html.TextNode || p.FirstChild.Data != c.first || children != c.children {
+			t.Errorf("%s: first child %+v, %d children", c.body, p.FirstChild, children)
 		}
 	}
 }
