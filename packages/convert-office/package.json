@@ -1,6 +1,8 @@
 {
   "name": "@bdfkit/convert-office",
   "version": "0.1.0",
+  "description": "TinyGo Wasm converter preset for Office, table, PDF, and EPUB formats",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

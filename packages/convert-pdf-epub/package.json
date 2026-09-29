@@ -1,6 +1,8 @@
 {
   "name": "@bdfkit/convert-pdf-epub",
   "version": "0.1.0",
+  "description": "TinyGo Wasm converter preset for PDF and EPUB",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

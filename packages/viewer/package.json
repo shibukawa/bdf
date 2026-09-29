@@ -1,6 +1,8 @@
 {
   "name": "@bdfkit/viewer",
   "version": "0.1.0",
+  "description": "A document surface for scrolling, page layouts, lightboxes, and optional music views",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

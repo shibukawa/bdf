@@ -1,6 +1,8 @@
 {
   "name": "@bdfkit/render",
   "version": "0.1.0",
+  "description": "Canvas and Web Worker renderers for BDF documents",
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
