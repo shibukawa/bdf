@@ -2,12 +2,12 @@
 
 2 つの Worker が仕事をします。メインスレッドはビットマップと透明なテキスト層を置くだけです。
 
-## レンダラ Worker（`@bdf/render`）
+## レンダラ Worker（`@bdfkit/render`）
 
 `packages/render/src/worker.ts` は文書を読み込み、Part をデコードして、ページ・シートのタイル・連続レイアウトの帯を `OffscreenCanvas` 上で `ImageBitmap` に描きます。`BdfWorkerClient`（`packages/render/src/client.ts`）はそのメインスレッド側のハンドルで、メソッドごとに 1 回の `postMessage` 呼び出しです。
 
 ```ts
-import { BdfWorkerClient } from "@bdf/render";
+import { BdfWorkerClient } from "@bdfkit/render";
 
 const client = new BdfWorkerClient(new Worker("./worker.js", { type: "module" }));
 const manifest = await client.open({ kind: "single", url, range: true }); // または {kind: "split", base} / {kind: "buffer", buffer}
@@ -15,7 +15,7 @@ const bitmap = await client.page(manifest.views[0].id, 0, scale);         // sca
 const content = await client.content(manifest.views[0].id, 0);           // buildTextLayer に渡す構造化テキスト
 ```
 
-`open` は 1 ファイル（HTTP の Range リクエストで読むことも）、分割形式のディレクトリ、またはメモリ上のバッファ（ブラウザ内でいま変換した文書）を受け取ります。暗号化された文書は `BdfWorkerError`（コード `"password-required"`）で拒否され、`unlock(password)` が成功するまで Worker が施錠したまま保持します。`page`・`continuous`・`sheet` はビットマップを、`text`・`continuousText`・`content`・`sheetContent` はテキスト run を返し、`@bdf/render` の `buildTextLayer` がそれを選択可能で読み上げ可能な DOM 層に組みます。`search`・`locate` は Worker 内で全文検索を行い、ヒットの矩形を返します。一方 `play` は View の音楽を Standard MIDI File と cue にして返し、`MusicPlayer` が使います。SVG の画像は Worker ではデコードできないため、Worker がメインスレッドに描画を頼みます（`RasterizeRequest`・`RasterizeResponse`）。これは `BdfWorkerClient` が `domSvgRasterizer` 経由で自動的に処理します。
+`open` は 1 ファイル（HTTP の Range リクエストで読むことも）、分割形式のディレクトリ、またはメモリ上のバッファ（ブラウザ内でいま変換した文書）を受け取ります。暗号化された文書は `BdfWorkerError`（コード `"password-required"`）で拒否され、`unlock(password)` が成功するまで Worker が施錠したまま保持します。`page`・`continuous`・`sheet` はビットマップを、`text`・`continuousText`・`content`・`sheetContent` はテキスト run を返し、`@bdfkit/render` の `buildTextLayer` がそれを選択可能で読み上げ可能な DOM 層に組みます。`search`・`locate` は Worker 内で全文検索を行い、ヒットの矩形を返します。一方 `play` は View の音楽を Standard MIDI File と cue にして返し、`MusicPlayer` が使います。SVG の画像は Worker ではデコードできないため、Worker がメインスレッドに描画を頼みます（`RasterizeRequest`・`RasterizeResponse`）。これは `BdfWorkerClient` が `domSvgRasterizer` 経由で自動的に処理します。
 
 これより上、ビューア自身の仕事は、ページがスクロールで視界に入るたびにビットマップとテキスト層を置き、ズームと検索の UI を動かすことです。ページめくり、セル選択、楽譜の演奏をしたいなら、それらのやり取りも自分で組み立てます。[`examples/miniviewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) は最初の部分だけをする最小限のビューア（約 600 行）です。[`examples/viewer`](https://github.com/shibukawa/bdf/tree/main/examples/viewer)（デモサイトのフル機能ビューア）は残りも足したものです。
 

@@ -1,5 +1,5 @@
 // What the examples and the demo site are built from: the pages' scripts
-// bundled with esbuild, the workers (the rendering worker of @bdf/render and
+// bundled with esbuild, the workers (the rendering worker of @bdfkit/render and
 // the converter worker, a classic worker that loads Go's wasm_exec.js), the
 // converters as wasm (cmd/bdfwasm: one module for PDF, one for the Office
 // formats, one for HTML, Markdown and EPUB, one for images, and one without
@@ -116,7 +116,7 @@ async function goEnv(name) {
  * finds the same links, but for host names longer than 256 characters. (A
  * -overlay cannot replace files in the module cache.)
  */
-async function patchGoldmark(dir) {
+export async function patchGoldmark(dir) {
   const { Dir: src } = JSON.parse((await execFile("go", ["mod", "download", "-json", "github.com/yuin/goldmark"], { cwd: root })).stdout);
   const dst = join(dir, "goldmark");
   // copied file by file: the module cache's directories are read-only, and so would be the copy's

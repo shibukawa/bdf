@@ -1,5 +1,5 @@
 // Builds preview-server's front end into web/ (next to this script): main.js
-// and lib/worker.js (@bdf/render's rendering worker — no converter modules:
+// and lib/worker.js (@bdfkit/render's rendering worker — no converter modules:
 // this server's browser never converts anything, see main.go). index.html
 // is checked in as it is.
 //

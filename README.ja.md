@@ -20,12 +20,14 @@ npm ci && npm run demo                             # ブラウザで開く
 
 ソースからビルドするには Go 1.27 以上と Node.js が要ります。続きは[はじめかた](https://shibukawa.github.io/bdf/docs/getting-started.ja.html)を参照してください（Go のコードから直接変換する方法も含みます）。
 
+npm パッケージとしての表示・ブラウザ内変換は [npm パッケージガイド](docs/npm.ja.md) を参照してください。
+
 ## 構成
 
 | 場所 | 内容 |
 |---|---|
 | `*.go`、`converter/`、`raster/`、`internal/` | Go のエンコーダ・デコーダと、入力形式ごとの変換器パッケージ |
-| `packages/core`、`packages/render` | `@bdf/core`・`@bdf/render`: TypeScript のデコーダと Canvas レンダラ |
+| `packages/` | デコーダ、レンダラー、表示面、TinyGo を使うブラウザ内変換の npm パッケージ |
 | `examples/`、`site/` | デモビューア、サーバー構成のサンプル 4 つ、GitHub Pages で公開しているサイト |
 | `docs/` | このドキュメント |
 

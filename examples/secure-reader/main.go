@@ -3,7 +3,7 @@
 // never sent as files. The server converts each book to bdf once and keeps
 // it; the browser asks for ten pages at a time, and each answer is a
 // segment sealed for a key pair the browser made for that request alone
-// (package segment, @bdf/core's SegmentLoader). Once a segment is open,
+// (package segment, @bdfkit/core's SegmentLoader). Once a segment is open,
 // neither side keeps the key that opens it: what a recording of the
 // traffic holds stays sealed even if the server's TLS key, a reader's
 // password or a session cookie is taken later.

@@ -4,8 +4,8 @@
 // The menu shows it one page at a time instead, or as pages to scroll
 // through. Where two pages would be too small (a phone), it opens one page at
 // a time. With a search box, zoom buttons and the page buttons.
-import { dcValues, type View } from "@bdf/core";
-import { BdfWorkerClient, buildTextLayer, installCopyHandler, RUN_ATTR, TEXT_LAYER_CSS, type HitRect } from "@bdf/render";
+import { dcValues, type View } from "@bdfkit/core";
+import { BdfWorkerClient, buildTextLayer, installCopyHandler, RUN_ATTR, TEXT_LAYER_CSS, type HitRect } from "@bdfkit/render";
 import { Book, type BookLayout } from "../examples/viewer/book.js";
 
 type Layout = BookLayout | "scroll";

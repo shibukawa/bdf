@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseSmf } from "@bdf/core";
+import { parseSmf } from "@bdfkit/core";
 import { MusicPlayer, cursorAtTick, tickAt, eventAt, due, channelStates, soundingEnds, MIN_NOTE } from "../dist/player.js";
 import { pulseDuty, patchOf, MAX_VOICES } from "../dist/synth.js";
 

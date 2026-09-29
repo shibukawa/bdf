@@ -1,7 +1,7 @@
 import {
   type ObjectPart, type OpSink, type Glyph, type Paint, type Rect, walk, UseLimits, BdfFormatError,
   BLEND_NAMES, LINE_CAPS, LINE_JOINS, TEXT_ALIGNS, TEXT_BASELINES, TEXT_DIRECTIONS, FILL_RULES, REPEATS, SMOOTHING_QUALITIES, PaintKind, MaskKind,
-} from "@bdf/core";
+} from "@bdfkit/core";
 import { ResourceCache, fontString } from "./resources.js";
 
 /** Any 2D context: on-screen canvas or OffscreenCanvas. */

@@ -1,0 +1,10 @@
+{
+  "name": "@bdfkit/viewer",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": "./dist/index.js", "./music": "./dist/music.js" },
+  "files": ["dist"],
+  "dependencies": { "@bdfkit/core": "0.1.0", "@bdfkit/render": "0.1.0" }
+}

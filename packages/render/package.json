@@ -1,10 +1,10 @@
 {
-  "name": "@bdf/render",
+  "name": "@bdfkit/render",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": { ".": "./dist/index.js", "./worker": "./dist/worker.js" },
   "files": ["dist"],
-  "dependencies": { "@bdf/core": "0.1.0" }
+  "dependencies": { "@bdfkit/core": "0.1.0" }
 }

@@ -1,7 +1,7 @@
-// What a document may not make the renderer do (see also the limits of @bdf/core).
+// What a document may not make the renderer do (see also the limits of @bdfkit/core).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BdfDocument, BdfFormatError, BufferSource, UseLimits } from "@bdf/core";
+import { BdfDocument, BdfFormatError, BufferSource, UseLimits } from "@bdfkit/core";
 import { ResourceCache, imageSize } from "../dist/resources.js";
 import { CanvasRenderer, filterAllowed, MAX_GROUP_DEPTH } from "../dist/canvas.js";
 import { PageRenderer, tilesIn } from "../dist/page.js";
@@ -67,7 +67,7 @@ test("an object that draws itself is not drawn", async () => {
 
 test("the instructions of objects drawn again are counted for a render", async () => {
   const { pr, top } = await prepared(fanOut(3, 10, text));
-  // as for the text (the limits test of @bdf/core): every object is walked once for nothing
+  // as for the text (the limits test of @bdfkit/core): every object is walked once for nothing
   const again = 10 + 100 + 1000 + 2 * 1000 - (10 + 10 + 10 + 2);
   const draw = (limits) => {
     const ctx = context();

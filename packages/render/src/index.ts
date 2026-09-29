@@ -3,6 +3,11 @@ export { CanvasRenderer, cssColor, resetState, filterAllowed, MAX_GROUP_DEPTH, t
 export { PageRenderer, tilesIn, type PageRenderOptions, type TileRange } from "./page.js";
 export { concat, within } from "./content.js";
 export { BdfWorkerClient, BdfWorkerError } from "./client.js";
+import { BdfWorkerClient } from "./client.js";
+/** Create the rendering Worker from this package's bundled asset. */
+export function createRenderWorker(): BdfWorkerClient {
+  return new BdfWorkerClient(new Worker(new URL("./worker.js", import.meta.url), { type: "module" }));
+}
 export type { WorkerRequest, WorkerResponse, WorkerResult, WorkerCall, WorkerErrorCode, WorkerOpenOptions, OpenSource, RasterizeRequest, RasterizeResponse, PlayData } from "./protocol.js";
 export { MusicPlayer, cursorAtTick, tickAt, type Cursor, type PlayState, type MusicPlayerOptions } from "./player.js";
 export { VectorImage, domSvgRasterizer, isSvg, svgSize, type SvgRasterizer } from "./svg.js";

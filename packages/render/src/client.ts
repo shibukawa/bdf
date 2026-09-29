@@ -1,4 +1,4 @@
-import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdf/core";
+import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdfkit/core";
 import type { HitRect } from "./search.js";
 import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode, WorkerOpenOptions, RasterizeRequest, RasterizeResponse, PlayData } from "./protocol.js";
 import { domSvgRasterizer } from "./svg.js";

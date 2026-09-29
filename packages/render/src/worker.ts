@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { BdfDocument, BdfPasswordError, BdfSegmentError, SegmentLoader, BufferSource, RangeSource, SplitSource, UseLimits, fetchSingle, extractContent, tileSize, type PartSource, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdf/core";
+import { BdfDocument, BdfPasswordError, BdfSegmentError, SegmentLoader, BufferSource, RangeSource, SplitSource, UseLimits, fetchSingle, extractContent, tileSize, type PartSource, type TextContent, type Manifest, type Page, type Rect, type View } from "@bdfkit/core";
 import { fontString } from "./resources.js";
 import { PageRenderer, tilesIn, type TileRange } from "./page.js";
 import { concat, within } from "./content.js";

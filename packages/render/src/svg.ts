@@ -3,7 +3,7 @@
 // element onto a canvas, at the size it is drawn at, so that it stays sharp
 // at every zoom. Workers have no image element; the page draws for them
 // (BdfWorkerClient answers the worker's requests).
-import type { Hash } from "@bdf/core";
+import type { Hash } from "@bdfkit/core";
 
 /** Draws an SVG image into a bitmap of width × height pixels. */
 export type SvgRasterizer = (hash: Hash, data: Uint8Array, width: number, height: number) => Promise<ImageBitmap>;
