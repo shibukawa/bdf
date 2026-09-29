@@ -6,6 +6,7 @@ package ooxml
 
 import (
 	"archive/zip"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"path"
@@ -63,8 +64,36 @@ func (p *Package) Has(name string) bool {
 	return ok
 }
 
+// PartSize reports the uncompressed size recorded in the ZIP directory.
+func (p *Package) PartSize(name string) (uint64, bool) {
+	if p == nil {
+		return 0, false
+	}
+	f, ok := p.files[strings.ToLower(strings.TrimPrefix(name, "/"))]
+	if !ok {
+		return 0, false
+	}
+	return f.UncompressedSize64, true
+}
+
 // Read returns the bytes of a part.
 func (p *Package) Read(name string) ([]byte, error) {
+	rc, err := p.OpenPart(name)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	b, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	return b, nil
+}
+
+// OpenPart opens a part without keeping its uncompressed bytes in memory.
+// The reader enforces the same size limit as Read, including when the ZIP
+// directory understates the uncompressed size.
+func (p *Package) OpenPart(name string) (io.ReadCloser, error) {
 	if p == nil {
 		return nil, fmt.Errorf("missing part %s", name)
 	}
@@ -72,19 +101,40 @@ func (p *Package) Read(name string) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("missing part %s", name)
 	}
+	if f.UncompressedSize64 > maxPartSize {
+		return nil, fmt.Errorf("%s: part too large", name)
+	}
 	rc, err := f.Open()
 	if err != nil {
 		return nil, err
 	}
-	defer rc.Close()
-	b, err := io.ReadAll(io.LimitReader(rc, maxPartSize+1))
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", name, err)
+	return &limitedPart{ReadCloser: rc, remaining: maxPartSize, name: name}, nil
+}
+
+type limitedPart struct {
+	io.ReadCloser
+	remaining int64
+	name      string
+}
+
+func (r *limitedPart) Read(b []byte) (int, error) {
+	if len(b) == 0 {
+		return 0, nil
 	}
-	if len(b) > maxPartSize {
-		return nil, fmt.Errorf("%s: part too large", name)
+	if r.remaining == 0 {
+		var one [1]byte
+		n, err := r.ReadCloser.Read(one[:])
+		if n > 0 {
+			return 0, fmt.Errorf("%s: part too large", r.name)
+		}
+		return 0, err
 	}
-	return b, nil
+	if int64(len(b)) > r.remaining {
+		b = b[:int(r.remaining)]
+	}
+	n, err := r.ReadCloser.Read(b)
+	r.remaining -= int64(n)
+	return n, err
 }
 
 // XML returns the parsed XML of a part (cached).
@@ -96,21 +146,43 @@ func (p *Package) XML(name string) (*Node, error) {
 	if n, ok := p.xmls[key]; ok {
 		return n, nil
 	}
-	b, err := p.Read(name)
+	rc, err := p.OpenPart(name)
 	if err != nil {
 		return nil, err
 	}
+	defer rc.Close()
+	n, err := ParsePickingReader(rc, p.choice())
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	if _, err := io.Copy(io.Discard, rc); err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	p.xmls[key] = n
+	return n, nil
+}
+
+// ReadElement reads one streamed element with this package's markup
+// compatibility choices, as XML does for a whole part.
+func (p *Package) ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
+	return readElement(d, start, p.choice())
+}
+
+func (p *Package) choice() func(*Node) bool {
 	pick := supportedChoice(p.Supported)
 	if p.Choose != nil {
 		supported := pick
 		pick = func(c *Node) bool { return supported != nil && supported(c) || p.Choose(c) }
 	}
-	n, err := ParsePicking(b, pick)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", name, err)
+	return pick
+}
+
+// DiscardXML releases a cached tree after its caller has built a more compact
+// representation. Nodes still referenced by that representation stay valid.
+func (p *Package) DiscardXML(name string) {
+	if p != nil {
+		delete(p.xmls, strings.ToLower(strings.TrimPrefix(name, "/")))
 	}
-	p.xmls[key] = n
-	return n, nil
 }
 
 // Rels returns the relationships of a part by ID ("" for the package's

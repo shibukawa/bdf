@@ -13,6 +13,7 @@
 package pptx
 
 import (
+	"encoding/xml"
 	"fmt"
 	"io"
 	"io/fs"
@@ -166,11 +167,28 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	view := c.doc.NewView("slides", bdf.ViewFixed, c.doc.Meta.DC.Title.First())
 
 	var slides []string
-	var hidden []bool
+	var slideBytes uint64
 	for _, s := range c.pres.Path("sldIdLst").Children("sldId") {
 		if r, ok := p.Target(c.presPart, s.RelID("id")); ok {
 			slides = append(slides, r.Target)
-			sn, err := p.XML(r.Target)
+			if n, ok := p.PartSize(r.Target); ok {
+				if n >= (2<<20)-slideBytes {
+					slideBytes = 2 << 20
+				} else {
+					slideBytes += n
+				}
+			}
+		}
+	}
+	// For small decks, reuse the parsed trees from visibility scanning. For
+	// large decks, caching all slide trees at once dominates peak memory.
+	streamSlides := slideBytes >= 2<<20
+	var hidden []bool
+	for _, part := range slides {
+		if streamSlides {
+			hidden = append(hidden, slideHidden(p, part))
+		} else {
+			sn, err := p.XML(part)
 			hidden = append(hidden, err == nil && !sn.AttrBool("show", true))
 		}
 	}
@@ -198,6 +216,9 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			return nil, fmt.Errorf("pptx: slide %d out of range (1-%d)", n, len(slides))
 		}
 		layers, err := c.renderSlideSafe(slides[n-1], c.firstSlide+n-1)
+		if streamSlides {
+			p.DiscardXML(slides[n-1])
+		}
 		if err != nil {
 			return nil, fmt.Errorf("pptx: slide %d: %w", n, err)
 		}
@@ -211,6 +232,9 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		}
 		pages = append(pages, pageRef{page, kept})
 	}
+	// Only the canvases and font set are needed from here on. Release the
+	// cached layouts, masters, themes and relationships before encoding.
+	c.pkg, c.r, c.pres, c.defTextStyle = nil, nil, nil, nil
 	c.finalize()
 	c.fonts.ReportMissing()
 	for _, pr := range pages {
@@ -231,6 +255,35 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		}
 	}
 	return &Result{Doc: c.doc, Warnings: c.warnings, Slides: len(sel), EmbeddedFonts: c.embeddedFonts}, nil
+}
+
+// slideHidden checks the root's show attribute without building and caching
+// the complete XML tree of every slide before any of them is rendered.
+func slideHidden(p *ooxml.Package, part string) bool {
+	rc, err := p.OpenPart(part)
+	if err != nil {
+		return false
+	}
+	defer rc.Close()
+	d := xml.NewDecoder(rc)
+	d.Strict = false
+	seen, hidden := false, false
+	for {
+		tok, err := d.Token()
+		if err == io.EOF {
+			return seen && hidden
+		}
+		if err != nil {
+			return false
+		}
+		if start, ok := tok.(xml.StartElement); ok && !seen {
+			seen = true
+			hidden = !(&ooxml.Node{Attrs: start.Attr}).AttrBool("show", true)
+			if !hidden {
+				return false
+			}
+		}
+	}
 }
 
 func (c *converter) warnf(format string, args ...any) {
@@ -516,5 +569,5 @@ func (c *converter) finalize() {
 	// layout depends on its glyphs
 	c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: c.opts.NoSubset, NoWOFF2: c.opts.NoWOFF2,
 		IgnoreFSType: c.opts.IgnoreFSType, PinnedOnly: c.opts.SystemFonts})
-	c.cvs.Encode()
+	c.cvs.EncodeAndRelease()
 }

@@ -17,6 +17,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -102,6 +103,8 @@ type converter struct {
 	chartsFilled map[string]bool
 
 	embeddedFonts int
+	embeddedGen   uint64
+	hasEmbedded   bool
 }
 
 // sheetRef is a sheet of the workbook.
@@ -196,8 +199,28 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			}
 		}
 	}
-	var views []pendingView
+	// On a large multi-sheet book, finalize canvases in batches instead of
+	// retaining every sheet's unencoded objects until the last one is drawn.
+	var sheetBytes uint64
 	for _, n := range sel {
+		if n >= 1 && n <= len(sheets) {
+			if size, ok := p.PartSize(sheets[n-1].part); ok {
+				sheetBytes += min(size, uint64(2<<20)-sheetBytes)
+			}
+		}
+	}
+	batched := len(sel) > 1 && sheetBytes >= 2<<20
+	var pending []pendingView
+	var batchBytes uint64
+	flush := func() {
+		if len(pending) == 0 {
+			return
+		}
+		c.encodePending(pending)
+		pending = nil
+		batchBytes = 0
+	}
+	for i, n := range sel {
 		if n < 1 || n > len(sheets) {
 			return nil, fmt.Errorf("xlsx: sheet %d out of range (1-%d)", n, len(sheets))
 		}
@@ -205,16 +228,40 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		id := "sheet" + strconv.Itoa(n)
 		if ref.chart {
 			v, layers := c.chartSheetSafe(ref, id)
-			views = append(views, pendingView{view: v, layers: layers})
-			continue
+			pending = append(pending, pendingView{view: v, layers: layers})
+		} else {
+			v, tiles, err := c.worksheetSafe(ref, id)
+			if err != nil {
+				return nil, fmt.Errorf("xlsx: sheet %q: %w", ref.name, err)
+			}
+			pending = append(pending, pendingView{view: v, tiles: tiles})
 		}
-		v, tiles, err := c.worksheetSafe(ref, id)
-		if err != nil {
-			return nil, fmt.Errorf("xlsx: sheet %q: %w", ref.name, err)
+		// Charts can read other sheets while this one is rendered. Once the
+		// sheet is drawn, only the canvases are needed; release its cells and
+		// any chart source sheets before the next sheet is read.
+		clear(c.parsed)
+		if size, ok := p.PartSize(ref.part); ok {
+			batchBytes += min(size, uint64(1<<20)-batchBytes)
 		}
-		views = append(views, pendingView{view: v, tiles: tiles})
+		if batched && batchBytes >= 1<<20 {
+			flush()
+			if i+1 < len(sel) {
+				// The previous sheet's cells and drawing instructions have
+				// become unreachable. Collect them before parsing the next one.
+				runtime.GC()
+			}
+		}
 	}
-	c.finish(views)
+	// Rendering is complete. Font embedding and canvas encoding need none of
+	// the workbook's parsed values, styles or package parts.
+	c.pkg, c.r, c.d = nil, nil, nil
+	c.sst, c.st, c.sheets, c.parsed = nil, nil, nil, nil
+	flush()
+	if !c.hasEmbedded {
+		c.encodePending(nil)
+	}
+	c.fonts.ReportMissing()
+	c.indexViews()
 	return &Result{Doc: c.doc, Warnings: c.warnings, Sheets: len(sel), EmbeddedFonts: c.embeddedFonts}, nil
 }
 
@@ -240,16 +287,19 @@ type pendingView struct {
 	layers []*canvas.Canvas
 }
 
-// finish embeds the fonts, encodes the objects, points the views at them
-// and indexes their text.
-func (c *converter) finish(views []pendingView) {
+// encodePending embeds any newly measured glyphs, encodes the canvases and
+// points their views at the resulting object hashes.
+func (c *converter) encodePending(views []pendingView) {
 	opts := c.opts
-	// with system fonts, the formula font is embedded still: a formula's
-	// layout depends on its glyphs
-	c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2,
-		IgnoreFSType: opts.IgnoreFSType, PinnedOnly: opts.SystemFonts})
-	c.cvs.Encode()
-	c.fonts.ReportMissing()
+	if !c.hasEmbedded || c.fonts.Generation() != c.embeddedGen {
+		// With system fonts, the formula font is embedded still: its layout
+		// depends on its glyphs.
+		c.embeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2,
+			IgnoreFSType: opts.IgnoreFSType, PinnedOnly: opts.SystemFonts})
+		c.embeddedGen = c.fonts.Generation()
+		c.hasEmbedded = true
+	}
+	c.cvs.EncodeAndRelease()
 	for _, pv := range views {
 		for key, cv := range pv.tiles {
 			pv.view.Tiles[key] = cv.Hash().String()
@@ -259,10 +309,23 @@ func (c *converter) finish(views []pendingView) {
 				pv.view.Pages[0].Layers[i].Obj = cv.Hash()
 			}
 		}
-		if !opts.NoTextIndex {
-			if _, err := c.doc.BuildTextIndex(pv.view); err != nil {
-				c.warnf("text index: %v", err)
-			}
+	}
+}
+
+// finish handles a single grid, which has no workbook or sheet batches.
+func (c *converter) finish(views []pendingView) {
+	c.encodePending(views)
+	c.fonts.ReportMissing()
+	c.indexViews()
+}
+
+func (c *converter) indexViews() {
+	if c.opts.NoTextIndex {
+		return
+	}
+	for _, v := range c.doc.Views {
+		if _, err := c.doc.BuildTextIndex(v); err != nil {
+			c.warnf("text index: %v", err)
 		}
 	}
 }
@@ -295,12 +358,45 @@ func (c *converter) partOfType(part, suffix string) (*ooxml.Node, error) {
 }
 
 func (c *converter) loadSharedStrings() {
-	n, err := c.partOfType(c.wbPart, "/sharedStrings")
+	r, ok := c.pkg.RelOfType(c.wbPart, "/sharedStrings")
+	if !ok {
+		return
+	}
+	rc, err := c.pkg.OpenPart(r.Target)
 	if err != nil {
 		return
 	}
-	for _, si := range n.Children("si") {
-		c.sst = append(c.sst, c.readRich(si))
+	defer rc.Close()
+	d := xml.NewDecoder(rc)
+	d.Strict = false
+	depth := 0
+	for {
+		tok, err := d.Token()
+		if err == io.EOF {
+			if depth != 0 {
+				c.sst = nil
+			}
+			return
+		}
+		if err != nil {
+			c.sst = nil
+			return
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			depth++
+			if depth == 2 && t.Name.Local == "si" {
+				n, err := c.pkg.ReadElement(d, t)
+				if err != nil {
+					c.sst = nil
+					return
+				}
+				c.sst = append(c.sst, c.readRich(n))
+				depth--
+			}
+		case xml.EndElement:
+			depth--
+		}
 	}
 }
 

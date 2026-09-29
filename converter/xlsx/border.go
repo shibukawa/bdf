@@ -44,9 +44,11 @@ type edge struct {
 func (e edge) weight() int { return borderStyles[e.style].weight }
 
 type edgeSet struct {
-	s     *sheetCtx
-	h, v  map[[2]int]edge // top edge of (row, col); left edge of (row, col)
-	diags []diagLine
+	s       *sheetCtx
+	h, v    map[uint64]uint32 // top edge of (row, col); left edge of (row, col)
+	palette []edge
+	ids     map[edge]uint32
+	diags   []diagLine
 }
 
 type diagLine struct {
@@ -55,15 +57,27 @@ type diagLine struct {
 	up, down bool
 }
 
-func (es *edgeSet) put(m map[[2]int]edge, k [2]int, side borderSide) {
+// There are at most 2^20 rows and 2^14 columns. An edge can lie on the
+// boundary after the last row or column, so 15 bits are reserved for col.
+func edgeKey(r, c int) uint64 { return uint64(r)<<15 | uint64(c) }
+func edgeRow(k uint64) int    { return int(k >> 15) }
+func edgeCol(k uint64) int    { return int(k & ((1 << 15) - 1)) }
+
+func (es *edgeSet) put(m map[uint64]uint32, k uint64, side borderSide) {
 	if _, ok := borderStyles[side.style]; !ok {
 		return
 	}
 	e := edge{style: side.style, color: es.s.c.st.color(side.color, black)}
-	if old, ok := m[k]; ok && old.weight() >= e.weight() {
+	if old, ok := m[k]; ok && es.palette[old].weight() >= e.weight() {
 		return
 	}
-	m[k] = e
+	id, ok := es.ids[e]
+	if !ok {
+		id = uint32(len(es.palette))
+		es.ids[e] = id
+		es.palette = append(es.palette, e)
+	}
+	m[k] = id
 }
 
 // sides adds the borders of a cell's format; top, left, bottom and right
@@ -71,16 +85,16 @@ func (es *edgeSet) put(m map[[2]int]edge, k [2]int, side borderSide) {
 func (es *edgeSet) sides(r, c int, f *cellFmt, top, left, bottom, right bool) {
 	b := &f.border
 	if top {
-		es.put(es.h, [2]int{r, c}, b.top)
+		es.put(es.h, edgeKey(r, c), b.top)
 	}
 	if bottom {
-		es.put(es.h, [2]int{r + 1, c}, b.bottom)
+		es.put(es.h, edgeKey(r+1, c), b.bottom)
 	}
 	if left {
-		es.put(es.v, [2]int{r, c}, b.left)
+		es.put(es.v, edgeKey(r, c), b.left)
 	}
 	if right {
-		es.put(es.v, [2]int{r, c + 1}, b.right)
+		es.put(es.v, edgeKey(r, c+1), b.right)
 	}
 }
 
@@ -109,7 +123,7 @@ func (s *sheetCtx) paintBorders() {
 
 // edges collects the edges of every formatted cell.
 func (s *sheetCtx) edges() *edgeSet {
-	es := &edgeSet{s: s, h: map[[2]int]edge{}, v: map[[2]int]edge{}}
+	es := &edgeSet{s: s, h: map[uint64]uint32{}, v: map[uint64]uint32{}, ids: map[edge]uint32{}}
 	kept := func() int { return len(es.h) + len(es.v) + len(es.diags) }
 	for r := 0; r < s.nRows; r++ {
 		if s.rows.at(r) == 0 {
@@ -170,52 +184,47 @@ func (es *edgeSet) draw() {
 	s := es.s
 	groups := map[edge][]segment{}
 	// horizontal: by row, then column
-	hk := make([][2]int, 0, len(es.h))
+	hk := make([]uint64, 0, len(es.h))
 	for k := range es.h {
 		hk = append(hk, k)
 	}
-	sort.Slice(hk, func(i, j int) bool {
-		if hk[i][0] != hk[j][0] {
-			return hk[i][0] < hk[j][0]
-		}
-		return hk[i][1] < hk[j][1]
-	})
+	sort.Slice(hk, func(i, j int) bool { return hk[i] < hk[j] })
 	for i := 0; i < len(hk); {
 		k := hk[i]
-		e := es.h[k]
+		e := es.palette[es.h[k]]
 		j := i + 1
-		for j < len(hk) && hk[j][0] == k[0] && hk[j][1] == hk[j-1][1]+1 && es.h[hk[j]] == e {
+		for j < len(hk) && edgeRow(hk[j]) == edgeRow(k) && edgeCol(hk[j]) == edgeCol(hk[j-1])+1 && es.palette[es.h[hk[j]]] == e {
 			j++
 		}
-		if k[0] <= s.nRows && k[1] < s.nCols {
-			y := s.rows.pos(k[0])
-			x0, x1 := s.cols.pos(k[1]), s.cols.pos(min(hk[j-1][1]+1, s.nCols))
+		if edgeRow(k) <= s.nRows && edgeCol(k) < s.nCols {
+			y := s.rows.pos(edgeRow(k))
+			x0, x1 := s.cols.pos(edgeCol(k)), s.cols.pos(min(edgeCol(hk[j-1])+1, s.nCols))
 			if x1 > x0 {
 				groups[e] = append(groups[e], segment{x0, y, x1, y})
 			}
 		}
 		i = j
 	}
-	vk := make([][2]int, 0, len(es.v))
+	vk := make([]uint64, 0, len(es.v))
 	for k := range es.v {
 		vk = append(vk, k)
 	}
 	sort.Slice(vk, func(i, j int) bool {
-		if vk[i][1] != vk[j][1] {
-			return vk[i][1] < vk[j][1]
+		if edgeCol(vk[i]) != edgeCol(vk[j]) {
+			return edgeCol(vk[i]) < edgeCol(vk[j])
 		}
-		return vk[i][0] < vk[j][0]
+		return edgeRow(vk[i]) < edgeRow(vk[j])
 	})
 	for i := 0; i < len(vk); {
 		k := vk[i]
-		e := es.v[k]
+		e := es.palette[es.v[k]]
 		j := i + 1
-		for j < len(vk) && vk[j][1] == k[1] && vk[j][0] == vk[j-1][0]+1 && es.v[vk[j]] == e {
+		for j < len(vk) && edgeCol(vk[j]) == edgeCol(k) && edgeRow(vk[j]) == edgeRow(vk[j-1])+1 && es.palette[es.v[vk[j]]] == e {
 			j++
 		}
-		if k[1] <= s.nCols && k[0] < s.nRows {
-			x := s.cols.pos(k[1])
-			y0, y1 := s.rows.pos(k[0]), s.rows.pos(min(vk[j-1][0]+1, s.nRows))
+		if edgeCol(k) <= s.nCols && edgeRow(k) < s.nRows {
+			x := s.cols.pos(edgeCol(k))
+			y0, y1 := s.rows.pos(edgeRow(k)), s.rows.pos(min(edgeRow(vk[j-1])+1, s.nRows))
 			if y1 > y0 {
 				groups[e] = append(groups[e], segment{x, y0, x, y1})
 			}

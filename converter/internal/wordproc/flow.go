@@ -156,6 +156,9 @@ func (f *flow) out() *[]op {
 // all returns an unpaged flow's ops: floating objects behind the text,
 // the text, floating objects in front.
 func (f *flow) all() []op {
+	if len(f.behind) == 0 && len(f.front) == 0 {
+		return f.ops
+	}
 	out := make([]op, 0, len(f.behind)+len(f.ops)+len(f.front))
 	out = append(out, f.behind...)
 	out = append(out, f.ops...)

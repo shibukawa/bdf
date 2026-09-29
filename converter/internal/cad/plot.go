@@ -131,7 +131,7 @@ func toBDF(path *Path, m canvas.Matrix) *bdf.Path {
 }
 
 func (p *plot) strokeItem(it Item, m canvas.Matrix) {
-	pen := it.pen
+	pen := *it.pen
 	s := Scale(m)
 	w := pen.Width
 	if pen.WorldWidth > 0 {
@@ -385,7 +385,7 @@ func (p *plot) strokeText(t *StrokeText, m canvas.Matrix) {
 	ch.Obj.SetBBox(bbox.X, bbox.Y, bbox.W, bbox.H)
 	sub := &plot{pl: p.pl, cv: ch, obj: ch.Obj}
 	if !t.Strokes.Empty() {
-		sub.strokeItem(Item{kind: kStroke, path: t.Strokes, pen: t.Pen}, lin)
+		sub.strokeItem(Item{kind: kStroke, path: t.Strokes, pen: &t.Pen}, lin)
 	}
 	for _, part := range t.Parts {
 		pt := *part

@@ -28,8 +28,10 @@ type EmbedOptions struct {
 const maxWholeFont = 2 << 20
 
 // Embed adds the faces that measured characters to doc, as subsets of those
-// characters, and returns how many it embedded. Call it once all the text
-// has been measured; faces that cannot be embedded are referred to by name
+// characters, and returns how many it embedded. Call it after the text for
+// the canvases being encoded has been measured. A later batch can call Embed
+// again if it measures new glyphs; previously encoded canvases keep their
+// earlier subset. Faces that cannot be embedded are referred to by name
 // (see Font).
 func (s *Set) Embed(doc *bdf.Document, opts EmbedOptions) int {
 	faces := make([]*fontdb.Face, 0, len(s.runes))

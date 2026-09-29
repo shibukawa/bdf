@@ -87,9 +87,15 @@ type graphView struct {
 	stencilOf func(name string) *stencil
 }
 
+type styleKey struct {
+	raw  string
+	edge bool
+}
+
 // newView computes the states of every visible cell of m.
 func newView(m *model, warn func(key, format string, args ...any), stencilOf func(string) *stencil) *graphView {
 	v := &graphView{m: m, states: map[*cell]*cellState{}, warn: warn, stencilOf: stencilOf}
+	styles := map[styleKey]style{}
 	if warn == nil {
 		v.warn = func(string, string, ...any) {}
 	}
@@ -105,7 +111,14 @@ func newView(m *model, warn func(key, format string, args ...any), stencilOf fun
 		if !c.visible {
 			return
 		}
-		st := &cellState{cell: c, style: parseStyle(c.styleStr, c.edge), view: v, parent: parent, layer: layer}
+		key := styleKey{c.styleStr, c.edge}
+		resolved, ok := styles[key]
+		if !ok {
+			resolved = parseStyle(c.styleStr, c.edge)
+			styles[key] = resolved
+		}
+		// A resolved style is read-only. Shape-specific changes clone it.
+		st := &cellState{cell: c, style: resolved, view: v, parent: parent, layer: layer}
 		v.states[c] = st
 		v.order = append(v.order, st)
 		if c.collapsed && c.vertex {

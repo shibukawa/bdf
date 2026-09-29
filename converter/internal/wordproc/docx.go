@@ -93,6 +93,10 @@ func ConvertDOCX(r io.ReaderAt, size int64, opts *Options) (res *Result, err err
 	w := &walker{c: c, part: c.main}
 	blocks := w.blocks(body)
 	c.splitSections(blocks, body.Child("sectPr"))
+	// The section model retains the drawing nodes it needs. Keeping the
+	// complete document tree in the package would duplicate every paragraph
+	// and table throughout both view layouts.
+	p.DiscardXML(c.main)
 	if len(c.doc.Meta.DC.Language) == 0 {
 		if l := c.docLang(); l != "" {
 			c.doc.Meta.DC.Language = bdf.DCValues{l}

@@ -917,6 +917,9 @@ func (s *sheetCtx) paintText() {
 				s.emitText(t, lay, ref)
 			}
 		}
+		if s.releaseCells {
+			rw.cells = nil
+		}
 	}
 }
 

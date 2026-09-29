@@ -53,6 +53,9 @@ type sheetCtx struct {
 	// rather than a glyph metric read. The face itself is resolved by the
 	// font set, which memoizes that.
 	advances map[advanceKey]float64
+	// releaseCells frees a row after its text has been painted. Later passes
+	// must not need cell records when this is true.
+	releaseCells bool
 	// cfCells is the number of cells left in the budget that conditional
 	// format evaluation may read, across every rule.
 	cfCells int
@@ -242,8 +245,21 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 
 	s.paintFills()
 	s.paintConditional()
+	// Borders must appear over text, but their edges can be collected while
+	// the cells are still available. This lets text painting free each row,
+	// including rows in merged ranges, before the border paths are drawn.
+	hasBorders := s.hasPotentialBorders()
+	s.releaseCells = s.canReleaseCellsAfterText() && (!hasBorders || s.hasManyCells())
+	var borders *edgeSet
+	if s.releaseCells && hasBorders {
+		borders = s.edges()
+	}
 	s.paintText()
-	s.paintBorders()
+	if borders != nil {
+		borders.draw()
+	} else if !s.releaseCells {
+		s.paintBorders()
+	}
 	s.paintMarks()
 	s.paintLinks()
 	s.paintDrawings()
@@ -260,6 +276,42 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 		}
 	}
 	return v, out, nil
+}
+
+// canReleaseCellsAfterText selects sheets whose later passes need only
+// geometry and metadata. A drawing may need the sheet's cell values to fill
+// chart caches, so those sheets retain their cells through painting.
+func (s *sheetCtx) canReleaseCellsAfterText() bool {
+	return s.ws.drawing == "" && len(s.drawings) == 0
+}
+
+// hasPotentialBorders avoids a full border collection pass on sheets with
+// no border styles. Tables and conditional formats may add their own borders.
+func (s *sheetCtx) hasPotentialBorders() bool {
+	if len(s.tables) != 0 || s.cf != nil {
+		return true
+	}
+	for _, border := range s.c.st.borders {
+		if hasBorder(&cellFmt{border: border}) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasManyCells gates early border collection. For smaller bordered sheets,
+// the full edge set overlaps the live cells and can raise the peak. In
+// measurements, 50k cells cost a little more while 200k cells saved it.
+func (s *sheetCtx) hasManyCells() bool {
+	const minCells = 1 << 17
+	n := 0
+	for _, rw := range s.ws.rows {
+		n += len(rw.cells)
+		if n >= minCells {
+			return true
+		}
+	}
+	return false
 }
 
 // maxMergedCells bounds the cells of the merged ranges of a sheet that make

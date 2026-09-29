@@ -2,6 +2,7 @@ package docx
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
 	"io"
 
@@ -25,8 +26,21 @@ func init() {
 				return false
 			}
 			if rel, ok := p.RelOfType("", "/officeDocument"); ok && p.Has(rel.Target) {
-				n, err := p.XML(rel.Target)
-				return err == nil && n.Name == "document"
+				rc, err := p.OpenPart(rel.Target)
+				if err != nil {
+					return false
+				}
+				defer rc.Close()
+				d := xml.NewDecoder(rc)
+				for {
+					tok, err := d.Token()
+					if err != nil {
+						return false
+					}
+					if start, ok := tok.(xml.StartElement); ok {
+						return start.Name.Local == "document"
+					}
+				}
 			}
 			return p.Has("word/document.xml")
 		},
