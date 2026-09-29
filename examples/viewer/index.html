@@ -64,6 +64,7 @@
   .hl { position: absolute; background: rgba(255, 210, 0, .45); outline: 1px solid rgba(200, 140, 0, .8); pointer-events: none; border-radius: 2px; }
   .hl.current { background: rgba(255, 120, 0, .5); outline-color: #c04000; }
   .search { display: flex; gap: 4px; align-items: center; }
+  .search[hidden] { display: none; }
   /* cells are selected, not text (main.ts showSheet) */
   .sheet { position: relative; cursor: cell; -webkit-user-select: none; user-select: none; }
   .sheet canvas { position: sticky; top: 0; left: 0; display: block; }
@@ -146,7 +147,7 @@
     <button id="metronome" type="button" aria-pressed="false" disabled>Metronome off</button>
     <span id="playTime"></span>
   </span>
-  <span class="search" role="search">
+  <span class="search" id="searchBox" role="search">
     <input id="q" type="search" placeholder="search…" aria-label="search" size="18">
     <button id="prev" title="previous match" aria-label="previous match">▲</button><button id="next" title="next match" aria-label="next match">▼</button>
     <span id="hits" role="status"></span>

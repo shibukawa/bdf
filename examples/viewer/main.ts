@@ -331,6 +331,7 @@ async function load(source: OpenSource, name?: string, token = ++opening, stream
     return;
   }
   manifest = opened;
+  $("searchBox").hidden = ["mml", "midi", "musicxml"].includes(manifest.meta?.source ?? "") || manifest.views.some((v) => !!v.play);
   // a book opens as facing pages
   if (!layoutChosen) layoutSelect.value = manifest.meta?.source === "epub" ? "spread" : "pages";
   if (stream) {
@@ -537,6 +538,7 @@ function pageArrived(index: number) {
 /** Take down the document shown, before another one opens: work started for it is dropped. */
 function closeDocument() {
   stopMusic();
+  $("searchBox").hidden = false;
   musicSpeedPercent = 100;
   musicMetronome = false;
   if (streaming) converter?.close(streaming.id).catch(() => {});
