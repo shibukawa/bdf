@@ -71,7 +71,7 @@ let layoutChosen = false;
 
 /** The music of the view shown (spec §4.4), once the worker has sent it. */
 let player: MusicPlayer | undefined;
-/** Whether the score pages or the note timeline is shown. */
+/** Whether the current music pages or the note timeline is shown. */
 let musicMode: "score" | "piano-roll" = "score";
 let scoreScroll: { left: number; top: number } | undefined;
 let pianoRollScroll: { left: number; top: number } | undefined;
@@ -1275,9 +1275,14 @@ function toggleMusicMode() {
     show(current);
     if (scoreScroll) stage.scrollTo(scoreScroll);
   }
+  updateMusicModeButton();
+}
+
+function updateMusicModeButton() {
   const mode = $<HTMLButtonElement>("musicMode");
-  mode.textContent = musicMode === "score" ? "Piano roll" : "Score";
-  mode.title = musicMode === "score" ? "Show piano roll" : "Show score pages";
+  const pages = current?.id.startsWith("guitar-tab-") ? "TAB" : "Score";
+  mode.textContent = musicMode === "score" ? "Piano roll" : pages;
+  mode.title = musicMode === "score" ? "Show piano roll" : `Show ${pages} pages`;
 }
 
 function toggleMetronome() {
@@ -1308,8 +1313,7 @@ function musicChanged() {
   $<HTMLButtonElement>("stopPlay").disabled = p.state === "stopped";
   const mode = $<HTMLButtonElement>("musicMode");
   mode.disabled = false;
-  mode.textContent = musicMode === "score" ? "Piano roll" : "Score";
-  mode.title = musicMode === "score" ? "Show piano roll" : "Show score pages";
+  updateMusicModeButton();
   const metronome = $<HTMLButtonElement>("metronome");
   metronome.disabled = !p.metronomeAvailable;
   metronome.textContent = p.metronomeEnabled ? "Metronome on" : "Metronome off";

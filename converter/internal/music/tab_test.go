@@ -94,9 +94,16 @@ func TestTabPhraseAndViews(t *testing.T) {
 	if len(res.Doc.Views) != 5 || res.Doc.Views[0].ID != "score" {
 		t.Fatalf("views: %+v", res.Doc.Views)
 	}
+	scorePlay := res.Doc.Views[0].Play
+	if scorePlay == nil {
+		t.Fatal("score is missing playback data")
+	}
 	for _, view := range res.Doc.Views[1:] {
 		if !strings.Contains(view.Title, "estimated") || len(view.Pages) == 0 || view.Play == nil || view.Play.Cues == "" {
 			t.Fatalf("incomplete TAB view: %+v", view)
+		}
+		if view.Play.Seq != scorePlay.Seq {
+			t.Fatalf("TAB view %q has different playback data from the score", view.ID)
 		}
 	}
 	if h := res.Doc.Views[1].Pages[0].H; h > 350 {
