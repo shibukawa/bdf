@@ -121,3 +121,16 @@ npm pack --dry-run --workspace @bdfkit/convert-office
 ```
 
 `@bdfkit/convert` と使用するプリセット、`@bdfkit/viewer`、`@bdfkit/render`、`@bdfkit/core` を同じバージョンで公開します。
+
+## GitHub Actions から公開する
+
+`.github/workflows/publish.yml` は `v*` タグを push すると 7 つのパッケージを公開します。タグと全パッケージのバージョンが一致することを確認し、TypeScript と Wasm のビルド・テスト、tarball の確認を行ってから依存順に公開します。
+
+まだ npm に存在しないパッケージの初回公開には npm の Granular access token が必要です。`@bdfkit` のパッケージに対する読み書き権限と、公開時の 2FA を回避する権限を持つトークンを作成し、リポジトリの Actions secret `NPM_TOKEN` に保存します。全パッケージのバージョンをそろえてコミットした後、タグを push します。
+
+```sh
+git tag v0.1.0
+git push origin main v0.1.0
+```
+
+ワークフローは npm の provenance（`--provenance`）を付け、GitHub の OIDC identity token も要求します。初回公開後、npm 側で各パッケージの Trusted Publisher にこの GitHub Actions ワークフローを登録して `NPM_TOKEN` を削除すれば、以後は長期 npm トークンを使わず OIDC で公開できます。

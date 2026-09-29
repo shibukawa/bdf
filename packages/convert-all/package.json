@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "TinyGo Wasm converter preset for every browser converter in BDF",
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/shibukawa/bdf.git", "directory": "packages/convert-all" },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

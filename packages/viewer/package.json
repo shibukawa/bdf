@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "A document surface for scrolling, page layouts, lightboxes, and optional music views",
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/shibukawa/bdf.git", "directory": "packages/viewer" },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

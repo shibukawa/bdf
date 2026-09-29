@@ -117,3 +117,16 @@ npm pack --dry-run --workspace @bdfkit/convert-office
 ```
 
 Publish `@bdfkit/convert`, the chosen preset, `@bdfkit/viewer`, `@bdfkit/render` and `@bdfkit/core` at the same version.
+
+## Publish from GitHub Actions
+
+`.github/workflows/publish.yml` publishes all seven packages when a `v*` tag is pushed. It checks that the tag version matches every package, runs the TypeScript and Wasm builds and tests, inspects the package tarballs, and then publishes in dependency order.
+
+Because the packages are unpublished initially, the first release needs an npm granular access token. Create a token with read and write access to the `@bdfkit` packages (and permission to bypass 2FA for publishing), then save it as the repository Actions secret `NPM_TOKEN`. From a clean checkout, bump all package versions together, commit, tag and push:
+
+```sh
+git tag v0.1.0
+git push origin main v0.1.0
+```
+
+The workflow uses npm provenance (`--provenance`) and requests the GitHub OIDC identity token. After the first packages exist on npm, configure GitHub Actions as a Trusted Publisher for each package and remove `NPM_TOKEN`; subsequent releases can then use OIDC without a long-lived npm token.

@@ -1,0 +1,101 @@
+name: publish npm packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27"
+
+      - uses: acifani/setup-tinygo@v3
+        with:
+          tinygo-version: "0.42.0"
+          install-binaryen: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      # npm trusted publishing and provenance require npm 11.5.1 or newer.
+      - name: update npm
+        run: npm install --global npm@11.5.1
+
+      - name: check tool versions
+        run: |
+          node --version
+          npm --version
+          go version
+          tinygo version
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build:wasm
+      - run: npm run size:npm
+      - run: npm pack --dry-run --workspaces
+
+      - name: verify release tag matches package versions
+        env:
+          RELEASE_REF: ${{ github.ref_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from "node:fs/promises";
+
+          const packages = [
+            "core",
+            "render",
+            "convert",
+            "viewer",
+            "convert-pdf-epub",
+            "convert-office",
+            "convert-all",
+          ];
+          const ref = process.env.RELEASE_REF ?? "";
+          if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(ref)) {
+            throw new Error(`release workflow must run on a semver tag such as v0.1.0 (got ${ref})`);
+          }
+          const version = ref.slice(1);
+          for (const name of packages) {
+            const path = `packages/${name}/package.json`;
+            const pkg = JSON.parse(await readFile(path, "utf8"));
+            if (pkg.version !== version) throw new Error(`${path}: ${pkg.version} does not match ${version}`);
+          }
+          NODE
+
+      - name: publish packages
+        env:
+          # Keep this for the bootstrap release; npm falls back to OIDC after
+          # a Trusted Publisher is configured for each package.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          for package in \
+            @bdfkit/core \
+            @bdfkit/render \
+            @bdfkit/convert \
+            @bdfkit/viewer \
+            @bdfkit/convert-pdf-epub \
+            @bdfkit/convert-office \
+            @bdfkit/convert-all; do
+            npm publish --workspace="$package" --access=public --provenance
+          done

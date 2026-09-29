@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Worker client for running custom BDF converter Wasm runtimes",
   "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/shibukawa/bdf.git", "directory": "packages/convert" },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
