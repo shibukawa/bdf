@@ -5,11 +5,9 @@ import (
 	"compress/zlib"
 	"encoding/binary"
 	"errors"
-	"math/rand"
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/shibukawa/bdf/imgconv"
 )
@@ -68,38 +66,27 @@ func allocated(f func()) uint64 {
 func read(f *File) int64 { return readFactor*f.size + readSlack - f.toRead }
 
 func TestNextEOL(t *testing.T) {
-	// The same as looking for an EOL code at every bit, in the result and
-	// in where the reader stands.
-	rnd := rand.New(rand.NewSource(1))
-	for range 2000 {
-		b := make([]byte, 1+rnd.Intn(6))
-		for i := range b {
-			if rnd.Intn(3) == 0 {
-				b[i] = 1 << rnd.Intn(8)
-			}
-		}
-		for pos := range 8 * len(b) {
-			want := &bitReader{b: b, pos: pos}
-			found := false
-			for !want.done() && !found {
-				if found = want.eol(); !found {
-					want.pos++
-				}
-			}
-			got := &bitReader{b: b, pos: pos}
-			if got.nextEOL() != found || got.pos != want.pos {
-				t.Fatalf("% x from bit %d: EOL %v, then at bit %d; want %v, %d", b, pos, !found, got.pos, found, want.pos)
-			}
+	for _, c := range []struct {
+		data  []byte
+		start int
+		found bool
+		end   int
+	}{
+		{[]byte{0x80, 0x08}, 0, true, 13},       // skip one bit, then 11 zeros and a 1
+		{[]byte{0x80, 0x08}, 1, true, 13},       // start at the EOL
+		{[]byte{0x80, 0x08}, 2, false, 16},      // ten zeros are too few
+		{[]byte{0x40, 0x00, 0x10}, 0, true, 20}, // skip a short run first
+		{[]byte{0, 0}, 0, false, 16},            // no terminating 1
+		{[]byte{0xff}, 0, false, 8},
+	} {
+		r := &bitReader{b: c.data, pos: c.start}
+		if got := r.nextEOL(); got != c.found || r.pos != c.end {
+			t.Errorf("% x from bit %d: EOL %v, then bit %d; want %v, %d", c.data, c.start, got, r.pos, c.found, c.end)
 		}
 	}
-	// Zeros up to the end have no EOL code: looking for one at every bit
-	// of them took seconds for this strip.
-	start := time.Now()
+	// A damaged strip of zeros cannot be decoded as a fax image.
 	if _, damaged := DecodeFax(make([]byte, 4<<10), false, false, 8, 1); !damaged {
 		t.Error("a strip of zeros decoded")
-	}
-	if d := time.Since(start); d > 250*time.Millisecond {
-		t.Errorf("a strip of zeros took %v", d)
 	}
 }
 

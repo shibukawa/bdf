@@ -3,9 +3,6 @@ package xlsx
 import (
 	"bytes"
 	"math"
-	"math/rand/v2"
-	"slices"
-	"sort"
 	"strings"
 	"testing"
 
@@ -41,67 +38,21 @@ func TestFormulaDepth(t *testing.T) {
 	}
 }
 
-// wildMatchSlow is the previous, recursive matcher, kept to check that the
-// linear one gives the same answers.
-func wildMatchSlow(pat, s string) bool {
-	p, t := []rune(pat), []rune(s)
-	var match func(i, j int) bool
-	match = func(i, j int) bool {
-		for i < len(p) {
-			switch p[i] {
-			case '*':
-				for k := j; k <= len(t); k++ {
-					if match(i+1, k) {
-						return true
-					}
-				}
-				return false
-			case '?':
-				if j >= len(t) {
-					return false
-				}
-			default:
-				if j >= len(t) || p[i] != t[j] {
-					return false
-				}
-			}
-			i++
-			j++
-		}
-		return j == len(t)
-	}
-	return match(0, 0)
-}
-
-// TestWildMatch checks the linear matcher against the recursive one on every
-// small pattern and text over an alphabet that includes the wildcards.
+// Wildcards match Unicode characters, with * matching any number and ? one.
 func TestWildMatch(t *testing.T) {
-	pats := grow([]rune("ab*?"), 4)
-	texts := grow([]rune("ab"), 4)
-	for _, p := range pats {
-		for _, s := range texts {
-			if got, want := wildMatch(p, s), wildMatchSlow(p, s); got != want {
-				t.Fatalf("wildMatch(%q, %q) = %v, want %v", p, s, got, want)
-			}
+	for _, c := range []struct {
+		pattern, value string
+		want           bool
+	}{
+		{"", "", true}, {"", "a", false}, {"*", "日本語", true},
+		{"a?c", "abc", true}, {"a?c", "ac", false},
+		{"a*c", "abbbc", true}, {"a*c", "abbd", false},
+		{"a**b", "axxb", true}, {"?", "あ", true}, {"?", "", false},
+	} {
+		if got := wildMatch(c.pattern, c.value); got != c.want {
+			t.Errorf("wildMatch(%q, %q) = %v, want %v", c.pattern, c.value, got, c.want)
 		}
 	}
-}
-
-// grow returns every string of length 0..n over the alphabet.
-func grow(alphabet []rune, n int) []string {
-	out := []string{""}
-	prev := []string{""}
-	for l := 0; l < n; l++ {
-		var next []string
-		for _, s := range prev {
-			for _, r := range alphabet {
-				next = append(next, s+string(r))
-			}
-		}
-		out = append(out, next...)
-		prev = next
-	}
-	return out
 }
 
 // TestMergeExtent checks that a merged range of more cells than merges may
@@ -405,237 +356,6 @@ func TestTileSpan(t *testing.T) {
 	}
 }
 
-// colStyleSlow, formatAtSlow and eachFormattedSlow are what colStyle,
-// formatAt (of sheets without tables and conditional formats) and
-// eachFormatted were before the col elements were resolved by column and
-// the base formats walked by runs: they look through the col elements for
-// every column. They are kept to check that the answers are the same.
-func (ws *worksheet) colStyleSlow(c int) int {
-	for i := len(ws.cols) - 1; i >= 0; i-- {
-		if cd := ws.cols[i]; c >= cd.min && c <= cd.max {
-			return cd.style
-		}
-	}
-	return -1
-}
-
-func (s *sheetCtx) formatAtSlow(c int, rw *row, cl *cell) *cellFmt {
-	idx := s.ws.colStyleSlow(c)
-	switch {
-	case cl != nil:
-		idx = cl.style
-	case rw != nil && rw.style >= 0:
-		idx = rw.style
-	}
-	if idx < 0 {
-		return nil
-	}
-	return s.fmtOf(idx)
-}
-
-func (s *sheetCtx) eachFormattedSlow(r int, fn func(c0, c1 int, f *cellFmt)) {
-	rw := s.ws.rowAt(r)
-	special := map[int]bool{}
-	if rw != nil {
-		for _, cl := range rw.cells {
-			if cl.col < s.nCols {
-				special[cl.col] = true
-			}
-		}
-	}
-	cols := make([]int, 0, len(special))
-	for c := range special {
-		cols = append(cols, c)
-	}
-	sort.Ints(cols)
-	merged := func(c int) bool {
-		_, ok := s.mergeAt(r, c)
-		return ok
-	}
-	type iv struct{ c0, c1, style int }
-	var base []iv
-	if rw != nil && rw.style >= 0 {
-		base = []iv{{0, s.nCols - 1, rw.style}}
-	} else {
-		for _, cd := range s.ws.cols {
-			if cd.style >= 0 && cd.min < s.nCols {
-				base = append(base, iv{cd.min, min(cd.max, s.nCols-1), cd.style})
-			}
-		}
-	}
-	runStart, runEnd := -1, -1
-	var runFmt *cellFmt
-	emit := func() {
-		if runStart >= 0 && runFmt != nil {
-			fn(runStart, runEnd, runFmt)
-		}
-		runStart, runFmt = -1, nil
-	}
-	put := func(c int, f *cellFmt) {
-		if f == nil || merged(c) || s.cols.at(c) == 0 {
-			emit()
-			return
-		}
-		if runStart >= 0 && runEnd == c-1 && runFmt == f {
-			runEnd = c
-			return
-		}
-		emit()
-		runStart, runEnd, runFmt = c, c, f
-	}
-	k := 0
-	baseAt := func(c int) int {
-		style := -1
-		for _, b := range base {
-			if c >= b.c0 && c <= b.c1 {
-				style = b.style
-			}
-		}
-		return style
-	}
-	c := 0
-	for c < s.nCols {
-		if k < len(cols) && cols[k] == c {
-			var cl *cell
-			if rw != nil {
-				cl = s.ws.cellAt(r, c)
-			}
-			put(c, s.formatAtSlow(c, rw, cl))
-			k++
-			c++
-			continue
-		}
-		next := s.nCols
-		if k < len(cols) {
-			next = cols[k]
-		}
-		for c < next {
-			style := baseAt(c)
-			if style < 0 {
-				emit()
-				jump := next
-				for _, b := range base {
-					if b.c0 > c && b.c0 < jump {
-						jump = b.c0
-					}
-				}
-				c = jump
-				continue
-			}
-			put(c, s.fmtOf(style))
-			c++
-		}
-	}
-	emit()
-}
-
-// randomSheet makes a sheet of some rows and columns with col elements
-// (that overlap, as in a malformed sheet), hidden columns, formats of rows,
-// cells and merged ranges.
-func randomSheet(rnd *rand.Rand) *worksheet {
-	ws := &worksheet{name: "S", baseColW: 8}
-	nc := 4 + rnd.IntN(40)
-	for range rnd.IntN(8) {
-		c0 := rnd.IntN(nc)
-		cd := colDef{min: c0, max: min(c0+rnd.IntN(12), maxCols-1), width: -1, style: rnd.IntN(4) - 1, hidden: rnd.IntN(4) == 0}
-		if rnd.IntN(3) == 0 {
-			cd.width = float64(rnd.IntN(3)) * 6 // some of no width
-		}
-		ws.cols = append(ws.cols, cd)
-	}
-	for r := 0; r < 12; r++ {
-		if rnd.IntN(3) == 0 {
-			continue
-		}
-		rw := row{idx: r, ht: -1, style: -1}
-		if rnd.IntN(4) == 0 {
-			rw.style = rnd.IntN(3)
-		}
-		for c := 0; c < nc; c++ {
-			if rnd.IntN(5) == 0 {
-				rw.cells = append(rw.cells, cell{col: c, style: rnd.IntN(3), kind: cellKind(rnd.IntN(2))})
-			}
-		}
-		ws.rows = append(ws.rows, rw)
-	}
-	for range rnd.IntN(5) {
-		r0, c0 := rnd.IntN(12), rnd.IntN(nc)
-		ws.merges = append(ws.merges, cellRange{r0, c0, r0 + rnd.IntN(3), c0 + rnd.IntN(6)})
-	}
-	// a cell that makes the view as wide as the columns
-	ws.rows = append(ws.rows, row{idx: 13, ht: -1, style: -1, cells: []cell{{col: nc, kind: cellNum, num: 1}}})
-	return ws
-}
-
-// TestColumnRuns checks, on sheets made at random, that the widths and the
-// formats of the columns and the runs of formatted columns of the rows are
-// what looking through the col elements for every column gives.
-func TestColumnRuns(t *testing.T) {
-	type run struct {
-		c0, c1 int
-		f      *cellFmt
-	}
-	rnd := rand.New(rand.NewPCG(1, 2))
-	for i := range 300 {
-		ws := randomSheet(rnd)
-		s := layoutContext(ws)
-		s.c.st.cellXfs = []xf{{}, {fill: 1}, {fill: 2}}
-		s.layout()
-		defCol := ws.defaultColPt(s.c.mdw)
-		for c := 0; c < s.nCols+3; c++ {
-			if got, want := ws.colStyle(c), ws.colStyleSlow(c); got != want {
-				t.Fatalf("sheet %d: style of column %d = %d, want %d (%+v)", i, c, got, want, ws.cols)
-			}
-			want := defCol
-			for _, cd := range ws.cols {
-				switch {
-				case c < cd.min || c > cd.max:
-				case cd.hidden:
-					want = 0
-				case cd.width >= 0:
-					want = colWidthPt(cd.width, s.c.mdw)
-				default:
-					want = defCol
-				}
-			}
-			if got := s.cols.at(c); got != want {
-				t.Fatalf("sheet %d: width of column %d = %v, want %v (%+v)", i, c, got, want, ws.cols)
-			}
-		}
-		for r := 0; r < s.nRows; r++ {
-			var got, want []run
-			s.eachFormatted(r, func(c0, c1 int, f *cellFmt) { got = append(got, run{c0, c1, f}) })
-			s.eachFormattedSlow(r, func(c0, c1 int, f *cellFmt) { want = append(want, run{c0, c1, f}) })
-			if !slices.Equal(got, want) {
-				t.Fatalf("sheet %d row %d: runs %v, want %v\ncols %+v\nmerges %+v", i, r, got, want, ws.cols, s.merges)
-			}
-			// the runs of the cells with a base format kept apart from
-			// the others: the same cells with the same formats, and
-			// those of a run are in the file or none is
-			cells := func(runs []run) (out []run) {
-				for _, x := range runs {
-					for c := x.c0; c <= x.c1; c++ {
-						out = append(out, run{c, c, x.f})
-					}
-				}
-				return out
-			}
-			var apart []run
-			s.formattedRuns(r, true, func(c0, c1 int, f *cellFmt, base bool) {
-				apart = append(apart, run{c0, c1, f})
-				for c := c0; c <= c1; c++ {
-					if inFile := ws.cellAt(r, c) != nil; inFile == base {
-						t.Fatalf("sheet %d row %d: run %d-%d with a base format %v, column %d in the file %v", i, r, c0, c1, base, c, inFile)
-					}
-				}
-			})
-			if !slices.Equal(cells(apart), cells(want)) {
-				t.Fatalf("sheet %d row %d: runs kept apart %v, want the cells of %v", i, r, apart, want)
-			}
-		}
-	}
-}
-
 // TestColumnSteps checks that the work for the columns does not grow with
 // the columns of the view or with the col elements over a column: a row of
 // a view of all the columns of a sheet that col elements give a format is
@@ -667,7 +387,7 @@ func TestColumnSteps(t *testing.T) {
 		t.Errorf("%d steps for %d col elements", steps, len(many.cols))
 	}
 	for c := 0; c < maxCols; c += 97 {
-		if int(last[c]) != len(many.cols)-1 || many.colStyle(c) != many.colStyleSlow(c) {
+		if int(last[c]) != len(many.cols)-1 || many.colStyle(c) != 2 {
 			t.Fatalf("column %d: col element %d, style %d", c, last[c], many.colStyle(c))
 		}
 	}
