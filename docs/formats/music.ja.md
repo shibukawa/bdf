@@ -2,6 +2,12 @@
 
 MML・MIDI・MusicXML は、いずれも共通の組版エンジン（`converter/internal/music`）が SMuFL のフォント Bravura で A4 のページに五線譜として組む。各 View はその音楽を Standard MIDI File として持つので、デモビューアで演奏できる。演奏の仕組みは[変換と出力 → 楽譜と演奏](../architecture/conversion.ja.md#楽譜と演奏)を参照してほしい。共通なのはそこまでで、MML と MIDI は演奏データから記譜そのものを組み立て直す必要があるのに対し、MusicXML はすでに書かれた記譜をそのまま読む。
 
+## ギターTABの運指候補
+
+変換後のビューアでは、五線譜の View に加えて、最初の4つの有音高パートごとにギターTABの View を選べる。方針は**低いポジション優先**（Low positions）、**ポジション移動を減らす**（Less shifting）、**開放弦を積極的に使う**（Open strings）、**初心者向け**（Beginner friendly）の4種類。どれも「実際にその運指で演奏した」という記録ではなく、標準チューニング E A D G B E を前提にした推定候補である。五線譜は最初の View のままで、TAB でも同じ音楽を再生できる。
+
+各音高の弦・フレット候補を列挙し、フレーズ全体の手の移動量も考慮して選ぶ。同時または重なって鳴る音を同じ弦に置かず、和音の押弦は4〜5フレットの範囲に収める。MusicXML の `<notations><technical>` にある `<string>`・`<fret>` は優先し、和音内で衝突するときだけ別の候補を検討する。ギターの音域外の音、演奏不可能な和音、5番目以降の有音高パート、2万音を超えるパートはTABから省き、変換時に警告する。TABが不要なら `-param tab=false` を指定できる。
+
 ## 試す
 
 [ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試せる。[MML のチップチューン](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml)、[歌詞付きの MIDI カラオケ](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar)、[MusicXML のピアノ譜](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml)。ビューアでは五線譜とピアノロールを切り替え、再生速度を%で調整できる（曲中のテンポ比は維持され、冒頭の換算 BPM を表示）。再生中にはメトロノームも有効にできる。
@@ -19,6 +25,7 @@ MML と MIDI はどちらも演奏されたとおりのデータ（記譜済み�
 | `time` | 拍子記号。例: `3/4`、`6/8` | `4/4` |
 | `key` | 調号。例: `G`、`Bb`、`F#m`、`Em` | 音から推定 |
 | `program` | 音色の指定が無いトラックの General MIDI プログラム番号（`0`〜`127`） | 方言ごとの既定 |
+| `tab` | `true` または `false` | `true` |
 
 ## MIDI（converter/midi）
 
@@ -28,11 +35,12 @@ MML と MIDI はどちらも演奏されたとおりのデータ（記譜済み�
 |---|---|---|
 | `time` | 拍子記号（`3/4`、`6/8`、`C` は 4/4、`cut`） | ファイルのもの |
 | `key` | 調号（`G`、`Bb`、`F#m`、または 2 つのフラットを表す `-2`） | ファイルのもの、無ければ音から推定 |
+| `tab` | `true` または `false` | `true` |
 
 ## MusicXML（converter/musicxml）
 
 MusicXML は MML や MIDI と違い、演奏データから記譜し直すのではなく書かれたとおりに読む。複数の段のパート、声部、和音、連桁、連符、装飾音、臨時記号、タイとスラー、アーティキュレーションと装飾記号、強弱記号とヘアピン、節ごとの歌詞、音部記号・調号・拍子の変更、繰り返しと括弧、速度記号とリハーサルマーク、段の区切りは、すべてファイル自身の記述からそのまま読む。partwise・timewise のどちらの文書形式も、圧縮した `.mxl` も読む。演奏は繰り返しと、D.C.・D.S.・Fine・To Coda のような跳躍を展開して行う。
 
-MusicXML に `-param` オプションは無い。楽譜は書かれたとおりに変換される。
+MusicXML では `-param tab=false` で推定TABの View を省ける。五線譜は引き続き元データの記譜どおりに変換される。
 
 共通の組版エンジン（小節の間隔、符幹と連桁、タイとスラー、歌詞の折り返しなど）の内部は [design.md §3.27](../design.md#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic) を参照。

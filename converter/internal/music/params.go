@@ -17,6 +17,14 @@ func ConverterOptions(source string, o *conv.Options, warn func(string)) Options
 		NoSubset: o.NoSubset, NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: warn}
 }
 
+// TabEnabled reads the optional TAB switch. Scores include TAB by default.
+func TabEnabled(o *conv.Options) (bool, error) {
+	if o.Param("tab") == "" {
+		return true, nil
+	}
+	return o.BoolParam("tab")
+}
+
 // NotateParams reads the time and key parameters of a conversion (an
 // input's own time and key signatures are replaced by them).
 func NotateParams(o *conv.Options) (NotateOptions, error) {

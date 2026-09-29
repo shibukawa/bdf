@@ -1,6 +1,23 @@
 package music
 
-import "testing"
+import (
+	"testing"
+
+	conv "github.com/shibukawa/bdf/converter"
+)
+
+func TestTabEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  bool
+		valid bool
+	}{{"", true, true}, {"true", true, true}, {"false", false, true}, {"FALSE", false, true}, {"perhaps", false, false}} {
+		got, err := TabEnabled(&conv.Options{Params: map[string]string{"tab": tc.value}})
+		if (err == nil) != tc.valid || tc.valid && got != tc.want {
+			t.Errorf("tab=%q: %v, %v", tc.value, got, err)
+		}
+	}
+}
 
 func TestParams(t *testing.T) {
 	for s, want := range map[string]TimeSig{

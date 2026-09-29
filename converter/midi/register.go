@@ -20,9 +20,14 @@ func init() {
 		Params: []conv.Param{
 			{Name: "time", Usage: "time signature instead of the file's (3/4, 6/8, C for common time, cut)"},
 			{Name: "key", Usage: "key signature instead of the file's or the estimated one (G, Bb, F#m, or -2 for two flats)"},
+			{Name: "tab", Usage: "add guitar TAB views (true by default; false to omit)"},
 		},
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool { return detect(head) },
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
+			tab, err := music.TabEnabled(o)
+			if err != nil {
+				return nil, err
+			}
 			no, err := music.NotateParams(o)
 			if err != nil {
 				return nil, err
@@ -48,7 +53,9 @@ func init() {
 			}
 			score := music.Notate(parsed.Perf, no)
 			score.SMF = parsed.SMF
-			res, err := music.Build(score, music.ConverterOptions("midi", o, warn))
+			buildOptions := music.ConverterOptions("midi", o, warn)
+			buildOptions.GuitarTAB = tab
+			res, err := music.Build(score, buildOptions)
 			if err != nil {
 				return nil, err
 			}

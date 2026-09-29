@@ -22,9 +22,14 @@ func init() {
 			{Name: "time", Usage: "the time signature of the score, e.g. 3/4 or 6/8 (default 4/4)"},
 			{Name: "key", Usage: "the key signature, e.g. G, Bb, F#m or Em (default: estimated from the notes)"},
 			{Name: "program", Usage: "the General MIDI program (0–127) of the tracks that set no tone (default: the dialect's)"},
+			{Name: "tab", Usage: "add guitar TAB views (true by default; false to omit)"},
 		},
 		Detect: Detect,
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
+			tab, err := music.TabEnabled(o)
+			if err != nil {
+				return nil, err
+			}
 			opts, no, err := options(o)
 			if err != nil {
 				return nil, err
@@ -40,7 +45,9 @@ func init() {
 			if err != nil {
 				return nil, err
 			}
-			res, err := music.Build(music.Notate(perf, no), music.ConverterOptions("mml", o, o.Warn))
+			buildOptions := music.ConverterOptions("mml", o, o.Warn)
+			buildOptions.GuitarTAB = tab
+			res, err := music.Build(music.Notate(perf, no), buildOptions)
 			if err != nil {
 				return nil, err
 			}

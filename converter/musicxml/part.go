@@ -678,6 +678,23 @@ func (r *reader) note(p *partState, st *mstate, n *node) {
 	}
 
 	note := &music.Note{Accidental: music.AccNone}
+	// MusicXML's technical fingering is authored data. Keep it on the note
+	// so TAB generation can use it before considering pitch-based positions.
+	for _, nt := range n.kids {
+		if nt.name != "notations" {
+			continue
+		}
+		for _, tech := range nt.kids {
+			if tech.name != "technical" {
+				continue
+			}
+			stringNo, stringOK := atoi(tech.textOf("string"))
+			fret, fretOK := atoi(tech.textOf("fret"))
+			if stringOK && fretOK && stringNo >= 1 && stringNo <= 6 && fret >= 0 && fret <= 24 {
+				note.Tab = &music.TabPosition{String: stringNo, Fret: fret}
+			}
+		}
+	}
 	key := 0
 	if pitchN != nil {
 		step, ok := steps[strings.ToUpper(pitchN.textOf("step"))]
@@ -707,6 +724,9 @@ func (r *reader) note(p *partState, st *mstate, n *node) {
 		r.hasAccidentals = true
 		note.Accidental = accidental(acc.trim(), note.Pitch.Alter)
 		note.Cautionary = acc.yes("cautionary") || acc.yes("parentheses") || acc.yes("editorial") || acc.yes("bracket")
+	}
+	if pitchN != nil {
+		note.SoundingMIDI = &key
 	}
 	switch n.textOf("notehead") {
 	case "x", "cross":

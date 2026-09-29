@@ -14,8 +14,13 @@ func init() {
 		// .xml is too common to name MusicXML; Detect recognizes such files
 		// by their content
 		Extensions: []string{".musicxml", ".mxl"},
+		Params:     []conv.Param{{Name: "tab", Usage: "add guitar TAB views (true by default; false to omit)"}},
 		Detect:     Detect,
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
+			tab, err := music.TabEnabled(o)
+			if err != nil {
+				return nil, err
+			}
 			score, warnings, err := Parse(r, size, nil)
 			if err != nil {
 				return nil, err
@@ -27,7 +32,8 @@ func init() {
 				warnings = nil
 			}
 			res, err := music.Build(score, music.Options{Source: "musicxml", Title: o.Title, Pages: o.Pages,
-				FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts,
+				GuitarTAB: tab,
+				FontFS:    o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts,
 				NoSubset: o.NoSubset, NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex,
 				Warn: o.Warn})
 			if err != nil {
