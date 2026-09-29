@@ -47,13 +47,24 @@ func OpenSingle(r io.ReaderAt, size int64) (*Reader, error) {
 	if !bytes.Equal(rd.bytes(4), Magic[:]) {
 		return nil, &FormatError{Msg: "bad magic"}
 	}
-	if v := rd.u16(); v > FormatVersion {
+	if v := rd.u16(); v != FormatVersion {
 		return nil, &FormatError{Msg: fmt.Sprintf("unsupported format version %d", v)}
 	}
 	flags := rd.u16()
+	if flags&^uint16(FlagEncrypted) != 0 {
+		return nil, &FormatError{Msg: fmt.Sprintf("unsupported header flags %#x", flags)}
+	}
 	moff := int64(rd.u64())
 	mlen := int64(rd.u64())
 	menc := rd.u8()
+	if menc > 1 {
+		return nil, &FormatError{Msg: fmt.Sprintf("unknown manifest encoding %d", menc)}
+	}
+	for _, b := range hdr[25:] {
+		if b != 0 {
+			return nil, &FormatError{Msg: "non-zero reserved header bytes"}
+		}
+	}
 	if !inRange(moff, mlen, size) {
 		return nil, &FormatError{Msg: "manifest out of range"}
 	}

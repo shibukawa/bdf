@@ -64,8 +64,9 @@ export async function buildWorkers(lib, { convert = true } = {}) {
 
 /**
  * The byte ranges of a font file that the converters' font scan reads (the
- * collection header, the table directories and the name, OS/2 and post
- * tables), merged, as [offset, length] pairs.
+ * collection header, the table directories, the name, OS/2 and post tables,
+ * and the cmap tables used to check character coverage), merged, as
+ * [offset, length] pairs.
  */
 export function scanRanges(b) {
   const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
@@ -82,7 +83,11 @@ export function scanRanges(b) {
     ranges.push([off, 12 + 16 * n]);
     for (let i = 0; i < n; i++) {
       const rec = off + 12 + 16 * i;
-      if (["name", "OS/2", "post"].includes(tag(rec))) ranges.push([dv.getUint32(rec + 8), dv.getUint32(rec + 12)]);
+      const tableName = tag(rec);
+      const tableSize = dv.getUint32(rec + 12);
+      if (["name", "OS/2", "post"].includes(tableName) || (tableName === "cmap" && tableSize <= 16 * 1024 * 1024)) {
+        ranges.push([dv.getUint32(rec + 8), tableSize]);
+      }
     }
   }
   ranges.sort((a, b) => a[0] - b[0]);
@@ -179,5 +184,7 @@ export async function copyFonts(dst) {
   }
   await writeFile(join(dst, "index.json"), JSON.stringify(index));
   const total = index.reduce((a, e) => a + e.size, 0);
-  console.log(`fonts: ${index.length} files, ${(total / 1e6).toFixed(1)} MB (fetched as documents use them)`);
+  const scan = index.reduce((a, e) => a + e.scan.reduce((n, [_, size]) => n + size, 0), 0);
+  const size = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${(n / 1024).toFixed(1)} KiB`;
+  console.log(`fonts: ${index.length} files, ${size(total)} total; ${size(scan)} prefetched, full files fetched as documents use them`);
 }

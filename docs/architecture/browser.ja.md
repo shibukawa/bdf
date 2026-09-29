@@ -36,7 +36,7 @@ PDF はページ単位で変換します。`open()` はまずページの大き�
 
 ## ブラウザでのフォント
 
-Office 系・CAD・HTML・Markdown・EPUB の変換器は、ページを変換する前にテキストを計測してレイアウトする必要があります。ブラウザで動くときは、フォントディレクトリの `index.json`（名前、サイズ、フォントの走査が読むバイト範囲 — テーブルディレクトリ、`name`・`OS/2`・`post`）を読みます。これは [`examples/common/build.mjs`](https://github.com/shibukawa/bdf/blob/main/examples/common/build.mjs) が作ります。その範囲を先読みしておき、フォントファイル全体は文書が実際に使ったときだけ取得します。
+Office 系・CAD・HTML・Markdown・EPUB の変換器は、ページを変換する前にテキストを計測してレイアウトする必要があります。ブラウザで動くときは、フォントディレクトリの `index.json`（名前、サイズ、テーブルディレクトリ・`name`・`OS/2`・`post`・`cmap` のバイト範囲）を読みます。これは [`examples/common/build.mjs`](https://github.com/shibukawa/bdf/blob/main/examples/common/build.mjs) が作ります。その範囲を先読みし、フォールバック先を探すときは `cmap` で文字の有無を調べます。必要な文字を持つフォントだけ、ファイル全体を取得します。
 
 ## サイトのビルド
 

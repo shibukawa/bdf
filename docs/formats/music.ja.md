@@ -4,7 +4,7 @@ MML・MIDI・MusicXML は、いずれも共通の組版エンジン（`converter
 
 ## 試す
 
-[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試せる。[MML のチップチューン](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml)、[歌詞付きの MIDI カラオケ](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar)、[MusicXML のピアノ譜](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml)。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試せる。[MML のチップチューン](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml)、[歌詞付きの MIDI カラオケ](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar)、[MusicXML のピアノ譜](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml)。ビューアでは五線譜とピアノロールを切り替え、再生速度を%で調整できる（曲中のテンポ比は維持され、冒頭の換算 BPM を表示）。再生中にはメトロノームも有効にできる。
 
 ## MML（converter/mml）
 

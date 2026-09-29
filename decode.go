@@ -32,10 +32,12 @@ func DecodeObject(data []byte) (*ObjectPart, error) {
 		return nil, &FormatError{Msg: "not an object part"}
 	}
 	o := &ObjectPart{Opset: r.u16()}
-	if o.Opset > OpsetVersion {
+	if o.Opset != OpsetVersion {
 		return nil, &FormatError{Msg: fmt.Sprintf("unsupported opset %d", o.Opset)}
 	}
-	r.u16()
+	if flags := r.u16(); flags != 0 {
+		return nil, &FormatError{Msg: fmt.Sprintf("unsupported object flags %#x", flags)}
+	}
 	o.BBox = Rect{r.f32(), r.f32(), r.f32(), r.f32()}
 	count := func() int { return r.count(1, "bad count") }
 	for i, n := 0, count(); i < n && r.err == nil; i++ {

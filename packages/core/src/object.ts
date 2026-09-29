@@ -55,8 +55,9 @@ export function decodeObject(bytes: Uint8Array): ObjectPart {
     throw new BdfFormatError("not an object part");
   }
   const opset = r.u16();
-  if (opset > OPSET_VERSION) throw new BdfFormatError(`unsupported opset ${opset}`);
-  r.u16();
+  if (opset !== OPSET_VERSION) throw new BdfFormatError(`unsupported opset ${opset}`);
+  const flags = r.u16();
+  if (flags !== 0) throw new BdfFormatError(`unsupported object flags ${flags}`);
   const bbox = { x: r.f32(), y: r.f32(), w: r.f32(), h: r.f32() };
   const strings: string[] = [];
   for (let i = 0, n = r.varuint(); i < n; i++) strings.push(r.str());

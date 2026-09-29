@@ -251,6 +251,35 @@ export class Synth {
     this.voices.push({ channel, start: when, stop, sources: [src], env, detune: [detune] });
   }
 
+  /** A short metronome click, independent of the document's instrument channels. */
+  metronome(accent: boolean, when: number) {
+    this.prune(when);
+    const src = this.ctx.createOscillator();
+    const env = this.ctx.createGain();
+    const stop = when + 0.055;
+    src.type = "sine";
+    src.frequency.value = accent ? 1760 : 1320;
+    env.gain.setValueAtTime(0.0001, when);
+    env.gain.exponentialRampToValueAtTime(accent ? 0.18 : 0.12, when + 0.001);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
+    src.connect(env).connect(this.master);
+    src.start(when);
+    src.stop(stop);
+    src.onended = () => env.disconnect();
+    this.voices.push({ channel: -1, start: when, stop, sources: [src], env, detune: [] });
+  }
+
+  /** Cancel clicks already queued when the metronome is switched off. */
+  clearMetronome() {
+    const now = this.ctx.currentTime;
+    const keep: Voice[] = [];
+    for (const v of this.voices) {
+      if (v.channel === -1) this.release(v, now, 0.003);
+      else keep.push(v);
+    }
+    this.voices = keep;
+  }
+
   /** Silence every voice at once (with a short fade), as playing stops or jumps. */
   silence() {
     const now = this.ctx.currentTime;

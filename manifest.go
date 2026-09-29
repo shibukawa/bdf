@@ -191,9 +191,15 @@ func (v *View) TileSize() float32 {
 	return DefaultTile
 }
 
-// check reports what is wrong with the views of a manifest that was read:
-// views and pages that are null, and numbers out of range.
+// check reports what is wrong with a manifest that was read: unsupported
+// versions, null views and pages, and numbers out of range.
 func (m *Manifest) check() error {
+	if m.BDF != FormatVersion {
+		return &FormatError{Msg: fmt.Sprintf("unsupported manifest format version %d", m.BDF)}
+	}
+	if m.Opset < 0 || m.Opset > OpsetVersion {
+		return &FormatError{Msg: fmt.Sprintf("unsupported manifest opset %d", m.Opset)}
+	}
 	size := func(v float32) bool { return v >= 0 && v <= MaxPageSize } // false for NaN
 	for _, v := range m.Views {
 		if v == nil {

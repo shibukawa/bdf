@@ -40,6 +40,12 @@ type Face struct {
 	fsys  fs.FS      // the file system Path is in; nil for the local one
 	file  *fileBytes // the file, which the faces of a collection share
 
+	cmapOffset  int64
+	cmapLength  int64
+	cmapData    []byte // set when fsys does not provide ReaderAt
+	coverage    *sfnt.CmapCoverage
+	coverageOne sync.Once
+
 	once   sync.Once
 	loaded *Loaded
 	err    error
@@ -176,6 +182,14 @@ func scanFS(fsys fs.FS) []*Face {
 				continue
 			}
 			r = bytes.NewReader(data)
+			fileFaces := scanFaces(r, p)
+			for _, face := range fileFaces {
+				face.cmapData = cmapBytes(data, face.cmapOffset, face.cmapLength)
+				face.fsys = fsys
+				faces = append(faces, face)
+			}
+			f.Close()
+			continue
 		}
 		for _, face := range scanFaces(r, p) {
 			face.fsys = fsys
@@ -243,25 +257,34 @@ func scanFace(r io.ReaderAt, off int64) *Face {
 	if _, err := r.ReadAt(dir, off+12); err != nil {
 		return nil
 	}
-	table := func(name string) []byte {
+	tableRange := func(name string) (int64, int64) {
 		for i := 0; i < n; i++ {
 			rec := dir[i*16:]
 			if string(rec[:4]) != name {
 				continue
 			}
 			toff, tlen := binary.BigEndian.Uint32(rec[8:]), binary.BigEndian.Uint32(rec[12:])
-			if tlen > 1<<20 {
-				return nil
-			}
-			b := make([]byte, tlen)
-			if _, err := r.ReadAt(b, int64(toff)); err != nil {
-				return nil
-			}
-			return b
+			return int64(toff), int64(tlen)
 		}
-		return nil
+		return 0, 0
 	}
-	face := &Face{Weight: 400, CFF: tag == "OTTO"}
+	table := func(name string) []byte {
+		toff, tlen := tableRange(name)
+		limit := int64(1 << 20)
+		if name == "cmap" {
+			limit = maxCoverageTable
+		}
+		if tlen <= 0 || tlen > limit {
+			return nil
+		}
+		b := make([]byte, tlen)
+		if _, err := r.ReadAt(b, toff); err != nil {
+			return nil
+		}
+		return b
+	}
+	cmapOffset, cmapLength := tableRange("cmap")
+	face := &Face{Weight: 400, CFF: tag == "OTTO", cmapOffset: cmapOffset, cmapLength: cmapLength}
 	for i := 0; i < n; i++ {
 		if string(dir[i*16:i*16+4]) == "MATH" {
 			face.Math = true
@@ -359,6 +382,15 @@ func pickEnglish(recs []nameRec, dflt string) string {
 		return recs[0].val
 	}
 	return dflt
+}
+
+const maxCoverageTable = 16 << 20
+
+func cmapBytes(data []byte, off, length int64) []byte {
+	if off < 0 || length <= 0 || length > maxCoverageTable || off+length > int64(len(data)) {
+		return nil
+	}
+	return append([]byte(nil), data[off:off+length]...)
 }
 
 // Normalize folds a family name for comparison: NFKC (full-width letters
@@ -473,6 +505,80 @@ func (f *Face) Load() (*Loaded, error) {
 		f.loaded = l
 	})
 	return f.loaded, f.err
+}
+
+// HasRune checks the face's Unicode cmap without loading its glyph data.
+// This lets fallback search skip fonts that cannot draw a character.
+func (f *Face) HasRune(r rune) bool {
+	if f == nil || r < 0 {
+		return false
+	}
+	if f.cmapData == nil && f.cmapLength > maxCoverageTable {
+		loaded, err := f.Load()
+		return err == nil && loaded.Has(r)
+	}
+	f.coverageOne.Do(func() {
+		data := f.cmapData
+		if data == nil {
+			if f.cmapLength <= 0 {
+				return
+			}
+			var err error
+			data, err = f.readCmap()
+			if err != nil {
+				return
+			}
+		}
+		f.coverage = sfnt.ParseCmapCoverage(data)
+	})
+	if f.coverage == nil && f.cmapLength > 0 {
+		loaded, err := f.Load()
+		return err == nil && loaded.Has(r)
+	}
+	return f.coverage != nil && f.coverage.Has(r)
+}
+
+func (f *Face) readCmap() ([]byte, error) {
+	data := make([]byte, int(f.cmapLength))
+	if f.fsys == nil {
+		file, err := os.Open(f.Path)
+		if err != nil {
+			return nil, err
+		}
+		defer file.Close()
+		n, err := file.ReadAt(data, f.cmapOffset)
+		if n != len(data) {
+			if err != nil {
+				return nil, err
+			}
+			return nil, io.ErrUnexpectedEOF
+		}
+		return data, nil
+	}
+	file, err := f.fsys.Open(f.Path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	if reader, ok := file.(io.ReaderAt); ok {
+		n, err := reader.ReadAt(data, f.cmapOffset)
+		if n != len(data) {
+			if err != nil {
+				return nil, err
+			}
+			return nil, io.ErrUnexpectedEOF
+		}
+		return data, nil
+	}
+	all, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	data = cmapBytes(all, f.cmapOffset, f.cmapLength)
+	if data == nil {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return data, nil
 }
 
 // read returns the bytes of the face's file, read when the first of its
