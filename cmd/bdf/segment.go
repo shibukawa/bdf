@@ -16,7 +16,7 @@ import (
 
 // segmentCmd writes a segment of a document (docs/spec.md §3.6), as package
 // segment answers a reader's request: for looking at what a server sends,
-// and for the test files of @bdf/core.
+// and for the test files of @bdfkit/core.
 func segmentCmd(args []string) {
 	fs := flag.NewFlagSet("segment", flag.ExitOnError)
 	view := fs.String("view", "", "the view (default: the first one)")

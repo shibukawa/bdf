@@ -11,7 +11,7 @@
 // not jump (see trackSelections). A selection from one cell of a table to
 // another selects the rectangle of cells between them, which copy puts on
 // the clipboard as tab-separated values and an HTML table (see selectCells).
-import { Sep, type TextRun, type TextContent, type TextNode, type TextLink, type Rect } from "@bdf/core";
+import { Sep, type TextRun, type TextContent, type TextNode, type TextLink, type Rect } from "@bdfkit/core";
 import { fontString } from "./resources.js";
 import { hasExtent } from "./search.js";
 import { tableCells, cellClipboard, type CellRange, type CellClipboard } from "./cells.js";

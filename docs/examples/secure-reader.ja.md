@@ -23,7 +23,7 @@ open http://127.0.0.1:8084/    # alice / alice-pass は 2 冊とも、bob / bob-
 
 ## ブラウザがすること
 
-`web/main.ts` は本を [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) で `{ kind: "segments", url: "/segments/NAME" }` として開きます。あとはレンダラの Worker（`@bdf/core` の `SegmentLoader`）がします。要求ごとに秘密鍵を取り出せない P-256 の鍵ペアを作り、要るページと持っている区間を添えて公開鍵を送り、答えを開いたら鍵を手放します。見えてきたページはまずその区間を取りに行き、3 ページ先の区間は先に取っておきます。サーバーがページを断ったとき（立ち読みの終わり、読むのが速すぎる）は、ページにそう出します。
+`web/main.ts` は本を [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) で `{ kind: "segments", url: "/segments/NAME" }` として開きます。あとはレンダラの Worker（`@bdfkit/core` の `SegmentLoader`）がします。要求ごとに秘密鍵を取り出せない P-256 の鍵ペアを作り、要るページと持っている区間を添えて公開鍵を送り、答えを開いたら鍵を手放します。見えてきたページはまずその区間を取りに行き、3 ページ先の区間は先に取っておきます。サーバーがページを断ったとき（立ち読みの終わり、読むのが速すぎる）は、ページにそう出します。
 
 ## この形にした理由
 

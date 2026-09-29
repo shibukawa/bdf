@@ -1,4 +1,4 @@
-import { type BdfDocument, type ObjectPart, type View, type Rect, type Hash, type TextRun, TextSearch, extractText, tileSize, type SearchHit, type SearchOptions } from "@bdf/core";
+import { type BdfDocument, type ObjectPart, type View, type Rect, type Hash, type TextRun, TextSearch, extractText, tileSize, type SearchHit, type SearchOptions } from "@bdfkit/core";
 import { fontString } from "./resources.js";
 
 /** A highlight rectangle for part of a hit, in view coordinates. */

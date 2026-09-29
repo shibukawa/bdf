@@ -1,6 +1,6 @@
 // Renders every page of a BDF document (given by ?src=) into canvases; used by test/render.mjs.
-import { BdfDocument, fetchSingle } from "@bdf/core";
-import { PageRenderer } from "@bdf/render";
+import { BdfDocument, fetchSingle } from "@bdfkit/core";
+import { PageRenderer } from "@bdfkit/render";
 
 async function main() {
   const params = new URLSearchParams(location.search);

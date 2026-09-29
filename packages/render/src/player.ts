@@ -3,7 +3,7 @@
 // events of the next moment on the audio clock (Synth), and the cues tell
 // where on the pages the music is. The timing and cue logic is in plain
 // functions, which run without Web Audio.
-import { parseSmf, secondsToTick, tickToSeconds, type Cues, type MidiEvent, type MidiSequence } from "@bdf/core";
+import { parseSmf, secondsToTick, tickToSeconds, type Cues, type MidiEvent, type MidiSequence } from "@bdfkit/core";
 import { Synth, applyEvent, initialChannel, type ChannelState } from "./synth.js";
 
 /** Where the music is on the pages: at x on a system, which spans y to y + h of a page (page units). */

@@ -20,12 +20,14 @@ npm ci && npm run demo                             # open it in a browser
 
 Go 1.27+ and Node.js are needed to build from source; see [Getting started](https://shibukawa.github.io/bdf/docs/getting-started.html) for the rest, including converting from Go code directly.
 
+For an npm integration, including server-converted BDF and browser conversion presets, see [npm packages](docs/npm.md).
+
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `*.go`, `converter/`, `raster/`, `internal/` | The Go encoder/decoder and one converter package per input format |
-| `packages/core`, `packages/render` | `@bdf/core` and `@bdf/render`: the TypeScript decoder and Canvas renderer |
+| `packages/` | The decoder, renderer, viewer surface and TinyGo-backed browser converter npm packages |
 | `examples/`, `site/` | The demo viewer, four sample server architectures, and the site published on GitHub Pages |
 | `docs/` | This documentation |
 

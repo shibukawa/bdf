@@ -7,7 +7,7 @@
 //
 // The request is a POST of a JSON Request; the answer is the single-file
 // form of the segment of Handler.Pages pages that holds the page asked for,
-// sealed for the request's key (bdf.NewECDHLock). @bdf/core's
+// sealed for the request's key (bdf.NewECDHLock). @bdfkit/core's
 // SegmentLoader is the reader's side.
 package segment
 

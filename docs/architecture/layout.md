@@ -53,8 +53,8 @@
 
 | Path | Contents |
 |---|---|
-| `packages/core` | `@bdf/core` — decoder, container loading, text extraction (no dependencies) |
-| `packages/render` | `@bdf/render` — Canvas renderer, page/continuous/sheet rendering (a scroll view renders as continuous), the Worker and its client (SVG images are drawn on the main thread, which workers can't decode) |
+| `packages/core` | `@bdfkit/core` — decoder, container loading, text extraction (no dependencies) |
+| `packages/render` | `@bdfkit/render` — Canvas renderer, page/continuous/sheet rendering (a scroll view renders as continuous), the Worker and its client (SVG images are drawn on the main thread, which workers can't decode) |
 | `cmd/bdfwasm` | The converters built as WebAssembly for in-browser conversion (modules for PDF, the Office formats, HTML/Markdown/EPUB, images, and a converter-free module for thumbnails and search text) |
 
 ## The demo site and its pages

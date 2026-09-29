@@ -1,5 +1,5 @@
 // A small viewer to start from: it shows a bdf document in an element of the
-// page, its pages as wide as the element. The worker of @bdf/render decodes
+// page, its pages as wide as the element. The worker of @bdfkit/render decodes
 // and draws; this file places the bitmaps, the selectable text over them,
 // the tabs of the views and the search hits.
 //
@@ -12,11 +12,11 @@
 // with their headers and frozen panes). What it leaves to the demo viewer
 // (examples/viewer): pages turned like a book's, the music of a score,
 // selecting the cells of a sheet, and pages shown while they are converted.
-import { dcValues, type Manifest, type View } from "@bdf/core";
+import { dcValues, type Manifest, type View } from "@bdfkit/core";
 import {
   BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR,
   type HitRect, type OpenSource,
-} from "@bdf/render";
+} from "@bdfkit/render";
 
 export interface MiniViewerOptions {
   /** URL of the rendering worker: packages/render/src/worker.ts, bundled as a module. */

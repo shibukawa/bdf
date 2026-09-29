@@ -1,4 +1,4 @@
-import { type BdfDocument, type View, type Page, type Rect, type Hash, UseLimits, tileSize } from "@bdf/core";
+import { type BdfDocument, type View, type Page, type Rect, type Hash, UseLimits, tileSize } from "@bdfkit/core";
 import { ResourceCache, type ImageHold, type ResourceOptions } from "./resources.js";
 import { CanvasRenderer, type Ctx2D, type RenderOptions } from "./canvas.js";
 

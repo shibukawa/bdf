@@ -1,7 +1,7 @@
 // Tables as cells: the text of each cell of a table on a page (MARK TABLE)
 // or of a sheet (cells outside tables), and a rectangle of them in the two
 // forms spreadsheets paste as cells: tab-separated values and an HTML table.
-import { Sep, type TextContent, type TextRun } from "@bdf/core";
+import { Sep, type TextContent, type TextRun } from "@bdfkit/core";
 
 /** A cell and its text. Positions are 0-based: relative to the table, or absolute in a sheet. */
 export interface CellText {

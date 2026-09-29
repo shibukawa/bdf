@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { BufferSource, BdfDocument, extractContent } from "@bdf/core";
+import { BufferSource, BdfDocument, extractContent } from "@bdfkit/core";
 import { tableCells, cellClipboard, MAX_CLIPBOARD_CELLS } from "../dist/cells.js";
 
 const root = new URL("../../../", import.meta.url);

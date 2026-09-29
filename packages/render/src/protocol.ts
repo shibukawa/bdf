@@ -1,4 +1,4 @@
-import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions, Cues } from "@bdf/core";
+import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions, Cues } from "@bdfkit/core";
 import type { HitRect } from "./search.js";
 
 /** How the worker should open a document. */

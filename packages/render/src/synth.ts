@@ -2,7 +2,7 @@
 // Web Audio nodes: no samples. Each note is an oscillator (or noise) through
 // an envelope, into its channel's volume and pan, into the master volume.
 // The timbre follows the General MIDI program family; channel 10 is drums.
-import type { MidiEvent } from "@bdf/core";
+import type { MidiEvent } from "@bdfkit/core";
 
 /** What a channel plays with at a moment: its program and controllers. */
 export interface ChannelState {

@@ -11,7 +11,7 @@
 // are the bitmaps of the spreads before and after, rendered ahead of time.
 // With animate off (or without WebGL 2), pages change at once.
 
-import type { Page, TextContent } from "@bdf/core";
+import type { Page, TextContent } from "@bdfkit/core";
 import { FlipRenderer, foldAt, reach, type Leaf, type Point, type Rect } from "./pageflip.js";
 
 export type BookLayout = "single" | "spread";

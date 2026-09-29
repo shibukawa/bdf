@@ -2,7 +2,7 @@
 // its converter modules in Node with Go's wasm_exec.js, and converts each
 // sample with the site's fonts, fetched from the server as in a browser.
 // PDFs are also converted a page at a time, as the viewer does, and the
-// pages put into the outline with @bdf/core (npm run build first). The
+// pages put into the outline with @bdfkit/core (npm run build first). The
 // preview module draws the thumbnail of each converted sample and gives its
 // text.
 //

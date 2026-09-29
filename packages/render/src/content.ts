@@ -1,6 +1,6 @@
 // Text content of several objects put together, as the worker answers
 // requests for the text of a page, a band or a region of a sheet.
-import type { Rect, TextContent, TextRun } from "@bdf/core";
+import type { Rect, TextContent, TextRun } from "@bdfkit/core";
 
 /** Join the contents of several objects (layers, pages, tiles), renumbering nodes and runs. */
 export function concat(parts: TextContent[]): TextContent {

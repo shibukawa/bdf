@@ -9,8 +9,8 @@ bdf の公開 API をパッケージごとにまとめる。引数や細かい�
 | サーバーやバッチでファイルを bdf に変換する | Go の [`converter`](#go-変換converter) と形式ごとのパッケージ、または [`bdf` コマンド](#コマンドbdf) |
 | ブラウザの中でファイルを bdf に変換する | [wasm の変換器](#ブラウザ内変換cmdbdfwasm)（`cmd/bdfwasm`） |
 | bdf を自分で組み立てる・読む | Go の [`bdf`](#go-文書の組み立てと読み込みbdf) パッケージ |
-| bdf をブラウザに表示する | [`@bdf/render`](#typescript-bdfrender) の Worker とテキスト層 |
-| bdf を読んでテキストや構造を取り出す（Node でも） | [`@bdf/core`](#typescript-bdfcore) |
+| bdf をブラウザに表示する | [`@bdfkit/render`](#typescript-bdfkitrender) の Worker とテキスト層 |
+| bdf を読んでテキストや構造を取り出す（Node でも） | [`@bdfkit/core`](#typescript-bdfkitcore) |
 | ログインした読者に文書を数ページずつ、要求ごとに封印して渡す | Go の [`segment`](#保護モードの配信segment) と [`(*Reader).WriteSegment`](#読み込み)、ブラウザは [`SegmentLoader`](#文書を開く)（レンダラの Worker では `{kind: "segments"}`） |
 | サーバーでサムネイル・ページの画像・検索用のテキストを作る | Go の [`thumbnail` と `raster`](#go-サムネイルとページの画像thumbnailraster)、[`Document.SearchText`](#読み込み)、または [`bdf` コマンド](#コマンドbdf) |
 
@@ -251,7 +251,7 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 
 `options` は `{format?, password?, fonts?, name?, pages?}`。`pages` は `bdf generate -pages` と同じ書き方で、変換するページ（スライド、シート）を選ぶ（サムネイルだけなら `"1"`）。`fonts` はフォントのディレクトリの URL で、`index.json` にファイルとフォント走査の範囲（テーブルディレクトリ、`name`・`OS/2`・`post`・`cmap`）を並べておく（`site/build.mjs` が作る）。フォールバック探索では `cmap` に文字があるフォントだけ全体を取得する。失敗した Promise の Error は、パスワードが要る・違う・形式が分からないときに `code` が `"password-required"`、`"wrong-password"`、`"unknown-format"` になる。返す文書は入力が暗号化されていても暗号化しない。
 
-## TypeScript: @bdf/core
+## TypeScript: @bdfkit/core
 
 bdf を読むためのパッケージ（`packages/core`）。DOM に依存しないので Node でも動く。
 
@@ -297,14 +297,14 @@ bdf を読むためのパッケージ（`packages/core`）。DOM に依存しな
 | `BdfFormatError` / `BdfPasswordError` / `BdfKeyError` / `SealedSource` | 形式の誤り、パスワードの誤り、鍵ペアの誤り、暗号化された文書のソース |
 | `Manifest`、`View`、`Page`、`Layer`、`PartEntry` など | manifest の型（spec.md §4） |
 
-## TypeScript: @bdf/render
+## TypeScript: @bdfkit/render
 
-ブラウザで描くためのパッケージ（`packages/render`）。デコードと描画は Worker（`@bdf/render/worker` をバンドルしたもの）で行い、メインスレッドはビットマップとテキスト層を置く。
+ブラウザで描くためのパッケージ（`packages/render`）。デコードと描画は Worker（`@bdfkit/render/worker` をバンドルしたもの）で行い、メインスレッドはビットマップとテキスト層を置く。
 
 ```ts
-import { BdfWorkerClient, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS } from "@bdf/render";
+import { BdfWorkerClient, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS } from "@bdfkit/render";
 
-const client = new BdfWorkerClient(new Worker("./worker.js", { type: "module" })); // @bdf/render/worker をバンドルしたもの
+const client = new BdfWorkerClient(new Worker("./worker.js", { type: "module" })); // @bdfkit/render/worker をバンドルしたもの
 const manifest = await client.open({ kind: "single", url: "doc.bdf", range: true });
 const view = manifest.views[0];
 const zoom = 1;

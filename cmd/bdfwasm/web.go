@@ -1,4 +1,4 @@
-//go:build js && wasm && !pdfonly && !officeonly && !imageonly && !previewonly
+//go:build js && wasm && !pdfonly && !officeonly && !imageonly && !previewonly && !npm_pdfepub && !npm_office && !npm_custom
 
 package main
 

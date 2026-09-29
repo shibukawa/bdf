@@ -16,6 +16,10 @@ export const SECTIONS = [
       page("index", "Documentation", "ドキュメント"),
       page("why", "Why bdf", "なぜ bdf か"),
       page("getting-started", "Getting started", "はじめかた"),
+      page("npm", "npm packages", "npm パッケージ"),
+      page("integrating-to-frontend", "Integrating into a frontend", "フロントエンドに組み込む"),
+      page("integrate-to-server", "Integrating into a server", "サーバーに組み込む"),
+      page("build-wasm-runtime", "Build a Wasm runtime", "Wasm ランタイムをビルドする"),
     ],
   },
   {

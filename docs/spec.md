@@ -212,7 +212,7 @@ offset ... : parts 領域（manifest 直後から始まり、manifest.parts に�
 - 区間にできるのはページの View（`fixed`・`flow`・`scroll`）だけで、`play`（§4.4）を持つ View もない文書。シートは区間にしない。
 - 読み手は最初に受け取った区間を文書として開き、以後の区間の `segment` のページを差し込み、持っていない Part を足していく。View の並び・`id`・ページ数が合わない区間は別の文書のものとして拒否する。
 - 区間は普通は §3.5 の `ecdh` スロットで、要求ごとに読み手が作った鍵ペアに封印する。封印された manifest の中に `segment` もある。
-- 読み手が区間をどう頼むか（HTTP の形）は配布層の決めることで、フォーマットには含めない。参照実装（Go の `segment` パッケージと `@bdf/core` の `SegmentLoader`）の形は design.md §3.30 にある。
+- 読み手が区間をどう頼むか（HTTP の形）は配布層の決めることで、フォーマットには含めない。参照実装（Go の `segment` パッケージと `@bdfkit/core` の `SegmentLoader`）の形は design.md §3.30 にある。
 
 ## 4. Manifest
 

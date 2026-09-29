@@ -1,11 +1,11 @@
 // The front end of secure-reader: opens the book ?book= names with the mini
 // viewer (examples/miniviewer), as segments the server seals for each
-// request (@bdf/core's SegmentLoader, in the rendering worker). The page
+// request (@bdfkit/core's SegmentLoader, in the rendering worker). The page
 // holds no key and no page of the book: the worker asks for ten pages at a
 // time as they come into view, and opens each answer with a key pair it
 // made for that request and does not keep.
-import { dcValues } from "@bdf/core";
-import { BdfWorkerError } from "@bdf/render";
+import { dcValues } from "@bdfkit/core";
+import { BdfWorkerError } from "@bdfkit/render";
 import { MiniViewer } from "../../miniviewer/miniviewer.js";
 
 const book = new URLSearchParams(location.search).get("book");

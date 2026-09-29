@@ -53,8 +53,8 @@
 
 | 場所 | 内容 |
 |---|---|
-| `packages/core` | `@bdf/core` — デコーダ、コンテナ読み込み、テキスト抽出（依存なし） |
-| `packages/render` | `@bdf/render` — Canvas レンダラ、ページ/連続/シート描画（scroll View は連続描画）、Worker とそのクライアント（SVG の画像は Worker がデコードできないのでメインスレッドが描く） |
+| `packages/core` | `@bdfkit/core` — デコーダ、コンテナ読み込み、テキスト抽出（依存なし） |
+| `packages/render` | `@bdfkit/render` — Canvas レンダラ、ページ/連続/シート描画（scroll View は連続描画）、Worker とそのクライアント（SVG の画像は Worker がデコードできないのでメインスレッドが描く） |
 | `cmd/bdfwasm` | ブラウザ内変換用に wasm にした変換器（PDF 用、Office 系用、HTML・Markdown・EPUB 用、画像用、変換器を持たないサムネイル・検索テキスト用のモジュール） |
 
 ## デモサイトとそのページ

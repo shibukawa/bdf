@@ -14,11 +14,11 @@
 // directory of a split one, which ends with a slash; &range reads a file by
 // ranges), ?file= a file to convert (samples/basic.docx); ?layout= the
 // layout it opens in.
-import { dcValues, type Manifest, type View, type SearchHit, type TextContent, type NoteEvent } from "@bdf/core";
+import { dcValues, type Manifest, type View, type SearchHit, type TextContent, type NoteEvent } from "@bdfkit/core";
 import {
   BdfWorkerClient, BdfWorkerError, MusicPlayer, buildTextLayer, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
   type Cursor, type HitRect, type OpenSource, type TextLayerOptions, type CellText, type CellRange, type CellClipboard,
-} from "@bdf/render";
+} from "@bdfkit/render";
 import { ConverterClient, ConvertError, sniff, type Opened } from "../common/convert.js";
 import { Book } from "./book.js";
 

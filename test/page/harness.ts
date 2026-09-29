@@ -1,7 +1,7 @@
 // Test harness: renders fixture pages on the main thread and via the worker,
 // and compares canvases against golden PNGs. Driven by test/golden.mjs.
-import { BdfDocument, fetchSingle, RangeSource, SplitSource, type Rect } from "@bdf/core";
-import { PageRenderer, BdfWorkerClient, buildTextLayer, selectionText, joinRuns, TEXT_LAYER_CSS, RUN_ATTR } from "@bdf/render";
+import { BdfDocument, fetchSingle, RangeSource, SplitSource, type Rect } from "@bdfkit/core";
+import { PageRenderer, BdfWorkerClient, buildTextLayer, selectionText, joinRuns, TEXT_LAYER_CSS, RUN_ATTR } from "@bdfkit/render";
 
 export interface Case {
   name: string;

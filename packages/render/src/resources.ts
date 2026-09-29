@@ -1,4 +1,4 @@
-import { type BdfDocument, type ObjectPart, type PathData, type PartEntry, type Hash, type Font, BdfFormatError, Verb, FontKind, FONT_STYLES } from "@bdf/core";
+import { type BdfDocument, type ObjectPart, type PathData, type PartEntry, type Hash, type Font, BdfFormatError, Verb, FontKind, FONT_STYLES } from "@bdfkit/core";
 import { VectorImage, domSvgRasterizer, isSvg, type Raster, type SvgRasterizer } from "./svg.js";
 
 /** Build a Path2D from path data. */
