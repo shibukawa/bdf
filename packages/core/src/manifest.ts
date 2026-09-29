@@ -1,5 +1,6 @@
 import { BdfFormatError } from "./bytes.js";
 import { checkHash } from "./container.js";
+import { FORMAT_VERSION, OPSET_VERSION } from "./opcodes.js";
 import type { Manifest, View, RectDef } from "./types.js";
 
 // The numbers of a manifest decide how long the loops of a reader run and
@@ -77,6 +78,10 @@ function checkView(v: View): void {
  * BdfFormatError.
  */
 export function checkManifest(m: Manifest): void {
+  if (m.bdf !== FORMAT_VERSION) throw new BdfFormatError(`unsupported manifest format version ${m.bdf}`);
+  if (m.opset !== undefined && (!Number.isInteger(m.opset) || m.opset < 0 || m.opset > OPSET_VERSION)) {
+    throw new BdfFormatError(`unsupported manifest opset ${m.opset}`);
+  }
   if (!Array.isArray(m.parts)) throw new BdfFormatError("manifest without parts");
   for (const e of m.parts) {
     checkHash(e?.h);

@@ -24,11 +24,16 @@ export function parseHeader(bytes: Uint8Array): Header {
   const m = r.bytesN(4);
   if (!MAGIC.every((b, i) => m[i] === b)) throw new BdfFormatError("bad magic");
   const version = r.u16();
-  if (version > FORMAT_VERSION) throw new BdfFormatError(`unsupported format version ${version}`);
+  if (version !== FORMAT_VERSION) throw new BdfFormatError(`unsupported format version ${version}`);
   const flags = r.u16();
+  if ((flags & ~1) !== 0) throw new BdfFormatError(`unsupported header flags ${flags}`);
   const manifestOff = r.u64();
   const manifestLen = r.u64();
-  const manifestEnc: Encoding = r.u8() === 1 ? "deflate-raw" : "identity";
+  const encoding = r.u8();
+  if (encoding > 1) throw new BdfFormatError(`unknown manifest encoding ${encoding}`);
+  const reserved = r.bytesN(7);
+  if (reserved.some((b) => b !== 0)) throw new BdfFormatError("non-zero reserved header bytes");
+  const manifestEnc: Encoding = encoding === 1 ? "deflate-raw" : "identity";
   return { version, flags, manifestOff, manifestLen, manifestEnc };
 }
 
@@ -142,7 +147,11 @@ export class BufferSource implements PartSource {
       if (h.manifestLen > MAX_MANIFEST_SIZE) throw new BdfFormatError("manifest too large");
       if (!inRange(h.manifestOff, h.manifestLen, this.bytes.length)) throw new BdfFormatError("manifest out of range");
       const raw = this.bytes.subarray(h.manifestOff, h.manifestOff + h.manifestLen);
-      return JSON.parse(utf8.decode(await decode(raw, h.manifestEnc, MAX_MANIFEST_SIZE))) as Manifest;
+      const manifest = JSON.parse(utf8.decode(await decode(raw, h.manifestEnc, MAX_MANIFEST_SIZE))) as Manifest;
+      if (((h.flags & 1) !== 0) !== (manifest.encryption !== undefined)) {
+        throw new BdfFormatError("encryption flag does not match the manifest");
+      }
+      return manifest;
     })();
     return this.manifestPromise;
   }

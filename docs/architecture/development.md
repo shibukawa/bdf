@@ -63,4 +63,4 @@ CI's `testdata is up to date` step compares `bdf generate` output byte-for-byte 
 
 New golden PNGs raise a separate concern: they need the same headless-shell Chromium build CI uses, and running the golden tests inside a matching container (`mcr.microsoft.com/playwright:v1.56.1-noble`, or `node:24-bookworm` with Chromium installed) reproduces that build.
 
-See the [API reference](../api.md) for what each package and command exposes, and [The bdf command](cli.md) for `bdf`'s subcommands.
+See the [API reference](../api.md) for what each package and command exposes, and [The bdf command](cli.md) for `bdf`'s subcommands. Current fixture, rendering, and browser-conversion results are in the [conversion quality report](../quality.md) (Japanese).

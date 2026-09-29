@@ -14,9 +14,10 @@ bdf is a document format made for previews in the browser. The [demo site](https
 
 The detailed reference documents are written in Japanese, for now:
 
-- **[Format specification](spec.md)** — the container, the manifest, the instruction set
+- **[Format specification v1.0](spec.md)** — the stable container, manifest, instruction set, and compatibility policy
 - **[API reference](api.md)** — every package and command, by name
 - **[Design notes](design.md)** — why each converter is built the way it is, section by section
+- **[Conversion quality report](quality.md)** — Japanese results for fixtures, rendering goldens, browser conversion, and known limits
 
 ## Source
 

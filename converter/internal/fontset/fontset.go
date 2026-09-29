@@ -173,7 +173,7 @@ func (s *Set) FaceFor(latin, ea string, bold, italic bool, r rune) *Choice {
 	}
 	best := fc
 	if other != "" && other != primary {
-		if o := s.Choose(other, bold, italic, !cjk); o.Loaded != nil && o.Loaded.Has(r) {
+		if o := s.chooseIfHas(other, bold, italic, !cjk, r); o != nil {
 			best = o
 		}
 	}
@@ -204,7 +204,7 @@ func (s *Set) FaceForFamilies(families []string, bold, italic bool, r rune) *Cho
 	}
 	best := fc
 	for _, fam := range families[1:] {
-		if o := s.Choose(fam, bold, italic, cjk); o.Loaded != nil && o.Loaded.Has(r) {
+		if o := s.chooseIfHas(fam, bold, italic, cjk, r); o != nil {
 			best = o
 			break
 		}
@@ -214,6 +214,20 @@ func (s *Set) FaceForFamilies(families []string, bold, italic bool, r rune) *Cho
 	}
 	s.fallback[k] = best
 	return best
+}
+
+// chooseIfHas resolves a secondary family without loading its font program
+// unless its cmap says it contains r.
+func (s *Set) chooseIfHas(name string, bold, italic, cjk bool, r rune) *Choice {
+	res := s.db.Resolve(name, bold, italic, cjk)
+	if res.Face == nil || !res.Face.HasRune(r) {
+		return nil
+	}
+	o := s.fromResolvedCached(res, name, bold, italic)
+	if o.Loaded == nil || !o.Loaded.Has(r) {
+		return nil
+	}
+	return o
 }
 
 // genericFallback returns the first of the fallbacks of fc's generic family
@@ -226,6 +240,9 @@ func (s *Set) genericFallback(fc *Choice, requested string, bold, italic bool, r
 		s.fallbackLists[fk] = list
 	}
 	for _, res := range list {
+		if !res.Face.HasRune(r) {
+			continue
+		}
 		l, err := res.Face.Load()
 		if err != nil || !l.Has(r) {
 			continue

@@ -36,7 +36,7 @@ A PDF converts a page at a time: `open()` returns pages sized but empty, then `p
 
 ## Fonts in the browser
 
-The Office/CAD/HTML/Markdown/EPUB converters need to measure and lay out text before they can convert a page. Run in the browser, they read a font directory's `index.json` (name, size, and the byte ranges the font scan reads — table directories, `name`/`OS/2`/`post`) built by [`examples/common/build.mjs`](https://github.com/shibukawa/bdf/blob/main/examples/common/build.mjs). Those byte ranges are fetched ahead of time; a font's whole file comes down only once a document actually uses it.
+The Office/CAD/HTML/Markdown/EPUB converters need to measure and lay out text before they can convert a page. Run in the browser, they read a font directory's `index.json` (name, size, and the byte ranges for table directories, `name`/`OS/2`/`post`, and `cmap`) built by [`examples/common/build.mjs`](https://github.com/shibukawa/bdf/blob/main/examples/common/build.mjs). Those ranges are fetched ahead of time. When fallback search looks for a character, it checks each font's `cmap` first and loads the whole file only for a font that contains that character.
 
 ## Building the site
 

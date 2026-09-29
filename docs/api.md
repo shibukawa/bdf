@@ -249,7 +249,7 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 | `thumbnail(bdf: Uint8Array, options?)` | `previewonly` のみ。単一ファイル形式の bdf のサムネイルを描き、`{image, format, width, height, mode, warnings}` を返す。`options` は `{size?, mode?, format?, view?, sheetDpi?, password?, fonts?}`（`size` は既定 256・最大 2048、`sheetDpi` は既定 72、`mode` は `auto`・`crop`・`fit`、`format` は `png`・`jpeg`。`bdf_noconv` でなければ `webp` も） |
 | `text(bdf: Uint8Array, options?)` | `previewonly` のみ。`bdf text` と同じ JSON（メタデータとページごとのテキスト）を `{json}` で返す。`options` は `{password?}` |
 
-`options` は `{format?, password?, fonts?, name?, pages?}`。`pages` は `bdf generate -pages` と同じ書き方で、変換するページ（スライド、シート）を選ぶ（サムネイルだけなら `"1"`）。`fonts` はフォントのディレクトリの URL で、`index.json` にファイルとフォントの走査が読む範囲を並べておく（`site/build.mjs` が作る）。失敗した Promise の Error は、パスワードが要る・違う・形式が分からないときに `code` が `"password-required"`、`"wrong-password"`、`"unknown-format"` になる。返す文書は入力が暗号化されていても暗号化しない。
+`options` は `{format?, password?, fonts?, name?, pages?}`。`pages` は `bdf generate -pages` と同じ書き方で、変換するページ（スライド、シート）を選ぶ（サムネイルだけなら `"1"`）。`fonts` はフォントのディレクトリの URL で、`index.json` にファイルとフォント走査の範囲（テーブルディレクトリ、`name`・`OS/2`・`post`・`cmap`）を並べておく（`site/build.mjs` が作る）。フォールバック探索では `cmap` に文字があるフォントだけ全体を取得する。失敗した Promise の Error は、パスワードが要る・違う・形式が分からないときに `code` が `"password-required"`、`"wrong-password"`、`"unknown-format"` になる。返す文書は入力が暗号化されていても暗号化しない。
 
 ## TypeScript: @bdf/core
 

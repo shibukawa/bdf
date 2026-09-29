@@ -61,9 +61,10 @@
 //
 // The Office converters lay text out with the fonts of the font directory:
 // index.json there lists its files as [{"name", "size", "scan"}], where
-// scan holds the [offset, length] ranges of the tables the font scan reads
-// (the table directories, name, OS/2 and post), fetched ahead in parallel.
-// A font's whole file is fetched when a document uses it.
+// scan holds the [offset, length] ranges of the tables the font scan and
+// fallback coverage checks read (the table directories, name, OS/2, post and
+// cmap), fetched ahead in parallel. Fallback search checks cmap first; a
+// font's whole file is fetched only when it can draw a needed character.
 //
 // The preview module (-tags previewonly) makes of a single-file bdf what a
 // server makes with packages thumbnail and bdf (Document.SearchText):

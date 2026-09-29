@@ -1,6 +1,20 @@
-# BDF (Browser Document Format) 仕様ドラフト v0.1
+# BDF (Browser-specific Document Format) 仕様 v1.0
 
-> 状態: ドラフト。名称 "BDF" は仮称（X11 のビットマップフォント形式 BDF と衝突するため、公開時には要再考）。
+> 状態: 安定版。この仕様 v1.0 は BDF wire format version 1 と命令セット opset 1 を定義する。wire format と opset の番号は独立して進める。Go の module/import 名 `github.com/shibukawa/bdf` はこの仕様名と独立しており、変更しない。
+
+## この仕様への適合と互換性
+
+この文書で **必須**、**禁止**、**推奨**、**してもよい** は、それぞれ規範要件を表す。適合する書き手は必須の出力規則を満たし、適合する読み手は必須の入力規則を満たす。
+
+- BDF v1 の single 形式では、ヘッダーの `version` と manifest の `bdf` はともに `1` でなければならない。split 形式にはヘッダーがないため、manifest の `bdf` が `1` でなければならない。
+- 通常の manifest を出力する書き手は `opset: 1` を記録しなければならない。暗号化文書の外側の manifest は `opset` を持たず、復号後の manifest が `opset: 1` を持つ。読み手は、manifest の `opset` が対応する最大値より大きければ拒否しなければならない。省略または `0` は宣言なしとして扱い、実際に各 Object を読むときはその Object の `opset` を適用する。
+- Object Part の `opset` は `1` でなければならない。読み手は、自分が対応する最大値より大きい format version または opset を拒否しなければならない。BDF v1 の適合実装は `1` 以外の値を拒否しなければならない。
+- 同じ意味を保つ任意の manifest メンバーは、format version を変えずに追加できる。読み手は未知の任意メンバーを無視してもよい。v1 読み手が知らない必須の動作を導入する変更には、新しい format version が必要である。
+- コンテナ、manifest、暗号化、Part の解釈を変える変更は format version を上げる。Object 命令の意味やオペランドを変える変更は opset を上げる。既存の命令番号の再利用は禁止する。
+- 未知の opcode はエラーであり、読み手はその Object の描画を続けてはならない。`EXT` は長さ付きで読み飛ばせる拡張領域である。拡張データだけで描画や安全性に必須の意味を与えてはならない。
+- 書き手は予約済みビットと予約済みバイトを `0` で出力しなければならない。v1 読み手は未定義の予約ビットが立った入力を拒否しなければならない。
+
+この仕様はワイヤ形式を定める。Go の `converter` API、コマンド、ビューア UI の互換性は別の API 契約である。
 
 ## 1. 目的と非目的
 
@@ -81,6 +95,7 @@ offset ... : parts 領域（manifest 直後から始まり、manifest.parts に�
 
 - すべてリトルエンディアン。
 - マジックは小文字の `bdf` に NUL を 1 バイト続けたもの。NUL があるのでテキストファイルと取り違えない。バージョンは `version` で表し、マジックには含めない。
+- `version` は `1`。読み手は `1` 以外を拒否する。`flags` は bit 0 だけを定義し、他のビットは `0` でなければならず、読み手は未定義のビットが立っていれば拒否する。`manifestEnc` は `0`（identity）または `1`（deflate-raw）。`reserved` はすべて `0` でなければならない。
 - `manifest.parts[i]` は `off`（**parts 領域の先頭**、すなわち `manifestOff + manifestLen` からのオフセット）と `len` を持つ。manifest の内容が自身の長さに依存しないようにするため。
 - manifest と各 Part の範囲（`off` と `len`）はファイルの中に収まる。負の値や、足すとあふれる値を持つファイルは不正。
 - **推奨配置順**: manifest → Font → 共有 Object（マスター等）→ View の先頭ページから順。先頭から読むだけで 1 ページ目が描けるようにする。
@@ -205,8 +220,8 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 ```jsonc
 {
-  "bdf": 1,                     // フォーマットバージョン
-  "opset": 1,                   // 命令セットバージョン（§7）
+  "bdf": 1,                     // wire format version
+  "opset": 1,                   // Object 命令セット（§7）
   "unit": "pt",                 // 1 unit = 1/72 inch。座標はすべてこの単位
   "meta": {                     // §4.3
     "dc": { "title": "…", "creator": ["…", "…"], "language": "ja", "created": "2026-09-25T07:21:16+09:00" },
@@ -251,6 +266,8 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
   ]
 }
 ```
+
+平文の完全な manifest は `bdf: 1` と `opset: 1` を持つ。暗号化文書の外側の manifest は `bdf: 1` と暗号化情報、封印された Part 一覧だけを持ち、`opset` と `views` は封印された内側の manifest に置く。manifest の `opset` は読み手の早期判定用の補助情報で、省略または `0` なら読み手は Object ごとの値を使う。読み手は未知の任意メンバーを無視してよいが、この仕様で必須と定めたメンバーの欠落や不正値を受け入れてはならない。
 
 `parts[].t` の値: `obj` / `font` / `img` / `path` / `idx` / `seq`（§4.4）。暗号化した文書の外側の manifest では `sealed`（§3.5）。
 
@@ -433,6 +450,7 @@ u8[opsLen]       ; 命令列（§7）
 ```
 
 - 命令内のリソース参照（`pathRef`, `fontRef` …）は上記各表のローカルインデックス。
+- `opset` は `1`、`flags` は `0`。読み手は `1` 以外の `opset` と、0 以外の予約済み `flags` を拒否する。
 - 外部参照のハッシュは Manifest の `parts` に存在しなければならない。
 - 座標は Object のローカル座標。`USE` する側が変換行列で配置する。
 

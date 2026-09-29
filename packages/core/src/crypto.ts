@@ -1,5 +1,6 @@
 import { BdfFormatError } from "./bytes.js";
 import { decode, checkHash, MAX_MANIFEST_SIZE, type PartSource } from "./container.js";
+import { FORMAT_VERSION } from "./opcodes.js";
 import type { Encryption, Hash, Manifest, PartEntry } from "./types.js";
 
 // Encrypted documents (spec §3.5), decrypted with WebCrypto: PBKDF2 derives
@@ -151,6 +152,7 @@ export class SealedSource implements PartSource {
    */
   static async unlock(source: PartSource, secret: string | CryptoKeyPair): Promise<SealedSource> {
     const stored = await source.manifest();
+    if (stored.bdf !== FORMAT_VERSION) throw new BdfFormatError(`unsupported manifest format version ${stored.bdf}`);
     const enc = stored.encryption;
     if (!enc) throw new Error("bdf: the document is not encrypted");
     const key = await contentKey(enc, secret);

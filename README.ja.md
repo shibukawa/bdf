@@ -2,11 +2,11 @@
 
 [English](README.md) | 日本語
 
-**bdf**（Browser-specific Document Format）は、ブラウザの Canvas 2D にそのまま描画できる、プレビュー用の文書フォーマット（ドラフト）です。
+**BDF**（Browser-specific Document Format）は、ブラウザの Canvas 2D にそのまま描画できる、プレビュー用の文書フォーマットです。安定版 wire format は v1.0 です。
 
 PDF や Word のファイル、CAD の図面をブラウザでプレビューするには、たいていサーバー上でオフィススイートかヘッドレスブラウザを動かすことになります。bdf の変換器はどちらも要りません。素の Go で書かれていて、同じコードは WebAssembly にもなるので、ブラウザの中でも変換できます。PDF、Office のファイル（Word、PowerPoint、Excel、CSV、Parquet、Visio）、draw.io の図、CAD の図面（DXF、Jw_cad、SXF、CGM、HP-GL/2）、プリント基板（Gerber、Excellon、KiCad）、Illustrator、Photoshop、HTML、Markdown、EPUB、音楽（MML、MIDI、MusicXML。ビューアで演奏可能）、フォントファイルはすべてこうして変換され、1 つのレンダラが Web Worker の中でそのすべてを描画します。
 
-**[試してみる](https://shibukawa.github.io/bdf/)** — デモサイトにファイルをドロップしてください。アップロードせずにブラウザの中で変換して描画します。**[ドキュメントを読む](https://shibukawa.github.io/bdf/docs/)** — なぜ bdf があるのか、対応するすべての形式、サーバー構成のサンプル 3 つ、ビルドの方法まで。
+**[試してみる](https://shibukawa.github.io/bdf/)** — デモサイトにファイルをドロップしてください。アップロードせずにブラウザの中で変換して描画します。**[ドキュメントを読む](https://shibukawa.github.io/bdf/docs/)** — なぜ BDF があるのか、対応するすべての形式、サーバー構成のサンプル 3 つ、ビルドの方法まで。
 
 ## クイックスタート
 

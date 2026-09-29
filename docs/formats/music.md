@@ -4,7 +4,7 @@ MML, MIDI and MusicXML all end up as staff notation, engraved by a shared layout
 
 ## Try it
 
-Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: an [MML chiptune](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml), a [MIDI karaoke file](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar), or a [MusicXML piano score](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: an [MML chiptune](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml), a [MIDI karaoke file](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar), or a [MusicXML piano score](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml). In the viewer, switch between score and piano roll, adjust playback speed as a percentage (the opening BPM equivalent is shown and tempo ratios stay intact), and turn on the metronome while playing.
 
 ## MML (converter/mml)
 

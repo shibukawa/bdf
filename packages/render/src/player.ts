@@ -149,6 +149,7 @@ export interface MusicPlayerOptions {
 
 /** Seconds from asking to play to the first sound: time to schedule it. */
 const START = 0.05;
+interface MeterPoint { tick: number; numerator: number; denominator: number }
 
 /**
  * Plays a view's music with Web Audio, and tells where it is on the pages.
@@ -157,11 +158,14 @@ const START = 0.05;
  */
 export class MusicPlayer {
   readonly sequence: MidiSequence;
+  /** The first tempo in the file, used to show the opening BPM equivalent. */
+  readonly baseBpm: number;
   /** Called when playing starts, pauses, stops (also at the end) or jumps. */
   onUpdate: (() => void) | undefined;
   /** Called when the music has played to its end; the player has stopped. */
   onEnd: (() => void) | undefined;
   private readonly ends: Float64Array;
+  private readonly meters: MeterPoint[];
   private ctx: AudioContext | undefined;
   private synth: Synth | undefined;
   private current: PlayState = "stopped";
@@ -172,18 +176,69 @@ export class MusicPlayer {
   private held = 0;
   /** The next event to schedule. */
   private next = 0;
+  /** The next metronome beat in musical ticks. */
+  private clickTick = 0;
+  private clickMeter = 0;
+  private clickBeat = 0;
+  private clickEnabled = false;
+  private speedPercentValue = 100;
+  /** Playback seconds per second in the file's original tempo map. */
+  private playbackScale = 1;
   private timer: ReturnType<typeof setInterval> | undefined;
 
   /** seq: a Standard MIDI File, or one parsed already. */
   constructor(seq: Uint8Array | MidiSequence, readonly cues: Cues | null = null, private readonly options: MusicPlayerOptions = {}) {
     this.sequence = seq instanceof Uint8Array ? parseSmf(seq) : seq;
     this.ends = soundingEnds(this.sequence.events, this.sequence.duration);
+    this.baseBpm = 60_000_000 / (this.sequence.tempos[0]?.tempo ?? 500_000);
+    this.meters = [{ tick: 0, numerator: 4, denominator: 4 }];
+    for (const e of this.sequence.events) {
+      if (e.type !== "timeSignature") continue;
+      const point = { tick: e.tick, numerator: Math.max(1, e.numerator), denominator: Math.max(1, e.denominator) };
+      const last = this.meters[this.meters.length - 1];
+      if (last.tick === point.tick) this.meters[this.meters.length - 1] = point;
+      else this.meters.push(point);
+    }
   }
 
   /** Seconds. */
-  get duration(): number { return this.sequence.duration; }
+  get duration(): number { return this.sequence.duration * this.playbackScale; }
   get state(): PlayState { return this.current; }
   get playing(): boolean { return this.current === "playing"; }
+  /** The opening BPM after applying the speed percentage. */
+  get bpm(): number { return this.baseBpm * this.speedPercentValue / 100; }
+  get speedPercent(): number { return this.speedPercentValue; }
+  get tempoScale(): number { return this.playbackScale; }
+  get bpmAvailable(): boolean { return !this.sequence.smpte; }
+  get metronomeEnabled(): boolean { return this.clickEnabled; }
+  get metronomeAvailable(): boolean { return !this.sequence.smpte; }
+
+  /** Scale playback speed; all tempo changes in the file keep their relative ratios. */
+  setSpeedPercent(percent: number) {
+    if (!Number.isFinite(percent)) return;
+    const next = Math.max(25, Math.min(200, Math.round(percent)));
+    if (next === this.speedPercentValue) return;
+    const wasPlaying = this.playing;
+    const wasPaused = this.current === "paused";
+    const tick = secondsToTick(this.sequence, this.position / this.playbackScale);
+    this.speedPercentValue = next;
+    this.playbackScale = 100 / next;
+    const at = tickToSeconds(this.sequence, tick) * this.playbackScale;
+    if (wasPlaying) {
+      this.synth?.silence();
+      this.start(at);
+    } else if (wasPaused) this.held = at;
+    this.onUpdate?.();
+  }
+
+  /** Turn the beat click on or off; SMPTE-timed MIDI files have no musical beat to follow. */
+  setMetronome(enabled: boolean) {
+    this.clickEnabled = enabled && this.metronomeAvailable;
+    if (this.clickEnabled && this.playing) this.resetClick(secondsToTick(this.sequence, this.position / this.playbackScale));
+    if (!this.clickEnabled) this.synth?.clearMetronome();
+    else this.schedule();
+    this.onUpdate?.();
+  }
 
   /** Seconds from the start: of what is heard now while playing. */
   get position(): number {
@@ -238,14 +293,14 @@ export class MusicPlayer {
   cursorAt(seconds: number): Cursor | null {
     if (!this.cues) return null;
     // the rounding of seconds must not keep a cue from taking effect at its tick
-    return cursorAtTick(this.cues, secondsToTick(this.sequence, seconds) + 1e-6);
+    return cursorAtTick(this.cues, secondsToTick(this.sequence, seconds / this.playbackScale) + 1e-6);
   }
 
   /** The time (seconds) at x on a system, for playing from a place clicked on (see tickAt); null when none. */
   timeAt(system: number, x: number): number | null {
     if (!this.cues) return null;
-    const tick = tickAt(this.cues, system, x, secondsToTick(this.sequence, this.position));
-    return tick === null ? null : Math.min(this.duration, tickToSeconds(this.sequence, tick));
+    const tick = tickAt(this.cues, system, x, secondsToTick(this.sequence, this.position / this.playbackScale));
+    return tick === null ? null : Math.min(this.duration, tickToSeconds(this.sequence, tick) * this.playbackScale);
   }
 
   /** Stop and let the audio context go. */
@@ -277,12 +332,16 @@ export class MusicPlayer {
     clearInterval(this.timer);
     this.from = from;
     this.at = ctx.currentTime + START;
-    this.next = eventAt(events, from);
+    const fileTime = from / this.playbackScale;
+    this.next = eventAt(events, fileTime);
+    this.resetClick(secondsToTick(this.sequence, fileTime));
     synth.reset(channelStates(events, this.next), this.at);
     // drums are struck: those before are over
     for (let i = 0; i < this.next; i++) {
       const e = events[i];
-      if (e.type === "note" && e.channel !== 9 && this.ends[i] > from + MIN_NOTE) synth.note(e.channel, e.key, e.velocity, this.at, this.at + this.ends[i] - from, from - e.time);
+      if (e.type === "note" && e.channel !== 9 && this.ends[i] > fileTime + MIN_NOTE) {
+        synth.note(e.channel, e.key, e.velocity, this.at, this.at + (this.ends[i] - fileTime) * this.playbackScale, (fileTime - e.time) * this.playbackScale);
+      }
     }
     this.timer = setInterval(() => this.schedule(), this.options.interval ?? 30);
     this.schedule();
@@ -296,11 +355,54 @@ export class MusicPlayer {
     const ahead = this.options.lookahead ?? 0.15;
     const until = this.clock() + (hidden ? Math.max(1, ahead) : ahead);
     const events = this.sequence.events;
-    for (const end = due(events, this.next, until); this.next < end; this.next++) {
+    for (const end = due(events, this.next, until / this.playbackScale); this.next < end; this.next++) {
       const e = events[this.next];
-      const when = this.at + e.time - this.from;
-      if (e.type === "note") this.synth!.note(e.channel, e.key, e.velocity, when, this.at + this.ends[this.next] - this.from);
+      const when = this.at + e.time * this.playbackScale - this.from;
+      if (e.type === "note") this.synth!.note(e.channel, e.key, e.velocity, when, this.at + this.ends[this.next] * this.playbackScale - this.from);
       else this.synth!.event(e, when);
+    }
+    this.scheduleMetronome(until);
+  }
+
+  /** Set the next beat at or after tick, respecting the active time signature. */
+  private resetClick(tick: number) {
+    let lo = 0, hi = this.meters.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.meters[mid].tick <= tick) lo = mid + 1;
+      else hi = mid;
+    }
+    this.clickMeter = Math.max(0, lo - 1);
+    const meter = this.meters[this.clickMeter];
+    const step = Math.max(1, this.sequence.division * 4 / meter.denominator);
+    this.clickBeat = Math.max(0, Math.ceil((tick - meter.tick) / step - 1e-9));
+    this.clickTick = meter.tick + this.clickBeat * step;
+    const next = this.meters[this.clickMeter + 1];
+    if (next && this.clickTick >= next.tick - 1e-9) {
+      this.clickMeter++;
+      this.clickBeat = 0;
+      this.clickTick = next.tick;
+    }
+  }
+
+  /** Put beat clicks on the same audio clock as notes, including tempo and meter changes. */
+  private scheduleMetronome(until: number) {
+    if (!this.clickEnabled || this.sequence.smpte || !this.synth) return;
+    // A very short lookahead and fast tempo can contain many beats; cap one
+    // timer turn so a hostile file cannot monopolize the UI thread.
+    for (let count = 0; count < 4096; count++) {
+      const time = tickToSeconds(this.sequence, this.clickTick) * this.playbackScale;
+      if (time >= this.duration || time >= until) return;
+      this.synth.metronome(this.clickBeat % this.meters[this.clickMeter].numerator === 0, this.at + time - this.from);
+      const meter = this.meters[this.clickMeter];
+      this.clickBeat++;
+      this.clickTick += Math.max(1, this.sequence.division * 4 / meter.denominator);
+      const next = this.meters[this.clickMeter + 1];
+      if (next && this.clickTick >= next.tick - 1e-9) {
+        this.clickMeter++;
+        this.clickBeat = 0;
+        this.clickTick = next.tick;
+      }
     }
   }
 

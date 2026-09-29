@@ -14,7 +14,7 @@
 // directory of a split one, which ends with a slash; &range reads a file by
 // ranges), ?file= a file to convert (samples/basic.docx); ?layout= the
 // layout it opens in.
-import { dcValues, type Manifest, type View, type SearchHit, type TextContent } from "@bdf/core";
+import { dcValues, type Manifest, type View, type SearchHit, type TextContent, type NoteEvent } from "@bdf/core";
 import {
   BdfWorkerClient, BdfWorkerError, MusicPlayer, buildTextLayer, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
   type Cursor, type HitRect, type OpenSource, type TextLayerOptions, type CellText, type CellRange, type CellClipboard,
@@ -71,6 +71,12 @@ let layoutChosen = false;
 
 /** The music of the view shown (spec §4.4), once the worker has sent it. */
 let player: MusicPlayer | undefined;
+/** Whether the score pages or the note timeline is shown. */
+let musicMode: "score" | "piano-roll" = "score";
+let scoreScroll: { left: number; top: number } | undefined;
+let pianoRollScroll: { left: number; top: number } | undefined;
+let rollPlayhead: HTMLDivElement | undefined;
+let rollTempoScale = 1;
 /** Bumped as the view with music changes: music that comes for another view is dropped. */
 let music = 0;
 /** The bar on the page where the music is. */
@@ -851,10 +857,14 @@ async function main() {
 function show(v: View) {
   // a layout or zoom change goes on from the page in view
   const keep = current === v ? pageInView() : 0;
+  const priorRollScroll = current === v && musicMode === "piano-roll" && stage.querySelector(".pianoRoll")
+    ? { left: stage.scrollLeft, top: stage.scrollTop } : undefined;
   if (current !== v) {
     found.query = ""; found.hits = []; found.rects = []; found.index = -1; found.pages = -1; hitsBox.textContent = "";
     setStatus(describe(v));
     stopMusic();
+    musicMode = "score";
+    scoreScroll = pianoRollScroll = undefined;
     if (v.play) loadMusic(v);
   }
   current = v;
@@ -884,10 +894,14 @@ function show(v: View) {
   $("pageNav").hidden = $("animateBox").hidden = true;
   stage.onscroll = stage.onkeydown = stage.onfocus = null;
   stage.replaceChildren();
-  stage.scrollTop = 0;
+  stage.scrollTop = stage.scrollLeft = 0;
   visibility?.disconnect();
   visible.clear();
-  if (v.kind === "sheet") showSheet(v);
+  if (musicMode === "piano-roll" && player) {
+    showPianoRoll();
+    const at = priorRollScroll ?? pianoRollScroll;
+    if (at) stage.scrollTo(at);
+  } else if (v.kind === "sheet") showSheet(v);
   else if (continuous(v)) showContinuous(v);
   else if (inBook(v)) showBook(v, keep);
   else {
@@ -1174,6 +1188,11 @@ function highlightLayer(pageIndex: number, scale = zoom): HTMLDivElement {
 function initMusic() {
   $("play").onclick = togglePlay;
   $("stopPlay").onclick = () => player?.stop();
+  $("musicMode").onclick = toggleMusicMode;
+  $("metronome").onclick = toggleMetronome;
+  const speedPercent = $<HTMLInputElement>("speedPercent");
+  speedPercent.onchange = applySpeedPercent;
+  speedPercent.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); applySpeedPercent(); } };
   // Space plays and pauses (before the stage scrolls or the book turns), unless typing or on a control
   window.addEventListener("keydown", (e) => {
     if (e.key !== " " || !player || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
@@ -1205,6 +1224,8 @@ function loadMusic(v: View) {
   const token = music;
   $("playBox").hidden = false;
   $<HTMLButtonElement>("play").disabled = $<HTMLButtonElement>("stopPlay").disabled = true;
+  $<HTMLButtonElement>("musicMode").disabled = $<HTMLButtonElement>("metronome").disabled = true;
+  $<HTMLInputElement>("speedPercent").disabled = true;
   $("playTime").textContent = "";
   client.play(v.id).then((data) => {
     if (token !== music || !data) return;
@@ -1224,6 +1245,7 @@ function stopMusic() {
   cancelAnimationFrame(playFrame);
   playFrame = 0;
   cursor.remove();
+  rollPlayhead = undefined;
   followed = undefined;
   $("playBox").hidden = true;
 }
@@ -1239,6 +1261,41 @@ function togglePlay() {
   }
 }
 
+/** Switch between the engraved page and its time-by-pitch note view. */
+function toggleMusicMode() {
+  if (!player || !current) return;
+  if (musicMode === "score") {
+    scoreScroll = { left: stage.scrollLeft, top: stage.scrollTop };
+    musicMode = "piano-roll";
+    show(current);
+    if (pianoRollScroll) stage.scrollTo(pianoRollScroll);
+  } else {
+    pianoRollScroll = { left: stage.scrollLeft, top: stage.scrollTop };
+    musicMode = "score";
+    show(current);
+    if (scoreScroll) stage.scrollTo(scoreScroll);
+  }
+  const mode = $<HTMLButtonElement>("musicMode");
+  mode.textContent = musicMode === "score" ? "Piano roll" : "Score";
+  mode.title = musicMode === "score" ? "Show piano roll" : "Show score pages";
+}
+
+function toggleMetronome() {
+  if (player) player.setMetronome(!player.metronomeEnabled);
+}
+
+function applySpeedPercent() {
+  const p = player;
+  const input = $<HTMLInputElement>("speedPercent");
+  const value = Number(input.value);
+  if (!p || !input.value || !Number.isFinite(value)) {
+    if (p) input.value = String(p.speedPercent);
+    return;
+  }
+  p.setSpeedPercent(value);
+  input.value = String(p.speedPercent);
+}
+
 /** The player started, paused, stopped or jumped: the controls and the cursor. */
 function musicChanged() {
   const p = player;
@@ -1249,6 +1306,26 @@ function musicChanged() {
   b.title = p.playing ? "pause (Space)" : "play (Space)";
   b.setAttribute("aria-label", p.playing ? "pause" : "play");
   $<HTMLButtonElement>("stopPlay").disabled = p.state === "stopped";
+  const mode = $<HTMLButtonElement>("musicMode");
+  mode.disabled = false;
+  mode.textContent = musicMode === "score" ? "Piano roll" : "Score";
+  mode.title = musicMode === "score" ? "Show piano roll" : "Show score pages";
+  const metronome = $<HTMLButtonElement>("metronome");
+  metronome.disabled = !p.metronomeAvailable;
+  metronome.textContent = p.metronomeEnabled ? "Metronome on" : "Metronome off";
+  metronome.setAttribute("aria-pressed", String(p.metronomeEnabled));
+  metronome.title = p.metronomeAvailable ? "Toggle metronome" : "Unavailable for SMPTE-timed MIDI";
+  const speedPercent = $<HTMLInputElement>("speedPercent");
+  speedPercent.disabled = false;
+  speedPercent.value = String(p.speedPercent);
+  const openingBpm = $("openingBpm");
+  openingBpm.hidden = !p.bpmAvailable;
+  openingBpm.textContent = p.bpmAvailable ? `${Number(p.bpm.toFixed(1))} BPM at start` : "";
+  if (musicMode === "piano-roll" && rollTempoScale !== p.tempoScale) {
+    const at = { left: stage.scrollLeft, top: stage.scrollTop };
+    showPianoRoll();
+    stage.scrollTo(at);
+  }
   follow();
 }
 
@@ -1260,9 +1337,123 @@ function follow() {
   if (!p) return;
   const at = p.position;
   $("playTime").textContent = `${minutes(at)} / ${minutes(p.duration)}`;
-  placeCursor(p.state === "stopped" ? null : p.cursorAt(at));
+  if (musicMode === "piano-roll") {
+    cursor.remove();
+    if (rollPlayhead) {
+      const x = pianoRollX(at);
+      rollPlayhead.style.left = `${x}px`;
+      if (p.playing) {
+        const visibleX = x - stage.scrollLeft;
+        if (visibleX < 24 || visibleX > stage.clientWidth - 24) {
+          stage.scrollTo({ left: Math.max(0, x - stage.clientWidth / 3), top: stage.scrollTop, behavior: "auto" });
+        }
+      }
+    }
+  } else placeCursor(p.state === "stopped" ? null : p.cursorAt(at));
   if (p.playing) playFrame = requestAnimationFrame(follow);
 }
+
+const ROLL_LABEL_WIDTH = 72;
+let rollPixelsPerSecond = 64;
+
+function pianoRollX(seconds: number): number { return ROLL_LABEL_WIDTH + seconds * rollPixelsPerSecond; }
+
+/** Draw the sequence as a scrollable time-by-pitch grid. Clicking seeks the same player as the score. */
+function showPianoRoll() {
+  const p = player;
+  if (!p) return;
+  const notes: NoteEvent[] = [];
+  let low = 127, high = 0;
+  for (const e of p.sequence.events) {
+    if (e.type !== "note") continue;
+    notes.push(e);
+    low = Math.min(low, e.key);
+    high = Math.max(high, e.key);
+  }
+  if (!notes.length) { low = 48; high = 84; }
+  low = Math.max(0, Math.floor(low / 12) * 12 - 1);
+  high = Math.min(127, Math.ceil(high / 12) * 12 + 1);
+  const rowHeight = Math.max(12, Math.min(24, 14 * zoom));
+  const rulerHeight = 30;
+  const height = rulerHeight + (high - low + 1) * rowHeight;
+  const duration = Math.max(p.duration, 1);
+  rollPixelsPerSecond = Math.min(64 * zoom, (14000 - ROLL_LABEL_WIDTH) / duration);
+  rollTempoScale = p.tempoScale;
+  const width = Math.ceil(Math.max(stage.clientWidth, Math.min(14000, ROLL_LABEL_WIDTH + duration * rollPixelsPerSecond + 32)));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(width * dpr);
+  canvas.height = Math.round(height * dpr);
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  canvas.setAttribute("role", "img");
+  canvas.setAttribute("aria-label", `Piano roll with ${notes.length} notes from ${keyName(high)} to ${keyName(low)}. Click to seek.`);
+  canvas.tabIndex = 0;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  const isBlack = (key: number) => [1, 3, 6, 8, 10].includes(key % 12);
+  const yFor = (key: number) => rulerHeight + (high - key) * rowHeight;
+  for (let key = low; key <= high; key++) {
+    const y = yFor(key);
+    ctx.fillStyle = isBlack(key) ? "#edf0f4" : "#fff";
+    ctx.fillRect(0, y, width, rowHeight);
+    ctx.fillStyle = isBlack(key) ? "#40454d" : "#f5f6f7";
+    ctx.fillRect(0, y, ROLL_LABEL_WIDTH, rowHeight);
+    if (key % 12 === 0) {
+      ctx.fillStyle = "#343a40";
+      ctx.fillText(keyName(key), 8, y + rowHeight / 2);
+    }
+    ctx.strokeStyle = "#d8dde3";
+    ctx.beginPath(); ctx.moveTo(0, y + rowHeight); ctx.lineTo(width, y + rowHeight); ctx.stroke();
+  }
+  ctx.fillStyle = "#f5f6f7";
+  ctx.fillRect(0, 0, width, rulerHeight);
+  const gridSeconds = Math.max(1, Math.ceil(40 / rollPixelsPerSecond));
+  const labelEvery = gridSeconds * Math.max(1, Math.ceil(5 / gridSeconds));
+  for (let second = 0; second <= duration; second += gridSeconds) {
+    const x = pianoRollX(second);
+    const major = second % labelEvery === 0;
+    ctx.strokeStyle = major ? "#9ca6b2" : "#e2e6eb";
+    ctx.beginPath(); ctx.moveTo(x, rulerHeight); ctx.lineTo(x, height); ctx.stroke();
+    if (major) {
+      ctx.fillStyle = "#3d4650";
+      ctx.fillText(minutes(second), x + 3, rulerHeight / 2);
+    }
+  }
+  for (const note of notes) {
+    const x = pianoRollX(note.time * p.tempoScale);
+    const right = Math.min(width, x + Math.max(2, note.duration * p.tempoScale * rollPixelsPerSecond));
+    if (right <= ROLL_LABEL_WIDTH) continue;
+    const y = yFor(note.key) + 2;
+    ctx.fillStyle = `hsl(${(note.channel * 47 + 205) % 360} 62% 52% / .82)`;
+    ctx.fillRect(Math.max(ROLL_LABEL_WIDTH, x), y, right - Math.max(ROLL_LABEL_WIDTH, x), rowHeight - 4);
+  }
+  ctx.fillStyle = "#59636f";
+  ctx.fillText(`${notes.length} notes`, 8, rulerHeight / 2);
+  canvas.addEventListener("click", (e) => {
+    if (player !== p) return;
+    const x = e.clientX - canvas.getBoundingClientRect().left;
+    if (x >= ROLL_LABEL_WIDTH) p.seek(Math.max(0, Math.min(p.duration, (x - ROLL_LABEL_WIDTH) / rollPixelsPerSecond)));
+  });
+  const roll = document.createElement("div");
+  roll.className = "pianoRoll";
+  roll.style.width = `${width}px`;
+  roll.style.height = `${height}px`;
+  roll.append(canvas);
+  rollPlayhead = document.createElement("div");
+  rollPlayhead.className = "rollPlayhead";
+  rollPlayhead.setAttribute("aria-hidden", "true");
+  roll.append(rollPlayhead);
+  stage.replaceChildren(roll);
+}
+
+const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+function keyName(key: number): string { return `${NOTE_NAMES[key % 12]}${Math.floor(key / 12) - 1}`; }
 
 /** Seconds as m:ss (h:mm:ss from an hour). */
 function minutes(seconds: number): string {
