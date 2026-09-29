@@ -122,11 +122,29 @@ Publish `@bdfkit/convert`, the chosen preset, `@bdfkit/viewer`, `@bdfkit/render`
 
 `.github/workflows/publish.yml` publishes all seven packages when a `v*` tag is pushed. It checks that the tag version matches every package, runs the TypeScript and Wasm builds and tests, inspects the package tarballs, and then publishes in dependency order.
 
-Because the packages are unpublished initially, the first release needs an npm granular access token. Create a token with read and write access to the `@bdfkit` packages (and permission to bypass 2FA for publishing), then save it as the repository Actions secret `NPM_TOKEN`. From a clean checkout, bump all package versions together, commit, tag and push:
+Publish the first release locally, then configure npm Trusted Publishers for the seven packages. Log in to npm on the release machine and publish the packages in dependency order:
+
+```sh
+npm login
+npm ci
+npm test
+npm run build:wasm
+
+for package in \
+  @bdfkit/core \
+  @bdfkit/render \
+  @bdfkit/convert \
+  @bdfkit/viewer \
+  @bdfkit/convert-pdf-epub \
+  @bdfkit/convert-office \
+  @bdfkit/convert-all; do
+  npm publish --workspace="$package" --access=public
+done
+```
+
+After the first packages exist on npm, configure GitHub Actions as a Trusted Publisher for each package. Use this repository and the workflow filename `publish.yml`, allow direct `npm publish`, and keep the workflow's `id-token: write` permission. Subsequent tag pushes then publish with short-lived GitHub OIDC credentials; no `NPM_TOKEN` secret is required.
 
 ```sh
 git tag v0.1.0
 git push origin main v0.1.0
 ```
-
-The workflow uses npm provenance (`--provenance`) and requests the GitHub OIDC identity token. After the first packages exist on npm, configure GitHub Actions as a Trusted Publisher for each package and remove `NPM_TOKEN`; subsequent releases can then use OIDC without a long-lived npm token.
