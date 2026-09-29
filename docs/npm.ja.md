@@ -146,7 +146,7 @@ for package in \
 done
 ```
 
-初回公開後、各パッケージの Trusted Publisher にこのリポジトリと `publish.yml` を登録し、直接の `npm publish` を許可します。ワークフローには GitHub OIDC 用の `id-token: write` を設定済みです。以後はタグを push するだけで短期 OIDC credential により公開でき、`NPM_TOKEN` secret は不要です。
+初回公開後、GitHub の Settings → Environments で `release` Environment を作成します。必要なレビュアーを設定し、デプロイ対象のブランチまたはタグをリリース用（例: `v*`）に限定してください。npm の各パッケージの Trusted Publisher には、このリポジトリ、`publish.yml`、Environment name `release` を登録し、直接の `npm publish` を許可します。ワークフローには GitHub OIDC 用の `id-token: write` を設定済みです。以後は `release` の承認後だけ短期 OIDC credential で公開され、`NPM_TOKEN` secret は不要です。
 
 ```sh
 git tag v0.1.0

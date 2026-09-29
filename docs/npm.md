@@ -142,7 +142,7 @@ for package in \
 done
 ```
 
-After the first packages exist on npm, configure GitHub Actions as a Trusted Publisher for each package. Use this repository and the workflow filename `publish.yml`, allow direct `npm publish`, and keep the workflow's `id-token: write` permission. Subsequent tag pushes then publish with short-lived GitHub OIDC credentials; no `NPM_TOKEN` secret is required.
+After the first packages exist on npm, create a GitHub Environment named `release`. Add required reviewers and restrict its deployment branches or tags to the release tags you use (for example, `v*`). Configure GitHub Actions as a Trusted Publisher for each npm package with this repository, workflow filename `publish.yml`, and Environment name `release`; allow direct `npm publish`. The workflow keeps the `id-token: write` permission. Subsequent tag pushes then publish with short-lived GitHub OIDC credentials only after the `release` environment is approved; no `NPM_TOKEN` secret is required.
 
 ```sh
 git tag v0.1.0
