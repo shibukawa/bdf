@@ -6,17 +6,210 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/ooxml"
 )
 
 // testOptions restricts fonts to the test fonts (shared with the PowerPoint
 // tests) so that output does not depend on the machine.
 func testOptions() *Options {
 	return &Options{FontDirs: []string{"../pptx/testdata/fonts"}, NoSystemFonts: true}
+}
+
+func TestStreamSharedStrings(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, data := range map[string]string{
+		"xl/_rels/workbook.xml.rels": `<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`,
+		"xl/sharedStrings.xml":       `<sst><si><t>Plain</t></si><si><r><t>Rich</t></r><r><t> text</t></r></si></sst>`,
+		"xl/worksheets/sheet1.xml":   `<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>1</v></c></row></sheetData></worksheet>`,
+	} {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	p, err := ooxml.Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &converter{pkg: p, wbPart: "xl/workbook.xml"}
+	c.loadSharedStrings()
+	if len(c.sst) != 2 || c.sst[0].plain != "Plain" || c.sst[1].plain != "Rich text" {
+		t.Fatalf("shared strings = %+v", c.sst)
+	}
+	ws, err := c.readWorksheet("xl/worksheets/sheet1.xml")
+	if err != nil || len(ws.rows) != 1 || len(ws.rows[0].cells) != 1 || ws.rows[0].cells[0].text != c.sst[1] {
+		t.Fatalf("shared-string cell = %+v, %v", ws, err)
+	}
+}
+
+func TestIncrementalFontEmbedding(t *testing.T) {
+	c := newConverter(nil, testOptions())
+	fc := c.fonts.FaceFor("M PLUS 1p", "", false, false, 'A')
+	if fc.Loaded == nil {
+		t.Fatal("test font not found")
+	}
+	encode := func(r rune) bdf.Font {
+		c.fonts.Advance(fc, r)
+		cv := c.cvs.New()
+		cv.Obj.Font(cv.Font(fc.Use), 12)
+		cv.Obj.FillText(string(r), 0, 0, 12)
+		c.encodePending(nil)
+		if cv.Obj != nil {
+			t.Fatal("encoded canvas still retains its object")
+		}
+		obj, err := bdf.DecodeObject(c.doc.Part(cv.Hash()).Data)
+		if err != nil || len(obj.Fonts) != 1 {
+			t.Fatalf("encoded object: %v, %v", obj, err)
+		}
+		return obj.Fonts[0]
+	}
+	first := encode('A')
+	second := encode('B')
+	if first.Kind != bdf.FontEmbedded || second.Kind != bdf.FontEmbedded || first.Hash == second.Hash {
+		t.Fatalf("the later glyph did not get a new font subset: %+v, %+v", first, second)
+	}
+	if c.doc.Part(first.Hash) == nil || c.doc.Part(second.Hash) == nil {
+		t.Fatal("a view refers to a missing font subset")
+	}
+}
+
+func TestLargeWorkbookBatchMatchesUnbatched(t *testing.T) {
+	_, base := convert(t, "basic.xlsx", testOptions())
+	pad := func(s string) string { return s + strings.Repeat(" ", 1<<20) }
+	_, batched := convertEdited(t, "basic.xlsx", map[string]func(string) string{
+		"xl/worksheets/sheet1.xml": pad,
+		"xl/worksheets/sheet3.xml": pad,
+	}, testOptions())
+	if len(base.Manifest.Views) != len(batched.Manifest.Views) {
+		t.Fatal("batching changed the sheet count")
+	}
+	for i, want := range base.Manifest.Views {
+		got := batched.Manifest.Views[i]
+		if want.ID != got.ID || !reflect.DeepEqual(want.Rows, got.Rows) || !reflect.DeepEqual(want.Cols, got.Cols) ||
+			bdf.PlainText(indexRuns(t, base, want)) != bdf.PlainText(indexRuns(t, batched, got)) || len(want.Tiles) != len(got.Tiles) {
+			t.Fatalf("batching changed sheet %d's layout or text", i+1)
+		}
+		for key := range want.Tiles {
+			if got.Tiles[key] == "" {
+				t.Fatalf("sheet %d is missing tile %s", i+1, key)
+			}
+			wantMarks, wantOps := marks(t, base, tile(t, want, key))
+			gotMarks, gotOps := marks(t, batched, tile(t, got, key))
+			if !reflect.DeepEqual(wantMarks, gotMarks) || !reflect.DeepEqual(wantOps, gotOps) {
+				t.Fatalf("batching changed sheet %d tile %s", i+1, key)
+			}
+		}
+	}
+}
+
+func TestRowReleaseKeepsSheetOutput(t *testing.T) {
+	const ns = `http://schemas.openxmlformats.org/spreadsheetml/2006/main`
+	sheet := `<worksheet xmlns="` + ns + `"><sheetData>` +
+		`<row r="1"><c r="A1" t="inlineStr"><is><t>Alpha across columns</t></is></c></row>` +
+		`<row r="2"><c r="A2" t="inlineStr"><is><t>Beta</t></is></c>` +
+		`<c r="B2" t="inlineStr"><is><t>Gamma</t></is></c></row>` +
+		`</sheetData><mergeCells count="1"><mergeCell ref="A1:B1"/></mergeCells></worksheet>`
+	styles := func(extraBorder bool) string {
+		borders := `<border/>`
+		if extraBorder {
+			// An unused border exercises edge collection with no resulting
+			// strokes, while keeping the expected output identical.
+			borders += `<border><left style="thin"/></border>`
+		}
+		return `<styleSheet xmlns="` + ns + `"><borders>` + borders + `</borders>` +
+			`<cellXfs><xf fontId="0" fillId="0" borderId="0" numFmtId="0"/></cellXfs></styleSheet>`
+	}
+	convertSheet := func(extraBorder bool) (*Result, *bdf.Reader) {
+		opts := testOptions()
+		opts.Sheets = conv.PageList(3)
+		return convertEdited(t, "basic.xlsx", map[string]func(string) string{
+			"xl/worksheets/sheet3.xml": func(string) string { return sheet },
+			"xl/styles.xml":            func(string) string { return styles(extraBorder) },
+		}, opts)
+	}
+	noBorders, r := convertSheet(false)
+	unusedBorder, _ := convertSheet(true)
+	if text := bdf.PlainText(indexRuns(t, r, r.Manifest.Views[0])); !strings.Contains(text, "Alpha across columns") || !strings.Contains(text, "Beta") {
+		t.Fatalf("sheet text = %q", text)
+	}
+	var a, b bytes.Buffer
+	if err := noBorders.Doc.WriteSingle(&a); err != nil {
+		t.Fatal(err)
+	}
+	if err := unusedBorder.Doc.WriteSingle(&b); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a.Bytes(), b.Bytes()) {
+		t.Fatal("releasing rows changed the sheet output")
+	}
+}
+
+func TestRowReleaseWithBordersAndVerticalMerge(t *testing.T) {
+	const ns = `http://schemas.openxmlformats.org/spreadsheetml/2006/main`
+	const relNS = `http://schemas.openxmlformats.org/officeDocument/2006/relationships`
+	styles := `<styleSheet xmlns="` + ns + `"><borders><border/><border>` +
+		`<left style="thin"/><right style="medium"/><top style="dashed"/><bottom style="double"/>` +
+		`</border></borders><cellXfs><xf borderId="0"/><xf borderId="1"/></cellXfs></styleSheet>`
+	// The extra blank cells make this a large sheet for the early-border
+	// path, without adding visible content to the comparison.
+	var blanks strings.Builder
+	for r := 3; r < 12; r++ {
+		blanks.WriteString(`<row r="`)
+		blanks.WriteString(strconv.Itoa(r + 1))
+		blanks.WriteString(`">`)
+		for c := 0; c < 15000; c++ {
+			blanks.WriteString(`<c r="`)
+			blanks.WriteString(cellRef(r, c))
+			blanks.WriteString(`"/>`)
+		}
+		blanks.WriteString(`</row>`)
+	}
+	convertSheet := func(retain bool) *Result {
+		sheet := `<worksheet xmlns="` + ns + `" xmlns:r="` + relNS + `"><sheetData>` +
+			`<row r="1"><c r="A1" s="1" t="inlineStr"><is><t>Merged text</t></is></c>` +
+			`<c r="B1" s="1"/></row>` +
+			`<row r="2"><c r="A2" s="1"/><c r="B2" s="1"/></row>` +
+			`<row r="3"><c r="A3" s="1" t="inlineStr"><is><t>After merge</t></is></c></row>` +
+			blanks.String() + `</sheetData><mergeCells count="1"><mergeCell ref="A1:B2"/></mergeCells>`
+		if retain {
+			// A missing drawing relationship leaves no drawing to paint, but
+			// selects the path that keeps cell records through the border pass.
+			sheet += `<drawing r:id="missing"/>`
+		}
+		sheet += `</worksheet>`
+		opts := testOptions()
+		opts.Sheets = conv.PageList(3)
+		res, _ := convertEdited(t, "basic.xlsx", map[string]func(string) string{
+			"xl/worksheets/sheet3.xml": func(string) string { return sheet },
+			"xl/styles.xml":            func(string) string { return styles },
+		}, opts)
+		return res
+	}
+	released, retained := convertSheet(false), convertSheet(true)
+	var a, b bytes.Buffer
+	if err := released.Doc.WriteSingle(&a); err != nil {
+		t.Fatal(err)
+	}
+	if err := retained.Doc.WriteSingle(&b); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a.Bytes(), b.Bytes()) {
+		t.Fatal("releasing rows changed bordered merged sheet output")
+	}
 }
 
 func convert(t *testing.T, name string, opts *Options) (*Result, *bdf.Reader) {

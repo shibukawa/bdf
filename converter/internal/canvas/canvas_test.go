@@ -96,3 +96,27 @@ func TestFixedFont(t *testing.T) {
 		t.Errorf("fonts %+v", o.Fonts)
 	}
 }
+
+func TestEncodeAndRelease(t *testing.T) {
+	doc := bdf.NewDocument()
+	b := NewBuilder(doc, fontset.New(fontdb.New(nil, nil, false), nil))
+	parent := b.New()
+	child, _ := parent.Child(bdf.Rect{W: 10, H: 10})
+	child.Obj.FillRect(0, 0, 10, 10)
+	b.EncodeAndRelease()
+	for _, cv := range []*Canvas{parent, child} {
+		if cv.Obj != nil || cv.children != nil || cv.Hash() == (bdf.Hash{}) || doc.Part(cv.Hash()) == nil {
+			t.Fatalf("canvas was not encoded and released: %+v", cv)
+		}
+	}
+	o, err := bdf.DecodeObject(doc.Part(parent.Hash()).Data)
+	if err != nil || len(o.Objects) != 1 || o.Objects[0] != child.Hash() {
+		t.Fatalf("child reference after release: %v, %v", o, err)
+	}
+	more := b.New()
+	more.Obj.FillRect(0, 0, 2, 2)
+	b.EncodeAndRelease()
+	if more.Hash() == (bdf.Hash{}) || more.Obj != nil || len(b.canvases) != 0 {
+		t.Fatal("builder cannot release a second batch")
+	}
+}

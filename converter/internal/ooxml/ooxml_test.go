@@ -3,6 +3,7 @@ package ooxml
 import (
 	"archive/zip"
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 )
@@ -65,6 +66,9 @@ func TestPackage(t *testing.T) {
 	if b, err := p.Read("media/a.png"); err != nil || string(b) != "png" {
 		t.Errorf("Read = %q, %v", b, err)
 	}
+	if n, ok := p.PartSize("MEDIA/A.PNG"); !ok || n != 3 {
+		t.Errorf("PartSize = %d, %v", n, ok)
+	}
 	if _, err := p.Read("missing.xml"); err == nil {
 		t.Error("reading a missing part succeeded")
 	}
@@ -74,6 +78,19 @@ func TestPackage(t *testing.T) {
 	}
 	if n2, _ := p.XML("/WORD/document.xml"); n2 != n1 {
 		t.Error("XML is not cached")
+	}
+}
+
+func TestLimitedPart(t *testing.T) {
+	for _, tc := range []struct {
+		data string
+		fail bool
+	}{{"abcd", false}, {"abcde", true}} {
+		r := &limitedPart{ReadCloser: io.NopCloser(strings.NewReader(tc.data)), remaining: 4, name: "part.xml"}
+		b, err := io.ReadAll(r)
+		if string(b) != "abcd" || (err != nil) != tc.fail {
+			t.Errorf("ReadAll(%q) = %q, %v", tc.data, b, err)
+		}
 	}
 }
 

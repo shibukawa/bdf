@@ -75,6 +75,41 @@ func TestEmbed(t *testing.T) {
 	}
 }
 
+func TestGenerationTracksNewSubsetGlyphs(t *testing.T) {
+	s := New(fontdb.New(nil, []string{testFonts}, false), nil)
+	fc := s.FaceFor("M PLUS 1p", "", false, false, 'A')
+	if fc.Loaded == nil {
+		t.Fatal("test font not found")
+	}
+	start := s.Generation()
+	s.Advance(fc, 'A')
+	if s.Generation() <= start {
+		t.Fatal("new character did not change the generation")
+	}
+	measured := s.Generation()
+	s.Advance(fc, 'A')
+	if s.Generation() != measured {
+		t.Fatal("measuring the same character changed the generation")
+	}
+	s.Pin(fc)
+	if s.Generation() <= measured {
+		t.Fatal("pinning a face did not change the generation")
+	}
+	pinned := s.Generation()
+	s.Pin(fc)
+	if s.Generation() != pinned {
+		t.Fatal("pinning the same face changed the generation")
+	}
+	if _, ok := s.GlyphRune(fc, 1); !ok || s.Generation() <= pinned {
+		t.Fatal("new glyph-by-index did not change the generation")
+	}
+	glyph := s.Generation()
+	s.GlyphRune(fc, 1)
+	if s.Generation() != glyph {
+		t.Fatal("the same glyph-by-index changed the generation")
+	}
+}
+
 func TestFaceForFamilies(t *testing.T) {
 	s := New(fontdb.New(nil, []string{testFonts}, false), nil)
 	list := []string{"M PLUS 1p", "Nowhere"}

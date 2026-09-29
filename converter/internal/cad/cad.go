@@ -101,8 +101,8 @@ const (
 type Item struct {
 	kind    kind
 	path    *Path
-	pen     Pen
-	fill    Fill
+	pen     *Pen
+	fill    *Fill
 	evenOdd bool
 	text    *Text
 	stroke  *StrokeText
@@ -128,6 +128,52 @@ type Drawing struct {
 	Items  []Item
 	open   []*Item // groups being filled
 	points int     // of the paths and clips drawn
+	pens   map[penKey]*Pen
+	fills  map[bdf.Color]*Fill
+}
+
+// penKey holds the scalar fields of a solid pen. Dash patterns vary by
+// drawing and are kept with their item rather than copied into this key.
+type penKey struct {
+	color                         bdf.Color
+	width, worldWidth, dashOffset float64
+	cap, join                     byte
+	miter                         float64
+}
+
+const maxSharedStyles = 4096
+
+func (d *Drawing) sharedPen(p Pen) *Pen {
+	if p.Dash != nil {
+		return &p
+	}
+	k := penKey{p.Color, p.Width, p.WorldWidth, p.DashOffset, p.Cap, p.Join, p.Miter}
+	if old := d.pens[k]; old != nil {
+		return old
+	}
+	if len(d.pens) < maxSharedStyles {
+		if d.pens == nil {
+			d.pens = map[penKey]*Pen{}
+		}
+		d.pens[k] = &p
+	}
+	return &p
+}
+
+func (d *Drawing) sharedFill(f Fill) *Fill {
+	if f.Gradient != nil || f.Pattern != nil {
+		return &f
+	}
+	if old := d.fills[f.Color]; old != nil {
+		return old
+	}
+	if len(d.fills) < maxSharedStyles {
+		if d.fills == nil {
+			d.fills = map[bdf.Color]*Fill{}
+		}
+		d.fills[f.Color] = &f
+	}
+	return &f
 }
 
 // Points returns the number of points of the paths drawn so far, those
@@ -150,7 +196,7 @@ func (d *Drawing) Stroke(p *Path, pen Pen) {
 	if p.Empty() {
 		return
 	}
-	d.add(Item{kind: kStroke, path: p, pen: pen, bounds: p.Bounds()})
+	d.add(Item{kind: kStroke, path: p, pen: d.sharedPen(pen), bounds: p.Bounds()})
 }
 
 // Fill fills a path; evenOdd selects the even-odd rule (nonzero
@@ -159,7 +205,7 @@ func (d *Drawing) Fill(p *Path, f Fill, evenOdd bool) {
 	if p.Empty() {
 		return
 	}
-	d.add(Item{kind: kFill, path: p, fill: f, evenOdd: evenOdd, bounds: p.Bounds()})
+	d.add(Item{kind: kFill, path: p, fill: d.sharedFill(f), evenOdd: evenOdd, bounds: p.Bounds()})
 }
 
 // Text draws a line of text.
@@ -334,7 +380,9 @@ func (d *Drawing) Append(src *Drawing, m canvas.Matrix, clip *Path) {
 	d.Begin(clip)
 	s := Scale(m)
 	for _, it := range src.Items {
-		d.add(transformItem(it, m, s))
+		out := transformItem(it, m, s)
+		d.shareItemStyles(&out)
+		d.add(out)
 	}
 	d.End()
 }
@@ -350,26 +398,30 @@ func transformItem(it Item, m canvas.Matrix, s float64) Item {
 	out.bounds = it.bounds.Transform(m)
 	switch it.kind {
 	case kStroke:
-		out.pen.WorldWidth *= s
-		out.pen.DashOffset *= s
+		pen := *it.pen
+		pen.WorldWidth *= s
+		pen.DashOffset *= s
 		if it.pen.Dash != nil {
-			out.pen.Dash = make([]float64, len(it.pen.Dash))
+			pen.Dash = make([]float64, len(it.pen.Dash))
 			for i, v := range it.pen.Dash {
-				out.pen.Dash[i] = v * s
+				pen.Dash[i] = v * s
 			}
 		}
+		out.pen = &pen
 	case kFill:
+		fill := *it.fill
 		if g := it.fill.Gradient; g != nil {
 			ng := *g
 			ng.P0, ng.P1 = Apply(m, g.P0), Apply(m, g.P1)
 			ng.R0, ng.R1 = g.R0*s, g.R1*s
-			out.fill.Gradient = &ng
+			fill.Gradient = &ng
 		}
 		if pt := it.fill.Pattern; pt != nil {
 			np := *pt
 			np.M = m.Mul(pt.M)
-			out.fill.Pattern = &np
+			fill.Pattern = &np
 		}
+		out.fill = &fill
 	case kImage:
 		img := *it.image
 		img.M = m.Mul(img.M)
@@ -389,4 +441,17 @@ func transformItem(it Item, m canvas.Matrix, s float64) Item {
 		}
 	}
 	return out
+}
+
+func (d *Drawing) shareItemStyles(it *Item) {
+	switch it.kind {
+	case kStroke:
+		it.pen = d.sharedPen(*it.pen)
+	case kFill:
+		it.fill = d.sharedFill(*it.fill)
+	case kGroup:
+		for i := range it.items {
+			d.shareItemStyles(&it.items[i])
+		}
+	}
 }

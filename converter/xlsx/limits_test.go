@@ -707,16 +707,16 @@ func TestFormatEdges(t *testing.T) {
 		t.Errorf("warnings %q", s.c.warnings)
 	}
 	for _, c := range []int{1, 2} {
-		if _, ok := es.h[[2]int{150, c}]; !ok {
+		if _, ok := es.h[edgeKey(150, c)]; !ok {
 			t.Errorf("no top edge of the cell of the file in column %d", c)
 		}
 	}
-	if _, ok := es.v[[2]int{150, 0}]; ok {
+	if _, ok := es.v[edgeKey(150, 0)]; ok {
 		t.Error("an edge of a cell that is not in the file, past the budget")
 	}
 	// all of them within the budget of a sheet
 	s, es = sheet(maxFormatEdges)
-	if _, ok := es.v[[2]int{150, 0}]; !ok || warnings(s) != 0 || s.edgeRoom >= maxFormatEdges {
+	if _, ok := es.v[edgeKey(150, 0)]; !ok || warnings(s) != 0 || s.edgeRoom >= maxFormatEdges {
 		t.Errorf("within the budget: the edge is kept %v, %d left, warnings %q", ok, s.edgeRoom, s.c.warnings)
 	}
 }

@@ -1,8 +1,7 @@
 // Package canvas builds the objects of a document whose text the converter
-// lays out itself. Font references stay placeholders until the whole
-// document has been laid out, because embedded font programs are subsets of
-// every character used anywhere (see fontset); child objects (vertical text
-// columns) are encoded before their parents.
+// lays out itself. Font references stay placeholders until their batch has
+// been measured and its fonts embedded (see fontset); child objects (vertical
+// text columns) are encoded before their parents.
 package canvas
 
 import (
@@ -18,6 +17,7 @@ type Builder struct {
 	doc      *bdf.Document
 	fonts    *fontset.Set
 	canvases []*Canvas
+	release  bool
 }
 
 // NewBuilder returns a builder of objects for doc whose text is measured
@@ -40,6 +40,15 @@ func (b *Builder) Encode() {
 	for _, cv := range b.canvases {
 		cv.encode()
 	}
+}
+
+// EncodeAndRelease encodes the canvases and drops each source object as soon
+// as its bytes are stored in the document. Hash and Drawn remain available to
+// callers that assemble views after encoding.
+func (b *Builder) EncodeAndRelease() {
+	b.release = true
+	b.Encode()
+	b.canvases = nil
 }
 
 // Canvas is an object under construction.
@@ -189,6 +198,14 @@ func (cv *Canvas) encode() bdf.Hash {
 		cv.Obj.UpdateObject(bdf.ObjRef(i), ch.encode())
 	}
 	cv.hash, _ = cv.b.doc.AddObject(cv.Obj)
+	if cv.b.release {
+		cv.Obj = nil
+		cv.fonts = nil
+		cv.fontIdx = nil
+		cv.fixedIdx = nil
+		cv.images = nil
+		cv.children = nil
+	}
 	return cv.hash
 }
 

@@ -30,6 +30,7 @@ package wordproc
 import (
 	"fmt"
 	"io/fs"
+	"runtime"
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
@@ -199,24 +200,61 @@ func (c *converter) finish(views string) *Result {
 	opts := c.opts
 	res := &Result{Doc: c.doc}
 	title := c.doc.Meta.DC.Title.First()
-	var jobs []func()
+	var pageJob, scrollJob func()
 	if views != ViewsScroll {
 		v := c.doc.NewView("pages", bdf.ViewFlow, title)
 		v.Continuous = &bdf.Continuous{Gap: 24}
-		jobs = append(jobs, c.pageView(v, &res.Pages))
+		pageJob = c.pageView(v, &res.Pages)
+	}
+	fontOpts := fontset.EmbedOptions{NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2,
+		IgnoreFSType: opts.IgnoreFSType, PinnedOnly: opts.SystemFonts}
+	var pageFonts uint64
+	if views == ViewsBoth {
+		// Finalize the page objects before building the scroll view. A later
+		// view may measure new characters, in which case it gets a newer font
+		// subset while the already encoded pages keep their valid subset.
+		res.EmbeddedFonts = c.fonts.Embed(c.doc, fontOpts)
+		pageFonts = c.fonts.Generation()
+		c.cvs.EncodeAndRelease()
+		pageJob()
+		pageJob = nil
+		c.hf, c.hfCache, c.noteCache, c.bmPage = nil, nil, nil, nil
+		if res.Pages >= 128 {
+			runtime.GC()
+		}
 	}
 	if views != ViewsPages {
 		v := c.doc.NewView("scroll", bdf.ViewScroll, title)
-		jobs = append(jobs, c.scrollView(v, &res.Strips))
+		scrollJob = c.scrollView(v, &res.Strips)
 	}
-	// with system fonts, the formula font is embedded still: a formula's
-	// layout depends on its glyphs
-	res.EmbeddedFonts = c.fonts.Embed(c.doc, fontset.EmbedOptions{NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2,
-		IgnoreFSType: opts.IgnoreFSType, PinnedOnly: opts.SystemFonts})
-	c.cvs.Encode()
+	// Both views are now drawn. Their canvases hold the finished instructions;
+	// the input tree, measured blocks and pagination caches are no longer used
+	// by font embedding or object encoding.
+	c.pkg, c.r, c.dr = nil, nil, nil
+	c.sections, c.notes, c.noteOrder = nil, nil, nil
+	c.hf, c.boxes, c.noteCache, c.hfCache = nil, nil, nil, nil
+	c.bmPage, c.bmY = nil, nil
+	c.st, c.num, c.lastSection = nil, nil, nil
+	c.eq, c.ommlReader = nil, nil
+	if res.Pages+res.Strips >= 128 {
+		// A long document leaves many measured items and layout ops unreachable
+		// at once. Collect them before font subsetting and object encoding add
+		// their own large temporary buffers.
+		runtime.GC()
+	}
+	// With system fonts, the formula font is embedded still: its layout
+	// depends on its glyphs. Skip a second subset pass when the scroll view
+	// measured no characters that the pages did not already use.
+	if views != ViewsBoth || c.fonts.Generation() != pageFonts {
+		res.EmbeddedFonts = c.fonts.Embed(c.doc, fontOpts)
+	}
+	c.cvs.EncodeAndRelease()
 	c.fonts.ReportMissing()
-	for _, job := range jobs {
-		job()
+	if pageJob != nil {
+		pageJob()
+	}
+	if scrollJob != nil {
+		scrollJob()
 	}
 	if !opts.NoTextIndex {
 		for _, v := range c.doc.Views {

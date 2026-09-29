@@ -72,7 +72,13 @@ func ParseChoosing(data []byte, supported func(prefix string) bool) (*Node, erro
 // ParsePicking is Parse that replaces mc:AlternateContent with its first
 // mc:Choice that pick accepts, and with the fallback when it accepts none.
 func ParsePicking(data []byte, pick func(choice *Node) bool) (*Node, error) {
-	d := xml.NewDecoder(bytes.NewReader(data))
+	return ParsePickingReader(bytes.NewReader(data), pick)
+}
+
+// ParsePickingReader parses XML from a reader without retaining the source
+// bytes alongside the resulting node tree.
+func ParsePickingReader(r io.Reader, pick func(choice *Node) bool) (*Node, error) {
+	d := xml.NewDecoder(r)
 	d.Strict = false
 	for {
 		tok, err := d.Token()
@@ -166,6 +172,21 @@ func readElement(d *xml.Decoder, start xml.StartElement, pick func(choice *Node)
 }
 
 func (n *Node) resolveAlternates(pick func(choice *Node) bool) {
+	// Most OOXML nodes have no alternate child. Avoid allocating a replacement
+	// child list and index map for every paragraph, run and text node.
+	hasAlternate := false
+	for _, k := range n.Kids {
+		if k.Name == "AlternateContent" && strings.HasSuffix(k.Space, nsMC) {
+			hasAlternate = true
+			break
+		}
+	}
+	if !hasAlternate {
+		for _, k := range n.Kids {
+			k.resolveAlternates(pick)
+		}
+		return
+	}
 	var kids []*Node
 	changed := false
 	// start[i] is where old child i starts among the new children, so that

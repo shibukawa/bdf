@@ -11,12 +11,46 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/ooxml"
 )
 
 // testOptions restricts fonts to the test font directory so that output
 // does not depend on the machine.
 func testOptions() *Options {
 	return &Options{FontDirs: []string{"testdata/fonts"}, NoSystemFonts: true}
+}
+
+func TestSlideHiddenStream(t *testing.T) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, data := range map[string]string{
+		"hidden.xml":    `<p:sld xmlns:p="p" show="0"><p:cSld/></p:sld>`,
+		"visible.xml":   `<p:sld xmlns:p="p"><p:cSld/></p:sld>`,
+		"malformed.xml": `<p:sld xmlns:p="p" show="0"><p:cSld>`,
+	} {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(data)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	p, err := ooxml.Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		want bool
+	}{{"hidden.xml", true}, {"visible.xml", false}, {"malformed.xml", false}} {
+		if got := slideHidden(p, tc.name); got != tc.want {
+			t.Errorf("slideHidden(%s) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
 }
 
 func convert(t *testing.T, name string, opts *Options) (*Result, *bdf.Reader) {

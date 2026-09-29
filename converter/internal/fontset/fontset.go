@@ -56,7 +56,13 @@ type Set struct {
 	pinned        map[*fontdb.Face]bool            // faces embedded even when the others are referred to by name
 	missing       map[rune]bool                    // characters no available font has
 	embedded      map[*fontdb.Face]bdf.Hash
+	generation    uint64 // changes whenever an embedded subset may need updating
 }
+
+// Generation changes when newly measured text or a glyph-by-index changes
+// the font subsets. A converter may encode one batch of canvases and check
+// whether a later batch needs another Embed call.
+func (s *Set) Generation() uint64 { return s.generation }
 
 type resolveKey struct {
 	name              string
@@ -249,7 +255,10 @@ func (s *Set) Advance(fc *Choice, r rune) float64 {
 				m = map[rune]bool{}
 				s.runes[fc.Loaded.Face] = m
 			}
-			m[r] = true
+			if !m[r] {
+				m[r] = true
+				s.generation++
+			}
 			return fc.Loaded.Advance(g)
 		}
 	}
@@ -290,8 +299,14 @@ func (s *Set) GlyphRune(fc *Choice, g uint16) (rune, bool) {
 		s.glyphs[f] = m
 	}
 	r := rune(glyphPUA + int(g))
-	m[r] = g
-	s.pinned[f] = true
+	if _, ok := m[r]; !ok {
+		m[r] = g
+		s.generation++
+	}
+	if !s.pinned[f] {
+		s.pinned[f] = true
+		s.generation++
+	}
 	return r, true
 }
 
@@ -300,7 +315,10 @@ func (s *Set) GlyphRune(fc *Choice, g uint16) (rune, bool) {
 // index) cannot be drawn with a viewer's own fonts.
 func (s *Set) Pin(fc *Choice) {
 	if fc.Loaded != nil {
-		s.pinned[fc.Loaded.Face] = true
+		if !s.pinned[fc.Loaded.Face] {
+			s.pinned[fc.Loaded.Face] = true
+			s.generation++
+		}
 	}
 }
 

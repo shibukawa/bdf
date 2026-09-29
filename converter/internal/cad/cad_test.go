@@ -5,7 +5,73 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/canvas"
 )
+
+func TestDrawingSharesSimpleStyles(t *testing.T) {
+	d := &Drawing{}
+	p := (&Path{}).MoveTo(0, 0).LineTo(1, 1)
+	pen := Pen{Color: bdf.RGB(10, 20, 30), Width: 1}
+	d.Stroke(p, pen)
+	d.Stroke(p, pen)
+	if d.Items[0].pen != d.Items[1].pen {
+		t.Fatal("identical solid pens were retained separately")
+	}
+	d.Stroke(p, Pen{Color: pen.Color, Width: 2})
+	if d.Items[1].pen == d.Items[2].pen {
+		t.Fatal("different pen widths were combined")
+	}
+	d.Stroke(p, Pen{Color: pen.Color, Width: 1, Dash: []float64{1, 1}})
+	d.Stroke(p, Pen{Color: pen.Color, Width: 1, Dash: []float64{1, 1}})
+	if d.Items[3].pen == d.Items[4].pen {
+		t.Fatal("dash patterns were shared without owning their slices")
+	}
+
+	fill := Fill{Color: bdf.RGB(40, 50, 60)}
+	d.Fill(p, fill, false)
+	d.Fill(p, fill, true)
+	if d.Items[5].fill != d.Items[6].fill {
+		t.Fatal("identical solid fills were retained separately")
+	}
+	d.Fill(p, Fill{Color: bdf.RGB(40, 50, 61)}, false)
+	if d.Items[6].fill == d.Items[7].fill {
+		t.Fatal("different fill colors were combined")
+	}
+}
+
+func TestDrawingAppendKeepsSourceStyles(t *testing.T) {
+	src := &Drawing{}
+	p := (&Path{}).MoveTo(0, 0).LineTo(2, 2)
+	src.Begin(nil)
+	src.Stroke(p, Pen{Color: bdf.RGB(1, 2, 3), WorldWidth: 2})
+	src.Stroke(p, Pen{Color: bdf.RGB(1, 2, 3), WorldWidth: 2, Dash: []float64{1, 2}})
+	src.Fill(p, Fill{Gradient: &Gradient{P0: Point{1, 1}, P1: Point{2, 2}, R0: 3, R1: 4}}, false)
+	src.End()
+
+	dst := &Drawing{}
+	dst.Append(src, canvas.Scale(3, 3), nil)
+	dst.Append(src, canvas.Scale(3, 3), nil)
+	orig := src.Items[0].items
+	first, second := dst.Items[0].items[0].items, dst.Items[1].items[0].items
+	if first[0].pen != second[0].pen || first[0].pen == orig[0].pen {
+		t.Fatal("transformed solid pens were not shared only in the destination")
+	}
+	if orig[0].pen.WorldWidth != 2 || first[0].pen.WorldWidth != 6 {
+		t.Fatal("append changed the source pen or failed to scale its copy")
+	}
+	if !slices.Equal(orig[1].pen.Dash, []float64{1, 2}) ||
+		!slices.Equal(first[1].pen.Dash, []float64{3, 6}) ||
+		first[1].pen == second[1].pen {
+		t.Fatal("append did not preserve independent dash patterns")
+	}
+	if orig[2].fill.Gradient.P0 != (Point{1, 1}) ||
+		first[2].fill.Gradient.P0 != (Point{3, 3}) ||
+		first[2].fill == second[2].fill {
+		t.Fatal("append did not preserve independent gradients")
+	}
+}
 
 func near(a, b Point, tol float64) bool { return math.Abs(a.X-b.X) <= tol && math.Abs(a.Y-b.Y) <= tol }
 

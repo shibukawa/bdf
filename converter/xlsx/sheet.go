@@ -1,7 +1,6 @@
 package xlsx
 
 import (
-	"bytes"
 	"encoding/xml"
 	"io"
 	"math"
@@ -107,12 +106,13 @@ type worksheet struct {
 
 // readWorksheet parses a worksheet part.
 func (c *converter) readWorksheet(part string) (*worksheet, error) {
-	data, err := c.pkg.Read(part)
+	rc, err := c.pkg.OpenPart(part)
 	if err != nil {
 		return nil, err
 	}
+	defer rc.Close()
 	ws := &worksheet{part: part, baseColW: 8, showGrid: true, showZero: true}
-	d := xml.NewDecoder(bytes.NewReader(data))
+	d := xml.NewDecoder(rc)
 	d.Strict = false
 	depth := 0
 	for {
@@ -609,6 +609,8 @@ func (ws *worksheet) sortRows() {
 		}
 		out = append(out, r)
 	}
+	// The backing slice can still point at duplicate rows that were removed.
+	clear(ws.rows[len(out):])
 	ws.rows = out
 	for i := range ws.rows {
 		cs := ws.rows[i].cells
@@ -623,6 +625,7 @@ func (ws *worksheet) sortRows() {
 				dedup = append(dedup, cl)
 			}
 		}
+		clear(cs[len(dedup):])
 		ws.rows[i].cells = dedup
 	}
 }
