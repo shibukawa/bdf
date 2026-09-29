@@ -885,7 +885,8 @@ func orthConnector(state, sourceScaled, targetScaled *cellState, controlHints []
 
 	// the preferred orientations by relative positioning of the vertices,
 	// in preferred and available order
-	var dirPref, horPref, vertPref [2]int
+	var dirPref [2]uint32
+	var horPref, vertPref [2]int
 	horPref[0], vertPref[0] = dirMaskEast, dirMaskSouth
 	if sourceLeftDist >= sourceRightDist {
 		horPref[0] = dirMaskWest
@@ -944,12 +945,12 @@ func orthConnector(state, sourceScaled, targetScaled *cellState, controlHints []
 		if prefOrdering[i][0]&portConstraint[i] == 0 {
 			prefOrdering[i][0] = prefOrdering[i][1]
 		}
-		dirPref[i] = prefOrdering[i][0] & portConstraint[i]
-		dirPref[i] |= (prefOrdering[i][1] & portConstraint[i]) << 8
-		dirPref[i] |= (prefOrdering[1-i][i] & portConstraint[i]) << 16
-		dirPref[i] |= (prefOrdering[1-i][1-i] & portConstraint[i]) << 24
+		dirPref[i] = uint32(prefOrdering[i][0] & portConstraint[i])
+		dirPref[i] |= uint32(prefOrdering[i][1]&portConstraint[i]) << 8
+		dirPref[i] |= uint32(prefOrdering[1-i][i]&portConstraint[i]) << 16
+		dirPref[i] |= uint32(prefOrdering[1-i][1-i]&portConstraint[i]) << 24
 		if dirPref[i]&0xF == 0 {
-			dirPref[i] = (dirPref[i] << 8) & 0xFFFFFFFF
+			dirPref[i] <<= 8
 		}
 		if dirPref[i]&0xF00 == 0 {
 			dirPref[i] = (dirPref[i] & 0xF) | dirPref[i]>>8
@@ -957,7 +958,7 @@ func orthConnector(state, sourceScaled, targetScaled *cellState, controlHints []
 		if dirPref[i]&0xF0000 == 0 {
 			dirPref[i] = (dirPref[i] & 0xFFFF) | ((dirPref[i] & 0xF000000) >> 8)
 		}
-		dir[i] = dirPref[i] & 0xF
+		dir[i] = int(dirPref[i] & 0xF)
 		switch portConstraint[i] {
 		case dirMaskWest, dirMaskNorth, dirMaskEast, dirMaskSouth:
 			dir[i] = portConstraint[i]
