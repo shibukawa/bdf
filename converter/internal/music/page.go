@@ -260,6 +260,10 @@ func build(s *Score, o *Options) (*Result, error) {
 		}
 		out = append(out, laid{p, cv})
 	}
+	var tabs []builtTab
+	if o.GuitarTAB {
+		tabs = e.tabViews(doc, cvs, systems, pageW, pageH)
+	}
 	if !o.SystemFonts {
 		res.EmbeddedFonts = set.Embed(doc, fontset.EmbedOptions{NoSubset: o.NoSubset, NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType})
 	}
@@ -267,6 +271,11 @@ func build(s *Score, o *Options) (*Result, error) {
 	set.ReportMissing()
 	for _, l := range out {
 		l.pg.Layers = []bdf.Layer{{Role: bdf.RoleBody, Obj: l.cv.Hash()}}
+	}
+	for _, tab := range tabs {
+		for _, p := range tab.pages {
+			p.page.Layers = []bdf.Layer{{Role: bdf.RoleBody, Obj: p.cv.Hash()}}
+		}
 	}
 	keep := make([]bool, len(view.Pages))
 	if o.Pages != nil {
@@ -288,11 +297,20 @@ func build(s *Score, o *Options) (*Result, error) {
 
 	if s.Play != nil && !o.NoPlay {
 		e.play(doc, view, &cues, points, keep)
+		for i := range tabs {
+			tab := &tabs[i]
+			e.play(doc, tab.view, &tab.cues, tab.points, tab.keep)
+		}
 		res.Seconds = s.Play.seconds()
 	}
 	if !o.NoTextIndex {
 		if _, err := doc.BuildTextIndex(view); err != nil {
 			warn(fmt.Sprintf("text index: %v", err))
+		}
+		for _, tab := range tabs {
+			if _, err := doc.BuildTextIndex(tab.view); err != nil {
+				warn(fmt.Sprintf("TAB text index: %v", err))
+			}
 		}
 	}
 	res.Doc = doc

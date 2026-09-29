@@ -27,6 +27,14 @@ func parse(t *testing.T, doc string) (*music.Score, []string) {
 	return s, w
 }
 
+func TestAuthoredGuitarPosition(t *testing.T) {
+	s, _ := parse(t, score(attrs(1)+n("E4", 1, "quarter", `<notations><technical><string>2</string><fret>5</fret></technical></notations>`)))
+	note := s.Parts[0].Measures[0].Events[0].Notes[0]
+	if note.Tab == nil || *note.Tab != (music.TabPosition{String: 2, Fret: 5}) {
+		t.Fatalf("authored position: %+v", note.Tab)
+	}
+}
+
 // score makes a partwise score of one part from its measures.
 func score(measures ...string) string {
 	return scoreWith(`<score-part id="P1"><part-name>Music</part-name></score-part>`, measures...)

@@ -293,6 +293,12 @@ const (
 // Note is a note of an event.
 type Note struct {
 	Pitch Pitch
+	// Tab is an authored string/fret position (string 1 is the high E).
+	// nil lets guitar TAB choose a position from the pitch.
+	Tab *TabPosition
+	// SoundingMIDI is set by formats whose written pitch is transposed.
+	// nil uses Pitch.MIDI() when estimating a TAB position.
+	SoundingMIDI *int
 	// Accidental is the accidental drawn before the note. AccAuto chooses
 	// it from the key signature and the notes before in the measure.
 	Accidental Accidental
@@ -301,6 +307,12 @@ type Note struct {
 	// TieStart and TieStop tie the note to the next and previous one.
 	TieStart, TieStop bool
 	Head              Notehead
+}
+
+// TabPosition is a position on a six-string guitar in standard tuning.
+type TabPosition struct {
+	String int // 1 (high E) through 6 (low E)
+	Fret   int // 0 is an open string
 }
 
 // Pitch is a written pitch.

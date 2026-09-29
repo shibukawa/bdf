@@ -26,6 +26,9 @@ type Options struct {
 
 	// NoPlay leaves the sound out: no seq part and no cues.
 	NoPlay bool
+	// GuitarTAB adds four alternative estimated guitar TAB views. The score
+	// remains the first view. An authored Note.Tab takes precedence.
+	GuitarTAB bool
 
 	// The fonts of the text (title, lyrics, words), as in
 	// converter.Options.

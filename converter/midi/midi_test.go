@@ -18,6 +18,25 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the files of testdata")
 
+func TestConvertGuitarTABViews(t *testing.T) {
+	data := smf(0, 480, trk{}.note(0, 0, 64, 480).end(0))
+	f := conv.Lookup("midi")
+	for _, tc := range []struct {
+		params map[string]string
+		views  int
+	}{{nil, 5}, {map[string]string{"tab": "false"}, 1}} {
+		res, err := f.Convert(bytes.NewReader(data), int64(len(data)), &conv.Options{
+			Params: tc.params, FontDirs: []string{"../pptx/testdata/fonts"}, NoSystemFonts: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.Doc.Views) != tc.views {
+			t.Fatalf("tab=%v: %d views, want %d", tc.params, len(res.Doc.Views), tc.views)
+		}
+	}
+}
+
 // trk builds the events of a track chunk.
 type trk []byte
 

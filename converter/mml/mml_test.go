@@ -630,7 +630,7 @@ func TestDetect(t *testing.T) {
 
 func TestParams(t *testing.T) {
 	f := conv.Lookup("mml")
-	if f == nil || len(f.Params) != 5 || !slices.Equal(f.Extensions, []string{".mml"}) {
+	if f == nil || len(f.Params) != 6 || !slices.Equal(f.Extensions, []string{".mml"}) {
 		t.Fatalf("format %+v", f)
 	}
 	for _, tc := range []struct {
