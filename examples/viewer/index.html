@@ -50,7 +50,7 @@
   #pageNav.rtl { flex-direction: row-reverse; }
   #pageNum { min-width: 5.5em; text-align: center; font-variant-numeric: tabular-nums; }
   /* the music of a score (spec §4.4): its controls, and a bar on the page where the music is */
-  #playBox:not([hidden]) { display: inline-flex; gap: 4px; align-items: center; }
+  #playBox:not([hidden]) { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
   #playTime { min-width: 7.5em; text-align: center; font-variant-numeric: tabular-nums; }
   #speedPercent { width: 3.5em; }
   .playCursor { position: absolute; z-index: 2; width: 2px; margin-left: -1px; background: rgba(26, 115, 232, .75); pointer-events: none; forced-color-adjust: none; }
@@ -64,6 +64,7 @@
   .hl { position: absolute; background: rgba(255, 210, 0, .45); outline: 1px solid rgba(200, 140, 0, .8); pointer-events: none; border-radius: 2px; }
   .hl.current { background: rgba(255, 120, 0, .5); outline-color: #c04000; }
   .search { display: flex; gap: 4px; align-items: center; }
+  .search[hidden] { display: none; }
   /* cells are selected, not text (main.ts showSheet) */
   .sheet { position: relative; cursor: cell; -webkit-user-select: none; user-select: none; }
   .sheet canvas { position: sticky; top: 0; left: 0; display: block; }
@@ -129,13 +130,24 @@
   <span id="playBox" hidden>
     <button id="play" type="button" title="play (Space)" aria-label="play" disabled>▶</button>
     <button id="stopPlay" type="button" title="stop" aria-label="stop" disabled>■</button>
-    <button id="musicMode" type="button" title="Show piano roll" disabled>Piano roll</button>
+    <label>Display <select id="musicDisplay" aria-label="Music display" disabled>
+      <option value="score">Score</option>
+      <option value="piano-roll">Piano roll</option>
+      <option value="tab">Guitar TAB</option>
+    </select></label>
+    <label id="tabPartBox" hidden>Part <select id="tabPart" aria-label="TAB part"></select></label>
+    <label id="tabPresetBox" hidden title="These are estimated fingerings, not the only way to play the notes">Fingering <select id="tabPreset" aria-label="Estimated TAB fingering">
+      <option value="low">Low positions</option>
+      <option value="smooth">Less shifting</option>
+      <option value="open">Open strings</option>
+      <option value="easy">Beginner friendly</option>
+    </select></label>
     <label>Speed <input id="speedPercent" type="number" min="25" max="200" step="1" inputmode="numeric" aria-label="Playback speed as a percentage" disabled>%</label>
     <span id="openingBpm" aria-live="polite"></span>
     <button id="metronome" type="button" aria-pressed="false" disabled>Metronome off</button>
     <span id="playTime"></span>
   </span>
-  <span class="search" role="search">
+  <span class="search" id="searchBox" role="search">
     <input id="q" type="search" placeholder="search…" aria-label="search" size="18">
     <button id="prev" title="previous match" aria-label="previous match">▲</button><button id="next" title="next match" aria-label="next match">▼</button>
     <span id="hits" role="status"></span>
@@ -156,7 +168,7 @@
       The file is converted to bdf and drawn inside your browser, by the Go converters built as WebAssembly: it is not uploaded anywhere.</p>
     <p><button type="button" id="chooseFile">Choose a file…</button></p>
     <div id="samples" hidden><p>Or open a sample:</p><p class="samples"></p></div>
-    <p class="note">Password-protected files open with their password. A PDF shows its pages as they are converted, the ones in view first. A score plays with ▶ (or the space bar), a click on a system plays from there. Switch to Piano roll to see notes by pitch and time; change speed (%) to adjust playback while preserving tempo ratios; turn on Metronome to hear the beat.
+    <p class="note">Password-protected files open with their password. A PDF shows its pages as they are converted, the ones in view first. Music plays with ▶ (or the space bar), and a click on a system plays from there. Use Display to switch between Score, Piano roll and Guitar TAB; choose a TAB part and an estimated fingering. Speed (%) adjusts playback while preserving tempo ratios, and Metronome plays the beat.
       Office documents are laid out with the free fonts published with this page (fetched when a document uses them), which stand in for the fonts the document names.</p>
     <!-- site -->
     <p class="note">The thumbnails and the text for a search index that a server makes of a document have pages of their own: <a href="../thumbnail/">thumbnails</a>, <a href="../text/">search text</a>.

@@ -4,13 +4,13 @@ MML・MIDI・MusicXML は、いずれも共通の組版エンジン（`converter
 
 ## ギターTABの運指候補
 
-変換後のビューアでは、五線譜の View に加えて、最初の4つの有音高パートごとにギターTABの View を選べる。方針は**低いポジション優先**（Low positions）、**ポジション移動を減らす**（Less shifting）、**開放弦を積極的に使う**（Open strings）、**初心者向け**（Beginner friendly）の4種類。どれも「実際にその運指で演奏した」という記録ではなく、標準チューニング E A D G B E を前提にした推定候補である。五線譜は最初の View のままで、TAB でも同じ音楽を再生できる。
+ビューアの **Display** から **Score（五線譜）**・**Piano roll（ピアノロール）**・**Guitar TAB（ギターTAB）** を直接切り替えられる。Guitar TAB ではパートと運指方針を選ぶ。方針は**低いポジション優先**（Low positions）、**ポジション移動を減らす**（Less shifting）、**開放弦を積極的に使う**（Open strings）、**初心者向け**（Beginner friendly）の4種類。どれも「実際にその運指で演奏した」という記録ではなく、標準チューニング E A D G B E を前提にした推定候補である。TAB でも五線譜と同じ音楽を、速度調整とメトロノームを使って再生できる。
 
 各音高の弦・フレット候補を列挙し、フレーズ全体の手の移動量も考慮して選ぶ。同時または重なって鳴る音を同じ弦に置かず、和音の押弦は4〜5フレットの範囲に収める。MusicXML の `<notations><technical>` にある `<string>`・`<fret>` は優先し、和音内で衝突するときだけ別の候補を検討する。ギターの音域外の音、演奏不可能な和音、5番目以降の有音高パート、2万音を超えるパートはTABから省き、変換時に警告する。TABが不要なら `-param tab=false` を指定できる。
 
 ## 試す
 
-[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試せる。[MML のチップチューン](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml)、[歌詞付きの MIDI カラオケ](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar)、[MusicXML のピアノ譜](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml)。ビューアでは五線譜とピアノロールを切り替え、再生速度を%で調整できる（曲中のテンポ比は維持され、冒頭の換算 BPM を表示）。再生中にはメトロノームも有効にできる。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試せる。[MML のチップチューン](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml)、[歌詞付きの MIDI カラオケ](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar)、[MusicXML のピアノ譜](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml)。**Display** から表示を選び、再生速度を%で調整できる（曲中のテンポ比は維持され、冒頭の換算 BPM を表示）。再生中にはメトロノームも有効にできる。
 
 ## MML（converter/mml）
 

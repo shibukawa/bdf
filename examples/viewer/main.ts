@@ -75,6 +75,8 @@ let player: MusicPlayer | undefined;
 let musicMode: "score" | "piano-roll" = "score";
 let scoreScroll: { left: number; top: number } | undefined;
 let pianoRollScroll: { left: number; top: number } | undefined;
+let musicSpeedPercent = 100;
+let musicMetronome = false;
 let rollPlayhead: HTMLDivElement | undefined;
 let rollTempoScale = 1;
 /** Bumped as the view with music changes: music that comes for another view is dropped. */
@@ -329,6 +331,7 @@ async function load(source: OpenSource, name?: string, token = ++opening, stream
     return;
   }
   manifest = opened;
+  $("searchBox").hidden = ["mml", "midi", "musicxml"].includes(manifest.meta?.source ?? "") || manifest.views.some((v) => !!v.play);
   // a book opens as facing pages
   if (!layoutChosen) layoutSelect.value = manifest.meta?.source === "epub" ? "spread" : "pages";
   if (stream) {
@@ -348,6 +351,7 @@ async function load(source: OpenSource, name?: string, token = ++opening, stream
     b.setAttribute("aria-controls", stage.id);
     tabs.appendChild(b);
   });
+  configureMusicDisplay();
   // "#view=ID" in the address opens that view
   const start = internalLink(location.hash);
   show(manifest.views.find((v) => v.id === start?.view) ?? manifest.views[0]);
@@ -534,6 +538,9 @@ function pageArrived(index: number) {
 /** Take down the document shown, before another one opens: work started for it is dropped. */
 function closeDocument() {
   stopMusic();
+  $("searchBox").hidden = false;
+  musicSpeedPercent = 100;
+  musicMetronome = false;
   if (streaming) converter?.close(streaming.id).catch(() => {});
   streaming = undefined;
   showProgress();
@@ -911,6 +918,7 @@ function show(v: View) {
   // the cursor goes on the new layout, which is brought to it
   followed = undefined;
   if (player) follow();
+  syncMusicDisplay();
 }
 
 /** The first page in view (in the book layouts, of the spread shown). */
@@ -1188,7 +1196,9 @@ function highlightLayer(pageIndex: number, scale = zoom): HTMLDivElement {
 function initMusic() {
   $("play").onclick = togglePlay;
   $("stopPlay").onclick = () => player?.stop();
-  $("musicMode").onclick = toggleMusicMode;
+  $<HTMLSelectElement>("musicDisplay").onchange = changeMusicDisplay;
+  $<HTMLSelectElement>("tabPart").onchange = changeTabView;
+  $<HTMLSelectElement>("tabPreset").onchange = changeTabView;
   $("metronome").onclick = toggleMetronome;
   const speedPercent = $<HTMLInputElement>("speedPercent");
   speedPercent.onchange = applySpeedPercent;
@@ -1219,17 +1229,73 @@ function initMusic() {
   });
 }
 
+/** TAB positions are stored as separate views, one per part and fingering preset. */
+function tabViewInfo(v: View): { part: number; preset: string } | undefined {
+  const match = /^guitar-tab-p(\d+)-(low|smooth|open|easy)$/.exec(v.id);
+  return match ? { part: Number(match[1]), preset: match[2] } : undefined;
+}
+
+function configureMusicDisplay() {
+  const parts = new Map<number, string>();
+  for (const v of manifest.views) {
+    const info = tabViewInfo(v);
+    if (!info || parts.has(info.part)) continue;
+    const name = v.title?.split(" · ")[1]?.replace(/ \(estimated\)$/, "");
+    parts.set(info.part, name || `Part ${info.part}`);
+  }
+  const partSelect = $<HTMLSelectElement>("tabPart");
+  partSelect.replaceChildren(...[...parts].map(([part, name]) => {
+    const option = document.createElement("option");
+    option.value = String(part);
+    option.textContent = `${part}: ${name}`;
+    return option;
+  }));
+  $<HTMLSelectElement>("musicDisplay").querySelector<HTMLOptionElement>('option[value="tab"]')!.disabled = parts.size === 0;
+}
+
+function selectedTabView(): View | undefined {
+  const part = Number($<HTMLSelectElement>("tabPart").value);
+  const preset = $<HTMLSelectElement>("tabPreset").value;
+  const views = manifest.views.filter((v) => tabViewInfo(v)?.part === part);
+  return views.find((v) => tabViewInfo(v)?.preset === preset) ?? views[0];
+}
+
+function syncMusicDisplay() {
+  if (!current) return;
+  const info = tabViewInfo(current);
+  const display = $<HTMLSelectElement>("musicDisplay");
+  display.value = musicMode === "piano-roll" ? "piano-roll" : info ? "tab" : "score";
+  display.disabled = !player;
+  if (info) {
+    $<HTMLSelectElement>("tabPart").value = String(info.part);
+    $<HTMLSelectElement>("tabPreset").value = info.preset;
+  }
+  const isTab = display.value === "tab";
+  $("tabPartBox").hidden = !isTab || $<HTMLSelectElement>("tabPart").options.length < 2;
+  $("tabPresetBox").hidden = !isTab;
+  $<HTMLSelectElement>("tabPart").disabled = $<HTMLSelectElement>("tabPreset").disabled = !player;
+  const part = Number($<HTMLSelectElement>("tabPart").value);
+  for (const option of $<HTMLSelectElement>("tabPreset").options) {
+    option.disabled = !manifest.views.some((v) => {
+      const tab = tabViewInfo(v);
+      return tab?.part === part && tab.preset === option.value;
+    });
+  }
+}
+
 /** Ask the worker for the music of a view, and make its player. */
 function loadMusic(v: View) {
   const token = music;
   $("playBox").hidden = false;
   $<HTMLButtonElement>("play").disabled = $<HTMLButtonElement>("stopPlay").disabled = true;
-  $<HTMLButtonElement>("musicMode").disabled = $<HTMLButtonElement>("metronome").disabled = true;
+  $<HTMLSelectElement>("musicDisplay").disabled = $<HTMLButtonElement>("metronome").disabled = true;
   $<HTMLInputElement>("speedPercent").disabled = true;
   $("playTime").textContent = "";
   client.play(v.id).then((data) => {
     if (token !== music || !data) return;
     player = new MusicPlayer(new Uint8Array(data.seq), data.cues);
+    player.setSpeedPercent(musicSpeedPercent);
+    player.setMetronome(musicMetronome);
     player.onUpdate = musicChanged;
     musicChanged();
   }).catch((e) => {
@@ -1261,32 +1327,43 @@ function togglePlay() {
   }
 }
 
-/** Switch between the engraved page and its time-by-pitch note view. */
-function toggleMusicMode() {
+/** Select score pages, the note timeline, or a TAB fingering directly. */
+function changeMusicDisplay() {
   if (!player || !current) return;
-  if (musicMode === "score") {
+  const display = $<HTMLSelectElement>("musicDisplay").value;
+  if (display === "piano-roll") {
+    if (musicMode === "piano-roll") return;
     scoreScroll = { left: stage.scrollLeft, top: stage.scrollTop };
     musicMode = "piano-roll";
     show(current);
     if (pianoRollScroll) stage.scrollTo(pianoRollScroll);
-  } else {
+    return;
+  }
+  const target = display === "tab" ? selectedTabView() :
+    manifest.views.find((v) => v.id === "score" && v.play) ?? manifest.views.find((v) => v.play && !tabViewInfo(v));
+  if (!target) return syncMusicDisplay();
+  if (target !== current) return show(target);
+  if (musicMode === "piano-roll") {
     pianoRollScroll = { left: stage.scrollLeft, top: stage.scrollTop };
     musicMode = "score";
     show(current);
     if (scoreScroll) stage.scrollTo(scoreScroll);
   }
-  updateMusicModeButton();
+  syncMusicDisplay();
 }
 
-function updateMusicModeButton() {
-  const mode = $<HTMLButtonElement>("musicMode");
-  const pages = current?.id.startsWith("guitar-tab-") ? "TAB" : "Score";
-  mode.textContent = musicMode === "score" ? "Piano roll" : pages;
-  mode.title = musicMode === "score" ? "Show piano roll" : `Show ${pages} pages`;
+function changeTabView() {
+  if (!current || !player) return;
+  const target = selectedTabView();
+  if (target && target !== current) show(target);
+  else syncMusicDisplay();
 }
 
 function toggleMetronome() {
-  if (player) player.setMetronome(!player.metronomeEnabled);
+  if (player) {
+    player.setMetronome(!player.metronomeEnabled);
+    musicMetronome = player.metronomeEnabled;
+  }
 }
 
 function applySpeedPercent() {
@@ -1298,6 +1375,7 @@ function applySpeedPercent() {
     return;
   }
   p.setSpeedPercent(value);
+  musicSpeedPercent = p.speedPercent;
   input.value = String(p.speedPercent);
 }
 
@@ -1311,9 +1389,7 @@ function musicChanged() {
   b.title = p.playing ? "pause (Space)" : "play (Space)";
   b.setAttribute("aria-label", p.playing ? "pause" : "play");
   $<HTMLButtonElement>("stopPlay").disabled = p.state === "stopped";
-  const mode = $<HTMLButtonElement>("musicMode");
-  mode.disabled = false;
-  updateMusicModeButton();
+  syncMusicDisplay();
   const metronome = $<HTMLButtonElement>("metronome");
   metronome.disabled = !p.metronomeAvailable;
   metronome.textContent = p.metronomeEnabled ? "Metronome on" : "Metronome off";

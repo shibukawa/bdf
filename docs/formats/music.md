@@ -4,13 +4,13 @@ MML, MIDI and MusicXML all end up as staff notation, engraved by a shared layout
 
 ## Guitar TAB alternatives
 
-Converted scores also offer Guitar TAB in the viewer's view tabs. For each of the first four pitched parts, choose **Low positions**, **Less shifting**, **Open strings**, or **Beginner friendly**. These are alternative estimated fingerings, not a record of how a MIDI performance was played. All use standard six-string tuning (E A D G B E). The first view remains the original staff score, and the TAB views can play the same music.
+In the viewer's **Display** menu, switch directly between **Score**, **Piano roll**, and **Guitar TAB**. In Guitar TAB, select a part and one of four estimated fingerings: **Low positions**, **Less shifting**, **Open strings**, or **Beginner friendly**. These are alternatives, not a record of how a MIDI performance was played. All use standard six-string tuning (E A D G B E). The first view remains the original staff score, and the TAB views can play the same music with the same speed and metronome controls.
 
 The converter tries every string/fret position for each pitch, then chooses positions across the phrase. Simultaneous and overlapping notes cannot use the same string; fretted notes in a chord must fit a four- or five-fret hand span. MusicXML `<notations><technical><string>` and `<fret>` positions take priority; an alternative is considered only when authored positions conflict with a playable chord. Notes outside the guitar's range, impossible chords, pitched parts beyond the first four, and parts with more than 20,000 notes are left out of TAB with a conversion warning. Use `-param tab=false` to leave out the TAB views.
 
 ## Try it
 
-Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: an [MML chiptune](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml), a [MIDI karaoke file](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar), or a [MusicXML piano score](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml). In the viewer, switch between score and piano roll, adjust playback speed as a percentage (the opening BPM equivalent is shown and tempo ratios stay intact), and turn on the metronome while playing.
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: an [MML chiptune](https://shibukawa.github.io/bdf/viewer/?file=samples/frere.mml), a [MIDI karaoke file](https://shibukawa.github.io/bdf/viewer/?file=samples/twinkle.kar), or a [MusicXML piano score](https://shibukawa.github.io/bdf/viewer/?file=samples/minuet.musicxml). Use **Display** to choose the notation, adjust playback speed as a percentage (the opening BPM equivalent is shown and tempo ratios stay intact), and turn on the metronome while playing.
 
 ## MML (converter/mml)
 
