@@ -28,13 +28,13 @@ import (
 const width, height = 960, 600
 
 type game struct {
-	page       *ebiten.Image
-	formulas   []*ebitenginebdf.Drawing
-	zoomed     *ebitenginebdf.Drawing
-	frame      int
-	shot       string
-	offscreen  *ebiten.Image
-	shotIsDone bool
+	page      *ebiten.Image
+	formulas  []*ebitenginebdf.Drawing
+	zoomed    *ebitenginebdf.Drawing
+	frame     int
+	drawn     int // frames drawn: Update may run more than once before the first Draw
+	shot      string
+	offscreen *ebiten.Image
 }
 
 // page draws a page of a document into an image as high as the window.
@@ -89,8 +89,7 @@ func formulas() (list []*ebitenginebdf.Drawing, zoomed *ebitenginebdf.Drawing, e
 
 func (g *game) Update() error {
 	g.frame++
-	if g.shot != "" && g.frame > 2 && !g.shotIsDone {
-		g.shotIsDone = true
+	if g.shot != "" && g.drawn >= 2 {
 		img := image.NewRGBA(image.Rect(0, 0, width, height))
 		g.offscreen.ReadPixels(img.Pix)
 		f, err := os.Create(g.shot)
@@ -107,6 +106,7 @@ func (g *game) Update() error {
 }
 
 func (g *game) Draw(screen *ebiten.Image) {
+	g.drawn++
 	dst := g.offscreen
 	dst.Fill(color.RGBA{24, 28, 40, 255})
 
