@@ -4,7 +4,7 @@ Word documents, HTML pages and Markdown files are all prose laid out into lines,
 
 ## Try it
 
-Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: a [Word document](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.docx), the same kind of document [set in Japanese vertical text](https://shibukawa.github.io/bdf/viewer/?file=samples/vertical.docx), an [HTML article in reader mode](https://shibukawa.github.io/bdf/viewer/?file=samples/article.html), or a [Markdown file](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.md).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: a [Word document](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.docx), the same kind of document [set in Japanese vertical text](https://shibukawa.github.io/bdf/viewer/?file=samples/vertical.docx), an [HTML article in reader mode](https://shibukawa.github.io/bdf/viewer/?file=samples/article.html), or a [Markdown file](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.md). Formulas: in [Word](https://shibukawa.github.io/bdf/viewer/?file=samples/math.docx), in [HTML (MathML)](https://shibukawa.github.io/bdf/viewer/?file=samples/math.html) and in [Markdown (LaTeX)](https://shibukawa.github.io/bdf/viewer/?file=samples/math.md).
 
 ## Word .docx (`converter/docx`)
 
@@ -50,3 +50,49 @@ See [design.md §3.16](../design.md#316-htmlmarkdown--bdf-変換器converterhtml
 | `-param base=` | URL the document came from, for resolving relative links and images | — |
 
 See [design.md §3.16](../design.md#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造) for the internals — the HTML and Markdown converters share one design-notes section, since Markdown is rendered to HTML before this layout stage.
+
+## Formulas
+
+Word's Office Math, HTML's MathML and Markdown's LaTeX are laid out by one formula engine, with a formula font (STIX Two Math, Cambria Math or another OpenType MATH font). A formula inside a line makes the line as tall as it needs; one on its own becomes a centered paragraph. For search and copy a formula is text in a linear notation, such as `x=(−b±√(b^2−4ac))/(2a)`.
+
+![A page of formulas from a Word document](../images/docx-math.webp)
+
+**Word** — formulas inserted with Insert → Equation (`m:oMath`, `m:oMathPara`): fractions, scripts, radicals, sums and integrals, limits, delimiters that grow, matrices, equation arrays aligned at `&`, accents. The font is the one the document asks for (Cambria Math by default), or STIX Two Math and its like in its place.
+
+```xml
+<m:oMath>
+  <m:r><m:t>x=</m:t></m:r>
+  <m:f>
+    <m:num><m:r><m:t>−b±</m:t></m:r><m:rad><m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/><m:e><m:r><m:t>b²−4ac</m:t></m:r></m:e></m:rad></m:num>
+    <m:den><m:r><m:t>2a</m:t></m:r></m:den>
+  </m:f>
+</m:oMath>
+```
+
+**HTML** — `math` elements (presentation MathML); `display="block"` is a formula on its own line. Pages typeset by KaTeX or MathJax, and Wikipedia's, are laid out from the MathML they keep beside their own rendering.
+
+```html
+<p>The area of a circle is <math><mi>A</mi><mo>=</mo><mi>π</mi><msup><mi>r</mi><mn>2</mn></msup></math>.</p>
+<math display="block">
+  <munderover><mo>∑</mo><mrow><mi>n</mi><mo>=</mo><mn>1</mn></mrow><mi>∞</mi></munderover>
+  <mfrac><mn>1</mn><msup><mi>n</mi><mn>2</mn></msup></mfrac>
+  <mo>=</mo>
+  <mfrac><msup><mi>π</mi><mn>2</mn></msup><mn>6</mn></mfrac>
+</math>
+```
+
+**Markdown** — LaTeX written the way GitHub reads it: `$…$` inside a line, `$$…$$` and code blocks of the language `math` on their own line, with the commands of amsmath and amssymb (`\frac`, `\sqrt`, `\left`…`\right`, `pmatrix`, `cases`, `aligned` and so on).
+
+````markdown
+The roots of $ax^2 + bx + c = 0$ are
+
+$$
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+$$
+
+```math
+\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+```
+````
+
+Sample files: [`converter/docx/testdata/math.docx`](https://github.com/shibukawa/bdf/blob/main/converter/docx/testdata/math.docx), [`converter/html/testdata/math.html`](https://github.com/shibukawa/bdf/blob/main/converter/html/testdata/math.html) and [`converter/markdown/testdata/math.md`](https://github.com/shibukawa/bdf/blob/main/converter/markdown/testdata/math.md). To lay out a formula by itself and draw it into an image or on an Ebitengine screen, see [Rendering](../rendering.md#formulas).

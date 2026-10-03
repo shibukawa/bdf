@@ -7,9 +7,11 @@
 | `*.go`, `cmd/bdf` | The Go encoder, decoder, container I/O and CLI |
 | `converter/` | Registry of the input formats, shared options, format detection, page ranges |
 | `converter/internal/` | Shared by the Office and CAD converters — see below |
-| `raster/` | Draws pages into images in pure Go, as the viewer does: the software rasterizer, and an SVG renderer for SVG images |
+| `raster/imagebdf/` | Draws pages and single objects into images in pure Go, as the viewer does: the software rasterizer, and an SVG renderer for SVG images |
+| `raster/ebitenginebdf/` | Draws objects of paths (formulas, say) with Ebitengine. A module of its own, with its own `go.mod`, since it depends on Ebitengine; `raster/internal/shapes` is the shared part that turns an object into a list of filled and stroked shapes |
+| `formula/` | The public package that lays out LaTeX and MathML formulas as objects of paths; embeds the formula font (STIX Two Math) |
 | `thumbnail/` | Thumbnails of documents: the layout by kind of document, and PNG/JPEG/WebP encoding |
-| `internal/` | Font lookup, measurement and subsetting (`fontdb`); TrueType/OpenType reading, writing and glyph outlines (`sfnt`); CFF reading and subsetting (`cff`); the OpenType layout tables GSUB, GPOS and GDEF (`otlayout`) — shared by the converters and `raster` |
+| `internal/` | Font lookup, measurement and subsetting (`fontdb`); TrueType/OpenType reading, writing and glyph outlines (`sfnt`); CFF reading and subsetting (`cff`); the OpenType layout tables GSUB, GPOS and GDEF (`otlayout`); the formula tree, its readers (LaTeX, MathML, Office Math) and the layout (`mathlayout`), and the XML trees of Office documents (`xmltree`) — shared by the converters and `imagebdf` |
 | `woff2/` | TrueType/OpenType ↔ WOFF2 (the glyf transform, and Brotli) |
 | `imgconv/` | How images are stored (as they are, or converted to WebP); bundles a pure-Go libwebp |
 | `fixture/` | Generates the sample document used by tests and `bdf demo`, with embedded fonts |
@@ -47,7 +49,7 @@
 | `converter/image` | PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG (stored as they are, metadata read) |
 | `converter/all` | Registers every input format (imported for its side effect) |
 
-`converter/internal/` holds what several of these share: OOXML packages and XML (`ooxml`), DrawingML shapes/text/tables/charts (`ooxml/drawingml`), font choice/measuring/embedding for text layout (`fontset`, used by draw.io too), objects under construction (`canvas`, used by draw.io too), EMF/WMF replay (`metafile`), CAD drawings plotted onto pages (`cad`), line-breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`); for PDF, Adobe's predefined CJK CMaps (`cjkcmap`) and the JPEG 2000/JBIG2 decoders (`jpx`, `jbig2`); the TIFF reader with its CCITT fax decoder (`tiff`); the layout engine shared by Word, HTML, Markdown and EPUB (`wordproc`: paragraphs, tables, pages and scroll views) and the HTML/XHTML reader they share (`webdoc`); Dublin Core from XMP metadata (`xmp`); the formula engine for Office Math, MathML and LaTeX (`equation`); and the engraving and playback of MML/MIDI/MusicXML scores (`music`, with Bravura's SMuFL glyphs in `music/smufl`).
+`converter/internal/` holds what several of these share: OOXML packages and XML (`ooxml`), DrawingML shapes/text/tables/charts (`ooxml/drawingml`), font choice/measuring/embedding for text layout (`fontset`, used by draw.io too), objects under construction (`canvas`, used by draw.io too), EMF/WMF replay (`metafile`), CAD drawings plotted onto pages (`cad`), line-breaking rules (`linebreak`), compound files (`cfb`) and the decryption of password-protected Office documents (`offcrypto`); for PDF, Adobe's predefined CJK CMaps (`cjkcmap`) and the JPEG 2000/JBIG2 decoders (`jpx`, `jbig2`); the TIFF reader with its CCITT fax decoder (`tiff`); the layout engine shared by Word, HTML, Markdown and EPUB (`wordproc`: paragraphs, tables, pages and scroll views) and the HTML/XHTML reader they share (`webdoc`); Dublin Core from XMP metadata (`xmp`); the part that runs the formula engine (`internal/mathlayout`) with the fonts of a document and draws formulas as text in the embedded font (`equation`); and the engraving and playback of MML/MIDI/MusicXML scores (`music`, with Bravura's SMuFL glyphs in `music/smufl`).
 
 ## TypeScript packages
 

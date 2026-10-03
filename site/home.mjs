@@ -107,6 +107,7 @@ const T = {
     ],
     whyMore: "More about why",
     license: "MIT License",
+    fonts: "Fonts and licenses",
   },
   ja: {
     title: "bdf – ブラウザのための文書プレビュー",
@@ -151,6 +152,7 @@ const T = {
     ],
     whyMore: "もっと詳しく",
     license: "MIT ライセンス",
+    fonts: "フォントとライセンス",
   },
 };
 
@@ -250,7 +252,7 @@ ${t.why.map(([title, text]) => `<li><h3>${esc(title)}</h3><p>${esc(text)}</p></l
 <p class="more"><a href="${doc("why")}">${t.whyMore}</a></p>
 </section>
 </main>
-<footer class="wrap">bdf · <a href="${REPO}/blob/main/LICENSE">${t.license}</a> · <a href="${REPO}">GitHub</a></footer>
+<footer class="wrap">bdf · <a href="${REPO}/blob/main/LICENSE">${t.license}</a> · <a href="${doc("licenses")}">${t.fonts}</a> · <a href="${REPO}">GitHub</a></footer>
 <script type="module" src="home.js"></script>
 </body>
 </html>

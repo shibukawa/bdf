@@ -10,7 +10,7 @@ import (
 	"syscall/js"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/raster"
+	"github.com/shibukawa/bdf/raster/imagebdf"
 	"github.com/shibukawa/bdf/thumbnail"
 )
 
@@ -76,7 +76,7 @@ func thumbnailCall(_ js.Value, args []js.Value) any {
 			return nil, err
 		}
 		// no system fonts in a browser: fonts referred to by name come from the font directory
-		opts.Raster = raster.Options{NoSystemFonts: true}
+		opts.Raster = imagebdf.Options{NoSystemFonts: true}
 		if fontURL != "" {
 			fsys, err := fonts(fontURL)
 			if err != nil {

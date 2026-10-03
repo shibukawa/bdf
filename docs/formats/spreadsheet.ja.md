@@ -4,7 +4,7 @@ Excel のブック、CSV・TSV の表、Apache Parquet のファイルは、bdf 
 
 ## 試す
 
-ファイルを[ビューア](https://shibukawa.github.io/bdf/viewer/)にドロップするか、サンプルを試せる: [Excel のブック](https://shibukawa.github.io/bdf/viewer/?file=samples/features.xlsx)、[Shift_JIS の TSV ファイル](https://shibukawa.github.io/bdf/viewer/?file=samples/japanese.tsv)、[Parquet の表](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.parquet)。
+ファイルを[ビューア](https://shibukawa.github.io/bdf/viewer/)にドロップするか、サンプルを試せる: [Excel のブック](https://shibukawa.github.io/bdf/viewer/?file=samples/features.xlsx)、[数式オブジェクトのあるシート](https://shibukawa.github.io/bdf/viewer/?file=samples/math.xlsx)、[Shift_JIS の TSV ファイル](https://shibukawa.github.io/bdf/viewer/?file=samples/japanese.tsv)、[Parquet の表](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.parquet)。
 
 ## Excel（.xlsx）
 
@@ -26,6 +26,10 @@ Excel のブック、CSV・TSV の表、Apache Parquet のファイルは、bdf 
 | `-param hidden=` | `true` | 非表示シートを除く |
 
 `-hidden`（`-param hidden=true` の短縮形）で非表示シートも含められる。マクロシートとダイアログシートは常に読まず、警告を出す。詳細は [design.md §3.6](../design.md#36-excel--bdf-変換器converterxlsxの構造) を、シートのセルがどのように Tile に分割されるかは [design.md §6](../design.md#6-excel-シートの-tile-化) を参照。
+
+### 数式オブジェクト
+
+シートに「挿入 → 数式」で置いた数式（テキストボックスや図形の中の Office Math）は、PowerPoint と同じく `a14:m` の Office Math から組む。サンプルは [`converter/xlsx/testdata/math.xlsx`](https://github.com/shibukawa/bdf/blob/main/converter/xlsx/testdata/math.xlsx)。セルの計算式（`=SUM(A1:A3)`）はこれとは別で、保存されている計算結果を表示する。組み方は [Word・HTML・Markdown の数式](document.ja.md#数式)を参照。
 
 ## CSV・TSV
 

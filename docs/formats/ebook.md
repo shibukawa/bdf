@@ -22,6 +22,16 @@ A chapter's writing direction comes from `writing-mode` on `body` or `html` (inc
 
 A book marked `pre-paginated` (or Kindle's `fixed-layout`) whose every document is just one picture — an `img`, an inline `<svg>`, an SVG document, or an image placed directly on the spine — skips the text layout engine entirely and becomes a page per picture, sized from the document's viewport metadata (or the image's own size, or the SVG viewBox), each picture centered and scaled to fit. If a book mixes flowed text pages with picture-only pages, bdf falls back to laying the whole thing out as a reflowable book (it doesn't interpret the absolute CSS positioning some such mixed books use).
 
+### Formulas
+
+`math` elements (MathML) in the XHTML of a book are laid out by the same formula engine as in HTML. In a chapter of vertical text a formula stays horizontal inside its line.
+
+```html
+<p>Pythagoras: <math><msup><mi>a</mi><mn>2</mn></msup><mo>+</mo><msup><mi>b</mi><mn>2</mn></msup><mo>=</mo><msup><mi>c</mi><mn>2</mn></msup></math>.</p>
+```
+
+See [formulas in Word, HTML and Markdown](document.md#formulas) for the layout.
+
 ### Options
 
 | Option | Values | Default |

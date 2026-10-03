@@ -10,7 +10,7 @@ flowchart TB
         direction TB
         SCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx …"]
         BUNDLE["bdf bundle (packed)<br/>manifest JSON<br/>drawing commands<br/>images · fonts"]
-        PREVIEW["raster · thumbnail · SearchText<br/>thumbnail image<br/>text for a search index"]
+        PREVIEW["imagebdf · thumbnail · SearchText<br/>thumbnail image<br/>text for a search index"]
         SCONV --> BUNDLE
         BUNDLE --> PREVIEW
     end
@@ -46,7 +46,7 @@ flowchart TB
 
 Packages such as `converter/pdf`, `converter/pptx` and `converter/xlsx` run inside a Go server process and convert the source into a **bdf bundle** that packs the manifest, the drawing commands, the images and the fonts. That bundle goes out in one of two shapes: as a single file, streamed from the start or fetched part by part with Range requests, or as split files that can sit on object storage or a CDN as they are. In the browser, the renderer in a Worker loads only the parts it needs and draws them onto an `OffscreenCanvas`. The main thread only places the resulting bitmaps and a transparent text layer.
 
-Next to the bundle, the server can also make what a document list and a search engine need — but only while it still holds the document, and, for a password-protected input, the password: a thumbnail image drawn by the Go rasterizer (`raster`, `thumbnail`), and the text of each page with the document's metadata as JSON (`Document.SearchText`). See [Sample architectures](../examples/index.md) for two working servers built this way.
+Next to the bundle, the server can also make what a document list and a search engine need — but only while it still holds the document, and, for a password-protected input, the password: a thumbnail image drawn by the Go rasterizer (`imagebdf`, `thumbnail`), and the text of each page with the document's metadata as JSON (`Document.SearchText`). See [Sample architectures](../examples/index.md) for two working servers built this way.
 
 ## ② In-browser conversion
 

@@ -4,7 +4,7 @@ PowerPoint のスライドは DrawingML でできている。図形やテキス�
 
 ## 試す
 
-ファイルを[ビューア](https://shibukawa.github.io/bdf/viewer/)にドロップするか、サンプルを試せる: [PowerPoint のデッキ](https://shibukawa.github.io/bdf/viewer/?file=samples/features.pptx)。
+ファイルを[ビューア](https://shibukawa.github.io/bdf/viewer/)にドロップするか、サンプルを試せる: [PowerPoint のデッキ](https://shibukawa.github.io/bdf/viewer/?file=samples/features.pptx)、[数式のスライド](https://shibukawa.github.io/bdf/viewer/?file=samples/math.pptx)。
 
 ## PowerPoint（.pptx）
 
@@ -30,3 +30,18 @@ PowerPoint のスライドは DrawingML でできている。図形やテキス�
 `-hidden` は `-param hidden=true` の短縮形（Excel の `-hidden` も非表示シートに同じことをする）。`-pages` で変換するスライドを選べ、フォント関連の一般オプション `-font-dir`、`-fonts system`、`-no-subset`、`-no-woff2`、`-no-system-fonts`、`-ignore-fstype` は Word・Excel と同じように PowerPoint にも効く。
 
 詳細は [design.md §3.4](../design.md#34-powerpoint--bdf-変換器converterpptxの構造) を参照。
+
+### 数式
+
+PowerPoint の「挿入 → 数式」で入れた数式は、段落の中の Office Math（`a14:m` の中の `m:oMath`）として保存されています。同じファイルが持つフォールバックの画像ではなく、この Office Math から組むので、拡大しても輪郭がぼけず、検索とコピーでは線形表記のテキストになります。
+
+```xml
+<a14:m>
+  <m:oMath>
+    <m:sSup><m:e><m:r><m:t>e</m:t></m:r></m:e><m:sup><m:r><m:t>iπ</m:t></m:r></m:sup></m:sSup>
+    <m:r><m:t>+1=0</m:t></m:r>
+  </m:oMath>
+</a14:m>
+```
+
+サンプルは [`converter/pptx/testdata/math.pptx`](https://github.com/shibukawa/bdf/blob/main/converter/pptx/testdata/math.pptx) です。組み方は [Word・HTML・Markdown の数式](document.ja.md#数式)と同じです。

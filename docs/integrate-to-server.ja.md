@@ -18,7 +18,7 @@ import (
 
 PowerPoint は `converter/pptx`、Excel は `converter/xlsx`、Visio は `converter/visio`、Parquet は `converter/parquet` を追加します。全形式を選ぶ場合は個別の空 import の代わりに `converter/all` を使います。名前は[対応形式](formats/index.ja.md)と [`converter/`](../converter/) の各ディレクトリを参照してください。
 
-音楽変換が不要なら `converter/mml`、`converter/midi`、`converter/musicxml` を import しません。BDF への変換だけを行うサーバーには描画用の `raster` や `thumbnail` の import も不要です。
+音楽変換が不要なら `converter/mml`、`converter/midi`、`converter/musicxml` を import しません。BDF への変換だけを行うサーバーには描画用の `imagebdf` や `thumbnail` の import も不要です。
 
 ## HTTP で受け取って変換する
 

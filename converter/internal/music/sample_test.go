@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/shibukawa/bdf/raster"
+	"github.com/shibukawa/bdf/raster/imagebdf"
 )
 
 // samples are performances engraved by TestSamples.
@@ -109,7 +109,7 @@ func TestSamples(t *testing.T) {
 			continue
 		}
 		t.Logf("%s: %s %v", name, res.Summary(), res.Warnings)
-		r := raster.New(res.Doc, &raster.Options{FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
+		r := imagebdf.New(res.Doc, &imagebdf.Options{FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
 		v := res.Doc.Views[0]
 		for i := range v.Pages {
 			img, err := r.Page(v, i, 2)

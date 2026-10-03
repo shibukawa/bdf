@@ -4,7 +4,7 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 
 ## 試してみる
 
-[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試してください。[Word の文書](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.docx)、同じ種類の文書を[日本語の縦書きにしたもの](https://shibukawa.github.io/bdf/viewer/?file=samples/vertical.docx)、[リーダー表示の HTML 記事](https://shibukawa.github.io/bdf/viewer/?file=samples/article.html)、[Markdown のファイル](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.md)です。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試してください。[Word の文書](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.docx)、同じ種類の文書を[日本語の縦書きにしたもの](https://shibukawa.github.io/bdf/viewer/?file=samples/vertical.docx)、[リーダー表示の HTML 記事](https://shibukawa.github.io/bdf/viewer/?file=samples/article.html)、[Markdown のファイル](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.md)です。数式のサンプルは [Word](https://shibukawa.github.io/bdf/viewer/?file=samples/math.docx)、[HTML（MathML）](https://shibukawa.github.io/bdf/viewer/?file=samples/math.html)、[Markdown（LaTeX）](https://shibukawa.github.io/bdf/viewer/?file=samples/math.md) にあります。
 
 ## Word .docx（`converter/docx`）
 
@@ -50,3 +50,49 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 | `-param base=` | 文書の取得元 URL（相対リンクと画像の基準にする） | — |
 
 詳細は[design.md §3.16](../design.md#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造)を参照してください。HTML と Markdown の変換器は、Markdown をこのレイアウトの手前で HTML にしてしまうため、design.md でも 1 つの節を共有しています。
+
+## 数式
+
+Word の Office Math、HTML の MathML、Markdown の LaTeX は、同じ数式エンジンが数式フォント（STIX Two Math、Cambria Math など OpenType MATH のフォント）で組みます。行の中の数式は行の高さを広げて置き、独立した数式は中央に置いた段落になります。検索とコピーでは `x=(−b±√(b^2−4ac))/(2a)` のような線形表記のテキストになります。
+
+![Word の数式を組んだページ](../images/docx-math.webp)
+
+**Word** — 「挿入 → 数式」で入れた数式（`m:oMath`、`m:oMathPara`）を読みます。分数、添字、根号、総和や積分、極限、伸びる括弧、行列、`&` で揃えた数式、アクセントを扱います。フォントは文書の指定（既定は Cambria Math）で、なければ STIX Two Math などで代えます。
+
+```xml
+<m:oMath>
+  <m:r><m:t>x=</m:t></m:r>
+  <m:f>
+    <m:num><m:r><m:t>−b±</m:t></m:r><m:rad><m:radPr><m:degHide m:val="1"/></m:radPr><m:deg/><m:e><m:r><m:t>b²−4ac</m:t></m:r></m:e></m:rad></m:num>
+    <m:den><m:r><m:t>2a</m:t></m:r></m:den>
+  </m:f>
+</m:oMath>
+```
+
+**HTML** — `math` 要素（Presentation MathML）を読みます。`display="block"` は独立した行です。KaTeX・MathJax・Wikipedia のページは、独自の描画の横に置かれた MathML から組みます。
+
+```html
+<p>円の面積は <math><mi>A</mi><mo>=</mo><mi>π</mi><msup><mi>r</mi><mn>2</mn></msup></math> です。</p>
+<math display="block">
+  <munderover><mo>∑</mo><mrow><mi>n</mi><mo>=</mo><mn>1</mn></mrow><mi>∞</mi></munderover>
+  <mfrac><mn>1</mn><msup><mi>n</mi><mn>2</mn></msup></mfrac>
+  <mo>=</mo>
+  <mfrac><msup><mi>π</mi><mn>2</mn></msup><mn>6</mn></mfrac>
+</math>
+```
+
+**Markdown** — GitHub と同じ書き方の LaTeX です。`$…$` は行の中、`$$…$$` と言語 `math` のコードブロックは独立した行になります。amsmath・amssymb の命令（`\frac`、`\sqrt`、`\left`…`\right`、`pmatrix`、`cases`、`aligned` など）が使えます。
+
+````markdown
+二次方程式 $ax^2 + bx + c = 0$ の解は
+
+$$
+x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+$$
+
+```math
+\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+```
+````
+
+サンプルは [`converter/docx/testdata/math.docx`](https://github.com/shibukawa/bdf/blob/main/converter/docx/testdata/math.docx)、[`converter/html/testdata/math.html`](https://github.com/shibukawa/bdf/blob/main/converter/html/testdata/math.html)、[`converter/markdown/testdata/math.md`](https://github.com/shibukawa/bdf/blob/main/converter/markdown/testdata/math.md) にあります。数式だけを組んで画像や Ebitengine の画面に描く方法は[描画する](../rendering.ja.md#数式を描く)を参照してください。

@@ -19,6 +19,7 @@ export const SECTIONS = [
       page("npm", "npm packages", "npm パッケージ"),
       page("integrating-to-frontend", "Integrating into a frontend", "フロントエンドに組み込む"),
       page("integrate-to-server", "Integrating into a server", "サーバーに組み込む"),
+      page("rendering", "Rendering", "描画する"),
       page("build-wasm-runtime", "Build a Wasm runtime", "Wasm ランタイムをビルドする"),
     ],
   },
@@ -68,6 +69,7 @@ export const SECTIONS = [
       page("spec", "Format spec v1.0", "フォーマット仕様 v1.0", { only: "ja" }),
       page("design", "Design notes", "設計メモ", { only: "ja" }),
       page("quality", "Conversion quality", "変換品質レポート", { only: "ja" }),
+      page("licenses", "Fonts and licenses", "フォントとライセンス"),
     ],
   },
 ];

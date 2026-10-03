@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/raster"
+	"github.com/shibukawa/bdf/raster/imagebdf"
 )
 
 // sb builds a score by hand, measure by measure.
@@ -217,7 +217,7 @@ func TestFeatures(t *testing.T) {
 }
 
 func writePages(t *testing.T, doc *bdf.Document, prefix string) {
-	r := raster.New(doc, &raster.Options{FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
+	r := imagebdf.New(doc, &imagebdf.Options{FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
 	v := doc.Views[0]
 	for i := range v.Pages {
 		img, err := r.Page(v, i, 2)

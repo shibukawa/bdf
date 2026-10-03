@@ -4,7 +4,7 @@ Excel workbooks, CSV/TSV tables and Apache Parquet files all end up as the same 
 
 ## Try it
 
-Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: [Excel workbook](https://shibukawa.github.io/bdf/viewer/?file=samples/features.xlsx), [Shift_JIS TSV file](https://shibukawa.github.io/bdf/viewer/?file=samples/japanese.tsv), or [Parquet table](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.parquet).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: [Excel workbook](https://shibukawa.github.io/bdf/viewer/?file=samples/features.xlsx), [a sheet with equation objects](https://shibukawa.github.io/bdf/viewer/?file=samples/math.xlsx), [Shift_JIS TSV file](https://shibukawa.github.io/bdf/viewer/?file=samples/japanese.tsv), or [Parquet table](https://shibukawa.github.io/bdf/viewer/?file=samples/basic.parquet).
 
 ## Excel (.xlsx)
 
@@ -26,6 +26,10 @@ Options (`-param`, from `bdf generate -h`):
 | `-param hidden=` | `true` | hidden sheets excluded |
 
 `-hidden` (shorthand for `-param hidden=true`) includes hidden sheets; macro and dialog sheets are always skipped, with a warning. See [design.md §3.6](../design.md#36-excel--bdf-変換器converterxlsxの構造) for the internals, and [design.md §6](../design.md#6-excel-シートの-tile-化) for how a sheet's cells are split into the Tiles a `sheet` View is drawn from.
+
+### Equation objects
+
+An equation placed on a sheet with Insert → Equation (Office Math inside a text box or a shape) is laid out from its Office Math in `a14:m`, as in PowerPoint. A sample is [`converter/xlsx/testdata/math.xlsx`](https://github.com/shibukawa/bdf/blob/main/converter/xlsx/testdata/math.xlsx). Cell formulas (`=SUM(A1:A3)`) are something else: the converter shows the results saved in the file. See [formulas in Word, HTML and Markdown](document.md#formulas) for the layout.
 
 ## CSV and TSV
 

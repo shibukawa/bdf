@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shibukawa/bdf/raster"
+	"github.com/shibukawa/bdf/raster/imagebdf"
 )
 
 func TestTabCandidatesAndAuthoredPosition(t *testing.T) {
@@ -109,7 +109,7 @@ func TestTabPhraseAndViews(t *testing.T) {
 	if h := res.Doc.Views[1].Pages[0].H; h > 350 {
 		t.Fatalf("short TAB has an almost empty page: height %g", h)
 	}
-	r := raster.New(res.Doc, &raster.Options{FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
+	r := imagebdf.New(res.Doc, &imagebdf.Options{FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
 	if _, err := r.Page(res.Doc.Views[1], 0, 1); err != nil {
 		t.Fatalf("render TAB page: %v", err)
 	}

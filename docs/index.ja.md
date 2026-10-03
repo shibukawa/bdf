@@ -8,6 +8,7 @@ bdf はブラウザでのプレビューのために作られた文書フォー�
 - **[はじめかた](getting-started.ja.md)** — ファイルを変換して開くまで、5 分で
 - **[フロントエンドに組み込む](integrating-to-frontend.ja.md)** — サーバー変換済み BDF の表示とブラウザ内変換
 - **[サーバーに組み込む](integrate-to-server.ja.md)** — 必要な形式だけを登録する Go の変換サーバー
+- **[描画する](rendering.ja.md)** — 文書と数式を Go の `image.Image`、Ebitengine、ブラウザの Canvas に描く
 - **[Wasm ランタイムをビルドする](build-wasm-runtime.ja.md)** — 形式を選んで TinyGo または Go でビルド
 - **[対応形式](formats/index.ja.md)** — すべての入力形式と、それぞれのレイアウト
 - **[構成のサンプル](examples/index.ja.md)** — bdf をシステムに組み込む 3 つの方法。それぞれ実際に動く小さなサーバーです
@@ -21,6 +22,8 @@ bdf はブラウザでのプレビューのために作られた文書フォー�
 - **[API 一覧](api.md)** — パッケージとコマンドの一覧
 - **[設計メモ](design.md)** — 各変換器がその作りになっている理由
 - **[変換品質レポート](quality.md)** — fixture の再現性、描画 golden、ブラウザ変換の確認結果と限界
+
+- **[フォントとライセンス](licenses.ja.md)** — bdf が含むフォントとデモサイトが配るフォント、それぞれの出元
 
 ## ソース
 
