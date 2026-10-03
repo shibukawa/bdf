@@ -17,6 +17,11 @@
 // formulas of Word, PowerPoint, Excel, HTML, EPUB, Markdown and draw.io
 // documents out with. The formula font is STIX Two Math, which the package
 // embeds, unless Options name another.
+//
+// STIX Two Math is licensed under the SIL Open Font License 1.1
+// (fonts/OFL.txt; Copyright 2001-2021 The STIX Fonts Project Authors, with
+// Reserved Font Name "TM Math"). A program that imports this package holds
+// the font; fonts/README.md says where the file comes from.
 package formula
 
 import (

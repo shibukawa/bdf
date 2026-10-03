@@ -23,6 +23,8 @@ The detailed reference documents are written in Japanese, for now:
 - **[Design notes](design.md)** — why each converter is built the way it is, section by section
 - **[Conversion quality report](quality.md)** — Japanese results for fixtures, rendering goldens, browser conversion, and known limits
 
+- **[Fonts and licenses](licenses.md)** — the fonts bdf holds and the demo site serves, and where each comes from (in English and Japanese)
+
 ## Source
 
 The documentation lives in [`docs/`](https://github.com/shibukawa/bdf/tree/main/docs) as Markdown, next to the code it describes; this site renders it. Corrections and questions are welcome as [issues or pull requests](https://github.com/shibukawa/bdf).

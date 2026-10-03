@@ -137,6 +137,8 @@ obj := l.Object() // a *bdf.Object: the origin is the left end of the baseline, 
 | `(*Layout).Draw(obj, x, y)` | Draws the formula into an existing object with the left end of its baseline at (x, y) |
 | `(*Layout).Document(margin)` | A document of one page with a margin; the text of the page is the linear notation |
 
+The embedded STIX Two Math is under the SIL Open Font License 1.1, and a program that imports `formula` holds it: see [Fonts and licenses](licenses.md).
+
 A character that no font has is not drawn (its width is left empty). Pass a font in `Options.Text` for Japanese and other text.
 
 ### A formula into an image.Image

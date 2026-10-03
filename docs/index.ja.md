@@ -23,6 +23,8 @@ bdf はブラウザでのプレビューのために作られた文書フォー�
 - **[設計メモ](design.md)** — 各変換器がその作りになっている理由
 - **[変換品質レポート](quality.md)** — fixture の再現性、描画 golden、ブラウザ変換の確認結果と限界
 
+- **[フォントとライセンス](licenses.ja.md)** — bdf が含むフォントとデモサイトが配るフォント、それぞれの出元
+
 ## ソース
 
 ドキュメントは [`docs/`](https://github.com/shibukawa/bdf/tree/main/docs) に Markdown として置かれ、説明する対象のコードのそばにあります。このサイトはそれを描画したものです。訂正や質問は [issue や pull request](https://github.com/shibukawa/bdf) で歓迎します。

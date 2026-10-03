@@ -36,3 +36,15 @@ See [Repository layout](https://shibukawa.github.io/bdf/docs/architecture/layout
 ## License
 
 [MIT](LICENSE).
+
+### Fonts
+
+The fonts in this repository have licenses of their own:
+
+- **STIX Two Math** 2.13 b171 is embedded in the package `formula`, as the font formulas are laid out with. It is the file of the upstream release, unmodified ([stipub/stixfonts](https://github.com/stipub/stixfonts), tag `v2.13b171`; [`formula/fonts/README.md`](formula/fonts/README.md) has its SHA-256), under the [SIL Open Font License 1.1](formula/fonts/OFL.txt). Copyright 2001-2021 The STIX Fonts Project Authors, with Reserved Font Name "TM Math". A program that imports `formula` holds this font.
+- **Bravura** (music symbols, as a table in `converter/internal/music/smufl`) is under the [SIL Open Font License 1.1](converter/internal/music/smufl/OFL.txt). Copyright © 2015 Steinberg Media Technologies GmbH, with Reserved Font Name "Bravura".
+- **NewStroke** (KiCad's stroke font, in `converter/kicad`) is [CC0](converter/kicad/NEWSTROKE.txt).
+- **DejaVu Sans** subsets (in `fixture`, for the sample document) are under the [DejaVu Fonts License](fixture/testdata/fonts/LICENSE.txt).
+- The test fonts (subsets of M PLUS 1p, STIX Two Math and STIX Two Text) sit beside their licenses in `testdata` directories.
+
+[Fonts and licenses](https://shibukawa.github.io/bdf/docs/licenses.html) lists them with the fonts the demo site serves.

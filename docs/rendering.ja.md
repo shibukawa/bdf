@@ -137,6 +137,8 @@ obj := l.Object() // *bdf.Object。原点はベースラインの左端、y は�
 | `(*Layout).Draw(obj, x, y)` | 既存の Object に、ベースラインの左端を (x, y) にして描き足す |
 | `(*Layout).Document(margin)` | 余白つきの 1 ページの文書。ページのテキストは線形表記 |
 
+同梱の STIX Two Math は SIL Open Font License 1.1 で、`formula` を import したプログラムはこのフォントを含みます（[フォントとライセンス](licenses.ja.md)）。
+
 どのフォントにもない字は描かれません（幅だけ空きます）。日本語などを使うときは `Options.Text` にフォントを渡してください。
 
 ### 数式を image.Image に描く
