@@ -22,6 +22,16 @@ EPUB は XHTML と CSS と画像を ZIP に入れたものなので、リフロ�
 
 `pre-paginated`（または Kindle の `fixed-layout`）が指定され、すべての文書が絵 1 つだけのページ（`img`、インラインの `svg`、SVG 文書、または spine に直接置かれた画像）である本は、組版エンジンを使わずに、画像 1 枚を 1 ページとして変換する。ページの大きさは文書の viewport のメタデータ（無ければ画像自身の大きさ、または SVG の viewBox）から決め、画像は縦横比を保って中央に配置する。文字を組んだページと画像だけのページが混ざる本は、警告を出してリフロー型として組み直す（そうした本によくある絶対配置の CSS までは解釈しない）。
 
+### 数式
+
+本文の XHTML の `math` 要素（MathML）は、HTML と同じ数式エンジンが組む。縦書きの章では、数式は横に組んだまま行の中に置く。
+
+```html
+<p>ピタゴラスの定理は <math><msup><mi>a</mi><mn>2</mn></msup><mo>+</mo><msup><mi>b</mi><mn>2</mn></msup><mo>=</mo><msup><mi>c</mi><mn>2</mn></msup></math> である。</p>
+```
+
+組み方は [Word・HTML・Markdown の数式](document.ja.md#数式)を参照。
+
 ### オプション
 
 | オプション | 値 | 既定 |

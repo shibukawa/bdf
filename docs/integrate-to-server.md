@@ -18,7 +18,7 @@ import (
 
 Add `converter/pptx` for PowerPoint, `converter/xlsx` for Excel, `converter/visio` for Visio, or `converter/parquet` for Parquet. To accept every format, import `converter/all` instead of the individual packages. See [Formats](formats/index.md) and the [`converter/`](../converter/) directories for the available names.
 
-To omit music conversion, leave out `converter/mml`, `converter/midi`, and `converter/musicxml`. A server that only converts to BDF does not need to import the `raster` or `thumbnail` packages for drawing.
+To omit music conversion, leave out `converter/mml`, `converter/midi`, and `converter/musicxml`. A server that only converts to BDF does not need to import the `imagebdf` or `thumbnail` packages for drawing.
 
 ## Convert an HTTP upload
 

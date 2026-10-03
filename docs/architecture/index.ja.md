@@ -10,7 +10,7 @@ flowchart TB
         direction TB
         SCONV["converter/pdf<br/>converter/xlsx<br/>converter/pptx<br/>converter/docx …"]
         BUNDLE["bdf バンドル<br/>（パック済み）<br/>manifest JSON<br/>描画命令<br/>画像・フォント"]
-        PREVIEW["raster・thumbnail・SearchText<br/>サムネイル画像<br/>検索用のテキスト"]
+        PREVIEW["imagebdf・thumbnail・SearchText<br/>サムネイル画像<br/>検索用のテキスト"]
         SCONV --> BUNDLE
         BUNDLE --> PREVIEW
     end
@@ -46,7 +46,7 @@ flowchart TB
 
 Go のサーバープロセス内で `converter/pdf`、`converter/pptx`、`converter/xlsx` などのパッケージが元ファイルを変換し、manifest・描画命令・画像・フォントをパックした **bdf バンドル**にします。配信の形は 2 つです。1 ファイル形式（先頭からのストリーミング読み、または Range による Part 単位の取得）か、オブジェクトストレージや CDN にそのまま置ける分割形式です。ブラウザでは、Worker 内のレンダラが必要な Part だけを読み込んで `OffscreenCanvas` に描画します。メインスレッドがすることは、受け取ったビットマップと透明なテキスト層を配置するだけです。
 
-バンドルと一緒に、文書の一覧や検索エンジンが必要とするものも作れます。ただし、作るのは文書（パスワード付きの入力ならパスワードも）を持っている間だけです。Go のラスタライザ（`raster`、`thumbnail`）で描いたサムネイル画像と、文書のメタデータ・ページごとのテキストの JSON（`Document.SearchText`）です。実際に動くサーバーの例は[構成のサンプル](../examples/index.ja.md)を参照してください。
+バンドルと一緒に、文書の一覧や検索エンジンが必要とするものも作れます。ただし、作るのは文書（パスワード付きの入力ならパスワードも）を持っている間だけです。Go のラスタライザ（`imagebdf`、`thumbnail`）で描いたサムネイル画像と、文書のメタデータ・ページごとのテキストの JSON（`Document.SearchText`）です。実際に動くサーバーの例は[構成のサンプル](../examples/index.ja.md)を参照してください。
 
 ## ② ブラウザ内で変換
 

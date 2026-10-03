@@ -19,6 +19,7 @@ export const SECTIONS = [
       page("npm", "npm packages", "npm パッケージ"),
       page("integrating-to-frontend", "Integrating into a frontend", "フロントエンドに組み込む"),
       page("integrate-to-server", "Integrating into a server", "サーバーに組み込む"),
+      page("rendering", "Rendering", "描画する"),
       page("build-wasm-runtime", "Build a Wasm runtime", "Wasm ランタイムをビルドする"),
     ],
   },

@@ -7,6 +7,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/internal/mathlayout"
 )
 
 // Place draws a laid out formula into a child object of cv whose origin is
@@ -21,7 +22,7 @@ func Place(cv *canvas.Canvas, b *Box, x, y float64, text string) {
 	ch.Obj.SetBBox(bbox.X, bbox.Y, bbox.W, bbox.H)
 	// the object starts in the state of the place that uses it
 	ch.Obj.TextStyle(bdf.AlignLeft, bdf.BaselineAlphabetic, bdf.DirInherit, 0)
-	b.Draw(ch, 0, 0)
+	Draw(ch, b, 0, 0)
 	cv.Obj.Mark(bdf.MarkAltText, text)
 	cv.Obj.UseAt(ref, f32(x), f32(y))
 	cv.Drawn = true
@@ -29,61 +30,61 @@ func Place(cv *canvas.Canvas, b *Box, x, y float64, text string) {
 
 // Draw draws b into cv with its origin (the left end of its baseline) at
 // (x, y).
-func (b *Box) Draw(cv *canvas.Canvas, x, y float64) {
+func Draw(cv *canvas.Canvas, b *Box, x, y float64) {
 	d := drawer{cv: cv}
-	items := b.items
+	items := b.Items()
 	for i := 0; i < len(items); {
 		it := &items[i]
-		switch it.kind {
-		case iRule:
-			d.fill(it.color)
-			cv.Obj.FillRect(f32(x+it.x), f32(y+it.y), f32(it.w), f32(it.h))
+		switch it.Kind {
+		case mathlayout.ItemRule:
+			d.fill(it.Color)
+			cv.Obj.FillRect(f32(x+it.X), f32(y+it.Y), f32(it.W), f32(it.H))
 			i++
-		case iStroke:
-			d.strokeStyle(it.color, it.w)
+		case mathlayout.ItemStroke:
+			d.strokeStyle(it.Color, it.W)
 			cv.Obj.Save()
-			cv.Obj.Translate(f32(x+it.x), f32(y+it.y))
-			cv.Obj.StrokePath(cv.Obj.AddPath(it.path))
+			cv.Obj.Translate(f32(x+it.X), f32(y+it.Y))
+			cv.Obj.StrokePath(cv.Obj.AddPath(it.Path))
 			cv.Obj.Restore()
 			i++
 		default:
-			if it.fc == nil {
+			if it.Face == nil {
 				i++
 				continue
 			}
-			d.font(it.fc, it.size)
-			d.fill(it.color)
-			if it.sx != 1 || it.sy != 1 {
+			d.font(choice(it.Face), it.Size)
+			d.fill(it.Color)
+			if it.ScaleX != 1 || it.ScaleY != 1 {
 				cv.Obj.Save()
-				cv.Obj.Transform(f32(it.sx), 0, 0, f32(it.sy), f32(x+it.x), f32(y+it.y))
-				cv.Obj.FillText(it.text, 0, 0, f32(it.adv/it.sx))
+				cv.Obj.Transform(f32(it.ScaleX), 0, 0, f32(it.ScaleY), f32(x+it.X), f32(y+it.Y))
+				cv.Obj.FillText(it.Text, 0, 0, f32(it.Advance/it.ScaleX))
 				cv.Obj.Restore()
 				i++
 				continue
 			}
 			// glyphs that follow each other on a baseline in one font are
 			// one run
-			adv := it.adv
+			adv := it.Advance
 			j := i + 1
 			for j < len(items) {
 				n := &items[j]
 				p := &items[j-1]
-				if n.kind != iGlyph || n.fc != it.fc || n.size != it.size || n.color != it.color || n.y != it.y ||
-					n.sx != 1 || n.sy != 1 || math.Abs(p.x+p.adv-n.x) > 1e-3 {
+				if n.Kind != mathlayout.ItemGlyph || n.Face != it.Face || n.Size != it.Size || n.Color != it.Color || n.Y != it.Y ||
+					n.ScaleX != 1 || n.ScaleY != 1 || math.Abs(p.X+p.Advance-n.X) > 1e-3 {
 					break
 				}
-				adv += n.adv
+				adv += n.Advance
 				j++
 			}
-			text := it.text
+			text := it.Text
 			if j > i+1 {
 				var b strings.Builder
 				for k := i; k < j; k++ {
-					b.WriteString(items[k].text)
+					b.WriteString(items[k].Text)
 				}
 				text = b.String()
 			}
-			cv.Obj.FillText(text, f32(x+it.x), f32(y+it.y), f32(adv))
+			cv.Obj.FillText(text, f32(x+it.X), f32(y+it.Y), f32(adv))
 			i = j
 		}
 	}
@@ -125,3 +126,5 @@ func (d *drawer) strokeStyle(c bdf.Color, w float64) {
 		d.strokeColor, d.strokeWidth, d.hasStroke = c, w, true
 	}
 }
+
+func f32(v float64) float32 { return float32(v) }

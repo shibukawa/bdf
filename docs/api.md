@@ -12,7 +12,8 @@ bdf の公開 API をパッケージごとにまとめる。引数や細かい�
 | bdf をブラウザに表示する | [`@bdfkit/render`](#typescript-bdfkitrender) の Worker とテキスト層 |
 | bdf を読んでテキストや構造を取り出す（Node でも） | [`@bdfkit/core`](#typescript-bdfkitcore) |
 | ログインした読者に文書を数ページずつ、要求ごとに封印して渡す | Go の [`segment`](#保護モードの配信segment) と [`(*Reader).WriteSegment`](#読み込み)、ブラウザは [`SegmentLoader`](#文書を開く)（レンダラの Worker では `{kind: "segments"}`） |
-| サーバーでサムネイル・ページの画像・検索用のテキストを作る | Go の [`thumbnail` と `raster`](#go-サムネイルとページの画像thumbnailraster)、[`Document.SearchText`](#読み込み)、または [`bdf` コマンド](#コマンドbdf) |
+| 数式を組んで画像・Ebitengine・Canvas に描く | Go の [`formula` と `raster/ebitenginebdf`](#go-数式formularasterebitenginebdf)。使い方は[描画する](rendering.ja.md) |
+| サーバーでサムネイル・ページの画像・検索用のテキストを作る | Go の [`thumbnail` と `imagebdf`](#go-サムネイルとページの画像thumbnailimagebdf)、[`Document.SearchText`](#読み込み)、または [`bdf` コマンド](#コマンドbdf) |
 
 ## Go: 変換（converter）
 
@@ -189,13 +190,13 @@ http.Handle("POST /segments/{name}", &segment.Handler{
 | `imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false）。`Decode(data)` は `MaxDecodePixels`（100 << 20 画素）を超える画像をデコードせず `ErrTooLarge` を返し、`Optimize` はそういう画像をそのまま残す |
 | `woff2` | TrueType・OpenType を WOFF2 にする、WOFF2 を戻す。`Encode(font)`、`Decode(data)`（glyf・loca・hmtx の変換を戻す。フォントコレクションは扱わない）、`Available()`、`IsWOFF(data)` |
 
-## Go: サムネイルとページの画像（thumbnail、raster）
+## Go: サムネイルとページの画像（thumbnail、imagebdf）
 
-`github.com/shibukawa/bdf/thumbnail` は文書のサムネイルを、`github.com/shibukawa/bdf/raster` は任意のページや範囲の画像を、ブラウザを使わずに Go で描く（design.md §3.25）。
+`github.com/shibukawa/bdf/thumbnail` は文書のサムネイルを、`github.com/shibukawa/bdf/raster/imagebdf` は任意のページや範囲の画像を、ブラウザを使わずに Go で描く（design.md §3.25）。
 
 ```go
 d, _ := r.ToDocument() // 変換した結果なら res.Doc
-th, err := thumbnail.Make(d, &thumbnail.Options{Size: 256, Raster: raster.Options{FontDirs: dirs}})
+th, err := thumbnail.Make(d, &thumbnail.Options{Size: 256, Raster: imagebdf.Options{FontDirs: dirs}})
 if err != nil {
 	return err
 }
@@ -207,13 +208,46 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 | `thumbnail.Make(doc, *Options) (*Result, error)` | サムネイルを描く。`Options` は `Size`（既定 256 px。切り抜きなら一辺、全体なら長辺）、`Mode`（`Auto`・`Crop`・`Fit`）、`View`（既定は最初の View）、`SheetDPI`（シートを描く解像度。既定 `DefaultSheetDPI` = 72 で 1 単位が 1 画素）、`Raster`（フォントと背景）。`Result` は `Image`、選んだ `Mode`、`Warnings` |
 | `Auto` の選び方 | Word・HTML・Markdown・Excel・CSV と、縦長のページの PDF・TIFF は `Crop`: 1 ページ目の左上から、ページの幅（横長ならページの高さ）の正方形。scroll View は先頭から、シートは A1 から、`Size` 画素を `SheetDPI` で描く大きさ（`MinSheetSide` = 96 〜 `MaxSheetSide` = 480 単位。シートより大きくはしない）の正方形を枠線つきで。小さいサムネイルほど狭い範囲を見せ、字が潰れないようにする。それ以外（PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB の表紙、横長の PDF・TIFF）は `Fit`: 1 ページ目の全体。判定は `Meta.Source` と View の種類による |
 | `thumbnail.Encode(w, img, format)` / `FormatOf(name)` | `PNG`・`JPEG`（品質 85）・`WebP`（非可逆、品質 80）で書く / ファイル名の拡張子から形式を決める |
-| `raster.New(doc, *Options) *Renderer` | 文書を描くレンダラ。`Options` は `FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントと、埋め込みフォントにない字の探し先）と `Background`（既定は白）。デコードした Object・画像・フォントを保持する。並行には使えない |
+| `imagebdf.New(doc, *Options) *Renderer` | 文書を描くレンダラ。`Options` は `FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントと、埋め込みフォントにない字の探し先）と `Background`（既定は白）。デコードした Object・画像・フォントを保持する。並行には使えない |
 | `(*Renderer).Page(v, page, scale)` | fixed・flow View のページ（scroll View の帯）を、1 単位 `scale` 画素で描く。大きさのないページと 0 以下の `scale` はエラー。描いている途中のパニックもエラーにする（`Region`、`thumbnail.Make` も） |
 | `(*Renderer).Region(v, page, rect, w, h)` | 範囲を `w` × `h` 画素に描く。fixed・flow はそのページの座標、scroll View は帯を積んだ連続の座標、シートはシートの座標（枠線も描く） |
 | `(*Renderer).Warnings()` | ビューアどおりに描けなかったもの（AVIF の画像、FILTER、フォントが見つからないテキストなど）と、上限を超えて描かなかったもの（design.md §3.25 の「信頼しない文書への備え」） |
-| `raster.MaxPixels` / `ErrTooLarge` / `ErrNoPage` / `SheetSize(v)` | 描く画像の大きさの上限（64 M 画素）とそのエラー、ないページ、シートの大きさ |
+| `imagebdf.Object(obj, scale, *Options)` | 文書に入れていない `*bdf.Object` を、1 単位 `scale` 画素で描く。他のパート（埋め込みフォント、画像、パスの集まり、他の Object）を参照しない Object に限る（参照していれば `ErrNeedsDocument`）。画像は Object の境界を画素に切り上げた大きさで、`Bounds()` は Object の原点からの画素（原点が (0, 0)）。背景は `Background`、指定がなければ透明 |
+| `imagebdf.MaxPixels` / `ErrTooLarge` / `ErrNoPage` / `ErrNeedsDocument` / `SheetSize(v)` | 描く画像の大きさの上限（64 M 画素）とそのエラー、ないページ、文書がないと描けない Object、シートの大きさ |
 
 描けるもの: パス（nonzero・evenodd、アンチエイリアス）、線（端・結合・破線。1 画素より細い線はビューアと同じく 1 画素幅で薄く）、クリップ、単色・線形・放射・扇形のグラデーションとパターン、画像（PNG、JPEG と EXIF の向き、GIF、BMP、WebP、SVG）、埋め込みフォントと名前で参照するフォントのテキスト（`advance` 補正、揃え、ベースライン、字間、太字・斜体の合成、字ごとのフォールバック、右から左の文字の並べ替え）、グループの透明度とブレンド、ソフトマスク、影。描かないもの: AVIF の画像、FILTER、ヒンティング、カーニング、合字、アラビア文字の字形の変化。
+
+## Go: 数式（formula、raster/ebitenginebdf）
+
+`github.com/shibukawa/bdf/formula` は LaTeX・MathML の数式を組み、パスだけの Object にする（design.md §3.23）。使い方とサンプルは[描画する](rendering.ja.md#数式を描く)。
+
+```go
+ts, err := formula.New(nil) // 同梱の STIX Two Math
+l := ts.Layout(formula.ParseTeX(`x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}`), formula.Style{Size: 24, Display: true})
+img, err := imagebdf.Object(l.Object(), 2, nil) // *image.RGBA
+```
+
+| 名前 | 内容 |
+|---|---|
+| `formula.New(*Options) (*Typesetter, error)` | 組版器。`Options` は `Math`（数式フォントのバイト列。MATH 表のない・読めないフォントはエラー。省略すると同梱の STIX Two Math）と `Text`（数式フォントにない字のためのフォント。先頭から順に探す）。並行して使える |
+| `formula.ParseTeX(src) *Formula` | LaTeX の数式モード。知らない命令はテキストとして残し、失敗しない |
+| `formula.ParseMathML(src) (*Formula, error)` | `src` の最初の `math` 要素。なければエラー |
+| `(*Formula).Text()` / `Display()` | 線形表記 / `display="block"` の MathML かどうか |
+| `(*Typesetter).Layout(f, Style) *Layout` | `Style` は `Size`（既定 12）、`Display`、`Color`（既定は黒）、`Bold` |
+| `(*Layout).Width()` / `Height()` / `Depth()` / `Ink()` / `Text()` | 送り幅、ベースラインの上と下、描く範囲、線形表記 |
+| `(*Layout).Object() *bdf.Object` | パスだけの Object。原点はベースラインの左端、境界は `Ink()`。他の Part を参照しない |
+| `(*Layout).Draw(obj, x, y)` | 既存の Object に描き足す（塗りと線のスタイルは数式が設定したままになる） |
+| `(*Layout).Document(margin) *bdf.Document` | 余白つきの 1 ページの文書（fixed View）。ページのテキストは線形表記 |
+
+`github.com/shibukawa/bdf/raster/ebitenginebdf` は別モジュール（`go get github.com/shibukawa/bdf/raster/ebitenginebdf`）で、パスだけの Object を Ebitengine で描く。
+
+| 名前 | 内容 |
+|---|---|
+| `ebitenginebdf.Compile(*bdf.Object) (*Drawing, error)` | Object を `vector.Path` にする。他の Part を参照する Object は `ErrNeedsDocument`、単色のパス以外（テキスト、画像、グラデーション、クリップ、グループ、マスク、破線、source-over 以外の合成）を描く Object は `*UnsupportedError`（`Op` が最初の命令） |
+| `ebitenginebdf.CompilePart(*bdf.ObjectPart)` | 文書から読んだ Object（`Reader.Object`）用 |
+| `(*Drawing).Draw(dst, *DrawOptions)` | 描く。`DrawOptions` は `GeoM`（Object の単位から画面の画素へ）、`ColorScale`、`AntiAlias`、`Blend`。線の幅は `GeoM` の倍率に従う。ゲームを描く goroutine から呼ぶ |
+| `(*Drawing).Bounds()` | Object の境界 |
+| `ebitenginebdf.Image(*image.RGBA) (*ebiten.Image, image.Point)` | `imagebdf` が描いた画像を `ebiten.Image` にし、原点を (0, 0) に置くときの左上の位置を返す |
 
 ## コマンド（bdf）
 

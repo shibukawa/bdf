@@ -4,7 +4,7 @@ A PowerPoint deck is built from DrawingML: shapes, text runs and tables placed o
 
 ## Try it
 
-Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: [PowerPoint deck](https://shibukawa.github.io/bdf/viewer/?file=samples/features.pptx).
+Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: [PowerPoint deck](https://shibukawa.github.io/bdf/viewer/?file=samples/features.pptx), or [a slide of formulas](https://shibukawa.github.io/bdf/viewer/?file=samples/math.pptx).
 
 ## PowerPoint (.pptx)
 
@@ -30,3 +30,18 @@ Options (`-param`, from `bdf generate -h`):
 `-hidden` is shorthand for `-param hidden=true` (Excel's `-hidden` does the same for hidden sheets). `-pages` selects which slides to convert, and the general font flags `-font-dir`, `-fonts system`, `-no-subset`, `-no-woff2`, `-no-system-fonts` and `-ignore-fstype` apply to PowerPoint the same way they do to Word and Excel.
 
 See [design.md §3.4](../design.md#34-powerpoint--bdf-変換器converterpptxの構造) for the internals.
+
+### Formulas
+
+A formula inserted with Insert → Equation is saved as Office Math inside a paragraph (`m:oMath` in `a14:m`). The converter lays it out from that, not from the fallback picture the file also keeps, so it stays sharp at any zoom and is text in a linear notation for search and copy.
+
+```xml
+<a14:m>
+  <m:oMath>
+    <m:sSup><m:e><m:r><m:t>e</m:t></m:r></m:e><m:sup><m:r><m:t>iπ</m:t></m:r></m:sup></m:sSup>
+    <m:r><m:t>+1=0</m:t></m:r>
+  </m:oMath>
+</a14:m>
+```
+
+A sample is [`converter/pptx/testdata/math.pptx`](https://github.com/shibukawa/bdf/blob/main/converter/pptx/testdata/math.pptx). The layout is that of [formulas in Word, HTML and Markdown](document.md#formulas).

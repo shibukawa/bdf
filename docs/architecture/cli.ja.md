@@ -38,7 +38,7 @@ bdf generate -password-file pw.txt secret.xlsx out.bdf  # パスワード付き�
 
 ## thumbnail, text, render
 
-ブラウザなしで `.bdf` を見る 3 つの方法です。サーバーが使うのと同じ Go のコード（`raster`、`thumbnail`、`Document.SearchText`）を使います。
+ブラウザなしで `.bdf` を見る 3 つの方法です。サーバーが使うのと同じ Go のコード（`imagebdf`、`thumbnail`、`Document.SearchText`）を使います。
 
 ```sh
 bdf thumbnail -size 256 out.bdf thumb.png    # -mode auto|crop|fit, -view, -sheet-dpi, -font-dir, -no-system-fonts

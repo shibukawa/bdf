@@ -11,6 +11,8 @@ import (
 	"io"
 	"path"
 	"strings"
+
+	"github.com/shibukawa/bdf/internal/xmltree"
 )
 
 // maxPartSize bounds the decompressed size of one package part.
@@ -165,11 +167,11 @@ func (p *Package) XML(name string) (*Node, error) {
 // ReadElement reads one streamed element with this package's markup
 // compatibility choices, as XML does for a whole part.
 func (p *Package) ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
-	return readElement(d, start, p.choice())
+	return xmltree.ReadElementPicking(d, start, p.choice())
 }
 
 func (p *Package) choice() func(*Node) bool {
-	pick := supportedChoice(p.Supported)
+	pick := xmltree.SupportedChoice(p.Supported)
 	if p.Choose != nil {
 		supported := pick
 		pick = func(c *Node) bool { return supported != nil && supported(c) || p.Choose(c) }

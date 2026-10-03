@@ -41,7 +41,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/imgconv"
-	"github.com/shibukawa/bdf/raster"
+	"github.com/shibukawa/bdf/raster/imagebdf"
 )
 
 // Mode is how a page becomes a thumbnail.
@@ -109,7 +109,7 @@ type Options struct {
 	// cells, smaller.
 	SheetDPI float64
 	// Raster configures the drawing: fonts and background.
-	Raster raster.Options
+	Raster imagebdf.Options
 }
 
 // Result is a thumbnail and how it was made.
@@ -117,7 +117,7 @@ type Result struct {
 	Image *image.RGBA
 	// Mode is the layout used: Crop or Fit.
 	Mode Mode
-	// Warnings lists what the drawing left out (see raster).
+	// Warnings lists what the drawing left out (see imagebdf).
 	Warnings []string
 }
 
@@ -130,7 +130,7 @@ var cropSources = map[string]bool{"docx": true, "html": true, "markdown": true, 
 var shapeSources = map[string]bool{"pdf": true, "tiff": true, "": true}
 
 // Make draws the thumbnail of a document. What a document asks for beyond
-// the limits of package raster is left out, with a warning; a document that
+// the limits of package imagebdf is left out, with a warning; a document that
 // cannot be drawn at all is an error, and so is a panic of the drawing.
 func Make(doc *bdf.Document, opts *Options) (res *Result, err error) {
 	defer func() {
@@ -159,7 +159,7 @@ func Make(doc *bdf.Document, opts *Options) (res *Result, err error) {
 	if mode == Auto {
 		mode = autoMode(doc.Meta.Source, v)
 	}
-	r := raster.New(doc, &o.Raster)
+	r := imagebdf.New(doc, &o.Raster)
 	var img *image.RGBA
 	switch {
 	case v.Kind == bdf.ViewSheet:
@@ -227,7 +227,7 @@ func autoMode(source string, v *bdf.View) Mode {
 // pixels shows at dpi, in units.
 func sheetSide(v *bdf.View, size int, dpi float64) float64 {
 	side := min(max(float64(size)*72/dpi, MinSheetSide), MaxSheetSide)
-	if w, h := raster.SheetSize(v); w > 0 && h > 0 {
+	if w, h := imagebdf.SheetSize(v); w > 0 && h > 0 {
 		side = min(side, w, h)
 	}
 	return side

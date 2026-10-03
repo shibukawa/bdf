@@ -4,7 +4,7 @@ Visio と draw.io（diagrams.net）の図は、線で結んだ図形を、作図
 
 ## 試してみる
 
-[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試してください。Visio の図面（[shapes.vsdx](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.vsdx)）、3 ページの draw.io の図（[multipage.drawio](https://shibukawa.github.io/bdf/viewer/?file=samples/multipage.drawio)）、[AWS の構成図](https://shibukawa.github.io/bdf/viewer/?file=samples/aws.drawio)などです。
+[ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試してください。Visio の図面（[shapes.vsdx](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.vsdx)）、3 ページの draw.io の図（[multipage.drawio](https://shibukawa.github.io/bdf/viewer/?file=samples/multipage.drawio)）、[AWS の構成図](https://shibukawa.github.io/bdf/viewer/?file=samples/aws.drawio)、[ラベルに数式のある図](https://shibukawa.github.io/bdf/viewer/?file=samples/math.drawio)などです。
 
 ## Visio（.vsdx、.vdx）
 
@@ -27,3 +27,19 @@ Visio と draw.io（diagrams.net）の図は、線で結んだ図形を、作図
 | `-param border=` | 各ページの図のまわりの余白（ピクセル） | `10`（`0` で余白なし） |
 
 詳細は[design.md §3.11](../design.md#311-drawio--bdf-変換器converterdrawioの構造)を参照してください。
+
+### draw.io のラベルの数式
+
+「その他 → 数式組版」をオンにした図（モデルに `math="1"`）では、draw.io が MathJax に渡すのと同じ区切りの LaTeX を組みます。`$$ … $$` と `\[ … \]` は独立した行、`\( … \)` は行の中です。バッククォートの AsciiMath は組まずに警告を出します。
+
+```xml
+<mxGraphModel math="1">
+  <root>
+    <mxCell id="2" value="解は \(x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}\)" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+      <mxGeometry x="40" y="40" width="260" height="60" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>
+```
+
+サンプルは [`converter/drawio/testdata/math.drawio`](https://github.com/shibukawa/bdf/blob/main/converter/drawio/testdata/math.drawio) です。組み方は [Word・HTML・Markdown の数式](document.ja.md#数式)と同じです。

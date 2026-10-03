@@ -12,7 +12,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/imgconv"
-	"github.com/shibukawa/bdf/raster"
+	"github.com/shibukawa/bdf/raster/imagebdf"
 	"golang.org/x/image/webp"
 )
 
@@ -30,7 +30,7 @@ func open(t *testing.T, path string) *bdf.Document {
 }
 
 // testRaster draws with the repository's fonts only, the same everywhere.
-var testRaster = raster.Options{FontDirs: []string{"../converter/pptx/testdata/fonts", "../fixture/testdata/fonts"}, NoSystemFonts: true}
+var testRaster = imagebdf.Options{FontDirs: []string{"../converter/pptx/testdata/fonts", "../fixture/testdata/fonts"}, NoSystemFonts: true}
 
 func TestLayouts(t *testing.T) {
 	for _, c := range []struct {
@@ -85,7 +85,7 @@ func TestCropIsTopLeft(t *testing.T) {
 	}
 	v := d.Views[0]
 	side := v.Pages[0].W // portrait: the square is as wide as the page
-	want, err := raster.New(d, &testRaster).Region(v, 0, bdf.Rect{W: side, H: side}, 128, 128)
+	want, err := imagebdf.New(d, &testRaster).Region(v, 0, bdf.Rect{W: side, H: side}, 128, 128)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestSheetSide(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want, err := raster.New(d, &testRaster).Region(v, 0, bdf.Rect{W: c.side, H: c.side}, c.size, c.size)
+		want, err := imagebdf.New(d, &testRaster).Region(v, 0, bdf.Rect{W: c.side, H: c.side}, c.size, c.size)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -221,7 +221,7 @@ func (noColor) RGBA() (r, g, b, a uint32) { panic("no colour") }
 // TestPanicIsAnError checks that a panic of the drawing is an error of Make.
 func TestPanicIsAnError(t *testing.T) {
 	d := open(t, "../testdata/pptx/basic.bdf")
-	res, err := Make(d, &Options{Raster: raster.Options{Background: noColor{}, NoSystemFonts: true}})
+	res, err := Make(d, &Options{Raster: imagebdf.Options{Background: noColor{}, NoSystemFonts: true}})
 	if err == nil || res != nil || !strings.Contains(err.Error(), "no colour") {
 		t.Errorf("a background that panics: %v", err)
 	}

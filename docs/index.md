@@ -8,6 +8,7 @@ bdf is a document format made for previews in the browser. The [demo site](https
 - **[Getting started](getting-started.md)** — convert a file and open it, in five minutes
 - **[Integrating into a frontend](integrating-to-frontend.md)** — show server-produced BDF or convert files in the browser
 - **[Integrating into a server](integrate-to-server.md)** — register only the Go converters your service needs
+- **[Rendering](rendering.md)** — draw documents and formulas into a Go `image.Image`, with Ebitengine, or on a browser canvas
 - **[Build a Wasm runtime](build-wasm-runtime.md)** — choose converter formats and build for TinyGo or Go
 - **[Formats](formats/index.md)** — every input format, and how bdf lays each one out
 - **[Sample architectures](examples/index.md)** — three ways to fit bdf into a system, each a small server you can run

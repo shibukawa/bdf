@@ -625,6 +625,13 @@ func (l *Loaded) Math() *sfnt.Math {
 	return l.math
 }
 
+// Outline draws the outline of glyph g with pen, in font units (y up); ok
+// is false when the glyph cannot be read.
+func (l *Loaded) Outline(g uint16, pen sfnt.Pen) (ok bool) {
+	l.outOnce.Do(func() { l.outlines = sfnt.NewOutlines(l.Font) })
+	return l.outlines.Outline(g, pen)
+}
+
 // Bounds returns the bounding box of glyph g's outline in em (y up); ok is
 // false for glyphs without an outline.
 func (l *Loaded) Bounds(g uint16) (r sfnt.Rect, ok bool) {

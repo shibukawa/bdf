@@ -194,3 +194,7 @@ var opTable = [256]opInfo{
 	OpMark:        {"MARK", "bs"},
 	OpExt:         {"EXT", "X"},
 }
+
+// OpName returns the name of an opcode as docs/spec.md §7 writes it
+// ("FILL_PATH"), and "" for what is no opcode.
+func OpName(op byte) string { return opTable[op].Name }

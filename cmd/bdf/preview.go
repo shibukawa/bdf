@@ -11,7 +11,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
-	"github.com/shibukawa/bdf/raster"
+	"github.com/shibukawa/bdf/raster/imagebdf"
 	"github.com/shibukawa/bdf/thumbnail"
 )
 
@@ -42,7 +42,7 @@ func addPreviewFlags(fs *flag.FlagSet) *previewFlags {
 }
 
 // write writes the thumbnail and text generate was asked for.
-func (p *previewFlags) write(doc *bdf.Document, ropts raster.Options, quiet bool) {
+func (p *previewFlags) write(doc *bdf.Document, ropts imagebdf.Options, quiet bool) {
 	if *p.thumbnail == "" && *p.text == "" {
 		return
 	}
@@ -131,11 +131,11 @@ func loadDocument(path string, allowPlaintext bool) *bdf.Document {
 }
 
 // fontFlags are the font lookup flags of the drawing commands.
-func fontFlags(fs *flag.FlagSet) func() raster.Options {
+func fontFlags(fs *flag.FlagSet) func() imagebdf.Options {
 	var dirs stringList
 	fs.Var(&dirs, "font-dir", "directory searched for fonts before the system ones, for text in fonts the document refers to by name (repeatable)")
 	noSystem := fs.Bool("no-system-fonts", false, "use only the fonts under -font-dir")
-	return func() raster.Options { return raster.Options{FontDirs: dirs, NoSystemFonts: *noSystem} }
+	return func() imagebdf.Options { return imagebdf.Options{FontDirs: dirs, NoSystemFonts: *noSystem} }
 }
 
 // thumbnailCmd draws the thumbnail of a document, or of an input in a format
@@ -199,7 +199,7 @@ const protectedNote = "the input is password-protected and the thumbnail would n
 // thumbnail is the same, and a long PDF takes seconds instead of
 // milliseconds). Another view is converted whole. A password-protected
 // input is opened with $BDF_PASSWORD, and drawn only when allowed.
-func convertForThumbnail(path, view string, allowPlaintext bool, ropts raster.Options, quiet bool) *bdf.Document {
+func convertForThumbnail(path, view string, allowPlaintext bool, ropts imagebdf.Options, quiet bool) *bdf.Document {
 	opts := &converter.Options{FontDirs: ropts.FontDirs, NoSystemFonts: ropts.NoSystemFonts, Password: os.Getenv(passwordEnv)}
 	if view == "" {
 		opts.Pages = converter.PageList(1)
@@ -284,7 +284,7 @@ func renderCmd(args []string) {
 		check(fmt.Errorf("%s: no view %q", fs.Arg(0), *view))
 	}
 	o := ropts()
-	r := raster.New(doc, &o)
+	r := imagebdf.New(doc, &o)
 	var err error
 	var b bytes.Buffer
 	if v.Kind == bdf.ViewSheet {

@@ -13,7 +13,7 @@ import (
 	"github.com/shibukawa/bdf/converter"
 	_ "github.com/shibukawa/bdf/converter/all" // every input format
 	"github.com/shibukawa/bdf/imgconv"
-	"github.com/shibukawa/bdf/raster"
+	"github.com/shibukawa/bdf/raster/imagebdf"
 )
 
 // stringList is a repeatable string flag.
@@ -198,7 +198,7 @@ func generate(args []string) {
 	}
 	check(write(doc, out))
 	fmt.Fprintf(os.Stderr, "%s: %s, %d warning(s)\n", out, summary, len(warnings))
-	preview.write(doc, raster.Options{FontDirs: fontDirs, NoSystemFonts: *noSystemFonts}, *quiet)
+	preview.write(doc, imagebdf.Options{FontDirs: fontDirs, NoSystemFonts: *noSystemFonts}, *quiet)
 }
 
 // parseDC reads -dc name=value flags into the elements they replace. An

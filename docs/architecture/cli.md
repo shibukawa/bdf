@@ -38,7 +38,7 @@ bdf generate -password-file pw.txt secret.xlsx out.bdf  # a protected input
 
 ## thumbnail, text, render
 
-Three ways to look at a `.bdf` without a browser, using the same Go code (`raster`, `thumbnail`, `Document.SearchText`) a server would.
+Three ways to look at a `.bdf` without a browser, using the same Go code (`imagebdf`, `thumbnail`, `Document.SearchText`) a server would.
 
 ```sh
 bdf thumbnail -size 256 out.bdf thumb.png    # -mode auto|crop|fit, -view, -sheet-dpi, -font-dir, -no-system-fonts
