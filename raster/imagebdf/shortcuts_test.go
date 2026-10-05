@@ -189,6 +189,29 @@ func TestFillWithinTheCoverage(t *testing.T) {
 	}
 }
 
+func TestBackgroundFill(t *testing.T) {
+	rng := rand.New(rand.NewSource(6))
+	bounds := image.Rect(0, 0, 12, 9)
+	for _, cov := range []*mask{
+		nil, {}, {r: bounds}, {r: image.Rect(-4, 2, 8, 12)},
+		rectMask(0.25, 1.5, 9.75, 8.25, bounds),
+	} {
+		for _, alpha := range []float32{0, 0.3, 1} {
+			c := solid{0.75 * alpha, 0.5 * alpha, 0.25 * alpha, alpha}
+			want := newSurface(bounds.Dx(), bounds.Dy())
+			for i := range want.pix {
+				want.pix[i] = rng.Float32()
+			}
+			got := &surface{w: want.w, h: want.h, pix: slices.Clone(want.pix)}
+			want.fill(cov, c, 1, bdf.BlendSourceOver, &mask{r: bounds})
+			got.fillBackground(cov, c)
+			if !slices.Equal(want.pix, got.pix) {
+				t.Fatalf("background differs for coverage %+v, alpha %g", cov, alpha)
+			}
+		}
+	}
+}
+
 func TestRounding(t *testing.T) {
 	// the bytes of an image are the colours times 255, rounded as
 	// math.Round does

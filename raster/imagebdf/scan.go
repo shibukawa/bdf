@@ -153,6 +153,24 @@ type scratch struct {
 	// pts holds the points of the paths flattened for a drawing
 	pts   []point
 	polys []polyline
+	// These limits apply to an entire drawing instruction, including all
+	// glyphs and stroke outlines. An incomplete fill is never painted.
+	limited bool
+	work    int
+	r       *Renderer
+}
+
+const (
+	maxPathPoints = 1 << 20
+	maxScanWork   = 1 << 24 // active edges visited across sampled scanlines
+	pathLimit     = "a path is too complex to rasterize: it is not drawn"
+)
+
+func (sc *scratch) stop() {
+	sc.limited = true
+	if sc.r != nil {
+		sc.r.warnf(pathLimit)
+	}
 }
 
 // scratchKept is the most entries of a buffer that are kept for the next
@@ -182,8 +200,8 @@ func rasterize(polys []polyline, rule byte, bounds image.Rectangle) *mask {
 }
 
 func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle) *mask {
-	if plain {
-		sc = &scratch{}
+	if sc.limited {
+		return &mask{}
 	}
 	edges := sc.edges[:0]
 	defer func() { sc.edges = keep(edges) }()
@@ -213,8 +231,16 @@ func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle
 		}
 		for i := 1; i < n; i++ {
 			add(pl.pts[i-1], pl.pts[i])
+			if len(edges) > maxPathPoints {
+				sc.stop()
+				return &mask{}
+			}
 		}
 		add(pl.pts[n-1], pl.pts[0])
+		if len(edges) > maxPathPoints {
+			sc.stop()
+			return &mask{}
+		}
 	}
 	if len(edges) == 0 {
 		return &mask{}
@@ -269,6 +295,11 @@ func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle
 				active = append(active, next)
 				next++
 			}
+			if len(active) > maxScanWork-sc.work {
+				sc.stop()
+				return &mask{}
+			}
+			sc.work += len(active)
 			xs = xs[:0]
 			k := 0
 			for _, i := range active {

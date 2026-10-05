@@ -96,3 +96,24 @@ func TestReadRefDir(t *testing.T) {
 		t.Error("a file was read with neither Files nor Dir")
 	}
 }
+
+func TestReadRefStaysInDirectory(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "document")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	private := filepath.Join(parent, "private.kicad_sch")
+	if err := os.WriteFile(private, []byte("private"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(private, filepath.Join(dir, "link.kicad_sch")); err != nil {
+		t.Fatal(err)
+	}
+	o := &Options{Dir: dir}
+	for _, rel := range []string{"../private.kicad_sch", "link.kicad_sch"} {
+		if b, _, err := o.ReadRef("", rel); err == nil || b != nil {
+			t.Errorf("%q escaped the resource directory: %q, %v", rel, b, err)
+		}
+	}
+}

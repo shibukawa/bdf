@@ -45,18 +45,18 @@ func Decode(data []byte) (img image.Image, err error) {
 	if !ok {
 		return nil, fmt.Errorf("imgconv: cannot decode %q", format)
 	}
-	// A header that cannot be read is left to the decoder to report.
-	if c, err := d.config(bytes.NewReader(data)); err == nil {
-		if c.Width <= 0 || c.Height <= 0 || int64(c.Width)*int64(c.Height) > MaxDecodePixels {
-			return nil, ErrTooLarge
-		}
-	}
-	// The decoders are made for damaged files, but a panic of one must
-	// not end a conversion.
+	// The decoders, including their header readers, are made for damaged
+	// files, but a panic of one must not end a conversion.
 	defer func() {
 		if r := recover(); r != nil {
 			img, err = nil, fmt.Errorf("imgconv: %s: %v", format, r)
 		}
 	}()
+	// A header that cannot be read is left to the decoder to report.
+	if c, err := d.config(bytes.NewReader(data)); err == nil {
+		if c.Width <= 0 || c.Height <= 0 || c.Width > MaxDecodePixels/c.Height {
+			return nil, ErrTooLarge
+		}
+	}
 	return d.decode(bytes.NewReader(data))
 }

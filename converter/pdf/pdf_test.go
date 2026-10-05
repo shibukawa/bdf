@@ -553,9 +553,9 @@ func cffPrograms(t *testing.T, name string) map[string][]byte {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	conf := model.NewDefaultConfiguration()
+	conf := model.NewStatelessConfiguration()
 	conf.ValidationMode = model.ValidationRelaxed
-	ctx, err := api.ReadContext(f, conf)
+	ctx, err := api.ReadContext(t.Context(), f, conf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -760,9 +760,9 @@ func type1Programs(t *testing.T, name string) [][]byte {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	conf := model.NewDefaultConfiguration()
+	conf := model.NewStatelessConfiguration()
 	conf.ValidationMode = model.ValidationRelaxed
-	ctx, err := api.ReadContext(f, conf)
+	ctx, err := api.ReadContext(t.Context(), f, conf)
 	if err != nil {
 		t.Fatal(err)
 	}

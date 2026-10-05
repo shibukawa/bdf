@@ -193,7 +193,8 @@ export class BdfDocument {
   }
 
   /**
-   * Load an object and everything it references, recursively.
+   * Load an object and everything it references. Each part is visited once;
+   * at most eight dependencies are prepared at a time per call.
    * Calls onResource for each non-object dependency (font, image, path collection)
    * so a renderer can prepare it.
    */
@@ -202,17 +203,33 @@ export class BdfDocument {
     this.loadedObjects.set(hash, o);
     if (seen.has(hash)) return o;
     seen.add(hash);
-    await Promise.all(
-      objectDeps(o).map(async (dep) => {
+    const queue: PartEntry[] = [];
+    const enqueue = (obj: ObjectPart) => {
+      for (const dep of objectDeps(obj)) {
+        if (seen.has(dep)) continue;
         const e = this.entry(dep);
+        if (e.t !== "obj" && !onResource) continue;
+        seen.add(dep);
+        queue.push(e);
+      }
+    };
+    enqueue(o);
+    for (let at = 0; at < queue.length;) {
+      const batch = queue.slice(at, at + 8);
+      at += batch.length;
+      // Finish every started callback before propagating an error: callers
+      // can then release the resources of a failed preparation safely.
+      const done = await Promise.allSettled(batch.map(async (e) => {
         if (e.t === "obj") {
-          await this.ensure(dep, onResource, seen);
-        } else if (onResource && !seen.has(dep)) {
-          seen.add(dep);
-          await onResource(e, await this.part(dep));
+          const child = await this.object(e.h);
+          this.loadedObjects.set(e.h, child);
+          enqueue(child);
+        } else {
+          await onResource!(e, await this.part(e.h));
         }
-      }),
-    );
+      }));
+      for (const result of done) if (result.status === "rejected") throw result.reason;
+    }
     return o;
   }
 }

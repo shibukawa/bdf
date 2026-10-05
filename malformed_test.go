@@ -83,6 +83,23 @@ func TestPartRange(t *testing.T) {
 	}
 }
 
+func TestInflateMaximumIntegerLimit(t *testing.T) {
+	plain := []byte("a valid compressed part")
+	packed, err := compress(plain, 9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, limit := range []int{len(plain), math.MaxInt} {
+		got, err := inflate(packed, limit, limit)
+		if err != nil || !bytes.Equal(got, plain) {
+			t.Errorf("limit %d: %q, %v", limit, got, err)
+		}
+	}
+	if _, err := inflate(packed, len(plain)-1, 0); err == nil {
+		t.Error("data larger than the limit was accepted")
+	}
+}
+
 func TestInflateLimits(t *testing.T) {
 	// 64 MiB of zeros deflate to a few dozen kilobytes
 	plain := make([]byte, 64<<20)

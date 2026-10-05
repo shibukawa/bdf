@@ -416,6 +416,9 @@ func (d *drawer) instr(in bdf.Instr) {
 					continue
 				}
 				polys = p.flattenTo(sc, polys, m, flatTol)
+				if sc.limited {
+					return
+				}
 			}
 		}
 		sc.polys = polys
@@ -565,6 +568,9 @@ func (sc *scratch) strokeMask(p *path, m matrix, ls lineStyle, bounds image.Rect
 	}
 	ms := m.maxScale()
 	sc.polys = p.flattenTo(sc, sc.polys, identity, flatTol/ms)
+	if sc.limited {
+		return &mask{}, alpha, false
+	}
 	s := newStroker(&ls, ms).within(m, bounds)
 	s.stroke(sc.polys)
 	outline := s.out
@@ -717,6 +723,9 @@ func (d *drawer) text(s string, x, y, advance float64, stroke bool) {
 		}
 		from := len(fill)
 		fill = p.flattenTo(sc, fill, gm, flatTol)
+		if sc.limited {
+			return
+		}
 		if thick {
 			bold.stroke(fill[from:])
 		}
@@ -728,6 +737,9 @@ func (d *drawer) text(s string, x, y, advance float64, stroke bool) {
 	cov := sc.rasterize(fill, bdf.NonZero, bounds)
 	if len(bold.out) > 0 {
 		cov = union(cov, sc.rasterize(bold.out, bdf.NonZero, bounds))
+	}
+	if sc.limited {
+		return
 	}
 	d.paint(cov, d.shader(&st.fill, m), 1)
 }
@@ -759,6 +771,9 @@ func (d *drawer) strokeText(glyphs []placed, m matrix) {
 			continue
 		}
 		lines = p.flattenTo(sc, lines, um, flatTol/math.Max(m.maxScale(), 1e-9))
+		if sc.limited {
+			return
+		}
 	}
 	sc.polys = lines
 	outline := newStroker(&ls, m.maxScale()).within(m, bounds)

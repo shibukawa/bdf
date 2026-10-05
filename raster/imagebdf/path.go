@@ -402,11 +402,16 @@ func (p *path) flatten(m matrix, tol float64) []polyline {
 // added to out and their points to those sc holds, where they last until
 // sc is reset for the next drawing.
 func (p *path) flattenTo(sc *scratch, out []polyline, m matrix, tol float64) []polyline {
-	if plain {
-		sc = &scratch{}
+	if sc.limited {
+		return out
 	}
 	buf := sc.pts
+	defer func() { sc.pts = buf }()
 	for _, s := range p.subs {
+		if len(buf) >= maxPathPoints {
+			sc.stop()
+			return out
+		}
 		start := len(buf)
 		x0, y0 := m.apply(s.start.x, s.start.y)
 		buf = append(buf, point{x0, y0})
@@ -429,18 +434,23 @@ func (p *path) flattenTo(sc *scratch, out []polyline, m matrix, tol float64) []p
 				buf = flattenCubic(buf, cx, cy, ax, ay, bx, by, x, y, tol)
 				cx, cy = x, y
 			}
+			if len(buf) > maxPathPoints {
+				buf = buf[:maxPathPoints]
+				sc.stop()
+				return out
+			}
 		}
 		// the polyline keeps the array its points are in now: points added
 		// later go after them, or into a larger array
 		out = append(out, polyline{pts: buf[start:len(buf):len(buf)], closed: s.closed})
 	}
-	sc.pts = buf
 	return out
 }
 
 // reset lets go of the polylines of the drawing before.
 func (sc *scratch) reset() {
 	sc.polys, sc.pts = keep(sc.polys), keep(sc.pts)
+	sc.limited, sc.work = false, 0
 }
 
 // outside reports whether a box in user space (x0, y0, x1, y1), with reach

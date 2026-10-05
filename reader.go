@@ -433,6 +433,13 @@ func (r *Reader) storedParts() (*Manifest, [][]byte, error) {
 	return &m, data, nil
 }
 
+type deflateReader struct {
+	reader io.ReadCloser
+	input  bytes.Reader
+}
+
+var deflateReaders sync.Pool
+
 // inflate decodes deflate-raw data that holds limit bytes at most (for a
 // part, the size the manifest states). Data that goes on past the limit is an
 // error, so a small file cannot ask for more memory than its manifest says it
@@ -445,12 +452,36 @@ func inflate(b []byte, limit, size int) ([]byte, error) {
 	// deflate packs 1032 bytes into one at best, so no more than that is
 	// allocated on the word of the manifest
 	out.Grow(int(min(int64(size), int64(limit), 1032*int64(len(b)))))
-	n, err := io.Copy(&out, io.LimitReader(flate.NewReader(bytes.NewReader(b)), int64(limit)+1))
+	var dec *deflateReader
+	if reused := deflateReaders.Get(); reused != nil {
+		dec = reused.(*deflateReader)
+		dec.input.Reset(b)
+		if err := dec.reader.(flate.Resetter).Reset(&dec.input, nil); err != nil {
+			return nil, err
+		}
+	} else {
+		dec = &deflateReader{}
+		dec.input.Reset(b)
+		dec.reader = flate.NewReader(&dec.input)
+	}
+	defer func() {
+		dec.reader.Close()
+		dec.input.Reset(nil) // do not retain the caller's compressed data
+		deflateReaders.Put(dec)
+	}()
+	rd := dec.reader
+	n, err := io.Copy(&out, io.LimitReader(rd, int64(limit)))
 	if err != nil {
 		return nil, err
 	}
-	if n > int64(limit) {
-		return nil, &FormatError{Msg: "data inflates to more than its stated size"}
+	if n == int64(limit) {
+		// Probe one byte separately: limit+1 overflows at MaxInt64.
+		var extra [1]byte
+		if _, err := io.ReadFull(rd, extra[:]); err == nil {
+			return nil, &FormatError{Msg: "data inflates to more than its stated size"}
+		} else if err != io.EOF {
+			return nil, err
+		}
 	}
 	return out.Bytes(), nil
 }

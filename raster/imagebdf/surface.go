@@ -121,6 +121,36 @@ func (s *surface) fill(cov *mask, sh shader, alpha float32, mode byte, clip *mas
 	}
 }
 
+// fillBackground draws the page or sheet background. Integer-aligned
+// rectangles need no shader row or per-pixel coverage/clip checks. Keep
+// this outside fill so small paths pay no cost for this common large fill.
+func (s *surface) fillBackground(cov *mask, c solid) {
+	if plain || cov == nil || cov.a != nil {
+		s.fill(cov, c, 1, bdf.BlendSourceOver, &mask{r: s.bounds()})
+		return
+	}
+	r := cov.r.Intersect(s.bounds())
+	if r.Empty() {
+		return
+	}
+	// Reserve the row for later draws, as the ordinary background fill
+	// does; otherwise progressively wider text runs keep reallocating it.
+	if cap(s.row) < 4*r.Dx() {
+		s.row = make([]float32, 4*r.Dx())
+	}
+	ia := 1 - c[3]
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		d := s.pix[4*(y*s.w+r.Min.X) : 4*(y*s.w+r.Max.X)]
+		for i := 0; i < len(d); i += 4 {
+			p := d[i : i+4]
+			p[0] = c[0] + p[0]*ia
+			p[1] = c[1] + p[1]*ia
+			p[2] = c[2] + p[2]*ia
+			p[3] = c[3] + p[3]*ia
+		}
+	}
+}
+
 // fillAll is fill for the pixels r of the clip, inside the coverage or not:
 // the composite operations that change pixels the source does not cover.
 func (s *surface) fillAll(cov *mask, sh shader, alpha float32, mode byte, clip *mask, r image.Rectangle) {
