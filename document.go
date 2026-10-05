@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 )
 
 // Part is a raw (uncompressed) part.
@@ -131,19 +132,46 @@ func uncompressedImage(b []byte) bool {
 
 func (d *Document) compress(data []byte) ([]byte, error) { return compress(data, d.CompressionLevel) }
 
+type deflateWriter struct {
+	writer *flate.Writer
+	output bytes.Buffer
+}
+
+// The compressor's working memory is much larger than most document
+// parts. Reuse it at the same level; returned bytes are never pooled.
+var deflateWriters [flate.BestCompression - flate.HuffmanOnly + 1]sync.Pool
+
 func compress(data []byte, level int) ([]byte, error) {
-	var b bytes.Buffer
-	w, err := flate.NewWriter(&b, level)
-	if err != nil {
+	if level < flate.HuffmanOnly || level > flate.BestCompression {
+		_, err := flate.NewWriter(io.Discard, level)
 		return nil, err
 	}
-	if _, err := w.Write(data); err != nil {
+	pool := &deflateWriters[level-flate.HuffmanOnly]
+	var enc *deflateWriter
+	if reused := pool.Get(); reused != nil {
+		enc = reused.(*deflateWriter)
+		enc.writer.Reset(&enc.output)
+	} else {
+		enc = &deflateWriter{}
+		var err error
+		enc.writer, err = flate.NewWriter(&enc.output, level)
+		if err != nil {
+			return nil, err
+		}
+	}
+	defer func() {
+		// The caller owns the output. The pooled writer must not keep it
+		// alive or overwrite it on the next compression.
+		enc.output = bytes.Buffer{}
+		pool.Put(enc)
+	}()
+	if _, err := enc.writer.Write(data); err != nil {
 		return nil, err
 	}
-	if err := w.Close(); err != nil {
+	if err := enc.writer.Close(); err != nil {
 		return nil, err
 	}
-	return b.Bytes(), nil
+	return enc.output.Bytes(), nil
 }
 
 type encodedPart struct {

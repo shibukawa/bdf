@@ -107,7 +107,7 @@ func makePreviews(dir, cacheDir string, files []string) []doc {
 		bdfPath := filepath.Join(cacheDir, bdfName)
 		pngPath := filepath.Join(cacheDir, name+".png")
 		if st, err := os.Stat(bdfPath); err != nil || st.Size() == 0 {
-			res, err := converter.ConvertFile(filepath.Join(dir, name), "", &converter.Options{})
+			res, err := converter.ConvertFile(filepath.Join(dir, name), "", &converter.Options{Params: map[string]string{"remote": "false"}})
 			if err != nil {
 				log.Printf("search: %s: not converted: %v", name, err)
 				continue

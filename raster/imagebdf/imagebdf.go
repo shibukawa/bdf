@@ -97,7 +97,11 @@ var plain bool
 // scratch returns the working memory of the rasterizer, emptied for a
 // drawing instruction.
 func (r *Renderer) scratch() *scratch {
+	if plain {
+		r.sc = scratch{}
+	}
 	r.sc.reset()
+	r.sc.r = r
 	return &r.sc
 }
 
@@ -324,6 +328,44 @@ func recovered(img **image.RGBA, err *error) {
 // view) at scale device pixels per unit.
 func (r *Renderer) Page(v *bdf.View, page int, scale float64) (img *image.RGBA, err error) {
 	defer recovered(&img, &err)
+	p, err := drawablePage(v, page)
+	if err != nil {
+		return nil, err
+	}
+	if !(scale > 0) {
+		return nil, errors.New("imagebdf: empty page")
+	}
+	fw, fh := math.Max(math.Ceil(float64(p.W)*scale-1e-6), 1), math.Max(math.Ceil(float64(p.H)*scale-1e-6), 1)
+	if !(fw*fh <= MaxPixels) {
+		return nil, ErrTooLarge
+	}
+	return r.drawPage(p, bdf.Rect{W: p.W, H: p.H}, int(fw), int(fh))
+}
+
+// PageDPI draws a whole page at dpi pixels per inch. BDF page units are
+// points (1/72 inch), so 72 dpi draws one pixel per page unit.
+func (r *Renderer) PageDPI(v *bdf.View, page int, dpi float64) (*image.RGBA, error) {
+	return r.Page(v, page, dpi/72)
+}
+
+// PageSize draws a whole page into exactly w × h pixels. The page is
+// stretched if the requested size has a different aspect ratio.
+func (r *Renderer) PageSize(v *bdf.View, page, w, h int) (img *image.RGBA, err error) {
+	defer recovered(&img, &err)
+	p, err := drawablePage(v, page)
+	if err != nil {
+		return nil, err
+	}
+	if w <= 0 || h <= 0 {
+		return nil, errors.New("imagebdf: empty image")
+	}
+	if w > MaxPixels/h {
+		return nil, ErrTooLarge
+	}
+	return r.drawPage(p, bdf.Rect{W: p.W, H: p.H}, w, h)
+}
+
+func drawablePage(v *bdf.View, page int) (*bdf.Page, error) {
 	if v == nil {
 		return nil, errors.New("imagebdf: no view")
 	}
@@ -334,14 +376,10 @@ func (r *Renderer) Page(v *bdf.View, page int, scale float64) (img *image.RGBA, 
 		return nil, ErrNoPage
 	}
 	p := v.Pages[page]
-	if !(p.W > 0) || !(p.H > 0) || !(scale > 0) {
+	if !(p.W > 0) || !(p.H > 0) || math.IsInf(float64(p.W), 0) || math.IsInf(float64(p.H), 0) {
 		return nil, errors.New("imagebdf: empty page")
 	}
-	fw, fh := math.Max(math.Ceil(float64(p.W)*scale-1e-6), 1), math.Max(math.Ceil(float64(p.H)*scale-1e-6), 1)
-	if !(fw*fh <= MaxPixels) {
-		return nil, ErrTooLarge
-	}
-	return r.drawPage(p, bdf.Rect{W: p.W, H: p.H}, int(fw), int(fh))
+	return p, nil
 }
 
 // Region draws a rectangle of a view into a w × h image: of the page with
@@ -356,7 +394,7 @@ func (r *Renderer) Region(v *bdf.View, page int, region bdf.Rect, w, h int) (img
 	if w <= 0 || h <= 0 || !(region.W > 0) || !(region.H > 0) {
 		return nil, errors.New("imagebdf: empty region")
 	}
-	if int64(w)*int64(h) > MaxPixels {
+	if w > MaxPixels/h {
 		return nil, ErrTooLarge
 	}
 	switch v.Kind {
@@ -407,7 +445,7 @@ func (d *drawer) clipTo(m matrix, x, y, w, h float64) *mask {
 func (r *Renderer) drawPage(p *bdf.Page, region bdf.Rect, w, h int) (*image.RGBA, error) {
 	d, m := r.canvas(region, w, h)
 	clip := d.clipTo(m, 0, 0, float64(p.W), float64(p.H))
-	d.ctx.target.fill(clip, r.background(), 1, bdf.BlendSourceOver, &mask{r: d.ctx.target.bounds()})
+	d.ctx.target.fillBackground(clip, r.background())
 	for _, l := range p.Layers {
 		d.drawTop(l.Obj, m, clip)
 	}
@@ -435,7 +473,7 @@ func (r *Renderer) drawContinuous(v *bdf.View, region bdf.Rect, w, h int) *image
 		}
 		pm := m.translate(0, top)
 		clip := d.clipTo(pm, 0, 0, float64(b.W), float64(b.H))
-		d.ctx.target.fill(clip, bg, 1, bdf.BlendSourceOver, &mask{r: d.ctx.target.bounds()})
+		d.ctx.target.fillBackground(clip, bg)
 		pm = pm.translate(-float64(b.X), -float64(b.Y))
 		for _, l := range p.Layers {
 			if l.Role != bdf.RoleBody && l.Role != bdf.RoleAnnotation {
@@ -463,7 +501,7 @@ func SheetSize(v *bdf.View) (w, h float64) {
 func (r *Renderer) drawSheet(v *bdf.View, region bdf.Rect, w, h int) *image.RGBA {
 	d, m := r.canvas(region, w, h)
 	all := &mask{r: d.ctx.target.bounds()}
-	d.ctx.target.fill(all, r.background(), 1, bdf.BlendSourceOver, all)
+	d.ctx.target.fillBackground(all, r.background())
 	if v.Gridlines {
 		r.gridlines(d, v, region, m)
 	}

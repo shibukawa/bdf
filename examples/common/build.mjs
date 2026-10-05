@@ -136,6 +136,100 @@ export async function patchGoldmark(dir) {
   return mod;
 }
 
+/**
+ * TinyGo 0.42 has crypto/rand.Read but not crypto/rand.Text. Copy pdfcpu
+ * for this build and provide the same 160-bit random, unpadded base32
+ * suffix in its two file-writing helpers. Its browser HTTP transport also
+ * lacks ForceAttemptHTTP2 and os.SameFile. File identity checks are rejected
+ * in this in-memory browser converter. The module cache is never edited.
+ */
+export async function patchPdfcpuForTinyGo(dir, mod) {
+  const { Dir: src } = JSON.parse((await execFile("go", ["mod", "download", "-json", "github.com/pdfcpu/pdfcpu"], { cwd: root })).stdout);
+  const dst = join(dir, "pdfcpu");
+  for (const e of await readdir(src, { recursive: true, withFileTypes: true })) {
+    if (!e.isFile()) continue;
+    const to = join(dst, relative(src, join(e.parentPath, e.name)));
+    await mkdir(dirname(to), { recursive: true });
+    await writeFile(to, await readFile(join(e.parentPath, e.name)));
+  }
+  for (const name of ["internal/fileutil/write.go", "pkg/api/cut.go"]) {
+    const file = join(dst, name);
+    const code = await readFile(file, "utf8");
+    if (code.split("rand.Text()").length !== 2) throw new Error(`${name}: expected one rand.Text call`);
+    const helper = `
+func tinygoRandomText() string {
+    var b [20]byte
+    if _, err := rand.Read(b[:]); err != nil { panic(err) }
+    return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b[:])
+}
+`;
+    await writeFile(file, code.replace('"crypto/rand"', '"crypto/rand"\n"encoding/base32"').replace("rand.Text()", "tinygoRandomText()") + helper);
+  }
+  for (const name of ["pkg/pdfcpu/sign/revocation_http.go", "pkg/pdfcpu/validate/link_http.go"]) {
+    const file = join(dst, name);
+    const code = await readFile(file, "utf8");
+    if (code.split("ForceAttemptHTTP2:").length !== 2) throw new Error(`${name}: expected one ForceAttemptHTTP2 field`);
+    await writeFile(file, code.replace(/^\s*ForceAttemptHTTP2:\s*true,\s*$/m, ""));
+  }
+  for (const name of ["pkg/pdfcpu/io.go", "pkg/api/file.go", "pkg/api/attach.go"]) {
+    const file = join(dst, name);
+    const code = await readFile(file, "utf8");
+    if (code.split("os.SameFile(").length !== 2) throw new Error(`${name}: expected one os.SameFile call`);
+    await writeFile(file, code.replace("os.SameFile(", "tinygoSameFile("));
+  }
+  for (const pkg of ["pdfcpu", "api"]) {
+    await writeFile(join(dst, "pkg", pkg, "file_identity_tinygo.go"), `//go:build tinygo
+
+package ${pkg}
+
+import "os"
+
+func tinygoSameFile(a, b os.FileInfo) bool {
+    panic("filesystem identity checks are unavailable in the TinyGo browser converter")
+}
+`);
+  }
+  const base = mod ? await readFile(mod, "utf8") : await readFile(join(root, "go.mod"), "utf8");
+  mod ??= join(dir, "go.mod");
+  await writeFile(mod, `${base}\nreplace github.com/pdfcpu/pdfcpu => ${dst}\n`);
+  await copyFile(join(root, "go.sum"), join(dir, "go.sum"));
+  return mod;
+}
+
+/**
+ * go-runewidth initializes only the low 768 entries of a 2 MiB table.
+ * TinyGo 0.42 scans the remaining bytes for each LLVM array element when
+ * serializing that partly initialized global, taking quadratic time.
+ * Run the table initializer in a goroutine and wait for it so TinyGo keeps
+ * the writes at runtime. Initialization still finishes before any use of
+ * the package. The table and its concurrency rules are otherwise unchanged.
+ */
+export async function patchRunewidthForTinyGo(dir, mod) {
+  const { Dir: src } = JSON.parse((await execFile("go", ["mod", "download", "-json", "github.com/mattn/go-runewidth"], { cwd: root })).stdout);
+  const dst = join(dir, "runewidth");
+  for (const e of await readdir(src, { recursive: true, withFileTypes: true })) {
+    if (!e.isFile()) continue;
+    const to = join(dst, relative(src, join(e.parentPath, e.name)));
+    await mkdir(dirname(to), { recursive: true });
+    await writeFile(to, await readFile(join(e.parentPath, e.name)));
+  }
+  const file = join(dst, "runewidth.go");
+  const code = await readFile(file, "utf8");
+  const init = "\tinitStrictWidthLUTLow()\n\tfillJoinerBits()\n\tstrictWidthLUTLimit.Store(0x300)";
+  if (code.split(init).length !== 2) throw new Error("expected one runewidth table initializer");
+  await writeFile(file, code.replace(init, `
+    done := make(chan struct{})
+    go func() {
+        initStrictWidthLUTLow()
+        fillJoinerBits()
+        strictWidthLUTLimit.Store(0x300)
+        close(done)
+    }()
+    <-done`));
+  await writeFile(mod, `${await readFile(mod, "utf8")}\nreplace github.com/mattn/go-runewidth => ${dst}\n`);
+  return mod;
+}
+
 /** Build the converter modules (all of them, or those named) and Go's wasm_exec.js into lib. Requires Go. */
 export async function buildModules(lib, files = MODULES.map((m) => m.file)) {
   await mkdir(lib, { recursive: true });

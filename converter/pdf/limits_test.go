@@ -208,13 +208,16 @@ func TestDecodeRunLength(t *testing.T) {
 	}
 }
 
-// TestDamagedFileIsAnError: what panics in pdfcpu is an error of the
-// conversion.
+// A missing xref may be repaired by pdfcpu; panics are conversion errors.
 func TestDamagedFileIsAnError(t *testing.T) {
 	data := []byte("%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n" +
 		"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\ntrailer\n<< /Root 1 0 R /Size 4 >>\nstartxref\n0\n%%EOF\n")
-	if _, err := convertIn(t, 5*time.Second, data, nil, nil); err == nil || !strings.Contains(err.Error(), "damaged") {
-		t.Errorf("error: %v", err)
+	if res, err := convertIn(t, 5*time.Second, data, nil, nil); err == nil {
+		if res.Pages != 1 {
+			t.Errorf("repaired file: %d pages", res.Pages)
+		}
+	} else if !strings.Contains(err.Error(), "pdf:") {
+		t.Errorf("conversion error: %v", err)
 	}
 	s, err := NewStream(bytes.NewReader(pagePDF("", [2]string{"", "0 0 10 10 re f"})), nil)
 	if err != nil {
@@ -262,7 +265,7 @@ func TestPagesAsPdfcpu(t *testing.T) {
 			t.Fatalf("%s: %d pages, pdfcpu has %d (%v)", name, len(leaves), ctx.PageCount, err)
 		}
 		for i, leaf := range leaves {
-			dict, ref, attrs, err := ctx.PageDict(i+1, false)
+			dict, ref, attrs, err := ctx.PageDict(t.Context(), i+1, false)
 			if err != nil || leaf.err != nil {
 				t.Fatalf("%s page %d: %v, %v", name, i+1, err, leaf.err)
 			}

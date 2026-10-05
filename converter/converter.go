@@ -175,7 +175,8 @@ type Options struct {
 	// Dir is the directory that relative references of the input resolve
 	// in (the images of HTML and Markdown documents, the sheets of a KiCad
 	// schematic); "" reads no files beside the input. ConvertFile sets it
-	// to the input's directory.
+	// to the input's directory. References and symlinks must stay within
+	// this directory. Local resource files are unavailable in TinyGo.
 	Dir string
 	// Files holds the files an input refers to, for an input that is not
 	// read from a directory: a server passes the files uploaded with it

@@ -68,7 +68,8 @@ type Options struct {
 	// ExtractAuto (the default when ""), ExtractArticle or ExtractNone.
 	Extract string
 
-	// Dir is the directory relative references (images) resolve in; ""
+	// Dir is the directory relative references (images) resolve in;
+	// references and symlinks must stay within it. ""
 	// reads no local files. ConvertFile sets it to the file's directory.
 	Dir string
 	// BaseURL is the address of the document: relative references resolve

@@ -140,7 +140,7 @@ func loadBooks(dir, cacheDir string) (map[string]*book, error) {
 
 // convert writes the bdf of a PDF and the picture of its first page.
 func convert(src, bdfPath, cover string) error {
-	res, err := converter.ConvertFile(src, "", &converter.Options{})
+	res, err := converter.ConvertFile(src, "", &converter.Options{Params: map[string]string{"remote": "false"}})
 	if err != nil {
 		return err
 	}

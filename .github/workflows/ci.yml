@@ -13,6 +13,8 @@ jobs:
       # Go 1.27's unreachable analyzer flags the goto-shaped bodies of the
       # generated codec (imgconv/internal/webpw), so that check is off.
       - run: go vet -unreachable=false ./...
+      - name: reachable Go dependency vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
       - run: go test ./...
       # raster/ebitenginebdf depends on Ebitengine, so it is a module of its
       # own (./... above does not reach it). Its tests compile objects into
@@ -141,6 +143,7 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm test
       - run: npx playwright-core install --with-deps chromium
       - run: npm run test:golden

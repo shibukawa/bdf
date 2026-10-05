@@ -75,10 +75,12 @@ func encryptPDF(t *testing.T, user, owner string, perms model.PermissionFlags) [
 	if err != nil {
 		t.Fatal(err)
 	}
-	conf := model.NewAESConfiguration(user, owner, 256)
+	conf := model.NewStatelessConfiguration()
+	conf.UserPW, conf.OwnerPW, conf.EncryptKeyLength = user, owner, 256
+	conf.EncryptUsingAES = true
 	conf.Permissions = perms
 	var out bytes.Buffer
-	if err := api.Encrypt(bytes.NewReader(src), &out, conf); err != nil {
+	if err := api.Encrypt(t.Context(), bytes.NewReader(src), &out, conf); err != nil {
 		t.Fatal(err)
 	}
 	return out.Bytes()

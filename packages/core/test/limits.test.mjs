@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  BdfDocument, BdfFormatError, BufferSource, RangeSource, SplitSource, UseLimits, decode, extractText, extractContent, tileSize,
+  BdfDocument, BdfFormatError, BufferSource, RangeSource, SplitSource, UseLimits, decode, extractText, extractContent, tileSize, objectDeps, fetchSingle,
   MAX_MANIFEST_SIZE, MAX_REUSED_INSTRUCTIONS, MAX_TEXT_RUNS, MAX_USE_DEPTH,
 } from "../dist/index.js";
 import { single, object, fanOut, page, name, cat, bytes, varuint, f32, systemFont, Op } from "./build.mjs";
@@ -11,6 +11,83 @@ import { single, object, fanOut, page, name, cat, bytes, varuint, f32, systemFon
 const open = (file) => BdfDocument.open(new BufferSource(file));
 const formatError = (message) => (e) => e instanceof BdfFormatError && message.test(e.message);
 const text = { strings: ["x"], fonts: [systemFont()], ops: [bytes(Op.FONT), varuint(0), f32(10), bytes(Op.FILL_TEXT), varuint(0), f32(0, 10, 5)] };
+
+test("dependency tables can exceed the JavaScript argument limit", () => {
+  const images = Array.from({ length: 200_000 }, (_, i) => name(i));
+  const deps = objectDeps({ fonts: [], paths: [], images, objects: images });
+  assert.equal(deps.length, images.length * 2);
+  assert.equal(deps.at(-1), images.at(-1));
+});
+
+test("dependency preparation bounds concurrency and visits repeated parts once", async () => {
+  const refs = Array.from({ length: 64 }, (_, i) => name(i + 2));
+  const doc = await open(single({}, [
+    { h: name(1), t: "obj", bytes: object({ images: [...refs, ...refs] }) },
+    ...refs.map((h) => ({ h, t: "img", bytes: bytes(1) })),
+  ]));
+  let active = 0, peak = 0, count = 0;
+  await doc.ensure(name(1), async () => {
+    count++;
+    peak = Math.max(peak, ++active);
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    active--;
+  });
+  assert.equal(count, refs.length);
+  assert.ok(peak <= 8, `${peak} concurrent resource loads`);
+});
+
+test("a failed preparation finishes started resource callbacks before rejecting", async () => {
+  const doc = await open(single({}, [
+    { h: name(1), t: "obj", bytes: object({ images: [name(2), name(3)] }) },
+    { h: name(2), t: "img", bytes: bytes(1) },
+    { h: name(3), t: "img", bytes: bytes(1) },
+  ]));
+  let finished = false;
+  await assert.rejects(doc.ensure(name(1), async (entry) => {
+    if (entry.h === name(2)) throw new Error("resource failed");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    finished = true;
+  }), /resource failed/);
+  assert.equal(finished, true);
+});
+
+test("whole-file HTTP reads stop at a configurable limit", async () => {
+  const realFetch = globalThis.fetch;
+  try {
+    for (const load of [
+      () => new RangeSource("https://example.com/doc.bdf", {}, 64).manifest(),
+      () => fetchSingle("https://example.com/doc.bdf", {}, 64),
+    ]) {
+      let cancelled = false, chunks = 0;
+      globalThis.fetch = async () => new Response(new ReadableStream({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(65));
+          if (++chunks === 3) controller.close();
+        },
+        cancel() { cancelled = true; },
+      }), { status: 200 });
+      await assert.rejects(load(), formatError(/exceeds/));
+      assert.ok(cancelled);
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("a range source checks the encryption flag against its manifest", async () => {
+  const file = single({});
+  new DataView(file.buffer).setUint16(6, 1, true);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    const [, from, to] = /^bytes=(\d+)-(\d+)$/.exec(init.headers.Range);
+    return new Response(file.slice(Number(from), Number(to) + 1), { status: 206 });
+  };
+  try {
+    await assert.rejects(new RangeSource("https://example.com/doc.bdf").manifest(), formatError(/encryption flag/));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
 
 test("the limits are those of the Go reader", () => {
   assert.equal(MAX_USE_DEPTH, 64);

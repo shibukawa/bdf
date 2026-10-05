@@ -11,6 +11,9 @@ export const MAGIC = new Uint8Array([0x62, 0x64, 0x66, 0x00]);
  */
 export const MAX_MANIFEST_SIZE = 256 << 20;
 
+/** Default byte limit of whole-file HTTP reads (including Range fallbacks). */
+export const MAX_SINGLE_FILE_SIZE = 1 << 30;
+
 export interface Header {
   version: number;
   flags: number;
@@ -169,7 +172,7 @@ export class RangeSource implements PartSource {
   private manifestPromise?: Promise<Manifest>;
   /** The whole file, once a server has answered a range request with it. */
   private whole?: Promise<Uint8Array>;
-  constructor(private readonly url: string, private readonly init: RequestInit = {}) {}
+  constructor(private readonly url: string, private readonly init: RequestInit = {}, private readonly maxFileSize = MAX_SINGLE_FILE_SIZE) {}
 
   private async range(off: number, len: number): Promise<Uint8Array> {
     if (!inRange(off, len, Number.MAX_SAFE_INTEGER)) throw new BdfFormatError("part out of range");
@@ -193,7 +196,7 @@ export class RangeSource implements PartSource {
       if (this.whole) {
         res.body?.cancel().catch(() => {}); // another request brought it meanwhile
       } else {
-        this.whole = res.arrayBuffer().then((b) => new Uint8Array(b));
+        this.whole = readBounded(res, this.maxFileSize, "single-file response");
         this.whole.catch(() => { this.whole = undefined; });
       }
     }
@@ -208,7 +211,11 @@ export class RangeSource implements PartSource {
       const h = this.header;
       if (h.manifestLen > MAX_MANIFEST_SIZE) throw new BdfFormatError("manifest too large");
       const raw = await this.range(h.manifestOff, h.manifestLen);
-      return JSON.parse(utf8.decode(await decode(raw, h.manifestEnc, MAX_MANIFEST_SIZE))) as Manifest;
+      const manifest = JSON.parse(utf8.decode(await decode(raw, h.manifestEnc, MAX_MANIFEST_SIZE))) as Manifest;
+      if (((h.flags & 1) !== 0) !== (manifest.encryption !== undefined)) {
+        throw new BdfFormatError("encryption flag does not match the manifest");
+      }
+      return manifest;
     })();
     return this.manifestPromise;
   }
@@ -243,8 +250,8 @@ export class SplitSource implements PartSource {
 }
 
 /** Open a single-file document from a URL, streaming the whole file. */
-export async function fetchSingle(url: string, init?: RequestInit): Promise<BufferSource> {
+export async function fetchSingle(url: string, init?: RequestInit, maxFileSize = MAX_SINGLE_FILE_SIZE): Promise<BufferSource> {
   const res = await fetch(url, init);
   if (!res.ok) throw new Error(`bdf: fetch failed with ${res.status}`);
-  return new BufferSource(new Uint8Array(await res.arrayBuffer()));
+  return new BufferSource(await readBounded(res, maxFileSize, "single-file response"));
 }

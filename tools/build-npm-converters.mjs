@@ -6,7 +6,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
-import { patchGoldmark } from "../examples/common/build.mjs";
+import { patchGoldmark, patchPdfcpuForTinyGo, patchRunewidthForTinyGo } from "../examples/common/build.mjs";
 
 const execFile = promisify(execFileCb);
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -50,13 +50,12 @@ const tmp = await mkdtemp(join(root, "cmd/bdfnpm-"));
 let tmpPatch;
 try {
   let mod;
+  tmpPatch = await mkdtemp(join(root, "cmd/bdfmod-"));
   if (selected < 0 || args[selected + 1].split(",").some((name) => ["all", "html", "markdown"].includes(name.trim().toLowerCase()))) {
-    const patch = await mkdtemp(join(root, "cmd/bdfmod-"));
-    try { mod = await patchGoldmark(patch); }
-    catch (error) { await rm(patch, { recursive: true, force: true }); throw error; }
-    // Keep the patched dependency until every build has finished.
-    tmpPatch = patch;
+    mod = await patchGoldmark(tmpPatch);
   }
+  mod = await patchPdfcpuForTinyGo(tmpPatch, mod);
+  mod = await patchRunewidthForTinyGo(tmpPatch, mod);
   if (selected >= 0) {
     const requested = args[selected + 1].split(",").map((name) => name.trim().toLowerCase()).map((name) => name === "tsv" ? "csv" : name);
     if (requested.some((name) => !allowed.has(name))) throw new Error(`unknown format in ${args[selected + 1]}`);

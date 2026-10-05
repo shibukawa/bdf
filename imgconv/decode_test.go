@@ -8,9 +8,39 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"runtime"
 	"testing"
 )
+
+func TestDecodeHeaderPanicAndOverflow(t *testing.T) {
+	old := decoders["png"]
+	t.Cleanup(func() { decoders["png"] = old })
+	for _, config := range []func(io.Reader) (image.Config, error){
+		func(io.Reader) (image.Config, error) { panic("damaged header") },
+		func(io.Reader) (image.Config, error) {
+			return image.Config{Width: int(^uint(0) >> 1), Height: 2}, nil
+		},
+	} {
+		decoders["png"] = decoder{
+			config: config,
+			decode: func(io.Reader) (image.Image, error) {
+				t.Error("pixel decoder called after an unsafe header")
+				return nil, nil
+			},
+		}
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("Decode panicked: %v", r)
+				}
+			}()
+			if img, err := Decode(pngOfSize(1, 1)); img != nil || err == nil {
+				t.Errorf("unsafe header: image %v, error %v", img, err)
+			}
+		}()
+	}
+}
 
 // pngOfSize is a PNG file whose header states a size and whose pixel data
 // is a few bytes.
@@ -60,7 +90,7 @@ func TestDecodeSize(t *testing.T) {
 			res, oerr := Optimize(data, Options{Mode: Convert})
 			runtime.ReadMemStats(&after)
 			// a size the decoder itself refuses is its error to report
-			if own := name == "png 2^31-1 x 2^31-1"; err == nil || !own && !errors.Is(err, ErrTooLarge) {
+			if own := name == "png 2^31-1 x 2^31-1" || name == "bmp 2^31-1 x 2^31-1"; err == nil || !own && !errors.Is(err, ErrTooLarge) {
 				t.Errorf("Decode: %v", err)
 			} else if Available() && (oerr == nil || !own && !errors.Is(oerr, ErrTooLarge)) {
 				t.Errorf("Optimize: %v", oerr)

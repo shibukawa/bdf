@@ -203,6 +203,17 @@ if err != nil {
 err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 ```
 
+ページ全体は dpi または画素数を指定して描ける。戻り値の `*image.RGBA` は `image.Image` として使える。
+
+```go
+renderer := imagebdf.New(d, nil)
+img, err := renderer.PageDPI(d.Views[0], 0, 144) // 幅 144 pt のページなら 288 px
+if err != nil {
+	return err
+}
+return thumbnail.Encode(w, img, thumbnail.PNG)
+```
+
 | 名前 | 内容 |
 |---|---|
 | `thumbnail.Make(doc, *Options) (*Result, error)` | サムネイルを描く。`Options` は `Size`（既定 256 px。切り抜きなら一辺、全体なら長辺）、`Mode`（`Auto`・`Crop`・`Fit`）、`View`（既定は最初の View）、`SheetDPI`（シートを描く解像度。既定 `DefaultSheetDPI` = 72 で 1 単位が 1 画素）、`Raster`（フォントと背景）。`Result` は `Image`、選んだ `Mode`、`Warnings` |
@@ -210,6 +221,8 @@ err = thumbnail.Encode(w, th.Image, thumbnail.PNG) // JPEG、WebP も
 | `thumbnail.Encode(w, img, format)` / `FormatOf(name)` | `PNG`・`JPEG`（品質 85）・`WebP`（非可逆、品質 80）で書く / ファイル名の拡張子から形式を決める |
 | `imagebdf.New(doc, *Options) *Renderer` | 文書を描くレンダラ。`Options` は `FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントと、埋め込みフォントにない字の探し先）と `Background`（既定は白）。デコードした Object・画像・フォントを保持する。並行には使えない |
 | `(*Renderer).Page(v, page, scale)` | fixed・flow View のページ（scroll View の帯）を、1 単位 `scale` 画素で描く。大きさのないページと 0 以下の `scale` はエラー。描いている途中のパニックもエラーにする（`Region`、`thumbnail.Make` も） |
+| `(*Renderer).PageDPI(v, page, dpi)` | ページ全体を指定 dpi で描く。BDF の 1 単位は 1/72 インチなので 72 dpi が `Page` の `scale=1` に相当する。戻り値の `*image.RGBA` は `image.Image` として使える |
+| `(*Renderer).PageSize(v, page, w, h)` | ページ全体を指定の幅・高さ（画素）で描く。縦横比がページと違うと引き伸ばす |
 | `(*Renderer).Region(v, page, rect, w, h)` | 範囲を `w` × `h` 画素に描く。fixed・flow はそのページの座標、scroll View は帯を積んだ連続の座標、シートはシートの座標（枠線も描く） |
 | `(*Renderer).Warnings()` | ビューアどおりに描けなかったもの（AVIF の画像、FILTER、フォントが見つからないテキストなど）と、上限を超えて描かなかったもの（design.md §3.25 の「信頼しない文書への備え」） |
 | `imagebdf.Object(obj, scale, *Options)` | 文書に入れていない `*bdf.Object` を、1 単位 `scale` 画素で描く。他のパート（埋め込みフォント、画像、パスの集まり、他の Object）を参照しない Object に限る（参照していれば `ErrNeedsDocument`）。画像は Object の境界を画素に切り上げた大きさで、`Bounds()` は Object の原点からの画素（原点が (0, 0)）。背景は `Background`、指定がなければ透明 |
@@ -295,9 +308,9 @@ bdf を読むためのパッケージ（`packages/core`）。DOM に依存しな
 |---|---|
 | `BdfDocument.open(source, {password?, keyPair?})` | 文書を開く。暗号化された文書でパスワードが無い・違うときは `BdfPasswordError`（`reason` が `"required"` / `"wrong"`）。読者の鍵ペアに封印された文書（`ecdh` スロット）は `keyPair` で開き、違う鍵や鍵なしは `BdfKeyError`。Part 名や数値が範囲の外にある manifest（`checkManifest`、spec §4）は `BdfFormatError` |
 | `BufferSource(bytes)` | メモリ上の 1 ファイル形式 |
-| `RangeSource(url, init?)` | 1 ファイル形式を HTTP Range で必要な Part だけ取得する |
+| `RangeSource(url, init?, maxFileSize?)` | 1 ファイル形式を HTTP Range で必要な Part だけ取得する。Range を無視するサーバーの全体応答は `maxFileSize` バイトまで（既定 `MAX_SINGLE_FILE_SIZE` = 1 GiB） |
 | `SplitSource(base, init?)` | 分割形式（`manifest.json` と `parts/<hash>`） |
-| `fetchSingle(url, init?)` | 1 ファイル形式を丸ごと取得して `BufferSource` にする |
+| `fetchSingle(url, init?, maxFileSize?)` | 1 ファイル形式を丸ごと取得して `BufferSource` にする。`maxFileSize` バイトを超える応答は取得を打ち切って `BdfFormatError`（既定 1 GiB） |
 | `PartSource` | 上のソースの共通インターフェース（`manifest()`、`stored(entry)`）。自前の取得方法も実装できる |
 | `SegmentLoader.open(url, {init?, view?, page?, ahead?})` | 区間を配るサーバー（Go の `segment.Handler`）から文書を開く。要求ごとに抽出できない鍵ペアを作り、最初の区間を `doc` にする。`ensure(view, page)` はそのページの区間を（まだなら）取りに行き、`ahead`（既定 3）ページ先も先読みする。`has`、`held`（持っている区間）、`onSegment`、`close()`。サーバーが断ると `BdfSegmentError`（`status`） |
 
@@ -306,7 +319,7 @@ bdf を読むためのパッケージ（`packages/core`）。DOM に依存しな
 | 名前 | 内容 |
 |---|---|
 | `manifest` / `view(id)` | manifest と View |
-| `ensure(hash, onResource?)` | Object と、それが参照する Object を再帰的に読み込む。フォント・画像・パス集合の Part は `onResource` に渡す |
+| `ensure(hash, onResource?)` | Object と、それが参照する Object を読み込む。各 Part は呼び出しごとに 1 度だけ準備し、依存の同時処理は 8 件まで。フォント・画像・パス集合の Part は `onResource` に渡す。失敗時も、開始済みのコールバックが終了してから reject する |
 | `object(hash)` / `objectSync(hash)` | Object（`objectSync` は読み込み済みのもの） |
 | `part(hash)` / `entry(hash)` / `pathCollection(hash)` | 展開した Part、Part の表の項目、パス集合 |
 | `textIndex(view)` | View のテキスト索引（索引の Part が無ければ全ページから作る） |

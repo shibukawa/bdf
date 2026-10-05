@@ -100,7 +100,7 @@ func makePreviews(dir, cacheDir string, files []string) []doc {
 			docs = append(docs, doc{Name: name, BDF: bdfName, Summary: "cached"})
 			continue
 		}
-		res, err := converter.ConvertFile(filepath.Join(dir, name), "", &converter.Options{})
+		res, err := converter.ConvertFile(filepath.Join(dir, name), "", &converter.Options{Params: map[string]string{"remote": "false"}})
 		if err != nil {
 			log.Printf("preview-server: %s: not converted: %v", name, err)
 			continue

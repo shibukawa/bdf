@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/shibukawa/bdf/converter/internal/localfile"
 )
 
 // FileMap is a file system of files in memory, by name (Options.Files): a
@@ -125,8 +126,8 @@ const MaxRefSize = 256 << 20
 // base name of rel when no file has its path. It returns the contents and
 // the file's path relative to the input's directory (slash-separated), for
 // the references the file makes in turn. Absolute references are not read;
-// in Dir, ".." may leave the directory (as a reference of a local file
-// may), while in Files a reference outside them matches by base name only.
+// in Dir, references and symlinks must stay within the directory, while
+// in Files a reference outside them matches by base name only.
 func (o *Options) ReadRef(from, rel string) ([]byte, string, error) {
 	rel = strings.ReplaceAll(rel, `\`, "/")
 	if rel == "" || path.IsAbs(rel) || filepath.IsAbs(rel) || (len(rel) > 1 && rel[1] == ':') {
@@ -147,7 +148,7 @@ func (o *Options) ReadRef(from, rel string) ([]byte, string, error) {
 	}
 	if o.Dir != "" {
 		p := filepath.Join(o.Dir, filepath.FromSlash(want))
-		f, err := os.Open(p)
+		f, err := localfile.Open(o.Dir, filepath.FromSlash(want))
 		if err == nil {
 			defer f.Close()
 			b, err := io.ReadAll(io.LimitReader(f, MaxRefSize+1))

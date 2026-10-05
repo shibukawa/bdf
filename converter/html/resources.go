@@ -8,12 +8,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/shibukawa/bdf/converter/internal/localfile"
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
 	"github.com/shibukawa/bdf/converter/internal/wordproc"
 	xhtml "golang.org/x/net/html"
@@ -115,7 +115,7 @@ func (r *resources) image(src string) ([]byte, error) {
 }
 
 // local reads a file that a relative reference names, in the document's
-// directory (".." may leave it; absolute paths are not read).
+// directory. Parent references and symlinks may not leave that directory.
 func (r *resources) local(u *url.URL) ([]byte, error) {
 	if r.dir == "" {
 		return nil, errors.New("relative reference with no directory to resolve it in")
@@ -123,7 +123,7 @@ func (r *resources) local(u *url.URL) ([]byte, error) {
 	if u.Host != "" || strings.HasPrefix(u.Path, "/") || filepath.IsAbs(u.Path) {
 		return nil, errors.New("absolute paths are not read")
 	}
-	f, err := os.Open(filepath.Join(r.dir, filepath.FromSlash(u.Path)))
+	f, err := localfile.Open(r.dir, filepath.FromSlash(u.Path))
 	if err != nil {
 		return nil, err
 	}

@@ -2,7 +2,7 @@ export * from "./types.js";
 export * from "./opcodes.js";
 export { ByteReader, BdfFormatError } from "./bytes.js";
 export { decodeObject, decodePath, decodePathCollection, objectDeps, walk, NoopSink, opHistogram, UseLimits, MAX_USE_DEPTH, MAX_REUSED_INSTRUCTIONS, MAX_TEXT_RUNS } from "./object.js";
-export { parseHeader, decode, checkHash, BufferSource, RangeSource, SplitSource, fetchSingle, HEADER_SIZE, MAGIC, MAX_MANIFEST_SIZE, type PartSource, type Header } from "./container.js";
+export { parseHeader, decode, checkHash, BufferSource, RangeSource, SplitSource, fetchSingle, HEADER_SIZE, MAGIC, MAX_MANIFEST_SIZE, MAX_SINGLE_FILE_SIZE, type PartSource, type Header } from "./container.js";
 export { checkManifest, tileSize, MAX_PAGE_SIZE, MAX_SHEET_ENTRIES, MIN_ENTRY_SIZE, DEFAULT_TILE } from "./manifest.js";
 export { dcValues } from "./dublincore.js";
 export { BdfDocument, type OpenOptions } from "./document.js";

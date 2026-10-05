@@ -6,6 +6,7 @@
 package pdf
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -136,11 +137,17 @@ func readContext(rs io.ReadSeeker, password string) (ctx *model.Context, protect
 		if _, err := rs.Seek(0, io.SeekStart); err != nil {
 			return nil, err
 		}
-		conf := model.NewDefaultConfiguration()
+		// Conversion uses independent built-in settings and never loads or
+		// creates a user's pdfcpu configuration, fonts or certificate store.
+		conf := model.NewStatelessConfiguration()
+		conf.Limits.MaxStreamBytes = 256 << 20
+		conf.Limits.MaxDecodeBytes = 256 << 20
+		conf.Limits.MaxObjectCount = 1 << 20
+		conf.Limits.MaxXRefEntries = 1 << 20
 		conf.ValidationMode = model.ValidationRelaxed
 		conf.DecodeAllStreams = false
 		conf.UserPW, conf.OwnerPW = pw, pw
-		return api.ReadContext(rs, conf)
+		return api.ReadContext(context.Background(), rs, conf)
 	}
 	ctx, err = read("")
 	if errors.Is(err, pdfcpu.ErrWrongPassword) {

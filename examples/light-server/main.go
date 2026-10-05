@@ -90,7 +90,7 @@ func makeThumbnails(dir, thumbDir string, files []string) {
 		if _, err := os.Stat(out); err == nil {
 			continue // already made
 		}
-		res, err := converter.ConvertFile(filepath.Join(dir, name), "", &converter.Options{Pages: converter.PageList(1)})
+		res, err := converter.ConvertFile(filepath.Join(dir, name), "", &converter.Options{Pages: converter.PageList(1), Params: map[string]string{"remote": "false"}})
 		if err != nil {
 			log.Printf("light-server: %s: not converted for its thumbnail: %v", name, err)
 			continue

@@ -85,9 +85,9 @@ export function decodeObject(bytes: Uint8Array): ObjectPart {
 export function objectDeps(o: ObjectPart): string[] {
   const out: string[] = [];
   for (const f of o.fonts) if (f.hash) out.push(f.hash);
-  out.push(...o.images);
+  for (const h of o.images) out.push(h);
   for (const p of o.paths) if ("hash" in p) out.push(p.hash);
-  out.push(...o.objects);
+  for (const h of o.objects) out.push(h);
   return out;
 }
 
