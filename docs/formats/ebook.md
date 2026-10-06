@@ -12,7 +12,7 @@ Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a s
 
 The package document (found through `META-INF/container.xml`) gives the metadata, manifest and reading order (spine). Content documents are read in spine order — documents marked `linear="no"`, such as end notes only reached by a link, are moved to the end — and each becomes a section that starts a new page, the way a Word section does. Because EPUB's XHTML breaks a standard HTML parser (an empty `<a id="p5"/>` swallows what follows, for instance), it's read as XML into the same tree shape the HTML converter uses. Links between chapters resolve to the right page, and images load straight from the zip archive. EPUB doesn't allow documents to pull in outside images, so none are fetched from the network.
 
-Almost none of a book's own CSS is kept — layout, colors and fonts stay whatever the reader-mode stylesheet gives them — except for a handful of properties that carry meaning for how a book is meant to be read: `writing-mode` (see below), tate-chu-yoko, emphasis marks, text alignment, `display: none`, and the pixel size an image is meant to render at (used for full-page illustrations and the "gaiji" character images some Japanese publishers embed). MathML formulas are laid out by bdf's formula engine, matching Word and HTML.
+Almost none of a book's own CSS is kept — layout, colors and fonts stay whatever the reader-mode stylesheet gives them — except for a handful of properties that carry meaning for how a book is meant to be read: `writing-mode` (see below), tate-chu-yoko, emphasis marks, text alignment, `display: none`, and the pixel size an image is meant to render at (used for full-page illustrations and the "gaiji" character images some Japanese publishers embed). MathML formulas are laid out by BDF's formula engine, matching Word and HTML.
 
 ### Vertical Japanese text
 
@@ -20,7 +20,7 @@ A chapter's writing direction comes from `writing-mode` on `body` or `html` (inc
 
 ### Fixed-layout books
 
-A book marked `pre-paginated` (or Kindle's `fixed-layout`) whose every document is just one picture — an `img`, an inline `<svg>`, an SVG document, or an image placed directly on the spine — skips the text layout engine entirely and becomes a page per picture, sized from the document's viewport metadata (or the image's own size, or the SVG viewBox), each picture centered and scaled to fit. If a book mixes flowed text pages with picture-only pages, bdf falls back to laying the whole thing out as a reflowable book (it doesn't interpret the absolute CSS positioning some such mixed books use).
+A book marked `pre-paginated` (or Kindle's `fixed-layout`) whose every document is just one picture — an `img`, an inline `<svg>`, an SVG document, or an image placed directly on the spine — skips the text layout engine entirely and becomes a page per picture, sized from the document's viewport metadata (or the image's own size, or the SVG viewBox), each picture centered and scaled to fit. If a book mixes flowed text pages with picture-only pages, BDF falls back to laying the whole thing out as a reflowable book (it doesn't interpret the absolute CSS positioning some such mixed books use).
 
 ### Formulas
 

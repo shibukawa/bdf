@@ -71,7 +71,7 @@ const SAMPLES = [
   { path: "converter/midi/testdata/twinkle.kar", label: "MIDI (karaoke, with words)" },
   { path: "converter/musicxml/testdata/minuet.musicxml", label: "MusicXML (piano)" },
   { path: "converter/font/testdata/stix.otf", label: "Font (OpenType, STIX Two Text)" },
-  { path: "testdata/demo.bdf", label: "bdf" },
+  { path: "testdata/demo.bdf", label: "BDF" },
 ];
 
 async function copySamples() {
@@ -124,7 +124,8 @@ async function buildHome() {
   await execFile("go", ["run", "./cmd/bdf", "generate", "-q", pdf, bdf], { cwd: root });
   await bundle(out, [["site/home.ts", "home"]]);
   await copyFile(join(root, "site/site.css"), join(out, "site.css"));
-  const info = { demo: { pdf: (await stat(pdf)).size, bdf: (await stat(bdf)).size }, formats: (await formats()).length, worker: await workerSize() };
+  const benchmark = JSON.parse(await readFile(join(root, "docs/benchmarks/latest.json"), "utf8"));
+  const info = { demo: { pdf: (await stat(pdf)).size, bdf: (await stat(bdf)).size }, formats: (await formats()).length, worker: await workerSize(), benchmark };
   await writeFile(join(out, "index.html"), home("en", info));
   await writeFile(join(out, "index.ja.html"), home("ja", info));
   console.log(`home: demo.bdf ${info.demo.bdf} bytes, ${info.formats} formats, worker ${(info.worker / 1024).toFixed(1)} KB gzipped`);

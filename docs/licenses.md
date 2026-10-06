@@ -1,6 +1,6 @@
 # Fonts and licenses
 
-bdf itself is under the [MIT License](https://github.com/shibukawa/bdf/blob/main/LICENSE). The fonts it holds or serves have licenses of their own.
+BDF itself is under the [MIT License](https://github.com/shibukawa/bdf/blob/main/LICENSE). The fonts it holds or serves have licenses of their own.
 
 ## Fonts inside the library
 

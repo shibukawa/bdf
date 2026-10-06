@@ -1,6 +1,6 @@
 # Passwords and protected mode
 
-There are two ways to limit who can read a bdf document. A document encrypted with a password can be fetched by anyone, but only opened by those who know the password. In protected mode, the server keeps the document and hands it to a logged-in reader a few pages at a time, each answer sealed with a key made for that request.
+There are two ways to limit who can read a BDF document. A document encrypted with a password can be fetched by anyone, but only opened by those who know the password. In protected mode, the server keeps the document and hands it to a logged-in reader a few pages at a time, each answer sealed with a key made for that request.
 
 | | Encrypted with a password | Protected mode |
 |---|---|---|
@@ -12,7 +12,7 @@ There are two ways to limit who can read a bdf document. A document encrypted wi
 
 ## Password-protected input and encryption
 
-A password-protected input (a read-password Office document, a user-password PDF) is opened with its password and converted. The bdf output is then encrypted with the same password, sealed part by part (AES-256-GCM), so range requests and split layouts keep working. The viewer decrypts with WebCrypto, and a server never stores the password ([spec §3.5](../spec.md#35-暗号化)).
+A password-protected input (a read-password Office document, a user-password PDF) is opened with its password and converted. The BDF output is then encrypted with the same password, sealed part by part (AES-256-GCM), so range requests and split layouts keep working. The viewer decrypts with WebCrypto, and a server never stores the password ([spec §3.5](../spec.md#35-暗号化)).
 
 ## Protected mode
 

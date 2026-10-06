@@ -1,6 +1,6 @@
 # Visio, draw.io
 
-Visio and draw.io (diagrams.net) diagrams are shapes connected by routed edges, organized into the pages a diagramming tool itself keeps and switches between. bdf keeps that structure instead of flattening it. Each page in the file becomes a page in bdf, and the viewer switches between them with tabs — not laid out one after another the way a PDF export would.
+Visio and draw.io (diagrams.net) diagrams are shapes connected by routed edges, organized into the pages a diagramming tool itself keeps and switches between. BDF keeps that structure instead of flattening it. Each page in the file becomes a page in BDF, and the viewer switches between them with tabs — not laid out one after another the way a PDF export would.
 
 ## Try it
 
@@ -20,7 +20,7 @@ See [design.md §3.8](../design.md#38-visio--bdf-変換器convertervisioの構�
 
 `converter/drawio` reads a diagram's mxGraphModel XML directly rather than going through draw.io's own SVG or PDF export: `.drawio` files (including pages draw.io compresses) and the `.drawio.svg` / `.drawio.png` exports that embed the diagram.
 
-Every page becomes its own page in bdf, so the viewer switches between them with tabs the way a spreadsheet switches sheets. draw.io's layers become the page's layer objects, and links to other pages become `#view=` links. Cell geometry, edge routing (orthogonal, elbow and the other mxGraph edge styles, and shape perimeters), shapes, arrows, stencils, and the wrapping and formatting of HTML labels are ported from draw.io's own (mxGraph's) rendering code, since draw.io never saves the computed edge routes to the file. Stencil libraries (flowchart, basic, arrows, AWS, BPMN, networking, and others) are embedded from draw.io's own stencil XML, and fonts are subset-embedded the same way as for PowerPoint. AWS diagrams are drawn with the current AWS icon set, including diagrams originally drawn with older AWS icon sets, whose shapes are mapped onto their current counterparts. With math typesetting on (`math=1`), LaTeX in labels is laid out as formulas by the same engine PowerPoint and Word formulas use. Hand-drawn styles (`sketch=1`) are drawn as a normal, non-sketchy rendering.
+Every page becomes its own page in BDF, so the viewer switches between them with tabs the way a spreadsheet switches sheets. draw.io's layers become the page's layer objects, and links to other pages become `#view=` links. Cell geometry, edge routing (orthogonal, elbow and the other mxGraph edge styles, and shape perimeters), shapes, arrows, stencils, and the wrapping and formatting of HTML labels are ported from draw.io's own (mxGraph's) rendering code, since draw.io never saves the computed edge routes to the file. Stencil libraries (flowchart, basic, arrows, AWS, BPMN, networking, and others) are embedded from draw.io's own stencil XML, and fonts are subset-embedded the same way as for PowerPoint. AWS diagrams are drawn with the current AWS icon set, including diagrams originally drawn with older AWS icon sets, whose shapes are mapped onto their current counterparts. With math typesetting on (`math=1`), LaTeX in labels is laid out as formulas by the same engine PowerPoint and Word formulas use. Hand-drawn styles (`sketch=1`) are drawn as a normal, non-sketchy rendering.
 
 | Option | Values | Default |
 |---|---|---|

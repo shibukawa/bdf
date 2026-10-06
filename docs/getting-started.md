@@ -1,10 +1,10 @@
 # Getting started
 
-The fastest way to see bdf work is the [demo site](https://shibukawa.github.io/bdf/viewer/): drop a file on the page and it converts and draws inside your browser, without uploading anything. From here, you build and run bdf on your own machine instead.
+The fastest way to see BDF work is the [demo site](https://shibukawa.github.io/bdf/viewer/): drop a file on the page and it converts and draws inside your browser, without uploading anything. From here, you build and run BDF on your own machine instead.
 
 ## The CLI
 
-bdf needs Go 1.27 or later.
+BDF needs Go 1.27 or later.
 
 ```sh
 git clone https://github.com/shibukawa/bdf
@@ -60,6 +60,6 @@ Each converter package registers its format as a side effect of being imported, 
 
 ## Next
 
-- **[Why bdf](why.md)** — the formats at a glance, and what stays usable after conversion: page turning, search, selection, accessibility
+- **[Why BDF](why.md)** — the formats at a glance, and what stays usable after conversion: page turning, search, selection, accessibility
 - **[Formats](formats/index.md)** — every input format and its layout
 - **[Architecture](architecture/index.md)** — how conversion and rendering fit together, and how to build and test the repository

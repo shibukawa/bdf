@@ -63,4 +63,4 @@ CI の「testdata is up to date」ステップは、`ubuntu-latest`（amd64）�
 
 新しい golden の PNG には、これとは別に、CI と同じ headless shell の Chromium ビルドが要ります。それに合うコンテナ（`mcr.microsoft.com/playwright:v1.56.1-noble`、または Chromium を入れた `node:24-bookworm`）の中で golden テストを動かせば再現できます。
 
-各パッケージ・コマンドが公開するものは [API 一覧](../api.md)を、`bdf` のサブコマンドは [bdf コマンド](cli.ja.md)を参照してください。fixture、描画、ブラウザ変換の確認結果は[変換品質レポート](../quality.md)にまとめています。
+各パッケージ・コマンドが公開するものは [API 一覧](../api.md)を、`bdf` のサブコマンドは [BDF コマンド](cli.ja.md)を参照してください。fixture、描画、ブラウザ変換の確認結果は[変換品質レポート](../quality.md)にまとめています。

@@ -63,17 +63,47 @@ const GALLERY = [
   },
 ];
 
+const BENCHMARK_CASES = {
+  "basic.docx": { en: "Basic DOCX", ja: "小さい DOCX" },
+  "basic.pptx": { en: "Basic PPTX", ja: "小さい PPTX" },
+  "basic.xlsx": { en: "Basic XLSX", ja: "小さい XLSX" },
+  "many-sheets.xlsx": { en: "Synthetic XLSX · 4 sheets × 3,000 rows", ja: "合成 XLSX · 4 シート × 3,000 行" },
+  "many-slides.pptx": { en: "Synthetic PPTX · 100 slides", ja: "合成 PPTX · 100 スライド" },
+};
+
 const T = {
   en: {
-    title: "bdf – document previews for browsers",
-    description: "bdf is a document format for previews in browsers: PDF, Office files, diagrams and CAD drawings, converted by one Go binary and drawn on a canvas.",
+    title: "BDF – document previews for browsers",
+    description: "BDF is a browser document-preview suite with Go/WASM converters, a browser renderer of about 23 KB gzipped, and a compact intermediate format.",
     h1: "Preview documents in the browser, without an office suite",
-    hero: (kb) => `bdf is a document format made for previews. PDF, Office files, diagrams, CAD drawings and more are converted by one Go binary, or inside the browser as WebAssembly, and drawn on a canvas by a renderer of ${kb} KB.`,
+    hero: (kb) => `BDF is a browser document-preview suite: it combines converters for many formats (Go/WASM), a browser renderer of about ${kb} KB gzipped, and a compact intermediate format.`,
+    heroDetail: "PDF is a portable, PostScript-based format for printing. By contrast, BDF is a lightweight intermediate format built from Canvas 2D drawing commands for fast browser rendering. Generate BDF ahead of time on a server, or convert files in real time in the browser with WebAssembly.",
     try: "Open the viewer", docs: "Read the docs",
-    demoTitle: "A PDF, drawn from bdf",
+    demoTitle: "A PDF, drawn from BDF",
     demoLead: "Converted ahead of time, as a server would. Turn its pages, select its text, search it, zoom.",
     demoName: "demo.pdf → demo.bdf",
-    demoNote: (pdf, bdf) => `${pdf} as a PDF, ${bdf} as bdf with its fonts. The pages are fetched by range requests as they are about to be shown.`,
+    demoNote: (pdf, bdf) => `${pdf} as a PDF, ${bdf} as BDF with its fonts. The pages are fetched by range requests as they are about to be shown.`,
+    benchmarkTitle: "Less time, memory and energy for document previews",
+    benchmarkLead: "Compare the same Office files converted by LibreOffice + Poppler and by BDF's Go converter.",
+    benchmarkEnergyTitle: "Estimated SoC energy per document",
+    benchmarkTimeTitle: "Conversion + thumbnail time (median)",
+    benchmarkMemoryTitle: "Maximum RSS (median)",
+    benchmarkHighlightsLabel: "Benchmark highlights",
+    benchmarkEnergyLess: "less estimated SoC energy per document",
+    benchmarkEnergyMore: "more estimated SoC energy per document",
+    benchmarkEnergySame: "the same estimated SoC energy per document",
+    benchmarkEnergyInput: (inputs) => `Per-document average across ${inputs}`,
+    benchmarkEnergyRange: (rounds, officeMin, officeMax, bdfMin, bdfMax) => `Range across ${rounds} rounds: LibreOffice + Poppler ${officeMin}–${officeMax} J/document; BDF ${bdfMin}–${bdfMax} J/document.`,
+    benchmarkFaster: (name) => `faster on ${name}`,
+    benchmarkSlower: (name) => `slower on ${name}`,
+    benchmarkLowerMemory: (name) => `lower maximum RSS on ${name}`,
+    benchmarkHigherMemory: (name) => `higher maximum RSS on ${name}`,
+    benchmarkSameSpeed: "the same conversion time",
+    benchmarkSameMemory: "the same maximum RSS",
+    benchmarkOffice: "LibreOffice + Poppler",
+    benchmarkBdf: "BDF (Go)",
+    benchmarkBarNote: "Bar lengths are scaled within each input pair; values are the measured results.",
+    benchmarkMethod: (runs, rounds, inputs) => `On an Apple Silicon Mac connected to AC power. Time and maximum RSS are medians of ${runs} fresh-process runs for conversion plus a 256 px first-page thumbnail; the large XLSX and PPTX inputs are synthetic. Energy is an idle-adjusted CPU, GPU and ANE SoC estimate from powermetrics across ${rounds} rounds of ${inputs}, divided by completed documents—not a wall-outlet measurement.`,
     search: "search…", prev: "previous match", next: "next match", zoomIn: "zoom in", zoomOut: "zoom out",
     layout: "layout", layouts: { spread: "Two pages", single: "One page", scroll: "Scroll" },
     prevPage: "previous page", nextPage: "next page", pages: "pages",
@@ -96,7 +126,7 @@ const T = {
       ["examples/search", "With a search engine", "The text goes to a search engine page by page. A hit opens the document at its page."],
     ],
     read: "Read more",
-    whyTitle: "Why bdf",
+    whyTitle: "Why BDF",
     why: [
       ["No office suite to run", "No headless LibreOffice, no cgo, no external program: the converters are Go packages in one binary."],
       ["In the shape of the content", "Fixed pages for slides and drawings, endless sheets for workbooks, pages or one column for text."],
@@ -110,15 +140,37 @@ const T = {
     fonts: "Fonts and licenses",
   },
   ja: {
-    title: "bdf – ブラウザのための文書プレビュー",
-    description: "bdf はブラウザでのプレビューのための文書フォーマットです。PDF、Office のファイル、図、CAD の図面を Go のバイナリ 1 つで変換し、canvas に描きます。",
+    title: "BDF – ブラウザのための文書プレビュー",
+    description: "BDF はブラウザ向けの文書プレビュースイートです。Go/WASM の多形式コンバーター、gzip 圧縮後約 23 KB のブラウザ用レンダラー、中間形式で構成されます。",
     h1: "オフィススイートなしで、文書をブラウザでプレビュー",
-    hero: (kb) => `bdf はプレビューのための文書フォーマットです。PDF、Office のファイル、図、CAD の図面などを Go のバイナリ 1 つで、あるいは WebAssembly にしてブラウザの中で変換し、${kb} KB のレンダラが canvas に描きます。`,
+    hero: (kb) => `BDF は、ブラウザ向けの文書プレビュースイートです。多様な形式に対応するコンバーター（Go/WASM）、gzip 圧縮後約 ${kb} KB のブラウザ用レンダラー、中間形式で構成されます。`,
+    heroDetail: "PDF が PostScript をベースにした印刷向けのポータブル文書形式であるのに対し、BDF は Canvas 2D の描画命令を基盤とした、ブラウザ表示向けの軽量な中間形式です。サーバーでの事前生成と、WASM を使ったブラウザ内でのリアルタイム変換に対応します。",
     try: "ビューアを開く", docs: "ドキュメントを読む",
-    demoTitle: "bdf から描いた PDF",
+    demoTitle: "BDF から描いた PDF",
     demoLead: "サーバーで変換するのと同じように、あらかじめ変換してあります。ページめくり、テキストの選択、検索、拡大ができます。",
     demoName: "demo.pdf → demo.bdf",
-    demoNote: (pdf, bdf) => `PDF で ${pdf}、フォントを含む bdf で ${bdf}。ページは表示の直前に Range リクエストで取得します。`,
+    demoNote: (pdf, bdf) => `PDF で ${pdf}、フォントを含む BDF で ${bdf}。ページは表示の直前に Range リクエストで取得します。`,
+    benchmarkTitle: "文書変換が速く、メモリと電力も少なく",
+    benchmarkLead: "同じ Office ファイルを LibreOffice + Poppler と BDF の Go 変換器で処理して比較しました。",
+    benchmarkEnergyTitle: "1 文書あたりの推定 SoC エネルギー",
+    benchmarkTimeTitle: "変換＋サムネイル作成の経過時間（中央値）",
+    benchmarkMemoryTitle: "最大 RSS（中央値）",
+    benchmarkHighlightsLabel: "主な結果",
+    benchmarkEnergyLess: "文書あたりの推定 SoC エネルギーを削減",
+    benchmarkEnergyMore: "文書あたりの推定 SoC エネルギーが増加",
+    benchmarkEnergySame: "文書あたりの推定 SoC エネルギーは同程度",
+    benchmarkEnergyInput: (inputs) => `${inputs} の文書あたり平均`,
+    benchmarkEnergyRange: (rounds, officeMin, officeMax, bdfMin, bdfMax) => `${rounds} ラウンドの範囲（J/文書）: LibreOffice + Poppler ${officeMin}–${officeMax}、BDF ${bdfMin}–${bdfMax}。`,
+    benchmarkFaster: (name) => `${name} の変換が高速`,
+    benchmarkSlower: (name) => `${name} の変換が低速`,
+    benchmarkLowerMemory: (name) => `${name} の最大 RSS が少ない`,
+    benchmarkHigherMemory: (name) => `${name} の最大 RSS が多い`,
+    benchmarkSameSpeed: "変換時間は同程度",
+    benchmarkSameMemory: "最大 RSS は同程度",
+    benchmarkOffice: "LibreOffice + Poppler",
+    benchmarkBdf: "BDF（Go）",
+    benchmarkBarNote: "横棒はファイルごとに比較し、長い方を 100% に正規化。数値は測定値です。",
+    benchmarkMethod: (runs, rounds, inputs) => `Apple Silicon の Mac を AC 電源で使用。時間と最大 RSS は、変換と先頭ページの 256 px サムネイル作成までを新規プロセスで計測した ${runs} 回の中央値。大きな XLSX・PPTX は合成データです。エネルギーは ${inputs} の変換を ${rounds} ラウンド繰り返し、powermetrics の CPU・GPU・ANE の SoC 推定値からアイドル分を差し引いて文書あたりで算出。コンセントでの実測値ではありません。`,
     search: "検索…", prev: "前の一致", next: "次の一致", zoomIn: "拡大", zoomOut: "縮小",
     layout: "表示", layouts: { spread: "見開き", single: "1 ページずつ", scroll: "スクロール" },
     prevPage: "前のページ", nextPage: "次のページ", pages: "ページ",
@@ -141,7 +193,7 @@ const T = {
       ["examples/search", "検索エンジンとつなぐ", "テキストをページごとに検索エンジンへ。ヒットからそのページを開きます。"],
     ],
     read: "解説を読む",
-    whyTitle: "なぜ bdf か",
+    whyTitle: "なぜ BDF か",
     why: [
       ["オフィススイートを動かさない", "ヘッドレスの LibreOffice も cgo も外部プログラムも不要。変換器は 1 つのバイナリに入る Go のパッケージです。"],
       ["内容に合った形で見せる", "スライドや図面には固定ページ、ブックには無限のシート、文章にはページか一続きの列。"],
@@ -158,12 +210,141 @@ const T = {
 
 const size = (n) => (n < 1024 * 1024 ? `${Math.round(n / 1024)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
+function benchmarkSection(lang, data) {
+  const t = T[lang];
+  const process = data?.process;
+  const power = data?.power;
+  if (!process?.results || !power?.median_estimated_soc_j_per_document || !Array.isArray(power.inputs) || !power.inputs.length) {
+    throw new Error("The homepage requires process and power results in docs/benchmarks/latest.json");
+  }
+  if (!Number.isInteger(process.rounds) || process.rounds < 1 || !Number.isInteger(power.rounds) || power.rounds < 1) {
+    throw new Error("Invalid benchmark round count in docs/benchmarks/latest.json");
+  }
+
+  const positive = (value, label) => {
+    if (!Number.isFinite(value) || value <= 0) throw new Error(`Invalid benchmark value for ${label}`);
+    return value;
+  };
+  const number = (value, digits) => new Intl.NumberFormat(lang, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value);
+  const labelFor = (name) => BENCHMARK_CASES[name]?.[lang] ?? name;
+  const cases = Object.entries(process.results).map(([name, result]) => ({
+    label: labelFor(name),
+    officeTime: positive(result?.libreoffice?.elapsed_seconds, `${name} LibreOffice elapsed time`),
+    bdfTime: positive(result?.bdf?.elapsed_seconds, `${name} bdf elapsed time`),
+    officeMemory: positive(result?.libreoffice?.max_rss_bytes, `${name} LibreOffice maximum RSS`),
+    bdfMemory: positive(result?.bdf?.max_rss_bytes, `${name} bdf maximum RSS`),
+  }));
+  if (!cases.length) throw new Error("No process benchmark results in docs/benchmarks/latest.json");
+
+  const officeEnergy = positive(power.median_estimated_soc_j_per_document.libreoffice, "LibreOffice estimated SoC energy");
+  const bdfEnergy = positive(power.median_estimated_soc_j_per_document.bdf, "bdf estimated SoC energy");
+  const energyRanges = power.range_estimated_soc_j_per_document;
+  if (!energyRanges) throw new Error("Missing energy ranges in docs/benchmarks/latest.json");
+  const range = (values, label) => {
+    if (!Array.isArray(values) || values.length !== 2) throw new Error(`Invalid benchmark range for ${label}`);
+    const min = positive(values[0], `${label} minimum`);
+    const max = positive(values[1], `${label} maximum`);
+    if (min > max) throw new Error(`Invalid benchmark range for ${label}`);
+    return [min, max];
+  };
+  const [officeEnergyMin, officeEnergyMax] = range(energyRanges.libreoffice, "LibreOffice estimated SoC energy");
+  const [bdfEnergyMin, bdfEnergyMax] = range(energyRanges.bdf, "bdf estimated SoC energy");
+  const energyChange = Math.round(Math.abs(1 - bdfEnergy / officeEnergy) * 100);
+  const energyHighlight = {
+    value: `${energyChange}%`,
+    label: energyChange === 0
+      ? t.benchmarkEnergySame
+      : bdfEnergy < officeEnergy ? t.benchmarkEnergyLess : t.benchmarkEnergyMore,
+  };
+
+  const bestBy = (a, b) => a.ratio - b.ratio;
+  const speedUps = cases.map((entry) => ({ label: entry.label, ratio: entry.officeTime / entry.bdfTime }));
+  const fastest = speedUps.reduce((best, current) => bestBy(current, best) > 0 ? current : best);
+  const slowest = speedUps.reduce((best, current) => current.ratio < best.ratio ? current : best);
+  const speedRatio = fastest.ratio >= 1 ? fastest.ratio : 1 / slowest.ratio;
+  const speedHighlight = {
+    value: `${number(speedRatio, 0)}×`,
+    label: fastest.ratio > 1 ? t.benchmarkFaster(fastest.label)
+      : slowest.ratio < 1 ? t.benchmarkSlower(slowest.label) : t.benchmarkSameSpeed,
+  };
+
+  const memoryChanges = cases.map((entry) => ({ label: entry.label, ratio: entry.officeMemory / entry.bdfMemory }));
+  const leastMemory = memoryChanges.reduce((best, current) => bestBy(current, best) > 0 ? current : best);
+  const mostMemory = memoryChanges.reduce((best, current) => current.ratio < best.ratio ? current : best);
+  const memoryRatio = leastMemory.ratio >= 1 ? leastMemory.ratio : 1 / mostMemory.ratio;
+  const memoryHighlight = {
+    value: `${number(memoryRatio, 0)}×`,
+    label: leastMemory.ratio > 1 ? t.benchmarkLowerMemory(leastMemory.label)
+      : mostMemory.ratio < 1 ? t.benchmarkHigherMemory(mostMemory.label) : t.benchmarkSameMemory,
+  };
+
+  const row = (label, office, bdf, format) => {
+    const max = Math.max(office, bdf);
+    const officeWidth = Math.max(2, office / max * 100);
+    const bdfWidth = Math.max(2, bdf / max * 100);
+    return `<li class="benchmark-case">
+<h4>${esc(label)}</h4>
+<div class="benchmark-measure office">
+<span class="benchmark-series">${esc(t.benchmarkOffice)}</span>
+<span class="benchmark-track" aria-hidden="true"><span style="width:${officeWidth.toFixed(1)}%"></span></span>
+<strong class="benchmark-value">${esc(format(office))}</strong>
+</div>
+<div class="benchmark-measure bdf">
+<span class="benchmark-series">${esc(t.benchmarkBdf)}</span>
+<span class="benchmark-track" aria-hidden="true"><span style="width:${bdfWidth.toFixed(1)}%"></span></span>
+<strong class="benchmark-value">${esc(format(bdf))}</strong>
+</div>
+</li>`;
+  };
+  const figure = (id, title, rows, additionalNote = "") => `<figure class="benchmark-card">
+<h3 id="${id}">${esc(title)}</h3>
+<ul class="benchmark-cases">${rows.join("\n")}</ul>
+<figcaption>${esc(t.benchmarkBarNote)}${additionalNote ? `<br>${esc(additionalNote)}` : ""}</figcaption>
+</figure>`;
+  const inputNames = power.inputs.map(labelFor);
+  const energyInput = t.benchmarkEnergyInput(inputNames.join(lang === "ja" ? "・" : ", "));
+  const energyRange = t.benchmarkEnergyRange(
+    power.rounds,
+    number(officeEnergyMin, 2),
+    number(officeEnergyMax, 2),
+    number(bdfEnergyMin, 2),
+    number(bdfEnergyMax, 2),
+  );
+  const highlights = [energyHighlight, speedHighlight, memoryHighlight]
+    .map(({ value, label }) => `<li class="benchmark-highlight"><strong>${esc(value)}</strong><span>${esc(label)}</span></li>`)
+    .join("\n");
+
+  return `<section class="wrap benchmarks" aria-labelledby="benchmark-title">
+<h2 id="benchmark-title">${esc(t.benchmarkTitle)}</h2>
+<p class="lead">${esc(t.benchmarkLead)}</p>
+<ul class="benchmark-highlights" aria-label="${esc(t.benchmarkHighlightsLabel)}">${highlights}</ul>
+<div class="benchmark-grid">
+${figure("benchmark-time-title", t.benchmarkTimeTitle, cases.map((entry) =>
+    row(entry.label, entry.officeTime, entry.bdfTime, (value) => `${number(value, 2)} s`)))}
+${figure("benchmark-memory-title", t.benchmarkMemoryTitle, cases.map((entry) =>
+    row(entry.label, entry.officeMemory / (1024 * 1024), entry.bdfMemory / (1024 * 1024), (value) => `${number(value, 1)} MiB`)))}
+${figure("benchmark-energy-title", t.benchmarkEnergyTitle, [
+    row(energyInput, officeEnergy, bdfEnergy, (value) => `${number(value, 2)} J`),
+  ], energyRange)}
+</div>
+<p class="benchmark-method">${esc(t.benchmarkMethod(
+    process.rounds,
+    power.rounds,
+    inputNames.join(lang === "ja" ? "・" : ", "),
+  ))}</p>
+</section>`;
+}
+
 /**
  * The top page in a language. demo gives the sizes of the PDF shown and of
  * the bdf made of it, formats how many input formats the converters take,
- * worker the size of the rendering worker, minified and gzipped.
+ * worker the size of the rendering worker, minified and gzipped, and benchmark
+ * the latest comparison results.
  */
-export function home(lang, { demo, formats, worker }) {
+export function home(lang, { demo, formats, worker, benchmark }) {
   const t = T[lang];
   const out = lang === "ja" ? "index.ja.html" : "index.html";
   const other = lang === "ja" ? "index.html" : "index.ja.html";
@@ -199,6 +380,7 @@ ${header({ lang, out, other })}
 <section class="hero wrap">
 <h1>${esc(t.h1)}</h1>
 <p>${esc(t.hero(Math.round(worker / 1024)))}</p>
+<p class="format-note">${esc(t.heroDetail)}</p>
 <p class="actions"><a class="button primary" href="viewer/">${t.try}</a> <a class="button" href="${doc("index")}">${t.docs}</a> <a class="button" href="${REPO}">GitHub</a></p>
 </section>
 <section class="wrap" aria-labelledby="demo-title">
@@ -222,6 +404,7 @@ ${header({ lang, out, other })}
 </div>
 <p class="note">${esc(t.demoNote(size(demo.pdf), size(demo.bdf)))}</p>
 </section>
+${benchmarkSection(lang, benchmark)}
 <section class="wrap" aria-labelledby="gallery-title">
 <h2 id="gallery-title">${esc(t.galleryTitle)}</h2>
 <p class="lead">${esc(t.galleryLead)}</p>
@@ -252,7 +435,7 @@ ${t.why.map(([title, text]) => `<li><h3>${esc(title)}</h3><p>${esc(text)}</p></l
 <p class="more"><a href="${doc("why")}">${t.whyMore}</a></p>
 </section>
 </main>
-<footer class="wrap">bdf · <a href="${REPO}/blob/main/LICENSE">${t.license}</a> · <a href="${doc("licenses")}">${t.fonts}</a> · <a href="${REPO}">GitHub</a></footer>
+<footer class="wrap">BDF · <a href="${REPO}/blob/main/LICENSE">${t.license}</a> · <a href="${doc("licenses")}">${t.fonts}</a> · <a href="${REPO}">GitHub</a></footer>
 <script type="module" src="home.js"></script>
 </body>
 </html>

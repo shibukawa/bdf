@@ -73,8 +73,8 @@
 
 | Path | Contents |
 |---|---|
-| `examples/light-server`, `examples/preview-server`, `examples/search`, `examples/secure-reader` | Four small Go servers, each built around a different way of fitting bdf into a system — see [Sample architectures](../examples/index.md) |
-| `cmd/bdf` | The `bdf` CLI: `generate`, `thumbnail`, `text`, `render`, `ls`, `manifest`, `disasm`, `extract`, `split`, `join`, `encrypt`, `decrypt`, `demo` — see [The bdf command](cli.md) |
+| `examples/light-server`, `examples/preview-server`, `examples/search`, `examples/secure-reader` | Four small Go servers, each built around a different way of fitting BDF into a system — see [Sample architectures](../examples/index.md) |
+| `cmd/bdf` | The `bdf` CLI: `generate`, `thumbnail`, `text`, `render`, `ls`, `manifest`, `disasm`, `extract`, `split`, `join`, `encrypt`, `decrypt`, `demo` — see [The BDF command](cli.md) |
 | `tools/` | One-off generators run by hand when their source changes: Unicode data, SMuFL glyph paths, draw.io stencils and the AWS icon map, table styles, cmaps, and the pure-Go WebP codec's generated tables |
 | `testdata/` | Generated samples and golden images, checked byte-for-byte (or pixel-for-pixel) in CI |
 | `test/` | The Playwright-driven golden tests and the fixture generators for each format's `testdata/` |

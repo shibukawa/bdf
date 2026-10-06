@@ -73,8 +73,8 @@
 
 | 場所 | 内容 |
 |---|---|
-| `examples/light-server`、`examples/preview-server`、`examples/search`、`examples/secure-reader` | bdf をシステムに組み込む方法ごとの小さな Go サーバー 4 つ。[構成のサンプル](../examples/index.ja.md)を参照 |
-| `cmd/bdf` | `bdf` コマンド: `generate`、`thumbnail`、`text`、`render`、`ls`、`manifest`、`disasm`、`extract`、`split`、`join`、`encrypt`、`decrypt`、`demo`。[bdf コマンド](cli.ja.md)を参照 |
+| `examples/light-server`、`examples/preview-server`、`examples/search`、`examples/secure-reader` | BDF をシステムに組み込む方法ごとの小さな Go サーバー 4 つ。[構成のサンプル](../examples/index.ja.md)を参照 |
+| `cmd/bdf` | `bdf` コマンド: `generate`、`thumbnail`、`text`、`render`、`ls`、`manifest`、`disasm`、`extract`、`split`、`join`、`encrypt`、`decrypt`、`demo`。[BDF コマンド](cli.ja.md)を参照 |
 | `tools/` | ソースが変わったときに手で実行する生成ツール群: Unicode のデータ、SMuFL の字形パス、draw.io のステンシルと AWS アイコンの対応表、テーブルスタイル、cmap、純 Go の WebP コーデックの生成テーブル |
 | `testdata/` | 生成済みサンプルと golden 画像。CI でバイト単位（または画素単位）に照合する |
 | `test/` | Playwright による golden テストと、各形式の `testdata/` を作るフィクスチャ生成スクリプト |

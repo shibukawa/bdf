@@ -27,7 +27,7 @@ bdf demo <file.bdf | dir/>         フィクスチャ文書を書き出す（dir
 
 ## generate
 
-1 つの入力を bdf に変換します。形式は入力の中身から判別するか、`-format` で明示します。出力は 1 ファイル、または末尾が `/` のディレクトリで分割形式になります。`-pages 1-3,5,8-` でページ・スライド・シート・アートボードを選び、`-thumbnail` と `-text` は出力と一緒にプレビューを書き出します（暗号化した出力には `-allow-plaintext` のときだけ）。`-dc 要素名=値` は Dublin Core の要素を上書きします（`-dc 要素名=` で削除）。入力形式ごとの `-param` オプションは[対応形式](../formats/index.ja.md)を、現在の完全な一覧は `bdf generate -h` を参照してください。
+1 つの入力を BDF に変換します。形式は入力の中身から判別するか、`-format` で明示します。出力は 1 ファイル、または末尾が `/` のディレクトリで分割形式になります。`-pages 1-3,5,8-` でページ・スライド・シート・アートボードを選び、`-thumbnail` と `-text` は出力と一緒にプレビューを書き出します（暗号化した出力には `-allow-plaintext` のときだけ）。`-dc 要素名=値` は Dublin Core の要素を上書きします（`-dc 要素名=` で削除）。入力形式ごとの `-param` オプションは[対応形式](../formats/index.ja.md)を、現在の完全な一覧は `bdf generate -h` を参照してください。
 
 ```sh
 bdf generate report.pptx report.bdf              # 1 ファイル形式

@@ -117,7 +117,7 @@ func makeThumbnails(dir, thumbDir string, files []string) {
 
 var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
 <meta charset="utf-8">
-<title>light-server: bdf sample architecture</title>
+<title>light-server: BDF sample architecture</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root { color-scheme: light dark; font: 16px system-ui, sans-serif; }
@@ -131,7 +131,7 @@ var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
   .files span { display: block; padding: .5rem .75rem; font-size: .875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 <h1>light-server</h1>
-<p class="lead">A sample architecture (<a href="https://github.com/shibukawa/bdf/blob/main/docs/examples/light-server.md">docs/examples/light-server</a>): the server only ever made these thumbnails. Opening a document converts it to bdf inside your browser.</p>
+<p class="lead">A sample architecture (<a href="https://github.com/shibukawa/bdf/blob/main/docs/examples/light-server.md">docs/examples/light-server</a>): the server only ever made these thumbnails. Opening a document converts it to BDF inside your browser.</p>
 <ul class="files">
 {{range .}}<li><a href="/view/?file={{.}}"><img src="/thumbs/{{.}}.png" alt="" loading="lazy"><span>{{.}}</span></a></li>
 {{end}}</ul>

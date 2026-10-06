@@ -6,7 +6,7 @@ import { pipeline } from "node:stream/promises";
 
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".map": "application/json",
-  ".json": "application/json", ".png": "image/png", ".bdf": "application/octet-stream", ".css": "text/css", ".ts": "text/plain",
+  ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".bdf": "application/octet-stream", ".css": "text/css", ".ts": "text/plain",
   ".wasm": "application/wasm", ".ttf": "font/ttf", ".otf": "font/otf", ".ttc": "font/collection", ".otc": "font/collection",
 };
 

@@ -127,6 +127,7 @@ th:not([align]) { text-align: start; }
 .hero { padding-block: 2.5rem 1rem; }
 .hero h1 { margin: 0 0 .75rem; font-size: clamp(1.75rem, 1rem + 3.2vw, 2.75rem); letter-spacing: -.01em; text-wrap: balance; }
 .hero p { max-width: 46rem; margin: 0 0 1.25rem; font-size: 1.125rem; color: var(--muted); }
+.hero .format-note { max-width: 56rem; font-size: 1rem; }
 .hero .actions { display: flex; flex-wrap: wrap; gap: .6rem; }
 
 /* the document shown on the top page */
@@ -178,6 +179,27 @@ th:not([align]) { text-align: start; }
 .points { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem 2rem; margin: 0; padding: 0; list-style: none; }
 .points h3 { margin: 0 0 .25rem; font-size: 1.0625rem; }
 .points p { margin: 0; color: var(--muted); font-size: .9375rem; line-height: 1.6; }
+
+.benchmark-highlights { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .75rem; margin: 1.25rem 0; padding: 0; list-style: none; }
+.benchmark-highlight { display: flex; flex-direction: column; gap: .15rem; padding: .75rem 1rem; background: var(--subtle); border: 1px solid var(--border); border-radius: 8px; }
+.benchmark-highlight strong { color: var(--accent); font-size: 1.5rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.benchmark-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr)); gap: 1rem; align-items: start; }
+.benchmark-card { min-width: 0; margin: 0; padding: 1rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.benchmark-card h3 { margin: 0 0 .75rem; font-size: 1.125rem; }
+.benchmark-cases { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
+.benchmark-case { padding-top: .6rem; border-top: 1px solid var(--border); }
+.benchmark-case:first-child { padding-top: 0; border-top: 0; }
+.benchmark-case h4 { margin: 0 0 .4rem; font-size: .875rem; }
+.benchmark-measure { display: grid; grid-template-columns: minmax(8rem, max-content) minmax(1.5rem, 1fr) minmax(5rem, auto); gap: .5rem; align-items: center; }
+.benchmark-measure + .benchmark-measure { margin-top: .25rem; }
+.benchmark-series { font-size: .8rem; line-height: 1.35; }
+.benchmark-track { display: block; height: .6rem; overflow: hidden; border-radius: 999px; background: var(--subtle); }
+.benchmark-track span { display: block; min-width: 2px; height: 100%; border-radius: inherit; }
+.benchmark-measure.office .benchmark-track span { background: var(--muted); }
+.benchmark-measure.bdf .benchmark-track span { background: var(--accent); }
+.benchmark-value { font-size: .875rem; font-variant-numeric: tabular-nums; text-align: end; white-space: nowrap; }
+.benchmark-card figcaption { margin-top: .75rem; color: var(--muted); font-size: .8125rem; line-height: 1.5; }
+.benchmark-method { max-width: 72rem; margin: 1rem 0 0; color: var(--muted); font-size: .875rem; }
 
 .home footer { padding-block: 1.5rem 2.5rem; color: var(--muted); font-size: .875rem; border-top: 1px solid var(--border); }
 

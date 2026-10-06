@@ -114,5 +114,184 @@
       }
     }
   },
-  "power": null
+  "power": {
+    "created_utc": "2026-10-06T05:28:34.906944+00:00",
+    "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "rounds": 3,
+    "method": "weighted power samples integrated over their reported durations; subtract idle mean times work sampling duration; divide by completed documents",
+    "work_seconds_target": 60,
+    "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
+    "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
+    "bdf_binary": {
+      "bytes": 25132514,
+      "sha256": "db0b2b37be3b72b00f82c2f519ccd2ad9ef83adf2a8c758a7a0108b20b778fd3"
+    },
+    "pairs": [
+      {
+        "round": 1,
+        "workflow": "libreoffice",
+        "documents": 63,
+        "estimated_incremental_soc_w": 6.227415,
+        "estimated_soc_j_per_document": 7.155304,
+        "idle": "round1-libreoffice-idle",
+        "work": "round1-libreoffice-work"
+      },
+      {
+        "round": 1,
+        "workflow": "bdf",
+        "documents": 1098,
+        "estimated_incremental_soc_w": 4.197052,
+        "estimated_soc_j_per_document": 0.276664,
+        "idle": "round1-bdf-idle",
+        "work": "round1-bdf-work"
+      },
+      {
+        "round": 2,
+        "workflow": "bdf",
+        "documents": 1158,
+        "estimated_incremental_soc_w": 4.381303,
+        "estimated_soc_j_per_document": 0.273818,
+        "idle": "round2-bdf-idle",
+        "work": "round2-bdf-work"
+      },
+      {
+        "round": 2,
+        "workflow": "libreoffice",
+        "documents": 72,
+        "estimated_incremental_soc_w": 3.277639,
+        "estimated_soc_j_per_document": 3.295192,
+        "idle": "round2-libreoffice-idle",
+        "work": "round2-libreoffice-work"
+      },
+      {
+        "round": 3,
+        "workflow": "libreoffice",
+        "documents": 72,
+        "estimated_incremental_soc_w": 4.24616,
+        "estimated_soc_j_per_document": 4.267438,
+        "idle": "round3-libreoffice-idle",
+        "work": "round3-libreoffice-work"
+      },
+      {
+        "round": 3,
+        "workflow": "bdf",
+        "documents": 1149,
+        "estimated_incremental_soc_w": 4.311959,
+        "estimated_soc_j_per_document": 0.271682,
+        "idle": "round3-bdf-idle",
+        "work": "round3-bdf-work"
+      }
+    ],
+    "median_estimated_soc_j_per_document": {
+      "libreoffice": 4.267438,
+      "bdf": 0.273818
+    },
+    "range_estimated_soc_j_per_document": {
+      "libreoffice": [
+        3.295192,
+        7.155304
+      ],
+      "bdf": [
+        0.271682,
+        0.276664
+      ]
+    },
+    "inputs": [
+      "basic.docx",
+      "basic.pptx",
+      "basic.xlsx"
+    ],
+    "phases": [
+      {
+        "name": "round1-libreoffice-idle",
+        "samples": 72,
+        "mean_soc_w": 0.44195,
+        "sampled_seconds": 72.85203,
+        "sampled_soc_j": 32.196968
+      },
+      {
+        "name": "round1-libreoffice-work",
+        "samples": 72,
+        "mean_soc_w": 6.669365,
+        "sampled_seconds": 72.38705,
+        "sampled_soc_j": 482.775633,
+        "work_seconds": 61.051
+      },
+      {
+        "name": "round1-bdf-idle",
+        "samples": 72,
+        "mean_soc_w": 1.474574,
+        "sampled_seconds": 72.75862,
+        "sampled_soc_j": 107.287962
+      },
+      {
+        "name": "round1-bdf-work",
+        "samples": 72,
+        "mean_soc_w": 5.671626,
+        "sampled_seconds": 72.37863,
+        "sampled_soc_j": 410.504524,
+        "work_seconds": 60.132
+      },
+      {
+        "name": "round2-bdf-idle",
+        "samples": 72,
+        "mean_soc_w": 0.389316,
+        "sampled_seconds": 72.83919,
+        "sampled_soc_j": 28.357485
+      },
+      {
+        "name": "round2-bdf-work",
+        "samples": 72,
+        "mean_soc_w": 4.770619,
+        "sampled_seconds": 72.37155,
+        "sampled_soc_j": 345.257085,
+        "work_seconds": 60.062
+      },
+      {
+        "name": "round2-libreoffice-idle",
+        "samples": 72,
+        "mean_soc_w": 1.148641,
+        "sampled_seconds": 72.79874,
+        "sampled_soc_j": 83.619622
+      },
+      {
+        "name": "round2-libreoffice-work",
+        "samples": 72,
+        "mean_soc_w": 4.42628,
+        "sampled_seconds": 72.38559,
+        "sampled_soc_j": 320.398857,
+        "work_seconds": 61.305
+      },
+      {
+        "name": "round3-libreoffice-idle",
+        "samples": 72,
+        "mean_soc_w": 0.93174,
+        "sampled_seconds": 72.8257,
+        "sampled_soc_j": 67.854651
+      },
+      {
+        "name": "round3-libreoffice-work",
+        "samples": 72,
+        "mean_soc_w": 5.1779,
+        "sampled_seconds": 72.36081,
+        "sampled_soc_j": 374.677033,
+        "work_seconds": 62.921
+      },
+      {
+        "name": "round3-bdf-idle",
+        "samples": 72,
+        "mean_soc_w": 0.548759,
+        "sampled_seconds": 72.88201,
+        "sampled_soc_j": 39.994677
+      },
+      {
+        "name": "round3-bdf-work",
+        "samples": 72,
+        "mean_soc_w": 4.860718,
+        "sampled_seconds": 72.39474,
+        "sampled_soc_j": 351.890408,
+        "work_seconds": 60.147
+      }
+    ]
+  }
 }

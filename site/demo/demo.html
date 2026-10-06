@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>This is a PDF, drawn from bdf</title>
-<meta name="author" content="bdf">
-<meta name="description" content="The document the top page of the bdf site shows">
+<title>This is a PDF, drawn from BDF</title>
+<meta name="author" content="BDF">
+<meta name="description" content="The document the top page of the BDF site shows">
 <style>
 @page { size: A4; margin: 0; }
 * { box-sizing: border-box; }
@@ -38,12 +38,12 @@ li { margin-bottom: 1mm; }
 <body>
 
 <section class="page">
-  <div class="band"><b>bdf</b><span>Browser-specific Document Format</span></div>
-  <h1>This is a PDF, drawn from bdf</h1>
-  <p class="lead">The pages you are reading were a PDF file. A converter written in Go turned them into bdf, and a small renderer in your browser draws them on a canvas.</p>
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
+  <h1>This is a PDF, drawn from BDF</h1>
+  <p class="lead">The pages you are reading were a PDF file. A converter written in Go turned them into BDF, and a small renderer in your browser draws them on a canvas.</p>
 
   <h2>What happened to this file</h2>
-  <svg viewBox="0 0 660 150" role="img" aria-label="A PDF is converted to bdf on a server, and drawn by a worker in the browser">
+  <svg viewBox="0 0 660 150" role="img" aria-label="A PDF is converted to BDF on a server, and drawn by a worker in the browser">
     <defs>
       <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#e6f2ec"/></linearGradient>
       <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#59636e"/></marker>
@@ -54,7 +54,7 @@ li { margin-bottom: 1mm; }
       <rect x="182" y="30" width="120" height="70" rx="8" fill="url(#g1)" stroke="#1d6b40" stroke-width="1.5"/>
       <text x="242" y="61" font-weight="bold">Converter</text><text x="242" y="80" font-size="11" fill="#59636e">Go, one binary</text>
       <rect x="360" y="30" width="120" height="70" rx="8" fill="#1d6b40"/>
-      <text x="420" y="61" font-weight="bold" fill="#fff">bdf</text><text x="420" y="80" font-size="11" fill="#d6eadf">parts, by hash</text>
+      <text x="420" y="61" font-weight="bold" fill="#fff">BDF</text><text x="420" y="80" font-size="11" fill="#d6eadf">parts, by hash</text>
       <rect x="538" y="30" width="118" height="70" rx="8" fill="url(#g1)" stroke="#1d6b40" stroke-width="1.5"/>
       <text x="597" y="61" font-weight="bold">Renderer</text><text x="597" y="80" font-size="11" fill="#59636e">a Web Worker</text>
       <g stroke="#59636e" stroke-width="1.5" marker-end="url(#arrow)"><path d="M126 65H178"/><path d="M304 65H356"/><path d="M482 65H534"/></g>
@@ -76,13 +76,13 @@ li { margin-bottom: 1mm; }
     </ul>
   </div>
   <p class="note">Try the search box above the pages: look for <code>canvas</code>, or for <code>フォント</code>.</p>
-  <div class="footer"><span>bdf demo document</span><span>1 / 3</span></div>
+  <div class="footer"><span>BDF demo document</span><span>1 / 3</span></div>
 </section>
 
 <section class="page">
-  <div class="band"><b>bdf</b><span>Browser-specific Document Format</span></div>
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
   <h2 style="margin-top:0">What the browser already does</h2>
-  <p>A PDF viewer written in JavaScript brings its own font rasterizer, image decoders and decompression. bdf is stored in the forms browsers take as they are, so its renderer has little left to do.</p>
+  <p>A PDF viewer written in JavaScript brings its own font rasterizer, image decoders and decompression. BDF is stored in the forms browsers take as they are, so its renderer has little left to do.</p>
   <table>
     <tr><th>What</th><th>Stored as</th><th>Drawn with</th></tr>
     <tr><td>Drawing instructions</td><td>One to one with Canvas 2D calls</td><td><code>OffscreenCanvas</code> in a worker</td></tr>
@@ -93,19 +93,19 @@ li { margin-bottom: 1mm; }
   </table>
 
   <h2 lang="ja">日本語のページ</h2>
-  <p lang="ja">このページは PDF でした。Go で書かれた変換器が bdf に変換し、ブラウザの中の小さなレンダラが canvas に描いています。テキストは選択でき、検索もできます。「ふぉんと」とひらがなで検索しても「フォント」が見つかります。</p>
+  <p lang="ja">このページは PDF でした。Go で書かれた変換器が BDF に変換し、ブラウザの中の小さなレンダラが canvas に描いています。テキストは選択でき、検索もできます。「ふぉんと」とひらがなで検索しても「フォント」が見つかります。</p>
   <table lang="ja">
     <tr><th>対象</th><th>格納する形</th><th>ブラウザの API</th></tr>
     <tr><td>描画命令</td><td>Canvas 2D の呼び出しと 1 対 1</td><td><code>OffscreenCanvas</code></td></tr>
     <tr><td>フォント</td><td>使う字だけの WOFF2</td><td><code>FontFace</code></td></tr>
     <tr><td>画像</td><td>JPEG・PNG・WebP・SVG など</td><td><code>createImageBitmap</code></td></tr>
   </table>
-  <p class="note" lang="ja">bdf は文書を Part に分け、内容のハッシュで格納します。どのページも使うフォントは 1 度だけ保存され、ブラウザは表示するページに要る Part だけを取得します。</p>
-  <div class="footer"><span>bdf demo document</span><span>2 / 3</span></div>
+  <p class="note" lang="ja">BDF は文書を Part に分け、内容のハッシュで格納します。どのページも使うフォントは 1 度だけ保存され、ブラウザは表示するページに要る Part だけを取得します。</p>
+  <div class="footer"><span>BDF demo document</span><span>2 / 3</span></div>
 </section>
 
 <section class="page">
-  <div class="band"><b>bdf</b><span>Browser-specific Document Format</span></div>
+  <div class="band"><b>BDF</b><span>Browser-specific Document Format</span></div>
   <h2 style="margin-top:0">Shapes, gradients and a chart</h2>
   <p>Paths, clips, gradients and transparency are converted as they are. The chart below is vector art: its labels are text.</p>
   <svg viewBox="0 0 660 300" role="img" aria-label="A bar chart of four quarters and a line over it">
@@ -133,7 +133,7 @@ li { margin-bottom: 1mm; }
       <p>A sheet of a workbook is not cut into pages: it scrolls, as in a spreadsheet.</p>
     </div>
   </div>
-  <div class="footer"><span>bdf demo document</span><span>3 / 3</span></div>
+  <div class="footer"><span>BDF demo document</span><span>3 / 3</span></div>
 </section>
 
 </body>

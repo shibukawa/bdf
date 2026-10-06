@@ -75,8 +75,9 @@ def chart(data, ja):
              ('経過時間' if ja else 'Elapsed time', 's', [(w, r[w]['elapsed_seconds']) for w in ('libreoffice', 'bdf')]),
              ('CPU時間 (user + system)' if ja else 'CPU time (user + system)', 's', [(w, r[w]['cpu_seconds']) for w in ('libreoffice', 'bdf')]),
              ('推定SoC電力量' if ja else 'Estimated SoC energy', 'J/doc', [(w, data['power']['median_estimated_soc_j_per_document'][w]) for w in ('libreoffice', 'bdf')] if data['power'] else [])]
+    workflow_name = lambda workflow: 'LibreOffice + Poppler' if workflow == 'libreoffice' else 'BDF (Go)'
     parts = ['<svg xmlns="http://www.w3.org/2000/svg" width="760" height="368" viewBox="0 0 760 368" role="img" aria-labelledby="title description">',
-             f'<title id="title">{escape(title)}</title>', '<desc id="description">'+escape('; '.join(h+': '+', '.join(f'{w} {v:.3f} {unit}' for w,v in values) for h,unit,values in cards))+'</desc>', '<rect width="760" height="368" fill="#fff"/>', '<g font-family="-apple-system, BlinkMacSystemFont, Arial, sans-serif">']
+             f'<title id="title">{escape(title)}</title>', '<desc id="description">'+escape('; '.join(h+': '+', '.join(f'{workflow_name(w)} {v:.3f} {unit}' for w,v in values) for h,unit,values in cards))+'</desc>', '<rect width="760" height="368" fill="#fff"/>', '<g font-family="-apple-system, BlinkMacSystemFont, Arial, sans-serif">']
     def text(x,y,s,size=12,color='#52627a',weight=400):
         parts.append(f'<text x="{x}" y="{y}" font-size="{size}" font-weight="{weight}" fill="{color}">{escape(s)}</text>')
     text(24,33,title,22,'#182337',700)

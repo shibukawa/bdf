@@ -1,6 +1,6 @@
 # フォントとライセンス
 
-bdf 自体は [MIT ライセンス](https://github.com/shibukawa/bdf/blob/main/LICENSE)です。bdf が含む・配るフォントには、それぞれのライセンスがあります。
+BDF 自体は [MIT ライセンス](https://github.com/shibukawa/bdf/blob/main/LICENSE)です。bdf が含む・配るフォントには、それぞれのライセンスがあります。
 
 ## ライブラリに含まれるフォント
 
