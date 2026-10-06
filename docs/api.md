@@ -1,16 +1,16 @@
 # API 一覧
 
-bdf の公開 API をパッケージごとにまとめる。引数や細かい挙動は Go のパッケージコメント（`go doc`）と TypeScript の型定義に書いてある。フォーマットそのものは [spec.md](spec.md)、設計の理由は [design.md](design.md) を参照。
+BDF の公開 API をパッケージごとにまとめる。引数や細かい挙動は Go のパッケージコメント（`go doc`）と TypeScript の型定義に書いてある。フォーマットそのものは [spec.md](spec.md)、設計の理由は [design.md](design.md) を参照。
 
 使う場所ごとの入口は次のとおり。
 
 | やりたいこと | 使うもの |
 |---|---|
-| サーバーやバッチでファイルを bdf に変換する | Go の [`converter`](#go-変換converter) と形式ごとのパッケージ、または [`bdf` コマンド](#コマンドbdf) |
-| ブラウザの中でファイルを bdf に変換する | [wasm の変換器](#ブラウザ内変換cmdbdfwasm)（`cmd/bdfwasm`） |
-| bdf を自分で組み立てる・読む | Go の [`bdf`](#go-文書の組み立てと読み込みbdf) パッケージ |
-| bdf をブラウザに表示する | [`@bdfkit/render`](#typescript-bdfkitrender) の Worker とテキスト層 |
-| bdf を読んでテキストや構造を取り出す（Node でも） | [`@bdfkit/core`](#typescript-bdfkitcore) |
+| サーバーやバッチでファイルを BDF に変換する | Go の [`converter`](#go-変換converter) と形式ごとのパッケージ、または [`bdf` コマンド](#コマンドbdf) |
+| ブラウザの中でファイルを BDF に変換する | [wasm の変換器](#ブラウザ内変換cmdbdfwasm)（`cmd/bdfwasm`） |
+| BDF を自分で組み立てる・読む | Go の [`bdf`](#go-文書の組み立てと読み込みbdf) パッケージ |
+| BDF をブラウザに表示する | [`@bdfkit/render`](#typescript-bdfkitrender) の Worker とテキスト層 |
+| BDF を読んでテキストや構造を取り出す（Node でも） | [`@bdfkit/core`](#typescript-bdfkitcore) |
 | ログインした読者に文書を数ページずつ、要求ごとに封印して渡す | Go の [`segment`](#保護モードの配信segment) と [`(*Reader).WriteSegment`](#読み込み)、ブラウザは [`SegmentLoader`](#文書を開く)（レンダラの Worker では `{kind: "segments"}`） |
 | 数式を組んで画像・Ebitengine・Canvas に描く | Go の [`formula` と `raster/ebitenginebdf`](#go-数式formularasterebitenginebdf)。使い方は[描画する](rendering.ja.md) |
 | サーバーでサムネイル・ページの画像・検索用のテキストを作る | Go の [`thumbnail` と `imagebdf`](#go-サムネイルとページの画像thumbnailimagebdf)、[`Document.SearchText`](#読み込み)、または [`bdf` コマンド](#コマンドbdf) |
@@ -275,7 +275,7 @@ img, err := imagebdf.Object(l.Object(), 2, nil) // *image.RGBA
 | `encrypt` / `decrypt` | パスワードで暗号化する / 暗号化を外す |
 | `segment [flags] <file> <out.bdf>` | `-page`（1 始まり）を含む `-size`（既定 10）ページの区間を書く。`-view`、`-have 1-10,…`（持っているページ）、`-key <PEM>`（読者の P-256 の公開鍵に封印する。無ければ平文） |
 | `demo` | サンプル文書（testdata/demo.bdf と同じもの）を書く |
-| `thumbnail [flags] <file> <out.png \| .jpg \| .webp>` | サムネイルを描く。`file` は bdf か、`generate` が変換できる入力（そのときは 1 ページ目だけを変換する。`-view` を付けたときは全体。パスワード付きの入力は `$BDF_PASSWORD` と `-allow-plaintext` が要る）。`-size`（既定 256）、`-mode auto\|crop\|fit`、`-view`、`-sheet-dpi`（既定 72）、`-font-dir`、`-no-system-fonts` |
+| `thumbnail [flags] <file> <out.png \| .jpg \| .webp>` | サムネイルを描く。`file` は BDF か、`generate` が変換できる入力（そのときは 1 ページ目だけを変換する。`-view` を付けたときは全体。パスワード付きの入力は `$BDF_PASSWORD` と `-allow-plaintext` が要る）。`-size`（既定 256）、`-mode auto\|crop\|fit`、`-view`、`-sheet-dpi`（既定 72）、`-font-dir`、`-no-system-fonts` |
 | `text [flags] <file> [out.json]` | メタデータとページごとのテキストを JSON で書く（既定は標準出力） |
 | `render [flags] <file> <out.png \| .jpg \| .webp>` | ページを描く。`-view`、`-page`（1 始まり）、`-scale`、シートは A1 からの `-width`・`-height` |
 
@@ -283,7 +283,7 @@ img, err := imagebdf.Object(l.Object(), 2, nil) // *image.RGBA
 
 ## ブラウザ内変換（cmd/bdfwasm）
 
-`cmd/bdfwasm` は変換器を `GOOS=js GOARCH=wasm` でビルドしたもので、Go の `wasm_exec.js` とともに Worker で動かす（デモサイトは `examples/common/convert-worker.ts`）。起動すると `globalThis.bdfConverter` を設定する。`-tags pdfonly`、`officeonly`、`webonly`、`imageonly` で PDF 用、Office 系用、HTML・Markdown・EPUB 用、画像用に分けてビルドできる。`previewonly` は変換器を持たず、bdf のサムネイルと検索用テキストを作るモジュールになる（`thumbnail` と `text`）。
+`cmd/bdfwasm` は変換器を `GOOS=js GOARCH=wasm` でビルドしたもので、Go の `wasm_exec.js` とともに Worker で動かす（デモサイトは `examples/common/convert-worker.ts`）。起動すると `globalThis.bdfConverter` を設定する。`-tags pdfonly`、`officeonly`、`webonly`、`imageonly` で PDF 用、Office 系用、HTML・Markdown・EPUB 用、画像用に分けてビルドできる。`previewonly` は変換器を持たず、BDF のサムネイルと検索用テキストを作るモジュールになる（`thumbnail` と `text`）。
 
 | 名前 | 内容 |
 |---|---|
@@ -293,14 +293,14 @@ img, err := imagebdf.Object(l.Object(), 2, nil) // *image.RGBA
 | `stream.page(i)` | ページ i を変換し、`{bdf, warnings}`（そのページだけのページ文書と新しい警告）を返す |
 | `stream.finish()` | 残りを変換し、`convert` と同じ形の完成した文書を返す |
 | `stream.close()` | ストリームを手放す（`finish` のあとも呼ぶ） |
-| `thumbnail(bdf: Uint8Array, options?)` | `previewonly` のみ。単一ファイル形式の bdf のサムネイルを描き、`{image, format, width, height, mode, warnings}` を返す。`options` は `{size?, mode?, format?, view?, sheetDpi?, password?, fonts?}`（`size` は既定 256・最大 2048、`sheetDpi` は既定 72、`mode` は `auto`・`crop`・`fit`、`format` は `png`・`jpeg`。`bdf_noconv` でなければ `webp` も） |
+| `thumbnail(bdf: Uint8Array, options?)` | `previewonly` のみ。単一ファイル形式の BDF のサムネイルを描き、`{image, format, width, height, mode, warnings}` を返す。`options` は `{size?, mode?, format?, view?, sheetDpi?, password?, fonts?}`（`size` は既定 256・最大 2048、`sheetDpi` は既定 72、`mode` は `auto`・`crop`・`fit`、`format` は `png`・`jpeg`。`bdf_noconv` でなければ `webp` も） |
 | `text(bdf: Uint8Array, options?)` | `previewonly` のみ。`bdf text` と同じ JSON（メタデータとページごとのテキスト）を `{json}` で返す。`options` は `{password?}` |
 
 `options` は `{format?, password?, fonts?, name?, pages?}`。`pages` は `bdf generate -pages` と同じ書き方で、変換するページ（スライド、シート）を選ぶ（サムネイルだけなら `"1"`）。`fonts` はフォントのディレクトリの URL で、`index.json` にファイルとフォント走査の範囲（テーブルディレクトリ、`name`・`OS/2`・`post`・`cmap`）を並べておく（`site/build.mjs` が作る）。フォールバック探索では `cmap` に文字があるフォントだけ全体を取得する。失敗した Promise の Error は、パスワードが要る・違う・形式が分からないときに `code` が `"password-required"`、`"wrong-password"`、`"unknown-format"` になる。返す文書は入力が暗号化されていても暗号化しない。
 
 ## TypeScript: @bdfkit/core
 
-bdf を読むためのパッケージ（`packages/core`）。DOM に依存しないので Node でも動く。
+BDF を読むためのパッケージ（`packages/core`）。DOM に依存しないので Node でも動く。
 
 ### 文書を開く
 

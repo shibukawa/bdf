@@ -14,7 +14,7 @@ export const SECTIONS = [
     title: { en: "Introduction", ja: "はじめに" },
     pages: [
       page("index", "Documentation", "ドキュメント"),
-      page("why", "Why bdf", "なぜ bdf か"),
+      page("why", "Why BDF", "なぜ BDF か"),
       page("getting-started", "Getting started", "はじめかた"),
       page("npm", "npm packages", "npm パッケージ"),
       page("integrating-to-frontend", "Integrating into a frontend", "フロントエンドに組み込む"),

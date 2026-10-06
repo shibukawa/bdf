@@ -150,7 +150,7 @@ func writeThumbnail(path string, d *bdf.Document) error {
 
 var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
 <meta charset="utf-8">
-<title>search: bdf sample architecture</title>
+<title>search: BDF sample architecture</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root { color-scheme: light dark; font: 16px system-ui, sans-serif; }

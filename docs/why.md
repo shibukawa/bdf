@@ -1,10 +1,30 @@
-# Why bdf
+# Why BDF
+
+## Measured memory, CPU time, and energy
+
+Go and LibreOffice → PDF → Poppler were remeasured on the same Apple M3 Mac on AC power. Each workflow converts an Office file and creates a 256 px first-page thumbnail.
+
+[![Latest AC memory, CPU, and energy comparison](./images/why-economy.en.svg)](./images/why-economy.en.svg)
+
+| Input | RSS: LibreOffice / Go (MiB) | Elapsed: LibreOffice / Go (s) | CPU: LibreOffice / Go (s) |
+|---|---:|---:|---:|
+| Small DOCX | 161.8 / 70.0 | 0.69 / 0.06 | 0.67 / 0.06 |
+| Small PPTX | 147.3 / 53.1 | 1.01 / 0.05 | 1.02 / 0.05 |
+| Small XLSX | 123.7 / 52.1 | 0.65 / 0.05 | 0.63 / 0.05 |
+| Synthetic XLSX (4 sheets × 3,000 rows) | 288.3 / 53.0 | 1.55 / 0.41 | 1.62 / 0.49 |
+| Synthetic PPTX (100 slides) | 1918.9 / 42.6 | 56.38 / 0.18 | 68.30 / 0.24 |
+
+Time and memory are medians of 5 runs after warmup. RSS is peak resident memory; CPU time is user + system; elapsed time includes startup, conversion, and output. LibreOffice and Poppler run sequentially, so their pipeline peak is the larger stage peak and their times are added. Output formats and visual results differ.
+
+Estimated SoC energy: LibreOffice **4.267 J/document** (round range 3.295–7.155), Go **0.274 J/document** (0.272–0.277). Both workflows used AC power for 3 rounds.
+
+See the [latest results and conditions](benchmarks/latest.json) and [measurement procedure](process-memory-review.ja.md). Raw logs stay in the local results directory outside Git.
 
 ## No office suite to run
 
-Previewing an Office file in a browser usually means running LibreOffice or OpenOffice headless on a server and converting it to PDF. That install is over a gigabyte before it does anything, and a headless office suite needs a process to start, keep alive, and isolate — one malformed file can wedge it.
+Previewing an Office file in a browser usually means running LibreOffice or OpenOffice headless on a server and converting it to PDF. A headless office suite needs a process to start, keep alive, and isolate — one malformed file can wedge it.
 
-bdf's converters are Go packages that use no cgo and no external program, and [the many formats in the table below](#formats) all convert in one binary. Built as WebAssembly, the same code converts inside the browser too — gzipped, about 7.3 MB for the PDF module and about 7.8 MB for the Office/CAD/KiCad/font module — so a file never has to leave the browser at all. Thumbnails and search text come from the same process. Pages are drawn by a pure-Go rasterizer; no browser is needed on the server either.
+BDF's converters are Go packages that use no cgo and no external program, and [the many formats in the table below](#formats) all convert in one binary. Built as WebAssembly, the same code converts inside the browser too — gzipped, about 7.3 MB for the PDF module and about 7.8 MB for the Office/CAD/KiCad/font module — so a file never has to leave the browser at all. Thumbnails and search text come from the same process. Pages are drawn by a pure-Go rasterizer; no browser is needed on the server either.
 
 ## Only the converters you need
 
@@ -14,7 +34,7 @@ There are many formats, but you don't have to carry them all. Each converter is 
 
 A PDF cuts everything into sheets of paper. Print a spreadsheet and a wide table is sliced across page boundaries, so you lose the row you were following and can't find the cell you wanted; frozen headers and gridlines disappear, and the sheets you switched between in the workbook become one run of pages. A Word document is stuck reading page by page too.
 
-bdf has three layout models, one for each kind of content:
+BDF has three layout models, one for each kind of content:
 
 - **Fixed pages** — slides, drawings, PDFs, artboards: a fixed size per page.
 - **An endless plane** — worksheets: drawn in tiles, with frozen panes, row and column headers, and gridlines. A sheet is never cut into printed pages.
@@ -62,6 +82,6 @@ A structural layer tells screen readers about headings, lists, tables, figures w
 
 ## Made for browsers
 
-The instruction set maps one to one onto Canvas 2D. Fonts are WOFF2 for `FontFace`, images are in whatever format the browser can decode itself, and a Part's compression is what `DecompressionStream` can inflate. Font rasterization, image decoding and decompression — the tens of thousands of lines a PDF viewer like pdf.js reimplements — are left to the browser, so bdf's decoder and renderer are about 3,400 lines of TypeScript (the renderer's worker is 21 KB gzipped). Drawing happens on an `OffscreenCanvas` in a Worker; the main thread only places the bitmap. Parts are content-addressed, so a master or a repeated element is stored once, and the viewer fetches only the Parts a visible page needs — by range request, or from a split layout on a CDN. A PDF converted in the browser is drawn page by page as it converts, the visible page first.
+The instruction set maps one to one onto Canvas 2D. Fonts are WOFF2 for `FontFace`, images are in whatever format the browser can decode itself, and a Part's compression is what `DecompressionStream` can inflate. Font rasterization, image decoding and decompression — the tens of thousands of lines a PDF viewer like pdf.js reimplements — are left to the browser, so BDF's decoder and renderer are about 3,400 lines of TypeScript (the renderer's worker is 21 KB gzipped). Drawing happens on an `OffscreenCanvas` in a Worker; the main thread only places the bitmap. Parts are content-addressed, so a master or a repeated element is stored once, and the viewer fetches only the Parts a visible page needs — by range request, or from a split layout on a CDN. A PDF converted in the browser is drawn page by page as it converts, the visible page first.
 
 See [Formats](formats/index.md) for what each converter keeps and how it lays its input out, and [Architecture](architecture/index.md) for how conversion and rendering fit together.

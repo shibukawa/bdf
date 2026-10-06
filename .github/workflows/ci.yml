@@ -29,111 +29,126 @@ jobs:
       - name: build without image codecs (browser / tinygo profile)
         run: go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/
       - name: testdata is up to date
+        id: fixtures
         run: |
+          stale=0
+          check_fixture() {
+            if ! cmp "$1" "$2"; then
+              mkdir -p "/tmp/regenerated-bdf-fixtures/$(dirname "$2")"
+              cp "$1" "/tmp/regenerated-bdf-fixtures/$2"
+              stale=1
+            fi
+          }
           go run ./cmd/bdf demo /tmp/demo.bdf
-          cmp /tmp/demo.bdf testdata/demo.bdf
+          check_fixture /tmp/demo.bdf testdata/demo.bdf
           for f in converter/pdf/testdata/*.pdf; do
             n=$(basename "$f" .pdf)
             go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/pdf/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/pdf/$n.bdf"
           done
           for f in converter/pptx/testdata/*.pptx; do
             n=$(basename "$f" .pptx)
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/pptx/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/pptx/$n.bdf"
           done
           for f in converter/xlsx/testdata/*.xlsx; do
             n=$(basename "$f" .xlsx)
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/xlsx/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/xlsx/$n.bdf"
           done
           for f in shapes.vsdx flow.vdx; do
             n=${f%.*}
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/visio/testdata/$f" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/visio/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/visio/$n.bdf"
           done
           for n in shapes layout r12-sjis; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/dxf/testdata/$n.dxf" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/dxf/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/dxf/$n.bdf"
           done
           for n in shapes old; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/jww/testdata/$n.jww" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/jww/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/jww/$n.bdf"
           done
           go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts converter/sxf/testdata/shapes.p21 /tmp/shapes.bdf
-          cmp /tmp/shapes.bdf testdata/sxf/shapes.bdf
+          check_fixture /tmp/shapes.bdf testdata/sxf/shapes.bdf
           for n in shapes illustration sjis; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/cgm/testdata/$n.cgm" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/cgm/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/cgm/$n.bdf"
           done
           for n in shapes job hpgl1; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/hpgl/testdata/$n.plt" "/tmp/$n-hpgl.bdf"
-            cmp "/tmp/$n-hpgl.bdf" "testdata/hpgl/$n.bdf"
+            check_fixture "/tmp/$n-hpgl.bdf" "testdata/hpgl/$n.bdf"
           done
           for f in converter/docx/testdata/*.docx; do
             n=$(basename "$f" .docx)
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/docx/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/docx/$n.bdf"
           done
           for f in converter/csv/testdata/*.csv converter/csv/testdata/*.tsv; do
             n=$(basename "${f%.*}")
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/csv/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/csv/$n.bdf"
           done
           for f in converter/drawio/testdata/*.drawio; do
             n=$(basename "$f" .drawio)
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/drawio/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/drawio/$n.bdf"
           done
           for f in converter/tiff/testdata/*.tif; do
             n=$(basename "$f" .tif)
             go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/tiff/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/tiff/$n.bdf"
           done
           for f in converter/markdown/testdata/*.md converter/html/testdata/*.html; do
             k=$(basename "$(dirname "$(dirname "$f")")")
             n=$(basename "${f%.*}")
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts -param remote=false "$f" "/tmp/$k-$n.bdf"
-            cmp "/tmp/$k-$n.bdf" "testdata/$k/$n.bdf"
+            check_fixture "/tmp/$k-$n.bdf" "testdata/$k/$n.bdf"
           done
           go run ./cmd/bdf generate -q converter/ai/testdata/artboards.ai /tmp/artboards-ai.bdf
-          cmp /tmp/artboards-ai.bdf testdata/ai/artboards.bdf
+          check_fixture /tmp/artboards-ai.bdf testdata/ai/artboards.bdf
           for n in layers artboards; do
             go run ./cmd/bdf generate -q "converter/psd/testdata/$n.psd" "/tmp/$n-psd.bdf"
-            cmp "/tmp/$n-psd.bdf" "testdata/psd/$n.bdf"
+            check_fixture "/tmp/$n-psd.bdf" "testdata/psd/$n.bdf"
           done
           for f in converter/image/testdata/*; do
             n=$(basename "${f%.*}")
             go run ./cmd/bdf generate -q "$f" "/tmp/$n.bdf"
-            cmp "/tmp/$n.bdf" "testdata/image/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/image/$n.bdf"
           done
           go run ./cmd/bdf generate -q converter/gerber/testdata/board.zip /tmp/board-gerber.bdf
-          cmp /tmp/board-gerber.bdf testdata/gerber/board.bdf
+          check_fixture /tmp/board-gerber.bdf testdata/gerber/board.bdf
           go run ./cmd/bdf generate -q converter/gerber/testdata/features.gbr /tmp/features-gerber.bdf
-          cmp /tmp/features-gerber.bdf testdata/gerber/features.bdf
+          check_fixture /tmp/features-gerber.bdf testdata/gerber/features.bdf
           for f in converter/epub/testdata/*.epub; do
             n=$(basename "$f" .epub)
             go run ./cmd/bdf generate -q -font-dir converter/docx/testdata/fonts -no-system-fonts "$f" "/tmp/epub-$n.bdf"
-            cmp "/tmp/epub-$n.bdf" "testdata/epub/$n.bdf"
+            check_fixture "/tmp/epub-$n.bdf" "testdata/epub/$n.bdf"
           done
           for f in converter/parquet/testdata/*.parquet; do
             n=$(basename "$f" .parquet)
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/parquet-$n.bdf"
-            cmp "/tmp/parquet-$n.bdf" "testdata/parquet/$n.bdf"
+            check_fixture "/tmp/parquet-$n.bdf" "testdata/parquet/$n.bdf"
           done
           for f in mml/testdata/frere.mml:frere-mml mml/testdata/ode.mml:ode-mml midi/testdata/twinkle.kar:twinkle-kar \
             musicxml/testdata/minuet.musicxml:minuet-musicxml musicxml/testdata/ode_to_joy.mxl:ode-mxl; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/${f%%:*}" "/tmp/${f##*:}.bdf"
-            cmp "/tmp/${f##*:}.bdf" "testdata/music/${f##*:}.bdf"
+            check_fixture "/tmp/${f##*:}.bdf" "testdata/music/${f##*:}.bdf"
           done
           for f in demo.zip:demo frame/frame.kicad_pro:frame; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/kicad/testdata/${f%%:*}" "/tmp/kicad-${f##*:}.bdf"
-            cmp "/tmp/kicad-${f##*:}.bdf" "testdata/kicad/${f##*:}.bdf"
+            check_fixture "/tmp/kicad-${f##*:}.bdf" "testdata/kicad/${f##*:}.bdf"
           done
           for f in stix.otf:stix restricted.ttf:restricted; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/font/testdata/${f%%:*}" "/tmp/${f##*:}-font.bdf"
-            cmp "/tmp/${f##*:}-font.bdf" "testdata/font/${f##*:}.bdf"
+            check_fixture "/tmp/${f##*:}-font.bdf" "testdata/font/${f##*:}.bdf"
           done
+          test "$stale" -eq 0
+      - uses: actions/upload-artifact@v7
+        if: failure() && steps.fixtures.outcome == 'failure'
+        with:
+          name: regenerated-bdf-fixtures
+          path: /tmp/regenerated-bdf-fixtures/
   web:
     runs-on: ubuntu-latest
     steps:

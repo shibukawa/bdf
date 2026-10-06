@@ -178,10 +178,44 @@ for (const { name, format, bdf } of converted) {
   console.log("ok   testdata/demo.bdf and demo-encrypted.bdf: JPEG, sizes, passwords");
 }
 
+// the home pages show the measured comparison below the viewer in both languages
+for (const page of ["index.html", "index.ja.html"]) {
+  const html = await readFile(join(site, page), "utf8");
+  const introduction = page.endsWith(".ja.html")
+    ? ["BDF は、ブラウザ向けの文書プレビュースイートです", "gzip 圧縮後約 23 KB", "PDF が PostScript をベースにした", "Canvas 2D の描画命令"]
+    : ["BDF is a browser document-preview suite", "about 23 KB gzipped", "PDF is a portable, PostScript-based format for printing", "Canvas 2D drawing commands"];
+  for (const phrase of introduction) assert.ok(html.includes(phrase), `${page}: introduction includes ${phrase}`);
+  const viewer = html.indexOf('id="demo-title"');
+  const benchmark = html.indexOf('id="benchmark-title"');
+  const gallery = html.indexOf('id="gallery-title"');
+  assert.ok(viewer >= 0 && viewer < benchmark && benchmark < gallery, `${page}: benchmark follows the viewer`);
+  const timeChart = html.indexOf('id="benchmark-time-title"');
+  const memoryChart = html.indexOf('id="benchmark-memory-title"');
+  const energyChart = html.indexOf('id="benchmark-energy-title"');
+  assert.ok(benchmark < timeChart && timeChart < memoryChart && memoryChart < energyChart && energyChart < gallery,
+    `${page}: charts are ordered by time, memory and energy`);
+  const energyRanges = page.endsWith(".ja.html")
+    ? ["3.30–7.16、", "0.27–0.28。"]
+    : ["3.30–7.16 J/document", "0.27–0.28 J/document"];
+  for (const result of ["4.27 J", "0.27 J", ...energyRanges, "56.38 s", "0.18 s", "1,918.9 MiB", "42.6 MiB", "94%", "313×", "45×", "LibreOffice + Poppler"]) {
+    assert.ok(html.includes(result), `${page}: benchmark includes ${result}`);
+  }
+}
+
 // the documentation pages
 for (const page of ["index.html", "index.ja.html", "formats/spreadsheet.html", "examples/search.ja.html", "api.html", "spec.html", "design.html"]) {
   const html = await readFile(join(site, "docs", page), "utf8");
   assert.doesNotMatch(html, /href="(?!https?:)[^"]*\.md(#[^"]*)?"/, `docs/${page} links to Markdown`);
+}
+
+// the graphs in why are relative to their pages and copied into the site
+for (const page of ["why.html", "why.ja.html"]) {
+  const html = await readFile(join(site, "docs", page), "utf8");
+  const image = html.match(/<img src="([^"]*why-economy\.(?:en|ja)\.svg)"/);
+  assert.ok(image, `docs/${page} includes its comparison graph`);
+  const response = await fetch(new URL(image[1], new URL(page, `${base}docs/`)));
+  assert.equal(response.status, 200, `docs/${page}'s graph is reachable`);
+  assert.match(response.headers.get("content-type") ?? "", /^image\/svg\+xml(?:;|$)/, `docs/${page}'s graph is served as SVG`);
 }
 
 // errors carry the codes the page acts on

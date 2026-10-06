@@ -41,7 +41,7 @@ wasm が意味を持つケース:
 
 ### ブラウザ内変換（cmd/bdfwasm）
 
-変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の bdf を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`site/build.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
+変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の BDF を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`site/build.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
 
 - **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・楽譜・フォント・メタファイル・Photoshop・画像。約 26.6 MB、gzip 7.8 MB。Parquet で約 1.1 MB、KiCad で約 1 MB（gzip 0.3 MB）増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。サムネイルと検索用テキスト（§3.25）は、変換器を持たない `previewonly` のモジュールにした。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
 - **フォントは fs.FS で渡す**: ブラウザにはフォントのディレクトリが無い。`converter.Options.FontFS` で任意の `fs.FS` をフォントの探索元にできるようにし（`FontDirs` より先に探す）、wasm 側では Web 上のディレクトリをそれとして実装した。`index.json` にファイル名、サイズと、フォントの走査と文字カバレッジ判定が読む範囲（テーブルディレクトリと name・OS/2・post・cmap テーブル）を書いておき、cmap が 16 MiB 以下なら最初の変換でその範囲も並列に Range 取得する。フォールバック探索は候補フェイスの cmap で文字の有無を確かめてから全体を読むため、文書が使う文字を持つフェイスだけが全体取得の対象になる。16 MiB を超える cmap は範囲を先読みせず、既存の全体読み込みで判定する。取得した範囲と全体データはモジュールが生きている間保持する（2 回目以降の変換は通信しない）。サイトのフォントは CI が Ubuntu のパッケージから集める: Liberation（Arial、Times New Roman、Courier New の代替）、Carlito（Calibri）、Caladea（Cambria）、IPAex（日本語）、DejaVu（記号）。
@@ -517,7 +517,7 @@ Word・PowerPoint・Excel の Office Math（OMML）、HTML の MathML、Markdown
 - **CFF のサブセット化**: 数式フォントの多く（STIX Two Math、Latin Modern Math、macOS の STIXTwoMath.otf）は CFF なので、PDF の変換器の CFF サブセット化（§3.1）を `internal/cff` に移し、フォントの埋め込み（`fontdb`）でも使うようにした。STIX Two Math（838 KB）は math.docx で 31 KB の WOFF2 になる。Office 系の変換器でも、CFF の OpenType フォント（和文の OTF など）がサブセットで埋め込まれるようになった。
 - **パッケージの分け方**: 木・3 つの読み手・組版は `internal/mathlayout` にあり、フォントは `Face`（`fontdb.Loaded` と、使う側が自分のフォントを引くための `Host`）、字幅の記録と符号位置のない異体字の文字は `Fonts` のコールバックで受け取る。`fontset` にも `canvas` にも依存しないので、変換器の外からも使える。組んだ結果（`Box`）は `Items()` でグリフ（フェイスとグリフ番号）・線・ストロークの並びとして読める。`converter/internal/equation` は変換器用の薄い層で、文書の `fontset.Set` をフォントとして渡し（サブセットに入れる字を記録し、異体字には私用領域の字を割り当てる）、上の「描画」のとおり埋め込みフォントのテキストとして `canvas` に描く。OMML の読み手が受け取る XML の木（`ooxml.Node`）は、変換器の外から参照できるよう `internal/xmltree` に移し、`ooxml` は別名で公開する。
 - **単体の数式（`formula`）**: 公開パッケージ `formula` は同じエンジンを、同梱の STIX Two Math（`go:embed`、838 KB。`Options` で差し替え・`\text{}` 用のフォントを追加できる）で動かし、結果を**パスだけの Object** にする（`Layout.Object`、`Layout.Draw`）。グリフはその大きさの輪郭を Object のパス表に 1 つずつ持ち、色の続く範囲ごとに FILL_PATH_RUN で置く。線は FILL_RECT、囲みや取り消し線は STROKE_PATH。フォントの Part を参照しないので、文書に入れずに描ける: 画像は `imagebdf.Object`、Ebitengine は `raster/ebitenginebdf`、ブラウザは `Layout.Document`（線形表記の ALT_TEXT を持つ 1 ページの文書）を `@bdfkit/render` で描く。文書の中の数式がテキストのままなのは、文書全体でグリフを共有できるからである。
-- **Ebitengine の描き手（`raster/ebitenginebdf`）**: Ebitengine への依存を bdf 本体に持ち込まないよう、独自の `go.mod` を持つ別モジュールにした。`raster/internal/shapes` が Object の命令列を図形の並びに展開し（変換を座標に適用し、矩形・楕円・arcTo・角丸矩形を直線と 3 次ベジェにし、状態の色とアルファを図形ごとに確定する。`imagebdf` で元の Object と同じ絵になることをテストする）、`ebitenginebdf` はそれを `vector.Path` にして `vector.FillPath`・`vector.StrokePath` で描く。描けるのは単色のパスだけで、テキスト・画像・グラデーション・クリップ・グループ・マスク・破線は `UnsupportedError` にする。文書のページはこれらを含むので、Ebitengine では `imagebdf` で画像にしてから表示する。
+- **Ebitengine の描き手（`raster/ebitenginebdf`）**: Ebitengine への依存を BDF 本体に持ち込まないよう、独自の `go.mod` を持つ別モジュールにした。`raster/internal/shapes` が Object の命令列を図形の並びに展開し（変換を座標に適用し、矩形・楕円・arcTo・角丸矩形を直線と 3 次ベジェにし、状態の色とアルファを図形ごとに確定する。`imagebdf` で元の Object と同じ絵になることをテストする）、`ebitenginebdf` はそれを `vector.Path` にして `vector.FillPath`・`vector.StrokePath` で描く。描けるのは単色のパスだけで、テキスト・画像・グラデーション・クリップ・グループ・マスク・破線は `UnsupportedError` にする。文書のページはこれらを含むので、Ebitengine では `imagebdf` で画像にしてから表示する。
 - **行の中の数式**: `wordproc` のインラインオブジェクトにベースラインより下の深さを足し、行の高さを数式の高さと深さで広げる。OMML の `m:oMathPara` は数式ごとに行を分け、段落が数式だけなら `m:jc`（既定は中央）で揃える。MathML の `display="block"` と Markdown の `$$` は中央に置いた段落になる。PowerPoint と Excel の図形のテキスト（DrawingML のテキストエンジン）と draw.io のラベルでは、数式は数式の幅の item になり、同じ規則で行に置く（§3.4、§3.11）。
 - **Office の文書ごとの違い**: Word は run の書式を `w:rPr` に、`m:t` に文字を普通に書く。PowerPoint と Excel は `mc:AlternateContent` の Choice の `a14:m` に数式を書き（Fallback は画像か線形表記の文字列）、run の書式は継承のある `a:rPr`（読み手に `OMML.RunStyle` を渡して解決する）、文字は数学用英数字（𝑥）で書く。読み手は数学用英数字を元の文字と書体（𝑥 → イタリックの x）に戻すので、どれも同じ木になる。
 - **Web ページの数式**: KaTeX（`katex-mathml` と見た目用の `katex-html`）、MathJax 3（`mjx-assistive-mml`）、Wikipedia（隠した MathML と数式の画像）は、MathML の横に独自の描画を置いてスタイルシートで片方を隠す。リーダー表示はスタイルシートを読まないので、記事を取り出す前に（Readability はクラス名を消す）MathML だけを残す。MathJax 2 の `script type="math/tex"` と GitHub の `math-renderer` は、LaTeX を TeX の注釈として持つ math 要素にする。書き換えは `converter/internal/webdoc` の `NormalizeMath` で、EPUB も使う（§3.24）。
@@ -549,9 +549,9 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 
 ## 3.25 サーバー側のサムネイルと検索用テキスト（imagebdf、thumbnail、SearchText）
 
-文書の一覧にはサムネイルが、サーバー側の全文検索には文書のテキストが要る。どちらも bdf を作るのと同時に作れば、元のファイルを読み直さずに済む。パスワード付きの入力なら、平文を持っているのは変換の間だけでもある（§3.7）。
+文書の一覧にはサムネイルが、サーバー側の全文検索には文書のテキストが要る。どちらも BDF を作るのと同時に作れば、元のファイルを読み直さずに済む。パスワード付きの入力なら、平文を持っているのは変換の間だけでもある（§3.7）。
 
-**描き方**: ヘッドレス Chromium で `@bdfkit/render` を動かせば、ビューアと 1 画素も違わない画像が得られる（golden テストの `test/render.mjs` がそうしている）。しかしそれにはサーバーに Chromium（数百 MB）を入れ、プロセスを起動・維持・隔離しなければならない。LibreOffice をやめる理由（README の Why bdf）と同じ重さを、サムネイルのために背負い直すことになる。そこで純 Go のラスタライザ `imagebdf` を書いた。変換器と同じく cgo も外部プログラムも使わず、変換と同じプロセスで、変換した `*bdf.Document` をそのまま描く。§2 の「ビューアで Go/wasm は使わない」は変わらない。ビューアは TS のままで、`imagebdf` はサーバーで使う第 2 の描き手である（デモサイトは、サーバーが作るものを見せるためにこれも wasm で動かす。後述）。
+**描き方**: ヘッドレス Chromium で `@bdfkit/render` を動かせば、ビューアと 1 画素も違わない画像が得られる（golden テストの `test/render.mjs` がそうしている）。しかしそれにはサーバーに Chromium（数百 MB）を入れ、プロセスを起動・維持・隔離しなければならない。LibreOffice をやめる理由（README の Why BDF）と同じ重さを、サムネイルのために背負い直すことになる。そこで純 Go のラスタライザ `imagebdf` を書いた。変換器と同じく cgo も外部プログラムも使わず、変換と同じプロセスで、変換した `*bdf.Document` をそのまま描く。§2 の「ビューアで Go/wasm は使わない」は変わらない。ビューアは TS のままで、`imagebdf` はサーバーで使う第 2 の描き手である（デモサイトは、サーバーが作るものを見せるためにこれも wasm で動かす。後述）。
 
 **命令の解釈**は TS の `CanvasRenderer` と同じ状態機械にした。SAVE・RESTORE のスタック、USE の暗黙の save/restore、トップレベルの Object（ページのレイヤー、シートのタイル）は変換とクリップ以外を初期状態から始めること、グループの一時キャンバスは変換と塗り・線・線幅・フォントだけを引き継ぐこと、ソフトマスク（輝度・アルファ・転送関数）、影の大きさを設定時の変換の拡大率で決めること（spec §7.2）。どれも TS の実装を写した。
 
@@ -568,7 +568,7 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 
 **確かめ方**: Go のテスト（`raster/imagebdf/golden_test.go`）は、ブラウザの golden テストのケース（`test/page/harness.ts`）を読んで同じページ・範囲を描き、Chromium の golden PNG と比べる。どちらも 4 分の 1 に縮めてから、チャンネルの平均の差（4/255 未満）と、差が 48 を超える画素の割合（3 % 未満）を測る。縮めるのは、ヒンティングやアンチエイリアスの画素単位の違いではなく、サムネイルとして見える違いを測るためである。フォントはリポジトリのテスト用のものだけにして（`NoSystemFonts`）、どのマシンでも同じ結果にした。基準を緩めたケースは 3 つある。192 dpi のスキャンを 2.7 分の 1 に縮めるページ（ミップマップとバイリニアの違い）、チェッカーボードの画像を 2 倍にするページ（縁が半画素ずれる）、テスト用のフォントにない中国語と韓国語のページ（名前で参照する CJK フォント）である。AVIF のケースは描かないので飛ばす。初めて比べたとき、JPEG の EXIF の向きを見ていないことが見つかった。実物の本（EPUB）と Illustrator・Photoshop のファイルでもサムネイルを確かめた。変換とサムネイルとテキストを合わせて、900 ページの本で 1 秒かからない。
 
-**サムネイルのレイアウト**（`thumbnail`）は文書の種類で決める。種類は変換器が書く `Meta.Source`（既存の bdf からでも分かる）と View の種類で見る。
+**サムネイルのレイアウト**（`thumbnail`）は文書の種類で決める。種類は変換器が書く `Meta.Source`（既存の BDF からでも分かる）と View の種類で見る。
 
 | 種類 | レイアウト |
 |---|---|
@@ -577,17 +577,17 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 | PDF、TIFF | 縦長のページは文書として Crop、横長のページはスライドとして全体（Fit） |
 | PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB | 1 ページ目の全体を、長辺が指定の大きさになるように（Fit）。EPUB は 1 ページ目が表紙 |
 
-サムネイルが見せるのは最初の View の 1 ページ目だけなので、サムネイルのためだけに変換するなら 1 ページ目だけを変換すればよい（`converter.Options{Pages: converter.PageList(1)}`）。`bdf thumbnail` に bdf でない入力を渡したとき、デモサイトのサムネイルのページ、light-server はそうしている。全形式のテストデータと手元の実データで、全体を変換したときとサムネイルが画素まで同じになることを確かめた。545 ページの PDF で 17 秒が 30 ミリ秒になる。
+サムネイルが見せるのは最初の View の 1 ページ目だけなので、サムネイルのためだけに変換するなら 1 ページ目だけを変換すればよい（`converter.Options{Pages: converter.PageList(1)}`）。`bdf thumbnail` に BDF でない入力を渡したとき、デモサイトのサムネイルのページ、light-server はそうしている。全形式のテストデータと手元の実データで、全体を変換したときとサムネイルが画素まで同じになることを確かめた。545 ページの PDF で 17 秒が 30 ミリ秒になる。
 
 `-thumbnail-mode crop|fit`（`Options.Mode`）で指定もできる。シートの範囲を初めはシートの短い辺（480 単位まで）にしていたが、256 画素のサムネイルでは 1 行が 8 画素ほどになり字が潰れた。行や列の数ではなく解像度で決めれば、小さいサムネイルほど狭い範囲を、同じ大きさの字で見せられる。下限は 64 画素でも表に見えるだけの行と列（既定の列幅で 1 列半）を残すため、上限は大きいサムネイルでも A1 の角を見せるためである。解像度は `-thumbnail-sheet-dpi`（`Options.SheetDPI`）で変えられる。Fit の出力は正方形にしない（縦横比を保つ）。並べるときは CSS の `object-fit: contain` で収めればよい。出力は PNG、JPEG、WebP（`imgconv` の純 Go のエンコーダ）。
 
 **検索用テキスト**（`Document.SearchText`）はテキスト索引 Part（§4、spec §7.9）から作る。ビューアの検索と同じものなので、変換器が MARK で付けた区切り（行・段落・セル）がそのまま使える。索引のない View は Object から取り出す。ページ番号（1 始まり）は検索のヒットから `#page=N` で開くのに使える。シートはシート全体で 1 つにする。Word・Markdown・EPUB は同じ本文を page View と scroll View の両方に組むことがあるので、flow View がある文書では scroll View を除く。正規化（NFKC、かな）は検索エンジンに任せ、テキストはそのまま出す。
 
-**パスワード付きの入力**: サムネイルもテキストも暗号化されない。サムネイルは 1 ページ目の中身を見せるので、テキストと同じ扱いにした。`bdf generate` は、暗号化して書き出す文書（既定ではパスワード付きの入力のもの）について、`-allow-plaintext` がなければどちらも書かない。`bdf thumbnail`・`text`・`render` も、暗号化された bdf は `$BDF_PASSWORD` と `-allow-plaintext` の両方がなければ描かない。ライブラリの API（`thumbnail.Make`、`SearchText`）は復号した文書を受け取るだけなので、作るかどうかは呼び出し側が `Result.Protected` や `Document.Lock` を見て決める。
+**パスワード付きの入力**: サムネイルもテキストも暗号化されない。サムネイルは 1 ページ目の中身を見せるので、テキストと同じ扱いにした。`bdf generate` は、暗号化して書き出す文書（既定ではパスワード付きの入力のもの）について、`-allow-plaintext` がなければどちらも書かない。`bdf thumbnail`・`text`・`render` も、暗号化された BDF は `$BDF_PASSWORD` と `-allow-plaintext` の両方がなければ描かない。ライブラリの API（`thumbnail.Make`、`SearchText`）は復号した文書を受け取るだけなので、作るかどうかは呼び出し側が `Result.Protected` や `Document.Lock` を見て決める。
 
 **wasm の引数**: `cmd/bdfwasm` のメソッドは、引数が `Uint8Array` でないときや、引数を読む間にパニックしたときに、Promise を reject する（以前は Go のプログラムが終了し、その後の呼び出しがすべて失敗していた）。
 
-**デモサイト**: `cmd/bdfwasm` を `-tags previewonly` でビルドした 5 つ目のモジュール（`bdf-preview.wasm`、約 9.5 MB、gzip 2.8 MB）は変換器を持たず、`imagebdf`・`thumbnail`・`SearchText` で単一ファイル形式の bdf のサムネイルとテキストを作る。ビューアの「Thumbnail and text」を開くと、表示中の文書（変換したもの、開いた bdf、`?src=` の単一ファイル）を渡し、そのとき初めてモジュールを読み込む。大きさ（64・128・256・512）、レイアウト（auto・crop・fit）、形式を選べる。ビューアの TS の描画で作らないのは、サーバーが作るのと同じものを見せるためである。形式は PNG と JPEG だけにした。WebP のエンコーダを入れるとモジュールが gzip で約 1 MB 増えるので、ほかのモジュールと同じく `bdf_noconv` でビルドしている。ブラウザにはシステムのフォントがないので、名前で参照するフォント（HTML・Markdown・EPUB）はサイトのフォントのディレクトリ（`imagebdf.Options.FontFS`）から探す。パスワード付きの入力から変換した文書と暗号化した bdf のものも作る（パスワードを入れて開いた人が自分で頼むのが `-allow-plaintext` にあたる）が、暗号化されないことをパネルに書く。暗号化した bdf にはビューアが開いたときのパスワードを渡す。
+**デモサイト**: `cmd/bdfwasm` を `-tags previewonly` でビルドした 5 つ目のモジュール（`bdf-preview.wasm`、約 9.5 MB、gzip 2.8 MB）は変換器を持たず、`imagebdf`・`thumbnail`・`SearchText` で単一ファイル形式の BDF のサムネイルとテキストを作る。ビューアの「Thumbnail and text」を開くと、表示中の文書（変換したもの、開いた BDF、`?src=` の単一ファイル）を渡し、そのとき初めてモジュールを読み込む。大きさ（64・128・256・512）、レイアウト（auto・crop・fit）、形式を選べる。ビューアの TS の描画で作らないのは、サーバーが作るのと同じものを見せるためである。形式は PNG と JPEG だけにした。WebP のエンコーダを入れるとモジュールが gzip で約 1 MB 増えるので、ほかのモジュールと同じく `bdf_noconv` でビルドしている。ブラウザにはシステムのフォントがないので、名前で参照するフォント（HTML・Markdown・EPUB）はサイトのフォントのディレクトリ（`imagebdf.Options.FontFS`）から探す。パスワード付きの入力から変換した文書と暗号化した BDF のものも作る（パスワードを入れて開いた人が自分で頼むのが `-allow-plaintext` にあたる）が、暗号化されないことをパネルに書く。暗号化した BDF にはビューアが開いたときのパスワードを渡す。
 
 ## 3.26 Parquet → BDF 変換器（converter/parquet）の構造
 
@@ -670,7 +670,7 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 
 ## 3.30 保護モード: 区間ごとに封印して配る（segment、ログインした読者向け）
 
-ログインした読者に本や PDF を読ませるサイトでは、文書をファイルとして配りたくない。§3.5 の暗号化をファイル全体にかけても、鍵を渡した時点で読者の手元に「いつでも開ける暗号文と鍵」が揃い、通信を記録した人も後で鍵が漏れれば全部開ける。そこで、サーバーは変換した bdf を手元に置いたまま、読者が開いたあたりの数ページ（既定で 10 ページ、区間）だけを、要求ごとに読者が作った使い捨ての鍵で封印して渡す（spec §3.6、§3.5 の `ecdh` スロット）。
+ログインした読者に本や PDF を読ませるサイトでは、文書をファイルとして配りたくない。§3.5 の暗号化をファイル全体にかけても、鍵を渡した時点で読者の手元に「いつでも開ける暗号文と鍵」が揃い、通信を記録した人も後で鍵が漏れれば全部開ける。そこで、サーバーは変換した BDF を手元に置いたまま、読者が開いたあたりの数ページ（既定で 10 ページ、区間）だけを、要求ごとに読者が作った使い捨ての鍵で封印して渡す（spec §3.6、§3.5 の `ecdh` スロット）。
 
 **守るもの**
 

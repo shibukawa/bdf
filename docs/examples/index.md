@@ -4,24 +4,24 @@ Under [`examples/`](https://github.com/shibukawa/bdf/tree/main/examples) sit fou
 
 | | [light-server](light-server.md) | [preview-server](preview-server.md) | [search](search.md) |
 |---|---|---|---|
-| Server converts to bdf | never | once, cached | once, cached |
+| Server converts to BDF | never | once, cached | once, cached |
 | Server makes a thumbnail | once, cached | once, cached | once, cached |
-| Where a document converts | in the browser, on open | — (already bdf) | — (already bdf) |
+| Where a document converts | in the browser, on open | — (already BDF) | — (already BDF) |
 | Front end ships | wasm converters + renderer | renderer only | renderer only |
 | Extra service | — | — | Meilisearch |
 | What it's for | documents made in large numbers but seldom opened (records kept for audits); a light server | documents opened often, fastest and most consistent open | full-text search across every document |
 
 The fourth, [secure-reader](secure-reader.md), is about who may read: readers log in, and a book is sent in protected mode, ten pages at a time, each segment sealed for a key made for its request.
 
-None of these is "the" recommended architecture. Read [Why bdf](../why.md) and pick based on what you're actually building — how often a given document is opened relative to how often it changes, whether the server has spare CPU for conversion, and whether documents need to be searchable.
+None of these is "the" recommended architecture. Read [Why BDF](../why.md) and pick based on what you're actually building — how often a given document is opened relative to how often it changes, whether the server has spare CPU for conversion, and whether documents need to be searchable.
 
 ## light-server
 
-The server never converts anything. It only draws a thumbnail once per document (converting in memory just for that, then discarding the result) and serves the original files as they are; opening one converts it to bdf inside the browser, with the same wasm converter modules the [demo site](https://shibukawa.github.io/bdf/) itself ships. This is the architecture that costs the server the least — no conversion code runs on a request — at the cost of a wasm module the browser fetches once and a moment of local conversion on each open. It suits documents made in large numbers but seldom opened, such as records kept for an audit. → [Read more](light-server.md)
+The server never converts anything. It only draws a thumbnail once per document (converting in memory just for that, then discarding the result) and serves the original files as they are; opening one converts it to BDF inside the browser, with the same wasm converter modules the [demo site](https://shibukawa.github.io/bdf/) itself ships. This is the architecture that costs the server the least — no conversion code runs on a request — at the cost of a wasm module the browser fetches once and a moment of local conversion on each open. It suits documents made in large numbers but seldom opened, such as records kept for an audit. → [Read more](light-server.md)
 
 ## preview-server
 
-The opposite tradeoff: the server converts every document to bdf once, ahead of time, and caches it. Opening a document only fetches the cached bdf (`net/http`'s `ServeContent` answers Range requests on its own, so only the parts of the pages in view are ever transferred) and draws it — the browser front end carries no converter, only the renderer. Documents open faster and more predictably, at the cost of conversion capacity on the server and a place to cache the result. → [Read more](preview-server.md)
+The opposite tradeoff: the server converts every document to BDF once, ahead of time, and caches it. Opening a document only fetches the cached BDF (`net/http`'s `ServeContent` answers Range requests on its own, so only the parts of the pages in view are ever transferred) and draws it — the browser front end carries no converter, only the renderer. Documents open faster and more predictably, at the cost of conversion capacity on the server and a place to cache the result. → [Read more](preview-server.md)
 
 ## search
 

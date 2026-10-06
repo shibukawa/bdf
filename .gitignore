@@ -146,6 +146,11 @@ examples/viewer/.out/
 examples/viewer/.site/
 site/dist/
 
+# Keep only the latest comparison summary; raw results live in /tmp.
+/docs/benchmarks/*.json
+!/docs/benchmarks/latest.json
+/tools/__pycache__/
+
 # The sample-architecture servers (examples/light-server,
 # examples/preview-server, examples/search, examples/secure-reader): each web/build.mjs builds
 # main.js (and search.js), lib/ (workers and, for light-server, the wasm

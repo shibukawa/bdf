@@ -150,7 +150,7 @@ func writeThumbnail(path string, d *bdf.Document) (err error) {
 
 var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
 <meta charset="utf-8">
-<title>preview-server: bdf sample architecture</title>
+<title>preview-server: BDF sample architecture</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root { color-scheme: light dark; font: 16px system-ui, sans-serif; }
@@ -165,7 +165,7 @@ var indexTemplate = template.Must(template.New("index").Parse(`<!doctype html>
   .files small { display: block; padding: 0 .75rem .5rem; color: #666; font-size: .75rem; }
 </style>
 <h1>preview-server</h1>
-<p class="lead">A sample architecture (<a href="https://github.com/shibukawa/bdf/blob/main/docs/examples/preview-server.md">docs/examples/preview-server</a>): the server converted every document below to bdf already. Opening one only fetches and draws it.</p>
+<p class="lead">A sample architecture (<a href="https://github.com/shibukawa/bdf/blob/main/docs/examples/preview-server.md">docs/examples/preview-server</a>): the server converted every document below to BDF already. Opening one only fetches and draws it.</p>
 <ul class="files">
 {{range .}}<li><a href="/view/?src=/cache/{{.BDF}}"><img src="/cache/{{.Name}}.png" alt="" loading="lazy"><span>{{.Name}}</span><small>{{.Summary}}</small></a></li>
 {{end}}</ul>

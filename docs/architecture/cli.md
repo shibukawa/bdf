@@ -27,7 +27,7 @@ An encrypted document is read with the password in `$BDF_PASSWORD`; `split` and 
 
 ## generate
 
-Converts one input into bdf. The format is detected from the input's content, or set explicitly with `-format`; the output is a single file, or a directory ending in `/` for the split form. `-pages 1-3,5,8-` selects pages, slides, sheets or artboards; `-thumbnail` and `-text` write a preview next to the output (not for an encrypted output, unless `-allow-plaintext`); `-dc name=value` overrides a Dublin Core element (`-dc name=` removes it). See [Formats](../formats/index.md) for the `-param` options specific to each input format, or `bdf generate -h` for the current, complete list.
+Converts one input into BDF. The format is detected from the input's content, or set explicitly with `-format`; the output is a single file, or a directory ending in `/` for the split form. `-pages 1-3,5,8-` selects pages, slides, sheets or artboards; `-thumbnail` and `-text` write a preview next to the output (not for an encrypted output, unless `-allow-plaintext`); `-dc name=value` overrides a Dublin Core element (`-dc name=` removes it). See [Formats](../formats/index.md) for the `-param` options specific to each input format, or `bdf generate -h` for the current, complete list.
 
 ```sh
 bdf generate report.pptx report.bdf              # single file

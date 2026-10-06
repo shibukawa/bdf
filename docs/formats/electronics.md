@@ -8,7 +8,7 @@ Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a s
 
 ## Gerber, Excellon (converter/gerber)
 
-`converter/gerber` reads the fabrication data of a printed circuit board: Gerber files (RS-274X with X2 attributes, plus the deprecated commands older files still use) and Excellon drill files. RS-274-D, which keeps aperture definitions in a separate file, isn't read. A board's files are normally handed to a manufacturer as a zip archive (with its Gerber job file). bdf converts that zip as one board. A single Gerber or drill file converts too, becoming a view of just that layer.
+`converter/gerber` reads the fabrication data of a printed circuit board: Gerber files (RS-274X with X2 attributes, plus the deprecated commands older files still use) and Excellon drill files. RS-274-D, which keeps aperture definitions in a separate file, isn't read. A board's files are normally handed to a manufacturer as a zip archive (with its Gerber job file). BDF converts that zip as one board. A single Gerber or drill file converts too, becoming a view of just that layer.
 
 Every standard aperture and macro primitive is drawn, arcs in both quadrant modes, regions with clear polarity, step-and-repeat, block apertures and aperture transformations. Pads are drawn as runs of shared paths, the same way glyphs are. Which layer each file represents (top/bottom copper, an inner layer, solder mask, silkscreen, paste, outline, drill) comes from the job file, from X2 `TF.FileFunction` attributes, or — failing that — from the filename conventions of KiCad, Altium (Protel), Eagle, EasyEDA and others.
 
@@ -29,7 +29,7 @@ See [design.md §3.21](../design.md#321-gerberexcellon--bdf-変換器converterge
 
 A schematic becomes a view whose pages are its sheet instances, in the order of their page numbers: a hierarchical sheet used twice in the design becomes two pages, each keeping its own reference designators (R101, R201, and so on), and a sheet's box on the page links to that page. Every page is drawn on its paper in its drawing sheet — KiCad's default title block, or the project's `.kicad_wks`, with the title block and the project's text variables filled in — using KiCad's default colors and the project's drawing settings. Symbols draw with their unit, alternate body style and pin shape. Wires, buses, junctions, every kind of label, notes, text boxes, tables, hatched shapes, images and do-not-place (DNP) marks all draw as KiCad draws them. Text uses KiCad's own stroke font, NewStroke (a CC0 build is embedded; CJK characters the font lacks fall back to a TrueType font).
 
-A board becomes a `front` view and a `back` view (mirrored, seen from below) with every layer drawn the way KiCad's board editor draws it, plus a view for each individual layer. The sheets a hierarchical schematic references, and the drawing sheet a project names, are separate files: bdf reads them from the input's own directory, from a zip archive, or from files a server lists alongside the input (`converter.Options.Files`; `bdf generate -with`).
+A board becomes a `front` view and a `back` view (mirrored, seen from below) with every layer drawn the way KiCad's board editor draws it, plus a view for each individual layer. The sheets a hierarchical schematic references, and the drawing sheet a project names, are separate files: BDF reads them from the input's own directory, from a zip archive, or from files a server lists alongside the input (`converter.Options.Files`; `bdf generate -with`).
 
 | Option | Values | Default |
 |---|---|---|

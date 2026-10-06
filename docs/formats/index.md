@@ -1,6 +1,6 @@
 # Formats
 
-bdf converts each input from its own package under `converter/` — a program only handles the formats it links.
+BDF converts each input from its own package under `converter/` — a program only handles the formats it links.
 
 ```go
 import (

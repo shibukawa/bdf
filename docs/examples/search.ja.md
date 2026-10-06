@@ -16,7 +16,7 @@ HTTP で使える検索エンジンなら何でも同じ役割を果たせます
 
 ## サーバーがすること
 
-[preview-server](preview-server.ja.md)（すべての文書を bdf に変換してキャッシュし、サムネイルも作る）に加えて、キャッシュ済みの bdf をもう一度開き（`bdf.OpenSingleFile`、`(*Reader).ToDocument`）、`(*bdf.Document).SearchText()` を呼びます。サーバーが自分で変換した文書を、変換し直さずに検索可能にするのと同じ呼び出しです。`SearchText` は文書のメタデータと、ページごとのテキストを返します（シートはページ番号なしで 1 件）。各ページが Meilisearch の 1 ドキュメントになり、id、元のファイルと View、ページ番号、文書の題名を持ちます。
+[preview-server](preview-server.ja.md)（すべての文書を BDF に変換してキャッシュし、サムネイルも作る）に加えて、キャッシュ済みの BDF をもう一度開き（`bdf.OpenSingleFile`、`(*Reader).ToDocument`）、`(*bdf.Document).SearchText()` を呼びます。サーバーが自分で変換した文書を、変換し直さずに検索可能にするのと同じ呼び出しです。`SearchText` は文書のメタデータと、ページごとのテキストを返します（シートはページ番号なしで 1 件）。各ページが Meilisearch の 1 ドキュメントになり、id、元のファイルと View、ページ番号、文書の題名を持ちます。
 
 ```go
 type meiliDoc struct {
@@ -32,7 +32,7 @@ type meiliDoc struct {
 
 これらは起動時に一括で Meilisearch に送られます（`POST /indexes/{index}/documents`）。サーバーはインデックス作成のタスクが終わるのを待ってからリクエストに応え始めるので、起動直後の最初の検索から、Meilisearch がそこまで処理し終えたものだけでなく、すべてが見つかります（インデックス作成は通常は非同期です）。
 
-`GET /search?q=` はクエリを Meilisearch 自身の `/search` エンドポイントに取り次ぎ、一致箇所を切り出して `<mark>` でハイライトしたスニペットを頼み（`attributesToCrop`、`attributesToHighlight`）、小さな JSON の配列（ファイル、bdf、View、ページ、題名、スニペット）を返します。検索そのものの仕組みについては何も語りません。API キーはサーバー側にとどまり、ブラウザが Meilisearch と直接話すことはありません。
+`GET /search?q=` はクエリを Meilisearch 自身の `/search` エンドポイントに取り次ぎ、一致箇所を切り出して `<mark>` でハイライトしたスニペットを頼み（`attributesToCrop`、`attributesToHighlight`）、小さな JSON の配列（ファイル、BDF、View、ページ、題名、スニペット）を返します。検索そのものの仕組みについては何も語りません。API キーはサーバー側にとどまり、ブラウザが Meilisearch と直接話すことはありません。
 
 ## ブラウザがすること
 
@@ -40,4 +40,4 @@ type meiliDoc struct {
 
 ## この形にした理由
 
-検索に要るのは文書のテキストだけで、描画そのものは要りません。だからこそ、すでに使っている変換の構成とうまく組み合わせられます。この例は都合上 preview-server の上に作りましたが、light-server の上でも動きます。SearchText には変換済みの bdf があればよく、それは文書をインデックスする（または再インデックスする）ときに 1 度作ればよいからです。検索の API キーをサーバー側に留め、クエリを取り次ぐことで、ブラウザは検索エンジンの資格情報を一切持たずに済みます。
+検索に要るのは文書のテキストだけで、描画そのものは要りません。だからこそ、すでに使っている変換の構成とうまく組み合わせられます。この例は都合上 preview-server の上に作りましたが、light-server の上でも動きます。SearchText には変換済みの BDF があればよく、それは文書をインデックスする（または再インデックスする）ときに 1 度作ればよいからです。検索の API キーをサーバー側に留め、クエリを取り次ぐことで、ブラウザは検索エンジンの資格情報を一切持たずに済みます。

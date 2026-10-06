@@ -16,7 +16,7 @@ Any HTTP search engine would do the same job here — Meilisearch's plain REST A
 
 ## What the server does
 
-On top of what [preview-server](preview-server.md) does — convert and cache every document as bdf, and draw a thumbnail — it opens each cached bdf back up (`bdf.OpenSingleFile`, `(*Reader).ToDocument`) and calls `(*bdf.Document).SearchText()`, the same call any server would use to make its own converted document searchable without reconverting it. `SearchText` returns the document's metadata and the text of each page, a sheet counting as one entry without a page number. Each page becomes one Meilisearch document: an id, the file and view it came from, its page number, and the document's title.
+On top of what [preview-server](preview-server.md) does — convert and cache every document as BDF, and draw a thumbnail — it opens each cached BDF back up (`bdf.OpenSingleFile`, `(*Reader).ToDocument`) and calls `(*bdf.Document).SearchText()`, the same call any server would use to make its own converted document searchable without reconverting it. `SearchText` returns the document's metadata and the text of each page, a sheet counting as one entry without a page number. Each page becomes one Meilisearch document: an id, the file and view it came from, its page number, and the document's title.
 
 ```go
 type meiliDoc struct {
@@ -40,4 +40,4 @@ The home page's search box (`web/search.ts`) calls `/search`, lists what comes b
 
 ## Why this shape
 
-Search only needs the document's text, not its rendering. That's why it composes cleanly with whichever conversion architecture a system already uses — this example builds it on preview-server's for convenience, but light-server's would work too, since SearchText only needs a converted bdf, made once when a document is indexed (or re-indexed), not on every request. Keeping the search API key server-side, and proxying the query rather than querying Meilisearch straight from the browser, means the browser never needs credentials for the search engine at all.
+Search only needs the document's text, not its rendering. That's why it composes cleanly with whichever conversion architecture a system already uses — this example builds it on preview-server's for convenience, but light-server's would work too, since SearchText only needs a converted BDF, made once when a document is indexed (or re-indexed), not on every request. Keeping the search API key server-side, and proxying the query rather than querying Meilisearch straight from the browser, means the browser never needs credentials for the search engine at all.

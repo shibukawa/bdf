@@ -133,7 +133,7 @@ export function header({ lang, out, current, other }) {
   return `<a class="skip" href="#content">${ui.skip}</a>
 <header class="bar">
 <nav aria-label="${ui.site}">
-<a class="home" href="${up}${home}">bdf</a>
+<a class="home" href="${up}${home}">BDF</a>
 <ul>
 ${item("viewer", "viewer/", ui.viewer)}
 ${item("thumbnail", "thumbnail/", ui.thumbnail)}
@@ -181,7 +181,7 @@ function page(p, lang, doc) {
   // the reference documents are in Japanese alone: the way back to the other language is its first page
   const otherLang = lang === "ja" ? "en" : "ja";
   const other = output(p.only ? PAGES[0] : p, otherLang);
-  const title = /\bbdf\b/i.test(doc.h1) ? doc.h1 : `${doc.h1} – bdf`;
+  const title = /\bbdf\b/i.test(doc.h1) ? doc.h1 : `${doc.h1} – BDF`;
   // a page's own outline is worth its room from three headings on
   const toc = doc.toc.length >= 3 ? `<nav class="toc" aria-labelledby="toc-title">
 <h2 id="toc-title">${ui.toc}</h2>
@@ -237,7 +237,7 @@ await draw();
 /** A page that sends its readers on to another: the address a page had before. */
 const moved = (to) => `<!doctype html>
 <meta charset="utf-8">
-<title>bdf</title>
+<title>BDF</title>
 <link rel="canonical" href="${to}">
 <meta http-equiv="refresh" content="0; url=${to}">
 <a href="${to}">${to}</a>

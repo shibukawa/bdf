@@ -30,7 +30,7 @@ See [design.md §3.18](../design.md#318-photoshop--bdf-変換器converterpsd) fo
 
 ## TIFF (.tif, .tiff)
 
-`converter/tiff` gives each page of the file a page sized to its resolution, drawn by one image; a multi-page TIFF is usually a scanner's or fax's output, image only, with no text. The reader is bdf's own — golang.org/x/image/tiff only reads the first IFD, and reads neither JPEG compression nor CCITT's two-dimensional coding — and it handles classic TIFF and BigTIFF, strips and tiles, uncompressed/PackBits/LZW/Deflate/JPEG, and CCITT fax coding (Group 3 one- and two-dimensional, with or without fill bits, and Group 4), at 1 to 16 bits in bilevel, gray, palette, RGB and CMYK. The `Orientation` tag rotates the page. Pages finer than the resolution cap (192 dpi and 3840 × 3840 pixels by default) are scaled down to it — a bilevel page stays bilevel rather than turning gray — and a JPEG page that needs no scaling is stored by joining its strips into one JPEG without re-encoding.
+`converter/tiff` gives each page of the file a page sized to its resolution, drawn by one image; a multi-page TIFF is usually a scanner's or fax's output, image only, with no text. The reader is BDF's own — golang.org/x/image/tiff only reads the first IFD, and reads neither JPEG compression nor CCITT's two-dimensional coding — and it handles classic TIFF and BigTIFF, strips and tiles, uncompressed/PackBits/LZW/Deflate/JPEG, and CCITT fax coding (Group 3 one- and two-dimensional, with or without fill bits, and Group 4), at 1 to 16 bits in bilevel, gray, palette, RGB and CMYK. The `Orientation` tag rotates the page. Pages finer than the resolution cap (192 dpi and 3840 × 3840 pixels by default) are scaled down to it — a bilevel page stays bilevel rather than turning gray — and a JPEG page that needs no scaling is stored by joining its strips into one JPEG without re-encoding.
 
 | Option | Values | Default |
 |---|---|---|
@@ -42,6 +42,6 @@ See [design.md §3.15](../design.md#315-tiff--bdf-変換器convertertiffの構�
 
 ## Windows metafiles (.emf, .wmf)
 
-`converter/emf` turns an EMF or WMF file into one page the size of the picture, replaying its records with the same replayer bdf uses for EMF/WMF pictures embedded inside Office documents. Text is laid out and its fonts embedded the same way as for PowerPoint, so the font flags that apply there (`-font-dir`, `-fonts`, `-no-system-fonts`, `-no-subset`, `-no-woff2`) apply here too. There is no format-specific `-param` for metafiles.
+`converter/emf` turns an EMF or WMF file into one page the size of the picture, replaying its records with the same replayer BDF uses for EMF/WMF pictures embedded inside Office documents. Text is laid out and its fonts embedded the same way as for PowerPoint, so the font flags that apply there (`-font-dir`, `-fonts`, `-no-system-fonts`, `-no-subset`, `-no-woff2`) apply here too. There is no format-specific `-param` for metafiles.
 
 See [design.md §3.5](../design.md#35-入力形式の登録と-emfwmf-変換器converteremf) for the internals.

@@ -5,6 +5,7 @@ package woff2
 import (
 	"bytes"
 	"io"
+	"math/bits"
 
 	"github.com/andybalholm/brotli"
 )
@@ -13,14 +14,19 @@ import (
 func Available() bool { return true }
 
 func compress(b []byte) ([]byte, error) {
-	// Quality 11 is 20–30 times slower than 9 for a few percent less; keep it
-	// for the usual subset font and use 9 for whole multi-megabyte fonts.
-	quality := 11
-	if len(b) > 1<<20 {
-		quality = 9
-	}
+	// Quality 9 keeps font data lossless while avoiding quality 11's
+	// expensive match search for a few percent smaller embedded subsets.
+	const quality = 9
 	var out bytes.Buffer
-	w := brotli.NewWriterOptions(&out, brotli.WriterOptions{Quality: quality, LGWin: 22})
+	// A Brotli window holds (1<<LGWin)-16 bytes. A font is passed in one
+	// write, so a larger window than its table stream cannot find more
+	// matches. Quality 11 allocates eight bytes per window position for
+	// its match tree; always using LGWin=22 costs 32 MiB per small subset.
+	lgwin := 22
+	if len(b) < (1<<22)-16 {
+		lgwin = max(10, bits.Len(uint(len(b)+15)))
+	}
+	w := brotli.NewWriterOptions(&out, brotli.WriterOptions{Quality: quality, LGWin: lgwin})
 	if _, err := w.Write(b); err != nil {
 		return nil, err
 	}
