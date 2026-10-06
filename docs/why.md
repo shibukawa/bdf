@@ -1,8 +1,26 @@
 # Why bdf
 
+## Measured memory, CPU time, and energy
+
+We measured Office conversion and a 256 px first-page thumbnail on the same Apple M3 Mac. Go results are from the October 6, 2026 optimizations; LibreOffice → PDF → Poppler results are saved measurements from September 29, 2026.
+
+[![Comparison benchmark: PPTX peak RSS is 146.9 MiB for LibreOffice and 53.1 MiB for Go; elapsed time is 1.00 and 0.04 seconds. Go PPTX CPU time decreases from 0.16 to 0.05 seconds. Latest estimated SoC energy is 0.191 J per document](images/why-economy.en.svg)](images/why-economy.en.svg)
+
+| Input | Peak RSS: LibreOffice / Go (MiB) | Elapsed time: LibreOffice / Go (s) | Go CPU time (s) |
+|---|---:|---:|---:|
+| Small DOCX | 161.9 / 70.1 | 0.73 / 0.05 | 0.06 |
+| Small PPTX | 146.9 / 53.1 | 1.00 / 0.04 | 0.05 |
+| Small XLSX | 123.8 / 53.1 | 0.64 / 0.04 | 0.05 |
+| Synthetic XLSX (4 sheets × 3,000 rows) | 289.7 / 52.6 | 1.55 / 0.38 | 0.46 |
+| Synthetic PPTX (100 slides) | Not measured / 41.7 | Not measured / 0.16 | 0.22 |
+
+RSS is the process's peak resident memory. Elapsed time includes startup, conversion, and saving the thumbnail. CPU time is user + system time; it is distinct from elapsed time and CPU utilization. Go results are medians of five runs after warmup. The synthetic LibreOffice XLSX result uses three runs; the other LibreOffice results use five. Output formats and visual results differ. See the [method and optimizations](process-memory-review.ja.md), [latest timing, memory, and CPU data](benchmarks/2026-10-06-go-optimized.json), and [September 29 comparison data](benchmarks/2026-09-29.json).
+
+Latest estimated Go SoC energy is **0.191 J/document** (two rounds: 0.247 and 0.134 J/document). This run used **AC power while charging**; the September 29 values of 1.246 J/document for Go and 2.972 J/document for LibreOffice used battery power. We do not calculate an energy reduction percentage across these different power conditions. This estimates CPU + GPU + ANE energy, rather than whole-device energy. The [energy data](benchmarks/2026-10-06-go-power.json) and [remeasurement script](../tools/benchmark-power.py) are available.
+
 ## No office suite to run
 
-Previewing an Office file in a browser usually means running LibreOffice or OpenOffice headless on a server and converting it to PDF. That install is over a gigabyte before it does anything, and a headless office suite needs a process to start, keep alive, and isolate — one malformed file can wedge it.
+Previewing an Office file in a browser usually means running LibreOffice or OpenOffice headless on a server and converting it to PDF. A headless office suite needs a process to start, keep alive, and isolate — one malformed file can wedge it.
 
 bdf's converters are Go packages that use no cgo and no external program, and [the many formats in the table below](#formats) all convert in one binary. Built as WebAssembly, the same code converts inside the browser too — gzipped, about 7.3 MB for the PDF module and about 7.8 MB for the Office/CAD/KiCad/font module — so a file never has to leave the browser at all. Thumbnails and search text come from the same process. Pages are drawn by a pure-Go rasterizer; no browser is needed on the server either.
 

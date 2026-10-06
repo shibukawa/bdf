@@ -18,6 +18,8 @@ PATTERNS = {
     "max_rss_bytes": r"^\s*(\d+)\s+maximum resident set size\s*$",
     "peak_footprint_bytes": r"^\s*(\d+)\s+peak memory footprint\s*$",
     "elapsed_seconds": r"^\s*([\d.]+) real\s+[\d.]+ user\s+[\d.]+ sys\s*$",
+    "user_cpu_seconds": r"^\s*[\d.]+ real\s+([\d.]+) user\s+[\d.]+ sys\s*$",
+    "system_cpu_seconds": r"^\s*[\d.]+ real\s+[\d.]+ user\s+([\d.]+) sys\s*$",
 }
 
 
@@ -109,7 +111,8 @@ def main():
                         match = re.search(pattern, proc.stderr, re.M)
                         if not match:
                             raise RuntimeError(f"{metric} missing: {proc.stderr}")
-                        values[metric] = float(match[1]) if metric == "elapsed_seconds" else int(match[1])
+                        values[metric] = float(match[1]) if metric.endswith("_seconds") else int(match[1])
+                    values["cpu_seconds"] = round(values["user_cpu_seconds"] + values["system_cpu_seconds"], 4)
                     for output in [dest / "thumb.png", dest / "document.bdf"]:
                         if not output.is_file() or not output.stat().st_size:
                             raise RuntimeError(f"missing output: {output}")
@@ -127,7 +130,7 @@ def main():
                       "historical_libreoffice": {**office, "elapsed_seconds": office_time} if office else None}
             for label in binaries:
                 result[label] = {metric: statistics.median(r[metric] for r in runs if r["variant"] == label)
-                                 for metric in [*PATTERNS, "output_bytes"]}
+                                 for metric in [*PATTERNS, "cpu_seconds", "output_bytes"]}
             result["thumbnails_identical"] = True if args.compare_bdf else None
             data["results"][name] = result
             args.output.write_text(json.dumps(data, indent=2) + "\n")

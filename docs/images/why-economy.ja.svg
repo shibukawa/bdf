@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="368" viewBox="0 0 760 368" role="img" aria-labelledby="title description">
+<title id="title">変換・サムネイル生成の実測</title>
+<desc id="description">PPTX のピークRSS: LO 9/29 146.9 MiB, Go 10/6 53.1 MiB; PPTX の経過時間: LO 9/29 1.00 s, Go 10/6 0.04 s; Go の PPTX CPU時間: 修正前 0.16 s, 修正後 0.05 s; Go の電力量: 中央値 0.191 J/文書: ラウンド1 0.247 J, ラウンド2 0.134 J</desc>
+<rect width="760" height="368" fill="#fff"/>
+<g font-family="-apple-system, BlinkMacSystemFont, Arial, sans-serif">
+<text x="24" y="33" font-size="22" font-weight="700" fill="#182337">変換・サムネイル生成の実測</text>
+<text x="24" y="57" font-size="13" font-weight="400" fill="#52627a">Apple M3 · Go: 2026-10-06 · LibreOffice: 2026-09-29</text>
+<rect x="24" y="76" width="346" height="116" rx="8" fill="#f7f9fc" stroke="#e5eaf0"/>
+<text x="36" y="100" font-size="14" font-weight="700" fill="#182337">PPTX のピークRSS</text>
+<text x="36" y="119" font-size="11" font-weight="400" fill="#52627a">最大常駐メモリ (MiB)</text>
+<text x="36" y="145" font-size="11" font-weight="400" fill="#52627a">LO 9/29</text>
+<rect x="147" y="133" width="108.00" height="16" rx="3" fill="#667892"/>
+<text x="266" y="145" font-size="12" font-weight="600" fill="#182337">146.9 MiB</text>
+<text x="36" y="171" font-size="11" font-weight="400" fill="#52627a">Go 10/6</text>
+<rect x="147" y="159" width="39.04" height="16" rx="3" fill="#087d66"/>
+<text x="266" y="171" font-size="12" font-weight="600" fill="#182337">53.1 MiB</text>
+<rect x="390" y="76" width="346" height="116" rx="8" fill="#f7f9fc" stroke="#e5eaf0"/>
+<text x="402" y="100" font-size="14" font-weight="700" fill="#182337">PPTX の経過時間</text>
+<text x="402" y="119" font-size="11" font-weight="400" fill="#52627a">起動・変換・サムネイル保存</text>
+<text x="402" y="145" font-size="11" font-weight="400" fill="#52627a">LO 9/29</text>
+<rect x="513" y="133" width="108.00" height="16" rx="3" fill="#667892"/>
+<text x="632" y="145" font-size="12" font-weight="600" fill="#182337">1.00 s</text>
+<text x="402" y="171" font-size="11" font-weight="400" fill="#52627a">Go 10/6</text>
+<rect x="513" y="159" width="4.32" height="16" rx="3" fill="#087d66"/>
+<text x="632" y="171" font-size="12" font-weight="600" fill="#182337">0.04 s</text>
+<rect x="24" y="204" width="346" height="116" rx="8" fill="#f7f9fc" stroke="#e5eaf0"/>
+<text x="36" y="228" font-size="14" font-weight="700" fill="#182337">Go の PPTX CPU時間</text>
+<text x="36" y="247" font-size="11" font-weight="400" fill="#52627a">user + system · 同日の修正前後</text>
+<text x="36" y="273" font-size="11" font-weight="400" fill="#52627a">修正前</text>
+<rect x="147" y="261" width="108.00" height="16" rx="3" fill="#667892"/>
+<text x="266" y="273" font-size="12" font-weight="600" fill="#182337">0.16 s</text>
+<text x="36" y="299" font-size="11" font-weight="400" fill="#52627a">修正後</text>
+<rect x="147" y="287" width="33.75" height="16" rx="3" fill="#087d66"/>
+<text x="266" y="299" font-size="12" font-weight="600" fill="#182337">0.05 s</text>
+<rect x="390" y="204" width="346" height="116" rx="8" fill="#f7f9fc" stroke="#e5eaf0"/>
+<text x="402" y="228" font-size="14" font-weight="700" fill="#182337">Go の電力量: 中央値 0.191 J/文書</text>
+<text x="402" y="247" font-size="11" font-weight="400" fill="#52627a">AC電源・充電中 · CPU + GPU + ANE</text>
+<text x="402" y="273" font-size="11" font-weight="400" fill="#52627a">ラウンド1</text>
+<rect x="513" y="261" width="108.00" height="16" rx="3" fill="#667892"/>
+<text x="632" y="273" font-size="12" font-weight="600" fill="#182337">0.247 J</text>
+<text x="402" y="299" font-size="11" font-weight="400" fill="#52627a">ラウンド2</text>
+<rect x="513" y="287" width="58.37" height="16" rx="3" fill="#087d66"/>
+<text x="632" y="299" font-size="12" font-weight="600" fill="#182337">0.134 J</text>
+<text x="24" y="347" font-size="11" font-weight="400" fill="#52627a">電力量: Goの今回2ラウンド。過去のバッテリー測定との削減率は算出しない。</text>
+</g>
+</svg>
