@@ -2,10 +2,29 @@ package fixture
 
 import (
 	"bytes"
+	"os"
 	"testing"
 
 	"github.com/shibukawa/bdf"
 )
+
+func TestDemoMatchesStoredFixture(t *testing.T) {
+	d, err := Demo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got bytes.Buffer
+	if err := d.WriteSingle(&got); err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile("../testdata/demo.bdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got.Bytes(), want) {
+		t.Fatal("demo must match the stored fixture on all CPU architectures")
+	}
+}
 
 func TestDeterministic(t *testing.T) {
 	var a, b bytes.Buffer

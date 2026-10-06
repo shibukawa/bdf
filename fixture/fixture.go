@@ -125,7 +125,10 @@ func Demo() (*bdf.Document, error) {
 			r = 5
 		}
 		a := float64(i) * math.Pi / 5
-		x, y := 12+r*float32(math.Sin(a)), 12-r*float32(math.Cos(a))
+		// Round the products explicitly so arm64's fused multiply-add
+		// produces the same fixture coordinates as amd64.
+		x := 12 + float32(r*float32(math.Sin(a)))
+		y := 12 - float32(r*float32(math.Cos(a)))
 		if i == 0 {
 			star.MoveTo(x, y)
 		} else {
