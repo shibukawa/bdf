@@ -1,0 +1,118 @@
+{
+  "process": {
+    "created_utc": "2026-10-06T04:35:02.722270+00:00",
+    "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "rounds": 5,
+    "versions": {
+      "soffice": "LibreOfficeDev 26.8.0.0.alpha0 2c87e51eeaa2b413ff4ae097b2705eea1995d8e5",
+      "pdftoppm": "pdftoppm version 26.05.0\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC",
+      "go": "go version go1.27.0 darwin/arm64"
+    },
+    "bdf_binary": {
+      "bytes": 25132514,
+      "sha256": "db0b2b37be3b72b00f82c2f519ccd2ad9ef83adf2a8c758a7a0108b20b778fd3"
+    },
+    "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t98%; charging; 0:16 remaining present: true",
+    "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t99%; finishing charge; 0:08 remaining present: true",
+    "inputs": [
+      {
+        "bytes": 17167,
+        "sha256": "f4830cd362996f3e07b9b370a4f118de8617e98daff42c3d475efeb7b6eef335",
+        "name": "basic.docx"
+      },
+      {
+        "bytes": 41023,
+        "sha256": "2c471caddae2b9a32318fa1e87626e060db68f700d54a6b11250690b25dc6e56",
+        "name": "basic.pptx"
+      },
+      {
+        "bytes": 14205,
+        "sha256": "75d6011ad3dce051b341d7829e48a399f77eec1c35e5b830f74454bddd5662a1",
+        "name": "basic.xlsx"
+      },
+      {
+        "bytes": 574825,
+        "sha256": "cee608516772c6813a28c2b5676f0d0919fd673f66ffd3cf23cd5a5b8629b5e9",
+        "name": "many-sheets.xlsx"
+      },
+      {
+        "bytes": 215949,
+        "sha256": "aa5817cdba20877d4e939d258401bdefa8360ec91cbffca5a90b1443d9db35f6",
+        "name": "many-slides.pptx"
+      }
+    ],
+    "results": {
+      "basic.docx": {
+        "libreoffice": {
+          "max_rss_bytes": 169639936,
+          "peak_footprint_bytes": 97731496,
+          "elapsed_seconds": 0.69,
+          "cpu_seconds": 0.67
+        },
+        "bdf": {
+          "max_rss_bytes": 73367552,
+          "peak_footprint_bytes": 59654840,
+          "elapsed_seconds": 0.06,
+          "cpu_seconds": 0.06
+        }
+      },
+      "basic.pptx": {
+        "libreoffice": {
+          "max_rss_bytes": 154468352,
+          "peak_footprint_bytes": 84902800,
+          "elapsed_seconds": 1.01,
+          "cpu_seconds": 1.02
+        },
+        "bdf": {
+          "max_rss_bytes": 55640064,
+          "peak_footprint_bytes": 41976504,
+          "elapsed_seconds": 0.05,
+          "cpu_seconds": 0.05
+        }
+      },
+      "basic.xlsx": {
+        "libreoffice": {
+          "max_rss_bytes": 129712128,
+          "peak_footprint_bytes": 55690128,
+          "elapsed_seconds": 0.65,
+          "cpu_seconds": 0.63
+        },
+        "bdf": {
+          "max_rss_bytes": 54591488,
+          "peak_footprint_bytes": 41632464,
+          "elapsed_seconds": 0.05,
+          "cpu_seconds": 0.05
+        }
+      },
+      "many-sheets.xlsx": {
+        "libreoffice": {
+          "max_rss_bytes": 302333952,
+          "peak_footprint_bytes": 220791816,
+          "elapsed_seconds": 1.55,
+          "cpu_seconds": 1.62
+        },
+        "bdf": {
+          "max_rss_bytes": 55574528,
+          "peak_footprint_bytes": 41271992,
+          "elapsed_seconds": 0.41,
+          "cpu_seconds": 0.49
+        }
+      },
+      "many-slides.pptx": {
+        "libreoffice": {
+          "max_rss_bytes": 2012135424,
+          "peak_footprint_bytes": 4314222576,
+          "elapsed_seconds": 56.38,
+          "cpu_seconds": 68.3
+        },
+        "bdf": {
+          "max_rss_bytes": 44679168,
+          "peak_footprint_bytes": 30360248,
+          "elapsed_seconds": 0.18,
+          "cpu_seconds": 0.24
+        }
+      }
+    }
+  },
+  "power": null
+}

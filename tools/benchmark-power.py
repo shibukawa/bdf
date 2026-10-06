@@ -4,6 +4,7 @@
 Run as your normal user after ``sudo -v``. Only powermetrics runs through sudo.
 Pass ``--workflow bdf`` to measure only the Go CLI.
 Each workflow has an idle phase and a work phase of the same fixed length.
+By default conversions repeat for 60 seconds, completing balanced input batches.
 The sampler exits by itself after a finite number of samples, so an interrupted
 benchmark cannot leave an indefinitely running privileged sampler behind.
 
@@ -57,6 +58,23 @@ def power_samples(log: str) -> tuple[float, int, str]:
         raise ValueError(f"inconsistent power sample counts: {counts}")
     watts = sum(statistics.mean(values) for values in found.values() if values)
     return watts, min(counts), "+".join(k.upper() for k, v in found.items() if v)
+
+
+def sampled_energy(log: str) -> tuple[float, float]:
+    """Integrate reported power over powermetrics' actual sample intervals."""
+    headers = list(re.finditer(r"^\*\*\* Sampled system activity .*?\(([\d.]+)ms elapsed\) \*\*\*", log, re.M))
+    if not headers:
+        raise ValueError("powermetrics sample durations were not found")
+    joules, seconds = 0.0, 0.0
+    for i, header in enumerate(headers):
+        end = headers[i + 1].start() if i + 1 < len(headers) else len(log)
+        watts, count, _ = power_samples(log[header.end():end])
+        duration = float(header[1]) / 1000
+        if count != 1 or duration <= 0:
+            raise ValueError("invalid powermetrics sample")
+        joules += watts * duration
+        seconds += duration
+    return joules, seconds
 
 
 def locate(name: str, supplied: str | None) -> Path:
@@ -209,18 +227,25 @@ def measure_phase(
                 if sampler.poll() is not None:
                     raise RuntimeError(
                         f"The workload exceeded the {seconds}-second sampling window. "
-                        "Increase --libreoffice-seconds or --bdf-seconds."
+                        "Increase --sampling-margin-seconds for sustained work, "
+                        "or the workflow sampling seconds for fixed --jobs."
                     )
             sampler.wait(timeout=seconds + 20)
         except BaseException:
             # powermetrics also has a finite -n count if sudo cannot forward SIGINT.
             if sampler.poll() is None:
-                sampler.send_signal(2)
+                try:
+                    sampler.send_signal(2)
+                except PermissionError:
+                    pass  # the privileged sampler still exits at its finite count
             raise
         ended = time.monotonic()
     if sampler.returncode:
         raise RuntimeError(f"powermetrics failed ({sampler.returncode}); read {error_path}")
-    average, count, field = power_samples(log_path.read_text(errors="replace"))
+    raw = log_path.read_text(errors="replace")
+    average, count, field = power_samples(raw)
+    joules, sampled_seconds = sampled_energy(raw)
+    average = joules / sampled_seconds
     if count < max(2, seconds // 2):
         raise RuntimeError(f"Only {count} power samples in {log_path}; expected about {seconds}")
     result: dict[str, object] = {
@@ -230,6 +255,8 @@ def measure_phase(
         "samples": count,
         "power_field": field,
         "mean_soc_w": round(average, 6),
+        "sampled_seconds": round(sampled_seconds, 6),
+        "sampled_soc_j": round(joules, 6),
         "log": str(log_path),
         "stderr": str(error_path),
     }
@@ -254,14 +281,18 @@ def main() -> int:
     parser.add_argument("--input", action="append", type=Path, help="repeat to replace the three default samples")
     parser.add_argument("--workflow", action="append", choices=("bdf", "libreoffice"),
                         help="repeat to select workflows (default: both); bdf measures Go only")
-    parser.add_argument("--jobs", type=int, default=90, help="documents in each work phase (default: 90)")
-    parser.add_argument("--rounds", type=int, default=2, help="paired rounds (default: 2)")
+    parser.add_argument("--jobs", type=int, help="optional fixed document count instead of sustained work")
+    parser.add_argument("--work-seconds", type=int, default=60, help="sustained conversion duration (default: 60)")
+    parser.add_argument("--sampling-margin-seconds", type=int, default=12, help="lead-in and completion margin outside sustained work (default: 12)")
+    parser.add_argument("--rounds", type=int, default=3, help="paired rounds (default: 3)")
     parser.add_argument("--libreoffice-seconds", type=int, default=120, help="samples per LibreOffice phase (default: 120)")
     parser.add_argument("--bdf-seconds", type=int, default=60, help="samples per bdf phase (default: 60)")
     args = parser.parse_args()
     workflows = list(dict.fromkeys(args.workflow or ("libreoffice", "bdf")))
     phase_seconds = {"libreoffice": args.libreoffice_seconds, "bdf": args.bdf_seconds}
-    if args.jobs < 1 or args.rounds < 1 or any(phase_seconds[w] < 10 for w in workflows):
+    if args.jobs is None:
+        phase_seconds = {w: args.work_seconds + args.sampling_margin_seconds for w in workflows}
+    if (args.jobs is not None and args.jobs < 1) or args.work_seconds < 10 or args.sampling_margin_seconds < 5 or args.rounds < 1 or any(phase_seconds[w] < 10 for w in workflows):
         parser.error("jobs and rounds must be positive; each sampling phase must last at least 10 seconds")
     if platform.system() != "Darwin":
         parser.error("this benchmark requires macOS powermetrics")
@@ -276,6 +307,9 @@ def main() -> int:
     for source in sources:
         if not source.is_file():
             parser.error(f"input does not exist: {source}")
+    power_source = describe(["pmset", "-g", "batt"])
+    if "AC Power" not in power_source:
+        parser.error("connect AC power before running this comparison benchmark")
     commands = {}
     if "libreoffice" in workflows:
         commands["soffice"] = locate("soffice", args.soffice)
@@ -291,13 +325,15 @@ def main() -> int:
             "host": platform.platform(),
             "scope": "estimated CPU+GPU+ANE SoC energy, not whole-device energy",
             "jobs_per_phase": args.jobs,
+            "work_seconds_target": args.work_seconds if args.jobs is None else None,
+            "method": "weighted power samples integrated over their reported durations; subtract idle mean times work sampling duration; divide by completed documents",
             "rounds": args.rounds,
             "workflows": workflows,
             "phase_seconds": {w: phase_seconds[w] for w in workflows},
             "sample_interval_ms": SAMPLE_MS,
             "commands": {name: str(path) for name, path in commands.items()},
             "versions": {},
-            "power_source_start": describe(["pmset", "-g", "batt"]),
+            "power_source_start": power_source,
             "inputs": [{"path": str(p), "bytes": p.stat().st_size, "sha256": sha256(p)} for p in sources],
             "phases": [],
             "pairs": [],
@@ -336,18 +372,28 @@ def main() -> int:
                 save(output, data)
                 with tempfile.TemporaryDirectory(prefix=label + "-", dir=output) as workdir:
                     directory = Path(workdir)
+                    completed = 0
 
                     def work() -> None:
-                        for i in range(args.jobs):
-                            convert_one(workflow, sources[i % len(sources)], directory / f"job-{i:04d}", commands)
+                        nonlocal completed
+                        deadline = time.monotonic() + args.work_seconds
+                        while True:
+                            for source in sources:
+                                if args.jobs is not None and completed >= args.jobs:
+                                    return
+                                convert_one(workflow, source, directory / f"job-{completed:06d}", commands)
+                                completed += 1
+                            if args.jobs is None and time.monotonic() >= deadline:
+                                return
 
                     active = measure_phase(output, label + "-work", seconds, work)
                     data["phases"].append(active)
                     watts = float(active["mean_soc_w"]) - float(idle["mean_soc_w"])
-                    joules_per_job = watts * float(active["seconds_actual"]) / args.jobs
+                    joules_per_job = (float(active["sampled_soc_j"]) - float(idle["mean_soc_w"]) * float(active["sampled_seconds"])) / completed
                     pair = {
                         "round": round_index + 1,
                         "workflow": workflow,
+                        "documents": completed,
                         "estimated_incremental_soc_w": round(watts, 6),
                         "estimated_soc_j_per_document": round(joules_per_job, 6),
                         "idle": idle["name"],
@@ -357,7 +403,7 @@ def main() -> int:
                     save(output, data)
                     print(
                         f"  {label}: {joules_per_job:.3f} estimated SoC J/document "
-                        f"({active['work_seconds']} s work within {active['seconds_actual']} s sampling)",
+                        f"({completed} documents; {active['work_seconds']} s work within {active['seconds_actual']} s sampling)",
                         flush=True,
                     )
                 time.sleep(5)  # keep output cleanup out of the next idle sample
@@ -371,6 +417,13 @@ def main() -> int:
         }
         data["median_estimated_soc_j_per_document"] = medians
         data["power_source_end"] = describe(["pmset", "-g", "batt"])
+        if "AC Power" not in data["power_source_end"]:
+            raise RuntimeError("AC power was disconnected; repeat the benchmark on AC power")
+        data["range_estimated_soc_j_per_document"] = {
+            w: [min(float(p["estimated_soc_j_per_document"]) for p in data["pairs"] if p["workflow"] == w),
+                max(float(p["estimated_soc_j_per_document"]) for p in data["pairs"] if p["workflow"] == w)]
+            for w in workflows
+        }
         if medians.get("libreoffice", 0) > 0 and medians.get("bdf", -1) >= 0:
             data["estimated_soc_energy_reduction_percent"] = round(
                 100 * (1 - medians["bdf"] / medians["libreoffice"]), 2
@@ -378,6 +431,7 @@ def main() -> int:
         save(output, data)
         print(json.dumps({
             "median_estimated_soc_j_per_document": medians,
+            "range_estimated_soc_j_per_document": data["range_estimated_soc_j_per_document"],
             "estimated_soc_energy_reduction_percent": data.get("estimated_soc_energy_reduction_percent"),
             "summary": str(output / "summary.json"),
         }, indent=2), flush=True)
