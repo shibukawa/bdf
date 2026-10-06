@@ -1,0 +1,1145 @@
+{
+  "created_utc": "2026-10-05T23:37:35.698685+00:00",
+  "git_revision": "58d934b886561165f6cfa23160e01854d4362374",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "go": "go version go1.27.0 darwin/arm64",
+  "method": "/usr/bin/time -l; fresh process per conversion; document plus 256px fit thumbnail; one excluded warmup per input; medians",
+  "rounds": 5,
+  "build_flags": [
+    "-trimpath",
+    "-ldflags=-s -w"
+  ],
+  "binary": {
+    "path": "/private/tmp/bdf-memory-current",
+    "bytes": 25132242,
+    "sha256": "925b0e805f6c0fbc4c0098bdf7e9b0c95fc8b707e44e51552a38d4ccabb92c5a"
+  },
+  "baseline": {
+    "date": "2026-09-29",
+    "git_revision": "fa64bb7aa0f0302deb33875bd929c0cb0c4d7c1c",
+    "path": "/Users/shibukawayoshiki/develop/bdf/docs/benchmarks/2026-09-29.json",
+    "sha256": "8708f4304a59a90200decd8923b617e6d66d424be655fe4feb1532f068ac0811"
+  },
+  "inputs": [
+    {
+      "path": "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+      "bytes": 17167,
+      "sha256": "f4830cd362996f3e07b9b370a4f118de8617e98daff42c3d475efeb7b6eef335",
+      "historical_sha256": "f4830cd362996f3e07b9b370a4f118de8617e98daff42c3d475efeb7b6eef335",
+      "matches_historical_hash": true
+    },
+    {
+      "path": "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+      "bytes": 41023,
+      "sha256": "2c471caddae2b9a32318fa1e87626e060db68f700d54a6b11250690b25dc6e56",
+      "historical_sha256": "2c471caddae2b9a32318fa1e87626e060db68f700d54a6b11250690b25dc6e56",
+      "matches_historical_hash": true
+    },
+    {
+      "path": "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+      "bytes": 14205,
+      "sha256": "75d6011ad3dce051b341d7829e48a399f77eec1c35e5b830f74454bddd5662a1",
+      "historical_sha256": "75d6011ad3dce051b341d7829e48a399f77eec1c35e5b830f74454bddd5662a1",
+      "matches_historical_hash": true
+    },
+    {
+      "path": "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+      "bytes": 574825,
+      "sha256": "cee608516772c6813a28c2b5676f0d0919fd673f66ffd3cf23cd5a5b8629b5e9",
+      "historical_sha256": "e35b32108e6364b55b3905e7ae4f3fde95f89919e1b79cf7e0b35bf73d98cd2a",
+      "matches_historical_hash": false,
+      "worksheet_or_slide_xml_bytes": 3144865,
+      "worksheet_or_slide_xml_sha256": "57483d3109033a28dc46905d20db1ab2bc20d6b68a8a85cb00164cd8ea936543"
+    },
+    {
+      "path": "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+      "bytes": 215949,
+      "sha256": "aa5817cdba20877d4e939d258401bdefa8360ec91cbffca5a90b1443d9db35f6",
+      "historical_sha256": "f85a7465f42e47409eac85539e26ba4883b58de0ea4caa09d73392985ee84473",
+      "matches_historical_hash": false,
+      "worksheet_or_slide_xml_bytes": 2655012,
+      "worksheet_or_slide_xml_sha256": "b837be00d77c6c85a9fa1f85e0d351218ff5d38912f69fd5f836b2610208ad17"
+    }
+  ],
+  "runs": [
+    {
+      "input": "basic.docx",
+      "round": 1,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-1/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-1/document.bdf"
+      ],
+      "max_rss_bytes": 159449088,
+      "peak_footprint_bytes": 145687296,
+      "elapsed_seconds": 0.45,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-1/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-1/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.45 real         0.32 user         0.02 sys\n           159449088  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               10053  page reclaims\n                   1  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  76  signals received\n                  14  voluntary context switches\n                 956  involuntary context switches\n          4595994005  instructions retired\n          1297273993  cycles elapsed\n           145687296  peak memory footprint\n"
+    },
+    {
+      "input": "basic.docx",
+      "round": 2,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-2/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-2/document.bdf"
+      ],
+      "max_rss_bytes": 126091264,
+      "peak_footprint_bytes": 111084288,
+      "elapsed_seconds": 0.32,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-2/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-2/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.32 real         0.31 user         0.02 sys\n           126091264  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8019  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  75  signals received\n                   8  voluntary context switches\n                 669  involuntary context switches\n          4579074926  instructions retired\n          1272768093  cycles elapsed\n           111084288  peak memory footprint\n"
+    },
+    {
+      "input": "basic.docx",
+      "round": 3,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-3/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-3/document.bdf"
+      ],
+      "max_rss_bytes": 128368640,
+      "peak_footprint_bytes": 114328368,
+      "elapsed_seconds": 0.32,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-3/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-3/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.32 real         0.31 user         0.02 sys\n           128368640  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8157  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  94  signals received\n                  13  voluntary context switches\n                 709  involuntary context switches\n          4584648584  instructions retired\n          1271938699  cycles elapsed\n           114328368  peak memory footprint\n"
+    },
+    {
+      "input": "basic.docx",
+      "round": 4,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-4/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-4/document.bdf"
+      ],
+      "max_rss_bytes": 128548864,
+      "peak_footprint_bytes": 112247552,
+      "elapsed_seconds": 0.33,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-4/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-4/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.33 real         0.31 user         0.02 sys\n           128548864  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8169  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  78  signals received\n                   9  voluntary context switches\n                 724  involuntary context switches\n          4582323808  instructions retired\n          1276666025  cycles elapsed\n           112247552  peak memory footprint\n"
+    },
+    {
+      "input": "basic.docx",
+      "round": 5,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-5/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-5/document.bdf"
+      ],
+      "max_rss_bytes": 109903872,
+      "peak_footprint_bytes": 95798016,
+      "elapsed_seconds": 0.32,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-5/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.docx-5/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.32 real         0.31 user         0.02 sys\n           109903872  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                7029  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  83  signals received\n                   7  voluntary context switches\n                 682  involuntary context switches\n          4574949615  instructions retired\n          1265295552  cycles elapsed\n            95798016  peak memory footprint\n"
+    },
+    {
+      "input": "basic.pptx",
+      "round": 1,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-1/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-1/document.bdf"
+      ],
+      "max_rss_bytes": 115556352,
+      "peak_footprint_bytes": 101548800,
+      "elapsed_seconds": 0.14,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-1/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-1/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.14 real         0.14 user         0.02 sys\n           115556352  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                7376  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 104  signals received\n                  20  voluntary context switches\n                 719  involuntary context switches\n          2280375363  instructions retired\n           590990844  cycles elapsed\n           101548800  peak memory footprint\n"
+    },
+    {
+      "input": "basic.pptx",
+      "round": 2,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-2/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-2/document.bdf"
+      ],
+      "max_rss_bytes": 83705856,
+      "peak_footprint_bytes": 69944112,
+      "elapsed_seconds": 0.13,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-2/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-2/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.13 real         0.13 user         0.01 sys\n            83705856  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5431  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  95  signals received\n                  19  voluntary context switches\n                 779  involuntary context switches\n          2253928151  instructions retired\n           581600877  cycles elapsed\n            69944112  peak memory footprint\n"
+    },
+    {
+      "input": "basic.pptx",
+      "round": 3,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-3/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-3/document.bdf"
+      ],
+      "max_rss_bytes": 114999296,
+      "peak_footprint_bytes": 100975336,
+      "elapsed_seconds": 0.14,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-3/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-3/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.14 real         0.14 user         0.02 sys\n           114999296  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                7343  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 133  signals received\n                  37  voluntary context switches\n                 835  involuntary context switches\n          2283563579  instructions retired\n           600304498  cycles elapsed\n           100975336  peak memory footprint\n"
+    },
+    {
+      "input": "basic.pptx",
+      "round": 4,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-4/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-4/document.bdf"
+      ],
+      "max_rss_bytes": 114982912,
+      "peak_footprint_bytes": 100926184,
+      "elapsed_seconds": 0.14,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-4/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-4/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.14 real         0.14 user         0.02 sys\n           114982912  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                7342  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 153  signals received\n                  53  voluntary context switches\n                 947  involuntary context switches\n          2299515275  instructions retired\n           603209874  cycles elapsed\n           100926184  peak memory footprint\n"
+    },
+    {
+      "input": "basic.pptx",
+      "round": 5,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-5/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-5/document.bdf"
+      ],
+      "max_rss_bytes": 114671616,
+      "peak_footprint_bytes": 100664064,
+      "elapsed_seconds": 0.14,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-5/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.pptx-5/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.14 real         0.14 user         0.02 sys\n           114671616  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                7320  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 167  signals received\n                  43  voluntary context switches\n                 946  involuntary context switches\n          2303382506  instructions retired\n           603681665  cycles elapsed\n           100664064  peak memory footprint\n"
+    },
+    {
+      "input": "basic.xlsx",
+      "round": 1,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-1/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-1/document.bdf"
+      ],
+      "max_rss_bytes": 143736832,
+      "peak_footprint_bytes": 130155264,
+      "elapsed_seconds": 0.2,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-1/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-1/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.20 real         0.18 user         0.02 sys\n           143736832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9093  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  74  signals received\n                  12  voluntary context switches\n                 704  involuntary context switches\n          3107322746  instructions retired\n           798926064  cycles elapsed\n           130155264  peak memory footprint\n"
+    },
+    {
+      "input": "basic.xlsx",
+      "round": 2,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-2/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-2/document.bdf"
+      ],
+      "max_rss_bytes": 143736832,
+      "peak_footprint_bytes": 130286336,
+      "elapsed_seconds": 0.21,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-2/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-2/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.21 real         0.19 user         0.02 sys\n           143736832  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9094  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  98  signals received\n                  18  voluntary context switches\n                 934  involuntary context switches\n          3120671450  instructions retired\n           821341393  cycles elapsed\n           130286336  peak memory footprint\n"
+    },
+    {
+      "input": "basic.xlsx",
+      "round": 3,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-3/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-3/document.bdf"
+      ],
+      "max_rss_bytes": 151076864,
+      "peak_footprint_bytes": 136086248,
+      "elapsed_seconds": 0.2,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-3/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-3/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.20 real         0.19 user         0.02 sys\n           151076864  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9546  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  88  signals received\n                  17  voluntary context switches\n                 721  involuntary context switches\n          3115015374  instructions retired\n           804008316  cycles elapsed\n           136086248  peak memory footprint\n"
+    },
+    {
+      "input": "basic.xlsx",
+      "round": 4,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-4/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-4/document.bdf"
+      ],
+      "max_rss_bytes": 143556608,
+      "peak_footprint_bytes": 130253568,
+      "elapsed_seconds": 0.2,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-4/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-4/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.20 real         0.19 user         0.02 sys\n           143556608  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9082  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  96  signals received\n                  15  voluntary context switches\n                 874  involuntary context switches\n          3118911447  instructions retired\n           806583036  cycles elapsed\n           130253568  peak memory footprint\n"
+    },
+    {
+      "input": "basic.xlsx",
+      "round": 5,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-5/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-5/document.bdf"
+      ],
+      "max_rss_bytes": 151306240,
+      "peak_footprint_bytes": 135660288,
+      "elapsed_seconds": 0.2,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-5/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/basic.xlsx-5/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.20 real         0.19 user         0.02 sys\n           151306240  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9558  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 117  signals received\n                  26  voluntary context switches\n                 805  involuntary context switches\n          3125995528  instructions retired\n           812314253  cycles elapsed\n           135660288  peak memory footprint\n"
+    },
+    {
+      "input": "many-sheets.xlsx",
+      "round": 1,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-1/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-1/document.bdf"
+      ],
+      "max_rss_bytes": 87195648,
+      "peak_footprint_bytes": 65061608,
+      "elapsed_seconds": 0.45,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-1/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-1/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.45 real         0.50 user         0.03 sys\n            87195648  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5644  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 286  signals received\n                  34  voluntary context switches\n                2541  involuntary context switches\n          8200078503  instructions retired\n          1937177348  cycles elapsed\n            65061608  peak memory footprint\n"
+    },
+    {
+      "input": "many-sheets.xlsx",
+      "round": 2,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-2/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-2/document.bdf"
+      ],
+      "max_rss_bytes": 87818240,
+      "peak_footprint_bytes": 64979664,
+      "elapsed_seconds": 0.46,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-2/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-2/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.46 real         0.50 user         0.03 sys\n            87818240  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5683  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 334  signals received\n                  45  voluntary context switches\n                2867  involuntary context switches\n          8213932347  instructions retired\n          1957787635  cycles elapsed\n            64979664  peak memory footprint\n"
+    },
+    {
+      "input": "many-sheets.xlsx",
+      "round": 3,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-3/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-3/document.bdf"
+      ],
+      "max_rss_bytes": 87195648,
+      "peak_footprint_bytes": 63652560,
+      "elapsed_seconds": 0.45,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-3/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-3/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.45 real         0.50 user         0.03 sys\n            87195648  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5623  page reclaims\n                  22  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 336  signals received\n                  43  voluntary context switches\n                2836  involuntary context switches\n          8220154835  instructions retired\n          1963028291  cycles elapsed\n            63652560  peak memory footprint\n"
+    },
+    {
+      "input": "many-sheets.xlsx",
+      "round": 4,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-4/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-4/document.bdf"
+      ],
+      "max_rss_bytes": 85049344,
+      "peak_footprint_bytes": 68403968,
+      "elapsed_seconds": 0.44,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-4/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-4/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.44 real         0.49 user         0.03 sys\n            85049344  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5512  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 317  signals received\n                  34  voluntary context switches\n                2687  involuntary context switches\n          8192485645  instructions retired\n          1921283286  cycles elapsed\n            68403968  peak memory footprint\n"
+    },
+    {
+      "input": "many-sheets.xlsx",
+      "round": 5,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-5/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-5/document.bdf"
+      ],
+      "max_rss_bytes": 86409216,
+      "peak_footprint_bytes": 65110760,
+      "elapsed_seconds": 0.45,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-5/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-sheets.xlsx-5/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.45 real         0.51 user         0.03 sys\n            86409216  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5594  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 314  signals received\n                  27  voluntary context switches\n                2535  involuntary context switches\n          8213704846  instructions retired\n          1974994268  cycles elapsed\n            65110760  peak memory footprint\n"
+    },
+    {
+      "input": "many-slides.pptx",
+      "round": 1,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-1/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-1/document.bdf"
+      ],
+      "max_rss_bytes": 90112000,
+      "peak_footprint_bytes": 76415720,
+      "elapsed_seconds": 0.21,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-1/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-1/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.21 real         0.25 user         0.02 sys\n            90112000  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5828  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 409  signals received\n                  88  voluntary context switches\n                2074  involuntary context switches\n          4011062405  instructions retired\n          1001481670  cycles elapsed\n            76415720  peak memory footprint\n"
+    },
+    {
+      "input": "many-slides.pptx",
+      "round": 2,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-2/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-2/document.bdf"
+      ],
+      "max_rss_bytes": 90161152,
+      "peak_footprint_bytes": 76563176,
+      "elapsed_seconds": 0.22,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-2/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-2/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.22 real         0.25 user         0.02 sys\n            90161152  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5825  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 334  signals received\n                  70  voluntary context switches\n                2043  involuntary context switches\n          3987805747  instructions retired\n          1005854173  cycles elapsed\n            76563176  peak memory footprint\n"
+    },
+    {
+      "input": "many-slides.pptx",
+      "round": 3,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-3/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-3/document.bdf"
+      ],
+      "max_rss_bytes": 90161152,
+      "peak_footprint_bytes": 76628712,
+      "elapsed_seconds": 0.21,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-3/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-3/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.21 real         0.24 user         0.02 sys\n            90161152  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5825  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 302  signals received\n                  81  voluntary context switches\n                1667  involuntary context switches\n          3955324848  instructions retired\n           978736894  cycles elapsed\n            76628712  peak memory footprint\n"
+    },
+    {
+      "input": "many-slides.pptx",
+      "round": 4,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-4/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-4/document.bdf"
+      ],
+      "max_rss_bytes": 90013696,
+      "peak_footprint_bytes": 76448536,
+      "elapsed_seconds": 0.21,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-4/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-4/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.21 real         0.25 user         0.02 sys\n            90013696  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5817  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 356  signals received\n                  94  voluntary context switches\n                1988  involuntary context switches\n          4001016961  instructions retired\n           989297452  cycles elapsed\n            76448536  peak memory footprint\n"
+    },
+    {
+      "input": "many-slides.pptx",
+      "round": 5,
+      "command": [
+        "/private/tmp/bdf-memory-current",
+        "generate",
+        "-q",
+        "-thumbnail",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-5/thumb.png",
+        "-thumbnail-mode",
+        "fit",
+        "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+        "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-5/document.bdf"
+      ],
+      "max_rss_bytes": 90030080,
+      "peak_footprint_bytes": 76497664,
+      "elapsed_seconds": 0.21,
+      "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-5/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-nr5viecn/many-slides.pptx-5/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.21 real         0.25 user         0.02 sys\n            90030080  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5821  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 374  signals received\n                  95  voluntary context switches\n                2050  involuntary context switches\n          4019383514  instructions retired\n          1001251814  cycles elapsed\n            76497664  peak memory footprint\n"
+    }
+  ],
+  "results": {
+    "basic.docx": {
+      "current": {
+        "max_rss_bytes": 128368640,
+        "peak_footprint_bytes": 112247552,
+        "elapsed_seconds": 0.32
+      },
+      "historical_bdf": {
+        "max_rss_bytes": 127418368,
+        "peak_footprint_bytes": 112313112,
+        "elapsed_seconds": 0.34
+      },
+      "historical_libreoffice": {
+        "max_rss_bytes": 169721856,
+        "peak_footprint_bytes": 97780624,
+        "elapsed_seconds": 0.73
+      },
+      "pr_parent": {
+        "max_rss_bytes": 126582784,
+        "peak_footprint_bytes": 111919872,
+        "elapsed_seconds": 0.32
+      }
+    },
+    "basic.pptx": {
+      "current": {
+        "max_rss_bytes": 114982912,
+        "peak_footprint_bytes": 100926184,
+        "elapsed_seconds": 0.14
+      },
+      "historical_bdf": {
+        "max_rss_bytes": 96747520,
+        "peak_footprint_bytes": 82510568,
+        "elapsed_seconds": 0.15
+      },
+      "historical_libreoffice": {
+        "max_rss_bytes": 153993216,
+        "peak_footprint_bytes": 84345744,
+        "elapsed_seconds": 1.0
+      },
+      "pr_parent": {
+        "max_rss_bytes": 96976896,
+        "peak_footprint_bytes": 82936552,
+        "elapsed_seconds": 0.14
+      }
+    },
+    "basic.xlsx": {
+      "current": {
+        "max_rss_bytes": 143736832,
+        "peak_footprint_bytes": 130286336,
+        "elapsed_seconds": 0.2
+      },
+      "historical_bdf": {
+        "max_rss_bytes": 126255104,
+        "peak_footprint_bytes": 112771840,
+        "elapsed_seconds": 0.2
+      },
+      "historical_libreoffice": {
+        "max_rss_bytes": 129826816,
+        "peak_footprint_bytes": 55722872,
+        "elapsed_seconds": 0.64
+      },
+      "pr_parent": {
+        "max_rss_bytes": 150437888,
+        "peak_footprint_bytes": 135119616,
+        "elapsed_seconds": 0.2
+      }
+    },
+    "many-sheets.xlsx": {
+      "current": {
+        "max_rss_bytes": 87195648,
+        "peak_footprint_bytes": 65061608,
+        "elapsed_seconds": 0.45
+      },
+      "historical_bdf": {
+        "max_rss_bytes": 85884928,
+        "peak_footprint_bytes": 65176296,
+        "elapsed_seconds": 0.46
+      },
+      "historical_libreoffice": {
+        "max_rss_bytes": 303759360,
+        "peak_footprint_bytes": 234931232,
+        "elapsed_seconds": 1.55
+      },
+      "pr_parent": {
+        "max_rss_bytes": 86523904,
+        "peak_footprint_bytes": 65487568,
+        "elapsed_seconds": 0.44
+      }
+    },
+    "many-slides.pptx": {
+      "current": {
+        "max_rss_bytes": 90112000,
+        "peak_footprint_bytes": 76497664,
+        "elapsed_seconds": 0.21
+      },
+      "historical_bdf": {
+        "max_rss_bytes": 98811904,
+        "peak_footprint_bytes": 59540176,
+        "elapsed_seconds": null
+      },
+      "historical_libreoffice": null,
+      "pr_parent": {
+        "max_rss_bytes": 98516992,
+        "peak_footprint_bytes": 60015312,
+        "elapsed_seconds": 0.21
+      }
+    }
+  },
+  "notes": [
+    "LibreOffice and Poppler are historical results, not remeasured.",
+    "Large inputs were regenerated with the original recipe and package versions; ZIP hashes can differ.",
+    "Historical many-slides bdf_only results do not record the command or elapsed time; that comparison is a reference only."
+  ],
+  "pr_parent_measurement": {
+    "created_utc": "2026-10-05T23:38:26.662989+00:00",
+    "git_revision": "4dce6754ce66b729b5070900a00480f07389104a",
+    "binary": {
+      "path": "/private/tmp/bdf-memory-parent",
+      "bytes": 31548082,
+      "sha256": "17cd54889521a97af77162f7302b848c7b631dca217bdeb5e76737e7285dada8"
+    },
+    "runs": [
+      {
+        "input": "basic.docx",
+        "round": 1,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-1/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-1/document.bdf"
+        ],
+        "max_rss_bytes": 126517248,
+        "peak_footprint_bytes": 111919872,
+        "elapsed_seconds": 0.32,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-1/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-1/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.32 real         0.32 user         0.02 sys\n           126517248  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8042  page reclaims\n                   2  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  93  signals received\n                  26  voluntary context switches\n                 926  involuntary context switches\n          4613362686  instructions retired\n          1280621681  cycles elapsed\n           111919872  peak memory footprint\n"
+      },
+      {
+        "input": "basic.docx",
+        "round": 2,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-2/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-2/document.bdf"
+        ],
+        "max_rss_bytes": 126517248,
+        "peak_footprint_bytes": 111346480,
+        "elapsed_seconds": 0.32,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-2/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-2/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.32 real         0.31 user         0.02 sys\n           126517248  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8042  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  88  signals received\n                  18  voluntary context switches\n                 772  involuntary context switches\n          4597847661  instructions retired\n          1273049576  cycles elapsed\n           111346480  peak memory footprint\n"
+      },
+      {
+        "input": "basic.docx",
+        "round": 3,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-3/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-3/document.bdf"
+        ],
+        "max_rss_bytes": 126582784,
+        "peak_footprint_bytes": 110641944,
+        "elapsed_seconds": 0.32,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-3/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-3/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.32 real         0.31 user         0.02 sys\n           126582784  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8051  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 107  signals received\n                  22  voluntary context switches\n                 830  involuntary context switches\n          4612263817  instructions retired\n          1271354456  cycles elapsed\n           110641944  peak memory footprint\n"
+      },
+      {
+        "input": "basic.docx",
+        "round": 4,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-4/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-4/document.bdf"
+        ],
+        "max_rss_bytes": 127500288,
+        "peak_footprint_bytes": 112411392,
+        "elapsed_seconds": 0.32,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-4/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-4/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.32 real         0.31 user         0.02 sys\n           127500288  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8111  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  93  signals received\n                  15  voluntary context switches\n                 671  involuntary context switches\n          4612280771  instructions retired\n          1273280845  cycles elapsed\n           112411392  peak memory footprint\n"
+      },
+      {
+        "input": "basic.docx",
+        "round": 5,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-5/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.docx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-5/document.bdf"
+        ],
+        "max_rss_bytes": 127090688,
+        "peak_footprint_bytes": 113132288,
+        "elapsed_seconds": 0.32,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-5/document.bdf: 3 page(s), 1 scroll strip(s), 5 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.docx-5/thumb.png: 181\u00d7256 png thumbnail (fit)\n        0.32 real         0.31 user         0.02 sys\n           127090688  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8078  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 103  signals received\n                  26  voluntary context switches\n                 922  involuntary context switches\n          4610604956  instructions retired\n          1275738876  cycles elapsed\n           113132288  peak memory footprint\n"
+      },
+      {
+        "input": "basic.pptx",
+        "round": 1,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-1/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-1/document.bdf"
+        ],
+        "max_rss_bytes": 96976896,
+        "peak_footprint_bytes": 83034880,
+        "elapsed_seconds": 0.14,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-1/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-1/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.14 real         0.14 user         0.02 sys\n            96976896  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6239  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 129  signals received\n                  40  voluntary context switches\n                1028  involuntary context switches\n          2304701191  instructions retired\n           600545860  cycles elapsed\n            83034880  peak memory footprint\n"
+      },
+      {
+        "input": "basic.pptx",
+        "round": 2,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-2/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-2/document.bdf"
+        ],
+        "max_rss_bytes": 95961088,
+        "peak_footprint_bytes": 81920768,
+        "elapsed_seconds": 0.14,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-2/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-2/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.14 real         0.14 user         0.02 sys\n            95961088  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6178  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 104  signals received\n                  32  voluntary context switches\n                 790  involuntary context switches\n          2280091954  instructions retired\n           593693948  cycles elapsed\n            81920768  peak memory footprint\n"
+      },
+      {
+        "input": "basic.pptx",
+        "round": 3,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-3/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-3/document.bdf"
+        ],
+        "max_rss_bytes": 97075200,
+        "peak_footprint_bytes": 82936552,
+        "elapsed_seconds": 0.14,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-3/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-3/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.14 real         0.14 user         0.02 sys\n            97075200  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6249  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 136  signals received\n                  30  voluntary context switches\n                 871  involuntary context switches\n          2302803081  instructions retired\n           599641486  cycles elapsed\n            82936552  peak memory footprint\n"
+      },
+      {
+        "input": "basic.pptx",
+        "round": 4,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-4/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-4/document.bdf"
+        ],
+        "max_rss_bytes": 97189888,
+        "peak_footprint_bytes": 83149592,
+        "elapsed_seconds": 0.14,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-4/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-4/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.14 real         0.14 user         0.02 sys\n            97189888  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6259  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 138  signals received\n                  26  voluntary context switches\n                 929  involuntary context switches\n          2306641439  instructions retired\n           602865719  cycles elapsed\n            83149592  peak memory footprint\n"
+      },
+      {
+        "input": "basic.pptx",
+        "round": 5,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-5/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-5/document.bdf"
+        ],
+        "max_rss_bytes": 96321536,
+        "peak_footprint_bytes": 82248448,
+        "elapsed_seconds": 0.14,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-5/document.bdf: 5 slide(s), 4 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.pptx-5/thumb.png: 256\u00d7192 png thumbnail (fit)\n        0.14 real         0.14 user         0.02 sys\n            96321536  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6199  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 127  signals received\n                  19  voluntary context switches\n                 974  involuntary context switches\n          2303895241  instructions retired\n           601639033  cycles elapsed\n            82248448  peak memory footprint\n"
+      },
+      {
+        "input": "basic.xlsx",
+        "round": 1,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-1/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-1/document.bdf"
+        ],
+        "max_rss_bytes": 150814720,
+        "peak_footprint_bytes": 135562008,
+        "elapsed_seconds": 0.2,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-1/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-1/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.20 real         0.18 user         0.02 sys\n           150814720  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9527  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  87  signals received\n                  21  voluntary context switches\n                 734  involuntary context switches\n          3130259722  instructions retired\n           799753630  cycles elapsed\n           135562008  peak memory footprint\n"
+      },
+      {
+        "input": "basic.xlsx",
+        "round": 2,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-2/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-2/document.bdf"
+        ],
+        "max_rss_bytes": 126484480,
+        "peak_footprint_bytes": 112788248,
+        "elapsed_seconds": 0.19,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-2/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-2/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.19 real         0.19 user         0.02 sys\n           126484480  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                8040  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  87  signals received\n                  10  voluntary context switches\n                 803  involuntary context switches\n          3121668606  instructions retired\n           792229411  cycles elapsed\n           112788248  peak memory footprint\n"
+      },
+      {
+        "input": "basic.xlsx",
+        "round": 3,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-3/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-3/document.bdf"
+        ],
+        "max_rss_bytes": 124141568,
+        "peak_footprint_bytes": 110609152,
+        "elapsed_seconds": 0.2,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-3/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-3/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.20 real         0.19 user         0.02 sys\n           124141568  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                7901  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  98  signals received\n                  10  voluntary context switches\n                 684  involuntary context switches\n          3124155103  instructions retired\n           794375258  cycles elapsed\n           110609152  peak memory footprint\n"
+      },
+      {
+        "input": "basic.xlsx",
+        "round": 4,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-4/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-4/document.bdf"
+        ],
+        "max_rss_bytes": 150437888,
+        "peak_footprint_bytes": 135119616,
+        "elapsed_seconds": 0.2,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-4/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-4/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.20 real         0.19 user         0.02 sys\n           150437888  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9505  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  85  signals received\n                  16  voluntary context switches\n                 690  involuntary context switches\n          3136078847  instructions retired\n           800569962  cycles elapsed\n           135119616  peak memory footprint\n"
+      },
+      {
+        "input": "basic.xlsx",
+        "round": 5,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-5/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/Users/shibukawayoshiki/.codex/worktrees/5a57/bdf/examples/sample-files/basic.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-5/document.bdf"
+        ],
+        "max_rss_bytes": 150618112,
+        "peak_footprint_bytes": 135693056,
+        "elapsed_seconds": 0.2,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-5/document.bdf: 2 sheet(s), 6 embedded font(s), 1 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/basic.xlsx-5/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.20 real         0.19 user         0.02 sys\n           150618112  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                9516  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                  85  signals received\n                  13  voluntary context switches\n                 683  involuntary context switches\n          3135368799  instructions retired\n           802350504  cycles elapsed\n           135693056  peak memory footprint\n"
+      },
+      {
+        "input": "many-sheets.xlsx",
+        "round": 1,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-1/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-1/document.bdf"
+        ],
+        "max_rss_bytes": 86720512,
+        "peak_footprint_bytes": 65323776,
+        "elapsed_seconds": 0.44,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-1/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-1/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.44 real         0.50 user         0.03 sys\n            86720512  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5612  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 370  signals received\n                  60  voluntary context switches\n                2797  involuntary context switches\n          8321574298  instructions retired\n          1939034254  cycles elapsed\n            65323776  peak memory footprint\n"
+      },
+      {
+        "input": "many-sheets.xlsx",
+        "round": 2,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-2/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-2/document.bdf"
+        ],
+        "max_rss_bytes": 86523904,
+        "peak_footprint_bytes": 66683624,
+        "elapsed_seconds": 0.44,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-2/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-2/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.44 real         0.50 user         0.03 sys\n            86523904  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5601  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 323  signals received\n                  30  voluntary context switches\n                2708  involuntary context switches\n          8323064275  instructions retired\n          1949487450  cycles elapsed\n            66683624  peak memory footprint\n"
+      },
+      {
+        "input": "many-sheets.xlsx",
+        "round": 3,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-3/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-3/document.bdf"
+        ],
+        "max_rss_bytes": 85983232,
+        "peak_footprint_bytes": 62456528,
+        "elapsed_seconds": 0.44,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-3/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-3/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.44 real         0.50 user         0.03 sys\n            85983232  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5570  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 378  signals received\n                  46  voluntary context switches\n                2864  involuntary context switches\n          8324329246  instructions retired\n          1951308039  cycles elapsed\n            62456528  peak memory footprint\n"
+      },
+      {
+        "input": "many-sheets.xlsx",
+        "round": 4,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-4/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-4/document.bdf"
+        ],
+        "max_rss_bytes": 87703552,
+        "peak_footprint_bytes": 66044624,
+        "elapsed_seconds": 0.45,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-4/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-4/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.45 real         0.50 user         0.03 sys\n            87703552  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5679  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 368  signals received\n                  49  voluntary context switches\n                2936  involuntary context switches\n          8317677121  instructions retired\n          1952716298  cycles elapsed\n            66044624  peak memory footprint\n"
+      },
+      {
+        "input": "many-sheets.xlsx",
+        "round": 5,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-5/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-sheets.xlsx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-5/document.bdf"
+        ],
+        "max_rss_bytes": 85786624,
+        "peak_footprint_bytes": 65487568,
+        "elapsed_seconds": 0.44,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-5/document.bdf: 4 sheet(s), 2 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-sheets.xlsx-5/thumb.png: 256\u00d7256 png thumbnail (fit)\n        0.44 real         0.50 user         0.03 sys\n            85786624  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5544  page reclaims\n                  15  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 367  signals received\n                  29  voluntary context switches\n                3050  involuntary context switches\n          8313863733  instructions retired\n          1940900746  cycles elapsed\n            65487568  peak memory footprint\n"
+      },
+      {
+        "input": "many-slides.pptx",
+        "round": 1,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-1/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-1/document.bdf"
+        ],
+        "max_rss_bytes": 89194496,
+        "peak_footprint_bytes": 59376360,
+        "elapsed_seconds": 0.21,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-1/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-1/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.21 real         0.27 user         0.02 sys\n            89194496  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5764  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 475  signals received\n                 132  voluntary context switches\n                2353  involuntary context switches\n          4258462135  instructions retired\n          1079159861  cycles elapsed\n            59376360  peak memory footprint\n"
+      },
+      {
+        "input": "many-slides.pptx",
+        "round": 2,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-2/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-2/document.bdf"
+        ],
+        "max_rss_bytes": 92651520,
+        "peak_footprint_bytes": 60015312,
+        "elapsed_seconds": 0.21,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-2/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-2/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.21 real         0.27 user         0.03 sys\n            92651520  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                5976  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 496  signals received\n                 164  voluntary context switches\n                2473  involuntary context switches\n          4252576010  instructions retired\n          1075712995  cycles elapsed\n            60015312  peak memory footprint\n"
+      },
+      {
+        "input": "many-slides.pptx",
+        "round": 3,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-3/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-3/document.bdf"
+        ],
+        "max_rss_bytes": 98516992,
+        "peak_footprint_bytes": 62407376,
+        "elapsed_seconds": 0.21,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-3/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-3/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.21 real         0.27 user         0.02 sys\n            98516992  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6335  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 518  signals received\n                 137  voluntary context switches\n                2471  involuntary context switches\n          4268580572  instructions retired\n          1077145087  cycles elapsed\n            62407376  peak memory footprint\n"
+      },
+      {
+        "input": "many-slides.pptx",
+        "round": 4,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-4/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-4/document.bdf"
+        ],
+        "max_rss_bytes": 99598336,
+        "peak_footprint_bytes": 61309672,
+        "elapsed_seconds": 0.21,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-4/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-4/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.21 real         0.27 user         0.03 sys\n            99598336  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6403  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 540  signals received\n                 150  voluntary context switches\n                2331  involuntary context switches\n          4237361482  instructions retired\n          1067622409  cycles elapsed\n            61309672  peak memory footprint\n"
+      },
+      {
+        "input": "many-slides.pptx",
+        "round": 5,
+        "command": [
+          "/private/tmp/bdf-memory-parent",
+          "generate",
+          "-q",
+          "-thumbnail",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-5/thumb.png",
+          "-thumbnail-mode",
+          "fit",
+          "/private/tmp/bdf-memory-fixtures-20261006/many-slides.pptx",
+          "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-5/document.bdf"
+        ],
+        "max_rss_bytes": 99401728,
+        "peak_footprint_bytes": 59409128,
+        "elapsed_seconds": 0.21,
+        "raw_time_output": "/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-5/document.bdf: 100 slide(s), 1 embedded font(s), 0 warning(s)\n/var/folders/vk/36d9fgzs1cs1nt8m36cqsk7m0000gn/T/bdf-go-process-benchmark-skh7a_fx/many-slides.pptx-5/thumb.png: 256\u00d7144 png thumbnail (fit)\n        0.21 real         0.27 user         0.03 sys\n            99401728  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n                6389  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                 549  signals received\n                 182  voluntary context switches\n                2732  involuntary context switches\n          4260894160  instructions retired\n          1079087726  cycles elapsed\n            59409128  peak memory footprint\n"
+      }
+    ]
+  },
+  "synthetic_generator": {
+    "path": "/Users/shibukawayoshiki/develop/bdf/tools/generate-memory-fixtures.py",
+    "xlsxwriter": "3.2.9",
+    "python-pptx": "1.0.2"
+  }
+}

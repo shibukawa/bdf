@@ -72,6 +72,10 @@ type faceUse struct {
 // characters are looked up.
 type fontChain struct {
 	faces []faceUse
+	// Resolve system families only when the embedded face lacks a glyph.
+	init      func()
+	fs        *fonts
+	fallbacks []fontdb.Resolved
 }
 
 // fonts loads the faces of a document: embedded font parts and, for the
@@ -171,7 +175,11 @@ func (fs *fonts) chain(f *bdf.Font) *fontChain {
 	if c, ok := fs.chains[*f]; ok {
 		return c
 	}
-	c := &fontChain{}
+	// The caller can reuse its FONT instruction before a missing glyph
+	// makes us resolve the remaining families.
+	ref := *f
+	f = &ref
+	c := &fontChain{fs: fs}
 	fs.chains[*f] = c
 	bold, italic := f.Weight >= 600, f.Style != bdf.StyleNormal
 	seen := map[*fontFace]bool{}
@@ -184,44 +192,85 @@ func (fs *fonts) chain(f *bdf.Font) *fontChain {
 	if f.Kind == bdf.FontEmbedded {
 		add(fs.part(f.Hash), bold, italic)
 	}
-	generic := ""
-	db := fs.fontDB()
-	for _, name := range splitFamilies(f.Family) {
-		if g, ok := genericFamilies[strings.ToLower(name)]; ok {
-			if generic == "" {
-				generic = g
-			}
-			res := db.Resolve(g, bold, italic, false)
-			if res.Face != nil {
-				add(fs.file(res.Face), res.SynthBold, res.SynthItalic)
-			}
-			continue
-		}
-		if faces := db.Family(name); len(faces) > 0 {
-			face, sb, si := fontdb.Match(faces, bold, italic)
-			add(fs.file(face), sb, si)
-		}
-	}
-	if generic == "" {
-		generic = fontdb.Sans
-		if len(c.faces) == 0 {
-			// a family that is not installed: its look-alike or generic kind
-			for _, name := range splitFamilies(f.Family) {
-				if res := db.Resolve(name, bold, italic, false); res.Face != nil {
-					generic = res.Generic
+	c.init = func() {
+		generic := ""
+		db := fs.fontDB()
+		for _, name := range splitFamilies(f.Family) {
+			if g, ok := genericFamilies[strings.ToLower(name)]; ok {
+				if generic == "" {
+					generic = g
+				}
+				res := db.Resolve(g, bold, italic, false)
+				if res.Face != nil {
 					add(fs.file(res.Face), res.SynthBold, res.SynthItalic)
+				}
+				continue
+			}
+			if faces := db.Family(name); len(faces) > 0 {
+				face, sb, si := fontdb.Match(faces, bold, italic)
+				add(fs.file(face), sb, si)
+			}
+		}
+		if generic == "" {
+			generic = fontdb.Sans
+			if len(c.faces) == 0 {
+				// a family that is not installed: its look-alike or generic kind
+				for _, name := range splitFamilies(f.Family) {
+					if res := db.Resolve(name, bold, italic, false); res.Face != nil {
+						generic = res.Generic
+						add(fs.file(res.Face), res.SynthBold, res.SynthItalic)
+						break
+					}
+				}
+			}
+		}
+		c.fallbacks = db.Fallbacks(generic, bold, italic)
+		// Even text with no supported glyph needs the first usable face's
+		// missing-glyph advance and baseline metrics.
+		if len(c.faces) == 0 {
+			for _, res := range c.fallbacks {
+				add(fs.file(res.Face), res.SynthBold, res.SynthItalic)
+				if len(c.faces) > 0 {
 					break
 				}
 			}
 		}
-	}
-	for _, res := range db.Fallbacks(generic, bold, italic) {
-		add(fs.file(res.Face), res.SynthBold, res.SynthItalic)
-	}
-	if len(c.faces) == 0 {
-		fs.r.warnf("no font for %q: its text is not drawn", f.Family)
+		if len(c.faces) == 0 {
+			fs.r.warnf("no font for %q: its text is not drawn", f.Family)
+		}
 	}
 	return c
+}
+
+func (c *fontChain) initFallbacks() {
+	if c.init != nil {
+		init := c.init
+		c.init = nil
+		init()
+	}
+}
+
+func (c *fontChain) glyph(r rune) (faceUse, uint16) {
+	for _, fu := range c.faces {
+		if g, ok := fu.face.glyph(r); ok {
+			return fu, g
+		}
+	}
+	if c.init != nil {
+		c.initFallbacks()
+		return c.glyph(r)
+	}
+	for _, res := range c.fallbacks {
+		if !res.Face.HasRune(r) {
+			continue
+		}
+		if ff := c.fs.file(res.Face); ff != nil {
+			if g, ok := ff.glyph(r); ok {
+				return faceUse{ff, res.SynthBold, res.SynthItalic}, g
+			}
+		}
+	}
+	return c.faces[0], 0
 }
 
 // placed is a glyph positioned along the baseline.
@@ -235,7 +284,10 @@ type placed struct {
 // visual order, and returns them with the advance of the whole string.
 func (c *fontChain) layout(text string, size, spacing float64, dir byte) ([]placed, float64) {
 	if len(c.faces) == 0 {
-		return nil, 0
+		c.initFallbacks()
+		if len(c.faces) == 0 {
+			return nil, 0
+		}
 	}
 	runes := visualOrder(text, dir == bdf.DirRTL)
 	out := make([]placed, 0, len(runes))
@@ -245,13 +297,7 @@ func (c *fontChain) layout(text string, size, spacing float64, dir byte) ([]plac
 		case '\t', '\n', '\f', '\r', '\v':
 			r = ' ' // Canvas draws these as spaces
 		}
-		use, gid := c.faces[0], uint16(0)
-		for _, fu := range c.faces {
-			if g, ok := fu.face.glyph(r); ok {
-				use, gid = fu, g
-				break
-			}
-		}
+		use, gid := c.glyph(r)
 		out = append(out, placed{use: use, gid: gid, x: x})
 		x += use.face.advance(gid)*size + spacing
 	}
