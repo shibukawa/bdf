@@ -52,7 +52,7 @@ BDF は内容の種類ごとに、3 つのレイアウトモデルを使い分�
 | **文章**<br>[Word、HTML、Markdown](formats/document.ja.md)<br><small>.docx、.html、.mhtml、.md</small> | ページ、または一続きのスクロール | 1 つの組版エンジンで組む。縦書き、数式。HTML はリーダー表示 |
 | **スライド**<br>[PowerPoint](formats/presentation.ja.md)<br><small>.pptx</small> | ページ | マスターとレイアウト、表、グラフ、SmartArt、数式 |
 | **表**<br>[Excel、CSV・TSV、Apache Parquet](formats/spreadsheet.ja.md)<br><small>.xlsx、.csv、.tsv、.parquet</small> | シート（無限平面）。シートはタブで | ウィンドウ枠の固定、行・列見出し、条件付き書式。セルを選んで表計算ソフトに貼り付けられる |
-| **図**<br>[Visio、draw.io](formats/diagram.ja.md)<br><small>.vsdx、.vdx、.drawio（図を埋め込んだ .svg、.png も）</small> | ページ。ページはタブで | 背景ページとレイヤー、ページ間のリンク、AWS などのアイコン |
+| **図**<br>[Visio、draw.io](formats/diagram.ja.md)<br><small>.vsdx、.drawio（図を埋め込んだ .svg、.png も）</small> | ページ。ページはタブで | 背景ページとレイヤー、ページ間のリンク、AWS などのアイコン |
 | **CAD の図面とプロット**<br>[AutoCAD DXF、Jw_cad、SXF、CGM、HP-GL/2](formats/cad.ja.md)<br><small>.dxf、.jww、.p21、.sfc、.cgm、.plt</small> | ページ。モデル空間とレイアウトはタブで | 画層・線種・線の太さをプロッタが描くとおりに |
 | **電子回路**<br>[KiCad、Gerber・Excellon](formats/electronics.ja.md)<br><small>.kicad_sch、.kicad_pcb、.kicad_pro、.gbr、.drl、それらの ZIP</small> | ページ。回路図のシート、基板の表・裏・各層はタブで | 基板は基材・銅箔・マスク・シルク・穴の実物の見た目で。階層シートのリンク |
 | **デザインと画像**<br>[Illustrator](formats/pdf.ja.md)、[Photoshop、TIFF、Windows メタファイル、画像](formats/image.ja.md)<br><small>.ai、.psd、.psb、.tif、.emf、.wmf、.png、.jpg、.svg など</small> | ページ。アートボードごとに 1 ページ | 画像はデコードせずそのまま格納。SVG は拡大してもぼけない |

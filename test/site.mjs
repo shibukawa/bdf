@@ -137,7 +137,7 @@ function pngSize(b) {
   return [dv.getUint32(16), dv.getUint32(20)];
 }
 /** The layout the thumbnail package picks for the formats that have one. */
-const LAYOUT = { docx: "crop", html: "crop", markdown: "crop", xlsx: "crop", csv: "crop", parquet: "crop", font: "crop", pptx: "fit", vsdx: "fit", vdx: "fit", drawio: "fit", epub: "fit", svg: "fit", jpeg: "fit" };
+const LAYOUT = { docx: "crop", html: "crop", markdown: "crop", xlsx: "crop", csv: "crop", parquet: "crop", font: "crop", pptx: "fit", vsdx: "fit", drawio: "fit", epub: "fit", svg: "fit", jpeg: "fit" };
 for (const { name, format, bdf } of converted) {
   const t0 = performance.now();
   try {

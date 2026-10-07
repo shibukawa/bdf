@@ -1,12 +1,12 @@
 package visio
 
 import (
+	"archive/zip"
 	"bytes"
-	"encoding/base64"
 	"image"
 	"image/png"
+	"io"
 	"os"
-	"regexp"
 	"testing"
 
 	"github.com/shibukawa/bdf"
@@ -14,12 +14,12 @@ import (
 	"github.com/shibukawa/bdf/imgconv"
 )
 
-// TestTIFFForeignData replaces the PNG picture of flow.vdx with TIFF
+// TestTIFFForeignData replaces the PNG picture of flow.vsdx with TIFF
 // pictures, read by converter/internal/tiff: a BlackIsZero Group 4 page
 // (which golang.org/x/image/tiff shows inverted) and YCbCr JPEG strips
 // (which it does not read).
 func TestTIFFForeignData(t *testing.T) {
-	vdx, err := os.ReadFile("testdata/flow.vdx")
+	vsdx, err := os.ReadFile("testdata/flow.vsdx")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,15 +30,43 @@ func TestTIFFForeignData(t *testing.T) {
 		}
 		return b
 	}
-	foreign := regexp.MustCompile(`<ForeignData ForeignType='Bitmap' CompressionType='PNG'>[^<]*</ForeignData>`)
-	if n := len(foreign.FindAll(vdx, -1)); n != 1 {
-		t.Fatalf("flow.vdx has %d PNG pictures, want 1", n)
-	}
-	// images converts flow.vdx with the picture replaced and returns the
-	// image parts stored.
+	// images converts flow.vsdx with the picture part replaced and returns
+	// the image parts stored.
 	images := func(pic []byte) [][]byte {
-		data := foreign.ReplaceAll(vdx, []byte(`<ForeignData ForeignType='Bitmap' CompressionType='TIFF'>`+base64.StdEncoding.EncodeToString(pic)+`</ForeignData>`))
-		res, err := Convert(bytes.NewReader(data), int64(len(data)), testOptions())
+		zr, err := zip.NewReader(bytes.NewReader(vsdx), int64(len(vsdx)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		replaced := 0
+		for _, f := range zr.File {
+			w, err := zw.Create(f.Name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f.Name == "visio/media/image1.png" {
+				replaced++
+				_, err = w.Write(pic)
+			} else {
+				rc, oerr := f.Open()
+				if oerr != nil {
+					t.Fatal(oerr)
+				}
+				_, err = io.Copy(w, rc)
+				rc.Close()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if replaced != 1 {
+			t.Fatalf("flow.vsdx has %d picture parts, want 1", replaced)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		res, err := Convert(bytes.NewReader(buf.Bytes()), int64(buf.Len()), testOptions())
 		if err != nil {
 			t.Fatal(err)
 		}

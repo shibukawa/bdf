@@ -10,7 +10,7 @@ import (
 
 // document is a drawing read into the sheet model.
 type document struct {
-	pkg     *ooxml.Package // nil for an XML drawing (.vdx)
+	pkg     *ooxml.Package
 	styles  map[int]*style
 	colors  map[int]bdf.Color // the document's color table (indices from 24)
 	faces   map[int]string    // font IDs of older documents

@@ -28,7 +28,7 @@
 | `converter/csv` | CSV and TSV (drawn by `converter/xlsx`) |
 | `converter/parquet` | Apache Parquet (drawn by `converter/xlsx`) |
 | `converter/docx` | Word (.docx) |
-| `converter/visio` | Visio (.vsdx, .vdx) |
+| `converter/visio` | Visio (.vsdx) |
 | `converter/drawio` | draw.io (.drawio / .drawio.svg / .drawio.png) |
 | `converter/dxf` | AutoCAD DXF |
 | `converter/jww` | Jw_cad (.jww) |

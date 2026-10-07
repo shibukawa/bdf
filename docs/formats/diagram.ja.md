@@ -6,9 +6,9 @@ Visio と draw.io（diagrams.net）の図は、線で結んだ図形を、作図
 
 [ビューア](https://shibukawa.github.io/bdf/viewer/)にファイルをドロップするか、サンプルを試してください。Visio の図面（[shapes.vsdx](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.vsdx)）、3 ページの draw.io の図（[multipage.drawio](https://shibukawa.github.io/bdf/viewer/?file=samples/multipage.drawio)）、[AWS の構成図](https://shibukawa.github.io/bdf/viewer/?file=samples/aws.drawio)、[ラベルに数式のある図](https://shibukawa.github.io/bdf/viewer/?file=samples/math.drawio)などです。
 
-## Visio（.vsdx、.vdx）
+## Visio（.vsdx）
 
-`converter/visio` は Visio 2013 以降のパッケージ（.vsdx、.vsdm、.vstx、.vstm）と、Visio 2003〜2010 の XML 図面（.vdx、.vtx）を、同じ 1 つの ShapeSheet モデルに読みます。バイナリの .vsd 形式は読みません。
+`converter/visio` は Visio 2013 以降のパッケージ（.vsdx、.vsdm、.vstx、.vstm）を、1 つの ShapeSheet モデルに読みます。Visio 2003〜2010 の XML 図面（.vdx、.vtx）と、バイナリの .vsd 形式は読みません。
 
 前景ページごとに 1 ページを作り、大きさはそのページ自身の用紙幅と縮尺から決めます。背景ページ（Visio の図面は背景ページを連鎖させられます）は共有の背景レイヤーになり、それを使うすべてのページで 1 回だけ描いて使い回します。図形は持たないセルをマスターとそのスタイルから継承し、動的テーマが決めるセルはテーマと図形のクイックスタイルから解決します。色、線・塗りのスキーム、コネクタとして扱われる図形が使うコネクタ専用のスキームも同様です。ジオメトリの各行、塗りのパターン、グラデーション、線種、45 種すべての矢印を描き、Visio がファイルには保存せずコネクタのルーティングから求める線の飛び越しも同じ手順で計算します。テキストは PowerPoint の変換器と同じ DrawingML のテキストエンジンでレイアウトし、フォントはサブセットの WOFF2 として埋め込みます。
 

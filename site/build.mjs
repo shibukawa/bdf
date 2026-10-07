@@ -49,7 +49,7 @@ const SAMPLES = [
   { path: "converter/csv/testdata/japanese.tsv", label: "TSV (Shift_JIS)" },
   { path: "converter/parquet/testdata/basic.parquet", label: "Parquet" },
   { path: "converter/visio/testdata/shapes.vsdx", label: "Visio" },
-  { path: "converter/visio/testdata/flow.vdx", label: "Visio XML (.vdx)" },
+  { path: "converter/visio/testdata/flow.vsdx", label: "Visio (.vsdx)" },
   { path: "converter/drawio/testdata/multipage.drawio", label: "draw.io (3 pages)" },
   { path: "converter/drawio/testdata/aws.drawio", label: "draw.io (AWS)" },
   { path: "converter/drawio/testdata/math.drawio", label: "draw.io (formulas in labels)" },

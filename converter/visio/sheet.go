@@ -12,8 +12,7 @@ import (
 // the style sheets and the page sheets. A sheet has cells, each with a
 // value V in internal units (inches, radians), the formula F that computed
 // it and a display unit U, at its top level and in the rows of its
-// sections. Both file formats (.vsdx and the XML drawings of Visio 2003 to
-// 2010) are read into this model.
+// sections. The package's parts are read into this model.
 //
 // A cell a sheet does not set is inherited: a shape takes what it lacks from
 // the master shape it is an instance of, then from the style sheets its
