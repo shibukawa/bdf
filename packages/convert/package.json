@@ -1,6 +1,6 @@
 {
   "name": "@bdfkit/convert",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Worker client for running custom BDF converter Wasm runtimes",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/shibukawa/bdf.git", "directory": "packages/convert" },
