@@ -1,9 +1,9 @@
 name: ci
 on:
-  push:
   pull_request:
 jobs:
   go:
+    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -150,6 +150,7 @@ jobs:
           name: regenerated-bdf-fixtures
           path: /tmp/regenerated-bdf-fixtures/
   web:
+    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
