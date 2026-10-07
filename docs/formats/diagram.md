@@ -6,9 +6,9 @@ Visio and draw.io (diagrams.net) diagrams are shapes connected by routed edges, 
 
 Drop a file on the [viewer](https://shibukawa.github.io/bdf/viewer/), or try a sample: a Visio drawing ([shapes.vsdx](https://shibukawa.github.io/bdf/viewer/?file=samples/shapes.vsdx)), a draw.io diagram of three pages ([multipage.drawio](https://shibukawa.github.io/bdf/viewer/?file=samples/multipage.drawio)), an [AWS architecture diagram](https://shibukawa.github.io/bdf/viewer/?file=samples/aws.drawio), or [labels with formulas](https://shibukawa.github.io/bdf/viewer/?file=samples/math.drawio).
 
-## Visio (.vsdx, .vdx)
+## Visio (.vsdx)
 
-`converter/visio` reads Visio 2013 and later packages (.vsdx, .vsdm, .vstx, .vstm) and the XML drawings of Visio 2003–2010 (.vdx, .vtx) into one ShapeSheet model. The binary .vsd format is not read.
+`converter/visio` reads Visio 2013 and later packages (.vsdx, .vsdm, .vstx, .vstm) into one ShapeSheet model. The XML drawings of Visio 2003–2010 (.vdx, .vtx) and the old binary .vsd format are not read.
 
 Each foreground page becomes a page, sized from the page's own width and scale; background pages (which a Visio drawing can chain) become a shared background layer drawn once and reused across every page that shares it. Shapes inherit unset cells from their master and its style, and cells a document theme sets are resolved from the theme and each shape's quick style — colors, line and fill schemes, and the connector-specific scheme used by shapes styled as connectors. Every geometry row, fill pattern, gradient, line pattern and all 45 arrowheads are drawn, including the line jumps Visio computes when routing connectors rather than storing them. Text is laid out by the same DrawingML text engine the PowerPoint converter uses, with fonts embedded as WOFF2 subsets.
 

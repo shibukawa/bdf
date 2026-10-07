@@ -56,7 +56,7 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "$f" "/tmp/$n.bdf"
             check_fixture "/tmp/$n.bdf" "testdata/xlsx/$n.bdf"
           done
-          for f in shapes.vsdx flow.vdx; do
+          for f in shapes.vsdx flow.vsdx; do
             n=${f%.*}
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/visio/testdata/$f" "/tmp/$n.bdf"
             check_fixture "/tmp/$n.bdf" "testdata/visio/$n.bdf"

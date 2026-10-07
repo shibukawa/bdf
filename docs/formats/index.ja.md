@@ -21,7 +21,7 @@ res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" で�
 | ワープロ | Word（.docx）、HTML、Markdown | [Word・HTML・Markdown](document.ja.md) |
 | プレゼンテーション | PowerPoint（.pptx） | [PowerPoint](presentation.ja.md) |
 | 表計算 | Excel（.xlsx）、CSV・TSV、Apache Parquet | [Excel・CSV・Parquet](spreadsheet.ja.md) |
-| 図 | Visio（.vsdx、.vdx）、draw.io | [Visio・draw.io](diagram.ja.md) |
+| 図 | Visio（.vsdx）、draw.io | [Visio・draw.io](diagram.ja.md) |
 | CAD の図面とプロット | AutoCAD DXF、Jw_cad（.jww）、SXF、CGM、HP-GL/2 | [CAD の図面とプロット](cad.ja.md) |
 | 電子回路 | Gerber・Excellon（プリント基板）、KiCad | [プリント基板・KiCad](electronics.ja.md) |
 | 本 | EPUB | [EPUB](ebook.ja.md) |
@@ -41,7 +41,7 @@ res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" で�
 | CSV・TSV | `converter/csv` | .csv, .tsv, .tab |
 | Apache Parquet | `converter/parquet` | .parquet, .parq, .pqt |
 | Word | `converter/docx` | .docx, .docm, .dotx, .dotm |
-| Visio | `converter/visio` | .vsdx, .vsdm, .vstx, .vstm, .vdx, .vtx |
+| Visio | `converter/visio` | .vsdx, .vsdm, .vstx, .vstm |
 | draw.io | `converter/drawio` | .drawio, .dio, .drawio.svg, .drawio.png |
 | AutoCAD DXF | `converter/dxf` | .dxf |
 | Jw_cad | `converter/jww` | .jww |
