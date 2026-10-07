@@ -96,5 +96,7 @@ jobs:
             @bdfkit/convert-pdf-epub \
             @bdfkit/convert-office \
             @bdfkit/convert-all; do
-            npm publish --workspace="$package" --access=public
+            if ! npm publish --workspace="$package" --access=public; then
+              echo "::warning title=Publish skipped::$package could not be published; continuing with remaining packages."
+            fi
           done
