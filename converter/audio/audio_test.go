@@ -99,7 +99,7 @@ func TestConvert(t *testing.T) {
 			if math.Abs(res.Duration-1) > 0.15 || res.Bitrate <= 0 {
 				t.Errorf("duration %v, bitrate %d", res.Duration, res.Bitrate)
 			}
-			if c.cover != "" && (res.CoverWidth != 64 || res.CoverHeight != 64) {
+			if c.cover != "" && (res.CoverWidth != 320 || res.CoverHeight != 320) {
 				t.Errorf("cover %d × %d", res.CoverWidth, res.CoverHeight)
 			}
 			if len(res.Warnings) != 0 {
@@ -118,7 +118,7 @@ func TestConvert(t *testing.T) {
 			p := v.Pages[0]
 			wantW := float32(placeholderSide)
 			if c.cover != "" {
-				wantW = coverMin // a 64 px cover is scaled up to the narrowest page
+				wantW = coverMin // a 320 px cover (240 pt) is scaled up to the narrowest page
 			}
 			if p.W != wantW || p.H < p.W {
 				t.Errorf("page %v × %v, want %v wide and at least as tall", p.W, p.H, wantW)
@@ -151,7 +151,7 @@ func TestOptions(t *testing.T) {
 		t.Errorf("summary %q", s)
 	}
 	res = convert(t, "tagged.mp3", nil)
-	if s := res.Summary(); !strings.HasPrefix(s, "1 page (cover 64 × 64 px, JPEG; MP3, 0:01, ") {
+	if s := res.Summary(); !strings.HasPrefix(s, "1 page (cover 320 × 320 px, JPEG; MP3, 0:01, ") {
 		t.Errorf("summary %q", s)
 	}
 	// warnings go to Warn when it is set
@@ -165,7 +165,8 @@ func TestOptions(t *testing.T) {
 
 func TestThumbnail(t *testing.T) {
 	// the thumbnail of a file with a cover is the cover: the top square of
-	// the card (the fixture's cover is blue with a yellow square)
+	// the card (the fixture's cover is a blue sky over a green field, with
+	// a yellow sun in the upper right)
 	res := convert(t, "tagged.mp3", nil)
 	th, err := thumbnail.Make(res.Doc, &thumbnail.Options{Size: 64, Raster: imagebdf.Options{NoSystemFonts: true}})
 	if err != nil {
@@ -181,9 +182,9 @@ func TestThumbnail(t *testing.T) {
 			t.Errorf("pixel (%d, %d) = %v, want about #%02x%02x%02x", x, y, c, r, g, b)
 		}
 	}
-	near(32, 32, 0xf6, 0xc3, 0x44)
-	near(4, 4, 0x35, 0x69, 0xa3)
-	near(60, 60, 0x35, 0x69, 0xa3)
+	near(46, 18, 0xf6, 0xc3, 0x44)
+	near(4, 4, 0x2f, 0x5f, 0x9e)
+	near(32, 60, 0x3a, 0x9d, 0x3a)
 	// without a cover, the placeholder
 	res = convert(t, "plain.aac", nil)
 	if th, err = thumbnail.Make(res.Doc, &thumbnail.Options{Size: 64, Raster: imagebdf.Options{NoSystemFonts: true}}); err != nil || th.Mode != thumbnail.Crop {

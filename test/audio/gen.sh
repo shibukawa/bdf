@@ -14,8 +14,9 @@ trap 'rm -rf "$tmp"' EXIT
 tone="sine=frequency=440:sample_rate=22050:duration=1"
 f() { ffmpeg -y -loglevel error -nostdin "$@"; }
 
-# The cover art: a blue square with a yellow sun, as JPEG and as PNG.
-f -f lavfi -i "color=c=#3569a3:s=64x64:d=1" -vf "drawbox=x=20:y=20:w=24:h=24:color=#f6c344:t=fill" -frames:v 1 "$tmp/cover.png"
+# The cover art: a sky, a field and a sun, as JPEG and as PNG.
+f -f lavfi -i "gradients=s=320x320:c0=#2f5f9e:c1=#9fd0ff:x0=0:y0=0:x1=0:y1=320:n=2:d=1" \
+  -vf "drawbox=x=0:y=240:w=320:h=80:color=#3a9d3a:t=fill,drawbox=x=200:y=60:w=64:h=64:color=#f6c344:t=fill" -frames:v 1 "$tmp/cover.png"
 f -i "$tmp/cover.png" -q:v 4 "$tmp/cover.jpg"
 
 # MP3 with an ID3v2.3 tag (and an ID3v1 tag at the end): a JPEG front cover
