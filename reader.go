@@ -2,7 +2,6 @@ package bdf
 
 import (
 	"bytes"
-	"compress/flate"
 	"crypto/cipher"
 	"crypto/ecdh"
 	"encoding/json"
@@ -13,6 +12,8 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+
+	"github.com/klauspost/compress/flate"
 )
 
 // MaxManifestSize bounds both the stored and decoded manifest JSON a reader

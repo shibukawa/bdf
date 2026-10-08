@@ -94,6 +94,25 @@
 
 xlsx の変換時間の残りは、セルのレイアウト（確保量の 2 割）と出力の deflate 圧縮（CPU の 3 分の 1）が占める。
 
+### deflate を klauspost/compress に（2026-10-09）
+
+BDF の部品の圧縮と展開（document.go、reader.go、区間の manifest）、zip の部品の展開（`converter/internal/ziputil`。Office・EPUB・KiCad・Gerber・SXF・MusicXML の読み手が使い、展開器はプールする）、draw.io の deflate、PSD・TIFF・画像・WOFF の zlib、CGM と Parquet の gzip を、標準ライブラリから `github.com/klauspost/compress` に替えた（go.mod にあった依存）。埋め込みテーブルの gzip（起動時に 1 回）は標準ライブラリのまま。
+
+全テスト文書の部品 366 個（2.1 MB）と、大きな xlsx・pptx を変換した部品（8.4 MB）で、klauspost の deflate は **どのレベルでも標準ライブラリと同じバイト列を書く**ことを確かめた（`TestFlateMatchesStandardLibrary` が毎回確かめる）。既定レベル（-1）だけは別のレベルを指すので、`compress` は -1 を標準ライブラリの 6 に写す。fixture は変わらない。TinyGo でもビルドでき、wasm モジュールは gzip 後で 29 KB 増える。
+
+同じ部品での圧縮・展開（5 回の平均）:
+
+| | 時間 | 速度 | 大きさ |
+|---|---:|---:|---:|
+| 標準ライブラリ レベル 9（既定） | 69.7 ms | 30 MB/s | 839,292（元の 39.8%） |
+| klauspost レベル 9 | 60.9 ms | 35 MB/s | 同じ |
+| klauspost レベル 7 | 29.5 ms | 72 MB/s | 841,558（+0.3%） |
+| klauspost レベル 6 | 16.8 ms | 126 MB/s | 847,109（+0.9%） |
+| 標準ライブラリの展開 | 10.9 ms | 194 MB/s | |
+| klauspost の展開 | 8.3 ms | 253 MB/s | |
+
+変換全体（3 回の中央値）: 文書の読み込みは 20〜30% 短縮（`BenchmarkDocumentIO` の read。確保回数は半分以下）、書き出しは 5〜13%、変換は PowerPoint `features` で 8%、Word と EPUB で 5〜6%、100 スライドの pptx で 4%、ほかは 0〜2%。同じレベルでは、圧縮器の違いより圧縮レベルの違いが大きい: レベル 6 なら圧縮が 4 倍速く大きさは 0.9% 増、レベル 7 なら 2.4 倍速く 0.3% 増。既定のレベル 9 は変えていない（変えると fixture をすべて作り直す）。
+
 ## ファジング
 
 - `FuzzReader`（ルート）: OpenSingle → ToDocument → SearchText → サムネイル → 先頭 2 ページの描画 → 区間 → 書き出し。testdata の .bdf を種にする。
@@ -105,7 +124,7 @@ xlsx の変換時間の残りは、セルのレイアウト（確保量の 2 割
 ## 検証
 
 - `go test ./...`、`go vet -unreachable=false ./...`、`go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/`、raster/ebitenginebdf の vet とテストが成功。
-- `go test -race` を woff2、fontdb、html、imagebdf、xmltree、ooxml、xlsx、pptx、docx、ルートで実行して成功（プールと走査キャッシュの並行利用）。
+- `go test -race` を woff2、fontdb、html、imagebdf、xmltree、ooxml、xlsx、pptx、docx、ziputil と zip を読む変換器、ルートで実行して成功（プールと走査キャッシュの並行利用）。
 - `npm test` が成功。
 - `bdf generate` で pptx・docx・xlsx・pdf・csv・parquet・drawio・epub・markdown・html の testdata と `bdf demo` を再生成し、既存の BDF とバイト単位で一致（docx/math.bdf だけは修正前のコードでも一致せず、arm64 と amd64 の浮動小数点の差）。
 - `go vet -tags tinygo ./converter/html/` が通り、TinyGo 用のクライアントが選ばれる。

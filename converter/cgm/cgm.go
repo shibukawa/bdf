@@ -16,13 +16,14 @@ package cgm
 
 import (
 	"bytes"
-	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"strings"
+
+	"github.com/klauspost/compress/gzip"
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state

@@ -15,13 +15,14 @@
 package kicad
 
 import (
-	"archive/zip"
 	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
 	"path"
 	"strings"
+
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
@@ -330,7 +331,7 @@ func (c *conv) siblings(in *input, main string) {
 // the project file names, or the root schematic (the one no other sheet
 // refers to) and the board.
 func (c *conv) readZip(data []byte) (*input, error) {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := ziputil.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, fmt.Errorf("kicad: %w", err)
 	}

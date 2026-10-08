@@ -11,6 +11,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
+
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
 )
@@ -127,7 +129,7 @@ func hasToken(list, tok string) bool {
 
 // open reads the container of a publication and its package document.
 func open(r io.ReaderAt, size int64) (*publication, error) {
-	zr, err := zip.NewReader(r, size)
+	zr, err := ziputil.NewReader(r, size)
 	if err != nil {
 		return nil, fmt.Errorf("epub: %w", err)
 	}

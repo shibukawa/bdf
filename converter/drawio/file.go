@@ -2,8 +2,6 @@ package drawio
 
 import (
 	"bytes"
-	"compress/flate"
-	"compress/zlib"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/xml"
@@ -12,6 +10,9 @@ import (
 	"io"
 	"net/url"
 	"strings"
+
+	"github.com/klauspost/compress/flate"
+	"github.com/klauspost/compress/zlib"
 )
 
 // A draw.io file holds one or more diagrams (pages). They come as

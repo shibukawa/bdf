@@ -864,7 +864,7 @@ bdf/
 │   ├── musicxml/      MusicXML（.musicxml、.mxl）→ BDF 変換器（testdata/ にテスト用の楽譜と gen.py）
 │   ├── font/          フォントファイル → BDF 変換器（testdata/ にテスト用フォント。test/font/gen.py が作る）
 │   ├── all/           すべての形式を登録する
-│   └── internal/      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木・トークンの読み手）と
+│   └── internal/      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木・トークンの読み手）、ziputil（zip の展開。klauspost の inflate）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
 │                      フォント選択・計測・サブセット埋め込み。draw.io も使う）、canvas（組み立て中の Object。draw.io も使う）、
 │                      metafile（EMF/WMF の再生）、

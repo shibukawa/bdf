@@ -2,12 +2,13 @@ package font
 
 import (
 	"bytes"
-	"compress/zlib"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"slices"
+
+	"github.com/klauspost/compress/zlib"
 
 	"github.com/shibukawa/bdf/internal/otlayout"
 	"github.com/shibukawa/bdf/internal/sfnt"

@@ -2,7 +2,6 @@ package bdf
 
 import (
 	"bytes"
-	"compress/flate"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+
+	"github.com/klauspost/compress/flate"
 )
 
 // Part is a raw (uncompressed) part.
@@ -139,12 +140,23 @@ type deflateWriter struct {
 
 // The compressor's working memory is much larger than most document
 // parts. Reuse it at the same level; returned bytes are never pooled.
+// The compressor is klauspost/compress's, which writes the stream the
+// standard library writes at every level (see TestFlateMatchesStandardLibrary)
+// but faster; the default level it names differs, so DefaultCompression is
+// the standard library's.
 var deflateWriters [flate.BestCompression - flate.HuffmanOnly + 1]sync.Pool
+
+// defaultLevel is the level of flate.DefaultCompression in the standard
+// library (compress/flate), which the documents written so far used.
+const defaultLevel = 6
 
 func compress(data []byte, level int) ([]byte, error) {
 	if level < flate.HuffmanOnly || level > flate.BestCompression {
 		_, err := flate.NewWriter(io.Discard, level)
 		return nil, err
+	}
+	if level == flate.DefaultCompression {
+		level = defaultLevel // the standard library's default, for the same bytes
 	}
 	pool := &deflateWriters[level-flate.HuffmanOnly]
 	var enc *deflateWriter

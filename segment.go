@@ -1,7 +1,6 @@
 package bdf
 
 import (
-	"compress/flate"
 	"fmt"
 	"io"
 )
@@ -41,8 +40,8 @@ type SegmentOptions struct {
 }
 
 // segmentLevel is the flate level of a segment's manifest, which is made
-// for each request.
-const segmentLevel = flate.DefaultCompression
+// for each request: the standard library's default (see defaultLevel).
+const segmentLevel = defaultLevel
 
 type pageKey struct {
 	view string

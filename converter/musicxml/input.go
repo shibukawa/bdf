@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
+
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/htmlindex"
 	"golang.org/x/text/encoding/unicode"
@@ -119,7 +121,7 @@ func detectMXL(head []byte, r io.ReaderAt, size int64) bool {
 			}
 		}
 	}
-	zr, err := zip.NewReader(r, size)
+	zr, err := ziputil.NewReader(r, size)
 	if err != nil {
 		return false
 	}
@@ -233,7 +235,7 @@ func readInput(r io.ReaderAt, size int64) ([]byte, error) {
 // MusicXML rootfile of its container, or without one the first .musicxml
 // or .xml file outside META-INF.
 func readMXL(r io.ReaderAt, size int64) ([]byte, error) {
-	zr, err := zip.NewReader(r, size)
+	zr, err := ziputil.NewReader(r, size)
 	if err != nil {
 		return nil, fmt.Errorf("musicxml: compressed file: %w", err)
 	}

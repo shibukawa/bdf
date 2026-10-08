@@ -1,11 +1,12 @@
 package sxf
 
 import (
-	"archive/zip"
 	"bytes"
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
 
 	conv "github.com/shibukawa/bdf/converter"
 )
@@ -15,7 +16,7 @@ import (
 // P21 or SFC file (P2Z).
 func Detect(head []byte, r io.ReaderAt, size int64) bool {
 	if bytes.HasPrefix(head, []byte("PK\x03\x04")) {
-		zr, err := zip.NewReader(r, size)
+		zr, err := ziputil.NewReader(r, size)
 		if err != nil {
 			return false
 		}

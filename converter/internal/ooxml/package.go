@@ -13,6 +13,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
+
 	"github.com/shibukawa/bdf/internal/xmltree"
 	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 )
@@ -61,7 +63,7 @@ type Rel struct {
 
 // Open reads the zip directory of a package.
 func Open(r io.ReaderAt, size int64) (*Package, error) {
-	zr, err := zip.NewReader(r, size)
+	zr, err := ziputil.NewReader(r, size)
 	if err != nil {
 		return nil, err
 	}
