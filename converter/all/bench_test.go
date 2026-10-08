@@ -3,6 +3,8 @@ package all_test
 import (
 	"bytes"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/shibukawa/bdf/converter"
@@ -22,6 +24,35 @@ func BenchmarkConvert(b *testing.B) {
 		opts := converter.Options{FontDirs: []string{"../pptx/testdata/fonts", "../docx/testdata/fonts"}, NoSystemFonts: true,
 			FileName: name, Params: map[string]string{"remote": "false"}, Warn: func(string) {}}
 		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				res, err := converter.Convert(bytes.NewReader(data), int64(len(data)), "", &opts)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if err := res.Doc.WriteSingle(&bytes.Buffer{}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkConvertFiles converts the files BDF_BENCH_FILES names (paths
+// separated by commas), for documents outside the repository.
+func BenchmarkConvertFiles(b *testing.B) {
+	files := os.Getenv("BDF_BENCH_FILES")
+	if files == "" {
+		b.Skip("BDF_BENCH_FILES is not set")
+	}
+	for _, name := range strings.Split(files, ",") {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			b.Fatal(err)
+		}
+		opts := converter.Options{FontDirs: []string{"../pptx/testdata/fonts", "../docx/testdata/fonts"}, NoSystemFonts: true,
+			FileName: filepath.Base(name), Params: map[string]string{"remote": "false"}, Warn: func(string) {}}
+		b.Run(filepath.Base(name), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				res, err := converter.Convert(bytes.NewReader(data), int64(len(data)), "", &opts)

@@ -11,6 +11,8 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 )
 
 // Node is a generic XML element. Office markup (DrawingML above all) is
@@ -64,12 +66,26 @@ const MaxDepth = 20000
 // could otherwise ask for memory out of all proportion with its size: a
 // gigabyte of markup, which a megabyte of a package inflates to, would
 // take tens. A reader that keeps several trees gives them a budget of its
-// own (ParseCounting, ReadElementCounting).
+// own (ParseCounting, ReadFrom).
 const MaxElements = 8 << 20
+
+// MaxTokenBytes bounds one token of a part read from a stream (NewReader):
+// the text of an element, or the value of an attribute, which holds a
+// picture in VML's gfxdata (some megabytes of base64). A part parsed from
+// memory has no such bound.
+const MaxTokenBytes = 256 << 20
 
 // ErrTooManyElements is the error of a tree of more than MaxElements
 // elements, or more than the budget its reader gave it.
 var ErrTooManyElements = errors.New("ooxml: too many elements")
+
+// The trees are read with xmlro, which allocates nothing for a token: the
+// bytes of a name or a value are the reader's until the next token, and the
+// tree copies only what it keeps. Names and short values repeat throughout
+// a part, so they are interned: one string for every "p" and "val". The
+// namespaces are resolved as encoding/xml resolves them, and the trees are
+// the same (ReadElementCounting reads one from an encoding/xml decoder for
+// a reader that still streams with it; the tests compare them).
 
 // Parse reads a document into a node tree. mc:AlternateContent is
 // replaced by its mc:Fallback (or its first mc:Choice when there is no
@@ -89,7 +105,8 @@ func ParseChoosing(data []byte, supported func(prefix string) bool) (*Node, erro
 // ParsePicking is Parse that replaces mc:AlternateContent with its first
 // mc:Choice that pick accepts, and with the fallback when it accepts none.
 func ParsePicking(data []byte, pick func(choice *Node) bool) (*Node, error) {
-	return ParsePickingReader(bytes.NewReader(data), pick)
+	budget := MaxElements
+	return parseFrom(xmlro.NewBytesReader(data, ReaderOptions()), pick, &budget)
 }
 
 // ParsePickingReader parses XML from a reader without retaining the source
@@ -103,25 +120,232 @@ func ParsePickingReader(r io.Reader, pick func(choice *Node) bool) (*Node, error
 // trees: budget is how many elements they may have together, which the
 // tree's elements are taken from (ErrTooManyElements when they run out).
 func ParseCounting(r io.Reader, pick func(choice *Node) bool, budget *int) (*Node, error) {
-	d := xml.NewDecoder(r)
-	d.Strict = false
+	return parseFrom(NewReader(r), pick, budget)
+}
+
+// NewReader returns a reader of the XML tokens of src with the bounds of
+// this package (ReaderOptions): what reads a part an element at a time
+// streams with it, and hands the elements it keeps to ReadFrom.
+func NewReader(src io.Reader) *xmlro.Reader { return xmlro.NewReader(src, ReaderOptions()) }
+
+// ReaderOptions bounds a token reader: a token of MaxTokenBytes at most,
+// and nesting a little past MaxDepth, which the trees check themselves. A
+// DOCTYPE is read past, as encoding/xml reads it. The buffer starts small,
+// as most parts of a package are (the relationships of a part, a layout),
+// and grows to the largest token of a part.
+func ReaderOptions() xmlro.Options {
+	return xmlro.Options{BufferSize: 16 << 10, MaxBufferBytes: MaxTokenBytes, MaxDepth: MaxDepth + 64, AllowDoctype: true}
+}
+
+// ParseFrom reads the document a reader is at the start of into a tree, as
+// ParseCounting does: for a reader that is reused from one part to the
+// next (Reset), with the buffer it grew.
+func ParseFrom(r *xmlro.Reader, pick func(choice *Node) bool, budget *int) (*Node, error) {
+	return parseFrom(r, pick, budget)
+}
+
+// parseFrom reads the root element of a document into a tree.
+func parseFrom(r *xmlro.Reader, pick func(choice *Node) bool, budget *int) (*Node, error) {
 	for {
-		tok, err := d.Token()
-		if err == io.EOF {
-			return nil, io.ErrUnexpectedEOF
-		}
+		k, err := r.Next()
 		if err != nil {
 			return nil, err
 		}
-		if start, ok := tok.(xml.StartElement); ok {
-			return ReadElementCounting(d, start, pick, budget)
+		switch k {
+		case xmlro.StartElement:
+			return ReadFrom(r, pick, budget)
+		case xmlro.EOF:
+			return nil, io.ErrUnexpectedEOF
 		}
 	}
 }
 
+// ReadFrom reads the element the reader is on into a tree, with
+// mc:AlternateContent replaced by its first mc:Choice that pick accepts
+// (see ParsePicking), and leaves the reader on the element's EndElement.
+// budget is how many elements the trees of the reader's caller may have
+// together (ErrTooManyElements when they run out). It lets a reader stream
+// the bulk of a large part and keep the rest as trees.
+func ReadFrom(r *xmlro.Reader, pick func(choice *Node) bool, budget *int) (*Node, error) {
+	if r.Kind() != xmlro.StartElement {
+		return nil, xmlro.ErrNotStart
+	}
+	b := builder{r: r, budget: budget}
+	root, err := b.start()
+	if err != nil {
+		return nil, err
+	}
+	stack := []*Node{root}
+	var text []byte
+	for len(stack) > 0 {
+		k, err := r.Next()
+		if err != nil {
+			return nil, err
+		}
+		switch k {
+		case xmlro.StartElement:
+			if len(stack) >= MaxDepth {
+				return nil, fmt.Errorf("ooxml: element nesting deeper than %d", MaxDepth)
+			}
+			n, err := b.start()
+			if err != nil {
+				return nil, err
+			}
+			p := stack[len(stack)-1]
+			p.Kids = append(p.Kids, n)
+			stack = append(stack, n)
+		case xmlro.EndElement:
+			if n := stack[len(stack)-1]; len(n.Kids) == 0 {
+				n.runs = nil // Text alone says it all
+			}
+			stack = stack[:len(stack)-1]
+		case xmlro.Text, xmlro.CData:
+			if k == xmlro.Text {
+				text = r.Text().AppendTo(text[:0]) // entities decoded
+			} else {
+				text = append(text[:0], r.Text()...) // a CDATA section holds none
+			}
+			s := string(text)
+			n := stack[len(stack)-1]
+			n.Text += s
+			if k := len(n.runs) - 1; k >= 0 && n.runs[k].before == len(n.Kids) {
+				n.runs[k].text += s
+			} else {
+				n.runs = append(n.runs, textRun{len(n.Kids), s})
+			}
+		case xmlro.EOF:
+			return nil, io.ErrUnexpectedEOF
+		}
+	}
+	root.resolveAlternates(pick)
+	return root, nil
+}
+
+// builder makes the nodes of one tree.
+type builder struct {
+	r      *xmlro.Reader
+	budget *int
+	names  interner
+}
+
+// maxInternedValue is the longest attribute value that is interned: the
+// values of Office markup are mostly short and repeated (a size, a colour,
+// a style id), and a long one is a picture or a formula.
+const maxInternedValue = 32
+
+// start makes the node of the StartElement the reader is on.
+func (b *builder) start() (*Node, error) {
+	if *b.budget <= 0 {
+		return nil, ErrTooManyElements
+	}
+	*b.budget--
+	r := b.r
+	n := &Node{Name: b.names.str(r.LocalName())}
+	if p := r.Prefix(); p != nil {
+		if uri, ok := r.LookupNamespace(p); ok {
+			n.Space = uri
+		} else {
+			n.Space = b.names.str(p) // a prefix bound to nothing stays, as encoding/xml keeps it
+		}
+	} else {
+		n.Space = r.Namespace()
+	}
+	for {
+		name, val, ok := r.NextAttr()
+		if !ok {
+			break
+		}
+		var a xml.Attr
+		if i := bytes.IndexByte(name, ':'); i >= 0 {
+			prefix, local := name[:i], name[i+1:]
+			switch uri, ok := r.LookupNamespace(prefix); {
+			case xmlro.Equal(prefix, "xmlns"):
+				a.Name.Space = "xmlns" // a declaration, as encoding/xml reports it
+			case ok:
+				a.Name.Space = uri
+			default:
+				a.Name.Space = b.names.str(prefix)
+			}
+			a.Name.Local = b.names.str(local)
+		} else {
+			a.Name.Local = b.names.str(name) // no default namespace for attributes
+		}
+		if len(val) <= maxInternedValue && !val.HasEntities() {
+			a.Value = b.names.str(val)
+		} else {
+			a.Value = val.String()
+		}
+		n.Attrs = append(n.Attrs, a)
+	}
+	return n, nil
+}
+
+// interner keeps one string for the names and values that repeat in a
+// part: an open addressing table that compares bytes to strings without
+// making a string of the bytes (which TinyGo would do for a map index).
+type interner struct {
+	table []string // "" is an empty slot
+	n     int
+}
+
+func (t *interner) str(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	if t.table == nil {
+		t.table = make([]string, 64)
+	}
+	mask := len(t.table) - 1
+	for i := int(fnv(b)) & mask; ; i = (i + 1) & mask {
+		s := t.table[i]
+		if s == "" {
+			if 2*(t.n+1) > len(t.table) {
+				t.grow()
+				return t.str(b)
+			}
+			s = string(b)
+			t.table[i] = s
+			t.n++
+			return s
+		}
+		if xmlro.Equal(b, s) {
+			return s
+		}
+	}
+}
+
+func (t *interner) grow() {
+	old := t.table
+	t.table = make([]string, 2*len(old))
+	t.n = 0
+	mask := len(t.table) - 1
+	for _, s := range old {
+		if s == "" {
+			continue
+		}
+		i := int(fnv(s)) & mask
+		for t.table[i] != "" {
+			i = (i + 1) & mask
+		}
+		t.table[i] = s
+		t.n++
+	}
+}
+
+// fnv is the FNV-1a hash of a name.
+func fnv[S ~string | ~[]byte](s S) uint32 {
+	h := uint32(2166136261)
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= 16777619
+	}
+	return h
+}
+
 // ReadElement reads the element that start opens from d, up to its end,
-// into a node tree (with mc:AlternateContent resolved as Parse does). It
-// lets a reader stream the bulk of a large part and keep the rest as trees.
+// into a node tree (with mc:AlternateContent resolved as Parse does), for
+// a reader that streams a part with encoding/xml; one that streams with
+// NewReader uses ReadFrom.
 func ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
 	return ReadElementPicking(d, start, nil)
 }
@@ -165,7 +389,7 @@ func ReadElementPicking(d *xml.Decoder, start xml.StartElement, pick func(choice
 }
 
 // ReadElementCounting is ReadElementPicking with a budget of elements, as
-// ParseCounting has.
+// ReadFrom has.
 func ReadElementCounting(d *xml.Decoder, start xml.StartElement, pick func(choice *Node) bool, budget *int) (*Node, error) {
 	if *budget <= 0 {
 		return nil, ErrTooManyElements

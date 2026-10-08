@@ -2,12 +2,12 @@ package docx
 
 import (
 	"bytes"
-	"encoding/xml"
 	"fmt"
 	"io"
 
 	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 )
 
 func init() {
@@ -31,14 +31,14 @@ func init() {
 					return false
 				}
 				defer rc.Close()
-				d := xml.NewDecoder(rc)
+				xr := ooxml.NewReader(rc)
 				for {
-					tok, err := d.Token()
-					if err != nil {
+					k, err := xr.Next()
+					if err != nil || k == xmlro.EOF {
 						return false
 					}
-					if start, ok := tok.(xml.StartElement); ok {
-						return start.Name.Local == "document"
+					if k == xmlro.StartElement {
+						return xmlro.Equal(xr.LocalName(), "document")
 					}
 				}
 			}

@@ -65,7 +65,34 @@
 | draw.io `showcase` | 1.31 ms | 1.10 ms | -16% | 4.05 MB → 1.11 MB |
 | Markdown `basic` | 1.56 ms | 1.50 ms | -4% | 1.4 MB → 1.3 MB |
 
-残っている大きなものは wordproc の行の配置（行ごとの要素のコピー）と encoding/xml のトークンで、どちらも構造の変更になるので見送った。参考値として、`GOGC=400` で変換は 8〜13% 速くなるが常駐メモリが増えるので、プロセスの設定として使う側が決める。
+残っている大きなものは wordproc の行の配置（行ごとの要素のコピー）で、構造の変更になるので見送った。参考値として、`GOGC=400` で変換は 8〜13% 速くなるが常駐メモリが増えるので、プロセスの設定として使う側が決める。
+
+### Office の XML の読み手を xmlro に（2026-10-09）
+
+大きな文書では encoding/xml が確保するオブジェクトの 39%、バイトの 17% を占めていた（4 シート × 3,000 行の xlsx と 100 スライドの pptx のプロファイル）。トークンごとに名前の文字列 2 つ、属性のスライス、文字データのコピーを作るためで、木にする `xmltree` の確保はその上に乗る。
+
+- `internal/xmltree` の木は tinygodriver の `encoding/xmlro` で読む。xmlro はトークンに何も確保せず、名前や値はバッファへのスライスなので、木が持つものだけを写す。要素名と短い属性値（32 バイトまで）は部品ごとに intern して 1 つの文字列にし、名前空間は encoding/xml と同じに解決する（接頭辞は URI に、束縛のない接頭辞はそのまま、`xmlns:` の宣言は Space "xmlns" の属性）。`ooxml.Package` は読み手を 1 つ使い回し、最大のトークンまで育ったバッファを部品から部品へ持ち越す。
+- xlsx の `sheetData` と共有文字列、pptx の非表示スライドの判定、docx の判別は、`ooxml.NewReader` で流し読みし、持つ要素だけ `Package.ReadFrom` で木にする。
+- encoding/xml から木を作る `ReadElementCounting` は残し、`TestTreesOfDocumentsMatch` がリポジトリの Office 文書の全 XML 部品（12 文書、258 部品）と境界条件の文書で両方の木の一致を確かめる。SVG、draw.io、MusicXML、EPUB、XHTML、XMP は encoding/xml のまま（xmlro は DOCTYPE の内部サブセットを拒み、`Strict = false` の寛容さがない。占める量もわずか）。
+
+合成した Word 本文（4,000 段落、3.7 MB）の木:
+
+| | 時間 | 確保量 | 確保回数 |
+|---|---:|---:|---:|
+| encoding/xml（従来） | 57 ms | 44.5 MB | 1,061k |
+| xmlro | 17 ms | 21.4 MB | 311k |
+
+変換全体（`BenchmarkConvertFiles` は `tools/generate-memory-fixtures.py` の大きな文書、3 回の中央値）:
+
+| 入力 | 修正前 | 修正後 | 時間 | 確保量 | 確保回数 |
+|---|---:|---:|---:|---:|---:|
+| 4 シート × 3,000 行の xlsx | 491 ms | 478 ms | -3% | 339 MB → 298 MB | 4.38M → 3.07M |
+| 100 スライドの pptx | 131 ms | 99 ms | -24% | 139 MB → 116 MB | 1.74M → 1.01M |
+| PowerPoint `features` | 3.77 ms | 3.07 ms | -19% | 6.8 MB → 6.2 MB | 34.8k → 20.0k |
+| Excel `basic` | 5.82 ms | 5.27 ms | -9% | 10.3 MB → 10.0 MB | 49.6k → 32.6k |
+| Word `basic` | 5.37 ms | 5.30 ms | -1% | 9.9 MB → 9.8 MB | 27.2k → 20.8k |
+
+xlsx の変換時間の残りは、セルのレイアウト（確保量の 2 割）と出力の deflate 圧縮（CPU の 3 分の 1）が占める。
 
 ## ファジング
 
@@ -78,7 +105,7 @@
 ## 検証
 
 - `go test ./...`、`go vet -unreachable=false ./...`、`go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/`、raster/ebitenginebdf の vet とテストが成功。
-- `go test -race` を woff2、fontdb、html、imagebdf、xmltree、ooxml、ルートで実行して成功（プールと走査キャッシュの並行利用）。
+- `go test -race` を woff2、fontdb、html、imagebdf、xmltree、ooxml、xlsx、pptx、docx、ルートで実行して成功（プールと走査キャッシュの並行利用）。
 - `npm test` が成功。
 - `bdf generate` で pptx・docx・xlsx・pdf・csv・parquet・drawio・epub・markdown・html の testdata と `bdf demo` を再生成し、既存の BDF とバイト単位で一致（docx/math.bdf だけは修正前のコードでも一致せず、arm64 と amd64 の浮動小数点の差）。
 - `go vet -tags tinygo ./converter/html/` が通り、TinyGo 用のクライアントが選ばれる。

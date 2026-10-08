@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf/internal/xmltree"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 )
 
 // maxPartSize bounds the decompressed size of one package part.
@@ -39,6 +40,9 @@ type Package struct {
 	// those of each tree kept, which DiscardXML gives back
 	elements int
 	counts   map[string]int
+	// reader reads the parts XML makes trees of, one after another, with
+	// the buffer it grew for the largest token so far
+	reader *xmlro.Reader
 }
 
 // maxLiveElements bounds the elements of the trees a package keeps at a
@@ -170,7 +174,12 @@ func (p *Package) XML(name string) (*Node, error) {
 		p.counts, p.elements = map[string]int{}, maxLiveElements
 	}
 	budget := p.elements
-	n, err := xmltree.ParseCounting(rc, p.choice(), &budget)
+	if p.reader == nil {
+		p.reader = xmltree.NewReader(rc)
+	} else {
+		p.reader.Reset(rc)
+	}
+	n, err := xmltree.ParseFrom(p.reader, p.choice(), &budget)
 	if err != nil {
 		if errors.Is(err, xmltree.ErrTooManyElements) {
 			err = fmt.Errorf("%w: the trees of the parts take more than %d together", err, maxLiveElements)
@@ -186,9 +195,25 @@ func (p *Package) XML(name string) (*Node, error) {
 }
 
 // ReadElement reads one streamed element with this package's markup
-// compatibility choices, as XML does for a whole part.
+// compatibility choices, as XML does for a whole part, from an
+// encoding/xml decoder; ReadFrom reads one from a reader of NewReader.
 func (p *Package) ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
 	return xmltree.ReadElementPicking(d, start, p.choice())
+}
+
+// NewReader returns a reader of the XML tokens of a part opened with
+// OpenPart, for the converters that stream the bulk of a part (the rows of
+// a sheet, the strings of the shared string table) and keep the elements
+// they want as trees (ReadFrom). It allocates nothing for the tokens it
+// passes over.
+func NewReader(src io.Reader) *xmlro.Reader { return xmltree.NewReader(src) }
+
+// ReadFrom reads the element the reader is on into a tree with this
+// package's markup compatibility choices, within xmltree.MaxElements, and
+// leaves the reader on the element's EndElement.
+func (p *Package) ReadFrom(r *xmlro.Reader) (*Node, error) {
+	budget := xmltree.MaxElements
+	return xmltree.ReadFrom(r, p.choice(), &budget)
 }
 
 func (p *Package) choice() func(*Node) bool {
