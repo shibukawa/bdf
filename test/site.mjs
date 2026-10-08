@@ -33,11 +33,12 @@ const modules = {
   preview: await load("bdf-preview.wasm"),
 };
 assert.deepEqual(modules.pdf.formats.map((f) => f.name), ["ai", "pdf"]);
-assert.deepEqual(modules.office.formats.map((f) => f.name), ["cgm", "csv", "docx", "drawio", "dxf", "emf", "font", "gerber", "hpgl", "image", "jww", "kicad", "midi", "mml", "musicxml", "parquet", "pptx", "psd", "sxf", "visio", "xlsx"]);
-assert.deepEqual(modules.image.formats.map((f) => f.name), ["image"]);
+assert.deepEqual(modules.office.formats.map((f) => f.name), ["audio", "cgm", "csv", "docx", "drawio", "dxf", "emf", "font", "gerber", "hpgl", "image", "jww", "kicad", "midi", "mml", "musicxml", "parquet", "pptx", "psd", "sxf", "visio", "xlsx"]);
+assert.deepEqual(modules.image.formats.map((f) => f.name), ["audio", "image"]);
 assert.deepEqual(modules.web.formats.map((f) => f.name), ["epub", "html", "markdown"]);
 assert.deepEqual(modules.preview.formats, []);
-const imageExtensions = modules.image.formats[0].extensions;
+// the image module converts images and audio files (their covers and tags), neither needing fonts
+const imageExtensions = modules.image.formats.flatMap((f) => f.extensions);
 const webExtensions = modules.web.formats.flatMap((f) => f.extensions);
 
 let failed = 0;
@@ -137,7 +138,7 @@ function pngSize(b) {
   return [dv.getUint32(16), dv.getUint32(20)];
 }
 /** The layout the thumbnail package picks for the formats that have one. */
-const LAYOUT = { docx: "crop", html: "crop", markdown: "crop", xlsx: "crop", csv: "crop", parquet: "crop", font: "crop", pptx: "fit", vsdx: "fit", drawio: "fit", epub: "fit", svg: "fit", jpeg: "fit" };
+const LAYOUT = { docx: "crop", html: "crop", markdown: "crop", xlsx: "crop", csv: "crop", parquet: "crop", font: "crop", mp3: "crop", pptx: "fit", vsdx: "fit", drawio: "fit", epub: "fit", svg: "fit", jpeg: "fit" };
 for (const { name, format, bdf } of converted) {
   const t0 = performance.now();
   try {

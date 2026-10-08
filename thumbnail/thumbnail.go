@@ -6,9 +6,9 @@
 //
 //   - Crop (Word, HTML, Markdown, Excel, CSV, Parquet, scores from MML,
 //     MIDI and MusicXML, font files, whose overview starts with the name
-//     and a specimen; PDF and TIFF pages taller than wide): a square
-//     from the top-left corner of the first page, as wide as the page,
-//     scaled to Size × Size. A scroll view is cut from
+//     and a specimen, audio files, whose card starts with the cover; PDF
+//     and TIFF pages taller than wide): a square from the top-left corner
+//     of the first page, as wide as the page, scaled to Size × Size. A scroll view is cut from
 //     its top; a sheet from cell A1, with gridlines: the square is
 //     Size pixels at SheetDPI, so that a smaller thumbnail shows fewer
 //     cells instead of smaller ones, from MinSheetSide to MaxSheetSide
@@ -123,7 +123,8 @@ type Result struct {
 
 // cropSources are the formats whose first page is text read from the top.
 var cropSources = map[string]bool{"docx": true, "html": true, "markdown": true, "xlsx": true, "csv": true, "parquet": true,
-	"mml": true, "midi": true, "musicxml": true, "font": true}
+	"mml": true, "midi": true, "musicxml": true, "font": true,
+	"mp3": true, "m4a": true, "aac": true, "flac": true, "ogg": true, "wav": true, "aiff": true}
 
 // shapeSources are the formats whose pages may be documents or slides:
 // those taller than wide are cropped.

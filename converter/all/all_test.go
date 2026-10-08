@@ -140,6 +140,18 @@ func TestDetect(t *testing.T) {
 		{"ppmck mml", []byte("#TITLE Frere Jacques\n#COMPOSER Traditional\n\nA t120 l4 o4 cdec cdec\nB l4 o3 r1 cdec\n"), "mml"},
 		{"midi", []byte("MThd\x00\x00\x00\x06\x00\x01\x00\x02\x01\xe0MTrk"), "midi"},
 		{"tiff", []byte("II*\x00\x08\x00\x00\x00"), "tiff"},
+		// audio files, by their tags and signatures or their frames; an MP4
+		// file with a video track is no format, and an AVIF image an image
+		{"mp3 with ID3", readAudio(t, "tagged.mp3"), "audio"},
+		{"mp3 frames", readAudio(t, "japanese.mp3")[1302:], "audio"},
+		{"m4a", readAudio(t, "tagged.m4a"), "audio"},
+		{"flac", readAudio(t, "tagged.flac"), "audio"},
+		{"ogg vorbis", readAudio(t, "tagged.ogg"), "audio"},
+		{"opus", readAudio(t, "tagged.opus"), "audio"},
+		{"wav", readAudio(t, "tagged.wav"), "audio"},
+		{"aiff", readAudio(t, "tagged.aiff"), "audio"},
+		{"adts", readAudio(t, "plain.aac"), "audio"},
+		{"mp4 video", []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom\x00\x00\x00\x08free"), ""},
 		{"big-endian tiff", []byte("MM\x00*\x00\x00\x00\x08"), "tiff"},
 		{"bigtiff", []byte("II+\x00\x08\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\x00"), "tiff"},
 		{"epub", epub.Bytes(), "epub"},
@@ -181,6 +193,16 @@ func read(t *testing.T, name string) []byte {
 func readParquet(t *testing.T, name string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "parquet", "testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// readAudio returns a file of the audio converter's test data.
+func readAudio(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "audio", "testdata", name))
 	if err != nil {
 		t.Fatal(err)
 	}

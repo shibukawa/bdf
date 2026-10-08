@@ -3,47 +3,9 @@ package image
 import (
 	"bytes"
 	"errors"
+
+	"github.com/shibukawa/bdf/converter/internal/isobmff"
 )
-
-// box is an ISOBMFF box: its type and contents.
-type box struct {
-	typ  string
-	data []byte
-}
-
-// boxes splits b into boxes.
-func boxes(b []byte) []box {
-	var out []box
-	for len(b) >= 8 {
-		size, hdr := uint64(be.Uint32(b)), uint64(8)
-		typ := string(b[4:8])
-		switch size {
-		case 0: // to the end
-			size = uint64(len(b))
-		case 1:
-			if len(b) < 16 {
-				return out
-			}
-			size, hdr = be.Uint64(b[8:]), 16
-		}
-		if size < hdr || size > uint64(len(b)) {
-			return out
-		}
-		out = append(out, box{typ, b[hdr:size]})
-		b = b[size:]
-	}
-	return out
-}
-
-// find returns the contents of the first box of a type, or nil.
-func find(bs []box, typ string) []byte {
-	for _, b := range bs {
-		if b.typ == typ {
-			return b.data
-		}
-	}
-	return nil
-}
 
 // reader reads big-endian fields, remembering that it ran out of data.
 type reader struct {
@@ -97,20 +59,20 @@ func (r *reader) cstring() string {
 // track.
 func readAVIF(b []byte) (*picture, error) {
 	p := &picture{format: "avif"}
-	top := boxes(b)
+	top := isobmff.Boxes(b)
 	// an image sequence: "avis" as the major or a compatible brand, and a movie
-	if ftyp := find(top, "ftyp"); find(top, "moov") != nil {
+	if ftyp := isobmff.Find(top, "ftyp"); isobmff.Find(top, "moov") != nil {
 		for i := 0; i+4 <= len(ftyp); i += 4 {
 			p.animated = p.animated || i != 4 && string(ftyp[i:i+4]) == "avis"
 		}
 	}
-	if meta := find(top, "meta"); len(meta) >= 4 {
-		readHEIFMeta(p, b, boxes(meta[4:]))
+	if meta := isobmff.Find(top, "meta"); len(meta) >= 4 {
+		readHEIFMeta(p, b, isobmff.Boxes(meta[4:]))
 	}
 	if p.w == 0 {
 		// a sequence: the track header's width and height (16.16)
-		if trak := find(boxes(find(top, "moov")), "trak"); trak != nil {
-			if tkhd := find(boxes(trak), "tkhd"); len(tkhd) >= 84 {
+		if trak := isobmff.Find(isobmff.Boxes(isobmff.Find(top, "moov")), "trak"); trak != nil {
+			if tkhd := isobmff.Find(isobmff.Boxes(trak), "tkhd"); len(tkhd) >= 84 {
 				at := 76 // version 0
 				if tkhd[0] == 1 {
 					at = 88
@@ -129,9 +91,9 @@ func readAVIF(b []byte) (*picture, error) {
 
 // readHEIFMeta reads the items of a meta box: the primary item's size and
 // rotation, and the Exif and XMP items.
-func readHEIFMeta(p *picture, file []byte, meta []box) {
+func readHEIFMeta(p *picture, file []byte, meta []isobmff.Box) {
 	primary := uint64(0)
-	if pitm := find(meta, "pitm"); len(pitm) >= 4 {
+	if pitm := isobmff.Find(meta, "pitm"); len(pitm) >= 4 {
 		r := &reader{b: pitm[4:]}
 		if pitm[0] == 0 {
 			primary = r.u16()
@@ -142,20 +104,20 @@ func readHEIFMeta(p *picture, file []byte, meta []box) {
 	// item types
 	type item struct{ typ, contentType string }
 	items := map[uint64]item{}
-	if iinf := find(meta, "iinf"); len(iinf) >= 4 {
+	if iinf := isobmff.Find(meta, "iinf"); len(iinf) >= 4 {
 		r := &reader{b: iinf[4:]}
 		if iinf[0] == 0 {
 			r.u16()
 		} else {
 			r.u32()
 		}
-		for _, infe := range boxes(r.b) {
-			if infe.typ != "infe" || len(infe.data) < 4 || infe.data[0] < 2 {
+		for _, infe := range isobmff.Boxes(r.b) {
+			if infe.Type != "infe" || len(infe.Data) < 4 || infe.Data[0] < 2 {
 				continue
 			}
-			e := &reader{b: infe.data[4:]}
+			e := &reader{b: infe.Data[4:]}
 			var id uint64
-			if infe.data[0] == 2 {
+			if infe.Data[0] == 2 {
 				id = e.u16()
 			} else {
 				id = e.u32()
@@ -173,14 +135,14 @@ func readHEIFMeta(p *picture, file []byte, meta []box) {
 	}
 	// the primary item's properties
 	rotated := false
-	if iprp := boxes(find(meta, "iprp")); iprp != nil {
-		props := boxes(find(iprp, "ipco"))
+	if iprp := isobmff.Boxes(isobmff.Find(meta, "iprp")); iprp != nil {
+		props := isobmff.Boxes(isobmff.Find(iprp, "ipco"))
 		for _, ipma := range iprp {
-			if ipma.typ != "ipma" || len(ipma.data) < 4 {
+			if ipma.Type != "ipma" || len(ipma.Data) < 4 {
 				continue
 			}
-			version, flags := ipma.data[0], ipma.data[3]
-			r := &reader{b: ipma.data[4:]}
+			version, flags := ipma.Data[0], ipma.Data[3]
+			r := &reader{b: ipma.Data[4:]}
 			for n := r.u32(); n > 0 && !r.bad; n-- {
 				var id uint64
 				if version < 1 {
@@ -198,13 +160,13 @@ func readHEIFMeta(p *picture, file []byte, meta []box) {
 					if id != primary || index == 0 || index > uint64(len(props)) {
 						continue
 					}
-					switch prop := props[index-1]; prop.typ {
+					switch prop := props[index-1]; prop.Type {
 					case "ispe":
-						if len(prop.data) >= 12 {
-							p.w, p.h = float64(be.Uint32(prop.data[4:])), float64(be.Uint32(prop.data[8:]))
+						if len(prop.Data) >= 12 {
+							p.w, p.h = float64(be.Uint32(prop.Data[4:])), float64(be.Uint32(prop.Data[8:]))
 						}
 					case "irot":
-						rotated = len(prop.data) >= 1 && prop.data[0]&1 != 0 // 90° or 270°
+						rotated = len(prop.Data) >= 1 && prop.Data[0]&1 != 0 // 90° or 270°
 					}
 				}
 			}
@@ -214,11 +176,11 @@ func readHEIFMeta(p *picture, file []byte, meta []box) {
 		p.w, p.h = p.h, p.w
 	}
 	// Exif and XMP items
-	iloc := find(meta, "iloc")
+	iloc := isobmff.Find(meta, "iloc")
 	if len(iloc) < 6 {
 		return
 	}
-	idat := find(meta, "idat")
+	idat := isobmff.Find(meta, "idat")
 	version := iloc[0]
 	r := &reader{b: iloc[4:]}
 	sizes := r.u8()

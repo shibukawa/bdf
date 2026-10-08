@@ -14,10 +14,10 @@ MML・MIDI・MusicXML は変換器が五線譜に組みます。View はその�
 
 ## メタデータ
 
-manifest に Dublin Core のメタデータ（題名・作成者・主題・言語・作成日時など）を持てます。PDF の文書情報、PowerPoint・Excel・Word のコアプロパティ、Visio の文書プロパティ、Photoshop の文書の XMP メタデータ、HTML の meta 要素、Markdown の front matter、EPUB のパッケージ文書、画像の XMP・EXIF・IPTC などから引き継ぎます。
+manifest に Dublin Core のメタデータ（題名・作成者・主題・言語・作成日時など）を持てます。PDF の文書情報、PowerPoint・Excel・Word のコアプロパティ、Visio の文書プロパティ、Photoshop の文書の XMP メタデータ、HTML の meta 要素、Markdown の front matter、EPUB のパッケージ文書、画像の XMP・EXIF・IPTC、音声ファイルのタグ（ID3、iTunes 形式の MP4 メタデータ、Vorbis コメント、RIFF INFO）などから引き継ぎます。
 
 ## サーバー側のサムネイルと検索用テキスト
 
-`imagebdf` はビューアと同じ命令を純 Go で実行し、任意のページ（シートや scroll View なら任意の範囲）を画像に描きます。アンチエイリアスつきのパス、線、クリップ、グラデーションとパターン、画像、埋め込みフォント（WOFF2 を展開する）と名前で参照するフォント（システムのフォントを探す）のテキスト、グループ、ソフトマスク、影、SVG の画像を描きます。ブラウザの golden テストと同じページを Go のテストで描き、両方を縮小して比べると、ほとんどのページで平均の差が 4/255 未満に収まります（違いはヒンティング・カーニング・合字をしないことと、AVIF の画像を描かないことです）。`thumbnail` は文書の種類からレイアウトを選びます。Word・HTML・Markdown・楽譜・縦長のページは 1 ページ目の左上の正方形、Excel・CSV は A1 から始まる範囲、スライド・図面・画像・EPUB の表紙は 1 ページ目の全体で、PNG・JPEG・WebP で書き出します。`Document.SearchText` は検索エンジン向けにメタデータとページごとのテキストを返します。どちらも暗号化されないので、暗号化した文書については頼まれない限り（`-allow-plaintext`）書き出しません。詳細は[design.md §3.25](../design.md#325-サーバー側のサムネイルと検索用テキストimagebdfthumbnailsearchtext)を参照してください。
+`imagebdf` はビューアと同じ命令を純 Go で実行し、任意のページ（シートや scroll View なら任意の範囲）を画像に描きます。アンチエイリアスつきのパス、線、クリップ、グラデーションとパターン、画像、埋め込みフォント（WOFF2 を展開する）と名前で参照するフォント（システムのフォントを探す）のテキスト、グループ、ソフトマスク、影、SVG の画像を描きます。ブラウザの golden テストと同じページを Go のテストで描き、両方を縮小して比べると、ほとんどのページで平均の差が 4/255 未満に収まります（違いはヒンティング・カーニング・合字をしないことと、AVIF の画像を描かないことです）。`thumbnail` は文書の種類からレイアウトを選びます。Word・HTML・Markdown・楽譜・縦長のページは 1 ページ目の左上の正方形（音声ファイルのカードも。その正方形はカバーアートです）、Excel・CSV は A1 から始まる範囲、スライド・図面・画像・EPUB の表紙は 1 ページ目の全体で、PNG・JPEG・WebP で書き出します。`Document.SearchText` は検索エンジン向けにメタデータとページごとのテキストを返します。どちらも暗号化されないので、暗号化した文書については頼まれない限り（`-allow-plaintext`）書き出しません。詳細は[design.md §3.25](../design.md#325-サーバー側のサムネイルと検索用テキストimagebdfthumbnailsearchtext)を参照してください。
 
 [サムネイル](https://shibukawa.github.io/bdf/thumbnail/)と[検索テキスト](https://shibukawa.github.io/bdf/text/)のページを試してみてください。ドロップしたファイルに対して、この同じコードを WebAssembly にしたもので実際に動かせます。

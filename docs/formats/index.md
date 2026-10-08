@@ -26,6 +26,7 @@ The format is detected from the input's content where that's possible; Markdown,
 | Electronics | Gerber/Excellon (circuit boards), KiCad | [Circuit boards, KiCad](electronics.md) |
 | Books | EPUB | [EPUB](ebook.md) |
 | Music | MML, MIDI, MusicXML | [Scores](music.md) |
+| Audio | MP3, AAC (M4A, ADTS), FLAC, Ogg Vorbis and Opus, WAV, AIFF | [Audio files](audio.md) |
 | Fonts | TrueType/OpenType/WOFF/WOFF2 | [Font files](font.md) |
 | Images and design | PNG/JPEG/GIF/WebP/AVIF/BMP/ICO/SVG, Photoshop, TIFF, Windows metafiles | [Images, Photoshop](image.md) |
 
@@ -60,5 +61,6 @@ The format is detected from the input's content where that's possible; Markdown,
 | MusicXML | `converter/musicxml` | .musicxml, .mxl |
 | Font file | `converter/font` | .ttf, .otf, .ttc, .otc, .woff, .woff2 |
 | Image | `converter/image` | .png, .jpg, .gif, .webp, .avif, .bmp, .ico, .svg |
+| Audio file | `converter/audio` | .mp3, .m4a, .m4b, .aac, .flac, .ogg, .oga, .opus, .wav, .aif, .aiff |
 
 Each package's `-param` options are listed by `go run ./cmd/bdf generate -h`, and again on the page for that format. For the container format each converter writes into, see the [format specification](../spec.md); for why each converter is built the way it is, [design notes](../design.md).

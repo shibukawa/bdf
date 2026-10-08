@@ -61,6 +61,7 @@ const SHOTS = [
   { name: "font-features", file: "stix.otf", zoom: 1, view: "Features" },
   { name: "psd", file: "artboards.psd", zoom: 1.25 },
   { name: "image", file: "drawing.svg", zoom: "fit" },
+  { name: "audio", file: "tagged.mp3", zoom: 0.8 },
 ];
 
 const site = join(root, "site/dist");
