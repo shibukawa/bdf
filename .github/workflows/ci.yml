@@ -10,6 +10,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.27"
+          check-latest: true
       # Go 1.27's unreachable analyzer flags the goto-shaped bodies of the
       # generated codec (imgconv/internal/webpw), so that check is off.
       - run: go vet -unreachable=false ./...
