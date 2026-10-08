@@ -30,7 +30,7 @@ bdfConverter.open(data, options?) → Promise<{bdf, format, pages, warnings, str
   // pages > 0: bdf はアウトライン（全ページの大きさだけでレイヤーはまだ空）、stream が残りを変換する
 ```
 
-`-tags pdfonly|officeonly|webonly|imageonly` でより小さなモジュールをビルドできます — PDF と Illustrator用、Office 系・CAD・KiCad・音楽・フォント用、HTML・Markdown・EPUB 用、ブラウザ自身がデコードできる画像用 — ページは必要なものだけを取得します。`-tags previewonly` は変換器を持たないモジュールで、`thumbnail()` と `text()` を公開します。サーバーが使うのと同じ Go のコード（`thumbnail`、`Document.SearchText`）で、[サムネイル](https://shibukawa.github.io/bdf/thumbnail/)と[検索テキスト](https://shibukawa.github.io/bdf/text/)のページに使われます。`examples/common/convert-worker.ts` はクライアント側のつなぎで、必要になったときにこれらのモジュールを読み込み、`convert`・`open`・`page`・`finish`・`thumbnail`・`text` を `postMessage` 越しに公開します。どのモジュールが要るかは、`examples/common/convert.ts` の `sniff()` がドロップされたファイルの中身と拡張子から判定します。
+`-tags pdfonly|officeonly|webonly|imageonly` でより小さなモジュールをビルドできます — PDF と Illustrator用、Office 系・CAD・KiCad・音楽・フォント用、HTML・Markdown・EPUB 用、ブラウザ自身がデコードできる画像と音声ファイル（カバーとタグ）用 — ページは必要なものだけを取得します。`-tags previewonly` は変換器を持たないモジュールで、`thumbnail()` と `text()` を公開します。サーバーが使うのと同じ Go のコード（`thumbnail`、`Document.SearchText`）で、[サムネイル](https://shibukawa.github.io/bdf/thumbnail/)と[検索テキスト](https://shibukawa.github.io/bdf/text/)のページに使われます。`examples/common/convert-worker.ts` はクライアント側のつなぎで、必要になったときにこれらのモジュールを読み込み、`convert`・`open`・`page`・`finish`・`thumbnail`・`text` を `postMessage` 越しに公開します。どのモジュールが要るかは、`examples/common/convert.ts` の `sniff()` がドロップされたファイルの中身と拡張子から判定します。
 
 PDF はページ単位で変換します。`open()` はまずページの大きさだけ入った空の文書を返し、`page(i)` が変換の進みに合わせて各ページを埋めていきます（表示中のページを優先）。`finish()` は完成した文書を返し、ストリーミング中のものと差し替えます。この形にした理由は[design.md §2](../design.md#2-go-と-wasm-について)を、呼び出しの全体像は [API 一覧](../api.md#ブラウザ内変換cmdbdfwasm)を参照してください。
 

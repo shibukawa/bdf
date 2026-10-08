@@ -26,6 +26,7 @@ res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" で�
 | 電子回路 | Gerber・Excellon（プリント基板）、KiCad | [プリント基板・KiCad](electronics.ja.md) |
 | 本 | EPUB | [EPUB](ebook.ja.md) |
 | 音楽 | MML、MIDI、MusicXML | [楽譜](music.ja.md) |
+| 音声 | MP3、AAC（M4A、ADTS）、FLAC、Ogg Vorbis・Opus、WAV、AIFF | [音声ファイル](audio.ja.md) |
 | フォント | TrueType・OpenType・WOFF・WOFF2 | [フォントファイル](font.ja.md) |
 | 画像・デザイン | PNG・JPEG・GIF・WebP・AVIF・BMP・ICO・SVG、Photoshop、TIFF、Windows メタファイル | [画像・Photoshop](image.ja.md) |
 
@@ -60,5 +61,6 @@ res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" で�
 | MusicXML | `converter/musicxml` | .musicxml, .mxl |
 | フォントファイル | `converter/font` | .ttf, .otf, .ttc, .otc, .woff, .woff2 |
 | 画像 | `converter/image` | .png, .jpg, .gif, .webp, .avif, .bmp, .ico, .svg |
+| 音声ファイル | `converter/audio` | .mp3, .m4a, .m4b, .aac, .flac, .ogg, .oga, .opus, .wav, .aif, .aiff |
 
 各パッケージの `-param` オプションは `go run ./cmd/bdf generate -h` の一覧と、それぞれの形式のページに載せています。各変換器が書き出すコンテナ形式は[フォーマット仕様](../spec.md)を、その作りになっている理由は[設計メモ](../design.md)を参照してください。

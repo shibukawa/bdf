@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart TB
-    SRC["PDF・Excel・CSV・Parquet・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・TIFF<br/>Illustrator・Photoshop・HTML・Markdown・EPUB・MML・MIDI・MusicXML・フォント・画像"]
+    SRC["PDF・Excel・CSV・Parquet・PowerPoint・Word・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・TIFF<br/>Illustrator・Photoshop・HTML・Markdown・EPUB・MML・MIDI・MusicXML・フォント・画像・音声"]
 
     subgraph SERVER["Go サーバープロセス"]
         direction TB

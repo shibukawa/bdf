@@ -43,7 +43,7 @@ wasm が意味を持つケース:
 
 変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の BDF を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`site/build.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
 
-- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・楽譜・フォント・メタファイル・Photoshop・画像。約 26.6 MB、gzip 7.8 MB。Parquet で約 1.1 MB、KiCad で約 1 MB（gzip 0.3 MB）増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。サムネイルと検索用テキスト（§3.25）は、変換器を持たない `previewonly` のモジュールにした。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
+- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・楽譜・フォント・メタファイル・Photoshop・画像。約 26.6 MB、gzip 7.8 MB。Parquet で約 1.1 MB、KiCad で約 1 MB（gzip 0.3 MB）増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。音声ファイル（§3.31）もカバーをそのまま格納してタグを読むだけなので同じモジュールに入れ、ページはタグと署名（ID3、fLaC、OggS、RIFF/WAVE、FORM/AIFF、M4A のブランド）か拡張子で見分ける。サムネイルと検索用テキスト（§3.25）は、変換器を持たない `previewonly` のモジュールにした。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
 - **フォントは fs.FS で渡す**: ブラウザにはフォントのディレクトリが無い。`converter.Options.FontFS` で任意の `fs.FS` をフォントの探索元にできるようにし（`FontDirs` より先に探す）、wasm 側では Web 上のディレクトリをそれとして実装した。`index.json` にファイル名、サイズと、フォントの走査と文字カバレッジ判定が読む範囲（テーブルディレクトリと name・OS/2・post・cmap テーブル）を書いておき、cmap が 16 MiB 以下なら最初の変換でその範囲も並列に Range 取得する。フォールバック探索は候補フェイスの cmap で文字の有無を確かめてから全体を読むため、文書が使う文字を持つフェイスだけが全体取得の対象になる。16 MiB を超える cmap は範囲を先読みせず、既存の全体読み込みで判定する。取得した範囲と全体データはモジュールが生きている間保持する（2 回目以降の変換は通信しない）。サイトのフォントは CI が Ubuntu のパッケージから集める: Liberation（Arial、Times New Roman、Courier New の代替）、Carlito（Calibri）、Caladea（Cambria）、IPAex（日本語）、DejaVu（記号）。
 - **pdfcpu の設定**: 変換器は `model.NewStatelessConfiguration()` で組み込みの既定値から独立した設定を作る。ユーザーの設定ファイル、pdfcpu 用のフォントや証明書ストアは読まない。
 
@@ -573,6 +573,7 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 | 種類 | レイアウト |
 |---|---|
 | Word、HTML、Markdown | 1 ページ目（scroll View は先頭）の左上から、ページの幅の正方形（Crop） |
+| 音声（MP3、M4A、AAC、FLAC、Ogg、WAV、AIFF） | カードの上端の正方形: ページの幅いっぱいのカバーアート（なければプレースホルダー）（Crop） |
 | Excel、CSV、Parquet | 最初のシートの A1 から、サムネイルの大きさを 72 dpi（1 単位が 1 画素）で描く正方形。96〜480 単位で、シートより大きくはしない。既定の行の高さ（15 単位）なら 64 画素で 6 行、128 画素で 8 行、256 画素で 17 行、512 画素以上で 32 行ほど。枠線はビューアと同じく描く |
 | PDF、TIFF | 縦長のページは文書として Crop、横長のページはスライドとして全体（Fit） |
 | PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB | 1 ページ目の全体を、長辺が指定の大きさになるように（Fit）。EPUB は 1 ページ目が表紙 |
@@ -704,6 +705,24 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 
 **確かめたこと**: Go のテスト（鍵の往復、別の鍵とパスワードを拒むこと、区間のページと Part、`have` で省かれること、シートを拒むこと、ハンドラの状態）、Go が封印した区間を TS が開いて合わせると元の文書のページと Part に一致するテスト（`testdata/segments/`、テスト専用の鍵で封印）、`SegmentLoader` が同じ区間を 1 度だけ頼み `have` を付けるテスト。ブラウザでは Chrome 153 と WebKit 26 でサンプルの本の 3 つ目の区間まで描けること、立ち読みの境界で 403、21 区間目で 429、ログアウト後に 401 になることを確かめた（Firefox は手元の Playwright で起動しないため未確認）。
 
+## 3.31 音声ファイル → BDF 変換器（converter/audio）
+
+音声ファイル（MP3、MP4 の AAC つまり M4A、生の ADTS の AAC、FLAC、Ogg Vorbis・Opus、WAV、AIFF）を 1 ページの「カード」の文書にする。音声ファイルにページはないが、ファイル一覧・サムネイル・検索に要るものはある。カバーアートとタグだ。ページの上端にカバーをページの幅いっぱいに置き（なければ音符を描いたプレースホルダー）、その下に題名・アーティスト・アルバム、ほかの項目の表、歌詞、章を組む。音声そのものは格納しない。ビューアでの再生は `play` の拡張として後の課題で、§4.4 の `seq` と同じくファイルをそのまま Part に置き、ブラウザの `<audio>` に任せる形になる。
+
+- **なぜカード 1 枚か**: サムネイル（§3.25）は最初の View の 1 ページ目の左上の正方形を切る（Crop）。カバーをページの幅で上端に置けば、正方形のカバー（アルバムアートはほぼ正方形）がそのままサムネイルになり、ビューアではページをめくらずに題名も読める。`thumbnail` の `cropSources` に音声の `source` を加えた。サムネイルのためだけなら `converter.Options{Pages: converter.PageList(1)}` の近道もそのまま効く（ページは 1 枚しかない）。
+- **読むもの**: MP3 は先頭の ID3v2（2.2・2.3・2.4）と末尾の ID3v1、`APIC` のカバー、フレームから長さ・ビットレート・サンプリング周波数・チャンネル。M4A は `moov` の `mvhd`、最初の `soun` トラックの `stsd`（`mp4a` の `esds` の OTI と AOT で AAC・HE-AAC・MP3、`alac`、`fLaC`、`Opus`、PCM。`drms` は保護された音声）、`udta/meta/ilst`（`©nam` などと自由形式の `----`、`covr`、`trkn`、`gnre`）、QuickTime の `keys`/`mdta` と `udta` 直下のテキストアトム、Nero の `chpl`、`uuid` の XMP。FLAC は `STREAMINFO`・`VORBIS_COMMENT`・`PICTURE`。Ogg は最初の音声ストリーム（Vorbis・Opus・FLAC・Speex）の識別ヘッダーとコメント（`METADATA_BLOCK_PICTURE` と古い `COVERART`、`CHAPTERxxx`）。WAV は `fmt `、`data` の大きさ（RF64 の `ds64` も）、`LIST INFO`、`bext`、`id3 ` チャンク。AIFF は `COMM`（80 ビット浮動小数点のサンプリング周波数）、`NAME`・`AUTH`・`(c) `・`ANNO`、`ID3 ` チャンク。生の AAC は ADTS のフレーム（先頭に ID3v2 があれば読む）。
+- **タグの正規化**: 形式ごとの読み手は Vorbis コメント流のキー（`TITLE`、`ARTIST`、`ALBUMARTIST`、`COMPOSER`、`DATE`、`TRACKNUMBER` …）の `tags` に写し、1 つの対応表で Dublin Core（spec §4.3）とカードの項目にする。アルバムは Dublin Core に要素がないので `relation`（isPartOf の意味）に、ジャンルは `subject` に、作曲者などは `contributor`（アーティストと同じ人は除く）に写す。`type` は `Sound`、`format` はメディアタイプ。優先順位は形式自身のタグが先で、FLAC・WAV・AIFF に付いた ID3 タグ、MP3 の ID3v1、ユーザー定義フィールド（`TXXX`、`----`）は足りない項目を補う（`fill`）。
+- **文字コード**: ID3v2 の encoding 0（「ISO-8859-1」）、ID3v1、RIFF INFO、AIFF のテキストはファイル単位で推定する。すべてが正しい UTF-8 なら UTF-8、すべてが Shift_JIS なら Shift_JIS、そうでなければ Windows-1252（§3.27 の MIDI と同じ）。UTF-16 は BOM で、なければ encoding 2 は BE、1 は LE。
+- **ID3v2 の細部**: 2.2 の 3 文字の ID、2.3 のタグ全体の非同期化と 2.4 のフレーム単位の非同期化、拡張ヘッダー、フッター、データ長指示子、zlib 圧縮フレーム（16 MiB まで）、暗号化フレームは読み飛ばし、2.4 なのに syncsafe でない大きさを書く書き手（次のフレームに辿り着くほうの大きさを採る）、複数の値（2.4 の NUL 区切りと ";" 区切り）、`TCON` の番号参照（`(17)Rock`、`RX`）、`TYER`+`TDAT`+`TIME` から 1 つの日付、`COMM`（`iTunNORM` などプログラム自身のものは除き、説明のないものを優先）、`USLT`（なければ `SYLT` の文字）、`APIC`（type 3 の表紙を優先）、`CHAP` の題名と開始時刻。
+- **MP4**: 最上位のボックスは `converter/internal/isobmff` の `Walk` でヘッダーだけ読み、`mdat` を読まない（`moov` が末尾にある非 faststart のファイルのため）。`moov` は 64 MiB まで。`hdlr` が `vide` のトラックがあれば動画で、この変換器は受け付けない（Detect が false を返す）。`meta` は MP4 では FullBox、QuickTime では plain な箱なので、最初の子で見分ける。AVIF の読み手（§3.19）の箱の分割をこのパッケージに移して共有した。
+- **Ogg**: ページを順に読み、最初の音声ストリームのパケットを識別ヘッダーとコメントまで集める（FLAC は last フラグのブロックまで。64 MiB、1 万ページまで）。長さは末尾 256 KiB の中の、同じシリアルの最後のページの granule から（Opus は pre-skip を引いて 48 kHz）。Theora などの動画ストリームが先にあっても音声は読み、警告する。
+- **MP3・ADTS の長さ**: Xing/Info/VBRI ヘッダーがあればそのフレーム数から、なければ全フレームのヘッダーを辿って数える（`bufio` で読む。1 フレーム数百バイトの走査なので 100 MB でも一瞬）。先頭と途中のゴミは 64 KiB まで飛ばす。CBR はヘッダーの公称ビットレート（フレームはバイトに切り捨てられるので、バイト数から求めると少しずれる）、VBR は平均。末尾の ID3v1 と APE タグは走査から除く。
+- **カードの文字**: `fontset` を使わず、`SystemFont("sans-serif")` を名前で参照する（HTML・Markdown の既定と同じ）。幅は文字種ごとの概算（ラテン小文字 0.53 em、数字 0.56 em、全角 1 em …）で折り返し、`advance` は 0（補正しない）。これで変換器はフォントもレイアウトエンジンも持たず、ブラウザでは `imageonly` のモジュールに同居する。折り返した行は、空白で折ったなら LINE、全角文字の間で折ったなら WRAP の MARK（spec §7.8）。題名は HEADING 1、項目は TABLE の CELL（`A1 row` が見出し）、歌詞は段落（空行で分ける）と LINE、章は LIST。テキスト索引も作る。
+- **カバー**: 画像のヘッダーだけ読んで大きさを得る（`image.DecodeConfig`。PNG・JPEG・GIF・BMP・WebP）。それ以外（TIFF など）や壊れた画像は警告してプレースホルダーにする。ページの幅はカバーの幅（360〜720 pt に収める）。`-images convert` のときは `imgconv.Optimize` で再エンコードする（他の文書に埋め込まれた画像と同じ扱い。入力そのものである画像をそのまま格納する §3.19 とは違う）。
+- **信頼しない入力への備え**: ファイルは 1 GiB、ID3 タグは 64 MiB（大きさの主張は 256 MiB まで書ける）、FLAC のコメントは 8 MiB、画像ブロックは 16 MiB、MP4 の `moov` は 64 MiB、XMP は 16 MiB、カバーは 64 MiB、歌詞は 256 KiB、ほかの項目は 16 KiB まで読む。1 項目の値は 64 個、画像は 64 枚、章は 1,000 件まで。チャンクやボックス、フレームがファイルより大きいと言えば、ファイルの終わりで切る。
+- **テスト**: ffmpeg と mutagen で作った 1 秒の小さな実ファイル（`test/audio/gen.sh`、`converter/audio/testdata`）で全形式の変換結果（Dublin Core、ページ、検索テキスト、サムネイルがカバーの絵になること）を確かめ、ID3 の版・フラグ・文字コード、MP4 の箱の順序と QuickTime の形、Ogg の複数ページにまたがるパケット、RF64、AIFF-C、上限の挙動は合成したバイト列で確かめる。フィクスチャは fuzz の種にもする。ブラウザ描画の golden のケースは作っていない。カードの文字はビューアのフォントで組まれ、マシンによって描画が変わるためである。
+- **未対応・今後**: 再生（`play` の音声）、WMA/ASF と APE・WavPack のタグ、波形、QuickTime の章トラック。動画は別の変換器にする（メタデータ・章・字幕は同じ箱の読み手で読めるが、1 枚の絵を出すにはデコーダが要る）。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -817,6 +836,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 22. **KiCad**: KiCad 6 以降の回路図と基板。階層のシートをページに、基板を表・裏と層ごとの View に、KiCad の線の字体（CC0 の newstroke）で描く。参照するファイルはサーバーでは列挙して渡し、ウェブでは ZIP で（実装済み、§3.29）。
 23. **区間の配信**: ログインした読者に文書を 10 ページずつ、要求ごとの使い捨ての鍵で封印して渡す。記録された通信は後で鍵が漏れても開けない（実装済み、§3.30）。
 24. **化学構造式**（予定）: MOL・SDF（SDF は表のシート）、ChemDraw の CDXML・CDX を ACS 1996 の描き方で。
+25. **音声ファイル**: MP3・M4A・AAC・FLAC・Ogg・WAV・AIFF のカバーアートとタグを 1 ページのカードに。サムネイルはカバー、タグは Dublin Core（実装済み、§3.31）。
 
 ## 9. リポジトリ構成（案）
 

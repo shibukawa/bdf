@@ -103,12 +103,16 @@ export class ConvertError extends Error {
 /** Extensions of the files the web module converts (HTML, Markdown and EPUB). */
 const WEB = [".html", ".htm", ".xhtml", ".mhtml", ".mht", ".md", ".markdown", ".mdown", ".mkd", ".mdx", ".epub"];
 
+/** Extensions of audio files, for those whose content does not say (an MP3 without a tag, an MP4 file). */
+const AUDIO = [".mp3", ".m4a", ".m4b", ".m4p", ".aac", ".flac", ".ogg", ".oga", ".opus", ".spx", ".wav", ".wave", ".aif", ".aiff", ".aifc"];
+
 /**
  * What a file is, from its content and its name: a bdf document, an EPUB,
  * an HTML or Markdown document (by its extension: a README may start with
- * an SVG picture), an image the browser displays by itself (stored as it is
- * by a small module), a PDF, or (possibly) an Office document or a diagram.
- * draw.io's PNG and SVG exports are diagrams.
+ * an SVG picture), an image the browser displays by itself or an audio
+ * file (its cover and tags; both by the small image module), a PDF, or
+ * (possibly) an Office document or a diagram. draw.io's PNG and SVG
+ * exports are diagrams.
  */
 export function sniff(data: Uint8Array, name = ""): "bdf" | "image" | "pdf" | "web" | "office" {
   if (data[0] === 0x62 && data[1] === 0x64 && data[2] === 0x66 && data[3] === 0) return "bdf";
@@ -116,11 +120,23 @@ export function sniff(data: Uint8Array, name = ""): "bdf" | "image" | "pdf" | "w
   const zip = String.fromCharCode(...data.subarray(0, 58));
   if (zip.startsWith("PK\x03\x04") && zip.slice(30) === "mimetypeapplication/epub+zip") return "web";
   const dot = name.lastIndexOf(".");
-  if (dot >= 0 && WEB.includes(name.slice(dot).toLowerCase())) return "web";
+  const ext = dot >= 0 ? name.slice(dot).toLowerCase() : "";
+  if (WEB.includes(ext)) return "web";
   if (isImage(data)) return "image";
+  if (isAudio(data) || AUDIO.includes(ext)) return "image";
   // the header may follow some garbage in the first 1024 bytes
   const text = String.fromCharCode(...data.subarray(0, 1024));
   return text.includes("%PDF-") ? "pdf" : "office";
+}
+
+/** Whether data starts as an audio file does: an ID3 tag, FLAC, Ogg, WAVE, AIFF or an M4A brand. */
+function isAudio(b: Uint8Array): boolean {
+  const s = (at: number, n: number) => String.fromCharCode(...b.subarray(at, at + n));
+  if (s(0, 3) === "ID3" && b[3] >= 2 && b[3] <= 4) return true;
+  if (s(0, 4) === "fLaC" || s(0, 4) === "OggS") return true;
+  if ((s(0, 4) === "RIFF" || s(0, 4) === "RF64") && s(8, 4) === "WAVE") return true;
+  if (s(0, 4) === "FORM" && (s(8, 4) === "AIFF" || s(8, 4) === "AIFC")) return true;
+  return s(4, 4) === "ftyp" && /^M4[ABP] /.test(s(8, 4));
 }
 
 /** Whether data is a PNG, JPEG, GIF, WebP, AVIF, BMP, ICO or SVG image (and not a draw.io export). */
