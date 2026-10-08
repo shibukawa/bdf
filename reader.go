@@ -393,7 +393,7 @@ func (r *Reader) WriteSingle(w io.Writer) error {
 	if m.Encryption != nil {
 		flags = FlagEncrypted
 	}
-	return writeSingle(w, m, data, flags, flate.BestCompression, defaultMinCompress)
+	return writeSingle(w, m, data, flags, defaultLevel, defaultMinCompress)
 }
 
 // WriteSplit writes the document in the split form into dir, copying the

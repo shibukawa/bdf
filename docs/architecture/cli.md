@@ -97,5 +97,6 @@ A few flags apply to every format that lays out and embeds text (PowerPoint, Exc
 | `-no-woff2` | Store embedded fonts as plain TrueType/OpenType instead of WOFF2 |
 | `-no-subset` | Embed whole font files instead of just the glyphs in use |
 | `-ignore-fstype` | Embed a font whose OS/2 `fsType` forbids embedding or subsetting — only with the rights to do so |
+| `-compression normal \| best \| fast` | How hard the parts are deflated: `normal` (level 6, the default), `best` (level 9: a few percent smaller, four times the time) or `fast` (level 1) |
 
 See the [API reference](../api.md) for the equivalent Go calls, and [Building and testing](development.md) for how `bdf generate` and `bdf demo` are used to regenerate the fixtures under `testdata/`.

@@ -111,7 +111,9 @@ BDF の部品の圧縮と展開（document.go、reader.go、区間の manifest�
 | 標準ライブラリの展開 | 10.9 ms | 194 MB/s | |
 | klauspost の展開 | 8.3 ms | 253 MB/s | |
 
-変換全体（3 回の中央値）: 文書の読み込みは 20〜30% 短縮（`BenchmarkDocumentIO` の read。確保回数は半分以下）、書き出しは 5〜13%、変換は PowerPoint `features` で 8%、Word と EPUB で 5〜6%、100 スライドの pptx で 4%、ほかは 0〜2%。同じレベルでは、圧縮器の違いより圧縮レベルの違いが大きい: レベル 6 なら圧縮が 4 倍速く大きさは 0.9% 増、レベル 7 なら 2.4 倍速く 0.3% 増。既定のレベル 9 は変えていない（変えると fixture をすべて作り直す）。
+変換全体（3 回の中央値）: 文書の読み込みは 20〜30% 短縮（`BenchmarkDocumentIO` の read。確保回数は半分以下）、書き出しは 5〜13%、変換は PowerPoint `features` で 8%、Word と EPUB で 5〜6%、100 スライドの pptx で 4%、ほかは 0〜2%。同じレベルでは、圧縮器の違いより圧縮レベルの違いが大きい: レベル 6 なら圧縮が 4 倍速く大きさは 0.9% 増、レベル 7 なら 2.4 倍速く 0.3% 増。
+
+この結果から、`Document.CompressionLevel` の既定をレベル 9 から 6 に変えた。`bdf generate -compression best` がレベル 9（`fast` はレベル 1）。split・join・encrypt が書き直す manifest と区間の manifest も 6。ブラウザの変換器は従来どおりレベル 1。testdata の fixture は amd64 ビルドで作り直した（部品のハッシュは展開後の内容のものなので変わらず、変わるのは圧縮後の長さとオフセット）。
 
 ## ファジング
 

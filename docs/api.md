@@ -120,7 +120,7 @@ res, err := s.Finish() // Convert と同じ完成した文書
 
 | 名前 | 内容 |
 |---|---|
-| `NewDocument() *Document` | 空の文書。`Meta`（Dublin Core の `DC`、`Source`）、`Views`、`CompressionLevel`、`MinCompress`、`Lock`（暗号化）を持つ |
+| `NewDocument() *Document` | 空の文書。`Meta`（Dublin Core の `DC`、`Source`）、`Views`、`CompressionLevel`（deflate のレベル。既定 6、最小のファイルは 9）、`MinCompress`、`Lock`（暗号化）を持つ |
 | `(*Document).NewView(id, kind, title) *View` | View を足す。`kind` は `ViewFixed`、`ViewFlow`、`ViewSheet`、`ViewScroll` |
 | `(*View).AddPage(w, h, layers...) *Page` | ページを足す（fixed・flow・scroll）。シートは `Tiles`、`Cols`、`Rows`、`Freeze` などの項目を直接設定する。右綴じの本は `Direction` を `DirectionRTL` にする |
 | `(*Document).AddObject(*Object) (Hash, Rect)` | Object を格納し、ハッシュと外接矩形を返す（参照先の Part が先に要る） |
