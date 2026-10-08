@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/shibukawa/bdf/converter"
 	_ "github.com/shibukawa/bdf/converter/all"
@@ -61,7 +62,9 @@ func main() {
 	mux.Handle("GET /view/", http.StripPrefix("/view/", http.FileServer(http.Dir(*webDir))))
 
 	log.Printf("light-server: %d document(s) from %s, listening on http://%s/", len(files), *dir, *addr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	// a connection that sends its request slowly, or none, is not kept for ever
+	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: time.Minute, IdleTimeout: 2 * time.Minute}
+	log.Fatal(srv.ListenAndServe())
 }
 
 // listFiles returns the regular files directly inside dir, sorted by name.

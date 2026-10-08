@@ -269,10 +269,31 @@ func (d *drawer) clip(cov *mask) {
 	ctx := d.ctx
 	st := &ctx.st
 	old := st.clip
-	d.drop(ctx, st)
 	if !old.empty() && !cov.empty() && (old.a != nil || cov.a != nil) {
-		// their product takes memory
 		r := old.r.Intersect(cov.r)
+		switch {
+		case r.Empty():
+			d.drop(ctx, st)
+			st.clip = &mask{}
+			return
+		case cov.a == nil && r == old.r && !plain:
+			// the clip lies within a rectangle: it stays as it is, with
+			// the memory the state holds for it
+			return
+		case old.a == nil && r == cov.r && !plain:
+			// the coverage lies within a rectangle: it is the product,
+			// and its memory is the state's (it was made for this)
+			d.drop(ctx, st)
+			if !d.hold(ctx, cov.bytes()) {
+				d.r.warnf(tooMuchMemory)
+				st.clip = &mask{}
+				return
+			}
+			st.clip, st.made = cov, cov
+			return
+		}
+		// their product takes memory
+		d.drop(ctx, st)
 		if !d.hold(ctx, 4*r.Dx()*r.Dy()) {
 			d.r.warnf(tooMuchMemory)
 			st.clip = &mask{}
@@ -282,6 +303,7 @@ func (d *drawer) clip(cov *mask) {
 		st.made = st.clip
 		return
 	}
+	d.drop(ctx, st)
 	st.clip = intersect(old, cov)
 }
 
@@ -914,7 +936,7 @@ func (d *drawer) groupBegin(alpha float32, blend byte, x, y, w, h float64) {
 	if !d.layer(gc, r.Dx(), r.Dy()) {
 		return
 	}
-	gc.target = newSurface(r.Dx(), r.Dy())
+	gc.target = d.r.newSurface(r.Dx(), r.Dy())
 	gc.st.clip = &mask{r: gc.target.bounds()}
 	g := &group{parent: d.ctx, ctx: gc, x: r.Min.X, y: r.Min.Y, alpha: alpha, blend: blend}
 	d.groups = append(d.groups, g)
@@ -930,7 +952,9 @@ func (d *drawer) groupEnd() {
 	d.groups = d.groups[:n-1]
 	// masks begun inside the group end with it
 	for len(d.masks) > 0 && d.masks[len(d.masks)-1].group == g {
-		d.closed(d.masks[len(d.masks)-1].ctx)
+		m := d.masks[len(d.masks)-1]
+		d.closed(m.ctx)
+		d.r.release(m.ctx.target)
 		d.masks = d.masks[:len(d.masks)-1]
 	}
 	d.closed(g.ctx)
@@ -942,6 +966,7 @@ func (d *drawer) groupEnd() {
 		blend = bdf.BlendSourceOver
 	}
 	d.ctx.target.fill(&mask{r: r}, surfaceShader{s: s, dx: g.x, dy: g.y}, g.alpha, blend, d.ctx.st.clip)
+	d.r.release(s)
 }
 
 func (d *drawer) maskBegin(kind byte, backdrop bdf.Color, transfer []byte) {
@@ -955,7 +980,7 @@ func (d *drawer) maskBegin(kind byte, backdrop bdf.Color, transfer []byte) {
 	if !d.layer(mc, w, h) {
 		return
 	}
-	mc.target = newSurface(w, h)
+	mc.target = d.r.newSurface(w, h)
 	if kind == bdf.MaskLuminosity {
 		c := premul(backdrop | 0xff)
 		for i := 0; i < w*h; i++ {
@@ -980,10 +1005,12 @@ func (d *drawer) maskEnd() {
 	d.closed(m.ctx)
 	d.ctx = m.parent
 	g := m.group
+	ms := m.ctx.target
+	defer d.r.release(ms)
 	if g == nil || len(d.groups) == 0 || d.groups[len(d.groups)-1] != g {
 		return
 	}
-	ms, gs := m.ctx.target, g.ctx.target
+	gs := g.ctx.target
 	for i := 0; i < ms.w*ms.h; i++ {
 		p := ms.pix[4*i : 4*i+4]
 		var v int

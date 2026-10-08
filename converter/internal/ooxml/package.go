@@ -7,6 +7,7 @@ package ooxml
 import (
 	"archive/zip"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"path"
@@ -33,7 +34,19 @@ type Package struct {
 	files map[string]*zip.File // by lower-cased part name without leading slash
 	xmls  map[string]*Node
 	rels  map[string]map[string]Rel
+	// elements is how many elements the trees of XML may still have
+	// together (maxLiveElements for those of a new package), and counts
+	// those of each tree kept, which DiscardXML gives back
+	elements int
+	counts   map[string]int
 }
+
+// maxLiveElements bounds the elements of the trees a package keeps at a
+// time (XML, until DiscardXML): an element takes a few hundred bytes, so
+// the trees of a package of a megabyte could otherwise take any amount of
+// memory. The parts that are streamed (the rows of a sheet, the body of a
+// document) read one element at a time, within xmltree.MaxElements each.
+var maxLiveElements = 16 << 20
 
 // Rel is a relationship with its target resolved to a part name (or kept
 // as is when external).
@@ -153,13 +166,21 @@ func (p *Package) XML(name string) (*Node, error) {
 		return nil, err
 	}
 	defer rc.Close()
-	n, err := ParsePickingReader(rc, p.choice())
+	if p.counts == nil {
+		p.counts, p.elements = map[string]int{}, maxLiveElements
+	}
+	budget := p.elements
+	n, err := xmltree.ParseCounting(rc, p.choice(), &budget)
 	if err != nil {
+		if errors.Is(err, xmltree.ErrTooManyElements) {
+			err = fmt.Errorf("%w: the trees of the parts take more than %d together", err, maxLiveElements)
+		}
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	if _, err := io.Copy(io.Discard, rc); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
+	p.counts[key], p.elements = p.elements-budget, budget
 	p.xmls[key] = n
 	return n, nil
 }
@@ -181,10 +202,18 @@ func (p *Package) choice() func(*Node) bool {
 
 // DiscardXML releases a cached tree after its caller has built a more compact
 // representation. Nodes still referenced by that representation stay valid.
+// The elements of the tree are given back to what the trees may have
+// together (see maxLiveElements).
 func (p *Package) DiscardXML(name string) {
-	if p != nil {
-		delete(p.xmls, strings.ToLower(strings.TrimPrefix(name, "/")))
+	if p == nil {
+		return
 	}
+	key := strings.ToLower(strings.TrimPrefix(name, "/"))
+	if _, ok := p.xmls[key]; ok {
+		p.elements += p.counts[key]
+		delete(p.counts, key)
+	}
+	delete(p.xmls, key)
 }
 
 // Rels returns the relationships of a part by ID ("" for the package's

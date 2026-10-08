@@ -67,6 +67,11 @@ type DB struct {
 var (
 	scanMu    sync.Mutex
 	scanCache = map[string][]*Face{}
+	// scanned maps the directories as they were given to the absolute
+	// paths they were scanned as: finding the absolute path of a relative
+	// one asks the system for the working directory, which costs a
+	// conversion more than the lookup of a scanned directory.
+	scanned = map[string]string{}
 )
 
 // SystemDirs returns the usual font directories of the platform.
@@ -131,12 +136,16 @@ func isFontFile(ext string) bool {
 }
 
 func scanDir(dir string) []*Face {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		abs = dir
-	}
 	scanMu.Lock()
 	defer scanMu.Unlock()
+	abs, ok := scanned[dir]
+	if !ok {
+		var err error
+		if abs, err = filepath.Abs(dir); err != nil {
+			abs = dir
+		}
+		scanned[dir] = abs
+	}
 	if faces, ok := scanCache[abs]; ok {
 		return faces
 	}

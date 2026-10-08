@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
@@ -62,7 +63,9 @@ func main() {
 	mux.Handle("GET /view/", http.StripPrefix("/view/", http.FileServer(http.Dir(*webDir))))
 
 	log.Printf("preview-server: %d of %d document(s) converted, listening on http://%s/", len(docs), len(files), *addr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	// a connection that sends its request slowly, or none, is not kept for ever
+	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: time.Minute, IdleTimeout: 2 * time.Minute}
+	log.Fatal(srv.ListenAndServe())
 }
 
 // doc is one converted document, ready to serve.

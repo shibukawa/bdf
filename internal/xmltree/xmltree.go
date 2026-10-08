@@ -6,6 +6,7 @@ package xmltree
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -57,6 +58,19 @@ const (
 // their depth, so the limit is not far above it.
 const MaxDepth = 20000
 
+// MaxElements bounds the elements of one tree: a part with more is
+// rejected as malformed, as a deeper one is. An element of a tree takes a
+// few hundred bytes whatever its markup took (four, for "<a/>"), so a part
+// could otherwise ask for memory out of all proportion with its size: a
+// gigabyte of markup, which a megabyte of a package inflates to, would
+// take tens. A reader that keeps several trees gives them a budget of its
+// own (ParseCounting, ReadElementCounting).
+const MaxElements = 8 << 20
+
+// ErrTooManyElements is the error of a tree of more than MaxElements
+// elements, or more than the budget its reader gave it.
+var ErrTooManyElements = errors.New("ooxml: too many elements")
+
 // Parse reads a document into a node tree. mc:AlternateContent is
 // replaced by its mc:Fallback (or its first mc:Choice when there is no
 // fallback): fallbacks carry the pictures and plain shapes that stand in
@@ -81,6 +95,14 @@ func ParsePicking(data []byte, pick func(choice *Node) bool) (*Node, error) {
 // ParsePickingReader parses XML from a reader without retaining the source
 // bytes alongside the resulting node tree.
 func ParsePickingReader(r io.Reader, pick func(choice *Node) bool) (*Node, error) {
+	budget := MaxElements
+	return ParseCounting(r, pick, &budget)
+}
+
+// ParseCounting is ParsePickingReader for a reader that keeps several
+// trees: budget is how many elements they may have together, which the
+// tree's elements are taken from (ErrTooManyElements when they run out).
+func ParseCounting(r io.Reader, pick func(choice *Node) bool, budget *int) (*Node, error) {
 	d := xml.NewDecoder(r)
 	d.Strict = false
 	for {
@@ -92,7 +114,7 @@ func ParsePickingReader(r io.Reader, pick func(choice *Node) bool) (*Node, error
 			return nil, err
 		}
 		if start, ok := tok.(xml.StartElement); ok {
-			return ReadElementPicking(d, start, pick)
+			return ReadElementCounting(d, start, pick, budget)
 		}
 	}
 }
@@ -138,6 +160,17 @@ const NSA14 = "http://schemas.microsoft.com/office/drawing/2010/main"
 // ReadElementPicking is ReadElement that replaces mc:AlternateContent with
 // its first mc:Choice that pick accepts.
 func ReadElementPicking(d *xml.Decoder, start xml.StartElement, pick func(choice *Node) bool) (*Node, error) {
+	budget := MaxElements
+	return ReadElementCounting(d, start, pick, &budget)
+}
+
+// ReadElementCounting is ReadElementPicking with a budget of elements, as
+// ParseCounting has.
+func ReadElementCounting(d *xml.Decoder, start xml.StartElement, pick func(choice *Node) bool, budget *int) (*Node, error) {
+	if *budget <= 0 {
+		return nil, ErrTooManyElements
+	}
+	*budget--
 	root := &Node{Space: start.Name.Space, Name: start.Name.Local, Attrs: start.Attr}
 	stack := []*Node{root}
 	for len(stack) > 0 {
@@ -153,6 +186,10 @@ func ReadElementPicking(d *xml.Decoder, start xml.StartElement, pick func(choice
 			if len(stack) >= MaxDepth {
 				return nil, fmt.Errorf("ooxml: element nesting deeper than %d", MaxDepth)
 			}
+			if *budget <= 0 {
+				return nil, ErrTooManyElements
+			}
+			*budget--
 			n := &Node{Space: t.Name.Space, Name: t.Name.Local, Attrs: t.Attr}
 			p := stack[len(stack)-1]
 			p.Kids = append(p.Kids, n)

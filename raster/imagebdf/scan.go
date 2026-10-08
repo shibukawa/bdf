@@ -193,6 +193,11 @@ func keep[T any](s []T) []T {
 // them are empty, and the winding after them is the same.
 const insertionLimit = 16
 
+// insertionMoves is how many moves a crossing of a longer scanline may
+// take to sort by insertion before the scanline is sorted by pdqsort
+// instead: nearly sorted crossings take few, those in no order many.
+const insertionMoves = 4
+
 // rasterize returns the coverage of the polylines (each closed implicitly)
 // under a fill rule, limited to bounds.
 func rasterize(polys []polyline, rule byte, bounds image.Rectangle) *mask {
@@ -317,7 +322,8 @@ func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle
 			if len(xs) < 2 {
 				continue
 			}
-			if len(xs) <= insertionLimit || plain {
+			sorted := len(xs) <= insertionLimit || plain
+			if sorted {
 				// insertion sort: the crossings are few and nearly sorted
 				for i := 1; i < len(xs); i++ {
 					for j := i; j > 0 && xs[j].x < xs[j-1].x; j-- {
@@ -325,6 +331,24 @@ func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle
 					}
 				}
 			} else {
+				// the edges are in the order of their crossings on the
+				// scanline before, so insertion sorts them in a few
+				// moves, unless this scanline orders them anew (the
+				// first one, or edges that cross)
+				moves := insertionMoves * len(xs)
+				sorted = true
+			insertion:
+				for i := 1; i < len(xs); i++ {
+					for j := i; j > 0 && xs[j].x < xs[j-1].x; j-- {
+						xs[j], xs[j-1] = xs[j-1], xs[j]
+						if moves--; moves < 0 {
+							sorted = false
+							break insertion
+						}
+					}
+				}
+			}
+			if !sorted {
 				slices.SortFunc(xs, func(a, b crossing) int {
 					switch {
 					case a.x < b.x:
@@ -334,11 +358,11 @@ func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle
 					}
 					return 0
 				})
-				// every edge that is active crosses: in this order next
-				if len(xs) == len(active) {
-					for i := range xs {
-						active[i] = xs[i].edge
-					}
+			}
+			// every edge that is active crosses: in this order next
+			if len(xs) > insertionLimit && len(xs) == len(active) && !plain {
+				for i := range xs {
+					active[i] = xs[i].edge
 				}
 			}
 			wind := 0

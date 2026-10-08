@@ -20,7 +20,7 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 
 ## HTML .html / .xhtml / .mhtml（`converter/html`）
 
-`converter/html` はブラウザのリーダー表示のようにページを組みます。作者の CSS は捨て、Word の変換器が使うのと同じレイアウトエンジンで、要素を固定のスタイルシートで組み直します。記事は go-readability（Mozilla の Readability の Go への移植）で Web ページから取り出し、見出し・段落・リスト・引用・コード・表（セルの結合と内容に合わせた列幅）・図・リンク・MathML の数式を、Word の文書と同じように組みます。BDF は再レイアウトしないので、結果は決まった幅の scroll View になります（既定は本文の 36 字分。`-param views=pages` で A4 のページも作れます）。画像はページの隣のファイル、MHTML の中、`data:` URL、ネットワーク（既定で取得。`-param remote=false` で取らない）から読みます。SVG（`.svg` ファイルとページ内の `<svg>` 要素の両方）はそのまま格納してビューアが描き、大きさはブラウザと同じ規則で決まります。フォントは埋め込みません。名前で参照するので、ビューアは Web ページと同じく自身のフォントで文字を描きます（`-fonts embed` でサブセットを埋め込みます）。
+`converter/html` はブラウザのリーダー表示のようにページを組みます。作者の CSS は捨て、Word の変換器が使うのと同じレイアウトエンジンで、要素を固定のスタイルシートで組み直します。記事は go-readability（Mozilla の Readability の Go への移植）で Web ページから取り出し、見出し・段落・リスト・引用・コード・表（セルの結合と内容に合わせた列幅）・図・リンク・MathML の数式を、Word の文書と同じように組みます。BDF は再レイアウトしないので、結果は決まった幅の scroll View になります（既定は本文の 36 字分。`-param views=pages` で A4 のページも作れます）。画像はページの隣のファイル、MHTML の中、`data:` URL、ネットワーク（既定で取得するが公開アドレスからだけ。変換するサーバーの内側に文書が届かないようにするため。`-param remote=false` で取らず、`-param private=true` でプライベート・ローカルのアドレスからも取る）から読みます。SVG（`.svg` ファイルとページ内の `<svg>` 要素の両方）はそのまま格納してビューアが描き、大きさはブラウザと同じ規則で決まります。フォントは埋め込みません。名前で参照するので、ビューアは Web ページと同じく自身のフォントで文字を描きます（`-fonts embed` でサブセットを埋め込みます）。
 
 | オプション | 値 | 既定 |
 |---|---|---|
@@ -31,6 +31,7 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 | `-param font=` | 本文のフォントファミリー | インストールされているサンセリフ体 |
 | `-param mono=` | コードのフォントファミリー | インストールされている等幅体 |
 | `-param remote=` | `true`、`false` | `true`（ネットワークから画像を取得する） |
+| `-param private=` | `true`、`false` | `false`（公開アドレスの画像だけ取得する。`true` でホスト自身・プライベートネットワーク・リンクローカルのアドレスからも取得する） |
 | `-param base=` | 文書の取得元 URL（相対リンクと画像の基準にする） | — |
 
 詳細は[design.md §3.16](../design.md#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造)を参照してください。
@@ -47,6 +48,7 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 | `-param font=` | 本文のフォントファミリー | インストールされているサンセリフ体 |
 | `-param mono=` | コードのフォントファミリー | インストールされている等幅体 |
 | `-param remote=` | `true`、`false` | `true`（ネットワークから画像を取得する） |
+| `-param private=` | `true`、`false` | `false`（公開アドレスの画像だけ取得する。`true` でホスト自身・プライベートネットワーク・リンクローカルのアドレスからも取得する） |
 | `-param base=` | 文書の取得元 URL（相対リンクと画像の基準にする） | — |
 
 詳細は[design.md §3.16](../design.md#316-htmlmarkdown--bdf-変換器converterhtmlconvertermarkdownの構造)を参照してください。HTML と Markdown の変換器は、Markdown をこのレイアウトの手前で HTML にしてしまうため、design.md でも 1 つの節を共有しています。

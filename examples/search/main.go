@@ -73,7 +73,9 @@ func main() {
 	mux.Handle("GET /view/", http.StripPrefix("/view/", http.FileServer(http.Dir(*webDir))))
 
 	log.Printf("search: %d of %d document(s) indexed, listening on http://%s/", len(docs), len(files), *addr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	// a connection that sends its request slowly, or none, is not kept for ever
+	srv := &http.Server{Addr: *addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: time.Minute, IdleTimeout: 2 * time.Minute}
+	log.Fatal(srv.ListenAndServe())
 }
 
 // doc is one converted, indexed document.

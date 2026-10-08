@@ -63,6 +63,7 @@ func imageServer(t *testing.T) (srv *httptest.Server, asked func() []string) {
 func remoteOptions() *Options {
 	opts := testOptions()
 	opts.NoRemote = false
+	opts.AllowPrivate = true // the test servers listen on the loopback address
 	opts.Extract = ExtractNone
 	return opts
 }
@@ -105,7 +106,7 @@ func TestRemoteLimits(t *testing.T) {
 		fmt.Fprintf(&doc, `<p><img src="%s/4000/b%d.png" alt="[picture %d]"></p>`, srv.URL, i, i)
 	}
 	opts := remoteOptions()
-	opts.Fetch = func(u string) ([]byte, error) { return httpGet(u, time.Now().Add(time.Minute)) } // one at a time, in the order of the layout
+	opts.Fetch = func(u string) ([]byte, error) { return httpGet(privateClient, u, time.Now().Add(time.Minute)) } // one at a time, in the order of the layout
 	res, r = convertHTML(t, doc.String(), opts)
 	c = viewContent(t, r, 0)
 	if res.Images != 3 || len(c.images) != 3 {
