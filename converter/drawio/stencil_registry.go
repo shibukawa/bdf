@@ -2,7 +2,6 @@ package drawio
 
 import (
 	"bytes"
-	"compress/flate"
 	"compress/gzip"
 	"embed"
 	"encoding/base64"
@@ -12,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+
+	"github.com/klauspost/compress/flate"
 )
 
 // The stencil registry (mxStencilRegistry with draw.io's dynamic loading

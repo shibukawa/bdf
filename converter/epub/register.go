@@ -1,13 +1,14 @@
 package epub
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
 
 	conv "github.com/shibukawa/bdf/converter"
 )
@@ -113,7 +114,7 @@ func Detect(head []byte, r io.ReaderAt, size int64) bool {
 			}
 		}
 	}
-	zr, err := zip.NewReader(r, size)
+	zr, err := ziputil.NewReader(r, size)
 	if err != nil {
 		return false
 	}

@@ -2,7 +2,6 @@ package bdf
 
 import (
 	"bytes"
-	"compress/flate"
 	"crypto/cipher"
 	"crypto/ecdh"
 	"encoding/json"
@@ -13,6 +12,8 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+
+	"github.com/klauspost/compress/flate"
 )
 
 // MaxManifestSize bounds both the stored and decoded manifest JSON a reader
@@ -392,7 +393,7 @@ func (r *Reader) WriteSingle(w io.Writer) error {
 	if m.Encryption != nil {
 		flags = FlagEncrypted
 	}
-	return writeSingle(w, m, data, flags, flate.BestCompression, defaultMinCompress)
+	return writeSingle(w, m, data, flags, defaultLevel, defaultMinCompress)
 }
 
 // WriteSplit writes the document in the split form into dir, copying the

@@ -42,6 +42,7 @@ type resources struct {
 	parts  map[string][]byte // parts of an MHTML archive by Content-Location and cid: URL
 	remote bool
 	fetch  func(string) ([]byte, error) // nil: httpGet
+	client *http.Client                 // of httpGet: public addresses only, unless the document may reach private ones
 
 	mu       sync.Mutex
 	fetched  map[string]fetched // remote images by URL
@@ -56,7 +57,10 @@ type fetched struct {
 }
 
 func newResources(opts *Options) *resources {
-	r := &resources{dir: opts.Dir, remote: !opts.NoRemote, fetch: opts.Fetch, fetched: map[string]fetched{}}
+	r := &resources{dir: opts.Dir, remote: !opts.NoRemote, fetch: opts.Fetch, fetched: map[string]fetched{}, client: client}
+	if opts.AllowPrivate {
+		r.client = privateClient
+	}
 	if opts.BaseURL != "" {
 		r.setBase(opts.BaseURL)
 	}
@@ -175,7 +179,7 @@ func (r *resources) get(u string) ([]byte, error) {
 	if r.fetch != nil {
 		b, err = r.fetch(u)
 	} else {
-		b, err = httpGet(u, deadline)
+		b, err = httpGet(r.client, u, deadline)
 		if errors.Is(err, context.DeadlineExceeded) && !time.Now().Before(deadline) {
 			err = r.late()
 		}
@@ -254,10 +258,12 @@ func (r *resources) prefetch(doc *xhtml.Node) {
 	wg.Wait()
 }
 
-var client = &http.Client{Timeout: 30 * time.Second}
+// client fetches the images of documents from public addresses only;
+// privateClient from any address (Options.AllowPrivate). See newClient.
+var client, privateClient = newClient(false), newClient(true)
 
 // httpGet fetches an image over HTTP, until the deadline at the latest.
-func httpGet(u string, deadline time.Time) ([]byte, error) {
+func httpGet(client *http.Client, u string, deadline time.Time) ([]byte, error) {
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)

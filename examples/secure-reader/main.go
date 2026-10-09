@@ -82,7 +82,7 @@ func main() {
 		Open:  s.openBook,
 		Allow: s.allow,
 		Pages: *pages,
-		Log:   func(r *http.Request, err error) { log.Printf("%s: %v", r.URL.Path, err) },
+		Log:   func(r *http.Request, err error) { log.Printf("%q: %v", r.URL.Path, err) }, // quoted: a path is the client's
 	})
 	// the viewer: a page and its scripts, which hold nothing of any book
 	mux.Handle("GET /read/", http.StripPrefix("/read/", http.FileServer(http.Dir(*webDir))))
@@ -90,7 +90,9 @@ func main() {
 	log.Printf("secure-reader: %d book(s), listening on http://%s/ (alice / alice-pass, bob / bob-pass)", len(books), *addr)
 	// forms and segment requests of other sites are refused (with the
 	// SameSite cookie, a second line)
-	log.Fatal(http.ListenAndServe(*addr, headers(http.NewCrossOriginProtection().Handler(mux))))
+	// a connection that sends its request slowly, or none, is not kept for ever
+	srv := &http.Server{Addr: *addr, Handler: headers(http.NewCrossOriginProtection().Handler(mux)), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: time.Minute, IdleTimeout: 2 * time.Minute}
+	log.Fatal(srv.ListenAndServe())
 }
 
 // book is a PDF converted to bdf once, kept open to cut segments from.

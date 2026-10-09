@@ -12,7 +12,6 @@
 package sxf
 
 import (
-	"archive/zip"
 	"bytes"
 	"errors"
 	"fmt"
@@ -23,6 +22,8 @@ import (
 	"slices"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/cad"
@@ -139,7 +140,7 @@ func decode(b []byte) string {
 
 // unzip returns the P21 (or SFC) file of a .p2z archive, or its only file.
 func unzip(data []byte) ([]byte, error) {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := ziputil.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, err
 	}

@@ -1,7 +1,7 @@
 package xlsx
 
 import (
-	"encoding/xml"
+	"bytes"
 	"io"
 	"math"
 	"sort"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 )
 
 // A worksheet (ECMA-376 Part 1 §18.3) is read as a stream: sheetData, which
@@ -104,7 +105,8 @@ type worksheet struct {
 	colLast, colBase []int32
 }
 
-// readWorksheet parses a worksheet part.
+// readWorksheet parses a worksheet part: sheetData as a stream (readSheetData),
+// the other elements as trees.
 func (c *converter) readWorksheet(part string) (*worksheet, error) {
 	rc, err := c.pkg.OpenPart(part)
 	if err != nil {
@@ -112,41 +114,47 @@ func (c *converter) readWorksheet(part string) (*worksheet, error) {
 	}
 	defer rc.Close()
 	ws := &worksheet{part: part, baseColW: 8, showGrid: true, showZero: true}
-	d := xml.NewDecoder(rc)
-	d.Strict = false
-	depth := 0
+	r := ooxml.NewReader(rc)
+	root, err := rootElement(r)
+	if err != nil {
+		return nil, err
+	}
 	for {
-		tok, err := d.Token()
-		if err == io.EOF {
-			break
-		}
+		ok, err := r.NextChild(root)
 		if err != nil {
 			return nil, err
 		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			depth++
-			if depth != 2 {
-				continue
-			}
-			if t.Name.Local == "sheetData" {
-				if err := c.readSheetData(d, ws); err != nil {
-					return nil, err
-				}
-				depth--
-				continue
-			}
-			n, err := ooxml.ReadElement(d, t)
-			if err != nil {
+		if !ok {
+			return ws, nil
+		}
+		if xmlro.Equal(r.LocalName(), "sheetData") {
+			if err := c.readSheetData(r, ws); err != nil {
 				return nil, err
 			}
-			depth--
-			ws.element(n)
-		case xml.EndElement:
-			depth--
+			continue
+		}
+		n, err := c.pkg.ReadFrom(r)
+		if err != nil {
+			return nil, err
+		}
+		ws.element(n)
+	}
+}
+
+// rootElement advances a reader to the root element of a part.
+func rootElement(r *xmlro.Reader) (xmlro.Element, error) {
+	for {
+		k, err := r.Next()
+		if err != nil {
+			return xmlro.Element{}, err
+		}
+		switch k {
+		case xmlro.StartElement:
+			return r.Element(), nil
+		case xmlro.EOF:
+			return xmlro.Element{}, io.ErrUnexpectedEOF
 		}
 	}
-	return ws, nil
 }
 
 // element takes what the renderer needs from a top-level element.
@@ -248,135 +256,145 @@ func clampColWidth(f float64) float64 {
 	return math.Min(f, maxColChar)
 }
 
-// readSheetData streams the rows and cells of sheetData.
-func (c *converter) readSheetData(d *xml.Decoder, ws *worksheet) error {
+// readSheetData reads the rows and cells of sheetData, which the reader is
+// on, into compact rows: a token at a time, keeping as trees only the
+// inline strings. The reader is left on the end of sheetData.
+func (c *converter) readSheetData(r *xmlro.Reader, ws *worksheet) error {
 	nextRow := 0
-	var cur *row
-	var cl *cell
-	nextCol := 0
-	var cellType string
-	var inV, hasF, hasV bool
-	var vbuf strings.Builder
-	var isNode *ooxml.Node
+	sheetData := r.Element()
 	for {
-		tok, err := d.Token()
+		ok, err := r.NextChild(sheetData)
 		if err != nil {
 			return err
 		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			switch t.Name.Local {
-			case "row":
-				r := row{idx: nextRow, ht: -1, style: -1}
-				for _, a := range t.Attr {
-					switch a.Name.Local {
-					case "r":
-						if n, err := strconv.Atoi(a.Value); err == nil && n >= 1 {
-							r.idx = n - 1
-						}
-					case "ht":
-						if f, err := strconv.ParseFloat(a.Value, 64); err == nil {
-							r.ht = clampRowHt(f)
-						}
-					case "customHeight":
-						r.custom = xmlBool(a.Value)
-					case "hidden":
-						r.hidden = xmlBool(a.Value)
-					case "s":
-						if n, err := strconv.Atoi(a.Value); err == nil {
-							r.style = n
-						}
-					}
+		if !ok {
+			return nil
+		}
+		if !xmlro.Equal(r.LocalName(), "row") {
+			continue
+		}
+		rw := row{idx: nextRow, ht: -1, style: -1}
+		if v, ok := r.Attr("r"); ok {
+			if n, err := v.Int(); err == nil && n >= 1 {
+				rw.idx = int(min(n, maxRows)) - 1
+			}
+		}
+		if v, ok := r.Attr("ht"); ok {
+			if f, err := v.Float(); err == nil {
+				rw.ht = clampRowHt(f)
+			}
+		}
+		rw.custom = boolAttr(r, "customHeight")
+		rw.hidden = boolAttr(r, "hidden")
+		if v, ok := r.Attr("s"); ok {
+			if n, err := v.Int(); err == nil && n >= math.MinInt32 && n <= math.MaxInt32 {
+				rw.style = int(n)
+			}
+		}
+		// the row's format applies to its empty cells only with customFormat
+		if !boolAttr(r, "customFormat") {
+			rw.style = -1
+		}
+		if rw.idx >= maxRows {
+			rw.idx = maxRows - 1
+		}
+		ws.rows = append(ws.rows, rw)
+		cur := &ws.rows[len(ws.rows)-1]
+		nextRow = rw.idx + 1
+		nextCol := 0
+		rowEl := r.Element()
+		for {
+			ok, err := r.NextChild(rowEl)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				break
+			}
+			if !xmlro.Equal(r.LocalName(), "c") {
+				continue
+			}
+			cc := cell{col: nextCol}
+			if v, ok := r.Attr("r"); ok {
+				if col, _, ok := parseRef(v); ok {
+					cc.col = col
 				}
-				// the row's format applies to its empty cells only with customFormat
-				if !hasTrue(t.Attr, "customFormat") {
-					r.style = -1
+			}
+			if v, ok := r.Attr("s"); ok {
+				if n, err := v.Int(); err == nil && n >= math.MinInt32 && n <= math.MaxInt32 {
+					cc.style = int(n)
 				}
-				if r.idx >= maxRows {
-					r.idx = maxRows - 1
-				}
-				ws.rows = append(ws.rows, r)
-				cur = &ws.rows[len(ws.rows)-1]
-				nextRow = r.idx + 1
-				nextCol = 0
-			case "c":
-				if cur == nil {
-					ws.rows = append(ws.rows, row{idx: nextRow, ht: -1, style: -1})
-					cur = &ws.rows[len(ws.rows)-1]
-					nextRow++
-				}
-				cc := cell{col: nextCol, style: 0}
-				cellType = "n"
-				for _, a := range t.Attr {
-					switch a.Name.Local {
-					case "r":
-						if col, _, ok := parseRef(a.Value); ok {
-							cc.col = col
-						}
-					case "s":
-						if n, err := strconv.Atoi(a.Value); err == nil {
-							cc.style = n
-						}
-					case "t":
-						cellType = a.Value
-					}
-				}
-				nextCol = cc.col + 1
-				cur.cells = append(cur.cells, cc)
-				cl = &cur.cells[len(cur.cells)-1]
-				vbuf.Reset()
-				hasF, hasV = false, false
-			case "v":
-				inV, hasV = true, true
-				vbuf.Reset()
-			case "is":
-				n, err := ooxml.ReadElement(d, t)
+			}
+			typ := cellTypeOf(r)
+			nextCol = cc.col + 1
+			cur.cells = append(cur.cells, cc)
+			cl := &cur.cells[len(cur.cells)-1]
+			var value string
+			var is *ooxml.Node
+			hasF, hasV := false, false
+			cellEl := r.Element()
+			for {
+				ok, err := r.NextChild(cellEl)
 				if err != nil {
 					return err
 				}
-				isNode = n
-				hasV = true
-			default:
-				if t.Name.Local == "f" {
-					hasF = true
+				if !ok {
+					break
 				}
-				// formulas and extensions: skip their content
-				if err := d.Skip(); err != nil {
-					return err
-				}
-			}
-		case xml.CharData:
-			if inV {
-				vbuf.Write(t)
-			}
-		case xml.EndElement:
-			switch t.Name.Local {
-			case "v":
-				inV = false
-			case "c":
-				if cl != nil {
-					c.cellValue(cl, cellType, vbuf.String(), isNode)
-					if hasF && (!hasV || strings.TrimSpace(vbuf.String()) == "" && isNode == nil) {
-						ws.noValue++
+				switch {
+				case xmlro.Equal(r.LocalName(), "v"):
+					v, err := r.ElementText()
+					if err != nil {
+						return err
 					}
+					value, hasV = v.String(), true
+				case xmlro.Equal(r.LocalName(), "is"):
+					if is, err = c.pkg.ReadFrom(r); err != nil {
+						return err
+					}
+					hasV = true
+				case xmlro.Equal(r.LocalName(), "f"):
+					hasF = true // its content, and extensions, are passed over
 				}
-				cl, isNode = nil, nil
-			case "row":
-				cur = nil
-			case "sheetData":
-				return nil
+			}
+			c.cellValue(cl, typ, value, is)
+			if hasF && (!hasV || strings.TrimSpace(value) == "" && is == nil) {
+				ws.noValue++
 			}
 		}
 	}
 }
 
-func hasTrue(attrs []xml.Attr, name string) bool {
-	for _, a := range attrs {
-		if a.Name.Local == name {
-			return xmlBool(a.Value)
+// cellTypes are the values of a cell's t attribute, each one string.
+var cellTypes = []string{"n", "s", "str", "inlineStr", "b", "e", "d"}
+
+// cellTypeOf returns the type of the cell the reader is on ("n" without
+// a t attribute), without making a string of a known one.
+func cellTypeOf(r *xmlro.Reader) string {
+	v, ok := r.Attr("t")
+	if !ok {
+		return "n"
+	}
+	for _, t := range cellTypes {
+		if v.Equal(t) {
+			return t
 		}
 	}
-	return false
+	return v.String()
+}
+
+// boolAttr reads a boolean attribute of the element the reader is on, as
+// xmlBool reads one; false when there is none.
+func boolAttr(r *xmlro.Reader, name string) bool {
+	v, ok := r.Attr(name)
+	if !ok {
+		return false
+	}
+	if v.HasEntities() {
+		return xmlBool(v.String())
+	}
+	b := bytes.TrimSpace(v)
+	return xmlro.Equal(b, "1") || xmlro.Equal(b, "true") || xmlro.Equal(b, "on")
 }
 
 func xmlBool(v string) bool {
@@ -505,28 +523,62 @@ func decodeXString(s string) string {
 
 // parseRef parses an A1 reference (with optional $) into a 0-based column
 // and row.
-func parseRef(s string) (col, row int, ok bool) {
-	s = strings.TrimSpace(strings.ReplaceAll(s, "$", ""))
-	i := 0
-	for i < len(s) && (s[i] >= 'A' && s[i] <= 'Z' || s[i] >= 'a' && s[i] <= 'z') {
-		c := s[i]
-		if c >= 'a' {
+func parseRef[S ~string | ~[]byte](ref S) (col, row int, ok bool) {
+	// spaces around, and the $ of absolute references, are passed over
+	i, end := 0, len(ref)
+	for i < end && isSpace(ref[i]) {
+		i++
+	}
+	for end > i && isSpace(ref[end-1]) {
+		end--
+	}
+	for ; i < end; i++ {
+		c := ref[i]
+		if c == '$' {
+			continue
+		}
+		if c >= 'a' && c <= 'z' {
 			c -= 'a' - 'A'
 		}
+		if c < 'A' || c > 'Z' {
+			break
+		}
 		col = col*26 + int(c-'A'+1)
-		i++
 		if col > maxCols {
 			return 0, 0, false
 		}
 	}
-	if i == 0 || i == len(s) {
+	if col == 0 || i == end {
 		return 0, 0, false
 	}
-	r, err := strconv.Atoi(s[i:])
-	if err != nil || r < 1 || r > maxRows {
+	// the row number, as strconv.Atoi reads it
+	neg, digits := false, 0
+	if ref[i] == '+' || ref[i] == '-' {
+		neg = ref[i] == '-'
+		i++
+	}
+	for ; i < end; i++ {
+		c := ref[i]
+		if c == '$' {
+			continue
+		}
+		if c < '0' || c > '9' {
+			return 0, 0, false
+		}
+		if row = row*10 + int(c-'0'); row > maxRows {
+			return 0, 0, false
+		}
+		digits++
+	}
+	if digits == 0 || neg || row < 1 {
 		return 0, 0, false
 	}
-	return col - 1, r - 1, true
+	return col - 1, row - 1, true
+}
+
+// isSpace reports the white space strings.TrimSpace trims from a reference.
+func isSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'
 }
 
 // parseRange parses "A1:C3" (or a single reference, or whole rows or

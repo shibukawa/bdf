@@ -101,10 +101,11 @@ func (si *svgImage) rasterIn(r *Renderer, k float64, inside int) (*picture, floa
 		r.warnf(tooManyPixels, r.room)
 		return nil, k
 	}
-	s := newSurface(w, h)
+	s := r.newSurface(w, h)
 	sr := &svgRenderer{r: r, doc: si.doc, budget: svgBudget, inside: inside}
 	sr.render(s, matrix{k, 0, 0, k, 0, 0}, si.w, si.h)
 	p := &picture{w: w, h: h, levels: []*image.RGBA{s.toRGBA()}}
+	r.release(s)
 	si.rasters[step] = p
 	r.keep(p, func() { delete(si.rasters, step) })
 	return p, float64(w) / si.w
@@ -485,13 +486,14 @@ func (sr *svgRenderer) node(n *svgNode, ctx *svgCtx, parent svgStyle) {
 		sr.layers++
 		sr.live += pixels
 		sr.layerPixels += pixels
-		layer := newSurface(c.s.w, c.s.h)
+		layer := sr.r.newSurface(c.s.w, c.s.h)
 		lc := c
 		lc.s = layer
 		sr.element(n, &lc, st)
 		sr.layers--
 		sr.live -= pixels
 		c.s.fill(&mask{r: c.clip.r}, surfaceShader{s: layer}, float32(opacity), bdf.BlendSourceOver, &mask{r: c.s.bounds()})
+		sr.r.release(layer)
 		return
 	}
 	sr.element(n, &c, st)

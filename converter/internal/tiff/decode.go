@@ -2,7 +2,6 @@ package tiff
 
 import (
 	"bytes"
-	"compress/zlib"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -11,6 +10,8 @@ import (
 	"io"
 	"math"
 	"math/bits"
+
+	"github.com/klauspost/compress/zlib"
 
 	"golang.org/x/image/tiff/lzw"
 )

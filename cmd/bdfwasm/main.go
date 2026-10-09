@@ -87,12 +87,13 @@ package main
 
 import (
 	"bytes"
-	"compress/flate"
 	"errors"
 	"fmt"
 	"runtime/debug"
 	"sync"
 	"syscall/js"
+
+	"github.com/klauspost/compress/flate"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"

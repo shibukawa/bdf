@@ -2,9 +2,10 @@ package cgm
 
 import (
 	"bytes"
-	"compress/gzip"
 	"fmt"
 	"io"
+
+	"github.com/klauspost/compress/gzip"
 
 	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 )

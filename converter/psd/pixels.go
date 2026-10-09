@@ -2,12 +2,13 @@ package psd
 
 import (
 	"bytes"
-	"compress/zlib"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+
+	"github.com/klauspost/compress/zlib"
 )
 
 // Channel data is decoded into planes of 8-bit samples, whatever the depth

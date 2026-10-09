@@ -84,6 +84,12 @@ type Options struct {
 	// timeout and a size limit. It is called for several images at the same
 	// time.
 	Fetch func(url string) ([]byte, error)
+	// AllowPrivate lets the HTTP client fetch from addresses that are not
+	// public on the Internet (the host itself, its network, its link),
+	// which it refuses otherwise: a document a server converts could reach
+	// what is private to the server through them. It does not apply to
+	// Fetch, nor when the environment names a proxy.
+	AllowPrivate bool
 
 	// The reader style:
 

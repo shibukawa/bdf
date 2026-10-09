@@ -13,7 +13,6 @@
 package pptx
 
 import (
-	"encoding/xml"
 	"fmt"
 	"io"
 	"io/fs"
@@ -30,6 +29,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
 	"github.com/shibukawa/bdf/imgconv"
 	"github.com/shibukawa/bdf/internal/fontdb"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 )
 
 // Options controls the conversion.
@@ -258,30 +258,37 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 }
 
 // slideHidden checks the root's show attribute without building and caching
-// the complete XML tree of every slide before any of them is rendered.
+// the complete XML tree of every slide before any of them is rendered. A
+// slide that cannot be read is not hidden: its error is for the rendering.
 func slideHidden(p *ooxml.Package, part string) bool {
 	rc, err := p.OpenPart(part)
 	if err != nil {
 		return false
 	}
 	defer rc.Close()
-	d := xml.NewDecoder(rc)
-	d.Strict = false
-	seen, hidden := false, false
-	for {
-		tok, err := d.Token()
-		if err == io.EOF {
-			return seen && hidden
-		}
+	r := ooxml.NewReader(rc)
+	for seen := false; ; {
+		k, err := r.Next()
 		if err != nil {
 			return false
 		}
-		if start, ok := tok.(xml.StartElement); ok && !seen {
+		switch k {
+		case xmlro.StartElement:
+			if seen {
+				continue
+			}
 			seen = true
-			hidden = !(&ooxml.Node{Attrs: start.Attr}).AttrBool("show", true)
-			if !hidden {
+			v, ok := r.Attr("show")
+			if !ok {
 				return false
 			}
+			switch strings.TrimSpace(v.String()) {
+			case "0", "false", "off":
+			default:
+				return false
+			}
+		case xmlro.EOF:
+			return seen
 		}
 	}
 }
