@@ -1,13 +1,14 @@
 package drawio
 
 import (
-	"bytes"
-	"encoding/xml"
 	"errors"
-	"io"
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
+
+	"github.com/shibukawa/bdf/internal/xmltree"
 )
 
 // Stencils: shapes defined in draw.io's XML stencil language (mxStencil).
@@ -50,16 +51,22 @@ type stencilLabelBounds struct {
 // stencilNode is an element of a stencil description.
 type stencilNode struct {
 	name  string
-	attrs []xml.Attr
+	attrs []stencilAttr
 	kids  []*stencilNode
+}
+
+// stencilAttr is an attribute of an element: its name without a namespace
+// prefix, and its value.
+type stencilAttr struct {
+	name, value string
 }
 
 // attr returns the value of an attribute and whether it is set
 // (getAttribute, which returns null for a missing attribute).
 func (n *stencilNode) attr(key string) (string, bool) {
 	for _, a := range n.attrs {
-		if a.Name.Local == key {
-			return a.Value, true
+		if a.name == key {
+			return a.value, true
 		}
 	}
 	return "", false
@@ -102,20 +109,29 @@ func (n *stencilNode) findAll(name string, out []*stencilNode) []*stencilNode {
 // parseStencilXML reads an XML document into a tree of elements (text,
 // comments and processing instructions are dropped) and returns its root.
 func parseStencilXML(data []byte) (*stencilNode, error) {
-	d := xml.NewDecoder(bytes.NewReader(data))
+	r := xmltree.Open(data, xmlro.Options{})
 	var root *stencilNode
 	var stack []*stencilNode
 	for {
-		t, err := d.Token()
-		if err == io.EOF {
-			break
-		}
+		k, err := r.Next()
 		if err != nil {
 			return nil, err
 		}
-		switch t := t.(type) {
-		case xml.StartElement:
-			n := &stencilNode{name: t.Name.Local, attrs: t.Copy().Attr}
+		switch k {
+		case xmlro.EOF:
+			if root == nil {
+				return nil, errors.New("no root element")
+			}
+			return root, nil
+		case xmlro.StartElement:
+			n := &stencilNode{name: string(r.LocalName())}
+			for {
+				name, val, ok := r.NextAttr()
+				if !ok {
+					break
+				}
+				n.attrs = append(n.attrs, stencilAttr{string(xmltree.Local(name)), val.String()})
+			}
 			if n.name == "path" {
 				expandPath(n)
 			}
@@ -126,16 +142,12 @@ func parseStencilXML(data []byte) (*stencilNode, error) {
 				root = n
 			}
 			stack = append(stack, n)
-		case xml.EndElement:
+		case xmlro.EndElement:
 			if len(stack) > 0 {
 				stack = stack[:len(stack)-1]
 			}
 		}
 	}
-	if root == nil {
-		return nil, errors.New("no root element")
-	}
-	return root, nil
 }
 
 // compactSteps maps the letters of a compact path (the d attribute that
@@ -176,7 +188,7 @@ func expandPath(n *stencilNode) {
 			for j < len(d) && d[j] != ' ' && compactSteps[d[j]].name == "" {
 				j++
 			}
-			k.attrs = append(k.attrs, xml.Attr{Name: xml.Name{Local: name}, Value: d[i:j]})
+			k.attrs = append(k.attrs, stencilAttr{name, d[i:j]})
 			i = j
 		}
 		n.kids = append(n.kids, k)

@@ -1,11 +1,14 @@
-// Package xmltree reads the XML of Office documents into element trees:
-// what the converters of Office formats (converter/internal/ooxml) and the
-// reader of Office Math (internal/mathlayout) walk.
+// Package xmltree reads XML with xmlro, the pull reader that allocates
+// nothing for the tokens it passes over. The XML of Office documents is
+// read into element trees: what the converters of Office formats
+// (converter/internal/ooxml) and the reader of Office Math
+// (internal/mathlayout) walk. The readers of the other XML formats (SVG,
+// draw.io, EPUB, MusicXML, XHTML, XMP) open theirs with Open and take the
+// names of elements and attributes from ElementName and Attrs.
 package xmltree
 
 import (
 	"bytes"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -22,12 +25,26 @@ import (
 type Node struct {
 	Space string // namespace URI
 	Name  string // local name
-	Attrs []xml.Attr
+	Attrs []Attr
 	Kids  []*Node
 	Text  string // character data directly inside the element
 	// runs places the character data of an element with child elements
 	// among them, for mixed content (see Segments); nil for others.
 	runs []textRun
+}
+
+// Name is the name of an element or an attribute with its namespace
+// resolved, as encoding/xml reports names: Space is the URI the prefix is
+// bound to (the default namespace for an element without one), the prefix
+// itself when nothing binds it, and "xmlns" for a namespace declaration.
+type Name struct {
+	Space, Local string
+}
+
+// Attr is an attribute of an element.
+type Attr struct {
+	Name  Name
+	Value string
 }
 
 // textRun is character data that comes before child element Kids[before]
@@ -94,8 +111,7 @@ var ErrTooManyElements = errors.New("ooxml: too many elements")
 // tree copies only what it keeps. Names and short values repeat throughout
 // a part, so they are interned: one string for every "p" and "val". The
 // namespaces are resolved as encoding/xml resolves them, and the trees are
-// the same (ReadElementCounting reads one from an encoding/xml decoder for
-// a reader that still streams with it; the tests compare them).
+// the same (the tests compare them).
 
 // Parse reads a document into a node tree. mc:AlternateContent is
 // replaced by its mc:Fallback (or its first mc:Choice when there is no
@@ -115,6 +131,9 @@ func ParseChoosing(data []byte, supported func(prefix string) bool) (*Node, erro
 // ParsePicking is Parse that replaces mc:AlternateContent with its first
 // mc:Choice that pick accepts, and with the fallback when it accepts none.
 func ParsePicking(data []byte, pick func(choice *Node) bool) (*Node, error) {
+	if bytes.Contains(data, entityDecl) {
+		return nil, ErrEntities
+	}
 	budget := MaxElements
 	return parseFrom(xmlro.NewBytesReader(data, ReaderOptions()), pick, &budget)
 }
@@ -135,12 +154,56 @@ func ParseCounting(r io.Reader, pick func(choice *Node) bool, budget *int) (*Nod
 
 // NewReader returns a reader of the XML tokens of src with the bounds of
 // this package (ReaderOptions): what reads a part an element at a time
-// streams with it, and hands the elements it keeps to ReadFrom.
-func NewReader(src io.Reader) *xmlro.Reader { return xmlro.NewReader(src, ReaderOptions()) }
+// streams with it, and hands the elements it keeps to ReadFrom. A part
+// that declares entities is refused (ErrEntities).
+func NewReader(src io.Reader) *xmlro.Reader {
+	return xmlro.NewReader(&plain{src: src}, ReaderOptions())
+}
+
+// Reset points a reader of NewReader at another part, with the buffer it
+// grew.
+func Reset(r *xmlro.Reader, src io.Reader) { r.Reset(&plain{src: src}) }
+
+// ErrEntities is the error of a part that declares entities in a DOCTYPE.
+// The parts of Office documents declare none, and the references to one
+// would make a part many times the text its package holds: the reader
+// bounds one token and the trees their elements, not what entities stand
+// for.
+var ErrEntities = errors.New("ooxml: the part declares entities")
+
+var entityDecl = []byte("<!ENTITY")
+
+// plain passes a part on to its reader until an entity is declared.
+type plain struct {
+	src  io.Reader
+	tail [len("<!ENTITY") - 1]byte // the last bytes read: a declaration may straddle two reads
+	n    int
+}
+
+func (p *plain) Read(b []byte) (int, error) {
+	n, err := p.src.Read(b)
+	if n == 0 {
+		return n, err
+	}
+	var edge [2 * len(p.tail)]byte
+	k := copy(edge[:], p.tail[:p.n])
+	k += copy(edge[k:], b[:min(n, len(p.tail))])
+	if bytes.Contains(edge[:k], entityDecl) || bytes.Contains(b[:n], entityDecl) {
+		return 0, ErrEntities
+	}
+	if n >= len(p.tail) {
+		p.n = copy(p.tail[:], b[n-len(p.tail):n])
+	} else {
+		// edge holds the tail and all of b
+		p.n = copy(p.tail[:], edge[max(0, k-len(p.tail)):k])
+	}
+	return n, err
+}
 
 // ReaderOptions bounds a token reader: a token of MaxTokenBytes at most,
 // and nesting a little past MaxDepth, which the trees check themselves. A
-// DOCTYPE is read past, as encoding/xml reads it. The buffer starts small,
+// DOCTYPE is read past, as encoding/xml reads it (NewReader and the parsers
+// refuse the entities of one). The buffer starts small,
 // as most parts of a package are (the relationships of a part, a layout),
 // and grows to the largest token of a part.
 func ReaderOptions() xmlro.Options {
@@ -266,8 +329,8 @@ func (b *builder) start() (*Node, error) {
 		if !ok {
 			break
 		}
-		var a xml.Attr
-		if i := bytes.IndexByte(name, ':'); i >= 0 {
+		var a Attr
+		if i := bytes.IndexByte(name, ':'); i > 0 && i < len(name)-1 {
 			prefix, local := name[:i], name[i+1:]
 			switch uri, ok := r.LookupNamespace(prefix); {
 			case xmlro.Equal(prefix, "xmlns"):
@@ -353,14 +416,6 @@ func fnv[S ~string | ~[]byte](s S) uint32 {
 	return h
 }
 
-// ReadElement reads the element that start opens from d, up to its end,
-// into a node tree (with mc:AlternateContent resolved as Parse does), for
-// a reader that streams a part with encoding/xml; one that streams with
-// NewReader uses ReadFrom.
-func ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
-	return ReadElementPicking(d, start, nil)
-}
-
 // SupportedChoice picks the choices whose required namespaces (the
 // prefixes of their Requires attribute) all pass supported.
 func SupportedChoice(supported func(prefix string) bool) func(choice *Node) bool {
@@ -391,64 +446,6 @@ func MathChoice(c *Node) bool {
 
 // NSA14 is the namespace of the Office 2010 DrawingML extensions.
 const NSA14 = "http://schemas.microsoft.com/office/drawing/2010/main"
-
-// ReadElementPicking is ReadElement that replaces mc:AlternateContent with
-// its first mc:Choice that pick accepts.
-func ReadElementPicking(d *xml.Decoder, start xml.StartElement, pick func(choice *Node) bool) (*Node, error) {
-	budget := MaxElements
-	return ReadElementCounting(d, start, pick, &budget)
-}
-
-// ReadElementCounting is ReadElementPicking with a budget of elements, as
-// ReadFrom has.
-func ReadElementCounting(d *xml.Decoder, start xml.StartElement, pick func(choice *Node) bool, budget *int) (*Node, error) {
-	if *budget <= 0 {
-		return nil, ErrTooManyElements
-	}
-	*budget--
-	root := &Node{Space: start.Name.Space, Name: start.Name.Local, Attrs: start.Attr}
-	stack := []*Node{root}
-	for len(stack) > 0 {
-		tok, err := d.Token()
-		if err == io.EOF {
-			return nil, io.ErrUnexpectedEOF
-		}
-		if err != nil {
-			return nil, err
-		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			if len(stack) >= MaxDepth {
-				return nil, fmt.Errorf("ooxml: element nesting deeper than %d", MaxDepth)
-			}
-			if *budget <= 0 {
-				return nil, ErrTooManyElements
-			}
-			*budget--
-			n := &Node{Space: t.Name.Space, Name: t.Name.Local, Attrs: t.Attr}
-			p := stack[len(stack)-1]
-			p.Kids = append(p.Kids, n)
-			stack = append(stack, n)
-		case xml.EndElement:
-			if n := stack[len(stack)-1]; len(n.Kids) == 0 {
-				n.runs = nil // Text alone says it all
-			}
-			stack = stack[:len(stack)-1]
-		case xml.CharData:
-			stack[len(stack)-1].addText(string(t))
-		case xml.ProcInst:
-			// InDesign writes the characters XML cannot hold (its page
-			// number marker U+0018 and the like) as <?ACE 18?>
-			if t.Target == "ACE" {
-				if code, err := strconv.ParseUint(strings.TrimSpace(string(t.Inst)), 16, 32); err == nil && code < 0x110000 {
-					stack[len(stack)-1].addText(string(rune(code)))
-				}
-			}
-		}
-	}
-	root.resolveAlternates(pick)
-	return root, nil
-}
 
 func (n *Node) resolveAlternates(pick func(choice *Node) bool) {
 	// Most OOXML nodes have no alternate child. Avoid allocating a replacement

@@ -2,8 +2,6 @@ package epub
 
 import (
 	"archive/zip"
-	"bytes"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +9,11 @@ import (
 	"path"
 	"strings"
 
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro/htmlentity"
+
 	"github.com/shibukawa/bdf/converter/internal/ziputil"
+	"github.com/shibukawa/bdf/internal/xmltree"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
@@ -72,22 +74,22 @@ type publication struct {
 
 // packageDoc is the package document (the OPF file).
 type packageDoc struct {
-	Version  string   `xml:"version,attr"`
-	UniqueID string   `xml:"unique-identifier,attr"`
-	Metadata metaNode `xml:"metadata"`
-	Manifest []item   `xml:"manifest>item"`
+	Version  string
+	UniqueID string
+	Metadata metaNode
+	Manifest []item
 	Spine    struct {
-		PPD      string    `xml:"page-progression-direction,attr"`
-		Itemrefs []itemref `xml:"itemref"`
-	} `xml:"spine"`
+		PPD      string // page-progression-direction
+		Itemrefs []itemref
+	}
 }
 
 type item struct {
-	ID         string `xml:"id,attr"`
-	Href       string `xml:"href,attr"`
-	MediaType  string `xml:"media-type,attr"`
-	Properties string `xml:"properties,attr"`
-	Fallback   string `xml:"fallback,attr"`
+	ID         string
+	Href       string
+	MediaType  string
+	Properties string
+	Fallback   string
 
 	path string // in the container
 }
@@ -95,18 +97,19 @@ type item struct {
 func (it *item) has(prop string) bool { return hasToken(it.Properties, prop) }
 
 type itemref struct {
-	IDRef      string `xml:"idref,attr"`
-	Linear     string `xml:"linear,attr"`
-	Properties string `xml:"properties,attr"`
+	IDRef      string
+	Linear     string
+	Properties string
 }
 
-// metaNode is an element of the metadata, read generically: EPUB 2 and 3
-// write it differently, and older files wrap it in dc-metadata.
+// metaNode is an element of the XML files of a publication, read
+// generically: the metadata above all, which EPUB 2 and 3 write
+// differently, and older files wrap in dc-metadata.
 type metaNode struct {
-	XMLName xml.Name
-	Attrs   []xml.Attr `xml:",any,attr"`
-	Text    string     `xml:",chardata"`
-	Nodes   []metaNode `xml:",any"`
+	XMLName xmltree.Name
+	Attrs   []xmltree.Attr
+	Text    string // the character data directly in the element
+	Nodes   []metaNode
 }
 
 func (n *metaNode) attr(local string) string {
@@ -116,6 +119,122 @@ func (n *metaNode) attr(local string) string {
 		}
 	}
 	return ""
+}
+
+// value returns an attribute as it is written, whatever its namespace: the
+// last of the name.
+func (n *metaNode) value(local string) string {
+	v := ""
+	for _, a := range n.Attrs {
+		if a.Name.Local == local {
+			v = a.Value
+		}
+	}
+	return v
+}
+
+// each calls f for the child elements with the name, whatever their
+// namespace.
+func (n *metaNode) each(local string, f func(k *metaNode)) {
+	for i := range n.Nodes {
+		if n.Nodes[i].XMLName.Local == local {
+			f(&n.Nodes[i])
+		}
+	}
+}
+
+// maxNodes is how many elements an XML file of a publication other than a
+// content document may have (the package document of a large publication
+// has some thousands, an item for each of its files).
+const maxNodes = 1 << 20
+
+// readXML reads the root element of the package document, the container
+// or the encryption file. It is lenient, and the entities of HTML are
+// known, as package documents use them in their metadata.
+func readXML(data []byte) (*metaNode, error) {
+	r := xmltree.Open(data, xmlro.Options{Lenient: true, Entities: htmlentity.Lookup, CharsetReader: charsetReader})
+	for {
+		k, err := r.Next()
+		if err != nil {
+			return nil, err
+		}
+		switch k {
+		case xmlro.EOF:
+			return nil, io.ErrUnexpectedEOF
+		case xmlro.StartElement:
+			budget := maxNodes
+			n, err := readNode(r, &budget)
+			if err != nil {
+				return nil, err
+			}
+			return &n, nil
+		}
+	}
+}
+
+// readNode reads the element whose start a reader is on. The elements
+// within one another are bounded by the reader.
+func readNode(r *xmlro.Reader, budget *int) (metaNode, error) {
+	if *budget--; *budget < 0 {
+		return metaNode{}, fmt.Errorf("more than %d elements", maxNodes)
+	}
+	n := metaNode{XMLName: xmltree.ElementName(r), Attrs: xmltree.Attrs(r)}
+	var text []byte
+	for {
+		k, err := r.Next()
+		if err != nil {
+			return n, err
+		}
+		switch k {
+		case xmlro.StartElement:
+			c, err := readNode(r, budget)
+			if err != nil {
+				return n, err
+			}
+			n.Nodes = append(n.Nodes, c)
+		case xmlro.Text, xmlro.CData:
+			text = xmltree.AppendText(text, r)
+		case xmlro.EndElement:
+			n.Text = string(text)
+			return n, nil
+		case xmlro.EOF:
+			return n, io.ErrUnexpectedEOF
+		}
+	}
+}
+
+// readPackage reads the package document: the metadata, the items of the
+// manifest and the item references of the spine, whatever the namespace of
+// their elements and wherever among the package's children they are.
+func readPackage(data []byte) (*packageDoc, error) {
+	root, err := readXML(data)
+	if err != nil {
+		return nil, err
+	}
+	pkg := &packageDoc{Version: root.value("version"), UniqueID: root.value("unique-identifier")}
+	first := true
+	root.each("metadata", func(m *metaNode) {
+		if first {
+			pkg.Metadata, first = *m, false
+		} else {
+			pkg.Metadata.Nodes = append(pkg.Metadata.Nodes, m.Nodes...)
+		}
+	})
+	root.each("manifest", func(m *metaNode) {
+		m.each("item", func(k *metaNode) {
+			pkg.Manifest = append(pkg.Manifest, item{ID: k.value("id"), Href: k.value("href"), MediaType: k.value("media-type"),
+				Properties: k.value("properties"), Fallback: k.value("fallback")})
+		})
+	})
+	root.each("spine", func(sp *metaNode) {
+		if ppd := sp.value("page-progression-direction"); ppd != "" {
+			pkg.Spine.PPD = ppd
+		}
+		sp.each("itemref", func(k *metaNode) {
+			pkg.Spine.Itemrefs = append(pkg.Spine.Itemrefs, itemref{IDRef: k.value("idref"), Linear: k.value("linear"), Properties: k.value("properties")})
+		})
+	})
+	return pkg, nil
 }
 
 func hasToken(list, tok string) bool {
@@ -153,8 +272,7 @@ func open(r io.ReaderAt, size int64) (*publication, error) {
 	if err != nil {
 		return nil, fmt.Errorf("epub: package document: %w", err)
 	}
-	p.pkg = &packageDoc{}
-	if err := decodeXML(data, p.pkg); err != nil {
+	if p.pkg, err = readPackage(data); err != nil {
 		return nil, fmt.Errorf("epub: package document: %w", err)
 	}
 	for i := range p.pkg.Manifest {
@@ -170,29 +288,24 @@ func open(r io.ReaderAt, size int64) (*publication, error) {
 	return p, nil
 }
 
-func decodeXML(data []byte, v any) error {
-	d := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))))
-	d.Strict = false
-	d.Entity = xml.HTMLEntity
-	d.CharsetReader = charsetReader
-	return d.Decode(v)
-}
-
 // rootfile returns the path of the package document: the first rootfile
 // of container.xml that is one, else the first .opf file.
 func (p *publication) rootfile() string {
 	if data, err := p.text("META-INF/container.xml"); err == nil {
-		var c struct {
-			Rootfiles []struct {
-				FullPath  string `xml:"full-path,attr"`
-				MediaType string `xml:"media-type,attr"`
-			} `xml:"rootfiles>rootfile"`
-		}
-		if decodeXML(data, &c) == nil {
-			for _, rf := range c.Rootfiles {
-				if name := p.canonical(rf.FullPath); name != "" && (rf.MediaType == "" || rf.MediaType == "application/oebps-package+xml") {
-					return name
-				}
+		if c, err := readXML(data); err == nil {
+			found := ""
+			c.each("rootfiles", func(rfs *metaNode) {
+				rfs.each("rootfile", func(rf *metaNode) {
+					if found != "" {
+						return
+					}
+					if name, typ := p.canonical(rf.value("full-path")), rf.value("media-type"); name != "" && (typ == "" || typ == "application/oebps-package+xml") {
+						found = name
+					}
+				})
+			})
+			if found != "" {
+				return found
 			}
 		}
 	}
@@ -211,27 +324,31 @@ func (p *publication) readEncryption() error {
 	if err != nil {
 		return nil
 	}
-	var enc struct {
-		Data []struct {
-			Method struct {
-				Algorithm string `xml:"Algorithm,attr"`
-			} `xml:"EncryptionMethod"`
-			Ref struct {
-				URI string `xml:"URI,attr"`
-			} `xml:"CipherData>CipherReference"`
-		} `xml:"EncryptedData"`
-	}
-	if err := decodeXML(data, &enc); err != nil {
+	enc, err := readXML(data)
+	if err != nil {
 		return nil
 	}
-	for _, d := range enc.Data {
-		if fontObfuscation[d.Method.Algorithm] || d.Ref.URI == "" {
-			continue
+	enc.each("EncryptedData", func(d *metaNode) {
+		algorithm, uri := "", ""
+		d.each("EncryptionMethod", func(m *metaNode) {
+			if v := m.value("Algorithm"); v != "" {
+				algorithm = v
+			}
+		})
+		d.each("CipherData", func(c *metaNode) {
+			c.each("CipherReference", func(ref *metaNode) {
+				if v := ref.value("URI"); v != "" {
+					uri = v
+				}
+			})
+		})
+		if fontObfuscation[algorithm] || uri == "" {
+			return
 		}
-		if name := p.canonical(p.resolve("", d.Ref.URI)); name != "" {
+		if name := p.canonical(p.resolve("", uri)); name != "" {
 			p.encrypted[name] = true
 		}
-	}
+	})
 	return nil
 }
 

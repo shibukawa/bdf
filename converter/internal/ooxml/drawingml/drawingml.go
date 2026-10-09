@@ -9,7 +9,6 @@
 package drawingml
 
 import (
-	"encoding/xml"
 	"fmt"
 	"math"
 	"strconv"
@@ -244,8 +243,8 @@ func ownXfrm(k *ooxml.Node) *ooxml.Node {
 func withXfrm(k, own *ooxml.Node, x, y, w, h float64) *ooxml.Node {
 	emu := func(v float64) string { return strconv.FormatInt(int64(math.Round(v*ooxml.EMUPerPoint)), 10) }
 	xfrm := &ooxml.Node{Name: "xfrm", Kids: []*ooxml.Node{
-		{Name: "off", Attrs: []xml.Attr{{Name: xml.Name{Local: "x"}, Value: emu(x)}, {Name: xml.Name{Local: "y"}, Value: emu(y)}}},
-		{Name: "ext", Attrs: []xml.Attr{{Name: xml.Name{Local: "cx"}, Value: emu(w)}, {Name: xml.Name{Local: "cy"}, Value: emu(h)}}},
+		{Name: "off", Attrs: []ooxml.Attr{{Name: ooxml.Name{Local: "x"}, Value: emu(x)}, {Name: ooxml.Name{Local: "y"}, Value: emu(y)}}},
+		{Name: "ext", Attrs: []ooxml.Attr{{Name: ooxml.Name{Local: "cx"}, Value: emu(w)}, {Name: ooxml.Name{Local: "cy"}, Value: emu(h)}}},
 	}}
 	if own != nil {
 		xfrm.Space, xfrm.Attrs = own.Space, own.Attrs

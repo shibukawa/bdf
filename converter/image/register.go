@@ -2,8 +2,9 @@ package image
 
 import (
 	"bytes"
-	"encoding/xml"
 	"io"
+
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 
 	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/xmp"
@@ -84,33 +85,32 @@ const maxWhole = 8 << 20
 // SVG picture) make it something else, as they make browsers reject an SVG
 // file. A root element that is not well formed is taken as an SVG file.
 func wholeSVG(data []byte) bool {
-	d := xmp.Decoder(utf8Text(data), nil)
+	r := xmp.Reader(data)
 	for {
-		tok, err := d.Token()
-		if err != nil {
+		k, err := r.Next()
+		if err != nil || k == xmlro.EOF {
 			return true
 		}
-		if _, ok := tok.(xml.StartElement); ok {
+		if k == xmlro.StartElement {
 			break
 		}
 	}
-	if d.Skip() != nil {
+	if r.Skip() != nil {
 		return true
 	}
 	for {
-		tok, err := d.Token()
-		if err == io.EOF {
-			return true
-		}
+		k, err := r.Next()
 		if err != nil {
 			return false
 		}
-		switch t := tok.(type) {
-		case xml.CharData:
-			if len(bytes.TrimSpace(t)) > 0 {
+		switch k {
+		case xmlro.EOF:
+			return true
+		case xmlro.Text, xmlro.CData:
+			if len(bytes.TrimSpace(r.Text())) > 0 {
 				return false
 			}
-		case xml.StartElement:
+		case xmlro.StartElement:
 			return false
 		}
 	}

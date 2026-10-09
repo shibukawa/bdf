@@ -14,7 +14,6 @@ package webdoc
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -23,9 +22,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro/htmlentity"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 	"golang.org/x/net/html/charset"
+
+	"github.com/shibukawa/bdf/internal/xmltree"
 )
 
 // Namespaces of XHTML documents.
@@ -96,10 +99,9 @@ func ParseHTML(data []byte, contentType string) (*html.Node, error) {
 // from the XML declaration (UTF-8 by default). A document whose elements
 // nest deeper than MaxDepth is refused.
 func ParseXHTML(data []byte) (*html.Node, error) {
-	d := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))))
-	d.Strict = true
-	d.Entity = xml.HTMLEntity
-	d.CharsetReader = charset.NewReaderLabel
+	// one level more than the tree may have, so that the document that has
+	// it is refused here
+	r := xmltree.Open(data, xmlro.Options{Entities: htmlentity.Lookup, CharsetReader: charset.NewReaderLabel, MaxDepth: MaxDepth + 1})
 	doc := &html.Node{Type: html.DocumentNode}
 	cur := doc
 	depth := 0
@@ -114,16 +116,16 @@ func ParseXHTML(data []byte) (*html.Node, error) {
 			text, pieces = nil, pieces[:0]
 		}
 	}
+read:
 	for {
-		tok, err := d.Token()
-		if err == io.EOF {
-			break
-		}
+		k, err := r.Next()
 		if err != nil {
 			return nil, err
 		}
-		switch t := tok.(type) {
-		case xml.StartElement:
+		switch k {
+		case xmlro.EOF:
+			break read
+		case xmlro.StartElement:
 			if cur == doc && hasElement(doc) {
 				return nil, errors.New("more than one root element")
 			}
@@ -131,17 +133,23 @@ func ParseXHTML(data []byte) (*html.Node, error) {
 				return nil, fmt.Errorf("elements nested deeper than %d", MaxDepth)
 			}
 			endText()
-			n := element(t)
+			n, err := element(r)
+			if err != nil {
+				return nil, err
+			}
 			cur.AppendChild(n)
 			cur = n
-		case xml.EndElement:
+		case xmlro.EndElement:
 			if cur.Parent == nil {
 				return nil, errors.New("unbalanced end tag")
 			}
 			endText()
 			cur = cur.Parent
 			depth--
-		case xml.CharData:
+		case xmlro.Text, xmlro.CData:
+			if !wellFormedData(r.Text(), k == xmlro.Text) || bytes.Contains(r.Text(), []byte("]]>")) {
+				return nil, errors.New("character data is not well-formed")
+			}
 			if cur == doc {
 				continue // white space around the root element
 			}
@@ -149,10 +157,13 @@ func ParseXHTML(data []byte) (*html.Node, error) {
 				text = &html.Node{Type: html.TextNode}
 				cur.AppendChild(text)
 			}
-			pieces = append(pieces, t...)
-		case xml.Comment:
+			pieces = xmltree.AppendText(pieces, r)
+		case xmlro.Comment:
+			if !wellFormedData(r.Text(), false) || bytes.Contains(r.Text(), []byte("--")) {
+				return nil, errors.New("comment is not well-formed")
+			}
 			endText()
-			cur.AppendChild(&html.Node{Type: html.CommentNode, Data: string(t)})
+			cur.AppendChild(&html.Node{Type: html.CommentNode, Data: string(r.Text())})
 		}
 	}
 	endText()
@@ -160,6 +171,54 @@ func ParseXHTML(data []byte) (*html.Node, error) {
 		return nil, errors.New("no root element")
 	}
 	return doc, nil
+}
+
+// wellFormedData reports whether character data, a comment or the value of an
+// attribute is what XML lets it be, where the reader does not look: UTF-8
+// without control characters and, with references, every "&" the start of
+// one that the reader replaces (those of an entity it does not know stay
+// as they are written). A document that fails is one for the HTML parser,
+// which knows more entities and reads "&" alone.
+func wellFormedData(v []byte, references bool) bool {
+	if !utf8.Valid(v) {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		switch c := v[i]; {
+		case c < 0x20 && c != '\t' && c != '\n' && c != '\r':
+			return false
+		case c == '&' && references:
+			// &#x10FFFF; and the zeros before a number
+			j := bytes.IndexByte(v[i:min(len(v), i+32)], ';')
+			if j < 0 || !reference(v[i+1:i+j]) {
+				return false
+			}
+			i += j
+		}
+	}
+	return true
+}
+
+// reference reports whether a name between "&" and ";" is one of the
+// references of XML: a predefined entity or a character by its number.
+func reference(name []byte) bool {
+	switch string(name) {
+	case "lt", "gt", "amp", "apos", "quot":
+		return true
+	}
+	if len(name) < 2 || name[0] != '#' {
+		return false
+	}
+	digits, hex := name[1:], false
+	if digits[0] == 'x' {
+		digits, hex = digits[1:], true
+	}
+	for _, c := range digits {
+		if !('0' <= c && c <= '9' || hex && ('a' <= c && c <= 'f' || 'A' <= c && c <= 'F')) {
+			return false
+		}
+	}
+	return len(digits) > 0
 }
 
 func hasElement(n *html.Node) bool {
@@ -171,11 +230,12 @@ func hasElement(n *html.Node) bool {
 	return false
 }
 
-// element makes the node of an XML element.
-func element(t xml.StartElement) *html.Node {
-	n := &html.Node{Type: html.ElementNode, Data: t.Name.Local}
+// element makes the node of the XML element whose start a reader is on.
+func element(r *xmlro.Reader) (*html.Node, error) {
+	name := xmltree.ElementName(r)
+	n := &html.Node{Type: html.ElementNode, Data: name.Local}
 	foreign := false
-	switch t.Name.Space {
+	switch name.Space {
 	case "", nsXHTML:
 		n.Data = strings.ToLower(n.Data)
 		n.DataAtom = atom.Lookup([]byte(n.Data))
@@ -186,15 +246,23 @@ func element(t xml.StartElement) *html.Node {
 		n.Namespace, foreign = "math", true
 		n.DataAtom = atom.Lookup([]byte(strings.ToLower(n.Data)))
 	default:
-		n.Namespace = t.Name.Space
+		n.Namespace = name.Space
 	}
 	lang, hasLang := "", false
-	for _, a := range t.Attr {
-		space, key := a.Name.Space, a.Name.Local
+	for {
+		qname, val, ok := r.NextAttr()
+		if !ok {
+			break
+		}
+		if !wellFormedData(val, true) || bytes.IndexByte(val, '<') >= 0 {
+			return nil, errors.New("attribute value is not well-formed")
+		}
+		a := xmltree.AttrName(r, qname)
+		space, key := a.Space, a.Local
 		if space == "xmlns" || space == "" && key == "xmlns" || space == nsXMLNS {
 			continue // namespace declarations
 		}
-		attr := html.Attribute{Key: key, Val: a.Value}
+		attr := html.Attribute{Key: key, Val: val.String()}
 		if space != "" {
 			prefix, known := prefixes[space]
 			switch {
@@ -210,14 +278,14 @@ func element(t xml.StartElement) *html.Node {
 		case space == "" && key == "lang":
 			hasLang = true
 		case space == nsXML && key == "lang":
-			lang = a.Value
+			lang = attr.Val
 		}
 		n.Attr = append(n.Attr, attr)
 	}
 	if lang != "" && !hasLang && !foreign && n.Namespace == "" {
 		n.Attr = append(n.Attr, html.Attribute{Key: "lang", Val: lang})
 	}
-	return n
+	return n, nil
 }
 
 // DataURL decodes a data: URL.

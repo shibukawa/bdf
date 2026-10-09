@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/binary"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -12,7 +11,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro/htmlentity"
+
 	"github.com/shibukawa/bdf/converter/internal/ziputil"
+	"github.com/shibukawa/bdf/internal/xmltree"
 
 	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/htmlindex"
@@ -185,24 +188,25 @@ func containerRoots(f *zip.File) ([]rootFile, error) {
 		return nil, err
 	}
 	defer rc.Close()
-	d := newDecoder(io.LimitReader(rc, 1<<20))
+	data, err := io.ReadAll(io.LimitReader(rc, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	r := newXMLReader(data)
 	var roots []rootFile
 	for {
-		tok, err := d.Token()
-		if err != nil {
-			if err == io.EOF {
-				return roots, nil
-			}
+		k, err := r.Next()
+		if err != nil || k == xmlro.EOF {
 			return roots, err
 		}
-		if se, ok := tok.(xml.StartElement); ok && se.Name.Local == "rootfile" {
+		if k == xmlro.StartElement && xmlro.Equal(r.LocalName(), "rootfile") {
 			var rf rootFile
-			for _, a := range se.Attr {
-				switch a.Name.Local {
+			for _, a := range attrsOf(r) {
+				switch a.name {
 				case "full-path":
-					rf.path = a.Value
+					rf.path = a.value
 				case "media-type":
-					rf.mediaType = strings.TrimSpace(a.Value)
+					rf.mediaType = strings.TrimSpace(a.value)
 				}
 			}
 			if rf.path != "" {
@@ -297,7 +301,7 @@ func toUTF8(b []byte) ([]byte, string) {
 		}
 	}
 	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
-	if enc := declaredEncoding(b); (enc == "" || isUnicodeLabel(enc)) && !utf8.Valid(b) {
+	if enc := xmltree.DeclaredEncoding(b); (enc == "" || isUnicodeLabel(enc)) && !utf8.Valid(b) {
 		if d, err := charmap.Windows1252.NewDecoder().Bytes(b); err == nil {
 			b, note = d, "the text is not UTF-8; it is read as Windows-1252"
 		}
@@ -313,34 +317,6 @@ func toUTF8(b []byte) ([]byte, string) {
 	return b, note
 }
 
-// declaredEncoding returns the encoding of the XML declaration, lower
-// case, or "".
-func declaredEncoding(b []byte) string {
-	b = b[:min(len(b), 256)]
-	if !bytes.HasPrefix(b, []byte("<?xml")) {
-		return ""
-	}
-	end := bytes.Index(b, []byte("?>"))
-	if end < 0 {
-		return ""
-	}
-	decl := string(b[:end])
-	i := strings.Index(decl, "encoding")
-	if i < 0 {
-		return ""
-	}
-	v := strings.TrimLeft(decl[i+len("encoding"):], " \t\r\n=")
-	if v == "" || v[0] != '"' && v[0] != '\'' {
-		return ""
-	}
-	q := v[0]
-	v = v[1:]
-	if j := strings.IndexByte(v, q); j >= 0 {
-		v = v[:j]
-	}
-	return strings.ToLower(strings.TrimSpace(v))
-}
-
 func isUnicodeLabel(label string) bool {
 	switch strings.ToLower(label) {
 	case "utf-8", "utf8", "utf-16", "utf16", "utf-16le", "utf-16be", "ucs-2", "iso-10646-ucs-2", "unicode":
@@ -349,14 +325,11 @@ func isUnicodeLabel(label string) bool {
 	return false
 }
 
-// newDecoder returns a lenient XML decoder: the HTML entities are known,
+// newXMLReader returns a lenient XML reader: the HTML entities are known,
 // unknown entities are kept as text, and the document's encoding is
 // decoded (the text is already UTF-8 when it says UTF-8 or UTF-16).
-func newDecoder(r io.Reader) *xml.Decoder {
-	d := xml.NewDecoder(r)
-	d.Strict = false
-	d.Entity = xml.HTMLEntity
-	d.CharsetReader = func(label string, in io.Reader) (io.Reader, error) {
+func newXMLReader(data []byte) *xmlro.Reader {
+	return xmltree.Open(data, xmlro.Options{Lenient: true, Entities: htmlentity.Lookup, CharsetReader: func(label string, in io.Reader) (io.Reader, error) {
 		if isUnicodeLabel(label) {
 			return in, nil
 		}
@@ -370,17 +343,35 @@ func newDecoder(r io.Reader) *xml.Decoder {
 			return e.NewDecoder().Reader(in), nil
 		}
 		return in, nil
-	}
-	return d
+	}})
 }
 
 // node is an element of the document: its name, attributes, children and
 // the text directly in it.
 type node struct {
 	name  string
-	attrs []xml.Attr
+	attrs []attribute
 	kids  []*node
 	text  string
+}
+
+// attribute is an attribute of an element: its name without a namespace
+// prefix, and its value.
+type attribute struct {
+	name, value string
+}
+
+// attrsOf returns the attributes of the element whose start a reader is
+// on.
+func attrsOf(r *xmlro.Reader) []attribute {
+	var out []attribute
+	for {
+		name, val, ok := r.NextAttr()
+		if !ok {
+			return out
+		}
+		out = append(out, attribute{string(xmltree.Local(name)), val.String()})
+	}
 }
 
 // errTooLarge stops reading an element with too many descendants.
@@ -390,32 +381,36 @@ var errTooLarge = errors.New("musicxml: an element holds too many elements")
 // of the header).
 const maxNodes = 1 << 20
 
-// readNode reads the element that start begins, with its descendants.
-func readNode(d *xml.Decoder, start xml.StartElement) (*node, error) {
-	root := &node{name: start.Name.Local, attrs: start.Attr}
+// readNode reads the element whose start a reader is on, with its
+// descendants.
+func readNode(r *xmlro.Reader) (*node, error) {
+	root := &node{name: string(r.LocalName()), attrs: attrsOf(r)}
 	stack := []*node{root}
 	text := [][]byte{nil}
 	count := 1
 	for len(stack) > 0 {
-		tok, err := d.Token()
+		k, err := r.Next()
+		if err == nil && k == xmlro.EOF {
+			err = io.EOF
+		}
 		if err != nil {
 			return root, err
 		}
 		top := stack[len(stack)-1]
-		switch t := tok.(type) {
-		case xml.StartElement:
+		switch k {
+		case xmlro.StartElement:
 			if count++; count > maxNodes {
 				return root, errTooLarge
 			}
-			n := &node{name: t.Name.Local, attrs: t.Attr}
+			n := &node{name: string(r.LocalName()), attrs: attrsOf(r)}
 			top.kids = append(top.kids, n)
 			stack = append(stack, n)
 			text = append(text, nil)
-		case xml.CharData:
+		case xmlro.Text, xmlro.CData:
 			if b := text[len(text)-1]; len(b) < 1<<16 {
-				text[len(text)-1] = append(b, t...)
+				text[len(text)-1] = xmltree.AppendText(b, r)
 			}
-		case xml.EndElement:
+		case xmlro.EndElement:
 			// the white space between child elements is not kept
 			if b := text[len(text)-1]; len(top.kids) == 0 || len(bytes.TrimSpace(b)) > 0 {
 				top.text = string(b)
@@ -439,8 +434,8 @@ func (n *node) attrOK(name string) (string, bool) {
 		return "", false
 	}
 	for _, a := range n.attrs {
-		if a.Name.Local == name {
-			return strings.TrimSpace(a.Value), true
+		if a.name == name {
+			return strings.TrimSpace(a.value), true
 		}
 	}
 	return "", false

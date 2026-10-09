@@ -1,7 +1,6 @@
 package xlsx
 
 import (
-	"encoding/xml"
 	"sort"
 	"strconv"
 	"strings"
@@ -76,7 +75,7 @@ func (c *converter) fillRefs(n *ooxml.Node) {
 				if v == nil {
 					continue
 				}
-				cache.Kids = append(cache.Kids, &ooxml.Node{Name: "pt", Attrs: []xml.Attr{{Name: xml.Name{Local: "idx"}, Value: strconv.Itoa(i)}},
+				cache.Kids = append(cache.Kids, &ooxml.Node{Name: "pt", Attrs: []ooxml.Attr{{Name: ooxml.Name{Local: "idx"}, Value: strconv.Itoa(i)}},
 					Kids: []*ooxml.Node{{Name: "v", Text: *v}}})
 			}
 			k.Kids = append(kids, cache)

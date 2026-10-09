@@ -112,6 +112,32 @@ func TestFallback(t *testing.T) {
 	if _, err := ParseXHTML([]byte(`<a/><b/>`)); err == nil {
 		t.Errorf("two root elements parsed")
 	}
+	// what the HTML parser reads better: entities XHTML does not have, an
+	// ampersand alone, attributes without quotes, bytes that are not text
+	for _, body := range []string{
+		`<p>&check;</p>`, `<p>AT&T</p>`, `<p>&nbsp</p>`, `<p a="&bogus;"/>`, `<p a="x&y"/>`, `<p a="<"/>`, `<p a=b/>`, `<p hidden/>`,
+		"<p>\xff</p>", "<p a=\"\xc3(\"/>", "<p>\x01</p>", "<p><![CDATA[\x00]]></p>", `<p>]]></p>`, `<p><!-- a -- b --></p>`, `<p>`, `</p>`,
+	} {
+		if _, err := ParseXHTML([]byte(`<html xmlns="http://www.w3.org/1999/xhtml"><body>` + body + `</body></html>`)); err == nil {
+			t.Errorf("%q parsed as XML", body)
+		}
+	}
+	// and what is XML
+	for _, body := range []string{
+		`<p a="&amp;&lt;&#65;&#x1F600;&#0000065;&nbsp;">&apos;&quot;&gt;&eacute;</p>`, `<p><![CDATA[AT&T <b> &bogus;]]></p>`, "<p>\t\r\n</p>", `<p><!-- AT&T - --></p>`,
+	} {
+		if _, err := ParseXHTML([]byte(`<html xmlns="http://www.w3.org/1999/xhtml"><body>` + body + `</body></html>`)); err != nil {
+			t.Errorf("%q: %v", body, err)
+		}
+	}
+	// the entities a DOCTYPE declares are XHTML's own
+	doc, err = ParseXHTML([]byte(`<!DOCTYPE html [<!ENTITY me "A &amp; B">]><html xmlns="http://www.w3.org/1999/xhtml"><body><p title="&me;">&me;</p></body></html>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := find(doc, "p"); text(p) != "A & B" || p.Attr[0].Val != "A & B" {
+		t.Errorf("declared entity: %q, %q", text(p), p.Attr[0].Val)
+	}
 }
 
 func TestEncoding(t *testing.T) {

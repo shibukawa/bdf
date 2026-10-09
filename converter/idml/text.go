@@ -1,7 +1,6 @@
 package idml
 
 import (
-	"encoding/xml"
 	"math"
 	"net/url"
 	"strconv"
@@ -276,7 +275,7 @@ func (b *storyBuilder) content(text string, psr, csr *ooxml.Node) {
 // runProps builds the a:rPr of a run.
 func (b *storyBuilder) runProps(st textStyle) *ooxml.Node {
 	rPr := elem("rPr", "sz", centipoints(st.size))
-	set := func(k, v string) { rPr.Attrs = append(rPr.Attrs, xml.Attr{Name: xml.Name{Local: k}, Value: v}) }
+	set := func(k, v string) { rPr.Attrs = append(rPr.Attrs, ooxml.Attr{Name: ooxml.Name{Local: k}, Value: v}) }
 	if st.bold {
 		set("b", "1")
 	}
@@ -450,7 +449,7 @@ func (b *storyBuilder) paragraphProps() (pPr, end *ooxml.Node) {
 func elem(name string, kv ...string) *ooxml.Node {
 	n := &ooxml.Node{Name: name}
 	for i := 0; i+1 < len(kv); i += 2 {
-		n.Attrs = append(n.Attrs, xml.Attr{Name: xml.Name{Local: kv[i]}, Value: kv[i+1]})
+		n.Attrs = append(n.Attrs, ooxml.Attr{Name: ooxml.Name{Local: kv[i]}, Value: kv[i+1]})
 	}
 	return n
 }
@@ -490,11 +489,11 @@ func frameBodyPr(pref *ooxml.Node, vertical bool) *ooxml.Node {
 	// vertical frame, where the text starts at the right)
 	bp := elem("bodyPr", "lIns", emu(ins[0]), "tIns", emu(ins[1]), "rIns", emu(ins[2]), "bIns", emu(ins[3]), "anchor", anchor, "wrap", "square")
 	if cols := pref.AttrInt("TextColumnCount", 1); cols > 1 {
-		bp.Attrs = append(bp.Attrs, xml.Attr{Name: xml.Name{Local: "numCol"}, Value: strconv.Itoa(int(min(cols, 40)))},
-			xml.Attr{Name: xml.Name{Local: "spcCol"}, Value: emu(pref.AttrFloat("TextColumnGutter", 12))})
+		bp.Attrs = append(bp.Attrs, ooxml.Attr{Name: ooxml.Name{Local: "numCol"}, Value: strconv.Itoa(int(min(cols, 40)))},
+			ooxml.Attr{Name: ooxml.Name{Local: "spcCol"}, Value: emu(pref.AttrFloat("TextColumnGutter", 12))})
 	}
 	if vertical {
-		bp.Attrs = append(bp.Attrs, xml.Attr{Name: xml.Name{Local: "vert"}, Value: "eaVert"})
+		bp.Attrs = append(bp.Attrs, ooxml.Attr{Name: ooxml.Name{Local: "vert"}, Value: "eaVert"})
 	}
 	return bp
 }

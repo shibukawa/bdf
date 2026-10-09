@@ -1,7 +1,6 @@
 package drawingml
 
 import (
-	"encoding/xml"
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -171,7 +170,7 @@ func (s *Drawing) drawTextBox(cv *canvas.Canvas, sh *shape, xf xform, geo *geome
 // image or a Windows metafile) stretched over box. It returns false when
 // the picture cannot be read.
 func (s *Drawing) DrawImage(cv *canvas.Canvas, part, rid string, box Box) bool {
-	blip := &ooxml.Node{Name: "blip", Attrs: []xml.Attr{{Name: xml.Name{Space: relNS, Local: "embed"}, Value: rid}}}
+	blip := &ooxml.Node{Name: "blip", Attrs: []ooxml.Attr{{Name: ooxml.Name{Space: relNS, Local: "embed"}, Value: rid}}}
 	bf := &ooxml.Node{Name: "blipFill", Kids: []*ooxml.Node{blip}}
 	return s.drawBlip(cv, bf, part, s.cc, box.X, box.Y, box.W, box.H, false)
 }

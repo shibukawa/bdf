@@ -93,7 +93,4 @@ func TestSVGEntities(t *testing.T) {
 	if err != nil || len(res.Doc.Meta.DC.Title.First()) != 20*50<<10 || len(res.Warnings) != 0 {
 		t.Errorf("%v, warnings %q", err, res.Warnings)
 	}
-	if n := entityText([]byte("&a; &amp; &b;&a&a;"), map[string]string{"a": "12345", "b": "6"}); n != 11 {
-		t.Errorf("entityText = %d", n)
-	}
 }

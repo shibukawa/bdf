@@ -1,7 +1,6 @@
 package xmltree
 
 import (
-	"encoding/xml"
 	"errors"
 	"strings"
 	"testing"
@@ -25,12 +24,6 @@ func TestElementBudget(t *testing.T) {
 		if _, err := ParseCounting(strings.NewReader(doc), nil, &b); !errors.Is(err, ErrTooManyElements) {
 			t.Errorf("budget %d: %v, want ErrTooManyElements", budget, err)
 		}
-	}
-	// a streamed element has a budget of its own
-	d := xml.NewDecoder(strings.NewReader(doc))
-	tok, _ := d.Token()
-	if _, err := ReadElement(d, tok.(xml.StartElement)); err != nil {
-		t.Fatal(err)
 	}
 }
 

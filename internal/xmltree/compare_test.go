@@ -6,14 +6,15 @@ import (
 	"encoding/xml"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-// The trees are read with xmlro; ReadElementCounting reads the same trees
-// with encoding/xml, which they were read with before. These tests compare
-// the two on the markup that tells them apart, and on every XML part of
-// the Office documents of the repository.
+// The trees are read with xmlro; stdTree reads the same trees with
+// encoding/xml, which they were read with before. These tests compare the
+// two on the markup that tells them apart, and on every XML part of the
+// Office documents of the repository.
 
 // stdTree reads a document into a tree with encoding/xml.
 func stdTree(data []byte, pick func(*Node) bool) (*Node, error) {
@@ -28,10 +29,54 @@ func stdTree(data []byte, pick func(*Node) bool) (*Node, error) {
 			return nil, err
 		}
 		if start, ok := tok.(xml.StartElement); ok {
-			budget := MaxElements
-			return ReadElementCounting(d, start, pick, &budget)
+			return stdElement(d, start, pick)
 		}
 	}
+}
+
+// stdElement reads the element that start opens from an encoding/xml
+// decoder, as ReadFrom reads one.
+func stdElement(d *xml.Decoder, start xml.StartElement, pick func(*Node) bool) (*Node, error) {
+	node := func(t xml.StartElement) *Node {
+		n := &Node{Space: t.Name.Space, Name: t.Name.Local}
+		for _, a := range t.Attr {
+			n.Attrs = append(n.Attrs, Attr{Name{a.Name.Space, a.Name.Local}, a.Value})
+		}
+		return n
+	}
+	root := node(start)
+	stack := []*Node{root}
+	for len(stack) > 0 {
+		tok, err := d.Token()
+		if err == io.EOF {
+			return nil, io.ErrUnexpectedEOF
+		}
+		if err != nil {
+			return nil, err
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			n := node(t)
+			p := stack[len(stack)-1]
+			p.Kids = append(p.Kids, n)
+			stack = append(stack, n)
+		case xml.EndElement:
+			if n := stack[len(stack)-1]; len(n.Kids) == 0 {
+				n.runs = nil
+			}
+			stack = stack[:len(stack)-1]
+		case xml.CharData:
+			stack[len(stack)-1].addText(string(t))
+		case xml.ProcInst:
+			if t.Target == "ACE" {
+				if code, err := strconv.ParseUint(strings.TrimSpace(string(t.Inst)), 16, 32); err == nil && code < 0x110000 {
+					stack[len(stack)-1].addText(string(rune(code)))
+				}
+			}
+		}
+	}
+	root.resolveAlternates(pick)
+	return root, nil
 }
 
 // same reports where two trees differ ("" when they do not): names,

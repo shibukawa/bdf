@@ -73,7 +73,7 @@
 
 - `internal/xmltree` の木は tinygodriver の `encoding/xmlro` で読む。xmlro はトークンに何も確保せず、名前や値はバッファへのスライスなので、木が持つものだけを写す。要素名と短い属性値（32 バイトまで）は部品ごとに intern して 1 つの文字列にし、名前空間は encoding/xml と同じに解決する（接頭辞は URI に、束縛のない接頭辞はそのまま、`xmlns:` の宣言は Space "xmlns" の属性）。`ooxml.Package` は読み手を 1 つ使い回し、最大のトークンまで育ったバッファを部品から部品へ持ち越す。
 - xlsx の `sheetData` と共有文字列、pptx の非表示スライドの判定、docx の判別は、`ooxml.NewReader` で流し読みし、持つ要素だけ `Package.ReadFrom` で木にする。
-- encoding/xml から木を作る `ReadElementCounting` は残し、`TestTreesOfDocumentsMatch` がリポジトリの Office 文書の全 XML 部品（12 文書、258 部品）と境界条件の文書で両方の木の一致を確かめる。SVG、draw.io、MusicXML、EPUB、XHTML、XMP は encoding/xml のまま（xmlro は DOCTYPE の内部サブセットを拒み、`Strict = false` の寛容さがない。占める量もわずか）。
+- `TestTreesOfDocumentsMatch` が、リポジトリの Office 文書の全 XML 部品（12 文書、258 部品）と境界条件の文書で、encoding/xml から作った木との一致を確かめる（encoding/xml から木を作る関数はテストの中だけにある）。SVG、draw.io、MusicXML、EPUB、XHTML、XMP はこの時点では encoding/xml のまま（xmlro v1.3.3 は DOCTYPE の内部サブセットを拒み、`Strict = false` の寛容さがなかった）で、次の節で置き換えた。
 
 合成した Word 本文（4,000 段落、3.7 MB）の木:
 
@@ -93,6 +93,35 @@
 | Word `basic` | 5.37 ms | 5.30 ms | -1% | 9.9 MB → 9.8 MB | 27.2k → 20.8k |
 
 xlsx の変換時間の残りは、セルのレイアウト（確保量の 2 割）と出力の deflate 圧縮（CPU の 3 分の 1）が占める。
+
+### 残りの XML の読み手も xmlro に（2026-10-09、tinygodriver v1.3.4）
+
+xmlro が v1.3.4 で HTML 風の XML を読めるようになった（`Lenient` は encoding/xml の `Strict = false`、`htmlentity` の実体と空要素、`CharsetReader`、DOCTYPE の内部サブセットの実体、BOM 付きの UTF-16）。encoding/xml で読んでいた残りをすべて置き換え、変換器のコードに encoding/xml はなくなった。残っているのは、XML を書く開発用の `tools/gen-drawio-stencils`（xmlro は読むだけ）、encoding/xml を正解として比べるテスト、依存先の pdfcpu である（pdfcpu があるのでバイナリにはまだリンクされる）。
+
+- **開き方をひとつに**（`xmltree.Open`）: SVG（`converter/image`、`imgconv`、`raster/imagebdf`）、draw.io のファイルとステンシル、EPUB の package・container・encryption、MusicXML、XHTML（`webdoc`）、XMP は、読み手のオプションだけを決めて `xmltree.Open` で開く。名前空間を解決した名前は `ElementName` / `Attrs` / `AttrName`、接頭辞を除いた名前は `Local`、文字データ（テキストと CDATA）は `AppendText` で取る。`xmltree.Node` の属性は `xml.Attr` から `xmltree.Attr`（`ooxml.Attr`）になった。EPUB の 3 つのファイルは構造体へのデコード（リフレクション）をやめて小さな木にし、Agile 暗号の EncryptionInfo（`offcrypto`）は `xmltree.Parse` の木から読む。
+- **実体の展開に上限**: v1.3.4 から xmlro は DOCTYPE が宣言した実体を置き換える。上限はトークンごと（`MaxBufferBytes`）で、文書全体にはない。50 KiB の実体を参照するだけのテキストを何千も並べれば、小さな文書が何百 MB もの文字列になる。`Open` は読む前に宣言と参照を数え（`BoundEntities`）、置き換えた合計が 1 MiB を超える文書は宣言を無効にして参照をそのまま残す（SVG が前からしていたことで、警告もそのまま出る）。数えるのは文字コードを変換した後の文書で、UTF-16 や変換される文字コードでも同じにかかる。
+- **Office の部品は実体の宣言を拒む**（`xmltree.ErrEntities`）: Office の XML は実体を宣言しない。部品はストリームで読むので前もって数えられず、トークンの上限は図のデータのために 256 MiB ある。`<!ENTITY` を含む部品は、流し読みでも木でも読まない（v1.3.3 の xmlro が内部サブセットを拒んでいたのと同じ結果）。
+- **文字コードの変換は 1 回**: encoding/xml も xmlro も、文字コードを書いた XML 宣言が現れるたびに残りを変換し直す。宣言を何万も並べた文書で残りが何万回も写されるので、`Open` は最初の変換のときに残りを全部変換し、後ろの宣言を別の名前の処理命令にする（コメントと CDATA の中は本文なので触らない）。それでも 2 度目の変換を求める文書は、そこで読むのをやめる。寛容な読み手が返すものは必ず UTF-8 で、そうでないバイトは U+FFFD にする（encoding/xml はそこで読むのをやめていた）。
+- **XHTML の整形式の検査**: XHTML は厳密に読み、整形式でなければ HTML のパーサーに回す。xmlro は終了タグの対応と属性の書き方しか確かめないので、`webdoc` が残りを確かめる（UTF-8、制御文字、XHTML にない実体と単独の `&`、属性値の `<`、テキストの `]]>`、コメントの `--`）。HTML5 にしかない実体（`&check;`）やセミコロンのない `&nbsp` を、これまでどおり HTML のパーサーが読む。
+
+**検証**: `TestOpenMatchesEncodingXML` が、名前空間、未束縛の接頭辞、HTML の実体と空要素、対応しない終了タグ、値のない属性、Latin-1 などの文書で、encoding/xml（`Strict = false`、`HTMLEntity`、`HTMLAutoClose`）と同じトークン列になることを確かめる。変更前のバイナリとの比較では、リポジトリの 406 ファイル（draw.io、EPUB、MusicXML、SVG、HTML、Markdown、Office、IDML、画像、PDF。うち 4 つは前後とも同じエラー）、手元の実ファイル 50（EPUB 3 冊、draw.io 28、Illustrator 12 など）、手元の SVG 451 の変換結果が警告も含めてすべてバイト一致し、SVG 451 のサムネイル（`raster/imagebdf` の読み手）も一致した。`FuzzConvert` を 4 分と 2 分半走らせてパニックはなく、1 秒を超えた入力は XML を読まない PDF がひとつ（ほかの計測と重なったときで、単独では変更前と同じ 0.6 秒）。
+
+変換全体（`BenchmarkConvertFiles`、Apple M3、5 回の中央値）と読み手だけの時間:
+
+| 入力 | 修正前 | 修正後 | 時間 | 確保回数 |
+|---|---:|---:|---:|---:|
+| 326 KB の SVG（画像として変換） | 3.04 ms | 1.14 ms | -63% | 11.5k → 8.8k |
+| 同じ SVG を `raster/imagebdf` が読む | 2.15 ms | 0.38 ms | -82% | 4.3k → 2.5k |
+| draw.io `showcase` | 0.86 ms | 0.73 ms | -15% | 7.7k → 6.6k |
+| draw.io `aws` | 1.38 ms | 1.26 ms | -8% | 7.3k → 6.4k |
+| EPUB `basic` | 1.25 ms | 1.15 ms | -7% | 9.6k → 8.1k |
+| 実物の EPUB（約 360 ページ） | 138 ms | 135 ms | -2% | 609k → 535k |
+| 541 小節の MusicXML（527 KB） | 159 ms | 151 ms | -5% | 955k → 788k |
+| draw.io の最大のステンシル集（aws4）を読む | 44.2 ms | 42.3 ms | 差なし | 確保量 50.7 MB → 36.9 MB |
+
+EPUB と MusicXML は組版と浄書が時間のほとんどを占め、XML を読む時間は小さい。
+
+npm の変換器（TinyGo 0.42.0）も、変更前後のビルドでリポジトリの XML を含む 204 ファイルの変換結果がバイト一致した。大きさはほぼ変わらない。pdfcpu が encoding/xml を使い続けるので、All は 14.70 MB → 14.75 MB（+53 KB、gzip で +17 KB）。PDF と Illustrator を含まない組み合わせ（Office、IDML、EPUB、draw.io、画像、HTML、Markdown、MusicXML、CSV）では encoding/xml がなくなり、9.93 MB → 9.89 MB（-40 KB、gzip で -12 KB）。
 
 ### deflate を klauspost/compress に（2026-10-09）
 

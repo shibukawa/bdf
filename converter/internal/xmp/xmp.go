@@ -8,15 +8,15 @@
 package xmp
 
 import (
-	"bytes"
-	"encoding/xml"
 	"io"
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/internal/xmltree"
 )
 
 // Namespaces of the metadata read.
@@ -36,14 +36,14 @@ const (
 // value, or its first. A malformed packet gives what was read before the
 // error.
 func DublinCore(packet []byte) bdf.DublinCore {
-	d := Decoder(packet, nil)
+	r := Reader(packet)
 	for {
-		tok, err := d.Token()
-		if err != nil {
+		k, err := r.Next()
+		if err != nil || k == xmlro.EOF {
 			return bdf.DublinCore{}
 		}
-		if s, ok := tok.(xml.StartElement); ok {
-			root, _ := Subtree(d, s)
+		if k == xmlro.StartElement {
+			root, _ := Subtree(r)
 			return RDF(root)
 		}
 	}
@@ -51,8 +51,8 @@ func DublinCore(packet []byte) bdf.DublinCore {
 
 // Node is an XML element.
 type Node struct {
-	Name     xml.Name
-	Attrs    []xml.Attr
+	Name     xmltree.Name
+	Attrs    []xmltree.Attr
 	Children []*Node
 	// Text is the character data directly in the element.
 	Text string
@@ -71,67 +71,59 @@ func (n *Node) Attr(space, local string) string {
 // Is reports whether the element has the name.
 func (n *Node) Is(space, local string) bool { return n.Name.Space == space && n.Name.Local == local }
 
-// Decoder makes an XML decoder that tolerates what browsers tolerate in
-// SVG files and what image files carry: entities (those of an internal DTD
-// subset, as Illustrator declares its namespaces), and charsets other than
-// UTF-8 (Latin-1 is decoded; others keep their ASCII and replace the rest).
-func Decoder(data []byte, entities map[string]string) *xml.Decoder {
-	d := xml.NewDecoder(bytes.NewReader(data))
-	d.Strict = false
-	d.Entity = entities
-	d.CharsetReader = func(charset string, r io.Reader) (io.Reader, error) {
-		b, err := io.ReadAll(r)
-		if err != nil {
-			return nil, err
-		}
-		switch strings.ToLower(charset) {
-		case "iso-8859-1", "latin1", "latin-1", "iso_8859-1", "l1", "windows-1252", "cp1252", "us-ascii", "ascii":
-			rs := make([]rune, len(b))
-			for i, c := range b {
-				rs[i] = rune(c)
-			}
-			return strings.NewReader(string(rs)), nil
-		}
-		return bytes.NewReader(bytes.ToValidUTF8(b, []byte(string(utf8.RuneError)))), nil
-	}
-	return d
+// Reader makes an XML reader that tolerates what browsers tolerate in SVG
+// files and what image files carry: markup that is not well formed,
+// entities (those of an internal DTD subset, as Illustrator declares its
+// namespaces, within xmltree.MaxEntityText), and charsets other than UTF-8
+// (UTF-16 and Latin-1 are decoded; others keep their ASCII and replace the
+// rest). Elements may be readerDepth deep, far deeper than Subtree keeps
+// them, so that what follows the deep ones is read.
+func Reader(data []byte) *xmlro.Reader {
+	return xmltree.Open(data, xmlro.Options{Lenient: true, MaxDepth: readerDepth})
 }
 
 // maxDepth bounds the elements within one another that Subtree reads:
 // metadata and drawings nest a few dozen deep, a damaged file as deep as
-// it is long.
-const maxDepth = 512
+// it is long. readerDepth bounds those the reader passes over, which it
+// keeps a few bytes for.
+const (
+	maxDepth    = 512
+	readerDepth = 1 << 20
+)
 
-// Subtree reads the element that start opens, up to its end. What was read
-// before an error is returned with it. An element maxDepth deep is read
-// without what it contains.
-func Subtree(d *xml.Decoder, start xml.StartElement) (*Node, error) {
-	return subtree(d, start, 0)
+// Subtree reads the element whose start a reader is on, up to its end.
+// What was read before an error is returned with it. An element maxDepth
+// deep is read without what it contains.
+func Subtree(r *xmlro.Reader) (*Node, error) {
+	return subtree(r, 0)
 }
 
-func subtree(d *xml.Decoder, start xml.StartElement, depth int) (*Node, error) {
-	n := &Node{Name: start.Name, Attrs: start.Attr}
+func subtree(r *xmlro.Reader, depth int) (*Node, error) {
+	n := &Node{Name: xmltree.ElementName(r), Attrs: xmltree.Attrs(r)}
 	if depth >= maxDepth {
-		return n, d.Skip()
+		return n, r.Skip()
 	}
-	var text strings.Builder
+	var text []byte
 	for {
-		tok, err := d.Token()
+		k, err := r.Next()
+		if err == nil && k == xmlro.EOF {
+			err = io.ErrUnexpectedEOF
+		}
 		if err != nil {
-			n.Text = text.String()
+			n.Text = string(text)
 			return n, err
 		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			c, err := subtree(d, t, depth+1)
+		switch k {
+		case xmlro.StartElement:
+			c, err := subtree(r, depth+1)
 			n.Children = append(n.Children, c)
 			if err != nil {
 				return n, err
 			}
-		case xml.CharData:
-			text.Write(t)
-		case xml.EndElement:
-			n.Text = text.String()
+		case xmlro.Text, xmlro.CData:
+			text = xmltree.AppendText(text, r)
+		case xmlro.EndElement:
+			n.Text = string(text)
 			return n, nil
 		}
 	}

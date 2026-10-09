@@ -1,7 +1,6 @@
 package xmp
 
 import (
-	"encoding/xml"
 	"runtime"
 	"slices"
 	"strings"
@@ -103,12 +102,11 @@ func TestRDF(t *testing.T) {
 func TestSubtreeDepth(t *testing.T) {
 	const deep = maxDepth + 100
 	data := "<r>" + strings.Repeat("<a>", deep) + "text" + strings.Repeat("</a>", deep) + "<b>after</b></r>"
-	d := Decoder([]byte(data), nil)
-	tok, err := d.Token()
-	if err != nil {
+	r := Reader([]byte(data))
+	if _, err := r.Next(); err != nil {
 		t.Fatal(err)
 	}
-	root, err := Subtree(d, tok.(xml.StartElement))
+	root, err := Subtree(r)
 	if err != nil || len(root.Children) != 2 || root.Children[1].Text != "after" {
 		t.Fatalf("%v, children %+v", err, root.Children)
 	}
@@ -132,12 +130,11 @@ func TestSubtreeDepth(t *testing.T) {
 func TestDefaultAlternatives(t *testing.T) {
 	alt := func(items string) *Node {
 		data := `<dc:title xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Alt>` + items + `</rdf:Alt></dc:title>`
-		d := Decoder([]byte(data), nil)
-		tok, err := d.Token()
-		if err != nil {
+		r := Reader([]byte(data))
+		if _, err := r.Next(); err != nil {
 			t.Fatal(err)
 		}
-		n, err := Subtree(d, tok.(xml.StartElement))
+		n, err := Subtree(r)
 		if err != nil {
 			t.Fatal(err)
 		}
