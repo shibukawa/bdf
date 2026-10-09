@@ -23,9 +23,9 @@ type Font struct {
 	Cmap       map[uint32]uint16 // best Unicode cmap (3,1)/(3,10)/(0,x)
 	CmapMac    map[uint32]uint16 // (1,0)
 	CmapSymbol map[uint32]uint16 // (3,0)
-	PostNames  map[string]uint16
-	Advances   []uint16 // hmtx advance widths (numberOfHMetrics entries)
-	LSBs       []int16  // left side bearings when known (one per glyph); nil otherwise
+	PostNames  map[string]uint16 // glyph names of the post table; nil without one, or with Options.NoPostNames
+	Advances   []uint16          // hmtx advance widths (numberOfHMetrics entries)
+	LSBs       []int16           // left side bearings when known (one per glyph); nil otherwise
 
 	// License information: OS/2 fsType (HasFSType is false without an OS/2
 	// table) and the copyright, trademark and license strings of the name table.
@@ -67,7 +67,15 @@ func be32(b []byte, i int) uint32 {
 
 // Parse reads the table directory and the tables needed for glyph lookup.
 // For a font collection (TTC) it reads the first font.
-func Parse(data []byte) (*Font, error) { return ParseIndex(data, 0) }
+func Parse(data []byte) (*Font, error) { return ParseWith(data, 0, Options{}) }
+
+// Options select what Parse reads beyond what glyph lookup needs.
+type Options struct {
+	// NoPostNames leaves the glyph names of the post table unread
+	// (PostNames stays nil). Font selection and layout do not need them,
+	// and a font of fifty thousand glyphs spends megabytes on them.
+	NoPostNames bool
+}
 
 // NumFonts returns the number of fonts in a collection, 1 for a plain font
 // file and 0 for data that is not a font.
@@ -82,7 +90,10 @@ func NumFonts(data []byte) int {
 }
 
 // ParseIndex is Parse for the index-th font of a collection.
-func ParseIndex(data []byte, index int) (*Font, error) {
+func ParseIndex(data []byte, index int) (*Font, error) { return ParseWith(data, index, Options{}) }
+
+// ParseWith is ParseIndex with options.
+func ParseWith(data []byte, index int, opts Options) (*Font, error) {
 	if len(data) < 12 {
 		return nil, errors.New("font too short")
 	}
@@ -163,7 +174,9 @@ func ParseIndex(data []byte, index int) (*Font, error) {
 	if err := f.parseCmap(); err != nil {
 		return nil, err
 	}
-	f.parsePost()
+	if !opts.NoPostNames {
+		f.parsePost()
+	}
 	if err := f.parseNotices(); err != nil {
 		return nil, err
 	}

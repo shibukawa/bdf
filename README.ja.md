@@ -26,7 +26,7 @@ npm パッケージとしての表示・ブラウザ内変換は [npm パッケ�
 
 | 場所 | 内容 |
 |---|---|
-| `*.go`、`converter/`、`raster/`、`internal/` | Go のエンコーダ・デコーダと、入力形式ごとの変換器パッケージ |
+| `*.go`、`converter/`、`raster/`、`contrib/`、`internal/` | Go のエンコーダ・デコーダと、入力形式ごとの変換器パッケージ |
 | `packages/` | デコーダ、レンダラー、表示面、TinyGo を使うブラウザ内変換の npm パッケージ |
 | `examples/`、`site/` | デモビューア、サーバー構成のサンプル 4 つ、GitHub Pages で公開しているサイト |
 | `docs/` | このドキュメント |
