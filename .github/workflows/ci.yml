@@ -9,8 +9,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
-          check-latest: true
+          go-version: "1.27.2" # the patch with the fix of GO-2026-6617 and GO-2026-6612/6613, which the runner's cache lacks
       # Go 1.27's unreachable analyzer flags the goto-shaped bodies of the
       # generated codec (imgconv/internal/webpw), so that check is off.
       - run: go vet -unreachable=false ./...
