@@ -12,7 +12,7 @@
 // here, with the fonts that are then embedded as subsets, by the DrawingML
 // text engine the Office converters share: a story is described as a
 // DrawingML text body and flows through its frames (drawingml.TextFlow).
-// The binary .indd format is not read. See docs/design.md §3.31.
+// The binary .indd format is not read. See docs/design.md §3.32.
 package idml
 
 import (

@@ -2,9 +2,7 @@
 
 Usage: python3 test/visio/gen.py   (standard library only)
 
-The drawings are written from one model into both formats the converter
-reads, so that the tests can check that a .vsdx package and a .vdx XML
-drawing of the same content convert to the same objects:
+The drawings are written as .vsdx packages:
 
 - shapes.vsdx: a Visio 2013 package with a dynamic theme. Themed shapes and
   variant quick styles, the geometry rows (arcs, elliptical arcs, ellipses,
@@ -14,8 +12,8 @@ drawing of the same content convert to the same objects:
   background page; a second page of text: alignment, character formats,
   bullets, tabs, Japanese line breaking, vertical and rotated text, text
   backgrounds, a connector label and line jumps where connectors cross.
-- flow.vsdx and flow.vdx: the same flowchart without a theme, with masters,
-  styles, a picture and a background page, in both formats.
+- flow.vsdx: a flowchart without a theme, with masters, styles, a picture
+  and a background page.
 
 Text uses M PLUS 1p (the subsets in converter/pptx/testdata/fonts), so the
 Japanese text sticks to the characters those subsets hold.
@@ -32,7 +30,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 OUT = os.path.join(ROOT, "converter", "visio", "testdata")
 FONT = "M PLUS 1p"
 NS = "http://schemas.microsoft.com/office/visio/2012/main"
-NS2003 = "http://schemas.microsoft.com/visio/2003/core"
 RELNS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PT = 1 / 72  # a point in inches
 
@@ -300,106 +297,6 @@ def write_vsdx(d, path):
             info.compress_type = zipfile.ZIP_DEFLATED
             data = files[name]
             z.writestr(info, data if isinstance(data, bytes) else data.encode("utf-8"))
-
-
-# --- .vdx --------------------------------------------------------------------
-
-# the element that holds each top-level cell in an XML drawing
-VDX_GROUPS = {}
-for group, names in {
-    "XForm": "PinX PinY Width Height LocPinX LocPinY Angle FlipX FlipY ResizeMode",
-    "XForm1D": "BeginX BeginY EndX EndY",
-    "Line": "LineWeight LineColor LinePattern Rounding EndArrowSize BeginArrow EndArrow LineCap BeginArrowSize LineColorTrans",
-    "Fill": "FillForegnd FillBkgnd FillPattern ShdwForegnd ShdwPattern FillForegndTrans FillBkgndTrans ShdwForegndTrans "
-            "ShapeShdwType ShapeShdwOffsetX ShapeShdwOffsetY ShapeShdwBlur",
-    "TextBlock": "LeftMargin RightMargin TopMargin BottomMargin VerticalAlign TextBkgnd DefaultTabStop TextDirection TextBkgndTrans",
-    "TextXForm": "TxtPinX TxtPinY TxtWidth TxtHeight TxtLocPinX TxtLocPinY TxtAngle",
-    "Misc": "HideText LangID ObjType",
-    "Layout": "ConLineJumpCode ConLineJumpStyle ConLineJumpDirX ConLineJumpDirY",
-    "PageLayout": "LineJumpCode LineJumpStyle LineToLineX LineToLineY LineJumpFactorX LineJumpFactorY PageLineJumpDirX PageLineJumpDirY",
-    "Group": "DisplayMode",
-    "LayerMem": "LayerMember",
-    "Foreign": "ImgOffsetX ImgOffsetY ImgWidth ImgHeight",
-    "PageProps": "PageWidth PageHeight ShdwOffsetX ShdwOffsetY PageScale DrawingScale",
-}.items():
-    for n in names.split():
-        VDX_GROUPS[n] = group
-
-VDX_SECTIONS = {"Character": "Char", "Paragraph": "Para", "Geometry": "Geom", "Hyperlink": "Hyperlink", "Layer": "Layer",
-                "FillGradient": "FillGradient", "Tabs": "Tabs"}
-
-
-def vdx_value(n, v):
-    val, f = value(v)
-    return "<%s%s>%s</%s>" % (n, " F=%s" % quoteattr(f) if f else "", escape(val), n)
-
-
-def vdx_cells(sheet, faces):
-    groups = {}
-    order = []
-    for n, v in sheet.cells:
-        g = VDX_GROUPS[n]
-        if g not in groups:
-            groups[g] = ""
-            order.append(g)
-        groups[g] += vdx_value(n, v)
-    out = "".join("<%s>%s</%s>" % (g, groups[g], g) for g in order)
-    for s in sheet.sections:
-        el = VDX_SECTIONS[s.name]
-        if s.name == "Geometry":
-            body = "".join(vdx_value(n, v) for n, v in s.cells)
-            for r in s.rows:
-                body += "<%s IX='%s'>%s</%s>" % (r.typ, r.key, "".join(vdx_value(n, v) for n, v in r.cells), r.typ)
-            out += "<Geom IX='%d'>%s</Geom>" % (s.ix, body)
-            continue
-        for r in s.rows:
-            key = " IX='%s'" % r.key if r.key.isdigit() else " NameU=%s" % quoteattr(r.key)
-            cells = ""
-            for n, v in r.cells:
-                if n in ("Font", "AsianFont") and not isinstance(v, (int, float)):
-                    v = faces[v]  # XML drawings refer to fonts by ID
-                cells += vdx_value(n, v)
-            out += "<%s%s>%s</%s>" % (el, key, cells, el)
-    return out
-
-
-def vdx_shape(s, faces):
-    body = vdx_cells(s, faces)
-    if s.foreign is not None:
-        typ, comp, data = s.foreign
-        body += "<ForeignData ForeignType='%s' CompressionType='%s'>%s</ForeignData>" % (typ, comp, base64.b64encode(data).decode())
-    if s.text is not None:
-        body += text_xml(s.text)
-    if s.kids:
-        body += "<Shapes>%s</Shapes>" % "".join(vdx_shape(k, faces) for k in s.kids)
-    return "<Shape%s>%s</Shape>" % (shape_attrs(s), body)
-
-
-def write_vdx(d, path):
-    faces = {n: i for i, n in d.faces.items()}
-    out = ["<?xml version='1.0' encoding='utf-8' ?><VisioDocument xmlns='%s' xml:space='preserve'>" % NS2003,
-           "<DocumentProperties><Title>%s</Title><Creator>bdf test</Creator></DocumentProperties>" % escape(d.title),
-           "<Colors>%s</Colors>" % "".join("<ColorEntry IX='%d' RGB='%s'/>" % (i, c) for i, c in sorted(d.colors.items())),
-           "<FaceNames>%s</FaceNames>" % "".join("<FaceName ID='%d' Name=%s/>" % (i, quoteattr(n)) for i, n in sorted(d.faces.items())),
-           "<StyleSheets>"]
-    for st in d.styles:
-        par = " LineStyle='%d' FillStyle='%d' TextStyle='%d'" % st.parents if st.parents else ""
-        out.append("<StyleSheet ID='%d' NameU=%s Name=%s%s>%s</StyleSheet>" % (st.id, quoteattr(st.name), quoteattr(st.name), par, vdx_cells(st, faces)))
-    out.append("</StyleSheets><Masters>")
-    for m in d.masters:
-        out.append("<Master ID='%d' NameU=%s Name=%s><Shapes>%s</Shapes></Master>" % (m.id, quoteattr(m.name), quoteattr(m.name), "".join(vdx_shape(s, faces) for s in m.shapes)))
-    out.append("</Masters><Pages>")
-    for pg in d.pages:
-        attrs = " ID='%d' NameU=%s Name=%s" % (pg.id, quoteattr(pg.name), quoteattr(pg.name))
-        if pg.background:
-            attrs += " Background='1'"
-        if pg.back_page is not None:
-            attrs += " BackPage='%d'" % pg.back_page
-        out.append("<Page%s><PageSheet LineStyle='0' FillStyle='0' TextStyle='0'>%s</PageSheet><Shapes>%s</Shapes></Page>"
-                   % (attrs, vdx_cells(pg.sheet, faces), "".join(vdx_shape(s, faces) for s in pg.shapes)))
-    out.append("</Pages></VisioDocument>")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("".join(out))
 
 
 # --- building blocks ---------------------------------------------------------
@@ -788,10 +685,10 @@ def text_page_shapes():
     return shapes
 
 
-# --- flow.vsdx / flow.vdx ----------------------------------------------------------
+# --- flow.vsdx ----------------------------------------------------------
 
 def flow_drawing():
-    """A flowchart without a theme, written in both formats."""
+    """A flowchart without a theme."""
     W, H = 8.5, 11.0
     root = root_style(FONT)
     flow = Style(1, "Flow Normal", (0, 0, 0), LineColor=10, LineWeight=1 * PT, FillForegnd="#DEEBF7", FillPattern=1)
@@ -867,7 +764,6 @@ def main():
     write_vsdx(shapes_drawing(), os.path.join(OUT, "shapes.vsdx"))
     flow = flow_drawing()
     write_vsdx(flow, os.path.join(OUT, "flow.vsdx"))
-    write_vdx(flow, os.path.join(OUT, "flow.vdx"))
 
 
 if __name__ == "__main__":

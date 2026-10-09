@@ -2,12 +2,13 @@ package parquet
 
 import (
 	"bytes"
-	"compress/gzip"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/klauspost/compress/gzip"
 
 	"github.com/shibukawa/tinygodriver/compress/zstd"
 )

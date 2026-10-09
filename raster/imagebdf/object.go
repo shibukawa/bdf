@@ -47,7 +47,7 @@ func Object(o *bdf.Object, scale float64, opts *Options) (img *image.RGBA, err e
 		d.ctx.target.fill(clip, r.background(), 1, bdf.BlendSourceOver, clip)
 	}
 	d.drawTop(h, m, clip)
-	img = d.ctx.target.toRGBA()
+	img = d.finish()
 	img.Rect = img.Rect.Add(image.Pt(int(x0), int(y0)))
 	return img, nil
 }

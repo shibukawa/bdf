@@ -24,4 +24,4 @@ The converter was checked against documents InDesign itself exported (CS5.5 to I
 
 `converter/idml` has no `-param` options. `-pages` selects pages, and the general font flags `-font-dir`, `-fonts`, `-no-subset`, `-no-woff2`, `-no-system-fonts` and `-ignore-fstype` apply as they do to PowerPoint.
 
-See [design.md §3.31](../design.md#331-indesign--bdf-変換器converteridmlの構造) for the internals.
+See [design.md §3.32](../design.md#332-indesign--bdf-変換器converteridmlの構造) for the internals.

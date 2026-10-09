@@ -43,7 +43,7 @@ wasm が意味を持つケース:
 
 変換器は `GOOS=js GOARCH=wasm` でそのままビルドでき、testdata の PDF・Word・PowerPoint・Excel・CSV・Visio はネイティブと同じバイト列に変換される。`cmd/bdfwasm` はページから渡されたバイト列を変換し、単一ファイル形式の BDF を返す wasm モジュールである（API はパッケージのコメントを参照）。デモサイト（`site/build.mjs`、GitHub Pages で公開）はこれを Worker で動かし、結果を `{kind: "buffer"}` としてレンダラの Worker に渡す。
 
-- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・楽譜・フォント・メタファイル・Photoshop・画像。約 26.6 MB、gzip 7.8 MB。Parquet で約 1.1 MB、KiCad で約 1 MB（gzip 0.3 MB）増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。サムネイルと検索用テキスト（§3.25）は、変換器を持たない `previewonly` のモジュールにした。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
+- **モジュールを分ける**: 全形式を 1 つにすると約 26 MB（gzip で約 8.8 MB）になり、その半分以上は pdfcpu とその依存である。`-tags pdfonly` / `officeonly` で PDF 用（約 20 MB、gzip 6.9 MB）と Office 系用（Word・PowerPoint・Excel・CSV・Parquet・Visio・draw.io・DXF・Jw_cad・SXF・CGM・HP-GL/2・Gerber・KiCad・楽譜・フォント・メタファイル・Photoshop・画像。約 26.6 MB、gzip 7.8 MB。Parquet で約 1.1 MB、KiCad で約 1 MB（gzip 0.3 MB）増えた。Parquet の Brotli の伸張は外す（§3.26））に分け、ページはファイルの先頭 1 KiB に `%PDF-` があるかどうかでどちらかを読み込む。HTML、Markdown、EPUB（§3.16、§3.24）は `webonly` の 3 つ目のモジュール（約 23.5 MB、gzip 6.0 MB。goldmark、go-readability、組版エンジン、数式エンジン）にし、ファイルの拡張子（.html、.mhtml、.md、.epub など）で読み込むので、Office 系のモジュールは大きくならない（EPUB は先頭の mimetype でも見分ける）。ページは変換にファイル名も渡し（`name`）、中身で判別できない入力（Markdown、1 行の CSV、HTML の断片）は拡張子で決まる。画像（§3.19）はそのまま格納するだけなので、`imageonly` の小さなモジュール（約 7 MB、gzip 1.9 MB）にし、ページは画像の署名（draw.io の PNG・SVG 書き出しは除く）を見てこれを読み込む。音声ファイル（§3.31）もカバーをそのまま格納してタグを読むだけなので同じモジュールに入れ、ページはタグと署名（ID3、fLaC、OggS、RIFF/WAVE、FORM/AIFF、M4A のブランド）か拡張子で見分ける。サムネイルと検索用テキスト（§3.25）は、変換器を持たない `previewonly` のモジュールにした。ブラウザからはファイルの隣の画像は読めず、ネットワークの画像は CORS を許すサーバーのものだけが取得できる（取れない画像は代替テキストになる）。`bdf_noconv` で WebP と WOFF2 のエンコーダも外す。変換したその場で描く文書は小さくしても得がないので、Part の圧縮も最速にしている。
 - **フォントは fs.FS で渡す**: ブラウザにはフォントのディレクトリが無い。`converter.Options.FontFS` で任意の `fs.FS` をフォントの探索元にできるようにし（`FontDirs` より先に探す）、wasm 側では Web 上のディレクトリをそれとして実装した。`index.json` にファイル名、サイズと、フォントの走査と文字カバレッジ判定が読む範囲（テーブルディレクトリと name・OS/2・post・cmap テーブル）を書いておき、cmap が 16 MiB 以下なら最初の変換でその範囲も並列に Range 取得する。フォールバック探索は候補フェイスの cmap で文字の有無を確かめてから全体を読むため、文書が使う文字を持つフェイスだけが全体取得の対象になる。16 MiB を超える cmap は範囲を先読みせず、既存の全体読み込みで判定する。取得した範囲と全体データはモジュールが生きている間保持する（2 回目以降の変換は通信しない）。サイトのフォントは CI が Ubuntu のパッケージから集める: Liberation（Arial、Times New Roman、Courier New の代替）、Carlito（Calibri）、Caladea（Cambria）、IPAex（日本語）、DejaVu（記号）。
 - **pdfcpu の設定**: 変換器は `model.NewStatelessConfiguration()` で組み込みの既定値から独立した設定を作る。ユーザーの設定ファイル、pdfcpu 用のフォントや証明書ストアは読まない。
 
@@ -221,7 +221,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 `converter/xlsx` は .xlsx（OPC の zip）を読み、ワークシートごとに `sheet` View を作る。セルの並び・書式・表示形式をこちらで解釈してレイアウトし（BDF に再レイアウトはない）、Tile に描く。セルの値は保存されているもの（数式の計算結果のキャッシュ）を使い、数式は計算しない。図形・画像・グラフは PowerPoint と同じ `converter/internal/ooxml/drawingml` で描き、フォントの選択・計測・サブセット埋め込み（`fontset`）と Object の組み立て（`canvas`）も共有する。
 
-- **読み込み**: ワークシートは大きくなりうるので、`sheetData` は XML をストリームで読んで行とセルの小さな構造体にし、それ以外の要素（列、結合、条件付き書式、ハイパーリンク、表示設定）は `ooxml.ReadElement` で要素木にする。共有文字列（リッチテキストの run を含む）、`styles.xml`（フォント・塗り・罫線・セル書式・差分書式・インデックス色・テーブルスタイル）、テーマ（`drawingml` のテーマをそのまま使う）、`workbookPr` の 1904 年基準を読む。日付型のセル（`t="d"`）はシリアル値に直す。値が保存されていない数式セル（Excel で保存されていないブック）は空にして警告する。セルに表示するのは Excel と同じく先頭の 1,024 文字まで（共有文字列の巨大な文字列を何万ものセルが参照するファイルでもレイアウトが終わるように）。
+- **読み込み**: ワークシートは大きくなりうるので、`sheetData` は XML をストリームで読んで行とセルの小さな構造体にし、それ以外の要素（列、結合、条件付き書式、ハイパーリンク、表示設定）は `ooxml.ReadFrom` で要素木にする。ストリームの読み手は tinygodriver の `encoding/xmlro`（`ooxml.NewReader`）で、通り過ぎるトークンに何も確保しない。共有文字列の表も同じ読み方で、`si` ごとに木にする。共有文字列（リッチテキストの run を含む）、`styles.xml`（フォント・塗り・罫線・セル書式・差分書式・インデックス色・テーブルスタイル）、テーマ（`drawingml` のテーマをそのまま使う）、`workbookPr` の 1904 年基準を読む。日付型のセル（`t="d"`）はシリアル値に直す。値が保存されていない数式セル（Excel で保存されていないブック）は空にして警告する。セルに表示するのは Excel と同じく先頭の 1,024 文字まで（共有文字列の巨大な文字列を何万ものセルが参照するファイルでもレイアウトが終わるように）。
 - **列幅と行の高さ**: Excel の列幅は既定のフォント（`fonts[0]`）の最大の数字の幅（MDW、96 dpi のピクセル）を単位にした文字数で、ピクセル幅は `trunc(((256·width + trunc(128/MDW)) / 256)·MDW)`（ECMA-376 §18.3.1.13）。MDW はフォントの数字の送り幅を整数の ppem で測って丸める（Windows のラスタライザと同じ。Calibri はヒンティングで 1 ピクセル狭くなるので丸めない ppem で測る。Calibri 11 で 7、MS P ゴシック 11 で 8）。`defaultColWidth` がなければ `baseColWidth` 文字に余白 5 ピクセルを足して 8 ピクセル単位に切り上げる（Calibri 11 で 64 ピクセル）。単位は pt（1 ピクセル = 0.75 pt）。行の高さは `ht`（pt）、なければ `defaultRowHeight`。高さの書かれていない行は、既定より大きいフォント・折り返し・回転のあるセルがあれば内容に合わせて広げる（テキストの高さをピクセルに切り上げて 2 ピクセル足す。結合セルは含めない。Excel が開いたときに自動調整するのと同じ）。非表示の行・列は大きさ 0。View の広さは使われている範囲に少し余白を足したもので、グリッド線の有無と固定ペイン（`pane state="frozen"` の `xSplit`/`ySplit`）を manifest に書く。
 - **セルの書式**: セルの `s` → 行の書式（`customFormat`）→ 列の書式の順で書式を決める（値のないセルにも塗りや罫線がある）。テーマ色は SpreadsheetML の番号（0 と 1、2 と 3 の明暗が配色の順と逆）で引き、`tint` は HLS の輝度に掛ける。インデックス色は既定の 64 色（`indexedColors` で上書き可）。ARGB のアルファは Excel と同じく無視する。
 - **表示形式**: 書式コードを `;` で最大 4 セクション（正・負・0・文字列、または `[>=100]` などの条件）に分け、字句に分けて整形する。桁のプレースホルダー（`0` `#` `?`、`?` は数字幅の空き）、小数点、桁区切りと末尾の `,` による 1000 分の 1、`%`、指数（`##0.0E+0` は指数を整数部の桁数の倍数に）、分数（`# ?/?`、分母固定 `?/8`）、`"文字列"`・`\x`・`_x`（x の幅の空き）・`*x`（セルの幅まで x を繰り返す）、`@`、色（`[Red]`、`[Color10]`）、通貨と言語（`[$€-407]`）、`[DBNum1-3]`（漢数字・大字・全角）。日付と時刻は 1900 年基準（Lotus 1-2-3 以来の存在しない 1900-02-29 を含む）と 1904 年基準のシリアル値から、`m` が月か分かを前後の時・秒で判断し、表示する最小の単位で丸めて整形する（経過時間 `[h]`、`AM/PM`、秒の小数、曜日 `ddd`/`aaa`、和暦 `ggge`（令和・平成・昭和・大正・明治）、仏暦）。`General` は 11 文字に収まる桁数で丸め、収まらなければ指数表記にする。組み込みの書式 ID は既定のフォントが日本語なら日本語版の定義（14 は `yyyy/m/d`、27〜58 の和暦、通貨は ¥）を使う（ブックには言語の記録がないため）。
@@ -251,7 +251,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 ## 3.8 Visio → BDF 変換器（converter/visio）の構造
 
-`converter/visio` は Visio 2013 以降のパッケージ（.vsdx、.vsdm、.vstx、.vstm。OPC の zip で [MS-VSDX]）と、Visio 2003〜2010 の XML 図面（.vdx、.vtx。DatadiagramML の 1 ファイル）を読む。旧バイナリの .vsd は読まない（.vsdx に保存し直してもらう）。どちらの形式も同じ ShapeSheet のモデルに読み込む。シート（図形・マスターの図形・スタイルシート・ページシート）はセル（計算済みの値 `V`、式 `F`、表示単位 `U`）と、行を持つセクションからなる。.vsdx は `Cell`・`Section`・`Row` 要素をそのまま読む。.vdx はセルがその名前の要素で、`XForm`・`Line`・`Fill` などのまとまりに入っている。単独のセルのまとまりはシートのセルに平たく展開し、添字や名前のある行（`Char IX`、`Geom IX`、`Prop NameU` など）は対応するセクション（Character、Geometry、Property）の行にする。テキストは文字と書式のマーカーが交互に並ぶ混在内容なので、`ooxml.Node` が文字と子要素の順序を覚えるようにした（`Segments`）。.vdx はパッケージを持たないので、`ooxml.Package` は nil でも空のパッケージとして振る舞う。
+`converter/visio` は Visio 2013 以降のパッケージ（.vsdx、.vsdm、.vstx、.vstm。OPC の zip で [MS-VSDX]）を読む。Visio 2003〜2010 の XML 図面（.vdx、.vtx）と旧バイナリの .vsd は読まない（.vsdx に保存し直してもらう。.xls を読まないのと同じ。古い形式を残すと、読み込むコードと攻撃面が増えるだけで得るものが少ない）。シート（図形・マスターの図形・スタイルシート・ページシート）はセル（計算済みの値 `V`、式 `F`、表示単位 `U`）と、行を持つセクションからなる。`Cell`・`Section`・`Row` 要素をそのまま読む。テキストは文字と書式のマーカーが交互に並ぶ混在内容なので、`ooxml.Node` が文字と子要素の順序を覚えるようにした（`Segments`）。
 
 - **継承**: 図形は持たないセルを、インスタンス元のマスター図形（グループの子は `MasterShape` で対応付け）、スタイルシートの順に探す。スタイルは `LineStyle`・`FillStyle`・`TextStyle` がそれぞれ線・塗りと効果・テキストのセルを受け持ち、親スタイルをたどってルートの "No Style" に至る。ジオメトリはセクションを `IX` で、行を `IX` で重ね、`Del` の付いた行とセクションは除く。複数の図形からなるマスターのインスタンスはそれらを子図形として持ち、子図形を書いていないインスタンスはマスターの子図形をそのまま持つ。壊れた文書の循環は深さで打ち切る。
 - **式**: Visio が保存した計算済みの値を使い、式は評価しない。ただし Visio 以外のプログラムが作った図面には、マスターのインスタンスの大きさを変えたのに、その大きさに合ったジオメトリを書いていないものがある。そのため、インスタンスが継承したセルのうち式が `Width`・`Height` の四則演算だけのものは、インスタンスの大きさで計算し直す。Visio の図面はこれらの値をインスタンスに持つので、結果は変わらない。テキストブロックの幅が `TEXTWIDTH(TheText)` のもの（ラベルやコネクタの文字）は、Visio が自分のフォントで測った幅なので、折り返さずに置く。
@@ -260,11 +260,11 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **ジオメトリ**: `MoveTo`・`LineTo`・`ArcTo`（弓の高さが正なら進行方向の右に膨らむ）・`EllipticalArcTo`（楕円を円に戻す空間で 3 点を通る円弧を求める）・`Ellipse`（共役な半径 2 本）・`PolylineTo`・`NURBSTo`・`SplineStart`/`SplineKnot`（Visio が格納する節点を両端で固定した節点ベクトルに補って標本化する）・相対座標の `Rel*` 行をパスにする。`MoveTo` で始まらないセクションは最後の点から始める。閉じた図形だけを（セクションごとに偶奇規則で）塗り、`NoFill`・`NoLine`・`NoShow` に従う。
 - **塗り・線・影**: 塗りは単色（透明度つき）、パターン 2〜24（[MS-VSDX] の図から起こした 8×8 のタイル）、グラデーション（`FillGradient` の分岐点。線形は `FillGradientAngle`、放射状と矩形は 13 通りの起点。矩形は円で近似）、旧版のグラデーション（パターン 25〜40）。線は幅、色と透明度、線種 2〜23（仕様の図から測った破線で、線幅に比例させる）、端（丸・角・延長）、`Rounding`（多角形の角を丸める）、矢印 45 種を描く。矢印の形は仕様の図から自前で定義した。先端を覆う矢印の下では線を切り詰める。影は `ShdwPattern`、`ShapeShdwShow`、オフセット（種類 0 はページの既定の影）、ぼかしを SHADOW で描く。
 - **線の飛び越し**: Visio は飛び越しを保存せず、ページを描くときにコネクタの交差から置く（[MS-VSDX] でも関係するセルは「式の評価にだけ使う」とされている）。同じことをページを描く前に行う。ルーティング可能な 1-D 図形（`ObjType`）の経路をページ座標で集め（曲線は折れ線にして交差の相手にだけ使う）、交点ごとに飛ぶ側を決める。ページの `LineJumpCode` は水平な線（既定）、垂直な線、上または下に描かれた線（最後に経路を引いた線は上の線で代える）を選ぶ。コネクタの `ConLineJumpCode` は常に飛ぶ、飛ばない、相手が飛ぶ、どちらも飛ばないを選び、ページの規則より優先される。形は `LineJumpStyle`（コネクタの `ConLineJumpStyle` が優先）の円弧・切れ目・四角・2〜7 辺の多角形、幅は `LineJumpFactorX` × `LineToLineX`（垂直な線は Y）、高さは幅の半分とする。向きは水平な線が上か下（`ConLineJumpDirX`、`PageLineJumpDirX`）、垂直な線が左か右。重なる飛び越しは 1 つにまとめ、切れ目は図形を分ける。角の近くで幅が収まらない交差は飛ばない。
-- **画像と埋め込み**: `ForeignData` の PNG・JPEG・GIF・BMP・TIFF・DIB（.vdx は base64）を `ImgOffsetX` などの矩形に置き、図形の枠で切り抜く。TIFF は PowerPoint と同じく `converter/internal/tiff` で先頭のページを読む（§3.4）。EMF/WMF は `converter/internal/metafile` で再生し、OLE オブジェクトはプレビュー画像（埋め込みパートからの画像リレーションシップ）を描く。
+- **画像と埋め込み**: `ForeignData` の PNG・JPEG・GIF・BMP・TIFF を `ImgOffsetX` などの矩形に置き、図形の枠で切り抜く。TIFF は PowerPoint と同じく `converter/internal/tiff` で先頭のページを読む（§3.4）。EMF/WMF は `converter/internal/metafile` で再生し、OLE オブジェクトはプレビュー画像（埋め込みパートからの画像リレーションシップ）を描く。
 - **テキスト**: `Text` 要素の `cp`・`pp`・`tp` マーカーが Character・Paragraph・Tabs の行を選び、`fld` は最後に表示された文字列を持つ。`\n` で段落、U+2028 で段落内の改行とする。テキストは DrawingML のテキスト本体（`bodyPr` の余白・垂直位置・`TextDirection` 1 の `eaVert`、`pPr` の揃え・インデント・行間・段落前後の間隔・箇条書き・タブ、`rPr` の大きさ・太字・斜体・下線・取り消し線・大文字化・上付き・下付き・字間・色・フォント・言語）に写し、`drawingml.Drawing.LayoutText` でレイアウトする。そのため禁則、フォントの解決と埋め込み、構造の MARK は PowerPoint と同じになる。行間の `SpLine` は、負ならその段落で最大の文字の大きさの倍数として扱う。テキストブロックは `TextXForm` のセルで図形の中に置く。文字は鏡像にしない（`FlipY` は上下逆さになる）。`TextBkgnd` は行の範囲（`TextBody.Bounds`）を塗る。言語は `LangID`（古い図面の Windows ロケール ID も読む）、図面の言語はコアプロパティ、なければルートのスタイルの言語とする。ハイパーリンクは図形の範囲の LINK にする。`Address` の URL（http、https、mailto）と、`SubAddress` のページ名（`#page=N`）を扱う。
 - **未対応**: .vsd、インク（警告を出す）。面取り・光彩・反射・ぼかし・3D・スケッチの効果、線のグラデーション、文字の横幅の拡大縮小（`FontScale`）、右インデント、右揃え・中央揃え・小数点揃えのタブは描かない。
 
-テスト用の図面は `test/visio/gen.py`（標準ライブラリだけ）で 1 つのモデルから両形式に書き出す（`npm run test:visio:gen`）。shapes.vsdx はテーマ、ジオメトリの各行、塗り・線・矢印、テキスト、線の飛び越しを含む。flow.vsdx と flow.vdx は同じフローチャートで、Go のテストは両者が同じ Object になることを確かめる。変換結果は `testdata/visio/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は Apache POI と libvisio のテストデータでも変換を確かめた。比べる相手には、Visio が図面に保存するサムネイル（`docProps/thumbnail.emf`）を `converter/emf` で描いたものを使った。ただし手で編集されたテストファイルには、中身と合わない古いサムネイルもあった。
+テスト用の図面は `test/visio/gen.py`（標準ライブラリだけ）で 1 つのモデルから書き出す（`npm run test:visio:gen`）。shapes.vsdx はテーマ、ジオメトリの各行、塗り・線・矢印、テキスト、線の飛び越しを含む。flow.vsdx はテーマなしのフローチャートで、マスター・スタイル・画像・背景ページを含む。変換結果は `testdata/visio/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は Apache POI と libvisio のテストデータでも変換を確かめた。比べる相手には、Visio が図面に保存するサムネイル（`docProps/thumbnail.emf`）を `converter/emf` で描いたものを使った。ただし手で編集されたテストファイルには、中身と合わない古いサムネイルもあった。
 
 ## 3.9 Word → BDF 変換器（converter/docx）の構造
 
@@ -394,7 +394,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **要素の対応**: 段落と見出し（HEADING、次の段落と離さない）、リスト（ol の `start`・`type`・`reversed`・li の `value`、ul の記号は入れ子の深さで •・◦・▪、チェックボックスで始まる項目は記号の代わりにチェックボックスを描く。LIST / LIST_ITEM）、引用（左に線のある箱、文字を淡く）、pre（網掛けの箱。空白を保ち、タブは 4 桁ごと、長い行は折り返す）、表、figure と figcaption（中央寄せ。alt 属性のない img は図の説明を代替テキストにする）、hr、dl、details / summary（開いた状態で描く）、インライン要素（強調、コード、kbd、mark、sup / sub、del / ins、small、q、br、wbr）、リンク、`lang` 属性（LANG）。`hidden` 属性、`display: none`、script・style・template・フォーム部品（チェックボックスを除く）・iframe・動画・音声は描かない。作者のスタイルで読むのは `text-align`（`align` 属性）、`float`、画像の `width` / `height` だけ。
 - **空白**: CSS の `white-space: normal` と同じく連続する空白を 1 つにし、段落の先頭と末尾の空白を落とす。ソースの改行が和文の文字の間にあるときは空白にしない（CSS Text の segment break transformation。日本語の Markdown に多い書き方）。pre では空白と改行を保つ。
 - **箱と表**: 引用と pre は 1 行 1 セルの構造を持たない表として作る。表と同じくセルの中身を先にレイアウトしてから行としてページに流すので、ページをまたぐ引用やコードは行の間で分かれる。HTML の表は行と列の結合をスロットに割り当てて Word の表のモデル（縦の結合は continue のセル）にし、列の幅は CSS の自動レイアウトで決める: 各セルの中身の最小幅（折り返せない最も長い部分）と最大幅（折り返さない行の幅）を列ごとに集め（結合セルは足りない分を均等に配る）、表の幅に最大幅が収まれば最大幅、最小幅も収まらなければ最小幅を縮め、その間なら余りを（最大幅 − 最小幅）に比例して配る。thead の行と、先頭で th だけの行は見出し行としてページごとに繰り返し、th は列見出し、ほかの行の th は行見出しにする。
-- **画像**: ファイルの隣（`ConvertFile` は入力のディレクトリを基準にする。`..` とシンボリックリンクを含めて入力ディレクトリ内に制限し、絶対パスは読まない）、MHTML の部品、data: URL、ネットワークから読む。ネットワークの画像は既定で取得する（Markdown や HTML は Word と違って画像を抱えていないのが普通なので）。8 並列で先に取得し、30 秒のタイムアウトと 50 MiB の上限を付ける。`-param remote=false` で取らない。信頼しない入力を変換するサーバーは、remote=false にするか、`Options.Fetch` で到達先を制限する。大きさは CSS ピクセル（0.75 pt）で、width / height 属性と style に従い、行より広ければ行幅に縮める。`align="left"` / `"right"` と float は Word の浮動する図と同じく文字を回り込ませる。描けない画像は、ブラウザと同じく代替テキストを淡い色で描く。SVG は描き直さずにそのまま格納し、ビューアが描く（§3.19。ビューアはページの画像要素で SVG を描き、Worker にはページが描いて渡す）。img が指す SVG ファイルはバイト列のまま、ページの中の svg 要素は独立した SVG 文書にする（名前空間を補い、currentColor のためにまわりの文字色を `color` に、ページのほかの場所から id で参照している SVG の要素＝スプライトの symbol や共有のグラデーションを defs に写し、image 要素の画像を data: URL にする。画像として描かれる SVG 文書は外部の資源を読まないため。script と on… 属性、宣言のない接頭辞の属性（svg 要素に付いた `epub:type` など）、ほかの語彙の要素（Inkscape の `sodipodi:namedview` のようなエディタのメタデータ）は、文書が XML として壊れるので落とす。組み立ては `converter/internal/webdoc` の `SVGDocument` で、EPUB の固定レイアウトのページも使う（§3.24））。大きさは Chrome で確かめたブラウザの規則に従う。幅と高さ（属性か style。片方なら viewBox の縦横比でもう片方）、SVG ファイルは自身の width・height（同様）、どれもなく viewBox だけなら行の幅いっぱい（`inlineObj.fill`。行ごとに行幅へ拡大縮小する）、何もなければ 300 × 150 px。幅か高さが 0 の svg 要素（スプライトの入れ物）と、定義だけで何も描かない svg 要素は描かない。代替テキストは aria-label、title 子要素、図の見出しの順で、aria-hidden と role="presentation" は装飾。
+- **画像**: ファイルの隣（`ConvertFile` は入力のディレクトリを基準にする。`..` とシンボリックリンクを含めて入力ディレクトリ内に制限し、絶対パスは読まない）、MHTML の部品、data: URL、ネットワークから読む。ネットワークの画像は既定で取得する（Markdown や HTML は Word と違って画像を抱えていないのが普通なので）。8 並列で先に取得し、30 秒のタイムアウトと 50 MiB の上限を付ける。`-param remote=false` で取らない。取得先は公開アドレスに限り、ホスト自身・プライベートネットワーク・リンクローカル（クラウドのメタデータサービスが答える）のアドレスは、名前解決やリダイレクトの先であっても接続しない（`-param private=true` / `Options.AllowPrivate` で許可。環境変数でプロキシが指定されているときはプロキシに任せ、検査しない。TinyGo ではブラウザの規則に任せる）。信頼しない入力を変換するサーバーは、remote=false にするか、`Options.Fetch` で到達先を制限する。大きさは CSS ピクセル（0.75 pt）で、width / height 属性と style に従い、行より広ければ行幅に縮める。`align="left"` / `"right"` と float は Word の浮動する図と同じく文字を回り込ませる。描けない画像は、ブラウザと同じく代替テキストを淡い色で描く。SVG は描き直さずにそのまま格納し、ビューアが描く（§3.19。ビューアはページの画像要素で SVG を描き、Worker にはページが描いて渡す）。img が指す SVG ファイルはバイト列のまま、ページの中の svg 要素は独立した SVG 文書にする（名前空間を補い、currentColor のためにまわりの文字色を `color` に、ページのほかの場所から id で参照している SVG の要素＝スプライトの symbol や共有のグラデーションを defs に写し、image 要素の画像を data: URL にする。画像として描かれる SVG 文書は外部の資源を読まないため。script と on… 属性、宣言のない接頭辞の属性（svg 要素に付いた `epub:type` など）、ほかの語彙の要素（Inkscape の `sodipodi:namedview` のようなエディタのメタデータ）は、文書が XML として壊れるので落とす。組み立ては `converter/internal/webdoc` の `SVGDocument` で、EPUB の固定レイアウトのページも使う（§3.24））。大きさは Chrome で確かめたブラウザの規則に従う。幅と高さ（属性か style。片方なら viewBox の縦横比でもう片方）、SVG ファイルは自身の width・height（同様）、どれもなく viewBox だけなら行の幅いっぱい（`inlineObj.fill`。行ごとに行幅へ拡大縮小する）、何もなければ 300 × 150 px。幅か高さが 0 の svg 要素（スプライトの入れ物）と、定義だけで何も描かない svg 要素は描かない。代替テキストは aria-label、title 子要素、図の見出しの順で、aria-hidden と role="presentation" は装飾。
 - **フォント**: 既定では埋め込まずに名前で参照する。本文は `sans-serif`、コードはインストールされている等幅のファミリー（なければ `monospace`）で、変換時に解決したフォントで字幅を測り、ビューアのフォントをその字幅に合わせて描く（advance 補正、§4）。Web ページと同じくビューアのフォントで読めればよく、埋め込むとファイルが大きくなるため。`-fonts embed`（`Options.EmbedFonts`）でサブセットを埋め込む。システムフォントの参照では、`sans-serif` などの総称ファミリーを引用符で囲まないようにした（Office の文書では現れない）。
 - **HTML**: 文字コードは BOM、Content-Type、meta 要素の順で決め、どれもなくて UTF-8 として正しければ UTF-8（Shift_JIS や EUC-JP のページも meta で読める）。XML 宣言で始まる文書と Content-Type が XHTML の文書は XML として読み、整形式でなければ HTML として読む（`converter/internal/webdoc`、§3.24）。記事の取り出しは go-readability（Mozilla Readability.js の移植、`codeberg.org/readeck/go-readability/v2`）で、`-param extract=auto`（既定）は Readability の isProbablyReaderable が真のページだけ、`article` は常に、`none` はしない。取り出したときはリーダー表示と同じく、題名（h1）、署名・サイト名・公開日の行、区切り線を先頭に置く。メタデータは title、meta（author、description、keywords、Open Graph、article:published_time など、`DC.*` / `dcterms.*`）、canonical のリンク、html の lang から読み、記事を取り出したときは Readability の結果（サイト名を除いた題名など）を優先する。リンクは `#id` を要素のある帯（ページ）への `#page=N` にし、ほかは基準 URL（`-param base`、`<base>`、MHTML の保存元）で解決した http / https / mailto の絶対 URL だけを残す。MHTML（Chrome の「ウェブページ、1 つのファイルのみ」）は multipart/related の部品を読み、Content-Location と `cid:` で引く。
 - **Markdown**: goldmark で HTML にし（CommonMark、GitHub の拡張の表・タスクリスト・取り消し線・自動リンク、脚注、定義リスト）、HTML の変換器で組む（記事は取り出さない）。raw HTML はそのまま通すので、README によくある `<p align="center">` や `<details>` も組める（スクリプトは実行しないので危険はない）。見出しには GitHub と同じ id（小文字にし、句読点を除き、空白をハイフンに、重複には -1、-2…）を付けるので、`[…](#見出し)` のリンクが帯に飛ぶ。YAML（`---`）/ TOML（`+++`）の front matter の title、author、date、lang、description、tags などは `DC.*` の meta 要素として head に書き、HTML と同じ読み方で Dublin Core にする。UTF-8 でない文書は Shift_JIS、EUC-JP、Windows-1252 の順に試す。
@@ -573,6 +573,7 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 | 種類 | レイアウト |
 |---|---|
 | Word、HTML、Markdown | 1 ページ目（scroll View は先頭）の左上から、ページの幅の正方形（Crop） |
+| 音声（MP3、M4A、AAC、FLAC、Ogg、WAV、AIFF） | カードの上端の正方形: ページの幅いっぱいのカバーアート（なければプレースホルダー）（Crop） |
 | Excel、CSV、Parquet | 最初のシートの A1 から、サムネイルの大きさを 72 dpi（1 単位が 1 画素）で描く正方形。96〜480 単位で、シートより大きくはしない。既定の行の高さ（15 単位）なら 64 画素で 6 行、128 画素で 8 行、256 画素で 17 行、512 画素以上で 32 行ほど。枠線はビューアと同じく描く |
 | PDF、TIFF | 縦長のページは文書として Crop、横長のページはスライドとして全体（Fit） |
 | PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB | 1 ページ目の全体を、長辺が指定の大きさになるように（Fit）。EPUB は 1 ページ目が表紙 |
@@ -704,7 +705,25 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 
 **確かめたこと**: Go のテスト（鍵の往復、別の鍵とパスワードを拒むこと、区間のページと Part、`have` で省かれること、シートを拒むこと、ハンドラの状態）、Go が封印した区間を TS が開いて合わせると元の文書のページと Part に一致するテスト（`testdata/segments/`、テスト専用の鍵で封印）、`SegmentLoader` が同じ区間を 1 度だけ頼み `have` を付けるテスト。ブラウザでは Chrome 153 と WebKit 26 でサンプルの本の 3 つ目の区間まで描けること、立ち読みの境界で 403、21 区間目で 429、ログアウト後に 401 になることを確かめた（Firefox は手元の Playwright で起動しないため未確認）。
 
-## 3.31 InDesign → BDF 変換器（converter/idml）の構造
+## 3.31 音声ファイル → BDF 変換器（converter/audio）
+
+音声ファイル（MP3、MP4 の AAC つまり M4A、生の ADTS の AAC、FLAC、Ogg Vorbis・Opus、WAV、AIFF）を 1 ページの「カード」の文書にする。音声ファイルにページはないが、ファイル一覧・サムネイル・検索に要るものはある。カバーアートとタグだ。ページの上端にカバーをページの幅いっぱいに置き（なければ音符を描いたプレースホルダー）、その下に題名・アーティスト・アルバム、ほかの項目の表、歌詞、章を組む。音声そのものは格納しない。ビューアでの再生は `play` の拡張として後の課題で、§4.4 の `seq` と同じくファイルをそのまま Part に置き、ブラウザの `<audio>` に任せる形になる。
+
+- **なぜカード 1 枚か**: サムネイル（§3.25）は最初の View の 1 ページ目の左上の正方形を切る（Crop）。カバーをページの幅で上端に置けば、正方形のカバー（アルバムアートはほぼ正方形）がそのままサムネイルになり、ビューアではページをめくらずに題名も読める。`thumbnail` の `cropSources` に音声の `source` を加えた。サムネイルのためだけなら `converter.Options{Pages: converter.PageList(1)}` の近道もそのまま効く（ページは 1 枚しかない）。
+- **読むもの**: MP3 は先頭の ID3v2（2.2・2.3・2.4）と末尾の ID3v1、`APIC` のカバー、フレームから長さ・ビットレート・サンプリング周波数・チャンネル。M4A は `moov` の `mvhd`、最初の `soun` トラックの `stsd`（`mp4a` の `esds` の OTI と AOT で AAC・HE-AAC・MP3、`alac`、`fLaC`、`Opus`、PCM。`drms` は保護された音声）、`udta/meta/ilst`（`©nam` などと自由形式の `----`、`covr`、`trkn`、`gnre`）、QuickTime の `keys`/`mdta` と `udta` 直下のテキストアトム、Nero の `chpl`、`uuid` の XMP。FLAC は `STREAMINFO`・`VORBIS_COMMENT`・`PICTURE`。Ogg は最初の音声ストリーム（Vorbis・Opus・FLAC・Speex）の識別ヘッダーとコメント（`METADATA_BLOCK_PICTURE` と古い `COVERART`、`CHAPTERxxx`）。WAV は `fmt `、`data` の大きさ（RF64 の `ds64` も）、`LIST INFO`、`bext`、`id3 ` チャンク。AIFF は `COMM`（80 ビット浮動小数点のサンプリング周波数）、`NAME`・`AUTH`・`(c) `・`ANNO`、`ID3 ` チャンク。生の AAC は ADTS のフレーム（先頭に ID3v2 があれば読む）。
+- **タグの正規化**: 形式ごとの読み手は Vorbis コメント流のキー（`TITLE`、`ARTIST`、`ALBUMARTIST`、`COMPOSER`、`DATE`、`TRACKNUMBER` …）の `tags` に写し、1 つの対応表で Dublin Core（spec §4.3）とカードの項目にする。アルバムは Dublin Core に要素がないので `relation`（isPartOf の意味）に、ジャンルは `subject` に、作曲者などは `contributor`（アーティストと同じ人は除く）に写す。`type` は `Sound`、`format` はメディアタイプ。優先順位は形式自身のタグが先で、FLAC・WAV・AIFF に付いた ID3 タグ、MP3 の ID3v1、ユーザー定義フィールド（`TXXX`、`----`）は足りない項目を補う（`fill`）。
+- **文字コード**: ID3v2 の encoding 0（「ISO-8859-1」）、ID3v1、RIFF INFO、AIFF のテキストはファイル単位で推定する。すべてが正しい UTF-8 なら UTF-8、すべてが Shift_JIS なら Shift_JIS、そうでなければ Windows-1252（§3.27 の MIDI と同じ）。UTF-16 は BOM で、なければ encoding 2 は BE、1 は LE。
+- **ID3v2 の細部**: 2.2 の 3 文字の ID、2.3 のタグ全体の非同期化と 2.4 のフレーム単位の非同期化、拡張ヘッダー、フッター、データ長指示子、zlib 圧縮フレーム（16 MiB まで）、暗号化フレームは読み飛ばし、2.4 なのに syncsafe でない大きさを書く書き手（次のフレームに辿り着くほうの大きさを採る）、複数の値（2.4 の NUL 区切りと ";" 区切り）、`TCON` の番号参照（`(17)Rock`、`RX`）、`TYER`+`TDAT`+`TIME` から 1 つの日付、`COMM`（`iTunNORM` などプログラム自身のものは除き、説明のないものを優先）、`USLT`（なければ `SYLT` の文字）、`APIC`（type 3 の表紙を優先）、`CHAP` の題名と開始時刻。
+- **MP4**: 最上位のボックスは `converter/internal/isobmff` の `Walk` でヘッダーだけ読み、`mdat` を読まない（`moov` が末尾にある非 faststart のファイルのため）。`moov` は 64 MiB まで。`hdlr` が `vide` のトラックがあれば動画で、この変換器は受け付けない（Detect が false を返す）。`meta` は MP4 では FullBox、QuickTime では plain な箱なので、最初の子で見分ける。AVIF の読み手（§3.19）の箱の分割をこのパッケージに移して共有した。
+- **Ogg**: ページを順に読み、最初の音声ストリームのパケットを識別ヘッダーとコメントまで集める（FLAC は last フラグのブロックまで。64 MiB、1 万ページまで）。長さは末尾 256 KiB の中の、同じシリアルの最後のページの granule から（Opus は pre-skip を引いて 48 kHz）。Theora などの動画ストリームが先にあっても音声は読み、警告する。
+- **MP3・ADTS の長さ**: Xing/Info/VBRI ヘッダーがあればそのフレーム数から、なければ全フレームのヘッダーを辿って数える（`bufio` で読む。1 フレーム数百バイトの走査なので 100 MB でも一瞬）。先頭と途中のゴミは 64 KiB まで飛ばす。CBR はヘッダーの公称ビットレート（フレームはバイトに切り捨てられるので、バイト数から求めると少しずれる）、VBR は平均。末尾の ID3v1 と APE タグは走査から除く。
+- **カードの文字**: `fontset` を使わず、`SystemFont("sans-serif")` を名前で参照する（HTML・Markdown の既定と同じ）。幅は文字種ごとの概算（ラテン小文字 0.53 em、数字 0.56 em、全角 1 em …）で折り返し、`advance` は 0（補正しない）。これで変換器はフォントもレイアウトエンジンも持たず、ブラウザでは `imageonly` のモジュールに同居する。折り返した行は、空白で折ったなら LINE、全角文字の間で折ったなら WRAP の MARK（spec §7.8）。題名は HEADING 1、項目は TABLE の CELL（`A1 row` が見出し）、歌詞は段落（空行で分ける）と LINE、章は LIST。テキスト索引も作る。
+- **カバー**: 画像のヘッダーだけ読んで大きさを得る（`image.DecodeConfig`。PNG・JPEG・GIF・BMP・WebP）。それ以外（TIFF など）や壊れた画像は警告してプレースホルダーにする。ページの幅はカバーの幅（360〜720 pt に収める）。`-images convert` のときは `imgconv.Optimize` で再エンコードする（他の文書に埋め込まれた画像と同じ扱い。入力そのものである画像をそのまま格納する §3.19 とは違う）。
+- **信頼しない入力への備え**: ファイルは 1 GiB、ID3 タグは 64 MiB（大きさの主張は 256 MiB まで書ける）、FLAC のコメントは 8 MiB、画像ブロックは 16 MiB、MP4 の `moov` は 64 MiB、XMP は 16 MiB、カバーは 64 MiB、歌詞は 256 KiB、ほかの項目は 16 KiB まで読む。1 項目の値は 64 個、画像は 64 枚、章は 1,000 件まで。チャンクやボックス、フレームがファイルより大きいと言えば、ファイルの終わりで切る。
+- **テスト**: ffmpeg と mutagen で作った 1 秒の小さな実ファイル（`test/audio/gen.sh`、`converter/audio/testdata`）で全形式の変換結果（Dublin Core、ページ、検索テキスト、サムネイルがカバーの絵になること）を確かめ、ID3 の版・フラグ・文字コード、MP4 の箱の順序と QuickTime の形、Ogg の複数ページにまたがるパケット、RF64、AIFF-C、上限の挙動は合成したバイト列で確かめる。フィクスチャは fuzz の種にもする。ブラウザ描画の golden のケースは作っていない。カードの文字はビューアのフォントで組まれ、マシンによって描画が変わるためである。
+- **未対応・今後**: 再生（`play` の音声）、WMA/ASF と APE・WavPack のタグ、波形、QuickTime の章トラック。動画は別の変換器にする（メタデータ・章・字幕は同じ箱の読み手で読めるが、1 枚の絵を出すにはデコーダが要る）。
+
+## 3.32 InDesign → BDF 変換器（converter/idml）の構造
 
 `converter/idml` は InDesign が書き出す IDML（InDesign Markup Language。XML を zip に詰めたパッケージで、Adobe が仕様を公開している）を読む。ネイティブの .indd はバイナリで仕様がなく、版ごとに構造が変わるので読まない（IDML に書き出してもらう）。判別は zip の `mimetype`（`application/vnd.adobe.indesign-idml-package`）か `designmap.xml` の有無。パッケージの読み取りは Office と同じ `ooxml.Package`（部品名の大文字小文字を区別しない zip）で、XML は `ooxml.Node` の木にする。InDesign が XML に書けない文字（ページ番号マーカー U+0018 など）は処理命令 `<?ACE 18?>` で書くので、`xmltree` はこれを文字として読む。
 
@@ -817,7 +836,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 4. **ビューア**: Worker + OffscreenCanvas、ページ/連続/シートの 3 モード、テキストレイヤー、検索。
 5. **XLSX → BDF**: 直接変換、Tile 化、固定ペイン（実装済み、§3.6）。CSV・TSV も同じ描画で（実装済み、§3.10）。
 6. **PPTX 直接変換**: マスター共有の本領（実装済み、§3.4）。
-7. **Visio 直接変換**: .vsdx と .vdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
+7. **Visio 直接変換**: .vsdx。背景ページの共有とテーマの解決（実装済み、§3.8）。
 8. **DOCX 直接変換**: 変換側のレイアウトエンジン、紙面と scroll の 2 つの View（実装済み、§3.9）。
 9. **draw.io 直接変換**: ページごとの View とシートのような切り替え（実装済み、§3.11）。
 10. **CAD 図面**: DXF（実装済み、§3.12）、JWW（Jw_cad、実装済み、§3.13）、SXF（電子納品の P21 と SFC、実装済み、§3.14）、CGM（バイナリとクリアテキスト、実装済み、§3.20）、HP-GL/2 のプロットファイル（HP RTL の画像も、実装済み、§3.22）。いずれも共通の `converter/internal/cad` の上に作った。
@@ -834,8 +853,9 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 21. **フォントファイル**: 文字・グリフ・OpenType フィーチャーのプレビュー。GSUB・GPOS は自前で読む（実装済み、§3.28）。
 22. **KiCad**: KiCad 6 以降の回路図と基板。階層のシートをページに、基板を表・裏と層ごとの View に、KiCad の線の字体（CC0 の newstroke）で描く。参照するファイルはサーバーでは列挙して渡し、ウェブでは ZIP で（実装済み、§3.29）。
 23. **区間の配信**: ログインした読者に文書を 10 ページずつ、要求ごとの使い捨ての鍵で封印して渡す。記録された通信は後で鍵が漏れても開けない（実装済み、§3.30）。
-24. **InDesign**: IDML のページ・マスター・図形・画像と、連結したフレームをページをまたいで流れるストーリー。テキストは DrawingML のテキストエンジンに `TextFlow` を足して組む（実装済み、§3.31）。
-25. **化学構造式**（予定）: MOL・SDF（SDF は表のシート）、ChemDraw の CDXML・CDX を ACS 1996 の描き方で。
+24. **化学構造式**（予定）: MOL・SDF（SDF は表のシート）、ChemDraw の CDXML・CDX を ACS 1996 の描き方で。
+25. **音声ファイル**: MP3・M4A・AAC・FLAC・Ogg・WAV・AIFF のカバーアートとタグを 1 ページのカードに。サムネイルはカバー、タグは Dublin Core（実装済み、§3.31）。
+26. **InDesign**: IDML のページ・マスター・図形・画像と、連結したフレームをページをまたいで流れるストーリー。テキストは DrawingML のテキストエンジンに `TextFlow` を足して組む（実装済み、§3.32）。
 
 ## 9. リポジトリ構成（案）
 
@@ -854,7 +874,7 @@ bdf/
 ├── thumbnail/         文書のサムネイル（文書の種類によるレイアウト、PNG・JPEG・WebP）
 ├── internal/          fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書きとグリフの輪郭）、
 │                      cff（CFF の読み取りとサブセット化）、otlayout（GSUB・GPOS・GDEF の読み取り）。変換器と imagebdf が共有する。
-│                      mathlayout（数式の木・読み手・組版。§3.23）、xmltree（Office の XML の木）
+│                      mathlayout（数式の木・読み手・組版。§3.23）、xmltree（Office の XML の木。tinygodriver の xmlro で読む）
 ├── converter/         入力形式の登録（static plugin）、共通のオプション、形式の判別、ページ指定
 │   ├── pdf/           PDF → BDF 変換器（testdata/ にテスト用 PDF）
 │   ├── ai/            Illustrator（.ai）→ BDF 変換器（PDF 部分を pdf で描く。testdata/ にテスト用 .ai）
@@ -868,7 +888,7 @@ bdf/
 │   ├── markdown/      Markdown → BDF 変換器、HTML を経由（testdata/ にテスト用文書と画像）
 │   ├── epub/          EPUB → BDF 変換器、リフロー型はリーダー表示、固定レイアウトは画像のページ（testdata/ にテスト用の本）
 │   ├── emf/           Windows メタファイル（.emf、.wmf）→ BDF 変換器
-│   ├── visio/         Visio（.vsdx、.vdx）→ BDF 変換器（testdata/ にテスト用図面）
+│   ├── visio/         Visio（.vsdx）→ BDF 変換器（testdata/ にテスト用図面）
 │   ├── idml/          InDesign（.idml）→ BDF 変換器（テキストは pptx と同じ DrawingML のエンジン。testdata/ にテスト用文書）
 │   ├── drawio/        draw.io → BDF 変換器（testdata/ にテスト用の図、stencils/ に同梱のステンシル）
 │   ├── dxf/           AutoCAD DXF → BDF 変換器（testdata/ にテスト用図面）
@@ -884,7 +904,7 @@ bdf/
 │   ├── musicxml/      MusicXML（.musicxml、.mxl）→ BDF 変換器（testdata/ にテスト用の楽譜と gen.py）
 │   ├── font/          フォントファイル → BDF 変換器（testdata/ にテスト用フォント。test/font/gen.py が作る）
 │   ├── all/           すべての形式を登録する
-│   └── internal/      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木）と
+│   └── internal/      Office 系の変換器で共有する ooxml（OPC パッケージと XML の要素木・トークンの読み手）、ziputil（zip の展開。klauspost の inflate）と
 │                      ooxml/drawingml（DrawingML の図形・テキスト・表・グラフ）、fontset（レイアウト用の
 │                      フォント選択・計測・サブセット埋め込み。draw.io も使う）、canvas（組み立て中の Object。draw.io も使う）、
 │                      metafile（EMF/WMF の再生）、

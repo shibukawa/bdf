@@ -24,4 +24,4 @@ InDesign の文書はページレイアウトです。ページに置いたフ�
 
 `converter/idml` に `-param` オプションはありません。`-pages` でページを選べ、フォントの共通フラグ `-font-dir`、`-fonts`、`-no-subset`、`-no-woff2`、`-no-system-fonts`、`-ignore-fstype` は PowerPoint と同じように効きます。
 
-詳細は [design.md §3.31](../design.md#331-indesign--bdf-変換器converteridmlの構造) を参照してください。
+詳細は [design.md §3.32](../design.md#332-indesign--bdf-変換器converteridmlの構造) を参照してください。

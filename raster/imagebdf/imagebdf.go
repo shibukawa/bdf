@@ -86,6 +86,53 @@ type Renderer struct {
 	pixels  int // of the pictures kept
 	room    int // for the pixels of pictures: maxPicturePixels
 	sc      scratch
+	// free holds the canvases of the drawings before, for the next ones
+	// (see newSurface), smallest first; freeBytes is their memory
+	free      []*surface
+	freeBytes int
+}
+
+// maxFreeSurfaces bounds the memory of the canvases a renderer keeps for
+// its next drawings: a page takes 16 bytes a pixel, and one made for each
+// drawing costs the system as much again in giving the memory back and
+// faulting it in.
+const maxFreeSurfaces = 64 << 20
+
+// newSurface returns a cleared canvas of w × h pixels: one of the drawings
+// before when it has one large enough, else a new one.
+func (r *Renderer) newSurface(w, h int) *surface {
+	n := 4 * w * h
+	if !plain {
+		for i, s := range r.free {
+			if cap(s.pix) >= n {
+				r.free = slices.Delete(r.free, i, i+1)
+				r.freeBytes -= 4 * cap(s.pix)
+				s.w, s.h, s.pix = w, h, s.pix[:n]
+				clear(s.pix)
+				return s
+			}
+		}
+	}
+	return newSurface(w, h)
+}
+
+// release keeps a canvas that a drawing is done with for the next ones,
+// within maxFreeSurfaces; the smallest make room for it.
+func (r *Renderer) release(s *surface) {
+	if s == nil || plain {
+		return
+	}
+	n := 4 * cap(s.pix)
+	if n > maxFreeSurfaces {
+		return
+	}
+	for r.freeBytes+n > maxFreeSurfaces && len(r.free) > 0 {
+		r.freeBytes -= 4 * cap(r.free[0].pix)
+		r.free = slices.Delete(r.free, 0, 1)
+	}
+	i, _ := slices.BinarySearchFunc(r.free, s, func(a, b *surface) int { return cmp.Compare(cap(a.pix), cap(b.pix)) })
+	r.free = slices.Insert(r.free, i, s)
+	r.freeBytes += n
 }
 
 // plain draws without the shortcuts that change no pixel: what lies outside
@@ -419,11 +466,20 @@ func (r *Renderer) canvas(region bdf.Rect, w, h int) (*drawer, matrix) {
 
 // canvasAt starts a w × h image with the device transform m.
 func (r *Renderer) canvasAt(m matrix, w, h int) *drawer {
-	s := newSurface(w, h)
+	s := r.newSurface(w, h)
 	r.drawing++
 	d := &drawer{r: r, ctx: &context{target: s}, limit: max(maxLive*16*w*h, minLive), most: maxReusedInstructions}
 	d.ctx.st = initialState(m, &mask{r: s.bounds()})
 	return d
+}
+
+// finish returns the image drawn on the canvas of a drawer, whose canvas
+// is kept for the next drawing.
+func (d *drawer) finish() *image.RGBA {
+	s := d.ctx.target
+	img := s.toRGBA()
+	d.r.release(s)
+	return img
 }
 
 func (r *Renderer) background() solid {
@@ -449,7 +505,7 @@ func (r *Renderer) drawPage(p *bdf.Page, region bdf.Rect, w, h int) (*image.RGBA
 	for _, l := range p.Layers {
 		d.drawTop(l.Obj, m, clip)
 	}
-	return d.ctx.target.toRGBA(), nil
+	return d.finish(), nil
 }
 
 // drawContinuous draws the strips of a scroll view stacked without gaps,
@@ -482,7 +538,7 @@ func (r *Renderer) drawContinuous(v *bdf.View, region bdf.Rect, w, h int) *image
 			d.drawTop(l.Obj, pm, clip)
 		}
 	}
-	return d.ctx.target.toRGBA()
+	return d.finish()
 }
 
 // SheetSize returns the size of a sheet in units, from its rows and columns.
@@ -512,7 +568,7 @@ func (r *Renderer) drawSheet(v *bdf.View, region bdf.Rect, w, h int) *image.RGBA
 	if !(tile >= 1) || math.IsInf(tile, 0) {
 		// a region would hold any number of them
 		r.warnf("the tiles of a sheet are %g units wide: they are not drawn", tile)
-		return d.ctx.target.toRGBA()
+		return d.finish()
 	}
 	index := func(v float64) int { return int(math.Floor(clampF(v / tile))) }
 	tx0, ty0 := index(float64(region.X)), index(float64(region.Y))
@@ -552,7 +608,7 @@ func (r *Renderer) drawSheet(v *bdf.View, region bdf.Rect, w, h int) *image.RGBA
 		tm := m.translate(float64(p.tx)*tile, float64(p.ty)*tile)
 		d.drawTop(hash, tm, d.clipTo(tm, 0, 0, tile, tile))
 	}
-	return d.ctx.target.toRGBA()
+	return d.finish()
 }
 
 // Limits of the gridlines of a sheet, across and down: a document decides

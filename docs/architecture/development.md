@@ -35,6 +35,7 @@ npm run test:xlsx:gen      # openpyxl
 npm run test:dxf:gen       # ezdxf
 npm run test:kicad:gen
 npm run test:musicxml:gen  # (run from converter/musicxml/testdata)
+npm run test:audio:gen     # ffmpeg, mutagen
 # … one per format; see package.json's scripts for the full list
 ```
 

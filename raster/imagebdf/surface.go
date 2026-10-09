@@ -89,6 +89,30 @@ func (s *surface) fill(cov *mask, sh shader, alpha float32, mode byte, clip *mas
 			crow = cov.row(y, r.Min.X, r.Max.X)
 		}
 		d := s.pix[4*(y*s.w+r.Min.X) : 4*(y*s.w+r.Max.X)]
+		if mode == bdf.BlendSourceOver && krow == nil {
+			// the common case, without asking each pixel what the
+			// clip and the composite operation are
+			if crow == nil {
+				for i := 0; i < n; i++ {
+					src := [4]float32{buf[4*i] * alpha, buf[4*i+1] * alpha, buf[4*i+2] * alpha, buf[4*i+3] * alpha}
+					dst := [4]float32{d[4*i], d[4*i+1], d[4*i+2], d[4*i+3]}
+					ia := 1 - src[3]
+					d[4*i], d[4*i+1], d[4*i+2], d[4*i+3] = src[0]+dst[0]*ia, src[1]+dst[1]*ia, src[2]+dst[2]*ia, src[3]+dst[3]*ia
+				}
+				continue
+			}
+			for i := 0; i < n; i++ {
+				c := crow[i] * alpha
+				if c == 0 {
+					continue
+				}
+				src := [4]float32{buf[4*i] * c, buf[4*i+1] * c, buf[4*i+2] * c, buf[4*i+3] * c}
+				dst := [4]float32{d[4*i], d[4*i+1], d[4*i+2], d[4*i+3]}
+				ia := 1 - src[3]
+				d[4*i], d[4*i+1], d[4*i+2], d[4*i+3] = src[0]+dst[0]*ia, src[1]+dst[1]*ia, src[2]+dst[2]*ia, src[3]+dst[3]*ia
+			}
+			continue
+		}
 		for i := 0; i < n; i++ {
 			c := alpha
 			if crow != nil {

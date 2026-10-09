@@ -22,11 +22,12 @@ The format is detected from the input's content where that's possible; Markdown,
 | Presentations | PowerPoint (.pptx) | [PowerPoint](presentation.md) |
 | Page layout | InDesign (.idml) | [InDesign](layout.md) |
 | Spreadsheets | Excel (.xlsx), CSV/TSV, Apache Parquet | [Excel, CSV, Parquet](spreadsheet.md) |
-| Diagrams | Visio (.vsdx, .vdx), draw.io | [Visio, draw.io](diagram.md) |
+| Diagrams | Visio (.vsdx), draw.io | [Visio, draw.io](diagram.md) |
 | CAD drawings and plots | AutoCAD DXF, Jw_cad (.jww), SXF, CGM, HP-GL/2 | [CAD drawings and plots](cad.md) |
 | Electronics | Gerber/Excellon (circuit boards), KiCad | [Circuit boards, KiCad](electronics.md) |
 | Books | EPUB | [EPUB](ebook.md) |
 | Music | MML, MIDI, MusicXML | [Scores](music.md) |
+| Audio | MP3, AAC (M4A, ADTS), FLAC, Ogg Vorbis and Opus, WAV, AIFF | [Audio files](audio.md) |
 | Fonts | TrueType/OpenType/WOFF/WOFF2 | [Font files](font.md) |
 | Images and design | PNG/JPEG/GIF/WebP/AVIF/BMP/ICO/SVG, Photoshop, TIFF, Windows metafiles | [Images, Photoshop](image.md) |
 
@@ -42,7 +43,7 @@ The format is detected from the input's content where that's possible; Markdown,
 | CSV / TSV | `converter/csv` | .csv, .tsv, .tab |
 | Apache Parquet | `converter/parquet` | .parquet, .parq, .pqt |
 | Word | `converter/docx` | .docx, .docm, .dotx, .dotm |
-| Visio | `converter/visio` | .vsdx, .vsdm, .vstx, .vstm, .vdx, .vtx |
+| Visio | `converter/visio` | .vsdx, .vsdm, .vstx, .vstm |
 | InDesign | `converter/idml` | .idml |
 | draw.io | `converter/drawio` | .drawio, .dio, .drawio.svg, .drawio.png |
 | AutoCAD DXF | `converter/dxf` | .dxf |
@@ -62,5 +63,6 @@ The format is detected from the input's content where that's possible; Markdown,
 | MusicXML | `converter/musicxml` | .musicxml, .mxl |
 | Font file | `converter/font` | .ttf, .otf, .ttc, .otc, .woff, .woff2 |
 | Image | `converter/image` | .png, .jpg, .gif, .webp, .avif, .bmp, .ico, .svg |
+| Audio file | `converter/audio` | .mp3, .m4a, .m4b, .aac, .flac, .ogg, .oga, .opus, .wav, .aif, .aiff |
 
 Each package's `-param` options are listed by `go run ./cmd/bdf generate -h`, and again on the page for that format. For the container format each converter writes into, see the [format specification](../spec.md); for why each converter is built the way it is, [design notes](../design.md).

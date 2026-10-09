@@ -1,12 +1,13 @@
 package kicad
 
 import (
-	"archive/zip"
 	"bytes"
 	"fmt"
 	"io"
 	"path"
 	"strings"
+
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
 
 	"github.com/shibukawa/bdf/converter"
 )
@@ -21,7 +22,7 @@ func Detect(head []byte, r io.ReaderAt, size int64) bool {
 	if !bytes.HasPrefix(head, []byte("PK\x03\x04")) {
 		return false
 	}
-	zr, err := zip.NewReader(r, size)
+	zr, err := ziputil.NewReader(r, size)
 	if err != nil {
 		return false
 	}

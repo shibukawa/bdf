@@ -195,6 +195,9 @@ func isTime(s string) bool {
 
 // isClock recognizes h:mm, h:mm:ss and h:mm:ss.fff (at most parts parts).
 func isClock(s string, parts int) bool {
+	if strings.IndexByte(s, ':') < 0 {
+		return false // most values: no parts to split
+	}
 	if i := strings.IndexByte(s, '.'); i > 0 {
 		if !allDigits(s[i+1:]) {
 			return false
@@ -272,6 +275,16 @@ func validDay(y, m, d int) bool {
 // isNamedMonthDate recognizes 2-Jan-2024, 02-Jan-24, Jan-24, Jan 2, 2024
 // and 2 January 2024.
 func isNamedMonthDate(s string) bool {
+	// a month name and a number: letters and digits, else nothing to split
+	letters, digits := false, false
+	for i := 0; i < len(s) && !(letters && digits); i++ {
+		c := s[i]
+		letters = letters || 'A' <= c && c <= 'Z' || 'a' <= c && c <= 'z'
+		digits = digits || '0' <= c && c <= '9'
+	}
+	if !letters || !digits {
+		return false
+	}
 	f := strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return r == ' ' || r == '-' || r == ',' || r == '/' })
 	if len(f) < 2 || len(f) > 3 {
 		return false

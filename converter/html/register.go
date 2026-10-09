@@ -17,6 +17,7 @@ var Params = []conv.Param{
 	{Name: "font", Usage: "font family of the text (default: an installed sans-serif family)"},
 	{Name: "mono", Usage: "font family of code (default: an installed monospaced family)"},
 	{Name: "remote", Usage: "true (default): fetch images from the network; false: leave them out"},
+	{Name: "private", Usage: "true: fetch images from private and local addresses too (default false: public addresses only)"},
 	{Name: "base", Usage: "URL the document came from: relative links and images resolve against it"},
 }
 
@@ -67,6 +68,13 @@ func FromConverter(o *conv.Options) (*Options, error) {
 			return nil, err
 		}
 		opts.NoRemote = !remote
+	}
+	if o.Param("private") != "" {
+		private, err := o.BoolParam("private")
+		if err != nil {
+			return nil, err
+		}
+		opts.AllowPrivate = private
 	}
 	return opts, nil
 }

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/klauspost/compress/flate"
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
 	_ "github.com/shibukawa/bdf/converter/all" // every input format
@@ -56,6 +57,7 @@ func generate(args []string) {
 	fs.Var(&withFiles, "with", "a file the input refers to, such as a sheet of a hierarchical KiCad schematic (repeatable; the files beside the input are read too)")
 	passwordFile := fs.String("password-file", "", "read the password of an encrypted input from this file (- for the standard input; default: $"+passwordEnv+")")
 	encrypt := fs.String("encrypt", "auto", "encrypt the output with the password: auto (when the input needs it), always or never")
+	compression := fs.String("compression", "normal", "deflate of the parts: normal (level 6), best (level 9: a few percent smaller, four times the time) or fast (level 1)")
 	preview := addPreviewFlags(fs)
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: bdf generate [flags] <input> <out.bdf | outdir/>\n  an output path ending with / writes the split form\n  a password-protected input is converted with its password and the output encrypted with it\n  -thumbnail and -text write previews next to it, but not of an encrypted output unless -allow-plaintext")
@@ -180,6 +182,15 @@ func generate(args []string) {
 	}
 	check(err)
 	doc, warnings := res.Doc, res.Warnings
+	switch *compression {
+	case "normal":
+	case "best":
+		doc.CompressionLevel = flate.BestCompression
+	case "fast":
+		doc.CompressionLevel = flate.BestSpeed
+	default:
+		usageError("-compression must be normal, best or fast")
+	}
 	for _, name := range bdf.DCTerms {
 		if v := *dc.Field(name); v != nil {
 			*doc.Meta.DC.Field(name) = v

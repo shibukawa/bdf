@@ -319,7 +319,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 | キー | 意味 |
 |---|---|
 | `dc` | 文書そのものの記述。Dublin Core（下記） |
-| `source` | 変換元の形式（`pdf` / `ai` / `psd` / `pptx` / `xlsx` / `csv` / `parquet` / `vsdx` / `vdx` / `drawio` / `dxf` / `jww` / `sfc` / `p21` / `cgm` / `hpgl` / `gerber` / `kicad` / `emf` / `wmf` / `tiff` / `png` / `jpeg` / `gif` / `webp` / `avif` / `bmp` / `ico` / `svg` / `html` / `markdown` / `epub` / `mml` / `midi` / `musicxml` / `font` / `fixture` …）。Dublin Core の `source` とは別物 |
+| `source` | 変換元の形式（`pdf` / `ai` / `psd` / `pptx` / `xlsx` / `csv` / `parquet` / `vsdx` / `drawio` / `dxf` / `jww` / `sfc` / `p21` / `cgm` / `hpgl` / `gerber` / `kicad` / `emf` / `wmf` / `tiff` / `png` / `jpeg` / `gif` / `webp` / `avif` / `bmp` / `ico` / `svg` / `html` / `markdown` / `epub` / `mml` / `midi` / `musicxml` / `font` / `mp3` / `m4a` / `aac` / `flac` / `ogg` / `wav` / `aiff` / `fixture` …）。Dublin Core の `source` とは別物 |
 | `generator` | 書き出したソフトウェア（例 `bdf-go/0.1`） |
 
 `meta.dc` は [Dublin Core Metadata Element Set 1.1](https://www.dublincore.org/specifications/dublin-core/dces/) の 15 要素に、[DCMI Metadata Terms](https://www.dublincore.org/specifications/dublin-core/dcmi-terms/) の `created` と `modified` を加えたもの。キーは要素名（名前空間接頭辞なし）。
@@ -387,6 +387,22 @@ PDF と TIFF の対応は、XMP が文書情報辞書と TIFF のタグを写す
 | `language` | `dc:language` | – | – | SVG のルートの `xml:lang`（なければ `lang`） |
 | `created` | `dcterms:created`、`photoshop:DateCreated`、`exif:DateTimeOriginal`（なければ `xmp:CreateDate`、`exif:DateTimeDigitized`） | `DateTimeOriginal`（なければ `DateTimeDigitized`）と `OffsetTime*` | Date Created と Time Created | PNG の `Creation Time` |
 | `modified` | `xmp:ModifyDate`、`dcterms:modified`（なければ `tiff:DateTime`） | `DateTime` と `OffsetTime` | – | PNG の `tIME` |
+
+音声ファイル（MP3、M4A、AAC、FLAC、Ogg、WAV、AIFF）はタグを次のように写す（MP4 の `uuid` ボックスの XMP があれば、画像と同じくそれが先）。`type` は常に `Sound`、`format` はメディアタイプ（`audio/mpeg` など）。1 つのフレームやフィールドに入った複数の値（ID3v2.4 の NUL 区切り、セミコロン区切り）は複数の値にする。
+
+| 要素 | ID3v2 | MP4（iTunes の `ilst`） | Vorbis コメント（FLAC、Ogg） | RIFF INFO（WAV）、AIFF |
+|---|---|---|---|---|
+| `title` | `TIT2` | `©nam` | `TITLE` | `INAM`、`NAME` |
+| `creator` | `TPE1` | `©ART` | `ARTIST` | `IART`、`AUTH` |
+| `contributor` | `TPE2`（アルバムアーティスト）、`TCOM`、`TEXT`、`TPE3`、`TPE4` | `aART`、`©wrt` | `ALBUMARTIST`、`COMPOSER`、`LYRICIST`、`CONDUCTOR`、`ARRANGER`、`REMIXER` | `IMUS`、`IWRI` |
+| `subject` | `TCON`（ID3v1 の番号は名前に） | `©gen`、`gnre` | `GENRE` | `IGNR` |
+| `description` | `COMM`（iTunes などプログラム自身のものは除く） | `©cmt`、`desc` | `COMMENT`、`DESCRIPTION` | `ICMT`、`bext` の説明、`ANNO` |
+| `publisher` | `TPUB` | `----:…:LABEL` | `PUBLISHER`、`LABEL`、`ORGANIZATION` | – |
+| `date` | `TDRC`、または `TYER` + `TDAT` + `TIME`、または `TDRL` | `©day` | `DATE` | `ICRD`、`bext` の作成日 |
+| `identifier` | `TSRC`（ISRC） | `----:…:ISRC` | `ISRC` | – |
+| `relation` | `TALB`（アルバム） | `©alb` | `ALBUM` | `IPRD` |
+| `language` | `TLAN`（ISO 639-2 を BCP 47 に直す） | トラックの `mdhd` | `LANGUAGE` | `ILNG` |
+| `rights` | `TCOP` | `cprt` | `COPYRIGHT`、`LICENSE` | `ICOP`、`(c) ` |
 
 `bdf generate` の `-dc 要素名=値`（繰り返し可）で要素を上書きでき、`-dc 要素名=` でその要素を消せる。
 

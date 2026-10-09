@@ -4,7 +4,7 @@ This project takes two different paths to conversion, but both produce the same 
 
 ```mermaid
 flowchart TB
-    SRC["PDF · Excel · CSV · Parquet · PowerPoint · Word · Visio · draw.io · DXF · Jw_cad · SXF · CGM · HP-GL/2 · Gerber · KiCad · TIFF<br/>Illustrator · Photoshop · HTML · Markdown · EPUB · MML · MIDI · MusicXML · fonts · images"]
+    SRC["PDF · Excel · CSV · Parquet · PowerPoint · Word · Visio · draw.io · DXF · Jw_cad · SXF · CGM · HP-GL/2 · Gerber · KiCad · TIFF<br/>Illustrator · Photoshop · HTML · Markdown · EPUB · MML · MIDI · MusicXML · fonts · images · audio"]
 
     subgraph SERVER["Go server process"]
         direction TB

@@ -7,9 +7,9 @@
 // converter/csv, converter/parquet, converter/docx, converter/visio,
 // converter/idml, converter/drawio, converter/dxf, converter/jww, converter/sxf,
 // converter/cgm, converter/hpgl, converter/gerber, converter/emf,
-// converter/tiff, converter/image, converter/html, converter/markdown,
-// converter/epub, converter/mml, converter/midi, converter/musicxml,
-// converter/font).
+// converter/tiff, converter/image, converter/audio, converter/html,
+// converter/markdown, converter/epub, converter/mml, converter/midi,
+// converter/musicxml, converter/font).
 // Each registers its format when it is imported, so a program supports the
 // formats whose packages it links in:
 //
@@ -19,8 +19,8 @@
 // What the Office converters share is in converter/internal: ooxml (OPC
 // packages and their XML) with ooxml/drawingml (shapes, text, tables,
 // charts), fontset (fonts for text layout and their embedding), canvas
-// (objects under construction), metafile (EMF/WMF pictures) and linebreak
-// (line breaking rules); the Word, HTML, Markdown and EPUB converters share
+// (objects under construction), metafile (EMF/WMF pictures), isobmff (the boxes of MP4 and HEIF files:
+// AVIF images, M4A audio) and linebreak (line breaking rules); the Word, HTML, Markdown and EPUB converters share
 // the layout engine wordproc (and the last three webdoc, which parses HTML
 // and XHTML), the CAD converters and HP-GL/2 share cad (drawings plotted
 // onto pages), and the music converters share music (scores engraved in

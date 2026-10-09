@@ -16,7 +16,6 @@
 package gerber
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -25,6 +24,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
 
 	"github.com/shibukawa/bdf"
 )
@@ -185,7 +186,7 @@ const (
 // unzip returns the files of a zip archive (not its directories, nor the
 // resource forks and hidden files of macOS).
 func (c *conv) unzip(data []byte) ([]input, error) {
-	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	zr, err := ziputil.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return nil, err
 	}

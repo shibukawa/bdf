@@ -132,29 +132,24 @@ func TestConvertShapes(t *testing.T) {
 	}
 }
 
-// TestVDXMatchesVSDX converts the same drawing in both formats.
-func TestVDXMatchesVSDX(t *testing.T) {
-	a, ra := convert(t, "flow.vsdx")
-	b, rb := convert(t, "flow.vdx")
-	if len(a.Warnings)+len(b.Warnings) != 0 {
-		t.Errorf("warnings: %v %v", a.Warnings, b.Warnings)
+// TestFlow converts the flowchart: its master shapes, the background page
+// and the hidden layer.
+func TestFlow(t *testing.T) {
+	res, r := convert(t, "flow.vsdx")
+	if len(res.Warnings) != 0 {
+		t.Errorf("warnings: %v", res.Warnings)
 	}
-	if rb.Manifest.Meta.Source != "vdx" || rb.Manifest.Meta.DC.Title.First() != "Visio flowchart" {
-		t.Errorf("vdx meta = %+v", rb.Manifest.Meta)
+	if r.Manifest.Meta.Source != "vsdx" || r.Manifest.Meta.DC.Title.First() != "Visio flowchart" {
+		t.Errorf("meta = %+v", r.Manifest.Meta)
 	}
-	pa, pb := ra.Manifest.Views[0].Pages, rb.Manifest.Views[0].Pages
-	if len(pa) != 1 || len(pb) != 1 {
-		t.Fatalf("pages %d and %d", len(pa), len(pb))
+	pages := r.Manifest.Views[0].Pages
+	if len(pages) != 1 {
+		t.Fatalf("%d pages, want 1", len(pages))
 	}
-	if len(pa[0].Layers) != 2 || len(pb[0].Layers) != 2 {
-		t.Fatalf("layers %+v and %+v", pa[0].Layers, pb[0].Layers)
+	if len(pages[0].Layers) != 2 {
+		t.Fatalf("layers %+v", pages[0].Layers)
 	}
-	for i := range pa[0].Layers {
-		if pa[0].Layers[i] != pb[0].Layers[i] {
-			t.Errorf("layer %d differs: %v and %v", i, pa[0].Layers[i], pb[0].Layers[i])
-		}
-	}
-	text := plainText(t, rb)
+	text := plainText(t, r)
 	for _, want := range []string{"Start", "Collect input", "Valid?", "Yes", "No", "Report error", "Flowchart test drawing"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text %q missing", want)
@@ -420,7 +415,7 @@ func TestEvalSize(t *testing.T) {
 }
 
 func TestDeterministic(t *testing.T) {
-	for _, name := range []string{"shapes.vsdx", "flow.vdx"} {
+	for _, name := range []string{"shapes.vsdx", "flow.vsdx"} {
 		var out [2][]byte
 		for i := range out {
 			res, err := ConvertFile(filepath.Join("testdata", name), testOptions())

@@ -9,6 +9,7 @@ package all
 
 import (
 	_ "github.com/shibukawa/bdf/converter/ai"       // Illustrator
+	_ "github.com/shibukawa/bdf/converter/audio"    // audio files (MP3, M4A, FLAC, Ogg, WAV, AIFF): the cover and the tags
 	_ "github.com/shibukawa/bdf/converter/cgm"      // CGM
 	_ "github.com/shibukawa/bdf/converter/csv"      // CSV and TSV
 	_ "github.com/shibukawa/bdf/converter/docx"     // Word

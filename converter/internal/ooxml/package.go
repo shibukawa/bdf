@@ -7,12 +7,16 @@ package ooxml
 import (
 	"archive/zip"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"path"
 	"strings"
 
+	"github.com/shibukawa/bdf/converter/internal/ziputil"
+
 	"github.com/shibukawa/bdf/internal/xmltree"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 )
 
 // maxPartSize bounds the decompressed size of one package part.
@@ -33,7 +37,22 @@ type Package struct {
 	files map[string]*zip.File // by lower-cased part name without leading slash
 	xmls  map[string]*Node
 	rels  map[string]map[string]Rel
+	// elements is how many elements the trees of XML may still have
+	// together (maxLiveElements for those of a new package), and counts
+	// those of each tree kept, which DiscardXML gives back
+	elements int
+	counts   map[string]int
+	// reader reads the parts XML makes trees of, one after another, with
+	// the buffer it grew for the largest token so far
+	reader *xmlro.Reader
 }
+
+// maxLiveElements bounds the elements of the trees a package keeps at a
+// time (XML, until DiscardXML): an element takes a few hundred bytes, so
+// the trees of a package of a megabyte could otherwise take any amount of
+// memory. The parts that are streamed (the rows of a sheet, the body of a
+// document) read one element at a time, within xmltree.MaxElements each.
+var maxLiveElements = 16 << 20
 
 // Rel is a relationship with its target resolved to a part name (or kept
 // as is when external).
@@ -44,7 +63,7 @@ type Rel struct {
 
 // Open reads the zip directory of a package.
 func Open(r io.ReaderAt, size int64) (*Package, error) {
-	zr, err := zip.NewReader(r, size)
+	zr, err := ziputil.NewReader(r, size)
 	if err != nil {
 		return nil, err
 	}
@@ -153,21 +172,50 @@ func (p *Package) XML(name string) (*Node, error) {
 		return nil, err
 	}
 	defer rc.Close()
-	n, err := ParsePickingReader(rc, p.choice())
+	if p.counts == nil {
+		p.counts, p.elements = map[string]int{}, maxLiveElements
+	}
+	budget := p.elements
+	if p.reader == nil {
+		p.reader = xmltree.NewReader(rc)
+	} else {
+		p.reader.Reset(rc)
+	}
+	n, err := xmltree.ParseFrom(p.reader, p.choice(), &budget)
 	if err != nil {
+		if errors.Is(err, xmltree.ErrTooManyElements) {
+			err = fmt.Errorf("%w: the trees of the parts take more than %d together", err, maxLiveElements)
+		}
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 	if _, err := io.Copy(io.Discard, rc); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
+	p.counts[key], p.elements = p.elements-budget, budget
 	p.xmls[key] = n
 	return n, nil
 }
 
 // ReadElement reads one streamed element with this package's markup
-// compatibility choices, as XML does for a whole part.
+// compatibility choices, as XML does for a whole part, from an
+// encoding/xml decoder; ReadFrom reads one from a reader of NewReader.
 func (p *Package) ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
 	return xmltree.ReadElementPicking(d, start, p.choice())
+}
+
+// NewReader returns a reader of the XML tokens of a part opened with
+// OpenPart, for the converters that stream the bulk of a part (the rows of
+// a sheet, the strings of the shared string table) and keep the elements
+// they want as trees (ReadFrom). It allocates nothing for the tokens it
+// passes over.
+func NewReader(src io.Reader) *xmlro.Reader { return xmltree.NewReader(src) }
+
+// ReadFrom reads the element the reader is on into a tree with this
+// package's markup compatibility choices, within xmltree.MaxElements, and
+// leaves the reader on the element's EndElement.
+func (p *Package) ReadFrom(r *xmlro.Reader) (*Node, error) {
+	budget := xmltree.MaxElements
+	return xmltree.ReadFrom(r, p.choice(), &budget)
 }
 
 func (p *Package) choice() func(*Node) bool {
@@ -181,10 +229,18 @@ func (p *Package) choice() func(*Node) bool {
 
 // DiscardXML releases a cached tree after its caller has built a more compact
 // representation. Nodes still referenced by that representation stay valid.
+// The elements of the tree are given back to what the trees may have
+// together (see maxLiveElements).
 func (p *Package) DiscardXML(name string) {
-	if p != nil {
-		delete(p.xmls, strings.ToLower(strings.TrimPrefix(name, "/")))
+	if p == nil {
+		return
 	}
+	key := strings.ToLower(strings.TrimPrefix(name, "/"))
+	if _, ok := p.xmls[key]; ok {
+		p.elements += p.counts[key]
+		delete(p.counts, key)
+	}
+	delete(p.xmls, key)
 }
 
 // Rels returns the relationships of a part by ID ("" for the package's

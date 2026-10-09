@@ -35,6 +35,7 @@ npm run test:xlsx:gen      # openpyxl
 npm run test:dxf:gen       # ezdxf
 npm run test:kicad:gen
 npm run test:musicxml:gen  # (converter/musicxml/testdata から実行)
+npm run test:audio:gen     # ffmpeg、mutagen
 # … 形式ごとに 1 つ。全一覧は package.json の scripts を参照
 ```
 

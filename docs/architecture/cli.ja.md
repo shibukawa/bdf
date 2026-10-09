@@ -97,5 +97,6 @@ bdf demo out/         # その分割形式
 | `-no-woff2` | 埋め込みフォントを WOFF2 ではなく TrueType/OpenType のまま格納 |
 | `-no-subset` | 使う字形だけでなくフォントファイル全体を埋め込む |
 | `-ignore-fstype` | OS/2 の `fsType` が埋め込みやサブセット化を禁じるフォントも埋め込む（権利がある場合のみ） |
+| `-compression normal \| best \| fast` | 部品の deflate の強さ: `normal`（レベル 6。既定）、`best`（レベル 9。数% 小さくなるが圧縮に 4 倍かかる）、`fast`（レベル 1） |
 
 対応する Go の呼び出しは [API 一覧](../api.md)を、`bdf generate` と `bdf demo` で `testdata/` のフィクスチャを再生成する方法は[ビルドとテスト](development.ja.md)を参照してください。

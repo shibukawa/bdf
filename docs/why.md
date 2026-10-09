@@ -28,7 +28,7 @@ BDF's converters are Go packages that use no cgo and no external program, and [t
 
 ## Only the converters you need
 
-There are many formats, but you don't have to carry them all. Each converter is a Go package of its own that registers its format when it is imported. A service that handles only PDF and Office documents imports `converter/pdf`, `converter/docx`, `converter/xlsx` and `converter/pptx`, and only those are linked into its binary (`converter/all` brings in every format). The WebAssembly modules for the browser are split by build tags the same way — PDF; the Office, CAD, KiCad, music and font formats; HTML, Markdown and EPUB; images — and a page fetches only the module the file it opens needs.
+There are many formats, but you don't have to carry them all. Each converter is a Go package of its own that registers its format when it is imported. A service that handles only PDF and Office documents imports `converter/pdf`, `converter/docx`, `converter/xlsx` and `converter/pptx`, and only those are linked into its binary (`converter/all` brings in every format). The WebAssembly modules for the browser are split by build tags the same way — PDF; the Office, CAD, KiCad, music and font formats; HTML, Markdown and EPUB; images and audio files — and a page fetches only the module the file it opens needs.
 
 ## In the shape of the content
 
@@ -53,11 +53,12 @@ Formats with much in common share a row. Only the main extensions are listed; ev
 | **Slides**<br>[PowerPoint](formats/presentation.md)<br><small>.pptx</small> | Pages | Masters and layouts, tables, charts, SmartArt, formulas |
 | **Tables**<br>[Excel, CSV/TSV, Apache Parquet](formats/spreadsheet.md)<br><small>.xlsx, .csv, .tsv, .parquet</small> | Sheets (an endless plane), sheets as tabs | Frozen panes, row and column headers, conditional formatting; cells select and paste into a spreadsheet as cells |
 | **Page layout**<br>[InDesign](formats/layout.md)<br><small>.idml</small> | Pages; a document opens as a spread in its binding direction | Stories flow through threaded frames across pages, master pages, Japanese vertical text; placed images given with the document |
-| **Diagrams**<br>[Visio, draw.io](formats/diagram.md)<br><small>.vsdx, .vdx, .drawio (and SVG, PNG exports with the diagram embedded)</small> | Pages, pages as tabs | Background pages and layers, links between pages, AWS and other icon sets |
+| **Diagrams**<br>[Visio, draw.io](formats/diagram.md)<br><small>.vsdx, .drawio (and SVG, PNG exports with the diagram embedded)</small> | Pages, pages as tabs | Background pages and layers, links between pages, AWS and other icon sets |
 | **CAD drawings and plots**<br>[AutoCAD DXF, Jw_cad, SXF, CGM, HP-GL/2](formats/cad.md)<br><small>.dxf, .jww, .p21, .sfc, .cgm, .plt</small> | Pages; model space and layouts as tabs | Layers, linetypes and lineweights resolved the way a plotter draws them |
 | **Electronics**<br>[KiCad, Gerber and Excellon](formats/electronics.md)<br><small>.kicad_sch, .kicad_pcb, .kicad_pro, .gbr, .drl, or those zipped</small> | Pages; schematic sheets, the board's front, back and each layer as tabs | Boards drawn as they look — substrate, copper, mask, silkscreen, holes; links between hierarchical sheets |
 | **Design and images**<br>[Illustrator](formats/pdf.md), [Photoshop, TIFF, Windows metafiles, images](formats/image.md)<br><small>.ai, .psd, .psb, .tif, .emf, .wmf, .png, .jpg, .svg and more</small> | Pages, one per artboard | Images stored as they are, never decoded; SVG stays sharp at any zoom |
 | **Scores**<br>[MML, MIDI, MusicXML](formats/music.md)<br><small>.mml, .mid, .kar, .musicxml, .mxl</small> | Pages (staff notation) | The viewer plays them, with a cursor on the system playing |
+| **Audio**<br>[MP3, M4A, FLAC, Ogg, WAV, AIFF](formats/audio.md)<br><small>.mp3, .m4a, .aac, .flac, .ogg, .opus, .wav, .aiff</small> | One page: a card | The cover art, the tags, the lyrics and chapters; the thumbnail is the cover, the tags are the metadata |
 | **Fonts**<br>[TrueType, OpenType, WOFF](formats/font.md)<br><small>.ttf, .otf, .ttc, .woff, .woff2</small> | Scroll; overview, characters, glyphs and features as tabs | Every character and glyph, and what each OpenType feature actually does |
 
 Password-protected Office documents and PDFs convert too, and the output is encrypted with the same password ([Passwords and protected mode](architecture/protection.md)). Every format is drawn by the same renderer, so the page turning, search and reading aloud below work the same way for all of them.

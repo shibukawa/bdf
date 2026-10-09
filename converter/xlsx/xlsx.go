@@ -29,6 +29,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
 	"github.com/shibukawa/bdf/imgconv"
 	"github.com/shibukawa/bdf/internal/fontdb"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 )
 
 // Options controls the conversion.
@@ -367,36 +368,31 @@ func (c *converter) loadSharedStrings() {
 		return
 	}
 	defer rc.Close()
-	d := xml.NewDecoder(rc)
-	d.Strict = false
-	depth := 0
+	// the strings are read a tree at a time; a table that cannot be read
+	// whole is not used at all, so that no cell shows another's string
+	xr := ooxml.NewReader(rc)
+	root, err := rootElement(xr)
+	if err != nil {
+		return
+	}
 	for {
-		tok, err := d.Token()
-		if err == io.EOF {
-			if depth != 0 {
-				c.sst = nil
-			}
-			return
-		}
+		ok, err := xr.NextChild(root)
 		if err != nil {
 			c.sst = nil
 			return
 		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			depth++
-			if depth == 2 && t.Name.Local == "si" {
-				n, err := c.pkg.ReadElement(d, t)
-				if err != nil {
-					c.sst = nil
-					return
-				}
-				c.sst = append(c.sst, c.readRich(n))
-				depth--
-			}
-		case xml.EndElement:
-			depth--
+		if !ok {
+			return
 		}
+		if !xmlro.Equal(xr.LocalName(), "si") {
+			continue
+		}
+		n, err := c.pkg.ReadFrom(xr)
+		if err != nil {
+			c.sst = nil
+			return
+		}
+		c.sst = append(c.sst, c.readRich(n))
 	}
 }
 

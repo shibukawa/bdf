@@ -22,11 +22,12 @@ res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" で�
 | プレゼンテーション | PowerPoint（.pptx） | [PowerPoint](presentation.ja.md) |
 | ページレイアウト | InDesign（.idml） | [InDesign](layout.ja.md) |
 | 表計算 | Excel（.xlsx）、CSV・TSV、Apache Parquet | [Excel・CSV・Parquet](spreadsheet.ja.md) |
-| 図 | Visio（.vsdx、.vdx）、draw.io | [Visio・draw.io](diagram.ja.md) |
+| 図 | Visio（.vsdx）、draw.io | [Visio・draw.io](diagram.ja.md) |
 | CAD の図面とプロット | AutoCAD DXF、Jw_cad（.jww）、SXF、CGM、HP-GL/2 | [CAD の図面とプロット](cad.ja.md) |
 | 電子回路 | Gerber・Excellon（プリント基板）、KiCad | [プリント基板・KiCad](electronics.ja.md) |
 | 本 | EPUB | [EPUB](ebook.ja.md) |
 | 音楽 | MML、MIDI、MusicXML | [楽譜](music.ja.md) |
+| 音声 | MP3、AAC（M4A、ADTS）、FLAC、Ogg Vorbis・Opus、WAV、AIFF | [音声ファイル](audio.ja.md) |
 | フォント | TrueType・OpenType・WOFF・WOFF2 | [フォントファイル](font.ja.md) |
 | 画像・デザイン | PNG・JPEG・GIF・WebP・AVIF・BMP・ICO・SVG、Photoshop、TIFF、Windows メタファイル | [画像・Photoshop](image.ja.md) |
 
@@ -42,7 +43,7 @@ res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" で�
 | CSV・TSV | `converter/csv` | .csv, .tsv, .tab |
 | Apache Parquet | `converter/parquet` | .parquet, .parq, .pqt |
 | Word | `converter/docx` | .docx, .docm, .dotx, .dotm |
-| Visio | `converter/visio` | .vsdx, .vsdm, .vstx, .vstm, .vdx, .vtx |
+| Visio | `converter/visio` | .vsdx, .vsdm, .vstx, .vstm |
 | InDesign | `converter/idml` | .idml |
 | draw.io | `converter/drawio` | .drawio, .dio, .drawio.svg, .drawio.png |
 | AutoCAD DXF | `converter/dxf` | .dxf |
@@ -62,5 +63,6 @@ res, err := converter.ConvertFile("in.pdf", "", &converter.Options{}) // "" で�
 | MusicXML | `converter/musicxml` | .musicxml, .mxl |
 | フォントファイル | `converter/font` | .ttf, .otf, .ttc, .otc, .woff, .woff2 |
 | 画像 | `converter/image` | .png, .jpg, .gif, .webp, .avif, .bmp, .ico, .svg |
+| 音声ファイル | `converter/audio` | .mp3, .m4a, .m4b, .aac, .flac, .ogg, .oga, .opus, .wav, .aif, .aiff |
 
 各パッケージの `-param` オプションは `go run ./cmd/bdf generate -h` の一覧と、それぞれの形式のページに載せています。各変換器が書き出すコンテナ形式は[フォーマット仕様](../spec.md)を、その作りになっている理由は[設計メモ](../design.md)を参照してください。

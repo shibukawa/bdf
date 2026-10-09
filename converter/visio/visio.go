@@ -1,6 +1,6 @@
 // Package visio converts Visio drawings into BDF documents: the packages of
-// Visio 2013 and later (.vsdx, .vsdm, .vstx, .vstm) and the XML drawings of
-// Visio 2003 to 2010 (.vdx, .vtx). The binary .vsd format is not read.
+// Visio 2013 and later (.vsdx, .vsdm, .vstx, .vstm). The XML drawings of
+// Visio 2003 to 2010 (.vdx, .vtx) and the binary .vsd format are not read.
 //
 // Each foreground page becomes a page of the size of its paper, with its
 // background pages as background layers (identical on every page that
@@ -14,7 +14,6 @@
 package visio
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
@@ -100,10 +99,7 @@ func ConvertFile(path string, opts *Options) (*Result, error) {
 	return Convert(f, st.Size(), opts)
 }
 
-// maxXMLSize bounds the XML drawings read.
-const maxXMLSize = 1 << 30
-
-// Convert converts a drawing read from r: a package, or an XML drawing.
+// Convert converts a drawing package read from r.
 func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if opts == nil {
 		opts = &Options{}
@@ -111,31 +107,14 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	c := &converter{opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{}, pageNum: map[int]int{},
 		patterns: map[any]bdf.Hash{}, pictures: map[string]*picture{}}
 	warnKey := func(key, msg string) { c.warnOnce(key, "%s", msg) }
-	head := make([]byte, 4)
-	r.ReadAt(head, 0)
-	var err error
-	if bytes.Equal(head, []byte("PK\x03\x04")) {
-		p, err := ooxml.Open(r, size)
-		if err != nil {
-			return nil, fmt.Errorf("visio: %w", err)
-		}
-		if c.d, err = readVSDX(p, warnKey); err != nil {
-			return nil, fmt.Errorf("visio: %w", err)
-		}
-		c.doc.Meta.Source = "vsdx"
-	} else {
-		if size > maxXMLSize {
-			return nil, fmt.Errorf("visio: the drawing is larger than %d bytes", maxXMLSize)
-		}
-		data := make([]byte, size)
-		if _, err := r.ReadAt(data, 0); err != nil && err != io.EOF {
-			return nil, fmt.Errorf("visio: %w", err)
-		}
-		if c.d, err = readVDX(data, warnKey); err != nil {
-			return nil, fmt.Errorf("visio: %w", err)
-		}
-		c.doc.Meta.Source = "vdx"
+	p, err := ooxml.Open(r, size)
+	if err != nil {
+		return nil, fmt.Errorf("visio: %w", err)
 	}
+	if c.d, err = readVSDX(p, warnKey); err != nil {
+		return nil, fmt.Errorf("visio: %w", err)
+	}
+	c.doc.Meta.Source = "vsdx"
 	d := c.d
 	warn := func(msg string) { c.warnf("%s", msg) }
 	db := fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
