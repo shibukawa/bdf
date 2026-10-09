@@ -20,6 +20,7 @@ The format is detected from the input's content where that's possible; Markdown,
 | Documents | PDF, Illustrator (.ai) | [PDF, Illustrator](pdf.md) |
 | Word processing | Word (.docx), HTML, Markdown | [Word, HTML, Markdown](document.md) |
 | Presentations | PowerPoint (.pptx) | [PowerPoint](presentation.md) |
+| Page layout | InDesign (.idml) | [InDesign](layout.md) |
 | Spreadsheets | Excel (.xlsx), CSV/TSV, Apache Parquet | [Excel, CSV, Parquet](spreadsheet.md) |
 | Diagrams | Visio (.vsdx), draw.io | [Visio, draw.io](diagram.md) |
 | CAD drawings and plots | AutoCAD DXF, Jw_cad (.jww), SXF, CGM, HP-GL/2 | [CAD drawings and plots](cad.md) |
@@ -43,6 +44,7 @@ The format is detected from the input's content where that's possible; Markdown,
 | Apache Parquet | `converter/parquet` | .parquet, .parq, .pqt |
 | Word | `converter/docx` | .docx, .docm, .dotx, .dotm |
 | Visio | `converter/visio` | .vsdx, .vsdm, .vstx, .vstm |
+| InDesign | `converter/idml` | .idml |
 | draw.io | `converter/drawio` | .drawio, .dio, .drawio.svg, .drawio.png |
 | AutoCAD DXF | `converter/dxf` | .dxf |
 | Jw_cad | `converter/jww` | .jww |

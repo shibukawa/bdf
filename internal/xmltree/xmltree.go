@@ -37,6 +37,16 @@ type textRun struct {
 	text   string
 }
 
+// addText appends character data to the element's content.
+func (n *Node) addText(s string) {
+	n.Text += s
+	if k := len(n.runs) - 1; k >= 0 && n.runs[k].before == len(n.Kids) {
+		n.runs[k].text += s
+	} else {
+		n.runs = append(n.runs, textRun{len(n.Kids), s})
+	}
+}
+
 // Segment is a piece of the content of an element: a child element or
 // character data between child elements. Exactly one of Elem and Text is
 // set.
@@ -205,13 +215,14 @@ func ReadFrom(r *xmlro.Reader, pick func(choice *Node) bool, budget *int) (*Node
 			} else {
 				text = append(text[:0], r.Text()...) // a CDATA section holds none
 			}
-			s := string(text)
-			n := stack[len(stack)-1]
-			n.Text += s
-			if k := len(n.runs) - 1; k >= 0 && n.runs[k].before == len(n.Kids) {
-				n.runs[k].text += s
-			} else {
-				n.runs = append(n.runs, textRun{len(n.Kids), s})
+			stack[len(stack)-1].addText(string(text))
+		case xmlro.ProcInst:
+			// InDesign writes the characters XML cannot hold (its page
+			// number marker U+0018 and the like) as <?ACE 18?>
+			if string(r.Name()) == "ACE" {
+				if code, err := strconv.ParseUint(strings.TrimSpace(string(r.Text())), 16, 32); err == nil && code < 0x110000 {
+					stack[len(stack)-1].addText(string(rune(code)))
+				}
 			}
 		case xmlro.EOF:
 			return nil, io.ErrUnexpectedEOF
@@ -424,12 +435,14 @@ func ReadElementCounting(d *xml.Decoder, start xml.StartElement, pick func(choic
 			}
 			stack = stack[:len(stack)-1]
 		case xml.CharData:
-			n := stack[len(stack)-1]
-			n.Text += string(t)
-			if k := len(n.runs) - 1; k >= 0 && n.runs[k].before == len(n.Kids) {
-				n.runs[k].text += string(t)
-			} else {
-				n.runs = append(n.runs, textRun{len(n.Kids), string(t)})
+			stack[len(stack)-1].addText(string(t))
+		case xml.ProcInst:
+			// InDesign writes the characters XML cannot hold (its page
+			// number marker U+0018 and the like) as <?ACE 18?>
+			if t.Target == "ACE" {
+				if code, err := strconv.ParseUint(strings.TrimSpace(string(t.Inst)), 16, 32); err == nil && code < 0x110000 {
+					stack[len(stack)-1].addText(string(rune(code)))
+				}
 			}
 		}
 	}

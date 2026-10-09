@@ -39,3 +39,5 @@ The files come from the Debian packages `fonts-liberation`, `fonts-crosextra-car
 ## Fonts of the tests
 
 The test fonts in the repository — subsets of M PLUS 1p, STIX Two Math, STIX Two Text and DejaVu Sans — sit in `testdata` directories with their licenses.
+
+The InDesign documents the IDML converter is tested on (`converter/idml/testdata/simpleidml`) are the regression test files of [SimpleIDML](https://github.com/Starou/SimpleIDML), copyright (c) 2012 Stanislas Guerra, under the BSD 3-clause license kept beside them.

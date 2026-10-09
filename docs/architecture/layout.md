@@ -29,6 +29,7 @@
 | `converter/parquet` | Apache Parquet (drawn by `converter/xlsx`) |
 | `converter/docx` | Word (.docx) |
 | `converter/visio` | Visio (.vsdx) |
+| `converter/idml` | InDesign (.idml) |
 | `converter/drawio` | draw.io (.drawio / .drawio.svg / .drawio.png) |
 | `converter/dxf` | AutoCAD DXF |
 | `converter/jww` | Jw_cad (.jww) |

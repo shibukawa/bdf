@@ -131,16 +131,25 @@ func (s *Drawing) layoutText(tf *textFrame, x, y, w, h float64, m canvas.Matrix)
 		lnReduce = af.AttrPct("lnSpcReduction", 0)
 	}
 	paras := s.paragraphs(tf, fontScale, lnReduce)
-	hasText := false
-	for _, p := range paras {
-		if p.hasText {
-			hasText = true
-			break
-		}
-	}
-	if !hasText {
+	if !anyText(paras) {
 		return nil
 	}
+	return s.layoutBlock(tf, paras, x, y, w, h, m, 0)
+}
+
+func anyText(paras []*para) bool {
+	for _, p := range paras {
+		if p.hasText {
+			return true
+		}
+	}
+	return false
+}
+
+// layoutBlock lays paragraphs out in the box of a text frame (see
+// layoutBodyLimit for limit).
+func (s *Drawing) layoutBlock(tf *textFrame, paras []*para, x, y, w, h float64, m canvas.Matrix, limit float64) *textBlock {
+	bp := tf.bodyPrs
 	b := &textBlock{}
 	if tf.phType == "title" || tf.phType == "ctrTitle" {
 		b.heading = "1"
@@ -185,7 +194,10 @@ func (s *Drawing) layoutText(tf *textFrame, x, y, w, h float64, m canvas.Matrix)
 			b.cols = 0
 		}
 	}
-	b.lo = layoutBody(paras, width, wrap)
+	if limit > 0 && b.cols > 1 {
+		limit *= float64(b.cols)
+	}
+	b.lo = layoutBodyLimit(paras, width, wrap, limit)
 	return b
 }
 
@@ -290,3 +302,94 @@ func (t *TextBody) Bounds() (x0, y0, x1, y1 float64) {
 
 // Draw draws the text.
 func (t *TextBody) Draw(cv *canvas.Canvas) { t.s.drawTextBlock(cv, t.b) }
+
+// TextFlow is a text body laid out over several boxes, as the story of a
+// page layout program flows through its threaded text frames: each Fill
+// takes the lines that fit its box, and the next continues with the rest.
+type TextFlow struct {
+	s     *Drawing
+	tf    *textFrame
+	paras []*para // what is left; the first may be the tail of a paragraph
+}
+
+// NewTextFlow starts the flow of a text body (an element with the children
+// of an a:txBody, whose a:bodyPr the boxes override) of part; see
+// LayoutText. It is nil when the body has no text.
+func (s *Drawing) NewTextFlow(body *ooxml.Node, part string) *TextFlow {
+	tf := &textFrame{body: body, part: part, cc: s.cc, own: body.Child("lstStyle"), bodyPrs: chain{body.Child("bodyPr")}}
+	tf.lists = append(tf.lists, s.host.TextStyle(""))
+	paras := s.paragraphs(tf, 1, 0)
+	if !anyText(paras) {
+		return nil
+	}
+	return &TextFlow{s: s, tf: tf, paras: paras}
+}
+
+// Done reports that no text is left to lay out.
+func (f *TextFlow) Done() bool { return f == nil || len(f.paras) == 0 }
+
+// Fill lays out as much of the text left as fits the box x,y,w,h of the
+// coordinate space m, whose insets, anchor, columns and direction bodyPr
+// gives (an a:bodyPr element), and keeps the rest for the next box. A box
+// too small for a line still takes one. It returns nil when no text is
+// left.
+func (f *TextFlow) Fill(bodyPr *ooxml.Node, x, y, w, h float64, m canvas.Matrix) *TextBody {
+	if f.Done() {
+		return nil
+	}
+	tf := *f.tf
+	tf.bodyPrs = chain{bodyPr}
+	ih := h - emuChain(tf.bodyPrs, "tIns", 3.6) - emuChain(tf.bodyPrs, "bIns", 3.6)
+	if v, _ := tf.bodyPrs.attr("vert"); v != "" && v != "horz" {
+		ih = w - emuChain(tf.bodyPrs, "tIns", 3.6) - emuChain(tf.bodyPrs, "bIns", 3.6)
+	}
+	b := f.s.layoutBlock(&tf, f.paras, x, y, w, h, m, math.Max(ih, 1))
+	lo := b.lo
+	// the lines that fit, flowing into the next column as drawTextBlock does
+	cols := max(b.cols, 1)
+	ih = b.h - b.ins[1] - b.ins[3]
+	n, col, colTop, inCol := 0, 0, 0.0, 0
+	for _, ln := range lo.lines {
+		if ln.baseline+ln.desc-colTop > ih && inCol > 0 {
+			if col >= cols-1 {
+				break
+			}
+			col++
+			colTop, inCol = ln.baseline+ln.desc-ln.height, 0
+		}
+		inCol++
+		n++
+	}
+	if n == 0 {
+		// nothing fits: the box is empty, the text waits for the next one
+		return nil
+	}
+	if n == len(lo.lines) {
+		// every line laid out fits: paragraphs are laid out whole, so the
+		// text goes on (when it does) with the next paragraph, which the
+		// layout stopped before (the space after the last one passed the
+		// limit)
+		last := lo.lines[n-1]
+		if last.pi >= len(f.paras)-1 {
+			f.paras = nil
+		} else {
+			f.paras = f.paras[last.pi+1:]
+		}
+		return &TextBody{s: f.s, b: b}
+	}
+	cut := lo.lines[n]
+	lo.lines = lo.lines[:n]
+	last := lo.lines[n-1]
+	lo.height = last.baseline + last.desc
+	rest := f.paras[cut.pi:]
+	if !cut.first {
+		// the paragraph goes on in the next box, from the line that did
+		// not fit: without its first-line indent, bullet or space before
+		cp := *rest[0]
+		cp.items = rest[0].items[cut.from:]
+		cp.indent, cp.bullet, cp.befPct, cp.befPts = 0, nil, 0, 0
+		rest = append([]*para{&cp}, rest[1:]...)
+	}
+	f.paras = rest
+	return &TextBody{s: f.s, b: b}
+}

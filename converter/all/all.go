@@ -21,6 +21,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/gerber"   // Gerber and Excellon (PCB fabrication data)
 	_ "github.com/shibukawa/bdf/converter/hpgl"     // HP-GL/2 plot files
 	_ "github.com/shibukawa/bdf/converter/html"     // HTML, in reader mode
+	_ "github.com/shibukawa/bdf/converter/idml"     // InDesign (IDML)
 	_ "github.com/shibukawa/bdf/converter/image"    // images browsers display (PNG, JPEG, SVG …)
 	_ "github.com/shibukawa/bdf/converter/jww"      // Jw_cad
 	_ "github.com/shibukawa/bdf/converter/kicad"    // KiCad schematics and boards

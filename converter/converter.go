@@ -5,7 +5,7 @@
 // The converters themselves are its subpackages (converter/pdf,
 // converter/ai, converter/psd, converter/pptx, converter/xlsx,
 // converter/csv, converter/parquet, converter/docx, converter/visio,
-// converter/drawio, converter/dxf, converter/jww, converter/sxf,
+// converter/idml, converter/drawio, converter/dxf, converter/jww, converter/sxf,
 // converter/cgm, converter/hpgl, converter/gerber, converter/emf,
 // converter/tiff, converter/image, converter/audio, converter/html,
 // converter/markdown, converter/epub, converter/mml, converter/midi,

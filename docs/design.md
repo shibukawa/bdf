@@ -723,6 +723,24 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 - **テスト**: ffmpeg と mutagen で作った 1 秒の小さな実ファイル（`test/audio/gen.sh`、`converter/audio/testdata`）で全形式の変換結果（Dublin Core、ページ、検索テキスト、サムネイルがカバーの絵になること）を確かめ、ID3 の版・フラグ・文字コード、MP4 の箱の順序と QuickTime の形、Ogg の複数ページにまたがるパケット、RF64、AIFF-C、上限の挙動は合成したバイト列で確かめる。フィクスチャは fuzz の種にもする。ブラウザ描画の golden のケースは作っていない。カードの文字はビューアのフォントで組まれ、マシンによって描画が変わるためである。
 - **未対応・今後**: 再生（`play` の音声）、WMA/ASF と APE・WavPack のタグ、波形、QuickTime の章トラック。動画は別の変換器にする（メタデータ・章・字幕は同じ箱の読み手で読めるが、1 枚の絵を出すにはデコーダが要る）。
 
+## 3.32 InDesign → BDF 変換器（converter/idml）の構造
+
+`converter/idml` は InDesign が書き出す IDML（InDesign Markup Language。XML を zip に詰めたパッケージで、Adobe が仕様を公開している）を読む。ネイティブの .indd はバイナリで仕様がなく、版ごとに構造が変わるので読まない（IDML に書き出してもらう）。判別は zip の `mimetype`（`application/vnd.adobe.indesign-idml-package`）か `designmap.xml` の有無。パッケージの読み取りは Office と同じ `ooxml.Package`（部品名の大文字小文字を区別しない zip）で、XML は `ooxml.Node` の木にする。InDesign が XML に書けない文字（ページ番号マーカー U+0018 など）は処理命令 `<?ACE 18?>` で書くので、`xmltree` はこれを文字として読む。
+
+- **部品**: `designmap.xml` が他の部品を `src` で指す。`Resources/Graphic.xml`（スウォッチ: `Color`・`Tint`・`Gradient`・`MixedInk`、線種 `StrokeStyle`・`DashedStrokeStyle`・`DottedStrokeStyle`・`StripedStrokeStyle`）、`Resources/Styles.xml`（段落スタイルと文字スタイル。グループは再帰）、`Resources/Preferences.xml`（綴じ方向 `PageBinding`）、`MasterSpreads/*.xml`、`Spreads/*.xml`、`Stories/*.xml`、`META-INF/metadata.xml`（XMP → Dublin Core、`converter/internal/xmp`）。設計マップの `Layer` は前面から順に並ぶので、ページアイテムはレイヤーの逆順に安定ソートして背面から描く。スプレッドとストーリーの部品は合わせて 10,000 まで。
+- **プロパティ**: 値は属性（`PointSize="12"`）か `Properties` の子要素（`<AppliedFont type="string">`、`type="list"` の `ListItem`、`<Leading type="enumeration">Auto</Leading>`）のどちらかで書かれるので、`prop` が両方を見る。スタイルの `BasedOn` は種類付き（`ParagraphStyle/$ID/NormalParagraphStyle`）とも種類なし（`$ID/[No paragraph style]`）とも書かれるので、両方で引く。
+- **座標**: 単位はポイント、y は下向き。アイテムの `ItemTransform`（a b c d tx ty）は自分の座標（`PathGeometry` の点の座標）を親（スプレッド、またはグループ）の座標に写し、ページも `ItemTransform` でスプレッドに置かれ、`GeometricBounds`（上 左 下 右）が自分の大きさである。アイテム → ページの行列は、ページの逆行列にグループとアイテムの行列を掛けたもの。アイテムはスプレッドのもので、外接矩形が重なるページすべてに描く（見開きをまたぐアイテムは両ページに出る）。
+- **ページとレイヤー**: 文書のスプレッドの順にページを作り、`PageBinding` が `RightToLeft` なら View の `Direction` を rtl にする。`Section` がページ番号を決める（`PageNumberStart`、`ContinueNumbering`、`PageNumberStyle` のアラビア数字・ローマ数字・英字・前ゼロ）。マスターは `AppliedMaster` のマスタースプレッドから、ノドの同じ側（スプレッドの `BindingLocation` より前なら左）のページを選び、そのページの座標で文書のページに重ねる（`MasterPageTransform` は読まない）。マスターのマスターは先に描く。ページのアイテムが `OverriddenMasterPageItem` で上書きしたマスターアイテムは除く。マスターのアイテムは `master`、ページのアイテムは `body` のレイヤーにし、どちらも Canvas の Object なので、内容が同じページ（ページ番号のないマスター）では共有される。`Visible="false"` のアイテムと `Visible="false"` のレイヤーのアイテムは描かない。グループ（`Group`、`Button`、`MultiStateObject` は最初の状態だけ）は再帰する（64 段まで）。
+- **図形**: `PathGeometry` の `GeometryPathType`（`PathOpen`）ごとに、`PathPointType` の `Anchor`・`LeftDirection`・`RightDirection` から直線か 3 次ベジェの部分パスにする。4 隅すべてが `RoundedCorner` の長方形は `CornerRadius` の角丸にする（他の角のオプションは読まない）。塗りは `FillColor` のスウォッチと `FillTint`、線は `StrokeWeight`・`StrokeColor`・`StrokeTint`・`StrokeType`・`EndCap`・`EndJoin`・`MiterLimit`。`StrokeAlignment` が内側なら、パスでクリップして 2 倍の太さで描き、外側なら 2 倍の太さで描いてから塗りを重ねる。不透明度（`TransparencySetting`・`FillTransparencySetting`・`StrokeTransparencySetting` の `BlendingSetting/@Opacity`）は色に混ぜる（GROUP の alpha は使わない。§3.11 の draw.io と同じ理由）。描画モードは通常だけ（他は警告）。矢印などの線端は描かない（警告）。
+- **色**: CMYK は `(1−C)(1−K)` の単純な換算、RGB はそのまま、Lab は D50 の XYZ を経て sRGB にする（プロファイルは読まない）。`Tint` は基準色を白と混ぜる。`Gradient` は `GradientStop` の `StopColor`・`Location` から LINEAR_GRADIENT か RADIAL_GRADIENT にし、アイテムの `GradientFillAngle`（x 軸から反時計回り）・`GradientFillStart`・`GradientFillLength` で置く（どれもなければ外接矩形を角度の方向に横切る）。線のグラデーションは最初の分岐点の色で代える。`MixedInk` は黒（警告）。
+- **線種**: `$ID/Solid`、`$ID/Dashed`（12 と 4 pt）、`$ID/Dotted` と `Canned dotted`（丸い線端の点を線の太さの 2 倍の間隔で）、`Canned Dashed 3x2`・`4x4`（太さの倍数）、`DashedStrokeStyle` の `DashArray`（ポイント）、`DottedStrokeStyle` の `DotGap`。ストライプ（`ThinThin`、`ThickThin` など）と白いひし形・斜線・波線は実線で描く（警告）。
+- **画像**: フレーム（`Rectangle` などの子の `Image`）は `ItemTransform` と `Properties/GraphicBounds` で置き、フレームのパスでクリップする。`Properties/Contents` はリンク画像では画像の XMP パケットなので読まず、`Link/@StoredState` が `Embedded` のときだけ、そこにあるデータ（base64 か 16 進）を画像にする。それ以外は `Link/@LinkResourceURI` のファイル名で `converter.Options.ReadRef`（`Files`・`Dir`。§3.29 の KiCad と同じ仕組み。絶対パスは読まないので、ファイル名だけで探す）。TIFF は `converter/internal/tiff` で最初のページを読み、ほかは `imgconv.Optimize` で格納する。EPS・PDF・PICT・WMF・`ImportedPage` は描かない（警告）。
+- **テキスト**: ストーリーは `ParagraphStyleRange` > `CharacterStyleRange` > `Content` で、`Br` が段落の終わり、U+2028 が段落内の改行、タブは `\t`。`HyperlinkTextSource`・`XMLElement`・`Change` などの包みは中を読み、`Table`・`Footnote`・アンカーしたオブジェクトは警告して飛ばす（`Note` は読まない）。段落の属性は `ParagraphStyleRange` → `AppliedParagraphStyle` → その `BasedOn` の順、文字の属性は `CharacterStyleRange` → `AppliedCharacterStyle` の連鎖 → 段落の連鎖の順に探す。これを Visio（§3.8）と同じく DrawingML のテキスト本体（`bodyPr`、`pPr` の揃え・インデント・行送り `lnSpc`・段落前後・箇条書き（`BulletChar` の文字、`NumberingFormat` の番号）・`TabList` のタブ、`rPr` の大きさ・太字と斜体（`FontStyle` の語から）・下線・取り消し線・大文字・上付き下付きと `BaselineShift`・トラッキング（1/1000 em）・言語（`AppliedLanguage` → BCP 47）・塗り・フォント）に写す。行送りは `Leading` の値か、`Auto` なら `AutoLeading`%×段落の最大の文字の大きさを固定の高さにする。ページ番号マーカーは、ストーリーの最初のフレームのページの番号にする（マスターのフレームはページごとに組むので、各ページの番号が入る）。
+- **連結（スレッド）**: `TextFrame` は `ParentStory`・`PreviousTextFrame`・`NextTextFrame` で連なる。描く前に全ページのフレーム（マスターのフレームはページごとに別の鍵）を集め、前のないフレームから `NextTextFrame` をたどって連なりを作り（環になっているものは 2 巡目で拾う）、ストーリーごとに `drawingml.TextFlow` で流す。`TextFlow` は DrawingML のテキスト本体の段落を一度だけ読み、`Fill` のたびに枠（`TextFramePreference` の段組み `TextColumnCount`・`TextColumnGutter`、インセット `InsetSpacing`、垂直方向の揃え `VerticalJustification`、縦組み `StoryOrientation` → `eaVert`）に入るだけの行を取り、残りを次の枠に回す。段落の途中で切れたら、残りの文字を先頭インデント・箇条書き・段落前の間隔なしの段落として続ける。両端揃えは行のアイテムの幅を伸ばすので、段落は複製してからレイアウトし、残りはもとの文字で組み直す。レイアウトは枠に入る高さ（段組みなら段数倍）を超えた段落で打ち切るので、長いストーリーを枠ごとに全部組むことはない。最後の枠に入りきらない（オーバーセット）テキストは描かず、警告する。枠自身の塗りと線は図形として描き、その上にテキストを描く。
+- **未対応**: .indd、表、脚注、アンカー付きオブジェクト、回り込み、文字の横幅・縦幅の拡大縮小、ルビ、縦中横、文字組みアキ量設定、段落の右インデント、角のオプション（角丸以外）、矢印、描画モード、効果（影・ぼかし）、配置した EPS・PDF、`MasterPageTransform`、条件テキスト（すべて描く）。
+
+テスト用の文書は `test/idml/gen.py`（標準ライブラリだけ）が書く（`npm run test:idml:gen`）。basic.idml は 1 ページのスプレッドと見開きのスプレッド、マスター（罫線とページ番号）、各種のスウォッチと線種、角丸・グループ・非表示のレイヤーとアイテム、埋め込みとリンク（隣の link.png）の画像、スタイルの連鎖・揃え・タブ・箇条書き・番号・文字属性を持つストーリーが 2 段組みの枠から次のページの枠へ流れるもの。vertical.idml は右綴じの縦組みのストーリーが 2 ページにわたるもの。Go のテストはページとレイヤー、ストーリーがページをまたいで流れること、ページ番号、リンク画像を `Dir` と `Files` から読むこと、縦組み、ページの選択と判別を確かめ、変換結果は `testdata/idml/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。InDesign 自身が書き出した IDML は SimpleIDML（BSD 3 条項）の回帰テストのもの 7 件を `converter/idml/testdata/simpleidml/` に置き（README に出典）、CS5.5・CC 2014・InDesign 2020 の書き出しで、レイヤーの並び（設計マップは前面から）、リンク画像の `Contents` が XMP であること、`BasedOn` の種類なしの表記、連結フレーム、回転したフレーム、インセットがフレームより大きいフレーム（何も表示しない）を確かめた。配置画像のファイルは入れていない（リンク切れの警告の確認に使う）。テキストの溢れ（オーバーセット）は代替フォントの幅に依るので、テストでは数えない。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -837,6 +855,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 23. **区間の配信**: ログインした読者に文書を 10 ページずつ、要求ごとの使い捨ての鍵で封印して渡す。記録された通信は後で鍵が漏れても開けない（実装済み、§3.30）。
 24. **化学構造式**（予定）: MOL・SDF（SDF は表のシート）、ChemDraw の CDXML・CDX を ACS 1996 の描き方で。
 25. **音声ファイル**: MP3・M4A・AAC・FLAC・Ogg・WAV・AIFF のカバーアートとタグを 1 ページのカードに。サムネイルはカバー、タグは Dublin Core（実装済み、§3.31）。
+26. **InDesign**: IDML のページ・マスター・図形・画像と、連結したフレームをページをまたいで流れるストーリー。テキストは DrawingML のテキストエンジンに `TextFlow` を足して組む（実装済み、§3.32）。
 
 ## 9. リポジトリ構成（案）
 
@@ -870,6 +889,7 @@ bdf/
 │   ├── epub/          EPUB → BDF 変換器、リフロー型はリーダー表示、固定レイアウトは画像のページ（testdata/ にテスト用の本）
 │   ├── emf/           Windows メタファイル（.emf、.wmf）→ BDF 変換器
 │   ├── visio/         Visio（.vsdx）→ BDF 変換器（testdata/ にテスト用図面）
+│   ├── idml/          InDesign（.idml）→ BDF 変換器（テキストは pptx と同じ DrawingML のエンジン。testdata/ にテスト用文書）
 │   ├── drawio/        draw.io → BDF 変換器（testdata/ にテスト用の図、stencils/ に同梱のステンシル）
 │   ├── dxf/           AutoCAD DXF → BDF 変換器（testdata/ にテスト用図面）
 │   ├── jww/           Jw_cad（.jww）→ BDF 変換器（testdata/ にテスト用図面）

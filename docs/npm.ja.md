@@ -8,7 +8,7 @@
 |---|---|---|
 | レンダラーのみ | `@bdfkit/viewer` | サーバー変換済みの BDF |
 | PDF + EPUB | `@bdfkit/viewer`、`@bdfkit/convert-pdf-epub` | PDF、EPUB |
-| Office + PDF + EPUB | `@bdfkit/viewer`、`@bdfkit/convert-office` | Word、Excel、PowerPoint、Visio、CSV、TSV、Parquet、PDF、EPUB |
+| Office + PDF + EPUB | `@bdfkit/viewer`、`@bdfkit/convert-office` | Word、Excel、PowerPoint、Visio、InDesign、CSV、TSV、Parquet、PDF、EPUB |
 | All | `@bdfkit/viewer`、`@bdfkit/convert-all` | このリポジトリのブラウザ用変換器すべて |
 
 レンダラーを外す場合は上表の `@bdfkit/viewer` をインストールせず、変換パッケージだけを使います。音楽機能も通常のビューアーから分離してあり、ピアノロールと再生が必要な場合だけ `@bdfkit/viewer/music` を import します。All プリセットから MML・MIDI・MusicXML の変換器も外すには、[カスタム Wasm ビルド](build-wasm-runtime.ja.md#tinygo-好きな形式を選ぶ)で `--formats all --without-music` を指定します。

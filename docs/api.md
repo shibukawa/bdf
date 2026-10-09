@@ -82,6 +82,7 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | `converter/parquet` | Apache Parquet | `Rows`（表示する行数。0 は `DefaultRows`、-1 は全行）、`NoTypes`（型の行を付けない）、`TableStyle`、`Name`（シート名）。フッターが暗号化されたファイルは `ErrEncrypted` |
 | `converter/docx` | Word | `Pages`、`Views`（`ViewsBoth` / `ViewsPages` / `ViewsScroll`） |
 | `converter/visio` | Visio（.vsdx） | `Pages` |
+| `converter/idml` | InDesign（.idml） | `Pages`、`Files`・`Dir`（リンク画像） |
 | `converter/drawio` | draw.io（.drawio、図を埋め込んだ .drawio.svg・.drawio.png） | `Convert(data []byte, opts)`（入力をバイト列で渡す）。`Pages`、`Border`（図の周りの余白） |
 | `converter/dxf` | AutoCAD DXF | `Pages`、`Views`（`all` / `model` / `layouts`）、`Light`（モデル空間を白い紙に描く）。`Detect(head)` |
 | `converter/gerber` | Gerber（RS-274X）・Excellon と、基板のファイルをまとめた ZIP | `Views`（`ViewsAll` / `ViewsBoard` / `ViewsLayers`）、`Mask`・`Silkscreen`・`Finish`（基板の表と裏の色）、`FileName`（1 つのファイルの層を名前から見分ける）。`Detect`、`IsGerber(head)`、`IsExcellon(head)` |

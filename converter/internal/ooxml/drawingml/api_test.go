@@ -51,6 +51,105 @@ func TestLayoutText(t *testing.T) {
 	}
 }
 
+func TestTextFlow(t *testing.T) {
+	// three paragraphs, the second justified with a first-line indent
+	body, err := ooxml.Parse([]byte(`<txBody><bodyPr lIns="0" tIns="0" rIns="0" bIns="0"/>` +
+		`<p><r><rPr sz="1200"/><t>one two three four five six seven eight nine ten</t></r></p>` +
+		`<p><pPr algn="just" indent="180000"/><r><rPr sz="1200"/><t>alpha beta gamma delta epsilon zeta eta theta iota kappa lambda</t></r></p>` +
+		`<p><r><rPr sz="1200"/><t>end</t></r></p></txBody>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := bdf.NewDocument()
+	fonts := fontset.New(fontdb.New(nil, []string{"../../../pptx/testdata/fonts"}, false), func(msg string) { t.Error(msg) })
+	d := New(Config{Doc: doc, Fonts: fonts}).NewDrawing("", nil, plainHost{})
+	bodyPr, _ := ooxml.Parse([]byte(`<bodyPr lIns="0" tIns="0" rIns="0" bIns="0"/>`))
+	whole := d.LayoutText(body, "", 0, 0, 120, 1000, canvas.Identity)
+	_, _, _, wholeBottom := whole.Bounds()
+	total := len(whole.b.lo.lines)
+
+	f := d.NewTextFlow(body, "")
+	var got []string
+	boxes := 0
+	for !f.Done() {
+		if boxes > 20 {
+			t.Fatal("the flow never ends")
+		}
+		boxes++
+		tb := f.Fill(bodyPr, 0, 0, 120, 40, canvas.Identity)
+		if tb == nil {
+			t.Fatal("an empty box while text is left")
+		}
+		_, _, _, y1 := tb.Bounds()
+		if y1 > 40+1e-6 {
+			t.Errorf("box %d: text reaches %g, past the box", boxes, y1)
+		}
+		for _, ln := range tb.b.lo.lines {
+			var s []rune
+			for _, it := range ln.items {
+				s = append(s, it.r)
+			}
+			got = append(got, string(s))
+		}
+	}
+	if boxes < 2 {
+		t.Errorf("%d box(es) for %g pt of text", boxes, wholeBottom)
+	}
+	if len(got) != total {
+		t.Errorf("%d lines through the flow, %d laid out at once: %q", len(got), total, got)
+	}
+	if got[len(got)-1] != "end" {
+		t.Errorf("last line %q", got[len(got)-1])
+	}
+	// a continued paragraph keeps the whole text
+	var text []rune
+	for _, p := range body.Children("p") {
+		text = append(text, []rune(p.Child("r").Child("t").Content())...)
+	}
+	var flowed []rune
+	for _, l := range got {
+		flowed = append(flowed, []rune(l)...)
+	}
+	if cleaned := func(r []rune) string {
+		var b []rune
+		for _, c := range r {
+			if c != ' ' {
+				b = append(b, c)
+			}
+		}
+		return string(b)
+	}; cleaned(text) != cleaned(flowed) {
+		t.Errorf("flowed text %q", string(flowed))
+	}
+	// boxes of every height, with space after the paragraphs: the text
+	// comes through whole every time
+	spaced, _ := ooxml.Parse([]byte(`<txBody><bodyPr lIns="0" tIns="0" rIns="0" bIns="0"/>` +
+		`<p><pPr><spcAft><spcPts val="3000"/></spcAft></pPr><r><rPr sz="1200"/><t>one two three four five six seven</t></r></p>` +
+		`<p><pPr><spcAft><spcPts val="3000"/></spcAft></pPr><r><rPr sz="1200"/><t>alpha beta gamma delta epsilon</t></r></p>` +
+		`<p><r><rPr sz="1200"/><t>end</t></r></p></txBody>`))
+	spacedLines := len(d.LayoutText(spaced, "", 0, 0, 120, 1000, canvas.Identity).b.lo.lines)
+	for h := 5.0; h <= 80; h += 5 {
+		f := d.NewTextFlow(spaced, "")
+		lines, boxes := 0, 0
+		for !f.Done() && boxes < 50 {
+			boxes++
+			if tb := f.Fill(bodyPr, 0, 0, 120, h, canvas.Identity); tb != nil {
+				lines += len(tb.b.lo.lines)
+			}
+		}
+		if !f.Done() || lines != spacedLines {
+			t.Errorf("height %g: %d lines in %d boxes, done %v", h, lines, boxes, f.Done())
+		}
+	}
+	// a multi-column box takes more lines
+	g := d.NewTextFlow(body, "")
+	cols, _ := ooxml.Parse([]byte(`<bodyPr lIns="0" tIns="0" rIns="0" bIns="0" numCol="2" spcCol="0"/>`))
+	tb := g.Fill(cols, 0, 0, 240, 40, canvas.Identity)
+	if tb == nil || len(tb.b.lo.lines) <= len(whole.b.lo.lines)/4 {
+		t.Errorf("two columns of 40 pt hold %d lines", len(tb.b.lo.lines))
+	}
+}
+
 func TestResolveColor(t *testing.T) {
 	n, err := ooxml.Parse([]byte(`<solidFill><schemeClr val="phClr"><lumMod val="50000"/></schemeClr></solidFill>`))
 	if err != nil {
