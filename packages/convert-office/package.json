@@ -1,6 +1,6 @@
 {
   "name": "@bdfkit/convert-office",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "TinyGo Wasm converter preset for Office, table, PDF, and EPUB formats",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/shibukawa/bdf.git", "directory": "packages/convert-office" },
@@ -9,5 +9,5 @@
   "types": "./dist/index.d.ts",
   "exports": { ".": "./dist/index.js" },
   "files": ["dist"],
-  "dependencies": { "@bdfkit/convert": "0.1.2" }
+  "dependencies": { "@bdfkit/convert": "0.1.3" }
 }
