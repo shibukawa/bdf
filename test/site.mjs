@@ -33,7 +33,7 @@ const modules = {
   preview: await load("bdf-preview.wasm"),
 };
 assert.deepEqual(modules.pdf.formats.map((f) => f.name), ["ai", "pdf"]);
-assert.deepEqual(modules.office.formats.map((f) => f.name), ["cgm", "csv", "docx", "drawio", "dxf", "emf", "font", "gerber", "hpgl", "image", "jww", "kicad", "midi", "mml", "musicxml", "parquet", "pptx", "psd", "sxf", "visio", "xlsx"]);
+assert.deepEqual(modules.office.formats.map((f) => f.name), ["cgm", "csv", "docx", "drawio", "dxf", "emf", "font", "gerber", "hpgl", "idml", "image", "jww", "kicad", "midi", "mml", "musicxml", "parquet", "pptx", "psd", "sxf", "visio", "xlsx"]);
 assert.deepEqual(modules.image.formats.map((f) => f.name), ["image"]);
 assert.deepEqual(modules.web.formats.map((f) => f.name), ["epub", "html", "markdown"]);
 assert.deepEqual(modules.preview.formats, []);

@@ -61,6 +61,14 @@ jobs:
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/visio/testdata/$f" "/tmp/$n.bdf"
             check_fixture "/tmp/$n.bdf" "testdata/visio/$n.bdf"
           done
+          for n in basic vertical; do
+            go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/idml/testdata/$n.idml" "/tmp/$n.bdf"
+            check_fixture "/tmp/$n.bdf" "testdata/idml/$n.bdf"
+          done
+          go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts converter/idml/testdata/simpleidml/interview.idml /tmp/interview.bdf
+          check_fixture /tmp/interview.bdf testdata/idml/interview.bdf
+          go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts converter/idml/testdata/simpleidml/magazineA-courrier-des-lecteurs-3pages.idml /tmp/courrier.bdf
+          check_fixture /tmp/courrier.bdf testdata/idml/courrier.bdf
           for n in shapes layout r12-sjis; do
             go run ./cmd/bdf generate -q -font-dir converter/pptx/testdata/fonts -no-system-fonts "converter/dxf/testdata/$n.dxf" "/tmp/$n.bdf"
             check_fixture "/tmp/$n.bdf" "testdata/dxf/$n.bdf"

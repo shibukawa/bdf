@@ -30,6 +30,7 @@ export const SECTIONS = [
       page("formats/pdf", "PDF, Illustrator", "PDF・Illustrator"),
       page("formats/document", "Word, HTML, Markdown", "Word・HTML・Markdown"),
       page("formats/presentation", "PowerPoint", "PowerPoint"),
+      page("formats/layout", "InDesign", "InDesign"),
       page("formats/spreadsheet", "Excel, CSV, Parquet", "Excel・CSV・Parquet"),
       page("formats/diagram", "Visio, draw.io", "Visio・draw.io"),
       page("formats/cad", "CAD drawings and plots", "CAD の図面とプロット"),

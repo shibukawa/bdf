@@ -2,6 +2,7 @@ package drawingml
 
 import (
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -44,6 +45,8 @@ type textLine struct {
 	offset    float64 // alignment shift
 	bulletX   float64
 	cx, cy    float64 // column offset
+	from      int     // index of its first item in pa.items
+	pi        int     // index of its paragraph in the body
 }
 
 // layoutParagraph breaks a paragraph into lines of at most width (no limit
@@ -66,13 +69,14 @@ func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 	firstStart = math.Max(firstStart, 0)
 	var lines []*textLine
 	items := pa.items
+	from := 0 // index of items[0] in pa.items
 	first, afterBr, cjkWrap := true, false, false
 	for {
 		start := pa.marL
 		if first {
 			start = firstStart
 		}
-		ln := &textLine{pa: pa, first: first, afterBr: afterBr, cjkWrap: cjkWrap, start: start, bulletX: bulletX}
+		ln := &textLine{pa: pa, first: first, afterBr: afterBr, cjkWrap: cjkWrap, start: start, bulletX: bulletX, from: from}
 		x := start
 		end := len(items)
 		lastBrk := -1
@@ -126,6 +130,7 @@ func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 		if brokeAt >= 0 {
 			ln.last = true
 			items = items[brokeAt+1:]
+			from += brokeAt + 1
 			first, afterBr, cjkWrap = false, true, false
 			continue
 		}
@@ -136,6 +141,7 @@ func layoutParagraph(pa *para, width float64, wrap bool) []*textLine {
 		prev, next := items[end-1].r, items[end].r
 		cjkWrap = linebreak.Joins(prev, next)
 		items = items[end:]
+		from += end
 		first, afterBr = false, false
 	}
 	return lines
@@ -256,11 +262,29 @@ type laidOut struct {
 // layoutBody lays out paragraphs in a column of the given width and returns
 // the lines with baselines relative to the top of the text.
 func layoutBody(paras []*para, width float64, wrap bool) *laidOut {
+	return layoutBodyLimit(paras, width, wrap, 0)
+}
+
+// layoutBodyLimit is layoutBody for text that flows on into other boxes:
+// when limit is positive it stops after the paragraph that reaches that
+// height, and the paragraphs are laid out on copies of their items, so
+// that the ones left over (justified lines stretch their items) can be
+// laid out again elsewhere.
+func layoutBodyLimit(paras []*para, width float64, wrap bool, limit float64) *laidOut {
 	lo := &laidOut{}
 	y := 0.0
 	for pi, pa := range paras {
+		if limit > 0 {
+			if y > limit {
+				break
+			}
+			cp := *pa
+			cp.items = slices.Clone(pa.items)
+			pa = &cp
+		}
 		lines := layoutParagraph(pa, width, wrap)
 		for li, ln := range lines {
+			ln.pi = pi
 			ln.metrics()
 			if li == 0 && pi > 0 {
 				y += spacing(pa.befPct, pa.befPts, ln.asc+ln.desc)

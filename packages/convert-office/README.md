@@ -1,6 +1,6 @@
 # @bdfkit/convert-office
 
-Browser converter preset for Word, Excel, PowerPoint, Visio, CSV, TSV, Parquet, PDF, and EPUB. It bundles a TinyGo WebAssembly runtime for this format group.
+Browser converter preset for Word, Excel, PowerPoint, Visio, InDesign (IDML), CSV, TSV, Parquet, PDF, and EPUB. It bundles a TinyGo WebAssembly runtime for this format group.
 
 ```sh
 npm install @bdfkit/convert-office

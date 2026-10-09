@@ -8,7 +8,7 @@ For focused guides, see [Integrating into a frontend](integrating-to-frontend.md
 |---|---|---|
 | Renderer only | `@bdfkit/viewer` | BDF produced on the server |
 | PDF + EPUB | `@bdfkit/viewer`, `@bdfkit/convert-pdf-epub` | PDF, EPUB |
-| Office + PDF + EPUB | `@bdfkit/viewer`, `@bdfkit/convert-office` | Word, Excel, PowerPoint, Visio, CSV, TSV, Parquet, PDF, EPUB |
+| Office + PDF + EPUB | `@bdfkit/viewer`, `@bdfkit/convert-office` | Word, Excel, PowerPoint, Visio, InDesign, CSV, TSV, Parquet, PDF, EPUB |
 | All | `@bdfkit/viewer`, `@bdfkit/convert-all` | Every browser converter in this repository |
 
 To omit the renderer, install just the converter package and leave out `@bdfkit/viewer`. The default viewer import also leaves out piano roll and playback; import `@bdfkit/viewer/music` only when needed. To omit MML, MIDI, and MusicXML converters from the All profile, [build custom Wasm](build-wasm-runtime.md#tinygo-select-your-formats) with `--formats all --without-music`.

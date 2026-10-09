@@ -12,6 +12,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/font"
 	_ "github.com/shibukawa/bdf/converter/gerber"
 	_ "github.com/shibukawa/bdf/converter/hpgl"
+	_ "github.com/shibukawa/bdf/converter/idml"
 	_ "github.com/shibukawa/bdf/converter/jww"
 	_ "github.com/shibukawa/bdf/converter/kicad"
 	_ "github.com/shibukawa/bdf/converter/midi"

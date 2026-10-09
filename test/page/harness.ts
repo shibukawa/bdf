@@ -65,6 +65,13 @@ export const CASES: Case[] = [
   { name: "visio-shapes-1", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "visio-shapes-2", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
   { name: "visio-flow-1", src: "/testdata/visio/flow.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  // InDesign documents laid out by converter/idml with the test fonts; see test/idml.
+  { name: "idml-basic-1", src: "/testdata/idml/basic.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "idml-basic-2", src: "/testdata/idml/basic.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
+  { name: "idml-vertical-1", src: "/testdata/idml/vertical.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  // Documents InDesign itself exported (converter/idml/testdata/simpleidml): a rotated banner and a quote box; threaded stories.
+  { name: "idml-interview-1", src: "/testdata/idml/interview.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
+  { name: "idml-courrier-1", src: "/testdata/idml/courrier.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
   // Word documents laid out by converter/docx with the test fonts; see test/docx.
   { name: "docx-basic-1", src: "/testdata/docx/basic.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "docx-basic-2", src: "/testdata/docx/basic.bdf", kind: "page", view: "pages", page: 1, scale: 1 },

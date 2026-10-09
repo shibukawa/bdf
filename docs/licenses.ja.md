@@ -39,3 +39,5 @@ Bravura: Copyright © 2015, Steinberg Media Technologies GmbH (http://www.steinb
 ## テスト用のフォント
 
 リポジトリにあるテスト用のフォント（M PLUS 1p、STIX Two Math、STIX Two Text、DejaVu Sans のサブセット）は、ライセンスと一緒に `testdata` ディレクトリにあります。
+
+IDML 変換器のテストに使う InDesign の文書（`converter/idml/testdata/simpleidml`）は [SimpleIDML](https://github.com/Starou/SimpleIDML) の回帰テストのファイルで、著作権は Stanislas Guerra（2012）、BSD 3 条項ライセンス（同じディレクトリに置いてあります）です。

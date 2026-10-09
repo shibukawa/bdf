@@ -9,6 +9,7 @@ import (
 	_ "github.com/shibukawa/bdf/converter/xlsx"
 	_ "github.com/shibukawa/bdf/converter/pptx"
 	_ "github.com/shibukawa/bdf/converter/visio"
+	_ "github.com/shibukawa/bdf/converter/idml"
 	_ "github.com/shibukawa/bdf/converter/csv"
 	_ "github.com/shibukawa/bdf/converter/parquet"
 )
