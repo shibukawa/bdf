@@ -8,15 +8,15 @@ Go and LibreOffice → PDF → Poppler were remeasured on the same Apple M3 Mac 
 
 | Input | RSS: LibreOffice / Go (MiB) | Elapsed: LibreOffice / Go (s) | CPU: LibreOffice / Go (s) |
 |---|---:|---:|---:|
-| Small DOCX | 161.8 / 70.3 | 0.69 / 0.05 | 0.67 / 0.06 |
-| Small PPTX | 147.3 / 51.1 | 1.01 / 0.04 | 1.02 / 0.05 |
-| Small XLSX | 123.7 / 52.2 | 0.65 / 0.04 | 0.63 / 0.05 |
-| Synthetic XLSX (4 sheets × 3,000 rows) | 288.3 / 53.6 | 1.55 / 0.23 | 1.62 / 0.30 |
-| Synthetic PPTX (100 slides) | 1918.9 / 42.0 | 56.38 / 0.12 | 68.30 / 0.17 |
+| Small DOCX | 161.8 / 43.4 | 0.69 / 0.05 | 0.67 / 0.06 |
+| Small PPTX | 147.3 / 38.2 | 1.01 / 0.03 | 1.02 / 0.04 |
+| Small XLSX | 123.7 / 36.0 | 0.65 / 0.04 | 0.63 / 0.04 |
+| Synthetic XLSX (4 sheets × 3,000 rows) | 288.3 / 48.7 | 1.55 / 0.23 | 1.62 / 0.30 |
+| Synthetic PPTX (100 slides) | 1918.9 / 40.8 | 56.38 / 0.12 | 68.30 / 0.19 |
 
 Time and memory are medians of 5 runs after warmup. RSS is peak resident memory; CPU time is user + system; elapsed time includes startup, conversion, and output. LibreOffice and Poppler run sequentially, so their pipeline peak is the larger stage peak and their times are added. Output formats and visual results differ.
 
-Estimated SoC energy: LibreOffice **4.267 J/document** (round range 3.295–7.155), Go **0.256 J/document** (0.250–0.257). Both workflows used AC power for 3 rounds.
+Estimated SoC energy: LibreOffice **4.267 J/document** (round range 3.295–7.155), Go **0.242 J/document** (0.241–0.248). Both workflows used AC power for 3 rounds.
 
 See the [latest results and conditions](benchmarks/latest.json) and [measurement procedure](process-memory-review.ja.md). Raw logs stay in the local results directory outside Git.
 

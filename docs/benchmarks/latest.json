@@ -9,8 +9,8 @@
       "go": "go version go1.27.0 darwin/arm64"
     },
     "bdf_binary": {
-      "bytes": 25812914,
-      "sha256": "e49be0847b490c29767f720cc8ffdf8cbd1d1e44ab549d7d641adb1158059d90"
+      "bytes": 25813410,
+      "sha256": "bf32acb60594dad9315b699fe042c2d61aa0a854b165cda57d7210ce7ee352a7"
     },
     "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t98%; charging; 0:16 remaining present: true",
     "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t99%; finishing charge; 0:08 remaining present: true",
@@ -50,8 +50,8 @@
           "cpu_seconds": 0.67
         },
         "bdf": {
-          "max_rss_bytes": 73711616,
-          "peak_footprint_bytes": 59818704,
+          "max_rss_bytes": 45531136,
+          "peak_footprint_bytes": 28820176,
           "elapsed_seconds": 0.05,
           "cpu_seconds": 0.06
         }
@@ -64,10 +64,10 @@
           "cpu_seconds": 1.02
         },
         "bdf": {
-          "max_rss_bytes": 53608448,
-          "peak_footprint_bytes": 39568032,
-          "elapsed_seconds": 0.04,
-          "cpu_seconds": 0.05
+          "max_rss_bytes": 40091648,
+          "peak_footprint_bytes": 24920784,
+          "elapsed_seconds": 0.03,
+          "cpu_seconds": 0.04
         }
       },
       "basic.xlsx": {
@@ -78,10 +78,10 @@
           "cpu_seconds": 0.63
         },
         "bdf": {
-          "max_rss_bytes": 54788096,
-          "peak_footprint_bytes": 41173664,
+          "max_rss_bytes": 37699584,
+          "peak_footprint_bytes": 22839992,
           "elapsed_seconds": 0.04,
-          "cpu_seconds": 0.05
+          "cpu_seconds": 0.04
         }
       },
       "many-sheets.xlsx": {
@@ -92,8 +92,8 @@
           "cpu_seconds": 1.62
         },
         "bdf": {
-          "max_rss_bytes": 56164352,
-          "peak_footprint_bytes": 42353360,
+          "max_rss_bytes": 51085312,
+          "peak_footprint_bytes": 37339808,
           "elapsed_seconds": 0.23,
           "cpu_seconds": 0.3
         }
@@ -106,20 +106,23 @@
           "cpu_seconds": 68.3
         },
         "bdf": {
-          "max_rss_bytes": 44007424,
-          "peak_footprint_bytes": 30294712,
+          "max_rss_bytes": 42811392,
+          "peak_footprint_bytes": 28246664,
           "elapsed_seconds": 0.12,
-          "cpu_seconds": 0.17
+          "cpu_seconds": 0.19
         }
       }
     },
     "bdf_remeasured": {
-      "created_utc": "2026-10-09T09:04:08.633984+00:00",
-      "git_revision": "692b06d9559f211cc4e6785a77e292d60a391c1e",
+      "created_utc": "2026-10-09T11:46:52.087247+00:00",
+      "git_revision": "da90bcc6ef8570d2964ac78764685ebbb29f19fd",
       "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
       "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
       "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
-      "inputs_regenerated": []
+      "inputs_regenerated": [
+        "many-sheets.xlsx",
+        "many-slides.pptx"
+      ]
     }
   },
   "power": {
@@ -131,8 +134,8 @@
     "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
     "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
     "bdf_binary": {
-      "bytes": 25812914,
-      "sha256": "e49be0847b490c29767f720cc8ffdf8cbd1d1e44ab549d7d641adb1158059d90"
+      "bytes": 25813410,
+      "sha256": "bf32acb60594dad9315b699fe042c2d61aa0a854b165cda57d7210ce7ee352a7"
     },
     "pairs": [
       {
@@ -165,34 +168,34 @@
       {
         "round": 1,
         "workflow": "bdf",
-        "documents": 1251,
-        "estimated_incremental_soc_w": 4.316305,
-        "estimated_soc_j_per_document": 0.24976,
+        "documents": 1323,
+        "estimated_incremental_soc_w": 4.530474,
+        "estimated_soc_j_per_document": 0.247933,
         "idle": "round1-bdf-idle",
         "work": "round1-bdf-work"
       },
       {
         "round": 2,
         "workflow": "bdf",
-        "documents": 1251,
-        "estimated_incremental_soc_w": 4.427566,
-        "estimated_soc_j_per_document": 0.256146,
+        "documents": 1332,
+        "estimated_incremental_soc_w": 4.45371,
+        "estimated_soc_j_per_document": 0.241977,
         "idle": "round2-bdf-idle",
         "work": "round2-bdf-work"
       },
       {
         "round": 3,
         "workflow": "bdf",
-        "documents": 1248,
-        "estimated_incremental_soc_w": 4.428183,
-        "estimated_soc_j_per_document": 0.256998,
+        "documents": 1335,
+        "estimated_incremental_soc_w": 4.437036,
+        "estimated_soc_j_per_document": 0.240731,
         "idle": "round3-bdf-idle",
         "work": "round3-bdf-work"
       }
     ],
     "median_estimated_soc_j_per_document": {
       "libreoffice": 4.267438,
-      "bdf": 0.256146
+      "bdf": 0.241977
     },
     "range_estimated_soc_j_per_document": {
       "libreoffice": [
@@ -200,8 +203,8 @@
         7.155304
       ],
       "bdf": [
-        0.24976,
-        0.256998
+        0.240731,
+        0.247933
       ]
     },
     "inputs": [
@@ -258,51 +261,51 @@
       {
         "name": "round1-bdf-idle",
         "samples": 72,
-        "mean_soc_w": 0.472241,
-        "sampled_seconds": 72.79097,
-        "sampled_soc_j": 34.374894
+        "mean_soc_w": 0.412267,
+        "sampled_seconds": 72.80783,
+        "sampled_soc_j": 30.016238
       },
       {
         "name": "round1-bdf-work",
         "samples": 72,
-        "mean_soc_w": 4.788546,
-        "sampled_seconds": 72.38826,
-        "sampled_soc_j": 346.634522,
+        "mean_soc_w": 4.942741,
+        "sampled_seconds": 72.40203,
+        "sampled_soc_j": 357.864477,
         "work_seconds": 60.099
       },
       {
         "name": "round2-bdf-idle",
         "samples": 72,
-        "mean_soc_w": 0.367044,
-        "sampled_seconds": 72.80816,
-        "sampled_soc_j": 26.723796
+        "mean_soc_w": 0.404016,
+        "sampled_seconds": 72.82546,
+        "sampled_soc_j": 29.422669
       },
       {
         "name": "round2-bdf-work",
         "samples": 72,
-        "mean_soc_w": 4.79461,
-        "sampled_seconds": 72.37352,
-        "sampled_soc_j": 347.002804,
-        "work_seconds": 60.081
+        "mean_soc_w": 4.857726,
+        "sampled_seconds": 72.36975,
+        "sampled_soc_j": 351.552444,
+        "work_seconds": 60.091
       },
       {
         "name": "round3-bdf-idle",
         "samples": 72,
-        "mean_soc_w": 0.350832,
-        "sampled_seconds": 72.87901,
-        "sampled_soc_j": 25.56828
+        "mean_soc_w": 0.413955,
+        "sampled_seconds": 72.86685,
+        "sampled_soc_j": 30.163588
       },
       {
         "name": "round3-bdf-work",
         "samples": 72,
-        "mean_soc_w": 4.779015,
-        "sampled_seconds": 72.43019,
-        "sampled_soc_j": 346.144934,
-        "work_seconds": 60.039
+        "mean_soc_w": 4.850991,
+        "sampled_seconds": 72.43039,
+        "sampled_soc_j": 351.359206,
+        "work_seconds": 60.085
       }
     ],
     "bdf_remeasured": {
-      "created_utc": "2026-10-09T08:47:29.922411+00:00",
+      "created_utc": "2026-10-09T11:47:37.013843+00:00",
       "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
       "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
       "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true"

@@ -26,7 +26,7 @@ For an npm integration, including server-converted BDF and browser conversion pr
 
 | Path | Contents |
 |---|---|
-| `*.go`, `converter/`, `raster/`, `internal/` | The Go encoder/decoder and one converter package per input format |
+| `*.go`, `converter/`, `raster/`, `contrib/`, `internal/` | The Go encoder/decoder and one converter package per input format |
 | `packages/` | The decoder, renderer, viewer surface and TinyGo-backed browser converter npm packages |
 | `examples/`, `site/` | The demo viewer, four sample server architectures, and the site published on GitHub Pages |
 | `docs/` | This documentation |

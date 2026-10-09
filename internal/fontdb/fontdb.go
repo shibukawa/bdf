@@ -18,8 +18,10 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf16"
 
+	"github.com/shibukawa/bdf/contrib/otf"
 	"github.com/shibukawa/bdf/internal/sfnt"
 	"golang.org/x/text/unicode/norm"
 )
@@ -49,11 +51,18 @@ type Face struct {
 	once   sync.Once
 	loaded *Loaded
 	err    error
+	// ready holds loaded once Load has succeeded, for HasRune to answer
+	// from the cmap it parsed instead of reading the table again.
+	ready atomic.Pointer[Loaded]
 }
 
-// fileBytes is a font file, read once for the faces of it that are loaded.
+// fileBytes is a font file, opened once for the faces of it that are
+// loaded. It is mapped into memory where the platform allows (contrib/otf),
+// so that only the tables and the glyphs that are read become resident,
+// and it stays open for the life of the process, as the faces do.
 type fileBytes struct {
 	once sync.Once
+	file *otf.File
 	data []byte
 	err  error
 }
@@ -292,6 +301,18 @@ func scanFace(r io.ReaderAt, off int64) *Face {
 		}
 		return b
 	}
+	// prefix reads the first n bytes of a table (nil when it is shorter).
+	prefix := func(name string, n int64) []byte {
+		toff, tlen := tableRange(name)
+		if tlen < n {
+			return nil
+		}
+		b := make([]byte, n)
+		if _, err := r.ReadAt(b, toff); err != nil {
+			return nil
+		}
+		return b
+	}
 	cmapOffset, cmapLength := tableRange("cmap")
 	face := &Face{Weight: 400, CFF: tag == "OTTO", cmapOffset: cmapOffset, cmapLength: cmapLength}
 	for i := 0; i < n; i++ {
@@ -321,7 +342,9 @@ func scanFace(r io.ReaderAt, off int64) *Face {
 	if face.Weight < 100 || face.Weight > 1000 {
 		face.Weight = 400
 	}
-	if post := table("post"); len(post) >= 16 {
+	// isFixedPitch is all the scan needs of post, whose glyph names can
+	// run to hundreds of kilobytes.
+	if post := prefix("post", 16); post != nil {
 		face.Mono = binary.BigEndian.Uint32(post[12:]) != 0
 	}
 	st := strings.ToLower(face.Style)
@@ -455,7 +478,9 @@ func abs(v int) int {
 type Loaded struct {
 	Face *Face
 	Font *sfnt.Font
-	Data []byte // the whole file (the font's tables point into it)
+	// Data is the whole file, mapped into memory where the platform allows
+	// (contrib/otf); the font's tables point into it.
+	Data []byte
 	upem float64
 	// vertical metrics in em
 	Ascent, Descent       float64
@@ -482,7 +507,8 @@ func (f *Face) Load() (*Loaded, error) {
 			f.err = err
 			return
 		}
-		sf, err := sfnt.ParseIndex(data, f.Index)
+		// glyph names are for PDF and font previews, not for layout
+		sf, err := sfnt.ParseWith(data, f.Index, sfnt.Options{NoPostNames: true})
 		if err != nil {
 			f.err = err
 			return
@@ -512,6 +538,7 @@ func (f *Face) Load() (*Loaded, error) {
 		pos, th := sf.Underline()
 		l.UnderlinePos, l.UnderTh = float64(pos)/l.upem, float64(th)/l.upem
 		f.loaded = l
+		f.ready.Store(l)
 	})
 	return f.loaded, f.err
 }
@@ -521,6 +548,9 @@ func (f *Face) Load() (*Loaded, error) {
 func (f *Face) HasRune(r rune) bool {
 	if f == nil || r < 0 {
 		return false
+	}
+	if l := f.ready.Load(); l != nil {
+		return l.Has(r)
 	}
 	if f.cmapData == nil && f.cmapLength > maxCoverageTable {
 		loaded, err := f.Load()
@@ -590,7 +620,7 @@ func (f *Face) readCmap() ([]byte, error) {
 	return data, nil
 }
 
-// read returns the bytes of the face's file, read when the first of its
+// read returns the bytes of the face's file, opened when the first of its
 // faces is loaded.
 func (f *Face) read() ([]byte, error) {
 	b := f.file
@@ -599,9 +629,12 @@ func (f *Face) read() ([]byte, error) {
 	}
 	b.once.Do(func() {
 		if f.fsys != nil {
-			b.data, b.err = fs.ReadFile(f.fsys, f.Path)
+			b.file, b.err = otf.OpenFS(f.fsys, f.Path)
 		} else {
-			b.data, b.err = os.ReadFile(f.Path)
+			b.file, b.err = otf.Open(f.Path)
+		}
+		if b.err == nil {
+			b.data = b.file.Bytes()
 		}
 	})
 	return b.data, b.err
