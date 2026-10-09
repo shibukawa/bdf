@@ -9,8 +9,8 @@
       "go": "go version go1.27.0 darwin/arm64"
     },
     "bdf_binary": {
-      "bytes": 25132514,
-      "sha256": "db0b2b37be3b72b00f82c2f519ccd2ad9ef83adf2a8c758a7a0108b20b778fd3"
+      "bytes": 25812914,
+      "sha256": "e49be0847b490c29767f720cc8ffdf8cbd1d1e44ab549d7d641adb1158059d90"
     },
     "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t98%; charging; 0:16 remaining present: true",
     "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t99%; finishing charge; 0:08 remaining present: true",
@@ -50,9 +50,9 @@
           "cpu_seconds": 0.67
         },
         "bdf": {
-          "max_rss_bytes": 73367552,
-          "peak_footprint_bytes": 59654840,
-          "elapsed_seconds": 0.06,
+          "max_rss_bytes": 73711616,
+          "peak_footprint_bytes": 59818704,
+          "elapsed_seconds": 0.05,
           "cpu_seconds": 0.06
         }
       },
@@ -64,9 +64,9 @@
           "cpu_seconds": 1.02
         },
         "bdf": {
-          "max_rss_bytes": 55640064,
-          "peak_footprint_bytes": 41976504,
-          "elapsed_seconds": 0.05,
+          "max_rss_bytes": 53608448,
+          "peak_footprint_bytes": 39568032,
+          "elapsed_seconds": 0.04,
           "cpu_seconds": 0.05
         }
       },
@@ -78,9 +78,9 @@
           "cpu_seconds": 0.63
         },
         "bdf": {
-          "max_rss_bytes": 54591488,
-          "peak_footprint_bytes": 41632464,
-          "elapsed_seconds": 0.05,
+          "max_rss_bytes": 54788096,
+          "peak_footprint_bytes": 41173664,
+          "elapsed_seconds": 0.04,
           "cpu_seconds": 0.05
         }
       },
@@ -92,10 +92,10 @@
           "cpu_seconds": 1.62
         },
         "bdf": {
-          "max_rss_bytes": 55574528,
-          "peak_footprint_bytes": 41271992,
-          "elapsed_seconds": 0.41,
-          "cpu_seconds": 0.49
+          "max_rss_bytes": 56164352,
+          "peak_footprint_bytes": 42353360,
+          "elapsed_seconds": 0.23,
+          "cpu_seconds": 0.3
         }
       },
       "many-slides.pptx": {
@@ -106,12 +106,20 @@
           "cpu_seconds": 68.3
         },
         "bdf": {
-          "max_rss_bytes": 44679168,
-          "peak_footprint_bytes": 30360248,
-          "elapsed_seconds": 0.18,
-          "cpu_seconds": 0.24
+          "max_rss_bytes": 44007424,
+          "peak_footprint_bytes": 30294712,
+          "elapsed_seconds": 0.12,
+          "cpu_seconds": 0.17
         }
       }
+    },
+    "bdf_remeasured": {
+      "created_utc": "2026-10-09T09:04:08.633984+00:00",
+      "git_revision": "692b06d9559f211cc4e6785a77e292d60a391c1e",
+      "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+      "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
+      "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
+      "inputs_regenerated": []
     }
   },
   "power": {
@@ -123,8 +131,8 @@
     "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
     "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
     "bdf_binary": {
-      "bytes": 25132514,
-      "sha256": "db0b2b37be3b72b00f82c2f519ccd2ad9ef83adf2a8c758a7a0108b20b778fd3"
+      "bytes": 25812914,
+      "sha256": "e49be0847b490c29767f720cc8ffdf8cbd1d1e44ab549d7d641adb1158059d90"
     },
     "pairs": [
       {
@@ -135,24 +143,6 @@
         "estimated_soc_j_per_document": 7.155304,
         "idle": "round1-libreoffice-idle",
         "work": "round1-libreoffice-work"
-      },
-      {
-        "round": 1,
-        "workflow": "bdf",
-        "documents": 1098,
-        "estimated_incremental_soc_w": 4.197052,
-        "estimated_soc_j_per_document": 0.276664,
-        "idle": "round1-bdf-idle",
-        "work": "round1-bdf-work"
-      },
-      {
-        "round": 2,
-        "workflow": "bdf",
-        "documents": 1158,
-        "estimated_incremental_soc_w": 4.381303,
-        "estimated_soc_j_per_document": 0.273818,
-        "idle": "round2-bdf-idle",
-        "work": "round2-bdf-work"
       },
       {
         "round": 2,
@@ -173,18 +163,36 @@
         "work": "round3-libreoffice-work"
       },
       {
+        "round": 1,
+        "workflow": "bdf",
+        "documents": 1251,
+        "estimated_incremental_soc_w": 4.316305,
+        "estimated_soc_j_per_document": 0.24976,
+        "idle": "round1-bdf-idle",
+        "work": "round1-bdf-work"
+      },
+      {
+        "round": 2,
+        "workflow": "bdf",
+        "documents": 1251,
+        "estimated_incremental_soc_w": 4.427566,
+        "estimated_soc_j_per_document": 0.256146,
+        "idle": "round2-bdf-idle",
+        "work": "round2-bdf-work"
+      },
+      {
         "round": 3,
         "workflow": "bdf",
-        "documents": 1149,
-        "estimated_incremental_soc_w": 4.311959,
-        "estimated_soc_j_per_document": 0.271682,
+        "documents": 1248,
+        "estimated_incremental_soc_w": 4.428183,
+        "estimated_soc_j_per_document": 0.256998,
         "idle": "round3-bdf-idle",
         "work": "round3-bdf-work"
       }
     ],
     "median_estimated_soc_j_per_document": {
       "libreoffice": 4.267438,
-      "bdf": 0.273818
+      "bdf": 0.256146
     },
     "range_estimated_soc_j_per_document": {
       "libreoffice": [
@@ -192,8 +200,8 @@
         7.155304
       ],
       "bdf": [
-        0.271682,
-        0.276664
+        0.24976,
+        0.256998
       ]
     },
     "inputs": [
@@ -216,36 +224,6 @@
         "sampled_seconds": 72.38705,
         "sampled_soc_j": 482.775633,
         "work_seconds": 61.051
-      },
-      {
-        "name": "round1-bdf-idle",
-        "samples": 72,
-        "mean_soc_w": 1.474574,
-        "sampled_seconds": 72.75862,
-        "sampled_soc_j": 107.287962
-      },
-      {
-        "name": "round1-bdf-work",
-        "samples": 72,
-        "mean_soc_w": 5.671626,
-        "sampled_seconds": 72.37863,
-        "sampled_soc_j": 410.504524,
-        "work_seconds": 60.132
-      },
-      {
-        "name": "round2-bdf-idle",
-        "samples": 72,
-        "mean_soc_w": 0.389316,
-        "sampled_seconds": 72.83919,
-        "sampled_soc_j": 28.357485
-      },
-      {
-        "name": "round2-bdf-work",
-        "samples": 72,
-        "mean_soc_w": 4.770619,
-        "sampled_seconds": 72.37155,
-        "sampled_soc_j": 345.257085,
-        "work_seconds": 60.062
       },
       {
         "name": "round2-libreoffice-idle",
@@ -278,20 +256,56 @@
         "work_seconds": 62.921
       },
       {
+        "name": "round1-bdf-idle",
+        "samples": 72,
+        "mean_soc_w": 0.472241,
+        "sampled_seconds": 72.79097,
+        "sampled_soc_j": 34.374894
+      },
+      {
+        "name": "round1-bdf-work",
+        "samples": 72,
+        "mean_soc_w": 4.788546,
+        "sampled_seconds": 72.38826,
+        "sampled_soc_j": 346.634522,
+        "work_seconds": 60.099
+      },
+      {
+        "name": "round2-bdf-idle",
+        "samples": 72,
+        "mean_soc_w": 0.367044,
+        "sampled_seconds": 72.80816,
+        "sampled_soc_j": 26.723796
+      },
+      {
+        "name": "round2-bdf-work",
+        "samples": 72,
+        "mean_soc_w": 4.79461,
+        "sampled_seconds": 72.37352,
+        "sampled_soc_j": 347.002804,
+        "work_seconds": 60.081
+      },
+      {
         "name": "round3-bdf-idle",
         "samples": 72,
-        "mean_soc_w": 0.548759,
-        "sampled_seconds": 72.88201,
-        "sampled_soc_j": 39.994677
+        "mean_soc_w": 0.350832,
+        "sampled_seconds": 72.87901,
+        "sampled_soc_j": 25.56828
       },
       {
         "name": "round3-bdf-work",
         "samples": 72,
-        "mean_soc_w": 4.860718,
-        "sampled_seconds": 72.39474,
-        "sampled_soc_j": 351.890408,
-        "work_seconds": 60.147
+        "mean_soc_w": 4.779015,
+        "sampled_seconds": 72.43019,
+        "sampled_soc_j": 346.144934,
+        "work_seconds": 60.039
       }
-    ]
+    ],
+    "bdf_remeasured": {
+      "created_utc": "2026-10-09T08:47:29.922411+00:00",
+      "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+      "power_source_start": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true",
+      "power_source_end": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=37027939)\t100%; charged; 0:00 remaining present: true"
+    }
   }
 }

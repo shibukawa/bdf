@@ -179,7 +179,29 @@ for (const { name, format, bdf } of converted) {
   console.log("ok   testdata/demo.bdf and demo-encrypted.bdf: JPEG, sizes, passwords");
 }
 
-// the home pages show the measured comparison below the viewer in both languages
+// the home pages show the measured comparison below the viewer in both
+// languages, with the numbers of docs/benchmarks/latest.json as the page
+// prints them (two decimals of a second, a tenth of a MiB, hundredths of a
+// joule, rounded ratios), so a remeasurement changes the test's input, not
+// the test
+const benchmark = JSON.parse(await readFile(new URL("../docs/benchmarks/latest.json", import.meta.url), "utf8"));
+function benchmarkNumbers(lang) {
+  const number = (value, digits) => new Intl.NumberFormat(lang, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+  const results = Object.values(benchmark.process.results);
+  const energy = benchmark.power.median_estimated_soc_j_per_document;
+  const ranges = benchmark.power.range_estimated_soc_j_per_document;
+  const range = (w) => `${number(ranges[w][0], 2)}–${number(ranges[w][1], 2)}`;
+  return [
+    ...results.flatMap((r) => ["libreoffice", "bdf"].flatMap((w) => [`${number(r[w].elapsed_seconds, 2)} s`, `${number(r[w].max_rss_bytes / 2 ** 20, 1)} MiB`])),
+    `${number(energy.libreoffice, 2)} J`, `${number(energy.bdf, 2)} J`,
+    // the highlights: energy saved, and the largest speed and memory ratios
+    `${Math.round(Math.abs(1 - energy.bdf / energy.libreoffice) * 100)}%`,
+    `${number(Math.max(...results.map((r) => r.libreoffice.elapsed_seconds / r.bdf.elapsed_seconds)), 0)}×`,
+    `${number(Math.max(...results.map((r) => r.libreoffice.max_rss_bytes / r.bdf.max_rss_bytes)), 0)}×`,
+    lang === "ja" ? `${range("libreoffice")}、BDF ${range("bdf")}。` : `${range("libreoffice")} J/document; BDF ${range("bdf")} J/document.`,
+    "LibreOffice + Poppler",
+  ];
+}
 for (const page of ["index.html", "index.ja.html"]) {
   const html = await readFile(join(site, page), "utf8");
   const introduction = page.endsWith(".ja.html")
@@ -195,10 +217,7 @@ for (const page of ["index.html", "index.ja.html"]) {
   const energyChart = html.indexOf('id="benchmark-energy-title"');
   assert.ok(benchmark < timeChart && timeChart < memoryChart && memoryChart < energyChart && energyChart < gallery,
     `${page}: charts are ordered by time, memory and energy`);
-  const energyRanges = page.endsWith(".ja.html")
-    ? ["3.30–7.16、", "0.27–0.28。"]
-    : ["3.30–7.16 J/document", "0.27–0.28 J/document"];
-  for (const result of ["4.27 J", "0.27 J", ...energyRanges, "56.38 s", "0.18 s", "1,918.9 MiB", "42.6 MiB", "94%", "313×", "45×", "LibreOffice + Poppler"]) {
+  for (const result of benchmarkNumbers(page.endsWith(".ja.html") ? "ja" : "en")) {
     assert.ok(html.includes(result), `${page}: benchmark includes ${result}`);
   }
 }

@@ -53,6 +53,7 @@ def main():
         "rounds": args.rounds,
         "build_flags": ["-trimpath", "-ldflags=-s -w"],
         "binary": {"path": str(binary), "bytes": binary.stat().st_size, "sha256": sha256(binary)},
+        "power_source_start": subprocess.check_output(["pmset", "-g", "batt"], text=True).strip(),
         "baseline": {"date": baseline["date"], "git_revision": baseline["git_revision"],
                      "path": str(args.baseline.resolve()), "sha256": sha256(args.baseline)} if baseline else None,
         "inputs": [], "runs": [], "results": {},
@@ -134,6 +135,8 @@ def main():
             result["thumbnails_identical"] = True if args.compare_bdf else None
             data["results"][name] = result
             args.output.write_text(json.dumps(data, indent=2) + "\n")
+    data["power_source_end"] = subprocess.check_output(["pmset", "-g", "batt"], text=True).strip()
+    args.output.write_text(json.dumps(data, indent=2) + "\n")
     print(json.dumps(data["results"], indent=2))
 
 

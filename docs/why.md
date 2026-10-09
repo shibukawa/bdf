@@ -2,21 +2,21 @@
 
 ## Measured memory, CPU time, and energy
 
-Go and LibreOffice → PDF → Poppler were remeasured on the same Apple M3 Mac on AC power. Each workflow converts an Office file and creates a 256 px first-page thumbnail.
+Go and LibreOffice → PDF → Poppler were remeasured on the same Apple M3 Mac on AC power. Each workflow converts an Office file and creates a 256 px first-page thumbnail. Go was remeasured on 2026-10-09; the LibreOffice / Poppler values are from 2026-10-06.
 
 [![Latest AC memory, CPU, and energy comparison](./images/why-economy.en.svg)](./images/why-economy.en.svg)
 
 | Input | RSS: LibreOffice / Go (MiB) | Elapsed: LibreOffice / Go (s) | CPU: LibreOffice / Go (s) |
 |---|---:|---:|---:|
-| Small DOCX | 161.8 / 70.0 | 0.69 / 0.06 | 0.67 / 0.06 |
-| Small PPTX | 147.3 / 53.1 | 1.01 / 0.05 | 1.02 / 0.05 |
-| Small XLSX | 123.7 / 52.1 | 0.65 / 0.05 | 0.63 / 0.05 |
-| Synthetic XLSX (4 sheets × 3,000 rows) | 288.3 / 53.0 | 1.55 / 0.41 | 1.62 / 0.49 |
-| Synthetic PPTX (100 slides) | 1918.9 / 42.6 | 56.38 / 0.18 | 68.30 / 0.24 |
+| Small DOCX | 161.8 / 70.3 | 0.69 / 0.05 | 0.67 / 0.06 |
+| Small PPTX | 147.3 / 51.1 | 1.01 / 0.04 | 1.02 / 0.05 |
+| Small XLSX | 123.7 / 52.2 | 0.65 / 0.04 | 0.63 / 0.05 |
+| Synthetic XLSX (4 sheets × 3,000 rows) | 288.3 / 53.6 | 1.55 / 0.23 | 1.62 / 0.30 |
+| Synthetic PPTX (100 slides) | 1918.9 / 42.0 | 56.38 / 0.12 | 68.30 / 0.17 |
 
 Time and memory are medians of 5 runs after warmup. RSS is peak resident memory; CPU time is user + system; elapsed time includes startup, conversion, and output. LibreOffice and Poppler run sequentially, so their pipeline peak is the larger stage peak and their times are added. Output formats and visual results differ.
 
-Estimated SoC energy: LibreOffice **4.267 J/document** (round range 3.295–7.155), Go **0.274 J/document** (0.272–0.277). Both workflows used AC power for 3 rounds.
+Estimated SoC energy: LibreOffice **4.267 J/document** (round range 3.295–7.155), Go **0.256 J/document** (0.250–0.257). Both workflows used AC power for 3 rounds.
 
 See the [latest results and conditions](benchmarks/latest.json) and [measurement procedure](process-memory-review.ja.md). Raw logs stay in the local results directory outside Git.
 
