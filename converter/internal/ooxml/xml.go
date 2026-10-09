@@ -1,7 +1,6 @@
 package ooxml
 
 import (
-	"encoding/xml"
 	"io"
 
 	"github.com/shibukawa/bdf/internal/xmltree"
@@ -13,6 +12,12 @@ type Node = xmltree.Node
 
 // Segment is a piece of the content of an element.
 type Segment = xmltree.Segment
+
+// Attr is an attribute of an element, and Name its name.
+type (
+	Attr = xmltree.Attr
+	Name = xmltree.Name
+)
 
 const (
 	// NSA14 is the namespace of the Office 2010 DrawingML extensions.
@@ -39,11 +44,6 @@ func ParsePicking(data []byte, pick func(choice *Node) bool) (*Node, error) {
 // ParsePickingReader is ParsePicking from a reader.
 func ParsePickingReader(r io.Reader, pick func(choice *Node) bool) (*Node, error) {
 	return xmltree.ParsePickingReader(r, pick)
-}
-
-// ReadElement reads the element that start opens from d into a node tree.
-func ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
-	return xmltree.ReadElement(d, start)
 }
 
 // MathChoice picks the choices that hold Office Math in DrawingML text.

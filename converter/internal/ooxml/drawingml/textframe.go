@@ -1,7 +1,6 @@
 package drawingml
 
 import (
-	"encoding/xml"
 	"math"
 
 	"github.com/shibukawa/bdf"
@@ -82,7 +81,7 @@ func fontRefProps(fr *ooxml.Node) *ooxml.Node {
 func mkNode(name string, kv ...string) *ooxml.Node {
 	n := &ooxml.Node{Name: name}
 	for i := 0; i+1 < len(kv); i += 2 {
-		n.Attrs = append(n.Attrs, xml.Attr{Name: xml.Name{Local: kv[i]}, Value: kv[i+1]})
+		n.Attrs = append(n.Attrs, ooxml.Attr{Name: ooxml.Name{Local: kv[i]}, Value: kv[i+1]})
 	}
 	return n
 }

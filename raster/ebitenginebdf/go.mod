@@ -13,7 +13,7 @@ require (
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/purego v0.11.0 // indirect
 	github.com/klauspost/compress v1.20.1 // indirect
-	github.com/shibukawa/tinygodriver v1.3.3 // indirect
+	github.com/shibukawa/tinygodriver v1.3.4 // indirect
 	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/net v0.60.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect

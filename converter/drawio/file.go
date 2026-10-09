@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,10 @@ import (
 
 	"github.com/klauspost/compress/flate"
 	"github.com/klauspost/compress/zlib"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro/htmlentity"
+
+	"github.com/shibukawa/bdf/internal/xmltree"
 )
 
 // A draw.io file holds one or more diagrams (pages). They come as
@@ -252,31 +255,33 @@ func (n *xmlNode) childrenNamed(name string) []*xmlNode {
 }
 
 // parseXML reads an XML document into an element tree (names without
-// namespace prefixes).
+// namespace prefixes). It is lenient, as draw.io's files are HTML by
+// habit: the entities and the void elements of HTML are known.
 func parseXML(data []byte) (*xmlNode, error) {
-	d := xml.NewDecoder(bytes.NewReader(data))
-	d.Strict = false
-	d.AutoClose = xml.HTMLAutoClose
-	d.Entity = xml.HTMLEntity
-	d.CharsetReader = func(charset string, r io.Reader) (io.Reader, error) { return r, nil }
+	r := xmltree.Open(data, xmlro.Options{Lenient: true, Entities: htmlentity.Lookup, AutoClose: htmlentity.AutoClose})
 	var stack []*xmlNode
 	var root *xmlNode
+	var text []byte
+read:
 	for {
-		tok, err := d.Token()
-		if err == io.EOF {
-			break
-		}
+		k, err := r.Next()
 		if err != nil {
 			if root != nil {
 				break
 			}
 			return nil, fmt.Errorf("%w: %v", errNotDrawio, err)
 		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			n := &xmlNode{name: t.Name.Local, attrs: make(map[string]string, len(t.Attr))}
-			for _, a := range t.Attr {
-				n.attrs[a.Name.Local] = a.Value
+		switch k {
+		case xmlro.EOF:
+			break read
+		case xmlro.StartElement:
+			n := &xmlNode{name: string(r.LocalName()), attrs: map[string]string{}}
+			for {
+				name, val, ok := r.NextAttr()
+				if !ok {
+					break
+				}
+				n.attrs[string(xmltree.Local(name))] = val.String()
 			}
 			if len(stack) > 0 {
 				p := stack[len(stack)-1]
@@ -285,13 +290,14 @@ func parseXML(data []byte) (*xmlNode, error) {
 				root = n
 			}
 			stack = append(stack, n)
-		case xml.EndElement:
+		case xmlro.EndElement:
 			if len(stack) > 0 {
 				stack = stack[:len(stack)-1]
 			}
-		case xml.CharData:
+		case xmlro.Text, xmlro.CData:
 			if len(stack) > 0 {
-				stack[len(stack)-1].text += string(t)
+				text = xmltree.AppendText(text[:0], r)
+				stack[len(stack)-1].text += string(text)
 			}
 		}
 	}

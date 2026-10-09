@@ -1,12 +1,13 @@
 package imgconv
 
 import (
-	"bytes"
-	"encoding/xml"
-	"io"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
+
+	"github.com/shibukawa/bdf/internal/xmltree"
 )
 
 // SVG images are stored as they are and drawn by the browser (docs/spec.md
@@ -81,32 +82,32 @@ func (s SVGSize) Pixels() (w, h float64) {
 // SVGRoot returns the size attributes of an SVG document's root element;
 // ok is false when the document's first element is not svg.
 func SVGRoot(data []byte) (width, height, viewBox string, ok bool) {
-	d := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))))
-	d.Strict = false
-	d.CharsetReader = func(_ string, r io.Reader) (io.Reader, error) { return r, nil } // the attributes read are ASCII
+	r := xmltree.Open(data, xmlro.Options{Lenient: true})
 	for {
-		tok, err := d.Token()
-		if err != nil {
+		k, err := r.Next()
+		if err != nil || k == xmlro.EOF {
 			return "", "", "", false
 		}
-		if s, isStart := tok.(xml.StartElement); isStart {
-			if s.Name.Local != "svg" {
-				return "", "", "", false
+		if k != xmlro.StartElement {
+			continue
+		}
+		if !xmlro.Equal(r.LocalName(), "svg") {
+			return "", "", "", false
+		}
+		// the attributes of no namespace: those without a prefix
+		for {
+			name, val, more := r.NextAttr()
+			if !more {
+				return width, height, viewBox, true
 			}
-			for _, a := range s.Attr {
-				if a.Name.Space != "" {
-					continue
-				}
-				switch a.Name.Local {
-				case "width":
-					width = a.Value
-				case "height":
-					height = a.Value
-				case "viewBox":
-					viewBox = a.Value
-				}
+			switch {
+			case xmlro.Equal(name, "width"):
+				width = val.String()
+			case xmlro.Equal(name, "height"):
+				height = val.String()
+			case xmlro.Equal(name, "viewBox"):
+				viewBox = val.String()
 			}
-			return width, height, viewBox, true
 		}
 	}
 }

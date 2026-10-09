@@ -6,7 +6,6 @@ package ooxml
 
 import (
 	"archive/zip"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -179,7 +178,7 @@ func (p *Package) XML(name string) (*Node, error) {
 	if p.reader == nil {
 		p.reader = xmltree.NewReader(rc)
 	} else {
-		p.reader.Reset(rc)
+		xmltree.Reset(p.reader, rc)
 	}
 	n, err := xmltree.ParseFrom(p.reader, p.choice(), &budget)
 	if err != nil {
@@ -194,13 +193,6 @@ func (p *Package) XML(name string) (*Node, error) {
 	p.counts[key], p.elements = p.elements-budget, budget
 	p.xmls[key] = n
 	return n, nil
-}
-
-// ReadElement reads one streamed element with this package's markup
-// compatibility choices, as XML does for a whole part, from an
-// encoding/xml decoder; ReadFrom reads one from a reader of NewReader.
-func (p *Package) ReadElement(d *xml.Decoder, start xml.StartElement) (*Node, error) {
-	return xmltree.ReadElementPicking(d, start, p.choice())
 }
 
 // NewReader returns a reader of the XML tokens of a part opened with

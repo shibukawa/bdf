@@ -1,7 +1,6 @@
 package drawingml
 
 import (
-	"encoding/xml"
 	"math"
 	"slices"
 	"testing"
@@ -10,11 +9,11 @@ import (
 )
 
 // node and attr build a small element tree for the chart-cache tests.
-func node(name string, attrs []xml.Attr, kids ...*ooxml.Node) *ooxml.Node {
+func node(name string, attrs []ooxml.Attr, kids ...*ooxml.Node) *ooxml.Node {
 	return &ooxml.Node{Name: name, Attrs: attrs, Kids: kids}
 }
 
-func attr(k, v string) []xml.Attr { return []xml.Attr{{Name: xml.Name{Local: k}, Value: v}} }
+func attr(k, v string) []ooxml.Attr { return []ooxml.Attr{{Name: ooxml.Name{Local: k}, Value: v}} }
 
 // A cached point count (or a point index) far above the data present is not
 // trusted as a slice size; a normal count is kept exactly.

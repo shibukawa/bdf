@@ -18,7 +18,7 @@ func TestCompactPath(t *testing.T) {
 		var b strings.Builder
 		b.WriteString(k.name)
 		for _, a := range k.attrs {
-			b.WriteString(" " + a.Name.Local + "=" + a.Value)
+			b.WriteString(" " + a.name + "=" + a.value)
 		}
 		got = append(got, b.String())
 	}

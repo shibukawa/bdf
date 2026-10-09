@@ -12,7 +12,6 @@
 package xlsx
 
 import (
-	"encoding/xml"
 	"fmt"
 	"io"
 	"io/fs"
@@ -481,10 +480,10 @@ func (host) TextStyle(string) *ooxml.Node                                  { ret
 func (host) Field(string) (string, bool)                                   { return "", false }
 func (host) Link(string, ooxml.Rel) string                                 { return "" }
 
-func attrs(kv ...string) []xml.Attr {
-	var out []xml.Attr
+func attrs(kv ...string) []ooxml.Attr {
+	var out []ooxml.Attr
 	for i := 0; i+1 < len(kv); i += 2 {
-		out = append(out, xml.Attr{Name: xml.Name{Local: kv[i]}, Value: kv[i+1]})
+		out = append(out, ooxml.Attr{Name: ooxml.Name{Local: kv[i]}, Value: kv[i+1]})
 	}
 	return out
 }

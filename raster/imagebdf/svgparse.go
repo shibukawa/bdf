@@ -1,17 +1,18 @@
 package imagebdf
 
 import (
-	"bytes"
-	"encoding/xml"
 	"fmt"
-	"io"
 	"math"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
+	"github.com/shibukawa/tinygodriver/encoding/xmlro/htmlentity"
 	"golang.org/x/net/html/charset"
+
+	"github.com/shibukawa/bdf/internal/xmltree"
 )
 
 // svgNode is an element of an SVG document, or a run of text ("#text").
@@ -63,29 +64,28 @@ func parseSVG(data []byte) (*svgDoc, bool) {
 // parseSVGWithin is parseSVG with its limits: the depth of the elements,
 // their number and the matches of the rules of the style sheets.
 func parseSVGWithin(data []byte, depth, most, matches int) (*svgDoc, bool) {
-	dec := xml.NewDecoder(bytes.NewReader(data))
-	dec.Strict = false
-	dec.AutoClose = xml.HTMLAutoClose
-	dec.Entity = xml.HTMLEntity
-	dec.CharsetReader = charset.NewReaderLabel
+	// one level more than is read, so that the element that has it ends
+	// the reading here
+	r := xmltree.Open(data, xmlro.Options{Lenient: true, Entities: htmlentity.Lookup, AutoClose: htmlentity.AutoClose,
+		CharsetReader: charset.NewReaderLabel, MaxDepth: depth + 1})
 	doc := &svgDoc{ids: map[string]*svgNode{}}
 	var stack []*svgNode
 	var styles []string
+	var text []byte
 	nodes := 0
 read:
 	for {
-		tok, err := dec.Token()
-		if err == io.EOF {
-			break
-		}
+		k, err := r.Next()
 		if err != nil {
 			if doc.root == nil {
 				return nil, false
 			}
 			break // keep what was read, as browsers draw up to an error
 		}
-		switch t := tok.(type) {
-		case xml.StartElement:
+		switch k {
+		case xmlro.EOF:
+			break read
+		case xmlro.StartElement:
 			// what passes a limit ends the reading as an error does
 			if len(stack) >= depth {
 				doc.warnings = append(doc.warnings, fmt.Sprintf("the elements of an SVG image are more than %d deep: the rest are not read", depth))
@@ -95,15 +95,23 @@ read:
 				doc.warnings = append(doc.warnings, fmt.Sprintf("an SVG image has more than %d elements: the rest are not read", most))
 				break read
 			}
-			n := &svgNode{name: t.Name.Local, attr: make(map[string]string, len(t.Attr))}
-			for _, a := range t.Attr {
-				if a.Name.Space == "xmlns" || a.Name.Local == "xmlns" {
+			n := &svgNode{name: string(r.LocalName()), attr: map[string]string{}}
+			for {
+				name, val, ok := r.NextAttr()
+				if !ok {
+					break
+				}
+				local := xmltree.Local(name)
+				prefixed := len(local) < len(name)
+				if xmlro.Equal(local, "xmlns") || prefixed && xmlro.Equal(name[:len(name)-len(local)], "xmlns:") {
 					continue
 				}
-				if _, ok := n.attr[a.Name.Local]; ok && a.Name.Local == "href" && a.Name.Space != "" {
-					continue // href wins over xlink:href
+				if prefixed && xmlro.Equal(local, "href") {
+					if _, ok := n.attr["href"]; ok {
+						continue // href wins over xlink:href
+					}
 				}
-				n.attr[a.Name.Local] = a.Value
+				n.attr[string(local)] = val.String()
 			}
 			if len(stack) > 0 {
 				p := stack[len(stack)-1]
@@ -118,23 +126,25 @@ read:
 				}
 			}
 			stack = append(stack, n)
-		case xml.EndElement:
+		case xmlro.EndElement:
 			if len(stack) > 0 {
 				stack = stack[:len(stack)-1]
 			}
-		case xml.CharData:
+		case xmlro.Text, xmlro.CData:
 			if len(stack) == 0 {
 				continue
 			}
 			p := stack[len(stack)-1]
 			switch p.name {
 			case "style":
-				styles = append(styles, string(t))
+				text = xmltree.AppendText(text[:0], r)
+				styles = append(styles, string(text))
 			case "text", "tspan", "textPath", "a":
 				if nodes++; nodes > most {
 					continue
 				}
-				p.children = append(p.children, &svgNode{name: "#text", text: string(t), parent: p})
+				text = xmltree.AppendText(text[:0], r)
+				p.children = append(p.children, &svgNode{name: "#text", text: string(text), parent: p})
 			}
 		}
 	}

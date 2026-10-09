@@ -1,7 +1,6 @@
 package visio
 
 import (
-	"encoding/xml"
 	"math"
 	"strconv"
 	"strings"
@@ -108,7 +107,7 @@ func splitText(t *ooxml.Node) []*textPara {
 func elem(name string, kv ...string) *ooxml.Node {
 	n := &ooxml.Node{Name: name}
 	for i := 0; i+1 < len(kv); i += 2 {
-		n.Attrs = append(n.Attrs, xml.Attr{Name: xml.Name{Local: kv[i]}, Value: kv[i+1]})
+		n.Attrs = append(n.Attrs, ooxml.Attr{Name: ooxml.Name{Local: kv[i]}, Value: kv[i+1]})
 	}
 	return n
 }
@@ -120,7 +119,7 @@ func setAttr(n *ooxml.Node, k, v string) {
 			return
 		}
 	}
-	n.Attrs = append(n.Attrs, xml.Attr{Name: xml.Name{Local: k}, Value: v})
+	n.Attrs = append(n.Attrs, ooxml.Attr{Name: ooxml.Name{Local: k}, Value: v})
 }
 
 func add(n *ooxml.Node, kids ...*ooxml.Node) *ooxml.Node {
@@ -309,7 +308,7 @@ func (p *pageCtx) runProps(s *shape, key string) (*ooxml.Node, float64) {
 	}
 	style := int(rnum("Style", 0))
 	rPr := elem("rPr", "sz", centipoints(size))
-	set := func(k, v string) { rPr.Attrs = append(rPr.Attrs, xml.Attr{Name: xml.Name{Local: k}, Value: v}) }
+	set := func(k, v string) { rPr.Attrs = append(rPr.Attrs, ooxml.Attr{Name: ooxml.Name{Local: k}, Value: v}) }
 	if style&1 != 0 {
 		set("b", "1")
 	}

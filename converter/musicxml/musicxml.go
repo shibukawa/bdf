@@ -49,8 +49,6 @@
 package musicxml
 
 import (
-	"bytes"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -58,6 +56,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 
 	"github.com/shibukawa/bdf/converter/internal/music"
 )
@@ -112,7 +112,7 @@ func Parse(r io.ReaderAt, size int64, o *Options) (*music.Score, []string, error
 	if note != "" {
 		rd.warn("%s", note)
 	}
-	if err := rd.read(newDecoder(bytes.NewReader(data))); err != nil {
+	if err := rd.read(newXMLReader(data)); err != nil {
 		return nil, rd.warnings, err
 	}
 	rd.finish()
@@ -163,20 +163,19 @@ func (r *reader) warn(format string, args ...any) {
 
 // read reads the document: the header whole, the music a measure at a
 // time.
-func (r *reader) read(d *xml.Decoder) error {
+func (r *reader) read(d *xmlro.Reader) error {
 	for {
-		tok, err := d.Token()
+		k, err := d.Next()
 		if err != nil {
-			if err == io.EOF {
-				return errors.New("musicxml: no score in the file")
-			}
 			return fmt.Errorf("musicxml: %w", err)
 		}
-		se, ok := tok.(xml.StartElement)
-		if !ok {
+		if k == xmlro.EOF {
+			return errors.New("musicxml: no score in the file")
+		}
+		if k != xmlro.StartElement {
 			continue
 		}
-		switch se.Name.Local {
+		switch name := string(d.LocalName()); name {
 		case "score-partwise":
 			return r.body(d, false)
 		case "score-timewise":
@@ -184,42 +183,43 @@ func (r *reader) read(d *xml.Decoder) error {
 		case "opus":
 			return errors.New("musicxml: the file is an opus (a list of scores), not a score")
 		default:
-			return fmt.Errorf("musicxml: the document is a <%s>, not a score", se.Name.Local)
+			return fmt.Errorf("musicxml: the document is a <%s>, not a score", name)
 		}
 	}
 }
 
 // body reads the children of the root.
-func (r *reader) body(d *xml.Decoder, timewise bool) error {
+func (r *reader) body(d *xmlro.Reader, timewise bool) error {
 	for {
-		tok, err := d.Token()
+		k, err := next(d)
 		if err != nil {
 			return r.early(err)
 		}
-		switch t := tok.(type) {
-		case xml.EndElement:
+		switch k {
+		case xmlro.EndElement:
 			if len(r.parts) == 0 {
 				return errors.New("musicxml: the score has no parts")
 			}
 			return nil
-		case xml.StartElement:
+		case xmlro.StartElement:
+			part, measure := xmlro.Equal(d.LocalName(), "part"), xmlro.Equal(d.LocalName(), "measure")
 			switch {
-			case t.Name.Local == "part" && !timewise:
-				if err := r.partwise(d, t); err != nil {
+			case part && !timewise:
+				if err := r.partwise(d); err != nil {
 					return r.early(err)
 				}
-			case t.Name.Local == "measure" && timewise:
-				n, err := readNode(d, t)
+			case measure && timewise:
+				n, err := readNode(d)
 				if err != nil {
 					return r.early(err)
 				}
 				r.timewise(n)
-			case t.Name.Local == "part" || t.Name.Local == "measure":
+			case part || measure:
 				if err := d.Skip(); err != nil {
 					return r.early(err)
 				}
 			default:
-				n, err := readNode(d, t)
+				n, err := readNode(d)
 				if err != nil {
 					return r.early(err)
 				}
@@ -227,6 +227,17 @@ func (r *reader) body(d *xml.Decoder, timewise bool) error {
 			}
 		}
 	}
+}
+
+// next reads a token inside the root element, where the end of the
+// document is an error: io.EOF, as for a document that ends in the middle
+// of an element.
+func next(d *xmlro.Reader) (xmlro.Kind, error) {
+	k, err := d.Next()
+	if err == nil && k == xmlro.EOF || errors.Is(err, xmlro.ErrTruncated) {
+		return k, io.EOF
+	}
+	return k, err
 }
 
 // early handles the end of a document that stops short: what was read of
@@ -250,30 +261,30 @@ func (r *reader) early(err error) error {
 }
 
 // partwise reads a <part> of a partwise score a measure at a time.
-func (r *reader) partwise(d *xml.Decoder, start xml.StartElement) error {
+func (r *reader) partwise(d *xmlro.Reader) error {
 	var id string
-	for _, a := range start.Attr {
-		if a.Name.Local == "id" {
-			id = a.Value
+	for _, a := range attrsOf(d) {
+		if a.name == "id" {
+			id = a.value
 		}
 	}
 	p := r.part(id)
 	for {
-		tok, err := d.Token()
+		k, err := next(d)
 		if err != nil {
 			return err
 		}
-		switch t := tok.(type) {
-		case xml.EndElement:
+		switch k {
+		case xmlro.EndElement:
 			return nil
-		case xml.StartElement:
-			if t.Name.Local != "measure" || p == nil {
+		case xmlro.StartElement:
+			if !xmlro.Equal(d.LocalName(), "measure") || p == nil {
 				if err := d.Skip(); err != nil {
 					return err
 				}
 				continue
 			}
-			n, err := readNode(d, t)
+			n, err := readNode(d)
 			if err != nil {
 				return err
 			}

@@ -17,14 +17,16 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"hash"
 	"io"
+	"strconv"
+	"strings"
 	"unicode/utf16"
 
 	"github.com/shibukawa/bdf/converter/internal/cfb"
+	"github.com/shibukawa/bdf/internal/xmltree"
 )
 
 // ErrWrongPassword is returned when the password does not open the document.
@@ -191,41 +193,77 @@ func fit(b []byte, n int, pad byte) []byte {
 // b64 is a base64 attribute of the Agile EncryptionInfo XML.
 type b64 []byte
 
-func (b *b64) UnmarshalText(text []byte) error {
-	v, err := base64.StdEncoding.DecodeString(string(text))
-	*b = v
-	return err
+type agileParams struct {
+	SaltSize        int
+	BlockSize       int
+	KeyBits         int
+	HashSize        int
+	CipherAlgorithm string
+	CipherChaining  string
+	HashAlgorithm   string
+	SaltValue       b64
 }
 
-type agileParams struct {
-	SaltSize        int    `xml:"saltSize,attr"`
-	BlockSize       int    `xml:"blockSize,attr"`
-	KeyBits         int    `xml:"keyBits,attr"`
-	HashSize        int    `xml:"hashSize,attr"`
-	CipherAlgorithm string `xml:"cipherAlgorithm,attr"`
-	CipherChaining  string `xml:"cipherChaining,attr"`
-	HashAlgorithm   string `xml:"hashAlgorithm,attr"`
-	SaltValue       b64    `xml:"saltValue,attr"`
+// agileKey is the encryptedKey of a key encryptor.
+type agileKey struct {
+	agileParams
+	SpinCount                  int
+	EncryptedVerifierHashInput b64
+	EncryptedVerifierHashValue b64
+	EncryptedKeyValue          b64
 }
 
 type agile struct {
-	KeyData       agileParams `xml:"keyData"`
+	KeyData       agileParams
 	DataIntegrity struct {
-		EncryptedHmacKey   b64 `xml:"encryptedHmacKey,attr"`
-		EncryptedHmacValue b64 `xml:"encryptedHmacValue,attr"`
-	} `xml:"dataIntegrity"`
+		EncryptedHmacKey   b64
+		EncryptedHmacValue b64
+	}
 	KeyEncryptors []struct {
-		URI          string `xml:"uri,attr"`
-		EncryptedKey struct {
-			agileParams
-			SpinCount                  int `xml:"spinCount,attr"`
-			EncryptedVerifierHashInput b64 `xml:"encryptedVerifierHashInput,attr"`
-			EncryptedVerifierHashValue b64 `xml:"encryptedVerifierHashValue,attr"`
-			EncryptedKeyValue          b64 `xml:"encryptedKeyValue,attr"`
-		} `xml:"encryptedKey"`
-	} `xml:"keyEncryptors>keyEncryptor"`
+		URI          string
+		EncryptedKey agileKey
+	}
 
 	password int // index of the password key encryptor
+}
+
+// agileAttrs reads the attributes of the elements of the EncryptionInfo
+// XML: numbers and base64, a missing one as zero. err is that of the
+// first that could not be read.
+type agileAttrs struct {
+	err error
+}
+
+func (r *agileAttrs) int(n *xmltree.Node, name string) int {
+	v, _ := n.Attr(name)
+	if v == "" {
+		return 0
+	}
+	i, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil && r.err == nil {
+		r.err = fmt.Errorf("%s: %w", name, err)
+	}
+	return i
+}
+
+func (r *agileAttrs) b64(n *xmltree.Node, name string) b64 {
+	v, ok := n.Attr(name)
+	if !ok {
+		return nil
+	}
+	b, err := base64.StdEncoding.DecodeString(v)
+	if err != nil && r.err == nil {
+		r.err = fmt.Errorf("%s: %w", name, err)
+	}
+	return b
+}
+
+func (r *agileAttrs) params(n *xmltree.Node) agileParams {
+	return agileParams{
+		SaltSize: r.int(n, "saltSize"), BlockSize: r.int(n, "blockSize"), KeyBits: r.int(n, "keyBits"), HashSize: r.int(n, "hashSize"),
+		CipherAlgorithm: n.AttrStr("cipherAlgorithm", ""), CipherChaining: n.AttrStr("cipherChaining", ""),
+		HashAlgorithm: n.AttrStr("hashAlgorithm", ""), SaltValue: r.b64(n, "saltValue"),
+	}
 }
 
 const passwordEncryptor = "http://schemas.microsoft.com/office/2006/keyEncryptor/password"
@@ -243,9 +281,31 @@ var (
 const maxSpin = 10_000_000
 
 func parseAgile(b []byte) (encryption, error) {
-	a := &agile{password: -1}
-	if err := xml.Unmarshal(b, a); err != nil {
+	root, err := xmltree.Parse(b)
+	if err != nil {
 		return nil, fmt.Errorf("offcrypto: EncryptionInfo: %w", err)
+	}
+	a := &agile{password: -1}
+	var r agileAttrs
+	a.KeyData = r.params(root.Child("keyData"))
+	di := root.Child("dataIntegrity")
+	a.DataIntegrity.EncryptedHmacKey, a.DataIntegrity.EncryptedHmacValue = r.b64(di, "encryptedHmacKey"), r.b64(di, "encryptedHmacValue")
+	for _, list := range root.Children("keyEncryptors") {
+		for _, e := range list.Children("keyEncryptor") {
+			k := e.Child("encryptedKey")
+			a.KeyEncryptors = append(a.KeyEncryptors, struct {
+				URI          string
+				EncryptedKey agileKey
+			}{e.AttrStr("uri", ""), agileKey{
+				agileParams: r.params(k), SpinCount: r.int(k, "spinCount"),
+				EncryptedVerifierHashInput: r.b64(k, "encryptedVerifierHashInput"),
+				EncryptedVerifierHashValue: r.b64(k, "encryptedVerifierHashValue"),
+				EncryptedKeyValue:          r.b64(k, "encryptedKeyValue"),
+			}})
+		}
+	}
+	if r.err != nil {
+		return nil, fmt.Errorf("offcrypto: EncryptionInfo: %w", r.err)
 	}
 	for i, k := range a.KeyEncryptors {
 		if k.URI == passwordEncryptor {
