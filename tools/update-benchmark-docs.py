@@ -46,6 +46,54 @@ def compact(memory, power):
     return data
 
 
+def refresh_go(data, process, power):
+    """Replace only the Go numbers; LibreOffice / Poppler stay as last measured."""
+    if not all('AC Power' in run[k] for run in (process, power) for k in ('power_source_start', 'power_source_end')):
+        raise ValueError('Go measurements must start and end on AC power')
+    if power['bdf_binary']['sha256'] != process['binary']['sha256']:
+        raise ValueError('use the same bdf binary for process and power measurements')
+    if power['workflows'] != ['bdf']:
+        raise ValueError('measure power with --workflow bdf')
+    old = data['process']
+    if set(process['results']) != set(old['results']):
+        raise ValueError('measure the same inputs as the published comparison')
+    if process['rounds'] != old['rounds'] or any(power[k] != data['power'][k] for k in ('rounds', 'work_seconds_target', 'method')):
+        raise ValueError('use the same rounds and work seconds as the published comparison')
+    published = {p['name']: p['sha256'] for p in old['inputs']}
+    measured = {Path(p['path']).name: p['sha256'] for p in process['inputs']}
+    # Generated fixtures can differ in ZIP metadata; files from the repository must be identical.
+    regenerated = sorted(name for name in measured if measured[name] != published[name])
+    if any(name.startswith('basic.') for name in regenerated):
+        raise ValueError('sample inputs changed; rerun the full comparison')
+    if [Path(p['path']).name for p in power['inputs']] != data['power']['inputs'] or not all(p['sha256'] in measured.values() for p in power['inputs']):
+        raise ValueError('power inputs must match the published comparison')
+    for name, result in process['results'].items():
+        old['results'][name]['bdf'] = {k: result['current'][k] for k in ('max_rss_bytes', 'peak_footprint_bytes', 'elapsed_seconds', 'cpu_seconds')}
+    old['bdf_binary'] = {k: process['binary'][k] for k in ('bytes', 'sha256')}
+    old['versions']['go'] = process['go']
+    old['bdf_remeasured'] = {**{k: process[k] for k in ('created_utc', 'git_revision', 'host', 'power_source_start', 'power_source_end')},
+                             'inputs_regenerated': regenerated}
+    energy = data['power']
+    energy['pairs'] = [p for p in energy['pairs'] if p['workflow'] != 'bdf'] + power['pairs']
+    energy['phases'] = [p for p in energy['phases'] if '-bdf-' not in p['name']] + [
+        {k: phase[k] for k in ('name', 'samples', 'mean_soc_w', 'sampled_seconds', 'sampled_soc_j', 'work_seconds') if k in phase}
+        for phase in power['phases']]
+    for k in ('median_estimated_soc_j_per_document', 'range_estimated_soc_j_per_document'):
+        energy[k]['bdf'] = power[k]['bdf']
+    energy['bdf_binary'] = power['bdf_binary']
+    energy['bdf_remeasured'] = {k: power[k] for k in ('created_utc', 'host', 'power_source_start', 'power_source_end')}
+    return data
+
+
+def remeasured(data, ja):
+    go = data['process'].get('bdf_remeasured')
+    if not go:
+        return ''
+    dates = go['created_utc'][:10], data['process']['created_utc'][:10]
+    return ('Goは%sに再計測し、LibreOffice / Popplerは%sの値です。' if ja else
+            ' Go was remeasured on %s; the LibreOffice / Poppler values are from %s.') % dates
+
+
 def table(data, ja):
     rows = ['| 入力 | RSS: LibreOffice / Go (MiB) | 経過時間: LibreOffice / Go (秒) | CPU時間: LibreOffice / Go (秒) |' if ja else
             '| Input | RSS: LibreOffice / Go (MiB) | Elapsed: LibreOffice / Go (s) | CPU: LibreOffice / Go (s) |',
@@ -81,7 +129,9 @@ def chart(data, ja):
     def text(x,y,s,size=12,color='#52627a',weight=400):
         parts.append(f'<text x="{x}" y="{y}" font-size="{size}" font-weight="{weight}" fill="{color}">{escape(s)}</text>')
     text(24,33,title,22,'#182337',700)
-    text(24,57, 'Apple M3 · '+data['process']['created_utc'][:10]+' · '+('時間・メモリ: 小さいPPTX' if ja else 'Time / memory: small PPTX'),13)
+    go = data['process'].get('bdf_remeasured')
+    measured = data['process']['created_utc'][:10] if not go else 'Go '+go['created_utc'][:10]+' · LibreOffice '+data['process']['created_utc'][:10]
+    text(24,57, 'Apple M3 · '+measured+' · '+('時間・メモリ: 小さいPPTX' if ja else 'Time / memory: small PPTX'),13)
     for i,(heading,unit,rows) in enumerate(cards):
         x=24+(i%2)*366; y=76+(i//2)*128
         parts.append(f'<rect x="{x}" y="{y}" width="346" height="116" rx="8" fill="#f7f9fc" stroke="#e5eaf0"/>')
@@ -102,7 +152,10 @@ def chart(data, ja):
 
 
 def publish(memory, power=None):
-    data=compact(memory,power)
+    return write(compact(memory,power))
+
+
+def write(data):
     rounds=data['process']['rounds']
     (ROOT/'docs/benchmarks/latest.json').write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
     for ja in (True,False):
@@ -110,11 +163,11 @@ def publish(memory, power=None):
         old=path.read_text()
         start=old.index('## メモリ・CPU・消費電力の実測' if ja else '## Measured memory, CPU time, and energy')
         end=old.index('## オフィススイートを動かさなくてよい' if ja else '## No office suite to run',start)
-        intro=('## メモリ・CPU・消費電力の実測\n\n同じApple M3のMacで、GoとLibreOffice → PDF → PopplerをAC電源で再計測しました。Officeファイルの変換と256 pxの先頭ページサムネイル生成を比較しています。\n\n' if ja else
-               '## Measured memory, CPU time, and energy\n\nGo and LibreOffice → PDF → Poppler were remeasured on the same Apple M3 Mac on AC power. Each workflow converts an Office file and creates a 256 px first-page thumbnail.\n\n')
+        intro=('## メモリ・CPU・消費電力の実測\n\n同じApple M3のMacで、GoとLibreOffice → PDF → PopplerをAC電源で再計測しました。Officeファイルの変換と256 pxの先頭ページサムネイル生成を比較しています。'+remeasured(data,ja)+'\n\n' if ja else
+               '## Measured memory, CPU time, and energy\n\nGo and LibreOffice → PDF → Poppler were remeasured on the same Apple M3 Mac on AC power. Each workflow converts an Office file and creates a 256 px first-page thumbnail.'+remeasured(data,ja)+'\n\n')
         lang='ja' if ja else 'en'
         alt='AC電源での最新のメモリ・CPU・電力量比較' if ja else 'Latest AC memory, CPU, and energy comparison'
-        section=intro+f'[![{alt}](images/why-economy.{lang}.svg)](images/why-economy.{lang}.svg)\n\n'+table(data,ja)+'\n\n'
+        section=intro+f'[![{alt}](./images/why-economy.{lang}.svg)](./images/why-economy.{lang}.svg)\n\n'+table(data,ja)+'\n\n'
         section+=(f'時間・メモリはウォームアップ後の各{rounds}回の中央値。RSSは各プロセスの最大常駐メモリ、CPU時間はuser + system、経過時間は起動・変換・保存を含む実時間です。LibreOfficeとPopplerは順番に動くため、ピークメモリは2段階の大きい方、時間は合計です。出力形式と表示結果は異なります。\n\n' if ja else
                   f'Time and memory are medians of {rounds} runs after warmup. RSS is peak resident memory; CPU time is user + system; elapsed time includes startup, conversion, and output. LibreOffice and Poppler run sequentially, so their pipeline peak is the larger stage peak and their times are added. Output formats and visual results differ.\n\n')
         section+=energy_text(data,ja)+'\n\n'
@@ -122,7 +175,7 @@ def publish(memory, power=None):
                   'See the [latest results and conditions](benchmarks/latest.json) and [measurement procedure](process-memory-review.ja.md). Raw logs stay in the local results directory outside Git.\n\n')
         path.write_text(old[:start]+section+old[end:])
         (ROOT/'docs/images'/f'why-economy.{lang}.svg').write_text(chart(data,ja))
-    report='# AC電源での比較ベンチマーク\n\n'+table(data,True)+'\n\n'+energy_text(data,True)+'\n\n'
+    report='# AC電源での比較ベンチマーク\n\n'+table(data,True)+'\n\n'+energy_text(data,True)+remeasured(data,True)+'\n\n'
     report+='macOSのpeak memory footprintも記録した。RSSとfootprintは異なる指標で、各列の中央値が同じ実行回とは限らない。\n\n| 入力 | footprint: LibreOffice / Go (MiB) |\n|---|---:|\n'
     for name,r in data['process']['results'].items():
         report+=f"| {LABELS.get(name,(name,name))[0]} | {r['libreoffice']['peak_footprint_bytes']/2**20:.1f} / {r['bdf']['peak_footprint_bytes']/2**20:.1f} |\n"
@@ -147,6 +200,21 @@ sudo -v
 python3 tools/benchmark-all.py --memory-results /tmp/bdf-comparison-ac/summary.json
 ```
 
+LibreOffice / Popplerを測り直さず、Goだけを更新することもできる。公開中の比較と同じ入力・同じラウンド数でGoのプロセス計測と電力計測を行い、`latest.json` のGo側だけを差し替える。LibreOffice / Popplerの値と計測日はそのまま残り、Goの再計測日を別に記録する。
+
+```sh
+mkdir -p /tmp/bdf-go
+go build -trimpath -ldflags="-s -w" -o /tmp/bdf-go/bdf ./cmd/bdf
+python3 tools/benchmark-memory-go.py --bdf /tmp/bdf-go/bdf --output /tmp/bdf-go/process.json \\
+  --input examples/sample-files/basic.docx --input examples/sample-files/basic.pptx --input examples/sample-files/basic.xlsx \\
+  --input /tmp/bdf-memory-fixtures/many-sheets.xlsx --input /tmp/bdf-memory-fixtures/many-slides.pptx
+sudo -v
+python3 tools/benchmark-power.py --workflow bdf --bdf /tmp/bdf-go/bdf --output /tmp/bdf-go/power
+python3 tools/update-benchmark-docs.py --go-process /tmp/bdf-go/process.json --go-power /tmp/bdf-go/power/summary.json
+```
+
+`sudo -v` と `benchmark-power.py` は同じターミナルで続けて実行する。
+
 `benchmark-all.py` は通常ユーザーで動かす。sudoを使うのは内部のpowermetricsだけ。実行完了時に日英の説明と図を更新し、[latest.json](benchmarks/latest.json)に最新の要約だけを保存する。バイナリ・変換出力・生ログ・実行ごとのJSONは `/tmp` の結果ディレクトリに置き、Gitには残さない。
 '''
     (ROOT/'docs/process-memory-review.ja.md').write_text(report)
@@ -155,7 +223,17 @@ python3 tools/benchmark-all.py --memory-results /tmp/bdf-comparison-ac/summary.j
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--memory',type=Path,required=True)
+    p.add_argument('--memory',type=Path)
     p.add_argument('--power',type=Path)
+    p.add_argument('--go-process',type=Path,help='benchmark-memory-go.py output; replaces only the Go numbers')
+    p.add_argument('--go-power',type=Path,help='benchmark-power.py --workflow bdf summary.json')
     a=p.parse_args()
-    publish(json.loads(a.memory.read_text()), json.loads(a.power.read_text()) if a.power else None)
+    if a.go_process or a.go_power:
+        if not (a.go_process and a.go_power) or a.memory or a.power:
+            p.error('pass --go-process and --go-power together, without --memory / --power')
+        write(refresh_go(json.loads((ROOT/'docs/benchmarks/latest.json').read_text()),
+                         json.loads(a.go_process.read_text()), json.loads(a.go_power.read_text())))
+    elif a.memory:
+        publish(json.loads(a.memory.read_text()), json.loads(a.power.read_text()) if a.power else None)
+    else:
+        p.error('pass --memory, or --go-process with --go-power')
