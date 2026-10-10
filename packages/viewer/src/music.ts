@@ -2,7 +2,7 @@
 import { parseSmf } from "@bdfkit/core";
 import type { MusicRenderContext } from "./index.js";
 
-export { MusicPlayer, cursorAtTick, tickAt } from "@bdfkit/render";
+export { MusicPlayer, cursorAtTick, tickAt, AudioPlayer, lineAtTime, timeOfLine } from "@bdfkit/render";
 
 export async function pianoRoll({ stage, renderer, view, zoom, isCurrent }: MusicRenderContext): Promise<void> {
   const play = await renderer.play(view.id);

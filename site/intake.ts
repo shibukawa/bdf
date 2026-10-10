@@ -37,6 +37,8 @@ export interface IntakeOptions {
   samples: HTMLElement;
   /** The pages (slides, sheets) of a file to convert, as bdf generate -pages takes them; all when absent. */
   pages?: string;
+  /** The formats' own options, as bdf generate -param takes them. */
+  params?: Record<string, string>;
 }
 
 const MODULES = { pdf: "lib/bdf-pdf.wasm", office: "lib/bdf-office.wasm", web: "lib/bdf-web.wasm", image: "lib/bdf-image.wasm" };
@@ -154,7 +156,7 @@ export class Intake {
     const convert = (password?: string) => {
       t0 = performance.now();
       // only the Office converters lay text out with the font directory (PDFs embed their fonts, images have no text)
-      return this.converter.convert(this.url(MODULES[kind]), data, { fonts: kind === "office" ? this.fonts : undefined, password, name, pages: this.options.pages });
+      return this.converter.convert(this.url(MODULES[kind]), data, { fonts: kind === "office" ? this.fonts : undefined, password, name, pages: this.options.pages, params: this.options.params });
     };
     let res;
     try {

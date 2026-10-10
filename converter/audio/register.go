@@ -1,7 +1,9 @@
 package audio
 
 import (
+	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/shibukawa/bdf/converter"
 )
@@ -9,11 +11,33 @@ import (
 func init() {
 	converter.Register(&converter.Format{
 		Name:        "audio",
-		Description: "Audio file: MP3, AAC (M4A or ADTS), FLAC, Ogg Vorbis or Opus, WAV or AIFF (the cover art and the tags)",
+		Description: "Audio file: MP3, AAC (M4A or ADTS), FLAC, Ogg Vorbis or Opus, WAV or AIFF (the cover art, the tags and the lyrics on a card that plays)",
 		Extensions:  []string{".mp3", ".m4a", ".m4b", ".m4p", ".aac", ".flac", ".ogg", ".oga", ".opus", ".spx", ".wav", ".wave", ".aif", ".aiff", ".aifc"},
-		Detect:      Detect,
+		Params: []converter.Param{
+			{Name: "play", Usage: "true or false: store the audio, which the viewer plays (default: true; a conversion of selected pages, as for a thumbnail, leaves it out)"},
+			{Name: "maxaudio", Usage: fmt.Sprintf("the size in MiB of the largest file whose audio is stored (default: %d)", DefaultMaxAudio>>20)},
+		},
+		Detect: Detect,
 		Convert: func(r io.ReaderAt, size int64, o *converter.Options) (*converter.Result, error) {
-			res, err := Convert(r, size, &Options{Title: o.Title, FileName: o.FileName, Images: o.Images, NoTextIndex: o.NoTextIndex, Warn: o.Warn})
+			opts := &Options{Title: o.Title, FileName: o.FileName, Images: o.Images, NoTextIndex: o.NoTextIndex, Warn: o.Warn}
+			// the card has one page: a selection of pages asks for a
+			// thumbnail or an excerpt, which the audio is no part of
+			opts.NoPlay = o.Pages != nil
+			if v := o.Param("play"); v != "" {
+				play, err := strconv.ParseBool(v)
+				if err != nil {
+					return nil, fmt.Errorf("audio: parameter play: %q is not a boolean", v)
+				}
+				opts.NoPlay = !play
+			}
+			if v := o.Param("maxaudio"); v != "" {
+				n, err := strconv.ParseFloat(v, 64)
+				if err != nil || !(n > 0) || n > 1<<20 {
+					return nil, fmt.Errorf("audio: parameter maxaudio: %q is not a size in MiB", v)
+				}
+				opts.MaxAudio = int64(n * (1 << 20))
+			}
+			res, err := Convert(r, size, opts)
 			if err != nil {
 				return nil, err
 			}

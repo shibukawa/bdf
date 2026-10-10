@@ -49,7 +49,7 @@
 | `converter/musicxml` | MusicXML（.musicxml, .mxl） |
 | `converter/font` | フォントファイル（.ttf, .otf, .ttc, .woff, .woff2）。文字・グリフ・OpenType フィーチャーのプレビュー |
 | `converter/image` | PNG・JPEG・GIF・WebP・AVIF・BMP・ICO・SVG（そのまま格納し、メタデータを読む） |
-| `converter/audio` | MP3・M4A・FLAC・Ogg・WAV・AIFF（カバーアートとタグのカード。音声は格納しない） |
+| `converter/audio` | MP3・M4A・FLAC・Ogg・WAV・AIFF（カバーアート・タグ・歌詞のカード。ファイルそのものも持ち、ビューアが再生する） |
 | `converter/all` | すべての入力形式を登録する（副作用のために import する） |
 
 `converter/internal/` には複数の変換器が共有するものが入っています: OOXML のパッケージと XML（`ooxml`）、DrawingML の図形・テキスト・表・グラフ（`ooxml/drawingml`）、テキストレイアウト用のフォント選択・計測・埋め込み（`fontset`。draw.io も使う）、組み立て中の Object（`canvas`。draw.io も使う）、EMF/WMF の再生（`metafile`）、ISO base media file format の箱（`isobmff`。AVIF の画像と M4A の音声）、CAD 図面のページへの描画（`cad`）、行分割の規則（`linebreak`）、複合ファイル（`cfb`）とパスワード付き Office 文書の復号（`offcrypto`）。PDF 用の Adobe の定義済み CJK CMap（`cjkcmap`）と JPEG 2000・JBIG2 のデコーダ（`jpx`、`jbig2`）。TIFF の読み取りと CCITT の FAX 符号のデコーダ（`tiff`）。Word・HTML・Markdown・EPUB の組版エンジン（`wordproc`: 段落・表・ページ・scroll View）と、それらが共有する HTML・XHTML の読み込み（`webdoc`）。XMP メタデータの Dublin Core（`xmp`）。数式エンジン（`internal/mathlayout`）を文書のフォントで動かし、埋め込みフォントのテキストとして描く部分（`equation`）。MML・MIDI・MusicXML の楽譜の組版と演奏する音楽（`music`。Bravura の SMuFL の字形は `music/smufl`）。

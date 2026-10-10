@@ -14,6 +14,11 @@ export interface Cursor {
   x: number;
   y: number;
   h: number;
+  /**
+   * The width of the system, when the position is all of it and not a place
+   * along it: the line of the lyrics a recording is at (AudioPlayer).
+   */
+  w?: number;
 }
 
 /**

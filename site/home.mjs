@@ -62,9 +62,9 @@ const GALLERY = [
     text: { en: "MML, MIDI and MusicXML, engraved as scores that the viewer plays.", ja: "MML・MIDI・MusicXML を五線譜に組み、ビューアで演奏。" },
   },
   {
-    shot: "audio", sample: "tagged.mp3", doc: "formats/audio",
+    shot: "audio", sample: "synced.mp3", doc: "formats/audio",
     title: { en: "Audio", ja: "音声" },
-    text: { en: "MP3, M4A, FLAC, Ogg, WAV and AIFF: the cover art and tags on a card, the cover as the thumbnail.", ja: "MP3・M4A・FLAC・Ogg・WAV・AIFF のカバーアートとタグをカードに。サムネイルはカバー。" },
+    text: { en: "MP3, M4A, FLAC, Ogg, WAV and AIFF: the cover art, tags and lyrics on a card that plays, the line being sung marked.", ja: "MP3・M4A・FLAC・Ogg・WAV・AIFF のカバーアート・タグ・歌詞をカードに。再生でき、歌っている行を示す。" },
   },
 ];
 

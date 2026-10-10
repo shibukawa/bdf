@@ -130,6 +130,39 @@ for (const { name } of samples) {
   assert.equal(opened.stream, undefined);
   assert.match(opened.summary, /slide/);
 }
+// an audio file's document carries the file, which the viewer plays, and cues for its timed lyrics; the options of a
+// call leave it out (the format's own params, and the pages a thumbnail asks for)
+try {
+  const name = "synced.mp3";
+  const data = new Uint8Array(await readFile(join(site, "samples", name)));
+  const play = async (options) => {
+    const res = await modules.image.convert(data, { name, ...options });
+    const doc = await BdfDocument.open(new BufferSource(res.bdf));
+    return { res, doc, view: doc.manifest.views[0] };
+  };
+  const whole = await play({});
+  const audio = await whole.doc.audio(whole.view);
+  assert.deepEqual(audio.data, data, "the audio is the file");
+  assert.equal(audio.type, "audio/mpeg");
+  assert.deepEqual(audio.cues.cues.map((c) => c.tick), [1500, 4500, 7500, 10500], "a cue a line of the lyrics, in milliseconds");
+  assert.equal(whole.doc.manifest.parts.find((p) => p.t === "audio").enc, "identity");
+  for (const options of [{ params: { play: "false" } }, { params: { play: false } }, { pages: "1" }]) {
+    const silent = await play(options);
+    assert.equal(silent.view.play, undefined, `${JSON.stringify(options)}: no audio`);
+    assert.deepEqual(silent.res.warnings, []);
+    assert.ok(silent.res.bdf.length < data.length, "a document without the audio is smaller than the file");
+  }
+  // a file over the limit converts to its card, with a warning
+  const over = await play({ params: { maxaudio: 0.01 } });
+  assert.equal(over.view.play, undefined);
+  assert.match(over.res.warnings.join("\n"), /larger than .* its audio is not stored/);
+  assert.ok((await play({ pages: "1", params: { play: "true" } })).view.play.audio, "play=true stores it for a selection of pages too");
+  await assert.rejects(play({ params: { play: "perhaps" } }), /parameter play/);
+  console.log(`ok   ${name}: the audio and the cues of its lyrics; left out by params and pages`);
+} catch (e) {
+  failed++;
+  console.log(`FAIL synced.mp3 audio: ${e.message}`);
+}
 
 /** The width and height of a PNG image. */
 function pngSize(b) {

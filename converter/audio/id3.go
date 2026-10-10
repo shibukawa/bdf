@@ -343,7 +343,7 @@ func (t *track) applyID3v2(tag *id3v2) {
 func (t *track) applyFrames(frames []id3Frame, version int) {
 	l := guessLegacy(legacySamples(frames))
 	tg := t.tags
-	var year, ddmm, hhmm, date, release, synced string
+	var year, ddmm, hhmm, date, release string
 	var comment, lyrics described
 	for _, f := range frames {
 		if len(f.data) == 0 {
@@ -425,8 +425,8 @@ func (t *track) applyFrames(frames []id3Frame, version int) {
 				lyrics.offer(d, id3String(enc, text, l))
 			}
 		case "SYLT":
-			if synced == "" && len(rest) > 6 {
-				synced = syncedLyrics(enc, rest, l)
+			if len(t.synced) == 0 && len(rest) > 6 {
+				t.synced = syncedLyrics(enc, rest, l)
 			}
 		case "APIC":
 			t.addAPIC(enc, rest, l, version)
@@ -438,7 +438,7 @@ func (t *track) applyFrames(frames []id3Frame, version int) {
 	if lyrics.text != "" {
 		tg.add(keyLyrics, lyrics.text)
 	} else {
-		tg.add(keyLyrics, synced)
+		tg.add(keyLyrics, lyricsText(t.synced))
 	}
 	switch {
 	case date != "":
@@ -501,35 +501,55 @@ func skipComment(desc string) bool {
 	return false
 }
 
-// syncedLyrics reads the text of a SYLT frame (after its encoding byte):
+// syncedLyrics reads the lines of a SYLT frame (after its encoding byte):
 // language, time stamp format, content type, descriptor, then entries of a
-// terminated string and a time stamp. Lines are taken as the frame breaks
-// them; entries without line breaks are joined with spaces.
-func syncedLyrics(enc byte, b []byte, l legacy) string {
-	if len(b) < 6 || b[5] != 1 { // the lyrics, not a transcription or the like
-		return ""
+// terminated string and a time stamp. The lines have their times when the
+// stamps are in milliseconds; stamps that count MPEG frames are not
+// converted, and leave the lines without times.
+func syncedLyrics(enc byte, b []byte, l legacy) []lyricLine {
+	if len(b) < 6 || b[4] != 1 { // the lyrics, not a transcription or the like
+		return nil
 	}
+	timed := b[3] == 2
 	_, b = splitTerminated(enc, b[5:])
-	var parts []string
-	lines := false
-	for len(b) > 0 && len(parts) < 10000 {
+	var entries []syltEntry
+	for len(b) > 0 && len(entries) < 10000 {
 		s, rest := splitTerminated(enc, b)
 		if len(rest) < 4 {
 			break
 		}
+		entries = append(entries, syltEntry{id3Text(enc, s, l), int64(binary.BigEndian.Uint32(rest))})
 		b = rest[4:]
-		text := id3String(enc, s, l)
-		raw := string(s)
-		if strings.HasPrefix(raw, "\n") || strings.HasPrefix(raw, "\x00\n") || strings.HasPrefix(raw, "\n\x00") || strings.HasPrefix(text, "\n") {
-			lines = true
-			text = "\n" + text
+	}
+	return syltLines(entries, timed)
+}
+
+// id3Text decodes a string of a frame in its encoding, keeping the spaces
+// and line feeds around it (the pieces of synchronized lyrics).
+func id3Text(enc byte, b []byte, l legacy) string {
+	var s string
+	switch enc {
+	case 1:
+		s = decodeUTF16(b, false)
+	case 2:
+		s = decodeUTF16(b, true)
+	case 3:
+		s = string(bytes.ToValidUTF8(b, []byte("\uFFFD")))
+	default:
+		s = l.decode(b)
+	}
+	s = strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == '\n':
+			return r
+		case r == '\t':
+			return ' '
+		case r < 0x20 || r == 0x7F || r >= 0x80 && r < 0xA0 || r == 0xFEFF:
+			return -1
 		}
-		parts = append(parts, text)
-	}
-	if lines {
-		return strings.Join(parts, "")
-	}
-	return strings.Join(parts, " ")
+		return r
+	}, s)
 }
 
 // addAPIC reads a picture frame (after its encoding byte).

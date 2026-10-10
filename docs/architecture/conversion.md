@@ -12,6 +12,8 @@ The same engine is available by itself as the public package `formula`: it turns
 
 MML, MIDI and MusicXML are engraved as staff notation by their converters. A view carries that music as a Standard MIDI File, with cues tying playback time to a place on the page ([spec §4.4](../spec.md#44-演奏play)). The demo viewer plays it with the Web Audio API — an oscillator per General MIDI instrument family, synthesized percussion, square-wave MML chiptunes. It shows a cursor on the system currently playing, turns pages or scrolls to follow it, and starts playback from a system you click. See [design.md §3.27](../design.md#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic).
 
+An audio file's view plays through the same `play` member, but carries the file itself instead of a Standard MIDI File: the viewer hands it to the browser's `<audio>` element, so no converter or viewer decodes sound. Its cues are in milliseconds and point at lines of the card — the lyrics when they carry their times (ID3 `SYLT`, or LRC text in a lyrics field), otherwise the chapters — so the viewer marks the line being sung and plays from a line you click. See [design.md §3.31](../design.md#331-音声ファイル--bdf-変換器converteraudio).
+
 ## Metadata
 
 The manifest can carry Dublin Core metadata (title, creator, subject, language, dates) inherited from a PDF's document info, PowerPoint's/Excel's/Word's core properties, Visio's document properties, Photoshop's document XMP, HTML `meta` elements, Markdown front matter, an EPUB package document, an image's XMP/EXIF/IPTC, or an audio file's tags (ID3, iTunes-style MP4 metadata, Vorbis comments, RIFF INFO).

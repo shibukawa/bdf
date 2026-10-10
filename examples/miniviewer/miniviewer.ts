@@ -9,12 +9,15 @@
 //
 // It draws pages (slides, drawings, the pages of a PDF or a Word document),
 // one-column documents (Markdown, HTML) and sheets (Excel, CSV: the cells
-// with their headers and frozen panes). What it leaves to the demo viewer
-// (examples/viewer): pages turned like a book's, the music of a score,
-// selecting the cells of a sheet, and pages shown while they are converted.
+// with their headers and frozen panes). The card of an audio file plays, with
+// the browser's own controls under it; the line of its lyrics that is sung
+// is marked when the file says when each is, and a click on a line plays
+// from it. What it leaves to the demo viewer (examples/viewer): pages turned
+// like a book's, the music of a score, selecting the cells of a sheet, and
+// pages shown while they are converted.
 import { dcValues, type Manifest, type View } from "@bdfkit/core";
 import {
-  BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR,
+  AudioPlayer, BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR,
   type HitRect, type OpenSource,
 } from "@bdfkit/render";
 
@@ -42,7 +45,7 @@ const TEXT_MARGIN = "200% 0px";
 const HEADER = { w: 40, h: 20 };
 
 export const MINI_VIEWER_CSS = `
-.bdfMini { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; background: #e9ecef; color: #222; font: 13px system-ui, sans-serif; }
+.bdfMini { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; min-height: 0; background: #e9ecef; color: #222; font: 13px system-ui, sans-serif; }
 /* the room of the scroll bar is kept, so that the width pages are fitted to does not change as they come */
 .bdfMini-stage { position: relative; overflow: auto; scrollbar-gutter: stable; }
 .bdfMini-stage:focus-visible { outline: 2px solid #1a73e8; outline-offset: -2px; }
@@ -53,6 +56,11 @@ export const MINI_VIEWER_CSS = `
 .bdfMini-hits { pointer-events: none; forced-color-adjust: none; }
 .bdfMini-hit { position: absolute; background: rgba(255, 210, 0, .45); outline: 1px solid rgba(200, 140, 0, .8); border-radius: 2px; }
 .bdfMini-hit.current { background: rgba(255, 120, 0, .5); outline-color: #c04000; }
+/* the recording of an audio file: the browser's controls, and the line of the lyrics that is sung */
+.bdfMini-audio { display: flex; padding: 6px 12px; background: #f3f3f3; border-top: 1px solid #c8c8c8; }
+.bdfMini-audio[hidden] { display: none; }
+.bdfMini-audio audio { flex: 1; min-width: 0; height: 36px; }
+.bdfMini-line { position: absolute; z-index: 2; box-sizing: border-box; border-left: 3px solid rgba(26, 115, 232, .8); border-radius: 3px; background: rgba(26, 115, 232, .14); pointer-events: none; forced-color-adjust: none; }
 .bdfMini-sheet { position: relative; }
 .bdfMini-sheet canvas { position: sticky; top: 0; left: 0; display: block; }
 .bdfMini-tabs { display: flex; overflow-x: auto; background: #f3f3f3; border-top: 1px solid #c8c8c8; scrollbar-width: none; }
@@ -118,6 +126,10 @@ export class MiniViewer {
 
   private stage: HTMLDivElement;
   private tabs: HTMLDivElement;
+  /** The controls of the recording a view plays (spec §4.4), its player, and the line it is at. */
+  private audioBar: HTMLDivElement;
+  private audio?: { view: View; player?: AudioPlayer };
+  private line: HTMLDivElement;
   /** Bumped as another view, zoom or document is shown: work started before is dropped. */
   private generation = 0;
   /** CSS pixels a unit of the view shown. */
@@ -146,10 +158,16 @@ export class MiniViewer {
     this.tabs = document.createElement("div");
     this.tabs.className = "bdfMini-tabs";
     this.tabs.setAttribute("role", "tablist");
-    host.replaceChildren(this.stage, this.tabs);
+    this.audioBar = document.createElement("div");
+    this.audioBar.className = "bdfMini-audio";
+    this.audioBar.hidden = true;
+    this.line = document.createElement("div");
+    this.line.className = "bdfMini-line";
+    this.line.setAttribute("aria-hidden", "true");
+    host.replaceChildren(this.stage, this.audioBar, this.tabs);
     // copy takes the text of the selected runs, with the document's spaces and line breaks
     this.uninstallCopy = installCopyHandler(this.stage);
-    this.stage.addEventListener("click", (e) => this.followLink(e));
+    this.stage.addEventListener("click", (e) => this.followLink(e) || this.playFrom(e));
     // pages are as wide as the viewer: laid out again when its width changes
     this.resize = new ResizeObserver(() => {
       if (this.view && host.clientWidth !== this.width) this.show(this.view.id, this.page);
@@ -167,6 +185,7 @@ export class MiniViewer {
     this.generation++;
     this.view = this.manifest = undefined;
     this.clearSearch();
+    this.dropAudio();
     this.tabs.replaceChildren();
     this.message("loading…");
     const src: OpenSource = typeof source !== "string" ? source
@@ -226,7 +245,67 @@ export class MiniViewer {
     else if (v.kind === "scroll") this.showColumn(v);
     else this.showPages(v);
     if (page > 0) this.goToPage(page);
+    // a view shown again (another width or zoom) goes on playing: the line is put on its new page
+    if (this.audio?.view !== v) this.loadAudio(v);
+    else this.followAudio();
     this.options.onChange?.({ view: v, page });
+  }
+
+  /** The recording a view plays, if it plays one: the browser's controls under the pages. */
+  private loadAudio(v: View) {
+    this.dropAudio();
+    if (!v.play?.audio) return;
+    const audio: { view: View; player?: AudioPlayer } = this.audio = { view: v };
+    this.client.audio(v.id).then((data) => {
+      if (this.audio !== audio || !data) return;
+      const el = document.createElement("audio");
+      el.controls = true;
+      el.setAttribute("aria-label", v.title || "audio");
+      const player = audio.player = new AudioPlayer(data.blob, "", data.cues, { element: el });
+      // the line that is sung: the element says where it is a few times a second
+      player.onUpdate = () => this.followAudio();
+      el.addEventListener("timeupdate", () => this.followAudio());
+      player.onError = this.failed;
+      this.audioBar.replaceChildren(el);
+      this.audioBar.hidden = false;
+    }).catch(this.failed);
+  }
+
+  private dropAudio() {
+    this.audio?.player?.dispose();
+    this.audio = undefined;
+    this.line.remove();
+    this.audioBar.replaceChildren();
+    this.audioBar.hidden = true;
+  }
+
+  /** Mark the line of the page the recording is at, and bring it into view when it changes. */
+  private followAudio() {
+    const player = this.audio?.player;
+    const c = player && player.state !== "stopped" ? player.cursorAt(player.position) : null;
+    const el = c && this.stage.querySelector<HTMLElement>(`.bdfMini-page[data-index="${c.page}"]`);
+    if (!c || !el) return this.line.remove();
+    const s = this.scale, room = Math.min(8, c.x * s);
+    const moved = this.line.parentElement !== el || this.line.dataset.system !== String(c.system);
+    this.line.dataset.system = String(c.system);
+    this.line.style.cssText = `left:${c.x * s - room}px;top:${c.y * s}px;width:${(c.w ?? 0) * s + 2 * room}px;height:${c.h * s}px`;
+    if (this.line.parentElement !== el) el.append(this.line);
+    if (!moved) return;
+    const top = el.offsetTop + c.y * s, view = this.stage;
+    if (top < view.scrollTop || top + c.h * s > view.scrollTop + view.clientHeight) view.scrollTo({ top: Math.max(0, top - view.clientHeight / 4), behavior: "smooth" });
+  }
+
+  /** A click on a line that has a time plays from it; false when the click is on none. */
+  private playFrom(e: MouseEvent): boolean {
+    const player = this.audio?.player, el = (e.target as Element).closest<HTMLElement>(".bdfMini-page[data-index]");
+    if (!player?.cues || !el || !(getSelection()?.isCollapsed ?? true)) return false;
+    const r = el.getBoundingClientRect(), page = Number(el.dataset.index);
+    const x = (e.clientX - r.left) / this.scale, y = (e.clientY - r.top) / this.scale;
+    const i = player.cues.systems.findIndex((s) => s.page === page && x >= s.x && x <= s.x + s.w && y >= s.y && y < s.y + s.h);
+    const t = i < 0 ? null : player.timeAt(i);
+    if (t === null) return false;
+    player.seek(t);
+    return true;
   }
 
   /** Zoom in or out: 1 shows pages as wide as the viewer. */
@@ -286,6 +365,7 @@ export class MiniViewer {
   /** Let the worker and the document go. */
   destroy() {
     this.generation++;
+    this.dropAudio();
     this.resize.disconnect();
     this.uninstallCopy();
     this.client.terminate();
@@ -588,13 +668,15 @@ export class MiniViewer {
   }
 
   /** Links to a page ("#page=N") scroll there; links to a view ("#view=ID") show it. */
-  private followLink(e: MouseEvent) {
+  /** Follow a link to a page or a view; false when the click is on none. */
+  private followLink(e: MouseEvent): boolean {
     const a = (e.target as Element).closest(`a[${RUN_ATTR.page}], a[${RUN_ATTR.view}]`);
-    if (!a || !this.view) return;
+    if (!a || !this.view) return false;
     e.preventDefault();
     const page = Number(a.getAttribute(RUN_ATTR.page) ?? "1") - 1;
     const id = a.getAttribute(RUN_ATTR.view);
     if (id !== null) this.show(id, page);
     else this.goToPage(page);
+    return true;
   }
 }

@@ -1,6 +1,6 @@
 import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } from "@bdfkit/core";
 import type { HitRect } from "./search.js";
-import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode, WorkerOpenOptions, RasterizeRequest, RasterizeResponse, PlayData } from "./protocol.js";
+import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode, WorkerOpenOptions, RasterizeRequest, RasterizeResponse, PlayData, AudioData } from "./protocol.js";
 import { domSvgRasterizer } from "./svg.js";
 
 /** An error from the worker; code says when the document needs a password. */
@@ -127,6 +127,13 @@ export class BdfWorkerClient {
    */
   play(view: string): Promise<PlayData | null> {
     return this.call<PlayData | null>({ type: "play", view });
+  }
+  /**
+   * The recording of a view (spec §4.4): the audio file as a blob (for
+   * AudioPlayer) and its cues; null when the view plays none.
+   */
+  audio(view: string): Promise<AudioData | null> {
+    return this.call<AudioData | null>({ type: "audio", view });
   }
   close(): Promise<null> {
     return this.call<null>({ type: "close" });
