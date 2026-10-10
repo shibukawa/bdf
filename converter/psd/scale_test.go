@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // The layers are composited at the resolution the pages are stored at: the

@@ -20,7 +20,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // Options controls the conversion.

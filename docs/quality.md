@@ -43,8 +43,8 @@ Pages ビルドの smoke test は、公開サンプル 34 件を WASM 変換器�
 
 - `go test ./...` — 成功
 - `go vet -unreachable=false ./...` — 成功
-- `GOEXPERIMENT=simd go test ./imgconv/...` — 成功
-- `go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/` — 成功
+- `GOEXPERIMENT=simd go test ./image/imgconv/...` — 成功
+- `go test -tags bdf_noconv ./image/imgconv/ ./converter/... ./font/woff2/` — 成功
 - `npm test` — 123 件成功、失敗 0 件
 - `npm run test:golden` — Chromium headless shell がなく比較未実行
 - `node test/site.mjs` — 成功
@@ -69,8 +69,8 @@ Go は 1.27、Node.js は 26.8.1 で実行しました。GitHub Actions は Ubun
 ```sh
 go test ./...
 go vet -unreachable=false ./...
-GOEXPERIMENT=simd go test ./imgconv/...
-go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/
+GOEXPERIMENT=simd go test ./image/imgconv/...
+go test -tags bdf_noconv ./image/imgconv/ ./converter/... ./font/woff2/
 npm test
 npm run test:golden
 npm run site

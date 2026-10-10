@@ -10,9 +10,9 @@ import (
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
+	"github.com/shibukawa/bdf/font/woff2"
 	"github.com/shibukawa/bdf/internal/fontdb"
 	"github.com/shibukawa/bdf/internal/otlayout"
-	"github.com/shibukawa/bdf/woff2"
 )
 
 // converter makes the document of a font file.

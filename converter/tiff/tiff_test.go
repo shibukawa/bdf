@@ -13,7 +13,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/tiff"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // The files in testdata come from test/tiff/gen.sh.

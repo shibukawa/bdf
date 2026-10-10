@@ -10,7 +10,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/metafile"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 	"github.com/shibukawa/bdf/converter/internal/tiff"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // Pictures and embedded objects are foreign shapes: their ForeignData is a

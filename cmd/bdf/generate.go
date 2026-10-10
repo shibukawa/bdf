@@ -13,7 +13,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
 	_ "github.com/shibukawa/bdf/converter/all" // every input format
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/raster/imagebdf"
 )
 

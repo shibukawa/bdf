@@ -41,7 +41,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/internal/fontdb"
 )
 

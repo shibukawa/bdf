@@ -41,7 +41,7 @@ npm パッケージとしての表示・ブラウザ内変換は [npm パッケ�
 
 このリポジトリのフォントには、それぞれのライセンスがあります。
 
-- **STIX Two Math** 2.13 b171 は、数式を組むフォントとしてパッケージ `formula` に埋め込んであります。配布元のリリースのファイルを無改変で使っています（[stipub/stixfonts](https://github.com/stipub/stixfonts) のタグ `v2.13b171`。SHA-256 は [`formula/fonts/README.md`](formula/fonts/README.md)）。ライセンスは [SIL Open Font License 1.1](formula/fonts/OFL.txt) です。Copyright 2001-2021 The STIX Fonts Project Authors, with Reserved Font Name "TM Math". `formula` を import したプログラムはこのフォントを含みます。
+- **STIX Two Math** 2.13 b171 は、数式を組むフォントとしてパッケージ `image/formula` に埋め込んであります。配布元のリリースのファイルを無改変で使っています（[stipub/stixfonts](https://github.com/stipub/stixfonts) のタグ `v2.13b171`。SHA-256 は [`image/formula/fonts/README.md`](formula/fonts/README.md)）。ライセンスは [SIL Open Font License 1.1](formula/fonts/OFL.txt) です。Copyright 2001-2021 The STIX Fonts Project Authors, with Reserved Font Name "TM Math". `formula` を import したプログラムはこのフォントを含みます。
 - **Bravura**（音楽記号。`converter/internal/music/smufl` に表として持つ）は [SIL Open Font License 1.1](converter/internal/music/smufl/OFL.txt) です。Copyright © 2015 Steinberg Media Technologies GmbH, with Reserved Font Name "Bravura".
 - **NewStroke**（KiCad の線の字体。`converter/kicad`）は [CC0](converter/kicad/NEWSTROKE.txt) です。
 - **DejaVu Sans** のサブセット（サンプル文書用。`fixture`）は [DejaVu Fonts License](fixture/testdata/fonts/LICENSE.txt) です。

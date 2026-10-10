@@ -50,7 +50,7 @@ font, err := sfnt.ParseIndex(f.Bytes(), 0)
 | `os.ReadFile`、`fs.ReadFile` | `[]byte` | — | `fs.ReadFile` | ファイル全体がヒープに載る |
 | `golang.org/x/image/font/sfnt.ParseReaderAt` | パース済みのフォント | — | — | パーサ側で遅延する。`io.ReaderAt` を通して必要な表だけ読む。同じ問題への別の解だが、そのパーサに結び付く |
 
-`otf` が `io.ReaderAt` でなくスライスを返すのは、bdf のパーサ（`internal/sfnt`、`internal/cff`、`woff2`）が、多くのフォントパーサと同じくバイト列を添字で読むからです。表はファイルの部分スライス、グリフは表の部分スライスで、コピーしません。`ReaderAt` だと表やグリフをそのたびにコピーするか、パーサをリーダー経由に書き直すことになります。マップならスライスの API を保ったまま、触ったページの分しか払いません。
+`otf` が `io.ReaderAt` でなくスライスを返すのは、bdf のパーサ（`internal/sfnt`、`internal/cff`、`font/woff2`）が、多くのフォントパーサと同じくバイト列を添字で読むからです。表はファイルの部分スライス、グリフは表の部分スライスで、コピーしません。`ReaderAt` だと表やグリフをそのたびにコピーするか、パーサをリーダー経由に書き直すことになります。マップならスライスの API を保ったまま、触ったページの分しか払いません。
 
 ## bdf の既存パッケージとの関係
 

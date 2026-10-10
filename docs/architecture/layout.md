@@ -9,12 +9,12 @@
 | `converter/internal/` | Shared by the Office and CAD converters — see below |
 | `raster/imagebdf/` | Draws pages and single objects into images in pure Go, as the viewer does: the software rasterizer, and an SVG renderer for SVG images |
 | `raster/ebitenginebdf/` | Draws objects of paths (formulas, say) with Ebitengine. A module of its own, with its own `go.mod`, since it depends on Ebitengine; `raster/internal/shapes` is the shared part that turns an object into a list of filled and stroked shapes |
-| `formula/` | The public package that lays out LaTeX and MathML formulas as objects of paths; embeds the formula font (STIX Two Math) |
+| `image/formula/` | The public package that lays out LaTeX and MathML formulas as objects of paths; embeds the formula font (STIX Two Math) |
 | `thumbnail/` | Thumbnails of documents: the layout by kind of document, and PNG/JPEG/WebP encoding |
 | `internal/` | Font lookup, measurement and subsetting (`fontdb`); TrueType/OpenType reading, writing and glyph outlines (`sfnt`); CFF reading and subsetting (`cff`); the OpenType layout tables GSUB, GPOS and GDEF (`otlayout`); the formula tree, its readers (LaTeX, MathML, Office Math) and the layout (`mathlayout`), and the XML trees of Office documents (`xmltree`) — shared by the converters and `imagebdf` |
 | `contrib/` | Pieces that lean on the platform: `otf` opens font files mapped into memory on Unix and Windows (read whole elsewhere), so that only the tables and glyphs in use become resident; `fontdb` opens the fonts it loads with it |
-| `woff2/` | TrueType/OpenType ↔ WOFF2 (the glyf transform, and Brotli) |
-| `imgconv/` | How images are stored (as they are, or converted to WebP); bundles a pure-Go libwebp |
+| `font/woff2/` | TrueType/OpenType ↔ WOFF2 (the glyf transform, and Brotli) |
+| `image/imgconv/` | How images are stored (as they are, or converted to WebP); bundles a pure-Go libwebp |
 | `fixture/` | Generates the sample document used by tests and `bdf demo`, with embedded fonts |
 
 ## Converters, one package per input format

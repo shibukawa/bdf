@@ -101,12 +101,12 @@ To keep the main thread free, draw in a worker with `BdfWorkerClient` ([API refe
 
 ## Formulas
 
-`github.com/shibukawa/bdf/formula` lays out a formula written in LaTeX or MathML and returns it as **an object of paths only**: the outlines of its glyphs and the rules of its fractions and radicals. It refers to no font, so any renderer that draws paths draws it. It is the engine the converters lay out the formulas of Word, PowerPoint, Excel, HTML, EPUB, Markdown and draw.io documents with.
+`github.com/shibukawa/bdf/image/formula` lays out a formula written in LaTeX or MathML and returns it as **an object of paths only**: the outlines of its glyphs and the rules of its fractions and radicals. It refers to no font, so any renderer that draws paths draws it. It is the engine the converters lay out the formulas of Word, PowerPoint, Excel, HTML, EPUB, Markdown and draw.io documents with.
 
 ```go
 import (
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/formula"
+	"github.com/shibukawa/bdf/image/formula"
 )
 
 ts, err := formula.New(nil) // lays out with the embedded STIX Two Math
@@ -171,7 +171,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/formula"
+	"github.com/shibukawa/bdf/image/formula"
 	"github.com/shibukawa/bdf/raster/ebitenginebdf"
 )
 

@@ -27,7 +27,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/internal/fontdb"
 	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 )

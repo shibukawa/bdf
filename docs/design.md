@@ -134,7 +134,7 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 
 **解像度の上限**: ページ上の大きさが分かっているラスター入力（TIFF のページ、Photoshop の文書のページ）は、`Options.MaxDPI`（既定 192dpi）と `MaxPixels`（既定 3840 × 3840 画素）の両方を超えないよう縮小する（`FitSize` が大きさを決め、`Resize` が縮小する）。Keep と Convert のどちらでも効き、負の値で上限をなくす。考え方と実測は §3.15。
 
-コーデックは libwebp（エンコーダのみ）を wasi-sdk で wasm にし、[shibukawa/wasm2go-fork](https://github.com/shibukawa/wasm2go-fork)（pgmem ブランチ）で純 Go に変換したもので、cgo も wasm ランタイムも使わない。生成物は `imgconv/internal/webpw`（スカラー、約 5MB、44 ファイル）と `imgconv/internal/webpwsimd`（SIMD、`GOEXPERIMENT=simd` 専用、後述）で、`tools/gen-codecs.sh` で再生成する。フォークの `-symbol-names`（関数名を wasm の name セクションから付ける）、`-group-files`（`vp8_enc.go` のように主題ごとのファイルに分ける）、`-addr-consts`（静的データのアドレスを名前付き定数にする）を使い、libwebp を更新しても差分が小さく収まるようにしている。gen2brain 同梱の wasm は name セクションが落とされているので、自前でビルドしている。
+コーデックは libwebp（エンコーダのみ）を wasi-sdk で wasm にし、[shibukawa/wasm2go-fork](https://github.com/shibukawa/wasm2go-fork)（pgmem ブランチ）で純 Go に変換したもので、cgo も wasm ランタイムも使わない。生成物は `image/imgconv/internal/webpw`（スカラー、約 5MB、44 ファイル）と `image/imgconv/internal/webpwsimd`（SIMD、`GOEXPERIMENT=simd` 専用、後述）で、`tools/gen-codecs.sh` で再生成する。フォークの `-symbol-names`（関数名を wasm の name セクションから付ける）、`-group-files`（`vp8_enc.go` のように主題ごとのファイルに分ける）、`-addr-consts`（静的データのアドレスを名前付き定数にする）を使い、libwebp を更新しても差分が小さく収まるようにしている。gen2brain 同梱の wasm は name セクションが落とされているので、自前でビルドしている。
 
 **ビルドタグ**
 
@@ -181,7 +181,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 非可逆は 1.1〜1.3 倍速くなり、可逆は同等である。最初の計測では可逆が 1.5 倍遅かったが、原因は libwebp の可逆 SSE 経路ではなく（ネイティブ C では SSE ありの方が可逆も速い）、Go 1.27 側の 2 つの挙動の組み合わせだった。gc はベクトル型のゼロ値をレガシー SSE の `MOVUPS X15, Xn` で作り、ランタイムの非同期プリエンプションは AVX-512 機でレジスタを `VMOVDQU64 Z0..Z31` で復元して `VZEROUPPER` を実行しないため、最初のプリエンプション以降はレガシー SSE 命令 1 つごとに SSE/AVX 状態遷移（実測で約 300 サイクル）が発生する。可逆の予測器はピクセルごとに `i8x16.narrow_i16x8_u` を呼び、そのエミュレーション中のゼロ値がこれに当たっていた（`GODEBUG=asyncpreemptoff=1` で 30 倍速くなることで確認）。ヘルパーからゼロ値ベクトルをなくして解消したが、gc がスピル/リロードに使う `MOVUPS` は残る（生成コード中に約 1 万箇所）。この libwebp では影響は小さかったが、AVX-512 機で `GOEXPERIMENT=simd` を使う場合は `//go:debug asyncpreemptoff=1` を検討すること。なお `i8x16.narrow_i16x8_u`（VPACKUSWB）自体は Go 1.27 の archsimd が AVX の範囲で公開しておらず 7 命令でエミュレートしているので、ここも将来の改善余地である。
 
-同じ wasm から出る `[2]uint64` 版は 2.4 s のもので、`GOEXPERIMENT=simd` を付けない通常のビルドが 7 倍遅くなる。そのため 2 つのパッケージを同梱し、ビルドタグで切り替えている。`imgconv/internal/webpw` はスカラーの libwebp を `[2]uint64` で運ぶ版（約 5MB）、`imgconv/internal/webpwsimd` は SSE 経路の libwebp を archsimd で運ぶ版で、`goexperiment.simd && go1.27 && !go1.28 && (amd64 || arm64)` のときだけコンパイルされる（`[2]uint64` 側の関数は落としてあり約 8.6MB、git 上は gzip で 1.3MB）。imgconv の `webp_scalar.go` / `webp_simd.go` が同じタグで束ね直し、`imgconv.SIMD()` がどちらが入ったかを返す。利用者は Go 1.27 で `GOEXPERIMENT=simd go build` するだけで SIMD 版になる（amd64 は実行時に AVX2 が必要で、無ければ init で panic する）。再生成は `tools/gen-codecs.sh`（スカラー）と `SIMD=1 tools/gen-codecs.sh`（SIMD）。AVIF も評価したが採用しなかった。可逆は図版で WebP の 200 倍大きく、非可逆は speed 6 で図版に効くものの 3〜4 倍遅く、生成コードが 47MB になるためである。
+同じ wasm から出る `[2]uint64` 版は 2.4 s のもので、`GOEXPERIMENT=simd` を付けない通常のビルドが 7 倍遅くなる。そのため 2 つのパッケージを同梱し、ビルドタグで切り替えている。`image/imgconv/internal/webpw` はスカラーの libwebp を `[2]uint64` で運ぶ版（約 5MB）、`image/imgconv/internal/webpwsimd` は SSE 経路の libwebp を archsimd で運ぶ版で、`goexperiment.simd && go1.27 && !go1.28 && (amd64 || arm64)` のときだけコンパイルされる（`[2]uint64` 側の関数は落としてあり約 8.6MB、git 上は gzip で 1.3MB）。imgconv の `webp_scalar.go` / `webp_simd.go` が同じタグで束ね直し、`imgconv.SIMD()` がどちらが入ったかを返す。利用者は Go 1.27 で `GOEXPERIMENT=simd go build` するだけで SIMD 版になる（amd64 は実行時に AVX2 が必要で、無ければ init で panic する）。再生成は `tools/gen-codecs.sh`（スカラー）と `SIMD=1 tools/gen-codecs.sh`（SIMD）。AVIF も評価したが採用しなかった。可逆は図版で WebP の 200 倍大きく、非可逆は speed 6 で図版に効くものの 3〜4 倍遅く、生成コードが 47MB になるためである。
 
 ## 3.4 PowerPoint → BDF 変換器（converter/pptx）の構造
 
@@ -866,11 +866,11 @@ bdf/
 ├── cmd/bdf/           CLI: generate / thumbnail / text / render / ls / manifest / disasm / extract / split / join / encrypt / decrypt / segment / demo
 ├── segment/           区間を要求ごとに封印して返す HTTP ハンドラ（§3.30。wasm に net/http を持ち込まないよう bdf とは別のパッケージ）
 ├── cmd/bdfwasm/       ブラウザ内変換用の wasm モジュール（§2）
-├── imgconv/           画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
-├── woff2/             TrueType/OpenType ↔ WOFF2（glyf 変換と Brotli）
+├── image/imgconv/     画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
+├── font/woff2/        TrueType/OpenType ↔ WOFF2（glyf 変換と Brotli）
 ├── raster/imagebdf/   ページと単体の Object を画像に描く純 Go のラスタライザと SVG レンダラ（§3.25）
 ├── raster/ebitenginebdf/  パスだけの Object を Ebitengine で描く（別モジュール。§3.23）。raster/internal/shapes が Object を図形の並びにする
-├── formula/           LaTeX・MathML の数式をパスだけの Object にする公開パッケージ（§3.23。STIX Two Math を同梱）
+├── image/formula/     LaTeX・MathML の数式をパスだけの Object にする公開パッケージ（§3.23。STIX Two Math を同梱）
 ├── thumbnail/         文書のサムネイル（文書の種類によるレイアウト、PNG・JPEG・WebP）
 ├── internal/          fontdb（フォントの探索・解決・計測・サブセット）、sfnt（TrueType/OpenType の読み書きとグリフの輪郭）、
 │                      cff（CFF の読み取りとサブセット化）、otlayout（GSUB・GPOS・GDEF の読み取り）。変換器と imagebdf が共有する。

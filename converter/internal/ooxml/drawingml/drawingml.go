@@ -19,7 +19,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/equation"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // Config is what a Renderer draws with.

@@ -28,7 +28,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 
 	// the formats of cover art a browser shows, for their sizes
 	_ "image/gif"

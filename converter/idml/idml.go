@@ -37,7 +37,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
 	"github.com/shibukawa/bdf/converter/internal/tiff"
 	"github.com/shibukawa/bdf/converter/internal/xmp"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/internal/fontdb"
 )
 

@@ -98,7 +98,7 @@ xlsx の変換時間の残りは、セルのレイアウト（確保量の 2 割
 
 xmlro が v1.3.4 で HTML 風の XML を読めるようになった（`Lenient` は encoding/xml の `Strict = false`、`htmlentity` の実体と空要素、`CharsetReader`、DOCTYPE の内部サブセットの実体、BOM 付きの UTF-16）。encoding/xml で読んでいた残りをすべて置き換え、変換器のコードに encoding/xml はなくなった。残っているのは、XML を書く開発用の `tools/gen-drawio-stencils`（xmlro は読むだけ）、encoding/xml を正解として比べるテスト、依存先の pdfcpu である（pdfcpu があるのでバイナリにはまだリンクされる）。
 
-- **開き方をひとつに**（`xmltree.Open`）: SVG（`converter/image`、`imgconv`、`raster/imagebdf`）、draw.io のファイルとステンシル、EPUB の package・container・encryption、MusicXML、XHTML（`webdoc`）、XMP は、読み手のオプションだけを決めて `xmltree.Open` で開く。名前空間を解決した名前は `ElementName` / `Attrs` / `AttrName`、接頭辞を除いた名前は `Local`、文字データ（テキストと CDATA）は `AppendText` で取る。`xmltree.Node` の属性は `xml.Attr` から `xmltree.Attr`（`ooxml.Attr`）になった。EPUB の 3 つのファイルは構造体へのデコード（リフレクション）をやめて小さな木にし、Agile 暗号の EncryptionInfo（`offcrypto`）は `xmltree.Parse` の木から読む。
+- **開き方をひとつに**（`xmltree.Open`）: SVG（`converter/image`、`image/imgconv`、`raster/imagebdf`）、draw.io のファイルとステンシル、EPUB の package・container・encryption、MusicXML、XHTML（`webdoc`）、XMP は、読み手のオプションだけを決めて `xmltree.Open` で開く。名前空間を解決した名前は `ElementName` / `Attrs` / `AttrName`、接頭辞を除いた名前は `Local`、文字データ（テキストと CDATA）は `AppendText` で取る。`xmltree.Node` の属性は `xml.Attr` から `xmltree.Attr`（`ooxml.Attr`）になった。EPUB の 3 つのファイルは構造体へのデコード（リフレクション）をやめて小さな木にし、Agile 暗号の EncryptionInfo（`offcrypto`）は `xmltree.Parse` の木から読む。
 - **実体の展開に上限**: v1.3.4 から xmlro は DOCTYPE が宣言した実体を置き換える。上限はトークンごと（`MaxBufferBytes`）で、文書全体にはない。50 KiB の実体を参照するだけのテキストを何千も並べれば、小さな文書が何百 MB もの文字列になる。`Open` は読む前に宣言と参照を数え（`BoundEntities`）、置き換えた合計が 1 MiB を超える文書は宣言を無効にして参照をそのまま残す（SVG が前からしていたことで、警告もそのまま出る）。数えるのは文字コードを変換した後の文書で、UTF-16 や変換される文字コードでも同じにかかる。
 - **Office の部品は実体の宣言を拒む**（`xmltree.ErrEntities`）: Office の XML は実体を宣言しない。部品はストリームで読むので前もって数えられず、トークンの上限は図のデータのために 256 MiB ある。`<!ENTITY` を含む部品は、流し読みでも木でも読まない（v1.3.3 の xmlro が内部サブセットを拒んでいたのと同じ結果）。
 - **文字コードの変換は 1 回**: encoding/xml も xmlro も、文字コードを書いた XML 宣言が現れるたびに残りを変換し直す。宣言を何万も並べた文書で残りが何万回も写されるので、`Open` は最初の変換のときに残りを全部変換し、後ろの宣言を別の名前の処理命令にする（コメントと CDATA の中は本文なので触らない）。それでも 2 度目の変換を求める文書は、そこで読むのをやめる。寛容な読み手が返すものは必ず UTF-8 で、そうでないバイトは U+FFFD にする（encoding/xml はそこで読むのをやめていた）。
@@ -154,7 +154,7 @@ BDF の部品の圧縮と展開（document.go、reader.go、区間の manifest�
 
 ## 検証
 
-- `go test ./...`、`go vet -unreachable=false ./...`、`go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/`、raster/ebitenginebdf の vet とテストが成功。
+- `go test ./...`、`go vet -unreachable=false ./...`、`go test -tags bdf_noconv ./image/imgconv/ ./converter/... ./font/woff2/`、raster/ebitenginebdf の vet とテストが成功。
 - `go test -race` を woff2、fontdb、html、imagebdf、xmltree、ooxml、xlsx、pptx、docx、ziputil と zip を読む変換器、ルートで実行して成功（プールと走査キャッシュの並行利用）。
 - `npm test` が成功。
 - `bdf generate` で pptx・docx・xlsx・pdf・csv・parquet・drawio・epub・markdown・html の testdata と `bdf demo` を再生成し、既存の BDF とバイト単位で一致（docx/math.bdf だけは修正前のコードでも一致せず、arm64 と amd64 の浮動小数点の差）。

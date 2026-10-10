@@ -24,7 +24,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/equation"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/internal/fontdb"
 )
 

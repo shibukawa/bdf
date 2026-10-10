@@ -6,7 +6,7 @@ What the converters share, and what is made from a converted document. It works 
 
 One formula engine lays out all of it — Word's Office Math, PowerPoint's and Excel's formulas (built from Office Math, not the fallback image some files also save), HTML and EPUB's MathML (including the MathML that KaTeX, MathJax and Wikipedia render alongside their own display), and the LaTeX in Markdown and draw.io labels (`math=1`). It uses the constants and glyph variants of an OpenType MATH font (STIX Two Math, Cambria Math, Latin Modern Math and others) for fractions, radicals, subscripts and limits, large operators, stretchy brackets and radicals built from glyph variants and assembly parts, matrices, aligned equations and accents. Search and copy produce a linear form — `x=(−b±√(b^2−4ac))/(2a)` — findable even typed with a plain hyphen-minus. See [design.md §3.23](../design.md#323-数式internalmathlayoutconverterinternalequationformula) for the internals.
 
-The same engine is available by itself as the public package `formula`: it turns a formula in LaTeX or MathML into an object of paths only, to draw into an image, on an Ebitengine screen or on a browser canvas ([Rendering](../rendering.md#formulas)).
+The same engine is available by itself as the public package `image/formula`: it turns a formula in LaTeX or MathML into an object of paths only, to draw into an image, on an Ebitengine screen or on a browser canvas ([Rendering](../rendering.md#formulas)).
 
 ## Scores and playback
 

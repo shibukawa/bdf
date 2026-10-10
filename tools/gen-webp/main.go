@@ -1,5 +1,5 @@
 // Command gen-webp translates tools/webp/webp.wasm into the Go package
-// imgconv/internal/webpw with the wasm2go fork, using the options that keep
+// image/imgconv/internal/webpw with the wasm2go fork, using the options that keep
 // regenerated output diff-friendly (symbol names, per-subject files, named
 // data addresses). Run it through tools/gen-codecs.sh.
 package main
@@ -17,7 +17,7 @@ func main() {
 	in := flag.String("i", "", "input wasm")
 	outDir := flag.String("out-dir", "", "output directory")
 	pkg := flag.String("pkg", "webpw", "package name")
-	importPath := flag.String("import", "github.com/shibukawa/bdf/imgconv/internal/webpw", "import path")
+	importPath := flag.String("import", "github.com/shibukawa/bdf/image/imgconv/internal/webpw", "import path")
 	chunks := flag.Int("chunks", 1, "number of chunk packages")
 	simd := flag.String("simd", "", "wasm2go -simd target (go127): also emit each v128 function over simd/archsimd registers for a GOEXPERIMENT=simd build")
 	flag.Parse()

@@ -9,7 +9,7 @@ import (
 	"image/png"
 
 	"github.com/shibukawa/bdf/converter/internal/jbig2"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 
 	"github.com/pdfcpu/pdfcpu/pkg/filter"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"

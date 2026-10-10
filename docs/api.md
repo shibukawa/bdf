@@ -188,8 +188,8 @@ http.Handle("POST /segments/{name}", &segment.Handler{
 
 | パッケージ | 内容 |
 |---|---|
-| `imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false）。`Decode(data)` は `MaxDecodePixels`（100 << 20 画素）を超える画像をデコードせず `ErrTooLarge` を返し、`Optimize` はそういう画像をそのまま残す |
-| `woff2` | TrueType・OpenType を WOFF2 にする、WOFF2 を戻す。`Encode(font)`、`Decode(data)`（glyf・loca・hmtx の変換を戻す。フォントコレクションは扱わない）、`Available()`、`IsWOFF(data)` |
+| `image/imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false）。`Decode(data)` は `MaxDecodePixels`（100 << 20 画素）を超える画像をデコードせず `ErrTooLarge` を返し、`Optimize` はそういう画像をそのまま残す |
+| `font/woff2` | TrueType・OpenType を WOFF2 にする、WOFF2 を戻す。`Encode(font)`、`Decode(data)`（glyf・loca・hmtx の変換を戻す。フォントコレクションは扱わない）、`Available()`、`IsWOFF(data)` |
 
 ## Go: サムネイルとページの画像（thumbnail、imagebdf）
 
@@ -233,7 +233,7 @@ return thumbnail.Encode(w, img, thumbnail.PNG)
 
 ## Go: 数式（formula、raster/ebitenginebdf）
 
-`github.com/shibukawa/bdf/formula` は LaTeX・MathML の数式を組み、パスだけの Object にする（design.md §3.23）。使い方とサンプルは[描画する](rendering.ja.md#数式を描く)。
+`github.com/shibukawa/bdf/image/formula` は LaTeX・MathML の数式を組み、パスだけの Object にする（design.md §3.23）。使い方とサンプルは[描画する](rendering.ja.md#数式を描く)。
 
 ```go
 ts, err := formula.New(nil) // 同梱の STIX Two Math
