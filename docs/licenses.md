@@ -41,3 +41,7 @@ The files come from the Debian packages `fonts-liberation`, `fonts-crosextra-car
 The test fonts in the repository — subsets of M PLUS 1p, STIX Two Math, STIX Two Text and DejaVu Sans — sit in `testdata` directories with their licenses.
 
 The InDesign documents the IDML converter is tested on (`converter/idml/testdata/simpleidml`) are the regression test files of [SimpleIDML](https://github.com/Starou/SimpleIDML), copyright (c) 2012 Stanislas Guerra, under the BSD 3-clause license kept beside them.
+
+## Code from other projects
+
+`encoding/htmlro`, the HTML parser, carries the tokenizer states and the tree construction stage of [`golang.org/x/net/html`](https://pkg.go.dev/golang.org/x/net/html) (`scan.go`, `parse.go`, `foreign.go`, `doctype.go`, `const.go`, the entity table and the tests), copyright The Go Authors, under the BSD 3-clause license kept beside them in [`encoding/htmlro/LICENSE`](https://github.com/shibukawa/bdf/blob/main/encoding/htmlro/LICENSE). Its `testdata/html5lib-tests` are the html5lib test suite, copyright James Graham, Geoffrey Sneddon and other contributors, under the MIT license in its `README`.

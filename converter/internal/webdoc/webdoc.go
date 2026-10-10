@@ -16,12 +16,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"io"
 	"mime"
 	"net/url"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/shibukawa/bdf/encoding/htmlro"
 	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 	"github.com/shibukawa/tinygodriver/encoding/xmlro/htmlentity"
 	"golang.org/x/net/html"
@@ -75,17 +75,19 @@ func IsXML(data []byte, contentType string) bool {
 
 // ParseHTML decodes a document to UTF-8 by its byte order mark, the
 // charset of its content type or of its meta element, and parses it as
-// HTML.
+// HTML, with htmlro: the tree golang.org/x/net/html.Parse builds, at a
+// third of the allocations. A document whose elements nest deeper than
+// MaxDepth is refused.
 func ParseHTML(data []byte, contentType string) (*html.Node, error) {
-	enc, _, certain := charset.DetermineEncoding(data, contentType)
+	enc, _, certain := DetermineEncoding(data, contentType)
 	if !certain && utf8.Valid(data) {
 		enc = nil
 	}
-	var r io.Reader = bytes.NewReader(data)
-	if enc != nil {
-		r = enc.NewDecoder().Reader(r)
+	opts := htmlro.Options{MaxDepth: MaxDepth}
+	if enc == nil {
+		return htmlro.ParseBytes(data, opts)
 	}
-	return html.Parse(r)
+	return htmlro.Parse(enc.NewDecoder().Reader(bytes.NewReader(data)), opts)
 }
 
 // ParseXHTML parses an XHTML document into the tree the HTML parser makes:
