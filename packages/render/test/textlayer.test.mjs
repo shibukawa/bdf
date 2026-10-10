@@ -42,10 +42,16 @@ test("internalLink reads page and view links", async () => {
 
 /** Elements just enough for buildTextLayer, which Node has none of. */
 function fakeDocument() {
+  // as in the CSSOM: the font shorthand sets the line height too, to normal
+  class Style {
+    #font = "";
+    get font() { return this.#font; }
+    set font(v) { this.#font = v; this.lineHeight = "normal"; }
+  }
   class Element {
     children = [];
     attributes = {};
-    style = {};
+    style = new Style();
     constructor(tag) { this.tag = tag; }
     setAttribute(k, v) { this.attributes[k] = String(v); }
     getAttribute(k) { return this.attributes[k] ?? null; }
@@ -102,6 +108,36 @@ test("runs lie in the links that cover them, and links are read once each", asyn
     assert.deepEqual([web.style.left, web.style.top, web.style.width], ["0px", "40px", "200px"]);
     // not once for every run and link
     assert.ok(parsed <= 2 * content.links.length, `${parsed} URLs read`);
+  } finally {
+    Object.assign(globalThis, saved);
+    if (saved.document === undefined) delete globalThis.document;
+    if (saved.window === undefined) delete globalThis.window;
+  }
+});
+
+test("runs keep the line height of 1 that their font shorthand resets", async () => {
+  const { buildTextLayer } = await import("../dist/textlayer.js");
+  const saved = { document: globalThis.document, window: globalThis.window };
+  globalThis.document = fakeDocument();
+  globalThis.window = { addEventListener() {} };
+  try {
+    const font = { kind: 1, family: "sans-serif", weight: 400, style: 0 };
+    const at = { x: 0, y: 10, size: 10, align: 0, matrix: [1, 0, 0, 1, 0, 10], sep: 2 };
+    const content = {
+      runs: [
+        { ...at, text: "drawn", advance: 40, font, ordinal: 0, altText: false },
+        // text drawn as paths: only its anchor is known
+        { ...at, text: "outlined", advance: 0, font: undefined, ordinal: 1, altText: true },
+      ],
+      nodes: [],
+      links: [],
+    };
+    const layer = buildTextLayer(content, 1, { measure: () => 40 });
+    const spans = layer.children.filter((el) => el.tag === "span");
+    assert.deepEqual(spans.map((s) => s.textContent), ["drawn", "outlined"]);
+    // at normal, the run's box is as high as a line of the font the browser
+    // falls back to, and the text lies that much lower in it than was drawn
+    for (const s of spans) assert.equal(s.style.lineHeight, "1", s.textContent);
   } finally {
     Object.assign(globalThis, saved);
     if (saved.document === undefined) delete globalThis.document;
