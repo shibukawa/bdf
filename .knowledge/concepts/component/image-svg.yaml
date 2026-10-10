@@ -1,0 +1,50 @@
+id: component:image-svg
+type: component
+title: 'image/svg: 単独で使える SVG の読み手'
+summary: 公開パッケージ github.com/shibukawa/bdf/image/svg。SVG を要素の木に読み、スタイルシートを適用し、属性の値（色・数値・長さ・変換）を読む。描画はしない。raster/imagebdf
+  の SVG レンダラがこの木を描く。
+lifecycle: active
+aliases:
+- svg.Parse
+- image/svg
+authority: observed
+facts:
+  files:
+    svg.go: パッケージ文書、Node・Document・Options、Parse
+    css.go: スタイルシート（非公開）と (*Node).Declared
+    color.go: Color と ParseColor
+    colornames.go: CSS の名前付き色 148 個
+    value.go: ParseNumber・ParseNumbers・ParseLength、Matrix と ParseTransform
+    tests: svg_test.go、example_test.go、fuzz_test.go（FuzzParse）、testdata/ に SVG 2 つ
+  dependencies:
+  - internal/xmltree（Open）
+  - tinygodriver の xmlro と htmlentity
+  - golang.org/x/net/html/charset
+  not_here:
+    path_data: d 属性は文字列のまま。図形にするのは raster/imagebdf/svgpath.go の parsePathData（ラスタライザの path に直接読む）
+    computed_style: 継承と計算値は raster/imagebdf/svg.go の compute()
+    natural_size: raster/imagebdf の svgNaturalSize と imgconv.ParseSVGSize（別実装のまま）
+    references: '"#id" と url(#id) の解決は raster/imagebdf の (*svgRenderer).ref'
+  renderer_side:
+    wrapper: raster/imagebdf の svgDoc は *svg.Document を埋め込み、paths map[*svg.Node]*path と embeds map[*svg.Node]*svgEmbed
+      を持つ（要素ごとの描画キャッシュ）
+    entry: newSVGImage(data) が svg.Parse(data, nil) を呼ぶ。文書の Warnings は描画の警告になる
+  behaviour: 読める範囲・寛容さ・上限は切り出し前と同じ（component:imagebdf-svg-parser の facts がそのまま当てはまる）
+relations:
+- relation: extracted_from
+  to: component:imagebdf-svg-parser
+- relation: satisfies
+  to: requirement:svg-standalone-package
+assertions:
+- predicate: imports_rasterizer
+  value: false
+  authority: observed
+  evidence:
+    path: image/svg/svg.go
+    locator: go list -deps ./image/svg
+- predicate: rendering_changed_by_extraction
+  value: false
+  authority: observed
+  evidence:
+    path: raster/imagebdf/svg.go
+    locator: byte-identical golden drawings (116) and corpus rasters before and after
