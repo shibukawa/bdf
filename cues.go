@@ -3,15 +3,16 @@ package bdf
 import "fmt"
 
 // CueSystem is a rectangle of a page that the playing position moves
-// through: a system of a score (docs/spec.md §4.4).
+// through: a system of a score, or a line of the lyrics of a recording
+// (docs/spec.md §4.4).
 type CueSystem struct {
 	Page       uint32 // page index in the view (0-based)
 	X, Y, W, H float32
 }
 
 // Cue ties a time of a view's music to a place on its pages: at Tick (in
-// the ticks of the Standard MIDI File) the playing position is at X on
-// System.
+// the ticks of the Standard MIDI File, or in milliseconds of an audio
+// file) the playing position is at X on System.
 type Cue struct {
 	Tick   uint32
 	System uint32

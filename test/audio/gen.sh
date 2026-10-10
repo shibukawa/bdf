@@ -1,11 +1,11 @@
 #!/bin/sh
 # Regenerates the test files of the audio converter (converter/audio/testdata):
 # a second of a 440 Hz tone in every format, with the tags and the cover art
-# the converter reads. ffmpeg (6 or later, with libmp3lame, libvorbis and
+# the converter reads, and a short song with synchronized lyrics to play. ffmpeg (6 or later, with libmp3lame, libvorbis and
 # libopus) encodes the audio and writes the tags it can; the Python library
 # mutagen (pip install mutagen) writes the frames ffmpeg writes differently
-# or not at all: the lyrics and comment frames of ID3, chapters, several
-# artists in one frame, and the pictures of Ogg files.
+# or not at all: the lyrics (plain and synchronized) and comment frames of
+# ID3, chapters, several artists in one frame, and the pictures of Ogg files.
 set -eu
 cd "$(dirname "$0")/../.."
 out=converter/audio/testdata
@@ -78,9 +78,31 @@ f -f lavfi -i "$tone" -i "$tmp/cover.jpg" -map 0:a -map 1:v -c:a pcm_s16be -ar 8
 # Raw AAC (ADTS), which has no tags: the card page shows what the frames say.
 f -f lavfi -i "$tone" -c:a aac -b:a 32k -f adts "$out/plain.aac"
 
+# A song to play: fifteen seconds of a tune (melody.py writes it as a WAV
+# file), with a cover; mutagen adds its lyrics below, as the plain text of
+# USLT and, with the time each line is sung at, as SYLT.
+python3 test/audio/melody.py "$tmp/melody.wav"
+f -i "$tmp/melody.wav" -i "$tmp/cover.jpg" -map 0:a -map 1:v -c:a libmp3lame -b:a 24k -ar 22050 -ac 1 -c:v copy -disposition:v attached_pic \
+  -id3v2_version 4 \
+  -metadata title="Sunny Field" -metadata artist="Taro Yamada" -metadata album="Four Seasons" -metadata date="2026-09-01" \
+  -metadata genre="Folk" -metadata track="3/12" -metadata language="eng" \
+  "$out/synced.mp3"
+
+# FLAC whose LYRICS comment is an LRC text: tags that describe it, a time
+# before each line, a line sung twice, and a time alone where the singing
+# stops. Four seconds of silence, which FLAC stores in a few bytes.
+f -f lavfi -i "anullsrc=sample_rate=8000:channel_layout=mono:duration=4" -c:a flac \
+  -metadata title="晴れた野原" -metadata artist="山田太郎" -metadata album="四季" -metadata date="2026" \
+  -metadata LYRICS="[ti:晴れた野原]
+[ar:山田太郎]
+[00:00.50]野原の上に太陽
+[00:01.50][00:03.00]雲ひとつない夏の空
+[00:02.50]" \
+  "$out/lrc.flac"
+
 python3 - "$out" "$tmp/cover.png" <<'PY'
 import base64, sys
-from mutagen.id3 import ID3, USLT, COMM, TPE1, CHAP, CTOC, CTOCFlags, TIT2
+from mutagen.id3 import ID3, USLT, SYLT, COMM, TPE1, CHAP, CTOC, CTOCFlags, TIT2
 from mutagen.oggvorbis import OggVorbis
 from mutagen.oggopus import OggOpus
 from mutagen.flac import Picture
@@ -105,6 +127,16 @@ t = ID3(out + "/japanese.mp3")
 t.delall("TXXX")
 t.add(TPE1(encoding=3, text=["山田太郎", "佐藤花子"]))
 t.add(USLT(encoding=3, lang="jpn", desc="", text="野原の上に太陽\n雲ひとつない夏の空"))
+t.save(v2_version=4, v1=0)
+
+# ID3v2.4: the lyrics twice, as plain text and synchronized (the stamps in
+# milliseconds; a line feed starts each line after the first, two a stanza).
+t = ID3(out + "/synced.mp3")
+t.delall("TXXX")
+t.add(USLT(encoding=3, lang="eng", desc="", text="Over the field the sun is high\nNot a cloud in the summer sky\n\nWalking home along the lane\nHoping it will never rain"))
+t.add(SYLT(encoding=3, lang="eng", format=2, type=1, desc="", text=[
+    ("Over the field the sun is high", 1500), ("\nNot a cloud in the summer sky", 4500),
+    ("\n\nWalking home along the lane", 7500), ("\nHoping it will never rain", 10500)]))
 t.save(v2_version=4, v1=0)
 
 # Ogg: the front cover as a FLAC picture block in base64.

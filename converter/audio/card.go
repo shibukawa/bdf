@@ -2,6 +2,8 @@ package audio
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -18,7 +20,6 @@ const (
 	placeholderSide = 480
 	margin          = 32
 	labelWidth      = 112
-	maxLyricLines   = 2000
 )
 
 // Colors of the card.
@@ -50,11 +51,24 @@ type card struct {
 	reg   bdf.FontRef
 	bold  bdf.FontRef
 	table int // rows of the details table
+	// cues tie the time of the audio to the lines of the card: the
+	// synchronized lyrics, else the chapters (docs/spec.md §4.4).
+	cues bdf.Cues
 }
 
-// buildCard draws the card of a track and returns the page size and the
-// object.
-func buildCard(doc *bdf.Document, t *track, cover *coverImage, title, alt string) (w, h float32, obj bdf.Hash) {
+// cue ties a time in milliseconds to the rows of the card from y down to
+// where the next line goes: a line of the lyrics, a chapter.
+func (c *card) cue(ms int64, y float32) {
+	if ms < 0 || ms > 1<<32-1 {
+		return
+	}
+	c.cues.Cues = append(c.cues.Cues, bdf.Cue{Tick: uint32(ms), System: uint32(len(c.cues.Systems)), X: margin})
+	c.cues.Systems = append(c.cues.Systems, bdf.CueSystem{Page: 0, X: margin, Y: y, W: c.w - 2*margin, H: c.y - y})
+}
+
+// buildCard draws the card of a track and returns the page size, the
+// object, and the cues of the lines that have a time (nil without any).
+func buildCard(doc *bdf.Document, t *track, cover *coverImage, title, alt string) (w, h float32, obj bdf.Hash, cues *bdf.Cues) {
 	c := &card{doc: doc, o: bdf.NewObject()}
 	c.reg = c.o.AddFont(bdf.SystemFont("sans-serif", 400, bdf.StyleNormal))
 	c.bold = c.o.AddFont(bdf.SystemFont("sans-serif", 700, bdf.StyleNormal))
@@ -70,11 +84,12 @@ func buildCard(doc *bdf.Document, t *track, cover *coverImage, title, alt string
 	}
 	c.y += 6
 	c.details(t)
-	if s := tg.first(keyLyrics); s != "" {
-		c.lyrics(s)
+	if len(t.lyrics) > 0 {
+		c.lyrics(t.lyrics)
 	}
 	if len(t.chapters) > 0 {
-		c.chapters(t.chapters)
+		// the playing position is on the lyrics when they have their times
+		c.chapters(t.chapters, len(c.cues.Cues) == 0)
 	}
 	c.y += margin - 8
 	h = c.y
@@ -82,7 +97,12 @@ func buildCard(doc *bdf.Document, t *track, cover *coverImage, title, alt string
 		h = c.w
 	}
 	obj, _ = doc.AddObject(c.o)
-	return c.w, h, obj
+	if len(c.cues.Cues) > 0 {
+		// in the order of their times, as lines sung at the same time stay
+		sort.SliceStable(c.cues.Cues, func(i, j int) bool { return c.cues.Cues[i].Tick < c.cues.Cues[j].Tick })
+		cues = &c.cues
+	}
+	return c.w, h, obj, cues
 }
 
 // drawCover draws the cover as wide as the page, or a placeholder square
@@ -236,35 +256,32 @@ func (c *card) details(t *track) {
 	c.o.Mark(bdf.MarkEnd, "")
 }
 
-// lyrics sets the lyrics, stanza by stanza.
-func (c *card) lyrics(s string) {
+// lyrics sets the lyrics, stanza by stanza. A line that has its time gets
+// a cue: the rows it is set on.
+func (c *card) lyrics(lines []lyricLine) {
 	c.section("Lyrics")
-	lines := strings.Split(s, "\n")
-	if len(lines) > maxLyricLines {
-		lines = lines[:maxLyricLines]
-	}
-	newStanza := true
-	for _, l := range lines {
-		l = strings.TrimSpace(l)
-		if l == "" {
-			if !newStanza {
-				c.y += 8
+	for i, l := range lines {
+		if l.stanza && i > 0 {
+			c.y += 8
+		}
+		y := c.y
+		for j, row := range strings.Split(l.text, "\n") {
+			if (i == 0 || l.stanza) && j == 0 {
+				c.o.Mark(bdf.MarkParagraph, "")
+			} else {
+				c.o.Mark(bdf.MarkLine, "")
 			}
-			newStanza = true
-			continue
+			c.lines(wrap(row, 11, c.w-2*margin, 8), c.reg, 11, colorText, margin, 16)
 		}
-		if newStanza {
-			c.o.Mark(bdf.MarkParagraph, "")
-		} else {
-			c.o.Mark(bdf.MarkLine, "")
+		if c.y > y {
+			c.cue(l.at, y)
 		}
-		newStanza = false
-		c.lines(wrap(l, 11, c.w-2*margin, 8), c.reg, 11, colorText, margin, 16)
 	}
 }
 
-// chapters sets the list of chapters.
-func (c *card) chapters(chapters []chapter) {
+// chapters sets the list of chapters; with cues, each chapter gets one at
+// its start.
+func (c *card) chapters(chapters []chapter, cues bool) {
 	c.section("Chapters")
 	c.o.Mark(bdf.MarkList, "")
 	for _, ch := range chapters {
@@ -273,6 +290,12 @@ func (c *card) chapters(chapters []chapter) {
 		c.lines([]string{clock(ch.start)}, c.reg, 11, colorLabel, margin, 17)
 		c.y = y
 		c.lines(wrap(ch.title, 11, c.w-2*margin-labelWidth, 4), c.reg, 11, colorText, margin+labelWidth, 17)
+		if c.y < y+17 { // a chapter without a title
+			c.y = y + 17
+		}
+		if cues && ch.start >= 0 && !math.IsNaN(ch.start) && !math.IsInf(ch.start, 0) {
+			c.cue(int64(ch.start*1000+0.5), y)
+		}
 	}
 	c.o.Mark(bdf.MarkEnd, "")
 }

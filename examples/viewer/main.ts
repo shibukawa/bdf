@@ -5,7 +5,9 @@
 // converted a page at a time: its pages are shown sized at once and drawn as
 // they are converted, those near the visible area first. Pages are scrolled
 // through, or shown one or two at a time and turned like a book's (book.ts).
-// A score's music plays with Web Audio, a bar on the pages following it.
+// A score's music plays with Web Audio, a bar on the pages following it;
+// the recording of an audio file plays in the browser's own player, the
+// line of its lyrics that is sung marked on its card.
 // The cells of a sheet are selected as in a spreadsheet, and copied as
 // tab-separated values and an HTML table. A pinch on the stage changes the
 // zoom, not the page's.
@@ -16,7 +18,7 @@
 // layout it opens in.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent, type NoteEvent } from "@bdfkit/core";
 import {
-  BdfWorkerClient, BdfWorkerError, MusicPlayer, buildTextLayer, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
+  BdfWorkerClient, BdfWorkerError, MusicPlayer, AudioPlayer, buildTextLayer, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
   type Cursor, type HitRect, type OpenSource, type TextLayerOptions, type CellText, type CellRange, type CellClipboard,
 } from "@bdfkit/render";
 import { ConverterClient, ConvertError, sniff, type Opened } from "../common/convert.js";
@@ -71,6 +73,12 @@ let layoutChosen = false;
 
 /** The music of the view shown (spec §4.4), once the worker has sent it. */
 let player: MusicPlayer | undefined;
+/** The recording of the view shown (spec §4.4: an audio file's card), once the worker has sent it. */
+let recording: AudioPlayer | undefined;
+/** What plays: the music of a score, or a recording. */
+const playing = () => player ?? recording;
+/** The reader is dragging the position slider: it is not moved under the pointer. */
+let seeking = false;
 /** Whether the current music pages or the note timeline is shown. */
 let musicMode: "score" | "piano-roll" = "score";
 let scoreScroll: { left: number; top: number } | undefined;
@@ -331,7 +339,7 @@ async function load(source: OpenSource, name?: string, token = ++opening, stream
     return;
   }
   manifest = opened;
-  $("searchBox").hidden = ["mml", "midi", "musicxml"].includes(manifest.meta?.source ?? "") || manifest.views.some((v) => !!v.play);
+  $("searchBox").hidden = ["mml", "midi", "musicxml"].includes(manifest.meta?.source ?? "") || manifest.views.some((v) => !!v.play?.seq);
   // a book opens as facing pages
   if (!layoutChosen) layoutSelect.value = manifest.meta?.source === "epub" ? "spread" : "pages";
   if (stream) {
@@ -872,7 +880,8 @@ function show(v: View) {
     stopMusic();
     musicMode = "score";
     scoreScroll = pianoRollScroll = undefined;
-    if (v.play) loadMusic(v);
+    if (v.play?.audio) loadRecording(v);
+    else if (v.play) loadMusic(v);
   }
   current = v;
   for (const b of tabs.querySelectorAll<HTMLButtonElement>("[role=tab]")) {
@@ -917,7 +926,7 @@ function show(v: View) {
   }
   // the cursor goes on the new layout, which is brought to it
   followed = undefined;
-  if (player) follow();
+  if (playing()) follow();
   syncMusicDisplay();
 }
 
@@ -1053,7 +1062,7 @@ function showBook(v: View, start: number) {
     onTurn: (pages) => turned(b, pages, noun),
     onError: unlessStale(gen),
     // while the music plays or pauses, a tap on a system plays from there
-    tap: (i, x, y) => !!player && player.state !== "stopped" && playFrom(i, x, y),
+    tap: (i, x, y) => !!playing() && playing()!.state !== "stopped" && playFrom(i, x, y),
   });
   book = b;
   // the buttons point the way the pages turn
@@ -1080,7 +1089,7 @@ function turned(b: Book, pages: number[], noun: string) {
   $<HTMLButtonElement>("prevPage").disabled = !b.canTurn(-1);
   $<HTMLButtonElement>("nextPage").disabled = !b.canTurn(1);
   // the pages were made anew: the cursor goes back on (while playing, the next frame puts it)
-  if (player && !player.playing) follow();
+  if (playing() && !playing()!.playing) follow();
 }
 
 /** Follow a link to a page (0-based): scroll to it and focus it. */
@@ -1191,11 +1200,24 @@ function highlightLayer(pageIndex: number, scale = zoom): HTMLDivElement {
 // book layouts), and the pages follow it: the stage scrolls to the system the
 // music comes to, the book turns to its page. A click on a system plays from
 // there.
+//
+// The card of an audio file plays its recording with the same controls, and
+// a slider for the position. The line of the lyrics that is sung (or the
+// chapter the recording is in) is marked on the card when the file says
+// when each is, and a click on a line plays from it.
 
 /** The controls, the keys, and clicks on the pages. */
 function initMusic() {
   $("play").onclick = togglePlay;
-  $("stopPlay").onclick = () => player?.stop();
+  $("stopPlay").onclick = () => playing()?.stop();
+  // the position of a recording: dragging goes there at once, and the slider is the reader's until let go
+  const seek = $<HTMLInputElement>("seek");
+  seek.oninput = () => {
+    const r = recording;
+    if (r && r.duration > 0) r.seek(Number(seek.value) / Number(seek.max) * r.duration);
+  };
+  seek.onpointerdown = () => { seeking = true; };
+  seek.onpointerup = seek.onpointercancel = seek.onchange = () => { seeking = false; };
   $<HTMLSelectElement>("musicDisplay").onchange = changeMusicDisplay;
   $<HTMLSelectElement>("tabPart").onchange = changeTabView;
   $<HTMLSelectElement>("tabPreset").onchange = changeTabView;
@@ -1205,7 +1227,7 @@ function initMusic() {
   speedPercent.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); applySpeedPercent(); } };
   // Space plays and pauses (before the stage scrolls or the book turns), unless typing or on a control
   window.addEventListener("keydown", (e) => {
-    if (e.key !== " " || !player || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key !== " " || !playing() || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const t = e.target as HTMLElement;
     if (t.isContentEditable || t.closest?.("input, textarea, select, button, summary, dialog")) return;
     e.preventDefault();
@@ -1220,7 +1242,7 @@ function initMusic() {
   stage.addEventListener("click", (e) => {
     const p = press;
     press = undefined;
-    if (!player || book || !p || p.selected || e.button !== 0 || Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 4) return;
+    if (!playing() || book || !p || p.selected || e.button !== 0 || Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 4) return;
     const target = e.target as Element;
     const el = target.closest<HTMLElement>(".page[data-index]");
     if (!el || target.closest("a") || !(getSelection()?.isCollapsed ?? true)) return;
@@ -1283,10 +1305,41 @@ function syncMusicDisplay() {
   }
 }
 
+/** Show the controls of a score's music, or those of a recording. */
+function playControls(audio: boolean) {
+  $("playBox").hidden = false;
+  $("musicDisplayBox").hidden = $("metronome").hidden = $("openingBpm").hidden = audio;
+  $("seek").hidden = !audio;
+  if (audio) $("tabPartBox").hidden = $("tabPresetBox").hidden = true;
+}
+
+/** Ask the worker for the recording of a view (an audio file), and make its player. */
+function loadRecording(v: View) {
+  const token = music;
+  playControls(true);
+  const play = $<HTMLButtonElement>("play"), seek = $<HTMLInputElement>("seek"), speed = $<HTMLInputElement>("speedPercent");
+  play.disabled = $<HTMLButtonElement>("stopPlay").disabled = seek.disabled = speed.disabled = true;
+  seek.value = "0";
+  $("playTime").textContent = "";
+  client.audio(v.id).then((data) => {
+    if (token !== music || !data) return;
+    const r = recording = new AudioPlayer(data.blob, "", data.cues);
+    r.setSpeedPercent(musicSpeedPercent);
+    r.onUpdate = musicChanged;
+    // a format this browser has no decoder for (AIFF and Apple Lossless outside Safari): the card stays, silent
+    r.onError = (e) => {
+      if (recording === r) setStatus(`the audio does not play: ${e.message}`);
+    };
+    musicChanged();
+  }).catch((e) => {
+    if (token === music) setStatus(`the audio could not be read: ${(e as Error).message ?? e}`);
+  });
+}
+
 /** Ask the worker for the music of a view, and make its player. */
 function loadMusic(v: View) {
   const token = music;
-  $("playBox").hidden = false;
+  playControls(false);
   $<HTMLButtonElement>("play").disabled = $<HTMLButtonElement>("stopPlay").disabled = true;
   $<HTMLSelectElement>("musicDisplay").disabled = $<HTMLButtonElement>("metronome").disabled = true;
   $<HTMLInputElement>("speedPercent").disabled = true;
@@ -1308,6 +1361,9 @@ function stopMusic() {
   music++;
   player?.dispose();
   player = undefined;
+  recording?.dispose();
+  recording = undefined;
+  seeking = false;
   cancelAnimationFrame(playFrame);
   playFrame = 0;
   cursor.remove();
@@ -1317,7 +1373,7 @@ function stopMusic() {
 }
 
 function togglePlay() {
-  const p = player;
+  const p = playing();
   if (!p) return;
   if (p.playing) return p.pause();
   try {
@@ -1367,7 +1423,7 @@ function toggleMetronome() {
 }
 
 function applySpeedPercent() {
-  const p = player;
+  const p = playing();
   const input = $<HTMLInputElement>("speedPercent");
   const value = Number(input.value);
   if (!p || !input.value || !Number.isFinite(value)) {
@@ -1381,14 +1437,24 @@ function applySpeedPercent() {
 
 /** The player started, paused, stopped or jumped: the controls and the cursor. */
 function musicChanged() {
+  const now = playing();
+  if (!now) return;
+  const b = $<HTMLButtonElement>("play");
+  b.disabled = !!recording?.error;
+  b.textContent = now.playing ? "❚❚" : "▶";
+  b.title = now.playing ? "pause (Space)" : "play (Space)";
+  b.setAttribute("aria-label", now.playing ? "pause" : "play");
+  $<HTMLButtonElement>("stopPlay").disabled = now.state === "stopped";
+  if (recording) {
+    // a recording: its speed, and its position once the browser knows how long it is
+    const speed = $<HTMLInputElement>("speedPercent");
+    speed.disabled = false;
+    if (document.activeElement !== speed) speed.value = String(recording.speedPercent);
+    $<HTMLInputElement>("seek").disabled = !(recording.duration > 0);
+    return follow();
+  }
   const p = player;
   if (!p) return;
-  const b = $<HTMLButtonElement>("play");
-  b.disabled = false;
-  b.textContent = p.playing ? "❚❚" : "▶";
-  b.title = p.playing ? "pause (Space)" : "play (Space)";
-  b.setAttribute("aria-label", p.playing ? "pause" : "play");
-  $<HTMLButtonElement>("stopPlay").disabled = p.state === "stopped";
   syncMusicDisplay();
   const metronome = $<HTMLButtonElement>("metronome");
   metronome.disabled = !p.metronomeAvailable;
@@ -1413,6 +1479,21 @@ function musicChanged() {
 function follow() {
   cancelAnimationFrame(playFrame);
   playFrame = 0;
+  const r = recording;
+  if (r) {
+    const at = r.position;
+    const time = $("playTime"), seek = $<HTMLInputElement>("seek");
+    const text = `${minutes(at)} / ${minutes(r.duration)}`;
+    // (every frame while it plays: the text is written when it changes, each second)
+    if (time.textContent !== text) {
+      time.textContent = text;
+      seek.setAttribute("aria-valuetext", `${minutes(at)} of ${minutes(r.duration)}`);
+    }
+    if (!seeking) seek.value = String(r.duration > 0 ? Math.round(at / r.duration * Number(seek.max)) : 0);
+    placeCursor(r.state === "stopped" ? null : r.cursorAt(at));
+    if (r.playing) playFrame = requestAnimationFrame(follow);
+    return;
+  }
   const p = player;
   if (!p) return;
   const at = p.position;
@@ -1564,8 +1645,13 @@ function placeCursor(c: Cursor | null) {
   }
   const scale = book?.scale ?? zoom;
   if (cursor.parentElement !== el) el.append(cursor);
-  cursor.style.left = `${c.x * scale}px`;
+  // a place along a system (a score), or all of a line (the lyrics of a recording), with some room about its text
+  const line = c.w !== undefined;
+  const room = line ? Math.min(8, c.x * scale) : 0;
+  cursor.classList.toggle("line", line);
+  cursor.style.left = `${c.x * scale - room}px`;
   cursor.style.top = `${c.y * scale}px`;
+  cursor.style.width = line ? `${c.w! * scale + 2 * room}px` : "";
   cursor.style.height = `${c.h * scale}px`;
   if (!book) reveal(el, c, moved);
 }
@@ -1590,6 +1676,15 @@ function reveal(el: HTMLElement, c: Cursor, moved: boolean) {
 
 /** Play from the place of a system clicked on (page units); false when no system of the music is there. */
 function playFrom(page: number, x: number, y: number): boolean {
+  const r = recording;
+  if (r?.cues) {
+    // the lines of the lyrics lie one against the other: the one the point is on
+    const i = r.cues.systems.findIndex((s) => s.page === page && x >= s.x && x <= s.x + s.w && y >= s.y && y < s.y + s.h);
+    const t = i < 0 ? null : r.timeAt(i);
+    if (t === null) return false;
+    r.seek(t);
+    return true;
+  }
   const p = player;
   if (!p?.cues) return false;
   const pad = 4;

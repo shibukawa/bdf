@@ -3,7 +3,14 @@
 // documents of one page: a card that shows the cover art the file carries
 // (or a placeholder when it has none) across the top, and under it what
 // the tags say: the title, the artists, the album, the other fields in a
-// table, the lyrics and the chapters. The audio itself is not stored.
+// table, the lyrics and the chapters.
+//
+// The view plays (docs/spec.md §4.4): the file is stored as it is, for the
+// browser's own player, and cues tie its time to the page, to the lines of
+// synchronized lyrics (an ID3 SYLT frame, or LRC text in a lyrics field)
+// or else to the chapters, so that a viewer shows the line being sung and
+// plays from a line clicked on. Options.NoPlay leaves the audio out, and a
+// file larger than Options.MaxAudio gets its card without it.
 //
 // The cover passes through as the images of converter/image do: stored as
 // it is, in the format the file holds it in (JPEG or PNG, usually), for
@@ -52,10 +59,22 @@ type Options struct {
 	Images imgconv.Options
 	// NoTextIndex skips building the text index part.
 	NoTextIndex bool
+	// NoPlay leaves the audio out: the document is the card alone, which
+	// is all that a file list, a thumbnail or a search index needs.
+	NoPlay bool
+	// MaxAudio is the size in bytes of the largest file that is stored for
+	// playing; a larger file gets its card without the audio, and a
+	// warning. 0 is DefaultMaxAudio.
+	MaxAudio int64
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
 }
+
+// DefaultMaxAudio is the size of the largest file stored for playing when
+// Options.MaxAudio is 0. The audio is held in memory while the document is
+// built, and by the viewer that plays it.
+const DefaultMaxAudio = 256 << 20
 
 // Result is the outcome of a conversion.
 type Result struct {
@@ -79,6 +98,15 @@ type Result struct {
 	// CoverHeight are its size in pixels.
 	Cover                   string
 	CoverWidth, CoverHeight int
+	// Audio is the size in bytes of the audio stored for playing; 0 when
+	// the document does not play.
+	Audio int64
+	// Lyrics is the number of lines of lyrics on the card, and Synced
+	// reports that they have the times they are sung at.
+	Lyrics int
+	Synced bool
+	// Chapters is the number of chapters on the card.
+	Chapters int
 }
 
 // maxSize bounds the files read.
@@ -120,7 +148,9 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("audio: %w", err)
 	}
-	res := &Result{Doc: bdf.NewDocument(), Format: t.format, Codec: t.codec, Duration: t.duration, Bitrate: t.bitrate, SampleRate: t.sampleRate, Channels: t.channels}
+	t.setLyrics()
+	res := &Result{Doc: bdf.NewDocument(), Format: t.format, Codec: t.codec, Duration: t.duration, Bitrate: t.bitrate, SampleRate: t.sampleRate, Channels: t.channels,
+		Lyrics: len(t.lyrics), Synced: t.lyricsSynced, Chapters: len(t.chapters)}
 	warn := func(msg string) {
 		if opts.Warn != nil {
 			opts.Warn(msg)
@@ -155,15 +185,58 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if s := t.tags.first(keyAlbum); s != "" {
 		alt = "Cover of " + s
 	}
-	w, h, obj := buildCard(doc, t, cover, title, alt)
+	w, h, obj, cues := buildCard(doc, t, cover, title, alt)
 	view := doc.NewView("card", bdf.ViewFixed, title)
 	view.AddPage(w, h, bdf.Layer{Role: bdf.RoleBody, Obj: obj})
+	if data := storedAudio(r, size, t, opts, warn); data != nil {
+		res.Audio = int64(len(data))
+		view.Play = &bdf.Play{Audio: doc.AddPart(bdf.PartAudio, data).String(), Type: mimeTypes[t.format]}
+		if cues != nil {
+			view.Play.Cues = doc.AddPart(bdf.PartIndex, bdf.EncodeCues(cues)).String()
+		}
+	}
 	if !opts.NoTextIndex {
 		if _, err := doc.BuildTextIndex(view); err != nil {
 			return nil, fmt.Errorf("audio: %w", err)
 		}
 	}
 	return res, nil
+}
+
+// storedAudio reads the file to store it for playing; nil when it is not
+// stored: the options leave it out, it is larger than they allow, a player
+// could not play it, or it could not be read whole.
+func storedAudio(r io.ReaderAt, size int64, t *track, opts *Options, warn func(string)) []byte {
+	if opts.NoPlay || t.protected || size <= 0 {
+		return nil
+	}
+	limit := opts.MaxAudio
+	if limit == 0 {
+		limit = DefaultMaxAudio
+	}
+	if size > limit {
+		warn(fmt.Sprintf("the file is larger than %s and its audio is not stored: the card does not play", byteSize(limit)))
+		return nil
+	}
+	data := make([]byte, size)
+	if _, err := io.ReadFull(io.NewSectionReader(r, 0, size), data); err != nil {
+		warn(fmt.Sprintf("the audio could not be read and is not stored: %v", err))
+		return nil
+	}
+	return data
+}
+
+// byteSize writes a number of bytes in the unit that suits it ("256 MiB").
+func byteSize(n int64) string {
+	switch {
+	case n >= 1<<20 && n%(1<<20) == 0:
+		return fmt.Sprintf("%d MiB", n>>20)
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%d KiB", n>>10)
+	}
+	return fmt.Sprintf("%d bytes", n)
 }
 
 // pickCover picks the cover art to show and reads its size: a picture a
@@ -197,7 +270,8 @@ func pickCover(t *track, opts *Options, warn func(string)) *coverImage {
 }
 
 // Summary describes a result in a line ("1 page (cover 600 × 600 px, JPEG;
-// MP3, 3:45, 320 kbps, 44.1 kHz, stereo)").
+// MP3, 3:45, 320 kbps, 44.1 kHz, stereo; plays, 24 lines of synchronized
+// lyrics)").
 func (r *Result) Summary() string {
 	s := "1 page ("
 	if r.Cover != "" {
@@ -227,7 +301,31 @@ func (r *Result) Summary() string {
 	default:
 		parts = append(parts, fmt.Sprintf("%d channels", r.Channels))
 	}
-	return s + strings.Join(parts, ", ") + ")"
+	s += strings.Join(parts, ", ")
+	var more []string
+	if r.Audio > 0 {
+		more = append(more, "plays")
+	}
+	switch {
+	case r.Lyrics > 0 && r.Synced:
+		more = append(more, plural(r.Lyrics, "line")+" of synchronized lyrics")
+	case r.Lyrics > 0:
+		more = append(more, plural(r.Lyrics, "line")+" of lyrics")
+	}
+	if r.Chapters > 0 {
+		more = append(more, plural(r.Chapters, "chapter"))
+	}
+	if len(more) > 0 {
+		s += "; " + strings.Join(more, ", ")
+	}
+	return s + ")"
+}
+
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // readAt returns up to n bytes at off.
@@ -331,6 +429,9 @@ func read(r io.ReaderAt, size int64) (*track, error) {
 		t.pictures = append(t.pictures, other.pictures...)
 		if len(t.chapters) == 0 {
 			t.chapters = other.chapters
+		}
+		if len(t.synced) == 0 {
+			t.synced = other.synced
 		}
 		t.warnings = append(t.warnings, other.warnings...)
 	}

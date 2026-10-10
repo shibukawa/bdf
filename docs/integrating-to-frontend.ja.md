@@ -90,6 +90,21 @@ viewer.setMusicMode("piano-roll"); // "score" に戻すことも可能
 // 再生 UI を作る場合は MusicPlayer を使用
 ```
 
+音声ファイルのカードは、同じエントリが export する `AudioPlayer` で鳴らします。`<audio>` 要素を包むのでデコードはブラウザが行い、`MusicPlayer` のうち録音に意味のある操作を持ちます。
+
+```ts
+import { AudioPlayer } from "@bdfkit/viewer/music";
+
+const view = viewer.view; // 音声ファイルのカード。view.play.audio がある
+const data = await viewer.renderer.audio(view.id); // { blob, cues } または null
+if (data) {
+  const element = document.querySelector("audio")!; // ブラウザのコントロール付き
+  const player = new AudioPlayer(data.blob, "", data.cues, { element });
+  // cues: 歌っている歌詞の行（ページの単位）。なければ null
+  element.ontimeupdate = () => highlight(player.cursorAt(player.position));
+}
+```
+
 レンダラーが不要なアプリは `@bdfkit/viewer` を入れず、`@bdfkit/convert` と変換プリセットだけを使います。`converter.convert(...)` は BDF のバイト列を返すため、サーバーへのアップロードやダウンロードに使えます。[npm パッケージ](npm.ja.md#配信サイズ)にはレンダラーの有無によるサイズ差も載せています。
 
 独自の形式の組み合わせは [Wasm ランタイムをビルドする](build-wasm-runtime.ja.md)の TinyGo 手順で作り、`@bdfkit/convert` の `createConverter(new URL("/my-converter.wasm", location.href))` を使います。その `converter` も上の `openFile` に渡せます。バンドラーがパッケージ内の Worker と Wasm を配信し、CSP が Worker と WebAssembly を許可するよう設定してください。

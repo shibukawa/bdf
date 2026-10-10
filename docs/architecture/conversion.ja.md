@@ -12,6 +12,8 @@ Word の Office Math、PowerPoint と Excel の数式（代替として保存さ
 
 MML・MIDI・MusicXML は変換器が五線譜に組みます。View はその音楽を Standard MIDI File として、演奏の時刻とページの上の位置を結ぶ cue と一緒に持ちます（[spec §4.4](../spec.md#44-演奏play)）。デモビューアは Web Audio API で演奏します（General MIDI の音色の系統ごとのオシレーター、合成した打楽器、チップチューンの MML の矩形波）。演奏している段にカーソルを示し、それに合わせてページをめくり・スクロールします。段をクリックすると、そこから演奏します。詳細は[design.md §3.27](../design.md#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic)を参照してください。
 
+音声ファイルの View も同じ `play` で鳴りますが、Standard MIDI File の代わりにファイルそのものを持ちます。ビューアはそれをブラウザの `<audio>` 要素に渡すので、変換器もビューアも音をデコードしません。cue はミリ秒で、カードの上の行を指します。歌詞が時刻を持っていればその行（ID3 の `SYLT`、歌詞のフィールドに入った LRC のテキスト）、なければ章です。ビューアは歌っている行を示し、行をクリックするとそこから鳴らします。詳細は[design.md §3.31](../design.md#331-音声ファイル--bdf-変換器converteraudio)を参照してください。
+
 ## メタデータ
 
 manifest に Dublin Core のメタデータ（題名・作成者・主題・言語・作成日時など）を持てます。PDF の文書情報、PowerPoint・Excel・Word のコアプロパティ、Visio の文書プロパティ、Photoshop の文書の XMP メタデータ、HTML の meta 要素、Markdown の front matter、EPUB のパッケージ文書、画像の XMP・EXIF・IPTC、音声ファイルのタグ（ID3、iTunes 形式の MP4 メタデータ、Vorbis コメント、RIFF INFO）などから引き継ぎます。

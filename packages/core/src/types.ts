@@ -114,18 +114,24 @@ export interface View {
   gridlines?: boolean;
   tiles?: Record<string, Hash>;
   tilesRef?: Hash;
-  /** The music the view plays (docs/spec.md §4.4). */
+  /** What the view plays (docs/spec.md §4.4): the music of a score, or a recording. */
   play?: Play;
 }
 
 /**
- * The music of a view (docs/spec.md §4.4): a Standard MIDI File, and cues
- * that tie its time to places on the pages. Read it with BdfDocument.play.
+ * What a view plays (docs/spec.md §4.4): the music of a score as a Standard
+ * MIDI File (seq), or a recording as the audio file itself (audio), and cues
+ * that tie its time to places on the pages. A view has one of seq and
+ * audio. Read them with BdfDocument.play and BdfDocument.audio.
  */
 export interface Play {
   /** The "seq" part: a Standard MIDI File. */
-  seq: Hash;
-  /** The cue index part ("idx"), if any. */
+  seq?: Hash;
+  /** The "audio" part: an audio file as it is. */
+  audio?: Hash;
+  /** The media type of the audio file ("audio/mpeg"). */
+  type?: string;
+  /** The cue index part ("idx"), if any: its ticks are those of the Standard MIDI File, or milliseconds of the audio. */
   cues?: Hash;
 }
 
@@ -140,7 +146,7 @@ export interface RectDef { x: number; y: number; w: number; h: number }
 
 export interface Layer { role: string; obj: Hash }
 
-export type PartType = "obj" | "font" | "img" | "path" | "idx" | "seq" | "sealed";
+export type PartType = "obj" | "font" | "img" | "path" | "idx" | "seq" | "audio" | "sealed";
 export type Encoding = "identity" | "deflate-raw";
 
 export interface PartEntry {

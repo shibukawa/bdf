@@ -250,3 +250,38 @@ test("BdfDocument.play reads a view's music and its cues", async () => {
   assert.equal((await doc.play(doc.view("nocues"))).cues, null);
   assert.equal(await doc.play(doc.view("plain")), null);
 });
+
+test("BdfDocument.audio reads a view's recording and its cues", async () => {
+  const file = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 0, 0xff, 0xfb]);
+  const cues = encodeCues(sample);
+  const parts = new Map([["a".repeat(32), file], ["b".repeat(32), cues]]);
+  let reads = 0;
+  const entry = (h, t) => ({ h, t, enc: "identity", len: parts.get(h).length, size: parts.get(h).length });
+  const manifest = {
+    bdf: 1, opset: 1, unit: "pt",
+    views: [
+      { id: "card", kind: "fixed", pages: [], play: { audio: "a".repeat(32), type: "audio/mpeg", cues: "b".repeat(32) } },
+      { id: "nocues", kind: "fixed", pages: [], play: { audio: "a".repeat(32) } },
+      { id: "html", kind: "fixed", pages: [], play: { audio: "a".repeat(32), type: "text/html" } },
+      { id: "score", kind: "fixed", pages: [], play: { seq: "a".repeat(32) } },
+      { id: "plain", kind: "fixed", pages: [] },
+    ],
+    parts: [entry("a".repeat(32), "audio"), entry("b".repeat(32), "idx")],
+  };
+  const doc = await BdfDocument.open({ manifest: async () => manifest, stored: async (e) => { if (e.t === "audio") reads++; return parts.get(e.h); } });
+  const a = await doc.audio(doc.view("card"));
+  assert.deepEqual([...a.data], [...file]);
+  assert.equal(a.type, "audio/mpeg");
+  assert.deepEqual(a.cues, sample);
+  const b = await doc.audio(doc.view("nocues"));
+  assert.equal(b.type, "");
+  assert.equal(b.cues, null);
+  // the type goes to a blob: one that is not audio is dropped
+  assert.equal((await doc.audio(doc.view("html"))).type, "");
+  // the file is read from the source each time: the document does not keep it
+  assert.equal(reads, 3);
+  // a view plays music or a recording, not both
+  assert.equal(await doc.audio(doc.view("score")), null);
+  assert.equal(await doc.audio(doc.view("plain")), null);
+  assert.equal(await doc.play(doc.view("card")), null);
+});
