@@ -1,8 +1,9 @@
 package drawio
 
 import (
-	"html"
 	"strings"
+
+	"github.com/shibukawa/bdf/encoding/htmlro"
 )
 
 // A tolerant parser for the HTML of draw.io labels (html=1): the markup
@@ -53,11 +54,11 @@ func parseHTML(s string) *hnode {
 	for len(s) > 0 {
 		i := strings.IndexByte(s, '<')
 		if i < 0 {
-			appendText(html.UnescapeString(s))
+			appendText(htmlro.UnescapeString(s))
 			break
 		}
 		if i > 0 {
-			appendText(html.UnescapeString(s[:i]))
+			appendText(htmlro.UnescapeString(s[:i]))
 			s = s[i:]
 		}
 		// comments, doctype, CDATA
@@ -232,7 +233,7 @@ func parseTag(s string) (string, map[string]string) {
 			}
 		}
 		if key != "" {
-			attrs[key] = html.UnescapeString(val)
+			attrs[key] = htmlro.UnescapeString(val)
 		}
 		if j == 0 && val == "" {
 			s = s[1:] // skip a stray character

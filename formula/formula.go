@@ -35,6 +35,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shibukawa/bdf/encoding/htmlro"
 	"golang.org/x/net/html"
 
 	"github.com/shibukawa/bdf"
@@ -143,7 +144,7 @@ func ParseTeX(src string) *Formula {
 // ParseMathML reads the first math element of src (presentation MathML,
 // as HTML holds it).
 func ParseMathML(src string) (*Formula, error) {
-	doc, err := html.Parse(strings.NewReader(src))
+	doc, err := htmlro.Parse(strings.NewReader(src), htmlro.Options{})
 	if err != nil {
 		return nil, err
 	}
