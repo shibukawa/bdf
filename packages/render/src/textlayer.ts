@@ -716,6 +716,11 @@ class LayerBuilder {
       span.style.font = `${size}px sans-serif`;
       span.style.transform = `translate(${r.x * scale - at.ox}px, ${r.y * scale - at.oy}px) rotate(${angle}rad) translate(0, ${-size * 0.8}px)`;
     }
+    // The font shorthand set the line height as well, to normal, over the 1
+    // of the layer: the run's box would be as high as a line of the font the
+    // browser falls back to (1.5 em for some), and its text that much lower
+    // in it than what was drawn. A style sheet cannot undo that.
+    span.style.lineHeight = "1";
     return span;
   }
 }
