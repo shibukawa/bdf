@@ -13,5 +13,6 @@ export { MusicPlayer, cursorAtTick, tickAt, type Cursor, type PlayState, type Mu
 export { AudioPlayer, lineAtTime, timeOfLine, type AudioPlayerOptions } from "./audio.js";
 export { VectorImage, domSvgRasterizer, isSvg, svgSize, type SvgRasterizer } from "./svg.js";
 export { DocumentSearch, runRect, hasExtent, type HitRect, type Measure } from "./search.js";
+export { findKey, FindHits, FindBar, FIND_LIMIT, type FindKey, type FindBarLabels, type FindBarOptions, type FindResult } from "./find.js";
 export { buildTextLayer, linkHref, internalLink, selectedRuns, selectionText, selectionCells, joinRuns, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR, type TextLayerOptions, type SelectedRun, type InternalLink } from "./textlayer.js";
 export { tableCells, cellClipboard, MAX_CLIPBOARD_CELLS, type CellText, type CellRange, type CellClipboard, type CellClipboardOptions } from "./cells.js";

@@ -398,6 +398,16 @@ installCopyHandler(container);
 | `tableCells(content, table?, keep?)` / `cellClipboard(cells, range, options?)` | `TextContent` の表（`table` は表のノードの番号。`-1` で表の外のセル、つまりシートのセル）のセルとそのテキスト（`CellText`）/ セルの矩形（`CellRange`、0 始まりで両端を含む）を表計算ソフトが貼り付けられるタブ区切りと HTML の表にする。`options` は `trim`（列・行全体の選択を、テキストのある最後の行・列までにする）、`skipRow` / `skipCol`（非表示の行・列を除く）。矩形の位置が `MAX_CLIPBOARD_CELLS`（2^22）とセルの数の 64 倍のどちらも超えると、`cellClipboard` は例外を投げる |
 | `RUN_ATTR` / `linkHref` / `internalLink` | run の要素に付く属性名 / リンク先として安全な URL / 文書内リンク（`#page=N`、`#view=ID&page=N`）の解釈 |
 
+### 検索バー
+
+ブラウザ自身の検索（Cmd+F、Ctrl+F）は表示範囲の近くのテキスト層しか探せない。ビューアがこのショートカットを受けて View 全体を探すための部品（`examples/miniviewer` と `@bdfkit/viewer` が使う）。
+
+| 名前 | 内容 |
+|---|---|
+| `findKey(event)` | キーイベントが検索のショートカットなら `"open"`（macOS は Cmd+F、ほかは Ctrl+F）、`"next"` / `"previous"`（Cmd/Ctrl+G と F3、Shift 付きで前へ）を返す。macOS の Ctrl+F（テキスト欄のカーソル移動）と、入力メソッドの変換中のキーは取らない。ラテン文字でない配列のキーボードはキーの位置で判定する |
+| `FindHits.search(client, view, query, limit?)` | View 全体を検索したヒットの集合（`hits`、`length`、`more`: `limit`（既定 `FIND_LIMIT` = 1,000）より多い）。矩形はページ（シートはタイル `"x,y"`）単位で、求められたときに `client.locate` で求める: `locate(places)`、`locateHit(i)`、`rects(i)`（まだなら `undefined`）、`each(fn)`。`from(page)` は読んでいるページ以降の最初のヒット。空白だけの検索語は何も見つけない |
+| `FindBar({onFind, onClose, labels?})` | 検索欄、件数、前後と閉じるボタンを持つ小さなバー。`element` を位置指定のある要素（ビューアの枠）に入れると右上に出る。入力が止まると `onFind(query, 0)`、Enter で `onFind(query, 1)`、Shift+Enter で `onFind(query, -1)`、Escape と閉じるボタンで `onClose()`。`open()`、`close()`、`reset()`、`result({index, total, more?, detail?})`（`detail` はスクリーンリーダー向けの位置と前後の文）、`shown`、`focused`、`query`。スタイルは要素の `style` で付けるので、インラインスタイルを禁じる CSP でも使える。`labels` で文言を差し替える |
+
 ### 同じスレッドで描く
 
 Worker を使わない場合や、自前の Worker に組み込む場合の部品。

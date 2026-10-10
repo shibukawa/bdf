@@ -17,7 +17,9 @@ const content = await client.content(manifest.views[0].id, 0);           // buil
 
 `open` は 1 ファイル（HTTP の Range リクエストで読むことも）、分割形式のディレクトリ、またはメモリ上のバッファ（ブラウザ内でいま変換した文書）を受け取ります。暗号化された文書は `BdfWorkerError`（コード `"password-required"`）で拒否され、`unlock(password)` が成功するまで Worker が施錠したまま保持します。`page`・`continuous`・`sheet` はビットマップを、`text`・`continuousText`・`content`・`sheetContent` はテキスト run を返し、`@bdfkit/render` の `buildTextLayer` がそれを選択可能で読み上げ可能な DOM 層に組みます。`search`・`locate` は Worker 内で全文検索を行い、ヒットの矩形を返します。一方 `play` は View の音楽を Standard MIDI File と cue にして返し、`MusicPlayer` が使います。`audio` は音声ファイルのカードの録音を `Blob` と cue にして返し、`AudioPlayer` が `<audio>` 要素で鳴らします。SVG の画像は Worker ではデコードできないため、Worker がメインスレッドに描画を頼みます（`RasterizeRequest`・`RasterizeResponse`）。これは `BdfWorkerClient` が `domSvgRasterizer` 経由で自動的に処理します。
 
-これより上、ビューア自身の仕事は、ページがスクロールで視界に入るたびにビットマップとテキスト層を置き、ズームと検索の UI を動かすことです。ページめくり、セル選択、楽譜の演奏をしたいなら、それらのやり取りも自分で組み立てます。[`examples/miniviewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) は最初の部分だけをする最小限のビューア（約 600 行）です。[`examples/viewer`](https://github.com/shibukawa/bdf/tree/main/examples/viewer)（デモサイトのフル機能ビューア）は残りも足したものです。
+これより上、ビューア自身の仕事は、ページがスクロールで視界に入るたびにビットマップとテキスト層を置き、ズームと検索の UI を動かすことです。ページめくり、セル選択、楽譜の演奏をしたいなら、それらのやり取りも自分で組み立てます。[`examples/miniviewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) は最初の部分だけをする最小限のビューア（約 800 行）です。[`examples/viewer`](https://github.com/shibukawa/bdf/tree/main/examples/viewer)（デモサイトのフル機能ビューア）は残りも足したものです。
+
+検索の UI には、ブラウザ自身の検索ショートカットも含まれます。ブラウザが探せるのはページにあるテキストだけで、ビューアがテキスト層を置くのは表示範囲の近くのページだけです。そのため Cmd+F / Ctrl+F では離れたページの文字が見つかりません。そこでビューアは、フォーカスが自分の中にある間このショートカットを受け、Worker の検索で View 全体を探します。部品は `@bdfkit/render` にあります。`findKey` がキーを判定し、`FindHits` が検索のヒットを持ってその矩形をページが表示されるときに 1 ページずつ求め、`FindBar` は自前の検索欄を持たないビューアがページの上に出す小さな検索バーです。検索欄の中でもう一度ショートカットを押すと、ブラウザ自身の検索に渡ります。
 
 ## 変換 Worker（`cmd/bdfwasm`）
 

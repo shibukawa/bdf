@@ -21,7 +21,7 @@ async function main() {
     return;
   }
   document.title = `${src.split("/").pop()} – search`;
-  const viewer = new MiniViewer(stage, { worker: new URL("lib/worker.js", location.href).href });
+  const viewer = new MiniViewer(stage, { worker: new URL("lib/worker.js", location.href).href, find: "page" });
   setStatus("opening…");
   const manifest = await viewer.open(src);
   if (!manifest) {

@@ -20,7 +20,8 @@ async function main() {
     return;
   }
   document.title = `${src.split("/").pop()} – preview-server`;
-  const viewer = new MiniViewer(stage, { worker: new URL("lib/worker.js", location.href).href });
+  // the page is nothing but the viewer: the find shortcut opens its find bar wherever the focus is
+  const viewer = new MiniViewer(stage, { worker: new URL("lib/worker.js", location.href).href, find: "page" });
   setStatus("opening…");
   const manifest = await viewer.open(src);
   setStatus(manifest ? `opened (${manifest.views.length} view(s))` : "encrypted: not opened");

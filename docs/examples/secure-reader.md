@@ -23,7 +23,7 @@ Every answer carries a Content-Security-Policy that allows the site's own script
 
 ## What the browser does
 
-`web/main.ts` opens the book with [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) as `{ kind: "segments", url: "/segments/NAME" }`. The rendering worker then does the rest (`SegmentLoader` of `@bdfkit/core`): for each request it makes a P-256 key pair whose private key cannot be exported, sends the public key with the page it needs and the segments it holds, opens the answer and lets the key go. Pages that come into view fetch their segment first; the segment three pages ahead is fetched in advance. When the server refuses pages (a sample's end, reading too fast), the page says so.
+`web/main.ts` opens the book with [`MiniViewer`](https://github.com/shibukawa/bdf/tree/main/examples/miniviewer) as `{ kind: "segments", url: "/segments/NAME" }`. The rendering worker then does the rest (`SegmentLoader` of `@bdfkit/core`): for each request it makes a P-256 key pair whose private key cannot be exported, sends the public key with the page it needs and the segments it holds, opens the answer and lets the key go. Pages that come into view fetch their segment first; the segment three pages ahead is fetched in advance. When the server refuses pages (a sample's end, reading too fast), the page says so. The page passes `find: false` to the viewer: the worker holds only the pages that came, so the viewer's find bar could search no more of the book than the browser's own find, and the shortcut stays the browser's. Searching a whole book is the server's job here.
 
 ## Why this shape
 

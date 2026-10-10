@@ -5,7 +5,7 @@
 // through. Where two pages would be too small (a phone), it opens one page at
 // a time. With a search box, zoom buttons and the page buttons.
 import { dcValues, type View } from "@bdfkit/core";
-import { BdfWorkerClient, buildTextLayer, installCopyHandler, RUN_ATTR, TEXT_LAYER_CSS, type HitRect } from "@bdfkit/render";
+import { BdfWorkerClient, buildTextLayer, findKey, installCopyHandler, RUN_ATTR, TEXT_LAYER_CSS, type HitRect } from "@bdfkit/render";
 import { Book, type BookLayout } from "../examples/viewer/book.js";
 
 type Layout = BookLayout | "scroll";
@@ -247,8 +247,33 @@ function setZoom(z: number) {
   show();
 }
 
-q.onkeydown = (e) => { if (e.key === "Enter") search(e.shiftKey ? -1 : 1); };
+q.onkeydown = (e) => {
+  if (e.key === "Enter") search(e.shiftKey ? -1 : 1);
+  else if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) {
+    // the search ends: back to the pages (not the Escape that drops the text of an input method)
+    e.preventDefault();
+    q.value = "";
+    search(1);
+    stage.focus({ preventScroll: true });
+  }
+};
 q.oninput = () => { if (!q.value) search(1); };
+// While the focus is in the viewer (its pages or its tools), the find shortcut (Cmd+F, Ctrl+F) goes to its
+// search box, which searches the whole document; the browser's own search finds the pages shown only. Elsewhere
+// on the page, and pressed again in the box, the shortcut is the browser's.
+stage.parentElement!.addEventListener("keydown", (e) => {
+  const key = findKey(e);
+  if (!key || e.defaultPrevented || !view) return;
+  if (key === "open") {
+    if (document.activeElement === q) return;
+    e.preventDefault();
+    q.focus({ preventScroll: true });
+    q.select();
+  } else if (q.value) {
+    e.preventDefault();
+    search(key === "next" ? 1 : -1);
+  }
+});
 $("next").onclick = () => search(1);
 $("prev").onclick = () => search(-1);
 $("zoomIn").onclick = () => setZoom(zoom * 1.25);

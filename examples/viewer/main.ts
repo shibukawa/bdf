@@ -18,7 +18,7 @@
 // layout it opens in.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent, type NoteEvent } from "@bdfkit/core";
 import {
-  BdfWorkerClient, BdfWorkerError, MusicPlayer, AudioPlayer, buildTextLayer, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
+  BdfWorkerClient, BdfWorkerError, MusicPlayer, AudioPlayer, buildTextLayer, findKey, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
   type Cursor, type HitRect, type OpenSource, type TextLayerOptions, type CellText, type CellRange, type CellClipboard,
 } from "@bdfkit/render";
 import { ConverterClient, ConvertError, sniff, type Opened } from "../common/convert.js";
@@ -658,10 +658,35 @@ function init() {
   const q = $<HTMLInputElement>("q");
   // nothing to search, zoom or lay out before a document is open
   const search = (query: string, step: number) => { if (current) runSearch(query, step).catch(showError); };
-  q.onkeydown = (e) => { if (e.key === "Enter") search(q.value, e.shiftKey ? -1 : 1); };
+  q.onkeydown = (e) => {
+    if (e.key === "Enter") search(q.value, e.shiftKey ? -1 : 1);
+    else if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) {
+      // the search ends: back to the pages (not the Escape that drops the text of an input method)
+      e.preventDefault();
+      q.value = "";
+      search("", 0);
+      stage.focus({ preventScroll: true });
+    }
+  };
   q.oninput = () => { if (!q.value) search("", 0); };
   $("next").onclick = () => search(q.value, 1);
   $("prev").onclick = () => search(q.value, -1);
+  // The find shortcut (Cmd+F, Ctrl+F) goes to the search box: the browser's own search finds the text of the
+  // pages shown and those near them only, the box that of the whole view. Pressed again in the box, the
+  // shortcut is the browser's. The next and previous match keys (Cmd/Ctrl+G, F3) step through the box's hits.
+  window.addEventListener("keydown", (e) => {
+    const key = findKey(e);
+    if (!key || e.defaultPrevented || !current || $("searchBox").hidden || $<HTMLDialogElement>("pwDialog").open) return;
+    if (key === "open") {
+      if (document.activeElement === q) return;
+      e.preventDefault();
+      q.focus();
+      q.select();
+    } else if (q.value) {
+      e.preventDefault();
+      search(q.value, key === "next" ? 1 : -1);
+    }
+  });
   zoomInput.oninput = () => setZoom(Number(zoomInput.value));
   initPinch();
   // "?layout=spread" opens documents in that layout
