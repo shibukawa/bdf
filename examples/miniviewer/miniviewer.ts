@@ -7,15 +7,19 @@
 //   await viewer.open("/files/report.bdf");       // fetched by ranges, a page at a time
 //   await viewer.search("revenue");               // highlights the hits and shows the first
 //
+// The find shortcut (Cmd+F, Ctrl+F) opens a find bar of the viewer's own
+// while the focus is in it: the browser finds the text of the pages shown
+// only, the bar that of the whole view.
+//
 // It draws pages (slides, drawings, the pages of a PDF or a Word document),
 // one-column documents (Markdown, HTML) and sheets (Excel, CSV: the cells
 // with their headers and frozen panes). What it leaves to the demo viewer
 // (examples/viewer): pages turned like a book's, the music of a score,
 // selecting the cells of a sheet, and pages shown while they are converted.
-import { dcValues, type Manifest, type View } from "@bdfkit/core";
+import { dcValues, tileSize, type Manifest, type View } from "@bdfkit/core";
 import {
-  BdfWorkerClient, BdfWorkerError, buildTextLayer, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR,
-  type HitRect, type OpenSource,
+  BdfWorkerClient, BdfWorkerError, FindBar, FindHits, buildTextLayer, findKey, installCopyHandler, TEXT_LAYER_CSS, RUN_ATTR,
+  type FindBarLabels, type HitRect, type OpenSource,
 } from "@bdfkit/render";
 
 export interface MiniViewerOptions {
@@ -29,6 +33,19 @@ export interface MiniViewerOptions {
   onError?: (e: unknown) => void;
   /** Called when the view shown changes, and when pages come into view (the first one in view). */
   onChange?: (state: { view: View; page: number }) => void;
+  /**
+   * Whose the browser's find shortcut is (Cmd+F on macOS, Ctrl+F elsewhere).
+   * The browser finds the text the page holds, which is that of the pages
+   * shown and those near them; the viewer's find bar searches the whole
+   * view. "focus" (the default): the viewer's while the focus is in it;
+   * "page": the viewer's wherever the focus is, for a page that is nothing
+   * but the viewer; false: the browser's, for a host with a search box of
+   * its own (see search) or a document whose pages come as they are read
+   * (a search covers the pages that came).
+   */
+  find?: "focus" | "page" | false;
+  /** The words of the find bar (default: English). */
+  findLabels?: Partial<FindBarLabels>;
 }
 
 type Box = { x: number; y: number; w: number; h: number };
@@ -42,7 +59,7 @@ const TEXT_MARGIN = "200% 0px";
 const HEADER = { w: 40, h: 20 };
 
 export const MINI_VIEWER_CSS = `
-.bdfMini { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; background: #e9ecef; color: #222; font: 13px system-ui, sans-serif; }
+.bdfMini { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; background: #e9ecef; color: #222; font: 13px system-ui, sans-serif; }
 /* the room of the scroll bar is kept, so that the width pages are fitted to does not change as they come */
 .bdfMini-stage { position: relative; overflow: auto; scrollbar-gutter: stable; }
 .bdfMini-stage:focus-visible { outline: 2px solid #1a73e8; outline-offset: -2px; }
@@ -112,8 +129,8 @@ export class MiniViewer {
   view?: View;
   /** The reader's zoom, over the width of the viewer (1: pages as wide as it). */
   zoom = 1;
-  /** Hits of the last search, their rectangles, and the one shown. */
-  hits: HitRect[][] = [];
+  /** The hits of the last search (they are located as their pages are shown), and the one shown. */
+  found?: FindHits;
   hit = -1;
 
   private stage: HTMLDivElement;
@@ -122,7 +139,11 @@ export class MiniViewer {
   private generation = 0;
   /** CSS pixels a unit of the view shown. */
   private scale = 1;
-  private query = "";
+  /** Bumped by each search and step: a hit located for an earlier one is not gone to. */
+  private turn = 0;
+  private bar?: FindBar;
+  /** Where the find shortcut is listened for. */
+  private keys?: HTMLElement | Document;
   /** The width of the viewer the view shown was laid out for, and the first page in view. */
   private width = 0;
   private page = 0;
@@ -147,6 +168,20 @@ export class MiniViewer {
     this.tabs.className = "bdfMini-tabs";
     this.tabs.setAttribute("role", "tablist");
     host.replaceChildren(this.stage, this.tabs);
+    if (options.find !== false) {
+      this.bar = new FindBar({
+        labels: options.findLabels,
+        onFind: (query, step) => { this.search(query, step).catch(this.failed); },
+        onClose: () => {
+          this.clearSearch();
+          this.markHits();
+          this.stage.focus({ preventScroll: true });
+        },
+      });
+      host.append(this.bar.element);
+      this.keys = options.find === "page" ? document : host;
+      this.keys.addEventListener("keydown", this.onKey as EventListener);
+    }
     // copy takes the text of the selected runs, with the document's spaces and line breaks
     this.uninstallCopy = installCopyHandler(this.stage);
     this.stage.addEventListener("click", (e) => this.followLink(e));
@@ -167,6 +202,7 @@ export class MiniViewer {
     this.generation++;
     this.view = this.manifest = undefined;
     this.clearSearch();
+    this.bar?.reset();
     this.tabs.replaceChildren();
     this.message("loading…");
     const src: OpenSource = typeof source !== "string" ? source
@@ -212,7 +248,8 @@ export class MiniViewer {
   show(id: string, page = 0) {
     const v = this.manifest?.views.find((v) => v.id === id);
     if (!v) return;
-    if (v !== this.view) this.clearSearch();
+    const other = v !== this.view;
+    if (other) this.clearSearch();
     this.view = v;
     this.generation++;
     this.redrawSheet = undefined;
@@ -227,6 +264,8 @@ export class MiniViewer {
     else this.showPages(v);
     if (page > 0) this.goToPage(page);
     this.options.onChange?.({ view: v, page });
+    // the find bar goes on with its query in the view that came
+    if (other && this.bar?.shown) this.search(this.bar.query, 0).catch(this.failed);
   }
 
   /** Zoom in or out: 1 shows pages as wide as the viewer. */
@@ -243,36 +282,34 @@ export class MiniViewer {
   }
 
   /**
-   * Search the view shown and show the first hit (the last one with delta
-   * -1); the same query again goes on to the next hit. Returns how many
-   * hits there are. An empty query clears the highlights.
+   * Search the view shown, all of it, and show a hit: of another query, the
+   * first one on the page being read or after it (delta -1: the last one
+   * before it); of the same query again, the next one (delta -1: the one
+   * before; 0: the same). Returns how many hits there are. An empty query
+   * clears the highlights.
    */
   async search(query: string, delta = 1): Promise<number> {
     const v = this.view;
     if (!v) return 0;
-    if (query !== this.query) {
-      const found = query ? await this.client.search(v.id, query, { limit: 500 }) : [];
-      const rects = found.length ? await this.client.locate(v.id, found) : [];
-      if (v !== this.view) return 0;
-      this.query = query;
-      this.hits = rects;
-      this.hit = delta < 0 ? 0 : -1;
+    const turn = ++this.turn;
+    if (query !== this.found?.query) {
+      const found = await FindHits.search(this.client, v, query);
+      // another search, view or document came meanwhile
+      if (turn !== this.turn) return found.length;
+      this.found = found;
+      const n = found.length, start = found.from(this.reading(v));
+      this.hit = !n ? -1 : delta < 0 ? (start - 1 + n) % n : start;
+    } else {
+      const n = this.found.length;
+      if (n) this.hit = (this.hit + delta + n) % n;
     }
-    this.step(delta);
-    return this.hits.length;
-  }
-
-  /** Show the next hit (delta 1) or the one before (-1). */
-  step(delta: number) {
-    const v = this.view, n = this.hits.length;
-    if (!v) return;
-    if (n) this.hit = (this.hit + delta + n) % n;
-    this.redrawSheet?.();
-    for (const el of this.stage.querySelectorAll<HTMLElement>(".bdfMini-page")) {
-      el.querySelector(".bdfMini-hits")?.replaceWith(this.hitLayer(v, el));
-    }
-    const r = this.hits[this.hit]?.[0];
-    if (!r) return;
+    const found = this.found;
+    this.report();
+    this.markHits();
+    // where the hit is on its page is known once the page is read
+    const r = this.hit < 0 ? undefined : (await found.locateHit(this.hit))[0];
+    if (turn !== this.turn || !r) return found.length;
+    this.markHits();
     if (v.kind === "sheet") {
       this.stage.scrollTo({ left: Math.max(0, r.x * this.scale - this.stage.clientWidth / 2), top: Math.max(0, r.y * this.scale - this.stage.clientHeight / 2) });
     } else if (v.kind === "scroll") {
@@ -281,6 +318,84 @@ export class MiniViewer {
       const el = this.stage.querySelector<HTMLElement>(`.bdfMini-page[data-index="${r.a}"]`);
       if (el) this.stage.scrollTo({ top: Math.max(0, el.offsetTop + r.y * this.scale - this.stage.clientHeight / 3) });
     }
+    return found.length;
+  }
+
+  /** Show the next hit (delta 1) or the one before (-1). */
+  step(delta: number) {
+    if (this.found) this.search(this.found.query, delta).catch(this.failed);
+  }
+
+  /** Show the find bar, as the find shortcut does (nothing without a document, or with find: false). */
+  openFind() {
+    const bar = this.bar;
+    if (!bar || !this.view) return;
+    bar.open();
+    // the bar opens with the query it had: its hits are shown again
+    if (bar.query && !this.found) this.search(bar.query, 0).catch(this.failed);
+  }
+
+  /** The find shortcuts: the bar opens, and while it is shown the next and previous match keys are its own. */
+  private onKey = (e: KeyboardEvent) => {
+    const bar = this.bar, key = findKey(e);
+    if (!bar || !key || e.defaultPrevented || !this.view) return;
+    if (key === "open") {
+      // pressed again in the field, the shortcut is the browser's: its own search stays at hand
+      if (bar.shown && bar.focused) return;
+      e.preventDefault();
+      this.openFind();
+    } else if (bar.shown && bar.query) {
+      e.preventDefault();
+      this.search(bar.query, key === "next" ? 1 : -1).catch(this.failed);
+    }
+  };
+
+  /** Where a search starts: the page being read, or the strip of a one-column view at the top of the visible area. */
+  private reading(v: View): number {
+    if (v.kind !== "scroll") return this.page;
+    const y = this.stage.scrollTop / this.scale, tops = this.column(v).tops;
+    let i = 0;
+    while (i + 1 < tops.length && tops[i + 1] <= y) i++;
+    return i;
+  }
+
+  /** Tell the find bar what the search found: the count, and for screen readers where the hit shown is. */
+  private report() {
+    const found = this.found, hit = found?.hits[this.hit];
+    if (!found?.query.trim()) { this.bar?.result(); return; }
+    const paged = this.view?.kind !== "sheet" && this.view?.kind !== "scroll";
+    const detail = hit && `${paged ? `page ${hit.segments[0].a + 1}: ` : ""}${hit.context.replace(/ ⏎ /g, " ")}`;
+    this.bar?.result({ index: this.hit, total: found.length, more: found.more, detail });
+  }
+
+  /** Draw the hits anew on a sheet and on the pages and bands that show their text. */
+  private markHits() {
+    this.redrawSheet?.();
+    for (const el of this.stage.querySelectorAll<HTMLElement>(".bdfMini-page")) {
+      if (el.querySelector(".bdfMini-hits")) this.markPage(el);
+    }
+  }
+
+  /** Draw the hits on a page or a band, over its text; those not located yet are drawn once they are. */
+  private markPage(el: HTMLElement) {
+    const v = this.view, found = this.found;
+    if (!v) return;
+    const draw = () => {
+      const layer = this.hitLayer(v, el), old = el.querySelector(".bdfMini-hits");
+      if (old) old.replaceWith(layer); else el.append(layer);
+    };
+    draw();
+    if (!found) return;
+    let places: number[];
+    if (el.dataset.y === undefined) places = [Number(el.dataset.index)];
+    else {
+      // the strips a band shows
+      const y = Number(el.dataset.y), { tops } = this.column(v);
+      places = tops.map((_, i) => i).filter((i) => tops[i] < y + BAND && (tops[i + 1] ?? Infinity) > y);
+    }
+    found.locate(places).then((some) => {
+      if (some && found === this.found && el.isConnected) draw();
+    }).catch(this.failed);
   }
 
   /** Let the worker and the document go. */
@@ -288,6 +403,7 @@ export class MiniViewer {
     this.generation++;
     this.resize.disconnect();
     this.uninstallCopy();
+    this.keys?.removeEventListener("keydown", this.onKey as EventListener);
     this.client.terminate();
     this.host.replaceChildren();
   }
@@ -298,9 +414,10 @@ export class MiniViewer {
   };
 
   private clearSearch() {
-    this.query = "";
-    this.hits = [];
+    this.turn++;
+    this.found = undefined;
     this.hit = -1;
+    this.bar?.result();
   }
 
   private message(text: string) {
@@ -357,7 +474,9 @@ export class MiniViewer {
     });
     const texts = this.near(TEXT_MARGIN, (el) => {
       this.client.content(v.id, Number(el.dataset.index)).then((content) => {
-        if (live()) el.append(buildTextLayer(content, this.scale, { lang: this.language }), this.hitLayer(v, el));
+        if (!live()) return;
+        el.append(buildTextLayer(content, this.scale, { lang: this.language }));
+        this.markPage(el);
       }).catch(this.failed);
     });
     // the first page in view, for onChange
@@ -426,7 +545,9 @@ export class MiniViewer {
     });
     const texts = this.near(TEXT_MARGIN, (el) => {
       this.client.continuousContent(v.id, band(el)).then((content) => {
-        if (live()) el.append(buildTextLayer(content, this.scale, { lang: this.language }), this.hitLayer(v, el));
+        if (!live()) return;
+        el.append(buildTextLayer(content, this.scale, { lang: this.language }));
+        this.markPage(el);
       }).catch(this.failed);
     });
     const list = document.createElement("div");
@@ -446,26 +567,24 @@ export class MiniViewer {
     this.stage.append(list);
   }
 
-  /** The hits on a page or a band, over its text. */
+  /** The located hits on a page or a band, to go over its text. */
   private hitLayer(v: View, el: HTMLElement): HTMLDivElement {
     const layer = document.createElement("div");
     layer.className = "bdfMini-layer bdfMini-hits";
     const band = el.dataset.y === undefined ? undefined : Number(el.dataset.y);
-    this.hits.forEach((rects, i) => {
-      for (const r of rects) {
-        let box: Box = r;
-        if (band === undefined) {
-          if (r.a !== Number(el.dataset.index)) continue;
-        } else {
-          box = this.inColumn(v, r);
-          if (box.y + box.h < band || box.y > band + BAND) continue;
-          box = { ...box, y: box.y - band };
-        }
-        const d = document.createElement("div");
-        d.className = i === this.hit ? "bdfMini-hit current" : "bdfMini-hit";
-        d.style.cssText = `left: ${box.x * this.scale}px; top: ${box.y * this.scale}px; width: ${box.w * this.scale}px; height: ${box.h * this.scale}px`;
-        layer.append(d);
+    this.found?.each((r, i) => {
+      let box: Box = r;
+      if (band === undefined) {
+        if (r.a !== Number(el.dataset.index)) return;
+      } else {
+        box = this.inColumn(v, r);
+        if (box.y + box.h < band || box.y > band + BAND) return;
+        box = { ...box, y: box.y - band };
       }
+      const d = document.createElement("div");
+      d.className = i === this.hit ? "bdfMini-hit current" : "bdfMini-hit";
+      d.style.cssText = `left: ${box.x * this.scale}px; top: ${box.y * this.scale}px; width: ${box.w * this.scale}px; height: ${box.h * this.scale}px`;
+      layer.append(d);
     });
     return layer;
   }
@@ -512,9 +631,9 @@ export class MiniViewer {
         ctx.clip();
         // the picture of the region the pane showed last, where that region is now
         if (p.bitmap && p.drawn) ctx.drawImage(p.bitmap, p.dx + (p.drawn.x - p.src.x) * k, p.dy + (p.drawn.y - p.src.y) * k, p.drawn.w * k, p.drawn.h * k);
-        this.hits.forEach((rects, i) => {
+        this.found?.each((r, i) => {
           ctx.fillStyle = i === this.hit ? "rgba(255,120,0,.5)" : "rgba(255,210,0,.45)";
-          for (const r of rects) ctx.fillRect(p.dx + (r.x - p.src.x) * k, p.dy + (r.y - p.src.y) * k, r.w * k, r.h * k);
+          ctx.fillRect(p.dx + (r.x - p.src.x) * k, p.dy + (r.y - p.src.y) * k, r.w * k, r.h * k);
         });
         ctx.restore();
       }
@@ -548,6 +667,21 @@ export class MiniViewer {
       ctx.fillRect(0, 0, HEADER.w, HEADER.h);
     };
 
+    /** Locate the hits of the tiles in view, and draw them once they are. */
+    const mark = () => {
+      const found = this.found, tile = tileSize(v), tiles: string[] = [];
+      if (!found?.length) return;
+      for (const { src } of panes) {
+        if (src.w <= 0 || src.h <= 0) continue;
+        for (let ty = Math.floor(src.y / tile); ty * tile < src.y + src.h; ty++) {
+          for (let tx = Math.floor(src.x / tile); tx * tile < src.x + src.w; tx++) tiles.push(`${tx},${ty}`);
+        }
+      }
+      found.locate(tiles).then((some) => {
+        if (some && found === this.found && gen === this.generation) paint();
+      }).catch(this.failed);
+    };
+
     let asked = 0;
     const draw = () => {
       if (gen !== this.generation) return;
@@ -563,6 +697,7 @@ export class MiniViewer {
       // each pane keeps its picture until the new one comes
       panes = regions.map((r, i) => ({ ...r, bitmap: panes[i]?.bitmap, drawn: panes[i]?.drawn }));
       paint();
+      mark();
       const turn = ++asked;
       const d = window.devicePixelRatio || 1;
       panes.forEach((p) => {
@@ -583,7 +718,10 @@ export class MiniViewer {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(draw);
     };
-    this.redrawSheet = paint;
+    this.redrawSheet = () => {
+      paint();
+      mark();
+    };
     draw();
   }
 

@@ -36,7 +36,7 @@ async function main() {
   const data = await res.arrayBuffer();
   const kind = sniff(new Uint8Array(data), name);
 
-  const viewer = new MiniViewer(stage, { worker: here("lib/worker.js") });
+  const viewer = new MiniViewer(stage, { worker: here("lib/worker.js"), find: "page" });
   if (kind === "bdf") {
     setStatus("opening…");
     await viewer.open({ kind: "buffer", buffer: data });

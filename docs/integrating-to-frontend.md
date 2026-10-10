@@ -75,6 +75,17 @@ input.addEventListener("change", async () => {
 
 If you pass `fonts`, serve font files and an `index.json` at that URL. For formats that support page-by-page conversion, `openFile` shows page outlines first and fills pages as conversion progresses. Listen for `conversionprogress`, `conversiondone`, and `error` events to update your UI.
 
+## Find in the document
+
+The viewer draws pages as bitmaps, so the browser's own find has nothing to search in them. While the focus is in the viewer, Cmd+F (macOS) or Ctrl+F opens the viewer's find bar instead. It searches the text of the whole view, including pages that are not drawn yet, marks the matches, and scrolls to the one shown. Enter or Cmd/Ctrl+G goes to the next match, Shift+Enter or Shift+Cmd/Ctrl+G to the previous one, and Escape closes the bar. Pressing the shortcut again inside the bar's field leaves it to the browser.
+
+```ts
+new Viewer(host, { find: "page" }); // the shortcut is the viewer's wherever the focus is: a page that is only the viewer
+new Viewer(host, { find: false });  // no find bar; the shortcut stays the browser's
+```
+
+The default is `"focus"` for an embedded viewer and `"page"` for a lightbox while it is shown. `findLabels` replaces the bar's English words. To search from your own controls, call `viewer.find(query, step)`: a new query shows the first match from the page being read, and the same query again steps to the next (`1`) or previous (`-1`) match. It resolves to `{ query, index, total, more }`, which the `findchange` event also carries. `viewer.clearFind()` ends the search and `viewer.openFind()` shows the bar.
+
 ## Presentation and controls
 
 For a lightbox, create `new Viewer(host, { mode: "lightbox" })` and call `viewer.show()` / `viewer.hide()` from your controls. Use `setView(id)` to choose a BDF view and `setLayout(...)` to switch single, spread, or continuous pages. Read the available views from `viewer.document?.views` and the current one from `viewer.view`.

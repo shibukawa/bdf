@@ -39,6 +39,26 @@ try {
   const result = await page.evaluate(async () => {
     const { viewer, converter, Viewer, createAllConverter } = window.test;
     const viewCount = viewer.document.views.length;
+    // find: the whole view is searched (two matches, on pages 3 and 7); the same query again goes to the
+    // next match, on the last page, which is not drawn yet: it is marked and scrolled to
+    const found = await viewer.find("outside the reading order");
+    const foundNext = await viewer.find("outside the reading order");
+    await new Promise((resolve, reject) => {
+      const until = Date.now() + 10000;
+      const check = () => {
+        if (viewer.stage.querySelector('[data-bdf-page="6"] [data-bdf-hits]')) resolve(true);
+        else if (Date.now() > until) reject(new Error("the match was not marked"));
+        else setTimeout(check, 50);
+      };
+      check();
+    });
+    const findScrolled = viewer.stage.scrollTop > 0;
+    // the find shortcut, pressed in the viewer, opens its find bar and is not left to the browser
+    const apple = /mac|iphone|ipad/i.test(navigator.platform);
+    const findTaken = !viewer.stage.dispatchEvent(new KeyboardEvent("keydown", { key: "f", metaKey: apple, ctrlKey: !apple, bubbles: true, cancelable: true }));
+    const findBar = viewer.surface.querySelector("[role=search]").style.display !== "none";
+    viewer.clearFind();
+    const findCleared = !viewer.stage.querySelector("[data-bdf-hits]") && viewer.surface.querySelector("[role=search]").style.display === "none";
     viewer.setLayout("spread");
     const rows = viewer.stage.children.length;
     const formats = (await converter.ready).map((format) => format.name);
@@ -89,16 +109,25 @@ try {
     all.terminate();
     viewer.destroy();
     converter.terminate();
-    return { viewCount, rows, formats, pdfViews, sheetKind, lightboxShown, musicOff, allFormats, allFormat: allConverted.format, magic: [...converted.bdf.slice(0, 4)] };
+    return {
+      viewCount, rows, formats, pdfViews, sheetKind, lightboxShown, musicOff, allFormats, allFormat: allConverted.format, magic: [...converted.bdf.slice(0, 4)],
+      found, foundNext, findScrolled, findTaken, findBar, findCleared,
+    };
   });
   assert.ok(result.viewCount > 0);
   assert.ok(result.rows > 0);
+  assert.deepEqual(result.found, { query: "outside the reading order", index: 0, total: 2, more: false });
+  assert.deepEqual(result.foundNext, { query: "outside the reading order", index: 1, total: 2, more: false });
+  assert.equal(result.findScrolled, true);
+  assert.equal(result.findTaken, true);
+  assert.equal(result.findBar, true);
+  assert.equal(result.findCleared, true);
   assert.deepEqual(result.formats, ["epub", "pdf"]);
   assert.ok(result.pdfViews > 0);
   assert.equal(result.sheetKind, "sheet");
   assert.equal(result.lightboxShown, true);
   assert.equal(result.musicOff, true);
-  assert.equal(result.allFormats.length, 27);
+  assert.equal(result.allFormats.length, 29, result.allFormats.join(" "));
   assert.ok(result.allFormats.includes("tiff"));
   assert.equal(result.allFormat, "csv");
   assert.deepEqual(result.magic, [98, 100, 102, 0]);

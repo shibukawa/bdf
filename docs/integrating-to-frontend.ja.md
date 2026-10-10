@@ -75,6 +75,17 @@ input.addEventListener("change", async () => {
 
 `fonts` を指定する場合、その URL にフォントファイルと `index.json` を配信します。ページ単位で変換できる形式では、`openFile` が先にページの輪郭を表示し、残りのページを順に追加します。進捗は `conversionprogress`、完了は `conversiondone`、非同期の失敗は `error` イベントで受け取れます。
 
+## 文書内を検索する
+
+ビューアはページをビットマップで描くので、ブラウザ自身の検索ではページの文字が見つかりません。フォーカスがビューアの中にある間は、Cmd+F（macOS）や Ctrl+F でビューアの検索バーが開きます。検索バーは View 全体のテキストを探すので、まだ描いていないページも対象です。一致した箇所に印を付け、表示中の一致までスクロールします。Enter か Cmd/Ctrl+G で次の一致、Shift+Enter か Shift+Cmd/Ctrl+G で前の一致へ移り、Escape で閉じます。検索欄の中でもう一度ショートカットを押すと、ブラウザ自身の検索に渡ります。
+
+```ts
+new Viewer(host, { find: "page" }); // フォーカスの位置に関係なくビューアが受ける: ページ全体がビューアの画面向け
+new Viewer(host, { find: false });  // 検索バーなし。ショートカットはブラウザのまま
+```
+
+既定は、埋め込みなら `"focus"`、ライトボックスなら表示中だけ `"page"` です。検索バーの文言（既定は英語）は `findLabels` で差し替えられます。アプリ側の UI から検索するには `viewer.find(query, step)` を呼びます。新しい検索語なら読んでいるページ以降の最初の一致を表示し、同じ検索語をもう一度渡すと次（`1`）か前（`-1`）の一致へ進みます。戻り値は `{ query, index, total, more }` で、`findchange` イベントでも同じものを受け取れます。`viewer.clearFind()` は検索を終え、`viewer.openFind()` は検索バーを開きます。
+
 ## 表示モードとアプリ側の操作
 
 ライトボックスなら `new Viewer(host, { mode: "lightbox" })` とし、アプリのボタンから `viewer.show()` / `viewer.hide()` を呼びます。`setView(id)` で BDF 内の View、`setLayout(...)` で単ページ・見開き・連続表示を切り替えられます。View の一覧は `viewer.document?.views`、現在の View は `viewer.view` で取得できます。

@@ -41,6 +41,8 @@ async function main() {
   let title = book, pages = 0;
   const viewer = new MiniViewer(stage, {
     worker: new URL("lib/worker.js", location.href).href,
+    // the pages come ten at a time, and the viewer could search those that came only: the find shortcut stays the browser's
+    find: false,
     onError: (e) => refused(e) || console.error(e),
     onChange: ({ page }) => (status.textContent = `${title} · page ${page + 1} of ${pages}`),
   });
