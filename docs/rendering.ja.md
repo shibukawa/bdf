@@ -101,12 +101,12 @@ await renderer.renderPage(canvas.getContext("2d")!, page, { scale });
 
 ## 数式を描く
 
-`github.com/shibukawa/bdf/formula` は、LaTeX か MathML の数式を組み、**パスだけの Object**（グリフの輪郭、分数や根号の線）にします。フォントを参照しないので、パスを描ける描き手ならどれでも描けます。変換器が Word・PowerPoint・Excel・HTML・EPUB・Markdown・draw.io の数式を組むのと同じエンジンです。
+`github.com/shibukawa/bdf/image/formula` は、LaTeX か MathML の数式を組み、**パスだけの Object**（グリフの輪郭、分数や根号の線）にします。フォントを参照しないので、パスを描ける描き手ならどれでも描けます。変換器が Word・PowerPoint・Excel・HTML・EPUB・Markdown・draw.io の数式を組むのと同じエンジンです。
 
 ```go
 import (
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/formula"
+	"github.com/shibukawa/bdf/image/formula"
 )
 
 ts, err := formula.New(nil) // 同梱の STIX Two Math で組む
@@ -171,7 +171,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/formula"
+	"github.com/shibukawa/bdf/image/formula"
 	"github.com/shibukawa/bdf/raster/ebitenginebdf"
 )
 

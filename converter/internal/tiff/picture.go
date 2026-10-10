@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // Documents embed TIFF pictures (PowerPoint, Excel and Word blips, Visio

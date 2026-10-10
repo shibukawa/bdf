@@ -36,6 +36,9 @@ const (
 	PartIndex  = "idx"
 	// PartSeq is a Standard MIDI File that a view plays (docs/spec.md §4.4).
 	PartSeq = "seq"
+	// PartAudio is an audio file that a view plays, as it is (docs/spec.md
+	// §4.4).
+	PartAudio = "audio"
 	// PartSealed is the type of the parts of an encrypted document's outer
 	// manifest (docs/spec.md §3.5).
 	PartSealed = "sealed"
@@ -104,12 +107,20 @@ type View struct {
 	Play *Play `json:"play,omitempty"`
 }
 
-// Play is the music of a view: a Standard MIDI File, and cues that tie its
-// time to places on the pages (docs/spec.md §4.4).
+// Play is what a view plays: the music of a score as a Standard MIDI File
+// (Seq), or a recording as the audio file itself (Audio), and cues that tie
+// its time to places on the pages (docs/spec.md §4.4). A view has one of
+// Seq and Audio.
 type Play struct {
 	// Seq is the hash of the PartSeq part.
-	Seq string `json:"seq"`
-	// Cues is the hash of the cue index part (PartIndex), if any.
+	Seq string `json:"seq,omitempty"`
+	// Audio is the hash of the PartAudio part, and Type the media type of
+	// the file it holds ("audio/mpeg").
+	Audio string `json:"audio,omitempty"`
+	Type  string `json:"type,omitempty"`
+	// Cues is the hash of the cue index part (PartIndex), if any. Its
+	// ticks are those of the Standard MIDI File, or milliseconds of the
+	// audio.
 	Cues string `json:"cues,omitempty"`
 }
 

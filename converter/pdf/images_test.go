@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // pageImages decodes the images the first page draws, in drawing order.

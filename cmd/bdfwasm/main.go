@@ -35,6 +35,7 @@
 //	  fonts?: string,    // URL of a font directory (see below)
 //	  name?: string,     // the file name, whose extension tells what the content does not (Markdown, a CSV file of one line)
 //	  pages?: string,    // the pages (slides, sheets) to convert, as bdf generate -pages takes them ("1" for a thumbnail); all when absent
+//	  params?: {[name: string]: string}, // the format's own options, as bdf generate -param takes them ({play: "false"})
 //	}): Promise<{bdf: Uint8Array, format: string, summary: string, warnings: string[], protected: boolean}>
 //	bdfConverter.open(data, options?): Promise<{bdf, format, pages: number, warnings, stream?}>
 //
@@ -54,6 +55,14 @@
 // makes it, with every warning. close lets the stream go (call it after
 // finish too). A format that is not converted a page at a time comes back
 // whole from open, with pages 0, a summary and no stream.
+//
+// An audio file's document carries the file itself, which the viewer plays
+// (converter/audio). Here the input, the document and the bytes returned
+// are all in the module's memory at once, so the audio of a file larger
+// than 64 MiB is left out (the card comes without it, with a warning);
+// params.maxaudio, in MiB, sets another limit, and params.play "false"
+// leaves the audio out of a document that is not for playing (one made for
+// its text).
 //
 // A failed conversion rejects with an Error whose code is
 // "password-required", "wrong-password" or "unknown-format" when it is one
@@ -174,7 +183,12 @@ type request struct {
 	format, password, fontURL string
 	name                      string
 	pages                     converter.Pages
+	params                    map[string]string
 }
+
+// maxAudio is the size in MiB of the largest audio file whose audio is
+// stored for playing, unless the call says otherwise (params.maxaudio).
+const maxAudio = "64"
 
 func readRequest(args []js.Value) (*request, error) {
 	data, err := input(args, "input bytes")
@@ -185,6 +199,19 @@ func readRequest(args []js.Value) (*request, error) {
 	req.format, req.password, req.fontURL, req.name = str(args, "format"), str(args, "password"), str(args, "fonts"), str(args, "name")
 	if req.pages, err = converter.ParsePages(str(args, "pages")); err != nil {
 		return nil, fmt.Errorf("pages: %w", err)
+	}
+	req.params = map[string]string{"maxaudio": maxAudio}
+	if p := option(args, "params"); p.Type() == js.TypeObject {
+		keys := js.Global().Get("Object").Call("keys", p)
+		for i := 0; i < keys.Length(); i++ {
+			name := keys.Index(i).String()
+			switch v := p.Get(name); v.Type() {
+			case js.TypeString:
+				req.params[name] = v.String()
+			case js.TypeNumber, js.TypeBoolean:
+				req.params[name] = js.Global().Get("String").Invoke(v).String()
+			}
+		}
 	}
 	return req, nil
 }
@@ -206,7 +233,7 @@ func str(args []js.Value, name string) string {
 }
 
 func (req *request) options() (*converter.Options, error) {
-	opts := &converter.Options{Password: req.password, NoSystemFonts: true, FileName: req.name, Pages: req.pages}
+	opts := &converter.Options{Password: req.password, NoSystemFonts: true, FileName: req.name, Pages: req.pages, Params: req.params}
 	if req.fontURL != "" {
 		fsys, err := fonts(req.fontURL)
 		if err != nil {

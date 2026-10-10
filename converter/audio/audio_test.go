@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/raster/imagebdf"
 	"github.com/shibukawa/bdf/thumbnail"
 )
@@ -147,11 +147,11 @@ func TestOptions(t *testing.T) {
 	if res.Doc.Views[0].Title != "plain" || res.Doc.Meta.DC.Title.First() != "" {
 		t.Errorf("title %q, dc %+v", res.Doc.Views[0].Title, res.Doc.Meta.DC)
 	}
-	if s := res.Summary(); !strings.HasPrefix(s, "1 page (no cover; ADTS AAC LC, 0:01, ") || !strings.HasSuffix(s, " kbps, 22.05 kHz, mono)") {
+	if s := res.Summary(); !strings.HasPrefix(s, "1 page (no cover; ADTS AAC LC, 0:01, ") || !strings.HasSuffix(s, " kbps, 22.05 kHz, mono; plays)") {
 		t.Errorf("summary %q", s)
 	}
 	res = convert(t, "tagged.mp3", nil)
-	if s := res.Summary(); !strings.HasPrefix(s, "1 page (cover 320 × 320 px, JPEG; MP3, 0:01, ") {
+	if s := res.Summary(); !strings.HasPrefix(s, "1 page (cover 320 × 320 px, JPEG; MP3, 0:01, ") || !strings.HasSuffix(s, "; plays, 4 lines of lyrics, 2 chapters)") {
 		t.Errorf("summary %q", s)
 	}
 	// warnings go to Warn when it is set

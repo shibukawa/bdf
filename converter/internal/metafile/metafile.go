@@ -15,7 +15,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // Recolor changes the colors of a picture (DrawingML picture effects, for

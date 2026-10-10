@@ -6,7 +6,7 @@ BDF itself is under the [MIT License](https://github.com/shibukawa/bdf/blob/main
 
 | Font | Where it is | Source | License |
 |---|---|---|---|
-| **STIX Two Math** 2.13 b171 | Embedded in the package [`formula`](rendering.md#formulas) (`go:embed`, the whole font, unmodified): the formula font when `Options` name no other | [stipub/stixfonts](https://github.com/stipub/stixfonts), tag `v2.13b171`, `fonts/static_otf/STIXTwoMath-Regular.otf` | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/formula/fonts/OFL.txt) |
+| **STIX Two Math** 2.13 b171 | Embedded in the package [`image/formula`](rendering.md#formulas) (`go:embed`, the whole font, unmodified): the formula font when `Options` name no other | [stipub/stixfonts](https://github.com/stipub/stixfonts), tag `v2.13b171`, `fonts/static_otf/STIXTwoMath-Regular.otf` | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/image/formula/fonts/OFL.txt) |
 | **Bravura** 1.482 | The outlines and metrics of music symbols, as a generated table in `converter/internal/music/smufl`, for the scores of MML, MIDI and MusicXML | [steinbergmedia/bravura](https://github.com/steinbergmedia/bravura) | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/converter/internal/music/smufl/OFL.txt) |
 | **NewStroke** | The stroke font KiCad draws text with, as a table in `converter/kicad` | vovanium's NewStroke release; [`NEWSTROKE.txt`](https://github.com/shibukawa/bdf/blob/main/converter/kicad/NEWSTROKE.txt) names the file | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | **DejaVu Sans**, Regular and Bold (subsets: ASCII) | In `fixture`, the package that builds the sample document (`bdf demo`) | [dejavu-fonts](https://dejavu-fonts.github.io/) | [DejaVu Fonts License](https://github.com/shibukawa/bdf/blob/main/fixture/testdata/fonts/LICENSE.txt) |
@@ -15,7 +15,7 @@ STIX Two Math: Copyright 2001-2021 The STIX Fonts Project Authors (https://githu
 
 Bravura: Copyright © 2015, Steinberg Media Technologies GmbH (http://www.steinberg.net/), with Reserved Font Name "Bravura".
 
-The file of STIX Two Math in the repository is the one of the upstream tag, byte for byte; [`formula/fonts/README.md`](https://github.com/shibukawa/bdf/blob/main/formula/fonts/README.md) gives its SHA-256 and the command that checks it.
+The file of STIX Two Math in the repository is the one of the upstream tag, byte for byte; [`image/formula/fonts/README.md`](https://github.com/shibukawa/bdf/blob/main/image/formula/fonts/README.md) gives its SHA-256 and the command that checks it.
 
 A program that imports `formula` holds STIX Two Math. The Open Font License allows bundling and embedding a font with any software, commercial or not, and asks that copies keep the copyright notice and the license — the font carries both in its name table, and `OFL.txt` is beside it. A program that lays formulas out with a font of its own (`formula.Options.Math`) still links the embedded one in.
 

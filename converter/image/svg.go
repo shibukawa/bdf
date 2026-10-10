@@ -8,7 +8,7 @@ import (
 	"github.com/shibukawa/tinygodriver/encoding/xmlro"
 
 	"github.com/shibukawa/bdf/converter/internal/xmp"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/internal/xmltree"
 )
 

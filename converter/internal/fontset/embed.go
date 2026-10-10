@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/font/woff2"
 	"github.com/shibukawa/bdf/internal/fontdb"
-	"github.com/shibukawa/bdf/woff2"
 )
 
 // EmbedOptions controls how Embed stores fonts.

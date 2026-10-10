@@ -9,7 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/formula"
+	"github.com/shibukawa/bdf/image/formula"
 )
 
 // The tests compile objects and look at the paths; drawing needs a running

@@ -47,6 +47,8 @@ export interface ConvertOptions {
   name?: string;
   /** The pages (slides, sheets) to convert, as bdf generate -pages takes them: "1" for a thumbnail. All when absent. */
   pages?: string;
+  /** The format's own options, as bdf generate -param takes them: { play: "false" } leaves the audio of an audio file out. */
+  params?: Record<string, string>;
 }
 
 /** A thumbnail the preview module drew (see cmd/bdfwasm), as the thumbnail package does on a server. */

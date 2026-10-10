@@ -6,11 +6,13 @@ What the converters share, and what is made from a converted document. It works 
 
 One formula engine lays out all of it — Word's Office Math, PowerPoint's and Excel's formulas (built from Office Math, not the fallback image some files also save), HTML and EPUB's MathML (including the MathML that KaTeX, MathJax and Wikipedia render alongside their own display), and the LaTeX in Markdown and draw.io labels (`math=1`). It uses the constants and glyph variants of an OpenType MATH font (STIX Two Math, Cambria Math, Latin Modern Math and others) for fractions, radicals, subscripts and limits, large operators, stretchy brackets and radicals built from glyph variants and assembly parts, matrices, aligned equations and accents. Search and copy produce a linear form — `x=(−b±√(b^2−4ac))/(2a)` — findable even typed with a plain hyphen-minus. See [design.md §3.23](../design.md#323-数式internalmathlayoutconverterinternalequationformula) for the internals.
 
-The same engine is available by itself as the public package `formula`: it turns a formula in LaTeX or MathML into an object of paths only, to draw into an image, on an Ebitengine screen or on a browser canvas ([Rendering](../rendering.md#formulas)).
+The same engine is available by itself as the public package `image/formula`: it turns a formula in LaTeX or MathML into an object of paths only, to draw into an image, on an Ebitengine screen or on a browser canvas ([Rendering](../rendering.md#formulas)).
 
 ## Scores and playback
 
 MML, MIDI and MusicXML are engraved as staff notation by their converters. A view carries that music as a Standard MIDI File, with cues tying playback time to a place on the page ([spec §4.4](../spec.md#44-演奏play)). The demo viewer plays it with the Web Audio API — an oscillator per General MIDI instrument family, synthesized percussion, square-wave MML chiptunes. It shows a cursor on the system currently playing, turns pages or scrolls to follow it, and starts playback from a system you click. See [design.md §3.27](../design.md#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic).
+
+An audio file's view plays through the same `play` member, but carries the file itself instead of a Standard MIDI File: the viewer hands it to the browser's `<audio>` element, so no converter or viewer decodes sound. Its cues are in milliseconds and point at lines of the card — the lyrics when they carry their times (ID3 `SYLT`, or LRC text in a lyrics field), otherwise the chapters — so the viewer marks the line being sung and plays from a line you click. See [design.md §3.31](../design.md#331-音声ファイル--bdf-変換器converteraudio).
 
 ## Metadata
 

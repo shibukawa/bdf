@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/webp"
 )

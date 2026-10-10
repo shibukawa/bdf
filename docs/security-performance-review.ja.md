@@ -40,7 +40,7 @@ CI に到達可能な Go 依存の脆弱性検査と、npm の high 以上の検
 
 - `go test ./...`: 全パッケージで成功。Go の raster の golden 比較と、近道の有無で描画結果が一致する検査も含む。
 - `go vet -unreachable=false ./...`: 成功。既存 CI と同じく生成コードに対する unreachable の検査だけ除外。
-- `go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/`: 成功。
+- `go test -tags bdf_noconv ./image/imgconv/ ./converter/... ./font/woff2/`: 成功。
 - `go test -race . ./converter/html ./converter ./raster/imagebdf`: 成功。
 - `npm test`: 132 件成功。
 - PDF のテスト入力 11 件を CLI で再変換し、既存 BDF とバイト単位で一致。

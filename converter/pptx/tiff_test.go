@@ -9,7 +9,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/tiff"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // TestTIFFPictures draws TIFF pictures, read by converter/internal/tiff: a

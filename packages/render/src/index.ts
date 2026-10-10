@@ -8,8 +8,9 @@ import { BdfWorkerClient } from "./client.js";
 export function createRenderWorker(): BdfWorkerClient {
   return new BdfWorkerClient(new Worker(new URL("./worker.js", import.meta.url), { type: "module" }));
 }
-export type { WorkerRequest, WorkerResponse, WorkerResult, WorkerCall, WorkerErrorCode, WorkerOpenOptions, OpenSource, RasterizeRequest, RasterizeResponse, PlayData } from "./protocol.js";
+export type { WorkerRequest, WorkerResponse, WorkerResult, WorkerCall, WorkerErrorCode, WorkerOpenOptions, OpenSource, RasterizeRequest, RasterizeResponse, PlayData, AudioData } from "./protocol.js";
 export { MusicPlayer, cursorAtTick, tickAt, type Cursor, type PlayState, type MusicPlayerOptions } from "./player.js";
+export { AudioPlayer, lineAtTime, timeOfLine, type AudioPlayerOptions } from "./audio.js";
 export { VectorImage, domSvgRasterizer, isSvg, svgSize, type SvgRasterizer } from "./svg.js";
 export { DocumentSearch, runRect, hasExtent, type HitRect, type Measure } from "./search.js";
 export { findKey, FindHits, FindBar, FIND_LIMIT, type FindKey, type FindBarLabels, type FindBarOptions, type FindResult } from "./find.js";

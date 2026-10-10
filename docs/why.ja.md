@@ -58,7 +58,7 @@ BDF は内容の種類ごとに、3 つのレイアウトモデルを使い分�
 | **電子回路**<br>[KiCad、Gerber・Excellon](formats/electronics.ja.md)<br><small>.kicad_sch、.kicad_pcb、.kicad_pro、.gbr、.drl、それらの ZIP</small> | ページ。回路図のシート、基板の表・裏・各層はタブで | 基板は基材・銅箔・マスク・シルク・穴の実物の見た目で。階層シートのリンク |
 | **デザインと画像**<br>[Illustrator](formats/pdf.ja.md)、[Photoshop、TIFF、Windows メタファイル、画像](formats/image.ja.md)<br><small>.ai、.psd、.psb、.tif、.emf、.wmf、.png、.jpg、.svg など</small> | ページ。アートボードごとに 1 ページ | 画像はデコードせずそのまま格納。SVG は拡大してもぼけない |
 | **楽譜**<br>[MML、MIDI、MusicXML](formats/music.ja.md)<br><small>.mml、.mid、.kar、.musicxml、.mxl</small> | ページ（五線譜） | ビューアで演奏し、演奏している段をカーソルで追う |
-| **音声**<br>[MP3、M4A、FLAC、Ogg、WAV、AIFF](formats/audio.ja.md)<br><small>.mp3、.m4a、.aac、.flac、.ogg、.opus、.wav、.aiff</small> | 1 ページのカード | カバーアート、タグ、歌詞と章。サムネイルはカバー、タグはメタデータに |
+| **音声**<br>[MP3、M4A、FLAC、Ogg、WAV、AIFF](formats/audio.ja.md)<br><small>.mp3、.m4a、.aac、.flac、.ogg、.opus、.wav、.aiff</small> | 再生できる 1 ページのカード | カバーアート、タグ、歌詞と章。ビューアで再生し、歌っている行を示す。サムネイルはカバー、タグはメタデータに |
 | **フォント**<br>[TrueType、OpenType、WOFF](formats/font.ja.md)<br><small>.ttf、.otf、.ttc、.woff、.woff2</small> | スクロール。概要・文字・グリフ・フィーチャーはタブで | 文字とグリフの一覧、OpenType フィーチャーが実際にすること |
 
 パスワード付きの Office 文書と PDF も変換でき、出力は同じパスワードで暗号化します（[パスワードと保護モード](architecture/protection.ja.md)）。どの形式も同じレンダラで描くので、この下に挙げるページめくり、検索、読み上げは形式を問わず同じように働きます。

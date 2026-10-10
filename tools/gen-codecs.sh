@@ -1,10 +1,10 @@
 #!/bin/sh
-# Rebuilds imgconv/internal/webpw: compiles libwebp to wasm (encode only, with
+# Rebuilds image/imgconv/internal/webpw: compiles libwebp to wasm (encode only, with
 # its name section) using wasi-sdk, then translates it to Go with the wasm2go
 # fork, producing per-subject files with symbol names and named data addresses
 # so that a rebuild changes as little of the checked-in tree as possible.
 #
-# SIMD=1 builds imgconv/internal/webpwsimd instead: libwebp's SSE2/SSE4.1
+# SIMD=1 builds image/imgconv/internal/webpwsimd instead: libwebp's SSE2/SSE4.1
 # kernels compiled to wasm SIMD through the emscripten compat headers in
 # tools/webp/emcompat, and every v128 function emitted over simd/archsimd
 # vector registers (wasm2go -simd=go127). That package is compiled only for
@@ -25,7 +25,7 @@ if [ "$SIMD" = 1 ]; then
 else
   PKG=webpw
 fi
-OUT=${OUT:-"$ROOT/imgconv/internal/$PKG"}
+OUT=${OUT:-"$ROOT/image/imgconv/internal/$PKG"}
 mkdir -p "$WORK"
 
 FORK_REPO=https://github.com/shibukawa/wasm2go-fork
@@ -82,7 +82,7 @@ cp "$ROOT/tools/gen-webp/go.mod" "$MODFILE"
 ( cd "$ROOT/tools/gen-webp" && go mod edit -modfile="$MODFILE" -replace "github.com/goccy/wasm2go=$WORK/wasm2go-fork" \
   && go mod tidy -modfile="$MODFILE" >/dev/null 2>&1 \
   && go run -modfile="$MODFILE" . -i "$WORK/webp.wasm" -out-dir "$OUT" -simd="$SIMD_TARGET" \
-       -pkg "$PKG" -import "github.com/shibukawa/bdf/imgconv/internal/$PKG" )
+       -pkg "$PKG" -import "github.com/shibukawa/bdf/image/imgconv/internal/$PKG" )
 cp "$WORK/libwebp/COPYING" "$OUT/LICENSE.libwebp"
 if [ "$SIMD" = 1 ]; then
   # The whole package exists only for the archsimd build; the pair

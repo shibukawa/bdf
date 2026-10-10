@@ -280,6 +280,12 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
       const seq = play.seq.slice().buffer;
       return { result: { seq, cues: play.cues }, transfer: [seq] };
     }
+    case "audio": {
+      const audio = await doc.audio(view);
+      if (!audio) return { result: null, transfer: [] };
+      // a blob: the browser keeps the file (on disk, when it is large), and the page gets it without another copy
+      return { result: { blob: new Blob([audio.data as BlobPart], { type: audio.type }), cues: audio.cues }, transfer: [] };
+    }
   }
 }
 

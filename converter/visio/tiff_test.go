@@ -11,7 +11,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/tiff"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // TestTIFFForeignData replaces the PNG picture of flow.vsdx with TIFF

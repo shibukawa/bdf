@@ -116,6 +116,10 @@ func (d *Document) shouldCompress(p *Part) bool {
 		if len(p.Data) >= 4 && (string(p.Data[:4]) == "wOF2" || string(p.Data[:4]) == "wOFF") {
 			return false
 		}
+	case PartAudio:
+		// An audio file is stored as it is, whatever its coding (spec
+		// §3.2): a reader hands its bytes to the browser's player.
+		return false
 	}
 	return len(p.Data) >= d.MinCompress
 }

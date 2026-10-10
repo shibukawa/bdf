@@ -61,7 +61,7 @@ const SHOTS = [
   { name: "font-features", file: "stix.otf", zoom: 1, view: "Features" },
   { name: "psd", file: "artboards.psd", zoom: 1.25 },
   { name: "image", file: "drawing.svg", zoom: "fit" },
-  { name: "audio", file: "tagged.mp3", zoom: 0.8 },
+  { name: "audio", file: "synced.mp3", zoom: 0.8 },
 ];
 
 const site = join(root, "site/dist");
@@ -121,6 +121,8 @@ try {
     }, null, { timeout: 60000 });
     await page.mouse.move(0, 0);
     await page.waitForTimeout(1200);
+    // the controls of what plays come with its music or its recording, and may have made the header taller
+    await fitViewport();
     const clip = await page.evaluate(() => {
       const top = document.getElementById("stage").getBoundingClientRect().top;
       return { x: 0, y: top, width: innerWidth, height: innerHeight - top };

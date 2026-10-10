@@ -4,7 +4,7 @@
 
 **BDF**（Browser-specific Document Format）は、ブラウザの Canvas 2D にそのまま描画できる、プレビュー用の文書フォーマットです。安定版 wire format は v1.0 です。
 
-PDF や Word のファイル、CAD の図面をブラウザでプレビューするには、たいていサーバー上でオフィススイートかヘッドレスブラウザを動かすことになります。BDF の変換器はどちらも要りません。素の Go で書かれていて、同じコードは WebAssembly にもなるので、ブラウザの中でも変換できます。PDF、Office のファイル（Word、PowerPoint、Excel、CSV、Parquet、Visio）、InDesign（IDML）、draw.io の図、CAD の図面（DXF、Jw_cad、SXF、CGM、HP-GL/2）、プリント基板（Gerber、Excellon、KiCad）、Illustrator、Photoshop、HTML、Markdown、EPUB、音楽（MML、MIDI、MusicXML。ビューアで演奏可能）、音声ファイル（MP3、M4A、FLAC、Ogg、WAV、AIFF。カバーアートとタグ）、フォントファイルはすべてこうして変換され、1 つのレンダラが Web Worker の中でそのすべてを描画します。
+PDF や Word のファイル、CAD の図面をブラウザでプレビューするには、たいていサーバー上でオフィススイートかヘッドレスブラウザを動かすことになります。BDF の変換器はどちらも要りません。素の Go で書かれていて、同じコードは WebAssembly にもなるので、ブラウザの中でも変換できます。PDF、Office のファイル（Word、PowerPoint、Excel、CSV、Parquet、Visio）、InDesign（IDML）、draw.io の図、CAD の図面（DXF、Jw_cad、SXF、CGM、HP-GL/2）、プリント基板（Gerber、Excellon、KiCad）、Illustrator、Photoshop、HTML、Markdown、EPUB、音楽（MML、MIDI、MusicXML。ビューアで演奏可能）、音声ファイル（MP3、M4A、FLAC、Ogg、WAV、AIFF。カバーアート・タグ・歌詞。ビューアで再生可能）、フォントファイルはすべてこうして変換され、1 つのレンダラが Web Worker の中でそのすべてを描画します。
 
 **[試してみる](https://shibukawa.github.io/bdf/)** — デモサイトにファイルをドロップしてください。アップロードせずにブラウザの中で変換して描画します。**[ドキュメントを読む](https://shibukawa.github.io/bdf/docs/)** — なぜ BDF があるのか、対応するすべての形式、サーバー構成のサンプル 3 つ、ビルドの方法まで。
 
@@ -41,7 +41,7 @@ npm パッケージとしての表示・ブラウザ内変換は [npm パッケ�
 
 このリポジトリのフォントには、それぞれのライセンスがあります。
 
-- **STIX Two Math** 2.13 b171 は、数式を組むフォントとしてパッケージ `formula` に埋め込んであります。配布元のリリースのファイルを無改変で使っています（[stipub/stixfonts](https://github.com/stipub/stixfonts) のタグ `v2.13b171`。SHA-256 は [`formula/fonts/README.md`](formula/fonts/README.md)）。ライセンスは [SIL Open Font License 1.1](formula/fonts/OFL.txt) です。Copyright 2001-2021 The STIX Fonts Project Authors, with Reserved Font Name "TM Math". `formula` を import したプログラムはこのフォントを含みます。
+- **STIX Two Math** 2.13 b171 は、数式を組むフォントとしてパッケージ `image/formula` に埋め込んであります。配布元のリリースのファイルを無改変で使っています（[stipub/stixfonts](https://github.com/stipub/stixfonts) のタグ `v2.13b171`。SHA-256 は [`image/formula/fonts/README.md`](formula/fonts/README.md)）。ライセンスは [SIL Open Font License 1.1](formula/fonts/OFL.txt) です。Copyright 2001-2021 The STIX Fonts Project Authors, with Reserved Font Name "TM Math". `formula` を import したプログラムはこのフォントを含みます。
 - **Bravura**（音楽記号。`converter/internal/music/smufl` に表として持つ）は [SIL Open Font License 1.1](converter/internal/music/smufl/OFL.txt) です。Copyright © 2015 Steinberg Media Technologies GmbH, with Reserved Font Name "Bravura".
 - **NewStroke**（KiCad の線の字体。`converter/kicad`）は [CC0](converter/kicad/NEWSTROKE.txt) です。
 - **DejaVu Sans** のサブセット（サンプル文書用。`fixture`）は [DejaVu Fonts License](fixture/testdata/fonts/LICENSE.txt) です。

@@ -1,0 +1,219 @@
+id: component:imagebdf-svg-parser
+type: component
+title: raster/imagebdf 内の SVG パーサ（切り出し前の状態）
+summary: 2026-10-10 に image/svg へ切り出される前の、raster/imagebdf の非公開の SVG 読み取り部の記録。現状は component:image-svg を見る。
+aliases:
+- svgparse.go
+- parseSVG
+authority: observed
+facts:
+  location:
+    parser: raster/imagebdf/svgparse.go（839 行）
+    named_colors: raster/imagebdf/svgcolors.go（CSS Color Level 4 §6.1 の 148 色）
+    renderer: raster/imagebdf/svg.go（描画側。declared() と compute() もここ）
+    package_module: ルートモジュール github.com/shibukawa/bdf 内（raster/imagebdf に go.mod はない。raster/ebitenginebdf だけが別モジュール）
+  entry_points:
+    parseSVG: 'parseSVG(data []byte) (*svgDoc, bool)。寛容: エラーまでに読めた分を保持し、svg 要素のルートがない時だけ false'
+    parseSVGWithin: parseSVGWithin(data, depth, most, matches int)。上限を引数にした版（テスト用）
+    helpers:
+    - parseCSS
+    - newStyleSheet
+    - parseDecls
+    - parseColor
+    - hslToRGB
+    - svgNumber
+    - svgNumbers
+    - svgLength
+    - parseTransform
+    - parsePathData
+    - arcTo
+    renderer_side_pure_helpers:
+    - '(*svgNode).declared(name): style 属性 > スタイルシート > プレゼンテーション属性'
+    - 'svgNaturalSize(root): width/height/viewBox から自然サイズ（imgconv.ParseSVGSize と別実装）'
+  xml_reader:
+    open: internal/xmltree.Open
+    options: 'xmlro.Options{Lenient, Entities: htmlentity.Lookup, AutoClose: htmlentity.AutoClose, CharsetReader:
+      charset.NewReaderLabel, MaxDepth: depth+1}'
+    guarantees: UTF-16 BOM と宣言エンコーディングの復号、DOCTYPE 実体の展開は合計 MaxEntityText (1 MiB) まで、不正 UTF-8 は U+FFFD
+    external_deps:
+    - github.com/shibukawa/tinygodriver/encoding/xmlro
+    - github.com/shibukawa/tinygodriver/encoding/xmlro/htmlentity
+    - golang.org/x/net/html/charset
+  limits:
+    svgDepth: 256（要素の深さ。libxml2 と同じ）
+    svgNodes: 1048576（要素とテキストの数）
+    svgMatches: 4194304（スタイルシートの規則と要素の照合回数）
+    behavior: 上限を超えたら警告を doc.warnings に残して読み取りを打ち切り、読めた分を返す
+  tree:
+    node: svgNode{name(ローカル名), attr map[string]string, children, parent, sheet map[string]string, text}
+    attributes: xmlns と xmlns:* は捨てる。接頭辞付き href（xlink:href）は href に正規化し、href がすでにあれば href が勝つ
+    ids: doc.ids は最初に現れた id が勝つ
+    text_nodes: 'テキストは text / tspan / textPath / a の直下だけ #text ノードとして保持。style 要素の中身はスタイルシートに集める。他の要素のテキストは捨てる'
+  css:
+    selectors: 型・#id・.class の複合セレクタと子孫結合子（'>' は子孫として扱う）。属性セレクタと擬似クラスを含む規則は捨てる。@規則は読み飛ばす。コメントは除去
+    cascade: 詳細度（型 1、クラス 100、id 10000）と出現順で安定ソートし、後勝ちで node.sheet に宣言を積む。!important は無視して値だけ採る。プロパティ名は小文字化
+    index: styleSheet は末尾の複合セレクタで byID / byClass / byTag / others に分けて照合回数を抑える
+  color:
+    forms:
+    - currentcolor
+    - transparent
+    - '#rgb'
+    - '#rgba'
+    - '#rrggbb'
+    - '#rrggbbaa'
+    - rgb()/rgba()（% と / のアルファ）
+    - hsl()/hsla()（deg と %）
+    - 名前付き色
+    type: svgColor{r, g, b, a float64}（0..1、非乗算）
+  numbers_lengths:
+    number: 符号・小数・指数。区切りは空白とコンマ
+    length: 'svgLength(s, ref, em): % は ref 基準、em、ex (= em/2)、px、pt、pc、in、cm、mm、q'
+  transform:
+    functions:
+    - matrix
+    - translate
+    - scale
+    - rotate(a cx cy)
+    - skewX
+    - skewY
+    output: matrix [6]float64（Canvas 2D の affine）。未知の関数で打ち切り
+  path_data:
+    commands: MmLlHhVvCcSsQqTtAaZz、暗黙の繰り返し、M の 2 組目以降は L、S/T の制御点反射、区切りなしの弧フラグ。最初のエラーで打ち切り、そこまでを返す
+    arcs: 終点パラメータを中心パラメータに変換してから path.ellipse で 90° 以下の 3 次ベジェ列に展開する（ラスタライザ側の処理）
+    output: '*path（raster/imagebdf/path.go: subpath と segment の列。moveTo / lineTo / quadTo / cubicTo / close / ellipse
+      を使う）'
+  lazy_attribute_parsing:
+    tree_builder: parseSVG / parseSVGWithin は要素木・id 表・スタイルシートだけを作る。パスデータ・transform・色・長さは読まない
+    renderer: 描画側が属性の文字列から必要な時に読む。パスは svg.go の shape() が parsePathData(a["d"]) を呼び、結果を svgNode.path に持つ（読むのは 1 箇所）
+    consequence: 要素木の API にパスの型は現れない。パスデータの表現が問題になるのは「文字列 → 図形」の関数 1 つだけ
+  rasterizer_path_type:
+    role: path は SVG 専用ではなくラスタライザ全体の図形の型（BDF の命令の Path2D）。draw.go・imagebdf.go・text.go・svg.go が使う
+    shape: subs []subpath{start point, segs []segment{kind line/quad/cubic, p [6]float64}, closed} と境界のキャッシュ。座標は絶対、弧は
+      3 次ベジェに展開済み
+    reach: path.go の外からの組み立て・問い合わせメソッド呼び出しが 57 箇所、フィールド（subs / segs）の直接参照が draw.go と svg.go にある
+    ellipse_shared: (*path).ellipse は SVG の弧と BDF の Canvas の ellipse / arc の両方が使う。SVG 側だけには動かせない
+  pen_precedent:
+    interface: 'internal/sfnt.Pen: MoveTo / LineTo / QuadTo / CubeTo / Close。グリフの輪郭を受け取る'
+    adapters:
+    - raster/imagebdf/text.go の pathPen（*path に流す）
+    - formula/object.go の pathPen（bdf.Path に流す）
+  coupling_to_rasterizer:
+  - parsePathData が path.go の *path を返す
+  - parseTransform が path.go の matrix を返す
+  - svgNode が描画キャッシュ（path *path, pic *picture, image *svgImage, tried bool）を直接持つ
+  - internal/xmltree に依存（同じモジュール内の internal。パスが bdf/ 配下なら別モジュールからも import 可能だが、ルートモジュールへの依存は残る）
+  renderer_consumers:
+    parseSVG: svg.go newSVGImage（1 箇所）
+    parseTransform: svg.go の 4 箇所（node、clipMask ×2、gradient）
+    parsePathData: svg.go shape（1 箇所、path 要素）
+    computed_properties:
+    - color
+    - fill
+    - font-family
+    - font-size
+    - font-style
+    - font-weight
+    - letter-spacing
+    - stroke
+    - stroke-dasharray
+    - stroke-dashoffset
+    - stroke-linecap
+    - stroke-linejoin
+    - stroke-miterlimit
+    - stroke-width
+    - text-anchor
+    - visibility
+    elements_drawn:
+    - svg
+    - g
+    - a
+    - switch
+    - use
+    - symbol
+    - text
+    - tspan
+    - textPath
+    - image（data URL）
+    - path
+    - rect
+    - circle
+    - ellipse
+    - line
+    - polyline
+    - polygon
+    - linearGradient
+    - radialGradient
+    - clipPath
+    elements_skipped:
+    - defs（参照先として保持）
+    - mask
+    - pattern
+    - marker
+    - title
+    - desc
+    - metadata
+    - style
+    - script
+    - filter
+    - foreignObject
+  tests:
+    parser_unit:
+    - raster/imagebdf/imagebdf_test.go TestPathData
+    - raster/imagebdf/imagebdf_test.go TestCSSAndColors
+    - raster/imagebdf/limits_test.go TestSVGLimitsOfReading
+    - raster/imagebdf/limits_test.go TestStyleSheetIndex
+    renderer:
+    - raster/imagebdf/limits_test.go TestSVGRasterSize
+    - raster/imagebdf/limits_test.go TestSVGLayers
+    - raster/imagebdf/golden_test.go TestGoldenPages
+    fuzz: パーサ単体の fuzz ターゲットはない（ルートの FuzzReader と converter/all の FuzzConvert だけ）
+  other_svg_code_in_repo:
+    imgconv.ParseSVGSize: 公開。width/height/viewBox から自然サイズ。呼び出し 6 箇所（converter/internal/wordproc html_image.go・html_svg.go、converter/image/svg.go、converter/epub
+      chapter.go・fixed.go ×2）
+    converter/image.svgRoot: 非公開。先頭要素が svg かの判定
+    webdoc.SVGDocument: internal。HTML 文書内の svg 要素を SVG ファイルとして切り出す（x/net/html の Node を扱う）
+  docs:
+    api: 'docs/api.md「Go: サムネイルとページの画像」で imagebdf が SVG を描けると記述。パーサ自体の記述はない'
+    security_review: docs/cpu-security-review.ja.md が raster/imagebdf の SVG 読み取りを xmltree.Open の利用者として列挙（326 KB
+      の SVG 2.15 ms → 0.38 ms）
+relations:
+- relation: part_of
+  to: package:raster/imagebdf
+  resolution: external
+- relation: depends_on
+  to: package:internal/xmltree
+  resolution: external
+- relation: superseded_by
+  to: component:image-svg
+assertions:
+- predicate: exported_api
+  value: none
+  authority: observed
+  evidence:
+    path: raster/imagebdf/svgparse.go
+    locator: parseSVG / svgDoc / svgNode はすべて非公開
+  lifecycle: retired
+- predicate: path_output_type
+  value: '*path (raster/imagebdf/path.go)'
+  authority: observed
+  evidence:
+    path: raster/imagebdf/svgparse.go
+    locator: parsePathData
+  lifecycle: retired
+- predicate: arcs_become
+  value: cubic_beziers_le_90deg
+  authority: observed
+  evidence:
+    path: raster/imagebdf/path.go
+    locator: (*path).ellipse
+  lifecycle: retired
+history:
+  introduced:
+    summary: '800944c (2026-09-27, #35) サーバ側サムネイルの pure-Go ラスタライザとともに追加'
+  limits:
+    summary: '37fcbd3 (2026-09-28, #45) 信頼しない入力への上限（深さ・要素数・照合回数）'
+  xmlro:
+    summary: '692b06d (2026-10-09, #68) 読み取りを xmltree.Open 経由の xmlro に統一'
+  extracted:
+    summary: 2026-10-10 読み取り部を image/svg に切り出した。svgparse.go と svgcolors.go は削除、パスデータの読み取りだけ svgpath.go に残った
+lifecycle: retired

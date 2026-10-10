@@ -6,11 +6,13 @@
 
 Word の Office Math、PowerPoint と Excel の数式（代替として保存された画像ではなく Office Math から組む）、HTML と EPUB の MathML（KaTeX・MathJax・Wikipedia が独自の描画の横に置く MathML も含む）、Markdown と draw.io のラベル（`math=1`）の LaTeX を、1 つの数式エンジンで組みます。OpenType MATH のフォント（STIX Two Math、Cambria Math、Latin Modern Math など）の定数と異体字を使い、分数、根号、添字と極限、大型演算子、大きな異体字と部品の組み立てで伸びる括弧と根号、行列、揃えた数式、アクセントを扱います。検索とコピーでは `x=(−b±√(b^2−4ac))/(2a)` のような線形表記になります（ハイフンマイナスで打っても見つかります）。詳細は[design.md §3.23](../design.md#323-数式internalmathlayoutconverterinternalequationformula)を参照してください。
 
-同じエンジンは公開パッケージ `formula` から単体でも使えます。LaTeX か MathML の数式をパスだけの Object にし、画像、Ebitengine の画面、ブラウザの Canvas に描けます（[描画する](../rendering.ja.md#数式を描く)）。
+同じエンジンは公開パッケージ `image/formula` から単体でも使えます。LaTeX か MathML の数式をパスだけの Object にし、画像、Ebitengine の画面、ブラウザの Canvas に描けます（[描画する](../rendering.ja.md#数式を描く)）。
 
 ## 楽譜と演奏
 
 MML・MIDI・MusicXML は変換器が五線譜に組みます。View はその音楽を Standard MIDI File として、演奏の時刻とページの上の位置を結ぶ cue と一緒に持ちます（[spec §4.4](../spec.md#44-演奏play)）。デモビューアは Web Audio API で演奏します（General MIDI の音色の系統ごとのオシレーター、合成した打楽器、チップチューンの MML の矩形波）。演奏している段にカーソルを示し、それに合わせてページをめくり・スクロールします。段をクリックすると、そこから演奏します。詳細は[design.md §3.27](../design.md#327-楽譜と演奏convertermmlconvertermidiconvertermusicxmlconverterinternalmusic)を参照してください。
+
+音声ファイルの View も同じ `play` で鳴りますが、Standard MIDI File の代わりにファイルそのものを持ちます。ビューアはそれをブラウザの `<audio>` 要素に渡すので、変換器もビューアも音をデコードしません。cue はミリ秒で、カードの上の行を指します。歌詞が時刻を持っていればその行（ID3 の `SYLT`、歌詞のフィールドに入った LRC のテキスト）、なければ章です。ビューアは歌っている行を示し、行をクリックするとそこから鳴らします。詳細は[design.md §3.31](../design.md#331-音声ファイル--bdf-変換器converteraudio)を参照してください。
 
 ## メタデータ
 

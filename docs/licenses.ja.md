@@ -6,7 +6,7 @@ BDF 自体は [MIT ライセンス](https://github.com/shibukawa/bdf/blob/main/L
 
 | フォント | 含まれる場所 | 出元 | ライセンス |
 |---|---|---|---|
-| **STIX Two Math** 2.13 b171 | パッケージ [`formula`](rendering.ja.md#数式を描く) に埋め込み（`go:embed`。フォント全体を無改変で）。`Options` で別のフォントを指定しないときの数式フォント | [stipub/stixfonts](https://github.com/stipub/stixfonts) のタグ `v2.13b171`、`fonts/static_otf/STIXTwoMath-Regular.otf` | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/formula/fonts/OFL.txt) |
+| **STIX Two Math** 2.13 b171 | パッケージ [`image/formula`](rendering.ja.md#数式を描く) に埋め込み（`go:embed`。フォント全体を無改変で）。`Options` で別のフォントを指定しないときの数式フォント | [stipub/stixfonts](https://github.com/stipub/stixfonts) のタグ `v2.13b171`、`fonts/static_otf/STIXTwoMath-Regular.otf` | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/image/formula/fonts/OFL.txt) |
 | **Bravura** 1.482 | 音楽記号の輪郭とメトリクス。`converter/internal/music/smufl` に生成した表として持つ（MML・MIDI・MusicXML の楽譜用） | [steinbergmedia/bravura](https://github.com/steinbergmedia/bravura) | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/converter/internal/music/smufl/OFL.txt) |
 | **NewStroke** | KiCad が文字を描く線の字体。`converter/kicad` に表として持つ | vovanium による NewStroke の配布物（ファイルは [`NEWSTROKE.txt`](https://github.com/shibukawa/bdf/blob/main/converter/kicad/NEWSTROKE.txt) に記載） | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | **DejaVu Sans** の Regular と Bold（ASCII のサブセット） | サンプル文書（`bdf demo`）を作るパッケージ `fixture` | [dejavu-fonts](https://dejavu-fonts.github.io/) | [DejaVu Fonts License](https://github.com/shibukawa/bdf/blob/main/fixture/testdata/fonts/LICENSE.txt) |
@@ -15,7 +15,7 @@ STIX Two Math: Copyright 2001-2021 The STIX Fonts Project Authors (https://githu
 
 Bravura: Copyright © 2015, Steinberg Media Technologies GmbH (http://www.steinberg.net/), with Reserved Font Name "Bravura".
 
-リポジトリの STIX Two Math のファイルは、配布元のタグのファイルとバイト単位で同じです。SHA-256 と確かめるコマンドは [`formula/fonts/README.md`](https://github.com/shibukawa/bdf/blob/main/formula/fonts/README.md) にあります。
+リポジトリの STIX Two Math のファイルは、配布元のタグのファイルとバイト単位で同じです。SHA-256 と確かめるコマンドは [`image/formula/fonts/README.md`](https://github.com/shibukawa/bdf/blob/main/image/formula/fonts/README.md) にあります。
 
 `formula` を import したプログラムは STIX Two Math を含みます。Open Font License は、商用かどうかを問わずソフトウェアにフォントを同梱・埋め込むことを認め、複製に著作権表示とライセンスを残すことを求めます。フォントは name テーブルにその両方を持ち、`OFL.txt` も隣にあります。自前のフォントで組む場合（`formula.Options.Math`）でも、埋め込んだフォントはリンクされます。
 

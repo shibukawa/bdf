@@ -11,7 +11,7 @@ jobs:
         with:
           go-version: "1.27.2" # the patch with the fix of GO-2026-6617 and GO-2026-6612/6613, which the runner's cache lacks
       # Go 1.27's unreachable analyzer flags the goto-shaped bodies of the
-      # generated codec (imgconv/internal/webpw), so that check is off.
+      # generated codec (image/imgconv/internal/webpw), so that check is off.
       - run: go vet -unreachable=false ./...
       - name: reachable Go dependency vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
@@ -23,11 +23,11 @@ jobs:
         working-directory: raster/ebitenginebdf
         run: go vet ./... && go test ./...
       - name: image codecs over simd/archsimd (GOEXPERIMENT=simd)
-        run: go test ./imgconv/...
+        run: go test ./image/imgconv/...
         env:
           GOEXPERIMENT: simd
       - name: build without image codecs (browser / tinygo profile)
-        run: go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/
+        run: go test -tags bdf_noconv ./image/imgconv/ ./converter/... ./font/woff2/
       - name: testdata is up to date
         id: fixtures
         run: |

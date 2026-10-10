@@ -20,6 +20,16 @@ export interface PlayData {
   cues: Cues | null;
 }
 
+/**
+ * The recording of a view (spec §4.4): the audio file as a blob of its
+ * media type, for an audio element to play, and its cues when it has them
+ * (their ticks are milliseconds).
+ */
+export interface AudioData {
+  blob: Blob;
+  cues: Cues | null;
+}
+
 /** Settings of the worker for a document. */
 export interface WorkerOpenOptions {
   /** Bytes of decoded images the worker keeps (see ResourceOptions.imageBudget). */
@@ -51,9 +61,11 @@ export type WorkerRequest =
   | { id: number; type: "locate"; view: string; hits: SearchHit[] }
   /** The music of a view; null when it has none. */
   | { id: number; type: "play"; view: string }
+  /** The recording of a view; null when it has none. */
+  | { id: number; type: "audio"; view: string }
   | { id: number; type: "close" };
 
-export type WorkerResult = Manifest | ImageBitmap | TextRun[] | TextContent | SearchHit[] | HitRect[][] | PlayData | null;
+export type WorkerResult = Manifest | ImageBitmap | TextRun[] | TextContent | SearchHit[] | HitRect[][] | PlayData | AudioData | null;
 
 /**
  * Why a request failed, when the viewer has something to do about it: ask

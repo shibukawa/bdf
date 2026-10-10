@@ -47,7 +47,7 @@ export interface FindState {
   more: boolean;
 }
 
-export interface FileOptions { name?: string; password?: string; fonts?: string; format?: string; pages?: string }
+export interface FileOptions { name?: string; password?: string; fonts?: string; format?: string; pages?: string; params?: Record<string, string> }
 export interface FileConverter {
   convert(data: ArrayBuffer | Uint8Array, options?: FileOptions): Promise<{ bdf: Uint8Array }>;
   open?(data: ArrayBuffer | Uint8Array, options?: FileOptions): Promise<{ bdf: Uint8Array; pages: number; stream?: number }>;
@@ -323,9 +323,9 @@ export class Viewer extends EventTarget {
     return { query: found.query, index, total: found.length, more: found.more };
   }
 
-  /** Pages have text to search; a piano roll has none. */
+  /** Pages have text to search; a piano roll (see draw) has none. */
   private searchable(view: View): boolean {
-    return !(this.musicMode === "piano-roll" && view.play && this.musicRenderer);
+    return !(this.musicMode === "piano-roll" && view.play?.seq && this.musicRenderer);
   }
 
   private fail(error: unknown): void {
@@ -442,7 +442,7 @@ export class Viewer extends EventTarget {
     if (!view) return;
     const generation = ++this.generation;
     if (view.kind === "sheet") this.drawSheet(view, generation);
-    else if (this.musicMode === "piano-roll" && view.play && this.musicRenderer) {
+    else if (this.musicMode === "piano-roll" && view.play?.seq && this.musicRenderer) {
       void this.musicRenderer({ stage: this.stage, renderer: this.renderer, view, zoom: this.zoom, isCurrent: () => generation === this.generation })
         .catch((error) => this.dispatchEvent(new CustomEvent("error", { detail: error })));
     }

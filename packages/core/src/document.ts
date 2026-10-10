@@ -114,13 +114,18 @@ export class BdfDocument {
   part(hash: Hash): Promise<Uint8Array> {
     let p = this.parts.get(hash);
     if (!p) {
-      const e = this.entries.get(hash);
-      if (!e) throw new Error(`bdf: unknown part ${hash}`);
-      // a part inflates to the size its manifest states at most
-      p = e.source.stored(e.entry).then((b) => decode(b, e.entry.enc, e.entry.size ?? 0));
+      p = this.read(hash);
       this.parts.set(hash, p);
     }
     return p;
+  }
+
+  /** Decoded bytes of a part, read from the source and not kept: a part read once, and large (the audio of a view). */
+  private read(hash: Hash): Promise<Uint8Array> {
+    const e = this.entries.get(hash);
+    if (!e) throw new Error(`bdf: unknown part ${hash}`);
+    // a part inflates to the size its manifest states at most
+    return e.source.stored(e.entry).then((b) => decode(b, e.entry.enc, e.entry.size ?? 0));
   }
 
   object(hash: Hash): Promise<ObjectPart> {
@@ -174,13 +179,29 @@ export class BdfDocument {
 
   /**
    * The music of a view (docs/spec.md §4.4): its Standard MIDI File as it is
-   * stored, and its cues when it has them; null for a view without play.
+   * stored, and its cues when it has them; null for a view that plays no
+   * music (a view that plays a recording has audio()).
    */
   async play(view: View): Promise<{ seq: Uint8Array; cues: Cues | null } | null> {
-    if (!view.play) return null;
+    if (!view.play?.seq) return null;
     const { seq, cues } = view.play;
     const [bytes, decoded] = await Promise.all([this.part(seq), cues ? this.part(cues).then(decodeCues) : null]);
     return { seq: bytes, cues: decoded };
+  }
+
+  /**
+   * The recording a view plays (docs/spec.md §4.4): the audio file as it is
+   * stored, its media type ("" when the document names none, or one that
+   * is not audio), and its cues when it has them, whose ticks are
+   * milliseconds; null for a view that plays none.
+   */
+  async audio(view: View): Promise<{ data: Uint8Array; type: string; cues: Cues | null } | null> {
+    if (!view.play?.audio) return null;
+    const { audio, type, cues } = view.play;
+    // the file is not kept here: whoever plays it holds it
+    const [bytes, decoded] = await Promise.all([this.parts.get(audio) ?? this.read(audio), cues ? this.part(cues).then(decodeCues) : null]);
+    // the type of a blob the browser is handed: an audio type, whatever the document says
+    return { data: bytes, type: typeof type === "string" && /^audio\/[\w.+-]+$/.test(type) ? type : "", cues: decoded };
   }
 
   pathCollection(hash: Hash): Promise<PathData[]> {

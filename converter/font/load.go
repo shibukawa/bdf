@@ -10,9 +10,9 @@ import (
 
 	"github.com/klauspost/compress/zlib"
 
+	"github.com/shibukawa/bdf/font/woff2"
 	"github.com/shibukawa/bdf/internal/otlayout"
 	"github.com/shibukawa/bdf/internal/sfnt"
-	"github.com/shibukawa/bdf/woff2"
 )
 
 // file is a font file: the fonts it holds and how it stores them.

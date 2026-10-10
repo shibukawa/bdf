@@ -35,6 +35,8 @@ const intake = new Intake({
   picker: $<HTMLInputElement>("file"),
   buttons: [$("choose")],
   samples: $("samples"),
+  // the text of an audio file is on its card: the audio itself, which a viewer would play, stays out of the document
+  params: { play: "false" },
 });
 
 shape.onchange = show;

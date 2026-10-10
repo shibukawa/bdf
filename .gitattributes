@@ -1,2 +1,2 @@
-imgconv/internal/**/*.go linguist-generated=true
-imgconv/internal/**/data.bin binary
+image/imgconv/internal/**/*.go linguist-generated=true
+image/imgconv/internal/**/data.bin binary

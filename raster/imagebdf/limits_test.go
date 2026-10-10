@@ -3,7 +3,6 @@ package imagebdf
 import (
 	"bytes"
 	"encoding/base64"
-	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/image/svg"
 )
 
 // These tests draw what a document made to take a server down asks for:
@@ -465,120 +465,19 @@ func TestSVGLayers(t *testing.T) {
 	}
 }
 
-func TestSVGLimitsOfReading(t *testing.T) {
+// TestSVGWarningsOfReading checks that what the reader of an SVG image
+// left out (image/svg has the limits) is a warning of the drawing.
+func TestSVGWarningsOfReading(t *testing.T) {
 	const head = `<svg xmlns="http://www.w3.org/2000/svg">`
-	depth := func(n *svgNode) int {
-		d := 0
-		for ; len(n.children) > 0; n = n.children[0] {
-			d++
-		}
-		return d
-	}
-	// elements in elements, with a style sheet and text that are gone
-	// through by functions that call themselves
-	doc, ok := parseSVG([]byte(head + `<style>g{fill:red}</style><text>` + strings.Repeat(`<tspan>`, svgDepth+50) + `x</text>` + strings.Repeat(`<g>`, svgDepth+50)))
-	if !ok || len(doc.warnings) != 1 || depth(doc.root.children[1]) != svgDepth-2 {
-		t.Errorf("elements %d deep: read %d deep, %v", svgDepth+50, depth(doc.root.children[1]), doc.warnings)
-	}
-	doc, ok = parseSVGWithin([]byte(head+strings.Repeat(`<g/>`, 100)+`<text>a<tspan>b</tspan>c</text></svg>`), svgDepth, 50, svgMatches)
-	if !ok || len(doc.root.children) != 49 || len(doc.warnings) != 1 {
-		t.Errorf("100 elements where 50 are the limit: %d read, %v", len(doc.root.children), doc.warnings)
-	}
-	doc, ok = parseSVGWithin([]byte(head+`<text>a<tspan>b</tspan>c</text></svg>`), svgDepth, 3, svgMatches)
-	if !ok || len(doc.root.children[0].children) != 1 {
-		t.Errorf("runs of text past the limit: %+v", doc.root.children[0].children)
-	}
-	// a warning of the document is one of the drawing
 	d := bdf.NewDocument()
 	o := bdf.NewObject()
-	o.Image(o.AddImage(d.AddImage([]byte(head+strings.Repeat(`<g>`, svgDepth+1)))), 0, 0, 4, 4)
+	o.Image(o.AddImage(d.AddImage([]byte(head+strings.Repeat(`<g>`, svg.DefaultMaxDepth+1)))), 0, 0, 4, 4)
 	hash, _ := d.AddObject(o)
 	v := d.NewView("v", bdf.ViewFixed, "")
 	v.AddPage(4, 4, bdf.Layer{Role: bdf.RoleBody, Obj: hash})
 	r := New(d, nil)
 	if _, err := r.Page(v, 0, 1); err != nil || !warned(r, "deep") {
 		t.Errorf("%v, warnings %v", err, r.Warnings())
-	}
-
-	// comments: taken out in one pass
-	css := `rect{fill:red}` + strings.Repeat(`/**/`, 20000) + `circle{fill:blue}/*`
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
-	before := ms.TotalAlloc
-	rules := parseCSS(css)
-	runtime.ReadMemStats(&ms)
-	if n := ms.TotalAlloc - before; len(rules) != 2 || n > 1<<20 {
-		t.Errorf("20000 comments: %d rules, %d bytes allocated", len(rules), n)
-	}
-	for src, want := range map[string]int{"a{}/*x*/b{}": 2, "/*a{}*/b{}": 1, "a{}/*b{}": 1, "/**/a{}/**//**/b{}c/**/{}": 3, "*/a{}": 1} {
-		if got := len(parseCSS(src)); got != want {
-			t.Errorf("%q: %d rules, want %d", src, got, want)
-		}
-	}
-
-	// rules matched against elements
-	var sheet strings.Builder
-	for i := 0; i < 100; i++ {
-		fmt.Fprintf(&sheet, ".c{stroke-width:%d}", i)
-	}
-	svg := head + `<style>` + sheet.String() + `</style>` + strings.Repeat(`<g class="c"/>`, 100) + `</svg>`
-	doc, ok = parseSVGWithin([]byte(svg), svgDepth, svgNodes, 5000)
-	if !ok || len(doc.warnings) != 1 || doc.root.children[10].sheet["stroke-width"] != "99" || doc.root.children[90].sheet != nil {
-		t.Errorf("100 rules for 100 elements where 5000 matches are the limit: %v", doc.warnings)
-	}
-	if doc, _ = parseSVG([]byte(svg)); len(doc.warnings) != 0 || doc.root.children[100].sheet["stroke-width"] != "99" {
-		t.Errorf("within the limit: %v", doc.warnings)
-	}
-}
-
-// TestStyleSheetIndex checks that the rules found by what their selectors
-// end with are those found by matching every rule against every element.
-func TestStyleSheetIndex(t *testing.T) {
-	const css = `* { a: 1 } g * { b: 1 } rect { c: 1 } .k { d: 1 } .k.l { e: 1 } rect.l { f: 1 } #i { g: 1 } g > #i.k { h: 1 }
-		svg g rect.l.k#i { i: 1 } .m, circle, #j { j: 1 } . { k: 1 } # { l: 1 } .l { c: 2 } rect { d: 2 } #j { c: 3 } q#i { m: 1 }
-		g .k { n: 1 } g g * { o: 1 } *.l { p: 1 } rect.k, rect.k { q: 1 }`
-	doc, ok := parseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><style>` + css + `</style>
-		<g class="l"><rect id="i" class="k l k"/><rect class="l m"/><circle id="j" class="k"/><g><g id="i"/></g></g><rect/><text>a<tspan class="k">b</tspan></text></svg>`))
-	if !ok {
-		t.Fatal("not read")
-	}
-	rules := parseCSS(css)
-	elements := 0
-	var check func(n *svgNode)
-	check = func(n *svgNode) {
-		if n.name == "#text" {
-			return
-		}
-		elements++
-		// as the style sheets were applied before there was an index
-		var hit []*cssRule
-		for i := range rules {
-			if rules[i].matches(n) {
-				hit = append(hit, &rules[i])
-			}
-		}
-		slices.SortStableFunc(hit, func(a, b *cssRule) int {
-			if a.spec != b.spec {
-				return a.spec - b.spec
-			}
-			return a.order - b.order
-		})
-		want := map[string]string{}
-		for _, r := range hit {
-			for _, d := range r.decls {
-				want[d[0]] = d[1]
-			}
-		}
-		if len(want) == 0 && n.sheet != nil || len(want) > 0 && fmt.Sprint(want) != fmt.Sprint(n.sheet) {
-			t.Errorf("%s id=%q class=%q: %v, want %v", n.name, n.attr["id"], n.attr["class"], n.sheet, want)
-		}
-		for _, c := range n.children {
-			check(c)
-		}
-	}
-	check(doc.root)
-	if i := doc.ids["i"].sheet; elements != 11 || i["i"] != "1" || i["c"] != "2" || i["q"] != "1" || i["k"] != "" {
-		t.Errorf("%d elements, #i has %v", elements, i)
 	}
 }
 
@@ -791,13 +690,13 @@ func TestRoomForPictures(t *testing.T) {
 	}
 
 	// an image of an SVG image is decoded once, however often it is used
-	svg := `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><defs><image id="i" width="4" height="4" href="data:image/png;base64,` +
+	src := `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><defs><image id="i" width="4" height="4" href="data:image/png;base64,` +
 		base64Of(pngOf(16, 16, color.RGBA{0, 0, 255, 255})) + `"/><path id="p" d="M4 4h4v4h-4z"/></defs>` + strings.Repeat(`<use href="#i"/><use href="#p"/>`, 5) + `</svg>`
-	si := svgOf(t, svg)
+	si := svgOf(t, src)
 	r = New(bdf.NewDocument(), nil)
 	pic, _ := si.raster(r, 1)
-	if n := si.doc.ids["i"]; n.pic == nil || len(r.kept) != 2 || si.doc.ids["p"].path == nil {
-		t.Errorf("%d pictures kept", len(r.kept))
+	if e := si.doc.embeds[si.doc.IDs["i"]]; e == nil || e.pic == nil || len(r.kept) != 2 || si.doc.paths[si.doc.IDs["p"]] == nil || len(si.doc.embeds) != 1 || len(si.doc.paths) != 1 {
+		t.Errorf("%d pictures kept, %d images and %d paths of elements", len(r.kept), len(si.doc.embeds), len(si.doc.paths))
 	}
 	if pic.levels[0].RGBAAt(1, 1) != (color.RGBA{0, 0, 255, 255}) || pic.levels[0].RGBAAt(5, 5) != (color.RGBA{0, 0, 0, 255}) {
 		t.Errorf("drawn %v %v", pic.levels[0].RGBAAt(1, 1), pic.levels[0].RGBAAt(5, 5))

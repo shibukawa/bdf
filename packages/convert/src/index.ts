@@ -5,6 +5,8 @@ export interface ConvertOptions {
   fonts?: string;
   name?: string;
   pages?: string;
+  /** The format's own options, as bdf generate -param takes them: { play: "false" } leaves the audio of an audio file out. */
+  params?: Record<string, string>;
 }
 
 export interface Converted {

@@ -7,7 +7,7 @@ import (
 	"image/draw"
 	"math"
 
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // picture is a decoded image with its mipmaps: level k is the image scaled

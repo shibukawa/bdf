@@ -9,18 +9,38 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/image/svg"
 )
 
 // svgImage is an SVG image part and the rasters drawn of it. The viewer
-// draws SVG images with the browser; here they are drawn by a renderer of
-// the SVG that previews meet: shapes and paths, fills and strokes, linear
-// and radial gradients, transforms, use and symbol, nested svg, clip
-// paths, group opacity, text in the fonts of the system, and embedded
-// images (data: URLs). Masks, filters, patterns and markers are not drawn.
+// draws SVG images with the browser; here image/svg reads them and they
+// are drawn by a renderer of the SVG that previews meet: shapes and paths
+// (the path data is read here, into the paths of the rasterizer: see
+// parsePathData), fills and strokes, linear and radial gradients,
+// transforms, use and symbol, nested svg, clip paths, group opacity, text
+// in the fonts of the system, and embedded images (data: URLs). Masks,
+// filters, patterns and markers are not drawn.
 type svgImage struct {
 	doc     *svgDoc
 	w, h    float64 // natural size in CSS px (as the viewer measures it)
 	rasters map[int]*picture
+}
+
+// svgDoc is an SVG document (image/svg reads it) and what drawing found
+// of its elements, kept for the next time they are drawn (a use element
+// draws them again): the paths of path data, and the pictures or the SVG
+// images of the data: URLs of image elements.
+type svgDoc struct {
+	*svg.Document
+	paths  map[*svg.Node]*path
+	embeds map[*svg.Node]*svgEmbed
+}
+
+// svgEmbed is the image of an image element of an SVG document.
+type svgEmbed struct {
+	pic   *picture
+	image *svgImage
+	tried bool // the data: URL was read, with an image or without
 }
 
 // svgRasterPixels bounds the size of a raster of an SVG image: the scale
@@ -30,12 +50,13 @@ const svgRasterPixels = 4096 * 4096
 
 // newSVGImage parses an SVG image part.
 func newSVGImage(data []byte) (*svgImage, bool) {
-	doc, ok := parseSVG(data)
-	if !ok {
+	d, err := svg.Parse(data, nil)
+	if err != nil {
 		return nil, false
 	}
+	doc := &svgDoc{Document: d, paths: map[*svg.Node]*path{}, embeds: map[*svg.Node]*svgEmbed{}}
 	si := &svgImage{doc: doc, rasters: map[int]*picture{}}
-	si.w, si.h = svgNaturalSize(doc.root)
+	si.w, si.h = svgNaturalSize(doc.Root)
 	if math.IsInf(si.w, 0) || math.IsInf(si.h, 0) {
 		return nil, false
 	}
@@ -45,17 +66,17 @@ func newSVGImage(data []byte) (*svgImage, bool) {
 // svgNaturalSize is the size of an SVG image: the width and height of its
 // root, a missing one following from the other and the view box's
 // proportions, else the view box's size, else 300 × 150.
-func svgNaturalSize(root *svgNode) (float64, float64) {
+func svgNaturalSize(root *svg.Node) (float64, float64) {
 	abs := func(s string) (float64, bool) {
 		if strings.HasSuffix(strings.TrimSpace(s), "%") {
 			return 0, false
 		}
-		v, ok := svgLength(s, 0, 16)
+		v, ok := svg.ParseLength(s, 0, 16)
 		return v, ok && v > 0
 	}
-	w, okw := abs(root.attr["width"])
-	h, okh := abs(root.attr["height"])
-	vb := svgNumbers(root.attr["viewBox"])
+	w, okw := abs(root.Attr["width"])
+	h, okh := abs(root.Attr["height"])
+	vb := svg.ParseNumbers(root.Attr["viewBox"])
 	vw, vh := 0.0, 0.0
 	if len(vb) == 4 && vb[2] > 0 && vb[3] > 0 {
 		vw, vh = vb[2], vb[3]
@@ -193,7 +214,7 @@ type svgStyle struct {
 	miter         float64
 	dash          string
 	dashOffset    string
-	color         svgColor
+	color         svg.Color
 	fontFamily    string
 	fontSize      float64
 	fontWeight    int
@@ -206,40 +227,23 @@ type svgStyle struct {
 func defaultStyle() svgStyle {
 	return svgStyle{
 		fill: "black", stroke: "none", fillOpacity: 1, strokeOpacity: 1,
-		strokeWidth: "1", miter: 4, color: svgColor{0, 0, 0, 1},
+		strokeWidth: "1", miter: 4, color: svg.Color{A: 1},
 		fontFamily: "serif", fontSize: 16, fontWeight: 400, anchor: "start", visible: true,
 	}
 }
 
-// declared returns the value an element declares for a property: in its
-// style attribute, then the style sheets, then as a presentation attribute.
-func (n *svgNode) declared(name string) (string, bool) {
-	if st := n.attr["style"]; st != "" {
-		for _, d := range parseDecls(st) {
-			if d[0] == name {
-				return d[1], true
-			}
-		}
-	}
-	if v, ok := n.sheet[name]; ok {
-		return v, true
-	}
-	v, ok := n.attr[name]
-	return strings.TrimSpace(v), ok
-}
-
 // compute resolves the inherited properties of an element.
-func (sr *svgRenderer) compute(n *svgNode, parent svgStyle) svgStyle {
+func (sr *svgRenderer) compute(n *svg.Node, parent svgStyle) svgStyle {
 	st := parent
 	get := func(name string) (string, bool) {
-		v, ok := n.declared(name)
+		v, ok := n.Declared(name)
 		if !ok || v == "inherit" || v == "" {
 			return "", false
 		}
 		return v, true
 	}
 	if v, ok := get("color"); ok {
-		if c, ok := parseColor(v, parent.color); ok {
+		if c, ok := svg.ParseColor(v, parent.color); ok {
 			st.color = c
 		}
 	}
@@ -251,7 +255,7 @@ func (sr *svgRenderer) compute(n *svgNode, parent svgStyle) svgStyle {
 	}
 	num := func(name string, dst *float64) {
 		if v, ok := get(name); ok {
-			if f, rest, ok := svgNumber(v); ok {
+			if f, rest, ok := svg.ParseNumber(v); ok {
 				if strings.TrimSpace(rest) == "%" {
 					f /= 100
 				}
@@ -281,7 +285,7 @@ func (sr *svgRenderer) compute(n *svgNode, parent svgStyle) svgStyle {
 		st.join = map[string]byte{"round": bdf.JoinRound, "bevel": bdf.JoinBevel}[v]
 	}
 	if v, ok := get("stroke-miterlimit"); ok {
-		if f, _, ok := svgNumber(v); ok && f >= 1 {
+		if f, _, ok := svg.ParseNumber(v); ok && f >= 1 {
 			st.miter = f
 		}
 	}
@@ -295,7 +299,7 @@ func (sr *svgRenderer) compute(n *svgNode, parent svgStyle) svgStyle {
 		st.fontFamily = v
 	}
 	if v, ok := get("font-size"); ok {
-		if f, ok := svgLength(v, parent.fontSize, parent.fontSize); ok && f > 0 {
+		if f, ok := svg.ParseLength(v, parent.fontSize, parent.fontSize); ok && f > 0 {
 			st.fontSize = f
 		} else if kw, ok := map[string]float64{"xx-small": 9, "x-small": 10, "small": 13, "medium": 16, "large": 18, "x-large": 24, "xx-large": 32}[v]; ok {
 			st.fontSize = kw
@@ -327,7 +331,7 @@ func (sr *svgRenderer) compute(n *svgNode, parent svgStyle) svgStyle {
 		st.visible = v == "visible"
 	}
 	if v, ok := get("letter-spacing"); ok {
-		if f, ok := svgLength(v, 0, st.fontSize); ok {
+		if f, ok := svg.ParseLength(v, 0, st.fontSize); ok {
 			st.letterSpacing = f
 		} else {
 			st.letterSpacing = 0
@@ -339,18 +343,18 @@ func (sr *svgRenderer) compute(n *svgNode, parent svgStyle) svgStyle {
 // render draws the document on a surface whose user space is m, for a
 // viewport of w × h CSS px.
 func (sr *svgRenderer) render(s *surface, m matrix, w, h float64) {
-	root := sr.doc.root
+	root := sr.doc.Root
 	ctx := &svgCtx{s: s, m: m, clip: &mask{r: s.bounds()}, vw: w, vh: h}
 	st := sr.compute(root, defaultStyle())
-	if vb, ok := viewBox(root.attr["viewBox"]); ok {
-		ctx.m = ctx.m.mul(aspectTransform(vb, root.attr["preserveAspectRatio"], 0, 0, w, h))
+	if vb, ok := viewBox(root.Attr["viewBox"]); ok {
+		ctx.m = ctx.m.mul(aspectTransform(vb, root.Attr["preserveAspectRatio"], 0, 0, w, h))
 		ctx.vw, ctx.vh = vb[2], vb[3]
 	}
 	sr.children(root, ctx, st)
 }
 
 func viewBox(s string) ([4]float64, bool) {
-	v := svgNumbers(s)
+	v := svg.ParseNumbers(s)
 	if len(v) != 4 || !(v[2] > 0) || !(v[3] > 0) {
 		return [4]float64{}, false
 	}
@@ -397,11 +401,11 @@ func aspectTransform(vb [4]float64, par string, x, y, w, h float64) matrix {
 	return matrix{sx, 0, 0, sy, tx, ty}
 }
 
-func (sr *svgRenderer) children(n *svgNode, ctx *svgCtx, st svgStyle) {
-	for _, c := range n.children {
-		if n.name == "switch" {
+func (sr *svgRenderer) children(n *svg.Node, ctx *svgCtx, st svgStyle) {
+	for _, c := range n.Children {
+		if n.Name == "switch" {
 			// the first child that browsers draw: those without requirements
-			if c.name != "#text" && c.attr["requiredExtensions"] == "" && c.attr["systemLanguage"] == "" {
+			if c.Name != svg.TextNode && c.Attr["requiredExtensions"] == "" && c.Attr["systemLanguage"] == "" {
 				sr.node(c, ctx, st)
 				return
 			}
@@ -421,19 +425,19 @@ func (ctx *svgCtx) length(s string, dir byte, em float64) float64 {
 	case 'y':
 		ref = ctx.vh
 	}
-	v, _ := svgLength(s, ref, em)
+	v, _ := svg.ParseLength(s, ref, em)
 	return v
 }
 
 // node draws an element.
-func (sr *svgRenderer) node(n *svgNode, ctx *svgCtx, parent svgStyle) {
-	if n.name == "#text" {
+func (sr *svgRenderer) node(n *svg.Node, ctx *svgCtx, parent svgStyle) {
+	if n.Name == svg.TextNode {
 		return
 	}
-	if d, _ := n.declared("display"); d == "none" {
+	if d, _ := n.Declared("display"); d == "none" {
 		return
 	}
-	switch n.name {
+	switch n.Name {
 	case "defs", "symbol", "clipPath", "mask", "linearGradient", "radialGradient", "pattern", "marker",
 		"title", "desc", "metadata", "style", "script", "filter", "foreignObject":
 		return
@@ -450,11 +454,11 @@ func (sr *svgRenderer) node(n *svgNode, ctx *svgCtx, parent svgStyle) {
 	defer func() { sr.depth-- }()
 	st := sr.compute(n, parent)
 	c := *ctx
-	if t := n.attr["transform"]; t != "" {
-		c.m = c.m.mul(parseTransform(t))
+	if t := n.Attr["transform"]; t != "" {
+		c.m = c.m.mul(matrix(svg.ParseTransform(t)))
 	}
-	if cp, _ := n.declared("clip-path"); cp != "" && cp != "none" {
-		if target := sr.ref(cp); target != nil && target.name == "clipPath" {
+	if cp, _ := n.Declared("clip-path"); cp != "" && cp != "none" {
+		if target := sr.ref(cp); target != nil && target.Name == "clipPath" {
 			c.clip = intersect(c.clip, sr.clipMask(target, n, &c, st))
 		}
 	}
@@ -462,8 +466,8 @@ func (sr *svgRenderer) node(n *svgNode, ctx *svgCtx, parent svgStyle) {
 		return
 	}
 	opacity := 1.0
-	if v, ok := n.declared("opacity"); ok {
-		if f, rest, ok := svgNumber(v); ok {
+	if v, ok := n.Declared("opacity"); ok {
+		if f, rest, ok := svg.ParseNumber(v); ok {
 			if strings.TrimSpace(rest) == "%" {
 				f /= 100
 			}
@@ -473,7 +477,7 @@ func (sr *svgRenderer) node(n *svgNode, ctx *svgCtx, parent svgStyle) {
 	if opacity <= 0 {
 		return
 	}
-	if m, _ := n.declared("mask"); m != "" && m != "none" {
+	if m, _ := n.Declared("mask"); m != "" && m != "none" {
 		sr.r.warnf("SVG masks are not applied")
 	}
 	if opacity < 1 {
@@ -500,21 +504,21 @@ func (sr *svgRenderer) node(n *svgNode, ctx *svgCtx, parent svgStyle) {
 }
 
 // element draws an element in its own user space.
-func (sr *svgRenderer) element(n *svgNode, c *svgCtx, st svgStyle) {
-	switch n.name {
+func (sr *svgRenderer) element(n *svg.Node, c *svgCtx, st svgStyle) {
+	switch n.Name {
 	case "svg":
-		sr.nested(n, false, c, st, c.length(n.attr["x"], 'x', st.fontSize), c.length(n.attr["y"], 'y', st.fontSize), n.attr["width"], n.attr["height"])
+		sr.nested(n, false, c, st, c.length(n.Attr["x"], 'x', st.fontSize), c.length(n.Attr["y"], 'y', st.fontSize), n.Attr["width"], n.Attr["height"])
 	case "g", "a", "switch":
 		sr.children(n, c, st)
 	case "use":
-		target := sr.ref(n.attr["href"])
+		target := sr.ref(n.Attr["href"])
 		if target == nil || sr.isAncestor(target, n) {
 			return
 		}
-		x, y := c.length(n.attr["x"], 'x', st.fontSize), c.length(n.attr["y"], 'y', st.fontSize)
-		switch target.name {
+		x, y := c.length(n.Attr["x"], 'x', st.fontSize), c.length(n.Attr["y"], 'y', st.fontSize)
+		switch target.Name {
 		case "symbol", "svg":
-			sr.nested(target, true, c, st, x, y, n.attr["width"], n.attr["height"])
+			sr.nested(target, true, c, st, x, y, n.Attr["width"], n.Attr["height"])
 		default:
 			uc := *c
 			uc.m = uc.m.translate(x, y)
@@ -531,8 +535,8 @@ func (sr *svgRenderer) element(n *svgNode, c *svgCtx, st svgStyle) {
 	}
 }
 
-func (sr *svgRenderer) isAncestor(a, n *svgNode) bool {
-	for p := n; p != nil; p = p.parent {
+func (sr *svgRenderer) isAncestor(a, n *svg.Node) bool {
+	for p := n; p != nil; p = p.Parent {
 		if p == a {
 			return true
 		}
@@ -543,12 +547,12 @@ func (sr *svgRenderer) isAncestor(a, n *svgNode) bool {
 // nested draws the content of an svg or symbol element in a new viewport
 // at (x, y), ws × hs (the element's own width and height when empty, else
 // 100%). viaUse says that a use element shows it, whose style it takes.
-func (sr *svgRenderer) nested(content *svgNode, viaUse bool, c *svgCtx, st svgStyle, x, y float64, ws, hs string) {
+func (sr *svgRenderer) nested(content *svg.Node, viaUse bool, c *svgCtx, st svgStyle, x, y float64, ws, hs string) {
 	if ws == "" {
-		ws = content.attr["width"]
+		ws = content.Attr["width"]
 	}
 	if hs == "" {
-		hs = content.attr["height"]
+		hs = content.Attr["height"]
 	}
 	if ws == "" {
 		ws = "100%"
@@ -564,13 +568,13 @@ func (sr *svgRenderer) nested(content *svgNode, viaUse bool, c *svgCtx, st svgSt
 	if viaUse {
 		st = sr.compute(content, st)
 	}
-	if ov, _ := content.declared("overflow"); ov != "visible" && ov != "auto" {
+	if ov, _ := content.Declared("overflow"); ov != "visible" && ov != "auto" {
 		p := &path{}
 		p.rect(x, y, w, h)
 		nc.clip = intersect(nc.clip, sr.coverage(p, nc.m, bdf.NonZero, nc.s.bounds()))
 	}
-	if vb, ok := viewBox(content.attr["viewBox"]); ok {
-		nc.m = nc.m.mul(aspectTransform(vb, content.attr["preserveAspectRatio"], x, y, w, h))
+	if vb, ok := viewBox(content.Attr["viewBox"]); ok {
+		nc.m = nc.m.mul(aspectTransform(vb, content.Attr["preserveAspectRatio"], x, y, w, h))
 		nc.vw, nc.vh = vb[2], vb[3]
 	} else {
 		nc.m = nc.m.translate(x, y)
@@ -580,7 +584,7 @@ func (sr *svgRenderer) nested(content *svgNode, viaUse bool, c *svgCtx, st svgSt
 }
 
 // ref finds the element a reference names: "#id" or "url(#id)".
-func (sr *svgRenderer) ref(s string) *svgNode {
+func (sr *svgRenderer) ref(s string) *svg.Node {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "url(") {
 		end := strings.IndexByte(s, ')')
@@ -592,28 +596,31 @@ func (sr *svgRenderer) ref(s string) *svgNode {
 	if !strings.HasPrefix(s, "#") {
 		return nil
 	}
-	return sr.doc.ids[s[1:]]
+	return sr.doc.IDs[s[1:]]
 }
 
 // shape returns the path of a basic shape or path element.
-func (sr *svgRenderer) shape(n *svgNode, c *svgCtx, st svgStyle) *path {
-	a := n.attr
+func (sr *svgRenderer) shape(n *svg.Node, c *svgCtx, st svgStyle) *path {
+	a := n.Attr
 	lx := func(k string) float64 { return c.length(a[k], 'x', st.fontSize) }
 	ly := func(k string) float64 { return c.length(a[k], 'y', st.fontSize) }
 	p := &path{}
-	switch n.name {
+	switch n.Name {
 	case "path":
-		if n.path == nil {
-			n.path = parsePathData(a["d"])
+		// the path of the element is kept for the next time it is drawn
+		d := sr.doc.paths[n]
+		if d == nil {
+			d = parsePathData(a["d"])
+			sr.doc.paths[n] = d
 		}
-		return n.path
+		return d
 	case "rect":
 		x, y, w, h := lx("x"), ly("y"), lx("width"), ly("height")
 		if !(w > 0 && h > 0) {
 			return nil
 		}
-		rx, okx := svgLength(a["rx"], c.vw, st.fontSize)
-		ry, oky := svgLength(a["ry"], c.vh, st.fontSize)
+		rx, okx := svg.ParseLength(a["rx"], c.vw, st.fontSize)
+		ry, oky := svg.ParseLength(a["ry"], c.vh, st.fontSize)
 		switch {
 		case okx && !oky:
 			ry = rx
@@ -661,7 +668,7 @@ func (sr *svgRenderer) shape(n *svgNode, c *svgCtx, st svgStyle) *path {
 		p.moveTo(lx("x1"), ly("y1"))
 		p.lineTo(lx("x2"), ly("y2"))
 	case "polyline", "polygon":
-		v := svgNumbers(a["points"])
+		v := svg.ParseNumbers(a["points"])
 		if len(v) < 4 {
 			return nil
 		}
@@ -669,7 +676,7 @@ func (sr *svgRenderer) shape(n *svgNode, c *svgCtx, st svgStyle) *path {
 		for i := 2; i+1 < len(v); i += 2 {
 			p.lineTo(v[i], v[i+1])
 		}
-		if n.name == "polygon" {
+		if n.Name == "polygon" {
 			p.close()
 		}
 	default:
@@ -752,13 +759,13 @@ func (sr *svgRenderer) paintServer(v string, st svgStyle, bbox [4]float64, c *sv
 		if end := strings.IndexByte(v, ')'); end >= 0 {
 			fallback = strings.TrimSpace(v[end+1:])
 		}
-		if g := sr.ref(v); g != nil && (g.name == "linearGradient" || g.name == "radialGradient") {
+		if g := sr.ref(v); g != nil && (g.Name == "linearGradient" || g.Name == "radialGradient") {
 			if sh := sr.gradient(g, st, bbox, c); sh != nil {
 				return sh
 			}
 			return nil
 		}
-		if g := sr.ref(v); g != nil && g.name == "pattern" {
+		if g := sr.ref(v); g != nil && g.Name == "pattern" {
 			sr.r.warnf("SVG patterns are not drawn")
 		}
 		if fallback == "" {
@@ -766,31 +773,31 @@ func (sr *svgRenderer) paintServer(v string, st svgStyle, bbox [4]float64, c *sv
 		}
 		v = fallback
 	}
-	col, ok := parseColor(v, st.color)
+	col, ok := svg.ParseColor(v, st.color)
 	if !ok {
 		return nil
 	}
-	return solid{float32(col.r * col.a), float32(col.g * col.a), float32(col.b * col.a), float32(col.a)}
+	return solid{float32(col.R * col.A), float32(col.G * col.A), float32(col.B * col.A), float32(col.A)}
 }
 
 // gradient builds the shader of a gradient element for a shape with the
 // bounding box bbox (x, y, w, h).
-func (sr *svgRenderer) gradient(g *svgNode, st svgStyle, bbox [4]float64, c *svgCtx) shader {
+func (sr *svgRenderer) gradient(g *svg.Node, st svgStyle, bbox [4]float64, c *svgCtx) shader {
 	// attributes and stops, following href to the gradients it extends
 	attr := map[string]string{}
-	var stops []*svgNode
-	for n, i := g, 0; n != nil && i < 8; n, i = sr.ref(n.attr["href"]), i+1 {
-		if n.name != "linearGradient" && n.name != "radialGradient" {
+	var stops []*svg.Node
+	for n, i := g, 0; n != nil && i < 8; n, i = sr.ref(n.Attr["href"]), i+1 {
+		if n.Name != "linearGradient" && n.Name != "radialGradient" {
 			break
 		}
-		for k, v := range n.attr {
+		for k, v := range n.Attr {
 			if _, ok := attr[k]; !ok {
 				attr[k] = v
 			}
 		}
 		if stops == nil {
-			for _, s := range n.children {
-				if s.name == "stop" {
+			for _, s := range n.Children {
+				if s.Name == "stop" {
 					stops = append(stops, s)
 				}
 			}
@@ -809,7 +816,7 @@ func (sr *svgRenderer) gradient(g *svgNode, st svgStyle, bbox [4]float64, c *svg
 			v = def
 		}
 		if bboxUnits {
-			f, rest, _ := svgNumber(v)
+			f, rest, _ := svg.ParseNumber(v)
 			if strings.TrimSpace(rest) == "%" {
 				f /= 100
 			}
@@ -822,10 +829,10 @@ func (sr *svgRenderer) gradient(g *svgNode, st svgStyle, bbox [4]float64, c *svg
 		m = m.mul(matrix{bbox[2], 0, 0, bbox[3], bbox[0], bbox[1]})
 	}
 	if t := attr["gradientTransform"]; t != "" {
-		m = m.mul(parseTransform(t))
+		m = m.mul(matrix(svg.ParseTransform(t)))
 	}
 	p := &bdf.Paint{}
-	if g.name == "linearGradient" {
+	if g.Name == "linearGradient" {
 		p.Kind = bdf.PaintLinear
 		p.Coords = []float32{float32(coord("x1", "0%", 'x')), float32(coord("y1", "0%", 'y')), float32(coord("x2", "100%", 'x')), float32(coord("y2", "0%", 'y'))}
 	} else {
@@ -843,7 +850,7 @@ func (sr *svgRenderer) gradient(g *svgNode, st svgStyle, bbox [4]float64, c *svg
 	last := 0.0
 	for _, s := range stops {
 		off := 0.0
-		if v, rest, ok := svgNumber(s.attr["offset"]); ok {
+		if v, rest, ok := svg.ParseNumber(s.Attr["offset"]); ok {
 			off = v
 			if strings.TrimSpace(rest) == "%" {
 				off /= 100
@@ -852,18 +859,18 @@ func (sr *svgRenderer) gradient(g *svgNode, st svgStyle, bbox [4]float64, c *svg
 		off = math.Max(last, math.Min(1, math.Max(0, off)))
 		last = off
 		sst := sr.compute(s, st)
-		col := svgColor{0, 0, 0, 1}
-		if v, ok := s.declared("stop-color"); ok {
-			if cc, ok := parseColor(v, sst.color); ok {
+		col := svg.Color{A: 1}
+		if v, ok := s.Declared("stop-color"); ok {
+			if cc, ok := svg.ParseColor(v, sst.color); ok {
 				col = cc
 			}
 		}
-		if v, ok := s.declared("stop-opacity"); ok {
-			if f, rest, ok := svgNumber(v); ok {
+		if v, ok := s.Declared("stop-opacity"); ok {
+			if f, rest, ok := svg.ParseNumber(v); ok {
 				if strings.TrimSpace(rest) == "%" {
 					f /= 100
 				}
-				col.a *= math.Min(1, math.Max(0, f))
+				col.A *= math.Min(1, math.Max(0, f))
 			}
 		}
 		p.Stops = append(p.Stops, bdf.Stop{Offset: float32(off), Color: packColor(col)})
@@ -871,30 +878,30 @@ func (sr *svgRenderer) gradient(g *svgNode, st svgStyle, bbox [4]float64, c *svg
 	return newGradientShader(p, m, nil)
 }
 
-func packColor(c svgColor) bdf.Color {
+func packColor(c svg.Color) bdf.Color {
 	b := func(v float64) uint32 { return uint32(math.Round(math.Min(1, math.Max(0, v)) * 255)) }
-	return bdf.Color(b(c.r)<<24 | b(c.g)<<16 | b(c.b)<<8 | b(c.a))
+	return bdf.Color(b(c.R)<<24 | b(c.G)<<16 | b(c.B)<<8 | b(c.A))
 }
 
 // clipMask rasterizes a clipPath for an element: the union of its shapes.
-func (sr *svgRenderer) clipMask(cp, el *svgNode, c *svgCtx, st svgStyle) *mask {
+func (sr *svgRenderer) clipMask(cp, el *svg.Node, c *svgCtx, st svgStyle) *mask {
 	m := c.m
-	if cp.attr["clipPathUnits"] == "objectBoundingBox" {
+	if cp.Attr["clipPathUnits"] == "objectBoundingBox" {
 		if p := sr.shape(el, c, st); p != nil {
 			x0, y0, x1, y1 := p.bbox()
 			m = m.mul(matrix{x1 - x0, 0, 0, y1 - y0, x0, y0})
 		}
 	}
-	if t := cp.attr["transform"]; t != "" {
-		m = m.mul(parseTransform(t))
+	if t := cp.Attr["transform"]; t != "" {
+		m = m.mul(matrix(svg.ParseTransform(t)))
 	}
 	var out *mask
 	bounds := c.s.bounds()
-	for _, ch := range cp.children {
-		if ch.name == "#text" {
+	for _, ch := range cp.Children {
+		if ch.Name == svg.TextNode {
 			continue
 		}
-		if d, _ := ch.declared("display"); d == "none" {
+		if d, _ := ch.Declared("display"); d == "none" {
 			continue
 		}
 		// the shapes of a clip path count as elements drawn
@@ -904,14 +911,14 @@ func (sr *svgRenderer) clipMask(cp, el *svgNode, c *svgCtx, st svgStyle) *mask {
 		sr.budget--
 		cst := sr.compute(ch, st)
 		cm := m
-		if t := ch.attr["transform"]; t != "" {
-			cm = cm.mul(parseTransform(t))
+		if t := ch.Attr["transform"]; t != "" {
+			cm = cm.mul(matrix(svg.ParseTransform(t)))
 		}
 		shape := ch
-		if ch.name == "use" {
-			if t := sr.ref(ch.attr["href"]); t != nil && t.name != "use" {
+		if ch.Name == "use" {
+			if t := sr.ref(ch.Attr["href"]); t != nil && t.Name != "use" {
 				shape = t
-				cm = cm.translate(c.length(ch.attr["x"], 'x', cst.fontSize), c.length(ch.attr["y"], 'y', cst.fontSize))
+				cm = cm.translate(c.length(ch.Attr["x"], 'x', cst.fontSize), c.length(ch.Attr["y"], 'y', cst.fontSize))
 				cst = sr.compute(t, cst)
 			}
 		}
@@ -937,7 +944,7 @@ func (sr *svgRenderer) clipMask(cp, el *svgNode, c *svgCtx, st svgStyle) *mask {
 // text draws a text element with its tspans. A tspan with x or y starts a
 // new chunk (text-anchor places each chunk); other runs of text continue
 // from the end of the one before.
-func (sr *svgRenderer) text(n *svgNode, c *svgCtx, st svgStyle) {
+func (sr *svgRenderer) text(n *svg.Node, c *svgCtx, st svgStyle) {
 	type piece struct {
 		s  string
 		st svgStyle
@@ -948,9 +955,9 @@ func (sr *svgRenderer) text(n *svgNode, c *svgCtx, st svgStyle) {
 	}
 	var chunks []chunk
 	x, y := 0.0, 0.0
-	var walk func(n *svgNode, st svgStyle)
-	walk = func(n *svgNode, st svgStyle) {
-		xs, ys := svgNumbers(n.attr["x"]), svgNumbers(n.attr["y"])
+	var walk func(n *svg.Node, st svgStyle)
+	walk = func(n *svg.Node, st svgStyle) {
+		xs, ys := svg.ParseNumbers(n.Attr["x"]), svg.ParseNumbers(n.Attr["y"])
 		if len(xs) > 0 || len(ys) > 0 || len(chunks) == 0 {
 			if len(xs) > 0 {
 				x = xs[0]
@@ -958,23 +965,23 @@ func (sr *svgRenderer) text(n *svgNode, c *svgCtx, st svgStyle) {
 			if len(ys) > 0 {
 				y = ys[0]
 			}
-			if dx := svgNumbers(n.attr["dx"]); len(dx) > 0 {
+			if dx := svg.ParseNumbers(n.Attr["dx"]); len(dx) > 0 {
 				x += dx[0]
 			}
-			if dy := svgNumbers(n.attr["dy"]); len(dy) > 0 {
+			if dy := svg.ParseNumbers(n.Attr["dy"]); len(dy) > 0 {
 				y += dy[0]
 			}
 			chunks = append(chunks, chunk{x: x, y: y})
 		}
-		for _, ch := range n.children {
-			switch ch.name {
-			case "#text":
-				if s := collapseSpace(ch.text); s != "" {
+		for _, ch := range n.Children {
+			switch ch.Name {
+			case svg.TextNode:
+				if s := collapseSpace(ch.Text); s != "" {
 					last := &chunks[len(chunks)-1]
 					last.pieces = append(last.pieces, piece{s, st})
 				}
 			case "tspan", "a", "textPath":
-				if d, _ := ch.declared("display"); d != "none" {
+				if d, _ := ch.Declared("display"); d != "none" {
 					walk(ch, sr.compute(ch, st))
 				}
 			}
@@ -1068,16 +1075,21 @@ func (sr *svgRenderer) glyphs(gs []placed, x, y float64, st svgStyle, c *svgCtx)
 
 // image draws an image element: an embedded raster image or SVG document
 // (data: URL) fitted into its box.
-func (sr *svgRenderer) image(n *svgNode, c *svgCtx, st svgStyle) {
-	x, y := c.length(n.attr["x"], 'x', st.fontSize), c.length(n.attr["y"], 'y', st.fontSize)
+func (sr *svgRenderer) image(n *svg.Node, c *svgCtx, st svgStyle) {
+	x, y := c.length(n.Attr["x"], 'x', st.fontSize), c.length(n.Attr["y"], 'y', st.fontSize)
 	var pic *picture
 	var iw, ih float64
-	if !n.tried {
+	e := sr.doc.embeds[n]
+	if e == nil {
+		e = &svgEmbed{}
+		sr.doc.embeds[n] = e
+	}
+	if !e.tried {
 		// the image of the element is kept for the next time it is drawn
-		n.tried = true
-		data, ok := dataURL(n.attr["href"])
+		e.tried = true
+		data, ok := dataURL(n.Attr["href"])
 		if !ok {
-			if n.attr["href"] != "" {
+			if n.Attr["href"] != "" {
 				sr.r.warnf("SVG images linking to other files are not drawn")
 			}
 			return
@@ -1087,25 +1099,25 @@ func (sr *svgRenderer) image(n *svgNode, c *svgCtx, st svgStyle) {
 			if !ok {
 				return
 			}
-			for _, w := range si.doc.warnings {
+			for _, w := range si.doc.Warnings {
 				sr.r.warnf("%s", w)
 			}
-			n.image = si
+			e.image = si
 		} else {
 			var full bool
-			if n.pic, full = sr.r.decode(data, func() { n.pic, n.tried = nil, false }); n.pic == nil {
+			if e.pic, full = sr.r.decode(data, func() { e.pic, e.tried = nil, false }); e.pic == nil {
 				if !full {
 					sr.r.warnf("an image in an SVG image cannot be decoded")
 				}
-				n.tried = !full // there may be room for it in the next image drawn
+				e.tried = !full // there may be room for it in the next image drawn
 				return
 			}
 		}
 	}
-	if n.pic == nil && n.image == nil {
+	if e.pic == nil && e.image == nil {
 		return
 	}
-	if si := n.image; si != nil {
+	if si := e.image; si != nil {
 		if sr.depth > 8 {
 			return
 		}
@@ -1119,7 +1131,7 @@ func (sr *svgRenderer) image(n *svgNode, c *svgCtx, st svgStyle) {
 			return
 		}
 	} else {
-		pic = n.pic
+		pic = e.pic
 		pic.used = sr.r.drawing
 		iw, ih = float64(pic.w), float64(pic.h)
 	}
@@ -1127,7 +1139,7 @@ func (sr *svgRenderer) image(n *svgNode, c *svgCtx, st svgStyle) {
 	if !(w > 0 && h > 0) {
 		return
 	}
-	m := c.m.mul(aspectTransform([4]float64{0, 0, iw, ih}, n.attr["preserveAspectRatio"], x, y, w, h))
+	m := c.m.mul(aspectTransform([4]float64{0, 0, iw, ih}, n.Attr["preserveAspectRatio"], x, y, w, h))
 	// image pixels of the raster → device
 	full := m.mul(matrix{iw / float64(pic.w), 0, 0, ih / float64(pic.h), 0, 0})
 	inv, ok := full.invert()
@@ -1146,8 +1158,8 @@ func (sr *svgRenderer) image(n *svgNode, c *svgCtx, st svgStyle) {
 
 // sizeOr returns the width and height of an image element: its attributes,
 // or the image's own size for those missing (keeping its proportions).
-func sizeOr(c *svgCtx, n *svgNode, st svgStyle, iw, ih float64) (float64, float64) {
-	w, h := c.length(n.attr["width"], 'x', st.fontSize), c.length(n.attr["height"], 'y', st.fontSize)
+func sizeOr(c *svgCtx, n *svg.Node, st svgStyle, iw, ih float64) (float64, float64) {
+	w, h := c.length(n.Attr["width"], 'x', st.fontSize), c.length(n.Attr["height"], 'y', st.fontSize)
 	switch {
 	case w > 0 && h > 0:
 		return w, h

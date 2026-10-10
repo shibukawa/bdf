@@ -155,7 +155,7 @@ func userKey(name string) string {
 		return keyISRC
 	case "COMMENT", "DESCRIPTION":
 		return keyComment
-	case "LYRICS", "UNSYNCEDLYRICS", "UNSYNCHRONISEDLYRICS", "USLT":
+	case "LYRICS", "UNSYNCEDLYRICS", "UNSYNCHRONISEDLYRICS", "USLT", "SYNCEDLYRICS", "SYNCHRONISEDLYRICS":
 		return keyLyrics
 	case "GROUPING", "CONTENTGROUP":
 		return keyGrouping
@@ -209,6 +209,12 @@ type track struct {
 	tags     tags
 	pictures []picture
 	chapters []chapter
+	// synced holds the lines of an ID3 SYLT frame (synchronized lyrics).
+	synced []lyricLine
+	// lyrics are the lines the card shows, picked by setLyrics, and
+	// lyricsSynced reports that they have their times.
+	lyrics       []lyricLine
+	lyricsSynced bool
 	// xmp holds XMP packets (MP4's uuid box).
 	xmp      [][]byte
 	warnings []string

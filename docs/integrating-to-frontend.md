@@ -101,6 +101,21 @@ viewer.setMusicMode("piano-roll"); // switch back with "score"
 // Use MusicPlayer when building playback controls.
 ```
 
+The card of an audio file plays through `AudioPlayer`, which the same entry exports. It wraps an `<audio>` element, so the browser decodes the file, and it has the methods of `MusicPlayer` that a recording has a use for.
+
+```ts
+import { AudioPlayer } from "@bdfkit/viewer/music";
+
+const view = viewer.view; // the card of an audio file: view.play.audio is set
+const data = await viewer.renderer.audio(view.id); // { blob, cues } or null
+if (data) {
+  const element = document.querySelector("audio")!; // with the browser's controls
+  const player = new AudioPlayer(data.blob, "", data.cues, { element });
+  // cues: the line of the lyrics being sung, in page units, or null
+  element.ontimeupdate = () => highlight(player.cursorAt(player.position));
+}
+```
+
 If your application only converts files, omit `@bdfkit/viewer` and use `@bdfkit/convert` with a converter preset. `converter.convert(...)` returns BDF bytes that you can upload or download. [npm packages](npm.md#payload-sizes) also measures the profiles without a renderer.
 
 For your own combination of formats, follow the TinyGo steps in [Build a Wasm runtime](build-wasm-runtime.md), then create `createConverter(new URL("/my-converter.wasm", location.href))` from `@bdfkit/convert`. Pass that converter to the same `openFile` method. Configure your bundler to serve the package's Worker and Wasm assets, and allow Workers and WebAssembly in your content security policy.
