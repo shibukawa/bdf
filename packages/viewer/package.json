@@ -1,6 +1,6 @@
 {
   "name": "@bdfkit/viewer",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A document surface for scrolling, page layouts, lightboxes, and optional music views",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/shibukawa/bdf.git", "directory": "packages/viewer" },
@@ -9,5 +9,5 @@
   "types": "./dist/index.d.ts",
   "exports": { ".": "./dist/index.js", "./music": "./dist/music.js" },
   "files": ["dist"],
-  "dependencies": { "@bdfkit/core": "0.1.4", "@bdfkit/render": "0.1.4" }
+  "dependencies": { "@bdfkit/core": "0.1.5", "@bdfkit/render": "0.1.5" }
 }
