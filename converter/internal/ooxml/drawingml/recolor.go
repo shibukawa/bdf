@@ -10,7 +10,7 @@ import (
 
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 	"github.com/shibukawa/bdf/converter/internal/tiff"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // recolor is the chain of per-pixel effects of a blip (a:clrChange,

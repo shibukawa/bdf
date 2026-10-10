@@ -42,7 +42,7 @@ import (
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
 	"github.com/shibukawa/bdf/converter/internal/wordproc"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	"golang.org/x/net/html/charset"
 )
 

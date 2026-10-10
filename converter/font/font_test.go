@@ -12,8 +12,8 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/font/woff2"
 	"github.com/shibukawa/bdf/internal/sfnt"
-	"github.com/shibukawa/bdf/woff2"
 )
 
 // The test fonts are made by test/font/gen.py from STIX Two (SIL Open Font

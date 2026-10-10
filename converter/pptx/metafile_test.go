@@ -13,7 +13,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // emfRecord appends one EMF record made of little-endian 32-bit fields

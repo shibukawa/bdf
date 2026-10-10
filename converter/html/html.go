@@ -30,7 +30,7 @@ import (
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/webdoc"
 	"github.com/shibukawa/bdf/converter/internal/wordproc"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 	xhtml "golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )

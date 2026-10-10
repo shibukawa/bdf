@@ -1,0 +1,284 @@
+id: requirement:svg-standalone-package
+type: requirement
+title: SVG パーサの単独パッケージ化
+summary: 'raster/imagebdf の中にある SVG パーサを、ラスタライザなしで使える公開パッケージ（候補: image/svg）に切り出す。 読める範囲・寛容さ・上限は今のまま、出力型をラスタライザから切り離し、imagebdf
+  はその上に乗る。 標準ライブラリの image との互換（image.Image / RegisterFormat）は不要。'
+lifecycle: active
+aliases:
+- image/svg
+- svg parser standalone
+authority: authored
+constraints:
+- 読める SVG の範囲（要素・CSS・色・長さ・transform・パスデータ）は現状と同じか広い。狭めない
+- 寛容さを保つ。エラーまでに読めた分を返し、svg ルートがない時だけ失敗にする
+- 深さ 256・要素数 1M・CSS 照合 4M の上限と、超過時の「打ち切って警告」を保つ。既定値は現状の定数と同じ
+- XML は internal/xmltree.Open 経由で読む（リポジトリの XML 読み取り方針。encoding/xml は使わない）
+- ルートモジュールに新しい外部依存を足さない（xmlro・htmlentity・x/net/html/charset は既存）
+- 切り出し後も raster/imagebdf の描画結果はピクセル単位で変わらない（golden テストが基準）
+- 新パッケージはラスタライザ（raster/imagebdf）を import しない。依存は一方向
+non_goals:
+- image.Image の実装、image.RegisterFormat / image.Decode への登録（利用者が明示的に不要と判断）
+- ラスタライズ。描画は raster/imagebdf とビューア（ブラウザ）のまま
+- CSS の属性セレクタ・擬似クラス・@media などの対応拡張（現状どおり未対応のまま）
+- mask・pattern・marker・filter・foreignObject の意味づけ（木には残るが解釈はしない）
+- ビューア（TypeScript 側）の SVG 処理の変更
+capabilities:
+  parse-tree:
+    state: implemented
+    about: capability:svg/parse-tree
+    scope:
+      milestone: svg-m1
+  stylesheet:
+    state: implemented
+    about: capability:svg/stylesheet
+    scope:
+      milestone: svg-m1
+  declared-lookup:
+    state: implemented
+    about: capability:svg/declared-lookup
+    scope:
+      milestone: svg-m1
+  color:
+    state: implemented
+    about: capability:svg/color
+    scope:
+      milestone: svg-m1
+  number-length:
+    state: implemented
+    about: capability:svg/number-length
+    scope:
+      milestone: svg-m1
+  transform:
+    state: implemented
+    about: capability:svg/transform
+    scope:
+      milestone: svg-m1
+  path-data:
+    state: planned
+    about: capability:svg/path-data
+  limits-options:
+    state: implemented
+    about: capability:svg/limits-options
+    scope:
+      milestone: svg-m1
+  natural-size:
+    state: planned
+    about: capability:svg/natural-size
+  computed-style:
+    state: unknown
+    about: capability:svg/computed-style
+acceptance:
+  public-api:
+    text: 新パッケージだけを import して、SVG のバイト列から要素木（名前・属性・子・親・id 表）、 適用済みスタイルシート、警告を得られる。transform・色・長さ・数値列は単独の関数でも読める（パスデータは
+      svg-m1 では d 属性の文字列のまま）
+    scope:
+      milestone: svg-m1
+    verified_by:
+    - unit-tests
+  no-rasterizer-import:
+    text: 新パッケージの import グラフに raster/imagebdf が含まれない（go list -deps で確認）
+    scope:
+      milestone: svg-m1
+    verified_by:
+    - deps-check
+  imagebdf-unchanged:
+    text: raster/imagebdf が新パッケージを使うように書き換えた後、golden テストとショートカット検査がピクセル差なしで通る
+    scope:
+      milestone: svg-m1
+    verified_by:
+    - golden
+  limits-kept:
+    text: 深さ・要素数・照合回数の上限が既定で現状と同じ値で効き、超過時は警告つきで読めた分を返す
+    scope:
+      milestone: svg-m1
+    verified_by:
+    - unit-tests
+  tests-moved:
+    text: TestCSSAndColors・TestSVGLimitsOfReading（読み取り部）・TestStyleSheetIndex 相当のテストが新パッケージにあり、imagebdf 側には描画と TestPathData
+      が残る
+    scope:
+      milestone: svg-m1
+    verified_by:
+    - unit-tests
+  fuzz-target:
+    text: 新パッケージに Parse の fuzz ターゲットがあり、既存のテスト SVG をシードにして短時間走る
+    scope:
+      milestone: svg-m1
+    verified_by:
+    - fuzz
+  no-new-deps:
+    text: ルートの go.mod の require に新しい直接依存が増えない
+    scope:
+      milestone: svg-m1
+    verified_by:
+    - deps-check
+  docs:
+    text: docs/api.md の「その他のパッケージ」表に新パッケージの行があり、何を読めて何を読まないかが書かれている
+    scope:
+      milestone: svg-m1
+    verified_by:
+    - docs-review
+verification:
+  unit-tests:
+    state: passed
+    method: unit
+    scope:
+      milestone: svg-m1
+    authority: observed
+    test: go test ./image/svg/
+    evidence:
+      path: image/svg/svg_test.go
+      locator: TestParse, TestNotSVG, TestLenient, TestDeclared, TestColors, TestNumbersAndLengths, TestTransform,
+        TestLimits, TestStyleSheetIndex, TestFiles, Example
+  deps-check:
+    state: passed
+    method: static
+    scope:
+      milestone: svg-m1
+    authority: observed
+    evidence:
+      path: image/svg/svg.go
+      locator: 'go list -deps ./image/svg: no raster package; only internal/xmltree, xmlro, htmlentity, x/net/html/charset.
+        go.mod and go.sum unchanged'
+  golden:
+    state: passed
+    method: integration
+    test: TestGoldenPages
+    scope:
+      milestone: svg-m1
+    evidence:
+      path: raster/imagebdf/golden_test.go
+      locator: TestGoldenPages passes; beyond its tolerance, the 116 drawings it writes (BDF_RASTER_OUT) are byte-identical
+        before and after, as are the rasters of a 42-file SVG corpus at 3 scales (sha256) and the parsed trees (4234
+        dumped lines)
+    authority: observed
+  fuzz:
+    state: passed
+    method: unit
+    scope:
+      milestone: svg-m1
+    authority: observed
+    test: FuzzParse
+    evidence:
+      path: image/svg/fuzz_test.go
+      locator: 'go test ./image/svg -fuzz FuzzParse -fuzztime 90s: 7.7 million executions, no failure'
+  docs-review:
+    state: passed
+    method: manual
+    scope:
+      milestone: svg-m1
+    authority: observed
+    evidence:
+      path: docs/api.md
+      locator: the row image/svg in その他のパッケージ; design.md §3.25 and the tree; architecture/layout(.ja).md; cpu-security-review.ja.md
+open_questions:
+  package-path:
+    text: '公開パッケージのパスをどうするか。A: image/svg（利用者案。stdlib の image/png に倣い、将来 image/* を増やせる）。 B: ルート直下の svg（woff2・formula・imgconv
+      と同じ置き方）。C: raster/svg（描画の隣）'
+    state: answered
+    resolution: image/svg。2026-10-10 に利用者が imgconv・formula・woff2 の image/ と font/ への再配置とあわせて提案した （requirement:package-layout-image-font）。image/
+      ツリーが基準になるので B・C は外れる
+  path-representation:
+    text: 'パスデータの公開表現をどうするか。既存の構造（ラスタライザの path）から変える必要があるか。 A: 新しい公開のコマンド列。B: 弧を Arc として残すコマンド列。C: 利用者が実装するペン（sink）に流し込む。
+      D: いったん公開しない'
+    state: deferred
+    resolution: svg-m1 では公開しない（D）。parsePathData と arcTo は raster/imagebdf に残し、既存の path は型も置き場も変えない。 image/svg は
+      d 属性を文字列で渡すだけ。利用者が 2026-10-10 に「既存の構造から変える必要があるのか、いったん閉じた struct でもよい」と 述べたことを受けた暫定の選択で、確認待ち。開ける時の第一候補は C
+      のペン
+  text-nodes:
+    text: テキストノードを今どおり text/tspan/textPath/a の下だけ保持するか、すべての要素で保持するか
+    state: open
+  computed-style:
+    text: 継承と計算値（svg.go の compute()。16 プロパティ）を新パッケージに移すか、imagebdf に残すか。 単独利用者にはあると便利だが、font-size の数値化など描画寄りの判断を含む
+    state: deferred
+    resolution: svg-m1 では declared()（style 属性 > シート > 属性）だけを公開し、計算値は imagebdf に残す。単独利用の要望か第二の利用者が出た時に再検討
+  module-boundary:
+    text: 新パッケージをルートモジュールに置くか、raster/ebitenginebdf のように別 go.mod にするか
+    state: deferred
+    resolution: ルートモジュールに置く。internal/xmltree に依存する以上ルートモジュールへの依存は消えず、別モジュールにしても利用者の依存は減らない
+  size-helper-merge:
+    text: imgconv.ParseSVGSize と imagebdf の svgNaturalSize（別実装）を新パッケージの 1 つに寄せるか
+    state: deferred
+    resolution: svg-m1 の範囲外。新パッケージに Size を置いた後、imgconv を薄い委譲にするのは別の小さな変更で行う
+  color-type:
+    text: 色の公開型を float64 RGBA（0..1、非乗算。現状）にするか、image/color の NRGBA にするか
+    state: deferred
+    resolution: 現状の float64 RGBA を既定にし、必要なら変換メソッドを足す。標準 image との互換は不要と確認済み
+history:
+  proposed:
+    summary: 2026-10-10 利用者がチャットで提案（「image/svg とかで使えるようにしますかね。標準の image との互換性は不要」）
+  implemented:
+    summary: 2026-10-10 svg-m1 を実装。image/svg を新設（svg.go・css.go・color.go・colornames.go・value.go）、raster/imagebdf
+      の svgparse.go と svgcolors.go を削除、パスデータは raster/imagebdf/svgpath.go に残した。ブランチ claude/svg-parser-standalone-ba1302
+relations:
+- relation: extracts_from
+  to: component:imagebdf-svg-parser
+- relation: part_of
+  to: requirement:package-layout-image-font
+facts:
+  delivery:
+    current_milestone: svg-m1
+    outcome: 新パッケージを作り、現在の読み取り機能を公開 API にし、raster/imagebdf をその上に載せ替える。 描画結果は変えない
+    later:
+    - 計算値（継承）の公開
+    - imgconv.ParseSVGSize の委譲
+    - パスデータの公開（ペン方式が第一候補）
+    - converter 側（wordproc・epub・image）で自然サイズを新パッケージから取る
+    provisional_choices:
+      error-semantics: Parse は (*Document, error) を返し、error は svg ルートがない時だけ。読めた分の保持と警告は Document.Warnings に出す（現状の
+        (doc, ok) と同じ意味）
+      limits-api: Options{MaxDepth, MaxNodes, MaxStyleMatches}。ゼロ値は現状の定数（256 / 1<<20 / 1<<22）
+      href-normalization: xlink:href → href、xmlns の除去、id 表は先勝ち。現状どおり
+      renderer-caches: svgNode の描画キャッシュ 3 フィールドは imagebdf 側の map[*svg.Node]*cache に移す
+    migration_scope:
+      imagebdf_call_sites: parseSVG 1、parseTransform 4、parsePathData 1、svgLength / svgNumbers / parseColor / declared
+        多数
+      path_data: svg-m1 では動かさない。parsePathData と arcTo（約 190 行）は raster/imagebdf に残り、svg.Node の d 属性を読む。変換もコピーも増えない
+      value_types: transform は [6]float64 の値、色は 4 つの float64 の値。imagebdf の matrix / svgColor へは型変換だけで渡せるので、パスのような結合はない
+    decisions:
+      package-path:
+        reason: 公開後に変えると利用者の import が壊れる。実装前に決める
+        decided: image/svg（requirement:package-layout-image-font の image/ ツリーの一部）
+      path-representation:
+        reason: 要素木はパスを持たないので、木の API を決めるのに要らない。既存の path はラスタライザ全体の型で、 image/svg に閉じた struct を置いても別パッケージの imagebdf
+          からは読めない。型を internal に動かすのは SVG の切り出しより大きな変更になる
+        provisional_choice: svg-m1 では公開しない。parsePathData は imagebdf に残す
+        limitation: 単独の利用者は svg-m1 ではパスの図形を得られず、d 属性の文字列だけを得る
+        revisit_when: 単独の利用者がパスの図形を必要とした時、または image/svg を完結させたい時
+        next_candidate: ペン方式。svg.ParsePath(d, pen) が MoveTo / LineTo / QuadTo / CubeTo / Close を呼ぶ（internal/sfnt.Pen
+          と同じ形）。 データ構造を何も公開せず、imagebdf は既存の pathPen と同じ形のアダプタで path に直接流せる
+        evidence_needed: 弧の展開（path.ellipse の約 50 行）を image/svg 側にも持った時に、golden がピクセル差なしで通るか
+        change_boundary: image/svg の Node は d を文字列で持つだけにし、パスのキャッシュは imagebdf 側に置く
+      text-nodes:
+        reason: 木の形が変わるので API の意味に関わるが、既定を現状にすれば後から広げられる
+        provisional_choice: 現状どおり（text 系の下だけ）
+        change_boundary: Options にフラグを足す余地を残す
+    status: svg-m1 は実装・検証済み。パスデータの公開、計算値、自然サイズの集約は後のマイルストーン
+    observations:
+    - 読み取りは同じか少し速く、ノードが小さくなった分だけメモリが減った（87 KB の SVG で 557 KB → 524 KB、割り当ては 9634 → 9637 回）。描画は 55.5 ms → 52.9 ms
+      で悪化なし
+    - レンダラのキャッシュは svgDoc{*svg.Document, paths, embeds} の 2 つの map に移した。パス要素ごとの map 参照は計測上見えない
+    - imagebdf の matrix へは matrix(svg.ParseTransform(t)) の型変換だけで渡せる。Mul の式は imagebdf の mul と同一にしてあり、結果はビット単位で同じ
+    - '別パッケージの struct になったので、色のリテラルは svg.Color{A: 1} のようにキー付きで書く（go vet の composites）'
+  api:
+    package: github.com/shibukawa/bdf/image/svg
+    parse: Parse(data []byte, opts *Options) (*Document, error)。svg のルートがない時だけ ErrNotSVG（読み手のエラーがあれば %w で包む）
+    types:
+    - Document{Root, IDs, Warnings}
+    - Node{Name, Attr, Children, Parent, Sheet, Text}
+    - Options{MaxDepth, MaxNodes, MaxStyleMatches}（0 以下は既定）
+    - Color{R, G, B, A float64}
+    - Matrix [6]float64（Mul、Identity）
+    functions:
+    - (*Node).Declared(name)
+    - ParseColor(s, current)
+    - ParseNumber(s)
+    - ParseNumbers(s)
+    - ParseLength(s, ref, em)
+    - ParseTransform(s)
+    constants:
+    - TextNode = "#text"
+    - DefaultMaxDepth = 256
+    - DefaultMaxNodes = 1<<20
+    - DefaultMaxStyleMatches = 1<<22
+    unexported: CSS の型と parseCSS・parseDecls・styleSheet は非公開のまま

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // Files that state more than they hold, or have the same data read over

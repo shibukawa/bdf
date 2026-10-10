@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf/converter/internal/tiff"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // made builds a classic little-endian TIFF: the header, data (at offset 8),

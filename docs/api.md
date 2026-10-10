@@ -188,8 +188,9 @@ http.Handle("POST /segments/{name}", &segment.Handler{
 
 | パッケージ | 内容 |
 |---|---|
-| `imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false）。`Decode(data)` は `MaxDecodePixels`（100 << 20 画素）を超える画像をデコードせず `ErrTooLarge` を返し、`Optimize` はそういう画像をそのまま残す |
-| `woff2` | TrueType・OpenType を WOFF2 にする、WOFF2 を戻す。`Encode(font)`、`Decode(data)`（glyf・loca・hmtx の変換を戻す。フォントコレクションは扱わない）、`Available()`、`IsWOFF(data)` |
+| `image/imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false）。`Decode(data)` は `MaxDecodePixels`（100 << 20 画素）を超える画像をデコードせず `ErrTooLarge` を返し、`Optimize` はそういう画像をそのまま残す |
+| `image/svg` | SVG を読む（描かない。描くのは `raster/imagebdf`）。`Parse(data, *Options) (*Document, error)` が要素の木を返す: `Document` は `Root`・`IDs`（`id` から要素。同じ `id` は最初のもの）・`Warnings`、`Node` は `Name`（接頭辞を除いた名前。テキストは `TextNode`）・`Attr`（`xlink:href` は `href`）・`Children`・`Parent`・`Sheet`（`<style>` の規則のうち当たったものの宣言）・`Text`。`(*Node).Declared(name)` は `style` 属性、スタイルシート、プレゼンテーション属性の順に宣言を探す（継承はしない）。属性の値は `ParseColor`（名前・`#rgb`・`rgb()`・`hsl()`・`currentColor`。`Color` は 0〜1 の RGBA）、`ParseNumber`・`ParseNumbers`、`ParseLength`（px に。単位・%・em）、`ParseTransform`（`Matrix`）で読む。ブラウザと同じく寛容で、誤りのある文書は誤りの手前まで読み、`svg` のルート要素がないときだけ `ErrNotSVG` を返す。上限は `Options` の `MaxDepth`（既定 256）・`MaxNodes`（2^20）・`MaxStyleMatches`（2^22）で、超えたら読むのをそこでやめて `Warnings` に書く。スタイルシートは型・クラス・ID のセレクタと子孫の組み合わせだけを読む。パスデータ（`d` 属性）は文字列のまま返し、図形にはしない |
+| `font/woff2` | TrueType・OpenType を WOFF2 にする、WOFF2 を戻す。`Encode(font)`、`Decode(data)`（glyf・loca・hmtx の変換を戻す。フォントコレクションは扱わない）、`Available()`、`IsWOFF(data)` |
 
 ## Go: サムネイルとページの画像（thumbnail、imagebdf）
 
@@ -233,7 +234,7 @@ return thumbnail.Encode(w, img, thumbnail.PNG)
 
 ## Go: 数式（formula、raster/ebitenginebdf）
 
-`github.com/shibukawa/bdf/formula` は LaTeX・MathML の数式を組み、パスだけの Object にする（design.md §3.23）。使い方とサンプルは[描画する](rendering.ja.md#数式を描く)。
+`github.com/shibukawa/bdf/image/formula` は LaTeX・MathML の数式を組み、パスだけの Object にする（design.md §3.23）。使い方とサンプルは[描画する](rendering.ja.md#数式を描く)。
 
 ```go
 ts, err := formula.New(nil) // 同梱の STIX Two Math

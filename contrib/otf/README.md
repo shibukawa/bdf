@@ -50,7 +50,7 @@ The bytes are read-only in both senses: the mapping is read-only, and writing to
 | `os.ReadFile`, `fs.ReadFile` | `[]byte` | — | `fs.ReadFile` | the whole file on the heap |
 | `golang.org/x/image/font/sfnt.ParseReaderAt` | a parsed font | — | — | lazy at the parser: reads tables through an `io.ReaderAt` on demand; a different approach to the same problem, tied to that parser |
 
-`otf` returns a slice rather than an `io.ReaderAt` because the parsers of bdf (`internal/sfnt`, `internal/cff`, `woff2`), like most font parsers, index a byte slice: a table is a sub-slice of the file, and a glyph is a sub-slice of a table, without copying. With a `ReaderAt`, each table or glyph would be copied out, or the parsers rewritten to read through the reader. Mapping keeps the slice API and still pays only for the pages touched.
+`otf` returns a slice rather than an `io.ReaderAt` because the parsers of bdf (`internal/sfnt`, `internal/cff`, `font/woff2`), like most font parsers, index a byte slice: a table is a sub-slice of the file, and a glyph is a sub-slice of a table, without copying. With a `ReaderAt`, each table or glyph would be copied out, or the parsers rewritten to read through the reader. Mapping keeps the slice API and still pays only for the pages touched.
 
 ## How it relates to bdf's own packages
 

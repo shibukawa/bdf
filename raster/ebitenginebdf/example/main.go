@@ -20,7 +20,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/formula"
+	"github.com/shibukawa/bdf/image/formula"
 	"github.com/shibukawa/bdf/raster/ebitenginebdf"
 	"github.com/shibukawa/bdf/raster/imagebdf"
 )

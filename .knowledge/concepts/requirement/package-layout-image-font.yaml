@@ -1,0 +1,214 @@
+id: requirement:package-layout-image-font
+type: requirement
+title: 画像系・フォント系パッケージの image/ と font/ への再配置
+summary: ルート直下に散らばる画像系とフォント系の公開パッケージを、image/ と font/ のツリーに集める。 imgconv → image/imgconv、formula → image/formula、woff2
+  → font/woff2。新設の SVG パーサは image/svg。 旧パスの互換パッケージは置かない。
+lifecycle: active
+aliases:
+- image/imgconv
+- image/formula
+- font/woff2
+- package reorg
+authority: authored
+constraints:
+- 移動は import パスの変更だけにし、各パッケージの識別子・API・振る舞いは変えない（imgconv の識別子も保つ）
+- -tags bdf_noconv と GOEXPERIMENT=simd のビルド切り替え（imgconv の noconv.go / webp_simd.go、woff2 の noconv.go / brotli.go）はそのまま動く
+- go.mod の module パス（github.com/shibukawa/bdf）と wire format は変えない
+- 移動後に go build ./... と go vet、go test ./... が通り、golden テストの結果が変わらない
+- 生成コードの生成元（tools/gen-codecs.sh、tools/gen-webp）の出力先と import パスも新しい場所を指す
+- bdf/image と bdf/font そのものにはパッケージを置かない（ディレクトリだけ）。標準の image と識別子が重ならないようにする
+- 旧パス（bdf/imgconv、bdf/formula、bdf/woff2）に互換パッケージを残さない
+non_goals:
+- raster/ ツリー（raster/imagebdf、raster/ebitenginebdf）と thumbnail の移動。提案に含まれていない
+- converter/ 以下の整理（converter/image は変換器のままで名前も変えない）
+- 別モジュール化
+capabilities:
+  move-imgconv:
+    state: implemented
+    about: capability:layout/image-imgconv
+  move-formula:
+    state: implemented
+    about: capability:layout/image-formula
+  move-woff2:
+    state: implemented
+    about: capability:layout/font-woff2
+  new-svg:
+    state: implemented
+    about: capability:layout/image-svg
+acceptance:
+  builds-and-tests:
+    text: go build ./... と go vet -unreachable=false ./... と go test ./... が通り、-tags bdf_noconv と GOEXPERIMENT=simd
+      の組み合わせも通る
+    verified_by:
+    - full-test
+  no-old-paths:
+    text: リポジトリ内の Go・ドキュメント・CI・ツールに古い import パス（bdf/imgconv、bdf/formula、bdf/woff2）が残らない
+    verified_by:
+    - grep-old-paths
+  codec-regeneration:
+    text: tools/gen-codecs.sh を走らせると image/imgconv/internal/webpw（と webpwsimd）に今と同じ内容が生成される
+    verified_by:
+    - regen-check
+  docs-updated:
+    text: docs/api.md・design.md §3.2・quality.md・rendering(.ja).md・README(.ja).md・各レビュー文書のパッケージのパスとコマンドが新しい場所になっている
+    verified_by:
+    - docs-review
+  release-note:
+    text: 移動を入れるリリースの PR 説明に、import パスが変わる破壊的変更であることと新旧の対応が書かれている
+    verified_by:
+    - release-note-check
+  ebitenginebdf-example:
+    text: raster/ebitenginebdf/example が image/formula を import してビルドとテストが通る（go.mod に replace ../.. があるので同じ変更で直す）
+    verified_by:
+    - ebiten-build
+verification:
+  full-test:
+    state: passed
+    method: integration
+    authority: observed
+    evidence:
+      path: .github/workflows/ci.yml
+      locator: go vet -unreachable=false ./... ; go test ./... (71 packages ok) ; -tags bdf_noconv ; GOEXPERIMENT=simd
+        ; raster/ebitenginebdf vet and test ; GOOS=js GOARCH=wasm build of cmd/bdfwasm
+  grep-old-paths:
+    state: passed
+    method: static
+    authority: observed
+    evidence:
+      path: go.mod
+      locator: 'grep for bdf/imgconv, bdf/formula, bdf/woff2, ./imgconv/, ./woff2/, ./formula/ over Go, docs, CI
+        and tools: no match'
+  regen-check:
+    state: not_run
+    method: manual
+  docs-review:
+    state: passed
+    method: manual
+    authority: observed
+    evidence:
+      path: docs/api.md
+      locator: paths and commands updated in docs/, README(.ja).md, contrib/otf/README, .github/workflows/ci.yml,
+        .gitattributes and tools/
+  ebiten-build:
+    state: passed
+    method: integration
+    authority: observed
+    evidence:
+      path: raster/ebitenginebdf/go.mod
+      locator: the module has replace github.com/shibukawa/bdf => ../.. so its example was updated in the same change;
+        go vet and go test pass
+  release-note-check:
+    state: not_run
+    method: manual
+open_questions:
+  imageconv-spelling:
+    text: imgconv を image/imageconv にして識別子も変えるか、image/imgconv にして識別子を保つか
+    state: answered
+    resolution: image/imgconv。2026-10-10 に利用者が「imgconv でよい」と回答。識別子が変わらないので Go の参照 166 箇所は触らず、import 文（本体 40・テスト
+      13 ファイル）だけを書き換える
+  compat-shims:
+    text: 旧パスに互換パッケージを 1 リリース残すか、v0 として破壊的に移すか
+    state: answered
+    resolution: 互換なし。2026-10-10 に利用者が回答。v0 であり、README が安定を約束しているのは wire format だけ
+  formula-placement:
+    text: formula は画像ではなくパスだけの bdf.Object を返す。image/ の下でよいか、別の名前のツリーにするか
+    state: answered
+    resolution: image/formula。利用者の整理は「svg も formula もベクターを返すのでセット。image より良い区別の名前がなければ image」。 検討した vector/ と graphics/
+      は image より良くないと判断した（facts.naming）
+  ordering-with-svg:
+    text: 再配置を svg-m1 の前に 1 PR で済ませるか、svg-m1 が image/ を先に作って後から移すか
+    state: deferred
+    resolution: 既定は再配置を先に。機械的な変更なので小さく、SVG の切り出しが最終形の上で進められる。急ぐなら逆順でも支障はない
+  thumbnail-and-raster:
+    text: thumbnail と raster/imagebdf も画像を作るパッケージだが image/ に移すか。提案には含まれていない
+    state: deferred
+    resolution: 動かさない。raster/ は描画エンジンの置き場として別の軸で分かれている。再配置の着手時に一度だけ確認する
+history:
+  proposed:
+    summary: 2026-10-10 利用者がチャットで提案（「image/imageconv, image/formula にしますかね。woff2 も font/woff2」）。SVG パーサの image/svg
+      案に続くもの
+  decided:
+    summary: 2026-10-10 利用者が綴り（imgconv のまま）と互換なしを決定。ツリー名は「image より良い名前がなければ image」とし、検討の結果 image に決まった
+  implemented:
+    summary: 2026-10-10 実装。git mv で 3 パッケージを移動し、import パス（Go 174 ファイル）・相対パスのテスト 2 件・.gitattributes・CI・コーデック生成ツール・文書を書き換えた（257
+      ファイル、277 行の置換）。ブランチ claude/svg-parser-standalone-ba1302 で検証した
+relations:
+- relation: contains
+  to: requirement:svg-standalone-package
+facts:
+  naming:
+    chosen: image
+    grouping: image/ はラスターもベクターも含む「絵」の置き場。imgconv はラスターの格納と再エンコード、svg と formula はベクターを返す
+    reasons:
+    - 'BDF の仕様自身が SVG を Image パートに数えている（docs/spec.md の Part の表: Image（PNG/JPEG/WebP/AVIF/SVG など））。メディアタイプも image/svg+xml'
+    - formula のパッケージ文書が「returns them as vector graphics」と書いている。svg と並べて違和感がない
+    - 標準のツリー名に倣う前例が encoding/htmlro にある。image/ と font/ は同じ流儀
+    alternatives:
+      vector: svg と formula には正確だが imgconv が入らず、ツリーが 2 つに割れる。Go では golang.org/x/image/vector（ラスタライザ）を連想させ、意味が逆になる
+      graphics: ラスターもベクターも含められるが、image より曖昧で前例がなく、得るものがない
+      math: formula だけなら math/formula も標準に倣えるが、1 パッケージだけのツリーになり、svg とのセットが崩れる
+    caveats:
+    - svg と formula は返す型が違う。formula は *bdf.Object（描画命令）、svg は要素木とパスのコマンド列。セットなのは「ベクターの絵」という水準で、API の形は揃わない
+    - converter/image がすでに package image。パスは bdf/converter/image と bdf/image/... で衝突しないが、読む時に紛らわしいことがある
+  current_layout:
+    imgconv: ルート直下。internal/webpw と internal/webpwsimd（生成コード）を含む
+    formula: ルート直下。fonts/ に STIX Two Math を埋め込む。bdf、encoding/htmlro、internal/fontdb、internal/mathlayout に依存。テストだけ
+      raster/imagebdf を使う
+    woff2: ルート直下。bdf 内の依存なし
+    root_font_go: ルートに font.go があるが、font/ ディレクトリと衝突しない
+  impact:
+    imgconv:
+      importers_non_test: 40
+      importers_test: 13
+      identifier_references: 166（識別子を保つので書き換え不要）
+      tools:
+      - tools/gen-codecs.sh の OUT と -import（2 箇所）
+      - tools/gen-webp/main.go の -import 既定値
+      ci:
+      - '.github/workflows/ci.yml: go test ./imgconv/...'
+      - '.github/workflows/ci.yml: go test -tags bdf_noconv ./imgconv/ ./converter/... ./woff2/'
+      docs:
+      - docs/api.md
+      - docs/design.md §3.2 の見出し
+      - docs/quality.md
+      - docs/cpu-security-review.ja.md
+      - docs/security-performance-review.ja.md
+      - imgconv/internal/README.md
+    formula:
+      importers_non_test:
+      - raster/ebitenginebdf/example/main.go（別モジュールだが go.mod に replace github.com/shibukawa/bdf => ../.. があり、ローカルのツリーに対してビルドされる。同じ変更で直した）
+      importers_test: 3
+      docs:
+      - docs/rendering.md と rendering.ja.md のコード例（各 2 箇所）
+      - docs/api.md
+      - README.md と README.ja.md の STIX の記述（パッケージ名 formula）
+      - .github/workflows/pages.yml のコメント
+    woff2:
+      importers_non_test:
+      - converter/font/convert.go
+      - converter/font/load.go
+      - converter/internal/fontset/embed.go
+      - converter/pdf/font.go
+      - raster/imagebdf/text.go
+      importers_test: 2
+      ci:
+      - .github/workflows/ci.yml の bdf_noconv の行
+      docs:
+      - docs/api.md
+      - docs/quality.md
+  compatibility:
+    module_version: v0.1.4 が最新タグ。v0 なので Go の semver 上は破壊的変更が許されるが、外部 importer はビルドが壊れる
+    changelog: CHANGELOG はない。リリース PR（release vX.Y.Z）が履歴
+  delivery:
+    current_milestone: layout-m1
+    outcome: 3 パッケージを git mv で移し、import パス・CI・ツール・文書を書き換え、テストが全部通る 1 PR
+    later:
+    - image/svg の新設（svg-m1）
+    - raster/ebitenginebdf の bdf バージョン更新時の example 修正
+    provisional_choices:
+      method: git mv でディレクトリを移し、import パスを一括置換する。識別子は 3 つとも変わらないので呼び出し側の本文は触らない
+    status: 'layout-m1 は実装・検証済み。残り: コーデックの再生成の確認（wasi-sdk が要るので未実施。出力先と import パスは更新済み）と、リリース PR の説明への破壊的変更の記載'
+  lessons:
+  - 移動で 1 段深くなるので、移したパッケージのテストが持つ相対パス（../converter/...、../fixture/...）は直す必要がある
+  - font/woff2 は import の並びで image/imgconv や internal/... より前に来るので、gofmt が 7 ファイルの import を並べ替える
+  - git が改名と認識しない小さなファイルが 2 つある（内容に占める import 行の割合が大きい）

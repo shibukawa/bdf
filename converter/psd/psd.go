@@ -26,7 +26,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/xmp"
-	"github.com/shibukawa/bdf/imgconv"
+	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // Options controls the conversion.
