@@ -12,19 +12,20 @@
 // mode, soft masks and shadows. The result is close to what a browser
 // draws but not identical: text is not hinted, shaped (no kerning,
 // ligatures or Arabic joining) or laid out by a full bidirectional
-// algorithm; SVG and AVIF images and FILTER are not drawn. Warnings list
-// what was left out.
+// algorithm; AVIF images and FILTER are not drawn. SVG images are drawn by
+// a renderer of the SVG that previews meet, from the tree image/svg reads.
+// Warnings list what was left out.
 //
 // A document decides what it asks of a renderer, so the drawing has limits:
 // of the objects drawn again (maxReusedInstructions), of the groups, soft
 // masks, states and clips that are open at a time (maxLayers, maxStates,
 // maxLive), of the outline of a stroke (strokePoints, strokeDashes), of the
 // blur of a shadow (maxShadowBlur), of the pictures kept decoded
-// (maxPicturePixels), of SVG images (svgDepth, svgNodes, svgBudget,
-// svgLayers and the constants beside them) and of the gridlines of a sheet
-// (maxGridLines). What passes a limit is left out with a warning, and the
-// rest is drawn. A panic of a drawing is the error of Page, Region and
-// Object.
+// (maxPicturePixels), of SVG images (the limits of reading of image/svg,
+// svgBudget, svgLayers and the constants beside them) and of the gridlines
+// of a sheet (maxGridLines). What passes a limit is left out with a
+// warning, and the rest is drawn. A panic of a drawing is the error of
+// Page, Region and Object.
 package imagebdf
 
 import (
@@ -329,7 +330,7 @@ func (r *Renderer) picture(h bdf.Hash) *picture {
 			r.warnf("an SVG image cannot be read")
 			return nil
 		}
-		for _, w := range si.doc.warnings {
+		for _, w := range si.doc.Warnings {
 			r.warnf("%s", w)
 		}
 		r.svgs[h] = si

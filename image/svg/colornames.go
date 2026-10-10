@@ -1,4 +1,4 @@
-package imagebdf
+package svg
 
 // namedColors are the CSS named colours (CSS Color Module Level 4 §6.1).
 var namedColors = map[string]uint32{

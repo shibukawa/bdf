@@ -176,34 +176,6 @@ func TestPathData(t *testing.T) {
 	}
 }
 
-func TestCSSAndColors(t *testing.T) {
-	doc, ok := parseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg"><style>
-		rect { fill: blue } .a { fill: green } #x { fill: yellow } g .b { stroke: red }
-	</style><g><rect id="x" class="a b" fill="black"/><rect class="a" style="fill: #fff"/></g></svg>`))
-	if !ok {
-		t.Fatal("not parsed")
-	}
-	x := doc.ids["x"]
-	if v, _ := x.declared("fill"); v != "yellow" {
-		t.Errorf("fill of #x: %q", v)
-	}
-	if v, _ := x.declared("stroke"); v != "red" {
-		t.Errorf("stroke of #x: %q", v)
-	}
-	if v, _ := doc.root.children[1].children[1].declared("fill"); v != "#fff" {
-		t.Errorf("inline style: %q", v)
-	}
-	for s, want := range map[string]svgColor{
-		"#f00": {1, 0, 0, 1}, "rgb(0, 128, 255)": {0, 128.0 / 255, 1, 1}, "rgba(0,0,0,.5)": {0, 0, 0, 0.5},
-		"hsl(120, 100%, 50%)": {0, 1, 0, 1}, "rebeccapurple": {0x66 / 255.0, 0x33 / 255.0, 0x99 / 255.0, 1},
-	} {
-		got, ok := parseColor(s, svgColor{})
-		if !ok || !near(got.r, want.r, 1e-3) || !near(got.g, want.g, 1e-3) || !near(got.b, want.b, 1e-3) || !near(got.a, want.a, 1e-3) {
-			t.Errorf("%s: %v, want %v", s, got, want)
-		}
-	}
-}
-
 func TestVisualOrder(t *testing.T) {
 	for _, c := range []struct {
 		s    string
