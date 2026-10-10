@@ -1,6 +1,6 @@
 {
   "name": "@bdfkit/core",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Low-level BDF container, decoder, text, search, and music data APIs",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/shibukawa/bdf.git", "directory": "packages/core" },
