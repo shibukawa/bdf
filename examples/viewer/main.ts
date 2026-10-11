@@ -18,7 +18,7 @@
 // layout it opens in.
 import { dcValues, type Manifest, type View, type SearchHit, type TextContent, type NoteEvent } from "@bdfkit/core";
 import {
-  BdfWorkerClient, BdfWorkerError, MusicPlayer, AudioPlayer, buildTextLayer, findKey, installCopyHandler, internalLink, tableCells, cellClipboard, TEXT_LAYER_CSS, RUN_ATTR,
+  BdfWorkerClient, BdfWorkerError, MusicPlayer, AudioPlayer, buildTextLayer, findKey, installCopyHandler, internalLink, tableCells, cellClipboard, saveTarget, imageScale, TEXT_LAYER_CSS, RUN_ATTR,
   type Cursor, type HitRect, type OpenSource, type TextLayerOptions, type CellText, type CellRange, type CellClipboard,
 } from "@bdfkit/render";
 import { ConverterClient, ConvertError, sniff, type Opened } from "../common/convert.js";
@@ -347,6 +347,7 @@ async function load(source: OpenSource, name?: string, token = ++opening, stream
     streaming = stream;
   }
   document.title = `${dcValues(manifest.meta?.dc?.title)[0] ?? name ?? "BDF"} – viewer`;
+  saveBase = (name ?? "").replace(/\.[^.]+$/, "") || "document";
   $<HTMLInputElement>("q").value = "";
   manifest.views.forEach((v, i) => {
     const b = document.createElement("button");
@@ -562,7 +563,7 @@ function closeDocument() {
   stage.replaceChildren();
   tabs.replaceChildren();
   $<HTMLButtonElement>("prevView").disabled = $<HTMLButtonElement>("nextView").disabled = true;
-  $("layoutBox").hidden = $("pageNav").hidden = $("animateBox").hidden = true;
+  $("layoutBox").hidden = $("pageNav").hidden = $("animateBox").hidden = $("saveBox").hidden = true;
   found.query = ""; found.hits = []; found.rects = []; found.index = -1; found.pages = -1; hitsBox.textContent = "";
 }
 
@@ -597,6 +598,47 @@ function setDownload(file?: Blob, base = "") {
   }
   a.href = downloadURL = URL.createObjectURL(file);
   a.download = `${base}.bdf`;
+}
+
+/** The name of the document shown, without its extension: what the files saved from it are named after. */
+let saveBase = "document";
+
+/**
+ * Save the page in view as a file: an SVG, which a browser shows without a
+ * viewer, or a WebP image. A scroll view is saved whole, and a sheet as far
+ * as its cells reach.
+ */
+async function savePage(format: "svg" | "webp") {
+  const v = current;
+  const page = pageInView();
+  const what = v && saveTarget(v, page);
+  if (!v || !what) return;
+  const box = $("saveBox");
+  box.querySelectorAll("button").forEach((b) => { b.disabled = true; });
+  setStatus("saving…");
+  try {
+    let blob: Blob;
+    if (format === "svg") {
+      const res = await client.svg(v.id, what.target);
+      blob = new Blob([res.svg], { type: "image/svg+xml" });
+      if (res.warnings.length) console.warn("SVG:", res.warnings.join("; "));
+    } else {
+      blob = await client.image(v.id, what.target, imageScale(what.width, what.height, 2));
+    }
+    // a browser that does not encode WebP answers with a PNG
+    const ext = blob.type === "image/svg+xml" ? "svg" : blob.type === "image/webp" ? "webp" : "png";
+    const part = typeof what.target === "number" ? `-p${what.target + 1}` : manifest.views.length > 1 ? `-${v.title || v.id}` : "";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${saveBase}${part}.${ext}`.replace(/[\\/:*?"<>|]/g, "_");
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+    setStatus(`saved ${a.download} (${Math.max(1, Math.round(blob.size / 1024))} KB)`);
+  } catch (e) {
+    setStatus(`not saved: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    box.querySelectorAll("button").forEach((b) => { b.disabled = false; });
+  }
 }
 
 /** The warnings of the conversion, in a disclosure next to the status. */
@@ -714,6 +756,8 @@ function init() {
     if (file) openLocal(file);
   };
   $("openFile").onclick = () => picker.click();
+  $("saveSvg").onclick = () => { void savePage("svg"); };
+  $("saveWebp").onclick = () => { void savePage("webp"); };
   landing.querySelector<HTMLButtonElement>("#chooseFile")!.onclick = () => picker.click();
   const carriesFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
   let depth = 0; // dragenter and dragleave fire for every element crossed
@@ -891,7 +935,7 @@ async function main() {
   if (file) return openURL(/^samples\//.test(file) ? shared(file) : siteURL(file));
   if (!src) return showLanding();
   const source: OpenSource = src.endsWith("/") ? { kind: "split", base: siteURL(src) } : { kind: "single", url: siteURL(src), range: params.has("range") };
-  await load(source);
+  await load(source, decodeURIComponent(src.replace(/\/+$/, "").split("/").pop() ?? ""));
 }
 
 function show(v: View) {
@@ -909,6 +953,7 @@ function show(v: View) {
     else if (v.play) loadMusic(v);
   }
   current = v;
+  $("saveBox").hidden = !saveTarget(v, 0);
   for (const b of tabs.querySelectorAll<HTMLButtonElement>("[role=tab]")) {
     const selected = b.dataset.id === v.id;
     b.setAttribute("aria-selected", String(selected));

@@ -1,5 +1,6 @@
 import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions, Cues } from "@bdfkit/core";
 import type { HitRect } from "./search.js";
+import type { SvgResult } from "./svgexport.js";
 
 /** How the worker should open a document. */
 export type OpenSource =
@@ -52,6 +53,13 @@ export type WorkerRequest =
   | { id: number; type: "page"; view: string; page: number; scale: number; roles?: string[] }
   | { id: number; type: "continuous"; view: string; viewport: Rect; scale: number }
   | { id: number; type: "sheet"; view: string; viewport: Rect; scale: number }
+  /**
+   * A page (page) or a region (viewport: of a sheet, or of the continuous
+   * layout of another view) as an SVG file that stands alone.
+   */
+  | { id: number; type: "svg"; view: string; page?: number; viewport?: Rect }
+  /** The same drawn as an image file, of a format the browser encodes ("image/webp", "image/png", "image/jpeg"). */
+  | { id: number; type: "image"; view: string; page?: number; viewport?: Rect; scale: number; format: string; quality?: number }
   | { id: number; type: "text"; view: string; page: number }
   | { id: number; type: "continuousText"; view: string; viewport: Rect }
   | { id: number; type: "content"; view: string; page: number }
@@ -65,7 +73,7 @@ export type WorkerRequest =
   | { id: number; type: "audio"; view: string }
   | { id: number; type: "close" };
 
-export type WorkerResult = Manifest | ImageBitmap | TextRun[] | TextContent | SearchHit[] | HitRect[][] | PlayData | AudioData | null;
+export type WorkerResult = Manifest | ImageBitmap | TextRun[] | TextContent | SearchHit[] | HitRect[][] | PlayData | AudioData | SvgResult | Blob | null;
 
 /**
  * Why a request failed, when the viewer has something to do about it: ask

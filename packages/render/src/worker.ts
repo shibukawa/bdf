@@ -6,6 +6,7 @@ import { concat, within } from "./content.js";
 import { DocumentSearch } from "./search.js";
 import type { WorkerRequest, WorkerResponse, WorkerResult, WorkerErrorCode, OpenSource, WorkerOpenOptions, RasterizeRequest, RasterizeResponse } from "./protocol.js";
 import type { SvgRasterizer } from "./svg.js";
+import { SvgExporter } from "./svgexport.js";
 
 /** An open document, with what draws and searches it. */
 interface Opened {
@@ -228,6 +229,10 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
     case "continuous": case "continuousText": case "continuousContent":
       await ensurePages(o, view, pagesIn(o, view, req.viewport));
       break;
+    case "svg": case "image":
+      if (req.page !== undefined) await ensurePages(o, view, [req.page]);
+      else if (req.viewport && view.kind !== "sheet") await ensurePages(o, view, pagesIn(o, view, req.viewport));
+      break;
     case "locate":
       await ensurePages(o, view, req.hits.flatMap((h) => h.segments.map((s) => s.a)));
       break;
@@ -252,6 +257,29 @@ async function handle(req: WorkerRequest): Promise<{ result: WorkerResult; trans
       await pages.renderSheet(canvas.getContext("2d")!, view, req.viewport, { scale: req.scale });
       const bmp = canvas.transferToImageBitmap();
       return { result: bmp, transfer: [bmp] };
+    }
+    case "svg": {
+      const out = new SvgExporter(doc);
+      if (req.viewport) return { result: await (view.kind === "sheet" ? out.sheet(view, req.viewport) : out.continuous(view, req.viewport)), transfer: [] };
+      const page = view.pages?.[req.page ?? -1];
+      if (!page) throw new Error(`bdf: no page ${req.page}`);
+      return { result: await out.page(page), transfer: [] };
+    }
+    case "image": {
+      let canvas: OffscreenCanvas;
+      if (req.viewport) {
+        canvas = canvasFor(req.viewport.w * req.scale, req.viewport.h * req.scale);
+        const ctx = canvas.getContext("2d")!;
+        if (view.kind === "sheet") await pages.renderSheet(ctx, view, req.viewport, { scale: req.scale });
+        else await pages.renderContinuous(ctx, view, req.viewport, { scale: req.scale });
+      } else {
+        const page = view.pages?.[req.page ?? -1];
+        if (!page) throw new Error(`bdf: no page ${req.page}`);
+        canvas = canvasFor(page.w * req.scale, page.h * req.scale);
+        await pages.renderPage(canvas.getContext("2d")!, page, { scale: req.scale });
+      }
+      // a browser that does not encode the format answers with a PNG: the blob says which it is
+      return { result: await canvas.convertToBlob({ type: req.format, quality: req.quality }), transfer: [] };
     }
     case "text": case "content": {
       const page = view.pages?.[req.page];

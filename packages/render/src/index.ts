@@ -2,6 +2,7 @@ export { ResourceCache, ImageHold, DEFAULT_IMAGE_BUDGET, DEFAULT_MAX_IMAGE_PIXEL
 export { CanvasRenderer, cssColor, resetState, filterAllowed, MAX_GROUP_DEPTH, type Ctx2D, type RenderOptions } from "./canvas.js";
 export { PageRenderer, tilesIn, type PageRenderOptions, type TileRange } from "./page.js";
 export { concat, within } from "./content.js";
+export { SvgExporter, sheetBounds, saveTarget, imageScale, svgPathData, type SvgOptions, type SvgResult } from "./svgexport.js";
 export { BdfWorkerClient, BdfWorkerError } from "./client.js";
 import { BdfWorkerClient } from "./client.js";
 /** Create the rendering Worker from this package's bundled asset. */

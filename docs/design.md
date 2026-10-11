@@ -749,6 +749,26 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 
 テスト用の文書は `test/idml/gen.py`（標準ライブラリだけ）が書く（`npm run test:idml:gen`）。basic.idml は 1 ページのスプレッドと見開きのスプレッド、マスター（罫線とページ番号）、各種のスウォッチと線種、角丸・グループ・非表示のレイヤーとアイテム、埋め込みとリンク（隣の link.png）の画像、スタイルの連鎖・揃え・タブ・箇条書き・番号・文字属性を持つストーリーが 2 段組みの枠から次のページの枠へ流れるもの。vertical.idml は右綴じの縦組みのストーリーが 2 ページにわたるもの。Go のテストはページとレイヤー、ストーリーがページをまたいで流れること、ページ番号、リンク画像を `Dir` と `Files` から読むこと、縦組み、ページの選択と判別を確かめ、変換結果は `testdata/idml/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。InDesign 自身が書き出した IDML は SimpleIDML（BSD 3 条項）の回帰テストのもの 7 件を `converter/idml/testdata/simpleidml/` に置き（README に出典）、CS5.5・CC 2014・InDesign 2020 の書き出しで、レイヤーの並び（設計マップは前面から）、リンク画像の `Contents` が XMP であること、`BasedOn` の種類なしの表記、連結フレーム、回転したフレーム、インセットがフレームより大きいフレーム（何も表示しない）を確かめた。配置画像のファイルは入れていない（リンク切れの警告の確認に使う）。テキストの溢れ（オーバーセット）は代替フォントの幅に依るので、テストでは数えない。
 
+## 3.33 SVG への書き出し（vector/svgbdf、@bdfkit/render の SvgExporter）
+
+ビューア（JavaScript と Worker）を置けない環境がある。ファイルは置けるがスクリプトは動かせない CMS、静的なホスティング、文書管理システムの添付など。そこに出すものとして、ページごとの SVG ファイルを書く。画像（`raster/imagebdf` で描いて WebP にする）でも出せるが、SVG はテキストがテキストのまま残り（選択、検索、読み上げ）、どの倍率でも鮮明で、テキスト中心の文書ではずっと小さい。
+
+**写し方**: 命令セット（spec §7）は Canvas 2D の写しで、ほとんどの命令に SVG の要素がある。Canvas は状態機械、SVG は木なので、違いはそこに集まる。
+
+- **変換とクリップ**: 要素はどれも、描かれたときの変換行列を自分の `transform` に持つ。グループには変換を持たせない。クリップパスは参照する要素の座標系で解釈されるので、変換を持つ要素に直接は付けられない。クリップは変換なしの `<g clip-path>` にして、同じクリップで続く要素をその中に並べる。クリップを狭めるたびに、前のクリップを `clip-path` で参照する `<clipPath>` を定義する（同じものは 1 回）。
+- **テキスト**: `FILL_TEXT` は `<text>` にする。アウトライン化はしない（大きさで画像に負ける）。`advance` は `textLength` と `lengthAdjust="spacingAndGlyphs"` に写す。ビューアが計測して x 方向に伸縮するのと同じ結果になり、フォントが読めなかったときも行の幅が保たれる。同じフォント・色・変換で続く run は 1 つの `<g>` に属性をまとめる。空白は、前後か連続にあるときだけ `xml:space="preserve"` を `<text>` 自身に付ける（Chrome は祖先の要素に付けた属性も `white-space` も `<text>` に及ぼさない）。
+- **フォントと画像**: 既定では SVG と同じフォルダのファイル（Part のハッシュが名前）にして相対 URL で参照する。ページ間で共有され、重複しない。埋め込みフォントの `@font-face` は、ビューアが `FontFace` を登録するのと同じく太さと傾きを付けずに宣言する（太字・斜体はブラウザが合成する）。`<img>` と CSS の背景は SVG から外のファイルを読まないので、その用途には data: URL で中に入れる `Inline` がある。ビューアからの保存は 1 ファイルなので常にこちら。中に入れた画像は `<symbol>` に 1 回だけ置いて `<use>` で参照する。文書が持つ SVG 画像は、どちらの場合も data: URL にする（ファイルとして置くと、スクリプトを持ちうる文書を配信元のオリジンに置くことになる）。
+- **塗りと線**: 同じパスの塗りと線（`FILL_PATH` の直後の `STROKE_PATH`）は 1 つの要素にする。`FILL_PATH_AT` と `FILL_PATH_RUN` のパスは `<defs>` に 1 回定義して `<use x y>` で置く（アウトライン化された文字）。グラデーションは `userSpaceOnUse` で、Canvas の 2 円の放射グラデーションは `fx`・`fy`・`fr` に写す。
+- **グループとソフトマスク**: グループは中身を別のバッファに書き、`GROUP_END` で `<g opacity mask style="mix-blend-mode">` に包んで親に足す（マスクはグループの最後に来るので、開いたときには属性が決まらない）。ブレンドする要素は、クリップの `<g>` の中に置くとその中だけでブレンドするので、クリップとブレンドを同じ `<g>` に持たせてコンテキストの直下に置く。ソフトマスクは `<mask>`（アルファは `mask-type:alpha`）で、transfer は `feComponentTransfer` の表にする。
+- **消す合成**: `destination-out`（Gerber の抜き、`CLEAR_RECT`）は、そこまでに描いたものを `<g mask>` で包み、白地に黒で描いたマスクを掛ける。続く消去は同じマスクに足す。`destination-in` はアルファのマスク、`destination-over` は先頭に挿入、`lighter` は `plus-lighter`。残りの合成（`source-in`、`xor` など）と扇形グラデーション、FILTER は SVG に写せず、警告を出して近いもので描く（今の変換器はどれも出さない）。
+- **影**: `feDropShadow`。影のずれはページの向きなので、変換を持たない `<g filter>` で要素を包む。
+
+**View**: fixed・flow はページごと、scroll は帯ごと（本文の範囲に切る。積めば View になる）、シートはタイルが届く範囲を 1 ページにして枠線を 1 本のパスで描く。ビューアからの保存では、scroll View は全体を 1 枚の長いページにする。
+
+**2 つの実装**: Go の `vector/svgbdf`（`bdf svg`）と、TypeScript の `SvgExporter`（Worker の `svg` 要求、`Viewer.save`）。同じ要素を同じ順に書く。`Inline` の Go の出力と TS の出力は、テスト用の文書 236 ページすべてで（数値の丸めを除いて）一致することを確かめた。
+
+**確かめ方**: Go のテストは命令ごとの出力と、`testdata/` の全文書を両方の方式で書いて、XML として読めること、参照する id がファイル内に 1 回ずつ定義されていること、参照するファイルが書かれていることを見る。描画は、SVG を Chrome（と WebKit）で開いたスクリーンショットを `raster/imagebdf` の画像と比べて確かめた（差はフォントのラスタライズと、imagebdf が描かない AVIF）。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -873,13 +893,14 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 bdf/
 ├── docs/              spec.md, design.md
 ├── *.go               Go パッケージ bdf（module github.com/shibukawa/bdf）: Object builder、Part エンコード、コンテナ I/O、デコーダ
-├── cmd/bdf/           CLI: generate / thumbnail / text / render / ls / manifest / disasm / extract / split / join / encrypt / decrypt / segment / demo
+├── cmd/bdf/           CLI: generate / thumbnail / text / render / svg / ls / manifest / disasm / extract / split / join / encrypt / decrypt / segment / demo
 ├── segment/           区間を要求ごとに封印して返す HTTP ハンドラ（§3.30。wasm に net/http を持ち込まないよう bdf とは別のパッケージ）
 ├── cmd/bdfwasm/       ブラウザ内変換用の wasm モジュール（§2）
 ├── image/imgconv/     画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）
 ├── image/svg/         SVG の読み手: 要素の木、スタイルシートの適用、色・長さ・変換の値（§3.25。描くのは raster/imagebdf）
 ├── font/woff2/        TrueType/OpenType ↔ WOFF2（glyf 変換と Brotli）
 ├── raster/imagebdf/   ページと単体の Object を画像に描く純 Go のラスタライザと SVG レンダラ（§3.25）
+├── vector/svgbdf/     ページを SVG ファイルに書き出す（§3.33）
 ├── raster/ebitenginebdf/  パスだけの Object を Ebitengine で描く（別モジュール。§3.23）。raster/internal/shapes が Object を図形の並びにする
 ├── image/formula/     LaTeX・MathML の数式をパスだけの Object にする公開パッケージ（§3.23。STIX Two Math を同梱）
 ├── thumbnail/         文書のサムネイル（文書の種類によるレイアウト、PNG・JPEG・WebP）

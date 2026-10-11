@@ -30,6 +30,16 @@ viewer.scrollToPage(2);           // 0 始まり
 // 画面を取り外す際に viewer.destroy()
 ```
 
+`viewer.save()` は、読んでいるページをダウンロード用のファイルとして返します。`"svg"` はビューアなしでブラウザが表示できるページ（テキストはテキストのまま、フォントと画像はファイルの中）、`"webp"`・`"png"`・`"jpeg"` はその画像です。scroll View は全体を、シートはセルのある範囲を保存します。
+
+```ts
+const blob = await viewer.save("svg");            // または viewer.save("webp", { scale: 2 })
+const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "page.svg" });
+a.click();
+```
+
+Safari は WebP を書き出せず PNG を返すので、ファイル名の拡張子は `blob.type` から決めてください。
+
 単一ファイルの BDF は HTTP Range リクエストで必要な部分だけ取得できます。配信側の作り方は[サーバーに組み込む](integrate-to-server.ja.md)にあります。自分でページの配置まで作るなら、低レベルの `@bdfkit/render` と `@bdfkit/core` を直接使えます。
 
 ## ファイルをブラウザ内で変換する

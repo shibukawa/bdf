@@ -83,6 +83,8 @@
   #status { max-width: 32em; }
   #timing { flex-shrink: 100; } /* gives way first */
   #progress { width: 96px; }
+  #saveBox { display: flex; gap: 4px; flex: none; }
+  #saveBox[hidden] { display: none; }
   #pwDialog { border: 1px solid #999; border-radius: 6px; padding: 16px 20px; }
   #pwDialog h2 { font-size: 15px; margin: 0 0 8px; }
   #pwDialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
@@ -163,6 +165,10 @@
     <progress id="progress" hidden aria-label="pages converted"></progress>
     <details id="warnings" hidden><summary></summary><ul></ul></details>
     <span id="timing"></span>
+    <span id="saveBox" hidden>
+      <button id="saveSvg" type="button" title="save the page as an SVG file: text stays text, and the fonts and images are in the file">Save SVG</button>
+      <button id="saveWebp" type="button" title="save the page as a WebP image">Save WebP</button>
+    </span>
     <a id="download" hidden>Download .bdf</a>
   </span>
 </header>

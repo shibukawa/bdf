@@ -13,6 +13,8 @@
 - **`raster/ebitenginebdf`** — パスだけの Object を Ebitengine の `vector` パッケージで描く。Ebitengine に依存するので別モジュール
 - **`@bdfkit/render`** — ブラウザの Canvas 2D に描く TypeScript のパッケージ。`@bdfkit/viewer` はその上のビューア
 
+ビューアを置けない環境には、ページを [SVG ファイルに書き出す](#文書を-svg-ファイルに書き出す)方法があります。ブラウザがそのまま表示できるファイルで、Go の `vector/svgbdf` と、ビューアの「SVG で保存」が書き出します。
+
 ## 文書を描く
 
 ### 文書を image.Image に描く
@@ -48,6 +50,29 @@ err = png.Encode(w, img)
 - 描けなかったものは `ren.Warnings()` に入ります。サムネイルなら [`thumbnail`](api.md#go-サムネイルとページの画像thumbnailimagebdf) が切り抜き方まで決めます。
 
 コマンドなら `bdf render -page 1 -scale 2 report.bdf page1.png` です。
+
+### 文書を SVG ファイルに書き出す
+
+ファイルは置けてもスクリプトを動かせないサイト向けです。ページごとに 1 つの SVG ファイルになります。テキストはテキストのまま（選択・検索ができ、どの倍率でも鮮明）、文書のフォントで表示されます。
+
+```go
+import "github.com/shibukawa/bdf/vector/svgbdf"
+
+res, err := svgbdf.Write("out", doc, nil) // out/page-1.svg、page-2.svg、…と、ページが共有するフォントと画像
+```
+
+```sh
+bdf svg report.bdf out/
+```
+
+- フォントと画像は SVG と同じフォルダに Part の名前（`<hash>.woff2`、`<hash>.png`）で置かれ、相対 URL で参照されます。ページ間で共有されるので、フォルダごと配信・コピーしてください。
+- ブラウザがこれらのファイルを読むのは、SVG そのものを文書として表示するとき（直接開く、`<object>`、`<iframe>`）です。`<img>` 要素や CSS の背景で表示した SVG はほかのファイルを読まないので、テキストは代替フォントになり（幅は保たれます）、画像は出ません。その場合は `&svgbdf.Options{Inline: true}`（`bdf svg -inline`）で、フォントと画像を中に持つ単独のファイルにします。ファイルは表示するものすべての分だけ大きくなります。
+- View が複数ある文書のファイル名は `view-V-page-N.svg` です。scroll View は帯ごとに本文の範囲で書き出し（積めば View になります）、シートはセルのある範囲を 1 ページにします。
+- `svgbdf.New(doc, opts)` は 1 ページや範囲（`Page`、`Region`）をメモリに書き、必要なファイルを `Files` で返します。別の場所に保存するサーバー向けです。
+- 圧縮後の大きさは、テキスト中心の文書なら元の文書と同程度で、ページの画像よりずっと小さくなります。アウトラインだけのページ（数千のパスからなる図面）は画像のほうが小さくなることがあります。
+- 扇形グラデーション、`FILTER` 命令、描くものを下の絵で切り抜く合成（`source-in`、`xor` など）は SVG に対応する要素がありません。描かないか `source-over` として描き、`Warnings` に入ります。ブラウザ以外のプログラム（Inkscape、Illustrator、librsvg）は URL のフォントを読みません。
+
+ブラウザでは `viewer.save("svg")`（または `BdfWorkerClient.svg`）が読んでいるページを単独の SVG ファイルとして、`viewer.save("webp")` がその画像を返します。[フロントエンドに組み込む](integrating-to-frontend.ja.md)を見てください。
 
 ### 文書を Ebitengine で描く
 

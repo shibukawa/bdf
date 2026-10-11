@@ -13,6 +13,8 @@ All three renderers run the same instructions ([spec §7](spec.md)).
 - **`raster/ebitenginebdf`** — draws objects made of paths with Ebitengine's `vector` package. A module of its own, since it depends on Ebitengine
 - **`@bdfkit/render`** — the TypeScript package that draws on a browser's Canvas 2D; `@bdfkit/viewer` is the viewer built on it
 
+Where no viewer can run, the pages can be [written as SVG files](#a-document-as-svg-files) instead, which a browser displays by itself: `vector/svgbdf` in Go, and "save as SVG" in the viewer.
+
 ## Documents
 
 ### A document into an image.Image
@@ -48,6 +50,29 @@ err = png.Encode(w, img)
 - What could not be drawn is listed by `ren.Warnings()`. For thumbnails, [`thumbnail`](api.md#go-サムネイルとページの画像thumbnailimagebdf) also decides the crop.
 
 From the command line: `bdf render -page 1 -scale 2 report.bdf page1.png`.
+
+### A document as SVG files
+
+For a site that can hold files but run no script: every page becomes an SVG file. Text stays text (selectable, searchable, sharp at every zoom), in the fonts of the document.
+
+```go
+import "github.com/shibukawa/bdf/vector/svgbdf"
+
+res, err := svgbdf.Write("out", doc, nil) // out/page-1.svg, page-2.svg, …, and the fonts and images they share
+```
+
+```sh
+bdf svg report.bdf out/
+```
+
+- The fonts and images are files beside the SVGs, named after their parts (`<hash>.woff2`, `<hash>.png`) and referred to by relative URL, so the pages share them. Serve or copy the directory as a whole.
+- A browser loads those files when the SVG is the document it shows: opened by itself, or in an `<object>` or `<iframe>`. An SVG shown by an `<img>` element or as a CSS background loads no other file, so its text falls back to other fonts (it keeps its widths) and its images are missing: for that, write files that stand alone with `&svgbdf.Options{Inline: true}` (`bdf svg -inline`), each as large as all it shows.
+- A document of several views names its files `view-V-page-N.svg`. A scroll view is written strip by strip, each cut to its body (stacked, they are the view); a sheet is one page as far as its cells reach.
+- `svgbdf.New(doc, opts)` writes single pages and regions (`Page`, `Region`) into memory and lists the files they need (`Files`), for a server that stores them elsewhere.
+- Compressed, the SVGs of a text document are about as large as the document itself, and far smaller than images of its pages; a page of outlines only (a drawing with thousands of paths) is where an image can be smaller.
+- SVG has no element for conic gradients, the `FILTER` instruction and the composite operations that cut what is drawn by what is there (`source-in`, `xor` …): they are left out or drawn as `source-over`, and `Warnings` says so. Programs that are no browsers (Inkscape, Illustrator, librsvg) do not load fonts by URL.
+
+In the browser, `viewer.save("svg")` (or `BdfWorkerClient.svg`) returns the page being read as one SVG file that stands alone, and `viewer.save("webp")` an image of it: see [Integrating into a frontend](integrating-to-frontend.md).
 
 ### A document with Ebitengine
 

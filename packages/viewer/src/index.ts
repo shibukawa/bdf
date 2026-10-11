@@ -1,5 +1,5 @@
 import { tileSize, type Manifest, type View } from "@bdfkit/core";
-import { createRenderWorker, FindBar, FindHits, findKey, type BdfWorkerClient, type FindBarLabels, type HitRect, type OpenSource } from "@bdfkit/render";
+import { createRenderWorker, FindBar, FindHits, findKey, saveTarget, imageScale, type BdfWorkerClient, type FindBarLabels, type HitRect, type OpenSource } from "@bdfkit/render";
 
 export type ViewerMode = "embedded" | "lightbox";
 export type PageLayout = "single" | "spread" | "continuous";
@@ -35,6 +35,18 @@ export interface ViewerOptions {
   find?: "focus" | "page" | false;
   /** The words of the find bar (default: English). */
   findLabels?: Partial<FindBarLabels>;
+}
+
+/** The formats a page is saved in: SVG, or an image the browser encodes. */
+export type SaveFormat = "svg" | "webp" | "png" | "jpeg";
+
+export interface SaveOptions {
+  /** The page to save (from 0; default: the one being read). A scroll view and a sheet are saved whole. */
+  page?: number;
+  /** Images: device pixels per unit (default 2; less for what no canvas holds at that). */
+  scale?: number;
+  /** Images: the quality of a lossy format, from 0 to 1 (default: the browser's). */
+  quality?: number;
 }
 
 /** What a search found: the detail of the "findchange" event. */
@@ -250,6 +262,23 @@ export class Viewer extends EventTarget {
     if (!Number.isFinite(zoom) || zoom <= 0 || zoom > 8) throw new RangeError("zoom must be in (0, 8]");
     this.zoom = zoom;
     this.draw();
+  }
+
+  /**
+   * The page being read as a file, for the host to offer as a download:
+   * "svg" is a page a browser shows without a viewer, text as text, with
+   * its fonts and images in the file; the other formats are images of it.
+   * A scroll view is saved whole, as one long page, and a sheet as far as
+   * its cells reach. The type of the blob says what it is: a browser that
+   * does not encode WebP (Safari) answers with a PNG.
+   */
+  async save(format: SaveFormat = "svg", options: SaveOptions = {}): Promise<Blob> {
+    const view = this.current;
+    const what = view && saveTarget(view, options.page ?? this.reading());
+    if (!view || !what) throw new Error("bdf: nothing to save");
+    if (format === "svg") return new Blob([(await this.renderer.svg(view.id, what.target)).svg], { type: "image/svg+xml" });
+    const scale = imageScale(what.width, what.height, options.scale ?? 2);
+    return this.renderer.image(view.id, what.target, scale, `image/${format}`, options.quality);
   }
 
   scrollToPage(index: number): void {

@@ -30,6 +30,16 @@ viewer.scrollToPage(2);           // zero-based
 // Call viewer.destroy() when removing the view.
 ```
 
+`viewer.save()` returns the page being read as a file to offer for download: `"svg"` is a page a browser shows without a viewer (text as text, with its fonts and images in the file), `"webp"`, `"png"` and `"jpeg"` are images of it. A scroll view is saved whole, and a sheet as far as its cells reach.
+
+```ts
+const blob = await viewer.save("svg");            // or viewer.save("webp", { scale: 2 })
+const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: "page.svg" });
+a.click();
+```
+
+Safari does not encode WebP and answers with a PNG: name the file after `blob.type`.
+
 A single-file BDF can be fetched in parts through HTTP Range requests. See [Integrating into a server](integrate-to-server.md) for producing it. If you want to place pages yourself, use the lower-level `@bdfkit/render` and `@bdfkit/core` packages.
 
 ## Convert files in the browser

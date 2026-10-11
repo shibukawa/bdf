@@ -13,6 +13,7 @@ BDF の公開 API をパッケージごとにまとめる。引数や細かい�
 | BDF を読んでテキストや構造を取り出す（Node でも） | [`@bdfkit/core`](#typescript-bdfkitcore) |
 | ログインした読者に文書を数ページずつ、要求ごとに封印して渡す | Go の [`segment`](#保護モードの配信segment) と [`(*Reader).WriteSegment`](#読み込み)、ブラウザは [`SegmentLoader`](#文書を開く)（レンダラの Worker では `{kind: "segments"}`） |
 | 数式を組んで画像・Ebitengine・Canvas に描く | Go の [`formula` と `raster/ebitenginebdf`](#go-数式formularasterebitenginebdf)。使い方は[描画する](rendering.ja.md) |
+| ビューアを置けない環境向けに、ページを SVG ファイルにする | Go の [`vector/svgbdf`](#go-ページの-svgvectorsvgbdf) と `bdf svg`、ブラウザは [`BdfWorkerClient.svg`](#bdfworkerclient) |
 | サーバーでサムネイル・ページの画像・検索用のテキストを作る | Go の [`thumbnail` と `imagebdf`](#go-サムネイルとページの画像thumbnailimagebdf)、[`Document.SearchText`](#読み込み)、または [`bdf` コマンド](#コマンドbdf) |
 
 ## Go: 変換（converter）
@@ -232,6 +233,27 @@ return thumbnail.Encode(w, img, thumbnail.PNG)
 
 描けるもの: パス（nonzero・evenodd、アンチエイリアス）、線（端・結合・破線。1 画素より細い線はビューアと同じく 1 画素幅で薄く）、クリップ、単色・線形・放射・扇形のグラデーションとパターン、画像（PNG、JPEG と EXIF の向き、GIF、BMP、WebP、SVG）、埋め込みフォントと名前で参照するフォントのテキスト（`advance` 補正、揃え、ベースライン、字間、太字・斜体の合成、字ごとのフォールバック、右から左の文字の並べ替え）、グループの透明度とブレンド、ソフトマスク、影。描かないもの: AVIF の画像、FILTER、ヒンティング、カーニング、合字、アラビア文字の字形の変化。
 
+## Go: ページの SVG（vector/svgbdf）
+
+`github.com/shibukawa/bdf/vector/svgbdf` は文書のページを SVG ファイルに書き出す。ビューアを置けない環境で、ブラウザがそのまま表示できるファイルにするためのもの（design.md §3.33）。使い方は[描画する](rendering.ja.md#文書を-svg-ファイルに書き出す)。
+
+```go
+res, err := svgbdf.Write("out", d, nil) // out/page-1.svg … と、共有するフォント・画像
+```
+
+| 名前 | 内容 |
+|---|---|
+| `svgbdf.Write(dir, doc, *Options) (*Result, error)` | 全 View の全ページをフォルダに書く。`Result` は `Pages`（SVG のファイル名）、`Files`（フォントと画像のファイル名）、`Warnings`。シートは `SheetBounds` の範囲を 1 ページにする |
+| `svgbdf.Name(doc, view, page)` | `Write` が付けるファイル名: View が 1 つなら `page-N.svg`、複数なら `view-V-page-N.svg`（どちらも 0 始まりの番号から）。ページ間のリンク（`#page=N`、`#view=ID`）の既定のリンク先でもある |
+| `svgbdf.New(doc, *Options) *Renderer` | 1 ページずつ書くレンダラ。`Options` は `Inline`（フォントと画像を data: URL で SVG の中に入れる。`<img>` で表示するならこれ）、`Background`（既定は白。`color.Transparent` で背景なし）、`PageURL`（ページ間のリンク先を決める関数。`""` を返すとリンクにしない） |
+| `(*Renderer).Page(v, page)` | fixed・flow View のページ、scroll View の帯（本文の範囲に切る）の SVG を `[]byte` で返す |
+| `(*Renderer).Region(v, page, rect)` | 範囲の SVG。fixed・flow はそのページの座標、scroll View は帯を積んだ連続の座標、シートはシートの座標（枠線も描く） |
+| `(*Renderer).Files()` | ここまでに書いた SVG が相対 URL で参照するフォントと画像（`File{Name, Data}`）。SVG と同じ場所に置く。`Inline` なら空 |
+| `(*Renderer).Warnings()` | SVG に対応する要素がなく、ビューアどおりにならないもの |
+| `svgbdf.SheetBounds(v)` / `SheetSize(v)` / `ErrNoPage` | シートのタイルが届く範囲 / 行と列から求めたシートの大きさ / ないページ |
+
+書けるもの: パスの塗りと線（端・結合・破線）、クリップ、線形・放射グラデーションとパターン、画像（そのままのファイル。AVIF も）、テキスト（`<text>`。`advance` には `textLength` で合わせる）、グループの透明度とブレンド、ソフトマスク、影、`destination-out`・`destination-in`・`destination-over`・`lighter`、リンク。書けないもの: 扇形グラデーション（最初の色で塗る）、FILTER、そのほかの合成（`source-over` として描く）。埋め込み SVG の画像は、スクリプトを持ちうる文書を配信元に置かないよう、常に data: URL で SVG の中に入れる。
+
 ## Go: 数式（formula、raster/ebitenginebdf）
 
 `github.com/shibukawa/bdf/image/formula` は LaTeX・MathML の数式を組み、パスだけの Object にする（design.md §3.23）。使い方とサンプルは[描画する](rendering.ja.md#数式を描く)。
@@ -379,6 +401,9 @@ installCopyHandler(container);
 | `page(view, index, scale, roles?)` | ページを `ImageBitmap` に描く。`scale` は 1 単位あたりのデバイスピクセル |
 | `continuous(view, viewport, scale)` | flow・scroll View を縦に続けた配置の矩形を描く |
 | `sheet(view, viewport, scale)` | シートの矩形を描く（行・列見出しとウィンドウ枠の固定はビューアの仕事） |
+| `svg(view, target)` | ページ（`target` が番号）または矩形（シートの範囲、それ以外の View は縦に続けた配置の範囲）を、単独の SVG ファイルにする。戻り値は `{svg, warnings}`。テキストは `<text>` のまま、フォントと画像は data: URL で中に入る。Go の `vector/svgbdf`（`Inline`）と同じ要素を書く。文書内のページへのリンクは落とす |
+| `image(view, target, scale, format?, quality?)` | 同じ対象を画像ファイルの `Blob` にする。`format` は `"image/webp"`（既定）・`"image/png"`・`"image/jpeg"`。その形式を書き出せないブラウザ（Safari の WebP）は PNG を返すので、`blob.type` を見る |
+| `saveTarget(view, page)` / `imageScale(w, h, scale)` / `sheetBounds(view)` | 1 つの View を 1 ファイルに保存するときの対象（fixed・flow はそのページ、scroll は全体、シートはセルのある範囲）と大きさ / キャンバスに収まる倍率 / シートのタイルが届く範囲 |
 | `content(view, index)` / `continuousContent(view, viewport)` / `sheetContent(view, viewports)` | テキスト層用の `TextContent`（run、構造、リンク） |
 | `text(view, index)` / `continuousText(view, viewport)` | run だけ |
 | `search(view, query, options?)` / `locate(view, hits)` | 検索と、ヒットの矩形 |

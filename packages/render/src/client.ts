@@ -2,6 +2,7 @@ import type { Manifest, Rect, TextRun, TextContent, SearchHit, SearchOptions } f
 import type { HitRect } from "./search.js";
 import type { WorkerCall, WorkerResponse, OpenSource, WorkerErrorCode, WorkerOpenOptions, RasterizeRequest, RasterizeResponse, PlayData, AudioData } from "./protocol.js";
 import { domSvgRasterizer } from "./svg.js";
+import type { SvgResult } from "./svgexport.js";
 
 /** An error from the worker; code says when the document needs a password. */
 export class BdfWorkerError extends Error {
@@ -18,7 +19,7 @@ export class BdfWorkerError extends Error {
 export class BdfWorkerClient {
   private next = 1;
   private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
-  private svg = domSvgRasterizer();
+  private rasterizer = domSvgRasterizer();
 
   constructor(readonly worker: Worker) {
     worker.onmessage = (ev: MessageEvent<WorkerResponse | RasterizeRequest>) => {
@@ -37,8 +38,8 @@ export class BdfWorkerClient {
   private async rasterize(req: RasterizeRequest): Promise<void> {
     let res: RasterizeResponse;
     try {
-      if (!this.svg) throw new Error("no DOM to draw SVG images with");
-      res = { rid: req.rid, ok: true, bitmap: await this.svg(req.hash, req.data, req.width, req.height) };
+      if (!this.rasterizer) throw new Error("no DOM to draw SVG images with");
+      res = { rid: req.rid, ok: true, bitmap: await this.rasterizer(req.hash, req.data, req.width, req.height) };
     } catch (e) {
       res = { rid: req.rid, ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -89,6 +90,25 @@ export class BdfWorkerClient {
   }
   sheet(view: string, viewport: Rect, scale: number): Promise<ImageBitmap> {
     return this.call<ImageBitmap>({ type: "sheet", view, viewport, scale });
+  }
+  /**
+   * A page of a view (its index), or a region (a rectangle in units: of a
+   * sheet, or of the continuous layout of another view), as an SVG file
+   * that stands alone: text as text, with the fonts and images in the file.
+   * A browser shows it without a viewer. warnings list what SVG has no
+   * element for.
+   */
+  svg(view: string, target: number | Rect): Promise<SvgResult> {
+    return this.call<SvgResult>(typeof target === "number" ? { type: "svg", view, page: target } : { type: "svg", view, viewport: target });
+  }
+  /**
+   * The same drawn as an image file at scale device pixels per unit, in a
+   * format the browser encodes ("image/webp" by default; "image/png",
+   * "image/jpeg"). A browser that does not encode the format (Safari and
+   * WebP) answers with a PNG: the type of the blob says which it is.
+   */
+  image(view: string, target: number | Rect, scale: number, format = "image/webp", quality?: number): Promise<Blob> {
+    return this.call<Blob>(typeof target === "number" ? { type: "image", view, page: target, scale, format, quality } : { type: "image", view, viewport: target, scale, format, quality });
   }
   /** Text runs of a page in page units; advances are measured with the embedded fonts. */
   text(view: string, page: number): Promise<TextRun[]> {
