@@ -222,7 +222,7 @@ export class Viewer extends EventTarget {
         if (this.found?.query && this.findStale) void this.runFind(this.found.query, 0, false).catch((error) => this.fail(error));
       }
     } catch (error) {
-      if (serial === this.documentSerial) this.dispatchEvent(new CustomEvent("error", { detail: error }));
+      if (serial === this.documentSerial) this.fail(error);
     } finally {
       if (this.activeStream?.id === stream) this.activeStream = undefined;
       void converter.close!(stream).catch(() => {});
@@ -357,8 +357,14 @@ export class Viewer extends EventTarget {
     return !(this.musicMode === "piano-roll" && view.play?.seq && this.musicRenderer);
   }
 
+  /**
+   * A failure outside a call the host awaits (a page that does not draw or
+   * convert): the "error" event. It goes to the console too, so that a
+   * host that does not listen is not left with a blank page and no word
+   * of it, unless a listener calls preventDefault().
+   */
   private fail(error: unknown): void {
-    this.dispatchEvent(new CustomEvent("error", { detail: error }));
+    if (this.dispatchEvent(new CustomEvent("error", { detail: error, cancelable: true }))) console.error("bdf viewer:", error);
   }
 
   /** Forget the search and its marks, and tell the host when there was one; the find bar stays as it is. */
@@ -473,7 +479,7 @@ export class Viewer extends EventTarget {
     if (view.kind === "sheet") this.drawSheet(view, generation);
     else if (this.musicMode === "piano-roll" && view.play?.seq && this.musicRenderer) {
       void this.musicRenderer({ stage: this.stage, renderer: this.renderer, view, zoom: this.zoom, isCurrent: () => generation === this.generation })
-        .catch((error) => this.dispatchEvent(new CustomEvent("error", { detail: error })));
+        .catch((error) => this.fail(error));
     }
     else this.drawPages(view, generation);
   }
@@ -536,7 +542,7 @@ export class Viewer extends EventTarget {
       canvas.dataset.loaded = "ready";
     } catch (error) {
       canvas.dataset.loaded = "";
-      this.dispatchEvent(new CustomEvent("error", { detail: error }));
+      this.fail(error);
     }
   }
 
@@ -589,7 +595,7 @@ export class Viewer extends EventTarget {
         canvas.style.height = `${height}px`;
         canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
         bitmap.close();
-      } catch (error) { this.dispatchEvent(new CustomEvent("error", { detail: error })); }
+      } catch (error) { this.fail(error); }
     };
     this.sheetDraw = draw;
     mark();

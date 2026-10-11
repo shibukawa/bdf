@@ -2,7 +2,7 @@
 // bdf inside the browser, and its text for a search index is shown in a
 // text area: what Document.SearchText gives a server, from the preview
 // module (cmd/bdfwasm built with -tags previewonly).
-import { Intake, converted, kb, message, type Source } from "../intake.js";
+import { Intake, converted, failure, kb, type Source } from "../intake.js";
 
 /** Where the page finds lib/, fonts/ and samples/ (set by the build). */
 declare const SITE_ROOT: string;
@@ -41,7 +41,7 @@ const intake = new Intake({
 
 shape.onchange = show;
 copy.onclick = () => {
-  navigator.clipboard.writeText(output.value).then(() => setStatus("copied"), (e) => setStatus(`error: ${message(e)}`));
+  navigator.clipboard.writeText(output.value).then(() => setStatus("copied"), (e) => setStatus(failure(e)));
 };
 
 async function extract(s: Source) {
