@@ -133,8 +133,9 @@ func ConvertFile(path string, opts *Options) (*Result, error) {
 // converter.ErrPasswordRequired.
 func readContext(rs io.ReadSeeker, password string) (ctx *model.Context, protected bool, err error) {
 	defer recovered(&err)
+	src := rs
 	read := func(pw string) (*model.Context, error) {
-		if _, err := rs.Seek(0, io.SeekStart); err != nil {
+		if _, err := src.Seek(0, io.SeekStart); err != nil {
 			return nil, err
 		}
 		// Conversion uses independent built-in settings and never loads or
@@ -147,15 +148,30 @@ func readContext(rs io.ReadSeeker, password string) (ctx *model.Context, protect
 		conf.ValidationMode = model.ValidationRelaxed
 		conf.DecodeAllStreams = false
 		conf.UserPW, conf.OwnerPW = pw, pw
-		return api.ReadContext(context.Background(), rs, conf)
+		return api.ReadContext(context.Background(), src, conf)
 	}
-	ctx, err = read("")
+	// An empty AES stream written as its vector alone is refused by pdfcpu,
+	// once the password is right: the file is read again with such streams
+	// shown empty (see emptystream.go).
+	readLenient := func(pw string) (*model.Context, error) {
+		ctx, err := read(pw)
+		if !shortCiphertext(err) || src != rs {
+			return ctx, err
+		}
+		p, perr := emptyStreams(rs)
+		if perr != nil || p == nil {
+			return ctx, err
+		}
+		src = p
+		return read(pw)
+	}
+	ctx, err = readLenient("")
 	if errors.Is(err, pdfcpu.ErrWrongPassword) {
 		protected = true
 		if password == "" {
 			return nil, true, fmt.Errorf("pdf: %w", conv.ErrPasswordRequired)
 		}
-		ctx, err = read(password)
+		ctx, err = readLenient(password)
 		if errors.Is(err, pdfcpu.ErrWrongPassword) {
 			return nil, true, fmt.Errorf("pdf: %w", conv.ErrWrongPassword)
 		}

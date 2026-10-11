@@ -81,6 +81,7 @@
   .info { color: #666; flex: 1 1 0; min-width: 16em; display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
   #status, #timing { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #status { max-width: 32em; }
+  #status[data-error] { color: #b00020; }
   #timing { flex-shrink: 100; } /* gives way first */
   #progress { width: 96px; }
   #pwDialog { border: 1px solid #999; border-radius: 6px; padding: 16px 20px; }
@@ -98,6 +99,12 @@
   .landing h1 { font-size: 20px; margin: 0 0 8px; }
   .landing .samples { display: flex; flex-wrap: wrap; gap: 6px; }
   .landing .note { color: #666; font-size: 12px; }
+  /* a file that did not open: what went wrong, in full (the status line cuts it), and what a report of it needs */
+  .failure { margin: 0 0 24px; padding: 12px 16px; background: #fdecea; border: 1px solid #e0a8a8; border-left: 4px solid #b00020; border-radius: 6px; color: #5f1420; }
+  .failure h2 { font-size: 15px; margin: 0 0 4px; overflow-wrap: anywhere; }
+  .failure p { margin: 0 0 6px; overflow-wrap: anywhere; }
+  .failure summary { cursor: pointer; }
+  .failure pre { margin: 8px 0; padding: 8px; max-height: 16em; overflow: auto; background: #fff; border: 1px solid #e0a8a8; border-radius: 4px; color: #222; font: 12px ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
   body.dragging #stage { outline: 3px dashed #1a73e8; outline-offset: -6px; background: #dde8f7; }
   .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 </style>
@@ -168,6 +175,15 @@
 </header>
 <div id="stage" role="tabpanel" tabindex="0">
   <div class="landing" id="landing" hidden>
+    <section class="failure" id="failure" aria-labelledby="failureTitle" hidden>
+      <h2 id="failureTitle"></h2>
+      <p></p>
+      <details>
+        <summary>Details, for a report of the problem</summary>
+        <pre id="failureDetails"></pre>
+        <button type="button">Copy the details</button>
+      </details>
+    </section>
     <h1>Drop a file here to preview it</h1>
     <p>PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV and TSV, Apache Parquet (the first 10,000 rows), Visio (.vsdx), draw.io (.drawio, and SVG and PNG exports with the diagram), AutoCAD DXF, Jw_cad (.jww), SXF (.p21, .p2z, .sfc), CGM (.cgm), HP-GL/2 plot files (.plt), Gerber and Excellon PCB files (one by one, or a board's files in a .zip), Illustrator (.ai), Photoshop (.psd, .psb), Windows metafiles (.emf, .wmf), images (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, SVG: shown as they are, with their metadata), audio files (MP3, M4A, FLAC, Ogg, WAV, AIFF: their cover art, tags and lyrics on a card that plays), HTML and web archives (.html, .mhtml) and Markdown (.md) and EPUB (.epub), laid out in reader mode, music (MML, MIDI and MusicXML: .mml, .mid, .kar, .musicxml, .mxl), engraved as scores that play, font files (.ttf, .otf, .ttc, .woff: their characters, glyphs and OpenType features), or BDF.
       The file is converted to BDF and drawn inside your browser, by the Go converters built as WebAssembly: it is not uploaded anywhere.</p>

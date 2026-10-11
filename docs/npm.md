@@ -66,7 +66,7 @@ viewer.destroy();
 converter.terminate();
 ```
 
-The host application owns its file picker, toolbar, view tabs, zoom controls and lightbox close button. Use `setView`, `setLayout`, `setZoom`, `show` and `hide` to connect them. For formats that support page streaming, the viewer shows the outline first and fills pages as they convert. It emits `documentchange`, `viewchange`, `conversionprogress`, `conversiondone` and `error` events. It places and scrolls pages and renders sheet viewports.
+The host application owns its file picker, toolbar, view tabs, zoom controls and lightbox close button. Use `setView`, `setLayout`, `setZoom`, `show` and `hide` to connect them. For formats that support page streaming, the viewer shows the outline first and fills pages as they convert. It emits `documentchange`, `viewchange`, `conversionprogress`, `conversiondone` and `error` events. A failure reported by an `error` event (a page that could not be drawn or converted) is also written to the console, unless a listener calls `preventDefault()` on the event. It places and scrolls pages and renders sheet viewports.
 
 ## Payload sizes
 

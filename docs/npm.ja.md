@@ -69,7 +69,7 @@ viewer.destroy();
 converter.terminate();
 ```
 
-埋め込み表示では `#preview` に幅と高さを指定します。ライトボックスは `show()` まで非表示です。パッケージは文書面、ページ配置、スクロール、シートのビューポート描画を担当します。ページ単位で変換できる入力は、輪郭を先に表示し、変換済みページを順に反映します。ファイル選択、ツールバー、タブ、ズームボタン、ライトボックスの閉じるボタンはアプリ側で作り、`setView`、`setLayout`、`setZoom`、`show`、`hide` を呼びます。`documentchange`、`viewchange`、`conversionprogress`、`conversiondone`、`error` イベントを監視できます。
+埋め込み表示では `#preview` に幅と高さを指定します。ライトボックスは `show()` まで非表示です。パッケージは文書面、ページ配置、スクロール、シートのビューポート描画を担当します。ページ単位で変換できる入力は、輪郭を先に表示し、変換済みページを順に反映します。ファイル選択、ツールバー、タブ、ズームボタン、ライトボックスの閉じるボタンはアプリ側で作り、`setView`、`setLayout`、`setZoom`、`show`、`hide` を呼びます。`documentchange`、`viewchange`、`conversionprogress`、`conversiondone`、`error` イベントを監視できます。`error` イベントで知らせる失敗（描けなかった・変換できなかったページ）はコンソールにも出力します。リスナーがイベントの `preventDefault()` を呼ぶと出力しません。
 
 ## 配信サイズ
 
