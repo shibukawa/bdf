@@ -59,6 +59,9 @@ const hitsBox = $<HTMLSpanElement>("hits");
 const progress = $<HTMLProgressElement>("progress");
 /** The start page (kept: the stage drops it when a document opens). */
 const landing = $<HTMLDivElement>("landing");
+/** On the start page: what went wrong with a file that did not open, and the details under it. */
+const failure = $<HTMLElement>("failure");
+const failureDetails = $<HTMLPreElement>("failureDetails");
 
 let manifest: Manifest;
 /** The view shown; undefined while no document is open. */
@@ -139,14 +142,24 @@ interface CellSelection { anchor: { r: number; c: number }; focus: { r: number; 
 const cellSelections = new WeakMap<View, CellSelection>();
 const dpr = () => window.devicePixelRatio || 1;
 
-/** Announced to screen readers (a polite live region). */
-function setStatus(s: string) {
+/** Announced to screen readers (a polite live region); error marks it as a failure. */
+function setStatus(s: string, error = false) {
   status.textContent = s;
   status.title = s; // cut to one line
+  status.toggleAttribute("data-error", error);
 }
 /** Render timings: shown only, as they change on every scroll. */
 function setTiming(s: string) { timing.textContent = s; }
-const showError = (e: unknown) => setStatus(`error: ${(e as Error).message ?? e}`);
+const errorText = (e: unknown) => (e as Error | undefined)?.message ?? String(e);
+/**
+ * A failure: said in the status line, which has room for a line, and
+ * written to the console whole, with its stack, for who looks into it.
+ */
+function showFailure(what: string, e: unknown) {
+  console.error(`bdf viewer: ${what}:`, e);
+  setStatus(`${what}: ${errorText(e)}`, true);
+}
+const showError = (e: unknown) => showFailure("error", e);
 /** A failure of work started for a view no longer shown is expected: its document may be gone. */
 const unlessStale = (gen: number) => (e: unknown) => { if (gen === generation) showError(e); };
 
@@ -370,7 +383,7 @@ async function load(source: OpenSource, name?: string, token = ++opening, stream
  * Open a file: a bdf document as it is, anything else converted into one
  * first (asking for the password of an encrypted file).
  */
-async function openFile(name: string, data: ArrayBuffer) {
+async function openFile(name: string, data: ArrayBuffer, at = attempt(name)) {
   const token = ++opening;
   closeDocument();
   // a view named in the address belongs to the document shown before
@@ -380,6 +393,8 @@ async function openFile(name: string, data: ArrayBuffer) {
   setTiming("");
   const base = name.replace(/\.[^.]*$/, "");
   const kind = sniff(new Uint8Array(data), name);
+  at.bytes = data.byteLength;
+  at.kind = kind;
   if (kind === "bdf") {
     await load({ kind: "buffer", buffer: data }, name, token);
     return;
@@ -388,6 +403,8 @@ async function openFile(name: string, data: ArrayBuffer) {
   setStatus(busy);
   const conv = converterWorker();
   const module = shared(MODULES[kind]);
+  at.module = MODULES[kind];
+  console.info(`bdf viewer: converting ${name} (${data.byteLength} bytes) with ${MODULES[kind]}`);
   // only the Office converters lay text out with the font directory (PDFs embed their fonts, images have no text)
   const fonts = kind === "office" ? shared(FONTS) : undefined;
   let t0 = 0; // of the last attempt: the reader's typing is not part of the conversion
@@ -418,6 +435,7 @@ async function openFile(name: string, data: ArrayBuffer) {
     setDownload(bdfFile(res.bdf), base);
     if (!(await load({ kind: "buffer", buffer }, name, token))) return;
     setStatus(took);
+    console.info(`bdf viewer: ${took}`);
     return;
   }
   const st: Streaming = { id: res.stream, token, view: "", state: new Array<PageState>(res.pages).fill(PageState.Pending), left: res.pages, warnings: res.warnings };
@@ -428,7 +446,7 @@ async function openFile(name: string, data: ArrayBuffer) {
   if (streaming !== st) return;
   setStatus(`${name}: ${res.pages} ${res.pages === 1 ? "page" : "pages"}, converted as they come into view`);
   showProgress(st);
-  convertPages(st, name, base, t0).catch(openFailed);
+  convertPages(st, name, base, t0).catch((e) => openFailed(e, at));
 }
 
 /**
@@ -447,7 +465,7 @@ async function convertPages(st: Streaming, name: string, base: string, t0: numbe
   };
   const failed = (i: number) => (e: unknown) => {
     if (!live()) return;
-    setStatus(`page ${i + 1} could not be converted: ${(e as Error).message ?? e}`);
+    showFailure(`page ${i + 1} could not be converted`, e);
     arrived(i, PageState.Failed);
   };
   // the page being put into the document while the converter goes on with the next
@@ -474,7 +492,7 @@ async function convertPages(st: Streaming, name: string, base: string, t0: numbe
   if (lost) {
     // the whole document would fail on the same pages: nothing to download
     conv.close(st.id).catch(() => {});
-    setStatus(`${name}: ${lost} of ${st.state.length} pages could not be converted`);
+    setStatus(`${name}: ${lost} of ${st.state.length} pages could not be converted`, true);
     return;
   }
   setTiming("finishing the document…");
@@ -485,9 +503,11 @@ async function convertPages(st: Streaming, name: string, base: string, t0: numbe
     setWarnings(res.warnings);
     await client.replace({ kind: "buffer", buffer: res.bdf.buffer as ArrayBuffer });
     if (opening !== st.token) return;
-    setStatus(`${name} converted in ${(performance.now() - t0).toFixed(0)} ms: ${res.summary}`);
+    const took = `${name} converted in ${(performance.now() - t0).toFixed(0)} ms: ${res.summary}`;
+    setStatus(took);
+    console.info(`bdf viewer: ${took}`);
   } catch (e) {
-    if (opening === st.token) setStatus(`${name}: the document could not be finished: ${(e as Error).message ?? e}`);
+    if (opening === st.token) showFailure(`${name}: the document could not be finished`, e);
   } finally {
     conv.close(st.id).catch(() => {});
     if (opening === st.token) setTiming("");
@@ -566,17 +586,58 @@ function closeDocument() {
   found.query = ""; found.hits = []; found.rects = []; found.index = -1; found.pages = -1; hitsBox.textContent = "";
 }
 
-/** A file that did not open leaves the start page, when no other document is open. */
-function openFailed(e: unknown) {
-  showError(e);
-  if (current || landing.isConnected) return;
-  landing.hidden = false;
-  stage.replaceChildren(landing);
+/** A file or a document being opened: what the report of a failure says of it. */
+interface Attempt {
+  name: string;
+  started: number;
+  bytes?: number;
+  /** What the file was taken for (see sniff), and the converter module it went to. */
+  kind?: string;
+  module?: string;
+}
+/** The last one started: an earlier one that fails says so in the console only. */
+let attempted: Attempt | undefined;
+
+function attempt(name: string): Attempt {
+  failure.hidden = true;
+  return attempted = { name, started: performance.now() };
+}
+
+/**
+ * A file that did not open leaves the start page, when no other document is
+ * open, with what went wrong on it: the message whole, and under it what a
+ * report of the problem needs (the same goes to the console).
+ */
+function openFailed(e: unknown, at?: Attempt) {
+  const code = errorCode(e);
+  const stack = (e as Error | undefined)?.stack;
+  const details = [
+    at && `file: ${at.name}${at.bytes === undefined ? "" : ` (${at.bytes} bytes)`}`,
+    at?.kind && `read as: ${at.kind}${at.module ? ` (${at.module})` : ""}`,
+    `error: ${errorText(e)}`,
+    code && `code: ${code}`,
+    at && `after: ${(performance.now() - at.started).toFixed(0)} ms`,
+    `page: ${location.href}`,
+    `browser: ${navigator.userAgent}`,
+  ].filter(Boolean).join("\n");
+  // the console shows the stack of the error itself
+  console.error(`bdf viewer: ${at?.name ?? "the document"} could not be opened\n${details}\n`, e);
+  if (at && at !== attempted) return; // another one was opened meanwhile
+  setStatus(`error: ${errorText(e)}`, true);
+  if (current) return;
+  failure.querySelector("h2")!.textContent = `${at?.name ?? "The document"} could not be opened`;
+  failure.querySelector("p")!.textContent = errorText(e);
+  failureDetails.textContent = stack ? `${details}\nstack: ${stack}` : details;
+  failure.hidden = false;
+  if (!landing.isConnected) stage.replaceChildren(landing);
+  if (landing.hidden) showLanding(true).catch(showError);
+  stage.scrollTop = 0;
 }
 
 /** Open a file the reader chose or dropped. */
 function openLocal(file: File) {
-  file.arrayBuffer().then((data) => openFile(file.name, data)).catch(openFailed);
+  const at = attempt(file.name);
+  file.arrayBuffer().then((data) => openFile(file.name, data, at)).catch((e) => openFailed(e, at));
 }
 
 /** A converted document as a file; the Blob copies the bytes, which then go to the worker. */
@@ -614,17 +675,18 @@ function setWarnings(list: string[]) {
 
 /** Fetch a file by its URL and open it, converted: a sample, or the file ?file= names. */
 function openURL(url: string, name = decodeURIComponent(new URL(url).pathname.split("/").pop() ?? "")) {
+  const at = attempt(name);
   setStatus(`fetching ${name}…`);
   return fetch(url)
-    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${name}: HTTP ${r.status}`))))
-    .then((data) => openFile(name, data))
-    .catch(openFailed);
+    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${name}: HTTP ${r.status} (${url})`))))
+    .then((data) => openFile(name, data, at))
+    .catch((e) => openFailed(e, at));
 }
 
-/** The start page: a file picker, drag and drop, and the samples published with the page. */
-async function showLanding() {
+/** The start page: a file picker, drag and drop, and the samples published with the page. After a failure, the status line keeps what it says of it. */
+async function showLanding(failed = false) {
   landing.hidden = false;
-  setStatus("no document open");
+  if (!failed) setStatus("no document open");
   const res = await fetch(shared("samples/index.json")).catch(() => undefined);
   if (!res?.ok) return;
   const samples = (await res.json()) as { name: string; label: string }[];
@@ -714,6 +776,9 @@ function init() {
     if (file) openLocal(file);
   };
   $("openFile").onclick = () => picker.click();
+  failure.querySelector("button")!.onclick = () => {
+    navigator.clipboard.writeText(failureDetails.textContent ?? "").then(() => setStatus("details copied"), showError);
+  };
   landing.querySelector<HTMLButtonElement>("#chooseFile")!.onclick = () => picker.click();
   const carriesFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
   let depth = 0; // dragenter and dragleave fire for every element crossed
@@ -891,7 +956,8 @@ async function main() {
   if (file) return openURL(/^samples\//.test(file) ? shared(file) : siteURL(file));
   if (!src) return showLanding();
   const source: OpenSource = src.endsWith("/") ? { kind: "split", base: siteURL(src) } : { kind: "single", url: siteURL(src), range: params.has("range") };
-  await load(source);
+  const at = attempt(src);
+  await load(source).catch((e) => openFailed(e, at));
 }
 
 function show(v: View) {
@@ -1353,11 +1419,11 @@ function loadRecording(v: View) {
     r.onUpdate = musicChanged;
     // a format this browser has no decoder for (AIFF and Apple Lossless outside Safari): the card stays, silent
     r.onError = (e) => {
-      if (recording === r) setStatus(`the audio does not play: ${e.message}`);
+      if (recording === r) showFailure("the audio does not play", e);
     };
     musicChanged();
   }).catch((e) => {
-    if (token === music) setStatus(`the audio could not be read: ${(e as Error).message ?? e}`);
+    if (token === music) showFailure("the audio could not be read", e);
   });
 }
 
@@ -1377,7 +1443,7 @@ function loadMusic(v: View) {
     player.onUpdate = musicChanged;
     musicChanged();
   }).catch((e) => {
-    if (token === music) setStatus(`the music could not be read: ${(e as Error).message ?? e}`);
+    if (token === music) showFailure("the music could not be read", e);
   });
 }
 
@@ -2595,5 +2661,9 @@ function showSheet(v: View) {
     clipboardFor(rangeOf(s));
   }
 }
+
+// what nothing caught is in the console: the status line says so too
+window.addEventListener("error", (ev) => { if (ev.error) setStatus(`error: ${errorText(ev.error)}`, true); });
+window.addEventListener("unhandledrejection", (ev) => setStatus(`error: ${errorText(ev.reason)}`, true));
 
 main().catch(showError);

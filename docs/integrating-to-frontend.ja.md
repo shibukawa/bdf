@@ -73,7 +73,7 @@ input.addEventListener("change", async () => {
 // 画面を取り外す際に viewer.destroy() と converter.terminate() を呼ぶ
 ```
 
-`fonts` を指定する場合、その URL にフォントファイルと `index.json` を配信します。ページ単位で変換できる形式では、`openFile` が先にページの輪郭を表示し、残りのページを順に追加します。進捗は `conversionprogress`、完了は `conversiondone`、非同期の失敗は `error` イベントで受け取れます。
+`fonts` を指定する場合、その URL にフォントファイルと `index.json` を配信します。ページ単位で変換できる形式では、`openFile` が先にページの輪郭を表示し、残りのページを順に追加します。進捗は `conversionprogress`、完了は `conversiondone`、非同期の失敗は `error` イベントで受け取れます。ファイルを開けない・変換できないときは `openFile` が reject します。その後の失敗（変換できなかった・描けなかったページ）は `error` イベントで届き、リスナーがイベントの `preventDefault()` を呼ばないかぎりコンソールにも出力します。
 
 ## 文書内を検索する
 

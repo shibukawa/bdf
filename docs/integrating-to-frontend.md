@@ -73,7 +73,7 @@ input.addEventListener("change", async () => {
 // Call viewer.destroy() and converter.terminate() when removing the view.
 ```
 
-If you pass `fonts`, serve font files and an `index.json` at that URL. For formats that support page-by-page conversion, `openFile` shows page outlines first and fills pages as conversion progresses. Listen for `conversionprogress`, `conversiondone`, and `error` events to update your UI.
+If you pass `fonts`, serve font files and an `index.json` at that URL. For formats that support page-by-page conversion, `openFile` shows page outlines first and fills pages as conversion progresses. Listen for `conversionprogress`, `conversiondone`, and `error` events to update your UI. `openFile` rejects when the file cannot be opened or converted; failures after that (a page that could not be converted or drawn) come as `error` events, and are also written to the console unless your listener calls `preventDefault()` on the event.
 
 ## Find in the document
 

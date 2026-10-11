@@ -4,7 +4,7 @@
 // by the preview module (cmd/bdfwasm built with -tags previewonly: the Go
 // packages thumbnail and raster, as a server uses them).
 import type { Thumbnail, ThumbnailOptions } from "../../examples/common/convert.js";
-import { Intake, converted, kb, message, type Source } from "../intake.js";
+import { Intake, converted, failure, kb, type Source } from "../intake.js";
 
 /** Where the page finds lib/, fonts/ and samples/ (set by the build). */
 declare const SITE_ROOT: string;
@@ -43,7 +43,7 @@ const intake = new Intake({
   pages: "1",
 });
 
-for (const box of [modeBox, formatBox, dpiBox]) box.onchange = () => { draw().catch((e) => setStatus(`error: ${message(e)}`)); };
+for (const box of [modeBox, formatBox, dpiBox]) box.onchange = () => { draw().catch((e) => setStatus(failure(e))); };
 
 function options(): Pick<ThumbnailOptions, "mode" | "format" | "sheetDpi"> {
   const dpi = Math.min(288, Math.max(24, Number(dpiBox.value) || 72));

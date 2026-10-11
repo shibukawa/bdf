@@ -46,6 +46,11 @@ const MODULES = { pdf: "lib/bdf-pdf.wasm", office: "lib/bdf-office.wasm", web: "
 /** Why a call of the converter worker failed, when it says so with a code. */
 export const errorCode = (e: unknown) => (e instanceof ConvertError ? e.code : undefined);
 export const message = (e: unknown) => (e as Error).message ?? String(e);
+/** What a status line says of a failure, which also goes to the console whole, with its stack. */
+export function failure(e: unknown): string {
+  console.error("bdf:", e);
+  return `error: ${message(e)}`;
+}
 
 export class Intake {
   readonly converter: ConverterClient;
@@ -125,7 +130,7 @@ export class Intake {
     box.hidden = false;
   }
 
-  private fail = (e: unknown) => this.options.status(`error: ${message(e)}`);
+  private fail = (e: unknown) => this.options.status(failure(e));
 
   private openLocal(file: File) {
     file.arrayBuffer().then((data) => this.openFile(file.name, data)).catch(this.fail);
