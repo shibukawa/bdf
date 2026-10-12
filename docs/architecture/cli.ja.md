@@ -21,6 +21,8 @@ bdf encrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
 bdf decrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
                                    暗号化を解いて書き出す
 bdf demo <file.bdf | dir/>         フィクスチャ文書を書き出す（dir/ は末尾がスラッシュ）
+bdf conformance [-testdata dir] <dir>
+                                   他の読み手のための適合テストを書き出す（conformance パッケージ）
 ```
 
 暗号化された文書は `$BDF_PASSWORD` のパスワードで読みます。`split` と `join` はパスワードなしで使えます。
@@ -84,6 +86,15 @@ BDF_PASSWORD=… bdf decrypt in.bdf out.bdf   # 暗号化を解除（開くの�
 bdf demo out.bdf      # golden テストとデモビューアの既定が使うフィクスチャ文書
 bdf demo out/         # その分割形式
 ```
+
+## conformance
+
+```sh
+bdf conformance out/                 # suite.json と inputs/。testdata/ の文書を受理の事例として含む
+bdf conformance -testdata "" out/    # 合成した事例だけ
+```
+
+他の言語で書かれた読み手（libbdf）のためのもので、入力と、この実装がそれをどう扱うかを `suite.json` に記録します（`conformance` パッケージ）。CI は成果物 `bdf-conformance` として、リリースのワークフローはタグのリリースに `bdf-conformance-<tag>.tar.gz` として添付します。
 
 ## 形式を横断するフォント埋め込みのフラグ
 

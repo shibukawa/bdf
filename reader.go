@@ -95,6 +95,11 @@ func OpenSingle(r io.ReaderAt, size int64) (*Reader, error) {
 			return nil, &FormatError{Msg: "part out of range"}
 		}
 		b := make([]byte, e.Len)
+		if e.Len == 0 {
+			// nothing to read: a ReadAt of no bytes at the end of the file
+			// would report io.EOF
+			return b, nil
+		}
 		_, err := r.ReadAt(b, base+e.Off)
 		return b, err
 	}), nil
