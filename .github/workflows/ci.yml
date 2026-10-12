@@ -157,6 +157,14 @@ jobs:
         with:
           name: regenerated-bdf-fixtures
           path: /tmp/regenerated-bdf-fixtures/
+      - name: conformance suite
+        run: |
+          go run ./cmd/bdf conformance -testdata testdata /tmp/bdf-conformance
+          tar czf /tmp/bdf-conformance.tar.gz -C /tmp bdf-conformance
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bdf-conformance
+          path: /tmp/bdf-conformance.tar.gz
   web:
     if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest

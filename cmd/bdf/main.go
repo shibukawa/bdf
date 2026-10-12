@@ -40,6 +40,8 @@ func usage() {
                                      write the segment of pages that holds a page, sealed for a
                                      reader's public key (bdf segment -h for flags)
   bdf demo <file.bdf | dir/>         write the fixture document (dir/ ends with a slash)
+  bdf conformance [-testdata dir] <dir>
+                                     write the conformance suite for other readers (package conformance)
 
 An encrypted document is read with the password in $BDF_PASSWORD; split and
 join copy it without the password.`)
@@ -218,6 +220,8 @@ func main() {
 		d, err := fixture.Demo()
 		check(err)
 		check(write(d, os.Args[2]))
+	case "conformance":
+		conformanceCmd(os.Args[2:])
 	default:
 		usage()
 	}

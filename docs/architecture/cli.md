@@ -21,6 +21,8 @@ bdf encrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
 bdf decrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
                                    write an encrypted document without its encryption
 bdf demo <file.bdf | dir/>         write the fixture document (dir/ ends with a slash)
+bdf conformance [-testdata dir] <dir>
+                                   write the conformance suite for other readers (package conformance)
 ```
 
 An encrypted document is read with the password in `$BDF_PASSWORD`; `split` and `join` copy it without needing the password.
@@ -84,6 +86,15 @@ BDF_PASSWORD=… bdf decrypt in.bdf out.bdf   # remove the encryption (needs the
 bdf demo out.bdf      # the fixture document used by the golden tests and the demo viewer's default
 bdf demo out/         # its split form
 ```
+
+## conformance
+
+```bash
+bdf conformance out/                 # the suite: suite.json and inputs/, with testdata/ as accept cases
+bdf conformance -testdata "" out/    # the synthetic cases alone
+```
+
+The suite is for readers written in other languages (libbdf): inputs and what this implementation does with them, as `suite.json` records it (see package `conformance`). CI uploads it as the `bdf-conformance` artifact, and the release workflow attaches `bdf-conformance-<tag>.tar.gz` to the release of a tag.
 
 ## Font embedding flags, across formats
 
