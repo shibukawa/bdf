@@ -50,26 +50,71 @@ export interface SearchOptions {
 }
 
 /**
- * Normalize one character for matching: NFKC, case folding, and small kana to full-size kana are treated alike.
- * The minus sign of formulas matches the hyphen-minus that queries are typed with.
+ * Fold normalized text for matching, a character at a time: case, and small
+ * and large kana alike (katakana to hiragana). The minus sign of formulas
+ * matches the hyphen-minus that queries are typed with.
  */
-export function normalizeChar(ch: string, caseSensitive: boolean): string {
-  if (ch === "\u2212") return "-";
-  let s = ch.normalize("NFKC");
-  if (!caseSensitive) s = s.toLowerCase();
-  // Katakana to hiragana so that both scripts match each other.
+function fold(s: string, caseSensitive: boolean): string {
   let out = "";
   for (const c of s) {
-    const cp = c.codePointAt(0)!;
-    out += cp >= 0x30a1 && cp <= 0x30f6 ? String.fromCodePoint(cp - 0x60) : c;
+    if (c === "\u2212") {
+      out += "-";
+      continue;
+    }
+    for (const d of caseSensitive ? c : c.toLowerCase()) {
+      const cp = d.codePointAt(0)!;
+      // Katakana to hiragana so that both scripts match each other.
+      out += cp >= 0x30a1 && cp <= 0x30f6 ? String.fromCodePoint(cp - 0x60) : d;
+    }
   }
   return out;
 }
 
+/**
+ * Normalize a string for matching: NFKC of the string as a whole, so that a
+ * letter and the marks after it are the letter they compose (e and a
+ * combining acute are é, a half-width ka and its voiced mark are が), then
+ * case and kana folded.
+ */
 export function normalizeQuery(q: string, caseSensitive = false): string {
-  let out = "";
-  for (const c of q) out += normalizeChar(c, caseSensitive);
-  return out;
+  return fold(q.normalize("NFKC"), caseSensitive);
+}
+
+/** A string that starts with a combining mark: it belongs to what is before it. */
+const MARK = /^\p{M}/u;
+
+/**
+ * Splits text into the pieces that NFKC normalizes on their own, and calls
+ * back with each: where it starts and ends in the text, in code units, and
+ * what it normalizes to. The pieces normalized one after another are the
+ * text normalized, and they are as small as that allows: a character alone,
+ * unless it changes with the ones before it (marks, the letters of a Hangul
+ * syllable).
+ */
+function pieces(text: string, each: (start: number, end: number, norm: string) => void): void {
+  let start = 0;
+  let off = 0;
+  let piece = "";
+  let norm = "";
+  for (const ch of text) {
+    // (ASCII is as it is, and changes nothing before it)
+    const ascii = ch.length === 1 && ch.charCodeAt(0) < 0x80;
+    const n = ascii ? ch : ch.normalize("NFKC");
+    if (piece !== "") {
+      if (!ascii && (MARK.test(n) || (piece + ch).normalize("NFKC") !== norm + n)) {
+        piece += ch;
+        norm = piece.normalize("NFKC");
+        off += ch.length;
+        continue;
+      }
+      each(start, off, norm);
+    }
+    start = off;
+    piece = ch;
+    norm = n;
+    off += ch.length;
+  }
+  if (piece !== "") each(start, off, norm);
 }
 
 /**
@@ -78,15 +123,21 @@ export function normalizeQuery(q: string, caseSensitive = false): string {
  */
 export class TextSearch {
   private norm = "";
-  /** For each code unit of norm: run index and code-unit offset in that run's text (or -1 for separators). */
+  /**
+   * For each code unit of norm: the run it is of, and where the piece of the
+   * run's text it was normalized from starts and ends, in code units (-1 for
+   * separators).
+   */
   private runOf: Int32Array;
   private offOf: Int32Array;
+  private endOf: Int32Array;
   /** The plain text, once it was asked for (every hit takes its context from it). */
   private plain: string | undefined;
 
   constructor(readonly runs: IndexRun[], readonly caseSensitive = false) {
     const runIdx: number[] = [];
     const offIdx: number[] = [];
+    const endIdx: number[] = [];
     let norm = "";
     runs.forEach((run, ri) => {
       if (ri > 0 && run.sep !== Sep.NONE) {
@@ -94,21 +145,22 @@ export class TextSearch {
         norm += run.sep === Sep.BREAK ? "\u0000" : " ";
         runIdx.push(-1);
         offIdx.push(-1);
+        endIdx.push(-1);
       }
-      let off = 0;
-      for (const ch of run.text) {
-        const n = normalizeChar(ch, caseSensitive);
+      pieces(run.text, (start, end, piece) => {
+        const n = fold(piece, caseSensitive);
         for (let k = 0; k < n.length; k++) {
           runIdx.push(ri);
-          offIdx.push(off);
+          offIdx.push(start);
+          endIdx.push(end);
         }
         norm += n;
-        off += ch.length;
-      }
+      });
     });
     this.norm = norm;
     this.runOf = Int32Array.from(runIdx);
     this.offOf = Int32Array.from(offIdx);
+    this.endOf = Int32Array.from(endIdx);
   }
 
   /** The searchable plain text (paragraph breaks as newlines). */
@@ -137,11 +189,11 @@ export class TextSearch {
       const ri = this.runOf[i];
       if (ri < 0) continue;
       const off = this.offOf[i];
+      const end = this.endOf[i];
       const run = this.runs[ri];
-      const charEnd = off + ((run.text.codePointAt(off) ?? 0) > 0xffff ? 2 : 1);
       const last = segments[segments.length - 1];
-      if (last && last.run === ri) last.end = Math.max(last.end, charEnd);
-      else segments.push({ run: ri, a: run.a, b: run.b, ordinal: run.ordinal, start: off, end: charEnd });
+      if (last && last.run === ri) last.end = Math.max(last.end, end);
+      else segments.push({ run: ri, a: run.a, b: run.b, ordinal: run.ordinal, start: off, end });
     }
     if (!segments.length) return undefined;
     let text = "";
