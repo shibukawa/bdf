@@ -3,6 +3,7 @@ package bdf
 import (
 	"encoding/binary"
 	"math"
+	"strings"
 )
 
 // buf is a little-endian byte buffer with the primitive encoders used by the format.
@@ -25,9 +26,17 @@ func (w *buf) f32s(vs ...float32) {
 func (w *buf) varuint(v uint64) { w.b = binary.AppendUvarint(w.b, v) }
 func (w *buf) bytes(p []byte)   { w.b = append(w.b, p...) }
 func (w *buf) str(s string) {
+	s = strings.TrimLeft(s, bom)
 	w.varuint(uint64(len(s)))
 	w.b = append(w.b, s...)
 }
+
+// bom is the byte order mark, U+FEFF. At the start of a string of a part
+// it is no text (docs/spec.md §3.1): a writer leaves it out, and a reader
+// drops one, as the decoder of the viewer does (TextDecoder), so that the
+// text of a document is the same to every reader.
+const bom = "\ufeff"
+
 func (w *buf) hash(h Hash) { w.b = append(w.b, h[:]...) }
 
 // reader is the decoding counterpart of buf.
@@ -129,7 +138,7 @@ func (r *reader) bytes(n int) []byte {
 }
 
 func (r *reader) str() string {
-	return string(r.bytes(r.count(1, "bad string length")))
+	return strings.TrimPrefix(string(r.bytes(r.count(1, "bad string length"))), bom)
 }
 
 func (r *reader) hash() Hash {

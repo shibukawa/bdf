@@ -1,5 +1,7 @@
 package bdf
 
+import "strings"
+
 // Local resource references inside an object.
 type (
 	PathRef  uint32
@@ -111,6 +113,7 @@ func (o *Object) growPath(p *Path) {
 // --- resources ---
 
 func (o *Object) str(s string) uint32 {
+	s = strings.TrimLeft(s, bom) // not written (buf.str): the same string with and without it
 	if i, ok := o.strIdx[s]; ok {
 		return i
 	}
