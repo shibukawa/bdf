@@ -196,3 +196,27 @@ func TestCFFWithoutFontDICT(t *testing.T) {
 		t.Error("the glyph is drawn")
 	}
 }
+
+// TestCFFIndexCutShort reads an INDEX of a table that ends inside it: at
+// every byte, and one byte short of the last of its offsets, which was
+// read all the same.
+func TestCFFIndexCutShort(t *testing.T) {
+	full := []byte{0, 1, 1, 1, 2, 'A'} // one item, offsets of one byte
+	for n := 0; n < len(full); n++ {
+		if items, _, err := cffIndex(full[:n], 0); err == nil {
+			t.Errorf("%d bytes of the INDEX: %q", n, items)
+		}
+	}
+	if items, pos, err := cffIndex(full, 0); err != nil || len(items) != 1 || string(items[0]) != "A" || pos != len(full) {
+		t.Errorf("the whole INDEX: %q, %d, %v", items, pos, err)
+	}
+	// a font whose CFF table ends there has no outlines
+	cff := append([]byte{1, 0, 4, 1}, full[:4]...)
+	f, err := Parse(Build(map[string][]byte{"CFF ": cff, "head": make([]byte, 54), "maxp": {0, 0, 0x50, 0, 0, 1}}, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if NewOutlines(f).Outline(0, newPointPen()) {
+		t.Error("the glyph is drawn")
+	}
+}

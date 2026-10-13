@@ -192,6 +192,9 @@ func newPatternShader(r *Renderer, st *style, m matrix) shader {
 	if st.svg != nil {
 		// an SVG cell as large as it is drawn
 		img, _ = st.svg.raster(r, full.maxScale())
+		if img == nil {
+			return solid{} // no room for the raster: the renderer has said so
+		}
 		full = full.scale(st.svg.w/float64(img.w), st.svg.h/float64(img.h))
 	}
 	if img == nil {
