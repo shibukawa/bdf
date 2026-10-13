@@ -123,6 +123,17 @@ EPUB と MusicXML は組版と浄書が時間のほとんどを占め、XML を�
 
 npm の変換器（TinyGo 0.42.0）も、変更前後のビルドでリポジトリの XML を含む 204 ファイルの変換結果がバイト一致した。大きさはほぼ変わらない。pdfcpu が encoding/xml を使い続けるので、All は 14.70 MB → 14.75 MB（+53 KB、gzip で +17 KB）。PDF と Illustrator を含まない組み合わせ（Office、IDML、EPUB、draw.io、画像、HTML、Markdown、MusicXML、CSV）では encoding/xml がなくなり、9.93 MB → 9.89 MB（-40 KB、gzip で -12 KB）。
 
+### XML の読み手を入力の長さに比例する時間に（2026-10-14、tinygodriver v1.3.5）
+
+libbdf（C の読み手）を突き合わせる過程で、XML の読み手に入力の長さの 2 乗の時間がかかる箇所が見つかった。`&` が 19 万個並ぶ実体で 5 秒、その 10 倍で 500 秒になる。xmlro を通る変換すべてに効く。
+
+- **xmlro（v1.3.5）**: `Unescape` は `&` のたびに次の `\r` と `;` を末尾まで探していた。位置を覚えて通り過ぎるまで使い回し、`;` は名前の長さの上限までしか探さない。宣言した実体の検索は名前順に並べて二分探索にした。結果は同じである。
+- **実体の展開は文書全体でも上限を持つ**（v1.3.5）: 置き換えで増えた分の合計が `MaxBufferBytes` を超えたら `ErrTooLarge`。`Open` の 1 MiB の上限（`BoundEntities`）は、文字コードの変換の前後で数え漏れることがあったが、読み手の側で必ず止まる。
+- **XML 宣言と DOCTYPE は 1 つずつ、ルート要素の前だけ**（v1.3.5）: 文字コードを変えるのは最初の XML 宣言だけで、後ろの `<?xml ...?>` はただの処理命令になった。ルート要素の中の DOCTYPE と 2 つ目の DOCTYPE は、そこで読むのをやめる。`Open` が後ろの宣言を別の名前に書き換えていた処理（`undeclare`。閉じていないコメントが並ぶと、これも 2 乗の時間だった）と、2 度目の変換を断る処理は要らなくなったので消した。
+- **`BoundEntities` の参照の数え方**: `&` のたびに「宣言した中でいちばん長い名前」の長さまで `;` を探していたので、長い名前をひとつ宣言して `;` のない `&` を並べた文書で 2 乗になった。次の `;` の位置を覚えて使い回し、参照の名前は読み手と同じ 64 バイトまでにした（それより長い名前は読み手が参照として扱わないので、数える必要がない）。
+
+**検証**: `TestOpenDeclarations`（後ろの宣言は変換を起こさず、読み取りも止めない）、`TestOpenDoctypes`、`TestBoundEntitiesTime`（30 万個の `&` が 2 秒以内。長い名前の参照は数えない）。`go test ./...` は全部通る。
+
 ### deflate を klauspost/compress に（2026-10-09）
 
 BDF の部品の圧縮と展開（document.go、reader.go、区間の manifest）、zip の部品の展開（`converter/internal/ziputil`。Office・EPUB・KiCad・Gerber・SXF・MusicXML の読み手が使い、展開器はプールする）、draw.io の deflate、PSD・TIFF・画像・WOFF の zlib、CGM と Parquet の gzip を、標準ライブラリから `github.com/klauspost/compress` に替えた（go.mod にあった依存）。埋め込みテーブルの gzip（起動時に 1 回）は標準ライブラリのまま。

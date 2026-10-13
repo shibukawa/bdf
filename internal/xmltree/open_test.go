@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"testing/iotest"
+	"time"
 	"unicode/utf8"
 
 	"github.com/shibukawa/tinygodriver/encoding/xmlro"
@@ -180,9 +181,10 @@ func TestOpenEncodings(t *testing.T) {
 	}
 }
 
-// TestOpenDeclarations: a document is converted once, however many
-// declarations of an encoding it has (each had the rest of the document
-// converted again).
+// TestOpenDeclarations: a document is converted once, for the declaration
+// it starts with: one that follows the root element's start is a
+// processing instruction and nothing more (each had the rest of the
+// document converted again).
 func TestOpenDeclarations(t *testing.T) {
 	const n = 20000
 	doc := []byte(`<?xml version="1.0" encoding="latin1"?><r a="caf` + "\xe9" + `">` + strings.Repeat(`<?xml version="1.0" encoding="latin1"?><a/>`, n) + `</r>`)
@@ -215,16 +217,46 @@ func TestOpenDeclarations(t *testing.T) {
 	if want := "start |r\ntext \"<?xml version=\\\"1.0\\\" encoding=\\\"x\\\"?>\"\nstart |a\nend a\nend r\n"; got != want {
 		t.Errorf("declarations in a comment and a CDATA section: %s", got)
 	}
-	// declarations hidden from that by markup that is not well formed end
-	// the reading at the first of them
+	// wherever they are, and whatever is around them
 	calls = 0
 	hidden := []byte(`<?xml version="1.0" encoding="latin1"?><r><a t="<!--"/>` + strings.Repeat(`<?xml version="1.0" encoding="latin1"?><b/>`, n) + `<!-- --></r>`)
 	got = tokens(Open(hidden, xmlro.Options{Lenient: true, CharsetReader: func(label string, src io.Reader) (io.Reader, error) {
 		calls++
 		return Latin1(label, src)
 	}}))
-	if calls != 1 || !strings.HasSuffix(got, "end a\nerror\n") {
-		t.Errorf("hidden declarations: %d conversions, %s", calls, got)
+	if calls != 1 || strings.Count(got, "start |b\n") != n || !strings.HasSuffix(got, "end b\nend r\n") {
+		t.Errorf("declarations after markup that is not well formed: %d conversions, %d elements, …%.40q", calls, strings.Count(got, "start |b\n"), got[max(0, len(got)-40):])
+	}
+	// a declaration after the root element has begun converts nothing,
+	// neither the first of a document
+	calls = 0
+	late := []byte("<r a=\"caf\xc3\xa9\"><?xml version=\"1.0\" encoding=\"latin1\"?><b>\xc3\xa9</b></r>")
+	got = tokens(Open(late, xmlro.Options{Lenient: true, CharsetReader: func(label string, src io.Reader) (io.Reader, error) {
+		calls++
+		return Latin1(label, src)
+	}}))
+	if want := "start |r |a=\"café\"\nstart |b\ntext \"é\"\nend b\nend r\n"; calls != 0 || got != want {
+		t.Errorf("a declaration inside the root element: %d conversions, %s", calls, got)
+	}
+	// nor does the second of two before it
+	got = tokens(Open([]byte("<?xml version=\"1.0\"?><?xml version=\"1.0\" encoding=\"latin1\"?><r>\xc3\xa9</r>"), xmlro.Options{Lenient: true}))
+	if want := "start |r\ntext \"é\"\nend r\n"; got != want {
+		t.Errorf("a second declaration: %s", got)
+	}
+}
+
+// TestOpenDoctypes: a document has one DOCTYPE, before its root element:
+// the reading ends at another, and at one inside the root element, whose
+// entities a document could otherwise declare where they are used.
+func TestOpenDoctypes(t *testing.T) {
+	for doc, want := range map[string]string{
+		`<!DOCTYPE r [<!ENTITY a "b">]><r>&a;</r>`:                                  "start |r\ntext \"b\"\nend r\n",
+		`<!DOCTYPE r [<!ENTITY a "b">]><!DOCTYPE r [<!ENTITY c "d">]><r>&a;&c;</r>`: "error\n",
+		`<r>&a;<!DOCTYPE r [<!ENTITY a "b">]>&a;</r>`:                               "start |r\ntext \"&a;\"\nerror\n",
+	} {
+		if got := tokens(Open([]byte(doc), xmlro.Options{Lenient: true})); got != want {
+			t.Errorf("%s: %s", doc, got)
+		}
 	}
 }
 
@@ -288,6 +320,29 @@ func TestBoundEntities(t *testing.T) {
 		if size != want {
 			t.Errorf("%s: %d, want %d", doc, size, want)
 		}
+	}
+}
+
+// TestBoundEntitiesTime: the references of a document are counted in time
+// in proportion to it. With a name declared that is as long as the
+// document, the ";" of every "&" was looked for that far: the square of a
+// document without one.
+func TestBoundEntitiesTime(t *testing.T) {
+	const n = 300000
+	doc := []byte(`<!DOCTYPE r [<!ENTITY ` + strings.Repeat("n", n) + ` "v"><!ENTITY a "b">]><r>` + strings.Repeat("&a", n) + `</r>`)
+	start := time.Now()
+	if _, dropped := BoundEntities(doc); dropped || time.Since(start) > 2*time.Second {
+		t.Errorf("%d references without an end: dropped %v, %v", n, dropped, time.Since(start))
+	}
+	// a name longer than the reader takes for one is no reference: what is
+	// declared for it is not counted
+	long := strings.Repeat("n", maxEntityName+1)
+	doc = []byte(`<!DOCTYPE r [<!ENTITY ` + long + ` "` + strings.Repeat("A", MaxEntityText) + `"><!ENTITY a "b">]><r>&` + long + `;&` + long + `;&a;</r>`)
+	if _, dropped := BoundEntities(doc); dropped {
+		t.Errorf("references by a name of %d bytes are counted", len(long))
+	}
+	if got := tokens(Open(doc, xmlro.Options{Lenient: true})); got != "start |r\ntext \"&"+long+";&"+long+";b\"\nend r\n" {
+		t.Errorf("references by a name of %d bytes: %.80q", len(long), got)
 	}
 }
 
