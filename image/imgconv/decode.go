@@ -38,12 +38,16 @@ var decoders = map[string]decoder{
 
 // Decode decodes PNG, JPEG, GIF, BMP or WebP bytes (AVIF is not decodable
 // here). An image of more than MaxDecodePixels pixels is not decoded: the
-// error is ErrTooLarge.
+// error is ErrTooLarge. A JPEG image is read as far as its first
+// MaxJPEGScans scans (LimitJPEGScans).
 func Decode(data []byte) (img image.Image, err error) {
 	format := Sniff(data)
 	d, ok := decoders[format]
 	if !ok {
 		return nil, fmt.Errorf("imgconv: cannot decode %q", format)
+	}
+	if format == "jpeg" {
+		data, _ = LimitJPEGScans(data)
 	}
 	// The decoders, including their header readers, are made for damaged
 	// files, but a panic of one must not end a conversion.

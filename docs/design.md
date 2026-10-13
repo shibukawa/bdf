@@ -132,6 +132,8 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 
 **デコードする画像の大きさ**: 画像のヘッダーは大きさを自分で言い、デコーダは画素を読む前にその分のメモリを確保する。100 バイトの PNG が 20000 × 20000 画素だと言えば、それだけで 380 MiB になる。`imgconv.Decode` はヘッダーを先に読み、`MaxDecodePixels`（1 億 485 万 7600 画素、RGBA で 400 MiB）を超える画像はデコードしない（`ErrTooLarge`）。`Optimize` はそういう画像を変換せずにそのまま格納し、文書の中の画像をデコードする変換器（メタファイルの中の PNG・JPEG、Visio のビットマップ、マスクの付いた PDF の JPEG、色を変える Office の画像）とラスタライザも同じ上限に従う。デコーダのパニックはエラーにする。
 
+**JPEG のスキャンの数**: JPEG のデコーダは、スキャン 1 つごとに画像の全ブロックを 1 周する。スキャンがどれだけ小さくてもそうなので、スキャンだけを並べたファイルは、大きさのわりに桁違いの時間がかかる。8192 × 8192 画素でスキャンが 500 個のファイルは 65 KB しかないのに、デコードに 12 秒かかった（Go の `image/jpeg`、Apple M 系）。1 MB なら数分になる。`imgconv.Decode` は JPEG を **最初の `MaxJPEGScans`（100）個のスキャンまで** 読む（`LimitJPEGScans` がその後ろを切って画像の終わりを付ける）。断るのではなく、そこまでのスキャンが描く絵にする。プログレッシブ JPEG を読み込み途中で表示するブラウザと同じ見え方で、エンコーダが書くスキャンは 10 個前後（プログレッシブでない JPEG は多くて 4 個）なので、普通の画像は何も変わらない。スキャンの位置は `image/jpeg` がセグメントの間でマーカーを探すのと同じ規則で数える（セグメントの中、たとえば EXIF のサムネイルのスキャンは数えない）。ラスタライザは切ったときに警告を出す。
+
 **解像度の上限**: ページ上の大きさが分かっているラスター入力（TIFF のページ、Photoshop の文書のページ）は、`Options.MaxDPI`（既定 192dpi）と `MaxPixels`（既定 3840 × 3840 画素）の両方を超えないよう縮小する（`FitSize` が大きさを決め、`Resize` が縮小する）。Keep と Convert のどちらでも効き、負の値で上限をなくす。考え方と実測は §3.15。
 
 コーデックは libwebp（エンコーダのみ）を wasi-sdk で wasm にし、[shibukawa/wasm2go-fork](https://github.com/shibukawa/wasm2go-fork)（pgmem ブランチ）で純 Go に変換したもので、cgo も wasm ランタイムも使わない。生成物は `image/imgconv/internal/webpw`（スカラー、約 5MB、44 ファイル）と `image/imgconv/internal/webpwsimd`（SIMD、`GOEXPERIMENT=simd` 専用、後述）で、`tools/gen-codecs.sh` で再生成する。フォークの `-symbol-names`（関数名を wasm の name セクションから付ける）、`-group-files`（`vp8_enc.go` のように主題ごとのファイルに分ける）、`-addr-consts`（静的データのアドレスを名前付き定数にする）を使い、libwebp を更新しても差分が小さく収まるようにしている。gen2brain 同梱の wasm は name セクションが落とされているので、自前でビルドしている。
