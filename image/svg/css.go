@@ -127,6 +127,9 @@ func parseSelector(s string) ([]cssCompound, int, bool) {
 		}
 		out = append(out, c)
 	}
+	if len(out) == 0 {
+		return nil, 0, false // nothing but combinators
+	}
 	return out, spec, true
 }
 

@@ -702,3 +702,104 @@ func TestRoomForPictures(t *testing.T) {
 		t.Errorf("drawn %v %v", pic.levels[0].RGBAAt(1, 1), pic.levels[0].RGBAAt(5, 5))
 	}
 }
+
+// TestSVGPathDataAfterClose checks that path data ends at what follows a
+// closepath without being a command. Numbers after another command are one
+// more of it; a closepath takes none, so read as one more closepath they
+// were never passed, and the path was closed until the memory ran out.
+func TestSVGPathDataAfterClose(t *testing.T) {
+	for _, c := range []struct {
+		d            string
+		segs, closed int
+	}{
+		{"M0 0L4 0L4 4Z5", 2, 1},
+		{"M1 1h4v4z 2 2h9", 2, 1},
+		{"m2 2l1 1 1 0z-1", 2, 1},
+		{"M0 0L1 1z?", 1, 1},
+		{"M0 0 4 0 4 4ZZ.5", 2, 2},
+	} {
+		done := make(chan *path, 1)
+		go func() { done <- parsePathData(c.d) }()
+		select {
+		case p := <-done:
+			segs, closed := 0, 0
+			for _, s := range p.subs {
+				segs += len(s.segs)
+				if s.closed {
+					closed++
+				}
+			}
+			if segs != c.segs || closed != c.closed {
+				t.Errorf("%q: %d segments, %d closed sub-paths: %+v", c.d, segs, closed, p.subs)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%q is read without end", c.d)
+		}
+	}
+	// what follows a closepath and is a command is read as before
+	if p := parsePathData("M0 0h4v4z,l1 1 Z M9 9"); len(p.subs) < 2 || len(p.subs[0].segs) != 2 {
+		t.Errorf("commands after a closepath: %+v", p.subs)
+	}
+}
+
+// TestSVGPatternWithoutRoom fills with a pattern of an SVG image that the
+// renderer has no room for the raster of: the fill is left out with a
+// warning, and what else is on the page is drawn.
+func TestSVGPatternWithoutRoom(t *testing.T) {
+	d := bdf.NewDocument()
+	o := bdf.NewObject()
+	cell := o.AddImage(d.AddImage([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="red"/></svg>`)))
+	o.FillPaint(o.AddPaint(bdf.Pattern(cell, bdf.RepeatBoth))).FillRect(0, 0, 4, 4)
+	o.FillColor(0x0000ffff).FillRect(4, 0, 4, 4)
+	h, _ := d.AddObject(o)
+	v := d.NewView("v", bdf.ViewFixed, "")
+	v.AddPage(8, 4, bdf.Layer{Role: bdf.RoleBody, Obj: h})
+	for _, room := range []int{8 * 8, 8*8 - 1} {
+		r := New(d, &Options{NoSystemFonts: true})
+		r.room = room
+		img, err := r.Page(v, 0, 1)
+		if err != nil {
+			t.Fatalf("room for %d pixels: %v", room, err)
+		}
+		want := color.RGBA{255, 0, 0, 255}
+		if room < 8*8 {
+			want = color.RGBA{255, 255, 255, 255}
+		}
+		if got := img.RGBAAt(1, 1); got != want || warned(r, "pixels in all") != (room < 8*8) {
+			t.Errorf("room for %d pixels: the pattern draws %v, want %v; warnings %v", room, got, want, r.Warnings())
+		}
+		if got := img.RGBAAt(5, 1); got != (color.RGBA{0, 0, 255, 255}) {
+			t.Errorf("room for %d pixels: beside the pattern %v", room, got)
+		}
+	}
+}
+
+// TestSVGRasterScaleAgain checks that a raster found among those kept has
+// the scale it had when it was made, so that a page with an SVG image
+// draws the same pixels the second time as the first.
+func TestSVGRasterScaleAgain(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><path d="M0 0h10v10z" fill="red"/><circle cx="3" cy="7" r="2.5" fill="blue"/></svg>`
+	si := svgOf(t, src)
+	r := New(bdf.NewDocument(), nil)
+	pic, k := si.raster(r, 1.3) // drawn at √2 pixels a unit: 15 pixels wide, not 14.14
+	again, k2 := si.raster(r, 1.3)
+	if again != pic || k != float64(pic.w)/si.w || k2 != k {
+		t.Errorf("a raster of %d pixels for %v units: scale %v when made, %v when found", pic.w, si.w, k, k2)
+	}
+
+	d := bdf.NewDocument()
+	o := bdf.NewObject()
+	o.ImageSub(o.AddImage(d.AddImage([]byte(src))), 0, 0, 10, 10, 1, 1, 13, 13)
+	h, _ := d.AddObject(o)
+	v := d.NewView("v", bdf.ViewFixed, "")
+	v.AddPage(16, 16, bdf.Layer{Role: bdf.RoleBody, Obj: h})
+	r = New(d, &Options{NoSystemFonts: true})
+	first, err := r.Page(v, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := r.Page(v, 0, 1)
+	if err != nil || !bytes.Equal(first.Pix, second.Pix) {
+		t.Errorf("the page is drawn differently the second time (%v)", err)
+	}
+}

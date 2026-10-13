@@ -78,8 +78,9 @@ func cffIndex(b []byte, pos int) ([][]byte, int, error) {
 		return nil, pos, errors.New("cff: bad offSize")
 	}
 	offs := pos + 3
+	// the last byte of the offsets; the items follow it
 	data := offs + (count+1)*offSize - 1
-	if data > len(b) {
+	if data >= len(b) {
 		return nil, pos, errors.New("cff: truncated INDEX")
 	}
 	off := func(i int) int {
