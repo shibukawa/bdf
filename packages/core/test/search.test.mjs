@@ -51,6 +51,14 @@ test("a hit is located in the text it was normalized from", () => {
   assert.deepEqual(at("\u3314", "\u308d"), [[0, 1, "\u3314"]]); // ㌔ is キロ
   // the letters of a syllable
   assert.deepEqual(at("x\u1100\u1161\u11a8y", "\uac01"), [[1, 4, "\u1100\u1161\u11a8"]]);
+  // a letter with more marks than a piece holds: the first 31 are with it, the
+  // rest by themselves, and the index is built in time in proportion to the text
+  const marks = "\u0301".repeat(200000);
+  const t0 = performance.now();
+  const many = new TextSearch([run("e" + marks + "x")]);
+  assert.ok(performance.now() - t0 < 5000, "200,000 marks after a letter");
+  assert.deepEqual(many.search("\u00e9").map((h) => [h.segments[0].start, h.segments[0].end]), [[0, 32]]);
+  assert.equal(many.search("x").length, 1);
   // a run is normalized by itself: a mark at the start of the next is not joined
   const split = new TextSearch([run("e"), run("\u0301x", Sep.NONE)]);
   assert.equal(split.search("\u00e9").length, 0);

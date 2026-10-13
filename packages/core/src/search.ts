@@ -84,25 +84,35 @@ export function normalizeQuery(q: string, caseSensitive = false): string {
 const MARK = /^\p{M}/u;
 
 /**
+ * The most characters of a piece. A letter has a few marks; text made to
+ * have thousands in a row would be normalized again for each of them, the
+ * square of its length. Past this a piece ends where it is, and the marks
+ * that follow are normalized by themselves.
+ */
+const MAX_PIECE = 32;
+
+/**
  * Splits text into the pieces that NFKC normalizes on their own, and calls
  * back with each: where it starts and ends in the text, in code units, and
  * what it normalizes to. The pieces normalized one after another are the
- * text normalized, and they are as small as that allows: a character alone,
- * unless it changes with the ones before it (marks, the letters of a Hangul
- * syllable).
+ * text normalized (but for a piece cut at MAX_PIECE), and they are as small
+ * as that allows: a character alone, unless it changes with the ones before
+ * it (marks, the letters of a Hangul syllable).
  */
 function pieces(text: string, each: (start: number, end: number, norm: string) => void): void {
   let start = 0;
   let off = 0;
   let piece = "";
+  let count = 0;
   let norm = "";
   for (const ch of text) {
     // (ASCII is as it is, and changes nothing before it)
     const ascii = ch.length === 1 && ch.charCodeAt(0) < 0x80;
     const n = ascii ? ch : ch.normalize("NFKC");
     if (piece !== "") {
-      if (!ascii && (MARK.test(n) || (piece + ch).normalize("NFKC") !== norm + n)) {
+      if (!ascii && count < MAX_PIECE && (MARK.test(n) || (piece + ch).normalize("NFKC") !== norm + n)) {
         piece += ch;
+        count++;
         norm = piece.normalize("NFKC");
         off += ch.length;
         continue;
@@ -111,6 +121,7 @@ function pieces(text: string, each: (start: number, end: number, norm: string) =
     }
     start = off;
     piece = ch;
+    count = 1;
     norm = n;
     off += ch.length;
   }
