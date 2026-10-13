@@ -92,8 +92,16 @@ func TestReaderAllocatesNothing(t *testing.T) {
 	}
 	for _, c := range cases {
 		c.fn() // the first run sizes buf and the reader's buffers
-		if b := allocatedBytes(50, c.fn); b != 0 {
-			t.Errorf("%s: %d bytes allocated in 50 runs", c.name, b)
+		// The count is of the whole process, and the runtime or another
+		// goroutine may allocate a few bytes meanwhile. What the reader
+		// allocated it would allocate on every run, so the least of a few
+		// counts is its own.
+		least := ^uint64(0)
+		for try := 0; try < 5 && least != 0; try++ {
+			least = min(least, allocatedBytes(50, c.fn))
+		}
+		if least != 0 {
+			t.Errorf("%s: %d bytes allocated in 50 runs", c.name, least)
 		}
 	}
 	if n == 0 {
