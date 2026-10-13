@@ -773,3 +773,33 @@ func TestSVGPatternWithoutRoom(t *testing.T) {
 		}
 	}
 }
+
+// TestSVGRasterScaleAgain checks that a raster found among those kept has
+// the scale it had when it was made, so that a page with an SVG image
+// draws the same pixels the second time as the first.
+func TestSVGRasterScaleAgain(t *testing.T) {
+	const src = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><path d="M0 0h10v10z" fill="red"/><circle cx="3" cy="7" r="2.5" fill="blue"/></svg>`
+	si := svgOf(t, src)
+	r := New(bdf.NewDocument(), nil)
+	pic, k := si.raster(r, 1.3) // drawn at √2 pixels a unit: 15 pixels wide, not 14.14
+	again, k2 := si.raster(r, 1.3)
+	if again != pic || k != float64(pic.w)/si.w || k2 != k {
+		t.Errorf("a raster of %d pixels for %v units: scale %v when made, %v when found", pic.w, si.w, k, k2)
+	}
+
+	d := bdf.NewDocument()
+	o := bdf.NewObject()
+	o.ImageSub(o.AddImage(d.AddImage([]byte(src))), 0, 0, 10, 10, 1, 1, 13, 13)
+	h, _ := d.AddObject(o)
+	v := d.NewView("v", bdf.ViewFixed, "")
+	v.AddPage(16, 16, bdf.Layer{Role: bdf.RoleBody, Obj: h})
+	r = New(d, &Options{NoSystemFonts: true})
+	first, err := r.Page(v, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := r.Page(v, 0, 1)
+	if err != nil || !bytes.Equal(first.Pix, second.Pix) {
+		t.Errorf("the page is drawn differently the second time (%v)", err)
+	}
+}
