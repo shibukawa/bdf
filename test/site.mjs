@@ -324,6 +324,44 @@ for (const shape of forms) {
     }
   }
 }
+// An expanded Excel invoice repeats only its table heading on continuation
+// pages. Totals, payment details and the note remain whole after the table.
+for (const style of ["", "-modern"]) {
+  const name = `form-rows${style}.xlsx`;
+  const template = new Uint8Array(await readFile(join(site, "forms", name)));
+  const sample = JSON.parse(await readFile(join(site, "forms/form-rows.json"), "utf8"));
+  try {
+    for (const count of [0, 5, 12, 13, 14, 16, 25, 35, 60, 100]) {
+      const data = { ...sample, customer: "株式会社みなと商事営業部",
+        note: "改ページ確認用の備考。\n内容が分断されないことを確認します。",
+        items: Array.from({ length: count }, (_, i) => ({
+          name: `明細項目[${String(i + 1).padStart(3, "0")}]`, qty: 1, price: 100, amount: 100,
+        })), subtotal: count * 100, tax: count * 10, total: count * 110 };
+      const res = await modules.form.fill(template, { data: JSON.stringify(data), fonts: formFonts, strict: true });
+      assert.deepEqual(res.warnings, []);
+      const pages = await pageTexts(await BdfDocument.open(new BufferSource(res.bdf)));
+      const all = pages.join("\n");
+      assert.equal(all.split(data.customer).length - 1, 1, `${name}/${count}: customer appears once`);
+      for (const item of data.items) assert.equal(all.split(item.name).length - 1, 1, `${name}/${count}: ${item.name} appears once`);
+      for (const [i, page] of pages.entries()) {
+        if (i > 0) assert.equal(page.includes("単価"), page.includes("明細項目["), `${name}/${count}/page ${i + 1}: headings only with continued details`);
+        for (const group of [
+          ["小計", "消費税", "総額"],
+          ["お振込先", "みらい銀行", "口座名義", "お支払期限までに上記口座へお振り込みください。"],
+          ["備考", ...data.note.split("\n"), "いつもお引き立てを賜り、誠にありがとうございます。"],
+        ]) {
+          const seen = group.filter((text) => page.includes(text));
+          assert.ok(seen.length === 0 || seen.length === group.length, `${name}/${count}/page ${i + 1}: split section ${group.join(" / ")}`);
+        }
+      }
+    }
+    console.log(`ok   forms/${name}: 0–100 detail rows, scoped table headings, single customer, intact totals/payment/notes`);
+  } catch (e) {
+    failed++;
+    console.log(`FAIL forms/${name} pagination: ${e.message}`);
+  }
+}
+
 // data that lacks a name leaves its tag empty, with a warning; strictly it is an error; what is no template is refused
 {
   const template = new Uint8Array(await readFile(join(site, "forms/form-rows.xlsx")));

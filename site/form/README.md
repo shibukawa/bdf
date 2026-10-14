@@ -11,6 +11,13 @@ code. The invoice has a growing item table, tax, a due date and payment
 details. The delivery slip has ten item slots per page, page subtotals and
 carried amounts. Company and bank information are sample content.
 
+The Excel invoice repeats only row 15 (the table heading), and only while
+the detail table continues. The sheet-scoped `_bdf.Print_TitleScope` name
+tracks the expanded table, and `_bdf.Print_KeepTogether` keeps totals,
+payment details and the note together as separate sections. The document
+title and customer appear once. These BDF pagination names are documented
+in `docs/forms.md`; they do not change Excel's own print rules.
+
 These examples are independent of `converter/*/testdata/form-*`, which
 exercise converter features and provide deterministic regression fixtures.
 

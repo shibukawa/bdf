@@ -105,6 +105,21 @@ func (f *filler) remap(ts *tplSheet) {
 				pn.titleRows = nil
 			}
 		}
+		if pn.titleScope != nil {
+			pn.titleScope = ts.span(*pn.titleScope)
+			if pn.titleScope == nil {
+				// Removed detail rows mean an empty scope, not unrestricted titles.
+				pn.titleScope = &cellRange{r0: 1, r1: 0}
+			}
+		}
+		var keep []cellRange
+		for _, rg := range pn.keepRows {
+			if full(len(keep), "print keep-together ranges") {
+				break
+			}
+			keep = append(keep, ranges(rg)...)
+		}
+		pn.keepRows = keep
 	}
 	// page breaks: before each copy of the rows they are before, and
 	// before the copies that are pages

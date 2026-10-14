@@ -16,6 +16,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.page import PageMargins
 from openpyxl.worksheet.properties import PageSetupProperties
+from openpyxl.workbook.defined_name import DefinedName
+from openpyxl.utils import quote_sheetname
 
 
 OUT = Path(__file__).resolve().parent / "samples"
@@ -322,7 +324,14 @@ def rows(style):
     span(ws, "A28:H29", "{{note}}", size=9.5, wrap=True)
     span(ws, "A31:H31", "いつもお引き立てを賜り、誠にありがとうございます。", size=9,
          color=MUTED)
-    ws.print_title_rows = "1:15"
+    ws.print_title_rows = "15:15"
+    # Repeat only the table heading while detail rows continue, and move
+    # complete totals/payment/note sections rather than cutting them in two.
+    sheet = quote_sheetname(ws.title)
+    ws.defined_names.add(DefinedName("_bdf.Print_TitleScope",
+                                    attr_text=f"{sheet}!$A$15:$H$16"))
+    ws.defined_names.add(DefinedName("_bdf.Print_KeepTogether", attr_text=",".join(
+        f"{sheet}!{ref}" for ref in ("$F$18:$H$20", "$A$22:$H$25", "$A$27:$H$31"))))
     ws.freeze_panes = "B16"
     save(wb, "rows", style)
 

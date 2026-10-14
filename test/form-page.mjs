@@ -21,16 +21,22 @@ let server, browser;
 
 /** The filled document offered for download, including edits made while Preview is hidden. */
 async function filledText(page) {
+  return (await filledPages(page)).join("");
+}
+
+async function filledPages(page) {
   const bytes = await page.evaluate(async () => {
     const response = await fetch(document.querySelector("#saveBdf").href);
     return Array.from(new Uint8Array(await response.arrayBuffer()));
   });
   const doc = await BdfDocument.open(new BufferSource(new Uint8Array(bytes)));
-  let text = "";
-  for (const view of doc.manifest.views) for (const page of view.pages ?? []) for (const layer of page.layers) {
-    for (const run of extractText(await doc.ensure(layer.obj), (hash) => doc.objectSync(hash))) text += run.text;
+  const pages = [];
+  for (const view of doc.manifest.views) for (const page of view.pages ?? []) {
+    let text = "";
+    for (const layer of page.layers) for (const run of extractText(await doc.ensure(layer.obj), (hash) => doc.objectSync(hash))) text += run.text;
+    pages.push(text);
   }
-  return text;
+  return pages;
 }
 
 /** Only the selected top-level panel is visible, and it is the keyboard stop. */
@@ -70,6 +76,7 @@ async function openSample(page, name) {
 
 async function previewPainted(page, previous) {
   await page.locator("#tabPreview").click();
+  await page.locator("#preview canvas").first().scrollIntoViewIfNeeded();
   await page.waitForFunction((previous) => {
     const canvas = document.querySelector("#preview canvas");
     if (!canvas || (previous && canvas.toDataURL() === previous)) return false;
@@ -244,8 +251,44 @@ try {
   await sampleStyle(linked, "modern");
   if (screenshots) await linked.screenshot({ path: join(screenshots, "form-modern-template-selector.png"), fullPage: true });
   await linked.close();
+
+  // Detail continuation pages and trailing sections must also render
+  // correctly in the real workspace, using both public Excel designs.
+  for (const style of ["standard", "modern"]) {
+    await page.locator("#tabTemplate").click();
+    await page.locator("#sampleStyle").selectOption(style);
+    await openSample(page, `form-rows${style === "modern" ? "-modern" : ""}.xlsx`);
+    await page.locator("#tabJson").click();
+    const invoice = JSON.parse(await page.locator("#json").inputValue());
+    for (const count of [12, 35]) {
+      const oldDrawings = await page.locator("#preview canvas").evaluateAll((canvases) => canvases.map((canvas) => canvas.toDataURL()));
+      const previous = await page.locator("#saveBdf").getAttribute("href");
+      await page.locator("#tabData").click();
+      const data = { ...invoice, no: `INV-${count}`, customer: "株式会社みなと商事営業部",
+        items: Array.from({ length: count }, (_, i) => ({ name: `明細項目[${i + 1}]`, qty: 1, price: 100, amount: 100 })),
+        subtotal: count * 100, tax: count * 10, total: count * 110 };
+      await page.locator("#json").fill(JSON.stringify(data, null, 2));
+      await page.waitForFunction((href) => document.querySelector("#saveBdf").getAttribute("href") !== href, previous, { timeout: 120_000 });
+      const pages = await filledPages(page);
+      assert.ok(pages.length > 1, "the invoice crosses a page boundary");
+      assert.equal(pages.join("").split(data.customer).length - 1, 1, "the customer is not repeated");
+      for (const text of pages.slice(1)) assert.equal(text.includes("単価"), text.includes("明細項目["), "only continued details repeat the table heading");
+      await previewPainted(page, oldDrawings[0]);
+      assert.equal(await page.locator("#preview canvas").count(), pages.length);
+      if (screenshots) for (let i = 0; i < pages.length; i++) {
+        const canvas = page.locator("#preview canvas").nth(i);
+        await canvas.scrollIntoViewIfNeeded();
+        await page.waitForFunction(([i, previous]) => {
+          const canvas = document.querySelectorAll("#preview canvas")[i];
+          return canvas.width > 0 && canvas.toDataURL() !== previous && canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data.some((value, i) => i % 4 === 3 && value > 0);
+        }, [i, oldDrawings[i]]);
+        const png = await canvas.evaluate((canvas) => canvas.toDataURL());
+        await writeFile(join(screenshots, `invoice-${style}-${count}-page-${i + 1}.png`), Buffer.from(png.split(",")[1], "base64"));
+      }
+    }
+  }
   assert.deepEqual(errors, []);
-  console.log("form page browser regression test passed: remote font fetch/cache/PDF embedding, tabs, edits, preview paper, both sample styles, modern deep link");
+  console.log("form page browser regression test passed: remote font fetch/cache/PDF embedding, tabs, edits, preview paper, both sample styles, modern deep link, invoice continuation pages");
 } finally {
   await browser?.close();
   await new Promise((resolve) => server?.close(resolve) ?? resolve());
