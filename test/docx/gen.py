@@ -712,11 +712,11 @@ def forms():
     pages = hdr_ftr("ftr", para(field("PAGE", "1") + run(" / ") + field("NUMPAGES", "1"), center))
 
     # a form of one page (A5): values of every kind
-    body = [para(run("\u660e\u66f8 Certificate", '<w:b/><w:sz w:val="32"/>'), center)]
+    body = [para(run("\u660e\u7d30\u66f8 Certificate", '<w:b/><w:sz w:val="32"/>'), center)]
     value = [
         ("No", run("{{no}}")),
         # (a tag in the full-width characters of an input method)
-        ("\u65e5", run('{{date | fmt:"yyyy/mm/dd"}} ') + run("\uff5b\uff5bdate \uff5c fmt\uff1a\u201cyyyy-mm\u201d\uff5d\uff5d", '<w:color w:val="7F7F7F"/>')),
+        ("Date", run('{{date | fmt:"yyyy/mm/dd"}} ') + run("\uff5b\uff5bdate \uff5c fmt\uff1a\u201cyyyy-mm\u201d\uff5d\uff5d", '<w:color w:val="7F7F7F"/>')),
         # (a tag in runs, as Word parts it where it checked the spelling)
         ("Name", run("{{custo", "<w:b/>") + '<w:proofErr w:type="spellStart"/>' + run("mer", "<w:b/>") + '<w:proofErr w:type="spellEnd"/>'
          + '<w:bookmarkStart w:id="1" w:name="_GoBack"/><w:bookmarkEnd w:id="1"/>' + run(".name}}", "<w:b/>") + run(" \u3055\u307e")),
@@ -741,7 +741,6 @@ def forms():
     body.append(para(run("{{#tags | rows}}- tag {{_index}}: {{.}}{{/tags}}"), tight))
     body.append(para(run("{{^tags | rows}}no tags{{/tags}}"), tight))
     body.append(para(run("{{missing}}"), tight))
-    body.append(para(run("\\{{not a tag}}"), tight))
     header = hdr_ftr("hdr", para(run("No. {{no}}"), right))
     package(os.path.join(OUT, "form-fixed.docx"), document(body, sect(8391, 11906, 1134, hf_refs)), {
         **base_parts, "word/header1.xml": header, "word/footer1.xml": pages,

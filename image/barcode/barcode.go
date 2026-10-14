@@ -6,8 +6,8 @@
 // byte mode that the text needs), or a linear barcode: JAN/EAN-13, EAN-8,
 // UPC-A, Code 39, Code 128, GS1-128, ITF (interleaved 2 of 5, ITF-14) and
 // NW-7 (Codabar). A symbol is a grid of modules with its quiet zone, and
-// Path draws its dark modules as rectangles in a box: as vectors, which
-// stay sharp at any size and in print.
+// Path draws its dark modules in a box, with human-readable digits for
+// JAN/EAN and UPC-A: as vectors, which stay sharp at any size and in print.
 //
 // The package writes symbols; it does not read them. It does not check
 // what a text means (that the digits of a JAN code are those of a product),
@@ -72,6 +72,10 @@ type Options struct {
 	// NoQuiet none: the margin is then for what is around the symbol to
 	// leave.
 	Quiet int
+	// NoText leaves out the human-readable digits of JAN/EAN and UPC-A.
+	// The digits are drawn by Path and Object by default, including a
+	// check digit added by Encode. The modules are unchanged either way.
+	NoText bool
 }
 
 // NoQuiet is the Options.Quiet of a symbol without a quiet zone.
@@ -85,12 +89,13 @@ type Symbol struct {
 	// the symbology when the text came without it.
 	Text string
 	// W and H are the size of the grid with its quiet zone, in modules.
-	// A linear barcode is a module high: its bars are as tall as the box
-	// they are drawn in.
+	// A linear barcode is a module high; Path leaves room for the digits
+	// of JAN/EAN and UPC-A inside the box where it draws the bars.
 	W, H int
 	// Linear is set for a barcode of bars.
 	Linear bool
 	mods   []bool
+	noText bool
 }
 
 // At reports whether the module at column x and row y is dark.
@@ -132,25 +137,45 @@ func (s *Symbol) Rects() [][4]int {
 	return out
 }
 
-// Path returns the dark modules as a path of rectangles, with the symbol
-// (and its quiet zone) in the box at (x, y) of the size w × h. Filled, it
-// is the symbol.
+// Path returns the symbol (and its quiet zone) in the box at (x, y) of
+// the size w × h. Its dark modules are rectangles. JAN/EAN and UPC-A
+// also have their digits below the bars unless Options.NoText was set;
+// the bars are shortened to leave room inside the box. The digits are
+// outlines, so no font is needed. Fill the path with the nonzero rule.
 func (s *Symbol) Path(x, y, w, h float32) *bdf.Path {
 	p := &bdf.Path{}
 	if s.W == 0 || s.H == 0 {
 		return p
 	}
-	mx, my := w/float32(s.W), h/float32(s.H)
+	barHeight, digitScale := h, float32(0)
+	if !s.noText && (s.Kind == EAN13 || s.Kind == EAN8 || s.Kind == UPCA) && w > 0 && h > 0 && len(s.Text) > 0 {
+		// The ink of the digits is 750 units high, their advance 620.
+		// Keep their aspect ratio even in a tall, narrow box. At most
+		// 22% of its height is ink, with a quarter of that as a gap.
+		digitScale = min(h*0.22/750, w/float32(len(s.Text)*620))
+		barHeight -= float32(float32(digitScale*750) * 1.25)
+	}
+	mx, my := w/float32(s.W), barHeight/float32(s.H)
 	for _, r := range s.Rects() {
 		// (the products are rounded before they are added: the same on every
 		// machine, where one that multiplies and adds at once would differ)
 		p.Rect(x+float32(float32(r[0])*mx), y+float32(float32(r[1])*my), float32(r[2])*mx, float32(r[3])*my)
 	}
+	if digitScale > 0 {
+		x0 := x + (w-float32(float32(len(s.Text)*620)*digitScale))/2
+		// M PLUS's lowest digit outline is 10 units below its baseline.
+		baseline := y + h - float32(10*digitScale)
+		for _, c := range []byte(s.Text) {
+			appendDigit(p, c-'0', x0, baseline, digitScale)
+			x0 += float32(620 * digitScale)
+		}
+	}
 	return p
 }
 
 // Object returns the symbol as an object of the size w × h: its dark
-// modules in black, on nothing.
+// modules and, for JAN/EAN and UPC-A, its digits, in black on nothing.
+// Options.NoText leaves out the digits. The object needs no font.
 func (s *Symbol) Object(w, h float32) *bdf.Object {
 	o := bdf.NewObject()
 	o.FillColor(bdf.RGB(0, 0, 0)).FillPath(o.AddPath(s.Path(0, 0, w, h)), bdf.NonZero)
@@ -205,6 +230,7 @@ func Encode(kind, text string, opts *Options) (*Symbol, error) {
 		return nil, err
 	}
 	s.Kind = k
+	s.noText = o.NoText
 	return s, nil
 }
 

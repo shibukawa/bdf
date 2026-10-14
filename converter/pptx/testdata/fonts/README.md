@@ -10,6 +10,15 @@ Made with fontTools:
     pyftsubset MPLUS1p-Regular.ttf --text-file=chars.txt --layout-features='*' \
       --no-hinting --name-IDs='*' --name-languages='*' --output-file=MPLUS1p-Regular-subset.ttf
 
+The form labels also need 細・価・総・量・金・額. To extend the existing
+subsets, use the matching M PLUS 1p 1.062 Regular/Bold files from Google
+Fonts and fontTools: keep the current glyph order and tables, append the
+six missing glyphs (without hinting) with their horizontal and vertical
+metrics, and add them to the Unicode cmap. Disable timestamp and bounding
+box recalculation. This preserves every existing glyph ID, outline and
+advance; the cmap becomes its previous character set plus these six.
+The Word test fonts were extended in the same way. OFL.txt still applies.
+
 STIXTwoMath-subset.ttf is the formula font of the equations in math.pptx and
 math.xlsx: the same subset of STIX Two Math, with its MATH table, as in
 converter/docx/testdata/fonts (SIL Open Font License 1.1, see OFL-STIX.txt;

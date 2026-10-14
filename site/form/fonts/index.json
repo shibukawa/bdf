@@ -1,0 +1,32 @@
+[
+  {
+    "name": "MPLUS1p-Regular.ttf",
+    "url": "https://fonts.gstatic.com/s/mplus1p/v33/e3tjeuShHdiFyPFzBRro-A.ttf",
+    "size": 1713884,
+    "scan": [
+      [
+        0,
+        1040
+      ],
+      [
+        118228,
+        159586
+      ]
+    ]
+  },
+  {
+    "name": "MPLUS1p-Bold.ttf",
+    "url": "https://fonts.gstatic.com/s/mplus1p/v33/e3tmeuShHdiFyPFzBRrQRBEgew.ttf",
+    "size": 1721396,
+    "scan": [
+      [
+        0,
+        1016
+      ],
+      [
+        118204,
+        159586
+      ]
+    ]
+  }
+]

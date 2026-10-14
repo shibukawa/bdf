@@ -8,6 +8,7 @@ BDF itself is under the [MIT License](https://github.com/shibukawa/bdf/blob/main
 |---|---|---|---|
 | **STIX Two Math** 2.13 b171 | Embedded in the package [`image/formula`](rendering.md#formulas) (`go:embed`, the whole font, unmodified): the formula font when `Options` name no other | [stipub/stixfonts](https://github.com/stipub/stixfonts), tag `v2.13b171`, `fonts/static_otf/STIXTwoMath-Regular.otf` | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/image/formula/fonts/OFL.txt) |
 | **Bravura** 1.482 | The outlines and metrics of music symbols, as a generated table in `converter/internal/music/smufl`, for the scores of MML, MIDI and MusicXML | [steinbergmedia/bravura](https://github.com/steinbergmedia/bravura) | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/converter/internal/music/smufl/OFL.txt) |
+| **M PLUS 1p** Regular 1.062 | The outlines of digits 0–9, as a generated table in `image/barcode`, for the human-readable numbers below JAN/EAN/UPC bars | [Google Fonts M PLUS 1p](https://github.com/google/fonts/tree/main/ofl/mplus1p) | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/image/barcode/OFL-MPLUS.txt) |
 | **NewStroke** | The stroke font KiCad draws text with, as a table in `converter/kicad` | vovanium's NewStroke release; [`NEWSTROKE.txt`](https://github.com/shibukawa/bdf/blob/main/converter/kicad/NEWSTROKE.txt) names the file | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | **DejaVu Sans**, Regular and Bold (subsets: ASCII) | In `fixture`, the package that builds the sample document (`bdf demo`) | [dejavu-fonts](https://dejavu-fonts.github.io/) | [DejaVu Fonts License](https://github.com/shibukawa/bdf/blob/main/fixture/testdata/fonts/LICENSE.txt) |
 
@@ -23,18 +24,19 @@ The converters hold no font for the text of documents. They lay text out with th
 
 ## Fonts on this website
 
-The demo pages convert files in the browser and fetch the fonts a document asks for from `fonts/`. They are published with their license files beside them:
+The demo pages convert files in the browser. The Forms page fetches M PLUS 1p Regular and Bold directly from Google Fonts (`fonts.gstatic.com`); these fonts are not bundled with the site. The filled BDF and PDF embed subsets, retaining the font's copyright and license notices. Other pages fetch the fonts a document asks for from `fonts/`, published with their license files beside them:
 
 | Font | Stands in for | License |
 |---|---|---|
 | Liberation Sans, Serif, Mono | Arial, Times New Roman, Courier New | SIL Open Font License 1.1 |
 | Carlito | Calibri | SIL Open Font License 1.1 |
 | Caladea | Cambria | the license in its copyright file (`fonts/fonts-crosextra-caladea.copyright.txt`) |
+| M PLUS 1p (fetched from Google Fonts) | The editable business form examples | [SIL Open Font License 1.1](https://github.com/google/fonts/blob/main/ofl/mplus1p/OFL.txt) |
 | IPAex Gothic, IPAex Mincho | Japanese text | IPA Font License Agreement v1.0 |
 | DejaVu Sans, Serif, Mono | symbols | Bitstream Vera Fonts license; the DejaVu changes are in the public domain |
 | STIX Two Math | Cambria Math, and formulas | SIL Open Font License 1.1 |
 
-The files come from the Debian packages `fonts-liberation`, `fonts-crosextra-carlito`, `fonts-crosextra-caladea`, `fonts-ipaexfont-gothic`, `fonts-ipaexfont-mincho` and `fonts-dejavu-core`, and from the STIX release above; the [workflow that builds the site](https://github.com/shibukawa/bdf/blob/main/.github/workflows/pages.yml) lists them.
+The bundled files come from the Debian packages `fonts-liberation`, `fonts-crosextra-carlito`, `fonts-crosextra-caladea`, `fonts-ipaexfont-gothic`, `fonts-ipaexfont-mincho` and `fonts-dejavu-core`, and from the STIX release above; the [workflow that builds the site](https://github.com/shibukawa/bdf/blob/main/.github/workflows/pages.yml) lists them.
 
 ## Fonts of the tests
 

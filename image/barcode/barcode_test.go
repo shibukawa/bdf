@@ -376,7 +376,7 @@ func TestPath(t *testing.T) {
 		t.Errorf("%d rectangles of %d modules for %d dark modules; the first is %v", len(rects), covered, dark, rects[0])
 	}
 	// the bars of a barcode are one rectangle each, as tall as the box
-	b := mustEncode(t, EAN13, "4901234567894", nil)
+	b := mustEncode(t, EAN13, "4901234567894", &Options{NoText: true})
 	p := b.Path(10, 20, 113, 30)
 	if len(p.Verbs) != 30 || p.Verbs[0] != bdf.VerbRect || p.Args[0] != 10+11 || p.Args[1] != 20 || p.Args[2] != 1 || p.Args[3] != 30 {
 		t.Errorf("%d bars; the first is %v", len(p.Verbs), p.Args[:4])

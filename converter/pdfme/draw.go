@@ -749,7 +749,8 @@ func (f *filler) code(l *formbox.Layer, s *schema, v any, b box) {
 		f.warnf("the %s code of %q is not drawn: this kind of code is not made", s.typ, s.name)
 		return
 	}
-	sym, err := barcode.Encode(kind, text, &barcode.Options{Quiet: barcode.NoQuiet})
+	// pdfme places and styles its own human-readable line below the bars.
+	sym, err := barcode.Encode(kind, text, &barcode.Options{Quiet: barcode.NoQuiet, NoText: true})
 	if err != nil {
 		f.warnf("the code of %q is left out: %v", s.name, err)
 		return

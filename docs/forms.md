@@ -192,13 +192,23 @@ A picture tag with `qr` or `barcode:kind` draws the code of the value in the pla
 | `barcode:itf`, `barcode:itf14` | ITF (digits; an odd number of them gets a leading 0), ITF-14 (13 digits get their check digit) |
 | `barcode:nw7` | NW-7 (Codabar): digits and `- $ : / . +`. A value without start and stop characters (`A` to `D`) is put between two `A` |
 
-- A code is not a picture of pixels but black rectangles: it stays sharp at any size, and in a PDF that is printed.
-- A QR code stays a square, in the middle of its place. The bars of a barcode are as wide and as tall as their place: size the place for the reader (a JAN code is 37.29 mm wide at its nominal size, and may be 0.8 to 2 times that).
+- A code is drawn as black vector shapes: it stays sharp at any size, and in a PDF that is printed.
+- A QR code stays a square, in the middle of its place. A barcode fits its place, including its digits when it draws them: size the place for the reader (a JAN code is 37.29 mm wide at its nominal size, and may be 0.8 to 2 times that).
 - A code comes with the margin readers need (the quiet zone: 4 modules around a QR code, 10 at the sides of a barcode). `quiet:0` leaves it out when the place has a margin around it, and `quiet:2` sets a number of modules.
 - The value is a text or a number. Pass a code that starts with zeros (`0490…`) as a text in the data.
 - Nothing is drawn for no value (empty, or `null`). A value the code cannot hold (a JAN code of another length or with a wrong check digit, a character the code lacks, a text too long for a QR code) is left out with a warning, and is an error with `-strict`.
 - A code is a figure with an alternative text, for assistive technology and for search. In Excel, and for a picture whose alternative text is the tag alone, it is what the code says.
-- The digits under a barcode (the human-readable line) are not drawn. Write a tag of the same value in a cell or a text beside it.
+- JAN / EAN-13, EAN-8 and UPC-A draw their digits below the bars, including the check digit. The digits are vector outlines built into `image/barcode`, so they need no font or separate value tag.
+
+The same drawing is available without a form:
+
+```go
+symbol, err := barcode.Encode("jan", "490123456789", nil) // adds the check digit: 4901234567894
+// Check err, then draw the bars and digits together.
+drawing := symbol.Object(113, 36)
+```
+
+Pass `&barcode.Options{NoText: true}` to draw only the bars. `Symbol.At` and `Symbol.Rects` always describe the encoded modules alone.
 
 ## Writing a PDF
 

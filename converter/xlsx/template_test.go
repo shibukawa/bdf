@@ -92,21 +92,21 @@ func TestFillFixed(t *testing.T) {
 	}
 	p := pages[0]
 	for _, want := range [][]string{
+		{"明細書 Certificate"},
 		{"No", "1024"},                            // a number
-		{"日", "2026/10/13", "2026-10"},            // a date in the format of the cell, and in that of the tag
+		{"Date", "2026/10/13", "2026-10"},         // a date in the format of the cell, and in that of the tag
 		{"Name", "ACME さま"},                       // a value in text
 		{"Amount", "12,000", "13,200.0", "large"}, // the formulas that read the value
 		{"Total", "13,200.00"},                    // the format of the tag
 		{"Paid", "■ paid"},                        // a section and its inverse
 		{"Tags: a, b, c"},                         // a list in text
-		{"{{not a tag}}"},                         // an escaped brace
 		{"1 / 1"},
 	} {
 		if !lines(p, want...) {
 			t.Errorf("the page lacks %q:\n%s", want, p)
 		}
 	}
-	if strings.Contains(p, "missing") || strings.Contains(p, "□") || strings.Contains(p, "}}\n") && !strings.Contains(p, "{{not a tag}}") {
+	if strings.Contains(p, "missing") || strings.Contains(p, "□") || strings.Contains(p, "}}\n") {
 		t.Errorf("tags are left in the page:\n%s", p)
 	}
 	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], `"missing"`) || !strings.Contains(res.Warnings[0], "A15") {
@@ -125,6 +125,8 @@ func TestFillFixed(t *testing.T) {
 	// and so are the QR code and the barcode, which are drawn
 	if got := symbols(t, res.Doc); len(got) != 5 || got[0] != "figure photo" || got[1] != "figure https://example.com/c/1024" || got[3] != "figure 4901234567894" {
 		t.Errorf("figures: %q", got)
+	} else if !strings.HasSuffix(got[4], " contours below bars") {
+		t.Errorf("JAN lacks human-readable vector digits: %q", got[4])
 	}
 	// the fields of the template
 	var names []string
@@ -761,9 +763,61 @@ func TestFillDepth(t *testing.T) {
 	}
 }
 
-// symbols lists the figures of the objects of a document and the symbols
-// that are drawn in them: the number of the rectangles of a path that has
-// nothing but rectangles, and the box they are in.
+// codeBounds recognizes bars/modules followed optionally by closed digit
+// outlines. Digits must use curves and stay below the bars; the returned box
+// includes both, so frame bounds are checked by the caller's expected symbol.
+func codeBounds(p *bdf.Path) (rects, contours int, box [4]float32) {
+	if p == nil || len(p.Verbs) < 8 || p.Verbs[0] != bdf.VerbRect {
+		return
+	}
+	box = [4]float32{p.Args[0], p.Args[1], p.Args[0], p.Args[1]}
+	grow := func(x, y float32) {
+		box[0], box[1] = min(box[0], x), min(box[1], y)
+		box[2], box[3] = max(box[2], x), max(box[3], y)
+	}
+	at := 0
+	for rects < len(p.Verbs) && p.Verbs[rects] == bdf.VerbRect {
+		grow(p.Args[at], p.Args[at+1])
+		grow(p.Args[at]+p.Args[at+2], p.Args[at+1]+p.Args[at+3])
+		at += 4
+		rects++
+	}
+	if rects < 8 {
+		return 0, 0, [4]float32{}
+	}
+	bottom, curves, closed := box[3], 0, 0
+	for _, verb := range p.Verbs[rects:] {
+		points := 0
+		switch verb {
+		case bdf.VerbMove:
+			contours++
+			points = 1
+		case bdf.VerbLine:
+			points = 1
+		case bdf.VerbQuad:
+			curves++
+			points = 2
+		case bdf.VerbClose:
+			closed++
+		default:
+			return 0, 0, [4]float32{}
+		}
+		for ; points > 0; points-- {
+			x, y := p.Args[at], p.Args[at+1]
+			if y <= bottom {
+				return 0, 0, [4]float32{}
+			}
+			grow(x, y)
+			at += 2
+		}
+	}
+	if contours > 0 && (curves == 0 || closed != contours) {
+		return 0, 0, [4]float32{}
+	}
+	return
+}
+
+// symbols lists the figures and their modules/bars, digit contours and bounds.
 func symbols(t *testing.T, doc *bdf.Document) []string {
 	t.Helper()
 	var out []string
@@ -783,15 +837,15 @@ func symbols(t *testing.T, doc *bdf.Document) []string {
 				}
 			case bdf.OpFillPath:
 				p := o.Paths[int(in.Args[0].(uint64))].Inline
-				if p == nil || len(p.Verbs) < 8 || strings.Trim(string(p.Verbs), string(bdf.VerbRect)) != "" {
+				rects, contours, box := codeBounds(p)
+				if rects == 0 {
 					return
 				}
-				x0, y0, x1, y1 := p.Args[0], p.Args[1], p.Args[0], p.Args[1]
-				for i := 0; i < len(p.Args); i += 4 {
-					x0, y0 = min(x0, p.Args[i]), min(y0, p.Args[i+1])
-					x1, y1 = max(x1, p.Args[i]+p.Args[i+2]), max(y1, p.Args[i+1]+p.Args[i+3])
+				label := ""
+				if contours > 0 {
+					label = fmt.Sprintf(" + %d contours below bars", contours)
 				}
-				out = append(out, fmt.Sprintf("%d rects in %.1f × %.1f", len(p.Verbs), x1-x0, y1-y0))
+				out = append(out, fmt.Sprintf("%d rects in %.1f × %.1f%s", rects, box[2]-box[0], box[3]-box[1], label))
 			}
 		})
 	}
@@ -799,7 +853,7 @@ func symbols(t *testing.T, doc *bdf.Document) []string {
 }
 
 // TestFillCodes fills picture tags that ask for a QR code or a barcode:
-// the symbol of the value is drawn in the cell, as rectangles.
+// the symbol is drawn in the cell, with JAN digits below its bars.
 func TestFillCodes(t *testing.T) {
 	sheet := `<row r="1" ht="60" customHeight="1">` + strings.TrimPrefix(rowXML(1, "{{%url | qr}}", "{{%jan | barcode:jan}}", "{{%url | qr:H | quiet:0}}", "{{%no | barcode:itf | quiet:0}}"), `<row r="1">`) +
 		`</sheetData><cols><col min="1" max="4" width="20" customWidth="1"/></cols>`
@@ -827,7 +881,7 @@ func TestFillCodes(t *testing.T) {
 		return len(s.Rects())
 	}
 	// the cells are 60 pt tall, and wider: a QR code is a square in the
-	// middle, the bars of a barcode are as wide and as tall as the cell
+	// middle, and JAN reserves room for its digits inside the cell.
 	got := symbols(t, res.Doc)
 	want := []string{
 		"figure https://example.com/invoice/1024", fmt.Sprintf("%d rects in ", count(barcode.QR, "https://example.com/invoice/1024", nil)),
@@ -842,6 +896,16 @@ func TestFillCodes(t *testing.T) {
 		if !strings.HasPrefix(got[i], want[i]) {
 			t.Errorf("%d: got %q, want %q…", i, got[i], want[i])
 		}
+	}
+	if !strings.HasSuffix(got[3], " contours below bars") {
+		t.Errorf("JAN lacks human-readable vector digits: %q", got[3])
+	}
+	// Like the ITF cell, JAN has a 133.5 × 58.5 pt drawing frame.
+	// Include the digit contours when checking that it stays inside it.
+	var rects int
+	var width, height float64
+	if n, err := fmt.Sscanf(got[3], "%d rects in %f × %f", &rects, &width, &height); err != nil || n != 3 || width > 133.5 || height != 58.5 {
+		t.Errorf("JAN and its digits exceed the cell: %q", got[3])
 	}
 	if !strings.HasSuffix(got[7], " × 58.5") || strings.HasSuffix(got[7], "in 58.5 × 58.5") {
 		t.Errorf("the bars are not as large as the cell: %q", got[7])

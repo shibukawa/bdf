@@ -583,18 +583,71 @@ func TestFillLimits(t *testing.T) {
 	}
 }
 
-// rectBox tells the rectangles of a path that has nothing but rectangles:
-// their number and the box they are in. It is "" for another path.
+// codeBounds recognizes bars/modules followed optionally by closed digit
+// outlines. Digits must use curves and stay below the bars; the returned box
+// includes both, so frame bounds are checked by the caller's expected symbol.
+func codeBounds(p *bdf.Path) (rects, contours int, box [4]float32) {
+	if p == nil || len(p.Verbs) < 8 || p.Verbs[0] != bdf.VerbRect {
+		return
+	}
+	box = [4]float32{p.Args[0], p.Args[1], p.Args[0], p.Args[1]}
+	grow := func(x, y float32) {
+		box[0], box[1] = min(box[0], x), min(box[1], y)
+		box[2], box[3] = max(box[2], x), max(box[3], y)
+	}
+	at := 0
+	for rects < len(p.Verbs) && p.Verbs[rects] == bdf.VerbRect {
+		grow(p.Args[at], p.Args[at+1])
+		grow(p.Args[at]+p.Args[at+2], p.Args[at+1]+p.Args[at+3])
+		at += 4
+		rects++
+	}
+	if rects < 8 {
+		return 0, 0, [4]float32{}
+	}
+	bottom, curves, closed := box[3], 0, 0
+	for _, verb := range p.Verbs[rects:] {
+		points := 0
+		switch verb {
+		case bdf.VerbMove:
+			contours++
+			points = 1
+		case bdf.VerbLine:
+			points = 1
+		case bdf.VerbQuad:
+			curves++
+			points = 2
+		case bdf.VerbClose:
+			closed++
+		default:
+			return 0, 0, [4]float32{}
+		}
+		for ; points > 0; points-- {
+			x, y := p.Args[at], p.Args[at+1]
+			if y <= bottom {
+				return 0, 0, [4]float32{}
+			}
+			grow(x, y)
+			at += 2
+		}
+	}
+	if contours > 0 && (curves == 0 || closed != contours) {
+		return 0, 0, [4]float32{}
+	}
+	return
+}
+
+// rectBox summarizes code modules/bars, digit contours and their full bounds.
 func rectBox(p *bdf.Path) string {
-	if p == nil || len(p.Verbs) < 8 || strings.Trim(string(p.Verbs), string(bdf.VerbRect)) != "" {
+	rects, contours, box := codeBounds(p)
+	if rects == 0 {
 		return ""
 	}
-	x0, y0, x1, y1 := p.Args[0], p.Args[1], p.Args[0], p.Args[1]
-	for i := 0; i < len(p.Args); i += 4 {
-		x0, y0 = min(x0, p.Args[i]), min(y0, p.Args[i+1])
-		x1, y1 = max(x1, p.Args[i]+p.Args[i+2]), max(y1, p.Args[i+1]+p.Args[i+3])
+	label := ""
+	if contours > 0 {
+		label = fmt.Sprintf(" + %d contours below bars", contours)
 	}
-	return fmt.Sprintf("%d rects at %.2f %.2f of %.2f × %.2f", len(p.Verbs), x0, y0, x1-x0, y1-y0)
+	return fmt.Sprintf("%d rects at %.2f %.2f of %.2f × %.2f%s", rects, box[0], box[1], box[2]-box[0], box[3]-box[1], label)
 }
 
 // TestFillCodes fills picture tags that ask for a QR code or a barcode:
@@ -640,11 +693,14 @@ func TestFillCodes(t *testing.T) {
 	want := []string{
 		"figure " + url, "at 100 100", sym(barcode.QR, url, nil, 0, 0, 100, 100), // what the code says is its text
 		"figure the invoice", "at 350 100", sym(barcode.QR, url, &barcode.Options{Level: "H", Quiet: barcode.NoQuiet}, 0, 0, 100, 100), // a square in the middle
-		"figure " + jan, "at 100 300", sym(barcode.EAN13, jan, nil, 0, 0, 200, 60), // bars as wide and as tall as the frame
+		"figure " + jan, "at 100 300", sym(barcode.EAN13, jan, nil, 0, 0, 200, 60), // bars and digits inside the frame
 		"figure a picture", "at 400 300", "image",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if len(got) < 9 || !strings.HasSuffix(got[8], " contours below bars") {
+		t.Errorf("JAN lacks human-readable vector digits: %q", got)
 	}
 	if !strings.Contains(want[5], " at 0.00 0.00 of 100.00 × 100.00") {
 		t.Errorf("a code without a quiet zone fills its place: %s", want[5])

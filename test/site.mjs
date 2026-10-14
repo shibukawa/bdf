@@ -11,7 +11,7 @@
 //
 //   node test/site.mjs [site dir]
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { BdfDocument, BufferSource, extractText } from "../packages/core/dist/index.js";
@@ -183,14 +183,32 @@ function pdfInfo(b) {
 }
 
 // the form page: each shape of form, as a template of each format, filled with the data it comes with
+const formFonts = `${base}form/fonts/`;
+const formFontDir = join(site, "form/fonts");
+assert.deepEqual(await readdir(formFontDir), ["index.json"], "form fonts are fetched remotely, with no bundled font files");
+const remoteFonts = JSON.parse(await readFile(join(formFontDir, "index.json"), "utf8"));
+assert.equal(remoteFonts.length, 2);
+for (const font of remoteFonts) {
+  const url = new URL(font.url);
+  assert.equal(url.origin, "https://fonts.gstatic.com");
+  assert.equal(url.search, "", "the font URL contains no document text");
+  assert.ok(font.size > 0 && font.scan.length > 0);
+}
 const forms = JSON.parse(await readFile(join(site, "forms/index.json"), "utf8"));
 assert.deepEqual(forms.map((f) => f.id), ["fixed", "rows", "pages", "application", "pdfme-invoice", "pdfme-certificate"]);
 /** The format of a template of the page, by its name. */
 const formatOf = (name) => (name.startsWith("pdfme-") ? "pdfme" : name.split(".").pop());
+const styledSchemas = new Map();
+function withoutLocations(value) {
+  if (Array.isArray(value)) return value.map(withoutLocations);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => key !== "at").map(([key, v]) => [key, withoutLocations(v)]));
+  return value;
+}
 for (const shape of forms) {
   const data = await readFile(join(site, "forms", shape.data), "utf8");
   const files = Object.fromEntries(await Promise.all(shape.files.map(async (f) => [f, new Uint8Array(await readFile(join(site, "forms", f)))])));
-  for (const { name } of shape.templates) {
+  for (const { name, style } of shape.templates) {
     const t0 = performance.now();
     try {
       const template = new Uint8Array(await readFile(join(site, "forms", name)));
@@ -200,6 +218,12 @@ for (const shape of forms) {
       assert.ok(fields.length > 0 && fields.every((f) => f.name && f.kind && f.at.length > 0), "fields");
       assert.equal(schema.$schema, "https://json-schema.org/draft/2020-12/schema");
       assert.equal(schema.type, "object");
+      if (style) {
+        const key = `${shape.id}/${formatOf(name)}`;
+        const normalized = withoutLocations(schema);
+        if (styledSchemas.has(key)) assert.deepEqual(normalized, styledSchemas.get(key), "both styles ask for the same data");
+        else styledSchemas.set(key, normalized);
+      }
       const sample = JSON.parse(data);
       const props = schema.properties;
       // every name of the sample is a property, of the type of its value
@@ -222,13 +246,13 @@ for (const shape of forms) {
         assert.equal(props.applicant.properties.name.type, "string");
       }
       if (shape.id === "pdfme-invoice") {
-        assert.deepEqual(Object.keys(props.items.items.properties), ["項目", "数", "単", "キンガク"]);
+        assert.deepEqual(Object.keys(props.items.items.properties), ["項目", "数量", "単価", "金額"]);
         assert.equal(props.items["x-bdf"].mode, "rows");
-        assert.deepEqual(props.method.enum, ["カード", "ふりこみ"]);
-        assert.equal(props.qr["x-bdf"].code, "qr");
-        assert.equal(JSON.parse(own.sample).number, "INV-0001");
+        assert.equal(props.due.format, "date");
+        assert.deepEqual(Object.keys(props.totals.properties).sort(), ["subtotal", "tax", "total"]);
+        assert.equal(JSON.parse(own.sample).number, "INV-2026-1014");
         // filled with its own sample, it is the page its designer saw
-        const seen = await modules.form.fill(template, { data: own.sample, fonts: `${base}fonts/`, strict: true });
+        const seen = await modules.form.fill(template, { data: own.sample, fonts: formFonts, strict: true });
         assert.equal(seen.pages, 1);
         assert.deepEqual(seen.warnings, []);
       }
@@ -246,20 +270,20 @@ for (const shape of forms) {
         assert.equal(props.tags.items.type, "string");
         assert.deepEqual(bare.properties.no.type, ["string", "number"], "without a sample a value is a text or a number");
       }
-      if (shape.id === "rows") assert.deepEqual(Object.keys(props.items.items.properties), ["name", "qty", "price"]);
+      if (shape.id === "rows") assert.deepEqual(Object.keys(props.items.items.properties), ["name", "qty", "price", "amount"]);
       if (shape.id === "pages") {
         assert.equal(props.pages.items.properties.rows.maxItems, 10);
         assert.equal(props.pages.items.properties.rows["x-bdf"].mode, "slots");
         // (the sample has them around the pages; the tags alone leave them in a page)
         assert.equal(props.slip.type, "string");
         assert.ok(bare.properties.pages.items.properties.slip && !bare.properties.slip);
+        assert.ok(props.pages.items.properties.page_total);
       }
       // filled: a document whose text has the values, and no warnings
-      const res = await modules.form.fill(template, { data, files, fonts: `${base}fonts/`, name });
+      const res = await modules.form.fill(template, { data, files, fonts: formFonts, name });
       assert.deepEqual([...res.bdf.subarray(0, 4)], [0x62, 0x64, 0x66, 0], "bdf magic");
       assert.equal(res.format, formatOf(name));
-      // (the workbook of the invoice has a formula that is not calculated, to show the warning)
-      assert.deepEqual(res.warnings.filter((w) => !/TODAY\(\)/.test(w)), []);
+      assert.deepEqual(res.warnings, []);
       const doc = await BdfDocument.open(new BufferSource(res.bdf));
       assert.equal(doc.manifest.views.reduce((n, v) => n + (v.pages?.length ?? 0), 0), res.pages);
       const text = (await Promise.all(doc.manifest.views.map(async (v) => {
@@ -268,13 +292,16 @@ for (const shape of forms) {
         return out;
       }))).join("");
       const want = {
-        fixed: ["ACME", "1024", "Thank you."], rows: ["A-7", "Item 60"], pages: ["D-1", "Part 24"], application: ["Taro Yamada", "12800"],
-        "pdfme-invoice": ["INV-2026-1014", "ストラップ X", "トータル 46,200", "2 / 2"], "pdfme-certificate": ["Hanako Tanaka", "Score 92 / 100 (with distinction)", "October 14, 2026"],
+        fixed: ["明細書", "Date", "株式会社みなと商事", "デスクオーガナイザー", "1024", "13,200"],
+        rows: ["請求書", "INV-2026-1014", "付箋セット", "23,958"],
+        pages: ["納品書", "DN-2026-1014", "当頁計", "36,180"], application: ["Taro Yamada", "12800"],
+        "pdfme-invoice": ["請求書", "INV-2026-1014", "ファイルボックス", "総額", "23,958"],
+        "pdfme-certificate": ["Hanako Tanaka", "Score 92 / 100 (with distinction)", "October 14, 2026"],
       }[shape.id];
       for (const w of want) assert.ok(text.includes(w), `the filled form has ${w}`);
-      assert.ok(!text.includes("{{#") && !/\{\{(?!not a tag)/.test(text), "no tag is left in the form");
+      assert.ok(!text.includes("{{"), "no tag is left in the form");
       // as a PDF file, with its text in embedded fonts
-      const pdf = await modules.form.pdf(res.bdf, { fonts: `${base}fonts/` });
+      const pdf = await modules.form.pdf(res.bdf, { fonts: formFonts });
       const info = pdfInfo(pdf.pdf);
       assert.equal(info.pages, res.pages);
       assert.equal(pdf.pages, res.pages);
@@ -283,9 +310,9 @@ for (const shape of forms) {
       // tagged, and as a PDF/A file that is tagged
       const plain = new TextDecoder("latin1").decode(pdf.pdf);
       assert.ok(!plain.includes("/StructTreeRoot") && !plain.includes("pdfaid:part"), "a plain PDF file");
-      const tagged = new TextDecoder("latin1").decode((await modules.form.pdf(res.bdf, { fonts: `${base}fonts/`, tagged: true })).pdf);
+      const tagged = new TextDecoder("latin1").decode((await modules.form.pdf(res.bdf, { fonts: formFonts, tagged: true })).pdf);
       assert.ok(tagged.includes("/StructTreeRoot") && tagged.includes("/MarkInfo << /Marked true >>") && !tagged.includes("pdfaid:part"), "a tagged PDF file");
-      const kept = await modules.form.pdf(res.bdf, { fonts: `${base}fonts/`, pdfa: "2a" });
+      const kept = await modules.form.pdf(res.bdf, { fonts: formFonts, pdfa: "2a" });
       const pdfa = new TextDecoder("latin1").decode(kept.pdf);
       assert.ok(pdfa.includes("/StructTreeRoot") && pdfa.includes("<pdfaid:part>2</pdfaid:part>") && pdfa.includes("<pdfaid:conformance>A</pdfaid:conformance>") && pdfa.includes("/OutputIntents"), "a PDF/A-2a file");
       assert.equal(pdfInfo(kept.pdf).pages, res.pages);
@@ -300,15 +327,15 @@ for (const shape of forms) {
 // data that lacks a name leaves its tag empty, with a warning; strictly it is an error; what is no template is refused
 {
   const template = new Uint8Array(await readFile(join(site, "forms/form-rows.xlsx")));
-  const res = await modules.form.fill(template, { data: JSON.stringify({ no: 1, items: [] }), fonts: `${base}fonts/` });
+  const res = await modules.form.fill(template, { data: JSON.stringify({ no: 1, items: [] }), fonts: formFonts });
   assert.match(res.warnings.join("\n"), /no "customer"/);
-  await assert.rejects(modules.form.fill(template, { data: "{}", strict: true, fonts: `${base}fonts/` }), /the data has no/);
+  await assert.rejects(modules.form.fill(template, { data: "{}", strict: true, fonts: formFonts }), /the data has no/);
   await assert.rejects(modules.form.fill(template, { data: "[1]" }), /object of JSON/);
-  await assert.rejects(modules.form.fill(template, { data: "{", fonts: `${base}fonts/` }), /data:/);
+  await assert.rejects(modules.form.fill(template, { data: "{", fonts: formFonts }), /data:/);
   await assert.rejects(modules.form.fill(template, { data: "{}", files: { "a.png": "not bytes" } }), /Uint8Array/);
   // (a PDF without form fields, a picture, JSON that is no template of pdfme)
   await assert.rejects(modules.form.fields(new Uint8Array(await readFile(join(site, "samples/demo.pdf"))), {}), /no form fields/);
-  await assert.rejects(modules.form.fields(new Uint8Array(await readFile(join(site, "forms/stamp.png"))), {}), /not an Excel workbook/);
+  await assert.rejects(modules.form.fields(new Uint8Array(await readFile(join(site, "forms/brand-mark.png"))), {}), /not an Excel workbook/);
   await assert.rejects(modules.form.fields(new TextEncoder().encode('{"items": []}'), {}), /not an Excel workbook/);
   await assert.rejects(modules.form.fields(new TextEncoder().encode('{"schemas": [[]]}'), {}), /no base PDF/);
   // a compiled template holds its schema and its sample

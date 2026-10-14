@@ -101,15 +101,15 @@ func TestInspect(t *testing.T) {
 		"express value boolean default=false",
 		"items section rows",
 		"items>項目 value",
-		"items>数 value",
-		"items>単 value",
-		"items>キンガク value",
+		"items>数量 value",
+		"items>単価 value",
+		"items>金額 value",
 		"qr image qr default=https://example.com/",
 		"code image code128 default=INV0001",
 		"terms section",
 		"terms>. value",
 		"confirmed value boolean default=false",
-		"total value", // (what a text of the template shows: "トータル {total}")
+		"total value", // (what a text of the template shows: "総額 {total}")
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("fields:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -131,7 +131,7 @@ func TestDefaults(t *testing.T) {
 	}
 	out, _ := json.Marshal(got)
 	want := `{"code":"INV0001","confirmed":false,"customer":{"company":"カメラのタナカ","person":"タナカ ハナコ"},"express":false,"issued":"2026/10/14",` +
-		`"items":[{"キンガク":"600","単":"300","数":"2","項目":"ノート"},{"キンガク":"1,200","単":"120","数":"10","項目":"ペン"}],"method":"カード",` +
+		`"items":[{"単価":"300","数量":"2","金額":"600","項目":"ノート"},{"単価":"120","数量":"10","金額":"1,200","項目":"ペン"}],"method":"カード",` +
 		`"note":"いつもありがとうございます。","number":"INV-0001","paid":false,"qr":"https://example.com/","terms":["30 日まで","\tカード","\tふりこみ","返すのは 7 日まで"],"total":""}`
 	if string(out) != want {
 		t.Errorf("defaults:\n%s\nwant:\n%s", out, want)
@@ -161,7 +161,7 @@ func TestFill(t *testing.T) {
 	text := pageText(t, res.Doc)
 	for i, want := range [][]string{
 		{"ACME Trading", "インボイス", "INV-2026-1014", "2026.10.14", "カメラのタナカ", "タナカ ハナコ さま", "ふりこみ", "項目", "ストラップ X", "1 / 2"},
-		{"ACME Trading", "項目", "ノート Y", "ペン H", "トータル 46,200", "1.", "返すのは 7 日まで", "COPY", "2 / 2"},
+		{"ACME Trading", "項目", "数量", "単価", "金額", "ノート Y", "ペン H", "総額 46,200", "1.", "返すのは 7 日まで", "COPY", "2 / 2"},
 	} {
 		for _, w := range want {
 			if !strings.Contains(text[i], w) {
@@ -169,7 +169,7 @@ func TestFill(t *testing.T) {
 			}
 		}
 	}
-	for _, not := range []string{"ノート Y", "トータル", "COPY"} {
+	for _, not := range []string{"ノート Y", "総額", "COPY"} {
 		if strings.Contains(text[0], not) {
 			t.Errorf("page 1 has %q", not)
 		}

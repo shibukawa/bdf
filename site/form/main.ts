@@ -10,7 +10,7 @@ import { BdfWorkerClient } from "@bdfkit/render";
 import { ConverterClient } from "../../examples/common/convert.js";
 import { failure, kb, message } from "../intake.js";
 
-/** Where the page finds lib/, fonts/ and forms/ (set by the build). */
+/** Where the page finds lib/, form/fonts/ and forms/ (set by the build). */
 declare const SITE_ROOT: string;
 
 /** A value of JSON. */
@@ -53,7 +53,7 @@ interface Preset {
   about: string;
   data: string;
   files: string[];
-  templates: { name: string; label: string }[];
+  templates: { name: string; label: string; style?: "standard" | "modern" }[];
 }
 
 /** The template being filled. */
@@ -68,7 +68,7 @@ interface Template {
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const url = (path: string) => new URL(SITE_ROOT + path, location.href).href;
 const MODULE = url("lib/bdf-form.wasm");
-const FONTS = url("fonts/");
+const FONTS = url("form/fonts/");
 
 const status = $("status");
 const fieldsBox = $<HTMLFormElement>("fields");
@@ -433,28 +433,42 @@ jsonBox.oninput = () => {
   changed("json");
 };
 
-// --- the tabs of the data ---
+// --- the workspace tabs, and the tabs within Data ---
 
-const tabs = [$("tabForm"), $("tabJson"), $("tabSchema")];
-function select(tab: HTMLElement) {
-  for (const t of tabs) {
-    const on = t === tab;
-    t.setAttribute("aria-selected", String(on));
-    t.tabIndex = on ? 0 : -1;
-    $(t.getAttribute("aria-controls")!).hidden = !on;
-  }
-  // (the JSON may have changed the data)
-  if (tab === tabs[0]) buildForm();
-}
-tabs.forEach((t, i) => {
-  t.onclick = () => select(t);
-  t.onkeydown = (e) => {
-    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
-    const to = tabs[(i + step + tabs.length) % tabs.length];
-    select(to);
-    to.focus();
+function tabGroup(ids: string[], onSelect: (tab: HTMLElement) => void) {
+  const tabs = ids.map((id) => $(id));
+  const select = (tab: HTMLElement) => {
+    if (tab.hasAttribute("disabled")) return;
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      $(t.getAttribute("aria-controls")!).hidden = !on;
+    }
+    onSelect(tab);
   };
+  for (const tab of tabs) {
+    tab.onclick = () => select(tab);
+    tab.onkeydown = (e) => {
+      const enabled = tabs.filter((t) => !t.hasAttribute("disabled"));
+      const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      const to = e.key === "Home" ? enabled[0] : e.key === "End" ? enabled.at(-1)
+        : step ? enabled[(enabled.indexOf(tab) + step + enabled.length) % enabled.length] : undefined;
+      if (!to) return;
+      e.preventDefault();
+      select(to);
+      to.focus();
+    };
+  }
+  return { tabs, select };
+}
+
+const dataTabs = tabGroup(["tabForm", "tabJson", "tabSchema"], (tab) => {
+  // The JSON may have changed the data.
+  if (tab.id === "tabForm") buildForm();
+});
+const workspaceTabs = tabGroup(["tabTemplate", "tabData", "tabPreview"], (tab) => {
+  if (tab.id === "tabPreview") layout();
 });
 
 // --- filling the template ---
@@ -563,17 +577,26 @@ const watcher = new IntersectionObserver((entries) => {
 
 /** Show a filled form: its pages take the places of those of the one before, which stay until they are drawn. */
 async function draw(buffer: ArrayBuffer) {
+  drawing++;
+  manifest = undefined;
   await renderer.close();
   manifest = await renderer.open({ kind: "buffer", buffer });
   layout();
 }
 
+/** Fit the widest page inside the preview's padding. */
+function fittedScale(widest: number) {
+  const style = getComputedStyle(preview);
+  const width = preview.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  return Math.min(1.5, Math.max(0.2, width / widest));
+}
+
 /** Lay the pages out at the width of the pane, and draw the ones in sight. */
 function layout() {
-  if (!manifest) return;
+  if (!manifest || !preview.clientWidth) return;
   const pages = manifest.views.flatMap((v) => (v.kind === "fixed" || v.kind === "flow" ? (v.pages ?? []).map((page, index) => ({ view: v.id, index, page })) : []));
   const widest = Math.max(1, ...pages.map((p) => p.page.w));
-  scale = Math.min(1.5, Math.max(0.2, (preview.clientWidth - 32) / widest));
+  scale = fittedScale(widest);
   drawing++;
   // the frames of the pages before are kept, with what they show
   while (frames.length > pages.length) {
@@ -605,6 +628,7 @@ function layout() {
 }
 
 async function paint(f: Frame) {
+  if (!manifest || !preview.clientWidth) return;
   const turn = drawing;
   if (f.drawn === turn || f.asked === turn) return;
   f.asked = turn;
@@ -629,7 +653,7 @@ let resizing = 0;
 new ResizeObserver(() => {
   clearTimeout(resizing);
   resizing = window.setTimeout(() => {
-    if (manifest && Math.abs(preview.clientWidth - 32 - Math.max(1, ...frames.map((f) => f.page.w)) * scale) > 2) layout();
+    if (manifest && preview.clientWidth && Math.abs(fittedScale(Math.max(1, ...frames.map((f) => f.page.w))) - scale) > 0.001) layout();
   }, 150);
 }).observe(preview);
 
@@ -692,8 +716,10 @@ async function openTemplate(name: string, bytes: ArrayBuffer, sample?: JsonObjec
   a.href = URL.createObjectURL(new Blob([res.schema], { type: "application/schema+json" }));
   a.download = `${base}.schema.json`;
   $<HTMLAnchorElement>("saveJson").download = `${base}.json`;
-  $("work").hidden = false;
-  select(tabs[0]);
+  for (const tab of workspaceTabs.tabs) tab.removeAttribute("disabled");
+  dataTabs.select($("tabForm"));
+  workspaceTabs.select($("tabData"));
+  $("tabData").focus({ preventScroll: true });
   showJson();
   how(template);
   document.title = `${name} – Forms – BDF`;
@@ -732,12 +758,12 @@ async function openPreset(p: Preset, name: string) {
   }
 }
 
-async function listPresets() {
-  const res = await fetch(url("forms/index.json"));
-  if (!res.ok) return;
-  const presets = (await res.json()) as Preset[];
+function renderPresets(presets: Preset[], style: string) {
   const body = $("presets").querySelector("tbody")!;
+  body.replaceChildren();
   for (const p of presets) {
+    const templates = p.templates.filter((t) => !t.style || t.style === style);
+    if (!templates.length) continue;
     const row = body.insertRow();
     const th = document.createElement("th");
     th.scope = "row";
@@ -746,21 +772,35 @@ async function listPresets() {
     about.textContent = p.about;
     const cell = row.insertCell();
     cell.className = "samples";
-    for (const t of p.templates) {
+    for (const t of templates) {
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = t.label;
       b.title = t.name;
-      b.ariaLabel = `${p.label}, as a template of ${t.label}`;
+      b.ariaLabel = `${p.label}, ${t.style ?? ""} ${t.label}`;
       b.onclick = () => openPreset(p, t.name);
       cell.append(b);
     }
     row.prepend(th);
   }
-  $("presets").hidden = false;
+  $("sampleStyleNote").textContent = style === "modern"
+    ? "More open spacing, navy accents and light horizontal rules."
+    : "Black and white, with a centered title and a full table grid.";
+}
+
+async function listPresets() {
+  const res = await fetch(url("forms/index.json"));
+  if (!res.ok) return;
+  const presets = (await res.json()) as Preset[];
   // "?template=form-rows.xlsx" opens that sample
   const want = new URLSearchParams(location.search).get("template");
   const preset = presets.find((p) => p.templates.some((t) => t.name === want));
+  const picker = $<HTMLSelectElement>("sampleStyle");
+  picker.value = preset?.templates.find((t) => t.name === want)?.style ?? "standard";
+  picker.onchange = () => renderPresets(presets, picker.value);
+  renderPresets(presets, picker.value);
+  $("sampleStyleControls").hidden = !presets.some((p) => p.templates.some((t) => t.style));
+  $("presets").hidden = false;
   if (preset && want) await openPreset(preset, want);
 }
 

@@ -8,62 +8,74 @@
 <!-- header -->
 <main id="content" class="wrap" tabindex="-1">
   <h1>Forms</h1>
-  <p class="lead">Pick a template: a workbook, a document or a deck with tags such as <code>{{customer}}</code> where the values go, a PDF with form fields, or a template made with the designer of <a href="https://pdfme.com/">pdfme</a>.
-    Its tags or fields are read, a form is made of the JSON Schema of the data they ask for, and what you type fills the template: the filled form is drawn here, and saved as a PDF file (tagged, or PDF/A, when you choose so).
-    It is done by the Go packages a server does it with (<code>form</code>, <code>vector/pdfbdf</code>), built as WebAssembly. The template and the data are not uploaded anywhere.</p>
-  <div class="drop">
-    <p><button type="button" class="button primary" id="choose">Choose a template…</button> (.xlsx, .docx, .pptx, .pdf, a .json of pdfme, .bdft) or drop one anywhere on the page.</p>
-    <input id="file" type="file" hidden accept=".xlsx,.xlsm,.xltx,.xltm,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.potx,.potm,.pdf,.json,.bdft">
-    <table class="presets" id="presets" hidden>
-      <caption>Or start from a sample, which comes with its data:</caption>
-      <tbody></tbody>
-    </table>
+  <p class="lead">Choose a template, enter your data, and preview or download the filled document as a PDF. Your template and data stay in your browser.</p>
+  <div class="tabs formtabs" role="tablist" aria-label="Form workspace">
+    <button type="button" role="tab" id="tabTemplate" aria-controls="templatePanel" aria-selected="true">Template</button>
+    <button type="button" role="tab" id="tabData" aria-controls="dataPanel" aria-selected="false" tabindex="-1" disabled>Data</button>
+    <button type="button" role="tab" id="tabPreview" aria-controls="previewPanel" aria-selected="false" tabindex="-1" disabled>Preview</button>
   </div>
-  <p class="status" id="status" role="status">no template yet</p>
-  <div class="formgrid" id="work" hidden>
-    <section class="pane" aria-labelledby="dataTitle">
-      <div class="panehead">
-        <h2 id="dataTitle">Data</h2>
-        <div class="tabs" role="tablist" aria-label="the data, as">
-          <button type="button" role="tab" id="tabForm" aria-controls="fields" aria-selected="true">Form</button>
-          <button type="button" role="tab" id="tabJson" aria-controls="jsonPanel" aria-selected="false" tabindex="-1">JSON</button>
-          <button type="button" role="tab" id="tabSchema" aria-controls="schemaPanel" aria-selected="false" tabindex="-1">Schema</button>
-        </div>
+  <p class="status" id="status" role="status">Choose a template or start from a sample.</p>
+  <section id="templatePanel" role="tabpanel" aria-labelledby="tabTemplate">
+    <p>Use an Office template with tags such as <code>{{customer}}</code>, a PDF with form fields, or a template made with <a href="https://pdfme.com/">pdfme</a>.</p>
+    <div class="drop">
+      <p><button type="button" class="button primary" id="choose">Choose a template…</button> (.xlsx, .docx, .pptx, .pdf, a .json of pdfme, .bdft) or drop one anywhere on the page.</p>
+      <input id="file" type="file" hidden accept=".xlsx,.xlsm,.xltx,.xltm,.docx,.docm,.dotx,.dotm,.pptx,.pptm,.potx,.potm,.pdf,.json,.bdft">
+      <div class="sample-style" id="sampleStyleControls" hidden>
+        <label for="sampleStyle">Sample style</label>
+        <select id="sampleStyle" aria-describedby="sampleStyleNote">
+          <option value="standard">Standard · 業務帳票</option>
+          <option value="modern">Modern · 余白を広く</option>
+        </select>
+        <span class="note" id="sampleStyleNote">Black and white, with a centered title and a full table grid.</span>
       </div>
-      <form class="fields" id="fields" role="tabpanel" aria-labelledby="tabForm" novalidate autocomplete="off"></form>
-      <div id="jsonPanel" role="tabpanel" aria-labelledby="tabJson" hidden>
-        <textarea class="output" id="json" spellcheck="false" aria-label="the data, as JSON" aria-describedby="jsonNote"></textarea>
-        <p class="note" id="jsonNote">The data that fills the template, as <code>bdf fill -data</code> takes it. Edit it here, or <a id="saveJson" download="data.json">save it</a>.</p>
+      <table class="presets" id="presets" hidden>
+        <caption>Or start from a sample, which comes with its data:</caption>
+        <tbody></tbody>
+      </table>
+    </div>
+    <details class="how" id="how" hidden>
+      <summary>The same on a server</summary>
+      <pre><code id="cli"></code></pre>
+      <pre><code id="go"></code></pre>
+      <p class="note">How templates are written (the tags, rows that repeat, pictures, QR codes and barcodes), what is filled of a PDF form and of a template of pdfme, and the kinds of PDF files: <a href="../docs/forms.html">Making forms</a>.</p>
+    </details>
+  </section>
+  <section class="pane" id="dataPanel" role="tabpanel" aria-labelledby="tabData" hidden>
+    <div class="panehead">
+      <h2 id="dataTitle">Data</h2>
+      <div class="tabs" role="tablist" aria-label="the data, as">
+        <button type="button" role="tab" id="tabForm" aria-controls="fields" aria-selected="true">Form</button>
+        <button type="button" role="tab" id="tabJson" aria-controls="jsonPanel" aria-selected="false" tabindex="-1">JSON</button>
+        <button type="button" role="tab" id="tabSchema" aria-controls="schemaPanel" aria-selected="false" tabindex="-1">Schema</button>
       </div>
-      <div id="schemaPanel" role="tabpanel" aria-labelledby="tabSchema" hidden>
-        <pre class="schema" tabindex="0"><code id="schema"></code></pre>
-        <p class="note">The JSON Schema of the data, made of the tags of the template (<code>bdf template schema -json-schema</code>): the form is made of it. <a id="saveSchema" download="schema.json">Save it</a>.</p>
-      </div>
-    </section>
-    <section class="pane" aria-labelledby="previewTitle">
-      <div class="panehead">
-        <h2 id="previewTitle">Filled form</h2>
-        <span class="actions">
-          <select id="pdfKind" aria-label="the kind of PDF file to write" title="the kind of PDF file to write">
-            <option value="">PDF</option>
-            <option value="tagged">Tagged PDF</option>
-            <option value="2b">PDF/A-2b</option>
-            <option value="2u">PDF/A-2u</option>
-            <option value="2a">PDF/A-2a (tagged)</option>
-          </select>
-          <button type="button" class="button primary" id="savePdf" disabled>Download PDF</button>
-          <a class="button" id="saveBdf" hidden>.bdf</a>
-        </span>
-      </div>
-      <div class="preview" id="preview" tabindex="0" role="region" aria-label="the pages of the filled form"></div>
-      <details class="warnings" id="warnings" hidden><summary></summary><ul></ul></details>
-    </section>
-  </div>
-  <section class="how" id="how" hidden>
-    <h2>The same on a server</h2>
-    <pre><code id="cli"></code></pre>
-    <pre><code id="go"></code></pre>
-    <p class="note">How templates are written (the tags, rows that repeat, pictures, QR codes and barcodes), what is filled of a PDF form and of a template of pdfme, and the kinds of PDF files: <a href="../docs/forms.html">Making forms</a>.</p>
+    </div>
+    <form class="fields" id="fields" role="tabpanel" aria-labelledby="tabForm" novalidate autocomplete="off"></form>
+    <div id="jsonPanel" role="tabpanel" aria-labelledby="tabJson" hidden>
+      <textarea class="output" id="json" spellcheck="false" aria-label="the data, as JSON" aria-describedby="jsonNote"></textarea>
+      <p class="note" id="jsonNote">The data that fills the template, as <code>bdf fill -data</code> takes it. Edit it here, or <a id="saveJson" download="data.json">save it</a>.</p>
+    </div>
+    <div id="schemaPanel" role="tabpanel" aria-labelledby="tabSchema" hidden>
+      <pre class="schema" tabindex="0"><code id="schema"></code></pre>
+      <p class="note">The JSON Schema of the data, made of the tags of the template (<code>bdf template schema -json-schema</code>): the form is made of it. <a id="saveSchema" download="schema.json">Save it</a>.</p>
+    </div>
+  </section>
+  <section class="pane" id="previewPanel" role="tabpanel" aria-labelledby="tabPreview" hidden>
+    <div class="panehead">
+      <h2 id="previewTitle">Preview</h2>
+      <span class="actions">
+        <select id="pdfKind" aria-label="the kind of PDF file to write" title="the kind of PDF file to write">
+          <option value="">PDF</option>
+          <option value="tagged">Tagged PDF</option>
+          <option value="2b">PDF/A-2b</option>
+          <option value="2u">PDF/A-2u</option>
+          <option value="2a">PDF/A-2a (tagged)</option>
+        </select>
+        <button type="button" class="button primary" id="savePdf" disabled>Download PDF</button>
+        <a class="button" id="saveBdf" hidden>.bdf</a>
+      </span>
+    </div>
+    <div class="preview" id="preview" tabindex="0" role="region" aria-label="the pages of the filled form"></div>
+    <details class="warnings" id="warnings" hidden><summary></summary><ul></ul></details>
   </section>
 </main>
 <script type="module" src="./main.js"></script>
