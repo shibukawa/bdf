@@ -70,6 +70,9 @@ const (
 	maxPrecedents = 16 << 20
 	// maxSectionDepth bounds the sections of rows one inside the other.
 	maxSectionDepth = 32
+	// maxExpansionSteps bounds work even when repeated sections emit no
+	// cells or text, so the output limits never see their repetitions.
+	maxExpansionSteps = 8 << 20
 	// maxMovedRanges bounds the merged ranges, the ranges of conditional
 	// formats and the links of a filled sheet, each.
 	maxMovedRanges = 1 << 20
@@ -222,6 +225,7 @@ type filler struct {
 	cells      int // cells of the filled sheets so far
 	pictures   map[string]*tplPicture
 	looked     int // cells looked at to order the formulas
+	steps      int // repeated items and inline tokens expanded
 }
 
 func newFiller(t *TemplateData) *filler {
@@ -236,6 +240,14 @@ func newFiller(t *TemplateData) *filler {
 // errorf makes an error about a cell of a sheet.
 func (f *filler) errorf(ts *tplSheet, r, c int, format string, args ...any) error {
 	return fmt.Errorf("xlsx: sheet %q cell %s: %s", ts.ws.name, cellRef(r, c), fmt.Sprintf(format, args...))
+}
+
+func (f *filler) expansionStep(ts *tplSheet, r, c int) error {
+	if f.steps >= maxExpansionSteps {
+		return f.errorf(ts, r, c, "the filled template needs more than %d expansion steps", maxExpansionSteps)
+	}
+	f.steps++
+	return nil
 }
 
 // run fills the workbook: every sheet is read and filled, then what refers
@@ -344,6 +356,9 @@ func (f *filler) scan(ts *tplSheet) error {
 				tagged = tagged || t.Kind != tag.Text
 				switch t.Kind {
 				case tag.Open, tag.Inverted:
+					if len(stack)+len(local) >= maxSectionDepth {
+						return f.errorf(ts, rw.idx, cl.col, "the section {{#%s}} is inside more than %d sections", t.Name, maxSectionDepth)
+					}
 					local = append(local, k)
 				case tag.Close:
 					if n := len(local); n > 0 {

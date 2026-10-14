@@ -9,13 +9,10 @@ import type { Manifest, Page } from "@bdfkit/core";
 import { BdfWorkerClient } from "@bdfkit/render";
 import { ConverterClient } from "../../examples/common/convert.js";
 import { failure, kb, message } from "../intake.js";
+import { pictureFiles, setValue, valueOf, type Json, type JsonObject } from "./data.js";
 
 /** Where the page finds lib/, form/fonts/ and forms/ (set by the build). */
 declare const SITE_ROOT: string;
-
-/** A value of JSON. */
-type Json = null | boolean | number | string | Json[] | { [name: string]: Json };
-type JsonObject = { [name: string]: Json };
 
 /** What a template says of a name (the x-bdf keyword of the schemas of form.Schema). */
 interface Info {
@@ -267,8 +264,8 @@ function properties(s: Schema, value: Json | undefined, set: (v: Json) => void):
   // the lists after the values: a table of many rows does not part what is around it in the template
   const all = Object.entries(s.properties ?? {});
   for (const [name, p] of [...all.filter(([, p]) => !isList(p)), ...all.filter(([, p]) => isList(p))]) {
-    box.append(field(name, p, obj[name], (v) => {
-      obj[name] = v;
+    box.append(field(name, p, valueOf(obj, name), (v) => {
+      setValue(obj, name, v);
       set(obj);
     }));
   }
@@ -335,8 +332,8 @@ function list(title: string, s: Schema, items: Json[], set: (v: Json) => void): 
       if (props) {
         const obj: JsonObject = it !== null && typeof it === "object" && !Array.isArray(it) ? it : (items[i] = {});
         for (const [name, p] of props) {
-          cell(p, obj[name], (v) => {
-            obj[name] = v;
+          cell(p, valueOf(obj, name), (v) => {
+            setValue(obj, name, v);
             set(items);
           }, `${p.title ?? name} of ${title} ${i + 1}`);
         }
@@ -506,8 +503,7 @@ async function fillOnce() {
   const t0 = performance.now();
   // the pictures the data names, of those picked or fetched
   const text = JSON.stringify(data);
-  const files: Record<string, Uint8Array> = {};
-  for (const [name, bytes] of pictures) if (text.includes(JSON.stringify(name))) files[name] = bytes;
+  const files = pictureFiles(data, pictures);
   let res;
   try {
     res = await converter.fill(MODULE, t.bytes, { data: text, files, fonts: FONTS, name: t.name });

@@ -11,6 +11,7 @@ import (
 	"syscall/js"
 	"time"
 
+	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/form" // (registers the converters of the templates: Word, Excel, PowerPoint and PDF)
 	"github.com/shibukawa/bdf/form/tag"
 )
@@ -20,11 +21,11 @@ func init() {
 	methods["fill"] = fillCall
 }
 
-// maxFormData bounds the JSON of the data of a call, and maxFormFiles the
-// pictures given with it.
+// Bound the JSON, picture count, and total picture bytes of a call.
 const (
-	maxFormData  = 64 << 20
-	maxFormFiles = 256
+	maxFormData     = 64 << 20
+	maxFormFiles    = 256
+	maxFormFileData = 64 << 20
 )
 
 // jsonData reads an option that is the JSON of an object ("" for none).
@@ -36,12 +37,11 @@ func jsonData(args []js.Value, name string) (map[string]any, error) {
 	if len(s) > maxFormData {
 		return nil, fmt.Errorf("%s: more than %d MiB of JSON", name, maxFormData>>20)
 	}
-	dec := json.NewDecoder(strings.NewReader(s))
 	var v any
-	if err := dec.Decode(&v); err != nil {
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
-	m, ok := tag.Normalize(v).(map[string]any)
+	m, ok := v.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("%s: the data is an object of JSON", name)
 	}
@@ -86,8 +86,15 @@ func fieldsCall(_ js.Value, args []js.Value) any {
 		if err != nil {
 			return nil, err
 		}
-		// (a compiled template has its schema; a sample makes another)
-		schema, err := form.SchemaOf(bytes.NewReader(data), int64(len(data)), sample)
+		// Reuse the fields already read: SchemaOf would parse an Office or
+		// PDF template a second time. A compiled template can carry a schema
+		// with its own constraints, which SchemaOf preserves.
+		var schema []byte
+		if bytes.HasPrefix(data, bdf.Magic[:]) {
+			schema, err = form.SchemaOf(bytes.NewReader(data), int64(len(data)), sample)
+		} else {
+			schema, err = form.Schema(fields, sample)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -148,6 +155,7 @@ func fileOption(args []js.Value) (memFS, error) {
 	}
 	out := memFS{}
 	u8 := js.Global().Get("Uint8Array")
+	total := 0
 	for i := 0; i < keys.Length(); i++ {
 		name := keys.Index(i).String()
 		f := v.Get(name)
@@ -158,12 +166,16 @@ func fileOption(args []js.Value) (memFS, error) {
 		if n > tag.MaxPicture {
 			return nil, fmt.Errorf("files: %q is larger than %d MiB", name, tag.MaxPicture>>20)
 		}
-		b := make([]byte, n)
-		js.CopyBytesToGo(b, f)
+		if n > maxFormFileData-total {
+			return nil, fmt.Errorf("files: more than %d MiB in total", maxFormFileData>>20)
+		}
+		total += n
 		name = strings.TrimPrefix(strings.ReplaceAll(name, "\\", "/"), "./")
 		if !fs.ValidPath(name) {
 			return nil, fmt.Errorf("files: %q is not the path of a file", name)
 		}
+		b := make([]byte, n)
+		js.CopyBytesToGo(b, f)
 		out[name] = b
 	}
 	return out, nil

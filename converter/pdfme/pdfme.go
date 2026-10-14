@@ -247,6 +247,9 @@ func schemaList(raw json.RawMessage) ([]*schema, error) {
 
 // parse reads a template.
 func parse(r io.ReaderAt, size int64) (*template, error) {
+	if size < 0 {
+		return nil, fmt.Errorf("pdfme: the template size is negative")
+	}
 	if size > maxTemplate {
 		return nil, fmt.Errorf("pdfme: the template is larger than %d MiB", maxTemplate>>20)
 	}
@@ -317,6 +320,9 @@ func parse(r io.ReaderAt, size int64) (*template, error) {
 			st, err := schemaList(b.StaticSchema)
 			if err != nil {
 				return nil, fmt.Errorf("pdfme: the static fields of the base page: %w", err)
+			}
+			if n+len(st) > maxSchemas {
+				return nil, fmt.Errorf("pdfme: the template has more than %d fields", maxSchemas)
 			}
 			t.static = st
 		}
@@ -587,10 +593,16 @@ func tableRows(v any, heads []string) [][]string {
 		var row []string
 		switch x := r.(type) {
 		case []any:
+			if len(x) > maxCells-cells {
+				return out
+			}
 			for _, c := range x {
 				row = append(row, tag.ValueText(c, "", nil))
 			}
 		case map[string]any:
+			if len(heads) > maxCells-cells {
+				return out
+			}
 			for _, h := range heads {
 				v, ok := x[h]
 				if !ok && strings.Contains(h, ".") {
@@ -624,7 +636,8 @@ func listItems(v any) []string {
 			if strings.TrimSpace(s) == "" {
 				return nil
 			}
-			return strings.Split(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(s), "\n")
+			items := strings.SplitN(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(s), "\n", maxRows+1)
+			return items[:min(len(items), maxRows)]
 		}
 		v = tag.Normalize(parsed)
 	}

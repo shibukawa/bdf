@@ -21,12 +21,16 @@ import (
 // functions. An expression of anything else (or one that fails) is left as
 // its text, as pdfme leaves an expression it cannot evaluate.
 
-// Limits of an expression: its length, the depth of its nesting, and the
-// steps of its evaluation (a template is not trusted).
+// Limits of an expression: its length, nesting, evaluation steps, and
+// temporary values (a template is not trusted).
 const (
 	maxExprLen   = 4096
 	maxExprDepth = 64
 	maxExprSteps = 1 << 20
+	maxExprText  = 1 << 20
+	maxExprItems = 1 << 16
+	maxExprAlloc = 16 << 20
+	maxEvalDepth = 256
 )
 
 // node is a node of the tree of an expression.
@@ -385,12 +389,78 @@ func (e *exprEnv) lookup(name string) (any, bool) {
 }
 
 type evaluator struct {
-	steps int
+	steps, depth, allocated int
+}
+
+// allocate bounds cumulative temporary results as well as each result.
+// A step limit alone does not stop a few concat or replaceAll calls from
+// allocating exponentially more than the template holds.
+func (ev *evaluator) allocate(v any) {
+	n := 0
+	switch x := v.(type) {
+	case string:
+		checkTextLen(len(x))
+		n = len(x)
+	case []any:
+		checkItems(len(x))
+		n = 16 * len(x)
+	case map[string]any:
+		checkItems(len(x))
+		n = 32 * len(x)
+	}
+	if n > maxExprAlloc-ev.allocated {
+		panic(exprError("the expression allocates too much"))
+	}
+	ev.allocated += n
+}
+
+func checkTextLen(n int) {
+	if n > maxExprText {
+		panic(exprError("a text of the expression is too long"))
+	}
+}
+
+func checkItems(n int) {
+	if n > maxExprItems {
+		panic(exprError("an array or object of the expression is too large"))
+	}
 }
 
 func (ev *evaluator) step() {
 	if ev.steps++; ev.steps > maxExprSteps {
 		panic(exprError("the expression takes too long"))
+	}
+}
+
+// scan charges linear work inside builtins to the same budget as AST
+// evaluation. A builtin returning an empty text can still scan a large
+// input on every iteration, without allocating anything.
+func (ev *evaluator) scan(n int) {
+	if n > maxExprSteps-ev.steps {
+		panic(exprError("the expression takes too long"))
+	}
+	ev.steps += n
+}
+
+// Builtins coerce nested values too (Number([text]), for example). Count
+// each occurrence, so wrapping a large string cannot hide its scan cost.
+func (ev *evaluator) scanValue(v any, depth int) {
+	if depth > maxExprDepth {
+		panic(exprError("a value of the expression is nested too deep"))
+	}
+	ev.scan(1)
+	switch x := v.(type) {
+	case string:
+		ev.scan(len(x))
+	case []any:
+		for _, child := range x {
+			ev.scanValue(child, depth+1)
+		}
+	case map[string]any:
+		for key, child := range x {
+			ev.scan(len(key))
+			ev.scanValue(child, depth+1)
+		}
 	}
 }
 
@@ -406,7 +476,48 @@ func evalExpr(n *node, vars map[string]any) (v any, err error) {
 		}
 	}()
 	ev := &evaluator{}
-	return ev.eval(n, &exprEnv{vars: vars, parent: &exprEnv{vars: exprGlobals}}), nil
+	v = ev.eval(n, &exprEnv{vars: vars, parent: &exprEnv{vars: exprGlobals}})
+	checkValue(v)
+	return v, nil
+}
+
+// checkValue bounds a value's expanded representation before JSON encoding
+// or returning it. Counting each occurrence also bounds shared subarrays,
+// which can otherwise describe an enormous output with very little memory.
+func checkValue(v any) {
+	remaining := maxExprText
+	var visit func(any, int)
+	spend := func(n int) {
+		if n > remaining {
+			panic(exprError("a value of the expression is too large"))
+		}
+		remaining -= n
+	}
+	visit = func(v any, depth int) {
+		if depth > maxExprDepth {
+			panic(exprError("a value of the expression is nested too deep"))
+		}
+		switch x := v.(type) {
+		case string:
+			spend(len(x))
+		case []any:
+			checkItems(len(x))
+			spend(len(x) + 2)
+			for _, e := range x {
+				visit(e, depth+1)
+			}
+		case map[string]any:
+			checkItems(len(x))
+			spend(len(x) + 2)
+			for k, e := range x {
+				spend(len(k))
+				visit(e, depth+1)
+			}
+		default:
+			spend(1)
+		}
+	}
+	visit(v, 0)
 }
 
 func truthy(v any) bool {
@@ -424,7 +535,12 @@ func truthy(v any) bool {
 }
 
 // toNumber is Number(v).
-func toNumber(v any) float64 {
+func toNumber(v any) float64 { return numberAt(v, 0) }
+
+func numberAt(v any, depth int) float64 {
+	if depth > maxExprDepth {
+		panic(exprError("a value of the expression is nested too deep"))
+	}
 	switch x := v.(type) {
 	case nil:
 		return 0
@@ -450,7 +566,7 @@ func toNumber(v any) float64 {
 			return 0
 		}
 		if len(x) == 1 {
-			return toNumber(x[0])
+			return numberAt(x[0], depth+1)
 		}
 	}
 	return math.NaN()
@@ -458,35 +574,58 @@ func toNumber(v any) float64 {
 
 // toText is String(v).
 func toText(v any) string {
+	if s, ok := v.(string); ok {
+		checkTextLen(len(s))
+		return s
+	}
+	var b strings.Builder
+	appendText(&b, v, 0)
+	return b.String()
+}
+
+// appendText checks before growing the buffer, including nested arrays
+// whose entries can refer to the same large value many times.
+func appendText(b *strings.Builder, v any, depth int) {
+	if depth > maxExprDepth {
+		panic(exprError("a value of the expression is nested too deep"))
+	}
+	write := func(s string) {
+		if len(s) > maxExprText-b.Len() {
+			panic(exprError("a text of the expression is too long"))
+		}
+		b.WriteString(s)
+	}
 	switch x := v.(type) {
 	case nil:
-		return ""
+		return
 	case bool:
-		return strconv.FormatBool(x)
+		write(strconv.FormatBool(x))
 	case float64:
 		switch {
 		case math.IsNaN(x):
-			return "NaN"
+			write("NaN")
 		case math.IsInf(x, 1):
-			return "Infinity"
+			write("Infinity")
 		case math.IsInf(x, -1):
-			return "-Infinity"
+			write("-Infinity")
 		case x == math.Trunc(x) && math.Abs(x) < 1e21:
-			return strconv.FormatFloat(x, 'f', 0, 64)
+			write(strconv.FormatFloat(x, 'f', 0, 64))
+		default:
+			write(strconv.FormatFloat(x, 'g', -1, 64))
 		}
-		return strconv.FormatFloat(x, 'g', -1, 64)
 	case string:
-		return x
+		write(x)
 	case []any:
-		parts := make([]string, len(x))
+		checkItems(len(x))
 		for i, e := range x {
-			parts[i] = toText(e)
+			if i > 0 {
+				write(",")
+			}
+			appendText(b, e, depth+1)
 		}
-		return strings.Join(parts, ",")
 	case map[string]any:
-		return "[object Object]"
+		write("[object Object]")
 	}
-	return ""
 }
 
 func looseEqual(a, b any) bool {
@@ -535,6 +674,10 @@ func strictEqual(a, b any) bool {
 
 func (ev *evaluator) eval(n *node, env *exprEnv) any {
 	ev.step()
+	if ev.depth++; ev.depth > maxEvalDepth {
+		panic(exprError("the expression evaluation is nested too deep"))
+	}
+	defer func() { ev.depth-- }()
 	switch n.kind {
 	case nLit:
 		return n.val
@@ -580,10 +723,11 @@ func (ev *evaluator) eval(n *node, env *exprEnv) any {
 			_, aa := a.([]any)
 			_, ba := b.([]any)
 			if as || bs || aa || ba {
-				s := toText(a) + toText(b)
-				if len(s) > 1<<20 {
-					panic(exprError("a text of the expression is too long"))
-				}
+				var bld strings.Builder
+				appendText(&bld, a, 0)
+				appendText(&bld, b, 0)
+				s := bld.String()
+				ev.allocate(s)
 				return s
 			}
 			return toNumber(a) + toNumber(b)
@@ -631,7 +775,9 @@ func (ev *evaluator) eval(n *node, env *exprEnv) any {
 		}
 		return x >= y
 	case nArray:
+		checkItems(len(n.kids))
 		out := make([]any, len(n.kids))
+		ev.allocate(out)
 		for i, k := range n.kids {
 			out[i] = ev.eval(k, env)
 		}
@@ -641,6 +787,7 @@ func (ev *evaluator) eval(n *node, env *exprEnv) any {
 		for i, k := range n.kids {
 			out[n.parms[i]] = ev.eval(k, env)
 		}
+		ev.allocate(out)
 		return out
 	case nArrow:
 		return &closure{n: n, env: env}
@@ -658,9 +805,12 @@ func (ev *evaluator) eval(n *node, env *exprEnv) any {
 			}
 		case string:
 			if i, ok := key.(float64); ok {
-				rs := []rune(x)
-				if i >= 0 && int(i) < len(rs) && i == math.Trunc(i) {
-					return string(rs[int(i)])
+				checkTextLen(len(x))
+				if i >= 0 && i < float64(len(x)) && i == math.Trunc(i) {
+					ev.scan(len(x))
+					if s := runeAt(x, int(i)); s != "" {
+						return s
+					}
 				}
 				return nil
 			}
@@ -681,7 +831,15 @@ func (ev *evaluator) call(fn any, args []any) any {
 	ev.step()
 	switch f := fn.(type) {
 	case builtin:
-		return f(args)
+		// Global functions also scan their arguments: Number/parseFloat,
+		// String and JSON can do substantial work without producing a
+		// large result. Include nested values used by coercion and JSON.
+		for _, a := range args {
+			ev.scanValue(a, 0)
+		}
+		v := f(args)
+		ev.allocate(v)
+		return v
 	case *closure:
 		vars := make(map[string]any, len(f.n.parms))
 		for i, p := range f.n.parms {
@@ -731,7 +889,7 @@ func span(args []any, n int) (int, int) {
 }
 
 // member returns a property of a value, or one of its methods.
-func (ev *evaluator) member(obj any, name string) any {
+func (ev *evaluator) member(obj any, name string) (value any) {
 	switch name {
 	case "constructor", "__proto__", "prototype", "toLocaleString", "valueOf":
 		panic(exprError(name + " is not of the expressions that are evaluated"))
@@ -740,9 +898,26 @@ func (ev *evaluator) member(obj any, name string) any {
 	case map[string]any:
 		return x[name]
 	case string:
-		rs := []rune(x)
+		checkTextLen(len(x))
+		defer func() {
+			fn, ok := value.(builtin)
+			if !ok || name == "toString" || name == "repeat" {
+				return
+			}
+			value = builtin(func(a []any) any {
+				cost := len(x)
+				if name == "charAt" {
+					if i := intArg(a, 0, 0); i < 0 || i >= len(x) {
+						cost = 0 // (runeAt rejects this without scanning)
+					}
+				}
+				ev.scan(cost)
+				return fn(a)
+			})
+		}()
 		switch name {
 		case "length":
+			ev.scan(len(x))
 			return float64(utf16Len(x))
 		case "toUpperCase":
 			return builtin(func([]any) any { return strings.ToUpper(x) })
@@ -753,13 +928,14 @@ func (ev *evaluator) member(obj any, name string) any {
 		case "toString":
 			return builtin(func([]any) any { return x })
 		case "slice", "substring":
-			return builtin(func(a []any) any { s, e := span(a, len(rs)); return string(rs[s:e]) })
+			return builtin(func(a []any) any {
+				rs := []rune(x)
+				s, e := span(a, len(rs))
+				return string(rs[s:e])
+			})
 		case "charAt":
 			return builtin(func(a []any) any {
-				if i := intArg(a, 0, 0); i >= 0 && i < len(rs) {
-					return string(rs[i])
-				}
-				return ""
+				return runeAt(x, intArg(a, 0, 0))
 			})
 		case "includes":
 			return builtin(func(a []any) any { return strings.Contains(x, toText(arg(a, 0))) })
@@ -770,15 +946,20 @@ func (ev *evaluator) member(obj any, name string) any {
 		case "indexOf":
 			return builtin(func(a []any) any { return float64(strings.Index(x, toText(arg(a, 0)))) })
 		case "replace":
-			return builtin(func(a []any) any { return strings.Replace(x, toText(arg(a, 0)), toText(arg(a, 1)), 1) })
+			return builtin(func(a []any) any { return replaceText(x, toText(arg(a, 0)), toText(arg(a, 1)), 1) })
 		case "replaceAll":
-			return builtin(func(a []any) any { return strings.ReplaceAll(x, toText(arg(a, 0)), toText(arg(a, 1))) })
+			return builtin(func(a []any) any { return replaceText(x, toText(arg(a, 0)), toText(arg(a, 1)), -1) })
 		case "split":
 			return builtin(func(a []any) any {
 				var parts []string
 				if sep := toText(arg(a, 0)); arg(a, 0) == nil {
 					parts = []string{x}
 				} else {
+					n := strings.Count(x, sep) + 1
+					if sep == "" {
+						n = utf8.RuneCountInString(x)
+					}
+					checkItems(n)
 					parts = strings.Split(x, sep)
 				}
 				out := make([]any, len(parts))
@@ -793,10 +974,20 @@ func (ev *evaluator) member(obj any, name string) any {
 				if arg(a, 1) != nil {
 					fill = toText(arg(a, 1))
 				}
-				if n > 1<<16 || fill == "" || n <= len(rs) {
+				length := utf8.RuneCountInString(x)
+				if n > 1<<16 || fill == "" || n <= length {
 					return x
 				}
-				pad := []rune(strings.Repeat(fill, (n-len(rs))/len([]rune(fill))+1))[:n-len(rs)]
+				pad := make([]rune, n-length)
+				for i := 0; i < len(pad); {
+					for _, r := range fill {
+						pad[i] = r
+						i++
+						if i == len(pad) {
+							break
+						}
+					}
+				}
 				if name == "padStart" {
 					return string(pad) + x
 				}
@@ -805,7 +996,7 @@ func (ev *evaluator) member(obj any, name string) any {
 		case "repeat":
 			return builtin(func(a []any) any {
 				n := intArg(a, 0, 0)
-				if n < 0 || n*len(x) > 1<<20 {
+				if n < 0 || len(x) > 0 && n > maxExprText/len(x) {
 					panic(exprError("a text of the expression is too long"))
 				}
 				return strings.Repeat(x, n)
@@ -819,6 +1010,15 @@ func (ev *evaluator) member(obj any, name string) any {
 			return builtin(func([]any) any { return toText(x) })
 		}
 	case []any:
+		checkItems(len(x))
+		defer func() {
+			if fn, ok := value.(builtin); ok && name != "at" {
+				value = builtin(func(a []any) any {
+					ev.scan(len(x))
+					return fn(a)
+				})
+			}
+		}()
 		switch name {
 		case "length":
 			return float64(len(x))
@@ -828,17 +1028,31 @@ func (ev *evaluator) member(obj any, name string) any {
 				if arg(a, 0) != nil {
 					sep = toText(arg(a, 0))
 				}
-				parts := make([]string, len(x))
+				var b strings.Builder
 				for i, e := range x {
-					parts[i] = toText(e)
+					if i > 0 {
+						appendText(&b, sep, 0)
+					}
+					appendText(&b, e, 0)
 				}
-				return strings.Join(parts, sep)
+				return b.String()
 			})
 		case "slice":
 			return builtin(func(a []any) any { s, e := span(a, len(x)); return append([]any(nil), x[s:e]...) })
 		case "concat":
 			return builtin(func(a []any) any {
-				out := append([]any(nil), x...)
+				n := len(x)
+				for _, e := range a {
+					if l, ok := e.([]any); ok {
+						checkItems(len(l))
+						n += len(l)
+					} else {
+						n++
+					}
+					checkItems(n)
+				}
+				out := make([]any, len(x), n)
+				copy(out, x)
 				for _, e := range a {
 					if l, ok := e.([]any); ok {
 						out = append(out, l...)
@@ -939,6 +1153,19 @@ func (ev *evaluator) member(obj any, name string) any {
 	return nil
 }
 
+func runeAt(s string, at int) string {
+	if at < 0 || at >= len(s) {
+		return ""
+	}
+	for _, r := range s {
+		if at == 0 {
+			return string(r)
+		}
+		at--
+	}
+	return ""
+}
+
 // utf16Len is the length of a text as JavaScript counts it.
 func utf16Len(s string) int {
 	n := 0
@@ -989,21 +1216,7 @@ var exprGlobals = map[string]any{
 	"Boolean": builtin(func(a []any) any { return truthy(arg(a, 0)) }),
 	"isNaN":   builtin(func(a []any) any { return math.IsNaN(toNumber(arg(a, 0))) }),
 	"parseFloat": builtin(func(a []any) any {
-		// the number that the text starts with
-		s := strings.TrimSpace(toText(arg(a, 0)))
-		end := 0
-		for i := 1; i <= len(s); i++ {
-			if _, err := strconv.ParseFloat(s[:i], 64); err == nil {
-				end = i
-			} else if c := s[i-1]; !(c >= '0' && c <= '9' || c == '.' || c == '-' || c == '+' || c == 'e' || c == 'E') {
-				break
-			}
-		}
-		if end == 0 {
-			return math.NaN()
-		}
-		f, _ := strconv.ParseFloat(s[:end], 64)
-		return f
+		return parseFloatPrefix(strings.TrimSpace(toText(arg(a, 0))))
 	}),
 	"parseInt": builtin(func(a []any) any {
 		s := strings.TrimSpace(toText(arg(a, 0)))
@@ -1045,10 +1258,12 @@ var exprGlobals = map[string]any{
 	},
 	"JSON": map[string]any{
 		"stringify": builtin(func(a []any) any {
+			checkValue(arg(a, 0))
 			b, err := json.Marshal(arg(a, 0))
 			if err != nil {
 				panic(exprError("a value is not written as JSON"))
 			}
+			checkTextLen(len(b))
 			return string(b)
 		}),
 		"parse": builtin(func(a []any) any {
@@ -1056,6 +1271,7 @@ var exprGlobals = map[string]any{
 			if err := json.Unmarshal([]byte(toText(arg(a, 0))), &v); err != nil {
 				panic(exprError("a text is not JSON"))
 			}
+			checkValue(v)
 			return v
 		}),
 	},
@@ -1063,12 +1279,88 @@ var exprGlobals = map[string]any{
 
 func sortedKeys(v any) []string {
 	m, _ := v.(map[string]any)
+	checkItems(len(m))
 	keys := make([]string, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// replaceText measures the replacement before strings.Replace allocates it.
+func replaceText(s, old, replacement string, count int) string {
+	n := strings.Count(s, old)
+	if count >= 0 {
+		n = min(n, count)
+	}
+	if growth := len(replacement) - len(old); growth > 0 && n > (maxExprText-len(s))/growth {
+		panic(exprError("a text of the expression is too long"))
+	}
+	return strings.Replace(s, old, replacement, count)
+}
+
+// parseFloatPrefix scans once for the numeric prefix. Trying ParseFloat on
+// every prefix makes a long number take quadratic time.
+func parseFloatPrefix(s string) float64 {
+	i := 0
+	if i < len(s) && (s[i] == '+' || s[i] == '-') {
+		i++
+	}
+	if strings.HasPrefix(s[i:], "Infinity") {
+		if len(s) > 0 && s[0] == '-' {
+			return math.Inf(-1)
+		}
+		return math.Inf(1)
+	}
+	start := i
+	digits := func() {
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+	}
+	digits()
+	n := i - start
+	if i < len(s) && s[i] == '.' {
+		i++
+		start = i
+		digits()
+		n += i - start
+	}
+	if n == 0 {
+		return math.NaN()
+	}
+	end := i
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			i++
+		}
+		start = i
+		digits()
+		if i > start {
+			end = i
+		}
+	}
+	f, _ := strconv.ParseFloat(s[:end], 64)
+	return f
+}
+
+func evalText(n *node, vars map[string]any) (out string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(exprError); ok {
+				out, err = "", e
+			} else {
+				panic(r)
+			}
+		}
+	}()
+	v, err := evalExpr(n, vars)
+	if err != nil {
+		return "", err
+	}
+	return toText(v), nil
 }
 
 // expand replaces the expressions in braces of a text with their values.
@@ -1078,9 +1370,22 @@ func expand(text string, vars map[string]any) (out string, failed bool) {
 	if !strings.Contains(text, "{") || !strings.Contains(text, "}") {
 		return text, false
 	}
+	if len(text) > maxExprText {
+		return text, true
+	}
 	var b strings.Builder
+	write := func(s string) bool {
+		if len(s) > maxExprText-b.Len() {
+			return false
+		}
+		b.WriteString(s)
+		return true
+	}
 	for i := 0; i < len(text); {
 		if text[i] != '{' {
+			if b.Len() == maxExprText {
+				return text, true
+			}
 			b.WriteByte(text[i])
 			i++
 			continue
@@ -1098,20 +1403,23 @@ func expand(text string, vars map[string]any) (out string, failed bool) {
 			}
 		}
 		if end < 0 {
-			b.WriteString(text[i:])
+			if !write(text[i:]) {
+				return text, true
+			}
 			break
 		}
 		src := text[i+1 : end]
 		n, err := parseExpr(strings.TrimSpace(src))
-		var v any
+		var value string
 		if err == nil {
-			v, err = evalExpr(n, vars)
+			value, err = evalText(n, vars)
 		}
 		if err != nil {
 			failed = true
-			b.WriteString(text[i : end+1])
-		} else {
-			b.WriteString(toText(v))
+			value = text[i : end+1]
+		}
+		if !write(value) {
+			return text, true
 		}
 		i = end + 1
 	}

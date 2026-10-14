@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path"
 	"strconv"
 	"strings"
@@ -99,8 +100,11 @@ func readSource(s Source) (any, error) {
 		if err := dec.Decode(&v); err != nil {
 			return nil, err
 		}
-		if dec.More() {
+		var extra any
+		if err := dec.Decode(&extra); err == nil {
 			return nil, fmt.Errorf("more than one JSON value")
+		} else if err != io.EOF {
+			return nil, err
 		}
 		return tag.Normalize(v), nil
 	case ".yaml", ".yml":
