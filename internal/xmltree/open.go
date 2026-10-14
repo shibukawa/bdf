@@ -2,7 +2,6 @@ package xmltree
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"math"
 	"strings"
@@ -48,14 +47,13 @@ func Open(data []byte, o xmlro.Options) *xmlro.Reader {
 	if convert == nil {
 		convert = Latin1
 	}
-	lenient, converted := o.Lenient, false
+	lenient := o.Lenient
 	o.CharsetReader = func(label string, src io.Reader) (io.Reader, error) {
-		if converted {
-			return nil, errDeclarations
-		}
-		converted = true
 		// the rest of the document, which is in memory: it is converted
-		// whole, and bounded as the document was
+		// whole, and bounded as the document was. The reader asks once, for
+		// the declaration before the root element: one that follows it (in
+		// a document put together from others) is a processing instruction
+		// and nothing more.
 		if !marked { // the byte order mark says more than the declaration
 			var err error
 			if src, err = convert(label, src); err != nil {
@@ -70,7 +68,6 @@ func Open(data []byte, o xmlro.Options) *xmlro.Reader {
 			b = bytes.ToValidUTF8(b, []byte(string(utf8.RuneError)))
 		}
 		b, _ = BoundEntities(b)
-		undeclare(b)
 		return bytes.NewReader(b), nil
 	}
 	o.AllowDoctype = true
@@ -80,47 +77,6 @@ func Open(data []byte, o xmlro.Options) *xmlro.Reader {
 		o.MaxBufferBytes = int(min(4*int64(len(data))+MaxEntityText, math.MaxInt32))
 	}
 	return xmlro.NewBytesReader(data, o)
-}
-
-// errDeclarations is the error of a document that declares an encoding
-// again after it was converted.
-var errDeclarations = errors.New("xml: the document declares its encoding twice")
-
-// undeclare makes the XML declarations in the rest of a document that was
-// converted processing instructions of another name. A document has one
-// declaration, at its start; each of those that follow (in documents put
-// together from others) would have the rest converted again, and the
-// reader's buffer copied. Comments and CDATA sections are passed over:
-// what they hold is their text. A declaration this does not find (after
-// markup that is not well formed) ends the reading (errDeclarations).
-func undeclare(b []byte) {
-	if !bytes.Contains(b, []byte("<?xml")) {
-		return
-	}
-	skip := func(i int, open, end string) int {
-		if j := bytes.Index(b[i+len(open):], []byte(end)); j >= 0 {
-			return i + len(open) + j + len(end)
-		}
-		return i + len(open)
-	}
-	for i := 0; ; {
-		j := bytes.IndexByte(b[i:], '<')
-		if j < 0 {
-			return
-		}
-		i += j
-		switch rest := b[i:]; {
-		case bytes.HasPrefix(rest, []byte("<!--")):
-			i = skip(i, "<!--", "-->")
-		case bytes.HasPrefix(rest, []byte("<![CDATA[")):
-			i = skip(i, "<![CDATA[", "]]>")
-		case len(rest) > 5 && string(rest[:5]) == "<?xml" && (rest[5] == ' ' || rest[5] == '\t' || rest[5] == '\r' || rest[5] == '\n'):
-			b[i+4] = 'L'
-			i += 5
-		default:
-			i++
-		}
-	}
 }
 
 // Latin1 is the CharsetReader of the readers that have none of their own:
@@ -199,7 +155,8 @@ func DeclaredEncoding(b []byte) string {
 // stand for MaxEntityText at most, all their references taken together.
 // The declarations of a document whose entities stand for more are
 // unmade, in a copy, so that its references stay as they are written;
-// dropped reports it.
+// dropped reports it. It takes time in proportion to the document, whatever
+// the document declares and refers to.
 func BoundEntities(data []byte) (bounded []byte, dropped bool) {
 	if !bytes.Contains(data, entityDecl) {
 		return data, false
@@ -207,7 +164,6 @@ func BoundEntities(data []byte) (bounded []byte, dropped bool) {
 	// Every "<!ENTITY" counts, wherever it is: more than the reader takes
 	// for declarations, never less.
 	sizes := map[string]int{}
-	longest := 0
 	for rest := data; ; {
 		i := bytes.Index(rest, entityDecl)
 		if i < 0 {
@@ -216,21 +172,31 @@ func BoundEntities(data []byte) (bounded []byte, dropped bool) {
 		rest = rest[i+len(entityDecl):]
 		if name, size, ok := declaredEntity(rest); ok {
 			sizes[string(name)] = max(sizes[string(name)], size)
-			longest = max(longest, len(name))
 		}
 	}
 	if len(sizes) == 0 {
 		return data, false
 	}
-	total := 0
-	for rest := data; ; {
-		i := bytes.IndexByte(rest, '&')
+	// A reference is "&", a name of maxEntityName bytes at most and ";":
+	// the reader takes nothing longer for one. The next ";" is looked for
+	// again only once the scan has passed it; looked for from every "&",
+	// as far as the longest name declared, it was the square of a document
+	// that declares a long name and has no ";".
+	total, semi := 0, -1
+	for at := 0; ; {
+		i := bytes.IndexByte(data[at:], '&')
 		if i < 0 {
 			return data, false
 		}
-		rest = rest[i+1:]
-		if j := bytes.IndexByte(rest[:min(len(rest), longest+1)], ';'); j > 0 {
-			if total += sizes[string(rest[:j])]; total > MaxEntityText {
+		at += i + 1
+		if semi < at {
+			if semi = bytes.IndexByte(data[at:], ';'); semi < 0 {
+				return data, false // no reference from here on
+			}
+			semi += at
+		}
+		if n := semi - at; n > 0 && n <= maxEntityName {
+			if total += sizes[string(data[at:semi])]; total > MaxEntityText {
 				break
 			}
 		}
@@ -238,6 +204,10 @@ func BoundEntities(data []byte) (bounded []byte, dropped bool) {
 	// a declaration in lower case is one the reader passes over
 	return bytes.ReplaceAll(data, entityDecl, []byte("<!entity")), true
 }
+
+// maxEntityName is the longest name of a reference the reader looks up
+// (maxEntityName of xmlro).
+const maxEntityName = 64
 
 // declaredEntity reads the name of a general entity and the size of its
 // value from what follows "<!ENTITY", as the reader reads a declaration.
