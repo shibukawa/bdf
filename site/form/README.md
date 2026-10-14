@@ -11,6 +11,10 @@ code. The invoice has a growing item table, tax, a due date and payment
 details. The delivery slip has ten item slots per page, page subtotals and
 carried amounts. Company and bank information are sample content.
 
+Each sample format offers a download of its original editable template.
+Users can customize the layout in Excel, Word or PowerPoint, keep the
+data tags in place, and upload the edited file to the Forms page.
+
 The Excel invoice repeats only row 15 (the table heading), and only while
 the detail table continues. The sheet-scoped `_bdf.Print_TitleScope` name
 tracks the expanded table, and `_bdf.Print_KeepTogether` keeps totals,

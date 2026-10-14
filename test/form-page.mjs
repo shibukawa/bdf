@@ -74,6 +74,17 @@ async function openSample(page, name) {
   return drawing;
 }
 
+/** Download the original workbook, preserving editable formatting and tags. */
+async function downloadSource(page, name) {
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.locator(`#presets a[download="${name}"]`).click(),
+  ]);
+  assert.equal(download.suggestedFilename(), name);
+  assert.deepEqual(await readFile(await download.path()), await readFile(join(site, "forms", name)), "the download is the unmodified original template");
+  await selected(page, "Template");
+}
+
 async function previewPainted(page, previous) {
   await page.locator("#tabPreview").click();
   await page.locator("#preview canvas").first().scrollIntoViewIfNeeded();
@@ -145,8 +156,10 @@ try {
   assert.equal(await page.locator("#tabData").isDisabled(), true);
   assert.equal(await page.locator("#tabPreview").isDisabled(), true);
   await sampleStyle(page, "standard");
+  await downloadSource(page, "form-rows.xlsx");
   await page.locator("#sampleStyle").selectOption("modern");
   await sampleStyle(page, "modern");
+  await downloadSource(page, "form-rows-modern.xlsx");
   await page.locator("#sampleStyle").selectOption("standard");
   await sampleStyle(page, "standard");
 
@@ -250,6 +263,9 @@ try {
   await linked.locator("#tabTemplate").click();
   await sampleStyle(linked, "modern");
   if (screenshots) await linked.screenshot({ path: join(screenshots, "form-modern-template-selector.png"), fullPage: true });
+  await linked.setViewportSize({ width: 390, height: 844 });
+  assert.ok(await linked.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "template downloads fit a narrow screen");
+  if (screenshots) await linked.screenshot({ path: join(screenshots, "form-modern-template-selector-mobile.png"), fullPage: true });
   await linked.close();
 
   // Detail continuation pages and trailing sections must also render

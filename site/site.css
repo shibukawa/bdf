@@ -241,11 +241,14 @@ dialog.password .buttons { display: flex; justify-content: flex-end; gap: .5rem;
 .presets th, .presets td { padding: .35rem .6rem .35rem 0; background: none; border: 0; border-top: 1px solid var(--border); text-align: left; vertical-align: baseline; }
 .presets th { white-space: nowrap; }
 .presets td { color: var(--muted); }
-.presets td.samples { white-space: nowrap; padding-right: 0; }
-@media (max-width: 40rem) {
+.presets td.samples { min-width: 20rem; padding-right: 0; }
+.sample-template { display: inline-flex; flex-direction: column; align-items: flex-start; gap: .2rem; margin: .25rem .65rem .25rem 0; vertical-align: top; white-space: nowrap; }
+.sample-template a { font-size: .75rem; }
+@media (max-width: 48rem) {
   .presets, .presets caption, .presets tbody, .presets tr, .presets th, .presets td { display: block; }
   .presets th, .presets td { padding: .1rem 0; border: 0; }
   .presets tr { padding: .5rem 0; border-top: 1px solid var(--border); }
+  .presets td.samples { min-width: 0; }
 }
 .pane { min-width: 0; }
 .panehead { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between; margin: 0 0 .6rem; min-height: 2.6rem; }
