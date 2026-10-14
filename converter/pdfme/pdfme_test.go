@@ -22,6 +22,21 @@ func testOptions() *Options {
 	return &Options{FontDirs: []string{"../docx/testdata/fonts"}, NoSystemFonts: true}
 }
 
+func TestTemplateInputLimits(t *testing.T) {
+	if _, err := Inspect(bytes.NewReader(nil), -1); err == nil {
+		t.Fatal("a negative template size was accepted")
+	}
+	// Static fields count towards the same limit as fields on pages.
+	static := strings.TrimSuffix(strings.Repeat("{},", maxSchemas+1), ",")
+	src := `{"schemas":[],"basePdf":{"width":100,"height":100,"staticSchema":[` + static + `]}}`
+	if _, err := Inspect(strings.NewReader(src), int64(len(src))); err == nil {
+		t.Fatal("too many static fields were accepted")
+	}
+	if got := len(listItems(strings.Repeat("x\n", maxRows+10))); got != maxRows {
+		t.Errorf("a text list has %d items, want at most %d", got, maxRows)
+	}
+}
+
 func read(t testing.TB, name string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(name)

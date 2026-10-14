@@ -1,6 +1,7 @@
 package pdfme
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -71,6 +72,104 @@ func TestExpressions(t *testing.T) {
 	big := make([]any, 200)
 	if _, err := evalExpr(n, map[string]any{"items": big}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Errorf("an expression of 1.6e9 steps: %v", err)
+	}
+}
+
+func TestExpressionResourceLimits(t *testing.T) {
+	vars := map[string]any{"items": make([]any, 24), "large": strings.Repeat("x", maxExprText/2)}
+	for name, src := range map[string]string{
+		"replace":           "'x'.repeat(4096).replaceAll('x', 'y'.repeat(4096))",
+		"empty replacement": "'x'.repeat(4096).replaceAll('', 'y'.repeat(4096))",
+		"join":              "[large, large].join(large)",
+		"split":             "'x'.repeat(65537).split('')",
+		"concat":            "items.reduce(a => a.concat(a), [0])",
+		"shared JSON":       "JSON.stringify(items.reduce(a => [a, a], [0]))",
+		"shared text":       "String(items.reduce(a => [a, a], [0]))",
+		"recursion":         "(f => f(f))(f => f(f))",
+		"temporary texts":   "items.map(i => 'x'.repeat(1048576))",
+	} {
+		t.Run(name, func(t *testing.T) {
+			n, err := parseExpr(src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := evalExpr(n, vars); err == nil {
+				t.Fatal("an expression exceeding its resource limit succeeded")
+			}
+			text := "{" + src + "}"
+			if got, failed := expand(text, vars); !failed || got != text {
+				t.Fatalf("failed expression was not left intact: failed = %v, length = %d", failed, len(got))
+			}
+		})
+	}
+	text := "{'x'.repeat(600000)}{'x'.repeat(600000)}"
+	if got, failed := expand(text, nil); !failed || got != text {
+		t.Fatal("the combined text of expressions exceeded its limit")
+	}
+	// A nested value returned directly is checked before text conversion,
+	// including cyclic values supplied by a Go caller.
+	cycle := make([]any, 1)
+	cycle[0] = cycle
+	if got, failed := expand("{cycle}", map[string]any{"cycle": cycle}); !failed || got != "{cycle}" {
+		t.Fatal("a cyclic value was expanded")
+	}
+}
+
+func TestParseFloatPrefix(t *testing.T) {
+	for src, want := range map[string]float64{
+		"12.5mm": 12.5, "+.5e2tail": 50, "1e+tail": 1, "1.2.3": 1.2,
+		"-Infinityrest": math.Inf(-1), "1e999": math.Inf(1), "text": math.NaN(),
+		strings.Repeat("0", maxExprText-1) + "1": 1,
+	} {
+		got := parseFloatPrefix(src)
+		if got != want && !(math.IsNaN(got) && math.IsNaN(want)) {
+			t.Errorf("parseFloat of a text of %d bytes = %v, want %v", len(src), got, want)
+		}
+	}
+}
+
+func TestExpressionStringScanBudget(t *testing.T) {
+	vars := map[string]any{
+		"rows":   make([]any, maxExprItems),
+		"s":      strings.Repeat("\U0001F600", maxExprText/8),
+		"blank":  strings.Repeat(" ", maxExprText/2),
+		"number": strings.Repeat("0", maxExprText/2-1) + "1",
+		"json":   strings.Repeat(" ", maxExprText/2-1) + "1",
+	}
+	for _, src := range []string{
+		"rows.map(() => s.charAt(500000)).length",
+		"rows.map(() => s[500000]).length",
+		"rows.map(() => s.includes('missing')).length",
+		"rows.map(() => s.indexOf('missing')).length",
+		"rows.map(() => s.length).length",
+		"rows.map(() => s.slice(1073741824)).length",
+		"rows.map(() => blank.trim()).length",
+		"rows.map(() => blank.replaceAll(' ', '')).length",
+		"rows.map(() => parseFloat(number)).length",
+		"rows.map(() => Number(number)).length",
+		"rows.map(() => Number([number])).length",
+		"rows.map(() => String(s)).length",
+		"rows.map(() => JSON.parse(json)).length",
+		"rows.map(() => rows.includes('missing')).length",
+		"rows.map(() => rows.indexOf('missing')).length",
+	} {
+		n, err := parseExpr(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := evalExpr(n, vars); err == nil || !strings.Contains(err.Error(), "too long") {
+			t.Errorf("a loop scanning large strings escaped the work budget: %s: %v", src, err)
+		}
+	}
+	// An index beyond even the byte length needs no scan. Repeating this
+	// empty result stays cheap and succeeds within the expression budget.
+	src := "rows.map(() => s.charAt(1073741824)).length"
+	n, err := parseExpr(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := evalExpr(n, vars); err != nil || got != float64(maxExprItems) {
+		t.Fatalf("a cheap out-of-bounds lookup failed: %v, %v", got, err)
 	}
 }
 

@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
@@ -95,6 +94,8 @@ const (
 	maxParaText = 1 << 16
 	// maxSectionDepth bounds the sections one inside the other.
 	maxSectionDepth = 32
+	// maxExpansionSteps bounds repetitions that produce no nodes or text.
+	maxExpansionSteps = 8 << 20
 )
 
 // Fill converts a presentation as a template filled with data.
@@ -241,6 +242,7 @@ type filler struct {
 
 	uses  []fieldUse
 	nodes int
+	steps int // repeated items and inline tokens expanded
 	// grown are the tables of the filled slides whose rows were repeated:
 	// the rows before and after the repeated ones
 	grown map[*ooxml.Node][2]int
@@ -315,6 +317,14 @@ func (f *filler) run(c *converter, parts []string) ([]slideJob, error) {
 // errorf makes an error about a place of the template.
 func errorAt(at, format string, args ...any) error {
 	return fmt.Errorf("pptx: %s: %s", at, fmt.Sprintf(format, args...))
+}
+
+func (f *filler) expansionStep(at string) error {
+	if f.steps >= maxExpansionSteps {
+		return errorAt(at, "the filled template needs more than %d expansion steps", maxExpansionSteps)
+	}
+	f.steps++
+	return nil
 }
 
 // shapeName returns the name of a shape of a slide, for messages.
@@ -503,6 +513,9 @@ func (f *filler) scanPara(p *ooxml.Node, at loc, stack *[]open) error {
 		case tag.Image:
 			return errorAt(at.name, "the picture tag {{%%%s}} is in a text: in a presentation it is the alternative text of a picture, which the picture of the data replaces", t.Name)
 		case tag.Open, tag.Inverted:
+			if len(*stack)+len(local) >= maxSectionDepth {
+				return errorAt(at.name, "the section {{#%s}} is inside more than %d sections", t.Name, maxSectionDepth)
+			}
 			localUse = append(localUse, f.use(tag.Field{Name: t.Name, Kind: tag.FieldSection, Inverted: t.Kind == tag.Inverted}, at, inner))
 			localFrom = append(localFrom, len(f.uses))
 			local = append(local, i)
@@ -763,6 +776,9 @@ func (f *filler) fillSlides(secs []*sec, s0, s1 int, sc *tag.Scope, out *[]slide
 			items = tag.Items(v)
 		}
 		for k, it := range items {
+			if err := f.expansionStep(s.at); err != nil {
+				return err
+			}
 			isc := sc
 			if !s.inverted {
 				isc = sc.Item(it, tag.Vars(k, len(items), true))
@@ -935,6 +951,9 @@ func (f *filler) fillParas(paras []*ooxml.Node, secs []*sec, p0, p1 int, sc *tag
 			items = tag.Items(v)
 		}
 		for k, it := range items {
+			if err := f.expansionStep(s.at); err != nil {
+				return err
+			}
 			isc := sc
 			if !s.inverted {
 				isc = sc.Item(it, tag.Vars(k, len(items), false))
@@ -955,7 +974,7 @@ func (f *filler) fillParas(paras []*ooxml.Node, secs []*sec, p0, p1 int, sc *tag
 // piece is a piece of a filled paragraph: text in the format of a run, or
 // a child element kept as it is.
 type piece struct {
-	text string
+	text []string
 	run  *ooxml.Node
 	node *ooxml.Node
 }
@@ -980,20 +999,23 @@ func (f *filler) fillPara(p *ooxml.Node, sc *tag.Scope, at string) (*ooxml.Node,
 		if s == "" || total >= maxParaText {
 			return
 		}
-		if total += utf8.RuneCountInString(s); total > maxParaText {
+		text, n := textPrefix(s, maxParaText-total)
+		total += n
+		if len(text) < len(s) {
 			f.c.warnOnce("paratext:"+at, "%s: the text of a paragraph is cut at %d characters", at, maxParaText)
-			rs := []rune(s)
-			s = string(rs[:len(rs)-(total-maxParaText)])
 		}
 		if n := len(pieces); n > 0 && pieces[n-1].node == nil && pieces[n-1].run == run {
-			pieces[n-1].text += s
+			pieces[n-1].text = append(pieces[n-1].text, text)
 			return
 		}
-		pieces = append(pieces, piece{text: s, run: run})
+		pieces = append(pieces, piece{text: []string{text}, run: run})
 	}
 	var walk func(lo, hi int, sc *tag.Scope) error
 	walk = func(lo, hi int, sc *tag.Scope) error {
 		for i := lo; i < hi; i++ {
+			if err := f.expansionStep(at); err != nil {
+				return err
+			}
 			it := items[i]
 			if it.node != nil {
 				pieces = append(pieces, piece{node: it.node})
@@ -1063,6 +1085,9 @@ func (f *filler) fillPara(p *ooxml.Node, sc *tag.Scope, at string) (*ooxml.Node,
 						if total >= maxParaText {
 							break
 						}
+						if err := f.expansionStep(at); err != nil {
+							return err
+						}
 						if err := walk(i+1, j, sc.Item(e, tag.Vars(k, len(list), false))); err != nil {
 							return err
 						}
@@ -1093,7 +1118,7 @@ func (f *filler) fillPara(p *ooxml.Node, sc *tag.Scope, at string) (*ooxml.Node,
 			continue
 		}
 		// a line break in a value is a break of the paragraph's line
-		for i, line := range strings.Split(strings.ReplaceAll(pc.text, "\r\n", "\n"), "\n") {
+		for i, line := range strings.Split(strings.ReplaceAll(strings.Join(pc.text, ""), "\r\n", "\n"), "\n") {
 			if i > 0 {
 				br := &ooxml.Node{Space: pc.run.Space, Name: "br"}
 				if rPr := pc.run.Child("rPr"); rPr != nil {
@@ -1122,6 +1147,18 @@ func (f *filler) fillPara(p *ooxml.Node, sc *tag.Scope, at string) (*ooxml.Node,
 	cp.Kids = append(cp.Kids, tail...)
 	f.nodes += len(cp.Kids)
 	return &cp, nil
+}
+
+// textPrefix reads at most n+1 runes without copying an oversized value.
+func textPrefix(s string, n int) (string, int) {
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i], count
+		}
+		count++
+	}
+	return s, count
 }
 
 // fillTable fills a table: the rows of its sections are repeated for their
@@ -1198,6 +1235,9 @@ func (f *filler) fillRows(rows []*ooxml.Node, secs []*sec, r0, r1 int, sc *tag.S
 					len(items), n, s.name, s.name, s.name)
 			}
 			for k := 0; k < n; k++ {
+				if err := f.expansionStep(s.at); err != nil {
+					return err
+				}
 				isc := sc.Blank(map[string]any{"_blank": true, "_blank_first": k == len(items), "_index": float64(k + 1), "_count": float64(len(items))})
 				if k < len(items) {
 					v := tag.Vars(k, len(items), false)
@@ -1220,6 +1260,9 @@ func (f *filler) fillRows(rows []*ooxml.Node, secs []*sec, r0, r1 int, sc *tag.S
 			items = tag.Items(v)
 		}
 		for k, it := range items {
+			if err := f.expansionStep(s.at); err != nil {
+				return err
+			}
 			isc := sc
 			if !s.inverted {
 				isc = sc.Item(it, tag.Vars(k, len(items), false))

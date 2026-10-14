@@ -90,7 +90,10 @@ const notTemplate = "form: the template is not an Excel workbook (.xlsx), a Word
 // source finds what a template is: a compiled template gives the template
 // it holds.
 func source(r io.ReaderAt, size int64) (format string, src io.ReaderAt, n int64, def *Template, err error) {
-	head := make([]byte, 1024)
+	if size < 0 {
+		return "", nil, 0, nil, fmt.Errorf("form: negative template size")
+	}
+	head := make([]byte, min(size, 1024))
 	got, err := r.ReadAt(head, 0)
 	if err != nil && err != io.EOF {
 		return "", nil, 0, nil, fmt.Errorf("form: %w", err)
@@ -234,6 +237,10 @@ func Describe(r io.ReaderAt, size int64) (format string, sample map[string]any, 
 // TemplateVersion is the version of the description of compiled templates.
 const TemplateVersion = 1
 
+// MaxTemplateSize bounds the bytes of the source stored in a compiled
+// template. Both compiling and reading a compiled template enforce it.
+const MaxTemplateSize = 256 << 20
+
 // Template describes a compiled template: the part of the type
 // bdf.PartTemplate of a .bdft, as JSON.
 type Template struct {
@@ -270,7 +277,11 @@ type Compiled struct {
 // template filled with; without data they show the template with its tags
 // (a template of pdfme with what its designer left in its fields, which is
 // then the sample). name is the file name of the template, when it has one.
+// The source may be at most MaxTemplateSize bytes.
 func Compile(r io.ReaderAt, size int64, name string, opts *Options) (*Compiled, error) {
+	if size > MaxTemplateSize {
+		return nil, fmt.Errorf("form: the template is larger than %d MiB", MaxTemplateSize>>20)
+	}
 	if opts == nil {
 		opts = &Options{}
 	}
@@ -282,7 +293,7 @@ func Compile(r io.ReaderAt, size int64, name string, opts *Options) (*Compiled, 
 		return nil, fmt.Errorf("form: the template is a compiled template already")
 	}
 	data := make([]byte, n)
-	if _, err := src.ReadAt(data, 0); err != nil && err != io.EOF {
+	if _, err := io.ReadFull(io.NewSectionReader(src, 0, n), data); err != nil {
 		return nil, fmt.Errorf("form: %w", err)
 	}
 	out := &Compiled{Template: &Template{Version: TemplateVersion, Format: format, Name: name}}
@@ -364,12 +375,9 @@ func ReadTemplate(r io.ReaderAt, size int64) (*Template, []byte, error) {
 		if e.T != bdf.PartTemplate {
 			continue
 		}
-		if e.Size > maxTemplatePart {
-			return nil, nil, fmt.Errorf("form: the description of the compiled template is larger than %d MiB", maxTemplatePart>>20)
-		}
-		b, err := rd.Part(e.H)
+		b, err := templatePart(rd, e.H, bdf.PartTemplate, "description of the compiled template", maxTemplatePart)
 		if err != nil {
-			return nil, nil, fmt.Errorf("form: %w", err)
+			return nil, nil, err
 		}
 		def := &Template{}
 		if err := json.Unmarshal(b, def); err != nil {
@@ -382,15 +390,9 @@ func ReadTemplate(r io.ReaderAt, size int64) (*Template, []byte, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("form: the compiled template does not name its template: %w", err)
 		}
-		if e, ok := rd.Entry(h); !ok || e.T != bdf.PartSource {
-			return nil, nil, fmt.Errorf("form: the compiled template does not hold its template")
-		}
-		src, err := rd.Part(h)
+		src, err := templatePart(rd, h, bdf.PartSource, "template of the compiled template", MaxTemplateSize)
 		if err != nil {
-			return nil, nil, fmt.Errorf("form: %w", err)
-		}
-		if bdf.HashOf(src) != h {
-			return nil, nil, fmt.Errorf("form: the template of the compiled template is damaged")
+			return nil, nil, err
 		}
 		for i := range def.Fields {
 			if def.Fields[i].At == nil {
@@ -403,4 +405,31 @@ func ReadTemplate(r io.ReaderAt, size int64) (*Template, []byte, error) {
 		return def, src, nil
 	}
 	return nil, nil, fmt.Errorf("form: the document is not a compiled template (it has no %q part)", bdf.PartTemplate)
+}
+
+// templatePart checks the entry Reader.Part will actually load. Duplicate
+// hashes in a manifest may replace the entry encountered in the loop.
+// Bound both stored and decoded lengths before either is allocated.
+func templatePart(rd *bdf.Reader, h bdf.Hash, typ, name string, limit int) ([]byte, error) {
+	e, ok := rd.Entry(h)
+	if !ok || e.T != typ {
+		return nil, fmt.Errorf("form: the compiled template does not hold its %s", name)
+	}
+	if e.Size < 0 || e.Len < 0 {
+		return nil, fmt.Errorf("form: the %s has a negative size", name)
+	}
+	if e.Size > limit || e.Len > limit {
+		return nil, fmt.Errorf("form: the %s is larger than %d MiB", name, limit>>20)
+	}
+	if (e.Enc == bdf.EncIdentity || e.Enc == "") && e.Len != e.Size {
+		return nil, fmt.Errorf("form: the %s has inconsistent stored and decoded sizes", name)
+	}
+	data, err := rd.Part(h)
+	if err != nil {
+		return nil, fmt.Errorf("form: %w", err)
+	}
+	if len(data) != e.Size || bdf.HashOf(data) != h {
+		return nil, fmt.Errorf("form: the %s is damaged", name)
+	}
+	return data, nil
 }

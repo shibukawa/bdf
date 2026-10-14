@@ -22,6 +22,13 @@ const SchemaDialect = "https://json-schema.org/draft/2020-12/schema"
 // text may have several lines ("multiline").
 const SchemaKeyword = "x-bdf"
 
+// Bound schema construction independently of how fields were obtained:
+// compiled templates can provide fields without passing through tag.Parse.
+const (
+	maxSchemaDepth = 256
+	maxSchemaNodes = 1 << 16
+)
+
 // Schema describes the data that a template asks for as a JSON Schema: an
 // object with a property for each name that the tags of the template look
 // up, in the order of the template. A program that makes a form for the
@@ -50,8 +57,12 @@ const SchemaKeyword = "x-bdf"
 // sample is, and a value has the type of its value there.
 //
 // Nothing is required: a tag whose name the data lacks is left empty.
+// Construction is limited to 65,536 fields and nodes, nested at most 256 levels.
 func Schema(fields []tag.Field, sample map[string]any) ([]byte, error) {
-	root := &schemaNode{byName: map[string]*schemaNode{}}
+	if len(fields) > maxSchemaNodes {
+		return nil, fmt.Errorf("form: the schema has more than %d fields", maxSchemaNodes)
+	}
+	root := &schemaNode{byName: map[string]*schemaNode{}, budget: &schemaBudget{nodes: 1}}
 	if sample != nil {
 		root.sample, root.sampled = tag.Normalize(sample), true
 	}
@@ -60,6 +71,9 @@ func Schema(fields []tag.Field, sample map[string]any) ([]byte, error) {
 	order := make([]int, len(fields))
 	depth := make([][]string, len(fields))
 	for i, fd := range fields {
+		if len(fd.In) > maxSchemaDepth {
+			return nil, fmt.Errorf("form: the schema is nested more than %d levels", maxSchemaDepth)
+		}
 		order[i] = i
 		for _, s := range fd.In {
 			if !strings.HasPrefix(s, "_") { // (a variable of a section: a condition, not a scope of data)
@@ -69,7 +83,9 @@ func Schema(fields []tag.Field, sample map[string]any) ([]byte, error) {
 	}
 	sort.SliceStable(order, func(a, b int) bool { return len(depth[order[a]]) < len(depth[order[b]]) })
 	for _, i := range order {
-		root.place(fields[i], depth[i], i)
+		if err := root.place(fields[i], depth[i], i); err != nil {
+			return nil, err
+		}
 	}
 	out := root.object()
 	doc := &ordered{}
@@ -123,6 +139,8 @@ type schemaNode struct {
 	name   string
 	kids   []*schemaNode
 	byName map[string]*schemaNode
+	depth  int
+	budget *schemaBudget
 	// first is the index of the first field of the name: the properties
 	// are in the order of the template.
 	first int
@@ -153,11 +171,20 @@ type schemaNode struct {
 	sampled bool
 }
 
-func (n *schemaNode) kid(name string, field int) *schemaNode {
+type schemaBudget struct{ nodes int }
+
+func (n *schemaNode) kid(name string, field int) (*schemaNode, error) {
 	if k := n.byName[name]; k != nil {
-		return k
+		return k, nil
 	}
-	k := &schemaNode{name: name, byName: map[string]*schemaNode{}, first: field}
+	if n.depth >= maxSchemaDepth {
+		return nil, fmt.Errorf("form: the schema is nested more than %d levels", maxSchemaDepth)
+	}
+	if n.budget.nodes >= maxSchemaNodes {
+		return nil, fmt.Errorf("form: the schema has more than %d nodes", maxSchemaNodes)
+	}
+	n.budget.nodes++
+	k := &schemaNode{name: name, byName: map[string]*schemaNode{}, first: field, depth: n.depth + 1, budget: n.budget}
 	if m, ok := n.item().(map[string]any); ok {
 		if v, ok := m[name]; ok {
 			k.sample, k.sampled = v, true
@@ -165,7 +192,7 @@ func (n *schemaNode) kid(name string, field int) *schemaNode {
 	}
 	n.byName[name] = k
 	n.kids = append(n.kids, k)
-	return k
+	return k, nil
 }
 
 // item is what the names in a node are looked up in, in the sample: the
@@ -195,7 +222,11 @@ func (n *schemaNode) has(name string) bool {
 // of scopes, the innermost last: in the innermost scope that has its first
 // part, or in the innermost one when none has it. field is the index of
 // the field that looks it up.
-func find(chain []*schemaNode, name string, field int) *schemaNode {
+func find(chain []*schemaNode, name string, field int) (*schemaNode, error) {
+	// Check before Split allocates an entry for every part of an untrusted name.
+	if strings.Count(name, ".") >= maxSchemaDepth {
+		return nil, fmt.Errorf("form: the schema is nested more than %d levels", maxSchemaDepth)
+	}
 	parts := strings.Split(name, ".")
 	at := chain[len(chain)-1]
 	for i := len(chain) - 1; i >= 0; i-- {
@@ -208,17 +239,24 @@ func find(chain []*schemaNode, name string, field int) *schemaNode {
 		if p == "" {
 			continue
 		}
-		at = at.kid(p, field)
+		var err error
+		at, err = at.kid(p, field)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return at
+	return at, nil
 }
 
 // place gives the schema a field, the one at an index of the fields: in
 // are the sections around its tags.
-func (n *schemaNode) place(fd tag.Field, in []string, field int) {
+func (n *schemaNode) place(fd tag.Field, in []string, field int) error {
 	chain := []*schemaNode{n}
 	for _, s := range in {
-		sec := find(chain, s, field)
+		sec, err := find(chain, s, field)
+		if err != nil {
+			return err
+		}
 		sec.section = true
 		chain = append(chain, sec)
 	}
@@ -226,14 +264,17 @@ func (n *schemaNode) place(fd tag.Field, in []string, field int) {
 		if len(chain) > 1 {
 			chain[len(chain)-1].self = true
 		}
-		return
+		return nil
 	}
 	if fd.Name == "" || strings.HasPrefix(fd.Name, "_") {
-		return
+		return nil
 	}
-	leaf := find(chain, fd.Name, field)
+	leaf, err := find(chain, fd.Name, field)
+	if err != nil {
+		return err
+	}
 	if leaf == n {
-		return
+		return nil
 	}
 	switch fd.Kind {
 	case tag.FieldSection:
@@ -273,6 +314,7 @@ func (n *schemaNode) place(fd tag.Field, in []string, field int) {
 			leaf.at = append(leaf.at, a)
 		}
 	}
+	return nil
 }
 
 // object writes the properties of a node.
