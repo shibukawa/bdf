@@ -3,6 +3,7 @@ package pdfme
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestExpressions evaluates the expressions that the text of a read-only
@@ -69,8 +70,67 @@ func TestExpressions(t *testing.T) {
 		t.Fatal(err)
 	}
 	big := make([]any, 200)
-	if _, err := evalExpr(n, map[string]any{"items": big}); err == nil || !strings.Contains(err.Error(), "too long") {
+	if _, err := evalExpr(n, map[string]any{"items": big}); err == nil || !strings.Contains(err.Error(), "too long") && !strings.Contains(err.Error(), "too many items") {
 		t.Errorf("an expression of 1.6e9 steps: %v", err)
+	}
+}
+
+// TestExpressionLimits refuses the expressions that would take too much
+// room, each quickly: a list that holds itself written out as many times
+// as it is nested, a list joined with itself over and over, more items
+// than a list holds, and lists nested too deep.
+func TestExpressionLimits(t *testing.T) {
+	nest := func(n int, inner string) string {
+		return "(f => " + strings.Repeat("f(", n) + inner + strings.Repeat(")", n) + ")"
+	}
+	vars := map[string]any{"a": "x", "l": []any{1.0}, "big": strings.Repeat("y", 1<<19+8), "items": make([]any, 1000)}
+	for _, c := range []struct{ expr, want string }{
+		{nest(30, "a") + "(y => [y, y])", "too long"},                      // 2^30 times x
+		{"JSON.stringify(" + nest(30, "a") + "(y => [y, y]))", "too long"}, // and as JSON
+		{nest(30, "a") + "(y => [y, y]).join('')", "too long"},             // and joined
+		{"String(" + nest(30, "a") + "(y => [y, y]))", "too long"},
+		{nest(40, "l") + "(y => y.concat(y))", "too many items"}, // 2^40 items
+		{"big.split('').map(c => c + c)", "too many items"},      // half a million items, twice
+		{"big + big + big", "too long"},
+		{"items.reduce((acc, x) => [acc], [])", "nested too deep"}, // a thousand lists in each other
+		{"JSON.stringify(items.reduce((acc, x) => [acc], []))", "nested too deep"},
+		{"JSON.parse('[' + '1,'.repeat(400000) + '1]').concat(JSON.parse('[' + '1,'.repeat(400000) + '1]'))", "too many items"},
+	} {
+		start := time.Now()
+		n, err := parseExpr(c.expr)
+		if err != nil {
+			t.Fatalf("%s: %v", c.expr, err)
+		}
+		v, err := evalExpr(n, vars)
+		if err == nil {
+			_, err = exprText(v)
+		}
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want %q", c.expr, err, c.want)
+		}
+		if d := time.Since(start); d > 2*time.Second {
+			t.Errorf("%s took %v", c.expr, d)
+		}
+	}
+	// in a text, such an expression is left as it is, and the others are evaluated
+	if got, failed := expand("{"+nest(30, "a")+"(y => [y, y])} {a}", vars); got != "{"+nest(30, "a")+"(y => [y, y])} x" || !failed {
+		t.Errorf("expand: %q, %v", got, failed)
+	}
+	// what is within the limits is as JavaScript has it
+	for expr, want := range map[string]string{
+		"[1, [2, 3], [[4]]].join('/')":                                   "1/2,3/4",
+		"String([1, [2, [3]]]) + [4]":                                    "1,2,34",
+		"JSON.stringify({b: [1, 'x', null, true], a: 1.5})":              `{"a":1.5,"b":[1,"x",null,true]}`,
+		"JSON.stringify('<a>') + JSON.stringify(0/0)":                    `"<a>"null`,
+		"Object.entries({a: 1})[0].join('=')":                            "a=1",
+		"Object.keys({b: 1, a: 2}).concat(Object.values({c: 3})).join()": "a,b,3",
+		"JSON.parse('[1,[2]]').length":                                   "2",
+		"'ab'.padStart(5, 'xy') + 'ab'.repeat(2)":                        "xyxababab",
+		"'héllo'.slice(1, 3) + 'héllo'.charAt(1)":                        "élé",
+	} {
+		if got, failed := expand("{"+expr+"}", vars); got != want || failed {
+			t.Errorf("%s = %q (failed %v), want %q", expr, got, failed, want)
+		}
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,9 @@ type formFlags struct {
 	noSystemFonts *bool
 	params        stringList
 	compression   *string
+	// pictures is the directory of the pictures that the data names, once
+	// it is opened (see options)
+	pictures fs.FS
 }
 
 func addFormFlags(fs *flag.FlagSet, cmd, dataFlag, dataUsage string) *formFlags {
@@ -114,14 +118,24 @@ func (f *formFlags) sources(flags []string) []form.Source {
 }
 
 // options returns the options of filling the template at path with data.
+// The pictures that the data names are read from the directory of -files
+// (by default that of the template) and from it alone: a path that leaves
+// it, by .. or by a link, is not read.
 func (f *formFlags) options(path string, data map[string]any) *form.Options {
-	dir := *f.files
-	if dir == "" {
-		dir = filepath.Dir(path)
+	if f.pictures == nil {
+		dir := *f.files
+		if dir == "" {
+			dir = filepath.Dir(path)
+		}
+		root, err := os.OpenRoot(dir)
+		if err != nil {
+			f.fail("-files: " + err.Error())
+		}
+		f.pictures = root.FS()
 	}
 	opts := f.convert()
 	opts.FileName = filepath.Base(path)
-	return &form.Options{Data: data, Strict: *f.strict, Files: os.DirFS(dir), Convert: opts}
+	return &form.Options{Data: data, Strict: *f.strict, Files: f.pictures, Convert: opts}
 }
 
 // finish gives a document the compression the flags ask for.

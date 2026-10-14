@@ -409,10 +409,15 @@ function changed(from?: "json") {
 function showJson() {
   jsonBox.value = JSON.stringify(data, null, 2);
   jsonBox.removeAttribute("aria-invalid");
-  const a = $<HTMLAnchorElement>("saveJson");
-  if (a.href) URL.revokeObjectURL(a.href);
-  a.href = URL.createObjectURL(new Blob([jsonBox.value + "\n"], { type: "application/json" }));
 }
+
+/** The file of the data is made when it is saved (and once a template opens), not at every keystroke. */
+const saveJson = $<HTMLAnchorElement>("saveJson");
+function jsonFile() {
+  if (saveJson.href) URL.revokeObjectURL(saveJson.href);
+  saveJson.href = URL.createObjectURL(new Blob([jsonBox.value + "\n"], { type: "application/json" }));
+}
+saveJson.onclick = jsonFile;
 
 jsonBox.oninput = () => {
   let v: unknown;
@@ -715,12 +720,13 @@ async function openTemplate(name: string, bytes: ArrayBuffer, sample?: JsonObjec
   if (a.href) URL.revokeObjectURL(a.href);
   a.href = URL.createObjectURL(new Blob([res.schema], { type: "application/schema+json" }));
   a.download = `${base}.schema.json`;
-  $<HTMLAnchorElement>("saveJson").download = `${base}.json`;
+  saveJson.download = `${base}.json`;
   for (const tab of workspaceTabs.tabs) tab.removeAttribute("disabled");
   dataTabs.select($("tabForm"));
   workspaceTabs.select($("tabData"));
   $("tabData").focus({ preventScroll: true });
   showJson();
+  jsonFile();
   how(template);
   document.title = `${name} – Forms – BDF`;
   setStatus(`filling ${name}…`);

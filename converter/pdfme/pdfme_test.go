@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"math"
 	"os"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/shibukawa/bdf"
@@ -432,4 +436,67 @@ func FuzzFill(f *testing.F) {
 			t.Fatal("no document")
 		}
 	})
+}
+
+// countingFS counts the files read of it.
+type countingFS struct {
+	fstest.MapFS
+	reads int
+}
+
+func (c *countingFS) ReadFile(name string) ([]byte, error) {
+	c.reads++
+	return c.MapFS.ReadFile(name)
+}
+
+// TestPicturesOnce reads a picture that the data names once, however many
+// pages show it: a picture of the base page is on every page of a table
+// that goes on over pages.
+func TestPicturesOnce(t *testing.T) {
+	var rows []string
+	for i := 0; i < 60; i++ {
+		rows = append(rows, fmt.Sprintf(`["item %d","%d"]`, i+1, (i+1)*100))
+	}
+	tpl := []byte(`{"basePdf":{"width":100,"height":50,"padding":[5,5,5,5],"staticSchema":[
+		{"name":"logo","type":"image","readOnly":true,"content":"logo.png","position":{"x":80,"y":2},"width":15,"height":3}]},
+		"schemas":[[{"name":"items","type":"table","position":{"x":5,"y":6},"width":90,"height":10,"showHead":false,"head":["name","price"],
+		"headWidthPercentages":[70,30],"bodyStyles":{"fontSize":8,"padding":1},"content":"[]"},
+		{"name":"photo","type":"image","position":{"x":5,"y":30},"width":10,"height":10}]]}`)
+	files := &countingFS{MapFS: fstest.MapFS{"logo.png": {Data: tplPNG(30, 6)}, "photo.png": {Data: tplPNG(10, 10)}}}
+	res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), &TemplateData{Files: files, Data: map[string]any{"items": "[" + strings.Join(rows, ",") + "]", "photo": "photo.png"}}, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Pages < 3 || files.reads != 2 || len(res.Warnings) != 0 {
+		t.Errorf("%d pages, %d files read, warnings %q", res.Pages, files.reads, res.Warnings)
+	}
+	images := 0
+	for _, part := range res.Doc.Parts() {
+		if part.Type == bdf.PartImage {
+			images++
+		}
+	}
+	if images != 2 {
+		t.Errorf("%d images in the document, want 2", images)
+	}
+	// a picture that is not read is told once, for all the pages
+	files.reads = 0
+	res, err = Fill(bytes.NewReader(tpl), int64(len(tpl)), &TemplateData{Files: files, Data: map[string]any{"items": "[" + strings.Join(rows, ",") + "]", "photo": "missing.png"}}, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files.reads != 1 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], `the picture of "photo" is left out`) {
+		t.Errorf("%d files read, warnings %q", files.reads, res.Warnings)
+	}
+}
+
+// tplPNG makes a picture of a size.
+func tplPNG(w, h int) []byte {
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for i := 0; i < w*h; i++ {
+		img.Set(i%w, i/w, color.RGBA{200, uint8(i), 30, 255})
+	}
+	var buf bytes.Buffer
+	png.Encode(&buf, img)
+	return buf.Bytes()
 }

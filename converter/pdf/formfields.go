@@ -373,9 +373,9 @@ func (c *converter) formField(fi fieldInfo, ad, form, fonts types.Dict) (FormFie
 // widgetShow tells what a widget annotation shows, when the options have
 // something for its field.
 func (c *converter) widgetShow(ad types.Dict) (FormShow, bool) {
-	if len(c.opts.Form) == 0 {
+	if len(c.form) == 0 {
 		return FormShow{}, false
 	}
-	show, ok := c.opts.Form[c.pdf.fieldOf(ad).name]
+	show, ok := c.form[c.pdf.fieldOf(ad).name]
 	return show, ok
 }

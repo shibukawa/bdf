@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/form/tag"
@@ -571,5 +572,46 @@ func TestFillCodes(t *testing.T) {
 	}
 	if _, err := Fill(bytes.NewReader(file), int64(len(file)), &TemplateData{Data: data, Strict: true}, testOptions()); err == nil || !strings.Contains(err.Error(), "paragraph 2") {
 		t.Errorf("strict: %v", err)
+	}
+}
+
+// countingFS counts the files read of it.
+type countingFS struct {
+	fstest.MapFS
+	reads int
+}
+
+func (c *countingFS) ReadFile(name string) ([]byte, error) {
+	c.reads++
+	return c.MapFS.ReadFile(name)
+}
+
+// TestFillPictureOnce reads a picture that the data names once, however
+// many pictures of the template it replaces: the same stamp on the page of
+// each item.
+func TestFillPictureOnce(t *testing.T) {
+	parts := map[string]string{"word/media/image1.png": string(tplPNG(4, 4))}
+	body := tp("{{#people | pages}}{{name}}") + tp(tpic("{{%stamp}}")) + tp("{{/people}}")
+	files := &countingFS{MapFS: fstest.MapFS{"stamp.png": {Data: tplPNG(40, 10)}}}
+	file := docxBytes(t, body, parts)
+	res, err := Fill(bytes.NewReader(file), int64(len(file)), &TemplateData{Files: files, Data: map[string]any{"stamp": "stamp.png",
+		"people": []any{map[string]any{"name": "A"}, map[string]any{"name": "B"}, map[string]any{"name": "C"}}}}, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	noWarnings(t, res)
+	r := reopen(t, &res.Result)
+	if n := len(r.Manifest.Views[0].Pages); n != 3 || files.reads != 1 {
+		t.Errorf("%d pages, the stamp read %d times", n, files.reads)
+	}
+	// a picture that is not among the files is told for each place, and looked for once
+	files.reads = 0
+	res, err = Fill(bytes.NewReader(file), int64(len(file)), &TemplateData{Files: files, Data: map[string]any{"stamp": "missing.png",
+		"people": []any{map[string]any{"name": "A"}, map[string]any{"name": "B"}}}}, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files.reads != 0 || len(res.Warnings) != 2 || !strings.Contains(res.Warnings[0], `the picture of "stamp" is not read`) {
+		t.Errorf("read %d times, warnings %q", files.reads, res.Warnings)
 	}
 }

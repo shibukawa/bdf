@@ -20,11 +20,12 @@ func init() {
 	methods["fill"] = fillCall
 }
 
-// maxFormData bounds the JSON of the data of a call, and maxFormFiles the
-// pictures given with it.
+// maxFormData bounds the JSON of the data of a call, maxFormFiles the
+// pictures given with it, and maxFormFileBytes their bytes in all.
 const (
-	maxFormData  = 64 << 20
-	maxFormFiles = 256
+	maxFormData      = 64 << 20
+	maxFormFiles     = 256
+	maxFormFileBytes = 256 << 20
 )
 
 // jsonData reads an option that is the JSON of an object ("" for none).
@@ -40,6 +41,9 @@ func jsonData(args []js.Value, name string) (map[string]any, error) {
 	var v any
 	if err := dec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	if dec.More() {
+		return nil, fmt.Errorf("%s: more than one JSON value", name)
 	}
 	m, ok := tag.Normalize(v).(map[string]any)
 	if !ok {
@@ -148,6 +152,7 @@ func fileOption(args []js.Value) (memFS, error) {
 	}
 	out := memFS{}
 	u8 := js.Global().Get("Uint8Array")
+	total := 0
 	for i := 0; i < keys.Length(); i++ {
 		name := keys.Index(i).String()
 		f := v.Get(name)
@@ -157,6 +162,9 @@ func fileOption(args []js.Value) (memFS, error) {
 		n := f.Get("length").Int()
 		if n > tag.MaxPicture {
 			return nil, fmt.Errorf("files: %q is larger than %d MiB", name, tag.MaxPicture>>20)
+		}
+		if total += n; total > maxFormFileBytes {
+			return nil, fmt.Errorf("files: more than %d MiB of files", maxFormFileBytes>>20)
 		}
 		b := make([]byte, n)
 		js.CopyBytesToGo(b, f)

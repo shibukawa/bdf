@@ -71,6 +71,12 @@ type Options struct {
 	// with the states of its buttons, and without the text of the fields
 	// whose values the caller draws.
 	Form map[string]FormShow
+	// OnForm, when set, is called with the fields of the form of the file
+	// (as FormFields reads them) once the file is read and before its
+	// pages are converted, and returns what their widgets show, in place
+	// of Form; an error ends the conversion. A caller that fills the form
+	// (converter/pdfform) reads the file once with it, not twice.
+	OnForm func(fields []FormField) (map[string]FormShow, error)
 }
 
 // Result is the outcome of a conversion.
@@ -101,6 +107,9 @@ type converter struct {
 	opts     *Options
 	warnings []string
 	warned   map[string]bool
+	// form is what the widgets of the fields show (Options.Form, or what
+	// Options.OnForm returned)
+	form map[string]FormShow
 
 	fonts          map[string]*pdfFont
 	forms          map[string]*pending
@@ -288,6 +297,14 @@ func newConverter(rs io.ReadSeeker, opts *Options) (*converter, bool, error) {
 			pr.page.Body = &bdf.RectDef{X: 0, Y: 0, W: float32(pr.w), H: float32(pr.h)}
 		}
 		c.pageBodies = append(c.pageBodies, pr)
+	}
+	c.form = opts.Form
+	if opts.OnForm != nil {
+		show, err := opts.OnForm(c.formFields())
+		if err != nil {
+			return nil, protected, err
+		}
+		c.form = show
 	}
 	return c, protected, nil
 }

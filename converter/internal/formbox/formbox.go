@@ -45,8 +45,8 @@ type Renderer struct {
 	opts  Options
 	db    *fontdb.DB
 	cvs   *canvas.Builder
-	// images are the pictures added, by their data
-	images map[string]picture
+	// images are the pictures added, by the hash of their data
+	images map[bdf.Hash]picture
 }
 
 type picture struct {
@@ -64,7 +64,7 @@ func New(doc *bdf.Document, opts Options) *Renderer {
 	}
 	db := fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
 	set := fontset.New(db, warn)
-	return &Renderer{Doc: doc, Fonts: set, opts: opts, db: db, cvs: canvas.NewBuilder(doc, set), images: map[string]picture{}}
+	return &Renderer{Doc: doc, Fonts: set, opts: opts, db: db, cvs: canvas.NewBuilder(doc, set), images: map[bdf.Hash]picture{}}
 }
 
 // Layer is what is drawn over a page: an object of the size of the page.
@@ -268,7 +268,7 @@ type Picture struct {
 // Picture adds a picture to the document: a PNG, JPEG, GIF, BMP or WebP
 // image, or an SVG image (svg). ok is false for data that is none.
 func (r *Renderer) Picture(data []byte) (pic Picture, ok bool) {
-	key := string(data)
+	key := bdf.HashOf(data)
 	if p, seen := r.images[key]; seen {
 		return Picture{p.hash, p.w, p.h}, p.ok
 	}

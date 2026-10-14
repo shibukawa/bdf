@@ -82,3 +82,38 @@ func TestFormFields(t *testing.T) {
 		t.Errorf("a file without a form: %d fields, %v", len(fields), err)
 	}
 }
+
+// TestOnForm converts a form with what its widgets show told once the
+// fields are read: the file is read once for a filled form. An error from
+// the caller ends the conversion.
+func TestOnForm(t *testing.T) {
+	f, err := os.Open("../pdfform/testdata/application.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	var names []string
+	res, err := Convert(f, &Options{NoTextIndex: true, OnForm: func(fields []FormField) (map[string]FormShow, error) {
+		for _, fd := range fields {
+			names = append(names, fd.Name)
+		}
+		return map[string]FormShow{"country": {Blank: true}}, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(names) < 5 || names[0] != "applicant.name" {
+		t.Errorf("the fields: %q", names)
+	}
+	// the choice of the file is left out of the field whose text is blank
+	st, err := res.Doc.SearchText()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := st.Views[0].Pages[0].Text; strings.Contains(text, "Japan") || !strings.Contains(text, "Application") {
+		t.Errorf("the page:\n%s", text)
+	}
+	if _, err := Convert(f, &Options{OnForm: func([]FormField) (map[string]FormShow, error) { return nil, fmt.Errorf("no form for me") }}); err == nil || !strings.Contains(err.Error(), "no form for me") {
+		t.Errorf("the error of the caller: %v", err)
+	}
+}
