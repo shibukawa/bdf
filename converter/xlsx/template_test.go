@@ -458,7 +458,9 @@ func TestFillMoves(t *testing.T) {
 		`<rowBreaks count="2"><brk id="1" man="1"/><brk id="2" man="1"/></rowBreaks>`
 	other := rowXML(1, "=S1!A2", "=SUM(S1!A2:A2)", "=S1!A3", "=COUNTA(S1!A1:A3)")
 	names := `<definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">S1!$A$2:$B$3</definedName>` +
-		`<definedName name="_xlnm.Print_Titles" localSheetId="0">S1!$1:$2</definedName></definedNames>`
+		`<definedName name="_xlnm.Print_Titles" localSheetId="0">S1!$1:$2</definedName>` +
+		`<definedName name="_bdf.Print_TitleScope" localSheetId="0">S1!$A$1:$B$2</definedName>` +
+		`<definedName name="_bdf.Print_KeepTogether" localSheetId="0">S1!$B$2:$C$2,S1!$A$3:$A$4</definedName></definedNames>`
 	c, got, err := filled(t, book([]string{sheet, other}, names), `{"items":[{"v":5},{"v":6},{"v":7}]}`)
 	if err != nil {
 		t.Fatal(err)
@@ -494,6 +496,12 @@ func TestFillMoves(t *testing.T) {
 	pn := c.printNames[0]
 	if a := pn.areas[0]; a != (cellRange{1, 0, 4, 1}) || *pn.titleRows != [2]int{0, 3} {
 		t.Errorf("print area %v, titles %v", a, *pn.titleRows)
+	}
+	if got, want := *pn.titleScope, (cellRange{0, 0, 3, 1}); got != want {
+		t.Errorf("title scope = %v, want %v", got, want)
+	}
+	if got, want := pn.keepRows, []cellRange{{1, 1, 1, 2}, {2, 1, 2, 2}, {3, 1, 3, 2}, {4, 0, 5, 0}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("keep-together ranges = %v, want %v", got, want)
 	}
 }
 

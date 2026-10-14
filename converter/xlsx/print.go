@@ -190,16 +190,21 @@ type printNames struct {
 	areas     []cellRange
 	titleRows *[2]int // first and last, 0-based
 	titleCols *[2]int
+	// Optional BDF pagination names; ordinary Excel print titles are unchanged.
+	titleScope *cellRange
+	keepRows   []cellRange
 }
 
-// loadPrintNames reads the print areas and the print titles of the sheets
-// from the defined names of the workbook, by the index of the sheet.
+// loadPrintNames reads the print areas, titles and optional BDF pagination
+// settings from workbook defined names, by the index of the sheet.
 func (c *converter) loadPrintNames(wb *ooxml.Node) {
 	c.printNames = map[int]*printNames{}
 	for _, dn := range wb.Child("definedNames").Children("definedName") {
 		name := dn.AttrStr("name", "")
 		area := strings.EqualFold(name, "_xlnm.Print_Area")
-		if !area && !strings.EqualFold(name, "_xlnm.Print_Titles") {
+		scope := strings.EqualFold(name, "_bdf.Print_TitleScope")
+		keep := strings.EqualFold(name, "_bdf.Print_KeepTogether")
+		if !area && !scope && !keep && !strings.EqualFold(name, "_xlnm.Print_Titles") {
 			continue
 		}
 		id, ok := dn.Attr("localSheetId")
@@ -221,6 +226,13 @@ func (c *converter) loadPrintNames(wb *ooxml.Node) {
 				continue
 			}
 			switch {
+			case scope:
+				cp := rg
+				pn.titleScope = &cp
+			case keep:
+				if len(pn.keepRows) < maxPrintAreas {
+					pn.keepRows = append(pn.keepRows, rg)
+				}
 			case area:
 				if len(pn.areas) < maxPrintAreas {
 					pn.areas = append(pn.areas, rg)
@@ -286,14 +298,15 @@ type printRegion struct {
 // printArea is a print area cut into pages: page (i, j) shows the rows of
 // the band i and the columns of the band j.
 type printArea struct {
-	rg     cellRange
-	rows   []printBand
-	cols   []printBand
-	rowPos []float64 // where each band of rows starts on the sheet, and where the last ends
-	colPos []float64
-	body   map[[2]int]*printRegion
-	top    map[int]*printRegion // the title rows over the columns of band j
-	left   map[int]*printRegion // the title columns beside the rows of band i
+	rg           cellRange
+	rows         []printBand
+	cols         []printBand
+	rowPos       []float64 // where each band of rows starts on the sheet, and where the last ends
+	colPos       []float64
+	body         map[[2]int]*printRegion
+	top          map[int]*printRegion // the title rows over the columns of band j
+	left         map[int]*printRegion // the title columns beside the rows of band i
+	hasRowTitles bool
 }
 
 // printPage is a page: the bands i and j of an area.
@@ -311,6 +324,8 @@ type printPlan struct {
 	ml, mr, mt, mb, mh, mf float64
 	scale                  float64
 	titleRows, titleCols   *[2]int
+	titleScope             *cellRange
+	keepRows               [][2]int // inclusive, sorted and overlapping groups joined
 	// the title columns and rows on the sheet
 	tx0, tx1, ty0, ty1 float64
 	// the size of the row and column headings (0 when they are not printed)
@@ -450,6 +465,16 @@ func (s *sheetCtx) planPrint(idx int) *printPlan {
 		p.titleCols = &[2]int{t[0], min(t[1], maxCols-1)}
 		p.tx0, p.tx1 = s.cols.pos(p.titleCols[0]), s.cols.pos(p.titleCols[1]+1)
 	}
+	p.titleScope = names.titleScope
+	for _, rg := range names.keepRows {
+		p.keepRows = append(p.keepRows, [2]int{rg.r0, rg.r1})
+	}
+	// A scoped table heading belongs with its first detail row, even when
+	// it falls at the bottom of the first page.
+	if p.titleRows != nil && p.titleScope != nil && p.titleRows[1] < p.titleScope.r1 {
+		p.keepRows = append(p.keepRows, [2]int{p.titleRows[0], p.titleRows[1] + 1})
+	}
+	p.keepRows = joinKeepRows(p.keepRows)
 	if ps.headings {
 		p.hdrH = s.rows.def
 		if p.hdrH <= 0 {
@@ -503,6 +528,9 @@ func (s *sheetCtx) planPrint(idx int) *printPlan {
 		}
 		room -= len(rows) * len(cols)
 		a := &printArea{rg: rg, rows: rows, cols: cols, body: map[[2]int]*printRegion{}, top: map[int]*printRegion{}, left: map[int]*printRegion{}}
+		for _, band := range rows {
+			a.hasRowTitles = a.hasRowTitles || p.rowTitles(band.i0)
+		}
 		a.rowPos, a.colPos = bandPos(s.rows, rows), bandPos(s.cols, cols)
 		p.areas = append(p.areas, a)
 		if ps.overThenDown {
@@ -537,9 +565,30 @@ func bandPos(ax *axis, bands []printBand) []float64 {
 func (p *printPlan) availW() float64 { return p.pw - p.ml - p.mr }
 func (p *printPlan) availH() float64 { return p.ph - p.mt - p.mb }
 
-// rowTitles reports whether a page of the rows from first shows the title
-// rows over them: the pages after the titles do.
-func (p *printPlan) rowTitles(first int) bool { return p.titleRows != nil && first > p.titleRows[1] }
+// rowTitles reports whether a page starting at first needs the title rows:
+// after the original titles, and within the table when a scope is set.
+func (p *printPlan) rowTitles(first int) bool {
+	return p.titleRows != nil && first > p.titleRows[1] &&
+		(p.titleScope == nil || first >= p.titleScope.r0 && first <= p.titleScope.r1)
+}
+
+// joinKeepRows joins overlapping groups, but leaves adjacent sections
+// independent so each can move to the next page on its own.
+func joinKeepRows(groups [][2]int) [][2]int {
+	sort.Slice(groups, func(i, j int) bool { return groups[i][0] < groups[j][0] })
+	out := groups[:0]
+	for _, g := range groups {
+		if g[0] < 0 || g[1] < g[0] || g[1] >= maxRows {
+			continue
+		}
+		if n := len(out); n > 0 && g[0] <= out[n-1][1] {
+			out[n-1][1] = max(out[n-1][1], g[1])
+		} else {
+			out = append(out, g)
+		}
+	}
+	return out
+}
 
 // colTitles is rowTitles for the title columns.
 func (p *printPlan) colTitles(first int) bool { return p.titleCols != nil && first > p.titleCols[1] }
@@ -562,6 +611,7 @@ func (p *printPlan) cut(ax *axis, first, last int, rows bool, limit int) (bands 
 		return r
 	}
 	bi := sort.SearchInts(breaks, first+1)
+	ki := sort.Search(len(p.keepRows), func(k int) bool { return p.keepRows[k][0] >= first })
 	start, used, limitAt := first, 0.0, room(first)
 	for i := first; i <= last; i++ {
 		size := ax.at(i)
@@ -569,6 +619,17 @@ func (p *printPlan) cut(ax *axis, first, last int, rows bool, limit int) (bands 
 		for bi < len(breaks) && breaks[bi] <= i {
 			brk = brk || breaks[bi] == i
 			bi++
+		}
+		if rows && ki < len(p.keepRows) && p.keepRows[ki][0] == i {
+			end := p.keepRows[ki][1]
+			ki++
+			if end <= last {
+				need := ax.pos(end+1) - ax.pos(i)
+				// A group larger than a fresh page must be allowed to split.
+				if need <= room(i)+0.01 && used+need > limitAt+0.01 {
+					brk = true
+				}
+			}
 		}
 		if i > start && (brk || used+size > limitAt+0.01) {
 			bands = append(bands, printBand{start, i})
@@ -661,7 +722,7 @@ func (p *printPlan) regionsIn(x0, y0, x1, y1 float64) []*tileCv {
 	inCols := p.titleCols != nil && x0 < p.tx1 && x1 > p.tx0
 	corner := false
 	for _, a := range p.areas {
-		rowT := p.rowTitles(a.rows[len(a.rows)-1].i0)
+		rowT := a.hasRowTitles
 		colT := p.colTitles(a.cols[len(a.cols)-1].i0)
 		corner = corner || rowT && colT
 		// most rectangles are outside most areas of a sheet with many

@@ -85,6 +85,25 @@ When rows are added or copied, what refers to rows follows them as it does when 
 
 The formulas are calculated again after the template is filled: those with the functions the evaluator of conditional formats knows (arithmetic, `SUM`, `AVERAGE`, `COUNT`, `COUNTIF`, `IF`, `ROUND`, text and date functions …). The cell of any other formula is left empty, with a warning.
 
+### Excel table headings and sections across pages
+
+For an invoice, set Excel's **Rows to repeat at top** to the table heading
+alone (for example `$15:$15`), leaving the title and customer outside it.
+By default Excel print titles repeat on all later pages. Two optional
+sheet-scoped names in **Formulas → Name Manager** refine BDF pagination:
+
+| Name | Refers to | Behavior |
+|---|---|---|
+| `_bdf.Print_TitleScope` | `'Invoice'!$A$15:$H$16` | Repeat the print-title rows only while this table continues. Include the heading and the tagged detail row; the range grows with the items. A page containing only totals or notes has no table heading. |
+| `_bdf.Print_KeepTogether` | `'Invoice'!$F$18:$H$20,'Invoice'!$A$22:$H$25,'Invoice'!$A$27:$H$31` | Keep each range's rows on one page, moving the section to the next page when needed. Use separate ranges for totals, payment details and notes. |
+
+The ranges follow inserted template rows. A keep-together range inside a
+repeated item applies to each copy. Overlapping ranges form one group;
+adjacent ranges remain separate. A group taller than a page can split,
+and explicit manual page breaks take precedence. These names control BDF
+output; Excel's own print preview continues to use Excel's print rules.
+The public Excel invoice samples include both names.
+
 ## Word templates
 
 In a Word document, tags go in the text of the body, of table cells, of text boxes and of headers and footers. The document is laid out again after it is filled: a longer value makes more lines, and more rows of a table flow onto the next page. The header rows of a table ("Repeat header rows") are repeated on the pages it flows onto. The form has the page view alone.
