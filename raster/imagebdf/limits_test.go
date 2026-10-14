@@ -702,3 +702,40 @@ func TestRoomForPictures(t *testing.T) {
 		t.Errorf("drawn %v %v", pic.levels[0].RGBAAt(1, 1), pic.levels[0].RGBAAt(5, 5))
 	}
 }
+
+// TestGroupShadow draws the shadow of the state around a group: that of the
+// group as a whole, once, as a canvas draws the picture of the group.
+func TestGroupShadow(t *testing.T) {
+	o := bdf.NewObject()
+	o.Save().Shadow(0x000000ff, 0, 6, 0)
+	o.GroupBegin(0.5, bdf.BlendSourceOver, 0, 0, 8, 4)
+	// two shapes over each other: one shadow, of what the two cover
+	o.FillColor(0xff0000ff).FillRect(1, 1, 2, 2).FillColor(0x0000ffff).FillRect(2, 1, 2, 2)
+	// (a shadow inside the group is of what is in it)
+	o.GroupEnd().Restore()
+	o.FillColor(0x0000ffff).FillRect(1, 5, 1, 1)
+	_, at := drawn(t, o, 16, 8)
+	gray := [4]uint8{128, 128, 128, 255} // black at the alpha of the group
+	for x := 7; x <= 9; x++ {
+		if got := at(x, 1); got != gray {
+			t.Errorf("the shadow at %d: %v, want %v", x, got, gray)
+		}
+	}
+	if at(6, 1) != white || at(10, 1) != white || at(7, 3) != white {
+		t.Errorf("around the shadow: %v %v %v", at(6, 1), at(10, 1), at(7, 3))
+	}
+	if got := at(1, 1); got != [4]uint8{255, 128, 128, 255} {
+		t.Errorf("the group: %v", got)
+	}
+	// nothing casts a shadow after the state is restored
+	if at(1, 5) != blue || at(7, 5) != white {
+		t.Errorf("after the group: %v %v", at(1, 5), at(7, 5))
+	}
+	// the shadow of what is off the page falls on it
+	o = bdf.NewObject()
+	o.Shadow(0x000000ff, 0, 6, 0).GroupBegin(1, bdf.BlendSourceOver, -8, 0, 8, 4)
+	o.FillColor(0xff0000ff).FillRect(-4, 1, 2, 2).GroupEnd()
+	if _, at := drawn(t, o, 8, 4); at(2, 1) != [4]uint8{0, 0, 0, 255} || at(3, 1) != [4]uint8{0, 0, 0, 255} || at(4, 1) != white {
+		t.Errorf("the shadow of a group off the page: %v %v %v", at(2, 1), at(3, 1), at(4, 1))
+	}
+}

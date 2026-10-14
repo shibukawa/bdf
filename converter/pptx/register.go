@@ -24,13 +24,11 @@ func init() {
 			return err == nil && p.Has("ppt/presentation.xml")
 		},
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
-			hidden, err := o.BoolParam("hidden")
+			po, err := OptionsOf(o)
 			if err != nil {
-				return nil, fmt.Errorf("pptx: %w", err)
+				return nil, err
 			}
-			res, err := Convert(r, size, &Options{Slides: o.Pages, Hidden: hidden, Title: o.Title, Images: o.Images,
-				FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
-				NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn})
+			res, err := Convert(r, size, po)
 			if err != nil {
 				return nil, err
 			}
@@ -38,4 +36,19 @@ func init() {
 				Summary: fmt.Sprintf("%d slide(s), %d embedded font(s)", res.Slides, res.EmbeddedFonts)}, nil
 		},
 	})
+}
+
+// OptionsOf returns the options of this package for the options of a
+// conversion by the registry (nil for nil), with the parameter "hidden".
+func OptionsOf(o *conv.Options) (*Options, error) {
+	if o == nil {
+		return nil, nil
+	}
+	hidden, err := o.BoolParam("hidden")
+	if err != nil {
+		return nil, fmt.Errorf("pptx: %w", err)
+	}
+	return &Options{Slides: o.Pages, Hidden: hidden, Title: o.Title, Images: o.Images,
+		FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
+		NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn}, nil
 }

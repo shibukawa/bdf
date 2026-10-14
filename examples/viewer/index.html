@@ -79,6 +79,7 @@
   /* the status and the timing change as the reader works (a cell's text when cells are selected): they are cut to
      the room left on the header's line, so that the header keeps its height and the stage does not move under the pointer */
   .info { color: #666; flex: 1 1 0; min-width: 16em; display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
+  .info #download, .info #savePdf { flex: none; white-space: nowrap; }
   #status, #timing { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #status { max-width: 32em; }
   #status[data-error] { color: #b00020; }
@@ -117,6 +118,7 @@
   <nav class="site" aria-label="Site">
     <a class="home" href="../">BDF</a>
     <a href="./" aria-current="page">Viewer</a>
+    <a href="../form/">Forms</a>
     <a href="../thumbnail/">Thumbnails</a>
     <a href="../text/">Search text</a>
     <a href="../docs/">Docs</a>
@@ -171,6 +173,9 @@
     <details id="warnings" hidden><summary></summary><ul></ul></details>
     <span id="timing"></span>
     <a id="download" hidden>Download .bdf</a>
+    <!-- site -->
+    <button id="savePdf" type="button" hidden title="write the document as a PDF file, inside the browser">Download PDF</button>
+    <!-- /site -->
   </span>
 </header>
 <div id="stage" role="tabpanel" tabindex="0">

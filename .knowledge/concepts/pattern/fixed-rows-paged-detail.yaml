@@ -1,0 +1,50 @@
+id: pattern:fixed-rows-paged-detail
+type: pattern
+title: 固定行数の明細をページ複製で続ける帳票（1/3, 2/3, 3/3）
+summary: A4 の同じ型のページに明細を 10 行まで書け、25 行あれば同じテンプレートを 3 枚にして 1/3 2/3 3/3 とページを振る。 合計は最終ページだけに入れる（1/3 と 2/3 は空欄）か、各ページに小計と繰越を置く。残りの行は空欄か「以下余白」。
+  日本の納品書・請求書・見積書で最も多い形で、プレ印刷用紙や複写伝票の流儀をそのまま電子化したもの。
+lifecycle: active
+authority: authored
+aliases:
+- 固定行数明細
+- ページ複製
+- 以下余白
+facts:
+  template_markers:
+    excel: 開始タグと終了タグを別の行に置くと、その間の行の組が明細域になり、行数 = 明細域の行数。または定義名でブロックを指定
+    word: 表の中で開始と終了のタグを別の行に置く
+    pptx: 表の行数が明細域の行数
+  fill:
+    chunking: items を N 件ずつに切り、ページ（スライド）をチャンクごとに複製する。最後のページの残りの行は空欄（罫線は静的部分としてそのまま）
+    page_numbers: ページ番号と総ページ数は全チャンクを数えてから入れる。Excel ならヘッダー・フッターの &P / &N、Word なら PAGE / NUMPAGES、PPT はフィールド
+    aggregates:
+      last_page_only: 合計欄は最終ページだけ値を入れ、ほかのページは空欄にする。タグ側で {{#last}}…{{/last}} のような条件を要する
+      carry_over: 各ページに小計と「次頁へ繰越」、次のページの先頭行に「前頁より繰越」。金額はデータ側で計算して渡す（2026-10-13 決定。端数処理の規則が無限にありえるため）。テンプレートはチャンクごとに「前頁より /
+        次頁へ」の真偽値と、データが渡したチャンク単位の値（例は chunks[n].carry_in と carry_out）を置くだけ。データの形としては items を渡すのではなく、ページ単位に切った配列を渡す方が自然になる
+      grand_total_everywhere: 全ページに同じ総合計を印字する帳票もある
+    filler: 残りの行に「以下余白」を 1 行だけ入れる慣習がある。最終チャンクの最初の空行に入れるタグ {{#rest-first}} のような仕組みが要る
+    header_repeat: ヘッダー部（宛先・発行日・伝票番号）は全ページに同じ値。チャンクのコンテキストの外側の値がそのまま見える
+  why_not_flow: 固定行数は意図的な設計。罫線がプレ印刷用紙に合っている、複写伝票と同じ見た目、ファイリングの都合。行挿入式に置き換えられない
+  data_shape_decision: '呼び出し側がページ単位の配列で渡す（2026-10-13 利用者が決定）。例は pages: [{rows: [...], carry_in: 0, carry_out: 12000}, …]。エンジンは
+    items を切らず、1 ページの rows が明細域の行数を超えたらエラーにする。CLI に -chunk items=10 のような切り分けの補助を後で足してもよい'
+  open_points:
+  - 「以下余白」「***」などの埋め草のタグ設計
+  - 1 ページ目と 2 ページ目以降で型が違う続きページ（鑑＋明細 → 明細のみ）の表し方
+  survey_inputs:
+    svf: サブフォームの枠に入る行数、あふれは改ページかリンクサブフォーム（別の枠へ続く）、「枠の大きさを固定」で空行の罫線、「最終ページのみ / 先頭ページのみ」、累計関数と _PREV_P / _NEXT_P で繰越ラベル、総ページ数は
+      2 パス
+    activereports_page: 表の FixedHeight、OverflowName → OverflowPlaceHolder（別デザインのページ可）、RepeatBlankRows FillPage / FillGroup
+    bi_publisher: start@last-page で最終ページ専用の内容、show-brought-forward / show-carry-forward（first / last / exceptfirst / exceptlast）
+    stimulsoft_fastreport: EmptyData 帯で空行埋め、PrintOn OnlyLast / ExceptLast、TotalPages は DoublePass
+    excella: $R[]{name,breakNum=5} で N 行ごとに改ページ
+    print_creator: レコード範囲（1〜6、7〜17）ごとの別レイアウトをつなぐ
+    xfa: flowed subform の min / max count、breakBefore / After、leader（見出し）と trailer（繰越行）
+  implementation: Excel で実装済み。{{#pages | pages}} の中に {{#rows}}…{{/rows}}（slots）。空行は _blank / _blank_first、最終ページは _last、ページ番号は
+    _page / _pages。繰越はデータが渡す。testdata/form/pages.bdf
+relations:
+- relation: member_of
+  to: taxonomy:form-layout-axes
+- relation: contrasts_with
+  to: pattern:growing-detail
+- relation: inherits_from
+  to: pattern:preprinted-overlay

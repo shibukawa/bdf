@@ -31,6 +31,10 @@ Options (`-param`, from `bdf generate -h`):
 
 See [design.md §3.4](../design.md#34-powerpoint--bdf-変換器converterpptxの構造) for the internals.
 
+### Filling a presentation as a template
+
+A presentation whose shapes and tables hold tags such as `{{name}}` is a template of a form that data fills (`bdf fill`, `pptx.Fill`). The slides are fixed pages: text that changed is fitted again by the autofit rules of PowerPoint, and a table that grew past its slide goes on on copies of the slide. See [Making forms](../forms.md#powerpoint-templates).
+
 ### Formulas
 
 A formula inserted with Insert → Equation is saved as Office Math inside a paragraph (`m:oMath` in `a14:m`). The converter lays it out from that, not from the fallback picture the file also keeps, so it stays sharp at any zoom and is text in a linear notation for search and copy.

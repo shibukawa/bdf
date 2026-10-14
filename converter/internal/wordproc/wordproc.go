@@ -159,6 +159,10 @@ type converter struct {
 
 	// folioFonts are the fonts of the page numbers of sections with folios.
 	folioFonts [4]string
+
+	// fill fills the document as a template (template.go); nil for a
+	// document that is converted as it is.
+	fill *filler
 }
 
 // newConverter sets up the state of a conversion; views defaults to

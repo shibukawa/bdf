@@ -1,0 +1,9 @@
+{
+ "name": "Hanako Tanaka",
+ "course": "Document Formats 101",
+ "points": 92,
+ "date": "2026/10/14",
+ "signature": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAABQCAYAAAAnSfh8AAACpklEQVR42u3dTVLcMBCAUSmVI7DmnByBc7LmDmRBUcViIP6Rre7We7ssqNhjfSVpsE1rAAAAAAAAAAAAAAAAAAAAAEAST88vH0/PLx8+CXjsT+R4f/s30FrPEO9372+v3WWD4DPwkbhBwAkCFTF8+mt2jXn+tgqkmoH3xls9dqsMSuyBf5uJKg3yR+ciYlqGb6F/Gqjf4638zfSWUC2pCTkDb4m38ky89djNxoQLeO+grBaxfb878lIvobfOvhVv9Hh0Dl/H/r/Buspyemu0K28verZ4R/181HjdkTZupbFC2D1jvJkj3hrv1sFcaZDesUyuFnXPfJ9zthlqb7yrRBxhf5v1M+xZZ99sER+Nt3LEe8L96fyujj/659ozx5sl4rPxVot4RLizZ/Uon3XPHm/0iEfFW+HLrTvCXW2P3Ss93xttYF8Rb8bZeHa4lWfrXmH2bQG/mb4y3iwRRw+3Qti9UrxRIr4j3sgRZw83U9i9Wryzl9J3xhst4urhRrwBpVd9r9WM/39GvBE+89XDHR116ICrDujZ8c6YjYU7f2z2qvHeGXGUeO+KWLjXXrupAUe8P/nKiKPFe2XEwm21nweO+sxm1T3vmXPec632PI/7/vbaxdty3sgR/emgkccXOd5RKxAz7kIBZ3i0b9RSOlO8R5bUwl0s4EzP5Z6NOGO8V2xxhFtkD5ztXUVnloyZ4x11rPa4i7zULvJFPhJx9njPHrNwCy6hM7+Xas9yukq83kdtBi4T7wp73jPnb8YtPANXe1uim/A/7/7ZexcQxfbA1S9+1fP7Oi/xLhBwhaXzkWM3uEkfcMV4t+4HDRVSB7zC36Z5FKp4aRW+xKo8+0LpGVi8kDRg8ULigP1CH5o37wEAAAAAAAAAAAAAAAAAAAAAwLX+AUyUbF7XAvEXAAAAAElFTkSuQmCC",
+ "verify": "https://example.com/cert/42",
+ "honours": true
+}

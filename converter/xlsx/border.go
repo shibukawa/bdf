@@ -258,6 +258,16 @@ func (es *edgeSet) draw() {
 		for _, sg := range groups[e] {
 			pad := ls.w * 2
 			for _, t := range s.tilesIn(minf(sg.x0, sg.x1)-pad, minf(sg.y0, sg.y1)-pad, maxf(sg.x0, sg.x1)+pad, maxf(sg.y0, sg.y1)+pad) {
+				sg := sg
+				if t.bounds != nil {
+					// a region of a printed page keeps the part of the
+					// line that is in it or on its edges, and is not
+					// clipped: the borders around a page are whole
+					var ok bool
+					if sg, ok = clipSegment(sg, t.bounds); !ok {
+						continue
+					}
+				}
 				p := perTile[t]
 				if p == nil {
 					p = &bdf.Path{}
@@ -302,10 +312,18 @@ func (es *edgeSet) draw() {
 		}
 	}
 	// drawings (children) inherit the line state and expect no dashes
-	for _, t := range s.tiles {
+	reset := func(t *tileCv) {
 		if t.st.dashed {
 			t.cv.Obj.Dash(nil, 0)
 			t.st.dashed = false
+		}
+	}
+	for _, t := range s.tiles {
+		reset(t)
+	}
+	if s.pr != nil {
+		for _, t := range s.pr.all {
+			reset(t)
 		}
 	}
 }

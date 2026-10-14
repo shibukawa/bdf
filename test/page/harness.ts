@@ -61,6 +61,25 @@ export const CASES: Case[] = [
   { name: "xlsx-basic-overflow", src: "/testdata/xlsx/basic.bdf", kind: "sheet", view: "sheet3", viewport: { x: 1880, y: 0, w: 360, h: 120 }, scale: 1.5 },
   { name: "xlsx-features-1", src: "/testdata/xlsx/features.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 760, h: 600 }, scale: 1 },
   { name: "xlsx-features-chart", src: "/testdata/xlsx/features.bdf", kind: "page", view: "sheet2", page: 0, scale: 0.75 },
+  // Sheets as the pages Excel prints (-param views=print): the print titles on a page after them, after a manual
+  // break, with gridlines, a header and a footer; a turned page at 150% with title columns and headings; one of
+  // two print areas, centered, with its borders whole.
+  { name: "xlsx-print-report-2", src: "/testdata/xlsx/print-pages.bdf", kind: "page", view: "print1", page: 1, scale: 1 },
+  { name: "xlsx-print-wide-2", src: "/testdata/xlsx/print-pages.bdf", kind: "page", view: "print2", page: 1, scale: 0.75 },
+  { name: "xlsx-print-areas-1", src: "/testdata/xlsx/print-pages.bdf", kind: "page", view: "print4", page: 0, scale: 1 },
+  // Templates filled with data (bdf fill, package form; see test/xlsx/data): a form of one page, a table that grows
+  // by a row for each item, and the last page of a slip of ten rows a page.
+  { name: "form-fixed-1", src: "/testdata/form/fixed.bdf", kind: "page", view: "print1", page: 0, scale: 1 },
+  { name: "form-rows-1", src: "/testdata/form/rows.bdf", kind: "page", view: "print1", page: 0, scale: 0.75 },
+  { name: "form-pages-3", src: "/testdata/form/pages.bdf", kind: "page", view: "print1", page: 2, scale: 1 },
+  // The same data in Word and PowerPoint templates: a form of one page with a picture, a text box and a header; a
+  // table that flows onto a second page under its header row; the form of one slide with texts fitted again; a
+  // table that goes on on further slides; and the last slide of a slip of ten rows a slide.
+  { name: "form-docx-fixed-1", src: "/testdata/form/docx-fixed.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
+  { name: "form-docx-rows-2", src: "/testdata/form/docx-rows.bdf", kind: "page", view: "pages", page: 1, scale: 0.75 },
+  { name: "form-pptx-fixed-1", src: "/testdata/form/pptx-fixed.bdf", kind: "page", view: "slides", page: 0, scale: 0.75 },
+  { name: "form-pptx-rows-4", src: "/testdata/form/pptx-rows.bdf", kind: "page", view: "slides", page: 3, scale: 0.75 },
+  { name: "form-pptx-pages-3", src: "/testdata/form/pptx-pages.bdf", kind: "page", view: "slides", page: 2, scale: 0.75 },
   // Visio drawings rendered by converter/visio with the test fonts; see test/visio.
   { name: "visio-shapes-1", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
   { name: "visio-shapes-2", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 1, scale: 1 },

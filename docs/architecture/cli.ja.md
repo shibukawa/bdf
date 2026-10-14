@@ -3,6 +3,14 @@
 ```
 bdf generate [flags] <input> <out.bdf | dir/>
                                    文書や図面を変換する（フラグと形式一覧は bdf generate -h）
+bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .bdft> <out.bdf | dir/>
+                                   帳票のテンプレートをデータで穴埋めする: タグを書いた Office の文書、
+                                   入力欄のある PDF、pdfme のテンプレート（フラグは bdf fill -h）
+bdf template compile [flags] <template> <out.bdft>
+bdf template schema [-json-schema] <template> [out.json]
+                                   テンプレートを検査してコンパイル済みにする、タグが引く名前を書き出す
+bdf pdf [flags] <file.bdf | dir> <out.pdf>
+                                   ページを PDF に書き出す（フラグは bdf pdf -h）
 bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                    サムネイルを描く: 1 ページ目の上部、またはスライド全体
                                    （変換する入力なら 1 ページ目だけを変換する）
@@ -37,6 +45,37 @@ bdf generate report.pptx out/                    # 分割形式
 bdf generate -pages 1-3 book.pdf book.bdf         # 最初の 3 ページだけ
 bdf generate -password-file pw.txt secret.xlsx out.bdf  # パスワード付きの入力
 ```
+
+## fill, template
+
+帳票のテンプレート（文字のところにタグを書いた Excel のブック、Word の文書、PowerPoint のプレゼンテーション）をデータで穴埋めします。形式は中身から判定します。書き方は[帳票を作る](../forms.ja.md)を参照してください。
+
+```sh
+bdf fill -data order.yaml -data items=lines.csv invoice.xlsx invoice.bdf   # 穴埋めして、印刷のページの文書に
+bdf fill -data order.yaml notice.docx notice.bdf                           # Word の文書はページに、PowerPoint はスライドに
+bdf fill -each orders.csv invoice.xlsx 'out/{{no}}.bdf'                    # レコードごとに 1 つずつ
+bdf template compile -sample sample.yaml invoice.xlsx invoice.bdft         # 検査して、コンパイル済みテンプレートに
+bdf template schema invoice.bdft                                           # タグが引く名前を JSON で
+bdf template schema -json-schema invoice.xlsx                              # データの JSON Schema（入力フォームを作る元）
+bdf fill -data applicant.json application.pdf application.bdf              # 入力欄のある PDF: 欄の場所に値を描く
+bdf fill -data invoice.json pdfme-template.json invoice.bdf                # pdfme のテンプレート: pdfme の生成器と同じ規則で埋める
+```
+
+`-data` は JSON・YAML のオブジェクト（`file`）か、名前を付けた値（`name=file`。CSV・TSV やブックのシートはオブジェクトのリスト）で、繰り返し指定できます。`-strict` はデータにない名前のタグをエラーにし、`-files` はデータが名前で指す画像のディレクトリを決めます。フォントと画像のフラグ（`-font-dir`、`-no-system-fonts`、`-fonts`、`-images` など）と `-param`・`-pages` は `generate` と同じ意味です（`-pages` は、Excel ではシート、PowerPoint ではテンプレートのスライド、Word ではできた帳票のページを選びます）。`.bdft` は BDF の文書なので、`ls`・`thumbnail`・`render` でそのまま開けます。
+
+## pdf
+
+文書のページを PDF に書き出します。文字は埋め込んだフォントの文字として、図形はベクタとして入ります（[PDF にする](../forms.ja.md#pdf-にする)）。
+
+```sh
+bdf pdf invoice.bdf invoice.pdf
+bdf pdf -view print1 book.bdf sheet1.pdf            # ビューを選ぶ（繰り返せる）
+bdf pdf -skip background -skip master slip.bdf slip.pdf   # レイヤーを役割で省く
+bdf pdf -tagged report.bdf report.pdf               # タグ付き PDF: 文書の構造を持ち、スクリーンリーダーで読める
+bdf pdf -pdfa 2a invoice.bdf invoice.pdf            # 保存用の PDF/A（2b、2u、2a、3b、3u、3a）
+```
+
+既定では、ページのあるビュー（`fixed`・`flow`）をすべて書き出し、ページのない文書は全体を 1 ページにします。`-font-dir` と `-no-system-fonts` は、文書が名前で参照するフォントを探す場所です。`-ignore-fstype` は、埋め込みを許可していないシステムのフォントも埋め込みます（権利があるときだけ。既定ではその文字をアウトラインで描きます）。`-no-compression` はストリームを圧縮せずに書きます（中身を読むため）。暗号化した文書には `-allow-plaintext` が必要です（PDF は暗号化されません）。
 
 ## thumbnail, text, render
 

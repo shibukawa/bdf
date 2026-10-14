@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"syscall/js"
 
-	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/raster/imagebdf"
 	"github.com/shibukawa/bdf/thumbnail"
 )
@@ -22,24 +21,6 @@ func init() {
 // maxThumbnail is the largest size a thumbnail call takes: its canvas holds
 // 16 bytes a pixel.
 const maxThumbnail = 2048
-
-// bdfInput copies the single-file bdf of a call (data, options?).
-func bdfInput(args []js.Value) ([]byte, error) { return input(args, "bdf bytes") }
-
-// readDocument reads a single-file bdf, unlocking an encrypted one with
-// password.
-func readDocument(data []byte, password string) (*bdf.Document, error) {
-	r, err := bdf.OpenSingle(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return nil, err
-	}
-	if r.Locked() && password != "" {
-		if err := r.Unlock(password); err != nil {
-			return nil, err
-		}
-	}
-	return r.ToDocument() // bdf.ErrLocked without the password
-}
 
 func thumbnailCall(_ js.Value, args []js.Value) any {
 	data, err := bdfInput(args)

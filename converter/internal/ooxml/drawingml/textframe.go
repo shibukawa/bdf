@@ -15,9 +15,76 @@ func (s *Drawing) drawShapeText(cv *canvas.Canvas, sh *shape, xf xform, geo *geo
 		s.drawTextBox(cv, sh, xf, geo)
 		return
 	}
+	tf := s.shapeTextFrame(sh)
+	if tf == nil {
+		return
+	}
+	r := geo.textRect
+	x, y, w, h := r[0], r[1], r[2]-r[0], r[3]-r[1]
+	m := xf.textMatrix()
+	if tx, ok := parseXfrm(sh.n.Child("txXfrm")); ok {
+		// the text transform of a SmartArt drawing turns with its shape
+		if own, ok := parseXfrm(sh.spPr().Child("xfrm")); ok {
+			tx.Rot += own.Rot
+		}
+		tx = sh.grp.place(tx)
+		m = tx.textMatrix()
+		x, y, w, h = 0, 0, tx.W, tx.H
+	}
+	s.renderText(cv, tf, x, y, w, h, m)
+}
+
+// RefitAttr marks the a:bodyPr of a text body whose text is not the text
+// its file was saved with (a filled template): what the file says of how
+// the text was fitted (the scale of a:normAutofit, the size of a shape with
+// a:spAutoFit) no longer holds, and the text is fitted again.
+const RefitAttr = "bdf-refit"
+
+// refit reports whether the text of a frame is to be fitted again.
+func refit(tf *textFrame) bool {
+	return len(tf.bodyPrs) > 0 && tf.bodyPrs[0].AttrBool(RefitAttr, false)
+}
+
+// fitSteps are the font scales and the reductions of line spacing that
+// PowerPoint tries, in order, to fit text into a shape.
+var fitSteps = [][2]float64{{1, 0}, {0.925, 0.1}, {0.85, 0.2}, {0.775, 0.2}, {0.7, 0.2}, {0.625, 0.2}, {0.55, 0.2}, {0.475, 0.2},
+	{0.4, 0.2}, {0.325, 0.2}, {0.25, 0.2}}
+
+// grownHeight returns the height of a shape that resizes to fit its text
+// (a:spAutoFit) when the text is to be fitted again: the height of the
+// text with its insets. ok is false for other shapes, and for those whose
+// text is not in the whole of an upright box.
+func (s *Drawing) grownHeight(sh *shape, xf xform) (float64, bool) {
+	if sh.n.Child("txbx") != nil || sh.n.Child("txXfrm") != nil {
+		return 0, false
+	}
+	tf := s.shapeTextFrame(sh)
+	if tf == nil || !refit(tf) {
+		return 0, false
+	}
+	if af := tf.bodyPrs.first("normAutofit", "noAutofit", "spAutoFit"); af == nil || af.Name != "spAutoFit" {
+		return 0, false
+	}
+	if v, _ := tf.bodyPrs.attr("vert"); v != "" && v != "horz" {
+		return 0, false
+	}
+	geo, _ := sh.geometry(xf.W, xf.H)
+	if r := geo.textRect; math.Abs(r[0]) > 0.01 || math.Abs(r[1]) > 0.01 || math.Abs(r[2]-xf.W) > 0.01 || math.Abs(r[3]-xf.H) > 0.01 {
+		return 0, false
+	}
+	b := s.layoutText(tf, 0, 0, xf.W, xf.H, canvas.Identity)
+	if b == nil {
+		return 0, false
+	}
+	return b.height(), true
+}
+
+// shapeTextFrame returns the text frame of a shape: its text body with the
+// properties it inherits; nil for a shape without one.
+func (s *Drawing) shapeTextFrame(sh *shape) *textFrame {
 	tb := sh.n.Child("txBody")
 	if tb == nil {
-		return
+		return nil
 	}
 	tf := &textFrame{body: tb, part: sh.part, cc: s.cc, own: tb.Child("lstStyle"), bodyPrs: chain{tb.Child("bodyPr")}}
 	phType := ""
@@ -45,19 +112,7 @@ func (s *Drawing) drawShapeText(cv *canvas.Canvas, sh *shape, xf xform, geo *geo
 	if fr := sh.style().Child("fontRef"); fr != nil {
 		tf.extra = append(tf.extra, fontRefProps(fr))
 	}
-	r := geo.textRect
-	x, y, w, h := r[0], r[1], r[2]-r[0], r[3]-r[1]
-	m := xf.textMatrix()
-	if tx, ok := parseXfrm(sh.n.Child("txXfrm")); ok {
-		// the text transform of a SmartArt drawing turns with its shape
-		if own, ok := parseXfrm(sh.spPr().Child("xfrm")); ok {
-			tx.Rot += own.Rot
-		}
-		tx = sh.grp.place(tx)
-		m = tx.textMatrix()
-		x, y, w, h = 0, 0, tx.W, tx.H
-	}
-	s.renderText(cv, tf, x, y, w, h, m)
+	return tf
 }
 
 // fontRefProps turns a p:style fontRef into run properties.
@@ -126,6 +181,21 @@ func (s *Drawing) layoutText(tf *textFrame, x, y, w, h float64, m canvas.Matrix)
 	bp := tf.bodyPrs
 	fontScale, lnReduce := 1.0, 0.0
 	if af := bp.first("normAutofit", "noAutofit", "spAutoFit"); af != nil && af.Name == "normAutofit" {
+		if refit(tf) {
+			// the scale the file was saved with was for other text: the
+			// first of PowerPoint's steps at which this text fits
+			var b *textBlock
+			for _, step := range fitSteps {
+				paras := s.paragraphs(tf, step[0], step[1])
+				if !anyText(paras) {
+					return nil
+				}
+				if b = s.layoutBlock(tf, paras, x, y, w, h, m, 0); b.height() <= b.h+0.5 {
+					break
+				}
+			}
+			return b
+		}
 		fontScale = af.AttrPct("fontScale", 1)
 		lnReduce = af.AttrPct("lnSpcReduction", 0)
 	}

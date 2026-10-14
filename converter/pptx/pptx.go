@@ -27,6 +27,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
+	"github.com/shibukawa/bdf/form/tag"
 	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/internal/fontdb"
 	"github.com/shibukawa/tinygodriver/encoding/xmlro"
@@ -68,6 +69,9 @@ type Options struct {
 	NoTextIndex bool
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.
 	Warn func(msg string)
+
+	// fill is set by Fill: the presentation is a template (template.go).
+	fill *filler
 }
 
 // Result is the outcome of a conversion.
@@ -76,6 +80,9 @@ type Result struct {
 	Warnings      []string
 	Slides        int
 	EmbeddedFonts int
+	// Fields are the fields of a template, for a presentation converted by
+	// Fill: the names that its tags take from the data.
+	Fields []tag.Field
 }
 
 type converter struct {
@@ -211,13 +218,41 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		layers []*canvas.Canvas
 	}
 	var pages []pageRef
+	var jobs []slideJob
+	numOf := map[string]int{}
 	for _, n := range sel {
 		if n < 1 || n > len(slides) {
 			return nil, fmt.Errorf("pptx: slide %d out of range (1-%d)", n, len(slides))
 		}
-		layers, err := c.renderSlideSafe(slides[n-1], c.firstSlide+n-1)
+		jobs = append(jobs, slideJob{part: slides[n-1], num: c.firstSlide + n - 1})
+		numOf[slides[n-1]] = n
+	}
+	if f := opts.fill; f != nil {
+		// a template: the slides to draw are those of the filled template
+		parts := make([]string, len(jobs))
+		for i, j := range jobs {
+			parts[i] = j.part
+		}
+		streamSlides = false
+		if jobs, err = f.run(c, parts); err != nil {
+			return nil, err
+		}
+		if f.inspect {
+			return &Result{Doc: c.doc, Warnings: c.warnings}, nil
+		}
+		clear(c.pageOf)
+		for i, j := range jobs {
+			if _, ok := c.pageOf[j.part]; !ok {
+				c.pageOf[j.part] = i + 1
+			}
+		}
+		c.pages = len(jobs)
+	}
+	for i, j := range jobs {
+		n := numOf[j.part]
+		layers, err := c.renderSlideSafe(j, i+1)
 		if streamSlides {
-			p.DiscardXML(slides[n-1])
+			p.DiscardXML(j.part)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("pptx: slide %d: %w", n, err)
@@ -254,7 +289,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			c.warnf("text index: %v", err)
 		}
 	}
-	return &Result{Doc: c.doc, Warnings: c.warnings, Slides: len(sel), EmbeddedFonts: c.embeddedFonts}, nil
+	return &Result{Doc: c.doc, Warnings: c.warnings, Slides: len(pages), EmbeddedFonts: c.embeddedFonts}, nil
 }
 
 // slideHidden checks the root's show attribute without building and caching
@@ -336,28 +371,33 @@ type slideCtx struct {
 	part, layoutPart      string
 	masterPart            string
 	slide, layout, master *ooxml.Node
-	num                   int
+	num                   int // the slide number that its fields show
+	page                  int // its page in the output
 	layoutPh, masterPh    []*ooxml.Node
 }
 
 // renderSlideSafe renders a slide; a malformed slide that trips the
 // renderer becomes an empty page and a warning instead of failing the
 // whole conversion.
-func (c *converter) renderSlideSafe(part string, num int) (layers []layer, err error) {
+func (c *converter) renderSlideSafe(j slideJob, page int) (layers []layer, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			c.warnf("slide %s: internal error: %v", part, r)
+			c.warnf("slide %s: internal error: %v", j.part, r)
 			layers, err = nil, nil
 		}
 	}()
-	return c.renderSlide(part, num)
+	return c.renderSlide(j, page)
 }
 
-func (c *converter) renderSlide(part string, num int) ([]layer, error) {
+// newSlideCtx makes the host of the drawing of a slide: the slide of a
+// part, or a filled copy of it (slide; nil for the part as it is).
+func (c *converter) newSlideCtx(part string, slide *ooxml.Node, num int) (*slideCtx, error) {
 	p := c.pkg
-	slide, err := p.XML(part)
-	if err != nil {
-		return nil, err
+	if slide == nil {
+		var err error
+		if slide, err = p.XML(part); err != nil {
+			return nil, err
+		}
 	}
 	s := &slideCtx{c: c, part: part, slide: slide, num: num}
 	if r, ok := p.RelOfType(part, "/slideLayout"); ok {
@@ -386,6 +426,16 @@ func (c *converter) renderSlide(part string, num int) ([]layer, error) {
 	s.d = c.r.NewDrawing(s.masterPart, clrMap, s)
 	s.layoutPh = placeholders(s.layout)
 	s.masterPh = placeholders(s.master)
+	return s, nil
+}
+
+func (c *converter) renderSlide(j slideJob, page int) ([]layer, error) {
+	s, err := c.newSlideCtx(j.part, j.node, j.num)
+	if err != nil {
+		return nil, err
+	}
+	s.page = page
+	slide, part := s.slide, s.part
 
 	var layers []layer
 	bg := layer{bdf.RoleBackground, c.cvs.New()}
@@ -529,13 +579,16 @@ func (s *slideCtx) Field(typ string) (string, bool) {
 	if strings.HasPrefix(typ, "slidenum") {
 		return itoa(s.num), true
 	}
+	if typ == fieldSlides {
+		return itoa(s.c.pages), true
+	}
 	return "", false
 }
 
 // Link implements drawingml.Host: jumps to other slides.
 func (s *slideCtx) Link(action string, target ooxml.Rel) string {
 	if strings.HasPrefix(action, "ppaction://hlinkshowjump") {
-		cur := s.c.pageOf[s.part]
+		cur := s.page
 		switch {
 		case strings.Contains(action, "nextslide"):
 			return pageLink(cur + 1)

@@ -1,0 +1,25 @@
+id: pattern:label-sheet
+type: pattern
+title: ラベル（A4 面付けシートとラベルプリンタ）
+summary: >-
+  宛名ラベル・商品ラベル・バーコードラベル。A4 のラベル用紙に N×M 面を面付けする形と、ラベルプリンタで 1 枚ずつ出す形がある。
+  1 面のテンプレートをデータの件数だけ繰り返し、面の大きさ・余白・ピッチ・dpi がレイアウトを決める。
+lifecycle: proposed
+authority: authored
+aliases:
+- 宛名ラベル
+- 面付け
+- label report
+facts:
+  a4_sheet:
+    source: Word の「ラベル」機能は表のセルに面を並べる（差し込み印刷の NEXT レコード）。Excel なら印刷範囲に面を並べた表
+    fill: 1 面 = 1 レコード。面の順は左→右、上→下。空いた面は空のまま（使いかけのシート対応で開始位置の指定が要る）
+  label_printer:
+    model: 用紙は 1 ラベルが 1 ページ。幅・長さ・ギャップ・dpi（203 / 300）がページを決める。連続紙とギャップ紙
+    bdf: fixed View でページ = ラベル。出力先がプリンタ言語（ZPL / SBPL / TPCL / P-touch）なら PDF 以外の書き出し先になる（survey:template-systems-overview の「プリンタ内テンプレート＋フィールド番号」の型）
+  barcodes: QR・Code128・JAN / EAN・ITF・GS1-128・郵便カスタマバーコードをパスで描く。ラベルでは必須
+  open_points:
+  - ラベルプリンタ向けの出力は BDF → プリンタ言語の変換器を別に作るのか、PDF 経由でドライバに任せるのか
+relations:
+- relation: member_of
+  to: taxonomy:form-layout-axes

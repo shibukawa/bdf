@@ -219,3 +219,23 @@ test("addPage puts a streamed page in, with the parts it brings", async () => {
   assert.throws(() => outline.addPage("slides", 3, pageDoc), /no page 3/);
   assert.throws(() => outline.addPage("slides", 0, outline), /not a page document/);
 });
+
+// A compiled template of forms (docs/spec.md §4.5) is a document: its pages
+// show the template filled with sample data, and the parts that describe
+// the template and hold it are not the reader's to look at.
+test("compiled template opens as a document", async () => {
+  const bytes = new Uint8Array(await readFile(new URL("testdata/form/pages.bdft", root)));
+  const doc = await BdfDocument.open(new BufferSource(bytes));
+  const kinds = doc.manifest.parts.map((p) => p.t);
+  assert.ok(kinds.includes("tpl") && kinds.includes("src"));
+  const view = doc.view("print1");
+  assert.equal(view.kind, "flow");
+  assert.equal(view.pages.length, 3);
+  const body = view.pages[2].layers.find((l) => l.role === "body");
+  const text = extractText(await doc.ensure(body.obj), (h) => doc.objectSync(h)).map((r) => r.text).join(" ");
+  assert.match(text, /Delivery D-1/);
+  assert.match(text, /Total 300,000/);
+  const def = JSON.parse(new TextDecoder().decode(await doc.part(doc.manifest.parts.find((p) => p.t === "tpl").h)));
+  assert.equal(def.format, "xlsx");
+  assert.ok(def.fields.some((f) => f.name === "rows" && f.mode === "slots" && f.slots === 10));
+});

@@ -24,8 +24,28 @@ Options (`-param`, from `bdf generate -h`):
 | Option | Values | Default |
 |---|---|---|
 | `-param hidden=` | `true` | hidden sheets excluded |
+| `-param views=` | `sheet`, `print`, `both` | `sheet` (the sheets as Excel shows them); `print` is the printed pages, `both` both |
+| `-param paper=` | `a3`, `a4`, `a5`, `b4`, `b5`, `letter`, `legal` … | the paper of sheets whose page setup names none: `a4` for a Japanese workbook, else `letter` |
 
 `-hidden` (shorthand for `-param hidden=true`) includes hidden sheets; macro and dialog sheets are always skipped, with a warning. See [design.md §3.6](../design.md#36-excel--bdf-変換器converterxlsxの構造) for the internals, and [design.md §6](../design.md#6-excel-シートの-tile-化) for how a sheet's cells are split into the Tiles a `sheet` View is drawn from.
+
+### Printed pages (the print View)
+
+With `-param views=print`, a sheet becomes a `flow` View (`print1`, `print2` …) of the pages Excel prints. For a workbook made as a form, this is what it is meant to look like. With `both` it follows the `sheet` View.
+
+- **Print area and print titles**: the defined names `_xlnm.Print_Area` (several areas are pages of their own, in their order) and `_xlnm.Print_Titles` (rows and columns repeated at the top and the left of each page; not doubled on the pages that hold the titles themselves). Without a print area, what the sheet uses is printed from A1, with the text that flows out of its last column.
+- **Page setup**: paper and orientation, scale, "fit to pages" (the largest scale, in whole percents, at which the sheet is n pages wide and m tall; 0 leaves a direction alone), margins, centering on the page, the order of pages, the first page number.
+- **Page breaks**: the manual breaks of the page break preview are always kept; between them, rows and columns fill the paper and break between rows and columns. Hidden rows and columns take no room.
+- **Header and footer**: the left, center and right sections with `&P` (page), `&N` (pages), `&A` (sheet), `&F` (file), and the codes for font, size, bold and so on; other ones for the first and for even pages. `&D` and `&T` (the date and the time) are left empty so that a conversion gives the same output whenever it runs (from Go, `xlsx.Options.PrintTime` gives them).
+- **Gridlines and headings**: drawn when the page setup prints them.
+
+A page has `header`, `footer` and `body` layers, and its `body` rectangle is inside the margins, so a viewer's continuous mode stacks the bodies alone. What several pages show alike, such as the print titles, is one Object stored once.
+
+Excel rounds row heights and column widths to the pixels of the printer when it prints, so an automatic page break can be a row away from Excel's; a manual break is where it is. Pictures in headers and footers (`&G`), the ways of printing error values, and printed notes are not handled.
+
+### Filling a workbook as a template
+
+A workbook whose cells hold tags such as `{{name}}` is a template of a form that data fills (`bdf fill`, `xlsx.Fill`); the result is a document of the printed pages. See [Making forms](../forms.md).
 
 ### Equation objects
 

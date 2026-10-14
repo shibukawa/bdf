@@ -88,6 +88,19 @@ func (s *sheetCtx) loadDrawings() {
 		return
 	}
 	s.drawings = readAnchors(root, r.Target)
+	if s.c.opts != nil && s.c.opts.fill != nil {
+		// the rows of a filled template are where they were moved to
+		for _, a := range s.drawings {
+			switch a.kind {
+			case "twoCellAnchor":
+				a.from.row, a.to.row = s.c.filledRows(s.ws, a.from.row, a.to.row)
+				a.toRow = min(max(a.to.row, 0), maxRows-1)
+			case "oneCellAnchor":
+				a.from.row, _ = s.c.filledRows(s.ws, a.from.row, a.from.row)
+				a.toRow = min(max(a.from.row+int(a.ext[1]/15)+1, 0), maxRows-1)
+			}
+		}
+	}
 	s.c.fillChartCaches(r.Target)
 }
 
@@ -312,6 +325,19 @@ func (s *sheetCtx) putLink(rg cellRange, target string) {
 	}
 	link := func(t *tileCv) {
 		t.cv.Obj.Link(f32(b.x-t.ox), f32(b.y-t.oy), f32(b.w), f32(b.h), target)
+	}
+	if s.pr != nil {
+		// the regions of printed pages
+		ts := s.tilesIn(b.x, b.y, b.x+b.w, b.y+b.h)
+		if more := len(ts) - 1; more > s.linkRoom {
+			ts = ts[:1]
+		} else if more > 0 {
+			s.linkRoom -= more
+		}
+		for _, t := range ts {
+			link(t)
+		}
+		return
 	}
 	tx0, ty0, tx1, ty1, ok := s.tileSpan(b.x, b.y, b.x+b.w, b.y+b.h)
 	if !ok {

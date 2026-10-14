@@ -13,6 +13,7 @@ BDF の公開 API をパッケージごとにまとめる。引数や細かい�
 | BDF を読んでテキストや構造を取り出す（Node でも） | [`@bdfkit/core`](#typescript-bdfkitcore) |
 | ログインした読者に文書を数ページずつ、要求ごとに封印して渡す | Go の [`segment`](#保護モードの配信segment) と [`(*Reader).WriteSegment`](#読み込み)、ブラウザは [`SegmentLoader`](#文書を開く)（レンダラの Worker では `{kind: "segments"}`） |
 | 数式を組んで画像・Ebitengine・Canvas に描く | Go の [`formula` と `raster/ebitenginebdf`](#go-数式formularasterebitenginebdf)。使い方は[描画する](rendering.ja.md) |
+| 帳票をテンプレートとデータから作る、文書を PDF に書き出す | Go の [`form` と `vector/pdfbdf`](#その他のパッケージ)、または [`bdf fill`・`bdf pdf`](#コマンドbdf)。使い方は[帳票を作る](forms.ja.md) |
 | サーバーでサムネイル・ページの画像・検索用のテキストを作る | Go の [`thumbnail` と `imagebdf`](#go-サムネイルとページの画像thumbnailimagebdf)、[`Document.SearchText`](#読み込み)、または [`bdf` コマンド](#コマンドbdf) |
 
 ## Go: 変換（converter）
@@ -76,11 +77,11 @@ err = res.Doc.WriteSingle(f) // res.Doc.WriteSplit("out/") なら分割形式
 | パッケージ | 形式 | 固有の入口と設定 |
 |---|---|---|
 | `converter/pdf` | PDF | `Convert(rs io.ReadSeeker, opts)`、`NewStream(rs, opts)`（ページ単位の変換）。`Kind`（`fixed` か `flow`）、`NoSharePrefix`（共通プレフィックスを共有しない）、`NoAnnotations`、`Password` |
-| `converter/pptx` | PowerPoint | `Slides`（`converter.Pages`）、`Hidden`（非表示スライドも含める） |
-| `converter/xlsx` | Excel | `Sheets`（`converter.Pages`）、`Hidden`。`ConvertGrid(*Grid, opts)` は書式のない値の表（`Grid`）を Excel の新しいブックのように見せる |
+| `converter/pptx` | PowerPoint | `Slides`（`converter.Pages`）、`Hidden`（非表示スライドも含める）。`Fill(r, size, *TemplateData, opts)` はタグを書いたプレゼンテーションをデータで穴埋めしてスライドにし（`Result.Fields` にタグが引く名前。`TemplateData.Format` に `xlsx.Formatter()` を渡すとタグの表示形式が働く）、`Inspect` はタグだけを読む |
+| `converter/xlsx` | Excel | `Sheets`（`converter.Pages`）、`Hidden`、`Views`（`ViewsSheet` / `ViewsPrint` / `ViewsBoth`。印刷のページ）、`Paper`、`PrintTime`、`FileName`。`ConvertGrid(*Grid, opts)` は書式のない値の表（`Grid`）を Excel の新しいブックのように見せる。`Fill(r, size, *TemplateData, opts)` はタグを書いたブックをデータで穴埋めして印刷のページにし（`Result.Fields` にタグが引く名前）、`Inspect` はタグだけを読む。`Values(r, size, opts)` はブックをデータとして読む（シートごとの値） |
 | `converter/csv` | CSV・TSV | `Charset`、`Delimiter`、`Quote`、`Header`（`HeaderAuto` / `HeaderYes` / `HeaderNo`）、`TableStyle`、`Name`（シート名）。指定しなかったものは推測する |
 | `converter/parquet` | Apache Parquet | `Rows`（表示する行数。0 は `DefaultRows`、-1 は全行）、`NoTypes`（型の行を付けない）、`TableStyle`、`Name`（シート名）。フッターが暗号化されたファイルは `ErrEncrypted` |
-| `converter/docx` | Word | `Pages`、`Views`（`ViewsBoth` / `ViewsPages` / `ViewsScroll`） |
+| `converter/docx` | Word | `Pages`、`Views`（`ViewsBoth` / `ViewsPages` / `ViewsScroll`）。`Fill(r, size, *TemplateData, opts)` はタグを書いた文書をデータで穴埋めしてページにし（`Filled.Fields` にタグが引く名前。ビューは既定でページだけ）、`Inspect(r, size)` はタグだけを読む |
 | `converter/visio` | Visio（.vsdx） | `Pages` |
 | `converter/idml` | InDesign（.idml） | `Pages`、`Files`・`Dir`（リンク画像） |
 | `converter/drawio` | draw.io（.drawio、図を埋め込んだ .drawio.svg・.drawio.png） | `Convert(data []byte, opts)`（入力をバイト列で渡す）。`Pages`、`Border`（図の周りの余白） |
@@ -165,6 +166,7 @@ res, err := s.Finish() // Convert と同じ完成した文書
 | `(*Document).SearchText() (*SearchText, error)` | 検索エンジンに入れるテキスト。`Meta`（Dublin Core と入力形式）と、View ごとの `Pages`（`Page` は 1 始まりのページ番号、シートは 0 で丸ごと、`Text` は平文）。テキスト索引の Part があればそれを、なければ Object から取り出す。テキストのないページは除き、flow View のある文書の scroll View（同じ本文の別レイアウト）も除く。JSON にできる |
 | `DecodePathCollection` / `EncodePathCollection` | パス集合の Part |
 | `SharePrefixes(objs, minBytes)` | 複数の Object に共通する先頭部分を共有 Object に切り出す |
+| `NewReplay(part, dst)`、`(*Replay).Emit(in)` | 読んだ Object（`*ObjectPart`）の命令を、組み立て中の Object に写す。命令が参照するパス・Paint・フォント・画像・Object は、最初に使われたときに写し先へ足す。Object の一部だけを描き直す書き手のためのもの（PDF の書き出しが、グループの影を作るのに使う）。Part にない番号を参照する命令はエラー |
 | `HashOf` / `ParseHash` | Part のハッシュ |
 
 ### 保護モードの配信（segment）
@@ -190,6 +192,12 @@ http.Handle("POST /segments/{name}", &segment.Handler{
 |---|---|
 | `image/imgconv` | 画像の格納方法。`Options{Mode: imgconv.Convert, Quality: 80}` で WebP を試して小さい方を残す（`Keep` はそのまま）。`MaxDPI`（既定 `DefaultMaxDPI` = 192）と `MaxPixels` はページ上の大きさが分かるラスター入力の解像度の上限。`Optimize(data, opts)`、`EncodePixels`、`Resize`、`Available()`（`bdf_noconv` ビルドでは false）。`Decode(data)` は `MaxDecodePixels`（100 << 20 画素）を超える画像をデコードせず `ErrTooLarge` を返し、`Optimize` はそういう画像をそのまま残す |
 | `image/svg` | SVG を読む（描かない。描くのは `raster/imagebdf`）。`Parse(data, *Options) (*Document, error)` が要素の木を返す: `Document` は `Root`・`IDs`（`id` から要素。同じ `id` は最初のもの）・`Warnings`、`Node` は `Name`（接頭辞を除いた名前。テキストは `TextNode`）・`Attr`（`xlink:href` は `href`）・`Children`・`Parent`・`Sheet`（`<style>` の規則のうち当たったものの宣言）・`Text`。`(*Node).Declared(name)` は `style` 属性、スタイルシート、プレゼンテーション属性の順に宣言を探す（継承はしない）。属性の値は `ParseColor`（名前・`#rgb`・`rgb()`・`hsl()`・`currentColor`。`Color` は 0〜1 の RGBA）、`ParseNumber`・`ParseNumbers`、`ParseLength`（px に。単位・%・em）、`ParseTransform`（`Matrix`）で読む。ブラウザと同じく寛容で、誤りのある文書は誤りの手前まで読み、`svg` のルート要素がないときだけ `ErrNotSVG` を返す。上限は `Options` の `MaxDepth`（既定 256）・`MaxNodes`（2^20）・`MaxStyleMatches`（2^22）で、超えたら読むのをそこでやめて `Warnings` に書く。スタイルシートは型・クラス・ID のセレクタと子孫の組み合わせだけを読む。パスデータ（`d` 属性）は文字列のまま返し、図形にはしない |
+| `form` | 帳票のテンプレートをデータで穴埋めする（[帳票を作る](forms.ja.md)）。`LoadData(sources ...Source)` は JSON・YAML・CSV・Excel のファイルを 1 つのデータにまとめ、`Fill(r, size, *Options)` はテンプレート（.xlsx・.docx・.pptx、入力欄のある .pdf、pdfme の .json。中身から判定する）かコンパイル済みテンプレート（.bdft）を穴埋めして `Result{Doc, Warnings, Fields, Format}` を返す（`Format` は `FormatXLSX`・`FormatDOCX`・`FormatPPTX`・`FormatPDF`・`FormatPDFME`）。`Fields` はタグが引く名前（PDF フォームと pdfme ではフィールドの名前。型・選択肢・既定値・最大文字数も入る）、`Describe(r, size)` は形式と、テンプレートが自分で持つサンプル（コンパイル済みテンプレートのサンプル、pdfme のデザイナーに残した内容）、`Compile(r, size, name, *Options)` はコンパイル済みテンプレート（`Compiled{Doc, Template}`。`Options.Data` がサンプル）、`ReadTemplate` はその記述と元のテンプレートを返す。`Schema(fields, sample)` はデータの JSON Schema（2020-12。プロパティはテンプレートの順、`x-bdf` にタグの情報。`sample` があれば名前の場所と値の型をそれで決める）を返し、`SchemaOf(r, size, sample)` はテンプレートから直接返す（コンパイル済みテンプレートなら、中に持っている `Template.Schema`）。入力フォームを作るプログラムはこれを使う |
+| `converter/pdfform` | 入力欄のある PDF（AcroForm）をテンプレートとして埋める（design.md §3.34）。`Inspect(rs, *Options)` が入力欄を `[]tag.Field` で返し、`Fill(rs, *TemplateData, *Options)` が値を欄の場所に描いた文書を返す（`Result{Doc, Warnings, Fields, Pages, Protected}`）。入力欄のない PDF は `ErrNoForm`。入力欄そのもの（場所、種類、外観）は `converter/pdf` の `FormFields` が返す |
+| `converter/pdfme` | pdfme のテンプレート（デザイナーが保存する JSON）を埋める（design.md §3.34）。`Inspect(r, size)` がフィールド、`Defaults(r, size)` がデザイナーに残した内容（サンプル）、`Fill(r, size, *TemplateData, *Options)` が帳票を返す。`TemplateData` は `Data`・`Strict`・`Files`（画像）・`Format`（数値の書式）・`Now`（式の `date` と `dateTime`。なければデータの値）。`IsTemplate(head)` は先頭のバイト列から見分ける |
+| `form/tag` | テンプレートのタグ。`Parse(text) ([]Token, error)`（`Value`・`Open`・`Inverted`・`Close`・`Image`、エラーは文字の位置つきの `*Error`）、データを引く `Scope`（`NewScope`・`Item`・`Blank`・`Lookup`）、`Truthy`・`Items`・`Normalize`・`ParseDate`、タグが引く名前の `Field`、値を文字にする `ValueText`（表示形式は `Formatter`）、区間の変数 `Vars`、データが名前で指す画像を読む `PictureData`。画像のタグの `qr`・`barcode:種類`・`quiet:N` は `Token` の `Code`・`Level`・`Quiet` に入り、`(Token).Symbol(value)` が記号を返す。`Field.Code` は、その画像がどの記号かを示す |
+| `image/barcode` | QR コードとバーコードを作る（読まない。design.md §3.34）。`Encode(kind, text, *Options) (*Symbol, error)` の `kind` は `QR`・`EAN13`（JAN）・`EAN8`・`UPCA`・`Code39`・`Code128`・`GS1128`・`ITF`・`ITF14`・`NW7`（`Kind(name)` が `"jan"`・`"JAN-13"`・`"Codabar"` などの呼び名を直す。`Kinds()` は一覧）。`Options` は `Level`（QR コードの誤り訂正 `"L"`・`"M"`・`"Q"`・`"H"`。既定は M）と `Quiet`（余白のモジュール数。0 は記号ごとの既定、`NoQuiet` はなし）。`Symbol` は `Kind`・`Text`（チェックデジットを足した後の文字）・`W`・`H`（余白を含むモジュール数。バーコードは高さ 1）・`Linear`・`At(x, y)`・`Rects()`、`Path(x, y, w, h)` が暗いモジュールを矩形にしたパス、`Object(w, h)` が黒で塗った Object を返す。入らない文字、桁数、誤ったチェックデジットはエラー。文字は `MaxText`（8,192 バイト）まで |
+| `vector/pdfbdf` | 文書を PDF に書き出す（design.md §3.35）。`Write(w, doc, *Options) (*Result, error)`。`Options` は `Views`（書き出すビューの id。省略するとページのあるビュー、なければ全ビュー）、`SkipRoles`（省くレイヤーの役割）、`FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントの探し先）、`IgnoreFSType`、`NoCompression`、`CompressionLevel`、`Tagged`（タグ付き PDF。MARK の構造を構造木にする）、`PDFA`（PDF/A にする。`"2b"`・`"2u"`・`"2a"`・`"3b"`・`"3u"`・`"3a"`。a はタグ付きを兼ねる。ほかの値はエラー）。`Result` は `Pages`・`Fonts`（埋め込んだフォントの数）・`Warnings`。ページがなければ `ErrNoPages` |
 | `font/woff2` | TrueType・OpenType を WOFF2 にする、WOFF2 を戻す。`Encode(font)`、`Decode(data)`（glyf・loca・hmtx の変換を戻す。フォントコレクションは扱わない）、`Available()`、`IsWOFF(data)` |
 
 ## Go: サムネイルとページの画像（thumbnail、imagebdf）
@@ -230,7 +238,7 @@ return thumbnail.Encode(w, img, thumbnail.PNG)
 | `imagebdf.Object(obj, scale, *Options)` | 文書に入れていない `*bdf.Object` を、1 単位 `scale` 画素で描く。他のパート（埋め込みフォント、画像、パスの集まり、他の Object）を参照しない Object に限る（参照していれば `ErrNeedsDocument`）。画像は Object の境界を画素に切り上げた大きさで、`Bounds()` は Object の原点からの画素（原点が (0, 0)）。背景は `Background`、指定がなければ透明 |
 | `imagebdf.MaxPixels` / `ErrTooLarge` / `ErrNoPage` / `ErrNeedsDocument` / `SheetSize(v)` | 描く画像の大きさの上限（64 M 画素）とそのエラー、ないページ、文書がないと描けない Object、シートの大きさ |
 
-描けるもの: パス（nonzero・evenodd、アンチエイリアス）、線（端・結合・破線。1 画素より細い線はビューアと同じく 1 画素幅で薄く）、クリップ、単色・線形・放射・扇形のグラデーションとパターン、画像（PNG、JPEG と EXIF の向き、GIF、BMP、WebP、SVG）、埋め込みフォントと名前で参照するフォントのテキスト（`advance` 補正、揃え、ベースライン、字間、太字・斜体の合成、字ごとのフォールバック、右から左の文字の並べ替え）、グループの透明度とブレンド、ソフトマスク、影。描かないもの: AVIF の画像、FILTER、ヒンティング、カーニング、合字、アラビア文字の字形の変化。
+描けるもの: パス（nonzero・evenodd、アンチエイリアス）、線（端・結合・破線。1 画素より細い線はビューアと同じく 1 画素幅で薄く）、クリップ、単色・線形・放射・扇形のグラデーションとパターン、画像（PNG、JPEG と EXIF の向き、GIF、BMP、WebP、SVG）、埋め込みフォントと名前で参照するフォントのテキスト（`advance` 補正、揃え、ベースライン、字間、太字・斜体の合成、字ごとのフォールバック、右から左の文字の並べ替え）、グループの透明度とブレンド、ソフトマスク、影（グループを囲む状態の影は、グループ全体の影になる）。描かないもの: AVIF の画像、FILTER、ヒンティング、カーニング、合字、アラビア文字の字形の変化。
 
 ## Go: 数式（formula、raster/ebitenginebdf）
 
@@ -271,6 +279,9 @@ img, err := imagebdf.Object(l.Object(), 2, nil) // *image.RGBA
 | サブコマンド | 内容 |
 |---|---|
 | `generate [flags] <input> <out.bdf \| dir/>` | 変換する（`/` で終わる出力は分割形式）。フラグと形式ごとの `-param` は `bdf generate -h` |
+| `fill [flags] <template> <out.bdf \| dir/>` | 帳票のテンプレート（.xlsx、.docx、.pptx、.bdft）をデータで穴埋めする。`-data file`・`-data name=file`（繰り返し可）、`-each`（レコードごとに 1 つ）、`-strict`、`-files` |
+| `template compile [flags] <template> <out.bdft>` / `template schema <template>` | テンプレートを検査してコンパイル済みにする（`-sample`）/ タグが引く名前を JSON で書く |
+| `pdf [flags] <file> <out.pdf>` | ページを PDF に書き出す。`-view`（繰り返し可）、`-skip <role>`（レイヤーを役割で省く）、`-font-dir`、`-no-system-fonts`、`-ignore-fstype`、`-no-compression` |
 | `ls` / `manifest` | View と Part の一覧 / manifest の JSON |
 | `disasm <file> <hash>` / `extract <file> <hash> <out>` | Object の逆アセンブル / Part の取り出し |
 | `split` / `join` | 1 ファイル形式と分割形式の変換（パスワード不要） |
@@ -285,7 +296,7 @@ img, err := imagebdf.Object(l.Object(), 2, nil) // *image.RGBA
 
 ## ブラウザ内変換（cmd/bdfwasm）
 
-`cmd/bdfwasm` は変換器を `GOOS=js GOARCH=wasm` でビルドしたもので、Go の `wasm_exec.js` とともに Worker で動かす（デモサイトは `examples/common/convert-worker.ts`）。起動すると `globalThis.bdfConverter` を設定する。`-tags pdfonly`、`officeonly`、`webonly`、`imageonly` で PDF 用、Office 系用、HTML・Markdown・EPUB 用、画像用に分けてビルドできる。`previewonly` は変換器を持たず、BDF のサムネイルと検索用テキストを作るモジュールになる（`thumbnail` と `text`）。
+`cmd/bdfwasm` は変換器を `GOOS=js GOARCH=wasm` でビルドしたもので、Go の `wasm_exec.js` とともに Worker で動かす（デモサイトは `examples/common/convert-worker.ts`）。起動すると `globalThis.bdfConverter` を設定する。`-tags pdfonly`、`officeonly`、`webonly`、`imageonly` で PDF 用、Office 系用、HTML・Markdown・EPUB 用、画像用に分けてビルドできる。`previewonly` は変換器を持たず、BDF のサムネイルと検索用テキストと PDF を作るモジュールになる（`thumbnail`・`text`・`pdf`）。`formonly` は帳票のテンプレート（Word・Excel・PowerPoint）を読んで穴埋めし、PDF にするモジュールになる（`fields`・`fill`・`pdf`）。
 
 | 名前 | 内容 |
 |---|---|
@@ -297,6 +308,9 @@ img, err := imagebdf.Object(l.Object(), 2, nil) // *image.RGBA
 | `stream.close()` | ストリームを手放す（`finish` のあとも呼ぶ） |
 | `thumbnail(bdf: Uint8Array, options?)` | `previewonly` のみ。単一ファイル形式の BDF のサムネイルを描き、`{image, format, width, height, mode, warnings}` を返す。`options` は `{size?, mode?, format?, view?, sheetDpi?, password?, fonts?}`（`size` は既定 256・最大 2048、`sheetDpi` は既定 72、`mode` は `auto`・`crop`・`fit`、`format` は `png`・`jpeg`。`bdf_noconv` でなければ `webp` も） |
 | `text(bdf: Uint8Array, options?)` | `previewonly` のみ。`bdf text` と同じ JSON（メタデータとページごとのテキスト）を `{json}` で返す。`options` は `{password?}` |
+| `pdf(bdf: Uint8Array, options?)` | `previewonly` と `formonly`。単一ファイル形式の BDF を PDF に書き出し（`vector/pdfbdf`）、`{pdf, pages, fonts, warnings}` を返す。`options` は `{password?, fonts?, views?, skip?, tagged?, pdfa?}`（`views` は書き出すビューの id、`skip` は省くレイヤーの役割、`tagged` はタグ付き PDF、`pdfa` は PDF/A のレベル `"2b"`・`"2u"`・`"2a"` など）。暗号化した文書はパスワードが要り、PDF は暗号化されない |
+| `fields(template: Uint8Array, options?)` | `formonly` のみ。テンプレート（.xlsx・.docx・.pptx、入力欄のある .pdf、pdfme の .json、.bdft）のタグやフィールドを読み、`{fields, schema, format, sample?}` を返す。`fields` は `bdf template schema` と同じ名前の一覧、`schema` はデータの JSON Schema で、どちらも JSON の文字列。`options.sample`（JSON の文字列）があればスキーマをそれで確定する。`format` はテンプレートの形式（`"xlsx"`・`"docx"`・`"pptx"`・`"pdf"`・`"pdfme"`。コンパイル済みテンプレートなら、中のテンプレートの形式）、`sample` はテンプレートが自分で持つサンプル（コンパイル済みテンプレートと pdfme のテンプレート） |
+| `fill(template: Uint8Array, options)` | `formonly` のみ。テンプレートを穴埋めし、`{bdf, format, pages, warnings}` を返す。`options` は変換の `options` に加えて `{data, files?, strict?}`（`data` はデータの JSON の文字列、`files` はデータが名前で指す画像の `{パス: Uint8Array}`） |
 
 `options` は `{format?, password?, fonts?, name?, pages?}`。`pages` は `bdf generate -pages` と同じ書き方で、変換するページ（スライド、シート）を選ぶ（サムネイルだけなら `"1"`）。`fonts` はフォントのディレクトリの URL で、`index.json` にファイルとフォント走査の範囲（テーブルディレクトリ、`name`・`OS/2`・`post`・`cmap`）を並べておく（`site/build.mjs` が作る）。フォールバック探索では `cmap` に文字があるフォントだけ全体を取得する。失敗した Promise の Error は、パスワードが要る・違う・形式が分からないときに `code` が `"password-required"`、`"wrong-password"`、`"unknown-format"` になる。返す文書は入力が暗号化されていても暗号化しない。
 

@@ -1,0 +1,113 @@
+id: survey:template-systems-overview
+type: survey
+title: 世の中の帳票・印刷テンプレートシステムの調査（概観と結論）
+summary: >-
+  2026-10-13 の Web 調査のまとめ。帳票エンジン（帯型・流し込み型・固定ページ型）、CCM スイート、印刷ストリームとプリンタ常駐フォーム、
+  ドットインパクトとラベルプリンタの言語、PDF フォーム / XFA、差し込み印刷、Office ファイルをテンプレートにする生成器、日本の帳票製品、文書記述言語。
+  原文は knowledge-inputs/form-template-survey/ の 3 つのメモ（source:form-template-survey）。
+lifecycle: active
+authority: inferred
+aliases:
+- 帳票システム調査
+- template systems survey
+facts:
+  clusters:
+    report_engines: system:report-engines-banded（帯型）、system:report-engines-flow-grid（流し込み・グリッド型）、system:activereports-page-report（固定ページ型）、system:oracle-reports（古典的なスタイル分類）
+    ccm: system:ccm-suites（Quadient Inspire、OpenText Exstream、SmartCOMM、Papyrus、EngageOne）
+    print_streams: system:afp-line-data、system:printer-resident-forms、system:dot-impact-escp、system:label-printer-languages
+    forms_and_merge: system:pdf-forms-xfa、system:mail-merge-tools
+    office_templates: system:office-template-generators
+    japan: system:svf、system:japan-form-products
+    languages: system:document-description-languages
+  svf_overseas_answer: >-
+    SVF と 1 対 1 の海外製品はない。海外では「開発者向けの帳票エンジン」（JasperReports、Crystal、SSRS、ActiveReports、Stimulsoft、FastReport、List & Label …）と
+    「大量発行・配信・承認まで持つ CCM」（Quadient Inspire、OpenText Exstream、SmartCOMM、Papyrus、EngageOne）の 2 系統に分かれる。
+    SVF は専用デザイナ＋エンジン＋出力管理（印刷サーバ、PDF、Web）を 1 製品で持ち、固定枠の明細・連帳・綴り・和暦・外字といった日本固有の要件を製品機能にしている点で両系統の中間にある。
+    固定枠＋リンクサブフォームの意味論に最も近い海外の機能は ActiveReports Page report の OverflowPlaceHolder（開発元は日本資本の GrapeCity = MESCIUS）と XFA の flowed subform の leader / trailer。
+  common_patterns:
+    two_families: '絶対配置の固定フォーム（SVF、Create!Form、ActiveReports Page、pdfme、プリントクリエイター: 固定枠、入る行数、空行埋め）と、流し込み・帯型（ActiveReports Section、OPRO Band、Smart Forms の main window、SSRS、BIRT、HTML / XSL-FO / Typst）。同じ製品が両方を別のレポート種として持つ（ActiveReports、Oracle Reports）'
+    repeat_scope: '繰り返し範囲は入れ物から推定する。表の行、段落 / セクション、スライド / シート。印は 3 流派: 開始と終了の対、Carbone の [i] / [i+1] の番兵、マーカーなし（Templater、VB-Report）'
+    overflow_vocabulary: CanGrow / CanShrink、KeepTogether、RepeatOnNewPage、PrintAtBottom、StartNewPage、isPrintWhenDetailOverflows、PrintOn First / Last / Odd / Even、XFA の breakBefore / After と leader / trailer、Exstream のページ単位の flow、SVF の改ページ・リンクサブフォーム・最終ページのみ
+    page_n_of_m: 総ページ数は必ず 2 パスか遅延評価（Crystal、FastReport と Stimulsoft の DoublePass、Jasper の evaluationTime=Report、SVF の _TOTAL_PAGE_COUNT、XSL-FO の citation-last、Typst の final()）
+    blank_fill: 空行で埋める原語を持つのは Stimulsoft EmptyData、ActiveReports RepeatBlankRows / RepeatToFill、List & Label の fixed size、SVF の「枠の大きさを固定」、OPRO の Report Footer の空バンド埋め
+    carry_forward: 繰越を原語として持つのは BI Publisher（brought / carried forward）と SVF（累計関数＋_PREV_P / _NEXT_P）だけ。ほかはデータ側で計算する
+    static_variable_split: 静的フォームと可変データの分離は印刷ストリーム側の伝統（AFP overlay、Xerox FRM、PCL macro、PS execform、ZPL ^DF、SATO ESC&、Brother の転送テンプレート）。番号 / 名前付きの穴（ZPL ^FN、Brother の番号、Dymo の Name、AcroForm T、MERGEFIELD）
+    grid_positioning: 連帳は LPI / CPI の格子と行数またはインチの用紙長、1 桁目の改行制御で切る（ESC/P、Proprinter、PPFA の SETUNITS、COBOL の PAGE LIMIT、pr -l）。SVF は連帳の高さを 1/6 インチ単位で持つ
+    label_geometry: ラベルは dpi 既知のドット数（ZPL ^LL / ^PW）か 1/10 mm（TPCL）
+    office_engines_no_pagination: Office テンプレート生成器はページ分割を Word / LibreOffice に任せ、固定行数やキーブレイク改ページを持たない。日本の製品は明示的に制御する（行数で改ページ、キーブレイク、連帳のピッチ）
+    excel_formulas_fragile: 行挿入で Excel の式は壊れやすい（Carbone は外部再計算、Templater は調整、VB-Report は Repeat 境界を越えられない、BI Publisher は入れ子で壊れる）
+    governance: 版管理・承認・差分は CCM ではリポジトリの機能（Inspire Content Manager / Approval、Exstream の承認と Visual Compare、SmartCOMM の branch / withdraw、Papyrus WebRepository）
+  terminology:
+    帳票: business form / report
+    固定帳票: fixed-layout（pre-positioned）form
+    可変帳票: variable / flowing report
+    明細: detail / line items（ActiveReports Detail、OPRO Band、SVF レコード、Jasper detail band）
+    鑑: cover / header page of a multi-page document
+    繰越: brought forward（前頁より）/ carried forward（次頁へ）
+    小計 中計 大計 総計: subtotal levels / grand total
+    累計: running total（SVF の R 系、ActiveReports の SummaryRunning）
+    ページ合計: page total（SVF の P 系、ActiveReports PageTotal、BI Publisher page-total）
+    キーブレイク: control / group break
+    改ページ: page break
+    ページあふれ: overflow
+    空行埋め: blank-row fill（RepeatToFill / RepeatBlankRows / EmptyData）
+    連帳 連続帳票 連続用紙: continuous（fan-fold）forms、1/6 インチの行
+    単票: cut-sheet single form
+    複写 綴り: multi-part forms / copy sets
+    ドットインパクト: dot-matrix impact printer
+    フォームオーバーレイ: form overlay（AFP overlay、PCL macro、LIPS のユーザーページ）
+    差し込み: mail merge / placeholder substitution
+    サブフォーム レコード: repeat region / row（SVF）
+    リンクサブフォーム: linked continuation region（ActiveReports の OverflowPlaceHolder に相当）
+    和暦: Japanese era calendar
+    外字: end-user-defined（PUA）glyphs、EUDC
+    縦書き: vertical writing
+    面付け: imposition（ラベルの N×M）
+  takeaways_for_bdft:
+  - 形態は 1 つのモデルに統合しない。固定ページ、固定行数のページ複製、行挿入の流し込みの 3 つを別の意味論として持つのは商用製品の慣行に一致する（ActiveReports の 3 種、SVF の固定枠、OPRO の帯）
+  - 固定行数明細のタグ属性には SVF と BI Publisher の語彙を借りる: 最終ページのみ / 先頭ページのみ、空行埋め、前頁より / 次頁へ（真偽値）、型違いの続きページ（リンクサブフォーム / OverflowPlaceHolder）
+  - 繰越の金額は「データ側」が主流。テンプレートで許すなら累計（RSUM 相当）だけに限る
+  - 総ページ数は先にチャンクを数えれば 2 パスは要らない。流し込み型（Word の表）だけが 2 パス相当になる
+  - Excel の式の再計算と参照のずらしを自前で持つ計画は、他製品の弱点を埋める差別化になる
+  - 静的 Object の共有（内容アドレス）は AFP のオーバーレイや PDF/VT の XObject 再利用と同じ狙いで、BDF では形式の側に組み込み済み
+  unverified:
+  - Quadient Inspire のあふれの仕組み
+  - SVF のフォームオーバーレイ（PDF 背景）機能
+  - ActiveReports の繰越の原語
+  - TPCL の {XB / {XR、Brother の ^TS / ^DI / ^II
+  - Fisshplate の構文、Pentaho の .prpt の内部ファイル名
+relations:
+- relation: summarizes
+  to: system:report-engines-banded
+- relation: summarizes
+  to: system:report-engines-flow-grid
+- relation: summarizes
+  to: system:activereports-page-report
+- relation: summarizes
+  to: system:oracle-reports
+- relation: summarizes
+  to: system:ccm-suites
+- relation: summarizes
+  to: system:afp-line-data
+- relation: summarizes
+  to: system:printer-resident-forms
+- relation: summarizes
+  to: system:dot-impact-escp
+- relation: summarizes
+  to: system:label-printer-languages
+- relation: summarizes
+  to: system:pdf-forms-xfa
+- relation: summarizes
+  to: system:mail-merge-tools
+- relation: summarizes
+  to: system:office-template-generators
+- relation: summarizes
+  to: system:svf
+- relation: summarizes
+  to: system:japan-form-products
+- relation: summarizes
+  to: system:document-description-languages
+- relation: informs
+  to: requirement:form-template
+- relation: informs
+  to: taxonomy:form-layout-axes

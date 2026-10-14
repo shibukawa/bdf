@@ -879,7 +879,9 @@ func (in *interp) markedContent(tag string, props types.Object) {
 		d, text = p.dict(ref), p.text
 	}
 	e := mcEntry{}
-	if tag == "OC" && !in.c.oc.visible(ref) {
+	if tag == "OC" && !in.c.oc.visible(ref) || tag == "Tx" && in.c.hideTx > 0 {
+		// (hidden optional content, and the text of a form field that is
+		// filled again)
 		in.flushRun()
 		e.hidden = true
 		in.hidden++

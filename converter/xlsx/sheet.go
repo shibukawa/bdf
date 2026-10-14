@@ -94,6 +94,11 @@ type worksheet struct {
 	// autoFilter is the range of the sheet's AutoFilter (tables have their own)
 	autoFilter *cellRange
 	noValue    int // formula cells saved without a value
+	// print is what the sheet says about printing it (print.go)
+	print printSetup
+	// formulas are the formulas of the cells, by row and column: kept only
+	// for a template that is filled (template.go)
+	formulas map[[2]int]*cellFormula
 
 	// grids (ConvertGrid)
 	fitCols    bool // columns are as wide as their text
@@ -221,6 +226,8 @@ func (ws *worksheet) element(n *ooxml.Node) {
 				ws.x14cfs = append(ws.x14cfs, cfs.Children("conditionalFormatting")...)
 			}
 		}
+	case "sheetPr", "pageMargins", "pageSetup", "printOptions", "rowBreaks", "colBreaks", "headerFooter":
+		ws.print.element(n)
 	}
 }
 
@@ -355,6 +362,27 @@ func (c *converter) readSheetData(r *xmlro.Reader, ws *worksheet) error {
 					hasV = true
 				case xmlro.Equal(r.LocalName(), "f"):
 					hasF = true // its content, and extensions, are passed over
+					if c.opts != nil && c.opts.fill != nil {
+						// a template is calculated again when it is filled
+						cf := &cellFormula{}
+						if v, ok := r.Attr("t"); ok {
+							cf.kind = v.String()
+						}
+						if v, ok := r.Attr("si"); ok {
+							if n, err := v.Int(); err == nil && n >= 0 && n < 1<<30 {
+								cf.si = int(n) + 1
+							}
+						}
+						v, err := r.ElementText()
+						if err != nil {
+							return err
+						}
+						cf.src = strings.TrimSpace(v.String())
+						if ws.formulas == nil {
+							ws.formulas = map[[2]int]*cellFormula{}
+						}
+						ws.formulas[[2]int{cur.idx, cl.col}] = cf
+					}
 				}
 			}
 			c.cellValue(cl, typ, value, is)

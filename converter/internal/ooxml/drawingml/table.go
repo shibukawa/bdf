@@ -53,7 +53,21 @@ type stylePart struct {
 	reg region
 }
 
-func (s *Drawing) drawTable(cv *canvas.Canvas, sh *shape, xf xform, tbl *ooxml.Node) {
+// tableGrid is a table laid out: its columns, its cells with their text,
+// and its rows grown to their text.
+type tableGrid struct {
+	nr, nc     int
+	colX, rowH []float64
+	cells      [][]*tcell
+	tblPr      *ooxml.Node
+	style      *ooxml.Node
+	flags      map[string]bool
+	parts      func(r, c int) []stylePart
+}
+
+// tableGrid lays out the text of the cells of a table of a part; nil for a
+// table without rows or columns.
+func (s *Drawing) tableGrid(tbl *ooxml.Node, part string) *tableGrid {
 	var colW []float64
 	for _, gc := range tbl.Path("tblGrid").Children("gridCol") {
 		colW = append(colW, gc.AttrEMU("w", 0))
@@ -61,7 +75,7 @@ func (s *Drawing) drawTable(cv *canvas.Canvas, sh *shape, xf xform, tbl *ooxml.N
 	trs := tbl.Children("tr")
 	nr, nc := len(trs), len(colW)
 	if nr == 0 || nc == 0 {
-		return
+		return nil
 	}
 	rowH := make([]float64, nr)
 	cells := make([][]*tcell, nr)
@@ -154,7 +168,7 @@ func (s *Drawing) drawTable(cv *canvas.Canvas, sh *shape, xf xform, tbl *ooxml.N
 			if cl == nil || cl.merged {
 				continue
 			}
-			tf := s.cellText(cl.tc, parts(r, c), sh.part)
+			tf := s.cellText(cl.tc, parts(r, c), part)
 			if tf == nil {
 				continue
 			}
@@ -175,6 +189,25 @@ func (s *Drawing) drawTable(cv *canvas.Canvas, sh *shape, xf xform, tbl *ooxml.N
 			}
 		}
 	}
+	return &tableGrid{nr: nr, nc: nc, colX: colX, rowH: rowH, cells: cells, tblPr: tblPr, style: style, flags: flags, parts: parts}
+}
+
+// TableRowHeights returns the heights of the rows of a table (a:tbl) of a
+// part as they are drawn: grown to the text of their cells.
+func (s *Drawing) TableRowHeights(tbl *ooxml.Node, part string) []float64 {
+	g := s.tableGrid(tbl, part)
+	if g == nil {
+		return nil
+	}
+	return g.rowH
+}
+
+func (s *Drawing) drawTable(cv *canvas.Canvas, sh *shape, xf xform, tbl *ooxml.Node) {
+	g := s.tableGrid(tbl, sh.part)
+	if g == nil {
+		return
+	}
+	nr, nc, colX, rowH, cells, tblPr, style, flags, parts := g.nr, g.nc, g.colX, g.rowH, g.cells, g.tblPr, g.style, g.flags, g.parts
 	rowY := make([]float64, nr+1)
 	for r := 0; r < nr; r++ {
 		rowY[r+1] = rowY[r] + rowH[r]

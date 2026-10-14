@@ -121,7 +121,7 @@ function outline(toc) {
 
 /**
  * The header of every page of the site. out is the page, from the site's
- * root; current names the page of the header it is ("viewer", "thumbnail",
+ * root; current names the page of the header it is ("viewer", "form", "thumbnail",
  * "text", "docs"); other is the same page in the other language.
  */
 export function header({ lang, out, current, other }) {
@@ -136,6 +136,7 @@ export function header({ lang, out, current, other }) {
 <a class="home" href="${up}${home}">BDF</a>
 <ul>
 ${item("viewer", "viewer/", ui.viewer)}
+${item("form", "form/", ui.form)}
 ${item("thumbnail", "thumbnail/", ui.thumbnail)}
 ${item("text", "text/", ui.text)}
 ${item("docs", docs, ui.docsNav)}

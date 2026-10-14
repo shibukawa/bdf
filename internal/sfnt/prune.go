@@ -102,6 +102,13 @@ func (f *Font) PruneGlyphs(keep map[uint16]bool) {
 	if hmtx, hhea := f.Tables["hmtx"], f.Tables["hhea"]; hmtx != nil && len(hhea) >= 36 {
 		nhm := int(be16(hhea, 34))
 		zeroed := append([]byte(nil), hmtx...)
+		// the glyphs after the last full metric have its advance: it is
+		// that of a kept one of them too (the glyphs of a monospaced font,
+		// the ideographs of a CJK font)
+		shared := false
+		for g := range needed {
+			shared = shared || int(g) >= nhm
+		}
 		for g := 0; g < f.NumGlyphs; g++ {
 			if needed[uint16(g)] {
 				continue
@@ -109,6 +116,8 @@ func (f *Font) PruneGlyphs(keep map[uint16]bool) {
 			p, size := g*4, 4 // advance and lsb
 			if g >= nhm {
 				p, size = nhm*4+(g-nhm)*2, 2 // lsb only
+			} else if g == nhm-1 && shared {
+				p, size = g*4+2, 2
 			}
 			if p+size <= len(zeroed) {
 				clear(zeroed[p : p+size])

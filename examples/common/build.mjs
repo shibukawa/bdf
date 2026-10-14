@@ -2,9 +2,9 @@
 // bundled with esbuild, the workers (the rendering worker of @bdfkit/render and
 // the converter worker, a classic worker that loads Go's wasm_exec.js), the
 // converters as wasm (cmd/bdfwasm: one module for PDF, one for the Office
-// formats, one for HTML, Markdown and EPUB, one for images, and one without
-// converters for thumbnails and search text) and the fonts the converters
-// lay text out with.
+// formats, one for HTML, Markdown and EPUB, one for images, one without
+// converters for thumbnails, search text and PDF files, and one that fills
+// the templates of forms) and the fonts the converters lay text out with.
 import { execFile as execFileCb } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,7 +23,9 @@ export const MODULES = [
   { file: "bdf-office.wasm", tags: "officeonly" },
   { file: "bdf-web.wasm", tags: "webonly" },
   { file: "bdf-image.wasm", tags: "imageonly" },
-  { file: "bdf-preview.wasm", tags: "previewonly" },
+  // (with the decoder of WOFF2: it reads the fonts of documents made elsewhere, for their thumbnails and PDF files)
+  { file: "bdf-preview.wasm", tags: "previewonly,bdf_woff2dec" },
+  { file: "bdf-form.wasm", tags: "formonly" },
 ];
 
 const FONT_EXT = /\.(ttf|otf|ttc|otc)$/i;

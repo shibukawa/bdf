@@ -205,7 +205,11 @@ func (m *refMap) object(i uint64) ObjRef {
 	if r, ok := m.objects[i]; ok {
 		return r
 	}
-	r := m.dst.AddObject(m.part.Objects[i], m.src.objBBox[i])
+	var bbox Rect // (unknown when the instructions come from a part that was read)
+	if m.src != nil {
+		bbox = m.src.objBBox[i]
+	}
+	r := m.dst.AddObject(m.part.Objects[i], bbox)
 	m.objects[i] = r
 	m.Objects = append(m.Objects, int(i))
 	return r
@@ -306,6 +310,32 @@ func (m *refMap) emit(in Instr) error {
 		return fmt.Errorf("bdf: cannot re-emit opcode 0x%02x", in.Op)
 	}
 	return nil
+}
+
+// Replay copies instructions of an object that was read into an object
+// that is being built: the paths, paints, fonts, images and objects that
+// the instructions refer to are added to the destination when they are
+// first used. It is for a writer that draws a part of an object again (a
+// group by itself, for its shadow); the bounding boxes of the objects that
+// the instructions use are not known, so the destination needs a bounding
+// box of its own (SetBBox).
+type Replay struct{ m *refMap }
+
+// NewReplay starts copying instructions of part into dst.
+func NewReplay(part *ObjectPart, dst *Object) *Replay {
+	return &Replay{m: newRefMap(nil, part, dst)}
+}
+
+// Emit writes an instruction of the part to the destination. An
+// instruction that refers to a resource the part does not have is an
+// error, and is not written.
+func (r *Replay) Emit(in Instr) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = &FormatError{Msg: "an instruction refers to a resource the object does not have"}
+		}
+	}()
+	return r.m.emit(in)
 }
 
 // Split is an object cut in two: Prefix draws the first instructions,

@@ -1,0 +1,75 @@
+id: system:ccm-suites
+type: system
+title: CCM（顧客コミュニケーション管理）スイート — Quadient Inspire / OpenText Exstream / SmartCOMM / Papyrus / EngageOne
+summary: >-
+  明細書・請求書・保険証券・契約書・通知を大量にバッチ生成し、印刷（AFP / PS / PCL / Metacode / PDF）とメール・Web・SMS に配る海外の帳票基盤。
+  日本の SVF に最も近い「海外の似たシステム」はこの分類と、帳票エンジン（system:report-engines-banded）の 2 系統。
+  テンプレートはデザイナで作り、リポジトリで版管理と承認を行い、データを視覚的に対応付ける。
+lifecycle: active
+authority: observed
+aliases:
+- CCM
+- Customer Communications Management
+- Quadient Inspire
+- OpenText Exstream
+- SmartCOMM
+- ISIS Papyrus
+- EngageOne
+facts:
+  quadient_inspire:
+    template: Inspire Designer の Workflow（WFD）。データ入力・加工・Layout・Imposition・Output のモジュールをつなぐ
+    outputs: AFP、PostScript、PCL、Metacode、XML、PDF。バッチとオンデマンド。メール・Web・SMS・FAX
+    governance: Content Manager（版管理）、Approval（校正と承認）、Compare（版間の差分）
+    overflow: 公開文書では未確認（UNVERIFIED）
+  opentext_exstream:
+    template: Design Manager がテンプレート・データファイル・変数・出力・出力キューをオブジェクトとして持つ（設計データベース）
+    overflow: ページ単位。「指定した flow ページへ流す」「自分を複製して流す」「流さない」。表はヘッダー・フッターをページをまたいで繰り返し、孤立行を自動制御
+    data: 区切りテキスト、JSON、XML、ODBC、COBOL コピーブック、印刷ファイル。行データは ANSI / 機械の改行制御コードでページに切る。3211 Line Data 出力モジュール
+    governance: 複数承認者のワークフロー、ページ間で共有するテンプレート、Visual Compare
+  smartcomm:
+    template_selector: 1 テンプレート＋1 チャネル＋任意で言語・地域・ブランドの組で選ぶ。Template Editions で 1 テンプレートを 56 に代える例
+    outputs: 印刷は afp / pcl / pdf / ps / tiff / xml / docx、メール・Web は html、SMS は txt
+    data_model: プレースホルダー入りの XML。版を選んでバインド。Draft Editor でプレビューと承認
+  papyrus:
+    roles: 'Designer（IT: レイアウト・変数・ロジック）と Client / Desktop（業務: 文・表・署名）。部品を全文書種で再利用'
+    engine: DocEXEC がバッチ・オンライン・対話の文書を高速に組版し AFP と PDF を出す（OMR・バーコード・索引）
+    governance: WebRepository の版管理・検証・監査・サインオフ
+  engageone:
+    lineage: Pitney Bowes DOC1（Designer + Generate）。設計資源とデータベース抽出をマージして明細書・請求書をバッチ生成
+    interactive: 対話テンプレートは Designer の設計＋対話データ定義。データモデルは W3C XForms。編集可能な段落を指定し残りは保護
+    runtime: Windows と IBM OS/400 で動き AFP を出す事例
+  common:
+  - テンプレートはデザイナで作る専用形式で、Office ファイルではない
+  - 版管理・承認・差分比較はリポジトリの機能として製品に含まれる
+  - 1 つのテンプレートからチャネルと出力形式に展開する
+  - あふれの扱いは作成側（コンポーザ）が持ち、印刷ストリームには概念がない
+relations:
+- relation: exemplifies
+  to: pattern:growing-detail
+- relation: exemplifies
+  to: pattern:copy-variants
+- relation: compared_with
+  to: system:svf
+assertions:
+- predicate: exstream_overflow_model
+  value: page-level flow (flow to designated page / copy itself / ignore)
+  authority: observed
+  evidence:
+    url: https://www.opentext.com/en/media/data-sheet/opentext-communications-exstream-designer-ds-en.pdf
+    note: via search snippet
+- predicate: inspire_outputs
+  value: [AFP, PostScript, PCL, Metacode, XML, PDF]
+  authority: observed
+  evidence:
+    url: https://www.ricoh-usa.com/en/products/pd/software/commercial-industrial-printing-software/composition/quadient-inspire/_/R-QUA-INSP-CS1
+- predicate: smartcomm_template_selector
+  value: template + channel (+ language / jurisdiction / brand)
+  authority: observed
+  evidence:
+    url: https://www.smartcommunications.com/wp-content/uploads/2019/05/INNOVATE-Training-Multi-Recipient-Communication-Through-Template-Selectors.pdf
+- predicate: engageone_data_model_standard
+  value: W3C XForms
+  authority: observed
+  evidence:
+    url: https://docs.precisely.com/docs/sftw/e1-compose-server/4.4.11.R4/en-us/compose-help/ccm_interactive_about/Concept__EngageOne_Interactive_Overview.html
+    note: via search snippet; direct fetch failed

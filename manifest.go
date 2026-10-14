@@ -39,6 +39,12 @@ const (
 	// PartAudio is an audio file that a view plays, as it is (docs/spec.md
 	// §4.4).
 	PartAudio = "audio"
+	// PartTemplate describes a compiled template of forms as JSON, and
+	// PartSource is the template it was compiled from (package form;
+	// docs/spec.md §4.5). No view refers to them: a reader of documents
+	// passes them over.
+	PartTemplate = "tpl"
+	PartSource   = "src"
 	// PartSealed is the type of the parts of an encrypted document's outer
 	// manifest (docs/spec.md §3.5).
 	PartSealed = "sealed"

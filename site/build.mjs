@@ -2,10 +2,11 @@
 //
 //   index.html, index.ja.html   the top page (home.mjs), which shows a PDF from bdf
 //   viewer/                     the demo viewer (examples/viewer)
+//   form/                       a template of a form filled with what is typed into the form made of its tags
 //   thumbnail/, text/           thumbnails and search text of a file dropped on the page
 //   docs/                       the documentation (docs.mjs: docs/*.md as HTML)
 //   lib/                        the workers and the converters as wasm (examples/common/build.mjs)
-//   fonts/, samples/            the fonts the converters lay text out with, and sample files
+//   fonts/, samples/, forms/    the fonts the converters lay text out with, sample files, and templates of forms with their data
 //
 // Files opened on the site are converted inside the browser.
 //
@@ -92,6 +93,47 @@ async function copySamples() {
   await writeFile(join(out, "samples/index.json"), JSON.stringify(index));
 }
 
+/** The templates the form page offers. Three shapes of forms, each as a workbook, a document and a deck, filled with the same data. */
+const FORM_SHAPES = [
+  { id: "fixed", label: "A certificate", about: "one page: values, a date, a condition, a picture, a QR code and a barcode", files: ["stamp.png"] },
+  { id: "rows", label: "An invoice", about: "a table that grows by a row for each item, over as many pages as it takes", files: [] },
+  { id: "pages", label: "A delivery slip", about: "ten rows a page; a page for each page of the data, which carries the totals over", files: [] },
+];
+const FORM_FORMATS = [["xlsx", "Excel"], ["docx", "Word"], ["pptx", "PowerPoint"]];
+/** And the templates whose fields have places: a PDF with form fields, and templates of pdfme. Each has its own data. */
+const FORM_PLACED = [
+  { id: "application", label: "An application", about: "a PDF with form fields: texts, a comb of digits, checkboxes, radio buttons and a choice, filled in their places",
+    data: ["test/pdf/data/application.json", "application.json"], template: ["converter/pdfform/testdata/application.pdf", "application.pdf", "PDF form"] },
+  { id: "pdfme-invoice", label: "An invoice of pdfme", about: "a template of the designer of pdfme on a blank page: a table that grows over pages, a QR code, a barcode, a list",
+    data: ["test/pdfme/data/invoice.json", "pdfme-invoice.data.json"], template: ["converter/pdfme/testdata/invoice.json", "pdfme-invoice.json", "pdfme"] },
+  { id: "pdfme-certificate", label: "A certificate of pdfme", about: "a template of pdfme over a base PDF: a name in the size that fits, a date, a text with an expression, a signature",
+    data: ["test/pdfme/data/certificate.json", "pdfme-certificate.data.json"], template: ["converter/pdfme/testdata/certificate.json", "pdfme-certificate.json", "pdfme"] },
+];
+
+async function copyForms() {
+  const dst = join(out, "forms");
+  await mkdir(dst, { recursive: true });
+  const index = [];
+  for (const shape of FORM_SHAPES) {
+    const data = `form-${shape.id}.json`;
+    await copyFile(join(root, "test/xlsx/data", data), join(dst, data));
+    for (const f of shape.files) await copyFile(join(root, "test/xlsx/data", f), join(dst, f));
+    const templates = [];
+    for (const [ext, label] of FORM_FORMATS) {
+      const name = `form-${shape.id}.${ext}`;
+      await copyFile(join(root, `converter/${ext}/testdata`, name), join(dst, name));
+      templates.push({ name, label });
+    }
+    index.push({ id: shape.id, label: shape.label, about: shape.about, data, files: shape.files, templates });
+  }
+  for (const p of FORM_PLACED) {
+    await copyFile(join(root, p.data[0]), join(dst, p.data[1]));
+    await copyFile(join(root, p.template[0]), join(dst, p.template[1]));
+    index.push({ id: p.id, label: p.label, about: p.about, data: p.data[1], files: [], templates: [{ name: p.template[1], label: p.template[2] }] });
+  }
+  await writeFile(join(dst, "index.json"), JSON.stringify(index));
+}
+
 /** A page of the site whose source is an HTML file: the site's head and header take the place of its marks. */
 async function copyTool(name) {
   const file = `${name}/index.html`;
@@ -101,9 +143,9 @@ async function copyTool(name) {
   await writeFile(join(out, file), html);
 }
 
-/** The thumbnail and search text pages. */
+/** The form, thumbnail and search text pages. */
 async function buildTools() {
-  for (const name of ["thumbnail", "text"]) {
+  for (const name of ["form", "thumbnail", "text"]) {
     await bundle(join(out, name), [[`site/${name}/main.ts`, "main"]], { define: { SITE_ROOT: JSON.stringify("../") } });
     await copyTool(name);
   }
@@ -138,7 +180,7 @@ async function buildHome() {
 
 await rm(out, { recursive: true, force: true });
 await buildViewer(join(out, "viewer"), { defaultSrc: "", siteRoot: "../", site: true });
-await Promise.all([buildModules(join(out, "lib")), copyFonts(join(out, "fonts")), copySamples(), buildDocs(out), buildTools(), buildHome()]);
+await Promise.all([buildModules(join(out, "lib")), copyFonts(join(out, "fonts")), copySamples(), copyForms(), buildDocs(out), buildTools(), buildHome()]);
 console.log(`site: ${out}`);
 
 if (args.includes("--serve")) {

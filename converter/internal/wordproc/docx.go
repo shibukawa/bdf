@@ -45,7 +45,13 @@ type hfKey struct {
 var supported = map[string]bool{"wps": true, "wpg": true, "wpc": true, "wp14": true, "w14": true, "w15": true, "a14": true, "pic14": true}
 
 // ConvertDOCX converts a Word document read from r.
-func ConvertDOCX(r io.ReaderAt, size int64, opts *Options) (res *Result, err error) {
+func ConvertDOCX(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
+	return convertDOCX(r, size, opts, nil)
+}
+
+// convertDOCX converts a Word document, as a template filled with data
+// when it has a filler (template.go).
+func convertDOCX(r io.ReaderAt, size int64, opts *Options, fill *filler) (res *Result, err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			res, err = nil, fmt.Errorf("docx: internal error: %v", e)
@@ -90,6 +96,16 @@ func ConvertDOCX(r io.ReaderAt, size int64, opts *Options) (res *Result, err err
 		c.hasBackground = c.hasBackground && c.displayBackground()
 	}
 	body := root.Child("body")
+	if fill != nil {
+		// a template: the document to read is the filled one
+		fill.c, c.fill = c, fill
+		if err := fill.scan(p, c.main, root); err != nil {
+			return nil, err
+		}
+		if body, err = fill.fillAll(p, c.main, body); err != nil {
+			return nil, err
+		}
+	}
 	w := &walker{c: c, part: c.main}
 	blocks := w.blocks(body)
 	c.splitSections(blocks, body.Child("sectPr"))
@@ -290,6 +306,9 @@ func (c *converter) hfFlow(part string, sec *section) *flow {
 	blocks, ok := c.hf[part]
 	if !ok {
 		if root, err := c.pkg.XML(part); err == nil {
+			if c.fill != nil && c.fill.filled[part] != nil {
+				root = c.fill.filled[part]
+			}
 			w := &walker{c: c, part: part}
 			blocks = w.blocks(root)
 		} else {

@@ -1,0 +1,54 @@
+id: component:wordproc-pagination
+type: component
+title: docx 変換器のページ分割は自前計算で、Word の保存値を使わない
+summary: >-
+  converter/internal/wordproc は行分割も改ページも読み込み時に測った字幅から計算し、Word が保存した lastRenderedPageBreak は読み飛ばす。
+  作者が入れた改ページ（w:br type=page、pageBreakBefore、セクション区切り）は強制の改ページとして守る。
+  読む段階と組む段階の継ぎ目が ConvertDOCX にあり、穴埋めをそこに入れられる。
+lifecycle: active
+authority: observed
+aliases:
+- wordproc flow
+- docx pagination
+facts:
+  read_phase: walker.blocks(body) が段落を測り済みの item 列（文字・タブ・改行・インライン図・フィールド。fontset.Choice と advance を持つ）に、表を row と cell に、rule に読む。splitSections でセクションに分ける
+  layout_phase: finish が pageView（flow）と scrollView を組み、fontset.Embed でサブセットを埋め込み、Object を encode する
+  line_breaking: flow.fitLine → breakLine。禁則、ぶら下げ、タブ、両端揃え、文書グリッド、浮動する図の回避
+  page_breaking: flow.newPage / nextColumn / limit。孤立行の制御、keepNext、keepLines は置いてから調べてスナップショットに戻す方式。表は行の単位で流し、cantSplit でなければセルの行の間で分け、tblHeader を各ページで繰り返す
+  fields: PAGE / NUMPAGES / SECTIONPAGES / PAGEREF はページが決まってから数字を入れる（emitter.fieldText）
+  retained_xml: 読む段階の後に XML に残る参照は図の a:graphic（inlineObj.graphic）だけ。drawingml が書き出し時に描く
+  implications_for_fill:
+  - 文字を置換して flow を再実行すれば、行が増えて下が押し下がり、ページが割れ、見出し行の繰り返しとページ番号が正しく出る
+  - run の分断はこの段階では消えている（段落は文字ごとの item）。タグの書式は最初の文字の st
+  - 繰り返しの最小構造は para.ctx の frame の連鎖から取れる
+  - 画像フィールドは a:graphic を差し替える経路が別に要る
+assertions:
+- predicate: uses_word_cached_page_breaks
+  value: false
+  authority: observed
+  evidence:
+    path: converter/internal/wordproc/model.go
+    locator: 'line 768: "softHyphen", "lastRenderedPageBreak", ... are skipped'
+- predicate: honors_manual_page_breaks
+  value: true
+  authority: observed
+  evidence:
+    path: converter/internal/wordproc/model.go
+    locator: 'line 714: case "br" with type page / column; flow.go line 491 pageBreakBefore'
+- predicate: seam_between_read_and_layout
+  value: 'ConvertDOCX: w.blocks(body) → c.splitSections → c.finish(views)'
+  authority: observed
+  evidence:
+    path: converter/internal/wordproc/docx.go
+    locator: ConvertDOCX lines 48-108; finish in wordproc.go lines 199-270
+- predicate: retains_xml_after_read
+  value: only inlineObj.graphic (a:graphic) for drawings
+  authority: observed
+  evidence:
+    path: converter/internal/wordproc/draw.go
+    locator: 'line 16: graphic *ooxml.Node'
+relations:
+- relation: enables
+  to: pattern:growing-detail
+- relation: enables
+  to: pattern:flow-document
