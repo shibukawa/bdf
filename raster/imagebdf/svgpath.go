@@ -45,7 +45,10 @@ func parsePathData(d string) *path {
 		if strings.IndexByte("MmLlHhVvCcSsQqTtAaZz", c) >= 0 {
 			cmd = c
 			s = s[1:]
-		} else if cmd == 0 {
+		} else if cmd == 0 || cmd == 'Z' || cmd == 'z' {
+			// no command, and none that what is here could be more of: a
+			// closepath takes no numbers, and to read one again for them
+			// would be to close the path without end
 			return p
 		}
 		rel := cmd >= 'a'

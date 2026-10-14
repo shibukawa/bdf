@@ -138,7 +138,8 @@ func (si *svgImage) raster(r *Renderer, k float64) (*picture, float64) {
 }
 
 // rasterIn is raster for an image that is inside as many SVG images as
-// inside says. The picture is nil when the renderer has no room for it.
+// inside says. The picture is nil when the renderer has no room for it. The
+// scale is that of the picture's width, whole pixels, to the image's.
 func (si *svgImage) rasterIn(r *Renderer, k float64, inside int) (*picture, float64) {
 	step, k, w, h := si.rasterSize(k)
 	if w == 0 {
@@ -146,7 +147,8 @@ func (si *svgImage) rasterIn(r *Renderer, k float64, inside int) (*picture, floa
 	}
 	if p, ok := si.rasters[step]; ok {
 		p.used = r.drawing
-		return p, k
+		// the scale it was given when it was made, below
+		return p, float64(p.w) / si.w
 	}
 	if !r.makeRoom(w * h) {
 		r.warnf(tooManyPixels, r.room)

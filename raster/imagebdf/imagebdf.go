@@ -293,6 +293,9 @@ func (r *Renderer) decode(data []byte, drop func()) (pic *picture, full bool) {
 		r.warnf(tooManyPixels, r.room)
 		return nil, true
 	}
+	if _, cut := imgconv.LimitJPEGScans(data); cut {
+		r.warnf("a JPEG image has more than %d scans: the rest of them are not read", imgconv.MaxJPEGScans)
+	}
 	p, format, ok := decodePicture(data)
 	if !ok {
 		switch format {

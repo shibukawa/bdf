@@ -32,7 +32,9 @@ const (
 	// KeyPassword is a key slot that a password unlocks.
 	KeyPassword = "password"
 	// KDFPBKDF2SHA256 derives key-encryption keys with PBKDF2-HMAC-SHA-256
-	// from the password normalized to NFC and encoded as UTF-8.
+	// from the password normalized to NFKC and encoded as UTF-8: full-width
+	// and half-width spellings, and a letter with its marks written as one
+	// character or as several, are one password.
 	KDFPBKDF2SHA256 = "PBKDF2-SHA256"
 	// DefaultIterations is the PBKDF2 iteration count of new password slots.
 	DefaultIterations = 600_000
@@ -262,7 +264,7 @@ func unlockKeyECDH(e *Encryption, priv *ecdh.PrivateKey) ([]byte, error) {
 }
 
 func passwordKEK(password string, salt []byte, iter int) ([]byte, error) {
-	return pbkdf2.Key(sha256.New, norm.NFC.String(password), salt, iter, keySize)
+	return pbkdf2.Key(sha256.New, norm.NFKC.String(password), salt, iter, keySize)
 }
 
 func newAEAD(key []byte) (cipher.AEAD, error) {

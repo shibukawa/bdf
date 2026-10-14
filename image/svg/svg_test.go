@@ -367,6 +367,21 @@ func TestStyleSheetIndex(t *testing.T) {
 	}
 }
 
+// TestSelectorOfCombinatorsAlone checks that a selector with nothing in it
+// but combinators selects nothing, as one that is not understood does: the
+// index of a style sheet asks every selector what it ends with.
+func TestSelectorOfCombinatorsAlone(t *testing.T) {
+	for _, s := range []string{">", " > ", ">>", "> >\t>"} {
+		if sel, _, ok := parseSelector(s); ok {
+			t.Errorf("selector %q is read: %+v", s, sel)
+		}
+	}
+	doc := mustParse(t, head+`<style>> { fill: red } > , rect, >> { fill: blue } g > rect { stroke: green }</style><g><rect id="r"/></g></svg>`)
+	if s := doc.IDs["r"].Sheet; s["fill"] != "blue" || s["stroke"] != "green" {
+		t.Errorf("the rules beside a selector of combinators alone: %v", s)
+	}
+}
+
 // TestFiles reads the SVG files of the tests: images as tools write them.
 func TestFiles(t *testing.T) {
 	for _, name := range []string{"drawing.svg", "badge.svg"} {

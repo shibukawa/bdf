@@ -7,7 +7,7 @@ require (
 	github.com/andybalholm/brotli v1.2.5
 	github.com/klauspost/compress v1.20.1
 	github.com/pdfcpu/pdfcpu v0.16.1
-	github.com/shibukawa/tinygodriver v1.3.4
+	github.com/shibukawa/tinygodriver v1.3.5
 	github.com/yuin/goldmark v1.8.6
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/image v0.46.0
