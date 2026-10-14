@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/internal/gauss"
 )
 
 // state is the drawing state of a context (what save and restore keep).
@@ -925,8 +926,14 @@ func (d *drawer) groupBegin(alpha float32, blend byte, x, y, w, h float64) {
 		x0, y0, x1, y1 = math.Min(x0, px), math.Min(y0, py), math.Max(x1, px), math.Max(y1, py)
 	}
 	r := image.Rect(int(math.Floor(clampF(x0))), int(math.Floor(clampF(y0))), int(math.Ceil(clampF(x1))), int(math.Ceil(clampF(y1))))
-	// nothing outside the parent canvas or its clip can show
-	r = r.Intersect(d.bounds())
+	// nothing outside the parent canvas or its clip can show, but for the
+	// shadow of what is as far outside it as the shadow reaches
+	on := d.bounds()
+	if st.shadowActive() {
+		reach := int(math.Ceil(3*st.shadowBlur/2 + math.Max(math.Abs(st.shadowDX), math.Abs(st.shadowDY)) + 1))
+		on = on.Inset(-reach)
+	}
+	r = r.Intersect(on)
 	if r.Empty() {
 		r = image.Rect(0, 0, 1, 1)
 	}
@@ -964,6 +971,14 @@ func (d *drawer) groupEnd() {
 	blend := g.blend
 	if int(blend) >= len(bdf.BlendNames) {
 		blend = bdf.BlendSourceOver
+	}
+	// the shadow of the state around a group is that of the group as a
+	// whole, as a canvas draws it: under it, composited as the group is
+	if st := &d.ctx.st; st.shadowActive() {
+		was := st.blend
+		st.blend = blend
+		d.shadow(&mask{r: r}, surfaceShader{s: s, dx: g.x, dy: g.y}, g.alpha)
+		st.blend = was
 	}
 	d.ctx.target.fill(&mask{r: r}, surfaceShader{s: s, dx: g.x, dy: g.y}, g.alpha, blend, d.ctx.st.clip)
 	d.r.release(s)
@@ -1029,72 +1044,5 @@ func (d *drawer) maskEnd() {
 	}
 }
 
-// blur applies an approximate Gaussian blur (three box blurs) to a plane.
-func blur(a []float32, w, h int, sigma float64) {
-	// box sizes for three passes (Kovesi)
-	wIdeal := math.Sqrt(12*sigma*sigma/3 + 1)
-	wl := int(math.Floor(wIdeal))
-	if wl%2 == 0 {
-		wl--
-	}
-	wu := wl + 2
-	mIdeal := (12*sigma*sigma - 3*float64(wl*wl) - 12*float64(wl) - 9) / (-4*float64(wl) - 4)
-	mm := int(math.Round(mIdeal))
-	tmp := make([]float32, len(a))
-	for i := 0; i < 3; i++ {
-		size := wl
-		if i >= mm {
-			size = wu
-		}
-		r := (size - 1) / 2
-		if r <= 0 {
-			continue
-		}
-		boxH(a, tmp, w, h, r)
-		boxV(tmp, a, w, h, r)
-	}
-}
-
-func boxH(src, dst []float32, w, h, r int) {
-	k := 1 / float32(2*r+1)
-	for y := 0; y < h; y++ {
-		row := src[y*w : (y+1)*w]
-		out := dst[y*w : (y+1)*w]
-		var sum float32
-		for x := -r; x <= r; x++ {
-			if x >= 0 && x < w {
-				sum += row[x]
-			}
-		}
-		for x := 0; x < w; x++ {
-			out[x] = sum * k
-			if x+r+1 < w {
-				sum += row[x+r+1]
-			}
-			if x-r >= 0 {
-				sum -= row[x-r]
-			}
-		}
-	}
-}
-
-func boxV(src, dst []float32, w, h, r int) {
-	k := 1 / float32(2*r+1)
-	for x := 0; x < w; x++ {
-		var sum float32
-		for y := -r; y <= r; y++ {
-			if y >= 0 && y < h {
-				sum += src[y*w+x]
-			}
-		}
-		for y := 0; y < h; y++ {
-			dst[y*w+x] = sum * k
-			if y+r+1 < h {
-				sum += src[(y+r+1)*w+x]
-			}
-			if y-r >= 0 {
-				sum -= src[(y-r)*w+x]
-			}
-		}
-	}
-}
+// blur applies an approximate Gaussian blur to a plane (see gauss.Blur).
+func blur(a []float32, w, h int, sigma float64) { gauss.Blur(a, w, h, sigma) }

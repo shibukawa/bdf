@@ -3,6 +3,14 @@
 ```
 bdf generate [flags] <input> <out.bdf | dir/>
                                    convert a document or a drawing (bdf generate -h for flags and formats)
+bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .bdft> <out.bdf | dir/>
+                                   fill a template of a form with data: an Office document with tags, a
+                                   PDF with form fields, a template of pdfme (bdf fill -h for flags)
+bdf template compile [flags] <template> <out.bdft>
+bdf template schema [-json-schema] <template> [out.json]
+                                   check a template and write it compiled; write what it asks of data
+bdf pdf [flags] <file.bdf | dir> <out.pdf>
+                                   write the pages as a PDF file (bdf pdf -h for flags)
 bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                    draw a thumbnail: the top of the first page or the whole slide
                                    (of an input to convert, only the first page is converted)
@@ -37,6 +45,37 @@ bdf generate report.pptx out/                    # split form
 bdf generate -pages 1-3 book.pdf book.bdf         # first three pages only
 bdf generate -password-file pw.txt secret.xlsx out.bdf  # a protected input
 ```
+
+## fill, template
+
+Fill a template of a form (an Excel workbook, a Word document or a PowerPoint presentation whose text holds tags) with data. The format is told from the content. See [Making forms](../forms.md) for how to write one.
+
+```sh
+bdf fill -data order.yaml -data items=lines.csv invoice.xlsx invoice.bdf   # fill, as a document of the printed pages
+bdf fill -data order.yaml notice.docx notice.bdf                           # a Word document as its pages, a presentation as its slides
+bdf fill -each orders.csv invoice.xlsx 'out/{{no}}.bdf'                    # a form for each record
+bdf template compile -sample sample.yaml invoice.xlsx invoice.bdft         # check it and write a compiled template
+bdf template schema invoice.bdft                                           # the names its tags look up, as JSON
+bdf template schema -json-schema invoice.xlsx                              # the JSON Schema of the data, to make a form of
+bdf fill -data applicant.json application.pdf application.bdf              # a PDF with form fields: the values in the places of its fields
+bdf fill -data invoice.json pdfme-template.json invoice.bdf                # a template of pdfme, as its generator fills it
+```
+
+`-data` is a JSON or YAML object (`file`) or a value under a name (`name=file`; a CSV or TSV file or the sheets of a workbook are lists of objects), and repeats. `-strict` makes a tag whose name the data lacks an error, and `-files` names the directory of the pictures the data names. The font and image flags (`-font-dir`, `-no-system-fonts`, `-fonts`, `-images` …), `-param` and `-pages` mean what they mean for `generate` (`-pages` selects the sheets of a workbook, the slides of a presentation's template, and the pages of the form of a Word template). A `.bdft` is a BDF document: `ls`, `thumbnail` and `render` open it as it is.
+
+## pdf
+
+Write the pages of a document as a PDF file: its text as text in the embedded fonts, its drawings as vectors ([Writing a PDF](../forms.md#writing-a-pdf)).
+
+```sh
+bdf pdf invoice.bdf invoice.pdf
+bdf pdf -view print1 book.bdf sheet1.pdf            # choose views (repeatable)
+bdf pdf -skip background -skip master slip.bdf slip.pdf   # leave layers out by their roles
+bdf pdf -tagged report.bdf report.pdf               # a tagged PDF: with the structure of the document, for screen readers
+bdf pdf -pdfa 2a invoice.bdf invoice.pdf            # a PDF/A file (2b, 2u, 2a, 3b, 3u, 3a), for keeping
+```
+
+By default all the views of pages (`fixed`, `flow`) are written, and a document without pages becomes one page. `-font-dir` and `-no-system-fonts` say where the fonts the document refers to by name are looked for. `-ignore-fstype` embeds fonts of the system that do not allow it (only with the rights to; by default their text is drawn as outlines). `-no-compression` writes the streams as they are, to read them. An encrypted document needs `-allow-plaintext` (the PDF is not encrypted).
 
 ## thumbnail, text, render
 

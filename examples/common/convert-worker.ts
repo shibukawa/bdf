@@ -1,10 +1,11 @@
 /// <reference lib="webworker" />
 // Converter worker: runs the converter modules (cmd/bdfwasm, built as wasm)
 // and converts the files the page sends into bdf documents, whole or a page
-// at a time; the preview module draws the thumbnails of bdf documents and
-// gives their text for a search index. A classic worker, so that it can
-// load Go's wasm_exec.js.
-import type { ConvertRequest, ConvertResponse, ConvertOptions, ConvertResult, Converted, ConvertedPage, Opened, SearchText, Thumbnail, ThumbnailOptions } from "./convert.js";
+// at a time; the preview module draws the thumbnails of bdf documents,
+// gives their text for a search index and writes them as PDF files; the
+// form module reads and fills the templates of forms. A classic worker, so
+// that it can load Go's wasm_exec.js.
+import type { ConvertRequest, ConvertResponse, ConvertOptions, ConvertResult, Converted, ConvertedPage, FillOptions, Filled, Opened, PdfFile, PdfOptions, SearchText, TemplateFields, Thumbnail, ThumbnailOptions } from "./convert.js";
 
 /** A conversion done a page at a time, as cmd/bdfwasm returns it. */
 interface GoStream {
@@ -12,12 +13,18 @@ interface GoStream {
   finish(): Promise<Converted>;
   close(): void;
 }
-/** What cmd/bdfwasm sets on globalThis; thumbnail and text are the preview module's. */
+/**
+ * What cmd/bdfwasm sets on globalThis; thumbnail and text are the preview
+ * module's, fields and fill the form module's, and pdf is in both.
+ */
 interface Converter {
   convert(data: Uint8Array, options: ConvertOptions): Promise<Converted>;
   open(data: Uint8Array, options: ConvertOptions): Promise<Omit<Opened, "stream"> & { stream?: GoStream }>;
   thumbnail?(data: Uint8Array, options: ThumbnailOptions): Promise<Thumbnail>;
   text?(data: Uint8Array, options: { password?: string }): Promise<SearchText>;
+  pdf?(data: Uint8Array, options: PdfOptions): Promise<PdfFile>;
+  fields?(data: Uint8Array, options: { sample?: string }): Promise<TemplateFields>;
+  fill?(data: Uint8Array, options: FillOptions): Promise<Filled>;
 }
 declare class Go {
   importObject: WebAssembly.Imports;
@@ -68,6 +75,14 @@ async function preview(url: string): Promise<Required<Converter>> {
   return m as Required<Converter>;
 }
 
+/** A call of the module at a URL that not every module has. */
+async function method<K extends "pdf" | "fields" | "fill">(url: string, name: K): Promise<NonNullable<Converter[K]>> {
+  const m = await load(url);
+  const fn = m[name];
+  if (!fn) throw new Error(`${url}: a module without ${name}`);
+  return fn.bind(m) as NonNullable<Converter[K]>;
+}
+
 async function handle(req: ConvertRequest): Promise<ConvertResult> {
   switch (req.type) {
     case "convert":
@@ -91,6 +106,12 @@ async function handle(req: ConvertRequest): Promise<ConvertResult> {
       return (await preview(req.module)).thumbnail(new Uint8Array(req.data), req.options);
     case "text":
       return (await preview(req.module)).text(new Uint8Array(req.data), req.options);
+    case "pdf":
+      return (await method(req.module, "pdf"))(new Uint8Array(req.data), req.options);
+    case "fields":
+      return (await method(req.module, "fields"))(new Uint8Array(req.data), req.options);
+    case "fill":
+      return (await method(req.module, "fill"))(new Uint8Array(req.data), req.options);
   }
 }
 
@@ -103,6 +124,7 @@ self.onmessage = async (ev: MessageEvent<ConvertRequest>) => {
     res = { id, ok: true, result };
     if (result && "bdf" in result) transfer.push(result.bdf.buffer);
     if (result && "image" in result) transfer.push(result.image.buffer);
+    if (result && "pdf" in result) transfer.push(result.pdf.buffer);
   } catch (e) {
     const err = e as Error & { code?: string };
     res = { id, ok: false, error: err.message ?? String(e), code: err.code };

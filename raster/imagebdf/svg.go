@@ -2,7 +2,10 @@ package imagebdf
 
 import (
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"image"
+	"image/draw"
 	"math"
 	"net/url"
 	"strconv"
@@ -61,6 +64,33 @@ func newSVGImage(data []byte) (*svgImage, bool) {
 		return nil, false
 	}
 	return si, true
+}
+
+// SVGImage draws an SVG image by itself, for the writers of formats that
+// hold no SVG: its raster (not premultiplied by its alpha), and its natural
+// size in units (CSS pixels). scale gives the pixels to draw a unit with
+// for a natural size; the scale is bounded as that of the SVG images of a
+// page is.
+func SVGImage(data []byte, scale func(w, h float64) float64, opts *Options) (img *image.NRGBA, w, h float64, warnings []string, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			img, err = nil, fmt.Errorf("imagebdf: the drawing failed: %v", p)
+		}
+	}()
+	si, ok := newSVGImage(data)
+	if !ok {
+		return nil, 0, 0, nil, errors.New("imagebdf: the SVG image cannot be read")
+	}
+	r := New(bdf.NewDocument(), opts)
+	r.drawing++
+	pic, _ := si.raster(r, scale(si.w, si.h))
+	if pic == nil {
+		return nil, si.w, si.h, r.warnings, errors.New("imagebdf: the SVG image is too large to draw")
+	}
+	src := pic.levels[0]
+	img = image.NewNRGBA(src.Bounds())
+	draw.Draw(img, img.Bounds(), src, src.Bounds().Min, draw.Src)
+	return img, si.w, si.h, append(si.doc.Warnings, r.warnings...), nil
 }
 
 // svgNaturalSize is the size of an SVG image: the width and height of its

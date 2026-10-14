@@ -146,3 +146,61 @@ func must[T any](v T, err error) T {
 	}
 	return v
 }
+
+// TestReplay copies instructions of an object that was read into another:
+// those of a part of it, with the resources they refer to and no others.
+func TestReplay(t *testing.T) {
+	doc := NewDocument()
+	img := doc.AddPart(PartImage, []byte("not really a png"))
+	child, box := doc.AddObject(NewObject().SetBBox(0, 0, 5, 5).FillRect(0, 0, 5, 5))
+	o := NewObject().SetBBox(0, 0, 100, 100)
+	o.FillPath(o.AddPath((&Path{}).Rect(0, 0, 1, 1)), NonZero) // (not copied)
+	o.Font(o.AddFont(SystemFont("serif", 400, 0)), 12)
+	o.FillPaint(o.AddPaint(Paint{Kind: PaintPattern, Image: o.AddImage(img)}))
+	o.FillPath(o.AddPath((&Path{}).Circle(5, 5, 3)), EvenOdd).FillText("text", 1, 2, 3)
+	o.Image(o.AddImage(img), 1, 2, 3, 4).Use(o.AddObject(child, box)).Mark(MarkFigure, "alt")
+	part, err := DecodeObject(o.Encode())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ins, err := part.Instructions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := NewObject().SetBBox(0, 0, 100, 100)
+	dst.FillPath(dst.AddPath((&Path{}).Rect(9, 9, 9, 9)), NonZero) // what the destination has of its own
+	rp := NewReplay(part, dst)
+	for _, in := range ins[1:] {
+		if err := rp.Emit(in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := DecodeObject(dst.Encode())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Paths) != 2 || len(got.Paths[1].Inline.Verbs) != len(part.Paths[1].Inline.Verbs) || len(got.Fonts) != 1 || len(got.Paints) != 1 ||
+		len(got.Images) != len(part.Images) || got.Images[0] != img || len(got.Objects) != 1 || got.Objects[0] != child {
+		t.Errorf("resources: %d paths, %d fonts, %d paints, %v images, %v objects", len(got.Paths), len(got.Fonts), len(got.Paints), got.Images, got.Objects)
+	}
+	out, err := got.Instructions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != len(ins) {
+		t.Fatalf("%d instructions, want %d", len(out), len(ins))
+	}
+	for i := 1; i < len(ins); i++ {
+		if out[i].Op != ins[i].Op {
+			t.Errorf("instruction %d is 0x%02x, want 0x%02x", i, out[i].Op, ins[i].Op)
+		}
+	}
+	// the path of the copied FILL_PATH is the second of the destination
+	if out[3].Args[0].(uint64) != 1 || out[3].Args[1].(uint64) != uint64(EvenOdd) {
+		t.Errorf("the path of the copy: %v", out[3].Args)
+	}
+	// an instruction that refers to what the part lacks is an error
+	if err := rp.Emit(Instr{Op: OpFillPath, Args: []any{uint64(9), uint64(0)}}); err == nil {
+		t.Error("no error for a path the object does not have")
+	}
+}

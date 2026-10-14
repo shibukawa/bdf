@@ -1,0 +1,89 @@
+id: system:svf
+type: system
+title: SVF（ウイングアーク1st）— フォーム・サブフォーム・レコードの固定枠モデル
+summary: >-
+  日本の帳票基盤の代表。XML の様式ファイル（フォーム）に繰り返し領域（サブフォーム）を置き、その中にレコード（明細行）と
+  合計・総計・ヘッダーの特殊レコードを並べる。1 ページの行数は枠に入る数で決まり、あふれは改ページか「リンクサブフォーム」で別の枠へ続く。
+  「最終ページのみ」「先頭ページのみ」「枠の大きさを固定」「空のときは印刷しない」といった属性と、累計・ページ合計の関数と
+  _PREV_P / _NEXT_P の変数で、固定行数の明細と繰越を組む。連帳（1/6 インチ刻み）、綴り枚数、複写部数、和暦、外字（EUDC）、縦書き、各種バーコードを製品機能として持つ。
+lifecycle: active
+authority: observed
+aliases:
+- SVF
+- Super Visual Formade
+- ウイングアーク
+- SVF Cloud
+- X-Designer
+facts:
+  model:
+    form: XML 様式ファイル。サブフォーム（繰り返し領域）を含む
+    subform: レコード = サブフォーム内で繰り返される行。合計レコード（小計 / 中計 / 大計）、総計レコード、ヘッダーレコードが特殊レコード
+    rows_per_page: 枠に入る行数（デザイナで「表示行数」をプレビュー）。あふれたら通常は改ページ
+    linked_subform: リンクサブフォーム名で同じフォーム内の別のサブフォームに続ける。1 ページ目は鑑＋明細、2 ページ目以降は明細のみ、という型違いの続きページを表せる
+    fixed_frame: 「レコード数に関わらず、枠の大きさは固定にする」でデータが途中で終わっても枠いっぱいに罫線を引く（固定行数の見た目）。「データがないとき、サブフォームを印刷しない」
+  totals_and_pages:
+    last_page_only: フィールド属性「最終ページのみ」（同一キーが複数ページにまたがるとき最後のページだけ）、「先頭ページのみ」
+    key_break: 合計 / ヘッダーレコードはキーブレイクで印字、キーブレイクで改ページ、グループサプレス、累計値のクリア、ページカウントのクリア
+    totals_position: 合計レコードは「サブフォーム内に入らない場合も印刷する」「固定位置に出力」。印刷モードで「大計、中計、小計、明細」（合計が先）と「明細、小計、中計、大計」を選ぶ。「総合計を先頭に」を宣伝
+    carry_over: 「繰越」という名のフィールドはなく、R 系の累計関数（RSUM / RCOUNT、累計値のクリアでリセット）、P 系のページ合計（PSUM）、G 系の全体集計と、システム変数 _PREV_P（前頁からの続き）/ _NEXT_P（次頁へ続く）で「前頁より / 次頁へ」のラベルを出す
+    page_count: _PAGE_CNT（キーブレイク単位のページ番号）、_TOTAL_PAGE_COUNT、_TOTAL_PAGE_CNT（キーブレイク単位）、_SERIAL_PAGE_COUNT。TOTAL 系はレポートライタモードで 2 回実行するため遅くなる
+  paper:
+    sizes: はがき / A5 / A4 / A3 / B5 / B4 / レター / 連帳 / フリー
+    continuous: 連帳の高さは 1/6 インチ単位、幅はインチ（既定 11 × 15 インチ）。ドットプリンタでは縦を 3 の倍数にすると改ページずれを防げる。綴り枚数 1〜30（ドットプリンタ以外）、複写部数
+    dot_printer: ESC/P と PC-PR201 では既定で 24 ドット文字、固定文字・罫線・ビットマップは有効にしない限り抑止。複写伝票をドットからレーザーに移行、綴り伝票、Windows ドライバなしのコマンド印刷
+  japanese_features:
+    wareki: SEI2WA1 / SEI2WA1Z / WA2SEI / NENGO / WYEAR。新元号は ini の Nengou5
+    gaiji: EUDC.TTE を SVF Cloud Manager に登録、オンプレは EUDC ソフトフォント
+    vertical: 文字の方向（縦 / 横）、右上原点
+    barcodes: NW7 / CODE39 / JAN / ITF / CODE128 / 郵便カスタマ / EAN128、QR / Maxi / PDF417 / DataMatrix
+  office_input: Ver.10 から Excel ファイルを様式としてそのまま使える。SVF Cloud X-Designer は PDF / Excel / Word 出力と直接印刷
+  overlay: マニュアルに「フォームオーバーレイ」の語はなく、近いのは Ver.9 の PDF レイヤー機能（UNVERIFIED）
+  overseas_equivalents: 1 対 1 の製品はない。開発者向けの帳票エンジン（system:report-engines-banded、system:activereports-page-report）と、大量発行・配信・承認までを持つ CCM（system:ccm-suites）の 2 系統に分かれ、SVF は専用デザイナ＋エンジン＋出力管理の点で両方の性格を持つ。固定枠＋リンクサブフォームは ActiveReports Page report の OverflowPlaceHolder、XFA の flowed subform と leader / trailer に最も近い
+  relevance_to_bdft:
+  - 「最終ページのみ」「先頭ページのみ」「枠を固定」「空なら印刷しない」「型違いの続きページ」は、.bdft の固定行数明細のタグ属性の語彙としてそのまま使える
+  - _PREV_P / _NEXT_P 相当の真偽値をチャンクのコンテキストに置けば、繰越ラベルは集計なしで出せる。繰越の金額は累計関数を限定的に許すかデータ側か、が残る
+  - 総ページ数が 2 パスで遅くなるのは SVF でも同じ。.bdft は全チャンクを先に数えるので 2 回組まずに済む
+relations:
+- relation: exemplifies
+  to: pattern:fixed-rows-paged-detail
+- relation: exemplifies
+  to: pattern:continuous-text-form
+- relation: exemplifies
+  to: pattern:copy-variants
+- relation: compared_with
+  to: system:ccm-suites
+- relation: compared_with
+  to: system:report-engines-banded
+- relation: compared_with
+  to: system:activereports-page-report
+assertions:
+- predicate: form_model
+  value: フォーム > サブフォーム > レコード（合計 / 総計 / ヘッダーの特殊レコード）
+  authority: observed
+  evidence:
+    url: https://repo.svfcloud.com/manual/release/ja/xdesigner/ja/1237840.html
+- predicate: linked_subform_continuation
+  value: リンクサブフォーム名
+  authority: observed
+  evidence:
+    url: https://repo.svfcloud.com/manual/release/ja/xdesigner/ja/subform-properties-basic-tab.html
+- predicate: last_page_only_attribute
+  value: 最終ページのみ / 先頭ページのみ
+  authority: observed
+  evidence:
+    url: https://repo.svfcloud.com/manual/release/ja/xdesigner/ja/1237828.html
+- predicate: carry_over_primitives
+  value: RSUM 等の累計関数 + _PREV_P / _NEXT_P
+  authority: observed
+  evidence:
+    url: https://repo.svfcloud.com/manual/release/ja/xdesigner/ja/system-variables-design-functions.html
+- predicate: continuous_form_unit
+  value: 1/6 inch
+  authority: observed
+  evidence:
+    url: https://repo.svfcloud.com/manual/release/ja/xdesigner/ja/paper-properties.html
+- predicate: excel_as_form_source
+  value: since Ver.10
+  authority: observed
+  evidence:
+    url: https://cloud.watch.impress.co.jp/docs/news/1221896.html

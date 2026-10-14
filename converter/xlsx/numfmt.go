@@ -494,6 +494,13 @@ func formatGeneral(v float64, maxChars int) string {
 	}
 	v = round15(v)
 	exp := int(math.Floor(math.Log10(v)))
+	// the logarithm of a power of ten can be a hair under its exponent
+	// (that of 1e15 is 14.999…): the mantissa would then be 10, for ever
+	if v >= math.Pow(10, float64(exp+1)) {
+		exp++
+	} else if v < math.Pow(10, float64(exp)) {
+		exp--
+	}
 	if exp < 11 && exp >= -9 {
 		intDigits := max(exp+1, 1)
 		if intDigits <= maxChars {

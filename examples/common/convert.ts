@@ -85,13 +85,71 @@ export interface SearchText {
   json: string;
 }
 
+/** A PDF file the preview or the form module wrote of a bdf document (see cmd/bdfwasm), as bdf pdf does. */
+export interface PdfFile {
+  pdf: Uint8Array;
+  pages: number;
+  /** The fonts embedded. */
+  fonts: number;
+  /** What the file leaves out. */
+  warnings: string[];
+}
+
+export interface PdfOptions {
+  /** The password of an encrypted document (the file is not encrypted). */
+  password?: string;
+  /** URL of the font directory, for text in fonts referred to by name. */
+  fonts?: string;
+  /** The ids of the views to write (default: those with pages; the others when there are none). */
+  views?: string[];
+  /** Roles of layers to leave out ("background", "master"): for paper that has them printed. */
+  skip?: string[];
+  /** A tagged PDF: with the structure of the document (headings, paragraphs, tables), for screen readers. */
+  tagged?: boolean;
+  /** A PDF/A file, for keeping: "2b", "2u", "2a" (tagged), or "3b", "3u", "3a". */
+  pdfa?: string;
+}
+
+/** What a template of a form asks of data (see cmd/bdfwasm's fields), as JSON texts. */
+export interface TemplateFields {
+  /** The names the tags look up, as bdf template schema lists them. */
+  fields: string;
+  /** The JSON Schema of the data (form.Schema). */
+  schema: string;
+  /** The format of the template ("xlsx", "docx", "pptx", "pdf", "pdfme"; of a compiled template, that of the template it holds). */
+  format?: string;
+  /** The sample of the data that the template has for itself: a compiled template (.bdft), a template of pdfme. */
+  sample?: string;
+}
+
+export interface FillOptions extends ConvertOptions {
+  /** The data, as the JSON of an object. */
+  data: string;
+  /** The pictures that the data names, by their paths. */
+  files?: Record<string, Uint8Array>;
+  /** Fail when the data lacks a name of a tag (default: the tag is left empty, with a warning). */
+  strict?: boolean;
+}
+
+/** A filled template: a bdf document. */
+export interface Filled {
+  bdf: Uint8Array;
+  /** The format of the template ("xlsx", "docx", "pptx", "pdf" or "pdfme"). */
+  format: string;
+  pages: number;
+  warnings: string[];
+}
+
 export type ConvertRequest =
   | { id: number; type: "convert" | "open"; module: string; data: ArrayBuffer; options: ConvertOptions }
   | { id: number; type: "page"; stream: number; index: number }
   | { id: number; type: "finish" | "close"; stream: number }
   | { id: number; type: "thumbnail"; module: string; data: ArrayBuffer; options: ThumbnailOptions }
-  | { id: number; type: "text"; module: string; data: ArrayBuffer; options: { password?: string } };
-export type ConvertResult = Converted | Opened | ConvertedPage | Thumbnail | SearchText | null;
+  | { id: number; type: "text"; module: string; data: ArrayBuffer; options: { password?: string } }
+  | { id: number; type: "pdf"; module: string; data: ArrayBuffer; options: PdfOptions }
+  | { id: number; type: "fields"; module: string; data: ArrayBuffer; options: { sample?: string } }
+  | { id: number; type: "fill"; module: string; data: ArrayBuffer; options: FillOptions };
+export type ConvertResult = Converted | Opened | ConvertedPage | Thumbnail | SearchText | PdfFile | TemplateFields | Filled | null;
 export type ConvertResponse = { id: number; ok: true; result: ConvertResult } | { id: number; ok: false; error: string; code?: string };
 
 /** A failed conversion; code is "password-required", "wrong-password" or "unknown-format" when it is one of those. */
@@ -236,5 +294,17 @@ export class ConverterClient {
   /** The text of a single-file bdf (transferred) for a search index, with the preview module at the URL. */
   text(module: string, data: ArrayBuffer, options: { password?: string } = {}): Promise<SearchText> {
     return this.call<SearchText>({ type: "text", module, data, options }, [data]);
+  }
+  /** Write a single-file bdf (transferred) as a PDF file, with the preview or the form module at the URL. */
+  pdf(module: string, data: ArrayBuffer, options: PdfOptions = {}): Promise<PdfFile> {
+    return this.call<PdfFile>({ type: "pdf", module, data, options }, [data]);
+  }
+  /** What a template of a form (copied) asks of data, with the form module at the URL. */
+  fields(module: string, data: ArrayBuffer, options: { sample?: string } = {}): Promise<TemplateFields> {
+    return this.call<TemplateFields>({ type: "fields", module, data, options });
+  }
+  /** Fill a template of a form (copied) with data, with the form module at the URL. */
+  fill(module: string, data: ArrayBuffer, options: FillOptions): Promise<Filled> {
+    return this.call<Filled>({ type: "fill", module, data, options });
   }
 }

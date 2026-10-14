@@ -1,0 +1,37 @@
+id: system:document-description-languages
+type: system
+title: 文書記述言語での帳票 — CSS Paged Media（Prince / WeasyPrint / Paged.js / Chrome）、XSL-FO（FOP）、Typst、LaTeX、Markdown
+summary: >-
+  テンプレートを文書記述言語で書いて組版エンジンに任せる系統。ページ番号と総ページ数、見出し行の繰り返し、ランニングヘッダーの語彙は揃っているが、
+  固定行数の明細やキーブレイクの改ページは持たない。流し込み型の参照モデルとして見る。
+lifecycle: active
+authority: observed
+aliases:
+- CSS Paged Media
+- Prince
+- WeasyPrint
+- Paged.js
+- XSL-FO
+- Apache FOP
+- Typst
+facts:
+  css_paged_media: 'Prince はマージンボックス、counter(page) / counter(pages)、string-set / string()、position: running() / element()、ページグループ。WeasyPrint は @page セレクタ、マージンボックス、ページカウンタ、string-set、running elements、脚注。Paged.js はポリフィル（Polisher＋Chunker）。Chrome 131+ が @page のマージンボックスに対応。Puppeteer のヘッダー・フッターは .pageNumber / .totalPages'
+  xsl_fo: page-sequence → region（body / before / after）＋ static-content ＋ flow。fo:marker / retrieve-marker でランニングヘッダー、page-number-citation-last で「/ N」、表の見出しは table-omit-header-at-break で抑止しない限り繰り返す。retrieve-table-marker は FOP 2.0 で部分対応
+  typst: 'table.header(repeat: true)、table.footer(repeat: true)、counter(page).final()。請求書パッケージ invoice-pro、tiefletter'
+  latex: CTAN の invoice-class（CSV 駆動、複数ページ）、longtable ベースのテンプレート
+  markdown: pandoc＋YAML＋wkhtmltopdf、gen_invoice
+  relevance_to_bdft: html 変換器がリーダー表示でページを組むのと同じ系統。帳票には固定行数とキーブレイクがないので採らないが、ランニングヘッダー（string-set）と総ページ数の語彙は参考になる
+relations:
+- relation: exemplifies
+  to: pattern:flow-document
+assertions:
+- predicate: xslfo_total_pages
+  value: page-number-citation-last
+  authority: observed
+  evidence:
+    url: https://xmlgraphics.apache.org/fop/compliance.html
+- predicate: typst_repeat_header_footer
+  value: table.header(repeat) / table.footer(repeat)
+  authority: observed
+  evidence:
+    url: https://typst.app/docs/reference/model/table/

@@ -50,6 +50,17 @@ const ns = `xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/mai
 // (by name; styles and numbering are related to the document).
 func makeDocx(t *testing.T, body string, parts map[string]string) (*Result, *bdf.Reader) {
 	t.Helper()
+	data := docxBytes(t, body, parts)
+	res, err := Convert(bytes.NewReader(data), int64(len(data)), testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res, reopen(t, res)
+}
+
+// docxBytes builds the file of a document (see makeDocx).
+func docxBytes(t testing.TB, body string, parts map[string]string) []byte {
+	t.Helper()
 	var buf bytes.Buffer
 	z := zip.NewWriter(&buf)
 	add := func(name, data string) {
@@ -77,11 +88,7 @@ func makeDocx(t *testing.T, body string, parts map[string]string) (*Result, *bdf
 	if err := z.Close(); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Convert(bytes.NewReader(buf.Bytes()), int64(buf.Len()), testOptions())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res, reopen(t, res)
+	return buf.Bytes()
 }
 
 func p(text string, pPr ...string) string {

@@ -19,6 +19,7 @@ export const SECTIONS = [
       page("npm", "npm packages", "npm パッケージ"),
       page("integrating-to-frontend", "Integrating into a frontend", "フロントエンドに組み込む"),
       page("integrate-to-server", "Integrating into a server", "サーバーに組み込む"),
+      page("forms", "Making forms", "帳票を作る"),
       page("rendering", "Rendering", "描画する"),
       page("build-wasm-runtime", "Build a Wasm runtime", "Wasm ランタイムをビルドする"),
     ],
@@ -37,6 +38,7 @@ export const SECTIONS = [
       page("formats/electronics", "Circuit boards, KiCad", "プリント基板・KiCad"),
       page("formats/ebook", "EPUB", "EPUB"),
       page("formats/music", "Scores", "楽譜"),
+      page("formats/audio", "Audio files", "音声ファイル"),
       page("formats/font", "Font files", "フォントファイル"),
       page("formats/image", "Images, Photoshop", "画像・Photoshop"),
     ],
@@ -92,10 +94,10 @@ export function output(p, lang) {
 export const UI = {
   en: {
     skip: "Skip to content", site: "Site", docs: "Documentation", menu: "Menu", toc: "On this page", source: "Source", other: "日本語",
-    viewer: "Viewer", thumbnail: "Thumbnails", text: "Search text", docsNav: "Docs", onlyJa: " (Japanese)",
+    viewer: "Viewer", form: "Forms", thumbnail: "Thumbnails", text: "Search text", docsNav: "Docs", onlyJa: " (Japanese)",
   },
   ja: {
     skip: "本文へ移動", site: "サイト", docs: "ドキュメント", menu: "メニュー", toc: "このページの内容", source: "原文", other: "English",
-    viewer: "ビューア", thumbnail: "サムネイル", text: "検索テキスト", docsNav: "ドキュメント", onlyJa: "",
+    viewer: "ビューア", form: "フォーム", thumbnail: "サムネイル", text: "検索テキスト", docsNav: "ドキュメント", onlyJa: "",
   },
 };

@@ -9,13 +9,16 @@ enough to span several tiles. features.xlsx exercises conditional formats,
 tables, a chart, a picture, a text box shape and a chart sheet. math.xlsx
 holds equation shapes as Excel writes them: Office Math (a14:m) in the
 mc:Choice of an mc:AlternateContent whose fallback holds the formula as
-text, on a line of its own and inline in text.
+text, on a line of its own and inline in text. print.xlsx holds sheets with
+page setups, for the print view. Names of the functions as arguments write
+only their workbooks (python3 test/xlsx/gen.py printing).
 """
 import datetime
 import io
 import os
 import re
 import struct
+import sys
 import zipfile
 import zlib
 
@@ -29,6 +32,9 @@ from openpyxl.drawing.image import Image
 from openpyxl.formatting.rule import (CellIsRule, ColorScaleRule, DataBarRule, FormulaRule, IconSetRule, Rule)
 from openpyxl.styles import Alignment, Border, Font, GradientFill, PatternFill, Side
 from openpyxl.styles.differential import DifferentialStyle
+from openpyxl.worksheet.page import PageMargins
+from openpyxl.worksheet.pagebreak import Break
+from openpyxl.worksheet.properties import PageSetupProperties
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -378,9 +384,298 @@ def math():
     fix_core(path)
 
 
+def printing():
+    """print.xlsx: sheets with page setups, for the print view (-param
+    views=print): print areas and titles, paper, margins, scaling and fitting,
+    manual page breaks, headers and footers, gridlines and headings."""
+    wb = Workbook()
+    props(wb, "Printed sheets")
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head = PatternFill("solid", fgColor="DDEBF7")
+
+    # a long table on A4: titles on every page, a manual break, gridlines
+    ws = wb.active
+    ws.title = "Report"
+    for col, w in zip("ABCDEF", (6, 18, 7, 10, 12, 13)):
+        ws.column_dimensions[col].width = w
+    ws["A1"] = "Items by line 項目の表"
+    ws["A1"].font = Font(bold=True, size=14)
+    ws.merge_cells("A1:F1")
+    ws.row_dimensions[1].height = 24
+    for c, t in enumerate(("No", "項目", "数", "Price", "Amount", "日"), start=1):
+        cell = ws.cell(row=2, column=c, value=t)
+        cell.font, cell.fill, cell.border = Font(bold=True), head, box
+        cell.alignment = Alignment(horizontal="center")
+    for i in range(1, 89):
+        r = i + 2
+        ws.cell(row=r, column=1, value=i)
+        ws.cell(row=r, column=2, value=f"Item {i:03d} 行")
+        ws.cell(row=r, column=3, value=i % 7 + 1)
+        ws.cell(row=r, column=4, value=120 + i * 3).number_format = "#,##0"
+        ws.cell(row=r, column=5, value=(i % 7 + 1) * (120 + i * 3)).number_format = "#,##0"
+        ws.cell(row=r, column=6, value=datetime.date(2026, 9, 1) + datetime.timedelta(days=i)).number_format = "yyyy-mm-dd"
+    ws["H3"] = "outside the print area"
+    ws["H3"].fill = PatternFill("solid", fgColor="FFC7CE")
+    ws.print_area = "A1:F90"
+    ws.print_title_rows = "1:2"
+    ws.page_setup.paperSize = 9
+    ws.page_margins = PageMargins(left=0.5, right=0.5, top=0.9, bottom=0.8, header=0.4, footer=0.35)
+    ws.print_options.gridLines = True
+    ws.row_breaks.append(Break(id=30))
+    ws.oddHeader.left.text = "&B本書&B report"
+    ws.oddHeader.center.text = "&A"
+    ws.oddHeader.center.size = 14
+    ws.oddHeader.right.text = "&D &F"
+    ws.oddFooter.center.text = "&P / &N"
+    ws.oddFooter.right.text = "Line one\nline two &&"
+    ws.oddFooter.right.size = 8
+
+    # a wide table on A4 turned: title columns, a break between columns,
+    # the pages across first, scaled, with the headings
+    ws = wb.create_sheet("Wide")
+    ws.column_dimensions["A"].width = 12
+    ws["A1"] = "行"
+    ws["A1"].font = Font(bold=True)
+    for c in range(2, 15):
+        ws.cell(row=1, column=c, value=f"C{c - 1}").font = Font(bold=True)
+        ws.cell(row=1, column=c).border = Border(bottom=medium)
+    for r in range(2, 42):
+        ws.cell(row=r, column=1, value=f"Row {r - 1}").fill = head
+        for c in range(2, 15):
+            ws.cell(row=r, column=c, value=(r - 1) * 100 + c - 1)
+    ws.print_title_cols = "A:A"
+    ws.print_title_rows = "1:1"
+    ws.page_setup.paperSize = 9
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.scale = 150
+    ws.page_setup.pageOrder = "overThenDown"
+    ws.print_options.headings = True
+    ws.print_options.horizontalCentered = True
+    ws.col_breaks.append(Break(id=7))
+    ws.oddFooter.center.text = "Page &P of &N"
+
+    # more columns than a page is wide, fitted to one page across
+    ws = wb.create_sheet("Fit")
+    for c in range(1, 13):
+        ws.column_dimensions[chr(64 + c)].width = 13
+        ws.cell(row=1, column=c, value=f"Column {c}").font = Font(bold=True)
+        ws.cell(row=1, column=c).fill = head
+    for r in range(2, 62):
+        for c in range(1, 13):
+            ws.cell(row=r, column=c, value=r * c)
+    ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+    ws.page_setup.fitToHeight = 0
+    ws.page_setup.paperSize = 1
+
+    # two print areas, each a page; page numbers from 5; another header on
+    # the first page; centered both ways. The borders around an area are
+    # whole, and the fill beside it is not printed.
+    ws = wb.create_sheet("Areas")
+    for r in range(1, 7):
+        for c in (1, 2, 3, 5, 6, 7):
+            cell = ws.cell(row=r, column=c, value=f"{chr(64 + c)}{r}")
+            cell.border = Border(left=medium, right=medium, top=medium, bottom=medium)
+        ws.cell(row=r, column=4, value="no").fill = PatternFill("solid", fgColor="FFC7CE")
+    ws.print_area = ["A1:C6", "E1:G6"]
+    ws.page_setup.paperSize = 11
+    ws.page_setup.firstPageNumber = 5
+    ws.page_setup.useFirstPageNumber = True
+    ws.print_options.horizontalCentered = True
+    ws.print_options.verticalCentered = True
+    ws.HeaderFooter.differentFirst = True
+    ws.firstHeader.center.text = "First page"
+    ws.oddHeader.center.text = "Other pages"
+    ws.oddFooter.left.text = "&P"
+
+    # no print area: what the sheet uses, with the text that flows out of
+    # its last column
+    ws = wb.create_sheet("Used")
+    ws["B2"] = "From B2"
+    ws["C4"] = "This text flows out of the last column that the sheet uses, over the empty cells."
+    ws.merge_cells("B6:C7")
+    ws["B6"] = "merged"
+    ws["B6"].alignment = Alignment(horizontal="center", vertical="center")
+    ws["B6"].border = box
+    ws.print_options.gridLines = True
+    ws.page_setup.paperSize = 13
+
+    path = os.path.join(OUT, "print.xlsx")
+    wb.save(path)
+    fix_core(path)
+
+
+def forms():
+    """form-fixed.xlsx, form-rows.xlsx and form-pages.xlsx: templates, whose
+    cells hold tags that data replaces (xlsx.Fill): a form of one page, a
+    table that grows by a row for each item, and a slip of ten rows a page
+    that is copied for each page of items."""
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head = PatternFill("solid", fgColor="DDEBF7")
+
+    def labels(ws, row, texts):
+        for c, t in enumerate(texts, start=1):
+            cell = ws.cell(row=row, column=c, value=t)
+            cell.font, cell.fill, cell.border = Font(bold=True), head, box
+            cell.alignment = Alignment(horizontal="center")
+
+    # a form of one page: values of every kind
+    wb = Workbook()
+    props(wb, "Form of one page")
+    ws = wb.active
+    ws.title = "Form"
+    for col, w in zip("ABCD", (8, 14, 9, 9)):
+        ws.column_dimensions[col].width = w
+    ws["A1"] = "明書 Certificate"
+    ws["A1"].font = Font(bold=True, size=16)
+    ws.merge_cells("A1:D1")
+    ws["A1"].alignment = Alignment(horizontal="center")
+    ws.row_dimensions[1].height = 27
+    rows = [("No", "{{no}}", None), ("日", "{{date}}", "yyyy/mm/dd"), ("Name", "{{customer.name}} さま", None),
+            ("Amount", "{{amount}}", "#,##0"), ("Total", '{{total | fmt:"#,##0.00"}}', None),
+            ("Paid", "{{#paid}}■{{/paid}}{{^paid}}□{{/paid}} paid", None), ("Memo", "{{memo}}", None)]
+    for i, (label, value, fmt) in enumerate(rows, start=3):
+        ws.cell(row=i, column=1, value=label).font = Font(bold=True)
+        cell = ws.cell(row=i, column=2, value=value)
+        cell.border = Border(bottom=thin)
+        if fmt:
+            cell.number_format = fmt
+    ws["C6"] = "=B6*1.1"
+    ws["C6"].number_format = "#,##0.0"
+    ws["D6"] = "=IF(B6>10000,\"large\",\"small\")"
+    ws["C4"] = "｛｛date ｜ fmt：“yyyy-mm”｝｝"
+    ws.merge_cells("B9:D10")
+    ws["B9"].alignment = Alignment(wrap_text=True, vertical="top")
+    ws["A11"] = "Photo"
+    ws["A11"].font = Font(bold=True)
+    ws["B11"] = "{{%photo}}"
+    ws.merge_cells("B11:C13")
+    for r in range(11, 14):
+        for c in (2, 3):
+            ws.cell(row=r, column=c).border = box
+    # a QR code and a barcode of values: drawn in the cells, as pictures are
+    ws["D11"] = "{{%url | qr}}"
+    ws.merge_cells("D11:D13")
+    for r in range(11, 14):
+        ws.cell(row=r, column=4).border = box
+    ws["A14"] = "Tags: {{#tags}}{{.}}{{^_last}}, {{/_last}}{{/tags}}"
+    ws["A15"] = "{{missing}}"
+    ws["D15"] = "\\{{not a tag}}"
+    ws["A16"] = "JAN"
+    ws["A16"].font = Font(bold=True)
+    ws["B16"] = "{{%jan | barcode:jan}}"
+    ws.merge_cells("B16:D17")
+    ws.print_area = "A1:D17"
+    ws.page_setup.paperSize = 11
+    ws.oddFooter.center.text = "&P / &N"
+
+    path = os.path.join(OUT, "form-fixed.xlsx")
+    wb.save(path)
+    fix_core(path)
+
+    # a table that grows: a row for each item, and the formulas under it
+    wb = Workbook()
+    props(wb, "Table that grows")
+    ws = wb.active
+    ws.title = "Invoice"
+    for col, w in zip("ABCDE", (6, 20, 8, 10, 12)):
+        ws.column_dimensions[col].width = w
+    ws["A1"] = "Invoice {{no}}"
+    ws["A1"].font = Font(bold=True, size=14)
+    ws.merge_cells("A1:E1")
+    ws.row_dimensions[1].height = 24
+    ws["A2"] = "To: {{customer}}"
+    labels(ws, 3, ("No", "項目", "数", "Price", "Amount"))
+    ws["A4"] = "{{#items}}{{_index}}"
+    ws["B4"] = "{{name}}"
+    ws["C4"] = "{{qty}}"
+    ws["D4"] = "{{price}}{{/items}}"
+    ws["D4"].number_format = "#,##0"
+    ws["E4"] = "=C4*D4"
+    ws["E4"].number_format = "#,##0"
+    for c in range(1, 6):
+        ws.cell(row=4, column=c).border = box
+    ws["B5"] = "{{^items}}no items{{/items}}"
+    ws["D6"], ws["E6"] = "Total", "=SUM(E4:E4)"
+    ws["D7"], ws["E7"] = "Tax", "=ROUND(E6*0.1,0)"
+    ws["D8"], ws["E8"] = "Sum", "=E6+E7"
+    ws["A8"] = "=COUNT(C4:C4)"
+    for r in (6, 7, 8):
+        ws.cell(row=r, column=4).font = Font(bold=True)
+        ws.cell(row=r, column=5).number_format = "#,##0"
+        ws.cell(row=r, column=5).border = Border(bottom=thin)
+    ws["A10"] = "{{note}}"
+    ws.merge_cells("A10:E10")
+    ws.conditional_formatting.add("E4:E4", CellIsRule(operator="greaterThanOrEqual", formula=["1000"], font=Font(bold=True, color="C00000")))
+    ws.print_area = "A1:E10"
+    ws.print_title_rows = "1:3"
+    ws.page_setup.paperSize = 9
+    ws.row_breaks.append(Break(id=8))
+    ws.oddFooter.center.text = "&P / &N"
+    # a second sheet that reads the first
+    ws2 = wb.create_sheet("Summary")
+    ws2["A1"], ws2["B1"] = "Items", "=COUNT(Invoice!C4:C4)"
+    ws2["A2"], ws2["B2"] = "Sum", "=Invoice!E8"
+    ws2["A3"], ws2["B3"] = "First", "=Invoice!B4"
+    ws2["A4"], ws2["B4"] = "Unknown", "=TODAY()"
+    ws2.print_area = "A1:B4"
+    ws2.page_setup.paperSize = 11
+
+    path = os.path.join(OUT, "form-rows.xlsx")
+    wb.save(path)
+    fix_core(path)
+
+    # a slip of ten rows: the data gives the rows of each page, and what
+    # is carried over
+    wb = Workbook()
+    props(wb, "Slip of ten rows a page")
+    ws = wb.active
+    ws.title = "Slip"
+    for col, w in zip("ABCD", (5, 18, 7, 11)):
+        ws.column_dimensions[col].width = w
+    ws["A1"] = "{{#pages | pages}}Delivery {{slip}}"
+    ws["A1"].font = Font(bold=True, size=14)
+    ws.row_dimensions[1].height = 24
+    ws["D1"] = "{{_page}} / {{_pages}}"
+    ws["D1"].alignment = Alignment(horizontal="right")
+    ws["A2"] = "To: {{customer}}"
+    ws["C2"], ws["D2"] = "From", "{{carry_in}}"
+    ws["D2"].number_format = "#,##0"
+    labels(ws, 3, ("No", "項目", "数", "Amount"))
+    ws["A4"] = "{{#rows}}{{no}}"
+    ws["B4"] = "{{name}}{{#_blank_first}}-- end --{{/_blank_first}}"
+    ws["C4"] = "{{qty}}"
+    ws["D4"] = "{{amount}}"
+    ws["A13"] = "{{/rows}}"
+    for r in range(4, 14):
+        for c in range(1, 5):
+            ws.cell(row=r, column=c).border = box
+        ws.cell(row=r, column=4).number_format = "#,##0"
+    ws["C14"], ws["D14"] = "Page", "=SUM(D4:D13)"
+    ws["C15"], ws["D15"] = "To", "{{carry_out}}"
+    ws["A15"] = "{{#_last}}Total {{total | fmt:\"#,##0\"}}{{/_last}}"
+    ws["A15"].font = Font(bold=True)
+    for r in (14, 15):
+        ws.cell(row=r, column=4).number_format = "#,##0"
+        ws.cell(row=r, column=4).border = Border(bottom=thin)
+    ws["A16"] = "{{/pages}}"
+    ws.print_area = "A1:D16"
+    ws.page_setup.paperSize = 11
+    ws.oddFooter.right.text = "&P"
+
+    path = os.path.join(OUT, "form-pages.xlsx")
+    wb.save(path)
+    fix_core(path)
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
-    basic()
-    features()
-    math()
+    if sys.argv[1:]:
+        for name in sys.argv[1:]:
+            globals()[name]()
+    else:
+        basic()
+        features()
+        math()
+        printing()
+        forms()
     print("wrote", OUT)

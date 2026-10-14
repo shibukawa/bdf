@@ -101,6 +101,10 @@ func (s *sheetCtx) loadTables() {
 			continue
 		}
 		ref, ok := parseRange(n.AttrStr("ref", ""))
+		if ok {
+			// the rows of a filled template are where they were moved to
+			ref.r0, ref.r1 = c.filledRows(s.ws, ref.r0, ref.r1)
+		}
 		if !ok || !s.admitTable(ref) {
 			continue
 		}

@@ -10,12 +10,15 @@
 | `raster/imagebdf/` | ページと単体の Object を純 Go で画像に描く（ビューアと同じ描き方）。ソフトウェアのラスタライザと、SVG の画像を描く SVG レンダラ |
 | `raster/ebitenginebdf/` | パスだけの Object（数式など）を Ebitengine で描く。Ebitengine に依存するので独自の `go.mod` を持つ別モジュール。`raster/internal/shapes` は Object を塗りと線の図形の並びに展開する共通部分 |
 | `image/formula/` | LaTeX・MathML の数式を組んでパスだけの Object にする公開パッケージ。数式フォント（STIX Two Math）を同梱 |
+| `vector/pdfbdf/` | 文書を PDF に書き出す。命令列を内容ストリームに、文字を埋め込んだフォントの文字に、グループとソフトマスクを透明グループにする。影は `raster/imagebdf` で描いた画像にする。タグ付き PDF（`MARK` 命令から作る構造木）と PDF/A も書く |
+| `form/` | 帳票のテンプレートをデータで穴埋めする: データの読み込み、テンプレートの判別、データの JSON Schema、コンパイル済みテンプレート（.bdft）。`form/tag` は Office のテンプレート（Excel・Word・PowerPoint）のタグの読み手。`converter/pdfform` は入力欄のある PDF を、`converter/pdfme` は pdfme のテンプレートを埋める。[帳票を作る](../forms.ja.md)を参照 |
 | `thumbnail/` | 文書のサムネイル。文書の種類によるレイアウトと、PNG・JPEG・WebP の書き出し |
 | `internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書きとグリフの輪郭（`sfnt`）、CFF の読み取りとサブセット化（`cff`）、OpenType のレイアウトテーブル GSUB・GPOS・GDEF の読み取り（`otlayout`）。数式の木・読み手（LaTeX、MathML、Office Math）・組版（`mathlayout`）と、Office の XML の木（`xmltree`）。変換器と `imagebdf` が共有する |
 | `contrib/` | プラットフォームに寄るもの。`otf` は Unix と Windows でフォントファイルをメモリにマップして開き（それ以外では読み込む）、読んだ表とグリフのページだけを常駐させる。`fontdb` が読み込むフォントを開くのに使う |
 | `font/woff2/` | TrueType/OpenType ↔ WOFF2（glyf 変換と Brotli） |
 | `image/svg/` | SVG を読む公開パッケージ。スタイルシートを適用した要素の木と、属性の値（色・長さ・変換）。描くのは `raster/imagebdf` |
 | `image/imgconv/` | 画像の格納方針（そのまま／WebP に変換）。純 Go の libwebp を同梱 |
+| `image/barcode/` | QR コードとバーコード（JAN/EAN、UPC-A、Code 39、Code 128、GS1-128、ITF、NW-7）を、矩形のパスとして作る公開パッケージ。帳票のテンプレートの `{{%値 \| qr}}`・`barcode:種類` が使う |
 | `fixture/` | テストと `bdf demo` が使うサンプル文書の生成（埋め込みフォント付き） |
 
 ## 変換器（入力形式ごとに 1 パッケージ）
@@ -53,7 +56,7 @@
 | `converter/audio` | MP3・M4A・FLAC・Ogg・WAV・AIFF（カバーアート・タグ・歌詞のカード。ファイルそのものも持ち、ビューアが再生する） |
 | `converter/all` | すべての入力形式を登録する（副作用のために import する） |
 
-`converter/internal/` には複数の変換器が共有するものが入っています: OOXML のパッケージと XML（`ooxml`）、DrawingML の図形・テキスト・表・グラフ（`ooxml/drawingml`）、テキストレイアウト用のフォント選択・計測・埋め込み（`fontset`。draw.io も使う）、組み立て中の Object（`canvas`。draw.io も使う）、EMF/WMF の再生（`metafile`）、ISO base media file format の箱（`isobmff`。AVIF の画像と M4A の音声）、CAD 図面のページへの描画（`cad`）、行分割の規則（`linebreak`）、複合ファイル（`cfb`）とパスワード付き Office 文書の復号（`offcrypto`）。PDF 用の Adobe の定義済み CJK CMap（`cjkcmap`）と JPEG 2000・JBIG2 のデコーダ（`jpx`、`jbig2`）。TIFF の読み取りと CCITT の FAX 符号のデコーダ（`tiff`）。Word・HTML・Markdown・EPUB の組版エンジン（`wordproc`: 段落・表・ページ・scroll View）と、それらが共有する HTML・XHTML の読み込み（`webdoc`）。XMP メタデータの Dublin Core（`xmp`）。数式エンジン（`internal/mathlayout`）を文書のフォントで動かし、埋め込みフォントのテキストとして描く部分（`equation`）。MML・MIDI・MusicXML の楽譜の組版と演奏する音楽（`music`。Bravura の SMuFL の字形は `music/smufl`）。
+`converter/internal/` には複数の変換器が共有するものが入っています: OOXML のパッケージと XML（`ooxml`）、DrawingML の図形・テキスト・表・グラフ（`ooxml/drawingml`）、テキストレイアウト用のフォント選択・計測・埋め込み（`fontset`。draw.io も使う）、組み立て中の Object（`canvas`。draw.io も使う）、EMF/WMF の再生（`metafile`）、ISO base media file format の箱（`isobmff`。AVIF の画像と M4A の音声）、CAD 図面のページへの描画（`cad`）、行分割の規則（`linebreak`）、場所の決まったフィールドに値を描く部分（`formbox`。PDF フォームと pdfme）、複合ファイル（`cfb`）とパスワード付き Office 文書の復号（`offcrypto`）。PDF 用の Adobe の定義済み CJK CMap（`cjkcmap`）と JPEG 2000・JBIG2 のデコーダ（`jpx`、`jbig2`）。TIFF の読み取りと CCITT の FAX 符号のデコーダ（`tiff`）。Word・HTML・Markdown・EPUB の組版エンジン（`wordproc`: 段落・表・ページ・scroll View）と、それらが共有する HTML・XHTML の読み込み（`webdoc`）。XMP メタデータの Dublin Core（`xmp`）。数式エンジン（`internal/mathlayout`）を文書のフォントで動かし、埋め込みフォントのテキストとして描く部分（`equation`）。MML・MIDI・MusicXML の楽譜の組版と演奏する音楽（`music`。Bravura の SMuFL の字形は `music/smufl`）。
 
 ## TypeScript のパッケージ
 
@@ -78,7 +81,7 @@
 | 場所 | 内容 |
 |---|---|
 | `examples/light-server`、`examples/preview-server`、`examples/search`、`examples/secure-reader` | BDF をシステムに組み込む方法ごとの小さな Go サーバー 4 つ。[構成のサンプル](../examples/index.ja.md)を参照 |
-| `cmd/bdf` | `bdf` コマンド: `generate`、`thumbnail`、`text`、`render`、`ls`、`manifest`、`disasm`、`extract`、`split`、`join`、`encrypt`、`decrypt`、`demo`。[BDF コマンド](cli.ja.md)を参照 |
+| `cmd/bdf` | `bdf` コマンド: `generate`、`fill`、`template`、`thumbnail`、`text`、`render`、`ls`、`manifest`、`disasm`、`extract`、`split`、`join`、`encrypt`、`decrypt`、`demo`。[BDF コマンド](cli.ja.md)を参照 |
 | `tools/` | ソースが変わったときに手で実行する生成ツール群: Unicode のデータ、SMuFL の字形パス、draw.io のステンシルと AWS アイコンの対応表、テーブルスタイル、cmap、純 Go の WebP コーデックの生成テーブル |
 | `testdata/` | 生成済みサンプルと golden 画像。CI でバイト単位（または画素単位）に照合する |
 | `test/` | Playwright による golden テストと、各形式の `testdata/` を作るフィクスチャ生成スクリプト |

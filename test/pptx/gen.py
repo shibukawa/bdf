@@ -9,6 +9,12 @@ in the mc:Choice of an mc:AlternateContent whose fallback stands in for
 the picture PowerPoint puts there, with the letters stored styled (𝑥), on
 lines of their own and inline in Latin and Japanese text, with a theme
 color and autofit; and an a14 choice without math, whose fallback stays.
+form-fixed.pptx, form-rows.pptx and form-pages.pptx are templates, whose
+text holds tags that data replaces (pptx.Fill): a form of one slide with
+values of every kind, pictures, and texts that are fitted again; a table
+that grows by a row for each item and goes on on further slides; and a
+slip of ten rows whose slide is repeated for each page of the data. They
+are filled with the data of the Excel templates (test/xlsx/data).
 """
 import io
 import os
@@ -485,6 +491,127 @@ def math_deck():
     return prs
 
 
+def forms():
+    """The templates of forms: see the top of the file. Returns the decks by
+    their file names."""
+    PT = 12700
+    esc = lambda t: t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def r(text, sz=1400, bold=False, lang="en-US", color=None):
+        fill = f'<a:solidFill><a:srgbClr val="{color}"/></a:solidFill>' if color else ""
+        b = ' b="1"' if bold else ""
+        return f'<a:r><a:rPr lang="{lang}" sz="{sz}"{b}>{fill}</a:rPr><a:t>{esc(text)}</a:t></a:r>'
+
+    def p(*runs, algn=None):
+        pr = f'<a:pPr algn="{algn}"/>' if algn else ""
+        return f"<a:p>{pr}{''.join(runs)}</a:p>"
+
+    def box(sid, name, x, y, w, h, paragraphs, body_extra="", fill="<a:noFill/>"):
+        return text_box(sid, name, int(x * PT), int(y * PT), int(w * PT), int(h * PT), paragraphs, body_extra, fill)
+
+    def add(slide, *shapes):
+        wrap = f'<p:spTree xmlns:p="{NS_P}" xmlns:a="{NS_A}">{"".join(shapes)}</p:spTree>'
+        for el in etree_fromstring(wrap):
+            slide.shapes._spTree.append(el)
+
+    def table(slide, x, y, widths, row_h, rows, size=1200):
+        """A table of rows of texts; (text, align) for a cell that is not left-aligned."""
+        from pptx.enum.text import PP_ALIGN
+        shape = slide.shapes.add_table(len(rows), len(widths), Emu(int(x * PT)), Emu(int(y * PT)), Emu(int(sum(widths) * PT)), Emu(int(row_h * len(rows) * PT)))
+        shape.name = "Table"
+        t = shape.table
+        for c, w in enumerate(widths):
+            t.columns[c].width = Emu(int(w * PT))
+        for i, row in enumerate(rows):
+            t.rows[i].height = Emu(int(row_h * PT))
+            for c, text in enumerate(row):
+                align = None
+                if isinstance(text, tuple):
+                    text, align = text
+                cell = t.cell(i, c)
+                cell.margin_top = cell.margin_bottom = Emu(2 * PT)
+                para = cell.text_frame.paragraphs[0]
+                if text:
+                    run = para.add_run()
+                    run.text = text
+                    run.font.size = Emu(size * 127)
+                if align:
+                    para.alignment = {"r": PP_ALIGN.RIGHT, "ctr": PP_ALIGN.CENTER}[align]
+        return shape
+
+    decks = {}
+
+    # a form of one slide: values of every kind
+    prs = Presentation()
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    shapes = [
+        box(10, "Title", 60, 30, 600, 44, [p(r("\u660e\u66f8 Certificate", 2800, True, "ja-JP"), algn="ctr")]),
+        box(11, "Number", 500, 80, 160, 26, [p(r("No. {{no}}"), algn="r")]),
+        box(12, "Date", 60, 110, 420, 26, [p(r("\u65e5 ", 1400, True, "ja-JP"), r('{{date | fmt:"yyyy/mm/dd"}} '),
+                                              # (a tag in the full-width characters of an input method)
+                                              r("\uff5b\uff5bdate \uff5c fmt\uff1a\u201cyyyy-mm\u201d\uff5d\uff5d", 1400, False, "ja-JP", "7F7F7F"))]),
+        # (a tag in runs, as PowerPoint parts it where the language changes)
+        box(13, "Name", 60, 140, 420, 26, [p(r("Name ", 1400, True), r("{{custo", 1400, True), r("mer.na", 1400, True, "ja-JP"), r("me}}", 1400, True),
+                                              r(" \u3055\u307e", 1400, False, "ja-JP"))]),
+        box(14, "Amount", 60, 170, 420, 26, [p(r("Amount ", 1400, True), r('{{amount | fmt:"#,##0"}}'), r("   Total ", 1400, True), r('{{total | fmt:"#,##0.00"}}'))]),
+        box(15, "Paid", 60, 200, 420, 26, [p(r("{{#paid}}\u25a0{{/paid}}{{^paid}}\u25a1{{/paid}} paid", 1400, False, "ja-JP"))]),
+        # a text that shrinks on overflow: fitted again to the memo
+        box(16, "Memo", 60, 236, 200, 34, [p(r("Memo: {{memo}}", 1800))], '<a:normAutofit/>',
+            '<a:solidFill><a:srgbClr val="F2F2F2"/></a:solidFill>'),
+        # a shape that resizes to its text: a paragraph for each tag
+        box(17, "Tags", 280, 236, 200, 30, [p(r("Tags: {{#tags}}{{.}}{{^_last}}, {{/_last}}{{/tags}}")), p(r("{{#tags | rows}}- tag {{_index}}: {{.}}{{/tags}}")),
+                                              p(r("{{^tags | rows}}no tags{{/tags}}"))],
+            "<a:spAutoFit/>", '<a:solidFill><a:srgbClr val="FFF2CC"/></a:solidFill>'),
+        box(18, "Rest", 60, 400, 420, 50, [p(r("{{missing}}")), p(r("\\{{not a tag}}"))]),
+    ]
+    add(s, *shapes)
+    image = io.BytesIO(png(48, 24, lambda x, y: (200, 200, 200)))
+    # (the last two are a QR code and a barcode of values: drawn in the frames of the pictures)
+    for name, descr, x, y, w, h in (("Photo", "{{%photo}} the stamp", 500, 120, 80, 80), ("Cover", "{{%photo | fit:cover}}", 600, 120, 80, 80),
+                                    ("QR", "{{%url | qr}}", 500, 215, 80, 80), ("JAN", "{{%jan | barcode:jan}} the article", 500, 310, 160, 50)):
+        image.seek(0)
+        pic = s.shapes.add_picture(image, Emu(x * PT), Emu(y * PT), Emu(w * PT), Emu(h * PT))
+        pic.name = name
+        pic._element.nvPicPr.cNvPr.set("descr", descr)
+    prs.core_properties.title = "Form of one slide"
+    decks["form-fixed.pptx"] = prs
+
+    # a table that grows: a row for each item, on further slides when the
+    # slide is full
+    prs = Presentation()
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add(s, box(10, "Title", 40, 24, 440, 36, [p(r("Invoice {{no}}", 2400, True))]),
+        box(11, "To", 40, 60, 440, 26, [p(r("To: {{customer}}"))]),
+        box(12, "Slide", 520, 30, 160, 26, [p(r("{{_slide}} / {{_slides}}"), algn="r")]))
+    table(s, 40, 96, [60, 320, 100, 160], 22, [
+        [("No", "ctr"), ("\u9805\u76ee", "ctr"), ("\u6570", "ctr"), ("Price", "ctr")],
+        [("{{#items}}{{_index}}", "ctr"), "{{name}}", ("{{qty}}", "r"), ('{{price | fmt:"#,##0"}}{{/items}}', "r")],
+        ["Items", "", "", ("{{note}}", "r")],
+    ])
+    # (the table goes down to the shape under it)
+    add(s, box(13, "Note", 40, 496, 640, 26, [p(r("{{^items | rows}}no items{{/items}}")), p(r("{{note}}", 1200))]))
+    prs.core_properties.title = "Table that grows"
+    decks["form-rows.pptx"] = prs
+
+    # a slip of ten rows: the data gives the rows of each slide, and what
+    # is carried over
+    prs = Presentation()
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    add(s, box(10, "Title", 110, 40, 300, 36, [p(r("{{#pages}}Delivery {{slip}}", 2400, True))]),
+        box(11, "Page", 450, 46, 160, 26, [p(r("{{_page}} / {{_pages}}"), algn="r")]),
+        box(12, "To", 110, 80, 300, 26, [p(r("To: {{customer}}"))]),
+        box(13, "From", 410, 80, 200, 26, [p(r('From {{carry_in | fmt:"#,##0"}}'), algn="r")]))
+    rows = [[("No", "ctr"), ("\u9805\u76ee", "ctr"), ("\u6570", "ctr"), ("Amount", "ctr")],
+            [("{{#rows}}{{no}}", "ctr"), "{{name}}{{#_blank_first}}-- end --{{/_blank_first}}", ("{{qty}}", "r"), ('{{amount | fmt:"#,##0"}}', "r")]]
+    rows += [[("", "ctr"), "", ("", "r"), ("{{/rows}}" if i == 8 else "", "r")] for i in range(9)]
+    table(s, 110, 116, [60, 240, 80, 120], 24, rows)
+    add(s, box(14, "Total", 110, 392, 300, 26, [p(r('{{#_last}}Total {{total | fmt:"#,##0"}}{{/_last}}', 1400, True))]),
+        box(15, "Carry", 410, 392, 200, 26, [p(r('To {{carry_out | fmt:"#,##0"}}{{/pages}}'), algn="r")]))
+    prs.core_properties.title = "Slip of ten rows a slide"
+    decks["form-pages.pptx"] = prs
+    return decks
+
+
 def fixed_zip(path):
     """Rewrites a package with fixed times, so that the file is the same on every run."""
     import zipfile
@@ -507,8 +634,20 @@ def etree_fromstring(xml):
     return etree.fromstring(xml)
 
 
+def write_forms():
+    for name, prs in forms().items():
+        prs.save(os.path.join(OUT, name))
+        fixed_zip(os.path.join(OUT, name))
+
+
 def main():
+    import sys
     os.makedirs(OUT, exist_ok=True)
+    if sys.argv[1:]:
+        for name in sys.argv[1:]:
+            globals()[name]()
+        return
+    write_forms()
     basic().save(os.path.join(OUT, "basic.pptx"))
     features().save(os.path.join(OUT, "features.pptx"))
     math_deck().save(os.path.join(OUT, "math.pptx"))

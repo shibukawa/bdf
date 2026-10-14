@@ -19,6 +19,12 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
   bdf generate [flags] <input> <out.bdf | dir/>
                                      convert a document or a drawing (bdf generate -h for flags and formats)
+  bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .bdft> <out.bdf | dir/>
+                                     fill a template of a form with data: an Office document with tags, a
+                                     PDF with form fields, a template of pdfme (bdf fill -h for flags)
+  bdf template compile [flags] <template> <out.bdft>
+  bdf template schema <template> [out.json]
+                                     check a template and write it compiled; write what it asks of data
   bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                      draw a thumbnail: the top of the first page or the whole slide
                                      (of an input to convert, only the first page is converted)
@@ -26,6 +32,8 @@ func usage() {
                                      write the metadata and the text of each page for a search index
   bdf render [flags] <file.bdf | dir> <out.png | .jpg | .webp>
                                      draw a page (bdf thumbnail -h, text -h, render -h for flags)
+  bdf pdf [flags] <file.bdf | dir> <out.pdf>
+                                     write the pages as a PDF file (bdf pdf -h for flags)
   bdf ls <file.bdf | dir>            list views and parts
   bdf manifest <file.bdf | dir>      print the manifest as JSON
   bdf disasm <file.bdf | dir> <hash> disassemble an object part
@@ -141,10 +149,16 @@ func main() {
 	switch os.Args[1] {
 	case "generate":
 		generate(os.Args[2:])
+	case "fill":
+		fill(os.Args[2:])
+	case "template":
+		templateCmd(os.Args[2:])
 	case "thumbnail":
 		thumbnailCmd(os.Args[2:])
 	case "text":
 		textCmd(os.Args[2:])
+	case "pdf":
+		pdfCmd(os.Args[2:])
 	case "render":
 		renderCmd(os.Args[2:])
 	case "ls":

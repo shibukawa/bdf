@@ -1,0 +1,20 @@
+{
+  "no": 1024,
+  "date": "2026-10-13",
+  "customer": {
+    "name": "ACME"
+  },
+  "amount": 12000,
+  "total": 13200,
+  "paid": true,
+  "memo": "Thank you.\nSecond line",
+  "photo": "stamp.png",
+  "url": "https://example.com/c/1024",
+  "jan": "4901234567894",
+  "tags": [
+    "a",
+    "b",
+    "c"
+  ],
+  "missing": ""
+}

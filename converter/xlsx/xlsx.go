@@ -19,6 +19,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
@@ -26,6 +27,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 	"github.com/shibukawa/bdf/converter/internal/ooxml/drawingml"
+	"github.com/shibukawa/bdf/form/tag"
 	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/internal/fontdb"
 	"github.com/shibukawa/tinygodriver/encoding/xmlro"
@@ -67,6 +69,25 @@ type Options struct {
 	NoTextIndex bool
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.
 	Warn func(msg string)
+
+	// Views selects the views of a worksheet: ViewsSheet (the default when
+	// ""), the sheet as Excel shows it; ViewsPrint, the pages Excel prints
+	// (the print areas cut by the page setup, with the print titles, the
+	// header and the footer); or ViewsBoth.
+	Views string
+	// Paper names the paper of the printed pages of sheets whose page setup
+	// names none (see PaperNames): "" is A4 for a Japanese workbook and
+	// Letter for the others.
+	Paper string
+	// PrintTime is the date and the time that the headers and footers of
+	// printed pages show for &D and &T; the zero time shows none, so that
+	// the conversion of a file is the same whenever it is done.
+	PrintTime time.Time
+	// FileName is the name that headers and footers show for &F.
+	FileName string
+
+	// fill, when set, fills the workbook as a template (Fill)
+	fill *filler
 }
 
 // Result is the outcome of a conversion.
@@ -75,6 +96,9 @@ type Result struct {
 	Warnings      []string
 	Sheets        int
 	EmbeddedFonts int
+	// Fields are the names that the tags of a filled template look up
+	// (Fill).
+	Fields []tag.Field
 }
 
 type converter struct {
@@ -105,6 +129,14 @@ type converter struct {
 	embeddedFonts int
 	embeddedGen   uint64
 	hasEmbedded   bool
+
+	// printNames are the print areas and titles of the sheets, by the index
+	// of the sheet in the workbook
+	printNames map[int]*printNames
+	// keepCells keeps the cells of a sheet after its text is drawn: its
+	// other view is drawn from them
+	keepCells   bool
+	sheetWarned map[string]bool
 }
 
 // sheetRef is a sheet of the workbook.
@@ -113,6 +145,7 @@ type sheetRef struct {
 	part   string
 	chart  bool
 	hidden bool
+	idx    int // its index among the sheets of the workbook (localSheetId)
 }
 
 // ConvertFile converts a .xlsx file.
@@ -129,14 +162,12 @@ func ConvertFile(path string, opts *Options) (*Result, error) {
 	return Convert(f, st.Size(), opts)
 }
 
-// Convert converts a workbook read from r.
-func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
-	if opts == nil {
-		opts = &Options{}
-	}
+// openWorkbook opens a workbook for a conversion: its shared strings, its
+// styles and its sheets. It returns the root of the workbook part.
+func openWorkbook(r io.ReaderAt, size int64, opts *Options) (*converter, *ooxml.Node, error) {
 	p, err := ooxml.Open(r, size)
 	if err != nil {
-		return nil, fmt.Errorf("xlsx: %w", err)
+		return nil, nil, fmt.Errorf("xlsx: %w", err)
 	}
 	// equations are laid out from their Office Math, not drawn from the
 	// text or pictures of their fallbacks
@@ -150,7 +181,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	}
 	wb, err := p.XML(c.wbPart)
 	if err != nil {
-		return nil, fmt.Errorf("xlsx: %w", err)
+		return nil, nil, fmt.Errorf("xlsx: %w", err)
 	}
 	c.date1904 = wb.Child("workbookPr").AttrBool("date1904", false)
 	c.d = c.r.NewDrawing(c.wbPart, nil, host{})
@@ -172,14 +203,13 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	c.setLocale()
 	c.mdw = c.maxDigitWidth(c.st.font(0))
 
-	var sheets []sheetRef
-	for _, s := range wb.Path("sheets").Children("sheet") {
+	for i, s := range wb.Path("sheets").Children("sheet") {
 		r, ok := p.Target(c.wbPart, s.RelID("id"))
 		if !ok {
 			continue
 		}
 		state := s.AttrStr("state", "visible")
-		ref := sheetRef{name: s.AttrStr("name", ""), part: r.Target, hidden: state != "visible"}
+		ref := sheetRef{name: s.AttrStr("name", ""), part: r.Target, hidden: state != "visible", idx: i}
 		switch {
 		case strings.HasSuffix(r.Type, "/worksheet"):
 		case strings.HasSuffix(r.Type, "/chartsheet"):
@@ -188,9 +218,47 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			c.warnOnce("sheettype:"+r.Type, "sheet %q: %s sheets are not supported", ref.name, r.Type[strings.LastIndexByte(r.Type, '/')+1:])
 			continue
 		}
-		sheets = append(sheets, ref)
+		c.sheets = append(c.sheets, ref)
 	}
-	c.sheets = sheets
+	return c, wb, nil
+}
+
+// Convert converts a workbook read from r.
+func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
+	if opts == nil {
+		opts = &Options{}
+	}
+	views := opts.Views
+	switch views {
+	case "":
+		views = ViewsSheet
+		if opts.fill != nil {
+			views = ViewsPrint // a filled template is a printed form
+		}
+	case ViewsSheet, ViewsPrint, ViewsBoth:
+	default:
+		return nil, fmt.Errorf("xlsx: views %q: want %s, %s or %s", views, ViewsSheet, ViewsPrint, ViewsBoth)
+	}
+	if opts.Paper != "" {
+		if _, ok := paperNames[strings.ToLower(opts.Paper)]; !ok {
+			return nil, fmt.Errorf("xlsx: paper %q: want one of %s", opts.Paper, strings.Join(PaperNames(), ", "))
+		}
+	}
+	c, wb, err := openWorkbook(r, size, opts)
+	if err != nil {
+		return nil, err
+	}
+	p := c.pkg
+	c.keepCells = views == ViewsBoth || opts.fill != nil
+	c.loadPrintNames(wb)
+	sheets := c.sheets
+	if f := opts.fill; f != nil {
+		// the template is filled before any sheet is drawn: what a sheet
+		// shows of another (a formula, a chart) is of the filled one
+		if err := f.run(c); err != nil {
+			return nil, err
+		}
+	}
 	sel := opts.Sheets.Numbers(len(sheets))
 	if sel == nil {
 		for i, s := range sheets {
@@ -230,16 +298,32 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			v, layers := c.chartSheetSafe(ref, id)
 			pending = append(pending, pendingView{view: v, layers: layers})
 		} else {
-			v, tiles, err := c.worksheetSafe(ref, id)
-			if err != nil {
-				return nil, fmt.Errorf("xlsx: sheet %q: %w", ref.name, err)
+			if views != ViewsPrint {
+				v, tiles, err := c.worksheetSafe(ref, id)
+				if err != nil {
+					return nil, fmt.Errorf("xlsx: sheet %q: %w", ref.name, err)
+				}
+				pending = append(pending, pendingView{view: v, tiles: tiles})
 			}
-			pending = append(pending, pendingView{view: v, tiles: tiles})
+			if views != ViewsSheet {
+				title := ref.name
+				if views == ViewsBoth {
+					title += " (print)"
+				}
+				v, pages, err := c.printSheetSafe(ref, "print"+strconv.Itoa(n), title)
+				if err != nil {
+					return nil, fmt.Errorf("xlsx: sheet %q: %w", ref.name, err)
+				}
+				pending = append(pending, pendingView{view: v, pages: pages})
+			}
 		}
 		// Charts can read other sheets while this one is rendered. Once the
 		// sheet is drawn, only the canvases are needed; release its cells and
-		// any chart source sheets before the next sheet is read.
-		clear(c.parsed)
+		// any chart source sheets before the next sheet is read. (The sheets
+		// of a filled template are kept: they are not read again.)
+		if opts.fill == nil {
+			clear(c.parsed)
+		}
 		if size, ok := p.PartSize(ref.part); ok {
 			batchBytes += min(size, uint64(1<<20)-batchBytes)
 		}
@@ -269,7 +353,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 // object builder. p is nil for grids, which come from no workbook.
 func newConverter(p *ooxml.Package, opts *Options) *converter {
 	c := &converter{pkg: p, opts: opts, doc: bdf.NewDocument(), warned: map[string]bool{}, patterns: map[string]bdf.Hash{},
-		parsed: map[string]*worksheet{}, chartsFilled: map[string]bool{}}
+		parsed: map[string]*worksheet{}, chartsFilled: map[string]bool{}, sheetWarned: map[string]bool{}}
 	db := fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
 	c.fonts = fontset.New(db, func(msg string) { c.warnf("%s", msg) })
 	c.cvs = canvas.NewBuilder(c.doc, c.fonts)
@@ -285,6 +369,8 @@ type pendingView struct {
 	view   *bdf.View
 	tiles  map[string]*canvas.Canvas
 	layers []*canvas.Canvas
+	// pages are the objects of the layers of each page of a print view
+	pages [][]*canvas.Canvas
 }
 
 // encodePending embeds any newly measured glyphs, encodes the canvases and
@@ -307,6 +393,11 @@ func (c *converter) encodePending(views []pendingView) {
 		if len(pv.layers) > 0 {
 			for i, cv := range pv.layers {
 				pv.view.Pages[0].Layers[i].Obj = cv.Hash()
+			}
+		}
+		for i, layers := range pv.pages {
+			for k, cv := range layers {
+				pv.view.Pages[i].Layers[k].Obj = cv.Hash()
 			}
 		}
 	}

@@ -91,6 +91,61 @@ func TestPruneGlyphs(t *testing.T) {
 	}
 }
 
+// TestPruneSharedAdvance prunes a font whose last glyphs have the advance
+// of its last full metric (a monospaced font, the ideographs of a CJK
+// font): a kept one of them keeps that advance when the glyph of the full
+// metric itself is dropped.
+func TestPruneSharedAdvance(t *testing.T) {
+	data, err := os.ReadFile("../../fixture/testdata/fonts/DejaVuSans-sub.ttf")
+	if err != nil {
+		t.Skip("fixture font missing")
+	}
+	sf, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, z := sf.Cmap['A'], sf.Cmap['Z']
+	if a == 0 || z == 0 || a == z {
+		t.Skip("the font lacks the glyphs of the test")
+	}
+	// the metrics as those of a font with three full metrics: the glyphs
+	// from the third on have the advance 1234
+	hhea := append([]byte(nil), sf.Tables["hhea"]...)
+	const nhm = 3
+	binary.BigEndian.PutUint16(hhea[34:], nhm)
+	hmtx := make([]byte, nhm*4+(sf.NumGlyphs-nhm)*2)
+	for g := 0; g < nhm; g++ {
+		binary.BigEndian.PutUint16(hmtx[g*4:], uint16(1000+g))
+		binary.BigEndian.PutUint16(hmtx[g*4+2:], 7)
+	}
+	binary.BigEndian.PutUint16(hmtx[(nhm-1)*4:], 1234)
+	for g := nhm; g < sf.NumGlyphs; g++ {
+		binary.BigEndian.PutUint16(hmtx[nhm*4+(g-nhm)*2:], 9)
+	}
+	if int(a) < nhm || int(z) < nhm {
+		t.Skip("the glyphs of the test are among the full metrics")
+	}
+	sf.Tables["hhea"], sf.Tables["hmtx"] = hhea, hmtx
+	sf.PruneGlyphs(map[uint16]bool{a: true})
+	got := sf.Tables["hmtx"]
+	lsb := func(g uint16) uint16 { return be16(got, nhm*4+(int(g)-nhm)*2) }
+	if adv := be16(got, (nhm-1)*4); adv != 1234 {
+		t.Errorf("the advance that the kept glyph has is %d, want 1234", adv)
+	}
+	if be16(got, (nhm-1)*4+2) != 0 || be16(got, 4) != 0 || be16(got, 6) != 0 {
+		t.Errorf("the metrics of dropped glyphs are not zeroed: % x", got[:nhm*4])
+	}
+	if lsb(a) != 9 || lsb(z) != 0 {
+		t.Errorf("side bearings: kept %d, dropped %d", lsb(a), lsb(z))
+	}
+	// with nothing kept after the full metrics, the last of them is zeroed whole
+	sf.Tables["hmtx"] = hmtx
+	sf.PruneGlyphs(map[uint16]bool{1: true})
+	if adv := be16(sf.Tables["hmtx"], (nhm-1)*4); adv != 0 {
+		t.Errorf("the advance of a dropped glyph that nothing shares is %d", adv)
+	}
+}
+
 // TestPruneCFF empties the glyphs not kept of a CFF font, keeping their
 // numbers: the kept glyphs keep their outlines.
 func TestPruneCFF(t *testing.T) {

@@ -1,0 +1,77 @@
+id: taxonomy:form-layout-axes
+type: taxonomy
+title: 帳票レイアウトの形態を分ける軸
+summary: >-
+  帳票テンプレートの形態は 1 つの軸では分けられない。ページの決まり方、繰り返しの単位、あふれの扱い、集計の位置、
+  出力先、静的部分の由来、データの形の 7 軸で捉え、pattern:* はその代表的な組み合わせに名前を付けたもの。
+lifecycle: proposed
+authority: authored
+aliases:
+- 帳票の形態
+- form layout taxonomy
+facts:
+  axes:
+    page_model:
+      question: ページはどう決まるか
+      values:
+        fixed: 1 レコード 1 ページ。用紙・箱・行ピッチはテンプレートで確定（固定レイアウト帳票）
+        replicated: 同じ型のページを複製して詰める。10 行/ページで 25 行なら 3 枚、1/3 2/3 3/3
+        flow: 内容が下を押し下げ、用紙の高さでページが割れる（Excel の行挿入＋印刷設定、Word の表）
+        continuous: ページという単位が弱い。連続用紙は用紙長とミシン目、ロール紙は長さ無制限
+    repeat_unit:
+      question: 何を繰り返すか
+      values: [箱の中の文字, 表の行, 行の組（ブロック）, ページ / スライド, 文書全体（差し込み印刷）, ラベルの面]
+    overflow:
+      question: 入りきらないときどうするか
+      values: [縮小（PowerPoint の normAutofit）, 切る, 次のページ / 次のスライドへ続ける, 空行で埋める（固定行数の残り）, エラーにする]
+    aggregates:
+      question: 合計・小計をどこに置くか
+      values: [最終ページだけ（1/3 2/3 は空欄、3/3 に合計）, 各ページに小計と繰越（前頁より繰越 / 次頁へ繰越）, 全ページに同じ総合計, 明細の直後（流れる位置）]
+    destination:
+      question: 出力先は何か
+      values: [画面（ビューア）, PDF, A4 / A3 のページプリンタ, ドットインパクトの連続用紙（複写）, ラベルプリンタ, レシートプリンタ（ロール紙）]
+    static_origin:
+      question: 罫線やロゴなどの静的部分はどこから来るか
+      values: [テンプレートが描く（電子帳票）, プレ印刷用紙にあり可変部分だけ印字する（フォームオーバーレイ・追い刷り）]
+    data_shape:
+      question: データの形は何か
+      values: [1 レコード, 一覧（配列）, 親子（ヘッダー＋明細）, バッチ（レコードごとに 1 文書）, 複数の表（複数シート・複数 CSV）]
+  pattern_matrix:
+    pattern:fixed-page-form: {page_model: fixed, repeat_unit: 箱, overflow: 縮小 / 切る / エラー, aggregates: 不要, data_shape: 1 レコード}
+    pattern:fixed-rows-paged-detail: {page_model: replicated, repeat_unit: 行の組, overflow: 次のページ, aggregates: 最終ページ / 繰越, data_shape: 親子}
+    pattern:growing-detail: {page_model: flow, repeat_unit: 表の行, overflow: 次のページ, aggregates: 明細の直後, data_shape: 親子}
+    pattern:flow-document: {page_model: flow, repeat_unit: 段落 / セクション, overflow: 次のページ, data_shape: 1 レコード}
+    pattern:slide-repeat: {page_model: replicated, repeat_unit: スライド, overflow: 次のスライド, data_shape: 一覧 / バッチ}
+    pattern:label-sheet: {page_model: fixed / continuous, repeat_unit: ラベルの面, destination: ラベルプリンタ / A4, data_shape: 一覧}
+    pattern:continuous-text-form: {page_model: continuous, repeat_unit: 行, destination: ドットインパクト, static_origin: プレ印刷用紙が多い}
+    pattern:roll-receipt: {page_model: continuous, repeat_unit: 行, destination: レシートプリンタ}
+    pattern:preprinted-overlay: {static_origin: プレ印刷用紙}
+    pattern:copy-variants: {data_shape: 1 レコードを複数の型に}
+  external_vocabulary:
+    page_model_fixed: SVF のフォーム / サブフォーム、ActiveReports Page（FPL）、Oracle の Form-like、XFA の positioned subform、Smart Forms の secondary window
+    page_model_replicated: ActiveReports の OverflowPlaceHolder の鎖、SVF のリンクサブフォーム、プリントクリエイターの複数レイアウト、ExCella の breakNum
+    page_model_flow: 帯型エンジンの detail band、SSRS の tablix、OPRO の Band、XFA の flowed subform、Smart Forms の main window、Exstream のページ flow
+    overflow_blank_fill: RepeatToFill / RepeatBlankRows、EmptyData、List & Label の fixed size、SVF の枠固定
+    aggregates_carry_over: BI Publisher の brought / carried forward、SVF の RSUM と _PREV_P / _NEXT_P、XFA の leader / trailer
+  note: 軸は直交しない。固定行数のページ複製は「ページの決まり方」では replicated、「集計」では最終ページ型か繰越型かが帳票ごとに違う
+relations:
+- relation: has_member
+  to: pattern:fixed-page-form
+- relation: has_member
+  to: pattern:fixed-rows-paged-detail
+- relation: has_member
+  to: pattern:growing-detail
+- relation: has_member
+  to: pattern:flow-document
+- relation: has_member
+  to: pattern:slide-repeat
+- relation: has_member
+  to: pattern:label-sheet
+- relation: has_member
+  to: pattern:continuous-text-form
+- relation: has_member
+  to: pattern:roll-receipt
+- relation: has_member
+  to: pattern:preprinted-overlay
+- relation: has_member
+  to: pattern:copy-variants

@@ -18,6 +18,10 @@ Two views come out of a single document: the pages themselves (a flow view with 
 
 See [design.md §3.9](../design.md#39-word--bdf-変換器converterdocxの構造) for the internals.
 
+### Filling a document as a template
+
+A document whose body, tables, text boxes, headers and footers hold tags such as `{{name}}` is a template of a form that data fills (`bdf fill`, `docx.Fill`). The document is laid out again after it is filled: what got longer flows onto the next page, where the header rows of a table repeat. See [Making forms](../forms.md#word-templates).
+
 ## HTML .html / .xhtml / .mhtml (`converter/html`)
 
 `converter/html` lays a page out like a browser's reader view. The author's CSS is discarded, and elements are laid out with a fixed style sheet instead, by the same layout engine the Word converter uses. The article is picked out of a web page with go-readability (a Go port of Mozilla's Readability), and headings, paragraphs, lists, quotations, code, tables (with merged cells and content-driven column widths), figures, links and MathML formulas are all laid out the same way a Word document's would be. Since BDF never relays text out, the result is a scroll view of a fixed width (36 ems of text by default; `-param views=pages` adds A4 pages). Images are read from files beside the page, from an MHTML archive, from `data:` URLs, and from the network (fetched by default from public addresses only, so that a document cannot reach what is private to the server converting it; `-param remote=false` leaves them out, `-param private=true` fetches from private and local addresses too). SVG — both `.svg` files and inline `<svg>` elements — is stored as-is and drawn by the viewer, sized the way a browser would size it. Fonts aren't embedded: they're referred to by name, so a viewer draws the text in its own fonts the way it would a web page (`-fonts embed` embeds a subset instead).

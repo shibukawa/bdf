@@ -357,6 +357,9 @@ func (s *Drawing) drawSp(cv *canvas.Canvas, sh *shape) {
 	if !ok {
 		return
 	}
+	if h, ok := s.grownHeight(sh, xf); ok {
+		xf.H = h // a shape that resizes to fit text that has changed
+	}
 	geo, unknown := sh.geometry(xf.W, xf.H)
 	if unknown != "" {
 		s.c.warnOnce("prst:"+unknown, "unknown preset shape %q drawn as a rectangle", unknown)
@@ -460,6 +463,13 @@ func (s *Drawing) drawBlip(cv *canvas.Canvas, bf *ooxml.Node, part string, cc *c
 		return false
 	}
 	cv.Drawn = true
+	if e.paint != nil {
+		// a drawing in the place of the picture
+		cv.Obj.Save()
+		e.paint(cv.Obj, f32(x), f32(y), f32(w), f32(h))
+		cv.Obj.Restore()
+		return true
+	}
 	if cc == nil {
 		cc = s.cc
 	}

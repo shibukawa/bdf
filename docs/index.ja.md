@@ -8,6 +8,7 @@ BDF はブラウザでのプレビューのために作られた文書フォー�
 - **[はじめかた](getting-started.ja.md)** — ファイルを変換して開くまで、5 分で
 - **[フロントエンドに組み込む](integrating-to-frontend.ja.md)** — サーバー変換済み BDF の表示とブラウザ内変換
 - **[サーバーに組み込む](integrate-to-server.ja.md)** — 必要な形式だけを登録する Go の変換サーバー
+- **[帳票を作る](forms.ja.md)** — Excel・Word・PowerPoint のテンプレート、入力欄のある PDF、pdfme のテンプレートとデータから、請求書や伝票を BDF として作り、PDF（タグ付き、PDF/A も）に書き出す
 - **[描画する](rendering.ja.md)** — 文書と数式を Go の `image.Image`、Ebitengine、ブラウザの Canvas に描く
 - **[Wasm ランタイムをビルドする](build-wasm-runtime.ja.md)** — 形式を選んで TinyGo または Go でビルド
 - **[対応形式](formats/index.ja.md)** — すべての入力形式と、それぞれのレイアウト

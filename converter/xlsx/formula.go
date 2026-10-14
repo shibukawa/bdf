@@ -403,6 +403,10 @@ type fenv struct {
 	row    int // the evaluated cell
 	col    int
 	depth  int
+	// remap, when set, reads the references: those of a formula of a
+	// filled template, whose rows are not where the formula says
+	// (template_calc.go)
+	remap func(n fRef) (fval, bool)
 }
 
 func (e *fenv) sheet(name string) *worksheet {
@@ -413,6 +417,11 @@ func (e *fenv) sheet(name string) *worksheet {
 }
 
 func (e *fenv) ref(n fRef) (fval, error) {
+	if e.remap != nil {
+		if v, ok := e.remap(n); ok {
+			return v, nil
+		}
+	}
 	ws := e.sheet(n.sheet)
 	if ws == nil {
 		return fval{}, errUnsupported

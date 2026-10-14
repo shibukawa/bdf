@@ -1,0 +1,122 @@
+{
+ "pdfmeVersion": "6.2.4",
+ "basePdf": "data:application/pdf;base64,JVBERi0xLjQKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSIC9GMiAzIDAgUiAvRjMgNCAwIFIKPj4KZW5kb2JqCjIgMCBvYmoKPDwKL0Jhc2VGb250IC9IZWx2ZXRpY2EgL0VuY29kaW5nIC9XaW5BbnNpRW5jb2RpbmcgL05hbWUgL0YxIC9TdWJ0eXBlIC9UeXBlMSAvVHlwZSAvRm9udAo+PgplbmRvYmoKMyAwIG9iago8PAovQmFzZUZvbnQgL1RpbWVzLUJvbGQgL0VuY29kaW5nIC9XaW5BbnNpRW5jb2RpbmcgL05hbWUgL0YyIC9TdWJ0eXBlIC9UeXBlMSAvVHlwZSAvRm9udAo+PgplbmRvYmoKNCAwIG9iago8PAovQmFzZUZvbnQgL1RpbWVzLUl0YWxpYyAvRW5jb2RpbmcgL1dpbkFuc2lFbmNvZGluZyAvTmFtZSAvRjMgL1N1YnR5cGUgL1R5cGUxIC9UeXBlIC9Gb250Cj4+CmVuZG9iago1IDAgb2JqCjw8Ci9Db250ZW50cyA5IDAgUiAvTWVkaWFCb3ggWyAwIDAgNTk1LjI3NTYgNDE5LjUyNzYgXSAvUGFyZW50IDggMCBSIC9SZXNvdXJjZXMgPDwKL0ZvbnQgMSAwIFIgL1Byb2NTZXQgWyAvUERGIC9UZXh0IC9JbWFnZUIgL0ltYWdlQyAvSW1hZ2VJIF0KPj4gL1JvdGF0ZSAwIC9UcmFucyA8PAoKPj4gCiAgL1R5cGUgL1BhZ2UKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL1BhZ2VNb2RlIC9Vc2VOb25lIC9QYWdlcyA4IDAgUiAvVHlwZSAvQ2F0YWxvZwo+PgplbmRvYmoKNyAwIG9iago8PAovQXV0aG9yIChhbm9ueW1vdXMpIC9DcmVhdGlvbkRhdGUgKEQ6MjAwMDAxMDEwMDAwMDArMDAnMDAnKSAvQ3JlYXRvciAoYW5vbnltb3VzKSAvS2V5d29yZHMgKCkgL01vZERhdGUgKEQ6MjAwMDAxMDEwMDAwMDArMDAnMDAnKSAvUHJvZHVjZXIgKFJlcG9ydExhYiBQREYgTGlicmFyeSAtIFwob3BlbnNvdXJjZVwpKSAKICAvU3ViamVjdCAodW5zcGVjaWZpZWQpIC9UaXRsZSAoQ2VydGlmaWNhdGUpIC9UcmFwcGVkIC9GYWxzZQo+PgplbmRvYmoKOCAwIG9iago8PAovQ291bnQgMSAvS2lkcyBbIDUgMCBSIF0gL1R5cGUgL1BhZ2VzCj4+CmVuZG9iago5IDAgb2JqCjw8Ci9GaWx0ZXIgWyAvQVNDSUk4NURlY29kZSAvRmxhdGVEZWNvZGUgXSAvTGVuZ3RoIDQwNwo+PgpzdHJlYW0KR2FyVkpiPk5zWCZBN1RMSUZLNXBiZyZEVTdjVklPZmNRazIsWmsndTZIXGxmPnJKKENWTzFnNzFZcE5uNmNlOlhsK18oY0xPZUtUNVNCYWwuQTc7Wm4uW1k6U1JQSi5oRmFudD5XSFtZcUhfWiFZa0Q2a1dzb2JnVHFzWDE5MnBnQyhuWyFOJjZfYDEjX0VkZ2JlPzhSTjZfYlYyaG9vXyR0bVRzcGEtWSxlT1ZLTjxdbm5MNDBPZHAuTk9wa1AiPC0sOjYqYmMpW1hlWzJmJ2ZvbldrTlZgJHUsIiVhN2wrZCw4ZUFwLVctOWdMO1NZPEVPQ2dhLlhMPFkuWz5NN3AmRzFiO0s8TFcjPC1GPGQ7TkU0Si5ha0k9NE1CVHUvZV1xODA/aEw+VUpzJDkjYmBHKigtWi5KQ15tZ1UhakwvWV5GNTNxXlBhWTw3Q1VlVGwvUFxdSjhqQFhGJWxEZzFCOlI4MCQ6SElpcU1XTG9MYlNMLCc4WD9tI1dWcC1DMVY3a2tlOShWXjRrKWsmbzw2TERDfj5lbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCAxMAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwNjEgMDAwMDAgbiAKMDAwMDAwMDExMiAwMDAwMCBuIAowMDAwMDAwMjE5IDAwMDAwIG4gCjAwMDAwMDAzMjcgMDAwMDAgbiAKMDAwMDAwMDQzNyAwMDAwMCBuIAowMDAwMDAwNjQwIDAwMDAwIG4gCjAwMDAwMDA3MDggMDAwMDAgbiAKMDAwMDAwMDk3MiAwMDAwMCBuIAowMDAwMDAxMDMxIDAwMDAwIG4gCnRyYWlsZXIKPDwKL0lEIApbPGUyYTczNzhiNmQ2MGYyZTE2NzQ0ZWVlMjYxMjJkMWFlPjxlMmE3Mzc4YjZkNjBmMmUxNjc0NGVlZTI2MTIyZDFhZT5dCiUgUmVwb3J0TGFiIGdlbmVyYXRlZCBQREYgZG9jdW1lbnQgLS0gZGlnZXN0IChvcGVuc291cmNlKQoKL0luZm8gNyAwIFIKL1Jvb3QgNiAwIFIKL1NpemUgMTAKPj4Kc3RhcnR4cmVmCjE1MjgKJSVFT0YK",
+ "schemas": [
+  [
+   {
+    "name": "name",
+    "type": "text",
+    "content": "Jane Doe",
+    "position": {
+     "x": 30,
+     "y": 46
+    },
+    "width": 150,
+    "height": 16,
+    "fontSize": 28,
+    "dynamicFontSize": {
+     "min": 10,
+     "max": 34,
+     "fit": "horizontal"
+    },
+    "alignment": "center",
+    "verticalAlignment": "middle",
+    "fontColor": "#1c2a5a"
+   },
+   {
+    "name": "course",
+    "type": "text",
+    "content": "Document Formats 101",
+    "position": {
+     "x": 30,
+     "y": 86
+    },
+    "width": 150,
+    "height": 10,
+    "fontSize": 16,
+    "alignment": "center",
+    "verticalAlignment": "middle"
+   },
+   {
+    "name": "score",
+    "type": "text",
+    "readOnly": true,
+    "content": "Score {points} / 100 ({points >= 80 ? 'with distinction' : 'passed'})",
+    "position": {
+     "x": 30,
+     "y": 98
+    },
+    "width": 150,
+    "height": 7,
+    "fontSize": 10,
+    "alignment": "center",
+    "fontColor": "#555555"
+   },
+   {
+    "name": "date",
+    "type": "date",
+    "content": "2026/10/14",
+    "format": "MMMM d, yyyy",
+    "locale": "en",
+    "position": {
+     "x": 21,
+     "y": 113
+    },
+    "width": 50,
+    "height": 8,
+    "fontSize": 11,
+    "alignment": "center"
+   },
+   {
+    "name": "signature",
+    "type": "image",
+    "content": "",
+    "position": {
+     "x": 140,
+     "y": 106
+    },
+    "width": 48,
+    "height": 15
+   },
+   {
+    "name": "verify",
+    "type": "qrcode",
+    "content": "https://example.com/",
+    "position": {
+     "x": 94,
+     "y": 106
+    },
+    "width": 20,
+    "height": 20,
+    "barColor": "#3a2f1b",
+    "backgroundColor": ""
+   },
+   {
+    "name": "honours",
+    "type": "checkbox",
+    "content": "false",
+    "position": {
+     "x": 30,
+     "y": 127
+    },
+    "width": 5,
+    "height": 5,
+    "color": "#3a2f1b"
+   },
+   {
+    "name": "honoursLabel",
+    "type": "text",
+    "readOnly": true,
+    "content": "With honours",
+    "position": {
+     "x": 36,
+     "y": 127
+    },
+    "width": 40,
+    "height": 5,
+    "fontSize": 9,
+    "verticalAlignment": "middle"
+   }
+  ]
+ ]
+}

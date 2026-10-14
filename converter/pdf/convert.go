@@ -6,6 +6,7 @@
 package pdf
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -64,6 +65,12 @@ type Options struct {
 	Password string
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.
 	Warn func(msg string)
+	// Form says what the widgets of the fields of the form of the file
+	// show, by the full names of the fields (see FormFields), instead of
+	// what the file has for them: a form that is filled is converted
+	// with the states of its buttons, and without the text of the fields
+	// whose values the caller draws.
+	Form map[string]FormShow
 }
 
 // Result is the outcome of a conversion.
@@ -71,6 +78,9 @@ type Result struct {
 	Doc      *bdf.Document
 	Warnings []string
 	Pages    int
+	// PageNumbers are the pages of the file that the pages of the view
+	// are, in order, from 1 (see Options.Pages).
+	PageNumbers []int
 	// Protected reports that the PDF opened only with Options.Password.
 	Protected bool
 	// SharedPrefixes counts the prefix objects shared between pages, and
@@ -109,6 +119,10 @@ type converter struct {
 	// pageCodes collects the codes each font draws while a Stream converts
 	// a page (nil otherwise).
 	pageCodes map[*pdfFont]map[uint32]bool
+
+	// hideTx is set while the appearance of a field whose text is left
+	// out is converted: the marked content of its text (/Tx) is not drawn.
+	hideTx int
 
 	tree       *structTree      // nil for untagged documents
 	oc         *optionalContent // nil without optional content
@@ -289,7 +303,12 @@ func (c *converter) finish(protected bool) *Result {
 			c.warnf("text index: %v", err)
 		}
 	}
-	return &Result{Doc: c.doc, Warnings: c.warnings, Pages: len(c.pageBodies), Protected: protected, SharedPrefixes: c.sharedPrefixes, SharedBytes: c.sharedBytes}
+	numbers := make([]int, len(c.pageBodies))
+	for i, pr := range c.pageBodies {
+		numbers[i] = pr.nr
+	}
+	return &Result{Doc: c.doc, Warnings: c.warnings, Pages: len(c.pageBodies), PageNumbers: numbers, Protected: protected,
+		SharedPrefixes: c.sharedPrefixes, SharedBytes: c.sharedBytes}
 }
 
 func (c *converter) warnf(format string, args ...any) {
@@ -504,25 +523,60 @@ func (c *converter) annotations(in *interp, pageDict types.Dict) {
 			}
 			continue
 		}
+		// a widget of a form that is filled: the state of a button, or a
+		// field without its text
+		as, forced, blank := p.name(ad["AS"]), false, false
+		if sub == "Widget" {
+			if show, ok := c.widgetShow(ad); ok {
+				blank = show.Blank
+				if show.State != "" {
+					as, forced = show.State, true
+				}
+			}
+		}
 		ap := p.dict(ad["AP"])
 		if ap == nil {
+			if blank {
+				c.widgetFrame(in, ad, r)
+			}
 			continue
 		}
 		n := ap["N"]
 		sd := p.stream(n)
 		if sd == nil {
 			if nd := p.dict(n); nd != nil {
-				as := p.name(ad["AS"])
-				if as == "" && len(nd) == 1 {
+				switch {
+				case forced:
+					if nd[as] == nil {
+						as = "Off" // (a button of another state)
+					}
+				case as == "" && len(nd) == 1:
 					for k := range nd {
 						as = k
 					}
 				}
-				sd = p.stream(nd[as])
+				// (the stream of the state: the dictionary of the states
+				// is often not an object of its own, and the states of
+				// two widgets are not the same form)
+				n = nd[as]
+				sd = p.stream(n)
 			}
 		}
 		if sd == nil {
 			continue
+		}
+		key := objKey(n)
+		if blank {
+			// the appearance has its text in marked content, so that it
+			// can be made again: without it, what is left is the border
+			// and the background of the field
+			data, _, err := p.decodeStream(sd)
+			if err != nil || !bytes.Contains(data, []byte("/Tx")) || !bytes.Contains(data, []byte("BMC")) {
+				c.widgetFrame(in, ad, r)
+				continue
+			}
+			key += "/blank"
+			c.hideTx++
 		}
 		// Algorithm 8.1: map the transformed BBox to Rect.
 		bbox := p.rectOr(sd.Dict["BBox"], rect{})
@@ -534,8 +588,53 @@ func (c *converter) annotations(in *interp, pageDict types.Dict) {
 			extra = matrix{sx, 0, 0, sy, r.x0 - tb.x0*sx, r.y0 - tb.y0*sy}
 		}
 		in.gs = initialGState(in.gs.ctm)
-		in.drawForm(objKey(n)+"/"+p.name(ad["AS"]), sd, extra)
+		in.drawForm(key, sd, extra)
+		if blank {
+			c.hideTx--
+		}
 	}
+}
+
+// widgetFrame draws the background and the border of a widget whose
+// appearance is not drawn: those its appearance characteristics tell.
+func (c *converter) widgetFrame(in *interp, ad types.Dict, r rect) {
+	p := c.pdf
+	mk := p.dict(ad["MK"])
+	color := func(o types.Object) (bdf.Color, bool) {
+		v := p.nums(o)
+		c8 := func(f float64) uint8 { return uint8(min(max(f, 0), 1)*255 + 0.5) }
+		switch len(v) {
+		case 1:
+			return bdf.RGB(c8(v[0]), c8(v[0]), c8(v[0])), true
+		case 3:
+			return bdf.RGB(c8(v[0]), c8(v[1]), c8(v[2])), true
+		case 4:
+			return bdf.RGB(c8((1-v[0])*(1-v[3])), c8((1-v[1])*(1-v[3])), c8((1-v[2])*(1-v[3]))), true
+		}
+		return 0, false
+	}
+	bg, hasBG := color(mk["BG"])
+	bc, hasBC := color(mk["BC"])
+	if !hasBG && !hasBC {
+		return
+	}
+	in.flushRun()
+	o := in.obj
+	o.Save()
+	if hasBG {
+		o.FillColor(bg).FillRect(float32(r.x0), float32(r.y0), float32(r.x1-r.x0), float32(r.y1-r.y0))
+	}
+	w := 1.0
+	if bs := p.dict(ad["BS"]); bs != nil {
+		w = p.numOr(bs["W"], 1)
+	} else if b := p.nums(ad["Border"]); len(b) >= 3 {
+		w = b[2]
+	}
+	if hasBC && w > 0 && r.x1-r.x0 > w && r.y1-r.y0 > w {
+		o.StrokeColor(bc).Line(float32(w), bdf.CapButt, bdf.JoinMiter, 10).Dash(nil, 0)
+		o.StrokeRect(float32(r.x0+w/2), float32(r.y0+w/2), float32(r.x1-r.x0-w), float32(r.y1-r.y0-w))
+	}
+	o.Restore()
 }
 
 // linkTarget returns the url of a link annotation: a URI action, or

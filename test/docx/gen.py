@@ -26,6 +26,12 @@ feature is in the markup exactly as Word writes it:
   upright characters, punctuation, small kana, turned Latin text and
   numbers, horizontal-in-vertical numbers, emphasis marks and underlines, numbered articles, an inline
   picture, a table, a footnote, and horizontal headers and footers.
+- form-fixed.docx, form-rows.docx and form-pages.docx: templates, whose
+  text holds tags that data replaces (docx.Fill): a form of one page with
+  values of every kind, a picture, a text box, a header and a footer; a
+  table that grows by a row for each item, over pages; and a slip of ten
+  rows that is repeated on a page for each page of the data. They are
+  filled with the data of the Excel templates (test/xlsx/data).
 """
 import io
 import os
@@ -666,9 +672,131 @@ def math():
     })
 
 
+def forms():
+    """The templates of forms: see the top of the file."""
+    edge = '<w:top w:val="single" w:sz="4" w:color="000000"/><w:left w:val="single" w:sz="4" w:color="000000"/>' \
+           '<w:bottom w:val="single" w:sz="4" w:color="000000"/><w:right w:val="single" w:sz="4" w:color="000000"/>'
+    borders = f'<w:tblBorders>{edge}<w:insideH w:val="single" w:sz="4" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:color="000000"/></w:tblBorders>'
+    tight = '<w:spacing w:before="0" w:after="0"/>'
+
+    def tc(content, w, tcpr="", ppr=tight + '<w:jc w:val="left"/>'):
+        if not content.startswith("<w:"):
+            content = run(content)
+        return f'<w:tc><w:tcPr><w:tcW w:w="{w}" w:type="dxa"/>{tcpr}</w:tcPr>{para(content, ppr)}</w:tc>'
+
+    def table(widths, rows, header=0):
+        grid = "".join(f'<w:gridCol w:w="{w}"/>' for w in widths)
+        out = []
+        for i, cells in enumerate(rows):
+            trpr = "<w:trPr><w:tblHeader/></w:trPr>" if i < header else ""
+            out.append("<w:tr>" + trpr + "".join(cells) + "</w:tr>")
+        return f'<w:tbl><w:tblPr><w:tblW w:w="{sum(widths)}" w:type="dxa"/>{borders}</w:tblPr><w:tblGrid>{grid}</w:tblGrid>{"".join(out)}</w:tbl>'
+
+    def sect(w, h, margin, refs=""):
+        return (f'<w:sectPr>{refs}<w:pgSz w:w="{w}" w:h="{h}"/><w:pgMar w:top="{margin}" w:right="{margin}" w:bottom="{margin}" w:left="{margin}" '
+                f'w:header="500" w:footer="500" w:gutter="0"/><w:cols w:space="425"/></w:sectPr>')
+
+    def document(body, last):
+        return f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document {NS}><w:body>{"".join(body)}{last}</w:body></w:document>'
+
+    styles = STYLES.replace('<w:spacing w:after="120" w:line="259" w:lineRule="auto"/>', '')
+    shade = '<w:shd w:val="clear" w:color="auto" w:fill="DDEBF7"/>'
+    right = tight + '<w:jc w:val="right"/>'
+    center = tight + '<w:jc w:val="center"/>'
+    base_parts = {"word/styles.xml": styles, "word/numbering.xml": NUMBERING, "word/settings.xml": settings(), "word/theme/theme1.xml": THEME}
+    base_rels = {"rId1": ("styles", "styles.xml"), "rId2": ("numbering", "numbering.xml"), "rId3": ("settings", "settings.xml"),
+                 "rId4": ("theme", "theme/theme1.xml")}
+    hf_types = ('<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>'
+                '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>')
+    hf_refs = '<w:headerReference w:type="default" r:id="rIdH1"/><w:footerReference w:type="default" r:id="rIdF1"/>'
+    pages = hdr_ftr("ftr", para(field("PAGE", "1") + run(" / ") + field("NUMPAGES", "1"), center))
+
+    # a form of one page (A5): values of every kind
+    body = [para(run("\u660e\u66f8 Certificate", '<w:b/><w:sz w:val="32"/>'), center)]
+    value = [
+        ("No", run("{{no}}")),
+        # (a tag in the full-width characters of an input method)
+        ("\u65e5", run('{{date | fmt:"yyyy/mm/dd"}} ') + run("\uff5b\uff5bdate \uff5c fmt\uff1a\u201cyyyy-mm\u201d\uff5d\uff5d", '<w:color w:val="7F7F7F"/>')),
+        # (a tag in runs, as Word parts it where it checked the spelling)
+        ("Name", run("{{custo", "<w:b/>") + '<w:proofErr w:type="spellStart"/>' + run("mer", "<w:b/>") + '<w:proofErr w:type="spellEnd"/>'
+         + '<w:bookmarkStart w:id="1" w:name="_GoBack"/><w:bookmarkEnd w:id="1"/>' + run(".name}}", "<w:b/>") + run(" \u3055\u307e")),
+        ("Amount", run('{{amount | fmt:"#,##0"}}')),
+        ("Total", run('{{total | fmt:"#,##0.00"}}')),
+        ("Paid", run("{{#paid}}\u25a0{{/paid}}{{^paid}}\u25a1{{/paid}} paid")),
+        ("Memo", run("{{memo}}")),
+    ]
+    body.append(table([1600, 4400], [[tc(run(label, "<w:b/>"), 1600, shade), tc(content, 4400)] for label, content in value]))
+    body.append(para(run("Photo ") + inline_pic("rIdPhoto", 96 * 12700, 48 * 12700, 10, "Picture 1", "{{%photo}} the stamp")
+                     + run(" cover ") + inline_pic("rIdPhoto", 48 * 12700, 48 * 12700, 11, "Picture 2", "{{%photo | fit:cover}}"), '<w:spacing w:before="120" w:after="0"/>'))
+    # a QR code and a barcode of values: drawn in the places of the pictures
+    body.append(para(run("Code ") + inline_pic("rIdPhoto", 48 * 12700, 48 * 12700, 13, "Picture 3", "{{%url | qr}}")
+                     + run(" JAN ") + inline_pic("rIdPhoto", 120 * 12700, 36 * 12700, 14, "Picture 4", "{{%jan | barcode:jan}} the article"),
+                     '<w:spacing w:before="120" w:after="0"/>'))
+    box = para(run("{{customer.name}}", "<w:b/>"), center)
+    tb_run = anchor(textbox_graphic(120 * 12700, 30 * 12700, box), 120 * 12700, 30 * 12700, 12, "Text Box 1", "",
+                    ("margin", "right"), ("paragraph", 0), '<wp:wrapNone/>', z=2)
+    body.append(para(alternate(tb_run, '<w:r><w:pict><v:rect style="width:120pt;height:30pt"/></w:pict></w:r>')
+                     + run("Tags: {{#tags}}{{.}}{{^_last}}, {{/_last}}{{/tags}}"), tight))
+    # (a paragraph for each tag, and one when there is none)
+    body.append(para(run("{{#tags | rows}}- tag {{_index}}: {{.}}{{/tags}}"), tight))
+    body.append(para(run("{{^tags | rows}}no tags{{/tags}}"), tight))
+    body.append(para(run("{{missing}}"), tight))
+    body.append(para(run("\\{{not a tag}}"), tight))
+    header = hdr_ftr("hdr", para(run("No. {{no}}"), right))
+    package(os.path.join(OUT, "form-fixed.docx"), document(body, sect(8391, 11906, 1134, hf_refs)), {
+        **base_parts, "word/header1.xml": header, "word/footer1.xml": pages,
+        "word/media/photo.png": png(48, 24, lambda x, y: (200, 200, 200)), "docProps/core.xml": core("Form of one page", "BDF"),
+    }, {**base_rels, "rIdH1": ("header", "header1.xml"), "rIdF1": ("footer", "footer1.xml"), "rIdPhoto": ("image", "media/photo.png")}, hf_types)
+
+    # a table that grows: a row for each item, over pages
+    widths = [900, 4200, 1200, 1700]
+    body = [para(run("Invoice {{no}}", '<w:b/><w:sz w:val="28"/>'), tight),
+            para(run("To: {{customer}}"), '<w:spacing w:before="0" w:after="120"/>')]
+    rows = [[tc(run(t, "<w:b/>"), w, shade, center) for t, w in zip(("No", "\u9805\u76ee", "\u6570", "Price"), widths)],
+            [tc("{{#items}}{{_index}}", widths[0], ppr=center), tc("{{name}}", widths[1]), tc("{{qty}}", widths[2], ppr=right),
+             tc('{{price | fmt:"#,##0"}}{{/items}}', widths[3], ppr=right)],
+            [tc(run("Items", "<w:b/>"), widths[0] + widths[1], '<w:gridSpan w:val="2"/>'), tc("", widths[2]), tc("{{note}}", widths[3], ppr=right)]]
+    body.append(table(widths, rows, header=1))
+    body.append(para(run("{{^items | rows}}no items{{/items}}"), tight))
+    body.append(para(run("{{note}}"), '<w:spacing w:before="120" w:after="0"/>'))
+    header = hdr_ftr("hdr", para(run("Invoice {{no}} / {{customer}}"), right))
+    package(os.path.join(OUT, "form-rows.docx"), document(body, sect(11906, 16838, 1440, hf_refs)), {
+        **base_parts, "word/header1.xml": header, "word/footer1.xml": pages, "docProps/core.xml": core("Table that grows", "BDF"),
+    }, {**base_rels, "rIdH1": ("header", "header1.xml"), "rIdF1": ("footer", "footer1.xml")}, hf_types)
+
+    # a slip of ten rows: the data gives the rows of each page, and what
+    # is carried over
+    widths = [700, 2800, 900, 1600]
+    tabs = '<w:tabs><w:tab w:val="right" w:pos="6000"/></w:tabs>'
+    body = [para(run("{{#pages | pages}}"), tight),
+            para(run("Delivery {{slip}}", '<w:b/><w:sz w:val="28"/>') + run("\t{{_page}} / {{_pages}}"), tight + tabs),
+            para(run('To: {{customer}}\tFrom {{carry_in | fmt:"#,##0"}}'), '<w:spacing w:before="0" w:after="120"/>' + tabs)]
+    rows = [[tc(run(t, "<w:b/>"), w, shade, center) for t, w in zip(("No", "\u9805\u76ee", "\u6570", "Amount"), widths)],
+            [tc("{{#rows}}{{no}}", widths[0], ppr=center), tc("{{name}}{{#_blank_first}}-- end --{{/_blank_first}}", widths[1]),
+             tc("{{qty}}", widths[2], ppr=right), tc('{{amount | fmt:"#,##0"}}', widths[3], ppr=right)]]
+    for i in range(9):
+        last = "{{/rows}}" if i == 8 else ""
+        rows.append([tc("", widths[0], ppr=center), tc("", widths[1]), tc("", widths[2], ppr=right), tc(last, widths[3], ppr=right)])
+    body.append(table(widths, rows))
+    body.append(para(run('{{#_last}}Total {{total | fmt:"#,##0"}}{{/_last}}', "<w:b/>") + run('\tTo {{carry_out | fmt:"#,##0"}}'),
+                     '<w:spacing w:before="120" w:after="0"/>' + tabs))
+    body.append(para(run("{{/pages}}"), tight))
+    footer = hdr_ftr("ftr", para(field("PAGE", "1"), right))
+    ct = '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
+    package(os.path.join(OUT, "form-pages.docx"), document(body, sect(8391, 11906, 1134, '<w:footerReference w:type="default" r:id="rIdF1"/>')), {
+        **base_parts, "word/footer1.xml": footer, "docProps/core.xml": core("Slip of ten rows a page", "BDF"),
+    }, {**base_rels, "rIdF1": ("footer", "footer1.xml")}, ct)
+
+
 if __name__ == "__main__":
+    import sys
     os.makedirs(OUT, exist_ok=True)
+    if sys.argv[1:]:
+        for name in sys.argv[1:]:
+            globals()[name]()
+        raise SystemExit
     basic()
     grid()
     vertical()
     math()
+    forms()

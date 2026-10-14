@@ -14,13 +14,16 @@
 // Photoshop, the music formats MML, MIDI and MusicXML, font files, and
 // images), the HTML, Markdown and EPUB converters, or the images browsers
 // display by themselves (PNG, JPEG, SVG …, stored as they are) only;
-// previewonly builds one without converters that makes the thumbnail and
-// the search text of a bdf document (see the end of this comment).
+// previewonly builds one without converters that makes the thumbnail, the
+// search text and the PDF file of a bdf document, and formonly one that
+// fills the templates of forms (see the end of this comment).
 // bdf_noconv leaves out the image and WOFF2 encoders: a document drawn
 // where it is converted gains nothing from them. It leaves out Brotli
 // altogether, whose tables alone would add 1.7 MB to the Office module:
 // the Parquet converter reads no Brotli in any js build
 // (converter/parquet/brotli_js.go), and the font converter no WOFF2 file.
+// bdf_woff2dec brings the decoder of WOFF2 back by itself, for the preview
+// module, which reads the fonts of documents made by the bdf command.
 // The demo site (examples/viewer/site.mjs)
 // builds it with a copy of goldmark (the Markdown converter's parser) whose
 // linkify patterns it rewrites: compiled when the program starts, they
@@ -92,6 +95,42 @@
 // page, as JSON. Neither the thumbnail nor the text is encrypted when the
 // document is; an encrypted document without its password rejects with
 // "password-required".
+//
+// The preview module and the form module write a single-file bdf as a PDF
+// file, as bdf pdf does (vector/pdfbdf):
+//
+//	bdfConverter.pdf(bdf: Uint8Array, options?: {
+//	  password?: string, // the password of an encrypted document (the file is not encrypted)
+//	  fonts?: string,    // URL of a font directory, for text in fonts referred to by name
+//	  views?: string[],  // the ids of the views to write (default: those with pages)
+//	  skip?: string[],   // roles of layers to leave out ("background", "master")
+//	  tagged?: boolean,  // a tagged PDF: with the structure of the document, for screen readers
+//	  pdfa?: string,     // a PDF/A file: "2b", "2u", "2a" (tagged), "3b", "3u" or "3a"
+//	}): Promise<{pdf: Uint8Array, pages: number, fonts: number, warnings: string[]}>
+//
+// The form module (-tags formonly) has the converters of the templates of
+// forms (Word, Excel, PowerPoint, PDF forms and the templates of pdfme)
+// and package form: it reads what a template asks of data (its tags, or
+// its fields), and fills it with data, as bdf template schema and bdf fill
+// do:
+//
+//	bdfConverter.fields(template: Uint8Array, options?: {
+//	  sample?: string,   // sample data, as JSON: it settles where the names are and the types of their values
+//	}): Promise<{fields: string, schema: string, format: string, sample?: string}>
+//	bdfConverter.fill(template: Uint8Array, options: {
+//	  data: string,      // the data, as the JSON of an object
+//	  files?: {[path: string]: Uint8Array}, // the pictures that the data names
+//	  strict?: boolean,  // fail when the data lacks a name of a tag
+//	  fonts?, name?, pages?, params? // as convert takes them
+//	}): Promise<{bdf: Uint8Array, format: string, pages: number, warnings: string[]}>
+//
+// fields and schema are JSON texts: the names that the tags look up, and
+// the JSON Schema of the data (form.Schema), which a page makes a form of.
+// format is the format of the template ("xlsx", "docx", "pptx", "pdf",
+// "pdfme"; of a compiled template, .bdft, that of the template it holds),
+// and sample the sample of the data that the template has for itself: a
+// compiled template, and a template of pdfme (what its designer left in
+// its fields).
 package main
 
 import (

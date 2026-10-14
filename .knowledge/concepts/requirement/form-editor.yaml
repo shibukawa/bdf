@@ -1,0 +1,23 @@
+id: requirement:form-editor
+type: requirement
+title: （将来）Office 以外のテンプレート作成手段（エディタ）
+summary: >-
+  初期は Word / Excel / PowerPoint からの変換だけ。将来、専用のエディタや別のテンプレート形式を用意するかの論点を残す。
+  Office で作りにくい形態（連続帳票の格子、ラベルプリンタ、画面上での箱の微調整）がその動機になる。
+lifecycle: proposed
+authority: authored
+open_questions:
+  need:
+    text: Office で足りない形態は何か。連帳の格子、ラベル、プレ印刷用紙への位置合わせの微調整、箱のあふれ方針の設定 UI が候補
+    state: open
+  format:
+    text: エディタの保存形式を .bdft 自身（テンプレート定義 Part を直接編集）にするか、別のソース形式にするか。.bdft を直接編集できれば Office 由来のテンプレートの微調整にも使える
+    state: open
+  survey_input:
+    text: 世の中の帳票デザイナ（SVF Designer、JasperSoft Studio、Report Builder、ActiveReports Designer、Quadient Designer）が持つ編集モデル（帯、箱、流し込み領域）のどれを採るか
+    state: open
+relations:
+- relation: part_of
+  to: requirement:form-template
+- relation: informed_by
+  to: survey:template-systems-overview

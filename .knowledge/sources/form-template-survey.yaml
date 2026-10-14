@@ -1,0 +1,20 @@
+id: source:form-template-survey
+title: 帳票・印刷テンプレートシステムの Web 調査メモ（2026-10-13）
+adapter: document
+location:
+  root: knowledge-inputs/form-template-survey
+  include: ["**/*.md"]
+scope: {topic: form-template-survey}
+depends_on: []
+upstream:
+  kind: web-research
+  locator: 公開 Web ページ（各節の URL を参照）
+  snapshot: "2026-10-13"
+  refresh_request: 各 system:* 概念の URL を再確認し、Markdown メモを更新してから refresh する
+coverage:
+  partial: true
+  features:
+    report_engines: collected
+    ccm_print_streams_labels: collected
+    office_template_generators_japan: collected
+    pricing_and_licensing: unexamined

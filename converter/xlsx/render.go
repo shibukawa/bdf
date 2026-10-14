@@ -73,6 +73,10 @@ type sheetCtx struct {
 	// (maxFormatEdges) and the tiles of links after their first
 	// (maxLinkTiles).
 	tableRoom, edgeRoom, linkRoom int
+	// pr is the layout of the sheet's printed pages when those are what is
+	// drawn (print.go): the regions of the pages then take the place of
+	// the tiles.
+	pr *printPlan
 }
 
 // advanceKey is a character on a resolved face; the face is a stable pointer
@@ -88,6 +92,9 @@ type tileCv struct {
 	ox, oy float64
 	st     emitState
 	stack  []emitState
+	// bounds is the box on the sheet of a region of a printed page (nil
+	// for a tile, which the viewer clips)
+	bounds *box
 }
 
 type emitState struct {
@@ -167,6 +174,9 @@ func (s *sheetCtx) tileSpan(x0, y0, x1, y1 float64) (tx0, ty0, tx1, ty1 int, ok 
 // tilesIn returns the tiles a rectangle (sheet coordinates) touches,
 // creating them.
 func (s *sheetCtx) tilesIn(x0, y0, x1, y1 float64) []*tileCv {
+	if s.pr != nil {
+		return s.pr.regionsIn(x0, y0, x1, y1)
+	}
 	tx0, ty0, tx1, ty1, ok := s.tileSpan(x0, y0, x1, y1)
 	if !ok {
 		return nil
@@ -209,23 +219,24 @@ func (c *converter) worksheetSafe(ref sheetRef, id string) (v *bdf.View, tiles m
 	return c.worksheet(ref, id)
 }
 
-func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*canvas.Canvas, error) {
-	ws := c.parsed[ref.name]
-	if ws == nil {
-		var err error
-		if ws, err = c.readWorksheet(ref.part); err != nil {
-			return nil, nil, err
-		}
-		ws.name = ref.name
-		ws.sortRows()
-		c.parsed[ref.name] = ws
+// sheetOf returns the parsed worksheet of a sheet, reading it once.
+func (c *converter) sheetOf(ref sheetRef) (*worksheet, error) {
+	if ws := c.parsed[ref.name]; ws != nil {
+		return ws, nil
 	}
-	if ws.noValue > 0 {
-		c.warnf("sheet %q: %d formula cell(s) have no calculated value and are left empty (the workbook was saved without calculating them)", ws.name, ws.noValue)
+	ws, err := c.readWorksheet(ref.part)
+	if err != nil {
+		return nil, err
 	}
-	if ws.rtl {
-		c.warnOnce("rtl", "sheet %q: right-to-left sheets are drawn left to right", ws.name)
-	}
+	ws.name = ref.name
+	ws.sortRows()
+	c.parsed[ref.name] = ws
+	return ws, nil
+}
+
+// newSheetCtx lays a worksheet out: its tables, drawings and notes, the
+// sizes of its rows and columns, and its conditional formats.
+func (c *converter) newSheetCtx(ws *worksheet) *sheetCtx {
 	s := &sheetCtx{c: c, ws: ws, tiles: map[[2]int]*tileCv{}, base: map[int]*cellFmt{}, formulas: map[string]fnode{},
 		advances: map[advanceKey]float64{}, tableRoom: maxTableCells, edgeRoom: maxFormatEdges, linkRoom: maxLinkTiles}
 	s.loadTables()
@@ -234,6 +245,16 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 	s.loadComments()
 	s.layout()
 	s.cf = s.evalConditionalFormats()
+	return s
+}
+
+func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*canvas.Canvas, error) {
+	ws, err := c.sheetOf(ref)
+	if err != nil {
+		return nil, nil, err
+	}
+	c.sheetWarnings(ws)
+	s := c.newSheetCtx(ws)
 
 	v := c.doc.NewView(id, bdf.ViewSheet, ws.name)
 	v.Tile = tileSize
@@ -249,7 +270,7 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 	// the cells are still available. This lets text painting free each row,
 	// including rows in merged ranges, before the border paths are drawn.
 	hasBorders := s.hasPotentialBorders()
-	s.releaseCells = s.canReleaseCellsAfterText() && (!hasBorders || s.hasManyCells())
+	s.releaseCells = !c.keepCells && s.canReleaseCellsAfterText() && (!hasBorders || s.hasManyCells())
 	var borders *edgeSet
 	if s.releaseCells && hasBorders {
 		borders = s.edges()
@@ -261,6 +282,7 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 		s.paintBorders()
 	}
 	s.paintMarks()
+	s.paintPictures()
 	s.paintLinks()
 	s.paintDrawings()
 	// the view ends after the text that flows past its last column
@@ -276,6 +298,63 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 		}
 	}
 	return v, out, nil
+}
+
+// sheetWarnings tells what a worksheet has that is not drawn as Excel
+// shows it.
+func (c *converter) sheetWarnings(ws *worksheet) {
+	if c.sheetWarned[ws.name] {
+		return // its other view has told
+	}
+	c.sheetWarned[ws.name] = true
+	if ws.noValue > 0 {
+		c.warnf("sheet %q: %d formula cell(s) have no calculated value and are left empty (the workbook was saved without calculating them)", ws.name, ws.noValue)
+	}
+	if ws.rtl {
+		c.warnOnce("rtl", "sheet %q: right-to-left sheets are drawn left to right", ws.name)
+	}
+}
+
+// printSheetSafe lays a worksheet out as its printed pages; a malformed one
+// that trips the renderer becomes an empty page and a warning.
+func (c *converter) printSheetSafe(ref sheetRef, id, title string) (v *bdf.View, pages [][]*canvas.Canvas, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.warnf("sheet %q: internal error: %v", ref.name, r)
+			v = c.doc.NewView(id, bdf.ViewFlow, title)
+			w, h := paperSizes[9][0], paperSizes[9][1]
+			v.AddPage(f32(w), f32(h), bdf.Layer{Role: bdf.RoleBody})
+			pages, err = [][]*canvas.Canvas{{c.cvs.New()}}, nil
+		}
+	}()
+	return c.printSheet(ref, id, title)
+}
+
+// printSheet lays a worksheet out as its printed pages (print.go): the
+// cells are drawn as for the tiles, into the regions of the pages.
+func (c *converter) printSheet(ref sheetRef, id, title string) (*bdf.View, [][]*canvas.Canvas, error) {
+	ws, err := c.sheetOf(ref)
+	if err != nil {
+		return nil, nil, err
+	}
+	c.sheetWarnings(ws)
+	s := c.newSheetCtx(ws)
+	p := s.planPrint(ref.idx)
+	s.pr = p
+	if p.ps.gridLines {
+		s.paintGridlines()
+	}
+	s.paintFills()
+	s.paintConditional()
+	s.paintText()
+	s.paintPictures()
+	s.paintLinks()
+	p.layer = 1
+	s.paintBorders()
+	p.layer = 2
+	s.paintDrawings()
+	v, pages := p.view(id, title)
+	return v, pages, nil
 }
 
 // canReleaseCellsAfterText selects sheets whose later passes need only
@@ -374,6 +453,9 @@ func (s *sheetCtx) extent() {
 	}
 	for k := range s.comments {
 		use(k[0], k[1])
+	}
+	for _, p := range s.pictures() {
+		use(p.row, p.col)
 	}
 	s.nRows = min(max(maxR+1+marginRows, minRows), maxRows)
 	s.nCols = min(max(maxC+1+marginCols, minCols), maxCols)

@@ -1,0 +1,89 @@
+id: system:office-template-generators
+type: system
+title: Office ファイルをテンプレートにする生成器 — BI Publisher、Fluent（Windward）、Docmosis、Carbone、docxtemplater、Templater、XDocReport、Aspose、Syncfusion / GemBox、Conga、SAP Smart Forms、Google Docs、Power Automate、Adobe DocGen
+summary: >-
+  Word / Excel / PowerPoint の中にタグを書き、データで穴埋めして docx / PDF を出す生成器の一群。.bdft の最も近い先行例。
+  タグ構文、繰り返しの範囲の決め方（開始と終了の対、[i] / [i+1] の番兵、マーカーなし）、条件、画像、最終ページ専用、繰越、
+  Excel の式の扱い、ページ分割を Word / LibreOffice に任せる点で比較できる。
+lifecycle: active
+authority: observed
+aliases:
+- Oracle BI Publisher
+- Windward
+- Apryse Fluent
+- Docmosis
+- Carbone
+- docxtemplater
+- Templater
+- XDocReport
+- Aspose.Words
+- Conga Composer
+- SAP Smart Forms
+- Adobe Document Generation
+facts:
+  bi_publisher:
+    rtf: フォームフィールドに <?for-each:G?>…<?end for-each?>、<?if:…?>、<?split-by-page-break:?>（PDF / RTF / PPT のみ）、<?start@last-page:body?>…<?end body?> で最終ページ専用の内容、rowspancell-repeat-nextpage
+    page_totals: add-page-total / show-page-total、show-brought-forward / show-carry-forward（表示条件 first / last / exceptfirst / exceptlast。PDF / PPT のみ、生の数値のみ）。繰越を原語として持つ数少ない例
+    excel: 定義名 XDO_?FIELD?、XDO_GROUP_?G?、XDO_METADATA シート。入れ子のグループでは Excel の式が壊れる
+  fluent: リボンからタグ挿入（Word / Excel / PowerPoint）。ForEach…EndForEach に XPath / SQL の select、order=row|column、block 展開。簡易の BeginRepeat / RowExpand / ColumnExpand
+  docmosis: '<<field>>、<<rs_x>>…<<es_>> セクション、<<rr_x>> / <<er_>> 表の行、:stepN、<<cs_{expr}>> 条件、<<img_x>> / imgfit_、$idx。タグだけの行は削除。Word / LibreOffice → PDF / DOCX'
+  carbone:
+    repeat: '{d.items[i].name} と {d.items[i+1].name} の番兵で繰り返しを示す。行・段落・ページ。入れ子、横方向、双方向'
+    conditions: :ifEQ():show():elseShow()、:showBegin / End、:hideBegin / End、:drop(row|col|p|img|table|chart|shape|slide)（slide は ODP のみ、XLSX は row / col のみ）
+    formulas: XLSX の式は注入後に LibreOffice / OnlyOffice が再計算するので、テンプレートは行のずれに耐える必要がある。PPTX の動的スライド生成は非対応（ODP → PPTX）
+  docxtemplater: '{#items}…{/items}（ループ = 条件）、{^x} 否定、{@raw} 段落ごと置換、表のループは行の最初のセルで開いて最後のセルで閉じる、{-w:p x} のダッシュ構文、paragraphLoop。モジュールで {%img}、{~~html}、{:users} スライド（有償）'
+  templater: '[[tag]] / {{tag}} / <<tag>>。ループ構文なし。コレクションを渡すと囲む行・リスト・ページ・シート・文書が伸びる。Excel の式を調整。PDF なし'
+  xdocreport: docx / odt の中で Velocity / Freemarker。行ループは自動（FieldsMetadata.addFieldAsList）か @before-row#foreach / @after-row#end
+  aspose: MERGEFIELD の TableStart:X / TableEnd:X（同じ行かセル、入れ子可）。LINQ エンジンは <<foreach [i in items]>>…<</foreach>>、行帯が複数行にまたがる、-horz で列方向、-greedy
+  syncfusion_gembox: Syncfusion は表の中で TableStart / TableEnd、本文で BeginGroup / EndGroup。GemBox は RangeStart / RangeEnd で、段落の置き方でインラインかブロックか決まる
+  conga: '{{TableStart:Alias}}…{{TableEnd:Alias}}（同じセクション、表では 1 行か 1 セル）、{{TableGroup:…}}、画像のスイッチ'
+  sap: Smart Forms は 1 つの main window がページをまたいで流れ（自動改ページ、全ページ同じ幅）、secondary window は固定で切り詰め。Adobe Forms は flowed と positioned のサブフォーム、マスターページは流れない
+  google_docs: テンプレートを複製して batchUpdate の ReplaceAllTextRequest で {{tags}} を置換。繰り返し構文はなく、行は構造の要求で足す
+  power_automate: Word のコンテンツコントロール（プレーンテキスト、コンボ、ドロップダウン、画像、繰り返しセクション）。リッチテキスト・日付・チェックボックスは不可。10 MB、2 分の制限、画像は比率を保たない
+  adobe_docgen: '{{path}} の JSONata タグ、表の行は行の中の配列フィールドにタグ（今は Table Tags with Markers）、expr() の条件、画像は代替テキストの JSON、HTML の table / ul 挿入'
+  split_runs: Word は校正や書式でタグを複数の w:r に割る。一般的な対処は run の結合か段落テキストでの検索（各エンジンの扱いは UNVERIFIED）
+  relevance_to_bdft:
+  - 繰り返しの範囲の決め方は 3 流派。開始と終了の対（docxtemplater、Docmosis、Aspose、BI Publisher）、番兵（Carbone の [i] / [i+1]）、マーカーなし（Templater、VB-Report）。.bdft の案は対の方式で、最小の共通構造を推定する規則は docxtemplater と同じ
+  - 最終ページ専用（BI Publisher の start@last-page）と繰越（brought / carried forward）を原語として持つのは BI Publisher だけ。固定行数明細の語彙として採用候補
+  - どの生成器もページ分割は Word / LibreOffice 任せで、固定行数の明細やキーブレイク改ページを持たない。.bdft が自前の組版を持つことの差別化点
+  - Excel の式は行挿入で壊れやすい（Carbone は再計算を外部に任せ、Templater は調整、VB-Report は Repeat 境界を越えられない）。再計算と参照のずらしを自前で持つ計画は妥当
+relations:
+- relation: exemplifies
+  to: pattern:growing-detail
+- relation: exemplifies
+  to: pattern:fixed-page-form
+- relation: exemplifies
+  to: pattern:slide-repeat
+- relation: informs
+  to: requirement:form-template
+assertions:
+- predicate: bi_publisher_carry_forward
+  value: show-brought-forward / show-carry-forward (first | last | exceptfirst | exceptlast)
+  authority: observed
+  evidence:
+    url: https://docs.oracle.com/middleware/12212/bip/BIPRD/GUID-048C89F1-CFF6-48B3-9175-8C5A68167D15.htm
+- predicate: bi_publisher_last_page_block
+  value: '<?start@last-page:body?>…<?end body?>'
+  authority: observed
+  evidence:
+    url: https://docs.oracle.com/en/middleware/bi/analytics-server/design-publish/template-features.html
+- predicate: carbone_repeat_sentinel
+  value: "{d.items[i].x} and {d.items[i+1].x}"
+  authority: observed
+  evidence:
+    url: https://carbone.io/documentation/design/repetitions/with-arrays.html
+- predicate: docxtemplater_table_loop_rule
+  value: open in first cell, close in last cell of the row
+  authority: observed
+  evidence:
+    url: https://docxtemplater.com/docs/tag-types/
+- predicate: templater_has_loop_syntax
+  value: false
+  authority: observed
+  evidence:
+    url: https://github.com/ngs-doo/TemplaterExamples
+- predicate: smart_forms_window_model
+  value: one flowing main window + fixed truncating secondary windows
+  authority: observed
+  evidence:
+    url: https://help.sap.com/saphelp_470/helpdata/en/70/e17a37dec511d3b575006094192fe3/content.htm

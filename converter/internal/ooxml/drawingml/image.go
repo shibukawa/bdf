@@ -26,10 +26,51 @@ type imageEntry struct {
 	w, h   float64 // intrinsic size in pixels (0 when unknown)
 	ok     bool
 	mf     []byte // a Windows metafile, replayed instead of stored
+	// paint draws what stands for the image in its box (InjectDrawing)
+	paint func(o *bdf.Object, x, y, w, h float32)
+}
+
+// injectedPrefix starts the relationship ids of the images given to
+// InjectImage: no relationship of a package has such an id.
+const injectedPrefix = "\x00image:"
+
+// InjectImage stores a picture that is not a part of the package (the
+// picture of a filled template) and returns the relationship id that a
+// blip refers to it by (r:embed), with its size in pixels. ok is false
+// when the data is not a picture that is stored.
+func (c *Renderer) InjectImage(data []byte) (rid string, w, h float64, ok bool) {
+	format := imgconv.Sniff(data)
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if format == "" || format == "svg" || err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return "", 0, 0, false
+	}
+	if res, err := imgconv.Optimize(data, c.imgOpts); err == nil || res.Data != nil {
+		data = res.Data
+	}
+	e := &imageEntry{hash: c.doc.AddImage(data), w: float64(cfg.Width), h: float64(cfg.Height), ok: true}
+	rid = injectedPrefix + e.hash.String()
+	c.images[rid] = e
+	return rid, e.w, e.h, true
+}
+
+// InjectDrawing registers a drawing that stands for a picture (the QR code
+// or the barcode of a filled template, which is drawn as vectors) and
+// returns the relationship id that a blip refers to it by: paint draws it
+// in the box of the picture.
+func (c *Renderer) InjectDrawing(paint func(o *bdf.Object, x, y, w, h float32)) (rid string) {
+	rid = injectedPrefix + "drawing:" + strconv.Itoa(len(c.images))
+	c.images[rid] = &imageEntry{ok: true, paint: paint}
+	return rid
 }
 
 // image loads the image a blip relationship points to.
 func (c *Renderer) image(part, rid string) *imageEntry {
+	if strings.HasPrefix(rid, injectedPrefix) {
+		if e, ok := c.images[rid]; ok {
+			return e
+		}
+		return &imageEntry{}
+	}
 	r, ok := c.pkg.Target(part, rid)
 	if !ok || r.External {
 		if ok {

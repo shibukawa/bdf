@@ -8,6 +8,7 @@ BDF is a document format made for previews in the browser. The [demo site](https
 - **[Getting started](getting-started.md)** — convert a file and open it, in five minutes
 - **[Integrating into a frontend](integrating-to-frontend.md)** — show server-produced BDF or convert files in the browser
 - **[Integrating into a server](integrate-to-server.md)** — register only the Go converters your service needs
+- **[Making forms](forms.md)** — invoices and slips as BDF documents, from a template (an Excel, Word or PowerPoint file, a PDF with form fields, a template of pdfme) and data, and written as PDF files (tagged and PDF/A too)
 - **[Rendering](rendering.md)** — draw documents and formulas into a Go `image.Image`, with Ebitengine, or on a browser canvas
 - **[Build a Wasm runtime](build-wasm-runtime.md)** — choose converter formats and build for TinyGo or Go
 - **[Formats](formats/index.md)** — every input format, and how BDF lays each one out

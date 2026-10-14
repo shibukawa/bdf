@@ -1,0 +1,18 @@
+id: pattern:roll-receipt
+type: pattern
+title: レシート・ロール紙（幅固定・長さ可変）
+summary: >-
+  幅は固定（58 / 80 mm）で長さは内容で決まる 1 枚もの。ページという概念がなく、行を積んで最後にカットする。
+  BDF では scroll View の帯か、長さ可変の fixed ページで表せる。実機には ESC/POS など別の書き出しが要る。
+lifecycle: proposed
+authority: authored
+aliases:
+- レシート
+- ESC/POS
+facts:
+  layout: 幅 42 桁（80 mm / 12 CPI）程度の等幅テキストが中心。倍角・反転・中央寄せ・バーコード・QR・ロゴのビットマップ
+  bdf_mapping: 1 枚を高さ可変の 1 ページ（fixed）にするのが素直。PDF にすると長いページになる（PDF の上限 14400 pt は 5 m 相当なので実用上足りる）
+  priority: 帳票テンプレートの初期対象ではない。形態の整理のために置く
+relations:
+- relation: member_of
+  to: taxonomy:form-layout-axes

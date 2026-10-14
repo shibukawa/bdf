@@ -1,0 +1,461 @@
+{
+ "pdfmeVersion": "6.2.4",
+ "basePdf": {
+  "width": 210,
+  "height": 297,
+  "padding": [
+   20,
+   10,
+   20,
+   10
+  ],
+  "staticSchema": [
+   {
+    "name": "brand",
+    "type": "text",
+    "readOnly": true,
+    "content": "ACME Trading",
+    "position": {
+     "x": 10,
+     "y": 8
+    },
+    "width": 100,
+    "height": 7,
+    "fontSize": 11,
+    "fontColor": "#3366cc"
+   },
+   {
+    "name": "headRule",
+    "type": "line",
+    "readOnly": true,
+    "position": {
+     "x": 10,
+     "y": 16
+    },
+    "width": 190,
+    "height": 0.4,
+    "color": "#3366cc"
+   },
+   {
+    "name": "footRule",
+    "type": "line",
+    "readOnly": true,
+    "position": {
+     "x": 10,
+     "y": 281
+    },
+    "width": 190,
+    "height": 0.2,
+    "color": "#888888"
+   },
+   {
+    "name": "pageNo",
+    "type": "text",
+    "readOnly": true,
+    "content": "{currentPage} / {totalPages}",
+    "position": {
+     "x": 10,
+     "y": 283
+    },
+    "width": 190,
+    "height": 6,
+    "fontSize": 9,
+    "alignment": "center",
+    "fontColor": "#555555"
+   }
+  ]
+ },
+ "schemas": [
+  [
+   {
+    "name": "title",
+    "type": "text",
+    "readOnly": true,
+    "content": "インボイス",
+    "position": {
+     "x": 10,
+     "y": 20
+    },
+    "width": 90,
+    "height": 12,
+    "fontSize": 22
+   },
+   {
+    "name": "number",
+    "type": "text",
+    "content": "INV-0001",
+    "position": {
+     "x": 140,
+     "y": 20
+    },
+    "width": 60,
+    "height": 7,
+    "fontSize": 12,
+    "alignment": "right",
+    "required": true
+   },
+   {
+    "name": "issued",
+    "type": "date",
+    "content": "2026/10/14",
+    "format": "yyyy.MM.dd",
+    "locale": "ja",
+    "position": {
+     "x": 140,
+     "y": 28
+    },
+    "width": 60,
+    "height": 7,
+    "fontSize": 11,
+    "alignment": "right"
+   },
+   {
+    "name": "customer",
+    "type": "multiVariableText",
+    "text": "{company}\n{person} さま",
+    "variables": [
+     "company",
+     "person"
+    ],
+    "content": "{\"company\": \"カメラのタナカ\", \"person\": \"タナカ ハナコ\"}",
+    "position": {
+     "x": 10,
+     "y": 38
+    },
+    "width": 110,
+    "height": 17,
+    "fontSize": 12,
+    "lineHeight": 1.3,
+    "borderColor": "#888888",
+    "borderWidth": {
+     "top": 0,
+     "right": 0,
+     "bottom": 0.3,
+     "left": 0
+    },
+    "padding": {
+     "top": 1,
+     "right": 1,
+     "bottom": 1,
+     "left": 1
+    }
+   },
+   {
+    "name": "logo",
+    "type": "image",
+    "readOnly": true,
+    "content": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABQCAYAAACeXX40AAABwUlEQVR42u3cQXLCMBAEQGm/hN+UvCl+E34TOeUUipgDHpPtOXOwVl1jJCqZY0cuH9fbEHky27rMvz4zwZMkxAmeJCEWfHJU7tkq+CSJsOCTJMIyDkmmtJ8kW1ADSjRT+0n8FSwCoAAoAqAAKPtz/boYAoBZfBACGG8+CAGMv3YhHC6iz/J9b/ncDEwD5g4b2hDA+EkXQgDj1ywQAhjHAyGAcTQQOgWfBooTsgaMtpQ2BDCOAkIA4xggBDCOoDvCgs9zAGjT2yJsdw3zDhvd6Zqm4POcANrUtggLPs8NoE1si7Dgsw6nYBvW9oRc8FkfgDan7TrLplgvgDaj7brLJlg/gPC1ncNbXsOAN/7NNU3Bpw0BhK/tnMpQIQQQvrZzK0OE0CkYvLYn5IJPGwIIX9v5luFACCB8beddhgFha4Dw9Z5/7BoGvOGaJtWA8GnDGED4IIwBhA/CGED4IIwBhA/CyCkYPCfkWAPCpw1jAOGDMAYQPgj9j2gZ/ihJBEABUOQRwG1dpjFIItu6TA0o+VewFpRE+/kOKOc5hGhBObr9fjUghHIkvruvYAjlKHxjjPEQm5/p5FXwdgEEUV4F7yffVJP1ivqJ3DoAAAAASUVORK5CYII=",
+    "position": {
+     "x": 170,
+     "y": 37
+    },
+    "width": 30,
+    "height": 16
+   },
+   {
+    "name": "note",
+    "type": "text",
+    "content": "いつもありがとうございます。",
+    "position": {
+     "x": 10,
+     "y": 58
+    },
+    "width": 110,
+    "height": 14,
+    "fontSize": 11,
+    "dynamicFontSize": {
+     "min": 6,
+     "max": 14,
+     "fit": "vertical"
+    },
+    "verticalAlignment": "middle",
+    "backgroundColor": "#f2f6ff",
+    "borderColor": "#3366cc",
+    "borderWidth": {
+     "top": 0.3,
+     "right": 0.3,
+     "bottom": 0.3,
+     "left": 0.3
+    },
+    "padding": {
+     "top": 1.5,
+     "right": 1.5,
+     "bottom": 1.5,
+     "left": 1.5
+    }
+   },
+   {
+    "name": "paid",
+    "type": "checkbox",
+    "content": "false",
+    "position": {
+     "x": 130,
+     "y": 58
+    },
+    "width": 6,
+    "height": 6,
+    "color": "#000000"
+   },
+   {
+    "name": "paidLabel",
+    "type": "text",
+    "readOnly": true,
+    "content": "しはらいずみ",
+    "position": {
+     "x": 137,
+     "y": 58
+    },
+    "width": 30,
+    "height": 6,
+    "fontSize": 10,
+    "verticalAlignment": "middle"
+   },
+   {
+    "name": "method",
+    "type": "select",
+    "content": "カード",
+    "options": [
+     "カード",
+     "ふりこみ"
+    ],
+    "position": {
+     "x": 170,
+     "y": 58
+    },
+    "width": 30,
+    "height": 6,
+    "fontSize": 10,
+    "verticalAlignment": "middle",
+    "alignment": "right"
+   },
+   {
+    "name": "express",
+    "type": "radioGroup",
+    "group": "ship",
+    "content": "false",
+    "position": {
+     "x": 130,
+     "y": 66
+    },
+    "width": 6,
+    "height": 6,
+    "color": "#3366cc"
+   },
+   {
+    "name": "expressLabel",
+    "type": "text",
+    "readOnly": true,
+    "content": "Express",
+    "position": {
+     "x": 137,
+     "y": 66
+    },
+    "width": 30,
+    "height": 6,
+    "fontSize": 10,
+    "verticalAlignment": "middle"
+   },
+   {
+    "name": "items",
+    "type": "table",
+    "position": {
+     "x": 10,
+     "y": 78
+    },
+    "width": 190,
+    "height": 30,
+    "content": "[[\"ノート\", \"2\", \"300\", \"600\"], [\"ペン\", \"10\", \"120\", \"1,200\"]]",
+    "showHead": true,
+    "repeatHead": true,
+    "head": [
+     "項目",
+     "数",
+     "単",
+     "キンガク"
+    ],
+    "headWidthPercentages": [
+     46,
+     14,
+     20,
+     20
+    ],
+    "tableStyles": {
+     "borderWidth": 0.3,
+     "borderColor": "#000000"
+    },
+    "headStyles": {
+     "fontSize": 10,
+     "lineHeight": 1,
+     "characterSpacing": 0,
+     "alignment": "left",
+     "verticalAlignment": "middle",
+     "borderWidth": {
+      "top": 0.1,
+      "right": 0.1,
+      "bottom": 0.1,
+      "left": 0.1
+     },
+     "padding": {
+      "top": 2,
+      "right": 2,
+      "bottom": 2,
+      "left": 2
+     },
+     "fontColor": "#ffffff",
+     "backgroundColor": "#2980ba",
+     "borderColor": "#2980ba"
+    },
+    "bodyStyles": {
+     "fontSize": 10,
+     "lineHeight": 1,
+     "characterSpacing": 0,
+     "alignment": "left",
+     "verticalAlignment": "middle",
+     "borderWidth": {
+      "top": 0.1,
+      "right": 0.1,
+      "bottom": 0.1,
+      "left": 0.1
+     },
+     "padding": {
+      "top": 2,
+      "right": 2,
+      "bottom": 2,
+      "left": 2
+     },
+     "fontColor": "#000000",
+     "backgroundColor": "",
+     "alternateBackgroundColor": "#f5f5f5",
+     "borderColor": "#888888"
+    },
+    "columnStyles": {
+     "alignment": {
+      "1": "right",
+      "2": "right",
+      "3": "right"
+     }
+    }
+   },
+   {
+    "name": "totalBox",
+    "type": "rectangle",
+    "readOnly": true,
+    "position": {
+     "x": 128,
+     "y": 111
+    },
+    "width": 72,
+    "height": 12,
+    "borderWidth": 0.5,
+    "borderColor": "#3366cc",
+    "color": "#f2f6ff",
+    "radius": 2
+   },
+   {
+    "name": "totalText",
+    "type": "text",
+    "readOnly": true,
+    "content": "トータル {total}",
+    "position": {
+     "x": 130,
+     "y": 113
+    },
+    "width": 68,
+    "height": 8,
+    "fontSize": 14,
+    "alignment": "right",
+    "verticalAlignment": "middle",
+    "underline": true
+   },
+   {
+    "name": "qr",
+    "type": "qrcode",
+    "content": "https://example.com/",
+    "position": {
+     "x": 10,
+     "y": 111
+    },
+    "width": 22,
+    "height": 22,
+    "barColor": "#000000",
+    "backgroundColor": "#ffffff"
+   },
+   {
+    "name": "code",
+    "type": "code128",
+    "content": "INV0001",
+    "position": {
+     "x": 38,
+     "y": 113
+    },
+    "width": 60,
+    "height": 14,
+    "barColor": "#000000",
+    "backgroundColor": "",
+    "includetext": false
+   },
+   {
+    "name": "terms",
+    "type": "list",
+    "content": "[\"30 日まで\", \"\\tカード\", \"\\tふりこみ\", \"返すのは 7 日まで\"]",
+    "listStyle": "ordered",
+    "position": {
+     "x": 10,
+     "y": 138
+    },
+    "width": 110,
+    "height": 22,
+    "fontSize": 10,
+    "lineHeight": 1.2
+   },
+   {
+    "name": "seal",
+    "type": "ellipse",
+    "readOnly": true,
+    "position": {
+     "x": 150,
+     "y": 136
+    },
+    "width": 26,
+    "height": 26,
+    "borderWidth": 0.8,
+    "borderColor": "#cc0000",
+    "color": ""
+   },
+   {
+    "name": "sealText",
+    "type": "text",
+    "readOnly": true,
+    "content": "COPY",
+    "position": {
+     "x": 138,
+     "y": 143
+    },
+    "width": 50,
+    "height": 12,
+    "fontSize": 20,
+    "fontColor": "#cc0000",
+    "alignment": "center",
+    "verticalAlignment": "middle",
+    "rotate": 20,
+    "opacity": 0.5,
+    "characterSpacing": 1
+   },
+   {
+    "name": "confirmed",
+    "type": "circleMark",
+    "content": "false",
+    "position": {
+     "x": 178,
+     "y": 141
+    },
+    "width": 22,
+    "height": 16,
+    "borderWidth": 0.6,
+    "color": "#3366cc",
+    "rotate": 0,
+    "opacity": 1
+   }
+  ]
+ ]
+}

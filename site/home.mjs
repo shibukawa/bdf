@@ -120,6 +120,7 @@ const T = {
     demosLead: "Files are converted inside your browser. They are not uploaded.",
     demos: [
       ["viewer/", "Viewer", "Drop a file to view it: search, text selection, pages that turn, scores that play."],
+      ["form/", "Forms", "A Word, Excel or PowerPoint template with tags, a form made of them, and the filled form as a PDF file."],
       ["thumbnail/", "Thumbnails", "Thumbnails at four sizes at once, drawn without a browser engine, as on a server."],
       ["text/", "Search text", "The text and metadata of a document, page by page, for a search index."],
     ],
@@ -187,6 +188,7 @@ const T = {
     demosLead: "ファイルはブラウザの中で変換します。アップロードはされません。",
     demos: [
       ["viewer/", "ビューア", "ファイルをドロップして表示。検索、テキスト選択、ページめくり、楽譜の演奏。"],
+      ["form/", "フォーム", "タグを書いた Word・Excel・PowerPoint のテンプレートから入力フォームを作り、穴埋めした帳票を PDF に。"],
       ["thumbnail/", "サムネイル", "4 つの大きさのサムネイルを一度に。サーバーと同じく、ブラウザのエンジンなしで描きます。"],
       ["text/", "検索用テキスト", "検索エンジンに渡す、ページごとのテキストとメタデータ。"],
     ],

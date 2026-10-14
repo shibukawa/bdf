@@ -396,7 +396,11 @@ async function openFile(name: string, data: ArrayBuffer, at = attempt(name)) {
   at.bytes = data.byteLength;
   at.kind = kind;
   if (kind === "bdf") {
-    await load({ kind: "buffer", buffer: data }, name, token);
+    // (the worker takes the buffer: the copy is what a PDF file is written of)
+    const copy = pdfButton ? bdfFile(new Uint8Array(data)) : undefined;
+    const opened = await load({ kind: "buffer", buffer: data }, name, token);
+    // an encrypted document is not offered as a file that is not
+    if (opened && opened.password === undefined && token === opening) setPdf(copy, base);
     return;
   }
   const busy = `converting ${name}…`;
@@ -652,12 +656,56 @@ function setDownload(file?: Blob, base = "") {
   if (downloadURL) URL.revokeObjectURL(downloadURL);
   downloadURL = "";
   a.hidden = !file;
+  setPdf(file, base);
   if (!file) {
     a.removeAttribute("href");
     return;
   }
   a.href = downloadURL = URL.createObjectURL(file);
   a.download = `${base}.bdf`;
+}
+
+/**
+ * The module that writes PDF files (cmd/bdfwasm built with -tags
+ * previewonly), and the button of the demo site that asks for one: the
+ * viewer by itself has neither.
+ */
+const PDF_MODULE = "lib/bdf-preview.wasm";
+const pdfButton = document.getElementById("savePdf") as HTMLButtonElement | null;
+/** The document shown as a single file, which the PDF file is written of. */
+let pdfSource: { file: Blob; base: string } | undefined;
+
+/** Offer the document shown as a PDF file (none without file): written when it is asked for. */
+function setPdf(file?: Blob, base = "") {
+  pdfSource = file ? { file, base } : undefined;
+  if (pdfButton) pdfButton.hidden = !file;
+}
+
+if (pdfButton) {
+  pdfButton.onclick = async () => {
+    const source = pdfSource;
+    if (!source) return;
+    pdfButton.disabled = true;
+    setTiming("writing the PDF…");
+    try {
+      const t0 = performance.now();
+      const res = await converterWorker().pdf(shared(PDF_MODULE), await source.file.arrayBuffer(), { fonts: shared(FONTS) });
+      const file = new Blob([res.pdf as BlobPart], { type: "application/pdf" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(file);
+      a.download = `${source.base}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+      for (const w of res.warnings) console.warn(`bdf viewer: ${source.base}.pdf: ${w}`);
+      const left = res.warnings.length ? `, ${res.warnings.length} ${res.warnings.length === 1 ? "warning" : "warnings"} (see the console)` : "";
+      setTiming(`${source.base}.pdf written in ${(performance.now() - t0).toFixed(0)} ms: ${res.pages} ${res.pages === 1 ? "page" : "pages"}, ${(file.size / 1024).toFixed(0)} KB${left}`);
+    } catch (e) {
+      setTiming("");
+      showFailure(`${source.base}.pdf could not be written`, e);
+    } finally {
+      pdfButton.disabled = false;
+    }
+  };
 }
 
 /** The warnings of the conversion, in a disclosure next to the status. */

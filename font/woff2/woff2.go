@@ -5,7 +5,10 @@
 // both from separated point, flag and instruction streams), every other table
 // passes through, and the whole table stream is Brotli-compressed. The Brotli
 // encoder is left out of builds tagged bdf_noconv; Encode then returns
-// ErrNotAvailable and callers keep the plain sfnt.
+// ErrNotAvailable and callers keep the plain sfnt. Such a build has no
+// decoder either (Decode returns ErrDecodeNotAvailable), unless it is also
+// tagged bdf_woff2dec: a program that reads the fonts of documents made
+// elsewhere, and makes none.
 package woff2
 
 import (

@@ -1,0 +1,14 @@
+{
+  "applicant": {
+    "name": "Taro Yamada",
+    "kana": "YAMADA TARO"
+  },
+  "zip": "1000001",
+  "address": "1-1 Chiyoda, Chiyoda-ku, Tokyo\nSecond line of the address",
+  "amount": 12800,
+  "plan": "pro",
+  "country": "us",
+  "agree": true,
+  "newsletter": false,
+  "notes": "Notes of the applicant, long enough to be broken into lines by the width of the field that they are in."
+}
