@@ -525,12 +525,12 @@ def forms():
     ws.title = "Form"
     for col, w in zip("ABCD", (8, 14, 9, 9)):
         ws.column_dimensions[col].width = w
-    ws["A1"] = "明書 Certificate"
+    ws["A1"] = "明細書 Certificate"
     ws["A1"].font = Font(bold=True, size=16)
     ws.merge_cells("A1:D1")
     ws["A1"].alignment = Alignment(horizontal="center")
     ws.row_dimensions[1].height = 27
-    rows = [("No", "{{no}}", None), ("日", "{{date}}", "yyyy/mm/dd"), ("Name", "{{customer.name}} さま", None),
+    rows = [("No", "{{no}}", None), ("Date", "{{date}}", "yyyy/mm/dd"), ("Name", "{{customer.name}} さま", None),
             ("Amount", "{{amount}}", "#,##0"), ("Total", '{{total | fmt:"#,##0.00"}}', None),
             ("Paid", "{{#paid}}■{{/paid}}{{^paid}}□{{/paid}} paid", None), ("Memo", "{{memo}}", None)]
     for i, (label, value, fmt) in enumerate(rows, start=3):
@@ -559,7 +559,6 @@ def forms():
         ws.cell(row=r, column=4).border = box
     ws["A14"] = "Tags: {{#tags}}{{.}}{{^_last}}, {{/_last}}{{/tags}}"
     ws["A15"] = "{{missing}}"
-    ws["D15"] = "\\{{not a tag}}"
     ws["A16"] = "JAN"
     ws["A16"].font = Font(bold=True)
     ws["B16"] = "{{%jan | barcode:jan}}"

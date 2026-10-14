@@ -86,14 +86,14 @@ invoice = {
          "fontSize": 10, "verticalAlignment": "middle"},
         {"name": "items", "type": "table", "position": {"x": 10, "y": 78}, "width": 190, "height": 30,
          "content": json.dumps([["ノート", "2", "300", "600"], ["ペン", "10", "120", "1,200"]], ensure_ascii=False),
-         "showHead": True, "repeatHead": True, "head": ["項目", "数", "単", "キンガク"], "headWidthPercentages": [46, 14, 20, 20],
+         "showHead": True, "repeatHead": True, "head": ["項目", "数量", "単価", "金額"], "headWidthPercentages": [46, 14, 20, 20],
          "tableStyles": {"borderWidth": 0.3, "borderColor": "#000000"},
          "headStyles": dict(cell, fontColor="#ffffff", backgroundColor="#2980ba", borderColor="#2980ba"),
          "bodyStyles": dict(cell, fontColor="#000000", backgroundColor="", alternateBackgroundColor="#f5f5f5", borderColor="#888888"),
          "columnStyles": {"alignment": {"1": "right", "2": "right", "3": "right"}}},
         {"name": "totalBox", "type": "rectangle", "readOnly": True, "position": {"x": 128, "y": 111}, "width": 72, "height": 12, "borderWidth": 0.5,
          "borderColor": "#3366cc", "color": "#f2f6ff", "radius": 2},
-        {"name": "totalText", "type": "text", "readOnly": True, "content": "トータル {total}", "position": {"x": 130, "y": 113}, "width": 68, "height": 8,
+        {"name": "totalText", "type": "text", "readOnly": True, "content": "総額 {total}", "position": {"x": 130, "y": 113}, "width": 68, "height": 8,
          "fontSize": 14, "alignment": "right", "verticalAlignment": "middle", "underline": True},
         {"name": "qr", "type": "qrcode", "content": "https://example.com/", "position": {"x": 10, "y": 111}, "width": 22, "height": 22,
          "barColor": "#000000", "backgroundColor": "#ffffff"},
@@ -119,7 +119,7 @@ for i in range(34):
     name = things[i % len(things)] + " " + chr(ord("A") + i % 26)
     if i == 3:
         name += " — ながい項目は行をおりかえして表のたかさをかえます"
-    rows.append({"項目": name, "数": n, "単": f"{price:,}", "キンガク": f"{n * price:,}"})
+    rows.append({"項目": name, "数量": n, "単価": f"{price:,}", "金額": f"{n * price:,}"})
     total += n * price
 save("invoice.json", {
     "number": "INV-2026-1014", "issued": "2026/10/14", "customer": {"company": "カメラのタナカ", "person": "タナカ ハナコ"},

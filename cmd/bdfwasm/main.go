@@ -72,11 +72,16 @@
 // of those. The document is not encrypted even when the input was.
 //
 // The Office converters lay text out with the fonts of the font directory:
-// index.json there lists its files as [{"name", "size", "scan"}], where
+// index.json there lists its files as [{"name", "size", "scan", "url"}], where
 // scan holds the [offset, length] ranges of the tables the font scan and
 // fallback coverage checks read (the table directories, name, OS/2, post and
 // cmap), fetched ahead in parallel. Fallback search checks cmap first; a
 // font's whole file is fetched only when it can draw a needed character.
+// url is optional: when absent the file is fetched beside index.json;
+// when present it is resolved relative to that directory and may be an
+// absolute HTTP(S) URL, such as a Google Fonts CDN font with CORS enabled.
+// name remains the file name seen by the converters; size and scan describe
+// the bytes at url. Remote files use the same range fetching and cache.
 //
 // The preview module (-tags previewonly) makes of a single-file bdf what a
 // server makes with packages thumbnail and bdf (Document.SearchText):

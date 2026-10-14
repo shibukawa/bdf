@@ -269,9 +269,9 @@
     "repeatHead": true,
     "head": [
      "項目",
-     "数",
-     "単",
-     "キンガク"
+     "数量",
+     "単価",
+     "金額"
     ],
     "headWidthPercentages": [
      46,
@@ -355,7 +355,7 @@
     "name": "totalText",
     "type": "text",
     "readOnly": true,
-    "content": "トータル {total}",
+    "content": "総額 {total}",
     "position": {
      "x": 130,
      "y": 113

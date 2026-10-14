@@ -545,9 +545,9 @@ def forms():
     prs = Presentation()
     s = prs.slides.add_slide(prs.slide_layouts[6])
     shapes = [
-        box(10, "Title", 60, 30, 600, 44, [p(r("\u660e\u66f8 Certificate", 2800, True, "ja-JP"), algn="ctr")]),
+        box(10, "Title", 60, 30, 600, 44, [p(r("\u660e\u7d30\u66f8 Certificate", 2800, True, "ja-JP"), algn="ctr")]),
         box(11, "Number", 500, 80, 160, 26, [p(r("No. {{no}}"), algn="r")]),
-        box(12, "Date", 60, 110, 420, 26, [p(r("\u65e5 ", 1400, True, "ja-JP"), r('{{date | fmt:"yyyy/mm/dd"}} '),
+        box(12, "Date", 60, 110, 420, 26, [p(r("Date ", 1400, True), r('{{date | fmt:"yyyy/mm/dd"}} '),
                                               # (a tag in the full-width characters of an input method)
                                               r("\uff5b\uff5bdate \uff5c fmt\uff1a\u201cyyyy-mm\u201d\uff5d\uff5d", 1400, False, "ja-JP", "7F7F7F"))]),
         # (a tag in runs, as PowerPoint parts it where the language changes)
@@ -562,7 +562,7 @@ def forms():
         box(17, "Tags", 280, 236, 200, 30, [p(r("Tags: {{#tags}}{{.}}{{^_last}}, {{/_last}}{{/tags}}")), p(r("{{#tags | rows}}- tag {{_index}}: {{.}}{{/tags}}")),
                                               p(r("{{^tags | rows}}no tags{{/tags}}"))],
             "<a:spAutoFit/>", '<a:solidFill><a:srgbClr val="FFF2CC"/></a:solidFill>'),
-        box(18, "Rest", 60, 400, 420, 50, [p(r("{{missing}}")), p(r("\\{{not a tag}}"))]),
+        box(18, "Rest", 60, 400, 420, 50, [p(r("{{missing}}"))]),
     ]
     add(s, *shapes)
     image = io.BytesIO(png(48, 24, lambda x, y: (200, 200, 200)))

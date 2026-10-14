@@ -95,17 +95,18 @@ async function copySamples() {
 
 /** The templates the form page offers. Three shapes of forms, each as a workbook, a document and a deck, filled with the same data. */
 const FORM_SHAPES = [
-  { id: "fixed", label: "A certificate", about: "one page: values, a date, a condition, a picture, a QR code and a barcode", files: ["stamp.png"] },
-  { id: "rows", label: "An invoice", about: "a table that grows by a row for each item, over as many pages as it takes", files: [] },
-  { id: "pages", label: "A delivery slip", about: "ten rows a page; a page for each page of the data, which carries the totals over", files: [] },
+  { id: "fixed", label: "An item statement", about: "product details, pricing, payment status and a JAN code on one page", files: ["brand-mark.png"] },
+  { id: "rows", label: "An invoice", about: "an itemized invoice with tax, a due date and payment details; rows continue onto further pages", files: [] },
+  { id: "pages", label: "A delivery slip", about: "ten item rows per page, with page subtotals and amounts carried forward", files: [] },
 ];
 const FORM_FORMATS = [["xlsx", "Excel"], ["docx", "Word"], ["pptx", "PowerPoint"]];
+const FORM_STYLES = [{ id: "standard", suffix: "" }, { id: "modern", suffix: "-modern" }];
 /** And the templates whose fields have places: a PDF with form fields, and templates of pdfme. Each has its own data. */
 const FORM_PLACED = [
   { id: "application", label: "An application", about: "a PDF with form fields: texts, a comb of digits, checkboxes, radio buttons and a choice, filled in their places",
     data: ["test/pdf/data/application.json", "application.json"], template: ["converter/pdfform/testdata/application.pdf", "application.pdf", "PDF form"] },
-  { id: "pdfme-invoice", label: "An invoice of pdfme", about: "a template of the designer of pdfme on a blank page: a table that grows over pages, a QR code, a barcode, a list",
-    data: ["test/pdfme/data/invoice.json", "pdfme-invoice.data.json"], template: ["converter/pdfme/testdata/invoice.json", "pdfme-invoice.json", "pdfme"] },
+  { id: "pdfme-invoice", label: "An invoice of pdfme", about: "an itemized invoice with tax, a due date and payment details, designed with pdfme",
+    data: ["site/form/samples/pdfme-invoice.data.json", "pdfme-invoice.data.json"], template: ["site/form/samples/pdfme-invoice.json", "pdfme-invoice.json", "pdfme"] },
   { id: "pdfme-certificate", label: "A certificate of pdfme", about: "a template of pdfme over a base PDF: a name in the size that fits, a date, a text with an expression, a signature",
     data: ["test/pdfme/data/certificate.json", "pdfme-certificate.data.json"], template: ["converter/pdfme/testdata/certificate.json", "pdfme-certificate.json", "pdfme"] },
 ];
@@ -113,23 +114,35 @@ const FORM_PLACED = [
 async function copyForms() {
   const dst = join(out, "forms");
   await mkdir(dst, { recursive: true });
+  const fontDir = join(out, "form/fonts");
+  await mkdir(fontDir, { recursive: true });
+  await copyFile(join(root, "site/form/fonts/index.json"), join(fontDir, "index.json"));
   const index = [];
   for (const shape of FORM_SHAPES) {
     const data = `form-${shape.id}.json`;
-    await copyFile(join(root, "test/xlsx/data", data), join(dst, data));
-    for (const f of shape.files) await copyFile(join(root, "test/xlsx/data", f), join(dst, f));
+    await copyFile(join(root, "site/form/samples", data), join(dst, data));
+    for (const f of shape.files) await copyFile(join(root, "site/form/samples", f), join(dst, f));
     const templates = [];
-    for (const [ext, label] of FORM_FORMATS) {
-      const name = `form-${shape.id}.${ext}`;
-      await copyFile(join(root, `converter/${ext}/testdata`, name), join(dst, name));
-      templates.push({ name, label });
+    for (const style of FORM_STYLES) {
+      for (const [ext, label] of FORM_FORMATS) {
+        const name = `form-${shape.id}${style.suffix}.${ext}`;
+        await copyFile(join(root, "site/form/samples", name), join(dst, name));
+        templates.push({ name, label, style: style.id });
+      }
     }
     index.push({ id: shape.id, label: shape.label, about: shape.about, data, files: shape.files, templates });
   }
   for (const p of FORM_PLACED) {
     await copyFile(join(root, p.data[0]), join(dst, p.data[1]));
     await copyFile(join(root, p.template[0]), join(dst, p.template[1]));
-    index.push({ id: p.id, label: p.label, about: p.about, data: p.data[1], files: [], templates: [{ name: p.template[1], label: p.template[2] }] });
+    const templates = [{ name: p.template[1], label: p.template[2] }];
+    if (p.id === "pdfme-invoice") {
+      templates[0].style = "standard";
+      const name = "pdfme-invoice-modern.json";
+      await copyFile(join(root, "site/form/samples", name), join(dst, name));
+      templates.push({ name, label: "pdfme", style: "modern" });
+    }
+    index.push({ id: p.id, label: p.label, about: p.about, data: p.data[1], files: [], templates });
   }
   await writeFile(join(dst, "index.json"), JSON.stringify(index));
 }

@@ -8,6 +8,7 @@ BDF 自体は [MIT ライセンス](https://github.com/shibukawa/bdf/blob/main/L
 |---|---|---|---|
 | **STIX Two Math** 2.13 b171 | パッケージ [`image/formula`](rendering.ja.md#数式を描く) に埋め込み（`go:embed`。フォント全体を無改変で）。`Options` で別のフォントを指定しないときの数式フォント | [stipub/stixfonts](https://github.com/stipub/stixfonts) のタグ `v2.13b171`、`fonts/static_otf/STIXTwoMath-Regular.otf` | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/image/formula/fonts/OFL.txt) |
 | **Bravura** 1.482 | 音楽記号の輪郭とメトリクス。`converter/internal/music/smufl` に生成した表として持つ（MML・MIDI・MusicXML の楽譜用） | [steinbergmedia/bravura](https://github.com/steinbergmedia/bravura) | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/converter/internal/music/smufl/OFL.txt) |
+| **M PLUS 1p** Regular 1.062 | JAN/EAN/UPC の目視文字用の数字 0〜9 の輪郭。`image/barcode` に生成した表として持つ | [Google Fonts M PLUS 1p](https://github.com/google/fonts/tree/main/ofl/mplus1p) | [SIL Open Font License 1.1](https://github.com/shibukawa/bdf/blob/main/image/barcode/OFL-MPLUS.txt) |
 | **NewStroke** | KiCad が文字を描く線の字体。`converter/kicad` に表として持つ | vovanium による NewStroke の配布物（ファイルは [`NEWSTROKE.txt`](https://github.com/shibukawa/bdf/blob/main/converter/kicad/NEWSTROKE.txt) に記載） | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
 | **DejaVu Sans** の Regular と Bold（ASCII のサブセット） | サンプル文書（`bdf demo`）を作るパッケージ `fixture` | [dejavu-fonts](https://dejavu-fonts.github.io/) | [DejaVu Fonts License](https://github.com/shibukawa/bdf/blob/main/fixture/testdata/fonts/LICENSE.txt) |
 
@@ -23,18 +24,19 @@ Bravura: Copyright © 2015, Steinberg Media Technologies GmbH (http://www.steinb
 
 ## このサイトで配っているフォント
 
-デモのページはブラウザの中でファイルを変換し、文書が求めるフォントを `fonts/` から取得します。フォントはライセンスのファイルと一緒に公開しています。
+デモのページはブラウザの中でファイルを変換します。Forms ページでは M PLUS 1p の Regular と Bold を Google Fonts（`fonts.gstatic.com`）から直接取得し、サイトには同梱しません。生成した BDF と PDF には、著作権表示・ライセンス情報を保持したサブセットを埋め込みます。それ以外のページは、文書が求めるフォントを `fonts/` から取得します。同梱するフォントはライセンスのファイルと一緒に公開しています。
 
 | フォント | 代わりにするもの | ライセンス |
 |---|---|---|
 | Liberation Sans、Serif、Mono | Arial、Times New Roman、Courier New | SIL Open Font License 1.1 |
 | Carlito | Calibri | SIL Open Font License 1.1 |
 | Caladea | Cambria | copyright ファイル（`fonts/fonts-crosextra-caladea.copyright.txt`）に書かれたライセンス |
+| M PLUS 1p（Google Fonts から取得） | 編集できる業務帳票の見本 | [SIL Open Font License 1.1](https://github.com/google/fonts/blob/main/ofl/mplus1p/OFL.txt) |
 | IPAex ゴシック、IPAex 明朝 | 日本語 | IPA フォントライセンス v1.0 |
 | DejaVu Sans、Serif、Mono | 記号 | Bitstream Vera Fonts のライセンス。DejaVu による変更はパブリックドメイン |
 | STIX Two Math | Cambria Math、数式 | SIL Open Font License 1.1 |
 
-ファイルは Debian のパッケージ `fonts-liberation`、`fonts-crosextra-carlito`、`fonts-crosextra-caladea`、`fonts-ipaexfont-gothic`、`fonts-ipaexfont-mincho`、`fonts-dejavu-core` と、上の STIX のリリースから取っています。一覧は[サイトをビルドするワークフロー](https://github.com/shibukawa/bdf/blob/main/.github/workflows/pages.yml)にあります。
+同梱するファイルは Debian のパッケージ `fonts-liberation`、`fonts-crosextra-carlito`、`fonts-crosextra-caladea`、`fonts-ipaexfont-gothic`、`fonts-ipaexfont-mincho`、`fonts-dejavu-core` と、上の STIX のリリースから取っています。一覧は[サイトをビルドするワークフロー](https://github.com/shibukawa/bdf/blob/main/.github/workflows/pages.yml)にあります。
 
 ## テスト用のフォント
 

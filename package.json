@@ -19,6 +19,7 @@
     "site": "npm run build && node site/build.mjs",
     "site:serve": "npm run build && node site/build.mjs --serve",
     "test:site": "node test/site.mjs",
+    "test:form-page": "node test/form-page.mjs",
     "test:pptx:gen": "python3 test/pptx/gen.py && python3 test/pptx/gen_encrypted.py",
     "test:xlsx:gen": "python3 test/xlsx/gen.py",
     "test:visio:gen": "python3 test/visio/gen.py",

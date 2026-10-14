@@ -15,6 +15,11 @@ of converter/docx/testdata/*.docx:
     pyftsubset MPLUS1p-Regular.ttf --text-file=chars.txt --layout-features='*' \
       --no-hinting --name-IDs='*' --name-languages='*' --output-file=MPLUS1p-Regular-subset.ttf
 
+The form-label characters 細・価・総・量・金・額 were appended from the
+matching M PLUS 1p 1.062 sources, preserving existing glyph IDs, outlines
+and metrics. See the extension procedure in
+converter/pptx/testdata/fonts/README.md; OFL.txt still applies.
+
 STIXTwoMath-subset.ttf is the formula font of the tests (math.docx, and the
 Markdown and HTML tests that lay text out with this directory): a subset of
 STIX Two Math 2.13 b171 (https://github.com/stipub/stixfonts, the TrueType

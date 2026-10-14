@@ -170,10 +170,10 @@ func TestFillOffice(t *testing.T) {
 		pages        int
 		want         []string
 	}{
-		{"docx/testdata/form-fixed.docx", FormatDOCX, 1, []string{"No. 1024", "2026/10/13 2026-10", "ACME さま", "12,000", "13,200.00", "■ paid", "Thank you.\nSecond line", "Tags: a, b, c", "- tag 3: c", "{{not a tag}}"}},
+		{"docx/testdata/form-fixed.docx", FormatDOCX, 1, []string{"明細書 Certificate", "No. 1024", "Date", "2026/10/13 2026-10", "ACME さま", "12,000", "13,200.00", "■ paid", "Thank you.\nSecond line", "Tags: a, b, c", "- tag 3: c"}},
 		{"docx/testdata/form-rows.docx", FormatDOCX, 2, []string{"Invoice A-7", "To: ACME", "1\nItem 01\n2\n100", "60\nItem 60\n1\n6,000", "Thank you."}},
 		{"docx/testdata/form-pages.docx", FormatDOCX, 3, []string{"Delivery D-1", "3 / 3", "From 210,000", "24\nPart 24\n24\n24,000\n-- end --", "Total 300,000"}},
-		{"pptx/testdata/form-fixed.pptx", FormatPPTX, 1, []string{"No. 1024", "2026/10/13 2026-10", "Name ACME さま", "Amount 12,000   Total 13,200.00", "■ paid", "Memo: Thank you.\nSecond line", "Tags: a, b, c", "- tag 3: c", "{{not a tag}}"}},
+		{"pptx/testdata/form-fixed.pptx", FormatPPTX, 1, []string{"明細書 Certificate", "No. 1024", "Date 2026/10/13 2026-10", "Name ACME さま", "Amount 12,000   Total 13,200.00", "■ paid", "Memo: Thank you.\nSecond line", "Tags: a, b, c", "- tag 3: c"}},
 		{"pptx/testdata/form-rows.pptx", FormatPPTX, 4, []string{"Invoice A-7", "4 / 4", "1\nItem 01\n2\n100", "60\nItem 60\n1\n6,000", "Thank you."}},
 		{"pptx/testdata/form-pages.pptx", FormatPPTX, 3, []string{"Delivery D-1", "3 / 3", "From 210,000", "24\nPart 24\n24\n24,000\n-- end --", "Total 300,000"}},
 	} {
@@ -545,7 +545,7 @@ func TestFillPlaced(t *testing.T) {
 			[]string{"Application", "Taro Yamada", "YAMADA TARO", "12800"},
 			[]string{"Application"}, []string{`"applicant"`, `"maxLength": 7`, `"enum"`, `"United States"`, `"type": "boolean"`}},
 		{"pdfme/testdata/invoice.json", FormatPDFME, "../test/pdfme/data/invoice.json", 2,
-			[]string{"インボイス", "INV-2026-1014", "2026.10.14", "ストラップ X", "トータル 46,200", "2 / 2"},
+			[]string{"インボイス", "INV-2026-1014", "2026.10.14", "ストラップ X", "数量", "単価", "金額", "総額 46,200", "2 / 2"},
 			[]string{"インボイス", "INV-0001", "ノート\n2\n300\n600", "1 / 1"}, []string{`"customer"`, `"format": "date"`, `"mode": "rows"`, `"code": "qr"`, `"total"`}},
 		{"pdfme/testdata/certificate.json", FormatPDFME, "../test/pdfme/data/certificate.json", 1,
 			[]string{"Certificate of Completion", "Hanako Tanaka", "Score 92 / 100 (with distinction)", "October 14, 2026"},

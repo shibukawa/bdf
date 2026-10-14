@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -20,14 +21,13 @@ import (
 // and otherwise fetches the 64 KiB blocks it touches with Range requests;
 // ReadFile fetches the whole file. Everything fetched is kept.
 type httpFS struct {
-	base  string
 	files map[string]*httpFile
 	names []string
 }
 
 type httpFile struct {
-	fs   *httpFS
 	name string
+	url  string
 	size int64
 
 	mu    sync.Mutex
@@ -46,6 +46,17 @@ func newHTTPFS(base string) (*httpFS, error) {
 	if !strings.HasSuffix(base, "/") {
 		base += "/"
 	}
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return nil, fmt.Errorf("font directory URL: %w", err)
+	}
+	if !baseURL.IsAbs() {
+		if location := js.Global().Get("location"); location.Type() == js.TypeObject {
+			if page, err := url.Parse(location.Get("href").String()); err == nil {
+				baseURL = page.ResolveReference(baseURL)
+			}
+		}
+	}
 	data, status, err := fetch(base+"index.json", -1, 0)
 	if err != nil {
 		return nil, err
@@ -55,19 +66,33 @@ func newHTTPFS(base string) (*httpFS, error) {
 	}
 	var index []struct {
 		Name string     `json:"name"`
+		URL  string     `json:"url"`
 		Size int64      `json:"size"`
 		Scan [][2]int64 `json:"scan"`
 	}
 	if err := json.Unmarshal(data, &index); err != nil {
 		return nil, fmt.Errorf("%sindex.json: %w", base, err)
 	}
-	h := &httpFS{base: base, files: map[string]*httpFile{}}
+	h := &httpFS{files: map[string]*httpFile{}}
 	var wg sync.WaitGroup
+	defer wg.Wait()
 	for _, e := range index {
 		if !fs.ValidPath(e.Name) || strings.Contains(e.Name, "/") || e.Size <= 0 {
 			continue
 		}
-		f := &httpFile{fs: h, name: e.Name, size: e.Size}
+		source := base + e.Name
+		if e.URL != "" {
+			ref, err := url.Parse(e.URL)
+			if err != nil {
+				return nil, fmt.Errorf("%sindex.json: font %q URL: %w", base, e.Name, err)
+			}
+			location := baseURL.ResolveReference(ref)
+			if location.Scheme != "" && (location.Scheme != "http" && location.Scheme != "https" || location.Host == "") {
+				return nil, fmt.Errorf("%sindex.json: font %q has an invalid HTTP URL %q", base, e.Name, e.URL)
+			}
+			source = location.String()
+		}
+		f := &httpFile{name: e.Name, url: source, size: e.Size}
 		h.files[e.Name] = f
 		h.names = append(h.names, e.Name)
 		for _, r := range e.Scan {
@@ -78,7 +103,6 @@ func newHTTPFS(base string) (*httpFS, error) {
 		}
 	}
 	sort.Strings(h.names)
-	wg.Wait()
 	return h, nil
 }
 
@@ -86,7 +110,7 @@ func newHTTPFS(base string) (*httpFS, error) {
 // Range header sends the whole file, which is kept instead. It reports
 // whether it got the bytes.
 func (f *httpFile) fetchRange(off, n int64) bool {
-	data, status, err := fetch(f.fs.base+f.name, off, off+n)
+	data, status, err := fetch(f.url, off, off+n)
 	if err != nil {
 		return false
 	}
@@ -151,7 +175,7 @@ func (f *httpFile) readAll() ([]byte, error) {
 	if whole != nil {
 		return whole, nil
 	}
-	data, status, err := fetch(f.fs.base+f.name, -1, 0)
+	data, status, err := fetch(f.url, -1, 0)
 	if err != nil {
 		return nil, err
 	}
