@@ -773,13 +773,22 @@ function renderPresets(presets: Preset[], style: string) {
     const cell = row.insertCell();
     cell.className = "samples";
     for (const t of templates) {
+      const entry = document.createElement("span");
+      entry.className = "sample-template";
       const b = document.createElement("button");
       b.type = "button";
       b.textContent = t.label;
       b.title = t.name;
       b.ariaLabel = `${p.label}, ${t.style ?? ""} ${t.label}`;
       b.onclick = () => openPreset(p, t.name);
-      cell.append(b);
+      const source = document.createElement("a");
+      source.href = url(`forms/${t.name}`);
+      source.download = t.name;
+      source.textContent = `Download .${t.name.split(".").pop()}`;
+      source.title = `Original template: ${t.name}`;
+      source.ariaLabel = `${p.label}, ${t.style ?? ""} ${t.label}: download original template`;
+      entry.append(b, source);
+      cell.append(entry);
     }
     row.prepend(th);
   }
