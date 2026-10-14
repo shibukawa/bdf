@@ -128,7 +128,7 @@ res, err := s.Finish() // Convert と同じ完成した文書
 | `AddFont` / `AddImage` / `AddPaths` / `AddPart` | フォント、画像、パス集合、任意の Part を格納する。同じ内容は 1 度だけ格納される |
 | `(*Document).BuildTextIndex(*View) (Hash, error)` | テキスト索引の Part を作って View に設定する |
 | `(*Document).WriteSingle(io.Writer)` / `WriteSplit(dir)` | 1 ファイル形式・分割形式で書く |
-| `NewPasswordLock(password, iter) (*Lock, error)` | `Document.Lock` に入れると、Part ごとに AES-256-GCM で封をして書く |
+| `NewPasswordLock(password, iter) (*Lock, error)` | `Document.Lock` に入れると、Part ごとに AES-256-GCM で封をして書く。パスワードは NFKC に正規化して使う（全角と半角は同じパスワード。読むときも同じ） |
 | `NewECDHLock(reader *ecdh.PublicKey) (*Lock, error)` | 読者の P-256 の公開鍵でだけ開けるロック（spec §3.5 の `ecdh` スロット）。鍵を合意した自分の秘密鍵は、ロックを作ったら捨てる |
 
 ### 描画命令（Object）

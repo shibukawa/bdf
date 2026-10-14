@@ -221,18 +221,44 @@ func TestEncryptedSplitJoinWithoutPassword(t *testing.T) {
 }
 
 func TestPasswordNormalization(t *testing.T) {
-	// ガ precomposed (NFC) and as カ with a combining voiced mark (NFD).
-	d, _, _ := encryptedSample(t, "パスワードガ")
+	// A password is taken in form KC: the spellings of one password that an
+	// input method may give are that password. Sealed here with full-width
+	// letters and digits, and \u30ac as one character.
+	const sealed = "\uff50\uff41\uff53\uff53\uff11\uff12\uff13\u30ac"
+	d, _, _ := encryptedSample(t, sealed)
 	var b bytes.Buffer
 	if err := d.WriteSingle(&b); err != nil {
 		t.Fatal(err)
 	}
-	r, err := OpenSingle(bytes.NewReader(b.Bytes()), int64(b.Len()))
-	if err != nil {
-		t.Fatal(err)
+	unlock := func(password string) error {
+		r, err := OpenSingle(bytes.NewReader(b.Bytes()), int64(b.Len()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r.Unlock(password)
 	}
-	if err := r.Unlock("パスワードガ"); err != nil {
-		t.Fatalf("NFD password: %v", err)
+	for _, pw := range []string{
+		sealed,
+		"pass123\u30ac",                     // half-width letters and digits
+		"pass123\u30ab\u3099",               // the kana and a combining voiced mark
+		"pass123\uff76\uff9e",               // half-width katakana with its voiced mark
+		"\uff50ass\u2460\u00b2\u2462\u30ac", // a circled 1, a superscript 2, a circled 3
+	} {
+		if err := unlock(pw); err != nil {
+			t.Errorf("%+q: %v", pw, err)
+		}
+	}
+	// What a search folds besides is not folded here: case and the kind of
+	// kana are part of a password.
+	for _, pw := range []string{
+		"Pass123\u30ac",
+		"pass123\u304c", // hiragana
+		"pass123\u30ab", // without the voiced mark
+		"pass 123\u30ac",
+	} {
+		if err := unlock(pw); !errors.Is(err, ErrWrongPassword) {
+			t.Errorf("%+q: %v, want ErrWrongPassword", pw, err)
+		}
 	}
 	if _, err := NewPasswordLock("", 0); err == nil {
 		t.Fatal("empty password accepted")
