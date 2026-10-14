@@ -221,11 +221,13 @@ type filler struct {
 	fields     map[string]*tag.Field
 	fieldOrder []string
 	styles     map[styleKey]int
-	nextFmt    int
-	cells      int // cells of the filled sheets so far
-	pictures   map[string]*tplPicture
-	looked     int // cells looked at to order the formulas
-	steps      int // repeated items and inline tokens expanded
+	// fmts are the number formats of tags, parsed once each
+	fmts     map[string]*numFormat
+	nextFmt  int
+	cells    int // cells of the filled sheets so far
+	pictures map[string]*tplPicture
+	looked   int // cells looked at to order the formulas
+	steps    int // repeated items and inline tokens expanded
 }
 
 func newFiller(t *TemplateData) *filler {
@@ -234,7 +236,18 @@ func newFiller(t *TemplateData) *filler {
 		data = map[string]any{}
 	}
 	return &filler{root: tag.NewScope(tag.Normalize(data)), strict: t.Strict, files: t.Files, byName: map[string]*tplSheet{},
-		fields: map[string]*tag.Field{}, styles: map[styleKey]int{}, nextFmt: 60000, pictures: map[string]*tplPicture{}}
+		fields: map[string]*tag.Field{}, styles: map[styleKey]int{}, fmts: map[string]*numFormat{}, nextFmt: 60000, pictures: map[string]*tplPicture{}}
+}
+
+// numFmt returns the number format of a tag ({{v | fmt:"…"}}), parsed
+// once: a tag in a repeated row is filled once for each item.
+func (f *filler) numFmt(code string) *numFormat {
+	if nf, ok := f.fmts[code]; ok {
+		return nf
+	}
+	nf := parseNumFormat(code, f.c.st.palette)
+	f.fmts[code] = nf
+	return nf
 }
 
 // errorf makes an error about a cell of a sheet.

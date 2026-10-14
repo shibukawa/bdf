@@ -93,6 +93,11 @@ func (o *Options) pdf() *pdf.Options {
 // ErrNoForm is returned for a PDF without the fields of a form.
 var ErrNoForm = fmt.Errorf("pdfform: the PDF has no form fields to fill")
 
+// maxFieldText bounds the characters of the text of a field: the rest is
+// cut, with a warning (the text is laid out several times for a field
+// that is as tall as its lines).
+const maxFieldText = 1 << 16
+
 // Inspect reads the fields of the form of a PDF: the names that data for
 // it has.
 func Inspect(rs io.ReadSeeker, opts *Options) ([]tag.Field, error) {
@@ -179,21 +184,41 @@ func Fill(rs io.ReadSeeker, t *TemplateData, opts *Options) (*Result, error) {
 	if t == nil {
 		t = &TemplateData{}
 	}
-	fields, err := pdf.FormFields(rs, opts.pdf())
-	if err != nil {
-		return nil, err
-	}
-	list := fieldList(fields)
-	if len(list) == 0 {
-		return nil, ErrNoForm
-	}
 	data, _ := tag.Normalize(t.Data).(map[string]any)
 	var warnings []string
 	warn := func(format string, args ...any) { warnings = append(warnings, fmt.Sprintf(format, args...)) }
 
-	// what each field shows: the state of a button, the text of a field
-	show := map[string]pdf.FormShow{}
+	// the fields of the form, and what each shows: the state of a button,
+	// the text of a field. The file is read once: the fields are read of
+	// it before its pages are converted.
+	var fields []pdf.FormField
+	var list []tag.Field
 	texts := map[string]string{}
+	po := opts.pdf()
+	po.Warn = func(msg string) { warnings = append(warnings, msg) }
+	po.OnForm = func(ff []pdf.FormField) (map[string]pdf.FormShow, error) {
+		fields, list = ff, fieldList(ff)
+		if len(list) == 0 {
+			return nil, ErrNoForm
+		}
+		return shows(fields, data, t, texts, warn)
+	}
+	res, err := pdf.Convert(rs, po)
+	if err != nil {
+		return nil, err
+	}
+	doc := res.Doc
+	if len(doc.Views) == 0 {
+		return nil, fmt.Errorf("pdfform: the PDF has no pages")
+	}
+	view := doc.Views[0]
+	return draw(doc, view, fields, list, texts, opts, res.Protected, warnings, warn)
+}
+
+// shows tells what the widgets of the fields show when the form is filled
+// with data, and sets the texts that are drawn in the fields of text.
+func shows(fields []pdf.FormField, data map[string]any, t *TemplateData, texts map[string]string, warn func(string, ...any)) (map[string]pdf.FormShow, error) {
+	show := map[string]pdf.FormShow{}
 	for i := range fields {
 		fd := &fields[i]
 		if fd.Kind == pdf.FormButton || fd.Kind == pdf.FormSignature {
@@ -250,27 +275,24 @@ func Fill(rs io.ReadSeeker, t *TemplateData, opts *Options) (*Result, error) {
 			show[fd.Name], texts[fd.Name] = pdf.FormShow{Blank: true}, s
 		default:
 			s := tag.ValueText(v, "", t.Format)
+			if len(s) > maxFieldText {
+				if rs := []rune(s); len(rs) > maxFieldText {
+					s = string(rs[:maxFieldText])
+					warn("the text of %q is cut at %d characters", fd.Name, maxFieldText)
+				}
+			}
 			if fd.Password {
 				s = strings.Repeat("*", len([]rune(s)))
 			}
 			show[fd.Name], texts[fd.Name] = pdf.FormShow{Blank: true}, s
 		}
 	}
+	return show, nil
+}
 
-	po := opts.pdf()
-	po.Form = show
-	po.Warn = func(msg string) { warnings = append(warnings, msg) }
-	res, err := pdf.Convert(rs, po)
-	if err != nil {
-		return nil, err
-	}
-	doc := res.Doc
-	if len(doc.Views) == 0 {
-		return nil, fmt.Errorf("pdfform: the PDF has no pages")
-	}
-	view := doc.Views[0]
-
-	// the texts, over the pages
+// draw draws the texts of the fields over the pages of the converted file.
+func draw(doc *bdf.Document, view *bdf.View, fields []pdf.FormField, list []tag.Field, texts map[string]string, opts *Options, protected bool,
+	warnings []string, warn func(string, ...any)) (*Result, error) {
 	r := formbox.New(doc, formbox.Options{FontFS: opts.FontFS, FontDirs: opts.FontDirs, NoSystemFonts: opts.NoSystemFonts, SystemFonts: opts.SystemFonts,
 		NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2, IgnoreFSType: opts.IgnoreFSType, Images: opts.Images,
 		Warn: func(msg string) { warnings = append(warnings, msg) }})
@@ -311,7 +333,7 @@ func Fill(rs io.ReadSeeker, t *TemplateData, opts *Options) (*Result, error) {
 			warn("text index: %v", err)
 		}
 	}
-	return &Result{Doc: doc, Warnings: warnings, Fields: list, Pages: len(view.Pages), Protected: res.Protected}, nil
+	return &Result{Doc: doc, Warnings: warnings, Fields: list, Pages: len(view.Pages), Protected: protected}, nil
 }
 
 // onState is the state that the boxes of a checkbox show when it is on.

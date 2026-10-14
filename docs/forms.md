@@ -278,7 +278,7 @@ The data is one object of the values of JSON, put together with `-data`:
 | `-data book.xlsx`, `-data items=book.xlsx` | A list for each sheet of a workbook, by the names of the sheets; with a name, a workbook of one sheet is that list |
 | `-data customer.address=addr.json` | A JSON or YAML value under the name |
 
-A value of a CSV file is a number only when it is written as JSON writes numbers (`007` and `1,234` stay text); `true` and `false` are booleans, and an empty value is none. A picture is the path of a file (in the directory of `-files`, by default that of the template) or a `data:` URL.
+A value of a CSV file is a number only when it is written as JSON writes numbers (`007` and `1,234` stay text); `true` and `false` are booleans, and an empty value is none. A picture is the path of a file (in the directory of `-files`, by default that of the template) or a `data:` URL. The path stays in that directory: `..` and links that lead out of it are not followed.
 
 A tag whose name the data does not have is left empty, with a warning; `-strict` makes it an error.
 
@@ -351,4 +351,4 @@ res, err = pdfbdf.Write(out, doc, &pdfbdf.Options{Tagged: true, PDFA: "2a"}) // 
 - Text is laid out with the fonts of the machine that converts. A font the template names and the machine lacks is replaced by another, so naming the fonts with `-font-dir` makes the same form wherever it is made.
 - The same template and data make the same bytes. For that, `&D` and `&T` (the date and the time) of the headers and footers of Excel are left empty.
 - Word and PowerPoint templates do not calculate (they have nothing like the formulas of Excel): totals and what is carried over come with the data.
-- A template is untrusted input. Tags run no code, and what a filled form may grow to (cells, slides, elements) is bounded.
+- A template is untrusted input. Tags run no code, and what a filled form may grow to (cells, slides, elements) is bounded. The expressions of a template of pdfme are bounded too: in their steps, in the text they write (1 MiB) and in the items of the lists they make. The text of a field of a PDF form is cut at 65,536 characters.

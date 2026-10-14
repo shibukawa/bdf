@@ -10,11 +10,15 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shibukawa/bdf/form/tag"
 	"github.com/shibukawa/bdf/image/imgconv"
 )
+
+// maxCachedFormats bounds the number formats a Formatter keeps parsed.
+const maxCachedFormats = 4096
 
 // expander makes the rows of a filled sheet from those of its template.
 type expander struct {
@@ -66,8 +70,23 @@ func vars(k, n int, pages bool) map[string]any { return tag.Vars(k, n, pages) }
 // Formatter returns a formatter of values in the number formats of Excel,
 // for the templates that are not workbooks (see tag.Formatter): numbers and
 // dates in a format code, text in the text section of one. A text that is
-// a date is read as one for a date format.
+// a date is read as one for a date format. The formats are parsed once
+// each; the formatter may be called from several goroutines.
 func Formatter() tag.Formatter {
+	var mu sync.Mutex
+	parsed := map[string]*numFormat{}
+	parse := func(format string) *numFormat {
+		mu.Lock()
+		defer mu.Unlock()
+		if nf, ok := parsed[format]; ok {
+			return nf
+		}
+		nf := parseNumFormat(format, nil)
+		if len(parsed) < maxCachedFormats {
+			parsed[format] = nf
+		}
+		return nf
+	}
 	return func(v any, format string) string {
 		if format == "" {
 			if x, ok := v.(float64); ok && !math.IsNaN(x) && !math.IsInf(x, 0) {
@@ -75,7 +94,7 @@ func Formatter() tag.Formatter {
 			}
 			return tag.ValueText(v, "", nil)
 		}
-		nf := parseNumFormat(format, nil)
+		nf := parse(format)
 		if s, ok := v.(string); ok && nf.isDate() {
 			if d, ok := tag.ParseDate(s); ok {
 				v = d
@@ -472,7 +491,7 @@ func (x *expander) cell(c srcCell, dst int, sc *tag.Scope) (cell, error) {
 func (f *filler) setValue(cl *cell, v any, t tag.Token, ts *tplSheet, c srcCell) {
 	cl.kind, cl.text, cl.num = cellBlank, nil, 0
 	// a text that is a date, where a date is asked for
-	if s, ok := v.(string); ok && (f.isDateFormat(cl.style) || t.HasFormat && parseNumFormat(t.Format, f.c.st.palette).isDate()) {
+	if s, ok := v.(string); ok && (f.isDateFormat(cl.style) || t.HasFormat && f.numFmt(t.Format).isDate()) {
 		if d, ok := tag.ParseDate(s); ok {
 			v = d
 		}
@@ -540,7 +559,7 @@ func (f *filler) valueText(v any, t tag.Token, style int) string {
 	st := f.c.st
 	var nf *numFormat
 	if t.HasFormat && t.Format != "" {
-		nf = parseNumFormat(t.Format, st.palette)
+		nf = f.numFmt(t.Format)
 		if s, ok := v.(string); ok && nf.isDate() {
 			if d, ok := tag.ParseDate(s); ok {
 				v = d

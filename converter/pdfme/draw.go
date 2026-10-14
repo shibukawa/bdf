@@ -668,6 +668,48 @@ func svgSize(data []byte) (w, h float64) {
 	return 0, 0
 }
 
+// loaded is a picture that the data named, as it was read: the picture of
+// the document (its size is 0 × 0 for an SVG image that says none), or
+// why it is left out.
+type loaded struct {
+	pic formbox.Picture
+	ok  bool
+	why string
+}
+
+// load reads a picture that the data names: the path of a file, a data:
+// URL, or the markup of an SVG image.
+func (f *filler) load(name string) loaded {
+	if ld, ok := f.pictures[name]; ok {
+		return ld
+	}
+	var ld loaded
+	var data []byte
+	if t := strings.TrimSpace(name); strings.HasPrefix(t, "<") {
+		data = []byte(t) // (the markup of an SVG image)
+	} else {
+		var err error
+		if data, err = tag.PictureData(f.td.Files, name); err != nil {
+			ld.why = err.Error()
+		}
+	}
+	if ld.why == "" {
+		if pic, ok := f.r.Picture(data); !ok {
+			ld.why = "it is not a picture that is read"
+		} else {
+			ld.pic, ld.ok = pic, true
+			if pic.W <= 0 || pic.H <= 0 {
+				ld.pic.W, ld.pic.H = svgSize(data)
+			}
+		}
+	}
+	if f.pictures == nil {
+		f.pictures = map[string]loaded{}
+	}
+	f.pictures[name] = ld
+	return ld
+}
+
 // picture draws a picture in the box of its field: whole, or covering
 // the box, as the field says.
 func (f *filler) picture(l *formbox.Layer, s *schema, v any, b box) {
@@ -675,26 +717,15 @@ func (f *filler) picture(l *formbox.Layer, s *schema, v any, b box) {
 	if name == "" || b.w <= 0 || b.h <= 0 {
 		return
 	}
-	var data []byte
-	if t := strings.TrimSpace(name); strings.HasPrefix(t, "<") {
-		data = []byte(t) // (the markup of an SVG image)
-	} else {
-		var err error
-		if data, err = tag.PictureData(f.td.Files, name); err != nil {
-			f.warnf("the picture of %q is left out: %v", s.name, err)
-			return
-		}
-	}
-	pic, ok := f.r.Picture(data)
-	if !ok {
-		f.warnf("the picture of %q is left out: it is not a picture that is read", s.name)
+	ld := f.load(name)
+	if !ld.ok {
+		f.warnf("the picture of %q is left out: %s", s.name, ld.why)
 		return
 	}
+	pic := ld.pic
 	sw, sh := pic.W, pic.H
 	if sw <= 0 || sh <= 0 {
-		if sw, sh = svgSize(data); sw <= 0 || sh <= 0 {
-			sw, sh = b.w, b.h
-		}
+		sw, sh = b.w, b.h
 	}
 	cover := s.typ == "image" && s.str("objectFit", "contain") == "cover"
 	scale := math.Min(b.w/sw, b.h/sh)

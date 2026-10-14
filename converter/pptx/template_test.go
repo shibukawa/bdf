@@ -9,9 +9,11 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io/fs"
 	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
@@ -738,5 +740,53 @@ func TestFillCodes(t *testing.T) {
 	}
 	if err := fillErr(t, deck, data, true); !strings.Contains(err.Error(), "slide 1: JAN") {
 		t.Errorf("strict: %v", err)
+	}
+}
+
+// countingFS counts the files opened of it (tag.PictureData opens a file
+// to read it).
+type countingFS struct {
+	fstest.MapFS
+	reads int
+}
+
+func (c *countingFS) Open(name string) (fs.File, error) {
+	c.reads++
+	return c.MapFS.Open(name)
+}
+
+// TestFillPictureOnce reads a picture that the data names once, however
+// many pictures of the template it replaces: the same logo on the slide
+// of each item.
+func TestFillPictureOnce(t *testing.T) {
+	deck := tplDeck(t,
+		tsp("Name", 100, 50, 400, 40, "", tp("{{#people | pages}}{{name}}{{/people}}"))+
+			tpic("Logo", "{{%logo}}", 100, 100, 100, 100)+
+			tpic("Logo again", "{{%logo | fit:cover}}", 300, 100, 100, 100))
+	files := &countingFS{MapFS: fstest.MapFS{"logo.png": {Data: tplPNG(40, 10)}}}
+	res, err := Fill(bytes.NewReader(deck), int64(len(deck)), &TemplateData{Files: files, Data: map[string]any{"logo": "logo.png",
+		"people": []any{map[string]any{"name": "A"}, map[string]any{"name": "B"}, map[string]any{"name": "C"}}}}, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	noWarnings(t, res)
+	r := reopen(t, res)
+	if n := len(r.Manifest.Views[0].Pages); n != 3 || files.reads != 1 {
+		t.Errorf("%d slides, the logo read %d times", n, files.reads)
+	}
+	for i := range r.Manifest.Views[0].Pages {
+		if c := opCounts(t, r, body(r.Manifest.Views[0].Pages[i])); c[bdf.OpImage]+c[bdf.OpImageSub] != 2 {
+			t.Errorf("slide %d: ops %v", i+1, c)
+		}
+	}
+	// a picture that is not among the files is told for each place, and looked for once
+	files.reads = 0
+	res, err = Fill(bytes.NewReader(deck), int64(len(deck)), &TemplateData{Files: files, Data: map[string]any{"logo": "missing.png",
+		"people": []any{map[string]any{"name": "A"}, map[string]any{"name": "B"}}}}, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files.reads != 1 || len(res.Warnings) != 4 || !strings.Contains(res.Warnings[0], `the picture of "logo" is not read`) {
+		t.Errorf("read %d times, warnings %q", files.reads, res.Warnings)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/form/tag"
@@ -233,5 +234,31 @@ func TestFillValues(t *testing.T) {
 	}
 	if _, err := Inspect(bytes.NewReader(plain), nil); err != ErrNoForm {
 		t.Errorf("a file without a form: %v", err)
+	}
+}
+
+// TestFillLongText fills a field with more text than a field holds: the
+// text is cut, with a warning, and the form is filled in a moment (the
+// lines of a field that is as tall as its lines are laid out several
+// times, for the size that fits).
+func TestFillLongText(t *testing.T) {
+	data := map[string]any{}
+	for k, v := range applicant {
+		data[k] = v
+	}
+	data["notes"] = strings.Repeat("word ", 200000)
+	start := time.Now()
+	res, err := Fill(template(t), &TemplateData{Data: data}, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 20*time.Second {
+		t.Errorf("it took %v", d)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], `the text of "notes" is cut at 65536 characters`) {
+		t.Errorf("warnings: %q", res.Warnings)
+	}
+	if text := pageText(t, res.Doc); len(text) != 2 || !strings.Contains(text[1], "word word") {
+		t.Errorf("the pages: %d", len(text))
 	}
 }

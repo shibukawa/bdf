@@ -671,6 +671,9 @@ type filler struct {
 	// that were read, by their fields
 	rows  map[*schema][][]string
 	items map[*schema][]string
+	// pictures are the pictures that the data names, read once each: a
+	// picture of the base page is on every page
+	pictures map[string]loaded
 }
 
 // rowsOf reads the rows of a table once.

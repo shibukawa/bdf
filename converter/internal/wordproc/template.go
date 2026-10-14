@@ -247,6 +247,18 @@ type filler struct {
 	steps   int // repeated items and inline tokens expanded
 	// filled are the headers and footers, filled, by their parts
 	filled map[string]*ooxml.Node
+	// loaded are the pictures that the data names, by their names, as
+	// they were stored
+	loaded map[string]injected
+}
+
+// injected is a picture of the data as it was stored in the document (see
+// drawingml.Renderer.InjectImage), or why it is left out.
+type injected struct {
+	rid  string
+	w, h float64
+	ok   bool
+	why  string
 }
 
 func newFiller(t *TemplateData) *filler {
@@ -255,7 +267,8 @@ func newFiller(t *TemplateData) *filler {
 		data = map[string]any{}
 	}
 	return &filler{root: tag.NewScope(tag.Normalize(data)), strict: t.Strict, files: t.Files, format: t.Format,
-		inl: map[*ooxml.Node]*inlineTpl{}, holders: map[*ooxml.Node]*holder{}, pics: map[*ooxml.Node]picTag{}, filled: map[string]*ooxml.Node{}}
+		inl: map[*ooxml.Node]*inlineTpl{}, holders: map[*ooxml.Node]*holder{}, pics: map[*ooxml.Node]picTag{}, filled: map[string]*ooxml.Node{},
+		loaded: map[string]injected{}}
 }
 
 func tplErrorf(at, format string, args ...any) error {
@@ -1409,14 +1422,20 @@ func (f *filler) fillPicture(drawing *ooxml.Node, pt picTag, sc *tag.Scope) (*oo
 		if name == "" {
 			return nil, nil
 		}
-		data, err := tag.PictureData(f.files, name)
-		if err != nil {
-			return fail("is not read: " + err.Error())
+		in, ok := f.loaded[name]
+		if !ok {
+			// (read and stored once: the same picture may be in every item)
+			if data, err := tag.PictureData(f.files, name); err != nil {
+				in.why = "is not read: " + err.Error()
+			} else if in.rid, in.w, in.h, in.ok = f.c.r.InjectImage(data); !in.ok {
+				in.why = "is not a PNG, JPEG, GIF, BMP or WebP image"
+			}
+			f.loaded[name] = in
 		}
-		var ok bool
-		if rid, w, h, ok = f.c.r.InjectImage(data); !ok {
-			return fail("is not a PNG, JPEG, GIF, BMP or WebP image")
+		if !in.ok {
+			return fail(in.why)
 		}
+		rid, w, h = in.rid, in.w, in.h
 	}
 	cp := copyTree(drawing)
 	f.nodes += 32
