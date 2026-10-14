@@ -55,7 +55,8 @@ function contentKey(enc: Encryption, secret: string | CryptoKeyPair): Promise<Cr
 }
 
 async function passwordKey(enc: Encryption, password: string): Promise<CryptoKey> {
-  const pw = new TextEncoder().encode(password.normalize("NFC"));
+  // NFKC: the full-width and half-width spellings of a password are one password
+  const pw = new TextEncoder().encode(password.normalize("NFKC"));
   let spent = 0;
   for (const slot of enc.keys) {
     if (slot.type !== "password") continue;

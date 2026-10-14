@@ -42,11 +42,19 @@ test("decrypted parts equal the plain document's", async () => {
   assert.ok(obj.ops.length > 0);
 });
 
-test("passwords are compared in NFC", async () => {
-  const nfd = PASSWORD.normalize("NFD");
-  assert.notEqual(nfd, PASSWORD);
-  const doc = await BdfDocument.open(new BufferSource(sealedBytes), { password: nfd });
-  assert.equal(doc.manifest.views.length, 3);
+test("passwords are compared in NFKC", async () => {
+  // the spellings of one password that an input method may give: decomposed,
+  // and with full-width letters, a full-width hyphen and half-width katakana
+  const spellings = [PASSWORD.normalize("NFD"), "\uff44\uff45\uff4d\uff4f\uff0d\uff8a\uff9f\uff7d\uff9c\uff70\uff84\uff9e"];
+  for (const pw of spellings) {
+    assert.notEqual(pw, PASSWORD);
+    const doc = await BdfDocument.open(new BufferSource(sealedBytes), { password: pw });
+    assert.equal(doc.manifest.views.length, 3);
+  }
+  // case and the kind of kana are part of a password
+  for (const pw of ["DEMO-\u30d1\u30b9\u30ef\u30fc\u30c9", "demo-\u3071\u3059\u308f\u30fc\u3069"]) {
+    await assert.rejects(BdfDocument.open(new BufferSource(sealedBytes), { password: pw }), (e) => e instanceof BdfPasswordError && e.reason === "wrong", pw);
+  }
 });
 
 test("range requests read sealed parts", async () => {
