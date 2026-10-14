@@ -303,8 +303,24 @@ try {
       }
     }
   }
+  // A missing special field name must not turn Object.prototype into the
+  // object edited by a nested form. Exercise the actual schema -> controls
+  // -> JSON path, after removing the template's default data in the JSON tab.
+  const special = {
+    basePdf: { width: 210, height: 297, padding: [0, 0, 0, 0] },
+    schemas: [[{ name: "customer.__proto__.formValue", type: "text", content: "", position: { x: 10, y: 10 }, width: 50, height: 10 }]],
+  };
+  await page.locator("#file").setInputFiles({ name: "special.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(special)) });
+  await page.waitForFunction(() => document.querySelector("#status").textContent.startsWith("special.json filled"), null, { timeout: 120_000 });
+  await page.locator("#tabJson").click();
+  await page.locator("#json").fill("{}");
+  await page.locator("#tabForm").click();
+  await page.getByLabel("formValue", { exact: true }).fill("ordinary data");
+  assert.equal(await page.evaluate(() => ({}).formValue), undefined, "editing a template cannot pollute Object.prototype");
+  assert.deepEqual(JSON.parse(await page.locator("#json").inputValue()), JSON.parse('{"customer":{"__proto__":{"formValue":"ordinary data"}}}'));
+
   assert.deepEqual(errors, []);
-  console.log("form page browser regression test passed: remote font fetch/cache/PDF embedding, tabs, edits, preview paper, both sample styles, modern deep link, invoice continuation pages");
+  console.log("form page browser regression test passed: remote font fetch/cache/PDF embedding, tabs, edits, preview paper, both sample styles, modern deep link, invoice continuation pages, special field names");
 } finally {
   await browser?.close();
   await new Promise((resolve) => server?.close(resolve) ?? resolve());

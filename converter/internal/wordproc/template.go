@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
@@ -74,6 +73,8 @@ const (
 	maxParaText = 1 << 16
 	// maxSectionDepth bounds the sections one inside the other.
 	maxSectionDepth = 32
+	// maxExpansionSteps bounds repetitions that produce no nodes or text.
+	maxExpansionSteps = 8 << 20
 )
 
 // FillDOCX converts a Word document as a template filled with data. It
@@ -243,6 +244,7 @@ type filler struct {
 	uses    []fieldUse
 	boxes   int
 	nodes   int
+	steps   int // repeated items and inline tokens expanded
 	// filled are the headers and footers, filled, by their parts
 	filled map[string]*ooxml.Node
 	// loaded are the pictures that the data names, by their names, as
@@ -271,6 +273,14 @@ func newFiller(t *TemplateData) *filler {
 
 func tplErrorf(at, format string, args ...any) error {
 	return fmt.Errorf("docx: %s: %s", at, fmt.Sprintf(format, args...))
+}
+
+func (f *filler) expansionStep(at string) error {
+	if f.steps >= maxExpansionSteps {
+		return tplErrorf(at, "the filled template needs more than %d expansion steps", maxExpansionSteps)
+	}
+	f.steps++
+	return nil
 }
 
 // hfParts lists the headers and footers of a document: the parts, and
@@ -476,6 +486,10 @@ type seqText struct {
 // paragraph around it). The texts of the runs that follow each other are
 // one text.
 func (f *filler) scanInline(n *ooxml.Node, at tplLoc, stack *[]openSec, base []string) error {
+	return f.scanInlineAtDepth(n, at, stack, base, 0)
+}
+
+func (f *filler) scanInlineAtDepth(n *ooxml.Node, at tplLoc, stack *[]openSec, base []string, outerDepth int) error {
 	var items []tplItem
 	tagged := false
 	var seq []seqText
@@ -570,7 +584,11 @@ func (f *filler) scanInline(n *ooxml.Node, at tplLoc, stack *[]openSec, base []s
 		switch {
 		case it.mark:
 		case it.wrap != nil:
-			return f.scanInline(it.wrap, at, nil, inner)
+			depth := outerDepth
+			if stack != nil {
+				depth = len(*stack)
+			}
+			return f.scanInlineAtDepth(it.wrap, at, nil, inner, depth)
 		case it.node != nil:
 			return f.scanDeep(it.node, at)
 		case it.kid != nil:
@@ -616,6 +634,13 @@ func (f *filler) scanInline(n *ooxml.Node, at tplLoc, stack *[]openSec, base []s
 		case tag.Image:
 			return tplErrorf(at.name, "the picture tag {{%%%s}} is in a text: in a Word document it is the alternative text of a picture, which the picture of the data replaces", t.Name)
 		case tag.Open, tag.Inverted:
+			depth := outerDepth + len(inner)
+			if stack != nil {
+				depth = len(*stack) + len(inner)
+			}
+			if depth >= maxSectionDepth {
+				return tplErrorf(at.name, "the section {{#%s}} is inside more than %d sections", t.Name, maxSectionDepth)
+			}
 			localUse = append(localUse, f.use(tag.Field{Name: t.Name, Kind: tag.FieldSection, Inverted: t.Kind == tag.Inverted}, at, inner))
 			localFrom = append(localFrom, len(f.uses))
 			local = append(local, i)
@@ -969,6 +994,9 @@ func (f *filler) fillKids(n *ooxml.Node, secs []*tplSec, a, b int, sc *tag.Scope
 					len(items), slots, s.name, s.name, s.name)
 			}
 			for k := 0; k < slots; k++ {
+				if err := f.expansionStep(s.at); err != nil {
+					return err
+				}
 				isc := sc.Blank(map[string]any{"_blank": true, "_blank_first": k == len(items), "_index": float64(k + 1), "_count": float64(len(items))})
 				if k < len(items) {
 					v := tag.Vars(k, len(items), false)
@@ -991,6 +1019,9 @@ func (f *filler) fillKids(n *ooxml.Node, secs []*tplSec, a, b int, sc *tag.Scope
 			items = tag.Items(v)
 		}
 		for k, it := range items {
+			if err := f.expansionStep(s.at); err != nil {
+				return err
+			}
 			isc := sc
 			if !s.inverted {
 				isc = sc.Item(it, tag.Vars(k, len(items), s.mode == tag.ModePages))
@@ -1140,7 +1171,7 @@ func (f *filler) slotRow(pattern, tr *ooxml.Node, k int, sc *tag.Scope) (*ooxml.
 // piece is a piece of a filled paragraph: text in the format of a run, a
 // child of a run that is not text, or another child of the paragraph.
 type piece struct {
-	text string
+	text []string
 	run  *ooxml.Node
 	kid  *ooxml.Node
 	node *ooxml.Node
@@ -1156,20 +1187,23 @@ func (f *filler) fillInline(n *ooxml.Node, tpl *inlineTpl, sc *tag.Scope) ([]*oo
 		if s == "" || total >= maxParaText {
 			return
 		}
-		if total += utf8.RuneCountInString(s); total > maxParaText {
+		text, n := textPrefix(s, maxParaText-total)
+		total += n
+		if len(text) < len(s) {
 			f.c.warnOnce("paratext:"+at, "%s: the text of a paragraph is cut at %d characters", at, maxParaText)
-			rs := []rune(s)
-			s = string(rs[:len(rs)-(total-maxParaText)])
 		}
 		if k := len(pieces); k > 0 && pieces[k-1].node == nil && pieces[k-1].kid == nil && pieces[k-1].run == run {
-			pieces[k-1].text += s
+			pieces[k-1].text = append(pieces[k-1].text, text)
 			return
 		}
-		pieces = append(pieces, piece{text: s, run: run})
+		pieces = append(pieces, piece{text: []string{text}, run: run})
 	}
 	var walk func(lo, hi int, sc *tag.Scope) error
 	walk = func(lo, hi int, sc *tag.Scope) error {
 		for i := lo; i < hi; i++ {
+			if err := f.expansionStep(at); err != nil {
+				return err
+			}
 			it := items[i]
 			switch {
 			case it.node != nil:
@@ -1239,6 +1273,9 @@ func (f *filler) fillInline(n *ooxml.Node, tpl *inlineTpl, sc *tag.Scope) ([]*oo
 						if total >= maxParaText || f.nodes > maxFilledNodes {
 							break
 						}
+						if err := f.expansionStep(at); err != nil {
+							return err
+						}
 						if err := walk(i+1, j, sc.Item(e, tag.Vars(k, len(list), false))); err != nil {
 							return err
 						}
@@ -1280,7 +1317,7 @@ func (f *filler) fillInline(n *ooxml.Node, tpl *inlineTpl, sc *tag.Scope) ([]*oo
 		default:
 			r := runOf(pc.run)
 			// the line breaks and the tabs of a value are those of the line
-			text := strings.ReplaceAll(pc.text, "\r\n", "\n")
+			text := strings.ReplaceAll(strings.Join(pc.text, ""), "\r\n", "\n")
 			for len(text) > 0 {
 				i := strings.IndexAny(text, "\n\t")
 				if i < 0 {
@@ -1303,6 +1340,18 @@ func (f *filler) fillInline(n *ooxml.Node, tpl *inlineTpl, sc *tag.Scope) ([]*oo
 	}
 	f.nodes += len(out)
 	return out, nil
+}
+
+// textPrefix reads at most n+1 runes without copying an oversized value.
+func textPrefix(s string, n int) (string, int) {
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i], count
+		}
+		count++
+	}
+	return s, count
 }
 
 // copyTree copies an element with what is in it.

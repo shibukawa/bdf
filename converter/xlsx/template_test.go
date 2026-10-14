@@ -692,7 +692,7 @@ func TestFillLimits(t *testing.T) {
 	sheet := rowXML(1, "{{#a | rows}}{{#b | rows}}", "{{#c}}{{.}}{{/c}}", "{{/b}}{{/a}}")
 	start := time.Now()
 	_, _, err := filled(t, book([]string{sheet}, ""), data)
-	if err == nil || !strings.Contains(err.Error(), "cells") && !strings.Contains(err.Error(), "rows of a sheet") {
+	if err == nil || !strings.Contains(err.Error(), "cells") && !strings.Contains(err.Error(), "rows of a sheet") && !strings.Contains(err.Error(), "expansion steps") {
 		t.Errorf("a template of two million rows: %v", err)
 	}
 	if d := time.Since(start); d > 60*time.Second {

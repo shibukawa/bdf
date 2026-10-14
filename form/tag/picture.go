@@ -3,6 +3,7 @@ package tag
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 	"io/fs"
 	"strings"
 )
@@ -34,12 +35,29 @@ func PictureData(files fs.FS, name string) ([]byte, error) {
 	if !fs.ValidPath(name) {
 		return nil, fmt.Errorf("%q is not the path of a file beside the template", name)
 	}
-	st, err := fs.Stat(files, name)
+	f, err := files.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("%q is not among the files", name)
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if st.IsDir() || st.Size() < 0 {
+		return nil, fmt.Errorf("%q is not a picture file", name)
 	}
 	if st.Size() > MaxPicture {
 		return nil, fmt.Errorf("%q is larger than %d MiB", name, MaxPicture>>20)
 	}
-	return fs.ReadFile(files, name)
+	// A filesystem's size may be stale or only an estimate. Bound the
+	// actual read as well, without delegating to an unbounded ReadFileFS.
+	data, err := io.ReadAll(io.LimitReader(f, MaxPicture+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxPicture {
+		return nil, fmt.Errorf("%q is larger than %d MiB", name, MaxPicture>>20)
+	}
+	return data, nil
 }

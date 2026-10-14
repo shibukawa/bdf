@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,9 +37,6 @@ type formFlags struct {
 	noSystemFonts *bool
 	params        stringList
 	compression   *string
-	// pictures is the directory of the pictures that the data names, once
-	// it is opened (see options)
-	pictures fs.FS
 }
 
 func addFormFlags(fs *flag.FlagSet, cmd, dataFlag, dataUsage string) *formFlags {
@@ -118,24 +114,20 @@ func (f *formFlags) sources(flags []string) []form.Source {
 }
 
 // options returns the options of filling the template at path with data.
-// The pictures that the data names are read from the directory of -files
-// (by default that of the template) and from it alone: a path that leaves
-// it, by .. or by a link, is not read.
-func (f *formFlags) options(path string, data map[string]any) *form.Options {
-	if f.pictures == nil {
-		dir := *f.files
-		if dir == "" {
-			dir = filepath.Dir(path)
-		}
-		root, err := os.OpenRoot(dir)
-		if err != nil {
-			f.fail("-files: " + err.Error())
-		}
-		f.pictures = root.FS()
+// The caller closes the returned root after filling, so picture paths
+// (including symlinks) stay within the chosen directory for the whole read.
+func (f *formFlags) options(path string, data map[string]any) (*form.Options, *os.Root, error) {
+	dir := *f.files
+	if dir == "" {
+		dir = filepath.Dir(path)
+	}
+	files, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("pictures in %q: %w", dir, err)
 	}
 	opts := f.convert()
 	opts.FileName = filepath.Base(path)
-	return &form.Options{Data: data, Strict: *f.strict, Files: f.pictures, Convert: opts}
+	return &form.Options{Data: data, Strict: *f.strict, Files: files.FS(), Convert: opts}, files, nil
 }
 
 // finish gives a document the compression the flags ask for.
@@ -179,8 +171,13 @@ func fill(args []string) {
 	check(err)
 	data, err := form.LoadData(f.sources(f.data)...)
 	check(err)
+	opts, files, err := f.options(in, data)
+	check(err)
+	defer files.Close()
 	one := func(data map[string]any, out string) {
-		res, err := form.Fill(bytes.NewReader(tpl), int64(len(tpl)), f.options(in, data))
+		o := *opts
+		o.Data = data
+		res, err := form.Fill(bytes.NewReader(tpl), int64(len(tpl)), &o)
 		check(err)
 		f.finish(res.Doc)
 		f.warn(res.Warnings)
@@ -326,7 +323,10 @@ func templateCmd(args []string) {
 			sample, err = form.LoadData(f.sources(f.data)...)
 			check(err)
 		}
-		c, err := form.Compile(bytes.NewReader(tpl), int64(len(tpl)), filepath.Base(in), f.options(in, sample))
+		opts, files, err := f.options(in, sample)
+		check(err)
+		defer files.Close()
+		c, err := form.Compile(bytes.NewReader(tpl), int64(len(tpl)), filepath.Base(in), opts)
 		check(err)
 		f.finish(c.Doc)
 		f.warn(c.Warnings)

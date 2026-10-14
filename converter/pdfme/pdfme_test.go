@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io/fs"
 	"math"
 	"os"
 	"strings"
@@ -24,6 +25,21 @@ import (
 // with the same font (test/pdfme/gen.py makes the templates and the data).
 func testOptions() *Options {
 	return &Options{FontDirs: []string{"../docx/testdata/fonts"}, NoSystemFonts: true}
+}
+
+func TestTemplateInputLimits(t *testing.T) {
+	if _, err := Inspect(bytes.NewReader(nil), -1); err == nil {
+		t.Fatal("a negative template size was accepted")
+	}
+	// Static fields count towards the same limit as fields on pages.
+	static := strings.TrimSuffix(strings.Repeat("{},", maxSchemas+1), ",")
+	src := `{"schemas":[],"basePdf":{"width":100,"height":100,"staticSchema":[` + static + `]}}`
+	if _, err := Inspect(strings.NewReader(src), int64(len(src))); err == nil {
+		t.Fatal("too many static fields were accepted")
+	}
+	if got := len(listItems(strings.Repeat("x\n", maxRows+10))); got != maxRows {
+		t.Errorf("a text list has %d items, want at most %d", got, maxRows)
+	}
 }
 
 func read(t testing.TB, name string) []byte {
@@ -438,15 +454,16 @@ func FuzzFill(f *testing.F) {
 	})
 }
 
-// countingFS counts the files read of it.
+// countingFS counts the files opened of it (tag.PictureData opens a file
+// to read it).
 type countingFS struct {
 	fstest.MapFS
 	reads int
 }
 
-func (c *countingFS) ReadFile(name string) ([]byte, error) {
+func (c *countingFS) Open(name string) (fs.File, error) {
 	c.reads++
-	return c.MapFS.ReadFile(name)
+	return c.MapFS.Open(name)
 }
 
 // TestPicturesOnce reads a picture that the data names once, however many
@@ -479,13 +496,14 @@ func TestPicturesOnce(t *testing.T) {
 	if images != 2 {
 		t.Errorf("%d images in the document, want 2", images)
 	}
-	// a picture that is not read is told once, for all the pages
+	// a picture that is not read is told once, for all the pages (the
+	// logo and the missing photo are each opened once)
 	files.reads = 0
 	res, err = Fill(bytes.NewReader(tpl), int64(len(tpl)), &TemplateData{Files: files, Data: map[string]any{"items": "[" + strings.Join(rows, ",") + "]", "photo": "missing.png"}}, testOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files.reads != 1 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], `the picture of "photo" is left out`) {
+	if files.reads != 2 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], `the picture of "photo" is left out`) {
 		t.Errorf("%d files read, warnings %q", files.reads, res.Warnings)
 	}
 }

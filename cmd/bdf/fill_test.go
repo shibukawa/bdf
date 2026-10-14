@@ -2,74 +2,67 @@ package main
 
 import (
 	"bytes"
-	"image"
-	"image/color"
-	"image/png"
+	"flag"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/shibukawa/bdf/form/tag"
 )
 
-// TestFillPicturesInDir reads the pictures that the data names from the
-// directory of the template (or of -files) and from it alone: a link that
-// leads out of it is not followed.
-func TestFillPicturesInDir(t *testing.T) {
-	dir := t.TempDir()
-	tpl, err := os.ReadFile(filepath.Join("..", "..", "converter", "xlsx", "testdata", "form-fixed.xlsx"))
-	if err != nil {
+func TestFormPictureRoot(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "pictures")
+	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "form.xlsx"), tpl, 0o644); err != nil {
+	inside := []byte("inside")
+	if err := os.WriteFile(filepath.Join(dir, "inside.svg"), inside, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// the picture is outside the directory of the template, and a link in it leads there
-	outside := t.TempDir()
-	stamp := filepath.Join(outside, "stamp.png")
-	if err := os.WriteFile(stamp, testPNG(), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(base, "secret.svg"), []byte("secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(stamp, filepath.Join(dir, "link.png")); err != nil {
-		t.Skip("no symbolic links here:", err)
+	for name, target := range map[string]string{
+		"inside-link.svg": "inside.svg",
+		"escape.svg":      "../secret.svg",
+		"absolute.svg":    filepath.Join(base, "secret.svg"),
+		"escape-dir":      base,
+	} {
+		if err := os.Symlink(target, filepath.Join(dir, name)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
 	}
-	data := filepath.Join(dir, "data.json")
-	if err := os.WriteFile(data, []byte(`{"no":1,"customer":{"name":"ACME"},"photo":"link.png","paid":true,"tags":[]}`), 0o644); err != nil {
-		t.Fatal(err)
+	for _, explicit := range []bool{false, true} {
+		t.Run(map[bool]string{false: "template directory", true: "files flag"}[explicit], func(t *testing.T) {
+			f := addFormFlags(flag.NewFlagSet("fill", flag.ContinueOnError), "fill", "data", "data")
+			path := filepath.Join(dir, "template.xlsx")
+			if explicit {
+				*f.files = dir
+				path = filepath.Join(base, "template.xlsx")
+			}
+			opts, root, err := f.options(path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			for _, name := range []string{"inside.svg", "inside-link.svg"} {
+				data, err := tag.PictureData(opts.Files, name)
+				if err != nil || !bytes.Equal(data, inside) {
+					t.Errorf("PictureData(%q) = %q, %v", name, data, err)
+				}
+			}
+			for _, name := range []string{"escape.svg", "absolute.svg", "escape-dir/secret.svg"} {
+				if _, err := tag.PictureData(opts.Files, name); err == nil {
+					t.Errorf("PictureData(%q) escaped the picture directory", name)
+				}
+			}
+			if err := root.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := tag.PictureData(opts.Files, "inside.svg"); err == nil {
+				t.Error("picture filesystem remained open after closing its root")
+			}
+		})
 	}
-	fonts := filepath.Join("..", "..", "converter", "pptx", "testdata", "fonts")
-	status, stderr := run(t, "fill", "-font-dir", fonts, "-no-system-fonts", "-data", data, filepath.Join(dir, "form.xlsx"), filepath.Join(dir, "out.bdf"))
-	if status != 0 || !strings.Contains(stderr, `the picture of "photo" is left out`) {
-		t.Errorf("status %d:\n%s", status, stderr)
-	}
-	// a path out of the directory is not read either
-	if err := os.WriteFile(data, []byte(`{"no":1,"customer":{"name":"ACME"},"photo":"../`+filepath.Base(outside)+`/stamp.png","paid":true,"tags":[]}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	status, stderr = run(t, "fill", "-font-dir", fonts, "-no-system-fonts", "-data", data, filepath.Join(dir, "form.xlsx"), filepath.Join(dir, "out.bdf"))
-	if status != 0 || !strings.Contains(stderr, `the picture of "photo" is left out`) {
-		t.Errorf("status %d:\n%s", status, stderr)
-	}
-	// from the directory of -files it is read
-	if err := os.WriteFile(data, []byte(`{"no":1,"customer":{"name":"ACME"},"photo":"stamp.png","paid":true,"tags":[]}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	status, stderr = run(t, "fill", "-font-dir", fonts, "-no-system-fonts", "-files", outside, "-data", data, filepath.Join(dir, "form.xlsx"), filepath.Join(dir, "out.bdf"))
-	if status != 0 || strings.Contains(stderr, `"photo"`) {
-		t.Errorf("status %d:\n%s", status, stderr)
-	}
-	// a directory of -files that is none is told
-	if status, stderr = run(t, "fill", "-files", filepath.Join(dir, "none"), "-data", data, filepath.Join(dir, "form.xlsx"), filepath.Join(dir, "out.bdf")); status != 2 || !strings.Contains(stderr, "-files:") {
-		t.Errorf("status %d:\n%s", status, stderr)
-	}
-}
-
-// testPNG makes a small picture.
-func testPNG() []byte {
-	img := image.NewRGBA(image.Rect(0, 0, 8, 4))
-	for i := 0; i < 32; i++ {
-		img.Set(i%8, i/8, color.RGBA{200, uint8(i * 8), 30, 255})
-	}
-	var b bytes.Buffer
-	png.Encode(&b, img)
-	return b.Bytes()
 }

@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io/fs"
 	"strconv"
 	"strings"
 	"testing"
@@ -742,15 +743,16 @@ func TestFillCodes(t *testing.T) {
 	}
 }
 
-// countingFS counts the files read of it.
+// countingFS counts the files opened of it (tag.PictureData opens a file
+// to read it).
 type countingFS struct {
 	fstest.MapFS
 	reads int
 }
 
-func (c *countingFS) ReadFile(name string) ([]byte, error) {
+func (c *countingFS) Open(name string) (fs.File, error) {
 	c.reads++
-	return c.MapFS.ReadFile(name)
+	return c.MapFS.Open(name)
 }
 
 // TestFillPictureOnce reads a picture that the data names once, however
@@ -784,7 +786,7 @@ func TestFillPictureOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files.reads != 0 || len(res.Warnings) != 4 || !strings.Contains(res.Warnings[0], `the picture of "logo" is not read`) {
+	if files.reads != 1 || len(res.Warnings) != 4 || !strings.Contains(res.Warnings[0], `the picture of "logo" is not read`) {
 		t.Errorf("read %d times, warnings %q", files.reads, res.Warnings)
 	}
 }

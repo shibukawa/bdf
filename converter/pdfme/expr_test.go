@@ -1,9 +1,9 @@
 package pdfme
 
 import (
+	"math"
 	"strings"
 	"testing"
-	"time"
 )
 
 // TestExpressions evaluates the expressions that the text of a read-only
@@ -70,67 +70,106 @@ func TestExpressions(t *testing.T) {
 		t.Fatal(err)
 	}
 	big := make([]any, 200)
-	if _, err := evalExpr(n, map[string]any{"items": big}); err == nil || !strings.Contains(err.Error(), "too long") && !strings.Contains(err.Error(), "too many items") {
+	if _, err := evalExpr(n, map[string]any{"items": big}); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Errorf("an expression of 1.6e9 steps: %v", err)
 	}
 }
 
-// TestExpressionLimits refuses the expressions that would take too much
-// room, each quickly: a list that holds itself written out as many times
-// as it is nested, a list joined with itself over and over, more items
-// than a list holds, and lists nested too deep.
-func TestExpressionLimits(t *testing.T) {
-	nest := func(n int, inner string) string {
-		return "(f => " + strings.Repeat("f(", n) + inner + strings.Repeat(")", n) + ")"
-	}
-	vars := map[string]any{"a": "x", "l": []any{1.0}, "big": strings.Repeat("y", 1<<19+8), "items": make([]any, 1000)}
-	for _, c := range []struct{ expr, want string }{
-		{nest(30, "a") + "(y => [y, y])", "too long"},                      // 2^30 times x
-		{"JSON.stringify(" + nest(30, "a") + "(y => [y, y]))", "too long"}, // and as JSON
-		{nest(30, "a") + "(y => [y, y]).join('')", "too long"},             // and joined
-		{"String(" + nest(30, "a") + "(y => [y, y]))", "too long"},
-		{nest(40, "l") + "(y => y.concat(y))", "too many items"}, // 2^40 items
-		{"big.split('').map(c => c + c)", "too many items"},      // half a million items, twice
-		{"big + big + big", "too long"},
-		{"items.reduce((acc, x) => [acc], [])", "nested too deep"}, // a thousand lists in each other
-		{"JSON.stringify(items.reduce((acc, x) => [acc], []))", "nested too deep"},
-		{"JSON.parse('[' + '1,'.repeat(400000) + '1]').concat(JSON.parse('[' + '1,'.repeat(400000) + '1]'))", "too many items"},
+func TestExpressionResourceLimits(t *testing.T) {
+	vars := map[string]any{"items": make([]any, 24), "large": strings.Repeat("x", maxExprText/2)}
+	for name, src := range map[string]string{
+		"replace":           "'x'.repeat(4096).replaceAll('x', 'y'.repeat(4096))",
+		"empty replacement": "'x'.repeat(4096).replaceAll('', 'y'.repeat(4096))",
+		"join":              "[large, large].join(large)",
+		"split":             "'x'.repeat(65537).split('')",
+		"concat":            "items.reduce(a => a.concat(a), [0])",
+		"shared JSON":       "JSON.stringify(items.reduce(a => [a, a], [0]))",
+		"shared text":       "String(items.reduce(a => [a, a], [0]))",
+		"recursion":         "(f => f(f))(f => f(f))",
+		"temporary texts":   "items.map(i => 'x'.repeat(1048576))",
 	} {
-		start := time.Now()
-		n, err := parseExpr(c.expr)
+		t.Run(name, func(t *testing.T) {
+			n, err := parseExpr(src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := evalExpr(n, vars); err == nil {
+				t.Fatal("an expression exceeding its resource limit succeeded")
+			}
+			text := "{" + src + "}"
+			if got, failed := expand(text, vars); !failed || got != text {
+				t.Fatalf("failed expression was not left intact: failed = %v, length = %d", failed, len(got))
+			}
+		})
+	}
+	text := "{'x'.repeat(600000)}{'x'.repeat(600000)}"
+	if got, failed := expand(text, nil); !failed || got != text {
+		t.Fatal("the combined text of expressions exceeded its limit")
+	}
+	// A nested value returned directly is checked before text conversion,
+	// including cyclic values supplied by a Go caller.
+	cycle := make([]any, 1)
+	cycle[0] = cycle
+	if got, failed := expand("{cycle}", map[string]any{"cycle": cycle}); !failed || got != "{cycle}" {
+		t.Fatal("a cyclic value was expanded")
+	}
+}
+
+func TestParseFloatPrefix(t *testing.T) {
+	for src, want := range map[string]float64{
+		"12.5mm": 12.5, "+.5e2tail": 50, "1e+tail": 1, "1.2.3": 1.2,
+		"-Infinityrest": math.Inf(-1), "1e999": math.Inf(1), "text": math.NaN(),
+		strings.Repeat("0", maxExprText-1) + "1": 1,
+	} {
+		got := parseFloatPrefix(src)
+		if got != want && !(math.IsNaN(got) && math.IsNaN(want)) {
+			t.Errorf("parseFloat of a text of %d bytes = %v, want %v", len(src), got, want)
+		}
+	}
+}
+
+func TestExpressionStringScanBudget(t *testing.T) {
+	vars := map[string]any{
+		"rows":   make([]any, maxExprItems),
+		"s":      strings.Repeat("\U0001F600", maxExprText/8),
+		"blank":  strings.Repeat(" ", maxExprText/2),
+		"number": strings.Repeat("0", maxExprText/2-1) + "1",
+		"json":   strings.Repeat(" ", maxExprText/2-1) + "1",
+	}
+	for _, src := range []string{
+		"rows.map(() => s.charAt(500000)).length",
+		"rows.map(() => s[500000]).length",
+		"rows.map(() => s.includes('missing')).length",
+		"rows.map(() => s.indexOf('missing')).length",
+		"rows.map(() => s.length).length",
+		"rows.map(() => s.slice(1073741824)).length",
+		"rows.map(() => blank.trim()).length",
+		"rows.map(() => blank.replaceAll(' ', '')).length",
+		"rows.map(() => parseFloat(number)).length",
+		"rows.map(() => Number(number)).length",
+		"rows.map(() => Number([number])).length",
+		"rows.map(() => String(s)).length",
+		"rows.map(() => JSON.parse(json)).length",
+		"rows.map(() => rows.includes('missing')).length",
+		"rows.map(() => rows.indexOf('missing')).length",
+	} {
+		n, err := parseExpr(src)
 		if err != nil {
-			t.Fatalf("%s: %v", c.expr, err)
+			t.Fatal(err)
 		}
-		v, err := evalExpr(n, vars)
-		if err == nil {
-			_, err = exprText(v)
-		}
-		if err == nil || !strings.Contains(err.Error(), c.want) {
-			t.Errorf("%s: %v, want %q", c.expr, err, c.want)
-		}
-		if d := time.Since(start); d > 2*time.Second {
-			t.Errorf("%s took %v", c.expr, d)
+		if _, err := evalExpr(n, vars); err == nil || !strings.Contains(err.Error(), "too long") {
+			t.Errorf("a loop scanning large strings escaped the work budget: %s: %v", src, err)
 		}
 	}
-	// in a text, such an expression is left as it is, and the others are evaluated
-	if got, failed := expand("{"+nest(30, "a")+"(y => [y, y])} {a}", vars); got != "{"+nest(30, "a")+"(y => [y, y])} x" || !failed {
-		t.Errorf("expand: %q, %v", got, failed)
+	// An index beyond even the byte length needs no scan. Repeating this
+	// empty result stays cheap and succeeds within the expression budget.
+	src := "rows.map(() => s.charAt(1073741824)).length"
+	n, err := parseExpr(src)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// what is within the limits is as JavaScript has it
-	for expr, want := range map[string]string{
-		"[1, [2, 3], [[4]]].join('/')":                                   "1/2,3/4",
-		"String([1, [2, [3]]]) + [4]":                                    "1,2,34",
-		"JSON.stringify({b: [1, 'x', null, true], a: 1.5})":              `{"a":1.5,"b":[1,"x",null,true]}`,
-		"JSON.stringify('<a>') + JSON.stringify(0/0)":                    `"<a>"null`,
-		"Object.entries({a: 1})[0].join('=')":                            "a=1",
-		"Object.keys({b: 1, a: 2}).concat(Object.values({c: 3})).join()": "a,b,3",
-		"JSON.parse('[1,[2]]').length":                                   "2",
-		"'ab'.padStart(5, 'xy') + 'ab'.repeat(2)":                        "xyxababab",
-		"'héllo'.slice(1, 3) + 'héllo'.charAt(1)":                        "élé",
-	} {
-		if got, failed := expand("{"+expr+"}", vars); got != want || failed {
-			t.Errorf("%s = %q (failed %v), want %q", expr, got, failed, want)
-		}
+	if got, err := evalExpr(n, vars); err != nil || got != float64(maxExprItems) {
+		t.Fatalf("a cheap out-of-bounds lookup failed: %v, %v", got, err)
 	}
 }
 

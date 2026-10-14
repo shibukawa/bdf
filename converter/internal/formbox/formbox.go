@@ -45,7 +45,8 @@ type Renderer struct {
 	opts  Options
 	db    *fontdb.DB
 	cvs   *canvas.Builder
-	// images are the pictures added, by the hash of their data
+	// images are the pictures added, by the hash of their source data.
+	// Hashes avoid retaining another full copy of each encoded image.
 	images map[bdf.Hash]picture
 }
 

@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/shibukawa/bdf/form/tag"
 	"github.com/shibukawa/bdf/image/imgconv"
@@ -146,6 +145,9 @@ func (x *expander) unit(children []*tplSection, r0, r1 int, sc *tag.Scope, inst 
 			}
 			pattern := x.cellsOf(x.rowAt(ch.r0), ch.r0)
 			for k := 0; k < n; k++ {
+				if err := x.f.expansionStep(x.ts, ch.at[0], ch.at[1]); err != nil {
+					return 0, err
+				}
 				isc := sc.Blank(map[string]any{"_blank": true, "_blank_first": k == len(items), "_index": float64(k + 1), "_count": float64(len(items))})
 				if k < len(items) {
 					v := vars(k, len(items), false)
@@ -169,6 +171,9 @@ func (x *expander) unit(children []*tplSection, r0, r1 int, sc *tag.Scope, inst 
 			items = tag.Items(v)
 		}
 		for k, it := range items {
+			if err := x.f.expansionStep(x.ts, ch.at[0], ch.at[1]); err != nil {
+				return 0, err
+			}
 			ii := &itemInst{parent: inst, of: si}
 			si.items = append(si.items, ii)
 			ch.insts = append(ch.insts, ii)
@@ -362,17 +367,19 @@ func (x *expander) cell(c srcCell, dst int, sc *tag.Scope) (cell, error) {
 		if s == "" || total >= maxCellText {
 			return
 		}
-		if total += utf8.RuneCountInString(s); total > maxCellText {
+		text, n := textPrefix(s, maxCellText-total)
+		total += n
+		if len(text) < len(s) {
 			x.f.c.warnOnce("celltext:"+x.ts.ws.name, "sheet %q cell %s: the text is cut at the %d characters of a cell", x.ts.ws.name, cellRef(c.row, c.col), maxCellText)
-			over := total - maxCellText
-			rs := []rune(s)
-			s = string(rs[:len(rs)-over])
 		}
-		pieces = append(pieces, piece{s, pos})
+		pieces = append(pieces, piece{text, pos})
 	}
 	var walk func(lo, hi int, sc *tag.Scope) error
 	walk = func(lo, hi int, sc *tag.Scope) error {
 		for i := lo; i < hi; i++ {
+			if err := x.f.expansionStep(x.ts, c.row, c.col); err != nil {
+				return err
+			}
 			if skip[i] {
 				continue
 			}
@@ -425,6 +432,9 @@ func (x *expander) cell(c srcCell, dst int, sc *tag.Scope) (cell, error) {
 						if total >= maxCellText {
 							break
 						}
+						if err := x.f.expansionStep(x.ts, c.row, c.col); err != nil {
+							return err
+						}
 						if err := walk(i+1, j, sc.Item(it, vars(k, len(items), false))); err != nil {
 							return err
 						}
@@ -447,24 +457,30 @@ func (x *expander) cell(c srcCell, dst int, sc *tag.Scope) (cell, error) {
 		return cl, nil
 	}
 	rt := &richText{plain: b.String()}
-	if old := cl.text; old != nil && old.runs != nil {
+	if old := cl.text; old != nil && len(old.runs) > 0 {
 		// each piece in the font of the run it stands in
-		fontAt := func(pos int) *xfont {
-			end := 0
-			for _, run := range old.runs {
-				if end += len(run.text); pos < end {
-					return run.font
-				}
-			}
-			return old.runs[len(old.runs)-1].font
+		ends := make([]int, len(old.runs))
+		end := 0
+		for i, run := range old.runs {
+			end += len(run.text)
+			ends[i] = end
 		}
+		fontAt := func(pos int) *xfont {
+			return old.runs[min(sort.SearchInts(ends, pos+1), len(old.runs)-1)].font
+		}
+		var text strings.Builder
+		var font *xfont
 		for _, p := range pieces {
-			font := fontAt(p.pos)
-			if n := len(rt.runs); n > 0 && rt.runs[n-1].font == font {
-				rt.runs[n-1].text += p.s
-				continue
+			next := fontAt(p.pos)
+			if text.Len() > 0 && next != font {
+				rt.runs = append(rt.runs, textRun{text: text.String(), font: font})
+				text = strings.Builder{}
 			}
-			rt.runs = append(rt.runs, textRun{text: p.s, font: font})
+			font = next
+			text.WriteString(p.s)
+		}
+		if text.Len() > 0 {
+			rt.runs = append(rt.runs, textRun{text: text.String(), font: font})
 		}
 	}
 	cl.kind, cl.text, cl.num = cellStr, rt, 0
@@ -520,10 +536,21 @@ func clipText(s string) string {
 	if len(s) <= maxCellText {
 		return s
 	}
-	if rs := []rune(s); len(rs) > maxCellText {
-		return string(rs[:maxCellText])
+	text, _ := textPrefix(s, maxCellText)
+	return text
+}
+
+// textPrefix reads at most n+1 runes, retaining a slice of the source
+// rather than allocating for all of an oversized data value.
+func textPrefix(s string, n int) (string, int) {
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i], count
+		}
+		count++
 	}
-	return s
+	return s, count
 }
 
 // valueText formats a value for the text of a cell: in the format of the
