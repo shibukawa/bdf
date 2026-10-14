@@ -339,8 +339,8 @@ BDF を読むためのパッケージ（`packages/core`）。DOM に依存しな
 | `decode(bytes, enc, limit)` / `checkManifest(manifest)` / `checkHash(name)` / `tileSize(view)` | 格納された Part を展開する（`limit` バイトを超えるデータは `BdfFormatError`。Part は manifest の `size`、manifest は `MAX_MANIFEST_SIZE` = 256 MiB）/ manifest の Part 名と数値の範囲を確かめる / Part 名が 32 文字の hex であることを確かめる / シートの Tile の大きさ（0 以下と省略は `DEFAULT_TILE` = 2048） |
 | `extractContent(obj, resolve, matrix?)` | run に構造（見出し、リスト、表、図）とリンクを付けた `TextContent` |
 | `parseCellRef` / `guessSep` / `Mark` / `Sep` | セル参照の解釈、run の区切りの推測、MARK と区切りの定数 |
-| `TextSearch(runs)` / `decodeTextIndex(bytes)` | テキスト索引から検索する（NFKC、大文字小文字、小書きのかな、数式のマイナス記号とハイフンマイナスを同一視し、行をまたいで一致する）。`search(query, {limit, caseSensitive, context})` は `SearchHit[]` |
-| `normalizeQuery` / `normalizeChar` | 検索と同じ正規化 |
+| `TextSearch(runs)` / `decodeTextIndex(bytes)` | テキスト索引から検索する（run ごとの文字列の NFKC、大文字小文字、小書きのかな、数式のマイナス記号とハイフンマイナスを同一視し、行をまたいで一致する。`e` + 結合アクセントは `é` に、半角の `ｶﾞ` は `が` に一致する）。`search(query, {limit, caseSensitive, context})` は `SearchHit[]` |
+| `normalizeQuery` | 検索と同じ正規化（文字列全体の NFKC のあと、大文字小文字とかなを畳む） |
 | `dcValues(value)` | Dublin Core の値（文字列または配列）を配列にする |
 | `parseHeader` / `decode` / `MAGIC` / `HEADER_SIZE` | 1 ファイル形式のヘッダと Part の展開 |
 | `BdfFormatError` / `BdfPasswordError` / `BdfKeyError` / `SealedSource` | 形式の誤り、パスワードの誤り、鍵ペアの誤り、暗号化された文書のソース |

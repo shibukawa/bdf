@@ -13,6 +13,59 @@ test("normalization folds width, case and kana", () => {
   assert.equal(normalizeQuery("b^2\u22124ac"), "b^2-4ac");
 });
 
+test("normalization is of the string, not of its characters one by one", () => {
+  // a letter and the mark after it are the letter they compose
+  assert.equal(normalizeQuery("cafe\u0301"), "caf\u00e9");
+  assert.equal(normalizeQuery("CAFE\u0301", true), "CAF\u00c9");
+  // half-width katakana with its voiced marks, and a kana with a combining one
+  assert.equal(normalizeQuery("\uff76\uff9e\uff72\uff84\uff9e"), "\u304c\u3044\u3069");
+  assert.equal(normalizeQuery("\uff8a\uff9f"), "\u3071");
+  assert.equal(normalizeQuery("\u304b\u3099"), "\u304c");
+  // the letters of a Hangul syllable
+  assert.equal(normalizeQuery("\u1100\u1161\u11a8"), "\uac01");
+  // marks in another order than the canonical one
+  assert.equal(normalizeQuery("a\u0301\u0323"), normalizeQuery("a\u0323\u0301"));
+  // a minus sign that normalization makes of another character
+  assert.equal(normalizeQuery("10\u207b\u00b3"), "10-3");
+});
+
+test("a hit is located in the text it was normalized from", () => {
+  const run = (text, sep = Sep.SPACE) => ({ a: 0, b: 0, ordinal: 0, sep, text });
+  const at = (text, query) => new TextSearch([run(text)]).search(query).map((h) => [h.segments[0].start, h.segments[0].end, h.text]);
+  // decomposed in the document, composed in the query, and the other way round
+  assert.deepEqual(at("un cafe\u0301 noir", "caf\u00e9"), [[3, 8, "cafe\u0301"]]);
+  assert.deepEqual(at("un caf\u00e9 noir", "CAFE\u0301"), [[3, 7, "caf\u00e9"]]);
+  // the letter without its mark is another letter, as it is when they are one character
+  assert.deepEqual(at("cafe\u0301", "cafe"), []);
+  assert.deepEqual(at("caf\u00e9", "cafe"), []);
+  // half-width katakana: a letter and its voiced mark are located together
+  const guide = "\uff76\uff9e\uff72\uff84\uff9e"; // ｶﾞｲﾄﾞ
+  assert.deepEqual(at(guide, "\u30ac\u30a4\u30c9"), [[0, 5, guide]]);
+  assert.deepEqual(at(guide, "\u3044"), [[2, 3, "\uff72"]]);
+  assert.deepEqual(at(guide, "\u30c9"), [[3, 5, "\uff84\uff9e"]]);
+  assert.deepEqual(at(guide, "\u30c8"), []); // ト is not in ド
+  // marks out of order, and a character outside the BMP before them
+  assert.deepEqual(at("\ud835\udc9c a\u0301\u0323b", "a\u0323\u0301"), [[3, 6, "a\u0301\u0323"]]);
+  assert.deepEqual(at("\ud835\udc9ce\u0301", "a\u00e9"), [[0, 4, "\ud835\udc9ce\u0301"]]);
+  // a character that normalizes to several is located whole
+  assert.deepEqual(at("\u3314", "\u308d"), [[0, 1, "\u3314"]]); // ㌔ is キロ
+  // the letters of a syllable
+  assert.deepEqual(at("x\u1100\u1161\u11a8y", "\uac01"), [[1, 4, "\u1100\u1161\u11a8"]]);
+  // a letter with more marks than a piece holds: the first 31 are with it, the
+  // rest by themselves, and the index is built in time in proportion to the text
+  const marks = "\u0301".repeat(200000);
+  const t0 = performance.now();
+  const many = new TextSearch([run("e" + marks + "x")]);
+  assert.ok(performance.now() - t0 < 5000, "200,000 marks after a letter");
+  assert.deepEqual(many.search("\u00e9").map((h) => [h.segments[0].start, h.segments[0].end]), [[0, 32]]);
+  assert.equal(many.search("x").length, 1);
+  // a run is normalized by itself: a mark at the start of the next is not joined
+  const split = new TextSearch([run("e"), run("\u0301x", Sep.NONE)]);
+  assert.equal(split.search("\u00e9").length, 0);
+  assert.equal(split.search("e\u0301x").length, 0);
+  assert.equal(split.text, "e\u0301x");
+});
+
 test("text index matches the extractor's ordinals", async () => {
   const doc = await BdfDocument.open(new BufferSource(fixture));
   const view = doc.view("doc");
