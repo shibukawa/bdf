@@ -226,14 +226,19 @@ return thumbnail.Encode(w, img, thumbnail.PNG)
 
 | 名前 | 内容 |
 |---|---|
-| `thumbnail.Make(doc, *Options) (*Result, error)` | サムネイルを描く。`Options` は `Size`（既定 256 px。切り抜きなら一辺、全体なら長辺）、`Mode`（`Auto`・`Crop`・`Fit`）、`View`（既定は最初の View）、`SheetDPI`（シートを描く解像度。既定 `DefaultSheetDPI` = 72 で 1 単位が 1 画素）、`Raster`（フォントと背景）。`Result` は `Image`、選んだ `Mode`、`Warnings` |
+| `thumbnail.Make(doc, *Options) (*Result, error)` | サムネイルを描く。`Options` は `Size`（既定 256 px。切り抜きなら一辺、全体なら長辺）、`Mode`（`Auto`・`Crop`・`Fit`）、`View`（既定は最初の View）、`SheetDPI`（シートを描く解像度。既定 `DefaultSheetDPI` = 72 で 1 単位が 1 画素）、`Raster`（フォント・背景・アンチエイリアス）。`Result` は `Image`、選んだ `Mode`、`Warnings` |
 | `Auto` の選び方 | Word・HTML・Markdown・Excel・CSV と、縦長のページの PDF・TIFF は `Crop`: 1 ページ目の左上から、ページの幅（横長ならページの高さ）の正方形。scroll View は先頭から、シートは A1 から、`Size` 画素を `SheetDPI` で描く大きさ（`MinSheetSide` = 96 〜 `MaxSheetSide` = 480 単位。シートより大きくはしない）の正方形を枠線つきで。小さいサムネイルほど狭い範囲を見せ、字が潰れないようにする。それ以外（PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB の表紙、横長の PDF・TIFF）は `Fit`: 1 ページ目の全体。判定は `Meta.Source` と View の種類による |
 | `thumbnail.Encode(w, img, format)` / `FormatOf(name)` | `PNG`・`JPEG`（品質 85）・`WebP`（非可逆、品質 80）で書く / ファイル名の拡張子から形式を決める |
-| `imagebdf.New(doc, *Options) *Renderer` | 文書を描くレンダラ。`Options` は `FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントと、埋め込みフォントにない字の探し先）と `Background`（既定は白）。デコードした Object・画像・フォントを保持する。並行には使えない |
+| `imagebdf.New(doc, *Options) *Renderer` | 文書を描くレンダラ。`Options` は `FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントと、埋め込みフォントにない字の探し先）、`Background`（既定は白）、`Antialias`。デコードした Object・画像・フォントを保持する。並行には使えない |
+| `Options.Antialias` / `AntialiasMode` | `AntialiasDefault`（ゼロ値）と `AntialiasOn` は解像度によらず従来の AA。`AntialiasOff` は図形・文字・幾何クリップの境界を画素中心で判定し、被覆率計算を省く。dpi による自動切り替えはしない。半透明・ブレンド・画像補間・ソフトマスク・ぼかし・細い線の幅に応じた alpha は引き続き適用する。未知の Go 値は AA を有効にして警告に記録する（[使い方](rendering.ja.md#ラスタライズの品質と速度)） |
 | `(*Renderer).Page(v, page, scale)` | fixed・flow View のページ（scroll View の帯）を、1 単位 `scale` 画素で描く。大きさのないページと 0 以下の `scale` はエラー。描いている途中のパニックもエラーにする（`Region`、`thumbnail.Make` も） |
 | `(*Renderer).PageDPI(v, page, dpi)` | ページ全体を指定 dpi で描く。BDF の 1 単位は 1/72 インチなので 72 dpi が `Page` の `scale=1` に相当する。戻り値の `*image.RGBA` は `image.Image` として使える |
 | `(*Renderer).PageSize(v, page, w, h)` | ページ全体を指定の幅・高さ（画素）で描く。縦横比がページと違うと引き伸ばす |
 | `(*Renderer).Region(v, page, rect, w, h)` | 範囲を `w` × `h` 画素に描く。fixed・flow はそのページの座標、scroll View は帯を積んだ連続の座標、シートはシートの座標（枠線も描く） |
+| `Options.ImageCacheBytes` / `TextCacheBytes` | 完成画像・文字列被覆率のLRU容量。0は64MiB/32MiB、負数は無効、正数はバイト上限。返却画像は独立コピー。配列・キー・項目の見積もりを計上し、decoded資源・作業画像・allocator管理領域は別 |
+| `(*Renderer).Object(hash, scale)` | 文書のObjectと依存資源を描き、完成画像を再利用。背景未指定は透明。package関数 `Object` は1回用 |
+| `(*Renderer).Invalidate()` | Partバイト列・FontFS変更後に呼び、両cache・decoded資源・警告・workerを解放。FontDirs/システムフォントのプロセス共通cacheは対象外 |
+| `(*Renderer).Pages(ctx, v, pages, scale, workers, yield)` / `PagesDPI` | 独立ページを並列描画し指定順にcallback。0始まりのページ列、nilは全ページ、workers=0は自動、1..16は上限。シートは対象外。32M画素の同時基本canvas枠で並列数を抑える。呼び出し間でworker再利用。開始済み描画はキャンセル時も終了を待つ（[詳細](rendering.ja.md#再描画のキャッシュとページ並列化)） |
 | `(*Renderer).Warnings()` | ビューアどおりに描けなかったもの（AVIF の画像、FILTER、フォントが見つからないテキストなど）と、上限を超えて描かなかったもの（design.md §3.25 の「信頼しない文書への備え」） |
 | `imagebdf.Object(obj, scale, *Options)` | 文書に入れていない `*bdf.Object` を、1 単位 `scale` 画素で描く。他のパート（埋め込みフォント、画像、パスの集まり、他の Object）を参照しない Object に限る（参照していれば `ErrNeedsDocument`）。画像は Object の境界を画素に切り上げた大きさで、`Bounds()` は Object の原点からの画素（原点が (0, 0)）。背景は `Background`、指定がなければ透明 |
 | `imagebdf.MaxPixels` / `ErrTooLarge` / `ErrNoPage` / `ErrNeedsDocument` / `SheetSize(v)` | 描く画像の大きさの上限（64 M 画素）とそのエラー、ないページ、文書がないと描けない Object、シートの大きさ |
@@ -290,7 +295,7 @@ img, err := imagebdf.Object(l.Object(), 2, nil) // *image.RGBA
 | `demo` | サンプル文書（testdata/demo.bdf と同じもの）を書く |
 | `thumbnail [flags] <file> <out.png \| .jpg \| .webp>` | サムネイルを描く。`file` は BDF か、`generate` が変換できる入力（そのときは 1 ページ目だけを変換する。`-view` を付けたときは全体。パスワード付きの入力は `$BDF_PASSWORD` と `-allow-plaintext` が要る）。`-size`（既定 256）、`-mode auto\|crop\|fit`、`-view`、`-sheet-dpi`（既定 72）、`-font-dir`、`-no-system-fonts` |
 | `text [flags] <file> [out.json]` | メタデータとページごとのテキストを JSON で書く（既定は標準出力） |
-| `render [flags] <file> <out.png \| .jpg \| .webp>` | ページを描く。`-view`、`-page`（1 始まり）、`-scale`、シートは A1 からの `-width`・`-height` |
+| `render [flags] <file> <out.png \| .jpg \| .webp>` | ページを描く。`-view`、`-page`（1 始まり）、`-scale`、`-antialias=default\|on\|off`（既定は従来の AA。`off` は境界の AA を省いて速度を優先。dpi による自動切り替えはない）、シートは A1 からの `-width`・`-height` |
 
 `generate` の `-thumbnail <file>`（`-thumbnail-size`、`-thumbnail-mode`、`-thumbnail-sheet-dpi`）と `-text <file>`（`-` で標準出力）は、変換と同時にサムネイルとテキストを書く。サムネイルとテキストは暗号化されないので、暗号化した文書（`generate` では暗号化して書き出す文書。既定ではパスワード付きの入力のもの）については書かない。`-allow-plaintext` を付けたときだけ書く（`thumbnail`・`text`・`render` も同じ）。
 

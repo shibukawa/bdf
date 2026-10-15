@@ -86,7 +86,11 @@ bdf thumbnail -size 256 out.bdf thumb.png    # -mode auto|crop|fit, -view, -shee
 bdf thumbnail -size 256 book.pdf thumb.png   # generate が変換できる入力なら 1 ページ目だけを変換する
 bdf text out.bdf text.json                   # メタデータとページごとのテキストを JSON で（既定は標準出力）
 bdf render -page 2 -scale 2 out.bdf page2.png  # シートは -width/-height も（A1 から）
+bdf render -antialias=off -scale 8.333333 out.bdf print.png  # 600 dpi。境界の AA を省いて速度を優先
+bdf render -pages=all -workers=4 -antialias=off out.bdf 'page-{page}.png'  # 独立ページを並列に描き、指定順に保存
 ```
+
+`render -antialias=default|on|off` で図形・文字・幾何クリップの境界のアンチエイリアスを選べます。`default` と `on` は倍率によらず従来の描画を維持し、`off` は境界の被覆率計算を省きます。dpi による自動切り替えはありません。半透明・ブレンド・画像の補間・ソフトマスク・ぼかしと、1 画素より細い線の薄い alpha は維持します。`thumbnail` と変換時のプレビューは従来のアンチエイリアスを使います。Go の指定と出力上の注意は[描画する](../rendering.ja.md#ラスタライズの品質と速度)を参照してください。
 
 `.bdf` でない入力（PDF、`.docx` など）を渡すと、`thumbnail` はサムネイルに必要な 1 ページ目だけを変換します（`-view` を付けたときは全体）。500 ページの PDF でも数秒ではなく数ミリ秒で済みます。パスワード付きの入力には、暗号化した文書と同じく `$BDF_PASSWORD` と `-allow-plaintext` が要ります。
 

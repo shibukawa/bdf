@@ -49,6 +49,48 @@ err = png.Encode(w, img)
 
 From the command line: `bdf render -page 1 -scale 2 report.bdf page1.png`.
 
+### Raster quality and speed
+
+`imagebdf.Options.Antialias` explicitly controls the edges of shapes, text and geometric clips. It applies to `Page`, `PageDPI`, `PageSize`, `Region`, `Object` and `SVGImage`; neither dpi nor scale changes the mode automatically.
+
+| Mode | Behavior |
+|---|---|
+| `imagebdf.AntialiasDefault` (zero value) | The existing antialiased rendering at every resolution |
+| `imagebdf.AntialiasOn` | Explicitly request the same antialiased rendering |
+| `imagebdf.AntialiasOff` | Test pixel centers once per row and fill whole pixel spans, omitting edge coverage calculations for faster rendering |
+
+For a high-resolution print image, select `AntialiasOff` and compare small text and thin rules at the final output size:
+
+```go
+ren := imagebdf.New(doc, &imagebdf.Options{Antialias: imagebdf.AntialiasOff})
+img, err := ren.PageDPI(doc.Views[0], 0, 600)
+```
+
+The CLI equivalent is `bdf render -antialias=off -scale 8.333333 report.bdf print.png` (600 dpi). `-antialias=default|on|off` is available on `render`; `thumbnail` and generated previews retain their existing smoothing. In Go, a thumbnail can opt in with `thumbnail.Options.Raster.Antialias`.
+
+Source transparency, blending, image interpolation, soft masks and blur remain enabled. Effects still depend on the geometry rendered with the selected mode, so their pixels can change too. Lines narrower than one pixel still use the existing one-pixel width and reduced alpha, so disabling edge antialiasing does not make every output pixel opaque. Low-resolution output can show jagged edges or lose small details; choose the mode for the intended output instead of relying on a fixed dpi threshold. An unknown Go `AntialiasMode` value keeps antialiasing enabled and adds a renderer warning; the CLI rejects unknown values.
+
+### Cached redraws and parallel pages
+
+Reuse a `Renderer` to reuse completed `Page`, `PageDPI`, `PageSize`, `Region` and `Renderer.Object` images and whole text-run coverage masks. Returned images are independent copies, so editing them cannot corrupt the cache. Retaining an image adds a copy on its first render; set `ImageCacheBytes: -1` for one-shot output.
+
+`Options.ImageCacheBytes` defaults to 64MiB and `TextCacheBytes` to 32MiB. Zero selects the default, a negative value disables the cache, and a positive value sets a byte budget. LRU eviction accounts backing arrays, keys and conservative entry overhead. Decoded fonts, working canvases and Go allocator overhead are additional. Text masks cache coverage only; paint, alpha, shadow and compositing state are applied on each draw.
+
+Image keys include layout, region, pixel size, background and AA mode. Call `ren.Invalidate()` after changing part bytes or `FontFS`; it releases warnings, decoded resources, both caches and page workers. `FontDirs` and system fonts keep the existing process-wide scan/load cache; use `FontFS` for replaceable fonts. The package-level `imagebdf.Object` is a one-shot helper. To reuse object images, add the object to a document and call `ren.Object(hash, scale)`.
+
+Use `Pages` / `PagesDPI` for multiple pages. Page numbers are zero-based; nil selects all pages. Independent workers draw pages, while callbacks run in selection order on the calling goroutine.
+
+```go
+err := ren.PagesDPI(ctx, doc.Views[0], nil, 300, 0,
+    func(page int, img *image.RGBA) error {
+        return savePage(page, img)
+    })
+```
+
+Zero workers selects up to four; 1..16 sets a maximum. Concurrency also respects an aggregate 32M-pixel base-canvas budget, drawing a larger individual page alone. Workers persist between calls, share the text-mask budget and divide the retained working-canvas allowance. Layers and output images retained by callbacks are additional. Cancellation and callback errors take effect between drawings/batches; already-started draws finish before return. Keep the renderer, document and font resources unchanged until return, including inside callbacks. `FontFS` must support concurrent reads for multiple workers.
+
+The CLI supports `bdf render -pages=all -workers=4 -antialias=off report.bdf 'page-{page}.png'` and selections such as `-pages=1-3,5`. `{page}` expands to a one-based page number. `-page` and `-pages` are mutually exclusive; sheets are excluded. CLI output is consumed once, so it skips completed-image retention while reusing text masks.
+
 ### A document with Ebitengine
 
 A page holds text, images, gradients and clips, so draw it into an image with `imagebdf` and hand that to Ebitengine.

@@ -111,6 +111,28 @@ func rectMask(x0, y0, x1, y1 float64, bounds image.Rectangle) *mask {
 	return m
 }
 
+// rectMask follows the renderer's edge policy, including rectangular clips.
+func (r *Renderer) rectMask(x0, y0, x1, y1 float64, bounds image.Rectangle) *mask {
+	if r.opts.Antialias != AntialiasOff {
+		return rectMask(x0, y0, x1, y1, bounds)
+	}
+	if x1 < x0 {
+		x0, x1 = x1, x0
+	}
+	if y1 < y0 {
+		y0, y1 = y1, y0
+	}
+	if !(x1 > x0 && y1 > y0) {
+		return &mask{}
+	}
+	// Pixel centers lie in the half-open rectangle. Full coverage is
+	// implicit, so even fractional rectangles need no coverage array.
+	return &mask{r: image.Rect(
+		int(math.Ceil(clampF(x0)-0.5)), int(math.Ceil(clampF(y0)-0.5)),
+		int(math.Ceil(clampF(x1)-0.5)), int(math.Ceil(clampF(y1)-0.5)),
+	).Intersect(bounds)}
+}
+
 // clampF keeps coordinates in a range that converts to int safely.
 func clampF(v float64) float64 {
 	const lim = 1 << 24
@@ -158,6 +180,7 @@ type scratch struct {
 	limited bool
 	work    int
 	r       *Renderer
+	noAA    bool
 }
 
 const (
@@ -263,6 +286,9 @@ func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle
 		}
 		return 0
 	})
+	if sc.noAA {
+		return sc.rasterizeBinary(edges, rule, r)
+	}
 	w := r.Dx()
 	m := &mask{r: r, a: make([]float32, w*r.Dy())}
 	if cap(sc.area) < w+1 || cap(sc.cover) < w+2 {
@@ -322,49 +348,7 @@ func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle
 			if len(xs) < 2 {
 				continue
 			}
-			sorted := len(xs) <= insertionLimit || plain
-			if sorted {
-				// insertion sort: the crossings are few and nearly sorted
-				for i := 1; i < len(xs); i++ {
-					for j := i; j > 0 && xs[j].x < xs[j-1].x; j-- {
-						xs[j], xs[j-1] = xs[j-1], xs[j]
-					}
-				}
-			} else {
-				// the edges are in the order of their crossings on the
-				// scanline before, so insertion sorts them in a few
-				// moves, unless this scanline orders them anew (the
-				// first one, or edges that cross)
-				moves := insertionMoves * len(xs)
-				sorted = true
-			insertion:
-				for i := 1; i < len(xs); i++ {
-					for j := i; j > 0 && xs[j].x < xs[j-1].x; j-- {
-						xs[j], xs[j-1] = xs[j-1], xs[j]
-						if moves--; moves < 0 {
-							sorted = false
-							break insertion
-						}
-					}
-				}
-			}
-			if !sorted {
-				slices.SortFunc(xs, func(a, b crossing) int {
-					switch {
-					case a.x < b.x:
-						return -1
-					case a.x > b.x:
-						return 1
-					}
-					return 0
-				})
-			}
-			// every edge that is active crosses: in this order next
-			if len(xs) > insertionLimit && len(xs) == len(active) && !plain {
-				for i := range xs {
-					active[i] = xs[i].edge
-				}
-			}
+			sortCrossings(xs, active)
 			wind := 0
 			for i := 0; i < len(xs)-1; i++ {
 				wind += int(xs[i].dir)
@@ -391,6 +375,118 @@ func (sc *scratch) rasterize(polys []polyline, rule byte, bounds image.Rectangle
 			area[x], cover[x] = 0, 0
 		}
 		cover[w], cover[w+1], area[w] = 0, 0, 0
+		if next >= len(edges) && len(active) == 0 {
+			break
+		}
+	}
+	return m
+}
+
+// sortCrossings preserves the edge order for the next scanline when useful.
+func sortCrossings(xs []crossing, active []int) {
+	sorted := len(xs) <= insertionLimit || plain
+	if sorted {
+		// insertion sort: the crossings are few and nearly sorted
+		for i := 1; i < len(xs); i++ {
+			for j := i; j > 0 && xs[j].x < xs[j-1].x; j-- {
+				xs[j], xs[j-1] = xs[j-1], xs[j]
+			}
+		}
+	} else {
+		// the edges are in the order of their crossings on the
+		// scanline before, so insertion sorts them in a few
+		// moves, unless this scanline orders them anew (the
+		// first one, or edges that cross)
+		moves := insertionMoves * len(xs)
+		sorted = true
+	insertion:
+		for i := 1; i < len(xs); i++ {
+			for j := i; j > 0 && xs[j].x < xs[j-1].x; j-- {
+				xs[j], xs[j-1] = xs[j-1], xs[j]
+				if moves--; moves < 0 {
+					sorted = false
+					break insertion
+				}
+			}
+		}
+	}
+	if !sorted {
+		slices.SortFunc(xs, func(a, b crossing) int {
+			switch {
+			case a.x < b.x:
+				return -1
+			case a.x > b.x:
+				return 1
+			}
+			return 0
+		})
+	}
+	// every edge that is active crosses: in this order next
+	if len(xs) > insertionLimit && len(xs) == len(active) && !plain {
+		for i := range xs {
+			active[i] = xs[i].edge
+		}
+	}
+}
+
+// rasterizeBinary tests pixel centers once per row. It shares edge building,
+// fill rules, ordering and work limits with the AA rasterizer, but needs no
+// fractional area accumulation or horizontal coverage integration.
+func (sc *scratch) rasterizeBinary(edges []edge, rule byte, r image.Rectangle) *mask {
+	w := r.Dx()
+	m := &mask{r: r, a: make([]float32, w*r.Dy())}
+	active, xs := sc.active[:0], sc.xs[:0]
+	defer func() { sc.active, sc.xs = keep(active), keep(xs) }()
+	next := 0
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		sy := float64(y) + 0.5
+		for next < len(edges) && edges[next].y0 <= sy {
+			active = append(active, next)
+			next++
+		}
+		if len(active) > maxScanWork-sc.work {
+			sc.stop()
+			return &mask{}
+		}
+		sc.work += len(active)
+		xs = xs[:0]
+		k := 0
+		for _, i := range active {
+			e := &edges[i]
+			if e.y1 <= sy {
+				continue
+			}
+			active[k] = i
+			k++
+			xs = append(xs, crossing{e.x0 + (sy-e.y0)*e.slope, e.dir, i})
+		}
+		active = active[:k]
+		if len(xs) >= 2 {
+			sortCrossings(xs, active)
+			row := m.a[(y-r.Min.Y)*w : (y-r.Min.Y+1)*w]
+			wind := 0
+			for i := 0; i < len(xs)-1; i++ {
+				wind += int(xs[i].dir)
+				inside := wind != 0
+				if rule == bdf.EvenOdd {
+					inside = wind&1 != 0
+				}
+				if !inside {
+					continue
+				}
+				xa := math.Max(xs[i].x, float64(r.Min.X))
+				xb := math.Min(xs[i+1].x, float64(r.Max.X))
+				if !(xb > xa) {
+					continue
+				}
+				// Left-inclusive, right-exclusive at half-integer centers.
+				x0 := int(math.Ceil(xa-0.5)) - r.Min.X
+				x1 := int(math.Ceil(xb-0.5)) - r.Min.X
+				for x := x0; x < x1; x++ {
+					row[x] = 1
+				}
+			}
+		}
 		if next >= len(edges) && len(active) == 0 {
 			break
 		}

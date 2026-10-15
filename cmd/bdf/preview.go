@@ -2,12 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"image"
 	"io"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
@@ -250,7 +254,10 @@ func renderCmd(args []string) {
 	fs := flag.NewFlagSet("render", flag.ExitOnError)
 	view := fs.String("view", "", "id of the view (default: the first)")
 	page := fs.Int("page", 1, "page to draw, from 1 (fixed, flow and scroll views)")
+	pages := fs.String("pages", "", "batch pages: all or 1-3,5; output path must contain {page}")
+	workers := fs.Int("workers", 0, "batch render workers: 0 chooses automatically, 1..16 sets a maximum")
 	scale := fs.Float64("scale", 1, "pixels per unit (a pt page at 1 is drawn at 72 dpi)")
+	antialias := fs.String("antialias", "default", "shape, text and clip edge smoothing: default, on or off (faster; independent of scale)")
 	width := fs.Float64("width", 1000, "sheets: width of the region from A1 to draw, in units")
 	height := fs.Float64("height", 1000, "sheets: height of the region from A1 to draw, in units")
 	allow := fs.Bool("allow-plaintext", false, "draw an encrypted document (read with $"+passwordEnv+"); the image is not encrypted")
@@ -265,12 +272,54 @@ func renderCmd(args []string) {
 		fs.Usage()
 		os.Exit(2)
 	}
+	if *workers < 0 || *workers > 16 {
+		badUsage("render", "-workers must be 0..16")
+	}
+	var pageSet, workersSet bool
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "page" {
+			pageSet = true
+		}
+		if f.Name == "workers" {
+			workersSet = true
+		}
+	})
+	if *pages != "" && pageSet {
+		badUsage("render", "use either -page or -pages")
+	}
+	if *pages == "" && workersSet {
+		badUsage("render", "-workers requires -pages")
+	}
+	if *pages != "" && !strings.Contains(fs.Arg(1), "{page}") {
+		badUsage("render", "-pages output path must contain {page}")
+	}
+	var selection converter.Pages
+	if *pages != "" && *pages != "all" {
+		var err error
+		selection, err = converter.ParsePages(*pages)
+		if err != nil {
+			badUsage("render", err.Error())
+		}
+	}
 	format := thumbnail.FormatOf(fs.Arg(1))
 	if format == "" {
 		badUsage("render", fs.Arg(1)+": the image must be a .png, .jpg or .webp file")
 	}
 	if !(*scale > 0) || *scale > 16 {
 		badUsage("render", "-scale must be above 0 and at most 16")
+	}
+	o := ropts()
+	// CLI outputs are consumed once; retaining their images only adds a copy.
+	o.ImageCacheBytes = -1
+	switch *antialias {
+	case "default":
+		o.Antialias = imagebdf.AntialiasDefault
+	case "on":
+		o.Antialias = imagebdf.AntialiasOn
+	case "off":
+		o.Antialias = imagebdf.AntialiasOff
+	default:
+		badUsage("render", "-antialias must be default, on or off")
 	}
 	doc := loadDocument(fs.Arg(0), *allow)
 	var v *bdf.View
@@ -283,8 +332,35 @@ func renderCmd(args []string) {
 	if v == nil {
 		check(fmt.Errorf("%s: no view %q", fs.Arg(0), *view))
 	}
-	o := ropts()
 	r := imagebdf.New(doc, &o)
+	if *pages != "" {
+		if v.Kind == bdf.ViewSheet {
+			badUsage("render", "-pages does not apply to sheet views")
+		}
+		for _, span := range selection {
+			if span.From > len(v.Pages) || span.To > len(v.Pages) {
+				badUsage("render", "-pages selects a page outside this view")
+			}
+		}
+		numbers := selection.Numbers(len(v.Pages))
+		for i := range numbers {
+			numbers[i]--
+		}
+		var encoded bytes.Buffer
+		check(r.Pages(context.Background(), v, numbers, *scale, *workers, func(page int, img *image.RGBA) error {
+			encoded.Reset()
+			if err := thumbnail.Encode(&encoded, img, format); err != nil {
+				return err
+			}
+			return os.WriteFile(strings.ReplaceAll(fs.Arg(1), "{page}", strconv.Itoa(page+1)), encoded.Bytes(), 0o644)
+		}))
+		if !*quiet {
+			for _, warning := range r.Warnings() {
+				fmt.Fprintln(os.Stderr, "warning:", warning)
+			}
+		}
+		return
+	}
 	var err error
 	var b bytes.Buffer
 	if v.Kind == bdf.ViewSheet {

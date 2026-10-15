@@ -26,7 +26,12 @@ import (
 type svgImage struct {
 	doc     *svgDoc
 	w, h    float64 // natural size in CSS px (as the viewer measures it)
-	rasters map[int]*picture
+	rasters map[svgRasterKey]*picture
+}
+
+type svgRasterKey struct {
+	step int
+	noAA bool
 }
 
 // svgDoc is an SVG document (image/svg reads it) and what drawing found
@@ -58,7 +63,7 @@ func newSVGImage(data []byte) (*svgImage, bool) {
 		return nil, false
 	}
 	doc := &svgDoc{Document: d, paths: map[*svg.Node]*path{}, embeds: map[*svg.Node]*svgEmbed{}}
-	si := &svgImage{doc: doc, rasters: map[int]*picture{}}
+	si := &svgImage{doc: doc, rasters: map[svgRasterKey]*picture{}}
 	si.w, si.h = svgNaturalSize(doc.Root)
 	if math.IsInf(si.w, 0) || math.IsInf(si.h, 0) {
 		return nil, false
@@ -145,7 +150,8 @@ func (si *svgImage) rasterIn(r *Renderer, k float64, inside int) (*picture, floa
 	if w == 0 {
 		return nil, k
 	}
-	if p, ok := si.rasters[step]; ok {
+	key := svgRasterKey{step: step, noAA: r.opts.Antialias == AntialiasOff}
+	if p, ok := si.rasters[key]; ok {
 		p.used = r.drawing
 		// the scale it was given when it was made, below
 		return p, float64(p.w) / si.w
@@ -159,8 +165,8 @@ func (si *svgImage) rasterIn(r *Renderer, k float64, inside int) (*picture, floa
 	sr.render(s, matrix{k, 0, 0, k, 0, 0}, si.w, si.h)
 	p := &picture{w: w, h: h, levels: []*image.RGBA{s.toRGBA()}}
 	r.release(s)
-	si.rasters[step] = p
-	r.keep(p, func() { delete(si.rasters, step) })
+	si.rasters[key] = p
+	r.keep(p, func() { delete(si.rasters, key) })
 	return p, float64(w) / si.w
 }
 
@@ -1180,10 +1186,10 @@ func (sr *svgRenderer) image(n *svg.Node, c *svgCtx, st svgStyle) {
 	}
 	box := &path{}
 	box.rect(0, 0, iw, ih)
-	cov := rasterize(box.flatten(m, flatTol), bdf.NonZero, c.clip.r.Intersect(c.s.bounds()))
+	cov := sr.coverage(box, m, bdf.NonZero, c.clip.r.Intersect(c.s.bounds()))
 	vp := &path{}
 	vp.rect(x, y, w, h)
-	cov = intersect(cov, rasterize(vp.flatten(c.m, flatTol), bdf.NonZero, c.s.bounds()))
+	cov = intersect(cov, sr.coverage(vp, c.m, bdf.NonZero, c.s.bounds()))
 	sh := &imageShader{inv: inv, img: pic, level: pic.levelFor(inv), smooth: true, sx1: float64(pic.w), sy1: float64(pic.h)}
 	c.s.fill(cov, sh, 1, bdf.BlendSourceOver, c.clip)
 }

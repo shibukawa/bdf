@@ -1,0 +1,544 @@
+package imagebdf
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"testing"
+	"testing/fstest"
+
+	"github.com/shibukawa/bdf"
+)
+
+// opaqueGeometry checks that binary geometry still draws some pixels. Its
+// callers use opaque paint and a transparent background, so intermediate
+// alpha can only come from antialiasing rather than the source material.
+func opaqueGeometry(t *testing.T, img image.Image, binary bool) {
+	t.Helper()
+	covered, partial := 0, 0
+	b := img.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			_, _, _, a := img.At(x, y).RGBA()
+			if a != 0 {
+				covered++
+			}
+			if a != 0 && a != 0xffff {
+				partial++
+			}
+		}
+	}
+	if covered == 0 {
+		t.Fatal("opaque geometry drew no pixels")
+	}
+	if binary && partial != 0 {
+		t.Errorf("non-AA geometry has %d pixels with partial alpha", partial)
+	}
+	if !binary && partial == 0 {
+		t.Error("AA geometry has no pixels with partial alpha")
+	}
+}
+
+func TestAntialiasEntryPoints(t *testing.T) {
+	o := bdf.NewObject()
+	o.FillColor(0xffffffff).FillRect(0.25, 0.25, 7.5, 7.5)
+	d, v := onePage(o, 8, 8)
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect x=".25" y=".25" width="7.5" height="7.5" fill="white"/></svg>`)
+	for _, tc := range []struct {
+		name string
+		draw func(*Options) (image.Image, error)
+	}{
+		{"page", func(opts *Options) (image.Image, error) { return New(d, opts).Page(v, 0, 1) }},
+		{"dpi72", func(opts *Options) (image.Image, error) { return New(d, opts).PageDPI(v, 0, 72) }},
+		{"dpi300", func(opts *Options) (image.Image, error) { return New(d, opts).PageDPI(v, 0, 300) }},
+		{"size", func(opts *Options) (image.Image, error) { return New(d, opts).PageSize(v, 0, 16, 12) }},
+		{"region", func(opts *Options) (image.Image, error) {
+			return New(d, opts).Region(v, 0, bdf.Rect{W: 8, H: 8}, 16, 12)
+		}},
+		{"object", func(opts *Options) (image.Image, error) { return Object(o, 1, opts) }},
+		{"svg", func(opts *Options) (image.Image, error) {
+			img, _, _, warnings, err := SVGImage(svg, func(_, _ float64) float64 { return 1 }, opts)
+			if len(warnings) != 0 {
+				t.Errorf("SVG warnings: %v", warnings)
+			}
+			return img, err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var defaultImg image.Image
+			for _, mode := range []AntialiasMode{AntialiasDefault, AntialiasOn, AntialiasOff} {
+				img, err := tc.draw(&Options{Antialias: mode, Background: color.Transparent, NoSystemFonts: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				opaqueGeometry(t, img, mode == AntialiasOff)
+				if mode == AntialiasDefault {
+					defaultImg = img
+				} else if mode == AntialiasOn {
+					assertImagesEqual(t, img, defaultImg)
+				}
+			}
+		})
+	}
+}
+
+func assertImagesEqual(t *testing.T, got, want image.Image) {
+	t.Helper()
+	if got.Bounds() != want.Bounds() {
+		t.Fatalf("bounds %v, want %v", got.Bounds(), want.Bounds())
+	}
+	b := got.Bounds()
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			gr, gg, gb, ga := got.At(x, y).RGBA()
+			wr, wg, wb, wa := want.At(x, y).RGBA()
+			if gr != wr || gg != wg || gb != wb || ga != wa {
+				t.Fatalf("pixel (%d,%d): got %v, want %v", x, y, got.At(x, y), want.At(x, y))
+			}
+		}
+	}
+}
+
+// This checksum was captured before adding the option. The scene exercises
+// fractional rectangles, clipping, path filling, rounded strokes and groups.
+func TestAntialiasDefaultGolden(t *testing.T) {
+	o := bdf.NewObject()
+	o.FillColor(0xff0000ff).FillRect(.25, .25, 3.5, 3.5)
+	p := o.AddPath((&bdf.Path{}).MoveTo(1.25, 6.125).LineTo(10.375, 4.25).LineTo(8.125, 11.25).Close())
+	o.Save().ClipRect(2.25, 2.5, 8.25, 8.5).Alpha(.75).FillColor(0x0040ffff).FillPath(p, bdf.NonZero).Restore()
+	o.StrokeColor(0x00ff00ff).Line(1.25, bdf.CapRound, bdf.JoinRound, 10).StrokePath(p)
+	o.GroupBegin(.5, bdf.BlendSourceOver, 0, 0, 12, 12).FillColor(0x000000ff).FillRect(5.5, .125, 4.25, 3.25).GroupEnd()
+	d, v := onePage(o, 12, 12)
+	for _, opts := range []*Options{nil, {}, {Antialias: AntialiasOn}} {
+		img, err := New(d, opts).Page(v, 0, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const want = "4d64a47bce5dc21f6864bad61ba8070d51643c093167bd69bf30c2232b6550dc"
+		if got := fmt.Sprintf("%x", sha256.Sum256(img.Pix)); got != want {
+			t.Fatalf("AA mode %+v changed the existing drawing: checksum %s, want %s", opts, got, want)
+		}
+	}
+}
+
+func TestAntialiasOffRectangles(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		x, y, w, h float32
+		want       image.Rectangle
+	}{
+		{"integer", 1, 1, 3, 2, image.Rect(1, 1, 4, 3)},
+		{"fractional", .75, 1.25, 3, 2.5, image.Rect(1, 1, 4, 4)},
+		{"center-boundaries", .5, .5, 2, 2, image.Rect(0, 0, 2, 2)},
+		{"reversed", 3.75, 3.75, -3, -2.5, image.Rect(1, 1, 4, 4)},
+		{"negative", -2.25, -1.75, 4, 3, image.Rect(-2, -2, 2, 1)},
+		{"subpixel-empty", 1.6, 1.6, .3, .3, image.Rectangle{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, pathRect := range []bool{false, true} {
+				o := bdf.NewObject()
+				o.FillColor(0xffffffff)
+				if pathRect {
+					o.FillPath(o.AddPath((&bdf.Path{}).Rect(tc.x, tc.y, tc.w, tc.h)), bdf.NonZero)
+				} else {
+					o.FillRect(tc.x, tc.y, tc.w, tc.h)
+				}
+				img, err := Object(o, 1, &Options{Antialias: AntialiasOff})
+				if err != nil {
+					t.Fatal(err)
+				}
+				b := img.Bounds()
+				for y := b.Min.Y; y < b.Max.Y; y++ {
+					for x := b.Min.X; x < b.Max.X; x++ {
+						want := color.RGBA{}
+						if image.Pt(x, y).In(tc.want) {
+							want = color.RGBA{255, 255, 255, 255}
+						}
+						if got := img.RGBAAt(x, y); got != want {
+							t.Fatalf("path rectangle %v at (%d,%d): %v, want %v", pathRect, x, y, got, want)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+type aaPoint struct{ x, y float32 }
+
+// insideContours uses the signed crossing definition of winding number,
+// independently of the rasterizer's active-edge sorting and span rounding.
+func insideContours(contours [][]aaPoint, x, y float32, rule byte) bool {
+	winding := 0
+	for _, contour := range contours {
+		for i, a := range contour {
+			b := contour[(i+1)%len(contour)]
+			cross := (b.x-a.x)*(y-a.y) - (x-a.x)*(b.y-a.y)
+			if a.y <= y && b.y > y && cross > 0 {
+				winding++
+			} else if a.y > y && b.y <= y && cross < 0 {
+				winding--
+			}
+		}
+	}
+	if rule == bdf.EvenOdd {
+		return winding%2 != 0
+	}
+	return winding != 0
+}
+
+func aaContoursPath(contours [][]aaPoint) *bdf.Path {
+	p := &bdf.Path{}
+	for _, contour := range contours {
+		p.MoveTo(contour[0].x, contour[0].y)
+		for _, pt := range contour[1:] {
+			p.LineTo(pt.x, pt.y)
+		}
+		p.Close()
+	}
+	return p
+}
+
+func TestAntialiasOffFillRules(t *testing.T) {
+	a := []aaPoint{{-1.25, .125}, {4.25, .125}, {4.25, 4.125}, {-1.25, 4.125}}
+	b := []aaPoint{{2.25, 2.125}, {7.25, 2.125}, {7.25, 6.125}, {2.25, 6.125}}
+	reversedB := []aaPoint{b[3], b[2], b[1], b[0]}
+	for _, tc := range []struct {
+		name     string
+		contours [][]aaPoint
+	}{
+		{"overlap", [][]aaPoint{a, b}},
+		{"opposite-winding", [][]aaPoint{a, reversedB}},
+		{"duplicate", [][]aaPoint{a, a}},
+		{"shared-edge", [][]aaPoint{a, {{4.25, .125}, {7.25, .125}, {7.25, 4.125}, {4.25, 4.125}}}},
+		{"self-intersection", [][]aaPoint{{{.25, .125}, {7.25, 6.125}, {.25, 6.125}, {7.25, .125}}}},
+	} {
+		for _, rule := range []byte{bdf.NonZero, bdf.EvenOdd} {
+			t.Run(fmt.Sprintf("%s/%d", tc.name, rule), func(t *testing.T) {
+				o := bdf.NewObject()
+				o.FillColor(0xffffffff).FillPath(o.AddPath(aaContoursPath(tc.contours)), rule)
+				d, v := onePage(o, 8, 7)
+				img, err := New(d, &Options{Antialias: AntialiasOff, Background: color.Transparent}).Page(v, 0, 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for y := 0; y < 7; y++ {
+					for x := 0; x < 8; x++ {
+						want := uint8(0)
+						if insideContours(tc.contours, float32(x)+.5, float32(y)+.5, rule) {
+							want = 255
+						}
+						if got := img.RGBAAt(x, y).A; got != want {
+							t.Fatalf("pixel (%d,%d): alpha %d, want %d", x, y, got, want)
+						}
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestAntialiasOffClips(t *testing.T) {
+	triangle := [][]aaPoint{{{.25, .125}, {7.25, .125}, {.25, 6.125}}}
+	o := bdf.NewObject()
+	o.ClipRect(.75, .25, 5, 5).ClipPath(o.AddPath(aaContoursPath(triangle)), bdf.NonZero)
+	o.FillColor(0xffffffff).FillRect(-1, -1, 10, 10)
+	d, v := onePage(o, 8, 7)
+	img, err := New(d, &Options{Antialias: AntialiasOff, Background: color.Transparent}).Page(v, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for y := 0; y < 7; y++ {
+		for x := 0; x < 8; x++ {
+			want := uint8(0)
+			if x >= 1 && x < 6 && y < 5 && insideContours(triangle, float32(x)+.5, float32(y)+.5, bdf.NonZero) {
+				want = 255
+			}
+			if got := img.RGBAAt(x, y).A; got != want {
+				t.Fatalf("pixel (%d,%d): alpha %d, want %d", x, y, got, want)
+			}
+		}
+	}
+}
+
+func TestAntialiasOffComplexityLimits(t *testing.T) {
+	curves := (&bdf.Path{}).MoveTo(0, 0)
+	for i := 0; i < 4300; i++ {
+		curves.CubicTo(1e6, 0, 0, 1e6, 8, 8)
+	}
+	for _, tc := range []struct {
+		name string
+		path *bdf.Path
+	}{
+		{"flatten-points", curves},
+		// A binary scan crosses 36,000 edges once per row. 512 rows
+		// exceed the scan-work budget even without AA's 16 samples.
+		{"scan-work", slivers(18000, 32, 512)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := bdf.NewObject()
+			o.FillColor(0xff0000ff).FillPath(o.AddPath(tc.path), bdf.NonZero)
+			// Another non-rectangular path forces scratch to reset, rather
+			// than taking the rectangle shortcut after a limited path.
+			next := [][]aaPoint{{{28, 508}, {32, 508}, {32, 512}}}
+			o.FillColor(0x0000ffff).FillPath(o.AddPath(aaContoursPath(next)), bdf.NonZero)
+			d, v := onePage(o, 32, 512)
+			r := New(d, &Options{Antialias: AntialiasOff})
+			img, err := r.Page(v, 0, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !warned(r, "too complex") {
+				t.Fatalf("no complexity warning: %v", r.Warnings())
+			}
+			for y := 0; y < 512; y++ {
+				for x := 0; x < 32; x++ {
+					want := color.RGBA{255, 255, 255, 255}
+					// Stay off the follow-up triangle's diagonal here; its
+					// exact boundary policy is covered by the other tests.
+					if y >= 508 && x >= 28 {
+						continue
+					}
+					if got := img.RGBAAt(x, y); got != want {
+						t.Fatalf("limited path was partly painted at (%d,%d): %v", x, y, got)
+					}
+				}
+			}
+			if got := img.RGBAAt(31, 509); got != (color.RGBA{B: 255, A: 255}) {
+				t.Fatalf("next path did not draw after budget reset: %v", got)
+			}
+		})
+	}
+}
+
+func TestAntialiasOffPreservesOpacity(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		make func(*bdf.Object)
+		at   image.Point
+		want uint8
+	}{
+		{"source", func(o *bdf.Object) { o.FillColor(0xffffff80).FillRect(.25, .25, 4, 4) }, image.Pt(1, 1), 128},
+		{"state", func(o *bdf.Object) { o.Alpha(.5).FillColor(0xffffffff).FillRect(.25, .25, 4, 4) }, image.Pt(1, 1), 128},
+		{"group", func(o *bdf.Object) {
+			o.GroupBegin(.5, bdf.BlendSourceOver, 0, 0, 8, 8).FillColor(0xffffffff).FillRect(.25, .25, 4, 4).GroupEnd()
+		}, image.Pt(1, 1), 128},
+		{"mask", func(o *bdf.Object) {
+			o.GroupBegin(1, bdf.BlendSourceOver, 0, 0, 8, 8).FillColor(0xffffffff).FillRect(.25, .25, 4, 4)
+			o.MaskBegin(bdf.MaskAlpha, 0, nil).FillColor(0xffffff80).FillRect(0, 0, 8, 8).MaskEnd().GroupEnd()
+		}, image.Pt(1, 1), 128},
+		{"hairline", func(o *bdf.Object) {
+			p := o.AddPath((&bdf.Path{}).MoveTo(1, 2.5).LineTo(7, 2.5))
+			o.StrokeColor(0xffffffff).Line(.25, bdf.CapButt, bdf.JoinMiter, 10).StrokePath(p)
+		}, image.Pt(3, 2), 64},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := bdf.NewObject()
+			tc.make(o)
+			d, v := onePage(o, 8, 8)
+			img, err := New(d, &Options{Antialias: AntialiasOff, Background: color.Transparent}).Page(v, 0, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := img.RGBAAt(tc.at.X, tc.at.Y).A; got != tc.want {
+				t.Fatalf("alpha %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAntialiasOffPreservesImageFiltering(t *testing.T) {
+	src := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	src.SetRGBA(0, 0, color.RGBA{A: 255})
+	src.SetRGBA(1, 0, color.RGBA{R: 255, G: 255, B: 255, A: 255})
+	var data bytes.Buffer
+	if err := png.Encode(&data, src); err != nil {
+		t.Fatal(err)
+	}
+	d := bdf.NewDocument()
+	o := bdf.NewObject()
+	o.Smoothing(true, 0).Image(o.AddImage(d.AddImage(data.Bytes())), 0, 0, 8, 4)
+	h, _ := d.AddObject(o)
+	v := d.NewView("image", bdf.ViewFixed, "")
+	v.AddPage(8, 4, bdf.Layer{Role: bdf.RoleBody, Obj: h})
+	on, err := New(d, &Options{Antialias: AntialiasOn}).Page(v, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	off, err := New(d, &Options{Antialias: AntialiasOff}).Page(v, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertImagesEqual(t, off, on)
+	if c := off.RGBAAt(3, 1); c.R == 0 || c.R == 255 || c.A != 255 {
+		t.Fatalf("image filtering was lost: interpolated pixel %v", c)
+	}
+}
+
+func TestAntialiasOffPreservesBlendAndShadow(t *testing.T) {
+	o := bdf.NewObject()
+	o.FillColor(0xff8080ff).FillRect(0, 0, 4, 4)
+	o.Blend(bdf.BlendMultiply).FillColor(0x8080ffff).FillRect(1, 1, 2, 2)
+	d, v := onePage(o, 4, 4)
+	img, err := New(d, &Options{Antialias: AntialiasOff}).Page(v, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := img.RGBAAt(2, 2), (color.RGBA{128, 64, 128, 255}); got != want {
+		t.Errorf("multiply blend = %v, want %v", got, want)
+	}
+
+	// The geometry is pixel aligned in both modes, so the entire blurred
+	// shadow must stay identical, including the partial alpha it creates.
+	o = bdf.NewObject()
+	o.Shadow(0x000000ff, 2, 4, 0).FillColor(0xffffffff).FillRect(2, 2, 3, 3)
+	d, v = onePage(o, 12, 10)
+	on, err := New(d, &Options{Antialias: AntialiasOn, Background: color.Transparent}).Page(v, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	off, err := New(d, &Options{Antialias: AntialiasOff, Background: color.Transparent}).Page(v, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertImagesEqual(t, off, on)
+	if a := off.RGBAAt(6, 3).A; a == 0 || a == 255 {
+		t.Fatalf("shadow blur was lost: alpha %d", a)
+	}
+}
+
+func TestAntialiasEmbeddedSVGAndCache(t *testing.T) {
+	data := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><path d="M.25 .125 L11.25 .125 L.25 11.125 Z" fill="white"/></svg>`)
+	d := bdf.NewDocument()
+	o := bdf.NewObject()
+	o.Image(o.AddImage(d.AddImage(data)), 0, 0, 12, 12)
+	h, _ := d.AddObject(o)
+	v := d.NewView("svg", bdf.ViewFixed, "")
+	v.AddPage(12, 12, bdf.Layer{Role: bdf.RoleBody, Obj: h})
+	for _, mode := range []AntialiasMode{AntialiasOn, AntialiasOff} {
+		r := New(d, &Options{Antialias: mode, Background: color.Transparent})
+		for i := 0; i < 2; i++ { // the second draw uses the cached raster
+			img, err := r.Page(v, 0, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			opaqueGeometry(t, img, mode == AntialiasOff)
+		}
+	}
+	outer := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><image width="12" height="12" href="data:image/svg+xml;base64,` + base64.StdEncoding.EncodeToString(data) + `"/></svg>`)
+	for _, mode := range []AntialiasMode{AntialiasOn, AntialiasOff} {
+		img, _, _, warnings, err := SVGImage(outer, func(_, _ float64) float64 { return 1 }, &Options{Antialias: mode})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(warnings) != 0 {
+			t.Fatalf("embedded SVG warnings: %v", warnings)
+		}
+		opaqueGeometry(t, img, mode == AntialiasOff)
+	}
+
+	// svgImage normally belongs to one renderer. Reuse it across renderers
+	// here to prove that an AA raster cannot satisfy a non-AA cache lookup.
+	si, ok := newSVGImage(data)
+	if !ok {
+		t.Fatal("test SVG did not parse")
+	}
+	for _, mode := range []AntialiasMode{AntialiasOn, AntialiasOff, AntialiasOn} {
+		r := New(bdf.NewDocument(), &Options{Antialias: mode})
+		pic, _ := si.raster(r, 1)
+		if pic == nil {
+			t.Fatal("test SVG did not rasterize")
+		}
+		opaqueGeometry(t, pic.levels[0], mode == AntialiasOff)
+	}
+}
+
+func TestAntialiasOffTextAndSVG(t *testing.T) {
+	font, err := os.ReadFile("../../converter/pptx/testdata/fonts/MPLUS1p-Regular-subset.ttf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stroke := range []bool{false, true} {
+		t.Run(fmt.Sprintf("text/stroke=%v", stroke), func(t *testing.T) {
+			d := bdf.NewDocument()
+			o := bdf.NewObject()
+			o.Font(o.AddFont(bdf.EmbeddedFont(d.AddFont(font), 400, bdf.StyleNormal)), 18)
+			o.FillColor(0xffffffff).StrokeColor(0xffffffff).Line(1, bdf.CapButt, bdf.JoinMiter, 10)
+			if stroke {
+				o.StrokeText("Aa", .25, 19.25, 0)
+			} else {
+				o.FillText("Aa", .25, 19.25, 0)
+			}
+			h, _ := d.AddObject(o)
+			v := d.NewView("text", bdf.ViewFixed, "")
+			v.AddPage(36, 24, bdf.Layer{Role: bdf.RoleBody, Obj: h})
+			for _, mode := range []AntialiasMode{AntialiasOn, AntialiasOff} {
+				r := New(d, &Options{Antialias: mode, NoSystemFonts: true, Background: color.Transparent})
+				img, err := r.Page(v, 0, 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(r.Warnings()) != 0 {
+					t.Fatalf("text warnings: %v", r.Warnings())
+				}
+				opaqueGeometry(t, img, mode == AntialiasOff)
+			}
+		})
+	}
+	for _, tc := range []struct{ name, content string }{
+		{"nested-clip", `<svg x="1" y="1" width="10" height="10" viewBox="0 0 10 10"><defs><clipPath id="clip"><path d="M.25 .125 L9.25 .125 L.25 9.125 Z"/></clipPath></defs><g clip-path="url(#clip)"><rect x=".25" y=".25" width="9.5" height="9.5" fill="white"/></g></svg>`},
+		{"text", `<text x=".25" y="19.25" font-family="M PLUS 1p" font-size="18" fill="white">Aa</text>`},
+	} {
+		t.Run("svg/"+tc.name, func(t *testing.T) {
+			svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="36" height="24">` + tc.content + `</svg>`)
+			for _, mode := range []AntialiasMode{AntialiasOn, AntialiasOff} {
+				img, _, _, warnings, err := SVGImage(svg, func(_, _ float64) float64 { return 1 }, &Options{
+					Antialias: mode, NoSystemFonts: true, FontFS: fstest.MapFS{"font.ttf": {Data: font}},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(warnings) != 0 {
+					t.Fatalf("SVG warnings: %v", warnings)
+				}
+				opaqueGeometry(t, img, mode == AntialiasOff)
+			}
+		})
+	}
+}
+
+// Each pair draws the same document at the same DPI. No timing assertion is
+// made: higher resolutions also spend time in shading, blending and export.
+func BenchmarkRenderAntialias(b *testing.B) {
+	for _, name := range []string{"pdf/chrome-doc", "pptx/features", "drawio/showcase"} {
+		doc := openDoc(b, "../../testdata/"+name+".bdf")
+		view := doc.Views[0]
+		if view.Kind == bdf.ViewSheet || len(view.Pages) == 0 {
+			b.Fatalf("%s has no fixed page", name)
+		}
+		for _, dpi := range []float64{72, 300} {
+			for _, mode := range []struct {
+				name string
+				mode AntialiasMode
+			}{{"on", AntialiasOn}, {"off", AntialiasOff}} {
+				b.Run(fmt.Sprintf("%s/%.0fdpi/%s", name, dpi, mode.name), func(b *testing.B) {
+					r := New(doc, &Options{ImageCacheBytes: -1, TextCacheBytes: -1, Antialias: mode.mode, FontDirs: testFonts, NoSystemFonts: true})
+					if _, err := r.PageDPI(view, 0, dpi); err != nil {
+						b.Fatal(err)
+					}
+					b.ReportAllocs()
+					for b.Loop() {
+						if _, err := r.PageDPI(view, 0, dpi); err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		}
+	}
+}
