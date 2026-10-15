@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"image"
 	"image/png"
 	"os"
 	"os/exec"
@@ -182,6 +183,56 @@ func TestRenderAntialias(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRenderMono checks the monochrome images of render: gray and black
+// and white PNGs, of a page and of a batch.
+func TestRenderMono(t *testing.T) {
+	dir := t.TempDir()
+	doc := filepath.Join("..", "..", "testdata", "docx", "basic.bdf")
+	for _, mono := range []string{"gray", "bilevel"} {
+		out := filepath.Join(dir, mono+".png")
+		args := append([]string{"render", "-q", "-scale", "0.5", "-antialias=off", "-mono=" + mono}, testFontFlags...)
+		if status, stderr := run(t, append(args, doc, out)...); status != 0 {
+			t.Fatalf("-mono=%s: exit status %d: %s", mono, status, stderr)
+		}
+		f, err := os.Open(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		img, err := png.Decode(f)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch img := img.(type) {
+		case *image.Gray:
+			if mono != "gray" {
+				t.Errorf("-mono=%s wrote a gray image", mono)
+			}
+		case *image.Paletted:
+			if mono != "bilevel" || len(img.Palette) != 2 {
+				t.Errorf("-mono=%s wrote a paletted image of %d colours", mono, len(img.Palette))
+			}
+		default:
+			t.Errorf("-mono=%s wrote a %T", mono, img)
+		}
+		if w, h := img.Bounds().Dx(), img.Bounds().Dy(); w != 298 || h != 421 {
+			t.Errorf("-mono=%s: %d×%d", mono, w, h)
+		}
+		batch := filepath.Join(dir, mono+"-{page}.png")
+		args = append([]string{"render", "-q", "-pages=1-2", "-scale", "0.5", "-mono=" + mono}, testFontFlags...)
+		if status, stderr := run(t, append(args, doc, batch)...); status != 0 {
+			t.Fatalf("-pages -mono=%s: exit status %d: %s", mono, status, stderr)
+		}
+		if _, err := os.Stat(filepath.Join(dir, mono+"-2.png")); err != nil {
+			t.Error(err)
+		}
+	}
+	status, stderr := run(t, "render", "-mono=color", filepath.Join(dir, "missing.bdf"), filepath.Join(dir, "x.png"))
+	if status != 2 || !strings.Contains(stderr, "-mono must be gray or bilevel") {
+		t.Errorf("-mono=color: exit status %d: %s", status, stderr)
 	}
 }
 

@@ -116,9 +116,10 @@ type imageKey struct {
 	scale               float64
 	noAA, backgroundSet bool
 	background          solid
+	mono                Mono
 }
 
-func (r *Renderer) imageKey(kind byte, source any, region bdf.Rect, w, h int, scale float64) (imageKey, bool) {
+func (r *Renderer) imageKey(kind byte, source any, region bdf.Rect, w, h int, scale float64, mono Mono) (imageKey, bool) {
 	if plain || r.images.limit <= 0 || !finiteCacheNumbers(float64(region.X), float64(region.Y), float64(region.W), float64(region.H), scale) {
 		return imageKey{}, false
 	}
@@ -126,7 +127,7 @@ func (r *Renderer) imageKey(kind byte, source any, region bdf.Rect, w, h int, sc
 	if err != nil {
 		return imageKey{}, false
 	}
-	return imageKey{kind: kind, source: sha256.Sum256(data), region: region, w: w, h: h, scale: scale, noAA: r.opts.Antialias == AntialiasOff, backgroundSet: r.opts.Background != nil, background: r.background()}, true
+	return imageKey{kind: kind, source: sha256.Sum256(data), region: region, w: w, h: h, scale: scale, noAA: r.opts.Antialias == AntialiasOff, backgroundSet: r.opts.Background != nil, background: r.background(), mono: mono}, true
 }
 func cloneRGBA(src *image.RGBA) *image.RGBA {
 	dst := image.NewRGBA(src.Rect)
@@ -135,48 +136,76 @@ func cloneRGBA(src *image.RGBA) *image.RGBA {
 	}
 	return dst
 }
-func (r *Renderer) storedImage(k imageKey, ok bool) *image.RGBA {
+
+// cloneImage copies an image of the kinds the renderer draws (see Mono).
+func cloneImage(src image.Image) image.Image {
+	switch src := src.(type) {
+	case *image.RGBA:
+		return cloneRGBA(src)
+	case *image.Gray:
+		dst := image.NewGray(src.Rect)
+		copy(dst.Pix, src.Pix)
+		return dst
+	case *image.Paletted:
+		dst := image.NewPaletted(src.Rect, src.Palette)
+		copy(dst.Pix, src.Pix)
+		return dst
+	}
+	return src
+}
+
+// imagePix is the memory of the pixels of an image the renderer draws.
+func imagePix(img image.Image) int {
+	switch img := img.(type) {
+	case *image.RGBA:
+		return len(img.Pix) + int(unsafe.Sizeof(*img))
+	case *image.Gray:
+		return len(img.Pix) + int(unsafe.Sizeof(*img))
+	case *image.Paletted:
+		return len(img.Pix) + int(unsafe.Sizeof(*img))
+	}
+	return 0
+}
+func (r *Renderer) storedImage(k imageKey, ok bool) image.Image {
 	if ok {
 		if img, found := r.images.get(k); found {
-			return cloneRGBA(img)
+			return cloneImage(img)
 		}
 	}
 	return nil
 }
-func (r *Renderer) keepImage(k imageKey, ok bool, img *image.RGBA) {
+func (r *Renderer) keepImage(k imageKey, ok bool, img image.Image) {
 	if !ok || img == nil {
 		return
 	}
-	cost := entryCost[imageKey, *image.RGBA](len(img.Pix) + int(unsafe.Sizeof(*img)))
+	cost := entryCost[imageKey, image.Image](imagePix(img))
 	if cost <= r.images.limit {
-		r.images.put(k, cloneRGBA(img), cost)
+		r.images.put(k, cloneImage(img), cost)
 	}
 }
-func (r *Renderer) cachedPage(p *bdf.Page, region bdf.Rect, w, h int) (*image.RGBA, error) {
-	k, ok := r.imageKey(1, p, region, w, h, 0)
+func (r *Renderer) cachedPage(p *bdf.Page, region bdf.Rect, w, h int, mono Mono) image.Image {
+	k, ok := r.imageKey(1, p, region, w, h, 0, mono)
 	if img := r.storedImage(k, ok); img != nil {
-		return img, nil
+		return img
 	}
-	img, err := r.drawPage(p, region, w, h)
-	if err == nil {
-		r.keepImage(k, ok, img)
-	}
-	return img, err
+	img := r.drawPage(p, region, w, h, mono)
+	r.keepImage(k, ok, img)
+	return img
 }
-func (r *Renderer) cachedView(v *bdf.View, region bdf.Rect, w, h int, sheet bool) *image.RGBA {
+func (r *Renderer) cachedView(v *bdf.View, region bdf.Rect, w, h int, sheet bool, mono Mono) image.Image {
 	kind := byte(2)
 	if sheet {
 		kind = 3
 	}
-	k, ok := r.imageKey(kind, v, region, w, h, 0)
+	k, ok := r.imageKey(kind, v, region, w, h, 0, mono)
 	if img := r.storedImage(k, ok); img != nil {
 		return img
 	}
-	var img *image.RGBA
+	var img image.Image
 	if sheet {
-		img = r.drawSheet(v, region, w, h)
+		img = r.drawSheet(v, region, w, h, mono)
 	} else {
-		img = r.drawContinuous(v, region, w, h)
+		img = r.drawContinuous(v, region, w, h, mono)
 	}
 	r.keepImage(k, ok, img)
 	return img
@@ -242,9 +271,12 @@ func (c *textMaskCache) put(k textMaskKey, m *mask, n int) {
 	defer c.Unlock()
 	c.lru.put(k, m, n)
 }
+
+// freeBudget is the memory of the canvases the renderer keeps for its
+// next drawings: its share of a batch (Pages), else Options.CanvasCacheBytes.
 func (r *Renderer) freeBudget() int {
 	if r.freeLimit > 0 {
 		return r.freeLimit
 	}
-	return maxFreeSurfaces
+	return cacheLimit(r.opts.CanvasCacheBytes, DefaultCanvasCacheBytes)
 }

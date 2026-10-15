@@ -87,7 +87,7 @@ func TestImageCacheEntryBudgetAndKeys(t *testing.T) {
 		t.Fatalf("oversize entries retained: %d", len(r.images.items))
 	}
 	r.opts.Antialias = AntialiasOn
-	if _, ok := r.imageKey(1, v.Pages[0], bdf.Rect{X: float32(math.NaN()), W: 8, H: 8}, 8, 8, 0); ok {
+	if _, ok := r.imageKey(1, v.Pages[0], bdf.Rect{X: float32(math.NaN()), W: 8, H: 8}, 8, 8, 0, 0); ok {
 		t.Fatal("NaN cache key accepted")
 	}
 	k := textMaskKey{m: identity, size: math.NaN()}

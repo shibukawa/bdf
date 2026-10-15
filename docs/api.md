@@ -228,14 +228,16 @@ return thumbnail.Encode(w, img, thumbnail.PNG)
 |---|---|
 | `thumbnail.Make(doc, *Options) (*Result, error)` | サムネイルを描く。`Options` は `Size`（既定 256 px。切り抜きなら一辺、全体なら長辺）、`Mode`（`Auto`・`Crop`・`Fit`）、`View`（既定は最初の View）、`SheetDPI`（シートを描く解像度。既定 `DefaultSheetDPI` = 72 で 1 単位が 1 画素）、`Raster`（フォント・背景・アンチエイリアス）。`Result` は `Image`、選んだ `Mode`、`Warnings` |
 | `Auto` の選び方 | Word・HTML・Markdown・Excel・CSV と、縦長のページの PDF・TIFF は `Crop`: 1 ページ目の左上から、ページの幅（横長ならページの高さ）の正方形。scroll View は先頭から、シートは A1 から、`Size` 画素を `SheetDPI` で描く大きさ（`MinSheetSide` = 96 〜 `MaxSheetSide` = 480 単位。シートより大きくはしない）の正方形を枠線つきで。小さいサムネイルほど狭い範囲を見せ、字が潰れないようにする。それ以外（PowerPoint、Visio、draw.io、CAD、プリント基板、Illustrator、Photoshop、画像、EPUB の表紙、横長の PDF・TIFF）は `Fit`: 1 ページ目の全体。判定は `Meta.Source` と View の種類による |
-| `thumbnail.Encode(w, img, format)` / `FormatOf(name)` | `PNG`・`JPEG`（品質 85）・`WebP`（非可逆、品質 80）で書く / ファイル名の拡張子から形式を決める |
+| `thumbnail.Encode(w, img, format)` / `EncodeImage(w, img, format)` / `FormatOf(name)` | `PNG`・`JPEG`（品質 85）・`WebP`（非可逆、品質 80）で書く。`EncodeImage` は `imagebdf` のモノクロ画像（`*image.Gray`、黒白の `*image.Paletted`）もそのまま（PNG は 8 bit・1 bit）書く / ファイル名の拡張子から形式を決める |
 | `imagebdf.New(doc, *Options) *Renderer` | 文書を描くレンダラ。`Options` は `FontFS`・`FontDirs`・`NoSystemFonts`（名前で参照するフォントと、埋め込みフォントにない字の探し先）、`Background`（既定は白）、`Antialias`。デコードした Object・画像・フォントを保持する。並行には使えない |
 | `Options.Antialias` / `AntialiasMode` | `AntialiasDefault`（ゼロ値）と `AntialiasOn` は解像度によらず従来の AA。`AntialiasOff` は図形・文字・幾何クリップの境界を画素中心で判定し、被覆率計算を省く。dpi による自動切り替えはしない。半透明・ブレンド・画像補間・ソフトマスク・ぼかし・細い線の幅に応じた alpha は引き続き適用する。未知の Go 値は AA を有効にして警告に記録する（[使い方](rendering.ja.md#ラスタライズの品質と速度)） |
 | `(*Renderer).Page(v, page, scale)` | fixed・flow View のページ（scroll View の帯）を、1 単位 `scale` 画素で描く。大きさのないページと 0 以下の `scale` はエラー。描いている途中のパニックもエラーにする（`Region`、`thumbnail.Make` も） |
 | `(*Renderer).PageDPI(v, page, dpi)` | ページ全体を指定 dpi で描く。BDF の 1 単位は 1/72 インチなので 72 dpi が `Page` の `scale=1` に相当する。戻り値の `*image.RGBA` は `image.Image` として使える |
 | `(*Renderer).PageSize(v, page, w, h)` | ページ全体を指定の幅・高さ（画素）で描く。縦横比がページと違うと引き伸ばす |
 | `(*Renderer).Region(v, page, rect, w, h)` | 範囲を `w` × `h` 画素に描く。fixed・flow はそのページの座標、scroll View は帯を積んだ連続の座標、シートはシートの座標（枠線も描く） |
+| `(*Renderer).PageMono(v, page, scale, mono)` / `RegionMono(…, mono)` / `PagesMono(ctx, v, pages, scale, workers, mono, yield)` | RGBA の代わりにモノクロの画像を返す。`imagebdf.Gray` は `*image.Gray`（白の上に置いた輝度、Rec. 601 の重み）、`imagebdf.Bilevel` は黒白の `*image.Paletted`（グレー値 128 未満が黒。PNG は 1 画素 1 bit で書く）。描き方は `Page` と同じで最後に変換するので、境界は `Antialias` で決まる。未知の値はエラー（[使い方](rendering.ja.md#モノクロの出力)） |
 | `Options.ImageCacheBytes` / `TextCacheBytes` | 完成画像・文字列被覆率のLRU容量。0は64MiB/32MiB、負数は無効、正数はバイト上限。返却画像は独立コピー。配列・キー・項目の見積もりを計上し、decoded資源・作業画像・allocator管理領域は別 |
+| `Options.CanvasCacheBytes` | 次の描画のために取っておく作業用キャンバス（1 画素 16 バイト）と、同じだけの大きなマスクの上限。0 は 64MiB、負数は保持しない。600 dpi のページを順に描くならページ 1 枚分を指定する。`Pages` はバッチの間 worker ごとに 1 枚保持する。キャンバス全体のパス（背景・広い塗り・大きなクリップとパス・画像への変換）はコア数まで最大 8 本の goroutine に分ける |
 | `(*Renderer).Object(hash, scale)` | 文書のObjectと依存資源を描き、完成画像を再利用。背景未指定は透明。package関数 `Object` は1回用 |
 | `(*Renderer).Invalidate()` | Partバイト列・FontFS変更後に呼び、両cache・decoded資源・警告・workerを解放。FontDirs/システムフォントのプロセス共通cacheは対象外 |
 | `(*Renderer).Pages(ctx, v, pages, scale, workers, yield)` / `PagesDPI` | 独立ページを並列描画し指定順にcallback。0始まりのページ列、nilは全ページ、workers=0は自動、1..16は上限。シートは対象外。32M画素の同時基本canvas枠で並列数を抑える。呼び出し間でworker再利用。開始済み描画はキャンセル時も終了を待つ（[詳細](rendering.ja.md#再描画のキャッシュとページ並列化)） |

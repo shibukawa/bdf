@@ -157,12 +157,14 @@ func (d *drawer) hold(ctx *context, n int) bool {
 	return true
 }
 
-// drop lets go of the clip a state made.
+// drop lets go of the clip a state made, and of its memory (see
+// releaseMask): the state is being restored, or clipped further.
 func (d *drawer) drop(ctx *context, st *state) {
 	if st.made != nil {
 		n := st.made.bytes()
 		ctx.held -= n
 		d.live -= n
+		d.r.releaseMask(st.made)
 		st.made = nil
 	}
 }
@@ -265,7 +267,8 @@ func (d *drawer) restore() {
 	}
 }
 
-// clip cuts the clip of the state to a coverage.
+// clip cuts the clip of the state to a coverage, which it keeps or is
+// done with (see releaseMask).
 func (d *drawer) clip(cov *mask) {
 	ctx := d.ctx
 	st := &ctx.st
@@ -275,6 +278,7 @@ func (d *drawer) clip(cov *mask) {
 		switch {
 		case r.Empty():
 			d.drop(ctx, st)
+			d.r.releaseMask(cov)
 			st.clip = &mask{}
 			return
 		case cov.a == nil && r == old.r && !plain:
@@ -287,25 +291,38 @@ func (d *drawer) clip(cov *mask) {
 			d.drop(ctx, st)
 			if !d.hold(ctx, cov.bytes()) {
 				d.r.warnf(tooMuchMemory)
+				d.r.releaseMask(cov)
 				st.clip = &mask{}
 				return
 			}
 			st.clip, st.made = cov, cov
 			return
 		}
-		// their product takes memory
-		d.drop(ctx, st)
+		// their product takes memory, and the clip the state made is let
+		// go of once the product is made of it
+		made := st.made
+		if made != nil {
+			n := made.bytes()
+			ctx.held -= n
+			d.live -= n
+			st.made = nil
+		}
 		if !d.hold(ctx, 4*r.Dx()*r.Dy()) {
 			d.r.warnf(tooMuchMemory)
+			d.r.releaseMask(made)
+			d.r.releaseMask(cov)
 			st.clip = &mask{}
 			return
 		}
-		st.clip = intersect(old, cov)
+		st.clip = d.r.intersect(old, cov)
 		st.made = st.clip
+		d.r.releaseMask(made)
+		d.r.releaseMask(cov)
 		return
 	}
 	d.drop(ctx, st)
 	st.clip = intersect(old, cov)
+	d.r.releaseMask(cov)
 }
 
 func (d *drawer) instr(in bdf.Instr) {
@@ -414,7 +431,9 @@ func (d *drawer) instr(in bdf.Instr) {
 	case bdf.OpClearRect:
 		p := &path{}
 		p.rect(f64(in, 0), f64(in, 1), f64(in, 2), f64(in, 3))
-		ctx.target.fill(d.coverage(p, bdf.NonZero, st.m), solid{0, 0, 0, 1}, 1, bdf.BlendDestinationOut, st.clip)
+		cov := d.coverage(p, bdf.NonZero, st.m)
+		ctx.target.fill(cov, solid{0, 0, 0, 1}, 1, bdf.BlendDestinationOut, st.clip)
+		d.r.releaseMask(cov)
 	case bdf.OpFillPath:
 		if p := d.path(int(u64(in, 0))); p != nil {
 			d.fillPath(p, byte(u64(in, 1)), st.m)
@@ -445,7 +464,9 @@ func (d *drawer) instr(in bdf.Instr) {
 			}
 		}
 		sc.polys = polys
-		d.paint(sc.rasterize(polys, rule, bounds), d.shader(&st.fill, st.m), 1)
+		cov := sc.rasterize(polys, rule, bounds)
+		d.paint(cov, d.shader(&st.fill, st.m), 1)
+		d.r.releaseMask(cov)
 	case bdf.OpFillText, bdf.OpStrokeText:
 		s, _ := in.Args[0].(string)
 		d.text(s, f64(in, 1), f64(in, 2), f64(in, 3), in.Op == bdf.OpStrokeText)
@@ -545,7 +566,9 @@ func (d *drawer) fillRect(x, y, w, h float64) {
 
 func (d *drawer) fillPath(p *path, rule byte, m matrix) {
 	st := &d.ctx.st
-	d.paint(d.coverage(p, rule, m), d.shader(&st.fill, m), 1)
+	cov := d.coverage(p, rule, m)
+	d.paint(cov, d.shader(&st.fill, m), 1)
+	d.r.releaseMask(cov)
 }
 
 // strokePath strokes a path in user space under m. Strokes thinner than a
@@ -557,6 +580,7 @@ func (d *drawer) strokePath(p *path, m matrix) {
 		d.r.warnf(strokeCut)
 	}
 	d.paint(cov, d.shader(&d.ctx.st.stroke, m), alpha)
+	d.r.releaseMask(cov)
 }
 
 // strokeCut warns of a stroke whose outline passed the limits.
@@ -665,7 +689,7 @@ func (d *drawer) shadow(cov *mask, sh shader, alpha float32) {
 		return
 	}
 	buf := make([]float32, 4*w)
-	a := make([]float32, (w+2*pad)*(h+2*pad))
+	a := d.r.newMaskBuf((w + 2*pad) * (h + 2*pad))
 	stride := w + 2*pad
 	for y := r.Min.Y; y < r.Max.Y; y++ {
 		sh.shade(r.Min.X, y, w, buf)
@@ -679,10 +703,11 @@ func (d *drawer) shadow(cov *mask, sh shader, alpha float32) {
 		}
 	}
 	if sigma > 0 {
-		blur(a, stride, h+2*pad, sigma)
+		blur(a, stride, h+2*pad, sigma, d.r.threads)
 	}
 	sm := &mask{r: image.Rect(r.Min.X-pad+dx, r.Min.Y-pad+dy, r.Max.X+pad+dx, r.Max.Y+pad+dy), a: a}
 	d.ctx.target.fill(sm, premul(st.shadow), 1, st.blend, st.clip)
+	d.r.releaseMask(sm)
 }
 
 // text draws a FILL_TEXT or STROKE_TEXT.
@@ -768,15 +793,24 @@ func (d *drawer) text(s string, x, y, advance float64, stroke bool) {
 	}
 	cov := sc.rasterize(fill, bdf.NonZero, bounds)
 	if len(bold.out) > 0 {
-		cov = union(cov, sc.rasterize(bold.out, bdf.NonZero, bounds))
+		thin, thick := cov, sc.rasterize(bold.out, bdf.NonZero, bounds)
+		cov = d.r.union(thin, thick)
+		if cov != thin {
+			d.r.releaseMask(thin)
+		}
+		if cov != thick {
+			d.r.releaseMask(thick)
+		}
 	}
 	if sc.limited {
+		d.r.releaseMask(cov)
 		return
 	}
 	if !bold.cut {
 		d.r.keepTextMask(key, cov)
 	}
 	d.paint(cov, d.shader(&st.fill, m), 1)
+	d.r.releaseMask(cov)
 }
 
 // strokeText strokes glyphs laid out under m: in user space, where the
@@ -822,11 +856,16 @@ func (d *drawer) strokeText(glyphs []placed, m matrix) {
 			outline.out[i].pts[j] = point{px, py}
 		}
 	}
-	d.paint(sc.rasterize(outline.out, bdf.NonZero, bounds), d.shader(&st.stroke, m), alpha)
+	cov := sc.rasterize(outline.out, bdf.NonZero, bounds)
+	d.paint(cov, d.shader(&st.stroke, m), alpha)
+	d.r.releaseMask(cov)
 }
 
 // union returns the larger coverage of two masks at each pixel.
-func union(a, b *mask) *mask {
+func union(a, b *mask) *mask { return (*Renderer)(nil).union(a, b) }
+
+// union is the function of that name with the memory of a renderer.
+func (rr *Renderer) union(a, b *mask) *mask {
 	if a.empty() {
 		return b
 	}
@@ -834,7 +873,7 @@ func union(a, b *mask) *mask {
 		return a
 	}
 	r := a.r.Union(b.r)
-	out := &mask{r: r, a: make([]float32, r.Dx()*r.Dy())}
+	out := &mask{r: r, a: rr.newMaskBuf(r.Dx() * r.Dy())}
 	for _, m := range []*mask{a, b} {
 		for y := m.r.Min.Y; y < m.r.Max.Y; y++ {
 			row := m.row(y, m.r.Min.X, m.r.Max.X)
@@ -908,6 +947,7 @@ func (d *drawer) image(i int, src *[4]float64, x, y, w, h float64) {
 		sx1: math.Min(float64(pic.w), lo(sx, sw)+math.Abs(sw)), sy1: math.Min(float64(pic.h), lo(sy, sh)+math.Abs(sh)),
 	}
 	d.paint(cov, sh2, 1)
+	d.r.releaseMask(cov)
 }
 
 // tooMuchMemory warns of groups, soft masks and clips past maxLive.
@@ -1009,6 +1049,7 @@ func (d *drawer) maskBegin(kind byte, backdrop bdf.Color, transfer []byte) {
 	}
 	mc.target = d.r.newSurface(w, h)
 	if kind == bdf.MaskLuminosity {
+		mc.target.fresh = false
 		c := premul(backdrop | 0xff)
 		for i := 0; i < w*h; i++ {
 			copy(mc.target.pix[4*i:], c[:])
@@ -1038,23 +1079,32 @@ func (d *drawer) maskEnd() {
 		return
 	}
 	gs := g.ctx.target
-	for i := 0; i < ms.w*ms.h; i++ {
-		p := ms.pix[4*i : 4*i+4]
-		var v int
-		if m.kind == bdf.MaskLuminosity {
-			v = int(math.Round(float64(0.3*p[0]+0.59*p[1]+0.11*p[2]) * 255))
-		} else {
-			v = int(math.Round(float64(p[3]) * 255))
+	gs.fresh = false
+	gs.bands(gs.bounds(), func(y0, y1, _ int) {
+		for i := y0 * ms.w; i < y1*ms.w; i++ {
+			p := ms.pix[4*i : 4*i+4]
+			var v int
+			if m.kind == bdf.MaskLuminosity {
+				v = int(math.Round(float64(0.3*p[0]+0.59*p[1]+0.11*p[2]) * 255))
+			} else {
+				v = int(math.Round(float64(p[3]) * 255))
+			}
+			v = min(max(v, 0), 255)
+			if m.transfer != nil {
+				v = int(m.transfer[v])
+			}
+			k := float32(v) / 255
+			q := gs.pix[4*i : 4*i+4]
+			q[0], q[1], q[2], q[3] = q[0]*k, q[1]*k, q[2]*k, q[3]*k
 		}
-		v = min(max(v, 0), 255)
-		if m.transfer != nil {
-			v = int(m.transfer[v])
-		}
-		k := float32(v) / 255
-		q := gs.pix[4*i : 4*i+4]
-		q[0], q[1], q[2], q[3] = q[0]*k, q[1]*k, q[2]*k, q[3]*k
-	}
+	})
 }
 
-// blur applies an approximate Gaussian blur to a plane (see gauss.Blur).
-func blur(a []float32, w, h int, sigma float64) { gauss.Blur(a, w, h, sigma) }
+// blur applies an approximate Gaussian blur to a plane (see gauss.Blur),
+// a large one in up to threads goroutines.
+func blur(a []float32, w, h int, sigma float64, threads int) {
+	if plain {
+		threads = 1
+	}
+	gauss.BlurN(a, w, h, sigma, threads)
+}

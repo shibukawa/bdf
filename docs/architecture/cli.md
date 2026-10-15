@@ -88,9 +88,10 @@ bdf text out.bdf text.json                   # metadata and per-page text as JSO
 bdf render -page 2 -scale 2 out.bdf page2.png  # a sheet takes -width/-height too (from A1)
 bdf render -antialias=off -scale 8.333333 out.bdf print.png  # 600 dpi with faster, unsmoothed edges
 bdf render -pages=all -workers=4 -antialias=off out.bdf 'page-{page}.png'  # parallel independent pages, ordered output
+bdf render -pages=all -antialias=off -mono=bilevel -scale 8.333333 out.bdf 'page-{page}.png'  # 600 dpi black and white, 1 bit a pixel
 ```
 
-`render -antialias=default|on|off` controls the edges of shapes, text and geometric clips. `default` and `on` preserve the existing smoothing at every scale; `off` skips edge coverage calculations. There is no dpi-based automatic switch. Transparency, blending, image interpolation, soft masks, blur and the reduced alpha of subpixel-width lines are preserved. `thumbnail` and generated previews keep their existing smoothing. See [Rendering](../rendering.md#raster-quality-and-speed) for the Go option and output tradeoffs.
+`render -antialias=default|on|off` controls the edges of shapes, text and geometric clips. `default` and `on` preserve the existing smoothing at every scale; `off` skips edge coverage calculations. There is no dpi-based automatic switch. Transparency, blending, image interpolation, soft masks, blur and the reduced alpha of subpixel-width lines are preserved. `thumbnail` and generated previews keep their existing smoothing. See [Rendering](../rendering.md#raster-quality-and-speed) for the Go option and output tradeoffs. `render -mono=gray|bilevel` writes a monochrome image instead of a colour one: 8 bits of luminance a pixel, or black and white (1 bit a pixel in a PNG; black where the gray value is below 128), for a page or a batch ([Monochrome output](../rendering.md#monochrome-output)).
 
 Given an input that is not a `.bdf` (a PDF, a `.docx` …), `thumbnail` converts only its first page, all a thumbnail shows (the whole input with `-view`): a 500-page PDF takes milliseconds instead of seconds. A password-protected input needs `$BDF_PASSWORD` and `-allow-plaintext`, as an encrypted document does.
 

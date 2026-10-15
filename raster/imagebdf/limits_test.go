@@ -105,7 +105,7 @@ func TestLayersPastTheLimit(t *testing.T) {
 func canvasOf(d *bdf.Document, v *bdf.View) (*Renderer, *drawer, func()) {
 	r := New(d, &Options{NoSystemFonts: true})
 	p := v.Pages[0]
-	dr, m := r.canvas(bdf.Rect{W: p.W, H: p.H}, int(p.W), int(p.H))
+	dr, m := r.canvas(bdf.Rect{W: p.W, H: p.H}, int(p.W), int(p.H), nil)
 	return r, dr, func() { dr.drawTop(p.Layers[0].Obj, m, dr.clipTo(m, 0, 0, float64(p.W), float64(p.H))) }
 }
 
@@ -161,7 +161,7 @@ func TestMemoryOfLayersAndClips(t *testing.T) {
 	}
 	hash, _ := d.AddObject(o)
 	r = New(d, &Options{NoSystemFonts: true})
-	dr, m := r.canvas(bdf.Rect{W: 16, H: 16}, 16, 16)
+	dr, m := r.canvas(bdf.Rect{W: 16, H: 16}, 16, 16, nil)
 	dr.ctx.st = initialState(m, &mask{r: dr.ctx.target.bounds()})
 	dr.run(r.object(hash))
 	if dr.live != 0 || dr.ctx.held != 0 || len(r.Warnings()) != 0 {
@@ -259,7 +259,7 @@ func TestReferencesPastTheTables(t *testing.T) {
 	ops = append(append(append(ops, bdf.OpImage), huge...), make([]byte, 16)...)
 	o := &bdf.ObjectPart{Ops: ops, Objects: make([]bdf.Hash, 1), Fonts: make([]bdf.Font, 1)}
 	r := New(bdf.NewDocument(), &Options{NoSystemFonts: true})
-	dr, _ := r.canvas(bdf.Rect{W: 4, H: 4}, 4, 4)
+	dr, _ := r.canvas(bdf.Rect{W: 4, H: 4}, 4, 4, nil)
 	dr.run(o) // panics on an index out of range without the checks
 	if !warned(r, "bad path reference") {
 		t.Errorf("warnings %v", r.Warnings())
@@ -268,7 +268,7 @@ func TestReferencesPastTheTables(t *testing.T) {
 
 func TestShadowValues(t *testing.T) {
 	r := New(bdf.NewDocument(), nil)
-	dr, _ := r.canvas(bdf.Rect{W: 4, H: 4}, 4, 4)
+	dr, _ := r.canvas(bdf.Rect{W: 4, H: 4}, 4, 4, nil)
 	shadow := func(blur, dx, dy float32) *state {
 		dr.instr(bdf.Instr{Op: bdf.OpShadow, Args: []any{uint64(0xff), blur, dx, dy}})
 		return &dr.ctx.st

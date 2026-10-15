@@ -87,7 +87,7 @@ func TestSortOfCrossings(t *testing.T) {
 func TestPathsOutsideTheCanvas(t *testing.T) {
 	rng := rand.New(rand.NewSource(2))
 	r := New(bdf.NewDocument(), nil)
-	d, _ := r.canvas(bdf.Rect{W: 32, H: 32}, 32, 32)
+	d, _ := r.canvas(bdf.Rect{W: 32, H: 32}, 32, 32, nil)
 	d.ctx.st.clip = &mask{r: image.Rect(3, 2, 30, 31)}
 	for n := 0; n < 300; n++ {
 		p := &path{}

@@ -121,29 +121,36 @@ func (p *picture) sample(level int, x, y float64, wrapX, wrapY bool) [4]float32 
 	x0, y0 := math.Floor(x), math.Floor(y)
 	fx, fy := float32(x-x0), float32(y-y0)
 	ix, iy := int(x0), int(y0)
-	at := func(px, py int) [4]float32 {
-		if wrapX {
-			px = ((px % w) + w) % w
-		} else {
-			px = min(max(px, 0), w-1)
-		}
-		if wrapY {
-			py = ((py % h) + h) % h
-		} else {
-			py = min(max(py, 0), h-1)
-		}
-		o := py*img.Stride + 4*px
-		return [4]float32{float32(img.Pix[o]) / 255, float32(img.Pix[o+1]) / 255, float32(img.Pix[o+2]) / 255, float32(img.Pix[o+3]) / 255}
-	}
-	a, b, c, d := at(ix, iy), at(ix+1, iy), at(ix, iy+1), at(ix+1, iy+1)
+	px0, px1 := pixelAt(ix, w, wrapX), pixelAt(ix+1, w, wrapX)
+	py0, py1 := pixelAt(iy, h, wrapY), pixelAt(iy+1, h, wrapY)
+	pix := img.Pix
+	oa, ob, oc, od := py0*img.Stride+4*px0, py0*img.Stride+4*px1, py1*img.Stride+4*px0, py1*img.Stride+4*px1
 	var out [4]float32
 	for k := 0; k < 4; k++ {
-		top := a[k] + (b[k]-a[k])*fx
-		bot := c[k] + (d[k]-c[k])*fx
+		a, b, c, d := unitOf[pix[oa+k]], unitOf[pix[ob+k]], unitOf[pix[oc+k]], unitOf[pix[od+k]]
+		top := a + (b-a)*fx
+		bot := c + (d-c)*fx
 		out[k] = top + (bot-top)*fy
 	}
 	return out
 }
+
+// pixelAt is the column (or row) of an image of n that pixel i reads:
+// wrapped around, or the nearest one.
+func pixelAt(i, n int, wrap bool) int {
+	if wrap {
+		return ((i % n) + n) % n
+	}
+	return min(max(i, 0), n-1)
+}
+
+// unitOf is a byte of an image as a colour value, 0 to 1.
+var unitOf = func() (t [256]float32) {
+	for i := range t {
+		t[i] = float32(i) / 255
+	}
+	return
+}()
 
 // nearest reads the pixel under (x, y) of the full-size image.
 func (p *picture) nearest(x, y float64) [4]float32 {
@@ -151,5 +158,5 @@ func (p *picture) nearest(x, y float64) [4]float32 {
 	px := min(max(int(math.Floor(x)), 0), p.w-1)
 	py := min(max(int(math.Floor(y)), 0), p.h-1)
 	o := py*img.Stride + 4*px
-	return [4]float32{float32(img.Pix[o]) / 255, float32(img.Pix[o+1]) / 255, float32(img.Pix[o+2]) / 255, float32(img.Pix[o+3]) / 255}
+	return [4]float32{unitOf[img.Pix[o]], unitOf[img.Pix[o+1]], unitOf[img.Pix[o+2]], unitOf[img.Pix[o+3]]}
 }
