@@ -2,7 +2,6 @@ package pdf
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io"
 	"strings"
@@ -59,11 +58,6 @@ func TestEmptyStreamOfItsVectorAlone(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			data := vectorOnlyPDF(t, tc.keyLength, tc.user)
-			conf := model.NewStatelessConfiguration()
-			conf.UserPW, conf.OwnerPW = tc.user, tc.user
-			if _, err := api.ReadContext(context.Background(), bytes.NewReader(data), conf); !shortCiphertext(err) {
-				t.Logf("pdfcpu reads the file by itself now (%v): emptystream.go may go", err)
-			}
 			if tc.user != "" {
 				if _, _, err := readContext(bytes.NewReader(data), ""); !errors.Is(err, conv.ErrPasswordRequired) {
 					t.Fatalf("no password: %v", err)

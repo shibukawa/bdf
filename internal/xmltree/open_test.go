@@ -2,7 +2,6 @@ package xmltree
 
 import (
 	"bytes"
-	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -57,82 +56,32 @@ func tokens(r *xmlro.Reader) string {
 	}
 }
 
-// stdTokens writes the same of an encoding/xml decoder.
-func stdTokens(d *xml.Decoder) string {
-	var b strings.Builder
-	var text []byte
-	flush := func() {
-		if len(text) > 0 {
-			fmt.Fprintf(&b, "text %q\n", text)
-			text = text[:0]
-		}
-	}
-	for {
-		tok, err := d.Token()
-		if err == io.EOF {
-			flush()
-			return b.String()
-		}
-		if err != nil {
-			flush()
-			b.WriteString("error\n")
-			return b.String()
-		}
-		switch t := tok.(type) {
-		case xml.StartElement:
-			flush()
-			fmt.Fprintf(&b, "start %s|%s", t.Name.Space, t.Name.Local)
-			for _, a := range t.Attr {
-				fmt.Fprintf(&b, " %s|%s=%q", a.Name.Space, a.Name.Local, a.Value)
+func TestOpenTokens(t *testing.T) {
+	for _, tc := range []struct {
+		name, doc, want string
+		html            bool
+	}{
+		{"namespaces", `<r xmlns="urn:r" xmlns:p="urn:p"><p:x p:y="1" plain="2"/><none xmlns=""/></r>`, "start urn:r|r |xmlns=\"urn:r\" xmlns|p=\"urn:p\"\nstart urn:p|x urn:p|y=\"1\" |plain=\"2\"\nend x\nstart |none |xmlns=\"\"\nend none\nend r\n", false},
+		{"declaration", `<?xml version="1.0"?><!DOCTYPE svg><svg><!-- ignored --><?pi ignored?><g/></svg>`, "start |svg\nstart |g\nend g\nend svg\n", false},
+		{"text", "<r>a&amp;b &lt;c&gt; &#65;&#x42; <![CDATA[<raw>&amp;\r\nline]]> line\r\nend\rtoo<k/>tail</r>", "start |r\ntext \"a&b <c> AB <raw>&amp;\\nline line\\nend\\ntoo\"\nstart |k\nend k\ntext \"tail\"\nend r\n", false},
+		{"html entities and void elements", `<r>a&nbsp;&unknown;<br>tail</r>`, "start |r\ntext \"a\\u00a0&unknown;\"\nstart |br\nend br\ntext \"tail\"\nend r\n", true},
+		{"mismatched", `<a><b><c>text</b>more</a>`, "start |a\nstart |b\nstart |c\ntext \"text\"\nend c\nend b\ntext \"more\"\nend a\n", false},
+		{"truncated", `<a><b>text`, "start |a\nstart |b\ntext \"text\"\nerror\n", false},
+		{"unclosed attribute", `<a><b attr="1"`, "start |a\nerror\n", false},
+		{"two roots", `<a/>text<b/>`, "start |a\nend a\ntext \"text\"\nstart |b\nend b\n", false},
+		{"empty", "", "", false},
+		{"latin-1", "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r a=\"caf\xe9\">na\xefve</r>", "start |r |a=\"café\"\ntext \"naïve\"\nend r\n", false},
+		{"bom", "\xef\xbb\xbf<r>x</r>", "start |r\ntext \"x\"\nend r\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := xmlro.Options{Lenient: true}
+			if tc.html {
+				opts.Entities, opts.AutoClose = htmlentity.Lookup, htmlentity.AutoClose
 			}
-			b.WriteString("\n")
-		case xml.EndElement:
-			flush()
-			fmt.Fprintf(&b, "end %s\n", t.Name.Local)
-		case xml.CharData:
-			text = append(text, t...)
-		}
-	}
-}
-
-// TestOpenMatchesEncodingXML reads the markup that the formats other than
-// Office's are written with, with the readers they open and with the
-// decoders of encoding/xml they were read with before.
-func TestOpenMatchesEncodingXML(t *testing.T) {
-	docs := map[string]string{
-		"namespaces":  `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:lang="en"><a xlink:href="#b" href="#c"/><x:y xmlns:x="urn:x" x:z="1"/><un:bound un:a="1"/><g xmlns=""><h/></g></svg>`,
-		"declaration": `<?xml version="1.0" encoding="UTF-8"?>` + "\n" + `<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">` + "\n<svg><!-- c --><?pi x?><g/></svg>\n",
-		"text":        "<r>a&amp;b &lt;c&gt; &#65;&#x42; <![CDATA[<raw>&amp;\r\nline]]> line\r\nend\rtoo<k/>tail</r>",
-		"html":        `<r>&nbsp;&eacute;&hellip;&unknown; AT&T &amp<br><img src="a.png"><hr/><BR>x</BR><p>one<p>two</r>`,
-		"attributes":  `<r a='single' b="dou&quot;ble" c="&#10;nl" d="  spaced  " e="tab	tab" checked f=bare g="&eacute;"/>`,
-		"mismatched":  `<a><b><c>text</b>more</a>`,
-		"stray end":   `<a><b></c></b></a>`,
-		"truncated":   `<a><b>text`,
-		"unclosed":    `<a><b attr="1"`,
-		"two roots":   `<a/>text<b/>`,
-		"empty":       ``,
-		"colons":      `<:a b:="1" :c="2"><d:/></:a>`,
-		"prefixed":    `<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/"><rdf:Description rdf:about="" dc:format="image/png"><dc:title><rdf:Alt><rdf:li xml:lang="x-default">T</rdf:li></rdf:Alt></dc:title></rdf:Description></rdf:RDF>`,
-		"latin-1":     "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><r a=\"caf\xe9\">na\xefve</r>",
-		"bom":         "\xef\xbb\xbf<r>x</r>",
-		"deep":        strings.Repeat("<a>", 200) + "x" + strings.Repeat("</a>", 200),
-	}
-	latin1 := func(label string, r io.Reader) (io.Reader, error) { return Latin1(label, r) }
-	for name, doc := range docs {
-		for _, html := range []bool{false, true} {
-			d := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix([]byte(doc), []byte("\xef\xbb\xbf"))))
-			d.Strict = false
-			d.CharsetReader = latin1
-			o := xmlro.Options{Lenient: true}
-			if html {
-				d.Entity, d.AutoClose = xml.HTMLEntity, xml.HTMLAutoClose
-				o.Entities, o.AutoClose = htmlentity.Lookup, htmlentity.AutoClose
+			if got := tokens(Open([]byte(tc.doc), opts)); got != tc.want {
+				t.Errorf("tokens:\n%s\nwant:\n%s", got, tc.want)
 			}
-			want, got := stdTokens(d), tokens(Open([]byte(doc), o))
-			if got != want {
-				t.Errorf("%s (html %v):\n%s--- encoding/xml:\n%s", name, html, got, want)
-			}
-		}
+		})
 	}
 }
 

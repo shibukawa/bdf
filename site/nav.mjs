@@ -71,7 +71,6 @@ export const SECTIONS = [
       page("api", "API", "API 一覧", { only: "ja" }),
       page("spec", "Format spec v1.0", "フォーマット仕様 v1.0", { only: "ja" }),
       page("design", "Design notes", "設計メモ", { only: "ja" }),
-      page("quality", "Conversion quality", "変換品質レポート", { only: "ja" }),
       page("licenses", "Fonts and licenses", "フォントとライセンス"),
     ],
   },

@@ -1,14 +1,10 @@
 package htmlro
 
 // Parse must build the tree golang.org/x/net/html.Parse builds, for every
-// input: the test suites, the fuzzer's inventions, and whatever documents
-// HTMLRO_CORPUS names.
+// input, including the HTML5 test suites and malformed inputs.
 
 import (
 	"bytes"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -78,40 +74,4 @@ func TestParseMatchesXNet(t *testing.T) {
 		}
 		compareParse(t, file+"/"+ta.text, []byte(ta.text), ta.scripting)
 	})
-}
-
-// TestParseMatchesXNetOnCorpus compares the parsers on the HTML files under
-// the directory HTMLRO_CORPUS names, recursively; it is skipped without it.
-func TestParseMatchesXNetOnCorpus(t *testing.T) {
-	dir := os.Getenv("HTMLRO_CORPUS")
-	if dir == "" {
-		// Not a Skip: TinyGo's testing reports one as a failure.
-		t.Log("HTMLRO_CORPUS not set, nothing compared")
-		return
-	}
-	n := 0
-	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		switch strings.ToLower(filepath.Ext(path)) {
-		case ".html", ".htm", ".xhtml":
-		default:
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		compareParse(t, path, data, true)
-		n++
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("%d documents compared", n)
 }

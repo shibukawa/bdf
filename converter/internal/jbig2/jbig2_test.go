@@ -365,15 +365,3 @@ func TestLargePages(t *testing.T) {
 		}
 	}
 }
-
-func BenchmarkLargePages(b *testing.B) {
-	for _, p := range largePages() {
-		b.Run(p.name, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				if _, err := Decode(p.page, nil); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}

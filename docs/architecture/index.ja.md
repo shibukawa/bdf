@@ -61,4 +61,4 @@ PDF はページ単位で変換します（`converter.OpenStream`）。ビュー
 - **[ブラウザ側](browser.ja.md)** — Worker、ビューア、wasm の変換モジュール
 - **[変換と出力](conversion.ja.md)** — 数式、楽譜と演奏、メタデータ、サーバー側のサムネイルと検索用テキスト
 - **[パスワードと保護モード](protection.ja.md)** — パスワード付きの入力と暗号化、ログインした読者に数ページずつ封印して渡す保護モード
-- **[ビルドとテスト](development.ja.md)** — Go・TypeScript のテストの実行、フィクスチャと golden の再生成
+- **[ビルドとテスト](development.ja.md)** — Go・TypeScript のテストの実行、フィクスチャの再生成

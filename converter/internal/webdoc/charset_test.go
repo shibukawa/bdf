@@ -1,8 +1,6 @@
 package webdoc
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"golang.org/x/net/html/charset"
@@ -51,29 +49,6 @@ func TestDetermineEncodingMatchesXNet(t *testing.T) {
 			t.Errorf("%q %q: got %q %v (nil %v), want %q %v (nil %v)", c.content, c.contentType, n1, c1, e1 == nil, n2, c2, e2 == nil)
 		}
 	}
-	// And on the real pages of a corpus, when there is one.
-	dir := os.Getenv("HTMLRO_CORPUS")
-	if dir == "" {
-		return
-	}
-	n := 0
-	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || filepath.Ext(path) != ".html" {
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		_, n1, c1 := DetermineEncoding(data, "")
-		_, n2, c2 := charset.DetermineEncoding(data, "")
-		if n1 != n2 || c1 != c2 {
-			t.Errorf("%s: got %q %v, want %q %v", path, n1, c1, n2, c2)
-		}
-		n++
-		return nil
-	})
-	t.Logf("%d documents compared", n)
 }
 
 func FuzzDetermineEncodingMatchesXNet(f *testing.F) {

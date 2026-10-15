@@ -66,19 +66,3 @@ func TestPrepareLayoutCaches(t *testing.T) {
 		t.Errorf("staff tops %v", tops)
 	}
 }
-
-var benchmarkAccidentals []placedAccidental
-
-func BenchmarkPlaceAccidentals(b *testing.B) {
-	sm := &staffMeasure{clef: Clef{Sign: ClefG}, acc: map[*Note]Accidental{}}
-	ev := &Event{Type: Quarter}
-	for range 6000 {
-		n := &Note{Pitch: Pitch{Step: 0, Alter: 1, Octave: 4}}
-		ev.Notes = append(ev.Notes, n)
-		sm.acc[n] = AccSharp
-	}
-	b.ResetTimer()
-	for range b.N {
-		benchmarkAccidentals = placeAccidentals(sm, ev)
-	}
-}

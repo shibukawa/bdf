@@ -110,8 +110,7 @@ var ErrTooManyElements = errors.New("ooxml: too many elements")
 // bytes of a name or a value are the reader's until the next token, and the
 // tree copies only what it keeps. Names and short values repeat throughout
 // a part, so they are interned: one string for every "p" and "val". The
-// namespaces are resolved as encoding/xml resolves them, and the trees are
-// the same (the tests compare them).
+// namespaces are resolved to the URIs declared by the document.
 
 // Parse reads a document into a node tree. mc:AlternateContent is
 // replaced by its mc:Fallback (or its first mc:Choice when there is no

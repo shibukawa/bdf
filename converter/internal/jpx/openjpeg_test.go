@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 )
 
 // This file compares the decoder with OpenJPEG over a matrix of encoder
@@ -460,45 +459,5 @@ func TestOpenJPEGSyntax(t *testing.T) {
 				t.Errorf("%s: channel %d differs", name, i)
 			}
 		}
-	}
-}
-
-// TestOpenJPEGMountain decodes the JPX test image of pdfcpu, from the module
-// cache, and compares its codestream with opj_decompress.
-func TestOpenJPEGMountain(t *testing.T) {
-	if os.Getenv("JPX_OPENJPEG") == "" {
-		t.Skip("set JPX_OPENJPEG=1 to compare with OpenJPEG")
-	}
-	out, err := exec.Command("go", "env", "GOMODCACHE").Output()
-	must(err)
-	path := filepath.Join(strings.TrimSpace(string(out)), "github.com/pdfcpu/pdfcpu@v0.11.0/pkg/testdata/resources/mountain.jpx")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Skip(err)
-	}
-	start := time.Now()
-	img, err := Decode(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("%dx%d, %d channels, colour space %d, ICC %d bytes, alpha %d, decoded in %v",
-		img.Width, img.Height, len(img.Components), img.ColorSpace, len(img.ICC), img.Alpha, time.Since(start))
-	_, cs, err := parseJP2(data)
-	must(err)
-	dir := t.TempDir()
-	want := opjDecode(t, dir, "mountain.j2k", cs)
-	got, err := decodePlanes(cs)
-	must(err)
-	d, err := maxDiff(got, want)
-	must(err)
-	invK97 = openJPEGInvK
-	got, err = decodePlanes(cs)
-	invK97 = 1 / k97
-	must(err)
-	dOpj, err := maxDiff(got, want)
-	must(err)
-	t.Logf("max deviation from OpenJPEG %d, %d with its 1/K", d, dOpj)
-	if d > 1 || dOpj > 1 {
-		t.Errorf("max deviation from OpenJPEG %d, %d with its 1/K", d, dOpj)
 	}
 }

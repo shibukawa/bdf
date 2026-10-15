@@ -27,16 +27,9 @@ else {
   fileServer = await serve(dirname(abs));
   src = `http://127.0.0.1:${fileServer.port}/${basename(abs)}`;
 }
-// Use an explicit browser (CHROMIUM_PATH, or the headless shell preinstalled in some sandboxes);
-// otherwise fall back to the one installed by `npx playwright-core install chromium`, which is
-// the headless shell too. The full Chromium binary rasterizes small text differently from the
-// shell, so the goldens only match when every machine runs the same one.
+// Use CHROMIUM_PATH or a preinstalled headless shell, otherwise Playwright's Chromium.
 const executablePath = process.env.CHROMIUM_PATH ?? ["/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell"].find((p) => existsSync(p));
-// The pixels must not depend on the machine: Canvas 2D is rasterized in software (no GPU or
-// SwiftShader path, which also makes the worker's OffscreenCanvas match the main thread), text
-// is drawn without hinting or LCD filtering so the fontconfig defaults (hint style, subpixel
-// order) do not leak in, and playwright-core is pinned to the release whose Chromium build
-// matches the goldens.
+// Software rendering makes manually exported pages consistent across GPU setups.
 const launch = { args: ["--disable-gpu", "--disable-accelerated-2d-canvas", "--font-render-hinting=none", "--disable-lcd-text"] };
 if (executablePath) launch.executablePath = executablePath;
 const browser = await chromium.launch(launch);

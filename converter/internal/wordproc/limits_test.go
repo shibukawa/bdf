@@ -56,20 +56,6 @@ func TestGridSpanCapped(t *testing.T) {
 	}
 }
 
-// Benchmark the long keepNext chain. Its page-placement behavior is covered
-// by the DOCX tests; wall-clock regression limits are too sensitive to CI load.
-func BenchmarkKeepNextParagraphs(b *testing.B) {
-	for _, size := range []int{10000, 40000} {
-		b.Run(strconv.Itoa(size), func(b *testing.B) {
-			body := strings.Repeat(`<w:p><w:pPr><w:keepNext/></w:pPr></w:p>`, size)
-			b.ResetTimer()
-			for range b.N {
-				limDocx(b, body, ViewsPages)
-			}
-		})
-	}
-}
-
 // A paragraph's custom tab stops are capped so resolving them (quadratic in
 // their number) stays bounded regardless of how many the markup lists.
 func TestTabStopsCapped(t *testing.T) {

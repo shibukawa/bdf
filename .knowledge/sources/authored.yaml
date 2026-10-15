@@ -1,8 +1,0 @@
-id: source:authored
-title: Authored product knowledge
-adapter: catalog
-location:
-  root: .knowledge
-  include: ["concepts/**/*.yaml", "concepts/**/*.yml", "*/*.md"]
-  exclude: ["sources/**", "schema/**", "_schema/**", "extracted/**", ".cache/**"]
-depends_on: []

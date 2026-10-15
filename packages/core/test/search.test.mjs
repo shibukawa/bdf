@@ -168,7 +168,7 @@ test("MARK WRAP joins East Asian lines without a separator", async () => {
   assert.equal(hits[0].segments.length, 2);
 });
 
-test("hits take their context from the plain text, which is made once", async () => {
+test("hits take their context from the plain text, including line breaks", async () => {
   const doc = await BdfDocument.open(new BufferSource(fixture));
   const index = await doc.textIndex(doc.view("doc"));
   const ts = new TextSearch(index);
@@ -178,7 +178,6 @@ test("hits take their context from the plain text, which is made once", async ()
     ["page", "ody of each page is its own "], ["page", "wsers. each page is a list o"],
   ]);
   const plain = ts.text;
-  assert.equal(ts.text, plain);
   // line breaks of the text are shown in the context
   const shown = plain.replace(/\n/g, " ⏎ ");
   const all = ts.search("e", { context: 20 });

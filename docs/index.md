@@ -22,7 +22,6 @@ The detailed reference documents are written in Japanese, for now:
 - **[Format specification v1.0](spec.md)** — the stable container, manifest, instruction set, and compatibility policy
 - **[API reference](api.md)** — every package and command, by name
 - **[Design notes](design.md)** — why each converter is built the way it is, section by section
-- **[Conversion quality report](quality.md)** — Japanese results for fixtures, rendering goldens, browser conversion, and known limits
 
 - **[Fonts and licenses](licenses.md)** — the fonts BDF holds and the demo site serves, and where each comes from (in English and Japanese)
 

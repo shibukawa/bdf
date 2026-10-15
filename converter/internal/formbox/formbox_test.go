@@ -29,15 +29,3 @@ func TestPictureCache(t *testing.T) {
 		t.Errorf("invalid-picture cache: %d entries, %d parts", len(r.images), len(doc.Parts()))
 	}
 }
-
-func BenchmarkPictureCache(b *testing.B) {
-	data := append([]byte("<svg>"), bytes.Repeat([]byte(" "), 1<<20)...)
-	data = append(data, []byte("</svg>")...)
-	b.ReportAllocs()
-	b.SetBytes(int64(len(data)))
-	b.ResetTimer()
-	for b.Loop() {
-		r := New(bdf.NewDocument(), Options{NoSystemFonts: true})
-		r.Picture(data)
-	}
-}

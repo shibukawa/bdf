@@ -61,4 +61,4 @@ A PDF converts a page at a time (`converter.OpenStream`). The viewer gets every 
 - **[In the browser](browser.md)** — workers, the viewer, and the wasm converter modules
 - **[Conversion and output](conversion.md)** — formulas, scores and playback, metadata, server-side thumbnails and search text
 - **[Passwords and protected mode](protection.md)** — password-protected input and encryption, and protected mode, which hands a logged-in reader a few sealed pages at a time
-- **[Building and testing](development.md)** — running the Go and TypeScript test suites, regenerating fixtures and goldens
+- **[Building and testing](development.md)** — running the Go and TypeScript test suites, regenerating fixtures

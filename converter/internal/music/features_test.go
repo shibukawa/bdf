@@ -1,14 +1,6 @@
 package music
 
-import (
-	"image/png"
-	"os"
-	"path/filepath"
-	"testing"
-
-	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/raster/imagebdf"
-)
+import "testing"
 
 // sb builds a score by hand, measure by measure.
 type sb struct {
@@ -201,34 +193,7 @@ func TestFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := os.Getenv("MUSIC_SAMPLES")
-	if dir == "" {
-		return
-	}
-	writePages(t, res.Doc, filepath.Join(dir, "features"))
-	f, err := os.Create(filepath.Join(dir, "features.bdf"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if err := res.Doc.WriteSingle(f); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func writePages(t *testing.T, doc *bdf.Document, prefix string) {
-	r := imagebdf.New(doc, &imagebdf.Options{FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
-	v := doc.Views[0]
-	for i := range v.Pages {
-		img, err := r.Page(v, i, 2)
-		if err != nil {
-			t.Fatal(err)
-		}
-		f, err := os.Create(prefix + "-" + string(rune('1'+i)) + ".png")
-		if err != nil {
-			t.Fatal(err)
-		}
-		png.Encode(f, img)
-		f.Close()
+	if res.Pages == 0 || res.Notes == 0 {
+		t.Errorf("empty score: %s", res.Summary())
 	}
 }
