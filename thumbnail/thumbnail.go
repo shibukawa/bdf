@@ -42,6 +42,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/image/imgconv"
+	"github.com/shibukawa/bdf/image/rowenc"
 	"github.com/shibukawa/bdf/raster/imagebdf"
 )
 
@@ -267,10 +268,14 @@ const (
 	PNG  = "png"
 	JPEG = "jpeg"
 	WebP = "webp"
+	// TIFF is written without compression, in one strip (see
+	// image/rowenc): for the monochrome images of imagebdf that printing
+	// takes, a bit a pixel.
+	TIFF = "tiff"
 )
 
 // FormatOf returns the image format a file name asks for by its extension
-// (.png, .jpg or .jpeg, .webp), or "".
+// (.png, .jpg or .jpeg, .webp, .tif or .tiff), or "".
 func FormatOf(name string) string {
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".png":
@@ -279,6 +284,8 @@ func FormatOf(name string) string {
 		return JPEG
 	case ".webp":
 		return WebP
+	case ".tif", ".tiff":
+		return TIFF
 	}
 	return ""
 }
@@ -291,12 +298,19 @@ func Encode(w io.Writer, img *image.RGBA, format string) error {
 
 // EncodeImage is Encode for an image of any kind: the monochrome images
 // of imagebdf (an *image.Gray, an *image.Paletted of black and white)
-// are written as they are by PNG (8 bits or 1 bit a pixel) and JPEG, and
-// in colour by WebP.
+// are written as they are by PNG and TIFF (8 bits or 1 bit a pixel) and
+// JPEG (in gray), and in colour by WebP. A TIFF of an image of another
+// kind is of RGBA pixels.
 func EncodeImage(w io.Writer, img image.Image, format string) error {
 	switch format {
 	case PNG:
 		return (&png.Encoder{CompressionLevel: png.BestCompression}).Encode(w, img)
+	case TIFF:
+		kind := rowenc.KindOf(img)
+		if kind == rowenc.RGBA {
+			img = toRGBA(img)
+		}
+		return rowenc.Encode(w, TIFF, img, kind, nil)
 	case JPEG:
 		return jpeg.Encode(w, img, &jpeg.Options{Quality: 85})
 	case WebP:
@@ -307,7 +321,17 @@ func EncodeImage(w io.Writer, img image.Image, format string) error {
 		_, err = w.Write(b)
 		return err
 	}
-	return errors.New("thumbnail: format must be png, jpeg or webp")
+	return errors.New("thumbnail: format must be png, jpeg, webp or tiff")
+}
+
+// toRGBA returns an image as an *image.RGBA.
+func toRGBA(src image.Image) *image.RGBA {
+	if img, ok := src.(*image.RGBA); ok {
+		return img
+	}
+	out := image.NewRGBA(src.Bounds())
+	draw.Draw(out, out.Rect, src, src.Bounds().Min, draw.Src)
+	return out
 }
 
 func toNRGBA(src image.Image) *image.NRGBA {

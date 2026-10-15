@@ -84,9 +84,32 @@ ren := imagebdf.New(doc, &imagebdf.Options{Antialias: imagebdf.AntialiasOff})
 img, err := ren.PageMono(doc.Views[0], 0, 600.0/72, imagebdf.Bilevel) // *image.Paletted
 ```
 
-ページは `Page` と同じに描いて最後に変換するので、境界はアンチエイリアスの設定で決まります。`AntialiasOff` なら 2 値画像は描画そのもので、アンチエイリアスありなら境界の被覆率を半分で切ります（ディザはしません）。画像は RGBA のものと別に完成画像のキャッシュに入ります。CLI では `bdf render -mono=gray|bilevel` で、1 ページでも `-pages` のバッチでも、PNG（8 bit または 1 bit）、JPEG、WebP（カラーで）に書けます。
+ページは `Page` と同じに描いて最後に変換するので、境界はアンチエイリアスの設定で決まります。`AntialiasOff` なら 2 値画像は描画そのもので、アンチエイリアスありなら境界の被覆率を半分で切ります（ディザはしません）。画像は RGBA のものと別に完成画像のキャッシュに入ります。CLI では `bdf render -mono=gray|bilevel` で、1 ページでも `-pages` のバッチでも、PNG か TIFF（8 bit または 1 bit）、JPEG（グレーで）、WebP（カラーで）に書けます。
 
 元の半透明、ブレンド、画像の補間、ソフトマスク、ぼかしは引き続き適用します。効果の元になる図形は選択したモードで描くため、その画素も変わることがあります。1 画素より細い線も従来どおり 1 画素幅と薄い alpha で描くため、境界のアンチエイリアスを切っても、すべての出力画素が不透明になるわけではありません。低解像度では段差や細部の欠落が見えることがあるので、固定の dpi 閾値に頼らず出力用途に応じて選んでください。Go で未知の `AntialiasMode` 値を渡した場合は AA を有効にしてレンダラの警告に記録し、CLI は未知の値をエラーにします。
+
+### 帯に分けて描く
+
+600 dpi のページは 3500 万画素で、キャンバスだけで 560 MiB（1 画素 16 バイト）、RGBA の画像でさらに 140 MiB を使います。`PageRows` はページを上から行の帯に分けて描き、描けた帯からコールバックに渡すので、帯 1 つ分のメモリでページをファイルに書けます。
+
+```go
+f, _ := os.Create("print.png")
+w := bufio.NewWriter(f)
+width, height, _ := imagebdf.PagePixels(v, 0, 600.0/72)
+enc, _ := rowenc.NewPNG(w, width, height, rowenc.Bilevel, &rowenc.Options{DPI: 600})
+err := ren.PageRows(v, 0, 600.0/72, imagebdf.Bilevel, func(y0 int, rows image.Image) error {
+	return enc.WriteRows(rows) // y0 行目からの行の *image.Paletted
+})
+// 続けて enc.Close()、w.Flush()、f.Close()
+```
+
+コールバックは帯の最初の行番号と、その行の画像（`Bounds()` はページのその行で、`Min.Y` が `y0`）を受け取ります。`Mono` が 0 なら `*image.RGBA`、それ以外は `Mono` の画像です。画像は次の帯で使い回すので、取っておくならコピーしてください。`PagesRows` は選んだページを順に同じように描きます。画素は `Page`・`PageMono` と同じです。各帯はページ全体の変換行列のまま、その帯の行と、ページの影が届くだけ上下の余白を足したキャンバスに描き（影が余白を越える帯は、越えた分の余白で描き直します）、帯をまたぐ文字列はまとめてラスタライズして次の帯のために取っておきます。
+
+`Options.BandRows` が帯の行数です（既定は `DefaultBandRows` の 128 行。A4 の 600 dpi でキャンバス 10 MiB）。ページの命令列は帯ごとに流し直しますが、最初の帯で各描画命令の範囲を記録し、以降の帯では範囲外の命令を飛ばすので、帯で描いても全体を一度に描くのとほぼ同じ速さです。ぼかしの大きい影のあるページは、影が届く分（600 dpi で数百行）だけ帯が高くなります。帯のグループ・ソフトマスク・クリップはページ分ではなく帯分のメモリを使い、画像は完成画像のキャッシュには入れません。
+
+`image/rowenc` は届いた行から PNG と TIFF を書くパッケージで、3 種類の画像（`RGBA`・`Gray`・`Bilevel`）を扱います。PNG は zlib で圧縮して 1 MiB ごとの IDAT に、TIFF は非圧縮の 1 ストリップでディレクトリを先に書くので、どちらもシークしません。RGBA の PNG は、まだ来ていない行が不透明か分からないので、ページが不透明でも RGBA のカラータイプで書きます（`image/png` は不透明なら RGB で書きます）。どちらもデコードすると全体を描いた画素になり、帯で書いたページのファイルは全体を一度に書いたファイルとバイト単位で同じです。
+
+CLI は出力が PNG か TIFF（`.png`、`.tif`）なら既定で帯に分けて描きます。`bdf render -mono=bilevel -scale 8.333333 report.bdf print.tif` は 600 dpi のページを約 70 MiB で書きます（全体を一度に描くと 1.1 GiB）。`-band=N` で帯の行数を変え、`-band=0` なら全体を一度に描きます。JPEG・WebP の出力と、`-workers` が 2 以上のバッチも全体を一度に描きます。
 
 ### 再描画のキャッシュとページ並列化
 

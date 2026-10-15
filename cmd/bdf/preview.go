@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/image/rowenc"
 	"github.com/shibukawa/bdf/raster/imagebdf"
 	"github.com/shibukawa/bdf/thumbnail"
 )
@@ -258,14 +260,15 @@ func renderCmd(args []string) {
 	workers := fs.Int("workers", 0, "batch render workers: 0 chooses automatically, 1..16 sets a maximum")
 	scale := fs.Float64("scale", 1, "pixels per unit (a pt page at 1 is drawn at 72 dpi)")
 	antialias := fs.String("antialias", "default", "shape, text and clip edge smoothing: default, on or off (faster; independent of scale)")
-	mono := fs.String("mono", "", "a monochrome image instead of colour: gray (8 bits a pixel) or bilevel (black and white; 1 bit a pixel in a PNG)")
+	mono := fs.String("mono", "", "a monochrome image instead of colour: gray (8 bits a pixel) or bilevel (black and white; 1 bit a pixel in a PNG or TIFF)")
+	band := fs.Int("band", imagebdf.DefaultBandRows, "draw a page in bands of this many rows, written to a PNG or TIFF file as each is drawn, with the memory of a band instead of the page (not with -workers above 1); 0 draws the page at once")
 	width := fs.Float64("width", 1000, "sheets: width of the region from A1 to draw, in units")
 	height := fs.Float64("height", 1000, "sheets: height of the region from A1 to draw, in units")
 	allow := fs.Bool("allow-plaintext", false, "draw an encrypted document (read with $"+passwordEnv+"); the image is not encrypted")
 	quiet := fs.Bool("q", false, "do not print warnings")
 	ropts := fontFlags(fs)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: bdf render [flags] <file.bdf | dir> <out.png | out.jpg | out.webp>")
+		fmt.Fprintln(os.Stderr, "usage: bdf render [flags] <file.bdf | dir> <out.png | out.jpg | out.webp | out.tif>")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -275,6 +278,9 @@ func renderCmd(args []string) {
 	}
 	if *workers < 0 || *workers > 16 {
 		badUsage("render", "-workers must be 0..16")
+	}
+	if *band < 0 {
+		badUsage("render", "-band must be 0 or more")
 	}
 	var pageSet, workersSet bool
 	fs.Visit(func(f *flag.Flag) {
@@ -304,7 +310,7 @@ func renderCmd(args []string) {
 	}
 	format := thumbnail.FormatOf(fs.Arg(1))
 	if format == "" {
-		badUsage("render", fs.Arg(1)+": the image must be a .png, .jpg or .webp file")
+		badUsage("render", fs.Arg(1)+": the image must be a .png, .jpg, .webp or .tif file")
 	}
 	if !(*scale > 0) || *scale > 16 {
 		badUsage("render", "-scale must be above 0 and at most 16")
@@ -343,7 +349,11 @@ func renderCmd(args []string) {
 	if v == nil {
 		check(fmt.Errorf("%s: no view %q", fs.Arg(0), *view))
 	}
+	o.BandRows = *band
 	r := imagebdf.New(doc, &o)
+	// a page is drawn in bands and written as it is drawn when the file
+	// takes rows (PNG, TIFF) and the pages are drawn one at a time
+	streamed := *band > 0 && v.Kind != bdf.ViewSheet && (format == thumbnail.PNG || format == thumbnail.TIFF) && (*pages == "" || *workers == 1)
 	if *pages != "" {
 		if v.Kind == bdf.ViewSheet {
 			badUsage("render", "-pages does not apply to sheet views")
@@ -357,10 +367,32 @@ func renderCmd(args []string) {
 		for i := range numbers {
 			numbers[i]--
 		}
+		if streamed {
+			var out *rowsFile
+			err := r.PagesRows(context.Background(), v, numbers, *scale, m, func(page, y0 int, rows image.Image) error {
+				if y0 == 0 {
+					var err error
+					if out, err = openRowsFile(strings.ReplaceAll(fs.Arg(1), "{page}", strconv.Itoa(page+1)), format, v, page, *scale, m); err != nil {
+						return err
+					}
+				}
+				return out.write(y0, rows)
+			})
+			if err != nil && out != nil {
+				out.abandon()
+			}
+			check(err)
+			if !*quiet {
+				for _, warning := range r.Warnings() {
+					fmt.Fprintln(os.Stderr, "warning:", warning)
+				}
+			}
+			return
+		}
 		var encoded bytes.Buffer
 		check(r.PagesMono(context.Background(), v, numbers, *scale, *workers, m, func(page int, img image.Image) error {
 			encoded.Reset()
-			if err := thumbnail.EncodeImage(&encoded, img, format); err != nil {
+			if err := encodeImage(&encoded, img, format, *scale); err != nil {
 				return err
 			}
 			return os.WriteFile(strings.ReplaceAll(fs.Arg(1), "{page}", strconv.Itoa(page+1)), encoded.Bytes(), 0o644)
@@ -374,16 +406,23 @@ func renderCmd(args []string) {
 	}
 	var err error
 	var b bytes.Buffer
-	if v.Kind == bdf.ViewSheet {
+	switch {
+	case v.Kind == bdf.ViewSheet:
 		w, h := int(*width**scale+0.5), int(*height**scale+0.5)
 		img, e := r.RegionMono(v, 0, bdf.Rect{W: float32(*width), H: float32(*height)}, max(w, 1), max(h, 1), m)
 		if err = e; err == nil {
-			err = thumbnail.EncodeImage(&b, img, format)
+			err = encodeImage(&b, img, format, *scale)
 		}
-	} else {
+	case streamed:
+		out, e := openRowsFile(fs.Arg(1), format, v, *page-1, *scale, m)
+		check(e)
+		if err = r.PageRows(v, *page-1, *scale, m, out.write); err != nil {
+			out.abandon()
+		}
+	default:
 		img, e := r.PageMono(v, *page-1, *scale, m)
 		if err = e; err == nil {
-			err = thumbnail.EncodeImage(&b, img, format)
+			err = encodeImage(&b, img, format, *scale)
 		}
 	}
 	check(err)
@@ -392,7 +431,93 @@ func renderCmd(args []string) {
 			fmt.Fprintln(os.Stderr, "warning:", w)
 		}
 	}
-	check(os.WriteFile(fs.Arg(1), b.Bytes(), 0o644))
+	if !streamed {
+		check(os.WriteFile(fs.Arg(1), b.Bytes(), 0o644))
+	}
+}
+
+// encodeImage writes an image of render: a PNG or TIFF as the rows of a
+// page are written (see rowsFile), so that a page drawn whole and one
+// drawn in bands are the same file; the rest as thumbnail.EncodeImage.
+func encodeImage(w io.Writer, img image.Image, format string, scale float64) error {
+	if format != thumbnail.PNG && format != thumbnail.TIFF {
+		return thumbnail.EncodeImage(w, img, format)
+	}
+	kind := rowenc.KindOf(img)
+	if kind == rowenc.RGBA {
+		if _, ok := img.(*image.RGBA); !ok {
+			return thumbnail.EncodeImage(w, img, format)
+		}
+	}
+	return rowenc.Encode(w, format, img, kind, rowsOptions(scale))
+}
+
+// rowsOptions is how the PNG and TIFF files of render are written: the
+// PNG compressed as thumbnail.EncodeImage compresses one, the resolution
+// noted from the scale.
+func rowsOptions(scale float64) *rowenc.Options {
+	return &rowenc.Options{Level: 9, DPI: scale * 72}
+}
+
+// rowsFile is an image file written from the rows of a page as they are
+// drawn (see rowenc), and closed with the last row.
+type rowsFile struct {
+	name string
+	f    *os.File
+	w    *bufio.Writer
+	enc  rowenc.Writer
+	h    int
+	rows int
+}
+
+// openRowsFile starts an image file of a page of a view at scale with the
+// pixels of the mono.
+func openRowsFile(name, format string, v *bdf.View, page int, scale float64, m imagebdf.Mono) (*rowsFile, error) {
+	w, h, err := imagebdf.PagePixels(v, page, scale)
+	if err != nil {
+		return nil, err
+	}
+	kind := rowenc.RGBA
+	switch m {
+	case imagebdf.Gray:
+		kind = rowenc.Gray
+	case imagebdf.Bilevel:
+		kind = rowenc.Bilevel
+	}
+	f, err := os.Create(name)
+	if err != nil {
+		return nil, err
+	}
+	out := &rowsFile{name: name, f: f, w: bufio.NewWriterSize(f, 1<<20), h: h}
+	if out.enc, err = rowenc.New(out.w, format, w, h, kind, rowsOptions(scale)); err != nil {
+		out.abandon()
+		return nil, err
+	}
+	return out, nil
+}
+
+// write writes the rows of a band, and ends the file with the last.
+func (out *rowsFile) write(_ int, rows image.Image) error {
+	if err := out.enc.WriteRows(rows); err != nil {
+		return err
+	}
+	out.rows += rows.Bounds().Dy()
+	if out.rows < out.h {
+		return nil
+	}
+	if err := out.enc.Close(); err != nil {
+		return err
+	}
+	if err := out.w.Flush(); err != nil {
+		return err
+	}
+	return out.f.Close()
+}
+
+// abandon removes a file that could not be written whole.
+func (out *rowsFile) abandon() {
+	out.f.Close()
+	os.Remove(out.name)
 }
 
 func badUsage(cmd, msg string) {

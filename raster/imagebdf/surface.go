@@ -8,10 +8,17 @@ import (
 	"github.com/shibukawa/bdf"
 )
 
-// surface is a canvas of premultiplied RGBA pixels, 0 to 1.
+// surface is a canvas of premultiplied RGBA pixels, 0 to 1, at (ox, oy)
+// of the device: the canvases of the groups and soft masks of a drawing
+// lie on the same device as the canvas of the image, and a band of a page
+// (see pageRows) is the rows of the page it draws.
 type surface struct {
-	w, h int
-	pix  []float32
+	w, h   int
+	ox, oy int
+	pix    []float32
+	// page is the whole image a band is of (see pageRows), the bounds
+	// when the canvas is the whole of it
+	page image.Rectangle
 	row  []float32 // the colours of a row being filled
 	// rows holds the colours of the rows the other goroutines of a pass
 	// fill (see splitRows)
@@ -28,7 +35,19 @@ func newSurface(w, h int) *surface {
 	return &surface{w: w, h: h, pix: make([]float32, 4*w*h), fresh: true, threads: 1}
 }
 
-func (s *surface) bounds() image.Rectangle { return image.Rect(0, 0, s.w, s.h) }
+func (s *surface) bounds() image.Rectangle { return image.Rect(s.ox, s.oy, s.ox+s.w, s.oy+s.h) }
+
+// whole is the image the canvas is the whole or a band of (see page).
+func (s *surface) whole() image.Rectangle {
+	if s.page.Empty() {
+		return s.bounds()
+	}
+	return s.page
+}
+
+// at returns the index in pix of the pixel at (x, y) of the device, which
+// must lie on the canvas.
+func (s *surface) at(x, y int) int { return 4 * ((y-s.oy)*s.w + x - s.ox) }
 
 // bands calls fn for bands of the rows of r, in parallel for a large r
 // (see splitRows).
@@ -66,7 +85,7 @@ func (s *surface) rowBufs(n int) {
 func (s *surface) setRows(r image.Rectangle, row []float32) {
 	s.bands(r, func(y0, y1, _ int) {
 		for y := y0; y < y1; y++ {
-			copy(s.pix[4*(y*s.w+r.Min.X):4*(y*s.w+r.Max.X)], row)
+			copy(s.pix[s.at(r.Min.X, y):s.at(r.Max.X, y)], row)
 		}
 	})
 }
@@ -163,7 +182,7 @@ func (s *surface) fill(cov *mask, sh shader, alpha float32, mode byte, clip *mas
 			if cov != nil {
 				crow = cov.row(y, r.Min.X, r.Max.X)
 			}
-			d := s.pix[4*(y*s.w+r.Min.X) : 4*(y*s.w+r.Max.X)]
+			d := s.pix[s.at(r.Min.X, y):s.at(r.Max.X, y)]
 			if mode == bdf.BlendSourceOver && krow == nil {
 				// the common case, without asking each pixel what the
 				// clip and the composite operation are
@@ -260,7 +279,7 @@ func (s *surface) fillBackground(cov *mask, c solid) {
 	ia := 1 - c[3]
 	s.bands(r, func(y0, y1, _ int) {
 		for y := y0; y < y1; y++ {
-			d := s.pix[4*(y*s.w+r.Min.X) : 4*(y*s.w+r.Max.X)]
+			d := s.pix[s.at(r.Min.X, y):s.at(r.Max.X, y)]
 			for i := 0; i < len(d); i += 4 {
 				p := d[i : i+4]
 				p[0] = c[0] + float32(p[0]*ia)
@@ -304,7 +323,7 @@ func (s *surface) fillAll(cov *mask, sh shader, alpha float32, mode byte, clip *
 				covered = func(int) float32 { return 0 }
 			}
 		}
-		d := s.pix[4*(y*s.w+r.Min.X) : 4*(y*s.w+r.Max.X)]
+		d := s.pix[s.at(r.Min.X, y):s.at(r.Max.X, y)]
 		for i := 0; i < n; i++ {
 			x := r.Min.X + i
 			c := covered(x) * alpha
@@ -510,34 +529,53 @@ func nonSeparable(mode byte, cb, cs [3]float32) [3]float32 {
 	}
 }
 
-// surfaceShader reads the pixels of another surface placed at (dx, dy).
+// surfaceShader reads the pixels of another surface where it lies on the
+// device: none outside it.
 type surfaceShader struct {
-	s      *surface
-	dx, dy int
+	s *surface
 }
 
 func (ss surfaceShader) shade(x, y, n int, dst []float32) {
-	sy := y - ss.dy
-	if sx := x - ss.dx; sx >= 0 && sy >= 0 && sx+n <= ss.s.w && sy < ss.s.h && !plain {
-		copy(dst[:4*n], ss.s.pix[4*(sy*ss.s.w+sx):]) // the whole row is of the surface
+	s := ss.s
+	sy := y - s.oy
+	if sx := x - s.ox; sx >= 0 && sy >= 0 && sx+n <= s.w && sy < s.h && !plain {
+		copy(dst[:4*n], s.pix[4*(sy*s.w+sx):]) // the whole row is of the surface
 		return
 	}
 	for i := 0; i < n; i++ {
-		sx := x + i - ss.dx
-		if sx < 0 || sy < 0 || sx >= ss.s.w || sy >= ss.s.h {
+		sx := x + i - s.ox
+		if sx < 0 || sy < 0 || sx >= s.w || sy >= s.h {
 			dst[4*i], dst[4*i+1], dst[4*i+2], dst[4*i+3] = 0, 0, 0, 0
 			continue
 		}
-		copy(dst[4*i:4*i+4], ss.s.pix[4*(sy*ss.s.w+sx):])
+		copy(dst[4*i:4*i+4], s.pix[4*(sy*s.w+sx):])
 	}
 }
 
-// toRGBA converts the surface to an image of premultiplied 8-bit pixels.
+// toRGBA converts the surface to an image of premultiplied 8-bit pixels,
+// whose bounds are those of the canvas.
 func (s *surface) toRGBA() *image.RGBA {
-	img := image.NewRGBA(image.Rect(0, 0, s.w, s.h))
-	s.bands(s.bounds(), func(y0, y1, _ int) {
-		pix := s.pix[4*y0*s.w : 4*y1*s.w]
-		out := img.Pix[4*y0*s.w : 4*y1*s.w]
+	return s.toRGBAInto(nil, s.bounds())
+}
+
+// rgbaFor returns an image of the pixels of rows, which must be as wide
+// as the canvas: img when it holds as many, else a new one.
+func rgbaFor(img *image.RGBA, rows image.Rectangle) *image.RGBA {
+	n := 4 * rows.Dx() * rows.Dy()
+	if img == nil || cap(img.Pix) < n {
+		return image.NewRGBA(rows)
+	}
+	return &image.RGBA{Pix: img.Pix[:n], Stride: 4 * rows.Dx(), Rect: rows}
+}
+
+// toRGBAInto converts the rows of the canvas (its whole width) to an
+// image of premultiplied 8-bit pixels with those bounds, into the memory
+// of img when it is large enough (see rgbaFor).
+func (s *surface) toRGBAInto(img *image.RGBA, rows image.Rectangle) *image.RGBA {
+	img = rgbaFor(img, rows)
+	s.bands(rows, func(y0, y1, _ int) {
+		pix := s.pix[s.at(s.ox, y0):s.at(s.ox, y1)]
+		out := img.Pix[4*(y0-rows.Min.Y)*s.w : 4*(y1-rows.Min.Y)*s.w]
 		out = out[:len(pix)]
 		for i, v := range pix {
 			out[i] = byteOf(v)
@@ -561,11 +599,24 @@ func grayOf(p []float32) uint8 {
 
 // toGray converts the surface to an image of the luminance of its pixels
 // over white (see Gray).
-func (s *surface) toGray() *image.Gray {
-	img := image.NewGray(image.Rect(0, 0, s.w, s.h))
-	s.bands(s.bounds(), func(y0, y1, _ int) {
-		pix := s.pix[4*y0*s.w : 4*y1*s.w]
-		out := img.Pix[y0*s.w : y1*s.w]
+func (s *surface) toGray() *image.Gray { return s.toGrayInto(nil, s.bounds()) }
+
+// grayFor is rgbaFor for a gray image.
+func grayFor(img *image.Gray, rows image.Rectangle) *image.Gray {
+	n := rows.Dx() * rows.Dy()
+	if img == nil || cap(img.Pix) < n {
+		return image.NewGray(rows)
+	}
+	return &image.Gray{Pix: img.Pix[:n], Stride: rows.Dx(), Rect: rows}
+}
+
+// toGrayInto is toGray for the rows of the canvas, into the memory of img
+// when it is large enough.
+func (s *surface) toGrayInto(img *image.Gray, rows image.Rectangle) *image.Gray {
+	img = grayFor(img, rows)
+	s.bands(rows, func(y0, y1, _ int) {
+		pix := s.pix[s.at(s.ox, y0):s.at(s.ox, y1)]
+		out := img.Pix[(y0-rows.Min.Y)*s.w : (y1-rows.Min.Y)*s.w]
 		for i := range out {
 			out[i] = grayOf(pix[4*i : 4*i+4])
 		}
@@ -578,14 +629,29 @@ var bilevelPalette = color.Palette{color.Gray{0}, color.Gray{255}}
 
 // toBilevel converts the surface to an image of black and white: black
 // where the gray value is below 128 (see Bilevel).
-func (s *surface) toBilevel() *image.Paletted {
-	img := image.NewPaletted(image.Rect(0, 0, s.w, s.h), bilevelPalette)
-	s.bands(s.bounds(), func(y0, y1, _ int) {
-		pix := s.pix[4*y0*s.w : 4*y1*s.w]
-		out := img.Pix[y0*s.w : y1*s.w]
+func (s *surface) toBilevel() *image.Paletted { return s.toBilevelInto(nil, s.bounds()) }
+
+// bilevelFor is rgbaFor for an image of black and white.
+func bilevelFor(img *image.Paletted, rows image.Rectangle) *image.Paletted {
+	n := rows.Dx() * rows.Dy()
+	if img == nil || cap(img.Pix) < n {
+		return image.NewPaletted(rows, bilevelPalette)
+	}
+	return &image.Paletted{Pix: img.Pix[:n], Stride: rows.Dx(), Rect: rows, Palette: bilevelPalette}
+}
+
+// toBilevelInto is toBilevel for the rows of the canvas, into the memory
+// of img when it is large enough.
+func (s *surface) toBilevelInto(img *image.Paletted, rows image.Rectangle) *image.Paletted {
+	img = bilevelFor(img, rows)
+	s.bands(rows, func(y0, y1, _ int) {
+		pix := s.pix[s.at(s.ox, y0):s.at(s.ox, y1)]
+		out := img.Pix[(y0-rows.Min.Y)*s.w : (y1-rows.Min.Y)*s.w]
 		for i := range out {
 			if grayOf(pix[4*i:4*i+4]) >= 128 {
 				out[i] = 1
+			} else {
+				out[i] = 0
 			}
 		}
 	})

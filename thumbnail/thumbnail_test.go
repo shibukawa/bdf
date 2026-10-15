@@ -165,7 +165,7 @@ func TestEncode(t *testing.T) {
 			t.Errorf("%s: %v", f, img.Bounds())
 		}
 	}
-	for name, want := range map[string]string{"a.PNG": PNG, "b.jpg": JPEG, "c.jpeg": JPEG, "d.webp": WebP, "e.gif": ""} {
+	for name, want := range map[string]string{"a.PNG": PNG, "b.jpg": JPEG, "c.jpeg": JPEG, "d.webp": WebP, "e.gif": "", "f.tif": TIFF, "g.TIFF": TIFF} {
 		if got := FormatOf(name); got != want {
 			t.Errorf("FormatOf(%q) = %q", name, got)
 		}

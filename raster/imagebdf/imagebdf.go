@@ -113,7 +113,18 @@ type Options struct {
 	// within this budget; Pages keeps one canvas a worker for the length
 	// of a batch whatever the budget.
 	CanvasCacheBytes int
+	// BandRows is the rows of a band of a page drawn in bands (PageRows,
+	// PagesRows): the canvas of a band takes 16 bytes a pixel of it, and
+	// the instructions of the page are run once a band. Zero uses
+	// DefaultBandRows.
+	BandRows int
 }
+
+// DefaultBandRows is the rows of a band of a page drawn in bands
+// (Options.BandRows): an A4 page at 600 dpi (4960 pixels wide) takes a
+// canvas of 10 MiB a band of 128 rows, and is drawn in 55 bands as fast
+// as in fewer.
+const DefaultBandRows = 128
 
 // Renderer draws the views of a document. It keeps what it decodes (objects,
 // paths, images, fonts) for the next drawing, the images up to
@@ -169,7 +180,7 @@ const DefaultCanvasCacheBytes = 64 << 20
 func (r *Renderer) newSurface(w, h int) *surface {
 	s, cleared := r.surfaceFor(w, h)
 	if !cleared {
-		s.bands(s.bounds(), func(y0, y1, _ int) { clear(s.pix[4*y0*w : 4*y1*w]) })
+		splitRows(s.threads, 0, h, w, func(y0, y1, _ int) { clear(s.pix[4*y0*w : 4*y1*w]) })
 		s.fresh = true
 	}
 	return s
@@ -186,6 +197,7 @@ func (r *Renderer) surfaceFor(w, h int) (s *surface, cleared bool) {
 				r.free = slices.Delete(r.free, i, i+1)
 				r.freeBytes -= 4 * cap(s.pix)
 				s.w, s.h, s.pix = w, h, s.pix[:n]
+				s.ox, s.oy, s.page = 0, 0, image.Rectangle{}
 				s.threads = r.threads
 				s.fresh = false
 				return s, false
@@ -579,14 +591,34 @@ func (r *Renderer) pageMono(v *bdf.View, page int, scale float64, mono Mono) (im
 	if err != nil {
 		return nil, err
 	}
+	w, h, err := pagePixels(p, scale)
+	if err != nil {
+		return nil, err
+	}
+	return r.cachedPage(p, bdf.Rect{W: p.W, H: p.H}, w, h, mono), nil
+}
+
+// PagePixels returns the size of the image Page draws of a page of a
+// view at scale device pixels per unit, with the errors of Page: the
+// units of the page rounded up to pixels, a pixel at least.
+func PagePixels(v *bdf.View, page int, scale float64) (w, h int, err error) {
+	p, err := drawablePage(v, page)
+	if err != nil {
+		return 0, 0, err
+	}
+	return pagePixels(p, scale)
+}
+
+// pagePixels is PagePixels for a page (see drawablePage).
+func pagePixels(p *bdf.Page, scale float64) (w, h int, err error) {
 	if !(scale > 0) {
-		return nil, errors.New("imagebdf: empty page")
+		return 0, 0, errors.New("imagebdf: empty page")
 	}
 	fw, fh := math.Max(math.Ceil(float64(p.W)*scale-1e-6), 1), math.Max(math.Ceil(float64(p.H)*scale-1e-6), 1)
 	if !(fw*fh <= MaxPixels) {
-		return nil, ErrTooLarge
+		return 0, 0, ErrTooLarge
 	}
-	return r.cachedPage(p, bdf.Rect{W: p.W, H: p.H}, int(fw), int(fh), mono), nil
+	return int(fw), int(fh), nil
 }
 
 // PageDPI draws a whole page at dpi pixels per inch. BDF page units are
@@ -677,13 +709,16 @@ func (r *Renderer) regionMono(v *bdf.View, page int, region bdf.Rect, w, h int, 
 func (r *Renderer) canvas(region bdf.Rect, w, h int, bg *solid) (*drawer, matrix) {
 	sx, sy := float64(w)/float64(region.W), float64(h)/float64(region.H)
 	m := matrix{sx, 0, 0, sy, -float64(region.X) * sx, -float64(region.Y) * sy}
-	return r.canvasAt(m, w, h, bg), m
+	whole := image.Rect(0, 0, w, h)
+	return r.canvasAt(m, whole, whole, bg), m
 }
 
-// canvasAt starts a w × h image with the device transform m: of the
-// background colour when it is opaque and covers the whole image (see
-// filledSurface), else cleared.
-func (r *Renderer) canvasAt(m matrix, w, h int, bg *solid) *drawer {
+// canvasAt starts a drawing of the pixels rows of an image whole, with
+// the device transform m, on a canvas of the background colour when it
+// is opaque and covers the whole image (see filledSurface), else cleared.
+// The rows are the whole image, or a band of it (see pageRows).
+func (r *Renderer) canvasAt(m matrix, rows, whole image.Rectangle, bg *solid) *drawer {
+	w, h := rows.Dx(), rows.Dy()
 	var s *surface
 	switch {
 	case bg == nil || bg[3] != 1:
@@ -694,8 +729,14 @@ func (r *Renderer) canvasAt(m matrix, w, h int, bg *solid) *drawer {
 	default:
 		s = r.filledSurface(w, h, *bg)
 	}
+	s.ox, s.oy = rows.Min.X, rows.Min.Y
+	if rows != whole {
+		s.page = whole
+	}
 	r.drawing++
-	d := &drawer{r: r, ctx: &context{target: s}, limit: max(maxLive*16*w*h, minLive), most: maxReusedInstructions}
+	// the groups and clips of a band may take what those of the whole
+	// image may: the canvases of a band are its size at most
+	d := &drawer{r: r, ctx: &context{target: s}, limit: max(maxLive*16*whole.Dx()*whole.Dy(), minLive), most: maxReusedInstructions, cur: -1}
 	d.ctx.st = initialState(m, &mask{r: s.bounds()})
 	return d
 }
@@ -912,12 +953,12 @@ func (r *Renderer) gridlines(d *drawer, v *bdf.View, region bdf.Rect, m matrix) 
 		}
 		before = before[:0]
 		for y := cov.r.Min.Y; y < cov.r.Max.Y; y++ {
-			before = append(before, t.pix[4*(y*t.w+cov.r.Min.X):4*(y*t.w+cov.r.Max.X)]...)
+			before = append(before, t.pix[t.at(cov.r.Min.X, y):t.at(cov.r.Max.X, y)]...)
 		}
 		t.fill(cov, color, 1, bdf.BlendSourceOver, all)
 		n := 4 * cov.r.Dx()
 		for i, y := 0, cov.r.Min.Y; y < cov.r.Max.Y; i, y = i+1, y+1 {
-			if !slices.Equal(before[i*n:(i+1)*n], t.pix[4*(y*t.w+cov.r.Min.X):4*(y*t.w+cov.r.Max.X)]) {
+			if !slices.Equal(before[i*n:(i+1)*n], t.pix[t.at(cov.r.Min.X, y):t.at(cov.r.Max.X, y)]) {
 				return true
 			}
 		}
