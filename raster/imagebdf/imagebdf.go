@@ -46,6 +46,21 @@ import (
 	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
+// AntialiasMode selects how geometric edges are rasterized. It does not
+// change source opacity, image interpolation, shadows or soft masks.
+type AntialiasMode uint8
+
+const (
+	// AntialiasDefault preserves the existing antialiased rendering at any DPI.
+	AntialiasDefault AntialiasMode = iota
+	// AntialiasOn explicitly enables antialiased geometric edges.
+	AntialiasOn
+	// AntialiasOff samples geometric edges at pixel centers, without coverage
+	// antialiasing. Subpixel-width strokes still use the existing width-to-alpha
+	// compensation, so their pixels need not be opaque.
+	AntialiasOff
+)
+
 // Options configures a Renderer.
 type Options struct {
 	// FontFS holds fonts searched before FontDirs, for the text of fonts
@@ -60,6 +75,17 @@ type Options struct {
 	// Background fills the page behind its content (default white). Use
 	// color.Transparent for a transparent page.
 	Background color.Color
+	// Antialias controls path, text and geometric clip edges. The zero value
+	// retains antialiasing, independent of DPI. Unknown values also retain it
+	// and add a renderer warning.
+	Antialias AntialiasMode
+	// ImageCacheBytes bounds retained completed Page, Region and Renderer.Object
+	// images. Zero uses DefaultImageCacheBytes; a negative value disables it.
+	ImageCacheBytes int
+	// TextCacheBytes bounds retained whole text-run coverage masks. Zero uses
+	// DefaultTextCacheBytes; a negative value disables it. Neither cache changes
+	// rendering quality. Call Invalidate after changing document parts or FontFS.
+	TextCacheBytes int
 }
 
 // Renderer draws the views of a document. It keeps what it decodes (objects,
@@ -89,8 +115,12 @@ type Renderer struct {
 	sc      scratch
 	// free holds the canvases of the drawings before, for the next ones
 	// (see newSurface), smallest first; freeBytes is their memory
-	free      []*surface
-	freeBytes int
+	free        []*surface
+	freeBytes   int
+	images      lru[imageKey, *image.RGBA]
+	textMasks   *textMaskCache
+	pageWorkers []*Renderer
+	freeLimit   int
 }
 
 // maxFreeSurfaces bounds the memory of the canvases a renderer keeps for
@@ -124,10 +154,10 @@ func (r *Renderer) release(s *surface) {
 		return
 	}
 	n := 4 * cap(s.pix)
-	if n > maxFreeSurfaces {
+	if n > r.freeBudget() {
 		return
 	}
-	for r.freeBytes+n > maxFreeSurfaces && len(r.free) > 0 {
+	for r.freeBytes+n > r.freeBudget() && len(r.free) > 0 {
 		r.freeBytes -= 4 * cap(r.free[0].pix)
 		r.free = slices.Delete(r.free, 0, 1)
 	}
@@ -150,6 +180,7 @@ func (r *Renderer) scratch() *scratch {
 	}
 	r.sc.reset()
 	r.sc.r = r
+	r.sc.noAA = r.opts.Antialias == AntialiasOff
 	return &r.sc
 }
 
@@ -173,8 +204,15 @@ func New(doc *bdf.Document, opts *Options) *Renderer {
 	}
 	if opts != nil {
 		r.opts = *opts
+		r.opts.FontDirs = slices.Clone(opts.FontDirs)
+	}
+	if r.opts.Antialias > AntialiasOff {
+		r.warnf("unknown antialias mode %d: using antialiasing", r.opts.Antialias)
+		r.opts.Antialias = AntialiasDefault
 	}
 	r.fonts = &fonts{r: r, parts: map[bdf.Hash]*fontFace{}, files: map[*fontdb.Face]*fontFace{}, chains: map[bdf.Font]*fontChain{}}
+	r.images.limit = cacheLimit(r.opts.ImageCacheBytes, DefaultImageCacheBytes)
+	r.textMasks = &textMaskCache{lru: lru[textMaskKey, *mask]{limit: cacheLimit(r.opts.TextCacheBytes, DefaultTextCacheBytes)}}
 	return r
 }
 
@@ -390,7 +428,7 @@ func (r *Renderer) Page(v *bdf.View, page int, scale float64) (img *image.RGBA, 
 	if !(fw*fh <= MaxPixels) {
 		return nil, ErrTooLarge
 	}
-	return r.drawPage(p, bdf.Rect{W: p.W, H: p.H}, int(fw), int(fh))
+	return r.cachedPage(p, bdf.Rect{W: p.W, H: p.H}, int(fw), int(fh))
 }
 
 // PageDPI draws a whole page at dpi pixels per inch. BDF page units are
@@ -413,7 +451,7 @@ func (r *Renderer) PageSize(v *bdf.View, page, w, h int) (img *image.RGBA, err e
 	if w > MaxPixels/h {
 		return nil, ErrTooLarge
 	}
-	return r.drawPage(p, bdf.Rect{W: p.W, H: p.H}, w, h)
+	return r.cachedPage(p, bdf.Rect{W: p.W, H: p.H}, w, h)
 }
 
 func drawablePage(v *bdf.View, page int) (*bdf.Page, error) {
@@ -450,14 +488,14 @@ func (r *Renderer) Region(v *bdf.View, page int, region bdf.Rect, w, h int) (img
 	}
 	switch v.Kind {
 	case bdf.ViewSheet:
-		return r.drawSheet(v, region, w, h), nil
+		return r.cachedView(v, region, w, h, true), nil
 	case bdf.ViewScroll:
-		return r.drawContinuous(v, region, w, h), nil
+		return r.cachedView(v, region, w, h, false), nil
 	}
 	if page < 0 || page >= len(v.Pages) || v.Pages[page] == nil {
 		return nil, ErrNoPage
 	}
-	return r.drawPage(v.Pages[page], region, w, h)
+	return r.cachedPage(v.Pages[page], region, w, h)
 }
 
 // canvas starts an image for a region with the device transform that maps
@@ -499,7 +537,7 @@ func (r *Renderer) background() solid {
 func (d *drawer) clipTo(m matrix, x, y, w, h float64) *mask {
 	ax, ay := m.apply(x, y)
 	bx, by := m.apply(x+w, y+h)
-	return rectMask(ax, ay, bx, by, d.ctx.target.bounds())
+	return d.r.rectMask(ax, ay, bx, by, d.ctx.target.bounds())
 }
 
 func (r *Renderer) drawPage(p *bdf.Page, region bdf.Rect, w, h int) (*image.RGBA, error) {
@@ -639,7 +677,7 @@ func (r *Renderer) gridlines(d *drawer, v *bdf.View, region bdf.Rect, m matrix) 
 	// the result whether drawing it once more changed a pixel (it changes
 	// those the line covers in part, until they have its colour)
 	line := func(ax, ay, bx, by float64, again bool) bool {
-		cov := rectMask(ax, ay, bx, by, all.r)
+		cov := r.rectMask(ax, ay, bx, by, all.r)
 		if !again {
 			t.fill(cov, color, 1, bdf.BlendSourceOver, all)
 			return true

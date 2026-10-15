@@ -49,6 +49,48 @@ err = png.Encode(w, img)
 
 コマンドなら `bdf render -page 1 -scale 2 report.bdf page1.png` です。
 
+### ラスタライズの品質と速度
+
+`imagebdf.Options.Antialias` で図形・文字・幾何クリップの境界のアンチエイリアスを明示的に選べます。`Page`、`PageDPI`、`PageSize`、`Region`、`Object`、`SVGImage` に適用され、dpi や倍率による自動切り替えはありません。
+
+| モード | 描画 |
+|---|---|
+| `imagebdf.AntialiasDefault`（ゼロ値） | 解像度によらず、従来どおりアンチエイリアスを使う |
+| `imagebdf.AntialiasOn` | 同じアンチエイリアスを明示的に使う |
+| `imagebdf.AntialiasOff` | 各行の画素中心を 1 回判定し、整数画素の区間を塗る。境界の被覆率計算を省いて速度を優先する |
+
+高解像度の印刷用画像なら `AntialiasOff` を選び、最終出力サイズで小さい文字や細い罫線を比較できます。
+
+```go
+ren := imagebdf.New(doc, &imagebdf.Options{Antialias: imagebdf.AntialiasOff})
+img, err := ren.PageDPI(doc.Views[0], 0, 600)
+```
+
+CLI では `bdf render -antialias=off -scale 8.333333 report.bdf print.png`（600 dpi）です。`-antialias=default|on|off` は `render` で指定でき、`thumbnail` と変換時に生成するプレビューは従来のアンチエイリアスを使います。Go のサムネイルは `thumbnail.Options.Raster.Antialias` で明示的に選べます。
+
+元の半透明、ブレンド、画像の補間、ソフトマスク、ぼかしは引き続き適用します。効果の元になる図形は選択したモードで描くため、その画素も変わることがあります。1 画素より細い線も従来どおり 1 画素幅と薄い alpha で描くため、境界のアンチエイリアスを切っても、すべての出力画素が不透明になるわけではありません。低解像度では段差や細部の欠落が見えることがあるので、固定の dpi 閾値に頼らず出力用途に応じて選んでください。Go で未知の `AntialiasMode` 値を渡した場合は AA を有効にしてレンダラの警告に記録し、CLI は未知の値をエラーにします。
+
+### 再描画のキャッシュとページ並列化
+
+同じ `Renderer` を使い続けると、`Page`・`PageDPI`・`PageSize`・`Region`・`Renderer.Object` の完成画像と、文字列全体の被覆率を再利用します。画像は独立したコピーを返すため、呼び出し側で画素を書き換えてもキャッシュは変わりません。初回は画像の保持用コピーが増えます。返却画像を一度しか使わない場合は `ImageCacheBytes: -1` で無効にできます。
+
+`Options.ImageCacheBytes` は既定64MiB、`TextCacheBytes` は既定32MiB。0は既定値、負数は無効、正数はバイト単位の上限です。LRUで古い項目を除き、配列・キー・項目の見積もり容量を計上します。デコード済みフォント、作業用画像、Goのallocatorの管理領域は別です。文字キャッシュは塗り色・透明度・影を保存せず、被覆率だけを再利用するので、それらの描画状態は各回適用されます。
+
+ページのレイアウト・領域・画素サイズ・背景・AA方式は画像キーに含みます。Partのバイト列や `FontFS` を変更したら `ren.Invalidate()` を呼んでください。警告、デコード済み資源、両キャッシュ、ページworkerも解放します。`FontDirs` とシステムフォントは従来どおりプロセス共通の索引・読込キャッシュを使うため、差し替えるフォントには `FontFS` を使います。単独の `imagebdf.Object` は1回用です。Objectを再利用するには文書へ追加し、`ren.Object(hash, scale)` を呼びます。
+
+複数ページには `Pages` / `PagesDPI` が使えます。ページ番号は0始まり、`nil` は全ページ。独立workerで描き、callbackは指定順に呼び出します。
+
+```go
+err := ren.PagesDPI(ctx, doc.Views[0], nil, 300, 0,
+    func(page int, img *image.RGBA) error {
+        return savePage(page, img)
+    })
+```
+
+worker数0は自動（最大4）、1〜16は上限指定です。大きなページでは同時に描く基本canvasの合計32M画素を目安に数を減らし、それより大きい1ページは単独で描きます。workerは呼び出し間で再利用し、文字マスクの容量上限と作業画像の保持枠を共有・分配します。layerやcallbackで保持する出力画像の容量は別です。キャンセルやcallbackエラーは描画・バッチの区切りで反映し、開始済み描画の終了を待って戻ります。callback内も含め、呼び出しが戻るまでRenderer・文書・フォント資源を変更しないでください。複数workerで使う `FontFS` は並行読み取りに対応する必要があります。
+
+CLIでは `bdf render -pages=all -workers=4 -antialias=off report.bdf 'page-{page}.png'`。`-pages=1-3,5` も使え、出力名の `{page}` を1始まりのページ番号へ置換します。`-page` とは併用できず、シートは対象外です。CLIは完成画像を1回で書き出すため、その保持用キャッシュを省き、文字マスクを再利用します。
+
 ### 文書を Ebitengine で描く
 
 文書のページはテキスト、画像、グラデーション、クリップを含むので、`imagebdf` で画像にしてから `ebiten.Image` にします。

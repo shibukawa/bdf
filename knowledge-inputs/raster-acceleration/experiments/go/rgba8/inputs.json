@@ -1,0 +1,23 @@
+{
+  "variant": "rgba8",
+  "source_hashes": {
+    "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+    "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+    "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+    "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+    "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+  },
+  "prototype_hashes": {
+    "imagebdf.go": "a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e",
+    "scan.go": "aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d",
+    "surface.go": "cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160",
+    "draw.go": "af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd",
+    "path.go": "f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c",
+    "experiment_support.go": "aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517",
+    "experiment_support_test.go": "1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867",
+    "experiment_simd_arm64.s": "5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb",
+    "experiment_simd_arm64.go": "54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21",
+    "experiment_simd_other.go": "54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9"
+  },
+  "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+}

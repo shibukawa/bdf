@@ -1,0 +1,40 @@
+id: decision:raster-backends
+type: decision
+title: 既存ライブラリ・GPU・ベクタ出力との比較
+summary: Skia・Blend2D・Vello CPU/GPUを共通図形で実測した。nativeには大きな速度差があるが、一般BDF機能のadapter・配布・動的Scene構築・実機印刷は別検証。
+authority: inferred
+lifecycle: proposed
+scope:
+  topic: raster-acceleration
+facts:
+  candidates:
+    Skia: CPU/GPU、Canvas系の描画操作。CPUのAAA・RLE・SIMD・glyph cacheが参考
+    Blend2D: analytic AA、JIT、multithreading
+    Vello CPU: sparse strips、SIMD、multithreading
+    GPU: 動的な画面表示、atlas、ハイブリッド
+  selection: 初期AAオプションとバックエンド選択を結合しない。未測定で置換を決めない
+  native_integration_checks:
+  - C++/Rust/C ABIとcgo等の境界
+  - 配布物・ビルドサイズ
+  - 純Go/TinyGo/Wasmの要件
+  - 画像・フォント・fill rule・clip・blend・filterの対応
+  - ライセンスと継続保守
+  benchmarks:
+  - 同じ文書・出力解像度・AA条件
+  - 初期化込みcoldとwarm
+  - buffer copy/FFI
+  - GPU upload/readback
+  - 画像符号化込み
+  existing_ebitengine: path-only Object用。一般文書をGPUラスタライズする完成backendではない
+  vector_print: PDFを受け付ける印刷経路は既存vector/pdfbdfを使用できる。アプリ側の全ページrasterを省くが、出力先のraster処理は残る
+  limits: 共通図形の実機比較は完了。一般文書のnative integration・全機能対応・実機印刷は未実施
+  measurement: knowledge-inputs/raster-acceleration/experiments/native/summary.json
+relations:
+- relation: part_of
+  to: survey:raster-acceleration
+- relation: relates_to
+  to: requirement:pdf-export
+- relation: documented_by
+  to: source:raster-acceleration-research
+- relation: evaluated_by
+  to: experiment:raster-non-aa-comparison

@@ -1,0 +1,37 @@
+{
+  "adapter": "AdapterInfo { name: \"Apple M3\", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: \"\", driver: \"\", driver_info: \"\", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }",
+  "backend": "vello-hybrid",
+  "first_render_readback_ns": 19370041,
+  "results": {
+    "owned-output": {
+      "samples_ns": [
+        3340919.9111111113,
+        3368011.577777778,
+        3738872.938271605,
+        4364981.884057971,
+        8695380.942857143
+      ],
+      "median_ns": 3738872.938271605
+    },
+    "render-only": {
+      "samples_ns": [
+        4019045.0,
+        6339381.9375,
+        3371334.2696629213,
+        3122864.6907216497,
+        3046141.414141414
+      ],
+      "median_ns": 3371334.2696629213
+    }
+  },
+  "scope": "prebuilt scene; GPU submission/upload and wait included; owned-output includes readback and CPU copy",
+  "pixel_comparison": {
+    "reference": "imagebdf",
+    "changed_pixels": 406229,
+    "max_channel_error": 32,
+    "mean_channel_error": 0.13603544235229492,
+    "note": "AA/flattening/rounding differ by renderer; difference alone is not a quality verdict"
+  },
+  "init_both_backends_and_scene_ns": 62454500,
+  "initialization_note": "includes both GPU renderer instances; not backend-specific startup cost"
+}

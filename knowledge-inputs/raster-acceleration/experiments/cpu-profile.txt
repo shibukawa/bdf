@@ -1,0 +1,33 @@
+File: bdf-raster-baseline.test
+Type: cpu
+Time: 2026-10-14 23:21:14 JST
+Duration: 4.07s, Total samples = 3.33s (81.86%)
+Showing nodes accounting for 3.23s, 97.00% of 3.33s total
+Dropped 36 nodes (cum <= 0.02s)
+Showing top 25 nodes out of 63
+      flat  flat%   sum%        cum   cum%
+     0.89s 26.73% 26.73%      1.16s 34.83%  github.com/shibukawa/bdf/raster/imagebdf.(*surface).fill
+     0.68s 20.42% 47.15%      0.69s 20.72%  github.com/shibukawa/bdf/raster/imagebdf.(*surface).toRGBA
+     0.47s 14.11% 61.26%      0.82s 24.62%  github.com/shibukawa/bdf/raster/imagebdf.(*scratch).rasterize
+     0.18s  5.41% 66.67%      0.23s  6.91%  github.com/shibukawa/bdf/raster/imagebdf.(*gradientShader).shade
+     0.16s  4.80% 71.47%      0.54s 16.22%  github.com/shibukawa/bdf/raster/imagebdf.(*surface).fillBackground
+     0.16s  4.80% 76.28%      0.19s  5.71%  github.com/shibukawa/bdf/raster/imagebdf.rectMask
+     0.11s  3.30% 79.58%      0.11s  3.30%  github.com/shibukawa/bdf/raster/imagebdf.intersect
+     0.09s  2.70% 82.28%      0.13s  3.90%  github.com/shibukawa/bdf/raster/imagebdf.sortCrossings
+     0.07s  2.10% 84.38%      0.07s  2.10%  runtime.asyncPreempt
+     0.06s  1.80% 86.19%      0.06s  1.80%  github.com/shibukawa/bdf/internal/gauss.boxV
+     0.06s  1.80% 87.99%      0.06s  1.80%  internal/runtime/atomic.(*UnsafePointer).Load (inline)
+     0.06s  1.80% 89.79%      0.06s  1.80%  runtime.memclrNoHeapPointers
+     0.05s  1.50% 91.29%      0.09s  2.70%  github.com/shibukawa/bdf/raster/imagebdf.(*scratch).rasterize.func5 (inline)
+     0.05s  1.50% 92.79%      0.05s  1.50%  runtime.madvise
+     0.04s  1.20% 93.99%      0.04s  1.20%  github.com/shibukawa/bdf/raster/imagebdf.(*scratch).rasterize.func3
+     0.04s  1.20% 95.20%      0.04s  1.20%  math.archMin
+     0.02s   0.6% 95.80%      0.03s   0.9%  github.com/shibukawa/bdf/internal/gauss.boxH
+     0.02s   0.6% 96.40%      0.02s   0.6%  github.com/shibukawa/bdf/raster/imagebdf.matrix.apply (inline)
+     0.02s   0.6% 97.00%      0.03s   0.9%  slices.partialInsertionSortCmpFunc[go.shape.struct { github.com/shibukawa/bdf/raster/imagebdf.x float64; github.com/shibukawa/bdf/raster/imagebdf.dir int8; github.com/shibukawa/bdf/raster/imagebdf.edge int }]
+         0     0% 97.00%      1.97s 59.16%  github.com/shibukawa/bdf.(*ObjectPart).Walk (inline)
+         0     0% 97.00%      1.97s 59.16%  github.com/shibukawa/bdf.(*ObjectPart).walk
+         0     0% 97.00%      0.09s  2.70%  github.com/shibukawa/bdf/internal/gauss.Blur
+         0     0% 97.00%      3.26s 97.90%  github.com/shibukawa/bdf/raster/imagebdf.(*Renderer).Page
+         0     0% 97.00%      3.26s 97.90%  github.com/shibukawa/bdf/raster/imagebdf.(*Renderer).PageDPI
+         0     0% 97.00%      3.26s 97.90%  github.com/shibukawa/bdf/raster/imagebdf.(*Renderer).drawPage

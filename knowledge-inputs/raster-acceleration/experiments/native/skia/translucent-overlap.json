@@ -1,0 +1,39 @@
+{
+  "backend": "skia-cpu",
+  "version": "144.0.post2",
+  "scene": "translucent-overlap",
+  "width": 1024,
+  "height": 1024,
+  "native_picture_record_ns": 2663500,
+  "first_render_ns": 31510792,
+  "results": {
+    "render-only": {
+      "samples_ns": [
+        29850253.727272727,
+        30275060.636363637,
+        30517679.2,
+        30468068.181818184,
+        31209887.5
+      ],
+      "median_ns": 30468068.181818184
+    },
+    "owned-output": {
+      "samples_ns": [
+        30452875.0,
+        30185133.3,
+        30144212.5,
+        32270637.5,
+        30410258.3
+      ],
+      "median_ns": 30410258.3
+    }
+  },
+  "scope": "SkPicture replay of prebuilt path geometry; JSON parsing/FFI recording excluded from warm; AA enabled",
+  "pixel_comparison": {
+    "reference": "imagebdf",
+    "changed_pixels": 515020,
+    "max_channel_error": 23,
+    "mean_channel_error": 0.27292537689208984,
+    "note": "AA/flattening/rounding differ by renderer; difference alone is not a quality verdict"
+  }
+}

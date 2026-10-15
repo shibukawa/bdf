@@ -1,0 +1,44 @@
+id: technique:geometry-cache
+type: technique
+title: 曲線分割とstroke展開の再利用
+summary: 同じ形を同じ倍率で繰り返す場合、元パスのdecodeだけでなくflatten済み線分やstroke輪郭を再利用する。
+authority: inferred
+lifecycle: proposed
+scope:
+  topic: raster-acceleration
+facts:
+  status: evaluated_in_isolated_experiment_not_adopted
+  keys:
+  - パス内容
+  - device transformまたは許容誤差を保つ倍率区分
+  - stroke幅・join・cap・dash
+  - flatness tolerance
+  tradeoffs:
+  - 任意ズームではcache hitが低下
+  - 量子化が誤差上限を破らないこと
+  - 非AAでも曲線の幾何精度を独立に決める
+  adjacent_ideas:
+  - Wang系曲率上限による分割数
+  - 局所適応分割
+  - 小さい形でのstroke展開専用処理
+  current_note: 現行も曲率上限の分割数を使う。新規導入済みと混同しない
+  experiment: experiment:raster-non-aa-comparison
+relations:
+- relation: optimizes
+  to: component:imagebdf-rasterization
+- relation: part_of
+  to: survey:raster-acceleration
+- relation: evaluated_by
+  to: experiment:raster-non-aa-comparison
+assertions:
+- key: bounded-evaluation
+  predicate: experimental_result
+  value: flatten/stroke cache exact in bounded cases; mutation/width invalidation
+    checked; adaptive geometry changes pixels
+  authority: observed
+  evidence:
+    path: knowledge-inputs/raster-acceleration/results-non-aa.ja.md
+    locator: 候補ごとの判断
+  basis:
+  - path: knowledge-inputs/raster-acceleration/results-non-aa.ja.md
+    input_hash: ad20e5c8fd3f6ef49114676bed700697001e4e727a6b0a4517d8f85b9a0477f2

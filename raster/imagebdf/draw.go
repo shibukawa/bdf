@@ -529,7 +529,7 @@ func (d *drawer) coverage(p *path, rule byte, m matrix) *mask {
 		if x0, y0, x1, y1, ok := p.isRect(); ok {
 			ax, ay := m.apply(x0, y0)
 			bx, by := m.apply(x1, y1)
-			return rectMask(ax, ay, bx, by, bounds)
+			return d.r.rectMask(ax, ay, bx, by, bounds)
 		}
 	}
 	sc := d.r.scratch()
@@ -719,6 +719,15 @@ func (d *drawer) text(s string, x, y, advance float64, stroke bool) {
 		d.strokeText(glyphs, m)
 		return
 	}
+	fontKey := bdf.SystemFont("sans-serif", 400, bdf.StyleNormal)
+	if st.font != nil {
+		fontKey = *st.font
+	}
+	key := textMaskKey{font: fontKey, text: s, m: m, size: st.size, spacing: st.spacing, dir: st.dir, bounds: d.bounds(), noAA: d.r.opts.Antialias == AntialiasOff}
+	if cov := d.r.textMask(key); cov != nil {
+		d.paint(cov, d.shader(&st.fill, m), 1)
+		return
+	}
 	sc, bounds := d.r.scratch(), d.bounds()
 	// synthesized bold outlines what is filled, in device space
 	boldW := fakeBoldWidth(st.size * m.areaScale())
@@ -763,6 +772,9 @@ func (d *drawer) text(s string, x, y, advance float64, stroke bool) {
 	}
 	if sc.limited {
 		return
+	}
+	if !bold.cut {
+		d.r.keepTextMask(key, cov)
 	}
 	d.paint(cov, d.shader(&st.fill, m), 1)
 }

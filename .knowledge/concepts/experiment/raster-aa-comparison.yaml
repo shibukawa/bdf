@@ -1,0 +1,230 @@
+id: experiment:raster-aa-comparison
+type: experiment
+title: 既定互換と明示非AAの比較実験
+summary: 明示AAのAPI・CLIと非AA経路を実装・テストし、既存3文書の72/300dpi warm描画を測定した。実機印刷、cold、ピークメモリ、他dpi等は追加評価として残る。
+authority: observed
+lifecycle: active
+scope:
+  topic: raster-acceleration
+facts:
+  first_slice:
+  - AAの三値指定
+  - 真のX/Y非AA
+  - 既定互換と設定伝搬
+  - 少数文書の比較
+  later:
+  - span直接合成
+  - glyph cache
+  - analytic AA
+  - SIMD/RGBA8
+  - 別backend
+  dpi_samples:
+  - 72
+  - 96
+  - 100
+  - 144
+  - 300
+  - 600
+  optional_1200: MaxPixelsとピークメモリを確認して追加
+  inputs:
+  - 日本語と欧文の小文字
+  - 細罫線と斜線
+  - 複雑な曲線と大きな塗り
+  - clip・group・soft mask
+  - 画像と影
+  - QR/バーコード
+  metrics:
+  - cold/warm drawing
+  - wall timeとCPU時間
+  - alloc bytes/count
+  - peak memory
+  - PNG込みのend-to-end
+  - 境界差と実寸印刷
+  - コードの読み取り
+  checks:
+  - 未指定とONは現行goldenを維持
+  - dpi/DPRで自動変更しない
+  - OFFのfill rule、端点、共有辺
+  - 矩形・SVG・文字・clip・画像外周の伝搬
+  - 元alpha・blend・画像補間・blur・細線方針の維持
+  dpi_100_meaning: 品質観察の候補。自動切替閾値としての受け入れ条件ではない
+  record_after_run:
+  - 測定結果と環境はbenchmark.json、生データはbenchmark.txt
+  - 非AAの速度効果を確認。残るmask確保と合成負荷を次の候補にする
+  - 実機出力を評価してから用途別の画質説明を追加する
+  results:
+    date: '2026-10-14'
+    environment:
+      cpu: Apple M3
+      os: darwin
+      arch: arm64
+      go: go1.27.0
+      cpu_flag: 1
+      benchtime: 200ms
+      count: 3
+    command: go test ./raster/imagebdf -run ^$ -bench ^BenchmarkRenderAntialias$ -cpu=1
+      -benchtime=200ms -count=3
+    scope: warm Renderer PageDPI, first page, decoded resources retained; drawing
+      and RGBA conversion included, PNG encoding excluded
+    limitations:
+    - short indicative runs; chrome-doc 300dpi/off has an 84ms outlier
+    - B/op is allocation volume, not peak memory
+    - cold start, CPU-seconds, peak memory, PNG end-to-end and physical print are
+      not measured
+    results:
+    - document: drawio/showcase
+      dpi: 72
+      'on':
+        median_ns_op: 2806896
+        median_bytes_op: 1077129
+        median_allocs_op: 1868
+        samples: 3
+      'off':
+        median_ns_op: 1352689
+        median_bytes_op: 1049049
+        median_allocs_op: 1858
+        samples: 3
+      speedup: 2.075049031965219
+    - document: drawio/showcase
+      dpi: 300
+      'on':
+        median_ns_op: 25260266
+        median_bytes_op: 22148908
+        median_allocs_op: 2400
+        samples: 3
+      'off':
+        median_ns_op: 13418604
+        median_bytes_op: 14723560
+        median_allocs_op: 2387
+        samples: 3
+      speedup: 1.8824809197737709
+    - document: pdf/chrome-doc
+      dpi: 72
+      'on':
+        median_ns_op: 14354231
+        median_bytes_op: 11727069
+        median_allocs_op: 3807
+        samples: 3
+      'off':
+        median_ns_op: 6725659
+        median_bytes_op: 6554491
+        median_allocs_op: 3747
+        samples: 3
+      speedup: 2.1342490007298913
+    - document: pdf/chrome-doc
+      dpi: 300
+      'on':
+        median_ns_op: 104846875
+        median_bytes_op: 334219960
+        median_allocs_op: 5024
+        samples: 3
+      'off':
+        median_ns_op: 57707448
+        median_bytes_op: 245374328
+        median_allocs_op: 4963
+        samples: 3
+      speedup: 1.8168690287603777
+    - document: pptx/features
+      dpi: 72
+      'on':
+        median_ns_op: 7042161
+        median_bytes_op: 2749657
+        median_allocs_op: 177
+        samples: 3
+      'off':
+        median_ns_op: 5995577
+        median_bytes_op: 2742617
+        median_allocs_op: 175
+        samples: 3
+      speedup: 1.1745593459978914
+    - document: pptx/features
+      dpi: 300
+      'on':
+        median_ns_op: 138696938
+        median_bytes_op: 265264256
+        median_allocs_op: 187
+        samples: 3
+      'off':
+        median_ns_op: 97545333
+        median_bytes_op: 190712944
+        median_allocs_op: 178
+        samples: 3
+      speedup: 1.421871592770102
+  scope_status: warm72_300_and_semantic_tests_completed_other_metrics_deferred
+  regression_checks:
+    repository: all packages passed across sandbox go test ./... and unsandboxed rerun
+      of converter/html + segment
+    ebitengine: go test ./... passed in raster/ebitenginebdf
+    race: imagebdf and cmd/bdf passed
+    initial_suite_limitation: httptest could not bind loopback sockets inside sandbox;
+      no test code was changed to bypass it
+verification:
+  render-speed:
+    state: passed
+    method: integration
+    test: go test ./raster/imagebdf -run ^$ -bench ^BenchmarkRenderAntialias$ -cpu=1
+      -benchtime=200ms -count=3
+    authority: observed
+    evidence:
+      path: knowledge-inputs/raster-acceleration/benchmark.txt
+    basis: &id001
+    - path: raster/imagebdf/imagebdf.go
+      input_hash: a06d55f952414cb154295ee1c6e882192990da0be945c265d9d2fd42125f6c84
+    - path: raster/imagebdf/cache.go
+      input_hash: 6c392dc216aeab80336563fdf0b5211f5430684e77fabff3a1834d1ea6c34e27
+    - path: raster/imagebdf/pages.go
+      input_hash: b5d182155f53da612968ed2bb1100467f8d2b31ff15a1c411032f0cdf4d5d636
+    - path: raster/imagebdf/draw.go
+      input_hash: a185f787d259678c3b2015eb3e4863f8f7e6fed109d2797bd73effbb0d3cd534
+    - path: raster/imagebdf/object.go
+      input_hash: 5470cc56511ff65e945ce29a051b25ba1543adbff290d115d596930ab3dab84c
+    - path: raster/imagebdf/scan.go
+      input_hash: b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e
+    - path: raster/imagebdf/svg.go
+      input_hash: 72a3d5c65ee89609c4ee9b94048b6e58070b2d7ed0874b97acd786d7722ee85a
+    - path: raster/imagebdf/cache_test.go
+      input_hash: b5de199e195501f5a008f19d7e6710ca511cfbf4605aa6b7d438d6602fd0c0d5
+    - path: raster/imagebdf/pages_test.go
+      input_hash: 75498af164699ea264a726b282a0270f4ff3934a7eba452b4489187b9926c3e8
+    - path: raster/imagebdf/antialias_test.go
+      input_hash: b74848bcd26898fdc8a7870dbc089f69a870405ad12c589ebd6860b425afa68c
+    - path: cmd/bdf/preview.go
+      input_hash: 97c2d33e0c16248a4af7ef293fbc74ec8dcc27b73873202cecd3ec9f7891be4c
+    - path: cmd/bdf/preview_test.go
+      input_hash: cc66d33781cc232b5b1858968823a7da725b25bbc9a38032d0032b5729233357
+  print-quality:
+    state: not_run
+    method: manual
+    test: 将来の実寸印刷と細字・コード確認
+  semantic-tests:
+    state: passed
+    method: integration
+    test: go test ./raster/imagebdf ./cmd/bdf (included in repository suite)
+    authority: observed
+    evidence:
+      path: raster/imagebdf/antialias_test.go
+      locator: TestAntialias* and cmd TestRenderAntialias/TestRenderBadAntialias
+    basis: *id001
+  race:
+    state: passed
+    method: integration
+    test: go test -race ./raster/imagebdf ./cmd/bdf -run 'TestAntialias|TestRender|TestCompleted|TestImageCache|TestRegionAnd|TestInvalidate|TestPages|TestCacheEvicts|TestTextMaskCache'
+      -count=1
+    authority: observed
+    evidence:
+      path: knowledge-inputs/raster-acceleration/production/race.txt
+    basis: *id001
+open_questions:
+  mask-or-spans:
+    text: 既存二値mask経由を先に作るか、span直接合成まで含めるか
+    state: answered
+    resolution: 初期実装は既存maskを0/1で生成する方式。直接スパン合成は今後の別実装
+  quality:
+    text: 非AAを許容できる内容・解像度はどの範囲か
+    state: open
+    resolution: 実寸画像と印刷の比較が必要。一般的な100dpi境界は仮定しない
+relations:
+- relation: verifies
+  to: requirement:raster-quality-control
+- relation: evaluates
+  to: technique:binary-scanline-rasterization

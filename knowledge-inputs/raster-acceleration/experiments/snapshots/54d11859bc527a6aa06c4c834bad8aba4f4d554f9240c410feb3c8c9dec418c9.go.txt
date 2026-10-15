@@ -1,0 +1,6 @@
+//go:build !arm64
+
+package imagebdf
+
+import "unsafe"
+func experimentSolidSIMD(dst *float32,n int,c *[4]float32) { d:=unsafe.Slice(dst,n*4);a:=1-c[3];for i:=0;i<len(d);i+=4 {for j:=0;j<4;j++ {d[i+j]=c[j]+d[i+j]*a}} }

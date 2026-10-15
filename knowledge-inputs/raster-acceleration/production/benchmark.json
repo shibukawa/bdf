@@ -1,0 +1,394 @@
+{
+  "date": "2026-10-15",
+  "environment": {
+    "cpu": "Apple M3",
+    "go": "go1.27.0",
+    "os": "darwin",
+    "arch": "arm64",
+    "gomaxprocs": 8,
+    "GOGC": "unset"
+  },
+  "method": "warm production Renderer; 300dpi AA on; cache modes measured separately; 5 x 1s; output allocation/copy included, PNG excluded",
+  "parallel": "four repeated first-page requests, persistent workers, image cache disabled, requested max workers=4, 32M-pixel aggregate budget; output order preserved",
+  "limitations": [
+    "single machine and sequential ordered cases; substantial execution variance",
+    "completed-image result is static cache hit, not first draw",
+    "no new physical-printer test"
+  ],
+  "benchmarks": {
+    "BenchmarkRenderCaches/pdf/chrome-doc/disabled-8": {
+      "samples": [
+        {
+          "ns_op": 164389095,
+          "bytes_op": 334220745,
+          "allocs_op": 5025
+        },
+        {
+          "ns_op": 252194660,
+          "bytes_op": 334219960,
+          "allocs_op": 5024
+        },
+        {
+          "ns_op": 143143125,
+          "bytes_op": 334219980,
+          "allocs_op": 5024
+        },
+        {
+          "ns_op": 129340391,
+          "bytes_op": 334219974,
+          "allocs_op": 5024
+        },
+        {
+          "ns_op": 138100823,
+          "bytes_op": 334219974,
+          "allocs_op": 5024
+        }
+      ],
+      "median_ns": 143143125,
+      "median_bytes": 334219974,
+      "median_allocs": 5024
+    },
+    "BenchmarkRenderCaches/pdf/chrome-doc/text-only-8": {
+      "samples": [
+        {
+          "ns_op": 127320462,
+          "bytes_op": 329049508,
+          "allocs_op": 1021
+        },
+        {
+          "ns_op": 108722325,
+          "bytes_op": 329049508,
+          "allocs_op": 1021
+        },
+        {
+          "ns_op": 96877031,
+          "bytes_op": 329049497,
+          "allocs_op": 1021
+        },
+        {
+          "ns_op": 98606656,
+          "bytes_op": 329049497,
+          "allocs_op": 1021
+        },
+        {
+          "ns_op": 97108170,
+          "bytes_op": 329049497,
+          "allocs_op": 1021
+        }
+      ],
+      "median_ns": 98606656,
+      "median_bytes": 329049497,
+      "median_allocs": 1021
+    },
+    "BenchmarkRenderCaches/pdf/chrome-doc/completed-8": {
+      "samples": [
+        {
+          "ns_op": 3124194,
+          "bytes_op": 34792080,
+          "allocs_op": 5
+        },
+        {
+          "ns_op": 3379532,
+          "bytes_op": 34792084,
+          "allocs_op": 5
+        },
+        {
+          "ns_op": 3637243,
+          "bytes_op": 34792080,
+          "allocs_op": 5
+        },
+        {
+          "ns_op": 3487937,
+          "bytes_op": 34792069,
+          "allocs_op": 5
+        },
+        {
+          "ns_op": 3321970,
+          "bytes_op": 34792074,
+          "allocs_op": 5
+        }
+      ],
+      "median_ns": 3379532,
+      "median_bytes": 34792080,
+      "median_allocs": 5
+    },
+    "BenchmarkRenderCaches/pptx/features/disabled-8": {
+      "samples": [
+        {
+          "ns_op": 210867625,
+          "bytes_op": 265264256,
+          "allocs_op": 187
+        },
+        {
+          "ns_op": 186931417,
+          "bytes_op": 265264274,
+          "allocs_op": 187
+        },
+        {
+          "ns_op": 173463646,
+          "bytes_op": 265264256,
+          "allocs_op": 187
+        },
+        {
+          "ns_op": 170806524,
+          "bytes_op": 265264272,
+          "allocs_op": 187
+        },
+        {
+          "ns_op": 187671799,
+          "bytes_op": 265264274,
+          "allocs_op": 187
+        }
+      ],
+      "median_ns": 186931417,
+      "median_bytes": 265264272,
+      "median_allocs": 187
+    },
+    "BenchmarkRenderCaches/pptx/features/text-only-8": {
+      "samples": [
+        {
+          "ns_op": 168240304,
+          "bytes_op": 261356496,
+          "allocs_op": 163
+        },
+        {
+          "ns_op": 166158214,
+          "bytes_op": 261356480,
+          "allocs_op": 163
+        },
+        {
+          "ns_op": 169036069,
+          "bytes_op": 261356498,
+          "allocs_op": 163
+        },
+        {
+          "ns_op": 162400500,
+          "bytes_op": 261356496,
+          "allocs_op": 163
+        },
+        {
+          "ns_op": 168024368,
+          "bytes_op": 261356498,
+          "allocs_op": 163
+        }
+      ],
+      "median_ns": 168024368,
+      "median_bytes": 261356496,
+      "median_allocs": 163
+    },
+    "BenchmarkRenderCaches/pptx/features/completed-8": {
+      "samples": [
+        {
+          "ns_op": 2930534,
+          "bytes_op": 36004886,
+          "allocs_op": 8
+        },
+        {
+          "ns_op": 3062206,
+          "bytes_op": 36004855,
+          "allocs_op": 8
+        },
+        {
+          "ns_op": 3271225,
+          "bytes_op": 36004893,
+          "allocs_op": 9
+        },
+        {
+          "ns_op": 3199903,
+          "bytes_op": 36005040,
+          "allocs_op": 9
+        },
+        {
+          "ns_op": 2964218,
+          "bytes_op": 36004874,
+          "allocs_op": 8
+        }
+      ],
+      "median_ns": 3062206,
+      "median_bytes": 36004886,
+      "median_allocs": 8
+    },
+    "BenchmarkRenderCaches/drawio/showcase/disabled-8": {
+      "samples": [
+        {
+          "ns_op": 36828859,
+          "bytes_op": 22148910,
+          "allocs_op": 2400
+        },
+        {
+          "ns_op": 33770113,
+          "bytes_op": 22148917,
+          "allocs_op": 2400
+        },
+        {
+          "ns_op": 31641577,
+          "bytes_op": 22148916,
+          "allocs_op": 2400
+        },
+        {
+          "ns_op": 30403813,
+          "bytes_op": 22148911,
+          "allocs_op": 2400
+        },
+        {
+          "ns_op": 30267756,
+          "bytes_op": 22148907,
+          "allocs_op": 2400
+        }
+      ],
+      "median_ns": 31641577,
+      "median_bytes": 22148911,
+      "median_allocs": 2400
+    },
+    "BenchmarkRenderCaches/drawio/showcase/text-only-8": {
+      "samples": [
+        {
+          "ns_op": 28542794,
+          "bytes_op": 21846126,
+          "allocs_op": 2328
+        },
+        {
+          "ns_op": 29184956,
+          "bytes_op": 21846125,
+          "allocs_op": 2328
+        },
+        {
+          "ns_op": 31249931,
+          "bytes_op": 21846123,
+          "allocs_op": 2328
+        },
+        {
+          "ns_op": 31674557,
+          "bytes_op": 21846125,
+          "allocs_op": 2328
+        },
+        {
+          "ns_op": 30612329,
+          "bytes_op": 21846126,
+          "allocs_op": 2328
+        }
+      ],
+      "median_ns": 30612329,
+      "median_bytes": 21846125,
+      "median_allocs": 2328
+    },
+    "BenchmarkRenderCaches/drawio/showcase/completed-8": {
+      "samples": [
+        {
+          "ns_op": 758272,
+          "bytes_op": 6980007,
+          "allocs_op": 5
+        },
+        {
+          "ns_op": 822258,
+          "bytes_op": 6980006,
+          "allocs_op": 5
+        },
+        {
+          "ns_op": 1248296,
+          "bytes_op": 6980011,
+          "allocs_op": 5
+        },
+        {
+          "ns_op": 883114,
+          "bytes_op": 6980013,
+          "allocs_op": 5
+        },
+        {
+          "ns_op": 778570,
+          "bytes_op": 6980006,
+          "allocs_op": 5
+        }
+      ],
+      "median_ns": 822258,
+      "median_bytes": 6980007,
+      "median_allocs": 5
+    },
+    "BenchmarkPages/serial-8": {
+      "samples": [
+        {
+          "ns_op": 407662569,
+          "bytes_op": 1316199216,
+          "allocs_op": 4100
+        },
+        {
+          "ns_op": 468183875,
+          "bytes_op": 1316199173,
+          "allocs_op": 4100
+        },
+        {
+          "ns_op": 394125472,
+          "bytes_op": 1316199173,
+          "allocs_op": 4100
+        },
+        {
+          "ns_op": 393635625,
+          "bytes_op": 1316199136,
+          "allocs_op": 4100
+        },
+        {
+          "ns_op": 426583528,
+          "bytes_op": 1316199141,
+          "allocs_op": 4100
+        }
+      ],
+      "median_ns": 407662569,
+      "median_bytes": 1316199173,
+      "median_allocs": 4100
+    },
+    "BenchmarkPages/parallel-8": {
+      "samples": [
+        {
+          "ns_op": 298508708,
+          "bytes_op": 1316199828,
+          "allocs_op": 4097
+        },
+        {
+          "ns_op": 252352323,
+          "bytes_op": 1316200000,
+          "allocs_op": 4098
+        },
+        {
+          "ns_op": 255533250,
+          "bytes_op": 1316199136,
+          "allocs_op": 4096
+        },
+        {
+          "ns_op": 253026156,
+          "bytes_op": 1316199104,
+          "allocs_op": 4096
+        },
+        {
+          "ns_op": 234119625,
+          "bytes_op": 1316199536,
+          "allocs_op": 4097
+        }
+      ],
+      "median_ns": 253026156,
+      "median_bytes": 1316199536,
+      "median_allocs": 4097
+    }
+  },
+  "source_sha256": {
+    "raster/imagebdf/imagebdf.go": "a06d55f952414cb154295ee1c6e882192990da0be945c265d9d2fd42125f6c84",
+    "raster/imagebdf/cache.go": "6c392dc216aeab80336563fdf0b5211f5430684e77fabff3a1834d1ea6c34e27",
+    "raster/imagebdf/pages.go": "b5d182155f53da612968ed2bb1100467f8d2b31ff15a1c411032f0cdf4d5d636",
+    "raster/imagebdf/draw.go": "a185f787d259678c3b2015eb3e4863f8f7e6fed109d2797bd73effbb0d3cd534",
+    "raster/imagebdf/object.go": "5470cc56511ff65e945ce29a051b25ba1543adbff290d115d596930ab3dab84c",
+    "raster/imagebdf/scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+    "raster/imagebdf/svg.go": "72a3d5c65ee89609c4ee9b94048b6e58070b2d7ed0874b97acd786d7722ee85a",
+    "raster/imagebdf/cache_test.go": "b5de199e195501f5a008f19d7e6710ca511cfbf4605aa6b7d438d6602fd0c0d5",
+    "raster/imagebdf/pages_test.go": "75498af164699ea264a726b282a0270f4ff3934a7eba452b4489187b9926c3e8",
+    "raster/imagebdf/acceleration_test.go": "640bc3e335e38a64107a308fcb026755831bebb948142c5042a96b211d8688aa",
+    "raster/imagebdf/antialias_test.go": "8e6ddf605e075aae457b5bcd454150edef8d52169b6bd2233c14bff6400f9d53",
+    "cmd/bdf/preview.go": "97c2d33e0c16248a4af7ef293fbc74ec8dcc27b73873202cecd3ec9f7891be4c",
+    "cmd/bdf/preview_test.go": "cc66d33781cc232b5b1858968823a7da725b25bbc9a38032d0032b5729233357",
+    "testdata/pdf/chrome-doc.bdf": "e79aa48f2aca6212ae92a2beb02117c7f114d6049cb78049931c3a79c112b286",
+    "testdata/pptx/features.bdf": "20396535fcb1420115afa8984aae68ab1b36911b63518830a59f5b092a883356",
+    "testdata/drawio/showcase.bdf": "b84563f1f95ca1204edf020368762e9c10ec947355189f6065c2eef8b6a8e15c"
+  },
+  "measurement_source_overrides": {
+    "raster/imagebdf/antialias_test.go": "knowledge-inputs/raster-acceleration/experiments/snapshots/8e6ddf605e075aae457b5bcd454150edef8d52169b6bd2233c14bff6400f9d53.go.txt"
+  },
+  "note": "AA-only benchmark was subsequently changed to disable both caches. The measured BenchmarkRenderCaches/BenchmarkPages and production runtime were unchanged."
+}

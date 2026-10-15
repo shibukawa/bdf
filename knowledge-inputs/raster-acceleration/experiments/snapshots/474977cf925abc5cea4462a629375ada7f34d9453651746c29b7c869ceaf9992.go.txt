@@ -1,0 +1,496 @@
+package imagebdf
+
+import (
+	"fmt"
+	"image"
+	"math"
+	"os"
+	"slices"
+
+	"github.com/shibukawa/bdf"
+)
+
+var expMode = os.Getenv("BDF_RASTER_EXPERIMENT")
+
+const experimentCacheBytes = 32 << 20
+
+type experimentGeometryKey struct {
+	p       *path
+	version uint64
+	m       matrix
+	tol     float64
+}
+type experimentTextKey struct {
+	ch            *fontChain
+	text          string
+	m             matrix
+	size, spacing float64
+	dir           byte
+	bounds        image.Rectangle
+	noAA          bool
+}
+type experimentState struct {
+	stroke       map[string][]polyline
+	geometry     map[experimentGeometryKey][]polyline
+	text         map[experimentTextKey]*mask
+	bytes        int
+	hits, misses int
+}
+
+func experimentStateOf(r *Renderer) *experimentState {
+	if r.experiment == nil {
+		r.experiment = &experimentState{geometry: map[experimentGeometryKey][]polyline{}, text: map[experimentTextKey]*mask{}}
+	}
+	return r.experiment
+}
+func experimentFlatten(p *path, sc *scratch, out []polyline, m matrix, tol float64) []polyline {
+	if expMode != "flatten-cache" || sc.r == nil || sc.limited {
+		return p.flattenUncached(sc, out, m, tol)
+	}
+	state := experimentStateOf(sc.r)
+	key := experimentGeometryKey{p, p.experimentVersion, m, tol}
+	if polys, ok := state.geometry[key]; ok {
+		state.hits++
+		for _, pl := range polys {
+			if len(sc.pts)+len(pl.pts) > maxPathPoints {
+				sc.stop()
+				return out
+			}
+			start := len(sc.pts)
+			sc.pts = append(sc.pts, pl.pts...)
+			out = append(out, polyline{pts: sc.pts[start:len(sc.pts):len(sc.pts)], closed: pl.closed})
+		}
+		return out
+	}
+	state.misses++
+	start := len(out)
+	out = p.flattenUncached(sc, out, m, tol)
+	if sc.limited {
+		return out
+	}
+	n := 0
+	for _, pl := range out[start:] {
+		n += 16*len(pl.pts) + 32
+	}
+	if n+state.bytes <= experimentCacheBytes {
+		polys := make([]polyline, len(out)-start)
+		for i, pl := range out[start:] {
+			polys[i] = polyline{pts: slices.Clone(pl.pts), closed: pl.closed}
+		}
+		state.geometry[key] = polys
+		state.bytes += n
+	}
+	return out
+}
+func experimentTextLookup(r *Renderer, key experimentTextKey) *mask {
+	if expMode != "text-run-cache" {
+		return nil
+	}
+	state := experimentStateOf(r)
+	cov := state.text[key]
+	if cov != nil {
+		state.hits++
+	} else {
+		state.misses++
+	}
+	return cov
+}
+func experimentTextStore(r *Renderer, key experimentTextKey, cov *mask) {
+	if expMode != "text-run-cache" || cov == nil {
+		return
+	}
+	state := experimentStateOf(r)
+	if state.bytes+cov.bytes() <= experimentCacheBytes {
+		state.text[key] = cov
+		state.bytes += cov.bytes()
+	}
+}
+
+type experimentRun struct {
+	x0, x1 int
+	value  float32
+}
+type experimentCoverage struct {
+	runs        []experimentRun
+	ends        []int
+	a8          []byte
+	write, read []float32
+	writeY      int
+	written     bool
+}
+
+func experimentMask(r image.Rectangle) *mask {
+	m := &mask{r: r}
+	if expMode == "sparse-runs" {
+		m.encoded = &experimentCoverage{ends: make([]int, r.Dy()+1)}
+	} else if expMode == "small-a8" && r.Dx() <= 32 && r.Dx()*r.Dy() <= 1024 {
+		m.encoded = &experimentCoverage{a8: make([]byte, r.Dx()*r.Dy())}
+	} else {
+		m.a = make([]float32, r.Dx()*r.Dy())
+	}
+	return m
+}
+func experimentWriteRow(m *mask, y int) []float32 {
+	if m.encoded == nil {
+		return m.a[(y-m.r.Min.Y)*m.r.Dx() : (y-m.r.Min.Y+1)*m.r.Dx()]
+	}
+	e := m.encoded
+	if cap(e.write) < m.r.Dx() {
+		e.write = make([]float32, m.r.Dx())
+	}
+	e.write = e.write[:m.r.Dx()]
+	clear(e.write)
+	e.writeY = y
+	e.written = true
+	return e.write
+}
+func experimentFinishRow(m *mask, y int) {
+	e := m.encoded
+	if e == nil {
+		return
+	}
+	valid := e.written && e.writeY == y
+	if e.a8 != nil {
+		if valid {
+			row := e.a8[(y-m.r.Min.Y)*m.r.Dx() : (y-m.r.Min.Y+1)*m.r.Dx()]
+			for x, v := range e.write {
+				row[x] = uint8(float64(v)*255 + .5)
+			}
+		}
+		return
+	}
+	if valid {
+		for x := 0; x < len(e.write); {
+			v := e.write[x]
+			end := x + 1
+			for end < len(e.write) && e.write[end] == v {
+				end++
+			}
+			if v != 0 {
+				e.runs = append(e.runs, experimentRun{x, end, v})
+			}
+			x = end
+		}
+	}
+	e.ends[y-m.r.Min.Y+1] = len(e.runs)
+}
+func (e *experimentCoverage) bytes() int {
+	return 24*len(e.runs) + 8*len(e.ends) + len(e.a8) + 4*(len(e.write)+len(e.read))
+}
+func (e *experimentCoverage) at(r image.Rectangle, x, y int) float32 {
+	if e.a8 != nil {
+		return float32(e.a8[(y-r.Min.Y)*r.Dx()+x-r.Min.X]) / 255
+	}
+	for _, run := range e.runs[e.ends[y-r.Min.Y]:e.ends[y-r.Min.Y+1]] {
+		if x-r.Min.X >= run.x0 && x-r.Min.X < run.x1 {
+			return run.value
+		}
+	}
+	return 0
+}
+func (e *experimentCoverage) row(r image.Rectangle, y, x0, x1 int) []float32 {
+	n := x1 - x0
+	if cap(e.read) < n {
+		e.read = make([]float32, n)
+	}
+	e.read = e.read[:n]
+	clear(e.read)
+	if e.a8 != nil {
+		offset := (y-r.Min.Y)*r.Dx() + x0 - r.Min.X
+		for x := range e.read {
+			e.read[x] = float32(e.a8[offset+x]) / 255
+		}
+		return e.read
+	}
+	for _, run := range e.runs[e.ends[y-r.Min.Y]:e.ends[y-r.Min.Y+1]] {
+		for x := max(x0, r.Min.X+run.x0); x < min(x1, r.Min.X+run.x1); x++ {
+			e.read[x-x0] = run.value
+		}
+	}
+	return e.read
+}
+
+func experimentFill(s *surface, cov *mask, sh shader, alpha float32, mode byte, clip *mask, r image.Rectangle) bool {
+	if plain && s.packed == nil {
+		return false
+	}
+	if s.packed != nil {
+		experimentFill8(s, cov, sh, alpha, mode, clip, r)
+		return true
+	}
+	if expMode == "sparse-runs" && cov != nil && cov.encoded != nil && cov.encoded.a8 == nil && clip.a == nil && clip.encoded == nil && !unbounded(mode) {
+		n := 4 * r.Dx()
+		if cap(s.row) < n {
+			s.row = make([]float32, n)
+		}
+		buf := s.row[:n]
+		e := cov.encoded
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			for _, run := range e.runs[e.ends[y-cov.r.Min.Y]:e.ends[y-cov.r.Min.Y+1]] {
+				x0, x1 := max(r.Min.X, cov.r.Min.X+run.x0), min(r.Max.X, cov.r.Min.X+run.x1)
+				if x1 <= x0 {
+					continue
+				}
+				sh.shade(x0, y, x1-x0, buf)
+				c := run.value * alpha
+				for x := x0; x < x1; x++ {
+					k := (x - x0) * 4
+					i := y*s.w + x
+					src := [4]float32{buf[k] * c, buf[k+1] * c, buf[k+2] * c, buf[k+3] * c}
+					dst := expReadPixel(s, i)
+					var out [4]float32
+					if mode == bdf.BlendSourceOver {
+						ia := 1 - src[3]
+						out = [4]float32{src[0] + dst[0]*ia, src[1] + dst[1]*ia, src[2] + dst[2]*ia, src[3] + dst[3]*ia}
+					} else {
+						out = composite(mode, src, dst)
+					}
+					expStorePixel(s, i, out)
+				}
+			}
+		}
+		return true
+	}
+	if (expMode != "solid-fused" && expMode != "opaque-fill" && expMode != "simd") || mode != bdf.BlendSourceOver || clip.a != nil || clip.encoded != nil {
+		return false
+	}
+	color, ok := sh.(solid)
+	if !ok {
+		return false
+	}
+	if expMode == "opaque-fill" && (color[3] != 1 || alpha != 1 || cov != nil && (cov.a != nil || cov.encoded != nil)) {
+		return false
+	}
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		d := s.pix[4*(y*s.w+r.Min.X) : 4*(y*s.w+r.Max.X)]
+		var row []float32
+		if cov != nil {
+			row = cov.row(y, r.Min.X, r.Max.X)
+		}
+		if expMode == "simd" && row == nil {
+			c := [4]float32{color[0] * alpha, color[1] * alpha, color[2] * alpha, color[3] * alpha}
+			experimentSolidSIMD(&d[0], len(d)/4, &c)
+			continue
+		}
+		for x := 0; x < r.Dx(); x++ {
+			coverage := alpha
+			if row != nil {
+				coverage = row[x] * alpha
+			}
+			if coverage == 0 {
+				continue
+			}
+			k := 4 * x
+			if expMode == "opaque-fill" {
+				copy(d[k:k+4], color[:])
+				continue
+			}
+			src := [4]float32{color[0] * coverage, color[1] * coverage, color[2] * coverage, color[3] * coverage}
+			ia := 1 - src[3]
+			d[k], d[k+1], d[k+2], d[k+3] = src[0]+d[k]*ia, src[1]+d[k+1]*ia, src[2]+d[k+2]*ia, src[3]+d[k+3]*ia
+		}
+	}
+	return true
+}
+
+// RGBA8 prototype changes only storage/quantization; all coverage and effects
+// use the existing algorithms. Every surface, including group/mask surfaces,
+// takes the same prototype path, so allocation measurements include 4 B/pixel.
+func expNewSurface8(r *Renderer, w, h int) *surface {
+	n := 4 * w * h
+	for i, s := range r.free {
+		if cap(s.packed) >= n {
+			r.free = append(r.free[:i], r.free[i+1:]...)
+			r.freeBytes -= cap(s.packed)
+			s.w, s.h = w, h
+			s.packed = s.packed[:n]
+			clear(s.packed)
+			return s
+		}
+	}
+	return &surface{w: w, h: h, packed: make([]byte, n)}
+}
+func expRelease8(r *Renderer, s *surface) {
+	n := cap(s.packed)
+	if n > maxFreeSurfaces {
+		return
+	}
+	for r.freeBytes+n > maxFreeSurfaces && len(r.free) > 0 {
+		r.freeBytes -= cap(r.free[0].packed) + 4*cap(r.free[0].pix)
+		r.free = r.free[1:]
+	}
+	r.free = append(r.free, s)
+	r.freeBytes += n
+}
+func expReadPixel(s *surface, i int) [4]float32 {
+	k := i * 4
+	if s.packed != nil {
+		return [4]float32{float32(s.packed[k]) / 255, float32(s.packed[k+1]) / 255, float32(s.packed[k+2]) / 255, float32(s.packed[k+3]) / 255}
+	}
+	return [4]float32{s.pix[k], s.pix[k+1], s.pix[k+2], s.pix[k+3]}
+}
+func expStorePixel(s *surface, i int, c [4]float32) {
+	k := i * 4
+	if s.packed != nil {
+		for j, v := range c {
+			s.packed[k+j] = uint8(float64(min(max(v, 0), 1))*255 + .5)
+		}
+		return
+	}
+	copy(s.pix[k:k+4], c[:])
+}
+func expSurfaceRow(s *surface, y, x0, x1 int) []float32 {
+	if s.packed == nil {
+		return s.pix[4*(y*s.w+x0) : 4*(y*s.w+x1)]
+	}
+	out := make([]float32, 4*(x1-x0))
+	for x := x0; x < x1; x++ {
+		c := expReadPixel(s, y*s.w+x)
+		copy(out[4*(x-x0):], c[:])
+	}
+	return out
+}
+func experimentFill8(s *surface, cov *mask, sh shader, alpha float32, mode byte, clip *mask, r image.Rectangle) {
+	if color, ok := sh.(solid); ok && mode == bdf.BlendSourceOver && color[3] == 1 && alpha == 1 && (cov == nil || cov.a == nil && cov.encoded == nil) && clip.a == nil && clip.encoded == nil {
+		var c [4]byte
+		for j, v := range color {
+			c[j] = uint8(float64(min(max(v, 0), 1))*255 + .5)
+		}
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			row := s.packed[4*(y*s.w+r.Min.X) : 4*(y*s.w+r.Max.X)]
+			for k := 0; k < len(row); k += 4 {
+				copy(row[k:k+4], c[:])
+			}
+		}
+		return
+	}
+	n := r.Dx()
+	if cap(s.row) < 4*n {
+		s.row = make([]float32, 4*n)
+	}
+	buf := s.row[:4*n]
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		sh.shade(r.Min.X, y, n, buf)
+		for x := r.Min.X; x < r.Max.X; x++ {
+			c := alpha
+			if cov != nil {
+				if image.Pt(x, y).In(cov.r) {
+					c = cov.at(x, y) * alpha
+				} else {
+					c = 0
+				}
+			}
+			k := clip.at(x, y)
+			if k == 0 || c == 0 && !unbounded(mode) {
+				continue
+			}
+			offset := 4 * (x - r.Min.X)
+			src := [4]float32{buf[offset] * c, buf[offset+1] * c, buf[offset+2] * c, buf[offset+3] * c}
+			i := y*s.w + x
+			dst := expReadPixel(s, i)
+			var out [4]float32
+			if mode == bdf.BlendSourceOver {
+				ia := 1 - src[3]
+				out = [4]float32{src[0] + dst[0]*ia, src[1] + dst[1]*ia, src[2] + dst[2]*ia, src[3] + dst[3]*ia}
+			} else {
+				out = composite(mode, src, dst)
+			}
+			if k != 1 {
+				for j := range out {
+					out[j] = dst[j] + k*(out[j]-dst[j])
+				}
+			}
+			expStorePixel(s, i, out)
+		}
+	}
+}
+
+func experimentStrokeKey(p *path, m matrix, ls lineStyle, b image.Rectangle) string {
+	return fmt.Sprintf("%p:%d:%v:%v:%v", p, p.experimentVersion, m, ls, b)
+}
+func experimentStrokeLookup(sc *scratch, p *path, m matrix, ls lineStyle, b image.Rectangle) ([]polyline, bool) {
+	if expMode != "stroke-cache" || sc.r == nil {
+		return nil, false
+	}
+	state := experimentStateOf(sc.r)
+	v, ok := state.stroke[experimentStrokeKey(p, m, ls, b)]
+	if ok {
+		state.hits++
+	} else {
+		state.misses++
+	}
+	return v, ok
+}
+func experimentStrokeStore(sc *scratch, p *path, m matrix, ls lineStyle, b image.Rectangle, outline []polyline) {
+	if expMode != "stroke-cache" || sc.r == nil {
+		return
+	}
+	state := experimentStateOf(sc.r)
+	n := 0
+	for _, pl := range outline {
+		n += 16*len(pl.pts) + 32
+	}
+	if n+state.bytes > experimentCacheBytes {
+		return
+	}
+	copyPolys := make([]polyline, len(outline))
+	for i, pl := range outline {
+		copyPolys[i] = polyline{pts: slices.Clone(pl.pts), closed: pl.closed}
+	}
+	if state.stroke == nil {
+		state.stroke = map[string][]polyline{}
+	}
+	state.stroke[experimentStrokeKey(p, m, ls, b)] = copyPolys
+	state.bytes += n
+}
+
+// Recursive De Casteljau prototype. Endpoint-relative control displacement
+// bounds curvature without treating a loop with coincident endpoints as flat.
+func experimentAdaptive(out []point, a, b, c, d point, tol float64, depth int) []point {
+	ux, uy := 3*b.x-2*a.x-d.x, 3*b.y-2*a.y-d.y
+	vx, vy := 3*c.x-a.x-2*d.x, 3*c.y-a.y-2*d.y
+	if depth >= 8 || math.Max(ux*ux+uy*uy, vx*vx+vy*vy) <= 16*tol*tol {
+		return append(out, d)
+	}
+	mid := func(p, q point) point { return point{(p.x + q.x) * .5, (p.y + q.y) * .5} }
+	ab, bc, cd := mid(a, b), mid(b, c), mid(c, d)
+	abc, bcd := mid(ab, bc), mid(bc, cd)
+	m := mid(abc, bcd)
+	out = experimentAdaptive(out, a, ab, abc, m, tol, depth+1)
+	return experimentAdaptive(out, m, bcd, cd, d, tol, depth+1)
+}
+
+func experimentCanvas(r *Renderer, w, h int) *surface {
+	if expMode == "hybrid-storage" {
+		return expNewSurface8(r, w, h)
+	}
+	return r.newSurface(w, h)
+}
+
+// At most four corners: same-sign strict turns then imply a simple convex
+// polygon. This deliberately excludes arbitrary stars and curved outlines.
+func experimentConvex(polys []polyline) bool {
+	if len(polys) != 1 {
+		return false
+	}
+	p := polys[0].pts
+	if len(p) > 1 && p[0] == p[len(p)-1] {
+		p = p[:len(p)-1]
+	}
+	if len(p) < 3 || len(p) > 4 {
+		return false
+	}
+	sign := 0.
+	for i, a := range p {
+		b, c := p[(i+1)%len(p)], p[(i+2)%len(p)]
+		v := (b.x-a.x)*(c.y-b.y) - (b.y-a.y)*(c.x-b.x)
+		if v == 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+			return false
+		}
+		if sign != 0 && v*sign <= 0 {
+			return false
+		}
+		sign = v
+	}
+	return true
+}

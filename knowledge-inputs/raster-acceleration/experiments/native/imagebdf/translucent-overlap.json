@@ -1,0 +1,154 @@
+{
+  "bands-halo64_ns": [
+    126377750,
+    136972902.66666666,
+    114798750,
+    107739458.33333333,
+    109007486
+  ],
+  "bands-no-halo_ns": [
+    81712312.5,
+    91720364.75,
+    87128937.5,
+    84449864.5,
+    82497052
+  ],
+  "cached_object_copy_ns": [
+    2704.1655399314945,
+    2966.451107968872,
+    2822.8421750912717,
+    2601.960424291835,
+    2790.06354801209
+  ],
+  "cached_page_copy_ns": [
+    150696.88598694123,
+    140994.02819548873,
+    143975.9875239923,
+    147336.48355424643,
+    150131.0235117559
+  ],
+  "cached_region_copy_ns": [
+    41522.600830449825,
+    39649.356897463,
+    45476.646862685666,
+    41485.23340707965,
+    43942.089045108376
+  ],
+  "cpu": 8,
+  "dpi": 72,
+  "first_render_ns": 143062292,
+  "four_pages_parallel_ns": [
+    169410812.5,
+    195857854.5,
+    204428000,
+    222307729.5,
+    243659375
+  ],
+  "four_pages_serial_ns": [
+    514698417,
+    506279709,
+    483655417,
+    486705166,
+    485102459
+  ],
+  "height": 1024,
+  "input": "generated:translucent-overlap",
+  "object_owned_ns": [
+    91854.36424854607,
+    93289.23072139303,
+    92729.59808464628,
+    121036.59274193548,
+    104042.36026352289
+  ],
+  "page_owned_ns": [
+    128940236.33333333,
+    122582847.33333333,
+    124235041.66666667,
+    122383083.33333333,
+    122362514
+  ],
+  "page_to_png_ns": [
+    150004375,
+    149480764,
+    147823361,
+    146759778,
+    147247763.66666666
+  ],
+  "raster_png_bytes": 189449,
+  "region_owned_ns": [
+    31838787.5,
+    31307437.5,
+    33343856.555555556,
+    31418866.6,
+    31391516.7
+  ],
+  "region_quality": {
+    "bands-halo64": {
+      "changed_pixels": 0,
+      "max_channel_error": 0
+    },
+    "bands-no-halo": {
+      "changed_pixels": 0,
+      "max_channel_error": 0
+    },
+    "tiles-full-halo": {
+      "changed_pixels": 0,
+      "max_channel_error": 0
+    },
+    "tiles-halo64": {
+      "changed_pixels": 0,
+      "max_channel_error": 0
+    }
+  },
+  "sample_ms": 300,
+  "samples": 5,
+  "tiles-full-halo_ns": [
+    245836208,
+    258413708.5,
+    276165250,
+    269780187.5,
+    306307833
+  ],
+  "tiles-halo64_ns": [
+    88106843.75,
+    93066031.25,
+    100528166.66666667,
+    96001698,
+    96395323
+  ],
+  "vector_pdf_bytes": 25300,
+  "vector_pdf_ns": [
+    969756.4516129033,
+    905332.3313253012,
+    914863.5670731707,
+    866060.5187319885,
+    849284.8389830509
+  ],
+  "width": 1024,
+  "pixel_comparison": {
+    "reference": "imagebdf",
+    "changed_pixels": 0,
+    "max_channel_error": 0,
+    "mean_channel_error": 0.0,
+    "note": "AA/flattening/rounding differ by renderer; difference alone is not a quality verdict"
+  },
+  "downstream_pdf": {
+    "samples_ns": [
+      718547500,
+      498140167,
+      445273500,
+      407436084,
+      391406625
+    ],
+    "median_ns": 445273500,
+    "includes": "Ghostscript process startup, PDF decoding/rasterization and PNG encoding; not comparable to raw image Page alone"
+  },
+  "process_resource": {
+    "wall_seconds": 25.856909124995582,
+    "user_seconds": 50.045638,
+    "system_seconds": 1.985658,
+    "max_rss_bytes": 193511424,
+    "exit_code": 0,
+    "scope": "whole experimental process, retains multiple renderer caches and measures all modes sequentially; not per-mode peak"
+  }
+}

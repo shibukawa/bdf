@@ -1,0 +1,47 @@
+id: technique:binary-scanline-rasterization
+type: technique
+title: 明示的な非AA走査線と整数スパン
+summary: 明示OFFの非AA走査を実装した。1画素行1回の中心判定と整数スパンで既存maskを0/1にする。矩形は配列不要。直接スパン合成は次の候補。
+authority: authored
+lifecycle: active
+scope:
+  topic: raster-acceleration
+facts:
+  status: implemented_binary_mask_stage
+  method: y+0.5で交点、[ceil(xa-0.5), ceil(xb-0.5))の整数スパン
+  stages:
+  - 既存maskを0/1で生成する小さな実装
+  - 整数スパンの直接合成で密なmaskを省く
+  removes:
+  - 16回の反復
+  - 部分被覆の面積積算
+  retains:
+  - 曲線分割
+  - stroke展開
+  - 色合成
+  - 画像処理
+  - 符号化
+  validation:
+  - EvenOdd/NonZero
+  - 共有辺と端点
+  - 負座標
+  - 自己交差
+  - rectとSVGを含む伝搬
+  - 細線・小文字の実寸出力
+  speedup:
+    scope: Apple M3 warm fixtures 72/300dpi
+    overall_range:
+    - 1.17
+    - 2.13
+    300dpi_range:
+    - 1.42
+    - 1.88
+    evidence: knowledge-inputs/raster-acceleration/benchmark.json
+  priority: first
+relations:
+- relation: optimizes
+  to: component:imagebdf-rasterization
+- relation: part_of
+  to: survey:raster-acceleration
+- relation: supports
+  to: requirement:raster-quality-control

@@ -1,0 +1,24 @@
+{
+  "hash_collection": "after runs; fixture files unchanged in this worktree; per-run overlay source hashes stored separately",
+  "sha256": {
+    "testdata/pdf/chrome-doc.bdf": "e79aa48f2aca6212ae92a2beb02117c7f114d6049cb78049931c3a79c112b286",
+    "testdata/pptx/features.bdf": "20396535fcb1420115afa8984aae68ab1b36911b63518830a59f5b092a883356",
+    "testdata/drawio/showcase.bdf": "b84563f1f95ca1204edf020368762e9c10ec947355189f6065c2eef8b6a8e15c",
+    "raster/imagebdf/antialias_test.go": "8e6ddf605e075aae457b5bcd454150edef8d52169b6bd2233c14bff6400f9d53",
+    "converter/pptx/testdata/fonts/MPLUS1p-Regular-subset.ttf": "bc7bca835d915e0a670ff00866010ac7acf7af42ba14f7bee0764650dfb3b8cf",
+    "converter/pptx/testdata/fonts/MPLUS1p-Bold-subset.ttf": "207c146e0f5e798e0b15e87afc80e9b29952d8b9e911aff1d2d6ef91bd62a24b",
+    "converter/pptx/testdata/fonts/STIXTwoMath-subset.ttf": "76060f5ecc96da2d54c52c248e960dad0244c5a3e2dbd7d13f2f9ac6701dd0fe",
+    "converter/pptx/testdata/fonts/README.md": "92ff38008d8e33d341f76a3e94f2cb5df91c030f552e47e9198824e19023c566",
+    "converter/pptx/testdata/fonts/OFL.txt": "da15da6b1496d4de18f97e2ad1b722ef8a1c121149c2c93b2cf7eac6ac27b35c",
+    "converter/pptx/testdata/fonts/OFL-STIX.txt": "0c8825913b60d858aacdb33c4ca6660a7d64b0d6464702efbb19313f5765861a",
+    "converter/docx/testdata/fonts/MPLUS1p-Regular-subset.ttf": "a6ab1d3e19a03f676517e94a4c4d290ed6f2456a0852c1f47cb92bb651fdcbfb",
+    "converter/docx/testdata/fonts/MPLUS1p-Bold-subset.ttf": "7586a91fabecac963b42a1e8427cf7c81c697b718babc56080d2dc13db1bd228",
+    "converter/docx/testdata/fonts/STIXTwoMath-subset.ttf": "76060f5ecc96da2d54c52c248e960dad0244c5a3e2dbd7d13f2f9ac6701dd0fe",
+    "converter/docx/testdata/fonts/README.md": "0f8017ee1e617a702641a0e351be73d1f2b63ff490b3ef3473b94bc589dd066f",
+    "converter/docx/testdata/fonts/OFL.txt": "da15da6b1496d4de18f97e2ad1b722ef8a1c121149c2c93b2cf7eac6ac27b35c",
+    "converter/docx/testdata/fonts/OFL-STIX.txt": "0c8825913b60d858aacdb33c4ca6660a7d64b0d6464702efbb19313f5765861a",
+    "fixture/testdata/fonts/DejaVuSans-sub.ttf": "2111522c0a6938872d5bfcdc5e45535fb51937c4392e4eb4ed069f98ce246214",
+    "fixture/testdata/fonts/DejaVuSans-Bold-sub.ttf": "b89210f5c3e7afbac0a73319144959c31edacf03250ed157745ab28b1b384ab0",
+    "fixture/testdata/fonts/LICENSE.txt": "70e0c9323e1c3f45eecbd2f2e180827e20fecbf4d78c7b754e1b8bd273c5f4ed"
+  }
+}

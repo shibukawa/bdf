@@ -1,0 +1,109 @@
+id: requirement:raster-quality-control
+type: requirement
+title: ラスタライズ品質を明示指定し、既定のAAを維持する
+summary: 明示的なAA指定をimagebdfとbdf renderに実装した。未指定・ONは従来AA、OFFは非AA走査を使う。dpi・DPR・ズームによる自動切替は行わない。追加の高速化候補は別に保持する。
+authority: authored
+lifecycle: accepted
+scope:
+  topic: raster-acceleration
+aliases:
+- アンチエイリアス
+- antialias
+- 印刷向け高速化
+- AA off
+constraints:
+- 明示指定がない既存呼び出しの画質を変えない
+- 解像度だけでAAを無効化しない
+- 明示的に非AAを選べる設計を検討する
+non_goals:
+- 100dpiを品質保証の境界にすること
+- ブラウザCanvas 2Dの任意パスAA制御を保証すること
+capabilities:
+  explicit-aa-control:
+    state: implemented
+    about: capability:imagebdf/explicit-aa-control
+    verified_by:
+    - compatibility
+    - binary-route
+acceptance:
+  default-compatible:
+    text: 未指定／既定と明示ONは低・高dpiのいずれでも現行描画を維持する
+    verified_by:
+    - compatibility
+  explicit-off:
+    text: 明示OFFが幾何学的境界の非AA経路を選び、元の半透明・合成・画像補間・影等の処理と設定を無効化しない。幾何マスク変更に由来する影やsoft maskの画素差は許容する
+    verified_by:
+    - binary-route
+verification:
+  compatibility:
+    state: passed
+    method: integration
+    test: go test ./raster/imagebdf ./cmd/bdf
+    authority: observed
+    evidence:
+      path: raster/imagebdf/antialias_test.go
+      locator: TestAntialiasEntryPoints / TestAntialiasDefaultGolden / TestAntialiasOff*
+    basis: &id001
+    - path: raster/imagebdf/imagebdf.go
+      input_hash: a06d55f952414cb154295ee1c6e882192990da0be945c265d9d2fd42125f6c84
+    - path: raster/imagebdf/cache.go
+      input_hash: 6c392dc216aeab80336563fdf0b5211f5430684e77fabff3a1834d1ea6c34e27
+    - path: raster/imagebdf/pages.go
+      input_hash: b5d182155f53da612968ed2bb1100467f8d2b31ff15a1c411032f0cdf4d5d636
+    - path: raster/imagebdf/draw.go
+      input_hash: a185f787d259678c3b2015eb3e4863f8f7e6fed109d2797bd73effbb0d3cd534
+    - path: raster/imagebdf/object.go
+      input_hash: 5470cc56511ff65e945ce29a051b25ba1543adbff290d115d596930ab3dab84c
+    - path: raster/imagebdf/scan.go
+      input_hash: b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e
+    - path: raster/imagebdf/svg.go
+      input_hash: 72a3d5c65ee89609c4ee9b94048b6e58070b2d7ed0874b97acd786d7722ee85a
+    - path: raster/imagebdf/cache_test.go
+      input_hash: b5de199e195501f5a008f19d7e6710ca511cfbf4605aa6b7d438d6602fd0c0d5
+    - path: raster/imagebdf/pages_test.go
+      input_hash: 75498af164699ea264a726b282a0270f4ff3934a7eba452b4489187b9926c3e8
+    - path: raster/imagebdf/antialias_test.go
+      input_hash: b74848bcd26898fdc8a7870dbc089f69a870405ad12c589ebd6860b425afa68c
+    - path: cmd/bdf/preview.go
+      input_hash: 97c2d33e0c16248a4af7ef293fbc74ec8dcc27b73873202cecd3ec9f7891be4c
+    - path: cmd/bdf/preview_test.go
+      input_hash: cc66d33781cc232b5b1858968823a7da725b25bbc9a38032d0032b5729233357
+  binary-route:
+    state: passed
+    method: integration
+    test: go test ./raster/imagebdf ./cmd/bdf
+    authority: observed
+    evidence:
+      path: raster/imagebdf/antialias_test.go
+      locator: TestAntialiasEntryPoints / TestAntialiasDefaultGolden / TestAntialiasOff*
+    basis: *id001
+assertions:
+- key: explicit-selection
+  predicate: selection_policy
+  value: explicit_only
+  authority: authored
+  evidence:
+    path: knowledge-inputs/raster-acceleration/overview.ja.md
+    locator: '決まった方針: 利用者の最終指定「明示的指定で良い」'
+  basis:
+  - path: knowledge-inputs/raster-acceleration/overview.ja.md
+    input_hash: a1fc22fa2a2fd5f8ffb917e71047440923b7ddeb91b2bdd732572b2c7306ce19
+facts:
+  current_scope: 明示AAのAPI・CLI・非AA走査・互換性と設定伝搬のテストを実装
+  human_readable: knowledge-inputs/raster-acceleration/overview.ja.md
+  deferred_dpi_idea:
+    candidate_dpi: 100
+    status: not_adopted
+    reason: 利用者が明示指定を選択。HiDPI画面を解像度だけで分類できない
+    revisit: 利用者が自動選択を再度求めた場合
+  quality_threshold_not_proven: true
+history:
+  initial-resolution-idea:
+    summary: 当初は100dpi付近を境界にする案があったが未確定。最終的に明示指定を選び、自動判定は初期要件から外した
+  implemented:
+    summary: '2026-10-14: 明示Default/On/Off、CLI、非AA経路と伝搬・複雑度制限・既定画像互換を実装・検証。実機印刷は未評価'
+relations:
+- relation: explored_by
+  to: decision:raster-aa-option
+- relation: validated_by
+  to: experiment:raster-aa-comparison

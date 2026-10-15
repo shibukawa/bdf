@@ -1,0 +1,34 @@
+{
+  "backend": "blend2d-cpu",
+  "threads": 4,
+  "first_render_ns": 3598920.0,
+  "results": {
+    "render-only": {
+      "samples_ns": [
+        2604970.0,
+        2850140.0,
+        2953670.0,
+        2956850.0,
+        2989780.0
+      ],
+      "median_ns": 2953670.0
+    },
+    "owned-output": {
+      "samples_ns": [
+        3338990.0,
+        3264750.0,
+        3497130.0,
+        3268710.0,
+        3236940.0
+      ],
+      "median_ns": 3268710.0
+    }
+  },
+  "pixel_comparison": {
+    "reference": "imagebdf",
+    "changed_pixels": 409699,
+    "max_channel_error": 33,
+    "mean_channel_error": 0.13860273361206055,
+    "note": "AA/flattening/rounding differ by renderer; difference alone is not a quality verdict"
+  }
+}

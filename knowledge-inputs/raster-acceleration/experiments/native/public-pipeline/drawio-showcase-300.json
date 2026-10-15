@@ -1,0 +1,109 @@
+{
+  "bands-halo64_ns": [
+    18024979.166666668,
+    18035357.666666668,
+    17704968.75
+  ],
+  "bands-no-halo_ns": [
+    12632315.125,
+    12519846.375,
+    12320522.05882353
+  ],
+  "cached_object_copy_ns": [
+    44961.77051022702,
+    44332.39140070922,
+    44590.41083370486
+  ],
+  "cached_page_copy_ns": [
+    222229.2588888889,
+    215732.1745689655,
+    222906.13363028952
+  ],
+  "cached_region_copy_ns": [
+    77898.81892523365,
+    79752.52511961723,
+    85060.7461734694
+  ],
+  "cpu": 8,
+  "dpi": 300,
+  "first_render_ns": 29125833,
+  "four_pages_parallel_ns": [
+    44611958.2,
+    43126775,
+    42373408.4
+  ],
+  "four_pages_serial_ns": [
+    110462208,
+    106220145.5,
+    104880854.5
+  ],
+  "height": 930,
+  "input": "fixture:drawio-showcase-300",
+  "object_owned_ns": [
+    1626128.0241935484,
+    1634577.2357723578,
+    1629935.975609756
+  ],
+  "page_owned_ns": [
+    26050151,
+    25580406.25,
+    25370119.75
+  ],
+  "page_to_png_ns": [
+    62702406.25,
+    64466666.75,
+    64788531.25
+  ],
+  "raster_png_bytes": 160135,
+  "region_owned_ns": [
+    4885820.12195122,
+    4829354.166666667,
+    4773167.666666667
+  ],
+  "region_quality": {
+    "bands-halo64": {
+      "changed_pixels": 36,
+      "max_channel_error": 1
+    },
+    "bands-no-halo": {
+      "changed_pixels": 14,
+      "max_channel_error": 1
+    },
+    "tiles-full-halo": {
+      "changed_pixels": 0,
+      "max_channel_error": 0
+    },
+    "tiles-halo64": {
+      "changed_pixels": 555,
+      "max_channel_error": 1
+    }
+  },
+  "sample_ms": 200,
+  "samples": 3,
+  "tiles-full-halo_ns": [
+    42787250,
+    43670941.6,
+    44319691.6
+  ],
+  "tiles-halo64_ns": [
+    15033044.642857144,
+    14459636.92857143,
+    14877562.5
+  ],
+  "vector_pdf_bytes": 10117,
+  "vector_pdf_ns": [
+    4636642.9772727275,
+    4412021.739130435,
+    4374540.760869565
+  ],
+  "width": 1875,
+  "downstream_pdf": null,
+  "process_resource": {
+    "wall_seconds": 9.198555500013754,
+    "user_seconds": 17.213186,
+    "system_seconds": 0.5913269999999999,
+    "max_rss_bytes": 405405696,
+    "exit_code": 0,
+    "scope": "whole experimental process, retains multiple renderer caches and measures all modes sequentially; not per-mode peak"
+  }
+}

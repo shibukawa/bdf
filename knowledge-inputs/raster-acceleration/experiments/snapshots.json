@@ -1,0 +1,559 @@
+{
+  "method": "exact generated source bytes at measurement/test time; deduplicated by SHA256; overlay keys relative to raster/imagebdf",
+  "trials": {
+    "go/opaque-fill": {
+      "variant": "opaque-fill",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/small-a8": {
+      "variant": "small-a8",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/simd": {
+      "variant": "simd",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/7df9142e34024e2d762e621152c76f18c8b4fa550e195c82165961370815d9de.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "go/hybrid-storage": {
+      "variant": "hybrid-storage",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/baseline": {
+      "variant": "baseline",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/convex": {
+      "variant": "convex",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/7df9142e34024e2d762e621152c76f18c8b4fa550e195c82165961370815d9de.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "a8a0ce8ed934b56543b80eb32635a10b1c7072845ab6b8bc75dd6275cad8a950"
+    },
+    "go/stroke-cache": {
+      "variant": "stroke-cache",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/rgba8": {
+      "variant": "rgba8",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/flatten-cache": {
+      "variant": "flatten-cache",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/sparse-runs": {
+      "variant": "sparse-runs",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/adaptive": {
+      "variant": "adaptive",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/1793dafceb0f790e46dbc1b95e22b210faa1a7125135759f50a3a4ad6635f7fe.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/solid-fused": {
+      "variant": "solid-fused",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "go/text-run-cache": {
+      "variant": "text-run-cache",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/aa32371ea33f3da58be2b5569991e8449cfa79ae158c7c29045973331d088b1d.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/aeb1eeca54a9defbb2e763fb3b899c8cda0a7b6de576ed3e9ca1011b19cd1517.go.txt",
+        "experiment_support_test.go": "snapshots/1051e3cd246ee06d402b4c8e7a047f990493f59e45f7e45ce08dc1f716093867.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "6b881be792750db842ae012d11774502a1f20de384f1168a94871bfbb17cfd52"
+    },
+    "bracket/before": {
+      "variant": "baseline",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/7df9142e34024e2d762e621152c76f18c8b4fa550e195c82165961370815d9de.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "bracket/text": {
+      "variant": "text-run-cache",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/7df9142e34024e2d762e621152c76f18c8b4fa550e195c82165961370815d9de.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/5b341754f88078d1a9b60a5ac3ae37bcc52ee8639da1facabe51dc150eb54feb.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "verification/opaque-fill": {
+      "variant": "opaque-fill",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/474977cf925abc5cea4462a629375ada7f34d9453651746c29b7c869ceaf9992.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "verification/simd": {
+      "variant": "simd",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/474977cf925abc5cea4462a629375ada7f34d9453651746c29b7c869ceaf9992.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "verification/baseline": {
+      "variant": "baseline",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/474977cf925abc5cea4462a629375ada7f34d9453651746c29b7c869ceaf9992.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "verification/convex": {
+      "variant": "convex",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/474977cf925abc5cea4462a629375ada7f34d9453651746c29b7c869ceaf9992.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "verification/stroke-cache": {
+      "variant": "stroke-cache",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/474977cf925abc5cea4462a629375ada7f34d9453651746c29b7c869ceaf9992.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "verification/flatten-cache": {
+      "variant": "flatten-cache",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/474977cf925abc5cea4462a629375ada7f34d9453651746c29b7c869ceaf9992.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "verification/sparse-runs": {
+      "variant": "sparse-runs",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/474977cf925abc5cea4462a629375ada7f34d9453651746c29b7c869ceaf9992.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "verification/solid-fused": {
+      "variant": "solid-fused",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/474977cf925abc5cea4462a629375ada7f34d9453651746c29b7c869ceaf9992.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    },
+    "verification/text-run-cache": {
+      "variant": "text-run-cache",
+      "files": {
+        "imagebdf.go": "snapshots/a8056980b63a18a7ddf64dd368afb9cee2ae9f30669d0facc07e34fd0bbb211e.go.txt",
+        "scan.go": "snapshots/c338c37b2eb95eb3ce01906ab946c3030d886b6af23b126a9f497846687cf4f2.go.txt",
+        "surface.go": "snapshots/cf4b7c3a0b93880dfea0ea08b8ab29519c5706031da7e99e4191640503040160.go.txt",
+        "draw.go": "snapshots/af6489ef9d2f998c2a96524a0d86f7332a13a62c2999dde72a25b3217f3b65dd.go.txt",
+        "path.go": "snapshots/f803998bbd4f3259a6c2e45f934839a3c856b695afac4b098706920311f5df4c.go.txt",
+        "experiment_support.go": "snapshots/474977cf925abc5cea4462a629375ada7f34d9453651746c29b7c869ceaf9992.go.txt",
+        "experiment_support_test.go": "snapshots/3fe5b600b82983f0d000da332dac0e9cbd99d0765730679944e17e6d11b32e14.go.txt",
+        "experiment_simd_arm64.s": "snapshots/72ad06c073fa64eca07ec764c3bbd51eb59d436f0a198c0b602ce360987c1aa0.s.txt",
+        "experiment_simd_arm64.go": "snapshots/54ac4fefc2671ca5cc80c56e4c7b4b163492e7b71f09469de1bd5781a27cef21.go.txt",
+        "experiment_simd_other.go": "snapshots/54d11859bc527a6aa06c4c834bad8aba4f4d554f9240c410feb3c8c9dec418c9.go.txt"
+      },
+      "original_source_hashes": {
+        "imagebdf.go": "18cdf950e49fe6b8a15c5396d7aaf283f0a8af7d280e0312914afc6546a69746",
+        "scan.go": "b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e",
+        "surface.go": "4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a",
+        "draw.go": "e5eff749d4f280f84fafafc669cb037c5b65d4c34e3a54e752e1acc2d3ee1247",
+        "path.go": "b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb"
+      },
+      "runner_hash": "772e7e0257b0422507d8f7ec1a665d9992430007bdd7bb2d4690467d2acca822"
+    }
+  },
+  "baseline_object": "snapshots/308440f63ff2e01cffba96d4aaedf2b1540f42c57a7ab43f314b1a6a17c7890e.go.txt",
+  "baseline_antialias_test": "snapshots/8e6ddf605e075aae457b5bcd454150edef8d52169b6bd2233c14bff6400f9d53.go.txt"
+}

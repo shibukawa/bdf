@@ -1,0 +1,50 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/shibukawa/bdf/raster/imagebdf
+cpu: Apple M3
+BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on         	      14	  15219268 ns/op	11727072 B/op	    3807 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on         	      15	  15190756 ns/op	11727070 B/op	    3807 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on         	      14	  15239363 ns/op	11727070 B/op	    3807 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off        	      34	   7130623 ns/op	 6554494 B/op	    3747 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off        	      36	   6931125 ns/op	 6554494 B/op	    3747 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off        	      34	   6873370 ns/op	 6554490 B/op	    3747 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on        	       2	 109106166 ns/op	334219992 B/op	    5024 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on        	       2	 106021625 ns/op	334219992 B/op	    5024 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on        	       2	 116772500 ns/op	334219992 B/op	    5024 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off       	       4	  61744188 ns/op	245374360 B/op	    4963 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off       	       4	  62665000 ns/op	245374360 B/op	    4963 allocs/op
+BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off       	       4	  63024531 ns/op	245374360 B/op	    4963 allocs/op
+BenchmarkRenderAntialias/pptx/features/72dpi/on          	      32	   7379582 ns/op	 2749737 B/op	     178 allocs/op
+BenchmarkRenderAntialias/pptx/features/72dpi/on          	      33	   7451583 ns/op	 2749737 B/op	     178 allocs/op
+BenchmarkRenderAntialias/pptx/features/72dpi/on          	      31	   7116840 ns/op	 2749737 B/op	     178 allocs/op
+BenchmarkRenderAntialias/pptx/features/72dpi/off         	      39	   6288406 ns/op	 2742697 B/op	     176 allocs/op
+BenchmarkRenderAntialias/pptx/features/72dpi/off         	      38	   6254708 ns/op	 2742697 B/op	     176 allocs/op
+BenchmarkRenderAntialias/pptx/features/72dpi/off         	      38	   6233441 ns/op	 2742697 B/op	     176 allocs/op
+BenchmarkRenderAntialias/pptx/features/300dpi/on         	       2	 152092584 ns/op	265264368 B/op	     188 allocs/op
+BenchmarkRenderAntialias/pptx/features/300dpi/on         	       2	 148058396 ns/op	265264368 B/op	     188 allocs/op
+BenchmarkRenderAntialias/pptx/features/300dpi/on         	       2	 147619834 ns/op	265264368 B/op	     188 allocs/op
+BenchmarkRenderAntialias/pptx/features/300dpi/off        	       2	 102415125 ns/op	190713048 B/op	     179 allocs/op
+BenchmarkRenderAntialias/pptx/features/300dpi/off        	       2	 101494562 ns/op	190713056 B/op	     179 allocs/op
+BenchmarkRenderAntialias/pptx/features/300dpi/off        	       2	 101387854 ns/op	190713056 B/op	     179 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/72dpi/on        	      79	   2872453 ns/op	 1077368 B/op	    1871 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/72dpi/on        	      96	   2606812 ns/op	 1077369 B/op	    1871 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/72dpi/on        	      96	   2578775 ns/op	 1077369 B/op	    1871 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/72dpi/off       	     166	   1366895 ns/op	 1049288 B/op	    1861 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/72dpi/off       	     186	   1304979 ns/op	 1049288 B/op	    1861 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/72dpi/off       	     157	   1524540 ns/op	 1049288 B/op	    1861 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/300dpi/on       	       8	  26692042 ns/op	22149148 B/op	    2403 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/300dpi/on       	       8	  26243568 ns/op	22149150 B/op	    2403 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/300dpi/on       	       8	  26464052 ns/op	22149150 B/op	    2403 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/300dpi/off      	      15	  14845533 ns/op	14723800 B/op	    2390 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/300dpi/off      	      14	  14536771 ns/op	14723800 B/op	    2390 allocs/op
+BenchmarkRenderAntialias/drawio/showcase/300dpi/off      	      15	  14920792 ns/op	14723801 B/op	    2390 allocs/op
+BenchmarkExperimentPixelKernel                           	     367	    642737 ns/op	6525.69 MB/s	      60 B/op	       1 allocs/op
+BenchmarkExperimentPixelKernel                           	     379	    632441 ns/op	6631.93 MB/s	      59 B/op	       1 allocs/op
+BenchmarkExperimentPixelKernel                           	     369	    639140 ns/op	6562.41 MB/s	      60 B/op	       1 allocs/op
+BenchmarkExperimentRectangle/specialized                 	    1534	    154283 ns/op	  969408 B/op	       3 allocs/op
+BenchmarkExperimentRectangle/specialized                 	    1587	    152649 ns/op	  969408 B/op	       3 allocs/op
+BenchmarkExperimentRectangle/specialized                 	    1544	    152488 ns/op	  969408 B/op	       3 allocs/op
+BenchmarkExperimentRectangle/generic                     	     516	    466443 ns/op	  972322 B/op	      10 allocs/op
+BenchmarkExperimentRectangle/generic                     	     517	    461610 ns/op	  972322 B/op	      10 allocs/op
+BenchmarkExperimentRectangle/generic                     	     526	    471027 ns/op	  972322 B/op	      10 allocs/op
+PASS

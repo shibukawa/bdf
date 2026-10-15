@@ -1,0 +1,133 @@
+{
+  "method": "baseline before -> text-run-cache -> baseline after; 7 x 500ms, 300dpi, AA on, cpu1",
+  "rows": {
+    "before": {
+      "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+        "samples_ns": [
+          106218133,
+          98430451,
+          99178507,
+          104576222,
+          93552479,
+          96518118,
+          94004701
+        ],
+        "median_ns": 98430451
+      },
+      "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+        "samples_ns": [
+          134018083,
+          135414271,
+          135117927,
+          134551750,
+          136181990,
+          138628229,
+          135999250
+        ],
+        "median_ns": 135414271
+      },
+      "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+        "samples_ns": [
+          25182814,
+          24800988,
+          24286943,
+          24142071,
+          24463220,
+          26471096,
+          24922573
+        ],
+        "median_ns": 24800988
+      }
+    },
+    "after": {
+      "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+        "samples_ns": [
+          104415325,
+          99461188,
+          96148646,
+          97542681,
+          98720382,
+          98254326,
+          97988076
+        ],
+        "median_ns": 98254326
+      },
+      "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+        "samples_ns": [
+          139122114,
+          138251927,
+          139919083,
+          145696302,
+          155394323,
+          142162740,
+          143881438
+        ],
+        "median_ns": 142162740
+      },
+      "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+        "samples_ns": [
+          25632629,
+          25204496,
+          26079465,
+          25298649,
+          25874373,
+          26586604,
+          26277022
+        ],
+        "median_ns": 25874373
+      }
+    },
+    "text": {
+      "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+        "samples_ns": [
+          90870565,
+          73183327,
+          73704238,
+          73262042,
+          73894405,
+          73554524,
+          73677984
+        ],
+        "median_ns": 73677984
+      },
+      "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+        "samples_ns": [
+          134142521,
+          131601479,
+          132513448,
+          131403208,
+          134846271,
+          132702812,
+          131715229
+        ],
+        "median_ns": 132513448
+      },
+      "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+        "samples_ns": [
+          22826064,
+          23083008,
+          22771272,
+          22775715,
+          23096233,
+          23240372,
+          23041587
+        ],
+        "median_ns": 23041587
+      }
+    }
+  },
+  "comparisons": {
+    "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+      "before_speedup": 1.3359547269914442,
+      "after_speedup": 1.3335642571327684
+    },
+    "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+      "before_speedup": 1.0218907819831238,
+      "after_speedup": 1.0728174547235387
+    },
+    "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+      "before_speedup": 1.0763576310954623,
+      "after_speedup": 1.1229423129578704
+    }
+  }
+}

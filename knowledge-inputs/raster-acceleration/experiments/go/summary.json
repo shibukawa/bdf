@@ -1,0 +1,3664 @@
+{
+  "method": "same Go overlay instrumentation, same fixture/AA/DPI per pair; warm rendering; short samples; separate process resource data; convex uses 5 x 500ms, other variants 3 x 200ms",
+  "limitations": [
+    "ordered sequential suite, baseline drift possible; use bracket results for text-run conclusions",
+    "microbenchmarks do not prove page speedups",
+    "RSS covers each benchmark process, not one isolated page",
+    "prototype cache byte counts are payload limits, not complete map/key accounting"
+  ],
+  "variants": {
+    "adaptive": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 15514929,
+          "bytes_op": 11751213,
+          "allocs_op": 3886,
+          "samples": 3,
+          "min_ns": 15409702,
+          "max_ns": 15676565,
+          "speedup_vs_baseline": 0.9045347226532586
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 7150879,
+          "bytes_op": 6578634,
+          "allocs_op": 3826,
+          "samples": 3,
+          "min_ns": 7055528,
+          "max_ns": 7163014,
+          "speedup_vs_baseline": 0.8960004777035103
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 111678792,
+          "bytes_op": 334266688,
+          "allocs_op": 5652,
+          "samples": 3,
+          "min_ns": 110263979,
+          "max_ns": 115441479,
+          "speedup_vs_baseline": 0.8397795796358543
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 65588542,
+          "bytes_op": 245421048,
+          "allocs_op": 5591,
+          "samples": 3,
+          "min_ns": 64326208,
+          "max_ns": 68459750,
+          "speedup_vs_baseline": 0.8909344866973868
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 7934656,
+          "bytes_op": 2749737,
+          "allocs_op": 178,
+          "samples": 3,
+          "min_ns": 7913411,
+          "max_ns": 7990495,
+          "speedup_vs_baseline": 0.9800560982101808
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 6997781,
+          "bytes_op": 2742697,
+          "allocs_op": 176,
+          "samples": 3,
+          "min_ns": 6973696,
+          "max_ns": 7924350,
+          "speedup_vs_baseline": 1.013413966513099
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 155647708,
+          "bytes_op": 265264368,
+          "allocs_op": 188,
+          "samples": 3,
+          "min_ns": 151214000,
+          "max_ns": 159996688,
+          "speedup_vs_baseline": 1.1009060281183196
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 102276375,
+          "bytes_op": 190713056,
+          "allocs_op": 179,
+          "samples": 3,
+          "min_ns": 101915334,
+          "max_ns": 106221104,
+          "speedup_vs_baseline": 0.9877448042130942
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2848226,
+          "bytes_op": 1096217,
+          "allocs_op": 2021,
+          "samples": 3,
+          "min_ns": 2831850,
+          "max_ns": 2964878,
+          "speedup_vs_baseline": 0.9414684789760364
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1450323,
+          "bytes_op": 1068137,
+          "allocs_op": 2011,
+          "samples": 3,
+          "min_ns": 1438698,
+          "max_ns": 1561239,
+          "speedup_vs_baseline": 0.8694732138978697
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 26780339,
+          "bytes_op": 22196636,
+          "allocs_op": 2744,
+          "samples": 3,
+          "min_ns": 26722448,
+          "max_ns": 27048292,
+          "speedup_vs_baseline": 1.0182339738119073
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 14697989,
+          "bytes_op": 14771288,
+          "allocs_op": 2731,
+          "samples": 3,
+          "min_ns": 14619144,
+          "max_ns": 15058217,
+          "speedup_vs_baseline": 1.0659022128809594
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 621754,
+          "bytes_op": 58,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 610719,
+          "max_ns": 634771,
+          "speedup_vs_baseline": 1.0145684627682332
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 152450,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 152253,
+          "max_ns": 153680,
+          "speedup_vs_baseline": 1.0591341423417513
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 462977,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 457419,
+          "max_ns": 464923,
+          "speedup_vs_baseline": 1.1092408478174942
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "0724b6d9b515054d7b3baf59e8edd996b6c22e90464c29177c0ca968cdfcb042",
+          "pixels": 500990,
+          "changed_pixels": 290,
+          "max_channel_error": 7,
+          "mean_channel_error": 0.0010164873550370266,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "3540514284fe647c9b96a7e630d72ed593338d11cfd469212fc79a71aa8951bf",
+          "pixels": 500990,
+          "changed_pixels": 3,
+          "max_channel_error": 224,
+          "mean_channel_error": 0.0008697778398770434,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "8fb313df927b619508f44e015a4e7e12f9c3d7c479793dc045525154ad7ba86d",
+          "pixels": 8696332,
+          "changed_pixels": 33935,
+          "max_channel_error": 18,
+          "mean_channel_error": 0.010993399286043816,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "22ee03b3c95efc532c393aa86ca1e2ef3ccfd27883a9694bbb09c6af45c04415",
+          "pixels": 8696332,
+          "changed_pixels": 719,
+          "max_channel_error": 255,
+          "mean_channel_error": 0.013153275426927123,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "cc01f75c08b7631b9c17783f6eb9b493ff5c20a364625f9bc7fd54d9761995a6",
+          "pixels": 518400,
+          "changed_pixels": 4281,
+          "max_channel_error": 18,
+          "mean_channel_error": 0.023248456790123457,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "e43a8d25355f220ff2cb564a786fc2359bc38cfd3cd401e2e278d5a1a509b9aa",
+          "pixels": 518400,
+          "changed_pixels": 76,
+          "max_channel_error": 253,
+          "mean_channel_error": 0.027219328703703704,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "75f8b04a326b94a474c2ca376d4b72cfd9433d1c96e3cbb086fd03c1d003a977",
+          "pixels": 9000000,
+          "changed_pixels": 21491,
+          "max_channel_error": 25,
+          "mean_channel_error": 0.010107305555555555,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "e6283352b3ae1fd89f48c391e714923f39911354234b0f496877cd0461c5c9d9",
+          "pixels": 9000000,
+          "changed_pixels": 538,
+          "max_channel_error": 253,
+          "mean_channel_error": 0.010769611111111112,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "db0cfd73cdc95f88ab405a6a34aec6ad3a4959a537a0f12b3986175a73f8f21b",
+          "pixels": 100350,
+          "changed_pixels": 1509,
+          "max_channel_error": 15,
+          "mean_channel_error": 0.032234678624813155,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "897346a1ccca91cd958163d115466fadf70b6894d9586df5fa70a95587d49de5",
+          "pixels": 100350,
+          "changed_pixels": 40,
+          "max_channel_error": 255,
+          "mean_channel_error": 0.04289985052316891,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "e68a00a800b67fb051e3886352a465935c858474759853672f8af813f61eb050",
+          "pixels": 1743750,
+          "changed_pixels": 12707,
+          "max_channel_error": 23,
+          "mean_channel_error": 0.021888458781362006,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "d1fd39b376490b21ec5243242836abb622e5ae95cd52c81f80445e0ec4dee678",
+          "pixels": 1743750,
+          "changed_pixels": 299,
+          "max_channel_error": 255,
+          "mean_channel_error": 0.027123870967741937,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.282033083029091,
+        "user_seconds": 11.845883,
+        "system_seconds": 0.274787,
+        "max_rss": 545882112,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "baseline": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 14033792,
+          "bytes_op": 11727070,
+          "allocs_op": 3807,
+          "samples": 3,
+          "min_ns": 13677279,
+          "max_ns": 14415203,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 6407191,
+          "bytes_op": 6554490,
+          "allocs_op": 3747,
+          "samples": 3,
+          "min_ns": 6389225,
+          "max_ns": 6559135,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 93785569,
+          "bytes_op": 334219997,
+          "allocs_op": 5024,
+          "samples": 3,
+          "min_ns": 92267514,
+          "max_ns": 101223125,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 58435094,
+          "bytes_op": 245374360,
+          "allocs_op": 4963,
+          "samples": 3,
+          "min_ns": 53405146,
+          "max_ns": 104941438,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 7776408,
+          "bytes_op": 2749737,
+          "allocs_op": 178,
+          "samples": 3,
+          "min_ns": 7615283,
+          "max_ns": 8016436,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 7091649,
+          "bytes_op": 2742697,
+          "allocs_op": 176,
+          "samples": 3,
+          "min_ns": 7021089,
+          "max_ns": 7144162,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 171353500,
+          "bytes_op": 265264368,
+          "allocs_op": 188,
+          "samples": 3,
+          "min_ns": 171139229,
+          "max_ns": 184630771,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 101022958,
+          "bytes_op": 190713056,
+          "allocs_op": 179,
+          "samples": 3,
+          "min_ns": 100461834,
+          "max_ns": 104369188,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2681515,
+          "bytes_op": 1077369,
+          "allocs_op": 1871,
+          "samples": 3,
+          "min_ns": 2592693,
+          "max_ns": 2837229,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1261017,
+          "bytes_op": 1049288,
+          "allocs_op": 1861,
+          "samples": 3,
+          "min_ns": 1250067,
+          "max_ns": 1276857,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 27268651,
+          "bytes_op": 22149148,
+          "allocs_op": 2403,
+          "samples": 3,
+          "min_ns": 26055079,
+          "max_ns": 27963469,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 15666619,
+          "bytes_op": 14723801,
+          "allocs_op": 2390,
+          "samples": 3,
+          "min_ns": 14735886,
+          "max_ns": 18468601,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 630812,
+          "bytes_op": 58,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 627438,
+          "max_ns": 640448,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 161465,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 153687,
+          "max_ns": 171155,
+          "speedup_vs_baseline": 1.0
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 513553,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 505433,
+          "max_ns": 536474,
+          "speedup_vs_baseline": 1.0
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "3403d0dea7914f3261bf0c6f5826eae357d248baea3de2470add258de9031db5",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "754553f32824ba57c42075c1c78e9f36c7bda85fe2f08a634dcd9b824ec2d11f",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "fdcfd67e6f06279be1873276a6b493e2a8ca2e43bf8c540288b253618e7d464d",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "dd4a7408631aa45ce1219da2f7812a170382f50e321cdbf175fe2dbe243f4018",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "51835c370f059023e305e442529d4e406940f5dbdb708a83427ed4d44548ad99",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "09d1faf3e5106997f5f336db45c731730b9792cedcbe2521c1e2ce6505a52f55",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.454858749988489,
+        "user_seconds": 11.918252,
+        "system_seconds": 0.273364,
+        "max_rss": 549109760,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "convex": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 13842166,
+          "bytes_op": 11727071,
+          "allocs_op": 3807,
+          "samples": 5,
+          "min_ns": 13647627,
+          "max_ns": 14134626,
+          "speedup_vs_baseline": 1.0138436426784652
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 6440045,
+          "bytes_op": 6554490,
+          "allocs_op": 3747,
+          "samples": 5,
+          "min_ns": 6393256,
+          "max_ns": 6514907,
+          "speedup_vs_baseline": 0.994898482852216
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 94473292,
+          "bytes_op": 334219994,
+          "allocs_op": 5024,
+          "samples": 5,
+          "min_ns": 93732632,
+          "max_ns": 98575132,
+          "speedup_vs_baseline": 0.9927204505586616
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 56757227,
+          "bytes_op": 245374360,
+          "allocs_op": 4963,
+          "samples": 5,
+          "min_ns": 55005967,
+          "max_ns": 58884153,
+          "speedup_vs_baseline": 1.0295621736417813
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 6716486,
+          "bytes_op": 2749737,
+          "allocs_op": 178,
+          "samples": 5,
+          "min_ns": 6678711,
+          "max_ns": 6893184,
+          "speedup_vs_baseline": 1.1578090090562236
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 5767404,
+          "bytes_op": 2742696,
+          "allocs_op": 176,
+          "samples": 5,
+          "min_ns": 5675400,
+          "max_ns": 5905131,
+          "speedup_vs_baseline": 1.2296085032364648
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 135393562,
+          "bytes_op": 265264368,
+          "allocs_op": 188,
+          "samples": 5,
+          "min_ns": 134190448,
+          "max_ns": 146021688,
+          "speedup_vs_baseline": 1.2655956270653401
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 95423910,
+          "bytes_op": 190713056,
+          "allocs_op": 179,
+          "samples": 5,
+          "min_ns": 95082306,
+          "max_ns": 100327908,
+          "speedup_vs_baseline": 1.0586755248239146
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2565228,
+          "bytes_op": 1077369,
+          "allocs_op": 1871,
+          "samples": 5,
+          "min_ns": 2524667,
+          "max_ns": 2719439,
+          "speedup_vs_baseline": 1.0453320328641353
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1251008,
+          "bytes_op": 1049289,
+          "allocs_op": 1861,
+          "samples": 5,
+          "min_ns": 1223532,
+          "max_ns": 1289294,
+          "speedup_vs_baseline": 1.0080007481966542
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 25592967,
+          "bytes_op": 22149146,
+          "allocs_op": 2403,
+          "samples": 5,
+          "min_ns": 24644189,
+          "max_ns": 26879679,
+          "speedup_vs_baseline": 1.0654743938051419
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 12937546,
+          "bytes_op": 14723800,
+          "allocs_op": 2390,
+          "samples": 5,
+          "min_ns": 12700324,
+          "max_ns": 13394889,
+          "speedup_vs_baseline": 1.210942090563388
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 595912,
+          "bytes_op": 32,
+          "allocs_op": 1,
+          "samples": 5,
+          "min_ns": 590372,
+          "max_ns": 606126,
+          "speedup_vs_baseline": 1.0585656942635826
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 144186,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 5,
+          "min_ns": 143704,
+          "max_ns": 147662,
+          "speedup_vs_baseline": 1.1198382644639562
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 445197,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 5,
+          "min_ns": 442946,
+          "max_ns": 446889,
+          "speedup_vs_baseline": 1.1535410166735176
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "3403d0dea7914f3261bf0c6f5826eae357d248baea3de2470add258de9031db5",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "754553f32824ba57c42075c1c78e9f36c7bda85fe2f08a634dcd9b824ec2d11f",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "fdcfd67e6f06279be1873276a6b493e2a8ca2e43bf8c540288b253618e7d464d",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "dd4a7408631aa45ce1219da2f7812a170382f50e321cdbf175fe2dbe243f4018",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "51835c370f059023e305e442529d4e406940f5dbdb708a83427ed4d44548ad99",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "09d1faf3e5106997f5f336db45c731730b9792cedcbe2521c1e2ce6505a52f55",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 46.06828583404422,
+        "user_seconds": 44.758563,
+        "system_seconds": 0.707283,
+        "max_rss": 574373888,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "flatten-cache": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 15219268,
+          "bytes_op": 11727070,
+          "allocs_op": 3807,
+          "samples": 3,
+          "min_ns": 15190756,
+          "max_ns": 15239363,
+          "speedup_vs_baseline": 0.9221068976510566
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 6931125,
+          "bytes_op": 6554494,
+          "allocs_op": 3747,
+          "samples": 3,
+          "min_ns": 6873370,
+          "max_ns": 7130623,
+          "speedup_vs_baseline": 0.9244085195404786
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 109106166,
+          "bytes_op": 334219992,
+          "allocs_op": 5024,
+          "samples": 3,
+          "min_ns": 106021625,
+          "max_ns": 116772500,
+          "speedup_vs_baseline": 0.8595808324893389
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 62665000,
+          "bytes_op": 245374360,
+          "allocs_op": 4963,
+          "samples": 3,
+          "min_ns": 61744188,
+          "max_ns": 63024531,
+          "speedup_vs_baseline": 0.9324997047793824
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 7379582,
+          "bytes_op": 2749737,
+          "allocs_op": 178,
+          "samples": 3,
+          "min_ns": 7116840,
+          "max_ns": 7451583,
+          "speedup_vs_baseline": 1.0537735064126939
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 6254708,
+          "bytes_op": 2742697,
+          "allocs_op": 176,
+          "samples": 3,
+          "min_ns": 6233441,
+          "max_ns": 6288406,
+          "speedup_vs_baseline": 1.1338097637811388
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 148058396,
+          "bytes_op": 265264368,
+          "allocs_op": 188,
+          "samples": 3,
+          "min_ns": 147619834,
+          "max_ns": 152092584,
+          "speedup_vs_baseline": 1.1573372711669794
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 101494562,
+          "bytes_op": 190713056,
+          "allocs_op": 179,
+          "samples": 3,
+          "min_ns": 101387854,
+          "max_ns": 102415125,
+          "speedup_vs_baseline": 0.9953534062248577
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2606812,
+          "bytes_op": 1077369,
+          "allocs_op": 1871,
+          "samples": 3,
+          "min_ns": 2578775,
+          "max_ns": 2872453,
+          "speedup_vs_baseline": 1.0286568421504887
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1366895,
+          "bytes_op": 1049288,
+          "allocs_op": 1861,
+          "samples": 3,
+          "min_ns": 1304979,
+          "max_ns": 1524540,
+          "speedup_vs_baseline": 0.9225412339645693
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 26464052,
+          "bytes_op": 22149150,
+          "allocs_op": 2403,
+          "samples": 3,
+          "min_ns": 26243568,
+          "max_ns": 26692042,
+          "speedup_vs_baseline": 1.0304034695820579
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 14845533,
+          "bytes_op": 14723800,
+          "allocs_op": 2390,
+          "samples": 3,
+          "min_ns": 14536771,
+          "max_ns": 14920792,
+          "speedup_vs_baseline": 1.0553086238129679
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 639140,
+          "bytes_op": 60,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 632441,
+          "max_ns": 642737,
+          "speedup_vs_baseline": 0.9869699909253059
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 152649,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 152488,
+          "max_ns": 154283,
+          "speedup_vs_baseline": 1.057753408145484
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 466443,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 461610,
+          "max_ns": 471027,
+          "speedup_vs_baseline": 1.1009984070936856
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "3403d0dea7914f3261bf0c6f5826eae357d248baea3de2470add258de9031db5",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 441792,
+          "cache_hits": 821,
+          "cache_misses": 821
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 441792,
+          "cache_hits": 821,
+          "cache_misses": 821
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "754553f32824ba57c42075c1c78e9f36c7bda85fe2f08a634dcd9b824ec2d11f",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 603280,
+          "cache_hits": 821,
+          "cache_misses": 821
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 603280,
+          "cache_hits": 821,
+          "cache_misses": 821
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "fdcfd67e6f06279be1873276a6b493e2a8ca2e43bf8c540288b253618e7d464d",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 72656,
+          "cache_hits": 122,
+          "cache_misses": 122
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 72656,
+          "cache_hits": 122,
+          "cache_misses": 122
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "dd4a7408631aa45ce1219da2f7812a170382f50e321cdbf175fe2dbe243f4018",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 112496,
+          "cache_hits": 122,
+          "cache_misses": 122
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 112496,
+          "cache_hits": 122,
+          "cache_misses": 122
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "51835c370f059023e305e442529d4e406940f5dbdb708a83427ed4d44548ad99",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 74624,
+          "cache_hits": 159,
+          "cache_misses": 159
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 74624,
+          "cache_hits": 159,
+          "cache_misses": 159
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "09d1faf3e5106997f5f336db45c731730b9792cedcbe2521c1e2ce6505a52f55",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 103056,
+          "cache_hits": 159,
+          "cache_misses": 159
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 103056,
+          "cache_hits": 159,
+          "cache_misses": 159
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.20137333299499,
+        "user_seconds": 11.78627,
+        "system_seconds": 0.264058,
+        "max_rss": 636944384,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "hybrid-storage": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 14267967,
+          "bytes_op": 11727088,
+          "allocs_op": 3808,
+          "samples": 3,
+          "min_ns": 14228728,
+          "max_ns": 14389458,
+          "speedup_vs_baseline": 0.9835873604137155
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 5969728,
+          "bytes_op": 6554514,
+          "allocs_op": 3748,
+          "samples": 3,
+          "min_ns": 5849356,
+          "max_ns": 6054184,
+          "speedup_vs_baseline": 1.0732802231525456
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 80908972,
+          "bytes_op": 195029640,
+          "allocs_op": 5022,
+          "samples": 3,
+          "min_ns": 80522694,
+          "max_ns": 85171458,
+          "speedup_vs_baseline": 1.1591491855810503
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 38520680,
+          "bytes_op": 106184013,
+          "allocs_op": 4961,
+          "samples": 3,
+          "min_ns": 38446062,
+          "max_ns": 38764570,
+          "speedup_vs_baseline": 1.5169798144788722
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 11325935,
+          "bytes_op": 2749753,
+          "allocs_op": 179,
+          "samples": 3,
+          "min_ns": 11324635,
+          "max_ns": 11328433,
+          "speedup_vs_baseline": 0.6866018567120507
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 10217670,
+          "bytes_op": 2742713,
+          "allocs_op": 177,
+          "samples": 3,
+          "min_ns": 10171763,
+          "max_ns": 10370703,
+          "speedup_vs_baseline": 0.6940573535845256
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 301838125,
+          "bytes_op": 121191568,
+          "allocs_op": 185,
+          "samples": 3,
+          "min_ns": 300619584,
+          "max_ns": 306830542,
+          "speedup_vs_baseline": 0.567699988197316
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 185957250,
+          "bytes_op": 46640272,
+          "allocs_op": 177,
+          "samples": 3,
+          "min_ns": 172173104,
+          "max_ns": 229085250,
+          "speedup_vs_baseline": 0.5432590447535657
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 3329439,
+          "bytes_op": 1077385,
+          "allocs_op": 1872,
+          "samples": 3,
+          "min_ns": 3206692,
+          "max_ns": 3378668,
+          "speedup_vs_baseline": 0.8053954434966372
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1786215,
+          "bytes_op": 1049305,
+          "allocs_op": 1862,
+          "samples": 3,
+          "min_ns": 1774356,
+          "max_ns": 1812072,
+          "speedup_vs_baseline": 0.7059715655730133
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 49794850,
+          "bytes_op": 22149148,
+          "allocs_op": 2403,
+          "samples": 3,
+          "min_ns": 48954275,
+          "max_ns": 50635688,
+          "speedup_vs_baseline": 0.5476199044680323
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 19978021,
+          "bytes_op": 14723818,
+          "allocs_op": 2391,
+          "samples": 3,
+          "min_ns": 19924372,
+          "max_ns": 20038753,
+          "speedup_vs_baseline": 0.7841927386100955
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 630725,
+          "bytes_op": 59,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 626115,
+          "max_ns": 634993,
+          "speedup_vs_baseline": 1.000137936501645
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 155581,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 155485,
+          "max_ns": 175323,
+          "speedup_vs_baseline": 1.0378195280914764
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 466140,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 458305,
+          "max_ns": 466248,
+          "speedup_vs_baseline": 1.1017140773158278
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "fb0c5a46c03515e6977612d1c3d7822da88235d17b0260dae87b743e3aaa4f38",
+          "pixels": 500990,
+          "changed_pixels": 106,
+          "max_channel_error": 1,
+          "mean_channel_error": 7.984191301223577e-05,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "c7dcb64823cccd214842efab54d9e222f1889bd758f5a47e1a4287ced1e95283",
+          "pixels": 8696332,
+          "changed_pixels": 134,
+          "max_channel_error": 1,
+          "mean_channel_error": 6.26701004515467e-06,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "7ab53f3380cac3d08e407757deadf8dfc90a9ff1a00a5ed36c882b254c097fa1",
+          "pixels": 518400,
+          "changed_pixels": 4143,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0023876350308641974,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "0f460fe82fc4df1fd93adfda5744247cd5a50ff112ed22b158e0964f9d7d528e",
+          "pixels": 518400,
+          "changed_pixels": 476,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.00033468364197530864,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "7f22f1f0e1c45aa5fcd04815a4061c1536af68c15cebc43ab87489bec9ad75fe",
+          "pixels": 9000000,
+          "changed_pixels": 39151,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0013111111111111112,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "5feb9fbb603c22cfa2c2557094a3ed985c4dd13741138414c1ae980a4e691c32",
+          "pixels": 9000000,
+          "changed_pixels": 26330,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0008923888888888889,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "cf8f718bcf89bb78ec31115ac5195347a99a612f6f6a7b394d12589fb40823bb",
+          "pixels": 100350,
+          "changed_pixels": 756,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0022595914299950175,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "431221d64301ecf4a935a9efe3f611691cda4712bbc99ac415943c908171b1e8",
+          "pixels": 100350,
+          "changed_pixels": 1,
+          "max_channel_error": 1,
+          "mean_channel_error": 2.4912805181863477e-06,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "9f2da76dee0a2e5e23cb09cfd8abbef3297abd60aebd667bcb66615bc39d100c",
+          "pixels": 1743750,
+          "changed_pixels": 561,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.00011154121863799284,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 13.237535875057802,
+        "user_seconds": 12.869041,
+        "system_seconds": 0.205451,
+        "max_rss": 271204352,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "opaque-fill": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 14951336,
+          "bytes_op": 11727069,
+          "allocs_op": 3807,
+          "samples": 3,
+          "min_ns": 14786000,
+          "max_ns": 14998547,
+          "speedup_vs_baseline": 0.9386313035838403
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 7013134,
+          "bytes_op": 6554491,
+          "allocs_op": 3747,
+          "samples": 3,
+          "min_ns": 6926391,
+          "max_ns": 7090799,
+          "speedup_vs_baseline": 0.9135988275712399
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 110468354,
+          "bytes_op": 334219992,
+          "allocs_op": 5024,
+          "samples": 3,
+          "min_ns": 104145730,
+          "max_ns": 119354688,
+          "speedup_vs_baseline": 0.8489813200258238
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 62411510,
+          "bytes_op": 245374364,
+          "allocs_op": 4963,
+          "samples": 3,
+          "min_ns": 59952198,
+          "max_ns": 66865083,
+          "speedup_vs_baseline": 0.9362871367797382
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 7052651,
+          "bytes_op": 2749737,
+          "allocs_op": 178,
+          "samples": 3,
+          "min_ns": 7005530,
+          "max_ns": 7372566,
+          "speedup_vs_baseline": 1.1026219786006708
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 6096295,
+          "bytes_op": 2742697,
+          "allocs_op": 176,
+          "samples": 3,
+          "min_ns": 6067130,
+          "max_ns": 6303109,
+          "speedup_vs_baseline": 1.1632719545231982
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 146714875,
+          "bytes_op": 265264368,
+          "allocs_op": 188,
+          "samples": 3,
+          "min_ns": 146171583,
+          "max_ns": 151469396,
+          "speedup_vs_baseline": 1.1679354257705634
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 101027750,
+          "bytes_op": 190713056,
+          "allocs_op": 179,
+          "samples": 3,
+          "min_ns": 100295854,
+          "max_ns": 106162980,
+          "speedup_vs_baseline": 0.9999525674876457
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2646611,
+          "bytes_op": 1077368,
+          "allocs_op": 1871,
+          "samples": 3,
+          "min_ns": 2639197,
+          "max_ns": 2806833,
+          "speedup_vs_baseline": 1.013188186703675
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1291398,
+          "bytes_op": 1049289,
+          "allocs_op": 1861,
+          "samples": 3,
+          "min_ns": 1281713,
+          "max_ns": 1316498,
+          "speedup_vs_baseline": 0.9764743324676048
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 26062333,
+          "bytes_op": 22149148,
+          "allocs_op": 2403,
+          "samples": 3,
+          "min_ns": 25843588,
+          "max_ns": 26079547,
+          "speedup_vs_baseline": 1.046285879318632
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 14760117,
+          "bytes_op": 14723801,
+          "allocs_op": 2390,
+          "samples": 3,
+          "min_ns": 14567658,
+          "max_ns": 15407458,
+          "speedup_vs_baseline": 1.061415637829971
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 692566,
+          "bytes_op": 62,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 665996,
+          "max_ns": 716660,
+          "speedup_vs_baseline": 0.9108330469587014
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 233630,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 194251,
+          "max_ns": 497376,
+          "speedup_vs_baseline": 0.6911141548602491
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 528509,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 518890,
+          "max_ns": 561677,
+          "speedup_vs_baseline": 0.9717015225852351
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "3403d0dea7914f3261bf0c6f5826eae357d248baea3de2470add258de9031db5",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "754553f32824ba57c42075c1c78e9f36c7bda85fe2f08a634dcd9b824ec2d11f",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "fdcfd67e6f06279be1873276a6b493e2a8ca2e43bf8c540288b253618e7d464d",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "dd4a7408631aa45ce1219da2f7812a170382f50e321cdbf175fe2dbe243f4018",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "51835c370f059023e305e442529d4e406940f5dbdb708a83427ed4d44548ad99",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "09d1faf3e5106997f5f336db45c731730b9792cedcbe2521c1e2ce6505a52f55",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.407166084041819,
+        "user_seconds": 11.70664,
+        "system_seconds": 0.275486,
+        "max_rss": 635109376,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "rgba8": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 14332833,
+          "bytes_op": 11727088,
+          "allocs_op": 3808,
+          "samples": 3,
+          "min_ns": 14268153,
+          "max_ns": 15168786,
+          "speedup_vs_baseline": 0.9791359461175609
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 6028626,
+          "bytes_op": 6554513,
+          "allocs_op": 3748,
+          "samples": 3,
+          "min_ns": 5949792,
+          "max_ns": 6168700,
+          "speedup_vs_baseline": 1.0627945737552802
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 80437264,
+          "bytes_op": 195029645,
+          "allocs_op": 5022,
+          "samples": 3,
+          "min_ns": 79839306,
+          "max_ns": 81178292,
+          "speedup_vs_baseline": 1.1659467805866695
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 38164660,
+          "bytes_op": 106184013,
+          "allocs_op": 4961,
+          "samples": 3,
+          "min_ns": 37986903,
+          "max_ns": 38632868,
+          "speedup_vs_baseline": 1.5311309992018793
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 11218819,
+          "bytes_op": 2749758,
+          "allocs_op": 179,
+          "samples": 3,
+          "min_ns": 11076869,
+          "max_ns": 11634763,
+          "speedup_vs_baseline": 0.6931574526694833
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 10153566,
+          "bytes_op": 2742714,
+          "allocs_op": 177,
+          "samples": 3,
+          "min_ns": 9990364,
+          "max_ns": 10256184,
+          "speedup_vs_baseline": 0.6984392478465201
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 299144083,
+          "bytes_op": 121191568,
+          "allocs_op": 185,
+          "samples": 3,
+          "min_ns": 298786542,
+          "max_ns": 312914917,
+          "speedup_vs_baseline": 0.5728126001409161
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 167546042,
+          "bytes_op": 46640272,
+          "allocs_op": 177,
+          "samples": 3,
+          "min_ns": 165360146,
+          "max_ns": 168125688,
+          "speedup_vs_baseline": 0.6029563980986193
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 3310368,
+          "bytes_op": 1249416,
+          "allocs_op": 1984,
+          "samples": 3,
+          "min_ns": 3240030,
+          "max_ns": 3363309,
+          "speedup_vs_baseline": 0.810035319336098
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1901247,
+          "bytes_op": 1221336,
+          "allocs_op": 1974,
+          "samples": 3,
+          "min_ns": 1851025,
+          "max_ns": 1926004,
+          "speedup_vs_baseline": 0.6632578512944399
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 51132386,
+          "bytes_op": 25178140,
+          "allocs_op": 2867,
+          "samples": 3,
+          "min_ns": 51047219,
+          "max_ns": 51672177,
+          "speedup_vs_baseline": 0.5332951018557984
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 21647762,
+          "bytes_op": 17752811,
+          "allocs_op": 2855,
+          "samples": 3,
+          "min_ns": 21447242,
+          "max_ns": 21728712,
+          "speedup_vs_baseline": 0.7237061734141386
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 632221,
+          "bytes_op": 59,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 629721,
+          "max_ns": 635899,
+          "speedup_vs_baseline": 0.9977713489428538
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 152618,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 152439,
+          "max_ns": 161357,
+          "speedup_vs_baseline": 1.057968260624566
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 466120,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 461245,
+          "max_ns": 467417,
+          "speedup_vs_baseline": 1.101761349008839
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "fb0c5a46c03515e6977612d1c3d7822da88235d17b0260dae87b743e3aaa4f38",
+          "pixels": 500990,
+          "changed_pixels": 106,
+          "max_channel_error": 1,
+          "mean_channel_error": 7.984191301223577e-05,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "c7dcb64823cccd214842efab54d9e222f1889bd758f5a47e1a4287ced1e95283",
+          "pixels": 8696332,
+          "changed_pixels": 134,
+          "max_channel_error": 1,
+          "mean_channel_error": 6.26701004515467e-06,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "7ab53f3380cac3d08e407757deadf8dfc90a9ff1a00a5ed36c882b254c097fa1",
+          "pixels": 518400,
+          "changed_pixels": 4143,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0023876350308641974,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "0f460fe82fc4df1fd93adfda5744247cd5a50ff112ed22b158e0964f9d7d528e",
+          "pixels": 518400,
+          "changed_pixels": 476,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.00033468364197530864,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "7f22f1f0e1c45aa5fcd04815a4061c1536af68c15cebc43ab87489bec9ad75fe",
+          "pixels": 9000000,
+          "changed_pixels": 39151,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0013111111111111112,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "5feb9fbb603c22cfa2c2557094a3ed985c4dd13741138414c1ae980a4e691c32",
+          "pixels": 9000000,
+          "changed_pixels": 26330,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0008923888888888889,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "4793c2ffe073a0a8ca8814474abd34034843d3026622846941f3ce98c956465d",
+          "pixels": 100350,
+          "changed_pixels": 1023,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.003310911808669656,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "ebeed6d3883426a322eb6a752077ba70b07e92b46d7df6e3bdca37985d83aa7b",
+          "pixels": 100350,
+          "changed_pixels": 50,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0001345291479820628,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "ce172b7609ab4d866bc07a02bf88a460c8715514b388bf163a0ce75b60214f01",
+          "pixels": 1743750,
+          "changed_pixels": 1092,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0001906810035842294,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 13.106147625017911,
+        "user_seconds": 12.772618,
+        "system_seconds": 0.179756,
+        "max_rss": 249020416,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "simd": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 14125467,
+          "bytes_op": 11727070,
+          "allocs_op": 3807,
+          "samples": 3,
+          "min_ns": 14115556,
+          "max_ns": 14343115,
+          "speedup_vs_baseline": 0.993509949086993
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 6380760,
+          "bytes_op": 6554489,
+          "allocs_op": 3747,
+          "samples": 3,
+          "min_ns": 6345093,
+          "max_ns": 6536886,
+          "speedup_vs_baseline": 1.0041422965289402
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 93213111,
+          "bytes_op": 334219992,
+          "allocs_op": 5024,
+          "samples": 3,
+          "min_ns": 92783778,
+          "max_ns": 106483750,
+          "speedup_vs_baseline": 1.0061413892730176
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 53473281,
+          "bytes_op": 245374360,
+          "allocs_op": 4963,
+          "samples": 3,
+          "min_ns": 52667281,
+          "max_ns": 55389854,
+          "speedup_vs_baseline": 1.0927905097126918
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 6634817,
+          "bytes_op": 2749737,
+          "allocs_op": 178,
+          "samples": 3,
+          "min_ns": 6573760,
+          "max_ns": 6641039,
+          "speedup_vs_baseline": 1.172060661205878
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 5628405,
+          "bytes_op": 2742697,
+          "allocs_op": 176,
+          "samples": 3,
+          "min_ns": 5593288,
+          "max_ns": 5737427,
+          "speedup_vs_baseline": 1.2599748951967742
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 128763625,
+          "bytes_op": 265264368,
+          "allocs_op": 188,
+          "samples": 3,
+          "min_ns": 126587104,
+          "max_ns": 130787250,
+          "speedup_vs_baseline": 1.3307601428586684
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 90840320,
+          "bytes_op": 190713056,
+          "allocs_op": 179,
+          "samples": 3,
+          "min_ns": 90273028,
+          "max_ns": 91472639,
+          "speedup_vs_baseline": 1.112093814728966
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2563494,
+          "bytes_op": 1077369,
+          "allocs_op": 1871,
+          "samples": 3,
+          "min_ns": 2560191,
+          "max_ns": 2617927,
+          "speedup_vs_baseline": 1.0460391169240106
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1230719,
+          "bytes_op": 1049289,
+          "allocs_op": 1861,
+          "samples": 3,
+          "min_ns": 1186467,
+          "max_ns": 1290868,
+          "speedup_vs_baseline": 1.0246181297274195
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 22846481,
+          "bytes_op": 22149147,
+          "allocs_op": 2403,
+          "samples": 3,
+          "min_ns": 22792593,
+          "max_ns": 22975667,
+          "speedup_vs_baseline": 1.193560224876645
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 12289492,
+          "bytes_op": 14723800,
+          "allocs_op": 2390,
+          "samples": 3,
+          "min_ns": 12280213,
+          "max_ns": 12583384,
+          "speedup_vs_baseline": 1.274797933063466
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 83225,
+          "bytes_op": 16,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 82813,
+          "max_ns": 83700,
+          "speedup_vs_baseline": 7.579597476719735
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 142955,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 142136,
+          "max_ns": 144487,
+          "speedup_vs_baseline": 1.1294813053058654
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 442584,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 438774,
+          "max_ns": 461262,
+          "speedup_vs_baseline": 1.1603514813007247
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "3403d0dea7914f3261bf0c6f5826eae357d248baea3de2470add258de9031db5",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "754553f32824ba57c42075c1c78e9f36c7bda85fe2f08a634dcd9b824ec2d11f",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "fdcfd67e6f06279be1873276a6b493e2a8ca2e43bf8c540288b253618e7d464d",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "dd4a7408631aa45ce1219da2f7812a170382f50e321cdbf175fe2dbe243f4018",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "51835c370f059023e305e442529d4e406940f5dbdb708a83427ed4d44548ad99",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "09d1faf3e5106997f5f336db45c731730b9792cedcbe2521c1e2ce6505a52f55",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.04536858398933,
+        "user_seconds": 11.680545,
+        "system_seconds": 0.216075,
+        "max_rss": 547176448,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "small-a8": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 15187411,
+          "bytes_op": 11721699,
+          "allocs_op": 3864,
+          "samples": 3,
+          "min_ns": 15136600,
+          "max_ns": 15630160,
+          "speedup_vs_baseline": 0.92404110219971
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 6975375,
+          "bytes_op": 6549124,
+          "allocs_op": 3804,
+          "samples": 3,
+          "min_ns": 6948928,
+          "max_ns": 7052936,
+          "speedup_vs_baseline": 0.9185443076537104
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 108503042,
+          "bytes_op": 334217864,
+          "allocs_op": 5042,
+          "samples": 3,
+          "min_ns": 104155604,
+          "max_ns": 114023792,
+          "speedup_vs_baseline": 0.8643588905092633
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 63579021,
+          "bytes_op": 245372236,
+          "allocs_op": 4981,
+          "samples": 3,
+          "min_ns": 63180386,
+          "max_ns": 66856958,
+          "speedup_vs_baseline": 0.9190939571089023
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 7227871,
+          "bytes_op": 2749849,
+          "allocs_op": 184,
+          "samples": 3,
+          "min_ns": 7091648,
+          "max_ns": 7430225,
+          "speedup_vs_baseline": 1.0758919189343583
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 6365945,
+          "bytes_op": 2742809,
+          "allocs_op": 182,
+          "samples": 3,
+          "min_ns": 6276825,
+          "max_ns": 6869851,
+          "speedup_vs_baseline": 1.1139978432110236
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 146554958,
+          "bytes_op": 265260240,
+          "allocs_op": 194,
+          "samples": 3,
+          "min_ns": 145837917,
+          "max_ns": 148652792,
+          "speedup_vs_baseline": 1.1692098468616803
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 103013750,
+          "bytes_op": 190708928,
+          "allocs_op": 185,
+          "samples": 3,
+          "min_ns": 101051708,
+          "max_ns": 103507354,
+          "speedup_vs_baseline": 0.9806745021902415
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2719385,
+          "bytes_op": 1070313,
+          "allocs_op": 1940,
+          "samples": 3,
+          "min_ns": 2673053,
+          "max_ns": 2832630,
+          "speedup_vs_baseline": 0.9860740571857239
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1346383,
+          "bytes_op": 1042232,
+          "allocs_op": 1930,
+          "samples": 3,
+          "min_ns": 1338478,
+          "max_ns": 1402672,
+          "speedup_vs_baseline": 0.9365960503066364
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 26300719,
+          "bytes_op": 22139420,
+          "allocs_op": 2421,
+          "samples": 3,
+          "min_ns": 26121307,
+          "max_ns": 26450849,
+          "speedup_vs_baseline": 1.0368024919775007
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 14668472,
+          "bytes_op": 14714073,
+          "allocs_op": 2408,
+          "samples": 3,
+          "min_ns": 14523256,
+          "max_ns": 14813206,
+          "speedup_vs_baseline": 1.068047101293168
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 636879,
+          "bytes_op": 59,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 634555,
+          "max_ns": 666762,
+          "speedup_vs_baseline": 0.9904738576715514
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 156605,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 155307,
+          "max_ns": 159116,
+          "speedup_vs_baseline": 1.0310334919063886
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 465643,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 456872,
+          "max_ns": 467459,
+          "speedup_vs_baseline": 1.1028899822396128
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "fdeb4c4f5cf85207100052a3920c8a85d9df0e73d1d29931bc4d182d6e479613",
+          "pixels": 500990,
+          "changed_pixels": 363,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0004765564182917823,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "320eb9f2adbe12dc516ac1d82243f6293613fbae502b10c34158985498432068",
+          "pixels": 8696332,
+          "changed_pixels": 42,
+          "max_channel_error": 1,
+          "mean_channel_error": 3.622216815089396e-06,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "56a2ca4629a628dbe28587201efd095e98cca1624210928f4b322e2199d4b7e4",
+          "pixels": 518400,
+          "changed_pixels": 28,
+          "max_channel_error": 1,
+          "mean_channel_error": 1.8807870370370372e-05,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "a691d301a1fd69c975d3a1ded75a7eb56f06778134073f5127b3804dde4175d7",
+          "pixels": 9000000,
+          "changed_pixels": 101,
+          "max_channel_error": 1,
+          "mean_channel_error": 3.6666666666666666e-06,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "467f256d70720cd56cd45b3773a8bb8292a63d0391bb70d84f83fdf1f153fcc5",
+          "pixels": 100350,
+          "changed_pixels": 203,
+          "max_channel_error": 1,
+          "mean_channel_error": 0.0010014947683109118,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "6d5eb2a90732d49763575a3974c02deba7aaefecd16c62c42ce1132775b2ea37",
+          "pixels": 1743750,
+          "changed_pixels": 4,
+          "max_channel_error": 1,
+          "mean_channel_error": 1.7204301075268817e-06,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.050989292096347,
+        "user_seconds": 11.661407,
+        "system_seconds": 0.268434,
+        "max_rss": 546652160,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "solid-fused": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 14801932,
+          "bytes_op": 11727072,
+          "allocs_op": 3807,
+          "samples": 3,
+          "min_ns": 14677294,
+          "max_ns": 14831068,
+          "speedup_vs_baseline": 0.9481054229947821
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 6988686,
+          "bytes_op": 6554491,
+          "allocs_op": 3747,
+          "samples": 3,
+          "min_ns": 6859745,
+          "max_ns": 7047082,
+          "speedup_vs_baseline": 0.9167948023419566
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 104137208,
+          "bytes_op": 334219992,
+          "allocs_op": 5024,
+          "samples": 3,
+          "min_ns": 102637625,
+          "max_ns": 104881292,
+          "speedup_vs_baseline": 0.9005961538742233
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 63873666,
+          "bytes_op": 245374360,
+          "allocs_op": 4963,
+          "samples": 3,
+          "min_ns": 61629427,
+          "max_ns": 77768833,
+          "speedup_vs_baseline": 0.914854237425483
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 7238501,
+          "bytes_op": 2749737,
+          "allocs_op": 178,
+          "samples": 3,
+          "min_ns": 7037898,
+          "max_ns": 7421982,
+          "speedup_vs_baseline": 1.074311932815924
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 6153612,
+          "bytes_op": 2742697,
+          "allocs_op": 176,
+          "samples": 3,
+          "min_ns": 6119668,
+          "max_ns": 6171030,
+          "speedup_vs_baseline": 1.152436812720724
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 139839750,
+          "bytes_op": 265264368,
+          "allocs_op": 188,
+          "samples": 3,
+          "min_ns": 137928792,
+          "max_ns": 145026958,
+          "speedup_vs_baseline": 1.22535616661214
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 98929750,
+          "bytes_op": 190713056,
+          "allocs_op": 179,
+          "samples": 3,
+          "min_ns": 98911056,
+          "max_ns": 100993104,
+          "speedup_vs_baseline": 1.021158529158317
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2624232,
+          "bytes_op": 1077369,
+          "allocs_op": 1871,
+          "samples": 3,
+          "min_ns": 2608000,
+          "max_ns": 2791070,
+          "speedup_vs_baseline": 1.0218284816281487
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1319890,
+          "bytes_op": 1049289,
+          "allocs_op": 1861,
+          "samples": 3,
+          "min_ns": 1303145,
+          "max_ns": 1330541,
+          "speedup_vs_baseline": 0.9553955253846912
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 25481438,
+          "bytes_op": 22149146,
+          "allocs_op": 2403,
+          "samples": 3,
+          "min_ns": 25378854,
+          "max_ns": 25825755,
+          "speedup_vs_baseline": 1.0701378391596268
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 14254362,
+          "bytes_op": 14723801,
+          "allocs_op": 2390,
+          "samples": 3,
+          "min_ns": 14101885,
+          "max_ns": 14373939,
+          "speedup_vs_baseline": 1.0990754268763485
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 569386,
+          "bytes_op": 16,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 563162,
+          "max_ns": 574720,
+          "speedup_vs_baseline": 1.107881121067255
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 152544,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 152275,
+          "max_ns": 162884,
+          "speedup_vs_baseline": 1.0584814873085797
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 451652,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 450511,
+          "max_ns": 455557,
+          "speedup_vs_baseline": 1.137054634984457
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "3403d0dea7914f3261bf0c6f5826eae357d248baea3de2470add258de9031db5",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "754553f32824ba57c42075c1c78e9f36c7bda85fe2f08a634dcd9b824ec2d11f",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "fdcfd67e6f06279be1873276a6b493e2a8ca2e43bf8c540288b253618e7d464d",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "dd4a7408631aa45ce1219da2f7812a170382f50e321cdbf175fe2dbe243f4018",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "51835c370f059023e305e442529d4e406940f5dbdb708a83427ed4d44548ad99",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "09d1faf3e5106997f5f336db45c731730b9792cedcbe2521c1e2ce6505a52f55",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.164182708016597,
+        "user_seconds": 11.780578,
+        "system_seconds": 0.24959399999999998,
+        "max_rss": 548143104,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "sparse-runs": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 17187984,
+          "bytes_op": 11504488,
+          "allocs_op": 4425,
+          "samples": 3,
+          "min_ns": 16682929,
+          "max_ns": 17193936,
+          "speedup_vs_baseline": 0.8164885422281054
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 7989989,
+          "bytes_op": 4436566,
+          "allocs_op": 4226,
+          "samples": 3,
+          "min_ns": 7936723,
+          "max_ns": 7998997,
+          "speedup_vs_baseline": 0.8019023555601892
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 124343104,
+          "bytes_op": 302249368,
+          "allocs_op": 5808,
+          "samples": 3,
+          "min_ns": 115997750,
+          "max_ns": 146313584,
+          "speedup_vs_baseline": 0.7542482532847178
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 70882361,
+          "bytes_op": 200289960,
+          "allocs_op": 5563,
+          "samples": 3,
+          "min_ns": 69732917,
+          "max_ns": 73270583,
+          "speedup_vs_baseline": 0.8243954232845038
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 7411147,
+          "bytes_op": 3501785,
+          "allocs_op": 258,
+          "samples": 3,
+          "min_ns": 7340525,
+          "max_ns": 7716933,
+          "speedup_vs_baseline": 1.0492853535356943
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 6477989,
+          "bytes_op": 2730585,
+          "allocs_op": 240,
+          "samples": 3,
+          "min_ns": 6375705,
+          "max_ns": 8041923,
+          "speedup_vs_baseline": 1.0947300157502582
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 152376084,
+          "bytes_op": 267342304,
+          "allocs_op": 301,
+          "samples": 3,
+          "min_ns": 149196917,
+          "max_ns": 162557500,
+          "speedup_vs_baseline": 1.1245432715018453
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 103619938,
+          "bytes_op": 187822192,
+          "allocs_op": 259,
+          "samples": 3,
+          "min_ns": 103430250,
+          "max_ns": 109145292,
+          "speedup_vs_baseline": 0.9749374488141461
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 3291446,
+          "bytes_op": 1399273,
+          "allocs_op": 2578,
+          "samples": 3,
+          "min_ns": 2990773,
+          "max_ns": 3374640,
+          "speedup_vs_baseline": 0.8146920836617098
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1505629,
+          "bytes_op": 861193,
+          "allocs_op": 2432,
+          "samples": 3,
+          "min_ns": 1471987,
+          "max_ns": 1525242,
+          "speedup_vs_baseline": 0.8375350102847381
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 27698677,
+          "bytes_op": 19884226,
+          "allocs_op": 3363,
+          "samples": 3,
+          "min_ns": 27636802,
+          "max_ns": 29031854,
+          "speedup_vs_baseline": 0.9844748541600019
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 16774199,
+          "bytes_op": 9115665,
+          "allocs_op": 3115,
+          "samples": 3,
+          "min_ns": 16603814,
+          "max_ns": 16873068,
+          "speedup_vs_baseline": 0.9339712137670478
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 638166,
+          "bytes_op": 59,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 627790,
+          "max_ns": 651424,
+          "speedup_vs_baseline": 0.9884763525477697
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 155540,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 155351,
+          "max_ns": 159170,
+          "speedup_vs_baseline": 1.038093095023788
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 499766,
+          "bytes_op": 89752,
+          "allocs_op": 24,
+          "samples": 3,
+          "min_ns": 490320,
+          "max_ns": 505927,
+          "speedup_vs_baseline": 1.0275869106741955
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "3403d0dea7914f3261bf0c6f5826eae357d248baea3de2470add258de9031db5",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "754553f32824ba57c42075c1c78e9f36c7bda85fe2f08a634dcd9b824ec2d11f",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "fdcfd67e6f06279be1873276a6b493e2a8ca2e43bf8c540288b253618e7d464d",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "dd4a7408631aa45ce1219da2f7812a170382f50e321cdbf175fe2dbe243f4018",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "51835c370f059023e305e442529d4e406940f5dbdb708a83427ed4d44548ad99",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "09d1faf3e5106997f5f336db45c731730b9792cedcbe2521c1e2ce6505a52f55",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.484821084071882,
+        "user_seconds": 11.9608,
+        "system_seconds": 0.290846,
+        "max_rss": 601587712,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "stroke-cache": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 14961883,
+          "bytes_op": 11727070,
+          "allocs_op": 3807,
+          "samples": 3,
+          "min_ns": 14866836,
+          "max_ns": 15299092,
+          "speedup_vs_baseline": 0.9379696392492843
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 7284206,
+          "bytes_op": 6554492,
+          "allocs_op": 3747,
+          "samples": 3,
+          "min_ns": 7166792,
+          "max_ns": 7404673,
+          "speedup_vs_baseline": 0.8796004670927758
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 108968708,
+          "bytes_op": 334219992,
+          "allocs_op": 5024,
+          "samples": 3,
+          "min_ns": 106786334,
+          "max_ns": 127729188,
+          "speedup_vs_baseline": 0.8606651461812321
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 64201479,
+          "bytes_op": 245374360,
+          "allocs_op": 4963,
+          "samples": 3,
+          "min_ns": 63939448,
+          "max_ns": 71118361,
+          "speedup_vs_baseline": 0.910182988152033
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 7420068,
+          "bytes_op": 2749737,
+          "allocs_op": 178,
+          "samples": 3,
+          "min_ns": 7216736,
+          "max_ns": 8208601,
+          "speedup_vs_baseline": 1.0480238186496404
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 6253374,
+          "bytes_op": 2742697,
+          "allocs_op": 176,
+          "samples": 3,
+          "min_ns": 6161311,
+          "max_ns": 6276100,
+          "speedup_vs_baseline": 1.1340516335661357
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 151053104,
+          "bytes_op": 265264368,
+          "allocs_op": 188,
+          "samples": 3,
+          "min_ns": 146250730,
+          "max_ns": 152874812,
+          "speedup_vs_baseline": 1.1343924451893421
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 101138125,
+          "bytes_op": 190713056,
+          "allocs_op": 179,
+          "samples": 3,
+          "min_ns": 101093014,
+          "max_ns": 102166979,
+          "speedup_vs_baseline": 0.9988612899438268
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2632805,
+          "bytes_op": 943874,
+          "allocs_op": 1052,
+          "samples": 3,
+          "min_ns": 2538211,
+          "max_ns": 2642717,
+          "speedup_vs_baseline": 1.0185011803000983
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1192924,
+          "bytes_op": 915791,
+          "allocs_op": 1042,
+          "samples": 3,
+          "min_ns": 1186906,
+          "max_ns": 1210568,
+          "speedup_vs_baseline": 1.057080752839242
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 25676766,
+          "bytes_op": 21930719,
+          "allocs_op": 1058,
+          "samples": 3,
+          "min_ns": 25471224,
+          "max_ns": 25713370,
+          "speedup_vs_baseline": 1.0619970988558294
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 14211026,
+          "bytes_op": 14505347,
+          "allocs_op": 1044,
+          "samples": 3,
+          "min_ns": 14068025,
+          "max_ns": 15327005,
+          "speedup_vs_baseline": 1.1024270168811174
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 620565,
+          "bytes_op": 58,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 609274,
+          "max_ns": 626896,
+          "speedup_vs_baseline": 1.0165123717902234
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 153898,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 153434,
+          "max_ns": 154687,
+          "speedup_vs_baseline": 1.0491689300705662
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 466158,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 463345,
+          "max_ns": 485208,
+          "speedup_vs_baseline": 1.1016715362602378
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "3403d0dea7914f3261bf0c6f5826eae357d248baea3de2470add258de9031db5",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "754553f32824ba57c42075c1c78e9f36c7bda85fe2f08a634dcd9b824ec2d11f",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "fdcfd67e6f06279be1873276a6b493e2a8ca2e43bf8c540288b253618e7d464d",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "dd4a7408631aa45ce1219da2f7812a170382f50e321cdbf175fe2dbe243f4018",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 0,
+          "cache_hits": 0,
+          "cache_misses": 0
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "51835c370f059023e305e442529d4e406940f5dbdb708a83427ed4d44548ad99",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 72992,
+          "cache_hits": 33,
+          "cache_misses": 33
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 72992,
+          "cache_hits": 33,
+          "cache_misses": 33
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "09d1faf3e5106997f5f336db45c731730b9792cedcbe2521c1e2ce6505a52f55",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 123424,
+          "cache_hits": 33,
+          "cache_misses": 33
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 123424,
+          "cache_hits": 33,
+          "cache_misses": 33
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.346798834041692,
+        "user_seconds": 11.889661,
+        "system_seconds": 0.29253599999999996,
+        "max_rss": 545570816,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    },
+    "text-run-cache": {
+      "benchmarks": {
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/on": {
+          "ns_op": 4688980,
+          "bytes_op": 11048872,
+          "allocs_op": 1017,
+          "samples": 3,
+          "min_ns": 4680344,
+          "max_ns": 4754163,
+          "speedup_vs_baseline": 2.992930658693362
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/72dpi/off": {
+          "ns_op": 2897159,
+          "bytes_op": 5876288,
+          "allocs_op": 957,
+          "samples": 3,
+          "min_ns": 2888871,
+          "max_ns": 2933886,
+          "speedup_vs_baseline": 2.211542756196674
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/on": {
+          "ns_op": 83694264,
+          "bytes_op": 329049528,
+          "allocs_op": 1021,
+          "samples": 3,
+          "min_ns": 82333333,
+          "max_ns": 109506146,
+          "speedup_vs_baseline": 1.1205734361915172
+        },
+        "BenchmarkRenderAntialias/pdf/chrome-doc/300dpi/off": {
+          "ns_op": 53917781,
+          "bytes_op": 240203896,
+          "allocs_op": 960,
+          "samples": 3,
+          "min_ns": 53874886,
+          "max_ns": 53941614,
+          "speedup_vs_baseline": 1.0837815079964066
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/on": {
+          "ns_op": 6040289,
+          "bytes_op": 2512058,
+          "allocs_op": 154,
+          "samples": 3,
+          "min_ns": 5870175,
+          "max_ns": 6476824,
+          "speedup_vs_baseline": 1.2874231679974253
+        },
+        "BenchmarkRenderAntialias/pptx/features/72dpi/off": {
+          "ns_op": 5831069,
+          "bytes_op": 2505017,
+          "allocs_op": 152,
+          "samples": 3,
+          "min_ns": 5793299,
+          "max_ns": 5845479,
+          "speedup_vs_baseline": 1.216183344769201
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/on": {
+          "ns_op": 149001375,
+          "bytes_op": 261356592,
+          "allocs_op": 164,
+          "samples": 3,
+          "min_ns": 142265979,
+          "max_ns": 159408208,
+          "speedup_vs_baseline": 1.1500128773979434
+        },
+        "BenchmarkRenderAntialias/pptx/features/300dpi/off": {
+          "ns_op": 99814542,
+          "bytes_op": 186805280,
+          "allocs_op": 155,
+          "samples": 3,
+          "min_ns": 99323111,
+          "max_ns": 100829730,
+          "speedup_vs_baseline": 1.0121066126817473
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/on": {
+          "ns_op": 2086812,
+          "bytes_op": 1053080,
+          "allocs_op": 1799,
+          "samples": 3,
+          "min_ns": 1975459,
+          "max_ns": 2128754,
+          "speedup_vs_baseline": 1.2849815891417147
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/72dpi/off": {
+          "ns_op": 1059542,
+          "bytes_op": 1025000,
+          "allocs_op": 1789,
+          "samples": 3,
+          "min_ns": 1059423,
+          "max_ns": 1061997,
+          "speedup_vs_baseline": 1.1901529151274797
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/on": {
+          "ns_op": 24518472,
+          "bytes_op": 21846363,
+          "allocs_op": 2331,
+          "samples": 3,
+          "min_ns": 24350986,
+          "max_ns": 24730704,
+          "speedup_vs_baseline": 1.1121676342636686
+        },
+        "BenchmarkRenderAntialias/drawio/showcase/300dpi/off": {
+          "ns_op": 14322708,
+          "bytes_op": 14421019,
+          "allocs_op": 2318,
+          "samples": 3,
+          "min_ns": 14190436,
+          "max_ns": 26257925,
+          "speedup_vs_baseline": 1.0938307895406372
+        },
+        "BenchmarkExperimentPixelKernel": {
+          "ns_op": 650320,
+          "bytes_op": 60,
+          "allocs_op": 1,
+          "samples": 3,
+          "min_ns": 638983,
+          "max_ns": 664080,
+          "speedup_vs_baseline": 0.9700024603272235
+        },
+        "BenchmarkExperimentRectangle/specialized": {
+          "ns_op": 189137,
+          "bytes_op": 969408,
+          "allocs_op": 3,
+          "samples": 3,
+          "min_ns": 162004,
+          "max_ns": 210205,
+          "speedup_vs_baseline": 0.8536933545525202
+        },
+        "BenchmarkExperimentRectangle/generic": {
+          "ns_op": 469629,
+          "bytes_op": 972322,
+          "allocs_op": 10,
+          "samples": 3,
+          "min_ns": 469026,
+          "max_ns": 483555,
+          "speedup_vs_baseline": 1.0935291474759863
+        }
+      },
+      "quality": [
+        {
+          "case": "chrome-doc-72-on",
+          "sha256": "3403d0dea7914f3261bf0c6f5826eae357d248baea3de2470add258de9031db5",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 227184,
+          "cache_hits": 36,
+          "cache_misses": 36
+        },
+        {
+          "case": "chrome-doc-72-off",
+          "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+          "pixels": 500990,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 227040,
+          "cache_hits": 36,
+          "cache_misses": 36
+        },
+        {
+          "case": "chrome-doc-300-on",
+          "sha256": "754553f32824ba57c42075c1c78e9f36c7bda85fe2f08a634dcd9b824ec2d11f",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 3646972,
+          "cache_hits": 36,
+          "cache_misses": 36
+        },
+        {
+          "case": "chrome-doc-300-off",
+          "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+          "pixels": 8696332,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 3646972,
+          "cache_hits": 36,
+          "cache_misses": 36
+        },
+        {
+          "case": "features-72-on",
+          "sha256": "fdcfd67e6f06279be1873276a6b493e2a8ca2e43bf8c540288b253618e7d464d",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 227236,
+          "cache_hits": 6,
+          "cache_misses": 6
+        },
+        {
+          "case": "features-72-off",
+          "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+          "pixels": 518400,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 227236,
+          "cache_hits": 6,
+          "cache_misses": 6
+        },
+        {
+          "case": "features-300-on",
+          "sha256": "dd4a7408631aa45ce1219da2f7812a170382f50e321cdbf175fe2dbe243f4018",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 3886620,
+          "cache_hits": 6,
+          "cache_misses": 6
+        },
+        {
+          "case": "features-300-off",
+          "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+          "pixels": 9000000,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 3886620,
+          "cache_hits": 6,
+          "cache_misses": 6
+        },
+        {
+          "case": "showcase-72-on",
+          "sha256": "51835c370f059023e305e442529d4e406940f5dbdb708a83427ed4d44548ad99",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 18316,
+          "cache_hits": 18,
+          "cache_misses": 18
+        },
+        {
+          "case": "showcase-72-off",
+          "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+          "pixels": 100350,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 18316,
+          "cache_hits": 18,
+          "cache_misses": 18
+        },
+        {
+          "case": "showcase-300-on",
+          "sha256": "09d1faf3e5106997f5f336db45c731730b9792cedcbe2521c1e2ce6505a52f55",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 278744,
+          "cache_hits": 18,
+          "cache_misses": 18
+        },
+        {
+          "case": "showcase-300-off",
+          "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+          "pixels": 1743750,
+          "changed_pixels": 0,
+          "max_channel_error": 0,
+          "mean_channel_error": 0,
+          "cache_bytes": 278744,
+          "cache_hits": 18,
+          "cache_misses": 18
+        }
+      ],
+      "resource": {
+        "wall_seconds": 12.602793666999787,
+        "user_seconds": 11.947031,
+        "system_seconds": 0.350866,
+        "max_rss": 635076608,
+        "max_rss_unit": "bytes",
+        "exit_code": 0
+      }
+    }
+  }
+}

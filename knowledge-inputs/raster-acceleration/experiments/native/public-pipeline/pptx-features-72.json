@@ -1,0 +1,109 @@
+{
+  "bands-halo64_ns": [
+    7140745.689655173,
+    6808137.5,
+    6787672.233333333
+  ],
+  "bands-no-halo_ns": [
+    4051920,
+    4022273.34,
+    4036440.82
+  ],
+  "cached_object_copy_ns": [
+    3384.5125480175316,
+    3574.061670151361,
+    3695.111825454008
+  ],
+  "cached_page_copy_ns": [
+    94445.09348441927,
+    95495.50548926015,
+    96401.52626506024
+  ],
+  "cached_region_copy_ns": [
+    30244.335702404354,
+    27914.01493370551,
+    26387.34617414248
+  ],
+  "cpu": 8,
+  "dpi": 72,
+  "first_render_ns": 10192042,
+  "four_pages_parallel_ns": [
+    13499994.4,
+    14623684.5,
+    14294377.8
+  ],
+  "four_pages_serial_ns": [
+    34200166.666666664,
+    33130369,
+    35959326.5
+  ],
+  "height": 540,
+  "input": "fixture:pptx-features-72",
+  "object_owned_ns": [
+    122218.92180818571,
+    118785.15914489311,
+    119077.50476190477
+  ],
+  "page_owned_ns": [
+    9629462.285714285,
+    8521586.791666666,
+    8284971.68
+  ],
+  "page_to_png_ns": [
+    18171427.083333332,
+    18014045.083333332,
+    20557058.3
+  ],
+  "raster_png_bytes": 46290,
+  "region_owned_ns": [
+    2073041.6597938144,
+    2135843.085106383,
+    2077437.2886597938
+  ],
+  "region_quality": {
+    "bands-halo64": {
+      "changed_pixels": 0,
+      "max_channel_error": 0
+    },
+    "bands-no-halo": {
+      "changed_pixels": 0,
+      "max_channel_error": 0
+    },
+    "tiles-full-halo": {
+      "changed_pixels": 0,
+      "max_channel_error": 0
+    },
+    "tiles-halo64": {
+      "changed_pixels": 0,
+      "max_channel_error": 0
+    }
+  },
+  "sample_ms": 200,
+  "samples": 3,
+  "tiles-full-halo_ns": [
+    15723455.076923076,
+    15393214.76923077,
+    15323952.357142856
+  ],
+  "tiles-halo64_ns": [
+    5472686.394736842,
+    75865555.66666667,
+    7714155.423076923
+  ],
+  "vector_pdf_bytes": 12442,
+  "vector_pdf_ns": [
+    12409732.823529411,
+    11822558.823529411,
+    10902607.47368421
+  ],
+  "width": 960,
+  "downstream_pdf": null,
+  "process_resource": {
+    "wall_seconds": 8.74593037494924,
+    "user_seconds": 15.533835999999999,
+    "system_seconds": 0.9059929999999999,
+    "max_rss_bytes": 107544576,
+    "exit_code": 0,
+    "scope": "whole experimental process, retains multiple renderer caches and measures all modes sequentially; not per-mode peak"
+  }
+}

@@ -1,0 +1,124 @@
+id: component:imagebdf-rasterization
+type: component
+title: imagebdfの現行ラスタライズ経路と負荷
+summary: 明示AA Default/On/Off、完成画像LRU64MiB、fill text被覆率LRU32MiB、独立ページ並列を実装。一般被覆率とcanvasは従来のfloat32。
+authority: observed
+lifecycle: active
+scope:
+  topic: raster-acceleration
+aliases:
+- raster/imagebdf
+- subSamples
+- scratch.rasterize
+- PageDPI
+facts:
+  observation_date: '2026-10-15'
+  options: Options.Antialias Default/On/Off。未知値はAAと警告
+  coverage:
+    y_samples:
+      default_on: 16
+      'off': 1
+    x: AAは部分被覆長、OFFは画素中心の整数スパン
+    storage: 描画命令の外接矩形にfloat32配列
+  canvas:
+    bytes_per_pixel: 16
+    format: premultiplied float32 RGBA
+    output: image.RGBAへ最終変換
+  text: 元glyph輪郭に加えwhole fill-text coverage LRUを保持。stroke textは従来経路
+  existing_optimizations:
+  - Rendererのキャンバス再利用
+  - 走査線間の辺の順序再利用
+  - 整数矩形の暗黙全面被覆
+  - 範囲外パス除外
+  - source-overの一部の専用ループ
+  geometry: 曲率上限から分割数を求める等間隔パラメータ分割。分割済み形状の永続キャッシュは別案
+  propagation_points:
+  - 一般パス
+  - 文字とstroke
+  - rectMask
+  - 画像の外周
+  - 幾何clip
+  - SVG内の直接rasterize
+  thin_strokes: 1pxへ拡幅し元幅をalphaへ反映する経路。境界AAとは別
+  resolution:
+    page_units: pt (1/72 inch)
+    PageDPI: dpi/72をPageへ渡す
+    Region: 横縦倍率が独立
+    standalone_SVG: CSS px
+  concurrency: Renderer自体は並行使用不可。Pagesは独立workerのmutable資源を分離し、immutable maskとlock付きLRUを共有
+  historical_measurements:
+    source: docs/cpu-security-review.ja.md
+    environment: Apple M3、-cpu 1、warm renderer、過去記録
+    page_ms:
+      pdf: 13.2
+      pptx: 6.2
+      drawio: 2.22
+    not_new_candidate_measurements: true
+  new_optimizations:
+  - explicit non-AA scan/rectangle
+  - completed image LRU with owned returns
+  - whole fill-text mask LRU
+  - persistent independent-page workers with ordered callbacks
+  production_report: knowledge-inputs/raster-acceleration/implementation.ja.md
+assertions:
+- key: current-pipeline
+  predicate: raster_pipeline
+  value:
+    aa_api: implemented
+    y_samples:
+      'on': 16
+      'off': 1
+    coverage: dense_float32_for_general_paths
+    surface: float32_rgba
+  authority: observed
+  evidence:
+    path: raster/imagebdf/scan.go
+    locator: subSamples / scratch.rasterize / rectMask
+  basis:
+  - path: raster/imagebdf/imagebdf.go
+    input_hash: a06d55f952414cb154295ee1c6e882192990da0be945c265d9d2fd42125f6c84
+  - path: raster/imagebdf/scan.go
+    input_hash: b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e
+  - path: raster/imagebdf/surface.go
+    input_hash: 4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a
+  - path: raster/imagebdf/draw.go
+    input_hash: a185f787d259678c3b2015eb3e4863f8f7e6fed109d2797bd73effbb0d3cd534
+  - path: raster/imagebdf/text.go
+    input_hash: 4b2d46a7fc6e2c1e1e389c0b75f9ac9781740ca4a612ad8eff91da04e184e8e0
+  - path: raster/imagebdf/svg.go
+    input_hash: 72a3d5c65ee89609c4ee9b94048b6e58070b2d7ed0874b97acd786d7722ee85a
+  - path: raster/imagebdf/image.go
+    input_hash: 94c0fd2f756737db62479cb9c62161d49aa64e0801e6f15aebffa61fe4e21ce7
+  - path: raster/imagebdf/path.go
+    input_hash: b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb
+  - path: docs/cpu-security-review.ja.md
+    input_hash: e27d9670b8c30b729be59dfcc074be37337125023151f857869b884a98e5ac60
+verification:
+  code-reading:
+    state: passed
+    method: static
+    evidence:
+      path: knowledge-inputs/raster-acceleration/evidence.md
+      heading: Production adoption on 2026-10-15
+    basis:
+    - path: raster/imagebdf/imagebdf.go
+      input_hash: a06d55f952414cb154295ee1c6e882192990da0be945c265d9d2fd42125f6c84
+    - path: raster/imagebdf/scan.go
+      input_hash: b8ec803cf1e69407a13c9346567ff5b683f269a3f3967e5d7ccd421c319d857e
+    - path: raster/imagebdf/surface.go
+      input_hash: 4c3190ba63d747e8751b1b953935086e3ed880e506338f4e3d3be0b77ad1784a
+    - path: raster/imagebdf/draw.go
+      input_hash: a185f787d259678c3b2015eb3e4863f8f7e6fed109d2797bd73effbb0d3cd534
+    - path: raster/imagebdf/text.go
+      input_hash: 4b2d46a7fc6e2c1e1e389c0b75f9ac9781740ca4a612ad8eff91da04e184e8e0
+    - path: raster/imagebdf/svg.go
+      input_hash: 72a3d5c65ee89609c4ee9b94048b6e58070b2d7ed0874b97acd786d7722ee85a
+    - path: raster/imagebdf/image.go
+      input_hash: 94c0fd2f756737db62479cb9c62161d49aa64e0801e6f15aebffa61fe4e21ce7
+    - path: raster/imagebdf/path.go
+      input_hash: b2624c2d46590c043a1723cee440656294f5c616e53d5f11653a48add961b5eb
+    - path: docs/cpu-security-review.ja.md
+      input_hash: e27d9670b8c30b729be59dfcc074be37337125023151f857869b884a98e5ac60
+relations:
+- relation: documented_by
+  to: source:raster-acceleration-research

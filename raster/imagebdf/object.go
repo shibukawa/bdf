@@ -2,6 +2,7 @@ package imagebdf
 
 import (
 	"errors"
+	"fmt"
 	"image"
 	"math"
 
@@ -27,6 +28,27 @@ func Object(o *bdf.Object, scale float64, opts *Options) (img *image.RGBA, err e
 	if len(o.Deps()) > 0 {
 		return nil, ErrNeedsDocument
 	}
+	doc := bdf.NewDocument()
+	hash, _ := doc.AddObject(o)
+	var ropts Options
+	if opts != nil {
+		ropts = *opts
+	}
+	// A one-shot helper has no later request to reuse a completed image.
+	ropts.ImageCacheBytes = -1
+	return New(doc, &ropts).Object(hash, scale)
+}
+
+// Object draws a document object, including its dependencies, at scale pixels
+// per unit. Its bounds use the object's origin as the package-level Object
+// helper does. A nil background is transparent. Reusing a Renderer also reuses
+// the completed-image and text-mask caches.
+func (r *Renderer) Object(hash bdf.Hash, scale float64) (img *image.RGBA, err error) {
+	defer recovered(&img, &err)
+	o := r.object(hash)
+	if o == nil {
+		return nil, fmt.Errorf("imagebdf: object %s is missing or invalid", hash)
+	}
 	b := o.BBox
 	if !(b.W > 0) || !(b.H > 0) || !(scale > 0) {
 		return nil, errors.New("imagebdf: empty object")
@@ -37,17 +59,19 @@ func Object(o *bdf.Object, scale float64, opts *Options) (img *image.RGBA, err e
 	if !(fw*fh <= MaxPixels) || !(math.Abs(x0) < math.MaxInt32) || !(math.Abs(y0) < math.MaxInt32) {
 		return nil, ErrTooLarge
 	}
-	doc := bdf.NewDocument()
-	h, _ := doc.AddObject(o)
-	r := New(doc, opts)
+	key, cacheable := r.imageKey(4, hash, b, int(fw), int(fh), scale)
+	if cached := r.storedImage(key, cacheable); cached != nil {
+		return cached, nil
+	}
 	m := matrix{scale, 0, 0, scale, -x0, -y0}
 	d := r.canvasAt(m, int(fw), int(fh))
 	clip := &mask{r: d.ctx.target.bounds()}
 	if r.opts.Background != nil {
 		d.ctx.target.fill(clip, r.background(), 1, bdf.BlendSourceOver, clip)
 	}
-	d.drawTop(h, m, clip)
+	d.drawTop(hash, m, clip)
 	img = d.finish()
 	img.Rect = img.Rect.Add(image.Pt(int(x0), int(y0)))
+	r.keepImage(key, cacheable, img)
 	return img, nil
 }

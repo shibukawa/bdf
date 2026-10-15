@@ -1,0 +1,134 @@
+[
+  {
+    "case": "chrome-doc-72-on",
+    "sha256": "fdeb4c4f5cf85207100052a3920c8a85d9df0e73d1d29931bc4d182d6e479613",
+    "pixels": 500990,
+    "changed_pixels": 363,
+    "max_channel_error": 1,
+    "mean_channel_error": 0.0004765564182917823,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "chrome-doc-72-off",
+    "sha256": "d501fdf51cd0975940bf5acf705e505e312ab6a4ba39182651c0676382ef978f",
+    "pixels": 500990,
+    "changed_pixels": 0,
+    "max_channel_error": 0,
+    "mean_channel_error": 0,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "chrome-doc-300-on",
+    "sha256": "320eb9f2adbe12dc516ac1d82243f6293613fbae502b10c34158985498432068",
+    "pixels": 8696332,
+    "changed_pixels": 42,
+    "max_channel_error": 1,
+    "mean_channel_error": 0.000003622216815089396,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "chrome-doc-300-off",
+    "sha256": "90eae09e741c9065d1b865b9ea28122d07badcd22c5df266d2b07a8be84e518e",
+    "pixels": 8696332,
+    "changed_pixels": 0,
+    "max_channel_error": 0,
+    "mean_channel_error": 0,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "features-72-on",
+    "sha256": "56a2ca4629a628dbe28587201efd095e98cca1624210928f4b322e2199d4b7e4",
+    "pixels": 518400,
+    "changed_pixels": 28,
+    "max_channel_error": 1,
+    "mean_channel_error": 0.000018807870370370372,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "features-72-off",
+    "sha256": "22700e1aa969b28de6c459bb09ad7698496ce6a056415c5a437034e9622bdcda",
+    "pixels": 518400,
+    "changed_pixels": 0,
+    "max_channel_error": 0,
+    "mean_channel_error": 0,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "features-300-on",
+    "sha256": "a691d301a1fd69c975d3a1ded75a7eb56f06778134073f5127b3804dde4175d7",
+    "pixels": 9000000,
+    "changed_pixels": 101,
+    "max_channel_error": 1,
+    "mean_channel_error": 0.0000036666666666666666,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "features-300-off",
+    "sha256": "642d2b7f97ab959bf2f4330795a8c4aa533fc44967351ba2df098bddb0916772",
+    "pixels": 9000000,
+    "changed_pixels": 0,
+    "max_channel_error": 0,
+    "mean_channel_error": 0,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "showcase-72-on",
+    "sha256": "467f256d70720cd56cd45b3773a8bb8292a63d0391bb70d84f83fdf1f153fcc5",
+    "pixels": 100350,
+    "changed_pixels": 203,
+    "max_channel_error": 1,
+    "mean_channel_error": 0.0010014947683109118,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "showcase-72-off",
+    "sha256": "7edca40342415ff73b355a81f80e92880b4d551f4b36a47a90366ca1ac3b8bfe",
+    "pixels": 100350,
+    "changed_pixels": 0,
+    "max_channel_error": 0,
+    "mean_channel_error": 0,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "showcase-300-on",
+    "sha256": "6d5eb2a90732d49763575a3974c02deba7aaefecd16c62c42ce1132775b2ea37",
+    "pixels": 1743750,
+    "changed_pixels": 4,
+    "max_channel_error": 1,
+    "mean_channel_error": 0.0000017204301075268817,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  },
+  {
+    "case": "showcase-300-off",
+    "sha256": "8e98c10c66b4a10fe5a5970a996bdf2f64c6134355d82ec4648c889ea1a05315",
+    "pixels": 1743750,
+    "changed_pixels": 0,
+    "max_channel_error": 0,
+    "mean_channel_error": 0,
+    "cache_bytes": 0,
+    "cache_hits": 0,
+    "cache_misses": 0
+  }
+]

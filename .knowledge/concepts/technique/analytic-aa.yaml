@@ -1,0 +1,36 @@
+id: technique:analytic-aa
+type: technique
+title: AAを維持する描画の解析的カバレッジ
+summary: 画素行境界・辺端点・交点で分割し、台形面積などから被覆率を求める。画面向けAAを保つ高速化候補で、非AAオプションとは別の実験。
+authority: inferred
+lifecycle: proposed
+scope:
+  topic: raster-acceleration
+facts:
+  status: candidate_not_implemented_or_measured_as_a_change
+  references:
+  - Skia AAA
+  - AGG/FreeType系のarea-cover
+  - Blend2D analytic AA
+  tradeoffs:
+  - 境界画素は現行と完全一致し得ない
+  - 自己交差、fill rule、clip積を検証
+  - 複雑形状では交点処理が支配し得る
+  current_default: 比較前に現行AAを置き換えない
+  priority: separate-aa-experiment
+relations:
+- relation: optimizes
+  to: component:imagebdf-rasterization
+- relation: part_of
+  to: survey:raster-acceleration
+assertions:
+- key: analytic-in-skia
+  predicate: library_mechanism
+  value: Skia AAAはflatten後の台形面積を計算する
+  authority: observed
+  evidence:
+    path: knowledge-inputs/raster-acceleration/evidence.md
+    locator: Skia CPU geometry and storage
+  basis:
+  - path: knowledge-inputs/raster-acceleration/evidence.md
+    input_hash: e776551735606ad6e31c9028699096fb7475e754d5a128d078d1c0e0022abee5

@@ -1,0 +1,39 @@
+goos: darwin
+goarch: arm64
+pkg: github.com/shibukawa/bdf/raster/imagebdf
+cpu: Apple M3
+BenchmarkRenderCaches/pdf/chrome-doc/disabled-8         	       3	 104157069 ns/op	334221744 B/op	    5026 allocs/op
+BenchmarkRenderCaches/pdf/chrome-doc/disabled-8         	       4	  94885271 ns/op	334219996 B/op	    5024 allocs/op
+BenchmarkRenderCaches/pdf/chrome-doc/disabled-8         	       4	  93228198 ns/op	334219960 B/op	    5024 allocs/op
+BenchmarkRenderCaches/pdf/chrome-doc/text-only-8        	       5	  71313533 ns/op	329049540 B/op	    1021 allocs/op
+BenchmarkRenderCaches/pdf/chrome-doc/text-only-8        	       5	  73851600 ns/op	329049521 B/op	    1021 allocs/op
+BenchmarkRenderCaches/pdf/chrome-doc/text-only-8        	       5	  76627633 ns/op	329049496 B/op	    1021 allocs/op
+BenchmarkRenderCaches/pdf/chrome-doc/completed-8        	     146	   2459865 ns/op	34792058 B/op	       5 allocs/op
+BenchmarkRenderCaches/pdf/chrome-doc/completed-8        	     138	   2642307 ns/op	34792092 B/op	       5 allocs/op
+BenchmarkRenderCaches/pdf/chrome-doc/completed-8        	     142	   2495811 ns/op	34792097 B/op	       5 allocs/op
+BenchmarkRenderCaches/pptx/features/disabled-8          	       3	 139468181 ns/op	265264293 B/op	     187 allocs/op
+BenchmarkRenderCaches/pptx/features/disabled-8          	       3	 137321556 ns/op	265264256 B/op	     187 allocs/op
+BenchmarkRenderCaches/pptx/features/disabled-8          	       3	 137058833 ns/op	265264256 B/op	     187 allocs/op
+BenchmarkRenderCaches/pptx/features/text-only-8         	       3	 132221958 ns/op	261356480 B/op	     163 allocs/op
+BenchmarkRenderCaches/pptx/features/text-only-8         	       3	 138553250 ns/op	261356480 B/op	     163 allocs/op
+BenchmarkRenderCaches/pptx/features/text-only-8         	       3	 133377208 ns/op	261356480 B/op	     163 allocs/op
+BenchmarkRenderCaches/pptx/features/completed-8         	     141	   2529016 ns/op	36004861 B/op	       8 allocs/op
+BenchmarkRenderCaches/pptx/features/completed-8         	     144	   3094990 ns/op	36005079 B/op	      10 allocs/op
+BenchmarkRenderCaches/pptx/features/completed-8         	     134	   2565662 ns/op	36005108 B/op	       9 allocs/op
+BenchmarkRenderCaches/drawio/showcase/disabled-8        	      13	  26719298 ns/op	22148906 B/op	    2400 allocs/op
+BenchmarkRenderCaches/drawio/showcase/disabled-8        	      12	  27178944 ns/op	22148925 B/op	    2400 allocs/op
+BenchmarkRenderCaches/drawio/showcase/disabled-8        	      13	  26211587 ns/op	22148915 B/op	    2400 allocs/op
+BenchmarkRenderCaches/drawio/showcase/text-only-8       	      12	  32968042 ns/op	21846138 B/op	    2328 allocs/op
+BenchmarkRenderCaches/drawio/showcase/text-only-8       	       7	  47216946 ns/op	21846122 B/op	    2328 allocs/op
+BenchmarkRenderCaches/drawio/showcase/text-only-8       	      13	  27830388 ns/op	21846129 B/op	    2328 allocs/op
+BenchmarkRenderCaches/drawio/showcase/completed-8       	     582	    613879 ns/op	 6980003 B/op	       5 allocs/op
+BenchmarkRenderCaches/drawio/showcase/completed-8       	     517	    727648 ns/op	 6980009 B/op	       5 allocs/op
+BenchmarkRenderCaches/drawio/showcase/completed-8       	     428	    788345 ns/op	 6980010 B/op	       5 allocs/op
+BenchmarkPages/serial-8                                 	       1	 445712375 ns/op	1316199376 B/op	    4102 allocs/op
+BenchmarkPages/serial-8                                 	       1	 473583750 ns/op	1316204472 B/op	    4106 allocs/op
+BenchmarkPages/serial-8                                 	       1	 444096959 ns/op	1316199136 B/op	    4100 allocs/op
+BenchmarkPages/parallel-8                               	       1	 300431292 ns/op	1316200192 B/op	    4099 allocs/op
+BenchmarkPages/parallel-8                               	       2	 240985104 ns/op	1316200120 B/op	    4098 allocs/op
+BenchmarkPages/parallel-8                               	       2	 476491708 ns/op	1316200320 B/op	    4098 allocs/op
+PASS
+ok  	github.com/shibukawa/bdf/raster/imagebdf	18.414s

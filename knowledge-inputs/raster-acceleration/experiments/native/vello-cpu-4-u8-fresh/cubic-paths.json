@@ -1,0 +1,38 @@
+{
+  "backend": "vello_cpu",
+  "cached_coarse_geometry": false,
+  "cold_context_render_ns": 2364375,
+  "height": 1024,
+  "pipeline": "u8",
+  "results": {
+    "owned-output": {
+      "samples_ns": [
+        1434843.8476190476,
+        1574736.6910994765,
+        1455664.45410628,
+        1483354.8866995075,
+        1521258.207070707
+      ],
+      "median_ns": 1483354.8866995075
+    },
+    "render-only": {
+      "samples_ns": [
+        1303600.4675324676,
+        1335322.04,
+        1319016.995614035,
+        1321075.8421052631,
+        1321016.4473684211
+      ],
+      "median_ns": 1321016.4473684211
+    }
+  },
+  "threads": 4,
+  "width": 1024,
+  "pixel_comparison": {
+    "reference": "imagebdf",
+    "changed_pixels": 110838,
+    "max_channel_error": 66,
+    "mean_channel_error": 0.6435387134552002,
+    "note": "AA/flattening/rounding differ by renderer; difference alone is not a quality verdict"
+  }
+}

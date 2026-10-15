@@ -1,0 +1,6 @@
+//go:build arm64
+
+package imagebdf
+
+//go:noescape
+func experimentSolidSIMD(dst *float32,n int,c *[4]float32)
