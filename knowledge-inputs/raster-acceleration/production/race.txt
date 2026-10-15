@@ -1,2 +1,0 @@
-ok  	github.com/shibukawa/bdf/raster/imagebdf	94.678s
-ok  	github.com/shibukawa/bdf/cmd/bdf	17.778s
