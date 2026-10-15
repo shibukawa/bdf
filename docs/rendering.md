@@ -84,9 +84,32 @@ ren := imagebdf.New(doc, &imagebdf.Options{Antialias: imagebdf.AntialiasOff})
 img, err := ren.PageMono(doc.Views[0], 0, 600.0/72, imagebdf.Bilevel) // an *image.Paletted
 ```
 
-The page is drawn as for `Page` and converted at the end, so the antialiasing mode decides the edges: with `AntialiasOff` the bilevel image is exactly the drawing, with antialiasing the coverage of the edges is cut at the half, not dithered. The images are kept in the completed-image cache like the RGBA ones, apart from them. The CLI equivalent is `bdf render -mono=gray|bilevel`, for a page or a batch (`-pages`), as PNG (8 bits or 1 bit a pixel), JPEG or WebP (in colour).
+The page is drawn as for `Page` and converted at the end, so the antialiasing mode decides the edges: with `AntialiasOff` the bilevel image is exactly the drawing, with antialiasing the coverage of the edges is cut at the half, not dithered. The images are kept in the completed-image cache like the RGBA ones, apart from them. The CLI equivalent is `bdf render -mono=gray|bilevel`, for a page or a batch (`-pages`), as PNG or TIFF (8 bits or 1 bit a pixel), JPEG (in gray) or WebP (in colour).
 
 Source transparency, blending, image interpolation, soft masks and blur remain enabled. Effects still depend on the geometry rendered with the selected mode, so their pixels can change too. Lines narrower than one pixel still use the existing one-pixel width and reduced alpha, so disabling edge antialiasing does not make every output pixel opaque. Low-resolution output can show jagged edges or lose small details; choose the mode for the intended output instead of relying on a fixed dpi threshold. An unknown Go `AntialiasMode` value keeps antialiasing enabled and adds a renderer warning; the CLI rejects unknown values.
+
+### Drawing in bands
+
+A page at 600 dpi is 35 million pixels: its canvas takes 560 MiB (16 bytes a pixel) and the RGBA image 140 MiB more. `PageRows` draws the page in bands of rows from the top instead, and hands each to a callback as it is drawn, so that a page is written to a file with the memory of a band:
+
+```go
+f, _ := os.Create("print.png")
+w := bufio.NewWriter(f)
+width, height, _ := imagebdf.PagePixels(v, 0, 600.0/72)
+enc, _ := rowenc.NewPNG(w, width, height, rowenc.Bilevel, &rowenc.Options{DPI: 600})
+err := ren.PageRows(v, 0, 600.0/72, imagebdf.Bilevel, func(y0 int, rows image.Image) error {
+	return enc.WriteRows(rows) // an *image.Paletted of the rows from y0
+})
+// then enc.Close(), w.Flush(), f.Close()
+```
+
+The callback takes the first row of the band and the image of its rows, whose bounds are those rows of the page (`Min.Y` is `y0`): an `*image.RGBA` for a `Mono` of 0, else the image of the `Mono`. The image is reused for the next band, so copy what you keep. `PagesRows` does the same for a selection of pages, one after the other. The pixels are those of `Page` and `PageMono`: each band is drawn with the transforms of the whole page, on a canvas of its own rows and of as many rows above and below as the shadows of the page reach (a band whose shadows reach past its margin is drawn again with as much), and a text run that crosses a band is rasterized whole and kept for the next band.
+
+`Options.BandRows` sets the rows of a band (default `DefaultBandRows`, 128: a canvas of 10 MiB for an A4 page at 600 dpi). The instructions of the page are run once a band; the first band notes the extent of each draw, and the bands after it skip the draws that lie outside them, so a page is drawn in bands about as fast as whole. A page whose shadows are blurred widely takes bands as tall as the shadows reach above and below, hundreds of rows at 600 dpi. The groups, soft masks and clips of a band take the memory of the band, not of the page, and the images are not kept in the completed-image cache.
+
+`image/rowenc` writes PNG and TIFF files from the rows as they come, for the three kinds of image (`RGBA`, `Gray`, `Bilevel`): the PNG compressed with zlib in IDAT chunks of a megabyte, the TIFF uncompressed in one strip with its directory first, so that neither seeks. The PNG of an RGBA image is written in colour type RGBA whether or not the page is opaque, since the rows to come are not known; `image/png` would write an opaque page as RGB. Both decode to the pixels of the whole image, and the file of a page written in bands is byte for byte that of the page written whole.
+
+The CLI draws a page in bands by default when the output is a PNG or TIFF file (`.png`, `.tif`): `bdf render -mono=bilevel -scale 8.333333 report.bdf print.tif` writes a 600 dpi page with about 70 MiB of memory where drawing it whole took 1.1 GiB. `-band=N` sets the rows of a band; `-band=0` draws the page whole, as JPEG and WebP output and a batch with `-workers` above 1 do.
 
 ### Cached redraws and parallel pages
 

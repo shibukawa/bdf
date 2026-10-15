@@ -30,7 +30,7 @@ func usage() {
                                      (of an input to convert, only the first page is converted)
   bdf text [flags] <file.bdf | dir> [out.json]
                                      write the metadata and the text of each page for a search index
-  bdf render [flags] <file.bdf | dir> <out.png | .jpg | .webp>
+  bdf render [flags] <file.bdf | dir> <out.png | .jpg | .webp | .tif>
                                      draw a page (bdf thumbnail -h, text -h, render -h for flags)
   bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                      write the pages as a PDF file (bdf pdf -h for flags)

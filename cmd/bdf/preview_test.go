@@ -369,3 +369,68 @@ func TestThumbnailOfProtectedInput(t *testing.T) {
 		t.Errorf("thumbnail %d×%d, want the 4:3 slide at 256×192", w, h)
 	}
 }
+
+// TestRenderBands checks that a page drawn in bands and written as it is
+// drawn (the default for PNG and TIFF files) is the file of the page
+// drawn whole (-band=0), as a page and as a batch, and that TIFF files
+// are written.
+func TestRenderBands(t *testing.T) {
+	dir := t.TempDir()
+	doc := filepath.Join("..", "..", "testdata", "pdf", "chrome-doc.bdf")
+	for _, mono := range []string{"", "-mono=gray", "-mono=bilevel"} {
+		for _, ext := range []string{".png", ".tif"} {
+			whole, bands := filepath.Join(dir, "whole"+ext), filepath.Join(dir, "bands"+ext)
+			args := append([]string{"render", "-q", "-scale", "1.5"}, testFontFlags...)
+			if mono != "" {
+				args = append(args, mono)
+			}
+			if status, stderr := run(t, append(append(args, "-band=0"), doc, whole)...); status != 0 {
+				t.Fatalf("%s %s whole: exit status %d: %s", mono, ext, status, stderr)
+			}
+			if status, stderr := run(t, append(append(args, "-band=20"), doc, bands)...); status != 0 {
+				t.Fatalf("%s %s bands: exit status %d: %s", mono, ext, status, stderr)
+			}
+			a, err := os.ReadFile(whole)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, err := os.ReadFile(bands)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(a, b) {
+				t.Errorf("%s %s: the file of the bands differs from that of the whole page", mono, ext)
+			}
+			if ext == ".tif" {
+				if !bytes.HasPrefix(a, []byte("II*\x00")) {
+					t.Errorf("%s: not a TIFF file", mono)
+				}
+				continue
+			}
+			w, h := pngSize(t, bands)
+			if w != 893 || h != 1263 {
+				t.Errorf("%s: %d×%d", mono, w, h)
+			}
+		}
+	}
+	// a batch, written as the pages are drawn
+	batch := filepath.Join(dir, "batch-{page}.png")
+	args := append([]string{"render", "-q", "-pages=all", "-scale", "1.5", "-mono=bilevel"}, testFontFlags...)
+	if status, stderr := run(t, append(args, doc, batch)...); status != 0 {
+		t.Fatalf("batch: exit status %d: %s", status, stderr)
+	}
+	a, err := os.ReadFile(filepath.Join(dir, "batch-1.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "whole.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, b) {
+		t.Error("the first page of the batch differs from the page")
+	}
+	if status, stderr := run(t, "render", "-band=-1", filepath.Join(dir, "missing.bdf"), filepath.Join(dir, "x.png")); status != 2 || !strings.Contains(stderr, "-band") {
+		t.Errorf("-band=-1: exit status %d: %s", status, stderr)
+	}
+}

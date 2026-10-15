@@ -94,7 +94,6 @@ type context struct {
 type group struct {
 	parent *context
 	ctx    *context
-	x, y   int // the group canvas's place on the parent's
 	alpha  float32
 	blend  byte
 }
@@ -131,6 +130,111 @@ type drawer struct {
 	live, limit int
 	// most is the most reused may be (maxReusedInstructions)
 	most int
+
+	// band is the record of the instructions of a page drawn in bands,
+	// and cur the index in it of the instruction being drawn (see
+	// bandRecord)
+	band *bandRecord
+	cur  int
+}
+
+// bandRecord is what the first band of a page drawn in bands (see
+// pageRows) notes of its instructions for the bands after it: the
+// device pixels each draw can change, so that a band skips the draws
+// that change none of its own, and the rows of margin the shadows need.
+// The bands run the same instructions in the same order, so the index
+// of an instruction in the order tells it (visit); a band that skips a
+// draw counts it all the same.
+type bandRecord struct {
+	// recording says that the boxes are being noted: the first band
+	recording bool
+	boxes     []instrBox
+	visit     int
+	// margin is the rows above and below a band that the shadows of the
+	// draws reach from (see note): a band is drawn with as much more of
+	// the page on either side, so that the shadows in it are whole
+	margin int
+}
+
+// instrBox is the device pixels an instruction can change, when known:
+// a draw whose extent was noted, and nothing else.
+type instrBox struct {
+	r     image.Rectangle
+	known bool
+}
+
+// noting reports whether the extents of the draws are being noted (see
+// bandRecord).
+func (d *drawer) noting() bool { return d.band != nil && d.band.recording }
+
+// note notes the device pixels the instruction being drawn can change, r
+// and the shadow of r, for the bands after this one (see bandRecord). A
+// draw whose composite operation changes the pixels it does not cover
+// (see unbounded) may change any.
+func (d *drawer) note(r image.Rectangle) {
+	b := d.band
+	if b == nil || !b.recording || d.cur < 0 || d.cur >= len(b.boxes) {
+		return
+	}
+	e := &b.boxes[d.cur]
+	st := &d.ctx.st
+	if unbounded(st.blend) {
+		*e = instrBox{}
+		return
+	}
+	if st.shadowActive() && !r.Empty() {
+		pad := int(math.Ceil(3 * st.shadowBlur / 2))
+		dx, dy := int(math.Round(st.shadowDX)), int(math.Round(st.shadowDY))
+		r = r.Union(r.Add(image.Pt(dx, dy)).Inset(-pad))
+		// the blur of the shadow reaches further than the plane it is
+		// drawn on is padded (see gauss.Reach): what casts it must be
+		// drawn as far beyond the band as it reaches, offset and all
+		b.margin = max(b.margin, gauss.Reach(st.shadowBlur/2)+max(dy, -dy)+1)
+	}
+	if e.known {
+		e.r = e.r.Union(r)
+	} else {
+		e.r, e.known = r, true
+	}
+}
+
+// skipped reports whether the instruction i of a band after the first
+// can change no pixel of the canvas (see bandRecord).
+func (b *bandRecord) skips(i int, canvas image.Rectangle) bool {
+	if b.recording || i < 0 || i >= len(b.boxes) {
+		return false
+	}
+	e := &b.boxes[i]
+	return e.known && !e.r.Overlaps(canvas)
+}
+
+// deviceBox returns the device pixels of a box in user space (x0, y0,
+// x1, y1) with reach more on every side, under m, and a pixel more
+// around them (as outside allows). A box whose place cannot be told (a
+// corner that is no number) is everywhere.
+func deviceBox(box [4]float64, reach float64, m matrix) image.Rectangle {
+	x0, y0, x1, y1 := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
+	for _, c := range [4][2]float64{{box[0] - reach, box[1] - reach}, {box[2] + reach, box[1] - reach}, {box[0] - reach, box[3] + reach}, {box[2] + reach, box[3] + reach}} {
+		px, py := m.apply(c[0], c[1])
+		if math.IsNaN(px) || math.IsNaN(py) {
+			return everywhere
+		}
+		x0, y0, x1, y1 = math.Min(x0, px), math.Min(y0, py), math.Max(x1, px), math.Max(y1, py)
+	}
+	return image.Rect(int(math.Floor(clampF(x0)))-1, int(math.Floor(clampF(y0)))-1, int(math.Ceil(clampF(x1)))+1, int(math.Ceil(clampF(y1)))+1)
+}
+
+// everywhere is the extent of a draw whose place cannot be told.
+var everywhere = image.Rect(-1<<30, -1<<30, 1<<30, 1<<30)
+
+// pathBox is deviceBox for a path, with reach more around it in its
+// units: nothing for one without an extent (no segments).
+func pathBox(p *path, reach float64, m matrix) image.Rectangle {
+	box, ok := p.extent()
+	if !ok {
+		return image.Rectangle{}
+	}
+	return deviceBox(box, reach, m)
 }
 
 // enter reports whether an object was drawn before in this image, and
@@ -326,6 +430,16 @@ func (d *drawer) clip(cov *mask) {
 }
 
 func (d *drawer) instr(in bdf.Instr) {
+	// every instruction is counted, whether it is drawn, left out or
+	// skipped, so that the bands count alike (see bandRecord)
+	i := -1
+	if b := d.band; b != nil {
+		i = b.visit
+		b.visit++
+		if b.recording {
+			b.boxes = append(b.boxes, instrBox{})
+		}
+	}
 	if d.again {
 		if d.reused >= d.most {
 			d.r.warnf("objects are drawn again too many times: the rest of them is not drawn")
@@ -338,6 +452,10 @@ func (d *drawer) instr(in bdf.Instr) {
 		d.leftOut(in)
 		return
 	}
+	if b := d.band; b != nil && b.skips(i, d.ctx.target.bounds()) {
+		return
+	}
+	d.cur = i
 	ctx := d.ctx
 	st := &ctx.st
 	switch in.Op {
@@ -431,6 +549,9 @@ func (d *drawer) instr(in bdf.Instr) {
 	case bdf.OpClearRect:
 		p := &path{}
 		p.rect(f64(in, 0), f64(in, 1), f64(in, 2), f64(in, 3))
+		if d.noting() {
+			d.note(pathBox(p, 0, st.m))
+		}
 		cov := d.coverage(p, bdf.NonZero, st.m)
 		ctx.target.fill(cov, solid{0, 0, 0, 1}, 1, bdf.BlendDestinationOut, st.clip)
 		d.r.releaseMask(cov)
@@ -451,6 +572,15 @@ func (d *drawer) instr(in bdf.Instr) {
 		glyphs, _ := in.Args[1].([]bdf.Glyph)
 		sc, bounds := d.r.scratch(), d.bounds()
 		polys := sc.polys
+		if d.noting() {
+			var box image.Rectangle
+			for _, g := range glyphs {
+				if p := d.path(int(g.Path)); p != nil {
+					box = box.Union(pathBox(p, 0, st.m.translate(float64(g.X), float64(g.Y))))
+				}
+			}
+			d.note(box)
+		}
 		for _, g := range glyphs {
 			if p := d.path(int(g.Path)); p != nil {
 				m := st.m.translate(float64(g.X), float64(g.Y))
@@ -566,6 +696,9 @@ func (d *drawer) fillRect(x, y, w, h float64) {
 
 func (d *drawer) fillPath(p *path, rule byte, m matrix) {
 	st := &d.ctx.st
+	if d.noting() {
+		d.note(pathBox(p, 0, m))
+	}
 	cov := d.coverage(p, rule, m)
 	d.paint(cov, d.shader(&st.fill, m), 1)
 	d.r.releaseMask(cov)
@@ -575,6 +708,9 @@ func (d *drawer) fillPath(p *path, rule byte, m matrix) {
 // device pixel are drawn a pixel wide with their width as alpha, as Skia
 // draws hairlines.
 func (d *drawer) strokePath(p *path, m matrix) {
+	if d.noting() {
+		d.note(pathBox(p, d.ctx.st.line.reach(m), m))
+	}
 	cov, alpha, cut := d.r.scratch().strokeMask(p, m, d.ctx.st.line, d.bounds())
 	if cut {
 		d.r.warnf(strokeCut)
@@ -585,6 +721,17 @@ func (d *drawer) strokePath(p *path, m matrix) {
 
 // strokeCut warns of a stroke whose outline passed the limits.
 const strokeCut = "a line has too many dashes, joins and caps: the rest of it is not drawn"
+
+// reach is how far a stroke under m reaches from its path, in user
+// units: half the width it is drawn at (a device pixel at least), as far
+// as its joins and caps go.
+func (ls lineStyle) reach(m matrix) float64 {
+	w := ls.width
+	if scale := m.areaScale(); scale > 0 && w*scale < 1 {
+		w = 1 / scale
+	}
+	return w / 2 * math.Max(math.Sqrt2, ls.miterReach())
+}
 
 // strokeMask rasterizes the stroke of a path in user space under m within
 // bounds, and returns the alpha to draw it with: strokes thinner than a
@@ -744,18 +891,25 @@ func (d *drawer) text(s string, x, y, advance float64, stroke bool) {
 		d.strokeText(glyphs, m)
 		return
 	}
+	// synthesized bold outlines what is filled, in device space
+	boldW := fakeBoldWidth(st.size * m.areaScale())
+	if d.noting() {
+		d.note(d.textBox(glyphs, m, boldW, identity))
+	}
+	if d.bounds().Empty() {
+		return
+	}
 	fontKey := bdf.SystemFont("sans-serif", 400, bdf.StyleNormal)
 	if st.font != nil {
 		fontKey = *st.font
 	}
-	key := textMaskKey{font: fontKey, text: s, m: m, size: st.size, spacing: st.spacing, dir: st.dir, bounds: d.bounds(), noAA: d.r.opts.Antialias == AntialiasOff}
+	bounds := d.textBounds()
+	key := textMaskKey{font: fontKey, text: s, m: m, size: st.size, spacing: st.spacing, dir: st.dir, bounds: bounds, noAA: d.r.opts.Antialias == AntialiasOff}
 	if cov := d.r.textMask(key); cov != nil {
 		d.paint(cov, d.shader(&st.fill, m), 1)
 		return
 	}
-	sc, bounds := d.r.scratch(), d.bounds()
-	// synthesized bold outlines what is filled, in device space
-	boldW := fakeBoldWidth(st.size * m.areaScale())
+	sc := d.r.scratch()
 	bold := newStroker(&lineStyle{width: boldW, join: bdf.JoinRound, miter: 10}, 1).within(identity, bounds)
 	fill := sc.polys
 	for _, g := range glyphs {
@@ -813,6 +967,47 @@ func (d *drawer) text(s string, x, y, advance float64, stroke bool) {
 	d.r.releaseMask(cov)
 }
 
+// textBounds is the area the glyphs of a text run are rasterized
+// within: the whole image when a band of it is drawn (see pageRows), so
+// that the mask of a run is the same in every band and the one kept for
+// the next, else the bounds of the drawing.
+func (d *drawer) textBounds() image.Rectangle {
+	t := d.ctx.target
+	if t.page.Empty() {
+		return d.bounds()
+	}
+	return t.page
+}
+
+// textBox returns the device pixels glyphs laid out under m reach, with
+// reach more around each in text units under um (the stroke of the
+// outlines), and the outline growth of synthesized bold, in device pixels.
+func (d *drawer) textBox(glyphs []placed, m matrix, boldW float64, um matrix) image.Rectangle {
+	var box image.Rectangle
+	size := d.ctx.st.size
+	for _, g := range glyphs {
+		p := g.use.face.outline(g.gid)
+		if p == nil {
+			continue
+		}
+		k := size / g.use.face.upem
+		gm := um.translate(g.x, 0).scale(k, -k)
+		if g.use.italic {
+			gm = gm.mul(matrix{1, 0, fakeItalicSkew, 1, 0, 0})
+		}
+		b, ok := p.extent()
+		if !ok {
+			continue
+		}
+		r := deviceBox(boxUnder(b, gm), 0, m)
+		if g.use.bold && boldW > 0 {
+			r = r.Inset(-int(math.Ceil(boldW)))
+		}
+		box = box.Union(r)
+	}
+	return box
+}
+
 // strokeText strokes glyphs laid out under m: in user space, where the
 // line width is in units.
 func (d *drawer) strokeText(glyphs []placed, m matrix) {
@@ -825,6 +1020,9 @@ func (d *drawer) strokeText(glyphs []placed, m matrix) {
 		alpha, ls.width = float32(dw), 1/scale
 	}
 	reach := ls.width / 2 * math.Max(math.Sqrt2, ls.miterReach())
+	if d.noting() {
+		d.note(d.textBox(glyphs, m, 0, identity).Inset(-int(math.Ceil(reach*m.maxScale())) - 1))
+	}
 	lines := sc.polys
 	for _, g := range glyphs {
 		p := g.use.face.outline(g.gid)
@@ -900,6 +1098,9 @@ func (d *drawer) image(i int, src *[4]float64, x, y, w, h float64) {
 	st := &d.ctx.st
 	p := &path{}
 	p.rect(x, y, w, h)
+	if d.noting() {
+		d.note(pathBox(p, 0, st.m))
+	}
 	cov := d.coverage(p, bdf.NonZero, st.m)
 	if cov.empty() && !unbounded(st.blend) && !plain {
 		return // it shows nowhere: not worth decoding
@@ -982,22 +1183,27 @@ func (d *drawer) groupBegin(alpha float32, blend byte, x, y, w, h float64) {
 	// shadow of what is as far outside it as the shadow reaches
 	on := d.bounds()
 	if st.shadowActive() {
-		reach := int(math.Ceil(3*st.shadowBlur/2 + math.Max(math.Abs(st.shadowDX), math.Abs(st.shadowDY)) + 1))
+		reach := gauss.Reach(st.shadowBlur/2) + int(math.Ceil(math.Max(math.Abs(st.shadowDX), math.Abs(st.shadowDY)))) + 1
 		on = on.Inset(-reach)
 	}
 	r = r.Intersect(on)
 	if r.Empty() {
-		r = image.Rect(0, 0, 1, 1)
+		// a pixel of the parent canvas, as a canvas has one at least
+		t := d.ctx.target
+		r = image.Rect(t.ox, t.oy, t.ox+1, t.oy+1)
 	}
-	gs := initialState(matrix{1, 0, 0, 1, -float64(r.Min.X), -float64(r.Min.Y)}.mul(m), nil)
+	// the canvas of the group lies on the device where the group is: what
+	// is drawn in it is drawn with the transform of the state as it is
+	gs := initialState(m, nil)
 	gs.fill, gs.stroke, gs.line.width, gs.font, gs.size = st.fill, st.stroke, st.line.width, st.font, st.size
 	gc := &context{st: gs}
 	if !d.layer(gc, r.Dx(), r.Dy()) {
 		return
 	}
 	gc.target = d.r.newSurface(r.Dx(), r.Dy())
+	gc.target.ox, gc.target.oy = r.Min.X, r.Min.Y
 	gc.st.clip = &mask{r: gc.target.bounds()}
-	g := &group{parent: d.ctx, ctx: gc, x: r.Min.X, y: r.Min.Y, alpha: alpha, blend: blend}
+	g := &group{parent: d.ctx, ctx: gc, alpha: alpha, blend: blend}
 	d.groups = append(d.groups, g)
 	d.ctx = gc
 }
@@ -1019,7 +1225,7 @@ func (d *drawer) groupEnd() {
 	d.closed(g.ctx)
 	d.ctx = g.parent
 	s := g.ctx.target
-	r := image.Rect(g.x, g.y, g.x+s.w, g.y+s.h)
+	r := s.bounds()
 	blend := g.blend
 	if int(blend) >= len(bdf.BlendNames) {
 		blend = bdf.BlendSourceOver
@@ -1029,25 +1235,27 @@ func (d *drawer) groupEnd() {
 	if st := &d.ctx.st; st.shadowActive() {
 		was := st.blend
 		st.blend = blend
-		d.shadow(&mask{r: r}, surfaceShader{s: s, dx: g.x, dy: g.y}, g.alpha)
+		d.shadow(&mask{r: r}, surfaceShader{s: s}, g.alpha)
 		st.blend = was
 	}
-	d.ctx.target.fill(&mask{r: r}, surfaceShader{s: s, dx: g.x, dy: g.y}, g.alpha, blend, d.ctx.st.clip)
+	d.ctx.target.fill(&mask{r: r}, surfaceShader{s: s}, g.alpha, blend, d.ctx.st.clip)
 	d.r.release(s)
 }
 
 func (d *drawer) maskBegin(kind byte, backdrop bdf.Color, transfer []byte) {
 	var g *group
-	w, h := 1, 1
+	w, h, ox, oy := 1, 1, 0, 0
 	if n := len(d.groups); n > 0 {
 		g = d.groups[n-1]
-		w, h = g.ctx.target.w, g.ctx.target.h
+		t := g.ctx.target
+		w, h, ox, oy = t.w, t.h, t.ox, t.oy
 	}
 	mc := &context{}
 	if !d.layer(mc, w, h) {
 		return
 	}
 	mc.target = d.r.newSurface(w, h)
+	mc.target.ox, mc.target.oy = ox, oy
 	if kind == bdf.MaskLuminosity {
 		mc.target.fresh = false
 		c := premul(backdrop | 0xff)
@@ -1081,7 +1289,7 @@ func (d *drawer) maskEnd() {
 	gs := g.ctx.target
 	gs.fresh = false
 	gs.bands(gs.bounds(), func(y0, y1, _ int) {
-		for i := y0 * ms.w; i < y1*ms.w; i++ {
+		for i := (y0 - gs.oy) * ms.w; i < (y1-gs.oy)*ms.w; i++ {
 			p := ms.pix[4*i : 4*i+4]
 			var v int
 			if m.kind == bdf.MaskLuminosity {

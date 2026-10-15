@@ -153,11 +153,12 @@ func TestFillWithinTheCoverage(t *testing.T) {
 		return image.Rect(x, y, x+1+rng.Intn(12), y+1+rng.Intn(12))
 	}
 	group := newSurface(9, 7)
+	group.ox, group.oy = 2, 3
 	for i := range group.pix {
 		group.pix[i] = rng.Float32()
 	}
 	paint := bdf.LinearGradient(0, 0, 12, 3, bdf.Stop{Offset: 0, Color: 0xff000080}, bdf.Stop{Offset: 1, Color: 0x0000ffff})
-	shaders := []shader{solid{0.5, 0.25, 0, 0.5}, solid{0, 0, 1, 1}, surfaceShader{s: group, dx: 2, dy: 3}, newGradientShader(&paint, identity, nil)}
+	shaders := []shader{solid{0.5, 0.25, 0, 0.5}, solid{0, 0, 1, 1}, surfaceShader{s: group}, newGradientShader(&paint, identity, nil)}
 	for n := 0; n < 400; n++ {
 		base := newSurface(12, 12)
 		for i := range base.pix {

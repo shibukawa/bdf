@@ -69,7 +69,8 @@ func (r *Renderer) Object(hash bdf.Hash, scale float64) (img *image.RGBA, err er
 		bg := r.background()
 		filled = &bg
 	}
-	d := r.canvasAt(m, int(fw), int(fh), filled)
+	whole := image.Rect(0, 0, int(fw), int(fh))
+	d := r.canvasAt(m, whole, whole, filled)
 	clip := &mask{r: d.ctx.target.bounds()}
 	if filled != nil && filled[3] != 1 {
 		d.ctx.target.fill(clip, *filled, 1, bdf.BlendSourceOver, clip)
