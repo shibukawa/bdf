@@ -2,13 +2,10 @@ package all_test
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/shibukawa/bdf/converter"
 	_ "github.com/shibukawa/bdf/converter/all"
@@ -50,7 +47,6 @@ func FuzzConvert(f *testing.F) {
 		Params:        map[string]string{"remote": "false"},
 	}
 	f.Fuzz(func(t *testing.T, name string, data []byte) {
-		defer slowInput(t, name, data)()
 		o := opts
 		o.FileName = name
 		o.Warn = func(string) {}
@@ -63,26 +59,4 @@ func FuzzConvert(f *testing.F) {
 			t.Fatalf("write: %v", err)
 		}
 	})
-}
-
-// slowInput writes an input that takes longer than a second to convert to
-// the directory BDF_FUZZ_SLOW_DIR names, when it is set: the fuzzer keeps
-// the inputs that reach new code, not the slow ones.
-func slowInput(t *testing.T, name string, data []byte) func() {
-	dir := os.Getenv("BDF_FUZZ_SLOW_DIR")
-	if dir == "" {
-		return func() {}
-	}
-	start := time.Now()
-	return func() {
-		if d := time.Since(start); d > time.Second {
-			ext := strings.ToLower(filepath.Ext(name))
-			if len(ext) > 12 || strings.ContainsAny(ext, "/\\") {
-				ext = ""
-			}
-			out := filepath.Join(dir, fmt.Sprintf("%.1fs-%x%s", d.Seconds(), sha256.Sum256(data), ext))
-			os.WriteFile(out, data, 0o600)
-			t.Logf("slow input (%v): %s", d, out)
-		}
-	}
 }

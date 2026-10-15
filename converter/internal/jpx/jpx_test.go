@@ -782,20 +782,3 @@ func FuzzDecode(f *testing.F) {
 		}
 	})
 }
-
-func BenchmarkDecode(b *testing.B) {
-	for _, name := range []string{"rgb8.j2k", "rgb8_97.j2k", "tiles.j2k"} {
-		data, err := os.ReadFile(filepath.Join("testdata", name))
-		if err != nil {
-			b.Fatal(err)
-		}
-		b.Run(name, func(b *testing.B) {
-			b.SetBytes(int64(len(data)))
-			for b.Loop() {
-				if _, err := Decode(data); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	}
-}

@@ -2,7 +2,6 @@ package drawio
 
 import (
 	"fmt"
-	"html"
 	"math"
 	"os"
 	"path/filepath"
@@ -250,94 +249,4 @@ func TestAWSLegacyDiagrams(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestAWSLegacyExport writes the test diagrams with the substituted
-// styles and bounds into $DRAWIO_AWS_LEGACY_OUT, for comparing draw.io's
-// rendering of the old icons with that of their substitutes:
-//
-//	DRAWIO_AWS_LEGACY_OUT=/tmp/aws go test -run TestAWSLegacyExport ./converter/drawio/
-//	draw.io -x -f png -s 2 -o /tmp/aws/architecture.png /tmp/aws/architecture.drawio
-func TestAWSLegacyExport(t *testing.T) {
-	dir := os.Getenv("DRAWIO_AWS_LEGACY_OUT")
-	if dir == "" {
-		t.Skip("DRAWIO_AWS_LEGACY_OUT is not set")
-	}
-	files, _ := filepath.Glob(filepath.Join("testdata", "aws_legacy", "*.drawio"))
-	for _, f := range files {
-		data, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		df, err := readFile(data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var b strings.Builder
-		b.WriteString("<mxfile>")
-		for _, p := range df.pages {
-			m := parseModel(p.model)
-			c := &converter{opts: &Options{Warn: func(string) {}}, warned: map[string]bool{}}
-			c.substituteAWSLegacy(m)
-			fmt.Fprintf(&b, `<diagram id="%s" name="%s">%s</diagram>`, html.EscapeString(p.id), html.EscapeString(p.name), modelXML(m))
-		}
-		b.WriteString("</mxfile>\n")
-		if err := os.WriteFile(filepath.Join(dir, filepath.Base(f)), []byte(b.String()), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-// modelXML writes a model back as an mxGraphModel element (cells, styles
-// and geometry; the attributes of UserObject wrappers are dropped).
-func modelXML(m *model) string {
-	var b strings.Builder
-	b.WriteString("<mxGraphModel><root>")
-	num := func(v float64) string { return fmtNum(v) }
-	pt := func(p *point, as string) {
-		if p != nil {
-			fmt.Fprintf(&b, `<mxPoint x="%s" y="%s" as="%s"/>`, num(p.x), num(p.y), as)
-		}
-	}
-	for _, c := range m.ordered {
-		fmt.Fprintf(&b, `<mxCell id="%s"`, html.EscapeString(c.id))
-		for _, a := range [][2]string{{"value", c.value}, {"style", c.styleStr}, {"parent", c.parentID}, {"source", c.sourceID}, {"target", c.targetID}} {
-			if a[1] != "" {
-				fmt.Fprintf(&b, ` %s="%s"`, a[0], html.EscapeString(a[1]))
-			}
-		}
-		for _, a := range []struct {
-			name string
-			on   bool
-		}{{"vertex", c.vertex}, {"edge", c.edge}, {"collapsed", c.collapsed}} {
-			if a.on {
-				fmt.Fprintf(&b, ` %s="1"`, a.name)
-			}
-		}
-		if !c.visible {
-			b.WriteString(` visible="0"`)
-		}
-		b.WriteString(">")
-		if g := c.geo; g != nil {
-			fmt.Fprintf(&b, `<mxGeometry x="%s" y="%s" width="%s" height="%s"`, num(g.x), num(g.y), num(g.w), num(g.h))
-			if g.relative {
-				b.WriteString(` relative="1"`)
-			}
-			b.WriteString(` as="geometry">`)
-			pt(g.sourcePoint, "sourcePoint")
-			pt(g.targetPoint, "targetPoint")
-			pt(g.offset, "offset")
-			if len(g.points) > 0 {
-				b.WriteString(`<Array as="points">`)
-				for i := range g.points {
-					pt(&g.points[i], "")
-				}
-				b.WriteString("</Array>")
-			}
-			b.WriteString("</mxGeometry>")
-		}
-		b.WriteString("</mxCell>")
-	}
-	b.WriteString("</root></mxGraphModel>")
-	return strings.ReplaceAll(b.String(), ` as=""`, "")
 }

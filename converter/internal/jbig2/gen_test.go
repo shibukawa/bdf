@@ -246,21 +246,3 @@ func TestSampleConvention(t *testing.T) {
 		t.Errorf("Decode [1 0]: %s", d)
 	}
 }
-
-var dump = flag.String("dump", "", "write the fixture streams to this directory, for debugging")
-
-// TestDump writes the fixture streams and their reference pages to a
-// directory, for instance to feed them to jbig2dec:
-//
-//	go test ./converter/internal/jbig2/ -run TestDump -dump /tmp/jb2
-//	jbig2dec -e -t pbm -o out.pbm /tmp/jb2/text_arith.glob /tmp/jb2/text_arith.jb2
-func TestDump(t *testing.T) {
-	if *dump == "" {
-		t.Skip("run with -dump dir")
-	}
-	for _, f := range fixtures() {
-		os.WriteFile(filepath.Join(*dump, f.name+".jb2"), f.page, 0o644)
-		os.WriteFile(filepath.Join(*dump, f.name+".glob"), f.globals, 0o644)
-		os.WriteFile(filepath.Join(*dump, f.name+".want.pbm"), encodePBM(f.want), 0o644)
-	}
-}

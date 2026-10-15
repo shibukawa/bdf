@@ -3,9 +3,7 @@ package formula_test
 import (
 	"image"
 	"image/color"
-	"image/png"
 	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 
@@ -48,22 +46,6 @@ func inked(img *image.RGBA) int {
 		}
 	}
 	return n
-}
-
-// save writes an image to look at when FORMULA_SAMPLES names a directory.
-func save(t *testing.T, name string, img image.Image) {
-	dir := os.Getenv("FORMULA_SAMPLES")
-	if dir == "" {
-		return
-	}
-	f, err := os.Create(filepath.Join(dir, name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if err := png.Encode(f, img); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestLayout(t *testing.T) {
@@ -111,7 +93,6 @@ func TestObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	save(t, "quadratic.png", img)
 	b := img.Bounds()
 	if b.Min.Y >= 0 || b.Max.Y <= 0 || b.Dx() < int(2*l.Width())-2 {
 		t.Errorf("image bounds %v for a formula %v wide, %v high, %v deep", b, l.Width(), l.Height(), l.Depth())
@@ -141,7 +122,6 @@ func TestDraw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	save(t, "draw.png", img)
 	red, blue := 0, 0
 	for i := 0; i < len(img.Pix); i += 4 {
 		switch {
@@ -189,7 +169,6 @@ func TestTextFonts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	save(t, "text.png", b)
 	if inked(b) < 2*inked(a) {
 		t.Errorf("%d pixels with the text font, %d without", inked(b), inked(a))
 	}
@@ -243,18 +222,6 @@ func TestDocument(t *testing.T) {
 	img, err := imagebdf.New(doc, &imagebdf.Options{NoSystemFonts: true}).Page(v, 0, 2)
 	if err != nil {
 		t.Fatal(err)
-	}
-	save(t, "document.png", img)
-	if dir := os.Getenv("FORMULA_SAMPLES"); dir != "" {
-		// to draw with the browser's renderer: node test/render.mjs document.bdf out
-		f, err := os.Create(filepath.Join(dir, "document.bdf"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := doc.WriteSingle(f); err != nil {
-			t.Fatal(err)
-		}
-		f.Close()
 	}
 	// white paper, the margin empty, the formula inside it
 	dark := image.Rectangle{}

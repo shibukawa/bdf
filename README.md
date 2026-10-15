@@ -32,7 +32,7 @@ For an npm integration, including server-converted BDF and browser conversion pr
 | `examples/`, `site/` | The demo viewer, four sample server architectures, and the site published on GitHub Pages |
 | `docs/` | This documentation |
 
-See [Repository layout](https://shibukawa.github.io/bdf/docs/architecture/layout.html) for the full breakdown, and [Building and testing](https://shibukawa.github.io/bdf/docs/architecture/development.html) for `go test`, the golden tests, and regenerating fixtures.
+See [Repository layout](https://shibukawa.github.io/bdf/docs/architecture/layout.html) for the full breakdown, and [Building and testing](https://shibukawa.github.io/bdf/docs/architecture/development.html) for `go test`, browser integration tests, and regenerating fixtures.
 
 ## License
 

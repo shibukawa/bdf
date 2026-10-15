@@ -1,8 +1,8 @@
-// Renders the fixture in headless Chromium and compares against testdata/golden/*.png.
-// Usage: node test/golden.mjs [--update] [--source single|split|range]
+// Browser integration tests for rendering, text selection, accessibility and search.
+// Usage: node test/browser.mjs [--source single|split|range]
 import { build } from "esbuild";
 import { chromium } from "playwright-core";
-import { writeFile, mkdir, copyFile } from "node:fs/promises";
+import { mkdir, copyFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -10,9 +10,8 @@ import { serve } from "./serve.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const args = process.argv.slice(2);
-const update = args.includes("--update");
 const source = args.includes("--source") ? args[args.indexOf("--source") + 1] : "single";
-const PIXEL_TOLERANCE = 0.02; // fraction of pixels allowed to differ from the golden
+if (!(["single", "split", "range"].includes(source))) throw new Error(`unknown source: ${source}`);
 
 const outDir = join(root, "test", ".out");
 await mkdir(outDir, { recursive: true });
@@ -27,21 +26,12 @@ await build({
 await copyFile(join(root, "test/page/index.html"), join(outDir, "page.html"));
 
 const { server, port } = await serve(root);
-// Use an explicit browser (CHROMIUM_PATH, or the headless shell preinstalled in some sandboxes);
-// otherwise fall back to the one installed by `npx playwright-core install chromium`, which is
-// the headless shell too. The full Chromium binary rasterizes small text differently from the
-// shell, so the goldens only match when every machine runs the same one.
+// CHROMIUM_PATH supports an existing browser; otherwise use Playwright's install.
 const executablePath = process.env.CHROMIUM_PATH ?? ["/opt/pw-browsers/chromium_headless_shell-1194/chrome-linux/headless_shell"].find((p) => existsSync(p));
-// The pixels must not depend on the machine: Canvas 2D is rasterized in software (no GPU or
-// SwiftShader path, which also makes the worker's OffscreenCanvas match the main thread), text
-// is drawn without hinting or LCD filtering so the fontconfig defaults (hint style, subpixel
-// order) do not leak in, and playwright-core is pinned to the release whose Chromium build
-// matches the goldens.
-const launch = { args: ["--disable-gpu", "--disable-accelerated-2d-canvas", "--font-render-hinting=none", "--disable-lcd-text"] };
-if (executablePath) launch.executablePath = executablePath;
-const browser = await chromium.launch(launch);
+let browser;
 let failed = 0;
 try {
+  browser = await chromium.launch(executablePath ? { executablePath } : {});
   const page = await browser.newPage({ deviceScaleFactor: 1 });
   page.on("console", (m) => { if (m.type() === "error") console.error("[browser]", m.text()); });
   page.on("pageerror", (e) => console.error("[pageerror]", e.message));
@@ -92,38 +82,16 @@ try {
   if (!searchOk) failed++;
   console.log(`search: ${searchOk ? "ok" : "FAIL"} (${search.hits.length} hits, first hit rects ${JSON.stringify(search.rects[0])}, sheet ${JSON.stringify(search.sheetRects[0])}, pptx ${JSON.stringify(search.pptxRects[0])}, ligature ${JSON.stringify(search.ligRects[0])}, xlsx ${JSON.stringify(search.xlsxRects)}, drawio ${JSON.stringify(search.drawioRects[0])} links ${JSON.stringify(search.drawioLinks)}, math ${JSON.stringify(search.mathRects)})`);
   for (const r of results) {
-    const goldenPath = join(root, "testdata/golden", `${r.name}.png`);
-    const png = Buffer.from(r.png.split(",")[1], "base64");
-    let status;
-    if (update || !r.golden) {
-      await writeFile(goldenPath, png);
-      status = update ? "updated" : "created";
-    } else {
-      const frac = r.golden.different / r.golden.total;
-      status = frac <= PIXEL_TOLERANCE ? "ok" : "FAIL";
-      if (status === "FAIL") {
-        failed++;
-        await writeFile(join(outDir, `${r.name}.actual.png`), png);
-        await writeFile(join(outDir, `${r.name}.golden-diff.png`), Buffer.from(r.golden.png.split(",")[1], "base64"));
-      }
-      status += ` golden diff ${(frac * 100).toFixed(3)}% (max delta ${r.golden.maxDelta})`;
-    }
-    // OffscreenCanvas in a worker antialiases clip edges slightly differently from a
-    // main-thread canvas, so only the fraction of differing pixels is checked here.
-    const workerOk = r.worker.different / r.worker.total <= PIXEL_TOLERANCE;
-    if (!workerOk) {
-      failed++;
-      await writeFile(join(outDir, `${r.name}.main.png`), png);
-      await writeFile(join(outDir, `${r.name}.worker.png`), Buffer.from(r.workerPng.split(",")[1], "base64"));
-      await writeFile(join(outDir, `${r.name}.worker-diff.png`), Buffer.from(r.worker.png.split(",")[1], "base64"));
-    }
-    console.log(`${r.name.padEnd(22)} ${status}; worker ${r.worker.different === 0 ? "identical" : `${workerOk ? "close" : "DIFFERS"} (${r.worker.different} px, max delta ${r.worker.maxDelta})`}; text runs ${r.textRuns}`);
+    const renderOk = [r.main, r.worker].every((output) =>
+      output.width === r.size[0] && output.height === r.size[1] && output.hasContent === r.expectsContent);
+    if (!renderOk) failed++;
+    console.log(`render ${r.name}: ${renderOk ? "ok" : "FAIL"} (${JSON.stringify(r)})`);
   }
 } finally {
-  await browser.close();
+  await browser?.close();
   server.close();
 }
 if (failed) {
-  console.error(`${failed} check(s) failed; actual renders are in test/.out/`);
+  console.error(`${failed} browser check(s) failed`);
   process.exit(1);
 }

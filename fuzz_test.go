@@ -2,13 +2,10 @@ package bdf_test
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/raster/imagebdf"
@@ -30,7 +27,6 @@ func FuzzReader(f *testing.F) {
 	}
 	raster := imagebdf.Options{FontDirs: []string{"converter/pptx/testdata/fonts", "fixture/testdata/fonts"}, NoSystemFonts: true}
 	f.Fuzz(func(t *testing.T, data []byte) {
-		defer slowInput(t, data)()
 		r, err := bdf.OpenSingle(bytes.NewReader(data), int64(len(data)))
 		if err != nil {
 			return
@@ -70,22 +66,4 @@ func FuzzReader(f *testing.F) {
 			t.Fatalf("write: %v", err)
 		}
 	})
-}
-
-// slowInput writes an input that takes longer than a second to the
-// directory BDF_FUZZ_SLOW_DIR names, when it is set: the fuzzer keeps the
-// inputs that reach new code, not the slow ones.
-func slowInput(t *testing.T, data []byte) func() {
-	dir := os.Getenv("BDF_FUZZ_SLOW_DIR")
-	if dir == "" {
-		return func() {}
-	}
-	start := time.Now()
-	return func() {
-		if d := time.Since(start); d > time.Second {
-			name := filepath.Join(dir, fmt.Sprintf("%.1fs-%x.bdf", d.Seconds(), sha256.Sum256(data)))
-			os.WriteFile(name, data, 0o600)
-			t.Logf("slow input (%v): %s", d, name)
-		}
-	}
 }

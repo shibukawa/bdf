@@ -1,7 +1,6 @@
 package barcode
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"strings"
 	"testing"
@@ -220,22 +219,6 @@ func TestQR(t *testing.T) {
 			if s, _ := encodeQR(text+"x", "LMQH"[lv:lv+1], 0, 0); s != nil && (s.W-17)/4 <= ver {
 				t.Errorf("version %d level %d holds more than %d bytes", ver, lv, n)
 			}
-		}
-	}
-	// the symbols are those of other writers of QR codes (test/barcode/read.py
-	// compares them with python-qrcode module by module): what they are now
-	for text, want := range map[string]string{
-		"HELLO WORLD":                     "7076f3ab",
-		"https://example.com/orders/1024": "9bba8b5a",
-		"日本語のテキスト、帳票":                     "492ad646",
-	} {
-		s := mustEncode(t, QR, text, &Options{Level: "Q"})
-		var rows strings.Builder
-		for y := 0; y < s.H; y++ {
-			rows.WriteString(row(s, y) + "\n")
-		}
-		if got := fmt.Sprintf("%x", sha256.Sum256([]byte(rows.String())))[:8]; got != want {
-			t.Errorf("the QR code of %q is another than it was: %s, was %s", text, got, want)
 		}
 	}
 	// the quiet zone

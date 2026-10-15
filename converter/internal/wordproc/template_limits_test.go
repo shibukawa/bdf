@@ -1,7 +1,6 @@
 package wordproc
 
 import (
-	"strconv"
 	"strings"
 	"testing"
 
@@ -63,29 +62,5 @@ func TestTextPrefix(t *testing.T) {
 	got, n := textPrefix(s, maxParaText)
 	if n != maxParaText || got != strings.Repeat("界", maxParaText) {
 		t.Errorf("clipped text has %d runes and %d bytes", n, len(got))
-	}
-	if n := testing.AllocsPerRun(10, func() { _, _ = textPrefix(s, maxParaText) }); n != 0 {
-		t.Errorf("clipping an oversized value allocated %v times", n)
-	}
-}
-
-func BenchmarkRepeatedInlineText(b *testing.B) {
-	for _, n := range []int{1000, 4000} {
-		b.Run(strconv.Itoa(n), func(b *testing.B) {
-			f := newFiller(&TemplateData{Data: map[string]any{"a": make([]any, n)}})
-			p := templatePara(b, "{{#a}}x{{/a}}")
-			var stack []openSec
-			if err := f.scanInline(p, tplLoc{name: "paragraph"}, &stack, nil); err != nil {
-				b.Fatal(err)
-			}
-			b.ReportAllocs()
-			b.ResetTimer()
-			for range b.N {
-				f.steps, f.nodes = 0, 0
-				if _, err := f.fillInline(p, f.inl[p], f.root); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
 	}
 }

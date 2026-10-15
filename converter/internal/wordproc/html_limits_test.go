@@ -280,24 +280,6 @@ func TestStripsOfLongDocument(t *testing.T) {
 	}
 }
 
-var benchmarkStrips [][]int32
-
-// Compare sizes outside CI's correctness tests when checking the cost of
-// making cuts and assigning lines to strips.
-func BenchmarkStripsOfLongDocument(b *testing.B) {
-	for _, high := range []bool{false, true} {
-		for _, lines := range []int{25000, 100000} {
-			b.Run(fmt.Sprintf("high=%v/lines=%d", high, lines), func(b *testing.B) {
-				ops := longStripOps(lines, high)
-				b.ResetTimer()
-				for range b.N {
-					benchmarkStrips = stripOps(ops, stripCuts(ops, float64(lines)*20))
-				}
-			})
-		}
-	}
-}
-
 // viewInstrs calls fn for the instructions of the objects of a view of a
 // converted document.
 func viewInstrs(t *testing.T, res *Result, view int, fn func(in bdf.Instr)) {
@@ -523,27 +505,6 @@ func TestLinesOfLongParagraph(t *testing.T) {
 		n, consumed := paragraphLineCount(p)
 		if consumed != size || n < size/100 || n > size/30 {
 			t.Errorf("breaks %v: %d of %d items consumed in %d lines", brk, consumed, size, n)
-		}
-	}
-}
-
-var benchmarkParagraphLines int
-
-// Benchmark the line-breaking work without timing input construction or
-// depending on the load of a CI runner.
-func BenchmarkLinesOfLongParagraph(b *testing.B) {
-	for _, brk := range []bool{false, true} {
-		for _, size := range []int{20000, 80000} {
-			b.Run(fmt.Sprintf("breaks=%v/items=%d", brk, size), func(b *testing.B) {
-				p := longParagraph(size, brk)
-				if _, consumed := paragraphLineCount(p); consumed != size {
-					b.Fatalf("consumed %d of %d items", consumed, size)
-				}
-				b.ResetTimer()
-				for range b.N {
-					benchmarkParagraphLines, _ = paragraphLineCount(p)
-				}
-			})
 		}
 	}
 }

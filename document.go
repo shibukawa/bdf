@@ -147,17 +147,10 @@ type deflateWriter struct {
 
 // The compressor's working memory is much larger than most document
 // parts. Reuse it at the same level; returned bytes are never pooled.
-// The compressor is klauspost/compress's, which writes the stream the
-// standard library writes at every level (see TestFlateMatchesStandardLibrary)
-// but faster; the default level it names differs, so DefaultCompression is
-// the standard library's.
 var deflateWriters [flate.BestCompression - flate.HuffmanOnly + 1]sync.Pool
 
-// defaultLevel is the default of Document.CompressionLevel, and the level
-// flate.DefaultCompression names in the standard library (compress/flate):
-// on the parts of the test documents it compresses four times faster than
-// BestCompression for files 0.9% larger, and 2.4 times faster than 7 for
-// 0.6% larger.
+// defaultLevel is used when Document.CompressionLevel is
+// flate.DefaultCompression.
 const defaultLevel = 6
 
 func compress(data []byte, level int) ([]byte, error) {
@@ -166,7 +159,7 @@ func compress(data []byte, level int) ([]byte, error) {
 		return nil, err
 	}
 	if level == flate.DefaultCompression {
-		level = defaultLevel // the standard library's default, for the same bytes
+		level = defaultLevel
 	}
 	pool := &deflateWriters[level-flate.HuffmanOnly]
 	var enc *deflateWriter

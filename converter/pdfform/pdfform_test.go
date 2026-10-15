@@ -111,11 +111,6 @@ func TestFill(t *testing.T) {
 	if len(res.Warnings) != 0 {
 		t.Errorf("warnings: %q", res.Warnings)
 	}
-	if out := os.Getenv("PDFFORM_OUT"); out != "" {
-		var buf bytes.Buffer
-		res.Doc.WriteSingle(&buf)
-		os.WriteFile(out, buf.Bytes(), 0o644)
-	}
 	text := pageText(t, res.Doc)
 	if len(text) != 2 {
 		t.Fatalf("%d pages", len(text))

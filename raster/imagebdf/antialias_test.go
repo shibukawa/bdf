@@ -2,7 +2,6 @@ package imagebdf
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"image"
@@ -104,9 +103,8 @@ func assertImagesEqual(t *testing.T, got, want image.Image) {
 	}
 }
 
-// This checksum was captured before adding the option. The scene exercises
-// fractional rectangles, clipping, path filling, rounded strokes and groups.
-func TestAntialiasDefaultGolden(t *testing.T) {
+// Default options enable antialiasing for rectangles, paths, strokes and groups.
+func TestAntialiasDefault(t *testing.T) {
 	o := bdf.NewObject()
 	o.FillColor(0xff0000ff).FillRect(.25, .25, 3.5, 3.5)
 	p := o.AddPath((&bdf.Path{}).MoveTo(1.25, 6.125).LineTo(10.375, 4.25).LineTo(8.125, 11.25).Close())
@@ -114,15 +112,20 @@ func TestAntialiasDefaultGolden(t *testing.T) {
 	o.StrokeColor(0x00ff00ff).Line(1.25, bdf.CapRound, bdf.JoinRound, 10).StrokePath(p)
 	o.GroupBegin(.5, bdf.BlendSourceOver, 0, 0, 12, 12).FillColor(0x000000ff).FillRect(5.5, .125, 4.25, 3.25).GroupEnd()
 	d, v := onePage(o, 12, 12)
-	for _, opts := range []*Options{nil, {}, {Antialias: AntialiasOn}} {
+	want, err := New(d, &Options{Antialias: AntialiasOn}).Page(v, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fractional red rectangle partially covers white paper at its corner.
+	if c := want.RGBAAt(0, 0); c.R != 255 || c.G == 0 || c.G == 255 || c.G != c.B || c.A != 255 {
+		t.Fatalf("antialiased corner: %v", c)
+	}
+	for _, opts := range []*Options{nil, {}} {
 		img, err := New(d, opts).Page(v, 0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
-		const want = "4d64a47bce5dc21f6864bad61ba8070d51643c093167bd69bf30c2232b6550dc"
-		if got := fmt.Sprintf("%x", sha256.Sum256(img.Pix)); got != want {
-			t.Fatalf("AA mode %+v changed the existing drawing: checksum %s, want %s", opts, got, want)
-		}
+		assertImagesEqual(t, img, want)
 	}
 }
 
@@ -509,36 +512,5 @@ func TestAntialiasOffTextAndSVG(t *testing.T) {
 				opaqueGeometry(t, img, mode == AntialiasOff)
 			}
 		})
-	}
-}
-
-// Each pair draws the same document at the same DPI. No timing assertion is
-// made: higher resolutions also spend time in shading, blending and export.
-func BenchmarkRenderAntialias(b *testing.B) {
-	for _, name := range []string{"pdf/chrome-doc", "pptx/features", "drawio/showcase"} {
-		doc := openDoc(b, "../../testdata/"+name+".bdf")
-		view := doc.Views[0]
-		if view.Kind == bdf.ViewSheet || len(view.Pages) == 0 {
-			b.Fatalf("%s has no fixed page", name)
-		}
-		for _, dpi := range []float64{72, 300} {
-			for _, mode := range []struct {
-				name string
-				mode AntialiasMode
-			}{{"on", AntialiasOn}, {"off", AntialiasOff}} {
-				b.Run(fmt.Sprintf("%s/%.0fdpi/%s", name, dpi, mode.name), func(b *testing.B) {
-					r := New(doc, &Options{ImageCacheBytes: -1, TextCacheBytes: -1, Antialias: mode.mode, FontDirs: testFonts, NoSystemFonts: true})
-					if _, err := r.PageDPI(view, 0, dpi); err != nil {
-						b.Fatal(err)
-					}
-					b.ReportAllocs()
-					for b.Loop() {
-						if _, err := r.PageDPI(view, 0, dpi); err != nil {
-							b.Fatal(err)
-						}
-					}
-				})
-			}
-		}
 	}
 }

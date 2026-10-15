@@ -1,13 +1,6 @@
 package music
 
-import (
-	"image/png"
-	"os"
-	"path/filepath"
-	"testing"
-
-	"github.com/shibukawa/bdf/raster/imagebdf"
-)
+import "testing"
 
 // samples are performances engraved by TestSamples.
 func samples() map[string]*Performance {
@@ -92,10 +85,8 @@ func sortNotes(ns []PlayNote) {
 	}
 }
 
-// TestSamples engraves the samples; with MUSIC_SAMPLES=dir it writes their
-// pages there as PNG images.
+// TestSamples engraves performances with lyrics and multiple parts.
 func TestSamples(t *testing.T) {
-	dir := os.Getenv("MUSIC_SAMPLES")
 	for name, p := range samples() {
 		sc := Notate(p, NotateOptions{})
 		res, err := Build(sc, Options{Source: "test", FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
@@ -104,24 +95,6 @@ func TestSamples(t *testing.T) {
 		}
 		if res.Pages == 0 || res.Notes == 0 {
 			t.Errorf("%s: %s", name, res.Summary())
-		}
-		if dir == "" {
-			continue
-		}
-		t.Logf("%s: %s %v", name, res.Summary(), res.Warnings)
-		r := imagebdf.New(res.Doc, &imagebdf.Options{FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
-		v := res.Doc.Views[0]
-		for i := range v.Pages {
-			img, err := r.Page(v, i, 2)
-			if err != nil {
-				t.Fatal(err)
-			}
-			f, err := os.Create(filepath.Join(dir, name+"-"+string(rune('1'+i))+".png"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			png.Encode(f, img)
-			f.Close()
 		}
 	}
 }

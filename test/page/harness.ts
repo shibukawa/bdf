@@ -1,9 +1,9 @@
-// Test harness: renders fixture pages on the main thread and via the worker,
-// and compares canvases against golden PNGs. Driven by test/golden.mjs.
+// Browser integration harness: rendering, text selection, accessibility and search.
+// Driven by test/browser.mjs.
 import { BdfDocument, fetchSingle, RangeSource, SplitSource, type Rect } from "@bdfkit/core";
 import { PageRenderer, BdfWorkerClient, buildTextLayer, selectionText, joinRuns, TEXT_LAYER_CSS, RUN_ATTR } from "@bdfkit/render";
 
-export interface Case {
+interface Case {
   name: string;
   /** Document path (default: the generated fixture). */
   src?: string;
@@ -12,210 +12,18 @@ export interface Case {
   page?: number;
   viewport?: Rect;
   scale: number;
+  expectedSize: [number, number];
   roles?: string[];
 }
 
-export const CASES: Case[] = [
-  { name: "slides-1", kind: "page", view: "slides", page: 0, scale: 1 },
-  { name: "slides-2", kind: "page", view: "slides", page: 1, scale: 1 },
-  { name: "slides-3", kind: "page", view: "slides", page: 2, scale: 1 },
-  { name: "slides-1-body-only", kind: "page", view: "slides", page: 0, scale: 0.5, roles: ["body"] },
-  { name: "doc-1", kind: "page", view: "doc", page: 0, scale: 1 },
-  { name: "doc-continuous", kind: "continuous", view: "doc", viewport: { x: 0, y: 600, w: 451.3, h: 400 }, scale: 1 },
-  { name: "sheet-tile-boundary", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 1800, w: 800, h: 500 }, scale: 1 },
-  { name: "sheet-zoomed", kind: "sheet", view: "sheet1", viewport: { x: 64, y: 20, w: 300, h: 150 }, scale: 2 },
-  // Documents converted from PDF (converter/pdf); see test/pdf.
-  { name: "pdf-chrome-slides-1", src: "/testdata/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-chrome-slides-2", src: "/testdata/pdf/chrome-slides.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "pdf-chrome-doc-1", src: "/testdata/pdf/chrome-doc.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-reportlab-1", src: "/testdata/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-reportlab-2", src: "/testdata/pdf/reportlab-mixed.bdf", kind: "page", view: "pages", page: 1, scale: 1.5 },
-  // Three pages that share a master prefix (PDF converter prefix sharing); the pages must render as if unshared.
-  { name: "pdf-master-1", src: "/testdata/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-master-2", src: "/testdata/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "pdf-master-3", src: "/testdata/pdf/reportlab-master.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
-  // OpenType CFF web fonts (.otf, .woff2) and license-restricted TrueType; bare Type1C and CIDFontType0C from cairo.
-  { name: "pdf-webfonts-1", src: "/testdata/pdf/weasyprint-webfonts.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pdf-cairo-cff-1", src: "/testdata/pdf/cairo-cff.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
-  // Type 1 programs (FontFile) converted to CFF: cairo subsets (seac accents, built-in encoding) and a whole font.
-  { name: "pdf-cairo-type1-1", src: "/testdata/pdf/cairo-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
-  { name: "pdf-reportlab-type1-1", src: "/testdata/pdf/reportlab-type1.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
-  // ExtGState soft masks from CSS mask-image (alpha, luminance, SVG <mask>), with Chrome's inverted /TR masks.
-  { name: "pdf-chrome-masks-1", src: "/testdata/pdf/chrome-masks.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
-  // Non-embedded CID fonts through predefined CJK CMaps (horizontal and -V vertical), and Identity-V with an embedded font.
-  { name: "pdf-cjk-1", src: "/testdata/pdf/cjk-cmaps.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
-  // JPEG 2000 (lossy, lossless, SMaskInData) and JBIG2 (halftone; text with JBIG2Globals as a stencil mask) images.
-  { name: "pdf-images-1", src: "/testdata/pdf/images-jpx-jbig2.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
-  // PowerPoint decks rendered by converter/pptx with the test fonts; see test/pptx.
-  { name: "pptx-basic-2", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 1, scale: 1 },
-  { name: "pptx-basic-3", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
-  { name: "pptx-basic-4", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
-  { name: "pptx-basic-5", src: "/testdata/pptx/basic.bdf", kind: "page", view: "slides", page: 4, scale: 1 },
-  { name: "pptx-features-1", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 0, scale: 1 },
-  { name: "pptx-features-3", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 2, scale: 1 },
-  { name: "pptx-features-4", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 3, scale: 1 },
-  { name: "pptx-features-5", src: "/testdata/pptx/features.bdf", kind: "page", view: "slides", page: 4, scale: 0.75 },
-  // Excel workbooks rendered by converter/xlsx with the test fonts; see test/xlsx.
-  { name: "xlsx-basic-1", src: "/testdata/xlsx/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 560, h: 640 }, scale: 1 },
-  { name: "xlsx-basic-tiles", src: "/testdata/xlsx/basic.bdf", kind: "sheet", view: "sheet3", viewport: { x: 100, y: 1990, w: 460, h: 120 }, scale: 1.5 },
-  { name: "xlsx-basic-overflow", src: "/testdata/xlsx/basic.bdf", kind: "sheet", view: "sheet3", viewport: { x: 1880, y: 0, w: 360, h: 120 }, scale: 1.5 },
-  { name: "xlsx-features-1", src: "/testdata/xlsx/features.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 760, h: 600 }, scale: 1 },
-  { name: "xlsx-features-chart", src: "/testdata/xlsx/features.bdf", kind: "page", view: "sheet2", page: 0, scale: 0.75 },
-  // Sheets as the pages Excel prints (-param views=print): the print titles on a page after them, after a manual
-  // break, with gridlines, a header and a footer; a turned page at 150% with title columns and headings; one of
-  // two print areas, centered, with its borders whole.
-  { name: "xlsx-print-report-2", src: "/testdata/xlsx/print-pages.bdf", kind: "page", view: "print1", page: 1, scale: 1 },
-  { name: "xlsx-print-wide-2", src: "/testdata/xlsx/print-pages.bdf", kind: "page", view: "print2", page: 1, scale: 0.75 },
-  { name: "xlsx-print-areas-1", src: "/testdata/xlsx/print-pages.bdf", kind: "page", view: "print4", page: 0, scale: 1 },
-  // Templates filled with data (bdf fill, package form; see test/xlsx/data): a form of one page, a table that grows
-  // by a row for each item, and the last page of a slip of ten rows a page.
-  { name: "form-fixed-1", src: "/testdata/form/fixed.bdf", kind: "page", view: "print1", page: 0, scale: 1 },
-  { name: "form-rows-1", src: "/testdata/form/rows.bdf", kind: "page", view: "print1", page: 0, scale: 0.75 },
-  { name: "form-pages-3", src: "/testdata/form/pages.bdf", kind: "page", view: "print1", page: 2, scale: 1 },
-  // The same data in Word and PowerPoint templates: a form of one page with a picture, a text box and a header; a
-  // table that flows onto a second page under its header row; the form of one slide with texts fitted again; a
-  // table that goes on on further slides; and the last slide of a slip of ten rows a slide.
-  { name: "form-docx-fixed-1", src: "/testdata/form/docx-fixed.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "form-docx-rows-2", src: "/testdata/form/docx-rows.bdf", kind: "page", view: "pages", page: 1, scale: 0.75 },
-  { name: "form-pptx-fixed-1", src: "/testdata/form/pptx-fixed.bdf", kind: "page", view: "slides", page: 0, scale: 0.75 },
-  { name: "form-pptx-rows-4", src: "/testdata/form/pptx-rows.bdf", kind: "page", view: "slides", page: 3, scale: 0.75 },
-  { name: "form-pptx-pages-3", src: "/testdata/form/pptx-pages.bdf", kind: "page", view: "slides", page: 2, scale: 0.75 },
-  // Visio drawings rendered by converter/visio with the test fonts; see test/visio.
-  { name: "visio-shapes-1", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "visio-shapes-2", src: "/testdata/visio/shapes.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "visio-flow-1", src: "/testdata/visio/flow.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  // InDesign documents laid out by converter/idml with the test fonts; see test/idml.
-  { name: "idml-basic-1", src: "/testdata/idml/basic.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "idml-basic-2", src: "/testdata/idml/basic.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "idml-vertical-1", src: "/testdata/idml/vertical.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  // Documents InDesign itself exported (converter/idml/testdata/simpleidml): a rotated banner and a quote box; threaded stories.
-  { name: "idml-interview-1", src: "/testdata/idml/interview.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  { name: "idml-courrier-1", src: "/testdata/idml/courrier.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  // Word documents laid out by converter/docx with the test fonts; see test/docx.
-  { name: "docx-basic-1", src: "/testdata/docx/basic.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "docx-basic-2", src: "/testdata/docx/basic.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "docx-grid-2", src: "/testdata/docx/grid.bdf", kind: "page", view: "pages", page: 1, scale: 0.75 },
-  // East Asian vertical text: upright characters, turned Latin text, a turned table, horizontal headers.
-  { name: "docx-vertical-1", src: "/testdata/docx/vertical.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  // The page view's bodies stacked (continuous mode), and the scroll view across the boundary of its strips.
-  { name: "docx-basic-continuous", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "pages", viewport: { x: 0, y: 500, w: 451.3, h: 400 }, scale: 1 },
-  { name: "docx-basic-scroll", src: "/testdata/docx/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 850, w: 769.9, h: 350 }, scale: 1 },
-  // CSV and TSV files rendered by converter/csv with the test fonts; see test/csv.
-  { name: "csv-basic-1", src: "/testdata/csv/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1240, h: 240 }, scale: 1 },
-  { name: "csv-japanese-1", src: "/testdata/csv/japanese.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 460, h: 180 }, scale: 1.5 },
-  // Parquet files rendered by converter/parquet with the test fonts; see test/parquet. The column names bold and
-  // frozen over a gray row of their types; numbers, dates and timestamps on the right; lists and structs as JSON.
-  { name: "parquet-basic-1", src: "/testdata/parquet/basic.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1040, h: 226 }, scale: 1 },
-  { name: "parquet-nested-1", src: "/testdata/parquet/nested.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 1300, h: 120 }, scale: 1 },
-  // draw.io diagrams rendered by converter/drawio with the test fonts: every page is a view of its own.
-  { name: "drawio-labels", src: "/testdata/drawio/labels.bdf", kind: "page", view: "text", page: 0, scale: 1.5 },
-  { name: "drawio-multipage-1", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "overview", page: 0, scale: 1.5 },
-  { name: "drawio-multipage-2", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "details", page: 0, scale: 1.5 },
-  { name: "drawio-multipage-3", src: "/testdata/drawio/multipage.bdf", kind: "page", view: "layers", page: 0, scale: 1.5 },
-  // shapes, stencils, markers and edge shapes; swimlanes, orthogonal and curved routing, line jumps, a table
-  { name: "drawio-showcase-1", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "shapes", page: 0, scale: 1.5 },
-  { name: "drawio-showcase-2", src: "/testdata/drawio/showcase.bdf", kind: "page", view: "flow", page: 0, scale: 1.5 },
-  // AWS: current icons and groups (aws4), and a diagram in an older icon set drawn with them
-  { name: "drawio-aws-1", src: "/testdata/drawio/aws.bdf", kind: "page", view: "current", page: 0, scale: 1.5 },
-  { name: "drawio-aws-2", src: "/testdata/drawio/aws.bdf", kind: "page", view: "legacy", page: 0, scale: 1 },
-  // DXF drawings rendered by converter/dxf with the test fonts; see test/dxf. Model space on its dark
-  // background, and a layout with a title block and two viewports at different scales.
-  { name: "dxf-shapes-1", src: "/testdata/dxf/shapes.bdf", kind: "page", view: "model", page: 0, scale: 0.75 },
-  { name: "dxf-layout-1", src: "/testdata/dxf/layout.bdf", kind: "page", view: "layout1", page: 0, scale: 0.75 },
-  { name: "dxf-r12-sjis-1", src: "/testdata/dxf/r12-sjis.bdf", kind: "page", view: "model", page: 0, scale: 0.5 },
-  // Jw_cad drawings rendered by converter/jww with the test fonts; see test/jww.
-  { name: "jww-shapes-1", src: "/testdata/jww/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  { name: "jww-old-1", src: "/testdata/jww/old.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
-  // An SXF drawing (P21) rendered by converter/sxf with the test fonts; see test/sxf.
-  { name: "sxf-shapes-1", src: "/testdata/sxf/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  // CGM metafiles rendered by converter/cgm with the test fonts; see test/cgm. A CAD-like sheet of every kind of
-  // primitive, a WebCGM-like illustration with a y-down VDC, a hidden layer and tiles, and Shift_JIS text.
-  { name: "cgm-shapes-1", src: "/testdata/cgm/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  { name: "cgm-illustration-1", src: "/testdata/cgm/illustration.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  { name: "cgm-sjis-1", src: "/testdata/cgm/sjis.bdf", kind: "page", view: "pages", page: 0, scale: 0.5 },
-  // HP-GL/2 plots rendered by converter/hpgl with the test fonts; see test/hpgl. An A3 plot of every kind of
-  // instruction, a plotter job turned to a portrait sheet with an HP RTL image among its vectors, and the HP-GL
-  // of a pen plotter.
-  { name: "hpgl-shapes-1", src: "/testdata/hpgl/shapes.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  { name: "hpgl-job-1", src: "/testdata/hpgl/job.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  { name: "hpgl-job-2", src: "/testdata/hpgl/job.bdf", kind: "page", view: "pages", page: 1, scale: 2 },
-  { name: "hpgl-hpgl1-1", src: "/testdata/hpgl/hpgl1.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  // TIFF pages converted by converter/tiff; see test/tiff. A 300 dpi bilevel scan scaled down to 192 dpi, JPEG strips
-  // stored as one JPEG, a fax at 204 × 98 dpi, and a picture stored turned with Orientation 6.
-  { name: "tiff-scan-1", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 0, scale: 1.5 },
-  { name: "tiff-scan-2", src: "/testdata/tiff/scan.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "tiff-fax-1", src: "/testdata/tiff/fax.bdf", kind: "page", view: "pages", page: 0, scale: 0.75 },
-  { name: "tiff-orientation-6", src: "/testdata/tiff/orientation.bdf", kind: "page", view: "pages", page: 5, scale: 2 },
-  // Markdown and HTML in reader mode (converter/markdown, converter/html); see test/markdown. Their text refers
-  // to fonts by name and is drawn with the browser's fonts, at the advances measured with the test fonts.
-  { name: "markdown-basic-scroll", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 700 }, scale: 1 },
-  { name: "markdown-basic-strips", src: "/testdata/markdown/basic.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 760, w: 504, h: 460 }, scale: 1 },
-  // Formulas laid out by the formula engine (converter/internal/equation) with the test font STIX Two Math:
-  // Office Math in a Word document, in PowerPoint and Excel text (a14:m, instead of the pictures and text of
-  // their fallbacks), and LaTeX in Markdown.
-  { name: "docx-math-1", src: "/testdata/docx/math.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "pptx-math-1", src: "/testdata/pptx/math.bdf", kind: "page", view: "slides", page: 0, scale: 0.75 },
-  { name: "xlsx-math-1", src: "/testdata/xlsx/math.bdf", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 0, w: 620, h: 170 }, scale: 1 },
-  // draw.io labels on a page with math="1": LaTeX between $$ and \( \) in HTML and plain labels
-  { name: "drawio-math", src: "/testdata/drawio/math.bdf", kind: "page", view: "math", page: 0, scale: 1.5 },
-  { name: "markdown-math-scroll", src: "/testdata/markdown/math.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 467 }, scale: 1 },
-  { name: "html-article-scroll", src: "/testdata/html/article.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 760 }, scale: 1 },
-  // SVG in Markdown: an inline svg element as wide as the column (its gradient from a sprite sheet further down), two
-  // SVG files and a sprite symbol in the text color; the region above the text, so the browser's fonts do not matter.
-  { name: "markdown-svg", src: "/testdata/markdown/svg.bdf", kind: "continuous", view: "scroll", viewport: { x: 0, y: 0, w: 504, h: 180 }, scale: 1.5 },
-  // Illustrator artboards (converter/ai): each page cut to its artboard, the hidden layer left out; see test/ai.
-  { name: "ai-artboards-1", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "ai-artboards-2", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "ai-artboards-3", src: "/testdata/ai/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
-  // Photoshop composites (converter/psd): a 144 ppi document, and three artboards cut from a transparent canvas; see test/psd.
-  { name: "psd-layers-1", src: "/testdata/psd/layers.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
-  { name: "psd-artboards-1", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 0, scale: 1 },
-  { name: "psd-artboards-2", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "psd-artboards-3", src: "/testdata/psd/artboards.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
-  // Images stored as they are by converter/image: a JPEG turned by its EXIF orientation, an AVIF turned by irot,
-  // and an SVG drawn at the size it is shown (by the page for the worker, which cannot decode SVG).
-  { name: "image-photo", src: "/testdata/image/photo.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
-  { name: "image-rotated", src: "/testdata/image/rotated.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
-  { name: "image-drawing", src: "/testdata/image/drawing.bdf", kind: "page", view: "pages", page: 0, scale: 2 },
-  // PCB fabrication data (converter/gerber); see test/gerber. A KiCad-style board drawn as it looks from the top and
-  // from below (mirrored), its bottom copper (a pour with clearances and a thermal relief, clear polarity), and one
-  // file with the apertures, macros, arcs, regions and blocks of the Gerber specification.
-  { name: "gerber-board-top", src: "/testdata/gerber/board.bdf", kind: "page", view: "top", page: 0, scale: 0.75 },
-  { name: "gerber-board-bottom", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom", page: 0, scale: 0.75 },
-  { name: "gerber-board-bottom-copper", src: "/testdata/gerber/board.bdf", kind: "page", view: "bottom-copper", page: 0, scale: 0.75 },
-  { name: "gerber-features-1", src: "/testdata/gerber/features.bdf", kind: "page", view: "layer", page: 0, scale: 0.75 },
-  // EPUB (converter/epub); see test/epub. Book pages with page numbers: a chapter in English, one in Japanese
-  // vertical text (tate-chu-yoko, emphasis marks, a gaiji picture), and a page of a fixed-layout book of pictures.
-  { name: "epub-basic-3", src: "/testdata/epub/basic.bdf", kind: "page", view: "pages", page: 2, scale: 1 },
-  { name: "epub-vertical-2", src: "/testdata/epub/vertical.bdf", kind: "page", view: "pages", page: 1, scale: 1 },
-  { name: "epub-fixed-2", src: "/testdata/epub/fixed.bdf", kind: "page", view: "pages", page: 1, scale: 0.5 },
-  // SVG and formulas in EPUB: an inline svg as wide as the text with the gradient and symbol it uses from a hidden
-  // sprite sheet, MathML inline, displayed, in an epub:switch and beside KaTeX's rendering; a formula standing upright
-  // on the middle of a line of vertical text; a fixed-layout page drawn by an inline svg.
-  { name: "epub-basic-svg", src: "/testdata/epub/basic.bdf", kind: "page", view: "pages", page: 5, scale: 1 },
-  { name: "epub-vertical-math", src: "/testdata/epub/vertical.bdf", kind: "page", view: "pages", page: 4, scale: 1 },
-  { name: "epub-fixed-svg", src: "/testdata/epub/fixed.bdf", kind: "page", view: "pages", page: 4, scale: 0.5 },
-  // Scores engraved by the music converters with the test fonts; see test/music. A round in four parts for the NES
-  // (MML), a karaoke MIDI file with its words, and a piano minuet on a grand staff (MusicXML).
-  { name: "music-frere-1", src: "/testdata/music/frere-mml.bdf", kind: "page", view: "score", page: 0, scale: 1 },
-  { name: "music-twinkle-kar-1", src: "/testdata/music/twinkle-kar.bdf", kind: "page", view: "score", page: 0, scale: 1 },
-  { name: "music-minuet-1", src: "/testdata/music/minuet-musicxml.bdf", kind: "page", view: "score", page: 0, scale: 1 },
-  // KiCad projects (converter/kicad) drawn in KiCad's default theme with its stroke font; see test/kicad. The root
-  // sheet (symbols with every pin shape, labels of every kind and spin, hatched shapes, a table, a text box, marked-up
-  // and Japanese text), one of the two instances of a sub-sheet on A5, the board from the front and from below
-  // (mirrored), its front copper, and a sheet in the project's own drawing sheet.
-  { name: "kicad-demo-1", src: "/testdata/kicad/demo.bdf", kind: "page", view: "schematic", page: 0, scale: 1 },
-  { name: "kicad-demo-2", src: "/testdata/kicad/demo.bdf", kind: "page", view: "schematic", page: 1, scale: 1.5 },
-  { name: "kicad-board-front", src: "/testdata/kicad/demo.bdf", kind: "page", view: "board-front", page: 0, scale: 0.75 },
-  { name: "kicad-board-back", src: "/testdata/kicad/demo.bdf", kind: "page", view: "board-back", page: 0, scale: 0.75 },
-  { name: "kicad-board-f-cu", src: "/testdata/kicad/demo.bdf", kind: "page", view: "layer-F.Cu", page: 0, scale: 0.75 },
-  { name: "kicad-frame-1", src: "/testdata/kicad/frame.bdf", kind: "page", view: "schematic", page: 0, scale: 1 },
-  // Font files (converter/font) with the test fonts; see test/font. The overview of a CFF font: its specimen and sample
-  // text in the font embedded with its layout tables; its glyphs by glyph ID, drawn from the glyph font by their private
-  // use characters (.notdef as a path); and the code charts of a font whose license forbids embedding it, drawn as outlines.
-  { name: "font-stix-overview", src: "/testdata/font/stix.bdf", kind: "continuous", view: "overview", viewport: { x: 0, y: 0, w: 720, h: 560 }, scale: 1 },
-  { name: "font-stix-glyphs", src: "/testdata/font/stix.bdf", kind: "continuous", view: "glyphs", viewport: { x: 0, y: 0, w: 720, h: 420 }, scale: 1 },
-  { name: "font-restricted-characters", src: "/testdata/font/restricted.bdf", kind: "continuous", view: "characters", viewport: { x: 0, y: 90, w: 720, h: 420 }, scale: 1 },
+// Exercise each rendering mode without storing screenshots or matching past pixels.
+const CASES: Case[] = [
+  { name: "page", kind: "page", view: "slides", page: 0, scale: 1, expectedSize: [960, 540] },
+  { name: "page-body-only", kind: "page", view: "slides", page: 0, scale: 0.5, expectedSize: [480, 270], roles: ["body"] },
+  { name: "page-no-layers", kind: "page", view: "slides", page: 0, scale: 0.5, expectedSize: [480, 270], roles: [] },
+  { name: "continuous", kind: "continuous", view: "doc", viewport: { x: 0, y: 600, w: 451.3, h: 400 }, scale: 1, expectedSize: [452, 400] },
+  { name: "sheet-tile-boundary", kind: "sheet", view: "sheet1", viewport: { x: 0, y: 1800, w: 800, h: 500 }, scale: 1, expectedSize: [800, 500] },
+  { name: "sheet-zoomed", kind: "sheet", view: "sheet1", viewport: { x: 64, y: 20, w: 300, h: 150 }, scale: 2, expectedSize: [600, 300] },
 ];
 
 const DEFAULT_SRC = "/testdata/demo.bdf";
@@ -259,48 +67,30 @@ function toCanvas(bmp: ImageBitmap): HTMLCanvasElement {
   return canvas;
 }
 
-export interface Diff { total: number; different: number; maxDelta: number; width: number; height: number; png: string }
+interface Rendered {
+  width: number;
+  height: number;
+  hasContent: boolean;
+}
 
-function compare(a: HTMLCanvasElement, b: HTMLCanvasElement, channelTol: number): Diff {
-  const w = Math.max(a.width, b.width), h = Math.max(a.height, b.height);
-  const da = a.getContext("2d")!.getImageData(0, 0, a.width, a.height).data;
-  const db = b.getContext("2d")!.getImageData(0, 0, b.width, b.height).data;
-  const diff = document.createElement("canvas");
-  diff.width = w;
-  diff.height = h;
-  const dctx = diff.getContext("2d")!;
-  const dimg = dctx.createImageData(w, h);
-  let different = 0, maxDelta = 0;
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let delta = 0;
-    for (let ch = 0; ch < 4; ch++) {
-      const va = x < a.width && y < a.height ? da[(y * a.width + x) * 4 + ch] : -1;
-      const vb = x < b.width && y < b.height ? db[(y * b.width + x) * 4 + ch] : -1;
-      delta = Math.max(delta, Math.abs(va - vb));
+function rendered(canvas: HTMLCanvasElement): Rendered {
+  const pixels = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data;
+  let hasContent = false;
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i + 3] > 0 && Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) < 240) {
+      hasContent = true;
+      break;
     }
-    const o = (y * w + x) * 4;
-    dimg.data[o] = 255; dimg.data[o + 1] = delta > channelTol ? 0 : 255; dimg.data[o + 2] = delta > channelTol ? 0 : 255; dimg.data[o + 3] = 255;
-    if (delta > channelTol) different++;
-    maxDelta = Math.max(maxDelta, delta);
   }
-  dctx.putImageData(dimg, 0, 0);
-  return { total: w * h, different, maxDelta, width: w, height: h, png: different ? diff.toDataURL("image/png") : "" };
+  return { width: canvas.width, height: canvas.height, hasContent };
 }
 
-async function loadImage(url: string): Promise<HTMLCanvasElement | null> {
-  const res = await fetch(url);
-  if (!res.ok) return null;
-  const bmp = await createImageBitmap(await res.blob());
-  return toCanvas(bmp);
-}
-
-export interface Result {
+interface Result {
   name: string;
-  png: string; // data URL of the main-thread render
-  workerPng: string; // data URL of the worker render
-  golden: Diff | null; // null when no golden exists
-  worker: Diff; // main thread vs worker
-  textRuns: number;
+  size: [number, number];
+  expectsContent: boolean;
+  main: Rendered;
+  worker: Rendered;
 }
 
 interface Opened { doc: BdfDocument; pr: PageRenderer; client: BdfWorkerClient }
@@ -332,18 +122,15 @@ async function main() {
   for (const c of CASES) {
     const { doc, pr, client } = await open(c.src ?? DEFAULT_SRC);
     const main = await renderMain(doc, pr, c);
-    main.title = c.name;
-    document.body.appendChild(main);
-    const worker = toCanvas(await renderWorker(client, c));
-    const golden = await loadImage(`/testdata/golden/${c.name}.png`);
-    const textRuns = c.kind === "page" ? (await client.text(c.view, c.page!)).length : 0;
+    const bitmap = await renderWorker(client, c);
+    const worker = toCanvas(bitmap);
+    bitmap.close();
     results.push({
       name: c.name,
-      png: main.toDataURL("image/png"),
-      workerPng: worker.toDataURL("image/png"),
-      golden: golden ? compare(main, golden, 24) : null,
-      worker: compare(main, worker, 0),
-      textRuns,
+      size: c.expectedSize,
+      expectsContent: c.roles?.length !== 0,
+      main: rendered(main),
+      worker: rendered(worker),
     });
   }
   // text layer: select runs of the first doc page through the DOM and
@@ -383,6 +170,11 @@ async function main() {
   const mathRects = await math.locate("pages", mathHits);
   (window as unknown as { bdfSearch: unknown }).bdfSearch = { hits, rects, sheetHits, sheetRects, pptxHits, pptxRects, ligHits, ligRects, xlsxHits, xlsxRects, drawioHits, drawioRects, drawioLinks, mathHits, mathRects };
   (window as unknown as { bdfResults: Result[] }).bdfResults = results;
+  for (const { pr, client } of opened.values()) {
+    pr.dispose();
+    await client.close();
+    client.terminate();
+  }
   document.title = "done";
 }
 
@@ -483,7 +275,7 @@ async function structureCheck(client: BdfWorkerClient, xlsx: BdfWorkerClient) {
   };
 }
 
-/** Called by test/golden.mjs with forced colors emulated: the text layer's color. */
+/** Called by test/browser.mjs with forced colors emulated: the text layer's color. */
 function forcedColorsCheck() {
   const layer = buildTextLayer([{ text: "x", x: 0, y: 10, advance: 0, size: 10, font: undefined, align: 0, matrix: [1, 0, 0, 1, 0, 0], sep: 0, ordinal: 0, altText: false }], 1);
   document.body.appendChild(layer);

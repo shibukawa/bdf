@@ -126,7 +126,7 @@ BDF_PASSWORD=… bdf decrypt in.bdf out.bdf   # 暗号化を解除（開くの�
 ## demo
 
 ```sh
-bdf demo out.bdf      # golden テストとデモビューアの既定が使うフィクスチャ文書
+bdf demo out.bdf      # ブラウザの機能テストとデモビューアの既定が使うフィクスチャ文書
 bdf demo out/         # その分割形式
 ```
 

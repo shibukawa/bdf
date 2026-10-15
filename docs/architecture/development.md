@@ -2,6 +2,8 @@
 
 Go 1.27 or later, and Node.js for the TypeScript packages and the demo site.
 
+Tests check the current behavior: successful input, invalid input, boundary conditions, resource limits, and rendering results. Assert expected values directly instead of copying an old implementation into a test. Fixtures for older file formats remain useful while those formats are supported. Keep one-off research, manual diagnostic output, and historical test results out of the test suite.
+
 ## Go
 
 ```sh
@@ -19,11 +21,10 @@ GOEXPERIMENT=simd go build ./...       # Go 1.27, amd64/arm64: SIMD codec varian
 npm ci
 npm run build           # tsc -b packages/core packages/render
 npm test                # node --test on packages/*/test/*.test.mjs (builds first)
-npm run test:golden     # render fixtures with Chromium, compare against testdata/golden/*.png
-npm run test:golden:update  # replace the golden PNGs with what's rendered now
+npm run test:browser    # browser rendering, selection, search and accessibility
 ```
 
-Golden tests need a pinned Chromium build (`playwright-core`'s headless shell) — the full Chromium binary rasterizes text slightly differently, so goldens only match the exact build they were made with. Get it with `npx playwright-core install chromium`, or point `CHROMIUM_PATH` at an equivalent headless shell already on the machine.
+Browser integration tests need Chromium. Install it with `npx playwright-core install chromium`, or set `CHROMIUM_PATH` to an installed executable. They check current behavior and do not compare saved screenshots.
 
 ## Regenerating fixtures
 
@@ -62,6 +63,4 @@ go run ./cmd/bdf render -page 2 out.bdf page2.png  # render one page, in pure Go
 
 CI's `testdata is up to date` step compares `bdf generate` output byte-for-byte on `ubuntu-latest` (amd64). Go's floating-point contraction differs by architecture, though, so the same command run on Apple Silicon can produce a few different low bits in an object's bounding boxes. Cross-compile with `GOARCH=amd64 go build` and run that binary under Rosetta to reproduce CI's bytes locally, before assuming a diff is a real regression.
 
-New golden PNGs raise a separate concern: they need the same headless-shell Chromium build CI uses, and running the golden tests inside a matching container (`mcr.microsoft.com/playwright:v1.56.1-noble`, or `node:24-bookworm` with Chromium installed) reproduces that build.
-
-See the [API reference](../api.md) for what each package and command exposes, and [The BDF command](cli.md) for `bdf`'s subcommands. Current fixture, rendering, and browser-conversion results are in the [conversion quality report](../quality.md) (Japanese).
+See the [API reference](../api.md) for what each package and command exposes, and [The BDF command](cli.md) for `bdf`'s subcommands.

@@ -37,7 +37,7 @@ wasm が意味を持つケース:
 
 - Go: `bdf` パッケージ（Writer / Object builder / 各 Part のエンコード）と変換 CLI。エンコーダは `io.Writer` に対して決定的に出力する。
 - TypeScript: `@bdfkit/core`（デコード・型定義）、`@bdfkit/render`（Canvas バックエンド、Worker）、`@bdfkit/viewer`（UI）。
-- 両者の契約は**ワイヤフォーマットとフィクスチャ**。Go でエンコードしたテストファイルを TS がデコードし、Playwright でスクリーンショットを golden 比較する。ビューアの描画は TS だけが持つ。Go の `imagebdf` はサーバーでサムネイルやページの画像を作るための別の描き手で（§3.25）、同じ golden 画像と比べて確かめる。
+- 両者の契約は**ワイヤフォーマットとフィクスチャ**。Go でエンコードしたテストファイルを TS がデコードし、ブラウザで描画・検索・テキスト選択・文書構造を確かめる。ビューアの描画は TS だけが持つ。Go の `imagebdf` はサーバーでサムネイルやページの画像を作るための別の描き手で（§3.25）、各描画命令の画素・寸法・不正入力を直接検証する。
 
 ### ブラウザ内変換（cmd/bdfwasm）
 
@@ -112,10 +112,10 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 - **関数**: Type 0（サンプル）、2（指数）、3（つなぎ合わせ）、4（PostScript 計算機）を評価する。Type 4 は `if`/`ifelse` を条件ジャンプにした命令列にコンパイルし、スタックで実行する（特色の tint 変換や Chrome のソフトマスクの `/TR`、繰り返しグラデーションに使われる）。入力 1 つの関数は画像の画素ごとに呼ばれるので結果をキャッシュする。
 - **大きな画像**: サンプルの画像（無圧縮、Flate、LZW、RunLength、CCITT、JBIG2）は、サンプルを 1 GiB（行 × 1 行のバイト数）、1 辺 65,535 画素まで読み、それより大きいものは警告して除く。`imgconv.MaxDecodePixels`（約 1 億画素）より画素の多い画像は断らずに、サンプルを画素にしながら縮小する。⌈w/k⌉ × ⌈h/k⌉ が上限に収まる最小の整数 k で、結果の 1 画素は元の k × k 画素の平均（色は sRGB に直してから、不透明度で重みを付けて平均する。インデックスは平均しない）。1 ビットのスキャンはグレーになり、ステンシルマスクは塗りの色に、その区画を塗る割合の不透明度を掛けたものになる。元の大きさの画素は持たない。画像は同じ単位正方形に描くので、命令と変換は変わらない。マスクは自分の係数で縮小する。文書ごとに 1 度、縮小したことを警告する。A0 を 600 dpi でスキャンした 19866 × 28087 画素の図面は 6622 × 9363 画素で格納する（1 ビットの Flate で 5.7 秒、最大 730 MB）。マスクのない JPEG はそのまま格納する。マスクのある JPEG、JPEG 2000、JBIG2 は、それぞれのデコーダの上限のまま（JBIG2 は 2^28 画素。JPEG 2000 は、コードストリーム全体でタイルとコンポーネントの解像度レベルを 2^22 個まで配置する）。上限内の画像は今までと同じバイト列になる。マスクのマスクは読まない（自分自身を `/SMask` に指す画像で終わらなくなっていた）。マスクは、JPEG のものと非可逆で格納されうるものを除いて、PNG にしてから読み戻すのではなく、デコードした画素から取る（chrome-masks.pdf の変換が 1.10 秒から 0.62 秒になった）。
 - **壊れたファイルへの備え**: 値は使うところで確かめ、上限を超えたものは警告して除き、残りを変換する。pdfcpu やデコーダのパニックは、変換のエラー（「the file is damaged」）にする（`readContext`、`NewStream`、`Stream.Page`、`Stream.Finish`）。デコードしたストリームは 1 つ 256 MiB まで（フィルタの間でも、ページの内容ストリームの合計でも）。予測器は Columns が 1〜2^24、Colors が 1〜32、BitsPerComponent が 1・2・4・8・16 のときだけ使い、データの 1032 倍と 64 バイトより長い行は断る。RunLength は自前のループで読む。ページツリーは変換器が 1 度だけたどる（pdfcpu の `PageDict` はページごとに根からたどり、根の `/Count` を信じ、自分の子の中に自分がいるノードで終わらない。2 万ページで 199 秒かかっていたのが 0.09 秒になった）。2 度目に出会ったノードと、64 段より深いノードは除く。同じページを何度も並べたツリーは、2 度目以降のページを文書全体で 16 枚まで変換し、残りは警告して除く（ページへの参照は 6 バイトで、1 つごとにページ 1 枚分の変換が増える）。ページの内容も変換器が読み、`/Count` は使わない。字句解析の配列と辞書の入れ子は 32 段、`q` は 1,024 段（それより深い `q` と対の `Q` は無視する）、関数は 8 段で部品 4,096 個、色空間は 8 段、オプショナルコンテンツの `/VE` は式 4,096 個、別の構造の下で変換し直すフォームは文書全体で 65,536 回まで。名前付きの宛先の木は 1 度だけ読み、フォームの参照とコード → CID の対応は表で引く（リンク 2 万個で 23 秒かかっていたのが 0.1 秒になった）。XMP（画像と Photoshop の変換器も使う）は要素の入れ子 512 段まで。
-- **PDF パーサーの上限**: pdfcpu v0.16.1 の資源制限を使う。符号化されたストリームとフィルタが展開するデータは各 256 MiB、オブジェクト番号と xref の件数は各 2^20、配列・辞書などの再帰は既定の 100 段まで。巨大な `/Length`・`/Size`・`/Index` と深い入れ子を読み手の内部で制限する。これらは資源ごとの上限なので、信頼しない入力を変換するサービスではプロセス全体のメモリと実行時間も制限する。調査と検証は [パフォーマンス・セキュリティ調査](security-performance-review.ja.md) を参照。
+- **PDF パーサーの上限**: pdfcpu v0.16.1 の資源制限を使う。符号化されたストリームとフィルタが展開するデータは各 256 MiB、オブジェクト番号と xref の件数は各 2^20、配列・辞書などの再帰は既定の 100 段まで。巨大な `/Length`・`/Size`・`/Index` と深い入れ子を読み手の内部で制限する。これらは資源ごとの上限なので、信頼しない入力を変換するサービスではプロセス全体のメモリと実行時間も制限する。
 - **未対応（警告を出して無視）**: メッシュ系シェーディング（平均色で代用）、関数型シェーディング（type 1、中央の色で代用）。
 
-テスト用 PDF は Chromium（Skia）と reportlab で生成し、CJK の定義済み CMap と JPEG 2000・JBIG2 の画像のものは標準ライブラリだけの Python で書く（`npm run test:pdf:gen`。画像は `opj_compress` を使う）、変換結果は `testdata/pdf/` に置いて golden テストで描画を比較する。
+テスト用 PDF は Chromium（Skia）と reportlab で生成し、CJK の定義済み CMap と JPEG 2000・JBIG2 の画像のものは標準ライブラリだけの Python で書く（`npm run test:pdf:gen`。画像は `opj_compress` を使う）、変換結果は `testdata/pdf/` に置く。
 
 ## 3.2 画像の格納と変換（imgconv）
 
@@ -160,7 +160,7 @@ Office ファイルを直接 BDF にするには Word 相当のレイアウト�
 
 - 品質 11 は 9 より 20〜30 倍遅いのに数 % しか縮まないので、表の合計が 1MiB を超えるとき（サブセット化しないフォント）は 9 にする。6MB の CJK フォントで 23 秒 → 2 秒。
 - 出力は fontTools と同じ大きさ（DejaVu Sans 760KB → 259KB、fontTools は 259KB）。テストでは変換した glyf を逆変換して全グリフの点・フラグ・命令・bbox が元と一致することを確かめ、fontTools と Chromium（OTS）で読めることも確認した。
-- PDF のフィクスチャでは、フォントが大半を占める文書で .bdf 全体が chrome-doc 104KB → 35KB、chrome-slides 127KB → 47KB になった（描画は golden と一致）。
+- PDF のフィクスチャでは、フォントが大半を占める文書で .bdf 全体が chrome-doc 104KB → 35KB、chrome-slides 127KB → 47KB になった。
 - `bdf_noconv` と `-no-woff2`（`Options.NoWOFF2`）では TTF/OTF のまま格納する。コンテナは WOFF/WOFF2 以外のフォント Part を deflate-raw で圧縮するので、その場合も無圧縮にはならない。
 
 **同梱の wasm はスカラーでビルドしている**（測定の結果）。wasm SIMD を有効にした 2 種類のビルド（clang の自動ベクトル化のみ、および emscripten の SSE 互換ヘッダで libwebp 自身の SSE2/SSE4.1 経路を有効化したもの）を、wasm2go の純 Go モードと asm バックエンド（`-fuse-loops`、SIMD 命令 10,866 箇所をインライン展開）で変換して比べたが、いずれもスカラーより遅かった。v128 を `[2]uint64` の組で運ぶこれらのバックエンドでは、4×4〜16×16 ブロック単位の短い SIMD カーネルの命令 1 つごとに汎用レジスタとの往復が入り、ベクトル化の利得を上回る。
@@ -209,7 +209,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **壊れたファイルへの備え**: OPC のパートの XML は要素の入れ子が 20,000 段までで、それより深いパートは壊れたパートとして読まない（知られている最も深い文書は、表を 5,000 段入れ子にした Apache POI のテストファイルで、15,000 段。木を作るときに止めるので、後の再帰はどれもこの深さで収まる）。図形のグループの入れ子は 100 段までで、SmartArt の描画パートをたどる分も数える。グラフの系列が言う点の数（`ptCount` と `pt` の `idx`）は 1,048,576 まで。箇条書きの英字の番号（A、AA、…）は 1,000 文字を超えるところから数字にする。
 - **未対応（警告を出す）**: EMF+ だけで書かれたメタファイル、レーダー・バブル・等高線グラフ、光彩・反射・ぼかしなどの効果、インク、旧形式（VML のみ）の OLE プレビュー、リンクされた（埋め込まれていない）画像、描画パートのない SmartArt。
 
-テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`。数式のデッキ math.pptx は PowerPoint と同じ形の XML を差し込む）、変換結果は `testdata/pptx/` に置いて golden テストで描画を比較する。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセット（数式には STIX Two Math のサブセット）だけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
+テスト用のデッキは python-pptx で生成し（`npm run test:pptx:gen`、`test/pptx/gen.py`。数式のデッキ math.pptx は PowerPoint と同じ形の XML を差し込む）、変換結果は `testdata/pptx/` に置く。フォントは `converter/pptx/testdata/fonts` の M PLUS 1p のサブセット（数式には STIX Two Math のサブセット）だけを使うので、出力は実行環境に依存しない。開発中は Apache POI のテストデータ（PowerPoint で作られた実ファイル約 90 本）でも変換を確かめ、LibreOffice の描画（PPTX → PDF → BDF）と見比べた。`lumMod`/`lumOff` と `alpha` を併用した色、グラデーションの線、縦書きなどでは LibreOffice の方が崩れる。
 
 ## 3.5 入力形式の登録と EMF/WMF 変換器（converter/emf）
 
@@ -237,7 +237,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **壊れたファイルへの備え**: 行の高さは 409.5 pt、列の幅は 255 文字まで（Excel 自身の上限。`ht="Inf"` のような有限でない値は捨てる。自動の行の高さも同じ上限）。結合セルは、合わせて 2^22 セルまでなら View を広げ、結合として扱う（データより広い列にまたがる見出しはそのまま。シート全体の結合は View を広げず、View で切る。それを超えた分は結合しないで警告する）。セルに見せる文字は改行も数えて 1,024 文字まで（改行だけの値が、改行の数だけ行を作っていた）。表示形式は 1 セクション 512 トークンまで。条件付き書式の数式は、構文の入れ子も評価も 128 段までで、それより深い数式は評価しないで警告する（括弧を 600 万重ねた数式がスタックを使い切っていた）。COUNTIF などのワイルドカードは、長さに比例する時間で照合する（`*a*a*a*a*a*b` のようなパターンで指数的に遅くなっていた）。条件付き書式が読むセルは 1 シート 2^22 個まで。図形（画像、図形、グラフ）は、1 シートで合わせて 16,384 個のタイルまでに描く（図形は 1 つの Object だが、触れるタイルがそれぞれ参照し、どこまで届くかはファイルが決める）。それを超える図形は警告して除き、View も広げない。遠くのセルに留めた小さな図形はそのまま描き、View はセルと同じくそこまで届く。View と行・列の大きさを決めてから図形のタイルを数え、除いた図形があれば View を決め直す。座標が数でない矩形はどのタイルにも触れない。行と列の書式は列の並び（run）ごとにたどるので、広い View の 1 行は列の数ではなく run の数だけの手間になる（16,384 列すべてに表示形式があり XFD1048576 にセルが 1 つあるシートで、1 行 2.7 ms、全体で約 47 分かかっていた）。ファイルにあるセルが持つものは、ファイルの大きさで決まるので切らない。ファイルにないセルについて数バイトが言うことには、シートごとの予算を置き、超えたらその飾りなしで描いて 1 度警告する: 行と列の書式が、ファイルにないセルに与える罫線は 1,048,576 辺まで（ファイルにあるセル、テーブル、条件付き書式の罫線は数えない）。テーブルの、ファイルにないセルは 1,048,576 個まで（超えるテーブルはスタイル・フィルターボタン・列見出しなしで描き、View を広げない。セルがすべてファイルにあるテーブルは大きさによらずスタイルを付ける。CSV と Parquet のテーブルは範囲がデータそのものなので数えない）。範囲に掛けたリンクは、触れるタイルのうち 2 つ目以降を合わせて 16,384 個まで（超えるリンクは最初のタイルにだけ置く）。
 - **未対応**: 右から左のシート（左から右に描く）、`timePeriod` などの評価しない条件付き書式、マクロシート・ダイアログシート（ここまでは警告を出す）、ピボットテーブルのスタイル（値はセルとして描く）、スパークライン、フォームコントロール、旧形式（VML）の図形、セル内の画像、データの入力規則のドロップダウン。印刷の設定は、下の「印刷のページ」を作るときだけ読む。旧形式の .xls は読めない（暗号化されたブックは §3.7 のとおり復号してから読む）。
 
-テスト用のブックは openpyxl で生成し（`npm run test:xlsx:gen`、`test/xlsx/gen.py`。openpyxl が書かない DrawingML の図形は後から描画パートに足す）、変換結果は `testdata/xlsx/` に置いて golden テストで描画を比較する。フォントは PowerPoint のテストと同じ M PLUS 1p のサブセットだけを使う。開発中は Apache POI のテストデータ（Excel などで作られた実ファイル 355 本）をすべて変換し、壊れた zip と暗号化されたファイル以外が内部エラーなしに変換できること、条件付き書式や表示形式の見本が期待どおりに描かれることを確かめた。
+テスト用のブックは openpyxl で生成し（`npm run test:xlsx:gen`、`test/xlsx/gen.py`。openpyxl が書かない DrawingML の図形は後から描画パートに足す）、変換結果は `testdata/xlsx/` に置く。フォントは PowerPoint のテストと同じ M PLUS 1p のサブセットだけを使う。開発中は Apache POI のテストデータ（Excel などで作られた実ファイル 355 本）をすべて変換し、壊れた zip と暗号化されたファイル以外が内部エラーなしに変換できること、条件付き書式や表示形式の見本が期待どおりに描かれることを確かめた。
 
 **印刷のページ（`print.go`、`headerfooter.go`）**: `Options.Views`（`-param views=print|both`）で、シートを Excel が印刷するページの `flow` View にも組む。帳票として作られたブックの本来の見た目で、テンプレートの穴埋め（§3.34）の出力でもある。
 
@@ -277,7 +277,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **テキスト**: `Text` 要素の `cp`・`pp`・`tp` マーカーが Character・Paragraph・Tabs の行を選び、`fld` は最後に表示された文字列を持つ。`\n` で段落、U+2028 で段落内の改行とする。テキストは DrawingML のテキスト本体（`bodyPr` の余白・垂直位置・`TextDirection` 1 の `eaVert`、`pPr` の揃え・インデント・行間・段落前後の間隔・箇条書き・タブ、`rPr` の大きさ・太字・斜体・下線・取り消し線・大文字化・上付き・下付き・字間・色・フォント・言語）に写し、`drawingml.Drawing.LayoutText` でレイアウトする。そのため禁則、フォントの解決と埋め込み、構造の MARK は PowerPoint と同じになる。行間の `SpLine` は、負ならその段落で最大の文字の大きさの倍数として扱う。テキストブロックは `TextXForm` のセルで図形の中に置く。文字は鏡像にしない（`FlipY` は上下逆さになる）。`TextBkgnd` は行の範囲（`TextBody.Bounds`）を塗る。言語は `LangID`（古い図面の Windows ロケール ID も読む）、図面の言語はコアプロパティ、なければルートのスタイルの言語とする。ハイパーリンクは図形の範囲の LINK にする。`Address` の URL（http、https、mailto）と、`SubAddress` のページ名（`#page=N`）を扱う。
 - **未対応**: .vsd、インク（警告を出す）。面取り・光彩・反射・ぼかし・3D・スケッチの効果、線のグラデーション、文字の横幅の拡大縮小（`FontScale`）、右インデント、右揃え・中央揃え・小数点揃えのタブは描かない。
 
-テスト用の図面は `test/visio/gen.py`（標準ライブラリだけ）で 1 つのモデルから書き出す（`npm run test:visio:gen`）。shapes.vsdx はテーマ、ジオメトリの各行、塗り・線・矢印、テキスト、線の飛び越しを含む。flow.vsdx はテーマなしのフローチャートで、マスター・スタイル・画像・背景ページを含む。変換結果は `testdata/visio/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は Apache POI と libvisio のテストデータでも変換を確かめた。比べる相手には、Visio が図面に保存するサムネイル（`docProps/thumbnail.emf`）を `converter/emf` で描いたものを使った。ただし手で編集されたテストファイルには、中身と合わない古いサムネイルもあった。
+テスト用の図面は `test/visio/gen.py`（標準ライブラリだけ）で 1 つのモデルから書き出す（`npm run test:visio:gen`）。shapes.vsdx はテーマ、ジオメトリの各行、塗り・線・矢印、テキスト、線の飛び越しを含む。flow.vsdx はテーマなしのフローチャートで、マスター・スタイル・画像・背景ページを含む。変換結果は `testdata/visio/` に置く（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は Apache POI と libvisio のテストデータでも変換を確かめた。比べる相手には、Visio が図面に保存するサムネイル（`docProps/thumbnail.emf`）を `converter/emf` で描いたものを使った。ただし手で編集されたテストファイルには、中身と合わない古いサムネイルもあった。
 
 ## 3.9 Word → BDF 変換器（converter/docx）の構造
 
@@ -297,7 +297,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **壊れたファイルへの備え**: 表の列は 16,384 まで（`gridSpan` や `gridBefore` がそれを超える分は最後の列にまとめる。Word の表は 63 列まで）。段落のタブ位置は 200 個まで。リストの英字の番号は 1,000 文字を超えるところから数字にする。`keepNext` の段落が文書の終わりまで続くときは、続く相手がいないのでそのまま置く（段落ごとに終わりまで調べ直さない）。XML の入れ子の上限は §3.4。
 - **未対応（警告を出す）**: 割注（`eastAsianLayout` の `combine`、普通の文字列として描く）、行番号、埋め込み文書（`altChunk`）、VML のテキストボックス、ルビ（親文字だけを描く）、連続セクション区切りの前の段の高さの均等化、ページをまたぐ縦結合セル（結合の最初の行に描く）。
 
-テスト用の文書は `test/docx/gen.py` が WordprocessingML を直接書いて作り（`npm run test:docx:gen`、標準ライブラリのみ）、変換結果は `testdata/docx/` に置いて golden テストで描画を比較する。フォントは `converter/docx/testdata/fonts` の M PLUS 1p のサブセットだけを使う。開発中は Apache POI のテストデータ（Word などで作られた実ファイル約 130 本）がすべて変換できること（暗号化・破損したファイルを除く）と、描画が文書の内容どおりであることを確かめた。5,000 段入れ子の表のような極端な文書では、入れ子の深さに比例して op を写すため時間がかかる（10 秒程度）。
+テスト用の文書は `test/docx/gen.py` が WordprocessingML を直接書いて作り（`npm run test:docx:gen`、標準ライブラリのみ）、変換結果は `testdata/docx/` に置く。フォントは `converter/docx/testdata/fonts` の M PLUS 1p のサブセットだけを使う。開発中は Apache POI のテストデータ（Word などで作られた実ファイル約 130 本）がすべて変換できること（暗号化・破損したファイルを除く）と、描画が文書の内容どおりであることを確かめた。5,000 段入れ子の表のような極端な文書では、入れ子の深さに比例して op を写すため時間がかかる（10 秒程度）。
 
 ## 3.10 CSV・TSV → BDF 変換器（converter/csv）の構造
 
@@ -311,7 +311,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **形式の判別**: BOM か推定した文字コードで先頭 64 KiB を復号し、制御文字がほとんどなく、2 レコード以上がそろって 2 つ以上のフィールドに分かれれば CSV とする（PDF、zip、XML・HTML は除く）。1 行だけ・1 列だけのファイルは中身から判別できないので、`converter.Convert` は中身から判別できなかった入力の形式を `Options.FileName`（`ConvertFile` が設定する）の拡張子（`.csv`、`.tsv`、`.tab`）から決める。
 - **上限**: Excel と同じく 1,048,576 行・16,384 列まで（超えた分は警告して除く）。ファイルは全体をメモリに読み、UTF-8 に直してから分割する。
 
-テスト用のファイル（`converter/csv/testdata/`: Excel の「CSV UTF-8」と同じく BOM と CRLF の付いた basic.csv と、Shift_JIS の japanese.tsv）の変換結果は `testdata/csv/` に置き、golden テストで描画を比較する。フォントは Excel と同じく PowerPoint のテストのものだけを使う。
+テスト用のファイル（`converter/csv/testdata/`: Excel の「CSV UTF-8」と同じく BOM と CRLF の付いた basic.csv と、Shift_JIS の japanese.tsv）の変換結果は `testdata/csv/` に置く。フォントは Excel と同じく PowerPoint のテストのものだけを使う。
 
 ## 3.11 draw.io → BDF 変換器（converter/drawio）の構造
 
@@ -351,7 +351,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **壊れたファイルへの備え**: 値はそのまま信用しない。角度は 1 周に収まるように直し、無限大や NaN の角度の図形は描かない。自分自身を（間接的にでも）挿入するブロックは内側の挿入を描かず、MINSERT の列と行は 32767 で、HATCH の個数（ノット、模様の線、破線、元の図形）はデータが尽きたところで打ち切る。1 つの View に描く図形はブロックの中身も含めて 500 万個まで、その点は 1000 万個までとする（長い折れ線やハッチングを持つブロックを配列で挿入すると、図形の数は少なくても点は多くなる）。ハッチングの模様の基点が境界から遠く、線の番号が 10^15 を超える模様の線は描かない（番号を 1 ずつ数えられない）。MLINE の要素の数（73）は頂点が持つパラメータの数まで、ポリゴンメッシュの M と N（71、72）は続く頂点の数までとする。AutoCAD 2010 より前のスプラインの辺はフィット点の数（97）を持たないので、後ろに続く 97 は、フィット点（11）が続くときだけフィット点の数として読む（境界の元の図形の数と取り違えない）。
 - **未対応（警告を出す）**: DWG、ACIS の立体・領域・面（3DSOLID、REGION、BODY、SURFACE）、ラスター画像（IMAGE は図面の外のファイルを参照する）、OLE オブジェクト、上から見ていないビューポート、縦書きの MTEXT（横書きで描く）、MPOLYGON、TOLERANCE などのここに挙げていない図形、線種の中の文字と図形。
 
-テスト用の図面は `test/dxf/gen.py` が ezdxf で作る（`npm run test:dxf:gen`、要 ezdxf。ezdxf の固定のメタデータで書くので毎回同じファイルになる）。shapes.dxf は各種の図形・文字・寸法・ハッチング・ブロックを、layout.dxf は平面図と A3 のレイアウト（表題欄と縮尺の違う 2 つのビューポート、片方で凍結した画層）を、r12-sjis.dxf は Shift_JIS の R12 図面を持つ。shapes-bin.dxf は shapes.dxf のバイナリ形式で、Go のテストは両者が同じ Object になることを確かめる。変換結果は `testdata/dxf/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は、公開されている AutoCAD 2004 形式の図面（Shift_JIS の日本語、寸法、ブロック、マルチ引出線を含む）でも変換を確かめた。
+テスト用の図面は `test/dxf/gen.py` が ezdxf で作る（`npm run test:dxf:gen`、要 ezdxf。ezdxf の固定のメタデータで書くので毎回同じファイルになる）。shapes.dxf は各種の図形・文字・寸法・ハッチング・ブロックを、layout.dxf は平面図と A3 のレイアウト（表題欄と縮尺の違う 2 つのビューポート、片方で凍結した画層）を、r12-sjis.dxf は Shift_JIS の R12 図面を持つ。shapes-bin.dxf は shapes.dxf のバイナリ形式で、Go のテストは両者が同じ Object になることを確かめる。変換結果は `testdata/dxf/` に置く（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。開発中は、公開されている AutoCAD 2004 形式の図面（Shift_JIS の日本語、寸法、ブロック、マルチ引出線を含む）でも変換を確かめた。
 
 ## 3.13 Jw_cad → BDF 変換器（converter/jww）の構造
 
@@ -364,7 +364,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **文字**: Jw_cad の文字は固定ピッチで、全角の文字（Shift_JIS で 2 バイトの文字）は文字の幅、半角の文字はその半分の幅を取り、文字間隔を足したものが文字列の長さになる（ファイルに入っている終点もそう計算されている）。これを `cad.Text` のセル（文字ごとの送り幅）と字間で表し、フォントが同じ文字の並びごとにそのセルの幅へ伸縮して描く（FILL_TEXT の `advance` と TEXT_STYLE の letterSpacing）。1 文字ずつ位置を決めて描くと、テキスト抽出が字形とセルの隙間を空白と推定してしまうので、並びごとに 1 つの run にする。文字の大きさの縦を em にし、基点は文字の枠の左下（ベースラインは 0.14 em 上）とする。斜体と太字は文字種に足された 10000 と 20000 から、フォントは名前（全角の「ＭＳ ゴシック」なども NFKC で正規化して）から選ぶ。縦字は、文字の枠を基点の周りに時計回りに 90° 回したものとして、文字を 1 字ずつ立てて子 Object に描き、ALT_TEXT と USE_AT で 1 つの run にする（Office の縦書きと同じ方法、§3.4）。
 - **未対応（警告を出す）**: 画像（「^@BM」で始まる文字列と、Ver.7.00 以降のファイルに同梱された画像）、点コードの付いた点（矢印・ポイントマーカー。点として描く）、ランダム線の形、2.5D、.jwc・.jws・.jwk。
 
-テスト用の図面は `test/jww/gen.py` が仕様書どおりに CArchive を書いて作る（`npm run test:jww:gen`、標準ライブラリのみ）。shapes.jww は Jw_cad 7 の形式（データ版数 700。SXF の拡張線色・線種、図形ごとの線幅、8 バイトの CTime）で、各種の図形・線色・線種・文字・寸法・ソリッド・入れ子のブロックと、非表示のレイヤグループとレイヤ、補助線を持つ。old.jww は Jw_cad 3 の形式（版数 300、4 バイトの CTime）である。変換結果は `testdata/jww/` に置いて golden テストで描画を比較する。開発中は、公開されている JWW の図面（版数 220 で書かれたもの）でも変換を確かめ、同じ図面の DXF 版と図形と文字の位置が合うことを見た。
+テスト用の図面は `test/jww/gen.py` が仕様書どおりに CArchive を書いて作る（`npm run test:jww:gen`、標準ライブラリのみ）。shapes.jww は Jw_cad 7 の形式（データ版数 700。SXF の拡張線色・線種、図形ごとの線幅、8 バイトの CTime）で、各種の図形・線色・線種・文字・寸法・ソリッド・入れ子のブロックと、非表示のレイヤグループとレイヤ、補助線を持つ。old.jww は Jw_cad 3 の形式（版数 300、4 バイトの CTime）である。変換結果は `testdata/jww/` に置く。開発中は、公開されている JWW の図面（版数 220 で書かれたもの）でも変換を確かめ、同じ図面の DXF 版と図形と文字の位置が合うことを見た。
 
 ## 3.14 SXF → BDF 変換器（converter/sxf）の構造
 
@@ -380,7 +380,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **壊れたファイルへの備え**: 描く要素は複合図形の中身も含めて 500 万個、その点は 1000 万個、たどる要素は 2000 万個まで。複合曲線は 100 万点、塗りの輪郭と様式は 1000 個までとする。塗りの輪郭は同じ曲線を何度でも名指しできるので、輪郭をつなぐ間も点を数え、残りの予算に収まらない塗りは組み立てない。
 - **未対応（警告を出す）**: 既定義シンボル（`externally_defined_symbol`）、既定義ハッチング（`Area_control` のほかの名前のもの）、パターンのハッチング（`fill_area_style_tiles`）、画像。
 
-テスト用の図面は `test/sxf/gen.py` が作る（`npm run test:sxf:gen`、標準ライブラリのみ）。1 つの図面を SFC（shapes.sfc）と、SCADEC の書き方をまねた P21（shapes.p21）と、それを ZIP にした P2Z（shapes.p2z）で書き、既定義の線種・色・線幅とユーザ定義のもの、各種の図形、9 つの配置基点・回転・スラント・字間・縦書きの文字、複合図形（回転と尺度、入れ子、測地座標系）、寸法・引出し線・バルーン、塗りつぶし・穴のあるハッチング・`Area_control`、非表示のレイヤ、背景色の属性を持つ。Go のテストは SFC と P21 が同じ `cad.Drawing` になることを確かめる。変換結果は `testdata/sxf/` に置いて golden テストで描画を比較する。開発中は、国土交通省の CAD 製図基準に載っている図面作成例（SFC と P21 の両方がある縦断図、標準横断図、平面図、中間対傾構図）でも変換を確かめ、SFC と P21 で文字と線が同じ位置に描かれることを見た。
+テスト用の図面は `test/sxf/gen.py` が作る（`npm run test:sxf:gen`、標準ライブラリのみ）。1 つの図面を SFC（shapes.sfc）と、SCADEC の書き方をまねた P21（shapes.p21）と、それを ZIP にした P2Z（shapes.p2z）で書き、既定義の線種・色・線幅とユーザ定義のもの、各種の図形、9 つの配置基点・回転・スラント・字間・縦書きの文字、複合図形（回転と尺度、入れ子、測地座標系）、寸法・引出し線・バルーン、塗りつぶし・穴のあるハッチング・`Area_control`、非表示のレイヤ、背景色の属性を持つ。Go のテストは SFC と P21 が同じ `cad.Drawing` になることを確かめる。変換結果は `testdata/sxf/` に置く。開発中は、国土交通省の CAD 製図基準に載っている図面作成例（SFC と P21 の両方がある縦断図、標準横断図、平面図、中間対傾構図）でも変換を確かめ、SFC と P21 で文字と線が同じ位置に描かれることを見た。
 
 ## 3.15 TIFF → BDF 変換器（converter/tiff）の構造
 
@@ -397,7 +397,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **メタデータ**: 先頭のページの DocumentName を `title`、ImageDescription を `description`、Artist（`;` で分ける）を `creator`、Copyright を `rights`、DateTime を `modified` にする（DocumentName 以外は XMP の対応と同じ）。
 - **テキスト**: ページは画像だけなので、テキスト索引を作らず、検索と選択の対象もない（OCR はしない）。
 
-テスト用のファイルは `test/tiff/gen.sh` が ImageMagick と libtiff のツールで作る（`npm run test:tiff:gen`）。`converter/internal/tiff/testdata` には、同じ絵を格納方法を変えて各ページに入れたファイルと、ImageMagick が libtiff で読んだ参照 PNG を置く。可逆のページはすべて参照と画素単位で一致する。`converter/tiff/testdata` にはスキャン、FAX、8 通りの向きのファイルを置き、変換結果を `testdata/tiff/` に置いて golden テストで描画を比べる。向きは Go のテストでも確かめる。保存された画像をページの行列で紙面に写し、1 ページ目と比べる。
+テスト用のファイルは `test/tiff/gen.sh` が ImageMagick と libtiff のツールで作る（`npm run test:tiff:gen`）。`converter/internal/tiff/testdata` には、同じ絵を格納方法を変えて各ページに入れたファイルと、ImageMagick が libtiff で読んだ参照 PNG を置く。可逆のページはすべて参照と画素単位で一致する。`converter/tiff/testdata` にはスキャン、FAX、8 通りの向きのファイルを置き、変換結果を `testdata/tiff/` に置く。向きは Go のテストでも確かめる。保存された画像をページの行列で紙面に写し、1 ページ目と比べる。
 
 ## 3.16 HTML・Markdown → BDF 変換器（converter/html、converter/markdown）の構造
 
@@ -416,7 +416,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **壊れたファイルへの備え**: ネットワークの画像は、文書ごとに 256 枚、合わせて 256 MiB、取得の全体で 120 秒まで（1 枚 30 秒と 50 MiB は今までどおり）。描かない要素（`hidden`、`display: none`）の画像は先に取得せず、svg 要素の中の image は先に取得する。上限を超えた画像は代替テキストにして 1 度警告する。警告と HTTP のエラーには、URL のユーザー名とパスワードを出さない。scroll View の高さは 1024 pt の帯 10 万本まで（`height="1e300"` の画像で、帯を切る処理が終わらなかった）、長さは 100 万 pt まで。XHTML の要素の入れ子は HTML と同じ 512 段までで、それより深い要素は再帰せずにたどる。表のセルの結合（rowspan・colspan）が取る場所は文書全体で 2^18 個まで（1,000 個のセルが下の行すべてにまたがると、行 1 つ 9 バイトで 1,000 個の場所が増える）。インラインの svg 要素から作る SVG 文書は、文書全体で 256 MiB まで（借りてくる要素と base64 にした画像が、svg 要素ごとに写される）。go-readability が名前を変えた見出しの要素（名前が h1〜h6 でないもの）はブロックとして読む。Markdown の見出しの id は、同じ見出しが続いても、前に付けた番号の次から探す（同じ見出し 2 万個で 64 秒かかっていた）。行の分割は、段落の残り全部ではなく、まず 128 個の項目の中で行の終わりを探し、見つからなければ倍にする（タブがあれば残り全部）。分割の位置は変わらず、260 KB の `pre` が 41.6 秒から 0.11 秒に、2 MB の HTML の変換が 67 秒から 5.7 秒になった。Word の変換でも同じである。
 - **未対応**: 作者の CSS（色、フォント、配置）、コードブロックの図（Mermaid などはコードとして描く）、ルビ（親文字だけ）、縦書き（`writing-mode`）、ダークテーマ（色は命令列に焼き込まれる）、画面の幅に応じた再レイアウト（幅の違う scroll View を複数持ってビューアが選ぶ形なら、フォントと画像を共有したまま実現できる）。
 
-テスト用の文書は `converter/markdown/testdata/basic.md`、SVG の `converter/markdown/testdata/svg.md`（ページ幅の svg 要素、SVG ファイル、スプライトの symbol）、数式の `math.md` と `converter/html/testdata/article.html`・`math.html`（画像は `test/markdown/gen_images.py` が標準ライブラリだけで書く PNG）で、変換結果は `testdata/markdown/`・`testdata/html/` に置く。Word のテスト用フォントの字幅で組み、フォントは名前で参照するので、golden 画像はブラウザのフォントで描いたものになる。
+テスト用の文書は `converter/markdown/testdata/basic.md`、SVG の `converter/markdown/testdata/svg.md`（ページ幅の svg 要素、SVG ファイル、スプライトの symbol）、数式の `math.md` と `converter/html/testdata/article.html`・`math.html`（画像は `test/markdown/gen_images.py` が標準ライブラリだけで書く PNG）で、変換結果は `testdata/markdown/`・`testdata/html/` に置く。Word のテスト用フォントの字幅で組み、フォントは名前で参照し、ブラウザにあるフォントで描く。
 
 ## 3.17 Illustrator → BDF 変換器（converter/ai）
 
@@ -427,7 +427,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **レイヤー**: Illustrator のレイヤーは PDF のオプショナルコンテンツ（レイヤーごとの OCG と `/OC /MCn BDC`）で、非表示のレイヤーは `/D /OFF` に入る。PDF 変換器がそれに従うので、非表示のレイヤーは描かれない（§3.1）。
 - **変換しないもの**: 「PDF 互換ファイルを作成」をオフにして保存したファイルの PDF 部分は、その旨を伝える 1 ページだけ（その文言で見分けて `ErrNoPDFContent`）。Illustrator 8 以前の PostScript ベースの .ai（`%!PS-Adobe` と `%%Creator: Adobe Illustrator`）も PDF を持たない（`ErrPostScript`）。どちらも独自データを解釈しないと描けないので、エラーにして保存し直してもらう。
 
-テスト用の .ai は `test/ai/gen.py` が Illustrator の書き方をまねた PDF を直接書いて作り（`npm run test:ai:gen`、標準ライブラリのみ）、変換結果は `testdata/ai/` に置いて golden テストで描画を比較する。開発中は Illustrator CC 2015 と 2024 で保存された実ファイルで、非表示のレイヤーが消えることと、描画が Ghostscript のトリムボックスでの描画（`-dUseTrimBox`）と合うことを確かめた。
+テスト用の .ai は `test/ai/gen.py` が Illustrator の書き方をまねた PDF を直接書いて作り（`npm run test:ai:gen`、標準ライブラリのみ）、変換結果は `testdata/ai/` に置く。開発中は Illustrator CC 2015 と 2024 で保存された実ファイルで、非表示のレイヤーが消えることと、描画が Ghostscript のトリムボックスでの描画（`-dUseTrimBox`）と合うことを確かめた。
 
 ## 3.18 Photoshop → BDF 変換器（converter/psd）
 
@@ -464,7 +464,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 
 `createImageBitmap(img, {resizeWidth, resizeHeight})` は大きさを持たない SVG（`viewBox` だけ）を描かないので、使わない。SVG をパスに変換して命令にする方法もあるが、SVG の描画系（CSS、テキスト、フィルタ、マスク）をもう 1 つ実装することになり、ブラウザが描けるものをそのまま渡すという狙いに反する。
 
-テスト用の画像（`converter/image/testdata/`）は `test/image/gen.sh`（ImageMagick、exiftool、cwebp、avifenc）で作り、変換結果を `testdata/image/` に置く。golden テストでは、EXIF で回転する JPEG、`irot` で回転する AVIF、2 倍で描く SVG を、メインスレッドと Worker（ページが SVG を描く）の両方で描いて比べる。
+テスト用の画像（`converter/image/testdata/`）は `test/image/gen.sh`（ImageMagick、exiftool、cwebp、avifenc）で作り、変換結果を `testdata/image/` に置く。EXIF の向きや SVG の描画は、各変換器・レンダラの機能テストで確かめる。
 
 ## 3.20 CGM → BDF 変換器（converter/cgm）の構造
 
@@ -481,7 +481,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **壊れたファイルへの備え**: パラメータの足りない要素は無視して警告し、途中で切れたファイルはそこまでを描く。数バイトの要素が大量の描画を生まないよう、描く点（ハッチングの線とセグメントの複写が足す分も数える）は 1000 万個まで、セル配列とタイルは 1 つ 4096 × 4096 セルまで・メタファイル全体で 6400 万セルまで、パターンは 65536 セルまで、ピクチャは 1 万枚まで、ピクチャごとに適用し直す METAFILE DEFAULTS REPLACEMENT は 1024 要素まで、ページは 1 辺 5080 mm までとする。パターンの画像は、パターンと色表が変わるまで使い回す。両方の読み手と解釈器には Go の fuzz テスト（`FuzzInterp`）がある。
 - **未対応（警告を出す）**: シンボル（POLYSYMBOL）、GDP、幾何パターン（塗りの色で塗る）、三角形の補間内部様式、セグメントの変換（SEGMENT TRANSFORMATION）、登録された線種（6 以降。実線で描く）、ランレングスや LZW などのタイルの圧縮。文字の精度（string / character / stroke）は区別しない。保護領域、クリップの継承、ハイライト、ピック識別子は描画に関係しないので読み捨てる。
 
-テスト用のメタファイルは `test/cgm/gen.py` が作る（`npm run test:cgm:gen`、標準ライブラリのみ）。要素を型付きのパラメータの列として 1 度書き、バイナリとクリアテキストに書き出す。shapes.cgm（とそのクリアテキスト shapes-text.cgm）は A3 の CAD 風の図面で、線種・線幅・端点、5 種のマーカー、各内部様式の塗り、穴と見えない辺のある POLYGON SET、各種の円弧と曲線、穴のある閉じた図形、9 つの揃えの文字と、回転・拡幅・字間・縦書き・箱に収める文字、APPEND TEXT、JIS X 0208 の和文、セル配列、クリップ、セグメントの複写を持つ。Go のテストは両者が同じ `cad.Drawing` になることを確かめる。illustration.cgm は WebCGM 風の図（実数の VDC で y が下向き、abstract、直接色、UTF-8、非表示のアプリケーション構造、タイル、2 つのピクチャ）、sjis.cgm は宣言のない Shift_JIS の文字を持つ A4 の図面である。変換結果は `testdata/cgm/` に置いて golden テストで描画を比較する。符号化の細部（SCALING MODE の縮尺、タイル配列のパラメータ、SDR の形、セル配列の行の揃え）は、公開されている実装（jcgm）の読み方とも照らし合わせた。
+テスト用のメタファイルは `test/cgm/gen.py` が作る（`npm run test:cgm:gen`、標準ライブラリのみ）。要素を型付きのパラメータの列として 1 度書き、バイナリとクリアテキストに書き出す。shapes.cgm（とそのクリアテキスト shapes-text.cgm）は A3 の CAD 風の図面で、線種・線幅・端点、5 種のマーカー、各内部様式の塗り、穴と見えない辺のある POLYGON SET、各種の円弧と曲線、穴のある閉じた図形、9 つの揃えの文字と、回転・拡幅・字間・縦書き・箱に収める文字、APPEND TEXT、JIS X 0208 の和文、セル配列、クリップ、セグメントの複写を持つ。Go のテストは両者が同じ `cad.Drawing` になることを確かめる。illustration.cgm は WebCGM 風の図（実数の VDC で y が下向き、abstract、直接色、UTF-8、非表示のアプリケーション構造、タイル、2 つのピクチャ）、sjis.cgm は宣言のない Shift_JIS の文字を持つ A4 の図面である。変換結果は `testdata/cgm/` に置く。符号化の細部（SCALING MODE の縮尺、タイル配列のパラメータ、SDR の形、セル配列の行の揃え）は、公開されている実装（jcgm）の読み方とも照らし合わせた。
 
 ## 3.21 Gerber・Excellon → BDF 変換器（converter/gerber）の構造
 
@@ -498,7 +498,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **壊れたファイルへの備え**: 線分・輪郭・フラッシュは、SR と AB の写しも含めて 500 万個まで。SR の繰り返しは 10 万回まで、AB の入れ子は 32 段、マクロの式の括弧は 64 段、アウトラインの頂点は 65,536 までとし、数値は有限で大きすぎないものだけを使う。ZIP は 1,000 ファイル、展開して 1 GiB まで読む。ファジングテスト（`FuzzGerber`）で確かめる。
 - **未対応（警告を出す）**: アパーチャ定義の無い RS-274-D、ブロックアパーチャで引いた線、円でないアパーチャで引いた円弧（丸い線で描く）、露光 2（反転）のマクロプリミティブ（露光オンで描く）、軸ごとに違う倍率の `%SF`（平均で描く）、Excellon の M97・M98 の文字あけ。部品や配線の属性（`TO`・`TA`）は描画に関わらないので読まない。
 
-テスト用のデータは `test/gerber/gen.py` が作る（`npm run test:gerber:gen`、標準ライブラリのみ）。board.zip は KiCad 7 の出力をまねた 2 層基板（X2 属性の Gerber 8 枚、PTH と NPTH のドリルファイル、ジョブファイル）で、角の丸い外形と切り抜き、SOIC とチップ部品の角丸パッド（KiCad の RoundRect マクロ）、ピンヘッダーと長穴のパッド、取り付け穴、円弧の配線、カットインで穴をあけた銅箔、裏面のベタとクリアランス（クリアの極性）とサーマルのマクロ、表と裏のシルクを持つ。features.gbr は仕様の要素（標準アパーチャと穴、全プリミティブと式、G74・G75 の円弧、全円、点、大きさ 0 のアパーチャ、領域とカットイン、極性、SR、AB と LM・LR・LS、G54）を 1 ファイルに並べたもの。変換結果は `testdata/gerber/` に置いて golden テストで描画を比較する。
+テスト用のデータは `test/gerber/gen.py` が作る（`npm run test:gerber:gen`、標準ライブラリのみ）。board.zip は KiCad 7 の出力をまねた 2 層基板（X2 属性の Gerber 8 枚、PTH と NPTH のドリルファイル、ジョブファイル）で、角の丸い外形と切り抜き、SOIC とチップ部品の角丸パッド（KiCad の RoundRect マクロ）、ピンヘッダーと長穴のパッド、取り付け穴、円弧の配線、カットインで穴をあけた銅箔、裏面のベタとクリアランス（クリアの極性）とサーマルのマクロ、表と裏のシルクを持つ。features.gbr は仕様の要素（標準アパーチャと穴、全プリミティブと式、G74・G75 の円弧、全円、点、大きさ 0 のアパーチャ、領域とカットイン、極性、SR、AB と LM・LR・LS、G54）を 1 ファイルに並べたもの。変換結果は `testdata/gerber/` に置く。
 
 ## 3.22 HP-GL/2 → BDF 変換器（converter/hpgl）
 
@@ -516,7 +516,7 @@ SSE 経路の libwebp を `-simd=go127` で変換し、`GOEXPERIMENT=simd` で�
 - **壊れたファイルへの備え**: 値はそのまま信用しない。NaN・無限大・極端な値の座標は捨て、終端のないラベルは 4 KiB で切る。ソースの幅のないラスターの行は HP RTL の上限の 65,535 画素で切る（ランレングスやデルタ行は小さなデータから長い行を作れるので）。描く要素は文書全体で 500 万個、ページは 1 万ページ、RF のパターンは 256 × 256 画素、ラスター画像は縮小した後で 256 MiB までとする。ファズテスト（`FuzzConvert`）で落ちないことを確かめている。
 - **未対応（警告を出す）**: PCL の文字の印刷、FI・FN（ID によるフォントの選択。既定のフォントで描く）、MC（マージ制御。後から描いたものが上に重なる）、DL（ダウンロード文字）、FT 22（PCL のユーザ定義パターン。単色で塗る）、SV のパターン（半分の網掛けで描く）、HP RTL の圧縮方式 4・6〜8・10、面ごとに重ね刷りする画像（plane-by-plane）。
 
-テスト用のプロットは `test/hpgl/gen.py` が HP のリファレンスどおりに書く（`npm run test:hpgl:gen`、標準ライブラリのみ）。shapes.plt は A3 のプロットサイズにほぼすべての命令（パレット、線種、線端、円弧、粗い弦角の円、ベジェ曲線、PE、穴のある多角形、塗りの種類、パイチャート、網掛けのベクトル、ユーザ単位とウィンドウ、記号モード、ラベルの大きさ・方向・斜体・原点・進む向き・フォント、Shift_JIS と 16 ビット JIS の日本語）を描く。job.plt は大判プロッタのジョブ（PJL、ESC %-1B、RO 90 で縦長の A4 にしたページに置換デルタ行の 24 ビットの画像、2 ページ目は適応圧縮の白黒の画像だけ）、hpgl1.plt はペンプロッタの HP-GL（装置制御、P1・P2、ユーザ単位、SI と DI のラベル、目盛り）である。変換結果は `testdata/hpgl/` に置いて golden テストで描画を比較する。開発中は GhostPCL（gpcl6）で同じ HP-GL/2 を PCL のページに包んで描き、線・円・円弧・ハッチング・線種・多角形・回転・スケール・ウィンドウ・PE・ラスター画像（画素単位で一致）が重なることを確かめた（ラベルは上に書いた違いのほかは合う）。GNU plotutils の出力（`graph -T hpgl`、`-T pcl`、`plotfont`）でも変換を確かめた。
+テスト用のプロットは `test/hpgl/gen.py` が HP のリファレンスどおりに書く（`npm run test:hpgl:gen`、標準ライブラリのみ）。shapes.plt は A3 のプロットサイズにほぼすべての命令（パレット、線種、線端、円弧、粗い弦角の円、ベジェ曲線、PE、穴のある多角形、塗りの種類、パイチャート、網掛けのベクトル、ユーザ単位とウィンドウ、記号モード、ラベルの大きさ・方向・斜体・原点・進む向き・フォント、Shift_JIS と 16 ビット JIS の日本語）を描く。job.plt は大判プロッタのジョブ（PJL、ESC %-1B、RO 90 で縦長の A4 にしたページに置換デルタ行の 24 ビットの画像、2 ページ目は適応圧縮の白黒の画像だけ）、hpgl1.plt はペンプロッタの HP-GL（装置制御、P1・P2、ユーザ単位、SI と DI のラベル、目盛り）である。変換結果は `testdata/hpgl/` に置く。開発中は GhostPCL（gpcl6）で同じ HP-GL/2 を PCL のページに包んで描き、線・円・円弧・ハッチング・線種・多角形・回転・スケール・ウィンドウ・PE・ラスター画像（画素単位で一致）が重なることを確かめた（ラベルは上に書いた違いのほかは合う）。GNU plotutils の出力（`graph -T hpgl`、`-T pcl`、`plotfont`）でも変換を確かめた。
 
 ## 3.23 数式（internal/mathlayout、converter/internal/equation、formula）
 
@@ -540,7 +540,7 @@ Word・PowerPoint・Excel の Office Math（OMML）、HTML の MathML、Markdown
 
 - **入れ子の上限**: LaTeX・MathML・Office Math の読み手は、入れ子を 200 段まで読む。それより深い中身は、入れ子にせずに平らに読む（`{` を 100 万個並べた数式がスタックを使い切り、10 万個で 40 秒かかっていた）。draw.io は、これとは別に 20,000 バイトを超える数式を文字として描く。
 
-テストは、TeX・MathML・OMML の読み手を線形表記で、組版を STIX Two Math のサブセット（`converter/docx/testdata/fonts`、MATH 表を保って fontTools で作ったもの、OFL）で確かめ、MATH 表とグリフの境界（TrueType と CFF）を fontTools の値と比べる。`converter/docx/testdata/math.docx`（`test/docx/gen.py`）、`converter/pptx/testdata/math.pptx`（`test/pptx/gen.py`）、`converter/xlsx/testdata/math.xlsx`（`test/xlsx/gen.py`）、`converter/drawio/testdata/math.drawio`、`converter/markdown/testdata/math.md`、`converter/html/testdata/math.html` の変換結果を testdata に置いて golden で描画を比べ（`docx-math-1`、`pptx-math-1`、`xlsx-math-1`、`drawio-math`、`markdown-math-scroll`）、ブラウザのテストで数式の検索を確かめる。`EQUATION_SAMPLES=dir go test ./converter/internal/equation -run TestSamples` は、数式フォントがあるときとないときの見本の文書を書き出す。
+テストは、TeX・MathML・OMML の読み手を線形表記で、組版を STIX Two Math のサブセット（`converter/docx/testdata/fonts`、MATH 表を保って fontTools で作ったもの、OFL）で確かめ、MATH 表とグリフの境界（TrueType と CFF）を fontTools の値と比べる。`converter/docx/testdata/math.docx`（`test/docx/gen.py`）、`converter/pptx/testdata/math.pptx`（`test/pptx/gen.py`）、`converter/xlsx/testdata/math.xlsx`（`test/xlsx/gen.py`）、`converter/drawio/testdata/math.drawio`、`converter/markdown/testdata/math.md`、`converter/html/testdata/math.html` の変換結果を `testdata/` に置き、ブラウザのテストで数式の検索を確かめる。
 
 ## 3.24 EPUB → BDF 変換器（converter/epub）の構造
 
@@ -564,7 +564,7 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 
 文書の一覧にはサムネイルが、サーバー側の全文検索には文書のテキストが要る。どちらも BDF を作るのと同時に作れば、元のファイルを読み直さずに済む。パスワード付きの入力なら、平文を持っているのは変換の間だけでもある（§3.7）。
 
-**描き方**: ヘッドレス Chromium で `@bdfkit/render` を動かせば、ビューアと 1 画素も違わない画像が得られる（golden テストの `test/render.mjs` がそうしている）。しかしそれにはサーバーに Chromium（数百 MB）を入れ、プロセスを起動・維持・隔離しなければならない。LibreOffice をやめる理由（README の Why BDF）と同じ重さを、サムネイルのために背負い直すことになる。そこで純 Go のラスタライザ `imagebdf` を書いた。変換器と同じく cgo も外部プログラムも使わず、変換と同じプロセスで、変換した `*bdf.Document` をそのまま描く。§2 の「ビューアで Go/wasm は使わない」は変わらない。ビューアは TS のままで、`imagebdf` はサーバーで使う第 2 の描き手である（デモサイトは、サーバーが作るものを見せるためにこれも wasm で動かす。後述）。
+**描き方**: ヘッドレス Chromium で `@bdfkit/render` を動かせば、ビューアと 1 画素も違わない画像が得られる（手動描画用の `test/render.mjs` がそうしている）。しかしそれにはサーバーに Chromium（数百 MB）を入れ、プロセスを起動・維持・隔離しなければならない。LibreOffice をやめる理由（README の Why BDF）と同じ重さを、サムネイルのために背負い直すことになる。そこで純 Go のラスタライザ `imagebdf` を書いた。変換器と同じく cgo も外部プログラムも使わず、変換と同じプロセスで、変換した `*bdf.Document` をそのまま描く。§2 の「ビューアで Go/wasm は使わない」は変わらない。ビューアは TS のままで、`imagebdf` はサーバーで使う第 2 の描き手である（デモサイトは、サーバーが作るものを見せるためにこれも wasm で動かす。後述）。
 
 **命令の解釈**は TS の `CanvasRenderer` と同じ状態機械にした。SAVE・RESTORE のスタック、USE の暗黙の save/restore、トップレベルの Object（ページのレイヤー、シートのタイル）は変換とクリップ以外を初期状態から始めること、グループの一時キャンバスは変換と塗り・線・線幅・フォントだけを引き継ぐこと、ソフトマスク（輝度・アルファ・転送関数）、影の大きさを設定時の変換の拡大率で決めること（spec §7.2）、グループを囲む状態の影をグループ全体の影として合成のときに掛けること（Canvas が一時キャンバスを `drawImage` するときの影。draw.io の図形はこれで 1 つの影を落とす。影が届く分だけ、キャンバスの外にあるグループの中身も描く）。どれも TS の実装を写した。
 
@@ -579,7 +579,7 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 - **信頼しない文書への備え**: ラスタライザは利用者がアップロードした文書を描くので、文書が決める数と大きさには上限を置く。超えた分は警告して描かず、残りを描く。描いている途中のパニックはエラーにする（`Page`、`Region`、`thumbnail.Make`）。開いているグループとソフトマスクは合わせて 64 個、SAVE はキャンバスごとに 1,024 段まで。グループ・マスク・クリップが同時に使うメモリは、描く画像 8 枚分（少なくとも 64 MiB）まで。`USE` の入れ子は 64 段（`bdf.MaxUseDepth`）、1 回の描画で描き直す Object から読む命令は 2^24 個まで（1 回目に読む命令は文書の大きさで決まるので数えない）。パスは、1 つの命令で展開後の点と走査する辺を各 2^20 個、走査線で訪れる辺を累計 2^24 回までとし、超過した描画は警告して省略する。線は、1 つの命令で 2^20 個の破線、入力の点 1 つにつき 16 個と 2^20 個の輪郭の点まで。影のぼかしは 1,024 デバイス画素まで。ページの大きさと拡大率は 0 より大きいこと（大きさのないページはエラー）。シートのタイルは 1 単位以上、グリッド線は軸ごとに 2^16 本まで。デコードした画像と SVG のラスタは合わせて 2.56 億画素まで持ち、古い描画のものから捨てる。見えないところに描かれる画像はデコードしない。SVG は、要素の入れ子 256 段、要素 2^20 個、スタイルの規則と要素の照合 2^22 回（読むときの上限で、`image/svg` の `Options` の既定値）、半透明の要素のレイヤーは同時に 8 枚まで。幅か高さが 1 画素に満たない SVG のラスタは 2 × 4096² 画素に収める。
 - **速さ**: サムネイルは 84 文書で 1 枚あたり約 13 ms から 3 ms に、2 倍の解像度のページは約 80 ms から 32 ms になった（フォントの読み込みの共有を含む。描画の近道だけでは約 3 割）。描く範囲の外にあるパスと文字は、制御点の外接矩形で判定して辺を作る前に捨てる。走査線の交点は 16 個を超えたら pdqsort で並べ、辺をその順で持ち越す（右から左へ描かれた細い図形 2,000 個で、挿入ソートが 130 秒かかっていた。同じ位置の交点の順は結果に関係しない）。辺・点・行のバッファは描画をまたいで使い回し、単色の塗りは画素ごとの関数呼び出しをしない。グラデーションの表はペイントごとに 1 度だけ作る。これらの近道は画素を変えない: `TestShortcutsChangeNoPixel` が、testdata の全文書を近道ありとなし（パッケージ変数 `plain`）で描いてバイト単位で比べる。
 
-**確かめ方**: Go のテスト（`raster/imagebdf/golden_test.go`）は、ブラウザの golden テストのケース（`test/page/harness.ts`）を読んで同じページ・範囲を描き、Chromium の golden PNG と比べる。どちらも 4 分の 1 に縮めてから、チャンネルの平均の差（4/255 未満）と、差が 48 を超える画素の割合（3 % 未満）を測る。縮めるのは、ヒンティングやアンチエイリアスの画素単位の違いではなく、サムネイルとして見える違いを測るためである。フォントはリポジトリのテスト用のものだけにして（`NoSystemFonts`）、どのマシンでも同じ結果にした。基準を緩めたケースは 3 つある。192 dpi のスキャンを 2.7 分の 1 に縮めるページ（ミップマップとバイリニアの違い）、チェッカーボードの画像を 2 倍にするページ（縁が半画素ずれる）、テスト用のフォントにない中国語と韓国語のページ（名前で参照する CJK フォント）である。AVIF のケースは描かないので飛ばす。初めて比べたとき、JPEG の EXIF の向きを見ていないことが見つかった。実物の本（EPUB）と Illustrator・Photoshop のファイルでもサムネイルを確かめた。変換とサムネイルとテキストを合わせて、900 ページの本で 1 秒かからない。
+**確かめ方**: Go のテストは、各描画命令の画素・寸法・クリップ・色・透明度、フォント読み込み、資源制限と不正入力を直接検証する。キャッシュの有無と並列描画は、現在の実装の各経路が同じ結果になることを確かめる。ブラウザ側は描画の成立、検索、テキスト選択、文書構造を機能テストで検証する。
 
 **サムネイルのレイアウト**（`thumbnail`）は文書の種類で決める。種類は変換器が書く `Meta.Source`（既存の BDF からでも分かる）と View の種類で見る。
 
@@ -625,7 +625,7 @@ Parquet は分析用のデータを列ごとに圧縮して持つ形式で、pan
 
 Parquet 以外の列指向の形式も調べた（2026-09）。Arrow IPC（Feather）、ORC、Avro は読む側の仕様がそろっている。Lance はデータセットがディレクトリで、ファイル形式（2.0、2.1、2.2、不安定な 2.3）が数週間ごとに変わり、2.0 のエンコーディングは文書がなく Rust の実装が仕様になっている。Vortex は 1.0 前で、ファイルの互換は新しい版が古いファイルを読むことしか保証されず、30 余りのエンコーディングに言語によらない仕様がない。Nimble は安定性を保証しておらず、仕様もなく、Meta の中の圧縮で書いたファイルは外では読めない。いずれも見送った。
 
-テスト用のファイルは `test/parquet/gen.py`（`npm run test:parquet:gen`。pyarrow 25.0.1 と DuckDB 1.5.5）が書く 9 つ。basic（pyarrow の既定の出力: Snappy、辞書、v1。英語と日本語、改行を含む値、null、decimal、日付、ミリ秒のタイムスタンプ、リスト、構造体）、types（Zstandard。整数の端の値、float16、NaN と無限大、INT32・INT64・固定長の decimal、UUID、JSON、全単位の時刻とタイムスタンプ、辞書の文字列、null の列）、nested（空・null・null を含むリスト、リストのリスト、構造体のリスト、マップ、固定長のリスト）、encodings（v2 のデータページ、gzip。各エンコーディングの列と同じ値の PLAIN の列）、codecs（同じ値を圧縮ごとの列に）、legacy（INT96、準拠しない要素名のリスト）、duckdb（分解保存された Variant、UUID、INTERVAL、GEOMETRY、PLAIN_DICTIONARY）、variant（オブジェクトとリストに分解保存された Variant）、geo（GeoParquet の WKB）。今の書き手が作らない構造（2 段のリスト、`MAP_KEY_VALUE`、BIT_PACKED のレベル、Hadoop の LZ4）は、テストの中の小さな書き出し器で作る。開発中は、これらと Apache の parquet-testing（77 ファイル、約 23 万セル）の値を pyarrow が読む値とセルごとに突き合わせ（pyarrow 自身が読めない列と、int64 に収まらない INT96 を除いてすべて一致）、Variant は parquet-testing の分解保存の 138 例がすべて一致することも確かめた。変換結果は `testdata/parquet/` に置き（CI が変換し直して比べる）、basic と nested は golden テストで描画を比較する。フォントは CSV と同じく PowerPoint のテストのものだけを使う。
+テスト用のファイルは `test/parquet/gen.py`（`npm run test:parquet:gen`。pyarrow 25.0.1 と DuckDB 1.5.5）が書く 9 つ。basic（pyarrow の既定の出力: Snappy、辞書、v1。英語と日本語、改行を含む値、null、decimal、日付、ミリ秒のタイムスタンプ、リスト、構造体）、types（Zstandard。整数の端の値、float16、NaN と無限大、INT32・INT64・固定長の decimal、UUID、JSON、全単位の時刻とタイムスタンプ、辞書の文字列、null の列）、nested（空・null・null を含むリスト、リストのリスト、構造体のリスト、マップ、固定長のリスト）、encodings（v2 のデータページ、gzip。各エンコーディングの列と同じ値の PLAIN の列）、codecs（同じ値を圧縮ごとの列に）、legacy（INT96、準拠しない要素名のリスト）、duckdb（分解保存された Variant、UUID、INTERVAL、GEOMETRY、PLAIN_DICTIONARY）、variant（オブジェクトとリストに分解保存された Variant）、geo（GeoParquet の WKB）。今の書き手が作らない構造（2 段のリスト、`MAP_KEY_VALUE`、BIT_PACKED のレベル、Hadoop の LZ4）は、テストの中の小さな書き出し器で作る。開発中は、これらと Apache の parquet-testing（77 ファイル、約 23 万セル）の値を pyarrow が読む値とセルごとに突き合わせ（pyarrow 自身が読めない列と、int64 に収まらない INT96 を除いてすべて一致）、Variant は parquet-testing の分解保存の 138 例がすべて一致することも確かめた。変換結果は `testdata/parquet/` に置く（CI が変換し直して比べる）。フォントは CSV と同じく PowerPoint のテストのものだけを使う。
 
 ## 3.27 楽譜と演奏（converter/mml、converter/midi、converter/musicxml、converter/internal/music）
 
@@ -648,7 +648,7 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 - **壊れたファイルへの備え**: 譜表は 4,096 段、譜表 × 小節は 100 万まで（どのパートも、どの小節にも少なくとも休符を書くので、201 トラック × 1 万小節の 410 バイトの MML が 800 MiB になっていた。記譜はトラック × 小節を、組版は譜表 × 小節を、書く前に確かめてエラーにする）。音符は今までどおり 200 万個まで。記譜は 2 万小節で止めて警告し、音符がすべてその後にあるトラックはパートにしない。演奏位置の cue は 400 万個まで（繰り返しは小節を、つまり cue を何度も演奏する）。書き出す SMF では、デルタタイムの 4 バイト（2^28 − 1 tick）を超える待ち時間を、空のテキストイベントで分ける。MML は音符のあるトラックを 1,024 まで。MusicXML は、パートの 1 小節の音符・スラー・歌詞・指示・音部記号の変更を合わせて 1 万個、速度記号を 1 小節 64 個、歌詞を 99 番、ボルタの番号を 100 個までとし、演奏は 4 分音符 100 万個分、テンポの変更 100 万回、歌詞 100 万音節で止める（今までの 1 万小節、400 万音符に加えて）。超えた分は警告して除く。次の段に続くスラー・松葉・オクターブ線は番号の順に描く（マップの順だったので、同じ入力から 2 通りの出力が出ることがあった）。fuzz テスト（`FuzzParse`）は、読んだ結果の記譜と組版まで行う。
 - **未対応**: 声部を 3 つ以上に分けること（MIDI・MML では 2 つ目の声部に入らない音は和音に入れるか前の音を切る）、段をまたぐ連桁と符幹、複数小節の休符をまとめること、タブ譜と打楽器の符頭の多く、グリッサンド・アルペジオ・トリル線、MusicXML の画面上の位置（default-x などは使わず組み直す）とページのレイアウトの指定、SMF の音色バンク（GS・XG）とサウンドフォント。
 
-テストは、記譜（`Notate`）の結果を音符の並びの文字列で、`Build` の cue（時刻の順、段の矩形の中、繰り返しの展開と分解能の変換）と SMF の書き出しを確かめ、読み手ごとに MML・MIDI・MusicXML の小さな入力（パブリックドメインの曲を手で書いたもの。`converter/musicxml/testdata/gen.py`）から `Performance` と `Score` を確かめる。`converter/mml/testdata/frere.mml`（PPMCK の 4 声の輪唱）、`ode.mml`（マビノギ）、`converter/midi/testdata/twinkle.kar`（歌詞）、`converter/musicxml/testdata/minuet.musicxml`（大譜表）、`ode_to_joy.mxl` の変換結果を `testdata/music/` に置いて golden で描画を比べる。`MUSIC_SAMPLES=dir go test ./converter/internal/music -run 'TestSamples|TestFeatures'` は見本の楽譜と、組版が描くすべての記号を使った楽譜を PNG に描く。
+テストは、記譜（`Notate`）の結果を音符の並びの文字列で、`Build` の cue（時刻の順、段の矩形の中、繰り返しの展開と分解能の変換）と SMF の書き出しを確かめ、読み手ごとに MML・MIDI・MusicXML の小さな入力（パブリックドメインの曲を手で書いたもの。`converter/musicxml/testdata/gen.py`）から `Performance` と `Score` を確かめる。`converter/mml/testdata/frere.mml`（PPMCK の 4 声の輪唱）、`ode.mml`（マビノギ）、`converter/midi/testdata/twinkle.kar`（歌詞）、`converter/musicxml/testdata/minuet.musicxml`（大譜表）、`ode_to_joy.mxl` の変換結果を `testdata/music/` に置く。
 
 ## 3.28 フォントファイル → BDF 変換器（converter/font）の構造
 
@@ -745,7 +745,7 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 - **ビューア**: `@bdfkit/core` の `BdfDocument.audio` が音声の Part と cue を読む。大きい Part なので文書のキャッシュには入れない（鳴らす側が持つ）。Worker はそれを `Blob` にしてページに渡す（`BdfWorkerClient.audio`）。`Blob` はブラウザが持つ（大きければディスクに置く）ので、ページとの受け渡しでコピーが増えない。`type` は `audio/` で始まるものだけを `Blob` の型にする。`@bdfkit/render` の `AudioPlayer` が `<audio>` 要素を包み、`MusicPlayer` と同じ操作（`play`・`pause`・`stop`・`seek`・`position`・`duration`・`state`・`setSpeedPercent`・`cursorAt`・`timeAt`・`onUpdate`・`onEnd`）を持つので、ビューアは楽譜と同じ再生ボタンで両方を扱える。`cursorAt` は行の矩形の全体（`Cursor.w`）を返し、最初の cue より前は null。状態は要素のイベントから取るので、要素自身のコントロールやキーボードのメディアキーで再生・停止されても合う。ブラウザが鳴らせない形式（Chrome の AIFF など）は `onError` で知らせ、カードはそのまま見える。デモビューアは位置のスライダーを加え、歌っている行を帯で示し、行のクリックでそこから鳴らす。速度は `playbackRate`（音程は変わらない）。ミニビューア（`examples/miniviewer`）はブラウザのコントロール（`<audio controls>`）をページの下に出す。
 - **カバー**: 画像のヘッダーだけ読んで大きさを得る（`image.DecodeConfig`。PNG・JPEG・GIF・BMP・WebP）。それ以外（TIFF など）や壊れた画像は警告してプレースホルダーにする。ページの幅はカバーの幅（360〜720 pt に収める）。`-images convert` のときは `imgconv.Optimize` で再エンコードする（他の文書に埋め込まれた画像と同じ扱い。入力そのものである画像をそのまま格納する §3.19 とは違う）。
 - **信頼しない入力への備え**: ファイルは 1 GiB、格納する音声は `MaxAudio`（256 MiB）、ID3 タグは 64 MiB（大きさの主張は 256 MiB まで書ける）、FLAC のコメントは 8 MiB、画像ブロックは 16 MiB、MP4 の `moov` は 64 MiB、XMP は 16 MiB、カバーは 64 MiB、歌詞は 256 KiB・2,000 行、`SYLT` の項目は 1 万、ほかの項目は 16 KiB まで読む。1 項目の値は 64 個、画像は 64 枚、章は 1,000 件まで。チャンクやボックス、フレームがファイルより大きいと言えば、ファイルの終わりで切る。
-- **テスト**: ffmpeg と mutagen で作った 1 秒の小さな実ファイル（`test/audio/gen.sh`、`converter/audio/testdata`）で全形式の変換結果（Dublin Core、ページ、検索テキスト、サムネイルがカバーの絵になること、音声の Part が入力と同じバイト列で圧縮されずに入ること）を確かめ、同期歌詞は 15 秒の曲（`synced.mp3`: `test/audio/melody.py` が書く旋律に `SYLT` の歌詞。デモサイトのサンプルでもある）と LRC を持つ FLAC（`lrc.flac`）で cue の時刻と矩形を確かめる。LRC と `SYLT` の読み分け、`NoPlay`・`MaxAudio`・ページ選択での扱いは合成した入力で確かめる。`AudioPlayer` は `<audio>` 要素の代わりのオブジェクトで Node のテストにし（`packages/render/test/audio.test.mjs`）、実際の再生と行の追従はデモビューアとミニビューアをブラウザで動かして確かめた。ID3 の版・フラグ・文字コード、MP4 の箱の順序と QuickTime の形、Ogg の複数ページにまたがるパケット、RF64、AIFF-C、上限の挙動は合成したバイト列で確かめる。フィクスチャは fuzz の種にもする。ブラウザ描画の golden のケースは作っていない。カードの文字はビューアのフォントで組まれ、マシンによって描画が変わるためである。
+- **テスト**: ffmpeg と mutagen で作った 1 秒の小さな実ファイル（`test/audio/gen.sh`、`converter/audio/testdata`）で全形式の変換結果（Dublin Core、ページ、検索テキスト、サムネイルがカバーの絵になること、音声の Part が入力と同じバイト列で圧縮されずに入ること）を確かめ、同期歌詞は 15 秒の曲（`synced.mp3`: `test/audio/melody.py` が書く旋律に `SYLT` の歌詞。デモサイトのサンプルでもある）と LRC を持つ FLAC（`lrc.flac`）で cue の時刻と矩形を確かめる。LRC と `SYLT` の読み分け、`NoPlay`・`MaxAudio`・ページ選択での扱いは合成した入力で確かめる。`AudioPlayer` は `<audio>` 要素の代わりのオブジェクトで Node のテストにし（`packages/render/test/audio.test.mjs`）、実際の再生と行の追従はデモビューアとミニビューアをブラウザで動かして確かめた。ID3 の版・フラグ・文字コード、MP4 の箱の順序と QuickTime の形、Ogg の複数ページにまたがるパケット、RF64、AIFF-C、上限の挙動は合成したバイト列で確かめる。フィクスチャは fuzz の種にもする。カードの文字はビューアのフォントで組まれる。
 - **未対応・今後**: 音声ファイルの隣の `.lrc` ファイル（いまはファイルの中のタグだけを読む）、語ごとの時刻で行の中を追うこと、MPEG フレーム単位の `SYLT` の時刻、分割形式の文書で Part の URL を `<audio>` に直接渡すストリーミング（いまは Part を読み切ってから鳴らす）、ブラウザで大きいファイルを鳴らすこと（ドロップされた `File` をそのまま `<audio>` に渡せばコピーは要らないが、いまは文書に入った音声だけを鳴らす）、WMA/ASF と APE・WavPack のタグ、波形、QuickTime の章トラック。動画は別の変換器にする（メタデータ・章・字幕は同じ箱の読み手で読めるが、1 枚の絵を出すにはデコーダが要る）。
 
 ## 3.32 InDesign → BDF 変換器（converter/idml）の構造
@@ -764,7 +764,7 @@ MML、MIDI、MusicXML を五線譜のページにし、View にその音楽を�
 - **連結（スレッド）**: `TextFrame` は `ParentStory`・`PreviousTextFrame`・`NextTextFrame` で連なる。描く前に全ページのフレーム（マスターのフレームはページごとに別の鍵）を集め、前のないフレームから `NextTextFrame` をたどって連なりを作り（環になっているものは 2 巡目で拾う）、ストーリーごとに `drawingml.TextFlow` で流す。`TextFlow` は DrawingML のテキスト本体の段落を一度だけ読み、`Fill` のたびに枠（`TextFramePreference` の段組み `TextColumnCount`・`TextColumnGutter`、インセット `InsetSpacing`、垂直方向の揃え `VerticalJustification`、縦組み `StoryOrientation` → `eaVert`）に入るだけの行を取り、残りを次の枠に回す。段落の途中で切れたら、残りの文字を先頭インデント・箇条書き・段落前の間隔なしの段落として続ける。両端揃えは行のアイテムの幅を伸ばすので、段落は複製してからレイアウトし、残りはもとの文字で組み直す。レイアウトは枠に入る高さ（段組みなら段数倍）を超えた段落で打ち切るので、長いストーリーを枠ごとに全部組むことはない。最後の枠に入りきらない（オーバーセット）テキストは描かず、警告する。枠自身の塗りと線は図形として描き、その上にテキストを描く。
 - **未対応**: .indd、表、脚注、アンカー付きオブジェクト、回り込み、文字の横幅・縦幅の拡大縮小、ルビ、縦中横、文字組みアキ量設定、段落の右インデント、角のオプション（角丸以外）、矢印、描画モード、効果（影・ぼかし）、配置した EPS・PDF、`MasterPageTransform`、条件テキスト（すべて描く）。
 
-テスト用の文書は `test/idml/gen.py`（標準ライブラリだけ）が書く（`npm run test:idml:gen`）。basic.idml は 1 ページのスプレッドと見開きのスプレッド、マスター（罫線とページ番号）、各種のスウォッチと線種、角丸・グループ・非表示のレイヤーとアイテム、埋め込みとリンク（隣の link.png）の画像、スタイルの連鎖・揃え・タブ・箇条書き・番号・文字属性を持つストーリーが 2 段組みの枠から次のページの枠へ流れるもの。vertical.idml は右綴じの縦組みのストーリーが 2 ページにわたるもの。Go のテストはページとレイヤー、ストーリーがページをまたいで流れること、ページ番号、リンク画像を `Dir` と `Files` から読むこと、縦組み、ページの選択と判別を確かめ、変換結果は `testdata/idml/` に置いて golden テストで描画を比較する（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。InDesign 自身が書き出した IDML は SimpleIDML（BSD 3 条項）の回帰テストのもの 7 件を `converter/idml/testdata/simpleidml/` に置き（README に出典）、CS5.5・CC 2014・InDesign 2020 の書き出しで、レイヤーの並び（設計マップは前面から）、リンク画像の `Contents` が XMP であること、`BasedOn` の種類なしの表記、連結フレーム、回転したフレーム、インセットがフレームより大きいフレーム（何も表示しない）を確かめた。配置画像のファイルは入れていない（リンク切れの警告の確認に使う）。テキストの溢れ（オーバーセット）は代替フォントの幅に依るので、テストでは数えない。
+テスト用の文書は `test/idml/gen.py`（標準ライブラリだけ）が書く（`npm run test:idml:gen`）。basic.idml は 1 ページのスプレッドと見開きのスプレッド、マスター（罫線とページ番号）、各種のスウォッチと線種、角丸・グループ・非表示のレイヤーとアイテム、埋め込みとリンク（隣の link.png）の画像、スタイルの連鎖・揃え・タブ・箇条書き・番号・文字属性を持つストーリーが 2 段組みの枠から次のページの枠へ流れるもの。vertical.idml は右綴じの縦組みのストーリーが 2 ページにわたるもの。Go のテストはページとレイヤー、ストーリーがページをまたいで流れること、ページ番号、リンク画像を `Dir` と `Files` から読むこと、縦組み、ページの選択と判別を確かめ、変換結果は `testdata/idml/` に置く（フォントは PowerPoint と同じ M PLUS 1p のサブセット）。InDesign 自身が書き出した IDML は SimpleIDML（BSD 3 条項）の回帰テストのもの 7 件を `converter/idml/testdata/simpleidml/` に置き（README に出典）、CS5.5・CC 2014・InDesign 2020 の書き出しで、レイヤーの並び（設計マップは前面から）、リンク画像の `Contents` が XMP であること、`BasedOn` の種類なしの表記、連結フレーム、回転したフレーム、インセットがフレームより大きいフレーム（何も表示しない）を確かめた。配置画像のファイルは入れていない（リンク切れの警告の確認に使う）。テキストの溢れ（オーバーセット）は代替フォントの幅に依るので、テストでは数えない。
 
 ## 3.33 適合テスト（conformance、他の読み手のために）
 
@@ -803,7 +803,7 @@ BDF v1 の読み手が Go 以外にも書かれる（C の libbdf）ので、「
 
 **信頼できないテンプレートへの備え**: 穴埋め後のセルは合わせて 4,194,304 個まで、行はシートの行数まで（超えたらエラー）。行の区間の入れ子は 32 段まで。1 セルの文字は Excel と同じ 32,767 文字で切る。複製で増える結合セル・条件付き書式の範囲・リンクはそれぞれ 1,048,576 個まで。数式の順序づけで見るセルは 16,777,216 個まで（超えたらセルの順に計算する）。データが名前で指す画像はテンプレートに渡したファイルの中だけから読み（ネットワークは読まない）、32 MiB まで。
 
-**確かめ方**: タグの字句解析と、4 つのセルとデータを与える穴埋めには fuzz ターゲットがある（`FuzzParse`、形式ごとの `FuzzFill`）。Word と PowerPoint は、テストの中で小さな文書を組み立てて穴埋め後の文字を突き合わせ、3 つの形態のテンプレート（`test/docx/gen.py`・`test/pptx/gen.py` の `forms`）を Excel と同じデータで穴埋めして golden で描画を比べる。区間・値の型・追随・数式は、数行のシートを XML で書いて穴埋め後のセルを突き合わせる表駆動のテストで、3 つの形態（1 ページの帳票、行が増える表、10 行の伝票）は openpyxl で作ったブック（`test/xlsx/gen.py` の `forms`）を穴埋めして golden で描画を比べる。
+**確かめ方**: タグの字句解析と、4 つのセルとデータを与える穴埋めには fuzz ターゲットがある（`FuzzParse`、形式ごとの `FuzzFill`）。Word と PowerPoint は、テストの中で小さな文書を組み立てて穴埋め後の文字を突き合わせ、3 つの形態のテンプレート（`test/docx/gen.py`・`test/pptx/gen.py` の `forms`）を Excel と同じデータで穴埋めし、ページ数と検索テキストを確かめる。区間・値の型・追随・数式は、数行のシートを XML で書いて穴埋め後のセルを突き合わせる表駆動のテストで、3 つの形態（1 ページの帳票、行が増える表、10 行の伝票）は openpyxl で作ったブック（`test/xlsx/gen.py` の `forms`）を穴埋めし、ページ数と検索テキストを確かめる。
 
 **Word と PowerPoint での穴埋め（`converter/internal/wordproc/template.go`、`converter/pptx/template.go`）**: この 2 つの変換器が「レイアウトする直前に持っている形」は、部品の XML を読んだ要素の木（`ooxml.Node`）そのものなので、穴埋めは木を複製しながらタグを置き換え、できた木を既存の読み手に渡す。ファイルは書かない。
 
@@ -823,7 +823,7 @@ BDF v1 の読み手が Go 以外にも書かれる（C の libbdf）ので、「
 - **置き方**: Excel はタグのセル（結合セルならその範囲）に、Word と PowerPoint は代替テキストにタグを書いた画像の枠に描く。DrawingML のレンダラには、画像の代わりに描く関数を渡す（`InjectDrawing`）。QR コードは正方形のまま枠に収め、バーコードは枠いっぱいに伸ばす（バーの高さは自由で、幅は読み取り機に合わせて帳票の作者が決める）。
 - **値の検査**: 桁数、チェックデジット（付いていなければ足し、付いていれば確かめる）、記号が持たない文字を見る。入らない値は記号を描かずに警告にし、厳密なときはエラーにする。値の意味（その JAN が実在の商品か）は見ない。
 - **しないこと**: バーコードの下の目視文字、カスタマバーコード（郵便）、DataMatrix、PDF417、QR コードの漢字モードと連結。ITF-14 のベアラバーも描かない。pdfme のテンプレートでは、埋め手（`converter/pdfme`）がバーの下の文字と ITF-14 の枠を足す。
-- **確かめ方**: 自前の読み手（テストの中だけにある QR コードの復号）で全バージョン・全レベルを往復させる。外の実装とは、ZXing（zxing-cpp）で全記号を読み取り、python-qrcode とはマスクを固定してモジュール単位で一致することを確かめた（`test/barcode/read.py`、`BARCODE_DUMP`）。穴埋めした帳票は、ラスタライザの画像と、PDF を Ghostscript と Quartz で描いた画像から読み取った。`FuzzEncode` がある。
+- **確かめ方**: 自前の読み手（テストの中だけにある QR コードの復号）で全バージョン・全レベルを往復させる。静穏域・サイズ・入力上限と、不正な入力やオプションの拒否も確かめる。`FuzzEncode` がある。
 
 **データの JSON Schema（`form.Schema`）**: テンプレートが求めるデータの形を JSON Schema（2020-12）で書き出す。入力フォームを自動で作る仕組み（デモサイトのフォームのページ、利用者のアプリの JSON Schema フォーム）と、データの検証のためである。タグは型を持たないので、スキーマはタグから推し量る。中に名前か `{{.}}` がある区間と、繰り返し方を書いた区間は配列、それ以外の区間は真偽値、数値の表示形式が付いた値は数値、日付の表示形式なら `format: date` の文字列、ほかの値は文字列か数値にする。そのために、`{{.}}` もフィールドの一覧に載せるようにした（名前 `"."`。区間の項目が値であることを示す）。プロパティはテンプレートの順に並べ、タグの情報は `x-bdf` に入れる。
 
@@ -967,7 +967,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 ## 8. ロードマップ
 
 1. **仕様固め**: `spec.md` の opset 1 を確定。Go のエンコーダ + TS のデコーダを最小実装し、手書きの Object で Canvas に描けるところまで。
-2. **フィクスチャと golden テスト**: Go でフィクスチャ生成 → Playwright でスクリーンショット比較。
+2. **フィクスチャとブラウザの機能テスト**: Go でフィクスチャを生成し、ブラウザで描画・検索・選択・文書構造を検証する。
 3. **PDF → BDF**: 最初の実用変換（実装済み、§3.1）。
 4. **ビューア**: Worker + OffscreenCanvas、ページ/連続/シートの 3 モード、テキストレイヤー、検索。
 5. **XLSX → BDF**: 直接変換、Tile 化、固定ペイン（実装済み、§3.6）。CSV・TSV も同じ描画で（実装済み、§3.10）。
@@ -1069,8 +1069,8 @@ bdf/
 │   ├── light-server/、preview-server/、search/  構成のサンプル（変換をブラウザで・サーバーで、検索エンジンと）
 │   └── secure-reader/  ログインした読者に PDF を区間ごとに封印して読ませるサンプル（§3.30）
 ├── site/               デモサイト（トップページ、ビューア、サムネイル・検索テキストのページ、ドキュメント）。GitHub Pages で公開
-├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、区間の文書（segments/、テスト専用の鍵で封印）、PDF・Illustrator・Photoshop・PowerPoint・Excel・Visio・Word・DXF・JWW・SXF・CGM・Gerber・TIFF・Markdown・HTML・画像・EPUB・楽譜の変換結果と golden PNG
-└── test/              Playwright による golden テスト
+├── testdata/          Go が生成した demo.bdf / demo-split / demo-encrypted.bdf、区間の文書（segments/、テスト専用の鍵で封印）、PDF・Illustrator・Photoshop・PowerPoint・Excel・Visio・Word・DXF・JWW・SXF・CGM・Gerber・TIFF・Markdown・HTML・画像・EPUB・楽譜の変換結果
+└── test/              ブラウザの機能テストとフィクスチャ生成スクリプト
 ```
 
 将来の変換器（DOCX など）も `converter/` のサブパッケージとして追加し、`bdf generate` から形式を判別して呼ぶ。

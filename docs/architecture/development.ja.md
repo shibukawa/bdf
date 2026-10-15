@@ -2,6 +2,8 @@
 
 Go 1.27 以上、そして TypeScript のパッケージとデモサイトのために Node.js が要ります。
 
+テストは現在の動作を対象にし、正常入力、不正入力、境界条件、資源制限、描画結果を確かめます。旧実装をテスト内にコピーして比較するより、期待値を直接検証します。古いファイル形式の fixture も、現在対応している形式なら残します。一度きりの調査、手動確認用の出力、過去のテスト実行結果はテストスイートに含めません。
+
 ## Go
 
 ```sh
@@ -19,11 +21,10 @@ GOEXPERIMENT=simd go build ./...       # Go 1.27、amd64/arm64: SIMD 版コー�
 npm ci
 npm run build           # tsc -b packages/core packages/render
 npm test                # packages/*/test/*.test.mjs を node --test で（先にビルドする）
-npm run test:golden     # Chromium でフィクスチャを描画し、testdata/golden/*.png と比較
-npm run test:golden:update  # golden の PNG を今の描画結果で置き換える
+npm run test:browser    # ブラウザで描画・選択・検索・アクセシビリティを検証
 ```
 
-golden テストには固定バージョンの Chromium（`playwright-core` の headless shell）が要ります。フル版の Chromium はテキストのラスタライズがわずかに違うため、golden は作られたのと同じビルドでしか一致しません。`npx playwright-core install chromium` で入れるか、同等の headless shell を `CHROMIUM_PATH` で指定してください。
+ブラウザの機能テストには Chromium が要ります。`npx playwright-core install chromium` で入れるか、インストール済みの実行ファイルを `CHROMIUM_PATH` で指定してください。現在の動作を検証し、保存済みスクリーンショットとの比較は行いません。
 
 ## フィクスチャの再生成
 
@@ -62,6 +63,4 @@ go run ./cmd/bdf render -page 2 out.bdf page2.png  # 1 ページを純 Go で描
 
 CI の「testdata is up to date」ステップは、`ubuntu-latest`（amd64）上の `bdf generate` の出力をコミット済みのものとバイト単位で比較します。ただ、Go の浮動小数点の融合積和はアーキテクチャによって異なるため、Apple Silicon では同じコマンドでも Object の境界ボックスなどの下位ビットが数箇所変わることがあります。`GOARCH=amd64 go build` でクロスビルドし、その（Rosetta 上の）バイナリを使えば、手元でも CI と同じバイト列を再現でき、差分が本当の回帰かどうかを先に確かめられます。
 
-新しい golden の PNG には、これとは別に、CI と同じ headless shell の Chromium ビルドが要ります。それに合うコンテナ（`mcr.microsoft.com/playwright:v1.56.1-noble`、または Chromium を入れた `node:24-bookworm`）の中で golden テストを動かせば再現できます。
-
-各パッケージ・コマンドが公開するものは [API 一覧](../api.md)を、`bdf` のサブコマンドは [BDF コマンド](cli.ja.md)を参照してください。fixture、描画、ブラウザ変換の確認結果は[変換品質レポート](../quality.md)にまとめています。
+各パッケージ・コマンドが公開するものは [API 一覧](../api.md)を、`bdf` のサブコマンドは [BDF コマンド](cli.ja.md)を参照してください。

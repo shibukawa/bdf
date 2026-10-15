@@ -7,15 +7,15 @@ import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, ex
 const root = new URL("../../../", import.meta.url);
 const fixture = new Uint8Array(await readFile(new URL("testdata/demo.bdf", root)));
 
-test("header parses", () => {
+test("header parses valid fields and rejects invalid magic", () => {
   assert.equal(new TextDecoder().decode(fixture.subarray(0, 4)), "bdf\0");
   const h = parseHeader(fixture);
   assert.equal(h.version, 1);
   assert.equal(h.manifestOff, 32);
   assert.ok(h.manifestLen > 0);
-  const old = fixture.slice(0, 32);
-  old.set([0x42, 0x44, 0x46, 0x31]); // "BDF1"
-  assert.throws(() => parseHeader(old), /bad magic/);
+  const invalid = fixture.slice(0, 32);
+  invalid.fill(0, 0, 4);
+  assert.throws(() => parseHeader(invalid), /bad magic/);
 });
 
 test("Dublin Core metadata", async () => {

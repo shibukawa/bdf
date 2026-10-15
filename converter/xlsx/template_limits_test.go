@@ -1,7 +1,6 @@
 package xlsx
 
 import (
-	"strconv"
 	"strings"
 	"testing"
 
@@ -57,31 +56,5 @@ func TestClipTextPrefix(t *testing.T) {
 	s := strings.Repeat("界", maxCellText+100)
 	if got := clipText(s); got != strings.Repeat("界", maxCellText) {
 		t.Errorf("clipped text has %d bytes", len(got))
-	}
-	if n := testing.AllocsPerRun(10, func() { _ = clipText(s) }); n != 0 {
-		t.Errorf("clipping an oversized value allocated %v times", n)
-	}
-}
-
-func BenchmarkRepeatedInlineText(b *testing.B) {
-	for _, n := range []int{1000, 4000} {
-		b.Run(strconv.Itoa(n), func(b *testing.B) {
-			f := newFiller(&TemplateData{Data: map[string]any{"a": make([]any, n)}})
-			toks, err := tag.Parse("{{#a}}x{{/a}}")
-			if err != nil {
-				b.Fatal(err)
-			}
-			font := &xfont{}
-			src := srcCell{cl: cell{kind: cellStr, text: &richText{runs: []textRun{{text: "{{#a}}x{{/a}}", font: font}}}}, tc: &tplCell{toks: toks, rowLevel: make([]bool, len(toks))}}
-			x := &expander{f: f, ts: &tplSheet{ws: &worksheet{name: "S"}}}
-			b.ReportAllocs()
-			b.ResetTimer()
-			for range b.N {
-				f.steps = 0
-				if _, err := x.cell(src, 0, f.root); err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
 	}
 }

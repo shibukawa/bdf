@@ -1,6 +1,5 @@
 // Package htmlro is a read-only pull tokenizer for HTML and, on top of it,
-// a parser that builds the tree golang.org/x/net/html builds, with a third
-// of the allocations.
+// a parser that builds the tree golang.org/x/net/html builds.
 //
 // The tokenizer is that of golang.org/x/net/html, carried over state for
 // state so that the two tokenize alike, and what it returns is read in

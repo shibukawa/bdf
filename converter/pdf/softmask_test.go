@@ -1,7 +1,6 @@
 package pdf
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -91,13 +90,5 @@ func TestSoftMask(t *testing.T) {
 	// Text inside a mask is not content.
 	if txt := pageText(t, r); !strings.Contains(txt, "masked") || strings.Contains(txt, "masktext") {
 		t.Errorf("text = %q", txt)
-	}
-}
-
-func TestWriteSoftMaskPDF(t *testing.T) {
-	if p := os.Getenv("BDF_WRITE_SOFTMASK"); p != "" {
-		if err := os.WriteFile(p, softMaskPDF(), 0o644); err != nil {
-			t.Fatal(err)
-		}
 	}
 }

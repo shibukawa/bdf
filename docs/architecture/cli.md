@@ -126,7 +126,7 @@ BDF_PASSWORD=… bdf decrypt in.bdf out.bdf   # remove the encryption (needs the
 ## demo
 
 ```sh
-bdf demo out.bdf      # the fixture document used by the golden tests and the demo viewer's default
+bdf demo out.bdf      # the fixture document used by browser integration tests and the demo viewer's default
 bdf demo out/         # its split form
 ```
 
