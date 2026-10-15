@@ -59,15 +59,20 @@ func (r *Renderer) Object(hash bdf.Hash, scale float64) (img *image.RGBA, err er
 	if !(fw*fh <= MaxPixels) || !(math.Abs(x0) < math.MaxInt32) || !(math.Abs(y0) < math.MaxInt32) {
 		return nil, ErrTooLarge
 	}
-	key, cacheable := r.imageKey(4, hash, b, int(fw), int(fh), scale)
+	key, cacheable := r.imageKey(4, hash, b, int(fw), int(fh), scale, 0)
 	if cached := r.storedImage(key, cacheable); cached != nil {
-		return cached, nil
+		return cached.(*image.RGBA), nil
 	}
 	m := matrix{scale, 0, 0, scale, -x0, -y0}
-	d := r.canvasAt(m, int(fw), int(fh))
-	clip := &mask{r: d.ctx.target.bounds()}
+	var filled *solid
 	if r.opts.Background != nil {
-		d.ctx.target.fill(clip, r.background(), 1, bdf.BlendSourceOver, clip)
+		bg := r.background()
+		filled = &bg
+	}
+	d := r.canvasAt(m, int(fw), int(fh), filled)
+	clip := &mask{r: d.ctx.target.bounds()}
+	if filled != nil && filled[3] != 1 {
+		d.ctx.target.fill(clip, *filled, 1, bdf.BlendSourceOver, clip)
 	}
 	d.drawTop(hash, m, clip)
 	img = d.finish()

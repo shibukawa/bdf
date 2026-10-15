@@ -88,9 +88,10 @@ bdf text out.bdf text.json                   # メタデータとページごと
 bdf render -page 2 -scale 2 out.bdf page2.png  # シートは -width/-height も（A1 から）
 bdf render -antialias=off -scale 8.333333 out.bdf print.png  # 600 dpi。境界の AA を省いて速度を優先
 bdf render -pages=all -workers=4 -antialias=off out.bdf 'page-{page}.png'  # 独立ページを並列に描き、指定順に保存
+bdf render -pages=all -antialias=off -mono=bilevel -scale 8.333333 out.bdf 'page-{page}.png'  # 600 dpi の 2 値（1 画素 1 bit）
 ```
 
-`render -antialias=default|on|off` で図形・文字・幾何クリップの境界のアンチエイリアスを選べます。`default` と `on` は倍率によらず従来の描画を維持し、`off` は境界の被覆率計算を省きます。dpi による自動切り替えはありません。半透明・ブレンド・画像の補間・ソフトマスク・ぼかしと、1 画素より細い線の薄い alpha は維持します。`thumbnail` と変換時のプレビューは従来のアンチエイリアスを使います。Go の指定と出力上の注意は[描画する](../rendering.ja.md#ラスタライズの品質と速度)を参照してください。
+`render -antialias=default|on|off` で図形・文字・幾何クリップの境界のアンチエイリアスを選べます。`default` と `on` は倍率によらず従来の描画を維持し、`off` は境界の被覆率計算を省きます。dpi による自動切り替えはありません。半透明・ブレンド・画像の補間・ソフトマスク・ぼかしと、1 画素より細い線の薄い alpha は維持します。`thumbnail` と変換時のプレビューは従来のアンチエイリアスを使います。Go の指定と出力上の注意は[描画する](../rendering.ja.md#ラスタライズの品質と速度)を参照してください。`render -mono=gray|bilevel` はカラーの代わりにモノクロの画像を書きます。1 画素 8 bit の輝度か、黒と白の 2 値（PNG では 1 画素 1 bit。グレー値 128 未満が黒）で、1 ページでも `-pages` のバッチでも使えます（[モノクロの出力](../rendering.ja.md#モノクロの出力)）。
 
 `.bdf` でない入力（PDF、`.docx` など）を渡すと、`thumbnail` はサムネイルに必要な 1 ページ目だけを変換します（`-view` を付けたときは全体）。500 ページの PDF でも数秒ではなく数ミリ秒で済みます。パスワード付きの入力には、暗号化した文書と同じく `$BDF_PASSWORD` と `-allow-plaintext` が要ります。
 

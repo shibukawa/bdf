@@ -115,29 +115,49 @@ func (r *Renderer) lut(p *bdf.Paint) *gradientLUT {
 
 func (g *gradientShader) shade(x, y, n int, dst []float32) {
 	c := g.p.Coords
-	for i := 0; i < n; i++ {
-		ux, uy := g.inv.apply(float64(x+i)+0.5, float64(y)+0.5)
-		var col [4]float32
-		switch g.p.Kind {
-		case bdf.PaintLinear:
-			x0, y0, x1, y1 := float64(c[0]), float64(c[1]), float64(c[2]), float64(c[3])
-			dx, dy := x1-x0, y1-y0
-			if l := dx*dx + dy*dy; l > 0 {
-				col = g.lut.at(((ux-x0)*dx + (uy-y0)*dy) / l)
-			}
-		case bdf.PaintRadial:
+	dst = dst[:4*n]
+	fy := float64(y) + 0.5
+	switch g.p.Kind {
+	case bdf.PaintLinear:
+		x0, y0, x1, y1 := float64(c[0]), float64(c[1]), float64(c[2]), float64(c[3])
+		dx, dy := x1-x0, y1-y0
+		l := dx*dx + dy*dy
+		if !(l > 0) {
+			clear(dst)
+			return
+		}
+		// the place along the gradient is affine along the row: it is
+		// worked out at the first pixel and stepped to the rest
+		ux, uy := g.inv.apply(float64(x)+0.5, fy)
+		t := ((ux-x0)*dx + (uy-y0)*dy) / l
+		dt := (g.inv[0]*dx + g.inv[1]*dy) / l
+		for i := 0; i < n; i++ {
+			col := g.lut.at(t)
+			dst[4*i], dst[4*i+1], dst[4*i+2], dst[4*i+3] = col[0], col[1], col[2], col[3]
+			t += dt
+		}
+	case bdf.PaintRadial:
+		for i := 0; i < n; i++ {
+			ux, uy := g.inv.apply(float64(x+i)+0.5, fy)
+			var col [4]float32
 			if t, ok := radialT(ux, uy, c); ok {
 				col = g.lut.at(t)
 			}
-		case bdf.PaintConic:
+			dst[4*i], dst[4*i+1], dst[4*i+2], dst[4*i+3] = col[0], col[1], col[2], col[3]
+		}
+	case bdf.PaintConic:
+		for i := 0; i < n; i++ {
+			ux, uy := g.inv.apply(float64(x+i)+0.5, fy)
 			a := math.Atan2(uy-float64(c[2]), ux-float64(c[1])) - float64(c[0])
 			t := math.Mod(a/(2*math.Pi), 1)
 			if t < 0 {
 				t++
 			}
-			col = g.lut.at(t)
+			col := g.lut.at(t)
+			dst[4*i], dst[4*i+1], dst[4*i+2], dst[4*i+3] = col[0], col[1], col[2], col[3]
 		}
-		copy(dst[4*i:4*i+4], col[:])
+	default:
+		clear(dst)
 	}
 }
 

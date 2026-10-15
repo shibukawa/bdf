@@ -68,6 +68,24 @@ img, err := ren.PageDPI(doc.Views[0], 0, 600)
 
 The CLI equivalent is `bdf render -antialias=off -scale 8.333333 report.bdf print.png` (600 dpi). `-antialias=default|on|off` is available on `render`; `thumbnail` and generated previews retain their existing smoothing. In Go, a thumbnail can opt in with `thumbnail.Options.Raster.Antialias`.
 
+The passes over a whole canvas (its background, fills of large areas, the products of large clips, the scanning of large paths and the conversion of the drawn page to an image) are split among up to eight goroutines, as many as the machine has; `Pages` divides them among its workers. The pixels are the same as when drawn alone.
+
+### Monochrome output
+
+For printing in black, `PageMono`, `RegionMono` and `PagesMono` take a `Mono` in place of the RGBA image, which is a quarter the size or less and faster to make:
+
+| `Mono` | Image | Pixels |
+|---|---|---|
+| `imagebdf.Gray` | `*image.Gray` | the luminance (Rec. 601 weights, as `image/color` converts to gray) of each pixel over white, rounded |
+| `imagebdf.Bilevel` | `*image.Paletted` of black and white (black first), which `image/png` writes at 1 bit a pixel | black where the gray value is below 128 |
+
+```go
+ren := imagebdf.New(doc, &imagebdf.Options{Antialias: imagebdf.AntialiasOff})
+img, err := ren.PageMono(doc.Views[0], 0, 600.0/72, imagebdf.Bilevel) // an *image.Paletted
+```
+
+The page is drawn as for `Page` and converted at the end, so the antialiasing mode decides the edges: with `AntialiasOff` the bilevel image is exactly the drawing, with antialiasing the coverage of the edges is cut at the half, not dithered. The images are kept in the completed-image cache like the RGBA ones, apart from them. The CLI equivalent is `bdf render -mono=gray|bilevel`, for a page or a batch (`-pages`), as PNG (8 bits or 1 bit a pixel), JPEG or WebP (in colour).
+
 Source transparency, blending, image interpolation, soft masks and blur remain enabled. Effects still depend on the geometry rendered with the selected mode, so their pixels can change too. Lines narrower than one pixel still use the existing one-pixel width and reduced alpha, so disabling edge antialiasing does not make every output pixel opaque. Low-resolution output can show jagged edges or lose small details; choose the mode for the intended output instead of relying on a fixed dpi threshold. An unknown Go `AntialiasMode` value keeps antialiasing enabled and adds a renderer warning; the CLI rejects unknown values.
 
 ### Cached redraws and parallel pages
@@ -75,6 +93,8 @@ Source transparency, blending, image interpolation, soft masks and blur remain e
 Reuse a `Renderer` to reuse completed `Page`, `PageDPI`, `PageSize`, `Region` and `Renderer.Object` images and whole text-run coverage masks. Returned images are independent copies, so editing them cannot corrupt the cache. Retaining an image adds a copy on its first render; set `ImageCacheBytes: -1` for one-shot output.
 
 `Options.ImageCacheBytes` defaults to 64MiB and `TextCacheBytes` to 32MiB. Zero selects the default, a negative value disables the cache, and a positive value sets a byte budget. LRU eviction accounts backing arrays, keys and conservative entry overhead. Decoded fonts, working canvases and Go allocator overhead are additional. Text masks cache coverage only; paint, alpha, shadow and compositing state are applied on each draw.
+
+`Options.CanvasCacheBytes` (default 64MiB; a negative value keeps none) bounds the working canvases kept from one drawing for the next, 16 bytes a pixel of the image drawn and of each open group, and as much again the coverage of large masks kept from one fill for the next. A page at 600 dpi takes a canvas of hundreds of megabytes, which costs the system as much again to give back and fault in for each page: pages drawn one after the other with `Page` reuse it within this budget (set it to the size of a page, say `1 << 30`), and `Pages` keeps one canvas a worker for the length of a batch whatever the budget, trimming to the budget after.
 
 Image keys include layout, region, pixel size, background and AA mode. Call `ren.Invalidate()` after changing part bytes or `FontFS`; it releases warnings, decoded resources, both caches and page workers. `FontDirs` and system fonts keep the existing process-wide scan/load cache; use `FontFS` for replaceable fonts. The package-level `imagebdf.Object` is a one-shot helper. To reuse object images, add the object to a document and call `ren.Object(hash, scale)`.
 
@@ -87,7 +107,7 @@ err := ren.PagesDPI(ctx, doc.Views[0], nil, 300, 0,
     })
 ```
 
-Zero workers selects up to four; 1..16 sets a maximum. Concurrency also respects an aggregate 32M-pixel base-canvas budget, drawing a larger individual page alone. Workers persist between calls, share the text-mask budget and divide the retained working-canvas allowance. Layers and output images retained by callbacks are additional. Cancellation and callback errors take effect between drawings/batches; already-started draws finish before return. Keep the renderer, document and font resources unchanged until return, including inside callbacks. `FontFS` must support concurrent reads for multiple workers.
+Zero workers selects up to four; 1..16 sets a maximum. Concurrency also respects an aggregate 32M-pixel base-canvas budget, drawing a larger individual page alone (an A4 page at 600 dpi is one: it is drawn alone, with its passes split among the goroutines instead). Workers persist between calls, share the text-mask budget and divide the retained working-canvas allowance. Layers and output images retained by callbacks are additional. Cancellation and callback errors take effect between drawings/batches; already-started draws finish before return. Keep the renderer, document and font resources unchanged until return, including inside callbacks. `FontFS` must support concurrent reads for multiple workers.
 
 The CLI supports `bdf render -pages=all -workers=4 -antialias=off report.bdf 'page-{page}.png'` and selections such as `-pages=1-3,5`. `{page}` expands to a one-based page number. `-page` and `-pages` are mutually exclusive; sheets are excluded. CLI output is consumed once, so it skips completed-image retention while reusing text masks.
 

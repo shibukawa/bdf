@@ -258,6 +258,7 @@ func renderCmd(args []string) {
 	workers := fs.Int("workers", 0, "batch render workers: 0 chooses automatically, 1..16 sets a maximum")
 	scale := fs.Float64("scale", 1, "pixels per unit (a pt page at 1 is drawn at 72 dpi)")
 	antialias := fs.String("antialias", "default", "shape, text and clip edge smoothing: default, on or off (faster; independent of scale)")
+	mono := fs.String("mono", "", "a monochrome image instead of colour: gray (8 bits a pixel) or bilevel (black and white; 1 bit a pixel in a PNG)")
 	width := fs.Float64("width", 1000, "sheets: width of the region from A1 to draw, in units")
 	height := fs.Float64("height", 1000, "sheets: height of the region from A1 to draw, in units")
 	allow := fs.Bool("allow-plaintext", false, "draw an encrypted document (read with $"+passwordEnv+"); the image is not encrypted")
@@ -321,6 +322,16 @@ func renderCmd(args []string) {
 	default:
 		badUsage("render", "-antialias must be default, on or off")
 	}
+	var m imagebdf.Mono
+	switch *mono {
+	case "":
+	case "gray":
+		m = imagebdf.Gray
+	case "bilevel":
+		m = imagebdf.Bilevel
+	default:
+		badUsage("render", "-mono must be gray or bilevel")
+	}
 	doc := loadDocument(fs.Arg(0), *allow)
 	var v *bdf.View
 	for _, vv := range doc.Views {
@@ -347,9 +358,9 @@ func renderCmd(args []string) {
 			numbers[i]--
 		}
 		var encoded bytes.Buffer
-		check(r.Pages(context.Background(), v, numbers, *scale, *workers, func(page int, img *image.RGBA) error {
+		check(r.PagesMono(context.Background(), v, numbers, *scale, *workers, m, func(page int, img image.Image) error {
 			encoded.Reset()
-			if err := thumbnail.Encode(&encoded, img, format); err != nil {
+			if err := thumbnail.EncodeImage(&encoded, img, format); err != nil {
 				return err
 			}
 			return os.WriteFile(strings.ReplaceAll(fs.Arg(1), "{page}", strconv.Itoa(page+1)), encoded.Bytes(), 0o644)
@@ -365,14 +376,14 @@ func renderCmd(args []string) {
 	var b bytes.Buffer
 	if v.Kind == bdf.ViewSheet {
 		w, h := int(*width**scale+0.5), int(*height**scale+0.5)
-		img, e := r.Region(v, 0, bdf.Rect{W: float32(*width), H: float32(*height)}, max(w, 1), max(h, 1))
+		img, e := r.RegionMono(v, 0, bdf.Rect{W: float32(*width), H: float32(*height)}, max(w, 1), max(h, 1), m)
 		if err = e; err == nil {
-			err = thumbnail.Encode(&b, img, format)
+			err = thumbnail.EncodeImage(&b, img, format)
 		}
 	} else {
-		img, e := r.Page(v, *page-1, *scale)
+		img, e := r.PageMono(v, *page-1, *scale, m)
 		if err = e; err == nil {
-			err = thumbnail.Encode(&b, img, format)
+			err = thumbnail.EncodeImage(&b, img, format)
 		}
 	}
 	check(err)

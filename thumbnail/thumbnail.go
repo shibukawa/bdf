@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/draw"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -285,6 +286,14 @@ func FormatOf(name string) string {
 // Encode writes a thumbnail as PNG, JPEG (quality 85) or WebP (lossy,
 // quality 80).
 func Encode(w io.Writer, img *image.RGBA, format string) error {
+	return EncodeImage(w, img, format)
+}
+
+// EncodeImage is Encode for an image of any kind: the monochrome images
+// of imagebdf (an *image.Gray, an *image.Paletted of black and white)
+// are written as they are by PNG (8 bits or 1 bit a pixel) and JPEG, and
+// in colour by WebP.
+func EncodeImage(w io.Writer, img image.Image, format string) error {
 	switch format {
 	case PNG:
 		return (&png.Encoder{CompressionLevel: png.BestCompression}).Encode(w, img)
@@ -301,7 +310,13 @@ func Encode(w io.Writer, img *image.RGBA, format string) error {
 	return errors.New("thumbnail: format must be png, jpeg or webp")
 }
 
-func toNRGBA(img *image.RGBA) *image.NRGBA {
+func toNRGBA(src image.Image) *image.NRGBA {
+	img, ok := src.(*image.RGBA)
+	if !ok {
+		out := image.NewNRGBA(src.Bounds())
+		draw.Draw(out, out.Rect, src, src.Bounds().Min, draw.Src)
+		return out
+	}
 	b := img.Bounds()
 	out := image.NewNRGBA(b)
 	for i := 0; i+3 < len(img.Pix); i += 4 {

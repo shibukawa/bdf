@@ -27,6 +27,22 @@ import (
 // Cancellation and callback errors stop between drawings/batches, not during
 // a rasterization already in progress. All workers finish before return.
 func (r *Renderer) Pages(ctx stdcontext.Context, v *bdf.View, pages []int, scale float64, workers int, yield func(page int, img *image.RGBA) error) error {
+	if yield == nil {
+		return errors.New("imagebdf: Pages requires a context and callback")
+	}
+	return r.pages(ctx, v, pages, scale, workers, 0, func(page int, img image.Image) error { return yield(page, img.(*image.RGBA)) })
+}
+
+// PagesMono is Pages with monochrome images (see PageMono): an
+// *image.Gray each for Gray, an *image.Paletted for Bilevel.
+func (r *Renderer) PagesMono(ctx stdcontext.Context, v *bdf.View, pages []int, scale float64, workers int, mono Mono, yield func(page int, img image.Image) error) error {
+	if err := mono.check(); err != nil {
+		return err
+	}
+	return r.pages(ctx, v, pages, scale, workers, mono, yield)
+}
+
+func (r *Renderer) pages(ctx stdcontext.Context, v *bdf.View, pages []int, scale float64, workers int, mono Mono, yield func(page int, img image.Image) error) error {
 	if ctx == nil || yield == nil {
 		return errors.New("imagebdf: Pages requires a context and callback")
 	}
@@ -80,13 +96,25 @@ func (r *Renderer) Pages(ctx stdcontext.Context, v *bdf.View, pages []int, scale
 		for i := range r.pageWorkers {
 			child := New(r.doc, &opts)
 			child.textMasks = r.textMasks
-			child.freeLimit = maxFreeSurfaces / workers
+			child.threads = max(1, r.threads/workers)
 			r.pageWorkers[i] = child
 		}
 	}
 	pool := r.pageWorkers
+	// each worker keeps the canvas of a page for the next one it draws
+	// while the batch lasts, and its share of the budget after
+	share := cacheLimit(r.opts.CanvasCacheBytes, DefaultCanvasCacheBytes) / workers
+	for _, child := range pool {
+		child.freeLimit = max(share, 16*maxPixels)
+	}
+	defer func() {
+		for _, child := range pool {
+			child.freeLimit = max(share, 1)
+			child.trimFree(share)
+		}
+	}()
 	type result struct {
-		img       *image.RGBA
+		img       image.Image
 		err       error
 		key       imageKey
 		cacheable bool
@@ -103,7 +131,7 @@ func (r *Renderer) Pages(ctx stdcontext.Context, v *bdf.View, pages []int, scale
 			page := pages[start+i]
 			p := v.Pages[page]
 			w, h := int(math.Max(math.Ceil(float64(p.W)*scale-1e-6), 1)), int(math.Max(math.Ceil(float64(p.H)*scale-1e-6), 1))
-			key, ok := r.imageKey(1, p, bdf.Rect{W: p.W, H: p.H}, w, h, 0)
+			key, ok := r.imageKey(1, p, bdf.Rect{W: p.W, H: p.H}, w, h, 0, mono)
 			results[i].key, results[i].cacheable = key, ok
 			if img := r.storedImage(key, ok); img != nil {
 				results[i].img = img
@@ -117,7 +145,7 @@ func (r *Renderer) Pages(ctx stdcontext.Context, v *bdf.View, pages []int, scale
 					results[i].err = err
 					return
 				}
-				results[i].img, results[i].err = pool[i].Page(v, page, scale)
+				results[i].img, results[i].err = pool[i].pageMono(v, page, scale, mono)
 			}(i, page)
 		}
 		wg.Wait()

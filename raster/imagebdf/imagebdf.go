@@ -61,6 +61,24 @@ const (
 	AntialiasOff
 )
 
+// Mono selects a monochrome image in place of the RGBA one (PageMono,
+// RegionMono, PagesMono): for printing in black, where the colours of
+// the page are not wanted and the image is a quarter the size or less.
+type Mono uint8
+
+const (
+	// Gray draws 8 bits of luminance a pixel, as an *image.Gray: the
+	// luminance (with the weights of Rec. 601, as image/color converts to
+	// gray) of each pixel over white, rounded to the nearest.
+	Gray Mono = iota + 1
+	// Bilevel draws black and white, as an *image.Paletted of those two
+	// colours (black first), which image/png writes at 1 bit a pixel:
+	// black where the gray value is below 128. With AntialiasOff the
+	// edges are those of the drawing; with antialiasing, the coverage of
+	// the edges is cut at the half, not dithered.
+	Bilevel
+)
+
 // Options configures a Renderer.
 type Options struct {
 	// FontFS holds fonts searched before FontDirs, for the text of fonts
@@ -86,6 +104,15 @@ type Options struct {
 	// DefaultTextCacheBytes; a negative value disables it. Neither cache changes
 	// rendering quality. Call Invalidate after changing document parts or FontFS.
 	TextCacheBytes int
+	// CanvasCacheBytes bounds the working canvases kept from one drawing
+	// for the next (16 bytes a pixel of the image drawn, and of each open
+	// group), and as much again the coverage of large masks kept from one
+	// fill for the next. Zero uses DefaultCanvasCacheBytes; a negative
+	// value keeps none. A page at 600 dpi takes a canvas of hundreds of
+	// megabytes, which pages drawn one after the other with Page reuse
+	// within this budget; Pages keeps one canvas a worker for the length
+	// of a batch whatever the budget.
+	CanvasCacheBytes int
 }
 
 // Renderer draws the views of a document. It keeps what it decodes (objects,
@@ -114,24 +141,44 @@ type Renderer struct {
 	room    int // for the pixels of pictures: maxPicturePixels
 	sc      scratch
 	// free holds the canvases of the drawings before, for the next ones
-	// (see newSurface), smallest first; freeBytes is their memory
-	free        []*surface
-	freeBytes   int
-	images      lru[imageKey, *image.RGBA]
-	textMasks   *textMaskCache
-	pageWorkers []*Renderer
-	freeLimit   int
+	// (see newSurface), smallest first, and freeMasks the coverage of
+	// masks that drawing is done with (see newMaskBuf); freeBytes and
+	// freeMaskBytes are their memory, each within the budget (freeBudget)
+	free          []*surface
+	freeMasks     [][]float32
+	freeBytes     int
+	freeMaskBytes int
+	images        lru[imageKey, image.Image]
+	textMasks     *textMaskCache
+	pageWorkers   []*Renderer
+	freeLimit     int
+	// threads is how many goroutines the passes over a large canvas are
+	// split among (see splitRows): those of the machine, divided among
+	// the workers of Pages
+	threads int
 }
 
-// maxFreeSurfaces bounds the memory of the canvases a renderer keeps for
-// its next drawings: a page takes 16 bytes a pixel, and one made for each
-// drawing costs the system as much again in giving the memory back and
-// faulting it in.
-const maxFreeSurfaces = 64 << 20
+// DefaultCanvasCacheBytes bounds the memory of the canvases a renderer
+// keeps for its next drawings (Options.CanvasCacheBytes): a page takes 16
+// bytes a pixel, and one made for each drawing costs the system as much
+// again in giving the memory back and faulting it in.
+const DefaultCanvasCacheBytes = 64 << 20
 
 // newSurface returns a cleared canvas of w × h pixels: one of the drawings
 // before when it has one large enough, else a new one.
 func (r *Renderer) newSurface(w, h int) *surface {
+	s, cleared := r.surfaceFor(w, h)
+	if !cleared {
+		s.bands(s.bounds(), func(y0, y1, _ int) { clear(s.pix[4*y0*w : 4*y1*w]) })
+		s.fresh = true
+	}
+	return s
+}
+
+// surfaceFor returns a canvas of w × h pixels: one of the drawings before
+// when it has one large enough, with the pixels it was left with, else a
+// new one, cleared.
+func (r *Renderer) surfaceFor(w, h int) (s *surface, cleared bool) {
 	n := 4 * w * h
 	if !plain {
 		for i, s := range r.free {
@@ -139,16 +186,32 @@ func (r *Renderer) newSurface(w, h int) *surface {
 				r.free = slices.Delete(r.free, i, i+1)
 				r.freeBytes -= 4 * cap(s.pix)
 				s.w, s.h, s.pix = w, h, s.pix[:n]
-				clear(s.pix)
-				return s
+				s.threads = r.threads
+				s.fresh = false
+				return s, false
 			}
 		}
 	}
-	return newSurface(w, h)
+	s = newSurface(w, h)
+	s.threads = r.threads
+	return s, true
+}
+
+// filledSurface returns a canvas of w × h pixels of one opaque colour: a
+// canvas of a drawing before is not cleared first, as the colour covers
+// whatever it was left with.
+func (r *Renderer) filledSurface(w, h int, c solid) *surface {
+	s, _ := r.surfaceFor(w, h)
+	s.fresh = false
+	row := s.rowBuf(0, w)
+	repeat(row, c)
+	s.setRows(s.bounds(), row)
+	return s
 }
 
 // release keeps a canvas that a drawing is done with for the next ones,
-// within maxFreeSurfaces; the smallest make room for it.
+// within the budget of the renderer (freeBudget); the smallest make room
+// for it.
 func (r *Renderer) release(s *surface) {
 	if s == nil || plain {
 		return
@@ -164,6 +227,66 @@ func (r *Renderer) release(s *surface) {
 	i, _ := slices.BinarySearchFunc(r.free, s, func(a, b *surface) int { return cmp.Compare(cap(a.pix), cap(b.pix)) })
 	r.free = slices.Insert(r.free, i, s)
 	r.freeBytes += n
+}
+
+// trimFree lets go of the canvases and masks kept past a budget, the
+// largest first.
+func (r *Renderer) trimFree(budget int) {
+	for r.freeBytes > budget && len(r.free) > 0 {
+		last := len(r.free) - 1
+		r.freeBytes -= 4 * cap(r.free[last].pix)
+		r.free = r.free[:last]
+	}
+	for r.freeMaskBytes > budget && len(r.freeMasks) > 0 {
+		last := len(r.freeMasks) - 1
+		r.freeMaskBytes -= 4 * cap(r.freeMasks[last])
+		r.freeMasks = r.freeMasks[:last]
+	}
+}
+
+// minPooledMask is the least coverage values of a mask whose memory is
+// kept for the masks after it: a large mask costs the system more to
+// fault in than to clear, a small one is the allocator's to reuse.
+const minPooledMask = 1 << 16
+
+// newMaskBuf returns the coverage of a mask of n pixels, all 0: the
+// memory of a mask that drawing is done with when there is one large
+// enough (see releaseMask), else new.
+func (r *Renderer) newMaskBuf(n int) []float32 {
+	if r != nil && n >= minPooledMask && !plain {
+		for i, a := range r.freeMasks {
+			if cap(a) >= n {
+				r.freeMasks = slices.Delete(r.freeMasks, i, i+1)
+				r.freeMaskBytes -= 4 * cap(a)
+				a = a[:n]
+				splitRows(r.threads, 0, n, 1, func(y0, y1, _ int) { clear(a[y0:y1]) })
+				return a
+			}
+		}
+	}
+	return make([]float32, n)
+}
+
+// releaseMask keeps the memory of a mask that drawing is done with for
+// the masks after it, within the budget of the renderer, and empties the
+// mask: what is drawn with it after draws nothing.
+func (r *Renderer) releaseMask(m *mask) {
+	if r == nil || m == nil || m.a == nil || plain {
+		return
+	}
+	a := m.a
+	m.a, m.r = nil, image.Rectangle{}
+	n := 4 * cap(a)
+	if len(a) < minPooledMask || n > r.freeBudget() {
+		return
+	}
+	for r.freeMaskBytes+n > r.freeBudget() && len(r.freeMasks) > 0 {
+		r.freeMaskBytes -= 4 * cap(r.freeMasks[0])
+		r.freeMasks = slices.Delete(r.freeMasks, 0, 1)
+	}
+	i, _ := slices.BinarySearchFunc(r.freeMasks, a, func(a, b []float32) int { return cmp.Compare(cap(a), cap(b)) })
+	r.freeMasks = slices.Insert(r.freeMasks, i, a)
+	r.freeMaskBytes += n
 }
 
 // plain draws without the shortcuts that change no pixel: what lies outside
@@ -201,6 +324,7 @@ func New(doc *bdf.Document, opts *Options) *Renderer {
 		luts:     map[*bdf.Paint]*gradientLUT{},
 		warned:   map[string]bool{},
 		room:     maxPicturePixels,
+		threads:  defaultThreads(),
 	}
 	if opts != nil {
 		r.opts = *opts
@@ -413,10 +537,44 @@ func recovered(img **image.RGBA, err *error) {
 	}
 }
 
+// recoveredImage is recovered for an image of any kind.
+func recoveredImage(img *image.Image, err *error) {
+	if p := recover(); p != nil {
+		*img, *err = nil, fmt.Errorf("imagebdf: the drawing failed: %v", p)
+	}
+}
+
 // Page draws a whole page of a fixed or flow view (or a strip of a scroll
 // view) at scale device pixels per unit.
-func (r *Renderer) Page(v *bdf.View, page int, scale float64) (img *image.RGBA, err error) {
-	defer recovered(&img, &err)
+func (r *Renderer) Page(v *bdf.View, page int, scale float64) (*image.RGBA, error) {
+	img, err := r.pageMono(v, page, scale, 0)
+	if err != nil {
+		return nil, err
+	}
+	return img.(*image.RGBA), nil
+}
+
+// PageMono is Page in a monochrome image: an *image.Gray for Gray, an
+// *image.Paletted of black and white for Bilevel. It draws the page as
+// Page does and converts it; the renderer's antialiasing mode decides the
+// edges. An unknown mono is an error.
+func (r *Renderer) PageMono(v *bdf.View, page int, scale float64, mono Mono) (image.Image, error) {
+	if err := mono.check(); err != nil {
+		return nil, err
+	}
+	return r.pageMono(v, page, scale, mono)
+}
+
+// check reports an unknown Mono (0 is the RGBA image).
+func (m Mono) check() error {
+	if m > Bilevel {
+		return fmt.Errorf("imagebdf: unknown monochrome format %d", m)
+	}
+	return nil
+}
+
+func (r *Renderer) pageMono(v *bdf.View, page int, scale float64, mono Mono) (img image.Image, err error) {
+	defer recoveredImage(&img, &err)
 	p, err := drawablePage(v, page)
 	if err != nil {
 		return nil, err
@@ -428,7 +586,7 @@ func (r *Renderer) Page(v *bdf.View, page int, scale float64) (img *image.RGBA, 
 	if !(fw*fh <= MaxPixels) {
 		return nil, ErrTooLarge
 	}
-	return r.cachedPage(p, bdf.Rect{W: p.W, H: p.H}, int(fw), int(fh))
+	return r.cachedPage(p, bdf.Rect{W: p.W, H: p.H}, int(fw), int(fh), mono), nil
 }
 
 // PageDPI draws a whole page at dpi pixels per inch. BDF page units are
@@ -451,7 +609,7 @@ func (r *Renderer) PageSize(v *bdf.View, page, w, h int) (img *image.RGBA, err e
 	if w > MaxPixels/h {
 		return nil, ErrTooLarge
 	}
-	return r.cachedPage(p, bdf.Rect{W: p.W, H: p.H}, w, h)
+	return r.cachedPage(p, bdf.Rect{W: p.W, H: p.H}, w, h, 0).(*image.RGBA), nil
 }
 
 func drawablePage(v *bdf.View, page int) (*bdf.Page, error) {
@@ -475,8 +633,24 @@ func drawablePage(v *bdf.View, page int) (*bdf.Page, error) {
 // index page in a fixed or flow view (in page units), of the continuous
 // layout of a scroll view (its strips stacked, in units from the top), or
 // of a sheet (page is ignored in the last two).
-func (r *Renderer) Region(v *bdf.View, page int, region bdf.Rect, w, h int) (img *image.RGBA, err error) {
-	defer recovered(&img, &err)
+func (r *Renderer) Region(v *bdf.View, page int, region bdf.Rect, w, h int) (*image.RGBA, error) {
+	img, err := r.regionMono(v, page, region, w, h, 0)
+	if err != nil {
+		return nil, err
+	}
+	return img.(*image.RGBA), nil
+}
+
+// RegionMono is Region in a monochrome image (see PageMono).
+func (r *Renderer) RegionMono(v *bdf.View, page int, region bdf.Rect, w, h int, mono Mono) (image.Image, error) {
+	if err := mono.check(); err != nil {
+		return nil, err
+	}
+	return r.regionMono(v, page, region, w, h, mono)
+}
+
+func (r *Renderer) regionMono(v *bdf.View, page int, region bdf.Rect, w, h int, mono Mono) (img image.Image, err error) {
+	defer recoveredImage(&img, &err)
 	if v == nil {
 		return nil, errors.New("imagebdf: no view")
 	}
@@ -488,27 +662,38 @@ func (r *Renderer) Region(v *bdf.View, page int, region bdf.Rect, w, h int) (img
 	}
 	switch v.Kind {
 	case bdf.ViewSheet:
-		return r.cachedView(v, region, w, h, true), nil
+		return r.cachedView(v, region, w, h, true, mono), nil
 	case bdf.ViewScroll:
-		return r.cachedView(v, region, w, h, false), nil
+		return r.cachedView(v, region, w, h, false, mono), nil
 	}
 	if page < 0 || page >= len(v.Pages) || v.Pages[page] == nil {
 		return nil, ErrNoPage
 	}
-	return r.cachedPage(v.Pages[page], region, w, h)
+	return r.cachedPage(v.Pages[page], region, w, h, mono), nil
 }
 
 // canvas starts an image for a region with the device transform that maps
 // the region onto it.
-func (r *Renderer) canvas(region bdf.Rect, w, h int) (*drawer, matrix) {
+func (r *Renderer) canvas(region bdf.Rect, w, h int, bg *solid) (*drawer, matrix) {
 	sx, sy := float64(w)/float64(region.W), float64(h)/float64(region.H)
 	m := matrix{sx, 0, 0, sy, -float64(region.X) * sx, -float64(region.Y) * sy}
-	return r.canvasAt(m, w, h), m
+	return r.canvasAt(m, w, h, bg), m
 }
 
-// canvasAt starts a w × h image with the device transform m.
-func (r *Renderer) canvasAt(m matrix, w, h int) *drawer {
-	s := r.newSurface(w, h)
+// canvasAt starts a w × h image with the device transform m: of the
+// background colour when it is opaque and covers the whole image (see
+// filledSurface), else cleared.
+func (r *Renderer) canvasAt(m matrix, w, h int, bg *solid) *drawer {
+	var s *surface
+	switch {
+	case bg == nil || bg[3] != 1:
+		s = r.newSurface(w, h)
+	case plain:
+		s = r.newSurface(w, h)
+		s.fillBackground(&mask{r: s.bounds()}, *bg)
+	default:
+		s = r.filledSurface(w, h, *bg)
+	}
 	r.drawing++
 	d := &drawer{r: r, ctx: &context{target: s}, limit: max(maxLive*16*w*h, minLive), most: maxReusedInstructions}
 	d.ctx.st = initialState(m, &mask{r: s.bounds()})
@@ -518,8 +703,21 @@ func (r *Renderer) canvasAt(m matrix, w, h int) *drawer {
 // finish returns the image drawn on the canvas of a drawer, whose canvas
 // is kept for the next drawing.
 func (d *drawer) finish() *image.RGBA {
+	return d.finishMono(0).(*image.RGBA)
+}
+
+// finishMono is finish in the image of a Mono (0 for RGBA).
+func (d *drawer) finishMono(mono Mono) image.Image {
 	s := d.ctx.target
-	img := s.toRGBA()
+	var img image.Image
+	switch mono {
+	case Gray:
+		img = s.toGray()
+	case Bilevel:
+		img = s.toBilevel()
+	default:
+		img = s.toRGBA()
+	}
 	d.r.release(s)
 	return img
 }
@@ -540,20 +738,33 @@ func (d *drawer) clipTo(m matrix, x, y, w, h float64) *mask {
 	return d.r.rectMask(ax, ay, bx, by, d.ctx.target.bounds())
 }
 
-func (r *Renderer) drawPage(p *bdf.Page, region bdf.Rect, w, h int) (*image.RGBA, error) {
-	d, m := r.canvas(region, w, h)
+func (r *Renderer) drawPage(p *bdf.Page, region bdf.Rect, w, h int, mono Mono) image.Image {
+	bg := r.background()
+	// the background is the canvas when the page covers the whole image
+	sx, sy := float64(w)/float64(region.W), float64(h)/float64(region.H)
+	pm := matrix{sx, 0, 0, sy, -float64(region.X) * sx, -float64(region.Y) * sy}
+	ax, ay := pm.apply(0, 0)
+	bx, by := pm.apply(float64(p.W), float64(p.H))
+	whole := r.rectMask(ax, ay, bx, by, image.Rect(0, 0, w, h))
+	var filled *solid
+	if whole.a == nil && whole.r == image.Rect(0, 0, w, h) {
+		filled = &bg
+	}
+	d, m := r.canvas(region, w, h, filled)
 	clip := d.clipTo(m, 0, 0, float64(p.W), float64(p.H))
-	d.ctx.target.fillBackground(clip, r.background())
+	if filled == nil {
+		d.ctx.target.fillBackground(clip, bg)
+	}
 	for _, l := range p.Layers {
 		d.drawTop(l.Obj, m, clip)
 	}
-	return d.finish(), nil
+	return d.finishMono(mono)
 }
 
 // drawContinuous draws the strips of a scroll view stacked without gaps,
 // each cut to its body, as the viewer scrolls them.
-func (r *Renderer) drawContinuous(v *bdf.View, region bdf.Rect, w, h int) *image.RGBA {
-	d, m := r.canvas(region, w, h)
+func (r *Renderer) drawContinuous(v *bdf.View, region bdf.Rect, w, h int, mono Mono) image.Image {
+	d, m := r.canvas(region, w, h, nil)
 	bg := r.background()
 	y := 0.0
 	for _, p := range v.Pages {
@@ -580,7 +791,7 @@ func (r *Renderer) drawContinuous(v *bdf.View, region bdf.Rect, w, h int) *image
 			d.drawTop(l.Obj, pm, clip)
 		}
 	}
-	return d.finish()
+	return d.finishMono(mono)
 }
 
 // SheetSize returns the size of a sheet in units, from its rows and columns.
@@ -596,10 +807,17 @@ func SheetSize(v *bdf.View) (w, h float64) {
 
 // drawSheet draws a region of a sheet: the background, the gridlines when
 // the view asks for them, and the tiles.
-func (r *Renderer) drawSheet(v *bdf.View, region bdf.Rect, w, h int) *image.RGBA {
-	d, m := r.canvas(region, w, h)
+func (r *Renderer) drawSheet(v *bdf.View, region bdf.Rect, w, h int, mono Mono) image.Image {
+	bg := r.background()
+	var filled *solid
+	if bg[3] == 1 {
+		filled = &bg
+	}
+	d, m := r.canvas(region, w, h, filled)
 	all := &mask{r: d.ctx.target.bounds()}
-	d.ctx.target.fillBackground(all, r.background())
+	if filled == nil {
+		d.ctx.target.fillBackground(all, bg)
+	}
 	if v.Gridlines {
 		r.gridlines(d, v, region, m)
 	}
@@ -610,7 +828,7 @@ func (r *Renderer) drawSheet(v *bdf.View, region bdf.Rect, w, h int) *image.RGBA
 	if !(tile >= 1) || math.IsInf(tile, 0) {
 		// a region would hold any number of them
 		r.warnf("the tiles of a sheet are %g units wide: they are not drawn", tile)
-		return d.finish()
+		return d.finishMono(mono)
 	}
 	index := func(v float64) int { return int(math.Floor(clampF(v / tile))) }
 	tx0, ty0 := index(float64(region.X)), index(float64(region.Y))
@@ -650,7 +868,7 @@ func (r *Renderer) drawSheet(v *bdf.View, region bdf.Rect, w, h int) *image.RGBA
 		tm := m.translate(float64(p.tx)*tile, float64(p.ty)*tile)
 		d.drawTop(hash, tm, d.clipTo(tm, 0, 0, tile, tile))
 	}
-	return d.finish()
+	return d.finishMono(mono)
 }
 
 // Limits of the gridlines of a sheet, across and down: a document decides
