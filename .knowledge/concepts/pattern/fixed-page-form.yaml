@@ -1,0 +1,35 @@
+id: pattern:fixed-page-form
+type: pattern
+title: 固定ページ式の帳票（1 レコード 1 ページ、箱に値）
+summary: 用紙・罫線・ロゴ・箱の位置はテンプレートで確定し、データで変わるのは箱の中身だけ。 Excel 方眼紙の申請書、PowerPoint の証明書・名札、Word のテキストボックスや表で作る届出書など。固定レイアウト型の帳票ツールの基本形。
+lifecycle: active
+authority: authored
+aliases:
+- 固定帳票
+- 固定レイアウト帳票
+- form report
+facts:
+  sources:
+    excel: 印刷範囲 1 ページ分のシート。セルが箱。縮小して全体を表示・折り返し・縦書き・均等割り付けの指定をそのまま箱の方針にする
+    pptx: 図形のテキスト枠が箱。normAutofit は縮小、spAutoFit は枠を広げる（component:drawingml-autofit）
+    word: テキストボックスと表のセルが箱。本文の段落に置いたタグも長さが変わらなければ同じ扱い
+  fill:
+    text_in_box: 字幅の計測、禁則つきの行分割、横と縦の配置、縮小、均等割り付け、縦書き。fontset と linebreak が既にあり、xlsx のセル文字と drawingml のテキスト枠の 2 実装を 1 つに寄せる候補
+    overflow_policy: shrink / clip / error。帳票の既定は error
+    checkbox: 真偽値は ☐ / ☑ か、チェックのパスを箱に描く
+    image: 箱に contain / cover / stretch で IMAGE
+    barcode: QR・Code128・JAN / EAN・郵便カスタマバーコードをパスで描く（第 2 段階）
+  batch: -each でレコードごとに 1 ページ（または 1 文書）。静的部分は同じ Object として 1 回だけ格納される
+  typical_forms:
+  - 申請書
+  - 届出書
+  - 証明書
+  - 名札
+  - 送付状
+  - 1 件分の注文確認
+  implementation: Excel で実装済み（converter/xlsx の Fill）。タグ 1 つのセルは値の型を保つ。画像は {{%name}}。testdata/form/fixed.bdf
+relations:
+- relation: member_of
+  to: taxonomy:form-layout-axes
+- relation: realized_by
+  to: decision:fill-at-converter-seams

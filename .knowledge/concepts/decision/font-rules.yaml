@@ -1,0 +1,49 @@
+id: decision:font-rules
+type: decision
+title: フォント規則（作る環境・組む環境・見る環境の対応と、テンプレートへの固定）
+summary: >-
+  帳票では「作った人の環境」「組む環境」「見る環境」の 3 か所でフォントが違う。利用者が宣言できる規則ファイルで
+  名前の対応・出力の方針・出力先での名前・予備の連鎖・外字を決め、コンパイル時に解決結果とフォント本体を .bdft に固定する。
+lifecycle: proposed
+authority: authored
+aliases:
+- フォントマッピング
+- font mapping
+facts:
+  existing:
+    substitutes: internal/fontdb/resolve.go の組み込み代替表（Arial→Liberation Sans、Calibri→Carlito、游ゴシック / MS 明朝→Noto / IPAex の連鎖）、総称ファミリーの探索、Fallbacks
+    normalize: 名前は NFKC で畳むので「ＭＳ 明朝」の全角表記も一致する（fontdb.Normalize）
+    system_ref: fontset.Font が「要求, 解決, 総称」の CSS ファミリー列を作る（system フォント参照）
+    flags: -font-dir、-fonts embed|system、-no-system-fonts、-no-subset、-no-woff2、-ignore-fstype（docs/architecture/cli.ja.md）
+    missing: fontset.ReportMissing が字のないものを警告する
+    gaps: 利用者が規則を宣言できない。テンプレートが使うフォントを固定できない。出力先が持つフォントを前提にした名前を書けない。異体字セレクタ（IVS）の扱いがない。BIZ UD が連鎖にない
+  rule_file:
+    format: YAML か JSON。bdf generate を含む全変換器が読む。組み込みの代替表は既定値、利用者の規則を上に重ねる
+    precedence: [CLI のフラグ, テンプレートに焼き込んだ規則, サーバーの設定, 組み込みの表]
+    rule_fields: [一致させる名前の列, 組版に使うファミリーかファイル, 出力の方針, 出力先での名前, 太字の扱い（合成 / 別ファイル）, 予備の連鎖, 外字の範囲とファイル]
+    keep_pitch: MS ゴシックは等幅の連鎖、MS P ゴシックはプロポーショナルの連鎖という区別を保つ
+    default_ja: BIZ UDP ゴシック / BIZ UD 明朝を既定に。モリサワが OFL で公開し Windows 10 以降に標準搭載。組む環境と見る環境が同じフォントになる組み合わせ。IPAex の前に連鎖へ足す
+  pin_in_template:
+    report: 要求名、使った面、完全一致 / 代替 / 総称、ファイルのハッシュ、埋め込み可否を .bdft に記録。プレビューと一緒に作者が確認できる
+    embed_levels: '全体 / 宣言した文字集合のサブセット（JIS X 0213＋ASCII＋外字の範囲）/ 名前だけ。既定は中間'
+    determinism: 穴埋めは .bdft の中のフォントだけで組み、サーバーのフォントに依存しない。ブラウザ内の穴埋めでも取得不要
+    excel_mdw: Excel の列幅は既定フォントの数字の幅で決まるので、代替で組むと幾何がずれる。報告に出す
+  output_policy:
+    embed: 使った字だけの WOFF2。既定。PDF では常に
+    shared: .bdft のフォント本体をハッシュで参照。分割形式＋CDN で文書をまたいで 1 回
+    system: 名前だけ。出力先での名前（社内 Windows なら MS 明朝、Web フォントなら BIZ UD 明朝）を書く。見る環境が分かっている社内配布に限る
+    advance_note: system で別フォントに落ちても行の幅は advance 補正で保たれる。和文は全角で幅が揃うので欧文より置き換えに強い。折り返し位置は組んだフォントのまま
+  missing_glyphs:
+    policy: 'fallback（予備の連鎖で拾って警告）/ warn（豆腐のまま警告）/ error（穴埋め失敗）。帳票の既定は error'
+    gaiji: 私用領域を EUDC のファイルに向ける規則。fontset は私用領域の字をグリフ番号で描く経路を持つ
+    ivs: cmap format 14 の対応は未実装。氏名の異体字はセレクタを落として基底字で描くのが現状。課題
+  licensing:
+    fstype: 埋め込みを禁じる面は system しか選べずコンパイルで警告
+    copy_question: 作った人の Windows の MS フォントを .bdft に入れて Linux で組むのはフォントファイルの複製。技術ではなく権利の問題として利用者が判断する。OSS フォントを既定にする理由
+  tooling: bdf template fonts で、要るフォント、どこから来たか、方針ごとに見る側に何が必要かを表にし、system の環境ではフォント一覧と突き合わせる
+  timing: 帳票だけでなく bdf generate の改善でもあるので、PDF 書き出しと同じ段階で作る
+relations:
+- relation: part_of
+  to: requirement:form-template
+- relation: extends
+  to: component:fontdb-resolution

@@ -1,0 +1,96 @@
+id: milestone:form-m4
+type: milestone
+title: form-m4 — データの JSON Schema、デモサイトのフォームのページ、ビューアの PDF 保存
+summary: 4 つ目の実装のまとまり。テンプレートのタグからデータの JSON Schema を作り、GitHub Pages のサイトに帳票を試すページ（form タブ）を足し、ビューアに PDF のダウンロードを足した。2026-10-14 に実装し、Go のテスト、サイトのスモークテスト、実ブラウザでの操作確認が通った。説明は
+  docs/forms.ja.md、設計は docs/design.md §3.25・§3.34。
+lifecycle: active
+authority: authored
+scope:
+  milestone: form-m4
+  input: xlsx, docx, pptx, bdft
+  output: bdf, pdf, JSON Schema
+constraints:
+- 処理はブラウザの中だけ。テンプレートもデータもアップロードしない
+- サーバーと同じ Go のコード（form、vector/pdfbdf）を wasm で動かす。TypeScript に穴埋めの実装は持たない
+- 入力フォームは JSON Schema から作る。スキーマはコンパイル済みテンプレート（.bdft）に焼き込む（利用者の提案）
+non_goals:
+- テンプレートそのものを編集する画面（requirement:form-editor）
+- npm パッケージ（@bdfkit/convert-*）への fields / fill / pdf の公開
+- フォームのページの日本語版（サムネイル・検索テキストのページと同じく英語だけ）
+capabilities:
+  json-schema:
+    state: implemented
+    about: capability:form/schema
+  bdft-schema:
+    state: implemented
+    about: capability:form/bdft-schema
+  wasm-form-module:
+    state: implemented
+    about: capability:bdfwasm/form
+  wasm-pdf:
+    state: implemented
+    about: capability:bdfwasm/pdf
+  site-form-page:
+    state: implemented
+    about: capability:site/form
+  viewer-pdf-download:
+    state: implemented
+    about: capability:site/viewer-pdf
+facts:
+  schema_rules: '中に名前か {{.}} がある区間と繰り返し方を書いた区間は配列、ほかの区間は真偽値、数値の表示形式の値は数値、日付の表示形式は format: date の文字列、ほかは文字列か数値。プロパティはテンプレートの順、タグの情報は x-bdf。{{.}} をフィールド一覧に載せるようにした（名前
+    "."）'
+  scope_ambiguity: 区間の中の名前は項目と外側の両方から探されるので、外側でも使っていれば外側、そうでなければ項目。サンプルがあればサンプルの場所と型で確定する
+  bdft: Compile がスキーマを作って tpl の schema に入れる（spec §4.5）。SchemaOf と bdf template schema -json-schema はそれを返す
+  modules: bdf-form.wasm（-tags formonly、約 18 MB、gzip 5.1 MB。docx・xlsx・pptx の変換器と form・pdfbdf。fields・fill・pdf）。bdf-preview.wasm に pdf を足し、bdf_woff2dec で WOFF2 の伸張を入れた（13.2
+    MB、gzip 3.7 MB）
+  page: スキーマから入力欄を組む（オブジェクトは枠、値だけの項目の配列は表、入れ子は項目ごとの枠、真偽値はチェックボックス、日付は日付入力、画像はファイル選択）。型の決まらない欄は JSON の数値の書き方なら数値として渡す。0.25 秒のデバウンスで穴埋めし直し、前の絵を残して描き替える
+  viewer_pdf: サイトのビューアだけに Download PDF。押したときに preview モジュールを読む。暗号化した BDF には出さない
+  found_on_the_way: サイトのトップの Audio カードが、ビルドされない docs/formats/audio のページを指していた（site/nav.mjs に無かった）。同じ日に nav に足して解消した（楽譜とフォントの間。docs は 76 ページ、site/checklinks.mjs は全リンクが通る）
+acceptance:
+  schema:
+    text: 9 つのサンプルテンプレートのスキーマが、サンプルのデータの名前と型に合う。サンプルなしでも配列・真偽値・日付・コードが判る
+    verified_by:
+    - schema-unit
+    - site-smoke
+  form-page:
+    text: サンプルと手元のテンプレートからフォームができ、値を変えると帳票が描き直され、PDF が保存できる
+    verified_by:
+    - site-smoke
+    - browser-check
+  viewer-pdf:
+    text: 変換した文書と、bdf コマンドが作った .bdf（WOFF2 のフォント）の両方が、フォントを埋め込んだ PDF になる
+    verified_by:
+    - site-smoke
+    - browser-check
+verification:
+  schema-unit:
+    state: passed
+    method: unit
+    test: go test ./form (TestSchema、コンパイル済みテンプレートのスキーマ)
+    authority: observed
+    evidence:
+      path: form/form_test.go
+      locator: 3 形態のスキーマ、サンプルの有無、外側の名前、表示形式の判定
+  site-smoke:
+    state: passed
+    method: integration
+    test: node site/build.mjs && node test/site.mjs
+    authority: observed
+    evidence:
+      path: test/site.mjs
+      locator: form モジュールで 9 テンプレートを fields・fill・pdf。preview モジュールの pdf（変換した 4 文書、testdata/demo.bdf、暗号化した文書）。各ページからのリンク
+  browser-check:
+    state: passed
+    method: manual
+    test: アプリ内ブラウザで site/dist を開いて操作
+    authority: observed
+    evidence:
+      path: site/form/main.ts
+      locator: サンプル 4 種と手元のファイルの読み込み、値の編集と行の追加、JSON タブの編集、狭い画面、フォームとビューアの PDF（%PDF-1.7 を確認。ダウンロードは発生させていない）
+relations:
+- relation: follows
+  to: milestone:form-m3
+- relation: implements
+  to: requirement:form-template
+- relation: implements
+  to: requirement:pdf-export

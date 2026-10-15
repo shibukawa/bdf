@@ -1,0 +1,33 @@
+id: system:mail-merge-tools
+type: system
+title: 差し込み印刷 — Word Mail Merge、InDesign Data Merge、ODF / LibreOffice
+summary: >-
+  レコードごとに文書を複製する差し込みと、1 ページに複数レコードを並べるラベル差し込みの原型。
+  Word は MERGEFIELD / NEXT / NEXTIF / SKIPIF のフィールド、InDesign は列名の接頭辞（@ で画像、# で QR）、ODF はデータベースフィールド。
+lifecycle: active
+authority: observed
+aliases:
+- MERGEFIELD
+- Data Merge
+- 差し込み印刷
+facts:
+  word: NEXT は現在の文書に次のレコードを差し込む（ラベルシートでは自動挿入。最初の MERGEFIELD の後に置く。SKIPIF と併用不可）。SKIPIF は現在の差し込み文書を取り消して次のレコードへ。NEXTIF は条件付きの NEXT
+  indesign: '列見出し @Photo で画像フィールド（フルパス）、# 接頭辞で QR（URL: / SMSTO などの書式）。1 ページに複数レコード（行優先 / 列優先）、あふれたレコードは次のページへ'
+  odf: フィールドは Any Record、Database Name、Mail merge field、Next record、Record number。条件の既定は True。ODF Part 1 §7.6 のデータベースフィールドで、差し込み機能自体は別に定義されない。要素名 text:database-display などは未確認
+  relevance: .bdft の -each（レコードごとに 1 文書）と pattern:label-sheet（1 ページに N 面）は、Word の NEXT の有無と同じ 2 分法
+relations:
+- relation: exemplifies
+  to: pattern:flow-document
+- relation: exemplifies
+  to: pattern:label-sheet
+assertions:
+- predicate: word_next_field_for_labels
+  value: NEXT auto-inserted on label sheets
+  authority: observed
+  evidence:
+    url: https://support.microsoft.com/en-us/office/field-codes-next-field-3862fad6-0297-411a-a4e7-6ff5bcf178fd
+- predicate: indesign_field_prefixes
+  value: {image: "@", qr: "#"}
+  authority: observed
+  evidence:
+    url: https://helpx.adobe.com/vn_vi/indesign/desktop/automation-and-scripting/merge-data/add-qr-codes-to-merged-documents.html

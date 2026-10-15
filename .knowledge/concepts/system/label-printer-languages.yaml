@@ -1,0 +1,48 @@
+id: system:label-printer-languages
+type: system
+title: ラベルプリンタ言語 — Zebra ZPL、SATO SBPL、Toshiba TEC TPCL、Brother P-touch Template、Dymo .label、ESC/POS ページモード
+summary: >-
+  ラベルプリンタは「テンプレートをプリンタに保存し、番号か名前の付いたフィールドにデータを流す」という共通の型を持つ。
+  ラベルの幅・長さ・ギャップはドット数（203 / 300 dpi）か 1/10 mm で指定し、バーコードと QR は言語の一次要素。
+lifecycle: active
+authority: observed
+aliases:
+- ZPL
+- SBPL
+- TPCL
+- P-touch Template
+- Dymo
+- ESC/POS
+facts:
+  zpl:
+    template: ^DF でフォーマット（^FN のプレースホルダー入り）を保存、^XF で呼び出して ^FN n ^FD データをマージ。^FN は 0〜9999（400 以下を推奨）、同じ番号の再利用可
+    geometry: ^LL 長さ（ドット、1〜32000。連続紙では必須。インチ × 152.4 / 203.2 / 304.8 / 609.6）、^PW 幅、^JM で密度半減。原点は左上、^FO はフィールドの左上
+    barcodes: ^BY 既定、^BC Code 128（解釈行つき）、^BQ QR
+  sbpl: ESC A 開始 / ESC Z 終了、ESC H / ESC V で位置、ESC A1 でメディアサイズ（ドットか mm）、ESC A3 で基準点（−3192〜3192 ドット）、ESC BQ で QR。フォームオーバーレイの保存 ESC& / ESC&S と呼び出し ESC&R。CX / CT 系は LD で ESC 文字を定義
+  tpcl: 区切りは { | }。{D| でピッチ・有効幅・有効長を 1/10 mm で、{C|} でバッファ消去、PC でビットマップフォントのフィールド定義、RC でデータ供給（前のデータを置換）、{XS;I,…|} で発行（枚数・カット・センサ・モード・速度・リボン）。{XB / {XR は未確認
+  ptouch: P-touch Editor で作り Transfer Manager で転送。転送物はキー番号を持ち同番号で上書き。テンプレートモードは Recall / Merge / Database Lookup / Numbered（999 まで）。既定の印刷トリガ ^FF、区切り文字と命令接頭文字を設定。RS-232C / USB / BT / LAN
+  dymo: XML（DieCutLabel、単位 twips、PaperName、DrawCommands、ObjectInfo の TextObject{Name, IsVariable, Bounds, StyledText}）。SDK はオブジェクト名で文字を設定
+  escpos_page_mode: ESC L でページモード、ESC W で印字領域、ESC T で方向、ESC S で標準モード。FF で印字して標準モードへ（ESC W はリセット、ESC T は保持）。GS \ はページモード専用の相対縦位置
+  common_pattern: 静的テンプレートの常駐＋番号 / 名前付きのフィールド＋データ投入。BDF の .bdft がフィールド表を持つ設計はこの型と同型で、違いは組版を送信側で済ませること
+  relevance: 実機に出すなら BDF → 各言語の書き出しが別に要る。ドライバ経由なら PDF を印刷すれば足りる
+relations:
+- relation: exemplifies
+  to: pattern:label-sheet
+- relation: exemplifies
+  to: pattern:roll-receipt
+assertions:
+- predicate: zpl_stored_format_with_numbered_fields
+  value: ^DF / ^XF / ^FN
+  authority: observed
+  evidence:
+    url: https://docs.zebra.com/us/en/printers/software/zpl-pg/c-zpl-zpl-commands/r-zpl-df.html
+- predicate: ptouch_template_modes
+  value: [Recall, Merge, Database Lookup, Numbered]
+  authority: observed
+  evidence:
+    url: https://support.brother.com/g/s/es/htmldoc/labelprint/td4215d/usen/html/GUID-03913EAA-8497-470D-B74F-C8D0F5B55FE1_1.html
+- predicate: tpcl_units
+  value: 1/10 mm
+  authority: observed
+  evidence:
+    url: https://fs.tscprinters.com/es/dl/1/6566

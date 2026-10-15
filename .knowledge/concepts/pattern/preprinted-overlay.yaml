@@ -1,0 +1,22 @@
+id: pattern:preprinted-overlay
+type: pattern
+title: プレ印刷用紙への追い刷りと、静的層・可変層の分離（フォームオーバーレイ）
+summary: >-
+  罫線・社名・項目名を持つ用紙に可変部分だけを印字する伝統的な方法と、その電子版である「フォームオーバーレイ」
+  （静的なフォーム画像を電子的に重ね、可変データだけを差し替える）。BDF の静的 Object の共有はこの分離に対応する。
+lifecycle: proposed
+authority: authored
+aliases:
+- フォームオーバーレイ
+- 追い刷り
+- form overlay
+facts:
+  two_layers:
+    static: 用紙の絵。電子帳票では 1 回描いて全ページで共有（メインフレームの AFP のオーバーレイ、PCL のマクロ、PostScript のフォーム）
+    variable: データ由来の文字・バーコード・画像
+  bdf: 静的層は内容アドレスで同じ Object になる。1 文書内のページ間でも、分割形式なら文書間でも 1 回。レイヤーの role に master / background があるので「用紙」をそこに置ける
+  template_implication: 実物のプレ印刷用紙に印字する運用では、静的層を描かずに可変層だけを出す出力モード（罫線を抜く）が要る。PDF 書き出しに「レイヤーを選ぶ」オプションがあれば足りる
+  alignment: 実用紙との位置合わせのため、全体のオフセット（上下左右 mm）を印刷時に指定できる必要がある。ドライバ任せか、PDF 書き出しの余白調整か
+relations:
+- relation: member_of
+  to: taxonomy:form-layout-axes

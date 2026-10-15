@@ -1,0 +1,51 @@
+id: system:report-engines-flow-grid
+type: system
+title: 流し込み・グリッド型の帳票エンジン — SSRS（RDL / tablix）、Eclipse BIRT、ActiveReports RDL（CPL）
+summary: >-
+  帯ではなく、ページの本文に表（tablix）やリストや図を上から流す型。ページヘッダー・本文・ページフッターだけで、見出し行の繰り返しや
+  グループのまとめは表の行グループの属性で指定する。マスターページ（BIRT）や RenderFormat（SSRS）で出力先ごとに体裁を変える。
+lifecycle: active
+authority: observed
+aliases:
+- SSRS
+- RDL
+- tablix
+- BIRT
+- rptdesign
+- Report Builder
+facts:
+  ssrs:
+    format: XML の .rdl。Report Builder、Report Designer（SSDT）、Power BI Report Builder
+    page_model: page header / body / page footer のみ。レポートヘッダー・フッターの領域はなく本文の上下に置く。PageNumber / TotalPages はヘッダー・フッターだけ
+    tablix: 汎用グリッド。table（行グループ）、matrix（行＋列グループ）、list（自由配置。帳票・請求書向け、レコードごとに繰り返す）。入れ子、矩形、サブレポート、NoRowsMessage
+    members: KeepWithGroup、KeepTogether、RepeatOnNewPage（列グループには不可）、「見出し行を各ページで繰り返す」
+    renderers: データ（CSV / XML / Atom）、soft page break（Excel / Word / HTML）、hard page break（PDF / TIFF / 画像 / PowerPoint）。多段は PDF / TIFF だけが守る
+    globals: PageNumber、TotalPages、OverallPageNumber、OverallTotalPages
+  birt:
+    format: XML の .rptdesign、.rptlibrary（共有部品）、.rpttemplate。Eclipse のデザイナ
+    model: 帯ではなく、Label / Text / Data / Image / Grid / List / Table / Chart / Cross Tab を流す。Table / List に header / detail / footer とグループ。Grid を入れ子にして配置
+    master_page: ヘッダー・フッターの枠と高さ、向き。複数のマスターページをページ区切りでセクションごとに割り当て
+    repeat: 表の Repeat Header はあるが繰り返しフッターはなく、マスターページのフッターにページ変数を置く回避策。結果は emitter で異なる
+    data: JDBC / XML / フラットファイル / スクリプト、JavaScript の式、Java / JavaScript のイベント（onPrepare / onCreate / onRender / onPageBreak）
+    outputs: HTML、Paginated HTML、PDF、XLS、DOC、PPT、ODS / ODP / ODT、PostScript
+  activereports_rdl: SSRS の RDL を基にした .rdlx の「連続ページレイアウト（CPL）」。固定ページの Page report（system:activereports-page-report）と対をなす
+  relevance_to_bdft: Word の表を流し込む pattern:growing-detail と同じ考え。「見出し行の繰り返し」「グループをまとめる」「ページ番号はヘッダー・フッターだけ」という制約の置き方が参考になる
+relations:
+- relation: exemplifies
+  to: pattern:growing-detail
+assertions:
+- predicate: ssrs_page_model
+  value: page header / body / page footer only
+  authority: observed
+  evidence:
+    url: https://learn.microsoft.com/en-us/sql/reporting-services/report-design/page-headers-and-footers-report-builder-and-ssrs
+- predicate: ssrs_multicolumn_renderers
+  value: [PDF, TIFF]
+  authority: observed
+  evidence:
+    url: https://msdn.microsoft.com/fi-fi/library/ms155816(v=sql.90)
+- predicate: birt_is_banded
+  value: false
+  authority: observed
+  evidence:
+    url: https://www.eclipse.org/community/eclipse_newsletter/2015/september/article3.php
