@@ -61,3 +61,33 @@ func BenchmarkPagesHiDPI(b *testing.B) {
 		})
 	}
 }
+
+// BenchmarkPageRowsHiDPI draws pages in bands at print resolutions, as
+// bdf render does: 600 dpi black and white and gray without antialiasing,
+// and 360 dpi colour with it.
+func BenchmarkPageRowsHiDPI(b *testing.B) {
+	for _, name := range []string{"pdf/chrome-doc", "docx/basic", "pptx/features"} {
+		doc := openDoc(b, "../../testdata/"+name+".bdf")
+		view := doc.Views[0]
+		for _, c := range []struct {
+			dpi  float64
+			mode AntialiasMode
+			mono Mono
+			tag  string
+		}{{600, AntialiasOff, Bilevel, "600dpi/off/bilevel"}, {600, AntialiasOff, Gray, "600dpi/off/gray"}, {360, AntialiasOn, 0, "360dpi/on/rgba"}, {360, AntialiasOff, 0, "360dpi/off/rgba"}} {
+			b.Run(fmt.Sprintf("%s/%s", name, c.tag), func(b *testing.B) {
+				r := New(doc, &Options{ImageCacheBytes: -1, Antialias: c.mode, FontDirs: testFonts, NoSystemFonts: true})
+				yield := func(int, image.Image) error { return nil }
+				if err := r.PageRows(view, 0, c.dpi/72, c.mono, yield); err != nil {
+					b.Fatal(err)
+				}
+				b.ReportAllocs()
+				for b.Loop() {
+					if err := r.PageRows(view, 0, c.dpi/72, c.mono, yield); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}

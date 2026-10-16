@@ -2,6 +2,7 @@ package rowenc
 
 import (
 	"bytes"
+	"hash/adler32"
 	"image"
 	"image/color"
 	"image/png"
@@ -258,6 +259,60 @@ func TestBandsWriteTheSameFile(t *testing.T) {
 			}
 			if !bytes.Equal(whole.Bytes(), banded.Bytes()) {
 				t.Errorf("%s of kind %d: the file of the bands differs from that of the whole", format, tc.kind)
+			}
+		}
+	}
+}
+
+// TestAdlerJoin checks the Adler-32 of two byte strings joined.
+func TestAdlerJoin(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	for n := 0; n < 200; n++ {
+		a := make([]byte, rng.Intn(70000))
+		b := make([]byte, rng.Intn(70000))
+		rng.Read(a)
+		rng.Read(b)
+		if n%3 == 0 {
+			clear(b)
+		}
+		want := adler32.Checksum(append(append([]byte{}, a...), b...))
+		if got := adlerJoin(adler32.Checksum(a), adler32.Checksum(b), len(b)); got != want {
+			t.Fatalf("%d: %#x, want %#x", n, got, want)
+		}
+	}
+}
+
+// TestPackBits checks the packing of bits eight pixels at a time against
+// one at a time.
+func TestPackBits(t *testing.T) {
+	rng := rand.New(rand.NewSource(2))
+	for n := 0; n < 300; n++ {
+		w := 1 + rng.Intn(70)
+		src := make([]byte, w)
+		for i := range src {
+			switch rng.Intn(4) {
+			case 0:
+				src[i] = 0
+			case 1:
+				src[i] = 1
+			default:
+				src[i] = byte(rng.Intn(256))
+			}
+		}
+		for _, gray := range []bool{false, true} {
+			want := make([]byte, (w+7)/8)
+			for i, v := range src {
+				if v != 0 && (!gray || v >= 128) {
+					want[i>>3] |= 0x80 >> (i & 7)
+				}
+			}
+			got := make([]byte, (w+7)/8)
+			for i := range got {
+				got[i] = 0xa5
+			}
+			packBits(got, src, gray)
+			if !bytes.Equal(got, want) {
+				t.Fatalf("%d pixels (gray %v): %x, want %x", w, gray, got, want)
 			}
 		}
 	}

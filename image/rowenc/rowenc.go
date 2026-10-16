@@ -12,6 +12,7 @@
 package rowenc
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
@@ -48,6 +49,10 @@ type Options struct {
 	// and the resolution tags of a TIFF. Zero notes none in a PNG and 72
 	// in a TIFF.
 	DPI float64
+	// Threads is how many goroutines filter and compress the rows of a
+	// PNG, in chunks of rows: zero uses those of the machine, up to
+	// eight. The file is the same whatever the number.
+	Threads int
 }
 
 // Writer writes an image from its rows, from the top.
@@ -155,45 +160,24 @@ func (r *rower) each(rows image.Image, png bool, fn func(row []byte) error) erro
 			return nil
 		}
 	case Bilevel:
-		var white func(y int) []byte // a byte a pixel: 0 black, else white
 		switch img := rows.(type) {
 		case *image.Paletted:
 			if len(img.Palette) != 2 || !black(img.Palette[0]) || !whiteColor(img.Palette[1]) {
 				return errors.New("rowenc: bilevel rows must be of two colours, black then white")
 			}
-			white = func(y int) []byte {
+			pack = func(y int) error {
 				src := img.Pix[(y-b.Min.Y)*img.Stride+b.Min.X-img.Rect.Min.X:]
-				return src[:r.width]
+				packBits(r.row[:r.rowBytes()], src[:r.width], false)
+				return nil
 			}
 		case *image.Gray:
-			if len(r.bits) < r.width {
-				r.bits = make([]byte, r.width)
-			}
-			white = func(y int) []byte {
+			pack = func(y int) error {
 				src := img.Pix[(y-b.Min.Y)*img.Stride+b.Min.X-img.Rect.Min.X:]
-				src = src[:r.width]
-				for i, v := range src {
-					if v >= 128 {
-						r.bits[i] = 1
-					} else {
-						r.bits[i] = 0
-					}
-				}
-				return r.bits[:r.width]
+				packBits(r.row[:r.rowBytes()], src[:r.width], true)
+				return nil
 			}
 		default:
 			return fmt.Errorf("rowenc: bilevel rows are %T", rows)
-		}
-		pack = func(y int) error {
-			src := white(y)
-			out := r.row[:r.rowBytes()]
-			clear(out)
-			for i, v := range src {
-				if v != 0 {
-					out[i>>3] |= 0x80 >> (i & 7)
-				}
-			}
-			return nil
 		}
 	}
 	for y := b.Min.Y; y < b.Max.Y; y++ {
@@ -206,6 +190,34 @@ func (r *rower) each(rows image.Image, png bool, fn func(row []byte) error) erro
 		r.written++
 	}
 	return nil
+}
+
+// packBits packs a byte a pixel into a bit a pixel, the leftmost pixel in
+// the high bit of the first byte: a pixel is white (1) when its byte is
+// not 0, or, from gray values, when it is 128 or more. Eight pixels go
+// at a time: the low bit of each of eight bytes is gathered into a byte
+// by one multiplication (the partial products land in distinct bits).
+func packBits(out, src []byte, gray bool) {
+	i := 0
+	for ; i+8 <= len(src); i += 8 {
+		v := binary.LittleEndian.Uint64(src[i:])
+		if gray {
+			v >>= 7
+		} else {
+			v |= v>>1 | v>>2 | v>>3 | v>>4 | v>>5 | v>>6 | v>>7
+		}
+		v &= 0x0101010101010101
+		out[i>>3] = byte((v * 0x8040201008040201) >> 56)
+	}
+	if i < len(src) {
+		var last byte
+		for k, v := range src[i:] {
+			if v != 0 && (!gray || v >= 128) {
+				last |= 0x80 >> (k & 7)
+			}
+		}
+		out[i>>3] = last
+	}
 }
 
 // done reports an error if the rows written are not all of the image.

@@ -125,3 +125,75 @@ func TestCanvasBudget(t *testing.T) {
 		t.Fatalf("after the batch a worker keeps %d bytes within %d", w.freeBytes, w.freeBudget())
 	}
 }
+
+// TestLazyCanvasesReadNothingUnwritten draws documents on reused canvases
+// poisoned with values no drawing leaves, with the shortcuts and without
+// (where the canvases are written whole), and checks that the images are
+// the same: a pixel read before it is written would show.
+func TestLazyCanvasesReadNothingUnwritten(t *testing.T) {
+	defer func() { poisonSurfaces = false }()
+	defer func(n int) { parallelMinPixels = n }(parallelMinPixels)
+	parallelMinPixels = 1 << 10
+	for _, name := range []string{"pdf/chrome-doc", "pptx/features", "drawio/showcase", "xlsx/features", "pdf/chrome-masks", "demo"} {
+		doc := openDoc(t, "../../testdata/"+name+".bdf")
+		for _, mode := range []AntialiasMode{AntialiasOn, AntialiasOff} {
+			draw := func(pl bool) (out [][]byte) {
+				plain, poisonSurfaces = pl, !pl
+				defer func() { plain, poisonSurfaces = false, false }()
+				r := New(doc, &Options{FontDirs: testFonts, NoSystemFonts: true, Antialias: mode, ImageCacheBytes: -1, CanvasCacheBytes: 1 << 30, BandRows: 40})
+				add := func(img image.Image, err error) {
+					if err != nil {
+						t.Fatal(name, err)
+					}
+					switch img := img.(type) {
+					case *image.RGBA:
+						out = append(out, img.Pix)
+					case *image.Gray:
+						out = append(out, img.Pix)
+					case *image.Paletted:
+						out = append(out, img.Pix)
+					}
+				}
+				for _, v := range doc.Views {
+					switch v.Kind {
+					case bdf.ViewSheet:
+						// twice: the second drawing reuses the canvas
+						add(r.Region(v, 0, bdf.Rect{X: 300.5, Y: 200.25, W: 500, H: 400}, 375, 300))
+						add(r.RegionMono(v, 0, bdf.Rect{X: 1, Y: 2, W: 500, H: 400}, 250, 200, Gray))
+					case bdf.ViewScroll:
+						add(r.Region(v, 0, bdf.Rect{X: 100, Y: 300, W: 400, H: 400}, 300, 300))
+						add(r.Region(v, 0, bdf.Rect{X: 0, Y: 0, W: 400, H: 400}, 200, 200))
+					default:
+						if len(v.Pages) == 0 {
+							continue
+						}
+						add(r.Page(v, 0, 1))
+						add(r.PageMono(v, 0, 1.5, Bilevel))
+						add(r.Page(v, 0, 0.7))
+						var bands []byte
+						if err := r.PageRows(v, 0, 1.2, Gray, func(y0 int, rows image.Image) error {
+							bands = append(bands, rows.(*image.Gray).Pix...)
+							return nil
+						}); err != nil {
+							t.Fatal(name, err)
+						}
+						out = append(out, bands)
+					}
+				}
+				return out
+			}
+			fast, slow := draw(false), draw(true)
+			for i := range fast {
+				if !bytes.Equal(fast[i], slow[i]) {
+					n := 0
+					for k := range fast[i] {
+						if k < len(slow[i]) && fast[i][k] != slow[i][k] {
+							n++
+						}
+					}
+					t.Errorf("%s (antialias %d): image %d differs in %d bytes", name, mode, i, n)
+				}
+			}
+		}
+	}
+}

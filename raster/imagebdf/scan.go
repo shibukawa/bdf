@@ -13,9 +13,37 @@ import (
 type mask struct {
 	r image.Rectangle
 	a []float32
+	// full is the rectangle within r whose pixels a mask with coverage
+	// is known to cover whole: that of a rectangle with fractional
+	// edges but for its edges (see rectMaskIn), or the product of such
+	// (see intersect). Empty when not known. The draws through such a
+	// mask take the fast paths of fill within it (see mask.whole).
+	full image.Rectangle
 }
 
 func (m *mask) empty() bool { return m == nil || m.r.Empty() }
+
+// whole returns the rectangle within which the mask covers its pixels
+// whole: r for a mask without coverage, else full.
+func (m *mask) whole() image.Rectangle {
+	if m.a == nil {
+		return m.r
+	}
+	return m.full
+}
+
+// within returns the columns of [x0, x1) of row y that the mask covers
+// whole, [lo, hi) within [x0, x1): none (lo == hi) when the row is
+// outside the rows it covers whole.
+func (m *mask) within(y, x0, x1 int) (lo, hi int) {
+	f := m.whole()
+	if y < f.Min.Y || y >= f.Max.Y {
+		return x0, x0
+	}
+	lo = min(max(x0, f.Min.X), x1)
+	hi = max(min(x1, f.Max.X), lo)
+	return lo, hi
+}
 
 // bytes is the memory the coverage takes.
 func (m *mask) bytes() int { return 4 * len(m.a) }
@@ -59,7 +87,7 @@ func (r *Renderer) intersect(a, b *mask) *mask {
 	if r != nil {
 		threads = r.threads
 	}
-	out := &mask{r: rect, a: r.newMaskBuf(w * rect.Dy())}
+	out := &mask{r: rect, a: r.newMaskBuf(w * rect.Dy()), full: a.whole().Intersect(b.whole())}
 	splitRows(threads, rect.Min.Y, rect.Max.Y, w, func(y0, y1, _ int) {
 		for y := y0; y < y1; y++ {
 			ra, rb := a.row(y, rect.Min.X, rect.Max.X), b.row(y, rect.Min.X, rect.Max.X)
@@ -112,6 +140,12 @@ func rectMaskIn(r *Renderer, x0, y0, x1, y1 float64, bounds image.Rectangle) *ma
 	}
 	w := rect.Dx()
 	m := &mask{r: rect, a: r.newMaskBuf(w * rect.Dy())}
+	// the pixels within the edges are covered whole: none when the
+	// edges lie within a pixel (image.Rect would swap such corners)
+	full := image.Rectangle{Min: image.Pt(int(math.Ceil(clampF(x0))), int(math.Ceil(clampF(y0)))), Max: image.Pt(int(math.Floor(clampF(x1))), int(math.Floor(clampF(y1))))}
+	if !full.Empty() {
+		m.full = full.Intersect(rect)
+	}
 	xs := make([]float32, w)
 	for x := range xs {
 		xs[x] = cov(x0, x1, rect.Min.X+x)
@@ -409,6 +443,10 @@ func (b *scanBand) scan(rr *Renderer, edges []edge, rule byte, r image.Rectangle
 	}
 	wgt := 1 / float32(samples)
 	left := float64(r.Min.X)
+	// lo and hi bound the pixels the spans of a row reach: [lo, hi) is
+	// where its coverage can be other than 0 (hi may be w + 1, for a
+	// span that ends at the right edge)
+	lo, hi := w, 0
 	// span covers [xa, xb) of the scanline, in device x
 	span := func(xa, xb float64) {
 		xa, xb = math.Max(xa-left, 0), math.Min(xb-left, float64(w))
@@ -416,6 +454,7 @@ func (b *scanBand) scan(rr *Renderer, edges []edge, rule byte, r image.Rectangle
 			return
 		}
 		ia, ib := int(xa), int(xb)
+		lo, hi = min(lo, ia), max(hi, ib+1)
 		if ia == ib {
 			area[ia] += float32((xb - xa) * float64(wgt))
 			return
@@ -430,6 +469,7 @@ func (b *scanBand) scan(rr *Renderer, edges []edge, rule byte, r image.Rectangle
 	next := 0
 	for y := y0; y < y1; y++ {
 		spans = spans[:0]
+		lo, hi = w, 0
 		whole := false
 		for s := 0; s < samples; s++ {
 			sy := float64(y) + (float64(s)+0.5)/float64(samples)
@@ -505,10 +545,15 @@ func (b *scanBand) scan(rr *Renderer, edges []edge, rule byte, r image.Rectangle
 			}
 			whole = whole && covered >= w
 		}
-		if !noAA {
+		x1 := min(hi, w)
+		if !noAA && lo < hi {
+			// the coverage is settled over [lo, hi) alone: the pixels
+			// outside are 0, and so are their area and cover (the
+			// running sum of cover is 0 past the spans, which add as
+			// much as they take)
 			var run float32
-			whole = true
-			for x := 0; x < w; x++ {
+			whole = lo == 0 && hi >= w
+			for x := lo; x < x1; x++ {
 				run += cover[x]
 				v := area[x] + run
 				if v > 1 {
@@ -520,7 +565,8 @@ func (b *scanBand) scan(rr *Renderer, edges []edge, rule byte, r image.Rectangle
 				whole = whole && v == 1
 				area[x], cover[x] = 0, 0
 			}
-			cover[w], cover[w+1], area[w] = 0, 0, 0
+			clear(area[x1:hi])
+			clear(cover[x1:hi])
 		}
 		if !whole {
 			b.whole = false
@@ -529,7 +575,11 @@ func (b *scanBand) scan(rr *Renderer, edges []edge, rule byte, r image.Rectangle
 		if m.a != nil {
 			out := m.a[(y-r.Min.Y)*w : (y-r.Min.Y+1)*w]
 			if !noAA {
-				copy(out, row)
+				// the rest of the row is 0 already: the coverage is
+				// made of zeros, and each row written once
+				if lo < x1 {
+					copy(out[lo:x1], row[lo:x1])
+				}
 			} else {
 				for i := 0; i < len(spans); i += 2 {
 					ones := out[spans[i]:spans[i+1]]
