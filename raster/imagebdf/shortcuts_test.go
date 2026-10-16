@@ -332,3 +332,69 @@ func TestColoursOfGradients(t *testing.T) {
 		t.Error("colours of a gradient without stops")
 	}
 }
+
+// TestFillWithinWholeRectangles compares the fast paths fill takes within
+// the rectangles a clip and a coverage cover whole (see mask.full) with
+// the pixels asked one by one, for rectangular masks with fractional
+// edges and their products, on lazy canvases and written ones.
+func TestFillWithinWholeRectangles(t *testing.T) {
+	rng := rand.New(rand.NewSource(7))
+	bounds := image.Rect(0, 0, 40, 24)
+	frac := func(lo, hi float64) float64 { return lo + rng.Float64()*(hi-lo) }
+	rect := func() *mask {
+		x0, y0 := frac(-3, 30), frac(-3, 18)
+		x1, y1 := x0+frac(0.5, 20), y0+frac(0.5, 12)
+		if rng.Intn(3) == 0 {
+			x0, x1 = math.Round(x0), math.Round(x1) // whole columns
+		}
+		if rng.Intn(3) == 0 {
+			y0, y1 = math.Round(y0), math.Round(y1)
+		}
+		return rectMask(x0, y0, x1, y1, bounds)
+	}
+	shaders := []shader{solid{0.5, 0.25, 0, 0.5}, solid{0, 0, 1, 1}, solid{1, 1, 1, 1}}
+	for n := 0; n < 600; n++ {
+		clip := rect()
+		if rng.Intn(2) == 0 {
+			clip = intersect(clip, rect())
+		}
+		cov := rect()
+		if rng.Intn(4) == 0 {
+			cov = nil
+		} else if rng.Intn(3) == 0 {
+			cov = intersect(cov, rect())
+		}
+		sh := shaders[rng.Intn(len(shaders))]
+		alpha := float32(1)
+		if rng.Intn(2) == 0 {
+			alpha = rng.Float32()
+		}
+		mode := bdf.BlendSourceOver
+		if rng.Intn(5) == 0 {
+			mode = byte(rng.Intn(len(bdf.BlendNames)))
+		}
+		lazy := rng.Intn(2) == 0
+		fast, slow := both(t, func() []byte {
+			s := newSurface(bounds.Dx(), bounds.Dy())
+			if lazy {
+				s.begin(solid{1, 1, 1, 1})
+			} else {
+				for i := range s.pix {
+					s.pix[i] = float32(i%7) / 7
+				}
+			}
+			s.fill(cov, sh, alpha, mode, clip)
+			s.fill(&mask{r: image.Rect(3, 3, 9, 9)}, shaders[0], alpha, bdf.BlendSourceOver, clip)
+			img := s.toRGBA()
+			var b []byte
+			for _, v := range s.pix {
+				u := math.Float32bits(v)
+				b = append(b, byte(u), byte(u>>8), byte(u>>16), byte(u>>24))
+			}
+			return append(b, img.Pix...)
+		})
+		if !bytes.Equal(fast, slow) {
+			t.Fatalf("fill %d (mode %s, lazy %v, clip %v full %v, cov %+v): the pixels differ", n, bdf.BlendNames[mode], lazy, clip.r, clip.full, cov)
+		}
+	}
+}

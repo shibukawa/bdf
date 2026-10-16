@@ -21,8 +21,12 @@ func assembled(t testing.TB, r *Renderer, v *bdf.View, page int, scale float64, 
 	t.Helper()
 	var out draw.Image
 	next, bands := 0, 0
-	var last []byte
-	err := r.PageRows(v, page, scale, mono, func(y0 int, rows image.Image) error {
+	buffers := map[*byte]struct{}{}
+	_, height, err := PagePixels(v, page, scale)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.PageRows(v, page, scale, mono, func(y0 int, rows image.Image) error {
 		b := rows.Bounds()
 		if y0 != next || b.Min.Y != y0 || b.Min.X != 0 || b.Dy() <= 0 {
 			t.Fatalf("page %d: band at %d, bounds %v, after %d rows", page, y0, b, next)
@@ -35,7 +39,7 @@ func assembled(t testing.TB, r *Renderer, v *bdf.View, page int, scale float64, 
 			}
 			pix = img.Pix
 			if out == nil {
-				out = image.NewRGBA(image.Rect(0, 0, b.Dx(), 1<<20))
+				out = image.NewRGBA(image.Rect(0, 0, b.Dx(), height))
 			}
 		case *image.Gray:
 			if mono != Gray {
@@ -43,7 +47,7 @@ func assembled(t testing.TB, r *Renderer, v *bdf.View, page int, scale float64, 
 			}
 			pix = img.Pix
 			if out == nil {
-				out = image.NewGray(image.Rect(0, 0, b.Dx(), 1<<20))
+				out = image.NewGray(image.Rect(0, 0, b.Dx(), height))
 			}
 		case *image.Paletted:
 			if mono != Bilevel || len(img.Palette) != 2 {
@@ -51,15 +55,19 @@ func assembled(t testing.TB, r *Renderer, v *bdf.View, page int, scale float64, 
 			}
 			pix = img.Pix
 			if out == nil {
-				out = image.NewPaletted(image.Rect(0, 0, b.Dx(), 1<<20), img.Palette)
+				out = image.NewPaletted(image.Rect(0, 0, b.Dx(), height), img.Palette)
 			}
 		default:
 			t.Fatalf("a %T band", rows)
 		}
-		if bands > 0 && last != nil && &last[0] != &pix[0] && cap(last) >= len(pix) {
-			t.Errorf("page %d: the band at %d is not drawn into the memory of the one before", page, y0)
+		// the bands are drawn into the memory of the ones before: one
+		// image a worker, at most
+		if _, ok := buffers[&pix[0]]; !ok {
+			buffers[&pix[0]] = struct{}{}
+			if len(buffers) > maxThreads+1 {
+				t.Errorf("page %d: the band at %d is drawn into new memory, the %dth", page, y0, len(buffers))
+			}
 		}
-		last = pix
 		draw.Draw(out, b, rows, b.Min, draw.Src)
 		next = b.Max.Y
 		bands++

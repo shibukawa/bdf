@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"sync"
+	"sync/atomic"
 
 	"github.com/shibukawa/bdf"
 )
@@ -14,17 +16,22 @@ import (
 // top, and calls yield for each: with the first row of the band and the
 // image of its rows, whose bounds are those rows of the page (Min.Y is
 // y0). The image is an *image.RGBA for a mono of 0, and the image of the
-// Mono otherwise (see PageMono); it is the renderer's, reused for the
-// next band, so yield copies what it keeps. The pixels are those of Page
-// and PageMono.
+// Mono otherwise (see PageMono); it is the renderer's, reused for a
+// band after it, so yield copies what it keeps. The pixels are those of
+// Page and PageMono.
 //
 // A band takes a canvas of its rows (Options.BandRows of them, and the
 // rows above and below that the shadows of the page reach from) instead
 // of the whole page, and the image of its rows: an A4 page at 600 dpi
 // takes tens of megabytes instead of hundreds. The instructions of the
 // page are run once a band, skipping from the second band the draws that
-// lie outside it. An error of yield ends the drawing with that error.
-// The image is not kept in the completed-image cache.
+// lie outside it. The bands after the first are drawn in parallel, as
+// many at a time as the renderer has threads (up to eight, those of the
+// machine) and within MaxBandCanvases of canvases, each by a worker of
+// its own with the memory of the renderer's options; yield is called in
+// order, on the calling goroutine. An error of yield ends the drawing
+// with that error once the bands begun are drawn. The image is not kept
+// in the completed-image cache.
 func (r *Renderer) PageRows(v *bdf.View, page int, scale float64, mono Mono, yield func(y0 int, rows image.Image) error) (err error) {
 	defer recoveredErr(&err)
 	if err := mono.check(); err != nil {
@@ -120,77 +127,252 @@ func (r *Renderer) bandRows() int {
 // of the band and a margin above and below it for the shadows, at those
 // rows of the device: the transforms are those of the whole page, so
 // the pixels are the same. What the shadows need of the margin is not
-// known before the page is drawn: a band whose shadows reach past its
-// margin is drawn again with as much, and the bands after it with as
-// much from the start. The first band notes the extent of each draw for
+// known before the page is drawn: the first band is drawn again with as
+// much when its shadows reach past its margin, and the bands after it
+// with as much from the start (and as tall again, so that the margin is
+// not most of a band). The first band notes the extent of each draw for
 // the bands after it, which skip the draws outside them (see
-// bandRecord).
+// bandRecord). The bands after the first are drawn by the band workers
+// of the renderer in parallel (see bandWorkers), and given to yield in
+// order.
 func (r *Renderer) pageRows(p *bdf.Page, w, h int, mono Mono, yield func(y0 int, rows image.Image) error) error {
 	bg := r.background()
 	sx, sy := float64(w)/float64(p.W), float64(h)/float64(p.H)
-	pm := matrix{sx, 0, 0, sy, 0, 0}
+	pg := &pageBands{p: p, w: w, h: h, mono: mono, bg: bg, pm: matrix{sx, 0, 0, sy, 0, 0}}
 	whole := image.Rect(0, 0, w, h)
 	// the background is the canvas when the page covers the whole image
-	ax, ay := pm.apply(0, 0)
-	bx, by := pm.apply(float64(p.W), float64(p.H))
+	ax, ay := pg.pm.apply(0, 0)
+	bx, by := pg.pm.apply(float64(p.W), float64(p.H))
 	cover := r.rectMask(ax, ay, bx, by, whole)
-	var filled *solid
-	if cover.a == nil && cover.r == whole {
-		filled = &bg
-	}
+	pg.filled, pg.borders = pageBackground(cover, whole, &bg)
 	r.releaseMask(cover)
 	rows := r.bandRows()
+	// the first band, drawn again with the margin its shadows need
 	var rec *bandRecord
-	margin := 0
 	var out image.Image
-	for y0 := 0; y0 < h; y0 += rows {
-		y1 := min(y0+rows, h)
-		for {
-			canvas := image.Rect(0, max(0, y0-margin), w, min(h, y1+margin))
-			d := r.canvasAt(pm, canvas, whole, filled)
-			if rec == nil {
-				rec = &bandRecord{recording: true, margin: margin}
-			}
-			rec.visit = 0
-			d.band = rec
-			clip := d.clipTo(pm, 0, 0, float64(p.W), float64(p.H))
-			if filled == nil {
-				d.ctx.target.fillBackground(clip, bg)
-			}
-			for _, l := range p.Layers {
-				d.drawTop(l.Obj, pm, clip)
-			}
-			s := d.ctx.target
-			if rec.margin > margin {
-				// the shadows reach past the margin: once more with as
-				// much, noting the extents anew
-				margin = rec.margin
-				rec = nil
-				r.release(s)
-				continue
-			}
-			rec.recording = false
+	y1 := min(rows, h)
+	for {
+		rec = &bandRecord{recording: true, margin: pg.margin}
+		out = r.band(pg, 0, y1, rec, out)
+		if rec.margin > pg.margin {
+			pg.margin = rec.margin
+			continue
+		}
+		rec.recording = false
+		break
+	}
+	if bandHook != nil {
+		bandHook(rec)
+	}
+	if err := yield(0, out); err != nil {
+		return err
+	}
+	if y1 >= h {
+		return nil
+	}
+	// the bands after it: at least twice as tall as the margin, so that
+	// the margin drawn on either side is no more than the band
+	rows = max(rows, 2*pg.margin)
+	var bands []image.Rectangle
+	for y0 := y1; y0 < h; y0 += rows {
+		bands = append(bands, image.Rect(0, y0, w, min(y0+rows, h)))
+	}
+	workers := r.bandWorkers(len(bands), 16*w*min(h, rows+2*pg.margin))
+	if workers <= 1 {
+		for _, b := range bands {
+			out = r.band(pg, b.Min.Y, b.Max.Y, rec, out)
 			if bandHook != nil {
 				bandHook(rec)
 			}
-			band := image.Rect(0, y0, w, y1)
-			switch mono {
-			case Gray:
-				img, _ := out.(*image.Gray)
-				out = s.toGrayInto(img, band)
-			case Bilevel:
-				img, _ := out.(*image.Paletted)
-				out = s.toBilevelInto(img, band)
-			default:
-				img, _ := out.(*image.RGBA)
-				out = s.toRGBAInto(img, band)
+			if err := yield(b.Min.Y, out); err != nil {
+				return err
 			}
-			r.release(s)
-			break
 		}
-		if err := yield(y0, out); err != nil {
-			return err
+		return nil
+	}
+	return r.bandsInParallel(pg, bands, rec, workers, yield)
+}
+
+// pageBands is a page drawn in bands (see pageRows): what every band is
+// drawn from.
+type pageBands struct {
+	p    *bdf.Page
+	w, h int
+	mono Mono
+	bg   solid
+	pm   matrix
+	// filled is the background the canvas of a band begins as, when the
+	// page covers it, and borders says that the fractional edges of the
+	// page are written after (see pageBackground)
+	filled  *solid
+	borders bool
+	// margin is the rows above and below a band that are drawn with it
+	// for the shadows (see bandRecord.margin)
+	margin int
+}
+
+// band draws the rows [y0, y1) of a page on the renderer, with the
+// margin of the page above and below them for the shadows, noting the
+// draws when rec is recording, and returns the image of the rows: out
+// when it is large enough, else a new one.
+func (r *Renderer) band(pg *pageBands, y0, y1 int, rec *bandRecord, out image.Image) image.Image {
+	whole := image.Rect(0, 0, pg.w, pg.h)
+	canvas := image.Rect(0, max(0, y0-pg.margin), pg.w, min(pg.h, y1+pg.margin))
+	d := r.canvasAt(pg.pm, canvas, whole, pg.filled)
+	d.band = rec
+	clip := d.clipTo(pg.pm, 0, 0, float64(pg.p.W), float64(pg.p.H))
+	switch {
+	case pg.borders:
+		d.ctx.target.setBorders(clip, pg.bg)
+	case pg.filled == nil:
+		d.ctx.target.fillBackground(clip, pg.bg)
+	}
+	for _, l := range pg.p.Layers {
+		d.drawTop(l.Obj, pg.pm, clip)
+	}
+	s := d.ctx.target
+	band := image.Rect(0, y0, pg.w, y1)
+	switch pg.mono {
+	case Gray:
+		img, _ := out.(*image.Gray)
+		out = s.toGrayInto(img, band)
+	case Bilevel:
+		img, _ := out.(*image.Paletted)
+		out = s.toBilevelInto(img, band)
+	default:
+		img, _ := out.(*image.RGBA)
+		out = s.toRGBAInto(img, band)
+	}
+	r.release(s)
+	return out
+}
+
+// MaxBandCanvases bounds the memory of the canvases of the bands of a
+// page drawn at a time (Options.BandWorkers): fewer bands are drawn at a
+// time when they are large. An A4 page at 600 dpi takes 10 MiB a band
+// of DefaultBandRows.
+const MaxBandCanvases = 192 << 20
+
+// bandWorkers returns how many bands of a page are drawn at a time, for
+// n bands whose canvases take canvasBytes each: Options.BandWorkers, or
+// as many as the threads of the renderer (see splitRows), within
+// MaxBandCanvases, and makes the renderers of the workers (see
+// bandsInParallel). One means the bands are drawn one after the other by
+// the renderer itself.
+func (r *Renderer) bandWorkers(n, canvasBytes int) int {
+	workers := r.opts.BandWorkers
+	if workers <= 0 {
+		workers = min(r.threads, max(1, MaxBandCanvases/max(canvasBytes, 1)))
+	}
+	workers = min(workers, n, maxThreads)
+	if workers <= 1 || plain {
+		return 1
+	}
+	if len(r.rowWorkers) != workers {
+		// the workers draw their bands alone: the renderer's threads are
+		// theirs; they share the text masks, and decode what they draw
+		// for themselves
+		opts := r.opts
+		opts.ImageCacheBytes = -1
+		r.rowWorkers = make([]*Renderer, workers)
+		for i := range r.rowWorkers {
+			child := New(r.doc, &opts)
+			child.textMasks = r.textMasks
+			child.threads = 1
+			r.rowWorkers[i] = child
 		}
 	}
-	return nil
+	return workers
+}
+
+// bandsInParallel draws the bands after the first of a page with the
+// band workers of the renderer, each a band at a time, and gives them
+// to yield in the order of the bands: at most as many bands are drawn
+// ahead of yield as there are workers, and a worker draws its next band
+// once yield is done with the image of the one before (which it reuses).
+// An error of yield ends the drawing once the bands begun are drawn.
+func (r *Renderer) bandsInParallel(pg *pageBands, bands []image.Rectangle, rec *bandRecord, workers int, yield func(y0 int, rows image.Image) error) error {
+	type result struct {
+		img  image.Image
+		err  error
+		done chan struct{}
+	}
+	slots := make([]chan result, len(bands))
+	for i := range slots {
+		slots[i] = make(chan result, 1)
+	}
+	jobs := make(chan int)
+	stop, fed := make(chan struct{}), make(chan struct{})
+	var dispatched atomic.Int32
+	var wg sync.WaitGroup
+	pool := r.rowWorkers[:workers]
+	for _, wk := range pool {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out := wk.bandImage
+			defer func() { wk.bandImage = out }()
+			for i := range jobs {
+				res := result{done: make(chan struct{})}
+				func() {
+					defer func() {
+						if p := recover(); p != nil {
+							res.err = fmt.Errorf("imagebdf: the drawing failed: %v", p)
+						}
+					}()
+					b := bands[i]
+					out = wk.band(pg, b.Min.Y, b.Max.Y, rec, out)
+					res.img = out
+				}()
+				slots[i] <- res
+				<-res.done
+			}
+		}()
+	}
+	// the feeder hands out the bands in order, until told to stop
+	go func() {
+		defer close(fed)
+		defer close(jobs)
+		for i := range bands {
+			select {
+			case jobs <- i:
+				dispatched.Add(1)
+			case <-stop:
+				return
+			}
+		}
+	}()
+	var err error
+	taken := 0
+	for ; taken < len(bands); taken++ {
+		res := <-slots[taken]
+		if res.err != nil {
+			err = res.err
+		} else {
+			if bandHook != nil {
+				bandHook(rec)
+			}
+			err = yield(bands[taken].Min.Y, res.img)
+		}
+		close(res.done)
+		if err != nil {
+			taken++
+			break
+		}
+	}
+	close(stop)
+	<-fed
+	// the bands handed out are drawn still: take them, so that their
+	// workers may finish
+	for i := taken; i < int(dispatched.Load()); i++ {
+		res := <-slots[i]
+		close(res.done)
+	}
+	wg.Wait()
+	for _, wk := range pool {
+		for _, warning := range wk.Warnings() {
+			r.warnf("%s", warning)
+		}
+	}
+	return err
 }

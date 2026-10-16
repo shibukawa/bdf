@@ -295,7 +295,7 @@ func TestRenderBatch(t *testing.T) {
 	if status, stderr := run(t, "render", "-q", "-no-system-fonts", "-pages=all", in, filepath.Join(dir, "all-{page}.png")); status != 0 {
 		t.Fatalf("all: %d %s", status, stderr)
 	}
-	for _, args := range [][]string{{"-pages=all", "-page=1"}, {"-workers=2"}, {"-pages=all", "-workers=17"}, {"-pages=bad"}} {
+	for _, args := range [][]string{{"-pages=all", "-page=1"}, {"-workers=2", "-band=0"}, {"-pages=all", "-workers=17"}, {"-pages=bad"}} {
 		if status, _ := run(t, append(append([]string{"render"}, args...), filepath.Join(dir, "missing.bdf"), filepath.Join(dir, "bad-{page}.png"))...); status != 2 {
 			t.Fatalf("bad flags %v: exit %d", args, status)
 		}
@@ -432,5 +432,44 @@ func TestRenderBands(t *testing.T) {
 	}
 	if status, stderr := run(t, "render", "-band=-1", filepath.Join(dir, "missing.bdf"), filepath.Join(dir, "x.png")); status != 2 || !strings.Contains(stderr, "-band") {
 		t.Errorf("-band=-1: exit status %d: %s", status, stderr)
+	}
+}
+
+// TestRenderCompression checks that -compression changes the size of a
+// PNG and not its pixels, and rejects unknown values.
+func TestRenderCompression(t *testing.T) {
+	dir := t.TempDir()
+	doc := filepath.Join("..", "..", "testdata", "docx", "basic.bdf")
+	var pix [][]byte
+	var sizes []int64
+	for _, c := range []string{"fast", "normal", "best"} {
+		out := filepath.Join(dir, c+".png")
+		args := append([]string{"render", "-q", "-scale", "2", "-mono=gray", "-compression=" + c}, testFontFlags...)
+		if status, stderr := run(t, append(args, doc, out)...); status != 0 {
+			t.Fatalf("-compression=%s: exit status %d: %s", c, status, stderr)
+		}
+		f, err := os.Open(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		img, err := png.Decode(f)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		st, _ := os.Stat(out)
+		sizes = append(sizes, st.Size())
+		pix = append(pix, img.(*image.Gray).Pix)
+	}
+	for i := 1; i < len(pix); i++ {
+		if !bytes.Equal(pix[0], pix[i]) {
+			t.Errorf("the pixels of compression %d differ", i)
+		}
+	}
+	if sizes[2] >= sizes[0] {
+		t.Errorf("best is %d bytes, fast %d", sizes[2], sizes[0])
+	}
+	if status, stderr := run(t, "render", "-compression=max", filepath.Join(dir, "missing.bdf"), filepath.Join(dir, "x.png")); status != 2 || !strings.Contains(stderr, "-compression must be fast, normal or best") {
+		t.Errorf("-compression=max: exit status %d: %s", status, stderr)
 	}
 }

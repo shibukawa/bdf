@@ -118,6 +118,12 @@ type Options struct {
 	// the instructions of the page are run once a band. Zero uses
 	// DefaultBandRows.
 	BandRows int
+	// BandWorkers is how many bands of a page are drawn at a time
+	// (PageRows, PagesRows), each by a worker with a canvas of its own:
+	// zero uses the threads of the machine, up to eight, within
+	// MaxBandCanvases of canvases; one draws the bands one after the
+	// other, with the memory of one.
+	BandWorkers int
 }
 
 // DefaultBandRows is the rows of a band of a page drawn in bands
@@ -162,7 +168,11 @@ type Renderer struct {
 	images        lru[imageKey, image.Image]
 	textMasks     *textMaskCache
 	pageWorkers   []*Renderer
-	freeLimit     int
+	// rowWorkers draw the bands of a page in parallel (see bandWorkers),
+	// each into its bandImage, kept for the next page
+	rowWorkers []*Renderer
+	bandImage  image.Image
+	freeLimit  int
 	// threads is how many goroutines the passes over a large canvas are
 	// split among (see splitRows): those of the machine, divided among
 	// the workers of Pages
@@ -178,18 +188,14 @@ const DefaultCanvasCacheBytes = 64 << 20
 // newSurface returns a cleared canvas of w × h pixels: one of the drawings
 // before when it has one large enough, else a new one.
 func (r *Renderer) newSurface(w, h int) *surface {
-	s, cleared := r.surfaceFor(w, h)
-	if !cleared {
-		splitRows(s.threads, 0, h, w, func(y0, y1, _ int) { clear(s.pix[4*y0*w : 4*y1*w]) })
-		s.fresh = true
-	}
-	return s
+	return r.filledSurface(w, h, solid{})
 }
 
-// surfaceFor returns a canvas of w × h pixels: one of the drawings before
-// when it has one large enough, with the pixels it was left with, else a
-// new one, cleared.
-func (r *Renderer) surfaceFor(w, h int) (s *surface, cleared bool) {
+// surfaceFor returns a canvas of w × h pixels with the pixels it was left
+// with: one of the drawings before when it has one large enough, else a
+// new one (of zeros). The canvas is drawn on when it is begun (see
+// surface.begin).
+func (r *Renderer) surfaceFor(w, h int) *surface {
 	n := 4 * w * h
 	if !plain {
 		for i, s := range r.free {
@@ -199,25 +205,38 @@ func (r *Renderer) surfaceFor(w, h int) (s *surface, cleared bool) {
 				s.w, s.h, s.pix = w, h, s.pix[:n]
 				s.ox, s.oy, s.page = 0, 0, image.Rectangle{}
 				s.threads = r.threads
-				s.fresh = false
-				return s, false
+				if poisonSurfaces {
+					for i := range s.pix {
+						s.pix[i] = float32(math.NaN())
+					}
+				}
+				return s
 			}
 		}
 	}
-	s = newSurface(w, h)
+	s := newSurface(w, h)
 	s.threads = r.threads
-	return s, true
+	return s
 }
 
-// filledSurface returns a canvas of w × h pixels of one opaque colour: a
-// canvas of a drawing before is not cleared first, as the colour covers
-// whatever it was left with.
+// poisonSurfaces makes the canvases reused by a renderer hold what no
+// drawing leaves in them, for the tests of lazy canvases: a pixel read
+// before it is written shows.
+var poisonSurfaces bool
+
+// filledSurface returns a canvas of w × h pixels of one colour, as a
+// lazy canvas (see surface): no pixel is written. Drawn plainly, the
+// canvas is written whole.
 func (r *Renderer) filledSurface(w, h int, c solid) *surface {
-	s, _ := r.surfaceFor(w, h)
-	s.fresh = false
-	row := s.rowBuf(0, w)
-	repeat(row, c)
-	s.setRows(s.bounds(), row)
+	s := r.surfaceFor(w, h)
+	if plain {
+		s.lazy = false
+		row := s.rowBuf(0, w)
+		repeat(row, c)
+		s.setRows(s.bounds(), row)
+		return s
+	}
+	s.begin(c)
 	return s
 }
 
@@ -287,7 +306,7 @@ func (r *Renderer) releaseMask(m *mask) {
 		return
 	}
 	a := m.a
-	m.a, m.r = nil, image.Rectangle{}
+	m.a, m.r, m.full = nil, image.Rectangle{}, image.Rectangle{}
 	n := 4 * cap(a)
 	if len(a) < minPooledMask || n > r.freeBudget() {
 		return
@@ -715,13 +734,13 @@ func (r *Renderer) canvas(region bdf.Rect, w, h int, bg *solid) (*drawer, matrix
 
 // canvasAt starts a drawing of the pixels rows of an image whole, with
 // the device transform m, on a canvas of the background colour when it
-// is opaque and covers the whole image (see filledSurface), else cleared.
+// covers the whole image (see filledSurface), else of nothing.
 // The rows are the whole image, or a band of it (see pageRows).
 func (r *Renderer) canvasAt(m matrix, rows, whole image.Rectangle, bg *solid) *drawer {
 	w, h := rows.Dx(), rows.Dy()
 	var s *surface
 	switch {
-	case bg == nil || bg[3] != 1:
+	case bg == nil:
 		s = r.newSurface(w, h)
 	case plain:
 		s = r.newSurface(w, h)
@@ -787,19 +806,38 @@ func (r *Renderer) drawPage(p *bdf.Page, region bdf.Rect, w, h int, mono Mono) i
 	ax, ay := pm.apply(0, 0)
 	bx, by := pm.apply(float64(p.W), float64(p.H))
 	whole := r.rectMask(ax, ay, bx, by, image.Rect(0, 0, w, h))
-	var filled *solid
-	if whole.a == nil && whole.r == image.Rect(0, 0, w, h) {
-		filled = &bg
-	}
+	filled, borders := pageBackground(whole, image.Rect(0, 0, w, h), &bg)
+	r.releaseMask(whole)
 	d, m := r.canvas(region, w, h, filled)
 	clip := d.clipTo(m, 0, 0, float64(p.W), float64(p.H))
-	if filled == nil {
+	switch {
+	case borders:
+		d.ctx.target.setBorders(clip, bg)
+	case filled == nil:
 		d.ctx.target.fillBackground(clip, bg)
 	}
 	for _, l := range p.Layers {
 		d.drawTop(l.Obj, m, clip)
 	}
 	return d.finishMono(mono)
+}
+
+// pageBackground tells how the background of a page is drawn on a canvas
+// of bounds, from the coverage of the page: as the canvas itself (filled)
+// when the page covers the canvas, with its fractional edges written
+// after (borders) when it covers the canvas but for the coverage of its
+// edges (see surface.setBorders); else drawn on a canvas of nothing.
+func pageBackground(cover *mask, bounds image.Rectangle, bg *solid) (filled *solid, borders bool) {
+	if cover.r != bounds {
+		return nil, false
+	}
+	if cover.a == nil {
+		return bg, false
+	}
+	if cover.full.Empty() {
+		return nil, false
+	}
+	return bg, true
 }
 
 // drawContinuous draws the strips of a scroll view stacked without gaps,
@@ -953,6 +991,7 @@ func (r *Renderer) gridlines(d *drawer, v *bdf.View, region bdf.Rect, m matrix) 
 		}
 		before = before[:0]
 		for y := cov.r.Min.Y; y < cov.r.Max.Y; y++ {
+			t.touch(y, cov.r.Min.X, cov.r.Max.X, false)
 			before = append(before, t.pix[t.at(cov.r.Min.X, y):t.at(cov.r.Max.X, y)]...)
 		}
 		t.fill(cov, color, 1, bdf.BlendSourceOver, all)

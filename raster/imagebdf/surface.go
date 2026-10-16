@@ -12,6 +12,14 @@ import (
 // of the device: the canvases of the groups and soft masks of a drawing
 // lie on the same device as the canvas of the image, and a band of a page
 // (see pageRows) is the rows of the page it draws.
+//
+// A canvas of a renderer is lazy: it begins as its background colour
+// (that of the page, or none for a group) without the colour being
+// written, and the pixels are written as the draws reach them, in
+// blocks of blockPixels (see touch). What is not drawn on is never
+// written, nor read: the conversions of the canvas to an image write the
+// background for it. A page is mostly background, so a lazy canvas
+// takes a fraction of the memory passes of one filled first.
 type surface struct {
 	w, h   int
 	ox, oy int
@@ -23,17 +31,46 @@ type surface struct {
 	// rows holds the colours of the rows the other goroutines of a pass
 	// fill (see splitRows)
 	rows [][]float32
-	// fresh says that the pixels are all 0 still: those of a new canvas,
-	// or of one cleared for a drawing (see fillBackground)
-	fresh bool
 	// threads is how many goroutines the passes over the canvas are
 	// split among (see splitRows)
 	threads int
+	// lazy says that the pixels of the blocks that are not initialized
+	// (see init) are not in pix: they are bg
+	lazy bool
+	bg   solid
+	// init has a bit a block of blockPixels pixels of a row, words a row
+	// (see blockWords): set once the block's pixels are in pix
+	init  []uint64
+	words int
 }
 
+// blockPixels is the pixels of a block of a lazy canvas (see surface): a
+// block is written whole with the background before a draw reads or
+// writes part of it.
+const blockPixels = 64
+
+// newSurface returns a canvas of w × h pixels of 0, written: the canvases
+// of a renderer are lazy instead (see Renderer.surfaceFor).
 func newSurface(w, h int) *surface {
-	return &surface{w: w, h: h, pix: make([]float32, 4*w*h), fresh: true, threads: 1}
+	return &surface{w: w, h: h, pix: make([]float32, 4*w*h), threads: 1}
 }
+
+// begin starts a lazy canvas anew with a background colour: no pixel is
+// written.
+func (s *surface) begin(bg solid) {
+	s.lazy, s.bg = true, bg
+	s.words = (blocks(s.w) + 63) / 64
+	n := s.words * s.h
+	if cap(s.init) < n {
+		s.init = make([]uint64, n)
+	} else {
+		s.init = s.init[:n]
+		clear(s.init)
+	}
+}
+
+// blocks is the blocks of a row of w pixels.
+func blocks(w int) int { return (w + blockPixels - 1) / blockPixels }
 
 func (s *surface) bounds() image.Rectangle { return image.Rect(s.ox, s.oy, s.ox+s.w, s.oy+s.h) }
 
@@ -48,6 +85,58 @@ func (s *surface) whole() image.Rectangle {
 // at returns the index in pix of the pixel at (x, y) of the device, which
 // must lie on the canvas.
 func (s *surface) at(x, y int) int { return 4 * ((y-s.oy)*s.w + x - s.ox) }
+
+// initRow returns the words of the blocks of row y of the device.
+func (s *surface) initRow(y int) []uint64 {
+	i := (y - s.oy) * s.words
+	return s.init[i : i+s.words]
+}
+
+// initBlock writes the background over block b of row y, and notes it.
+func (s *surface) initBlock(row []uint64, y, b int) {
+	row[b>>6] |= 1 << (b & 63)
+	x0 := b * blockPixels
+	x1 := min(x0+blockPixels, s.w)
+	p := s.pix[4*((y-s.oy)*s.w+x0) : 4*((y-s.oy)*s.w+x1)]
+	repeat(p, s.bg)
+}
+
+// touch makes the pixels [x0, x1) of row y, in device coordinates, hold
+// what they show, for a draw that reads or writes part of them: the
+// blocks of a lazy canvas that hold them are written with the background
+// if they are not initialized. With overwrite, the pixels are about to
+// be written whole: the blocks within them are noted without being
+// written.
+func (s *surface) touch(y, x0, x1 int, overwrite bool) {
+	if !s.lazy || x1 <= x0 {
+		return
+	}
+	row := s.initRow(y)
+	x0, x1 = x0-s.ox, x1-s.ox
+	b0, b1 := x0/blockPixels, (x1-1)/blockPixels
+	for b := b0; b <= b1; b++ {
+		if row[b>>6]>>(b&63)&1 != 0 {
+			continue
+		}
+		if overwrite && b*blockPixels >= x0 && min((b+1)*blockPixels, s.w) <= x1 {
+			row[b>>6] |= 1 << (b & 63)
+			continue
+		}
+		s.initBlock(row, y, b)
+	}
+}
+
+// touchAll makes every pixel of the canvas hold what it shows.
+func (s *surface) touchAll() {
+	if !s.lazy {
+		return
+	}
+	s.bands(s.bounds(), func(y0, y1, _ int) {
+		for y := y0; y < y1; y++ {
+			s.touch(y, s.ox, s.ox+s.w, false)
+		}
+	})
+}
 
 // bands calls fn for bands of the rows of r, in parallel for a large r
 // (see splitRows).
@@ -85,6 +174,7 @@ func (s *surface) rowBufs(n int) {
 func (s *surface) setRows(r image.Rectangle, row []float32) {
 	s.bands(r, func(y0, y1, _ int) {
 		for y := y0; y < y1; y++ {
+			s.touch(y, r.Min.X, r.Max.X, true)
 			copy(s.pix[s.at(r.Min.X, y):s.at(r.Max.X, y)], row)
 		}
 	})
@@ -146,7 +236,6 @@ func (s *surface) fill(cov *mask, sh shader, alpha float32, mode byte, clip *mas
 	if r.Empty() {
 		return
 	}
-	s.fresh = false
 	if unbounded(mode) || plain {
 		s.fillAll(cov, sh, alpha, mode, clip, r)
 		return
@@ -183,43 +272,122 @@ func (s *surface) fill(cov *mask, sh shader, alpha float32, mode byte, clip *mas
 				crow = cov.row(y, r.Min.X, r.Max.X)
 			}
 			d := s.pix[s.at(r.Min.X, y):s.at(r.Max.X, y)]
-			if mode == bdf.BlendSourceOver && krow == nil {
-				// the common case, without asking each pixel what the
-				// clip and the composite operation are
-				if crow == nil {
-					fillRowOver(d, buf, alpha)
-					continue
+			// generic composites the pixels [i0, i1) of the row one by
+			// one, asking each what the clip and the coverage are
+			generic := func(i0, i1 int) {
+				if i1 <= i0 {
+					return
 				}
-				fillRowCovered(d, buf, crow, alpha)
+				s.touch(y, r.Min.X+i0, r.Min.X+i1, false)
+				for i := i0; i < i1; i++ {
+					c := alpha
+					if crow != nil {
+						c = crow[i] * alpha
+					}
+					k := float32(1)
+					if krow != nil {
+						k = krow[i]
+					}
+					if k == 0 || c == 0 {
+						continue
+					}
+					src := [4]float32{float32(buf[4*i] * c), float32(buf[4*i+1] * c), float32(buf[4*i+2] * c), float32(buf[4*i+3] * c)}
+					dst := [4]float32{d[4*i], d[4*i+1], d[4*i+2], d[4*i+3]}
+					var out [4]float32
+					if mode == bdf.BlendSourceOver {
+						ia := 1 - src[3]
+						out = [4]float32{src[0] + float32(dst[0]*ia), src[1] + float32(dst[1]*ia), src[2] + float32(dst[2]*ia), src[3] + float32(dst[3]*ia)}
+					} else {
+						out = composite(mode, src, dst)
+					}
+					if k == 1 {
+						copy(d[4*i:4*i+4], out[:])
+						continue
+					}
+					for j := 0; j < 4; j++ {
+						d[4*i+j] = dst[j] + float32(k*(out[j]-dst[j]))
+					}
+				}
+			}
+			if mode != bdf.BlendSourceOver {
+				generic(0, n)
 				continue
 			}
-			for i := 0; i < n; i++ {
-				c := alpha
-				if crow != nil {
-					c = crow[i] * alpha
+			// covered composites [i0, i1) through the coverage alone: the
+			// clip covers them whole
+			covered := func(i0, i1 int) {
+				if i1 <= i0 {
+					return
 				}
-				k := float32(1)
-				if krow != nil {
-					k = krow[i]
+				if s.lazy {
+					s.fillRowCoveredLazy(y, r.Min.X+i0, d[4*i0:4*i1], buf[4*i0:4*i1], crow[i0:i1], alpha)
+					return
 				}
-				if k == 0 || c == 0 {
+				fillRowCovered(d[4*i0:4*i1], buf[4*i0:4*i1], crow[i0:i1], alpha)
+			}
+			// fast composites [i0, i1), which the clip and the coverage
+			// cover whole, without asking each pixel
+			fast := func(i0, i1 int) {
+				if i1 <= i0 {
+					return
+				}
+				if flat && alpha == 1 && c[3] == 1 {
+					// an opaque colour is what the pixels become
+					s.touch(y, r.Min.X+i0, r.Min.X+i1, true)
+					copy(d[4*i0:4*i1], buf[4*i0:4*i1])
+					return
+				}
+				s.touch(y, r.Min.X+i0, r.Min.X+i1, false)
+				fillRowOver(d[4*i0:4*i1], buf[4*i0:4*i1], alpha)
+			}
+			// the columns the clip covers whole, and within them those
+			// the coverage does: the rest pixel by pixel
+			k0, k1 := 0, n
+			if krow != nil {
+				x0, x1 := clip.within(y, r.Min.X, r.Max.X)
+				k0, k1 = x0-r.Min.X, x1-r.Min.X
+			}
+			generic(0, k0)
+			if crow == nil {
+				fast(k0, k1)
+			} else {
+				c0, c1 := k0, k0
+				if !cov.full.Empty() {
+					x0, x1 := cov.within(y, r.Min.X+k0, r.Min.X+k1)
+					c0, c1 = x0-r.Min.X, x1-r.Min.X
+				}
+				covered(k0, c0)
+				fast(c0, c1)
+				covered(c1, k1)
+			}
+			generic(k1, n)
+		}
+	})
+}
+
+// setBorders writes the pixels of a lazy canvas of the background that
+// a rectangular clip with fractional edges (see rectMaskIn) covers in
+// part: those of its rectangle outside the rectangle it covers whole, as
+// the background times their coverage, over nothing (what fill writes
+// over a canvas of nothing). The clip must lie on the canvas.
+func (s *surface) setBorders(clip *mask, bg solid) {
+	r, f := clip.r, clip.full
+	s.bands(r, func(y0, y1, _ int) {
+		for y := y0; y < y1; y++ {
+			segs := [2][2]int{{r.Min.X, r.Max.X}, {r.Max.X, r.Max.X}}
+			if y >= f.Min.Y && y < f.Max.Y {
+				segs = [2][2]int{{r.Min.X, f.Min.X}, {f.Max.X, r.Max.X}}
+			}
+			for _, sg := range segs {
+				x0, x1 := sg[0], sg[1]
+				if x1 <= x0 {
 					continue
 				}
-				src := [4]float32{float32(buf[4*i] * c), float32(buf[4*i+1] * c), float32(buf[4*i+2] * c), float32(buf[4*i+3] * c)}
-				dst := [4]float32{d[4*i], d[4*i+1], d[4*i+2], d[4*i+3]}
-				var out [4]float32
-				if mode == bdf.BlendSourceOver {
-					ia := 1 - src[3]
-					out = [4]float32{src[0] + float32(dst[0]*ia), src[1] + float32(dst[1]*ia), src[2] + float32(dst[2]*ia), src[3] + float32(dst[3]*ia)}
-				} else {
-					out = composite(mode, src, dst)
-				}
-				if k == 1 {
-					copy(d[4*i:4*i+4], out[:])
-					continue
-				}
-				for j := 0; j < 4; j++ {
-					d[4*i+j] = dst[j] + float32(k*(out[j]-dst[j]))
+				s.touch(y, x0, x1, true)
+				crow := clip.row(y, x0, x1)
+				d := s.pix[s.at(x0, y):s.at(x1, y)]
+				for i, c := range crow {
+					d[4*i], d[4*i+1], d[4*i+2], d[4*i+3] = float32(bg[0]*c), float32(bg[1]*c), float32(bg[2]*c), float32(bg[3]*c)
 				}
 			}
 		}
@@ -253,6 +421,29 @@ func fillRowCovered(d, buf, crow []float32, alpha float32) {
 	}
 }
 
+// fillRowCoveredLazy is fillRowCovered on a lazy canvas: d is the pixels
+// from x0 of row y, and the blocks of the pixels covered are initialized
+// as they are reached, so that the ones between the glyphs of a line of
+// text, say, are not.
+func (s *surface) fillRowCoveredLazy(y, x0 int, d, buf, crow []float32, alpha float32) {
+	row := s.initRow(y)
+	rx := x0 - s.ox
+	crow = crow[:len(d)/4]
+	for x, c := range crow {
+		c *= alpha
+		if c == 0 {
+			continue
+		}
+		if b := (rx + x) / blockPixels; row[b>>6]>>(b&63)&1 == 0 {
+			s.initBlock(row, y, b)
+		}
+		i := 4 * x
+		s0, s1, s2, s3 := float32(buf[i]*c), float32(buf[i+1]*c), float32(buf[i+2]*c), float32(buf[i+3]*c)
+		ia := 1 - s3
+		d[i], d[i+1], d[i+2], d[i+3] = s0+float32(d[i]*ia), s1+float32(d[i+1]*ia), s2+float32(d[i+2]*ia), s3+float32(d[i+3]*ia)
+	}
+}
+
 // fillBackground draws the page or sheet background. Integer-aligned
 // rectangles need no shader row or per-pixel coverage/clip checks. Keep
 // this outside fill so small paths pay no cost for this common large fill.
@@ -268,10 +459,8 @@ func (s *surface) fillBackground(cov *mask, c solid) {
 	// Reserve the row for later draws, as the ordinary background fill
 	// does; otherwise progressively wider text runs keep reallocating it.
 	row := s.rowBuf(0, r.Dx())
-	if s.fresh {
-		// over pixels of 0, the colour is what they become: a row of
-		// it is made once and copied to the rest
-		s.fresh = false
+	if c[3] == 1 {
+		// an opaque colour is what the pixels become
 		repeat(row, c)
 		s.setRows(r, row)
 		return
@@ -279,6 +468,7 @@ func (s *surface) fillBackground(cov *mask, c solid) {
 	ia := 1 - c[3]
 	s.bands(r, func(y0, y1, _ int) {
 		for y := y0; y < y1; y++ {
+			s.touch(y, r.Min.X, r.Max.X, false)
 			d := s.pix[s.at(r.Min.X, y):s.at(r.Max.X, y)]
 			for i := 0; i < len(d); i += 4 {
 				p := d[i : i+4]
@@ -294,10 +484,10 @@ func (s *surface) fillBackground(cov *mask, c solid) {
 // fillAll is fill for the pixels r of the clip, inside the coverage or not:
 // the composite operations that change pixels the source does not cover.
 func (s *surface) fillAll(cov *mask, sh shader, alpha float32, mode byte, clip *mask, r image.Rectangle) {
-	s.fresh = false
 	n := r.Dx()
 	buf := make([]float32, 4*n)
 	for y := r.Min.Y; y < r.Max.Y; y++ {
+		s.touch(y, r.Min.X, r.Max.X, false)
 		sh.shade(r.Min.X, y, n, buf)
 		krow := clip.row(y, r.Min.X, r.Max.X)
 		var crow []float32
@@ -530,7 +720,8 @@ func nonSeparable(mode byte, cb, cs [3]float32) [3]float32 {
 }
 
 // surfaceShader reads the pixels of another surface where it lies on the
-// device: none outside it.
+// device: none outside it, and the background of the blocks of a lazy
+// canvas that are not initialized.
 type surfaceShader struct {
 	s *surface
 }
@@ -539,7 +730,22 @@ func (ss surfaceShader) shade(x, y, n int, dst []float32) {
 	s := ss.s
 	sy := y - s.oy
 	if sx := x - s.ox; sx >= 0 && sy >= 0 && sx+n <= s.w && sy < s.h && !plain {
-		copy(dst[:4*n], s.pix[4*(sy*s.w+sx):]) // the whole row is of the surface
+		// the whole run is of the surface
+		if !s.lazy {
+			copy(dst[:4*n], s.pix[4*(sy*s.w+sx):])
+			return
+		}
+		row := s.initRow(y)
+		for i := 0; i < n; {
+			b := (sx + i) / blockPixels
+			m := min(n, (b+1)*blockPixels-sx) // the pixels of the run in the block
+			if row[b>>6]>>(b&63)&1 != 0 {
+				copy(dst[4*i:4*m], s.pix[4*(sy*s.w+sx+i):])
+			} else {
+				repeat(dst[4*i:4*m], s.bg)
+			}
+			i = m
+		}
 		return
 	}
 	for i := 0; i < n; i++ {
@@ -547,6 +753,12 @@ func (ss surfaceShader) shade(x, y, n int, dst []float32) {
 		if sx < 0 || sy < 0 || sx >= s.w || sy >= s.h {
 			dst[4*i], dst[4*i+1], dst[4*i+2], dst[4*i+3] = 0, 0, 0, 0
 			continue
+		}
+		if s.lazy {
+			if row, b := s.initRow(y), sx/blockPixels; row[b>>6]>>(b&63)&1 == 0 {
+				copy(dst[4*i:4*i+4], s.bg[:])
+				continue
+			}
 		}
 		copy(dst[4*i:4*i+4], s.pix[4*(sy*s.w+sx):])
 	}
@@ -568,14 +780,47 @@ func rgbaFor(img *image.RGBA, rows image.Rectangle) *image.RGBA {
 	return &image.RGBA{Pix: img.Pix[:n], Stride: 4 * rows.Dx(), Rect: rows}
 }
 
+// convert converts the rows of the canvas (its whole width) to the bytes
+// of an image, bpp a pixel, with fn for the pixels of the blocks that are
+// initialized, and bg (the bytes of a pixel of the background) for the
+// rest of a lazy canvas.
+func (s *surface) convert(rows image.Rectangle, out []byte, bpp int, bg []byte, fn func(pix []float32, out []byte)) {
+	s.bands(rows, func(y0, y1, _ int) {
+		var bgBlock []byte
+		if s.lazy {
+			bgBlock = make([]byte, bpp*blockPixels)
+			copy(bgBlock, bg)
+			for n := bpp; n < len(bgBlock); n *= 2 {
+				copy(bgBlock[n:], bgBlock[:n])
+			}
+		}
+		for y := y0; y < y1; y++ {
+			pix := s.pix[s.at(s.ox, y):s.at(s.ox+s.w, y)]
+			line := out[bpp*(y-rows.Min.Y)*s.w : bpp*(y-rows.Min.Y+1)*s.w]
+			if !s.lazy {
+				fn(pix, line)
+				continue
+			}
+			row := s.initRow(y)
+			for b, x0 := 0, 0; x0 < s.w; b, x0 = b+1, x0+blockPixels {
+				x1 := min(x0+blockPixels, s.w)
+				if row[b>>6]>>(b&63)&1 != 0 {
+					fn(pix[4*x0:4*x1], line[bpp*x0:bpp*x1])
+				} else {
+					copy(line[bpp*x0:bpp*x1], bgBlock)
+				}
+			}
+		}
+	})
+}
+
 // toRGBAInto converts the rows of the canvas (its whole width) to an
 // image of premultiplied 8-bit pixels with those bounds, into the memory
 // of img when it is large enough (see rgbaFor).
 func (s *surface) toRGBAInto(img *image.RGBA, rows image.Rectangle) *image.RGBA {
 	img = rgbaFor(img, rows)
-	s.bands(rows, func(y0, y1, _ int) {
-		pix := s.pix[s.at(s.ox, y0):s.at(s.ox, y1)]
-		out := img.Pix[4*(y0-rows.Min.Y)*s.w : 4*(y1-rows.Min.Y)*s.w]
+	bg := []byte{byteOf(s.bg[0]), byteOf(s.bg[1]), byteOf(s.bg[2]), byteOf(s.bg[3])}
+	s.convert(rows, img.Pix, 4, bg, func(pix []float32, out []byte) {
 		out = out[:len(pix)]
 		for i, v := range pix {
 			out[i] = byteOf(v)
@@ -591,11 +836,15 @@ func byteOf(v float32) uint8 {
 	return uint8(float64(min(max(v, 0), 1))*255 + 0.5)
 }
 
-// grayOf is the luminance of a premultiplied pixel over white, as a
-// byte: the weights are those image/color converts to gray with.
-func grayOf(p []float32) uint8 {
-	return byteOf(0.299*p[0] + 0.587*p[1] + 0.114*p[2] + (1 - p[3]))
+// lumOf is the luminance of a premultiplied pixel over white, 0 to 1:
+// the weights are those image/color converts to gray with. Each product
+// is rounded, so that every conversion gets the same value.
+func lumOf(p []float32) float32 {
+	return float32(0.299*p[0]) + float32(0.587*p[1]) + float32(0.114*p[2]) + (1 - p[3])
 }
+
+// grayOf is the luminance of a premultiplied pixel over white, as a byte.
+func grayOf(p []float32) uint8 { return byteOf(lumOf(p)) }
 
 // toGray converts the surface to an image of the luminance of its pixels
 // over white (see Gray).
@@ -614,9 +863,7 @@ func grayFor(img *image.Gray, rows image.Rectangle) *image.Gray {
 // when it is large enough.
 func (s *surface) toGrayInto(img *image.Gray, rows image.Rectangle) *image.Gray {
 	img = grayFor(img, rows)
-	s.bands(rows, func(y0, y1, _ int) {
-		pix := s.pix[s.at(s.ox, y0):s.at(s.ox, y1)]
-		out := img.Pix[(y0-rows.Min.Y)*s.w : (y1-rows.Min.Y)*s.w]
+	s.convert(rows, img.Pix, 1, []byte{grayOf(s.bg[:])}, func(pix []float32, out []byte) {
 		for i := range out {
 			out[i] = grayOf(pix[4*i : 4*i+4])
 		}
@@ -640,19 +887,22 @@ func bilevelFor(img *image.Paletted, rows image.Rectangle) *image.Paletted {
 	return &image.Paletted{Pix: img.Pix[:n], Stride: rows.Dx(), Rect: rows, Palette: bilevelPalette}
 }
 
+// bitOf is a pixel as black (0) or white (1): white from a gray value of
+// 128 or more, a luminance of a half or more (127.5 / 255 is exactly 0.5).
+func bitOf(p []float32) uint8 {
+	if lumOf(p) >= 0.5 {
+		return 1
+	}
+	return 0
+}
+
 // toBilevelInto is toBilevel for the rows of the canvas, into the memory
 // of img when it is large enough.
 func (s *surface) toBilevelInto(img *image.Paletted, rows image.Rectangle) *image.Paletted {
 	img = bilevelFor(img, rows)
-	s.bands(rows, func(y0, y1, _ int) {
-		pix := s.pix[s.at(s.ox, y0):s.at(s.ox, y1)]
-		out := img.Pix[(y0-rows.Min.Y)*s.w : (y1-rows.Min.Y)*s.w]
+	s.convert(rows, img.Pix, 1, []byte{bitOf(s.bg[:])}, func(pix []float32, out []byte) {
 		for i := range out {
-			if grayOf(pix[4*i:4*i+4]) >= 128 {
-				out[i] = 1
-			} else {
-				out[i] = 0
-			}
+			out[i] = bitOf(pix[4*i : 4*i+4])
 		}
 	})
 	return img

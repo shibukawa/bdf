@@ -132,10 +132,11 @@ type drawer struct {
 	most int
 
 	// band is the record of the instructions of a page drawn in bands,
-	// and cur the index in it of the instruction being drawn (see
-	// bandRecord)
-	band *bandRecord
-	cur  int
+	// visit counts the instructions of this band and cur is the index
+	// in the record of the instruction being drawn (see bandRecord)
+	band  *bandRecord
+	visit int
+	cur   int
 }
 
 // bandRecord is what the first band of a page drawn in bands (see
@@ -143,13 +144,13 @@ type drawer struct {
 // device pixels each draw can change, so that a band skips the draws
 // that change none of its own, and the rows of margin the shadows need.
 // The bands run the same instructions in the same order, so the index
-// of an instruction in the order tells it (visit); a band that skips a
-// draw counts it all the same.
+// of an instruction in the order tells it (drawer.visit); a band that
+// skips a draw counts it all the same. Once the first band is drawn the
+// record changes no more: the bands after it may read it at once.
 type bandRecord struct {
 	// recording says that the boxes are being noted: the first band
 	recording bool
 	boxes     []instrBox
-	visit     int
 	// margin is the rows above and below a band that the shadows of the
 	// draws reach from (see note): a band is drawn with as much more of
 	// the page on either side, so that the shadows in it are whole
@@ -434,8 +435,8 @@ func (d *drawer) instr(in bdf.Instr) {
 	// skipped, so that the bands count alike (see bandRecord)
 	i := -1
 	if b := d.band; b != nil {
-		i = b.visit
-		b.visit++
+		i = d.visit
+		d.visit++
 		if b.recording {
 			b.boxes = append(b.boxes, instrBox{})
 		}
@@ -1254,15 +1255,13 @@ func (d *drawer) maskBegin(kind byte, backdrop bdf.Color, transfer []byte) {
 	if !d.layer(mc, w, h) {
 		return
 	}
-	mc.target = d.r.newSurface(w, h)
-	mc.target.ox, mc.target.oy = ox, oy
 	if kind == bdf.MaskLuminosity {
-		mc.target.fresh = false
-		c := premul(backdrop | 0xff)
-		for i := 0; i < w*h; i++ {
-			copy(mc.target.pix[4*i:], c[:])
-		}
+		// the backdrop of the mask: the canvas begins as that colour
+		mc.target = d.r.filledSurface(w, h, premul(backdrop|0xff))
+	} else {
+		mc.target = d.r.newSurface(w, h)
 	}
+	mc.target.ox, mc.target.oy = ox, oy
 	mc.st = initialState(d.ctx.st.m, &mask{r: mc.target.bounds()})
 	if len(transfer) != 256 {
 		transfer = nil
@@ -1287,7 +1286,8 @@ func (d *drawer) maskEnd() {
 		return
 	}
 	gs := g.ctx.target
-	gs.fresh = false
+	ms.touchAll()
+	gs.touchAll()
 	gs.bands(gs.bounds(), func(y0, y1, _ int) {
 		for i := (y0 - gs.oy) * ms.w; i < (y1-gs.oy)*ms.w; i++ {
 			p := ms.pix[4*i : 4*i+4]
