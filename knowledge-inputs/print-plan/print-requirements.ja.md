@@ -34,7 +34,7 @@ BDF 側の強みをそのまま使う。文書はベクタの命令列なので�
 - クラウド印刷サービス（Microsoft Universal Print、各社のクラウド）との連携。IPP INFRA の代理（プロキシ）も後。
 - ブラウザ（wasm）からの印刷。ブラウザは `window.print()` の領分で、BDF のビューアからは「サーバーに投げる」で足りる。
 - 課金・部門管理・認証印刷（IC カードで釈放）。履歴は出すが、その上の運用は外の仕事。IPP の属性（`job-password`、`job-account-id`）で渡せる分は渡す。
-- Windows 共有プリンタ（SMB、`\\server\queue`）経由の印刷。Windows の印刷サーバーを義務にしている組織では BDF のサーバーをその代わりに置く。
+- Windows 共有プリンタ（SMB / MS-RPRN、`\\server\queue`）経由の印刷（§3.8）。Windows の印刷サーバーを義務にしている組織では BDF のサーバーをその代わりに置く。要るときは `go-msrpc` の RPRN で v3 のキューに PostScript を RAW で送る搬送路を足す。
 - スキャン（eSCL）や FAX。
 - プリンタの管理（ファームウェア、消耗品の発注、SNMP による詳細な監視）。状態は IPP が返す範囲。
 
@@ -175,6 +175,37 @@ IPP が「基本」であって「すべて」ではない点は 4 つ。
 
 出力先の抽象は「搬送路 × 文書形式」のままにして、IPP 以外の搬送路（9100、LPD、USB、シリアル）を後から足せる形を保つ。
 
+### 3.8 SMB（Windows 共有プリンタ）は入れるか
+
+入れない（2026-10-19 利用者の問いへの推奨）。理由は 3 つ。
+
+1. **搬送路だけでは済まない**。Windows の共有プリンタへの印刷は SMB のファイル共有ではなく、`\\pipe\\spoolss` の名前付きパイプ上の RPC（MS-RPRN、後継は MS-PAR）で `OpenPrinter` / `StartDocPrinter` / `WritePrinter` を呼ぶもの。Go には `oiweiwei/go-msrpc`（MIT。`msrpc/rprn` と `msrpc/par`、SMB2 の名前付きパイプ、Kerberos / NTLM）があるので作れなくはないが、送るデータはそのキューのドライバの RAW、つまりプリンタの PDL（PS / PCL / 各社の言語）でなければならず、v4 と IPP クラスドライバのキューでは RAW が 0 バイトになる（§3.4）。Ready Print 以降の Windows の印刷サーバーのキューは IPP クラスドライバが既定なので、SMB で届いても刷れない。
+2. **その印刷サーバーの先はたいてい IPP の複合機**で、BDF は直接届く。組織が印刷サーバーを置く理由（集中管理、部門管理、履歴）は BDF のサーバー（m2 / m4）が引き受ける。
+3. **Microsoft 自身が周辺を畳んでいる**。LPD / LPR は Windows Server 2012 から非推奨で削除が予告され、Internet Printing（IIS の IPP）は旧式。Print Spooler を止める組織も多い（PrintNightmare 以降）。
+
+どうしても Windows の印刷サーバーを通す必要が出たら、`go-msrpc` の RPRN で v3 ドライバのキューに PostScript を RAW で送る搬送路を `print/internal/osspool` に足す。それまでは非ゴール。
+
+### 3.9 ラベル・レシート・連帳・大判には何を送るか（テキストか、ラスタか、ベクタか）
+
+言語ごとに違う（2026-10-19 利用者の問い）。原則は、**言語が受け取れる最も忠実な形**で、文字は BDF の埋め込みフォントで描く（プリンタ常駐フォントに頼らない）。
+
+| 言語 | 送るもの（推奨） | 理由と細部 |
+|---|---|---|
+| **ZPL**（Zebra、ラベル） | **1 ビットのラスタ**。ラベル 1 枚を `^GF`（Z64 = LZ77＋Base64 で圧縮）で送る。印でバーコードと分かる図形は `^BC` / `^BQ` などの**印刷側のバーコード**に置き換える | ZPL の図形命令は箱・円・斜線・楕円だけで任意のパスを持てない。文字は常駐フォント（CJK は要ダウンロード）なので、ラスタなら BDF のフォントがそのまま出る。4×6 インチ 203 dpi で生 124 KB、圧縮で数十 KB。バーコードは 203 dpi でモジュール幅がドットに揃わないと読めないので、`.bdft` の `{{% \| barcode}}` が付けた印（MARK）から `^BC` を出す方がよい |
+| **ESC/POS**（Epson TM 系、レシート） | **ラスタ**を帯で。`GS v 0`（ラスタビットイメージ）か `GS ( L`（グラフィックス）を数十行ずつ送り、最後に `GS V`（カット）、必要なら `ESC p`（ドロワ） | 幅固定・長さ可変は `PagesRows` の帯の流し込みそのもの。テキストモード（Font A / B、倍角、漢字モード `FS &`）は速いが BDF のフォントと配置を失う。ロゴと写真はラスタが前提。テキストモードは「格子の帳票」が要る現場で後から足す |
+| **ESC/P**（Epson VP 系・ドットインパクト、連帳・複写伝票） | **既定はラスタ**（`ESC *` の 24 ピン、180 / 360 dpi、ミシン目スキップ `ESC N` と用紙長 `ESC C` を先に）。**格子の帳票はテキストモード**（10 / 12 / 15 cpi、6 / 8 lpi、漢字は ESC/P-J の `FS &`）を後の選択肢に | ドットインパクトはグラフィックスが遅く（A4 で分単位）、複写伝票は文字の打点が濃い方がよい。テキストモードは文書が「行 × 桁の格子」であることが要るので、連帳のテンプレート（`pattern:continuous-text-form`）が格子の印を持つときだけ |
+| **HP-GL/2**（大判プロッタ、CAD） | **ベクタ**。パスは `PU` / `PD` / `PA` / `BZ`（ベジエ）/ `CI`、塗りは多角形モード `PM` ＋ `FP`（偶奇 / 非ゼロ）、線は `PW`（幅）/ `PC`（色）/ `LT`（種類）、クリップは `IW`（矩形のみ）。文字はアウトラインのパス、画像と透明とグラデーションは HP RTL のラスタを行で挿入 | 大判の線画はベクタがそのまま写り、プロッタがペン幅と解像度を決める。ストロークフォント（`LB`）は使わない（日本語が無い）。矩形でないクリップは、その部分だけ平坦化（`vector/internal/flatten`） |
+
+共通で要るもの:
+
+- **2 値化**: `imagebdf.Bilevel` はしきい値だけなので、画像の部分だけディザ（誤差拡散か組織的ディザ）をかける選択肢を足す。文字と線はしきい値（`AntialiasOff`）のまま。
+- **ドットへの整列**: バーコードと罫線は dpi のドットに揃える（印刷側バーコードに置き換えるか、描く前に幅をドットの整数倍に丸める）。
+- **機種のプロファイル**: dpi、印字幅、受ける命令、常駐フォント、最大長。ZPL / SBPL / TPCL の違い（`system:label-printer-languages`）はプロファイルの差として吸収する。
+- **チケットの拡張**: IPP の属性に無い、ラベルの長さとギャップ、濃度、速度、カット、ドロワ、連帳の用紙長とミシン目スキップ、複写の枚数。`Ticket` に機器ごとの拡張を持つ。
+- **搬送路**: ネットワークは 9100（どの OS でも同じ）。USB・シリアル・Bluetooth は OS ごとの実装が要る。Windows では、メーカーのドライバ（Zebra、Epson TM、Brother）のキューに `winspool` の `RAW` で PDL を素通しするのが最も簡単な USB の経路で、描画は BDF 側で済むので GDI は要らない（§3.5 の決定と矛盾しない。搬送路としての `winspool` だけ）。macOS / Linux は CUPS の raw キューか `/dev/usb/lp0`。
+
+ラスタを送るかテキストを送るかは、言語ごとの既定（上の表）とチケットの `-mode raster|text` で決め、テキストモードは文書が格子の印を持つときだけ有効にする。
+
 ## 4. 要件
 
 ### 4.1 印刷指示（チケット）
@@ -195,6 +226,7 @@ IPP が「基本」であって「すべて」ではない点は 4 つ。
 | ジョブの名前と利用者 | `job-name`、`requesting-user-name` | 履歴に残る |
 | 保留と優先 | `job-hold-until`、`job-priority` | スプールが扱う |
 | 認証印刷と部門 ID | `job-password`（＋ `job-password-encryption`）、`job-account-id`、`job-accounting-user-id` | 業務機の留め置き印刷と部門管理（PWG 5100.11）。対応は機種次第で、`printer-attributes` に無ければ警告 |
+| 機器ごとの拡張（m5） | — | ラベルの長さとギャップ、濃度、速度、カット、ドロワ、連帳の用紙長とミシン目スキップ、複写の枚数、`-mode raster\|text`（§3.9） |
 | BDF 固有 | ビュー（`-view`）、省くレイヤーの役割（`SkipRoles`。プレ印刷用紙）、モノクロの方式（グレー / 2 値）、フォント（`FontFS` / `FontDirs`）、暗号化文書のパスワード、文書の中の区切り（`-each` のバッチを 1 ジョブにするか文書ごとにするか） | |
 
 ### 4.2 文書の描画と形式
@@ -301,7 +333,7 @@ cmd/bdfprintd/          サーバー（または bdf printd）
 2. **print-m2 — スプールとサーバー**: ディスクのスプール、キューと組、状態機械、再送と二重印刷の防止、履歴と保持、アカウンティング、HTTP API と CLI クライアント、プリンタの状態の監視、`converter` の入力の変換、`examples/print-server`（帳票を穴埋めして印刷するサンプル）。
 3. **print-m3 — 第 2 の形式と古い搬送路**: PostScript の書き手（第 2 のベクタ経路。平坦化の共通部と一緒に）、Apple Raster、PCLm、`CUPS-Get-Printers` の一覧、9100 の生ソケットと LPD（PDF / PS の素通し）、IPP USB（Linux の `ipp-usb` と macOS。Windows は OS が握るので対象外）。CAD の現場があれば HP-GL/2 の書き手もここ（§3.4）。Windows の OS 経由は作らない（§3.5）。
 4. **print-m4 — サーバーを IPP プリンタとして見せる**: IPP Everywhere のサーバー、DNS-SD の広告、受ける形式（PDF・PWG Raster・URF・JPEG・PNG）、AirPrint 互換（`URF` の TXT、`ipps`、MDM の AirPrint ペイロード向けの固定 `rp`。§3.6）、PWG の自己認証テスト（`ipptool`）を通す。Windows（WRP）・macOS・iOS・Android・ChromeOS からの印刷を確かめる。拠点の代理（上流から取りに行く）。
-5. **print-m5 — ラベル・レシート・連帳**: ZPL / SBPL / TPCL、ESC/POS、ESC/P の書き手と、USB・シリアル・Bluetooth の搬送路。`.bdf` のページをラベルや行に写す規則は `pattern:label-sheet`、`pattern:roll-receipt`、`pattern:continuous-text-form` から。
+5. **print-m5 — ラベル・レシート・連帳**: ZPL / SBPL / TPCL（1 ビットのラスタ＋印刷側バーコード）、ESC/POS（帯のラスタ＋カットとドロワ）、ESC/P（ラスタ。格子の帳票はテキストモード）の書き手（§3.9）、画像だけのディザと機種のプロファイル、チケットの機器ごとの拡張、USB・シリアル・Bluetooth の搬送路（Windows はメーカードライバのキューへ `winspool` の `RAW` で素通し）。`.bdf` のページをラベルや行に写す規則は `pattern:label-sheet`、`pattern:roll-receipt`、`pattern:continuous-text-form` から。
 
 m1 と m2 は独立に価値がある（m1 だけで手元の印刷、m2 でサーバー）。m3 以降は現場の機種で順を変える。
 
@@ -326,6 +358,7 @@ m1 と m2 は独立に価値がある（m1 だけで手元の印刷、m2 でサ�
 10. **パッケージ名**: `print/` か `printing/` か。
 11. **拠点の代理の型**: 独自の「上流から取りに行く」か、IPP INFRA の操作に合わせるか。
 12. **PDF 以外のベクタの書き手の順**（§3.4）: 推奨は PostScript → HP-GL/2（CAD の現場があれば）。EMF と OpenXPS は Windows の OS 経由をやめたので外した。PCL XL と各社の PDL は作らない。
+13. **ESC/P のテキストモード**（§3.9）: 連帳の複写伝票をドットインパクトで速く濃く刷るには文字で送る必要があるが、文書が「行 × 桁の格子」である印が要る。連帳のテンプレートに格子の印を持たせるか（`pattern:continuous-text-form`）、ラスタだけで始めて現場の声を待つか。推奨は後者。
 
 ## 9. 用語
 
@@ -359,6 +392,8 @@ m1 と m2 は独立に価値がある（m1 だけで手元の印刷、m2 でサ�
 - AirPrint と CUPS（`URF` の TXT キーが必須、PDF / URF を送る）: https://connor.zip/posts/2023-06-08-airprint-with-cups 、https://www.finnie.org/2010/11/13/airprint-and-linux/
 - Apple の MDM の AirPrint ペイロード（IP / FQDN、ResourcePath、Port、Use TLS）: https://support.apple.com/en-gb/guide/mdm/mdm3b4cf515/web
 - macOS 26 Tahoe で古いドライバが入らない例（HP のコミュニティ）: https://h30434.www3.hp.com/t5/Printer-Setup-Software-Drivers/P1102-MacOS-Tahoe-26-2/td-p/9583270
+- MS-RPRN の Go 実装（`go-msrpc`、MIT。`msrpc/rprn`）: https://github.com/oiweiwei/go-msrpc 、LPD / LPR の非推奨（Windows Server 2012 から。削除予告）: https://www.anoopcnair.com/depreciation-of-line-printer-daemon-lpr-or-lpd/
+- ZPL の Z64 圧縮（`^GF` などのデータを LZ77 ＋ Base64）: https://docs.zebra.com/us/en/printers/software/zpl-pg/zb64-encoding-and-compression/b64-and-z64-encoding.html
 - Windows の `XPS_PASS`（パイプラインを飛ばす直送）: https://learn.microsoft.com/en-us/windows/win32/printdocs/sending-data-directly-to-an-xps-printer 、v4 ドライバで `RAW` が 0 バイトになる: https://learn.microsoft.com/en-us/previous-versions/troubleshoot/windows/win32/v4-print-driver-raw-mode-pcl-postscript
 - Windows の印刷経路（GDI と XPS、MXDC）: https://learn.microsoft.com/en-us/windows-hardware/drivers/print/windows-print-path-overview 、v4 の描画: https://learn.microsoft.com/et-ee/windows-hardware/drivers/print/v4-driver-rendering-architecture 、OpenXPS: https://learn.microsoft.com/en-us/windows/desktop/printdocs/app-support-for-openxps-printing
 - Universal Print の文書形式（XPS → PDF の変換）: https://learn.microsoft.com/en-us/graph/api/resources/printsettings?view=graph-rest-1.0

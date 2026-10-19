@@ -38,7 +38,7 @@ non_goals:
 - iOS / iPadOS のネイティブアプリ（gomobile）。iOS からは AirPrint で m4 のサーバーへ、またはビューアからサーバーの API へ
 - ブラウザ（wasm）からの印刷（window.print() の領分。ビューアはサーバーに投げる）
 - 課金・部門管理・認証印刷の運用（履歴は出す。IPP の job-password / job-account-id で渡せる分は渡す）
-- Windows 共有プリンタ（SMB）経由の印刷。Windows の印刷サーバーを義務にする組織では BDF のサーバーをその代わりに置く
+- Windows 共有プリンタ（SMB / MS-RPRN）経由の印刷。搬送路だけでは済まず（そのキューのドライバの RAW = プリンタの PDL が要り、v4 / IPP クラスドライバのキューでは RAW が 0 バイト）、その先はたいてい IPP の複合機で、LPD も非推奨。Windows の印刷サーバーを義務にする組織では BDF のサーバーをその代わりに置く。要るときは go-msrpc（MIT、msrpc/rprn）で v3 のキューに PostScript を RAW で送る搬送路を足す（2026-10-19 利用者の問いへの推奨）
 - スキャン（eSCL）、FAX、プリンタの管理（ファームウェア、消耗品、SNMP の詳細監視）
 open_questions:
   ipp-codec:
@@ -78,6 +78,9 @@ open_questions:
     state: open
   vector-writers:
     text: PDF 以外のベクタの書き手の順。推奨は PostScript → HP-GL/2（CAD の現場があれば）。EMF と OpenXPS は Windows の OS 経由をやめたので外した。PCL XL と各社の PDL は作らない
+    state: open
+  escp-text-mode:
+    text: ESC/P のテキストモード（連帳の複写伝票を速く濃く）に要る「行 × 桁の格子」の印を連帳のテンプレートに持たせるか、ラスタだけで始めて現場の声を待つか。推奨は後者
     state: open
   remote-proxy:
     text: NAT の向こうの拠点のプリンタのために置く代理を、独自の「上流から取りに行く」型にするか、IPP INFRA（Fetch-Job / Fetch-Document）の操作に合わせるか
@@ -155,6 +158,18 @@ facts:
     android_chromeos: 参考。Android の既定の印刷サービスは Mopria（IPP）、ChromeOS は CUPS の driverless。m4 のサーバーはどちらからも入る
     linux: 直結。CUPS 2.x に IPP（localhost:631 か /run/cups/cups.sock）、CUPS 3 の cups-local はドメインソケット。USB は ipp-usb の localhost。mDNS は Avahi と 5353 を共有（SO_REUSEADDR / SO_REUSEPORT）
     build: print/internal/osspool に OS ごとの build tag。cmd/bdfwasm と converter/all から import しない。CI は 3 OS の go vet と go test
+  device_pdl_payloads:
+    principle: 言語が受け取れる最も忠実な形で送り、文字は BDF の埋め込みフォントで描く（常駐フォントに頼らない）。ラスタかテキストかは言語ごとの既定とチケットの -mode raster|text で決め、テキストモードは文書が格子の印を持つときだけ
+    zpl: 1 ビットのラスタ。ラベル 1 枚を ^GF（Z64 = LZ77＋Base64）で送る。ZPL の図形命令は箱・円・斜線・楕円だけで任意のパスを持てない。印（MARK）でバーコードと分かる図形は ^BC / ^BQ などの印刷側バーコードに置き換える（203 dpi でモジュール幅をドットに揃えるため）。SBPL / TPCL も同じ型でプロファイルの差
+    escpos: ラスタを帯で。GS v 0 か GS ( L を数十行ずつ、最後に GS V（カット）、必要なら ESC p（ドロワ）。幅固定・長さ可変は PagesRows の帯の流し込みそのもの。テキストモード（Font A / B、倍角、FS & の漢字）は後の選択肢
+    escp: 既定はラスタ（ESC * の 24 ピン、180 / 360 dpi。先に ESC C の用紙長と ESC N のミシン目スキップ）。ドットインパクトはグラフィックスが遅く複写伝票は文字の打点が濃い方がよいので、格子の帳票はテキストモード（10 / 12 / 15 cpi、6 / 8 lpi、ESC/P-J の FS &）を後の選択肢に。文書が行 × 桁の格子である印が要る
+    hpgl2: ベクタ。PU / PD / PA / BZ / CI、多角形モード PM ＋ FP（偶奇 / 非ゼロ）、PW / PC / LT、クリップは IW（矩形のみ。それ以外は flatten）。文字はアウトラインのパス（LB のストロークフォントは日本語が無いので使わない）。画像・透明・グラデーションは HP RTL のラスタを行で挿入
+    common:
+    - 2 値化に画像の部分だけのディザ（誤差拡散か組織的ディザ）を imagebdf に足す。文字と線はしきい値＋AntialiasOff
+    - バーコードと罫線を dpi のドットに整列（印刷側バーコードに置換、または幅をドットの整数倍に丸める）
+    - 機種のプロファイル（dpi、印字幅、受ける命令、常駐フォント、最大長）
+    - チケットの機器ごとの拡張（ラベルの長さとギャップ、濃度、速度、カット、ドロワ、連帳の用紙長とミシン目スキップ、複写の枚数）
+    - 搬送路は 9100 が共通。USB・シリアル・Bluetooth は OS ごと。Windows はメーカードライバのキューに winspool の RAW で素通し（描画は BDF 側なので GDI は要らない。搬送路としての winspool だけ）。macOS / Linux は CUPS の raw キューか /dev/usb/lp0
   enterprise_printers:
     basis: 3 つの OS も業務用プリンタも IPP が基本（2026-10-19 利用者が確認）。2010 年代半ば以降の複合機・レーザーはほぼ AirPrint / Mopria を名乗り、PDF をそのまま受けるものが多い。サーバーからの大量印刷も同じ IPP
     not_ipp:
@@ -184,7 +199,7 @@ facts:
     - print-m2 スプールとサーバー。キューと組、再送と二重印刷の防止、履歴、HTTP API と CLI、監視、converter の入力、examples/print-server
     - print-m3 PostScript の書き手（第 2 のベクタ経路）と平坦化、URF と PCLm、CUPS の一覧、9100 と LPD の素通し、IPP USB（Linux と macOS）。CAD の現場があれば HP-GL/2 の書き手。Windows の OS 経由は無し
     - print-m4 サーバーを IPP Everywhere のプリンタとして見せる。DNS-SD の広告、受ける形式、PWG の自己認証テスト、拠点の代理
-    - print-m5 ラベル・レシート・連帳の PDL と USB・シリアル・Bluetooth の搬送路
+    - print-m5 ラベル・レシート・連帳の PDL（ZPL / SBPL / TPCL は 1 ビットのラスタ＋印刷側バーコード、ESC/POS は帯のラスタ、ESC/P はラスタで格子の帳票はテキストモード）、画像だけのディザ、機種のプロファイル、チケットの機器拡張、USB・シリアル・Bluetooth の搬送路（Windows は winspool の RAW で素通し）
     independence: m1 と m2 は独立に価値がある。m3 以降は現場の機種で順を変える
   verification:
     unit: IPP の符号化の往復と fuzz、PWG Raster の書き手（自前の読み手で戻して imagebdf の画像と一致、golden）、チケット → 属性、スプールの状態機械（落ちた時点ごとの再開）
