@@ -95,7 +95,7 @@ verification:
     test: form/form_test.go の TestCompile に text を足す
 open_questions:
   text-part-shape:
-    text: t:text の JSON の形（幾何、pages[].lines[]、preprinted の行の印）。requirement:text-template の image-representation が決まってから
+    text: t:text の JSON の形（幾何、pages[].lines[]、preprinted の行の印、倍角の範囲）。Part に決まった（2026-10-19）ので実装案で決める
     state: open
 facts:
   delivery:

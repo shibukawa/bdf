@@ -17,7 +17,7 @@ constraints:
 - 既存のタグ（form/tag）、データ（LoadData、-data / -each）、-strict、.bdft、schema、CLI をそのまま使う。テンプレートの形式を 1 つ足すだけ
 - 見たまま。テンプレートの行と桁が印字の行と桁。全角は 2 桁（東アジア幅）。プロポーショナルの組版と折り返しはしない
 - 格子の幾何（cpi、lpi、columns、lines、margin、skip、title）はテンプレートの前書きが持ち、ESC/P の命令に 1:1 で写る
-- できた .bdf から ESC/P のテキストモードを損失なしに作れるよう、印字像（ページごとの行の文字列）と幾何を Part に持つ。読み手は知らない Part を無視してよい（spec §4）
+- 'できた .bdf から ESC/P のテキストモードを損失なしに作れるよう、印字像（ページごとの行の文字列）と幾何を Part（t: text）に持つ（2026-10-19 利用者が決定。MARK ではない）。読み手は知らない Part を無視してよい（spec §4）'
 - 計算はしない（データ側）。画像とバーコードはテキストモードに出せないので第 1 段階では許さない
 - 等幅フォントは font-rules の等幅の連鎖（BIZ UDゴシック → IPAゴシック → Noto Sans Mono CJK JP）。全角は advance で正確に 2 桁に揃える
 non_goals:
@@ -29,8 +29,8 @@ non_goals:
 open_questions:
   image-representation:
     text: '印字像を t:"text" の Part（JSON: 幾何、ページごとの行、用紙の層の行）で持つか、MARK の種類を足すか。推奨は Part（spec の変更が小さく、読み手は無視できる）'
-    state: open
-    resolution: 2026-10-19 利用者「Part / MARK とはどういうことか」に、叙述の §4.5 で説明した。Part はコンテナの独立した塊（manifest の parts[].t。知らない t は読み手が無視する）、MARK は描画命令の列に挟む読み順と構造の印（opcode 0x71。§7.8 の kind）。推奨は Part（仕様の変更が §4 の一覧だけ、読み手に何も求めない、書き手は行をそのまま書ける）。MARK は Office 由来の文書を格子とみなしたくなったときに再考。判断待ち
+    state: answered
+    resolution: 'Part（t: text）に決定。2026-10-19 利用者「Part でよい」。同日「Part / MARK とはどういうことか」に、叙述の §4.5 で説明した。Part はコンテナの独立した塊（manifest の parts[].t。知らない t は読み手が無視する）、MARK は描画命令の列に挟む読み順と構造の印（opcode 0x71。§7.8 の kind）。推奨は Part（仕様の変更が §4 の一覧だけ、読み手に何も求めない、書き手は行をそのまま書ける）。MARK は Office 由来の文書を格子とみなしたくなったときに再考'
   default-width:
     text: 幅を書かないタグを値の長さで伸び縮みさせる（Mustache）か、タグの文字数を幅にするか
     state: answered
@@ -106,6 +106,6 @@ relations:
   to: milestone:form-m6
 history:
   decisions:
-    summary: 2026-10-19 利用者が 5 つを決めた。幅は可変で超過は警告 / cut / wrap、倍角は入れる、画像とバーコードは許さない、等幅は BIZ UDゴシックを Google Fonts から（ローカルのフォントも明示可）、区間の既定は slots。印字像の Part / MARK は説明して判断待ち
+    summary: '2026-10-19 利用者が 6 つを決めた。幅は可変で超過は警告 / cut / wrap、倍角は入れる、画像とバーコードは許さない、等幅は BIZ UDゴシックを Google Fonts から（ローカルのフォントも明示可）、区間の既定は slots、印字像は Part（t: text）'
   proposed:
     summary: 2026-10-19 利用者「ESC/P 用に、プレーンテキストのテンプレートも用意した方が良さそう」。印刷の要件整理（requirement:print の escp-text-mode）で「行 × 桁の格子の印が要る」と分かった直後の提案。同日に要件を整理
