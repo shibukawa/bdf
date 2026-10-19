@@ -23,7 +23,7 @@ constraints:
 - チケットの名前は IPP の属性に合わせる（copies、sides、media、media-col、print-color-mode、print-quality、printer-resolution、page-ranges、print-scaling、finishings、job-name …）。Windows の DEVMODE も CUPS のオプションもここから写す
 - ジョブの状態は IPP の job-state（pending / pending-held / processing / processing-stopped / canceled / aborted / completed）と job-state-reasons の語彙をそのまま使う
 - cgo なし。OS 固有のコードは print/internal/osspool に OS ごとの build tag。wasm / TinyGo のビルドには入れない
-- スプールは組み込みの KV（go.etcd.io/bbolt）の 1 ファイル spool.db（ジョブの記録、文書は内容アドレスで同じ文書は 1 回、連番、実績、プリンタの控え、証明書の指紋）。開けるのは 1 プロセス。2026-10-19 利用者が決定（前の版の「ディレクトリとファイル、データベースは使わない」から変えた）
+- スプールは組み込みの KV（go.etcd.io/bbolt）の 1 ファイル spool.db（ジョブの記録、文書はジョブごと、連番、実績、プリンタの控え、証明書の指紋）。開けるのは 1 プロセス。2026-10-19 利用者が決定（前の版の「ディレクトリとファイル、データベースは使わない」「内容アドレスで同じ文書は 1 回」から変えた）。保存の層は作らず bbolt 前提（同日の利用者）
 - 再起動の後に同じジョブを二重に刷らない。送る前にプリンタの job-id を記録し、再開時は Get-Jobs で状態を確かめてから再送する
 - 同じ文書・同じチケット・同じフォントなら同じバイト列（golden と再送の照合）
 - 暗号化した .bdf はスプールに暗号化のまま置く。描いた結果は既定で残さない。ログに文書の中身・パスワード・資格情報を書かない
@@ -63,7 +63,7 @@ open_questions:
   persistence:
     text: スプールの永続化をファイルだけにするか、組み込みの KV を使うか
     state: answered
-    resolution: 組み込みの KV。2026-10-19 利用者「組み込みの KV で良い」。go.etcd.io/bbolt の 1 ファイル spool.db（メモリだけではなく、書き込みごとに fsync）。spool は Store のインターフェースにだけ依り、bbolt に依るのは print/spool/boltstore だけ。複数台や Lambda に広げるときは条件付き書き込みを持つ共有の保存先（DynamoDB＋S3、PostgreSQL）の Store を足す（knowledge-inputs/print-plan/print-m2.ja.md §3.2、§6）
+    resolution: 組み込みの KV。2026-10-19 利用者「組み込みの KV で良い」。go.etcd.io/bbolt の 1 ファイル spool.db（メモリだけではなく、書き込みごとに fsync）。保存の層は一旦作らず bbolt 前提（同日の利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」）。bbolt に触るのは print/spool/db.go だけにし、後で薄い保存層（decision:thin-store。楽観ロックの 5 操作と Blob、SDK なし、S3 互換・GCS・Azure Blob・DynamoDB・RDB）に替える位置にする（knowledge-inputs/print-plan/print-m2.ja.md §3.2、§6、store.ja.md）
   accept-converter-inputs:
     text: サーバーが converter の入力（PDF、Office、画像 …）を受けて変換してから印刷するか
     state: answered
@@ -75,7 +75,7 @@ open_questions:
   scale-out:
     text: スプールを複数台や Lambda で回すか。1 つの spool.db は 1 プロセスだけが開ける
     state: deferred
-    resolution: m2 は継ぎ目（Store のインターフェース、期限つきの借り、短い段）まで。Lambda は受け付けと変換に向き、LAN のプリンタへの送信は拠点の bdf printd（代理）に残す形が現実的（knowledge-inputs/print-plan/print-m2.ja.md §6）。2026-10-19 利用者の問い「タイムスタンプをつければ並行でも処理できるか」「Lambda 化できるか」への答え
+    resolution: m2 の後。m2 は bbolt 前提で、bbolt に触るのは print/spool/db.go だけ（2026-10-19 利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」）。広げるときは db.go を薄い保存層（decision:thin-store）に替え、ジョブに期限つきの借りを足す。Lambda は受け付けと変換に向き、LAN のプリンタへの送信は拠点の bdf printd（代理）に残す形が現実的（knowledge-inputs/print-plan/print-m2.ja.md §6、store.ja.md）。2026-10-19 利用者の問い「タイムスタンプをつければ並行でも処理できるか」「Lambda 化できるか」「KVS や RDB を包む薄い仕組み」への答え
   windows-os-path:
     text: Windows の OS 経由の経路を winspool の RAW 素通し（IPP クラスドライバに PDF / PWG Raster を渡せるか要検証）にするか、GDI の StartDoc / StretchDIBits に描いた画像を渡す（どのドライバでも動く）か
     state: answered
@@ -149,7 +149,7 @@ facts:
     completion: Get-Job-Attributes のポーリングで job-state が 7・8・9 になるまで
     dedupe: 送る前に job-id を記録。再開時に Get-Jobs（which-jobs=completed 含む）で確かめ、プリンタが知っていれば再送しない
   spool:
-    layout: 'bbolt の 1 ファイル spool.db に、ジョブの記録（JSON: チケット、出力先、状態、プリンタ側の job-id、時刻、警告）、文書（受けたままと変換した .bdf。内容アドレスで 1 回、1 MiB の塊）、連番、実績、プリンタの控え、証明書の指紋'
+    layout: 'bbolt の 1 ファイル spool.db に、ジョブの記録（JSON: チケット、出力先、状態、プリンタ側の job-id、時刻、警告）、文書（受けたままと変換した .bdf。ジョブごと、1 MiB の塊）、連番、実績、プリンタの控え、証明書の指紋'
     queue: 出力先ごとに 1 本。FIFO に job-priority と job-hold-until。一時停止と再開、並べ替え、別のキューへの移動
     class: 複数の出力先を 1 キューに。空いている方に流す（負荷分散）か順に試す（故障時の切り替え）。CUPS のクラスと同じ
     retry: 接続の失敗は指数バックオフで pending のまま。プリンタが stopped ならキューを止めて見張り idle で再開。プリンタ側で aborted になったジョブは自動で再送しない（利用者が retry）
@@ -259,7 +259,13 @@ relations:
   to: milestone:print-m2
 - relation: enabled_by
   to: requirement:text-template
+- relation: informed_by
+  to: system:conditional-storage
+- relation: informed_by
+  to: decision:thin-store
 history:
+  thin-store-deferred:
+    summary: 2026-10-19 利用者が bbolt・DynamoDB・KVS・RDB・楽観ロックのオブジェクトストレージを包む SDK なしの薄い保存層を問い、調べて案を書いた（system:conditional-storage、decision:thin-store、store.ja.md）。続けて「store レイヤーは一旦頑張らずに bbolt 前提で良い」で後に回した
   m2-decisions:
     summary: 2026-10-19 利用者が print-m2 の実装案の論点に答えた。サーバーは bdf printd、永続化は組み込みの KV（bbolt の 1 ファイル）、変換の入力を受ける、max-inflight の既定は 2、サービスとしての登録は持たない、m2 の後は後で決める
   apple-platforms:

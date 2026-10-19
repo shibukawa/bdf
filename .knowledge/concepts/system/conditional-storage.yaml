@@ -1,0 +1,97 @@
+id: system:conditional-storage
+type: system
+title: 楽観ロックで使える保存先と、それを包む既存の仕組み — オブジェクトストレージの条件付き書き込み、Go の保存の抽象
+summary: >-
+  2026-10-19 の Web 調査。AWS S3 は 2024 年に条件付き PUT（If-None-Match は 8 月、If-Match は 11 月）、2025-09 に条件付き DELETE を足し、
+  GCS（generation）と Azure Blob（ETag）は前から持つ。R2・Scaleway・OVHcloud・CoreWeave も対応、MinIO は対応するがコミュニティ版が凍結、
+  Backblaze B2 は If-None-Match を拒むとの報告。Go の既存の抽象（Go CDK の blob と docstore、gokv、valkeyrie、kine）は、SDK を同梱するか、
+  楽観ロックか更新順の一覧を欠く。叙述は knowledge-inputs/print-plan/store.ja.md。
+lifecycle: active
+authority: observed
+aliases:
+- conditional writes
+- 条件付き書き込み
+- optimistic locking
+- 楽観ロック
+- If-Match
+- If-None-Match
+facts:
+  object_storage:
+    aws_s3: PutObject と CompleteMultipartUpload に If-None-Match（*、2024-08）と If-Match（ETag、2024-11）。DeleteObject / DeleteObjects に If-Match（2025-09、追加料金なし）。バケットポリシーの s3:if-match / s3:if-none-match で条件を強制できる。外れると 412、同時の条件付き書き込みは 409 ConditionalRequestConflict もある。SigV4 か HTTPS が要る。LIST を含めて強い read-after-write 一貫性（2020-12）
+    gcs: 前提条件 ifGenerationMatch（XML API は x-goog-if-generation-match）。0 は「無いときだけ」。外れると 412。metageneration もある
+    azure_blob: ETag の If-Match / If-None-Match（と If-Modified-Since、If-Unmodified-Since）。外れると 412。何も付けなければ最後に書いた者が勝つ
+    cloudflare_r2: 同時に If-None-Match（*）で PutObject すると成功は高々 1 つで、ほかは 412（R2 の S3 互換の文書。検索の抜粋）
+    s3_compatible_others: Scaleway、OVHcloud、CoreWeave、Servercore が If-None-Match（*）と If-Match を文書にしている
+    minio: 2023-02 から If-Match / If-None-Match の PUT（AWS より先）。コミュニティ版は 2025-10 に Docker イメージとバイナリの配布をやめ、2025-12 に保守のみ、2026-02 に保存庫を凍結（二次資料）。2026-03 に読み取りの定足数が無いと条件を確かめずに書く不具合の報告
+    backblaze_b2: PUT の If-None-Match をエラーで拒む（Proxmox の 2025-07 のパッチの記述）。公式の文書に記載なし
+    unknown: Wasabi、さくらのクラウドのオブジェクトストレージなどは公開の情報が見つからない。実際に確かめるしかない
+  go_abstractions:
+    go_cdk: gocloud.dev の blob（S3・GCS・Azure・ファイル・メモリ）と docstore（DynamoDB・Firestore・MongoDB・メモリ、DocstoreRevision による楽観ロック）。blob の条件付き書き込みは WriterOptions.IfNotExist だけで、If-Match での置き換えは無い（削除は DeleteOptions.BeforeDelete でドライバ固有の前提条件を渡せる）。各社の公式 SDK を同梱する
+    gokv: philippgille/gokv。Set・Get・Delete・Close の interface に bbolt、BadgerDB、DynamoDB、S3、PostgreSQL、MySQL、Redis、etcd など 20 余りの実装。版も比較交換も一覧も無い（一覧は予定）
+    valkeyrie: libkv の系譜。Consul・etcd・ZooKeeper・Redis・BoltDB・DynamoDB に AtomicPut・AtomicDelete。オブジェクトストレージと RDB は無い
+    kine: k3s-io/kine。etcd の API を SQLite・PostgreSQL・MySQL / MariaDB・NATS の上に作る shim（API の一部）。版の順の表という考え方は参考になる
+  implications:
+  - 楽観ロックの最小の約束（無いときだけ書く、版が同じときだけ書く、更新順の一覧）は、オブジェクトストレージ・DynamoDB・RDB・bbolt のどれにも写る
+  - 条件付きのヘッダーを黙って無視する保存先では最後に書いた者が勝つので、使う前に実際の振る舞いを確かめる
+  - 既存の抽象は目的（SDK なし、楽観ロック、更新順）に合わないので、約束を自分で決めて HTTP で薄く話すドライバを書く
+  unverified:
+  - Cloudflare R2 の PutObject の If-Match と DeleteObject の条件（公式のページが作業環境から開けず、検索の抜粋による）
+  - MinIO のコミュニティ版の凍結の日付（二次資料）
+  - Backblaze B2 の条件付き書き込み（第三者の 1 件の報告だけ）
+  - GCS の XML API が S3 式の If-None-Match を受けるか
+assertions:
+- predicate: s3_conditional_put_if_match
+  value: supported since 2024-11
+  authority: observed
+  evidence:
+    url: https://aws.amazon.com/about-aws/whats-new/2024/11/amazon-s3-functionality-conditional-writes
+- predicate: s3_conditional_put_if_none_match
+  value: supported since 2024-08
+  authority: observed
+  evidence:
+    url: https://www.amazonaws.cn/en/new/2024/amazon-s3-supports-conditional-writes/
+- predicate: s3_conditional_delete
+  value: supported since 2025-09 (If-Match on DeleteObject / DeleteObjects)
+  authority: observed
+  evidence:
+    url: https://www.amazonaws.cn/en/new/2025/amazon-s3-supports-conditional-deletes-in-s3-general-purpose-buckets/
+- predicate: s3_list_strong_consistency
+  value: since 2020-12
+  authority: observed
+  evidence:
+    url: https://aws.amazon.com/about-aws/whats-new/2020/12/amazon-s3-now-delivers-strong-read-after-write-consistency-automatically-for-all-applications
+- predicate: gcs_generation_match_zero
+  value: create only if absent
+  authority: observed
+  evidence:
+    url: https://docs.cloud.google.com/storage/docs/request-preconditions
+- predicate: azure_blob_if_match
+  value: supported (412 on mismatch)
+  authority: observed
+  evidence:
+    url: https://learn.microsoft.com/azure/storage/blobs/concurrency-manage
+- predicate: backblaze_b2_rejects_if_none_match
+  value: reported 2025-07
+  authority: observed
+  evidence:
+    url: https://lists.proxmox.com/pipermail/pbs-devel/2025-July/014234.html
+- predicate: minio_conditional_writes
+  value: supported since 2023-02
+  authority: observed
+  evidence:
+    url: https://www.min.io/blog/leading-the-way-minios-conditional-write-feature-for-modern-data-workloads
+- predicate: gocloud_blob_conditional
+  value: IfNotExist only
+  authority: observed
+  evidence:
+    url: https://pkg.go.dev/gocloud.dev/blob
+- predicate: gokv_interface
+  value: Set, Get, Delete, Close (no CAS, no listing)
+  authority: observed
+  evidence:
+    url: https://pkg.go.dev/github.com/philippgille/gokv
+relations:
+- relation: informs
+  to: decision:thin-store
+- relation: informs
+  to: requirement:print
