@@ -34,6 +34,19 @@ facts:
   - print-m2 では作らない（bbolt を直接使う。db.go だけが bbolt に触る）
   - 作るときは store（約束、storetest）、mem、bolt（db.go の載せ替え）、s3（S3 互換）と awsauth、S3 の偽物。スプールのジョブに借りを足す
   - 続けて gcs、azblob、dynamodb、sql。複数台と Lambda
+  candidate_yuruidb:
+    repo: github.com/shibukawa/yuruidb（利用者が作成。2026-10-20 にコミット 276310b を評価）
+    fits: SDK なしの HTTP ドライバ、標準ライブラリだけの共通部、記録の乱数の版と保存先の版の 2 段（ABA に強い）、CAS の無い保存先は条件付きの操作を断る、ErrOutcomeUnknown、共通の適合テストと SigV4 の既知ベクトル
+    blockers_for_bdf:
+    - 1 つの bbolt のファイルに同じプロセスから 2 つ目のコレクションを開くとロックで timeout（確かめた）
+    - ID が UUIDv7 だけ。名前のキー（プリンタ、ホスト、連番）が置けない
+    - 墓標を消さない。生きている 10 件と墓標 1990 件の List で 2000 回の読み取り（確かめた）
+    improvements:
+    - ErrOutcomeUnknown を記録の版で読み直して照合する（今は呼び手が照合できない。確かめた）
+    - 条件付き削除（S3 は 2025-09 から、GCS、DynamoDB、SQL、bbolt）で墓標を減らす
+    - 一覧の N+1、Insert と Update の先読み、bbolt での 2 重の base64（同じ値の生の bbolt の約 2 倍のファイル）
+    - AWS の資格情報の順（IMDSv2、コンテナ、Web identity、共有ファイル）、AWS_REGION、virtual-hosted、一時的な誤りの再試行、条件のヘッダーを守るかの確かめ、Blob の口
+    verdict: 芯は store.ja.md の案と合う。blockers が直れば print-m2 の db.go の記録の部分を載せ替えられる。文書は別に置く
 open_questions:
   package-location:
     text: 汎用の store/ に置くか、print/spool/store に閉じるか

@@ -197,7 +197,24 @@ print-m2 では作らない（2026-10-19 利用者）。作るときの案。
 4. **RDB の話し方**: `database/sql`＋ビルドタグのドライバか、HTTP で SQL を受けるもの（RDS Data API、PostgREST、libSQL）か、両方か。
 5. **次に足すドライバの順**: GCS・Azure Blob（オブジェクトストレージをそろえる）か、DynamoDB か、RDB か。
 
-## 9. 出典
+## 9. yuruidb の評価（2026-10-20）
+
+利用者が別に作った `github.com/shibukawa/yuruidb`（SDK なしの HTTP ドライバで bbolt・SQL・S3・R2・DynamoDB・GCS・Firestore・Realtime Database・D1・Cloudflare KV を同じ CRUD に載せ、楽観ロックで競合を検出するライブラリ。コミット 276310b）を読み、テストを走らせ、手元で確かめた。
+
+よいところ: 共通部は標準ライブラリだけ。記録の版（乱数）と保存先の版（ETag、generation など）の 2 段で、同じ内容を書き戻しても古い版の書き込みが通らない（ABA に強い）。CAS を持たない Cloudflare KV は条件付きの操作を断り、無条件の Set・Remove を別に明示する。送った後の通信断や 5xx を `ErrOutcomeUnknown` として区別する。共通の適合テスト、条件の無い書き込みを断る模擬サーバー、別プロセスの競合、SigV4 の公式の既知ベクトル。Go 1.26 で `go test -race ./...` と `go vet` が通る。
+
+bdf のスプールに使う前に要るもの（手元で確かめた）。
+
+1. **1 つの bbolt のファイルに 1 つのコレクションしか開けない**: 同じプロセスで同じパスの 2 つ目を開くと、ファイルのロックで 1 秒後に timeout になる。スプールは jobs・done・meta・printers・trust を 1 つの `spool.db` に持ちたい。パスごとに `*bolt.DB` を共有する必要がある。
+2. **ID が UUIDv7 に限られる**: プリンタの名前、ホスト、連番の行のような名前のキーが置けない（IPP の `job-id` は整数）。
+3. **墓標が消えない**: Delete は墓標を書き、物理的には消さない。生きている 10 件と消した 1990 件のコレクションを List すると、墓標ごとに 1 回、計 2000 回の読み取りになった（オブジェクトストレージでは GET）。終わったジョブを消すスプールでは、一覧が時間とともに重くなる。S3（2025-09 から条件付き DELETE）、GCS、DynamoDB、SQL、bbolt は条件付きの削除ができ、記録の版が乱数なので消して作り直しても ABA は起きない。
+4. **`ErrOutcomeUnknown` を呼び手が照合できない**: 書けたのに応答が失われた Update の後、古い版で再試行すると競合になり、自分の書き込みかどうか分からない。記録の版は書き手が作るので、ライブラリが読み直して照合できる。
+5. 一覧は Keys の後に 1 件ずつ読む（N+1）。Insert と Update は読んでから書く（2 往復）。bbolt では値が 2 重に base64 になり、同じ値の生の bbolt の約 2 倍のファイルになった。
+6. AWS の資格情報は環境変数だけ（Lambda は動く。EC2・ECS・EKS は注入が要る）。S3 は path-style だけで、地域は既定の us-east-1（`AWS_REGION` を読まない）。一時的な 5xx・503 の再試行が無い。S3 互換のサービスが条件のヘッダーを本当に守るかの確かめが無い。大きな値（文書）を置く Blob の口が無い。
+
+結論: 設計の芯（2 段の版、能力の明示、送った後の不明の区別）は bdf の案（§2）とよく合う。1〜3 が直れば、print-m2 の `db.go` の記録の部分を yuruidb に載せ替えられる。文書は別に置く（bbolt の塊か、オブジェクトストレージに直接）。
+
+## 10. 出典
 
 - AWS S3 の条件付き書き込み（If-Match、2024-11）: https://aws.amazon.com/about-aws/whats-new/2024/11/amazon-s3-functionality-conditional-writes
 - AWS S3 の条件付き書き込み（If-None-Match、2024-08）: https://www.amazonaws.cn/en/new/2024/amazon-s3-supports-conditional-writes/
