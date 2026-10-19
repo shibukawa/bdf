@@ -83,7 +83,7 @@ BDF 側の強みをそのまま使う。文書はベクタの命令列なので�
 
 既定の選び方（`auto`）は **PDF があればそれ（ベクタのまま）、なければ PWG Raster、どちらも無ければ URF → PCLm**。利用者はキューごと・ジョブごとに `-format pwg-raster` などで上書きできる。PDF を優先する理由は、文書がもともとベクタであること（ラスタ化はプリンタの解像度で、プリンタがする方がよい）、ジョブが小さいこと（帳票 1 ページが 100 KB 程度。Raster の 600 dpi カラーは生で 1 ページ 100 MB 超、RLE で縮んでも桁が違う）、部数・両面・合わせ方・仕上げ（面付け・製本）をプリンタに任せられること。Raster に落とす場面は 3 つ。プリンタが PDF を受けないとき（AirPrint 専用の家庭用、Raster 専用の IPP Everywhere 機）、`pdfbdf` が書けない命令（`FILTER`、Canvas 固有の合成）を文書が使っていてビューアの絵を優先したいとき（キューの設定 `raster-if-lossy`。既定は警告のみ）、プリンタの PDF 解釈器に癖があって絵が違うとき（機種ごとの表で `-format pwg-raster` を既定にする）。
 
-driverless の範囲でベクタのまま渡せる形式は PDF だけ（URF・PWG Raster・PCLm はすべてラスタ）。PDF を受けず PostScript を受ける古い機種のために PostScript の書き手（`vector/psbdf`。透明は平坦化が要る）を、Windows の OS 経由のために OpenXPS の書き手（`winspool` に `XPS_PASS` でベクタのまま渡す）を、m3 の候補として残す（§6）。
+driverless の範囲でベクタのまま渡せる形式は PDF だけ（URF・PWG Raster・PCLm はすべてラスタ）。PDF 以外のベクタの経路は §3.4 にまとめた。
 
 PDF に決まる細部:
 
@@ -101,6 +101,44 @@ Raster に落ちるときの細部:
 - **部数**は `copies-supported` が 1 しかない機種（Raster 専用機に多い）では送信側が繰り返す。丁合もその中で。
 - **用紙へ合わせる**: ページの大きさと用紙が違うとき、`fit`（収める）/ `actual`（原寸、中央）/ `shrink`（大きいときだけ縮める）と自動回転（横長のページを縦の用紙に）。既定は `shrink`＋自動回転。
 - **確定的**: 同じ文書・同じチケット・同じフォントなら同じバイト列（golden テストと再送の照合のため）。
+
+
+### 3.4 PDF 以外のベクタの経路
+
+PDF は「プリンタが直接受けるベクタ形式」の 1 つに過ぎない。ベクタの経路は 3 つの層にある（2026-10-19 利用者「PDF 以外のベクトルデータを使う仕組みも多い。Microsoft のやつとか」）。
+
+**(a) OS の印刷パイプライン**: OS のドライバがプリンタの言語に変える。アプリはベクタで渡す。
+
+- **Windows** には 2 つの経路がある。**GDI**（Win32 の `CreateDC` → `StartDoc` → `BeginPath` / `PolyBezier` / `ExtTextOut` / `StretchDIBits`）は、v3 ドライバがそのまま描き、v4 ドライバと IPP クラスドライバでは MXDC が GDI → XPS に変換するので、どちらでもベクタのまま届く。**XPS** は v4 ドライバの母語で、アプリは `IPrintDocumentPackageTarget`（COM）か XPS Print API で渡す。`winspool` に `RAW` で PDL を書く経路は v3 ドライバ用（PS / PCL の素通し）で、v4 ドライバでは 0 バイトのスプールになる。`XPS_PASS` は**フィルタのパイプラインを飛ばしてプリンタに直送する**型（ヘッド調整のコマンドなど向け）であって、「XPS をドライバに描かせる」経路ではない（前の版の案は誤りなので改めた）。GDI には α もグラデーションも無い（`AlphaBlend` と `GradientFill` だけ）が、GDI+（`gdiplus.dll` の平坦な C API。syscall で呼べる）には α・線形 / パスグラデーション・アンチエイリアスがあり、プリンタの DC に描ける。ブレンドモードはどちらにも無い。チケットは Print Schema の PrintTicket（XML）か `DEVMODE` に写す。
+- **macOS**: Core Printing（`PMPrinter`）は cgo が要るので使わない。CUPS に PDF を渡すのが OS 経由の経路で、PostScript のプリンタには `pdftops`（Ghostscript の `ps2write`）がベクタのまま PostScript にする（透明の部分だけ画像になる）。
+- **Linux**: 同じ。CUPS の driverless と Printer Application の多くはラスタ（PWG Raster）に落とすので、ベクタで届くのは PS / PCL のプリンタに Ghostscript 経由のとき。
+
+**(b) プリンタが直接受けるベクタ PDL**: IPP の `document-format-supported` に並ぶか、9100 で送る。
+
+| PDL | MIME | 誰の・仕様の公開 | どこで受ける | ベクタの表現力 | フォント | 透明 |
+|---|---|---|---|---|---|---|
+| PDF 1.7 | `application/pdf` | ISO 32000。公開 | 業務機のほぼ全部、大判の PS 機 | パス・クリップ・破線・グラデーション・パターン・画像・透明グループ・ソフトマスク・16 のブレンド | CID（TrueType / CFF）の埋め込み、ToUnicode | あり |
+| PostScript 3 | `application/postscript` | Adobe。公開（PLRM 第 3 版） | 業務機（純正 PS か互換: Kyocera KPDL、Brother BR-Script、Ricoh・Canon・Xerox・Konica Minolta の PS）、大判の PS 機 | パス・クリップ・破線・shading（タイプ 1〜7）・パターン・画像 | Type 42（TrueType）、CIDFontType0C（CFF）、Type 1 | なし。平坦化が要る |
+| PCL XL（PCL 6） | `application/vnd.hp-PCLXL` | HP。Class 3.0 の文書は会員向けで非公開扱い。Ghostscript の pxlmono / pxlcolor が参考実装 | レーザー機のほぼ全部（HP、Kyocera、Brother、Canon の業務機、Konica Minolta、Ricoh、Fujifilm BI） | パス（直線・ベジエ）・クリップ・破線・ROP・画像（RLE / JPEG）・パターン | ビットマップか TrueType のグリフのダウンロード | なし。平坦化 |
+| PCL 5 | `application/vnd.hp-PCL` | HP。公開 | 古い機種まで | 文字＋ラスタ＋HP-GL/2（線画は HP-GL/2 のみ） | ビットマップのソフトフォント | なし |
+| HP-GL/2（＋HP RTL） | `application/vnd.hp-HPGL` | HP。公開 | 大判（HP DesignJet は常に HP-GL/2。Canon imagePROGRAF と Epson SureColor は HP-GL/2 エミュレーション）。PCL 5 の中にも | 線・円弧・ベジエ・多角形の塗り（ハッチ）・ペンの幅と色・クリップ窓。画像は HP RTL | ストロークフォント（`LB`）。文字はパスにする | なし |
+| OpenXPS | `application/oxps`（XPS は `application/vnd.ms-xpsdocument`） | Microsoft → ECMA-388。公開 | Windows の v4 ドライバ（`IPrintDocumentPackageTarget`）、Universal Print（PDF か XPS。XPS → PDF の変換あり）、XPS 直接印刷を持つ少数の機種 | パス・クリップ・破線・不透明度・OpacityMask・線形 / 放射グラデーション・画像 / タイル / Visual のブラシ | OpenType（TrueType / CFF）の埋め込み（難読化） | α はある。ブレンドモードは無い |
+| 各社の PDL（Canon LIPS、Epson ESC/Page、Fujifilm BI ART、Ricoh RPCS / RPDL、NEC NPDL、Kyocera PRESCRIBE） | `vnd.*` | 非公開か部分公開（IANA の登録に名前だけ。ART は「ART IV Reference Manual」の参照のみ） | 国内の業務機。ただし同じ機種が PS か PCL のエミュレーションを持つことが多い | — | — | — |
+| PDF/VT、JDF / JMF | `application/pdf`、`application/vnd.cip4-jdf+xml` | ISO 16612-2、CIP4。公開 | 商業印刷・大量発行の機械 | PDF と同じ。可変データの構造（DPart）とジョブの指示 | PDF と同じ | あり |
+
+**(c) プリンタ常駐フォーム**: PCL のマクロ、PostScript の `execform`、AFP のオーバーレイ。静的部分を 1 回だけ送り、可変部分だけ毎回送る。BDF の共有 Object と同型（`system:printer-resident-forms`）。帳票の大量発行で効く。後の段階。
+
+**結論**:
+
+1. 直結の第 1 は PDF（§3.2）。
+2. **PostScript の書き手（`vector/psbdf`）を第 2 のベクタ経路にする**。PDF を受けず PS を受ける業務機は国内外に多く（2010 年前後までの機種）、大判の PS 機、CUPS を通る経路、Windows の v3 ドライバへの `RAW` でも使える。`pdfbdf` の構造（命令列 → ページの内容、`internal/textrun` の文字の配置、影のラスタ化）をそのまま写せる。透明（グループの α・ソフトマスク・ブレンド）は平坦化が要る。
+3. **Windows の OS 経由は GDI（＋GDI+）に描く**。EMF の書き手（`vector/emfbdf`）を作って `PlayEnhMetaFile` でプリンタの DC に再生する形にすると、ファイルとして検査でき、`converter/emf` の読み手で往復テストができる。XPS の書き手（`vector/xpsbdf`）は Universal Print と COM の経路向けで、後。
+4. **HP-GL/2 の書き手（`vector/hpglbdf`）は CAD の出口として価値が高い**。DXF / JWW / SXF / CGM の変換器を既に持ち、大判プロッタの共通語で、読み手 `converter/hpgl` があるので往復テストができる。線画だけ（文字はパス、画像は HP RTL）。順は現場の要望次第。
+5. **PCL XL は当面作らない**。仕様が非公開扱いで、機種ごとの実装の癖が大きい。PCL XL だけの機種は、同じ機種の PS エミュレーション、PWG Raster、または PCL 5 のラスタ（小さな書き手）で逃げる。
+6. **各社の PDL は作らない**。仕様が無い。同じ機種の PS / PCL のエミュレーションか Raster で。
+7. **平坦化の共通部（`vector/internal/flatten`）**: 透明グループ・ソフトマスク・ブレンド・`FILTER` の部分だけをラスタライザで画像にし、残りをベクタのまま残す。`pdfbdf` の影の手法の一般化で、PS・HP-GL/2・EMF（・PCL）が共有する。
+
+形式は搬送路と独立に選ぶ。IPP でも 9100 でも CUPS でも Windows の `RAW` でも、プリンタが名乗る形式の中から同じ順（PDF → PS → PWG Raster → URF → PCLm → PCL 5 ラスタ）で選ぶ。
 
 ## 4. 要件
 
@@ -174,7 +212,7 @@ Raster に落ちるときの細部:
 
 | | 直結（IPP） | OS のスプーラ経由 | 発見 |
 |---|---|---|---|
-| Windows | そのまま動く。WPP の環境では IPP プリンタしか無いので、直結が主 | `winspool`（`OpenPrinter` / `StartDocPrinter` / `WritePrinter`。`golang.org/x/sys/windows` の syscall、cgo なし）。IPP クラスドライバのプリンタに RAW で PDF を素通しできるかは要検証。できなければ OpenXPS を書いて `XPS_PASS` で渡す（ベクタのまま。v4 と IPP クラスドライバが受ける）か、GDI の `StartDoc` / `StretchDIBits` に描いた画像を渡す（どのドライバでも動く最後の手段） | mDNS（自前）＋ `EnumPrinters` |
+| Windows | そのまま動く。WPP の環境では IPP プリンタしか無いので、直結が主 | GDI（＋GDI+）にベクタのまま描く（`CreateDC` / `StartDoc` / パスと文字の GDI 呼び出し、または EMF の書き手を `PlayEnhMetaFile` で再生。`golang.org/x/sys/windows` の syscall、cgo なし）。v3 ドライバはそのまま描き、v4 と IPP クラスドライバは MXDC が XPS に変える。v3 ドライバには `winspool` の `RAW` で PS を素通しする経路もある（v4 では `RAW` は 0 バイトになる。`XPS_PASS` はパイプラインを飛ばす直送なので使わない）。一覧は `EnumPrinters`、チケットは `DEVMODE` | mDNS（自前）＋ `EnumPrinters` |
 | macOS | AirPrint のプリンタ（URF か PDF） | CUPS に IPP（`localhost:631`）。キューの一覧は `CUPS-Get-Printers` | mDNS（自前。Bonjour と共存） |
 | Linux | そのまま | CUPS 2.x に IPP（`localhost:631` か `/run/cups/cups.sock`）、CUPS 3 の `cups-local` はドメインソケット。USB は `ipp-usb` の `localhost` | mDNS（自前。Avahi と 5353 を共有するので `SO_REUSEADDR` / `SO_REUSEPORT` で束縛） |
 
@@ -210,7 +248,12 @@ print/ipp/              IPP のメッセージ（RFC 8010）の読み書き、�
 print/raster/           PWG Raster の書き手（imagebdf の帯から）。後で Apple Raster と PCLm
 print/spool/            スプール: ジョブと制御ファイル、キュー、状態機械、再送、履歴、アカウンティング
 print/server/           常駐サーバー: HTTP API、設定、プリンタの監視。後で IPP のサーバーと DNS-SD の広告
-print/internal/osspool/ OS のスプーラ（Windows の winspool、CUPS）。OS ごとの build tag
+print/internal/osspool/ OS のスプーラ（Windows の GDI と winspool、CUPS）。OS ごとの build tag
+vector/psbdf/           PostScript 3 の書き手（pdfbdf の兄弟。第 2 のベクタ経路）
+vector/emfbdf/          EMF の書き手（Windows の GDI に再生する。converter/emf で往復テスト）
+vector/hpglbdf/         HP-GL/2（＋HP RTL）の書き手（大判プロッタ。CAD の出口。converter/hpgl で往復テスト）
+vector/xpsbdf/          OpenXPS の書き手（Universal Print、IPrintDocumentPackageTarget）。後
+vector/internal/flatten 透明の部分だけを画像にする平坦化（psbdf・emfbdf・hpglbdf が共有）
 cmd/bdf/print.go        bdf print、bdf printers、bdf jobs
 cmd/bdfprintd/          サーバー（または bdf printd）
 ```
@@ -221,7 +264,7 @@ cmd/bdfprintd/          サーバー（または bdf printd）
 
 1. **print-m1 — IPP で手元／LAN の 1 台に印刷する（`bdf print`）**: IPP の符号化とクライアント、`Get-Printer-Attributes`、`Create-Job` / `Send-Document`、`Get-Jobs` / `Get-Job-Attributes` / `Cancel-Job`、`ipps`（初回の指紋）、DNS-SD の探索と `bdf printers`、PDF の送信（既定。ベクタのまま、`pdfbdf`）、PWG Raster の書き手（PDF を受けないプリンタの後ろ盾。帯から流す、モノクロ、両面の裏面、用紙への合わせ方）、形式の自動選択、チケットの主要項目（部数・丁合・両面・用紙・色・解像度・ページ範囲・`SkipRoles`）。CUPS のキュー（macOS / Linux）もこれで印刷できる。
 2. **print-m2 — スプールとサーバー**: ディスクのスプール、キューと組、状態機械、再送と二重印刷の防止、履歴と保持、アカウンティング、HTTP API と CLI クライアント、プリンタの状態の監視、`converter` の入力の変換、`examples/print-server`（帳票を穴埋めして印刷するサンプル）。
-3. **print-m3 — 第 2 の形式と OS のスプーラ**: Apple Raster、PCLm、Windows の `winspool`（OpenXPS の書き手でベクタのまま渡す経路と、GDI の最後の手段）、`EnumPrinters` / `CUPS-Get-Printers` の一覧、9100 の生ソケットと LPD（PDF の素通し）、IPP USB。PDF を受けず PostScript を受ける古い機種が現場にあれば、PostScript の書き手（ベクタのまま）もここ。
+3. **print-m3 — 第 2 の形式と OS のスプーラ**: PostScript の書き手（第 2 のベクタ経路。平坦化の共通部と一緒に）、Apple Raster、PCLm、Windows の GDI（EMF の書き手と再生。v3 には PS の `RAW` も）、`EnumPrinters` / `CUPS-Get-Printers` の一覧、9100 の生ソケットと LPD（PDF / PS の素通し）、IPP USB。CAD の現場があれば HP-GL/2 の書き手もここ（§3.4）。
 4. **print-m4 — サーバーを IPP プリンタとして見せる**: IPP Everywhere のサーバー、DNS-SD の広告、受ける形式（PDF・PWG Raster・URF・JPEG・PNG）、PWG の自己認証テスト（`ipptool`）を通す。拠点の代理（上流から取りに行く）。
 5. **print-m5 — ラベル・レシート・連帳**: ZPL / SBPL / TPCL、ESC/POS、ESC/P の書き手と、USB・シリアル・Bluetooth の搬送路。`.bdf` のページをラベルや行に写す規則は `pattern:label-sheet`、`pattern:roll-receipt`、`pattern:continuous-text-form` から。
 
@@ -247,6 +290,7 @@ m1 と m2 は独立に価値がある（m1 だけで手元の印刷、m2 でサ�
 9. **暗号化文書のパスワードの持ち方**（4.8）。
 10. **パッケージ名**: `print/` か `printing/` か。
 11. **拠点の代理の型**: 独自の「上流から取りに行く」か、IPP INFRA の操作に合わせるか。
+12. **PDF 以外のベクタの書き手の順**（§3.4）: 推奨は PostScript → EMF（Windows の OS 経由が要るなら先）→ HP-GL/2（CAD の現場があれば）→ OpenXPS（Universal Print を扱うとき）。PCL XL と各社の PDL は作らない。
 
 ## 9. 用語
 
@@ -276,6 +320,12 @@ m1 と m2 は独立に価値がある（m1 だけで手元の印刷、m2 でサ�
 - Mopria と PCLm についての議論（Michael Sweet）: https://pwg.org/archives/ipp/2024/021565.html
 - `ipp-usb`: https://man.archlinux.org/man/ipp-usb.8.en
 - `goipp`: https://github.com/OpenPrinting/goipp
+- Windows の `XPS_PASS`（パイプラインを飛ばす直送）: https://learn.microsoft.com/en-us/windows/win32/printdocs/sending-data-directly-to-an-xps-printer 、v4 ドライバで `RAW` が 0 バイトになる: https://learn.microsoft.com/en-us/previous-versions/troubleshoot/windows/win32/v4-print-driver-raw-mode-pcl-postscript
+- Windows の印刷経路（GDI と XPS、MXDC）: https://learn.microsoft.com/en-us/windows-hardware/drivers/print/windows-print-path-overview 、v4 の描画: https://learn.microsoft.com/et-ee/windows-hardware/drivers/print/v4-driver-rendering-architecture 、OpenXPS: https://learn.microsoft.com/en-us/windows/desktop/printdocs/app-support-for-openxps-printing
+- Universal Print の文書形式（XPS → PDF の変換）: https://learn.microsoft.com/en-us/graph/api/resources/printsettings?view=graph-rest-1.0
+- HP PCL 6（PCL XL）: https://developers.hp.com/node/21581 、HP-GL/2（HP のドライバは常に HP-GL/2）: https://support.hp.com/sg-en/document/c01121263
+- CUPS の `pdftops`（Ghostscript の ps2write、透明は画像）: https://github.com/OpenPrinting/cups-filters
+- IANA のプリンタ言語の登録（LIPS、ART、RPCS、PRESCRIBE …）: https://shrubbery.net/rfc/IANA/printer-language-numbers 、PWG の文書形式の MIME 表: https://www.pwg.org/hypermail/ipp/att-4439/01-Print-Document-Format-MIME-media-types-table.doc
 - Windows Protected Print の解説（二次資料）: https://printops.org/windows-protected-print/ 、https://www.myq-solution.com/windows-protected-print-mode
 - Windows Ready Print（Canon の案内）: https://www.canon-europe.com/support/windows-ready-print/
 - Microsoft Q&A（IPP クラスドライバと Print Support App）: https://learn.microsoft.com/en-gb/answers/questions/1690564/how-to-setup-the-microsoft-ipp-driver-for-the-prin

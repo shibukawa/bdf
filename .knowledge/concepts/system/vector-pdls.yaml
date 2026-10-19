@@ -1,0 +1,115 @@
+id: system:vector-pdls
+type: system
+title: PDF 以外のベクタの印刷経路 — Windows の GDI / XPS、PostScript、PCL XL、HP-GL/2、OpenXPS、各社の PDL、常駐フォーム
+summary: >-
+  2026-10-19 の Web 調査。ベクタのまま紙に届く経路は 3 つの層にある。OS の印刷パイプライン（Windows の GDI と XPS、
+  macOS / Linux の CUPS に PDF）、プリンタが直接受けるベクタ PDL（PostScript、PCL XL、PCL 5、HP-GL/2、OpenXPS、
+  各社の PDL、PDF/VT）、プリンタ常駐フォーム（PCL マクロ、PS の execform、AFP オーバーレイ）。
+  Windows の XPS_PASS はフィルタのパイプラインを飛ばしてプリンタに直送する型で、XPS をドライバに描かせる経路ではない。
+lifecycle: active
+authority: observed
+aliases:
+- PostScript
+- PCL XL
+- PCL 6
+- HP-GL/2
+- OpenXPS
+- XPS
+- GDI
+- EMF
+- MXDC
+- XPS_PASS
+- LIPS
+- ESC/Page
+- ART
+- RPCS
+facts:
+  windows:
+    paths: GDI の経路（Win32 の GDI 呼び出し）と XPS の経路（WPF、XPS Print API、IPrintDocumentPackageTarget）。変換は MXDC（GDI → XPS）と XGC（XPS → GDI）
+    v4: v4 ドライバは XPS ベース。RAW で PCL / PS を送ると 0 バイトのスプールになる。DRIVER_INFO_8 の PRINTER_DRIVER_XPS フラグで判別し、立っていれば XPS_PASS、立っていなければ RAW
+    xps_pass: XPSDrv のフィルタのパイプラインを飛ばして（bypass）プリンタに直送する型。ヘッド調整のコマンドなどに使う。v3 の XPSDrv で導入され、v4 では RAW の代わり
+    gdi_vector: v3 ドライバは GDI をそのまま描き、v4 では MXDC が GDI → XPS に変換する。GDI+（gdiplus.dll の平坦な C API）は α と線形 / パスグラデーションを持ちプリンタの DC に描ける。ブレンドモードは無い
+    recommended_api: XPS のジョブは IPrintDocumentPackageTarget が推奨（直列化なしで XPS のオブジェクトモデルを受ける）。XpsFormat のレジストリ値でドライバの好む XPS 形式が分かる
+    openxps: ECMA-388（2009）。Windows 8 以降 v4 で OpenXPS と XPS の両方
+    universal_print: プリンタが名乗る形式に合えばそのまま、合わなければ変換（XPS → PDF）。変換を切ると失敗。PDF か XPS を受けない機種はコネクタで
+    print_ticket: Print Schema の PrintTicket（XML）が XPS のジョブの指示。GDI は DEVMODE
+  macos_linux:
+    cups_pdf: CUPS に PDF を渡す。PostScript のプリンタには pdftops（既定は Ghostscript の ps2write。DSC 準拠、圧縮したフォントと内容）がベクタのまま PS にする。PostScript が表せない部分（透明。Cairo の出力に多い）だけ画像になり遅くなる。pdftops-renderer で gs / pdftops / pdftocairo / mupdf / hybrid（Brother と Konica Minolta は Poppler）
+    core_printing: macOS の Core Printing（PMPrinter）は cgo が要る
+  pdls:
+    postscript: Adobe PostScript 3。公開（PLRM 第 3 版）。業務機の純正 PS と互換（Kyocera KPDL、Brother BR-Script、Ricoh / Canon / Xerox / Konica Minolta の PS）、大判の PS 機。shading タイプ 1〜7、パターン、画像。フォントは Type 42（TrueType）、CIDFontType0C（CFF）、Type 1。透明なし
+    pcl_xl: HP の PCL 6（旧 PCL XL / PXL）。Class 3.0 は PCL passthrough と adaptive halftoning。Feature Reference の文書は会員向けで、2002 の Class 3.0 補遺が第三者のサイトに（HP Confidential の印）。2005 の CUPS のメーリングリストは「HP が開発者サイトから資料を引き上げた」。Ghostscript の pxlmono / pxlcolor が参考実装。機種ごとの癖が大きい
+    pcl5: 文字＋ラスタ＋HP-GL/2。公開（PCL 5 Technical Reference）
+    hpgl2: 'HP のドライバは常に HP-GL/2 を出す。HP-GL/2 はラスタ（HP RTL）に切り替えられる（旧 HP-GL は不可）。大判は PS 機（DesignJet Z6 PostScript: PS3、PDF 1.7、HP RTL、HP-GL/2、TIFF、CALS G4、JPEG）と HP-GL/2 のみの機種（DesignJet T630: HP-GL/2、CALS G4、HP RTL、URF、JPEG）に分かれる。Epson SureColor と Canon imagePROGRAF は HP-GL/2 エミュレーション'
+    vendor: Canon LIPS / CaPSL、Fuji Xerox ART（ART IV Reference Manual、No F33M）、Ricoh RPCS、Xerox LCDS / XES、Kyocera PRESCRIBE（PRESCRIBE II Programming Manual）は IANA のプリンタ言語の登録に名前があるが、仕様は非公開か部分公開。Epson ESC/Page は結果なし
+    mime: application/postscript（RFC 1341）、application/vnd.hp-PCL（1997 登録）、application/vnd.hp-PCLXL、application/vnd.hp-HPGL、application/oxps、application/vnd.ms-xpsdocument。IPP の document-format は IANA の媒体型に従う
+  resident_forms: PCL のマクロ、PostScript の execform、AFP のオーバーレイ。静的部分を 1 回だけ送る。BDF の共有 Object と同型（system:printer-resident-forms）
+  relevance_to_bdf:
+  - 第 2 のベクタ経路は PostScript の書き手。pdfbdf の構造（命令列 → 内容、internal/textrun、影のラスタ化）を写し、透明は平坦化の共通部で画像にする
+  - Windows の OS 経由は GDI（＋GDI+）に描く。EMF の書き手を PlayEnhMetaFile で再生すれば converter/emf で往復テストができる。XPS_PASS は使わない
+  - HP-GL/2 の書き手は CAD（DXF / JWW / SXF / CGM）の出口。converter/hpgl で往復テスト
+  - PCL XL と各社の PDL は作らない。同じ機種の PS エミュレーション、PWG Raster、PCL 5 ラスタで逃げる
+  unverified:
+  - GDI → XPS（MXDC）の変換がベクタを保つこと（Microsoft の文書は変換の存在を示すが保持の明言は未確認）
+  - IPrintDocumentPackageTarget と XPS Print API の非推奨の状況
+  - Universal Print に直接投入できる形式の一覧（Graph の printSettings は XPS → PDF の変換を書くのみ）
+  - PCL XL Feature Reference の現在の入手可否
+  - Epson ESC/Page と Ricoh RPCS の公開文書の有無
+relations:
+- relation: informs
+  to: requirement:print
+- relation: compared_with
+  to: system:ipp-driverless
+- relation: compared_with
+  to: system:printer-resident-forms
+assertions:
+- predicate: xps_pass_bypasses_filter_pipeline
+  value: true
+  authority: observed
+  evidence:
+    url: https://learn.microsoft.com/en-us/windows/win32/printdocs/sending-data-directly-to-an-xps-printer
+- predicate: v4_driver_raw_yields_zero_byte_spool
+  value: true
+  authority: observed
+  evidence:
+    url: https://learn.microsoft.com/en-us/previous-versions/troubleshoot/windows/win32/v4-print-driver-raw-mode-pcl-postscript
+- predicate: windows_print_paths
+  value: GDI path and XPS path, converted by MXDC / XGC
+  authority: observed
+  evidence:
+    url: https://learn.microsoft.com/en-us/windows-hardware/drivers/print/windows-print-path-overview
+- predicate: openxps_supported_by_v4
+  value: Windows 8+, side by side with XPS
+  authority: observed
+  evidence:
+    url: https://learn.microsoft.com/en-us/windows/desktop/printdocs/app-support-for-openxps-printing
+- predicate: universal_print_converts_xps_to_pdf
+  value: true
+  authority: observed
+  evidence:
+    url: https://learn.microsoft.com/en-us/graph/api/resources/printsettings?view=graph-rest-1.0
+- predicate: cups_pdftops_vector_with_bitmap_for_transparency
+  value: Ghostscript ps2write by default; bitmaps only for what PostScript cannot represent
+  authority: observed
+  evidence:
+    url: https://github.com/OpenPrinting/cups-filters
+- predicate: pcl_xl_docs_restricted
+  value: Class 3.0 supplement (2002) marked HP Confidential; developer site pulled docs (2005)
+  authority: observed
+  evidence:
+    url: https://lists.cups.org/pipermail/cups/2005-July/033733.html
+- predicate: hp_drivers_always_generate_hpgl2
+  value: true
+  authority: observed
+  evidence:
+    url: https://support.hp.com/sg-en/document/c01121263
+- predicate: vendor_pdls_registered_without_public_specs
+  value: [LIPS, CaPSL, ART, RPCS, LCDS, XES, PRESCRIBE]
+  authority: observed
+  evidence:
+    url: https://shrubbery.net/rfc/IANA/printer-language-numbers
+- predicate: hp_mime_types_registered
+  value: [application/vnd.hp-PCL, application/vnd.hp-PCLXL, application/vnd.hp-HPGL]
+  authority: observed
+  evidence:
+    url: https://pwg.org/archives/ipp/1997/013284.html

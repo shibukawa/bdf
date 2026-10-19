@@ -70,6 +70,9 @@ open_questions:
   package-name:
     text: 最上位のパッケージ名を print/ にするか printing/ にするか。print は組み込み関数と同名だがパッケージ名が隠すだけで害はない
     state: open
+  vector-writers:
+    text: PDF 以外のベクタの書き手の順。推奨は PostScript → EMF（Windows の OS 経由が要るなら先）→ HP-GL/2（CAD の現場があれば）→ OpenXPS（Universal Print を扱うとき）。PCL XL と各社の PDL は作らない
+    state: open
   remote-proxy:
     text: NAT の向こうの拠点のプリンタのために置く代理を、独自の「上流から取りに行く」型にするか、IPP INFRA（Fetch-Job / Fetch-Document）の操作に合わせるか
     state: deferred
@@ -93,7 +96,13 @@ facts:
     pclm: application/PCLm。Mopria / Wi-Fi Direct。帯の画像を並べた制限付き PDF
     raw: application/octet-stream。9100 と同じ素通し。後の段階
     default_policy: auto = PDF があればそれ（ベクタのまま）、なければ PWG Raster、どちらも無ければ URF → PCLm。キューごと・ジョブごとに -format で上書き。Raster に落とす場面は、プリンタが PDF を受けない、pdfbdf が書けない命令を含む文書でビューアの絵を優先したい（raster-if-lossy）、機種の PDF 解釈器に癖がある、の 3 つ
-    vector_formats: driverless でベクタのまま渡せるのは PDF だけ（URF / PWG Raster / PCLm はラスタ）。PostScript の書き手（PDF を受けない古い機種。透明は平坦化）と OpenXPS の書き手（Windows の winspool に XPS_PASS）は m3 の候補
+    vector_formats:
+      driverless: ベクタのまま渡せるのは PDF だけ（URF / PWG Raster / PCLm はラスタ）
+      direct_pdls: PostScript 3（公開。業務機の純正 PS と互換 KPDL / BR-Script、大判）、PCL XL（HP。仕様は非公開扱い、機種ごとの癖）、PCL 5（文字＋ラスタ＋HP-GL/2）、HP-GL/2（公開。大判プロッタの共通語）、OpenXPS（ECMA-388。Windows の v4 と Universal Print）、各社の PDL（LIPS / ESC/Page / ART / RPCS / NPDL / PRESCRIBE。非公開）、PDF/VT と JDF（商業印刷）
+      os_pipelines: Windows は GDI（v3 はそのまま、v4 と IPP クラスドライバは MXDC が XPS に変換。ベクタのまま）と XPS（IPrintDocumentPackageTarget）。RAW は v3 の PS / PCL 素通し用で v4 では 0 バイト。XPS_PASS はパイプラインを飛ばす直送（使わない）。macOS / Linux は CUPS に PDF（PS 機には pdftops がベクタのまま、透明は画像）
+      decision: 第 2 のベクタ経路は PostScript の書き手（vector/psbdf。pdfbdf の構造を写す）。Windows の OS 経由は GDI（＋GDI+）に描く（EMF の書き手 vector/emfbdf を PlayEnhMetaFile で再生、converter/emf で往復テスト）。HP-GL/2 の書き手（vector/hpglbdf）は CAD の出口として価値が高く、converter/hpgl で往復テスト。OpenXPS の書き手は Universal Print を扱うとき。PCL XL と各社の PDL は作らない（PS エミュレーション、Raster、PCL 5 ラスタで逃げる）
+      flatten: vector/internal/flatten。透明グループ・ソフトマスク・ブレンド・FILTER の部分だけを画像にし残りをベクタのまま残す。pdfbdf の影の手法の一般化。PS・HP-GL/2・EMF が共有
+      selection_order: 搬送路と独立に、プリンタが名乗る形式の中から PDF → PS → PWG Raster → URF → PCLm → PCL 5 ラスタ
     pdf_details:
       delegated: copies、sheet-collate、sides、print-scaling、page-ranges は IPP の属性でプリンタに任せる。unsupported なら送信側で肩代わり（ページの選択を pdfbdf に足す、部数は文書を繰り返す）
       layers: プレ印刷用紙向けのレイヤー省略は pdfbdf の SkipRoles
@@ -134,7 +143,7 @@ facts:
     remote_sites: 直接届くなら IPP 直結。NAT の向こうは拠点側に代理（同じサーバーを上流から取りに行く設定で）
     observability: 構造化ログ（文書の中身は書かない）、任意の /metrics（Prometheus のテキスト）、状態の HTTP ページ
   platforms:
-    windows: 直結の IPP はそのまま。WPP の環境では IPP プリンタしか無い。OS 経由は winspool（golang.org/x/sys/windows、cgo なし）。PDF の RAW 素通しの可否は要検証。できなければ OpenXPS を書いて XPS_PASS で渡す（ベクタのまま）、GDI が最後の手段。一覧は EnumPrinters
+    windows: 直結の IPP はそのまま。WPP の環境では IPP プリンタしか無い。OS 経由は GDI（＋GDI+）にベクタのまま描く（golang.org/x/sys/windows の syscall、cgo なし。EMF の書き手を PlayEnhMetaFile で再生）。v3 はそのまま、v4 と IPP クラスドライバは MXDC が XPS に変換。v3 には winspool の RAW で PS を素通しする経路も。XPS_PASS は使わない。一覧は EnumPrinters、チケットは DEVMODE
     macos: AirPrint 直結（URF か PDF）。CUPS に IPP（localhost:631）、一覧は CUPS-Get-Printers。mDNS は自前（Bonjour と共存）
     linux: 直結。CUPS 2.x に IPP（localhost:631 か /run/cups/cups.sock）、CUPS 3 の cups-local はドメインソケット。USB は ipp-usb の localhost。mDNS は Avahi と 5353 を共有（SO_REUSEADDR / SO_REUSEPORT）
     build: print/internal/osspool に OS ごとの build tag。cmd/bdfwasm と converter/all から import しない。CI は 3 OS の go vet と go test
@@ -149,13 +158,18 @@ facts:
     print/raster: PWG Raster の書き手。後で URF と PCLm
     print/spool: ジョブ、キュー、状態機械、再送、履歴、アカウンティング
     print/server: HTTP API、設定、監視。後で IPP サーバーと DNS-SD の広告
-    print/internal/osspool: winspool、CUPS。OS ごとの build tag
+    print/internal/osspool: GDI と winspool、CUPS。OS ごとの build tag
+    vector/psbdf: PostScript 3 の書き手（pdfbdf の兄弟）
+    vector/emfbdf: EMF の書き手（Windows の GDI に再生）
+    vector/hpglbdf: HP-GL/2 ＋ HP RTL の書き手（大判、CAD）
+    vector/xpsbdf: OpenXPS の書き手（後）
+    vector/internal/flatten: 透明の平坦化の共通部
     cmd: cmd/bdf の print / printers / jobs と、cmd/bdfprintd（または bdf printd）
   delivery:
     proposed_order:
     - print-m1 IPP で手元／LAN の 1 台に印刷（bdf print）。PDF（既定、ベクタのまま）と PWG Raster（後ろ盾）、形式の自動選択、DNS-SD、ipps、主要なチケット
     - print-m2 スプールとサーバー。キューと組、再送と二重印刷の防止、履歴、HTTP API と CLI、監視、converter の入力、examples/print-server
-    - print-m3 URF と PCLm、Windows の winspool（OpenXPS の書き手と GDI）、一覧、9100 と LPD の素通し、IPP USB。現場に要れば PostScript の書き手
+    - print-m3 PostScript の書き手（第 2 のベクタ経路）と平坦化、URF と PCLm、Windows の GDI（EMF の書き手と再生、v3 の RAW）、一覧、9100 と LPD の素通し、IPP USB。CAD の現場があれば HP-GL/2 の書き手
     - print-m4 サーバーを IPP Everywhere のプリンタとして見せる。DNS-SD の広告、受ける形式、PWG の自己認証テスト、拠点の代理
     - print-m5 ラベル・レシート・連帳の PDL と USB・シリアル・Bluetooth の搬送路
     independence: m1 と m2 は独立に価値がある。m3 以降は現場の機種で順を変える
@@ -168,7 +182,7 @@ facts:
   - 実機の IPP 実装の癖（copies-supported が 1、media-col-database が巨大、Get-Notifications 非対応、自己署名証明書の期限切れ）。機種ごとの表で吸収する
   - プリンタの PDF 解釈器の差（フォント、透明、ブレンド）で絵が変わる。pdfbdf は既にフォームをページ座標で定義して Ghostscript / Quartz の差を吸収している。機種ごとに確かめ、癖のある機種は Raster を既定にする
   - Raster に落ちる機種ではカラーの大量印刷のジョブが大きい。解像度の既定（カラー 300 dpi）とモノクロで逃がす
-  - Windows の OS 経由（winspool）は RAW 素通しの可否が機種とドライバに依る。GDI の経路を最後の手段に持つ
+  - Windows の OS 経由は GDI に描くので、埋め込みフォントを AddFontMemResourceEx でプロセスに足すか、文字をパスにする必要がある。α とグラデーションは GDI+ か平坦化
   - mDNS は OS の責務と重なる（Bonjour、Avahi）。5353 の共有と、企業の網での多播の遮断。単一 DNS の DNS-SD と URL の直接指定を常に残す
   - 調査の一次資料（pwg.org、learn.microsoft.com）が作業環境から開けず、日付と必須形式は二次資料による（system:ipp-driverless の unverified）
 relations:
@@ -178,6 +192,8 @@ relations:
   to: requirement:form-template
 - relation: informed_by
   to: system:ipp-driverless
+- relation: informed_by
+  to: system:vector-pdls
 - relation: informed_by
   to: system:label-printer-languages
 - relation: informed_by
@@ -199,6 +215,8 @@ relations:
 - relation: has_milestone
   to: milestone:print-m1
 history:
+  vector-paths:
+    summary: 2026-10-19 利用者「PDF 以外のベクトルデータを使う仕組みも多いと思う。Microsoft のやつとか」。PDF 以外のベクタの経路（OS のパイプライン、直接受ける PDL、常駐フォーム）を調べて §3.4 にまとめ、PostScript を第 2 のベクタ経路、Windows は GDI、HP-GL/2 を CAD の出口とした。前の版の「OpenXPS を XPS_PASS で渡す」は XPS_PASS がパイプラインを飛ばす直送だと分かり取り下げた
   format-decision:
     summary: 2026-10-19 利用者「ベクトルデータもあるのでそちらで印刷できるならそれを優先したい」。既定を Raster 優先から PDF（ベクタ）優先に改め、Raster を PDF を受けないプリンタの後ろ盾にした
   proposed:
