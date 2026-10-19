@@ -34,6 +34,8 @@ func usage() {
                                      draw a page (bdf thumbnail -h, text -h, render -h for flags)
   bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                      write the pages as a PDF file (bdf pdf -h for flags)
+  bdf printers [flags]               list the IPP printers on the network, the queues of a CUPS
+                                     server (-cups), or what a printer supports (-url)
   bdf ls <file.bdf | dir>            list views and parts
   bdf manifest <file.bdf | dir>      print the manifest as JSON
   bdf disasm <file.bdf | dir> <hash> disassemble an object part
@@ -143,6 +145,10 @@ func check(err error) {
 }
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "printers" {
+		printersCmd(nil)
+		return
+	}
 	if len(os.Args) < 3 {
 		usage()
 	}
@@ -159,6 +165,8 @@ func main() {
 		textCmd(os.Args[2:])
 	case "pdf":
 		pdfCmd(os.Args[2:])
+	case "printers":
+		printersCmd(os.Args[2:])
 	case "render":
 		renderCmd(os.Args[2:])
 	case "ls":
