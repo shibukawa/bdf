@@ -1,0 +1,122 @@
+id: milestone:print-m1
+type: milestone
+title: print-m1 — IPP で手元／LAN の 1 台に .bdf を印刷する（bdf print）
+summary: >-
+  印刷の最初の実装のまとまり。IPP のクライアントと DNS-SD の探索、PWG Raster の書き手（imagebdf の帯から流す）、
+  PDF の送信、主要なチケット項目を、bdf print と bdf printers として通す。プリンタ直結と、macOS / Linux の CUPS のキューの両方。
+  スプールはメモリ上（1 ジョブを送って終わる）。サーバーは print-m2。叙述は knowledge-inputs/print-plan/print-requirements.ja.md §6。
+lifecycle: proposed
+authority: authored
+scope:
+  milestone: print-m1
+  protocol: ipp
+  output:
+  - pwg-raster
+  - pdf
+constraints:
+- OS のドライバを使わない。cgo なし。wasm / TinyGo のビルドに入れない
+- 文書形式は PWG Raster と PDF。URF / PCLm は m3
+- 描画は imagebdf の PagesRows の帯を行の符号化に直結し、ページ全体の画像を持たない
+- チケットの名前は IPP の属性。ジョブの状態は IPP の job-state
+- IPP の符号化と DNS-SD は自前（requirement:print の open_questions が決まるまでの仮）
+- 同じ文書・同じチケット・同じフォントなら同じ Raster のバイト列
+non_goals:
+- ディスクのスプール、キュー、再送、履歴、サーバー（m2）
+- OS のスプーラ経由（Windows の winspool）、9100、LPD、IPP USB（m3）
+- サーバーを IPP プリンタとして見せること（m4）
+- ラベル・レシート・連帳（m5）
+- OAuth、Get-Notifications（任意。機種差が大きいので後）
+capabilities:
+  ipp-codec:
+    state: planned
+    about: capability:print/ipp-codec
+  ipp-client:
+    state: planned
+    about: capability:print/ipp-client
+  dns-sd-browse:
+    state: planned
+    about: capability:print/dns-sd-browse
+  pwg-raster-writer:
+    state: planned
+    about: capability:print/pwg-raster-writer
+  pdf-send:
+    state: planned
+    about: capability:print/pdf-send
+  ticket:
+    state: planned
+    about: capability:print/ticket
+  cli-print:
+    state: planned
+    about: capability:print/cli-print
+acceptance:
+  s1-codec:
+    text: RFC 8010 の全ての属性の型（integer、boolean、enum、keyword、name、text、uri、dateTime、resolution、rangeOfInteger、collection、1setOf、out-of-band）を読み書きでき、往復で同じバイト列になり、fuzz で panic しない。unsupported-attributes の応答を解釈する
+    verified_by:
+    - codec-unit
+  s2-attributes:
+    text: bdf printers -url ipp://… が Get-Printer-Attributes から用紙（media-ready、media-col-database）、トレイ、両面、色、解像度、文書形式、仕上げ、認証、TLS を表にして見せる。DNS-SD で LAN の _ipp._tcp / _ipps._tcp のプリンタを列挙する
+    verified_by:
+    - fake-printer
+    - manual-devices
+  s3-raster:
+    text: 文書のページを printer-resolution の PWG Raster にし、自前の読み手で戻すと imagebdf の PageDPI の画像と一致する。モノクロは sgray_8 と sgray_1、両面の裏面は pwg-raster-document-sheet-back に従って回る。用紙への合わせ方（fit / actual / shrink＋自動回転）が効く。A4 600 dpi を帯の記憶量で流す
+    verified_by:
+    - raster-golden
+  s4-print:
+    text: bdf print file.bdf -printer ipp://… が Validate-Job → Create-Job → Send-Document で送り、job-state が completed になるまで待って終わる。-copies、-collate、-sides、-media、-source、-mono、-resolution、-pages、-skip-roles、-format pdf が効く。ipps は初回の指紋を記録し、以後の不一致はエラー。converter の入力はその場で変換して印刷する
+    verified_by:
+    - fake-printer
+    - cups-queue
+    - manual-devices
+  s5-failure:
+    text: 接続できない、属性が拒否された（unsupported）、プリンタが stopped、ジョブが aborted、のそれぞれを区別した理由で終わり、終了コードが違う。Ctrl-C で Cancel-Job を送る
+    verified_by:
+    - fake-printer
+verification:
+  codec-unit:
+    state: not_run
+    method: unit
+    test: go test ./print/ipp/（往復、FuzzDecode）
+  raster-golden:
+    state: not_run
+    method: unit
+    test: go test ./print/raster/（testdata の文書を Raster にして戻し、imagebdf の画像と比較）
+  fake-printer:
+    state: not_run
+    method: integration
+    test: 自前の偽 IPP プリンタ（Go）と ippeveprinter（cups-ipp-utils）に対して bdf print を走らせ、受け取ったファイルを検査（.github/workflows/ci.yml）
+  cups-queue:
+    state: not_run
+    method: integration
+    test: Ubuntu の runner の CUPS にキューを作り ipp://localhost:631/printers/<名前> に印刷
+  manual-devices:
+    state: not_run
+    method: manual
+    test: 国内で多い機種で PWG Raster と PDF、両面、JIS B5、はがき、トレイを確かめ、機種ごとの癖を .knowledge に記録
+open_questions:
+  pdf-direct-default:
+    text: PDF 対応のプリンタで auto が Raster を選ぶ既定でよいか（requirement:print の default-format）。m1 の実機の計測で決める
+    state: open
+  chunked-send:
+    text: HTTP の chunked 送信を受け付けない IPP 実装があるか。あれば Content-Length のために一時ファイルへ描いてから送る経路を足す
+    state: open
+facts:
+  delivery:
+    slices:
+    - 'S1 IPP の符号化（print/ipp: message.go、attributes.go、FuzzDecode）'
+    - 'S2 クライアントと探索（print/ipp: client.go、dnssd.go、cups.go。bdf printers）'
+    - 'S3 PWG Raster の書き手（print/raster: pwg.go、reader_test.go。imagebdf の PagesRows から）'
+    - 'S4 チケットと bdf print（print: ticket.go、media.go、select.go。cmd/bdf/print.go）'
+    - S5 失敗の扱いと終了コード、ipps の指紋、converter の入力
+    cli_sketch:
+      printers: bdf printers（DNS-SD）、bdf printers -url ipp://host/ipp/print（能力）
+      print: bdf print -printer ipp://host/ipp/print -sides two-sided-long-edge -media jis_b5_182x257mm -copies 3 -mono invoice.bdf
+      format: bdf print -format pdf …、bdf print -format pwg-raster -resolution 300 …
+      cups: bdf print -printer ipp://localhost:631/printers/office …
+relations:
+- relation: part_of
+  to: requirement:print
+- relation: depends_on
+  to: requirement:pdf-export
+- relation: informed_by
+  to: system:ipp-driverless

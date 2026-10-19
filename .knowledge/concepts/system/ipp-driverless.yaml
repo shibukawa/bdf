@@ -1,0 +1,166 @@
+id: system:ipp-driverless
+type: system
+title: ドライバなし印刷の現状 — IPP/2.x と IPP Everywhere、AirPrint、Mopria、Windows の IPP クラスドライバと WPP、CUPS 3.0 / PAPPL、IPP USB
+summary: >-
+  2026-10-19 の Web 調査。IPP（RFC 8010 / 8011、PWG 5100.12-2024）が唯一の共通語になり、driverless の 3 ブランド
+  （IPP Everywhere、AirPrint、Mopria）はいずれも IPP の上に文書形式（PWG Raster / Apple Raster / PCLm / PDF）と
+  DNS-SD の探索を決めたもの。Windows は IPP クラスドライバと Windows Protected Print で他社製ドライバを終わらせ、
+  macOS は AirPrint、Linux は CUPS 3.0（PAPPL）で同じ方向。古いプロトコル（LPD、9100、SMB、WSD）は IPP の無い機種のために残る。
+  一次資料（pwg.org、learn.microsoft.com）は作業環境から開けなかったので、unverified に確度を書いた。
+lifecycle: active
+authority: observed
+aliases:
+- IPP Everywhere
+- AirPrint
+- Mopria
+- driverless printing
+- Windows Protected Print
+- WPP
+- CUPS 3.0
+- PAPPL
+- IPP USB
+facts:
+  ipp:
+    rfcs: RFC 8010（符号化と搬送）、RFC 8011（モデルと意味論）。IPP/1.1
+    v2: PWG 5100.12-2024 Internet Printing Protocol/2.x 第 4 版（BASE）、2024-11 承認。2.0 / 2.1 / 2.2 の適合を定義
+    operations: Print-Job、Validate-Job、Create-Job、Send-Document、Cancel-Job、Get-Job-Attributes、Get-Jobs、Get-Printer-Attributes、Hold-Job、Release-Job、Identify-Printer、Create-Printer-Subscriptions、Get-Notifications（ippget）、Close-Job
+    states: job-state 3 pending / 4 pending-held / 5 processing / 6 processing-stopped / 7 canceled / 8 aborted / 9 completed。printer-state 3 idle / 4 processing / 5 stopped
+    cups_private: CUPS-Get-Printers（0x4002）、CUPS-Get-Default、CUPS-Get-Classes
+    tls_auth: ipps（HTTPS）。uri-authentication-supported は none / basic / digest / certificate / oauth。CUPS のクライアントは自己署名を TrustOnFirstUse で扱う
+    next: IPP Everywhere v2.0 は安定版草案（2026-04-30 更新、未承認）。IPP INFRA（PWG 5100.18-2015、代理がサーバーから Fetch-Job / Fetch-Document）。IPP System Service（PWG 5100.22-2019）。IPP Encrypted Jobs and Documents（S/MIME、草案 2021）
+  ipp_everywhere:
+    version: v1.1 = PWG 5100.14-2020（候補標準）。自己認証の道具 istopwg/ippeveselfcert（v1.1 は v1.1-updates ブランチ、master は v2.0 開発）
+    formats: image/pwg-raster が必須（image/jpeg も）。application/pdf は推奨（要確認）
+    discovery: DNS-SD の _ipp._tcp / _ipps._tcp。TXT の rp、pdl、URF、TLS、Color、Duplex、UUID、adminurl、ty、kind、air、print_wfds、mopria-certified
+    attributes: media-supported、media-ready、media-col-database、sides-supported、print-color-mode-supported、printer-resolution-supported、pwg-raster-document-resolution-supported / -type-supported / -sheet-back、document-format-supported、identify-actions-supported
+  airprint:
+    owner: Apple（仕様は MFi 向けで非公開）
+    format: image/urf（Apple Raster。UNIRAST ヘッダー＋ページごと 32 バイト、RLE）。urf-supported（V1.4、W8、SRGB24、ADOBERGB24、DM1〜DM4、IS1-4、RS300-600、OB10、PQ3-5、CP1 …）。PDF も多くの機種が受ける
+    macos: macOS は AirPrint が標準、PPD は非推奨。中の CUPS（Apple の分岐 2.3 系）が localhost:631 で IPP
+  mopria:
+    owner: Mopria Alliance（標準化団体ではない）
+    formats: PCLm、PWG Raster、PDF のいずれか 1 つ以上（Xerox の案内）。Wi-Fi Direct Print Services が PCLm を求める。IPP Everywhere も求めるので PWG Raster は結局要る（Michael Sweet）
+    windows: Windows の IPP クラスドライバは Mopria ベース
+  windows:
+    ipp_class_driver: 同梱。Mopria ベース。メーカー固有の機能は Print Support App（PSA。Windows 11 24H2 以降）で足す
+    driver_end_of_servicing: 2023-09 発表。2026-01-15 以降は Windows Update に新しい他社製ドライバを載せない。2026-07-01 以降は IPP クラスドライバを優先。2027-07-01 以降は他社製ドライバの更新をセキュリティ修正に限る（日付は各社・各ブログの案内から。Microsoft の原文は未確認）
+    wpp: Windows Protected Print。有効にすると他社製ドライバが外れ IPP クラスドライバだけになる。Windows 11 24H2 以降。2026-07 時点で既定は無効、将来の既定化を表明（2027-07 との説あり）
+    ready_print: Windows Ready Print = IPP ドライバ、eSCL スキャン、Universal Print をまとめた Microsoft の推奨経路の呼び名（Canon の案内。2026-06 ごろ）
+    sharing: Windows は IPP のサーバーを持たない。共有は SMB / RPC。OS 経由は winspool（OpenPrinter / StartDocPrinter / WritePrinter、EnumPrinters、GetJob）
+  linux:
+    cups2: CUPS 2.4.x（2.4.19 は 2026-04）。driverless コマンドが IPP Everywhere / AirPrint の PPD を生成。localhost:631 と /run/cups/cups.sock
+    cups3: libcups 3（3.0.2 は 2026-06）＋ cups-local（利用者ごと、一時キュー、IPP over ドメインソケット / D-Bus / XPC、基本的なスプールとラスタライズ）＋ cups-sharing（root、永続キュー、履歴、アカウンティング、push / pull / release、認証、Web）。両方 PAPPL ベース。ドライバを廃し Printer Application（それ自体が IPP プリンタ）に。cups-local / cups-sharing 3.0.0 の正式版の有無は未確認（計画は 2025-08/09）
+    pappl: Printer Application Framework（C）。1.4.12 は 2026-08。ippeveprinter / ippfind / ipptool / ipptransform は libcups の道具
+    ipp_usb: IPP over USB（USB クラス 7/1/4）。Linux は ipp-usb デーモンが localhost の IPP に見せ、Avahi で広告。HTTP の Host は localhost でなければならない
+  formats:
+    pwg_raster: PWG 5102.4。image/pwg-raster。同期語 RaS2、ページごとに 1796 バイトのヘッダー（幅、高さ、解像度、色空間、両面、用紙 …）、行単位の RLE（行の繰り返し数バイト＋画素の連）。色空間 sgray_1 / sgray_8 / srgb_8 / cmyk_8 など
+    apple_raster: image/urf。UNIRAST＋ページ数、ページごと 32 バイト、同系の RLE
+    pclm: application/PCLm（HP）。帯（strip）の画像を JPEG / Flate で並べた制限付き PDF。pclm-strip-height-preferred、pclm-raster-back-side、pclm-source-resolution-supported、pclm-compression-method-preferred
+    pdf: application/pdf。業務機はほぼ対応。解釈器の品質は機種差
+    media_names: PWG 5101.1（v2.1、2023）。iso_a4_210x297mm、iso_a3_297x420mm、jis_b5_182x257mm、jis_b4_257x364mm、na_letter_8.5x11in、jpn_hagaki_100x148mm、jpn_chou3_120x235mm、jpn_chou4_90x205mm、jpn_you4_105x235mm、jpn_kaku2_240x332mm、custom_<w>x<h>mm
+  legacy:
+    lpd: RFC 1179（1990）。TCP 515
+    appsocket: JetDirect / AppSocket。TCP 9100 の生ストリーム。PDL の素通し。DNS-SD は _pdl-datastream._tcp
+    smb: Windows の共有。SMB / RPC
+    wsd: Microsoft Web Services for Devices（2006）。Windows の探索
+    snmp: Printer MIB で状態。IPP の無い機種の監視
+  go_libraries:
+    goipp: OpenPrinting/goipp。IPP メッセージの符号化・復号のみ（搬送は net/http）。BSD-2-Clause。ipp-usb の作者の同系
+    mdns: grandcat/zeroconf、brutella/dnssd、hashicorp/mdns。golang.org/x/net/dns/dnsmessage は bdf の依存にある
+  relevance: BDF は自前のラスタライザを持つので、PWG Raster を自分で作れば OS のドライバにもプリンタの PDF 解釈器にも依らずに「ビューアと同じ絵」を紙に出せる。IPP のクライアントは、プリンタ直結と macOS / Linux の CUPS の両方に効く。サーバーを IPP Everywhere のプリンタとして見せれば、Windows の IPP クラスドライバ / AirPrint / CUPS からドライバなしで投げられる
+  unverified:
+  - IPP Everywhere 1.1 の必須形式（PWG Raster と JPEG が必須、PDF が推奨、と記憶。原文未確認）
+  - Microsoft の他社製ドライバ終了の日付（2026-01-15 / 2026-07-01 / 2027-07-01）と WPP の既定化の時期。各社・ブログの案内による
+  - WPP が Mopria 認証機だけを許すのか、IPP クラスドライバが扱える IPP プリンタ全般か
+  - cups-local / cups-sharing 3.0.0 の正式版が出たか（libcups 3.0.2 と PAPPL 1.4.12 は確認）
+  - Windows の IPP クラスドライバのプリンタに winspool の RAW で PDF / PWG Raster を素通しできるか
+  - IPP USB の PWG の文書番号
+  - Mopria の必須 PDL の最新（Xerox の案内は PCLm / PWG Raster / PDF）
+relations:
+- relation: informs
+  to: requirement:print
+- relation: compared_with
+  to: system:label-printer-languages
+- relation: compared_with
+  to: system:printer-resident-forms
+assertions:
+- predicate: ipp_2x_fourth_edition_approved
+  value: PWG 5100.12-2024, 2024-11
+  authority: observed
+  evidence:
+    url: https://www.pwg.org/pipermail/pwg-announce/2024/004056.html
+- predicate: ipp_everywhere_current_version
+  value: v1.1 = PWG 5100.14-2020; v2.0 stable draft updated 2026-04-30
+  authority: observed
+  evidence:
+    url: https://www.pwg.org/ipp/
+- predicate: ipp_everywhere_selfcert_tools
+  value: istopwg/ippeveselfcert (v1.1-updates branch; master = v2.0)
+  authority: observed
+  evidence:
+    url: https://github.com/istopwg/ippeveselfcert
+- predicate: cups3_architecture
+  value: libcups + cups-local + cups-sharing, both on PAPPL, no printer drivers
+  authority: observed
+  evidence:
+    url: https://github.com/OpenPrinting/cups/wiki/CUPS-3.0
+- predicate: pappl_latest
+  value: 1.4.12, 2026-08-20
+  authority: observed
+  evidence:
+    url: https://www.msweet.org/pappl/
+- predicate: libcups3_latest
+  value: 3.0.2, 2026-06-05
+  authority: observed
+  evidence:
+    url: https://openprinting.github.io/libcups-3.0.2
+- predicate: driverless_formats
+  value: [application/pdf, image/urf, image/pwg-raster, application/PCLm]
+  authority: observed
+  evidence:
+    url: https://wiki.debian.org/CUPSDriverlessPrinting
+- predicate: mopria_required_pdls
+  value: one of PCLm, PWG Raster, PDF
+  authority: observed
+  evidence:
+    url: https://support.xerox.com/en-us/article/KB0037009
+- predicate: mopria_pclm_not_universal
+  value: Mopria requires IPP Everywhere (PWG Raster); PCLm comes from Wi-Fi Direct Print Services
+  authority: observed
+  evidence:
+    url: https://pwg.org/archives/ipp/2024/021565.html
+- predicate: windows_third_party_driver_timeline
+  value: 2026-01-15 no new drivers on Windows Update; 2026-07-01 IPP class driver preferred; 2027-07-01 security fixes only
+  authority: observed
+  evidence:
+    url: https://printops.org/windows-protected-print/
+- predicate: wpp_default_off_as_of_2026_07
+  value: true
+  authority: observed
+  evidence:
+    url: https://www.ezeep.com/blog/windows-protected-print-mode-vs-windows-ready-print
+- predicate: windows_ready_print_definition
+  value: IPP class driver + eSCL + Universal Print (Canon)
+  authority: observed
+  evidence:
+    url: https://www.canon-europe.com/support/windows-ready-print/
+- predicate: ipp_usb_localhost_host_header
+  value: true
+  authority: observed
+  evidence:
+    url: https://man.archlinux.org/man/ipp-usb.8.en
+- predicate: goipp_scope_and_license
+  value: encode/decode only; BSD-2-Clause
+  authority: observed
+  evidence:
+    url: https://github.com/OpenPrinting/goipp
+- predicate: pwg_media_name_grammar
+  value: PWG 5101.1 v2.1 (2023) ABNF
+  authority: observed
+  evidence:
+    url: https://ftp.pwg.org/pub/pwg/informational/pwg5101.1-media-name-abnf.txt
+- predicate: ipp_encrypted_jobs_status
+  value: draft (S/MIME required, 2021-04)
+  authority: observed
+  evidence:
+    url: https://pwg.org/archives/ipp/2021/020939.html
