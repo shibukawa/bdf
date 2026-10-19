@@ -2,9 +2,11 @@ package pdfbdf
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -673,4 +675,31 @@ func TestLimits(t *testing.T) {
 		t.Error("no warning of what is left out")
 	}
 	back(t, []byte(file))
+}
+
+// TestPages writes a selection of the pages of a document, in the order
+// asked, and leaves out numbers past them.
+func TestPages(t *testing.T) {
+	d := bdf.NewDocument()
+	v := d.NewView("v", bdf.ViewFixed, "")
+	for i := 0; i < 3; i++ {
+		o := bdf.NewObject()
+		o.FillColor(0x000000ff).FillRect(0, 0, float32(10*(i+1)), 10)
+		h, _ := d.AddObject(o)
+		v.AddPage(float32(100+10*i), 200, bdf.Layer{Role: bdf.RoleBody, Obj: h})
+	}
+	opts := testOptions()
+	opts.Pages = []int{2, 0, 7}
+	file, res := write(t, d, opts)
+	if res.Pages != 2 {
+		t.Fatalf("%d pages", res.Pages)
+	}
+	got := back(t, file).Views[0].Pages
+	if len(got) != 2 || got[0].W != 120 || got[1].W != 100 {
+		t.Fatalf("pages of %v", []float32{got[0].W, got[1].W})
+	}
+	opts.Pages = []int{5}
+	if _, err := Write(io.Discard, d, opts); !errors.Is(err, ErrNoPages) {
+		t.Fatalf("no page selected: %v", err)
+	}
 }

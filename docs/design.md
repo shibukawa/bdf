@@ -875,6 +875,26 @@ BDF v1 の読み手が Go 以外にも書かれる（C の libbdf）ので、「
 
 **確かめ方**: テストは、書き出した PDF を自前の PDF 変換器で読み直し、元の文書と同じ絵になることをラスタライザで比べる（文字は読み直した文書の検索用テキストでも確かめる）。testdata の全文書は Ghostscript で描いて突き合わせ、ソフトマスクとパターンは Quartz でも確かめた。同じ文書からは同じバイト列ができる（amd64 と arm64 でも同じ）。`FuzzWrite` は任意の命令列を書き出す。
 
+## 3.36 印刷（print、print/ipp、print/raster、`bdf print`）
+
+帳票の最後の出口は紙である。OS のドライバを使わず、Go だけでプリンタに印刷する。要件の整理は `knowledge-inputs/print-plan/`（`print-requirements.ja.md`、`print-m1.ja.md`）と `.knowledge/` の `requirement:print`。
+
+**IPP だけを話す**: 2026 年の時点で、3 つの OS もプリンタも IPP が共通語になった。macOS は AirPrint と CUPS（`localhost:631`）の 2 つとも IPP、Linux は CUPS、Windows は Windows Ready Print（2026-07 から、新しく追加するプリンタの既定が IPP クラスドライバ）以降はプリンタ自身が IPP を話す。BDF はプリンタに直接 IPP で話し、macOS と Linux の OS のキューにも同じクライアントで話す。Windows のスプーラ（GDI・XPS・SMB）は通らない。2010 年代半ば以降の業務機は AirPrint か Mopria を名乗り、PDF をそのまま受けるものが多い。
+
+**送るのはベクタが先**: プリンタが `application/pdf` を受けるなら、文書を `pdfbdf` で PDF にして送る。文字と線はプリンタの解像度で描かれ、ジョブは小さい。受けないなら PWG Raster（IPP Everywhere の必須の形式）をこちらで描く。PDF が文書の描画を省くとき（`FILTER`、Canvas 固有の合成）は、`-raster-if-lossy` で PWG Raster にできる。ページの選択は `page-ranges` ではなく PDF のページの選択（`pdfbdf.Options.Pages`）で行う。プリンタごとの `page-ranges` の扱いの差を避けるため。
+
+**IPP の符号化と探索は自前**: RFC 8010 の読み書き（全ての値の型、collection、out-of-band、知らない型はバイト列のまま）は 1,300 行ほど（名前の表を含む）で、信頼できない応答に限界（4 MiB、属性 1 万、値 64 KiB、値の数 1,000、collection の深さ 8）を置き、fuzz している。mDNS（DNS-SD）の探索は、`_ipp._tcp` と `_ipps._tcp` の PTR を unicast-response の印（QU）を立てて自分のポートから問い、5353 番を束縛しない。Avahi や Bonjour とポートを取り合わない。同じプリンタの `_ipp` と `_ipps` は 1 台にまとめる。
+
+**ジョブ**: `Get-Printer-Attributes` でできることを聞き、チケット（IPP の属性の名前）を `*-supported` と照らして属性にし、受けないものは警告して省く（`-strict` ならエラー）。`Validate-Job` で先に確かめ、`Create-Job` で作り、`Send-Document` で文書を流す（chunked、`Expect: 100-continue` で拒まれた要求は本文を送らない）。PWG Raster は `io.Pipe` で描きながら送るので、600 dpi のページも帯 1 つ分のメモリで済む。`Send-Document` で PDF を拒まれたら、同じジョブに PWG Raster を送り直す。終わるまで `Get-Job-Attributes` を 0.5 秒から 5 秒まで間隔を延ばしながら聞き、文脈を取り消されたらプリンタのジョブも取り消す。部数をプリンタが作れない（`copies-supported` が 1）なら文書の側で繰り返し、奇数ページの両面は部の間に白紙を入れる。
+
+**PWG Raster の描き方**: `imagebdf.PlaceRows` がページを用紙の画像に置いて帯で描く（倍率、四分の一回転、位置、鏡映）。帯の描き方は `PageRows` と共有で、ページと同じ大きさの用紙に置けば同じ画素になる。用紙への合わせ方は `print-scaling`（`auto-fit` が既定。拡大はしない）と `orientation-requested`（既定は横長のページを縦の用紙に反時計回りに回す）で、中心は整数の画素に置く（原寸のページの罫線が画素に乗る）。用紙の画素数は CUPS と同じく切り捨てる（A4 の 300 dpi は 2480 × 3507）。両面の裏面は、プリンタの `pwg-raster-document-sheet-back` のとおり（`flipped` は長辺綴じで上下、短辺綴じで左右の鏡映、`rotated` は長辺綴じで半回転、`manual-tumble` は短辺綴じで半回転）に描いて、ヘッダーの `CrossFeedTransform`・`FeedTransform` に書く。影のずれはページの単位で変換に回されないので、配置の回転と鏡映を別に掛ける。白黒は 600 dpi のグレー（`sgray_8`）、`-bilevel` で 2 値（`black_1`、アンチエイリアスなし）、カラーは 300 dpi の sRGB。
+
+**TLS**: `ipps` の証明書は、システムのルートで検証できればそれで、できなければ（プリンタの証明書はたいてい自己署名）最初の接続で葉の証明書の SHA-256 をホストごとに記録し、以後は一致を求める（CUPS の Trust On First Use と同じ）。ホストは URL から取る。アドレスへの TLS 接続はサーバー名を送らないため。
+
+**確かめ方**: `print/ipp/ipptest` が偽のプリンタ（`http.Handler`）で、受けた文書を保存し、形式の拒否・認証・IPP/1.1 だけ・停止・中止を再現できる。クライアント、ジョブ、`bdf print` のテストはこれに対して走る。PWG Raster は自前の読み手で戻して、描いた画素と比べる（testdata の文書で一致）。CI の `print` ジョブは CUPS の `ippeveprinter`（IPP Everywhere のプリンタ）と、その前に置いた CUPS の IPP Everywhere のキューに印刷して、受けたファイルを確かめる（`test/print/ci.sh`）。Windows と macOS では `go test ./print/...` を走らせる。
+
+**まだしないこと**: スプールとプリントサーバー（print-m2）、Apple Raster と PCLm、PostScript の書き手、9100 と LPD（print-m3）、サーバーを IPP Everywhere / AirPrint のプリンタとして見せること（print-m4）、ラベル・レシート・連帳の言語（print-m5）。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -994,6 +1014,8 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 26. **InDesign**: IDML のページ・マスター・図形・画像と、連結したフレームをページをまたいで流れるストーリー。テキストは DrawingML のテキストエンジンに `TextFlow` を足して組む（実装済み、§3.32）。
 27. **適合テスト**: 他の言語の読み手（C の libbdf）のために、入力と期待する扱いを機械可読で配る。期待値は参照実装を走らせて記録する（実装済み、§3.33）。
 28. **帳票**: Excel の印刷のページ（印刷範囲・ページ設定・印刷タイトル・ヘッダーとフッター）と、タグを書いたブックをデータで穴埋めするテンプレート。固定ページ・行が増える表・決まった行数のページ複製の 3 形態を、Excel・Word・PowerPoint のテンプレートで（実装済み、§3.6・§3.34）。BDF から PDF への書き出し（影、タグ付き PDF、PDF/A も含めて実装済み、§3.35）。QR コードとバーコード（実装済み、§3.34）。入力欄のある PDF と pdfme のテンプレートも、テンプレートとして埋められる（実装済み、§3.34）。フォントの対応規則は予定。
+29. **印刷**（`bdf print` と `bdf printers` は実装済み、§3.36。スプールとサーバーは予定）: `.bdf` を OS のドライバなしにプリンタへ。最初の出力先は IPP（driverless。プリンタ直結と、macOS・Linux の CUPS のキュー）、最初の文書形式は PDF（ベクタのまま。§3.35）で、PDF を受けないプリンタには PWG Raster（`imagebdf` の帯からそのまま流す）。スプール（キュー、再送、履歴）と、複数台のリモートプリンタを束ねるプリントサーバー。PDF 以外のベクタの経路（PostScript の書き手、大判プロッタ向けの HP-GL/2 の書き手）、Apple Raster、PCLm、9100 と LPD、ラベル・レシート・連帳の PDL は後の段階。Windows は IPP 直結だけで、OS のスプーラ経由（GDI / XPS）は作らない。要件の整理は `knowledge-inputs/print-plan/print-requirements.ja.md` と `.knowledge/` の `requirement:print`。
+30. **テキスト帳票**（予定）: プレーンテキストのテンプレート（前書きに CPI・LPI・用紙長・桁数・余白・ミシン目スキップ、本文が「行 × 桁」の印字像）を帳票テンプレートの 5 つ目の形式に。同じタグとデータで、等幅フォントの fixed ページの `.bdf`、印字像の Part、プレーンテキストを出し、ドットインパクト（ESC/P）とレシート（ESC/POS）のテキストモードに損失なしに写す。要件は `knowledge-inputs/print-plan/text-template.ja.md` と `.knowledge/` の `requirement:text-template`。
 
 ## 9. リポジトリ構成（案）
 

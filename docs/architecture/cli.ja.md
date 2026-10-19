@@ -11,6 +11,10 @@ bdf template schema [-json-schema] <template> [out.json]
                                    テンプレートを検査してコンパイル済みにする、タグが引く名前を書き出す
 bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                    ページを PDF に書き出す（フラグは bdf pdf -h）
+bdf print [flags] -printer <url | name> <file.bdf | dir | input>
+                                   IPP のプリンタや CUPS のキューに、ドライバなしで印刷する
+bdf printers [flags]               ネットワークの IPP プリンタ、CUPS のキュー（-cups）、
+                                   1 台のプリンタができること（-url）を一覧する
 bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                    サムネイルを描く: 1 ページ目の上部、またはスライド全体
                                    （変換する入力なら 1 ページ目だけを変換する）
@@ -76,6 +80,30 @@ bdf pdf -pdfa 2a invoice.bdf invoice.pdf            # 保存用の PDF/A（2b、
 ```
 
 既定では、ページのあるビュー（`fixed`・`flow`）をすべて書き出し、ページのない文書は全体を 1 ページにします。`-font-dir` と `-no-system-fonts` は、文書が名前で参照するフォントを探す場所です。`-ignore-fstype` は、埋め込みを許可していないシステムのフォントも埋め込みます（権利があるときだけ。既定ではその文字をアウトラインで描きます）。`-no-compression` はストリームを圧縮せずに書きます（中身を読むため）。暗号化した文書には `-allow-plaintext` が必要です（PDF は暗号化されません）。
+
+## print, printers
+
+文書を IPP のプリンタに印刷します。OS のドライバは使いません。プリンタが PDF を受けるなら文書を PDF にして（図形はベクタのまま、文字はプリンタの解像度で）送り、受けないなら PWG Raster（IPP Everywhere の必須の形式）にこちらで描いて送ります。macOS と Linux の CUPS のキュー（`ipp://localhost:631/printers/<名前>`）も同じように印刷できます。Windows は Windows Ready Print 以降、プリンタ自身が IPP で話すので、プリンタの URL を直接指定します。
+
+```sh
+bdf printers                                         # ネットワークの IPP プリンタ（mDNS）
+bdf printers -url ipp://192.0.2.10/ipp/print         # 1 台ができること: 用紙、両面、色、解像度、形式 …
+bdf printers -cups local                             # この機械の CUPS のキュー
+
+bdf print -printer ipp://192.0.2.10/ipp/print invoice.bdf
+bdf print -printer "Canon MF Series" -sides long -media b5 -copies 3 -mono invoice.bdf   # 名前で探す
+bdf print -printer ipps://mfp.example.local/ipp/print -pages 1-3 report.xlsx            # 変換してから（Excel は印刷のページ）
+bdf print -printer ipp://localhost:631/printers/office -format pwg-raster -mono -bilevel -resolution 300 slip.bdf
+bdf print -printer ipp://192.0.2.10/ipp/print -skip background slip.bdf                 # 印刷済みの用紙に追い刷り
+```
+
+- **用紙**: `-media` は PWG の名前（`iso_a4_210x297mm`）か短い名前（`a4`、`a3`、`b4`・`b5` は JIS、`letter`、`legal`、`hagaki`、`chou3`、`kaku2` …）。省くと、1 ページ目の大きさの用紙をプリンタの持つものから選びます（セットされている用紙が先）。
+- **形式**: `-format auto`（既定）は PDF、受けなければ PWG Raster。PWG Raster は白黒なら 600 dpi のグレー、カラーなら 300 dpi の sRGB で、`-bilevel` は白黒の 2 値。両面の裏面は、プリンタの `pwg-raster-document-sheet-back` のとおりに向きを変えて描きます。`-raster-if-lossy` は、PDF が文書の描画を省くとき（`FILTER`、Canvas 固有の合成）に PWG Raster にします。
+- **プリンタが受けないこと**は警告して省きます。`-strict` ならエラーです。部数をプリンタが作れないときは文書の側で繰り返します（奇数ページの両面は部の間に白紙を入れます）。
+- **待ち方**: 既定ではジョブが終わるまで（`-wait 10m`）待ちます。`-wait 0` は送ったところで終わります。Ctrl-C はプリンタのジョブを取り消します。
+- **終了コード**: 0 印刷した、1 取り消し・中止・その他、2 使い方、3 プリンタに届かない（証明書やパスワードを拒まれた）、4 プリンタがジョブを拒んだ（`-strict` で受けない項目）、5 プリンタが止まっている、6 `-wait` のうちに終わらない。
+- **TLS**: `ipps://` のプリンタの証明書は、システムのルートで検証できればそれで、できなければ最初に接続したときの指紋をユーザーの設定ディレクトリの `bdf/printers.json` に記録し、以後は同じことを求めます（CUPS と同じ。`-trust-store` で場所を変え、`-insecure` で検証しない）。Basic 認証は `-username` と `$BDF_PRINTER_PASSWORD`（または `-password-file`）。
+- **暗号化した文書**は `$BDF_PASSWORD` で開き、TLS のない接続には `-allow-plaintext` がなければ送りません。
 
 ## thumbnail, text, render
 

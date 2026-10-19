@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -146,6 +147,96 @@ func (r *Renderer) pageRows(p *bdf.Page, w, h int, mono Mono, yield func(y0 int,
 	cover := r.rectMask(ax, ay, bx, by, whole)
 	pg.filled, pg.borders = pageBackground(cover, whole, &bg)
 	r.releaseMask(cover)
+	return r.bandsOf(pg, yield)
+}
+
+// Place says where a page goes on an image, to print it on paper (see
+// PlaceRows): the image is W × H pixels; the page is drawn at Scale
+// pixels per unit, turned clockwise by Turns quarter turns (0 to 3), and
+// the box it then takes has its top-left corner at (X, Y) pixels; then
+// the image is mirrored left to right (MirrorX) or top to bottom
+// (MirrorY), as the back of a sheet is for some printers that turn the
+// sheet over (pwg-raster-document-sheet-back). The rest of the image is
+// the background, as the page's is.
+type Place struct {
+	W, H             int
+	Scale            float64
+	Turns            int
+	X, Y             float64
+	MirrorX, MirrorY bool
+}
+
+// MaxPlacePixels is the largest image PlaceRows draws. It is larger than
+// MaxPixels because only a band of it is drawn at a time: an A0 sheet at
+// 300 dpi, or A3 at 600, fits.
+const MaxPlacePixels = 256 << 20
+
+// matrix returns the device transform of a page of w × h units.
+func (pl Place) matrix(w, h float64) matrix {
+	s := pl.Scale
+	pw, ph := w*s, h*s
+	var m matrix
+	switch pl.Turns & 3 {
+	case 1:
+		m = matrix{0, s, -s, 0, pl.X + ph, pl.Y}
+	case 2:
+		m = matrix{-s, 0, 0, -s, pl.X + pw, pl.Y + ph}
+	case 3:
+		m = matrix{0, -s, s, 0, pl.X, pl.Y + pw}
+	default:
+		m = matrix{s, 0, 0, s, pl.X, pl.Y}
+	}
+	if pl.MirrorX {
+		m = matrix{-1, 0, 0, 1, float64(pl.W), 0}.mul(m)
+	}
+	if pl.MirrorY {
+		m = matrix{1, 0, 0, -1, 0, float64(pl.H)}.mul(m)
+	}
+	return m
+}
+
+// PlaceRows draws a page of a fixed or flow view (or a strip of a
+// scroll view) placed on an image as pl says, in bands of rows from the
+// top, as PageRows draws a page: for printing, where the image is the
+// sheet of paper at the printer's resolution and the page is scaled to
+// it, turned to its orientation, and centred or put at its margins. The
+// shadows of the page turn with it. The pixels of a Place of the page's
+// own size, at no turn and at the origin, are those of PageRows.
+func (r *Renderer) PlaceRows(v *bdf.View, page int, pl Place, mono Mono, yield func(y0 int, rows image.Image) error) (err error) {
+	defer recoveredErr(&err)
+	if err := mono.check(); err != nil {
+		return err
+	}
+	if yield == nil {
+		return errors.New("imagebdf: PlaceRows requires a callback")
+	}
+	p, err := drawablePage(v, page)
+	if err != nil {
+		return err
+	}
+	if pl.W <= 0 || pl.H <= 0 || !(pl.Scale > 0) || math.IsInf(pl.Scale, 0) || math.IsNaN(pl.X) || math.IsNaN(pl.Y) ||
+		math.IsInf(pl.X, 0) || math.IsInf(pl.Y, 0) {
+		return errors.New("imagebdf: empty placement")
+	}
+	if pl.Turns < 0 || pl.Turns > 3 {
+		return fmt.Errorf("imagebdf: %d quarter turns", pl.Turns)
+	}
+	if float64(pl.W)*float64(pl.H) > MaxPlacePixels {
+		return ErrTooLarge
+	}
+	bg := r.background()
+	// the image is the background where the page is not: a sheet of paper
+	pm := pl.matrix(float64(p.W), float64(p.H))
+	// the turn and mirror of the page, without its scale, which the
+	// offsets of its shadows go by
+	orient := matrix{pm[0] / pl.Scale, pm[1] / pl.Scale, pm[2] / pl.Scale, pm[3] / pl.Scale, 0, 0}
+	pg := &pageBands{p: p, w: pl.W, h: pl.H, mono: mono, bg: bg, pm: pm, orient: &orient, filled: &bg}
+	return r.bandsOf(pg, yield)
+}
+
+// bandsOf draws the bands of a page (see pageRows).
+func (r *Renderer) bandsOf(pg *pageBands, yield func(y0 int, rows image.Image) error) error {
+	w, h := pg.w, pg.h
 	rows := r.bandRows()
 	// the first band, drawn again with the margin its shadows need
 	var rec *bandRecord
@@ -209,6 +300,9 @@ type pageBands struct {
 	// margin is the rows above and below a band that are drawn with it
 	// for the shadows (see bandRecord.margin)
 	margin int
+	// orient is the turn and mirror of the page on the image (Place),
+	// which the offsets of its shadows go by; nil when it is upright
+	orient *matrix
 }
 
 // band draws the rows [y0, y1) of a page on the renderer, with the
@@ -220,6 +314,7 @@ func (r *Renderer) band(pg *pageBands, y0, y1 int, rec *bandRecord, out image.Im
 	canvas := image.Rect(0, max(0, y0-pg.margin), pg.w, min(pg.h, y1+pg.margin))
 	d := r.canvasAt(pg.pm, canvas, whole, pg.filled)
 	d.band = rec
+	d.orient = pg.orient
 	clip := d.clipTo(pg.pm, 0, 0, float64(pg.p.W), float64(pg.p.H))
 	switch {
 	case pg.borders:

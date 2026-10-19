@@ -11,6 +11,10 @@ bdf template schema [-json-schema] <template> [out.json]
                                    check a template and write it compiled; write what it asks of data
 bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                    write the pages as a PDF file (bdf pdf -h for flags)
+bdf print [flags] -printer <url | name> <file.bdf | dir | input>
+                                   print on an IPP printer or a CUPS queue, without a driver
+bdf printers [flags]               list the IPP printers on the network, the queues of CUPS
+                                   (-cups), or what a printer supports (-url)
 bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                    draw a thumbnail: the top of the first page or the whole slide
                                    (of an input to convert, only the first page is converted)
@@ -76,6 +80,30 @@ bdf pdf -pdfa 2a invoice.bdf invoice.pdf            # a PDF/A file (2b, 2u, 2a, 
 ```
 
 By default all the views of pages (`fixed`, `flow`) are written, and a document without pages becomes one page. `-font-dir` and `-no-system-fonts` say where the fonts the document refers to by name are looked for. `-ignore-fstype` embeds fonts of the system that do not allow it (only with the rights to; by default their text is drawn as outlines). `-no-compression` writes the streams as they are, to read them. An encrypted document needs `-allow-plaintext` (the PDF is not encrypted).
+
+## print, printers
+
+Print a document on an IPP printer, without a driver of the system. When the printer takes PDF the document is sent as a PDF file (its drawings stay vectors, its text is drawn at the printer's resolution); when it does not, the pages are drawn here as PWG Raster, the format IPP Everywhere requires. A CUPS queue of macOS or Linux (`ipp://localhost:631/printers/<name>`) prints the same way. On Windows, since Windows Ready Print, printers speak IPP themselves: give the printer's URL.
+
+```sh
+bdf printers                                         # the IPP printers on the network (mDNS)
+bdf printers -url ipp://192.0.2.10/ipp/print         # what one supports: media, sides, colour, resolutions, formats …
+bdf printers -cups local                             # the CUPS queues of this machine
+
+bdf print -printer ipp://192.0.2.10/ipp/print invoice.bdf
+bdf print -printer "Canon MF Series" -sides long -media b5 -copies 3 -mono invoice.bdf   # found by name
+bdf print -printer ipps://mfp.example.local/ipp/print -pages 1-3 report.xlsx            # converted first (a workbook as the pages Excel prints)
+bdf print -printer ipp://localhost:631/printers/office -format pwg-raster -mono -bilevel -resolution 300 slip.bdf
+bdf print -printer ipp://192.0.2.10/ipp/print -skip background slip.bdf                 # onto preprinted paper
+```
+
+- **Paper**: `-media` takes a PWG name (`iso_a4_210x297mm`) or a short one (`a4`, `a3`, `b4` and `b5` for the JIS sizes, `letter`, `legal`, `hagaki`, `chou3`, `kaku2` …). Without it, the paper of the size of the first page is picked among the printer's, the loaded ones first.
+- **Format**: `-format auto` (the default) is PDF, else PWG Raster: 600 dpi gray for black, 300 dpi sRGB for colour, black and white with `-bilevel`. The back of a two-sided sheet is turned as the printer's `pwg-raster-document-sheet-back` asks. `-raster-if-lossy` sends PWG Raster when the PDF file would leave out what the page draws (`FILTER`, Canvas's own composite operations).
+- **What the printer does not support** is left out with a warning, or with `-strict` is an error. Copies a printer cannot make are made in the document (with a blank sheet between the copies of an odd two-sided document).
+- **Waiting**: the job is waited for until it is done (`-wait 10m`); `-wait 0` returns once it is sent. Ctrl-C cancels the job at the printer.
+- **Exit status**: 0 printed, 1 canceled, aborted or another error, 2 usage, 3 the printer could not be reached (or refused the certificate or password), 4 the printer refused the job (or, with `-strict`, what it asks), 5 the printer is stopped, 6 the job is not done within `-wait`.
+- **TLS**: the certificate of an `ipps://` printer is verified with the system's roots, else its fingerprint is recorded on the first connection in `bdf/printers.json` of the user's config directory and required after (as CUPS does; `-trust-store` moves it, `-insecure` verifies nothing). Basic authentication takes `-username` and `$BDF_PRINTER_PASSWORD` (or `-password-file`).
+- **An encrypted document** is opened with `$BDF_PASSWORD`, and is not sent over a connection without TLS unless `-allow-plaintext`.
 
 ## thumbnail, text, render
 

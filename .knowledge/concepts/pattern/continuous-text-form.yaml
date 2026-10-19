@@ -20,10 +20,12 @@ facts:
     page: 用紙長を 1 ページとする fixed View。15 × 11 インチ、10 × 11 インチなど
     text: 等幅フォントで格子に置く。BDF には格子の概念はないので、コンパイル時に pt に落とす
     destination: 画面と PDF ならそのまま。実機に印字するなら ESC/P などのプリンタ言語への書き出しが別に要る。Windows のドライバ経由で PDF を印刷すれば、位置ずれの調整はドライバ側
-  source_question: Word / Excel からこの形態をどう作るか。Excel の等幅フォント＋固定行高のシートを格子とみなすか、専用のテキスト形式のテンプレート（行送りとマージンを設定ファイルで持つ）を別に定義するかは未決
+  source_question: 専用のテキスト形式のテンプレート（前書きに CPI / LPI / 用紙長 / 桁数 / 余白 / ミシン目スキップ、本文が印字像）に決めた（requirement:text-template、2026-10-19）。Excel のシートを格子とみなす案は列幅の丸めに引きずられるので採らない
   typical_forms: [納品書, 受領書, 出荷伝票, 給与明細（旧来）, 銀行の帳票]
 relations:
 - relation: member_of
   to: taxonomy:form-layout-axes
 - relation: inherits_from
   to: pattern:preprinted-overlay
+- relation: realized_by
+  to: requirement:text-template

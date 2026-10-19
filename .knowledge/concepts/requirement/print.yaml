@@ -1,0 +1,261 @@
+id: requirement:print
+type: requirement
+title: 印刷 — プリンタへの出力、スプール、プリントサーバー（print/）
+summary: >-
+  BDF の 4 つ目の出口。.bdf（と converter が読める入力）を、OS のドライバに頼らず Go だけで紙にする。
+  印刷指示（チケット）・スプール（キュー）・接続（出力先）の 3 層に分け、ローカルの bdf print と
+  複数台のリモートプリンタを束ねるプリントサーバーで 1 と 3 を共有する。最初の出力先は IPP（driverless）、
+  最初の文書形式は PDF（ベクタのまま。pdfbdf）で、PDF を受けないプリンタには PWG Raster（imagebdf の帯から流す）。Windows / macOS / Linux。
+  叙述は knowledge-inputs/print-plan/print-requirements.ja.md（2026-10-19）。
+lifecycle: active
+authority: authored
+aliases:
+- 印刷
+- bdf print
+- プリントサーバー
+- print server
+- スプール
+- IPP
+constraints:
+- 出力先の第 1 はプリンタ直結の IPP（IPP/2.0 の操作、ipps、DNS-SD の探索）。macOS / Linux の CUPS のキューも同じクライアントで扱う。古いプロトコル（9100、LPD）は補助で、後の段階（2026-10-19 利用者「新しいプロトコルから」）
+- Windows は IPP 直結だけ。OS のスプーラ経由（GDI / EMF / XPS、winspool）は作らない。Windows Ready Print（2026-07 以降、新規のプリンタは IPP クラスドライバが既定）の後は Windows が扱うプリンタは IPP プリンタで、BDF はスプーラを通らずに同じプリンタへ話せる（2026-10-19 利用者が窓の杜の記事を受けて確認）
+- 文書形式の第 1 は PDF（ベクタのまま。pdfbdf の出力をそのまま送り、部数・両面・合わせ方はプリンタに任せる）。プリンタが PDF を受けないときだけ PWG Raster に落とす（imagebdf の PagesRows の帯を行の符号化に直結し、ページ全体の画像を持たない）。URF と PCLm は第 2（2026-10-19 利用者「ベクトルデータもあるのでそちらで印刷できるならそれを優先したい」）
+- チケットの名前は IPP の属性に合わせる（copies、sides、media、media-col、print-color-mode、print-quality、printer-resolution、page-ranges、print-scaling、finishings、job-name …）。Windows の DEVMODE も CUPS のオプションもここから写す
+- ジョブの状態は IPP の job-state（pending / pending-held / processing / processing-stopped / canceled / aborted / completed）と job-state-reasons の語彙をそのまま使う
+- cgo なし。OS 固有のコードは print/internal/osspool に OS ごとの build tag。wasm / TinyGo のビルドには入れない
+- スプールはディレクトリとファイル（制御ファイルは JSON、文書は .bdf のまま、内容アドレスで同じ文書は 1 回）。一時ファイル＋改名。データベースは使わない
+- 再起動の後に同じジョブを二重に刷らない。送る前にプリンタの job-id を記録し、再開時は Get-Jobs で状態を確かめてから再送する
+- 同じ文書・同じチケット・同じフォントなら同じバイト列（golden と再送の照合）
+- 暗号化した .bdf はスプールに暗号化のまま置く。描いた結果は既定で残さない。ログに文書の中身・パスワード・資格情報を書かない
+- IPP の符号化・DNS-SD は自前で書く方針（推奨。未決 open_questions）
+non_goals:
+- プリンタドライバ（Windows の v4 / Print Support App、CUPS のフィルタ / Printer Application）を書くこと
+- 各社固有の PDL（PCL 5/6、PostScript、ESC/Page 系）の生成
+- ラベル・レシート・ドットインパクトの PDL（ZPL / SBPL / TPCL / ESC/POS / ESC/P）は print-m5 まで
+- クラウド印刷サービス（Universal Print など）との連携、IPP INFRA の代理（後の論点）
+- Windows の OS のスプーラ経由（GDI / EMF / XPS の書き手、winspool の RAW）。IPP の無い機器（メーカードライバの USB 機、ラベル・レシートのドライバ、Windows 共有プリンタ）のために需要が出たら print/internal/osspool に GDI を足す
+- Windows の USB 直結の IPP 機（Windows のドライバが USB を握る。ネットワークで）
+- iOS / iPadOS のネイティブアプリ（gomobile）。iOS からは AirPrint で m4 のサーバーへ、またはビューアからサーバーの API へ
+- ブラウザ（wasm）からの印刷（window.print() の領分。ビューアはサーバーに投げる）
+- 課金・部門管理・認証印刷の運用（履歴は出す。IPP の job-password / job-account-id で渡せる分は渡す）
+- Windows 共有プリンタ（SMB / MS-RPRN）経由の印刷。搬送路だけでは済まず（そのキューのドライバの RAW = プリンタの PDL が要り、v4 / IPP クラスドライバのキューでは RAW が 0 バイト）、その先はたいてい IPP の複合機で、LPD も非推奨。Windows の印刷サーバーを義務にする組織では BDF のサーバーをその代わりに置く。要るときは go-msrpc（MIT、msrpc/rprn）で v3 のキューに PostScript を RAW で送る搬送路を足す（2026-10-19 利用者の問いへの推奨）
+- スキャン（eSCL）、FAX、プリンタの管理（ファームウェア、消耗品、SNMP の詳細監視）
+open_questions:
+  ipp-codec:
+    text: IPP の符号化を自前で書くか、OpenPrinting/goipp（BSD-2、符号化のみ、搬送は net/http）を使うか。推奨は自前（repo の流儀、fuzz しやすい。goipp はテストの参照実装に）
+    state: open
+    resolution: print-m1 は暫定で自前（print/ipp/message.go）。替えるなら message.go だけ（knowledge-inputs/print-plan/print-m1.ja.md §0、§6）
+  dns-sd:
+    text: DNS-SD（mDNS）を自前で書くか、grandcat/zeroconf・brutella/dnssd・hashicorp/mdns を使うか。推奨は自前の最小実装（golang.org/x/net/dns/dnsmessage は既に依存にある）。m4 の広告も同じ土台
+    state: open
+    resolution: print-m1 は暫定で自前（QU ビットの問い合わせを一時ポートから。5353 を束縛しない）。替えるなら dnssd.go だけ
+  default-format:
+    text: 既定の文書形式を PWG Raster 優先（絵がプリンタに依らない、モノクロ 2 値で小さい）にするか PDF 優先（ベクタで小さい、プリンタの解像度で文字が出る）にするか
+    state: answered
+    resolution: PDF（ベクタのまま）優先。2026-10-19 利用者が決定（「ベクトルデータもあるのでそちらで印刷できるならそれを優先したい」）。文書がもともとベクタで、ラスタ化はプリンタの解像度でプリンタがする方がよい。PWG Raster は PDF を受けないプリンタの後ろ盾。残る点は pdfbdf が書けない命令を含む文書を自動で Raster に落とすか（案は既定で警告のみ、キューの設定 raster-if-lossy で落とす）
+  lossy-pdf-fallback:
+    text: FILTER や Canvas 固有の合成など pdfbdf が書けない命令を含む文書を、auto のときに自動で Raster に落とすか。案は既定で警告のみ（ベクタ優先）、キューの設定 raster-if-lossy で落とす
+    state: open
+  server-shape:
+    text: サーバーを bdf printd のサブコマンドにするか cmd/bdfprintd の別コマンドにするか。推奨は別コマンド（cmd/bdf を常駐の依存で重くしない）
+    state: open
+  persistence:
+    text: スプールの永続化をファイルだけにするか、組み込みの KV を使うか。推奨はファイルだけ
+    state: open
+  accept-converter-inputs:
+    text: サーバーが converter の入力（PDF、Office、画像 …）を受けて変換してから印刷するか。推奨は受ける（「何でも紙にする」入口）
+    state: open
+  ipp-server-priority:
+    text: サーバーを IPP プリンタとして見せる段階（print-m4）を m2 の直後に前倒しするか。Windows の他社製ドライバの更新停止（2027-07）が近いなら価値がある
+    state: open
+  windows-os-path:
+    text: Windows の OS 経由の経路を winspool の RAW 素通し（IPP クラスドライバに PDF / PWG Raster を渡せるか要検証）にするか、GDI の StartDoc / StretchDIBits に描いた画像を渡す（どのドライバでも動く）か
+    state: answered
+    resolution: 作らない。2026-10-19 利用者が窓の杜 2026-07-02 の記事（Windows Ready Print が新規プリンタの既定に）を受けて確認。WRP の後は Windows が扱うプリンタは IPP プリンタで、IPP 直結で届く。XPS はパイプラインの内部形式で不要、Universal Print は PDF を受ける。GDI は IPP の無い機器のためだけで需要が出てから。USB 直結の IPP 機は穴で、要るなら XPS_PASS で PDF を直送できるかを実験してから
+  password-storage:
+    text: 暗号化文書のパスワードを、サーバーの鍵で暗号化して制御ファイルに置く（再起動後も流せる）か、メモリにだけ持つ（再起動で pending-held、理由 password-required）か
+    state: open
+  package-name:
+    text: 最上位のパッケージ名を print/ にするか printing/ にするか。print は組み込み関数と同名だがパッケージ名が隠すだけで害はない
+    state: open
+    resolution: print-m1 は暫定で print/。改名は import パスの置換だけ
+  vector-writers:
+    text: PDF 以外のベクタの書き手の順。推奨は PostScript → HP-GL/2（CAD の現場があれば）。EMF と OpenXPS は Windows の OS 経由をやめたので外した。PCL XL と各社の PDL は作らない
+    state: open
+  escp-text-mode:
+    text: ESC/P のテキストモード（連帳の複写伝票を速く濃く）に要る「行 × 桁の格子」の印を連帳のテンプレートに持たせるか、ラスタだけで始めて現場の声を待つか
+    state: answered
+    resolution: 格子を持つテキスト帳票テンプレート（requirement:text-template、form-m6）を足す。2026-10-19 利用者の提案。できた .bdf の印字像の Part（t:text）から ESC/P と ESC/POS のテキストモードを損失なしに作る（print-m5）。Office 由来の文書はラスタのまま
+  remote-proxy:
+    text: NAT の向こうの拠点のプリンタのために置く代理を、独自の「上流から取りに行く」型にするか、IPP INFRA（Fetch-Job / Fetch-Document）の操作に合わせるか
+    state: deferred
+facts:
+  layers:
+    ticket: 何を、何部、どの用紙に、両面か、モノクロか、どのレイヤーを省くか。IPP の属性の名前
+    spool: 受け付け、永続化、キュー、状態機械、再送、履歴、アカウンティング。bdf print はメモリ上、サーバーはディスク
+    destination: プロトコル（IPP、OS のスプーラ、9100、LPD、USB、シリアル）× 文書形式（PWG Raster、PDF、URF、PCLm、PDL）
+  goals:
+    g1: bdf print で手元の 1 台に .bdf を、OS のドライバなしに Go だけで印刷する
+    g2: Windows / macOS / Linux で同じコード。cgo なし
+    g3: 'プリントサーバー: 複数のキュー、再起動をまたぐスプール、CLI と HTTP API。後に IPP プリンタとして見える'
+    g4: '帳票の印刷指示が通る: 部数・丁合・両面・用紙（JIS B・はがき・封筒）・トレイ・モノクロ・ページ範囲・合わせ方・SkipRoles・仕上げの素通し'
+    g5: 失敗の区別と再送、二重印刷の防止、理由の表示
+    g6: 新しいプロトコル（IPP）から始める
+    g7: ラベル・レシート・連帳への道を塞がない（文書形式 × 搬送路の抽象）
+  formats:
+    pwg_raster: 'image/pwg-raster。IPP Everywhere 必須、Mopria。ページごとに 1796 バイトのヘッダー＋行単位の RLE。sgray_1 / sgray_8 / srgb_8。pwg-raster-document-resolution-supported、-type-supported、-sheet-back（裏面の向き）'
+    pdf: application/pdf。pdfbdf。ベクタのまま、ジョブが小さく、文字と線はプリンタの解像度で出る。絵はプリンタの解釈器次第。第 1 の形式
+    urf: image/urf。AirPrint。UNIRAST ヘッダー＋ページごと 32 バイト。urf-supported（W8、SRGB24、DM1〜4、RS300、IS1 …）
+    pclm: application/PCLm。Mopria / Wi-Fi Direct。帯の画像を並べた制限付き PDF
+    raw: application/octet-stream。9100 と同じ素通し。後の段階
+    default_policy: auto = PDF があればそれ（ベクタのまま）、なければ PWG Raster、どちらも無ければ URF → PCLm。キューごと・ジョブごとに -format で上書き。Raster に落とす場面は、プリンタが PDF を受けない、pdfbdf が書けない命令を含む文書でビューアの絵を優先したい（raster-if-lossy）、機種の PDF 解釈器に癖がある、の 3 つ
+    vector_formats:
+      driverless: ベクタのまま渡せるのは PDF だけ（URF / PWG Raster / PCLm はラスタ）
+      direct_pdls: PostScript 3（公開。業務機の純正 PS と互換 KPDL / BR-Script、大判）、PCL XL（HP。仕様は非公開扱い、機種ごとの癖）、PCL 5（文字＋ラスタ＋HP-GL/2）、HP-GL/2（公開。大判プロッタの共通語）、OpenXPS（ECMA-388。Windows の v4 と Universal Print）、各社の PDL（LIPS / ESC/Page / ART / RPCS / NPDL / PRESCRIBE。非公開）、PDF/VT と JDF（商業印刷）
+      os_pipelines: Windows は GDI（v3 はそのまま、v4 と IPP クラスドライバは MXDC が XPS に変換。ベクタのまま）と XPS（IPrintDocumentPackageTarget）。RAW は v3 の PS / PCL 素通し用で v4 では 0 バイト。XPS_PASS はパイプラインを飛ばす直送（使わない）。macOS / Linux は CUPS に PDF（PS 機には pdftops がベクタのまま、透明は画像）
+      decision: 第 2 のベクタ経路は PostScript の書き手（vector/psbdf。pdfbdf の構造を写す）。HP-GL/2 の書き手（vector/hpglbdf）は CAD の出口として価値が高く、converter/hpgl で往復テスト。Windows の OS 経由（GDI / EMF / XPS）は作らない（Windows Ready Print の後は IPP 直結で足りる。XPS はパイプラインの内部形式、Universal Print は PDF を受ける）。PCL XL と各社の PDL は作らない（PS エミュレーション、Raster、PCL 5 ラスタで逃げる）
+      flatten: vector/internal/flatten。透明グループ・ソフトマスク・ブレンド・FILTER の部分だけを画像にし残りをベクタのまま残す。pdfbdf の影の手法の一般化。PS と HP-GL/2 が共有
+      selection_order: 搬送路と独立に、プリンタが名乗る形式の中から PDF → PS → PWG Raster → URF → PCLm → PCL 5 ラスタ
+    pdf_details:
+      delegated: copies、sheet-collate、sides、print-scaling、page-ranges は IPP の属性でプリンタに任せる。unsupported なら送信側で肩代わり（ページの選択を pdfbdf に足す、部数は文書を繰り返す）
+      layers: プレ印刷用紙向けのレイヤー省略は pdfbdf の SkipRoles
+      fonts: pdfbdf が埋め込む。名前で参照するフォントは送信側のマシンで探す。埋め込みを許さないフォントはアウトライン
+      encrypted: pdfbdf はまだ PDF の暗号化を書かないので、ipps の上を平文の PDF で送る。スプールには暗号化のまま置く
+      fidelity: pdfbdf は書いた PDF を読み直して同じ絵になることをラスタライザで確かめている（Ghostscript と Quartz でも）。実機の解釈器の差は機種ごとに記録
+    raster_details:
+      when: プリンタが PDF を受けないとき、raster-if-lossy のとき、機種の表で Raster が既定のとき、-format pwg-raster のとき
+      resolution: printer-resolution-supported から。既定 600 dpi（モノクロ）/ 300 dpi（カラー）
+      mono: print-color-mode=monochrome で sgray_8。線画で black_1 / sgray_1 があれば Bilevel＋AntialiasOff
+      duplex_back: pwg-raster-document-sheet-back（normal / flipped / rotated / manual-tumble）に従って裏面を回して描く
+      copies: copies-supported が 1 の機種では送信側で繰り返し、丁合もその中で
+      scaling: fit / actual / shrink＋自動回転。既定は shrink＋自動回転
+      size_note: 600 dpi カラーの A4 は生で 100 MB 超（RLE で縮む）、2 値は 4 MB。PDF の帳票は 100 KB 程度
+  ipp:
+    operations: Validate-Job、Create-Job → Send-Document（last-document）または Print-Job、Get-Printer-Attributes、Get-Jobs、Get-Job-Attributes、Cancel-Job、Hold-Job / Release-Job、Identify-Printer。任意で Create-Printer-Subscriptions＋Get-Notifications（ippget）。CUPS 固有の CUPS-Get-Printers
+    transport: HTTP の chunked で描きながら送る。Expect 100-continue。ipps を優先。プリンタの証明書は自己署名が普通なので初回の指紋を記録（CUPS の TrustOnFirstUse と同じ）。-insecure は明示のときだけ
+    auth: なし / Basic（uri-authentication-supported）。OAuth は後
+    discovery: DNS-SD の _ipp._tcp / _ipps._tcp を mDNS と単一 DNS で。TXT の rp、pdl、URF、TLS、Color、Duplex、UUID、adminurl、ty、kind、air。URL の直接指定 ipp://host:631/ipp/print、CUPS は ipp://localhost:631/printers/<名前>、CUPS 3 の cups-local はドメインソケット
+    capabilities: Get-Printer-Attributes をキューの設定として保存し、printer-config-change-time で更新を検知
+    status: printer-state（idle / processing / stopped）と printer-state-reasons（media-empty、media-jam、toner-low、door-open …）を定期に取る
+    completion: Get-Job-Attributes のポーリングで job-state が 7・8・9 になるまで
+    dedupe: 送る前に job-id を記録。再開時に Get-Jobs（which-jobs=completed 含む）で確かめ、プリンタが知っていれば再送しない
+  spool:
+    layout: 'spool/jobs/<id>/ に制御ファイル（JSON: チケット、出力先、状態、プリンタ側の job-id、時刻、警告）と文書（.bdf のまま。内容アドレスで 1 回）'
+    queue: 出力先ごとに 1 本。FIFO に job-priority と job-hold-until。一時停止と再開、並べ替え、別のキューへの移動
+    class: 複数の出力先を 1 キューに。空いている方に流す（負荷分散）か順に試す（故障時の切り替え）。CUPS のクラスと同じ
+    retry: 接続の失敗は指数バックオフで pending のまま。プリンタが stopped ならキューを止めて見張り idle で再開。プリンタ側で aborted になったジョブは自動で再送しない（利用者が retry）
+    render_cache: 既定で残さない。キューごとに「描いた Raster を残す」を選べる
+    retention: 完了・中止の制御ファイルは一定期間残し、参照の無くなった文書は消す。件数・バイト数・日数の上限
+    accounting: 利用者・キュー・印象数（job-impressions-completed）・用紙・時刻を JSON Lines に追記
+    local: bdf print は同じ実装をメモリ上で使い 1 ジョブの完了まで待つ。-spool dir でディスクのスプールに置いて帰る
+  server:
+    process: 常駐。設定は YAML＋環境変数
+    http_api: ジョブの投入（multipart で文書＋チケット、または参照）、一覧、詳細、取消、保留、再送、キューとプリンタの一覧、発見。既定は localhost。外に開けるときは TLS とトークンとキューごとの許可
+    cli: bdf print -server …、bdf jobs、bdf printers
+    ipp_server_later: キューごとに IPP Everywhere のプリンタとして見せ DNS-SD で広告。AirPrint 互換を要件にする（URF の TXT キー、image/urf の読み手、ipps、MDM 向けの固定 rp）。受ける形式は PDF・PWG Raster・URF・JPEG・PNG と converter の形式で、pdl に PDF を出して送る側にベクタを選ばせる。Windows（WRP）・macOS・iOS・Android・ChromeOS からドライバなしで投げられる
+    remote_sites: 直接届くなら IPP 直結。NAT の向こうは拠点側に代理（同じサーバーを上流から取りに行く設定で）
+    observability: 構造化ログ（文書の中身は書かない）、任意の /metrics（Prometheus のテキスト）、状態の HTTP ページ
+  platforms:
+    windows: IPP 直結が唯一の経路。Windows Ready Print（2026-06-12 発表、6/23 のプレビューから、7 月以降は新規プリンタの既定）の後は Windows が扱うプリンタは IPP プリンタ。OS 経由（GDI / EMF / XPS、winspool）は作らない。USB 直結の IPP 機は Windows のドライバが USB を握るので対象外（ネットワークで。要るなら XPS_PASS で PDF を直送できるかの実験）。EnumPrinters は参考表示だけ。m4 の IPP サーバーは WRP の Windows がそのまま追加できる相手になる（WPP 向けに ipps）
+    macos: AirPrint 直結（URF か PDF）と CUPS に IPP（localhost:631）の 2 つとも IPP で、足すものは無い。USB 接続も macOS がキューにするので届く（Windows と違い穴にならない）。PPD のメーカードライバは非推奨で消えていく途中だが残るキューにも CUPS 経由で出せる。PS 機には CUPS が PDF → PS。一覧は CUPS-Get-Printers。Core Printing（PMPrinter）は cgo が要るので使わない。mDNS は自前（Bonjour と共存）
+    ios: AirPrint しか無く、ドライバも PPD も無い。BDF の iOS アプリは作らない（Go。gomobile は非ゴール）。経路は 2 つ。(1) m4 のサーバーを AirPrint のプリンタに見せる（URF の TXT キーが必須、image/urf を受ける、pdl に application/pdf を出して PDF を送らせる（要検証）、ipps、別サブネットは MDM の AirPrint ペイロード（IP / FQDN、ResourcePath = rp、Port、Use TLS）向けに固定の rp）。(2) Safari のビューアから window.print() か、ビューアの印刷ボタンでサーバーの HTTP API へ
+    android_chromeos: 参考。Android の既定の印刷サービスは Mopria（IPP）、ChromeOS は CUPS の driverless。m4 のサーバーはどちらからも入る
+    linux: 直結。CUPS 2.x に IPP（localhost:631 か /run/cups/cups.sock）、CUPS 3 の cups-local はドメインソケット。USB は ipp-usb の localhost。mDNS は Avahi と 5353 を共有（SO_REUSEADDR / SO_REUSEPORT）
+    build: print/internal/osspool に OS ごとの build tag。cmd/bdfwasm と converter/all から import しない。CI は 3 OS の go vet と go test
+  device_pdl_payloads:
+    principle: 言語が受け取れる最も忠実な形で送り、文字は BDF の埋め込みフォントで描く（常駐フォントに頼らない）。ラスタかテキストかは言語ごとの既定とチケットの -mode raster|text で決め、テキストモードは文書が格子の印を持つときだけ
+    zpl: 1 ビットのラスタ。ラベル 1 枚を ^GF（Z64 = LZ77＋Base64）で送る。ZPL の図形命令は箱・円・斜線・楕円だけで任意のパスを持てない。印（MARK）でバーコードと分かる図形は ^BC / ^BQ などの印刷側バーコードに置き換える（203 dpi でモジュール幅をドットに揃えるため）。SBPL / TPCL も同じ型でプロファイルの差
+    escpos: ラスタを帯で。GS v 0 か GS ( L を数十行ずつ、最後に GS V（カット）、必要なら ESC p（ドロワ）。幅固定・長さ可変は PagesRows の帯の流し込みそのもの。テキストモード（Font A / B、倍角、FS & の漢字）は後の選択肢
+    escp: 既定はラスタ（ESC * の 24 ピン、180 / 360 dpi。先に ESC C の用紙長と ESC N のミシン目スキップ）。ドットインパクトはグラフィックスが遅く複写伝票は文字の打点が濃い方がよいので、印字像の Part（t:text。テキスト帳票テンプレート requirement:text-template が書く）を持つ文書はテキストモード（10 / 12 / 15 cpi、6 / 8 lpi、ESC/P-J の FS &）で送る。Office 由来の文書はラスタ
+    hpgl2: ベクタ。PU / PD / PA / BZ / CI、多角形モード PM ＋ FP（偶奇 / 非ゼロ）、PW / PC / LT、クリップは IW（矩形のみ。それ以外は flatten）。文字はアウトラインのパス（LB のストロークフォントは日本語が無いので使わない）。画像・透明・グラデーションは HP RTL のラスタを行で挿入
+    common:
+    - 2 値化に画像の部分だけのディザ（誤差拡散か組織的ディザ）を imagebdf に足す。文字と線はしきい値＋AntialiasOff
+    - バーコードと罫線を dpi のドットに整列（印刷側バーコードに置換、または幅をドットの整数倍に丸める）
+    - 機種のプロファイル（dpi、印字幅、受ける命令、常駐フォント、最大長）
+    - チケットの機器ごとの拡張（ラベルの長さとギャップ、濃度、速度、カット、ドロワ、連帳の用紙長とミシン目スキップ、複写の枚数）
+    - 搬送路は 9100 が共通。USB・シリアル・Bluetooth は OS ごと。Windows はメーカードライバのキューに winspool の RAW で素通し（描画は BDF 側なので GDI は要らない。搬送路としての winspool だけ）。macOS / Linux は CUPS の raw キューか /dev/usb/lp0
+  enterprise_printers:
+    basis: 3 つの OS も業務用プリンタも IPP が基本（2026-10-19 利用者が確認）。2010 年代半ば以降の複合機・レーザーはほぼ AirPrint / Mopria を名乗り、PDF をそのまま受けるものが多い。サーバーからの大量印刷も同じ IPP
+    not_ipp:
+    - 古い業務機（2012 年ごろ以前、低価格レーザー、IPP を持たない国内機種）は 9100 / LPD に PS / PCL / 各社の PDL。9100 ＋ PostScript の書き手（m3）で拾い、PS も PCL も無い機種は対象外
+    - Windows 共有プリンタ（SMB）には IPP で届かない。BDF のサーバーをその代わりに置くか対象外
+    - ラベル・レシート・ドットインパクト・大判プロッタは 9100 / USB / シリアルに ZPL / ESC/POS / ESC/P / HP-GL/2（m5、HP-GL/2 の書き手）。商業印刷（JDF / ホットフォルダ）は対象外
+    enterprise_attributes: 認証印刷は job-password / job-password-encryption、部門 ID は job-account-id / job-accounting-user-id（PWG 5100.11）、留め置きと解放は job-hold-until / Release-Job。メーカードライバが PJL で埋めていた部門コードを IPP で受けるかは機種ごとに実機で確かめ、表に書く。IC カードで解放する出力管理製品はサーバー側の仕事で、BDF はそこへ IPP で渡す
+  budgets:
+  - 1 ジョブの大きさ、ページ数、印象数に上限。描画は imagebdf の限界
+  - 同時に描くジョブ（キューごとに 1、全体で CPU 数）と同時の接続数
+  - IPP の応答の属性数とバイト数に上限。偽の DNS-SD 応答で止まらない
+  - スプールの合計容量。超えたら受け付けを断る
+  package_layout:
+    print: チケット、出力先のインターフェース、形式の選択、用紙の名前（PWG 5101.1）
+    print/ipp: メッセージの読み書き、クライアント、DNS-SD、CUPS 固有の操作
+    print/raster: PWG Raster の書き手。後で URF と PCLm
+    print/spool: ジョブ、キュー、状態機械、再送、履歴、アカウンティング
+    print/server: HTTP API、設定、監視。後で IPP サーバーと DNS-SD の広告
+    print/internal/osspool: CUPS の固有操作。Windows は無し（需要が出たら GDI をここに）
+    vector/psbdf: PostScript 3 の書き手（pdfbdf の兄弟）
+    vector/hpglbdf: HP-GL/2 ＋ HP RTL の書き手（大判、CAD）
+    vector/internal/flatten: 透明の平坦化の共通部
+    cmd: cmd/bdf の print / printers / jobs と、cmd/bdfprintd（または bdf printd）
+  delivery:
+    proposed_order:
+    - print-m1 IPP で手元／LAN の 1 台に印刷（bdf print）。PDF（既定、ベクタのまま）と PWG Raster（後ろ盾）、形式の自動選択、DNS-SD、ipps、主要なチケット
+    - print-m2 スプールとサーバー。キューと組、再送と二重印刷の防止、履歴、HTTP API と CLI、監視、converter の入力、examples/print-server
+    - print-m3 PostScript の書き手（第 2 のベクタ経路）と平坦化、URF と PCLm、CUPS の一覧、9100 と LPD の素通し、IPP USB（Linux と macOS）。CAD の現場があれば HP-GL/2 の書き手。Windows の OS 経由は無し
+    - print-m4 サーバーを IPP Everywhere のプリンタとして見せる。DNS-SD の広告、受ける形式、PWG の自己認証テスト、拠点の代理
+    - print-m5 ラベル・レシート・連帳の PDL（ZPL / SBPL / TPCL は 1 ビットのラスタ＋印刷側バーコード、ESC/POS は帯のラスタ、ESC/P はラスタで格子の帳票はテキストモード）、画像だけのディザ、機種のプロファイル、チケットの機器拡張、USB・シリアル・Bluetooth の搬送路（Windows は winspool の RAW で素通し）
+    independence: m1 と m2 は独立に価値がある。m3 以降は現場の機種で順を変える
+  verification:
+    unit: IPP の符号化の往復と fuzz、PWG Raster の書き手（自前の読み手で戻して imagebdf の画像と一致、golden）、チケット → 属性、スプールの状態機械（落ちた時点ごとの再開）
+    integration: ippeveprinter（libcups、Ubuntu の cups-ipp-utils）を偽のプリンタに。自前の偽プリンタ（Go）で依存なしのテスト。Ubuntu の runner の CUPS に localhost:631 経由
+    manual: 国内で多い機種（Canon、Epson、Brother、Kyocera、Ricoh、Fujifilm BI、Konica Minolta、HP）で PDF（ベクタ）と PWG Raster、両面、JIS B5、はがき、トレイを確かめ、PDF の絵が Raster の絵と違う機種は癖として記録し必要なら Raster を既定に
+    m4: PWG の IPP Everywhere 自己認証（ippeveselfcert、ipptool）、Windows の IPP クラスドライバ・macOS の AirPrint・CUPS からの印刷
+  risks:
+  - 実機の IPP 実装の癖（copies-supported が 1、media-col-database が巨大、Get-Notifications 非対応、自己署名証明書の期限切れ）。機種ごとの表で吸収する
+  - プリンタの PDF 解釈器の差（フォント、透明、ブレンド）で絵が変わる。pdfbdf は既にフォームをページ座標で定義して Ghostscript / Quartz の差を吸収している。機種ごとに確かめ、癖のある機種は Raster を既定にする
+  - Raster に落ちる機種ではカラーの大量印刷のジョブが大きい。解像度の既定（カラー 300 dpi）とモノクロで逃がす
+  - Windows で USB 直結のプリンタに出せない（Windows のドライバが USB を握る）。ネットワークの機種に限る前提を文書に明記する
+  - mDNS は OS の責務と重なる（Bonjour、Avahi）。5353 の共有と、企業の網での多播の遮断。単一 DNS の DNS-SD と URL の直接指定を常に残す
+  - 調査の一次資料（pwg.org、learn.microsoft.com）が作業環境から開けず、日付と必須形式は二次資料による（system:ipp-driverless の unverified）
+relations:
+- relation: depends_on
+  to: requirement:pdf-export
+- relation: complements
+  to: requirement:form-template
+- relation: informed_by
+  to: system:ipp-driverless
+- relation: informed_by
+  to: system:vector-pdls
+- relation: informed_by
+  to: system:label-printer-languages
+- relation: informed_by
+  to: system:dot-impact-escp
+- relation: informed_by
+  to: system:printer-resident-forms
+- relation: informed_by
+  to: survey:template-systems-overview
+- relation: refines
+  to: taxonomy:form-layout-axes
+- relation: serves
+  to: pattern:preprinted-overlay
+- relation: serves
+  to: pattern:label-sheet
+- relation: serves
+  to: pattern:roll-receipt
+- relation: serves
+  to: pattern:continuous-text-form
+- relation: has_milestone
+  to: milestone:print-m1
+- relation: enabled_by
+  to: requirement:text-template
+history:
+  apple-platforms:
+    summary: 2026-10-19 利用者「mac や iOS はどうなっているのか」。macOS は AirPrint と CUPS（localhost:631）の 2 つとも IPP で足すものが無く、USB も穴にならない。iOS は AirPrint しか無いので、m4 のサーバーの AirPrint 互換（URF の TXT、image/urf、ipps、MDM の固定 rp）を要件にした
+  windows-ipp-only:
+    summary: 2026-10-19 利用者が窓の杜 2026-07-02 の記事（Windows Ready Print が新規プリンタの既定に）を示して「Windows は IPP だけでよいか、EMF / GDI / XPS は不要か」。IPP 直結だけにし、OS 経由（GDI / EMF / XPS）を計画から外した。USB 直結だけが穴
+  vector-paths:
+    summary: 2026-10-19 利用者「PDF 以外のベクトルデータを使う仕組みも多いと思う。Microsoft のやつとか」。PDF 以外のベクタの経路（OS のパイプライン、直接受ける PDL、常駐フォーム）を調べて §3.4 にまとめ、PostScript を第 2 のベクタ経路、Windows は GDI、HP-GL/2 を CAD の出口とした。前の版の「OpenXPS を XPS_PASS で渡す」は XPS_PASS がパイプラインを飛ばす直送だと分かり取り下げた
+  format-decision:
+    summary: 2026-10-19 利用者「ベクトルデータもあるのでそちらで印刷できるならそれを優先したい」。既定を Raster 優先から PDF（ベクタ）優先に改め、Raster を PDF を受けないプリンタの後ろ盾にした
+  proposed:
+    summary: 2026-10-19 利用者がチャットで提案（「ラスタライズなども含めてかなりの機能が揃ってきた。プリンタに繋いで印刷。スプール管理も含めてシステム化。最終段の接続は新しいプロトコルから。Windows / mac / Linux。ローカルプリンタと、複数台のリモートプリンタを制御するプリントサーバー」）。同日に Web 調査と要件の整理

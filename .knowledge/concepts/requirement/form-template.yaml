@@ -78,6 +78,8 @@ relations:
   to: system:office-template-generators
 - relation: has_milestone
   to: milestone:form-m1
+- relation: extended_by
+  to: requirement:text-template
 facts:
   pipeline:
     compile: Office ファイル＋マークアップ → .bdft。タグの構文検証（開閉、セルや行をまたぐタグ）、スキーマ抽出（フィールド名・型・繰り返し・書式・必須）、フォントの固定、サンプルデータでのプレビュー
@@ -115,7 +117,7 @@ facts:
     - -each バッチ、QR とバーコード、タグ付き PDF / PDF/A、ブラウザ内の穴埋め、examples の帳票サーバー
     later:
     - Word の流れる文章
-    - ラベル・連帳・レシートの出力先
+    - ラベル・連帳・レシートの出力先（連帳とレシートの「行 × 桁」はテキスト帳票テンプレート requirement:text-template で。2026-10-19）
     - エディタ
   risks:
   - 帳票の利用者は Excel の印刷結果とピクセルで見比べる。Excel はプリンタ解像度で行高・列幅を丸めるので「Excel 風」で「同一」ではない

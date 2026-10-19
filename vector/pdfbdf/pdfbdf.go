@@ -92,6 +92,11 @@ type Options struct {
 	// that of its elements, and the rest as artifacts. Screen readers and
 	// the tools that take the text of a file out go by it.
 	Tagged bool
+	// Pages selects the pages written, by their zero-based number among
+	// the pages the file has without it, in that order; numbers past
+	// them are left out. nil writes all of them. For a printer that
+	// takes no page-ranges.
+	Pages []int
 	// PDFA makes the file a PDF/A file, of the part and the level named:
 	// "2b" (it shows the same in any reader), "2u" (and its text is
 	// Unicode), "2a" (and it is tagged: Tagged is set), or "3b", "3u" and
@@ -262,20 +267,32 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 				if p == nil || !(p.W > 0) || !(p.H > 0) || math.IsInf(float64(p.W), 0) || math.IsInf(float64(p.H), 0) {
 					continue
 				}
-				pages = append(pages, &pageOut{key: -1, ref: pw.alloc(), w: float64(p.W), h: float64(p.H), view: v, index: i})
+				pages = append(pages, &pageOut{key: -1, w: float64(p.W), h: float64(p.H), view: v, index: i})
 			}
 		case bdf.ViewScroll:
 			if w, h := scrollSize(v); w > 0 && h > 0 {
-				pages = append(pages, &pageOut{key: -1, ref: pw.alloc(), w: w, h: h, view: v, index: -1})
+				pages = append(pages, &pageOut{key: -1, w: w, h: h, view: v, index: -1})
 			}
 		case bdf.ViewSheet:
 			if w, h := ex.sheetSize(v); w > 0 && h > 0 {
-				pages = append(pages, &pageOut{key: -1, ref: pw.alloc(), w: w, h: h, view: v, index: -1})
+				pages = append(pages, &pageOut{key: -1, w: w, h: h, view: v, index: -1})
 			}
 		}
 	}
+	if ex.opts.Pages != nil {
+		var chosen []*pageOut
+		for _, n := range ex.opts.Pages {
+			if n >= 0 && n < len(pages) {
+				chosen = append(chosen, pages[n])
+			}
+		}
+		pages = chosen
+	}
 	if len(pages) == 0 {
 		return nil, ErrNoPages
+	}
+	for _, pg := range pages {
+		pg.ref = pw.alloc()
 	}
 	ex.shared(pages)
 	for _, pg := range pages {

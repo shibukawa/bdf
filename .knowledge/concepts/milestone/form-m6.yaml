@@ -1,0 +1,115 @@
+id: milestone:form-m6
+type: milestone
+title: form-m6 — テキスト帳票テンプレート（前書き＋印字像）を穴埋めから .bdf・.txt まで通す
+summary: >-
+  プレーンテキストのテンプレートを form の 5 つ目の形式として足す。同じタグとデータで、固定ページ・枠（slots）・行が増える（rows）・ページ複製（pages）・長さ可変（レシート）を、
+  等幅フォントの fixed ページの .bdf と、印字像の Part（t: text）と、プレーンテキストの出力まで通す。ESC/P のテキストモードの書き手は print-m5。叙述は knowledge-inputs/print-plan/text-template.ja.md。
+lifecycle: proposed
+authority: authored
+scope:
+  milestone: form-m6
+  input: text
+  output:
+  - bdf
+  - txt
+constraints:
+- 既存のタグ・データ・CLI・.bdft をそのまま使う
+- 見たまま（行と桁）。全角は 2 桁。折り返しも収め直しもしない
+- '印字像の Part（t: text）を必ず書く。読み手はそれを無視して開ける（conformance に事例を足す）'
+- 計算はしない。画像とバーコードは第 1 段階では許さない
+non_goals:
+- ESC/P・ESC/POS のテキストモードの書き手（print-m5）
+- 縦書き、外字の解決
+- Office のテンプレートからの格子の推定
+capabilities:
+  front-matter:
+    state: planned
+    about: capability:form/text-front-matter
+  grid-fill:
+    state: planned
+    about: capability:form/text-grid-fill
+  width-filters:
+    state: planned
+    about: capability:form/text-width-filters
+  double-size:
+    state: planned
+    about: capability:form/text-double-size
+  bdf-layout:
+    state: planned
+    about: capability:form/text-bdf-layout
+  text-part:
+    state: planned
+    about: capability:form/text-part
+  plain-text-output:
+    state: planned
+    about: capability:form/text-plain-output
+  bdft:
+    state: planned
+    about: capability:form/text-bdft
+acceptance:
+  s1-parse:
+    text: 前書き（cpi、lpi、columns、lines、margin、skip、title、font）と本文を読み、タグの位置（行、桁）を持つ。前書きなしの本文だけでも既定（10 cpi、6 lpi、80 桁、66 行）で通る。タグだけの行は行を占めない
+    verified_by:
+    - text-unit
+  s2-width:
+    text: width / right / center が東アジア幅（全角 2 桁）で揃う。超えたら既定は切らずに警告、| cut で切る、| wrap で次の行に続く（rows なら行が増え、固定ページなら押し下げ、用紙長を超えたらエラー）。幅のないタグは値の長さで伸び縮みし、桁数の超過はコンパイル時に警告
+    verified_by:
+    - text-unit
+  s3-sections:
+    text: 同じ行の区間は文字の繰り返し、別の行は枠（余った行は空行、_blank が効く）、| rows は行を増やして用紙長で改ページし title を繰り返す、| pages はページ単位の複製で _page / _pages が効く
+    verified_by:
+    - text-golden
+  s4-bdf:
+    text: fixed View のページが columns / cpi × lines / lpi インチになり、文字がセルに正確に揃う（どの等幅フォントでも）。lines 0 は高さ可変の 1 ページ。{{#preprinted}} の行は background の層。MARK が行と枠に付く。golden で描画を固定
+    verified_by:
+    - text-golden
+  s5-text-part:
+    text: t:text の Part に幾何とページごとの行と用紙の層が JSON で入り、プレーンテキストに戻すと本文（穴埋め後）と一致する。bdf fill … out.txt が同じものを書く。Go と TS の読み手がこの Part を無視して開ける
+    verified_by:
+    - text-golden
+    - reader-tolerance
+  s7-double-size:
+    text: '{{#_wide}} / {{#_tall}} / {{#_big}} の中の文字が半角 2 桁・全角 4 桁で数えられ、BDF では 2 倍に伸びて描かれ、_tall と _big の行は 2 行を占め、t:text の Part に範囲が残る'
+    verified_by:
+    - text-golden
+  s6-bdft:
+    text: bdf template compile が format "text" の .bdft を書き、bdf fill が .bdft と .txt のどちらからでも同じ .bdf を出し、bdf template schema がフィールドを出す
+    verified_by:
+    - bdft-roundtrip
+verification:
+  text-unit:
+    state: not_run
+    method: unit
+    test: go test ./form/text/（前書き、東アジア幅、幅の filter、区間、FuzzParse）
+  text-golden:
+    state: not_run
+    method: integration
+    test: testdata/form/text-{slip,rows,pages,receipt}.bdf と golden の PNG（TestGoldenPages）。t:text を戻して本文と比較
+  reader-tolerance:
+    state: not_run
+    method: integration
+    test: packages/core のテストと conformance に t:text を持つ文書を足す
+  bdft-roundtrip:
+    state: not_run
+    method: integration
+    test: form/form_test.go の TestCompile に text を足す
+open_questions:
+  text-part-shape:
+    text: t:text の JSON の形（幾何、pages[].lines[]、preprinted の行の印、倍角の範囲）。Part に決まった（2026-10-19）ので実装案で決める
+    state: open
+facts:
+  delivery:
+    slices:
+    - 'S1 前書きと本文の読み込み、タグの位置（form/text: parse.go）'
+    - 'S2 幅と揃えの filter（form/text: width.go。東アジア幅）'
+    - 'S3 区間の展開: slots / rows / pages、title の繰り返し、FF（form/text: fill.go）'
+    - 'S4 BDF の fixed ページ（form/text: layout.go。等幅フォント、advance、MARK、background の層）'
+    - 'S5 t:text の Part とプレーンテキストの出力（form/text: image.go）、spec §4 の追記'
+    - 'S6 form.go の判別と分岐、.bdft、schema、docs/forms.ja.md'
+relations:
+- relation: part_of
+  to: requirement:text-template
+- relation: follows
+  to: milestone:form-m5
+- relation: enables
+  to: milestone:print-m1

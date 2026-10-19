@@ -1,0 +1,19 @@
+id: source:print-plan
+title: 印刷サブシステムの要件整理（叙述）
+adapter: document
+location:
+  root: knowledge-inputs/print-plan
+  include: ["**/*.md"]
+scope: {topic: print-plan}
+depends_on: []
+upstream:
+  kind: web-research
+  locator: 公開 Web ページ（§10 の URL を参照）。pwg.org と learn.microsoft.com は作業環境から開けなかった
+  snapshot: "2026-10-19"
+  refresh_request: system:ipp-driverless の unverified を一次資料で確かめ、Markdown を更新してから refresh する
+coverage:
+  partial: true
+  features:
+    requirements: collected
+    protocol_survey: collected
+    implementation_plan: unexamined
