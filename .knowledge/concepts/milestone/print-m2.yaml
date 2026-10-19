@@ -1,28 +1,33 @@
 id: milestone:print-m2
 type: milestone
-title: print-m2 — スプールとプリントサーバー（print/spool、print/server、cmd/bdfprintd、bdf jobs）
+title: print-m2 — スプールとプリントサーバー（print/spool、print/server、bdf printd、bdf jobs）
 summary: >-
-  印刷の 2 つ目の実装のまとまり。ジョブを受け付けてディスクに永続化し、キュー（と複数のプリンタの組）ごとに順に流し、
-  失敗を再送し、再起動をまたいで二重に刷らず、履歴とアカウンティングを残すスプールと、それを HTTP API・CLI・状態のページで
-  見せる常駐のサーバー。変換器の入力を受けて変換してから印刷する。叙述の実装案は knowledge-inputs/print-plan/print-m2.ja.md（2026-10-19）。
+  印刷の 2 つ目の実装のまとまり。ジョブを受け付けて組み込みの KV（bbolt）の 1 ファイルに永続化し、キュー（と複数のプリンタの組）ごとに
+  順に流し、失敗を再送し、再起動をまたいで二重に刷らず、履歴と実績を残すスプールと、それを HTTP API・CLI・状態のページで見せる
+  bdf printd。変換器の入力を受けて変換してから印刷する。スプールは保存のインターフェース・期限つきの借り・短い段で書き、
+  後で複数台や Lambda に広げられる形にする。叙述の実装案は knowledge-inputs/print-plan/print-m2.ja.md（2026-10-19）。
 lifecycle: proposed
 authority: authored
 scope:
   milestone: print-m2
 constraints:
 - ジョブの状態は IPP の job-state と job-state-reasons の語彙（無いものだけ bdf- を付ける）。m4 で IPP サーバーとして見せるとき写すだけで済む
-- 永続化はディレクトリとファイル（制御ファイルは JSON、文書は内容アドレス）。一時ファイル＋fsync＋改名。データベースも KV も使わない
-- スプールの持ち主は 1 プロセス（ロックファイル）。置くのは常に API を通す
-- 二重に刷らない。Create-Job の応答の直後、文書を送る前にプリンタの job-id を記録し（print.Options.OnCreated）、送り終えた印を書き（OnSent）、再起動の後は Get-Job-Attributes と Get-Jobs で照合してから再送する
+- サーバーは bdf printd（cmd/bdf のサブコマンド）。cmd/bdfprintd は作らない（2026-10-19 利用者）
+- 永続化は組み込みの KV（go.etcd.io/bbolt）の 1 ファイル spool.db。ジョブの記録、文書（受けたままと変換した .bdf。内容アドレス、1 MiB の塊）、連番、実績、プリンタの控え、証明書の指紋を全部入れる。設定（YAML）だけ別のファイル（2026-10-19 利用者「組み込みの KV で良い」）
+- 1 つの spool.db を開けるのは 1 プロセス（bbolt のファイルのロック）。共有のファイルシステムに置かない
+- spool は bbolt に依らない（依るのは print/spool/boltstore だけ）。記録は版つきの条件付き書き込み、ジョブを取るのは期限つきの借り、処理は短い段（convert・send・watch）と次に動かす時刻。複数台や Lambda の保存先に替えても spool が変わらない形
+- 二重に刷らない。Create-Job の応答の直後、文書を送る前にプリンタの job-id を記録し（print.Options.OnCreated）、送り終えた印を書き（OnSent）、持ち主が替わったジョブ（再起動の後を含む）は Get-Job-Attributes と Get-Jobs で照合してから続けるか再送する
 - プリンタ側で aborted になったジョブは自動で再送しない
+- プリンタの中に溜めるジョブの数 max-inflight の既定は 2（2026-10-19 利用者）。送るのは 1 ジョブずつ順番どおり
 - 既定は loopback に束縛。loopback 以外は TLS とトークンが無ければ起動しない
 - ログに文書の中身・パスワード・トークンを書かない
-- spool は converter に依らない（変換は関数として受ける）。converter に依るのは cmd/bdfprintd と examples だけ
-- golang.org/x/sys などの依存を足さない（ロックは O_EXCL と pid の生存確認、/metrics は自前のテキスト）
+- spool は converter に依らない（変換は関数として受ける）。converter に依るのは cmd/bdf と examples だけ
+- 足す依存は go.etcd.io/bbolt（と、それが引く golang.org/x/sys）だけ。/metrics は自前のテキスト
 non_goals:
 - IPP サーバーとして見せること、DNS-SD の広告（m4）
 - Apple Raster、PCLm、PostScript、9100 と LPD（m3）
-- Windows のサービスとしての登録（後。m2 は前面のプロセスと例だけ）
+- サービスとしての登録（Windows の x/sys/windows/svc を含む）。前面のプロセスとして正しく動くことだけを受け持ち、常駐は systemd・launchd・NSSM・WinSW などの外の道具に任せる（2026-10-19 利用者「サービス化は別ツールもあるので自分自身で持たなくても良い」）
+- 複数台で 1 つのスプールを回すこと、Lambda で動かすこと（継ぎ目だけ作る。いつやるかは m2 の後）
 - 設定の再読み込み（m2 は再起動で反映）
 - 課金・部門管理・IC カードでの解放の運用
 - bdf print -spool dir（スプールに直接置く。要件から外した）
@@ -36,6 +41,9 @@ capabilities:
   job-state-machine:
     state: planned
     about: capability:print/job-state-machine
+  steps-and-leases:
+    state: planned
+    about: capability:print/steps-and-leases
   scheduler:
     state: planned
     about: capability:print/scheduler
@@ -59,27 +67,29 @@ capabilities:
     about: capability:print/example-server
 acceptance:
   s1-hooks:
-    text: print.Options の OnCreated（Create-Job の直後、送る前）と OnSent、Printer（能力を聞き直さない）、公開した print.Wait、Ticket の JSON（キーは IPP の属性の名前）と Merge。m1 の bdf print の動きは変わらない
+    text: print.Options の OnCreated（Create-Job の直後、送る前）と OnSent、Printer（能力を聞き直さない）、公開した print.Check（1 回聞いて終わりを誤りに写す。m1 の wait はその繰り返し）、Ticket の JSON（キーは IPP の属性の名前）と Merge、ipp.TrustStore の Backend。m1 の bdf print の動きは変わらない
     verified_by:
     - print-unit
   s2-store:
-    text: 投入したジョブが制御ファイルと内容アドレスの文書になり、閉じて開き直しても同じ一覧と状態になる。ロックが二重の起動を止め、死んだ pid の古いロックは取り直す。id は戻らない。GC が保持期間・件数・バイトで古いものと参照されない文書を消す
+    text: Store の約束（版つきの書き込み、索引の順、連番、文書の往復と refs、受け付け中の文書の掃除、GC）が memstore と boltstore の両方で通る。boltstore は閉じて開き直しても同じ、2 つ目の起動をロックで断る、詰め直しと写しで中身が変わらない
     verified_by:
+    - store-contract
     - spool-unit
   s3-scheduling:
-    text: キューの順（優先度、投入順、保留と時間帯）で流れ、組の any と failover が 1 台の停止でもう 1 台に回り、接続の失敗は間隔を延ばして再送し、プリンタ側の中止は再送しない。取り消し・保留・解除・再送・移しが効く
+    text: キューの順（優先度、投入順、保留と時間帯）で流れ、max-inflight 2 でプリンタの中に 2 つまで、組の any と failover が 1 台の停止でもう 1 台に回り、接続の失敗は間隔を延ばして再送し、プリンタ側の中止は再送しない。取り消し・保留・解除・再送・移しが効く
     verified_by:
     - fake-printer-scheduling
   s4-no-duplicates:
-    text: Create-Job の前、Create-Job の応答の前、記録の後で送る前、送る途中、送った後、履歴を持たないプリンタ、のどこで落ちても、開き直したスプールが照合してプリンタが刷るのは 1 回。照合できないときは pending-held（bdf-duplicate-check）
+    text: Create-Job の前、Create-Job の応答の前、記録の後で送る前、送る途中、送った後、履歴を持たないプリンタ、のどこで子プロセスが落ちても、同じ spool.db を開き直した bdf printd が照合してプリンタが刷るのは 1 回。照合できないときは pending-held（bdf-duplicate-check）。1 つの Store を 2 つの Spool で取り合っても、どのジョブも 1 回だけ送られ、止まった方の借りは期限の後に引き継がれる
     verified_by:
     - crash-recovery
+    - contention
   s5-server:
-    text: bdfprintd が設定のキューとプリンタで起動し、HTTP API で投入・一覧・操作・SSE ができ、トークンとキューごとの許可が効き、loopback 以外で TLS が無いと起動しない。/metrics と状態のページが見える
+    text: bdf printd が設定のキューとプリンタで起動し、HTTP API で投入・一覧・操作・実績・写し・SSE ができ、トークンとキューごとの許可が効き、loopback 以外で TLS が無いと起動しない。/metrics と状態のページが見える
     verified_by:
     - http-api
   s6-client:
-    text: bdf print -server が投入して帰り（-wait で待ち、m1 と同じ意味の終了コード）、bdf jobs が一覧と操作をし、変換器の入力はサーバーで変換されて刷られ、暗号化した文書はパスワード待ちを経て刷られる
+    text: bdf print -server が投入して帰り（-wait で待ち、m1 と同じ意味の終了コード）、bdf jobs が一覧と操作と実績の書き出しをし、変換器の入力はサーバーで変換されて刷られ、暗号化した文書はパスワード待ちを経て刷られる
     verified_by:
     - cli
     - ci-ippeveprinter
@@ -87,61 +97,107 @@ verification:
   print-unit:
     state: not_run
     method: unit
-    test: go test ./print/（OnCreated のエラーでプリンタのジョブが取り消される、Wait、Ticket の JSON の往復と Merge）
+    test: go test ./print/ ./print/ipp/（OnCreated のエラーでプリンタのジョブが取り消される、Check、Ticket の JSON の往復と Merge、TrustBackend）
+  store-contract:
+    state: not_run
+    method: unit
+    test: go test ./print/spool/... -run Store（storetest を memstore と boltstore に流す）
   spool-unit:
     state: not_run
     method: unit
-    test: go test ./print/spool/（遷移の表、往復、ロック、id、GC、保留の時間帯と再送の間隔は偽の時計で）
+    test: go test ./print/spool/（遷移の表、借り、保留の時間帯と再送の間隔は偽の時計で、GC）
   fake-printer-scheduling:
     state: not_run
     method: integration
-    test: go test ./print/spool/ -run Sched（ipptest の 2 台、停止と再開）
+    test: go test ./print/spool/ -run Sched（ipptest の 2 台、停止と再開、max-inflight）
   crash-recovery:
     state: not_run
     method: integration
-    test: go test ./print/spool/ -run Recover（落ちた時点ごとに開き直し、ipptest が受けたジョブを数える）
+    test: go test ./print/spool/ -run Takeover（子プロセスを決めた時点で os.Exit させ、同じ spool.db を開き直し、ipptest が受けたジョブを数える）
+  contention:
+    state: not_run
+    method: integration
+    test: go test ./print/spool/ -run Contend（1 つの memstore を 2 つの Spool で回し、どのジョブも 1 回だけ送られる。片方を止めて借りの期限の後に引き継ぐ）
   http-api:
     state: not_run
     method: integration
-    test: go test ./print/server/（httptest。認証、限界、SSE、エラー）
+    test: go test ./print/server/（httptest。認証、限界、SSE、写し、エラー）
   cli:
     state: not_run
     method: integration
-    test: go test ./cmd/bdf/ -run 'PrintServer|Jobs'
+    test: go test ./cmd/bdf/ -run 'PrintServer|Jobs|Printd'
+  three-os:
+    state: not_run
+    method: integration
+    test: CI の print-os（Windows と macOS）で go test ./print/...。bbolt のロックと詰め直しの置き換え
   ci-ippeveprinter:
     state: not_run
     method: integration
-    test: test/print/ci.sh の bdfprintd の段（ippeveprinter につなぎ、投入・取り消し・再起動をまたいで二重でないこと）
+    test: test/print/ci.sh の bdf printd の段（ippeveprinter につなぎ、投入・取り消し・再起動をまたいで二重でないこと）
 open_questions:
-  max-inflight-default:
-    text: プリンタの中に溜めるジョブの数（max-inflight）の既定を 1（取り消しと並べ替えが効く）にするか 2（業務機の連続印刷の速さ）にするか
+  documents-in-db:
+    text: 文書も spool.db の中に置く（1 ファイルで写しと移しが楽。ファイルは縮まず詰め直しが要る）か、文書だけ隣のディレクトリに置くか
     state: open
+    resolution: 暫定で中に置く（1 MiB の塊。起動時と bdf printd -compact で詰め直す）
+  scale-out-seams:
+    text: 複数台・Lambda の継ぎ目（Store のインターフェース、借り、段）を m2 に入れるか、1 台に絞って単純に書くか
+    state: open
+    resolution: 暫定で入れる。1 台でも再起動の後の照合が同じ引き継ぎの道を通るので余計な手間は小さい。memstore の取り合いのテストで継ぎ目が本物であることを確かめる
   default-listen:
     text: 既定の束縛を 127.0.0.1:8640 にし、loopback かつトークンが無ければ認証なしでよいか
     state: open
+  max-inflight-default:
+    text: プリンタの中に溜めるジョブの数（max-inflight）の既定を 1 にするか 2 にするか
+    state: answered
+    resolution: 2。2026-10-19 利用者「プリンタにためるジョブは 2 がデフォルトでよい」。まだ送っていないジョブは並べ替えと移しが効き、送った後は Cancel-Job で取り消す
   windows-service:
-    text: Windows のサービスとしての登録（golang.org/x/sys/windows/svc）を m2 に入れるか、前面のプロセスとタスク スケジューラ・NSSM の例だけにするか。推奨は後者
-    state: open
+    text: Windows のサービスとしての登録（golang.org/x/sys/windows/svc）を m2 に入れるか
+    state: answered
+    resolution: 持たない（m2 にも後にも）。2026-10-19 利用者「サービス化は別ツールもあるので自分自身で持たなくても良い」。docs に systemd・launchd・NSSM・WinSW の例
 facts:
   delivery:
     plan: knowledge-inputs/print-plan/print-m2.ja.md（2026-10-19）
     slices:
-    - 'S1 print の継ぎ目（OnCreated、OnSent、Printer、Wait、Ticket の JSON と Merge）と ipptest の足し算（停止と再開、履歴の消去、送る途中の切断、応答前の切断、which-jobs=all）'
-    - 'S2 print/spool の保存（store、job、hold、account）と Spool の受け付け・一覧・操作'
-    - 'S3 スケジューラ、ワーカー、見張り、照合（二重印刷の防止）'
-    - 'S4 print/server（設定、API、認証、SSE、/metrics、状態のページ）と cmd/bdfprintd'
+    - 'S1 print の継ぎ目（OnCreated、OnSent、Printer、Check、Ticket の JSON と Merge）、TrustBackend、ipptest の足し算（停止と再開、履歴の消去、送る途中の切断、応答前の切断、which-jobs=all）'
+    - 'S2 Store（インターフェース、memstore、boltstore、約束のテスト）、job、hold、account、gc と Spool の受け付け・一覧・操作'
+    - 'S3 段と借り、回し手（プリンタごとの送り手と見届け、max-inflight、組、描画の枠）、見張り、引き継ぎの照合（二重印刷の防止）'
+    - 'S4 print/server（設定、API、認証、SSE、/metrics、状態のページ）と bdf printd'
     - 'S5 print/server/client、bdf print -server、bdf jobs、bdf printers -server、受けた入力の変換、暗号化した文書'
-    - 'S6 examples/print-server、docs、CI（bdfprintd と ippeveprinter）、.knowledge'
-    provisional_choices:
-      server_shape: cmd/bdfprintd（別コマンド）
-      persistence: ファイルだけ
-      converter_inputs: 受ける。変換はワーカーの中（job-transforming）、HTML の外部の画像は取りに行かない、Excel は views=print
-      passwords: メモリだけ。再起動の後は pending-held（job-password-wait）、API で渡し直す
-      spool_dir_option: bdf print -spool dir は作らない
-      layout: 'jobs/<id>.json、docs/sha256-<hex>（と変換した .bdf）、accounting/<日付>.jsonl、printers/<名前>.json、lock、next-id'
-      retry: 10 秒、30 秒、1 分、2 分、5 分、以後 10 分ごと。既定 24 時間で aborted（bdf-retry-exhausted）
-      api: /api/v1 の queues・jobs・printers・discover・events（SSE）。/healthz、/metrics、/（状態のページ）
-      auth: トークン（名前、使えるキュー、役割 submit・manage・admin、act-as）。loopback かつトークンなしなら認証なし
+    - 'S6 examples/print-server、docs（常駐のさせ方）、CI（bdf printd と ippeveprinter）、.knowledge'
+  decisions:
+    server_shape: bdf printd（cmd/bdf のサブコマンド）。2026-10-19 利用者
+    persistence: 組み込みの KV。go.etcd.io/bbolt v1.5.0 の 1 ファイル spool.db。2026-10-19 利用者
+    converter_inputs: 受ける。変換は convert の段（job-transforming）、HTML の外部の画像は取りに行かない、Excel は views=print。2026-10-19 利用者
+    max_inflight: 既定 2。2026-10-19 利用者
+    service_registration: 持たない。外の道具に任せる。2026-10-19 利用者
+    after_m2: m3 と m4 の順は m2 の後で決める。2026-10-19 利用者
+  stored:
+    jobs: 'ジョブの記録（JSON、1 件 1〜2 KB）: id、uuid、rev、キュー、利用者、チケット、状態と理由、優先度と保留、段と due、借り、試行、プリンタと job-id・job-uri・sent・attempt-started、時刻、枚数、警告'
+    documents: 受けたままのバイト列と変換した .bdf。sha256 の内容アドレス、1 MiB の塊、refs。読むのは塊ごとの短い読み取り
+    others: 連番と形式の版、実績（終わったジョブごと 1 件、既定 400 日）、プリンタの控え、ipps の証明書の指紋
+    not_stored: 描いた Raster、パスワード（メモリだけ）、トークン、設定（YAML）
+  bolt_layout: 'meta、jobs、idx-due、idx-queue、idx-done、docs（sha256 → 塊のバケット）、uploads、acct、printers、trust'
+  concurrency:
+    in_process: プリンタごとに送り手 1 本と見届け 1 本、変換と描画は CPU 数の枠。bbolt は読み取りが並行、書き込みは 1 つずつで短い。順は（優先度、受けた時刻、id）
+    across_processes: 1 つの spool.db は 1 プロセスだけ。時刻だけでは取り合いを防げない（2 つが同時に同じジョブを見る）。勝つのは条件付き書き込みの 1 つで、借りの期限は落ちた持ち主から引き継ぐため、rev は古い持ち主の書き込みを断るため
+    scale_out_stores: DynamoDB（条件付き書き込み）＋ S3、または PostgreSQL（SELECT … FOR UPDATE SKIP LOCKED）。print/spool/boltstore の隣に Store を足すだけ
+  lambda:
+    fits: 受け付け（API Gateway＋Lambda、大きな文書は S3 の署名つき URL）、変換と描画（provided.al2023、フォントはコンテナ イメージ）、段の実行（EventBridge Scheduler や SQS の遅延で due に Step を呼ぶ。1 段は 15 分に収まる）
+    blockers: 事務所の LAN のプリンタにクラウドから届かない（VPN と VPC、または拠点の bdf printd が取りに行く代理）、SSE の常時接続、メモリだけのパスワード（KMS で封印）、状態のページと /metrics
+    shape: 受け付けと変換をクラウドに、印刷を拠点の bdf printd に。m2 は土台（Store、借り、段、client）まで
+  provisional_choices:
+    passwords: メモリだけ。再起動の後は pending-held（job-password-wait）、API で渡し直す。替えるなら spool.Options.Secrets
+    spool_dir_option: bdf print -spool dir は作らない
+    default_listen: 127.0.0.1:8640。loopback かつトークンなしなら認証なし
+    retry: 10 秒、30 秒、1 分、2 分、5 分、以後 10 分ごと。既定 24 時間で aborted（bdf-retry-exhausted）
+    lease: 期限 2 分、30 秒ごとに延ばす。1 プロセスの bdf printd は起動時に前の持ち主の借りをすぐ引き継ぐ
+    api: /api/v1 の queues・jobs・printers・discover・accounting・backup・events（SSE）。/healthz、/metrics、/（状態のページ）
+    auth: トークン（名前、使えるキュー、役割 submit・manage・admin、act-as）。loopback かつトークンなしなら認証なし
+history:
+  decisions-2026-10-19:
+    summary: 2026-10-19 利用者が実装案の論点に答えた。「bdf printd がよい」「組み込みの KV で良い」「PDF やオフィスの変換を行っても良い」「プリンタにためるジョブは 2 がデフォルトでよい」「Windows のサービス登録は後回しで良い。サービス化は別ツールもあるので自分自身で持たなくても良い」「m2 の後は後で考える」。あわせて「保存するのはジョブ番号か」「KV はオンメモリか、シングルファイルか」「タイムスタンプをつければ並行で処理できるか」「Lambda 化できるか」を問われ、保存する中身の表、bbolt の 1 ファイル、時刻と条件付き書き込みと借り、Lambda に載るもの・載らないものを実装案 §3.2、§3.4、§6 に書いた
+  proposed:
+    summary: 2026-10-19 利用者「print-m2 の実装案を書いて」。初版はファイルだけの永続化と cmd/bdfprintd を暫定にしていた
 relations:
 - relation: part_of
   to: requirement:print
