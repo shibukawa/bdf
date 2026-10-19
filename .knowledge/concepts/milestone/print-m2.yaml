@@ -1,0 +1,151 @@
+id: milestone:print-m2
+type: milestone
+title: print-m2 — スプールとプリントサーバー（print/spool、print/server、cmd/bdfprintd、bdf jobs）
+summary: >-
+  印刷の 2 つ目の実装のまとまり。ジョブを受け付けてディスクに永続化し、キュー（と複数のプリンタの組）ごとに順に流し、
+  失敗を再送し、再起動をまたいで二重に刷らず、履歴とアカウンティングを残すスプールと、それを HTTP API・CLI・状態のページで
+  見せる常駐のサーバー。変換器の入力を受けて変換してから印刷する。叙述の実装案は knowledge-inputs/print-plan/print-m2.ja.md（2026-10-19）。
+lifecycle: proposed
+authority: authored
+scope:
+  milestone: print-m2
+constraints:
+- ジョブの状態は IPP の job-state と job-state-reasons の語彙（無いものだけ bdf- を付ける）。m4 で IPP サーバーとして見せるとき写すだけで済む
+- 永続化はディレクトリとファイル（制御ファイルは JSON、文書は内容アドレス）。一時ファイル＋fsync＋改名。データベースも KV も使わない
+- スプールの持ち主は 1 プロセス（ロックファイル）。置くのは常に API を通す
+- 二重に刷らない。Create-Job の応答の直後、文書を送る前にプリンタの job-id を記録し（print.Options.OnCreated）、送り終えた印を書き（OnSent）、再起動の後は Get-Job-Attributes と Get-Jobs で照合してから再送する
+- プリンタ側で aborted になったジョブは自動で再送しない
+- 既定は loopback に束縛。loopback 以外は TLS とトークンが無ければ起動しない
+- ログに文書の中身・パスワード・トークンを書かない
+- spool は converter に依らない（変換は関数として受ける）。converter に依るのは cmd/bdfprintd と examples だけ
+- golang.org/x/sys などの依存を足さない（ロックは O_EXCL と pid の生存確認、/metrics は自前のテキスト）
+non_goals:
+- IPP サーバーとして見せること、DNS-SD の広告（m4）
+- Apple Raster、PCLm、PostScript、9100 と LPD（m3）
+- Windows のサービスとしての登録（後。m2 は前面のプロセスと例だけ）
+- 設定の再読み込み（m2 は再起動で反映）
+- 課金・部門管理・IC カードでの解放の運用
+- bdf print -spool dir（スプールに直接置く。要件から外した）
+capabilities:
+  print-hooks:
+    state: planned
+    about: capability:print/hooks
+  spool-store:
+    state: planned
+    about: capability:print/spool-store
+  job-state-machine:
+    state: planned
+    about: capability:print/job-state-machine
+  scheduler:
+    state: planned
+    about: capability:print/scheduler
+  printer-monitor:
+    state: planned
+    about: capability:print/printer-monitor
+  crash-recovery:
+    state: planned
+    about: capability:print/crash-recovery
+  http-api:
+    state: planned
+    about: capability:print/http-api
+  client-cli:
+    state: planned
+    about: capability:print/client-cli
+  intake-conversion:
+    state: planned
+    about: capability:print/intake-conversion
+  example-server:
+    state: planned
+    about: capability:print/example-server
+acceptance:
+  s1-hooks:
+    text: print.Options の OnCreated（Create-Job の直後、送る前）と OnSent、Printer（能力を聞き直さない）、公開した print.Wait、Ticket の JSON（キーは IPP の属性の名前）と Merge。m1 の bdf print の動きは変わらない
+    verified_by:
+    - print-unit
+  s2-store:
+    text: 投入したジョブが制御ファイルと内容アドレスの文書になり、閉じて開き直しても同じ一覧と状態になる。ロックが二重の起動を止め、死んだ pid の古いロックは取り直す。id は戻らない。GC が保持期間・件数・バイトで古いものと参照されない文書を消す
+    verified_by:
+    - spool-unit
+  s3-scheduling:
+    text: キューの順（優先度、投入順、保留と時間帯）で流れ、組の any と failover が 1 台の停止でもう 1 台に回り、接続の失敗は間隔を延ばして再送し、プリンタ側の中止は再送しない。取り消し・保留・解除・再送・移しが効く
+    verified_by:
+    - fake-printer-scheduling
+  s4-no-duplicates:
+    text: Create-Job の前、Create-Job の応答の前、記録の後で送る前、送る途中、送った後、履歴を持たないプリンタ、のどこで落ちても、開き直したスプールが照合してプリンタが刷るのは 1 回。照合できないときは pending-held（bdf-duplicate-check）
+    verified_by:
+    - crash-recovery
+  s5-server:
+    text: bdfprintd が設定のキューとプリンタで起動し、HTTP API で投入・一覧・操作・SSE ができ、トークンとキューごとの許可が効き、loopback 以外で TLS が無いと起動しない。/metrics と状態のページが見える
+    verified_by:
+    - http-api
+  s6-client:
+    text: bdf print -server が投入して帰り（-wait で待ち、m1 と同じ意味の終了コード）、bdf jobs が一覧と操作をし、変換器の入力はサーバーで変換されて刷られ、暗号化した文書はパスワード待ちを経て刷られる
+    verified_by:
+    - cli
+    - ci-ippeveprinter
+verification:
+  print-unit:
+    state: not_run
+    method: unit
+    test: go test ./print/（OnCreated のエラーでプリンタのジョブが取り消される、Wait、Ticket の JSON の往復と Merge）
+  spool-unit:
+    state: not_run
+    method: unit
+    test: go test ./print/spool/（遷移の表、往復、ロック、id、GC、保留の時間帯と再送の間隔は偽の時計で）
+  fake-printer-scheduling:
+    state: not_run
+    method: integration
+    test: go test ./print/spool/ -run Sched（ipptest の 2 台、停止と再開）
+  crash-recovery:
+    state: not_run
+    method: integration
+    test: go test ./print/spool/ -run Recover（落ちた時点ごとに開き直し、ipptest が受けたジョブを数える）
+  http-api:
+    state: not_run
+    method: integration
+    test: go test ./print/server/（httptest。認証、限界、SSE、エラー）
+  cli:
+    state: not_run
+    method: integration
+    test: go test ./cmd/bdf/ -run 'PrintServer|Jobs'
+  ci-ippeveprinter:
+    state: not_run
+    method: integration
+    test: test/print/ci.sh の bdfprintd の段（ippeveprinter につなぎ、投入・取り消し・再起動をまたいで二重でないこと）
+open_questions:
+  max-inflight-default:
+    text: プリンタの中に溜めるジョブの数（max-inflight）の既定を 1（取り消しと並べ替えが効く）にするか 2（業務機の連続印刷の速さ）にするか
+    state: open
+  default-listen:
+    text: 既定の束縛を 127.0.0.1:8640 にし、loopback かつトークンが無ければ認証なしでよいか
+    state: open
+  windows-service:
+    text: Windows のサービスとしての登録（golang.org/x/sys/windows/svc）を m2 に入れるか、前面のプロセスとタスク スケジューラ・NSSM の例だけにするか。推奨は後者
+    state: open
+facts:
+  delivery:
+    plan: knowledge-inputs/print-plan/print-m2.ja.md（2026-10-19）
+    slices:
+    - 'S1 print の継ぎ目（OnCreated、OnSent、Printer、Wait、Ticket の JSON と Merge）と ipptest の足し算（停止と再開、履歴の消去、送る途中の切断、応答前の切断、which-jobs=all）'
+    - 'S2 print/spool の保存（store、job、hold、account）と Spool の受け付け・一覧・操作'
+    - 'S3 スケジューラ、ワーカー、見張り、照合（二重印刷の防止）'
+    - 'S4 print/server（設定、API、認証、SSE、/metrics、状態のページ）と cmd/bdfprintd'
+    - 'S5 print/server/client、bdf print -server、bdf jobs、bdf printers -server、受けた入力の変換、暗号化した文書'
+    - 'S6 examples/print-server、docs、CI（bdfprintd と ippeveprinter）、.knowledge'
+    provisional_choices:
+      server_shape: cmd/bdfprintd（別コマンド）
+      persistence: ファイルだけ
+      converter_inputs: 受ける。変換はワーカーの中（job-transforming）、HTML の外部の画像は取りに行かない、Excel は views=print
+      passwords: メモリだけ。再起動の後は pending-held（job-password-wait）、API で渡し直す
+      spool_dir_option: bdf print -spool dir は作らない
+      layout: 'jobs/<id>.json、docs/sha256-<hex>（と変換した .bdf）、accounting/<日付>.jsonl、printers/<名前>.json、lock、next-id'
+      retry: 10 秒、30 秒、1 分、2 分、5 分、以後 10 分ごと。既定 24 時間で aborted（bdf-retry-exhausted）
+      api: /api/v1 の queues・jobs・printers・discover・events（SSE）。/healthz、/metrics、/（状態のページ）
+      auth: トークン（名前、使えるキュー、役割 submit・manage・admin、act-as）。loopback かつトークンなしなら認証なし
+relations:
+- relation: part_of
+  to: requirement:print
+- relation: follows
+  to: milestone:print-m1
+- relation: depends_on
+  to: requirement:pdf-export

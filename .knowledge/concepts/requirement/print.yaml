@@ -59,12 +59,15 @@ open_questions:
   server-shape:
     text: サーバーを bdf printd のサブコマンドにするか cmd/bdfprintd の別コマンドにするか。推奨は別コマンド（cmd/bdf を常駐の依存で重くしない）
     state: open
+    resolution: print-m2 は暫定で cmd/bdfprintd（knowledge-inputs/print-plan/print-m2.ja.md §0）。cmd/bdf はクライアント（bdf print -server、bdf jobs）だけ
   persistence:
     text: スプールの永続化をファイルだけにするか、組み込みの KV を使うか。推奨はファイルだけ
     state: open
+    resolution: print-m2 は暫定でファイルだけ。替えるなら print/spool/store.go だけ
   accept-converter-inputs:
     text: サーバーが converter の入力（PDF、Office、画像 …）を受けて変換してから印刷するか。推奨は受ける（「何でも紙にする」入口）
     state: open
+    resolution: print-m2 は暫定で受ける。変換はスプールのワーカーの中（job-transforming）、HTML の外部の画像は取りに行かない
   ipp-server-priority:
     text: サーバーを IPP プリンタとして見せる段階（print-m4）を m2 の直後に前倒しするか。Windows の他社製ドライバの更新停止（2027-07）が近いなら価値がある
     state: open
@@ -75,6 +78,7 @@ open_questions:
   password-storage:
     text: 暗号化文書のパスワードを、サーバーの鍵で暗号化して制御ファイルに置く（再起動後も流せる）か、メモリにだけ持つ（再起動で pending-held、理由 password-required）か
     state: open
+    resolution: print-m2 は暫定でメモリだけ。再起動の後は pending-held（job-password-wait）で、API で渡し直す。替えるなら spool.Options.Secrets
   package-name:
     text: 最上位のパッケージ名を print/ にするか printing/ にするか。print は組み込み関数と同名だがパッケージ名が隠すだけで害はない
     state: open
@@ -147,7 +151,7 @@ facts:
     render_cache: 既定で残さない。キューごとに「描いた Raster を残す」を選べる
     retention: 完了・中止の制御ファイルは一定期間残し、参照の無くなった文書は消す。件数・バイト数・日数の上限
     accounting: 利用者・キュー・印象数（job-impressions-completed）・用紙・時刻を JSON Lines に追記
-    local: bdf print は同じ実装をメモリ上で使い 1 ジョブの完了まで待つ。-spool dir でディスクのスプールに置いて帰る
+    local: bdf print（サーバーなし）は 1 ジョブを送って完了まで待つ。-spool dir でディスクのスプールに直接置く案は print-m2 で取り下げた（スプールの持ち主は 1 プロセス。置くのは API を通す）
   server:
     process: 常駐。設定は YAML＋環境変数
     http_api: ジョブの投入（multipart で文書＋チケット、または参照）、一覧、詳細、取消、保留、再送、キューとプリンタの一覧、発見。既定は localhost。外に開けるときは TLS とトークンとキューごとの許可
@@ -246,6 +250,8 @@ relations:
   to: pattern:continuous-text-form
 - relation: has_milestone
   to: milestone:print-m1
+- relation: has_milestone
+  to: milestone:print-m2
 - relation: enabled_by
   to: requirement:text-template
 history:
