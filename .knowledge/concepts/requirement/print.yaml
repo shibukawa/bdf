@@ -35,6 +35,7 @@ non_goals:
 - クラウド印刷サービス（Universal Print など）との連携、IPP INFRA の代理（後の論点）
 - Windows の OS のスプーラ経由（GDI / EMF / XPS の書き手、winspool の RAW）。IPP の無い機器（メーカードライバの USB 機、ラベル・レシートのドライバ、Windows 共有プリンタ）のために需要が出たら print/internal/osspool に GDI を足す
 - Windows の USB 直結の IPP 機（Windows のドライバが USB を握る。ネットワークで）
+- iOS / iPadOS のネイティブアプリ（gomobile）。iOS からは AirPrint で m4 のサーバーへ、またはビューアからサーバーの API へ
 - ブラウザ（wasm）からの印刷（window.print() の領分。ビューアはサーバーに投げる）
 - 課金・部門管理・認証印刷の運用（履歴は出す）
 - スキャン（eSCL）、FAX、プリンタの管理（ファームウェア、消耗品、SNMP の詳細監視）
@@ -143,12 +144,14 @@ facts:
     process: 常駐。設定は YAML＋環境変数
     http_api: ジョブの投入（multipart で文書＋チケット、または参照）、一覧、詳細、取消、保留、再送、キューとプリンタの一覧、発見。既定は localhost。外に開けるときは TLS とトークンとキューごとの許可
     cli: bdf print -server …、bdf jobs、bdf printers
-    ipp_server_later: キューごとに IPP Everywhere のプリンタとして見せ DNS-SD で広告。受ける形式は PDF・PWG Raster・URF（macOS の AirPrint に要る）・JPEG・PNG と converter の形式。Windows の IPP クラスドライバ / AirPrint / CUPS からドライバなしで投げられる
+    ipp_server_later: キューごとに IPP Everywhere のプリンタとして見せ DNS-SD で広告。AirPrint 互換を要件にする（URF の TXT キー、image/urf の読み手、ipps、MDM 向けの固定 rp）。受ける形式は PDF・PWG Raster・URF・JPEG・PNG と converter の形式で、pdl に PDF を出して送る側にベクタを選ばせる。Windows（WRP）・macOS・iOS・Android・ChromeOS からドライバなしで投げられる
     remote_sites: 直接届くなら IPP 直結。NAT の向こうは拠点側に代理（同じサーバーを上流から取りに行く設定で）
     observability: 構造化ログ（文書の中身は書かない）、任意の /metrics（Prometheus のテキスト）、状態の HTTP ページ
   platforms:
     windows: IPP 直結が唯一の経路。Windows Ready Print（2026-06-12 発表、6/23 のプレビューから、7 月以降は新規プリンタの既定）の後は Windows が扱うプリンタは IPP プリンタ。OS 経由（GDI / EMF / XPS、winspool）は作らない。USB 直結の IPP 機は Windows のドライバが USB を握るので対象外（ネットワークで。要るなら XPS_PASS で PDF を直送できるかの実験）。EnumPrinters は参考表示だけ。m4 の IPP サーバーは WRP の Windows がそのまま追加できる相手になる（WPP 向けに ipps）
-    macos: AirPrint 直結（URF か PDF）。CUPS に IPP（localhost:631）、一覧は CUPS-Get-Printers。mDNS は自前（Bonjour と共存）
+    macos: AirPrint 直結（URF か PDF）と CUPS に IPP（localhost:631）の 2 つとも IPP で、足すものは無い。USB 接続も macOS がキューにするので届く（Windows と違い穴にならない）。PPD のメーカードライバは非推奨で消えていく途中だが残るキューにも CUPS 経由で出せる。PS 機には CUPS が PDF → PS。一覧は CUPS-Get-Printers。Core Printing（PMPrinter）は cgo が要るので使わない。mDNS は自前（Bonjour と共存）
+    ios: AirPrint しか無く、ドライバも PPD も無い。BDF の iOS アプリは作らない（Go。gomobile は非ゴール）。経路は 2 つ。(1) m4 のサーバーを AirPrint のプリンタに見せる（URF の TXT キーが必須、image/urf を受ける、pdl に application/pdf を出して PDF を送らせる（要検証）、ipps、別サブネットは MDM の AirPrint ペイロード（IP / FQDN、ResourcePath = rp、Port、Use TLS）向けに固定の rp）。(2) Safari のビューアから window.print() か、ビューアの印刷ボタンでサーバーの HTTP API へ
+    android_chromeos: 参考。Android の既定の印刷サービスは Mopria（IPP）、ChromeOS は CUPS の driverless。m4 のサーバーはどちらからも入る
     linux: 直結。CUPS 2.x に IPP（localhost:631 か /run/cups/cups.sock）、CUPS 3 の cups-local はドメインソケット。USB は ipp-usb の localhost。mDNS は Avahi と 5353 を共有（SO_REUSEADDR / SO_REUSEPORT）
     build: print/internal/osspool に OS ごとの build tag。cmd/bdfwasm と converter/all から import しない。CI は 3 OS の go vet と go test
   budgets:
@@ -217,6 +220,8 @@ relations:
 - relation: has_milestone
   to: milestone:print-m1
 history:
+  apple-platforms:
+    summary: 2026-10-19 利用者「mac や iOS はどうなっているのか」。macOS は AirPrint と CUPS（localhost:631）の 2 つとも IPP で足すものが無く、USB も穴にならない。iOS は AirPrint しか無いので、m4 のサーバーの AirPrint 互換（URF の TXT、image/urf、ipps、MDM の固定 rp）を要件にした
   windows-ipp-only:
     summary: 2026-10-19 利用者が窓の杜 2026-07-02 の記事（Windows Ready Print が新規プリンタの既定に）を示して「Windows は IPP だけでよいか、EMF / GDI / XPS は不要か」。IPP 直結だけにし、OS 経由（GDI / EMF / XPS）を計画から外した。USB 直結だけが穴
   vector-paths:

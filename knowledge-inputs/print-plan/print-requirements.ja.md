@@ -54,7 +54,7 @@ BDF 側の強みをそのまま使う。文書はベクタの命令列なので�
 **OS もそこへ寄せている。**
 
 - **Windows**: 同梱の IPP クラスドライバ（Mopria ベース。Windows 10 21H2 からネットワークと USB の Mopria 機を扱う）で、ドライバなしに IPP プリンタを使う。Microsoft は 2023-09 に他社製ドライバの提供終了計画を出し、2026-01-15 以降は Windows Update に新しい他社製ドライバを載せず、2027-07-01 以降は他社製ドライバの更新をセキュリティ修正に限る。**Windows Ready Print（WRP）**: 2026-06-12 に発表（旧称 Modern Print Platform）、6 月 23 日のプレビュー更新から展開、7 月以降は**新しく追加するプリンタの既定のインストール方法**が IPP クラスドライバになった（窓の杜 2026-07-02）。導入済みのキューは変わらず、メーカー製ドライバも選べ、グループポリシー「Configure Windows Ready Print driver ranking」で従来の順位に戻せる。**Windows Protected Print（WPP）** はその上の厳格モードで、有効にすると他社製ドライバ・他社製のポートモニタと印刷プロバイダが外れ、WRP で入らないプリンタは追加できない（Windows 11 24H2 以降、既定では無効。Microsoft は将来の既定化を表明）。メーカー機能は Print Support App で足す。
-- **macOS**: AirPrint が標準で、PPD は非推奨。中の CUPS（Apple の分岐、2.3 系）が `localhost:631` で IPP を話す。
+- **macOS**: AirPrint が標準。PPD のメーカードライバは非推奨で（CUPS の `lpadmin` / `lpinfo` は `everywhere` 以外のモデルを非推奨とし、ドライバとバックエンドは将来の版で外すと明記。Apple 独自の拡張 `APDialogExtension` は 10.14 から非推奨）、macOS 26 Tahoe では古いメーカーのドライバが入らず「AirPrint で」と案内される機種が増えた。中の CUPS は Apple の分岐で 2.3.6（2022-05）のまま凍結、上流は OpenPrinting。アプリの印刷は PDF を `cupsd`（`localhost:631`、IPP）に渡す経路で、PostScript 機にも CUPS が PDF → PS にする。
 - **Linux**: CUPS 2.4 / 2.5 が driverless を標準にし（`driverless` で IPP Everywhere の PPD を生成）、CUPS 3.0 は PAPPL ベースの `cups-local`（利用者ごと、一時キュー、IPP over ドメインソケット）と `cups-sharing`（共有、永続キュー、アカウンティング）に分かれ、ドライバをなくして Printer Application（それ自体が IPP プリンタ）に置き換える。libcups 3.0.2 は 2026-06、PAPPL 1.4.12 は 2026-08。`cups-local` / `cups-sharing` 3.0.0 の正式版が出たかは未確認（計画は 2025 年 8〜9 月だった）。USB のプリンタは `ipp-usb` が IPP over USB（USB クラス 7/1/4）を `localhost` の IPP に見せる。
 
 つまり **CUPS のある macOS と Linux では、OS のスプーラ自体が IPP のサーバー**であり、プリンタに直接話す IPP クライアントが、そのまま OS のキューにも使える。Windows だけが IPP のサーバーを持たない（共有は SMB / RPC）が、Windows Ready Print の後は Windows が扱うプリンタ自体が IPP プリンタなので、Windows では OS を通さず直結だけにする（§3.5）。
@@ -150,6 +150,17 @@ PDF は「プリンタが直接受けるベクタ形式」の 1 つに過ぎな�
 - **残る穴は USB 接続**: WRP は USB の Mopria 機も IPP クラスドライバ（IPP over USB）で扱うが、その USB インターフェースは Windows のドライバが握るので、BDF が自前の IPP USB で同じ機器に話すのは衝突する。Windows で USB 直結のプリンタに出したいときは、ネットワーク（同じ機種はほぼ LAN / Wi-Fi を持つ）に替えてもらうのが現実的。どうしても要るなら、IPP クラスドライバのキューに `XPS_PASS` で PDF を直送できるか（IPP ポートが `application/octet-stream` で渡すか）を 1 日の実験で確かめる価値はある。通れば GDI なしで済む。
 - **強まること**: プリントサーバーを IPP Everywhere のプリンタとして見せる段階（m4）は、WRP の Windows がまさに期待する相手になる。Windows の PC からは「プリンタの追加」で BDF のサーバーのキューが入り、ドライバもアプリも要らない。WPP の環境向けに `ipps`（証明書）を持つ。
 
+### 3.6 macOS と iOS はどうなっているか
+
+Apple の側は Windows より先に「IPP だけ」になっている（2026-10-19 利用者の問い）。
+
+- **macOS は 2 つとも IPP**。プリンタ直結は AirPrint（IPP。URF か PDF）。OS 経由は `cupsd` が `localhost:631` で IPP を話すので、BDF の同じ IPP クライアントで届く。USB 接続のプリンタも macOS がキューにして `localhost:631` に見せるので、Windows と違って穴にならない。メーカーの PPD ドライバは非推奨で消えていく途中（§3.1）だが、残っているキューにも CUPS 経由（IPP）で出せる。PostScript 機には CUPS が PDF → PS にするので、ベクタのまま届く。Core Printing（`PMPrinter`）の C API は cgo が要るうえに、CUPS に IPP で話せば同じことができるので使わない。macOS 向けに足すものは無い。
+- **iOS / iPadOS は AirPrint しか無い**。アプリは `UIPrintInteractionController` に PDF か画像を渡し、OS が Bonjour で見つけた AirPrint プリンタに IPP で送る。ドライバも PPD も無く、CUPS は外に出ていない。BDF は Go なので iOS のアプリは作らない（gomobile の経路は非ゴール）。iOS からの印刷は 2 つの経路になる。
+  1. **BDF のサーバーが AirPrint のプリンタに見える**（m4）。iPhone / iPad の共有シートからどのアプリでも BDF のサーバーに印刷でき、サーバーが最終のプリンタへ流す。AirPrint の条件: DNS-SD の TXT に `URF` キーが**必ず**要る（無いと一覧に出ない。`pdl` に `image/urf` が無くてもよい）、`image/urf` を受ける、`pdl` に `application/pdf` を出すと iOS は PDF（ベクタ）を送る（要検証）、`ipps`、`air`（認証）と `TLS` の TXT。別サブネットの iOS 端末には MDM の AirPrint ペイロード（IP か FQDN、`ResourcePath` = `rp`、`Port`、`Use TLS`。iOS 11 以降）か、広域 DNS-SD で配る。サーバーの `rp` は固定の値にしておく。
+  2. **ビューアから印刷**: Safari の BDF ビューアは `window.print()`（ブラウザが描いて AirPrint）か、ビューアの「印刷」ボタンでサーバーの HTTP API にジョブを投げる（サーバーが .bdf を最終のプリンタへ。帳票ならこちらが本命）。
+- **Android と ChromeOS も同じ側**（参考）。Android の既定の印刷サービスは Mopria（IPP。PDF / PWG Raster / PCLm）、ChromeOS は CUPS の driverless（IPP）。m4 のサーバーはどちらからも「プリンタの追加」で入る。
+- **帰結**: m4 の IPP サーバーは、IPP Everywhere に加えて **AirPrint 互換を要件にする**（`URF` の TXT、`image/urf` の読み手、`ipps`、MDM 向けの固定 `rp`）。これで Windows（WRP）、macOS、iOS、Android、ChromeOS のすべてがドライバなしで BDF のサーバーに投げられる。
+
 ## 4. 要件
 
 ### 4.1 印刷指示（チケット）
@@ -214,7 +225,7 @@ PDF は「プリンタが直接受けるベクタ形式」の 1 つに過ぎな�
 - 常駐プロセス（`bdf printd`、または `cmd/bdfprintd`）。設定はファイル（YAML。既に依存にある）＋環境変数。
 - **HTTP API**（JSON）: ジョブの投入（multipart で文書＋チケット、または URL / パスの参照）、一覧、詳細、取消、保留、再送、キューの一覧と状態、プリンタの発見。文書の形式は `.bdf` と `converter` の形式。既定は `localhost` に束縛し、外に開けるときは TLS とトークン。
 - **CLI クライアント**: `bdf print -server http://… file.bdf`、`bdf jobs`、`bdf printers`。
-- **IPP サーバー（後の段階）**: キューごとに IPP Everywhere のプリンタとして見せ、DNS-SD で広告する。Windows の IPP クラスドライバ、macOS の AirPrint（`image/urf` を受ける必要がある）、Linux の CUPS からドライバなしで投げられる。受ける形式は PDF、PWG Raster、URF、JPEG、PNG と `converter` の形式。これで「社内のどの OS からでも、BDF のサーバーに投げれば、どのプリンタにも出る」になり、Windows の他社製ドライバ終了（2027）への答えになる。
+- **IPP サーバー（後の段階）**: キューごとに IPP Everywhere のプリンタとして見せ、DNS-SD で広告する。Windows の IPP クラスドライバ（WRP）、macOS と iOS の AirPrint（`URF` の TXT キーと `image/urf` の受け入れが必須。§3.6）、Linux の CUPS、Android の Mopria からドライバなしで投げられる。受ける形式は PDF、PWG Raster、URF、JPEG、PNG と `converter` の形式。`pdl` に PDF を出して、送る側にベクタ（PDF）を選ばせる。これで「社内のどの OS からでも、BDF のサーバーに投げれば、どのプリンタにも出る」になり、Windows の他社製ドライバ終了（2027）への答えになる。
 - **拠点をまたぐリモートプリンタ**: 直接届く（VPN か同じ LAN）なら IPP 直結。NAT の向こうは、拠点側に小さな代理（同じサーバーを「上流から取りに行く」設定で動かす）を置く。IPP INFRA の `Fetch-Job` / `Fetch-Document` の型に合わせるかは後の論点。
 - **観測**: 構造化ログ（文書の中身は書かない）、`/metrics`（Prometheus のテキスト形式。任意）、キューとジョブの状態の HTTP ページ（小さな静的ページで足りる）。
 
@@ -223,7 +234,8 @@ PDF は「プリンタが直接受けるベクタ形式」の 1 つに過ぎな�
 | | 直結（IPP） | OS のスプーラ経由 | 発見 |
 |---|---|---|---|
 | Windows | 唯一の経路。Windows Ready Print の後は Windows が扱うプリンタは IPP プリンタ（§3.5） | 作らない。IPP の無い機器（メーカードライバの USB 機、ラベル・レシートのドライバ、Windows 共有プリンタ）のために需要が出たら GDI を `print/internal/osspool` に足す。USB 直結の IPP 機は Windows のドライバが握るので対象外（ネットワークで） | mDNS（自前）。Windows のキューの一覧（`EnumPrinters`）は参考表示だけ |
-| macOS | AirPrint のプリンタ（URF か PDF） | CUPS に IPP（`localhost:631`）。キューの一覧は `CUPS-Get-Printers` | mDNS（自前。Bonjour と共存） |
+| macOS | AirPrint のプリンタ（URF か PDF）。足すものは無い | CUPS に IPP（`localhost:631`）。USB 接続も macOS がキューにするので届く。キューの一覧は `CUPS-Get-Printers`。PS 機には CUPS が PDF → PS | mDNS（自前。Bonjour と共存） |
+| iOS / iPadOS | BDF のアプリは作らない。端末からは AirPrint で BDF のサーバーへ（m4。`URF` の TXT、`image/urf`、`ipps`、MDM の AirPrint ペイロード） | — | Bonjour（サーバーが広告）か MDM |
 | Linux | そのまま | CUPS 2.x に IPP（`localhost:631` か `/run/cups/cups.sock`）、CUPS 3 の `cups-local` はドメインソケット。USB は `ipp-usb` の `localhost` | mDNS（自前。Avahi と 5353 を共有するので `SO_REUSEADDR` / `SO_REUSEPORT` で束縛） |
 
 - OS 固有のコードは `print/internal/osspool` に OS ごとの build tag で置く（`contrib/otf` と同じ流儀）。
@@ -273,7 +285,7 @@ cmd/bdfprintd/          サーバー（または bdf printd）
 1. **print-m1 — IPP で手元／LAN の 1 台に印刷する（`bdf print`）**: IPP の符号化とクライアント、`Get-Printer-Attributes`、`Create-Job` / `Send-Document`、`Get-Jobs` / `Get-Job-Attributes` / `Cancel-Job`、`ipps`（初回の指紋）、DNS-SD の探索と `bdf printers`、PDF の送信（既定。ベクタのまま、`pdfbdf`）、PWG Raster の書き手（PDF を受けないプリンタの後ろ盾。帯から流す、モノクロ、両面の裏面、用紙への合わせ方）、形式の自動選択、チケットの主要項目（部数・丁合・両面・用紙・色・解像度・ページ範囲・`SkipRoles`）。CUPS のキュー（macOS / Linux）もこれで印刷できる。
 2. **print-m2 — スプールとサーバー**: ディスクのスプール、キューと組、状態機械、再送と二重印刷の防止、履歴と保持、アカウンティング、HTTP API と CLI クライアント、プリンタの状態の監視、`converter` の入力の変換、`examples/print-server`（帳票を穴埋めして印刷するサンプル）。
 3. **print-m3 — 第 2 の形式と古い搬送路**: PostScript の書き手（第 2 のベクタ経路。平坦化の共通部と一緒に）、Apple Raster、PCLm、`CUPS-Get-Printers` の一覧、9100 の生ソケットと LPD（PDF / PS の素通し）、IPP USB（Linux の `ipp-usb` と macOS。Windows は OS が握るので対象外）。CAD の現場があれば HP-GL/2 の書き手もここ（§3.4）。Windows の OS 経由は作らない（§3.5）。
-4. **print-m4 — サーバーを IPP プリンタとして見せる**: IPP Everywhere のサーバー、DNS-SD の広告、受ける形式（PDF・PWG Raster・URF・JPEG・PNG）、PWG の自己認証テスト（`ipptool`）を通す。拠点の代理（上流から取りに行く）。
+4. **print-m4 — サーバーを IPP プリンタとして見せる**: IPP Everywhere のサーバー、DNS-SD の広告、受ける形式（PDF・PWG Raster・URF・JPEG・PNG）、AirPrint 互換（`URF` の TXT、`ipps`、MDM の AirPrint ペイロード向けの固定 `rp`。§3.6）、PWG の自己認証テスト（`ipptool`）を通す。Windows（WRP）・macOS・iOS・Android・ChromeOS からの印刷を確かめる。拠点の代理（上流から取りに行く）。
 5. **print-m5 — ラベル・レシート・連帳**: ZPL / SBPL / TPCL、ESC/POS、ESC/P の書き手と、USB・シリアル・Bluetooth の搬送路。`.bdf` のページをラベルや行に写す規則は `pattern:label-sheet`、`pattern:roll-receipt`、`pattern:continuous-text-form` から。
 
 m1 と m2 は独立に価値がある（m1 だけで手元の印刷、m2 でサーバー）。m3 以降は現場の機種で順を変える。
@@ -328,6 +340,10 @@ m1 と m2 は独立に価値がある（m1 だけで手元の印刷、m2 でサ�
 - Mopria と PCLm についての議論（Michael Sweet）: https://pwg.org/archives/ipp/2024/021565.html
 - `ipp-usb`: https://man.archlinux.org/man/ipp-usb.8.en
 - `goipp`: https://github.com/OpenPrinting/goipp
+- Apple の CUPS が 2.3.6（2022-05）で止まっていること: https://mjtsai.com/blog/2025/03/26/apples-dormant-cups/ 、OpenPrinting が上流に: https://www.phoronix.com/news/Apple-No-More-CUPS 、CUPS の PPD 拡張の非推奨（`APDialogExtension`、10.14）: https://www.cups.org/doc/spec-ppd.html
+- AirPrint と CUPS（`URF` の TXT キーが必須、PDF / URF を送る）: https://connor.zip/posts/2023-06-08-airprint-with-cups 、https://www.finnie.org/2010/11/13/airprint-and-linux/
+- Apple の MDM の AirPrint ペイロード（IP / FQDN、ResourcePath、Port、Use TLS）: https://support.apple.com/en-gb/guide/mdm/mdm3b4cf515/web
+- macOS 26 Tahoe で古いドライバが入らない例（HP のコミュニティ）: https://h30434.www3.hp.com/t5/Printer-Setup-Software-Drivers/P1102-MacOS-Tahoe-26-2/td-p/9583270
 - Windows の `XPS_PASS`（パイプラインを飛ばす直送）: https://learn.microsoft.com/en-us/windows/win32/printdocs/sending-data-directly-to-an-xps-printer 、v4 ドライバで `RAW` が 0 バイトになる: https://learn.microsoft.com/en-us/previous-versions/troubleshoot/windows/win32/v4-print-driver-raw-mode-pcl-postscript
 - Windows の印刷経路（GDI と XPS、MXDC）: https://learn.microsoft.com/en-us/windows-hardware/drivers/print/windows-print-path-overview 、v4 の描画: https://learn.microsoft.com/et-ee/windows-hardware/drivers/print/v4-driver-rendering-architecture 、OpenXPS: https://learn.microsoft.com/en-us/windows/desktop/printdocs/app-support-for-openxps-printing
 - Universal Print の文書形式（XPS → PDF の変換）: https://learn.microsoft.com/en-us/graph/api/resources/printsettings?view=graph-rest-1.0

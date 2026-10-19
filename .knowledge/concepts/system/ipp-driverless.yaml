@@ -36,7 +36,10 @@ facts:
   airprint:
     owner: Apple（仕様は MFi 向けで非公開）
     format: image/urf（Apple Raster。UNIRAST ヘッダー＋ページごと 32 バイト、RLE）。urf-supported（V1.4、W8、SRGB24、ADOBERGB24、DM1〜DM4、IS1-4、RS300-600、OB10、PQ3-5、CP1 …）。PDF も多くの機種が受ける
-    macos: macOS は AirPrint が標準、PPD は非推奨。中の CUPS（Apple の分岐 2.3 系）が localhost:631 で IPP
+    discovery_requirements: DNS-SD の TXT に URF キーが必ず要る（無いと iOS / macOS の一覧に出ない。pdl に image/urf が無くてもよい）。送る形式は URF、PDF、JPEG。PostScript を pdl から外すと iOS / macOS は PDF か URF を送る
+    ios: iOS / iPadOS は AirPrint しか無い。アプリは UIPrintInteractionController に PDF か画像を渡し、OS が Bonjour で見つけたプリンタに IPP で送る。ドライバも PPD も無く CUPS は外に出ていない。2026 の iOS 26 でも AirPrint の仕組みの変更は見つからず
+    mdm_payload: 別サブネットの端末には MDM の AirPrint ペイロードで配る。IP か FQDN と ResourcePath（_ipps._tcp の rp）が必須、Port と Use TLS（Force TLS）は任意（iOS 11 以降）。ippfind で rp を調べる
+    macos: macOS は AirPrint が標準、PPD のメーカードライバは非推奨（CUPS の lpadmin / lpinfo は everywhere 以外のモデルを非推奨とし、ドライバとバックエンドは将来の版で外すと明記。APDialogExtension は 10.14 から非推奨）。macOS 26 Tahoe では古いメーカーのドライバが入らず AirPrint を案内される機種が増えた（HP のコミュニティ）。中の CUPS は Apple の分岐で 2.3.6（2022-05-25）のまま凍結、Apple は保守のみで上流は OpenPrinting。cupsd が localhost:631 で IPP。アプリの印刷は PDF を cupsd に渡す経路で、PS 機には CUPS が PDF → PS
   mopria:
     owner: Mopria Alliance（標準化団体ではない）
     formats: PCLm、PWG Raster、PDF のいずれか 1 つ以上（Xerox の案内）。Wi-Fi Direct Print Services が PCLm を求める。IPP Everywhere も求めるので PWG Raster は結局要る（Michael Sweet）
@@ -67,6 +70,7 @@ facts:
   go_libraries:
     goipp: OpenPrinting/goipp。IPP メッセージの符号化・復号のみ（搬送は net/http）。BSD-2-Clause。ipp-usb の作者の同系
     mdns: grandcat/zeroconf、brutella/dnssd、hashicorp/mdns。golang.org/x/net/dns/dnsmessage は bdf の依存にある
+  relevance_apple: macOS は AirPrint 直結と CUPS 経由の 2 つとも IPP で、BDF に足すものは無い（USB 接続も macOS がキューにするので届く）。iOS は AirPrint しか無いので、BDF のサーバーを AirPrint のプリンタに見せる（URF の TXT、image/urf、ipps、MDM の固定 rp）のが iOS からの経路になる
   relevance_windows: WRP の後は Windows が扱うプリンタは IPP プリンタなので、BDF は Windows のスプーラを通らずに IPP で直接話せばよく、OS 経由（GDI / EMF / XPS）は要らない。穴は USB 直結（Windows のドライバが USB を握る）。BDF のサーバーを IPP Everywhere のプリンタとして見せれば WRP の Windows がそのまま追加できる
   relevance: BDF は自前のラスタライザを持つので、PWG Raster を自分で作れば OS のドライバにもプリンタの PDF 解釈器にも依らずに「ビューアと同じ絵」を紙に出せる。IPP のクライアントは、プリンタ直結と macOS / Linux の CUPS の両方に効く。サーバーを IPP Everywhere のプリンタとして見せれば、Windows の IPP クラスドライバ / AirPrint / CUPS からドライバなしで投げられる
   unverified:
@@ -77,6 +81,8 @@ facts:
   - Windows の IPP クラスドライバのプリンタに winspool の RAW で PDF / PWG Raster を素通しできるか
   - IPP USB の PWG の文書番号
   - Mopria の必須 PDL の最新（Xerox の案内は PCLm / PWG Raster / PDF）
+  - iOS が pdl に application/pdf のあるプリンタに PDF を送るか（送る形式の選び方の規則。Apple の一次資料は MFi 向けで非公開）
+  - macOS で PPD のキューが動かなくなる版の日付（Tahoe の時点では未発表）
 relations:
 - relation: informs
   to: requirement:print
@@ -160,6 +166,26 @@ assertions:
   authority: observed
   evidence:
     url: https://docs.myq-solution.com/deployment/v1/windows-protected-print-mode
+- predicate: airprint_requires_urf_txt_key
+  value: TXT record URF must be present and non-empty; image/urf need not be in pdl; iOS sends PDF or URF
+  authority: observed
+  evidence:
+    url: https://connor.zip/posts/2023-06-08-airprint-with-cups
+- predicate: apple_mdm_airprint_payload_fields
+  value: IP address or FQDN and resource path required; port and Use TLS optional (iOS 11+)
+  authority: observed
+  evidence:
+    url: https://support.apple.com/en-gb/guide/mdm/mdm3b4cf515/web
+- predicate: apple_cups_frozen
+  value: Apple CUPS 2.3.6, 2022-05-25; OpenPrinting is upstream
+  authority: observed
+  evidence:
+    url: https://mjtsai.com/blog/2025/03/26/apples-dormant-cups/
+- predicate: macos_ppd_drivers_deprecated
+  value: APDialogExtension deprecated as of macOS 10.14; new printers should support AirPrint
+  authority: observed
+  evidence:
+    url: https://www.cups.org/doc/spec-ppd.html
 - predicate: ipp_usb_localhost_host_header
   value: true
   authority: observed
