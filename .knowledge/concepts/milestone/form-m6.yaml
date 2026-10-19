@@ -19,7 +19,7 @@ constraints:
 - 計算はしない。画像とバーコードは第 1 段階では許さない
 non_goals:
 - ESC/P・ESC/POS のテキストモードの書き手（print-m5）
-- 倍角、縦書き、外字の解決
+- 縦書き、外字の解決
 - Office のテンプレートからの格子の推定
 capabilities:
   front-matter:
@@ -31,6 +31,9 @@ capabilities:
   width-filters:
     state: planned
     about: capability:form/text-width-filters
+  double-size:
+    state: planned
+    about: capability:form/text-double-size
   bdf-layout:
     state: planned
     about: capability:form/text-bdf-layout
@@ -49,7 +52,7 @@ acceptance:
     verified_by:
     - text-unit
   s2-width:
-    text: width / right / center が東アジア幅（全角 2 桁）で揃い、はみ出しは切って警告する。幅のないタグは値の長さで伸び縮みし、桁数の超過はコンパイル時に警告
+    text: width / right / center が東アジア幅（全角 2 桁）で揃う。超えたら既定は切らずに警告、| cut で切る、| wrap で次の行に続く（rows なら行が増え、固定ページなら押し下げ、用紙長を超えたらエラー）。幅のないタグは値の長さで伸び縮みし、桁数の超過はコンパイル時に警告
     verified_by:
     - text-unit
   s3-sections:
@@ -65,6 +68,10 @@ acceptance:
     verified_by:
     - text-golden
     - reader-tolerance
+  s7-double-size:
+    text: '{{#_wide}} / {{#_tall}} / {{#_big}} の中の文字が半角 2 桁・全角 4 桁で数えられ、BDF では 2 倍に伸びて描かれ、_tall と _big の行は 2 行を占め、t:text の Part に範囲が残る'
+    verified_by:
+    - text-golden
   s6-bdft:
     text: bdf template compile が format "text" の .bdft を書き、bdf fill が .bdft と .txt のどちらからでも同じ .bdf を出し、bdf template schema がフィールドを出す
     verified_by:
