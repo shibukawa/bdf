@@ -33,7 +33,8 @@ BDF 側の強みをそのまま使う。文書はベクタの命令列なので�
 - ラベル・レシート・ドットインパクト向けの PDL（ZPL、SBPL、TPCL、ESC/POS、ESC/P）。形態の整理は `taxonomy:form-layout-axes` にあり、後の段階（print-m5）。
 - クラウド印刷サービス（Microsoft Universal Print、各社のクラウド）との連携。IPP INFRA の代理（プロキシ）も後。
 - ブラウザ（wasm）からの印刷。ブラウザは `window.print()` の領分で、BDF のビューアからは「サーバーに投げる」で足りる。
-- 課金・部門管理・認証印刷（IC カードで釈放）。履歴は出すが、その上の運用は外の仕事。
+- 課金・部門管理・認証印刷（IC カードで釈放）。履歴は出すが、その上の運用は外の仕事。IPP の属性（`job-password`、`job-account-id`）で渡せる分は渡す。
+- Windows 共有プリンタ（SMB、`\\server\queue`）経由の印刷。Windows の印刷サーバーを義務にしている組織では BDF のサーバーをその代わりに置く。
 - スキャン（eSCL）や FAX。
 - プリンタの管理（ファームウェア、消耗品の発注、SNMP による詳細な監視）。状態は IPP が返す範囲。
 
@@ -161,6 +162,19 @@ Apple の側は Windows より先に「IPP だけ」になっている（2026-10
 - **Android と ChromeOS も同じ側**（参考）。Android の既定の印刷サービスは Mopria（IPP。PDF / PWG Raster / PCLm）、ChromeOS は CUPS の driverless（IPP）。m4 のサーバーはどちらからも「プリンタの追加」で入る。
 - **帰結**: m4 の IPP サーバーは、IPP Everywhere に加えて **AirPrint 互換を要件にする**（`URF` の TXT、`image/urf` の読み手、`ipps`、MDM 向けの固定 `rp`）。これで Windows（WRP）、macOS、iOS、Android、ChromeOS のすべてがドライバなしで BDF のサーバーに投げられる。
 
+### 3.7 まとめ: 3 つの OS も業務用プリンタも IPP が基本
+
+2026-10-19 利用者の確認。**そのとおり**。OS → プリンタの脚は Windows（Ready Print）、macOS（AirPrint と CUPS）、Linux（CUPS）のすべてが IPP になり、BDF → プリンタの脚も IPP 直結にする。業務用の複合機・レーザー（Canon imageRUNNER / Satera、Ricoh IM、Fujifilm Apeos、Kyocera TASKalfa、Konica Minolta bizhub、Sharp、Toshiba e-STUDIO、HP、Xerox、Brother、Epson）は 2010 年代半ば以降の機種がほぼ AirPrint / Mopria を名乗るので、IPP で届き、PDF をそのまま受けるものが多い。サーバーからの大量印刷も同じ IPP で、CUPS や出力管理製品がしていることと同じになる。
+
+IPP が「基本」であって「すべて」ではない点は 4 つ。
+
+1. **古い業務機**（2012 年ごろ以前、低価格のレーザー、IPP を持たない国内メーカーの機種）は 9100 / LPD に PS か PCL か各社の PDL しか受けない。ここは 9100 ＋ PostScript の書き手（m3）で拾い、PS も PCL も無い機種（LIPS / ART / RPCS のみ）は対象外（§3.4）。
+2. **業務機の運用機能**は IPP の属性で届く範囲が機種で違う。暗証番号で留め置く認証印刷は `job-password` / `job-password-encryption`、部門 ID は `job-account-id` / `job-accounting-user-id`（いずれも IPP Enterprise Printing Extensions、PWG 5100.11）、留め置きと解放は `job-hold-until` / `Release-Job`。メーカードライバが PJL で埋めていた部門コードを IPP で受けるかは実機で確かめ、機種ごとの表に書く。IC カードで解放する認証印刷（出力管理製品）はサーバーの側の仕事で、BDF のサーバーはそこへ IPP で渡す。
+3. **組織が Windows の印刷サーバー経由を義務にしている**場合、Windows 共有プリンタ（SMB）には IPP で届かない。BDF のサーバー（m2 / m4）をその代わりに置くか、対象外とする（非ゴール）。
+4. **ラベル・レシート・ドットインパクト・大判プロッタ**は IPP でないことが多い（9100 / USB / シリアルに ZPL / ESC/POS / ESC/P / HP-GL/2）。m5 と HP-GL/2 の書き手で拾う。商業印刷の機械（JDF / ホットフォルダ）は対象外。
+
+出力先の抽象は「搬送路 × 文書形式」のままにして、IPP 以外の搬送路（9100、LPD、USB、シリアル）を後から足せる形を保つ。
+
 ## 4. 要件
 
 ### 4.1 印刷指示（チケット）
@@ -180,6 +194,7 @@ Apple の側は Windows より先に「IPP だけ」になっている（2026-10
 | 仕上げ | `finishings`（ホチキス、パンチ、折り）、`output-bin` | 素通し。`finishings-supported` に無ければ警告 |
 | ジョブの名前と利用者 | `job-name`、`requesting-user-name` | 履歴に残る |
 | 保留と優先 | `job-hold-until`、`job-priority` | スプールが扱う |
+| 認証印刷と部門 ID | `job-password`（＋ `job-password-encryption`）、`job-account-id`、`job-accounting-user-id` | 業務機の留め置き印刷と部門管理（PWG 5100.11）。対応は機種次第で、`printer-attributes` に無ければ警告 |
 | BDF 固有 | ビュー（`-view`）、省くレイヤーの役割（`SkipRoles`。プレ印刷用紙）、モノクロの方式（グレー / 2 値）、フォント（`FontFS` / `FontDirs`）、暗号化文書のパスワード、文書の中の区切り（`-each` のバッチを 1 ジョブにするか文書ごとにするか） | |
 
 ### 4.2 文書の描画と形式

@@ -37,7 +37,8 @@ non_goals:
 - Windows の USB 直結の IPP 機（Windows のドライバが USB を握る。ネットワークで）
 - iOS / iPadOS のネイティブアプリ（gomobile）。iOS からは AirPrint で m4 のサーバーへ、またはビューアからサーバーの API へ
 - ブラウザ（wasm）からの印刷（window.print() の領分。ビューアはサーバーに投げる）
-- 課金・部門管理・認証印刷の運用（履歴は出す）
+- 課金・部門管理・認証印刷の運用（履歴は出す。IPP の job-password / job-account-id で渡せる分は渡す）
+- Windows 共有プリンタ（SMB）経由の印刷。Windows の印刷サーバーを義務にする組織では BDF のサーバーをその代わりに置く
 - スキャン（eSCL）、FAX、プリンタの管理（ファームウェア、消耗品、SNMP の詳細監視）
 open_questions:
   ipp-codec:
@@ -154,6 +155,13 @@ facts:
     android_chromeos: 参考。Android の既定の印刷サービスは Mopria（IPP）、ChromeOS は CUPS の driverless。m4 のサーバーはどちらからも入る
     linux: 直結。CUPS 2.x に IPP（localhost:631 か /run/cups/cups.sock）、CUPS 3 の cups-local はドメインソケット。USB は ipp-usb の localhost。mDNS は Avahi と 5353 を共有（SO_REUSEADDR / SO_REUSEPORT）
     build: print/internal/osspool に OS ごとの build tag。cmd/bdfwasm と converter/all から import しない。CI は 3 OS の go vet と go test
+  enterprise_printers:
+    basis: 3 つの OS も業務用プリンタも IPP が基本（2026-10-19 利用者が確認）。2010 年代半ば以降の複合機・レーザーはほぼ AirPrint / Mopria を名乗り、PDF をそのまま受けるものが多い。サーバーからの大量印刷も同じ IPP
+    not_ipp:
+    - 古い業務機（2012 年ごろ以前、低価格レーザー、IPP を持たない国内機種）は 9100 / LPD に PS / PCL / 各社の PDL。9100 ＋ PostScript の書き手（m3）で拾い、PS も PCL も無い機種は対象外
+    - Windows 共有プリンタ（SMB）には IPP で届かない。BDF のサーバーをその代わりに置くか対象外
+    - ラベル・レシート・ドットインパクト・大判プロッタは 9100 / USB / シリアルに ZPL / ESC/POS / ESC/P / HP-GL/2（m5、HP-GL/2 の書き手）。商業印刷（JDF / ホットフォルダ）は対象外
+    enterprise_attributes: 認証印刷は job-password / job-password-encryption、部門 ID は job-account-id / job-accounting-user-id（PWG 5100.11）、留め置きと解放は job-hold-until / Release-Job。メーカードライバが PJL で埋めていた部門コードを IPP で受けるかは機種ごとに実機で確かめ、表に書く。IC カードで解放する出力管理製品はサーバー側の仕事で、BDF はそこへ IPP で渡す
   budgets:
   - 1 ジョブの大きさ、ページ数、印象数に上限。描画は imagebdf の限界
   - 同時に描くジョブ（キューごとに 1、全体で CPU 数）と同時の接続数
