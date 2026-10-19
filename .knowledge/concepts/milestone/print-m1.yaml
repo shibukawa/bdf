@@ -2,8 +2,8 @@ id: milestone:print-m1
 type: milestone
 title: print-m1 — IPP で手元／LAN の 1 台に .bdf を印刷する（bdf print）
 summary: >-
-  印刷の最初の実装のまとまり。IPP のクライアントと DNS-SD の探索、PWG Raster の書き手（imagebdf の帯から流す）、
-  PDF の送信、主要なチケット項目を、bdf print と bdf printers として通す。プリンタ直結と、macOS / Linux の CUPS のキューの両方。
+  印刷の最初の実装のまとまり。IPP のクライアントと DNS-SD の探索、PDF の送信（既定。ベクタのまま、pdfbdf）、
+  PWG Raster の書き手（PDF を受けないプリンタの後ろ盾。imagebdf の帯から流す）、形式の自動選択、主要なチケット項目を、bdf print と bdf printers として通す。プリンタ直結と、macOS / Linux の CUPS のキューの両方。
   スプールはメモリ上（1 ジョブを送って終わる）。サーバーは print-m2。叙述は knowledge-inputs/print-plan/print-requirements.ja.md §6。
 lifecycle: proposed
 authority: authored
@@ -11,12 +11,12 @@ scope:
   milestone: print-m1
   protocol: ipp
   output:
-  - pwg-raster
   - pdf
+  - pwg-raster
 constraints:
 - OS のドライバを使わない。cgo なし。wasm / TinyGo のビルドに入れない
-- 文書形式は PWG Raster と PDF。URF / PCLm は m3
-- 描画は imagebdf の PagesRows の帯を行の符号化に直結し、ページ全体の画像を持たない
+- 文書形式は PDF（既定。ベクタのまま）と PWG Raster（PDF を受けないプリンタの後ろ盾）。URF / PCLm は m3
+- Raster に落ちるときは imagebdf の PagesRows の帯を行の符号化に直結し、ページ全体の画像を持たない
 - チケットの名前は IPP の属性。ジョブの状態は IPP の job-state
 - IPP の符号化と DNS-SD は自前（requirement:print の open_questions が決まるまでの仮）
 - 同じ文書・同じチケット・同じフォントなら同じ Raster のバイト列
@@ -42,6 +42,9 @@ capabilities:
   pdf-send:
     state: planned
     about: capability:print/pdf-send
+  format-select:
+    state: planned
+    about: capability:print/format-select
   ticket:
     state: planned
     about: capability:print/ticket
@@ -59,11 +62,11 @@ acceptance:
     - fake-printer
     - manual-devices
   s3-raster:
-    text: 文書のページを printer-resolution の PWG Raster にし、自前の読み手で戻すと imagebdf の PageDPI の画像と一致する。モノクロは sgray_8 と sgray_1、両面の裏面は pwg-raster-document-sheet-back に従って回る。用紙への合わせ方（fit / actual / shrink＋自動回転）が効く。A4 600 dpi を帯の記憶量で流す
+    text: PDF を受けないプリンタのために、文書のページを printer-resolution の PWG Raster にし、自前の読み手で戻すと imagebdf の PageDPI の画像と一致する。モノクロは sgray_8 と sgray_1、両面の裏面は pwg-raster-document-sheet-back に従って回る。用紙への合わせ方（fit / actual / shrink＋自動回転）が効く。A4 600 dpi を帯の記憶量で流す
     verified_by:
     - raster-golden
   s4-print:
-    text: bdf print file.bdf -printer ipp://… が Validate-Job → Create-Job → Send-Document で送り、job-state が completed になるまで待って終わる。-copies、-collate、-sides、-media、-source、-mono、-resolution、-pages、-skip-roles、-format pdf が効く。ipps は初回の指紋を記録し、以後の不一致はエラー。converter の入力はその場で変換して印刷する
+    text: bdf print file.bdf -printer ipp://… が Validate-Job → Create-Job → Send-Document で送り、job-state が completed になるまで待って終わる。既定では application/pdf を受けるプリンタに pdfbdf の PDF をベクタのまま送り、受けないプリンタには自動で PWG Raster に落ち、-format pwg-raster で明示できる。-copies、-collate、-sides、-media、-source、-mono、-resolution、-pages、-skip-roles が効く（PDF では IPP の属性でプリンタに任せ、unsupported なら送信側で肩代わり）。ipps は初回の指紋を記録し、以後の不一致はエラー。converter の入力はその場で変換して印刷する
     verified_by:
     - fake-printer
     - cups-queue
@@ -92,11 +95,12 @@ verification:
   manual-devices:
     state: not_run
     method: manual
-    test: 国内で多い機種で PWG Raster と PDF、両面、JIS B5、はがき、トレイを確かめ、機種ごとの癖を .knowledge に記録
+    test: 国内で多い機種で PDF（ベクタ）と PWG Raster、両面、JIS B5、はがき、トレイを確かめ、PDF の絵が違う機種の癖を .knowledge に記録
 open_questions:
   pdf-direct-default:
-    text: PDF 対応のプリンタで auto が Raster を選ぶ既定でよいか（requirement:print の default-format）。m1 の実機の計測で決める
-    state: open
+    text: PDF 対応のプリンタで auto が Raster を選ぶ既定でよいか（requirement:print の default-format）
+    state: answered
+    resolution: PDF（ベクタ）優先に決定。2026-10-19 利用者。Raster は PDF を受けないプリンタの後ろ盾
   chunked-send:
     text: HTTP の chunked 送信を受け付けない IPP 実装があるか。あれば Content-Length のために一時ファイルへ描いてから送る経路を足す
     state: open
@@ -106,12 +110,12 @@ facts:
     - 'S1 IPP の符号化（print/ipp: message.go、attributes.go、FuzzDecode）'
     - 'S2 クライアントと探索（print/ipp: client.go、dnssd.go、cups.go。bdf printers）'
     - 'S3 PWG Raster の書き手（print/raster: pwg.go、reader_test.go。imagebdf の PagesRows から）'
-    - 'S4 チケットと bdf print（print: ticket.go、media.go、select.go。cmd/bdf/print.go）'
+    - 'S4 チケットと形式の選択と bdf print（print: ticket.go、media.go、select.go（PDF → PWG Raster → URF → PCLm）。cmd/bdf/print.go）'
     - S5 失敗の扱いと終了コード、ipps の指紋、converter の入力
     cli_sketch:
       printers: bdf printers（DNS-SD）、bdf printers -url ipp://host/ipp/print（能力）
       print: bdf print -printer ipp://host/ipp/print -sides two-sided-long-edge -media jis_b5_182x257mm -copies 3 -mono invoice.bdf
-      format: bdf print -format pdf …、bdf print -format pwg-raster -resolution 300 …
+      format: 既定は PDF（ベクタ）。bdf print -format pwg-raster -resolution 300 … で Raster に
       cups: bdf print -printer ipp://localhost:631/printers/office …
 relations:
 - relation: part_of

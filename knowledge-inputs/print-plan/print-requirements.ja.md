@@ -14,11 +14,11 @@ BDF の出口は 3 つ揃った。画面（ビューア）、PDF（`vector/pdfbd
 
 ローカル（手元の 1 台に `bdf print`）とプリントサーバー（複数台のリモートプリンタを束ねる常駐プロセス）は、1 と 3 を共有し、2 の有無と大きさが違うだけにする。`bdf print` はメモリ上の小さなスプール（1 ジョブを送って終わる）、サーバーはディスクのスプール（再起動をまたぐ）。
 
-BDF 側の強みをそのまま使う。文書の描画は自前のラスタライザで済むので、プリンタの PDF 解釈器にも OS のドライバにも頼らず、**ビューアと同じ絵**を紙に出せる。同じ文書は内容アドレスで 1 回だけ持てるので、1000 枚の請求書をまとめた `.bdf` も、スプールに置くのは 1 つで足りる。
+BDF 側の強みをそのまま使う。文書はベクタの命令列なので、PDF を受けるプリンタには **ベクタのまま**渡してプリンタの解像度で描かせ（`pdfbdf`）、受けないプリンタには自前のラスタライザで描いて**ビューアと同じ絵**を渡す（`imagebdf`）。どちらも OS のドライバに頼らない。同じ文書は内容アドレスで 1 回だけ持てるので、1000 枚の請求書をまとめた `.bdf` も、スプールに置くのは 1 つで足りる。
 
 ## 1. ゴール
 
-- **G1 手元のプリンタに `.bdf` を印刷できる**: `bdf print invoice.bdf -printer ipp://…` が、OS のドライバを使わずに Go だけで紙を出す。`converter` が読める入力（PDF、Office、画像 …）はその場で変換して印刷する。
+- **G1 手元のプリンタに `.bdf` を印刷できる**: `bdf print invoice.bdf -printer ipp://…` が、OS のドライバを使わずに Go だけで紙を出す。ベクタのまま渡せるプリンタにはベクタのまま渡す。`converter` が読める入力（PDF、Office、画像 …）はその場で変換して印刷する。
 - **G2 Windows、macOS、Linux で同じコード**: プロトコルは OS に寄らないものを主にし、OS のスプーラは補助（後述の層 2）。cgo なし。
 - **G3 プリントサーバー**: 複数のキュー（1 キュー = 1 台、または複数台の組）を持ち、ジョブを受けて順に流し、再起動をまたいで続きから流す。クライアントは CLI と HTTP API。後の段階で、サーバー自身が IPP のプリンタとして見える（各 OS からドライバなしで投げられる）。
 - **G4 帳票の印刷に要る指示が通る**: 部数と丁合、両面（長辺・短辺）、用紙（サイズ・トレイ・種類。JIS B と はがき と 封筒を含む）、モノクロ、ページ範囲、用紙への合わせ方（原寸・収める・自動回転）、プレ印刷用紙向けのレイヤー省略（`SkipRoles`）、ホチキスなどの仕上げの素通し。
@@ -66,7 +66,7 @@ BDF 側の強みをそのまま使う。文書の描画は自前のラスタラ�
 ### 3.2 結論
 
 1. **第 1 の出力先は IPP**（IPP/2.0 の操作、`ipps` の TLS、DNS-SD の探索）。プリンタ直結と、macOS / Linux の CUPS のキューを同じクライアントで扱う。
-2. **第 1 の文書形式は PWG Raster**。IPP Everywhere が必須とし、Mopria も受け、BDF 自身のラスタライザの絵がそのまま紙になる。`PagesRows` の帯をそのまま行の符号化に流せるので、600 dpi でもページ全体の画像を持たない。**PDF** は `pdfbdf` が既にあるので同時に出せるようにし、プリンタの PDF 解釈器に任せたいときと、量の多いバッチで選ぶ。
+2. **第 1 の文書形式は PDF（ベクタのまま）**。文書はベクタの命令列で、`pdfbdf` が既に書ける。プリンタの `document-format-supported` に `application/pdf` があればそれを送り、文字と線はプリンタの解像度で出て、ジョブは小さい。部数・丁合・両面・用紙への合わせ方は IPP の属性でプリンタに任せられる。**PWG Raster は PDF を受けないプリンタのための後ろ盾**（IPP Everywhere が必須とする形式）で、`PagesRows` の帯をそのまま行の符号化に流すので、600 dpi でもページ全体の画像を持たない（2026-10-19 利用者「ベクトルデータもあるのでそちらで印刷できるならそれを優先したい」）。
 3. **Apple Raster（URF）と PCLm は第 2 の形式**。URF だけを名乗る機種（AirPrint 専用の家庭用）と PCLm だけの機種（Mopria の一部）のため。どちらも Raster の書き手の変種で、PWG Raster ができれば小さい。
 4. **OS のスプーラ経由は補助**。Windows は `winspool`（IPP クラスドライバのプリンタと、残っている他社製ドライバのプリンタ）、macOS / Linux は CUPS を IPP で。
 5. **IPP USB は IPP の搬送路の 1 つ**として後で足す（Linux は `ipp-usb` が、Windows と macOS は OS が面倒を見るので、優先度は低い）。
@@ -75,15 +75,25 @@ BDF 側の強みをそのまま使う。文書の描画は自前のラスタラ�
 
 | 形式 | MIME | 要求する規格 | 性質 |
 |---|---|---|---|
-| PWG Raster | `image/pwg-raster` | IPP Everywhere 必須、Mopria | ページごとに 1796 バイトのヘッダー＋行単位の RLE（行の繰り返し数と画素の連）。色空間は `sgray_1`（2 値）、`sgray_8`、`srgb_8` など。`pwg-raster-document-resolution-supported`、`-type-supported`、`-sheet-back`（両面の裏面の向き）をプリンタが名乗る |
-| Apple Raster | `image/urf` | AirPrint | `UNIRAST` ヘッダー＋ページごとに 32 バイト。`urf-supported`（`W8`、`SRGB24`、`DM1`〜`DM4`、`RS300`、`IS1` …）で能力を名乗る |
-| PCLm | `application/PCLm` | Mopria、Wi-Fi Direct | 帯（strip）の画像を並べた制限付き PDF。`pclm-strip-height-preferred`、`pclm-raster-back-side`、`pclm-source-resolution-supported` |
-| PDF | `application/pdf` | （推奨。業務機はほぼ対応） | `pdfbdf` の出力そのまま。ベクタなのでジョブが小さく、プリンタの解像度で文字が出る。絵はプリンタの解釈器次第 |
+| PDF | `application/pdf` | IPP Everywhere 推奨。業務機はほぼ対応 | **ベクタのまま**。`pdfbdf` の出力そのまま。ジョブが小さく、文字と線はプリンタの解像度で出る。絵はプリンタの解釈器次第 |
+| PWG Raster | `image/pwg-raster` | IPP Everywhere 必須、Mopria | ラスタ。ページごとに 1796 バイトのヘッダー＋行単位の RLE（行の繰り返し数と画素の連）。色空間は `sgray_1`（2 値）、`sgray_8`、`srgb_8` など。`pwg-raster-document-resolution-supported`、`-type-supported`、`-sheet-back`（両面の裏面の向き）をプリンタが名乗る |
+| Apple Raster | `image/urf` | AirPrint | ラスタ。`UNIRAST` ヘッダー＋ページごとに 32 バイト。`urf-supported`（`W8`、`SRGB24`、`DM1`〜`DM4`、`RS300`、`IS1` …）で能力を名乗る |
+| PCLm | `application/PCLm` | Mopria、Wi-Fi Direct | ラスタ。帯（strip）の画像を並べた制限付き PDF。`pclm-strip-height-preferred`、`pclm-raster-back-side`、`pclm-source-resolution-supported` |
 | 生の PDL | `application/octet-stream` | — | 9100 と同じ素通し。後の段階 |
 
-既定の選び方（`auto`）は **PWG Raster があればそれ、なければ PDF、どちらも無ければ URF → PCLm**。利用者はキューごと・ジョブごとに `-format pdf` などで上書きできる。Raster を既定にする理由は、絵がプリンタに依らないこと（フォント・透明・ブレンドの解釈の差が出ない）と、モノクロ 2 値で 1/24 の大きさになること。PDF を選びたい場面は、カラーの大量印刷（Raster の 600 dpi カラーは 1 ページ 100 MB の生データ。RLE で縮むが PDF の 100 KB とは桁が違う）と、プリンタの仕上げ機能（面付け・製本）に PDF のページをそのまま渡したいとき。実機で量を測って既定を見直す。
+既定の選び方（`auto`）は **PDF があればそれ（ベクタのまま）、なければ PWG Raster、どちらも無ければ URF → PCLm**。利用者はキューごと・ジョブごとに `-format pwg-raster` などで上書きできる。PDF を優先する理由は、文書がもともとベクタであること（ラスタ化はプリンタの解像度で、プリンタがする方がよい）、ジョブが小さいこと（帳票 1 ページが 100 KB 程度。Raster の 600 dpi カラーは生で 1 ページ 100 MB 超、RLE で縮んでも桁が違う）、部数・両面・合わせ方・仕上げ（面付け・製本）をプリンタに任せられること。Raster に落とす場面は 3 つ。プリンタが PDF を受けないとき（AirPrint 専用の家庭用、Raster 専用の IPP Everywhere 機）、`pdfbdf` が書けない命令（`FILTER`、Canvas 固有の合成）を文書が使っていてビューアの絵を優先したいとき（キューの設定 `raster-if-lossy`。既定は警告のみ）、プリンタの PDF 解釈器に癖があって絵が違うとき（機種ごとの表で `-format pwg-raster` を既定にする）。
 
-Raster に決まる細部:
+driverless の範囲でベクタのまま渡せる形式は PDF だけ（URF・PWG Raster・PCLm はすべてラスタ）。PDF を受けず PostScript を受ける古い機種のために PostScript の書き手（`vector/psbdf`。透明は平坦化が要る）を、Windows の OS 経由のために OpenXPS の書き手（`winspool` に `XPS_PASS` でベクタのまま渡す）を、m3 の候補として残す（§6）。
+
+PDF に決まる細部:
+
+- **部数・丁合・両面・合わせ方・ページ範囲**は IPP の属性（`copies`、`sheet-collate`、`sides`、`print-scaling`、`page-ranges`）でプリンタに任せる。受けない属性（`unsupported`）は送信側で肩代わりする（ページ範囲は `pdfbdf` にページの選択を足す、部数は文書を繰り返す）。
+- **レイヤー省略**（プレ印刷用紙）は `pdfbdf` の `SkipRoles`。
+- **フォント**は `pdfbdf` が埋め込む（名前で参照するフォントは送信側のマシンで探す）。埋め込みを許さないフォントはアウトラインになる。
+- **暗号化した文書**は、`pdfbdf` がまだ PDF の暗号化を書かないので、`ipps` の上を平文の PDF で送る（スプールには暗号化のまま置く）。
+- **同じ絵**: `pdfbdf` は書いた PDF を読み直して元の文書と同じ絵になることをラスタライザで確かめている（Ghostscript と Quartz でも）。実機の解釈器での差は機種ごとに記録する。
+
+Raster に落ちるときの細部:
 
 - **解像度**はプリンタの `printer-resolution-supported` から選ぶ（既定 600 dpi。モノクロ文書は 600、カラーは 300 を推奨値にして、チケットで上書き）。
 - **モノクロ**は `print-color-mode=monochrome` のとき `sgray_8`、プリンタが `black_1` / `sgray_1` を名乗り、文書が線画なら 2 値（`imagebdf.Bilevel`＋`AntialiasOff`）。既定は 8 ビットのグレー（アンチエイリアスを保つ）。
@@ -116,8 +126,8 @@ Raster に決まる細部:
 ### 4.2 文書の描画と形式
 
 - 入力は `.bdf`（単一ファイルと分割形式）と、`converter` が読める形式（変換してから）。サーバーは「何でも紙にする」入口。
-- 描画は `raster/imagebdf` の `PagesRows`（帯）を Raster の行の符号化に直結し、ページ全体の画像を持たない。ページ並列はプリンタへの送信が直列なので帯の並列だけで足りる（`BandWorkers`）。
-- PDF は `pdfbdf.Write` に `SkipRoles`・`Views` を渡すだけ。ページ範囲と部数は IPP の属性で。
+- 既定は PDF。`pdfbdf.Write` に `SkipRoles`・`Views` を渡し、書きながら送る。ページ範囲と部数と両面は IPP の属性で。
+- Raster に落ちるときは `raster/imagebdf` の `PagesRows`（帯）を Raster の行の符号化に直結し、ページ全体の画像を持たない。ページ並列はプリンタへの送信が直列なので帯の並列だけで足りる（`BandWorkers`）。
 - 描画の予算（`imagebdf` の限界と警告）はそのまま。警告はジョブの記録に残す。
 
 ### 4.3 プリンタの発見と能力
@@ -164,7 +174,7 @@ Raster に決まる細部:
 
 | | 直結（IPP） | OS のスプーラ経由 | 発見 |
 |---|---|---|---|
-| Windows | そのまま動く。WPP の環境では IPP プリンタしか無いので、直結が主 | `winspool`（`OpenPrinter` / `StartDocPrinter` / `WritePrinter`。`golang.org/x/sys/windows` の syscall、cgo なし）。IPP クラスドライバのプリンタに RAW で PDF / PWG Raster を素通しできるかは要検証。できなければ GDI の `StartDoc` / `StretchDIBits` に描いた画像を渡す（どのドライバでも動く最後の手段） | mDNS（自前）＋ `EnumPrinters` |
+| Windows | そのまま動く。WPP の環境では IPP プリンタしか無いので、直結が主 | `winspool`（`OpenPrinter` / `StartDocPrinter` / `WritePrinter`。`golang.org/x/sys/windows` の syscall、cgo なし）。IPP クラスドライバのプリンタに RAW で PDF を素通しできるかは要検証。できなければ OpenXPS を書いて `XPS_PASS` で渡す（ベクタのまま。v4 と IPP クラスドライバが受ける）か、GDI の `StartDoc` / `StretchDIBits` に描いた画像を渡す（どのドライバでも動く最後の手段） | mDNS（自前）＋ `EnumPrinters` |
 | macOS | AirPrint のプリンタ（URF か PDF） | CUPS に IPP（`localhost:631`）。キューの一覧は `CUPS-Get-Printers` | mDNS（自前。Bonjour と共存） |
 | Linux | そのまま | CUPS 2.x に IPP（`localhost:631` か `/run/cups/cups.sock`）、CUPS 3 の `cups-local` はドメインソケット。USB は `ipp-usb` の `localhost` | mDNS（自前。Avahi と 5353 を共有するので `SO_REUSEADDR` / `SO_REUSEPORT` で束縛） |
 
@@ -209,9 +219,9 @@ cmd/bdfprintd/          サーバー（または bdf printd）
 
 ## 6. 段階
 
-1. **print-m1 — IPP で手元／LAN の 1 台に印刷する（`bdf print`）**: IPP の符号化とクライアント、`Get-Printer-Attributes`、`Create-Job` / `Send-Document`、`Get-Jobs` / `Get-Job-Attributes` / `Cancel-Job`、`ipps`（初回の指紋）、DNS-SD の探索と `bdf printers`、PWG Raster の書き手（帯から流す、モノクロ、両面の裏面、用紙への合わせ方）、PDF の送信、チケットの主要項目（部数・丁合・両面・用紙・色・解像度・ページ範囲・`SkipRoles`）。CUPS のキュー（macOS / Linux）もこれで印刷できる。
+1. **print-m1 — IPP で手元／LAN の 1 台に印刷する（`bdf print`）**: IPP の符号化とクライアント、`Get-Printer-Attributes`、`Create-Job` / `Send-Document`、`Get-Jobs` / `Get-Job-Attributes` / `Cancel-Job`、`ipps`（初回の指紋）、DNS-SD の探索と `bdf printers`、PDF の送信（既定。ベクタのまま、`pdfbdf`）、PWG Raster の書き手（PDF を受けないプリンタの後ろ盾。帯から流す、モノクロ、両面の裏面、用紙への合わせ方）、形式の自動選択、チケットの主要項目（部数・丁合・両面・用紙・色・解像度・ページ範囲・`SkipRoles`）。CUPS のキュー（macOS / Linux）もこれで印刷できる。
 2. **print-m2 — スプールとサーバー**: ディスクのスプール、キューと組、状態機械、再送と二重印刷の防止、履歴と保持、アカウンティング、HTTP API と CLI クライアント、プリンタの状態の監視、`converter` の入力の変換、`examples/print-server`（帳票を穴埋めして印刷するサンプル）。
-3. **print-m3 — 第 2 の形式と OS のスプーラ**: Apple Raster、PCLm、Windows の `winspool`（と GDI の最後の手段）、`EnumPrinters` / `CUPS-Get-Printers` の一覧、9100 の生ソケットと LPD（PDF の素通し）、IPP USB。
+3. **print-m3 — 第 2 の形式と OS のスプーラ**: Apple Raster、PCLm、Windows の `winspool`（OpenXPS の書き手でベクタのまま渡す経路と、GDI の最後の手段）、`EnumPrinters` / `CUPS-Get-Printers` の一覧、9100 の生ソケットと LPD（PDF の素通し）、IPP USB。PDF を受けず PostScript を受ける古い機種が現場にあれば、PostScript の書き手（ベクタのまま）もここ。
 4. **print-m4 — サーバーを IPP プリンタとして見せる**: IPP Everywhere のサーバー、DNS-SD の広告、受ける形式（PDF・PWG Raster・URF・JPEG・PNG）、PWG の自己認証テスト（`ipptool`）を通す。拠点の代理（上流から取りに行く）。
 5. **print-m5 — ラベル・レシート・連帳**: ZPL / SBPL / TPCL、ESC/POS、ESC/P の書き手と、USB・シリアル・Bluetooth の搬送路。`.bdf` のページをラベルや行に写す規則は `pattern:label-sheet`、`pattern:roll-receipt`、`pattern:continuous-text-form` から。
 
@@ -221,14 +231,14 @@ m1 と m2 は独立に価値がある（m1 だけで手元の印刷、m2 でサ�
 
 - **単体**: IPP の符号化の往復と fuzz、PWG Raster の書き手（自前の読み手で戻して `imagebdf` の画像と一致。golden）、チケット → IPP 属性の写し、スプールの状態機械（落ちた時点ごとの再開）。
 - **結合（CI）**: `ippeveprinter`（libcups の道具。Ubuntu の `cups-ipp-utils`）を偽のプリンタとして起動し、受け取ったファイルを検査する。自前の偽プリンタ（Go）も持ち、依存なしのテストを回す。Ubuntu の runner の CUPS にキューを作って `localhost:631` 経由も確かめる。
-- **実機**: 国内で多い機種（Canon、Epson、Brother、Kyocera、Ricoh、Fujifilm BI、Konica Minolta、HP）で、PWG Raster と PDF、両面、JIS B5、はがき、トレイ指定を手で確かめ、結果を `.knowledge` に記録する（機種ごとの癖の表）。
+- **実機**: 国内で多い機種（Canon、Epson、Brother、Kyocera、Ricoh、Fujifilm BI、Konica Minolta、HP）で、PDF（ベクタ）と PWG Raster、両面、JIS B5、はがき、トレイ指定を手で確かめ、PDF の絵が Raster の絵（＝ビューアの絵）と違う機種は癖として記録し、必要なら Raster を既定にする（機種ごとの表）。
 - **サーバーが IPP プリンタになる段階**: PWG の IPP Everywhere 自己認証テスト（`ippeveselfcert`、`ipptool`）と、Windows の IPP クラスドライバ・macOS の AirPrint・CUPS からの印刷。
 
 ## 8. 未決の論点（決めてほしいこと）
 
 1. **IPP の符号化を自前で書くか、`OpenPrinting/goipp`（BSD-2、符号化のみ）を使うか**。推奨は自前（この repo の流儀。fuzz しやすい。goipp は参照実装としてテストで比べる）。
 2. **DNS-SD を自前で書くか、依存（`grandcat/zeroconf`、`brutella/dnssd`、`hashicorp/mdns`）を使うか**。推奨は自前の最小実装（問い合わせと PTR / SRV / TXT / A / AAAA の解釈。`golang.org/x/net/dns/dnsmessage` が既に依存にある）。広告（m4）も同じ土台。
-3. **既定の文書形式**: PWG Raster 優先（推奨）か PDF 優先か。実機で量と速さを測ってから見直す前提。
+3. **既定の文書形式**: 決定済み（2026-10-19 利用者）。PDF（ベクタのまま）を優先し、PWG Raster は PDF を受けないプリンタの後ろ盾。残る点は、`pdfbdf` が書けない命令を含む文書を自動で Raster に落とすか（案: 既定は警告のみ、キューの設定 `raster-if-lossy` で落とす）。
 4. **サーバーの形**: `bdf printd` のサブコマンドか、`cmd/bdfprintd` の別コマンドか。推奨は別コマンド（`cmd/bdf` を常駐の依存で重くしない）。
 5. **スプールの永続化**: ファイルだけ（推奨）か、組み込みの KV。
 6. **サーバーが `converter` の入力を受けるか**: 受ける（推奨。「何でも紙にする」入口になる）。wasm への影響は無い（サーバーはサーバー）。
