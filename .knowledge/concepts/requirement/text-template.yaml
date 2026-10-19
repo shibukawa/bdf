@@ -1,0 +1,100 @@
+id: requirement:text-template
+type: requirement
+title: 'テキスト帳票テンプレート（form: text。連帳・複写伝票・レシートの「行 × 桁」の格子）'
+summary: >-
+  プレーンテキスト（UTF-8。任意の YAML の前書きに CPI / LPI / 用紙長 / 桁数 / 余白 / ミシン目スキップ、本文が印字像）を
+  帳票テンプレートの 5 つ目の形式にする。同じタグ・同じデータ・同じ CLI・同じ .bdft で、出口は BDF（画面、PDF、IPP）、
+  ESC/P と ESC/POS のテキストモード、プレーンテキストの 4 つ。BDF には印字像の Part（t: text）を持たせ、
+  ドットインパクトのテキストモードを損失なしに作れるようにする。2026-10-19 利用者の提案。叙述は knowledge-inputs/print-plan/text-template.ja.md。
+lifecycle: proposed
+authority: authored
+aliases:
+- テキスト帳票
+- text template
+- 連帳テンプレート
+- form text
+constraints:
+- 既存のタグ（form/tag）、データ（LoadData、-data / -each）、-strict、.bdft、schema、CLI をそのまま使う。テンプレートの形式を 1 つ足すだけ
+- 見たまま。テンプレートの行と桁が印字の行と桁。全角は 2 桁（東アジア幅）。プロポーショナルの組版と折り返しはしない
+- 格子の幾何（cpi、lpi、columns、lines、margin、skip、title）はテンプレートの前書きが持ち、ESC/P の命令に 1:1 で写る
+- できた .bdf から ESC/P のテキストモードを損失なしに作れるよう、印字像（ページごとの行の文字列）と幾何を Part に持つ。読み手は知らない Part を無視してよい（spec §4）
+- 計算はしない（データ側）。画像とバーコードはテキストモードに出せないので第 1 段階では許さない
+- 等幅フォントは font-rules の等幅の連鎖（BIZ UDゴシック → IPAゴシック → Noto Sans Mono CJK JP）。全角は advance で正確に 2 桁に揃える
+non_goals:
+- プロポーショナルフォント、折り返し、箱の収め直し（Office のテンプレートの仕事）
+- 式・計算
+- 外字の自動解決（私用領域は警告。decision:font-rules の外字規則）
+- 縦書き
+- ESC/P のテキストモードの書き手そのもの（print-m5。requirement:print の device_pdl_payloads.escp）
+open_questions:
+  image-representation:
+    text: '印字像を t:"text" の Part（JSON: 幾何、ページごとの行、用紙の層の行）で持つか、MARK の種類を足すか。推奨は Part（spec の変更が小さく、読み手は無視できる）'
+    state: open
+  default-width:
+    text: 幅を書かないタグを値の長さで伸び縮みさせる（Mustache）か、タグの文字数を幅にするか。推奨は前者＋コンパイル時に桁数の超過を警告
+    state: open
+  double-width:
+    text: 倍幅・倍高（ESC/P の ESC W / ESC w、ESC/POS の GS !）を {{#_wide}} の区間で第 1 段階に入れるか
+    state: deferred
+  images-in-bdf-only:
+    text: BDF の出力でだけ {{%}}（画像・バーコード）を許すか。推奨は許さない（形式の約束を単純に保つ）
+    state: open
+  default-mono-font:
+    text: 等幅の既定を BIZ UDゴシック → IPAゴシック → Noto Sans Mono CJK JP の連鎖でよいか
+    state: open
+  section-default:
+    text: 別の行にまたがる区間の既定を slots（Excel と同じ）にするか rows にするか。推奨は Excel と同じ
+    state: open
+facts:
+  format:
+    file: UTF-8 のテキスト。任意の前書き（--- で囲んだ YAML）＋本文。拡張子 .txt。.bdft の format は "text"、src は元のテキスト
+    front_matter: 'cpi（10 / 12 / 15 / 17.1。既定 10）、lpi（6 / 8。既定 6）、columns（既定 80。15 インチの連帳は 136）、lines（用紙長を行数で。0 は長さ可変 = レシート）、margin {left, top}（桁と行）、skip（ミシン目スキップの行数）、title（先頭の行数を各ページに繰り返す）、font（表示の等幅フォント）'
+    detection: UTF-8 のテキストで、--- の前書きで始まるか、タグ {{ を含む（tag.Has）。form.source に足す。FormatText = "text"
+  tags:
+    same: '{{name}}、{{#s}} … {{/s}}、{{^s}}、fmt:、全角の波括弧、\{{、_index / _count / _first / _last / _page / _pages / _blank'
+    width_filters: width:n（左揃え、はみ出しは切って警告）、right:n、center:n。桁は東アジア幅で数える
+    tag_only_lines: 区間のタグだけの行は印字されない（行を占めない）
+    sections: 同じ行 → 行の中の文字の繰り返し。別の行 → 枠（slots。既定。余った行は空行）。| rows は行を増やす（用紙長で改ページ、title を繰り返す）。| pages はページ単位の複製
+    preprinted: '{{#preprinted}} … {{/preprinted}} の行は用紙の絵。BDF では background の層（SkipRoles で抜ける）、テキストモードではチケットが「プレ印刷」なら空行。罫線は罫線素片（JIS X 0208）で書く'
+    page_break: 本文の FF
+  outputs:
+    bdf: fixed View。ページは columns / cpi × lines / lpi インチ（余白込み）。lines 0 は高さ可変の 1 ページ（pattern:roll-receipt）。文字はセルに置き run の advance で揃える。MARK は行に PARAGRAPH、枠に TABLE / CELL
+    text_part: 't: "text" の Part。JSON で幾何（cpi、lpi、columns、lines、margin、skip）、ページごとの行の文字列、用紙の層の行。ESC/P・ESC/POS のテキストモードとプレーンテキストの出力の元'
+    escp_text: ESC @ → ESC C（用紙長）→ ESC N（スキップ）→ ESC 2 / ESC 0（LPI）→ ESC P / M / g（CPI）→ ESC l / Q（余白）→ 行ごとに文字と CR LF → FF。日本語は ESC/P-J の漢字モード（FS & / FS .）で JIS X 0208（golang.org/x/text/encoding/japanese）。変換できない字は警告して 〓。print-m5
+    escpos_text: ESC @ → ESC t → FS & → 行と LF → GS V。桁数は機種のプロファイル（42 / 48）。print-m5
+    plain_text: bdf fill slip.txt -data … out.txt。ページは FF、改行は LF、-param encoding=
+  cli:
+    fill: bdf fill slip.txt -data order.json out.bdf / out.txt
+    compile: bdf template compile slip.txt slip.bdft -sample sample.json、bdf template schema slip.bdft
+    print: bdf print out.bdf -printer … -mode text（print-m5）
+  package_layout:
+    form/text: 前書きと本文の読み込み、幅と揃え、区間の展開、格子への配置、BDF の fixed ページ、t:text の Part、プレーンテキストの出力
+    form/form.go: FormatText の判別と Fill / Compile / Fields の分岐
+    docs: spec.md の parts[].t に text、forms.ja.md に「テキストのテンプレート」
+    print/escp: m5。t:text の Part からテキストモード
+  verification:
+    unit: 前書きと本文、東アジア幅、width / right / center、区間の 3 方式、タグだけの行、rows の改ページと title、fuzz
+    golden: 納品書（固定ページ＋用紙の層）、rows の一覧、pages の複製、レシート（長さ可変）。t:text を戻して本文と比較
+    device: ESC/P の出力を JIS 符号と制御コードの期待値と比較。実機（Epson VP 系）で複写伝票（m5）
+relations:
+- relation: extends
+  to: requirement:form-template
+- relation: realizes
+  to: pattern:continuous-text-form
+- relation: serves
+  to: pattern:roll-receipt
+- relation: serves
+  to: pattern:preprinted-overlay
+- relation: enables
+  to: requirement:print
+- relation: informed_by
+  to: system:dot-impact-escp
+- relation: informed_by
+  to: system:svf
+- relation: depends_on
+  to: decision:font-rules
+- relation: has_milestone
+  to: milestone:form-m6
+history:
+  proposed:
+    summary: 2026-10-19 利用者「ESC/P 用に、プレーンテキストのテンプレートも用意した方が良さそう」。印刷の要件整理（requirement:print の escp-text-mode）で「行 × 桁の格子の印が要る」と分かった直後の提案。同日に要件を整理
