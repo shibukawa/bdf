@@ -6,7 +6,7 @@ summary: >-
   PWG Raster の書き手（PDF を受けないプリンタの後ろ盾。imagebdf の帯から流す）、形式の自動選択、主要なチケット項目を、bdf print と bdf printers として通す。プリンタ直結と、macOS / Linux の CUPS のキューの両方。
   スプールはメモリ上（1 ジョブを送って終わる）。サーバーは print-m2。2026-10-19 利用者が「print-m1 を最初に」と決め、
   ファイル単位の実装案を knowledge-inputs/print-plan/print-m1.ja.md に書いた。要件は print-requirements.ja.md §6。
-lifecycle: accepted
+lifecycle: active
 authority: authored
 scope:
   milestone: print-m1
@@ -29,28 +29,28 @@ non_goals:
 - OAuth、Get-Notifications（任意。機種差が大きいので後）
 capabilities:
   ipp-codec:
-    state: planned
+    state: implemented
     about: capability:print/ipp-codec
   ipp-client:
-    state: planned
+    state: implemented
     about: capability:print/ipp-client
   dns-sd-browse:
-    state: planned
+    state: implemented
     about: capability:print/dns-sd-browse
   pwg-raster-writer:
-    state: planned
+    state: implemented
     about: capability:print/pwg-raster-writer
   pdf-send:
-    state: planned
+    state: implemented
     about: capability:print/pdf-send
   format-select:
-    state: planned
+    state: implemented
     about: capability:print/format-select
   ticket:
-    state: planned
+    state: implemented
     about: capability:print/ticket
   cli-print:
-    state: planned
+    state: implemented
     about: capability:print/cli-print
 acceptance:
   s1-codec:
@@ -78,21 +78,37 @@ acceptance:
     - fake-printer
 verification:
   codec-unit:
-    state: not_run
+    state: passed
     method: unit
-    test: go test ./print/ipp/（往復、FuzzDecode）
+    test: 'go test ./print/ipp/（TestRoundTrip、TestBytes、TestCollectionBytes、TestLimits、TestMalformed、TestEncodeErrors、FuzzDecode）'
+    authority: observed
+    evidence:
+      path: print/ipp/message_test.go
+      locator: '全ての値の型の往復、RFC 8010 の手組みのバイト列、限界、壊れた入力。FuzzDecode 53 万回で失敗なし'
   raster-golden:
-    state: not_run
+    state: passed
     method: unit
-    test: go test ./print/raster/（testdata の文書を Raster にして戻し、imagebdf の画像と比較）
+    test: "go test ./print/raster/ ./raster/imagebdf/ -run 'Place|RoundTrip|Documents|Fit|Back'"
+    authority: observed
+    evidence:
+      path: print/raster/raster_test.go
+      locator: 'black_1 / sgray_1 / sgray_8 / srgb_8 の往復が描いた画素と一致、testdata の 4 文書を 100 dpi で書いて同じ倍率の Region と一致し 2 回書いて同じバイト列。PlaceRows は PageRows と同じ画素、四分の一回転と鏡映は回した画像と端で 7 階調以内。FuzzRead で失敗なし'
   fake-printer:
-    state: not_run
+    state: passed
     method: integration
-    test: 自前の偽 IPP プリンタ（Go）と ippeveprinter（cups-ipp-utils）に対して bdf print を走らせ、受け取ったファイルを検査（.github/workflows/ci.yml）
+    test: "go test ./print/ ./print/ipp/ ./cmd/bdf/ -run 'Print|Printer|Client|Unsupported|Auth|Trust'"
+    authority: observed
+    evidence:
+      path: print/print_test.go
+      locator: 'ipptest に対して PDF、PWG Raster、PDF を拒まれたときの切り替え、部数を作れないプリンタ、受けない属性と -strict、停止・中止・取り消し・待ち時間切れ、両面の裏面（flipped）、レイヤーの省略、bdf print の終了コード 0/2/3/4/5、TOFU（自己署名の証明書 2 枚）'
   cups-queue:
-    state: not_run
+    state: passed
     method: integration
-    test: Ubuntu の runner の CUPS にキューを作り ipp://localhost:631/printers/<名前> に印刷
+    test: '手元で cupsd 2.4.7 の raw のキューと IPP Everywhere のキュー（-m everywhere）に bdf print'
+    authority: observed
+    evidence:
+      path: test/print/ci.sh
+      locator: '2026-10-19 Ubuntu 24.04 の作業環境で、CUPS が Validate-Job・Create-Job・Send-Document を successful-ok で受け、PDF と PWG Raster（150 dpi の A4 3 ページ）をスプールに置き、IPP Everywhere のキューから偽のプリンタまで PDF が届いた。ippeveprinter はこの環境に IPv6 がなく起動しないので、CI（ubuntu-latest）の print ジョブで確かめる'
   manual-devices:
     state: not_run
     method: manual
@@ -111,6 +127,14 @@ open_questions:
 facts:
   delivery:
     plan: knowledge-inputs/print-plan/print-m1.ja.md（2026-10-19）
+    implemented:
+      date: '2026-10-19'
+      commits: [575d3e3 S1 符号化, 618e66e S2 クライアントと探索, b7392ab S3 配置と PWG Raster, 6809903 S4 print と bdf print]
+      changed_from_plan:
+      - 'imagebdf は RegionRows と Options.Rotate ではなく、Place（用紙の画素数、倍率、四分の一回転、位置、鏡映）と PlaceRows にした。両面の裏面の鏡映が要ったため。PageRows と帯の描き方を共有する'
+      - 'page-ranges を送らず、PDF のページの選択（pdfbdf.Options.Pages）だけにした。プリンタごとの page-ranges の扱いの差を避ける'
+      - 待ち時間切れに終了コード 6 を足した
+      - sheet View は印刷ビューが無ければ「シートにはページが無い。Excel は -param views=print」のエラー（m1 の決めどおり）。bdf print は Excel の入力を views=print で変換する
     slices:
     - 'S1 IPP の符号化（print/ipp: message.go、tags.go、attrs.go、testdata、FuzzDecode）。何にも依らない'
     - 'S2 クライアント、Printer（能力）、DNS-SD（QU ビットで一時ポートに単一応答）、ipptest（偽のプリンタ）。bdf printers'

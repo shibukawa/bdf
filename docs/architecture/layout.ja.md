@@ -11,6 +11,7 @@
 | `raster/ebitenginebdf/` | パスだけの Object（数式など）を Ebitengine で描く。Ebitengine に依存するので独自の `go.mod` を持つ別モジュール。`raster/internal/shapes` は Object を塗りと線の図形の並びに展開する共通部分 |
 | `image/formula/` | LaTeX・MathML の数式を組んでパスだけの Object にする公開パッケージ。数式フォント（STIX Two Math）を同梱 |
 | `vector/pdfbdf/` | 文書を PDF に書き出す。命令列を内容ストリームに、文字を埋め込んだフォントの文字に、グループとソフトマスクを透明グループにする。影は `raster/imagebdf` で描いた画像にする。タグ付き PDF（`MARK` 命令から作る構造木）と PDF/A も書く |
+| `print/` | プリンタに印刷する: 印刷指示（IPP の属性の名前のチケット）、送る形式の選択（PDF、受けなければ PWG Raster）、用紙の名前（PWG 5101.1）、ジョブを作って文書を流し、終わるまで待つ。`print/ipp` は IPP のメッセージの読み書き（RFC 8010）、クライアント、能力、mDNS の探索（DNS-SD）、`ipps` の証明書の指紋の記録。`print/ipp/ipptest` はテストのための偽のプリンタ。`print/raster` は PWG Raster の書き手（`raster/imagebdf` の帯から流す）と用紙への配置。`bdf print`・`bdf printers` が使う |
 | `form/` | 帳票のテンプレートをデータで穴埋めする: データの読み込み、テンプレートの判別、データの JSON Schema、コンパイル済みテンプレート（.bdft）。`form/tag` は Office のテンプレート（Excel・Word・PowerPoint）のタグの読み手。`converter/pdfform` は入力欄のある PDF を、`converter/pdfme` は pdfme のテンプレートを埋める。[帳票を作る](../forms.ja.md)を参照 |
 | `thumbnail/` | 文書のサムネイル。文書の種類によるレイアウトと、PNG・JPEG・WebP の書き出し |
 | `internal/` | フォントの探索・計測・サブセット化（`fontdb`）、TrueType/OpenType の読み書きとグリフの輪郭（`sfnt`）、CFF の読み取りとサブセット化（`cff`）、OpenType のレイアウトテーブル GSUB・GPOS・GDEF の読み取り（`otlayout`）。数式の木・読み手（LaTeX、MathML、Office Math）・組版（`mathlayout`）と、Office の XML の木（`xmltree`）。変換器と `imagebdf` が共有する |

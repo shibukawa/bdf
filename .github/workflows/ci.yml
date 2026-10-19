@@ -193,6 +193,35 @@ jobs:
         with:
           name: bdf-conformance
           path: /tmp/bdf-conformance.tar.gz
+  print:
+    # bdf print against printers that are not bdf's own: CUPS's
+    # ippeveprinter (an IPP Everywhere printer) and a CUPS queue of it
+    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.2"
+      - name: CUPS, ippeveprinter and Avahi
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cups cups-ipp-utils cups-filters avahi-daemon
+          sudo systemctl start avahi-daemon cups
+      - run: test/print/ci.sh
+  print-os:
+    # the printing packages build and pass on Windows and macOS too
+    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.2"
+      - run: go vet ./print/... && go test ./print/...
   web:
     if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest

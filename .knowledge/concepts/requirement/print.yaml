@@ -7,7 +7,7 @@ summary: >-
   複数台のリモートプリンタを束ねるプリントサーバーで 1 と 3 を共有する。最初の出力先は IPP（driverless）、
   最初の文書形式は PDF（ベクタのまま。pdfbdf）で、PDF を受けないプリンタには PWG Raster（imagebdf の帯から流す）。Windows / macOS / Linux。
   叙述は knowledge-inputs/print-plan/print-requirements.ja.md（2026-10-19）。
-lifecycle: proposed
+lifecycle: active
 authority: authored
 aliases:
 - 印刷

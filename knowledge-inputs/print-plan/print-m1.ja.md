@@ -187,3 +187,12 @@ S1 と S3 は独立なので並行できる。S4 が合流点。
 - `print.Job`（状態、`job-id`、時刻、警告）と `Ticket` はそのままスプールの制御ファイルの中身になる。
 - `Printer` と TLS の指紋の記録は、キューの設定として保存される。
 - `ipptest` は m2 のキュー・再送・二重印刷の防止のテストにそのまま使う。
+
+## 8. 実装で変わったこと（2026-10-19）
+
+S1〜S5 を実装した（`milestone:print-m1`、`docs/design.md` §3.36）。計画から変えたのは次の 4 つ。
+
+- `imagebdf` には `RegionRows` と `Options.Rotate` ではなく、`Place`（用紙の画素数、倍率、四分の一回転、位置、左右・上下の鏡映）と `PlaceRows` を足した。両面の裏面を鏡映して受けるプリンタ（`pwg-raster-document-sheet-back` の `flipped`）があり、回転だけでは足りなかった。帯の描き方は `PageRows` と共有する。
+- `page-ranges` は送らず、ページの選択は PDF の側（`pdfbdf.Options.Pages`）だけで行う。プリンタごとの扱いの差を避ける。
+- 終了コードに 6（`-wait` のうちに終わらない）を足した。
+- 確かめ方: 作業環境には IPv6 がなく `ippeveprinter` が起動しないので、手元では CUPS 2.4.7 の `cupsd`（raw のキューと IPP Everywhere のキュー）と偽のプリンタで確かめ、`ippeveprinter` は CI の `print` ジョブ（`test/print/ci.sh`）で確かめる。実機での確認（`manual-devices`）はまだ。
