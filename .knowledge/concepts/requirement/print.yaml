@@ -17,7 +17,8 @@ aliases:
 - スプール
 - IPP
 constraints:
-- 出力先の第 1 はプリンタ直結の IPP（IPP/2.0 の操作、ipps、DNS-SD の探索）。macOS / Linux の CUPS のキューも同じクライアントで扱う。OS のスプーラ経由（Windows の winspool）と古いプロトコル（9100、LPD）は補助で、後の段階（2026-10-19 利用者「新しいプロトコルから」）
+- 出力先の第 1 はプリンタ直結の IPP（IPP/2.0 の操作、ipps、DNS-SD の探索）。macOS / Linux の CUPS のキューも同じクライアントで扱う。古いプロトコル（9100、LPD）は補助で、後の段階（2026-10-19 利用者「新しいプロトコルから」）
+- Windows は IPP 直結だけ。OS のスプーラ経由（GDI / EMF / XPS、winspool）は作らない。Windows Ready Print（2026-07 以降、新規のプリンタは IPP クラスドライバが既定）の後は Windows が扱うプリンタは IPP プリンタで、BDF はスプーラを通らずに同じプリンタへ話せる（2026-10-19 利用者が窓の杜の記事を受けて確認）
 - 文書形式の第 1 は PDF（ベクタのまま。pdfbdf の出力をそのまま送り、部数・両面・合わせ方はプリンタに任せる）。プリンタが PDF を受けないときだけ PWG Raster に落とす（imagebdf の PagesRows の帯を行の符号化に直結し、ページ全体の画像を持たない）。URF と PCLm は第 2（2026-10-19 利用者「ベクトルデータもあるのでそちらで印刷できるならそれを優先したい」）
 - チケットの名前は IPP の属性に合わせる（copies、sides、media、media-col、print-color-mode、print-quality、printer-resolution、page-ranges、print-scaling、finishings、job-name …）。Windows の DEVMODE も CUPS のオプションもここから写す
 - ジョブの状態は IPP の job-state（pending / pending-held / processing / processing-stopped / canceled / aborted / completed）と job-state-reasons の語彙をそのまま使う
@@ -32,6 +33,8 @@ non_goals:
 - 各社固有の PDL（PCL 5/6、PostScript、ESC/Page 系）の生成
 - ラベル・レシート・ドットインパクトの PDL（ZPL / SBPL / TPCL / ESC/POS / ESC/P）は print-m5 まで
 - クラウド印刷サービス（Universal Print など）との連携、IPP INFRA の代理（後の論点）
+- Windows の OS のスプーラ経由（GDI / EMF / XPS の書き手、winspool の RAW）。IPP の無い機器（メーカードライバの USB 機、ラベル・レシートのドライバ、Windows 共有プリンタ）のために需要が出たら print/internal/osspool に GDI を足す
+- Windows の USB 直結の IPP 機（Windows のドライバが USB を握る。ネットワークで）
 - ブラウザ（wasm）からの印刷（window.print() の領分。ビューアはサーバーに投げる）
 - 課金・部門管理・認証印刷の運用（履歴は出す）
 - スキャン（eSCL）、FAX、プリンタの管理（ファームウェア、消耗品、SNMP の詳細監視）
@@ -63,7 +66,8 @@ open_questions:
     state: open
   windows-os-path:
     text: Windows の OS 経由の経路を winspool の RAW 素通し（IPP クラスドライバに PDF / PWG Raster を渡せるか要検証）にするか、GDI の StartDoc / StretchDIBits に描いた画像を渡す（どのドライバでも動く）か
-    state: open
+    state: answered
+    resolution: 作らない。2026-10-19 利用者が窓の杜 2026-07-02 の記事（Windows Ready Print が新規プリンタの既定に）を受けて確認。WRP の後は Windows が扱うプリンタは IPP プリンタで、IPP 直結で届く。XPS はパイプラインの内部形式で不要、Universal Print は PDF を受ける。GDI は IPP の無い機器のためだけで需要が出てから。USB 直結の IPP 機は穴で、要るなら XPS_PASS で PDF を直送できるかを実験してから
   password-storage:
     text: 暗号化文書のパスワードを、サーバーの鍵で暗号化して制御ファイルに置く（再起動後も流せる）か、メモリにだけ持つ（再起動で pending-held、理由 password-required）か
     state: open
@@ -71,7 +75,7 @@ open_questions:
     text: 最上位のパッケージ名を print/ にするか printing/ にするか。print は組み込み関数と同名だがパッケージ名が隠すだけで害はない
     state: open
   vector-writers:
-    text: PDF 以外のベクタの書き手の順。推奨は PostScript → EMF（Windows の OS 経由が要るなら先）→ HP-GL/2（CAD の現場があれば）→ OpenXPS（Universal Print を扱うとき）。PCL XL と各社の PDL は作らない
+    text: PDF 以外のベクタの書き手の順。推奨は PostScript → HP-GL/2（CAD の現場があれば）。EMF と OpenXPS は Windows の OS 経由をやめたので外した。PCL XL と各社の PDL は作らない
     state: open
   remote-proxy:
     text: NAT の向こうの拠点のプリンタのために置く代理を、独自の「上流から取りに行く」型にするか、IPP INFRA（Fetch-Job / Fetch-Document）の操作に合わせるか
@@ -100,8 +104,8 @@ facts:
       driverless: ベクタのまま渡せるのは PDF だけ（URF / PWG Raster / PCLm はラスタ）
       direct_pdls: PostScript 3（公開。業務機の純正 PS と互換 KPDL / BR-Script、大判）、PCL XL（HP。仕様は非公開扱い、機種ごとの癖）、PCL 5（文字＋ラスタ＋HP-GL/2）、HP-GL/2（公開。大判プロッタの共通語）、OpenXPS（ECMA-388。Windows の v4 と Universal Print）、各社の PDL（LIPS / ESC/Page / ART / RPCS / NPDL / PRESCRIBE。非公開）、PDF/VT と JDF（商業印刷）
       os_pipelines: Windows は GDI（v3 はそのまま、v4 と IPP クラスドライバは MXDC が XPS に変換。ベクタのまま）と XPS（IPrintDocumentPackageTarget）。RAW は v3 の PS / PCL 素通し用で v4 では 0 バイト。XPS_PASS はパイプラインを飛ばす直送（使わない）。macOS / Linux は CUPS に PDF（PS 機には pdftops がベクタのまま、透明は画像）
-      decision: 第 2 のベクタ経路は PostScript の書き手（vector/psbdf。pdfbdf の構造を写す）。Windows の OS 経由は GDI（＋GDI+）に描く（EMF の書き手 vector/emfbdf を PlayEnhMetaFile で再生、converter/emf で往復テスト）。HP-GL/2 の書き手（vector/hpglbdf）は CAD の出口として価値が高く、converter/hpgl で往復テスト。OpenXPS の書き手は Universal Print を扱うとき。PCL XL と各社の PDL は作らない（PS エミュレーション、Raster、PCL 5 ラスタで逃げる）
-      flatten: vector/internal/flatten。透明グループ・ソフトマスク・ブレンド・FILTER の部分だけを画像にし残りをベクタのまま残す。pdfbdf の影の手法の一般化。PS・HP-GL/2・EMF が共有
+      decision: 第 2 のベクタ経路は PostScript の書き手（vector/psbdf。pdfbdf の構造を写す）。HP-GL/2 の書き手（vector/hpglbdf）は CAD の出口として価値が高く、converter/hpgl で往復テスト。Windows の OS 経由（GDI / EMF / XPS）は作らない（Windows Ready Print の後は IPP 直結で足りる。XPS はパイプラインの内部形式、Universal Print は PDF を受ける）。PCL XL と各社の PDL は作らない（PS エミュレーション、Raster、PCL 5 ラスタで逃げる）
+      flatten: vector/internal/flatten。透明グループ・ソフトマスク・ブレンド・FILTER の部分だけを画像にし残りをベクタのまま残す。pdfbdf の影の手法の一般化。PS と HP-GL/2 が共有
       selection_order: 搬送路と独立に、プリンタが名乗る形式の中から PDF → PS → PWG Raster → URF → PCLm → PCL 5 ラスタ
     pdf_details:
       delegated: copies、sheet-collate、sides、print-scaling、page-ranges は IPP の属性でプリンタに任せる。unsupported なら送信側で肩代わり（ページの選択を pdfbdf に足す、部数は文書を繰り返す）
@@ -143,7 +147,7 @@ facts:
     remote_sites: 直接届くなら IPP 直結。NAT の向こうは拠点側に代理（同じサーバーを上流から取りに行く設定で）
     observability: 構造化ログ（文書の中身は書かない）、任意の /metrics（Prometheus のテキスト）、状態の HTTP ページ
   platforms:
-    windows: 直結の IPP はそのまま。WPP の環境では IPP プリンタしか無い。OS 経由は GDI（＋GDI+）にベクタのまま描く（golang.org/x/sys/windows の syscall、cgo なし。EMF の書き手を PlayEnhMetaFile で再生）。v3 はそのまま、v4 と IPP クラスドライバは MXDC が XPS に変換。v3 には winspool の RAW で PS を素通しする経路も。XPS_PASS は使わない。一覧は EnumPrinters、チケットは DEVMODE
+    windows: IPP 直結が唯一の経路。Windows Ready Print（2026-06-12 発表、6/23 のプレビューから、7 月以降は新規プリンタの既定）の後は Windows が扱うプリンタは IPP プリンタ。OS 経由（GDI / EMF / XPS、winspool）は作らない。USB 直結の IPP 機は Windows のドライバが USB を握るので対象外（ネットワークで。要るなら XPS_PASS で PDF を直送できるかの実験）。EnumPrinters は参考表示だけ。m4 の IPP サーバーは WRP の Windows がそのまま追加できる相手になる（WPP 向けに ipps）
     macos: AirPrint 直結（URF か PDF）。CUPS に IPP（localhost:631）、一覧は CUPS-Get-Printers。mDNS は自前（Bonjour と共存）
     linux: 直結。CUPS 2.x に IPP（localhost:631 か /run/cups/cups.sock）、CUPS 3 の cups-local はドメインソケット。USB は ipp-usb の localhost。mDNS は Avahi と 5353 を共有（SO_REUSEADDR / SO_REUSEPORT）
     build: print/internal/osspool に OS ごとの build tag。cmd/bdfwasm と converter/all から import しない。CI は 3 OS の go vet と go test
@@ -158,18 +162,16 @@ facts:
     print/raster: PWG Raster の書き手。後で URF と PCLm
     print/spool: ジョブ、キュー、状態機械、再送、履歴、アカウンティング
     print/server: HTTP API、設定、監視。後で IPP サーバーと DNS-SD の広告
-    print/internal/osspool: GDI と winspool、CUPS。OS ごとの build tag
+    print/internal/osspool: CUPS の固有操作。Windows は無し（需要が出たら GDI をここに）
     vector/psbdf: PostScript 3 の書き手（pdfbdf の兄弟）
-    vector/emfbdf: EMF の書き手（Windows の GDI に再生）
     vector/hpglbdf: HP-GL/2 ＋ HP RTL の書き手（大判、CAD）
-    vector/xpsbdf: OpenXPS の書き手（後）
     vector/internal/flatten: 透明の平坦化の共通部
     cmd: cmd/bdf の print / printers / jobs と、cmd/bdfprintd（または bdf printd）
   delivery:
     proposed_order:
     - print-m1 IPP で手元／LAN の 1 台に印刷（bdf print）。PDF（既定、ベクタのまま）と PWG Raster（後ろ盾）、形式の自動選択、DNS-SD、ipps、主要なチケット
     - print-m2 スプールとサーバー。キューと組、再送と二重印刷の防止、履歴、HTTP API と CLI、監視、converter の入力、examples/print-server
-    - print-m3 PostScript の書き手（第 2 のベクタ経路）と平坦化、URF と PCLm、Windows の GDI（EMF の書き手と再生、v3 の RAW）、一覧、9100 と LPD の素通し、IPP USB。CAD の現場があれば HP-GL/2 の書き手
+    - print-m3 PostScript の書き手（第 2 のベクタ経路）と平坦化、URF と PCLm、CUPS の一覧、9100 と LPD の素通し、IPP USB（Linux と macOS）。CAD の現場があれば HP-GL/2 の書き手。Windows の OS 経由は無し
     - print-m4 サーバーを IPP Everywhere のプリンタとして見せる。DNS-SD の広告、受ける形式、PWG の自己認証テスト、拠点の代理
     - print-m5 ラベル・レシート・連帳の PDL と USB・シリアル・Bluetooth の搬送路
     independence: m1 と m2 は独立に価値がある。m3 以降は現場の機種で順を変える
@@ -182,7 +184,7 @@ facts:
   - 実機の IPP 実装の癖（copies-supported が 1、media-col-database が巨大、Get-Notifications 非対応、自己署名証明書の期限切れ）。機種ごとの表で吸収する
   - プリンタの PDF 解釈器の差（フォント、透明、ブレンド）で絵が変わる。pdfbdf は既にフォームをページ座標で定義して Ghostscript / Quartz の差を吸収している。機種ごとに確かめ、癖のある機種は Raster を既定にする
   - Raster に落ちる機種ではカラーの大量印刷のジョブが大きい。解像度の既定（カラー 300 dpi）とモノクロで逃がす
-  - Windows の OS 経由は GDI に描くので、埋め込みフォントを AddFontMemResourceEx でプロセスに足すか、文字をパスにする必要がある。α とグラデーションは GDI+ か平坦化
+  - Windows で USB 直結のプリンタに出せない（Windows のドライバが USB を握る）。ネットワークの機種に限る前提を文書に明記する
   - mDNS は OS の責務と重なる（Bonjour、Avahi）。5353 の共有と、企業の網での多播の遮断。単一 DNS の DNS-SD と URL の直接指定を常に残す
   - 調査の一次資料（pwg.org、learn.microsoft.com）が作業環境から開けず、日付と必須形式は二次資料による（system:ipp-driverless の unverified）
 relations:
@@ -215,6 +217,8 @@ relations:
 - relation: has_milestone
   to: milestone:print-m1
 history:
+  windows-ipp-only:
+    summary: 2026-10-19 利用者が窓の杜 2026-07-02 の記事（Windows Ready Print が新規プリンタの既定に）を示して「Windows は IPP だけでよいか、EMF / GDI / XPS は不要か」。IPP 直結だけにし、OS 経由（GDI / EMF / XPS）を計画から外した。USB 直結だけが穴
   vector-paths:
     summary: 2026-10-19 利用者「PDF 以外のベクトルデータを使う仕組みも多いと思う。Microsoft のやつとか」。PDF 以外のベクタの経路（OS のパイプライン、直接受ける PDL、常駐フォーム）を調べて §3.4 にまとめ、PostScript を第 2 のベクタ経路、Windows は GDI、HP-GL/2 を CAD の出口とした。前の版の「OpenXPS を XPS_PASS で渡す」は XPS_PASS がパイプラインを飛ばす直送だと分かり取り下げた
   format-decision:

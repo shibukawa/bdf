@@ -46,7 +46,7 @@ facts:
   resident_forms: PCL のマクロ、PostScript の execform、AFP のオーバーレイ。静的部分を 1 回だけ送る。BDF の共有 Object と同型（system:printer-resident-forms）
   relevance_to_bdf:
   - 第 2 のベクタ経路は PostScript の書き手。pdfbdf の構造（命令列 → 内容、internal/textrun、影のラスタ化）を写し、透明は平坦化の共通部で画像にする
-  - Windows の OS 経由は GDI（＋GDI+）に描く。EMF の書き手を PlayEnhMetaFile で再生すれば converter/emf で往復テストができる。XPS_PASS は使わない
+  - Windows の OS 経由（GDI / EMF / XPS）は作らない。Windows Ready Print の後は Windows が扱うプリンタは IPP プリンタで、IPP 直結で届く。XPS はパイプラインの内部形式、Universal Print は PDF を受ける。GDI は IPP の無い機器のためだけで、需要が出てから（system:ipp-driverless の relevance_windows）
   - HP-GL/2 の書き手は CAD（DXF / JWW / SXF / CGM）の出口。converter/hpgl で往復テスト
   - PCL XL と各社の PDL は作らない。同じ機種の PS エミュレーション、PWG Raster、PCL 5 ラスタで逃げる
   unverified:

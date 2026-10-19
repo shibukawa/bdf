@@ -44,8 +44,8 @@ facts:
   windows:
     ipp_class_driver: 同梱。Mopria ベース。メーカー固有の機能は Print Support App（PSA。Windows 11 24H2 以降）で足す
     driver_end_of_servicing: 2023-09 発表。2026-01-15 以降は Windows Update に新しい他社製ドライバを載せない。2026-07-01 以降は IPP クラスドライバを優先。2027-07-01 以降は他社製ドライバの更新をセキュリティ修正に限る（日付は各社・各ブログの案内から。Microsoft の原文は未確認）
-    wpp: Windows Protected Print。有効にすると他社製ドライバが外れ IPP クラスドライバだけになる。Windows 11 24H2 以降。2026-07 時点で既定は無効、将来の既定化を表明（2027-07 との説あり）
-    ready_print: Windows Ready Print = IPP ドライバ、eSCL スキャン、Universal Print をまとめた Microsoft の推奨経路の呼び名（Canon の案内。2026-06 ごろ）
+    wpp: Windows Protected Print。WRP の上の厳格モード。有効にすると他社製ドライバ・他社製のポートモニタと印刷プロバイダが外れ、非 IPP のドライバと標準 TCP/IP ポートが再起動後に消え（不可逆）、WRP で入らないプリンタは追加できない。Windows 11 24H2 以降。2026-07 時点で既定は無効、将来の既定化を表明（2027-07 との説あり）
+    ready_print: Windows Ready Print（WRP）= Modern Print Platform の改称。IPP クラスドライバ、eSCL スキャン、Universal Print をまとめた Microsoft の推奨経路。2026-06-12 発表、6 月 23 日のプレビュー更新から展開、7 月以降は新しく追加するプリンタの既定のインストール方法（窓の杜 2026-07-02）。導入済みのキューは変わらず、メーカー製ドライバも選べ、グループポリシー「Configure Windows Ready Print driver ranking」で従来の順位に戻せる。IPP クラスドライバは Windows 10 21H2 からネットワークと USB の Mopria 機を扱う
     sharing: Windows は IPP のサーバーを持たない。共有は SMB / RPC。OS 経由は winspool（OpenPrinter / StartDocPrinter / WritePrinter、EnumPrinters、GetJob）
   linux:
     cups2: CUPS 2.4.x（2.4.19 は 2026-04）。driverless コマンドが IPP Everywhere / AirPrint の PPD を生成。localhost:631 と /run/cups/cups.sock
@@ -67,6 +67,7 @@ facts:
   go_libraries:
     goipp: OpenPrinting/goipp。IPP メッセージの符号化・復号のみ（搬送は net/http）。BSD-2-Clause。ipp-usb の作者の同系
     mdns: grandcat/zeroconf、brutella/dnssd、hashicorp/mdns。golang.org/x/net/dns/dnsmessage は bdf の依存にある
+  relevance_windows: WRP の後は Windows が扱うプリンタは IPP プリンタなので、BDF は Windows のスプーラを通らずに IPP で直接話せばよく、OS 経由（GDI / EMF / XPS）は要らない。穴は USB 直結（Windows のドライバが USB を握る）。BDF のサーバーを IPP Everywhere のプリンタとして見せれば WRP の Windows がそのまま追加できる
   relevance: BDF は自前のラスタライザを持つので、PWG Raster を自分で作れば OS のドライバにもプリンタの PDF 解釈器にも依らずに「ビューアと同じ絵」を紙に出せる。IPP のクライアントは、プリンタ直結と macOS / Linux の CUPS の両方に効く。サーバーを IPP Everywhere のプリンタとして見せれば、Windows の IPP クラスドライバ / AirPrint / CUPS からドライバなしで投げられる
   unverified:
   - IPP Everywhere 1.1 の必須形式（PWG Raster と JPEG が必須、PDF が推奨、と記憶。原文未確認）
@@ -144,6 +145,21 @@ assertions:
   authority: observed
   evidence:
     url: https://www.canon-europe.com/support/windows-ready-print/
+- predicate: windows_ready_print_default_for_new_printers
+  value: announced 2026-06-12, rolled out from the 2026-06-23 preview update, default for newly added printers from July 2026; existing queues unchanged; GPO "Configure Windows Ready Print driver ranking"
+  authority: observed
+  evidence:
+    url: https://forest.watch.impress.co.jp/docs/news/2121908.html
+- predicate: windows_ready_print_microsoft_docs
+  value: learn.microsoft.com/ja-jp/windows/modern-print/windows-ready-print
+  authority: observed
+  evidence:
+    url: https://learn.microsoft.com/ja-jp/windows/modern-print/windows-ready-print
+- predicate: wpp_removes_non_ipp_drivers_and_ports
+  value: third-party drivers, port monitors and print providers blocked; non-IPP drivers and standard TCP/IP ports removed after restart
+  authority: observed
+  evidence:
+    url: https://docs.myq-solution.com/deployment/v1/windows-protected-print-mode
 - predicate: ipp_usb_localhost_host_header
   value: true
   authority: observed

@@ -994,7 +994,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 26. **InDesign**: IDML のページ・マスター・図形・画像と、連結したフレームをページをまたいで流れるストーリー。テキストは DrawingML のテキストエンジンに `TextFlow` を足して組む（実装済み、§3.32）。
 27. **適合テスト**: 他の言語の読み手（C の libbdf）のために、入力と期待する扱いを機械可読で配る。期待値は参照実装を走らせて記録する（実装済み、§3.33）。
 28. **帳票**: Excel の印刷のページ（印刷範囲・ページ設定・印刷タイトル・ヘッダーとフッター）と、タグを書いたブックをデータで穴埋めするテンプレート。固定ページ・行が増える表・決まった行数のページ複製の 3 形態を、Excel・Word・PowerPoint のテンプレートで（実装済み、§3.6・§3.34）。BDF から PDF への書き出し（影、タグ付き PDF、PDF/A も含めて実装済み、§3.35）。QR コードとバーコード（実装済み、§3.34）。入力欄のある PDF と pdfme のテンプレートも、テンプレートとして埋められる（実装済み、§3.34）。フォントの対応規則は予定。
-29. **印刷**（予定）: `.bdf` を OS のドライバなしにプリンタへ。最初の出力先は IPP（driverless。プリンタ直結と、macOS・Linux の CUPS のキュー）、最初の文書形式は PDF（ベクタのまま。§3.35）で、PDF を受けないプリンタには PWG Raster（`imagebdf` の帯からそのまま流す）。スプール（キュー、再送、履歴）と、複数台のリモートプリンタを束ねるプリントサーバー。PDF 以外のベクタの経路（PostScript の書き手、Windows の GDI に再生する EMF の書き手、大判プロッタ向けの HP-GL/2 の書き手）、Apple Raster、PCLm、9100 と LPD、ラベル・レシート・連帳の PDL は後の段階。要件の整理は `knowledge-inputs/print-plan/print-requirements.ja.md` と `.knowledge/` の `requirement:print`。
+29. **印刷**（予定）: `.bdf` を OS のドライバなしにプリンタへ。最初の出力先は IPP（driverless。プリンタ直結と、macOS・Linux の CUPS のキュー）、最初の文書形式は PDF（ベクタのまま。§3.35）で、PDF を受けないプリンタには PWG Raster（`imagebdf` の帯からそのまま流す）。スプール（キュー、再送、履歴）と、複数台のリモートプリンタを束ねるプリントサーバー。PDF 以外のベクタの経路（PostScript の書き手、大判プロッタ向けの HP-GL/2 の書き手）、Apple Raster、PCLm、9100 と LPD、ラベル・レシート・連帳の PDL は後の段階。Windows は IPP 直結だけで、OS のスプーラ経由（GDI / XPS）は作らない。要件の整理は `knowledge-inputs/print-plan/print-requirements.ja.md` と `.knowledge/` の `requirement:print`。
 
 ## 9. リポジトリ構成（案）
 
