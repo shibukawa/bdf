@@ -34,6 +34,9 @@ func usage() {
                                      draw a page (bdf thumbnail -h, text -h, render -h for flags)
   bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                      write the pages as a PDF file (bdf pdf -h for flags)
+  bdf print [flags] -printer <url | name> <file.bdf | dir | input>
+                                     print on an IPP printer or a CUPS queue, without a driver:
+                                     as PDF, or as PWG Raster drawn here (bdf print -h for flags)
   bdf printers [flags]               list the IPP printers on the network, the queues of a CUPS
                                      server (-cups), or what a printer supports (-url)
   bdf ls <file.bdf | dir>            list views and parts
@@ -165,6 +168,8 @@ func main() {
 		textCmd(os.Args[2:])
 	case "pdf":
 		pdfCmd(os.Args[2:])
+	case "print":
+		printCmd(os.Args[2:])
 	case "printers":
 		printersCmd(os.Args[2:])
 	case "render":
