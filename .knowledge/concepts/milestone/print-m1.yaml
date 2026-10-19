@@ -4,8 +4,9 @@ title: print-m1 — IPP で手元／LAN の 1 台に .bdf を印刷する（bdf 
 summary: >-
   印刷の最初の実装のまとまり。IPP のクライアントと DNS-SD の探索、PDF の送信（既定。ベクタのまま、pdfbdf）、
   PWG Raster の書き手（PDF を受けないプリンタの後ろ盾。imagebdf の帯から流す）、形式の自動選択、主要なチケット項目を、bdf print と bdf printers として通す。プリンタ直結と、macOS / Linux の CUPS のキューの両方。
-  スプールはメモリ上（1 ジョブを送って終わる）。サーバーは print-m2。叙述は knowledge-inputs/print-plan/print-requirements.ja.md §6。
-lifecycle: proposed
+  スプールはメモリ上（1 ジョブを送って終わる）。サーバーは print-m2。2026-10-19 利用者が「print-m1 を最初に」と決め、
+  ファイル単位の実装案を knowledge-inputs/print-plan/print-m1.ja.md に書いた。要件は print-requirements.ja.md §6。
+lifecycle: accepted
 authority: authored
 scope:
   milestone: print-m1
@@ -101,19 +102,33 @@ open_questions:
     text: PDF 対応のプリンタで auto が Raster を選ぶ既定でよいか（requirement:print の default-format）
     state: answered
     resolution: PDF（ベクタ）優先に決定。2026-10-19 利用者。Raster は PDF を受けないプリンタの後ろ盾
+  sheet-back-transforms:
+    text: pwg-raster-document-sheet-back の flipped / rotated / manual-tumble で裏面に掛ける変換と、ヘッダーの CrossFeedTransform / FeedTransform の値。CUPS の rastertopwg に合わせ、実機で確かめる
+    state: open
   chunked-send:
     text: HTTP の chunked 送信を受け付けない IPP 実装があるか。あれば Content-Length のために一時ファイルへ描いてから送る経路を足す
     state: open
 facts:
   delivery:
+    plan: knowledge-inputs/print-plan/print-m1.ja.md（2026-10-19）
     slices:
-    - 'S1 IPP の符号化（print/ipp: message.go、attributes.go、FuzzDecode）'
-    - 'S2 クライアントと探索（print/ipp: client.go、dnssd.go、cups.go。bdf printers）'
-    - 'S3 PWG Raster の書き手（print/raster: pwg.go、reader_test.go。imagebdf の PagesRows から）'
-    - 'S4 チケットと形式の選択と bdf print（print: ticket.go、media.go、select.go（PDF → PWG Raster → URF → PCLm）。cmd/bdf/print.go）'
-    - S5 失敗の扱いと終了コード、ipps の指紋、converter の入力
+    - 'S1 IPP の符号化（print/ipp: message.go、tags.go、attrs.go、testdata、FuzzDecode）。何にも依らない'
+    - 'S2 クライアント、Printer（能力）、DNS-SD（QU ビットで一時ポートに単一応答）、ipptest（偽のプリンタ）。bdf printers'
+    - 'S3 imagebdf.RegionRows と Options.Rotate、print/raster の書き手と読み手、用紙への配置（fit / actual / shrink、自動回転、裏面の向き）。S1 と並行可'
+    - 'S4 Ticket、media（PWG 5101.1）、select（明示 > PDF > PWG Raster）、doc、print.go、pdfbdf.Options.Pages、bdf print。合流点'
+    - 'S5 失敗の扱いと終了コード、TLS の指紋（TOFU）、Ctrl-C の Cancel-Job、converter の入力、CI の print ジョブ（ippeveprinter と CUPS）、docs'
+    provisional_choices:
+      ipp_codec: 自前（print/ipp/message.go）。goipp は実機の応答を JSON にする参照に使うだけで依存にしない。替えるなら message.go だけ
+      dnssd: '自前の最小実装。224.0.0.251:5353 に QU ビットの PTR を一時ポートから送り、5353 を束縛しない（Avahi / Bonjour と衝突しない）。単一 DNS の DNS-SD は m2 以降'
+      package: print/。改名は import パスの置換だけ
+      imagebdf_additions: RegionRows（Region の帯版。PageRows はその特殊形）と Options.Rotate（0 / 90 / 180 / 270）。描画の行列に前置するだけ
+      pdfbdf_addition: Options.Pages（page-ranges を受けないプリンタのため）
+      trust_store: $XDG_CONFIG_HOME/bdf/printers.json（os.UserConfigDir）。葉の証明書の SHA-256 を printer-uuid か host で
+      exit_codes: 0 completed、1 canceled / aborted / Ctrl-C、2 usage、3 接続と証明書、4 unsupported（-strict）と client-error、5 printer stopped
+      limits: IPP の応答 4 MiB / 属性 10,000 / 値 64 KiB / 深さ 8。DNS-SD 1,000 件。-max-impressions 10,000。-wait 10 分
+      sheet_views: m1 は sheet View に印刷ビューが無ければエラー（PDF 書き出しと同じ扱いは m2）
     cli_sketch:
-      printers: bdf printers（DNS-SD）、bdf printers -url ipp://host/ipp/print（能力）
+      printers: bdf printers（DNS-SD）、bdf printers -url ipp://host/ipp/print（能力）、bdf printers -cups（localhost:631 のキュー）
       print: bdf print -printer ipp://host/ipp/print -sides two-sided-long-edge -media jis_b5_182x257mm -copies 3 -mono invoice.bdf
       format: 既定は PDF（ベクタ）。bdf print -format pwg-raster -resolution 300 … で Raster に
       cups: bdf print -printer ipp://localhost:631/printers/office …

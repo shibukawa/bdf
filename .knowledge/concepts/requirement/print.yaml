@@ -44,9 +44,11 @@ open_questions:
   ipp-codec:
     text: IPP の符号化を自前で書くか、OpenPrinting/goipp（BSD-2、符号化のみ、搬送は net/http）を使うか。推奨は自前（repo の流儀、fuzz しやすい。goipp はテストの参照実装に）
     state: open
+    resolution: print-m1 は暫定で自前（print/ipp/message.go）。替えるなら message.go だけ（knowledge-inputs/print-plan/print-m1.ja.md §0、§6）
   dns-sd:
     text: DNS-SD（mDNS）を自前で書くか、grandcat/zeroconf・brutella/dnssd・hashicorp/mdns を使うか。推奨は自前の最小実装（golang.org/x/net/dns/dnsmessage は既に依存にある）。m4 の広告も同じ土台
     state: open
+    resolution: print-m1 は暫定で自前（QU ビットの問い合わせを一時ポートから。5353 を束縛しない）。替えるなら dnssd.go だけ
   default-format:
     text: 既定の文書形式を PWG Raster 優先（絵がプリンタに依らない、モノクロ 2 値で小さい）にするか PDF 優先（ベクタで小さい、プリンタの解像度で文字が出る）にするか
     state: answered
@@ -76,6 +78,7 @@ open_questions:
   package-name:
     text: 最上位のパッケージ名を print/ にするか printing/ にするか。print は組み込み関数と同名だがパッケージ名が隠すだけで害はない
     state: open
+    resolution: print-m1 は暫定で print/。改名は import パスの置換だけ
   vector-writers:
     text: PDF 以外のベクタの書き手の順。推奨は PostScript → HP-GL/2（CAD の現場があれば）。EMF と OpenXPS は Windows の OS 経由をやめたので外した。PCL XL と各社の PDL は作らない
     state: open
