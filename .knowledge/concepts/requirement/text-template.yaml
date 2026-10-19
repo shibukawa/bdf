@@ -46,7 +46,7 @@ open_questions:
   default-mono-font:
     text: 等幅の既定を BIZ UDゴシック → IPAゴシック → Noto Sans Mono CJK JP の連鎖でよいか
     state: answered
-    resolution: よい。BIZ UDゴシック（Google Fonts の BIZ UDGothic、OFL）を既定にし、ブラウザ内の穴埋めとデモは固定した fonts.gstatic.com の URL から取る（帳票のデモの M PLUS 1p と同じ）。CLI とサーバーは -font-dir / FontFS / システムから。前書きの font: はファミリー名でもローカルのファイルのパスでもよい。2026-10-19 利用者
+    resolution: 'よい。BIZ UDゴシック（Google Fonts の BIZ UDGothic、OFL）を既定にし、ブラウザ内の穴埋めとデモは固定した fonts.gstatic.com の URL から取る（帳票のデモの M PLUS 1p と同じ）。CLI とサーバーは -font-dir / FontFS / システムから。前書きの font: はファミリー名でもローカルのファイルのパスでもよい。2026-10-19 利用者'
   section-default:
     text: 別の行にまたがる区間の既定を slots（Excel と同じ）にするか rows にするか
     state: answered
@@ -66,7 +66,7 @@ facts:
     page_break: 本文の FF
   outputs:
     bdf: fixed View。ページは columns / cpi × lines / lpi インチ（余白込み）。lines 0 は高さ可変の 1 ページ（pattern:roll-receipt）。文字はセルに置き run の advance で揃える。MARK は行に PARAGRAPH、枠に TABLE / CELL
-    fonts: 既定は BIZ UDゴシック（Google Fonts）。ブラウザは固定の gstatic の URL から、CLI / サーバーは -font-dir / FontFS / システムから。font: はファミリー名かローカルのファイルのパス。連鎖は IPAゴシック → Noto Sans Mono CJK JP
+    fonts: '既定は BIZ UDゴシック（Google Fonts）。ブラウザは固定の gstatic の URL から、CLI / サーバーは -font-dir / FontFS / システムから。font: はファミリー名かローカルのファイルのパス。連鎖は IPAゴシック → Noto Sans Mono CJK JP'
     part_vs_mark: Part はコンテナの独立した塊（parts[].t。知らない t は無視される）、MARK は描画命令の列の読み順と構造の印（opcode 0x71）。推奨は Part（仕様の変更が §4 だけ、読み手に要求なし、行をそのまま書ける）。MARK は Office 由来の文書を格子とみなす道が開くが、kind の追加と読み手の確認が要る
     text_part: 't: "text" の Part。JSON で幾何（cpi、lpi、columns、lines、margin、skip）、ページごとの行の文字列、用紙の層の行。ESC/P・ESC/POS のテキストモードとプレーンテキストの出力の元'
     escp_text: ESC @ → ESC C（用紙長）→ ESC N（スキップ）→ ESC 2 / ESC 0（LPI）→ ESC P / M / g（CPI）→ ESC l / Q（余白）→ 行ごとに文字と CR LF → FF。日本語は ESC/P-J の漢字モード（FS & / FS .）で JIS X 0208（golang.org/x/text/encoding/japanese）。変換できない字は警告して 〓。print-m5
