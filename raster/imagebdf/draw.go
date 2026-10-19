@@ -137,6 +137,11 @@ type drawer struct {
 	band  *bandRecord
 	visit int
 	cur   int
+
+	// orient is the turn and mirror of the page on the image (Place):
+	// the offsets of shadows, which are in the units of the page and not
+	// turned by its transforms, turn with the page; nil when upright
+	orient *matrix
 }
 
 // bandRecord is what the first band of a page drawn in bands (see
@@ -527,6 +532,9 @@ func (d *drawer) instr(in bdf.Instr) {
 		}
 		if v := f64(in, 3) * s; !math.IsNaN(v) && !math.IsInf(v, 0) {
 			st.shadowDY = clampF(v)
+		}
+		if o := d.orient; o != nil {
+			st.shadowDX, st.shadowDY = o.apply(st.shadowDX, st.shadowDY)
 		}
 	case bdf.OpFilter:
 		if s, _ := in.Args[0].(string); s != "" && s != "none" {
