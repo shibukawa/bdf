@@ -14,6 +14,12 @@
 // pdfme (the JSON file that its designer saves; converter/pdfme). Their
 // fields are the names that the data has values for.
 //
+// A template is also a text file of the characters of a form on a grid of
+// columns and lines (converter/textform): the continuous forms and slips
+// of dot matrix printers, and receipts. Its tags are those of the Office
+// templates; the form keeps its print image, from which the text modes of
+// printers and plain text are written (package form/textpart).
+//
 //	data, err := form.LoadData(form.Source{FileName: "order.json", Data: order},
 //		form.Source{Name: "items", FileName: "lines.csv", Data: lines})
 //	res, err := form.Fill(template, size, &form.Options{Data: data})
@@ -44,6 +50,7 @@ import (
 	"github.com/shibukawa/bdf/converter/pdfform"
 	"github.com/shibukawa/bdf/converter/pdfme"
 	"github.com/shibukawa/bdf/converter/pptx"
+	"github.com/shibukawa/bdf/converter/textform"
 	"github.com/shibukawa/bdf/converter/xlsx"
 	"github.com/shibukawa/bdf/form/tag"
 )
@@ -75,17 +82,22 @@ type Result struct {
 }
 
 // Formats of templates: the documents of Office with tags in their text,
-// and the files whose fields are what is filled: a PDF with the fields of
-// a form, and a template of pdfme.
+// the files whose fields are what is filled (a PDF with the fields of a
+// form, and a template of pdfme), and text with tags on a grid of columns
+// and lines.
 const (
 	FormatXLSX  = "xlsx"
 	FormatDOCX  = "docx"
 	FormatPPTX  = "pptx"
 	FormatPDF   = "pdf"
 	FormatPDFME = "pdfme"
+	FormatText  = "text"
 )
 
-const notTemplate = "form: the template is not an Excel workbook (.xlsx), a Word document (.docx), a PowerPoint presentation (.pptx), a PDF with form fields (.pdf), a template of pdfme (.json) nor a compiled template (.bdft)"
+const notTemplate = "form: the template is not an Excel workbook (.xlsx), a Word document (.docx), a PowerPoint presentation (.pptx), a PDF with form fields (.pdf), a template of pdfme (.json), a template of text (.txt) nor a compiled template (.bdft)"
+
+// maxTextHead bounds what is read of a file of text to find a tag in it.
+const maxTextHead = 1 << 20
 
 // source finds what a template is: a compiled template gives the template
 // it holds.
@@ -111,6 +123,21 @@ func source(r io.ReaderAt, size int64) (format string, src io.ReaderAt, n int64,
 	}
 	if pdfme.IsTemplate(head) {
 		return FormatPDFME, r, size, nil, nil
+	}
+	if !bytes.HasPrefix(head, []byte("PK\x03\x04")) && textform.IsText(head) {
+		text := head
+		if !textform.IsTemplate(text) && int64(len(head)) < size {
+			// (text whose first tag is after its start)
+			text = make([]byte, min(size, maxTextHead))
+			n, err := r.ReadAt(text, 0)
+			if err != nil && err != io.EOF {
+				return "", nil, 0, nil, fmt.Errorf("form: %w", err)
+			}
+			text = text[:n]
+		}
+		if textform.IsTemplate(text) {
+			return FormatText, r, size, nil, nil
+		}
 	}
 	if !bytes.HasPrefix(head, []byte("PK\x03\x04")) {
 		return "", nil, 0, nil, fmt.Errorf(notTemplate)
@@ -185,6 +212,12 @@ func fill(format string, r io.ReaderAt, size int64, opts *Options) (*Result, err
 			return nil, err
 		}
 		return &Result{Doc: res.Doc, Warnings: res.Warnings, Fields: res.Fields, Format: format}, nil
+	case FormatText:
+		res, err := textform.Fill(r, size, &textform.TemplateData{Data: opts.Data, Strict: opts.Strict, Files: opts.Files, Format: xlsx.Formatter()}, textform.OptionsOf(opts.Convert))
+		if err != nil {
+			return nil, err
+		}
+		return &Result{Doc: res.Doc, Warnings: res.Warnings, Fields: res.Fields, Format: format}, nil
 	}
 	return nil, fmt.Errorf("form: templates of the format %q are not filled", format)
 }
@@ -210,6 +243,8 @@ func Fields(r io.ReaderAt, size int64) ([]tag.Field, error) {
 		return pdfform.Inspect(io.NewSectionReader(src, 0, n), nil)
 	case FormatPDFME:
 		return pdfme.Inspect(src, n)
+	case FormatText:
+		return textform.Inspect(src, n)
 	}
 	return nil, fmt.Errorf("form: templates of the format %q are not read", format)
 }
@@ -306,7 +341,14 @@ func Compile(r io.ReaderAt, size int64, name string, opts *Options) (*Compiled, 
 		o.Data, o.Strict = sample, false
 		opts = &o
 	}
-	if opts.Data != nil {
+	if opts.Data == nil && format == FormatText {
+		// the template as it is, with its tags, on the pages of its paper
+		res, err := textform.Show(bytes.NewReader(data), n, &textform.TemplateData{Files: opts.Files}, textform.OptionsOf(opts.Convert))
+		if err != nil {
+			return nil, err
+		}
+		out.Doc, out.Warnings, out.Template.Fields = res.Doc, res.Warnings, res.Fields
+	} else if opts.Data != nil {
 		res, err := fill(format, bytes.NewReader(data), n, opts)
 		if err != nil {
 			return nil, err

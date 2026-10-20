@@ -219,3 +219,36 @@ func TestCodes(t *testing.T) {
 		t.Error("a value that is no text")
 	}
 }
+
+func TestParseText(t *testing.T) {
+	type widths struct {
+		width           int
+		align, overflow string
+	}
+	for in, want := range map[string]widths{
+		"{{a | width:20}}":                     {20, AlignLeft, ""},
+		"{{a | right:8}}":                      {8, AlignRight, ""},
+		"{{a|center：4|wrap}}":                  {4, AlignCenter, OverflowWrap},
+		`{{a | fmt:"#,##0" | right:10 | cut}}`: {10, AlignRight, OverflowCut},
+		"{{a}}":                                {0, "", ""},
+	} {
+		toks, err := ParseText(in)
+		if err != nil {
+			t.Errorf("ParseText(%q): %v", in, err)
+			continue
+		}
+		if got := (widths{toks[0].Width, toks[0].Align, toks[0].Overflow}); got != want {
+			t.Errorf("ParseText(%q) = %+v, want %+v", in, got, want)
+		}
+	}
+	for _, in := range []string{"{{a | width:0}}", "{{a | width:x}}", "{{a | right:5000}}", "{{a | cut}}", "{{a | width:3 | right:4}}",
+		"{{a | width:3 | cut | cut}}", "{{#a | width:3}}", "{{%a | right:3}}"} {
+		if _, err := ParseText(in); err == nil {
+			t.Errorf("ParseText(%q) takes it", in)
+		}
+	}
+	// the templates of Office have no columns
+	if _, err := Parse("{{a | width:20}}"); err == nil {
+		t.Error("Parse takes width")
+	}
+}

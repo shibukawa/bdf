@@ -53,7 +53,7 @@ async function sampleStyle(page, style) {
   const suffix = style === "modern" ? "-modern" : "";
   const expected = [
     ...["fixed", "rows", "pages"].flatMap((shape) => ["xlsx", "docx", "pptx"].map((format) => `form-${shape}${suffix}.${format}`)),
-    "application.pdf", `pdfme-invoice${suffix}.json`, "pdfme-certificate.json",
+    "application.pdf", `pdfme-invoice${suffix}.json`, "pdfme-certificate.json", "text-slip.txt", "text-receipt.txt",
   ];
   assert.deepEqual(await page.locator("#presets button").evaluateAll((buttons) => buttons.filter((button) => button.checkVisibility()).map((button) => button.title)), expected);
 }

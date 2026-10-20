@@ -1,0 +1,17 @@
+---
+# 出荷明細: a list that grows over pages, its heading repeated
+cpi: 12
+lpi: 8
+columns: 96
+lines: 24
+margin: {left: 3, top: 2}
+skip: 2
+title: 3
+---
+出荷明細 {{no}}                                     出荷日 {{date}}
+コード    品名                              数量        単価          金額
+--------  ------------------------------  ------  ----------  ------------
+{{#items | rows}}
+{{code | width:8}}  {{name | width:30 | cut}}  {{qty | right:6}}  {{price | fmt:"#,##0" | right:10}}  {{amount | fmt:"#,##0" | right:12}}
+{{/items}}
+                                                              合計  {{total | fmt:"#,##0" | right:12}}

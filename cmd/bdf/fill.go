@@ -12,8 +12,10 @@ import (
 	"github.com/klauspost/compress/flate"
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/textform"
 	"github.com/shibukawa/bdf/form"
 	"github.com/shibukawa/bdf/form/tag"
+	"github.com/shibukawa/bdf/form/textpart"
 	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/raster/imagebdf"
 )
@@ -158,7 +160,7 @@ func fill(args []string) {
 	each := fs.String("each", "", "fill the template once for each item of a list, given as -data gives one (file, or name=file to put the item under a name instead of making its values those of the data); the output path names each form with tags: out/{{no}}.bdf")
 	preview := addPreviewFlags(fs)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .bdft> <out.bdf | outdir/>\n  fills a template with data, and writes the form. A template is an Excel workbook, a Word document or a\n  PowerPoint presentation whose text holds tags such as {{name}} (the form is the pages the workbook prints,\n  the pages of the document or the slides), a PDF with form fields or a template of pdfme (.json), whose\n  fields are filled in their places, or a compiled template")
+		fmt.Fprintln(os.Stderr, "usage: bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .txt | .bdft> <out.bdf | out.txt | outdir/>\n  fills a template with data, and writes the form. A template is an Excel workbook, a Word document or a\n  PowerPoint presentation whose text holds tags such as {{name}} (the form is the pages the workbook prints,\n  the pages of the document or the slides), a PDF with form fields or a template of pdfme (.json), whose\n  fields are filled in their places, a template of text (.txt: the characters of a form on a grid of columns\n  and lines), or a compiled template. The form of a template of text is also written as plain text (out.txt;\n  -param encoding=shift_jis, newline=crlf, paper=preprinted)")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -179,6 +181,20 @@ func fill(args []string) {
 		o.Data = data
 		res, err := form.Fill(bytes.NewReader(tpl), int64(len(tpl)), &o)
 		check(err)
+		if strings.EqualFold(filepath.Ext(out), ".txt") {
+			// the print image of a template of text, as plain text
+			im, err := textpart.FromDocument(res.Doc)
+			if err == textpart.ErrNone {
+				f.fail(out + ": only a template of text writes a form as plain text (.txt)")
+			}
+			check(err)
+			b, warnings, err := textform.Plain(im, o.Convert.Params)
+			check(err)
+			f.warn(append(res.Warnings, warnings...))
+			check(os.WriteFile(out, b, 0o644))
+			fmt.Fprintf(os.Stderr, "%s: %d page(s), %d warning(s)\n", out, len(im.Pages), len(res.Warnings)+len(warnings))
+			return
+		}
 		f.finish(res.Doc)
 		f.warn(res.Warnings)
 		pages := 0
@@ -289,14 +305,15 @@ func fileNamePart(v any) string {
 func templateCmd(args []string) {
 	usage := func() {
 		fmt.Fprintln(os.Stderr, `usage:
-  bdf template compile [flags] <template.xlsx | .docx | .pptx | .pdf | .json> <out.bdft>
+  bdf template compile [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .txt> <out.bdft>
                                      check a template and write it as a compiled template: a BDF document
                                      that shows the template (filled with -sample data) and holds it
-  bdf template schema [-json-schema] <template.xlsx | .docx | .pptx | .pdf | .json | .bdft> [out.json]
+  bdf template schema [-json-schema] <template.xlsx | .docx | .pptx | .pdf | .json | .txt | .bdft> [out.json]
                                      write the names that a template asks of data (the names its tags look
                                      up, or its fields), as JSON (with -json-schema: a JSON Schema of the data)
 
-  A template is an Office document with tags, a PDF with form fields, or a template of pdfme (.json).`)
+  A template is an Office document with tags, a PDF with form fields, a template of pdfme (.json), or a
+  template of text (.txt) with tags.`)
 		os.Exit(2)
 	}
 	if len(args) < 1 {
@@ -307,7 +324,7 @@ func templateCmd(args []string) {
 		fs := flag.NewFlagSet("template compile", flag.ExitOnError)
 		f := addFormFlags(fs, "template compile", "sample", "sample data that the pages of the compiled template show the template filled with, given as bdf fill -data gives data (repeatable; default: the pages show the tags, and those of a template of pdfme what its designer left in its fields)")
 		fs.Usage = func() {
-			fmt.Fprintln(os.Stderr, "usage: bdf template compile [flags] <template.xlsx | .docx | .pptx | .pdf | .json> <out.bdft>")
+			fmt.Fprintln(os.Stderr, "usage: bdf template compile [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .txt> <out.bdft>")
 			fs.PrintDefaults()
 		}
 		fs.Parse(args[1:])
@@ -345,7 +362,7 @@ func templateCmd(args []string) {
 		var samples stringList
 		fs.Var(&samples, "sample", "with -json-schema: sample data, given as bdf fill -data gives data (repeatable), which tells what the tags do not: where a name is, and the type of its value (default: the schema that a compiled template holds, that of its sample)")
 		fs.Usage = func() {
-			fmt.Fprintln(os.Stderr, "usage: bdf template schema [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .bdft> [out.json]")
+			fmt.Fprintln(os.Stderr, "usage: bdf template schema [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .txt | .bdft> [out.json]")
 			fs.PrintDefaults()
 		}
 		fs.Parse(args[1:])

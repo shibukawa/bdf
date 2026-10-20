@@ -3,9 +3,9 @@
 ```
 bdf generate [flags] <input> <out.bdf | dir/>
                                    convert a document or a drawing (bdf generate -h for flags and formats)
-bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .bdft> <out.bdf | dir/>
+bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .txt | .bdft> <out.bdf | out.txt | dir/>
                                    fill a template of a form with data: an Office document with tags, a
-                                   PDF with form fields, a template of pdfme (bdf fill -h for flags)
+                                   PDF with form fields, a template of pdfme, a template of text (bdf fill -h for flags)
 bdf template compile [flags] <template> <out.bdft>
 bdf template schema [-json-schema] <template> [out.json]
                                    check a template and write it compiled; write what it asks of data
@@ -57,7 +57,7 @@ bdf generate -password-file pw.txt secret.xlsx out.bdf  # a protected input
 
 ## fill, template
 
-Fill a template of a form (an Excel workbook, a Word document or a PowerPoint presentation whose text holds tags) with data. The format is told from the content. See [Making forms](../forms.md) for how to write one.
+Fill a template of a form (an Excel workbook, a Word document or a PowerPoint presentation whose text holds tags, a PDF with form fields, a template of pdfme, or a text file of the lines of a form with tags) with data. The format is told from the content. See [Making forms](../forms.md) for how to write one.
 
 ```sh
 bdf fill -data order.yaml -data items=lines.csv invoice.xlsx invoice.bdf   # fill, as a document of the printed pages
@@ -68,9 +68,11 @@ bdf template schema invoice.bdft                                           # the
 bdf template schema -json-schema invoice.xlsx                              # the JSON Schema of the data, to make a form of
 bdf fill -data applicant.json application.pdf application.bdf              # a PDF with form fields: the values in the places of its fields
 bdf fill -data invoice.json pdfme-template.json invoice.bdf                # a template of pdfme, as its generator fills it
+bdf fill -data order.json slip.txt slip.bdf                                # a template of text: characters on a grid of columns and lines
+bdf fill -data order.json -param encoding=shift_jis slip.txt slip.txt      # the form of a template of text as plain text
 ```
 
-`-data` is a JSON or YAML object (`file`) or a value under a name (`name=file`; a CSV or TSV file or the sheets of a workbook are lists of objects), and repeats. `-strict` makes a tag whose name the data lacks an error, and `-files` names the directory of the pictures the data names. The font and image flags (`-font-dir`, `-no-system-fonts`, `-fonts`, `-images` …), `-param` and `-pages` mean what they mean for `generate` (`-pages` selects the sheets of a workbook, the slides of a presentation's template, and the pages of the form of a Word template). A `.bdft` is a BDF document: `ls`, `thumbnail` and `render` open it as it is.
+`-data` is a JSON or YAML object (`file`) or a value under a name (`name=file`; a CSV or TSV file or the sheets of a workbook are lists of objects), and repeats. `-strict` makes a tag whose name the data lacks an error, and `-files` names the directory of the pictures the data names. The font and image flags (`-font-dir`, `-no-system-fonts`, `-fonts`, `-images` …), `-param` and `-pages` mean what they mean for `generate` (`-pages` selects the sheets of a workbook, the slides of a presentation's template, and the pages of the form of a Word template or a template of text). An output path ending in `.txt` writes the form of a template of text as plain text, with `-param encoding=`, `newline=crlf` and `paper=preprinted` ([Templates of text](../forms.md#templates-of-text)). A `.bdft` is a BDF document: `ls`, `thumbnail` and `render` open it as it is.
 
 ## pdf
 

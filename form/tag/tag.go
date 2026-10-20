@@ -12,6 +12,10 @@
 //	{{%url | qr}}            a QR code of a value ({{%url | qr:H}}, with the level of error correction)
 //	{{%jan | barcode:ean13}} a barcode of a value (the symbologies of image/barcode)
 //
+// In a template of plain text (ParseText) a value may take a number of
+// columns: {{name | width:20}} (on the left of them), {{no | right:8}},
+// {{title | center:30}}, with | cut or | wrap for a value that is wider.
+//
 // A section may say how it repeats what a template has between its tags
 // ({{#items | pages}}; see Token.Mode). The braces, the marks after them
 // and the quotes may be the full-width or typographic ones that input
@@ -65,6 +69,29 @@ const (
 	ModePages = "pages"
 )
 
+// Alignments of values in their columns (Token.Align), in templates of
+// text.
+const (
+	AlignLeft   = "left"
+	AlignRight  = "right"
+	AlignCenter = "center"
+)
+
+// What is done with a value wider than its columns (Token.Overflow), in
+// templates of text.
+const (
+	// OverflowKeep writes it whole, with a warning: the line is longer.
+	OverflowKeep = ""
+	// OverflowCut writes the columns it has room for.
+	OverflowCut = "cut"
+	// OverflowWrap writes the rest of it on the lines that follow, in the
+	// same columns.
+	OverflowWrap = "wrap"
+)
+
+// MaxWidth bounds the columns of a value (Token.Width).
+const MaxWidth = 4096
+
 // Fits of pictures (Token.Fit).
 const (
 	FitContain = "contain"
@@ -85,6 +112,13 @@ type Token struct {
 	// an empty one from none.
 	Format    string
 	HasFormat bool
+	// Width is the columns a Value takes in a template of text (width:n,
+	// right:n, center:n; 0 for the columns of its value), Align how it is
+	// placed in them (AlignLeft …), and Overflow what is done with a
+	// value wider than them (OverflowKeep …). Only ParseText reads them.
+	Width    int
+	Align    string
+	Overflow string
 	// Mode is how an Open repeats ("" for the default of where it is).
 	Mode string
 	// Fit is how an Image fills its place ("" is FitContain).
@@ -129,7 +163,14 @@ func Has(s string) bool {
 }
 
 // Parse splits text into text and tags.
-func Parse(s string) ([]Token, error) {
+func Parse(s string) ([]Token, error) { return parse(s, false) }
+
+// ParseText splits the text of a template of plain text into text and
+// tags: those of Parse, whose values may also take a number of columns
+// (width:n, right:n, center:n, with cut or wrap).
+func ParseText(s string) ([]Token, error) { return parse(s, true) }
+
+func parse(s string, text bool) ([]Token, error) {
 	var out []Token
 	var lit strings.Builder
 	litPos := 0
@@ -169,7 +210,7 @@ func Parse(s string) ([]Token, error) {
 		if end-start > MaxTagLen {
 			return nil, errorf(i, "the tag %s is longer than %d bytes", clip(s[i:]), MaxTagLen)
 		}
-		tok, err := parseTag(s[start:end], i)
+		tok, err := parseTag(s[start:end], i, text)
 		if err != nil {
 			return nil, err
 		}
@@ -252,7 +293,7 @@ func clip(s string) string {
 func space(r rune) bool { return unicode.IsSpace(r) || r == '　' }
 
 // parseTag reads what is between the braces of a tag at pos.
-func parseTag(body string, pos int) (Token, error) {
+func parseTag(body string, pos int, text bool) (Token, error) {
 	tok := Token{Kind: Value}
 	body = strings.TrimFunc(body, space)
 	if r, n := utf8.DecodeRuneInString(body); n > 0 {
@@ -305,6 +346,17 @@ func parseTag(body string, pos int) (Token, error) {
 			tok.Code = barcode.Kind(arg)
 		case name == "quiet" && tok.Kind == Image && hasArg && quietArg(arg) >= 0:
 			tok.Quiet, tok.HasQuiet = quietArg(arg), true
+		case text && tok.Kind == Value && hasArg && (name == "width" || name == AlignRight || name == AlignCenter) && tok.Width == 0:
+			n, err := strconv.Atoi(arg)
+			if err != nil || n < 1 || n > MaxWidth {
+				return tok, errorf(pos, "the tag {{%s}} takes columns from 1 to %d: %s", tok.Name, MaxWidth, strings.TrimFunc(f, space))
+			}
+			tok.Width, tok.Align = n, AlignLeft
+			if name != "width" {
+				tok.Align = name
+			}
+		case text && tok.Kind == Value && !hasArg && (name == OverflowCut || name == OverflowWrap) && tok.Overflow == "":
+			tok.Overflow = name
 		case (tok.Kind == Open || tok.Kind == Inverted) && !hasArg && (name == ModeRows || name == ModeSlots || name == ModePages || name == "block"):
 			if name == "block" {
 				name = ModeRows
@@ -313,6 +365,9 @@ func parseTag(body string, pos int) (Token, error) {
 		default:
 			return tok, errorf(pos, "the tag {{%s}} has an option it does not take: %s", tok.Name, strings.TrimFunc(f, space))
 		}
+	}
+	if tok.Overflow != "" && tok.Width == 0 {
+		return tok, errorf(pos, "the tag {{%s}} takes %s with its columns only (width:n, right:n or center:n)", tok.Name, tok.Overflow)
 	}
 	return tok, nil
 }

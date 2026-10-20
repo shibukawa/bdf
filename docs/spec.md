@@ -270,7 +270,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 平文の完全な manifest は `bdf: 1` と `opset: 1` を持つ。暗号化文書の外側の manifest は `bdf: 1` と暗号化情報、封印された Part 一覧だけを持ち、`opset` と `views` は封印された内側の manifest に置く。manifest の `opset` は読み手の早期判定用の補助情報で、省略または `0` なら読み手は Object ごとの値を使う。読み手は未知の任意メンバーを無視してよいが、この仕様で必須と定めたメンバーの欠落や不正値を受け入れてはならない。
 
-`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx` / `seq` / `audio`（§4.4）/ `tpl` と `src`（§4.5）。暗号化した文書の外側の manifest では `sealed`（§3.5）。読み手は、どの View や Object からも参照されない Part を読み込まなくてよい。知らない `t` の Part も同じで、文書を開く妨げにしてはならない。
+`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx` / `seq` / `audio`（§4.4）/ `tpl` と `src`（§4.5）/ `text`（テキストのテンプレートで作った帳票の印字像。行と桁の格子の幾何と、ページごとの行の文字、プレ印刷の用紙と倍角の範囲を持つ UTF-8 の JSON。プリンタのテキストモードとプレーンテキストの書き出しが使う。形は Go の package `form/textpart` が定める）。暗号化した文書の外側の manifest では `sealed`（§3.5）。読み手は、どの View や Object からも参照されない Part を読み込まなくてよい。知らない `t` の Part も同じで、文書を開く妨げにしてはならない。
 
 **数値の範囲** — manifest の数値は、読み手のループの回数と確保する大きさ（範囲に入る Tile、シートのグリッド線、連続モードの帯）を決める。読み手は文書を開くときに一度だけ確かめ、範囲の外の値を持つ文書は不正として開かない。
 
@@ -476,7 +476,7 @@ cue ×n（時刻順）:
 ```jsonc
 {
   "version": 1,                 // この記述の版
-  "format": "xlsx",             // src の形式（"xlsx" / "docx" / "pptx" / "pdf" / "pdfme"）
+  "format": "xlsx",             // src の形式（"xlsx" / "docx" / "pptx" / "pdf" / "pdfme" / "text"）
   "name": "invoice.xlsx",       // 元のファイル名（任意）
   "source": "cbd3…",            // src の Part のハッシュ
   "fields": [                   // タグが引く名前
@@ -488,12 +488,12 @@ cue ×n（時刻順）:
 }
 ```
 
-- `kind` は `value` / `section` / `image`。`image` の `code` は、その場所に画像ではなく値の記号を描くことを示す（`qr`、`ean13`、`ean8`、`upca`、`code39`、`code128`、`gs1-128`、`itf`、`itf14`、`nw7`）。`in` はそのタグを囲む区間の名前（外側から）。`mode` は区間が行（段落、スライド）を繰り返す方法（`rows` / `slots` / `pages`）、`slots` は `slots` の区間が持つ行数。`at` はタグのある場所で、書き方は `src` の形式による（Excel はセルの番地、Word は `paragraph 3` や `table 1, row 2, cell 1`、PowerPoint は `slide 2: 図形の名前`）。
+- `kind` は `value` / `section` / `image`。`image` の `code` は、その場所に画像ではなく値の記号を描くことを示す（`qr`、`ean13`、`ean8`、`upca`、`code39`、`code128`、`gs1-128`、`itf`、`itf14`、`nw7`）。`in` はそのタグを囲む区間の名前（外側から）。`mode` は区間が行（段落、スライド）を繰り返す方法（`rows` / `slots` / `pages`）、`slots` は `slots` の区間が持つ行数。`at` はタグのある場所で、書き方は `src` の形式による（Excel はセルの番地、Word は `paragraph 3` や `table 1, row 2, cell 1`、PowerPoint は `slide 2: 図形の名前`、テキストは `line 12`）。
 - `name` が `"."` の `value` は、それを囲む区間の項目そのものを書くタグ（`{{.}}`）で、その区間の項目がオブジェクトではなく値であることを示す。
 - `format` が `pdf`（入力欄を持つ PDF）と `pdfme`（pdfme のテンプレートの JSON）の `src` は、タグではなく場所の決まったフィールドを持つ。`fields` はそのフィールドで、`name` のドットはオブジェクトの入れ子を表す（`applicant.name`）。フィールドが自分について知っていることを、次の任意の項目で書く: `type`（値の型。`string` / `number` / `boolean` / `date` / `date-time`）、`options`（選択肢の値）と `labels`（その表示名。`options` と同じ順）、`label`（人に見せる名前）、`default`（テンプレートに入っている値）、`maxLength`（最大の文字数）、`multiline`（複数行のテキスト）。`at` は `page 2` のように書く。
 - `schema` は、データの形を JSON Schema（2020-12）で書いたもの。`fields` と `sample` から作られ、プロパティは `fields` の順に並ぶ。区間は配列・オブジェクト・真偽値のどれか、値は文字列か数値として書かれ、各プロパティの `x-bdf` に `fields` の `kind`・`format`・`mode`・`slots`・`code`・`at`・`labels`・`multiline` が入る（`type` は型と `format` に、`options` は `enum` に、`default`・`maxLength` は同じ名前のキーワードに、`label` は `title` になる）。入力フォームを作る処理系は、`src` を読まずにこれを使える。`schema` のない記述では、`fields` から作る。
 - どの View もこの 2 つの Part を参照しない。文書の読み手はこれらを無視する。穴埋めをする処理系だけが読み、`src` をデータで穴埋めして、別の文書を作る。
-- 穴埋めの規則（タグの書き方、行の繰り返し）はこの仕様の範囲外で、`src` の形式ごとに処理系が定める（Go の実装は package `form`、形式ごとには `converter/xlsx`・`converter/docx`・`converter/pptx`・`converter/pdfform`・`converter/pdfme` の `Fill`）。
+- 穴埋めの規則（タグの書き方、行の繰り返し）はこの仕様の範囲外で、`src` の形式ごとに処理系が定める（Go の実装は package `form`、形式ごとには `converter/xlsx`・`converter/docx`・`converter/pptx`・`converter/pdfform`・`converter/pdfme`・`converter/textform` の `Fill`）。
 - 1 つの文書が持つ `tpl` は 1 つまで。暗号化した文書では、ほかの Part と同じく封印される。
 
 ## 5. Object Part

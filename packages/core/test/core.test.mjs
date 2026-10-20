@@ -239,3 +239,24 @@ test("compiled template opens as a document", async () => {
   assert.equal(def.format, "xlsx");
   assert.ok(def.fields.some((f) => f.name === "rows" && f.mode === "slots" && f.slots === 10));
 });
+
+// A form filled from a template of text has the print image of its pages
+// as a part of its own (t "text", docs/spec.md §4), which no view refers
+// to: the document opens and draws without it.
+test("form of text opens with its print image aside", async () => {
+  const bytes = new Uint8Array(await readFile(new URL("testdata/form/text-slip.bdf", root)));
+  const doc = await BdfDocument.open(new BufferSource(bytes));
+  assert.ok(doc.manifest.parts.some((p) => p.t === "text"));
+  const view = doc.view("pages");
+  assert.equal(view.kind, "fixed");
+  assert.equal(view.pages.length, 1);
+  assert.deepEqual(view.pages[0].layers.map((l) => l.role), ["background", "body"]);
+  const body = view.pages[0].layers.find((l) => l.role === "body");
+  const text = extractText(await doc.ensure(body.obj), (h) => doc.objectSync(h)).map((r) => r.text).join(" ");
+  assert.match(text, /株式会社サンプル商事/);
+  assert.match(text, /15,890/);
+  const image = JSON.parse(new TextDecoder().decode(await doc.part(doc.manifest.parts.find((p) => p.t === "text").h)));
+  assert.equal(image.version, 1);
+  assert.equal(image.columns, 80);
+  assert.ok(image.pages[0].lines.some((l) => l.paper && l.text.startsWith("┌")));
+});

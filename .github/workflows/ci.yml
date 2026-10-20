@@ -81,6 +81,15 @@ jobs:
             go run ./cmd/bdf fill -q -font-dir converter/pptx/testdata/fonts -no-system-fonts -data "test/pdfme/data/$n.json" "converter/pdfme/testdata/$n.json" "/tmp/form-pdfme-$n.bdf"
             check_fixture "/tmp/form-pdfme-$n.bdf" "testdata/form/pdfme-$n.bdf"
           done
+          # the templates of text: forms on a grid of columns and lines, and one as plain text in Shift_JIS
+          for n in slip rows pages receipt; do
+            go run ./cmd/bdf fill -q -font-dir converter/textform/testdata/fonts -no-system-fonts -data "test/text/data/$n.json" "converter/textform/testdata/$n.txt" "/tmp/form-text-$n.bdf"
+            check_fixture "/tmp/form-text-$n.bdf" "testdata/form/text-$n.bdf"
+          done
+          go run ./cmd/bdf template compile -q -font-dir converter/textform/testdata/fonts -no-system-fonts -sample test/text/data/slip.json converter/textform/testdata/slip.txt /tmp/form-text-slip.bdft
+          check_fixture /tmp/form-text-slip.bdft testdata/form/text-slip.bdft
+          go run ./cmd/bdf fill -q -font-dir converter/textform/testdata/fonts -no-system-fonts -param encoding=shift_jis -param newline=crlf -data test/text/data/slip.json converter/textform/testdata/slip.txt /tmp/form-text-slip.txt
+          check_fixture /tmp/form-text-slip.txt testdata/form/text-slip.txt
           # a form as a tagged PDF/A file
           go run ./cmd/bdf pdf -q -pdfa 2a -font-dir converter/pptx/testdata/fonts -no-system-fonts testdata/form/pdfme-invoice.bdf /tmp/form-pdfme-invoice.pdf
           check_fixture /tmp/form-pdfme-invoice.pdf testdata/form/pdfme-invoice.pdf

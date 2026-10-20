@@ -3,9 +3,9 @@
 ```
 bdf generate [flags] <input> <out.bdf | dir/>
                                    文書や図面を変換する（フラグと形式一覧は bdf generate -h）
-bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .bdft> <out.bdf | dir/>
+bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .txt | .bdft> <out.bdf | out.txt | dir/>
                                    帳票のテンプレートをデータで穴埋めする: タグを書いた Office の文書、
-                                   入力欄のある PDF、pdfme のテンプレート（フラグは bdf fill -h）
+                                   入力欄のある PDF、pdfme のテンプレート、テキストのテンプレート（フラグは bdf fill -h）
 bdf template compile [flags] <template> <out.bdft>
 bdf template schema [-json-schema] <template> [out.json]
                                    テンプレートを検査してコンパイル済みにする、タグが引く名前を書き出す
@@ -57,7 +57,7 @@ bdf generate -password-file pw.txt secret.xlsx out.bdf  # パスワード付き�
 
 ## fill, template
 
-帳票のテンプレート（文字のところにタグを書いた Excel のブック、Word の文書、PowerPoint のプレゼンテーション）をデータで穴埋めします。形式は中身から判定します。書き方は[帳票を作る](../forms.ja.md)を参照してください。
+帳票のテンプレート（文字のところにタグを書いた Excel のブック、Word の文書、PowerPoint のプレゼンテーション、入力欄のある PDF、pdfme のテンプレート、帳票の行をタグつきで書いたテキストファイル）をデータで穴埋めします。形式は中身から判定します。書き方は[帳票を作る](../forms.ja.md)を参照してください。
 
 ```sh
 bdf fill -data order.yaml -data items=lines.csv invoice.xlsx invoice.bdf   # 穴埋めして、印刷のページの文書に
@@ -68,9 +68,11 @@ bdf template schema invoice.bdft                                           # タ
 bdf template schema -json-schema invoice.xlsx                              # データの JSON Schema（入力フォームを作る元）
 bdf fill -data applicant.json application.pdf application.bdf              # 入力欄のある PDF: 欄の場所に値を描く
 bdf fill -data invoice.json pdfme-template.json invoice.bdf                # pdfme のテンプレート: pdfme の生成器と同じ規則で埋める
+bdf fill -data order.json slip.txt slip.bdf                                # テキストのテンプレート: 行と桁の格子に文字を並べる
+bdf fill -data order.json -param encoding=shift_jis slip.txt slip.txt      # テキストのテンプレートの帳票をプレーンテキストで
 ```
 
-`-data` は JSON・YAML のオブジェクト（`file`）か、名前を付けた値（`name=file`。CSV・TSV やブックのシートはオブジェクトのリスト）で、繰り返し指定できます。`-strict` はデータにない名前のタグをエラーにし、`-files` はデータが名前で指す画像のディレクトリを決めます。フォントと画像のフラグ（`-font-dir`、`-no-system-fonts`、`-fonts`、`-images` など）と `-param`・`-pages` は `generate` と同じ意味です（`-pages` は、Excel ではシート、PowerPoint ではテンプレートのスライド、Word ではできた帳票のページを選びます）。`.bdft` は BDF の文書なので、`ls`・`thumbnail`・`render` でそのまま開けます。
+`-data` は JSON・YAML のオブジェクト（`file`）か、名前を付けた値（`name=file`。CSV・TSV やブックのシートはオブジェクトのリスト）で、繰り返し指定できます。`-strict` はデータにない名前のタグをエラーにし、`-files` はデータが名前で指す画像のディレクトリを決めます。フォントと画像のフラグ（`-font-dir`、`-no-system-fonts`、`-fonts`、`-images` など）と `-param`・`-pages` は `generate` と同じ意味です（`-pages` は、Excel ではシート、PowerPoint ではテンプレートのスライド、Word とテキストのテンプレートではできた帳票のページを選びます）。出力先が `.txt` で終わると、テキストのテンプレートの帳票をプレーンテキストで書きます。`-param encoding=`・`newline=crlf`・`paper=preprinted` が使えます（[テキストのテンプレート](../forms.ja.md#テキストのテンプレート)）。`.bdft` は BDF の文書なので、`ls`・`thumbnail`・`render` でそのまま開けます。
 
 ## pdf
 

@@ -141,7 +141,7 @@ func TestFill(t *testing.T) {
 	}
 	// what is not a template
 	for name, want := range map[string]string{
-		"form_test.go":         "not an Excel workbook",
+		"../go.mod":            "not an Excel workbook",
 		"../testdata/demo.bdf": "not a compiled template",
 	} {
 		b, err := os.ReadFile(name)
@@ -632,5 +632,104 @@ func TestFillPlaced(t *testing.T) {
 		if _, err := Fill(strings.NewReader(src), int64(len(src)), nil); err == nil {
 			t.Errorf("%q is filled", src)
 		}
+	}
+}
+
+// TestFillText fills the templates of text with their data, compiles them,
+// and fills the compiled templates.
+func TestFillText(t *testing.T) {
+	convert := &converter.Options{FontDirs: []string{"../converter/textform/testdata/fonts"}, NoSystemFonts: true}
+	for _, c := range []struct {
+		name   string
+		pages  int
+		want   []string
+		schema []string
+	}{
+		{"slip", 1, []string{"納品書", "株式会社サンプル商事", "クリアファイル A4 10", "15,890", "（控）"}, []string{`"rows"`, `"mode": "slots"`, `"slots": 5`, `"address"`}},
+		{"rows", 3, []string{"出荷明細 S-2026-1020", "六角ボルト M4×15"}, []string{`"items"`, `"mode": "rows"`}},
+		{"pages", 3, []string{"請求明細書", "3 / 3 頁", "前頁より繰越      409,910"}, []string{`"pages"`, `"mode": "pages"`, `"carry_in"`}},
+		{"receipt", 1, []string{"サンプル珈琲店", "2個 × 単価420"}, []string{`"items"`, `"qty"`}},
+	} {
+		tpl, err := os.ReadFile("../converter/textform/testdata/" + c.name + ".txt")
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile("../test/text/data/" + c.name + ".json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := LoadData(Source{FileName: "data.json", Data: raw})
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), &Options{Data: data, Strict: true, Convert: convert})
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if res.Format != FormatText || len(res.Warnings) != 0 || len(res.Doc.Views[0].Pages) != c.pages {
+			t.Errorf("%s: format %s, %d pages, warnings %q", c.name, res.Format, len(res.Doc.Views[0].Pages), res.Warnings)
+		}
+		got := text(t, res.Doc)
+		for _, w := range c.want {
+			if !strings.Contains(got, w) {
+				t.Errorf("%s: no %q in\n%s", c.name, w, got)
+			}
+		}
+		fields, err := Fields(bytes.NewReader(tpl), int64(len(tpl)))
+		if err != nil || !reflect.DeepEqual(fields, res.Fields) {
+			t.Errorf("%s: the fields: %v\n%+v\nof the filled template:\n%+v", c.name, err, fields, res.Fields)
+		}
+		schema, err := SchemaOf(bytes.NewReader(tpl), int64(len(tpl)), data)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+		}
+		for _, w := range c.schema {
+			if !bytes.Contains(schema, []byte(w)) {
+				t.Errorf("%s: no %s in the schema\n%s", c.name, w, schema)
+			}
+		}
+		// compiled with the data as its sample, it fills to the same form
+		comp, err := Compile(bytes.NewReader(tpl), int64(len(tpl)), c.name+".txt", &Options{Data: data, Convert: convert})
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		var bdft, direct, again bytes.Buffer
+		if err := comp.Doc.WriteSingle(&bdft); err != nil {
+			t.Fatal(err)
+		}
+		def, src, err := ReadTemplate(bytes.NewReader(bdft.Bytes()), int64(bdft.Len()))
+		if err != nil || def.Format != FormatText || !bytes.Equal(src, tpl) || !reflect.DeepEqual(def.Fields, fields) {
+			t.Errorf("%s: the compiled template: %v, %+v", c.name, err, def)
+		}
+		filled, err := Fill(bytes.NewReader(bdft.Bytes()), int64(bdft.Len()), &Options{Data: data, Convert: convert})
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		res.Doc.WriteSingle(&direct)
+		filled.Doc.WriteSingle(&again)
+		if !bytes.Equal(direct.Bytes(), again.Bytes()) {
+			t.Errorf("%s: the compiled template fills to another form (%d and %d bytes)", c.name, direct.Len(), again.Len())
+		}
+		// compiled without one, its pages are the template as it is
+		comp, err = Compile(bytes.NewReader(tpl), int64(len(tpl)), "", &Options{Convert: convert})
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if got := text(t, comp.Doc); !strings.Contains(got, "{{") || comp.Template.Sample != nil || len(comp.Template.Fields) != len(fields) {
+			t.Errorf("%s: the pages without a sample:\n%s", c.name, got)
+		}
+	}
+	// text whose first tag is past the first KiB, and text without tags
+	long := strings.Repeat("a line of the slip\n", 80) + "{{no}}\n"
+	if format, _, err := Describe(strings.NewReader(long), int64(len(long))); err != nil || format != FormatText {
+		t.Errorf("a template of text with its first tag past its start: %q, %v", format, err)
+	}
+	plain := strings.Repeat("a line of the slip\n", 80)
+	if _, err := Fill(strings.NewReader(plain), int64(len(plain)), nil); err == nil || !strings.Contains(err.Error(), "a template of text (.txt)") {
+		t.Errorf("text without tags: %v", err)
 	}
 }
