@@ -339,9 +339,11 @@ func crashpoint(point string) {
 }
 
 // retryable tells a failure for want of the printer: it was not reached,
-// is stopped, busy or not taking jobs. Other failures are the job's.
+// is stopped, busy or not taking jobs, or was restarted during the send
+// and lost the job (which is sent again as a new attempt; the job that
+// took its id is another's and left alone). Other failures are the job's.
 func retryable(err error) bool {
-	if errors.Is(err, print.ErrPrinterStopped) || errors.Is(err, ipp.ErrAuth) || errors.Is(err, ipp.ErrCertificateChanged) || errors.Is(err, raw.ErrRefused) {
+	if errors.Is(err, print.ErrPrinterStopped) || errors.Is(err, print.ErrJobLost) || errors.Is(err, ipp.ErrAuth) || errors.Is(err, ipp.ErrCertificateChanged) || errors.Is(err, raw.ErrRefused) {
 		return true
 	}
 	var se *ipp.StatusError

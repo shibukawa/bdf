@@ -473,3 +473,50 @@ func TestPrinterRestartedWhileWatched(t *testing.T) {
 		t.Fatalf("the other's job: %+v", pj)
 	}
 }
+
+// TestPrinterRestartedWhileSent restarts the printer between the spool's
+// Create-Job and its Send-Document, and another's job takes the id the
+// printer gave the spool's: Send-Document is refused (the job has its
+// last document). The spool sends its job again as a new attempt, and
+// cancels nothing: the job of the id is another's.
+func TestPrinterRestartedWhileSent(t *testing.T) {
+	fast(t)
+	f := newFixture(t)
+	p, c := f.printers["mfp1"], f.clients["mfp1"]
+	// each answer is slow: Send-Document waits at the printer while it
+	// restarts and takes another's job; the other's job is still
+	// processing when Send-Document is answered, and could be canceled
+	p.Latency, p.Processing = 300*time.Millisecond, time.Second
+	s := f.running()
+	a := submit(t, s, Submission{Document: bytes.NewReader(bdfBytes(t, testDoc(1)))})
+	waitFor(t, "the printer's job made", func() bool {
+		j := jobState(s, a.ID)
+		return j.Printer != nil && j.Printer.JobID != 0
+	})
+	if j := jobState(s, a.ID); j.Printer.Sent {
+		t.Fatalf("the document arrived before the restart: %+v", j.Printer)
+	}
+	time.Sleep(100 * time.Millisecond) // (Send-Document is at the printer)
+	p.Inject(fakeprinter.Fault{Latency: ptr(time.Duration(0)), Restart: true})
+	other, err := c.PrintJob(context.Background(), "someone else's", "application/pdf", nil, strings.NewReader("%PDF"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first := jobState(s, a.ID).Printer; first == nil || other.ID != first.JobID || first.Sent {
+		t.Fatalf("the other's job %d did not take the id of the spool's (%+v)", other.ID, first)
+	}
+	waitFor(t, "the job done", func() bool { return jobState(s, a.ID).State.Done() })
+	j := jobState(s, a.ID)
+	if j.State != ipp.JobCompleted || j.Attempts != 2 {
+		t.Fatalf("after the restart: %s %v %q, %d attempts", j.State, j.Reasons, j.Message, j.Attempts)
+	}
+	pj := p.Jobs()
+	if len(pj) != 2 || pj[0].Name != "someone else's" || !strings.HasPrefix(pj[1].Name, attemptPrefix(&j)) || len(pj[1].Documents) != 1 || len(pj[1].Document(0)) == 0 {
+		t.Fatalf("the printer's jobs: %+v", pj)
+	}
+	for _, x := range pj {
+		if st := p.JobState(x); st != ipp.JobCompleted && st != ipp.JobProcessing {
+			t.Errorf("job %d %q is %s", x.ID, x.Name, st)
+		}
+	}
+}

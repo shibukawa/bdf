@@ -140,7 +140,7 @@ facts:
     found:
       - 'スプール: プリンタが再起動して job-id を 1 から数え直すと、他人のジョブを自分のものとして追った（再開時と見張り中）。ジョブの名前の #id.attempt で見分けるように直した（print/spool/job.go の sameJob）'
       - 'IPP のクライアント: chunked の要求を断る古いプリンタ（HTTP 411）に刷れなかった。411 なら一時ファイルから長さつきで送り直し、以後そうする（print/ipp/client.go）'
-      - 'スプール: 送っている最中にプリンタが再起動し、他人のジョブが同じ id になると、Send-Document が not-possible でジョブが aborted になる（直していない。送り直すのが望ましい）'
+      - 'スプール: 送っている最中にプリンタが再起動し、他人のジョブが同じ id になると、Send-Document が not-possible でジョブが aborted になり、print.Print はその id（他人のジョブ）を取り消していた。not-possible か not-found のあと Get-Job-Attributes で名前を確かめ、id が消えたか他人のものなら取り消さずに print.ErrJobLost を返し、スプールは新しい試みとして送り直すように直した（print/print.go の lost、TestPrinterRestartedWhileSent）'
 relations:
 - relation: implements
   to: requirement:fake-printers
