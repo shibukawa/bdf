@@ -298,7 +298,7 @@ for _ in $(seq 30); do
   if [ "$(received $'\x1b@' "$rawdir")" -gt "$before" ]; then break; fi
   sleep 1
 done
-escp=$(ls -t "$rawdir"/*.prn | head -1)
+escp=$(ls -t "$rawdir"/* | head -1)
 grep -aqF $'\x1bC\x21\x1bN\x02' "$escp" # 33 lines, a skip of 2
 grep -aqF $'\x1c&' "$escp"                 # Kanji
 if grep -aqF $'\x1b*' "$escp"; then exit 1; fi
