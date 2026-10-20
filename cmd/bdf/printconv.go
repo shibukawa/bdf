@@ -11,6 +11,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/print/raster"
 	"github.com/shibukawa/bdf/print/spool"
 )
 
@@ -30,6 +31,16 @@ type printConverter struct {
 }
 
 func (c printConverter) Detect(r io.ReaderAt, size int64, name string) (string, bool) {
+	// the rasters of driverless clients, which the IPP server takes
+	head := make([]byte, 8)
+	if n, _ := r.ReadAt(head, 0); n > 0 {
+		switch raster.Sniff(head[:n]) {
+		case raster.FormatPWG:
+			return formatPWG, true
+		case raster.FormatURF:
+			return formatURF, true
+		}
+	}
 	f := converter.Detect(r, size)
 	if f == nil || f.Guess {
 		// the content does not tell (a CSV file of one line, Markdown):
@@ -56,9 +67,20 @@ func (c printConverter) Detect(r io.ReaderAt, size int64, name string) (string, 
 // name does not tell which it is.
 const encryptedOffice = "office-encrypted"
 
+// The raster formats, which print/raster reads (converter does not: the
+// converters are built without print).
+const (
+	formatPWG = "pwg-raster"
+	formatURF = "urf"
+)
+
 func (c printConverter) Convert(ctx context.Context, r io.ReaderAt, size int64, format, name, password string) (*bdf.Document, []string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
+	}
+	if format == formatPWG || format == formatURF {
+		doc, _, err := raster.Document(io.NewSectionReader(r, 0, size), &raster.DocumentOptions{Title: name})
+		return doc, nil, err
 	}
 	opts := &converter.Options{FontDirs: c.fontDirs, NoSystemFonts: c.noSystem, Password: password, FileName: name, Params: map[string]string{}}
 	if format == encryptedOffice {

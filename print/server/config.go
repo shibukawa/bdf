@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,8 +51,42 @@ type Config struct {
 	Fonts     FontsConfig              `yaml:"fonts"`
 	// TempDir holds documents while they arrive.
 	TempDir string `yaml:"temp-dir"`
+	// IPP shows the queues as IPP printers, which the systems add without
+	// a driver (IPP Everywhere, AirPrint, Mopria).
+	IPP *IPPConfig `yaml:"ipp"`
 
 	dir string // of the file, for relative paths
+}
+
+// IPPConfig is the IPP server of the queues: a printer of each at
+// /ipp/print/<queue>, ipp and ipps on one port, advertised with DNS-SD.
+type IPPConfig struct {
+	// Listen is the address: ":8631" by default.
+	Listen string `yaml:"listen"`
+	// Host is the name of the server in the printers' URIs, the
+	// certificate and DNS-SD: the machine's name, in .local, by default.
+	Host string `yaml:"host"`
+	// Auth is "none" (anyone of the network prints, under the
+	// requesting-user-name it gives) or "basic" (a token's name and
+	// secret): basic when there are tokens.
+	Auth string `yaml:"auth"`
+	// RequireTLS refuses ipp (HTTP 426): only ipps. It is so with basic.
+	RequireTLS bool `yaml:"require-tls"`
+	// TLS is the certificate of ipps; without it the server makes one,
+	// signed by itself, kept next to the spool (ipp-tls.pem).
+	TLS *TLSConfig `yaml:"tls"`
+	// Queues are the queues shown; all by default. Default is also shown
+	// at /ipp/print.
+	Queues  []string `yaml:"queues"`
+	Default string   `yaml:"default"`
+	// Location, Organization and OrganizationalUnit describe the
+	// printers (printer-location …), a queue's location over Location.
+	Location           string `yaml:"location"`
+	Organization       string `yaml:"organization"`
+	OrganizationalUnit string `yaml:"organizational-unit"`
+	// DNSSD advertises the printers on the local links (mDNS): true by
+	// default.
+	DNSSD *bool `yaml:"dns-sd"`
 }
 
 // TLSConfig is the certificate and key of HTTPS.
@@ -108,6 +143,11 @@ type QueueConfig struct {
 	Format        string         `yaml:"format"`
 	RasterIfLossy bool           `yaml:"raster-if-lossy"`
 	MaxInflight   int            `yaml:"max-inflight"`
+	// Info and Location describe the queue as an IPP printer
+	// (printer-info, the name it is advertised with, and
+	// printer-location).
+	Info     string `yaml:"info"`
+	Location string `yaml:"location"`
 }
 
 // RetentionConfig is how long what is done is kept ("168h", "7d").
@@ -312,6 +352,9 @@ func (c *Config) check() error {
 	if c.TLS != nil && (c.TLS.Cert == "" || c.TLS.Key == "") {
 		return errors.New("tls: cert and key")
 	}
+	if err := c.checkIPP(); err != nil {
+		return err
+	}
 	if !c.Insecure && !loopback(c.Listen) && (c.TLS == nil || len(c.Tokens) == 0) {
 		return fmt.Errorf("listen %s is not a loopback address: it needs tls and tokens (or insecure: true)", c.Listen)
 	}
@@ -333,6 +376,9 @@ func (c *Config) resolve() error {
 	c.TempDir = abs(c.TempDir)
 	if c.TLS != nil {
 		c.TLS.Cert, c.TLS.Key = abs(c.TLS.Cert), abs(c.TLS.Key)
+	}
+	if c.IPP != nil && c.IPP.TLS != nil {
+		c.IPP.TLS.Cert, c.IPP.TLS.Key = abs(c.IPP.TLS.Cert), abs(c.IPP.TLS.Key)
 	}
 	for i := range c.Fonts.Dirs {
 		c.Fonts.Dirs[i] = abs(c.Fonts.Dirs[i])
@@ -362,6 +408,72 @@ func (c *Config) resolve() error {
 		}
 	}
 	return nil
+}
+
+// checkIPP checks the IPP server's configuration and fills its defaults.
+func (c *Config) checkIPP() error {
+	p := c.IPP
+	if p == nil {
+		return nil
+	}
+	if p.Listen == "" {
+		p.Listen = ":8631"
+	}
+	if _, _, err := net.SplitHostPort(p.Listen); err != nil {
+		return fmt.Errorf("ipp: listen %q: %w", p.Listen, err)
+	}
+	switch p.Auth {
+	case "":
+		p.Auth = authNone
+		if len(c.Tokens) > 0 {
+			p.Auth = authBasic
+		}
+	case authNone:
+	case authBasic:
+		if len(c.Tokens) == 0 {
+			return errors.New("ipp: auth basic needs tokens")
+		}
+	default:
+		return fmt.Errorf("ipp: auth %q: none or basic", p.Auth)
+	}
+	if p.TLS != nil && (p.TLS.Cert == "" || p.TLS.Key == "") {
+		return errors.New("ipp: tls: cert and key")
+	}
+	for _, q := range p.Queues {
+		if _, ok := c.Queues[q]; !ok {
+			return fmt.Errorf("ipp: no queue %s", q)
+		}
+	}
+	if p.Default != "" {
+		if _, ok := c.Queues[p.Default]; !ok {
+			return fmt.Errorf("ipp: default: no queue %s", p.Default)
+		}
+		if len(p.Queues) > 0 && !slices.Contains(p.Queues, p.Default) {
+			return fmt.Errorf("ipp: default %s is not among the queues shown", p.Default)
+		}
+	}
+	for name, q := range c.Queues {
+		if !validQueueName(name) {
+			return fmt.Errorf("queue %s: a queue shown by IPP is named with letters, digits, - and _", name)
+		}
+		if len(q.Info) > 127 || len(q.Location) > 127 {
+			return fmt.Errorf("queue %s: info and location have 127 bytes at most", name)
+		}
+	}
+	return nil
+}
+
+// validQueueName tells a name that is a path segment as it is.
+func validQueueName(s string) bool {
+	if s == "" || len(s) > 127 {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 // ticket reads a queue's defaults as a ticket, with the JSON names.

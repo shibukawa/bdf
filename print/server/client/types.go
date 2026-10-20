@@ -59,7 +59,9 @@ func (j *Job) Done() bool {
 
 // Document is the document of a job as the server received it.
 type Document struct {
-	Name      string     `json:"name"`
+	Name string `json:"name"`
+	// Type is the media type it was sent as, when the client said.
+	Type      string     `json:"type,omitempty"`
 	Format    string     `json:"format"`
 	Size      int64      `json:"size"`
 	SHA256    string     `json:"sha256"`

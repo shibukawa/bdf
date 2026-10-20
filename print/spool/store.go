@@ -162,6 +162,18 @@ func (s *store) eachDone(ctx context.Context, f func(Job, string) bool) error {
 // nextID takes the next job id. An id is never given twice; one may be
 // skipped (when the job is not made after all).
 func (s *store) nextID(ctx context.Context) (int32, error) {
+	// (submissions at once take ids at once: the one that loses the
+	// update tries again)
+	for range 100 {
+		id, err := s.takeID(ctx)
+		if !isConflict(err) {
+			return id, err
+		}
+	}
+	return 0, errors.New("spool: the job ids are contended")
+}
+
+func (s *store) takeID(ctx context.Context) (int32, error) {
 	r, err := s.db.Get[counter](ctx, counterKey)
 	if errors.Is(err, yuruidb.ErrNotFound) {
 		if _, err := s.db.Insert(ctx, counterKey, counter{Next: 2}); err != nil {

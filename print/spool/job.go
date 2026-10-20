@@ -87,8 +87,10 @@ type Job struct {
 
 // Document is the document of a job as it was received.
 type Document struct {
-	// Name is the file name it came with.
+	// Name is the file name it came with; Type the media type it was
+	// sent as, when the client said.
 	Name string `json:"name"`
+	Type string `json:"type,omitempty"`
 	// Format is "bdf", or the name of the converter's format ("pdf",
 	// "xlsx" …) of a document that is converted.
 	Format    string `json:"format"`

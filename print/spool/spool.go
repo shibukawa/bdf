@@ -434,9 +434,18 @@ func (s *Spool) TrustStore() *ipp.TrustStore { return s.trust }
 
 // Submission is a job to submit.
 type Submission struct {
+	// ID is an id ReserveID gave, for a job whose id was told before its
+	// document arrived (IPP's Create-Job); 0 takes the next. UUID is the
+	// job-uuid told with it; "" makes one.
+	ID    int32
+	UUID  string
 	Queue string
 	// Name is the document's file name; User who submits it.
 	Name, User string
+	// Type is the media type the document was sent as
+	// ("application/pdf"), when the client said: the formats whose
+	// content does not tell them (text/plain, text/csv) are known by it.
+	Type string
 	// Document is read to its end by Submit; or Upload, a document
 	// received before (Receive), which Submit takes.
 	Document io.Reader
@@ -495,7 +504,7 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	if err := s.room(size); err != nil {
 		return Job{}, err
 	}
-	doc := Document{Name: sub.Name, Size: size, SHA256: sum}
+	doc := Document{Name: sub.Name, Type: sub.Type, Size: size, SHA256: sum}
 	head := make([]byte, 4)
 	if n, _ := f.ReadAt(head, 0); n == 4 && bytes.Equal(head, bdf.Magic[:]) {
 		doc.Format = "bdf"
@@ -515,16 +524,21 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 		if s.o.Converter == nil {
 			return Job{}, ErrUnknownFormat
 		}
-		format, ok := s.o.Converter.Detect(f, size, sub.Name)
+		format, ok := s.o.Converter.Detect(f, size, detectName(sub.Name, sub.Type))
 		if !ok {
 			return Job{}, ErrUnknownFormat
 		}
 		doc.Format = format
 	}
 	ctx = context.WithoutCancel(ctx) // a client that goes away does not leave half a job
-	id, err := s.st.nextID(ctx)
-	if err != nil {
-		return Job{}, err
+	id := sub.ID
+	if id == 0 {
+		var err error
+		if id, err = s.st.nextID(ctx); err != nil {
+			return Job{}, err
+		}
+	} else if s.has(id) {
+		return Job{}, fmt.Errorf("%w: job %d exists", ErrInvalid, id)
 	}
 	key := originalKey(id)
 	s.mu.Lock()
@@ -545,7 +559,11 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	if sub.Ticket.JobName == "" {
 		sub.Ticket.JobName = sub.Name
 	}
-	j := Job{ID: id, UUID: newUUID(), Queue: sub.Queue, Name: sub.Name, User: sub.User, Document: doc, Ticket: sub.Ticket,
+	uuid := sub.UUID
+	if uuid == "" {
+		uuid = newUUID()
+	}
+	j := Job{ID: id, UUID: uuid, Queue: sub.Queue, Name: sub.Name, User: sub.User, Document: doc, Ticket: sub.Ticket,
 		Options: sub.Options, State: ipp.JobPending, Priority: sub.Priority, HoldUntil: sub.HoldUntil, HoldUntilTime: sub.HoldUntilTime,
 		Step: StepSend, Submitted: now}
 	if doc.Format != "bdf" {
@@ -574,6 +592,46 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	s.notify(&j)
 	s.wake()
 	return j, nil
+}
+
+// ReserveID takes the id of a job to submit later (Submission.ID): IPP's
+// Create-Job tells a job's id before its document arrives. An id that is
+// not submitted after all is skipped.
+func (s *Spool) ReserveID(ctx context.Context) (int32, error) {
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return 0, ErrClosed
+	}
+	return s.st.nextID(context.WithoutCancel(ctx))
+}
+
+// has tells a job of the id, done or not.
+func (s *Spool) has(id int32) bool {
+	s.mu.Lock()
+	_, ok := s.jobs[id]
+	s.mu.Unlock()
+	if ok {
+		return true
+	}
+	_, _, err := s.st.getDone(context.Background(), id)
+	return err == nil
+}
+
+// typeExtensions are the extensions of the media types whose content does
+// not tell them.
+var typeExtensions = map[string]string{
+	"text/plain": ".txt", "text/csv": ".csv", "text/tab-separated-values": ".tsv", "text/markdown": ".md", "text/html": ".html",
+}
+
+// detectName is the name a document's format is detected with: its own,
+// or with the extension of its media type when it has none.
+func detectName(name, typ string) string {
+	if ext := typeExtensions[typ]; ext != "" && filepath.Ext(name) == "" {
+		return name + ext
+	}
+	return name
 }
 
 func checkOptions(o JobOptions) error {
