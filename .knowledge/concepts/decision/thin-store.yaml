@@ -65,6 +65,12 @@ facts:
       - bbolt の Blob の Insert が入力を読み終えるまで bbolt の書き込みロックと入力全体のメモリを持つ（1 MiB を 1.6 秒で受ける間、別のレコードの Update が 1.67 秒待った）
       - HTTP の Blob の Open が本文の GET を開いたままにする（ReadAt だけなら無駄）
       verdict: bdf のスプールに要るもの（1 つの bbolt のファイルに記録・文書・写し）が揃った。Backup のロックが直れば print-m2 は yuruidb の上に作れる。Blob の Insert のロックは bdf が一時ファイルに落としてから入れても避けられる
+    reevaluation_2026_10_20_c:
+      commit: b6e1529（Backup は確認の後にロックを放す、bbolt の Blob は 2 MiB ずつ作業用のバケットに書いて最後に移す、残った作業用のデータは最初に開いたときに消す、HTTP の Blob の Open は版と大きさだけを取る）
+      resolved: Backup の間の Get が待たない（0.55 秒 → 0 秒）。遅い Blob の受け付けの間の Update が待たない（1.67 秒 → 2 ミリ秒）。失敗した受け付けは何も残さない。128 MiB の受け付けでヒープの増加は 12 MiB ほど
+      remaining:
+      - Backup の間の Update が、bbolt が mmap を広げる必要があるときだけバックアップの終わりまで待つ（bbolt の性質。生の bbolt で InitialMmapSize 256 MiB なら 1 ミリ秒、既定なら 515 ミリ秒）。yuruidb の bbolt の Config に InitialMmapSize を出す。bdf は写しをいったんローカルの一時ファイルに書いてから流す
+      verdict: print-m2 を yuruidb の上に作れる（記録は bbolt のドライバ、文書は同じ spool.db の bbolt の Blob、写しは Store.Backup）
 open_questions:
   package-location:
     text: 汎用の store/ に置くか、print/spool/store に閉じるか

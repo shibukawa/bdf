@@ -251,6 +251,18 @@ bdf のスプールに使う前に要るもの（手元で確かめた）。
 
 結論: bdf のスプールに要るもの（1 つの bbolt のファイルに記録・文書・バックアップ）が揃った。1 が直れば print-m2 は yuruidb の上に作れる。2 は bdf の側の一時ファイルでも避けられる。
 
+### 9.3 再評価（2026-10-20、コミット b6e1529）
+
+利用者が前回の 2 点を直した（`Store.Backup` は確認の後にロックを放す、bbolt の Blob の Insert はトランザクションの外で入力を読み、2 MiB ずつ作業用のバケットに書いて最後に移して見せる、途中で落ちた作業用のデータは次にファイルを最初に開いたときに消す、HTTP の Blob の `Open` は HEAD などで版と大きさだけを取り本文は最初の Read で取りに行く）。両方の module で `go test -race` と `go vet` が通り、手元で次を確かめた。
+
+- `Backup` の間の Get は待たない（前回 0.55 秒 → 0 秒）。
+- 遅い Blob の受け付けの間のレコードの Update は待たない（前回 1.67 秒 → 2 ミリ秒）。
+- 途中で失敗した受け付けは何も残さず、同じ ID でもう一度入れられる。128 MiB の受け付けでヒープの増加は 12 MiB ほどで、100 MiB の位置の `ReadAt` も読める。
+
+残る点: `Backup` の間の Update が、bbolt がファイルの対応づけ（mmap）を広げる必要があるときだけ、バックアップが終わるまで待つ（0.55 秒）。bbolt の性質で、長い読み取りのトランザクションの間は対応づけを広げられない。生の bbolt で確かめると、`InitialMmapSize` を 256 MiB にすれば同じ書き込みは 1 ミリ秒、既定では 515 ミリ秒だった。yuruidb の bbolt の Config に `InitialMmapSize` を出してもらうのがよい（Windows の bbolt はファイルを対応づけの大きさまで伸ばすので、既定を大きくはしない）。bdf の側では `GET /api/v1/backup` をいったんローカルの一時ファイルに書いてから相手に流せば、読み取りのトランザクションはディスクの速さで終わる。
+
+結論: print-m2 を yuruidb の上に作れる（記録は bbolt のドライバ、文書は同じ `spool.db` の bbolt の Blob、写しは `Store.Backup`）。
+
 ## 10. 出典
 
 - AWS S3 の条件付き書き込み（If-Match、2024-11）: https://aws.amazon.com/about-aws/whats-new/2024/11/amazon-s3-functionality-conditional-writes
