@@ -697,10 +697,27 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 | 10 | FIGURE | 代替テキスト | 図を開く（END で閉じる）。範囲は中の描画命令の外接矩形。代替テキストが空なら装飾で、読み上げない |
 | 11 | END | 任意 | 開いている LIST / TABLE / FIGURE のうち最も内側を閉じる。開いていなければ何もしない |
 | 12 | LANG | 言語（BCP 47）。空なら文書の既定（`meta.dc.language` の最初の値） | 以降の run の言語 |
+| 13 | BARCODE | JSON（下記） | 次の描画命令 1 つ（`FILL_PATH` / `FILL_PATH_AT` / `FILL_RECT` / `USE` / `USE_AT`。間の状態の命令は数えない）が QR コードかバーコードの記号を描くことを示す。描画には影響しない。ラベルプリンタの書き手はその命令をプリンタのバーコード命令に置き換えてよく、低解像度のラスタはモジュールを画素に揃えて描き直してよい。知らない読み手はそのまま描く。テキスト抽出の run にはならない |
 
 - `MARK` の効果は次の `FILL_TEXT` / `STROKE_TEXT` / `ALT_TEXT` に及び、run どうしの結合規則を決める。同じ行で書式だけが変わった run の間には `MARK` を置かない（結合される）。
 - `MARK` を出さないエンコーダのために、読み手は位置に基づく推定（y が変われば行、同じ行で字送りの 0.2 倍以上の隙間があれば空白）で補ってよい。ただし推定は不正確なので、エンコーダは `MARK` を出すことが強く推奨される。
-- run どうしの区切りは kind だけで決まる。LINE は空白、WRAP は連結、PARAGRAPH / CELL / BOX / HEADING / LIST / LIST_ITEM / TABLE / FIGURE / END は段落境界。ALT_TEXT と LANG は区切りに影響しない（LANG の後の run は位置による推定のままで、保留中の ALT_TEXT もそのまま次の描画命令に付く）。
+- run どうしの区切りは kind だけで決まる。LINE は空白、WRAP は連結、PARAGRAPH / CELL / BOX / HEADING / LIST / LIST_ITEM / TABLE / FIGURE / END は段落境界。ALT_TEXT と LANG は区切りに影響しない（LANG の後の run は位置による推定のままで、保留中の ALT_TEXT もそのまま次の描画命令に付く）。BARCODE も区切りに影響しない。
+- 読み手は知らない kind の `MARK` を無視する（描画にもテキストにも影響しない）。
+
+#### BARCODE の payload
+
+UTF-8 の JSON オブジェクト。
+
+| キー | 型 | 意味 |
+|---|---|---|
+| `kind` | 文字列 | 記号の種類: `qr`、`ean13`、`ean8`、`upca`、`code39`、`code128`、`gs1-128`、`itf`、`itf14`、`nw7` |
+| `text` | 文字列 | 記号が表す文字列（付けたチェックディジットを含む） |
+| `level` | 文字列 | QR コードの誤り訂正のレベル（`L` / `M` / `Q` / `H`） |
+| `quiet` | 整数 | クワイエットゾーンのモジュール数。省略か 0 は記号の既定、`-1` は無し |
+| `noText` | 真偽 | JAN / EAN と UPC-A の数字を描いていない |
+| `box` | 数 4 つ | 記号（とクワイエットゾーン）を描いた箱 `[x, y, w, h]`。次の描画命令の座標系（`USE_AT` / `FILL_PATH_AT` の平行移動の前）で |
+
+記号の格子は `kind`・`text`・`level`・`quiet` から一意に決まる（Go の `image/barcode` の `Encode`）。箱の中の置き方はモジュールを箱の幅と高さに均等に割り付け、JAN / EAN と UPC-A で `noText` でなければ下の 2 割強に数字を置く。
 
 #### 構造
 

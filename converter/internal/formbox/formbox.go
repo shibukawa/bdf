@@ -301,7 +301,8 @@ func (l *Layer) Image(pic Picture, x, y, w, h float64) {
 // color.
 func (l *Layer) Code(sym *barcode.Symbol, x, y, w, h float64, c bdf.Color) {
 	o := l.Obj
-	o.FillColor(c).FillPath(o.AddPath(sym.Path(float32(x), float32(y), float32(w), float32(h))), bdf.NonZero)
+	o.FillColor(c)
+	sym.Fill(o, float32(x), float32(y), float32(w), float32(h))
 	l.cv.Drawn = true
 }
 

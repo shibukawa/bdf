@@ -17,6 +17,7 @@ const (
 	MarkFigure    byte = 10 // payload: alternative text; opens a figure, closed by MarkEnd
 	MarkEnd       byte = 11 // closes the innermost list, table or figure
 	MarkLang      byte = 12 // payload: BCP 47 language of the runs that follow ("" = document default)
+	MarkBarcode   byte = 13 // payload: JSON of the symbol the next drawing draws (image/barcode.Mark)
 )
 
 // Separators between consecutive text runs (docs/spec.md §7.9).

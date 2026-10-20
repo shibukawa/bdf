@@ -124,6 +124,26 @@ type Options struct {
 	// MaxBandCanvases of canvases; one draws the bands one after the
 	// other, with the memory of one.
 	BandWorkers int
+	// Barcode is called with each QR code and barcode that a BARCODE mark
+	// tells (docs/spec.md §7.8) whose box the transform keeps upright or
+	// turns by quarters: when it returns true, the drawing of the symbol
+	// is left out (a printer of labels prints it with its own commands).
+	// It is called again for each band of a page drawn in bands that the
+	// symbol may show in, from the workers that draw them at once, and not
+	// for an image the image cache had.
+	Barcode func(Barcode) bool
+	// AlignBarcodes draws those symbols again with their modules on whole
+	// pixels, as many pixels wide as fit in their box (and the symbol in
+	// its middle): at the few dots an inch of a label or a receipt, bars
+	// a fraction of a dot wider or narrower are what a reader cannot
+	// read. A symbol whose modules would be narrower than a pixel is drawn
+	// as it is.
+	AlignBarcodes bool
+	// DitherImages draws images in black and white dots (an ordered
+	// dither), for an image of black and white (Bilevel): photographs and
+	// logos keep their shades, where text and lines, cut at the half, keep
+	// their edges.
+	DitherImages bool
 }
 
 // DefaultBandRows is the rows of a band of a page drawn in bands
