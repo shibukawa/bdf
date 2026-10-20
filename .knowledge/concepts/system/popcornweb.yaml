@@ -1,0 +1,55 @@
+id: system:popcornweb
+type: system
+title: Popcorn Web — net/http の上の型つきの Web フレームワーク（テンプレート・SQL を生成、コンテナとサーバーレスに同じソースで出す）
+summary: >-
+  github.com/shibukawa/popcornweb（利用者が作成。2026-10-20 にコミット 5af5b03 を読んだ）。ルーティングは net/http の ServeMux、
+  ハンドラーは http.HandlerFunc のままで、.pw.html（型つきのテンプレート）と .pw.sql を Go に生成する。セッション、OIDC と passkey、
+  CSRF、SSE などの型つきのストリーム、WebSocket、S3 互換のオブジェクトストレージ、OpenTelemetry を持ち、pw build の --target で
+  Lambda（Web Adapter）、Azure Functions、Cloud Run functions、Vercel、Cloudflare Workers に出せる。requirement:print-manager の
+  Web の土台（2026-10-20 利用者の指定）。
+lifecycle: active
+authority: observed
+aliases:
+- popcornweb
+- Popcorn Web
+- pw
+facts:
+  module: github.com/shibukawa/popcornweb。Go 1.27 以上。アプリは github.com/shibukawa/popcornweb/pw を import する。TinyGo でもコンパイルできる作り（生成した道筋に反射を使わない）
+  routing: pw.ServeMux は net/http.ServeMux の型の別名。ミドルウェアは func(http.Handler) http.Handler。既存の http.Handler をそのまま載せられる
+  project: popcornweb.toml のあるディレクトリがプロジェクト。pw generate が _pw_gen.go を書く（git に入れない）。pw dev が生成・移行・ビルド・再起動を回す
+  config: 型つきの設定。TOML と環境変数、環境ごと（config.dev.toml・config.prod.toml）。Workers では TOML を読まず、ビルドが環境変数に展開する
+  sessions: Shared・ReadOnly はクッキー、Private・ServerOnly はストア。backend cookie は何も保存しない（ストア無しで動く）。トークンのクッキーは 256 ビットの乱数でストアの鍵はその SHA-256。keyring の秘密で封と署名
+  auth: OIDC（Authorization Code と PKCE）、WebAuthn の passkey、jwt_only（bearer を確かめるだけ）
+  realtime: 型つきのストリーム（SSE・NDJSON・JSON の配列をクライアントが選ぶ）、live rendering、signals、WebSocket
+  storage:
+    rdb: .pw.sql の型つきの SQL。SQLite、PostgreSQL、MySQL・MariaDB。Workers では D1
+    nosql: .pw.dynamo（DynamoDB）と Firestore
+    object: storage.Open(名前) で Get・Head・Put・Delete・List・Presign。backend は local・s3（tinygodriver の storage/s3。SDK なしの SigV4）・r2（Workers の binding）
+    object_lock: storage と tinygodriver の S3 に Object Lock の見出し（retention・legal hold）を渡す口は無い（2026-10-20 に grep で確かめた）
+    body_limit: server.max_request_body の既定は 10 MiB
+  serverless:
+    process_hosts: PORT のコンテナ（Cloud Run services、App Runner、Container Apps）が第一候補
+    lambda: main を変えず AWS Lambda Web Adapter を extensions に入れる。Function URL・API Gateway・ALB、buffered と response streaming
+    azure_functions: custom handler の HTTP 転送だけ。Queue trigger などの非 HTTP の束縛は対象外
+    source_targets: Vercel Go と Cloud Run functions は生成した source tree をリモートでビルドする
+    cloudflare_workers: Wasm（TinyGo か Go）。ファイルシステム無し、要求ごとに instantiate、プロセスの状態は残らない。local と s3 の storage を断り r2 だけ。最初の書き込みの前に本文を読み切る。ホストの Go の ServeMux の method 付きパターンは TinyGo が照合できない
+    limits: Functions のホストは応答を buffer し、実行時間を限り、idle を凍らせ、一時のストレージしか無いことがある。別のインスタンスに届く要求のセッションと rate limit には共有のストアが要る
+    non_http: 非 HTTP の trigger（キュー、タイマーのイベント）は対応しない。定期の処理はスケジューラから HTTP で叩く形になる
+  yuruidb: popcornweb の中に yuruidb を使うところは無い（grep）。yuruidb はアプリの側で import して使う
+  dependencies: tinygodriver v1.2.12、tinybind-go、syumai/workers ほか（go.mod）。bdf は tinygodriver v1.3.5 を既に使う
+  in_bdf_module:
+    project_root: pw（v0.5.11）はプロジェクトの直下に go.mod を求める（cmd/printmanager に popcornweb.toml を置くと「go.mod が無い」）。bdf では popcornweb.toml をリポジトリの直下に置き、generate の各項目を cmd/printmanager/handlers だけにした
+    assets: pw generate の資産の段は直下の public.go（//go:embed all:dist/public）を求める。bdf の直下は package bdf なので置けない。pw generate --code-only で Go だけ書き、静的ファイルは pw.WithPublicFS に自前の embed を渡す
+    build_target: pw build --target=lambda も同じ理由と config.prod.toml で使えない。pw の書く Dockerfile（aws-lambda-adapter 1.0.1 と distroless static）を手で置いた
+    generated: '*_pw_gen.go は popcornweb の流儀では git に入れないが、bdf の go vet ./... と go test ./... が pw を走らせないのでコミットし、CI で pw generate --code-only の差分を見る。生成は決定的'
+    config: '[]string の default はカンマ区切り。pw.ParseConfig は冪等で、pw.Run の前に読める（pwconfig.RunFrameworkAction を先に）'
+relations:
+- relation: informs
+  to: requirement:print-manager
+- relation: related_to
+  to: system:yuruidb
+history:
+  read:
+    summary: 2026-10-20 利用者「ウェブフレームワークには https://github.com/shibukawa/popcornweb これを利用して欲しい」。README と docs（serverless、object-storage、session-storage）と go.mod を読んだ（コミット 5af5b03）
+  used-in-pm-1:
+    summary: 2026-10-21 pm-1 で v0.5.11 を bdf の go.mod に入れて cmd/printmanager を作った。facts.in_bdf_module に分かったことを書いた（milestone:pm-1）

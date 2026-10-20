@@ -10,6 +10,10 @@ summary: >-
   だけに見せる。端末は登録コードと WebCrypto の取り出せない鍵で認証し、だれも開かなければ倉庫の実プリンタに逃がす。
   電子帳簿保存法の書類の控えの電子保存に使える形を目指す（法令の判断はしない。system:denchoho）。プリンタの束ねには round-robin、
   プリンタごとのキュー、ジョブの移動、CUPS のサーバーの名前の空間を足す。叙述は knowledge-inputs/print-plan/print-manager.ja.md（2026-10-20）。
+  土台（2026-10-20 利用者の指定）：Web は popcornweb（system:popcornweb）。電子帳簿保存の保管庫は S3（Object Lock）、普段のスプール
+  （伝票・端末・場所の記録と、刷る前の .bdf）は yuruidb の使える保存先から選ぶ（system:yuruidb）。プロセス（コンテナ）とサーバーレス
+  （Lambda など）の両方で動く。実プリンタへは、網が届けば Manager が直接送り（VPC の Lambda と Direct Connect・VPN も）、
+  届かない拠点は拠点の bdf printd が INFRA で取りに来る。プリンタごとに選ぶ（§11）。ソースは bdf の cmd/ に置く（利用者の決定）。
 lifecycle: proposed
 authority: authored
 aliases:
@@ -36,6 +40,17 @@ constraints:
 - 紙への逃げ道を持てる（だれも開かない・端末がつながっていないとき、その場所の実プリンタに刷る）。ペーパーレスで出荷を止めない
 - 保管した文書の読み出しは権限の確認と監査の記録（誰がいつ何を見たか）を通す
 - 法令への適合を約束しない。docs は対応の表と、利用者が確かめる所を書く
+- Web は popcornweb の上に作る。ハンドラーは http.HandlerFunc、画面は .pw.html。bdf の IPP（print/ipp）や INFRA の部品は http.Handler として同じ mux に載せる
+- インスタンスに状態を持たない。伝票・端末・場所・ジョブ・期限の判断はすべて保存先にあり、どの要求も別のインスタンスに届いてよい。試験は要求ごとに作り直したハンドラーでも通ること
+- 常駐の goroutine や時計に頼らない。期限の判断（紙への逃げ道、保持、1 日の一覧）は、要求の中で遅れて評価するか、外のスケジューラが叩く 1 つの HTTP の口（tick）で行う。プロセスで動くときは同じ口を中の時計が叩く
+- 実プリンタへの道はプリンタごとに選ぶ：direct（Manager が print.Print・print.PrintRaw で ipp・ipps・socket・lpd に送る。サーバーレスでは VPC と Direct Connect・VPN で網が届くとき）か branch（拠点の bdf printd が INFRA で取りに来る）。serial・usb・winspool と DNS-SD の広告は拠点の printd だけ
+- direct の送信は 1 回の呼び出しで終わる単位にする。送る前に記録に期限つきの借り（lease）を版で書き、同時の呼び出しが 2 重に送らない。失敗・busy は借りを放して tick で再試行。呼び出しの時間の上限（Lambda は 15 分）を超える送信は branch に回す
+- Manager は ipp+ipps の振り分けのポート（8631）、LPD・9100 の受け口を持たない（受け口は HTTPS の IPP と API だけ）
+- 普段のスプールは yuruidb の条件付きの操作を持つ保存先だけ（cfkv のように無条件の Set しか無い保存先は起動時に断る）。記録と文書（Blob）の保存先は別々に選べる（DynamoDB の記録と S3 の文書など）
+- 保管庫（S3、Object Lock）とスプールは別のバケット（か重ならない接頭辞）。重なる設定は起動時に断る。スプールの側は消せる、保管庫の側は消せない
+- 保管庫への書き込みが済むまで、スプールの文書を消さない。保管の失敗は記録（outbox）に残し、tick と次の要求で再試行する
+- 保管庫（S3）は Manager の置き場所と独立に選ぶ。オンプレのプロセスとローカルのスプールに、保管庫だけ S3 という組み合わせを正式な配置にする
+- 保管庫に届かない間（回線の断）も、受け付け・表示・刷ることは止めない。保管は後から追いつく。受けた時刻とハッシュは受け付けのときに記録に残し、保持の期限は受けた時刻から数える
 non_goals:
 - JIIMA の認証
 - 帳簿（仕訳帳・総勘定元帳）の保存。対象は書類（の控え）
@@ -43,6 +58,8 @@ non_goals:
 - .bdf への電子署名（今の形式に無い）
 - CUPS の管理の操作（CUPS-Add-Modify-Printer など）。設定は YAML と API
 - 複数の会社で共有するクラウドのサービス（テナント分離）
+- TinyGo でのビルド（bdf の変換器と print/ の部品はホストの Go を前提にする。popcornweb はホストの Go でも使える）
+- Cloudflare Workers への配置（Wasm の大きさの上限、ファイルシステム無し、r2 の storage だけで S3 の Object Lock に届かない。workers-target で後に見直す）
 facts:
   existing_vs_new:
     exists: スプール、キャンセル、実プリンタの束ね（ipp・socket・lpd・serial・usb・winspool）、キューの複数のプリンタ（policy any / failover）、IPP Everywhere・AirPrint のプリンタとして見せる（m4）、Document.SearchText、thumbnail、examples/search（Meilisearch）、状態のページ（print/server/web）
@@ -76,15 +93,61 @@ facts:
     protection: 既定でオフラインなし・ダウンロードなし。強めるなら examples/secure-reader の要求ごとの封（エフェメラルの ECDH）、端末名と時刻の透かし
   users: 画面は OIDC（Entra ID、Google Workspace）とトークン。IPP は利用者ごとの Basic。API のトークンに read（自分の・自分あて）と audit（全部を読むだけ）を足す
   delivery_order_proposed:
-  - pm-1 現場の表示（display:// と場所、伝票の状態、場所ごとの SSE、登録コードと端末の鍵の認証、端末の管理、タブレットの画面、紙への逃げ道。保存はスプールのまま）
+  - pm-1 現場の表示（cmd/ の popcornweb の骨組み、display:// と場所、伝票の状態、場所の版のポーリング（プロセスでは SSE も）、登録コードと端末の鍵の認証、端末の管理、タブレットの画面、direct の送りで紙への逃げ道（branch の INFRA は続けて）、tick。保存は yuruidb のスプール（bbolt と DynamoDB＋S3 の 2 つで試す）。コンテナと Lambda の 2 つに出す）
   - pm-2 保管庫（archive:// とキュー・場所の archive:、記録と一覧の鎖、S3 Object Lock と lock none、検索項目の投げる側と規則、索引と検索の API、bdf archive search / get / verify、reindex）
   - pm-3 事務所のビューア（Drive 的な画面、サムネイル、刷り直し、監査の記録、OIDC）
   - pm-4 束ね方と CUPS（round-robin、プリンタごとのキュー、ジョブの移動、CUPS の名前の空間。print-m6 の S4 の後）。小さく独立なので前でもよい
   - 後 mTLS（MDM）の端末認証、要求ごとの封、帳票テンプレートの検索項目、RFC 3161、GCS・Azure・R2 のロック、期限の過ぎたものの削除、複数台
+  platform:
+    web: popcornweb（system:popcornweb）。画面（事務所・タブレット・管理）は .pw.html、API と IPP・INFRA は http.Handler。端末のセッションは pm-1 で manager の HMAC のクッキーにした（popcornweb の session は使っていない。print/manager を popcornweb から離すため）
+    config: 動かし方（保存先、保管庫、鍵、tick の秘密）は popcornweb の TOML と環境変数。場所・端末・表示先・逃げ道の規則は管理の画面と API で変えるデータで、スプールの保存先に置く（サーバーレスでは設定のファイルを書き換えられない）。今の設計書の YAML の例はこの 2 つに分けて読み替える
+    reuse_from_bdf: print.Print・print.PrintRaw（1 回で終わる送り）、print/ipp（IPP の符号化）、print/server の INFRA の受け口（今は print/spool に結びついているので、記録の層を差し替えられるように切り出す）、converter（PDF などを .bdf に）、thumbnail、サイトの viewer の部品
+  storage:
+    vault: S3 の Object Lock（2026-10-20 利用者「電子帳簿保存用ストレージは S3」）。GCS・Azure・R2 は後
+    spool_records: 伝票、端末、場所、tick の進み、outbox、監査の記録。yuruidb のレコード
+    spool_documents: 刷る前・見せる間の .bdf と受けたままの入力。yuruidb の Blob（bbolt・SQL・S3・R2・GCS）
+    by_deployment:
+    - 1 台のプロセス（社内のサーバー、コンテナ 1 つ）：bbolt の 1 ファイルに記録と文書（今の bdf のスプールと同じ）。SQLite（sql）も
+    - オンプレのプロセス＋保管庫だけ S3：スプールは bbolt か社内の PostgreSQL、保管庫は回線越しの S3。2026-10-20 利用者「オンプレでサーバープロセスを動かしながら、保存用ストレージだけ S3 というユースケースもあり得る」（facts.on_prem_vault）
+    - 複数台のコンテナ：PostgreSQL（sql）に記録と文書、か S3 に記録と文書
+    - AWS Lambda：DynamoDB の記録 ＋ S3 の文書（保管庫とは別のバケット）。S3 だけでも動く（一覧が遅い）
+    - Cloud Run functions：Firestore の記録 ＋ GCS の文書
+    - Cloudflare（Workers は後）：D1 の記録 ＋ R2 の文書
+    refused: cfkv（条件付きの操作が無い）。memory は試験だけ
+    queries: yuruidb の一覧は ID の順だけで、場所ごと・状態ごとに絞れない。場所ごとの「開いている伝票」の記録（版で守る小さな集合）を持つか、yuruidb に接頭辞の一覧を足すか（list-by-location）
+  on_prem_vault:
+    shape: Manager はオンプレのプロセス（コンテナか常駐のサービス）。スプールはローカル（bbolt・SQLite・社内の PostgreSQL）、プリンタへは LAN で direct、tick は中の時計。保管庫だけ回線越しの S3 の Object Lock
+    credentials: オンプレには IAM ロールも IMDS も無い。yuruidb の AWS の資格情報は環境変数・web identity・コンテナ・IMDSv2 の順で、共有ファイルと credential_process は Provider の注入（auth/aws の Provider 型。2026-10-20 に確かめた）。まずは保管庫への PutObject などだけを許した IAM ユーザーの鍵を環境変数で。IAM Roles Anywhere（X.509 の証明書で一時の資格情報）は credential_process（aws_signing_helper）を呼ぶ Provider を Manager の側に持つ（aws-credentials-on-prem）
+    offline: 回線が切れても受け付け・表示・刷ることは続ける。保管は outbox に積み、つながったら古い順に書く。スプールの文書は保管が済むまで消さないので、ローカルのディスクの残りと outbox の滞留（件数・最も古いものの時刻）を状態のページと監視の数値に出し、決めた時間を超えたら知らせる
+    not_yet_worm: 受けてから S3 に書けるまでの間は、文書はローカルの消せる保存先にある。受け付けのときのハッシュを記録に、S3 に書けた時刻を記録の JSON と 1 日の一覧に残し、遅れを説明できるようにする。遅れが大きいもの（例 24 時間）は一覧に印を付ける
+    clock: 受けた時刻はオンプレのサーバーの時計。NTP を前提にし、S3 の LastModified（AWS の時計）も記録に並べて残す。2 つの差が大きければ警告
+    retention: 保持の期限は受けた時刻から数える（S3 に書けた時刻からではない）。遅れて書くときは retain-until を受けた時刻＋期間で計算する
+    network: 回線越しの PUT の量（1 日 1000 件 × 数百 KB 程度）は小さい見込み。Direct Connect・VPN があればその上で、無ければインターネットの HTTPS で。プロキシの設定（HTTPS_PROXY）を通す
+    encryption: S3 の既定の暗号化（SSE-S3）で足りる見込み。SSE-KMS の鍵を指定するなら見出しが要る（yuruidb に口があるかは未確認）
+  serverless:
+    targets: popcornweb の pw build --target。第一は AWS Lambda（Web Adapter、コンテナのイメージ）と、同じイメージのコンテナ（Cloud Run services、App Runner）。Azure Functions・Cloud Run functions・Vercel は同じ制約の下で後から
+    cannot_do: DNS-SD・AirPrint の広告（マルチキャストは Direct Connect を越えない）、8631 の ipp+ipps の振り分け、LPD・9100 の受け口、serial・usb・winspool、常駐の送り手（送りは呼び出しごと）
+    printers:
+      direct: Lambda を VPC に置き、Direct Connect か Site-to-Site VPN で拠点の LAN に届けば、Manager が print.Print（ipp・ipps）と print.PrintRaw（socket・lpd）で直接送る。2026-10-20 利用者「Lambda で動いていて、Direct Connect で拠点マシンなしで工場制御した事例があるので、不可能ではないと思う」。コンテナで社内に置くときも同じ道
+      branch: 網が届かない拠点（NAT の向こう、閉じた網）は、拠点の bdf printd が Manager の INFRA（Get-Jobs の fetchable、Fetch-Job、Fetch-Document、Acknowledge-Job、Update-Job-Status）を取りに来る。m4 の upstreams の拠点の代理そのもの
+      per_printer: プリンタの記録に route（direct か branch:<printd の名前>）を持つ。同じ場所に両方があってよい
+      direct_in_serverless: 送りは呼び出しごと（受けた要求の中、tick、紙への逃げ道の期限の評価の中）。記録の借り（lease）で 2 重の送りを防ぐ。プリンタの状態の見張り（Get-Printer-Attributes の定期の問い）は tick で。VPC の Lambda から S3・DynamoDB へは VPC エンドポイント（か NAT）が要る
+      to_verify: VPC の Lambda から拠点のプリンタへの送り（偽プリンタを VPC の中に置いて試す）、冷えた起動の ENI の待ち
+    intake: 基幹・WMS は Manager の IPP（HTTPS の POST、/ipp/print/<場所>）か API に送る。社内の基幹は拠点の bdf printd に送り、printd が Manager に渡す形も（upstream の向きが逆。printd-relation の C の部分）
+    body_limits: Functions のホストには要求の本文の上限がある（popcornweb の既定 10 MiB、Lambda・Vercel などはもっと小さいこともある。数字は実装のときに確かめる）。大きな文書は API で S3 への署名つき PUT（presign）に上げてから確定する。IPP で上限を超えるものは拠点の printd を通す
+    conversion: PDF などから .bdf への変換は Lambda・コンテナでは Manager で行える（純 Go、イメージに入る）。重い・大きいものは拠点の printd が変換してから .bdf で送る。Manager は .bdf をそのまま受けられる
+    time: 期限は要求の中で遅れて評価する。紙への逃げ道は、branch のプリンタなら、その場所の printd が fetchable を問うときに「期限を過ぎた・開かれていない伝票」を fetchable に変える（printd の問い合わせそのものが時計）。direct のプリンタなら tick（か端末の問い合わせ）が期限を見て送る。保持と 1 日の一覧と outbox の再試行は tick（EventBridge Scheduler・Cloud Scheduler などから認証つきの POST）
+    notify: タブレットへの通知は、場所の版（記録の Revision）を短い間隔で問う条件つきの GET を基本にする（どのホストでも動き、インスタンスをまたぐ通知が要らない）。プロセスで動くときは popcornweb の型つきストリーム（SSE）で押せる
+    manifest: 1 日の一覧は、その日の後の tick が保管庫の接頭辞を一覧にして作る。一覧のキーは無いときだけ作る（If-None-Match）ので、同時の tick でも 1 つ。一覧を作った後に届いたその日の項目は、次の日の一覧の late に入れる
+    cold_start: 変換器とフォントを含むイメージは大きい。冷えた起動の時間を pm-1 で測る（未測定）
   yuruidb_needs:
-  - Blob の書き込みに保持の期限・モード・legal hold を渡す口（S3 の x-amz-object-lock-*、GCS の retention、Azure の immutability policy）
+  - Blob の書き込みに保持の期限・モード・legal hold を渡す口（S3 の x-amz-object-lock-*、GCS の retention、Azure の immutability policy）。S3 は保持つきの PUT に Content-MD5 か内容のチェックサムの見出しが要る（system:worm-object-storage。未確認）
   - 起動時にバケットのロックが効くかを確かめる口
   - legal hold の付け外しと、期限の延長（短縮はできない）
+  - Blob の Insert が保管庫で上書きしないこと（今の Insert は未使用の ID だけ。版の管理のあるバケットでの If-None-Match を確かめる）
+  - Object Lock のバケットでは .yuruidb-probes/ の確かめを使わないか、保持の規則から外す（既定の保持があると確かめのキーが消せない）
+  - 一覧を接頭辞（か開始のキー）で絞る口（list-by-location。bbolt の Seek、SQL の範囲、S3 の prefix、DynamoDB のソートキーの begins_with）
+  - 大きな文書のための署名つき URL（presign）。popcornweb の storage にはある（vault-client）
   size_estimate: 1 日 1000 ジョブ × 10 年で約 365 万件。本文 2 KB / 件で 7 GB 程度（暫定の見積もり、測っていない）
 open_questions:
   order:
@@ -97,8 +160,12 @@ open_questions:
     resolution: bdf printd とは別のサービス。2026-10-20 利用者「bdf printd とは別にサービスを作りたい」（推奨の「広げる」は採らなかった）。bdf printd との関係は printd-relation
   printd-relation:
     text: 別のサービスと bdf printd の関係。A は print/ の部品（スプール、IPP のサーバー、変換）をライブラリとして組み込み、実プリンタにも自分で送る。B は表示・保管・検索・画面の中央のサービスで、IPP の受け口と INFRA の Infrastructure Printer を持ち、倉庫の実プリンタへは各拠点の bdf printd が INFRA（m4 の upstreams）で取りに来る。C は B の逆で、bdf printd が受けて Manager の API に渡す
-    state: deferred
-    resolution: pm-1 を始めるときに決める（print-m6 には依らない）。推奨は B（倉庫は NAT の向こうで、m4 の拠点の代理がそのまま使え、タブレットは中央に繋ぐ）。置き場所（このリポジトリの cmd/ か別のリポジトリか）も同じとき
+    state: open
+    resolution: >-
+      暫定で A と B の両方を、プリンタごとの route で選ぶ（facts.serverless.printers）。Claude は「サーバーレスでは A が動かない」として
+      B を推したが、2026-10-20 利用者「Lambda で動いていて、Direct Connect で拠点マシンなしで工場制御した事例があるので、不可能ではないと思う」。
+      VPC の Lambda と Direct Connect・VPN なら A が動く。pm-1 は A（direct。print.Print・PrintRaw をそのまま使え、偽プリンタで試せる）を先に作り、
+      B（INFRA の受け口の切り出しが要る）は続けて（Claude の案、確認待ち）。C は社内の基幹の受け口として重ねられる（facts.serverless.intake）
   paperless-meaning:
     text: 「特定のユーザーに見せる（ペーパーレス）」は、刷ったものを決まった人に届ける（配達）か、仮想プリンタを使える・見える人を絞る（見せる範囲）か、両方か
     state: answered
@@ -106,7 +173,7 @@ open_questions:
   viewer-login:
     text: 画面のログインを最初から OIDC にするか、まずトークンで OIDC は後か
     state: open
-    resolution: タブレットはデバイス認証（paperless-meaning の答えから）。事務所の人と管理者は暫定でまずトークン、OIDC は pm-3
+    resolution: タブレットはデバイス認証（paperless-meaning の答えから）。事務所の人と管理者は暫定でまずトークン、OIDC は pm-3。popcornweb が OIDC を持つので、前に寄せる費用は小さい
   search-engine:
     text: 索引を自前（別の bbolt のファイルに項目と本文の 2-gram）にするか、外の検索エンジン（Meilisearch）にするか
     state: open
@@ -117,8 +184,8 @@ open_questions:
     resolution: 暫定で governance。compliance は誰も期限まで消せず、設定の誤りを費用ごと戻せない
   first-worm-store:
     text: 最初に対応する WORM の保存先と試験の相手
-    state: open
-    resolution: 暫定で S3 Object Lock。試験は自前の S3 の偽物（Object Lock の見出しを守る）と実際の S3。MinIO のコミュニティ版は 2026-02 に凍結（system:conditional-storage）なので試験の主にしない
+    state: answered
+    resolution: S3 Object Lock。2026-10-20 利用者「電子帳簿保存用ストレージは S3」。試験は自前の S3 の偽物（Object Lock の見出しを守る）と実際の S3。MinIO のコミュニティ版は 2026-02 に凍結（system:conditional-storage）なので試験の主にしない
   keep-source:
     text: 刷った .bdf に加えて受けたままの入力（PDF など）も保存するか
     state: open
@@ -147,6 +214,49 @@ open_questions:
     text: iPadOS の Safari・ホーム画面の Web アプリで IndexedDB の鍵が消されないか
     state: open
     resolution: 実機で確かめる（未確認）。消えるなら mTLS か再登録の手間を受け入れる
+  manager-location:
+    text: Manager のソースをどこに置くか。A はこのリポジトリの中の別の go.mod（raster/ebitenginebdf と同じ形。popcornweb の依存が bdf の go.mod に入らない、偽プリンタと同じ PR で試せる）。B は別のリポジトリ（bdf を依存として使う）。C はこのリポジトリの cmd/ で bdf の go.mod に popcornweb を足す
+    state: answered
+    resolution: >-
+      C。2026-10-20 利用者「bdf の cmd/ に入れる」（推奨の A は採らなかった）。go.mod は 1 つで、bdf の go.mod に popcornweb が入る。
+      pm-1 の最初に確かめる：popcornweb のプロジェクト（popcornweb.toml）を bdf のモジュールの中の cmd/<名前>/ に置いて pw generate・pw build が動くか、
+      popcornweb の依存（tinybind-go、syumai/workers ほか）で bdf の go.mod・go.sum がどれだけ増えるか、tinygodriver が bdf の v1.3.5 に揃って popcornweb が動くか
+  vault-client:
+    text: 保管庫の S3 の Object Lock の書き込みをどの部品に足すか。A は yuruidb の Blob（requirement の制約「保存の層は yuruidb の Blob」のまま、スプールと同じ部品）。B は tinygodriver の storage/s3（popcornweb の storage.Open が使う。presign が既にある）
+    state: answered
+    resolution: A の yuruidb の Blob。2026-10-20 利用者が推奨を選んだ。大きな文書の受け取りの presign は popcornweb の storage を使う（Claude の案）。yuruidb への追加（facts.yuruidb_needs）は pm-2 の前に要る（pm-1 には要らない）
+  first-serverless-target:
+    text: pm-1 で確かめるサーバーレスの配置
+    state: answered
+    resolution: AWS Lambda。2026-10-20 利用者が推奨を選んだ。Web Adapter、コンテナのイメージ、DynamoDB＋S3 のスプール。保管庫の S3 と同じクラウド。Cloud Run functions・Azure Functions・Vercel は後
+  spool-store-default:
+    text: 普段のスプールの既定の保存先
+    state: open
+    resolution: 暫定で bbolt の 1 ファイル（1 台のプロセス）。サーバーレスでは設定で必ず選ばせ、既定に頼らない（bbolt はインスタンスをまたげないので、サーバーレスで bbolt を選んだら起動時に断る）
+  list-by-location:
+    text: 場所ごと・状態ごとの伝票の一覧を、yuruidb の ID の順の一覧の上でどう作るか
+    state: open
+    resolution: 暫定で場所ごとの「開いている伝票」の記録（版で守る ID の集合、上限つき）。倉庫の規模（1 日 1000 件）なら足りる。足りなければ yuruidb に接頭辞の一覧を足す（利用者のリポジトリ）。pm-1 でこの形に作った（場所の状態の記録の Open・Ended・Devices と Seq。milestone:pm-1）
+  notify-transport:
+    text: タブレットへの通知をポーリングにするか、SSE（popcornweb のストリーム）にするか、WebSocket（API Gateway などの）にするか
+    state: open
+    resolution: 暫定で場所の版の条件つき GET のポーリング（数秒おき）を基本、プロセスで動くときは SSE も。サーバーレスでの費用（端末 1 台 5 秒おきで 1 日 1.7 万回）は pm-1 で見積もる。pm-1 はポーリング（4 秒、ETag、304）だけを作った。SSE と費用の見積もりはまだ
+  tick-trigger:
+    text: 定期の処理（保持、1 日の一覧、outbox の再試行）をどう起こすか
+    state: open
+    resolution: 暫定で認証つきの POST /_pm/tick を外のスケジューラ（EventBridge Scheduler など）が叩く。プロセスでは中の時計が同じ関数を呼ぶ。popcornweb は非 HTTP の trigger を持たない。pm-1 で POST /api/tick（管理か tick のトークン）とプロセスの時計（既定 30 秒、サーバーレスでは止める）にした
+  aws-credentials-on-prem:
+    text: オンプレの Manager が S3 の保管庫に書く資格情報を、IAM ユーザーの鍵（環境変数）にするか、IAM Roles Anywhere（証明書で一時の資格情報）にするか
+    state: open
+    resolution: 暫定でまず鍵（保管庫の接頭辞への PutObject・GetObject・PutObjectRetention・PutObjectLegalHold・ListBucket だけの方針）。Roles Anywhere は credential_process を呼ぶ Provider を後で。長く残る鍵を嫌う利用者が出たら前に
+  vault-backlog-limit:
+    text: 回線の断で保管が遅れるとき、どこまで受け付けを続けるか（ローカルのディスクの上限、遅れの上限で受け付けを止めるか）
+    state: open
+    resolution: 暫定で止めない（出荷を止めない）。ディスクの残りが決めた量を下回ったら、保管庫の要るキューだけ受け付けを断る（IPP の server-error-busy）。表示だけのキューは続ける
+  workers-target:
+    text: Cloudflare Workers に置くか
+    state: deferred
+    resolution: 後。Wasm の大きさ（変換器とフォント）、ファイルシステム無し、storage が r2 だけで S3 の Object Lock に届かない。見直すのは、変換を拠点の printd に寄せた「.bdf だけ受ける」軽い Manager が要るとき
   ipp-basic-clients:
     text: Windows の IPP クラスドライバ・macOS・iOS・Android が IPP の Basic 認証を問うか
     state: open
@@ -164,7 +274,17 @@ relations:
   to: system:conditional-storage
 - relation: complements
   to: requirement:form-template
+- relation: depends_on
+  to: system:popcornweb
+- relation: depends_on
+  to: system:yuruidb
 history:
+  pm-1-implemented:
+    summary: 2026-10-20 利用者「一旦実装をお願いします」（/goal）。pm-1（現場の表示）を print/manager と cmd/printmanager に実装した（milestone:pm-1）。popcornweb の pw はプロジェクトの直下に go.mod を求めるので popcornweb.toml をリポジトリの直下に置き、pw generate --code-only の生成物をコミットした。端末のセッションは popcornweb の session でなく manager の HMAC のクッキー。S3 互換（rustfs）で記録も文書も置く形を確かめ、DynamoDB と実際の Lambda は未確認
+  on-prem-vault:
+    summary: 2026-10-20 利用者「オンプレでサーバープロセスを動かしながら、保存用ストレージだけ S3 というユースケースもあり得るかと思います」。配置の 1 つとして足し、資格情報（Roles Anywhere は Provider の注入）、回線の断の間の outbox とディスク、WORM になるまでの遅れの記録、時計、保持の起点を facts.on_prem_vault に書いた
+  platform-storage-serverless:
+    summary: 2026-10-20 利用者「print manager server の要件を整理して欲しい。ウェブフレームワークには https://github.com/shibukawa/popcornweb これを利用して欲しい。電子帳簿保存用ストレージは S3 だが、普段のスプールのストレージは yuruidb が使えるものは利用できるように。print manager はサーバーレスでも使えると良い」。popcornweb（5af5b03）と yuruidb（004439a）を読み、土台・保存の分け方・サーバーレスの制約を足した。first-worm-store は S3 で答えた。Object Lock の口は yuruidb にも popcornweb にも無い。続けて問いに答えた：置き場所は bdf の cmd/、サーバーレスは Lambda、Object Lock は yuruidb の Blob。printd-relation は「サーバーレスでは A が動かない」を Direct Connect の事例で退け、プリンタごとの route（direct・branch）にした
   order-and-shape-answered:
     summary: 2026-10-20 利用者「偽プリンタをまずきちんと作って、テストを全てそれをベースに行うのを先にしたい」「bdf printd とは別にサービスを作りたい」。順番は print-m6 が先、形は別のサービス。bdf printd との関係（printd-relation）は pm-1 のときに決める
   paperless-answered:

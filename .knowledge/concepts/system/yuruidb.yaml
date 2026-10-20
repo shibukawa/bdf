@@ -1,0 +1,41 @@
+id: system:yuruidb
+type: system
+title: yuruidb — 保存先を選べるレコードと Blob の層（bbolt・SQL・S3・DynamoDB・GCS・Firestore・R2・D1 ほか、SDK なし）
+summary: >-
+  github.com/shibukawa/yuruidb（利用者が作成。2026-10-20 にコミット 004439a の README を読んだ）。Store.Bind[T](コレクション) で型と
+  コレクションを結び、Get・Insert（無いときだけ）・Update と Delete（Revision が同じときだけ）・List（ID のバイト列の順、カーソル）を
+  どの保存先でも同じ API で行う。大きな文書は Blob（bbolt・SQL・S3・R2・GCS）。bdf のスプール（print/spool/store.go）は既に
+  bbolt のドライバに載っている。decision:thin-store の候補だったもの。requirement:print-manager のスプールの保存先の選択肢。
+lifecycle: active
+authority: observed
+aliases:
+- yuruidb
+facts:
+  module: github.com/shibukawa/yuruidb。Go 1.27 以上。コアは標準ライブラリだけ、クラウドは HTTP で話す（SDK なし）。bbolt はそのドライバの依存
+  drivers:
+    memory: プロセスの中だけ（試験）
+    bbolt: 1 つのファイル、1 つのプロセス。複数のコレクションと Blob を同じファイルに。Backup（稼働中の写し）と InitialMmapSize
+    sql: SQLite と PostgreSQL の方言。database/sql の DB を注入。Blob は別の表（BLOB・BYTEA）、挿入は入力全体をメモリに読む
+    s3: ETag の条件。独自の endpoint は Open のときに .yuruidb-probes/ で条件付きの書き込みを確かめる。Blob あり
+    dynamodb: 条件付きの PutItem・DeleteItem。流量制限の HTTP 400 を再試行。Blob なし
+    gcs: generation の条件。Blob あり
+    firestore: updateTime の条件。Blob なし
+    firebase: ETag の条件。Blob なし
+    r2: 確かめた S3 の条件。Blob あり
+    d1: 条件付きの SQL。Blob なし
+    cfkv: 条件付きの操作に対応しない（無条件の Set・Remove だけ）
+  build_tags: aws（s3・dynamodb）、gcp（gcs・firestore・firebase）、cloudflare（r2・d1・cfkv）、ドライバ名。backends パッケージを blank import
+  ids: 1〜256 文字の ASCII 英数字と . _ -。NewID は UUIDv7。名前のキーも置ける。一覧は ID のバイト列の昇順
+  list_options: ListOptions は Limit と Cursor だけ。接頭辞や開始のキーで絞る口は無い（raw.go。2026-10-20 に確かめた）
+  outcome_unknown: 応答が失われたら読み直して自分の nonce なら成功。照合できなければ ErrOutcomeUnknown（ErrConflict と分ける）
+  blob: Insert(ctx, id, io.Reader) は未使用の ID だけ。Open は io.ReaderAt にもなる。List は本文を読まない。条件付きの Delete は保存先の対応が要り、Remove は無条件
+  object_lock: Blob の書き込みに Object Lock の保持の期限・モード・legal hold を渡す口は無い（2026-10-20 に grep で確かめた）
+  unverified: 実際のクラウド・PostgreSQL のレコードの適合試験、IAM、本番の性能（README の記述）
+relations:
+- relation: informs
+  to: requirement:print-manager
+- relation: informs
+  to: decision:thin-store
+history:
+  read:
+    summary: 2026-10-20 利用者「普段のスプールのストレージは yuruidb が使えるものは利用できるように」。README.ja.md と raw.go を読んだ（コミット 004439a）。それまでの評価は decision:thin-store の candidate_yuruidb
