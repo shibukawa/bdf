@@ -94,7 +94,10 @@ type PrinterJob struct {
 	AttemptStarted time.Time `json:"attempt-started"`
 	JobID          int32     `json:"job-id,omitempty"`
 	JobURI         string    `json:"job-uri,omitempty"`
-	Sent           bool      `json:"sent,omitempty"`
+	// Begun says that a printer of 9100 or LPD may have begun to print
+	// the job.
+	Begun bool `json:"begun,omitempty"`
+	Sent  bool `json:"sent,omitempty"`
 }
 
 // Queue is a queue of the server.

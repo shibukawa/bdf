@@ -22,6 +22,11 @@ import (
 //     job is sent again; one is the job; more are held for a person
 //     (bdf-duplicate-check).
 //
+// A raw printer (9100, LPD) tells nothing of its jobs: a job it had is
+// taken as printed; one it may have begun to print (from the first byte of
+// a 9100 job, from the control file of an LPD job) is held for a person;
+// one it was sent nothing it prints of is sent again.
+//
 // A printer not reached is asked again later.
 func (s *Spool) recoverJob(ctx context.Context, e *entry) {
 	j := s.snapshot(e)
@@ -32,6 +37,21 @@ func (s *Spool) recoverJob(ctx context.Context, e *entry) {
 	p := s.printer(j.Printer.Name)
 	if p == nil {
 		s.o.Log.Error("job at a printer that is not configured", "job", j.ID, "printer", j.Printer.Name)
+		return
+	}
+	if p.raw != nil {
+		switch {
+		case j.Printer.Sent:
+			j.Warnings = append(j.Warnings, "the printer tells nothing of its jobs: the job is taken as printed")
+			s.recovered(e)
+			s.done(ctx, e, j, ipp.JobCompleted, "job-completed-with-warnings")
+		case j.Printer.Begun:
+			s.recovered(e)
+			s.holdDuplicate(ctx, e, j, p, "the spool stopped while the job was sent: the printer may have printed it, or a part of it")
+		default:
+			s.o.Log.Info("recovery: the printer was sent nothing it prints", "job", j.ID, "printer", p.Name)
+			s.resend(ctx, e, j)
+		}
 		return
 	}
 	actx, cancel := context.WithTimeout(ctx, 30*time.Second)

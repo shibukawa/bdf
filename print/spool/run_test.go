@@ -17,6 +17,7 @@ import (
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/ipp/ipptest"
+	"github.com/shibukawa/bdf/print/raw"
 )
 
 // fast shortens the spool's waits for a test.
@@ -326,9 +327,8 @@ func TestCrashChild(t *testing.T) {
 		}
 	}
 	watchFirst, lookBusy = 10*time.Millisecond, 30*time.Millisecond
-	c := &ipp.Client{URL: os.Getenv("SPOOL_CRASH_PRINTER"), User: "bdf"}
 	s, err := Open(context.Background(), Options{Path: os.Getenv("SPOOL_CRASH_PATH"), Queues: []Queue{{Name: "office", Printers: []string{"mfp1"}}},
-		Printers: []Printer{{Name: "mfp1", Client: c}}})
+		Printers: []Printer{crashPrinter(t, os.Getenv("SPOOL_CRASH_PRINTER"))}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,6 +338,18 @@ func TestCrashChild(t *testing.T) {
 	s.Start()
 	time.Sleep(10 * time.Second)
 	os.Exit(4) // the point was not reached
+}
+
+// crashPrinter is the printer of a URL: of IPP, or raw.
+func crashPrinter(t *testing.T, u string) Printer {
+	if raw.IsURL(u) {
+		p, err := raw.Parse(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Printer{Name: "mfp1", Raw: p}
+	}
+	return Printer{Name: "mfp1", Client: &ipp.Client{URL: u, User: "bdf"}}
 }
 
 func TestCrash(t *testing.T) {

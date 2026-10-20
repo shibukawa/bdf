@@ -22,6 +22,7 @@ import (
 
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/raw"
 	"github.com/shibukawa/bdf/print/spool"
 )
 
@@ -79,9 +80,14 @@ type TokenConfig struct {
 
 // PrinterConfig is a printer: its URL (ipp://, ipps://, http://,
 // https://), its user and password when it asks for them, and the
-// fingerprint of its certificate when it is pinned.
+// fingerprint of its certificate when it is pinned; or a printer of 9100
+// or LPD (socket://host:9100, lpd://host/queue), the format it takes (ps,
+// the default, or pdf) and whether a PJL header goes before the document
+// (by default, for PDF only).
 type PrinterConfig struct {
 	URL          string `yaml:"url"`
+	Format       string `yaml:"format"`
+	PJL          *bool  `yaml:"pjl"`
 	Username     string `yaml:"username"`
 	PasswordEnv  string `yaml:"password-env"`
 	PasswordFile string `yaml:"password-file"`
@@ -240,6 +246,18 @@ func (c *Config) check() error {
 		return errors.New("no queues")
 	}
 	for name, p := range c.Printers {
+		if raw.IsURL(p.URL) {
+			if _, err := p.raw(c.User); err != nil {
+				return fmt.Errorf("printer %s: %w", name, err)
+			}
+			if p.Username != "" || p.PasswordEnv != "" || p.PasswordFile != "" || p.Fingerprint != "" || p.Insecure {
+				return fmt.Errorf("printer %s: a printer of 9100 or LPD has no user, password or certificate", name)
+			}
+			continue
+		}
+		if p.Format != "" || p.PJL != nil {
+			return fmt.Errorf("printer %s: format and pjl are for printers of 9100 or LPD (socket://, lpd://)", name)
+		}
 		if _, _, err := ipp.ParseURL(p.URL); err != nil {
 			return fmt.Errorf("printer %s: %w", name, err)
 		}
@@ -365,6 +383,30 @@ func (q QueueConfig) ticket() (print.Ticket, error) {
 }
 
 // client makes the IPP client of a printer.
+// raw returns the printer of 9100 or LPD of the configuration.
+func (p PrinterConfig) raw(user string) (*raw.Printer, error) {
+	r, err := raw.Parse(p.URL)
+	if err != nil {
+		return nil, err
+	}
+	switch p.Format {
+	case "":
+	case "ps", "postscript":
+		r.Format = raw.FormatPostScript
+	case "pdf":
+		r.Format = raw.FormatPDF
+	default:
+		return nil, fmt.Errorf("format %q: ps or pdf", p.Format)
+	}
+	if p.PJL != nil {
+		r.PJL = fmt.Sprint(*p.PJL)
+	}
+	if r.User == "" {
+		r.User = user
+	}
+	return r, nil
+}
+
 func (p PrinterConfig) client(user string) (*ipp.Client, error) {
 	c := &ipp.Client{URL: p.URL, User: user, Username: p.Username, Timeout: 5 * time.Minute}
 	switch {
@@ -388,7 +430,16 @@ func (c *Config) spoolOptions() (spool.Options, error) {
 		Limits: spool.Limits{MaxDocument: int64(c.Limits.MaxDocument), MaxJobs: c.Limits.MaxJobs, MaxBytes: int64(c.Limits.MaxBytes),
 			MaxImpressions: c.Limits.MaxImpressions, Renders: c.Limits.Renders, RetryFor: time.Duration(c.Limits.RetryFor)}}
 	for _, name := range sortedKeys(c.Printers) {
-		cl, err := c.Printers[name].client(c.User)
+		pc := c.Printers[name]
+		if raw.IsURL(pc.URL) {
+			r, err := pc.raw(c.User)
+			if err != nil {
+				return o, fmt.Errorf("printer %s: %w", name, err)
+			}
+			o.Printers = append(o.Printers, spool.Printer{Name: name, Raw: r})
+			continue
+		}
+		cl, err := pc.client(c.User)
 		if err != nil {
 			return o, fmt.Errorf("printer %s: %w", name, err)
 		}

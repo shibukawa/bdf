@@ -19,6 +19,7 @@ import (
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/raster"
+	"github.com/shibukawa/bdf/print/raw"
 	"github.com/shibukawa/bdf/print/server/client"
 )
 
@@ -35,8 +36,14 @@ const printUsage = `usage: bdf print [flags] -printer <url | name> <file.bdf | d
        bdf print [flags] -server <url> [-queue <queue>] <file.bdf | dir | input>
   prints a document on an IPP printer, or a queue of CUPS, without a driver:
   as a PDF file when the printer takes PDF (the document stays vectors), else
-  as PWG Raster drawn here; an input in a format bdf generate converts is
-  converted first. bdf printers lists the printers and what they support.
+  as PostScript, else as PWG Raster, Apple Raster or PCLm drawn here; an
+  input in a format bdf generate converts is converted first. bdf printers
+  lists the printers and what they support.
+
+  A printer without IPP is reached over its raw port or LPD:
+  socket://host:9100 and lpd://host/queue are sent PostScript, or PDF with
+  ?format=pdf (with a PJL header; ?pjl=false leaves it out). Such a printer
+  tells nothing of the job: bdf print returns once it has the document.
 
   With -server (or $BDF_SERVER, without -printer) the document goes as it is
   to a queue of a print server (bdf printd), which converts and prints it;
@@ -52,7 +59,7 @@ take jobs), 6 the job is not done within -wait.`
 // printCmd prints a document.
 func printCmd(args []string) {
 	fs := flag.NewFlagSet("print", flag.ExitOnError)
-	printer := fs.String("printer", "", "the printer: its URL (ipp://host/ipp/print, ipps://…, ipp://localhost:631/printers/<queue>) or its name on the network (bdf printers)")
+	printer := fs.String("printer", "", "the printer: its URL (ipp://host/ipp/print, ipps://…, ipp://localhost:631/printers/<queue>, socket://host:9100, lpd://host/queue) or its name on the network (bdf printers)")
 	copies := fs.Int("copies", 1, "copies")
 	collate := fs.String("collate", "", "collated (1 2 3 1 2 3) or uncollated (1 1 2 2 3 3) copies")
 	sides := fs.String("sides", "", "one-sided, two-sided-long-edge (long), two-sided-short-edge (short)")
@@ -219,7 +226,17 @@ func printCmd(args []string) {
 	if !strings.Contains(target, "://") {
 		target = findPrinter(ctx, target, *timeout)
 	}
-	c := conn.client(target)
+	var c *ipp.Client
+	var rawPrinter *raw.Printer
+	if raw.IsURL(target) {
+		var err error
+		if rawPrinter, err = raw.Parse(target); err != nil {
+			badUsage("print", "-printer: "+err.Error())
+		}
+		rawPrinter.User = firstNonEmpty(rawPrinter.User, *conn.user)
+	} else {
+		c = conn.client(target)
+	}
 	secure := strings.HasPrefix(strings.ToLower(target), "ipps:") || strings.HasPrefix(strings.ToLower(target), "https:")
 
 	ro := ropts()
@@ -284,7 +301,7 @@ func printCmd(args []string) {
 	if w < 0 {
 		w = 0
 	}
-	res, err := print.Print(ctx, c, doc, &print.Options{Ticket: t, Format: *format, RasterIfLossy: *rasterIfLossy, View: *view, SkipRoles: skip,
+	po := &print.Options{Ticket: t, Format: *format, RasterIfLossy: *rasterIfLossy, View: *view, SkipRoles: skip,
 		Strict: *strict, FontDirs: ro.FontDirs, NoSystemFonts: ro.NoSystemFonts, Wait: w, MaxImpressions: *maxImpressions,
 		Progress: func(e print.Event) {
 			switch e.Kind {
@@ -295,7 +312,14 @@ func printCmd(args []string) {
 			case "state":
 				say("%s", e.Job)
 			}
-		}})
+		}}
+	var res *print.Result
+	var err error
+	if rawPrinter != nil {
+		res, err = print.PrintRaw(ctx, rawPrinter, doc, po)
+	} else {
+		res, err = print.Print(ctx, c, doc, po)
+	}
 	if res != nil && !*quiet {
 		for _, u := range res.Unsupported {
 			fmt.Fprintln(os.Stderr, "warning: the printer does not support", u+": left out")
@@ -309,6 +333,11 @@ func printCmd(args []string) {
 		os.Exit(exitCode(err))
 	}
 	what := print.FormatTitle(res.Format)
+	if rawPrinter != nil {
+		// (the printer tells nothing more)
+		say("%s: %d page(s) sent as %s on %s", rawPrinter.URL, res.Sheets, what, firstNonEmpty(res.Media, "paper of the size of the pages"))
+		return
+	}
 	state := "sent"
 	if res.Job != nil && res.Job.State.Done() {
 		state = res.Job.State.String()
@@ -334,7 +363,7 @@ func exitCode(err error) int {
 	switch {
 	case errors.Is(err, print.ErrPrinterStopped), errors.As(err, &se) && (se.Status == ipp.StatusServerErrorNotAcceptingJobs || se.Status == ipp.StatusServerErrorPrinterIsDeactivated):
 		return exitStopped
-	case errors.Is(err, print.ErrUnsupported), errors.As(err, &se) && se.Status.ClientError():
+	case errors.Is(err, print.ErrUnsupported), errors.Is(err, raw.ErrRefused), errors.As(err, &se) && se.Status.ClientError():
 		return exitUnsupported
 	case errors.Is(err, ipp.ErrCertificateChanged), errors.Is(err, ipp.ErrAuth), errors.Is(err, ipp.ErrProtocol), errors.As(err, &netErr), errors.As(err, &urlErr):
 		return exitConnection

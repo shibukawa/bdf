@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
 )
 
@@ -41,12 +42,25 @@ func (s *Spool) look(p *printerState) {
 	ctx, cancel := context.WithTimeout(s.stepCtx, 30*time.Second)
 	defer cancel()
 	s.mu.Lock()
-	caps := p.caps
+	caps, up := p.caps, p.up
 	s.mu.Unlock()
-	var full *ipp.Printer
-	st, err := p.client.GetPrinterAttributes(ctx, statusAttributes...)
-	if err == nil && (caps == nil || st.ConfigChangeTime != caps.ConfigChangeTime) {
-		full, err = p.client.GetPrinterAttributes(ctx)
+	var full, st *ipp.Printer
+	var err error
+	switch {
+	case p.raw != nil && up:
+		// a raw printer tells nothing: one that took the last job is not
+		// asked again
+		return
+	case p.raw != nil:
+		// one that is not known to be up is connected to
+		if err = p.raw.Check(ctx); err == nil {
+			full = print.RawCapabilities(p.raw)
+		}
+	default:
+		st, err = p.client.GetPrinterAttributes(ctx, statusAttributes...)
+		if err == nil && (caps == nil || st.ConfigChangeTime != caps.ConfigChangeTime) {
+			full, err = p.client.GetPrinterAttributes(ctx)
+		}
 	}
 	if s.stepCtx.Err() != nil {
 		return

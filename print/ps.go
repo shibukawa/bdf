@@ -23,10 +23,18 @@ func (j *job) ps(media string) ([]byte, error) {
 	if dpi < 300 {
 		dpi = 300
 	}
-	var buf bytes.Buffer
-	res, err := psbdf.Write(&buf, j.doc, &psbdf.Options{Views: []string{j.view.ID}, SkipRoles: j.o.SkipRoles, Pages: j.order(),
+	opts := &psbdf.Options{Views: []string{j.view.ID}, SkipRoles: j.o.SkipRoles, Pages: j.order(),
 		FontFS: j.o.FontFS, FontDirs: j.o.FontDirs, NoSystemFonts: j.o.NoSystemFonts,
-		Place: PlacePS(name, scaling, j.t.Orientation), Sides: j.t.Sides, Gray: !colour(j.p, j.t), RasterDPI: dpi, Title: j.t.JobName})
+		Place: PlacePS(name, scaling, j.t.Orientation), Sides: j.t.Sides, Gray: !colour(j.p, j.t), RasterDPI: dpi, Title: j.t.JobName}
+	if j.raw {
+		// what IPP asks in attributes, the file asks of the printer
+		if n := j.t.copies(); n > 1 {
+			opts.Copies, opts.Collate = n, j.t.Collate != "uncollated"
+		}
+		opts.MediaType = j.t.MediaType
+	}
+	var buf bytes.Buffer
+	res, err := psbdf.Write(&buf, j.doc, opts)
 	if err != nil {
 		return nil, err
 	}

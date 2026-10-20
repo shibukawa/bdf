@@ -16,6 +16,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/raw"
 )
 
 // convert turns the document of a job into a .bdf and keeps it, so that
@@ -137,7 +138,7 @@ func (s *Spool) send(ctx context.Context, e *entry, p *printerState) {
 		return
 	}
 	j.Attempts++
-	j.Printer = &PrinterJob{Name: p.Name, URL: p.client.URL, AttemptStarted: now}
+	j.Printer = &PrinterJob{Name: p.Name, URL: p.url(), AttemptStarted: now}
 	if j.Started.IsZero() {
 		j.Started = now
 	}
@@ -169,14 +170,16 @@ func (s *Spool) send(ctx context.Context, e *entry, p *printerState) {
 		case <-sendCtx.Done():
 		}
 	}()
-	res, err := print.Print(sendCtx, p.client, doc, &print.Options{
+	po := &print.Options{
 		Ticket: ticket, Format: format, RasterIfLossy: lossy, View: j.Options.View, SkipRoles: j.Options.SkipRoles, Strict: j.Options.Strict,
 		FontFS: s.o.FontFS, FontDirs: s.o.FontDirs, NoSystemFonts: s.o.NoSystemFonts, MaxImpressions: s.o.Limits.MaxImpressions,
 		Printer: caps,
 		OnCreated: func(js *ipp.JobStatus) error {
 			crashpoint("created")
-			j.Printer.JobID, j.Printer.JobURI = js.ID, js.URI
+			// (a raw printer makes no job: it may begin to print it now)
+			j.Printer.JobID, j.Printer.JobURI, j.Printer.Begun = js.ID, js.URI, p.raw != nil
 			if !s.commit(sendCtx, e, j) {
+				j.Printer.Begun = false // (nothing is sent)
 				return errors.New("spool: the printer's job could not be recorded")
 			}
 			crashpoint("created-recorded")
@@ -190,7 +193,13 @@ func (s *Spool) send(ctx context.Context, e *entry, p *printerState) {
 			crashpoint("sent-recorded")
 			return nil
 		},
-	})
+	}
+	var res *print.Result
+	if p.raw != nil {
+		res, err = print.PrintRaw(sendCtx, p.raw, doc, po)
+	} else {
+		res, err = print.Print(sendCtx, p.client, doc, po)
+	}
 	now = s.o.Now()
 	if res != nil {
 		j.Format, j.Media, j.Sheets, j.Bytes = res.Format, res.Media, res.Sheets, res.Bytes
@@ -201,12 +210,22 @@ func (s *Spool) send(ctx context.Context, e *entry, p *printerState) {
 		s.count(func(st *Stats) { st.SentBytes[p.Name] += j.Bytes })
 	}
 	switch {
+	case err == nil && p.raw != nil:
+		// a raw printer tells no more than that it has the job
+		j.RetrySince, j.Due, j.Retries = time.Time{}, time.Time{}, 0
+		s.o.Log.Info("job sent", "job", j.ID, "printer", p.Name, "format", j.Format, "bytes", j.Bytes)
+		s.done(ctx, e, j, ipp.JobCompleted, completedReason(&j))
 	case err == nil:
 		j.Step, j.RetrySince, j.Due = StepWatch, time.Time{}, time.Time{}
 		j.Retries = 0
 		s.mirror(&j, res.Job)
 		s.o.Log.Info("job sent", "job", j.ID, "printer", p.Name, "printer-job", j.Printer.JobID, "format", j.Format, "bytes", j.Bytes)
 		s.commit(ctx, e, j)
+	case j.Printer.Sent && p.raw != nil:
+		s.done(ctx, e, j, ipp.JobCompleted, completedReason(&j))
+	case j.Printer.Begun && !s.isCanceling(e):
+		// a raw printer may have printed a part of it
+		s.holdDuplicate(ctx, e, j, p, fmt.Sprintf("the printer may have printed a part of the job: %v", err))
 	case s.isCanceling(e):
 		s.canceled(ctx, e, j)
 	case j.Printer.Sent:
@@ -250,7 +269,7 @@ func (s *Spool) retry(ctx context.Context, e *entry, j Job, p *printerState, cau
 	j.Due = now.Add(retryDelay(j.Retries))
 	j.Retries++
 	s.count(func(st *Stats) { st.Retries[p.Name]++ })
-	if j.Printer.JobID == 0 {
+	if j.Printer.JobID == 0 && p.raw == nil {
 		// the printer may have made a job whose answer was lost
 		s.dropAttempt(ctx, p, &j)
 	}
@@ -267,6 +286,24 @@ func (s *Spool) retry(ctx context.Context, e *entry, j Job, p *printerState, cau
 	}
 	s.mu.Unlock()
 	p.poke()
+}
+
+// holdDuplicate holds a job that a printer may have printed, or printed a
+// part of, for a person: Release sends it again, Cancel ends it.
+func (s *Spool) holdDuplicate(ctx context.Context, e *entry, j Job, p *printerState, message string) {
+	j.Message = message
+	j.Step, j.Printer = StepSend, nil
+	j.to(s.o.Now(), ipp.JobPendingHeld, ReasonDuplicateCheck)
+	s.o.Log.Warn("job held: a person decides", "job", j.ID, "printer", p.Name, "why", message)
+	s.commit(ctx, e, j)
+}
+
+// completedReason is the reason of a job done at its printer.
+func completedReason(j *Job) string {
+	if len(j.Warnings) > 0 || len(j.Unsupported) > 0 {
+		return "job-completed-with-warnings"
+	}
+	return "job-completed-successfully"
 }
 
 // dropAttempt cancels, as best it can, the jobs of a failed attempt that
@@ -300,7 +337,7 @@ func crashpoint(point string) {
 // retryable tells a failure for want of the printer: it was not reached,
 // is stopped, busy or not taking jobs. Other failures are the job's.
 func retryable(err error) bool {
-	if errors.Is(err, print.ErrPrinterStopped) || errors.Is(err, ipp.ErrAuth) || errors.Is(err, ipp.ErrCertificateChanged) {
+	if errors.Is(err, print.ErrPrinterStopped) || errors.Is(err, ipp.ErrAuth) || errors.Is(err, ipp.ErrCertificateChanged) || errors.Is(err, raw.ErrRefused) {
 		return true
 	}
 	var se *ipp.StatusError
@@ -366,6 +403,11 @@ func (s *Spool) watch(ctx context.Context, e *entry) {
 		s.o.Log.Error("job at a printer that is not configured", "job", j.ID, "printer", j.Printer.Name)
 		return
 	}
+	if p.raw != nil {
+		// a raw printer that has a job tells nothing more of it
+		s.done(ctx, e, j, ipp.JobCompleted, completedReason(&j))
+		return
+	}
 	last := &ipp.JobStatus{ID: j.Printer.JobID, URI: j.Printer.JobURI, State: ipp.JobPending}
 	delay := watchFirst
 	crashpoint("watching")
@@ -403,11 +445,7 @@ func (s *Spool) watch(ctx context.Context, e *entry) {
 		if js.State.Done() {
 			switch js.State {
 			case ipp.JobCompleted:
-				reason := "job-completed-successfully"
-				if len(j.Warnings) > 0 || len(j.Unsupported) > 0 {
-					reason = "job-completed-with-warnings"
-				}
-				s.done(ctx, e, j, ipp.JobCompleted, reason)
+				s.done(ctx, e, j, ipp.JobCompleted, completedReason(&j))
 			case ipp.JobCanceled:
 				s.done(ctx, e, j, ipp.JobCanceled, "job-canceled-at-device")
 			default:

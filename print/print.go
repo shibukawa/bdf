@@ -137,6 +137,9 @@ type job struct {
 	view  *bdf.View
 	pages []int // zero-based pages of the view, in order
 	res   *Result
+	// raw is set for a printer of 9100 or LPD, which is told of the job
+	// only in its file
+	raw bool
 }
 
 // Print prints a document on the printer of a client: it asks the

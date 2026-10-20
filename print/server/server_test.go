@@ -21,6 +21,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/ipp/ipptest"
+	"github.com/shibukawa/bdf/print/raw/rawtest"
 	"github.com/shibukawa/bdf/print/spool"
 )
 
@@ -196,6 +197,41 @@ limits: { max-document: 1MiB, max-bytes: 2GiB, retry-for: 90m }
 	}
 	if _, err := ParseConfig([]byte("listen: 0.0.0.0:8640\ninsecure: true\nprinters: { p: { url: ipp://h/ } }\nqueues: { q: { printers: [p] } }")); err != nil {
 		t.Errorf("insecure: %v", err)
+	}
+
+	// printers of 9100 and LPD
+	sock := rawtest.NewSocket()
+	defer sock.Close()
+	c, err = ParseConfig([]byte(`
+printers:
+  ps: { url: "` + sock.URL + `" }
+  lpd: { url: "lpd://127.0.0.1:1/q?format=pdf", pjl: false }
+  ipp: { url: "ipp://127.0.0.1:1/ipp/print" }
+queues: { q: { printers: [ps, lpd, ipp] } }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	so, err := c.spoolOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := so.Printers[1].Raw; r == nil || r.Format != "pdf" || r.PJL != "false" || r.User != "bdf" || so.Printers[2].Raw == nil || so.Printers[0].Client == nil {
+		t.Fatalf("printers %+v", so.Printers)
+	}
+	checks := CheckPrinters(context.Background(), c)
+	if checks[2].Err != nil || checks[2].Printer.Formats[0] != "application/postscript" || checks[1].Err == nil {
+		t.Errorf("checks %+v", checks)
+	}
+	for name, y := range map[string]string{
+		"format of IPP": "printers: { p: { url: ipp://h/, format: pdf } }\nqueues: { q: { printers: [p] } }",
+		"bad format":    "printers: { p: { url: socket://h, format: pcl } }\nqueues: { q: { printers: [p] } }",
+		"no queue":      "printers: { p: { url: lpd://h } }\nqueues: { q: { printers: [p] } }",
+		"password":      "printers: { p: { url: socket://h, password-env: X } }\nqueues: { q: { printers: [p] } }",
+	} {
+		if _, err := ParseConfig([]byte(y)); err == nil {
+			t.Errorf("%s: no error", name)
+		}
 	}
 
 	// secrets: from a file, the environment, never shorter than 16
