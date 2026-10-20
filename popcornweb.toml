@@ -10,3 +10,11 @@ handlers = ["cmd/printmanager/handlers"]
 templates = ["cmd/printmanager/handlers"]
 config = ["cmd/printmanager/handlers"]
 queries = []
+
+# The application's public tree is with it, not at the module's root
+# (package bdf): pw builds cmd/printmanager/public into dist/public there,
+# beside public.go of package main, which embeds it.
+[assets]
+public = "cmd/printmanager/public"
+derived = "cmd/printmanager/dist/public"
+embed = "cmd/printmanager/public.go"

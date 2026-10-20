@@ -11,13 +11,11 @@ package main
 
 import (
 	"context"
-	"io/fs"
 	"log"
 
 	"github.com/shibukawa/bdf/cmd/printmanager/handlers"
 	_ "github.com/shibukawa/bdf/converter/all"
 	"github.com/shibukawa/popcornweb/pw"
-	"github.com/shibukawa/popcornweb/pwconfig"
 )
 
 func main() {
@@ -27,7 +25,7 @@ func main() {
 	}
 	// --generate-config, the health probe …: answered before the store
 	// is opened
-	if handled, err := pwconfig.RunFrameworkAction(); handled {
+	if handled, err := pw.RunFrameworkAction(); handled {
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -41,17 +39,7 @@ func main() {
 	defer app.Close()
 	stop := app.StartTimer(ctx)
 	defer stop()
-	public, err := fs.Sub(publicFS, "public")
-	if err != nil {
-		log.Fatal(err)
-	}
-	handler, err := app.Handler(public)
-	if err != nil {
-		log.Fatal(err)
-	}
-	// the files are served by the application (handlers.StaticPath); the
-	// framework's /public mount is given them too, as it needs a tree
-	if err := pw.Run(ctx, handler, pw.WithPublicFS(public)); err != nil {
+	if err := pw.Run(ctx, app.Handler(), pw.WithPublicFS(publicTree())); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -21,9 +21,8 @@ token and the secret. Then, from the repository's root, either
 pw dev
 ```
 
-which regenerates the pages, rebuilds and restarts on every change (it
-reports that `public.go` is missing: the pages' files are embedded by
-cmd/printmanager itself, so that step is not needed), or
+which regenerates the pages and the public tree, rebuilds and restarts on
+every change, or
 
 ```sh
 go run ./cmd/printmanager
@@ -67,25 +66,37 @@ identity, the container's or the instance's role.
 
 ## On AWS Lambda
 
-[deploy/lambda/Dockerfile](deploy/lambda/Dockerfile) builds the container
-image (with the AWS Lambda Web Adapter). Keep the records in DynamoDB
-(a table with the string keys `pk` and `sk`) and the documents in S3, and
-let EventBridge Scheduler call `POST /api/tick` every minute. To print on a
-site's printers, put the function in a VPC that reaches them (Direct
-Connect or a VPN).
-
-## Generated code
-
-The pages are `.pw.html` templates. After changing them, or
-`handlers/config.go`, run from the repository's root:
+From the repository's root:
 
 ```sh
-pw generate --code-only
+pw build --target=lambda
+docker build .pw/build/lambda/nethttp
 ```
 
-and commit the `*_pw_gen.go` files (the build of the module does not run
-pw). `popcornweb.toml` is at the root because pw wants it beside `go.mod`;
-it reads only `cmd/printmanager/handlers`.
+builds the function (linux/amd64) and its container image with the AWS
+Lambda Web Adapter. No config file is shipped: configure the function with
+variables, `MANAGER_SERVERLESS=true` among them. Keep the records in
+DynamoDB (a table with the string keys `pk` and `sk`) and the documents in
+S3, and let EventBridge Scheduler call `POST /api/tick` every minute. To
+print on a site's printers, put the function in a VPC that reaches them
+(Direct Connect or a VPN).
+
+## Generated files
+
+pw reads `popcornweb.toml` at the repository's root (it wants it beside
+`go.mod`): `[generate]` names only `cmd/printmanager/handlers`, and
+`[assets]` places the public tree in `cmd/printmanager` (`public`, built
+into `dist/public` and embedded by `public.go`). After changing the pages
+(`.pw.html`), `handlers/config.go` or a file in `public`, run from the
+repository's root:
+
+```sh
+pw generate
+```
+
+and commit what it wrote: the `*_pw_gen.go` files, `dist/public` and
+`public_manifest_pw_gen.go`. The module's build runs no generator, so a
+plain `go build` embeds what is committed.
 
 ## Style
 
@@ -98,7 +109,7 @@ classes, with that CLI on the PATH (`brew install tailwindcss`):
 
 ```sh
 go generate ./cmd/printmanager
+pw generate
 ```
 
-CI builds it again and fails on a difference.
-
+CI builds both again and fails on a difference.

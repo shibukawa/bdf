@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -98,16 +97,11 @@ func (a *App) StartTimer(ctx context.Context) (stop func()) {
 	return cancel
 }
 
-// Handler is the application: the pages, their scripts and style (static,
-// served at StaticPath), and the manager's printers, API and devices'
-// endpoints.
-func (a *App) Handler(static fs.FS) (http.Handler, error) {
-	sh, err := staticHandler(static)
-	if err != nil {
-		return nil, err
-	}
+// Handler is the application: the pages, and the manager's printers, API
+// and devices' endpoints. The pages' scripts and style are the framework's
+// /public mount's.
+func (a *App) Handler() http.Handler {
 	mux := pw.NewServeMux()
-	mux.Handle("GET "+StaticPath, sh)
 	mh := manager.Handler(a.m)
 	mux.Handle(manager.IPPPath+"/", mh)
 	mux.Handle("/api/", mh)
@@ -121,5 +115,5 @@ func (a *App) Handler(static fs.FS) (http.Handler, error) {
 	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
 		pw.WriteHTML(w, r, Admin(AdminParams{}))
 	})
-	return mux, nil
+	return mux
 }

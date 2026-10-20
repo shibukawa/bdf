@@ -182,4 +182,12 @@ examples/print-server/data/
 # files are committed.
 /.pwstorybook/
 /.log/
+# pw build --target=… stages its artifacts here.
+/.pw/
 printmanager.db
+# pw generate builds the Print Manager's public tree (cmd/printmanager/
+# dist/public, embedded) and keeps its manifest, routes and caches beside
+# it. The tree is committed, as a plain go build embeds it; the rest is not.
+!cmd/printmanager/dist/
+cmd/printmanager/dist/*
+!cmd/printmanager/dist/public/

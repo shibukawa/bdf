@@ -16,22 +16,21 @@ jobs:
       - name: reachable Go dependency vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
       - run: go test ./...
-      # cmd/printmanager is a Popcorn Web application: its *_pw_gen.go are
-      # committed, as the module's build does not run pw
-      - name: Print Manager's generated code is up to date
-        run: |
-          go install github.com/shibukawa/popcornweb/cmd/pw@v0.5.11
-          "$(go env GOPATH)/bin/pw" generate --code-only
-          git diff --exit-code -- cmd/printmanager
-      # and its style is Tailwind CSS with daisyUI (cmd/printmanager/tailwind),
-      # built by the standalone CLI of tailwind/VERSIONS and committed
-      - name: Print Manager's style is up to date
+      # cmd/printmanager is a Popcorn Web application. Its generated files
+      # are committed, as the module's build runs neither tool: the style
+      # (Tailwind CSS with daisyUI, by the standalone CLI of
+      # tailwind/VERSIONS), the *_pw_gen.go files, and the public tree pw
+      # builds and the binary embeds (dist/public, with its manifest)
+      - name: Print Manager's generated files are up to date
         run: |
           curl -sSfLo "$RUNNER_TEMP/tailwindcss" https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-linux-x64
           echo "dc61b3ac6b8c9ca874c0cc4c57b2409791a64c5540404ca5f5367360babc313a  $RUNNER_TEMP/tailwindcss" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/tailwindcss"
           PATH="$RUNNER_TEMP:$PATH" go generate ./cmd/printmanager
-          git diff --exit-code -- cmd/printmanager/public/app.css
+          go install github.com/shibukawa/popcornweb/cmd/pw@v0.5.12
+          "$(go env GOPATH)/bin/pw" generate
+          git status --porcelain -- cmd/printmanager
+          test -z "$(git status --porcelain -- cmd/printmanager)"
       # raster/ebitenginebdf depends on Ebitengine, so it is a module of its
       # own (./... above does not reach it). Its tests compile objects into
       # paths and open no window.

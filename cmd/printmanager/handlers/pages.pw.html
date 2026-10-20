@@ -13,7 +13,7 @@ component Shell(title: string, children: html): html {
       <meta name="apple-mobile-web-app-capable" content="yes">
       <meta name="mobile-web-app-capable" content="yes">
       <title>{title}</title>
-      <link rel="stylesheet" href="/static/app.css">
+      <link rel="stylesheet" href="/public/app.css">
     </head>
     <body class="min-h-screen bg-base-200 text-base-content antialiased"><slot required /></body>
   </html>
@@ -123,7 +123,7 @@ export component Tablet(): html {
 
       <div id="toasts" class="toast toast-top toast-center z-50"></div>
     </div>
-    <script type="module" src="/static/tablet.js"></script>
+    <script type="module" src="/public/tablet.js"></script>
   </Shell>
 }
 
@@ -192,6 +192,6 @@ export component Admin(): html {
       <form method="dialog" class="modal-backdrop"><button>閉じる</button></form>
     </dialog>
     <div id="toasts" class="toast toast-end z-50"></div>
-    <script type="module" src="/static/admin.js"></script>
+    <script type="module" src="/public/admin.js"></script>
   </Shell>
 }
