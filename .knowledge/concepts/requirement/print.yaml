@@ -23,7 +23,7 @@ constraints:
 - チケットの名前は IPP の属性に合わせる（copies、sides、media、media-col、print-color-mode、print-quality、printer-resolution、page-ranges、print-scaling、finishings、job-name …）。Windows の DEVMODE も CUPS のオプションもここから写す
 - ジョブの状態は IPP の job-state（pending / pending-held / processing / processing-stopped / canceled / aborted / completed）と job-state-reasons の語彙をそのまま使う
 - cgo なし。OS 固有のコードは print/internal/osspool に OS ごとの build tag。wasm / TinyGo のビルドには入れない
-- スプールは組み込みの KV（go.etcd.io/bbolt）の 1 ファイル spool.db（ジョブの記録、文書はジョブごと、連番、実績、プリンタの控え、証明書の指紋）。開けるのは 1 プロセス。2026-10-19 利用者が決定（前の版の「ディレクトリとファイル、データベースは使わない」「内容アドレスで同じ文書は 1 回」から変えた）。保存の層は作らず bbolt 前提（同日の利用者）
+- スプールは組み込みの KV（go.etcd.io/bbolt）の 1 ファイル spool.db（ジョブの記録、文書はジョブごと、連番、実績、プリンタの控え、証明書の指紋）。開けるのは 1 プロセス。2026-10-19 利用者が決定（前の版の「ディレクトリとファイル、データベースは使わない」「内容アドレスで同じ文書は 1 回」から変えた）。保存は yuruidb を通す（2026-10-20 利用者）
 - 再起動の後に同じジョブを二重に刷らない。送る前にプリンタの job-id を記録し、再開時は Get-Jobs で状態を確かめてから再送する
 - 同じ文書・同じチケット・同じフォントなら同じバイト列（golden と再送の照合）
 - 暗号化した .bdf はスプールに暗号化のまま置く。描いた結果は既定で残さない。ログに文書の中身・パスワード・資格情報を書かない
@@ -63,7 +63,7 @@ open_questions:
   persistence:
     text: スプールの永続化をファイルだけにするか、組み込みの KV を使うか
     state: answered
-    resolution: 組み込みの KV。2026-10-19 利用者「組み込みの KV で良い」。go.etcd.io/bbolt の 1 ファイル spool.db（メモリだけではなく、書き込みごとに fsync）。保存の層は一旦作らず bbolt 前提（同日の利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」）。bbolt に触るのは print/spool/db.go だけにし、後で薄い保存層（decision:thin-store。楽観ロックの 5 操作と Blob、SDK なし、S3 互換・GCS・Azure Blob・DynamoDB・RDB）に替える位置にする（knowledge-inputs/print-plan/print-m2.ja.md §3.2、§6、store.ja.md）
+    resolution: 組み込みの KV。2026-10-19 利用者「組み込みの KV で良い」。go.etcd.io/bbolt の 1 ファイル spool.db（メモリだけではなく、書き込みごとに fsync）。2026-10-20 に保存は yuruidb（decision:thin-store。利用者が作った SDK なしの楽観ロックの保存層）を通すことにした。レコードは bbolt ドライバ、文書は同じファイルの bbolt の Blob。yuruidb に触るのは print/spool/store.go だけで、後で S3・R2・GCS・DynamoDB・RDB のドライバに設定で替えられる（knowledge-inputs/print-plan/print-m2.ja.md §3.2、§6、store.ja.md）
   accept-converter-inputs:
     text: サーバーが converter の入力（PDF、Office、画像 …）を受けて変換してから印刷するか
     state: answered

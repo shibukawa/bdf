@@ -8,7 +8,7 @@ summary: >-
   その上に S3 互換のオブジェクトストレージ、GCS・Azure Blob・DynamoDB・RDB。叙述は knowledge-inputs/print-plan/store.ja.md。
   2026-10-19 に後へ回した（利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」）。print-m2 は bbolt を直接使い、
   bbolt に触るのを print/spool/db.go だけにして、この案に替える位置を残す。
-lifecycle: proposed
+lifecycle: accepted
 authority: authored
 aliases:
 - store
@@ -88,6 +88,8 @@ relations:
 - relation: serves
   to: requirement:print
 history:
+  adopted:
+    summary: 2026-10-20 利用者が yuruidb をこの層の実装として作り直し、評価（store.ja.md §9〜§9.3）の後「作れそうということなので実装の開始をお願いしたい」。print-m2 は yuruidb の bbolt ドライバと bbolt の Blob の上に作る（lifecycle accepted）。bdf 自身の store/ は作らない
   deferred:
     summary: 2026-10-19 利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」。print-m2 から外し、案として残す（lifecycle proposed）。いつ作るかは m2 の後（requirement:print の scale-out）
   asked:

@@ -1,6 +1,6 @@
 # 印刷 実装案（print-m2）
 
-2026-10-19 時点の実装案。要件と決定は `print-requirements.ja.md` §4.5〜§4.10 と `.knowledge/` の `requirement:print`（facts の spool・server・budgets）、`milestone:print-m2` にある。前段の print-m1（`bdf print`、`bdf printers`、`print`・`print/ipp`・`print/raster`）は実装して main に入った（#104）。ここは「何をどの順で作るか」を書く。
+2026-10-19 時点の実装案（2026-10-20 に保存を yuruidb に改めた）。要件と決定は `print-requirements.ja.md` §4.5〜§4.10 と `.knowledge/` の `requirement:print`（facts の spool・server・budgets）、`milestone:print-m2` にある。前段の print-m1（`bdf print`、`bdf printers`、`print`・`print/ipp`・`print/raster`）は実装して main に入った（#104）。ここは「何をどの順で作るか」を書く。
 
 ## 0. 決まっていること（と、暫定で進めること）
 
@@ -25,7 +25,7 @@
 決めたことから出てくること。
 
 - 1 つの `spool.db` を開けるのは 1 プロセス（bbolt がファイルをロックする）。並行はプロセスの中で行う（プリンタごと、描画の枠ごと）。2 つ目の `bdf printd` が同じファイルで起動しようとすると、ロックを待たずにエラーで終わる。
-- **保存の層は作らない。bbolt を直接使う**（2026-10-19 利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」）。オブジェクトストレージ・DynamoDB・RDB を包む薄い層の案は調べて `store.ja.md` に残し、後に回す。m2 では bbolt に触るのを `print/spool/db.go` だけにしておき、後でその案に替えるときに直すのがこの 1 ファイルで済むようにする。1 プロセスなので、版つきの条件付き書き込みも、ジョブの「借り」も、メモリの保存先も作らない。
+- **保存は yuruidb（`github.com/shibukawa/yuruidb`）を通す**（2026-10-20 利用者「作れそうということなので実装の開始をお願いしたい」。利用者が作った、SDK なしで bbolt・S3・R2・GCS・DynamoDB・RDB を同じ CRUD に載せ、楽観ロックで競合を検出するライブラリ。評価は `store.ja.md` §9）。レコードは yuruidb の bbolt ドライバ、文書は同じ `spool.db` の bbolt の Blob、写しは `Store.Backup`。yuruidb に触るのは `print/spool/store.go` だけにする。bbolt は yuruidb の下で使い、bdf が直接触るのは止めた状態の詰め直し（`bdf printd -compact`）だけ。m2 は 1 プロセスなので、ジョブの「借り」は作らない。
 - 1 ジョブの処理は短い「段」（変換・送信・見届け）の繰り返しで、次に動かす時刻を記録に持つ（§3.4）。再起動の後の照合がどの段からでも同じ形で書ける。
 
 暫定で推奨どおりに進めること（異論があれば変える。どれも後から差し替えられる位置に置く）。
@@ -75,8 +75,8 @@ print/spool/
   spool.go         Spool: Open（spool.db のパス、時計）、Submit、Get、List、Cancel、Hold、Release、Retry、Move、
                    SetPriority、SetPassword、Subscribe（変更の購読）、Close                                    (S2)
   job.go           Job（記録の中身）と状態機械（IPP の job-state と理由）、遷移の検査                           (S2)
-  db.go            bbolt に触る唯一のファイル: バケットの配置、記録と索引の書き込み、文書の塊、連番、実績、
-                   プリンタの控え、指紋、詰め直し、写しの書き出し                                               (S2)
+  store.go         yuruidb に触る唯一のファイル: Bind（jobs・done・meta・printers・trust）、ジョブの記録の
+                   読み書き（版つき）、文書の Blob、連番、写し                                                   (S2)
   hold.go          job-hold-until の時間帯（indefinite、day-time、evening、night、weekend、second-shift、third-shift）
                    と job-hold-until-time                                                                      (S2)
   account.go       実績（終わったジョブごとに 1 件）と書き出し（JSON Lines、CSV）                               (S2)
@@ -108,7 +108,7 @@ docs/
 test/print/ci.sh   bdf printd を ippeveprinter につないで投入と完了、再起動をまたぐ                               (S6)
 ```
 
-`spool` は `print`、`print/ipp`、bbolt に依る（bbolt を import するのは `db.go` だけ）。`server` は `spool` に依り、`client` はどれにも依らない（API の JSON の型だけを持つ）。`converter` に依るのは `cmd/bdf` と `examples` だけ。新しい依存は `go.etcd.io/bbolt`（v1.5.0。実行時に引くのは `golang.org/x/sys` だけ）。
+`spool` は `print`、`print/ipp`、yuruidb に依る（yuruidb を import するのは `store.go` だけ）。`server` は `spool` に依り、`client` はどれにも依らない（API の JSON の型だけを持つ）。`converter` に依るのは `cmd/bdf` と `examples` だけ。新しい依存は `github.com/shibukawa/yuruidb`（まだ版が無いので疑似版。その下の `go.etcd.io/bbolt` と `golang.org/x/sys`）。
 
 ## 3. 各部の設計
 
@@ -140,30 +140,27 @@ m1 の `print.Print` は 1 回の呼び出しで聞く・作る・送る・待�
 
 保存しないもの: 描いた Raster（送るたびに描く）、パスワード（メモリだけ）、トークン（設定ファイルとその参照先）、設定（YAML のまま）。
 
-置き場所は bbolt の 1 ファイル。
+置き場所は yuruidb の bbolt ドライバの 1 ファイル（`spool.db`）。Go の型ごとにコレクションを `Bind` する。
 
 ```
-spool.db（bbolt）
-  meta        format（形式の版）、next-id
-  jobs        id（8 バイトの大端）→ ジョブの記録（JSON）
-  idx-due     次に動かす時刻＋id → 空      回し手が「時刻が来たジョブ」を順に取る
-  idx-queue   キュー＋状態＋id → 空        一覧と、キューの順番の表示
-  idx-done    終わった時刻＋id → 空        保持期間の GC
-  docs        id → 文書のバケット { original: { info: {size、sha256、type}、0000000000: 1 MiB、… }、bdf: { … } }
-  uploads     受け付け中の文書（起動時に残っていれば消す）
-  acct        終わった時刻＋id → 実績の 1 件（JSON）
-  printers    名前 → 控え（JSON）
-  trust       ホスト → sha256 の指紋
+spool.db（yuruidb の bbolt ドライバ）
+  コレクション jobs       ID は 10 桁の 0 埋めの job-id（"0000000042"）→ 終わっていないジョブの記録
+  コレクション done       同じ ID → 終わったジョブの記録（実績を兼ねる。type finishedJob Job で別の型にする）
+  コレクション meta       "next-id" → 次の job-id
+  コレクション printers   プリンタの名前（ID に使える文字に符号化）→ 控え
+  コレクション trust      ホスト（同じく符号化）→ sha256 の指紋
+  Blob docs              "0000000042.original"（受けたまま）、"0000000042.bdf"（変換した .bdf）
 ```
 
-- **記録の書き込み**: ジョブの記録と索引は 1 つの書き込み（bbolt のトランザクション）で変える。書くのは 1 プロセスだけなので、版の比較は要らない。
-- **文書**: 受けながら SHA-256 と大きさを数え、1 MiB ずつ `uploads` に書く（数 MiB ごとに 1 つの書き込みにして、他の書き込みを長く止めない）。受け終わったら 1 つの書き込みで `docs/<id>/original` に移し（`Tx.MoveBucket`）、ジョブの記録を作る。文書はジョブごとに持ち、ジョブをまたいで共有しない（参照の数を数えずに済み、GC が単純になる。後で保存の層（`store.ja.md`）に替えるときもこの形がそのまま写る）。同じ文書を別のジョブで送ったときに容量が重なるだけ。
-- **文書を読む**: `io.ReaderAt`。1 MiB の塊ごとに短い読み取りで取り出し、直前の塊を 1 つだけ覚える。長い読み取りのトランザクションを開いたままにしない（bbolt では長い読み取りが空きページの再利用とファイルの伸長を止めるため）。文書は書いた後は変わらず、ジョブが終わるまで GC が消さないので、塊ごとに読んでも一貫する。記録の SHA-256 と大きさで確かめる。
-- **連番**: `next-id` を同じ書き込みで足してから使う（同じ id を 2 度使わない。飛ぶのは構わない）。IPP の `job-id` と同じ正の整数。
-- **GC**（1 時間ごとと起動時）: 終わったジョブ（canceled・aborted・completed）の記録と文書を保持期間の後に消す。件数（既定 1 万）と文書の合計バイト（既定 10 GiB）を超えたら古い順に消す。実績は別の保持期間（既定 400 日）。
-- **ファイルの大きさ**: bbolt は消した分のページを使い回すが、ファイルは縮まない。起動時に空きが全体の半分以上かつ 1 GiB 以上なら詰め直す（`bbolt.Compact` で隣に新しいファイルを書き、`fsync` して置き換える。設定 `compact-on-start` で切れる）。`bdf printd -compact` は止めた状態で同じことをする。
-- **写し**: `GET /api/v1/backup`（admin）が、動いたまま一貫した `spool.db` の写しを流す（読み取りのトランザクションの `WriteTo`）。1 ファイルにした利点。
-- **置き場所の既定**: 設定ファイルと同じディレクトリの `spool.db`（設定の `spool:` で変える）。NFS・SMB の共有には置かない（bbolt のロックと mmap が当てにならない。docs に書き、起動時にネットワークのファイルシステムと分かれば警告する）。
+- **スプールは jobs をメモリに写して使う**。起動時に jobs を全部読み、以後は自分の書き込みをそのまま写す（書くのは 1 プロセスだけ）。キューの順、時刻の来たジョブ、一覧はメモリで作る。yuruidb の一覧は ID の順だけなので、索引は持たない。
+- **記録の書き込み**: yuruidb の Update に読んだときの Revision を渡す。1 プロセスなので競合は起きないはずで、起きたらバグとして誤りにする。書けたか分からない（`ErrOutcomeUnknown`）ときは、メモリの写しを読み直しで合わせる。
+- **終わったジョブ**: done に Insert してから jobs を Delete する（コレクションをまたぐトランザクションは無い）。途中で落ちても、起動時に「done にもあるのに jobs に残る」ものを消せば揃う。jobs は小さく保たれる。
+- **文書**: 受けた本文はまず一時ファイルに落とし、大きさと SHA-256 を数えてから Blob に入れる（受け付けの速さが相手の回線に左右されない。yuruidb の Blob は 2 MiB ずつ短い書き込みで入れるので、ほかの書き込みを止めない）。文書はジョブごとに持ち、ジョブをまたいで共有しない（参照の数を数えずに済み、GC が単純になる）。読むのは Blob の `io.ReaderAt`（短い読み取りのトランザクション）で、記録の SHA-256 と大きさで確かめる。
+- **連番**: meta の `next-id` を Update で足してから使う（同じ id を 2 度使わない。飛ぶのは構わない）。IPP の `job-id` と同じ正の整数。
+- **GC**（1 時間ごとと起動時）: done の文書を保持期間（既定 7 日）の後に Blob から消し、done の記録を実績の保持期間（既定 400 日）の後に消す。jobs の件数（既定 1 万）と文書の合計バイト（既定 10 GiB）を超えたら受け付けを断る（507）。どのジョブにも属さない Blob（受け付けの途中で落ちた）を Blob の一覧から探して消す。
+- **ファイルの大きさ**: bbolt は消した分のページを使い回すが、ファイルは縮まない。`bdf printd -compact` が止めた状態で `bbolt.Compact` を使い、隣に新しいファイルを書いて置き換える。
+- **写し**: `GET /api/v1/backup`（admin）が `Store.Backup` でいったんローカルの一時ファイルに一貫した写しを書いてから相手に流す（遅い相手に直接流すと、bbolt の読み取りのトランザクションが長く続き、ファイルを広げる書き込みを待たせるため）。
+- **置き場所の既定**: 設定ファイルと同じディレクトリの `spool.db`（設定の `spool:` で変える）。NFS・SMB の共有には置かない（bbolt のロックと mmap が当てにならない）。
 
 ### 3.3 ジョブ（S2）
 
@@ -218,7 +215,7 @@ spool.db（bbolt）
 
 - **1 ジョブを動かすのは 1 つの goroutine**: 回し手がジョブを段に渡すとき、メモリの「動かしている」印を付ける（1 プロセスなので、記録に持ち主を書く必要は無い）。段を終えたら次の段と時刻を記録に書いて印を外す（1 つの書き込み）。
 - **書く回数**: 記録に書くのは状態・理由・段が変わったときだけ。見届けの次の時刻はメモリに持つ。
-- **回し手**（`Runner`）: 段を goroutine で回す。時刻の来たジョブを `idx-due` から取り、`convert` は描画の枠で、`send` はプリンタごとの送り手で、`watch` はプリンタごとの見届けで行う。変更の購読と「次の時刻」の時計で起きる。
+- **回し手**（`Runner`）: 段を goroutine で回す。時刻の来たジョブをメモリの写しから取り、`convert` は描画の枠で、`send` はプリンタごとの送り手で、`watch` はプリンタごとの見届けで行う。変更の購読と「次の時刻」の時計で起きる。
 - **再起動の後**: bbolt のファイルのロックが取れた時点で前のプロセスは死んでいるので、`send` と `watch` の段で残ったジョブを §3.6 の照合に回す。
 
 ### 3.5 スケジューラ（S3）
@@ -343,7 +340,7 @@ fonts: { dirs: [/usr/share/fonts/bdf], no-system: false }
 
 ## 4. テスト
 
-- **db.go**（`go test ./print/spool/ -run DB`。一時ディレクトリの `spool.db`）: 記録と索引の往復、索引の順、連番が戻らない、文書の往復（塊の境目、0 バイト、範囲の読み取り、SHA-256 の確かめ）、受け付け中に落ちた文書の掃除、GC。閉じて開き直しても同じ、2 つ目の起動がロックで断られる、詰め直しの前後で中身が同じ、写しから開ける。
+- **store.go**（`go test ./print/spool/ -run Store`。一時ディレクトリの `spool.db`）: 記録の往復、連番が戻らない、done への移しと途中で落ちたときの揃え直し、文書の往復（0 バイト、範囲の読み取り、SHA-256 の確かめ）、持ち主の無い文書の掃除、GC。閉じて開き直しても同じ、2 つ目の起動がロックで断られる、詰め直しと写しで中身が変わらない。
 - **単体**（`go test ./print/spool/`）: 状態機械の遷移の表（許される遷移と許されない遷移）、保留の時間帯（偽の時計で）、優先度と投入順、再送の間隔（偽の時計）。
 - **偽のプリンタで**（`ipptest`）: 2 台の組（any と failover、1 台を止める・再開する）、`max-inflight` 2 でプリンタの中に 2 つまで、プリンタ側の中止で再送しない、取り消し（pending・processing・プリンタに送った後）、保留と解除、別のキューへの移し、変換して印刷（PDF と TIFF の入力）、暗号化した文書とパスワード待ち。
 - **二重印刷の防止**: テストのバイナリを子プロセスで `bdf printd` の代わりに動かし、決めた時点で `os.Exit` させてから、同じ `spool.db` を開き直す（本当に落ちた状態から始める）。落ちる時点は `Create-Job` の前、`Create-Job` の応答の前（`DropCreateResponse`）、記録の後で送る前、送る途中（`FailAfter`）、送った後で見届ける間、履歴を持たないプリンタ（`Forget`）。どの場合もプリンタが刷るのは 1 回（取り消した不完全なジョブは数えない）。
@@ -356,7 +353,7 @@ fonts: { dirs: [/usr/share/fonts/bdf], no-system: false }
 ## 5. 順番
 
 1. **S1** `print` の継ぎ目（`OnCreated`、`OnSent`、`Printer`、`Check`、`Ticket` の JSON と `Merge`）、`TrustBackend`、`ipptest` の足し算。小さく、ほかの全部の前提。
-2. **S2** `db.go`（bbolt）、`job`、`hold`、`account`、`gc` と `Spool` の受け付け・一覧・操作（まだ流さない）。
+2. **S2** `store.go`（yuruidb）、`job`、`hold`、`account`、`gc` と `Spool` の受け付け・一覧・操作（まだ流さない）。
 3. **S3** 段、回し手、見張り、再起動の後の照合。ここで「置けば刷られる」になる。二重印刷の防止のテストはここ。
 4. **S4** `print/server`（設定、API、認証、SSE、/metrics、状態のページ）と `bdf printd`。
 5. **S5** `client`、`bdf print -server`、`bdf jobs`、`bdf printers -server`、受けた入力の変換、暗号化した文書。
@@ -368,10 +365,11 @@ S2 と S4 の HTTP の骨組みは並行できる。S3 が山。
 
 **プロセスの中の並行**は m2 で持つ。プリンタごとに送り手と見届け、変換と描画は CPU 数の枠。bbolt は読み取りが並行、書き込みは 1 つずつだが、1 回の書き込みは記録 1 件か文書の数 MiB で短い。並びの順は（優先度、受けた時刻、id）。
 
-**保存先を替える・複数台で回す・Lambda で動かす**のは m2 の後（2026-10-19 利用者「一旦 bbolt 前提で」）。調べたことと案は `store.ja.md` にある。
+**保存先を替える・複数台で回す・Lambda で動かす**のは m2 の後。調べたことと案は `store.ja.md` にある。
 
 - 1 つの `spool.db` は 1 プロセスだけが開ける。共有のファイルシステム（NFS、SMB、EFS）に置いて複数台で開くのも不可。
-- 替えるときは `db.go` を、楽観ロック（無いときだけ書く・版が同じときだけ書く）と更新順の一覧だけを約束にした薄い保存層（S3 互換などのオブジェクトストレージ、DynamoDB、RDB。SDK を使わず HTTP で話す）に置き換え、ジョブの記録に持ち主と期限の「借り」を足す。時刻だけでは 2 台の取り合いを防げないので、勝つのは条件付きの書き込みの 1 つにし、期限は落ちた持ち主から引き継ぐために使う。
+- 保存先は yuruidb のドライバ（S3・R2・GCS・DynamoDB・RDB、文書は S3・R2・GCS・RDB の Blob）を設定で選べば替えられる。`store.go` が yuruidb の `Store` と `blob.Store` を受け取る形にしておく。
+- 複数台で 1 つの保存先を回すには、ジョブの記録に持ち主と期限の「借り」を足す。時刻だけでは 2 台の取り合いを防げないので、勝つのは条件付きの書き込み（yuruidb の Revision つきの Update）の 1 つにし、期限は落ちた持ち主から引き継ぐために使う。
 - 段（§3.4）と再起動の後の照合（§3.6）は、そのまま「借りが切れたジョブの引き継ぎ」になる。
 - Lambda は、受け付けと変換をクラウド（Lambda＋オブジェクトストレージ）に、印刷を拠点の `bdf printd` に分ける形が現実的（事務所の LAN のプリンタにクラウドから届かないため）。
 
@@ -386,15 +384,15 @@ S2 と S4 の HTTP の骨組みは並行できる。S3 が山。
 - `Ticket` が JSON になる（タグを足すだけ。Go の利用者には影響なし）。
 - `ipp.TrustStore` に `Backend` が増える（nil なら今どおり）。
 - `bdf print` に `-server`、`-queue`、`-token-file` が増える。`-server` が無ければ m1 のまま。`bdf printd` と `bdf jobs` が増える。
-- `go.mod` に `go.etcd.io/bbolt` が増える（と、それが引く `golang.org/x/sys`）。
+- `go.mod` に `github.com/shibukawa/yuruidb` が増える（と、それが引く `go.etcd.io/bbolt`、`golang.org/x/sys`）。
 
 ## 8. 未決の論点（決めてほしいこと）
 
-決まったもの（2026-10-19 利用者）: サーバーは `bdf printd`、永続化は組み込みの KV（bbolt の 1 ファイル）、保存の層は作らず bbolt 前提（薄い保存層の案は `store.ja.md` に残して後に回す）、変換の入力を受ける、`max-inflight` の既定は 2、サービスとしての登録は持たない、m2 の後は後で決める。
+決まったもの（2026-10-19〜20 利用者）: サーバーは `bdf printd`、永続化は組み込みの KV（bbolt の 1 ファイル）、保存は yuruidb を通す（bbolt ドライバと bbolt の Blob）、変換の入力を受ける、`max-inflight` の既定は 2、サービスとしての登録は持たない、m2 の後は後で決める。
 
 残るもの。どれも暫定で推奨どおり進める。
 
-1. **文書も `spool.db` の中に置く**（推奨。1 ファイルで写しと移しが楽）か、文書だけ隣のディレクトリに置くか。中に置くと、ファイルは消した分だけ縮まず、詰め直しが要る（§3.2）。文書はジョブごとに持ち、ジョブをまたいで共有しない（要件の「内容アドレスで同じ文書は 1 回」を改める。GC が単純になる）。
+1. **文書も `spool.db` の中に置く**（推奨。yuruidb の bbolt の Blob。1 ファイルで写しと移しが楽）か、文書だけ隣のディレクトリに置くか。中に置くと、ファイルは消した分だけ縮まず、詰め直しが要る（§3.2）。文書はジョブごとに持ち、ジョブをまたいで共有しない（要件の「内容アドレスで同じ文書は 1 回」を改める。GC が単純になる）。
 2. **パスワードの持ち方**: メモリだけで、再起動の後は `job-password-wait`（推奨）か、サーバーの鍵で封印して記録に置くか。
 3. **既定の束縛と認証**: `127.0.0.1:8640` で、loopback かつトークンが無ければ認証なし、でよいか。
 4. **`bdf print -spool dir` を作らない**こと（要件からの変更。スプールの持ち主を 1 プロセスにする）。
