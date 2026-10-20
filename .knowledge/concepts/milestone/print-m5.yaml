@@ -1,0 +1,173 @@
+id: milestone:print-m5
+type: milestone
+title: print-m5 — ラベル・レシート・連帳（ZPL・SBPL・TPCL・ESC/POS・ESC/P、シリアル・USB・Windows のキュー）
+summary: >-
+  印刷の 5 つ目の実装のまとまり。IPP も PDF も PostScript も持たない機器に、BDF のページをその機器の言語で届ける。
+  ページは imagebdf でプリンタのドットに白黒で描き（画像だけディザ、記号のモジュールはドットに揃える）、ラベルの言語は
+  帳票が付けた MARK の BARCODE をプリンタのバーコード命令に置き換える。搬送路は 9100・LPD に加えてシリアル（SPP の Bluetooth を含む）、
+  USB の装置ファイル、Windows のドライバのキュー（RAW）、CUPS の raw キュー。叙述の実装案は knowledge-inputs/print-plan/print-m5.ja.md（2026-10-20）。
+lifecycle: active
+authority: authored
+scope:
+  milestone: print-m5
+constraints:
+- 言語は ZPL（^GFA を ZPL の ASCII 圧縮で）、SBPL（STX/ETX で囲んだ <A>…<Z>、<G>H を 8 ドットの行で）、TPCL（{SG; をニブルモードで）、ESC/POS（GS v 0 の帯、GS V B のカット、ESC p のドロワ、GS P で送りの単位をドットに）、ESC/P（ESC * 39 の 24 ピン、ESC C の用紙長、ESC N のミシン目スキップ）
+- 描き方は imagebdf の Bilevel と AntialiasOff。画像だけ組織的ディザ（DitherImages。帯の境で絵が変わらない）、記号は AlignBarcodes でモジュールを画素の整数倍に
+- 記号は spec §7.8 の MARK kind 13 BARCODE（JSON の payload。2026-10-20 利用者が決定）。帳票の描き手（Word・Excel・PowerPoint のテンプレート、pdfme）は barcode.Symbol.Fill で付ける。読み手は知らない kind を無視する
+- ラベルの言語は記号を描かずプリンタのバーコード命令に（imagebdf.Options.Barcode）。モジュールが 1 ドット未満、傾いた記号、言語に無い種類はドットのまま
+- チケットの拡張は IPP の名前のあるもの（print-darkness、print-speed、media-tracking）と bdf- の名前（bdf-label-gap、bdf-cut、bdf-cash-drawer、bdf-perforation-skip、bdf-no-printer-barcodes、bdf-print-mode）。言語に通り道の無い値は unsupported
+- 搬送路は cgo なし（x/sys の termios、DCB、winspool.drv）。どれもジョブの状態を返さないので、書き始めた後に落ちたジョブは 9100 と同じく人に任せる
+non_goals:
+- ESC/P と ESC/POS のテキストモード（テキスト帳票テンプレート form-m6 の印字像の Part から作る。form-m6 は別のセッションで並行して実装中。bdf-print-mode=text は今は断る）
+- Bluetooth Low Energy（SPP の機種は OS のシリアルポートで届く）、P-touch Template・Dymo
+- プリンタに保存するフォーマット（^DF / ^XF）、状態の取得（~HS、DLE EOT、ENQ）
+- 実機での確認（手元に無い。docs に試し方を書いた）
+capabilities:
+  barcode-mark:
+    state: implemented
+    about: capability:bdf/barcode-mark
+  pdl-writers:
+    state: implemented
+    about: capability:print/pdl-writers
+  device-transports:
+    state: implemented
+    about: capability:print/device-transports
+  text-mode:
+    state: planned
+    about: capability:print/text-mode
+acceptance:
+  s1-mark:
+    text: 帳票の記号の前に BARCODE の印が付き、印から同じ記号を作り直せる。imagebdf が印の記号を箱と回転で呼び出し側に渡して描かず、または画素に揃えて描き直し、画像だけをディザする（帯の大きさによらない）
+    verified_by:
+    - mark-unit
+    - imagebdf-unit
+  s2-writers:
+    text: 5 つの言語の出力を自前の読み手でドットに戻すと imagebdf の絵と画素で一致し、ラベルの言語は記号をプリンタの命令で出す。チケットの拡張がそれぞれの命令になる
+    verified_by:
+    - pdl-unit
+    - zxing
+  s3-transports:
+    text: シリアル（擬似端末）、USB の装置ファイル、9100 にラベルの言語で送れる。CUPS の raw キューに IPP で送れる。サーバーの設定でプリンタに言語と機種を書ける
+    verified_by:
+    - raw-unit
+    - print-unit
+    - server-unit
+    - cli-local
+verification:
+  mark-unit:
+    state: passed
+    method: unit
+    test: "go test ./image/barcode/ -run Mark && go test ./converter/docx/ -run FillCodes && go test ./converter/pdfme/ -run EANText"
+    authority: observed
+    evidence:
+      path: image/barcode/mark_test.go
+      locator: 'TestMarkRoundTrip（全種類で印から同じ格子）、docx のテンプレートの記号の前の印、pdfme の noText と quiet'
+  imagebdf-unit:
+    state: passed
+    method: unit
+    test: "go test ./raster/imagebdf/ -run 'Barcode|Dither'"
+    authority: observed
+    evidence:
+      path: raster/imagebdf/barcode_test.go
+      locator: 'TestAlignBarcodes（203 dpi で走査線の黒白がモジュールの整数倍、QR の格子どおり、帯 7 行と 1000 行）、TestBarcodeCallback（4 つの回転で箱と turns、取った記号は描かない）、TestDitherImages（37.6% の灰が 62% の黒点、帯で同じ点、50% の塗りはディザしない）'
+  pdl-unit:
+    state: passed
+    method: unit
+    test: "go test ./print/pdl/"
+    authority: observed
+    evidence:
+      path: print/pdl/labels_test.go
+      locator: 'TestZPL（^GFA の ASCII 圧縮を読み戻して一致、^BC・^BQ、^PQ・^MD・^PR・^MN・^MM）、TestSBPL（<G>H、<BG>・<2D30>+<DN>、#E・CS・CT・Q）、TestTPCL（{D の大きさ、ニブルの {SG;、QR の {XB/{RB、Code 128 はドット、{AY・{XS）、TestESCPOS（GS P、GS v 0、ESC J、カットとドロワ）、TestESCP（ESC * 39、用紙長、ミシン目スキップ）。BDF_PDL_OUT で PNG を書く'
+  zxing:
+    state: passed
+    method: manual
+    test: 'BDF_PDL_OUT に書いたラベル（300 dpi）、レシート（203 dpi）、連帳（180 dpi）の PNG を zxing-cpp（スクラッチの venv）で読む'
+    authority: observed
+    evidence:
+      path: print/pdl/pdl_test.go
+      locator: '2026-10-20 に Code 128「BDF-0042」と QR「https://example.com/r/42」が全部読めた。TPCL のラベルは QR を空けて Code 128 だけ'
+  raw-unit:
+    state: passed
+    method: integration
+    test: "go test ./print/raw/"
+    authority: observed
+    evidence:
+      path: print/raw/device_test.go
+      locator: 'TestParseDevices（serial・usb・winspool の URL と設定、profile だけの URL）、TestUSB（装置ファイル。macOS と Windows は ErrNotHere）、TestSerial（擬似端末に 100 KB の全バイトが生のまま届く）、TestSerialStalled（読まれない端末で文脈の取り消しが ErrPartial）'
+  print-unit:
+    state: passed
+    method: integration
+    test: "go test ./print/ -run 'RawLabels|CUPSRaw|DeviceTicket'"
+    authority: observed
+    evidence:
+      path: print/device_test.go
+      locator: 'TestPrintRawLabels（9100 に ZPL、用紙と部数と設定、受けないもの、profile だけの URL）、TestPrintCUPSRaw（application/vnd.cups-raw の ipptest に ESC/POS）、TestDeviceTicket'
+  server-unit:
+    state: passed
+    method: unit
+    test: "go test ./print/server/ -run TestConfig"
+    authority: observed
+    evidence:
+      path: print/server/server_test.go
+      locator: 'ラベル・シリアル・SATO の機種・CUPS の raw キューのプリンタ、機種と言語の食い違いを断る'
+  cli-local:
+    state: passed
+    method: manual
+    test: 'bdf print -printer "socket://127.0.0.1:19101?profile=zd421-203" -media 104x150mm -copies 2 -collate uncollated testdata/form/rows.bdf を test/print/raw9100.py に'
+    authority: observed
+    evidence:
+      path: test/print/ci.sh
+      locator: '2026-10-20 に手元で ^XA、^PW831^LL1198、^GFA、^PQ2 が 3 つ'
+  ci-print:
+    state: not_run
+    method: integration
+    test: 'test/print/ci.sh の最後の段: 9100 に ZPL、lpadmin -m raw の CUPS の raw キューに ESC/POS'
+    authority: authored
+    evidence:
+      path: test/print/ci.sh
+      locator: 'lpadmin は手元のシステムの設定を変えるので手元では走らせていない'
+  devices:
+    state: not_run
+    method: manual
+    test: Zebra・SATO・東芝テック・Epson TM・Epson VP の実機で、ラベル・レシート・連帳とプリンタ側バーコードの読み取り、カット、ドロワ、ミシン目スキップ
+    authority: authored
+open_questions:
+  escpos-raster-command:
+    text: ESC/POS は GS v 0（Epson は廃止予定とするが互換機が広く持つ）にした。Epson の新機種で GS ( L（fn112 と fn50）に替えるか
+    state: open
+  sbpl-stx:
+    text: SBPL を STX と ETX で囲む（SATO のステータスのプロトコル 3・4 が求める）。プロトコルの無い設定の機種で害が無いかは未確認
+    state: open
+  label-barcodes-unverified:
+    text: SBPL と TPCL の記号の命令（位置の基準、回転、チェックディジット）は実機で確かめていない。TPCL の Code 128 と GS1-128、SBPL の GS1-128 はドットで描く
+    state: open
+facts:
+  delivery:
+    plan: knowledge-inputs/print-plan/print-m5.ja.md（2026-10-20）
+    research: 各言語の命令は各社のリファレンスを 2026-10-20 に Web で読んだ（Zebra ZPL II の PDF、SATO CL4NX Plus・CT4-LX、東芝テック B-FV4・BX400・B-EX4、Epson の ESC/POS と ESC/P のリファレンス）。VP の ESC/P V.2 リファレンスは利用規約への同意が要るので読んでいない
+    implemented:
+      date: '2026-10-20'
+      slices:
+      - 'S1 spec §7.8 の BARCODE、image/barcode の Mark・ParseMark・Fill、帳票の描き手、imagebdf の Barcode・AlignBarcodes・DitherImages'
+      - 'S2 print/pdl の共通部（render.go、profile.go）と ZPL・SBPL・TPCL'
+      - 'S3 ESC/POS と ESC/P'
+      - 'S4 print/raw の serial・usb・winspool、print の Ticket の拡張と PrintRaw・CUPS の raw キュー、spool と server の設定、bdf print の -profile と旗'
+      - 'S5 docs（cli、print-server、design §3.36、api、spec）、test/print/ci.sh、.knowledge'
+      changed_from_plan:
+      - 'ESC/P・ESC/POS のテキストモードは form-m6 の後（2026-10-20 利用者が form-m6 を別セッションで並行と決めた）'
+      - 'ZPL の Z64 は使わない（CRC の算法が公開されておらず、器も gzip と zlib で食い違う）。^GFA の ASCII 圧縮'
+      - '複写の枚数は扱わない（ESC/P にも ESC/P-J84 にも命令が無く、紙厚は機種の自動検知かパネルの設定）'
+      - 'winspool の URL は winspool:///名前（Go の URL はホストに %20 を許さない）。共有のキューは winspool://server/queue'
+      - 'TPCL は Code 128 と GS1-128 を、SBPL は GS1-128 をプリンタの記号にしない（仕様の読みが定まらないため。ドットに揃えて描く）'
+      - 'URL の profile= だけで言語が決まる（CI の手順を手元で走らせて見つけた）'
+relations:
+- relation: part_of
+  to: requirement:print
+- relation: follows
+  to: milestone:print-m4
+- relation: informed_by
+  to: system:label-printer-languages
+- relation: informed_by
+  to: system:dot-impact-escp
+- relation: depends_on
+  to: milestone:form-m6

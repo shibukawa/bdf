@@ -1,6 +1,6 @@
 # 印刷 実装案（print-m5）
 
-2026-10-20 の実装案。要件は `print-requirements.ja.md` §3.9・§4.1（機器ごとの拡張）・§6 の 5 と、`.knowledge/` の `requirement:print`、`system:label-printer-languages`、`system:dot-impact-escp`、`pattern:label-sheet`、`pattern:roll-receipt`、`pattern:continuous-text-form`。print-m1〜m4 は main に入った（#104〜#107）。2026-10-20 利用者「印刷 milestone 5 の実装をお願いします」。
+2026-10-20 の実装案。同日 S1〜S5 を実装した（`.knowledge/` の `milestone:print-m5`。計画から変えた所はそこの `changed_from_plan`）。各言語の命令は同日に各社のリファレンスを Web で読んで確かめた（実機は無い）。要件は `print-requirements.ja.md` §3.9・§4.1（機器ごとの拡張）・§6 の 5 と、`.knowledge/` の `requirement:print`、`system:label-printer-languages`、`system:dot-impact-escp`、`pattern:label-sheet`、`pattern:roll-receipt`、`pattern:continuous-text-form`。print-m1〜m4 は main に入った（#104〜#107）。2026-10-20 利用者「印刷 milestone 5 の実装をお願いします」。
 
 ## 0. 範囲
 
