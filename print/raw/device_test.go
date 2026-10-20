@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/raw"
 )
 
@@ -80,11 +81,11 @@ func TestUSB(t *testing.T) {
 	}
 }
 
-// TestSerial sends a job to a serial port: the far end of a
-// pseudo-terminal stands for the printer.
+// TestSerial sends a job to a serial port: a fake printer reading the
+// far end of a pseudo-terminal stands for the printer.
 func TestSerial(t *testing.T) {
-	far, name := openPTY(t)
-	defer far.Close()
+	fp := fakeprinter.New()
+	name := fakeprinter.StartSerial(t, fp)
 	p, err := raw.Parse("serial://" + name + "?lang=escpos&baud=115200")
 	if err != nil {
 		t.Fatal(err)
@@ -93,38 +94,29 @@ func TestSerial(t *testing.T) {
 	for i := range data {
 		data[i] = byte(i * 7) // every byte, the control ones too: the port is raw
 	}
-	got := make(chan []byte)
-	go func() {
-		b := make([]byte, 0, len(data))
-		buf := make([]byte, 4096)
-		for len(b) < len(data) {
-			n, err := far.Read(buf)
-			b = append(b, buf[:n]...)
-			if err != nil {
-				break
-			}
-		}
-		got <- b
-	}()
 	begun := false
 	n, err := p.Send(context.Background(), &raw.Job{Name: "receipt", Format: "escpos", Data: data, Begin: func() error { begun = true; return nil }})
 	if err != nil || n != int64(len(data)) || !begun {
 		t.Fatal(n, err, begun)
 	}
-	select {
-	case b := <-got:
-		if !bytes.Equal(b, data) {
-			t.Fatalf("the printer read %d bytes, not those sent", len(b))
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("the printer read nothing")
+	deadline := time.Now().Add(10 * time.Second)
+	for len(fp.Jobs()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	jobs := fp.Jobs()
+	if len(jobs) != 1 || !bytes.Equal(jobs[0].Data(), data) || jobs[0].Transport != "serial" {
+		t.Fatalf("the printer has %d jobs, not the one sent", len(jobs))
 	}
 }
 
 // TestSerialStalled cancels a job whose printer takes no more (its
 // flow control holds it): the write ends with the context.
 func TestSerialStalled(t *testing.T) {
-	far, name := openPTY(t)
+	// a printer that reads nothing
+	far, name, err := fakeprinter.OpenPTY()
+	if err != nil {
+		t.Skip("no pseudo-terminals:", err)
+	}
 	defer far.Close()
 	p, err := raw.Parse("serial://" + name + "?lang=escpos")
 	if err != nil {

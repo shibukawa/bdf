@@ -87,8 +87,8 @@ func (l *Listener) Close() {
 	l.wg.Wait()
 }
 
-// Restart listens again at the address of a listener that was closed.
-func (l *Listener) Restart() error {
+// Reopen listens again at the address of a listener that was closed.
+func (l *Listener) Reopen() error {
 	ln, err := net.Listen("tcp", l.addr)
 	if err != nil {
 		return err

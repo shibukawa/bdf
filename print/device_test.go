@@ -6,18 +6,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	"github.com/shibukawa/bdf/print/pdl"
 	"github.com/shibukawa/bdf/print/raw"
-	"github.com/shibukawa/bdf/print/raw/rawtest"
 )
 
 // TestPrintRawLabels prints labels of ZPL over 9100: the profile of the
 // URL, the copies and the settings of the ticket in the file, what ZPL
 // has no command for left out.
 func TestPrintRawLabels(t *testing.T) {
-	s := rawtest.NewSocket()
+	s := fakeprinter.NewSocket(t)
 	defer s.Close()
 	p, err := raw.Parse(s.URL + "?lang=zpl&profile=zd421-300")
 	if err != nil {
@@ -35,7 +34,7 @@ func TestPrintRawLabels(t *testing.T) {
 	if len(jobs) != 1 || res.Format != "ZPL" || res.Sheets != 4 || strings.Join(calls, " ") != "begin sent" {
 		t.Fatalf("%d jobs, %+v, %v", len(jobs), res, calls)
 	}
-	zpl := string(jobs[0].Data)
+	zpl := string(jobs[0].Data())
 	// 100 mm of 300 dpi, 150 mm long; the A4 page fitted to it
 	for _, want := range []string{"^XA\n^MNY\n^MD6\n^PW1181^LL1771", "^MMC\n", "^GFA,", "^PQ2\n^XZ\n"} {
 		if !strings.Contains(zpl, want) {
@@ -57,8 +56,8 @@ func TestPrintRawLabels(t *testing.T) {
 	if res, err := PrintRaw(context.Background(), ps, testDoc(1), &Options{Format: "escpos"}); err != nil || res.Format != "ESC/POS" {
 		t.Errorf("escpos: %+v %v", res, err)
 	}
-	if !bytes.HasPrefix(s.Jobs()[1].Data, []byte("\x1b@\x1dP")) {
-		t.Errorf("ESC/POS begins %q", s.Jobs()[1].Data[:8])
+	if !bytes.HasPrefix(s.Jobs()[1].Data(), []byte("\x1b@\x1dP")) {
+		t.Errorf("ESC/POS begins %q", s.Jobs()[1].Data()[:8])
 	}
 	// the language of the URL's profile
 	tm, _ := raw.Parse(s.URL + "?profile=tm-t88")
@@ -73,7 +72,7 @@ func TestPrintRawLabels(t *testing.T) {
 // TestPrintCUPSRaw sends ESC/POS to an IPP queue that takes data of the
 // printer's own language, as a raw queue of CUPS does.
 func TestPrintCUPSRaw(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Formats = []string{"application/vnd.cups-raw", "application/octet-stream"}
 	c := serve(t, p)
 	prof, _ := pdl.LookupProfile("tm-m30")

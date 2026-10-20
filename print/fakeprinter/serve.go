@@ -128,6 +128,31 @@ func StartLPD(t testing.TB, p *Printer, queue string) *Listener {
 	return l
 }
 
+// Raw is a printer served on a raw transport: what it received, how it
+// fails (the Printer's), and where it is (the Listener's URL).
+type Raw struct {
+	*Printer
+	*Listener
+}
+
+// NewSocket starts a printer that takes anything on a raw port (9100) of
+// the loopback, until the test ends.
+func NewSocket(t testing.TB) *Raw {
+	t.Helper()
+	p := New()
+	p.Name = "socket"
+	return &Raw{p, StartSocket(t, p)}
+}
+
+// NewLPD starts a printer that takes anything as an LPD queue on the
+// loopback, until the test ends.
+func NewLPD(t testing.TB, queue string) *Raw {
+	t.Helper()
+	p := New()
+	p.Name = queue
+	return &Raw{p, StartLPD(t, p, queue)}
+}
+
 // StartSerial makes the printer read a pseudo-terminal until the test
 // ends, and returns the terminal's name (what serial:// names); the test
 // is skipped where there are none.

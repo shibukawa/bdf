@@ -1,16 +1,13 @@
 package main
 
 import (
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
-	"github.com/shibukawa/bdf/print/raw/rawtest"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 )
 
 // runOut runs the bdf command and returns its exit status, output and
@@ -32,13 +29,10 @@ func runOut(t *testing.T, args ...string) (int, string, string) {
 }
 
 // fakePrinter serves a printer that is not there and returns its URL.
-func fakePrinter(t *testing.T) (*ipptest.Printer, string) {
+func fakePrinter(t *testing.T) (*fakeprinter.Printer, string) {
 	t.Helper()
-	p := ipptest.New()
-	srv := httptest.NewServer(p)
-	t.Cleanup(srv.Close)
-	u, _ := url.Parse(srv.URL)
-	return p, "ipp://" + u.Host + "/ipp/print"
+	p := fakeprinter.New()
+	return p, fakeprinter.Start(t, p)
 }
 
 func TestPrintersURL(t *testing.T) {
@@ -47,18 +41,18 @@ func TestPrintersURL(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	for _, want := range []string{"name: ipptest", "model: BDF Test Printer", "state: idle", "formats: application/pdf, image/pwg-raster",
+	for _, want := range []string{"name: fakeprinter", "model: BDF Fake Printer", "state: idle", "formats: application/pdf, image/pwg-raster",
 		"sides: one-sided, two-sided-long-edge", "resolution: 300x300dpi, 600x600dpi", "copies: 1-99"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("no %q in\n%s", want, out)
 		}
 	}
 	code, out, _ = runOut(t, "printers", "-url", u, "-json")
-	if code != 0 || !strings.Contains(out, `"MakeModel": "BDF Test Printer"`) {
+	if code != 0 || !strings.Contains(out, `"MakeModel": "BDF Fake Printer"`) {
 		t.Fatalf("-json: exit %d\n%s", code, out)
 	}
 	code, out, _ = runOut(t, "printers", "-cups", u)
-	if code != 0 || !strings.HasPrefix(out, "ipptest\tipp://") {
+	if code != 0 || !strings.HasPrefix(out, "fakeprinter\tipp://") {
 		t.Fatalf("-cups: exit %d\n%s", code, out)
 	}
 	if code, _, errOut := runOut(t, "printers", "-url", "ipp://127.0.0.1:1/ipp/print"); code != 1 || !strings.Contains(errOut, "bdf: ipp:") {
@@ -126,7 +120,7 @@ func TestPrint(t *testing.T) {
 
 // TestPrintRaw prints on printers of 9100 and LPD.
 func TestPrintRaw(t *testing.T) {
-	sock, lpd := rawtest.NewSocket(), rawtest.NewLPD("q1")
+	sock, lpd := fakeprinter.NewSocket(t), fakeprinter.NewLPD(t, "q1")
 	defer sock.Close()
 	defer lpd.Close()
 	doc := filepath.Join("..", "..", "testdata", "form", "rows.bdf")
@@ -137,14 +131,14 @@ func TestPrintRaw(t *testing.T) {
 	if !strings.Contains(errOut, "page(s) sent as PostScript on iso_a4_210x297mm") || !strings.Contains(errOut, "does not support output-bin=top") {
 		t.Errorf("output: %s", errOut)
 	}
-	if js := sock.Jobs(); len(js) != 1 || !strings.Contains(string(js[0].Data), "<< /NumCopies 2 >>") {
+	if js := sock.Jobs(); len(js) != 1 || !strings.Contains(string(js[0].Data()), "<< /NumCopies 2 >>") {
 		t.Fatalf("%d jobs", len(js))
 	}
 	code, _, errOut = runOut(t, append([]string{"print", "-printer", lpd.URL + "?format=pdf", "-sides", "short", "-q"}, append(testFontFlags, doc)...)...)
 	if code != 0 || errOut != "" {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	if js := lpd.Jobs(); len(js) != 1 || !strings.Contains(string(js[0].Data), "@PJL SET BINDING=SHORTEDGE") || !strings.Contains(js[0].Control, "Jrows.bdf") {
+	if js := lpd.Jobs(); len(js) != 1 || !strings.Contains(string(js[0].Data()), "@PJL SET BINDING=SHORTEDGE") || !strings.Contains(js[0].Control, "Jrows.bdf") {
 		t.Fatalf("%d jobs", len(lpd.Jobs()))
 	}
 	lpd.Refuse(true)

@@ -11,14 +11,14 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/server"
 	"github.com/shibukawa/bdf/print/server/client"
 )
 
 // printServer serves a print server of a fake printer, with the
 // converters of bdf printd, and returns its URL.
-func printServer(t *testing.T, extra string) (string, *server.Server, *ipptest.Printer) {
+func printServer(t *testing.T, extra string) (string, *server.Server, *fakeprinter.Printer) {
 	t.Helper()
 	p, u := fakePrinter(t)
 	cfg, err := server.ParseConfig([]byte(fmt.Sprintf("printers: { mfp1: { url: %q } }\nqueues: { office: { printers: [mfp1] }, spare: { printers: [mfp1] } }\n%s", u, extra)))

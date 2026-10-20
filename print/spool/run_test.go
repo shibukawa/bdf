@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,8 +13,8 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/print"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	"github.com/shibukawa/bdf/print/raw"
 )
 
@@ -54,7 +52,7 @@ func jobState(s *Spool, id int32) Job {
 	return j
 }
 
-func documents(p *ipptest.Printer) int {
+func documents(p *fakeprinter.Printer) int {
 	n := 0
 	for _, j := range p.Jobs() {
 		n += len(j.Documents)
@@ -357,7 +355,7 @@ func TestCrash(t *testing.T) {
 	for _, c := range []struct {
 		point string
 		// before changes the printer before the spool opens again
-		before func(p *ipptest.Printer, c *ipp.Client)
+		before func(p *fakeprinter.Printer, c *ipp.Client)
 		// state of the job, and jobs and documents of the printer, after
 		state            ipp.JobState
 		reason           string
@@ -368,9 +366,9 @@ func TestCrash(t *testing.T) {
 		{point: "created-recorded", state: ipp.JobCompleted, reason: "job-completed-successfully", jobs: 2, docs: 1, canc: 1},
 		{point: "sent-recorded", state: ipp.JobCompleted, reason: "job-completed-successfully", jobs: 1, docs: 1},
 		{point: "watching", state: ipp.JobCompleted, reason: "job-completed-successfully", jobs: 1, docs: 1},
-		{point: "sent-recorded", before: func(p *ipptest.Printer, _ *ipp.Client) { p.Forget() },
+		{point: "sent-recorded", before: func(p *fakeprinter.Printer, _ *ipp.Client) { p.Forget() },
 			state: ipp.JobCompleted, reason: "job-completed-with-warnings", jobs: 0, docs: 0},
-		{point: "attempt-recorded", before: func(p *ipptest.Printer, c *ipp.Client) {
+		{point: "attempt-recorded", before: func(p *fakeprinter.Printer, c *ipp.Client) {
 			// two jobs that may be this one
 			for i := 0; i < 2; i++ {
 				c.PrintJob(context.Background(), "#1.1 doc.bdf", "application/pdf", nil, strings.NewReader("%PDF"))
@@ -382,11 +380,8 @@ func TestCrash(t *testing.T) {
 			name += "+"
 		}
 		t.Run(name, func(t *testing.T) {
-			p := ipptest.New()
-			srv := httptest.NewServer(p)
-			defer srv.Close()
-			u, _ := url.Parse(srv.URL)
-			printerURL := "ipp://" + u.Host + "/ipp/print"
+			p := fakeprinter.New()
+			printerURL := fakeprinter.Start(t, p)
 			path := filepath.Join(t.TempDir(), "spool.db")
 			cmd := exec.Command(os.Args[0], "-test.run=^TestCrashChild$")
 			cmd.Env = append(os.Environ(), "SPOOL_CRASH_POINT="+c.point, "SPOOL_CRASH_PATH="+path, "SPOOL_CRASH_PRINTER="+printerURL)

@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,9 +19,8 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
-	"github.com/shibukawa/bdf/print/raw/rawtest"
 	"github.com/shibukawa/bdf/print/spool"
 )
 
@@ -50,7 +48,7 @@ func docBytes(t *testing.T) []byte {
 // fixture is a server on a fake printer.
 type fixture struct {
 	t       *testing.T
-	printer *ipptest.Printer
+	printer *fakeprinter.Printer
 	srv     *Server
 	http    *httptest.Server
 	cfg     *Config
@@ -71,11 +69,8 @@ tokens:
 
 func newFixture(t *testing.T, yaml string) *fixture {
 	t.Helper()
-	p := ipptest.New()
-	ps := httptest.NewServer(p)
-	t.Cleanup(ps.Close)
-	u, _ := url.Parse(ps.URL)
-	cfg, err := ParseConfig([]byte(fmt.Sprintf(yaml, "ipp://"+u.Host+"/ipp/print")))
+	p := fakeprinter.New()
+	cfg, err := ParseConfig([]byte(fmt.Sprintf(yaml, fakeprinter.Start(t, p))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +196,7 @@ limits: { max-document: 1MiB, max-bytes: 2GiB, retry-for: 90m }
 	}
 
 	// printers of 9100 and LPD
-	sock := rawtest.NewSocket()
+	sock := fakeprinter.NewSocket(t)
 	defer sock.Close()
 	c, err = ParseConfig([]byte(`
 printers:
@@ -669,11 +664,8 @@ func TestServeStops(t *testing.T) {
 	rt := readTimeout
 	readTimeout = 300 * time.Millisecond
 	t.Cleanup(func() { readTimeout = rt })
-	p := ipptest.New()
-	ps := httptest.NewServer(p)
-	defer ps.Close()
-	u, _ := url.Parse(ps.URL)
-	cfg, err := ParseConfig([]byte(fmt.Sprintf("printers: { mfp1: { url: \"ipp://%s/ipp/print\" } }\nqueues: { office: { printers: [mfp1] } }\n", u.Host)))
+	p := fakeprinter.New()
+	cfg, err := ParseConfig([]byte(fmt.Sprintf("printers: { mfp1: { url: \"%s\" } }\nqueues: { office: { printers: [mfp1] } }\n", fakeprinter.Start(t, p))))
 	if err != nil {
 		t.Fatal(err)
 	}
