@@ -218,7 +218,66 @@ func (c *Client) Do(ctx context.Context, m *Message, doc io.Reader) (*Message, e
 	return res, nil
 }
 
+// DoStream sends a request and returns the response with what follows it
+// in the body: the document of Fetch-Document. The caller closes the
+// body; a response that is not a success is returned with a StatusError
+// and no body.
+func (c *Client) DoStream(ctx context.Context, m *Message) (*Message, io.ReadCloser, error) {
+	resp, err := c.post(ctx, m, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	res, br, err := DecodeFrom(resp.Body, c.Limits)
+	if err != nil {
+		resp.Body.Close()
+		return nil, nil, err
+	}
+	if res.RequestID != m.RequestID {
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("%w: request id %d answered with %d", ErrProtocol, m.RequestID, res.RequestID)
+	}
+	if st := res.Status(); !st.OK() {
+		resp.Body.Close()
+		se := &StatusError{Op: Op(m.Code), Status: st}
+		if a := res.Attr(TagOperation, "status-message"); a != nil {
+			se.Message = a.Text()
+		}
+		return res, nil, se
+	}
+	return res, struct {
+		io.Reader
+		io.Closer
+	}{br, resp.Body}, nil
+}
+
 func (c *Client) do(ctx context.Context, m *Message, doc io.Reader) (*Message, error) {
+	if doc == nil && c.Timeout >= 0 {
+		t := c.Timeout
+		if t == 0 {
+			t = 30 * time.Second
+		}
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, t)
+		defer cancel()
+	}
+	resp, err := c.post(ctx, m, doc)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	res, err := Decode(resp.Body, c.Limits)
+	if err != nil {
+		return nil, err
+	}
+	if res.RequestID != m.RequestID {
+		return nil, fmt.Errorf("%w: request id %d answered with %d", ErrProtocol, m.RequestID, res.RequestID)
+	}
+	return res, nil
+}
+
+// post sends a request and returns the HTTP response of an IPP message,
+// or why there is none.
+func (c *Client) post(ctx context.Context, m *Message, doc io.Reader) (*http.Response, error) {
 	httpURL, _, err := ParseURL(c.URL)
 	if err != nil {
 		return nil, err
@@ -230,14 +289,6 @@ func (c *Client) do(ctx context.Context, m *Message, doc io.Reader) (*Message, e
 	var body io.Reader = bytes.NewReader(head)
 	if doc != nil {
 		body = io.MultiReader(bytes.NewReader(head), doc)
-	} else if c.Timeout >= 0 {
-		t := c.Timeout
-		if t == 0 {
-			t = 30 * time.Second
-		}
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, t)
-		defer cancel()
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, httpURL, body)
 	if err != nil {
@@ -259,27 +310,23 @@ func (c *Client) do(ctx context.Context, m *Message, doc io.Reader) (*Message, e
 	if err != nil {
 		return nil, fmt.Errorf("ipp: %w", err)
 	}
-	defer resp.Body.Close()
+	fail := func(err error) (*http.Response, error) {
+		resp.Body.Close()
+		return nil, err
+	}
 	switch resp.StatusCode {
 	case http.StatusOK:
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return nil, ErrAuth
+		return fail(ErrAuth)
 	case http.StatusUpgradeRequired:
-		return nil, fmt.Errorf("ipp: the printer requires TLS (HTTP 426): use ipps://")
+		return fail(fmt.Errorf("ipp: the printer requires TLS (HTTP 426): use ipps://"))
 	default:
-		return nil, fmt.Errorf("%w: HTTP %s", ErrProtocol, resp.Status)
+		return fail(fmt.Errorf("%w: HTTP %s", ErrProtocol, resp.Status))
 	}
 	if ct, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); ct != "application/ipp" {
-		return nil, fmt.Errorf("%w: Content-Type %q", ErrProtocol, resp.Header.Get("Content-Type"))
+		return fail(fmt.Errorf("%w: Content-Type %q", ErrProtocol, resp.Header.Get("Content-Type")))
 	}
-	res, err := Decode(resp.Body, c.Limits)
-	if err != nil {
-		return nil, err
-	}
-	if res.RequestID != m.RequestID {
-		return nil, fmt.Errorf("%w: request id %d answered with %d", ErrProtocol, m.RequestID, res.RequestID)
-	}
-	return res, nil
+	return resp, nil
 }
 
 // JobStatus is what a printer tells of a job.

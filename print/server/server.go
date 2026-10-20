@@ -29,6 +29,9 @@ type Options struct {
 	Grace time.Duration
 	// Now is the clock; time.Now by default.
 	Now func() time.Time
+	// IPPListener is the listener of the IPP server (Config.IPP) for
+	// Serve; nil listens on the configuration's address.
+	IPPListener net.Listener
 }
 
 // readTimeout is how long a request may take to arrive (tests shorten
@@ -50,6 +53,10 @@ type Server struct {
 	done     chan struct{}
 	stopOnce sync.Once
 	handler  http.Handler
+	// ipp shows the queues as IPP printers, when configured.
+	ipp *ippServer
+	// ups are the servers this one fetches jobs from.
+	ups []*upstream
 }
 
 // New opens the spool of a configuration (spool.db, locked: a second
@@ -92,6 +99,16 @@ func New(ctx context.Context, cfg *Config, o Options) (*Server, error) {
 		uploads: make(chan struct{}, orDefault(cfg.Limits.Uploads, 8)), streams: make(chan struct{}, orDefault(cfg.Limits.Events, 64)),
 		done: make(chan struct{})}
 	s.handler = s.routes()
+	if cfg.IPP != nil {
+		if s.ipp, err = newIPPServer(s); err != nil {
+			sp.Close()
+			return nil, err
+		}
+	}
+	if s.ups, err = s.upstreams(); err != nil {
+		sp.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -108,6 +125,15 @@ func (s *Server) Spool() *spool.Spool { return s.sp }
 // Handler is the server's HTTP handler: the API, /events, /metrics,
 // /healthz and the page of the state.
 func (s *Server) Handler() http.Handler { return s.handler }
+
+// IPPHandler is the handler of the IPP server (Config.IPP), nil without
+// one: the printers at /ipp/print/<queue>, their icons and pages.
+func (s *Server) IPPHandler() http.Handler {
+	if s.ipp == nil {
+		return nil
+	}
+	return s.ipp.handler()
+}
 
 // Run listens on the configuration's address and serves until ctx ends.
 func (s *Server) Run(ctx context.Context) error {
@@ -133,7 +159,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		IdleTimeout:       2 * time.Minute,
 		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
 	}
-	errc := make(chan error, 1)
+	errc := make(chan error, 2)
 	go func() {
 		if t := s.cfg.TLS; t != nil {
 			errc <- hs.ServeTLS(ln, t.Cert, t.Key)
@@ -142,15 +168,37 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 		}
 	}()
 	s.log.Info("serving", "listen", ln.Addr().String(), "tls", s.cfg.TLS != nil, "spool", s.cfg.Spool)
+	var ippHS *http.Server
+	if s.ipp != nil {
+		var err error
+		if ippHS, err = s.ipp.serve(ctx, errc); err != nil {
+			hs.Close()
+			s.stop()
+			s.sp.Shutdown(s.o.Grace)
+			return err
+		}
+	}
+	upCtx, upStop := context.WithCancel(ctx)
+	defer upStop()
+	var ups sync.WaitGroup
+	for _, u := range s.ups {
+		ups.Go(func() { u.run(upCtx) })
+	}
 	var err error
 	select {
 	case <-ctx.Done():
 	case err = <-errc:
 	}
 	s.log.Info("stopping")
+	upStop()
+	ups.Wait()
 	s.stop()
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	hs.Shutdown(sctx)
+	if ippHS != nil {
+		ippHS.Shutdown(sctx)
+		s.ipp.stop()
+	}
 	cancel()
 	if cerr := s.sp.Shutdown(s.o.Grace); err == nil || errors.Is(err, http.ErrServerClosed) {
 		err = cerr

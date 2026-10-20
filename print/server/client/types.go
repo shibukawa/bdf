@@ -50,6 +50,9 @@ type Job struct {
 	Warnings    []string `json:"warnings,omitempty"`
 
 	DocumentsRemoved bool `json:"documents-removed,omitempty"`
+	// Origin is the job of an upstream server a proxy fetched this one
+	// from.
+	Origin *Origin `json:"origin,omitempty"`
 }
 
 // Done tells a job that is canceled, aborted or completed.
@@ -59,7 +62,9 @@ func (j *Job) Done() bool {
 
 // Document is the document of a job as the server received it.
 type Document struct {
-	Name      string     `json:"name"`
+	Name string `json:"name"`
+	// Type is the media type it was sent as, when the client said.
+	Type      string     `json:"type,omitempty"`
 	Format    string     `json:"format"`
 	Size      int64      `json:"size"`
 	SHA256    string     `json:"sha256"`
@@ -98,6 +103,17 @@ type PrinterJob struct {
 	// the job.
 	Begun bool `json:"begun,omitempty"`
 	Sent  bool `json:"sent,omitempty"`
+	// Device is the output-device-uuid of the proxy that fetched the job,
+	// of a printer of proxies.
+	Device string `json:"device,omitempty"`
+}
+
+// Origin is where a job a proxy fetched comes from: the upstream, the
+// job's id and uuid there.
+type Origin struct {
+	Upstream string `json:"upstream"`
+	JobID    int32  `json:"job-id"`
+	UUID     string `json:"uuid"`
 }
 
 // Queue is a queue of the server.

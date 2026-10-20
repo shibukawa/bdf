@@ -95,6 +95,9 @@ type Printer struct {
 	Name   string
 	Client *ipp.Client
 	Raw    *raw.Printer
+	// Proxy makes a printer that proxies fetch jobs from (proxy.go), with
+	// neither Client nor Raw.
+	Proxy bool
 }
 
 // Limits bound what the spool takes.
@@ -255,8 +258,14 @@ func Open(ctx context.Context, o Options) (*Spool, error) {
 	s.stepCtx, s.stepStop = context.WithCancel(context.Background())
 	s.sendCtx, s.sendStop = context.WithCancel(context.Background())
 	for _, p := range o.Printers {
-		if p.Name == "" || (p.Client == nil) == (p.Raw == nil) {
-			return nil, fmt.Errorf("%w: a printer without name, or without one of an IPP client and a raw printer", ErrInvalid)
+		kinds := 0
+		for _, k := range []bool{p.Client != nil, p.Raw != nil, p.Proxy} {
+			if k {
+				kinds++
+			}
+		}
+		if p.Name == "" || kinds != 1 {
+			return nil, fmt.Errorf("%w: a printer without name, or without one of an IPP client, a raw printer and proxies", ErrInvalid)
 		}
 		if _, dup := s.printers[p.Name]; dup {
 			return nil, fmt.Errorf("%w: printer %q twice", ErrInvalid, p.Name)
@@ -276,6 +285,16 @@ func Open(ctx context.Context, o Options) (*Spool, error) {
 		for _, p := range q.Printers {
 			if s.printers[p] == nil {
 				return nil, fmt.Errorf("%w: queue %q names printer %q, which is not configured", ErrInvalid, q.Name, p)
+			}
+			if s.printers[p].Proxy && len(q.Printers) > 1 {
+				return nil, fmt.Errorf("%w: queue %q: printer %q of proxies is the only printer of its queue", ErrInvalid, q.Name, p)
+			}
+			if s.printers[p].Proxy {
+				for _, other := range s.queues {
+					if slices.Contains(other.Printers, p) {
+						return nil, fmt.Errorf("%w: printer %q of proxies is of queues %q and %q", ErrInvalid, p, other.Name, q.Name)
+					}
+				}
 			}
 		}
 		switch q.Policy {
@@ -434,9 +453,18 @@ func (s *Spool) TrustStore() *ipp.TrustStore { return s.trust }
 
 // Submission is a job to submit.
 type Submission struct {
+	// ID is an id ReserveID gave, for a job whose id was told before its
+	// document arrived (IPP's Create-Job); 0 takes the next. UUID is the
+	// job-uuid told with it; "" makes one.
+	ID    int32
+	UUID  string
 	Queue string
 	// Name is the document's file name; User who submits it.
 	Name, User string
+	// Type is the media type the document was sent as
+	// ("application/pdf"), when the client said: the formats whose
+	// content does not tell them (text/plain, text/csv) are known by it.
+	Type string
 	// Document is read to its end by Submit; or Upload, a document
 	// received before (Receive), which Submit takes.
 	Document io.Reader
@@ -451,6 +479,8 @@ type Submission struct {
 	// Password opens an encrypted document. It is kept in memory only:
 	// after a restart such a job waits for it again (job-password-wait).
 	Password string
+	// Origin is the upstream job a proxy fetched this one from.
+	Origin *Origin
 }
 
 // Submit takes a job: it stores its document and records the job, which
@@ -495,7 +525,7 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	if err := s.room(size); err != nil {
 		return Job{}, err
 	}
-	doc := Document{Name: sub.Name, Size: size, SHA256: sum}
+	doc := Document{Name: sub.Name, Type: sub.Type, Size: size, SHA256: sum}
 	head := make([]byte, 4)
 	if n, _ := f.ReadAt(head, 0); n == 4 && bytes.Equal(head, bdf.Magic[:]) {
 		doc.Format = "bdf"
@@ -515,16 +545,21 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 		if s.o.Converter == nil {
 			return Job{}, ErrUnknownFormat
 		}
-		format, ok := s.o.Converter.Detect(f, size, sub.Name)
+		format, ok := s.o.Converter.Detect(f, size, detectName(sub.Name, sub.Type))
 		if !ok {
 			return Job{}, ErrUnknownFormat
 		}
 		doc.Format = format
 	}
 	ctx = context.WithoutCancel(ctx) // a client that goes away does not leave half a job
-	id, err := s.st.nextID(ctx)
-	if err != nil {
-		return Job{}, err
+	id := sub.ID
+	if id == 0 {
+		var err error
+		if id, err = s.st.nextID(ctx); err != nil {
+			return Job{}, err
+		}
+	} else if s.has(id) {
+		return Job{}, fmt.Errorf("%w: job %d exists", ErrInvalid, id)
 	}
 	key := originalKey(id)
 	s.mu.Lock()
@@ -545,9 +580,13 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	if sub.Ticket.JobName == "" {
 		sub.Ticket.JobName = sub.Name
 	}
-	j := Job{ID: id, UUID: newUUID(), Queue: sub.Queue, Name: sub.Name, User: sub.User, Document: doc, Ticket: sub.Ticket,
+	uuid := sub.UUID
+	if uuid == "" {
+		uuid = newUUID()
+	}
+	j := Job{ID: id, UUID: uuid, Queue: sub.Queue, Name: sub.Name, User: sub.User, Document: doc, Ticket: sub.Ticket,
 		Options: sub.Options, State: ipp.JobPending, Priority: sub.Priority, HoldUntil: sub.HoldUntil, HoldUntilTime: sub.HoldUntilTime,
-		Step: StepSend, Submitted: now}
+		Step: StepSend, Submitted: now, Origin: sub.Origin}
 	if doc.Format != "bdf" {
 		j.Step = StepConvert
 	}
@@ -574,6 +613,46 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	s.notify(&j)
 	s.wake()
 	return j, nil
+}
+
+// ReserveID takes the id of a job to submit later (Submission.ID): IPP's
+// Create-Job tells a job's id before its document arrives. An id that is
+// not submitted after all is skipped.
+func (s *Spool) ReserveID(ctx context.Context) (int32, error) {
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return 0, ErrClosed
+	}
+	return s.st.nextID(context.WithoutCancel(ctx))
+}
+
+// has tells a job of the id, done or not.
+func (s *Spool) has(id int32) bool {
+	s.mu.Lock()
+	_, ok := s.jobs[id]
+	s.mu.Unlock()
+	if ok {
+		return true
+	}
+	_, _, err := s.st.getDone(context.Background(), id)
+	return err == nil
+}
+
+// typeExtensions are the extensions of the media types whose content does
+// not tell them.
+var typeExtensions = map[string]string{
+	"text/plain": ".txt", "text/csv": ".csv", "text/tab-separated-values": ".tsv", "text/markdown": ".md", "text/html": ".html",
+}
+
+// detectName is the name a document's format is detected with: its own,
+// or with the extension of its media type when it has none.
+func detectName(name, typ string) string {
+	if ext := typeExtensions[typ]; ext != "" && filepath.Ext(name) == "" {
+		return name + ext
+	}
+	return name
 }
 
 func checkOptions(o JobOptions) error {
@@ -835,6 +914,9 @@ func (s *Spool) Hold(ctx context.Context, id int32) (Job, error) {
 		if j.State != ipp.JobPending && j.State != ipp.JobPendingHeld {
 			return fmt.Errorf("%w: job %d is %s", ErrNotPossible, id, j.State)
 		}
+		if j.Step == StepRemote || j.Step == StepFetch && j.Printer != nil && j.Printer.Device != "" {
+			return fmt.Errorf("%w: job %d is a proxy's", ErrNotPossible, id)
+		}
 		j.HoldUntil, j.HoldUntilTime, j.Due = "indefinite", time.Time{}, time.Time{}
 		return j.to(now, ipp.JobPendingHeld, "job-hold-until-specified")
 	})
@@ -990,6 +1072,13 @@ func (s *Spool) Move(ctx context.Context, id int32, queue string) (Job, error) {
 	return s.change(ctx, id, func(j *Job, _ time.Time) error {
 		if j.State != ipp.JobPending && j.State != ipp.JobPendingHeld {
 			return fmt.Errorf("%w: job %d is %s", ErrNotPossible, id, j.State)
+		}
+		if j.Step == StepFetch {
+			if j.Printer.Device != "" {
+				return fmt.Errorf("%w: job %d is a proxy's", ErrNotPossible, id)
+			}
+			// offered to the proxies of the queue it leaves: offered anew
+			j.Printer, j.Step = nil, StepSend
 		}
 		j.Queue = queue
 		return nil

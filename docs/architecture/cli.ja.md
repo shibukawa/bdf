@@ -116,13 +116,15 @@ bdf print -printer "lpd://192.0.2.31/lp1?format=pdf" invoice.bdf                
 
 ## printd, jobs
 
-`bdf printd` は[プリントサーバー](../print-server.ja.md)を動かします。1 つのファイルのスプール、設定ファイルのキューとプリンタ、HTTP の API です。SIGINT か SIGTERM（Windows は Ctrl-C か Ctrl-Break）まで前面で動き、常駐は OS のサービス管理に任せます。
+`bdf printd` は[プリントサーバー](../print-server.ja.md)を動かします。1 つのファイルのスプール、設定ファイルのキューとプリンタ、HTTP の API です。`ipp:` があればキューを OS がドライバなしで追加できる IPP プリンタとしても見せて DNS-SD で広告し、`upstreams:` があれば拠点の代理として別のサーバーのキューのジョブを取りに行きます。SIGINT か SIGTERM（Windows は Ctrl-C か Ctrl-Break）まで前面で動き、常駐は OS のサービス管理に任せます。
 
 ```sh
 bdf printd -config printd.yaml                 # 動かす（ログは標準エラーに JSON。人が読むなら -log text）
 bdf printd -config printd.yaml -check          # スプールを開かずに、各プリンタにできることを聞く
 bdf printd -config printd.yaml -compact        # 止めたスプールのファイルを、消したジョブの分を詰めて書き直す
 bdf printd -config printd.yaml -listen 127.0.0.1:9631
+bdf printd -config printd.yaml -dns-sd example.com             # IPP プリンタの DNS-SD のレコードを DNS のゾーン向けに
+bdf printd -config printd.yaml -airprint-profile print.example.com > printers.mobileconfig   # 別のサブネットの iPhone・iPad 向け
 
 bdf jobs                                       # 終わっていないジョブ（$BDF_SERVER か -server）
 bdf jobs -all -queue office                    # 終わったものも

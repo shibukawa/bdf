@@ -162,6 +162,18 @@ func (s *store) eachDone(ctx context.Context, f func(Job, string) bool) error {
 // nextID takes the next job id. An id is never given twice; one may be
 // skipped (when the job is not made after all).
 func (s *store) nextID(ctx context.Context) (int32, error) {
+	// (submissions at once take ids at once: the one that loses the
+	// update tries again)
+	for range 100 {
+		id, err := s.takeID(ctx)
+		if !isConflict(err) {
+			return id, err
+		}
+	}
+	return 0, errors.New("spool: the job ids are contended")
+}
+
+func (s *store) takeID(ctx context.Context) (int32, error) {
 	r, err := s.db.Get[counter](ctx, counterKey)
 	if errors.Is(err, yuruidb.ErrNotFound) {
 		if _, err := s.db.Insert(ctx, counterKey, counter{Next: 2}); err != nil {
@@ -212,6 +224,15 @@ func (s *store) getDoc(ctx context.Context, key string) (*blob.Reader, error) {
 }
 
 // removeDoc removes a document; one already gone is not an error.
+// openDoc opens a document to read, with its size.
+func (s *store) openDoc(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	r, err := s.getDoc(ctx, key)
+	if err != nil {
+		return nil, 0, err
+	}
+	return r, r.Size, nil
+}
+
 func (s *store) removeDoc(ctx context.Context, key string) error {
 	err := s.docs.Remove(ctx, key)
 	if errors.Is(err, yuruidb.ErrNotFound) {

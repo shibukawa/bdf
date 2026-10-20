@@ -83,12 +83,17 @@ type Job struct {
 	// DocumentsRemoved is set on a finished job once its documents are
 	// removed, after their retention.
 	DocumentsRemoved bool `json:"documents-removed,omitempty"`
+
+	// Origin is the upstream job a proxy fetched this one from.
+	Origin *Origin `json:"origin,omitempty"`
 }
 
 // Document is the document of a job as it was received.
 type Document struct {
-	// Name is the file name it came with.
+	// Name is the file name it came with; Type the media type it was
+	// sent as, when the client said.
 	Name string `json:"name"`
+	Type string `json:"type,omitempty"`
 	// Format is "bdf", or the name of the converter's format ("pdf",
 	// "xlsx" …) of a document that is converted.
 	Format    string `json:"format"`
@@ -134,6 +139,9 @@ type PrinterJob struct {
 	// it may print was being sent.
 	Begun bool `json:"begun,omitempty"`
 	Sent  bool `json:"sent,omitempty"`
+	// Device is the output-device-uuid of the proxy a job of a printer
+	// of proxies is bound to.
+	Device string `json:"device,omitempty"`
 }
 
 // Reasons of bdf's own (IPP's job-state-reasons have no keyword for them).

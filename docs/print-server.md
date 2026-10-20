@@ -62,11 +62,13 @@ temp-dir: /var/tmp/bdf
 
 `bdf printd -config printd.yaml -check` reads the configuration, asks each printer what it supports, and prints a table, without opening the spool (exit status 1 when a printer does not answer).
 
+`ipp:` shows the queues as IPP printers ([below](#as-an-ipp-printer)); `upstreams:` and printers of `proxy: true` fetch jobs across a NAT ([below](#branches-behind-a-nat)).
+
 ## Who may do what
 
 - **On the loopback, without tokens** (the default), anyone of the machine may do anything; `X-BDF-User` (which `bdf print` sets to the user of the process) names the user of a job.
 - **Beyond the loopback** the server does not start without TLS and tokens (unless `insecure: true` says so).
-- **A token** has a name (the user of its jobs), a secret of 16 characters at least (from `file`, `env`, or `value` in the file itself, which is not recommended), the queues it may submit to (all when none) and roles: `submit` (submit jobs and act on its own), `manage` (act on others' jobs and read the accounting), `admin` (pause, resume, reject and accept queues, discover printers, take a backup). It is sent as `Authorization: Bearer …` and compared in constant time.
+- **A token** has a name (the user of its jobs), a secret of 16 characters at least (from `file`, `env`, or `value` in the file itself, which is not recommended), the queues it may submit to (all when none) and roles: `submit` (submit jobs and act on its own), `manage` (act on others' jobs and read the accounting), `admin` (pause, resume, reject and accept queues, discover printers, take a backup), `proxy` (fetch the jobs of its queues as the server of a branch). It is sent as `Authorization: Bearer …` and compared in constant time.
 - **`act-as`** lets a token name the user of a job with `X-BDF-User`: a business system that prints for its users. Without `manage`, a token sees and acts on the jobs of the user it acts as.
 - The log has no document, password or token, and no user or password of a printer's URL.
 
@@ -101,6 +103,81 @@ From Go, [`print/server/client`](https://github.com/shibukawa/bdf/tree/main/prin
 ## Encrypted documents
 
 An encrypted `.bdf` stays encrypted in the spool. Its password, given with the job (`bdf print` sends `$BDF_PASSWORD`, checked first), is kept in memory only: after a restart the job waits (`pending-held`, `job-password-wait`) until it is given again (`bdf jobs password <id>`). A PDF or an Office document that needs a password is converted with it, and the converted `.bdf` is encrypted with the same password. `bdf print` does not send a password over a connection without TLS to another machine unless `-allow-plaintext`.
+
+## As an IPP printer
+
+With `ipp:` in the configuration, each queue is also an IPP Everywhere printer that every system adds without a driver: Windows (its IPP class driver, as Windows Ready Print adds printers), macOS and iOS (AirPrint), Android (Mopria, the default print service), ChromeOS and Linux (CUPS). They send PDF (listed first, so vectors are sent), Apple Raster or PWG Raster, JPEG or PNG; the server converts what it takes into `.bdf`, as it does a submission, and prints it on the queue's printers. Raster pages become pictures of the paper they were drawn for.
+
+```yaml
+ipp:
+  listen: ":8631"              # the default; ipp and ipps on the one port
+  host: print.example.com      # the name in the printers' URIs and the certificate: the machine's, in .local, by default
+  auth: none                   # none (as the printers of a LAN) or basic (a token's name and secret): basic when there are tokens
+  require-tls: false           # refuse ipp (HTTP 426): only ipps; so with basic
+  tls: { cert: /etc/bdf/ipp.crt, key: /etc/bdf/ipp.key }   # without it, one the server signs itself (ipp-tls.pem next to the spool)
+  queues: [office, warehouse]  # the queues shown: all by default
+  default: office              # also at /ipp/print
+  location: "2F"               # printer-location, under a queue's own
+  organization: Example Inc.
+  dns-sd: true                 # advertise on the local links (mDNS): the default
+queues:
+  office: { printers: [mfp1], info: "Office printer", location: "2F north" }
+```
+
+- **The printers**: `ipp://host:8631/ipp/print/<queue>` and `ipps://…` (the same port: the first byte of a connection tells TLS). The operations are those IPP Everywhere requires (Print-Job, Validate-Job, Create-Job, Send-Document, Close-Job, Cancel-Job, Cancel-My-Jobs, Get-Job-Attributes, Get-Jobs, Get-Printer-Attributes, Identify-Printer) and Hold-Job and Release-Job. A job's id is the spool's (`bdf jobs` shows the same numbers), its state the spool's. CUPS's `ipptool` checks of IPP/1.1, IPP/2.0 and IPP Everywhere's attributes pass (`test/print/ipp-everywhere-server.test`).
+- **What a job asks** goes into its ticket: `copies`, `sides`, `media` or `media-col` (a size is matched to the paper of the queue), `print-color-mode`, `print-quality`, `printer-resolution`, `page-ranges`, `print-scaling`, `orientation-requested`, `finishings`, `output-bin`, `job-hold-until`, `job-priority`. What the queue does not support is told back; with `ipp-attribute-fidelity` the job is refused. `document-password` opens an encrypted PDF, Office document or `.bdf`, and is kept in memory only, as a submission's.
+- **What the printers say they support** is the queue's first printer's (its paper, trays, finishings, colour, both sides), with what the server does itself (copies, page ranges, scaling) whatever the printer. A printer that has not answered yet, or of 9100 or LPD, is shown with an office's paper.
+- **Who**: with `auth: none` anyone of the network prints, under the `requesting-user-name` the client gives, and cancels the jobs of that name; others' jobs are listed without their names. With `auth: basic` the client gives a token's name and its secret (the system asks once and keeps them); ipp from another machine is refused, so that the secret goes over TLS, and only `_ipps._tcp` is advertised. A token's queues and roles hold as in the API.
+- **DNS-SD**: each queue is advertised as `_ipp._tcp` and `_ipps._tcp`, with the subtypes `_print` (IPP Everywhere) and `_universal` (AirPrint), on a host name of the server's own (`<machine>-bdf.local`; the machine's name is the system responder's), with the TXT record clients choose by (`pdl`, `URF`, `Color`, `Duplex`, `PaperMax`, `TLS`, `air` …), updated once the printers behind have answered. The server shares the port of mDNS with Bonjour, Avahi and Windows.
+- **Other subnets**: mDNS stays on its link. `bdf printd -config printd.yaml -dns-sd example.com` writes the same records for the company's DNS zone (wide-area DNS-SD: `ipp.host` is then the server's name in the zone); and `bdf printd -config printd.yaml -airprint-profile print.example.com > printers.mobileconfig` writes a configuration profile for iPhones and iPads (an AirPrint entry of each queue, and the certificate the server signed itself as a root to trust), for an MDM to send. The page of the printers (`https://host:8631/`) links the same profile, made for the address it was opened at (over https only: over plain HTTP another machine could put its own certificate in it). The certificate the server makes is a leaf, signed by itself, that signs nothing else: a device that trusts it trusts this server only.
+
+Adding the printers:
+
+| System | |
+|---|---|
+| Windows 10 and 11 | Settings → Bluetooth & devices → Printers & scanners → Add device: the queue is listed (mDNS). Elsewhere: "Add a printer using an IP address or hostname" → IPP device → `https://host:8631/ipp/print/office` (or `http://`). The IPP class driver is used; no driver is installed |
+| macOS | System Settings → Printers & Scanners → Add Printer: the queue is listed (AirPrint). Elsewhere: the IP tab, protocol IPP, address `host:8631`, queue `ipp/print/office`. From the shell: `lpadmin -p office -E -v ipps://host:8631/ipp/print/office -m everywhere` |
+| iPhone, iPad | The queue is listed when printing (AirPrint) on the same subnet; elsewhere the profile above |
+| Android | The default print service (Mopria) lists it; elsewhere add it by its address in the service's settings |
+| ChromeOS | Settings → Printers → Add printer: listed, or by address with IPP or IPPS and the path `ipp/print/office` |
+| Linux | `lpadmin -p office -E -v ipps://host:8631/ipp/print/office -m everywhere`, or the desktop's printer settings, which list it |
+
+## Branches behind a NAT
+
+A branch whose printers the head office's server does not reach (a NAT, no VPN) runs `bdf printd` of its own, which fetches the jobs of a queue of the head office and prints them on its printers: it connects out, the head office never connects in. The two speak IPP's Shared Infrastructure Extensions (PWG 5100.18), so another proxy of that standard can fetch the jobs too.
+
+```yaml
+# the head office: a queue whose printer is the branch's proxy
+printers:
+  osaka: { proxy: true }
+queues:
+  osaka: { printers: [osaka] }
+ipp: { listen: ":8631", host: print.example.com }
+tokens:
+  - { name: osaka-proxy, file: /etc/bdf/osaka.token, roles: [proxy], queues: [osaka] }
+```
+
+```yaml
+# the branch
+printers:
+  mfp: { url: "ipp://192.0.2.10/ipp/print" }
+queues:
+  local: { printers: [mfp] }
+upstreams:
+  hq:
+    url: ipps://print.example.com:8631/ipp/print/osaka
+    queue: local
+    username: osaka-proxy
+    password-file: /etc/bdf/osaka.token
+    poll: 10s              # the default
+    # fingerprint: "sha256:…"   pins the head office's certificate; without it the first one seen is kept
+```
+
+- Jobs submitted to the head office's queue (by the API, `bdf print -server`, or IPP) wait there as `job-fetchable`. The branch asks every `poll`, takes each job (`Fetch-Job`, `Acknowledge-Job`), fetches its document (the `.bdf` as the head office keeps it, converted already; with its password, which the branch keeps in memory only), puts it in its queue, and tells the head office it has it (`Acknowledge-Document`). From then on it reports the job's state (`Update-Job-Status`): `bdf jobs` at the head office shows the branch's printing, completion and impressions.
+- **Not printed twice.** A job is bound to the branch that took it and offered to no other. The branch keeps the head office's job's uuid with its own job, and a job it has already (it stopped between taking a job and saying so) is acknowledged, not taken again. A job the head office gave a branch that no longer has it (the branch lost its spool) is aborted at the head office for a person to retry, not sent again by itself.
+- **Canceled at the head office** is canceled at the branch (at its next report, or `Update-Active-Jobs`, which the two compare their jobs with each `poll`).
+- The head office shows the branch's printer as the queue's (its state, paper and colour, as the branch reports them; down when the branch has not reported for two minutes), and so does the head office's IPP printer of that queue.
+- The branch's token has the role `proxy` (it reads the documents of the queue): only for the queues of `queues`, and only with Basic authentication over ipps. A printer of proxies is the printer of one queue only. A job the branch cannot take (a document it cannot read, too large) is reported aborted; one retried at the head office is taken again.
 
 ## Running it as a service
 

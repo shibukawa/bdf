@@ -116,13 +116,15 @@ bdf print -printer "lpd://192.0.2.31/lp1?format=pdf" invoice.bdf                
 
 ## printd, jobs
 
-`bdf printd` runs the [print server](../print-server.md): a spool in one file, its queues and printers from a configuration file, and its HTTP API. It runs in the foreground until SIGINT or SIGTERM (Ctrl-C or Ctrl-Break on Windows), and lets a service manager keep it running.
+`bdf printd` runs the [print server](../print-server.md): a spool in one file, its queues and printers from a configuration file, and its HTTP API; with `ipp:` also its queues as IPP printers that the systems add without a driver, advertised with DNS-SD, and with `upstreams:` the jobs of another server's queue it fetches as the proxy of a branch. It runs in the foreground until SIGINT or SIGTERM (Ctrl-C or Ctrl-Break on Windows), and lets a service manager keep it running.
 
 ```sh
 bdf printd -config printd.yaml                 # serve (the log is JSON on the standard error; -log text for people)
 bdf printd -config printd.yaml -check          # ask each printer what it supports, without opening the spool
 bdf printd -config printd.yaml -compact        # rewrite the stopped spool's file without the space of removed jobs
 bdf printd -config printd.yaml -listen 127.0.0.1:9631
+bdf printd -config printd.yaml -dns-sd example.com             # the DNS-SD records of the IPP printers, for a DNS zone
+bdf printd -config printd.yaml -airprint-profile print.example.com > printers.mobileconfig   # for iPhones and iPads of other subnets
 
 bdf jobs                                       # the jobs not done ($BDF_SERVER, or -server)
 bdf jobs -all -queue office                    # with those done

@@ -20,6 +20,9 @@ const (
 	// roleAdmin pauses and rejects queues, discovers printers and takes
 	// backups.
 	roleAdmin = "admin"
+	// roleProxy fetches the jobs of the queues of printers of proxies
+	// (IPP INFRA), and reports them: the server of a branch.
+	roleProxy = "proxy"
 )
 
 // caller is who makes a request.

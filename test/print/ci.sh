@@ -5,7 +5,9 @@
 # front of the first (an IPP Everywhere queue, made with lpadmin -m
 # everywhere), a printer of the raw port 9100 (a receiver in Python),
 # and bdf printd's spool in front of them across a restart, and checks
-# what the printers received; Ghostscript draws the PostScript.
+# what the printers received; Ghostscript draws the PostScript. Then bdf
+# printd as an IPP printer: ipptool's checks of IPP Everywhere, jobs of
+# ipptool, its DNS-SD records, and a CUPS queue made of it.
 # The CI job "print" runs it.
 #
 # Needs ippeveprinter (cups-ipp-utils), cupsd and lpadmin (cups) with
@@ -43,7 +45,7 @@ ippeveprinter -2 -p "$psport" -n localhost -k -d "$psspool" -s 120 \
 pspid=$!
 python3 test/print/raw9100.py "$rawport" "$rawdir" &
 rawpid=$!
-trap 'kill $pid $pspid $rawpid ${printd:-} 2>/dev/null || true; sudo lpadmin -x bdftest 2>/dev/null || true' EXIT
+trap 'kill $pid $pspid $rawpid ${printd:-} 2>/dev/null || true; sudo lpadmin -x bdftest 2>/dev/null || true; sudo lpadmin -x bdfserver 2>/dev/null || true' EXIT
 for _ in $(seq 30); do
   if "$bdf" printers -url "$url" >"$spool/printer.txt" 2>/dev/null; then break; fi
   sleep 1
@@ -145,6 +147,7 @@ queues:
   postscript: { printers: [ps] }
   old: { printers: [raw] }
 fonts: { dirs: ["$root/converter/pptx/testdata/fonts"], no-system: true }
+ipp: { listen: ":8633", host: localhost }
 YAML
 "$bdf" printd -config "$work/printd.yaml" -check
 start_printd() {
@@ -188,6 +191,42 @@ test "$(received '%!PS-Adobe-3.0' "$rawdir")" -eq 2
 draw "$rawdir/3.prn"
 "$bdf" jobs -server "$server" accounting -csv | tee "$work/accounting.csv"
 test "$(wc -l <"$work/accounting.csv")" -eq 5
+
+# bdf printd as an IPP printer: ipptool's checks of IPP/1.1, IPP/2.0 and
+# the attributes of IPP Everywhere (ipp-everywhere.test without its
+# sample rasters), and its jobs, which reach the printer behind
+ippuri="ipp://localhost:8633/ipp/print/office"
+tests=/usr/share/cups/ipptool
+# (Ubuntu's ipptool has its tests and not their sample files: a PDF and a
+# JPEG of the repository stand in)
+"$bdf" pdf "${fonts[@]}" testdata/form/rows.bdf "$work/rows.pdf"
+cp converter/image/testdata/photo.jpg "$work/photo.jpg"
+before=$(received '%PDF-')
+ipptool -t -V 2.0 -f "$work/rows.pdf" "$ippuri" test/print/ipp-everywhere-server.test
+ipptool -t -f "$work/photo.jpg" "$ippuri" "$tests/print-job.test"
+# the jobs of the queue are done
+idle() {
+  for _ in $(seq 300); do
+    if ! "$bdf" jobs -server "$server" -queue office | grep -q '^ *[0-9]'; then return; fi
+    sleep 1
+  done
+  return 1
+}
+idle
+test "$(received '%PDF-')" -ge $((before + 2))
+before=$(received '%PDF-')
+# advertised with DNS-SD beside Avahi: bdf printers finds it
+"$bdf" printers -timeout 3s | tee "$work/browse.txt"
+grep -q '/ipp/print/office' "$work/browse.txt"
+# a CUPS queue of the server, as macOS and Linux add it (driverless)
+sudo lpadmin -p bdfserver -E -v "$ippuri" -m everywhere
+lp -d bdfserver "$work/rows.pdf"
+for _ in $(seq 180); do
+  if [ "$(received '%PDF-')" -gt "$before" ]; then break; fi
+  sleep 1
+done
+"$bdf" jobs -server "$server" -all -queue office
+test "$(received '%PDF-')" -gt "$before"
 kill -INT "$printd"
 wait "$printd"
 printd=

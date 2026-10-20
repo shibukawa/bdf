@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,8 +51,63 @@ type Config struct {
 	Fonts     FontsConfig              `yaml:"fonts"`
 	// TempDir holds documents while they arrive.
 	TempDir string `yaml:"temp-dir"`
+	// IPP shows the queues as IPP printers, which the systems add without
+	// a driver (IPP Everywhere, AirPrint, Mopria).
+	IPP *IPPConfig `yaml:"ipp"`
+	// Upstreams are the servers this one fetches jobs from, as a proxy
+	// of a branch (IPP INFRA): each into a queue of this server.
+	Upstreams map[string]UpstreamConfig `yaml:"upstreams"`
 
 	dir string // of the file, for relative paths
+}
+
+// UpstreamConfig is a server this one fetches jobs from: the URL of its
+// queue (a queue of a printer of proxies there), the queue here the jobs
+// go to, and the token's name and secret there (Basic).
+type UpstreamConfig struct {
+	URL          string `yaml:"url"`
+	Queue        string `yaml:"queue"`
+	Username     string `yaml:"username"`
+	PasswordEnv  string `yaml:"password-env"`
+	PasswordFile string `yaml:"password-file"`
+	Fingerprint  string `yaml:"fingerprint"`
+	Insecure     bool   `yaml:"insecure"`
+	// Poll is how often the jobs are asked for: 10 seconds by default.
+	Poll Duration `yaml:"poll"`
+	// UUID is the output-device-uuid of this proxy; one made of the
+	// spool and the upstream's name by default.
+	UUID string `yaml:"uuid"`
+}
+
+// IPPConfig is the IPP server of the queues: a printer of each at
+// /ipp/print/<queue>, ipp and ipps on one port, advertised with DNS-SD.
+type IPPConfig struct {
+	// Listen is the address: ":8631" by default.
+	Listen string `yaml:"listen"`
+	// Host is the name of the server in the printers' URIs, the
+	// certificate and DNS-SD: the machine's name, in .local, by default.
+	Host string `yaml:"host"`
+	// Auth is "none" (anyone of the network prints, under the
+	// requesting-user-name it gives) or "basic" (a token's name and
+	// secret): basic when there are tokens.
+	Auth string `yaml:"auth"`
+	// RequireTLS refuses ipp (HTTP 426): only ipps. It is so with basic.
+	RequireTLS bool `yaml:"require-tls"`
+	// TLS is the certificate of ipps; without it the server makes one,
+	// signed by itself, kept next to the spool (ipp-tls.pem).
+	TLS *TLSConfig `yaml:"tls"`
+	// Queues are the queues shown; all by default. Default is also shown
+	// at /ipp/print.
+	Queues  []string `yaml:"queues"`
+	Default string   `yaml:"default"`
+	// Location, Organization and OrganizationalUnit describe the
+	// printers (printer-location …), a queue's location over Location.
+	Location           string `yaml:"location"`
+	Organization       string `yaml:"organization"`
+	OrganizationalUnit string `yaml:"organizational-unit"`
+	// DNSSD advertises the printers on the local links (mDNS): true by
+	// default.
+	DNSSD *bool `yaml:"dns-sd"`
 }
 
 // TLSConfig is the certificate and key of HTTPS.
@@ -85,6 +141,10 @@ type TokenConfig struct {
 // the default, or pdf) and whether a PJL header goes before the document
 // (by default, for PDF only).
 type PrinterConfig struct {
+	// Proxy makes a printer that proxies of branches fetch the jobs of
+	// (IPP INFRA), with no URL: the bdf printd of a branch, behind a NAT,
+	// whose upstreams name the queue.
+	Proxy        bool   `yaml:"proxy"`
 	URL          string `yaml:"url"`
 	Format       string `yaml:"format"`
 	PJL          *bool  `yaml:"pjl"`
@@ -108,6 +168,11 @@ type QueueConfig struct {
 	Format        string         `yaml:"format"`
 	RasterIfLossy bool           `yaml:"raster-if-lossy"`
 	MaxInflight   int            `yaml:"max-inflight"`
+	// Info and Location describe the queue as an IPP printer
+	// (printer-info, the name it is advertised with, and
+	// printer-location).
+	Info     string `yaml:"info"`
+	Location string `yaml:"location"`
 }
 
 // RetentionConfig is how long what is done is kept ("168h", "7d").
@@ -246,6 +311,12 @@ func (c *Config) check() error {
 		return errors.New("no queues")
 	}
 	for name, p := range c.Printers {
+		if p.Proxy {
+			if p.URL != "" || p.Format != "" || p.PJL != nil || p.Username != "" || p.PasswordEnv != "" || p.PasswordFile != "" || p.Fingerprint != "" || p.Insecure {
+				return fmt.Errorf("printer %s: a printer of proxies has no url, format, pjl, user, password or certificate", name)
+			}
+			continue
+		}
 		if raw.IsURL(p.URL) {
 			if _, err := p.raw(c.User); err != nil {
 				return fmt.Errorf("printer %s: %w", name, err)
@@ -273,6 +344,9 @@ func (c *Config) check() error {
 			if _, ok := c.Printers[p]; !ok {
 				return fmt.Errorf("queue %s: no printer %s", name, p)
 			}
+			if c.Printers[p].Proxy && len(q.Printers) > 1 {
+				return fmt.Errorf("queue %s: printer %s of proxies is the only printer of its queue", name, p)
+			}
 		}
 		if _, err := q.ticket(); err != nil {
 			return fmt.Errorf("queue %s: defaults: %w", name, err)
@@ -299,8 +373,8 @@ func (c *Config) check() error {
 		}
 		seen[t.Name] = true
 		for _, r := range t.Roles {
-			if r != roleSubmit && r != roleManage && r != roleAdmin {
-				return fmt.Errorf("token %s: role %q: submit, manage or admin", t.Name, r)
+			if r != roleSubmit && r != roleManage && r != roleAdmin && r != roleProxy {
+				return fmt.Errorf("token %s: role %q: submit, manage, admin or proxy", t.Name, r)
 			}
 		}
 		for _, q := range t.Queues {
@@ -311,6 +385,40 @@ func (c *Config) check() error {
 	}
 	if c.TLS != nil && (c.TLS.Cert == "" || c.TLS.Key == "") {
 		return errors.New("tls: cert and key")
+	}
+	if err := c.checkIPP(); err != nil {
+		return err
+	}
+	for name, u := range c.Upstreams {
+		if _, _, err := ipp.ParseURL(u.URL); err != nil {
+			return fmt.Errorf("upstream %s: %w", name, err)
+		}
+		if _, ok := c.Queues[u.Queue]; !ok {
+			return fmt.Errorf("upstream %s: no queue %q", name, u.Queue)
+		}
+		if u.Fingerprint != "" && !strings.HasPrefix(u.Fingerprint, "sha256:") {
+			return fmt.Errorf("upstream %s: fingerprint %q: sha256:…", name, u.Fingerprint)
+		}
+		if u.UUID != "" && !strings.HasPrefix(u.UUID, "urn:uuid:") {
+			return fmt.Errorf("upstream %s: uuid %q: urn:uuid:…", name, u.UUID)
+		}
+	}
+	proxyQueue := map[string]string{}
+	for _, qn := range sortedKeys(c.Queues) {
+		for _, p := range c.Queues[qn].Printers {
+			if !c.Printers[p].Proxy {
+				continue
+			}
+			if c.IPP == nil {
+				return fmt.Errorf("printer %s of proxies needs ipp: the proxies fetch its jobs over IPP", p)
+			}
+			// (a token of a queue fetches the jobs of its printer: of that
+			// queue only)
+			if other, ok := proxyQueue[p]; ok {
+				return fmt.Errorf("printer %s of proxies is the printer of queues %s and %s: of one queue only", p, other, qn)
+			}
+			proxyQueue[p] = qn
+		}
 	}
 	if !c.Insecure && !loopback(c.Listen) && (c.TLS == nil || len(c.Tokens) == 0) {
 		return fmt.Errorf("listen %s is not a loopback address: it needs tls and tokens (or insecure: true)", c.Listen)
@@ -333,6 +441,9 @@ func (c *Config) resolve() error {
 	c.TempDir = abs(c.TempDir)
 	if c.TLS != nil {
 		c.TLS.Cert, c.TLS.Key = abs(c.TLS.Cert), abs(c.TLS.Key)
+	}
+	if c.IPP != nil && c.IPP.TLS != nil {
+		c.IPP.TLS.Cert, c.IPP.TLS.Key = abs(c.IPP.TLS.Cert), abs(c.IPP.TLS.Key)
 	}
 	for i := range c.Fonts.Dirs {
 		c.Fonts.Dirs[i] = abs(c.Fonts.Dirs[i])
@@ -361,7 +472,79 @@ func (c *Config) resolve() error {
 			c.Printers[name] = p
 		}
 	}
+	for name, u := range c.Upstreams {
+		if u.PasswordFile != "" {
+			u.PasswordFile = abs(u.PasswordFile)
+			c.Upstreams[name] = u
+		}
+	}
 	return nil
+}
+
+// checkIPP checks the IPP server's configuration and fills its defaults.
+func (c *Config) checkIPP() error {
+	p := c.IPP
+	if p == nil {
+		return nil
+	}
+	if p.Listen == "" {
+		p.Listen = ":8631"
+	}
+	if _, _, err := net.SplitHostPort(p.Listen); err != nil {
+		return fmt.Errorf("ipp: listen %q: %w", p.Listen, err)
+	}
+	switch p.Auth {
+	case "":
+		p.Auth = authNone
+		if len(c.Tokens) > 0 {
+			p.Auth = authBasic
+		}
+	case authNone:
+	case authBasic:
+		if len(c.Tokens) == 0 {
+			return errors.New("ipp: auth basic needs tokens")
+		}
+	default:
+		return fmt.Errorf("ipp: auth %q: none or basic", p.Auth)
+	}
+	if p.TLS != nil && (p.TLS.Cert == "" || p.TLS.Key == "") {
+		return errors.New("ipp: tls: cert and key")
+	}
+	for _, q := range p.Queues {
+		if _, ok := c.Queues[q]; !ok {
+			return fmt.Errorf("ipp: no queue %s", q)
+		}
+	}
+	if p.Default != "" {
+		if _, ok := c.Queues[p.Default]; !ok {
+			return fmt.Errorf("ipp: default: no queue %s", p.Default)
+		}
+		if len(p.Queues) > 0 && !slices.Contains(p.Queues, p.Default) {
+			return fmt.Errorf("ipp: default %s is not among the queues shown", p.Default)
+		}
+	}
+	for name, q := range c.Queues {
+		if !validQueueName(name) {
+			return fmt.Errorf("queue %s: a queue shown by IPP is named with letters, digits, - and _", name)
+		}
+		if len(q.Info) > 127 || len(q.Location) > 127 {
+			return fmt.Errorf("queue %s: info and location have 127 bytes at most", name)
+		}
+	}
+	return nil
+}
+
+// validQueueName tells a name that is a path segment as it is.
+func validQueueName(s string) bool {
+	if s == "" || len(s) > 127 {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
 }
 
 // ticket reads a queue's defaults as a ticket, with the JSON names.
@@ -431,6 +614,10 @@ func (c *Config) spoolOptions() (spool.Options, error) {
 			MaxImpressions: c.Limits.MaxImpressions, Renders: c.Limits.Renders, RetryFor: time.Duration(c.Limits.RetryFor)}}
 	for _, name := range sortedKeys(c.Printers) {
 		pc := c.Printers[name]
+		if pc.Proxy {
+			o.Printers = append(o.Printers, spool.Printer{Name: name, Proxy: true})
+			continue
+		}
 		if raw.IsURL(pc.URL) {
 			r, err := pc.raw(c.User)
 			if err != nil {
@@ -458,6 +645,14 @@ func (c *Config) spoolOptions() (spool.Options, error) {
 func (c *Config) pinned() map[string]string {
 	m := map[string]string{}
 	for _, p := range c.Printers {
+		if p.Fingerprint == "" {
+			continue
+		}
+		if u, err := url.Parse(p.URL); err == nil {
+			m[u.Hostname()] = p.Fingerprint
+		}
+	}
+	for _, p := range c.Upstreams {
 		if p.Fingerprint == "" {
 			continue
 		}

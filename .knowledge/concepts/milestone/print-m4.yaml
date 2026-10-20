@@ -1,0 +1,179 @@
+id: milestone:print-m4
+type: milestone
+title: print-m4 — サーバーを IPP プリンタとして見せる（IPP Everywhere・AirPrint、DNS-SD の広告、拠点の代理）
+summary: >-
+  印刷の 4 つ目の実装のまとまり。bdf printd のキューを、Windows（IPP クラスドライバ）・macOS と iOS（AirPrint）・Android（Mopria）・
+  ChromeOS と Linux（CUPS）がドライバなしで追加できる IPP Everywhere のプリンタにする。受けた PDF・ラスタ・画像はスプールの .bdf に
+  なって今までどおり刷られる。mDNS の応答者で LAN に広告し、別のサブネットには広域 DNS-SD のレコードと AirPrint の構成プロファイルを
+  書き出す。NAT の向こうの拠点は自分の bdf printd で本社のキューのジョブを IPP INFRA で取りに行く。
+  叙述の実装案は knowledge-inputs/print-plan/print-m4.ja.md（2026-10-20）。
+lifecycle: active
+authority: authored
+scope:
+  milestone: print-m4
+constraints:
+- キューごとに /ipp/print/<キュー> の IPP Everywhere のプリンタ。操作は PWG 5100.14 の必須（Print-Job、Validate-Job、Create-Job、Send-Document、Close-Job、Cancel-Job、Cancel-My-Jobs、Get-Job-Attributes、Get-Jobs、Get-Printer-Attributes、Identify-Printer）と Hold-Job・Release-Job
+- ジョブの id・uuid・状態はスプールのもの。Create-Job は Spool.ReserveID で id を先に取り、文書が来るまでメモリに持つ（300 秒）。1 ジョブ 1 文書
+- 受ける形式は PDF を先頭に（送る側がベクタを選ぶ）、URF、PWG Raster、JPEG、PNG、.bdf、octet-stream（中身で見分け、変換器の形式も）。ラスタは 1 ページを帯ずつ読んで絵のページの .bdf にする
+- ipp と ipps は 1 つのポート（最初のバイトで TLS を見分ける）。証明書は設定のものか、自己署名を 1 回作って作り直さない
+- auth は none（requesting-user-name）か basic（トークン）。basic と require-tls は別の機械からの ipp を HTTP 426 で断り、_ipps._tcp だけを広告する
+- mDNS の応答者は自前（x/net の ipv4・ipv6・dnsmessage）で、5353 を OS の応答者と共有する。告げるホスト名は自分のもの（<機械>-bdf.local）。OS の名前の A / AAAA を告げると OS が衝突とみなして機械の名前を変える
+- AirPrint の条件（URF の TXT、image/urf、_universal のサブタイプ、ipps、MDM 向けの固定の rp）を満たす
+- 拠点の代理は IPP INFRA（PWG 5100.18）の部分集合。ジョブは受けた代理に結びつけて他に渡さない。拠点は上流のジョブの uuid を Job.Origin に持ち、取り直さない
+- 代理の操作は proxy の役割のトークンの Basic 認証だけ（ipp.auth によらない）
+- 足す依存は無い
+non_goals:
+- IPP の通知（Create-*-Subscriptions、Get-Notifications）。IPP Everywhere でも任意。代理はポーリングで足りる
+- 複数文書のジョブ、Print-URI・Send-URI（サーバーが外を取りに行く穴になる）
+- 受けた PDF の素通し（変換せずに PDF のプリンタへ。スプールが .bdf でない文書を送れるようにする変更が要る）
+- IPP System Service（PWG 5100.22）、OAuth、WSD
+- Windows・iOS・Android・ChromeOS の実機での確認（利用者が行う。手順は docs/print-server）
+capabilities:
+  ipp-server:
+    state: implemented
+    about: capability:print/ipp-server
+  raster-intake:
+    state: implemented
+    about: capability:print/raster-intake
+  mdns-advertise:
+    state: implemented
+    about: capability:print/mdns-advertise
+  wide-area-dns-sd:
+    state: implemented
+    about: capability:print/wide-area-dns-sd
+  airprint:
+    state: implemented
+    about: capability:print/airprint
+  infra-proxy:
+    state: implemented
+    about: capability:print/infra-proxy
+acceptance:
+  s1-ipp-server:
+    text: キューを IPP Everywhere のプリンタとして見せ、Print-Job・Create-Job＋Send-Document（gzip、Close-Job、時間切れ、2 つ目の文書の拒否）でスプールにジョブを作る。ジョブの属性がチケットになり、出せないものは unsupported で返し fidelity で断る。PWG Raster を絵の .bdf にして刷る。basic 認証と 426。ipptool の IPP/1.1・IPP/2.0・PWG 5100.14 の必須属性の検査が通る
+    verified_by:
+    - ipp-unit
+    - raster-intake
+    - ipptool-local
+  s2-dns-sd:
+    text: キューを _ipp._tcp と _ipps._tcp（_print、_universal）で広告し、Browse・dns-sd・ippfind で見つかる。プリンタの能力が分かったら TXT を告げ直す。名前の衝突で改名する。bdf printd -dns-sd が広域 DNS-SD のレコードを書く
+    verified_by:
+    - advertise-unit
+    - advertise-live
+    - zone-unit
+  s3-airprint:
+    text: ipps を同じポートで受け、CUPS の ipptool が ipps で印刷できる。AirPrint の構成プロファイル（各キューの項目と自己署名の証明書）を書き、プリンタのページからも出す
+    verified_by:
+    - serve-tls
+    - ipptool-local
+  s4-proxy:
+    text: 本社のキュー（proxy のプリンタ）のジョブを拠点の bdf printd が取り、拠点のプリンタで刷って完了を返す。本社での取り消しが拠点に届く。受けてから伝えるまでに止まった拠点は取り直さず、拠点が失ったジョブは本社で中止。他の代理は結びついたジョブを取れず、トークンの無い取得は断る
+    verified_by:
+    - proxy-unit
+verification:
+  ipp-unit:
+    state: passed
+    method: integration
+    test: "go test -race ./print/server/ -run IPP"
+    authority: observed
+    evidence:
+      path: print/server/ipp_test.go
+      locator: 'TestIPPPrintJob（チケット、既定のキュー、他のキュー）、TestIPPCreateJob（gzip、Close-Job、文書なし、他人、時間切れ、id の順）、TestIPPAttributes（fidelity、unsupported、形式、受け付けない）、TestIPPRaster、TestIPPCancelAndList（他人の名前を隠す、Cancel-My-Jobs）、TestIPPBasic（匿名の Get-Printer-Attributes、401、426）、TestIPPServeTLS（ipp と ipps、アイコン、プロファイル、ページ）'
+  raster-intake:
+    state: passed
+    method: unit
+    test: "go test ./print/raster/ -run 'Document|PageReader'"
+    authority: observed
+    evidence:
+      path: print/raster/stream_test.go
+      locator: 'PWG（black_1、sgray_8、srgb_8）と URF（sgray_8、srgb_8）の 3 ページを読み戻した画素が書いた画素と一致、帯の読みと残りの読み飛ばし、誤りと限界、FuzzDocument'
+  ipptool-local:
+    state: passed
+    method: integration
+    test: 'ipptool -t -V 2.0 -f testfile.pdf ipp://localhost:18631/ipp/print/office test/print/ipp-everywhere-server.test（ippeveprinter を後ろのプリンタに）、ipps で print-job.test'
+    authority: observed
+    evidence:
+      path: test/print/ipp-everywhere-server.test
+      locator: '2026-10-20 に macOS の ipptool で、ipp-1.1.test・ipp-2.0.test・PWG 5100.14 の必須の属性が全部 PASS。PDF と JPEG のジョブが ippeveprinter に PDF で届いた'
+  advertise-unit:
+    state: passed
+    method: unit
+    test: "go test -race ./print/ipp/ -run 'Advertise|Probe'"
+    authority: observed
+    evidence:
+      path: print/ipp/responder_test.go
+      locator: 'ループバックの応答者を Browse で見つける（SRV、TXT、A、_ipp と _ipps の統合）、_universal の問いへの legacy unicast の答え（問い付き、TTL 10 以下、追加の SRV・TXT・A）、goodbye、probe の衝突と改名'
+  advertise-live:
+    state: passed
+    method: manual
+    test: 'bdf printd を dns-sd: true で動かし、dns-sd -B / -L / -G、ippfind _ipps._tcp,_universal、bdf printers'
+    authority: observed
+    evidence:
+      path: print/ipp/responder.go
+      locator: '2026-10-20 にこの Mac で、Bonjour が _ipp と _ipps のインスタンス、TXT（後ろのプリンタが答えた後の ty と Color）、<機械>-bdf.local のインターフェースごとのアドレスを見た。bdf print で ipps のキューに刷れた'
+  zone-unit:
+    state: passed
+    method: unit
+    test: "go test ./print/server/ -run Zone"
+    authority: observed
+    evidence:
+      path: print/server/ipp_test.go
+      locator: 'TestZoneRecords（閲覧のドメイン、サブタイプの PTR、SRV、TXT の Color と Duplex、.local のホストを断る）'
+  serve-tls:
+    state: passed
+    method: integration
+    test: "go test ./print/server/ -run ServeTLS"
+    authority: observed
+    evidence:
+      path: print/server/ipp_test.go
+      locator: 'TestIPPServeTLS'
+  proxy-unit:
+    state: passed
+    method: integration
+    test: "go test -race ./print/server/ -run Proxy"
+    authority: observed
+    evidence:
+      path: print/server/infra_test.go
+      locator: 'TestProxyPrints（拠点で刷って本社で完了、チケットとキューの既定、本社に拠点のプリンタ）、TestProxyCancel（本社の取り消しが拠点に）、TestProxyTwice（取り直さない、失ったジョブの中止、他の代理と無認証の拒否）'
+  ci-print:
+    state: not_run
+    method: integration
+    test: 'test/print/ci.sh の IPP サーバーの段: ipptool の ipp-everywhere-server.test と print-job.test、bdf printers で Avahi と並んだ広告、lpadmin -m everywhere の CUPS のキューから lp'
+    authority: authored
+    evidence:
+      path: test/print/ci.sh
+      locator: 'lpadmin は手元のシステムの設定を変えるので手元では走らせていない。CI ではまだ走っていない'
+  clients:
+    state: not_run
+    method: manual
+    test: Windows（プリンターの追加）、macOS（プリンタを追加、lpadmin -m everywhere）、iPhone・iPad（AirPrint とプロファイル）、Android（Mopria）、ChromeOS からの印刷
+    authority: authored
+open_questions:
+  pdf-pass-through:
+    text: 受けた PDF を変換せずに PDF を受けるプリンタへ渡すか（converter/pdf を通らない分、元の PDF の絵になる）
+    state: open
+  mdns-hostname:
+    text: 広告のホスト名を OS のものでなく <機械>-bdf.local にした。証明書の名前と adminurl もこれ。ipp.host を別に持たせるか
+    state: answered
+    resolution: 'OS の名前の A / AAAA を別の応答者が告げると、macOS の mDNSResponder はそれを衝突とみなして機械の LocalHostName を変える（2026-10-20 にこの Mac で -2、-3 に変わった）。自分のホスト名は probe して衝突なら -2'
+facts:
+  delivery:
+    plan: knowledge-inputs/print-plan/print-m4.ja.md（2026-10-20）
+    implemented:
+      date: '2026-10-20'
+      slices:
+      - 'S1 IPP の受け口（print/server の ipp.go・ippattrs.go・ipplisten.go・icon.go）、print/raster の PageReader と Document、Spool.ReserveID と Submission.ID・UUID・Type、設定の ipp:、test/print/ipp-everywhere-server.test'
+      - 'S2 print/ipp の Responder（mDNS）、キューの広告と TXT、bdf printd -dns-sd'
+      - 'S3 AirPrint の構成プロファイル（bdf printd -airprint-profile、/airprint.mobileconfig）'
+      - 'S4 IPP INFRA の上流（infra.go、spool の proxy.go）と拠点（upstream.go）、Client.DoStream、トークンの役割 proxy'
+      - 'S5 docs（print-server、cli、design §3.36、api）、test/print/ci.sh、.knowledge'
+      changed_from_plan:
+      - '広告のホスト名は OS の名前でなく <機械>-bdf.local（OS の応答者が衝突とみなして機械の名前を変えたため）'
+      - 'ジョブを受けた代理が戻らないとき別の代理に渡す時間切れは作らず、結びついたジョブは人が retry するまでその代理のもの（二重に刷らない方を取った）'
+      - 'PWG Raster の受ける型は black_1・sgray_8・srgb_8 だけ（16 ビットと CMYK は名乗らない）'
+relations:
+- relation: part_of
+  to: requirement:print
+- relation: follows
+  to: milestone:print-m3
+- relation: informed_by
+  to: system:ipp-driverless
