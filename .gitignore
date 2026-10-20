@@ -177,3 +177,9 @@ examples/secure-reader/web/lib/
 examples/secure-reader/cache/
 # examples/print-server keeps its spool (spool.db) under -dir.
 examples/print-server/data/
+# pw generate and pw dev (cmd/printmanager is a Popcorn Web application)
+# write the entry of its storybook and their logs here; the *_pw_gen.go
+# files are committed.
+/.pwstorybook/
+/.log/
+printmanager.db

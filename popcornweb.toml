@@ -1,0 +1,12 @@
+# The Print Manager (cmd/printmanager) is a Popcorn Web application; pw
+# finds a project by this file, next to go.mod. Each purpose reads only the
+# directories listed here: the rest of the module is not pw's.
+[project]
+name = "printmanager"
+main = "./cmd/printmanager"
+
+[generate]
+handlers = ["cmd/printmanager/handlers"]
+templates = ["cmd/printmanager/handlers"]
+config = ["cmd/printmanager/handlers"]
+queries = []

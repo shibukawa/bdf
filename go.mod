@@ -7,6 +7,8 @@ require (
 	github.com/andybalholm/brotli v1.2.5
 	github.com/klauspost/compress v1.20.1
 	github.com/pdfcpu/pdfcpu v0.16.1
+	github.com/shibukawa/popcornweb v0.5.11
+	github.com/shibukawa/tinybind-go v0.5.33
 	github.com/shibukawa/tinygodriver v1.3.5
 	github.com/shibukawa/yuruidb v0.0.0-20261020013710-b6e152915b7c
 	github.com/yuin/goldmark v1.8.6
@@ -21,10 +23,17 @@ require (
 require (
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/fatih/color v1.18.0 // indirect
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect
+	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
+	github.com/hashicorp/go-envparse v0.1.0 // indirect
 	github.com/hhrutter/tiff v1.0.7 // indirect
 	github.com/itlightning/dateparse v0.2.1 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.23 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
+	github.com/shibukawa/configdir v0.0.0-20170330084843-e180dbdc8da0 // indirect
+	github.com/shibukawa/dbtestify v0.5.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 )
