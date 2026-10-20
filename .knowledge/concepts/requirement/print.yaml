@@ -214,11 +214,12 @@ facts:
     - print-m2 スプールとサーバー。キューと組、再送と二重印刷の防止、履歴、HTTP API と CLI、監視、converter の入力、examples/print-server
     - print-m3 PostScript の書き手（第 2 のベクタ経路）と平坦化、URF と PCLm、CUPS の一覧、9100 と LPD の素通し、IPP USB（Linux と macOS）。CAD の現場があれば HP-GL/2 の書き手。Windows の OS 経由は無し
     - print-m4 サーバーを IPP Everywhere のプリンタとして見せる。DNS-SD の広告、受ける形式、PWG の自己認証テスト、拠点の代理
+    - print-m6 偽プリンタ（print/fakeprinter、readback、tools/fakeprinter の農場）と、印刷のテストの全部の移行。偽物は ipptool と ippeveprinter で確かめる
     - print-m5 ラベル・レシート・連帳の PDL（ZPL / SBPL / TPCL は 1 ビットのラスタ＋印刷側バーコード、ESC/POS は帯のラスタ、ESC/P はラスタで格子の帳票はテキストモード）、画像だけのディザ、機種のプロファイル、チケットの機器拡張、USB・シリアル・Bluetooth の搬送路（Windows は winspool の RAW で素通し）
     independence: m1 と m2 は独立に価値がある。m3 以降は現場の機種で順を変える
   verification:
     unit: IPP の符号化の往復と fuzz、PWG Raster の書き手（自前の読み手で戻して imagebdf の画像と一致、golden）、チケット → 属性、スプールの状態機械（落ちた時点ごとの再開）
-    integration: ippeveprinter（libcups、Ubuntu の cups-ipp-utils）を偽のプリンタに。自前の偽プリンタ（Go）で依存なしのテスト。Ubuntu の runner の CUPS に localhost:631 経由
+    integration: 自前の偽プリンタ print/fakeprinter（print-m6。IPP・9100・LPD・シリアル・CUPS、壊れ方の注入、受けたものを絵に戻す）にすべてのテストが印刷する。偽物そのものは ipptool の検査と ippeveprinter との差で確かめる。CI は農場（tools/fakeprinter）と、その前に置いた Ubuntu の runner の CUPS（IPP Everywhere・socket・lpd のキュー）で
     manual: 国内で多い機種（Canon、Epson、Brother、Kyocera、Ricoh、Fujifilm BI、Konica Minolta、HP）で PDF（ベクタ）と PWG Raster、両面、JIS B5、はがき、トレイを確かめ、PDF の絵が Raster の絵と違う機種は癖として記録し必要なら Raster を既定に
     m4: PWG の IPP Everywhere 自己認証（ippeveselfcert、ipptool）、Windows の IPP クラスドライバ・macOS の AirPrint・CUPS からの印刷
   risks:
@@ -276,6 +277,8 @@ relations:
 - relation: informed_by
   to: decision:thin-store
 history:
+  m6-implemented:
+    summary: 2026-10-20 利用者「fake printer の実装をお願いします」。print-m6（偽プリンタ）を実装した（milestone:print-m6）。テストのプリンタ役は全部 print/fakeprinter、ipptest と rawtest は消えた。偽物で見つけたスプールの再起動の不具合と、クライアントの HTTP 411 の穴を直した
   manager-and-fakes-proposed:
     summary: 2026-10-20 利用者が IPP・CUPS の仕組みを問うた後、偽プリンタ（テスト用、複数のプロトコル）と BDF Print Manager（電子帳簿保存法を意識した WORM の保管庫、検索、Drive 的なビューア、round-robin、CUPS のサーバーの振る舞い、ペーパーレス）を提案し /knowledge-memory で設計を求めた。requirement:fake-printers と milestone:print-m6（候補）、requirement:print-manager を proposed で書いた（fake-printers.ja.md、print-manager.ja.md）。順番と形は利用者の答えを待つ
   m4-implemented:

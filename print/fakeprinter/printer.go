@@ -68,6 +68,9 @@ type Printer struct {
 	// language (ZPL ~HS, ESC/POS DLE EOT).
 	Language   string
 	Width, DPI int
+	// Profile is the print/pdl profile a printer of a language is of
+	// ("zd421-203"), which a client names in its URL (?profile=).
+	Profile string
 
 	State     ipp.PrinterState
 	Reasons   []string
@@ -369,6 +372,20 @@ func (p *Printer) Abort(id int32) {
 		j.aborted = true
 		p.notify(Event{Kind: "job", Job: id})
 	}
+}
+
+// Status is a printer's state at a moment.
+type Status struct {
+	State     ipp.PrinterState
+	Reasons   []string
+	Accepting bool
+}
+
+// Snapshot returns the printer's state now.
+func (p *Printer) Snapshot() Status {
+	p.lock()
+	defer p.mu.Unlock()
+	return Status{State: p.State, Reasons: append([]string(nil), p.Reasons...), Accepting: p.Accepting}
 }
 
 // Jobs returns the jobs received, oldest first.

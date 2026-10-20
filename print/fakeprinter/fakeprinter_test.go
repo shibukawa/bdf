@@ -134,10 +134,6 @@ func TestIPPOldPrinter(t *testing.T) {
 	if pr.MakeModel != "BDF Fake Old Printer" {
 		t.Errorf("%+v", pr)
 	}
-	// a chunked document is refused with 411
-	if _, err := c.PrintJob(context.Background(), "x", "application/pdf", nil, strings.NewReader("%PDF")); err == nil {
-		t.Error("a chunked request was taken")
-	}
 }
 
 func TestIPPAttributes(t *testing.T) {
@@ -490,5 +486,32 @@ func TestCutAndDrop(t *testing.T) {
 	// the next document goes through
 	if _, err := c.SendDocument(ctx, js.ID, "c.pdf", "application/pdf", bytes.NewReader([]byte("%PDF")), true); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestOldPrinterDocuments prints to a printer that takes requests of a
+// known length only: the client sends the document again with its
+// length, and so from then on.
+func TestOldPrinterDocuments(t *testing.T) {
+	ps, _ := fakeprinter.LookupPreset("legacy-ipp11")
+	p := ps.New("old")
+	c := client(fakeprinter.Start(t, p))
+	ctx := context.Background()
+	// (as bdf print does: the printer's attributes first, which finds its
+	// version)
+	if _, err := c.GetPrinterAttributes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		st, err := c.PrintJob(ctx, "x", "application/pdf", nil, strings.NewReader("%PDF-1.4 old"))
+		if err != nil {
+			t.Fatal(i, err)
+		}
+		if got := string(p.Job(st.ID).Document(0)); got != "%PDF-1.4 old" {
+			t.Fatalf("%d: %q", i, got)
+		}
+	}
+	if p.Requests["Print-Job"] != 2 {
+		t.Errorf("the printer was asked %d times", p.Requests["Print-Job"])
 	}
 }

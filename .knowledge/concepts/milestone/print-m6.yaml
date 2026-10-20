@@ -7,7 +7,7 @@ summary: >-
   防止を書き直し、CUPS のサーバーの偽物で bdf printers の CUPS の一覧を往復させ、YAML の農場と画面を tools/fakeprinter に置く。
   印刷のテストを全部これに移して ipptest・rawtest・手書きの偽物を消し、偽物そのものを ipptool・cupsd・ippeveprinter で確かめる。
   叙述は knowledge-inputs/print-plan/fake-printers.ja.md §9・§10。2026-10-20 利用者の決定で、Print Manager より先。
-lifecycle: accepted
+lifecycle: active
 authority: authored
 scope:
   milestone: print-m6
@@ -16,6 +16,19 @@ constraints:
 - 移す前と後でテストの数と確かめが減らない
 - 依存を足さない
 - 既定は loopback だけ、DNS-SD の広告なし
+capabilities:
+  fake-printers:
+    state: implemented
+    about: capability:print/fake-printers
+  readback:
+    state: implemented
+    about: capability:print/fake-readback
+  fake-cups:
+    state: implemented
+    about: capability:print/fake-cups
+  fake-farm:
+    state: implemented
+    about: capability:print/fake-farm
 non_goals:
 - 外の偽物を CI に入れる
 - スキャン・ファクス
@@ -49,32 +62,85 @@ acceptance:
     - ci-print
 verification:
   fake-conformance:
-    state: not_run
+    state: passed
     method: integration
-    test: test/print/ci.sh の偽物の確かめの段（ipptool、cupsd、ippeveprinter との差）
+    test: go test -run 'IPPTool|AgainstIPPEve' ./print/fakeprinter/
+    authority: observed
+    evidence:
+      path: print/fakeprinter/conformance_test.go
+      locator: 'TestIPPToolPresets（office-mfp は ipp-2.0 と IPP Everywhere の属性、airprint-only・pwg-only・ps-office・pclm-inkjet は ipp-2.0、legacy-ipp11 は -L で ipp-1.1）、TestIPPToolCUPS（/printers/office の ipp-2.0、/classes/floor の print-job、/ の get-printers）、ippeve_test.go の TestAgainstIPPEve（16 の要求で ippeveprinter と同じ状態。Validate-Job の形式の拒否だけ attributes-or-values と document-format の違いを両方正しいとした）。2026-10-20 macOS の ipptool・ippeveprinter で通った'
   migration-table:
-    state: not_run
+    state: passed
     method: static
+    authority: observed
+    evidence:
+      path: print/fakeprinter/guard_test.go
+      locator: 'go test -list で移行前（a21e9f6）160、後 173。消えたのは ipptest 自身の TestFailures・TestStopForget で、fakeprinter の TestCutAndDrop・TestStopForget に移した。TestNoPrinterByHand がテストの手書きのプリンタ役（ipp.NewResponse、application/ipp の答え、ipptest・rawtest の import）を拒む'
   print-tests:
-    state: not_run
+    state: passed
     method: unit
-    test: go test ./print/... ./cmd/bdf/ -run 'Print|Printer|Jobs|Printd'
+    test: go test ./print/... ./cmd/bdf/
+    authority: observed
+    evidence:
+      path: print/fakeprinter/fakeprinter_test.go
+      locator: '2026-10-20 macOS で全部通った（print、fakeprinter、readback、ipp、pdl、raster、raw、server、server/client、spool、cmd/bdf）'
   readback-roundtrip:
-    state: not_run
+    state: passed
     method: integration
+    test: go test ./print/fakeprinter/readback/
+    authority: observed
+    evidence:
+      path: print/fakeprinter/readback/readback_test.go
+      locator: 'TestRasters（PWG・URF を imagebdf の PlaceRows と画素ごとに一致）、TestVectors（PDF・PCLm・PostScript を 150 dpi で縁の差 0.5% 以内）、TestLabels（ZPL・SBPL を 9100、TPCL を LPD、ESC/POS を 9100、ESC/P をシリアルで、pdl.Write の出力とドットごとに一致）'
   spool-fault-tests:
-    state: not_run
+    state: passed
     method: integration
+    test: go test -run 'TestCrash$|PrinterRestartedWhileWatched' ./print/spool/
+    authority: observed
+    evidence:
+      path: print/spool/run_test.go
+      locator: 'TestCrash の再起動の 2 件（job-id が 1 に戻り他人のジョブがその id に）と TestPrinterRestartedWhileWatched。修正を外すと落ちることを確かめた'
   cups-fake-tests:
-    state: not_run
+    state: passed
     method: integration
+    test: go test -run 'TestCUPS|PrintersCUPS' ./print/fakeprinter/ ./cmd/bdf/
+    authority: observed
+    evidence:
+      path: cmd/bdf/printers_test.go
+      locator: 'TestPrintersCUPS（bdf printers -cups にプリンタ 3 台とクラス、クラスへの bdf print がメンバーに）、fakeprinter の TestCUPS（順番、止まったメンバーを飛ばす、Move-Job、Get-Default、Reject-Jobs）'
   farm-smoke:
-    state: not_run
+    state: passed
     method: manual
+    authority: observed
+    evidence:
+      path: test/print/farm.yaml
+      locator: '2026-10-20 手元で農場を起こし、bdf print で 16 台全部（ipps、CUPS のクラス、シリアルを含む）に刷り、API で全部が絵に戻り、flaky が 2 件目で紙切れになり、画面（内蔵ブラウザ）でラベルの絵を見た'
   ci-print:
     state: not_run
     method: integration
-    test: test/print/ci.sh（CI の print ジョブ）
+    test: test/print/ci.sh（CI の print ジョブ。前半の農場への bdf print、PostScript、9100、-strict は 2026-10-20 手元で通った。lpadmin（sudo）の段は CI でだけ走る）
+facts:
+  delivery:
+    plan: knowledge-inputs/print-plan/fake-printers.ja.md §9・§10（2026-10-20）
+    implemented:
+      date: '2026-10-20'
+      slices:
+      - 'S1 print/fakeprinter（Printer、Job、IPP、9100、LPD、シリアル、Fault、CUPS、プリセット、Start 系）と ipptool・ippeveprinter での確かめ'
+      - 'S6 印刷のテストを全部移し、print/ipp/ipptest・print/raw/rawtest・print/raw の pty の補助・test/print/raw9100.py を消した'
+      - 'S2 print/fakeprinter/readback と往復のテスト'
+      - 'S4 CUPS-Get-Printers にクラスも並べる、bdf printers -cups とクラスへの印刷のテスト'
+      - 'S3 スプールの再起動の筋書き（見つけた不具合を直した）'
+      - 'S5 tools/fakeprinter（YAML、画面、JSON の API）、test/print/farm.yaml、test/print/ci.sh を農場に'
+    changed_from_plan:
+      - 'ラベル・レシートの読み手は print/pdl/pdlread でなく print/pdl/read.go（pdl.Read、Sniff）。pdl のテストが同じパッケージの中から使え、循環しない'
+      - 'S6（移行）を S2 より先にした（テストを全部偽物に乗せるのが利用者の主眼）'
+      - 'ipptest・rawtest は包みとして残さず消した（利用者「テストを全てそれをベースに」）'
+      - '農場の CUPS のプリンタの名前は <サーバー>.<プリンタ>（パスの区切りに / が使えない）'
+      - 'ippeveprinter は CI の外の実装としては偽物との差の比べだけに残し、test/print/ci.sh の印刷先は農場にした'
+    found:
+      - 'スプール: プリンタが再起動して job-id を 1 から数え直すと、他人のジョブを自分のものとして追った（再開時と見張り中）。ジョブの名前の #id.attempt で見分けるように直した（print/spool/job.go の sameJob）'
+      - 'IPP のクライアント: chunked の要求を断る古いプリンタ（HTTP 411）に刷れなかった。411 なら一時ファイルから長さつきで送り直し、以後そうする（print/ipp/client.go）'
+      - 'スプール: 送っている最中にプリンタが再起動し、他人のジョブが同じ id になると、Send-Document が not-possible でジョブが aborted になる（直していない。送り直すのが望ましい）'
 relations:
 - relation: implements
   to: requirement:fake-printers

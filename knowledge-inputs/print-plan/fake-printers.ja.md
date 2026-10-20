@@ -1,6 +1,6 @@
-# 偽プリンタ 設計案（print-m6 の候補）
+# 偽プリンタ 設計案（print-m6）
 
-2026-10-20 の設計案。2026-10-20 利用者「このプロジェクトのテストのために、フェイクプリンタを作ると良さそうな気がしている。ネット上にラベルプリンタなどは見かけたが。他のプロトコルも」。`.knowledge/` の `requirement:fake-printers`、`milestone:print-m6`、`system:printer-emulators`。印刷の要件は `print-requirements.ja.md` と `requirement:print`。Print Manager（`print-manager.ja.md`）の開発と見せ方の土台にもなる。
+2026-10-20 の設計案。同日に実装した（`.knowledge/` の `milestone:print-m6`。計画から変えた所と、偽物で見つけた不具合はそこの `facts.delivery`）。2026-10-20 利用者「このプロジェクトのテストのために、フェイクプリンタを作ると良さそうな気がしている。ネット上にラベルプリンタなどは見かけたが。他のプロトコルも」。`.knowledge/` の `requirement:fake-printers`、`milestone:print-m6`、`system:printer-emulators`。印刷の要件は `print-requirements.ja.md` と `requirement:print`。Print Manager（`print-manager.ja.md`）の開発と見せ方の土台にもなる。
 
 **2026-10-20 利用者の決定**：「偽プリンタをまずきちんと作って、テストを全てそれをベースに行うのを先にしたい」。印刷の次の実装は print-m6（この偽プリンタ）で、Print Manager はその後。印刷のテストは全部この偽物の上に移す（§10）。
 

@@ -7,7 +7,7 @@ summary: >-
   ZPL・SBPL・TPCL・ESC/POS・ESC/P・raw）× 能力（profile）× 振る舞い（faults の筋書き）で決まる。受けたジョブを記録し、
   読み戻した絵を bdf の描画と比べる。Go のテストからも、YAML の農場のコマンド（画面と JSON の API）からも使う。
   今の print/ipp/ipptest と print/raw/rawtest を土台にし、印刷のテストは全部これに移して ipptest・rawtest・手書きの偽物を消す（2026-10-20 利用者の決定）。叙述は knowledge-inputs/print-plan/fake-printers.ja.md（2026-10-20）。
-lifecycle: accepted
+lifecycle: active
 authority: authored
 aliases:
 - fake printer
@@ -42,7 +42,8 @@ facts:
   - CUPS のサーバーの振る舞い（CUPS-Get-Printers、/printers、クラス）の偽物が無い
   layout_provisional:
     library: print/fakeprinter（公開。テストからも使う）
-    readers: print/pdl/pdlread
+    readers: print/pdl/read.go（pdl.Read、Sniff。計画の pdlread から変えた）
+    readback: print/fakeprinter/readback
     wrappers: print/ipp/ipptest と print/raw/rawtest は移した後に消す
     command: tools/fakeprinter（リリースのバイナリに入れない）
     farm: test/print/farm.yaml
@@ -82,6 +83,8 @@ relations:
 - relation: has_milestone
   to: milestone:print-m6
 history:
+  implemented:
+    summary: 2026-10-20 利用者「fake printer の実装をお願いします」。print-m6 を実装した（milestone:print-m6）。印刷のテストは全部 print/fakeprinter の上に移り、偽物そのものは ipptool と ippeveprinter で確かめてある。偽物の故障の注入でスプールの不具合（再起動した プリンタの job-id）、農場で IPP のクライアントの穴（HTTP 411 の古いプリンタ）を見つけて直した
   accepted:
     summary: 2026-10-20 利用者「偽プリンタをまずきちんと作って、テストを全てそれをベースに行うのを先にしたい」。print-m6 を印刷の次の実装に決め、テストの全部の移行と偽物そのものの確かめ（fake-printers.ja.md §10）を範囲に入れた
   proposed:

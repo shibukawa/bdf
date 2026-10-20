@@ -53,10 +53,12 @@ type Client struct {
 	Timeout time.Duration
 
 	nextID atomic.Uint32
-	// fellBack is set once a printer refused the version.
-	fellBack atomic.Bool
-	once     sync.Once
-	client   *http.Client
+	// fellBack is set once a printer refused the version; noChunked once
+	// it refused a chunked request.
+	fellBack  atomic.Bool
+	noChunked atomic.Bool
+	once      sync.Once
+	client    *http.Client
 }
 
 // Errors of talking to a printer.
@@ -276,7 +278,9 @@ func (c *Client) do(ctx context.Context, m *Message, doc io.Reader) (*Message, e
 }
 
 // post sends a request and returns the HTTP response of an IPP message,
-// or why there is none.
+// or why there is none. A document is streamed (chunked); a printer that
+// takes requests of a known length only (HTTP 411, as old ones do) is sent
+// it again from a temporary file, and so from then on.
 func (c *Client) post(ctx context.Context, m *Message, doc io.Reader) (*http.Response, error) {
 	httpURL, _, err := ParseURL(c.URL)
 	if err != nil {
@@ -286,10 +290,61 @@ func (c *Client) post(ctx context.Context, m *Message, doc io.Reader) (*http.Res
 	if err != nil {
 		return nil, err
 	}
-	var body io.Reader = bytes.NewReader(head)
-	if doc != nil {
-		body = io.MultiReader(bytes.NewReader(head), doc)
+	if doc == nil {
+		return c.send(ctx, httpURL, bytes.NewReader(head), int64(len(head)))
 	}
+	if c.noChunked.Load() {
+		return c.postSized(ctx, httpURL, head, doc)
+	}
+	read := &countReader{r: doc}
+	resp, err := c.send(ctx, httpURL, io.MultiReader(bytes.NewReader(head), read), -1)
+	if errors.Is(err, errLengthRequired) && read.n == 0 {
+		// the printer refused the request before its body: the document
+		// is whole yet
+		c.noChunked.Store(true)
+		return c.postSized(ctx, httpURL, head, doc)
+	}
+	return resp, err
+}
+
+// postSized sends a request and its document with its length: the
+// document is copied to a temporary file first.
+func (c *Client) postSized(ctx context.Context, httpURL string, head []byte, doc io.Reader) (*http.Response, error) {
+	f, err := os.CreateTemp("", "bdf-ipp-*")
+	if err != nil {
+		return nil, fmt.Errorf("ipp: %w", err)
+	}
+	defer os.Remove(f.Name())
+	defer f.Close()
+	n, err := io.Copy(f, doc)
+	if err == nil {
+		_, err = f.Seek(0, io.SeekStart)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ipp: the document: %w", err)
+	}
+	return c.send(ctx, httpURL, io.MultiReader(bytes.NewReader(head), f), int64(len(head))+n)
+}
+
+// errLengthRequired is the HTTP 411 of a printer that takes no chunked
+// requests.
+var errLengthRequired = fmt.Errorf("%w: HTTP 411 Length Required: the printer takes no chunked requests", ErrProtocol)
+
+// countReader counts what is read of a reader.
+type countReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countReader) Read(b []byte) (int, error) {
+	n, err := c.r.Read(b)
+	c.n += int64(n)
+	return n, err
+}
+
+// send posts a body of a length (-1: chunked, after the printer's 100
+// Continue) and checks the response is an IPP message.
+func (c *Client) send(ctx context.Context, httpURL string, body io.Reader, length int64) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, httpURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("ipp: %w", err)
@@ -297,10 +352,8 @@ func (c *Client) post(ctx context.Context, m *Message, doc io.Reader) (*http.Res
 	req.Header.Set("Content-Type", "application/ipp")
 	req.Header.Set("Accept", "application/ipp")
 	req.Header.Set("User-Agent", "bdf (IPP client)")
-	if doc == nil {
-		req.ContentLength = int64(len(head))
-	} else {
-		req.ContentLength = -1
+	req.ContentLength = length
+	if length < 0 {
 		req.Header.Set("Expect", "100-continue")
 	}
 	if c.Username != "" {
@@ -320,6 +373,8 @@ func (c *Client) post(ctx context.Context, m *Message, doc io.Reader) (*http.Res
 		return fail(ErrAuth)
 	case http.StatusUpgradeRequired:
 		return fail(fmt.Errorf("ipp: the printer requires TLS (HTTP 426): use ipps://"))
+	case http.StatusLengthRequired:
+		return fail(errLengthRequired)
 	default:
 		return fail(fmt.Errorf("%w: HTTP %s", ErrProtocol, resp.Status))
 	}

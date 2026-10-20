@@ -1,0 +1,35 @@
+# A farm of fake printers (tools/fakeprinter): one of each kind bdf
+# prints to, on fixed ports of the loopback. test/print/ci.sh prints to
+# them; by hand:
+#
+#   go run ./tools/fakeprinter -config test/print/farm.yaml
+#   open http://127.0.0.1:8650/
+#   bdf print -printer ipp://127.0.0.1:18631/ipp/print testdata/form/rows.bdf
+listen: 127.0.0.1
+web: 127.0.0.1:8650
+fonts: [converter/pptx/testdata/fonts]
+printers:
+  # IPP
+  - { name: mfp-3f, preset: office-mfp, port: 18631, location: 3F, processing: 2s }
+  - { name: mfp-secure, preset: office-mfp, transport: ipps, port: 18632 }
+  - { name: airprint, preset: airprint-only, port: 18633 }
+  - { name: raster, preset: pwg-only, port: 18634 }
+  - { name: postscript, preset: ps-office, port: 18635 }
+  - { name: inkjet, preset: pclm-inkjet, port: 18636 }
+  - { name: old, preset: legacy-ipp11, port: 18637 }
+  # one that runs out of paper after its second job, for 20 seconds
+  - name: flaky
+    preset: office-mfp
+    port: 18638
+    faults:
+      - { after-jobs: 2, stop: [media-empty-error], for: 20s }
+  # a CUPS server: office, laser, ps and the class floor
+  - { name: cups, preset: cups-server, port: 18639 }
+  # the raw port, LPD and serial lines
+  - { name: jetdirect, preset: jetdirect-ps, port: 19100 }
+  - { name: lpd, preset: lpd-legacy, port: 18515, queue: lp }
+  - { name: zebra, preset: zebra-zd421-203, port: 19101 }
+  - { name: sato, preset: sato-cl4nx, port: 19102 }
+  - { name: tec, preset: tec-bex4t1, transport: lpd, port: 18516, queue: labels }
+  - { name: receipt, preset: epson-tm-t88, port: 19103 }
+  - { name: dotmatrix, preset: epson-vp-f2000 }

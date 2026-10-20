@@ -139,7 +139,7 @@ func init() {
 func FromProfile(prof pdl.Profile) *Printer {
 	p := New()
 	p.MakeModel = prof.Title
-	p.Language, p.Width, p.DPI = prof.Language, prof.Width, prof.DPI
+	p.Language, p.Width, p.DPI, p.Profile = prof.Language, prof.Width, prof.DPI, prof.Name
 	p.Formats = []string{"application/octet-stream", "application/vnd.cups-raw"}
 	p.PWGRasterTypes, p.PWGRasterResolutions, p.URF = nil, nil, nil
 	p.Resolutions = dpi(prof.DPI)

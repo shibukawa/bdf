@@ -59,6 +59,19 @@ go run ./cmd/bdf ls out.bdf              # Part の一覧
 go run ./cmd/bdf render -page 2 out.bdf page2.png  # 1 ページを純 Go で描画（ブラウザ不要）
 ```
 
+## プリンタなしで印刷する
+
+印刷のテストのプリンタ役は `print/fakeprinter` が務める。テストは `fakeprinter.Start(t, p)`（IPP）、`StartSocket`、`StartLPD`、`StartSerial`、`StartCUPS` で起こし、`p.Inject(fakeprinter.Fault{…})` で壊す。`bdf print` や `bdf printd` を手で試すには `test/print/farm.yaml` の農場（IPP Everywhere、AirPrint、PWG Raster、PostScript、PCLm、IPP/1.1 だけの古いプリンタ、紙切れになるプリンタ、クラスのある CUPS のサーバー、9100、LPD、ZPL、SBPL、TPCL、ESC/POS、シリアルの ESC/P）を起こし、刷られたものを見る:
+
+```sh
+go run ./tools/fakeprinter -config test/print/farm.yaml   # プリンタの URL を出す
+open http://127.0.0.1:8650/                               # ジョブを絵に戻して見る。故障を注入する
+go run ./cmd/bdf print -printer ipp://127.0.0.1:18631/ipp/print testdata/form/rows.bdf
+go run ./tools/fakeprinter -presets                        # プリンタの種類
+```
+
+`go test ./print/fakeprinter/` は、CUPS の `ipptool` と `ippeveprinter` がある所（macOS には両方、Ubuntu は `cups-ipp-utils` と Avahi）で偽物そのものを確かめる。
+
 ## CI の出力とバイト単位で一致させる
 
 CI の「testdata is up to date」ステップは、`ubuntu-latest`（amd64）上の `bdf generate` の出力をコミット済みのものとバイト単位で比較します。ただ、Go の浮動小数点の融合積和はアーキテクチャによって異なるため、Apple Silicon では同じコマンドでも Object の境界ボックスなどの下位ビットが数箇所変わることがあります。`GOARCH=amd64 go build` でクロスビルドし、その（Rosetta 上の）バイナリを使えば、手元でも CI と同じバイト列を再現でき、差分が本当の回帰かどうかを先に確かめられます。
