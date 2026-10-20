@@ -11,22 +11,7 @@ const escposBand = 128
 
 func writeESCPOS(w *errWriter, rd *render, res *Result) error {
 	s := rd.o.Settings
-	if s.Darkness != 0 {
-		res.unsupported("print-darkness", s.Darkness)
-	}
-	if s.Speed != 0 {
-		res.unsupported("print-speed", s.Speed)
-	}
-	if s.Tracking != "" && s.Tracking != "continuous" {
-		res.unsupported("media-tracking", s.Tracking)
-	}
-	if s.PerforationSkip != 0 {
-		res.unsupported("bdf-perforation-skip", s.PerforationSkip)
-	}
-	cut := s.Cut
-	if cut == "" {
-		cut = CutPage
-	}
+	cut := escposUnsupported(s, res)
 	pages, _ := rd.sequence(false)
 	w.str("\x1b@") // ESC @: initialize
 	// GS P: the motion units of the dots, so that ESC J feeds whole dots
@@ -61,15 +46,46 @@ func writeESCPOS(w *errWriter, rd *render, res *Result) error {
 		}
 		escposFeed(w, feed)
 		res.Pages++
-		if cut == CutPage || cut == CutJob && i == len(pages)-1 {
-			w.str("\x1dVB\x00") // GS V 66 0: feed to the cutter, partial cut
-		}
+		escposCut(w, cut, i, len(pages))
 	}
+	escposDrawer(w, s)
+	return w.err
+}
+
+// escposUnsupported notes the settings ESC/POS has no command for, and
+// returns the cut.
+func escposUnsupported(s Settings, res *Result) (cut string) {
+	if s.Darkness != 0 {
+		res.unsupported("print-darkness", s.Darkness)
+	}
+	if s.Speed != 0 {
+		res.unsupported("print-speed", s.Speed)
+	}
+	if s.Tracking != "" && s.Tracking != "continuous" {
+		res.unsupported("media-tracking", s.Tracking)
+	}
+	if s.PerforationSkip != 0 {
+		res.unsupported("bdf-perforation-skip", s.PerforationSkip)
+	}
+	if s.Cut == "" {
+		return CutPage
+	}
+	return s.Cut
+}
+
+// escposCut cuts the paper after page i of n when the cut asks it.
+func escposCut(w *errWriter, cut string, i, n int) {
+	if cut == CutPage || cut == CutJob && i == n-1 {
+		w.str("\x1dVB\x00") // GS V 66 0: feed to the cutter, partial cut
+	}
+}
+
+// escposDrawer opens the cash drawer the settings ask.
+func escposDrawer(w *errWriter, s Settings) {
 	if s.Drawer > 0 {
 		// ESC p m t1 t2: a pulse of 50 ms on, 500 ms off, on pin 2 or 5
 		w.printf("\x1bp%c\x19\xfa", byte(s.Drawer-1))
 	}
-	return w.err
 }
 
 // escposRaster writes rows with GS v 0 in the normal mode.

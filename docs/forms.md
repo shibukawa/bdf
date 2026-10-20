@@ -265,6 +265,18 @@ bdf template compile -sample order.json slip.txt slip.bdft
 | `newline=crlf` | Lines end with CR LF instead of LF |
 | `paper=preprinted` | The ranges of the preprinted paper are written as spaces |
 
+**Printing.** `bdf print` sends the form to a dot-matrix printer of ESC/P in its text mode: the printer's pitch, line spacing, page length and perforation skip are those of the template, the characters are printed with its own fonts (Kanji in its Kanji mode), and `-skip background` leaves out the ranges of the preprinted paper. A receipt printer of ESC/POS prints it so with `-print-mode text`:
+
+```bash
+bdf print -printer 'socket://192.168.0.20:9100?profile=vp-f2000' -skip background slip.bdf
+```
+
+```bash
+bdf print -printer 'serial:///dev/ttyUSB0?profile=tm-t88' -print-mode text receipt.bdf
+```
+
+ESC/P prints the characters of one column of a template of `ambiguous: narrow` (its box drawing, `○`, `※`) as Kanji of half width. A receipt printer has no such Kanji: its box drawing and `×` come from its tables of a byte, and the others are printed as `?` with a warning, so write `ambiguous: wide` for a receipt with `○` or `※`. ESC/P has no Kanji of double height alone (`_tall`): they are printed at their size, with a warning. ESC/P takes the pitches of 10, 12, 15, 17.1 and 20 CPI (Kanji at 10 to 15), ESC/POS those whose column is 12 dots or more (15 CPI at 180 and 203 dpi). A form the printer cannot print so is printed as dots, with a warning (with `-print-mode text`, it is an error).
+
 A template of text has no pictures, QR codes or barcodes (the text modes of printers print characters). Characters of the private use area and pictographs (emoji) are warned of: printers do not have them.
 
 ## QR codes and barcodes
