@@ -62,11 +62,13 @@ temp-dir: /var/tmp/bdf
 
 `bdf printd -config printd.yaml -check` は設定を読み、各プリンタにできることを聞いて表にします。スプールは開きません（答えないプリンタがあれば終了コード 1）。
 
+`ipp:` はキューを IPP プリンタとして見せ（[後述](#ipp-プリンタとして見せる)）、`upstreams:` と `proxy: true` のプリンタは NAT を越えてジョブを取りに行かせます（[後述](#nat-の向こうの拠点)）。
+
 ## 誰が何をできるか
 
 - **loopback で、トークンが無いとき**（既定）は、その機械の誰でも何でもできます。ジョブの利用者は `X-BDF-User`（`bdf print` はプロセスの利用者を入れる）です。
 - **loopback 以外**では、TLS とトークンが無ければ起動しません（`insecure: true` で明示したときを除く）。
-- **トークン**は名前（そのジョブの利用者）、16 文字以上の秘密（`file`、`env`、または設定に直接書く `value`。勧めません）、投入できるキュー（無ければ全部）、役割を持ちます。役割は `submit`（投入と自分のジョブの操作）、`manage`（他人のジョブの操作と実績）、`admin`（キューの停止・再開・受け付けの停止と再開、プリンタの探索、写し）。`Authorization: Bearer …` で送り、比べるのは定数時間です。
+- **トークン**は名前（そのジョブの利用者）、16 文字以上の秘密（`file`、`env`、または設定に直接書く `value`。勧めません）、投入できるキュー（無ければ全部）、役割を持ちます。役割は `submit`（投入と自分のジョブの操作）、`manage`（他人のジョブの操作と実績）、`admin`（キューの停止・再開・受け付けの停止と再開、プリンタの探索、写し）、`proxy`（拠点のサーバーとしてキューのジョブを取りに行く）。`Authorization: Bearer …` で送り、比べるのは定数時間です。
 - **`act-as`** があるトークンは `X-BDF-User` でジョブの利用者を名乗れます。利用者に代わって印刷する業務システムのためです。`manage` が無ければ、名乗った利用者のジョブを見て操作します。
 - ログには文書、パスワード、トークン、プリンタの URL の利用者とパスワードを書きません。
 
@@ -101,6 +103,81 @@ Go からは [`print/server/client`](https://github.com/shibukawa/bdf/tree/main/
 ## 暗号化した文書
 
 暗号化した `.bdf` はスプールでも暗号化のままです。ジョブと一緒に渡したパスワード（`bdf print` は `$BDF_PASSWORD` を、先に確かめてから送る）はメモリにだけ持ちます。再起動の後のジョブは、渡し直す（`bdf jobs password <id>`）まで待ちます（`pending-held`、`job-password-wait`）。パスワードの要る PDF や Office 文書はそのパスワードで変換し、変換した `.bdf` も同じパスワードで暗号化して置きます。`bdf print` は、TLS の無い接続で別の機械へパスワードを送りません（`-allow-plaintext` のときを除く）。
+
+## IPP プリンタとして見せる
+
+設定に `ipp:` があると、各キューは IPP Everywhere のプリンタにもなり、どの OS もドライバなしで追加できます。Windows（Windows Ready Print と同じ IPP クラスドライバ）、macOS と iOS（AirPrint）、Android（既定の印刷サービスの Mopria）、ChromeOS と Linux（CUPS）。送ってくるのは PDF（先頭に出すので、ベクタのまま送られる）、Apple Raster か PWG Raster、JPEG か PNG で、サーバーは受けたものを投入と同じく `.bdf` にしてキューのプリンタで刷ります。ラスタのページは、描かれた用紙の大きさの絵になります。
+
+```yaml
+ipp:
+  listen: ":8631"              # 既定。ipp と ipps を同じポートで
+  host: print.example.com      # プリンタの URI と証明書の名前。既定は機械の名前の .local
+  auth: none                   # none（LAN のプリンタと同じ）か basic（トークンの名前と秘密）。トークンがあれば basic
+  require-tls: false           # ipp を断る（HTTP 426）。basic のときはいつも
+  tls: { cert: /etc/bdf/ipp.crt, key: /etc/bdf/ipp.key }   # 無ければ自己署名を作る（スプールの隣の ipp-tls.pem）
+  queues: [office, warehouse]  # 見せるキュー。既定は全部
+  default: office              # /ipp/print にも
+  location: "2F"               # printer-location。キューの location が優先
+  organization: Example Inc.
+  dns-sd: true                 # LAN に広告する（mDNS）。既定
+queues:
+  office: { printers: [mfp1], info: "Office printer", location: "2F north" }
+```
+
+- **プリンタ**: `ipp://host:8631/ipp/print/<キュー>` と `ipps://…`（同じポート。接続の最初のバイトで TLS を見分けます）。操作は IPP Everywhere が求めるもの（Print-Job、Validate-Job、Create-Job、Send-Document、Close-Job、Cancel-Job、Cancel-My-Jobs、Get-Job-Attributes、Get-Jobs、Get-Printer-Attributes、Identify-Printer）と Hold-Job・Release-Job。ジョブの id はスプールのもの（`bdf jobs` と同じ番号）、状態もスプールのものです。CUPS の `ipptool` の IPP/1.1・IPP/2.0・IPP Everywhere の属性の検査が通ります（`test/print/ipp-everywhere-server.test`）。
+- **ジョブが頼むこと**はチケットになります。`copies`、`sides`、`media` か `media-col`（大きさはキューの用紙に合わせる）、`print-color-mode`、`print-quality`、`printer-resolution`、`page-ranges`、`print-scaling`、`orientation-requested`、`finishings`、`output-bin`、`job-hold-until`、`job-priority`。キューにできないことは返事で伝え、`ipp-attribute-fidelity` があればジョブを断ります。`document-password` は暗号化した PDF・Office 文書・`.bdf` を開き、投入と同じくメモリにだけ持ちます。
+- **できると名乗ること**はキューの最初のプリンタのもの（用紙、トレイ、仕上げ、カラー、両面）に、サーバーが自分でするもの（部数、ページ範囲、合わせ方）を足したものです。まだ答えていないプリンタと、9100・LPD のプリンタは事務機の用紙で見せます。
+- **誰が**: `auth: none` ではネットワークの誰もが、クライアントの名乗る `requesting-user-name` で印刷し、その名前のジョブを取り消せます。他人のジョブは名前を隠して一覧に出ます。`auth: basic` ではトークンの名前と秘密を求め（OS が 1 回聞いて覚えます）、秘密が TLS を通るように別の機械からの ipp を断り、`_ipps._tcp` だけを広告します。トークンのキューと役割は API と同じに効きます。
+- **DNS-SD**: 各キューを `_ipp._tcp` と `_ipps._tcp` で、サブタイプ `_print`（IPP Everywhere）と `_universal`（AirPrint）を付けて広告します。ホスト名はサーバー自身のもの（`<機械>-bdf.local`。機械の名前は OS の応答者のもの）で、TXT にはクライアントが選ぶ材料（`pdl`、`URF`、`Color`、`Duplex`、`PaperMax`、`TLS`、`air` …）を入れ、後ろのプリンタが答えたら更新します。mDNS のポートは Bonjour・Avahi・Windows と共有します。
+- **別のサブネット**: mDNS はリンクの中だけです。`bdf printd -config printd.yaml -dns-sd example.com` は同じレコードを社内の DNS のゾーン向けに書き出します（広域 DNS-SD。`ipp.host` はゾーンでのサーバーの名前に）。`bdf printd -config printd.yaml -airprint-profile print.example.com > printers.mobileconfig` は iPhone・iPad 向けの構成プロファイル（各キューの AirPrint の項目と、自己署名の証明書を信頼するルート）を書き出し、MDM で配れます。プリンタのページ（`http://host:8631/`）にも、開いたアドレス向けの同じプロファイルへのリンクがあります。
+
+プリンタの追加:
+
+| OS | |
+|---|---|
+| Windows 10・11 | 設定 → Bluetooth とデバイス → プリンターとスキャナー → デバイスの追加。キューが一覧に出ます（mDNS）。別のサブネットは「IP アドレスまたはホスト名を使ってプリンターを追加する」→ IPP デバイス → `https://host:8631/ipp/print/office`（か `http://`）。IPP クラスドライバが使われ、ドライバは入りません |
+| macOS | システム設定 → プリンタとスキャナ → プリンタを追加。一覧に出ます（AirPrint）。別のサブネットは IP のタブで、プロトコル IPP、アドレス `host:8631`、キュー `ipp/print/office`。シェルからは `lpadmin -p office -E -v ipps://host:8631/ipp/print/office -m everywhere` |
+| iPhone・iPad | 同じサブネットなら印刷のときに一覧に出ます（AirPrint）。別のサブネットは上のプロファイル |
+| Android | 既定の印刷サービス（Mopria）の一覧に出ます。別のサブネットはサービスの設定でアドレスから |
+| ChromeOS | 設定 → プリンタ → プリンタを追加。一覧に出るか、アドレスとプロトコル IPP / IPPS、パス `ipp/print/office` で |
+| Linux | `lpadmin -p office -E -v ipps://host:8631/ipp/print/office -m everywhere`、またはデスクトップのプリンタ設定（一覧に出ます） |
+
+## NAT の向こうの拠点
+
+本社のサーバーから届かない拠点（NAT の内側で VPN が無い）は、拠点に自前の `bdf printd` を置き、本社のキューのジョブを取りに行って拠点のプリンタで刷らせます。つなぐのは拠点からで、本社からは拠点へつなぎません。両者が話すのは IPP の共有インフラ拡張（PWG 5100.18）なので、同じ規格の他の代理も取りに来られます。
+
+```yaml
+# 本社: プリンタが拠点の代理であるキュー
+printers:
+  osaka: { proxy: true }
+queues:
+  osaka: { printers: [osaka] }
+ipp: { listen: ":8631", host: print.example.com }
+tokens:
+  - { name: osaka-proxy, file: /etc/bdf/osaka.token, roles: [proxy], queues: [osaka] }
+```
+
+```yaml
+# 拠点
+printers:
+  mfp: { url: "ipp://192.0.2.10/ipp/print" }
+queues:
+  local: { printers: [mfp] }
+upstreams:
+  hq:
+    url: ipps://print.example.com:8631/ipp/print/osaka
+    queue: local
+    username: osaka-proxy
+    password-file: /etc/bdf/osaka.token
+    poll: 10s              # 既定
+    # fingerprint: "sha256:…"   本社の証明書を固定する。無ければ最初に見たものを覚える
+```
+
+- 本社のキューに投入されたジョブ（API、`bdf print -server`、IPP のどれでも）は本社で `job-fetchable` として待ちます。拠点は `poll` ごとに聞き、ジョブを受け（`Fetch-Job`、`Acknowledge-Job`）、文書（本社が持つ変換済みの `.bdf`。パスワードがあれば一緒に受け、拠点でもメモリにだけ持つ）を取り、自分のキューに入れて、持ったことを本社に伝えます（`Acknowledge-Document`）。以後はジョブの状態を報告し（`Update-Job-Status`）、本社の `bdf jobs` に拠点での印刷中・完了・印象数が出ます。
+- **二重に刷らない。** ジョブは受けた拠点に結びつき、他の拠点には渡しません。拠点は本社のジョブの uuid を自分のジョブに持たせ、既に持っているジョブ（受けてから伝えるまでの間に止まった）は受け直さずに伝えるだけにします。本社が渡したのに拠点が持っていないジョブ（拠点がスプールを失った）は本社で中止にし、人の再送を待ちます（自動では送り直しません）。
+- **本社で取り消したジョブ**は拠点でも取り消します（次の報告か、`poll` ごとに互いのジョブを突き合わせる `Update-Active-Jobs` で）。
+- 本社は拠点のプリンタをそのキューのプリンタとして見せます（状態・用紙・カラーは拠点の報告から。2 分報告が無ければ止まっている扱い）。そのキューの IPP プリンタも同じです。
+- 拠点のトークンの役割は `proxy`（キューの文書を読むので）。`queues` のキューだけに効き、ipps の Basic 認証でだけ使えます。
 
 ## 常駐させる
 
