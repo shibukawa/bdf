@@ -75,7 +75,7 @@ open_questions:
   scale-out:
     text: スプールを複数台や Lambda で回すか。1 つの spool.db は 1 プロセスだけが開ける
     state: deferred
-    resolution: m2 の後。m2 は bbolt 前提で、bbolt に触るのは print/spool/db.go だけ（2026-10-19 利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」）。広げるときは db.go を薄い保存層（decision:thin-store）に替え、ジョブに期限つきの借りを足す。Lambda は受け付けと変換に向き、LAN のプリンタへの送信は拠点の bdf printd（代理）に残す形が現実的（knowledge-inputs/print-plan/print-m2.ja.md §6、store.ja.md）。2026-10-19 利用者の問い「タイムスタンプをつければ並行でも処理できるか」「Lambda 化できるか」「KVS や RDB を包む薄い仕組み」への答え
+    resolution: m2 の後。m2 は 1 プロセスで、保存は yuruidb の bbolt ドライバ（触るのは print/spool/store.go だけ。2026-10-19 利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」、2026-10-20 に yuruidb を通すことにした）。広げるときは store.go の yuruidb のドライバを替え、ジョブに期限つきの借りを足す。Lambda は受け付けと変換に向き、LAN のプリンタへの送信は拠点の bdf printd（代理）に残す形が現実的（knowledge-inputs/print-plan/print-m2.ja.md §6、store.ja.md）。2026-10-19 利用者の問い「タイムスタンプをつければ並行でも処理できるか」「Lambda 化できるか」「KVS や RDB を包む薄い仕組み」への答え
   windows-os-path:
     text: Windows の OS 経由の経路を winspool の RAW 素通し（IPP クラスドライバに PDF / PWG Raster を渡せるか要検証）にするか、GDI の StartDoc / StretchDIBits に描いた画像を渡す（どのドライバでも動く）か
     state: answered
@@ -149,7 +149,7 @@ facts:
     completion: Get-Job-Attributes のポーリングで job-state が 7・8・9 になるまで
     dedupe: 送る前に job-id を記録。再開時に Get-Jobs（which-jobs=completed 含む）で確かめ、プリンタが知っていれば再送しない
   spool:
-    layout: 'bbolt の 1 ファイル spool.db に、ジョブの記録（JSON: チケット、出力先、状態、プリンタ側の job-id、時刻、警告）、文書（受けたままと変換した .bdf。ジョブごと、1 MiB の塊）、連番、実績、プリンタの控え、証明書の指紋'
+    layout: 'bbolt の 1 ファイル spool.db に、yuruidb を通して、ジョブの記録（JSON: チケット、出力先、状態、プリンタ側の job-id、時刻、警告）、文書（受けたままと変換した .bdf。ジョブごとの Blob）、連番、実績、キューの状態、証明書の指紋。print-m2 で実装（2026-10-20）'
     queue: 出力先ごとに 1 本。FIFO に job-priority と job-hold-until。一時停止と再開、並べ替え、別のキューへの移動
     class: 複数の出力先を 1 キューに。空いている方に流す（負荷分散）か順に試す（故障時の切り替え）。CUPS のクラスと同じ
     retry: 接続の失敗は指数バックオフで pending のまま。プリンタが stopped ならキューを止めて見張り idle で再開。プリンタ側で aborted になったジョブは自動で再送しない（利用者が retry）
@@ -199,8 +199,8 @@ facts:
     print: チケット、出力先のインターフェース、形式の選択、用紙の名前（PWG 5101.1）
     print/ipp: メッセージの読み書き、クライアント、DNS-SD、CUPS 固有の操作
     print/raster: PWG Raster の書き手。後で URF と PCLm
-    print/spool: ジョブ、キュー、状態機械、再送、履歴、アカウンティング
-    print/server: HTTP API、設定、監視。後で IPP サーバーと DNS-SD の広告
+    print/spool: ジョブ、キュー、状態機械、再送、履歴、アカウンティング（print-m2 で実装）
+    print/server: HTTP API、設定、監視（bdf printd。トークン、SSE、/metrics、状態のページ。print/server/client はその Go のクライアント。print-m2 で実装）。後で IPP サーバーと DNS-SD の広告
     print/internal/osspool: CUPS の固有操作。Windows は無し（需要が出たら GDI をここに）
     vector/psbdf: PostScript 3 の書き手（pdfbdf の兄弟）
     vector/hpglbdf: HP-GL/2 ＋ HP RTL の書き手（大判、CAD）
@@ -264,6 +264,8 @@ relations:
 - relation: informed_by
   to: decision:thin-store
 history:
+  m2-implemented:
+    summary: 2026-10-20 print-m2（スプールとプリントサーバー、bdf printd・bdf jobs・bdf print -server、受けた入力の変換、examples/print-server、docs/print-server）を実装した（milestone:print-m2）
   thin-store-deferred:
     summary: 2026-10-19 利用者が bbolt・DynamoDB・KVS・RDB・楽観ロックのオブジェクトストレージを包む SDK なしの薄い保存層を問い、調べて案を書いた（system:conditional-storage、decision:thin-store、store.ja.md）。続けて「store レイヤーは一旦頑張らずに bbolt 前提で良い」で後に回した
   m2-decisions:

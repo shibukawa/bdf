@@ -1,9 +1,10 @@
 #!/bin/bash
 # Prints documents of testdata with bdf print on printers that are not
 # bdf's own: ippeveprinter (CUPS's IPP Everywhere printer) directly, as
-# PDF and as PWG Raster, and a CUPS queue in front of it (an IPP
-# Everywhere queue, made with lpadmin -m everywhere), and checks what
-# the printer received. The CI job "print" runs it.
+# PDF and as PWG Raster, a CUPS queue in front of it (an IPP Everywhere
+# queue, made with lpadmin -m everywhere), and bdf printd's spool in
+# front of it across a restart, and checks what the printer received.
+# The CI job "print" runs it.
 #
 # Needs ippeveprinter (cups-ipp-utils), cupsd and lpadmin (cups) with
 # its filters, a running Avahi (ippeveprinter will not start without
@@ -26,7 +27,7 @@ url="ipp://localhost:$port/ipp/print"
 ippeveprinter -2 -p "$port" -n localhost -k -d "$spool" -s 120 \
   -f application/pdf,image/pwg-raster,image/jpeg "BDF Test" >"$spool/ippeveprinter.log" 2>&1 &
 pid=$!
-trap 'kill $pid 2>/dev/null || true; sudo lpadmin -x bdftest 2>/dev/null || true' EXIT
+trap 'kill $pid ${printd:-} 2>/dev/null || true; sudo lpadmin -x bdftest 2>/dev/null || true' EXIT
 for _ in $(seq 30); do
   if "$bdf" printers -url "$url" >"$spool/printer.txt" 2>/dev/null; then break; fi
   sleep 1
@@ -77,4 +78,49 @@ for _ in $(seq 60); do
 done
 ls -la "$spool"
 test "$(received '%PDF-')" -gt "$before" || test "$(received 'RaS2')" -gt 1
+
+# bdf printd: two jobs, one canceled; the server stops right after the
+# other is submitted and starts again; the printer has it once
+work=$(mktemp -d)
+server=http://127.0.0.1:8640
+cat >"$work/printd.yaml" <<YAML
+listen: 127.0.0.1:8640
+printers: { eve: { url: "$url" } }
+queues: { office: { printers: [eve], defaults: { sides: two-sided-long-edge } } }
+fonts: { dirs: ["$root/converter/pptx/testdata/fonts"], no-system: true }
+YAML
+"$bdf" printd -config "$work/printd.yaml" -check
+start_printd() {
+  "$bdf" printd -config "$work/printd.yaml" -log text 2>>"$work/printd.log" &
+  printd=$!
+  for _ in $(seq 30); do
+    if curl -sf "$server/healthz" >/dev/null; then return; fi
+    sleep 1
+  done
+  cat "$work/printd.log"
+  return 1
+}
+start_printd
+"$bdf" printers -server "$server"
+before=$(received '%PDF-')
+held=$("$bdf" print -server "$server" -queue office -q -hold indefinite testdata/form/rows.bdf)
+"$bdf" jobs -server "$server" cancel "$held"
+job=$("$bdf" print -server "$server" -queue office -q testdata/form/pptx-fixed.bdf)
+kill -INT "$printd"
+wait "$printd"
+start_printd
+for _ in $(seq 120); do
+  if "$bdf" jobs -server "$server" show "$job" | grep -q '^state: *completed'; then break; fi
+  sleep 1
+done
+"$bdf" jobs -server "$server" -all
+"$bdf" jobs -server "$server" show "$job" | grep -q '^state: *completed'
+test "$(received '%PDF-')" -eq $((before + 1))
+"$bdf" jobs -server "$server" accounting -csv | tee "$work/accounting.csv"
+test "$(wc -l <"$work/accounting.csv")" -eq 3
+kill -INT "$printd"
+wait "$printd"
+printd=
+"$bdf" printd -config "$work/printd.yaml" -compact
+cat "$work/printd.log"
 echo "print: ok"

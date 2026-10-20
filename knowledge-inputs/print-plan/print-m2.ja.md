@@ -1,6 +1,6 @@
 # 印刷 実装案（print-m2）
 
-2026-10-19 時点の実装案（2026-10-20 に保存を yuruidb に改めた）。要件と決定は `print-requirements.ja.md` §4.5〜§4.10 と `.knowledge/` の `requirement:print`（facts の spool・server・budgets）、`milestone:print-m2` にある。前段の print-m1（`bdf print`、`bdf printers`、`print`・`print/ipp`・`print/raster`）は実装して main に入った（#104）。ここは「何をどの順で作るか」を書く。
+2026-10-19 時点の実装案（2026-10-20 に保存を yuruidb に改めた）。**2026-10-20 に S1〜S6 を実装した**（`.knowledge/` の `milestone:print-m2` の `facts.delivery.implemented` に、計画から変えたこと）。要件と決定は `print-requirements.ja.md` §4.5〜§4.10 と `.knowledge/` の `requirement:print`（facts の spool・server・budgets）、`milestone:print-m2` にある。前段の print-m1（`bdf print`、`bdf printers`、`print`・`print/ipp`・`print/raster`）は実装して main に入った（#104）。ここは「何をどの順で作るか」を書く。
 
 ## 0. 決まっていること（と、暫定で進めること）
 

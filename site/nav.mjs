@@ -20,6 +20,7 @@ export const SECTIONS = [
       page("integrating-to-frontend", "Integrating into a frontend", "フロントエンドに組み込む"),
       page("integrate-to-server", "Integrating into a server", "サーバーに組み込む"),
       page("forms", "Making forms", "帳票を作る"),
+      page("print-server", "Print server", "プリントサーバー"),
       page("rendering", "Rendering", "描画する"),
       page("build-wasm-runtime", "Build a Wasm runtime", "Wasm ランタイムをビルドする"),
     ],
@@ -51,6 +52,7 @@ export const SECTIONS = [
       page("examples/preview-server", "Convert on the server", "サーバーで変換する"),
       page("examples/search", "With a search engine", "検索エンジンとつなぐ"),
       page("examples/secure-reader", "Protected mode", "保護モードで読ませる"),
+      page("examples/print-server", "Printing through a spool", "スプールを通して印刷する"),
     ],
   },
   {
