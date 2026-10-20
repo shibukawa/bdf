@@ -1,15 +1,20 @@
 // Package raw sends documents to printers that do not speak IPP: over the
-// raw socket of port 9100 (AppSocket, JetDirect) and the line printer
-// daemon protocol (LPD, RFC 1179). The document is a file of the
-// printer's language, PostScript or PDF, that package print makes; the
-// printer is told nothing else of the job but what the file says and an
-// optional PJL header (the copies, sides and paper of PostScript are in
-// the file, those of PDF in PJL).
+// raw socket of port 9100 (AppSocket, JetDirect), the line printer
+// daemon protocol (LPD, RFC 1179), a serial port (and a Bluetooth printer
+// of the serial port profile, which the OS shows as one), the device file
+// of a USB printer (Linux and the BSDs), and a queue of Windows whose
+// driver passes RAW data on (winspool). The document is a file of the
+// printer's language, which package print makes: PostScript or PDF, or
+// the language of a printer of labels, receipts or forms (ZPL, SBPL,
+// TPCL, ESC/POS, ESC/P; package print/pdl). The printer is told nothing
+// else of the job but what the file says and an optional PJL header (the
+// copies, sides and paper of PostScript are in the file, those of PDF in
+// PJL).
 //
-// Neither protocol tells the state of a job: Send ends when the printer
-// has the whole document. Neither has a way to ask the printer what it
+// None of them tells the state of a job: Send ends when the printer has
+// the whole document. None has a way to ask the printer what it
 // supports, so the format sent is told by the URL, as in
-// socket://host:9100?format=pdf.
+// socket://host:9100?format=pdf or serial:///dev/ttyUSB0?lang=escpos.
 //
 // A job that was sent in part may have been printed in part: from the
 // first byte of a 9100 job, and from the control file of an LPD job (an
@@ -27,6 +32,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -38,22 +44,51 @@ const (
 	FormatPDF        = "pdf"
 )
 
-// Printer is a printer reached over 9100 or LPD, as its URL says:
+// languages are the languages of printers of labels, receipts and forms
+// (print/pdl's), which a raw printer may take as its format.
+var languages = map[string]string{
+	"zpl": "zpl", "zplii": "zpl", "sbpl": "sbpl", "tpcl": "tpcl",
+	"escpos": "escpos", "esc/pos": "escpos", "escp": "escp", "esc/p": "escp", "escpj": "escp", "esc/p-j": "escp", "escp2": "escp",
+}
+
+// IsLanguage reports whether a format is the language of a printer of
+// labels, receipts or forms.
+func IsLanguage(format string) bool { _, ok := languages[format]; return ok && languages[format] == format }
+
+// Printer is a printer reached over 9100, LPD, a serial port, a USB
+// device file or a queue of Windows, as its URL says:
 //
-//	socket://host[:9100][?format=ps|pdf][&pjl=true|false]
-//	lpd://host[:515]/queue[?format=ps|pdf][&pjl=true|false][&user=name]
+//	socket://host[:9100][?format=…][&pjl=true|false]
+//	lpd://host[:515]/queue[?format=…][&pjl=true|false][&user=name]
+//	serial:///dev/ttyUSB0?format=…[&baud=9600][&bits=8][&parity=none][&stop=1][&flow=none]
+//	serial://COM3?format=…                       (Windows)
+//	usb:///dev/usb/lp0?format=…                 (Linux, the BSDs)
+//	winspool:///Printer%20Name?format=…         (Windows)
+//
+// The format is ps (the default) or pdf, or a language of print/pdl
+// (zpl, sbpl, tpcl, escpos, escp; lang is the same parameter), which
+// takes a profile, dpi and width too.
 type Printer struct {
 	// URL is the printer's URL, without its query.
 	URL string
-	// Scheme is "socket" or "lpd".
+	// Scheme is "socket", "lpd", "serial", "usb" or "winspool".
 	Scheme string
 	// Addr is the host and port.
 	Addr string
 	// Queue is the queue of an LPD printer.
 	Queue string
+	// Device is the serial port or device file, or the name of the
+	// queue of Windows.
+	Device string
+	// Serial is the setting of a serial port.
+	Serial Serial
 	// Format is the format the printer takes: FormatPostScript (the
-	// default) or FormatPDF.
+	// default), FormatPDF, or a language of print/pdl.
 	Format string
+	// Profile, DPI and Width describe a printer of a language of
+	// print/pdl: a profile's name, and its dots and width as the URL
+	// overrides them ("" for the profile's).
+	Profile, DPI, Width string
 	// PJL wraps the document in a PJL header: "true", "false", or "" for
 	// PDF only (which many printers do not tell from other files without
 	// it).
@@ -73,6 +108,7 @@ func Parse(s string) (*Printer, error) {
 	}
 	p := &Printer{Scheme: strings.ToLower(u.Scheme), Format: FormatPostScript}
 	port := "9100"
+	options := []string{"format", "lang", "pjl", "profile", "dpi", "width"}
 	switch p.Scheme {
 	case "socket":
 		if strings.Trim(u.Path, "/") != "" {
@@ -84,30 +120,72 @@ func Parse(s string) (*Printer, error) {
 		if p.Queue == "" || strings.ContainsAny(p.Queue, "/ \t\n\x00") || len(p.Queue) > 255 {
 			return nil, fmt.Errorf("raw: %s: an LPD printer is lpd://host/queue", s)
 		}
+		options = append(options, "user")
+	case "serial", "usb":
+		// serial:///dev/ttyUSB0, serial://COM3
+		p.Device = u.Path
+		if u.Host != "" {
+			p.Device = u.Host + u.Path
+		}
+		if p.Device == "" || strings.ContainsRune(p.Device, 0) {
+			return nil, fmt.Errorf("raw: %s: no device (%s:///dev/… or %s://COM3)", s, p.Scheme, p.Scheme)
+		}
+		if p.Scheme == "serial" {
+			options = append(options, "baud", "bits", "parity", "stop", "flow")
+		}
+	case "winspool":
+		// winspool:///Queue%20Name, winspool://Queue (a name a host may
+		// be), and winspool://server/queue for \\server\queue
+		switch {
+		case u.Host == "":
+			p.Device = strings.TrimPrefix(u.Path, "/")
+		case u.Path == "" || u.Path == "/":
+			p.Device = u.Host
+		default:
+			p.Device = `\\` + u.Host + strings.ReplaceAll(u.Path, "/", `\`)
+		}
+		if p.Device == "" || strings.ContainsRune(p.Device, 0) {
+			return nil, fmt.Errorf("raw: %s: no queue (winspool:///Queue%%20Name)", s)
+		}
 	default:
-		return nil, fmt.Errorf("raw: %s: not a socket:// or lpd:// URL", s)
+		return nil, fmt.Errorf("raw: %s: not a socket://, lpd://, serial://, usb:// or winspool:// URL", s)
 	}
-	if u.Hostname() == "" {
-		return nil, fmt.Errorf("raw: %s: no host", s)
+	if p.Scheme == "socket" || p.Scheme == "lpd" {
+		if u.Hostname() == "" {
+			return nil, fmt.Errorf("raw: %s: no host", s)
+		}
+		if u.Port() != "" {
+			port = u.Port()
+		}
+		p.Addr = net.JoinHostPort(u.Hostname(), port)
 	}
-	if u.Port() != "" {
-		port = u.Port()
-	}
-	p.Addr = net.JoinHostPort(u.Hostname(), port)
 	q := u.Query()
 	for k := range q {
-		switch k {
-		case "format", "pjl", "user":
-		default:
-			return nil, fmt.Errorf("raw: %s: %q is not an option (format, pjl, user)", s, k)
+		if !slices.Contains(options, k) {
+			return nil, fmt.Errorf("raw: %s: %q is not an option (%s)", s, k, strings.Join(options, ", "))
 		}
 	}
-	switch f := strings.ToLower(q.Get("format")); f {
+	format := strings.ToLower(q.Get("format"))
+	if l := strings.ToLower(q.Get("lang")); l != "" {
+		if format != "" && languages[format] != languages[l] {
+			return nil, fmt.Errorf("raw: %s: format %q and lang %q", s, format, l)
+		}
+		format = l
+	}
+	switch format {
 	case "", "ps", "postscript":
 	case "pdf":
 		p.Format = FormatPDF
 	default:
-		return nil, fmt.Errorf("raw: %s: format %q: ps or pdf", s, f)
+		l, ok := languages[format]
+		if !ok {
+			return nil, fmt.Errorf("raw: %s: format %q: ps, pdf, zpl, sbpl, tpcl, escpos or escp", s, format)
+		}
+		p.Format = l
+	}
+	p.Profile, p.DPI, p.Width = q.Get("profile"), q.Get("dpi"), q.Get("width")
+	if (p.Profile != "" || p.DPI != "" || p.Width != "") && !IsLanguage(p.Format) {
+		return nil, fmt.Errorf("raw: %s: profile, dpi and width are those of a printer of labels, receipts or forms (lang=zpl …)", s)
 	}
 	switch v := strings.ToLower(q.Get("pjl")); v {
 	case "", "true", "false":
@@ -116,19 +194,33 @@ func Parse(s string) (*Printer, error) {
 		return nil, fmt.Errorf("raw: %s: pjl %q: true or false", s, v)
 	}
 	p.User = q.Get("user")
+	if p.Scheme == "serial" {
+		if p.Serial, err = parseSerial(q); err != nil {
+			return nil, fmt.Errorf("raw: %s: %w", s, err)
+		}
+	}
 	u.RawQuery, u.Fragment = "", ""
 	p.URL = u.String()
 	return p, nil
 }
 
-// IsURL tells a URL of a raw printer (socket:// or lpd://).
+// IsURL tells a URL of a raw printer (socket://, lpd://, serial://, usb://
+// or winspool://).
 func IsURL(s string) bool {
 	l := strings.ToLower(s)
-	return strings.HasPrefix(l, "socket://") || strings.HasPrefix(l, "lpd://")
+	for _, p := range []string{"socket://", "lpd://", "serial://", "usb://", "winspool://"} {
+		if strings.HasPrefix(l, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // UsesPJL tells whether a document in a format is sent with a PJL header.
 func (p *Printer) UsesPJL(format string) bool {
+	if format != FormatPDF && format != FormatPostScript {
+		return false // PJL is that of printers of pages
+	}
 	switch p.PJL {
 	case "true":
 		return true
@@ -159,7 +251,8 @@ var (
 type Job struct {
 	// Name is the job's name (PJL and LPD), and User its user (LPD).
 	Name string
-	// Format is the document's: FormatPostScript or FormatPDF.
+	// Format is the document's: FormatPostScript, FormatPDF or a
+	// language of print/pdl.
 	Format string
 	// Data is the document.
 	Data []byte
@@ -183,6 +276,8 @@ func (p *Printer) Send(ctx context.Context, j *Job) (int64, error) {
 		return p.sendSocket(ctx, j, data)
 	case "lpd":
 		return p.sendLPD(ctx, j, data)
+	case "serial", "usb", "winspool":
+		return p.sendDevice(ctx, j, data)
 	}
 	return 0, fmt.Errorf("raw: scheme %q", p.Scheme)
 }
@@ -251,6 +346,10 @@ func (p *Printer) conn(ctx context.Context) (net.Conn, func(), error) {
 // Check tells whether the printer takes connections: it connects and
 // closes the connection, sending nothing.
 func (p *Printer) Check(ctx context.Context) error {
+	switch p.Scheme {
+	case "serial", "usb", "winspool":
+		return p.checkDevice()
+	}
 	_, closer, err := p.conn(ctx)
 	if err != nil {
 		return err
