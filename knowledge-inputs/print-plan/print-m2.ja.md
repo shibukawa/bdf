@@ -258,7 +258,7 @@ spool.db（yuruidb の bbolt ドライバ）
 
 ### 3.8 受けた入力の変換（S5）
 
-`spool` は変換器に依らず、`spool.Options.Convert func(ctx, r io.ReaderAt, size int64, name string) (*bdf.Document, []string, error)` を受ける。`bdf printd` が `converter/all` で作って渡す。変換は `convert` の段（`job-transforming`）で行い、HTTP の受け付けは速く返す。HTML と Markdown の外部の画像は取りに行かない（`remote=false`。サーバーが内側の網に届く入口にならないため）。Excel は `views=print`。変換の予算は変換器のまま。結果の `.bdf` を `docs` に置いて記録の `document.bdf` から指し、再送で変換し直さない。
+`spool` は変換器に依らず、`spool.Converter`（`Detect(r, size, name)` で形式を名指し、`Convert(ctx, r, size, format, name, password)` で `.bdf` にする）を受ける。`bdf printd` が `converter/all` で作って渡す（`cmd/bdf/printconv.go`）。名前は中身で分からない形式（CSV、Markdown）と、復号するまで分からない暗号化した Office 文書を拡張子で見分けるため。変換は `convert` の段（`job-transforming`）で行い、HTTP の受け付けは速く返す。HTML と Markdown の外部の画像は取りに行かない（`remote=false`。サーバーが内側の網に届く入口にならないため）。ページの無いビューが既定の形式は、刷れるビューで変換する: Excel は `views=print`、HTML と Markdown は `views=pages`（2026-10-20 実装時に足した。`bdf print` の直接の印刷も同じ）。パスワードで開いた入力の変換結果は同じパスワードで暗号化して置く。変換の予算は変換器のまま。結果の `.bdf` を `docs` に置いて記録の `document.bdf` から指し、再送で変換し直さない。
 
 ### 3.9 HTTP API（S4）
 
@@ -327,7 +327,8 @@ temp-dir: /var/tmp/bdf            # 受けている途中の文書と写しの�
 
 - `print/server/client`: `Submit(ctx, queue, name, r io.Reader, ticket, opts) (*Job, error)`（multipart を流しながら送る）、`Job`、`Jobs`、`Cancel` など、`Accounting`、`Watch(ctx, id)`（SSE。切れたらポーリングに落ちる）。API の JSON の形は `spool` の型（`Job`、`QueueInfo`、`PrinterInfo`）の JSON タグが決め、`server` はそれをそのまま書く。`client` は同じ形の型を自分で持つ（`spool` に依らない。形がずれないことはテストで確かめる。2026-10-20 実装時に改めた）。
 - `bdf print -server URL -queue Q`: チケットのフラグは m1 と同じ。既定は投入して帰る（ジョブの id を出す）。`-wait` で終わるまで待ち、終了コードは m1 と同じ意味（1 取り消し・中止、3 サーバーに届かない、4 拒まれた、5 キューが受け付けない、6 時間切れ）。`-server` のときは文書を変換せずにそのまま送る（変換はサーバー）。
-- `bdf jobs`: 一覧（id、状態、理由、キュー、名前、利用者、時刻）と `show`・`cancel`・`hold`・`release`・`retry`・`accounting`。`-json`。
+- `bdf jobs`: 一覧（id、状態、理由、キュー、名前、利用者、時刻）と `show`・`cancel`・`hold`・`release`・`retry`・`move`・`priority`・`password`・`accounting`。`-json`。`-user` は一覧を絞り、`act-as` のトークンではその利用者として振る舞う（既定はプロセスの利用者）。
+- `bdf print -server` は文書を変換せずに送るが、`$BDF_PASSWORD` は手元で `converter.CheckPassword`（`.bdf` は `Unlock`）で確かめ、要る文書にだけ送る。TLS の無い別の機械のサーバーへパスワードを送るのは `-allow-plaintext` のときだけ。チケットの `job-priority` と `job-hold-until` はスプールの優先度と保留にし、プリンタには送らない。
 - `bdf printers -server`: サーバーのキューとプリンタと状態。
 
 ### 3.12 観測（S4）

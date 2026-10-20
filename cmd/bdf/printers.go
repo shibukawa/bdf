@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/shibukawa/bdf/print/ipp"
@@ -66,20 +67,24 @@ func printersCmd(args []string) {
 	cups := fs.String("cups", "", "list the queues of a CUPS server at this URL, e.g. ipp://localhost:631/ (\"local\" for that one)")
 	timeout := fs.Duration("timeout", 2*time.Second, "how long to listen for printers on the network")
 	asJSON := fs.Bool("json", false, "write JSON")
+	sflags := addServerFlags(fs, false)
 	conn := addConnFlags(fs)
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, `usage: bdf printers [flags]
   lists the IPP printers that DNS-SD finds on the local network (mDNS),
-  or with -url what one printer supports, or with -cups the queues of a CUPS server`)
+  or with -url what one printer supports, or with -cups the queues of a CUPS server,
+  or with -server the queues and printers of a print server (bdf printd)`)
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
-	if fs.NArg() != 0 || (*url != "" && *cups != "") {
+	if fs.NArg() != 0 || (*url != "" && *cups != "") || (*sflags.url != "" && (*url != "" || *cups != "")) {
 		fs.Usage()
 		os.Exit(2)
 	}
 	ctx := context.Background()
 	switch {
+	case *sflags.url != "":
+		serverPrinters(ctx, sflags, *asJSON)
 	case *url != "":
 		p, err := conn.client(*url).GetPrinterAttributes(ctx)
 		check(err)
@@ -138,4 +143,58 @@ func writeJSON(w io.Writer, v any) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	check(enc.Encode(v))
+}
+
+// serverPrinters lists the queues and printers of a print server.
+func serverPrinters(ctx context.Context, sf *serverFlags, asJSON bool) {
+	c := sf.client("")
+	fail := func(err error) {
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "bdf:", err)
+			os.Exit(serverExit(err))
+		}
+	}
+	qs, err := c.Queues(ctx)
+	fail(err)
+	ps, err := c.Printers(ctx)
+	fail(err)
+	if asJSON {
+		writeJSON(os.Stdout, map[string]any{"queues": qs, "printers": ps})
+		return
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "QUEUE\tSTATE\tPOLICY\tPRINTERS\tPENDING\tHELD\tPROCESSING")
+	for _, q := range qs {
+		var state []string
+		if q.Paused {
+			state = append(state, "paused")
+		}
+		if q.Rejecting {
+			state = append(state, "rejecting")
+		}
+		if state == nil {
+			state = []string{"running"}
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%d\t%d\n", q.Name, strings.Join(state, ","), q.Policy, strings.Join(q.Printers, ","),
+			q.Jobs["pending"], q.Jobs["pending-held"], q.Jobs["processing"]+q.Jobs["processing-stopped"])
+	}
+	fmt.Fprintln(tw)
+	fmt.Fprintln(tw, "PRINTER\tSTATE\tJOBS\tMODEL\tURL")
+	for _, p := range ps {
+		state := p.State
+		switch {
+		case !p.Up:
+			state = "down"
+			if p.Error != "" {
+				state += ": " + p.Error
+			}
+		case !p.Accepting:
+			state += ", not accepting"
+		}
+		if r := strings.Join(p.Reasons, ","); r != "" && r != "none" {
+			state += " (" + r + ")"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", p.Name, state, p.Jobs, p.MakeModel, p.URL)
+	}
+	tw.Flush()
 }

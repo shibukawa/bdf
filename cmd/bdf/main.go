@@ -36,9 +36,12 @@ func usage() {
                                      write the pages as a PDF file (bdf pdf -h for flags)
   bdf print [flags] -printer <url | name> <file.bdf | dir | input>
                                      print on an IPP printer or a CUPS queue, without a driver:
-                                     as PDF, or as PWG Raster drawn here (bdf print -h for flags)
+                                     as PDF, or as PWG Raster drawn here (bdf print -h for flags);
+                                     with -server, on a queue of a print server (bdf printd)
   bdf printers [flags]               list the IPP printers on the network, the queues of a CUPS
                                      server (-cups), or what a printer supports (-url)
+  bdf jobs [flags] [show | cancel | hold | release | retry | move | priority | password | accounting]
+                                     list and change the jobs of a print server (bdf jobs -h)
   bdf printd -config printd.yaml [flags]
                                      run the print server: a spool, its queues and printers, and
                                      its HTTP API, in the foreground (bdf printd -h for flags)
@@ -155,6 +158,10 @@ func main() {
 		printersCmd(nil)
 		return
 	}
+	if len(os.Args) == 2 && os.Args[1] == "jobs" {
+		jobsCmd(nil)
+		return
+	}
 	if len(os.Args) < 3 {
 		usage()
 	}
@@ -177,6 +184,8 @@ func main() {
 		printersCmd(os.Args[2:])
 	case "printd":
 		printdCmd(os.Args[2:])
+	case "jobs":
+		jobsCmd(os.Args[2:])
 	case "render":
 		renderCmd(os.Args[2:])
 	case "ls":

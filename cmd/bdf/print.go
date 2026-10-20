@@ -19,6 +19,7 @@ import (
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/raster"
+	"github.com/shibukawa/bdf/print/server/client"
 )
 
 // Exit statuses of bdf print, besides 0 (printed) and 2 (usage).
@@ -31,15 +32,22 @@ const (
 )
 
 const printUsage = `usage: bdf print [flags] -printer <url | name> <file.bdf | dir | input>
+       bdf print [flags] -server <url> [-queue <queue>] <file.bdf | dir | input>
   prints a document on an IPP printer, or a queue of CUPS, without a driver:
   as a PDF file when the printer takes PDF (the document stays vectors), else
   as PWG Raster drawn here; an input in a format bdf generate converts is
   converted first. bdf printers lists the printers and what they support.
 
-exit status: 0 printed, 1 aborted, canceled or failed, 2 usage, 3 the printer
-could not be reached (or refused the certificate or password), 4 the printer
-refused the job (or, with -strict, what it asks), 5 the printer is stopped,
-6 the job is not done within -wait.`
+  With -server (or $BDF_SERVER, without -printer) the document goes as it is
+  to a queue of a print server (bdf printd), which converts and prints it;
+  bdf print writes the job's id and returns, or follows the job with -wait.
+  bdf jobs lists and changes the jobs.
+
+exit status: 0 printed (or queued), 1 aborted, canceled or failed, 2 usage,
+3 the printer or server could not be reached (or refused the certificate,
+password or token), 4 the printer or server refused the job (or, with
+-strict, what it asks), 5 the printer is stopped (or the queue does not
+take jobs), 6 the job is not done within -wait.`
 
 // printCmd prints a document.
 func printCmd(args []string) {
@@ -77,6 +85,8 @@ func printCmd(args []string) {
 	var params stringList
 	fs.Var(&params, "param", "option of the format of an input to convert, as name=value (repeatable; see bdf generate -h)")
 	quiet := fs.Bool("q", false, "do not print progress and warnings")
+	sflags := addServerFlags(fs, true)
+	queue := fs.String("queue", "", "the server's queue (default: its only queue)")
 	conn := addConnFlags(fs)
 	ropts := fontFlags(fs)
 	fs.Usage = func() {
@@ -84,9 +94,18 @@ func printCmd(args []string) {
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
-	if fs.NArg() != 1 || *printer == "" {
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if set["server"] && *printer != "" {
+		badUsage("print", "-printer prints here and -server on a print server: one of them")
+	}
+	toServer := *printer == "" && *sflags.url != ""
+	if fs.NArg() != 1 || *printer == "" && !toServer {
 		fs.Usage()
 		os.Exit(2)
+	}
+	if !toServer && set["queue"] {
+		badUsage("print", "-queue is a queue of a print server (-server)")
 	}
 	in := fs.Arg(0)
 	t := print.Ticket{Copies: *copies, Collate: *collate, MediaSource: *source, MediaType: *mtype, ColorMode: *color, Bilevel: *bilevel,
@@ -169,6 +188,33 @@ func printCmd(args []string) {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
+	if toServer {
+		for _, name := range []string{"param", "max-impressions", "font-dir", "no-system-fonts", "timeout", "username", "password-file", "insecure", "trust-store"} {
+			if set[name] {
+				badUsage("print", "-"+name+" is not for -server: the server converts and prints with its configuration")
+			}
+		}
+		if !set["copies"] {
+			t.Copies = 0 // the queue's
+		}
+		sp := serverPrint{queue: *queue, in: in, ticket: t, selection: selection, allow: *allow, quiet: *quiet,
+			options: client.JobOptions{View: *view, SkipRoles: skip, Strict: *strict}}
+		if *format != "auto" {
+			sp.options.Format = *format
+		}
+		if set["raster-if-lossy"] {
+			sp.options.RasterIfLossy = rasterIfLossy
+		}
+		// a job on a server is left to it unless asked
+		if set["wait"] {
+			sp.wait = *wait
+		}
+		if sp.queue == "" {
+			sp.queue = onlyQueue(ctx, sflags)
+		}
+		printToServer(ctx, sflags, *conn.user, sp)
+		return
+	}
 	target := *printer
 	if !strings.Contains(target, "://") {
 		target = findPrinter(ctx, target, *timeout)
@@ -198,8 +244,8 @@ func printCmd(args []string) {
 	} else {
 		opts := &converter.Options{FontDirs: ro.FontDirs, NoSystemFonts: ro.NoSystemFonts, Password: os.Getenv(passwordEnv), Pages: selection,
 			Params: map[string]string{}}
-		if f, err := converter.DetectFile(in); err == nil && f.Name == "xlsx" {
-			opts.Params["views"] = "print" // the pages Excel prints
+		if f, err := converter.DetectFile(in); err == nil && printViews[f.Name] != "" {
+			opts.Params["views"] = printViews[f.Name] // views of pages
 		}
 		for _, kv := range params {
 			name, value, ok := strings.Cut(kv, "=")

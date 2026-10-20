@@ -89,7 +89,8 @@ func printdCmd(args []string) {
 	default:
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		srv, err := server.New(ctx, cfg, server.Options{Log: log})
+		conv := printConverter{fontDirs: cfg.Fonts.Dirs, noSystem: cfg.Fonts.NoSystem}
+		srv, err := server.New(ctx, cfg, server.Options{Log: log, Converter: conv})
 		check(err)
 		if err := srv.Run(ctx); err != nil {
 			log.Error("printd", "err", err)

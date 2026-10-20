@@ -65,7 +65,7 @@ type fakeConverter struct {
 	password string // the password of encrypted inputs ("%PDF-encrypted")
 }
 
-func (c *fakeConverter) Detect(r io.ReaderAt, size int64) (string, bool) {
+func (c *fakeConverter) Detect(r io.ReaderAt, size int64, name string) (string, bool) {
 	b := make([]byte, 4)
 	if n, _ := r.ReadAt(b, 0); n == 4 && string(b) == "%PDF" {
 		return "pdf", true
@@ -73,7 +73,7 @@ func (c *fakeConverter) Detect(r io.ReaderAt, size int64) (string, bool) {
 	return "", false
 }
 
-func (c *fakeConverter) Convert(ctx context.Context, r io.ReaderAt, size int64, name, password string) (*bdf.Document, []string, error) {
+func (c *fakeConverter) Convert(ctx context.Context, r io.ReaderAt, size int64, format, name, password string) (*bdf.Document, []string, error) {
 	c.mu.Lock()
 	c.converts++
 	c.mu.Unlock()

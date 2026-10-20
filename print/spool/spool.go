@@ -52,11 +52,16 @@ var (
 // Converter turns documents that are not .bdf into documents: the spool
 // does not depend on the converters, the program that runs it does.
 type Converter interface {
-	// Detect names the format of a document, or says it is unknown.
-	Detect(r io.ReaderAt, size int64) (format string, ok bool)
-	// Convert makes a document of one; a password opens an encrypted one
-	// (ErrPasswordRequired and ErrWrongPassword tell why it does not).
-	Convert(ctx context.Context, r io.ReaderAt, size int64, name, password string) (*bdf.Document, []string, error)
+	// Detect names the format of a document, or says it is unknown; name
+	// is its file name, whose extension tells the formats whose content
+	// does not (CSV, Markdown).
+	Detect(r io.ReaderAt, size int64, name string) (format string, ok bool)
+	// Convert makes a document of one in a format Detect named; a
+	// password opens an encrypted one (ErrPasswordRequired and
+	// ErrWrongPassword tell why it does not). The document of an input
+	// that needed the password should be locked with it: the spool keeps
+	// it so.
+	Convert(ctx context.Context, r io.ReaderAt, size int64, format, name, password string) (*bdf.Document, []string, error)
 }
 
 // Queue is a queue of jobs and the printers its jobs are sent to.
@@ -499,7 +504,7 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 		if s.o.Converter == nil {
 			return Job{}, ErrUnknownFormat
 		}
-		format, ok := s.o.Converter.Detect(f, size)
+		format, ok := s.o.Converter.Detect(f, size, sub.Name)
 		if !ok {
 			return Job{}, ErrUnknownFormat
 		}

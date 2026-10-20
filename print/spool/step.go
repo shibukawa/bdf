@@ -74,7 +74,7 @@ func (s *Spool) convertDocument(ctx context.Context, j *Job) (*bdf.Document, []s
 		return nil, nil, err
 	}
 	defer r.Close()
-	return s.o.Converter.Convert(ctx, r, r.Size, j.Document.Name, s.password(j.ID))
+	return s.o.Converter.Convert(ctx, r, r.Size, j.Document.Format, j.Document.Name, s.password(j.ID))
 }
 
 // keepConverted stores a converted document, replacing one a crash left.
