@@ -1409,7 +1409,8 @@ func (f *filler) fillPicture(pic *ooxml.Node, pt picTag, sc *tag.Scope, at strin
 			return nil, nil
 		}
 		rid = f.c.r.InjectDrawing(func(o *bdf.Object, x, y, w, h float32) {
-			o.FillColor(bdf.RGB(0, 0, 0)).FillPath(o.AddPath(sym.Path(x, y, w, h)), bdf.NonZero)
+			o.FillColor(bdf.RGB(0, 0, 0))
+			sym.Fill(o, x, y, w, h)
 		})
 		w, h = float64(sym.W), float64(sym.H)
 		if alt == "" {

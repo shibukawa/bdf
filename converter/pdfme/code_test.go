@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/image/barcode"
 	"github.com/shibukawa/bdf/converter/internal/formbox"
 )
 
@@ -33,12 +34,24 @@ func TestEANText(t *testing.T) {
 				}
 			}
 			var texts []string
+			var marks []*barcode.Mark
 			if err := obj.Walk(func(in bdf.Instr) {
 				if in.Op == bdf.OpFillText {
 					texts = append(texts, in.Args[0].(string))
 				}
+				if in.Op == bdf.OpMark && byte(in.Args[0].(uint64)) == bdf.MarkBarcode {
+					m, err := barcode.ParseMark(in.Args[1].(string))
+					if err != nil {
+						t.Fatal(err)
+					}
+					marks = append(marks, m)
+				}
 			}); err != nil {
 				t.Fatal(err)
+			}
+			// the bars are marked as a symbol without its digits, which pdfme writes
+			if len(marks) != 1 || marks[0].Kind != barcode.EAN13 || marks[0].Text != "4901234567894" || !marks[0].NoText || marks[0].Quiet != barcode.NoQuiet {
+				t.Fatalf("marks %+v", marks)
 			}
 			var want []string
 			if include {

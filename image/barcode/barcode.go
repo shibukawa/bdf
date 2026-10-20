@@ -96,6 +96,7 @@ type Symbol struct {
 	Linear bool
 	mods   []bool
 	noText bool
+	opts   Options // what the symbol was encoded with (see Mark)
 }
 
 // At reports whether the module at column x and row y is dark.
@@ -231,6 +232,7 @@ func Encode(kind, text string, opts *Options) (*Symbol, error) {
 	}
 	s.Kind = k
 	s.noText = o.NoText
+	s.opts = o
 	return s, nil
 }
 

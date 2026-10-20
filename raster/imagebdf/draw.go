@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/image/barcode"
 	"github.com/shibukawa/bdf/internal/gauss"
 )
 
@@ -137,6 +138,10 @@ type drawer struct {
 	band  *bandRecord
 	visit int
 	cur   int
+
+	// symbol is what the BARCODE mark before the next drawing says of
+	// it, when the options do something with symbols (see drawSymbol)
+	symbol *barcode.Mark
 
 	// orient is the turn and mirror of the page on the image (Place):
 	// the offsets of shadows, which are in the units of the page and not
@@ -297,6 +302,7 @@ func (d *drawer) drawTop(h bdf.Hash, m matrix, clip *mask) {
 	top.st = initialState(m, clip)
 	top.stack, top.unsaved = nil, 0
 	d.again = d.enter(h)
+	d.symbol = nil
 	d.run(o)
 	// unwind groups and masks left open by a malformed stream
 	d.masks = d.masks[:0]
@@ -446,6 +452,12 @@ func (d *drawer) instr(in bdf.Instr) {
 			b.boxes = append(b.boxes, instrBox{})
 		}
 	}
+	// the symbol of a BARCODE mark is that of the next drawing, drawn or
+	// not
+	var symbol *barcode.Mark
+	if d.symbol != nil && isDraw(in.Op) {
+		symbol, d.symbol = d.symbol, nil
+	}
 	if d.again {
 		if d.reused >= d.most {
 			d.r.warnf("objects are drawn again too many times: the rest of them is not drawn")
@@ -464,7 +476,15 @@ func (d *drawer) instr(in bdf.Instr) {
 	d.cur = i
 	ctx := d.ctx
 	st := &ctx.st
+	if symbol != nil && d.drawSymbol(symbol) {
+		return
+	}
 	switch in.Op {
+	case bdf.OpMark:
+		if byte(u64(in, 0)) == bdf.MarkBarcode {
+			payload, _ := in.Args[1].(string)
+			d.barcodeMark(payload)
+		}
 	case bdf.OpSave:
 		if len(ctx.stack) >= maxStates {
 			d.r.warnf("more than %d states are saved at a time: the rest are not kept", maxStates)
@@ -1156,7 +1176,11 @@ func (d *drawer) image(i int, src *[4]float64, x, y, w, h float64) {
 		sx0: math.Max(0, lo(sx, sw)), sy0: math.Max(0, lo(sy, sh)),
 		sx1: math.Min(float64(pic.w), lo(sx, sw)+math.Abs(sw)), sy1: math.Min(float64(pic.h), lo(sy, sh)+math.Abs(sh)),
 	}
-	d.paint(cov, sh2, 1)
+	var paint shader = sh2
+	if d.r.opts.DitherImages {
+		paint = ditherShader{sh2}
+	}
+	d.paint(cov, paint, 1)
 	d.r.releaseMask(cov)
 }
 

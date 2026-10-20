@@ -29,6 +29,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/pdl"
 	"github.com/shibukawa/bdf/print/raw"
 )
 
@@ -98,6 +99,13 @@ type Printer struct {
 	// Proxy makes a printer that proxies fetch jobs from (proxy.go), with
 	// neither Client nor Raw.
 	Proxy bool
+	// Format is the language of a printer of labels, receipts or forms
+	// (print/pdl) that an IPP Client passes on as it is (a raw queue of
+	// CUPS): every job is sent in it. Profile is the printer that the
+	// language is written for, of a Client or of a Raw printer (nil for
+	// the profile of the Raw printer's URL).
+	Format  string
+	Profile *pdl.Profile
 }
 
 // Limits bound what the spool takes.

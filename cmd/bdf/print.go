@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/pdl"
 	"github.com/shibukawa/bdf/print/raster"
 	"github.com/shibukawa/bdf/print/raw"
 	"github.com/shibukawa/bdf/print/server/client"
@@ -44,6 +46,16 @@ const printUsage = `usage: bdf print [flags] -printer <url | name> <file.bdf | d
   socket://host:9100 and lpd://host/queue are sent PostScript, or PDF with
   ?format=pdf (with a PJL header; ?pjl=false leaves it out). Such a printer
   tells nothing of the job: bdf print returns once it has the document.
+
+  A printer of labels, receipts or forms is sent its own language, which
+  ?lang= names (zpl, sbpl, tpcl, escpos, escp) with ?profile= (a model,
+  see -profile list), ?dpi= and ?width=: over socket://, lpd://,
+  serial:///dev/ttyUSB0 (serial://COM3 on Windows; a Bluetooth printer is
+  a serial port), usb:///dev/usb/lp0 (Linux, BSD) or winspool:///<queue>
+  (a queue of Windows, its driver passing the data on). A raw queue of
+  CUPS (ipp://localhost:631/printers/<queue>) is sent it with -format zpl
+  … and -profile. The page is drawn in black and white at the printer's
+  dots; a label printer prints the QR codes and barcodes of forms itself.
 
   With -server (or $BDF_SERVER, without -printer) the document goes as it is
   to a queue of a print server (bdf printd), which converts and prints it;
@@ -78,7 +90,16 @@ func printCmd(args []string) {
 	bin := fs.String("output-bin", "", "output-bin")
 	hold := fs.String("hold", "", "job-hold-until: indefinite, night, weekend …")
 	priority := fs.Int("priority", 0, "job-priority, 1 to 100")
-	format := fs.String("format", "auto", "what to send: auto (PDF when the printer takes it, else PostScript, PWG Raster, Apple Raster or PCLm), pdf, ps, pwg-raster, urf or pclm")
+	format := fs.String("format", "auto", "what to send: auto (PDF when the printer takes it, else PostScript, PWG Raster, Apple Raster or PCLm), pdf, ps, pwg-raster, urf or pclm; or a language of labels, receipts or forms: zpl, sbpl, tpcl, escpos, escp")
+	profile := fs.String("profile", "", "the model of a printer of labels, receipts or forms (its language, dots and width; list: the models known)")
+	darkness := fs.Int("darkness", 0, "print-darkness of a label or receipt printer: -100 (lightest) to 100 (darkest)")
+	speed := fs.Float64("speed", 0, "print-speed of a label printer, in mm a second")
+	tracking := fs.String("media-tracking", "", "labels: continuous, gap (or web) or mark")
+	gap := fs.Float64("label-gap", 0, "the gap between labels in mm (TPCL; default 3)")
+	cut := fs.String("cut", "", "cut none, after each page (page) or after the last (job); default: receipts after each, labels never")
+	drawer := fs.Int("drawer", 0, "open the cash drawer of a receipt printer at the end: 1 (pin 2) or 2 (pin 5)")
+	perforation := fs.Float64("perforation-skip", 0, "skip over the perforation of a continuous form, in mm (ESC/P)")
+	noPrinterBarcodes := fs.Bool("no-printer-barcodes", false, "draw the QR codes and barcodes that a label printer would print itself")
 	rasterIfLossy := fs.Bool("raster-if-lossy", false, "send PWG Raster when the PDF file would leave out what the page draws (FILTER, composite operations)")
 	view := fs.String("view", "", "id of the view to print (default: the first view of pages)")
 	var skip stringList
@@ -101,6 +122,10 @@ func printCmd(args []string) {
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
+	if *profile == "list" {
+		listProfiles()
+		return
+	}
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	if set["server"] && *printer != "" {
@@ -117,7 +142,23 @@ func printCmd(args []string) {
 	in := fs.Arg(0)
 	t := print.Ticket{Copies: *copies, Collate: *collate, MediaSource: *source, MediaType: *mtype, ColorMode: *color, Bilevel: *bilevel,
 		Resolution: *resolution, Scaling: raster.Scaling(*scaling), OutputBin: *bin, HoldUntil: *hold, Priority: *priority,
-		JobName: *jobName}
+		JobName: *jobName, Darkness: *darkness, Speed: int(math.Round(*speed * 100)), MediaTracking: *tracking,
+		LabelGap: int(math.Round(*gap * 100)), Cut: *cut, CashDrawer: *drawer, PerforationSkip: int(math.Round(*perforation * 100)),
+		NoPrinterBarcodes: *noPrinterBarcodes}
+	var prof *pdl.Profile
+	if *profile != "" {
+		p, ok := pdl.LookupProfile(*profile)
+		if !ok {
+			badUsage("print", "-profile "+*profile+": not a model (-profile list)")
+		}
+		prof = &p
+		if *format == "auto" {
+			*format = p.Language
+		}
+	}
+	if err := t.Check(); err != nil {
+		badUsage("print", err.Error())
+	}
 	switch *sides {
 	case "", "one-sided", "two-sided-long-edge", "two-sided-short-edge":
 		t.Sides = *sides
@@ -301,7 +342,7 @@ func printCmd(args []string) {
 	if w < 0 {
 		w = 0
 	}
-	po := &print.Options{Ticket: t, Format: *format, RasterIfLossy: *rasterIfLossy, View: *view, SkipRoles: skip,
+	po := &print.Options{Ticket: t, Format: *format, Profile: prof, RasterIfLossy: *rasterIfLossy, View: *view, SkipRoles: skip,
 		Strict: *strict, FontDirs: ro.FontDirs, NoSystemFonts: ro.NoSystemFonts, Wait: w, MaxImpressions: *maxImpressions,
 		Progress: func(e print.Event) {
 			switch e.Kind {
@@ -410,4 +451,12 @@ func findPrinter(ctx context.Context, name string, timeout time.Duration) string
 	}
 	os.Exit(exitConnection)
 	return ""
+}
+
+// listProfiles writes the models of printers of labels, receipts and
+// forms that -profile and ?profile= know.
+func listProfiles() {
+	for _, p := range pdl.Profiles() {
+		fmt.Printf("%-12s %-8s %3d dpi %5d dots (%.0f mm)  %s\n", p.Name, pdl.Title(p.Language), p.DPI, p.Width, float64(p.Width)*25.4/float64(p.DPI), p.Title)
+	}
 }

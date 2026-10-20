@@ -57,6 +57,33 @@ type Ticket struct {
 	HoldUntil string `json:"job-hold-until,omitempty"`
 	// Priority is job-priority, 1 to 100; 0 for the default.
 	Priority int `json:"job-priority,omitempty"`
+
+	// What a printer of labels, receipts or forms is asked (print/pdl):
+	// Darkness is print-darkness (-100 to 100, 0 the printer's), Speed
+	// print-speed (hundredths of a millimetre a second), MediaTracking
+	// media-tracking ("continuous", "gap", "mark"), as PWG 5100.13 names
+	// them; an IPP printer that supports the first two is asked them.
+	Darkness      int    `json:"print-darkness,omitempty"`
+	Speed         int    `json:"print-speed,omitempty"`
+	MediaTracking string `json:"media-tracking,omitempty"`
+	// LabelGap is the gap between labels in hundredths of a millimetre
+	// (TPCL asks it); 0 for 3 mm.
+	LabelGap int `json:"bdf-label-gap,omitempty"`
+	// Cut is "none", "page" or "job": after each label or receipt, or
+	// after the last ("" for the language's default).
+	Cut string `json:"bdf-cut,omitempty"`
+	// CashDrawer opens the drawer on a receipt printer's pin 2 (1) or 5
+	// (2) at the end of the job.
+	CashDrawer int `json:"bdf-cash-drawer,omitempty"`
+	// PerforationSkip skips the perforation of a continuous form, in
+	// hundredths of a millimetre (ESC/P).
+	PerforationSkip int `json:"bdf-perforation-skip,omitempty"`
+	// NoPrinterBarcodes draws the QR codes and barcodes that a label
+	// printer would print with its own commands.
+	NoPrinterBarcodes bool `json:"bdf-no-printer-barcodes,omitempty"`
+	// PrintMode is "raster" or "text" (the characters of a print image in
+	// the printer's fonts; not yet).
+	PrintMode string `json:"bdf-print-mode,omitempty"`
 }
 
 // Merge fills what a ticket does not ask with what defaults ask: the
@@ -98,6 +125,15 @@ func (t Ticket) Merge(defaults Ticket) Ticket {
 	set(&t.OutputBin, defaults.OutputBin)
 	set(&t.HoldUntil, defaults.HoldUntil)
 	setInt(&t.Priority, defaults.Priority)
+	setInt(&t.Darkness, defaults.Darkness)
+	setInt(&t.Speed, defaults.Speed)
+	set(&t.MediaTracking, defaults.MediaTracking)
+	setInt(&t.LabelGap, defaults.LabelGap)
+	set(&t.Cut, defaults.Cut)
+	setInt(&t.CashDrawer, defaults.CashDrawer)
+	setInt(&t.PerforationSkip, defaults.PerforationSkip)
+	t.NoPrinterBarcodes = t.NoPrinterBarcodes || defaults.NoPrinterBarcodes
+	set(&t.PrintMode, defaults.PrintMode)
 	return t
 }
 
@@ -240,6 +276,7 @@ func jobAttributes(t *Ticket, p *ipp.Printer, format, media string, printerCopie
 		_, ok := p.Has("job-priority-supported")
 		a.add("job-priority", ok, ipp.Integer(t.Priority))
 	}
+	deviceJobAttributes(t, p, &a)
 	return a
 }
 
@@ -274,6 +311,13 @@ func (t *Ticket) check() error {
 	}
 	if t.Resolution < 0 || t.Resolution > 4800 {
 		return fmt.Errorf("print: %d dpi", t.Resolution)
+	}
+	if t.LabelGap < 0 || t.PerforationSkip < 0 {
+		return fmt.Errorf("print: a gap or a skip of less than nothing")
+	}
+	s := t.deviceSettings()
+	if err := s.Check(); err != nil {
+		return fmt.Errorf("print: %w", err)
 	}
 	return nil
 }

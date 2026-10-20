@@ -23,6 +23,7 @@ import (
 
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/pdl"
 	"github.com/shibukawa/bdf/print/raw"
 	"github.com/shibukawa/bdf/print/spool"
 )
@@ -144,9 +145,15 @@ type PrinterConfig struct {
 	// Proxy makes a printer that proxies of branches fetch the jobs of
 	// (IPP INFRA), with no URL: the bdf printd of a branch, behind a NAT,
 	// whose upstreams name the queue.
-	Proxy        bool   `yaml:"proxy"`
-	URL          string `yaml:"url"`
+	Proxy bool   `yaml:"proxy"`
+	URL   string `yaml:"url"`
+	// Format is ps or pdf for a printer of 9100 or LPD, or the language
+	// of a printer of labels, receipts or forms (zpl, sbpl, tpcl, escpos,
+	// escp) on any of them: a raw queue of CUPS too. Profile names its
+	// model (bdf print -profile list); the URL's lang, profile, dpi and
+	// width say the same of a raw printer.
 	Format       string `yaml:"format"`
+	Profile      string `yaml:"profile"`
 	PJL          *bool  `yaml:"pjl"`
 	Username     string `yaml:"username"`
 	PasswordEnv  string `yaml:"password-env"`
@@ -312,7 +319,7 @@ func (c *Config) check() error {
 	}
 	for name, p := range c.Printers {
 		if p.Proxy {
-			if p.URL != "" || p.Format != "" || p.PJL != nil || p.Username != "" || p.PasswordEnv != "" || p.PasswordFile != "" || p.Fingerprint != "" || p.Insecure {
+			if p.URL != "" || p.Format != "" || p.Profile != "" || p.PJL != nil || p.Username != "" || p.PasswordEnv != "" || p.PasswordFile != "" || p.Fingerprint != "" || p.Insecure {
 				return fmt.Errorf("printer %s: a printer of proxies has no url, format, pjl, user, password or certificate", name)
 			}
 			continue
@@ -322,12 +329,17 @@ func (c *Config) check() error {
 				return fmt.Errorf("printer %s: %w", name, err)
 			}
 			if p.Username != "" || p.PasswordEnv != "" || p.PasswordFile != "" || p.Fingerprint != "" || p.Insecure {
-				return fmt.Errorf("printer %s: a printer of 9100 or LPD has no user, password or certificate", name)
+				return fmt.Errorf("printer %s: a printer of 9100, LPD or a device has no user, password or certificate", name)
 			}
 			continue
 		}
-		if p.Format != "" || p.PJL != nil {
-			return fmt.Errorf("printer %s: format and pjl are for printers of 9100 or LPD (socket://, lpd://)", name)
+		if p.PJL != nil {
+			return fmt.Errorf("printer %s: pjl is for printers of 9100 or LPD (socket://, lpd://)", name)
+		}
+		if p.Format != "" || p.Profile != "" {
+			if _, err := p.profile(); err != nil {
+				return fmt.Errorf("printer %s: %w", name, err)
+			}
 		}
 		if _, _, err := ipp.ParseURL(p.URL); err != nil {
 			return fmt.Errorf("printer %s: %w", name, err)
@@ -579,7 +591,33 @@ func (p PrinterConfig) raw(user string) (*raw.Printer, error) {
 	case "pdf":
 		r.Format = raw.FormatPDF
 	default:
-		return nil, fmt.Errorf("format %q: ps or pdf", p.Format)
+		if pdl.Language(p.Format) == "" {
+			return nil, fmt.Errorf("format %q: ps, pdf, zpl, sbpl, tpcl, escpos or escp", p.Format)
+		}
+		r.Format = pdl.Language(p.Format)
+	}
+	if r.Format == "" {
+		prof, ok := pdl.LookupProfile(r.Profile)
+		if !ok {
+			return nil, fmt.Errorf("profile %q: not a model (bdf print -profile list)", r.Profile)
+		}
+		r.Format = prof.Language
+	}
+	if p.Profile != "" {
+		prof, ok := pdl.LookupProfile(p.Profile)
+		if !ok {
+			return nil, fmt.Errorf("profile %q: not a model (bdf print -profile list)", p.Profile)
+		}
+		if raw.IsLanguage(r.Format) && r.Format != prof.Language {
+			return nil, fmt.Errorf("profile %s is of %s, not %s", p.Profile, pdl.Title(prof.Language), pdl.Title(r.Format))
+		}
+		r.Format, r.Profile = prof.Language, p.Profile
+	}
+	if raw.IsLanguage(r.Format) {
+		// the URL's profile, dpi and width, checked now
+		if _, err := pdl.ParseProfile(r.Profile, r.Format, r.DPI, r.Width); err != nil {
+			return nil, err
+		}
 	}
 	if p.PJL != nil {
 		r.PJL = fmt.Sprint(*p.PJL)
@@ -588,6 +626,15 @@ func (p PrinterConfig) raw(user string) (*raw.Printer, error) {
 		r.User = user
 	}
 	return r, nil
+}
+
+// profile returns the profile of an IPP printer of a language (a raw
+// queue of CUPS): its profile, or the default one of its format.
+func (p PrinterConfig) profile() (pdl.Profile, error) {
+	if p.Format != "" && pdl.Language(p.Format) == "" {
+		return pdl.Profile{}, fmt.Errorf("format %q: an IPP printer is given the language of a printer of labels, receipts or forms (zpl, sbpl, tpcl, escpos, escp), or none", p.Format)
+	}
+	return pdl.ParseProfile(p.Profile, p.Format, "", "")
 }
 
 func (p PrinterConfig) client(user string) (*ipp.Client, error) {
@@ -630,7 +677,15 @@ func (c *Config) spoolOptions() (spool.Options, error) {
 		if err != nil {
 			return o, fmt.Errorf("printer %s: %w", name, err)
 		}
-		o.Printers = append(o.Printers, spool.Printer{Name: name, Client: cl})
+		sp := spool.Printer{Name: name, Client: cl}
+		if pc.Format != "" || pc.Profile != "" {
+			prof, err := pc.profile()
+			if err != nil {
+				return o, fmt.Errorf("printer %s: %w", name, err)
+			}
+			sp.Format, sp.Profile = prof.Language, &prof
+		}
+		o.Printers = append(o.Printers, sp)
 	}
 	for _, name := range sortedKeys(c.Queues) {
 		q := c.Queues[name]

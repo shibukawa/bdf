@@ -407,7 +407,7 @@ func (s *sheetCtx) paintPictures() {
 			o.ClipRect(f32(b.x-t.ox), f32(b.y-t.oy), f32(b.w), f32(b.h))
 			if p.sym != nil {
 				t.fillColor(bdf.RGB(0, 0, 0))
-				o.FillPath(o.AddPath(p.sym.Path(f32(x-t.ox), f32(y-t.oy), f32(w), f32(h))), bdf.NonZero)
+				p.sym.Fill(o, f32(x-t.ox), f32(y-t.oy), f32(w), f32(h))
 			} else {
 				o.Image(t.cv.Image(p.hash), f32(x-t.ox), f32(y-t.oy), f32(w), f32(h))
 			}

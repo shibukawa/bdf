@@ -5,7 +5,7 @@ import type { ObjectPart, Font, Hash, PathData, Rect, Glyph } from "./types.js";
 /** MARK kinds (docs/spec.md §7.8). */
 export const Mark = {
   PARAGRAPH: 0, LINE: 1, CELL: 2, BOX: 3, ALT_TEXT: 4, WRAP: 5,
-  HEADING: 6, LIST: 7, LIST_ITEM: 8, TABLE: 9, FIGURE: 10, END: 11, LANG: 12,
+  HEADING: 6, LIST: 7, LIST_ITEM: 8, TABLE: 9, FIGURE: 10, END: 11, LANG: 12, BARCODE: 13,
 } as const;
 
 /** Separators between consecutive runs (docs/spec.md §7.9). */

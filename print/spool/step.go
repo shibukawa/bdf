@@ -153,6 +153,10 @@ func (s *Spool) send(ctx context.Context, e *entry, p *printerState) {
 	if format == "" || format == "auto" {
 		format = q.Format
 	}
+	if p.Format != "" {
+		// a queue of CUPS that passes on the language of its printer
+		format = p.Format
+	}
 	lossy := q.RasterIfLossy
 	if j.Options.RasterIfLossy != nil {
 		lossy = *j.Options.RasterIfLossy
@@ -171,7 +175,7 @@ func (s *Spool) send(ctx context.Context, e *entry, p *printerState) {
 		}
 	}()
 	po := &print.Options{
-		Ticket: ticket, Format: format, RasterIfLossy: lossy, View: j.Options.View, SkipRoles: j.Options.SkipRoles, Strict: j.Options.Strict,
+		Ticket: ticket, Format: format, Profile: p.Profile, RasterIfLossy: lossy, View: j.Options.View, SkipRoles: j.Options.SkipRoles, Strict: j.Options.Strict,
 		FontFS: s.o.FontFS, FontDirs: s.o.FontDirs, NoSystemFonts: s.o.NoSystemFonts, MaxImpressions: s.o.Limits.MaxImpressions,
 		Printer: caps,
 		OnCreated: func(js *ipp.JobStatus) error {

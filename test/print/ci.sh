@@ -7,7 +7,9 @@
 # and bdf printd's spool in front of them across a restart, and checks
 # what the printers received; Ghostscript draws the PostScript. Then bdf
 # printd as an IPP printer: ipptool's checks of IPP Everywhere, jobs of
-# ipptool, its DNS-SD records, and a CUPS queue made of it.
+# ipptool, its DNS-SD records, and a CUPS queue made of it. Last, the
+# languages of labels and receipts: ZPL over 9100, and ESC/POS through a
+# raw queue of CUPS.
 # The CI job "print" runs it.
 #
 # Needs ippeveprinter (cups-ipp-utils), cupsd and lpadmin (cups) with
@@ -45,7 +47,7 @@ ippeveprinter -2 -p "$psport" -n localhost -k -d "$psspool" -s 120 \
 pspid=$!
 python3 test/print/raw9100.py "$rawport" "$rawdir" &
 rawpid=$!
-trap 'kill $pid $pspid $rawpid ${printd:-} 2>/dev/null || true; sudo lpadmin -x bdftest 2>/dev/null || true; sudo lpadmin -x bdfserver 2>/dev/null || true' EXIT
+trap 'kill $pid $pspid $rawpid ${printd:-} 2>/dev/null || true; sudo lpadmin -x bdftest 2>/dev/null || true; sudo lpadmin -x bdfserver 2>/dev/null || true; sudo lpadmin -x bdfraw 2>/dev/null || true' EXIT
 for _ in $(seq 30); do
   if "$bdf" printers -url "$url" >"$spool/printer.txt" 2>/dev/null; then break; fi
   sleep 1
@@ -232,4 +234,25 @@ wait "$printd"
 printd=
 "$bdf" printd -config "$work/printd.yaml" -compact
 cat "$work/printd.log"
+
+# labels over 9100 (ZPL), receipts through a raw queue of CUPS (ESC/POS,
+# passed on to the same printer of the raw port as it is)
+"$bdf" print -printer "socket://127.0.0.1:$rawport?profile=zd421-203" "${fonts[@]}" -media 104x150mm -copies 2 -collate uncollated -darkness 20 testdata/form/rows.bdf
+zpl=$(ls -t "$rawdir"/*.prn | head -1)
+test "$(head -c 3 "$zpl")" = '^XA'
+grep -aqF '^PW831^LL1198' "$zpl"
+grep -aqF '^GFA,' "$zpl"
+test "$(grep -acF '^PQ2' "$zpl")" -eq 3 # each page of three twice
+before=$(received $'\x1b@' "$rawdir")
+sudo lpadmin -p bdfraw -E -v "socket://127.0.0.1:$rawport" -m raw
+"$bdf" printers -url ipp://localhost:631/printers/bdfraw | grep '^formats:'
+"$bdf" print -printer ipp://localhost:631/printers/bdfraw -profile pos-80 "${fonts[@]}" -drawer 1 testdata/form/rows.bdf
+for _ in $(seq 60); do
+  if [ "$(received $'\x1b@' "$rawdir")" -gt "$before" ]; then break; fi
+  sleep 1
+done
+test "$(received $'\x1b@' "$rawdir")" -gt "$before"
+pos=$(ls -t "$rawdir"/*.prn | head -1)
+grep -aqF $'\x1dv0' "$pos"
+grep -aqF $'\x1dVB' "$pos"
 echo "print: ok"
