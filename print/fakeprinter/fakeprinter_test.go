@@ -361,7 +361,8 @@ func TestCUPS(t *testing.T) {
 	ctx := context.Background()
 	server := client(base + "/")
 	printers, err := server.CupsGetPrinters(ctx)
-	if err != nil || len(printers) != 3 || printers[0].Name != "office" || !strings.HasSuffix(printers[0].URI, "/printers/office") {
+	if err != nil || len(printers) != 4 || printers[0].Name != "office" || !strings.HasSuffix(printers[0].URI, "/printers/office") ||
+		!printers[3].IsClass || printers[3].Name != "floor" {
 		t.Fatalf("%+v %v", printers, err)
 	}
 	// a class sends its jobs to its members in turn; the ids are the

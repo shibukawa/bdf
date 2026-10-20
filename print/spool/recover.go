@@ -97,6 +97,12 @@ func (s *Spool) recoverJob(ctx context.Context, e *entry) {
 		}
 	}
 	js, err := p.client.GetJobAttributes(actx, j.Printer.JobID)
+	if err == nil && !sameJob(&j, js) {
+		// the printer was restarted and counts its ids again: the id is
+		// another's job now, and this one is gone with what it kept
+		s.o.Log.Warn("recovery: the printer's job of the id is another's", "job", j.ID, "printer", p.Name, "printer-job", js.ID, "name", js.Name)
+		err = &ipp.StatusError{Op: ipp.OpGetJobAttributes, Status: ipp.StatusClientErrorNotFound}
+	}
 	switch {
 	case ipp.IsStatus(err, ipp.StatusClientErrorNotFound):
 		if j.Printer.Sent {

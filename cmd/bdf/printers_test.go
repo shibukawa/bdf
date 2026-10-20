@@ -153,3 +153,27 @@ func TestPrintRaw(t *testing.T) {
 		t.Errorf("bad URL: exit %d: %s", code, errOut)
 	}
 }
+
+// TestPrintersCUPS lists the queues of a CUPS server (its printers and a
+// class) and prints to the class, which passes the job to a member.
+func TestPrintersCUPS(t *testing.T) {
+	c := fakeprinter.CUPSPreset()
+	base := fakeprinter.StartCUPS(t, c)
+	code, out, errOut := runOut(t, "printers", "-cups", base+"/")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	for _, want := range []string{"office\t" + base + "/printers/office\tidle\tBDF Fake Office MFP", "laser\t", "ps\t", "floor\t" + base + "/classes/floor\tidle"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("no %q in\n%s", want, out)
+		}
+	}
+	doc := filepath.Join("..", "..", "testdata", "form", "rows.bdf")
+	code, _, errOut = runOut(t, append([]string{"print", "-printer", base + "/classes/floor", "-media", "a4"}, append(testFontFlags, doc)...)...)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if n := len(c.Printer("office").Jobs()) + len(c.Printer("laser").Jobs()); n != 1 {
+		t.Errorf("the class's members have %d jobs", n)
+	}
+}

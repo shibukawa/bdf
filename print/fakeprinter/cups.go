@@ -353,35 +353,17 @@ func (c *CUPS) getJobs(q *request, ps []*Printer) {
 func (c *CUPS) serveCUPS(q *request) {
 	switch q.req.Op() {
 	case ipp.OpCupsGetPrinters:
+		// the printers, then the classes (as cupsd lists them: a class is
+		// a destination too, told by the bit of its printer-type)
 		for _, p := range c.Printers() {
 			p.lock()
 			attrs := p.cupsAttrs(q, c.uri(q, "printers", p.Name))
 			p.mu.Unlock()
 			q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagPrinter, Attrs: filter(attrs, requested(q.op, nil), nil)})
 		}
+		c.listClasses(q)
 	case ipp.OpCupsGetClasses:
-		c.mu.Lock()
-		classes := slices.Clone(c.classes)
-		c.mu.Unlock()
-		for _, k := range classes {
-			var names, uris []ipp.Value
-			for _, n := range k.members {
-				names = append(names, ipp.Name(n))
-				uris = append(uris, ipp.URI(c.uri(q, "printers", n)))
-			}
-			attrs := []ipp.Attribute{
-				ipp.Attr("printer-name", ipp.Name(k.name)),
-				ipp.Attr("printer-uri-supported", ipp.URI(c.uri(q, "classes", k.name))),
-				ipp.Attr("printer-info", ipp.Text(k.name)),
-				ipp.Attr("printer-state", ipp.Enum(int(ipp.PrinterIdle))),
-				ipp.Attr("printer-state-reasons", ipp.Keyword("none")),
-				ipp.Attr("printer-is-accepting-jobs", ipp.Boolean(k.accepting)),
-				ipp.Attr("printer-type", ipp.Integer(1)), // CUPS_PRINTER_CLASS
-				ipp.Attr("member-names", names...),
-				ipp.Attr("member-uris", uris...),
-			}
-			q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagPrinter, Attrs: filter(attrs, requested(q.op, nil), nil)})
-		}
+		c.listClasses(q)
 	case ipp.OpCupsGetDefault:
 		c.mu.Lock()
 		def := c.def
@@ -426,6 +408,33 @@ func (c *CUPS) serveCUPS(q *request) {
 		q.fail(ipp.StatusClientErrorNotFound, "no such destination")
 	case ipp.OpCupsMoveJob:
 		c.moveJob(q)
+	}
+}
+
+// listClasses adds the classes to an answer.
+func (c *CUPS) listClasses(q *request) {
+	c.mu.Lock()
+	classes := slices.Clone(c.classes)
+	c.mu.Unlock()
+	for _, k := range classes {
+		var names, uris []ipp.Value
+		for _, n := range k.members {
+			names = append(names, ipp.Name(n))
+			uris = append(uris, ipp.URI(c.uri(q, "printers", n)))
+		}
+		attrs := []ipp.Attribute{
+			ipp.Attr("printer-name", ipp.Name(k.name)),
+			ipp.Attr("printer-uri-supported", ipp.URI(c.uri(q, "classes", k.name))),
+			ipp.Attr("printer-info", ipp.Text(k.name)),
+			ipp.Attr("printer-make-and-model", ipp.Text("Class of "+strings.Join(k.members, ", "))),
+			ipp.Attr("printer-state", ipp.Enum(int(ipp.PrinterIdle))),
+			ipp.Attr("printer-state-reasons", ipp.Keyword("none")),
+			ipp.Attr("printer-is-accepting-jobs", ipp.Boolean(k.accepting)),
+			ipp.Attr("printer-type", ipp.Integer(1)), // CUPS_PRINTER_CLASS
+			ipp.Attr("member-names", names...),
+			ipp.Attr("member-uris", uris...),
+		}
+		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagPrinter, Attrs: filter(attrs, requested(q.op, nil), nil)})
 	}
 }
 
