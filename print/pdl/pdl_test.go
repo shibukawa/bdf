@@ -5,7 +5,9 @@ import (
 	"image"
 	"image/png"
 	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/shibukawa/bdf"
@@ -72,10 +74,33 @@ func wantDots(t *testing.T, d *bdf.Document, v *bdf.View, page int, l label, dro
 	return bm
 }
 
+// dump writes a bitmap as a PNG file in $BDF_PDL_OUT, to look at.
+func dump(t *testing.T, name string, b *Bitmap) {
+	dir := os.Getenv("BDF_PDL_OUT")
+	if dir == "" {
+		return
+	}
+	img := image.NewGray(image.Rect(0, 0, b.W, b.H))
+	for y := 0; y < b.H; y++ {
+		for x := 0; x < b.W; x++ {
+			if !b.Black(x, y) {
+				img.Pix[y*img.Stride+x] = 255
+			}
+		}
+	}
+	f, err := os.Create(filepath.Join(dir, name+".png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	png.Encode(f, img)
+}
+
 // sameDots compares bitmaps, the ones of a printer that may be wider (the
 // dots a command rounds up to bytes) being white past the other's width.
 func sameDots(t *testing.T, what string, got, want *Bitmap) {
 	t.Helper()
+	dump(t, strings.NewReplacer(" ", "-", "/", "-").Replace(what), got)
 	if got.H != want.H || got.W < want.W {
 		t.Fatalf("%s: %d × %d dots, want %d × %d", what, got.W, got.H, want.W, want.H)
 	}
@@ -140,5 +165,9 @@ func TestSequence(t *testing.T) {
 	}
 	if p, n := rd.sequence(false); len(p) != 4 || p[1] != 0 || n != 1 {
 		t.Errorf("uncollated: %v %d", p, n)
+	}
+	rd.o.Pages, rd.o.Collate = []int{3}, true
+	if p, n := rd.sequence(true); len(p) != 1 || n != 2 {
+		t.Errorf("one page, collated: %v %d", p, n)
 	}
 }

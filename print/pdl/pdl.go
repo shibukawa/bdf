@@ -279,7 +279,8 @@ func (rd *render) sequence(printerCopies bool) (pages []int, each int) {
 	switch {
 	case o.Copies == 1:
 		return o.Pages, 1
-	case printerCopies && !o.Collate:
+	case printerCopies && (!o.Collate || len(o.Pages) == 1):
+		// (the copies of one page are collated as they are)
 		return o.Pages, o.Copies
 	case o.Collate:
 		for range o.Copies {
