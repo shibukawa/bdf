@@ -596,6 +596,13 @@ func (p PrinterConfig) raw(user string) (*raw.Printer, error) {
 		}
 		r.Format = pdl.Language(p.Format)
 	}
+	if r.Format == "" {
+		prof, ok := pdl.LookupProfile(r.Profile)
+		if !ok {
+			return nil, fmt.Errorf("profile %q: not a model (bdf print -profile list)", r.Profile)
+		}
+		r.Format = prof.Language
+	}
 	if p.Profile != "" {
 		prof, ok := pdl.LookupProfile(p.Profile)
 		if !ok {

@@ -38,6 +38,9 @@ printers:
   mfp2: { url: "ipp://192.0.2.20/ipp/print", username: print, password-env: MFP2_PASSWORD }
   old-laser: { url: "socket://192.0.2.30:9100" }                     # no IPP: PostScript over the raw port
   plotter: { url: "lpd://192.0.2.31/lp1", format: pdf, pjl: true }   # PDF over LPD, with a PJL header
+  labels: { url: "socket://192.0.2.40:9100", profile: zd421-203 }    # ZPL labels
+  register: { url: "serial:///dev/ttyUSB0?baud=19200", format: escpos }   # ESC/POS receipts
+  zebra-usb: { url: "ipp://localhost:631/printers/zebra", profile: zd421-300 }   # a raw queue of CUPS
 queues:
   office:
     printers: [mfp1, mfp2]
@@ -54,7 +57,7 @@ fonts: { dirs: [/usr/share/fonts/bdf], no-system: false }
 temp-dir: /var/tmp/bdf
 ```
 
-- **printers**: the URL (`ipp://`, `ipps://`, `http://`, `https://`; a CUPS queue is `ipp://host:631/printers/<name>`), the user and password of a printer that asks for Basic authentication (`password-env` or `password-file`), and the certificate of an `ipps` printer: `fingerprint` pins it; without one the first certificate seen is recorded in the spool and required after, as CUPS does; `insecure: true` takes any. A printer without IPP is `socket://host:9100` or `lpd://host/queue`, with the `format` it takes (`ps`, the default, or `pdf`) and `pjl` (a PJL header before the document; by default for PDF only). It is sent PostScript or PDF with the ticket in the file, tells nothing of its jobs, and is connected to only while it is not known to be up.
+- **printers**: the URL (`ipp://`, `ipps://`, `http://`, `https://`; a CUPS queue is `ipp://host:631/printers/<name>`), the user and password of a printer that asks for Basic authentication (`password-env` or `password-file`), and the certificate of an `ipps` printer: `fingerprint` pins it; without one the first certificate seen is recorded in the spool and required after, as CUPS does; `insecure: true` takes any. A printer without IPP is `socket://host:9100` or `lpd://host/queue`, with the `format` it takes (`ps`, the default, or `pdf`) and `pjl` (a PJL header before the document; by default for PDF only). It is sent PostScript or PDF with the ticket in the file, tells nothing of its jobs, and is connected to only while it is not known to be up. A printer of labels, receipts or forms ([below](#labels-receipts-and-forms)) has its language as `format` (`zpl`, `sbpl`, `tpcl`, `escpos`, `escp`) or its model as `profile`, over `socket://`, `lpd://`, `serial://`, `usb://` or `winspool://` — or over IPP to a raw queue of CUPS, which passes the data on.
 - **queues**: the printers in order, the policy, the ticket's `defaults` (IPP's names: `copies`, `sides`, `media`, `media-source`, `media-type`, `print-color-mode`, `print-quality`, `printer-resolution`, `print-scaling`, `orientation-requested`, `finishings`, `output-bin` …), which a job's ticket asks over, and how it is sent.
 - **retention**: how long the documents of the jobs done are kept (7 days), and their records, which are the accounting (400 days).
 - **limits**: the size of a document (256 MiB; beyond it 413), the jobs not done and their documents (10,000 and 10 GiB; beyond them 507), the pages of a job, how many jobs are converted or drawn at once (0: the number of CPUs), how long a printer is retried, and how many submissions and event streams are taken at once.
@@ -178,6 +181,22 @@ upstreams:
 - **Canceled at the head office** is canceled at the branch (at its next report, or `Update-Active-Jobs`, which the two compare their jobs with each `poll`).
 - The head office shows the branch's printer as the queue's (its state, paper and colour, as the branch reports them; down when the branch has not reported for two minutes), and so does the head office's IPP printer of that queue.
 - The branch's token has the role `proxy` (it reads the documents of the queue): only for the queues of `queues`, and only with Basic authentication over ipps. A printer of proxies is the printer of one queue only. A job the branch cannot take (a document it cannot read, too large) is reported aborted; one retried at the head office is taken again.
+
+## Labels, receipts and forms
+
+A queue of a printer of labels, receipts or continuous forms prints what any other queue takes — a filled form, a PDF, an image — in the printer's own language ([`bdf print`](architecture/cli.md#print-printers) has the details):
+
+| Language | Printers | What is sent |
+|---|---|---|
+| ZPL | Zebra, and the printers that take ZPL II | each label one format: `^GFA` of the dots in ZPL's ASCII compression, the QR codes and barcodes as `^BQ`, `^BC`, `^BE` …, `^PQ` copies |
+| SBPL | SATO | each label one job `<A>` … `<Z>` between STX and ETX: `<G>H` graphics, `<2D30>`, `<B>`, `<BG>` symbols, `<Q>` copies |
+| TPCL | Toshiba TEC | `{D` size, `{SG;` graphic in nibble mode, `{XB`/`{RB` symbols (not Code 128), `{XS;I` issue |
+| ESC/POS | Epson TM, receipt printers | bands of `GS v 0` as they are drawn, `GS V` cut, `ESC p` drawer |
+| ESC/P | Epson VP, dot-matrix printers | 24-pin bit images (`ESC *`, 180 dpi), `ESC C` page length, `ESC N` perforation skip, form feed |
+
+The queue's `defaults` take the settings of such printers with the ticket's names: `print-darkness`, `print-speed` and `media-tracking` (IPP's), and `bdf-label-gap`, `bdf-cut`, `bdf-cash-drawer`, `bdf-perforation-skip`, `bdf-no-printer-barcodes`. Copies are the printer's (`^PQ`, `<Q>`, `{XS`), or sent again for receipts and forms.
+
+The commands are those of the makers' programming references (Zebra's ZPL II guide, SATO's CL4NX Plus and CT4-LX references, Toshiba TEC's B-EX4, B-FV4 and BX400 interface specifications, Epson's ESC/POS and ESC/P references). They have been checked against readers of our own that print them back to dots, not on printers: try a label before a batch, and if a printer prints a symbol wrongly, `bdf-no-printer-barcodes: true` draws it as dots instead (readable at 203 dpi). SBPL is wrapped in STX and ETX, as SATO's status protocols ask. Windows reaches USB printers through the queue of their driver (`winspool:///Name`, passed on as `RAW`), macOS through CUPS (`ipp://localhost:631/printers/<queue>`), Linux through either or `usb:///dev/usb/lp0`.
 
 ## Running it as a service
 

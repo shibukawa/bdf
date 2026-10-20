@@ -38,6 +38,9 @@ printers:
   mfp2: { url: "ipp://192.0.2.20/ipp/print", username: print, password-env: MFP2_PASSWORD }
   old-laser: { url: "socket://192.0.2.30:9100" }                     # IPP の無いプリンタ: 生のポートに PostScript
   plotter: { url: "lpd://192.0.2.31/lp1", format: pdf, pjl: true }   # LPD で PDF、PJL の見出し付き
+  labels: { url: "socket://192.0.2.40:9100", profile: zd421-203 }    # ZPL のラベル
+  register: { url: "serial:///dev/ttyUSB0?baud=19200", format: escpos }   # ESC/POS のレシート
+  zebra-usb: { url: "ipp://localhost:631/printers/zebra", profile: zd421-300 }   # CUPS の raw キュー
 queues:
   office:
     printers: [mfp1, mfp2]
@@ -54,7 +57,7 @@ fonts: { dirs: [/usr/share/fonts/bdf], no-system: false }
 temp-dir: /var/tmp/bdf
 ```
 
-- **printers**: URL（`ipp://`、`ipps://`、`http://`、`https://`。CUPS のキューは `ipp://host:631/printers/<名前>`）、Basic 認証を求めるプリンタの利用者とパスワード（`password-env` か `password-file`）、`ipps` のプリンタの証明書。`fingerprint` で固定し、書かなければ最初に見た証明書をスプールに記録して以後はそれを求めます（CUPS と同じ）。`insecure: true` はどの証明書も受けます。IPP の無いプリンタは `socket://host:9100` か `lpd://host/queue` で、受ける形式 `format`（`ps` が既定、か `pdf`）と `pjl`（文書の前の PJL の見出し。既定は PDF のときだけ）を書きます。チケットをファイルの中に書いた PostScript か PDF を送り、ジョブの状態は返らず、動いていると分かっている間は接続を試しません。
+- **printers**: URL（`ipp://`、`ipps://`、`http://`、`https://`。CUPS のキューは `ipp://host:631/printers/<名前>`）、Basic 認証を求めるプリンタの利用者とパスワード（`password-env` か `password-file`）、`ipps` のプリンタの証明書。`fingerprint` で固定し、書かなければ最初に見た証明書をスプールに記録して以後はそれを求めます（CUPS と同じ）。`insecure: true` はどの証明書も受けます。IPP の無いプリンタは `socket://host:9100` か `lpd://host/queue` で、受ける形式 `format`（`ps` が既定、か `pdf`）と `pjl`（文書の前の PJL の見出し。既定は PDF のときだけ）を書きます。チケットをファイルの中に書いた PostScript か PDF を送り、ジョブの状態は返らず、動いていると分かっている間は接続を試しません。ラベル・レシート・連帳のプリンタ（[下](#ラベルレシート連帳)）は、`format` に言語（`zpl`、`sbpl`、`tpcl`、`escpos`、`escp`）か `profile` に機種を書き、`socket://`、`lpd://`、`serial://`、`usb://`、`winspool://` で、または IPP で CUPS の raw キュー（データをそのまま渡す）に送ります。
 - **queues**: プリンタの順、方針、チケットの `defaults`（IPP の名前: `copies`、`sides`、`media`、`media-source`、`media-type`、`print-color-mode`、`print-quality`、`printer-resolution`、`print-scaling`、`orientation-requested`、`finishings`、`output-bin` など。ジョブのチケットがこの上に重なる）、送り方。
 - **retention**: 終わったジョブの文書を残す期間（7 日）と、記録（実績）を残す期間（400 日）。
 - **limits**: 文書の大きさ（256 MiB。超えると 413）、終わっていないジョブの数とその文書の量（1 万件と 10 GiB。超えると 507）、ジョブのページ数、同時に変換・描画するジョブの数（0 は CPU 数）、プリンタに送り直す期間、同時に受ける投入とイベントの接続の数。
@@ -178,6 +181,22 @@ upstreams:
 - **本社で取り消したジョブ**は拠点でも取り消します（次の報告か、`poll` ごとに互いのジョブを突き合わせる `Update-Active-Jobs` で）。
 - 本社は拠点のプリンタをそのキューのプリンタとして見せます（状態・用紙・カラーは拠点の報告から。2 分報告が無ければ止まっている扱い）。そのキューの IPP プリンタも同じです。
 - 拠点のトークンの役割は `proxy`（キューの文書を読むので）。`queues` のキューだけに効き、ipps の Basic 認証でだけ使えます。代理のプリンタは 1 つのキューだけのプリンタです。拠点が受けられないジョブ（読めない文書、大きすぎる）は中止として報告し、本社で retry したジョブは取り直します。
+
+## ラベル・レシート・連帳
+
+ラベル・レシート・連帳のプリンタのキューも、ほかのキューと同じもの（穴埋めした帳票、PDF、画像 …）を受け、そのプリンタの言語で刷ります（細部は [`bdf print`](architecture/cli.ja.md#print-printers)）。
+
+| 言語 | プリンタ | 送るもの |
+|---|---|---|
+| ZPL | Zebra と ZPL II の互換機 | ラベルごとに 1 つのフォーマット。ドットは `^GFA`（ZPL の ASCII 圧縮）、QR コードとバーコードは `^BQ`・`^BC`・`^BE` …、部数は `^PQ` |
+| SBPL | SATO | ラベルごとに STX と ETX で囲んだ `<A>` … `<Z>`。`<G>H` のグラフィック、`<2D30>`・`<B>`・`<BG>` の記号、`<Q>` の部数 |
+| TPCL | 東芝テック | `{D` の大きさ、ニブルモードの `{SG;`、`{XB`・`{RB` の記号（Code 128 は除く）、`{XS;I` の発行 |
+| ESC/POS | Epson TM、レシートプリンタ | 描いた帯から順に `GS v 0`、`GS V` のカット、`ESC p` のドロワ |
+| ESC/P | Epson VP、ドットインパクト | 24 ピンのビットイメージ（`ESC *`、180 dpi）、`ESC C` の用紙長、`ESC N` のミシン目スキップ、改ページ |
+
+キューの `defaults` には、こうしたプリンタへの指示もチケットの名前で書けます: `print-darkness`、`print-speed`、`media-tracking`（IPP の名前）と、`bdf-label-gap`、`bdf-cut`、`bdf-cash-drawer`、`bdf-perforation-skip`、`bdf-no-printer-barcodes`。部数はプリンタが作り（`^PQ`、`<Q>`、`{XS`）、レシートと連帳は繰り返して送ります。
+
+命令は各社のプログラミングリファレンス（Zebra の ZPL II、SATO の CL4NX Plus と CT4-LX、東芝テックの B-EX4・B-FV4・BX400 の外部インタフェース仕様、Epson の ESC/POS と ESC/P）に従っています。確かめたのは自前の読み手でドットに戻すところまでで、実機では確かめていません。大量に刷る前に 1 枚試し、記号がおかしければ `bdf-no-printer-barcodes: true` でドットとして描かせてください（203 dpi でも読めます）。SBPL は SATO のステータスのプロトコルが求めるとおり STX と ETX で囲みます。USB のプリンタには、Windows はドライバのキュー（`winspool:///名前`、`RAW` で渡す）、macOS は CUPS（`ipp://localhost:631/printers/<キュー>`）、Linux はどちらかか `usb:///dev/usb/lp0` で届きます。
 
 ## 常駐させる
 

@@ -55,6 +55,14 @@ func PrintRaw(ctx context.Context, p *raw.Printer, doc *bdf.Document, opts *Opti
 		return j.res, fmt.Errorf("print: %d pages to print, more than %d", n, limit)
 	}
 	format := p.Format
+	if format == "" {
+		// the language of the profile of the URL
+		prof, ok := pdl.LookupProfile(p.Profile)
+		if !ok {
+			return j.res, fmt.Errorf("print: no profile %q (bdf print -profile list)", p.Profile)
+		}
+		format = prof.Language
+	}
 	if lang := deviceLanguage(o.Format); lang != "" {
 		format = lang
 	}
@@ -146,8 +154,8 @@ func RawCapabilities(p *raw.Printer) *ipp.Printer {
 	switch {
 	case p.Format == raw.FormatPDF:
 		format = FormatPDF
-	case raw.IsLanguage(p.Format):
-		format = FormatOctetStream
+	case raw.IsLanguage(p.Format), p.Format == "":
+		format = FormatOctetStream // (the language of its profile)
 	}
 	return &ipp.Printer{State: ipp.PrinterIdle, AcceptingJobs: true, Formats: []string{format}}
 }

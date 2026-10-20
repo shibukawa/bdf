@@ -86,7 +86,8 @@ type Printer struct {
 	// Serial is the setting of a serial port.
 	Serial Serial
 	// Format is the format the printer takes: FormatPostScript (the
-	// default), FormatPDF, or a language of print/pdl.
+	// default), FormatPDF, or a language of print/pdl; "" for the
+	// language of the Profile, which the URL names without one.
 	Format string
 	// Profile, DPI and Width describe a printer of a language of
 	// print/pdl: a profile's name, and its dots and width as the URL
@@ -188,7 +189,10 @@ func Parse(s string) (*Printer, error) {
 	}
 	p.Profile, p.DPI, p.Width = q.Get("profile"), q.Get("dpi"), q.Get("width")
 	if (p.Profile != "" || p.DPI != "" || p.Width != "") && !IsLanguage(p.Format) {
-		return nil, fmt.Errorf("raw: %s: profile, dpi and width are those of a printer of labels, receipts or forms (lang=zpl …)", s)
+		if format != "" || p.Profile == "" {
+			return nil, fmt.Errorf("raw: %s: profile, dpi and width are those of a printer of labels, receipts or forms (lang=zpl …)", s)
+		}
+		p.Format = "" // the profile's language
 	}
 	switch v := strings.ToLower(q.Get("pjl")); v {
 	case "", "true", "false":

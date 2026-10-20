@@ -60,6 +60,11 @@ func TestPrintRawLabels(t *testing.T) {
 	if !bytes.HasPrefix(s.Jobs()[1].Data, []byte("\x1b@\x1dP")) {
 		t.Errorf("ESC/POS begins %q", s.Jobs()[1].Data[:8])
 	}
+	// the language of the URL's profile
+	tm, _ := raw.Parse(s.URL + "?profile=tm-t88")
+	if res, err := PrintRaw(context.Background(), tm, testDoc(1), nil); err != nil || res.Format != "ESC/POS" {
+		t.Errorf("tm-t88: %+v %v", res, err)
+	}
 	if _, err := PrintRaw(context.Background(), p, testDoc(1), &Options{Ticket: Ticket{PrintMode: "text"}}); err == nil {
 		t.Error("the text mode")
 	}

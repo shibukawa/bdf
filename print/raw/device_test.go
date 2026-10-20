@@ -28,6 +28,7 @@ func TestParseDevices(t *testing.T) {
 		{"winspool://server/Labels", raw.Printer{URL: "winspool://server/Labels", Scheme: "winspool", Device: `\\server\Labels`, Format: raw.FormatPostScript}},
 		{"winspool://Receipts?lang=escpos", raw.Printer{URL: "winspool://Receipts", Scheme: "winspool", Device: "Receipts", Format: "escpos"}},
 		{"socket://printer:9100?lang=sbpl", raw.Printer{URL: "socket://printer:9100", Scheme: "socket", Addr: "printer:9100", Format: "sbpl"}},
+		{"socket://printer?profile=tm-t88", raw.Printer{URL: "socket://printer", Scheme: "socket", Addr: "printer:9100", Profile: "tm-t88"}},
 	} {
 		p, err := raw.Parse(c.url)
 		if err != nil || *p != c.want {
@@ -35,7 +36,7 @@ func TestParseDevices(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{"serial://", "serial:///dev/x?baud=1234", "serial:///dev/x?bits=6", "serial:///dev/x?parity=mark", "serial:///dev/x?flow=dtr",
-		"usb:///dev/x?baud=9600", "winspool://", "socket://h?profile=zd421-203", "socket://h?format=pdf&lang=zpl", "socket://h?lang=pcl"} {
+		"usb:///dev/x?baud=9600", "winspool://", "socket://h?format=ps&profile=zd421-203", "socket://h?dpi=300", "socket://h?format=pdf&lang=zpl", "socket://h?lang=pcl"} {
 		if p, err := raw.Parse(bad); err == nil {
 			t.Errorf("%s: %+v", bad, p)
 		}

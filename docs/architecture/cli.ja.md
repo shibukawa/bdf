@@ -102,11 +102,19 @@ bdf print -printer ipp://localhost:631/printers/office -format pwg-raster -mono 
 bdf print -printer ipp://192.0.2.10/ipp/print -skip background slip.bdf                 # 印刷済みの用紙に追い刷り
 bdf print -printer socket://192.0.2.30:9100 -sides long -media a4 invoice.bdf          # IPP の無いプリンタに PostScript
 bdf print -printer "lpd://192.0.2.31/lp1?format=pdf" invoice.bdf                       # LPD で PDF（PJL の見出し付き）
+
+bdf print -profile list                                                                 # ラベル・レシート・連帳の機種
+bdf print -printer "socket://192.0.2.40:9100?profile=zd421-203" -media 104x150mm label.bdf      # ZPL のラベル
+bdf print -printer "serial:///dev/ttyUSB0?lang=escpos&baud=19200" -drawer 1 receipt.bdf          # ESC/POS のレシート、ドロワを開ける
+bdf print -printer "winspool:///EPSON%20TM-T88VII%20Receipt?profile=tm-t88" receipt.bdf          # Windows のドライバのキュー経由
+bdf print -printer "usb:///dev/usb/lp0?profile=vp-f2000" -perforation-skip 12.7 slip.bdf         # 連帳に ESC/P
+bdf print -printer ipp://localhost:631/printers/zebra -profile zd421-300 label.bdf               # CUPS の raw キュー
 ```
 
 - **用紙**: `-media` は PWG の名前（`iso_a4_210x297mm`）か短い名前（`a4`、`a3`、`b4`・`b5` は JIS、`letter`、`legal`、`hagaki`、`chou3`、`kaku2` …）。省くと、1 ページ目の大きさの用紙をプリンタの持つものから選びます（セットされている用紙が先）。
 - **形式**: `-format auto`（既定）は PDF、受けなければ PostScript、それも受けなければ PWG Raster、Apple Raster、PCLm（`-format pdf|ps|pwg-raster|urf|pclm` で指定）。PostScript は Level 3 で、文字はグリフのアウトラインの Type 3 のフォント、PostScript が描けないもの（透明、合成、影、フィルタ）はそれが描かれる矩形だけを絵にし、ほかはベクタのままです。ラスタは白黒なら 600 dpi のグレー、カラーなら 300 dpi の sRGB（プリンタの持つ解像度から）で、`-bilevel` は白黒の 2 値。両面の裏面は、プリンタの求めるとおり（`pwg-raster-document-sheet-back`、`urf-supported` の `DM`、`pclm-raster-back-side`）に向きを変えて描きます。`-raster-if-lossy` は、PDF が文書の描画を省くとき（`FILTER`、Canvas 固有の合成）に PWG Raster にします。
 - **IPP の無いプリンタ**: `socket://host:9100`（生のポート）と `lpd://host/queue` には PostScript を、`?format=pdf` なら PDF を PJL の見出しを付けて流します（`?pjl=false` で外し、`?pjl=true` で PostScript にも付ける）。用紙・部数・両面・用紙の種類は、PostScript ではファイルの中（`setpagedevice`）で、PDF では PJL で頼み、それ以外（トレイ、排紙先、後処理）は受けないものとして警告します。こうしたプリンタはジョブの状態を返さないので、プリンタが文書を受けたところで終わります。
+- **ラベル・レシート・連帳**には、そのプリンタの言語で送ります: ZPL（Zebra）、SBPL（SATO）、TPCL（東芝テック）、ESC/POS（Epson TM と互換機）、ESC/P（Epson VP と互換のドットインパクト）。URL の `lang=`（か `format=`）で言語を、`profile=` で機種（`-profile list`。ドット数と幅）を指定し、`dpi=` と `width=`（ドット数か `104mm`、`4in`）で上書きします。届け方は `socket://` と `lpd://`、`serial:///dev/ttyUSB0`（Windows は `serial://COM3`。`baud`、`bits`、`parity`、`stop`、`flow=rtscts|xonxoff`。SPP の Bluetooth プリンタは OS のシリアルポートとして見えます）、`usb:///dev/usb/lp0`（Linux と BSD の装置ファイル。macOS には無いので、そのプリンタの CUPS のキューへ）、`winspool:///<キュー>`（Windows。メーカーのドライバのキューがデータをそのまま渡す `RAW`）、CUPS の raw キューに `-format zpl|sbpl|tpcl|escpos|escp` か `-profile`。ページはプリンタのドットで白黒に描きます。文字と線は半分で切り、画像はディザ、QR コードとバーコードはモジュールをドットの整数倍に揃える（203 dpi でも読める）。ラベルの長さは `-media`（`104x150mm`、`4x6in`）かページの高さ、レシートと連帳はページの高さ（幅に縮めた分だけ縮む）。ラベルプリンタは、帳票の QR コードとバーコードをプリンタのバーコード命令で刷ります（`-no-printer-barcodes` で描く）。`-darkness`（-100〜100）、`-speed`（mm/秒）、`-media-tracking continuous|gap|mark`、`-label-gap`（mm。TPCL）、`-cut none|page|job`（レシートの既定はページごと）、`-drawer 1|2`（終わりにドロワを開ける）、`-perforation-skip`（mm。ESC/P）。ESC/P と ESC/POS のテキストモード（プリンタのフォント）はまだありません。
 - **プリンタが受けないこと**は警告して省きます。`-strict` ならエラーです。部数をプリンタが作れないときは文書の側で繰り返します（奇数ページの両面は部の間に白紙を入れます）。
 - **待ち方**: 既定ではジョブが終わるまで（`-wait 10m`）待ちます。`-wait 0` は送ったところで終わります。Ctrl-C はプリンタのジョブを取り消します。
 - **終了コード**: 0 印刷した、1 取り消し・中止・その他、2 使い方、3 プリンタに届かない（証明書やパスワードを拒まれた）、4 プリンタがジョブを拒んだ（`-strict` で受けない項目）、5 プリンタが止まっている、6 `-wait` のうちに終わらない。
