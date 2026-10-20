@@ -43,6 +43,7 @@ facts:
     build_target: pw build --target=lambda も同じ理由と config.prod.toml で使えない。pw の書く Dockerfile（aws-lambda-adapter 1.0.1 と distroless static）を手で置いた
     generated: '*_pw_gen.go は popcornweb の流儀では git に入れないが、bdf の go vet ./... と go test ./... が pw を走らせないのでコミットし、CI で pw generate --code-only の差分を見る。生成は決定的'
     config: '[]string の default はカンマ区切り。pw.ParseConfig は冪等で、pw.Run の前に読める（pwconfig.RunFrameworkAction を先に）'
+    public_in_dev: 'pw dev（pwdev のタグ）では /public の口が作業ディレクトリの dist/public だけを読み、pw.WithPublicFS で渡した埋め込みの木を見ない（middlewares/publicassets.go の resolvePublicAsset、publicDevelopment）。bdf は資産の段を使わず dist/public が無いので、すべて 404 だった（2026-10-21 利用者が見つけた）。画面の JS と CSS はアプリが /static/ で配る（ETag と 304）'
 relations:
 - relation: informs
   to: requirement:print-manager

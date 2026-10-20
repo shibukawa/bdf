@@ -45,7 +45,13 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := pw.Run(ctx, app.Handler(), pw.WithPublicFS(public)); err != nil {
+	handler, err := app.Handler(public)
+	if err != nil {
+		log.Fatal(err)
+	}
+	// the files are served by the application (handlers.StaticPath); the
+	// framework's /public mount is given them too, as it needs a tree
+	if err := pw.Run(ctx, handler, pw.WithPublicFS(public)); err != nil {
 		log.Fatal(err)
 	}
 }
