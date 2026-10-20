@@ -597,17 +597,14 @@ func (p PrinterConfig) raw(user string) (*raw.Printer, error) {
 		r.Format = pdl.Language(p.Format)
 	}
 	if p.Profile != "" {
-		if !raw.IsLanguage(r.Format) {
-			prof, ok := pdl.LookupProfile(p.Profile)
-			if !ok {
-				return nil, fmt.Errorf("profile %q: not a model (bdf print -profile list)", p.Profile)
-			}
-			if p.Format != "" {
-				return nil, fmt.Errorf("profile %s is of %s, not %s", p.Profile, pdl.Title(prof.Language), p.Format)
-			}
-			r.Format = prof.Language
+		prof, ok := pdl.LookupProfile(p.Profile)
+		if !ok {
+			return nil, fmt.Errorf("profile %q: not a model (bdf print -profile list)", p.Profile)
 		}
-		r.Profile = p.Profile
+		if raw.IsLanguage(r.Format) && r.Format != prof.Language {
+			return nil, fmt.Errorf("profile %s is of %s, not %s", p.Profile, pdl.Title(prof.Language), pdl.Title(r.Format))
+		}
+		r.Format, r.Profile = prof.Language, p.Profile
 	}
 	if raw.IsLanguage(r.Format) {
 		// the URL's profile, dpi and width, checked now

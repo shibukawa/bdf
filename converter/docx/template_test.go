@@ -517,8 +517,15 @@ func TestFillCodes(t *testing.T) {
 						got = append(got, s)
 					}
 				case bdf.OpMark:
-					if byte(in.Args[0].(uint64)) == bdf.MarkFigure {
+					switch byte(in.Args[0].(uint64)) {
+					case bdf.MarkFigure:
 						got = append(got, "figure "+in.Args[1].(string))
+					case bdf.MarkBarcode:
+						m, err := barcode.ParseMark(in.Args[1].(string))
+						if err != nil {
+							t.Fatal(err)
+						}
+						got = append(got, "barcode "+m.Kind+" "+m.Text)
 					}
 				}
 			})
@@ -535,17 +542,17 @@ func TestFillCodes(t *testing.T) {
 	res, r := fillDocx(t, body, parts, data)
 	noWarnings(t, res)
 	want := []string{
-		"figure " + url, sym(barcode.QR, url, nil, 100, 100),
-		"figure the article", sym(barcode.EAN13, jan, nil, 100, 100),
-		"figure A-001", sym(barcode.Code128, "A-001", &barcode.Options{Quiet: barcode.NoQuiet}, 100, 100),
-		"figure B-002", sym(barcode.Code128, "B-002", &barcode.Options{Quiet: barcode.NoQuiet}, 100, 100),
+		"figure " + url, "barcode qr " + url, sym(barcode.QR, url, nil, 100, 100),
+		"figure the article", "barcode ean13 " + jan, sym(barcode.EAN13, jan, nil, 100, 100),
+		"figure A-001", "barcode code128 A-001", sym(barcode.Code128, "A-001", &barcode.Options{Quiet: barcode.NoQuiet}, 100, 100),
+		"figure B-002", "barcode code128 B-002", sym(barcode.Code128, "B-002", &barcode.Options{Quiet: barcode.NoQuiet}, 100, 100),
 		"figure a picture", "image",
 	}
 	got := codes(r)
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	if len(got) < 4 || !strings.HasSuffix(got[3], " contours below bars") {
+	if len(got) < 6 || !strings.HasSuffix(got[5], " contours below bars") {
 		t.Errorf("JAN lacks human-readable vector digits: %q", got)
 	}
 	// the fields tell which code a picture is

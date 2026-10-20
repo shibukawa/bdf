@@ -224,11 +224,47 @@ queues: { q: { printers: [ps, lpd, ipp] } }
 	if checks[2].Err != nil || checks[2].Printer.Formats[0] != "application/postscript" || checks[1].Err == nil {
 		t.Errorf("checks %+v", checks)
 	}
+	// printers of labels, receipts and forms: of a language over 9100, a
+	// serial port, and a raw queue of CUPS
+	c, err = ParseConfig([]byte(`
+printers:
+  label: { url: "socket://127.0.0.1:1?lang=zpl&dpi=300" }
+  pos: { url: "serial:///dev/ttyUSB0?baud=19200", format: escpos }
+  sato: { url: "socket://127.0.0.1:1", profile: cl4nx-305 }
+  cups: { url: "ipp://localhost:631/printers/zebra", profile: zd421-300 }
+queues: { q: { printers: [label, pos, sato, cups] } }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if so, err = c.spoolOptions(); err != nil {
+		t.Fatal(err)
+	}
+	pr := map[string]spool.Printer{}
+	for _, p := range so.Printers {
+		pr[p.Name] = p
+	}
+	if r := pr["label"].Raw; r == nil || r.Format != "zpl" || r.DPI != "300" {
+		t.Errorf("label %+v", pr["label"].Raw)
+	}
+	if r := pr["pos"].Raw; r == nil || r.Format != "escpos" || r.Serial.Baud != 19200 {
+		t.Errorf("pos %+v", pr["pos"].Raw)
+	}
+	if r := pr["sato"].Raw; r == nil || r.Format != "sbpl" || r.Profile != "cl4nx-305" {
+		t.Errorf("sato %+v", pr["sato"].Raw)
+	}
+	if p := pr["cups"]; p.Client == nil || p.Format != "zpl" || p.Profile == nil || p.Profile.DPI != 300 {
+		t.Errorf("cups %+v", p)
+	}
 	for name, y := range map[string]string{
 		"format of IPP": "printers: { p: { url: ipp://h/, format: pdf } }\nqueues: { q: { printers: [p] } }",
 		"bad format":    "printers: { p: { url: socket://h, format: pcl } }\nqueues: { q: { printers: [p] } }",
 		"no queue":      "printers: { p: { url: lpd://h } }\nqueues: { q: { printers: [p] } }",
 		"password":      "printers: { p: { url: socket://h, password-env: X } }\nqueues: { q: { printers: [p] } }",
+		"no profile":    "printers: { p: { url: socket://h, profile: zz-9 } }\nqueues: { q: { printers: [p] } }",
+		"two languages": "printers: { p: { url: socket://h, format: escpos, profile: zd421-203 } }\nqueues: { q: { printers: [p] } }",
+		"bad dpi":       "printers: { p: { url: socket://h?lang=zpl&dpi=7 } }\nqueues: { q: { printers: [p] } }",
+		"pjl of IPP":    "printers: { p: { url: ipp://h/, format: zpl, pjl: true } }\nqueues: { q: { printers: [p] } }",
 	} {
 		if _, err := ParseConfig([]byte(y)); err == nil {
 			t.Errorf("%s: no error", name)
