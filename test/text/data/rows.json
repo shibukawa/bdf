@@ -1,0 +1,287 @@
+{
+ "no": "S-2026-1020",
+ "date": "2026-10-20",
+ "items": [
+  {
+   "code": "A00011",
+   "name": "ナット M5",
+   "qty": 8,
+   "price": 237,
+   "amount": 1896
+  },
+  {
+   "code": "A00022",
+   "name": "平ワッシャー 6 mm",
+   "qty": 2,
+   "price": 374,
+   "amount": 748
+  },
+  {
+   "code": "A00033",
+   "name": "ばね座金 M7",
+   "qty": 9,
+   "price": 511,
+   "amount": 4599
+  },
+  {
+   "code": "A00044",
+   "name": "六角ボルト M8×30",
+   "qty": 3,
+   "price": 648,
+   "amount": 1944
+  },
+  {
+   "code": "A00055",
+   "name": "ナット M9",
+   "qty": 10,
+   "price": 785,
+   "amount": 7850
+  },
+  {
+   "code": "A00066",
+   "name": "平ワッシャー 10 mm",
+   "qty": 4,
+   "price": 922,
+   "amount": 3688
+  },
+  {
+   "code": "A00077",
+   "name": "ばね座金 M11",
+   "qty": 11,
+   "price": 1059,
+   "amount": 11649
+  },
+  {
+   "code": "A00088",
+   "name": "六角ボルト M4×25",
+   "qty": 5,
+   "price": 1196,
+   "amount": 5980
+  },
+  {
+   "code": "A00099",
+   "name": "ナット M5",
+   "qty": 12,
+   "price": 1333,
+   "amount": 15996
+  },
+  {
+   "code": "A00110",
+   "name": "平ワッシャー 6 mm",
+   "qty": 6,
+   "price": 1470,
+   "amount": 8820
+  },
+  {
+   "code": "A00121",
+   "name": "ばね座金 M7",
+   "qty": 13,
+   "price": 1607,
+   "amount": 20891
+  },
+  {
+   "code": "A00132",
+   "name": "六角ボルト M8×20",
+   "qty": 7,
+   "price": 1744,
+   "amount": 12208
+  },
+  {
+   "code": "A00143",
+   "name": "ナット M9",
+   "qty": 1,
+   "price": 1881,
+   "amount": 1881
+  },
+  {
+   "code": "A00154",
+   "name": "平ワッシャー 10 mm",
+   "qty": 8,
+   "price": 2018,
+   "amount": 16144
+  },
+  {
+   "code": "A00165",
+   "name": "ばね座金 M11",
+   "qty": 2,
+   "price": 2155,
+   "amount": 4310
+  },
+  {
+   "code": "A00176",
+   "name": "六角ボルト M4×15",
+   "qty": 9,
+   "price": 2292,
+   "amount": 20628
+  },
+  {
+   "code": "A00187",
+   "name": "ナット M5",
+   "qty": 3,
+   "price": 2429,
+   "amount": 7287
+  },
+  {
+   "code": "A00198",
+   "name": "平ワッシャー 6 mm",
+   "qty": 10,
+   "price": 2566,
+   "amount": 25660
+  },
+  {
+   "code": "A00209",
+   "name": "ばね座金 M7",
+   "qty": 4,
+   "price": 2703,
+   "amount": 10812
+  },
+  {
+   "code": "A00220",
+   "name": "六角ボルト M8×10",
+   "qty": 11,
+   "price": 2840,
+   "amount": 31240
+  },
+  {
+   "code": "A00231",
+   "name": "ナット M9",
+   "qty": 5,
+   "price": 2977,
+   "amount": 14885
+  },
+  {
+   "code": "A00242",
+   "name": "平ワッシャー 10 mm",
+   "qty": 12,
+   "price": 3114,
+   "amount": 37368
+  },
+  {
+   "code": "A00253",
+   "name": "ばね座金 M11",
+   "qty": 6,
+   "price": 3251,
+   "amount": 19506
+  },
+  {
+   "code": "A00264",
+   "name": "六角ボルト M4×30",
+   "qty": 13,
+   "price": 3388,
+   "amount": 44044
+  },
+  {
+   "code": "A00275",
+   "name": "ナット M5",
+   "qty": 7,
+   "price": 3525,
+   "amount": 24675
+  },
+  {
+   "code": "A00286",
+   "name": "平ワッシャー 6 mm",
+   "qty": 1,
+   "price": 3662,
+   "amount": 3662
+  },
+  {
+   "code": "A00297",
+   "name": "ばね座金 M7",
+   "qty": 8,
+   "price": 3799,
+   "amount": 30392
+  },
+  {
+   "code": "A00308",
+   "name": "六角ボルト M8×25",
+   "qty": 2,
+   "price": 3936,
+   "amount": 7872
+  },
+  {
+   "code": "A00319",
+   "name": "ナット M9",
+   "qty": 9,
+   "price": 4073,
+   "amount": 36657
+  },
+  {
+   "code": "A00330",
+   "name": "平ワッシャー 10 mm",
+   "qty": 3,
+   "price": 4210,
+   "amount": 12630
+  },
+  {
+   "code": "A00341",
+   "name": "ばね座金 M11",
+   "qty": 10,
+   "price": 4347,
+   "amount": 43470
+  },
+  {
+   "code": "A00352",
+   "name": "六角ボルト M4×20",
+   "qty": 4,
+   "price": 4484,
+   "amount": 17936
+  },
+  {
+   "code": "A00363",
+   "name": "ナット M5",
+   "qty": 11,
+   "price": 4621,
+   "amount": 50831
+  },
+  {
+   "code": "A00374",
+   "name": "平ワッシャー 6 mm",
+   "qty": 5,
+   "price": 4758,
+   "amount": 23790
+  },
+  {
+   "code": "A00385",
+   "name": "ばね座金 M7",
+   "qty": 12,
+   "price": 4895,
+   "amount": 58740
+  },
+  {
+   "code": "A00396",
+   "name": "六角ボルト M8×15",
+   "qty": 6,
+   "price": 5032,
+   "amount": 30192
+  },
+  {
+   "code": "A00407",
+   "name": "ナット M9",
+   "qty": 13,
+   "price": 169,
+   "amount": 2197
+  },
+  {
+   "code": "A00418",
+   "name": "平ワッシャー 10 mm",
+   "qty": 7,
+   "price": 306,
+   "amount": 2142
+  },
+  {
+   "code": "A00429",
+   "name": "ばね座金 M11",
+   "qty": 1,
+   "price": 443,
+   "amount": 443
+  },
+  {
+   "code": "A00440",
+   "name": "六角ボルト M4×10",
+   "qty": 8,
+   "price": 580,
+   "amount": 4640
+  }
+ ],
+ "total": 680303
+}

@@ -254,6 +254,16 @@ func synthetic() []input {
 	c = add("part/negative-size", "single", "a deflated part with a negative decoded size", single(fmt.Sprintf(`{"bdf":1,"parts":[{"h":"%s","t":"img","enc":"deflate-raw","len":10,"size":-1,"off":0}]}`, h), data), OK)
 	c.wantReads = map[string]string{h.String(): Err}
 	c = add("part/unknown", "single", "the manifest names no parts; nothing reads", single(minimal, data), OK)
+	// parts that no view refers to: a reader opens the document whatever
+	// their types (the print image of a form of text, a type to come)
+	image := []byte(`{"version":1,"cpi":10,"lpi":6,"columns":80,"lines":66,"margin":{"left":0,"top":0},"pages":[{"lines":[{"text":"No. 1"}]}]}`)
+	hi := bdf.HashOf(image)
+	future := []byte("a part of a type to come")
+	hf := bdf.HashOf(future)
+	c = add("part/unreferenced-types", "single", "a page, the print image of a form of text (t \"text\") and a part of a type this reader does not know; neither stops the document from opening",
+		single(fmt.Sprintf(`{"bdf":1,"views":[{"id":"pages","kind":"fixed","pages":[{"w":576,"h":792,"layers":[]}]}],"parts":[{"h":"%s","t":"text","enc":"identity","len":%d,"size":%d,"off":0},{"h":"%s","t":"x-future","enc":"identity","len":%d,"size":%d,"off":%d}]}`,
+			hi, len(image), len(image), hf, len(future), len(future), len(image)), cat(image, future)), OK)
+	c.wantReads = map[string]string{hi.String(): OK, hf.String(): OK}
 
 	big := bytes.Repeat([]byte{' '}, bdf.MaxManifestSize+1)
 	copy(big, minimal)

@@ -1,5 +1,6 @@
 // The form page: a template of a form (a workbook, a document or a deck
-// with tags, a PDF with form fields, a template of pdfme, or a compiled
+// with tags, a PDF with form fields, a template of pdfme, a template of
+// text (the lines of a slip or a receipt on a grid of columns), or a compiled
 // template) is read inside the browser by the form
 // module (cmd/bdfwasm built with -tags formonly: the Go packages form and
 // vector/pdfbdf, as a server uses them). The page makes a form of the JSON

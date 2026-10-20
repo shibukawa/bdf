@@ -24,6 +24,9 @@ in `docs/forms.md`; they do not change Excel's own print rules.
 
 These examples are independent of `converter/*/testdata/form-*`, which
 exercise converter features and provide deterministic regression fixtures.
+The two templates of text (a slip for a dot matrix printer and a receipt)
+are the test templates themselves (`converter/textform/testdata/slip.txt`
+and `receipt.txt`, with `test/text/data`); the build copies them.
 
 ## Regenerating
 
@@ -39,6 +42,11 @@ python site/form/generate_pdfme.py
 The templates use **M PLUS 1p** Regular and Bold from
 [Google Fonts](https://fonts.google.com/specimen/M+PLUS+1p), under the
 [SIL Open Font License 1.1](https://github.com/google/fonts/blob/main/ofl/mplus1p/OFL.txt).
+The templates of text are drawn with **BIZ UDGothic** Regular, the monospace
+font that `converter/textform` looks for first
+([Google Fonts](https://fonts.google.com/specimen/BIZ+UDGothic), SIL Open
+Font License 1.1). It is the last entry of `fonts/index.json`, so that the
+Office templates still fall back to M PLUS 1p.
 `fonts/index.json` contains versioned `fonts.gstatic.com` URLs, file sizes
 and the byte ranges used by the font scan. The browser fetches the font
 files directly from Google when filling a form; the site does not bundle

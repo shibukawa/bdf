@@ -6,7 +6,7 @@ summary: >-
   帳票テンプレートの 5 つ目の形式にする。同じタグ・同じデータ・同じ CLI・同じ .bdft で、出口は BDF（画面、PDF、IPP）、
   ESC/P と ESC/POS のテキストモード、プレーンテキストの 4 つ。BDF には印字像の Part（t: text）を持たせ、
   ドットインパクトのテキストモードを損失なしに作れるようにする。2026-10-19 利用者の提案。叙述は knowledge-inputs/print-plan/text-template.ja.md。
-lifecycle: proposed
+lifecycle: active
 authority: authored
 aliases:
 - テキスト帳票
@@ -77,7 +77,8 @@ facts:
     compile: bdf template compile slip.txt slip.bdft -sample sample.json、bdf template schema slip.bdft
     print: bdf print out.bdf -printer … -mode text（print-m5）
   package_layout:
-    form/text: 前書きと本文の読み込み、幅と揃え、区間の展開、格子への配置、BDF の fixed ページ、t:text の Part、プレーンテキストの出力
+    converter/textform: 前書きと本文の読み込み、幅と揃え、区間の展開、格子への配置、BDF の fixed ページ、プレーンテキストの出力（計画の form/text から変えた。converter/internal を使うため）
+    form/textpart: t:text の Part の型と読み手（form も変換器も import しない。print が読む）
     form/form.go: FormatText の判別と Fill / Compile / Fields の分岐
     docs: spec.md の parts[].t に text、forms.ja.md に「テキストのテンプレート」
     print/escp: m5。t:text の Part からテキストモード
@@ -105,6 +106,8 @@ relations:
 - relation: has_milestone
   to: milestone:form-m6
 history:
+  implemented:
+    summary: '2026-10-20 milestone:form-m6 で実装（converter/textform、form/textpart、bdf.PartText）。print-m5 と並行して別セッションで。ESC/P・ESC/POS のテキストモードの書き手は print-m5 が Part から作る'
   decisions:
     summary: '2026-10-19 利用者が 6 つを決めた。幅は可変で超過は警告 / cut / wrap、倍角は入れる、画像とバーコードは許さない、等幅は BIZ UDゴシックを Google Fonts から（ローカルのフォントも明示可）、区間の既定は slots、印字像は Part（t: text）'
   proposed:
