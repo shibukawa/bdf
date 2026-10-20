@@ -197,9 +197,13 @@ test "$(wc -l <"$work/accounting.csv")" -eq 5
 # sample rasters), and its jobs, which reach the printer behind
 ippuri="ipp://localhost:8633/ipp/print/office"
 tests=/usr/share/cups/ipptool
+# (Ubuntu's ipptool has its tests and not their sample files: a PDF and a
+# JPEG of the repository stand in)
+"$bdf" pdf "${fonts[@]}" testdata/form/rows.bdf "$work/rows.pdf"
+cp converter/image/testdata/photo.jpg "$work/photo.jpg"
 before=$(received '%PDF-')
-ipptool -t -V 2.0 -f "$tests/testfile.pdf" "$ippuri" test/print/ipp-everywhere-server.test
-ipptool -t -f "$tests/testfile.jpg" "$ippuri" "$tests/print-job.test"
+ipptool -t -V 2.0 -f "$work/rows.pdf" "$ippuri" test/print/ipp-everywhere-server.test
+ipptool -t -f "$work/photo.jpg" "$ippuri" "$tests/print-job.test"
 # the jobs of the queue are done
 idle() {
   for _ in $(seq 300); do
@@ -216,7 +220,7 @@ before=$(received '%PDF-')
 grep -q '/ipp/print/office' "$work/browse.txt"
 # a CUPS queue of the server, as macOS and Linux add it (driverless)
 sudo lpadmin -p bdfserver -E -v "$ippuri" -m everywhere
-lp -d bdfserver "$tests/testfile.pdf"
+lp -d bdfserver "$work/rows.pdf"
 for _ in $(seq 180); do
   if [ "$(received '%PDF-')" -gt "$before" ]; then break; fi
   sleep 1

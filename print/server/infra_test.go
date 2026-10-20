@@ -54,10 +54,14 @@ func serveConfig(t *testing.T, yaml string, ippLn net.Listener) (*Server, func()
 		srv.Serve(ctx, ln)
 		close(done)
 	}()
-	return srv, func() {
+	stop := func() {
 		cancel()
 		<-done
 	}
+	// (before the directory of the spool is removed: Windows does not
+	// remove an open file)
+	t.Cleanup(stop)
+	return srv, stop
 }
 
 func newBranchFixture(t *testing.T, branchPaused bool) *branchFixture {
