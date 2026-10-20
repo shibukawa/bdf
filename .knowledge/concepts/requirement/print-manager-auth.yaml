@@ -1,0 +1,239 @@
+id: requirement:print-manager-auth
+type: requirement
+title: Print Manager の認証と認可 — 4 種類の主体（管理者・一般の利用者・アプリ・仮想プリンタ）、ジョブとプリンタの見える範囲、鍵と秘密の置き場所
+summary: >-
+  requirement:print-manager に認証と認可を足す（2026-10-21 利用者の要件）。人（管理者・一般）は OIDC の認可コードフロー、
+  他の Web アプリは client credentials、仮想プリンタはサービスユーザーとしてデバイスフローで入る。ジョブ（スプールと保管庫の文書）は
+  自分のもの・グループのもの（グループの人が見て刷り直せる）という範囲を持ち、プリンタも個人用・グループ用を持つ。
+  pm-1 の仮の仕組み（共有の秘密 MANAGER_SECRET、AdminToken、SubmitTokens、端末の登録コード）を置き換える。
+  鍵と秘密をどこに置くかは未定（利用者）で、暫定の推奨は「根の秘密は保存先の外（環境変数かファイル、基盤の秘密の置き場から注入）、
+  yuruidb にはハッシュと公開鍵だけ」。
+lifecycle: proposed
+authority: authored
+aliases:
+- 認証
+- 認可
+- authn
+- authz
+- OIDC
+- client credentials
+- device flow
+- デバイスフロー
+- サービスユーザー
+- service user
+- 鍵の管理
+- secrets
+- スコープ
+- 見える範囲
+constraints:
+- 主体（人・アプリ・仮想プリンタ）ごとに誰が何をしたかを記録できる。共有の 1 つのトークンで全部を許す形（pm-1 の AdminToken・SubmitTokens）を残さない
+- requesting-user-name（自己申告）を配達や権限の根拠にしない（requirement:print-manager から引き継ぐ）
+- 仮想プリンタ（サービスユーザー）は、自分に届いたジョブより広くは見えない。人の権限を借りない
+- 端末の資格は端末に閉じた鍵に結ぶ。URL・Cookie・トークンを写しても他の端末では通らない（requirement:print-manager の device_auth を引き継ぐ）
+- 保存先（yuruidb）には取り出して使える秘密を置かない。アプリの秘密・IPP の合言葉はソルトつきの遅いハッシュ（argon2id）、端末は公開鍵だけ
+- インスタンスに状態を持たない（pm-1）。認可の判断は要求ごとに保存先と署名から決まり、どのインスタンスでも同じ
+- 各社の SDK を同梱しない（decision:thin-store と同じ方針）。秘密の置き場（Secrets Manager など）は基盤が注入する
+- 文書の読み出し・刷り直し・取り消し、ログイン、トークンの発行、端末とアプリの追加と外し、権限の変更は監査の記録に残す
+- 最初の管理者は設定で決める（IdP の issuer と subject、またはメールアドレスかグループ）。画面だけで最初の管理者が作れる穴を作らない
+non_goals:
+- Print Manager が人の IdP になること（パスワードの保管、人のアカウントの作成）。人は外の IdP（Entra ID、Google Workspace、Keycloak など）
+- 複数の会社で共有するテナント分離（requirement:print-manager の non_goals のまま）
+- 汎用の認可エンジン（OpenFGA、Cedar など）の導入。役割と持ち主とグループで足りる間は Go の 1 つの判断関数
+facts:
+  terminology: >-
+    「OIDC クレデンシャルフロー」は OAuth 2.0 の client credentials grant（RFC 6749 4.4）。ID トークンは出ず、人ではなくアプリが主体。
+    デバイスフローは OAuth 2.0 Device Authorization Grant（RFC 8628）。どちらも OIDC そのものではなく、同じ認可サーバーの別の grant
+  principals:
+    admin:
+      flow: OIDC 認可コード + PKCE（popcornweb の OIDC。system:popcornweb、pm-1 の作業ツリーにある）
+      can: 全部のジョブと履歴を見る。仮想プリンタ・実プリンタ・場所・グループ・アプリ・端末の追加と変更。監査の記録を見る
+    user:
+      flow: OIDC 認可コード + PKCE
+      can: 刷る（使ってよいプリンタに）。自分のジョブと、属するグループのジョブを見る。自分のジョブを取り消す・刷り直す。グループのジョブを刷り直す
+    app:
+      flow: client credentials（client_id と client_secret、後で private_key_jwt）
+      can: ファイルを刷る、帳票テンプレートで刷る。許されたプリンタとテンプレートだけ。自分（そのアプリ）のジョブの状態を見る・取り消す
+      registered_by: 管理者が画面で足す（名前、許すプリンタ・テンプレート・scope、秘密は 1 度だけ見せる）
+    virtual_printer:
+      flow: デバイスフロー（端末が user_code を出し、ログインした人が承認する）
+      identity: 仮想プリンタ（display:// の場所）ごとのサービスユーザー。端末はその資格の 1 つで、1 つの仮想プリンタに何台も結べる
+      can: その仮想プリンタに届いたジョブだけを見る・開いた・完了を付ける（pm-1 の伝票の状態）。タブレットからの取り込みは含まない（open_questions.virtual-printer-access）
+    scheduler:
+      flow: 今の TickToken。暫定で scope tick だけのアプリにする（client credentials）
+    ipp_sender:
+      flow: OS の印刷（Windows・macOS・iOS・Android）は OIDC を話せない。人は画面で作る自分の IPP の合言葉（Basic）、アプリは client_id:client_secret の Basic
+      notes: IPP の OAuth（CUPS 2.5 にあると記憶。未確認）は後で調べる。ipp-basic-clients（requirement:print-manager）の答え次第
+  authorization_server:
+    options:
+      external-only: 外の IdP が全部のトークンを出し、Print Manager は確かめるだけ。アプリの追加は IdP の管理画面。端末ごとに IdP のアカウントが要る。Google Workspace は第三者の client credentials を持たずデバイスフローの scope も限られる（記憶。未確認）。IPP の Basic は通せない
+      hybrid: 人は外の IdP（OIDC）。機械（アプリと仮想プリンタの端末）には Print Manager が自分で小さな認可サーバー（/oauth/token、/oauth/device_authorization）になる。アプリと仮想プリンタの追加が管理画面で完結し、IPP の Basic も同じ秘密で確かめられる
+      bundled-idp: Keycloak・Zitadel・Dex などを横に置き全部を任せる。サーバーレスの形（Lambda）に重い
+    chosen: hybrid（2026-10-21 利用者。open_questions.authorization-server）
+    later: 外の IdP が出した client credentials のトークン（Entra のアプリのロールなど）を、issuer と subject（azp）でアプリの記録に写して受ける（連携）
+  tokens:
+    human_session: popcornweb のセッション（クッキー、keyring で封）。ID トークンの sub と issuer を主体の ID に、groups などの claim をログインのたびに写す
+    machine_access_token: Print Manager が出す短い（10 分）トークン。確かめるのは自分だけなので、暫定で pm-1 の端末のセッションと同じ HMAC の封（JWT と JWKS は他のサービスが確かめる必要が出たとき）
+    refresh: アプリは refresh token を持たず client credentials を取り直す。端末は refresh token を持たず、端末の鍵で challenge に署名して取り直す（pm-1 の形）。端末に bearer の長い資格を残さない
+    revocation: アプリ・端末・グループの外しは保存先の記録で効く。短いトークンは最長 10 分残る（受け入れる費用。即時に要るなら要求ごとに主体の記録の版を見る）
+  device_flow:
+    steps:
+    - 端末（/tablet）が WebCrypto の取り出せない ECDSA P-256 の鍵を作り、公開鍵を付けて /oauth/device_authorization を呼ぶ
+    - 端末が user_code と verification_uri_complete の QR を出す
+    - 承認する人が OIDC でログインし、どの仮想プリンタ（場所）に結ぶかを選んで承認する（だれが承認できるかは open_questions.device-approver）
+    - 端末は /oauth/token を device_code で問い、承認されると端末の記録（公開鍵、仮想プリンタ、承認した人）ができる
+    - 以後は pm-1 と同じく challenge への署名で短いセッションを得る
+    vs_pm1: pm-1 は管理者がコードを出して端末に打つ向き。デバイスフローは端末がコードを出し、人が自分の ID で承認する向き。秘密が端末へ流れず、承認した人が監査に残る
+    dpop: ネイティブのアプリの端末なら DPoP（RFC 9449）で同じ鍵にトークンを結べる。ブラウザの画像の読み込みはヘッダーを付けられないので、ブラウザはクッキーのセッションのまま
+  scopes:
+    job_visibility:
+      private: 持ち主（刷った人・アプリ）だけ
+      group: 持ち主と、そのグループの人。グループの人は見て刷り直せる（取り消しは持ち主と管理者だけ。暫定）
+      destination: 届いた先の仮想プリンタ（サービスユーザー）。private・group と重なる（倉庫のグループの人も見られる、など）
+      admin: 管理者は全部。読み出しは監査に残る
+    printer_kinds:
+      personal: 1 人の持ち主。その人だけが刷れて、ジョブの既定は private
+      group: 1 つのグループの持ち物。グループの人が刷れて、ジョブの既定は group
+      shared: 誰でも（ログインした人・許したアプリ）刷れる。ジョブの既定は private
+      virtual: display:// と archive://。仮想プリンタのサービスユーザーを持つ。グループ用にもできる
+    rule: 範囲はプリンタが既定を決め、刷る人は自分の属するグループの中で狭める・変えることができる（プリンタが許すとき）。OS の IPP は範囲を指定できないので、プリンタの既定だけが効く
+    reprint: 刷り直しは「そのジョブが見える」かつ「行き先のプリンタに刷れる」とき
+    groups_source:
+      rule: IdP の claim だけ（2026-10-21 利用者）。Print Manager の画面ではグループを作らない。どの claim のキーがグループかは設定で持つ
+      config_proposed: 'oidc.groups_claim にキーの道（例 groups、roles、Keycloak の realm_access.roles。点で入れ子をたどる）。値は文字列か文字列の配列。任意で oidc.groups_prefix（この接頭辞の値だけを取る）。管理者も oidc.admin_groups（グループの値の列）で決められ、bootstrap の admins と並ぶ'
+      freshness: グループはログインのたび（と人のセッションを作り直すたび）に ID トークン・UserInfo から取り直し、主体の記録に写す。外れた人は次のログインまで前のグループのまま（セッションの長さが上限。暫定で 8 時間）
+      references: プリンタ・ジョブが指すグループは claim の値そのもの（Entra の groups は既定でオブジェクト ID の GUID。表示の名前は管理画面で値に別名を付ける）
+      idp_caveats: Entra は 200 を超える（JWT）と groups が省かれ _claim_names になる（アプリに割り当てたグループだけを出す設定か roles で避ける）。Google Workspace の ID トークンには groups が無く、この方針では Google の人はグループを持てない（Keycloak などを間に挟むなら可）。どれも記憶で未確認
+      apps_and_devices: アプリと仮想プリンタには claim が無い。アプリは管理画面で許すプリンタを持ち、ジョブのグループは許されたグループの値から選ぶ。仮想プリンタは持ち主のグループの値を設定で持つ
+    app_scopes_proposed: print（ファイルを刷る）、print.template（テンプレートで刷る）、jobs.read（自分のジョブ）、jobs.cancel（自分のジョブ）、tick。加えてアプリごとに許すプリンタとテンプレートの一覧
+    on_behalf_of: アプリが「利用者 X のために」刷り、X の自分のジョブにする形は後（open_questions.app-on-behalf）
+  permission_matrix:
+    - '刷る: admin=全部 / user=personal(自分)・group(属する)・shared / app=許したプリンタ / virtual_printer=不可'
+    - 'ジョブを見る: admin=全部 / user=自分・属するグループ / app=自分 / virtual_printer=届いたもの'
+    - '刷り直す: admin=全部 / user=自分・属するグループ / app=自分（scope print）/ virtual_printer=不可（紙への逃げ道は場所の設定で起きる）'
+    - '取り消す: admin=全部 / user=自分 / app=自分（jobs.cancel）/ virtual_printer=不可'
+    - '設定（プリンタ・場所・グループ・アプリ・端末）: admin だけ'
+    - '監査の記録: admin だけ（後で読むだけの auditor）'
+  secrets_inventory:
+    session-key:
+      what: 人のセッション（popcornweb の keyring）と端末の challenge・セッション、機械のトークンの HMAC の封の鍵。今の MANAGER_SECRET
+      kind: 根の秘密。全部のインスタンスで同じ
+      store_proposed: 保存先の外。環境変数かファイルで渡し、基盤の秘密の置き場（AWS Secrets Manager・SSM Parameter Store・Lambda の暗号化した環境変数、Cloud Run の Secret Manager、systemd の credentials、Kubernetes の Secret）から注入
+      rotation: 鍵の列（先頭で封、残りは確かめるだけ）と kid。popcornweb の keyring が複数の鍵を持てるかは未確認
+    oidc-client-secret:
+      what: Print Manager が外の IdP のクライアントとして使う秘密
+      kind: 根の秘密
+      store_proposed: session-key と同じ。後で private_key_jwt・証明書（Entra）で秘密を無くせる
+    app-secret:
+      what: アプリの client_secret
+      kind: Print Manager が 256 ビットの乱数で作り 1 度だけ見せる
+      store: yuruidb にソルトつきの argon2id だけ（facts.secret_hashing。2026-10-21 利用者）。1 つのアプリに 2 つまで持たせて入れ替える
+    ipp-password:
+      what: 人の IPP の合言葉（Basic）
+      kind: app-secret と同じく Print Manager が作る乱数
+      store: app-secret と同じ argon2id。人が覚えるパスワードにしない（作るのは Print Manager の乱数）
+    device-key:
+      what: 端末の ECDSA P-256 の鍵
+      kind: 秘密の鍵は端末から出ない
+      store_proposed: yuruidb に公開鍵だけ（pm-1 のまま）
+    vault-credentials:
+      what: 保管庫（S3 Object Lock）の資格（pm-2）
+      store_proposed: Lambda は IAM ロール（鍵なし）。オンプレは環境変数か Roles Anywhere（requirement:print-manager の facts）
+    no_kek_needed: 保存先に取り出せる秘密を置かないので、暫定で保存先の中身を暗号化する鍵（KEK）は要らない。IdP の設定を画面から変えたくなったら KEK か基盤の秘密の置き場への書き込みが要る（そのときに決める）
+  secret_hashing:
+    rule: アプリの client_secret と人の IPP の合言葉は、ソルトつきの遅いハッシュで保存する（2026-10-21 利用者「argon2とかbcryptをつかって、ソルト＋ハッシュを保存が良い」）
+    algorithm_proposed: argon2id（golang.org/x/crypto/argon2。x/crypto は bdf の go.mod に間接の依存で既にある）。bcrypt は 72 バイトで切れ、メモリを使わないので次点
+    params_proposed: 暫定で m=19 MiB、t=2、p=1（OWASP の最低の推奨、と記憶。未確認）。ソルトは 16 バイトの乱数、出力は 32 バイト
+    format: PHC の文字列（$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>）。値を文字列に持つので、後で強めても古いものを確かめられる。確かめに成功したとき古い値なら作り直して書く
+    cost: 1 回の確かめに数十ミリ秒の CPU と 19 MiB のメモリ（見積もり、測っていない）。client credentials は /oauth/token の時だけ（アプリごとに 10 分に 1 回）で軽い。IPP の Basic は要求ごとに来て、OS のクライアントは Get-Job-Attributes などを繰り返し問うので重くなりうる
+    mitigations_proposed:
+    - インスタンスの中だけの短い（5 分）覚え。キーは session-key の HMAC(主体の ID と秘密)。保存先には書かない（状態を持たない決まりを崩さない。覚えが無くても正しく動く）
+    - 同時に走る argon2id の数を絞る（メモリの上限。Lambda のメモリの設定と合わせる）
+    - 知らない client_id にも同じ重さの計算をして、時間で ID の有無を漏らさない
+    - /oauth/token と IPP の失敗に回数の制限（共有の制限には保存先が要る。popcornweb の rate limit を見る）
+  bootstrap: 設定の admins に issuer と subject（またはメールアドレス・IdP のグループ）を書く。設定に無ければ起動しない（dev は除く）
+  audit_events: ログイン・ログアウト、トークンの発行と失敗、端末の承認と外し、アプリの追加・秘密の作り直し・外し、グループと権限の変更、ジョブの読み出し（ページ・ダウンロード）・刷り直し・取り消し
+  replaces_in_pm1:
+    AdminToken: 管理者の OIDC ログイン（API は scope を持つアプリ）
+    SubmitTokens: アプリ（client credentials、IPP は Basic）と人の IPP の合言葉
+    TickToken: scope tick のアプリ
+    registration_code: デバイスフロー（open_questions.keep-registration-code）
+    MANAGER_SECRET: session-key（鍵の列にする）
+  testing_proposed: 偽の IdP（httptest の上で OIDC の discovery・JWKS・認可コード・ID トークンを出す）を print-m6 の偽プリンタと同じ考えで作り、全部の試験をそれに載せる。実の IdP（Entra・Google・Keycloak）は手で確かめる
+  delivery_proposed:
+    current_milestone: pm-auth-1（暫定の名前。pm-1 がマージされた後）
+    pm-auth-1: 人の OIDC ログイン（admin と一般）、最初の管理者の設定（admins と admin_groups）、claim のキーを設定で選ぶグループ、プリンタの personal・group・shared、ジョブの持ち主と見える範囲、自分とグループのジョブの一覧・刷り直し・取り消し、監査の記録、偽の IdP、session-key の鍵の列
+    pm-auth-2: アプリ（管理画面で足す、/oauth/token の client credentials、scope とプリンタ・テンプレートの許可、IPP の Basic）。SubmitTokens・AdminToken・TickToken を外す
+    pm-auth-3: 仮想プリンタのサービスユーザーとデバイスフロー（登録コードを置き換える）
+    later: private_key_jwt、外の IdP のトークンの連携、アプリの on-behalf-of（RFC 8693 のトークン交換）、DPoP、IPP の OAuth、auditor の役割
+    relation_to_pm_plan: requirement:print-manager の delivery_order_proposed は OIDC を pm-3（事務所のビューア）に置いていた。認証は pm-2（保管庫）の前に置くのを推奨（保管庫の読み出しに見える範囲が要るので）。open_questions.order-vs-vault
+open_questions:
+  authorization-server:
+    text: 機械（アプリと仮想プリンタの端末）のトークンを誰が出すか。外の IdP だけか、人は外の IdP で機械は Print Manager が出す混成か、IdP を横に同梱するか
+    state: answered
+    resolution: 混成。2026-10-21 利用者が推奨を選んだ（facts.authorization_server）。アプリと仮想プリンタの追加を管理画面で完結でき、IPP の Basic も通せる
+  job-scope-source:
+    text: ジョブの見える範囲を、刷るときに選ぶか、プリンタ（個人用・グループ用）で決まるか、その両方か
+    state: answered
+    resolution: プリンタが既定を決め、刷る人は属するグループの中で変えられる。2026-10-21 利用者が推奨を選んだ（facts.scopes.rule）
+  virtual-printer-access:
+    text: 仮想プリンタのサービスユーザーが見られる「タブレットなどから受け取ったファイル」は、その仮想プリンタに届いたジョブ（表示）か、タブレットから送り込まれたファイル（取り込み）か
+    state: answered
+    resolution: その仮想プリンタに届いたジョブを見る（pm-1 の display:// と同じ）。2026-10-21 利用者が推奨を選んだ。取り込みは含まない
+  groups-source:
+    text: グループを Print Manager の中で作るか、IdP の claim から取るか
+    state: answered
+    resolution: 2026-10-21 利用者「idpのclaimだが、どのキーがそれに該当するかは設定で持てる様にする必要がある」。facts.scopes.groups_source
+  google-groups:
+    text: Google Workspace の人にグループを持たせるか（ID トークンに groups が無い）
+    state: deferred
+    resolution: 最初の IdP が Google と分かったら。選択肢は Keycloak などで仲介する、Cloud Identity の Groups API を Print Manager が読む（claim だけの方針から外れる）
+  key-storage:
+    text: 根の秘密（session-key、oidc-client-secret）をどこに置くか（利用者「どこに保存すべきかはまだわかっていない」）
+    state: open
+    resolution: 暫定で環境変数かファイル（*_FILE）で受け、基盤の秘密の置き場から注入する。Print Manager は秘密の置き場の API を話さない。Lambda で Secrets Manager を使うなら AWS Parameters and Secrets Lambda Extension（localhost の HTTP）が SDK なしで読める（記憶。未確認）
+  device-approver:
+    text: デバイスフローの承認を誰ができるか（管理者だけか、その仮想プリンタのグループの人もか）
+    state: open
+    resolution: 暫定で管理者と、仮想プリンタを持つグループの人
+  group-cancel:
+    text: グループの人がグループのジョブを取り消せるか
+    state: open
+    resolution: 暫定で不可（見て刷り直すだけ）。利用者の要件は「閲覧と再印刷」
+  keep-registration-code:
+    text: pm-1 の登録コード（管理者が出して端末に打つ）をデバイスフローと並べて残すか
+    state: open
+    resolution: 暫定で置き換える（残すと承認した人の記録の無い道が残る）
+  app-on-behalf:
+    text: アプリが利用者に代わって刷り、その人のジョブにできるか
+    state: deferred
+    resolution: pm-auth-2 の後。基幹のアプリが「誰の伝票か」を渡したい例が出たら（RFC 8693 か、アプリの許可つきの owner 指定）
+  order-vs-vault:
+    text: 認証（pm-auth-1）を保管庫（pm-2）の前にするか
+    state: open
+    resolution: 暫定で前。保管庫の読み出しの権限と監査が見える範囲に依る
+  token-format:
+    text: 機械のトークンを HMAC の封にするか JWT（JWKS）にするか
+    state: open
+    resolution: 暫定で HMAC の封（確かめるのは Print Manager だけ）。他のサービスが確かめる必要が出たら JWT
+relations:
+- relation: refines
+  to: requirement:print-manager
+- relation: depends_on
+  to: decision:thin-store
+- relation: extends
+  to: requirement:print
+history:
+  proposed:
+    summary: >-
+      2026-10-21 利用者「print managerだが、認証認可を取り入れたい。認証認可のキーの管理などが必要だが、どこに保存すべきかはまだわかっていない。
+      印刷時に自分のユーザーのファイル、グループのファイル（グループが閲覧したり再印刷指示が可能）といったスコープ設定ができるのを想定している。
+      出力先のプリンタのデバイスが個人用、グループ用みたいな感じかもしれないが」。主体は OIDC 認可コードの admin（全部の履歴、仮想プリンタ・アプリの追加）と
+      一般（印刷、自分の履歴とスプール）、OIDC クレデンシャルフローの他の Web アプリ（ファイルとテンプレートの印刷）、OIDC デバイスフローの仮想プリンタ＝
+      サービスユーザー（タブレットなどから受け取ったファイルのみ）。/knowledge-memory で整理を求めた。pm-1（作業ツリー print-manager-requirements-6fb34b、
+      未コミット）の print/manager と cmd/printmanager の今の認証（MANAGER_SECRET の HMAC、AdminToken、SubmitTokens、TickToken、登録コード）を読んで書いた
+  answered-1:
+    summary: 2026-10-21 利用者が AskUserQuestion で、認可サーバーは混成、範囲はプリンタが既定、仮想プリンタは届いたジョブを見る（推奨の 3 つ）を選び、グループは「idpのclaimだが、どのキーがそれに該当するかは設定で持てる様にする必要がある」と答えた
+  secret-hash-chosen:
+    summary: 2026-10-21 利用者「アプリの client_secret、人の IPP 用の合言葉はargon2とかbcryptをつかって、ソルト＋ハッシュを保存が良いと思う」。SHA-256 の推奨を改め、argon2id（PHC の文字列）にした。要求ごとの IPP の Basic の重さは facts.secret_hashing.mitigations_proposed
+  pending-merge:
+    summary: pm-1 の作業ツリーが requirement:print-manager の open_questions.viewer-login を書き換えている。両方がマージされたら viewer-login を requirement:print-manager-auth に寄せる。shibukawa/bdf#114 にある decision:print-manager-ui-daisyui（Tailwind v4.3.3 と daisyUI v5.7.50 で実装済み）への constrained_by の関係も、#114 が入った後にここへ足す（今は相手が無くコンパイルが断る）
