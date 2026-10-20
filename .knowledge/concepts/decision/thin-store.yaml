@@ -57,6 +57,14 @@ facts:
       - bbolt の DB を外に出さないので、bdf の写しと詰め直しを動かしたまま行えない
       - DynamoDB の流量制限（HTTP 400）を再試行しない。ID の文字種に IPv6 のホストやプリンタの任意の名前が入らない（bdf の側で符号化）
       verdict: ジョブの記録は yuruidb の bbolt ドライバに載せられる。bdf の既定の 1 ファイルで使い切るには bbolt の Blob と写し・詰め直しが要る
+    reevaluation_2026_10_20_b:
+      commit: 3684337（不明の誤りを ErrConflict に当てない、確かめの一時キーを .yuruidb-probes/ に、bbolt・SQL の Blob、Blob の ReaderAt・List・Remove、bbolt の Backup、DynamoDB の HTTP 400 の再試行）
+      resolved: 前回の残りの 1〜5 を確かめた（不明と競合の分離、確かめの残りが一覧を止めない、bbolt の Blob と範囲の読み取り、稼働中の写し、DynamoDB の流量制限）
+      remaining:
+      - Store.Backup が書き出しの間ずっと Store のロックを持ち、同じ Store のレコードの操作が止まる（遅い書き出し先への 0.55 秒の間 Get が 0.55 秒待った）
+      - bbolt の Blob の Insert が入力を読み終えるまで bbolt の書き込みロックと入力全体のメモリを持つ（1 MiB を 1.6 秒で受ける間、別のレコードの Update が 1.67 秒待った）
+      - HTTP の Blob の Open が本文の GET を開いたままにする（ReadAt だけなら無駄）
+      verdict: bdf のスプールに要るもの（1 つの bbolt のファイルに記録・文書・写し）が揃った。Backup のロックが直れば print-m2 は yuruidb の上に作れる。Blob の Insert のロックは bdf が一時ファイルに落としてから入れても避けられる
 open_questions:
   package-location:
     text: 汎用の store/ に置くか、print/spool/store に閉じるか
