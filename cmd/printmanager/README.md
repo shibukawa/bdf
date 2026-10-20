@@ -86,3 +86,19 @@ pw generate --code-only
 and commit the `*_pw_gen.go` files (the build of the module does not run
 pw). `popcornweb.toml` is at the root because pw wants it beside `go.mod`;
 it reads only `cmd/printmanager/handlers`.
+
+## Style
+
+The pages use [Tailwind CSS](https://tailwindcss.com) and
+[daisyUI](https://daisyui.com), built into `public/app.css` (committed, and
+embedded in the binary: no CDN). No Node or npm: the standalone
+`tailwindcss` CLI loads daisyUI's release files in `tailwind/` (versions
+and hashes in `tailwind/VERSIONS`). After changing the pages' markup or
+classes, with that CLI on the PATH (`brew install tailwindcss`):
+
+```sh
+go generate ./cmd/printmanager
+```
+
+CI builds it again and fails on a difference.
+

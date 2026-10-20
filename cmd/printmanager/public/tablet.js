@@ -45,17 +45,32 @@ let tab = "open";
 
 function show(section) {
   for (const id of ["enroll", "board", "viewer"]) $(id).hidden = id !== section;
+  // while a slip is open, only its bar stays at the top
+  $("bar").classList.toggle("sticky", section !== "viewer");
 }
 
 function status(text, bad) {
   const s = $("status");
   s.textContent = text;
-  s.classList.toggle("bad", !!bad);
+  s.hidden = !text;
+  s.className = "badge " + (bad ? "badge-error" : "badge-success badge-soft");
+}
+
+// toast shows a message for a while; big is for a slip that came.
+function toast(text, kind = "info", big = false) {
+  const t = document.createElement("div");
+  t.role = "status";
+  // whole class names, for Tailwind to find
+  const alert = { info: "alert-info", success: "alert-success", warning: "alert-warning", error: "alert-error" }[kind];
+  t.className = `alert ${alert} shadow-lg ` + (big ? "px-8 py-6 text-2xl font-bold sm:text-3xl" : "text-lg");
+  t.textContent = text;
+  $("toasts").append(t);
+  setTimeout(() => t.remove(), big ? 8000 : 4000);
 }
 
 async function enroll(ev) {
   ev.preventDefault();
-  $("enroll-error").textContent = "";
+  $("enroll-error").hidden = true;
   try {
     const keys = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, false, ["sign", "verify"]);
     const spki = await crypto.subtle.exportKey("spki", keys.publicKey);
@@ -72,6 +87,7 @@ async function enroll(ev) {
     await start();
   } catch (e) {
     $("enroll-error").textContent = "登録できませんでした: " + e.message;
+    $("enroll-error").hidden = false;
   }
 }
 
@@ -128,6 +144,7 @@ function beep() {
 }
 
 const stateText = { new: "新着", opened: "開いた", done: "完了", canceled: "取り消し" };
+const stateBadge = { new: "badge-warning", opened: "badge-info", done: "badge-success", canceled: "badge-error" };
 
 function time(s) {
   const d = new Date(s);
@@ -135,31 +152,40 @@ function time(s) {
 }
 
 function item(s) {
+  const active = s.state === "new" || s.state === "opened";
   const li = document.createElement("li");
-  li.className = "slip " + s.state;
+  li.className =
+    "card bg-base-100 shadow-sm transition " +
+    (s.state === "new" ? "border-l-8 border-warning " : "") +
+    (active ? "cursor-pointer hover:shadow-md active:scale-[0.99]" : "opacity-70");
+  const body = document.createElement("div");
+  body.className = "card-body flex-row flex-wrap items-center gap-x-4 gap-y-1 p-5";
+  const badge = document.createElement("span");
+  badge.className = "badge badge-lg " + (stateBadge[s.state] || "badge-ghost");
+  badge.textContent = stateText[s.state] || s.state;
   const name = document.createElement("span");
-  name.className = "name";
+  name.className = "min-w-0 flex-1 break-words text-xl font-semibold sm:text-2xl";
   name.textContent = s.name || "伝票 " + s.job;
   const meta = document.createElement("span");
-  meta.className = "meta";
+  meta.className = "w-full text-base text-base-content/60";
   meta.textContent = `#${s.job} · ${time(s.received)} · ${s.pages} ページ`;
-  const badge = document.createElement("span");
-  badge.className = "badge " + s.state;
-  badge.textContent = stateText[s.state] || s.state;
-  li.append(badge, name, meta);
+  body.append(badge, name);
   if (s.printed && s.printed.length) {
     const p = document.createElement("span");
-    p.className = "badge printed";
+    p.className = "badge badge-outline badge-lg";
     p.textContent = "紙に出した";
-    li.append(p);
+    body.append(p);
   }
-  if (s.state === "new" || s.state === "opened") li.addEventListener("click", () => openSlip(s));
+  body.append(meta);
+  li.append(body);
+  if (active) li.addEventListener("click", () => openSlip(s));
   return li;
 }
 
 function render() {
   $("title").textContent = board.title;
-  $("open-count").textContent = board.open.length ? `(${board.open.length})` : "";
+  $("open-count").textContent = board.open.length;
+  $("open-count").hidden = board.open.length === 0;
   $("open-list").replaceChildren(...board.open.map(item));
   $("ended-list").replaceChildren(...board.ended.map(item));
   $("open-list").hidden = tab !== "open";
@@ -175,7 +201,11 @@ async function poll() {
       etag = res.headers.get("ETag") || "";
       board = await res.json();
       // a slip that came since the last board rings, not those on the first
-      if (!first && board.open.some((s) => s.state === "new" && !known.has(s.id))) beep();
+      const fresh = board.open.filter((s) => s.state === "new" && !known.has(s.id));
+      if (!first && fresh.length) {
+        beep();
+        toast(fresh.length === 1 ? `新しい伝票: ${fresh[0].name || "#" + fresh[0].job}` : `新しい伝票が ${fresh.length} 件`, "warning", true);
+      }
       first = false;
       known = new Set(board.open.map((s) => s.id));
       if (!current) render();
@@ -198,6 +228,7 @@ async function openSlip(s) {
   for (let n = 1; n <= s.pages; n++) {
     const img = document.createElement("img");
     img.alt = `${n} ページ`;
+    img.className = "w-full rounded-box bg-white shadow-md";
     img.loading = n <= 2 ? "eager" : "lazy";
     img.src = `/device/slips/${encodeURIComponent(s.id)}/pages/${n}.png?w=${width}`;
     pages.push(img);
@@ -249,23 +280,24 @@ $("done").addEventListener("click", async () => {
   try {
     await post(`/device/slips/${encodeURIComponent(current.id)}/done`);
     closeSlip();
+    toast("完了にしました", "success");
   } catch (e) {
-    status(e.message, true);
+    toast(e.message, "error");
   }
 });
 $("print").addEventListener("click", async () => {
   try {
     await post(`/device/slips/${encodeURIComponent(current.id)}/print`);
-    status("刷りました");
+    toast("刷りました", "success");
   } catch (e) {
-    status("刷れませんでした: " + e.message, true);
+    toast("刷れませんでした: " + e.message, "error");
   }
 });
 for (const t of ["open", "ended"]) {
   $("tab-" + t).addEventListener("click", () => {
     tab = t;
-    $("tab-open").classList.toggle("active", t === "open");
-    $("tab-ended").classList.toggle("active", t === "ended");
+    $("tab-open").classList.toggle("tab-active", t === "open");
+    $("tab-ended").classList.toggle("tab-active", t === "ended");
     if (board) render();
   });
 }

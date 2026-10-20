@@ -33,6 +33,13 @@ func init() {
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
+		Name:      "renderAppBar",
+		Exported:  false,
+		NewParams: func() any { return new(renderAppBarParams) },
+		Render:    func(params any) htmlbind.Fragment { return renderAppBar(*params.(*renderAppBarParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
 		Name:      "renderShell",
 		Exported:  false,
 		NewParams: func() any { return new(renderShellParams) },

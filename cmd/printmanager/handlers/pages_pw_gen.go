@@ -11,6 +11,11 @@ type renderShellParams struct {
 	Children htmlbind.Fragment
 }
 
+type renderAppBarParams struct {
+	Title    string
+	Children htmlbind.Fragment
+}
+
 type HomeParams struct{}
 
 type TabletParams struct{}
@@ -18,15 +23,27 @@ type TabletParams struct{}
 type AdminParams struct{}
 
 var planHomeOpsFill1Plan = &htmlbind.Plan[HomeParams]{Ops: []htmlbind.Op[HomeParams]{
-	planHomeOps.Static(" <main class=\"home\"> <h1>BDF Print Manager</h1> <p>倉庫ごとの仮想プリンタに刷られた伝票を、登録した端末だけに見せます。</p> <ul class=\"links\"> <li><a href=\"/tablet\">端末の画面</a>（タブレットで開き、管理者が出した登録コードで登録します）</li> <li><a href=\"/admin\">管理</a>（場所・プリンタ・端末。管理のトークンが要ります）</li> </ul> <p class=\"note\">送る側は IPP のプリンタ <code>/ipp/print/&lt;場所&gt;</code> か、API の <code>POST /api/locations/&lt;場所&gt;/slips</code> に送ります。</p> </main> "),
+	planHomeOps.Static(" "),
+	planHomeOps.Component(func(p HomeParams) htmlbind.Fragment {
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager"})
+	}),
+	planHomeOps.Static(" <main class=\"mx-auto max-w-4xl p-4 sm:p-8\"> <section class=\"hero rounded-box bg-base-100 py-10 shadow-sm\"> <div class=\"hero-content text-center\"> <div class=\"max-w-xl\"> <h1 class=\"text-3xl font-bold sm:text-4xl\">倉庫の伝票を、紙でなく端末に</h1> <p class=\"py-4 text-base-content/70\">倉庫ごとの仮想プリンタに刷られた伝票を、登録した端末だけに見せます。だれも開かなければ、その倉庫のプリンタに刷ります。</p> <div class=\"flex flex-wrap justify-center gap-3\"> <a href=\"/tablet\" class=\"btn btn-primary btn-lg\">端末の画面</a> <a href=\"/admin\" class=\"btn btn-lg\">管理</a> </div> </div> </div> </section> <div class=\"mt-6 grid gap-4 sm:grid-cols-2\"> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">端末</h2> <p class=\"text-base-content/70\">タブレットで端末の画面を開き、管理者が出した登録コードで登録します。登録した端末だけが伝票を見られます。</p> </div> </div> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">送る側</h2> <p class=\"text-base-content/70\">IPP のプリンタ <code class=\"font-mono text-sm\">/ipp/print/&lt;場所&gt;</code> か、API の <code class=\"font-mono text-sm\">POST /api/locations/&lt;場所&gt;/slips</code> に送ります。</p> </div> </div> </div> </main> "),
 }}
 
 var planTabletOpsFill2Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
-	planTabletOps.Static(" <div id=\"app\" class=\"tablet\"> <header class=\"bar\"> <h1 id=\"title\">伝票</h1> <span id=\"status\" class=\"status\"></span> <label class=\"worker\">作業者 <input id=\"worker\" autocomplete=\"off\" placeholder=\"名前\"></label> </header> <section id=\"enroll\" class=\"panel\" hidden> <h2>この端末を登録する</h2> <p>管理者が出した登録コードを入れてください。登録した端末だけが伝票を見られます。</p> <form id=\"enroll-form\"> <label>登録コード <input id=\"code\" autocomplete=\"off\" autocapitalize=\"characters\" required></label> <label>端末の名前 <input id=\"device-name\" autocomplete=\"off\" placeholder=\"例: 出荷口のタブレット\"></label> <button type=\"submit\">登録する</button> </form> <p id=\"enroll-error\" class=\"error\"></p> </section> <section id=\"board\" hidden> <nav class=\"tabs\"> <button id=\"tab-open\" class=\"tab active\" type=\"button\">未完了 <span id=\"open-count\"></span></button> <button id=\"tab-ended\" class=\"tab\" type=\"button\">完了・取り消し</button> </nav> <ul id=\"open-list\" class=\"slips\"></ul> <ul id=\"ended-list\" class=\"slips\" hidden></ul> <p id=\"empty\" class=\"empty\" hidden>伝票はありません</p> </section> <section id=\"viewer\" hidden> <div class=\"viewer-bar\"> <button id=\"back\" type=\"button\">一覧へ</button> <span id=\"viewer-title\"></span> <button id=\"print\" type=\"button\" hidden>この倉庫で刷る</button> <button id=\"done\" class=\"primary\" type=\"button\">完了</button> </div> <div id=\"pages\" class=\"pages\"></div> </section> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
+	planTabletOps.Static(" <div id=\"app\" class=\"min-h-screen\"> <header id=\"bar\" class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex min-w-0 flex-1 items-center gap-3\"> <h1 id=\"title\" class=\"truncate text-2xl font-bold\">伝票</h1> <span id=\"status\" class=\"badge\" hidden></span> </div> <label class=\"input input-lg w-full sm:w-56\"> <span class=\"label\">作業者</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"名前\"> </label> </header> <section id=\"enroll\" class=\"mx-auto max-w-lg p-4 sm:p-8\" hidden> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h2 class=\"card-title text-2xl\">この端末を登録する</h2> <p class=\"text-base-content/70\">管理者が出した登録コードを入れてください。登録した端末だけが伝票を見られます。</p> <form id=\"enroll-form\" class=\"flex flex-col gap-4\"> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">登録コード</legend> <input id=\"code\" class=\"input input-lg w-full font-mono tracking-widest uppercase\" autocomplete=\"off\" autocapitalize=\"characters\" required> </fieldset> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">端末の名前</legend> <input id=\"device-name\" class=\"input input-lg w-full\" autocomplete=\"off\" placeholder=\"例: 出荷口のタブレット\"> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">登録する</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">未完了 <span id=\"open-count\" class=\"badge badge-warning ml-2\" hidden></span></button> <button id=\"tab-ended\" role=\"tab\" class=\"tab flex-1 sm:flex-none\" type=\"button\">完了・取り消し</button> </div> <ul id=\"open-list\" class=\"mt-4 grid gap-3\"></ul> <ul id=\"ended-list\" class=\"mt-4 grid gap-3\" hidden></ul> <div id=\"empty\" class=\"mt-16 text-center text-xl text-base-content/50\" hidden>伝票はありません</div> </section> <section id=\"viewer\" hidden> <div class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <button id=\"back\" type=\"button\" class=\"btn btn-lg btn-ghost\">← 一覧</button> <span id=\"viewer-title\" class=\"min-w-0 flex-1 truncate text-lg font-semibold\"></span> <div class=\"flex gap-2\"> <button id=\"print\" type=\"button\" class=\"btn btn-lg btn-outline\" hidden>この倉庫で刷る</button> <button id=\"done\" type=\"button\" class=\"btn btn-lg btn-success\">完了</button> </div> </div> <div id=\"pages\" class=\"mx-auto grid max-w-5xl gap-4 p-4\"></div> </section> <div id=\"toasts\" class=\"toast toast-top toast-center z-50\"></div> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
+}}
+
+var planAdminOpsFill4Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
+	planAdminOps.Static(" <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">今すぐ tick</button> "),
 }}
 
 var planAdminOpsFill3Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
-	planAdminOps.Static(" <main id=\"admin\" class=\"admin\"> <h1>管理</h1> <form id=\"token-form\" class=\"row\"> <label>管理のトークン <input id=\"token\" type=\"password\" autocomplete=\"off\"></label> <button type=\"submit\">使う</button> <button id=\"tick\" type=\"button\">今すぐ tick</button> <span id=\"admin-status\" class=\"status\"></span> </form> <section> <h2>プリンタ</h2> <table id=\"printers\"></table> <form id=\"printer-form\" class=\"row\"> <input id=\"printer-name\" placeholder=\"名前 (wh-a-laser)\" required> <input id=\"printer-url\" placeholder=\"ipps://… / socket://…:9100\" required size=\"40\"> <button type=\"submit\">追加・更新</button> </form> </section> <section> <h2>場所</h2> <div id=\"locations\"></div> <form id=\"location-form\" class=\"row\"> <input id=\"location-name\" placeholder=\"名前 (wh-a)\" required> <input id=\"location-title\" placeholder=\"表示名 (第 1 倉庫)\"> <input id=\"location-printer\" placeholder=\"紙に逃がすプリンタ\"> <input id=\"location-after\" placeholder=\"何分で (10m)\" size=\"8\"> <button type=\"submit\">追加・更新</button> </form> </section> <section id=\"enrollment\" hidden> <h2>端末の登録コード</h2> <div class=\"enroll-card\"> <div id=\"qr\" class=\"qr\"></div> <div> <p class=\"code\" id=\"enroll-code\"></p> <p><a id=\"enroll-url\"></a></p> <p id=\"enroll-expires\" class=\"note\"></p> </div> </div> </section> </main> <script type=\"module\" src=\"/public/admin.js\"></script> "),
+	planAdminOps.Static(" "),
+	planAdminOps.Component(func(p AdminParams) htmlbind.Fragment {
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager · 管理", Children: planAdminOpsFill4Plan.Bind(p)})
+	}),
+	planAdminOps.Static(" <main id=\"admin\" class=\"mx-auto grid max-w-6xl gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <form id=\"token-form\" class=\"card-body\"> <h2 class=\"card-title\">管理のトークン</h2> <div class=\"join w-full max-w-xl\"> <input id=\"token\" type=\"password\" autocomplete=\"off\" class=\"input join-item w-full\" placeholder=\"MANAGER_ADMIN_TOKEN\"> <button type=\"submit\" class=\"btn btn-primary join-item\">使う</button> </div> </form> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">プリンタ</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-zebra\"><thead><tr><th>名前</th><th>URL</th><th>経路</th><th></th></tr></thead><tbody id=\"printers\"></tbody></table> </div> <form id=\"printer-form\" class=\"mt-2 flex flex-wrap gap-2\"> <input id=\"printer-name\" class=\"input w-full sm:w-48\" placeholder=\"名前 (wh-a-laser)\" required> <input id=\"printer-url\" class=\"input w-full sm:flex-1\" placeholder=\"ipps://… / socket://…:9100\" required> <button type=\"submit\" class=\"btn btn-primary\">追加・更新</button> </form> </div> </section> <section class=\"grid gap-4\"> <h2 class=\"text-xl font-bold\">場所</h2> <div id=\"locations\" class=\"grid gap-4 lg:grid-cols-2\"></div> <form id=\"location-form\" class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h3 class=\"card-title text-base\">場所を追加・更新</h3> <div class=\"flex flex-wrap gap-2\"> <input id=\"location-name\" class=\"input w-full sm:w-40\" placeholder=\"名前 (wh-a)\" required> <input id=\"location-title\" class=\"input w-full sm:w-48\" placeholder=\"表示名 (第 1 倉庫)\"> <input id=\"location-printer\" class=\"input w-full sm:w-48\" placeholder=\"紙に逃がすプリンタ\"> <input id=\"location-after\" class=\"input w-full sm:w-28\" placeholder=\"何分で (10m)\"> <button type=\"submit\" class=\"btn btn-primary\">追加・更新</button> </div> </div> </form> </section> </main> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">端末の登録コード</h3> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">閉じる</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>閉じる</button></form> </dialog> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/admin.js\"></script> "),
 }}
 
 var planShellOps = htmlbind.Builder[renderShellParams]{}
@@ -41,7 +58,7 @@ var planShellPlan = &htmlbind.Plan[renderShellParams]{
 		planShellOps.Text(func(p renderShellParams) string { return p.Title }),
 		planShellOps.Static("</title><link rel=\"stylesheet\" href=\"/public/app.css\">"),
 		planShellOps.MergedHead(),
-		planShellOps.Static("</head><body>"),
+		planShellOps.Static("</head><body class=\"min-h-screen bg-base-200 text-base-content antialiased\">"),
 		planShellOps.Slot(func(p renderShellParams) htmlbind.Fragment { return p.Children },
 			nil),
 		planShellOps.Static("</body></html>"),
@@ -50,6 +67,26 @@ var planShellPlan = &htmlbind.Plan[renderShellParams]{
 
 // renderShell binds Shell to its parameters, producing a renderable fragment.
 func renderShell(params renderShellParams) htmlbind.Fragment { return planShellPlan.Bind(params) }
+
+var planAppBarOps = htmlbind.Builder[renderAppBarParams]{}
+
+var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
+	Head: nil,
+	Slots: func(p renderAppBarParams) []htmlbind.Fragment {
+		return []htmlbind.Fragment{p.Children}
+	},
+	Ops: []htmlbind.Op[renderAppBarParams]{
+		planAppBarOps.Static(" <header class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex-1 min-w-0\"> <a href=\"/\" class=\"text-xl font-bold tracking-tight\">"),
+		planAppBarOps.Text(func(p renderAppBarParams) string { return p.Title }),
+		planAppBarOps.Static("</a> </div> <div class=\"flex flex-wrap items-center gap-2\">"),
+		planAppBarOps.Slot(func(p renderAppBarParams) htmlbind.Fragment { return p.Children },
+			nil),
+		planAppBarOps.Static("</div> </header> "),
+	},
+}
+
+// renderAppBar binds AppBar to its parameters, producing a renderable fragment.
+func renderAppBar(params renderAppBarParams) htmlbind.Fragment { return planAppBarPlan.Bind(params) }
 
 var planHomeOps = htmlbind.Builder[HomeParams]{}
 
