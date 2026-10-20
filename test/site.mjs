@@ -187,7 +187,7 @@ const formFonts = `${base}form/fonts/`;
 const formFontDir = join(site, "form/fonts");
 assert.deepEqual(await readdir(formFontDir), ["index.json"], "form fonts are fetched remotely, with no bundled font files");
 const remoteFonts = JSON.parse(await readFile(join(formFontDir, "index.json"), "utf8"));
-assert.equal(remoteFonts.length, 2);
+assert.equal(remoteFonts.length, 3);
 for (const font of remoteFonts) {
   const url = new URL(font.url);
   assert.equal(url.origin, "https://fonts.gstatic.com");
@@ -195,9 +195,9 @@ for (const font of remoteFonts) {
   assert.ok(font.size > 0 && font.scan.length > 0);
 }
 const forms = JSON.parse(await readFile(join(site, "forms/index.json"), "utf8"));
-assert.deepEqual(forms.map((f) => f.id), ["fixed", "rows", "pages", "application", "pdfme-invoice", "pdfme-certificate"]);
+assert.deepEqual(forms.map((f) => f.id), ["fixed", "rows", "pages", "application", "pdfme-invoice", "pdfme-certificate", "text-slip", "text-receipt"]);
 /** The format of a template of the page, by its name. */
-const formatOf = (name) => (name.startsWith("pdfme-") ? "pdfme" : name.split(".").pop());
+const formatOf = (name) => (name.startsWith("pdfme-") ? "pdfme" : name.endsWith(".txt") ? "text" : name.split(".").pop());
 const styledSchemas = new Map();
 function withoutLocations(value) {
   if (Array.isArray(value)) return value.map(withoutLocations);
@@ -297,6 +297,8 @@ for (const shape of forms) {
         pages: ["納品書", "DN-2026-1014", "当頁計", "36,180"], application: ["Taro Yamada", "12800"],
         "pdfme-invoice": ["請求書", "INV-2026-1014", "ファイルボックス", "総額", "23,958"],
         "pdfme-certificate": ["Hanako Tanaka", "Score 92 / 100 (with distinction)", "October 14, 2026"],
+        "text-slip": ["納品書", "株式会社サンプル商事", "15,890", "（控）"],
+        "text-receipt": ["サンプル珈琲店", "ブレンドコーヒー", "1,950"],
       }[shape.id];
       for (const w of want) assert.ok(text.includes(w), `the filled form has ${w}`);
       assert.ok(!text.includes("{{"), "no tag is left in the form");

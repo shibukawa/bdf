@@ -1,2 +1,3 @@
 image/imgconv/internal/**/*.go linguist-generated=true
 image/imgconv/internal/**/data.bin binary
+testdata/form/*.txt binary

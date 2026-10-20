@@ -101,7 +101,7 @@ const FORM_SHAPES = [
 ];
 const FORM_FORMATS = [["xlsx", "Excel"], ["docx", "Word"], ["pptx", "PowerPoint"]];
 const FORM_STYLES = [{ id: "standard", suffix: "" }, { id: "modern", suffix: "-modern" }];
-/** And the templates whose fields have places: a PDF with form fields, and templates of pdfme. Each has its own data. */
+/** And the templates whose fields have places (a PDF with form fields, templates of pdfme), and templates of text. Each has its own data. */
 const FORM_PLACED = [
   { id: "application", label: "An application", about: "a PDF with form fields: texts, a comb of digits, checkboxes, radio buttons and a choice, filled in their places",
     data: ["test/pdf/data/application.json", "application.json"], template: ["converter/pdfform/testdata/application.pdf", "application.pdf", "PDF form"] },
@@ -109,6 +109,10 @@ const FORM_PLACED = [
     data: ["site/form/samples/pdfme-invoice.data.json", "pdfme-invoice.data.json"], template: ["site/form/samples/pdfme-invoice.json", "pdfme-invoice.json", "pdfme"] },
   { id: "pdfme-certificate", label: "A certificate of pdfme", about: "a template of pdfme over a base PDF: a name in the size that fits, a date, a text with an expression, a signature",
     data: ["test/pdfme/data/certificate.json", "pdfme-certificate.data.json"], template: ["converter/pdfme/testdata/certificate.json", "pdfme-certificate.json", "pdfme"] },
+  { id: "text-slip", label: "A slip of text", about: "a template of text for a dot matrix printer: a delivery slip on a grid of columns and lines, its rules on the preprinted paper",
+    data: ["test/text/data/slip.json", "text-slip.data.json"], template: ["converter/textform/testdata/slip.txt", "text-slip.txt", "Text"] },
+  { id: "text-receipt", label: "A receipt of text", about: "a template of text for a receipt printer: 42 columns of a roll, as long as its items",
+    data: ["test/text/data/receipt.json", "text-receipt.data.json"], template: ["converter/textform/testdata/receipt.txt", "text-receipt.txt", "Text"] },
 ];
 
 async function copyForms() {

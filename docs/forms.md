@@ -1,6 +1,6 @@
 # Making forms
 
-Forms such as invoices and delivery slips can be made as BDF documents from a template and data. A template is an Excel workbook, a Word document or a PowerPoint presentation whose text holds tags (`{{name}}`), a PDF with form fields, or a template of pdfme. The data is JSON, YAML, CSV or Excel files; `bdf fill` replaces the tags with the data (or fills the fields), lays the result out, and writes a `.bdf`. No Office file is written. `bdf pdf` writes the form as a PDF file: plain, tagged, or PDF/A.
+Forms such as invoices and delivery slips can be made as BDF documents from a template and data. A template is an Excel workbook, a Word document or a PowerPoint presentation whose text holds tags (`{{name}}`), a PDF with form fields, a template of pdfme, or a text file of the lines of a form with tags. The data is JSON, YAML, CSV or Excel files; `bdf fill` replaces the tags with the data (or fills the fields), lays the result out, and writes a `.bdf`. No Office file is written. `bdf pdf` writes the form as a PDF file: plain, tagged, or PDF/A.
 
 ```sh
 bdf fill -data order.yaml -data items=lines.csv invoice.xlsx invoice.bdf
@@ -14,8 +14,9 @@ bdf pdf invoice.bdf invoice.pdf
 | PowerPoint (`.pptx`) | The slides. Shapes stay where they are | Forms with fixed places, certificates, labels, a sheet for each record |
 | [PDF form](#pdf-forms) (`.pdf`) | The pages of the PDF, with the values in the places of its fields | Forms that exist as PDF files already: applications, official forms |
 | [pdfme](#templates-of-pdfme) (`.json`) | The pages its designer shows; tables grow over pages | Forms designed in the browser with the designer of pdfme |
+| [Text](#templates-of-text) (`.txt`) | Characters on a grid of columns and lines, as printers print in their text mode | Continuous forms and carbon-copy slips of dot matrix printers, receipts, fixed-length text for other systems |
 
-The tags and the data are the same for the three kinds of Office files: the same data fills templates of different formats. A PDF form and a template of pdfme have fields instead of tags, and take the same kind of data by the names of their fields.
+The tags and the data are the same for the three kinds of Office files and for templates of text: the same data fills templates of different formats. A PDF form and a template of pdfme have fields instead of tags, and take the same kind of data by the names of their fields.
 
 To try it without installing anything, drop a template on the [form page](https://shibukawa.github.io/bdf/form/): it reads the tags, makes a form of them, shows the template filled with what you type, and saves it as a PDF file. All of it runs in the browser; nothing is uploaded.
 
@@ -196,6 +197,76 @@ bdf template compile template.json invoice.bdft   # the pages show what the desi
 - Not drawn as pdfme draws it: the inline markdown of text, and the codes `japanpost`, `upce`, `gs1datamatrix` and `pdf417` (left out, with a warning). What a barcode says is a plain line under its bars. A QR code holds the same text but may pick another mask. An SVG image fits whole in its box (the generator of pdfme crops some).
 - A base PDF that the template names by a URL is not fetched: it is in the template, as the designer saves it.
 
+## Templates of text
+
+A text file (UTF-8) is a template of the forms that a dot matrix printer prints on continuous paper and carbon-copy slips, and a receipt printer on its roll: characters on a grid of columns and lines. What the editor shows is the form: a line of the file is a line of the page, a character takes a column, and a full-width one (kanji, kana) two. The same tags and data as the other templates fill it.
+
+```text
+---
+cpi: 10                  # columns to the inch
+lpi: 6                   # lines to the inch
+columns: 80              # the width of the paper in columns
+lines: 33                # the length of a page in lines (0: a roll, as long as the form)
+margin: {left: 2, top: 1}
+skip: 2                  # lines left empty over the perforation
+---
+                  {{#_big}}納品書{{/_big}}                {{date | fmt:"yyyy年m月d日"}}
+{{#preprinted}}得意先{{/preprinted}} {{customer | width:30}}{{#preprinted}}御中{{/preprinted}}  No. {{no | right:8}}
+{{#preprinted}}
+┌──────────────────────┬──────┬────────────┐
+│ 品名                 │ 数量 │ 金額       │
+{{/preprinted}}
+{{#rows}}
+│ {{name | width:20 | cut}} │ {{qty | right:4}} │ {{amount | fmt:"#,##0" | right:10}} │
+│                      │      │            │
+│                      │      │            │
+{{/rows}}
+```
+
+```sh
+bdf fill -data order.json slip.txt slip.bdf    # the form as a document: to view, to print, as a PDF
+bdf fill -data order.json slip.txt slip.txt    # the form as plain text: its lines, the pages separated by form feeds
+bdf template compile -sample order.json slip.txt slip.bdft
+```
+
+**The front matter** (YAML between lines `---`, optional) gives the grid. Without it a template is 80 columns by 66 lines at 10 CPI and 6 LPI (fanfold paper of 8 by 11 inches).
+
+| Key | Meaning |
+|---|---|
+| `cpi`, `lpi` | Columns and lines to the inch: 10, 12, 15, 17.1 or 20 CPI, 6 or 8 LPI (the pitches of ESC/P; another number is warned of) |
+| `columns`, `lines` | The paper, in columns and lines, the margins included. `lines: 0` is a roll: a page is as long as its lines (a receipt) |
+| `margin: {left, top}` | Columns before each line, and lines above the first |
+| `skip` | Lines left empty at the bottom of each page, over the perforation |
+| `title` | The first lines of the form repeat at the top of each page (the title of a list) |
+| `font` | The monospace font of the pages: a family (`BIZ UDGothic`), or a font file beside the template (`fonts/slip.ttf`; `-files` names the directory) |
+| `ambiguous` | The columns of the characters of ambiguous width (box drawing, `○`, `※`, Greek): `narrow` (1, the default, as most editors show them) or `wide` (2) |
+
+**Values** take the columns of their text: a longer value moves what follows it. A value with columns takes exactly them, counted with full-width characters as two: `{{name | width:20}}` on the left of 20 columns, `{{no | right:8}}` on the right, `{{title | center:30}}` in the middle. A value wider than its columns is written whole with a warning; `| cut` cuts it, and `| wrap` puts the rest on the lines under it, in the same columns (`{{address | width:30 | wrap}}`). A line break in a value goes on to the next line in the same way.
+
+**Lines of tags.** A line with nothing but the tags of sections of lines takes no line of the form. A form feed in the file breaks the page.
+
+**Sections** repeat as in a workbook ([Repeating rows](#repeating-rows)), with the lines of the file as its rows: a section in one line repeats characters (`{{#tags}}{{.}} {{/tags}}`); a section over lines fills the lines between its tags, an item to a line (slots: lines without items stay as they are without values, and a line of the slots without tags of its own is the first line again); `{{#items | rows}}` repeats the lines for each item, and the pages break where they are full, with the `title` lines at the top of each; `{{#pages | pages}}` repeats them on a page of its own for each item. A form without a section of `| rows` must fit its pages (a value that wraps pushes the lines under it down; past the end of the page it is an error). The variables of sections are those of the other templates.
+
+**Three sections are not of the data.**
+
+| Section | Meaning |
+|---|---|
+| `{{#preprinted}} … {{/preprinted}}` | The rules and names that the paper has printed already. They are drawn on a layer of the role `background`: printing on that paper leaves them out (`SkipRoles` of the printer's settings). Over lines or within a line |
+| `{{#_wide}} … {{/_wide}}` | Characters of double width: a half-width one takes two columns, a full-width one four |
+| `{{#_tall}} … {{/_tall}}`, `{{#_big}} … {{/_big}}` | Characters of double height, or of double width and height. A line with them takes two lines of the page, its characters standing on the base line of the lower one |
+
+**The form.** A fixed view of pages of the size of the paper (`columns / cpi` by `lines / lpi` inches). Each character is in its columns, drawn with a monospace font: BIZ UDGothic (Google Fonts, SIL Open Font License), then IPAGothic, Noto Sans Mono CJK JP and the monospace fonts of the system; whatever the font, the characters keep to the grid. Each line is a paragraph, and the lines of a section of rows or slots a table, for search, copy and tagged PDF.
+
+**The print image.** The document also holds the grid and the characters of each line, as a part of its own (`t: "text"`, [spec §4](spec.md#4-manifest); its JSON is described by the Go package `form/textpart`): which ranges are of the preprinted paper and which are of double size. Viewers pass it over. The text modes of printers (ESC/P for dot matrix printers, ESC/POS for receipt printers) print from it, and so does `bdf fill … out.txt`:
+
+| `-param` | Meaning |
+|---|---|
+| `encoding=shift_jis` | The encoding of the text: `utf-8` (the default), `shift_jis` (Windows-31J), `euc-jp`, `iso-2022-jp`, or another name of the WHATWG Encoding Standard. A character that it does not have is written as `〓`, with a warning |
+| `newline=crlf` | Lines end with CR LF instead of LF |
+| `paper=preprinted` | The ranges of the preprinted paper are written as spaces |
+
+A template of text has no pictures, QR codes or barcodes (the text modes of printers print characters). Characters of the private use area and pictographs (emoji) are warned of: printers do not have them.
+
 ## QR codes and barcodes
 
 A picture tag with `qr` or `barcode:kind` draws the code of the value in the place of a picture. The place is that of a picture: in Excel the cell of the tag (or its merged range), in Word and PowerPoint the frame of the picture whose alternative text holds the tag.
@@ -338,7 +409,7 @@ res, err := form.Fill(template, size, &form.Options{Data: data})
 err = res.Doc.WriteSingle(out)
 ```
 
-`form.Fill` tells the format of a template from its content (an Office file, a PDF form, a template of pdfme, a compiled template). `form.Fields` returns the names the tags look up, `form.SchemaOf` the JSON Schema of the data, and `form.Compile` a compiled template. For a known format, `xlsx.Fill`, `docx.Fill` and `pptx.Fill` can be called directly. `pdfbdf.Write` writes a PDF file.
+`form.Fill` tells the format of a template from its content (an Office file, a PDF form, a template of pdfme, a template of text, a compiled template). `form.Fields` returns the names the tags look up, `form.SchemaOf` the JSON Schema of the data, and `form.Compile` a compiled template. For a known format, `xlsx.Fill`, `docx.Fill`, `pptx.Fill` and `textform.Fill` can be called directly. `textpart.Read` reads the print image of a form of text from a document, and `textform.Plain` writes it as plain text. `pdfbdf.Write` writes a PDF file.
 
 ```go
 res, err := pdfbdf.Write(out, doc, &pdfbdf.Options{})                          // a PDF file

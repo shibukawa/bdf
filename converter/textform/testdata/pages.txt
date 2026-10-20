@@ -1,0 +1,26 @@
+---
+# 請求明細書: ten lines to a page, a page for each page of the data
+cpi: 10
+lpi: 6
+columns: 80
+lines: 22
+margin: {left: 1, top: 1}
+---
+{{#pages | pages}}
+{{#_wide}}請求明細書{{/_wide}}                                 {{_page}} / {{_pages}} 頁
+{{customer}} 様
+{{#_tall}}前頁より繰越 {{carry_in | fmt:"#,##0" | right:12}}{{/_tall}}
+{{#rows}}
+{{date | width:10}} {{name | width:30 | cut}} {{amount | fmt:"#,##0" | right:12}}
+
+
+
+
+
+
+
+
+
+{{/rows}}
+{{^_last}}次頁へ繰越                               {{carry_out | fmt:"#,##0" | right:12}}{{/_last}}{{#_last}}合計                                     {{total | fmt:"#,##0" | right:12}}{{/_last}}
+{{/pages}}

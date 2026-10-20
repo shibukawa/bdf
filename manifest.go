@@ -45,6 +45,12 @@ const (
 	// passes them over.
 	PartTemplate = "tpl"
 	PartSource   = "src"
+	// PartText is the print image of a form filled from a template of
+	// plain text: its grid of columns and lines, and the characters of
+	// each line, as JSON (package form/textpart; docs/spec.md §4). No view
+	// refers to it: a reader of documents passes it over, and the writers
+	// of the text modes of printers (ESC/P, ESC/POS) print from it.
+	PartText = "text"
 	// PartSealed is the type of the parts of an encrypted document's outer
 	// manifest (docs/spec.md §3.5).
 	PartSealed = "sealed"
