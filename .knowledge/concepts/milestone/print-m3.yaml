@@ -139,18 +139,21 @@ verification:
       path: print/ipp/dnssd_test.go
       locator: '127.0.0.1 の偽の応答者に問い、localhost の 60000 番の USB の IPP 機を Local で見つける'
   ci-print:
-    state: not_run
+    state: passed
     method: integration
     test: test/print/ci.sh の PostScript だけの ippeveprinter、Python の 9100 の受け手、bdf printd の PostScript と 9100 のキュー、受けた PostScript を Ghostscript で描く。CI の print ジョブで go test ./vector/psbdf/ ./print/...（Ghostscript あり）
-    authority: authored
+    authority: observed
     evidence:
       path: test/print/ci.sh
-      locator: '9100 と bdf printd の 9100 のキューの段は手元で通した（ippeveprinter はこの環境で起動しない）。CI ではまだ走っていない'
+      locator: '#106 の CI の print ジョブ（ubuntu-latest、2026-10-20、001f968）で通った。最初の実行では、ippeveprinter が形式を application/octet-stream, application/postscript の順で返し、行頭に PostScript を求めた確かめが落ちた。並びのどこかにあればよいように直した。Go のテストは Ghostscript ありで最初から通った'
   three-os:
-    state: not_run
+    state: passed
     method: integration
     test: CI の print-os（Windows と macOS）で go test ./print/...（rawtest の TCP、9100 のリセット、LPD）
-    authority: authored
+    authority: observed
+    evidence:
+      path: .github/workflows/ci.yml
+      locator: '#106 の CI（2026-10-20）で Windows と macOS とも最初の実行から通った'
 open_questions:
   pdf-copies-raw:
     text: 9100 と LPD に PDF を送るとき、部数を PJL（QTY・COPIES）で頼むか、ページの繰り返しで持つか
