@@ -264,10 +264,8 @@ func (c *Config) check() error {
 		default:
 			return fmt.Errorf("queue %s: policy %q: any or failover", name, q.Policy)
 		}
-		switch q.Format {
-		case "", "auto", "pdf", "pwg-raster":
-		default:
-			return fmt.Errorf("queue %s: format %q: auto, pdf or pwg-raster", name, q.Format)
+		if _, ok := print.FormatName(q.Format); !ok {
+			return fmt.Errorf("queue %s: format %q: auto, pdf, pwg-raster, urf or pclm", name, q.Format)
 		}
 		if q.MaxInflight < 0 {
 			return fmt.Errorf("queue %s: max-inflight %d", name, q.MaxInflight)

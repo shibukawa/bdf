@@ -71,7 +71,7 @@ func printCmd(args []string) {
 	bin := fs.String("output-bin", "", "output-bin")
 	hold := fs.String("hold", "", "job-hold-until: indefinite, night, weekend …")
 	priority := fs.Int("priority", 0, "job-priority, 1 to 100")
-	format := fs.String("format", "auto", "what to send: auto (PDF when the printer takes it, else PWG Raster), pdf or pwg-raster")
+	format := fs.String("format", "auto", "what to send: auto (PDF when the printer takes it, else PWG Raster, Apple Raster or PCLm), pdf, pwg-raster, urf or pclm")
 	rasterIfLossy := fs.Bool("raster-if-lossy", false, "send PWG Raster when the PDF file would leave out what the page draws (FILTER, composite operations)")
 	view := fs.String("view", "", "id of the view to print (default: the first view of pages)")
 	var skip stringList
@@ -308,10 +308,7 @@ func printCmd(args []string) {
 		fmt.Fprintln(os.Stderr, "bdf:", err)
 		os.Exit(exitCode(err))
 	}
-	what := "PDF"
-	if res.Format == print.FormatPWGRaster {
-		what = "PWG Raster"
-	}
+	what := print.FormatTitle(res.Format)
 	state := "sent"
 	if res.Job != nil && res.Job.State.Done() {
 		state = res.Job.State.String()

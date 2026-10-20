@@ -570,9 +570,7 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 }
 
 func checkOptions(o JobOptions) error {
-	switch o.Format {
-	case "", "auto", print.FormatPDF, print.FormatPWGRaster, "pdf", "pwg-raster":
-	default:
+	if _, ok := print.FormatName(o.Format); !ok {
 		return fmt.Errorf("%w: format %q", ErrInvalid, o.Format)
 	}
 	return nil
