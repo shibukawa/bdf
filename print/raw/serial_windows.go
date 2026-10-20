@@ -37,7 +37,22 @@ func openSerial(name string, s Serial) (device, error) {
 		windows.CloseHandle(h)
 		return nil, &os.PathError{Op: "set", Path: name, Err: err}
 	}
-	return os.NewFile(uintptr(h), name), nil
+	return &serialPort{File: os.NewFile(uintptr(h), name), h: h}, nil
+}
+
+// serialPort is an open COM port: it is closed once what was written is
+// sent.
+type serialPort struct {
+	*os.File
+	h windows.Handle
+}
+
+func (s *serialPort) Close() error {
+	err := windows.FlushFileBuffers(s.h)
+	if cerr := s.File.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 func setSerial(h windows.Handle, s Serial) error {
@@ -73,4 +88,10 @@ func setSerial(h windows.Handle, s Serial) error {
 	}
 	// a write that the printer does not take in 30 seconds fails
 	return windows.SetCommTimeouts(h, &windows.CommTimeouts{WriteTotalTimeoutConstant: 30000})
+}
+
+// Abort closes the port, dropping what it has not sent.
+func (s *serialPort) Abort() error {
+	windows.PurgeComm(s.h, windows.PURGE_TXABORT|windows.PURGE_TXCLEAR)
+	return s.File.Close()
 }

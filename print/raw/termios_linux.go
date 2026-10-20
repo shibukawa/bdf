@@ -26,3 +26,9 @@ func setSpeed(t *unix.Termios, baud int) error {
 	t.Ispeed, t.Ospeed = b, b
 	return nil
 }
+
+// drain waits until what was written to the port is sent (tcdrain).
+func drain(fd int) error { return unix.IoctlSetInt(fd, unix.TCSBRK, 1) }
+
+// discard drops what was written to the port and not sent (tcflush).
+func discard(fd int) error { return unix.IoctlSetInt(fd, unix.TCFLSH, unix.TCOFLUSH) }

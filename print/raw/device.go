@@ -145,7 +145,12 @@ func (p *Printer) sendDevice(ctx context.Context, j *Job, data []byte) (int64, e
 	defer func() {
 		close(done)
 		if !closed {
-			d.Close()
+			// what was not sent is dropped, not waited for
+			if a, ok := d.(interface{ Abort() error }); ok {
+				a.Abort()
+			} else {
+				d.Close()
+			}
 		}
 	}()
 	go func() {
