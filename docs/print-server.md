@@ -1,6 +1,6 @@
 # Print server
 
-`bdf printd` is a print server: it takes jobs over HTTP, keeps them in one file, sends them to IPP printers in order, follows each until the printer is done, and retries a printer that is not reached. A business system hands it a document and goes on; the server does the waiting. It speaks IPP to the printers the way [`bdf print`](architecture/cli.md#print-printers) does, without a driver of the system.
+`bdf printd` is a print server: it takes jobs over HTTP, keeps them in one file, sends them to IPP printers (and to printers of 9100 and LPD) in order, follows each until the printer is done, and retries a printer that is not reached. A business system hands it a document and goes on; the server does the waiting. It speaks IPP to the printers the way [`bdf print`](architecture/cli.md#print-printers) does, without a driver of the system.
 
 ```sh
 bdf printd -config printd.yaml                           # in the foreground; Ctrl-C or SIGTERM stops it
@@ -15,7 +15,7 @@ bdf printers -server http://127.0.0.1:8640                # the queues and the p
 ## What it does
 
 - **Jobs survive a restart.** A job is recorded, with its document, before the submission is answered. The jobs, the documents, the accounting and the fingerprints of the printers' certificates are all in one file, `spool.db` (the [yuruidb](https://github.com/shibukawa/yuruidb) store over bbolt, written with `fsync`). One process opens it; a second `bdf printd` on the same file stops with an error.
-- **No job is printed twice.** Before a document is sent, the attempt is recorded; the printer's job id is recorded as soon as the printer answers `Create-Job`, and that the printer has the whole document as soon as it has. A server that stops at any point — a crash, a power cut — checks each job that was at a printer against the printer before it sends anything again: the job is followed if the printer has it, sent again if it does not, and held for a person (`bdf-duplicate-check`) in the one case where the printer has more than one job that may be it. Each attempt's job name at the printer begins with `#<job>.<attempt>`, which is what the server looks for.
+- **No job is printed twice.** Before a document is sent, the attempt is recorded; the printer's job id is recorded as soon as the printer answers `Create-Job`, and that the printer has the whole document as soon as it has. A server that stops at any point — a crash, a power cut — checks each job that was at a printer against the printer before it sends anything again: the job is followed if the printer has it, sent again if it does not, and held for a person (`bdf-duplicate-check`) in the one case where the printer has more than one job that may be it. Each attempt's job name at the printer begins with `#<job>.<attempt>`, which is what the server looks for. A printer of 9100 or LPD keeps no record of its jobs: the server records when it begins to send what the printer may print (the first byte of a 9100 job, the control file of an LPD job); a job stopped before that is sent again, one stopped after it is held for a person (`bdf-duplicate-check`), and one the printer had is taken as printed.
 - **The printer waits, the job does not fail.** A printer that is off, busy or out of reach is tried again after 10 s, 30 s, 1 min, 2 min, 5 min, then every 10 min, for 24 hours (`retry-for`); the job's reason is `bdf-retry-wait` meanwhile, and `bdf-retry-exhausted` when it is aborted. A stopped printer (out of paper, a jam) keeps the job it has; the next waits. A job the printer aborts is not sent again by itself: `bdf jobs retry` does.
 - **Two jobs at a printer.** A printer is given up to two jobs of a queue at once (`max-inflight`), so that the next is there when the first is printed; the rest wait in the queue, where they can still be reordered, held, moved to another queue, or canceled without the printer.
 - **Queues of several printers.** A queue's printers are tried in order: `failover` (the default) sends to the first printer that is up, `any` to the first that has room.
@@ -36,12 +36,14 @@ tokens:
 printers:
   mfp1: { url: "ipps://mfp1.example.local/ipp/print", fingerprint: "sha256:…" }
   mfp2: { url: "ipp://192.0.2.20/ipp/print", username: print, password-env: MFP2_PASSWORD }
+  old-laser: { url: "socket://192.0.2.30:9100" }                     # no IPP: PostScript over the raw port
+  plotter: { url: "lpd://192.0.2.31/lp1", format: pdf, pjl: true }   # PDF over LPD, with a PJL header
 queues:
   office:
     printers: [mfp1, mfp2]
     policy: failover                # or any
     defaults: { sides: two-sided-long-edge, print-color-mode: monochrome }
-    format: auto                    # auto (PDF when the printer takes it, else PWG Raster), pdf or pwg-raster
+    format: auto                    # auto (PDF when the printer takes it, else PostScript, PWG Raster, Apple Raster, PCLm), pdf, ps, pwg-raster, urf or pclm
     raster-if-lossy: true
     max-inflight: 2
   warehouse: { printers: [mfp2] }
@@ -52,7 +54,7 @@ fonts: { dirs: [/usr/share/fonts/bdf], no-system: false }
 temp-dir: /var/tmp/bdf
 ```
 
-- **printers**: the URL (`ipp://`, `ipps://`, `http://`, `https://`; a CUPS queue is `ipp://host:631/printers/<name>`), the user and password of a printer that asks for Basic authentication (`password-env` or `password-file`), and the certificate of an `ipps` printer: `fingerprint` pins it; without one the first certificate seen is recorded in the spool and required after, as CUPS does; `insecure: true` takes any.
+- **printers**: the URL (`ipp://`, `ipps://`, `http://`, `https://`; a CUPS queue is `ipp://host:631/printers/<name>`), the user and password of a printer that asks for Basic authentication (`password-env` or `password-file`), and the certificate of an `ipps` printer: `fingerprint` pins it; without one the first certificate seen is recorded in the spool and required after, as CUPS does; `insecure: true` takes any. A printer without IPP is `socket://host:9100` or `lpd://host/queue`, with the `format` it takes (`ps`, the default, or `pdf`) and `pjl` (a PJL header before the document; by default for PDF only). It is sent PostScript or PDF with the ticket in the file, tells nothing of its jobs, and is connected to only while it is not known to be up.
 - **queues**: the printers in order, the policy, the ticket's `defaults` (IPP's names: `copies`, `sides`, `media`, `media-source`, `media-type`, `print-color-mode`, `print-quality`, `printer-resolution`, `print-scaling`, `orientation-requested`, `finishings`, `output-bin` …), which a job's ticket asks over, and how it is sent.
 - **retention**: how long the documents of the jobs done are kept (7 days), and their records, which are the accounting (400 days).
 - **limits**: the size of a document (256 MiB; beyond it 413), the jobs not done and their documents (10,000 and 10 GiB; beyond them 507), the pages of a job, how many jobs are converted or drawn at once (0: the number of CPUs), how long a printer is retried, and how many submissions and event streams are taken at once.

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	"github.com/shibukawa/bdf/print/raw/rawtest"
@@ -216,7 +217,7 @@ queues: { q: { printers: [ps, lpd, ipp] } }
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := so.Printers[1].Raw; r == nil || r.Format != "pdf" || r.PJL != "false" || r.User != "bdf" || so.Printers[2].Raw == nil || so.Printers[0].Client == nil {
+	if r := so.Printers[1].Raw; r == nil || !print.RawCapabilities(r).AcceptingJobs || r.Format != "pdf" || r.PJL != "false" || r.User != "bdf" || so.Printers[2].Raw == nil || so.Printers[0].Client == nil {
 		t.Fatalf("printers %+v", so.Printers)
 	}
 	checks := CheckPrinters(context.Background(), c)

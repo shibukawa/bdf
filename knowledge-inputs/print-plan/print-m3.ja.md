@@ -1,6 +1,6 @@
 # 印刷 実装案（print-m3）
 
-2026-10-20 の実装案。要件は `print-requirements.ja.md` §3.3・§3.4・§6 の 3 と、`.knowledge/` の `requirement:print`（facts の formats・vector_formats・enterprise_printers）。print-m1（IPP で直接、`bdf print`）と print-m2（スプールとプリントサーバー、`bdf printd`）は main に入った（#104、#105）。2026-10-20 利用者「次の実装をお願いします。m3。」。
+2026-10-20 の実装案。同日 S1〜S5 を実装した（`.knowledge/` の `milestone:print-m3`。計画から変えた所はそこの `changed_from_plan`）。要件は `print-requirements.ja.md` §3.3・§3.4・§6 の 3 と、`.knowledge/` の `requirement:print`（facts の formats・vector_formats・enterprise_printers）。print-m1（IPP で直接、`bdf print`）と print-m2（スプールとプリントサーバー、`bdf printd`）は main に入った（#104、#105）。2026-10-20 利用者「次の実装をお願いします。m3。」。
 
 ## 0. 範囲
 

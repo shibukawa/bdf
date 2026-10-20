@@ -30,6 +30,10 @@ type Service struct {
 	TXT map[string]string
 	// Secure tells the service was found as _ipps._tcp: it speaks TLS.
 	Secure bool
+	// Local tells a printer of this machine, at a loopback address: one
+	// of USB that ipp-usb (Linux) or the system (macOS) shows as an IPP
+	// printer, or a queue the machine shares.
+	Local bool
 	// URL is the printer's URL for a Client: ipp or ipps, the first
 	// address (an IPv4 one when there is one) and the port, and the
 	// path of rp. An address stands in for the host because the
@@ -54,7 +58,9 @@ func (s *Service) Formats() []string {
 // unicast-response bit, so the answers come back to it and the port of
 // mDNS (5353) is not bound, which leaves Avahi and Bonjour alone;
 // answers that printers multicast anyway are read from a listener on
-// the group.
+// the group. The responder of this machine is also asked directly at
+// 127.0.0.1 (RFC 6762 §5.5): printers of USB that speak IPP (IPP over
+// USB) are advertised on the loopback, which has no multicast on Linux.
 func Browse(ctx context.Context, timeout time.Duration) ([]Service, error) {
 	if timeout <= 0 {
 		timeout = 2 * time.Second
@@ -70,12 +76,13 @@ func Browse(ctx context.Context, timeout time.Duration) ([]Service, error) {
 	var conns []net.PacketConn
 	var wg sync.WaitGroup
 	for _, ifi := range ifaces {
-		if ifi.Flags&net.FlagUp == 0 || ifi.Flags&net.FlagMulticast == 0 || ifi.Flags&net.FlagLoopback != 0 {
+		if ifi.Flags&net.FlagUp == 0 || ifi.Flags&net.FlagMulticast == 0 {
 			continue
 		}
-		for _, c := range b.open(&ifi) {
-			conns = append(conns, c)
-		}
+		conns = append(conns, b.open(&ifi)...)
+	}
+	if c, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)}); err == nil {
+		conns = append(conns, &conn{c, loopbackMDNS})
 	}
 	if len(conns) == 0 {
 		return nil, errors.New("ipp: no network interface for multicast DNS")
@@ -130,6 +137,8 @@ const (
 var (
 	mdnsV4 = &net.UDPAddr{IP: net.IPv4(224, 0, 0, 251), Port: 5353}
 	mdnsV6 = &net.UDPAddr{IP: net.ParseIP("ff02::fb"), Port: 5353}
+	// loopbackMDNS is the responder of this machine (tests change it)
+	loopbackMDNS = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 5353}
 )
 
 type browser struct {
@@ -373,6 +382,13 @@ func (b *browser) services() []Service {
 		}
 		s.Addrs = append(s.Addrs, b.hosts[strings.ToLower(f.srv.Target.String())]...)
 		sort.SliceStable(s.Addrs, func(i, j int) bool { return s.Addrs[i].To4() != nil && s.Addrs[j].To4() == nil })
+		s.Local = strings.EqualFold(s.Host, "localhost")
+		if len(s.Addrs) > 0 {
+			s.Local = true
+			for _, a := range s.Addrs {
+				s.Local = s.Local && a.IsLoopback()
+			}
+		}
 		host := s.Host
 		if len(s.Addrs) > 0 {
 			host = s.Addrs[0].String()

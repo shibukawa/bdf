@@ -1,15 +1,18 @@
 #!/bin/bash
 # Prints documents of testdata with bdf print on printers that are not
 # bdf's own: ippeveprinter (CUPS's IPP Everywhere printer) directly, as
-# PDF and as PWG Raster, a CUPS queue in front of it (an IPP Everywhere
-# queue, made with lpadmin -m everywhere), and bdf printd's spool in
-# front of it across a restart, and checks what the printer received.
+# PDF and as PWG Raster, another of PostScript only, a CUPS queue in
+# front of the first (an IPP Everywhere queue, made with lpadmin -m
+# everywhere), a printer of the raw port 9100 (a receiver in Python),
+# and bdf printd's spool in front of them across a restart, and checks
+# what the printers received; Ghostscript draws the PostScript.
 # The CI job "print" runs it.
 #
 # Needs ippeveprinter (cups-ipp-utils), cupsd and lpadmin (cups) with
 # its filters, a running Avahi (ippeveprinter will not start without
-# DNS-SD) and IPv6 on the loopback (ippeveprinter listens on both), and
-# sudo for lpadmin. BDF names the bdf command (default: go run).
+# DNS-SD) and IPv6 on the loopback (ippeveprinter listens on both), sudo
+# for lpadmin, Ghostscript (gs) and python3. BDF names the bdf command
+# (default: go run).
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
@@ -24,10 +27,23 @@ fonts=(-font-dir converter/pptx/testdata/fonts -no-system-fonts)
 port=8631
 url="ipp://localhost:$port/ipp/print"
 
+psport=8632
+psurl="ipp://localhost:$psport/ipp/print"
+psspool=$(mktemp -d)
+chmod 777 "$psspool"
+rawport=9101
+rawdir=$(mktemp -d)
+work=$(mktemp -d)
+
 ippeveprinter -2 -p "$port" -n localhost -k -d "$spool" -s 120 \
   -f application/pdf,image/pwg-raster,image/jpeg "BDF Test" >"$spool/ippeveprinter.log" 2>&1 &
 pid=$!
-trap 'kill $pid ${printd:-} 2>/dev/null || true; sudo lpadmin -x bdftest 2>/dev/null || true' EXIT
+ippeveprinter -2 -p "$psport" -n localhost -k -d "$psspool" -s 120 \
+  -f application/postscript "BDF PostScript" >"$psspool/ippeveprinter.log" 2>&1 &
+pspid=$!
+python3 test/print/raw9100.py "$rawport" "$rawdir" &
+rawpid=$!
+trap 'kill $pid $pspid $rawpid ${printd:-} 2>/dev/null || true; sudo lpadmin -x bdftest 2>/dev/null || true' EXIT
 for _ in $(seq 30); do
   if "$bdf" printers -url "$url" >"$spool/printer.txt" 2>/dev/null; then break; fi
   sleep 1
@@ -37,16 +53,27 @@ grep -q '^formats: .*application/pdf' "$spool/printer.txt"
 grep -q '^formats: .*image/pwg-raster' "$spool/printer.txt"
 grep -q '^sides: .*two-sided-long-edge' "$spool/printer.txt"
 
-# what ippeveprinter kept of the jobs: the documents whose first bytes
-# are these
+# what a printer kept of the jobs: the documents whose first bytes are
+# these (in ippeveprinter's spool, or another directory)
 received() {
+  local dir=$spool
+  if [ $# -gt 1 ]; then dir=$2; fi
   local n=0 f
-  for f in "$spool"/*; do
+  for f in "$dir"/*; do
     [ -f "$f" ] || continue
     case "$f" in *.log|*.txt) continue ;; esac
     if [ "$(head -c ${#1} "$f")" = "$1" ]; then n=$((n + 1)); fi
   done
   echo "$n"
+}
+
+# Ghostscript draws a PostScript file without a word
+draw() {
+  local out
+  out=$(mktemp -d)
+  gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE=png16m -r72 -sOutputFile="$out/p%d.png" "$1" >"$out/gs.log" 2>&1 || { cat "$out/gs.log"; return 1; }
+  if [ -s "$out/gs.log" ]; then cat "$out/gs.log"; return 1; fi
+  test -s "$out/p1.png"
 }
 
 # PDF, two-sided, two copies, A4
@@ -57,6 +84,30 @@ test "$(received '%PDF-')" -ge 1
 # sheet as the printer's pwg-raster-document-sheet-back asks
 "$bdf" print -printer "$url" "${fonts[@]}" -wait 5m -format pwg-raster -mono -bilevel -resolution 300 -sides long testdata/form/rows.bdf
 test "$(received 'RaS2')" -ge 1
+
+# PostScript, to the printer of PostScript only: the transparency of the
+# soft masks drawn as pictures, the rest vectors
+for _ in $(seq 30); do
+  if "$bdf" printers -url "$psurl" >"$psspool/printer.txt" 2>/dev/null; then break; fi
+  sleep 1
+done
+cat "$psspool/printer.txt"
+grep -q '^formats: application/postscript' "$psspool/printer.txt"
+"$bdf" print -printer "$psurl" "${fonts[@]}" -wait 5m -sides long -media a4 testdata/form/rows.bdf
+"$bdf" print -printer "$psurl" "${fonts[@]}" -wait 5m testdata/pdf/chrome-masks.bdf
+test "$(received '%!PS-Adobe-3.0' "$psspool")" -eq 2
+for f in "$psspool"/*; do
+  if [ "$(head -c 14 "$f")" = '%!PS-Adobe-3.0' ]; then draw "$f"; fi
+done
+
+# the raw port 9100: PostScript, then PDF with a PJL header
+"$bdf" print -printer "socket://127.0.0.1:$rawport" "${fonts[@]}" -copies 2 -media a4 testdata/form/rows.bdf
+"$bdf" print -printer "socket://127.0.0.1:$rawport?format=pdf" "${fonts[@]}" -sides long testdata/form/rows.bdf
+test "$(received '%!PS-Adobe-3.0' "$rawdir")" -eq 1
+grep -q 'NumCopies 2' "$rawdir/1.prn"
+draw "$rawdir/1.prn"
+grep -aq '@PJL ENTER LANGUAGE=PDF' "$rawdir/2.prn"
+grep -aq '@PJL SET DUPLEX=ON' "$rawdir/2.prn"
 
 # a page left out of what the printer does not support: -strict fails
 # with exit status 4
@@ -80,13 +131,19 @@ ls -la "$spool"
 test "$(received '%PDF-')" -gt "$before" || test "$(received 'RaS2')" -gt 1
 
 # bdf printd: two jobs, one canceled; the server stops right after the
-# other is submitted and starts again; the printer has it once
-work=$(mktemp -d)
+# other is submitted and starts again; the printer has it once. Queues
+# of the printer of PostScript and of the printer of the raw port.
 server=http://127.0.0.1:8640
 cat >"$work/printd.yaml" <<YAML
 listen: 127.0.0.1:8640
-printers: { eve: { url: "$url" } }
-queues: { office: { printers: [eve], defaults: { sides: two-sided-long-edge } } }
+printers:
+  eve: { url: "$url" }
+  ps: { url: "$psurl" }
+  raw: { url: "socket://127.0.0.1:$rawport" }
+queues:
+  office: { printers: [eve], defaults: { sides: two-sided-long-edge } }
+  postscript: { printers: [ps] }
+  old: { printers: [raw] }
 fonts: { dirs: ["$root/converter/pptx/testdata/fonts"], no-system: true }
 YAML
 "$bdf" printd -config "$work/printd.yaml" -check
@@ -116,8 +173,21 @@ done
 "$bdf" jobs -server "$server" -all
 "$bdf" jobs -server "$server" show "$job" | grep -q '^state: *completed'
 test "$(received '%PDF-')" -eq $((before + 1))
+# the printers of PostScript and of the raw port
+psjob=$("$bdf" print -server "$server" -queue postscript -q testdata/form/rows.bdf)
+rawjob=$("$bdf" print -server "$server" -queue old -q testdata/form/rows.bdf)
+for j in "$psjob" "$rawjob"; do
+  for _ in $(seq 120); do
+    if "$bdf" jobs -server "$server" show "$j" | grep -q '^state: *completed'; then break; fi
+    sleep 1
+  done
+  "$bdf" jobs -server "$server" show "$j" | grep -q '^state: *completed'
+done
+test "$(received '%!PS-Adobe-3.0' "$psspool")" -eq 3
+test "$(received '%!PS-Adobe-3.0' "$rawdir")" -eq 2
+draw "$rawdir/3.prn"
 "$bdf" jobs -server "$server" accounting -csv | tee "$work/accounting.csv"
-test "$(wc -l <"$work/accounting.csv")" -eq 3
+test "$(wc -l <"$work/accounting.csv")" -eq 5
 kill -INT "$printd"
 wait "$printd"
 printd=

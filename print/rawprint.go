@@ -114,7 +114,7 @@ func RawCapabilities(p *raw.Printer) *ipp.Printer {
 	if p.Format == raw.FormatPDF {
 		format = FormatPDF
 	}
-	return &ipp.Printer{State: ipp.PrinterIdle, Formats: []string{format}}
+	return &ipp.Printer{State: ipp.PrinterIdle, AcceptingJobs: true, Formats: []string{format}}
 }
 
 // rawTicket returns the lines of the PJL header of a ticket (for PDF: the

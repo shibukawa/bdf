@@ -1,8 +1,10 @@
 package ipp
 
 import (
+	"context"
 	"net"
 	"testing"
+	"time"
 
 	"golang.org/x/net/dns/dnsmessage"
 )
@@ -102,4 +104,44 @@ func TestInstanceName(t *testing.T) {
 			t.Errorf("instanceName(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// TestBrowseLoopback finds a printer of USB that the responder of this
+// machine advertises on the loopback.
+func TestBrowseLoopback(t *testing.T) {
+	c, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Skip(err)
+	}
+	defer c.Close()
+	resp := response(t, `HP\032LaserJet\032(USB)`, ippService, "localhost.", 60000, []string{"rp=ipp/print", "ty=HP LaserJet", "pdl=application/pdf"}, net.IPv4(127, 0, 0, 1))
+	go func() {
+		buf := make([]byte, 9000)
+		for {
+			n, from, err := c.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			var par dnsmessage.Parser
+			if _, err := par.Start(buf[:n]); err == nil {
+				c.WriteTo(resp, from)
+			}
+		}
+	}()
+	old := loopbackMDNS
+	loopbackMDNS = c.LocalAddr().(*net.UDPAddr)
+	defer func() { loopbackMDNS = old }()
+	svcs, err := Browse(context.Background(), 300*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range svcs {
+		if s.Name == "HP LaserJet (USB)" {
+			if !s.Local || s.URL != "ipp://127.0.0.1:60000/ipp/print" || s.Host != "localhost" {
+				t.Errorf("%+v", s)
+			}
+			return
+		}
+	}
+	t.Fatalf("the printer of USB is not found: %+v", svcs)
 }
