@@ -115,8 +115,10 @@ type Settings struct {
 	// NoPrinterBarcodes draws the symbols that a label printer would
 	// print itself, as the other dots.
 	NoPrinterBarcodes bool
-	// Mode is "raster" (the default) or "text", which prints the
-	// characters of a print image with the printer's fonts (not yet).
+	// Mode is ModeRaster, ModeText (ESC/P and ESC/POS: the characters of
+	// the print image of a form of a template of text, in the printer's
+	// fonts), or "" for the language's default: ESC/P prints a document
+	// with a print image in the text mode, the others print dots.
 	Mode string
 }
 
@@ -145,9 +147,7 @@ func (s *Settings) Check() error {
 		return fmt.Errorf("pdl: cash drawer %d: 1 or 2", s.Drawer)
 	}
 	switch s.Mode {
-	case "", "raster":
-	case "text":
-		return errors.New("pdl: the text mode is not made yet: print in the raster mode")
+	case "", ModeRaster, ModeText:
 	default:
 		return fmt.Errorf("pdl: print mode %q: raster or text", s.Mode)
 	}
@@ -197,6 +197,8 @@ type Result struct {
 	Pages int
 	// Symbols are the QR codes and barcodes the printer prints itself.
 	Symbols int
+	// Text is set when the pages were printed in the text mode.
+	Text bool
 	// Unsupported are the settings the language has no command for
 	// (name=value), which were left out.
 	Unsupported []string
@@ -241,10 +243,18 @@ func Write(w io.Writer, doc *bdf.Document, view *bdf.View, opts *Options) (*Resu
 		return res, fmt.Errorf("pdl: %d pages to print, more than %d", n, limit)
 	}
 	o.Pages = pages
+	ew := &errWriter{w: w}
+	im, err := textImage(doc, view, &o, res)
+	if err != nil {
+		return res, err
+	}
+	if im != nil {
+		if done, err := writeText(ew, im, &o, res); done || err != nil {
+			return res, err
+		}
+	}
 	view = skipLayers(view, o.SkipRoles)
 	rd := newRender(doc, view, &o, o.Profile)
-	ew := &errWriter{w: w}
-	var err error
 	switch o.Profile.Language {
 	case ZPL:
 		err = writeZPL(ew, rd, res)
@@ -275,7 +285,10 @@ func (r *Result) unsupported(name string, value any) {
 // printer prints each: the copies of a collated job are the pages again,
 // those of an uncollated one the printer's count when it has one.
 func (rd *render) sequence(printerCopies bool) (pages []int, each int) {
-	o := rd.o
+	return rd.o.sequence(printerCopies)
+}
+
+func (o *Options) sequence(printerCopies bool) (pages []int, each int) {
 	switch {
 	case o.Copies == 1:
 		return o.Pages, 1

@@ -144,12 +144,12 @@ func TestProfiles(t *testing.T) {
 }
 
 func TestSettingsCheck(t *testing.T) {
-	for _, s := range []Settings{{Darkness: 101}, {Speed: -1}, {Tracking: "holes"}, {Cut: "now"}, {Drawer: 3}, {Mode: "text"}, {Mode: "vector"}, {Gap: 1000}} {
+	for _, s := range []Settings{{Darkness: 101}, {Speed: -1}, {Tracking: "holes"}, {Cut: "now"}, {Drawer: 3}, {Mode: "vector"}, {Gap: 1000}} {
 		if err := s.Check(); err == nil {
 			t.Errorf("%+v: no error", s)
 		}
 	}
-	if err := (&Settings{Darkness: -100, Speed: 5080, Tracking: "gap", Cut: CutJob, Drawer: 2, Mode: "raster"}).Check(); err != nil {
+	if err := (&Settings{Darkness: -100, Speed: 5080, Tracking: "gap", Cut: CutJob, Drawer: 2, Mode: ModeText}).Check(); err != nil {
 		t.Error(err)
 	}
 }

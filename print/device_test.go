@@ -3,9 +3,11 @@ package print
 import (
 	"bytes"
 	"context"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/pdl"
@@ -69,6 +71,47 @@ func TestPrintRawLabels(t *testing.T) {
 	}
 }
 
+// TestPrintRawText prints a form of a template of text over 9100: ESC/P in
+// the text mode by default, ESC/POS when the ticket asks it.
+func TestPrintRawText(t *testing.T) {
+	f, err := os.Open("../testdata/form/text-slip.bdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	fi, _ := f.Stat()
+	r, err := bdf.OpenSingle(f, fi.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := r.ToDocument()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := fakeprinter.NewSocket(t)
+	defer s.Close()
+	vp, _ := raw.Parse(s.URL + "?profile=vp-f2000")
+	res, err := PrintRaw(context.Background(), vp, doc, &Options{SkipRoles: []string{bdf.RoleBackground}})
+	if err != nil || res.Format != "ESC/P (text)" || res.Sheets != 1 {
+		t.Fatalf("%+v %v", res, err)
+	}
+	data := s.Jobs()[0].Data()
+	if !bytes.Contains(data, []byte("\x1bC\x21\x1bN\x02")) || !bytes.Contains(data, []byte("\x1c&")) || bytes.Contains(data, []byte("\x1b*")) {
+		t.Errorf("ESC/P of the slip: %q", data[:min(len(data), 64)])
+	}
+	// the names printed on the paper are left out: 得意先 in JIS
+	if bytes.Contains(data, []byte("\x46\x40\x30\x55\x40\x68")) {
+		t.Error("the preprinted paper was printed")
+	}
+	if res, err := PrintRaw(context.Background(), vp, doc, &Options{Ticket: Ticket{PrintMode: "raster"}}); err != nil || res.Format != "ESC/P" {
+		t.Errorf("the raster mode: %+v %v", res, err)
+	}
+	pos, _ := raw.Parse(s.URL + "?profile=tm-t88")
+	if _, err := PrintRaw(context.Background(), pos, doc, &Options{Ticket: Ticket{PrintMode: "text"}}); err == nil || !strings.Contains(err.Error(), "wide") {
+		t.Errorf("80 columns on a receipt: %v", err)
+	}
+}
+
 // TestPrintCUPSRaw sends ESC/POS to an IPP queue that takes data of the
 // printer's own language, as a raw queue of CUPS does.
 func TestPrintCUPSRaw(t *testing.T) {
@@ -105,7 +148,7 @@ func TestPrintCUPSRaw(t *testing.T) {
 // TestDeviceTicket checks the settings of a ticket and that an IPP
 // printer of pages is told what it supports of them.
 func TestDeviceTicket(t *testing.T) {
-	for _, bad := range []Ticket{{Darkness: 200}, {Cut: "half"}, {CashDrawer: 3}, {MediaTracking: "holes"}, {PrintMode: "text"}, {LabelGap: -1}} {
+	for _, bad := range []Ticket{{Darkness: 200}, {Cut: "half"}, {CashDrawer: 3}, {MediaTracking: "holes"}, {PrintMode: "graphics"}, {LabelGap: -1}} {
 		if err := bad.Check(); err == nil {
 			t.Errorf("%+v: no error", bad)
 		}

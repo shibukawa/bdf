@@ -290,4 +290,16 @@ test "$(received $'\x1b@' "$rawdir")" -gt "$before"
 pos=$(ls -t "$rawdir"/* | head -1)
 grep -aqF $'\x1dv0' "$pos"
 grep -aqF $'\x1dVB' "$pos"
+# a form of a template of text: ESC/P in the text mode over 9100, the
+# preprinted paper left out
+before=$(received $'\x1b@' "$rawdir")
+"$bdf" print -printer "socket://127.0.0.1:$rawport?profile=vp-f2000" -skip background testdata/form/text-slip.bdf 2>&1 | grep -F 'ESC/P (text)'
+for _ in $(seq 30); do
+  if [ "$(received $'\x1b@' "$rawdir")" -gt "$before" ]; then break; fi
+  sleep 1
+done
+escp=$(ls -t "$rawdir"/*.prn | head -1)
+grep -aqF $'\x1bC\x21\x1bN\x02' "$escp" # 33 lines, a skip of 2
+grep -aqF $'\x1c&' "$escp"                 # Kanji
+if grep -aqF $'\x1b*' "$escp"; then exit 1; fi
 echo "print: ok"
