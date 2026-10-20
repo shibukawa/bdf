@@ -123,6 +123,8 @@ type printerState struct {
 	// sending is set while a job is sent to it: one at a time.
 	sending bool
 	pokes   chan struct{}
+	// seenBy is the proxy that reported last, of a printer of proxies.
+	seenBy string
 }
 
 func newPrinterState(p Printer) *printerState {
@@ -131,6 +133,9 @@ func newPrinterState(p Printer) *printerState {
 
 // url is the printer's URL.
 func (p *printerState) url() string {
+	if p.Proxy {
+		return "proxy:" + p.Name
+	}
 	if p.raw != nil {
 		return p.raw.URL
 	}
@@ -191,7 +196,7 @@ func (s *Spool) printerInfo(p *printerState) PrinterInfo {
 		info.State, info.Reasons, info.Message, info.Accepting, info.MakeModel = c.State.String(), slices.Clone(c.Reasons), c.StateMessage, c.AcceptingJobs, c.MakeModel
 	}
 	for _, e := range s.jobs {
-		if e.job.Printer != nil && e.job.Printer.Name == p.Name && e.job.Step == StepWatch {
+		if e.job.Printer != nil && e.job.Printer.Name == p.Name && (e.job.Step == StepWatch || e.job.Step == StepRemote) {
 			info.Jobs++
 		}
 	}

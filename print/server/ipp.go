@@ -218,6 +218,8 @@ type ippRequest struct {
 	queue  *ippQueue
 	secure bool
 	caller *caller
+	// after writes what follows the response: a document fetched.
+	after func(io.Writer) error
 }
 
 // scheme is the scheme of the URIs told: that of the request.
@@ -306,8 +308,17 @@ func (x *ippServer) serveIPP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/ipp")
-	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+	if q.after == nil || !q.res.Status().OK() {
+		w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+		w.Write(b)
+		return
+	}
+	// the document follows the response, chunked; a failure cuts it
 	w.Write(b)
+	if err := q.after(w); err != nil {
+		x.s.log.Error("ipp: the document could not be sent", "op", req.Op().String(), "queue", q.queue.name, "err", err)
+		panic(http.ErrAbortHandler)
+	}
 }
 
 // checkRequest checks what every request has (RFC 8011 §4.1): a request
@@ -356,6 +367,9 @@ func (x *ippServer) checkRequest(q *ippRequest) bool {
 // operation but Get-Printer-Attributes (which tells how to authenticate)
 // needs a token's name and secret; it writes the 401 itself.
 func (x *ippServer) authorize(w http.ResponseWriter, q *ippRequest) bool {
+	if isInfra(q) {
+		return x.authorizeProxy(w, q)
+	}
 	named := q.op.Get("requesting-user-name").Text()
 	if named != "" && !validUser(named) {
 		named = ""
@@ -417,6 +431,10 @@ func (x *ippServer) dispatch(q *ippRequest) {
 	op := q.req.Op()
 	if q.caller.roles == nil && op != ipp.OpGetPrinterAttributes {
 		q.fail(ipp.StatusClientErrorNotAuthorized, "the token may not print to %s", q.queue.name)
+		return
+	}
+	if isInfra(q) {
+		x.infra(q)
 		return
 	}
 	switch op {

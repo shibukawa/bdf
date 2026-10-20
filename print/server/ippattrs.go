@@ -559,6 +559,13 @@ var printerGroups = map[string][]string{}
 // queueState is the printer-state of a queue: stopped when it is paused
 // or its printers are, processing while it has a job at a printer.
 func (x *ippServer) queueState(name string) (ipp.PrinterState, []string, string, bool) {
+	return x.s.queueState(name)
+}
+
+// queueState is the printer-state of a queue, its reasons and message, and
+// whether it takes jobs: as an IPP printer, and as a proxy's printer.
+func (s *Server) queueState(name string) (ipp.PrinterState, []string, string, bool) {
+	x := struct{ s *Server }{s}
 	info, err := x.s.sp.Queue(name)
 	if err != nil {
 		return ipp.PrinterStopped, []string{"other-error"}, err.Error(), false
@@ -724,6 +731,17 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 	for i, op := range operations {
 		ops[i] = ipp.Enum(int(op))
 	}
+	features := []ipp.Value{ipp.Keyword("ipp-everywhere"), ipp.Keyword("ipp-everywhere-server"), ipp.Keyword("page-overrides")}
+	which := []ipp.Value{ipp.Keyword("completed"), ipp.Keyword("not-completed"), ipp.Keyword("all")}
+	if qc := x.s.cfg.Queues[q.queue.name]; len(qc.Printers) == 1 && x.s.cfg.Printers[qc.Printers[0]].Proxy {
+		// an infrastructure printer: proxies fetch its jobs
+		for _, op := range []ipp.Op{ipp.OpAcknowledgeDocument, ipp.OpAcknowledgeJob, ipp.OpFetchDocument, ipp.OpFetchJob, ipp.OpUpdateActiveJobs,
+			ipp.OpDeregisterOutputDevice, ipp.OpUpdateDocumentStatus, ipp.OpUpdateJobStatus, ipp.OpUpdateOutputDeviceAttributes} {
+			ops = append(ops, ipp.Enum(int(op)))
+		}
+		features = append(features, ipp.Keyword("infrastructure-printer"))
+		which = append(which, ipp.Keyword("fetchable"))
+	}
 	queued := 0
 	if info, err := x.s.sp.Queue(q.queue.name); err == nil {
 		for state, n := range info.Jobs {
@@ -774,7 +792,7 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		ipp.Attr("printer-config-change-date-time", ipp.DateTime(x.start)),
 		ipp.Attr("queued-job-count", ipp.Integer(queued)),
 		ipp.Attr("ipp-versions-supported", ipp.Keyword("1.1"), ipp.Keyword("2.0")),
-		ipp.Attr("ipp-features-supported", ipp.Keyword("ipp-everywhere"), ipp.Keyword("ipp-everywhere-server"), ipp.Keyword("page-overrides")),
+		ipp.Attr("ipp-features-supported", features...),
 		ipp.Attr("operations-supported", ops...),
 		ipp.Attr("charset-configured", ipp.Charset("utf-8")),
 		ipp.Attr("charset-supported", ipp.Charset("utf-8"), ipp.Charset("us-ascii")),
@@ -791,7 +809,7 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		ipp.Attr("multiple-operation-time-out-action", ipp.Keyword("abort-job")),
 		ipp.Attr("job-ids-supported", ipp.Boolean(true)),
 		ipp.Attr("preferred-attributes-supported", ipp.Boolean(false)),
-		ipp.Attr("which-jobs-supported", ipp.Keyword("completed"), ipp.Keyword("not-completed"), ipp.Keyword("all")),
+		ipp.Attr("which-jobs-supported", which...),
 		ipp.Attr("job-creation-attributes-supported", keywordValues(jobCreationAttrs)...),
 		ipp.Attr("printer-get-attributes-supported", ipp.Keyword("document-format")),
 		ipp.Attr("overrides-supported", ipp.Keyword("document-number"), ipp.Keyword("pages")),

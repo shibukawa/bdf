@@ -44,6 +44,10 @@ func (s *Spool) look(p *printerState) {
 	s.mu.Lock()
 	caps, up := p.caps, p.up
 	s.mu.Unlock()
+	if p.Proxy {
+		s.lookProxy(p)
+		return
+	}
 	var full, st *ipp.Printer
 	var err error
 	switch {
@@ -98,6 +102,9 @@ func (s *Spool) look(p *printerState) {
 func (s *Spool) nextLook(p *printerState) time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if p.Proxy {
+		return proxyStale / 4
+	}
 	if !p.up {
 		// a printer a send did not reach, or not looked at yet, has not
 		// failed a look

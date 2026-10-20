@@ -115,6 +115,8 @@ func (s *Spool) schedule(now time.Time) time.Time {
 			s.begin(e, s.releaseHold)
 		case j.Step == StepWatch:
 			s.begin(e, s.watch)
+		case j.Step == StepFetch || j.Step == StepRemote:
+			// a proxy fetches it, and reports it
 		case j.State != ipp.JobPending:
 		case j.Due.After(now):
 			soon(j.Due)
@@ -138,6 +140,10 @@ func (s *Spool) schedule(now time.Time) time.Time {
 		return x.ID < y.ID
 	})
 	for _, e := range sendable {
+		if p := s.printers[s.queues[e.job.Queue].Printers[0]]; p.Proxy {
+			s.begin(e, func(ctx context.Context, e *entry) { s.offer(ctx, e, p) })
+			continue
+		}
 		if p := s.choose(s.queues[e.job.Queue]); p != nil {
 			p.sending = true
 			target := p

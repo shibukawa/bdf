@@ -95,6 +95,9 @@ type Printer struct {
 	Name   string
 	Client *ipp.Client
 	Raw    *raw.Printer
+	// Proxy makes a printer that proxies fetch jobs from (proxy.go), with
+	// neither Client nor Raw.
+	Proxy bool
 }
 
 // Limits bound what the spool takes.
@@ -255,8 +258,14 @@ func Open(ctx context.Context, o Options) (*Spool, error) {
 	s.stepCtx, s.stepStop = context.WithCancel(context.Background())
 	s.sendCtx, s.sendStop = context.WithCancel(context.Background())
 	for _, p := range o.Printers {
-		if p.Name == "" || (p.Client == nil) == (p.Raw == nil) {
-			return nil, fmt.Errorf("%w: a printer without name, or without one of an IPP client and a raw printer", ErrInvalid)
+		kinds := 0
+		for _, k := range []bool{p.Client != nil, p.Raw != nil, p.Proxy} {
+			if k {
+				kinds++
+			}
+		}
+		if p.Name == "" || kinds != 1 {
+			return nil, fmt.Errorf("%w: a printer without name, or without one of an IPP client, a raw printer and proxies", ErrInvalid)
 		}
 		if _, dup := s.printers[p.Name]; dup {
 			return nil, fmt.Errorf("%w: printer %q twice", ErrInvalid, p.Name)
@@ -276,6 +285,9 @@ func Open(ctx context.Context, o Options) (*Spool, error) {
 		for _, p := range q.Printers {
 			if s.printers[p] == nil {
 				return nil, fmt.Errorf("%w: queue %q names printer %q, which is not configured", ErrInvalid, q.Name, p)
+			}
+			if s.printers[p].Proxy && len(q.Printers) > 1 {
+				return nil, fmt.Errorf("%w: queue %q: printer %q of proxies is the only printer of its queue", ErrInvalid, q.Name, p)
 			}
 		}
 		switch q.Policy {
@@ -460,6 +472,8 @@ type Submission struct {
 	// Password opens an encrypted document. It is kept in memory only:
 	// after a restart such a job waits for it again (job-password-wait).
 	Password string
+	// Origin is the upstream job a proxy fetched this one from.
+	Origin *Origin
 }
 
 // Submit takes a job: it stores its document and records the job, which
@@ -565,7 +579,7 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	}
 	j := Job{ID: id, UUID: uuid, Queue: sub.Queue, Name: sub.Name, User: sub.User, Document: doc, Ticket: sub.Ticket,
 		Options: sub.Options, State: ipp.JobPending, Priority: sub.Priority, HoldUntil: sub.HoldUntil, HoldUntilTime: sub.HoldUntilTime,
-		Step: StepSend, Submitted: now}
+		Step: StepSend, Submitted: now, Origin: sub.Origin}
 	if doc.Format != "bdf" {
 		j.Step = StepConvert
 	}
@@ -1048,6 +1062,13 @@ func (s *Spool) Move(ctx context.Context, id int32, queue string) (Job, error) {
 	return s.change(ctx, id, func(j *Job, _ time.Time) error {
 		if j.State != ipp.JobPending && j.State != ipp.JobPendingHeld {
 			return fmt.Errorf("%w: job %d is %s", ErrNotPossible, id, j.State)
+		}
+		if j.Step == StepFetch {
+			if j.Printer.Device != "" {
+				return fmt.Errorf("%w: job %d is a proxy's", ErrNotPossible, id)
+			}
+			// offered to the proxies of the queue it leaves: offered anew
+			j.Printer, j.Step = nil, StepSend
 		}
 		j.Queue = queue
 		return nil

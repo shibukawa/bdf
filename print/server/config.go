@@ -54,8 +54,29 @@ type Config struct {
 	// IPP shows the queues as IPP printers, which the systems add without
 	// a driver (IPP Everywhere, AirPrint, Mopria).
 	IPP *IPPConfig `yaml:"ipp"`
+	// Upstreams are the servers this one fetches jobs from, as a proxy
+	// of a branch (IPP INFRA): each into a queue of this server.
+	Upstreams map[string]UpstreamConfig `yaml:"upstreams"`
 
 	dir string // of the file, for relative paths
+}
+
+// UpstreamConfig is a server this one fetches jobs from: the URL of its
+// queue (a queue of a printer of proxies there), the queue here the jobs
+// go to, and the token's name and secret there (Basic).
+type UpstreamConfig struct {
+	URL          string `yaml:"url"`
+	Queue        string `yaml:"queue"`
+	Username     string `yaml:"username"`
+	PasswordEnv  string `yaml:"password-env"`
+	PasswordFile string `yaml:"password-file"`
+	Fingerprint  string `yaml:"fingerprint"`
+	Insecure     bool   `yaml:"insecure"`
+	// Poll is how often the jobs are asked for: 10 seconds by default.
+	Poll Duration `yaml:"poll"`
+	// UUID is the output-device-uuid of this proxy; one made of the
+	// spool and the upstream's name by default.
+	UUID string `yaml:"uuid"`
 }
 
 // IPPConfig is the IPP server of the queues: a printer of each at
@@ -120,6 +141,10 @@ type TokenConfig struct {
 // the default, or pdf) and whether a PJL header goes before the document
 // (by default, for PDF only).
 type PrinterConfig struct {
+	// Proxy makes a printer that proxies of branches fetch the jobs of
+	// (IPP INFRA), with no URL: the bdf printd of a branch, behind a NAT,
+	// whose upstreams name the queue.
+	Proxy        bool   `yaml:"proxy"`
 	URL          string `yaml:"url"`
 	Format       string `yaml:"format"`
 	PJL          *bool  `yaml:"pjl"`
@@ -286,6 +311,12 @@ func (c *Config) check() error {
 		return errors.New("no queues")
 	}
 	for name, p := range c.Printers {
+		if p.Proxy {
+			if p.URL != "" || p.Format != "" || p.PJL != nil || p.Username != "" || p.PasswordEnv != "" || p.PasswordFile != "" || p.Fingerprint != "" || p.Insecure {
+				return fmt.Errorf("printer %s: a printer of proxies has no url, format, pjl, user, password or certificate", name)
+			}
+			continue
+		}
 		if raw.IsURL(p.URL) {
 			if _, err := p.raw(c.User); err != nil {
 				return fmt.Errorf("printer %s: %w", name, err)
@@ -313,6 +344,9 @@ func (c *Config) check() error {
 			if _, ok := c.Printers[p]; !ok {
 				return fmt.Errorf("queue %s: no printer %s", name, p)
 			}
+			if c.Printers[p].Proxy && len(q.Printers) > 1 {
+				return fmt.Errorf("queue %s: printer %s of proxies is the only printer of its queue", name, p)
+			}
 		}
 		if _, err := q.ticket(); err != nil {
 			return fmt.Errorf("queue %s: defaults: %w", name, err)
@@ -339,8 +373,8 @@ func (c *Config) check() error {
 		}
 		seen[t.Name] = true
 		for _, r := range t.Roles {
-			if r != roleSubmit && r != roleManage && r != roleAdmin {
-				return fmt.Errorf("token %s: role %q: submit, manage or admin", t.Name, r)
+			if r != roleSubmit && r != roleManage && r != roleAdmin && r != roleProxy {
+				return fmt.Errorf("token %s: role %q: submit, manage, admin or proxy", t.Name, r)
 			}
 		}
 		for _, q := range t.Queues {
@@ -354,6 +388,27 @@ func (c *Config) check() error {
 	}
 	if err := c.checkIPP(); err != nil {
 		return err
+	}
+	for name, u := range c.Upstreams {
+		if _, _, err := ipp.ParseURL(u.URL); err != nil {
+			return fmt.Errorf("upstream %s: %w", name, err)
+		}
+		if _, ok := c.Queues[u.Queue]; !ok {
+			return fmt.Errorf("upstream %s: no queue %q", name, u.Queue)
+		}
+		if u.Fingerprint != "" && !strings.HasPrefix(u.Fingerprint, "sha256:") {
+			return fmt.Errorf("upstream %s: fingerprint %q: sha256:…", name, u.Fingerprint)
+		}
+		if u.UUID != "" && !strings.HasPrefix(u.UUID, "urn:uuid:") {
+			return fmt.Errorf("upstream %s: uuid %q: urn:uuid:…", name, u.UUID)
+		}
+	}
+	for _, q := range c.Queues {
+		for _, p := range q.Printers {
+			if c.Printers[p].Proxy && c.IPP == nil {
+				return fmt.Errorf("printer %s of proxies needs ipp: the proxies fetch its jobs over IPP", p)
+			}
+		}
 	}
 	if !c.Insecure && !loopback(c.Listen) && (c.TLS == nil || len(c.Tokens) == 0) {
 		return fmt.Errorf("listen %s is not a loopback address: it needs tls and tokens (or insecure: true)", c.Listen)
@@ -405,6 +460,12 @@ func (c *Config) resolve() error {
 		if p.PasswordFile != "" {
 			p.PasswordFile = abs(p.PasswordFile)
 			c.Printers[name] = p
+		}
+	}
+	for name, u := range c.Upstreams {
+		if u.PasswordFile != "" {
+			u.PasswordFile = abs(u.PasswordFile)
+			c.Upstreams[name] = u
 		}
 	}
 	return nil
@@ -543,6 +604,10 @@ func (c *Config) spoolOptions() (spool.Options, error) {
 			MaxImpressions: c.Limits.MaxImpressions, Renders: c.Limits.Renders, RetryFor: time.Duration(c.Limits.RetryFor)}}
 	for _, name := range sortedKeys(c.Printers) {
 		pc := c.Printers[name]
+		if pc.Proxy {
+			o.Printers = append(o.Printers, spool.Printer{Name: name, Proxy: true})
+			continue
+		}
 		if raw.IsURL(pc.URL) {
 			r, err := pc.raw(c.User)
 			if err != nil {
@@ -570,6 +635,14 @@ func (c *Config) spoolOptions() (spool.Options, error) {
 func (c *Config) pinned() map[string]string {
 	m := map[string]string{}
 	for _, p := range c.Printers {
+		if p.Fingerprint == "" {
+			continue
+		}
+		if u, err := url.Parse(p.URL); err == nil {
+			m[u.Hostname()] = p.Fingerprint
+		}
+	}
+	for _, p := range c.Upstreams {
 		if p.Fingerprint == "" {
 			continue
 		}

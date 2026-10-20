@@ -224,6 +224,15 @@ func (s *store) getDoc(ctx context.Context, key string) (*blob.Reader, error) {
 }
 
 // removeDoc removes a document; one already gone is not an error.
+// openDoc opens a document to read, with its size.
+func (s *store) openDoc(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	r, err := s.getDoc(ctx, key)
+	if err != nil {
+		return nil, 0, err
+	}
+	return r, r.Size, nil
+}
+
 func (s *store) removeDoc(ctx context.Context, key string) error {
 	err := s.docs.Remove(ctx, key)
 	if errors.Is(err, yuruidb.ErrNotFound) {

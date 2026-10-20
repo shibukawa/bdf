@@ -55,6 +55,8 @@ type Server struct {
 	handler  http.Handler
 	// ipp shows the queues as IPP printers, when configured.
 	ipp *ippServer
+	// ups are the servers this one fetches jobs from.
+	ups []*upstream
 }
 
 // New opens the spool of a configuration (spool.db, locked: a second
@@ -102,6 +104,10 @@ func New(ctx context.Context, cfg *Config, o Options) (*Server, error) {
 			sp.Close()
 			return nil, err
 		}
+	}
+	if s.ups, err = s.upstreams(); err != nil {
+		sp.Close()
+		return nil, err
 	}
 	return s, nil
 }
@@ -172,12 +178,20 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 			return err
 		}
 	}
+	upCtx, upStop := context.WithCancel(ctx)
+	defer upStop()
+	var ups sync.WaitGroup
+	for _, u := range s.ups {
+		ups.Go(func() { u.run(upCtx) })
+	}
 	var err error
 	select {
 	case <-ctx.Done():
 	case err = <-errc:
 	}
 	s.log.Info("stopping")
+	upStop()
+	ups.Wait()
 	s.stop()
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	hs.Shutdown(sctx)

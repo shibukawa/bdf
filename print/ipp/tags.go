@@ -142,6 +142,21 @@ const (
 	OpIdentifyPrinter            Op = 0x003c
 	OpValidateDocument           Op = 0x003d
 
+	// Operations of the IPP Shared Infrastructure Extensions (PWG
+	// 5100.18): a proxy fetches jobs from an infrastructure printer and
+	// reports them.
+	OpAcknowledgeDocument          Op = 0x003f
+	OpAcknowledgeIdentifyPrinter   Op = 0x0040
+	OpAcknowledgeJob               Op = 0x0041
+	OpFetchDocument                Op = 0x0042
+	OpFetchJob                     Op = 0x0043
+	OpGetOutputDeviceAttributes    Op = 0x0044
+	OpUpdateActiveJobs             Op = 0x0045
+	OpDeregisterOutputDevice       Op = 0x0046
+	OpUpdateDocumentStatus         Op = 0x0047
+	OpUpdateJobStatus              Op = 0x0048
+	OpUpdateOutputDeviceAttributes Op = 0x0049
+
 	// Private operations of CUPS (its cups-ipp registrations).
 	OpCupsGetDefault       Op = 0x4001
 	OpCupsGetPrinters      Op = 0x4002
@@ -162,6 +177,11 @@ var opNames = map[Op]string{
 	OpGetNotifications: "Get-Notifications", OpHoldNewJobs: "Hold-New-Jobs", OpReleaseHeldNewJobs: "Release-Held-New-Jobs",
 	OpCancelCurrentJob: "Cancel-Current-Job", OpCancelJobs: "Cancel-Jobs", OpCancelMyJobs: "Cancel-My-Jobs",
 	OpResubmitJob: "Resubmit-Job", OpCloseJob: "Close-Job", OpIdentifyPrinter: "Identify-Printer", OpValidateDocument: "Validate-Document",
+	OpAcknowledgeDocument: "Acknowledge-Document", OpAcknowledgeIdentifyPrinter: "Acknowledge-Identify-Printer",
+	OpAcknowledgeJob: "Acknowledge-Job", OpFetchDocument: "Fetch-Document", OpFetchJob: "Fetch-Job",
+	OpGetOutputDeviceAttributes: "Get-Output-Device-Attributes", OpUpdateActiveJobs: "Update-Active-Jobs",
+	OpDeregisterOutputDevice: "Deregister-Output-Device", OpUpdateDocumentStatus: "Update-Document-Status",
+	OpUpdateJobStatus: "Update-Job-Status", OpUpdateOutputDeviceAttributes: "Update-Output-Device-Attributes",
 	OpCupsGetDefault: "CUPS-Get-Default", OpCupsGetPrinters: "CUPS-Get-Printers", OpCupsAddModifyPrinter: "CUPS-Add-Modify-Printer",
 	OpCupsDeletePrinter: "CUPS-Delete-Printer", OpCupsGetClasses: "CUPS-Get-Classes",
 }
