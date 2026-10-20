@@ -86,6 +86,8 @@ func (h *handler) writeErr(w http.ResponseWriter, err error) {
 		status = http.StatusUnsupportedMediaType
 	case errors.Is(err, ErrBranch):
 		status = http.StatusNotImplemented
+	case errors.Is(err, ErrPrint):
+		status = http.StatusBadGateway
 	}
 	msg := err.Error()
 	if status == http.StatusInternalServerError {

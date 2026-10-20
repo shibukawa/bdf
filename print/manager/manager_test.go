@@ -480,6 +480,12 @@ func TestFallbackFails(t *testing.T) {
 	if r, _ := e.m().Tick(context.Background()); r.Failed != 1 {
 		t.Fatalf("not retried: %+v", r)
 	}
+	// a device asking is told why
+	d := e.enroll("wh-a", "tablet")
+	res, out := e.do(d.c, "POST", "/device/slips/"+s.ID+"/print", "", nil)
+	if res.StatusCode != http.StatusBadGateway || !strings.Contains(string(out), "gone") {
+		t.Fatalf("print on demand: %d %s", res.StatusCode, out)
+	}
 }
 
 // Ticks at once (instances of a function, a timer and a scheduler) print

@@ -17,6 +17,9 @@ import (
 // fetch the jobs of: not done yet.
 var ErrBranch = errors.New("manager: printers of a branch (route branch) are not supported yet")
 
+// ErrPrint is the error of a printer that did not take a slip.
+var ErrPrint = errors.New("manager: the printer did not print")
+
 // ErrLeased is the error of a slip another manager is sending.
 var ErrLeased = errors.New("manager: the slip is being printed")
 
@@ -111,7 +114,7 @@ func (m *Manager) printSlip(ctx context.Context, id, printer, why, device string
 		return s, err
 	}
 	if sendErr != nil {
-		return s, fmt.Errorf("manager: print on %s: %w", printer, sendErr)
+		return s, fmt.Errorf("%w on %s: %v", ErrPrint, printer, sendErr)
 	}
 	return s, nil
 }
