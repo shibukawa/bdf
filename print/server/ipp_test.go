@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"image"
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -41,7 +43,7 @@ func (rasterConverter) Detect(r io.ReaderAt, size int64, name string) (string, b
 }
 
 func (rasterConverter) Convert(ctx context.Context, r io.ReaderAt, size int64, format, name, password string) (*bdf.Document, []string, error) {
-	doc, _, err := raster.Document(io.NewSectionReader(r, 0, size), nil)
+	doc, _, err := raster.Document(ctx, io.NewSectionReader(r, 0, size), nil)
 	return doc, nil, err
 }
 
@@ -469,10 +471,13 @@ func TestIPPServeTLS(t *testing.T) {
 			t.Fatalf("%s: %+v %v", scheme, js, err)
 		}
 	}
-	// the certificate is kept: a server started again shows the same
+	// the certificate is a leaf, of the server's names
 	conn, err := tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: true})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if c := conn.ConnectionState().PeerCertificates[0]; c.IsCA || c.KeyUsage&x509.KeyUsageCertSign != 0 || len(c.DNSNames) == 0 {
+		t.Errorf("certificate: CA %v, usage %v, names %v", c.IsCA, c.KeyUsage, c.DNSNames)
 	}
 	conn.Close()
 	if srv.ipp.fingerprint == "" {
@@ -489,9 +494,13 @@ func TestIPPServeTLS(t *testing.T) {
 		t.Fatalf("icon: %d", res.StatusCode)
 	}
 	// the profile of AirPrint, for the address the device came to
-	res, err = http.Get("http://" + addr + "/airprint.mobileconfig")
+	insecure := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	res, err = insecure.Get("http://" + addr + "/airprint.mobileconfig") // (redirected to https)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if res.Request.URL.Scheme != "https" {
+		t.Errorf("the profile over %s", res.Request.URL.Scheme)
 	}
 	b, _ = io.ReadAll(res.Body)
 	res.Body.Close()
@@ -557,5 +566,45 @@ ipp: { host: print.example.com, auth: none }
 	cfg.IPP.Host = "server.local"
 	if _, err := ZoneRecords(cfg, "example.com", 8631, nil); err == nil {
 		t.Error("a host of .local in a zone")
+	}
+}
+
+// TestIPPCancelWhileSending cancels a job while its document arrives: the
+// document is dropped, and nothing is printed.
+func TestIPPCancelWhileSending(t *testing.T) {
+	f := newIPPFixture(t, ippConfigYAML)
+	c := f.client("office", "bob")
+	ctx := context.Background()
+	js, err := c.CreateJob(ctx, "a", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.SendDocument(ctx, js.ID, "a.bdf", "", pr, true)
+		done <- err
+	}()
+	doc := docBytes(t)
+	pw.Write(doc[:100])
+	until(t, "the document arrives", func() bool {
+		f.srv.ipp.mu.Lock()
+		defer f.srv.ipp.mu.Unlock()
+		return f.srv.ipp.incoming[js.ID].sending
+	})
+	if err := c.CancelJob(ctx, js.ID); err != nil {
+		t.Fatal(err)
+	}
+	pw.Write(doc[100:])
+	pw.Close()
+	if err := <-done; statusOf(err) != ipp.StatusClientErrorNotPossible {
+		t.Fatalf("the document of a canceled job: %v", err)
+	}
+	left, _ := os.ReadDir(f.cfg.TempDir)
+	if len(left) != 0 {
+		t.Errorf("left in the temporary directory: %v", left)
+	}
+	if st, _ := c.GetJobAttributes(ctx, js.ID); st == nil || st.State != ipp.JobCanceled {
+		t.Fatalf("%+v", st)
 	}
 }

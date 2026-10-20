@@ -129,3 +129,42 @@ func TestProbeConflict(t *testing.T) {
 		}
 	}
 }
+
+// TestAdvertiseMany advertises more than one packet holds: the answers go
+// in several, each within maxPacket, and all are found.
+func TestAdvertiseMany(t *testing.T) {
+	port := freeUDPPort(t)
+	old := loopbackMDNS
+	loopbackMDNS = &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port}
+	defer func() { loopbackMDNS = old }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var ads []Advertisement
+	for i := range 12 {
+		ads = append(ads, Advertisement{Instance: "Queue " + string(rune('A'+i)), Type: "_ipp._tcp", Port: 8631,
+			TXT: []string{"rp=ipp/print/q", "note=" + strings.Repeat("x", 200), "ty=" + strings.Repeat("y", 200)}})
+	}
+	r, err := Advertise(ctx, ads, ResponderOptions{Host: "server.local", Port: port, Interfaces: []net.Interface{}, Loopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	found, err := Browse(ctx, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, s := range found {
+		if strings.HasPrefix(s.Name, "Queue ") {
+			n++
+		}
+	}
+	if n != 12 {
+		t.Fatalf("found %d of 12", n)
+	}
+	// a question from beyond the link is not answered
+	c := &mdnsConn{}
+	if r.onLink(c, 0, net.IPv4(203, 0, 113, 9)) || !r.onLink(c, 0, net.IPv4(127, 0, 0, 1)) {
+		t.Error("onLink")
+	}
+}

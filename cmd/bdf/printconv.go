@@ -79,7 +79,7 @@ func (c printConverter) Convert(ctx context.Context, r io.ReaderAt, size int64, 
 		return nil, nil, err
 	}
 	if format == formatPWG || format == formatURF {
-		doc, _, err := raster.Document(io.NewSectionReader(r, 0, size), &raster.DocumentOptions{Title: name})
+		doc, _, err := raster.Document(ctx, io.NewSectionReader(r, 0, size), &raster.DocumentOptions{Title: name})
 		return doc, nil, err
 	}
 	opts := &converter.Options{FontDirs: c.fontDirs, NoSystemFonts: c.noSystem, Password: password, FileName: name, Params: map[string]string{}}

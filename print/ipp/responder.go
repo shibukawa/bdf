@@ -354,6 +354,11 @@ func (r *Responder) handle(c *mdnsConn, p []byte, src net.Addr, ifIndex int) {
 		return
 	}
 	udp, _ := src.(*net.UDPAddr)
+	// questions from beyond the link are not answered (RFC 6762 §11): a
+	// responder would reflect them, larger, at a forged source
+	if udp == nil || !r.onLink(c, ifIndex, udp.IP) {
+		return
+	}
 	// a question from a port that is not mDNS's is a legacy unicast one
 	// (RFC 6762 §6.7): answered to it alone, with the questions; the
 	// unicast-response bit asks the same of a multicast question
@@ -387,6 +392,26 @@ func (r *Responder) handle(c *mdnsConn, p []byte, src net.Addr, ifIndex int) {
 		return
 	}
 	r.sendID(c, to, 0, nil, answers, extra, ifIndex)
+}
+
+// onLink tells an address of the link a question came on: of a subnet of
+// the interface, or the machine's own.
+func (r *Responder) onLink(c *mdnsConn, ifIndex int, ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		return true
+	}
+	for _, ifi := range c.ifs {
+		if ifIndex != 0 && ifi.Index != ifIndex {
+			continue
+		}
+		addrs, _ := ifi.Addrs()
+		for _, a := range addrs {
+			if ipn, ok := a.(*net.IPNet); ok && ipn.Contains(ip) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // noteConflicts notes the answers of other hosts for names being probed.
@@ -733,10 +758,35 @@ func (r *Responder) send(c *mdnsConn, to *net.UDPAddr, answers, extra []dnsmessa
 	r.sendID(c, to, 0, nil, answers, extra, 0)
 }
 
+// maxPacket bounds a message: one that fits an Ethernet frame is not
+// fragmented, which Wi-Fi drops of multicast.
+const maxPacket = 1400
+
+// sendID sends a response; one larger than maxPacket goes in several, the
+// additional records after the answers.
 func (r *Responder) sendID(c *mdnsConn, to *net.UDPAddr, id uint16, qs []dnsmessage.Question, answers, extra []dnsmessage.Resource, ifIndex int) {
 	if len(answers) == 0 {
 		return
 	}
+	b, err := buildResponse(id, qs, answers, extra)
+	if err != nil {
+		r.log.Debug("mDNS: a response cannot be built", "err", err)
+		return
+	}
+	switch {
+	case len(b) <= maxPacket || len(answers)+len(extra) == 1:
+		r.write(c, to, b, ifIndex)
+	case len(extra) > 0:
+		r.sendID(c, to, id, qs, answers, nil, ifIndex)
+		r.sendID(c, to, id, qs, extra, nil, ifIndex)
+	default:
+		half := len(answers) / 2
+		r.sendID(c, to, id, qs, answers[:half], nil, ifIndex)
+		r.sendID(c, to, id, qs, answers[half:], nil, ifIndex)
+	}
+}
+
+func buildResponse(id uint16, qs []dnsmessage.Question, answers, extra []dnsmessage.Resource) ([]byte, error) {
 	bld := dnsmessage.NewBuilder(nil, dnsmessage.Header{ID: id, Response: true, Authoritative: true})
 	bld.EnableCompression()
 	bld.StartQuestions()
@@ -751,12 +801,7 @@ func (r *Responder) sendID(c *mdnsConn, to *net.UDPAddr, id uint16, qs []dnsmess
 	for _, rr := range extra {
 		addResource(&bld, rr)
 	}
-	b, err := bld.Finish()
-	if err != nil {
-		r.log.Debug("mDNS: a response cannot be built", "err", err)
-		return
-	}
-	r.write(c, to, b, ifIndex)
+	return bld.Finish()
 }
 
 // write sends a message to an address, or to the group on each interface

@@ -144,7 +144,8 @@ func (x *ippServer) certPath() string {
 	return filepath.Join(filepath.Dir(x.s.cfg.Spool), "ipp-tls.pem")
 }
 
-// selfSigned makes a key and a certificate for a host, signed by the key,
+// selfSigned makes a key and a certificate for a host, signed by the key
+// (a leaf that is its own issuer, which signs nothing else),
 // for ten years, with the names and addresses of the machine; the PEM
 // holds the key and the certificate.
 func selfSigned(host string, now time.Time, names ...string) ([]byte, error) {
@@ -157,14 +158,16 @@ func selfSigned(host string, now time.Time, names ...string) ([]byte, error) {
 		return nil, err
 	}
 	tmpl := &x509.Certificate{
-		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: host, Organization: []string{"bdf printd"}},
-		NotBefore:             now.Add(-time.Hour),
-		NotAfter:              now.AddDate(10, 0, 0),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: host, Organization: []string{"bdf printd"}},
+		NotBefore:    now.Add(-time.Hour),
+		NotAfter:     now.AddDate(10, 0, 0),
+		// a leaf, not a CA: a device that trusts it (the AirPrint
+		// profile) trusts this server, and no certificate it would sign
+		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
-		IsCA:                  true,
+		IsCA:                  false,
 	}
 	all := map[string]bool{host: true, "localhost": true}
 	for _, n := range names {

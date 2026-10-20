@@ -106,7 +106,7 @@ th{font-weight:600;color:var(--muted);font-size:13px}code{font-size:13px;word-br
 <table><tr><th>Printer</th><th>State</th><th>Jobs</th><th>Address</th></tr>
 {{range .Queues}}<tr><td>{{.Info}}{{if .Location}}<br><small>{{.Location}}</small>{{end}}</td><td>{{.State}}{{if .Message}}<br><small>{{.Message}}</small>{{end}}</td><td>{{.Jobs}}</td><td><code>{{.URI}}</code></td></tr>
 {{end}}</table>
-<p><a href="/airprint.mobileconfig">Add these printers to an iPhone or iPad</a> that does not list them (a configuration profile: open it in Safari, then install it in Settings).</p>
+{{if .Secure}}<p><a href="/airprint.mobileconfig">Add these printers to an iPhone or iPad</a> that does not list them (a configuration profile: open it in Safari, then install it in Settings).</p>{{else}}<p>To add these printers to an iPhone or iPad that does not list them, open this page over <a href="https://{{.Host}}/">https</a>.</p>{{end}}
 </body></html>
 `))
 
@@ -117,9 +117,10 @@ func (x *ippServer) page(w http.ResponseWriter, r *http.Request) {
 		Jobs                                int
 	}
 	data := struct {
-		Title  string
-		Queues []row
-	}{Title: "bdf printd on " + x.host}
+		Title, Host string
+		Secure      bool
+		Queues      []row
+	}{Title: "bdf printd on " + x.host, Host: r.Host, Secure: isSecure(r)}
 	scheme := "ipp"
 	if isSecure(r) {
 		scheme = "ipps"

@@ -403,11 +403,21 @@ func (c *Config) check() error {
 			return fmt.Errorf("upstream %s: uuid %q: urn:uuid:…", name, u.UUID)
 		}
 	}
-	for _, q := range c.Queues {
-		for _, p := range q.Printers {
-			if c.Printers[p].Proxy && c.IPP == nil {
+	proxyQueue := map[string]string{}
+	for _, qn := range sortedKeys(c.Queues) {
+		for _, p := range c.Queues[qn].Printers {
+			if !c.Printers[p].Proxy {
+				continue
+			}
+			if c.IPP == nil {
 				return fmt.Errorf("printer %s of proxies needs ipp: the proxies fetch its jobs over IPP", p)
 			}
+			// (a token of a queue fetches the jobs of its printer: of that
+			// queue only)
+			if other, ok := proxyQueue[p]; ok {
+				return fmt.Errorf("printer %s of proxies is the printer of queues %s and %s: of one queue only", p, other, qn)
+			}
+			proxyQueue[p] = qn
 		}
 	}
 	if !c.Insecure && !loopback(c.Listen) && (c.TLS == nil || len(c.Tokens) == 0) {

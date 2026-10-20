@@ -289,6 +289,13 @@ func Open(ctx context.Context, o Options) (*Spool, error) {
 			if s.printers[p].Proxy && len(q.Printers) > 1 {
 				return nil, fmt.Errorf("%w: queue %q: printer %q of proxies is the only printer of its queue", ErrInvalid, q.Name, p)
 			}
+			if s.printers[p].Proxy {
+				for _, other := range s.queues {
+					if slices.Contains(other.Printers, p) {
+						return nil, fmt.Errorf("%w: printer %q of proxies is of queues %q and %q", ErrInvalid, p, other.Name, q.Name)
+					}
+				}
+			}
 		}
 		switch q.Policy {
 		case "":
@@ -906,6 +913,9 @@ func (s *Spool) Hold(ctx context.Context, id int32) (Job, error) {
 	return s.change(ctx, id, func(j *Job, now time.Time) error {
 		if j.State != ipp.JobPending && j.State != ipp.JobPendingHeld {
 			return fmt.Errorf("%w: job %d is %s", ErrNotPossible, id, j.State)
+		}
+		if j.Step == StepRemote || j.Step == StepFetch && j.Printer != nil && j.Printer.Device != "" {
+			return fmt.Errorf("%w: job %d is a proxy's", ErrNotPossible, id)
 		}
 		j.HoldUntil, j.HoldUntilTime, j.Due = "indefinite", time.Time{}, time.Time{}
 		return j.to(now, ipp.JobPendingHeld, "job-hold-until-specified")

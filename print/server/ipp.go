@@ -675,6 +675,13 @@ func (x *ippServer) sendDocument(q *ippRequest) {
 		return
 	}
 	x.mu.Lock()
+	if in.state.Done() {
+		// canceled (or ended) while the document arrived
+		x.mu.Unlock()
+		up.Discard()
+		q.fail(ipp.StatusClientErrorNotPossible, "the job is %s", in.state)
+		return
+	}
 	in.upload, in.docName, in.docType = up, q.op.Get("document-name").Text(), q.op.Get("document-format").Text()
 	in.deadline = time.Now().Add(incomingTimeout)
 	if pw := q.op.Get("document-password"); pw != nil {
@@ -718,8 +725,12 @@ func (x *ippServer) close(q *ippRequest, in *incoming) {
 	x.mu.Lock()
 	up := in.upload
 	in.upload = nil
+	done := in.state.Done()
 	x.mu.Unlock()
-	if in.state.Done() {
+	if done {
+		if up != nil {
+			up.Discard()
+		}
 		q.res.Add(ipp.TagJob, x.incomingAttrs(q, in)...)
 		return
 	}
@@ -735,8 +746,14 @@ func (x *ippServer) close(q *ippRequest, in *incoming) {
 		return
 	}
 	x.mu.Lock()
+	canceled := in.state.Done() // by Cancel-Job while it was submitted
 	delete(x.incoming, in.id)
 	x.mu.Unlock()
+	if canceled {
+		if c, err := x.s.sp.Cancel(q.r.Context(), j.ID, "job-canceled-by-user"); err == nil {
+			j = c
+		}
+	}
 	q.res.Add(ipp.TagJob, x.jobStatusAttrs(q, &j)...)
 }
 

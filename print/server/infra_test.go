@@ -288,3 +288,49 @@ func testLog(t *testing.T) *slog.Logger {
 	}
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
+
+// TestProxyRetry retries at the head office a job the branch took and
+// canceled: the branch takes it again.
+func TestProxyRetry(t *testing.T) {
+	f := newBranchFixture(t, true)
+	ctx := context.Background()
+	hj := f.submitHQ("a.bdf")
+	until(t, "the branch takes the job", func() bool { return len(f.branch.Spool().List(spool.Filter{})) == 1 })
+	f.hq.Spool().Cancel(ctx, hj.ID, "")
+	until(t, "the branch cancels it", func() bool { return len(f.branch.Spool().List(spool.Filter{})) == 0 })
+	if _, err := f.hq.Spool().Retry(ctx, hj.ID); err != nil {
+		t.Fatal(err)
+	}
+	until(t, "the branch takes it again", func() bool { return len(f.branch.Spool().List(spool.Filter{})) == 1 })
+	f.branch.Spool().ResumeQueue(ctx, "local")
+	until(t, "printed once", func() bool {
+		j, _ := f.hq.Spool().Get(ctx, hj.ID)
+		return j.State == ipp.JobCompleted
+	})
+	if n := len(f.printer.Jobs()); n != 1 {
+		t.Fatalf("printed %d times", n)
+	}
+	// a held job bound to the branch cannot be held
+	hj2 := f.submitHQ("b.bdf")
+	until(t, "the branch takes the second", func() bool {
+		j, _ := f.hq.Spool().Get(ctx, hj2.ID)
+		return j.Step == spool.StepRemote
+	})
+	if _, err := f.hq.Spool().Hold(ctx, hj2.ID); err == nil {
+		t.Error("held a job at the branch")
+	}
+}
+
+func TestProxyConfig(t *testing.T) {
+	for name, y := range map[string]string{
+		"two queues": "printers: { b: { proxy: true } }\nqueues: { q1: { printers: [b] }, q2: { printers: [b] } }\nipp: {}",
+		"no ipp":     "printers: { b: { proxy: true } }\nqueues: { q1: { printers: [b] } }",
+		"with url":   "printers: { b: { proxy: true, url: ipp://h/ } }\nqueues: { q1: { printers: [b] } }\nipp: {}",
+		"class":      "printers: { b: { proxy: true }, p: { url: ipp://h/ } }\nqueues: { q1: { printers: [b, p] } }\nipp: {}",
+		"upstream":   "printers: { p: { url: ipp://h/ } }\nqueues: { q: { printers: [p] } }\nupstreams: { hq: { url: ipp://hq/ipp/print/x, queue: nowhere } }",
+	} {
+		if _, err := ParseConfig([]byte(y)); err == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}

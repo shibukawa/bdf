@@ -2,6 +2,7 @@ package raster
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"image/png"
 	"io"
@@ -74,7 +75,7 @@ func TestDocument(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		doc, info, err := Document(bytes.NewReader(b), &DocumentOptions{Title: "scan"})
+		doc, info, err := Document(context.Background(), bytes.NewReader(b), &DocumentOptions{Title: "scan"})
 		if err != nil {
 			t.Fatalf("%v %s: %v", c.urf, c.typ, err)
 		}
@@ -161,15 +162,23 @@ func TestDocumentErrors(t *testing.T) {
 		"no pages":  []byte(Sync),
 		"urf count": append([]byte(URFSync), 0, 0, 0, 2),
 	} {
-		if _, _, err := Document(bytes.NewReader(in), nil); err == nil {
+		if _, _, err := Document(context.Background(), bytes.NewReader(in), nil); err == nil {
 			t.Errorf("%s: no error", name)
 		}
 	}
-	if _, _, err := Document(bytes.NewReader(b), &DocumentOptions{MaxPages: 1}); err == nil {
+	if _, _, err := Document(context.Background(), bytes.NewReader(b), &DocumentOptions{MaxPages: 1}); err == nil {
 		t.Error("more pages than MaxPages")
 	}
-	if _, _, err := Document(bytes.NewReader(b), &DocumentOptions{MaxPixels: 100}); err == nil {
+	if _, _, err := Document(context.Background(), bytes.NewReader(b), &DocumentOptions{MaxPixels: 100}); err == nil {
 		t.Error("a page larger than MaxPixels")
+	}
+	if _, _, err := Document(context.Background(), bytes.NewReader(b), &DocumentOptions{MaxTotalPixels: 2000}); err == nil {
+		t.Error("more pixels than MaxTotalPixels")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := Document(ctx, bytes.NewReader(b), nil); err != context.Canceled {
+		t.Errorf("canceled: %v", err)
 	}
 }
 
@@ -179,7 +188,7 @@ func FuzzDocument(f *testing.F) {
 		f.Add(b)
 	}
 	f.Fuzz(func(t *testing.T, b []byte) {
-		Document(bytes.NewReader(b), &DocumentOptions{MaxPixels: 1 << 16, MaxPages: 8})
+		Document(context.Background(), bytes.NewReader(b), &DocumentOptions{MaxPixels: 1 << 16, MaxPages: 8})
 	})
 }
 

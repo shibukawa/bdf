@@ -40,6 +40,13 @@ func isInfra(q *ippRequest) bool {
 // authorizeProxy finds the proxy of a request: a token of the role
 // proxy that may use the queue. It writes the 401 itself.
 func (x *ippServer) authorizeProxy(w http.ResponseWriter, q *ippRequest) bool {
+	if !q.secure && !loopbackRemote(q.r) {
+		// the secret goes over TLS only
+		w.Header().Set("Upgrade", "TLS/1.2, HTTP/1.1")
+		w.Header().Set("Connection", "Upgrade")
+		http.Error(w, "proxies reach this printer with ipps", http.StatusUpgradeRequired)
+		return false
+	}
 	name, secret, ok := q.r.BasicAuth()
 	if ok {
 		q.caller = x.s.auth.basic(name, secret)
@@ -214,6 +221,11 @@ func (x *ippServer) fetchableJobs(q *ippRequest, printer, device string) {
 				attrs[k] = ipp.Attr("job-state-reasons", ipp.Keyword("job-fetchable"))
 			}
 		}
+		// a job bound to the proxy already (it took it, and stopped before
+		// it said it has the document) says so: it is not taken again
+		if j.Printer.Device != "" {
+			attrs = append(attrs, ipp.Attr("output-device-assigned", ipp.Name(j.Printer.Device)))
+		}
 		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: filterAttrs(attrs, req, jobGroups)})
 	}
 }
@@ -294,7 +306,8 @@ func (x *ippServer) updateActiveJobs(q *ippRequest, printer, device string) {
 	for i, id := range ids {
 		st := ipp.JobState(states[i])
 		j, err := x.s.sp.Get(ctx, id)
-		if err != nil {
+		// (the jobs of this printer that this proxy took only)
+		if err != nil || j.Printer == nil || j.Printer.Name != printer || j.Printer.Device != device {
 			continue
 		}
 		if j.State.Done() {

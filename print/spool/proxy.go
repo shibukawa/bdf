@@ -49,6 +49,10 @@ func (s *Spool) offer(ctx context.Context, e *entry, p *printerState) {
 	j.Printer = &PrinterJob{Name: p.Name, URL: "proxy:" + p.Name, AttemptStarted: now}
 	j.Step, j.Message = StepFetch, ""
 	j.Reasons = []string{"job-fetchable"}
+	if s.isCanceling(e) {
+		s.canceled(ctx, e, j)
+		return
+	}
 	s.commit(ctx, e, j)
 	s.o.Log.Info("job fetchable", "job", j.ID, "printer", p.Name)
 }
@@ -379,20 +383,29 @@ func (s *Spool) FindOrigin(ctx context.Context, upstream, uuid string) (Job, boo
 }
 
 // Origins are the jobs that came from an upstream, done within the
-// retention of documents or not.
+// retention of documents or not: of an upstream job taken more than once
+// (it was retried there), the last taken.
 func (s *Spool) Origins(upstream string) []Job {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var out []Job
-	for _, e := range s.jobs {
-		if o := e.job.Origin; o != nil && o.Upstream == upstream {
-			out = append(out, e.job.clone())
+	last := map[string]Job{}
+	add := func(j *Job) {
+		if o := j.Origin; o != nil && o.Upstream == upstream {
+			if have, ok := last[o.UUID]; !ok || j.ID > have.ID {
+				last[o.UUID] = j.clone()
+			}
 		}
+	}
+	for _, e := range s.jobs {
+		add(&e.job)
 	}
 	for i := range s.recent {
-		if o := s.recent[i].Origin; o != nil && o.Upstream == upstream {
-			out = append(out, s.recent[i].clone())
-		}
+		add(&s.recent[i])
 	}
+	out := make([]Job, 0, len(last))
+	for _, j := range last {
+		out = append(out, j)
+	}
+	slices.SortFunc(out, func(a, b Job) int { return int(a.ID - b.ID) })
 	return out
 }

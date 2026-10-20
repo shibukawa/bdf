@@ -118,6 +118,12 @@ func (x *ippServer) profile(host string, port int, cert tls.Certificate) []byte 
 // serveProfile serves the configuration profile of the printers at the
 // host the request came to: a person opens it on an iPhone or iPad.
 func (x *ippServer) serveProfile(w http.ResponseWriter, r *http.Request) {
+	if !isSecure(r) {
+		// over plain HTTP a machine of the network could put its own
+		// certificate in it: the profile is served over https only
+		http.Redirect(w, r, "https://"+r.Host+r.URL.Path, http.StatusFound)
+		return
+	}
 	host, portStr, err := net.SplitHostPort(r.Host)
 	if err != nil {
 		host, portStr = r.Host, strconv.Itoa(x.port)

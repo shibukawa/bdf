@@ -3,6 +3,7 @@ package raster
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -288,8 +289,11 @@ func parseURFHeader(h [URFHeaderSize]byte, count int) (*Page, error) {
 // DocumentOptions bound what Document makes.
 type DocumentOptions struct {
 	// MaxPixels bounds a page, as NewPageReader's; MaxPages the pages
-	// (10,000 when 0).
+	// (10,000 when 0); MaxTotalPixels the pages together (8 Gi when 0:
+	// some 250 pages of A4 in colour at 600 dpi), as a small stream of
+	// repeated lines can stand for many pixels to compress.
 	MaxPixels, MaxPages int
+	MaxTotalPixels      int64
 	// Title is the title of the document.
 	Title string
 }
@@ -309,10 +313,16 @@ type RasterInfo struct {
 // stream says (its pixels at their resolution for Apple Raster, which
 // says none). The pixels are kept as PNG: gray, bilevel (for the types of
 // a bit a pixel) or RGB, read a band at a time.
-func Document(r io.Reader, o *DocumentOptions) (*bdf.Document, *RasterInfo, error) {
+// It stops when ctx ends, between bands.
+func Document(ctx context.Context, r io.Reader, o *DocumentOptions) (*bdf.Document, *RasterInfo, error) {
 	if o == nil {
 		o = &DocumentOptions{}
 	}
+	maxTotal := o.MaxTotalPixels
+	if maxTotal <= 0 {
+		maxTotal = 8 << 30
+	}
+	var total int64
 	maxPages := o.MaxPages
 	if maxPages <= 0 {
 		maxPages = 10000
@@ -343,8 +353,11 @@ func Document(r io.Reader, o *DocumentOptions) (*bdf.Document, *RasterInfo, erro
 		if info.Pages == 1 {
 			info.Duplex, info.Tumble, info.Resolution = p.Duplex, p.Tumble, p.XDPI
 		}
+		if total += int64(p.Width) * int64(p.Height); total > maxTotal {
+			return nil, nil, fmt.Errorf("raster: more than %d pixels in all", maxTotal)
+		}
 		png.Reset()
-		if err := encodePage(&png, pr, p); err != nil {
+		if err := encodePage(ctx, &png, pr, p); err != nil {
 			return nil, nil, err
 		}
 		pw, ph := float32(p.PageWidth), float32(p.PageHeight)
@@ -365,7 +378,7 @@ func Document(r io.Reader, o *DocumentOptions) (*bdf.Document, *RasterInfo, erro
 
 // encodePage writes the pixels of the page as a PNG, a band of rows at a
 // time.
-func encodePage(w io.Writer, pr *PageReader, p *Page) error {
+func encodePage(ctx context.Context, w io.Writer, pr *PageReader, p *Page) error {
 	const band = 64
 	kind := rowenc.Gray
 	var rows image.Image
@@ -384,6 +397,10 @@ func encodePage(w io.Writer, pr *PageReader, p *Page) error {
 		return err
 	}
 	for {
+		if err := ctx.Err(); err != nil {
+			enc.Close()
+			return err
+		}
 		n, err := pr.ReadRows(rows)
 		if err == io.EOF {
 			break

@@ -190,9 +190,14 @@ func (u *upstream) activeJobs(ctx context.Context) error {
 // again (the proxy stopped before it said it had the document); another
 // is fetched, put in the spool, and acknowledged.
 func (u *upstream) fetch(ctx context.Context) error {
+	// a queue that takes no jobs takes none of the upstream's: they wait
+	// there, for this or another proxy
+	if q, err := u.s.sp.Queue(u.cfg.Queue); err != nil || q.Rejecting {
+		return nil
+	}
 	m := u.request(ipp.OpGetJobs)
 	m.Add(ipp.TagOperation, ipp.Attr("which-jobs", ipp.Keyword("fetchable")), ipp.Attr("limit", ipp.Integer(20)),
-		ipp.Attr("requested-attributes", ipp.Keyword("job-id"), ipp.Keyword("job-uuid")))
+		ipp.Attr("requested-attributes", ipp.Keyword("job-id"), ipp.Keyword("job-uuid"), ipp.Keyword("output-device-assigned")))
 	res, err := u.c.Do(ctx, m, nil)
 	if err != nil {
 		return err
@@ -206,10 +211,15 @@ func (u *upstream) fetch(ctx context.Context) error {
 		if id <= 0 || uuid == "" {
 			continue
 		}
-		if j, ok := u.s.sp.FindOrigin(ctx, u.name, uuid); ok {
-			u.acknowledgeDocument(ctx, id)
-			u.report(ctx, j)
-			continue
+		// a job bound to this proxy that it has: it stopped before it said
+		// so. A job it had and is not bound to was retried upstream: it is
+		// taken again.
+		if g.Get("output-device-assigned").Text() == u.device {
+			if j, ok := u.s.sp.FindOrigin(ctx, u.name, uuid); ok {
+				u.acknowledgeDocument(ctx, id)
+				u.report(ctx, j)
+				continue
+			}
 		}
 		if err := u.take(ctx, id, uuid); err != nil {
 			if ctx.Err() != nil {
@@ -272,16 +282,37 @@ func (u *upstream) take(ctx context.Context, id int32, uuid string) error {
 	}
 	up, err := u.s.sp.Receive(ctx, body)
 	if err != nil {
+		u.refuse(ctx, id, err)
 		return err
 	}
 	j, err := u.s.sp.Submit(ctx, spool.Submission{Queue: sub.Queue, Name: sub.Name, User: sub.User, Type: sub.Type, Upload: up,
 		Ticket: sub.Ticket, Options: sub.Options, Priority: sub.Priority, Password: sub.Password, Origin: sub.Origin})
 	if err != nil {
+		u.refuse(ctx, id, err)
 		return err
 	}
 	u.s.log.Info("upstream: job taken", "upstream", u.name, "upstream-job", id, "job", j.ID, "user", j.User, "name", j.Name)
 	u.acknowledgeDocument(ctx, id)
 	return nil
+}
+
+// refuse tells the upstream a job this proxy took cannot be printed here
+// (its document is not one, or too large): aborted there, not fetched
+// again. Failures that pass (a full spool, a queue that takes no jobs, the
+// network) leave it to be fetched again.
+func (u *upstream) refuse(ctx context.Context, id int32, err error) {
+	if ctx.Err() != nil || !(errors.Is(err, spool.ErrUnknownFormat) || errors.Is(err, spool.ErrBadDocument) ||
+		errors.Is(err, spool.ErrTooLarge) || errors.Is(err, spool.ErrInvalid) || errors.Is(err, spool.ErrWrongPassword)) {
+		return
+	}
+	m := u.request(ipp.OpUpdateJobStatus)
+	m.Add(ipp.TagOperation, ipp.Attr("job-id", ipp.Integer(int(id))))
+	m.Add(ipp.TagJob, ipp.Attr("output-device-job-state", ipp.Enum(int(ipp.JobAborted))),
+		ipp.Attr("output-device-job-state-reasons", ipp.Keyword("document-format-error")),
+		ipp.Attr("output-device-job-state-message", ipp.Text(clip127(err.Error()))))
+	if _, err := u.c.Do(ctx, m, nil); err != nil {
+		u.s.log.Warn("upstream: a refused job could not be reported", "upstream", u.name, "upstream-job", id, "err", err)
+	}
 }
 
 func (u *upstream) acknowledgeDocument(ctx context.Context, id int32) {
