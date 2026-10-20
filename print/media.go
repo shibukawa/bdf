@@ -61,10 +61,17 @@ var aliases = map[string]string{
 }
 
 // ResolveMedia turns a -media value into a PWG name: a short name
-// ("a4", "b5", "hagaki", "letter"), or a PWG name as it is.
+// ("a4", "b5", "hagaki", "letter"), a size alone ("104x150mm", "4x6in",
+// a custom_ name), or a PWG name as it is.
 func ResolveMedia(s string) (Media, error) {
 	if n, ok := aliases[strings.ToLower(s)]; ok {
 		s = n
+	}
+	if !strings.Contains(s, "_") {
+		// a size alone, as a label's: 104x150mm, 4x6in
+		if m, err := ParseMedia("custom_" + s); err == nil {
+			return m, nil
+		}
 	}
 	return ParseMedia(s)
 }

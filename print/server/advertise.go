@@ -33,9 +33,9 @@ func (x *ippServer) mdnsHost() string {
 	return label + "-bdf.local"
 }
 
-// pdl is the pdl key of the TXT record: PDF first, so that clients that
+// txtPDL is the pdl key of the TXT record: PDF first, so that clients that
 // take the first they can send vectors.
-const pdl = "application/pdf,image/urf,image/pwg-raster,image/jpeg,image/png"
+const txtPDL = "application/pdf,image/urf,image/pwg-raster,image/jpeg,image/png"
 
 // serviceTXT is the TXT record of a queue as IPP Everywhere (PWG 5100.14
 // §4.2) and AirPrint (whose URF key it must have) ask: its path,
@@ -80,7 +80,7 @@ func (x *ippServer) serviceTXT(q *ippQueue, caps *ipp.Printer, secure bool, port
 		"note=" + clipTXT(q.location),
 		"adminurl=" + clipTXT(fmt.Sprintf("%s://%s:%d%s", scheme, x.adminHost(), port, q.path)),
 		"priority=50",
-		"pdl=" + pdl,
+		"pdl=" + txtPDL,
 		"URF=" + strings.Join(urfSupported, ","),
 		"UUID=" + strings.TrimPrefix(q.uuid, "urn:uuid:"),
 		"TLS=1.2",

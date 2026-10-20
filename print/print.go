@@ -14,6 +14,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/pdl"
 	"github.com/shibukawa/bdf/print/raster"
 	"github.com/shibukawa/bdf/raster/imagebdf"
 	"github.com/shibukawa/bdf/vector/pdfbdf"
@@ -43,8 +44,14 @@ type Options struct {
 	// Format is "pdf", "ps" (PostScript), "pwg-raster", "urf" (Apple
 	// Raster), "pclm", or "" (or "auto") to choose: PDF when the printer
 	// takes it, else PostScript, else PWG Raster, else Apple Raster, else
-	// PCLm.
+	// PCLm. It may be the language of a printer of labels, receipts or
+	// forms too ("zpl", "sbpl", "tpcl", "escpos", "escp"; print/pdl),
+	// which an IPP queue that passes data on as it is (a raw queue of
+	// CUPS) is sent.
 	Format string
+	// Profile is the printer a language of print/pdl is written for: nil
+	// for the profile of a raw printer's URL, or the language's default.
+	Profile *pdl.Profile
 	// RasterIfLossy sends PWG Raster instead of PDF when the PDF file
 	// would leave out what the document draws (FILTER, composite
 	// operations of Canvas, shadows past their limits …) and the printer
@@ -210,6 +217,9 @@ func nonNone(reasons []string) []string {
 }
 
 func (j *job) run() error {
+	if lang := deviceLanguage(j.o.Format); lang != "" {
+		return j.runDevice(lang)
+	}
 	format, err := chooseFormat(j.p, j.o.Format)
 	if err != nil {
 		return err
@@ -263,6 +273,21 @@ func (j *job) run() error {
 		}
 		attrs = without(attrs, se.Unsupported, j.res)
 	default:
+		return err
+	}
+	return j.send(format, media, data, attrs, fallback)
+}
+
+// send sends a job of a document in a format: the file of a vector
+// format, or (data nil) raster pages drawn as they are sent. A printer
+// that refuses PDF is sent the fallback format instead.
+func (j *job) send(format, media string, data []byte, attrs []ipp.Attribute, fallback string) error {
+	var err error
+	refused := func() error {
+		j.res.warn("the printer refuses PDF: sent as %s", formatTitle[fallback])
+		format = fallback
+		d, err := j.document(format, media)
+		data = d
 		return err
 	}
 	j.res.Format = format

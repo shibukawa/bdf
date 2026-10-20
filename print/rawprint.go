@@ -8,12 +8,17 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/pdl"
 	"github.com/shibukawa/bdf/print/raw"
 )
 
-// PrintRaw prints a document on a printer of 9100 or LPD (package
-// print/raw), as PostScript or PDF, as the printer's URL or Options.Format
-// says. Such a printer is told of the job only in its file: PostScript
+// PrintRaw prints a document on a printer that does not speak IPP (package
+// print/raw: 9100, LPD, a serial port, a USB device file, a queue of
+// Windows), as PostScript or PDF, or in the language of a printer of
+// labels, receipts or forms (print/pdl), as the printer's URL or
+// Options.Format says. A language is written for the profile of
+// Options.Profile, else of the URL, with the copies, the paper and the
+// settings of the ticket in it. Such a printer is told of the job only in its file: PostScript
 // asks for the paper (the pages placed on it as on an IPP printer), the
 // copies, the sides and the media type with setpagedevice; PDF holds its
 // copies as pages again, and asks for the sides, the paper and gray in
@@ -50,9 +55,18 @@ func PrintRaw(ctx context.Context, p *raw.Printer, doc *bdf.Document, opts *Opti
 		return j.res, fmt.Errorf("print: %d pages to print, more than %d", n, limit)
 	}
 	format := p.Format
+	if lang := deviceLanguage(o.Format); lang != "" {
+		format = lang
+	}
+	if raw.IsLanguage(format) {
+		if f, _ := FormatName(o.Format); f != "" {
+			return j.res, fmt.Errorf("print: the printer takes %s, not %s", pdl.Title(format), FormatTitle(f))
+		}
+		return printRawDevice(ctx, j, p, format)
+	}
 	switch f, ok := FormatName(o.Format); {
 	case !ok:
-		return j.res, fmt.Errorf("print: %q: pdf or ps", o.Format)
+		return j.res, fmt.Errorf("print: %q: pdf, ps or a language of labels, receipts or forms (zpl, sbpl, tpcl, escpos, escp)", o.Format)
 	case f == FormatPDF:
 		format = raw.FormatPDF
 	case f == FormatPostScript:
@@ -82,13 +96,31 @@ func PrintRaw(ctx context.Context, p *raw.Printer, doc *bdf.Document, opts *Opti
 	if err != nil {
 		return j.res, err
 	}
-	name := firstOr(t.JobName, "document")
-	rj := &raw.Job{Name: name, Format: format, Data: data, PJL: pjl, Begin: func() error {
+	return sendRaw(ctx, j, p, &raw.Job{Name: firstOr(t.JobName, "document"), Format: format, Data: data, PJL: pjl})
+}
+
+// printRawDevice prints a document on a raw printer of labels, receipts
+// or forms, in its language.
+func printRawDevice(ctx context.Context, j *job, p *raw.Printer, lang string) (*Result, error) {
+	j.p = &ipp.Printer{}
+	data, err := j.rawDevice(p, lang)
+	if err != nil {
+		return j.res, err
+	}
+	return sendRaw(ctx, j, p, &raw.Job{Name: firstOr(j.t.JobName, "document"), Format: lang, Data: data})
+}
+
+// sendRaw sends a job to a raw printer: OnCreated before it may print,
+// OnSent once it has it all.
+func sendRaw(ctx context.Context, j *job, p *raw.Printer, rj *raw.Job) (*Result, error) {
+	o := j.o
+	name := rj.Name
+	rj.Begin = func() error {
 		if o.OnCreated != nil {
 			return o.OnCreated(&ipp.JobStatus{Name: name, State: ipp.JobProcessing})
 		}
 		return nil
-	}}
+	}
 	n, err := p.Send(ctx, rj)
 	j.res.Bytes = n
 	if err != nil {
@@ -111,8 +143,11 @@ func PrintRaw(ctx context.Context, p *raw.Printer, doc *bdf.Document, opts *Opti
 // its URL, and no more.
 func RawCapabilities(p *raw.Printer) *ipp.Printer {
 	format := FormatPostScript
-	if p.Format == raw.FormatPDF {
+	switch {
+	case p.Format == raw.FormatPDF:
 		format = FormatPDF
+	case raw.IsLanguage(p.Format):
+		format = FormatOctetStream
 	}
 	return &ipp.Printer{State: ipp.PrinterIdle, AcceptingJobs: true, Formats: []string{format}}
 }
@@ -179,5 +214,8 @@ func rawTicket(t *Ticket, format string, pjl bool) (lines, unsupported []string)
 	if t.Priority != 0 {
 		no("job-priority", fmt.Sprint(t.Priority))
 	}
+	var a attrs
+	deviceJobAttributes(t, &ipp.Printer{}, &a)
+	unsupported = append(unsupported, a.unsupported...)
 	return lines, unsupported
 }

@@ -53,7 +53,10 @@ var languages = map[string]string{
 
 // IsLanguage reports whether a format is the language of a printer of
 // labels, receipts or forms.
-func IsLanguage(format string) bool { _, ok := languages[format]; return ok && languages[format] == format }
+func IsLanguage(format string) bool {
+	_, ok := languages[format]
+	return ok && languages[format] == format
+}
 
 // Printer is a printer reached over 9100, LPD, a serial port, a USB
 // device file or a queue of Windows, as its URL says:
