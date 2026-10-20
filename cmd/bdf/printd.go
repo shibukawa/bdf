@@ -1,0 +1,99 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"text/tabwriter"
+
+	"github.com/shibukawa/bdf/print/server"
+	"github.com/shibukawa/bdf/print/spool"
+)
+
+// printdCmd runs the print server in the foreground until SIGINT or
+// SIGTERM (Ctrl-C and Ctrl-Break on Windows): a service manager (systemd,
+// launchd, NSSM, WinSW) keeps it running.
+func printdCmd(args []string) {
+	fs := flag.NewFlagSet("printd", flag.ExitOnError)
+	config := fs.String("config", "", "the configuration file (YAML)")
+	checkOnly := fs.Bool("check", false, "check the configuration, ask each printer what it supports, and exit; the spool is not opened")
+	compact := fs.Bool("compact", false, "rewrite the spool's file without the space of removed jobs, and exit; the server must be stopped")
+	listen := fs.String("listen", "", "the address to listen on, over the configuration's")
+	logFormat := fs.String("log", "json", "the format of the log on the standard error: json or text")
+	debug := fs.Bool("debug", false, "log what is done step by step")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, `usage: bdf printd -config printd.yaml [flags]
+  runs the print server in the foreground: a spool of jobs, its queues and
+  printers, and the HTTP API (/api/v1) that bdf print -server and bdf jobs use;
+  SIGINT or SIGTERM stops it after the documents being sent`)
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+	if *config == "" || fs.NArg() != 0 {
+		fs.Usage()
+		os.Exit(2)
+	}
+	level := slog.LevelInfo
+	if *debug {
+		level = slog.LevelDebug
+	}
+	var h slog.Handler
+	switch *logFormat {
+	case "json":
+		h = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	case "text":
+		h = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	default:
+		check(fmt.Errorf("-log %q: json or text", *logFormat))
+	}
+	log := slog.New(h)
+
+	cfg, err := server.LoadConfig(*config)
+	check(err)
+	if *listen != "" {
+		cfg.Listen = *listen
+	}
+	switch {
+	case *compact:
+		before, after, err := spool.Compact(cfg.Spool)
+		check(err)
+		fmt.Printf("%s: %d → %d bytes\n", cfg.Spool, before, after)
+	case *checkOnly:
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+		failed := false
+		tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+		fmt.Fprintln(tw, "PRINTER\tURL\tSTATE\tMODEL\tFORMATS")
+		for _, r := range server.CheckPrinters(ctx, cfg) {
+			if r.Err != nil {
+				failed = true
+				fmt.Fprintf(tw, "%s\t%s\terror: %v\t\t\n", r.Name, r.URL, r.Err)
+				continue
+			}
+			p := r.Printer
+			state := p.State.String()
+			if !p.AcceptingJobs {
+				state += ", not accepting"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", r.Name, r.URL, state, p.MakeModel, strings.Join(p.Formats, ","))
+		}
+		tw.Flush()
+		if failed {
+			os.Exit(1)
+		}
+	default:
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		srv, err := server.New(ctx, cfg, server.Options{Log: log})
+		check(err)
+		if err := srv.Run(ctx); err != nil {
+			log.Error("printd", "err", err)
+			os.Exit(1)
+		}
+	}
+}

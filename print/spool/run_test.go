@@ -408,3 +408,17 @@ func TestCrash(t *testing.T) {
 		})
 	}
 }
+
+func TestNextLookOfPrinterNotLookedAt(t *testing.T) {
+	f := newFixture(t)
+	s := f.open()
+	// a send that did not reach the printer marks it down before a look
+	// failed
+	p := s.printer("mfp1")
+	s.mu.Lock()
+	p.up, p.failing = false, 0
+	s.mu.Unlock()
+	if d := s.nextLook(p); d != lookBusy {
+		t.Fatalf("next look in %v", d)
+	}
+}

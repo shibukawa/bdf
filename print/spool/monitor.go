@@ -28,6 +28,9 @@ func (s *Spool) monitor(p *printerState) {
 		case <-p.pokes:
 		}
 		s.look(p)
+		if s.stepCtx.Err() != nil {
+			return
+		}
 		timer.Reset(s.nextLook(p))
 	}
 }
@@ -82,7 +85,9 @@ func (s *Spool) nextLook(p *printerState) time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !p.up {
-		return min(lookBusy<<min(p.failing-1, 5), 5*time.Minute)
+		// a printer a send did not reach, or not looked at yet, has not
+		// failed a look
+		return min(lookBusy<<min(max(p.failing-1, 0), 5), 5*time.Minute)
 	}
 	if p.caps != nil && p.caps.State == ipp.PrinterStopped {
 		return lookBusy

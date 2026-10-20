@@ -154,6 +154,7 @@ type Spool struct {
 	passwords map[int32]string
 	uploads   map[string]bool // keys of documents being stored
 	subs      map[chan Event]struct{}
+	stats     Stats
 	closed    bool
 
 	started bool
@@ -237,7 +238,7 @@ func Open(ctx context.Context, o Options) (*Spool, error) {
 		o.Retention.Records = 400 * 24 * time.Hour
 	}
 	s := &Spool{o: o, jobs: map[int32]*entry{}, queues: map[string]*queueState{}, printers: map[string]*printerState{},
-		passwords: map[int32]string{}, uploads: map[string]bool{}, subs: map[chan Event]struct{}{},
+		passwords: map[int32]string{}, uploads: map[string]bool{}, subs: map[chan Event]struct{}{}, stats: newStats(),
 		kick: make(chan struct{}, 1), stop: make(chan struct{}), renders: make(chan struct{}, l.Renders)}
 	s.stepCtx, s.stepStop = context.WithCancel(context.Background())
 	s.sendCtx, s.sendStop = context.WithCancel(context.Background())
@@ -420,9 +421,12 @@ type Submission struct {
 	Queue string
 	// Name is the document's file name; User who submits it.
 	Name, User string
-	Document   io.Reader
-	Ticket     print.Ticket
-	Options    JobOptions
+	// Document is read to its end by Submit; or Upload, a document
+	// received before (Receive), which Submit takes.
+	Document io.Reader
+	Upload   *Upload
+	Ticket   print.Ticket
+	Options  JobOptions
 	// Priority is 1 to 100; 0 is 50.
 	Priority int
 	// HoldUntil and HoldUntilTime hold the job (job-hold-until).
@@ -437,7 +441,9 @@ type Submission struct {
 // is then queued (or held). The document is read to its end before the
 // job is recorded.
 func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
-	if sub.Document == nil {
+	if sub.Upload != nil {
+		defer sub.Upload.Discard()
+	} else if sub.Document == nil {
 		return Job{}, fmt.Errorf("%w: no document", ErrInvalid)
 	}
 	if sub.Priority == 0 {
@@ -461,12 +467,15 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	if sub.Name == "" {
 		sub.Name = "document"
 	}
-	f, size, sum, err := s.receive(ctx, sub.Document)
-	if err != nil {
-		return Job{}, err
+	up := sub.Upload
+	if up == nil {
+		var err error
+		if up, err = s.Receive(ctx, sub.Document); err != nil {
+			return Job{}, err
+		}
+		defer up.Discard()
 	}
-	defer os.Remove(f.Name())
-	defer f.Close()
+	f, size, sum := up.f, up.size, up.sum
 	if err := s.room(size); err != nil {
 		return Job{}, err
 	}
@@ -595,6 +604,36 @@ func (s *Spool) room(size int64) error {
 		return fmt.Errorf("%w: %d bytes of documents", ErrFull, total)
 	}
 	return nil
+}
+
+// Upload is a document received before its job is submitted: a server
+// reads the document of a request before the fields that follow it.
+type Upload struct {
+	f    *os.File
+	size int64
+	sum  string
+}
+
+// Size is the document's size.
+func (u *Upload) Size() int64 { return u.size }
+
+// Discard drops a document no job took.
+func (u *Upload) Discard() {
+	if u.f != nil {
+		u.f.Close()
+		os.Remove(u.f.Name())
+		u.f = nil
+	}
+}
+
+// Receive reads a document to a temporary file (Options.TempDir),
+// measuring it, for Submission.Upload.
+func (s *Spool) Receive(ctx context.Context, r io.Reader) (*Upload, error) {
+	f, size, sum, err := s.receive(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	return &Upload{f, size, sum}, nil
 }
 
 // receive reads a document to a temporary file, measuring it.
@@ -996,6 +1035,8 @@ func (s *Spool) finish(ctx context.Context, e *entry, j Job) error {
 	delete(s.jobs, j.ID)
 	delete(s.passwords, j.ID)
 	s.recent = append(s.recent, j.clone())
+	s.stats.Done[QueueState{j.Queue, j.State.String()}]++
+	s.stats.Sheets[j.Queue] += int64(j.Sheets)
 	e.job = j.clone()
 	s.mu.Unlock()
 	s.notify(&j)

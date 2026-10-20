@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bdf printd</title>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #e3e3e8; --head: #f5f5f7;
+  --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e; --accent: #0969da;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16161a; --fg: #e8e8ed; --muted: #9a9aa2; --line: #2c2c33; --head: #1f1f25;
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149; --accent: #58a6ff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; margin-bottom: 16px; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 15px; margin: 24px 0 8px; }
+#status { color: var(--muted); }
+#login { display: none; gap: 8px; margin: 8px 0 16px; }
+#login.shown { display: flex; flex-wrap: wrap; }
+input { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); min-width: 0; }
+button { font: inherit; padding: 4px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--head); color: var(--fg); cursor: pointer; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+th { background: var(--head); font-weight: 600; }
+td.wrap { white-space: normal; min-width: 12em; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>bdf printd</h1>
+  <span id="status">loading…</span>
+</header>
+<form id="login">
+  <label for="token">Token</label>
+  <input id="token" type="password" autocomplete="off" size="32">
+  <button type="submit">Show</button>
+</form>
+<h2>Queues</h2>
+<div class="scroll"><table id="queues"><thead><tr>
+  <th>Queue</th><th>Printers</th><th>Policy</th><th>State</th><th class="num">Pending</th><th class="num">Held</th><th class="num">Processing</th>
+</tr></thead><tbody></tbody></table></div>
+<h2>Printers</h2>
+<div class="scroll"><table id="printers"><thead><tr>
+  <th>Printer</th><th>State</th><th>Reasons</th><th class="num">Jobs</th><th>Model</th><th>URL</th>
+</tr></thead><tbody></tbody></table></div>
+<h2>Jobs</h2>
+<div class="scroll"><table id="jobs"><thead><tr>
+  <th class="num">Id</th><th>State</th><th>Reasons</th><th>Queue</th><th>Name</th><th>User</th><th>Printer</th><th>Submitted</th><th>Finished</th>
+</tr></thead><tbody></tbody></table></div>
+<script src="app.js"></script>
+</body>
+</html>

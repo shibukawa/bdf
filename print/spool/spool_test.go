@@ -545,3 +545,42 @@ func TestOpenTwice(t *testing.T) {
 		t.Fatal("the same spool opened twice in a process")
 	}
 }
+
+func TestCompact(t *testing.T) {
+	f := newFixture(t)
+	s, err := Open(context.Background(), f.o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := bdfBytes(t, testDoc(1))
+	var ids []int32
+	for i := 0; i < 20; i++ {
+		ids = append(ids, submit(t, s, Submission{Document: bytes.NewReader(doc)}).ID)
+	}
+	for _, id := range ids[1:] {
+		if _, err := s.Cancel(context.Background(), id, ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.removeDocuments(context.Background(), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, err := Compact(f.path); err == nil {
+		t.Fatal("compacted a spool that is open")
+	}
+	s.Close()
+	before, after, err := Compact(f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after > before {
+		t.Fatalf("%d → %d bytes", before, after)
+	}
+	s = f.open()
+	if j, err := s.Get(context.Background(), ids[0]); err != nil || j.State != ipp.JobPending {
+		t.Fatalf("after compaction: %v %+v", err, j)
+	}
+	if j, err := s.Get(context.Background(), ids[5]); err != nil || j.State != ipp.JobCanceled {
+		t.Fatalf("after compaction: %v %+v", err, j)
+	}
+}

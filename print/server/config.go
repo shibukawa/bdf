@@ -1,0 +1,442 @@
+// Package server is the print server: a spool (print/spool) of the
+// queues and printers of a configuration file, its HTTP API (/api/v1),
+// the changes as Server-Sent Events, /metrics, and a page of its state.
+// bdf printd runs it.
+package server
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"go.yaml.in/yaml/v3"
+
+	"github.com/shibukawa/bdf/print"
+	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/spool"
+)
+
+// Config is the configuration of a server, as its YAML file has it.
+type Config struct {
+	// Listen is the address of the HTTP API: 127.0.0.1:8640 by default.
+	Listen string `yaml:"listen"`
+	// Spool is the spool's file: spool.db next to the configuration
+	// file by default.
+	Spool string `yaml:"spool"`
+	// User is the requesting-user-name sent to the printers: "bdf" by
+	// default.
+	User string `yaml:"user"`
+	// TLS serves HTTPS; it is required when Listen is not a loopback
+	// address, unless Insecure.
+	TLS      *TLSConfig `yaml:"tls"`
+	Insecure bool       `yaml:"insecure"`
+	// Tokens are who may use the API. None on a loopback address lets
+	// anyone of the machine use it.
+	Tokens    []TokenConfig            `yaml:"tokens"`
+	Printers  map[string]PrinterConfig `yaml:"printers"`
+	Queues    map[string]QueueConfig   `yaml:"queues"`
+	Retention RetentionConfig          `yaml:"retention"`
+	Limits    LimitsConfig             `yaml:"limits"`
+	Fonts     FontsConfig              `yaml:"fonts"`
+	// TempDir holds documents while they arrive.
+	TempDir string `yaml:"temp-dir"`
+
+	dir string // of the file, for relative paths
+}
+
+// TLSConfig is the certificate and key of HTTPS.
+type TLSConfig struct {
+	Cert string `yaml:"cert"`
+	Key  string `yaml:"key"`
+}
+
+// TokenConfig is a token: its name (the user of its jobs), its secret
+// (from a file, the environment, or the value itself), the queues it may
+// submit to (all when none), and its roles: submit, manage (others' jobs,
+// accounting), admin (queues, discovery, backup).
+type TokenConfig struct {
+	Name   string   `yaml:"name"`
+	File   string   `yaml:"file"`
+	Env    string   `yaml:"env"`
+	Value  string   `yaml:"value"`
+	Queues []string `yaml:"queues"`
+	Roles  []string `yaml:"roles"`
+	// ActAs lets the token name the user of a job (X-BDF-User): an
+	// application that submits for its users.
+	ActAs bool `yaml:"act-as"`
+
+	secret string
+}
+
+// PrinterConfig is a printer: its URL (ipp://, ipps://, http://,
+// https://), its user and password when it asks for them, and the
+// fingerprint of its certificate when it is pinned.
+type PrinterConfig struct {
+	URL          string `yaml:"url"`
+	Username     string `yaml:"username"`
+	PasswordEnv  string `yaml:"password-env"`
+	PasswordFile string `yaml:"password-file"`
+	// Fingerprint ("sha256:…") pins the certificate of an ipps printer;
+	// without it, the first certificate seen is recorded and kept.
+	Fingerprint string `yaml:"fingerprint"`
+	// Insecure takes any certificate.
+	Insecure bool `yaml:"insecure"`
+}
+
+// QueueConfig is a queue of printers.
+type QueueConfig struct {
+	Printers []string `yaml:"printers"`
+	Policy   string   `yaml:"policy"`
+	// Defaults are the ticket's defaults, with IPP's names (sides,
+	// print-color-mode, media …).
+	Defaults      map[string]any `yaml:"defaults"`
+	Format        string         `yaml:"format"`
+	RasterIfLossy bool           `yaml:"raster-if-lossy"`
+	MaxInflight   int            `yaml:"max-inflight"`
+}
+
+// RetentionConfig is how long what is done is kept ("168h", "7d").
+type RetentionConfig struct {
+	Documents Duration `yaml:"documents"`
+	Records   Duration `yaml:"records"`
+}
+
+// LimitsConfig bounds what the server takes.
+type LimitsConfig struct {
+	MaxDocument    Size     `yaml:"max-document"`
+	MaxJobs        int      `yaml:"max-jobs"`
+	MaxBytes       Size     `yaml:"max-bytes"`
+	MaxImpressions int      `yaml:"max-impressions"`
+	Renders        int      `yaml:"renders"`
+	RetryFor       Duration `yaml:"retry-for"`
+	// Uploads and Events bound the submissions and the event streams at
+	// once: 8 and 64 by default.
+	Uploads int `yaml:"uploads"`
+	Events  int `yaml:"events"`
+}
+
+// FontsConfig finds the fonts of documents that name them.
+type FontsConfig struct {
+	Dirs     []string `yaml:"dirs"`
+	NoSystem bool     `yaml:"no-system"`
+}
+
+// Duration reads "90s", "24h" and "7d".
+type Duration time.Duration
+
+func (d *Duration) UnmarshalYAML(n *yaml.Node) error {
+	v, err := parseDuration(n.Value)
+	if err != nil {
+		return err
+	}
+	*d = Duration(v)
+	return nil
+}
+
+func parseDuration(s string) (time.Duration, error) {
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		n, err := strconv.ParseFloat(days, 64)
+		if err != nil {
+			return 0, fmt.Errorf("duration %q", s)
+		}
+		return time.Duration(n * float64(24*time.Hour)), nil
+	}
+	v, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("duration %q", s)
+	}
+	return v, nil
+}
+
+// Size reads bytes, "512KiB", "256MiB", "10GiB" (or KB, MB, GB).
+type Size int64
+
+func (s *Size) UnmarshalYAML(n *yaml.Node) error {
+	v, err := parseSize(n.Value)
+	if err != nil {
+		return err
+	}
+	*s = Size(v)
+	return nil
+}
+
+func parseSize(s string) (int64, error) {
+	units := []struct {
+		suffix string
+		n      int64
+	}{{"KiB", 1 << 10}, {"MiB", 1 << 20}, {"GiB", 1 << 30}, {"TiB", 1 << 40}, {"KB", 1e3}, {"MB", 1e6}, {"GB", 1e9}, {"TB", 1e12}, {"B", 1}}
+	t := strings.TrimSpace(s)
+	for _, u := range units {
+		if num, ok := strings.CutSuffix(t, u.suffix); ok {
+			f, err := strconv.ParseFloat(strings.TrimSpace(num), 64)
+			if err != nil || f < 0 {
+				return 0, fmt.Errorf("size %q", s)
+			}
+			return int64(f * float64(u.n)), nil
+		}
+	}
+	n, err := strconv.ParseInt(t, 10, 64)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("size %q", s)
+	}
+	return n, nil
+}
+
+// LoadConfig reads a configuration file, with its secrets, and checks it.
+func LoadConfig(path string) (*Config, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	c, err := ParseConfig(b)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	c.dir = filepath.Dir(abs)
+	if err := c.resolve(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return c, nil
+}
+
+// ParseConfig reads a configuration from YAML and checks it; paths are
+// relative to the working directory.
+func ParseConfig(b []byte) (*Config, error) {
+	var c Config
+	dec := yaml.NewDecoder(strings.NewReader(string(b)))
+	dec.KnownFields(true)
+	// an empty file is a configuration of defaults
+	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if c.Listen == "" {
+		c.Listen = "127.0.0.1:8640"
+	}
+	if c.User == "" {
+		c.User = "bdf"
+	}
+	return &c, c.check()
+}
+
+// check checks what does not need the files and the environment.
+func (c *Config) check() error {
+	if len(c.Printers) == 0 {
+		return errors.New("no printers")
+	}
+	if len(c.Queues) == 0 {
+		return errors.New("no queues")
+	}
+	for name, p := range c.Printers {
+		if _, _, err := ipp.ParseURL(p.URL); err != nil {
+			return fmt.Errorf("printer %s: %w", name, err)
+		}
+		if p.Fingerprint != "" && !strings.HasPrefix(p.Fingerprint, "sha256:") {
+			return fmt.Errorf("printer %s: fingerprint %q: sha256:…", name, p.Fingerprint)
+		}
+	}
+	for name, q := range c.Queues {
+		if len(q.Printers) == 0 {
+			return fmt.Errorf("queue %s: no printers", name)
+		}
+		for _, p := range q.Printers {
+			if _, ok := c.Printers[p]; !ok {
+				return fmt.Errorf("queue %s: no printer %s", name, p)
+			}
+		}
+		if _, err := q.ticket(); err != nil {
+			return fmt.Errorf("queue %s: defaults: %w", name, err)
+		}
+		switch q.Policy {
+		case "", "any", "failover":
+		default:
+			return fmt.Errorf("queue %s: policy %q: any or failover", name, q.Policy)
+		}
+		switch q.Format {
+		case "", "auto", "pdf", "pwg-raster":
+		default:
+			return fmt.Errorf("queue %s: format %q: auto, pdf or pwg-raster", name, q.Format)
+		}
+		if q.MaxInflight < 0 {
+			return fmt.Errorf("queue %s: max-inflight %d", name, q.MaxInflight)
+		}
+	}
+	seen := map[string]bool{}
+	for _, t := range c.Tokens {
+		if t.Name == "" {
+			return errors.New("a token without name")
+		}
+		if seen[t.Name] {
+			return fmt.Errorf("token %s twice", t.Name)
+		}
+		seen[t.Name] = true
+		for _, r := range t.Roles {
+			if r != roleSubmit && r != roleManage && r != roleAdmin {
+				return fmt.Errorf("token %s: role %q: submit, manage or admin", t.Name, r)
+			}
+		}
+		for _, q := range t.Queues {
+			if _, ok := c.Queues[q]; !ok {
+				return fmt.Errorf("token %s: no queue %s", t.Name, q)
+			}
+		}
+	}
+	if c.TLS != nil && (c.TLS.Cert == "" || c.TLS.Key == "") {
+		return errors.New("tls: cert and key")
+	}
+	if !c.Insecure && !loopback(c.Listen) && (c.TLS == nil || len(c.Tokens) == 0) {
+		return fmt.Errorf("listen %s is not a loopback address: it needs tls and tokens (or insecure: true)", c.Listen)
+	}
+	return nil
+}
+
+// resolve reads the secrets and makes the paths absolute.
+func (c *Config) resolve() error {
+	abs := func(p string) string {
+		if p == "" || filepath.IsAbs(p) {
+			return p
+		}
+		return filepath.Join(c.dir, p)
+	}
+	if c.Spool == "" {
+		c.Spool = "spool.db"
+	}
+	c.Spool = abs(c.Spool)
+	c.TempDir = abs(c.TempDir)
+	if c.TLS != nil {
+		c.TLS.Cert, c.TLS.Key = abs(c.TLS.Cert), abs(c.TLS.Key)
+	}
+	for i := range c.Fonts.Dirs {
+		c.Fonts.Dirs[i] = abs(c.Fonts.Dirs[i])
+	}
+	for i := range c.Tokens {
+		t := &c.Tokens[i]
+		switch {
+		case t.File != "":
+			b, err := os.ReadFile(abs(t.File))
+			if err != nil {
+				return fmt.Errorf("token %s: %w", t.Name, err)
+			}
+			t.secret = strings.TrimSpace(string(b))
+		case t.Env != "":
+			t.secret = os.Getenv(t.Env)
+		default:
+			t.secret = t.Value
+		}
+		if len(t.secret) < 16 {
+			return fmt.Errorf("token %s: the secret is shorter than 16 characters", t.Name)
+		}
+	}
+	for name, p := range c.Printers {
+		if p.PasswordFile != "" {
+			p.PasswordFile = abs(p.PasswordFile)
+			c.Printers[name] = p
+		}
+	}
+	return nil
+}
+
+// ticket reads a queue's defaults as a ticket, with the JSON names.
+func (q QueueConfig) ticket() (print.Ticket, error) {
+	var t print.Ticket
+	if len(q.Defaults) == 0 {
+		return t, nil
+	}
+	b, err := json.Marshal(q.Defaults)
+	if err != nil {
+		return t, err
+	}
+	dec := json.NewDecoder(strings.NewReader(string(b)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&t); err != nil {
+		return t, err
+	}
+	return t, t.Check()
+}
+
+// client makes the IPP client of a printer.
+func (p PrinterConfig) client(user string) (*ipp.Client, error) {
+	c := &ipp.Client{URL: p.URL, User: user, Username: p.Username, Timeout: 5 * time.Minute}
+	switch {
+	case p.PasswordFile != "":
+		b, err := os.ReadFile(p.PasswordFile)
+		if err != nil {
+			return nil, err
+		}
+		c.Password = strings.TrimSpace(string(b))
+	case p.PasswordEnv != "":
+		c.Password = os.Getenv(p.PasswordEnv)
+	}
+	c.TLS.Insecure = p.Insecure
+	return c, nil
+}
+
+// spoolOptions turns the configuration into the spool's.
+func (c *Config) spoolOptions() (spool.Options, error) {
+	o := spool.Options{Path: c.Spool, TempDir: c.TempDir, FontDirs: c.Fonts.Dirs, NoSystemFonts: c.Fonts.NoSystem,
+		Retention: spool.Retention{Documents: time.Duration(c.Retention.Documents), Records: time.Duration(c.Retention.Records)},
+		Limits: spool.Limits{MaxDocument: int64(c.Limits.MaxDocument), MaxJobs: c.Limits.MaxJobs, MaxBytes: int64(c.Limits.MaxBytes),
+			MaxImpressions: c.Limits.MaxImpressions, Renders: c.Limits.Renders, RetryFor: time.Duration(c.Limits.RetryFor)}}
+	for _, name := range sortedKeys(c.Printers) {
+		cl, err := c.Printers[name].client(c.User)
+		if err != nil {
+			return o, fmt.Errorf("printer %s: %w", name, err)
+		}
+		o.Printers = append(o.Printers, spool.Printer{Name: name, Client: cl})
+	}
+	for _, name := range sortedKeys(c.Queues) {
+		q := c.Queues[name]
+		t, _ := q.ticket()
+		o.Queues = append(o.Queues, spool.Queue{Name: name, Printers: q.Printers, Policy: q.Policy, Defaults: t, Format: q.Format,
+			RasterIfLossy: q.RasterIfLossy, MaxInflight: q.MaxInflight})
+	}
+	return o, nil
+}
+
+// pinned are the fingerprints set in the configuration, by host.
+func (c *Config) pinned() map[string]string {
+	m := map[string]string{}
+	for _, p := range c.Printers {
+		if p.Fingerprint == "" {
+			continue
+		}
+		if u, err := url.Parse(p.URL); err == nil {
+			m[u.Hostname()] = p.Fingerprint
+		}
+	}
+	return m
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// loopback tells an address that only the machine reaches.
+func loopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}

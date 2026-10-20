@@ -197,6 +197,9 @@ func (s *Spool) send(ctx context.Context, e *entry, p *printerState) {
 		j.Unsupported = res.Unsupported
 		j.Warnings = append(j.Warnings, res.Warnings...)
 	}
+	if j.Printer.Sent {
+		s.count(func(st *Stats) { st.SentBytes[p.Name] += j.Bytes })
+	}
 	switch {
 	case err == nil:
 		j.Step, j.RetrySince, j.Due = StepWatch, time.Time{}, time.Time{}
@@ -246,6 +249,7 @@ func (s *Spool) retry(ctx context.Context, e *entry, j Job, p *printerState, cau
 	}
 	j.Due = now.Add(retryDelay(j.Retries))
 	j.Retries++
+	s.count(func(st *Stats) { st.Retries[p.Name]++ })
 	if j.Printer.JobID == 0 {
 		// the printer may have made a job whose answer was lost
 		s.dropAttempt(ctx, p, &j)

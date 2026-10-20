@@ -85,6 +85,8 @@ print/spool/
   sched.go         回し手（Runner）: キューの順、プリンタごとの送り手と見届け、max-inflight、組、描画の枠        (S3)
   monitor.go       プリンタの見張り: printer-state と理由、能力の更新（printer-config-change-time）              (S3)
   gc.go            保持期間・件数・バイトで消す                                                                 (S2)
+  stats.go         /metrics の数（終わったジョブ、枚数、送ったバイト、再送、文書の量、ファイルの大きさ）          (S4)
+  compact.go       止めた spool.db の詰め直し（bbolt を直接使う唯一の所）                                        (S4)
 print/server/
   config.go        設定ファイル（YAML）と環境変数、検査                                                         (S4)
   server.go        Server: New（設定 → Spool とプリンタとキュー）、Handler、Run、Shutdown                        (S4)
@@ -92,7 +94,8 @@ print/server/
   auth.go          トークンとキューごとの許可、利用者の名前                                                     (S4)
   events.go        変更の通知（Server-Sent Events）                                                             (S4)
   metrics.go       /metrics（Prometheus のテキスト。依存なしで書く）、/healthz                                   (S4)
-  web/index.html   状態のページ（埋め込み。ビルドなしの HTML と小さな JS）                                       (S4)
+  check.go         bdf printd -check（スプールを開かずにプリンタへ Get-Printer-Attributes）                      (S4)
+  page.go          状態のページ（web/index.html と web/app.js を埋め込み。ビルドなし）                           (S4)
 print/server/client/
   client.go        API の Go のクライアント。cmd/bdf と examples が使う。spool と server に依らない                 (S5)
 cmd/bdf/
@@ -293,7 +296,6 @@ JSON。`/api/v1` の下。エラーは `{"error": {"code": "…", "message": "�
 ```yaml
 listen: 127.0.0.1:8640
 spool: /var/lib/bdf/spool.db      # 既定は設定ファイルと同じディレクトリの spool.db
-compact-on-start: true
 user: bdf                         # プリンタへの requesting-user-name
 tls: { cert: /etc/bdf/tls.crt, key: /etc/bdf/tls.key }   # loopback 以外では必須
 tokens:
@@ -310,16 +312,20 @@ queues:
     format: auto                    # auto | pdf | pwg-raster
     raster-if-lossy: true
     max-inflight: 2
-retention: { done: 168h, max-jobs: 10000, max-bytes: 10GiB, accounting: 400d }
-limits: { max-document: 256MiB, max-impressions: 10000, renders: 0, retry-for: 24h }
+retention: { documents: 7d, records: 400d }      # 終わったジョブの文書と、記録（実績）
+limits: { max-document: 256MiB, max-jobs: 10000, max-bytes: 10GiB, max-impressions: 10000,
+          renders: 0, retry-for: 24h, uploads: 8, events: 64 }
 fonts: { dirs: [/usr/share/fonts/bdf], no-system: false }
+temp-dir: /var/tmp/bdf            # 受けている途中の文書と写しの一時ファイル（既定は OS の一時ディレクトリ）
 ```
+
+トークンの秘密は `file`・`env`・`value`（設定に直書き。勧めない）のどれかで、16 文字より短ければ起動しない。未知のキーは誤り（打ち間違いを黙って無視しない）。`spool.db` を詰め直す `compact-on-start` は作らず、止めた状態で `bdf printd -compact` を使う（2026-10-20 実装時）。
 
 `bdf printd -check` は設定を読み、プリンタに `Get-Printer-Attributes` を送って届くかと能力を表にして終わる（`spool.db` は開かない）。設定の変更は再起動で反映する（m2 では再読み込みしない）。
 
 ### 3.11 クライアントと CLI（S5）
 
-- `print/server/client`: `Submit(ctx, queue, name, r io.Reader, ticket, opts) (*Job, error)`（multipart を流しながら送る）、`Job`、`Jobs`、`Cancel` など、`Accounting`、`Watch(ctx, id)`（SSE。切れたらポーリングに落ちる）。JSON の型（`Job`、`Queue`、`Printer`）はこのパッケージに置き、`server` もそれを使う。
+- `print/server/client`: `Submit(ctx, queue, name, r io.Reader, ticket, opts) (*Job, error)`（multipart を流しながら送る）、`Job`、`Jobs`、`Cancel` など、`Accounting`、`Watch(ctx, id)`（SSE。切れたらポーリングに落ちる）。API の JSON の形は `spool` の型（`Job`、`QueueInfo`、`PrinterInfo`）の JSON タグが決め、`server` はそれをそのまま書く。`client` は同じ形の型を自分で持つ（`spool` に依らない。形がずれないことはテストで確かめる。2026-10-20 実装時に改めた）。
 - `bdf print -server URL -queue Q`: チケットのフラグは m1 と同じ。既定は投入して帰る（ジョブの id を出す）。`-wait` で終わるまで待ち、終了コードは m1 と同じ意味（1 取り消し・中止、3 サーバーに届かない、4 拒まれた、5 キューが受け付けない、6 時間切れ）。`-server` のときは文書を変換せずにそのまま送る（変換はサーバー）。
 - `bdf jobs`: 一覧（id、状態、理由、キュー、名前、利用者、時刻）と `show`・`cancel`・`hold`・`release`・`retry`・`accounting`。`-json`。
 - `bdf printers -server`: サーバーのキューとプリンタと状態。

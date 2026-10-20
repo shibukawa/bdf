@@ -39,6 +39,9 @@ func usage() {
                                      as PDF, or as PWG Raster drawn here (bdf print -h for flags)
   bdf printers [flags]               list the IPP printers on the network, the queues of a CUPS
                                      server (-cups), or what a printer supports (-url)
+  bdf printd -config printd.yaml [flags]
+                                     run the print server: a spool, its queues and printers, and
+                                     its HTTP API, in the foreground (bdf printd -h for flags)
   bdf ls <file.bdf | dir>            list views and parts
   bdf manifest <file.bdf | dir>      print the manifest as JSON
   bdf disasm <file.bdf | dir> <hash> disassemble an object part
@@ -172,6 +175,8 @@ func main() {
 		printCmd(os.Args[2:])
 	case "printers":
 		printersCmd(os.Args[2:])
+	case "printd":
+		printdCmd(os.Args[2:])
 	case "render":
 		renderCmd(os.Args[2:])
 	case "ls":
