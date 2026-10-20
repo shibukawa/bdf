@@ -69,6 +69,11 @@ type Printer struct {
 	mu      sync.Mutex
 	jobs    []*Job
 	nextJob int32
+	// failAfter cuts the connection of the next document after so many
+	// bytes (-1: no); dropCreate cuts it before the answer to the next
+	// Create-Job, once the job is made.
+	failAfter  int64
+	dropCreate bool
 	// Requests counts the operations received, by name.
 	Requests map[string]int
 }
@@ -111,8 +116,50 @@ func New() *Printer {
 		SheetBack:            "normal",
 		URF:                  []string{"V1.4", "W8", "SRGB24", "RS300-600", "DM1"},
 		State:                ipp.PrinterIdle, Reasons: []string{"none"}, Accepting: true,
-		Requests: map[string]int{},
+		Requests: map[string]int{}, failAfter: -1,
 	}
+}
+
+// Stop stops the printer for reasons ("media-empty-error" …): it answers
+// as stopped and does not finish its jobs until Resume.
+func (p *Printer) Stop(reasons ...string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(reasons) == 0 {
+		reasons = []string{"paused"}
+	}
+	p.State, p.Reasons = ipp.PrinterStopped, reasons
+}
+
+// Resume makes a stopped printer idle again.
+func (p *Printer) Resume() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.State, p.Reasons = ipp.PrinterIdle, []string{"none"}
+}
+
+// Forget drops the jobs the printer knows, as a printer that keeps no
+// history (or was restarted) does: their ids are not reused.
+func (p *Printer) Forget() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.jobs = nil
+}
+
+// FailAfter cuts the connection of the next document sent after n bytes
+// of it, as a network that fails does. The job keeps no document.
+func (p *Printer) FailAfter(n int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.failAfter = n
+}
+
+// DropCreateResponse makes the next Create-Job make its job and then cut
+// the connection before answering: the client does not learn the job.
+func (p *Printer) DropCreateResponse() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.dropCreate = true
 }
 
 // Jobs returns the jobs received, oldest first.
@@ -138,8 +185,14 @@ func (p *Printer) job(id int32) *Job {
 	return nil
 }
 
-// State returns the state of a job now.
+// JobState returns the state of a job now.
 func (p *Printer) JobState(j *Job) ipp.JobState {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.state(j)
+}
+
+func (p *Printer) state(j *Job) ipp.JobState {
 	switch {
 	case j.canceled:
 		return ipp.JobCanceled
@@ -147,7 +200,7 @@ func (p *Printer) JobState(j *Job) ipp.JobState {
 		return ipp.JobAborted
 	case j.doneAt.IsZero():
 		return ipp.JobPending
-	case time.Since(j.doneAt) < p.Processing:
+	case time.Since(j.doneAt) < p.Processing, p.State == ipp.PrinterStopped:
 		return ipp.JobProcessing
 	}
 	return ipp.JobCompleted
@@ -252,6 +305,10 @@ func (p *Printer) handle(req *ipp.Message, body *bufio.Reader, r *http.Request) 
 			j.Attrs = g.Attrs
 		}
 		p.jobs = append(p.jobs, j)
+		if req.Op() == ipp.OpCreateJob && p.dropCreate {
+			p.dropCreate = false
+			panic(http.ErrAbortHandler)
+		}
 		if req.Op() == ipp.OpPrintJob {
 			j.Format = op.Get("document-format").Text()
 			if err := p.receive(j, body); err != nil {
@@ -295,7 +352,7 @@ func (p *Printer) handle(req *ipp.Message, body *bufio.Reader, r *http.Request) 
 		which := op.Get("which-jobs").Text()
 		mine, _ := op.Get("my-jobs").Bool()
 		for _, j := range p.jobs {
-			done := p.JobState(j).Done()
+			done := p.state(j).Done()
 			if (which == "completed" && !done) || ((which == "" || which == "not-completed") && done) {
 				continue
 			}
@@ -311,7 +368,7 @@ func (p *Printer) handle(req *ipp.Message, body *bufio.Reader, r *http.Request) 
 		if j == nil {
 			return fail(ipp.StatusClientErrorNotFound, "no such job")
 		}
-		if p.JobState(j).Done() {
+		if p.state(j).Done() {
 			return fail(ipp.StatusClientErrorNotPossible, "the job is done")
 		}
 		j.canceled = true
@@ -397,6 +454,11 @@ func (p *Printer) check(req *ipp.Message) (ipp.Status, string, []ipp.Attribute) 
 }
 
 func (p *Printer) receive(j *Job, body *bufio.Reader) error {
+	if p.failAfter >= 0 {
+		io.CopyN(io.Discard, body, p.failAfter)
+		p.failAfter = -1
+		panic(http.ErrAbortHandler)
+	}
 	b, err := io.ReadAll(io.LimitReader(body, 256<<20))
 	if err != nil {
 		return err
@@ -423,7 +485,7 @@ func (p *Printer) receive(j *Job, body *bufio.Reader) error {
 }
 
 func (p *Printer) jobAttrs(j *Job, r *http.Request) []ipp.Attribute {
-	st := p.JobState(j)
+	st := p.state(j)
 	reason := "none"
 	switch st {
 	case ipp.JobPending:
@@ -451,6 +513,7 @@ func (p *Printer) jobAttrs(j *Job, r *http.Request) []ipp.Attribute {
 		ipp.Attr("job-id", ipp.Integer(int(j.ID))),
 		ipp.Attr("job-uri", ipp.URI(p.uri(r)+"/job/"+strconv.Itoa(int(j.ID)))),
 		ipp.Attr("job-name", ipp.Name(j.Name)),
+		ipp.Attr("job-originating-user-name", ipp.Name(j.User)),
 		ipp.Attr("job-state", ipp.Enum(int(st))),
 		ipp.Attr("job-state-reasons", ipp.Keyword(reason)),
 		ipp.Attr("job-impressions-completed", ipp.Integer(impressions)),

@@ -75,6 +75,19 @@ type Options struct {
 	// BandRows and BandWorkers are those of the renderer of raster pages
 	// (imagebdf.Options).
 	BandRows, BandWorkers int
+	// Printer is what the printer supports, when the caller asked it
+	// already: Get-Printer-Attributes is then not sent again. Whether the
+	// printer is stopped is still checked, from its state in Printer.
+	Printer *ipp.Printer
+	// OnCreated is called with the job the printer made, before the
+	// document is sent (after it when the printer has no Create-Job and
+	// takes Print-Job). A spool records the job's id there, to know after
+	// a crash whether the printer has the job already. An error cancels
+	// the job at the printer and is returned.
+	OnCreated func(*ipp.JobStatus) error
+	// OnSent is called once the printer has the whole document. An
+	// error is returned; the job is left to the printer.
+	OnSent func(*ipp.JobStatus) error
 }
 
 // Event is something that happened to a job.
@@ -153,8 +166,10 @@ func Print(ctx context.Context, c *ipp.Client, doc *bdf.Document, opts *Options)
 	if n := len(j.pages) * j.t.copies(); n > limit {
 		return j.res, fmt.Errorf("print: %d pages to print, more than %d", n, limit)
 	}
-	if j.p, err = c.GetPrinterAttributes(ctx); err != nil {
-		return j.res, err
+	if j.p = o.Printer; j.p == nil {
+		if j.p, err = c.GetPrinterAttributes(ctx); err != nil {
+			return j.res, err
+		}
 	}
 	j.res.Printer = j.p
 	if err := j.ready(); err != nil {
@@ -260,6 +275,12 @@ func (j *job) run() error {
 		}
 		j.res.Job = js
 		j.event(Event{Kind: "created", Job: js})
+		if j.o.OnCreated != nil {
+			if err := j.o.OnCreated(js); err != nil {
+				j.cancel(js.ID)
+				return err
+			}
+		}
 		r, wait := body()
 		cr := counted(r)
 		sent, err := j.c.SendDocument(j.ctx, js.ID, name, format, cr, true)
@@ -302,9 +323,20 @@ func (j *job) run() error {
 			return werr
 		}
 		j.res.Bytes = cr.n
+		if j.o.OnCreated != nil {
+			if err := j.o.OnCreated(js); err != nil {
+				j.cancel(js.ID)
+				return err
+			}
+		}
 	}
 	j.res.Job = js
 	j.event(Event{Kind: "sent", Job: js, Bytes: j.res.Bytes})
+	if j.o.OnSent != nil {
+		if err := j.o.OnSent(js); err != nil {
+			return err
+		}
+	}
 	if j.o.Wait == 0 {
 		return nil
 	}
@@ -571,27 +603,43 @@ func (j *job) wait(js *ipp.JobStatus) error {
 		case <-time.After(delay):
 		}
 		delay = min(delay*3/2, 5*time.Second)
-		now, err := j.c.GetJobAttributes(ctx, js.ID)
-		if err != nil {
+		now, err := Check(ctx, j.c, last)
+		if now == nil {
 			if ctx.Err() != nil {
 				continue
 			}
 			return err
 		}
-		now = merge(last, now)
 		if now.State != last.State || strings.Join(now.Reasons, ",") != strings.Join(last.Reasons, ",") {
 			j.event(Event{Kind: "state", Job: now})
 		}
 		last = now
 		j.res.Job = last
-	}
-	switch last.State {
-	case ipp.JobCanceled:
-		return fmt.Errorf("%w: %s", ErrCanceled, last)
-	case ipp.JobAborted:
-		return fmt.Errorf("%w: %s", ErrAborted, last)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// Check asks the printer once for the state of a job it was sent, and
+// returns it merged into the last state known. A job canceled or
+// aborted at the printer returns its state with ErrCanceled or
+// ErrAborted; a job not done yet, or completed, returns no error. When
+// the printer could not be asked, the state is nil.
+func Check(ctx context.Context, c *ipp.Client, last *ipp.JobStatus) (*ipp.JobStatus, error) {
+	now, err := c.GetJobAttributes(ctx, last.ID)
+	if err != nil {
+		return nil, err
+	}
+	now = merge(last, now)
+	switch now.State {
+	case ipp.JobCanceled:
+		return now, fmt.Errorf("%w: %s", ErrCanceled, now)
+	case ipp.JobAborted:
+		return now, fmt.Errorf("%w: %s", ErrAborted, now)
+	}
+	return now, nil
 }
 
 // cancel cancels a job at the printer, whatever the context of the job.

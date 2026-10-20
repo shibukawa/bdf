@@ -9,53 +9,101 @@ import (
 	"github.com/shibukawa/bdf/print/raster"
 )
 
-// Ticket is what a job asks of a printer, named as IPP names it. The
-// zero value asks for nothing: the printer's defaults.
+// Ticket is what a job asks of a printer, named as IPP names it (its
+// JSON keys are the IPP attributes' names). The zero value asks for
+// nothing: the printer's defaults.
 type Ticket struct {
 	// JobName is the job-name (the document's file name, usually).
-	JobName string
+	JobName string `json:"job-name,omitempty"`
 	// Copies of the document (copies); 0 or 1 for one.
-	Copies int
+	Copies int `json:"copies,omitempty"`
 	// Collate is "collated" (1 2 3 1 2 3), "uncollated" (1 1 2 2 3 3)
 	// or "" for the printer's default.
-	Collate string
+	Collate string `json:"collate,omitempty"`
 	// Sides is "one-sided", "two-sided-long-edge" or
 	// "two-sided-short-edge" (sides), "" for the default.
-	Sides string
+	Sides string `json:"sides,omitempty"`
 	// Media is a PWG media name; "" picks the paper of the size of the
 	// first page among the printer's (media-ready first).
-	Media string
+	Media string `json:"media,omitempty"`
 	// MediaSource ("tray-1", "manual" …) and MediaType ("stationery",
 	// "labels" …) go in media-col.
-	MediaSource, MediaType string
+	MediaSource string `json:"media-source,omitempty"`
+	MediaType   string `json:"media-type,omitempty"`
 	// ColorMode is "color", "monochrome" or "auto" (print-color-mode),
 	// "" for the default.
-	ColorMode string
+	ColorMode string `json:"print-color-mode,omitempty"`
 	// Bilevel draws black and white, without gray, when the colour mode
 	// is monochrome and the document is sent as PWG Raster (black_1 or
 	// sgray_1): line drawings and text, at a sixth of the size.
-	Bilevel bool
+	Bilevel bool `json:"bilevel,omitempty"`
 	// Quality is print-quality: 3 draft, 4 normal, 5 high, 0 the default.
-	Quality int
+	Quality int `json:"print-quality,omitempty"`
 	// Resolution in dots per inch (printer-resolution, and the raster's);
 	// 0 picks one.
-	Resolution int
+	Resolution int `json:"printer-resolution,omitempty"`
 	// Pages are the one-based pages to print, in order; nil prints all.
-	Pages []int
+	Pages []int `json:"pages,omitempty"`
 	// Scaling is print-scaling: how a page is fitted to the paper.
-	Scaling raster.Scaling
+	Scaling raster.Scaling `json:"print-scaling,omitempty"`
 	// Orientation is orientation-requested; 0 turns landscape pages
 	// onto portrait paper by itself.
-	Orientation raster.Orientation
+	Orientation raster.Orientation `json:"orientation-requested,omitempty"`
 	// Finishings are the enums of finishings (4 staple, 5 punch …).
-	Finishings []int
+	Finishings []int `json:"finishings,omitempty"`
 	// OutputBin is output-bin.
-	OutputBin string
+	OutputBin string `json:"output-bin,omitempty"`
 	// HoldUntil is job-hold-until ("indefinite", "night" …).
-	HoldUntil string
+	HoldUntil string `json:"job-hold-until,omitempty"`
 	// Priority is job-priority, 1 to 100; 0 for the default.
-	Priority int
+	Priority int `json:"job-priority,omitempty"`
 }
+
+// Merge fills what a ticket does not ask with what defaults ask: the
+// defaults of a queue under the ticket of a job.
+func (t Ticket) Merge(defaults Ticket) Ticket {
+	set := func(v *string, d string) {
+		if *v == "" {
+			*v = d
+		}
+	}
+	setInt := func(v *int, d int) {
+		if *v == 0 {
+			*v = d
+		}
+	}
+	set(&t.JobName, defaults.JobName)
+	setInt(&t.Copies, defaults.Copies)
+	set(&t.Collate, defaults.Collate)
+	set(&t.Sides, defaults.Sides)
+	set(&t.Media, defaults.Media)
+	set(&t.MediaSource, defaults.MediaSource)
+	set(&t.MediaType, defaults.MediaType)
+	set(&t.ColorMode, defaults.ColorMode)
+	t.Bilevel = t.Bilevel || defaults.Bilevel
+	setInt(&t.Quality, defaults.Quality)
+	setInt(&t.Resolution, defaults.Resolution)
+	if t.Pages == nil {
+		t.Pages = slices.Clone(defaults.Pages)
+	}
+	if t.Scaling == "" {
+		t.Scaling = defaults.Scaling
+	}
+	if t.Orientation == 0 {
+		t.Orientation = defaults.Orientation
+	}
+	if t.Finishings == nil {
+		t.Finishings = slices.Clone(defaults.Finishings)
+	}
+	set(&t.OutputBin, defaults.OutputBin)
+	set(&t.HoldUntil, defaults.HoldUntil)
+	setInt(&t.Priority, defaults.Priority)
+	return t
+}
+
+// Check validates the values of a ticket that do not depend on the
+// printer.
+func (t *Ticket) Check() error { return t.check() }
 
 // copies returns the copies asked for, one at least.
 func (t *Ticket) copies() int { return max(t.Copies, 1) }

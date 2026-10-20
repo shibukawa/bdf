@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -72,9 +73,21 @@ type TrustStore struct {
 	Path string
 	// ReadOnly refuses hosts not yet recorded instead of recording them.
 	ReadOnly bool
+	// Backend keeps the fingerprints instead of the file at Path: a
+	// print server keeps them in its own store.
+	Backend TrustBackend
+	// Pinned are fingerprints set beforehand, by host ("sha256:…"): such
+	// a host must have that certificate, and nothing is recorded for it.
+	Pinned map[string]string
 
 	mu    sync.Mutex
 	known map[string]string // host → "sha256:…"
+}
+
+// TrustBackend keeps the fingerprints of a TrustStore, by host.
+type TrustBackend interface {
+	Load() (map[string]string, error)
+	Save(map[string]string) error
 }
 
 // DefaultTrustPath returns the file of the user's store.
@@ -98,6 +111,16 @@ func (s *TrustStore) load() error {
 		return nil
 	}
 	s.known = map[string]string{}
+	if s.Backend != nil {
+		known, err := s.Backend.Load()
+		if err != nil {
+			return err
+		}
+		for k, v := range known {
+			s.known[k] = v
+		}
+		return nil
+	}
 	b, err := os.ReadFile(s.Path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -118,6 +141,9 @@ func (s *TrustStore) load() error {
 }
 
 func (s *TrustStore) save() error {
+	if s.Backend != nil {
+		return s.Backend.Save(maps.Clone(s.known))
+	}
 	if err := os.MkdirAll(filepath.Dir(s.Path), 0o700); err != nil {
 		return err
 	}
@@ -148,17 +174,19 @@ func (s *TrustStore) save() error {
 func (s *TrustStore) check(host string, c *x509.Certificate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.Path == "" {
-		p, err := DefaultTrustPath()
-		if err != nil {
-			return err
+	fp := Fingerprint(c)
+	if want, ok := s.Pinned[host]; ok {
+		if want != fp {
+			return fmt.Errorf("%w: %s has %s, %s is pinned", ErrCertificateChanged, host, fp, want)
 		}
-		s.Path = p
+		return nil
+	}
+	if err := s.defaultPath(); err != nil {
+		return err
 	}
 	if err := s.load(); err != nil {
 		return err
 	}
-	fp := Fingerprint(c)
 	if want, ok := s.known[host]; ok {
 		if want != fp {
 			return fmt.Errorf("%w: %s has %s, the store has %s", ErrCertificateChanged, host, fp, want)
@@ -176,16 +204,26 @@ func (s *TrustStore) check(host string, c *x509.Certificate) error {
 func (s *TrustStore) Forget(host string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.Path == "" {
-		p, err := DefaultTrustPath()
-		if err != nil {
-			return err
-		}
-		s.Path = p
+	if err := s.defaultPath(); err != nil {
+		return err
 	}
 	if err := s.load(); err != nil {
 		return err
 	}
 	delete(s.known, host)
 	return s.save()
+}
+
+// defaultPath sets the user's file when the store has neither a path nor
+// a backend.
+func (s *TrustStore) defaultPath() error {
+	if s.Path != "" || s.Backend != nil {
+		return nil
+	}
+	p, err := DefaultTrustPath()
+	if err != nil {
+		return err
+	}
+	s.Path = p
+	return nil
 }
