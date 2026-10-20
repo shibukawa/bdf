@@ -743,9 +743,13 @@ func (j *job) cancel(id int32) {
 // lost the job it made: it no longer knows the id, or its job of the id
 // has another name (the printer was restarted, counts its ids from 1
 // again, and another client's job took the id). A printer that tells no
-// name, or a name the job's begins with (one it cut), has the job.
+// name, or a name the job's begins with (one it cut), has the job. A
+// printer without jobs of more documents may refuse a Send-Document to
+// another's job with multiple-document-jobs-not-supported rather than
+// not-possible (ippeveprinter on Ubuntu does).
 func (j *job) lost(id int32, name string, err error) bool {
-	if !ipp.IsStatus(err, ipp.StatusClientErrorNotPossible) && !ipp.IsStatus(err, ipp.StatusClientErrorNotFound) {
+	if !ipp.IsStatus(err, ipp.StatusClientErrorNotPossible) && !ipp.IsStatus(err, ipp.StatusClientErrorNotFound) &&
+		!ipp.IsStatus(err, ipp.StatusServerErrorMultipleDocumentJobsNotSupported) {
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(j.ctx), 10*time.Second)
