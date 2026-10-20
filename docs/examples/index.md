@@ -11,7 +11,7 @@ Under [`examples/`](https://github.com/shibukawa/bdf/tree/main/examples) sit fou
 | Extra service | — | — | Meilisearch |
 | What it's for | documents made in large numbers but seldom opened (records kept for audits); a light server | documents opened often, fastest and most consistent open | full-text search across every document |
 
-The fourth, [secure-reader](secure-reader.md), is about who may read: readers log in, and a book is sent in protected mode, ten pages at a time, each segment sealed for a key made for its request.
+The fourth, [secure-reader](secure-reader.md), is about who may read: readers log in, and a book is sent in protected mode, ten pages at a time, each segment sealed for a key made for its request. The fifth, [print-server](print-server.md), is about paper: it fills invoices and prints them through a spool.
 
 None of these is "the" recommended architecture. Read [Why BDF](../why.md) and pick based on what you're actually building — how often a given document is opened relative to how often it changes, whether the server has spare CPU for conversion, and whether documents need to be searchable.
 
@@ -30,3 +30,7 @@ Builds on preview-server's server-side conversion and adds a search index: each 
 ## secure-reader
 
 Readers log in and read the PDF books they own; a book is never sent as a file. The server converts each book once and hands it out in protected mode, ten pages at a time (package `segment`), each segment sealed for a key pair the browser made for that request alone, so a recording of the traffic stays sealed even if a key or a session is taken later. A reader who does not own a book may read its first ten pages, and nobody may read faster than a person does. → [Read more](secure-reader.md)
+
+## print-server
+
+A business application that prints invoices: it fills a template with what is typed on its page and puts the document in the queue of a print server it embeds (package `print/server`, the server of `bdf printd`), which sends it to the printer, retries a printer that is off, and never prints a job twice across a restart. The page follows the jobs with the server's events; `-fake-printer` prints on bdf's fake IPP printer in the same process. → [Read more](print-server.md)

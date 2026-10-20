@@ -1,0 +1,96 @@
+id: decision:thin-store
+type: decision
+title: 保存は SDK を使わない薄い層（store/）を通し、約束は楽観ロックの 5 操作と Blob だけにする
+summary: >-
+  スプール（と後のサーバー機能）の保存を、外部キーなしの Get・Insert（無いときだけ）・Update（版が同じときだけ）・Delete（墓標）・
+  Scan（更新順）と、書いた後に変えない大きなバイト列の Blob だけの約束に置く。並べ替えと絞り込みは使う側がメモリで行う。
+  ドライバは各保存先を HTTP で薄く話し（AWS の SigV4 と資格情報も自前）、SDK を同梱しない。既定は bbolt の 1 ファイル、
+  その上に S3 互換のオブジェクトストレージ、GCS・Azure Blob・DynamoDB・RDB。叙述は knowledge-inputs/print-plan/store.ja.md。
+  2026-10-19 に後へ回した（利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」）。print-m2 は bbolt を直接使い、
+  bbolt に触るのを print/spool/db.go だけにして、この案に替える位置を残す。
+lifecycle: accepted
+authority: authored
+aliases:
+- store
+- 薄い保存層
+- thin storage layer
+constraints:
+- 約束は Get、Insert、Update、Delete、Scan、Purge と Blob の Put・Open・Delete・List だけ。外部キー、表をまたぐトランザクション、副索引、更新順以外の問い合わせは持たない
+- 1 つのキーの上の条件付き書き込みは線形化可能。Scan は遅れてよく、使う側が重なりの窓と (Key, Ver) の重複除去で吸収する
+- 値は 256 KiB まで（DynamoDB の 400 KB に収まる）。大きいものは Blob
+- 条件が外れた 412 と同時の書き込みの 409 はどちらも ErrConflict
+- 条件付きのヘッダーを黙って無視する保存先を使わない。オブジェクトストレージは起動時に実際の振る舞いを確かめ、外れたら起動しない
+- 各社の SDK を同梱しない。go.mod に足すのは bbolt だけ
+facts:
+  rejected:
+    go_cdk: gocloud.dev の blob と docstore。SDK を同梱し、blob に If-Match の置き換えが無く、docstore はオブジェクトストレージと RDB を持たない
+    gokv: 版も比較交換も一覧も無い
+    sdk_per_service: AWS SDK for Go v2 などを使う案。バイナリが重くなり、束ねる層は結局要る
+    content_addressed_documents: 文書を内容アドレスで共有する案。複数の持ち主が同時に消すと、消した Blob を指すジョブができる。ジョブごとに置く
+  mapping: 'bbolt はバケットと連番の索引。S3 互換は If-None-Match: * / If-Match と ListObjectsV2。GCS は generation。Azure Blob は ETag。DynamoDB は ConditionExpression と GSI（tbl, upd）。RDB は 1 つの表 bdf_rows(tbl, k, ver, upd, del, val) と UPDATE … WHERE ver=?'
+  auth: AWS は環境変数、credential_process、共有ファイル、Web identity、コンテナ、IMDSv2 の順。GCS はメタデータサーバーとサービスアカウントの鍵（JWT RS256）。Azure は SAS、共有キー、マネージド ID、クライアントシークレット
+  cost_note: S3 Standard の概算で、1 日 1000 ジョブなら書き込みと保存を合わせて月数ドル。サーバーも容量の計画もバックアップも要らない
+  phases:
+  - print-m2 では作らない（bbolt を直接使う。db.go だけが bbolt に触る）
+  - 作るときは store（約束、storetest）、mem、bolt（db.go の載せ替え）、s3（S3 互換）と awsauth、S3 の偽物。スプールのジョブに借りを足す
+  - 続けて gcs、azblob、dynamodb、sql。複数台と Lambda
+  candidate_yuruidb:
+    repo: github.com/shibukawa/yuruidb（利用者が作成。2026-10-20 にコミット 276310b を評価）
+    fits: SDK なしの HTTP ドライバ、標準ライブラリだけの共通部、記録の乱数の版と保存先の版の 2 段（ABA に強い）、CAS の無い保存先は条件付きの操作を断る、ErrOutcomeUnknown、共通の適合テストと SigV4 の既知ベクトル
+    blockers_for_bdf:
+    - 1 つの bbolt のファイルに同じプロセスから 2 つ目のコレクションを開くとロックで timeout（確かめた）
+    - ID が UUIDv7 だけ。名前のキー（プリンタ、ホスト、連番）が置けない
+    - 墓標を消さない。生きている 10 件と墓標 1990 件の List で 2000 回の読み取り（確かめた）
+    improvements:
+    - ErrOutcomeUnknown を記録の版で読み直して照合する（今は呼び手が照合できない。確かめた）
+    - 条件付き削除（S3 は 2025-09 から、GCS、DynamoDB、SQL、bbolt）で墓標を減らす
+    - 一覧の N+1、Insert と Update の先読み、bbolt での 2 重の base64（同じ値の生の bbolt の約 2 倍のファイル）
+    - AWS の資格情報の順（IMDSv2、コンテナ、Web identity、共有ファイル）、AWS_REGION、virtual-hosted、一時的な誤りの再試行、条件のヘッダーを守るかの確かめ、Blob の口
+    verdict: 芯は store.ja.md の案と合う。blockers が直れば print-m2 の db.go の記録の部分を載せ替えられる。文書は別に置く
+    reevaluation_2026_10_20:
+      commit: adb806b（Go 1.27 のメソッドの型引数、Store.Bind[T]、名前のキー、条件付きの物理削除、結果の照合、bbolt のバイナリ形式、AWS の資格情報の順、再試行、S3 互換の確かめ、S3・R2・GCS の Blob）
+      resolved: 前回の blockers の 3 つ（1 つの bbolt のファイルに複数のコレクション、名前のキー、墓標）を確かめた。Insert と Update は書き込み 1 回、bbolt の使用量は 10 KB の値で生の bbolt と同じ、応答の喪失は読み直して成功になる（DynamoDB の 500 の後の条件の失敗も）
+      remaining:
+      - 応答が失われ照合の読み取りも失敗したときの誤りが ErrOutcomeUnknown と ErrConflict の両方に当たる
+      - S3 互換の確かめの使い捨てキーがコレクションの中に置かれ、後片付けに失敗するとそのコレクションの一覧が止まる（確かめた）
+      - Blob は S3・R2・GCS だけ（bbolt の Blob、範囲の読み取り、一覧が無い。条件付き DELETE の無い保存先では消せない）
+      - bbolt の DB を外に出さないので、bdf の写しと詰め直しを動かしたまま行えない
+      - DynamoDB の流量制限（HTTP 400）を再試行しない。ID の文字種に IPv6 のホストやプリンタの任意の名前が入らない（bdf の側で符号化）
+      verdict: ジョブの記録は yuruidb の bbolt ドライバに載せられる。bdf の既定の 1 ファイルで使い切るには bbolt の Blob と写し・詰め直しが要る
+    reevaluation_2026_10_20_b:
+      commit: 3684337（不明の誤りを ErrConflict に当てない、確かめの一時キーを .yuruidb-probes/ に、bbolt・SQL の Blob、Blob の ReaderAt・List・Remove、bbolt の Backup、DynamoDB の HTTP 400 の再試行）
+      resolved: 前回の残りの 1〜5 を確かめた（不明と競合の分離、確かめの残りが一覧を止めない、bbolt の Blob と範囲の読み取り、稼働中の写し、DynamoDB の流量制限）
+      remaining:
+      - Store.Backup が書き出しの間ずっと Store のロックを持ち、同じ Store のレコードの操作が止まる（遅い書き出し先への 0.55 秒の間 Get が 0.55 秒待った）
+      - bbolt の Blob の Insert が入力を読み終えるまで bbolt の書き込みロックと入力全体のメモリを持つ（1 MiB を 1.6 秒で受ける間、別のレコードの Update が 1.67 秒待った）
+      - HTTP の Blob の Open が本文の GET を開いたままにする（ReadAt だけなら無駄）
+      verdict: bdf のスプールに要るもの（1 つの bbolt のファイルに記録・文書・写し）が揃った。Backup のロックが直れば print-m2 は yuruidb の上に作れる。Blob の Insert のロックは bdf が一時ファイルに落としてから入れても避けられる
+    reevaluation_2026_10_20_c:
+      commit: b6e1529（Backup は確認の後にロックを放す、bbolt の Blob は 2 MiB ずつ作業用のバケットに書いて最後に移す、残った作業用のデータは最初に開いたときに消す、HTTP の Blob の Open は版と大きさだけを取る）
+      resolved: Backup の間の Get が待たない（0.55 秒 → 0 秒）。遅い Blob の受け付けの間の Update が待たない（1.67 秒 → 2 ミリ秒）。失敗した受け付けは何も残さない。128 MiB の受け付けでヒープの増加は 12 MiB ほど
+      remaining:
+      - Backup の間の Update が、bbolt が mmap を広げる必要があるときだけバックアップの終わりまで待つ（bbolt の性質。生の bbolt で InitialMmapSize 256 MiB なら 1 ミリ秒、既定なら 515 ミリ秒）。yuruidb の bbolt の Config に InitialMmapSize を出す。bdf は写しをいったんローカルの一時ファイルに書いてから流す
+      verdict: print-m2 を yuruidb の上に作れる（記録は bbolt のドライバ、文書は同じ spool.db の bbolt の Blob、写しは Store.Backup）
+open_questions:
+  package-location:
+    text: 汎用の store/ に置くか、print/spool/store に閉じるか
+    state: open
+    resolution: 暫定で store/（印刷以外のサーバー機能も使える）
+  rdb-access:
+    text: RDB を database/sql とビルドタグで選ぶ純 Go のドライバ（pgx、MySQL、SQLite）で話すか、HTTP で SQL を受けるもの（Amazon RDS Data API、PostgREST、libSQL / Turso、Neon）で話すか
+    state: open
+  next-drivers:
+    text: S3 互換の次に足すドライバの順（GCS と Azure Blob、DynamoDB、RDB）
+    state: open
+relations:
+- relation: informed_by
+  to: system:conditional-storage
+- relation: serves
+  to: requirement:print
+history:
+  adopted:
+    summary: 2026-10-20 利用者が yuruidb をこの層の実装として作り直し、評価（store.ja.md §9〜§9.3）の後「作れそうということなので実装の開始をお願いしたい」。print-m2 は yuruidb の bbolt ドライバと bbolt の Blob の上に作る（lifecycle accepted）。bdf 自身の store/ は作らない
+  deferred:
+    summary: 2026-10-19 利用者「store レイヤーは一旦頑張らずに bbolt 前提で良い」。print-m2 から外し、案として残す（lifecycle proposed）。いつ作るかは m2 の後（requirement:print の scale-out）
+  asked:
+    summary: 2026-10-19 利用者「bbolt、Dynamo、その他の KVS を包む仕組みは無いか。SDK を同梱すると思うので HTTP の API を呼ぶ薄い仕組みがよい。外部キーなしの insert・update・select（更新順のみ）・delete ができれば多くのストレージに対応できるはず」「KVS だけでなく RDB も含めてよい」「楽観ロックのオブジェクトストレージに対応できれば費用も運用の楽さもだいぶ上がる」。既存の仕組みを調べ（system:conditional-storage）、約束と写し方を store.ja.md に書いた

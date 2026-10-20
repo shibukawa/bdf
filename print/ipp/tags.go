@@ -1,6 +1,9 @@
 package ipp
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+)
 
 // Tag is the tag of a value or of a group of attributes in the encoding
 // of a message (RFC 8010 §3.5). The tags below 0x10 begin groups; the
@@ -319,6 +322,25 @@ func (s JobState) String() string {
 
 // Done reports whether the job is over: canceled, aborted or completed.
 func (s JobState) Done() bool { return s >= JobCanceled }
+
+// MarshalText writes the keyword of the state ("pending" …).
+func (s JobState) MarshalText() ([]byte, error) {
+	if _, ok := jobStateNames[s]; !ok {
+		return nil, fmt.Errorf("ipp: job-state %d", int32(s))
+	}
+	return []byte(s.String()), nil
+}
+
+// UnmarshalText reads the keyword of a state.
+func (s *JobState) UnmarshalText(b []byte) error {
+	for k, n := range jobStateNames {
+		if n == string(b) {
+			*s = k
+			return nil
+		}
+	}
+	return fmt.Errorf("ipp: job-state %q", b)
+}
 
 // PrinterState is the state of a printer (RFC 8011 §5.4.11,
 // "printer-state").

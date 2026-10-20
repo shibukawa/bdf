@@ -1,6 +1,6 @@
 module github.com/shibukawa/bdf
 
-go 1.27
+go 1.27.0
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.2
@@ -8,7 +8,9 @@ require (
 	github.com/klauspost/compress v1.20.1
 	github.com/pdfcpu/pdfcpu v0.16.1
 	github.com/shibukawa/tinygodriver v1.3.5
+	github.com/shibukawa/yuruidb v0.0.0-20261020013710-b6e152915b7c
 	github.com/yuin/goldmark v1.8.6
+	go.etcd.io/bbolt v1.4.3
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.60.0
@@ -24,4 +26,5 @@ require (
 	github.com/itlightning/dateparse v0.2.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 )

@@ -13,8 +13,13 @@ bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                    write the pages as a PDF file (bdf pdf -h for flags)
 bdf print [flags] -printer <url | name> <file.bdf | dir | input>
                                    print on an IPP printer or a CUPS queue, without a driver
+                                   (-server: on a queue of a print server)
 bdf printers [flags]               list the IPP printers on the network, the queues of CUPS
-                                   (-cups), or what a printer supports (-url)
+                                   (-cups), what a printer supports (-url), or the queues and
+                                   printers of a print server (-server)
+bdf printd -config <printd.yaml>   run the print server in the foreground
+bdf jobs [flags] [show | cancel | hold | release | retry | move | priority | password | accounting]
+                                   list and change the jobs of a print server
 bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                    draw a thumbnail: the top of the first page or the whole slide
                                    (of an input to convert, only the first page is converted)
@@ -104,6 +109,29 @@ bdf print -printer ipp://192.0.2.10/ipp/print -skip background slip.bdf         
 - **Exit status**: 0 printed, 1 canceled, aborted or another error, 2 usage, 3 the printer could not be reached (or refused the certificate or password), 4 the printer refused the job (or, with `-strict`, what it asks), 5 the printer is stopped, 6 the job is not done within `-wait`.
 - **TLS**: the certificate of an `ipps://` printer is verified with the system's roots, else its fingerprint is recorded on the first connection in `bdf/printers.json` of the user's config directory and required after (as CUPS does; `-trust-store` moves it, `-insecure` verifies nothing). Basic authentication takes `-username` and `$BDF_PRINTER_PASSWORD` (or `-password-file`).
 - **An encrypted document** is opened with `$BDF_PASSWORD`, and is not sent over a connection without TLS unless `-allow-plaintext`.
+- **On a print server**: `-server` (or `$BDF_SERVER`, when there is no `-printer`) sends the document as it is to a queue of [`bdf printd`](../print-server.md) (`-queue`; the server's only queue by default), which converts and prints it. It writes the job's id and returns; `-wait` follows the job until it is done, with the same exit statuses (5 is a queue that takes no jobs, 3 a server not reached or a token refused). The ticket's flags are the same; `-priority` and `-hold` order and hold the job in the spool. The token is `$BDF_TOKEN` or `-token-file`; `-user` names the user of the job to a server without tokens or to a token that may act for others. `bdf printers -server` lists the server's queues and printers.
+
+## printd, jobs
+
+`bdf printd` runs the [print server](../print-server.md): a spool in one file, its queues and printers from a configuration file, and its HTTP API. It runs in the foreground until SIGINT or SIGTERM (Ctrl-C or Ctrl-Break on Windows), and lets a service manager keep it running.
+
+```sh
+bdf printd -config printd.yaml                 # serve (the log is JSON on the standard error; -log text for people)
+bdf printd -config printd.yaml -check          # ask each printer what it supports, without opening the spool
+bdf printd -config printd.yaml -compact        # rewrite the stopped spool's file without the space of removed jobs
+bdf printd -config printd.yaml -listen 127.0.0.1:9631
+
+bdf jobs                                       # the jobs not done ($BDF_SERVER, or -server)
+bdf jobs -all -queue office                    # with those done
+bdf jobs show 42
+bdf jobs cancel 42                             # also hold, release, retry
+bdf jobs move 42 warehouse
+bdf jobs priority 42 90
+bdf jobs password 42                           # an encrypted document's password, from $BDF_PASSWORD or -password-file
+bdf jobs accounting -from 2026-10-01 -to 2026-10-31 -csv -o october.csv
+```
+
+Without the manage role a token sees and changes its own jobs; `-user` lists a user's jobs and, with a token that may act for others, acts as that user. `-json` writes JSON.
 
 ## thumbnail, text, render
 

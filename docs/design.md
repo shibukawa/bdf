@@ -875,7 +875,7 @@ BDF v1 の読み手が Go 以外にも書かれる（C の libbdf）ので、「
 
 **確かめ方**: テストは、書き出した PDF を自前の PDF 変換器で読み直し、元の文書と同じ絵になることをラスタライザで比べる（文字は読み直した文書の検索用テキストでも確かめる）。testdata の全文書は Ghostscript で描いて突き合わせ、ソフトマスクとパターンは Quartz でも確かめた。同じ文書からは同じバイト列ができる（amd64 と arm64 でも同じ）。`FuzzWrite` は任意の命令列を書き出す。
 
-## 3.36 印刷（print、print/ipp、print/raster、`bdf print`）
+## 3.36 印刷（print、print/ipp、print/raster、print/spool、print/server、`bdf print`、`bdf printd`）
 
 帳票の最後の出口は紙である。OS のドライバを使わず、Go だけでプリンタに印刷する。要件の整理は `knowledge-inputs/print-plan/`（`print-requirements.ja.md`、`print-m1.ja.md`）と `.knowledge/` の `requirement:print`。
 
@@ -891,9 +891,15 @@ BDF v1 の読み手が Go 以外にも書かれる（C の libbdf）ので、「
 
 **TLS**: `ipps` の証明書は、システムのルートで検証できればそれで、できなければ（プリンタの証明書はたいてい自己署名）最初の接続で葉の証明書の SHA-256 をホストごとに記録し、以後は一致を求める（CUPS の Trust On First Use と同じ）。ホストは URL から取る。アドレスへの TLS 接続はサーバー名を送らないため。
 
-**確かめ方**: `print/ipp/ipptest` が偽のプリンタ（`http.Handler`）で、受けた文書を保存し、形式の拒否・認証・IPP/1.1 だけ・停止・中止を再現できる。クライアント、ジョブ、`bdf print` のテストはこれに対して走る。PWG Raster は自前の読み手で戻して、描いた画素と比べる（testdata の文書で一致）。CI の `print` ジョブは CUPS の `ippeveprinter`（IPP Everywhere のプリンタ）と、その前に置いた CUPS の IPP Everywhere のキューに印刷して、受けたファイルを確かめる（`test/print/ci.sh`）。Windows と macOS では `go test ./print/...` を走らせる。
+**確かめ方**: `print/ipp/ipptest` が偽のプリンタ（`http.Handler`）で、受けた文書を保存し、形式の拒否・認証・IPP/1.1 だけ・停止・中止を再現できる。クライアント、ジョブ、`bdf print` のテストはこれに対して走る。PWG Raster は自前の読み手で戻して、描いた画素と比べる（testdata の文書で一致）。CI の `print` ジョブは CUPS の `ippeveprinter`（IPP Everywhere のプリンタ）と、その前に置いた CUPS の IPP Everywhere のキュー、`bdf printd` のスプールに印刷して（スプールは再起動をまたいで）、受けたファイルを確かめる（`test/print/ci.sh`）。Windows と macOS では `go test ./print/...` を走らせる。
 
-**まだしないこと**: スプールとプリントサーバー（print-m2）、Apple Raster と PCLm、PostScript の書き手、9100 と LPD（print-m3）、サーバーを IPP Everywhere / AirPrint のプリンタとして見せること（print-m4）、ラベル・レシート・連帳の言語（print-m5）。
+**スプール（print/spool）**: 業務システムは文書を渡したら先へ進み、待つのはスプールにする（print-m2。計画は `knowledge-inputs/print-plan/print-m2.ja.md`）。ジョブの記録、文書、連番、実績、証明書の指紋は 1 つのファイル `spool.db` に置く。保存は yuruidb（bbolt のドライバと Blob。`print/spool/store.go` だけが触る）を通し、後で S3 や RDB に替えられる位置にする。開けるのは 1 プロセス（bbolt のロックと、同じプロセスの中の表）。ジョブの状態は IPP の `job-state` と理由をそのまま使い、遷移は表で検査する。1 つのジョブは短い段（変換・送信・見届け）の繰り返しで、次の段と時刻を記録に持つ。順番は優先度、投入時刻、id。プリンタには同じキューのジョブを 2 つまで渡し（`max-inflight`）、残りはスプールで待つので、並べ替えや移しが効く。届かないプリンタには 10 秒から 10 分まで間隔を延ばして 24 時間送り直し、プリンタが中止したジョブは送り直さない。終わったジョブは done の集まりに移して実績にし、文書は 7 日、記録は 400 日で消す。
+
+**二重に刷らない**: 送る前に試行を記録し、`print.Options.OnCreated`（`Create-Job` の答えの直後、文書の前）でプリンタのジョブ id を、`OnSent` でプリンタが文書を全部受けたことを記録する。プリンタでのジョブ名は `#<ジョブ>.<試行> ` で始める（名前を切り詰めるプリンタでも残る）。起動したら、プリンタにあったジョブを何より先に照合する: id と送信済みがあれば見届け（プリンタが履歴を持たなければ刷ったとみなして警告）、id があって送信前なら文書を待っているプリンタのジョブを取り消して送り直し、id が無ければ（答えを記録する前に落ちた）`Get-Jobs` で試行の名前を探し、0 件なら送り直し、1 件ならそれを引き継ぎ、2 件以上なら人に任せて保留する（`bdf-duplicate-check`）。テストは子プロセスを決めた時点（試行の記録の後、`Create-Job` の後、その記録の後、送信の記録の後、見届けの間）で `os.Exit` させ、同じ `spool.db` を開き直して、プリンタが 1 回だけ刷ることを確かめる。
+
+**プリントサーバー（print/server、`bdf printd`）**: 設定ファイル（YAML、未知のキーは誤り）のキューとプリンタでスプールを開き、`/api/v1` の JSON の API、`/events`（Server-Sent Events）、`/metrics`（Prometheus のテキストを自前で書く）、読むだけの状態のページを出す。投入は `multipart/form-data` で、文書を先に一時ファイルへ受けてから（`spool.Receive`）ほかの欄を読むので、欄の順は問わない。トークンは SHA-256 を定数時間で比べ、役割（submit、manage、admin）とキューの許可と代理（`act-as`）を持つ。loopback でトークンが無ければ認証なし、それ以外では TLS とトークンが無ければ起動しない。写しは一時ファイルへ作ってから送る（bbolt の長い読み取りがファイルの拡張を止めるため）。詰め直し（`-compact`）だけは bbolt を直接使う。サービスとしての登録は持たず、SIGINT・SIGTERM で受け付けを止め、送っている文書を 30 秒待って閉じる。変換は `spool.Converter` として外から渡し（`cmd/bdf/printconv.go`）、Excel は `views=print`、HTML と Markdown は `views=pages`、ネットワークの画像は取らない。パスワードはメモリにだけ持ち、パスワードで開いた入力の変換結果は同じパスワードで暗号化して置く。Go のクライアント `print/server/client` は bdf に依らず、API の JSON と同じ形の型を持つ（spool の型との形の一致はテストで確かめる）。
+
+**まだしないこと**: Apple Raster と PCLm、PostScript の書き手、9100 と LPD（print-m3）、サーバーを IPP Everywhere / AirPrint のプリンタとして見せること（print-m4）、ラベル・レシート・連帳の言語（print-m5）、スプールの保存先を S3 や RDB に替えることと複数台で回すこと（m2 の後で決める）。
 
 ## 4. テキストの扱い
 
@@ -1014,7 +1020,7 @@ Canvas はアクセシビリティツリーに出ないので、支援技術が�
 26. **InDesign**: IDML のページ・マスター・図形・画像と、連結したフレームをページをまたいで流れるストーリー。テキストは DrawingML のテキストエンジンに `TextFlow` を足して組む（実装済み、§3.32）。
 27. **適合テスト**: 他の言語の読み手（C の libbdf）のために、入力と期待する扱いを機械可読で配る。期待値は参照実装を走らせて記録する（実装済み、§3.33）。
 28. **帳票**: Excel の印刷のページ（印刷範囲・ページ設定・印刷タイトル・ヘッダーとフッター）と、タグを書いたブックをデータで穴埋めするテンプレート。固定ページ・行が増える表・決まった行数のページ複製の 3 形態を、Excel・Word・PowerPoint のテンプレートで（実装済み、§3.6・§3.34）。BDF から PDF への書き出し（影、タグ付き PDF、PDF/A も含めて実装済み、§3.35）。QR コードとバーコード（実装済み、§3.34）。入力欄のある PDF と pdfme のテンプレートも、テンプレートとして埋められる（実装済み、§3.34）。フォントの対応規則は予定。
-29. **印刷**（`bdf print` と `bdf printers` は実装済み、§3.36。スプールとサーバーは予定）: `.bdf` を OS のドライバなしにプリンタへ。最初の出力先は IPP（driverless。プリンタ直結と、macOS・Linux の CUPS のキュー）、最初の文書形式は PDF（ベクタのまま。§3.35）で、PDF を受けないプリンタには PWG Raster（`imagebdf` の帯からそのまま流す）。スプール（キュー、再送、履歴）と、複数台のリモートプリンタを束ねるプリントサーバー。PDF 以外のベクタの経路（PostScript の書き手、大判プロッタ向けの HP-GL/2 の書き手）、Apple Raster、PCLm、9100 と LPD、ラベル・レシート・連帳の PDL は後の段階。Windows は IPP 直結だけで、OS のスプーラ経由（GDI / XPS）は作らない。要件の整理は `knowledge-inputs/print-plan/print-requirements.ja.md` と `.knowledge/` の `requirement:print`。
+29. **印刷**（`bdf print` と `bdf printers`、スプールとプリントサーバー `bdf printd`・`bdf jobs` は実装済み、§3.36）: `.bdf` を OS のドライバなしにプリンタへ。最初の出力先は IPP（driverless。プリンタ直結と、macOS・Linux の CUPS のキュー）、最初の文書形式は PDF（ベクタのまま。§3.35）で、PDF を受けないプリンタには PWG Raster（`imagebdf` の帯からそのまま流す）。スプール（キュー、再送、履歴）と、複数台のリモートプリンタを束ねるプリントサーバー。PDF 以外のベクタの経路（PostScript の書き手、大判プロッタ向けの HP-GL/2 の書き手）、Apple Raster、PCLm、9100 と LPD、ラベル・レシート・連帳の PDL は後の段階。Windows は IPP 直結だけで、OS のスプーラ経由（GDI / XPS）は作らない。要件の整理は `knowledge-inputs/print-plan/print-requirements.ja.md` と `.knowledge/` の `requirement:print`。
 30. **テキスト帳票**（予定）: プレーンテキストのテンプレート（前書きに CPI・LPI・用紙長・桁数・余白・ミシン目スキップ、本文が「行 × 桁」の印字像）を帳票テンプレートの 5 つ目の形式に。同じタグとデータで、等幅フォントの fixed ページの `.bdf`、印字像の Part、プレーンテキストを出し、ドットインパクト（ESC/P）とレシート（ESC/POS）のテキストモードに損失なしに写す。要件は `knowledge-inputs/print-plan/text-template.ja.md` と `.knowledge/` の `requirement:text-template`。
 
 ## 9. リポジトリ構成（案）

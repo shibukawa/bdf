@@ -13,8 +13,13 @@ bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                    ページを PDF に書き出す（フラグは bdf pdf -h）
 bdf print [flags] -printer <url | name> <file.bdf | dir | input>
                                    IPP のプリンタや CUPS のキューに、ドライバなしで印刷する
+                                   （-server: プリントサーバーのキューに置く）
 bdf printers [flags]               ネットワークの IPP プリンタ、CUPS のキュー（-cups）、
-                                   1 台のプリンタができること（-url）を一覧する
+                                   1 台のプリンタができること（-url）、プリントサーバーの
+                                   キューとプリンタ（-server）を一覧する
+bdf printd -config <printd.yaml>   プリントサーバーを前面で動かす
+bdf jobs [flags] [show | cancel | hold | release | retry | move | priority | password | accounting]
+                                   プリントサーバーのジョブを一覧し、操作する
 bdf thumbnail [flags] <file.bdf | dir | input> <out.png | .jpg | .webp>
                                    サムネイルを描く: 1 ページ目の上部、またはスライド全体
                                    （変換する入力なら 1 ページ目だけを変換する）
@@ -104,6 +109,29 @@ bdf print -printer ipp://192.0.2.10/ipp/print -skip background slip.bdf         
 - **終了コード**: 0 印刷した、1 取り消し・中止・その他、2 使い方、3 プリンタに届かない（証明書やパスワードを拒まれた）、4 プリンタがジョブを拒んだ（`-strict` で受けない項目）、5 プリンタが止まっている、6 `-wait` のうちに終わらない。
 - **TLS**: `ipps://` のプリンタの証明書は、システムのルートで検証できればそれで、できなければ最初に接続したときの指紋をユーザーの設定ディレクトリの `bdf/printers.json` に記録し、以後は同じことを求めます（CUPS と同じ。`-trust-store` で場所を変え、`-insecure` で検証しない）。Basic 認証は `-username` と `$BDF_PRINTER_PASSWORD`（または `-password-file`）。
 - **暗号化した文書**は `$BDF_PASSWORD` で開き、TLS のない接続には `-allow-plaintext` がなければ送りません。
+- **プリントサーバーへ**: `-server`（`-printer` が無ければ `$BDF_SERVER`）は、文書をそのまま [`bdf printd`](../print-server.ja.md) のキュー（`-queue`。既定はサーバーの唯一のキュー）へ送り、変換と印刷はサーバーが行います。ジョブの id を出して終わり、`-wait` で終わるまで見届けます。終了コードは同じ意味です（5 は受け付けないキュー、3 はサーバーに届かない・トークンを拒まれた）。チケットのフラグも同じで、`-priority` と `-hold` はスプールでの順番と保留になります。トークンは `$BDF_TOKEN` か `-token-file`、`-user` はトークンの無いサーバーや代理のできるトークンに、ジョブの利用者を名乗ります。`bdf printers -server` はサーバーのキューとプリンタを一覧します。
+
+## printd, jobs
+
+`bdf printd` は[プリントサーバー](../print-server.ja.md)を動かします。1 つのファイルのスプール、設定ファイルのキューとプリンタ、HTTP の API です。SIGINT か SIGTERM（Windows は Ctrl-C か Ctrl-Break）まで前面で動き、常駐は OS のサービス管理に任せます。
+
+```sh
+bdf printd -config printd.yaml                 # 動かす（ログは標準エラーに JSON。人が読むなら -log text）
+bdf printd -config printd.yaml -check          # スプールを開かずに、各プリンタにできることを聞く
+bdf printd -config printd.yaml -compact        # 止めたスプールのファイルを、消したジョブの分を詰めて書き直す
+bdf printd -config printd.yaml -listen 127.0.0.1:9631
+
+bdf jobs                                       # 終わっていないジョブ（$BDF_SERVER か -server）
+bdf jobs -all -queue office                    # 終わったものも
+bdf jobs show 42
+bdf jobs cancel 42                             # hold、release、retry も
+bdf jobs move 42 warehouse
+bdf jobs priority 42 90
+bdf jobs password 42                           # 暗号化した文書のパスワード（$BDF_PASSWORD か -password-file）
+bdf jobs accounting -from 2026-10-01 -to 2026-10-31 -csv -o october.csv
+```
+
+manage の役割の無いトークンは自分のジョブだけを見て操作します。`-user` はその利用者のジョブを一覧し、代理のできるトークンではその利用者として振る舞います。`-json` で JSON を書きます。
 
 ## thumbnail, text, render
 

@@ -175,3 +175,5 @@ examples/search/cache/
 examples/secure-reader/web/main.js*
 examples/secure-reader/web/lib/
 examples/secure-reader/cache/
+# examples/print-server keeps its spool (spool.db) under -dir.
+examples/print-server/data/
