@@ -47,6 +47,16 @@ facts:
     - 一覧の N+1、Insert と Update の先読み、bbolt での 2 重の base64（同じ値の生の bbolt の約 2 倍のファイル）
     - AWS の資格情報の順（IMDSv2、コンテナ、Web identity、共有ファイル）、AWS_REGION、virtual-hosted、一時的な誤りの再試行、条件のヘッダーを守るかの確かめ、Blob の口
     verdict: 芯は store.ja.md の案と合う。blockers が直れば print-m2 の db.go の記録の部分を載せ替えられる。文書は別に置く
+    reevaluation_2026_10_20:
+      commit: adb806b（Go 1.27 のメソッドの型引数、Store.Bind[T]、名前のキー、条件付きの物理削除、結果の照合、bbolt のバイナリ形式、AWS の資格情報の順、再試行、S3 互換の確かめ、S3・R2・GCS の Blob）
+      resolved: 前回の blockers の 3 つ（1 つの bbolt のファイルに複数のコレクション、名前のキー、墓標）を確かめた。Insert と Update は書き込み 1 回、bbolt の使用量は 10 KB の値で生の bbolt と同じ、応答の喪失は読み直して成功になる（DynamoDB の 500 の後の条件の失敗も）
+      remaining:
+      - 応答が失われ照合の読み取りも失敗したときの誤りが ErrOutcomeUnknown と ErrConflict の両方に当たる
+      - S3 互換の確かめの使い捨てキーがコレクションの中に置かれ、後片付けに失敗するとそのコレクションの一覧が止まる（確かめた）
+      - Blob は S3・R2・GCS だけ（bbolt の Blob、範囲の読み取り、一覧が無い。条件付き DELETE の無い保存先では消せない）
+      - bbolt の DB を外に出さないので、bdf の写しと詰め直しを動かしたまま行えない
+      - DynamoDB の流量制限（HTTP 400）を再試行しない。ID の文字種に IPv6 のホストやプリンタの任意の名前が入らない（bdf の側で符号化）
+      verdict: ジョブの記録は yuruidb の bbolt ドライバに載せられる。bdf の既定の 1 ファイルで使い切るには bbolt の Blob と写し・詰め直しが要る
 open_questions:
   package-location:
     text: 汎用の store/ に置くか、print/spool/store に閉じるか
