@@ -35,6 +35,11 @@ var (
 	ErrCanceled = errors.New("print: the job was canceled")
 	// ErrTimeout is returned when the job is not done in Options.Wait.
 	ErrTimeout = errors.New("print: the job is not done yet")
+	// ErrJobLost is returned when the printer lost the job before it had
+	// the document: it was restarted after Create-Job, and its job of the
+	// id is gone or another's. Nothing was printed; the job can be sent
+	// again.
+	ErrJobLost = errors.New("print: the printer lost the job before it had the document")
 )
 
 // Options are a job: its ticket, how the document is sent, and how its
@@ -336,6 +341,10 @@ func (j *job) send(format, media string, data []byte, attrs []ipp.Attribute, fal
 				werr = wait()
 			}
 			if err != nil {
+				if j.lost(js.ID, name, err) {
+					// (the id may be another's job now: it is not canceled)
+					return fmt.Errorf("%w: %v", ErrJobLost, err)
+				}
 				j.cancel(js.ID)
 				if werr != nil && !errors.Is(werr, io.ErrClosedPipe) {
 					return werr
@@ -728,6 +737,31 @@ func (j *job) cancel(id int32) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	j.c.CancelJob(ctx, id)
+}
+
+// lost tells, after Send-Document failed with err, whether the printer
+// lost the job it made: it no longer knows the id, or its job of the id
+// has another name (the printer was restarted, counts its ids from 1
+// again, and another client's job took the id). A printer that tells no
+// name, or a name the job's begins with (one it cut), has the job. A
+// printer without jobs of more documents may refuse a Send-Document to
+// another's job with multiple-document-jobs-not-supported rather than
+// not-possible (ippeveprinter on Ubuntu does).
+func (j *job) lost(id int32, name string, err error) bool {
+	if !ipp.IsStatus(err, ipp.StatusClientErrorNotPossible) && !ipp.IsStatus(err, ipp.StatusClientErrorNotFound) &&
+		!ipp.IsStatus(err, ipp.StatusServerErrorMultipleDocumentJobsNotSupported) {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(j.ctx), 10*time.Second)
+	defer cancel()
+	js, gerr := j.c.GetJobAttributes(ctx, id)
+	switch {
+	case ipp.IsStatus(gerr, ipp.StatusClientErrorNotFound):
+		return true
+	case gerr != nil:
+		return false
+	}
+	return js.Name != "" && !strings.HasPrefix(name, js.Name)
 }
 
 // interrupted turns the error of a request canceled with the context
