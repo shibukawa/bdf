@@ -3,21 +3,21 @@ module github.com/shibukawa/bdf
 go 1.27.0
 
 require (
-	codeberg.org/readeck/go-readability/v2 v2.1.2
-	github.com/andybalholm/brotli v1.2.5
-	github.com/klauspost/compress v1.20.1
-	github.com/pdfcpu/pdfcpu v0.16.1
+	codeberg.org/readeck/go-readability/v2 v2.1.3
+	github.com/andybalholm/brotli v1.2.6
+	github.com/klauspost/compress v1.20.3
+	github.com/pdfcpu/pdfcpu v0.16.3
 	github.com/shibukawa/popcornweb v0.5.11
-	github.com/shibukawa/tinybind-go v0.5.33
+	github.com/shibukawa/tinybind-go v0.5.34
 	github.com/shibukawa/tinygodriver v1.3.5
-	github.com/shibukawa/yuruidb v0.0.0-20261020013710-b6e152915b7c
+	github.com/shibukawa/yuruidb v0.1.0
 	github.com/yuin/goldmark v1.8.6
-	go.etcd.io/bbolt v1.4.3
+	go.etcd.io/bbolt v1.5.0
 	go.yaml.in/yaml/v3 v3.0.5
-	golang.org/x/image v0.46.0
-	golang.org/x/net v0.60.0
-	golang.org/x/sys v0.48.0
-	golang.org/x/text v0.42.0
+	golang.org/x/image v0.47.0
+	golang.org/x/net v0.61.0
+	golang.org/x/sys v0.49.0
+	golang.org/x/text v0.43.0
 )
 
 require (
@@ -32,8 +32,9 @@ require (
 	github.com/itlightning/dateparse v0.2.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.23 // indirect
-	github.com/mattn/go-runewidth v0.0.30 // indirect
+	github.com/mattn/go-runewidth v0.0.31 // indirect
 	github.com/shibukawa/configdir v0.0.0-20170330084843-e180dbdc8da0 // indirect
 	github.com/shibukawa/dbtestify v0.5.0 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
+	github.com/xdg-go/stringprep v1.0.4 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 )

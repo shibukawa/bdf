@@ -19,17 +19,24 @@ func TestPDFParserResourceLimits(t *testing.T) {
 	stream := append([]any(nil), objects...)
 	stream[3] = "<< /Length 1099511627776 >>\nstream\na\nendstream"
 	xref := bytes.Replace(buildPDF(objects, "/Root 1 0 R"), []byte("/Size 5"), []byte("/Size 2147483647"), 1)
-	for name, data := range map[string][]byte{
-		"deep objects":  buildPDF(deep, "/Root 1 0 R"),
-		"stream length": buildPDF(stream, "/Root 1 0 R"),
-		"xref size":     xref,
+	for name, c := range map[string]struct {
+		data []byte
+		// mayRead is set for input a reader may repair rather than refuse:
+		// since pdfcpu v0.16.3, a trailer /Size past MaxObjectCount is left
+		// unset in relaxed validation and the object walk supplies it. What
+		// matters is that it costs no more than a small input should.
+		mayRead bool
+	}{
+		"deep objects":  {data: buildPDF(deep, "/Root 1 0 R")},
+		"stream length": {data: buildPDF(stream, "/Root 1 0 R")},
+		"xref size":     {data: xref, mayRead: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var before, after runtime.MemStats
 			runtime.ReadMemStats(&before)
-			_, err := NewStream(bytes.NewReader(data), nil)
+			_, err := NewStream(bytes.NewReader(c.data), nil)
 			runtime.ReadMemStats(&after)
-			if err == nil {
+			if err == nil && !c.mayRead {
 				t.Fatal("hostile parser input was accepted")
 			}
 			if n := after.TotalAlloc - before.TotalAlloc; n > 16<<20 {
