@@ -486,6 +486,8 @@ func (p *Printer) receive(j *Job, body *bufio.Reader) error {
 			ext = "pwg"
 		case "image/urf":
 			ext = "urf"
+		case "application/postscript":
+			ext = "ps"
 		case "image/jpeg":
 			ext = "jpg"
 		}

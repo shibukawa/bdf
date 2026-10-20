@@ -265,7 +265,7 @@ func (c *Config) check() error {
 			return fmt.Errorf("queue %s: policy %q: any or failover", name, q.Policy)
 		}
 		if _, ok := print.FormatName(q.Format); !ok {
-			return fmt.Errorf("queue %s: format %q: auto, pdf, pwg-raster, urf or pclm", name, q.Format)
+			return fmt.Errorf("queue %s: format %q: auto, pdf, ps, pwg-raster, urf or pclm", name, q.Format)
 		}
 		if q.MaxInflight < 0 {
 			return fmt.Errorf("queue %s: max-inflight %d", name, q.MaxInflight)

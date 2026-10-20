@@ -152,11 +152,14 @@ func sendCopies(p *ipp.Printer, n int) bool {
 // jobAttributes turns a ticket into job attributes for a printer, for a
 // document sent in format: the pages selected are the pages of the
 // document sent (page-ranges is not asked, as printers differ in it);
-// the placement of raster pages is in the pages; copies the client makes
+// the placement of raster and PostScript pages is in the pages; copies the client makes
 // by sending the pages again are not asked either.
 func jobAttributes(t *Ticket, p *ipp.Printer, format, media string, printerCopies bool) attrs {
 	var a attrs
 	isPDF := format == FormatPDF
+	// (the printer draws vectors at its resolution; PostScript pages are
+	// placed on the paper, as raster pages are)
+	vector := isPDF || format == FormatPostScript
 	if n := t.copies(); n > 1 && printerCopies {
 		a.add("copies", true, ipp.Integer(n))
 	}
@@ -207,7 +210,7 @@ func jobAttributes(t *Ticket, p *ipp.Printer, format, media string, printerCopie
 	if t.Quality != 0 {
 		a.add("print-quality", slices.Contains(p.Qualities, int32(t.Quality)), ipp.Enum(t.Quality))
 	}
-	if t.Resolution != 0 && isPDF {
+	if t.Resolution != 0 && vector {
 		r := ipp.Resolution{X: int32(t.Resolution), Y: int32(t.Resolution), Units: ipp.UnitsDPI}
 		a.add("printer-resolution", slices.Contains(p.Resolutions, r), ipp.NewResolution(t.Resolution, t.Resolution, ipp.UnitsDPI))
 	}

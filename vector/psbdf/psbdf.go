@@ -63,13 +63,13 @@ type Options struct {
 	// from its bottom left corner). nil prints a page on a sheet of its
 	// size.
 	Place func(w, h float64) (sheetW, sheetH float64, m [6]float64)
-	// Copies, Collate, Duplex and Tumble (two-sided on the short edge),
-	// MediaType ("stationery") and MediaPosition (the input tray, 0 for
-	// automatic) are asked of the printer.
+	// Copies, Collate, Sides ("one-sided", "two-sided-long-edge",
+	// "two-sided-short-edge"), MediaType ("stationery") and MediaPosition
+	// (the input tray) are asked of the printer; what is not set (0, "")
+	// is left to it.
 	Copies        int
 	Collate       bool
-	Duplex        bool
-	Tumble        bool
+	Sides         string
 	MediaType     string
 	MediaPosition int
 	// Gray writes colors as gray (luminance): for black and white
@@ -260,10 +260,13 @@ func (ex *exporter) header(b *bytes.Buffer, pages int, sheets [][2]float64) {
 			b.WriteString(feature("Collate", "/Collate true"))
 		}
 	}
-	if o.Duplex {
-		b.WriteString(feature("Duplex", fmt.Sprintf("/Duplex true /Tumble %t", o.Tumble)))
-	} else {
+	switch o.Sides {
+	case "one-sided":
 		b.WriteString(feature("Duplex", "/Duplex false"))
+	case "two-sided-long-edge":
+		b.WriteString(feature("Duplex", "/Duplex true /Tumble false"))
+	case "two-sided-short-edge":
+		b.WriteString(feature("Duplex", "/Duplex true /Tumble true"))
 	}
 	if o.MediaType != "" {
 		b.WriteString(feature("MediaType", "/MediaType "+psText(o.MediaType)))

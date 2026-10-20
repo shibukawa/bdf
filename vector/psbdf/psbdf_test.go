@@ -256,7 +256,7 @@ func TestStructure(t *testing.T) {
 	d.Meta.DC.Title = bdf.DCValues{"題名 (1)"}
 	opts := testOptions()
 	opts.Pages = []int{2, -1, 0, 7}
-	opts.Copies, opts.Collate, opts.Duplex, opts.Tumble = 3, true, true, true
+	opts.Copies, opts.Collate, opts.Sides = 3, true, "two-sided-short-edge"
 	opts.MediaType, opts.MediaPosition = "stationery", 2
 	file, res := write(t, d, opts)
 	if res.Pages != 3 || res.Fonts != 0 || res.Pictures != 0 {
@@ -305,7 +305,7 @@ func TestStructure(t *testing.T) {
 			t.Errorf("the file lacks %q", want)
 		}
 	}
-	if strings.Contains(file, " rg\n") || strings.Contains(file, "%%BeginPageSetup") {
+	if strings.Contains(file, " rg\n") || strings.Contains(file, "%%BeginPageSetup") || strings.Contains(file, "Duplex") {
 		t.Error("a gray file has colors, or the sheets differ")
 	}
 }
@@ -434,7 +434,7 @@ func TestText(t *testing.T) {
 	for _, want := range []string{
 		"/BDF0 [12 0 0 -12 0 0] Tf 20 40 m <0001020203040506>\n[8.52 6.624 3.684 3.684 6.84 3.48 12 12] xshow n\n",
 		"/BDF0 [31.003746 0 0 -12 0 0] Tf 110 69.2473 m <", // centred at the top, as wide as asked
-		"f\nq 0.7485 w 1 j [] 0 d\n",                       // synthesized bold: the fill and a line
+		"f\nq 0.7485 w 1 j [] 0 d\n", // synthesized bold: the fill and a line
 		"S\nQ\n",
 		"h\nS\n", // STROKE_TEXT: the outlines
 		"h\nW n\n<< /ShadingType 2",

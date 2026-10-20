@@ -40,9 +40,10 @@ var (
 // end is waited for.
 type Options struct {
 	Ticket Ticket
-	// Format is "pdf", "pwg-raster", "urf" (Apple Raster), "pclm", or ""
-	// (or "auto") to choose: PDF when the printer takes it, else PWG
-	// Raster, else Apple Raster, else PCLm.
+	// Format is "pdf", "ps" (PostScript), "pwg-raster", "urf" (Apple
+	// Raster), "pclm", or "" (or "auto") to choose: PDF when the printer
+	// takes it, else PostScript, else PWG Raster, else Apple Raster, else
+	// PCLm.
 	Format string
 	// RasterIfLossy sends PWG Raster instead of PDF when the PDF file
 	// would leave out what the document draws (FILTER, composite
@@ -219,16 +220,22 @@ func (j *job) run() error {
 		}
 	}
 	j.res.Media = media
-	var pdf []byte
-	if format == FormatPDF {
-		if pdf, err = j.pdf(); err != nil {
-			return err
-		}
+	// the file of a vector format; raster pages are written as they are sent
+	data, err := j.document(format, media)
+	if err != nil {
+		return err
 	}
-	fallback := fallbackRaster(j.p)
-	if format == FormatPDF && j.o.RasterIfLossy && fallback != "" && lossy(j.res.Warnings) {
-		j.res.warn("the PDF file would leave out what the page draws: sent as %s", formatTitle[fallback])
+	if r := fallbackRaster(j.p); format == FormatPDF && j.o.RasterIfLossy && r != "" && lossy(j.res.Warnings) {
+		j.res.warn("the PDF file would leave out what the page draws: sent as %s", formatTitle[r])
+		format, data = r, nil
+	}
+	fallback := fallbackFormat(j.p)
+	refused := func() error {
+		j.res.warn("the printer refuses PDF: sent as %s", formatTitle[fallback])
 		format = fallback
+		d, err := j.document(format, media)
+		data = d
+		return err
 	}
 	attrs, err := j.attributes(format, media)
 	if err != nil {
@@ -241,8 +248,9 @@ func (j *job) run() error {
 	switch {
 	case err == nil, ipp.IsStatus(err, ipp.StatusServerErrorOperationNotSupported):
 	case errors.As(err, &se) && se.Status == ipp.StatusClientErrorDocumentFormatNotSupported && format == FormatPDF && fallback != "":
-		j.res.warn("the printer refuses PDF: sent as %s", formatTitle[fallback])
-		format, pdf = fallback, nil
+		if err := refused(); err != nil {
+			return err
+		}
 		if attrs, err = j.attributes(format, media); err != nil {
 			return err
 		}
@@ -257,8 +265,8 @@ func (j *job) run() error {
 	j.res.Format = format
 	name := firstOr(j.t.JobName, "document")
 	body := func() (io.Reader, func() error) {
-		if format == FormatPDF {
-			return bytes.NewReader(pdf), func() error { return nil }
+		if data != nil {
+			return bytes.NewReader(data), func() error { return nil }
 		}
 		pr, pw := io.Pipe()
 		done := make(chan error, 1)
@@ -289,8 +297,10 @@ func (j *job) run() error {
 		werr := wait()
 		if err != nil {
 			if ipp.IsStatus(err, ipp.StatusClientErrorDocumentFormatNotSupported) && format == FormatPDF && fallback != "" {
-				j.res.warn("the printer refuses PDF: sent as %s", formatTitle[fallback])
-				format = fallback
+				if err := refused(); err != nil {
+					j.cancel(js.ID)
+					return err
+				}
 				j.res.Format = format
 				r, wait = body()
 				cr = counted(r)
@@ -439,6 +449,18 @@ func (j *job) order() []int {
 		out = out[:len(out)-1]
 	}
 	return out
+}
+
+// document writes the file of a vector format (PDF, PostScript); nil for
+// a raster format, whose pages are written as they are sent.
+func (j *job) document(format, media string) ([]byte, error) {
+	switch format {
+	case FormatPDF:
+		return j.pdf()
+	case FormatPostScript:
+		return j.ps(media)
+	}
+	return nil, nil
 }
 
 // pdf writes the selected pages of the view as a PDF file, with the

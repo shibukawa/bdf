@@ -1,5 +1,6 @@
 // Package print prints BDF documents on printers: it picks what to send
-// (the pages as a PDF file, or as PWG Raster drawn by raster/imagebdf),
+// (the pages as a PDF file or a PostScript file, or as PWG Raster, Apple
+// Raster or PCLm drawn by raster/imagebdf),
 // turns a Ticket of what the job asks into the attributes of IPP, and
 // sends the job to a printer or a queue with package print/ipp, waiting
 // for it to be done.

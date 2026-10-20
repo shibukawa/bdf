@@ -12,19 +12,21 @@ import (
 
 // Document formats.
 const (
-	FormatPDF       = "application/pdf"
-	FormatPWGRaster = "image/pwg-raster"
-	FormatURF       = "image/urf"
-	FormatPCLm      = "application/PCLm"
+	FormatPDF        = "application/pdf"
+	FormatPostScript = "application/postscript"
+	FormatPWGRaster  = "image/pwg-raster"
+	FormatURF        = "image/urf"
+	FormatPCLm       = "application/PCLm"
 )
 
-// formats are the formats written, in the order chosen: PDF (the document
-// as vectors, which the printer draws at its resolution), then the
-// rasters of IPP Everywhere, AirPrint and Mopria.
-var formats = []string{FormatPDF, FormatPWGRaster, FormatURF, FormatPCLm}
+// formats are the formats written, in the order chosen: PDF and
+// PostScript (the document as vectors, which the printer draws at its
+// resolution), then the rasters of IPP Everywhere, AirPrint and Mopria.
+var formats = []string{FormatPDF, FormatPostScript, FormatPWGRaster, FormatURF, FormatPCLm}
 
 // formatNames are the short names of the formats.
-var formatNames = map[string]string{"pdf": FormatPDF, "pwg-raster": FormatPWGRaster, "pwg": FormatPWGRaster, "urf": FormatURF, "pclm": FormatPCLm}
+var formatNames = map[string]string{"pdf": FormatPDF, "ps": FormatPostScript, "postscript": FormatPostScript,
+	"pwg-raster": FormatPWGRaster, "pwg": FormatPWGRaster, "urf": FormatURF, "pclm": FormatPCLm}
 
 // chooseFormat picks what to send a printer: the format asked, else the
 // first of formats the printer takes.
@@ -40,7 +42,7 @@ func chooseFormat(p *ipp.Printer, asked string) (string, error) {
 			}
 		}
 		if !known {
-			return "", fmt.Errorf("print: %q: pdf, pwg-raster, urf or pclm", asked)
+			return "", fmt.Errorf("print: %q: pdf, ps, pwg-raster, urf or pclm", asked)
 		}
 		if len(p.Formats) > 0 && !p.Supports(asked) {
 			return "", fmt.Errorf("print: the printer does not take %s (it takes %s)", asked, strings.Join(p.Formats, ", "))
@@ -56,14 +58,15 @@ func chooseFormat(p *ipp.Printer, asked string) (string, error) {
 		// a printer that says nothing of its formats: PDF, which most take
 		return FormatPDF, nil
 	}
-	return "", fmt.Errorf("print: the printer takes none of PDF, PWG Raster, Apple Raster and PCLm (it takes %s)", strings.Join(p.Formats, ", "))
+	return "", fmt.Errorf("print: the printer takes none of PDF, PostScript, PWG Raster, Apple Raster and PCLm (it takes %s)", strings.Join(p.Formats, ", "))
 }
 
 // formatTitle names the formats for people.
-var formatTitle = map[string]string{FormatPDF: "PDF", FormatPWGRaster: "PWG Raster", FormatURF: "Apple Raster", FormatPCLm: "PCLm"}
+var formatTitle = map[string]string{FormatPDF: "PDF", FormatPostScript: "PostScript", FormatPWGRaster: "PWG Raster", FormatURF: "Apple Raster", FormatPCLm: "PCLm"}
 
-// FormatTitle names a format (a MIME type) for people: "PDF", "PWG
-// Raster", "Apple Raster", "PCLm"; the type itself for others.
+// FormatTitle names a format (a MIME type) for people: "PDF",
+// "PostScript", "PWG Raster", "Apple Raster", "PCLm"; the type itself for
+// others.
 func FormatTitle(format string) string {
 	if t, ok := formatTitle[format]; ok {
 		return t
@@ -72,7 +75,7 @@ func FormatTitle(format string) string {
 }
 
 // FormatName reads a format as Options.Format takes it: a short name
-// ("pdf", "pwg-raster", "urf", "pclm") or a MIME type of a format that is
+// ("pdf", "ps", "pwg-raster", "urf", "pclm") or a MIME type of a format that is
 // written, as its MIME type; "" or "auto" as "". ok is false for others.
 func FormatName(s string) (format string, ok bool) {
 	if s == "" || s == "auto" {
@@ -89,10 +92,23 @@ func FormatName(s string) (format string, ok bool) {
 	return "", false
 }
 
-// fallbackRaster is the raster sent to a printer that refuses PDF: the
-// first it takes of PWG Raster, Apple Raster and PCLm ("" for none).
-func fallbackRaster(p *ipp.Printer) string {
+// fallbackFormat is the format sent to a printer that refuses PDF: the
+// first it takes of PostScript, PWG Raster, Apple Raster and PCLm ("" for
+// none).
+func fallbackFormat(p *ipp.Printer) string {
 	for _, f := range formats[1:] {
+		if p.Supports(f) {
+			return f
+		}
+	}
+	return ""
+}
+
+// fallbackRaster is the raster sent instead of a PDF file that would leave
+// out what the document draws: the first the printer takes of PWG Raster,
+// Apple Raster and PCLm ("" for none).
+func fallbackRaster(p *ipp.Printer) string {
+	for _, f := range formats[2:] {
 		if p.Supports(f) {
 			return f
 		}

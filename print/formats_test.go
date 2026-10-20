@@ -3,6 +3,14 @@ package print
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"image"
+	"image/png"
+	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +34,9 @@ func TestChooseFormat(t *testing.T) {
 		{[]string{FormatPDF, FormatURF}, "urf", FormatURF},
 		{[]string{FormatPDF, FormatPCLm}, "PCLm", FormatPCLm},
 		{nil, "image/urf", FormatURF},
+		{[]string{FormatPWGRaster, FormatPostScript}, "", FormatPostScript},
+		{[]string{FormatPDF, FormatPostScript}, "ps", FormatPostScript},
+		{nil, "PostScript", FormatPostScript},
 	} {
 		got, err := chooseFormat(printer(c.formats...), c.asked)
 		if err != nil || got != c.want {
@@ -40,8 +51,11 @@ func TestChooseFormat(t *testing.T) {
 			t.Errorf("%v asked %q: %q", c.formats, c.asked, got)
 		}
 	}
-	if fallbackRaster(printer(FormatPDF, FormatURF)) != FormatURF || fallbackRaster(printer(FormatPDF)) != "" {
-		t.Error("the raster of a printer that refuses PDF")
+	if fallbackRaster(printer(FormatPDF, FormatPostScript, FormatURF)) != FormatURF || fallbackRaster(printer(FormatPDF, FormatPostScript)) != "" {
+		t.Error("the raster of a printer, for what PDF leaves out")
+	}
+	if fallbackFormat(printer(FormatPDF, FormatURF, FormatPostScript)) != FormatPostScript || fallbackFormat(printer(FormatPDF)) != "" {
+		t.Error("the format of a printer that refuses PDF")
 	}
 }
 
@@ -107,5 +121,123 @@ func TestPrintPCLm(t *testing.T) {
 	}
 	if !bytes.Contains(doc, []byte("/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode")) || !bytes.Contains(doc, []byte("/MediaBox [0 0 595.2 841.68]")) {
 		t.Errorf("strips or page: %q", doc[:min(len(doc), 600)])
+	}
+}
+
+// TestPrintPostScript prints on a printer of PostScript: the pages placed
+// on its paper, gray for a monochrome job, the sides asked in the file;
+// a printer that refuses PDF is sent PostScript before raster pages.
+func TestPrintPostScript(t *testing.T) {
+	p := ipptest.New()
+	p.Formats = []string{FormatPostScript, FormatPWGRaster}
+	c := serve(t, p)
+	doc := testDoc(3)
+	res, err := Print(context.Background(), c, doc, &Options{Ticket: Ticket{ColorMode: "monochrome", Sides: "two-sided-long-edge", Media: "na_letter_8.5x11in", Resolution: 600}, Wait: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := p.Jobs()[0]
+	ps := string(j.Document(0))
+	if res.Format != FormatPostScript || j.Format != FormatPostScript || res.Sheets != 3 || !strings.HasPrefix(ps, "%!PS-Adobe-3.0\n") {
+		t.Fatalf("sent as %s (%s), %d sheets: %q", res.Format, j.Format, res.Sheets, ps[:min(len(ps), 20)])
+	}
+	for _, want := range []string{"%%Pages: 3\n", "<< /PageSize [612 792] >>", "<< /Duplex true /Tumble false >>", "\n0 g\n"} {
+		if !strings.Contains(ps, want) {
+			t.Errorf("the file lacks %q", want)
+		}
+	}
+	if strings.Contains(ps, " rg\n") || attr(j, "printer-resolution") != "600x600dpi" || attr(j, "print-scaling") != "" {
+		t.Errorf("colours, or attributes %v", j.Attrs)
+	}
+	// an A4 page on Letter paper: scaled to fit, centred
+	if pages := ghostscript(t, ps); len(pages) == 3 {
+		k := math.Min(612/a4w, 792/a4h)
+		x, y := (612-a4w*k)/2+75*k, (792-a4h*k)/2+120*k
+		if c := pages[0].RGBAAt(int(x), int(y)); c.R != 0 {
+			t.Errorf("the bar of the first page is not at its place: %v", c)
+		}
+		if c := pages[0].RGBAAt(int(x)+60, int(y)); c.R != 255 {
+			t.Errorf("the bar of the first page is too long: %v", c)
+		}
+		if c := pages[1].RGBAAt(int(x)+60, int(y)); c.R != 0 {
+			t.Errorf("the bar of the second page is too short: %v", c)
+		}
+	}
+
+	p = ipptest.New()
+	p.Formats = []string{FormatPDF, FormatPostScript, FormatPWGRaster}
+	p.Reject = []string{FormatPDF}
+	c = serve(t, p)
+	if res, err = Print(context.Background(), c, testDoc(1), &Options{Wait: time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	if res.Format != FormatPostScript || p.Jobs()[0].Format != FormatPostScript || !strings.Contains(strings.Join(res.Warnings, "\n"), "refuses PDF: sent as PostScript") {
+		t.Errorf("sent as %s: %v", res.Format, res.Warnings)
+	}
+}
+
+// ghostscript draws the pages of a PostScript file at 72 dpi; without
+// Ghostscript, it draws none.
+func ghostscript(t *testing.T, ps string) []*image.RGBA {
+	t.Helper()
+	gs, err := exec.LookPath("gs")
+	if err != nil {
+		t.Log("Ghostscript (gs) is not installed: the pages are not drawn")
+		return nil
+	}
+	dir := t.TempDir()
+	cmd := exec.Command(gs, "-q", "-dSAFER", "-dBATCH", "-dNOPAUSE", "-sDEVICE=png16m", "-r72", "-sOutputFile="+filepath.Join(dir, "p%d.png"), "-")
+	cmd.Stdin = strings.NewReader(ps)
+	if out, err := cmd.CombinedOutput(); err != nil || len(out) > 0 {
+		t.Fatalf("Ghostscript: %v\n%s", err, out)
+	}
+	var pages []*image.RGBA
+	for n := 1; ; n++ {
+		f, err := os.Open(filepath.Join(dir, fmt.Sprintf("p%d.png", n)))
+		if err != nil {
+			return pages
+		}
+		img, err := png.Decode(f)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		rgba := image.NewRGBA(img.Bounds())
+		for y := img.Bounds().Min.Y; y < img.Bounds().Max.Y; y++ {
+			for x := img.Bounds().Min.X; x < img.Bounds().Max.X; x++ {
+				rgba.Set(x, y, img.At(x, y))
+			}
+		}
+		pages = append(pages, rgba)
+	}
+}
+
+// TestPlacePS places pages on paper as raster pages are placed: scaled to
+// fit, centred, landscape pages turned onto portrait paper.
+func TestPlacePS(t *testing.T) {
+	if PlacePS("no-such-paper", "", 0) != nil {
+		t.Error("a placement on unknown paper")
+	}
+	apply := func(m [6]float64, x, y float64) [2]float64 {
+		return [2]float64{math.Round(m[0]*x + m[2]*y + m[4]), math.Round(m[1]*x + m[3]*y + m[5])}
+	}
+	for _, c := range []struct {
+		media       string
+		scaling     raster.Scaling
+		orientation raster.Orientation
+		w, h        float64
+		// where the top left and the bottom right corners of the page go
+		tl, br [2]float64
+	}{
+		{"iso_a4_210x297mm", "", 0, 595.2756, 841.8898, [2]float64{0, 842}, [2]float64{595, 0}},
+		{"iso_a4_210x297mm", "", 0, 841.8898, 595.2756, [2]float64{0, 0}, [2]float64{595, 842}}, // turned counterclockwise
+		{"iso_a4_210x297mm", "", raster.ReversePortrait, 595.2756, 841.8898, [2]float64{595, 0}, [2]float64{0, 842}},
+		{"iso_a4_210x297mm", raster.ScaleNone, raster.Portrait, 100, 100, [2]float64{248, 471}, [2]float64{348, 371}}, // centred
+		{"iso_a4_210x297mm", raster.ScaleFit, raster.Portrait, 100, 100, [2]float64{0, 719}, [2]float64{595, 123}},
+	} {
+		w, h, m := PlacePS(c.media, c.scaling, c.orientation)(c.w, c.h)
+		if math.Round(w) != 595 || math.Round(h) != 842 || apply(m, 0, 0) != c.tl || apply(m, c.w, c.h) != c.br {
+			t.Errorf("%v %s %d: %v × %v, %v %v", c.media, c.scaling, c.orientation, w, h, apply(m, 0, 0), apply(m, c.w, c.h))
+		}
 	}
 }
