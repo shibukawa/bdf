@@ -1,6 +1,6 @@
 module github.com/shibukawa/bdf/raster/ebitenginebdf
 
-go 1.27
+go 1.27.0
 
 require (
 	github.com/hajimehoshi/ebiten/v2 v2.10.4

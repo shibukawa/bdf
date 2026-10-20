@@ -319,8 +319,12 @@ func claim(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// the links are resolved, of the directory when the file is not made
+	// yet, so that a path and the path of its target are one spool
 	if r, err := filepath.EvalSymlinks(abs); err == nil {
 		abs = r
+	} else if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		abs = filepath.Join(dir, filepath.Base(abs))
 	}
 	open.Lock()
 	defer open.Unlock()

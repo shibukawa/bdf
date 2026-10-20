@@ -584,3 +584,31 @@ func TestCompact(t *testing.T) {
 		t.Fatalf("after compaction: %v %+v", err, j)
 	}
 }
+
+// TestClaimThroughSymlink: a spool claimed before its file exists, through
+// a directory that is a link (macOS's temporary directories are under
+// /var, a link to /private/var), is the same spool once the file exists.
+func TestClaimThroughSymlink(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("no symbolic links:", err)
+	}
+	path := filepath.Join(link, "spool.db")
+	key, err := claim(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unclaim(key)
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if k, err := claim(path); err == nil {
+		unclaim(k)
+		t.Fatalf("claimed twice: %s and %s", key, k)
+	}
+	if k, err := claim(filepath.Join(real, "spool.db")); err == nil {
+		unclaim(k)
+		t.Fatalf("claimed twice: %s and %s", key, k)
+	}
+}
