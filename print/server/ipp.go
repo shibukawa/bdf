@@ -200,6 +200,7 @@ func (x *ippServer) handler() http.Handler {
 	mux.HandleFunc("POST "+ippPath+"/{queue}", x.serveIPP)
 	mux.HandleFunc("POST "+ippPath+"/{queue}/{job}", x.serveIPP)
 	mux.HandleFunc("GET /icons/{file}", x.icon)
+	mux.HandleFunc("GET /airprint.mobileconfig", x.serveProfile)
 	mux.HandleFunc("GET /{$}", x.page)
 	mux.HandleFunc("GET "+ippPath, x.page)
 	mux.HandleFunc("GET "+ippPath+"/{queue}", x.page)

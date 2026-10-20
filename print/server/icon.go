@@ -105,7 +105,9 @@ th{font-weight:600;color:var(--muted);font-size:13px}code{font-size:13px;word-br
 <h1><img src="/icons/48.png" width="32" height="32" alt="">{{.Title}}</h1>
 <table><tr><th>Printer</th><th>State</th><th>Jobs</th><th>Address</th></tr>
 {{range .Queues}}<tr><td>{{.Info}}{{if .Location}}<br><small>{{.Location}}</small>{{end}}</td><td>{{.State}}{{if .Message}}<br><small>{{.Message}}</small>{{end}}</td><td>{{.Jobs}}</td><td><code>{{.URI}}</code></td></tr>
-{{end}}</table></body></html>
+{{end}}</table>
+<p><a href="/airprint.mobileconfig">Add these printers to an iPhone or iPad</a> that does not list them (a configuration profile: open it in Safari, then install it in Settings).</p>
+</body></html>
 `))
 
 // page shows the printers and their states: printer-more-info.

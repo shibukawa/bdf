@@ -488,6 +488,34 @@ func TestIPPServeTLS(t *testing.T) {
 	if res.StatusCode != 200 || !bytes.HasPrefix(b, []byte("\x89PNG")) {
 		t.Fatalf("icon: %d", res.StatusCode)
 	}
+	// the profile of AirPrint, for the address the device came to
+	res, err = http.Get("http://" + addr + "/airprint.mobileconfig")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	host, port, _ := net.SplitHostPort(addr)
+	for _, want := range []string{"<string>com.apple.airprint</string>", "<string>" + host + "</string>", "<integer>" + port + "</integer>",
+		"<string>ipp/print/office</string>", "<string>ipp/print/warehouse</string>", "<key>ForceTLS</key>", "<true/>",
+		"<string>com.apple.security.root</string>"} {
+		if !bytes.Contains(b, []byte(want)) {
+			t.Errorf("the profile has no %s", want)
+		}
+	}
+	if res.Header.Get("Content-Type") != "application/x-apple-aspen-config" {
+		t.Errorf("profile: %s", res.Header.Get("Content-Type"))
+	}
+	// the page of the printers
+	res, err = http.Get("http://" + addr + "/ipp/print/office")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ = io.ReadAll(res.Body)
+	res.Body.Close()
+	if !bytes.Contains(b, []byte("Office")) || !bytes.Contains(b, []byte("ipp://"+addr+"/ipp/print/office")) || bytes.Contains(b, []byte("warehouse")) {
+		t.Errorf("page:\n%s", b)
+	}
 }
 
 func image100x141() *image.Gray {

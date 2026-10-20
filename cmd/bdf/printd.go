@@ -27,6 +27,7 @@ func printdCmd(args []string) {
 	checkOnly := fs.Bool("check", false, "check the configuration, ask each printer what it supports, and exit; the spool is not opened")
 	compact := fs.Bool("compact", false, "rewrite the spool's file without the space of removed jobs, and exit; the server must be stopped")
 	listen := fs.String("listen", "", "the address to listen on, over the configuration's")
+	profile := fs.String("airprint-profile", "", "write a configuration profile (.mobileconfig) that adds the IPP printers to iPhones and iPads at a `host` name or address, with the server's certificate, and exit")
 	zone := fs.String("dns-sd", "", "write the DNS-SD records of the IPP printers for a DNS `domain` (wide-area DNS-SD: clients of other subnets find them), and exit")
 	logFormat := fs.String("log", "json", "the format of the log on the standard error: json or text")
 	debug := fs.Bool("debug", false, "log what is done step by step")
@@ -63,6 +64,17 @@ func printdCmd(args []string) {
 		cfg.Listen = *listen
 	}
 	switch {
+	case *profile != "":
+		if cfg.IPP == nil {
+			check(fmt.Errorf("%s has no ipp: section", *config))
+		}
+		_, port, err := net.SplitHostPort(cfg.IPP.Listen)
+		check(err)
+		n, err := strconv.Atoi(port)
+		check(err)
+		b, err := server.AirPrintProfile(cfg, *profile, n)
+		check(err)
+		os.Stdout.Write(b)
 	case *zone != "":
 		if cfg.IPP == nil {
 			check(fmt.Errorf("%s has no ipp: section", *config))
