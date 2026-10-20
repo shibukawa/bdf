@@ -270,6 +270,18 @@ bdf template compile -sample order.json slip.txt slip.bdft
 | `newline=crlf` | 行の終わりを LF の代わりに CR LF にする |
 | `paper=preprinted` | プレ印刷の用紙の範囲を空白で書く |
 
+**印刷。** `bdf print` は、ESC/P のドットインパクトプリンタにはテキストモードで送ります。ピッチ・行送り・用紙長・ミシン目スキップはテンプレートのもので、文字はプリンタのフォントで（漢字は漢字モード）、`-skip background` でプレ印刷の用紙の範囲を刷りません。ESC/POS のレシートプリンタは `-print-mode text` で同じように刷ります。
+
+```bash
+bdf print -printer 'socket://192.168.0.20:9100?profile=vp-f2000' -skip background slip.bdf
+```
+
+```bash
+bdf print -printer 'serial:///dev/ttyUSB0?profile=tm-t88' -print-mode text receipt.bdf
+```
+
+`ambiguous: narrow` のテンプレートの 1 桁の文字（罫線素片、`○`、`※`）を、ESC/P は半角の漢字で刷ります。レシートプリンタにはそれが無いので、罫線素片と `×` は 1 バイトの文字の表から刷り、ほかは警告を出して `?` にします。`○` や `※` を使うレシートは `ambiguous: wide` と書いてください。ESC/P には漢字を縦だけ 2 倍にする命令が無いので、`_tall` の漢字は普通の大きさで刷り、警告を出します。ESC/P は 10・12・15・17.1・20 CPI（漢字は 10〜15）、ESC/POS は 1 桁が 12 ドット以上になるピッチ（180 dpi と 203 dpi で 15 CPI まで）を刷れます。そう刷れない帳票は、警告を出してドットで刷ります（`-print-mode text` のときは誤り）。
+
 テキストのテンプレートに画像、QR コード、バーコードは書けません（プリンタのテキストモードは文字を印字するため）。私用領域の文字（外字）と絵文字は、プリンタが持っていないので警告します。
 
 ## QR コードとバーコード

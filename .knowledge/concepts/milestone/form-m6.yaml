@@ -121,7 +121,8 @@ open_questions:
     resolution: '既定は 1 桁（叙述の例はそうでないと揃わず、多くのエディタもそう見せる）。前書きの ambiguous: wide で 2 桁（ESC/P-J の漢字モードは罫線素片を全角で印字する）。Part の ambiguousWide に残す。2026-10-20 Claude が決めた（暫定。利用者に確認していない）'
   escp-box-drawing:
     text: 1 桁の罫線素片を ESC/P-J・ESC/POS の漢字モードでどう印字するか（PC437 などの 1 バイトの罫線か、全角にして ambiguous wide を勧める警告か）。print-m5 で決める
-    state: open
+    state: answered
+    resolution: 'ESC/P は半角の漢字（FS ! のビット 1。FS SI と同じ）で 1 桁に。ESC/POS は罫線素片をコードページ 437、× などを 850 の 1 バイトで、どちらにも無い文字は ? にして ambiguous: wide を勧める警告。2026-10-20 Claude が決めた（暫定。milestone:print-m5 の text_mode）'
 facts:
   delivery:
     plan: knowledge-inputs/print-plan/form-m6.ja.md（2026-10-20）

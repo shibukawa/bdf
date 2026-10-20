@@ -115,7 +115,9 @@ var steps = []step{
 		return op(c, ipp.OpSendDocument, ipp.Attr("job-id", ipp.Integer(int(ids[1]))), ipp.Attr("document-format", ipp.MimeType("application/pdf")),
 			ipp.Attr("last-document", ipp.Boolean(true))), pdf
 	}},
-	{name: "Send-Document after the last", req: func(c *ipp.Client, ids []int32) (*ipp.Message, []byte) {
+	// (a printer without jobs of more documents may answer that first:
+	// the ippeveprinter of Ubuntu does, of macOS (CUPS 2.3) not)
+	{name: "Send-Document after the last", either: []ipp.Status{ipp.StatusClientErrorNotPossible, ipp.StatusServerErrorMultipleDocumentJobsNotSupported}, req: func(c *ipp.Client, ids []int32) (*ipp.Message, []byte) {
 		return op(c, ipp.OpSendDocument, ipp.Attr("job-id", ipp.Integer(int(ids[1]))), ipp.Attr("document-format", ipp.MimeType("application/pdf")),
 			ipp.Attr("last-document", ipp.Boolean(true))), pdf
 	}},

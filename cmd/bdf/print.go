@@ -56,6 +56,9 @@ const printUsage = `usage: bdf print [flags] -printer <url | name> <file.bdf | d
   CUPS (ipp://localhost:631/printers/<queue>) is sent it with -format zpl
   … and -profile. The page is drawn in black and white at the printer's
   dots; a label printer prints the QR codes and barcodes of forms itself.
+  A form filled from a template of text is printed by ESC/P in the text
+  mode, the characters on its grid in the printer's fonts (-print-mode
+  text for ESC/POS, raster for the dots).
 
   With -server (or $BDF_SERVER, without -printer) the document goes as it is
   to a queue of a print server (bdf printd), which converts and prints it;
@@ -100,6 +103,7 @@ func printCmd(args []string) {
 	drawer := fs.Int("drawer", 0, "open the cash drawer of a receipt printer at the end: 1 (pin 2) or 2 (pin 5)")
 	perforation := fs.Float64("perforation-skip", 0, "skip over the perforation of a continuous form, in mm (ESC/P)")
 	noPrinterBarcodes := fs.Bool("no-printer-barcodes", false, "draw the QR codes and barcodes that a label printer would print itself")
+	printMode := fs.String("print-mode", "", "ESC/P and ESC/POS: raster (the dots of the pages) or text (the characters of a form of a template of text, in the printer's fonts); default: text for ESC/P when the document is such a form")
 	rasterIfLossy := fs.Bool("raster-if-lossy", false, "send PWG Raster when the PDF file would leave out what the page draws (FILTER, composite operations)")
 	view := fs.String("view", "", "id of the view to print (default: the first view of pages)")
 	var skip stringList
@@ -144,7 +148,7 @@ func printCmd(args []string) {
 		Resolution: *resolution, Scaling: raster.Scaling(*scaling), OutputBin: *bin, HoldUntil: *hold, Priority: *priority,
 		JobName: *jobName, Darkness: *darkness, Speed: int(math.Round(*speed * 100)), MediaTracking: *tracking,
 		LabelGap: int(math.Round(*gap * 100)), Cut: *cut, CashDrawer: *drawer, PerforationSkip: int(math.Round(*perforation * 100)),
-		NoPrinterBarcodes: *noPrinterBarcodes}
+		NoPrinterBarcodes: *noPrinterBarcodes, PrintMode: *printMode}
 	var prof *pdl.Profile
 	if *profile != "" {
 		p, ok := pdl.LookupProfile(*profile)

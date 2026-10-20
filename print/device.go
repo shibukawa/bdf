@@ -106,6 +106,9 @@ func (j *job) deviceDocument(p pdl.Profile) ([]byte, error) {
 		return nil, err
 	}
 	j.res.Format, j.res.Media = pdl.Title(p.Language), t.Media
+	if res.Text {
+		j.res.Format += " (text)"
+	}
 	return buf.Bytes(), nil
 }
 

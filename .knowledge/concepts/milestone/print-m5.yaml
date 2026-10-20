@@ -18,7 +18,6 @@ constraints:
 - チケットの拡張は IPP の名前のあるもの（print-darkness、print-speed、media-tracking）と bdf- の名前（bdf-label-gap、bdf-cut、bdf-cash-drawer、bdf-perforation-skip、bdf-no-printer-barcodes、bdf-print-mode）。言語に通り道の無い値は unsupported
 - 搬送路は cgo なし（x/sys の termios、DCB、winspool.drv）。どれもジョブの状態を返さないので、書き始めた後に落ちたジョブは 9100 と同じく人に任せる
 non_goals:
-- ESC/P と ESC/POS のテキストモード（テキスト帳票テンプレート form-m6 の印字像の Part から作る。form-m6 は別のセッションで並行して実装中。bdf-print-mode=text は今は断る）
 - Bluetooth Low Energy（SPP の機種は OS のシリアルポートで届く）、P-touch Template・Dymo
 - プリンタに保存するフォーマット（^DF / ^XF）、状態の取得（~HS、DLE EOT、ENQ）
 - 実機での確認（手元に無い。docs に試し方を書いた）
@@ -33,7 +32,7 @@ capabilities:
     state: implemented
     about: capability:print/device-transports
   text-mode:
-    state: planned
+    state: implemented
     about: capability:print/text-mode
 acceptance:
   s1-mark:
@@ -53,7 +52,21 @@ acceptance:
     - print-unit
     - server-unit
     - cli-local
+  s6-text-mode:
+    text: 'テキスト帳票テンプレートの帳票（印字像の Part を持つ文書）を、ESC/P は既定で、ESC/POS は bdf-print-mode=text でテキストモードで刷る。格子のピッチ・行送り・用紙長・スキップ・左余白が命令になり、刷った文字を読み戻すと印字像の Text（余白込み、-skip background ならプレ印刷を空白）と一致する。刷れないピッチや幅は、既定のモードならドットで刷って警告、テキストモードを求めたら誤り'
+    verified_by:
+    - text-unit
+    - print-unit
+    - cli-local
 verification:
+  text-unit:
+    state: passed
+    method: unit
+    test: "go test ./print/pdl/ -run 'Text'"
+    authority: observed
+    evidence:
+      path: print/pdl/text_test.go
+      locator: 'TestTextESCP（testdata/form の text-slip・rows・pages を自前の ESC/P の読み手で格子に戻し、印字像の Text と一致。プレ印刷あり・なし。ESC C・ESC N・FF の数）、TestTextESCPHalfWidth（あいまいな幅を 1 桁の罫線素片は FS ! 2 の半角の漢字、FS T と FS S の空き）、TestTextESCPOS（text-receipt を 180 dpi と 203 dpi で、ESC $ の位置が格子どおり、2 部でカット 2 回、ドロワ）、TestTextModes（既定のモード、ラベルの言語、Part なし、13 CPI のドットへの後退、58 mm に収まらない）、TestTextEncode（JIS X 0208 の変換、CP437・CP850、太線を細線に、〓 と ?）'
   mark-unit:
     state: passed
     method: unit
@@ -101,7 +114,7 @@ verification:
     authority: observed
     evidence:
       path: print/device_test.go
-      locator: 'TestPrintRawLabels（9100 に ZPL、用紙と部数と設定、受けないもの、profile だけの URL）、TestPrintCUPSRaw（application/vnd.cups-raw の ipptest に ESC/POS）、TestDeviceTicket'
+      locator: 'TestPrintRawLabels（9100 に ZPL、用紙と部数と設定、受けないもの、profile だけの URL）、TestPrintRawText（9100 に text-slip を ESC/P (text) で、プレ印刷を刷らない、raster のとき ESC/P、80 桁はレシートに収まらない）、TestPrintCUPSRaw（application/vnd.cups-raw の ipptest に ESC/POS）、TestDeviceTicket'
   server-unit:
     state: passed
     method: unit
@@ -117,7 +130,7 @@ verification:
     authority: observed
     evidence:
       path: test/print/ci.sh
-      locator: '2026-10-20 に手元で ^XA、^PW831^LL1198、^GFA、^PQ2 が 3 つ'
+      locator: '2026-10-20 に手元で ^XA、^PW831^LL1198、^GFA、^PQ2 が 3 つ。テキストモードは 2026-10-20 に text-rows を vp-f2000（ESC/P (text)、3 ページ）、text-receipt を pos-80 に -print-mode text（ESC/POS (text)）。ci.sh の ESC/P のテキストの段も手元で raw9100.py に通した'
   ci-print:
     state: not_run
     method: integration
@@ -132,8 +145,11 @@ verification:
     test: Zebra・SATO・東芝テック・Epson TM・Epson VP の実機で、ラベル・レシート・連帳とプリンタ側バーコードの読み取り、カット、ドロワ、ミシン目スキップ
     authority: authored
 open_questions:
+  text-mode-unverified:
+    text: 'テキストモードの ESC/P-J84 の命令は、キヤノンとブラザーの互換機の資料で確かめた（JIS コード、FS S・FS T の 1/180 インチ、FS ! のビット、ESC w が上へ伸びること、FS W の 2 回の印字）。Epson VP の実機と Epson のリファレンスでは未確認。ESC/POS の Font A の幅（12 ドット）も実機では未確認'
+    state: open
   escpos-raster-command:
-    text: ESC/POS は GS v 0（Epson は廃止予定とするが互換機が広く持つ）にした。Epson の新機種で GS ( L（fn112 と fn50）に替えるか
+    text: ESC/POS は GS v 0（Epson は廃止予定とするが互換機が広く持つ）にした。Epson の新機種で GS ( L（fn112 と fn50）に替えるか。lrks の記事では東芝テック B-EP2DL で確かめられた絵の命令は ESC *（ビットイメージ）だけで、GS v 0 は書かれていない（動かないとは書いていない）
     state: open
   sbpl-stx:
     text: SBPL を STX と ETX で囲む（SATO のステータスのプロトコル 3・4 が求める）。プロトコルの無い設定の機種で害が無いかは未確認
@@ -153,8 +169,23 @@ facts:
       - 'S3 ESC/POS と ESC/P'
       - 'S4 print/raw の serial・usb・winspool、print の Ticket の拡張と PrintRaw・CUPS の raw キュー、spool と server の設定、bdf print の -profile と旗'
       - 'S5 docs（cli、print-server、design §3.36、api、spec）、test/print/ci.sh、.knowledge'
+      text_mode:
+        date: '2026-10-20'
+        request: 利用者「milestone 5 と 5 に必要な 6 の機能の一部は終わりました。残りの作業を終わらせてください」（form-m6 が main に入った後）
+        files: 'print/pdl の text.go（モードの決め方、文字の符号化、writeText）、escp_text.go、escpos_text.go、text_test.go。print の Ticket.PrintMode と Format の「(text)」、bdf print -print-mode、test/print/ci.sh の段、docs（cli、forms、print-server、design §3.36、api）'
+        research: 'ESC/POS は Epson の TM のリファレンス（GS !、ESC !、FS !、FS &、FS .、FS C、FS S、ESC 3、ESC M、ESC R）を内蔵ブラウザで読んだ（利用規約には同意していない。表示された本文だけ）。ESC/P-J84 は Epson のリファレンスが読めず、IBM 5557-H02（Ricoh 配布）の ESC/P モードの命令表で FS &・FS .・FS SI・FS DC2・FS !・FS S・FS T・FS W・ESC W・ESC w の名前を確かめた。利用者の指摘（「ブラザーとかキヤノンを見ると文字コードは JIS の様に見えます」）で、ブラザー PT-9700PC の ESC/P コマンドリファレンス（FS & は JIS X 0208-1983 準拠、FS SI は SI と同じ）と、キヤノン imageRUNNER ADVANCE C350F の ESC/P エミュレーション（FS & は新 JIS、FS S・FS T は 1/180 インチで 0〜127、FS SI は横 1/2、ESC W は ANK と漢字の横倍、ESC w は ANK だけをベースラインから上へ、FS ! のビット 0 縦書き・1 半角・2 横倍（ESC W）・3 縦横 2 倍（FS W）・4 と 5 上付き下付き・7 下線、FS W は上半分の後 24/180 インチ送って下半分）を読んだ。利用者が示した lrks の記事（https://telecotele.com/projects/escpos/ と https://telecotele.com/shigoto_yamero/20250607_receipt/）で、東芝テック B-EP2DL（ESC/POS 互換）は Shift_JIS を受けず JIS を FS & … FS . で囲む、ESC t 1 で半角カナ、ESC R 8 で ¥、TM-T90 は FS ! 0x04 で漢字の倍幅、B-EP2DL は GS ! で漢字も大きくなることを確かめた'
+        decisions:
+        - '既定: ESC/P は印字像の Part を持つ文書をテキストモードで、ESC/POS はドット（レシートのロゴとフォントを保つ）。bdf-print-mode=text で ESC/POS も、raster で ESC/P もドット。ラベルの言語に text は誤り'
+        - '刷れない帳票（ESC/P に無いピッチ・行送り、漢字が 2 桁に収まらないピッチ、プリンタより広い）は、既定のモードならドットで刷って警告、text を求めたら誤り。書き手はまずメモリに書き、通ったら送る'
+        - '文字: ASCII、半角カナは 1 バイト（ESC/P は日本語機の既定のカナの表、ESC/POS は ESC t 1）、¥ は ESC R 8 の 0x5C、ほかは JIS X 0208（1〜88 区、NEC の 13 区を含む。IBM 拡張は 〓）を漢字モードで JIS コード（ESC/POS は FS C 0）'
+        - 'あいまいな幅を 1 桁と数えたテンプレートの 1 桁の文字: ESC/P は半角の漢字（FS ! のビット 1。FS SI と同じ。FS T で 1 桁の空き）。ESC/POS は罫線素片をコードページ 437（ESC t 0。太線は細線にして警告）、× などを 850（ESC t 2）、ほかは ? にして ambiguous: wide を勧める警告（form-m6 の escp-box-drawing の答え）'
+        - 'ESC/P の倍角（キヤノンの ESC/P エミュレーションの資料に従って改めた）: ESC W は全部の文字の横倍で FS ! のビット 2 と同じフラグ。漢字のある帳票では横倍・半角（ビット 1、FS SI と同じ）・縦横 2 倍（ビット 3、FS W と同じ）を FS ! の 1 バイトでまとめて決め、漢字の無い帳票は ESC W。ESC w は 1 バイトの文字の縦倍で、ベースラインから上へ伸び改行の量を変えないので、倍高の行は次の行（印字像で空の行）に刷る。縦横 2 倍の漢字は上半分を刷って 24/180 インチ送り下半分とほかの文字を刷るので、ESC J（行の高さ − 24/180）で下げてから刷り、次の空の行は送らない。漢字の縦倍だけは命令が無いので普通の大きさ（警告）、行が 24/180 に満たないときの縦横 2 倍の漢字は横倍（警告）。漢字の送りは FS S（1/180 インチ）で 2 桁（10 CPI で 6+6、12 CPI で 3+3、15 CPI で 0。既定は左 0 右 3）、半角は FS T（既定は左 0 右 2）'
+        - 'ESC/POS の桁: Font A（12 ドット、漢字 24）に ESC SP と FS S の空きを足し（どちらも倍角で倍になる）、予測した位置が格子の位置 round(col × dpi / cpi) とずれたら ESC $ で置く。空白は送らず位置で飛ばす。行は ESC J でドット単位（GS P）に送り、倍高の行は 2 行分送る'
+        - 'チケットの bdf-perforation-skip はテキストモードでは受けない（印字像の skip が帳票のもの）。-media と scaling はテキストモードでは使わない'
+        - 'ESC/POS の倍角は GS ! に加えて、漢字のある帳票では FS ! を同じ大きさで送る（Epson の GS ! は漢字にも効くが、記事の TM-T90 は FS ! を使う。どちらも漢字の大きさを決める命令なので重ねても倍にならない）。漢字のコードは JIS（B-EP2DL が Shift_JIS を受けないため。TM 系は両方受ける）'
+        - '結果の形式は「ESC/P (text)」「ESC/POS (text)」（pdl.Result.Text）'
       changed_from_plan:
-      - 'ESC/P・ESC/POS のテキストモードは form-m6 の後（2026-10-20 利用者が form-m6 を別セッションで並行と決めた）'
+      - 'ESC/P・ESC/POS のテキストモードは form-m6 の後（2026-10-20 利用者が form-m6 を別セッションで並行と決めた）。両方が入った同日に足した（text_mode）'
       - 'ZPL の Z64 は使わない（CRC の算法が公開されておらず、器も gzip と zlib で食い違う）。^GFA の ASCII 圧縮'
       - '複写の枚数は扱わない（ESC/P にも ESC/P-J84 にも命令が無く、紙厚は機種の自動検知かパネルの設定）'
       - 'winspool の URL は winspool:///名前（Go の URL はホストに %20 を許さない）。共有のキューは winspool://server/queue'

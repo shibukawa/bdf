@@ -12,25 +12,7 @@ import "math"
 // which has ESC * and not the raster graphics of ESC/P2.
 
 func writeESCP(w *errWriter, rd *render, res *Result) error {
-	s := rd.o.Settings
-	if s.Darkness != 0 {
-		res.unsupported("print-darkness", s.Darkness)
-	}
-	if s.Speed != 0 {
-		res.unsupported("print-speed", s.Speed)
-	}
-	if s.Tracking != "" && s.Tracking != "continuous" {
-		res.unsupported("media-tracking", s.Tracking)
-	}
-	if s.Cut != "" && s.Cut != CutNone {
-		res.unsupported("bdf-cut", s.Cut)
-	}
-	if s.Drawer != 0 {
-		res.unsupported("bdf-cash-drawer", s.Drawer)
-	}
-	if s.Gap != 0 {
-		res.unsupported("bdf-label-gap", s.Gap)
-	}
+	escpUnsupported(rd.o.Settings, res)
 	if rd.p.DPI != 180 {
 		// the dots of ESC * 39
 		p := rd.p
@@ -89,6 +71,28 @@ func writeESCP(w *errWriter, rd *render, res *Result) error {
 		res.Pages++
 	}
 	return w.err
+}
+
+// escpUnsupported notes the settings ESC/P has no command for.
+func escpUnsupported(s Settings, res *Result) {
+	if s.Darkness != 0 {
+		res.unsupported("print-darkness", s.Darkness)
+	}
+	if s.Speed != 0 {
+		res.unsupported("print-speed", s.Speed)
+	}
+	if s.Tracking != "" && s.Tracking != "continuous" {
+		res.unsupported("media-tracking", s.Tracking)
+	}
+	if s.Cut != "" && s.Cut != CutNone {
+		res.unsupported("bdf-cut", s.Cut)
+	}
+	if s.Drawer != 0 {
+		res.unsupported("bdf-cash-drawer", s.Drawer)
+	}
+	if s.Gap != 0 {
+		res.unsupported("bdf-label-gap", s.Gap)
+	}
 }
 
 // escpLength writes the page length of a form of n rows of 1/180 inch,

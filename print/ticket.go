@@ -81,8 +81,11 @@ type Ticket struct {
 	// NoPrinterBarcodes draws the QR codes and barcodes that a label
 	// printer would print with its own commands.
 	NoPrinterBarcodes bool `json:"bdf-no-printer-barcodes,omitempty"`
-	// PrintMode is "raster" or "text" (the characters of a print image in
-	// the printer's fonts; not yet).
+	// PrintMode is "raster" (the dots of the pages) or "text" (ESC/P and
+	// ESC/POS: the characters of the print image of a form filled from a
+	// template of text, in the printer's fonts); "" for the language's
+	// default: the text mode for ESC/P when the document has a print image,
+	// else the dots.
 	PrintMode string `json:"bdf-print-mode,omitempty"`
 }
 
