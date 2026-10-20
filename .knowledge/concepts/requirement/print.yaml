@@ -198,13 +198,14 @@ facts:
   package_layout:
     print: チケット、出力先のインターフェース、形式の選択、用紙の名前（PWG 5101.1）
     print/ipp: メッセージの読み書き、クライアント、DNS-SD、CUPS 固有の操作
-    print/raster: PWG Raster の書き手。後で URF と PCLm
+    print/raster: PWG Raster の書き手と、Apple Raster（URF）と PCLm の書き手（print-m3 で実装）
+    print/raw: 9100 と LPD の搬送路と PJL の見出し（print-m3 で実装。文書づくりは print.PrintRaw）
     print/spool: ジョブ、キュー、状態機械、再送、履歴、アカウンティング（print-m2 で実装）
     print/server: HTTP API、設定、監視（bdf printd。トークン、SSE、/metrics、状態のページ。print/server/client はその Go のクライアント。print-m2 で実装）。後で IPP サーバーと DNS-SD の広告
     print/internal/osspool: CUPS の固有操作。Windows は無し（需要が出たら GDI をここに）
-    vector/psbdf: PostScript 3 の書き手（pdfbdf の兄弟）
+    vector/psbdf: PostScript 3 の書き手（pdfbdf の兄弟。print-m3 で実装）
     vector/hpglbdf: HP-GL/2 ＋ HP RTL の書き手（大判、CAD）
-    vector/internal/flatten: 透明の平坦化の共通部
+    vector/internal/flatten: 透明の平坦化の共通部（print-m3 で実装。透明な所の矩形を集めてまとめ、imagebdf.Region で絵にする）
     cmd: cmd/bdf の print / printers / jobs / printd
   delivery:
     proposed_order:
@@ -257,6 +258,8 @@ relations:
   to: milestone:print-m1
 - relation: has_milestone
   to: milestone:print-m2
+- relation: has_milestone
+  to: milestone:print-m3
 - relation: enabled_by
   to: requirement:text-template
 - relation: informed_by
@@ -264,6 +267,8 @@ relations:
 - relation: informed_by
   to: decision:thin-store
 history:
+  m3-implemented:
+    summary: 2026-10-20 利用者「次の実装をお願いします。m3。」。print-m3（Apple Raster と PCLm、PostScript の書き手 vector/psbdf と平坦化、形式の順 PDF → PostScript → PWG → URF → PCLm、9100 と LPD の print/raw とスプール、IPP USB のループバックの探索）を実装した（milestone:print-m3）。HP-GL/2 は CAD の現場の声を待つ
   m2-implemented:
     summary: 2026-10-20 print-m2（スプールとプリントサーバー、bdf printd・bdf jobs・bdf print -server、受けた入力の変換、examples/print-server、docs/print-server）を実装した（milestone:print-m2）
   thin-store-deferred:

@@ -1,7 +1,9 @@
 // Package raster writes the raster formats of driverless printing: PWG
 // Raster (PWG 5102.4, image/pwg-raster), which IPP Everywhere printers
-// take. A page is written a band of rows at a time, as raster/imagebdf
-// draws it, so a page at 600 dpi is never whole in memory.
+// take, Apple Raster (image/urf), which AirPrint printers take, and PCLm
+// (application/PCLm), which Mopria printers take. A page is written a
+// band of rows at a time, as raster/imagebdf draws it, so a page at 600
+// dpi is never whole in memory.
 //
 // The package also places pages on sheets of paper (Fit): the scale, the
 // quarter turn and the offset that print a page of a document on a sheet
@@ -192,14 +194,17 @@ func (p *Page) Header() ([HeaderSize]byte, error) {
 type Writer struct {
 	w       *bufio.Writer
 	started bool
-	page    *Page
-	bpp     int // bytes a pixel unit: 1 for 1 bit (8 pixels), 1 for sgray_8, 3 for srgb_8
-	line    []byte
-	prev    []byte
-	repeat  int // times prev is repeated, beyond the first
-	rows    int // rows written of the page
-	held    bool
-	enc     []byte
+	// urf writes Apple Raster (NewURFWriter) of urfPages pages
+	urf      bool
+	urfPages int
+	page     *Page
+	bpp      int // bytes a pixel unit: 1 for 1 bit (8 pixels), 1 for sgray_8, 3 for srgb_8
+	line     []byte
+	prev     []byte
+	repeat   int // times prev is repeated, beyond the first
+	rows     int // rows written of the page
+	held     bool
+	enc      []byte
 }
 
 // NewWriter returns a writer of a PWG Raster stream to w.
@@ -218,17 +223,24 @@ func (w *Writer) StartPage(p Page) error {
 	if err := w.flushLine(); err != nil {
 		return err
 	}
-	h, err := p.Header()
-	if err != nil {
-		return err
-	}
-	if !w.started {
-		if _, err := w.w.WriteString(Sync); err != nil {
+	var h []byte
+	if w.urf {
+		uh, err := p.urfHeader()
+		if err != nil {
 			return err
 		}
-		w.started = true
+		h = uh[:]
+	} else {
+		ph, err := p.Header()
+		if err != nil {
+			return err
+		}
+		h = ph[:]
 	}
-	if _, err := w.w.Write(h[:]); err != nil {
+	if err := w.start(); err != nil {
+		return err
+	}
+	if _, err := w.w.Write(h); err != nil {
 		return err
 	}
 	_, _, bits, _, _ := p.Type.layout()
@@ -274,20 +286,36 @@ func (w *Writer) Close() error {
 	if err := w.flushLine(); err != nil {
 		return err
 	}
-	if !w.started {
-		if _, err := w.w.WriteString(Sync); err != nil {
-			return err
-		}
-		w.started = true
+	if err := w.start(); err != nil {
+		return err
 	}
 	return w.w.Flush()
 }
 
+// start writes the beginning of the stream, once.
+func (w *Writer) start() error {
+	if w.started {
+		return nil
+	}
+	w.started = true
+	if w.urf {
+		var b [12]byte
+		copy(b[:], URFSync)
+		binary.BigEndian.PutUint32(b[8:], uint32(w.urfPages))
+		_, err := w.w.Write(b[:])
+		return err
+	}
+	_, err := w.w.WriteString(Sync)
+	return err
+}
+
 // convert puts row y of img into w.line in the page's type.
-func (w *Writer) convert(img image.Image, y int) {
+func (w *Writer) convert(img image.Image, y int) { convertRow(w.line, img, y, w.page.Type) }
+
+// convertRow puts row y of img into line, in pixels of a type.
+func convertRow(line []byte, img image.Image, y int, typ Type) {
 	b := img.Bounds()
-	line := w.line
-	switch w.page.Type {
+	switch typ {
 	case SGray8:
 		if g, ok := img.(*image.Gray); ok {
 			copy(line, g.Pix[(y-g.Rect.Min.Y)*g.Stride:])
@@ -303,7 +331,7 @@ func (w *Writer) convert(img image.Image, y int) {
 			line[3*x], line[3*x+1], line[3*x+2] = r, g, bb
 		}
 	case Black1, SGray1:
-		inkIsOne := w.page.Type == Black1
+		inkIsOne := typ == Black1
 		for i := range line {
 			line[i] = 0
 		}

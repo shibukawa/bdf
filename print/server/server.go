@@ -84,7 +84,7 @@ func New(ctx context.Context, cfg *Config, o Options) (*Server, error) {
 	ts := sp.TrustStore()
 	ts.Pinned = cfg.pinned()
 	for _, p := range so.Printers {
-		if !p.Client.TLS.Insecure {
+		if p.Client != nil && !p.Client.TLS.Insecure {
 			p.Client.TLS.Store = ts
 		}
 	}

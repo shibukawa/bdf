@@ -71,7 +71,8 @@ func printersCmd(args []string) {
 	conn := addConnFlags(fs)
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, `usage: bdf printers [flags]
-  lists the IPP printers that DNS-SD finds on the local network (mDNS),
+  lists the IPP printers that DNS-SD finds on the local network (mDNS) and
+  on this machine (printers of USB that ipp-usb or macOS shows as IPP),
   or with -url what one printer supports, or with -cups the queues of a CUPS server,
   or with -server the queues and printers of a print server (bdf printd)`)
 		fs.PrintDefaults()
@@ -125,7 +126,12 @@ func printersCmd(args []string) {
 			return
 		}
 		for _, s := range svcs {
-			fmt.Printf("%s\t%s\t%s\t%s\n", s.Name, s.URL, firstNonEmpty(s.TXT["ty"], s.TXT["product"]), strings.Join(s.Formats(), ","))
+			local := ""
+			if s.Local {
+				// (a printer of USB, or a queue this machine shares)
+				local = "\tthis machine"
+			}
+			fmt.Printf("%s\t%s\t%s\t%s%s\n", s.Name, s.URL, firstNonEmpty(s.TXT["ty"], s.TXT["product"]), strings.Join(s.Formats(), ","), local)
 		}
 	}
 }

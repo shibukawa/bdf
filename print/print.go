@@ -40,8 +40,10 @@ var (
 // end is waited for.
 type Options struct {
 	Ticket Ticket
-	// Format is "pdf", "pwg-raster", or "" (or "auto") to choose: PDF
-	// when the printer takes it, else PWG Raster.
+	// Format is "pdf", "ps" (PostScript), "pwg-raster", "urf" (Apple
+	// Raster), "pclm", or "" (or "auto") to choose: PDF when the printer
+	// takes it, else PostScript, else PWG Raster, else Apple Raster, else
+	// PCLm.
 	Format string
 	// RasterIfLossy sends PWG Raster instead of PDF when the PDF file
 	// would leave out what the document draws (FILTER, composite
@@ -135,6 +137,9 @@ type job struct {
 	view  *bdf.View
 	pages []int // zero-based pages of the view, in order
 	res   *Result
+	// raw is set for a printer of 9100 or LPD, which is told of the job
+	// only in its file
+	raw bool
 }
 
 // Print prints a document on the printer of a client: it asks the
@@ -218,15 +223,22 @@ func (j *job) run() error {
 		}
 	}
 	j.res.Media = media
-	var pdf []byte
-	if format == FormatPDF {
-		if pdf, err = j.pdf(); err != nil {
-			return err
-		}
+	// the file of a vector format; raster pages are written as they are sent
+	data, err := j.document(format, media)
+	if err != nil {
+		return err
 	}
-	if format == FormatPDF && j.o.RasterIfLossy && j.p.Supports(FormatPWGRaster) && lossy(j.res.Warnings) {
-		j.res.warn("the PDF file would leave out what the page draws: sent as PWG Raster")
-		format = FormatPWGRaster
+	if r := fallbackRaster(j.p); format == FormatPDF && j.o.RasterIfLossy && r != "" && lossy(j.res.Warnings) {
+		j.res.warn("the PDF file would leave out what the page draws: sent as %s", formatTitle[r])
+		format, data = r, nil
+	}
+	fallback := fallbackFormat(j.p)
+	refused := func() error {
+		j.res.warn("the printer refuses PDF: sent as %s", formatTitle[fallback])
+		format = fallback
+		d, err := j.document(format, media)
+		data = d
+		return err
 	}
 	attrs, err := j.attributes(format, media)
 	if err != nil {
@@ -238,9 +250,10 @@ func (j *job) run() error {
 	var se *ipp.StatusError
 	switch {
 	case err == nil, ipp.IsStatus(err, ipp.StatusServerErrorOperationNotSupported):
-	case errors.As(err, &se) && se.Status == ipp.StatusClientErrorDocumentFormatNotSupported && format == FormatPDF && j.p.Supports(FormatPWGRaster):
-		j.res.warn("the printer refuses PDF: sent as PWG Raster")
-		format, pdf = FormatPWGRaster, nil
+	case errors.As(err, &se) && se.Status == ipp.StatusClientErrorDocumentFormatNotSupported && format == FormatPDF && fallback != "":
+		if err := refused(); err != nil {
+			return err
+		}
 		if attrs, err = j.attributes(format, media); err != nil {
 			return err
 		}
@@ -255,13 +268,13 @@ func (j *job) run() error {
 	j.res.Format = format
 	name := firstOr(j.t.JobName, "document")
 	body := func() (io.Reader, func() error) {
-		if format == FormatPDF {
-			return bytes.NewReader(pdf), func() error { return nil }
+		if data != nil {
+			return bytes.NewReader(data), func() error { return nil }
 		}
 		pr, pw := io.Pipe()
 		done := make(chan error, 1)
 		go func() {
-			err := j.raster(pw, media)
+			err := j.raster(pw, media, format)
 			pw.CloseWithError(err)
 			done <- err
 		}()
@@ -286,9 +299,11 @@ func (j *job) run() error {
 		sent, err := j.c.SendDocument(j.ctx, js.ID, name, format, cr, true)
 		werr := wait()
 		if err != nil {
-			if ipp.IsStatus(err, ipp.StatusClientErrorDocumentFormatNotSupported) && format == FormatPDF && j.p.Supports(FormatPWGRaster) {
-				j.res.warn("the printer refuses PDF: sent as PWG Raster")
-				format = FormatPWGRaster
+			if ipp.IsStatus(err, ipp.StatusClientErrorDocumentFormatNotSupported) && format == FormatPDF && fallback != "" {
+				if err := refused(); err != nil {
+					j.cancel(js.ID)
+					return err
+				}
 				j.res.Format = format
 				r, wait = body()
 				cr = counted(r)
@@ -439,6 +454,18 @@ func (j *job) order() []int {
 	return out
 }
 
+// document writes the file of a vector format (PDF, PostScript); nil for
+// a raster format, whose pages are written as they are sent.
+func (j *job) document(format, media string) ([]byte, error) {
+	switch format {
+	case FormatPDF:
+		return j.pdf()
+	case FormatPostScript:
+		return j.ps(media)
+	}
+	return nil, nil
+}
+
 // pdf writes the selected pages of the view as a PDF file, with the
 // copies the printer does not make.
 func (j *job) pdf() ([]byte, error) {
@@ -485,12 +512,43 @@ func lossy(warnings []string) bool {
 	return false
 }
 
-// raster writes the selected pages as PWG Raster on the paper of the
+// rasterWriter is a writer of raster pages: of PWG Raster, Apple Raster or
+// PCLm.
+type rasterWriter interface {
+	StartPage(raster.Page) error
+	WriteRows(image.Image) error
+	Close() error
+}
+
+// raster writes the selected pages in a raster format on the paper of the
 // media, drawing them in bands.
-func (j *job) raster(w io.Writer, media string) error {
-	setup, err := chooseRaster(j.p, j.t)
-	if err != nil {
-		return err
+func (j *job) raster(w io.Writer, media, format string) error {
+	order := j.order()
+	var setup rasterSetup
+	var back string
+	var rw rasterWriter
+	var err error
+	switch format {
+	case FormatURF:
+		if setup, back, err = chooseURF(j.p, j.t); err != nil {
+			return err
+		}
+		rw = raster.NewURFWriter(w, len(order))
+	case FormatPCLm:
+		var opts raster.PCLmOptions
+		if setup, opts, err = choosePCLm(j.p, j.t); err != nil {
+			return err
+		}
+		back = j.p.PCLmBackSide
+		if rw, err = raster.NewPCLmWriter(w, opts); err != nil {
+			return err
+		}
+	default:
+		if setup, err = chooseRaster(j.p, j.t); err != nil {
+			return err
+		}
+		back = j.p.PWGRasterSheetBack
+		rw = raster.NewWriter(w)
 	}
 	name := media
 	if name == "" {
@@ -508,23 +566,21 @@ func (j *job) raster(w io.Writer, media string) error {
 	ro := &imagebdf.Options{FontFS: j.o.FontFS, FontDirs: j.o.FontDirs, NoSystemFonts: j.o.NoSystemFonts, ImageCacheBytes: -1,
 		BandRows: j.o.BandRows, BandWorkers: j.o.BandWorkers}
 	mono := imagebdf.Mono(0)
-	switch setup.typ {
-	case raster.SGray8:
-		mono = imagebdf.Gray
-	case raster.Black1, raster.SGray1:
+	switch {
+	case setup.typ == raster.Black1, setup.typ == raster.SGray1:
 		mono = imagebdf.Bilevel
 		ro.Antialias = imagebdf.AntialiasOff
+	case setup.mono:
+		mono = imagebdf.Gray
 	}
 	r := imagebdf.New(j.doc, ro)
 	view := skipLayers(j.view, j.o.SkipRoles)
 	duplex, tumble := j.t.duplex()
-	cf, ff, err := raster.Back(j.p.PWGRasterSheetBack, tumble)
+	cf, ff, err := raster.Back(back, tumble)
 	if err != nil {
 		cf, ff = 1, 1
 		j.res.warn("%v: the back of a sheet is sent as the front", err)
 	}
-	rw := raster.NewWriter(w)
-	order := j.order()
 	j.res.Sheets = len(order)
 	pw, ph := sheet.Pixels()
 	for i, page := range order {
@@ -542,7 +598,7 @@ func (j *job) raster(w io.Writer, media string) error {
 			return err
 		}
 		if page < 0 {
-			if err := blank(rw, pw, ph, setup.typ); err != nil {
+			if err := blank(rw, pw, ph); err != nil {
 				return err
 			}
 			continue
@@ -564,7 +620,7 @@ func (j *job) raster(w io.Writer, media string) error {
 }
 
 // blank writes the rows of a blank sheet.
-func blank(rw *raster.Writer, w, h int, typ raster.Type) error {
+func blank(rw rasterWriter, w, h int) error {
 	band := image.NewGray(image.Rect(0, 0, w, min(h, 64)))
 	for i := range band.Pix {
 		band.Pix[i] = 0xff

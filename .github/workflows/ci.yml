@@ -203,11 +203,13 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.27.2"
-      - name: CUPS, ippeveprinter and Avahi
+      - name: CUPS, ippeveprinter, Avahi and Ghostscript
         run: |
           sudo apt-get update
-          sudo apt-get install -y cups cups-ipp-utils cups-filters avahi-daemon
+          sudo apt-get install -y cups cups-ipp-utils cups-filters avahi-daemon ghostscript
           sudo systemctl start avahi-daemon cups
+      # the PostScript files drawn by Ghostscript and compared with the pages
+      - run: go test ./vector/psbdf/ ./print/...
       - run: test/print/ci.sh
   print-os:
     # the printing packages build and pass on Windows and macOS too

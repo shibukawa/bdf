@@ -29,6 +29,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/raw"
 )
 
 // Errors of the spool, which a server turns into HTTP statuses.
@@ -84,10 +85,16 @@ type Queue struct {
 	MaxInflight int
 }
 
-// Printer is a printer jobs are sent to.
+// Printer is a printer jobs are sent to: an IPP printer (Client), or one
+// of 9100 or LPD (Raw), which tells nothing of its jobs. A job sent to the
+// latter is done once the printer has it; one that the printer may have
+// begun to print when the spool stopped (or the connection broke) is held
+// for a person (bdf-duplicate-check), as it is not known whether it was
+// printed.
 type Printer struct {
 	Name   string
 	Client *ipp.Client
+	Raw    *raw.Printer
 }
 
 // Limits bound what the spool takes.
@@ -248,8 +255,8 @@ func Open(ctx context.Context, o Options) (*Spool, error) {
 	s.stepCtx, s.stepStop = context.WithCancel(context.Background())
 	s.sendCtx, s.sendStop = context.WithCancel(context.Background())
 	for _, p := range o.Printers {
-		if p.Name == "" || p.Client == nil {
-			return nil, fmt.Errorf("%w: a printer without name or client", ErrInvalid)
+		if p.Name == "" || (p.Client == nil) == (p.Raw == nil) {
+			return nil, fmt.Errorf("%w: a printer without name, or without one of an IPP client and a raw printer", ErrInvalid)
 		}
 		if _, dup := s.printers[p.Name]; dup {
 			return nil, fmt.Errorf("%w: printer %q twice", ErrInvalid, p.Name)
@@ -570,9 +577,7 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 }
 
 func checkOptions(o JobOptions) error {
-	switch o.Format {
-	case "", "auto", print.FormatPDF, print.FormatPWGRaster, "pdf", "pwg-raster":
-	default:
+	if _, ok := print.FormatName(o.Format); !ok {
 		return fmt.Errorf("%w: format %q", ErrInvalid, o.Format)
 	}
 	return nil
@@ -784,7 +789,8 @@ func (s *Spool) Cancel(ctx context.Context, id int32, reason string) (Job, error
 // a printer that is not reached is told nothing.
 func (s *Spool) cancelAtPrinter(ctx context.Context, j *Job) {
 	p := s.printer(j.Printer.Name)
-	if p == nil {
+	if p == nil || p.raw != nil {
+		// (a raw printer cancels nothing)
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)

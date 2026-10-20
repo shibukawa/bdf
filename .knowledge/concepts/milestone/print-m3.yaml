@@ -1,0 +1,191 @@
+id: milestone:print-m3
+type: milestone
+title: print-m3 — 第 2 の形式と古い搬送路（vector/psbdf、Apple Raster と PCLm、9100 と LPD、IPP USB）
+summary: >-
+  印刷の 3 つ目の実装のまとまり。PDF を受けないプリンタ、IPP を話さないプリンタに届かせる。PostScript の書き手 vector/psbdf
+  （Level 3、DSC、文字は Type 3 のフォント）と、透明な所だけを矩形の絵にする平坦化 vector/internal/flatten、AirPrint だけの機種の
+  Apple Raster と Mopria だけの機種の PCLm の書き手、形式の順 PDF → PostScript → PWG Raster → Apple Raster → PCLm、9100 と LPD の
+  搬送路 print/raw（bdf print、スプール、bdf printd）と二重に刷らない照合、IPP USB の機種をループバックの DNS-SD で見つけること。
+  叙述の実装案は knowledge-inputs/print-plan/print-m3.ja.md（2026-10-20）。
+lifecycle: active
+authority: authored
+scope:
+  milestone: print-m3
+constraints:
+- PostScript は Level 3、DSC に従う。ページの外のものは setpagedevice を 1 つずつ stopped で囲む（持たないプリンタは飛ばす）
+- 文字は Type 3 のフォント（使うグリフのアウトラインを setcachedevice の手続きに。1 つに 256 グリフ）。Type 42 と CFF は使わない（互換機の差）
+- ファイルは 7 ビットのテキスト（画像と絵とフォントは ASCII85 の Flate、JPEG はそのまま DCTDecode）。行は 255 バイトまで、% で始まる行はデータに無い
+- 透明は描けるところまでベクタで、描けない所（α、合成、α・合成・ソフトマスクのあるグループ、影、FILTER、α のある画像、α の止まりのグラデーション、パターン、円錐）は、その矩形だけを imagebdf.Region の絵にする（既定 300 dpi）。矩形の外はベクタのまま
+- IPP では両面と用紙だけを PostScript に書き、ページは PWG Raster と同じ配置（raster.Fit）で用紙に置く。9100 と LPD ではチケットをファイルに書く（PostScript は setpagedevice、PDF は PJL）
+- 9100 と LPD のプリンタは能力を聞けない。形式は URL か設定（既定 PostScript）。PDF には PJL の見出し（既定、pjl=false で外す）
+- 二重に刷らない。プリンタが刷り始めうる所（9100 は最初のバイト、LPD は制御ファイル）の直前に「始めた」を記録し、その前で止まったら送り直し、後で止まったら bdf-duplicate-check で保留、送り終えたら刷ったとみなす
+- 足す依存は無い（Ghostscript はテストと CI でだけ使う。無ければテストを飛ばす）
+non_goals:
+- HP-GL/2 の書き手（CAD の現場の声を待つ。flatten を共有して vector/hpglbdf に置ける）
+- PCL XL と各社の PDL、PCL 5 のラスタ
+- Windows の OS 経由（GDI・XPS）
+- PJL による状態の取得（9100 の見張り）
+- Type 42・CFF のフォントの埋め込み（Type 3 で困る解釈器が出たら psbdf.Options に足す）
+capabilities:
+  urf-pclm:
+    state: implemented
+    about: capability:print/urf-pclm
+  postscript-writer:
+    state: implemented
+    about: capability:print/postscript-writer
+  flatten:
+    state: implemented
+    about: capability:print/flatten
+  format-order:
+    state: implemented
+    about: capability:print/format-order
+  raw-transport:
+    state: implemented
+    about: capability:print/raw-transport
+  raw-spool:
+    state: implemented
+    about: capability:print/raw-spool
+  ipp-usb-browse:
+    state: implemented
+    about: capability:print/ipp-usb-browse
+acceptance:
+  s1-urf-pclm:
+    text: Apple Raster（UNIRAST、32 バイトのページの見出し、PWG Raster と同じ行の符号）と PCLm（PDF 1.7、%PCLm 1.0、帯の画像）を書き、自前の読み手で戻した画素が描いた画素と一致し、PCLm は Ghostscript でも開ける。urf-supported と pclm-* から色・解像度・帯・圧縮・裏面を選ぶ。-format urf|pclm
+    verified_by:
+    - raster-unit
+    - print-formats
+  s2-postscript:
+    text: testdata の文書（帳票、PowerPoint、Word、Excel の印刷ビュー、PDF 由来のソフトマスク、draw.io、写真、縦書き）を PostScript にして Ghostscript で描いた絵が、imagebdf の絵と PDF を Ghostscript で描いたときと同じ差に収まる。透明な所だけが絵になり（数を確かめる）、DSC と setpagedevice、限界（入れ子、再利用、閉じない q）と fuzz
+    verified_by:
+    - psbdf-ghostscript
+    - psbdf-fuzz
+  s3-postscript-ipp:
+    text: PostScript だけのプリンタ（ipptest）に、用紙に置いた PostScript を送る（グレー、両面、printer-resolution）。PDF を拒むプリンタには PostScript を先に送る。形式の順は PDF → PostScript → PWG Raster → Apple Raster → PCLm
+    verified_by:
+    - print-formats
+  s4-raw:
+    text: 9100 と LPD の偽のプリンタ（rawtest）に PostScript と PDF（PJL）を送り、受けないチケットは警告し、途中で切れた 9100 は ErrPartial、制御ファイルの前で切れた LPD は送り直せる。スプールは届かないプリンタに送り直し、切れたジョブと始めた後で落ちたジョブを保留し、始める前で落ちたジョブを送り直す。bdf print -printer socket://…、printd.yaml の socket:// と lpd://
+    verified_by:
+    - raw-unit
+    - raw-spool
+    - cli-raw
+  s5-ipp-usb:
+    text: この機械の応答者（127.0.0.1:5353）に直接問い、ループバックで広告された USB の IPP 機を Local の印つきで見つける。bdf printers に this machine と出る
+    verified_by:
+    - browse-loopback
+verification:
+  raster-unit:
+    state: passed
+    method: unit
+    test: "go test ./print/raster/ -run 'URF|PCLm'"
+    authority: observed
+    evidence:
+      path: print/raster/formats_test.go
+      locator: 'URF の往復と誤り、PCLm を自前の読み手と Ghostscript で開く'
+  print-formats:
+    state: passed
+    method: integration
+    test: "go test ./print/ -run 'ChooseFormat|PrintURF|PrintPCLm|PrintPostScript|PlacePS'"
+    authority: observed
+    evidence:
+      path: print/formats_test.go
+      locator: '形式の順と短い名前、PDF を拒むプリンタの次の形式、URF の DM3 の裏面、PCLm の帯と JPEG、PostScript の用紙と両面とグレーと Ghostscript で描いた棒の位置、横長のページの回転と中央寄せ'
+  psbdf-ghostscript:
+    state: passed
+    method: integration
+    test: "go test ./vector/psbdf/"
+    authority: observed
+    evidence:
+      path: vector/psbdf/psbdf_test.go
+      locator: 'TestGhostscript（13 文書、ページごとの差の上限）、TestStructure（DSC、setpagedevice、白紙、用紙の違うページ、Place、Gray）、TestPictures（穴の矩形、影の広がり、ページ全体）、TestPaints（shfill と α・円錐の絵）、TestText（Type 3 と xshow、合成の太字、線の文字、256 を超えるグリフ）、TestImages（DCTDecode、グレー、ImageSub）、TestLimits（q と Q の数がそろい Ghostscript で描ける）。Ghostscript 10.02.1'
+  psbdf-fuzz:
+    state: passed
+    method: unit
+    test: "go test ./vector/psbdf/ -run XXX -fuzz FuzzWrite -fuzztime 60s"
+    authority: observed
+    evidence:
+      path: vector/psbdf/fuzz_test.go
+      locator: '2026-10-20 に 60 秒、約 50 万回。書けない失敗は無く、q と Q の数はそろう'
+  raw-unit:
+    state: passed
+    method: unit
+    test: "go test -race ./print/raw/ ./print/ -run 'Parse|Socket|LPD|Canceled|PrintRaw'"
+    authority: observed
+    evidence:
+      path: print/raw/raw_test.go
+      locator: 'URL の読み、PJL の見出しと終わり、9100 のリセットと届かないプリンタ、LPD の制御ファイル・拒否・制御ファイルの前と中での切断、取り消し。PrintRaw の PostScript（部数・両面・用紙の種類）と PDF（PJL の両面・用紙・グレー）、受けないもの、-strict'
+  raw-spool:
+    state: passed
+    method: integration
+    test: "go test -race ./print/spool/ -run 'Raw'"
+    authority: observed
+    evidence:
+      path: print/spool/raw_test.go
+      locator: '9100 と LPD のキュー、届かないプリンタの送り直しと戻り、切れたジョブの保留と人による解放、子プロセスを始める前・始めた後・送り終えた後で落とす照合'
+  cli-raw:
+    state: passed
+    method: integration
+    test: "go test ./cmd/bdf/ -run 'TestPrintRaw'"
+    authority: observed
+    evidence:
+      path: cmd/bdf/printers_test.go
+      locator: 'bdf print -printer socket:// と lpd://?format=pdf、受けないものの警告、拒否は 4、届かないは 3、誤った URL は 2'
+  browse-loopback:
+    state: passed
+    method: unit
+    test: "go test ./print/ipp/ -run Browse"
+    authority: observed
+    evidence:
+      path: print/ipp/dnssd_test.go
+      locator: '127.0.0.1 の偽の応答者に問い、localhost の 60000 番の USB の IPP 機を Local で見つける'
+  ci-print:
+    state: not_run
+    method: integration
+    test: test/print/ci.sh の PostScript だけの ippeveprinter、Python の 9100 の受け手、bdf printd の PostScript と 9100 のキュー、受けた PostScript を Ghostscript で描く。CI の print ジョブで go test ./vector/psbdf/ ./print/...（Ghostscript あり）
+    authority: authored
+    evidence:
+      path: test/print/ci.sh
+      locator: '9100 と bdf printd の 9100 のキューの段は手元で通した（ippeveprinter はこの環境で起動しない）。CI ではまだ走っていない'
+  three-os:
+    state: not_run
+    method: integration
+    test: CI の print-os（Windows と macOS）で go test ./print/...（rawtest の TCP、9100 のリセット、LPD）
+    authority: authored
+open_questions:
+  pdf-copies-raw:
+    text: 9100 と LPD に PDF を送るとき、部数を PJL（QTY・COPIES）で頼むか、ページの繰り返しで持つか
+    state: answered
+    resolution: ページの繰り返し。PJL の部数の意味は機種で違う（QTY は丁合、COPIES は丁合なし）ため。PostScript は NumCopies と Collate
+  lpd-begun:
+    text: LPD で「始めた」を制御ファイルの前に記録すると、制御ファイルを送る前に落ちたジョブも保留になる
+    state: answered
+    resolution: そのとおりにした。記録と送信の間に落ちたのか送信の後に落ちたのかは分けられないので、安全な側（保留）に倒す
+facts:
+  delivery:
+    plan: knowledge-inputs/print-plan/print-m3.ja.md（2026-10-20）
+    implemented:
+      date: '2026-10-20'
+      commits: [17d5576 S1 Apple Raster と PCLm, 9fa9d4a S2 vector/psbdf と平坦化, 00db930 S3 PostScript を IPP で, 781edee S4 9100 と LPD]
+      changed_from_plan:
+      - 'psbdf.Options の両面は Duplex と Tumble でなく Sides（IPP の名前）。空ならプリンタに任せ、IPP の sides の属性を PostScript が打ち消さない'
+      - '9100 と LPD の文書づくりは print.PrintRaw（print/raw は搬送路だけで print に依らない）。print.RawCapabilities がスプールとサーバーの能力'
+      - 'LPD の「始めた」は制御ファイルを送る直前。制御ファイルの拒否（\0 でない応答）は送り直せる'
+      - '9100 は送り終えたら送信側を閉じ、プリンタが閉じるのを 10 秒まで待つ。その前のリセットは ErrPartial'
+      - 'スプールは 9100 と LPD のプリンタに、動いていると分かっている間は接続を試さない（monitor）。送れなかったら試す'
+      - 'IPP USB はこの機械の応答者に 127.0.0.1:5353 で直接問う（Linux の lo にマルチキャストが無いため）。マルチキャストのあるループバック（macOS の lo0）は他のインターフェースと同じに聞く'
+    slices:
+    - 'S1 print/raster の urf.go と pclm.go と読み手、ipp.Printer の pclm-*、ipptest、形式の選び方、-format urf|pclm'
+    - 'S2 vector/psbdf（Type 3 のフォント、画像、shfill、setpagedevice、DSC）と vector/internal/flatten、Ghostscript のテストと fuzz'
+    - 'S3 PostScript を IPP で、print.PlacePS、形式の順 PDF → PostScript → PWG → URF → PCLm、PDF を拒まれたら PostScript'
+    - 'S4 print/raw（9100、LPD、PJL）と rawtest、print.PrintRaw、bdf print の URL、スプールとサーバーのプリンタ、照合の規則'
+    - 'S5 IPP USB（ループバック）、docs（cli、print-server、design §3.36、api）、CI（Ghostscript、PostScript の ippeveprinter、9100）、.knowledge'
+  measurements:
+    ghostscript_vs_imagebdf: 'testdata の文書を Ghostscript（72 dpi、文字と図形のアンチエイリアス 4）で描いた PostScript と imagebdf の絵の差は、PDF を同じく Ghostscript で描いたときとほぼ同じ（form/fixed 2.99 対 3.12、xlsx の 2 ページ目 9.30 対 9.57、docx/vertical は 2.57 対 2.15。差は文字の縁の塗り方）'
+    file_sizes: 'form/fixed 40 KB、pptx/basic 648 KB（5 ページ、絵 1）、pdf/chrome-masks 808 KB（ページ全体が絵）'
+relations:
+- relation: part_of
+  to: requirement:print
+- relation: follows
+  to: milestone:print-m2
+- relation: depends_on
+  to: requirement:pdf-export

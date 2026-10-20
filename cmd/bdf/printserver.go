@@ -157,10 +157,7 @@ func printToServer(ctx context.Context, sf *serverFlags, userName string, sp ser
 		fmt.Fprintf(os.Stderr, "bdf: job %d %s\n", j.ID, describe(j))
 		os.Exit(exitFailed)
 	}
-	what := "PDF"
-	if j.Format == print.FormatPWGRaster {
-		what = "PWG Raster"
-	}
+	what := print.FormatTitle(j.Format)
 	say("job %d completed on %s: %d page(s) as %s on %s", j.ID, printerName(j), j.Sheets, what, firstNonEmpty(j.Media, "the printer's default paper"))
 }
 

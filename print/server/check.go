@@ -5,7 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/raw"
 )
 
 // PrinterCheck is what a printer of a configuration answered.
@@ -29,6 +31,21 @@ func CheckPrinters(ctx context.Context, cfg *Config) []PrinterCheck {
 	for i, name := range names {
 		pc := cfg.Printers[name]
 		out[i] = PrinterCheck{Name: name, URL: redact(pc.URL)}
+		if raw.IsURL(pc.URL) {
+			r, err := pc.raw(cfg.User)
+			if err != nil {
+				out[i].Err = err
+				continue
+			}
+			r.Timeout = 15 * time.Second
+			wg.Go(func() {
+				// (it tells nothing but that it takes connections)
+				if out[i].Err = r.Check(ctx); out[i].Err == nil {
+					out[i].Printer = print.RawCapabilities(r)
+				}
+			})
+			continue
+		}
 		c, err := pc.client(cfg.User)
 		if err != nil {
 			out[i].Err = err

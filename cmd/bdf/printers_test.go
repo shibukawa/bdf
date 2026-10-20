@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf/print/ipp/ipptest"
+	"github.com/shibukawa/bdf/print/raw/rawtest"
 )
 
 // runOut runs the bdf command and returns its exit status, output and
@@ -120,5 +121,41 @@ func TestPrint(t *testing.T) {
 	}
 	if code, _, _ := runOut(t, "print", "-printer", u, "-sides", "both", doc); code != 2 {
 		t.Errorf("bad sides: exit %d", code)
+	}
+}
+
+// TestPrintRaw prints on printers of 9100 and LPD.
+func TestPrintRaw(t *testing.T) {
+	sock, lpd := rawtest.NewSocket(), rawtest.NewLPD("q1")
+	defer sock.Close()
+	defer lpd.Close()
+	doc := filepath.Join("..", "..", "testdata", "form", "rows.bdf")
+	code, _, errOut := runOut(t, append([]string{"print", "-printer", sock.URL, "-copies", "2", "-media", "a4", "-output-bin", "top"}, append(testFontFlags, doc)...)...)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if !strings.Contains(errOut, "page(s) sent as PostScript on iso_a4_210x297mm") || !strings.Contains(errOut, "does not support output-bin=top") {
+		t.Errorf("output: %s", errOut)
+	}
+	if js := sock.Jobs(); len(js) != 1 || !strings.Contains(string(js[0].Data), "<< /NumCopies 2 >>") {
+		t.Fatalf("%d jobs", len(js))
+	}
+	code, _, errOut = runOut(t, append([]string{"print", "-printer", lpd.URL + "?format=pdf", "-sides", "short", "-q"}, append(testFontFlags, doc)...)...)
+	if code != 0 || errOut != "" {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if js := lpd.Jobs(); len(js) != 1 || !strings.Contains(string(js[0].Data), "@PJL SET BINDING=SHORTEDGE") || !strings.Contains(js[0].Control, "Jrows.bdf") {
+		t.Fatalf("%d jobs", len(lpd.Jobs()))
+	}
+	lpd.Refuse(true)
+	if code, _, errOut := runOut(t, append([]string{"print", "-printer", lpd.URL}, append(testFontFlags, doc)...)...); code != 4 || !strings.Contains(errOut, "refused") {
+		t.Errorf("refused: exit %d: %s", code, errOut)
+	}
+	sock.Close()
+	if code, _, errOut := runOut(t, append([]string{"print", "-printer", sock.URL}, append(testFontFlags, doc)...)...); code != 3 {
+		t.Errorf("no printer: exit %d: %s", code, errOut)
+	}
+	if code, _, errOut := runOut(t, "print", "-printer", "lpd://host", doc); code != 2 || !strings.Contains(errOut, "lpd://host/queue") {
+		t.Errorf("bad URL: exit %d: %s", code, errOut)
 	}
 }

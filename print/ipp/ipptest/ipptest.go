@@ -48,6 +48,12 @@ type Printer struct {
 	PWGRasterResolutions []ipp.Resolution
 	SheetBack            string
 	URF                  []string
+	// PCLmStripHeight, when not 0, makes the printer say it takes PCLm,
+	// with these strips, back side, resolutions and compressions.
+	PCLmStripHeight int
+	PCLmBackSide    string
+	PCLmResolutions []ipp.Resolution
+	PCLmCompression []string
 
 	State     ipp.PrinterState
 	Reasons   []string
@@ -480,6 +486,8 @@ func (p *Printer) receive(j *Job, body *bufio.Reader) error {
 			ext = "pwg"
 		case "image/urf":
 			ext = "urf"
+		case "application/postscript":
+			ext = "ps"
 		case "image/jpeg":
 			ext = "jpg"
 		}
@@ -583,6 +591,12 @@ func (p *Printer) attributes(r *http.Request) []ipp.Attribute {
 		ipp.Attr("urf-supported", keywords(p.URF)...),
 		ipp.Attr("identify-actions-supported", ipp.Keyword("display"), ipp.Keyword("sound")),
 		ipp.Attr("multiple-document-handling-supported", ipp.Keyword("separate-documents-collated-copies"), ipp.Keyword("separate-documents-uncollated-copies")),
+	}
+	if p.PCLmStripHeight > 0 {
+		attrs = append(attrs, ipp.Attr("pclm-strip-height-preferred", ipp.Integer(p.PCLmStripHeight)),
+			ipp.Attr("pclm-raster-back-side", ipp.Keyword(p.PCLmBackSide)),
+			ipp.Attr("pclm-source-resolution-supported", resolutions(p.PCLmResolutions)...),
+			ipp.Attr("pclm-compression-method-preferred", keywords(p.PCLmCompression)...))
 	}
 	return attrs
 }

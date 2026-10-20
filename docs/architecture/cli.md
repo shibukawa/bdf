@@ -88,10 +88,10 @@ By default all the views of pages (`fixed`, `flow`) are written, and a document 
 
 ## print, printers
 
-Print a document on an IPP printer, without a driver of the system. When the printer takes PDF the document is sent as a PDF file (its drawings stay vectors, its text is drawn at the printer's resolution); when it does not, the pages are drawn here as PWG Raster, the format IPP Everywhere requires. A CUPS queue of macOS or Linux (`ipp://localhost:631/printers/<name>`) prints the same way. On Windows, since Windows Ready Print, printers speak IPP themselves: give the printer's URL.
+Print a document on an IPP printer, without a driver of the system. When the printer takes PDF the document is sent as a PDF file (its drawings stay vectors, its text is drawn at the printer's resolution); when it takes PostScript and not PDF, as PostScript; when it takes neither, the pages are drawn here as PWG Raster (what IPP Everywhere requires), Apple Raster (AirPrint) or PCLm (Mopria). A CUPS queue of macOS or Linux (`ipp://localhost:631/printers/<name>`) prints the same way. On Windows, since Windows Ready Print, printers speak IPP themselves: give the printer's URL.
 
 ```sh
-bdf printers                                         # the IPP printers on the network (mDNS)
+bdf printers                                         # the IPP printers on the network (mDNS) and of USB on this machine
 bdf printers -url ipp://192.0.2.10/ipp/print         # what one supports: media, sides, colour, resolutions, formats …
 bdf printers -cups local                             # the CUPS queues of this machine
 
@@ -100,10 +100,13 @@ bdf print -printer "Canon MF Series" -sides long -media b5 -copies 3 -mono invoi
 bdf print -printer ipps://mfp.example.local/ipp/print -pages 1-3 report.xlsx            # converted first (a workbook as the pages Excel prints)
 bdf print -printer ipp://localhost:631/printers/office -format pwg-raster -mono -bilevel -resolution 300 slip.bdf
 bdf print -printer ipp://192.0.2.10/ipp/print -skip background slip.bdf                 # onto preprinted paper
+bdf print -printer socket://192.0.2.30:9100 -sides long -media a4 invoice.bdf          # a printer without IPP: PostScript
+bdf print -printer "lpd://192.0.2.31/lp1?format=pdf" invoice.bdf                       # PDF over LPD, with a PJL header
 ```
 
 - **Paper**: `-media` takes a PWG name (`iso_a4_210x297mm`) or a short one (`a4`, `a3`, `b4` and `b5` for the JIS sizes, `letter`, `legal`, `hagaki`, `chou3`, `kaku2` …). Without it, the paper of the size of the first page is picked among the printer's, the loaded ones first.
-- **Format**: `-format auto` (the default) is PDF, else PWG Raster: 600 dpi gray for black, 300 dpi sRGB for colour, black and white with `-bilevel`. The back of a two-sided sheet is turned as the printer's `pwg-raster-document-sheet-back` asks. `-raster-if-lossy` sends PWG Raster when the PDF file would leave out what the page draws (`FILTER`, Canvas's own composite operations).
+- **Format**: `-format auto` (the default) is PDF, else PostScript, else PWG Raster, Apple Raster or PCLm (`-format pdf|ps|pwg-raster|urf|pclm` asks for one). PostScript is Level 3: its text is drawn with Type 3 fonts of the outlines of the glyphs, and what PostScript cannot draw (transparency, blend modes, shadows, filters) is drawn as pictures of just the rectangles where it is, the rest staying vectors. Rasters are 600 dpi gray for black, 300 dpi sRGB for colour, black and white with `-bilevel`, at the resolutions the printer has. The back of a two-sided sheet is turned as the printer asks (`pwg-raster-document-sheet-back`, `urf-supported`'s `DM`, `pclm-raster-back-side`). `-raster-if-lossy` sends PWG Raster when the PDF file would leave out what the page draws (`FILTER`, Canvas's own composite operations).
+- **Without IPP**: `socket://host:9100` (the raw port) and `lpd://host/queue` are sent PostScript, or PDF with `?format=pdf`, which gets a PJL header (`?pjl=false` leaves it out, `?pjl=true` puts one before PostScript too). The paper, copies, sides and media type of PostScript are asked in the file (`setpagedevice`), those of PDF in PJL; the rest (trays, output bins, finishings) is reported unsupported. Such a printer tells nothing of a job: bdf print returns once the printer has it.
 - **What the printer does not support** is left out with a warning, or with `-strict` is an error. Copies a printer cannot make are made in the document (with a blank sheet between the copies of an odd two-sided document).
 - **Waiting**: the job is waited for until it is done (`-wait 10m`); `-wait 0` returns once it is sent. Ctrl-C cancels the job at the printer.
 - **Exit status**: 0 printed, 1 canceled, aborted or another error, 2 usage, 3 the printer could not be reached (or refused the certificate or password), 4 the printer refused the job (or, with `-strict`, what it asks), 5 the printer is stopped, 6 the job is not done within `-wait`.

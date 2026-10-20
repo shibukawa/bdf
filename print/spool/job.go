@@ -130,7 +130,10 @@ type PrinterJob struct {
 	AttemptStarted time.Time `json:"attempt-started"`
 	JobID          int32     `json:"job-id,omitempty"`
 	JobURI         string    `json:"job-uri,omitempty"`
-	Sent           bool      `json:"sent,omitempty"`
+	// Begun says that a raw printer may have begun to print the job: what
+	// it may print was being sent.
+	Begun bool `json:"begun,omitempty"`
+	Sent  bool `json:"sent,omitempty"`
 }
 
 // Reasons of bdf's own (IPP's job-state-reasons have no keyword for them).

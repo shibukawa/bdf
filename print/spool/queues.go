@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/raw"
 )
 
 func numCPU() int { return runtime.NumCPU() }
@@ -109,6 +110,7 @@ func (s *Spool) setQueue(ctx context.Context, name string, f func(*queueRecord))
 type printerState struct {
 	Printer
 	client *ipp.Client
+	raw    *raw.Printer
 	// caps is what the printer said last (Get-Printer-Attributes); up
 	// tells it answered, checked when, and err why not.
 	caps    *ipp.Printer
@@ -124,7 +126,15 @@ type printerState struct {
 }
 
 func newPrinterState(p Printer) *printerState {
-	return &printerState{Printer: p, client: p.Client, pokes: make(chan struct{}, 1)}
+	return &printerState{Printer: p, client: p.Client, raw: p.Raw, pokes: make(chan struct{}, 1)}
+}
+
+// url is the printer's URL.
+func (p *printerState) url() string {
+	if p.raw != nil {
+		return p.raw.URL
+	}
+	return p.client.URL
 }
 
 func (s *Spool) printer(name string) *printerState {
@@ -176,7 +186,7 @@ func (s *Spool) PrinterCapabilities(name string) (*ipp.Printer, error) {
 }
 
 func (s *Spool) printerInfo(p *printerState) PrinterInfo {
-	info := PrinterInfo{Name: p.Name, URL: p.client.URL, Up: p.up, Checked: p.checked, Error: p.err}
+	info := PrinterInfo{Name: p.Name, URL: p.url(), Up: p.up, Checked: p.checked, Error: p.err}
 	if c := p.caps; c != nil {
 		info.State, info.Reasons, info.Message, info.Accepting, info.MakeModel = c.State.String(), slices.Clone(c.Reasons), c.StateMessage, c.AcceptingJobs, c.MakeModel
 	}

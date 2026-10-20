@@ -1,6 +1,6 @@
 # プリントサーバー
 
-`bdf printd` はプリントサーバーです。HTTP でジョブを受け、1 つのファイルに保存し、順に IPP のプリンタへ送り、プリンタが刷り終えるまで見届け、届かないプリンタには送り直します。業務システムは文書を渡したら先へ進み、待つのはサーバーです。プリンタとは [`bdf print`](architecture/cli.ja.md#print-printers) と同じく、OS のドライバを使わずに IPP で話します。
+`bdf printd` はプリントサーバーです。HTTP でジョブを受け、1 つのファイルに保存し、順に IPP のプリンタ（と 9100・LPD のプリンタ）へ送り、プリンタが刷り終えるまで見届け、届かないプリンタには送り直します。業務システムは文書を渡したら先へ進み、待つのはサーバーです。プリンタとは [`bdf print`](architecture/cli.ja.md#print-printers) と同じく、OS のドライバを使わずに IPP で話します。
 
 ```sh
 bdf printd -config printd.yaml                           # 前面で動く。Ctrl-C か SIGTERM で止まる
@@ -15,7 +15,7 @@ bdf printers -server http://127.0.0.1:8640                # キューとプリ�
 ## すること
 
 - **再起動してもジョブは残る。** 投入に答える前に、ジョブを文書ごと記録します。ジョブ、文書、実績、プリンタの証明書の指紋は、すべて 1 つのファイル `spool.db` に入ります（bbolt の上の [yuruidb](https://github.com/shibukawa/yuruidb)。書くたびに `fsync`）。開けるのは 1 プロセスで、同じファイルで 2 つ目の `bdf printd` を起動するとエラーで終わります。
-- **同じジョブを二重に刷らない。** 文書を送る前に試行を記録し、プリンタが `Create-Job` に答えたらすぐにプリンタのジョブ id を、プリンタが文書を全部受けたらすぐにそのことを記録します。どの時点で止まっても（落ちても、電源が切れても）、プリンタにあったジョブは何かを送り直す前にプリンタと照らし合わせます。プリンタにあれば見届け、なければ送り直し、このジョブかもしれないジョブがプリンタに 2 つ以上あるときだけ人に任せて保留します（`bdf-duplicate-check`）。プリンタでのジョブ名は試行ごとに `#<ジョブ>.<試行>` で始まり、照合はこれを探します。
+- **同じジョブを二重に刷らない。** 文書を送る前に試行を記録し、プリンタが `Create-Job` に答えたらすぐにプリンタのジョブ id を、プリンタが文書を全部受けたらすぐにそのことを記録します。どの時点で止まっても（落ちても、電源が切れても）、プリンタにあったジョブは何かを送り直す前にプリンタと照らし合わせます。プリンタにあれば見届け、なければ送り直し、このジョブかもしれないジョブがプリンタに 2 つ以上あるときだけ人に任せて保留します（`bdf-duplicate-check`）。プリンタでのジョブ名は試行ごとに `#<ジョブ>.<試行>` で始まり、照合はこれを探します。9100 と LPD のプリンタはジョブの記録を持たないので、プリンタが刷り始めうるもの（9100 は最初のバイト、LPD は制御ファイル）を送る直前にそのことを記録します。それより前に止まったジョブは送り直し、後で止まったジョブは人に任せて保留し（`bdf-duplicate-check`）、プリンタが受け終えたジョブは刷ったとみなします。
 - **プリンタを待ち、ジョブは失敗にしない。** 電源が切れている、ほかの仕事で手がふさがっている、届かないプリンタには、10 秒、30 秒、1 分、2 分、5 分、その後は 10 分ごとに 24 時間（`retry-for`）送り直します。その間の理由は `bdf-retry-wait`、諦めて中止したら `bdf-retry-exhausted` です。止まったプリンタ（用紙切れ、紙詰まり）は受けたジョブを持ったままで、次のジョブは待ちます。プリンタが中止したジョブは自動では送り直しません。`bdf jobs retry` で送り直します。
 - **プリンタには 2 つまで。** キューのジョブは、1 台のプリンタに同時に 2 つまで渡します（`max-inflight`）。1 つを刷っている間に次が届いているためです。残りはキューで待ち、プリンタに触れずに並べ替え、保留、別のキューへの移し、取り消しができます。
 - **複数のプリンタのキュー。** キューのプリンタは順に試します。`failover`（既定）は動いている最初のプリンタへ、`any` は空きのある最初のプリンタへ送ります。
@@ -36,12 +36,14 @@ tokens:
 printers:
   mfp1: { url: "ipps://mfp1.example.local/ipp/print", fingerprint: "sha256:…" }
   mfp2: { url: "ipp://192.0.2.20/ipp/print", username: print, password-env: MFP2_PASSWORD }
+  old-laser: { url: "socket://192.0.2.30:9100" }                     # IPP の無いプリンタ: 生のポートに PostScript
+  plotter: { url: "lpd://192.0.2.31/lp1", format: pdf, pjl: true }   # LPD で PDF、PJL の見出し付き
 queues:
   office:
     printers: [mfp1, mfp2]
     policy: failover                # か any
     defaults: { sides: two-sided-long-edge, print-color-mode: monochrome }
-    format: auto                    # auto（PDF を受けるなら PDF、でなければ PWG Raster）、pdf、pwg-raster
+    format: auto                    # auto（PDF、PostScript、PWG Raster、Apple Raster、PCLm の順に受けるもの）、pdf、ps、pwg-raster、urf、pclm
     raster-if-lossy: true
     max-inflight: 2
   warehouse: { printers: [mfp2] }
@@ -52,7 +54,7 @@ fonts: { dirs: [/usr/share/fonts/bdf], no-system: false }
 temp-dir: /var/tmp/bdf
 ```
 
-- **printers**: URL（`ipp://`、`ipps://`、`http://`、`https://`。CUPS のキューは `ipp://host:631/printers/<名前>`）、Basic 認証を求めるプリンタの利用者とパスワード（`password-env` か `password-file`）、`ipps` のプリンタの証明書。`fingerprint` で固定し、書かなければ最初に見た証明書をスプールに記録して以後はそれを求めます（CUPS と同じ）。`insecure: true` はどの証明書も受けます。
+- **printers**: URL（`ipp://`、`ipps://`、`http://`、`https://`。CUPS のキューは `ipp://host:631/printers/<名前>`）、Basic 認証を求めるプリンタの利用者とパスワード（`password-env` か `password-file`）、`ipps` のプリンタの証明書。`fingerprint` で固定し、書かなければ最初に見た証明書をスプールに記録して以後はそれを求めます（CUPS と同じ）。`insecure: true` はどの証明書も受けます。IPP の無いプリンタは `socket://host:9100` か `lpd://host/queue` で、受ける形式 `format`（`ps` が既定、か `pdf`）と `pjl`（文書の前の PJL の見出し。既定は PDF のときだけ）を書きます。チケットをファイルの中に書いた PostScript か PDF を送り、ジョブの状態は返らず、動いていると分かっている間は接続を試しません。
 - **queues**: プリンタの順、方針、チケットの `defaults`（IPP の名前: `copies`、`sides`、`media`、`media-source`、`media-type`、`print-color-mode`、`print-quality`、`printer-resolution`、`print-scaling`、`orientation-requested`、`finishings`、`output-bin` など。ジョブのチケットがこの上に重なる）、送り方。
 - **retention**: 終わったジョブの文書を残す期間（7 日）と、記録（実績）を残す期間（400 日）。
 - **limits**: 文書の大きさ（256 MiB。超えると 413）、終わっていないジョブの数とその文書の量（1 万件と 10 GiB。超えると 507）、ジョブのページ数、同時に変換・描画するジョブの数（0 は CPU 数）、プリンタに送り直す期間、同時に受ける投入とイベントの接続の数。

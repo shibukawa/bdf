@@ -23,6 +23,7 @@ var PrinterAttributes = []string{
 	"finishings-supported", "finishings-default", "output-bin-supported", "output-bin-default",
 	"pwg-raster-document-resolution-supported", "pwg-raster-document-type-supported", "pwg-raster-document-sheet-back",
 	"urf-supported", "pclm-strip-height-preferred", "pclm-raster-back-side", "pclm-source-resolution-supported",
+	"pclm-compression-method-preferred",
 	"job-password-supported", "job-password-encryption-supported", "job-account-id-supported", "job-accounting-user-id-supported",
 	"identify-actions-supported", "job-creation-attributes-supported",
 }
@@ -88,7 +89,15 @@ type Printer struct {
 	PWGRasterTypes       []string
 	PWGRasterSheetBack   string
 	URF                  []string
-	PCLm                 bool
+	// PCLm is set for a printer that takes PCLm: the height of its strips
+	// (pclm-strip-height-preferred), the transform of the back of a sheet
+	// (pclm-raster-back-side), its resolutions and its compressions
+	// ("flate", "jpeg", "rle"), most preferred first
+	PCLm            bool
+	PCLmStripHeight int32
+	PCLmBackSide    string
+	PCLmResolutions []Resolution
+	PCLmCompression []string
 
 	JobPassword           int32 // job-password-supported: the length, 0 when not supported
 	JobPasswordEncryption []string
@@ -187,6 +196,10 @@ func ParsePrinter(m *Message) *Printer {
 	p.PWGRasterSheetBack = g.Get("pwg-raster-document-sheet-back").Text()
 	p.URF = g.Get("urf-supported").Strings()
 	p.PCLm = g.Get("pclm-strip-height-preferred") != nil
+	p.PCLmStripHeight, _ = g.Get("pclm-strip-height-preferred").Int()
+	p.PCLmBackSide = g.Get("pclm-raster-back-side").Text()
+	p.PCLmResolutions = g.Get("pclm-source-resolution-supported").Resolutions()
+	p.PCLmCompression = g.Get("pclm-compression-method-preferred").Strings()
 	p.JobPassword, _ = g.Get("job-password-supported").Int()
 	p.JobPasswordEncryption = g.Get("job-password-encryption-supported").Strings()
 	p.JobAccountID = g.Get("job-account-id-supported") != nil
