@@ -56,6 +56,8 @@ type ippServer struct {
 	start  time.Time
 	// secureOnly refuses ipp (basic, or require-tls).
 	secureOnly bool
+	// zone makes the records of a DNS zone, not of mDNS.
+	zone bool
 
 	mu sync.Mutex
 	// incoming are the jobs made by Create-Job whose document has not
@@ -70,6 +72,7 @@ type ippServer struct {
 	port        int
 	fingerprint string
 	cancel      context.CancelFunc
+	responder   *ipp.Responder
 }
 
 // ippQueue is a queue as an IPP printer.
@@ -108,17 +111,29 @@ func newIPPServer(s *Server) (*ippServer, error) {
 	cfg := s.cfg.IPP
 	x := &ippServer{s: s, cfg: cfg, queues: map[string]*ippQueue{}, start: time.Now(), incoming: map[int32]*incoming{},
 		changed: map[string]time.Time{}, secureOnly: cfg.Auth == authBasic || cfg.RequireTLS}
+	if err := x.init(); err != nil {
+		return nil, err
+	}
+	for _, q := range x.order {
+		x.changed[q.name] = x.start
+	}
+	return x, nil
+}
+
+// init makes the printers of the queues shown, and the host's name.
+func (x *ippServer) init() error {
+	cfg := x.cfg
 	x.host = cfg.Host
 	if x.host == "" {
 		x.host = localHostName()
 	}
 	names := cfg.Queues
 	if len(names) == 0 {
-		names = sortedKeys(s.cfg.Queues)
+		names = sortedKeys(x.s.cfg.Queues)
 	}
 	for _, name := range names {
-		qc := s.cfg.Queues[name]
-		q := &ippQueue{name: name, path: ippPath + "/" + name, uuid: queueUUID(s.cfg.Spool, name), info: qc.Info, location: qc.Location}
+		qc := x.s.cfg.Queues[name]
+		q := &ippQueue{name: name, path: ippPath + "/" + name, uuid: queueUUID(x.s.cfg.Spool, name), info: qc.Info, location: qc.Location}
 		if q.info == "" {
 			q.info = name
 		}
@@ -127,14 +142,13 @@ func newIPPServer(s *Server) (*ippServer, error) {
 		}
 		x.queues[name] = q
 		x.order = append(x.order, q)
-		x.changed[name] = x.start
 	}
 	if cfg.Default != "" {
 		x.def = x.queues[cfg.Default]
 	} else if len(x.order) == 1 {
 		x.def = x.order[0]
 	}
-	return x, nil
+	return nil
 }
 
 // localHostName is the machine's name in .local: the name of the system,
@@ -1094,6 +1108,9 @@ func (x *ippServer) watchQueues(ctx context.Context) {
 				}
 			}
 			x.mu.Unlock()
+			if ev.Printer != nil {
+				x.readvertise()
+			}
 		}
 	}
 }

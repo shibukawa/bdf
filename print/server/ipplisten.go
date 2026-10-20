@@ -128,7 +128,7 @@ func (x *ippServer) certificate() (tls.Certificate, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return tls.Certificate{}, err
 	}
-	b, err := selfSigned(x.host, time.Now())
+	b, err := selfSigned(x.host, time.Now(), x.mdnsHost())
 	if err != nil {
 		return tls.Certificate{}, err
 	}
@@ -147,7 +147,7 @@ func (x *ippServer) certPath() string {
 // selfSigned makes a key and a certificate for a host, signed by the key,
 // for ten years, with the names and addresses of the machine; the PEM
 // holds the key and the certificate.
-func selfSigned(host string, now time.Time) ([]byte, error) {
+func selfSigned(host string, now time.Time, names ...string) ([]byte, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
@@ -166,13 +166,17 @@ func selfSigned(host string, now time.Time) ([]byte, error) {
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}
-	names := map[string]bool{host: true, "localhost": true}
-	if h, err := os.Hostname(); err == nil && h != "" {
-		names[h] = true
-		short, _, _ := strings.Cut(h, ".")
-		names[short+".local"] = true
+	all := map[string]bool{host: true, "localhost": true}
+	for _, n := range names {
+		all[n] = true
 	}
-	for n := range names {
+	names = nil
+	if h, err := os.Hostname(); err == nil && h != "" {
+		all[h] = true
+		short, _, _ := strings.Cut(h, ".")
+		all[short+".local"] = true
+	}
+	for n := range all {
 		if ip := net.ParseIP(n); ip != nil {
 			tmpl.IPAddresses = append(tmpl.IPAddresses, ip)
 		} else {

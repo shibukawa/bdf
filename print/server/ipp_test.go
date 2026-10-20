@@ -499,3 +499,35 @@ func image100x141() *image.Gray {
 	}
 	return img
 }
+
+// TestZoneRecords writes the records of wide-area DNS-SD: the browsing
+// domain, the types, and for each queue its PTR (and subtypes), SRV and
+// TXT, at the host of the domain.
+func TestZoneRecords(t *testing.T) {
+	cfg, err := ParseConfig([]byte(`
+printers: { p: { url: "ipp://192.0.2.1/ipp/print" } }
+queues: { office: { printers: [p], info: "Main office" } }
+ipp: { host: print.example.com, auth: none }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ZoneRecords(cfg, "example.com", 8631, nil); err != nil {
+		t.Fatal(err)
+	}
+	z, _ := ZoneRecords(cfg, "example.com.", 8631, map[string]*ipp.Printer{"p": {ColorModes: []string{"monochrome"}, Sides: []string{"one-sided"}}})
+	for _, want := range []string{
+		"b._dns-sd._udp.example.com.\tIN PTR\texample.com.",
+		"_universal._sub._ipps._tcp.example.com.\tIN PTR\tMain\\032office\\032\\@\\032print._ipps._tcp.example.com.",
+		"Main\\032office\\032\\@\\032print._ipp._tcp.example.com.\tIN SRV\t0 0 8631 print.example.com.",
+		`"rp=ipp/print/office"`, `"Color=F"`, `"Duplex=F"`, `"URF=V1.4,`, `"adminurl=https://print.example.com:8631/ipp/print/office"`,
+	} {
+		if !strings.Contains(z, want) {
+			t.Errorf("no %q in\n%s", want, z)
+		}
+	}
+	cfg.IPP.Host = "server.local"
+	if _, err := ZoneRecords(cfg, "example.com", 8631, nil); err == nil {
+		t.Error("a host of .local in a zone")
+	}
+}
