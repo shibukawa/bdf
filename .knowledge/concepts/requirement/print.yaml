@@ -270,6 +270,8 @@ relations:
 - relation: informed_by
   to: decision:thin-store
 history:
+  m5-text-mode:
+    summary: 2026-10-20 利用者「milestone 5 と 5 に必要な 6 の機能の一部は終わりました。残りの作業を終わらせてください。6 が最後だったはず」。form-m6 の印字像の Part から ESC/P と ESC/POS のテキストモードを足した（milestone:print-m5 の text_mode）。印刷の段階は m5 で終わり（§6 は 5 まで。「6」は form-m6）
   m4-implemented:
     summary: 2026-10-20 利用者「印刷の milestone3 まで終わりました。次の 4 の実装をお願いします」。print-m4（キューを IPP Everywhere・AirPrint のプリンタとして見せる IPP サーバー、ラスタの受け取り、mDNS の応答者と広域 DNS-SD、ipps と自己署名の証明書、AirPrint の構成プロファイル、IPP INFRA の拠点の代理）を実装した（milestone:print-m4）。ipptool の IPP Everywhere の属性の検査が通る。開発中に、OS のホスト名の A レコードを告げた応答者が macOS にホスト名の衝突とみなされ、機械の LocalHostName が -2・-3 に変わった（応答者のホスト名を自分のものにして直した）
   m3-implemented:

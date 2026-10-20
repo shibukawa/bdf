@@ -194,7 +194,7 @@ upstreams:
 | ESC/POS | Epson TM、レシートプリンタ | 描いた帯から順に `GS v 0`、`GS V` のカット、`ESC p` のドロワ |
 | ESC/P | Epson VP、ドットインパクト | 24 ピンのビットイメージ（`ESC *`、180 dpi）、`ESC C` の用紙長、`ESC N` のミシン目スキップ、改ページ |
 
-キューの `defaults` には、こうしたプリンタへの指示もチケットの名前で書けます: `print-darkness`、`print-speed`、`media-tracking`（IPP の名前）と、`bdf-label-gap`、`bdf-cut`、`bdf-cash-drawer`、`bdf-perforation-skip`、`bdf-no-printer-barcodes`。部数はプリンタが作り（`^PQ`、`<Q>`、`{XS`）、レシートと連帳は繰り返して送ります。
+キューの `defaults` には、こうしたプリンタへの指示もチケットの名前で書けます: `print-darkness`、`print-speed`、`media-tracking`（IPP の名前）と、`bdf-label-gap`、`bdf-cut`、`bdf-cash-drawer`、`bdf-perforation-skip`、`bdf-no-printer-barcodes`、`bdf-print-mode`（`raster` か `text`。テキストのテンプレートの帳票の文字をプリンタのフォントで刷る。ESC/P はそうした帳票を既定でテキストモードで刷る）。部数はプリンタが作り（`^PQ`、`<Q>`、`{XS`）、レシートと連帳は繰り返して送ります。
 
 命令は各社のプログラミングリファレンス（Zebra の ZPL II、SATO の CL4NX Plus と CT4-LX、東芝テックの B-EX4・B-FV4・BX400 の外部インタフェース仕様、Epson の ESC/POS と ESC/P）に従っています。確かめたのは自前の読み手でドットに戻すところまでで、実機では確かめていません。大量に刷る前に 1 枚試し、記号がおかしければ `bdf-no-printer-barcodes: true` でドットとして描かせてください（203 dpi でも読めます）。SBPL は SATO のステータスのプロトコルが求めるとおり STX と ETX で囲みます。USB のプリンタには、Windows はドライバのキュー（`winspool:///名前`、`RAW` で渡す）、macOS は CUPS（`ipp://localhost:631/printers/<キュー>`）、Linux はどちらかか `usb:///dev/usb/lp0` で届きます。
 
