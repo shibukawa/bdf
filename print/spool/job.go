@@ -61,6 +61,8 @@ type Job struct {
 	// printer was first not reached for the current attempt.
 	Attempts   int       `json:"attempts"`
 	RetrySince time.Time `json:"retry-since,omitzero"`
+	// Retries counts the tries since RetrySince, for the delay of the next.
+	Retries int `json:"retries,omitempty"`
 	// Printer is the printer of the current attempt.
 	Printer *PrinterJob `json:"printer,omitempty"`
 
@@ -169,9 +171,10 @@ func bdfKey(id int32) string      { return jobKey(id) + ".bdf" }
 // printerJobName is the job-name at the printer: the attempt first, so
 // that a printer that cuts long names keeps what tells the job apart
 // after a crash.
-func printerJobName(j *Job) string {
-	return fmt.Sprintf("#%d.%d %s", j.ID, j.Attempts, j.Name)
-}
+func printerJobName(j *Job) string { return attemptPrefix(j) + j.Name }
+
+// attemptPrefix is what the printer's job-name of an attempt begins with.
+func attemptPrefix(j *Job) string { return fmt.Sprintf("#%d.%d ", j.ID, j.Attempts) }
 
 // transitions are the states a job may go to from each state.
 var transitions = map[ipp.JobState][]ipp.JobState{

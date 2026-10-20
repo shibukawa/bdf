@@ -61,6 +61,9 @@ type Printer struct {
 	// Processing is how long a job stays processing after its last
 	// document before it is completed.
 	Processing time.Duration
+	// Busy refuses so many of the next Create-Job and Print-Job with
+	// server-error-busy, as a printer that is printing for others does.
+	Busy int
 	// Dir saves each document to a file "<job>-<n>.<ext>" when set.
 	Dir string
 	// Limits bound the decoding of requests.
@@ -291,6 +294,10 @@ func (p *Printer) handle(req *ipp.Message, body *bufio.Reader, r *http.Request) 
 	case ipp.OpCreateJob, ipp.OpPrintJob:
 		if !p.Accepting {
 			return fail(ipp.StatusServerErrorNotAcceptingJobs, "not accepting jobs")
+		}
+		if p.Busy > 0 {
+			p.Busy--
+			return fail(ipp.StatusServerErrorBusy, "busy")
 		}
 		if st, msg, unsupported := p.check(req); st != ipp.StatusOK {
 			fail(st, msg)

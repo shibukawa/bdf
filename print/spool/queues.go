@@ -118,10 +118,13 @@ type printerState struct {
 	// failing counts the failures in a row, for the delay of the next
 	// check.
 	failing int
+	// sending is set while a job is sent to it: one at a time.
+	sending bool
+	pokes   chan struct{}
 }
 
 func newPrinterState(p Printer) *printerState {
-	return &printerState{Printer: p, client: p.Client}
+	return &printerState{Printer: p, client: p.Client, pokes: make(chan struct{}, 1)}
 }
 
 func (s *Spool) printer(name string) *printerState {

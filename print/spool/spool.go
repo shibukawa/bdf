@@ -156,13 +156,18 @@ type Spool struct {
 	subs      map[chan Event]struct{}
 	closed    bool
 
-	kick     chan struct{}  // wakes the runner
-	stop     chan struct{}  // closed by Close
-	running  sync.WaitGroup // the runner and the steps
-	trust    *ipp.TrustStore
-	renders  chan struct{} // the slots of conversion and drawing
+	started bool
+	kick    chan struct{}  // wakes the runner
+	stop    chan struct{}  // closed by Close
+	running sync.WaitGroup // the runner and the steps
+	trust   *ipp.TrustStore
+	renders chan struct{} // the slots of conversion and drawing
+	// stepCtx ends the steps when the spool closes; sendCtx ends the
+	// sends, which Close lets finish for a while first.
 	stepCtx  context.Context
 	stepStop context.CancelFunc
+	sendCtx  context.Context
+	sendStop context.CancelFunc
 }
 
 // entry is a job not done, as the spool holds it.
@@ -174,6 +179,9 @@ type entry struct {
 	cancel context.CancelFunc
 	// canceling asks the step to cancel the job (at the printer too).
 	canceling bool
+	// recover marks a job that was at a printer when the spool stopped:
+	// it is checked against the printer before anything else.
+	recover bool
 }
 
 type queueState struct {
@@ -182,10 +190,11 @@ type queueState struct {
 	rev string
 }
 
-// Event tells a change: of a job (Job), or of a queue (Queue).
+// Event tells a change: of a job, of a queue, or of a printer.
 type Event struct {
-	Job   *Job
-	Queue *QueueInfo
+	Job     *Job
+	Queue   *QueueInfo
+	Printer *PrinterInfo
 }
 
 // Open opens a spool, recovering what a crash left: documents that were
@@ -231,6 +240,7 @@ func Open(ctx context.Context, o Options) (*Spool, error) {
 		passwords: map[int32]string{}, uploads: map[string]bool{}, subs: map[chan Event]struct{}{},
 		kick: make(chan struct{}, 1), stop: make(chan struct{}), renders: make(chan struct{}, l.Renders)}
 	s.stepCtx, s.stepStop = context.WithCancel(context.Background())
+	s.sendCtx, s.sendStop = context.WithCancel(context.Background())
 	for _, p := range o.Printers {
 		if p.Name == "" || p.Client == nil {
 			return nil, fmt.Errorf("%w: a printer without name or client", ErrInvalid)
@@ -371,9 +381,14 @@ func (s *Spool) load(ctx context.Context) error {
 	return s.dropOrphans(ctx)
 }
 
-// Close stops the runner, waits for the steps running, and closes the
-// file.
-func (s *Spool) Close() error {
+// Close stops the spool as Shutdown does, giving sends 30 seconds.
+func (s *Spool) Close() error { return s.Shutdown(30 * time.Second) }
+
+// Shutdown stops the spool: no step starts, the steps that only wait stop
+// at once, and the documents being sent to printers are given grace to
+// finish (a send cut is put right when the spool opens again). Then the
+// file is closed.
+func (s *Spool) Shutdown(grace time.Duration) error {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
@@ -387,7 +402,10 @@ func (s *Spool) Close() error {
 	s.subs = nil
 	s.mu.Unlock()
 	s.stepStop()
+	t := time.AfterFunc(grace, s.sendStop)
 	s.running.Wait()
+	t.Stop()
+	s.sendStop()
 	err := s.st.Close()
 	unclaim(s.path)
 	return err
@@ -954,7 +972,7 @@ func (s *Spool) save(ctx context.Context, e *entry, j Job) error {
 		return err
 	}
 	s.mu.Lock()
-	e.job, e.rev = j, nrev
+	e.job, e.rev = j.clone(), nrev // the step goes on changing its own copy
 	s.mu.Unlock()
 	s.notify(&j)
 	return nil
@@ -978,7 +996,7 @@ func (s *Spool) finish(ctx context.Context, e *entry, j Job) error {
 	delete(s.jobs, j.ID)
 	delete(s.passwords, j.ID)
 	s.recent = append(s.recent, j.clone())
-	e.job = j
+	e.job = j.clone()
 	s.mu.Unlock()
 	s.notify(&j)
 	s.wake()
