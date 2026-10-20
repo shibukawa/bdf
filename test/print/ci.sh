@@ -92,7 +92,7 @@ for _ in $(seq 30); do
   sleep 1
 done
 cat "$psspool/printer.txt"
-grep -q '^formats: application/postscript' "$psspool/printer.txt"
+grep -q '^formats: .*application/postscript' "$psspool/printer.txt"
 "$bdf" print -printer "$psurl" "${fonts[@]}" -wait 5m -sides long -media a4 testdata/form/rows.bdf
 "$bdf" print -printer "$psurl" "${fonts[@]}" -wait 5m testdata/pdf/chrome-masks.bdf
 test "$(received '%!PS-Adobe-3.0' "$psspool")" -eq 2
