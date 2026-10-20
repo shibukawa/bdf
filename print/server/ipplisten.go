@@ -56,12 +56,12 @@ func (l *sniffListener) Accept() (net.Conn, error) {
 	return &sniffConn{Conn: c, cfg: l.tls}, nil
 }
 
+// sniff reads the first byte, under the read deadline the HTTP server
+// set for the request's header.
 func (c *sniffConn) sniff() {
 	c.once.Do(func() {
-		c.Conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 		c.br = bufio.NewReader(c.Conn)
 		b, err := c.br.Peek(1)
-		c.Conn.SetReadDeadline(time.Time{})
 		if err != nil {
 			c.err = err
 			return
