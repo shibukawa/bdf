@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/shibukawa/bdf/print"
@@ -186,6 +187,14 @@ func printerJobName(j *Job) string { return attemptPrefix(j) + j.Name }
 
 // attemptPrefix is what the printer's job-name of an attempt begins with.
 func attemptPrefix(j *Job) string { return fmt.Sprintf("#%d.%d ", j.ID, j.Attempts) }
+
+// sameJob tells whether a printer's job is the attempt of a job the spool
+// sent: its name begins as the spool named it. A printer that tells no
+// name is believed; one that tells another name has another job under the
+// id (it was restarted and counts its ids from 1 again).
+func sameJob(j *Job, js *ipp.JobStatus) bool {
+	return js.Name == "" || strings.HasPrefix(js.Name, attemptPrefix(j))
+}
 
 // transitions are the states a job may go to from each state.
 var transitions = map[ipp.JobState][]ipp.JobState{

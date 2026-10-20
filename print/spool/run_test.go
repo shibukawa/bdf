@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,8 +13,8 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/print"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	"github.com/shibukawa/bdf/print/raw"
 )
 
@@ -54,7 +52,7 @@ func jobState(s *Spool, id int32) Job {
 	return j
 }
 
-func documents(p *ipptest.Printer) int {
+func documents(p *fakeprinter.Printer) int {
 	n := 0
 	for _, j := range p.Jobs() {
 		n += len(j.Documents)
@@ -357,7 +355,7 @@ func TestCrash(t *testing.T) {
 	for _, c := range []struct {
 		point string
 		// before changes the printer before the spool opens again
-		before func(p *ipptest.Printer, c *ipp.Client)
+		before func(p *fakeprinter.Printer, c *ipp.Client)
 		// state of the job, and jobs and documents of the printer, after
 		state            ipp.JobState
 		reason           string
@@ -368,25 +366,35 @@ func TestCrash(t *testing.T) {
 		{point: "created-recorded", state: ipp.JobCompleted, reason: "job-completed-successfully", jobs: 2, docs: 1, canc: 1},
 		{point: "sent-recorded", state: ipp.JobCompleted, reason: "job-completed-successfully", jobs: 1, docs: 1},
 		{point: "watching", state: ipp.JobCompleted, reason: "job-completed-successfully", jobs: 1, docs: 1},
-		{point: "sent-recorded", before: func(p *ipptest.Printer, _ *ipp.Client) { p.Forget() },
+		{point: "sent-recorded", before: func(p *fakeprinter.Printer, _ *ipp.Client) { p.Forget() },
 			state: ipp.JobCompleted, reason: "job-completed-with-warnings", jobs: 0, docs: 0},
-		{point: "attempt-recorded", before: func(p *ipptest.Printer, c *ipp.Client) {
+		{point: "attempt-recorded", before: func(p *fakeprinter.Printer, c *ipp.Client) {
 			// two jobs that may be this one
 			for i := 0; i < 2; i++ {
 				c.PrintJob(context.Background(), "#1.1 doc.bdf", "application/pdf", nil, strings.NewReader("%PDF"))
 			}
 		}, state: ipp.JobPendingHeld, reason: ReasonDuplicateCheck, jobs: 2, docs: 2},
+		// the printer was switched off and on: its job ids count from 1
+		// again, and another's job has the id the spool kept
+		{point: "created-recorded", before: func(p *fakeprinter.Printer, c *ipp.Client) {
+			p.Inject(fakeprinter.Fault{Restart: true})
+			p.Stop("media-empty-error")
+			c.PrintJob(context.Background(), "someone else's", "application/pdf", nil, strings.NewReader("%PDF"))
+			p.Resume()
+		}, state: ipp.JobCompleted, reason: "job-completed-successfully", jobs: 2, docs: 2},
+		{point: "sent-recorded", before: func(p *fakeprinter.Printer, c *ipp.Client) {
+			p.Inject(fakeprinter.Fault{Restart: true})
+			p.Inject(fakeprinter.Fault{NeverComplete: ptr(true)})
+			c.PrintJob(context.Background(), "someone else's", "application/pdf", nil, strings.NewReader("%PDF"))
+		}, state: ipp.JobCompleted, reason: "job-completed-with-warnings", jobs: 1, docs: 1},
 	} {
 		name := c.point
 		if c.before != nil {
 			name += "+"
 		}
 		t.Run(name, func(t *testing.T) {
-			p := ipptest.New()
-			srv := httptest.NewServer(p)
-			defer srv.Close()
-			u, _ := url.Parse(srv.URL)
-			printerURL := "ipp://" + u.Host + "/ipp/print"
+			p := fakeprinter.New()
+			printerURL := fakeprinter.Start(t, p)
 			path := filepath.Join(t.TempDir(), "spool.db")
 			cmd := exec.Command(os.Args[0], "-test.run=^TestCrashChild$")
 			cmd.Env = append(os.Environ(), "SPOOL_CRASH_POINT="+c.point, "SPOOL_CRASH_PATH="+path, "SPOOL_CRASH_PRINTER="+printerURL)
@@ -432,5 +440,36 @@ func TestNextLookOfPrinterNotLookedAt(t *testing.T) {
 	s.mu.Unlock()
 	if d := s.nextLook(p); d != lookBusy {
 		t.Fatalf("next look in %v", d)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+// TestPrinterRestartedWhileWatched restarts the printer while the spool
+// follows a job there: the printer counts its job ids from 1 again and
+// another's job takes the id. The spool does not follow the other's job;
+// its own is gone with the printer's memory, and taken as printed.
+func TestPrinterRestartedWhileWatched(t *testing.T) {
+	fast(t)
+	f := newFixture(t)
+	p, c := f.printers["mfp1"], f.clients["mfp1"]
+	p.Processing = time.Hour
+	s := f.running()
+	a := submit(t, s, Submission{Document: bytes.NewReader(bdfBytes(t, testDoc(1)))})
+	waitFor(t, "the job sent to the printer", func() bool {
+		j := jobState(s, a.ID)
+		return j.Printer != nil && j.Printer.Sent && j.Step == StepWatch
+	})
+	p.Inject(fakeprinter.Fault{Restart: true})
+	if _, err := c.PrintJob(context.Background(), "someone else's", "application/pdf", nil, strings.NewReader("%PDF")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the job done", func() bool { return jobState(s, a.ID).State.Done() })
+	j := jobState(s, a.ID)
+	if j.State != ipp.JobCompleted || j.Reasons[0] != "job-completed-with-warnings" {
+		t.Fatalf("after the restart: %s %v %q %v", j.State, j.Reasons, j.Message, j.Warnings)
+	}
+	if pj := p.Jobs(); len(pj) != 1 || pj[0].Name != "someone else's" || p.JobState(pj[0]) == ipp.JobCanceled {
+		t.Fatalf("the other's job: %+v", pj)
 	}
 }

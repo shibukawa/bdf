@@ -1,4 +1,4 @@
-package raw_test
+package fakeprinter
 
 import (
 	"fmt"

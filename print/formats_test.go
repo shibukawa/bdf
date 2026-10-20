@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	"github.com/shibukawa/bdf/print/raster"
 )
 
@@ -62,7 +62,7 @@ func TestChooseFormat(t *testing.T) {
 // TestPrintURF prints on a printer of Apple Raster only: gray at its
 // resolution, the back of a sheet as urf-supported says (DM3: rotated).
 func TestPrintURF(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Formats = []string{FormatURF}
 	p.URF = []string{"V1.4", "CP1", "W8", "SRGB24", "RS300", "DM3"}
 	c := serve(t, p)
@@ -99,7 +99,7 @@ func TestPrintURF(t *testing.T) {
 // TestPrintPCLm prints on a printer of PCLm only: in colour, in strips of
 // its height, compressed as it prefers.
 func TestPrintPCLm(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Formats = []string{FormatPCLm}
 	p.PCLmStripHeight = 32
 	p.PCLmBackSide = "normal"
@@ -128,7 +128,7 @@ func TestPrintPCLm(t *testing.T) {
 // on its paper, gray for a monochrome job, the sides asked in the file;
 // a printer that refuses PDF is sent PostScript before raster pages.
 func TestPrintPostScript(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Formats = []string{FormatPostScript, FormatPWGRaster}
 	c := serve(t, p)
 	doc := testDoc(3)
@@ -164,7 +164,7 @@ func TestPrintPostScript(t *testing.T) {
 		}
 	}
 
-	p = ipptest.New()
+	p = fakeprinter.New()
 	p.Formats = []string{FormatPDF, FormatPostScript, FormatPWGRaster}
 	p.Reject = []string{FormatPDF}
 	c = serve(t, p)

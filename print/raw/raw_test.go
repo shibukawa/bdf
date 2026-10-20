@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/raw"
-	"github.com/shibukawa/bdf/print/raw/rawtest"
 )
 
 func TestParse(t *testing.T) {
@@ -44,7 +44,7 @@ func TestParse(t *testing.T) {
 }
 
 func TestSocket(t *testing.T) {
-	s := rawtest.NewSocket()
+	s := fakeprinter.NewSocket(t)
 	defer s.Close()
 	s.Back("@PJL USTATUS JOB\r\n")
 	p, err := raw.Parse(s.URL + "?format=pdf")
@@ -59,15 +59,15 @@ func TestSocket(t *testing.T) {
 		t.Fatalf("%v, begun %d", err, begun)
 	}
 	jobs := s.Jobs()
-	if len(jobs) != 1 || int64(len(jobs[0].Data)) != n {
+	if len(jobs) != 1 || int64(len(jobs[0].Data())) != n {
 		t.Fatalf("%d jobs, %d bytes sent", len(jobs), n)
 	}
-	lines, got, ok := rawtest.PJL(jobs[0].Data)
+	lines, got, ok := fakeprinter.PJL(jobs[0].Data())
 	if !ok || !bytes.Equal(got, doc) || strings.Join(lines, "|") != `@PJL|@PJL JOB NAME="Report _Q3_"|@PJL SET DUPLEX=ON|@PJL ENTER LANGUAGE=PDF` {
 		t.Errorf("PJL %q, document %q", lines, got)
 	}
-	if !bytes.HasSuffix(jobs[0].Data, []byte("\x1b%-12345X@PJL EOJ NAME=\"Report _Q3_\"\r\n\x1b%-12345X")) {
-		t.Errorf("the end of the job: %q", jobs[0].Data[len(jobs[0].Data)-40:])
+	if !bytes.HasSuffix(jobs[0].Data(), []byte("\x1b%-12345X@PJL EOJ NAME=\"Report _Q3_\"\r\n\x1b%-12345X")) {
+		t.Errorf("the end of the job: %q", jobs[0].Data()[len(jobs[0].Data())-40:])
 	}
 
 	// PostScript as it is, and a check that sends nothing
@@ -78,8 +78,8 @@ func TestSocket(t *testing.T) {
 	if err := p.Check(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if jobs := s.Jobs(); len(jobs) != 2 || string(jobs[1].Data) != "%!PS\nshowpage\n" {
-		t.Fatalf("%d jobs: %q", len(jobs), jobs[len(jobs)-1].Data)
+	if jobs := s.Jobs(); len(jobs) != 2 || string(jobs[1].Data()) != "%!PS\nshowpage\n" {
+		t.Fatalf("%d jobs: %q", len(jobs), jobs[len(jobs)-1].Data())
 	}
 
 	// a connection cut in the document: the printer may have printed a part
@@ -101,7 +101,7 @@ func TestSocket(t *testing.T) {
 }
 
 func TestLPD(t *testing.T) {
-	s := rawtest.NewLPD("lp1")
+	s := fakeprinter.NewLPD(t, "lp1")
 	defer s.Close()
 	p, err := raw.Parse(s.URL + "?user=alice")
 	if err != nil {
@@ -114,7 +114,7 @@ func TestLPD(t *testing.T) {
 		t.Fatalf("%v, begun %d, %d bytes", err, begun, n)
 	}
 	jobs := s.Jobs()
-	if len(jobs) != 1 || jobs[0].Queue != "lp1" || !bytes.Equal(jobs[0].Data, doc) {
+	if len(jobs) != 1 || jobs[0].Queue != "lp1" || !bytes.Equal(jobs[0].Data(), doc) {
 		t.Fatalf("%+v", jobs)
 	}
 	c := jobs[0].Control
@@ -148,7 +148,7 @@ func TestLPD(t *testing.T) {
 }
 
 func TestCanceled(t *testing.T) {
-	s := rawtest.NewSocket()
+	s := fakeprinter.NewSocket(t)
 	defer s.Close()
 	p, _ := raw.Parse(s.URL)
 	ctx, cancel := context.WithCancel(context.Background())

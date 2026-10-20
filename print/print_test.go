@@ -4,16 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/pdf"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	"github.com/shibukawa/bdf/print/raster"
 )
 
@@ -37,15 +35,12 @@ func testDoc(n int) *bdf.Document {
 	return d
 }
 
-func serve(t *testing.T, p *ipptest.Printer) *ipp.Client {
+func serve(t *testing.T, p *fakeprinter.Printer) *ipp.Client {
 	t.Helper()
-	srv := httptest.NewServer(p)
-	t.Cleanup(srv.Close)
-	u, _ := url.Parse(srv.URL)
-	return &ipp.Client{URL: "ipp://" + u.Host + "/ipp/print", User: "tester"}
+	return &ipp.Client{URL: fakeprinter.Start(t, p), User: "tester"}
 }
 
-func attr(j *ipptest.Job, name string) string {
+func attr(j *fakeprinter.Job, name string) string {
 	for _, a := range j.Attrs {
 		if a.Name == name {
 			return a.String()
@@ -55,7 +50,7 @@ func attr(j *ipptest.Job, name string) string {
 }
 
 func TestPrintPDF(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	c := serve(t, p)
 	var events []string
 	res, err := Print(context.Background(), c, testDoc(3), &Options{
@@ -88,13 +83,13 @@ func TestPrintPDF(t *testing.T) {
 	}
 }
 
-func rasterPrinter() *ipptest.Printer {
-	p := ipptest.New()
+func rasterPrinter() *fakeprinter.Printer {
+	p := fakeprinter.New()
 	p.Formats = []string{FormatPWGRaster, "image/jpeg"}
 	return p
 }
 
-func readRaster(t *testing.T, j *ipptest.Job) []*raster.ReadPage {
+func readRaster(t *testing.T, j *fakeprinter.Job) []*raster.ReadPage {
 	t.Helper()
 	pages, err := raster.Read(bytes.NewReader(j.Document(0)), 0)
 	if err != nil {
@@ -178,7 +173,7 @@ func TestPrintRasterOptions(t *testing.T) {
 }
 
 func TestPrintFallsBackToRaster(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Reject = []string{FormatPDF}
 	c := serve(t, p)
 	res, err := Print(context.Background(), c, testDoc(1), &Options{Wait: time.Minute})
@@ -198,7 +193,7 @@ func TestPrintFallsBackToRaster(t *testing.T) {
 }
 
 func TestPrintUnsupported(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	c := serve(t, p)
 	tk := Ticket{Sides: "two-sided-long-edge", MediaSource: "tray-9", Finishings: []int{4}}
 	res, err := Print(context.Background(), c, testDoc(1), &Options{Ticket: tk})
@@ -227,7 +222,7 @@ func TestPrintUnsupported(t *testing.T) {
 }
 
 func TestPrintStoppedAbortedCanceled(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	c := serve(t, p)
 	p.State, p.Reasons = ipp.PrinterStopped, []string{"media-empty-error"}
 	if _, err := Print(context.Background(), c, testDoc(1), nil); !errors.Is(err, ErrPrinterStopped) || !strings.Contains(err.Error(), "media-empty") {

@@ -6,15 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/shibukawa/bdf/print"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	"github.com/shibukawa/bdf/print/spool"
 )
 
@@ -27,7 +25,7 @@ type branchFixture struct {
 	hq      *Server
 	hqIPP   string // the URL of the queue of the branch at the head office
 	branch  *Server
-	printer *ipptest.Printer
+	printer *fakeprinter.Printer
 	stop    func()
 }
 
@@ -76,16 +74,13 @@ tokens:
   - { name: branch-a, value: `+proxyToken+`, roles: [proxy], queues: [branch] }
 `, hqLn)
 	hqIPP := "ipp://" + hqLn.Addr().String() + "/ipp/print/branch"
-	p := ipptest.New()
-	ps := httptest.NewServer(p)
-	t.Cleanup(ps.Close)
-	u, _ := url.Parse(ps.URL)
+	p := fakeprinter.New()
 	branch, stopBranch := serveConfig(t, fmt.Sprintf(`
-printers: { mfp: { url: "ipp://%s/ipp/print" } }
+printers: { mfp: { url: "%s" } }
 queues: { local: { printers: [mfp] } }
 upstreams:
   hq: { url: "%s", queue: local, username: branch-a, password-env: BDF_TEST_PROXY_SECRET, poll: 100ms }
-`, u.Host, hqIPP), nil)
+`, fakeprinter.Start(t, p), hqIPP), nil)
 	if branchPaused {
 		branch.Spool().PauseQueue(context.Background(), "local")
 	}
@@ -155,7 +150,7 @@ func TestProxyPrints(t *testing.T) {
 		for _, p := range f.hq.Spool().Printers() {
 			branchP = p
 		}
-		return branchP.Up && branchP.MakeModel == "BDF Test Printer"
+		return branchP.Up && branchP.MakeModel == "BDF Fake Printer"
 	})
 }
 

@@ -11,17 +11,17 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/print"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/raw"
-	"github.com/shibukawa/bdf/print/raw/rawtest"
 )
 
 // rawFixture is a spool of a 9100 printer (queue office) and an LPD printer
 // of PDF (queue lpd).
-func rawFixture(t *testing.T) (*fixture, *rawtest.Server, *rawtest.Server) {
+func rawFixture(t *testing.T) (*fixture, *fakeprinter.Raw, *fakeprinter.Raw) {
 	t.Helper()
 	f := newFixture(t)
-	sock, lpd := rawtest.NewSocket(), rawtest.NewLPD("pdf")
+	sock, lpd := fakeprinter.NewSocket(t), fakeprinter.NewLPD(t, "pdf")
 	t.Cleanup(sock.Close)
 	t.Cleanup(lpd.Close)
 	ps, _ := raw.Parse(sock.URL)
@@ -51,10 +51,10 @@ func TestRunRaw(t *testing.T) {
 	if jb.Format != print.FormatPDF || jb.Reasons[0] != "job-completed-successfully" || jb.Printer.URL != strings.Split(lpd.URL, "?")[0] {
 		t.Errorf("LPD: %+v", jb)
 	}
-	if js := sock.Jobs(); len(js) != 1 || !bytes.HasPrefix(js[0].Data, []byte("%!PS-Adobe-3.0\n")) || !bytes.Contains(js[0].Data, []byte("/Duplex true /Tumble false")) {
+	if js := sock.Jobs(); len(js) != 1 || !bytes.HasPrefix(js[0].Data(), []byte("%!PS-Adobe-3.0\n")) || !bytes.Contains(js[0].Data(), []byte("/Duplex true /Tumble false")) {
 		t.Errorf("the 9100 printer has %d jobs", len(js))
 	}
-	if js := lpd.Jobs(); len(js) != 1 || !strings.Contains(string(js[0].Data), "@PJL ENTER LANGUAGE=PDF\r\n%PDF-1.7") || !strings.Contains(js[0].Control, "J#2.1_b.bdf") {
+	if js := lpd.Jobs(); len(js) != 1 || !strings.Contains(string(js[0].Data()), "@PJL ENTER LANGUAGE=PDF\r\n%PDF-1.7") || !strings.Contains(js[0].Control, "J#2.1_b.bdf") {
 		t.Errorf("the LPD printer has %d jobs", len(js))
 	}
 	info := s.Printers()
@@ -80,7 +80,7 @@ func TestRunRawDown(t *testing.T) {
 	if info := s.Printers(); info[1].Up {
 		t.Errorf("printer up: %+v", info[1])
 	}
-	if err := sock.Restart(); err != nil {
+	if err := sock.Reopen(); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "the job once the printer is back", func() bool { return jobState(s, a.ID).State == ipp.JobCompleted })
@@ -119,7 +119,7 @@ func TestCrashRaw(t *testing.T) {
 		{"sent-recorded", ipp.JobCompleted, "job-completed-with-warnings", 1},
 	} {
 		t.Run(c.point, func(t *testing.T) {
-			p := rawtest.NewSocket()
+			p := fakeprinter.NewSocket(t)
 			defer p.Close()
 			path := filepath.Join(t.TempDir(), "spool.db")
 			cmd := exec.Command(os.Args[0], "-test.run=^TestCrashChild$")

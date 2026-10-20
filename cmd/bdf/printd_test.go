@@ -22,7 +22,7 @@ func TestPrintdCheck(t *testing.T) {
 	cfg := filepath.Join(dir, "printd.yaml")
 	os.WriteFile(cfg, []byte(fmt.Sprintf("printers:\n  mfp1: { url: %q }\n  gone: { url: \"ipp://127.0.0.1:1/ipp/print\" }\nqueues:\n  office: { printers: [mfp1, gone] }\n", u)), 0o600)
 	code, out, errOut := runOut(t, "printd", "-config", cfg, "-check")
-	if code != 1 || !strings.Contains(out, "mfp1") || !strings.Contains(out, "idle") || !strings.Contains(out, "BDF Test Printer") ||
+	if code != 1 || !strings.Contains(out, "mfp1") || !strings.Contains(out, "idle") || !strings.Contains(out, "BDF Fake Printer") ||
 		!strings.Contains(out, "gone") || !strings.Contains(out, "error:") {
 		t.Fatalf("exit %d\n%s\n%s", code, out, errOut)
 	}

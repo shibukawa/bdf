@@ -59,6 +59,19 @@ go run ./cmd/bdf ls out.bdf              # part list
 go run ./cmd/bdf render -page 2 out.bdf page2.png  # render one page, in pure Go (no browser)
 ```
 
+## Printing without printers
+
+The tests of printing play their printers with `print/fakeprinter`; a test starts one with `fakeprinter.Start(t, p)` (IPP), `StartSocket`, `StartLPD`, `StartSerial` or `StartCUPS`, and makes it fail with `p.Inject(fakeprinter.Fault{…})`. To try `bdf print` and `bdf printd` by hand, run the farm of `test/print/farm.yaml` (an IPP Everywhere printer, AirPrint, PWG Raster, PostScript, PCLm, an old IPP/1.1 printer, one that runs out of paper, a CUPS server with a class, 9100, LPD, ZPL, SBPL, TPCL, ESC/POS and ESC/P on a serial line) and look at what they printed:
+
+```sh
+go run ./tools/fakeprinter -config test/print/farm.yaml   # prints the printers' URLs
+open http://127.0.0.1:8650/                               # the jobs, drawn back; faults to inject
+go run ./cmd/bdf print -printer ipp://127.0.0.1:18631/ipp/print testdata/form/rows.bdf
+go run ./tools/fakeprinter -presets                        # the kinds of printers
+```
+
+`go test ./print/fakeprinter/` checks the fakes against CUPS's `ipptool` and `ippeveprinter` where they are (macOS has both; Ubuntu's `cups-ipp-utils` and Avahi).
+
 ## Matching CI's output exactly
 
 CI's `testdata is up to date` step compares `bdf generate` output byte-for-byte on `ubuntu-latest` (amd64). Go's floating-point contraction differs by architecture, though, so the same command run on Apple Silicon can produce a few different low bits in an object's bounding boxes. Cross-compile with `GOARCH=amd64 go build` and run that binary under Rosetta to reproduce CI's bytes locally, before assuming a diff is a real regression.

@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	"github.com/shibukawa/bdf/print/raster"
 )
 
 func TestHooks(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	c := serve(t, p)
 	pr, err := c.GetPrinterAttributes(context.Background())
 	if err != nil {
@@ -61,7 +61,7 @@ func TestHooks(t *testing.T) {
 
 func TestHooksPrintJob(t *testing.T) {
 	// A printer without Create-Job: the job is known once it has the document.
-	p := ipptest.New()
+	p := fakeprinter.New()
 	c := serve(t, p)
 	pr, err := c.GetPrinterAttributes(context.Background())
 	if err != nil {
@@ -83,7 +83,7 @@ func TestHooksPrintJob(t *testing.T) {
 }
 
 func TestCheck(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Processing = time.Hour
 	c := serve(t, p)
 	res, err := Print(context.Background(), c, testDoc(1), nil)

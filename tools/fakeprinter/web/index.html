@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fake printers</title>
+<style>
+:root {
+  --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #e3e3e8; --head: #f5f5f7;
+  --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e; --accent: #0969da;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16161a; --fg: #e8e8ed; --muted: #9a9aa2; --line: #2c2c33; --head: #1f1f25;
+    --ok: #3fb950; --warn: #d29922; --bad: #f85149; --accent: #58a6ff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; margin-bottom: 16px; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 15px; margin: 24px 0 8px; }
+#status { color: var(--muted); }
+select { font: inherit; font-size: 12px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+button { font: inherit; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--head); color: var(--fg); cursor: pointer; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+th { background: var(--head); font-weight: 600; }
+td.url { font-family: ui-monospace, monospace; font-size: 12px; }
+.idle, .completed { color: var(--ok); } .processing, .pending { color: var(--warn); }
+.stopped, .aborted, .canceled { color: var(--bad); }
+.muted { color: var(--muted); }
+tr.job { cursor: pointer; } tr.job:hover { background: var(--head); }
+.detail td { white-space: normal; background: var(--head); }
+.pages { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0; }
+.pages figure { margin: 0; }
+.pages img { max-width: 240px; max-height: 320px; border: 1px solid var(--line); background: #fff; display: block; }
+.pages figcaption { font-size: 12px; color: var(--muted); }
+code { font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
+.actions { display: flex; gap: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Fake printers</h1>
+  <span id="status">loading…</span>
+  <button id="reset" title="Restart every printer: forget the jobs, count job ids from 1, idle and accepting">Reset all</button>
+</header>
+<section>
+  <h2>Printers</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Name</th><th>Kind</th><th>Transport</th><th>URL</th><th>State</th><th>Jobs</th><th>Faults</th></tr></thead>
+    <tbody id="printers"></tbody>
+  </table></div>
+</section>
+<section>
+  <h2>Jobs</h2>
+  <p class="muted">Click a job to see what it printed, drawn back.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Printer</th><th>Job</th><th>Name</th><th>User</th><th>Format</th><th>Bytes</th><th>State</th><th>Received</th></tr></thead>
+    <tbody id="jobs"></tbody>
+  </table></div>
+</section>
+<script>
+"use strict";
+const open = new Set();
+const chosen = new Map();
+const el = (tag, attrs, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
+  }
+  for (const k of kids) e.append(k instanceof Node ? k : document.createTextNode(String(k ?? "")));
+  return e;
+};
+const api = async (path, opts) => {
+  const r = await fetch("/api" + path, opts);
+  if (!r.ok) throw new Error(path + ": " + r.status);
+  return r.status === 204 ? null : r.json();
+};
+const fault = (name, f) => api("/printers/" + encodeURIComponent(name) + "/faults", { method: "POST", body: JSON.stringify(f) }).then(refresh);
+const faults = [
+  ["Out of paper", { stop: ["media-empty-error"] }],
+  ["Jam", { stop: ["media-jam-error"] }],
+  ["Door open", { stop: ["door-open-error"] }],
+  ["Resume", { resume: true }],
+  ["Reject", { reject: true }],
+  ["Accept", { accept: true }],
+  ["Restart", { restart: true }],
+  ["Abort next", { abort: true }],
+  ["Cut next", { "cut-after": 100 }],
+];
+
+// faultControl is a choice of faults and a button that injects it.
+function faultControl(name) {
+  const sel = el("select", { "aria-label": "fault of " + name }, ...faults.map(([label], i) => el("option", { value: i }, label)));
+  if (chosen.has(name)) sel.value = chosen.get(name);
+  sel.addEventListener("change", () => chosen.set(name, sel.value));
+  return el("div", { class: "actions" }, sel, el("button", { onclick: () => fault(name, faults[sel.value][1]) }, "Inject"));
+}
+
+async function details(j, td) {
+  td.replaceChildren(el("span", { class: "muted" }, "drawing back…"));
+  const base = "/api/printers/" + encodeURIComponent(j.printer) + "/jobs/" + j.id;
+  const res = await api(base.slice(4) + "/pages");
+  const kids = [];
+  if (res.error) kids.push(el("p", { class: "stopped" }, "not drawn back: " + res.error));
+  else {
+    const pages = el("div", { class: "pages" });
+    (res.pages || []).forEach((p, i) => {
+      const cap = [`page ${i + 1}: ${p.Width} × ${p.Height}` + (p.DPI ? ` at ${p.DPI} dpi` : "")];
+      if (p.Cut) cap.push("cut");
+      pages.append(el("figure", {}, el("a", { href: `${base}/pages/${i + 1}.png`, target: "_blank" }, el("img", { src: `${base}/pages/${i + 1}.png`, alt: `page ${i + 1}`, loading: "lazy" })),
+        el("figcaption", {}, cap.join(", ")), ...(p.Symbols || []).map(s => el("div", {}, el("code", {}, s)))));
+    });
+    kids.push(el("div", {}, `read as ${res.format}`), pages);
+    if (res.commands && res.commands.length) kids.push(el("div", {}, "commands: ", el("code", {}, res.commands.join("  "))));
+    if (res.drawer) kids.push(el("div", {}, `cash drawer of pin ${res.drawer}`));
+  }
+  if (j.attributes) kids.push(el("div", {}, "attributes: ", el("code", {}, j.attributes.join("  "))));
+  if (j.control) kids.push(el("div", {}, "control file: ", el("code", {}, j.control)));
+  kids.push(el("a", { href: base + "/data" }, "the bytes received"));
+  td.replaceChildren(...kids);
+}
+
+async function refresh() {
+  try {
+    const [printers, jobs] = await Promise.all([api("/printers"), api("/jobs")]);
+    const pt = document.getElementById("printers");
+    pt.replaceChildren(...(printers || []).map(p => el("tr", {},
+      el("td", {}, p.name), el("td", {}, p.preset, el("div", { class: "muted" }, p["make-and-model"])), el("td", {}, p.transport),
+      el("td", { class: "url" }, p.url),
+      el("td", { class: p.state }, p.state + (p.accepting ? "" : ", rejecting"), el("div", { class: "muted" }, (p.reasons || []).join(", "))),
+      el("td", {}, p.jobs),
+      el("td", {}, faultControl(p.name)))));
+    const jt = document.getElementById("jobs");
+    const rows = [];
+    for (const j of jobs || []) {
+      const key = j.printer + "#" + j.id + "#" + j.created;
+      rows.push(el("tr", { class: "job", onclick: () => { open.has(key) ? open.delete(key) : open.add(key); refresh(); } },
+        el("td", {}, j.printer), el("td", {}, j.id), el("td", {}, j.name), el("td", {}, j.user), el("td", {}, j.format), el("td", {}, j.bytes),
+        el("td", { class: j.state }, j.state), el("td", {}, new Date(j.created).toLocaleTimeString())));
+      if (open.has(key)) {
+        const td = el("td", { colspan: 8 });
+        rows.push(el("tr", { class: "detail" }, td));
+        details(j, td);
+      }
+    }
+    jt.replaceChildren(...rows);
+    document.getElementById("status").textContent = `${(printers || []).length} printers, ${(jobs || []).length} jobs`;
+  } catch (e) {
+    document.getElementById("status").textContent = String(e);
+  }
+}
+document.getElementById("reset").addEventListener("click", () => api("/reset", { method: "POST" }).then(() => { open.clear(); refresh(); }));
+refresh();
+setInterval(() => { if (!document.hidden && open.size === 0) refresh(); }, 2000);
+</script>
+</body>
+</html>

@@ -3,15 +3,7 @@ package ipp_test
 import (
 	"bytes"
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"errors"
-	"math/big"
-	"net"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
@@ -19,16 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 )
 
-func serve(t *testing.T, p *ipptest.Printer) *ipp.Client {
+func serve(t *testing.T, p *fakeprinter.Printer) *ipp.Client {
 	t.Helper()
-	srv := httptest.NewServer(p)
-	t.Cleanup(srv.Close)
-	u, _ := url.Parse(srv.URL)
-	return &ipp.Client{URL: "ipp://" + u.Host + "/ipp/print", User: "tester"}
+	return &ipp.Client{URL: fakeprinter.Start(t, p), User: "tester"}
 }
 
 func TestParseURL(t *testing.T) {
@@ -52,13 +41,13 @@ func TestParseURL(t *testing.T) {
 }
 
 func TestPrinterAttributes(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	c := serve(t, p)
 	pr, err := c.GetPrinterAttributes(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pr.Name != "ipptest" || pr.MakeModel != "BDF Test Printer" || pr.State != ipp.PrinterIdle || !pr.AcceptingJobs {
+	if pr.Name != "fakeprinter" || pr.MakeModel != "BDF Fake Printer" || pr.State != ipp.PrinterIdle || !pr.AcceptingJobs {
 		t.Fatalf("identity: %+v", pr)
 	}
 	if !pr.Supports("application/pdf") || !pr.Supports("image/pwg-raster") || pr.Supports("image/urf") {
@@ -73,7 +62,7 @@ func TestPrinterAttributes(t *testing.T) {
 	if len(pr.PWGRasterTypes) != 3 || pr.Sides[1] != "two-sided-long-edge" || pr.Media[2] != "jis_b5_182x257mm" {
 		t.Fatalf("types %v, sides %v, media %v", pr.PWGRasterTypes, pr.Sides, pr.Media)
 	}
-	if !pr.SupportsOp(ipp.OpCreateJob) || pr.SupportsOp(ipp.OpHoldJob) {
+	if !pr.SupportsOp(ipp.OpCreateJob) || !pr.SupportsOp(ipp.OpHoldJob) || pr.SupportsOp(ipp.OpPrintURI) {
 		t.Fatalf("operations: %v", pr.Operations)
 	}
 	if !strings.Contains(strings.Join(pr.Summary(), "\n"), "formats: application/pdf, image/pwg-raster") {
@@ -85,7 +74,7 @@ func TestPrinterAttributes(t *testing.T) {
 }
 
 func TestCreateSendWait(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Processing = 50 * time.Millisecond
 	c := serve(t, p)
 	ctx := context.Background()
@@ -130,7 +119,7 @@ func TestCreateSendWait(t *testing.T) {
 }
 
 func TestPrintJobAndCancel(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Dir = t.TempDir()
 	p.Processing = time.Hour
 	c := serve(t, p)
@@ -160,7 +149,7 @@ func TestPrintJobAndCancel(t *testing.T) {
 }
 
 func TestUnsupported(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	c := serve(t, p)
 	ctx := context.Background()
 	err := c.ValidateJob(ctx, []ipp.Attribute{ipp.Attr("copies", ipp.Integer(500)), ipp.Attr("media", ipp.Keyword("jpn_hagaki_100x148mm")),
@@ -190,7 +179,7 @@ func TestUnsupported(t *testing.T) {
 }
 
 func TestAuthAndVersion(t *testing.T) {
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Username, p.Password = "alice", "secret"
 	c := serve(t, p)
 	ctx := context.Background()
@@ -205,7 +194,7 @@ func TestAuthAndVersion(t *testing.T) {
 	if _, err := c.GetPrinterAttributes(ctx); err != nil {
 		t.Fatalf("with the password: %v", err)
 	}
-	q := ipptest.New()
+	q := fakeprinter.New()
 	q.Only11 = true
 	c11 := serve(t, q)
 	if _, err := c11.GetPrinterAttributes(ctx); err != nil {
@@ -223,12 +212,12 @@ func TestAuthAndVersion(t *testing.T) {
 }
 
 func TestCupsGetPrinters(t *testing.T) {
-	c := serve(t, ipptest.New())
+	c := serve(t, fakeprinter.New())
 	ps, err := c.CupsGetPrinters(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ps) != 1 || ps[0].Name != "ipptest" || !ps[0].Accepting || !strings.HasSuffix(ps[0].URI, "/ipp/print") {
+	if len(ps) != 1 || ps[0].Name != "fakeprinter" || !ps[0].Accepting || !strings.HasSuffix(ps[0].URI, "/ipp/print") {
 		t.Fatalf("queues: %+v", ps)
 	}
 }
@@ -243,38 +232,11 @@ func TestNotIPP(t *testing.T) {
 	}
 }
 
-// selfSigned makes a certificate for 127.0.0.1 of its own making, as
-// printers have.
-func selfSigned(t *testing.T, serial int64) tls.Certificate {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: "printer"},
-		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour),
-		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
-}
-
-func tlsPrinter(t *testing.T, cert tls.Certificate) string {
-	t.Helper()
-	srv := httptest.NewUnstartedServer(ipptest.New())
-	srv.TLS = &tls.Config{Certificates: []tls.Certificate{cert}}
-	srv.StartTLS()
-	t.Cleanup(srv.Close)
-	u, _ := url.Parse(srv.URL)
-	return "ipps://" + u.Host + "/ipp/print"
-}
-
 func TestTrustOnFirstUse(t *testing.T) {
 	ctx := context.Background()
 	store := filepath.Join(t.TempDir(), "printers.json")
-	url1 := tlsPrinter(t, selfSigned(t, 1))
+	p := fakeprinter.New()
+	url1 := fakeprinter.StartTLS(t, p)
 	if _, err := (&ipp.Client{URL: url1}).GetPrinterAttributes(ctx); err == nil {
 		t.Fatal("a self-signed certificate was taken with the roots of the system")
 	}
@@ -287,9 +249,10 @@ func TestTrustOnFirstUse(t *testing.T) {
 	if _, err := (&ipp.Client{URL: url1, TLS: ipp.TLSPolicy{Store: &ipp.TrustStore{Path: store, ReadOnly: true}}}).GetPrinterAttributes(ctx); err != nil {
 		t.Fatalf("the recorded certificate: %v", err)
 	}
-	// The same host with another certificate: a printer replaced, or
+	// The same printer with another certificate: a printer replaced, or
 	// someone in between.
-	url2 := tlsPrinter(t, selfSigned(t, 2))
+	p.Inject(fakeprinter.Fault{NewCertificate: true})
+	url2 := url1
 	_, err := (&ipp.Client{URL: url2, TLS: ipp.TLSPolicy{Store: &ipp.TrustStore{Path: store}}}).GetPrinterAttributes(ctx)
 	if !errors.Is(err, ipp.ErrCertificateChanged) {
 		t.Fatalf("a changed certificate: %v", err)

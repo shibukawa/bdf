@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	"github.com/shibukawa/bdf/print/raster"
 	"github.com/shibukawa/bdf/print/spool"
 )
@@ -64,12 +64,9 @@ ipp: { dns-sd: false, default: office }
 
 func newIPPFixture(t *testing.T, yaml string) *ippFixture {
 	t.Helper()
-	p := ipptest.New()
+	p := fakeprinter.New()
 	p.Formats = append(p.Formats, "application/pdf")
-	ps := httptest.NewServer(p)
-	t.Cleanup(ps.Close)
-	u, _ := url.Parse(ps.URL)
-	cfg, err := ParseConfig([]byte(fmt.Sprintf(yaml, "ipp://"+u.Host+"/ipp/print")))
+	cfg, err := ParseConfig([]byte(fmt.Sprintf(yaml, fakeprinter.Start(t, p))))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,11 +419,8 @@ tokens:
 // TestIPPServeTLS serves ipp and ipps on one port: each is told the URIs
 // of its own scheme.
 func TestIPPServeTLS(t *testing.T) {
-	p := ipptest.New()
-	ps := httptest.NewServer(p)
-	defer ps.Close()
-	u, _ := url.Parse(ps.URL)
-	cfg, err := ParseConfig([]byte(fmt.Sprintf(ippConfigYAML, "ipp://"+u.Host+"/ipp/print")))
+	p := fakeprinter.New()
+	cfg, err := ParseConfig([]byte(fmt.Sprintf(ippConfigYAML, fakeprinter.Start(t, p))))
 	if err != nil {
 		t.Fatal(err)
 	}

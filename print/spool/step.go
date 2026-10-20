@@ -428,6 +428,10 @@ func (s *Spool) watch(ctx context.Context, e *entry) {
 		cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		js, err := print.Check(cctx, p.client, last)
 		cancel()
+		if js != nil && !sameJob(&j, js) {
+			// the printer was restarted: its job of the id is another's
+			js, err = nil, &ipp.StatusError{Op: ipp.OpGetJobAttributes, Status: ipp.StatusClientErrorNotFound}
+		}
 		switch {
 		case js == nil && ipp.IsStatus(err, ipp.StatusClientErrorNotFound):
 			// the printer keeps no history of the job: it had the document

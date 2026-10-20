@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -16,7 +15,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/server"
 	"github.com/shibukawa/bdf/print/server/client"
 	"github.com/shibukawa/bdf/print/spool"
@@ -105,17 +104,14 @@ func testDoc(t *testing.T) []byte {
 }
 
 // newServer serves a server of a fake printer and returns a client of it.
-func newServer(t *testing.T, token string) (*client.Client, *server.Server, *ipptest.Printer) {
+func newServer(t *testing.T, token string) (*client.Client, *server.Server, *fakeprinter.Printer) {
 	t.Helper()
-	p := ipptest.New()
-	ps := httptest.NewServer(p)
-	t.Cleanup(ps.Close)
-	u, _ := url.Parse(ps.URL)
+	p := fakeprinter.New()
 	cfg, err := server.ParseConfig([]byte(fmt.Sprintf(`
-printers: { mfp1: { url: "ipp://%s/ipp/print" } }
+printers: { mfp1: { url: "%s" } }
 queues: { office: { printers: [mfp1] }, spare: { printers: [mfp1] } }
 tokens: [ { name: ops, value: %s, roles: [submit, manage, admin] } ]
-`, u.Host, token)))
+`, fakeprinter.Start(t, p), token)))
 	if err != nil {
 		t.Fatal(err)
 	}

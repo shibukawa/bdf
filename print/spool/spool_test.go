@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,8 +15,8 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -117,7 +115,7 @@ type fixture struct {
 	t        *testing.T
 	path     string
 	clock    *clock
-	printers map[string]*ipptest.Printer
+	printers map[string]*fakeprinter.Printer
 	clients  map[string]*ipp.Client
 	conv     *fakeConverter
 	o        Options
@@ -129,14 +127,11 @@ func newFixture(t *testing.T, printers ...string) *fixture {
 		printers = []string{"mfp1"}
 	}
 	f := &fixture{t: t, path: filepath.Join(t.TempDir(), "spool.db"), clock: &clock{now: time.Date(2026, 10, 20, 10, 0, 0, 0, time.UTC)},
-		printers: map[string]*ipptest.Printer{}, clients: map[string]*ipp.Client{}, conv: &fakeConverter{password: "secret"}}
+		printers: map[string]*fakeprinter.Printer{}, clients: map[string]*ipp.Client{}, conv: &fakeConverter{password: "secret"}}
 	var ps []Printer
 	for _, name := range printers {
-		p := ipptest.New()
-		srv := httptest.NewServer(p)
-		t.Cleanup(srv.Close)
-		u, _ := url.Parse(srv.URL)
-		c := &ipp.Client{URL: "ipp://" + u.Host + "/ipp/print", User: "bdf"}
+		p := fakeprinter.New()
+		c := &ipp.Client{URL: fakeprinter.Start(t, p), User: "bdf"}
 		f.printers[name], f.clients[name] = p, c
 		ps = append(ps, Printer{Name: name, Client: c})
 	}

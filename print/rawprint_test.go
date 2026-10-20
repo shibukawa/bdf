@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/raw"
-	"github.com/shibukawa/bdf/print/raw/rawtest"
 )
 
 // TestPrintRawPostScript prints PostScript over 9100: the ticket is in the
 // file.
 func TestPrintRawPostScript(t *testing.T) {
-	s := rawtest.NewSocket()
+	s := fakeprinter.NewSocket(t)
 	defer s.Close()
 	p, err := raw.Parse(s.URL)
 	if err != nil {
@@ -33,10 +33,10 @@ func TestPrintRawPostScript(t *testing.T) {
 		t.Errorf("calls %q", calls)
 	}
 	jobs := s.Jobs()
-	if len(jobs) != 1 || res.Format != FormatPostScript || res.Sheets != 3 || res.Bytes != int64(len(jobs[0].Data)) || res.Job != nil {
+	if len(jobs) != 1 || res.Format != FormatPostScript || res.Sheets != 3 || res.Bytes != int64(len(jobs[0].Data())) || res.Job != nil {
 		t.Fatalf("%d jobs, %+v", len(jobs), res)
 	}
-	ps := string(jobs[0].Data)
+	ps := string(jobs[0].Data())
 	for _, want := range []string{"%!PS-Adobe-3.0\n", "%%Title: (doc)\n", "%%Pages: 3\n", "<< /PageSize [419.5276 595.2756] >>", "<< /NumCopies 2 >>", "<< /Collate true >>",
 		"<< /Duplex true /Tumble true >>", "<< /MediaType (labels) >>", "\n0 g\n"} {
 		if !strings.Contains(ps, want) {
@@ -56,7 +56,7 @@ func TestPrintRawPostScript(t *testing.T) {
 	if _, err := PrintRaw(context.Background(), p, testDoc(1), nil); err != nil {
 		t.Fatal(err)
 	}
-	if ps := string(s.Jobs()[1].Data); !strings.Contains(ps, "<< /PageSize [595.276 841.89] >>") || strings.Contains(ps, "Duplex") || !strings.Contains(ps, "\nsave\n1 0 0 -1 0 841.89 cm\n") {
+	if ps := string(s.Jobs()[1].Data()); !strings.Contains(ps, "<< /PageSize [595.276 841.89] >>") || strings.Contains(ps, "Duplex") || !strings.Contains(ps, "\nsave\n1 0 0 -1 0 841.89 cm\n") {
 		t.Errorf("the page at its size: %q", ps[strings.Index(ps, "%%BeginSetup"):][:300])
 	}
 	// cut while it is sent
@@ -68,7 +68,7 @@ func TestPrintRawPostScript(t *testing.T) {
 
 // TestPrintRawPDF prints PDF over LPD, with a PJL header.
 func TestPrintRawPDF(t *testing.T) {
-	s := rawtest.NewLPD("pdfq")
+	s := fakeprinter.NewLPD(t, "pdfq")
 	defer s.Close()
 	p, err := raw.Parse(s.URL + "?format=pdf")
 	if err != nil {
@@ -83,7 +83,7 @@ func TestPrintRawPDF(t *testing.T) {
 	if len(jobs) != 1 || res.Format != FormatPDF || res.Sheets != 4 {
 		t.Fatalf("%d jobs, %+v", len(jobs), res)
 	}
-	lines, pdf, ok := rawtest.PJL(jobs[0].Data)
+	lines, pdf, ok := fakeprinter.PJL(jobs[0].Data())
 	if !ok || !strings.HasPrefix(string(pdf), "%PDF-1.7\n") {
 		t.Fatalf("PJL %q", lines)
 	}
@@ -99,7 +99,7 @@ func TestPrintRawPDF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(res.Unsupported, ";"); got != "sides=one-sided;media=iso_a4_210x297mm;print-color-mode=monochrome" || !strings.HasPrefix(string(s.Jobs()[1].Data), "%PDF-1.7\n") {
+	if got := strings.Join(res.Unsupported, ";"); got != "sides=one-sided;media=iso_a4_210x297mm;print-color-mode=monochrome" || !strings.HasPrefix(string(s.Jobs()[1].Data()), "%PDF-1.7\n") {
 		t.Errorf("unsupported %q", got)
 	}
 	// a refused queue

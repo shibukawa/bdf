@@ -26,7 +26,6 @@ import (
 	"html/template"
 	"log"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -39,7 +38,7 @@ import (
 
 	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/form"
-	"github.com/shibukawa/bdf/print/ipp/ipptest"
+	"github.com/shibukawa/bdf/print/fakeprinter"
 	"github.com/shibukawa/bdf/print/server"
 	"github.com/shibukawa/bdf/print/spool"
 )
@@ -115,14 +114,14 @@ queues: { invoices: { printers: [printer], defaults: { sides: two-sided-long-edg
 // fakePrinter serves bdf's fake IPP printer on a port of this machine and
 // returns its URL. It takes a few seconds to print a job.
 func fakePrinter() (string, error) {
-	p := ipptest.New()
+	ps, _ := fakeprinter.LookupPreset("office-mfp")
+	p := ps.New("office")
 	p.Processing = 3 * time.Second
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	s, err := p.ServeIPP("127.0.0.1:0")
 	if err != nil {
 		return "", err
 	}
-	go http.Serve(ln, p)
-	return "ipp://" + ln.Addr().String() + "/ipp/print", nil
+	return s.URL, nil
 }
 
 type app struct {

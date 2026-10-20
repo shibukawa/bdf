@@ -1,0 +1,46 @@
+id: system:printer-emulators
+type: system
+title: 既存の偽プリンタ・プリンタのエミュレータ — ippeveprinter、zplserver、zebra-emulator、escpos-netprinter、Labelary
+summary: >-
+  2026-10-20 の調べ（検索の抜粋）。既存の偽物は、どれも 1 つの言語かプロトコルだけを受けて絵にするか持つもので、壊れ方の筋書きと、
+  送った側の描画との画素の比べ合わせは持たない。bdf の偽プリンタ（requirement:fake-printers）を自前で作る理由で、外のものは
+  別の実装による二重確認に使う。
+lifecycle: active
+authority: observed
+aliases:
+- printer emulator
+- virtual printer
+- ZPL viewer
+- ESC/POS emulator
+facts:
+  ipp:
+    ippeveprinter: CUPS（libcups）の IPP Everywhere のプリンタ。bdf の CI（test/print/ci.sh）で使う。Avahi が要る
+  zpl:
+    bizzabo_zplserver: Python（PyPI の bizzabo-zpl）。9100 で ZPL を受け、ラベルを PNG にして Web の一覧と記録を出す。--headless。一部の制御命令に答える
+    brianzinn_zebra_emulator: Node。README では 9100 の HTTP と 9101 の HTTPS。別の単体の ZPL Printer Emulator（9102）を案内（別の物で、ライセンスは別に確かめる）
+    neodynamic_zplprinter: .NET の商用の SDK。ZPL を PNG・JPG・PDF に変える（9100 は聞かない）
+    labelary: ZPL を絵にする Web の API。**データを外に送る**ので公開してよい見本だけ
+  escpos:
+    gilbertfl_escpos_netprinter: Docker。JetDirect（9100）の TCP、ESC/POS を HTML に（esc2html.php）、Flask の画面、CUPS のバックエンド（esc2file）
+    crossescpos: .NET のデスクトップの偽物（TCP で受けて記録・描画）
+  gaps_for_bdf:
+  - どれも 1 つの言語・プロトコルだけ。IPP と 9100 と LPD とシリアルを 1 つに揃えたものは見つからない
+  - 壊れ方の筋書き（紙切れ、再起動で job-id が戻る、途中で切れる）を持たない
+  - bdf の描画との画素の比べ合わせは自分で書く必要がある
+  - SBPL・TPCL・ESC/P の偽物は見つからない
+  unverified:
+  - 各リポジトリのライセンス（README を開いていない）
+  - escpos-netprinter のポートと起動の手順（DeepWiki の要約による）
+  - zebra-emulator の別の単体のエミュレータの出どころ
+  evidence_sources:
+  - https://github.com/bizzabo/zplserver
+  - https://pypi.org/project/bizzabo-zpl/
+  - https://github.com/brianzinn/zebra-emulator
+  - https://deepwiki.com/gilbertfl/escpos-netprinter
+  - https://www.nuget.org/packages/CrossEscPos.Core/1.2.0
+relations:
+- relation: informs
+  to: requirement:fake-printers
+history:
+  surveyed:
+    summary: 2026-10-20 利用者「ネット上にラベルプリンタなどは見かけたが。他のプロトコルも」。ZPL と ESC/POS の偽物を検索で調べた

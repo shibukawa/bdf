@@ -1,22 +1,25 @@
 #!/bin/bash
-# Prints documents of testdata with bdf print on printers that are not
-# bdf's own: ippeveprinter (CUPS's IPP Everywhere printer) directly, as
-# PDF and as PWG Raster, another of PostScript only, a CUPS queue in
-# front of the first (an IPP Everywhere queue, made with lpadmin -m
-# everywhere), a printer of the raw port 9100 (a receiver in Python),
-# and bdf printd's spool in front of them across a restart, and checks
-# what the printers received; Ghostscript draws the PostScript. Then bdf
-# printd as an IPP printer: ipptool's checks of IPP Everywhere, jobs of
-# ipptool, its DNS-SD records, and a CUPS queue made of it. Last, the
-# languages of labels and receipts: ZPL over 9100, and ESC/POS through a
-# raw queue of CUPS.
+# Prints documents of testdata with bdf print on fake printers
+# (print/fakeprinter, run as a farm by tools/fakeprinter) and on what CUPS
+# makes of them, and checks what the printers received; Ghostscript draws
+# the PostScript. The fakes: an IPP Everywhere printer, as PDF and as PWG
+# Raster; one of PostScript only; a CUPS queue in front of the first (an
+# IPP Everywhere queue, made with lpadmin -m everywhere, as CUPS makes it
+# of the fake's attributes); a printer of the raw port 9100; then bdf
+# printd's spool in front of them across a restart. Then CUPS's own
+# clients on the fakes (raw queues of 9100 and LPD, lp). Then bdf printd
+# as an IPP printer: ipptool's checks of IPP Everywhere, jobs of ipptool,
+# its DNS-SD records, and a CUPS queue made of it. Last, the languages of
+# labels and receipts: ZPL over 9100, and ESC/POS through a raw queue of
+# CUPS.
+# (The fakes themselves are checked against ipptool and ippeveprinter by
+# go test ./print/fakeprinter/, which the CI job runs first.)
 # The CI job "print" runs it.
 #
-# Needs ippeveprinter (cups-ipp-utils), cupsd and lpadmin (cups) with
-# its filters, a running Avahi (ippeveprinter will not start without
-# DNS-SD) and IPv6 on the loopback (ippeveprinter listens on both), sudo
-# for lpadmin, Ghostscript (gs) and python3. BDF names the bdf command
-# (default: go run).
+# Needs cupsd and lpadmin (cups) with its filters, ipptool
+# (cups-ipp-utils), a running Avahi (for the DNS-SD of bdf printd), sudo
+# for lpadmin and Ghostscript (gs). BDF names the bdf command (default:
+# go run).
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
@@ -25,29 +28,40 @@ if [ -z "$bdf" ]; then
   bdf=$(mktemp -d)/bdf
   go build -o "$bdf" ./cmd/bdf
 fi
-spool=$(mktemp -d)
-chmod 777 "$spool"
 fonts=(-font-dir converter/pptx/testdata/fonts -no-system-fonts)
-port=8631
-url="ipp://localhost:$port/ipp/print"
-
-psport=8632
-psurl="ipp://localhost:$psport/ipp/print"
-psspool=$(mktemp -d)
-chmod 777 "$psspool"
-rawport=9101
-rawdir=$(mktemp -d)
 work=$(mktemp -d)
-
-ippeveprinter -2 -p "$port" -n localhost -k -d "$spool" -s 120 \
-  -f application/pdf,image/pwg-raster,image/jpeg "BDF Test" >"$spool/ippeveprinter.log" 2>&1 &
+# the farm keeps what each printer received in a directory of its own
+store=$(mktemp -d)
+chmod 777 "$store"
+port=8631
+url="ipp://127.0.0.1:$port/ipp/print"
+spool="$store/eve"
+psport=8632
+psurl="ipp://127.0.0.1:$psport/ipp/print"
+psspool="$store/ps"
+rawport=9101
+rawdir="$store/raw"
+lpdport=8515
+mkdir -p "$spool" "$psspool" "$rawdir"
+cat >"$work/farm.yaml" <<YAML
+listen: 127.0.0.1
+web: 127.0.0.1:8650
+store: $store
+printers:
+  - { name: eve, preset: office-mfp, port: $port, formats: [application/pdf, image/pwg-raster, image/jpeg, application/octet-stream], processing: 1s }
+  - { name: ps, preset: ps-office, port: $psport, formats: [application/postscript, application/octet-stream] }
+  - { name: raw, preset: jetdirect-ps, port: $rawport }
+  - { name: lpd, preset: lpd-legacy, port: $lpdport, queue: lp }
+YAML
+farm=$(mktemp -d)/fakeprinter
+go build -o "$farm" ./tools/fakeprinter
+"$farm" -config "$work/farm.yaml" >"$work/farm.log" 2>&1 &
 pid=$!
-ippeveprinter -2 -p "$psport" -n localhost -k -d "$psspool" -s 120 \
-  -f application/postscript "BDF PostScript" >"$psspool/ippeveprinter.log" 2>&1 &
-pspid=$!
-python3 test/print/raw9100.py "$rawport" "$rawdir" &
-rawpid=$!
-trap 'kill $pid $pspid $rawpid ${printd:-} 2>/dev/null || true; sudo lpadmin -x bdftest 2>/dev/null || true; sudo lpadmin -x bdfserver 2>/dev/null || true; sudo lpadmin -x bdfraw 2>/dev/null || true' EXIT
+trap 'kill $pid ${printd:-} 2>/dev/null || true; for q in bdftest bdfserver bdfraw fakesock fakelpd; do sudo lpadmin -x $q 2>/dev/null || true; done' EXIT
+# the number of jobs a printer of the farm has
+jobs_of() {
+  curl -sf "http://127.0.0.1:8650/api/jobs?printer=$1" | grep -c '"printer":' || true
+}
 for _ in $(seq 30); do
   if "$bdf" printers -url "$url" >"$spool/printer.txt" 2>/dev/null; then break; fi
   sleep 1
@@ -58,7 +72,7 @@ grep -q '^formats: .*image/pwg-raster' "$spool/printer.txt"
 grep -q '^sides: .*two-sided-long-edge' "$spool/printer.txt"
 
 # what a printer kept of the jobs: the documents whose first bytes are
-# these (in ippeveprinter's spool, or another directory)
+# these (in the farm's directory of the printer, or another)
 received() {
   local dir=$spool
   if [ $# -gt 1 ]; then dir=$2; fi
@@ -108,10 +122,10 @@ done
 "$bdf" print -printer "socket://127.0.0.1:$rawport" "${fonts[@]}" -copies 2 -media a4 testdata/form/rows.bdf
 "$bdf" print -printer "socket://127.0.0.1:$rawport?format=pdf" "${fonts[@]}" -sides long testdata/form/rows.bdf
 test "$(received '%!PS-Adobe-3.0' "$rawdir")" -eq 1
-grep -q 'NumCopies 2' "$rawdir/1.prn"
-draw "$rawdir/1.prn"
-grep -aq '@PJL ENTER LANGUAGE=PDF' "$rawdir/2.prn"
-grep -aq '@PJL SET DUPLEX=ON' "$rawdir/2.prn"
+grep -q 'NumCopies 2' "$rawdir"/1-1.*
+draw "$(ls "$rawdir"/1-1.*)"
+grep -aq '@PJL ENTER LANGUAGE=PDF' "$rawdir"/2-1.*
+grep -aq '@PJL SET DUPLEX=ON' "$rawdir"/2-1.*
 
 # a page left out of what the printer does not support: -strict fails
 # with exit status 4
@@ -126,13 +140,34 @@ sudo lpadmin -p bdftest -E -v "$url" -m everywhere
 "$bdf" printers -cups local | grep -q '^bdftest'
 before=$(received '%PDF-')
 "$bdf" print -printer ipp://localhost:631/printers/bdftest "${fonts[@]}" -wait 5m testdata/form/pptx-fixed.bdf
-# CUPS sends the job on to ippeveprinter
+# CUPS sends the job on to the fake
 for _ in $(seq 60); do
   if [ "$(received '%PDF-')" -gt "$before" ] || [ "$(received 'RaS2')" -gt 1 ]; then break; fi
   sleep 1
 done
 ls -la "$spool"
 test "$(received '%PDF-')" -gt "$before" || test "$(received 'RaS2')" -gt 1
+
+# CUPS's own clients on the fakes: raw queues of the raw port and of
+# LPD (cupsd's socket and lpd backends), and lp; the job CUPS sent the
+# IPP Everywhere queue above is drawn back by the farm
+sudo lpadmin -p fakesock -E -v "socket://127.0.0.1:$rawport" -m raw
+sudo lpadmin -p fakelpd -E -v "lpd://127.0.0.1:$lpdport/lp" -m raw
+"$bdf" pdf "${fonts[@]}" testdata/form/rows.bdf "$work/rows-raw.pdf"
+rawbefore=$(jobs_of raw)
+lp -d fakesock "$work/rows-raw.pdf"
+lp -d fakelpd "$work/rows-raw.pdf"
+for _ in $(seq 60); do
+  if [ "$(jobs_of raw)" -gt "$rawbefore" ] && [ "$(jobs_of lpd)" -ge 1 ]; then break; fi
+  sleep 1
+done
+test "$(jobs_of raw)" -gt "$rawbefore"
+test "$(jobs_of lpd)" -ge 1
+curl -sf "http://127.0.0.1:8650/api/jobs?printer=lpd" | grep -q '"format": "application/pdf"'
+last=$(curl -sf "http://127.0.0.1:8650/api/jobs?printer=eve" | grep -m1 '"id":' | tr -dc '0-9')
+curl -sf "http://127.0.0.1:8650/api/printers/eve/jobs/$last/pages" | tee "$work/pages.json"
+grep -q '"pages"' "$work/pages.json"
+if grep -q '"error"' "$work/pages.json"; then exit 1; fi
 
 # bdf printd: two jobs, one canceled; the server stops right after the
 # other is submitted and starts again; the printer has it once. Queues
@@ -190,7 +225,7 @@ for j in "$psjob" "$rawjob"; do
 done
 test "$(received '%!PS-Adobe-3.0' "$psspool")" -eq 3
 test "$(received '%!PS-Adobe-3.0' "$rawdir")" -eq 2
-draw "$rawdir/3.prn"
+draw "$(ls "$rawdir"/3-1.*)"
 "$bdf" jobs -server "$server" accounting -csv | tee "$work/accounting.csv"
 test "$(wc -l <"$work/accounting.csv")" -eq 5
 
@@ -238,7 +273,7 @@ cat "$work/printd.log"
 # labels over 9100 (ZPL), receipts through a raw queue of CUPS (ESC/POS,
 # passed on to the same printer of the raw port as it is)
 "$bdf" print -printer "socket://127.0.0.1:$rawport?profile=zd421-203" "${fonts[@]}" -media 104x150mm -copies 2 -collate uncollated -darkness 20 testdata/form/rows.bdf
-zpl=$(ls -t "$rawdir"/*.prn | head -1)
+zpl=$(ls -t "$rawdir"/* | head -1)
 test "$(head -c 3 "$zpl")" = '^XA'
 grep -aqF '^PW831^LL1198' "$zpl"
 grep -aqF '^GFA,' "$zpl"
@@ -252,7 +287,7 @@ for _ in $(seq 60); do
   sleep 1
 done
 test "$(received $'\x1b@' "$rawdir")" -gt "$before"
-pos=$(ls -t "$rawdir"/*.prn | head -1)
+pos=$(ls -t "$rawdir"/* | head -1)
 grep -aqF $'\x1dv0' "$pos"
 grep -aqF $'\x1dVB' "$pos"
 # a form of a template of text: ESC/P in the text mode over 9100, the
@@ -263,7 +298,7 @@ for _ in $(seq 30); do
   if [ "$(received $'\x1b@' "$rawdir")" -gt "$before" ]; then break; fi
   sleep 1
 done
-escp=$(ls -t "$rawdir"/*.prn | head -1)
+escp=$(ls -t "$rawdir"/* | head -1)
 grep -aqF $'\x1bC\x21\x1bN\x02' "$escp" # 33 lines, a skip of 2
 grep -aqF $'\x1c&' "$escp"                 # Kanji
 if grep -aqF $'\x1b*' "$escp"; then exit 1; fi
