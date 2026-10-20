@@ -14,6 +14,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/printconv"
 	"github.com/shibukawa/bdf/print/server"
 	"github.com/shibukawa/bdf/print/spool"
 )
@@ -126,7 +127,7 @@ func printdCmd(args []string) {
 	default:
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		conv := printConverter{fontDirs: cfg.Fonts.Dirs, noSystem: cfg.Fonts.NoSystem}
+		conv := printconv.Converter{FontDirs: cfg.Fonts.Dirs, NoSystemFonts: cfg.Fonts.NoSystem}
 		srv, err := server.New(ctx, cfg, server.Options{Log: log, Converter: conv})
 		check(err)
 		if err := srv.Run(ctx); err != nil {
