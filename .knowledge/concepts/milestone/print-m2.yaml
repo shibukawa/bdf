@@ -152,13 +152,21 @@ verification:
       path: cmd/bdf/jobs_test.go
       locator: 'bdf print -server（帰る、-wait、$BDF_SERVER、PDF と Markdown をサーバーで変換、暗号化した .bdf、時間切れ 6、受け付けないキュー 5、無いキュー 4、届かない 3）、bdf jobs の各操作と実績、bdf printers -server、トークンと act-as、暗号化した pptx がパスワード待ちから刷られる、bdf printd -check・起動・SIGINT・2 つ目の拒否・-compact'
   three-os:
-    state: not_run
+    state: passed
     method: integration
     test: CI の print-os（Windows と macOS）で go test ./print/...。bbolt のロックと詰め直しの置き換え（TestCompact、TestOpenTwice）
+    authority: observed
+    evidence:
+      path: .github/workflows/ci.yml
+      locator: '#105 の CI（2026-10-20、2898dfa）で Windows と macOS とも通った。最初の実行では macOS で TestOpenTwice と TestServeStops が落ちた（一時ディレクトリの /var が /private/var へのリンクで、まだ無いファイルのパスのリンクを解けず、同じプロセスでの 2 度目の Open を断れなかった）。claim がディレクトリのリンクを解くように直した'
   ci-ippeveprinter:
-    state: not_run
+    state: passed
     method: integration
     test: test/print/ci.sh の bdf printd の段（ippeveprinter につなぎ、投入・取り消し・止めて再起動をまたいで二重でないこと、実績、-compact）
+    authority: observed
+    evidence:
+      path: test/print/ci.sh
+      locator: '#105 の CI の print ジョブ（ubuntu-latest、2026-10-20）で、最初の実行から通った'
 open_questions:
   documents-in-db:
     text: 文書も spool.db の中に置く（1 ファイルで写しと移しが楽。ファイルは縮まず詰め直しが要る）か、文書だけ隣のディレクトリに置くか
@@ -234,7 +242,7 @@ facts:
     auth: トークン（名前、使えるキュー、役割 submit・manage・admin、act-as）。loopback かつトークンなしなら認証なし
 history:
   implemented:
-    summary: 2026-10-20 S1〜S5 を実装して print-requirements に push した（上の commits）。go test -race ./print/... と go test ./cmd/bdf/ が通る。test/print/ci.sh の bdf printd の段は、作業環境に IPv6 がなく ippeveprinter が起動しないので、ipptest のプリンタに替えて手元で通した（送信の途中で止めた bdf printd が再起動でジョブを見届け、プリンタが受けたのは 1 回、実績 2 件、-compact）。ippeveprinter での確認と 3 OS は CI で
+    summary: 2026-10-20 S1〜S5 を実装して print-requirements に push した（上の commits）。go test -race ./print/... と go test ./cmd/bdf/ が通る。test/print/ci.sh の bdf printd の段は、作業環境に IPv6 がなく ippeveprinter が起動しないので、ipptest のプリンタに替えて手元で通した（送信の途中で止めた bdf printd が再起動でジョブを見届け、プリンタが受けたのは 1 回、実績 2 件、-compact）。ippeveprinter での確認と 3 OS は #105 の CI で通った（macOS の 2 度目の Open の断りを直した後）
   yuruidb:
     summary: 2026-10-20 利用者が yuruidb を改めて（複数のコレクション、名前のキー、物理削除、結果の照合、bbolt の Blob と Backup、遅い入出力でロックを持たない）、「作れそうということなので実装の開始をお願いしたい」。保存を yuruidb に改め、実装を始めた（store.ja.md §9.3）
   bbolt-only:
