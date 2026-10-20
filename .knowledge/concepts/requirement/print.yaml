@@ -263,6 +263,12 @@ relations:
   to: milestone:print-m3
 - relation: has_milestone
   to: milestone:print-m4
+- relation: has_milestone
+  to: milestone:print-m6
+- relation: extended_by
+  to: requirement:print-manager
+- relation: verified_with
+  to: requirement:fake-printers
 - relation: enabled_by
   to: requirement:text-template
 - relation: informed_by
@@ -270,6 +276,8 @@ relations:
 - relation: informed_by
   to: decision:thin-store
 history:
+  manager-and-fakes-proposed:
+    summary: 2026-10-20 利用者が IPP・CUPS の仕組みを問うた後、偽プリンタ（テスト用、複数のプロトコル）と BDF Print Manager（電子帳簿保存法を意識した WORM の保管庫、検索、Drive 的なビューア、round-robin、CUPS のサーバーの振る舞い、ペーパーレス）を提案し /knowledge-memory で設計を求めた。requirement:fake-printers と milestone:print-m6（候補）、requirement:print-manager を proposed で書いた（fake-printers.ja.md、print-manager.ja.md）。順番と形は利用者の答えを待つ
   m4-implemented:
     summary: 2026-10-20 利用者「印刷の milestone3 まで終わりました。次の 4 の実装をお願いします」。print-m4（キューを IPP Everywhere・AirPrint のプリンタとして見せる IPP サーバー、ラスタの受け取り、mDNS の応答者と広域 DNS-SD、ipps と自己署名の証明書、AirPrint の構成プロファイル、IPP INFRA の拠点の代理）を実装した（milestone:print-m4）。ipptool の IPP Everywhere の属性の検査が通る。開発中に、OS のホスト名の A レコードを告げた応答者が macOS にホスト名の衝突とみなされ、機械の LocalHostName が -2・-3 に変わった（応答者のホスト名を自分のものにして直した）
   m3-implemented:

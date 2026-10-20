@@ -1,0 +1,53 @@
+id: system:worm-object-storage
+type: system
+title: 上書き・削除できない（WORM）オブジェクトストレージ — S3 Object Lock、GCS Object Retention Lock、Azure の不変ストレージ、R2 の Bucket Locks
+summary: >-
+  2026-10-20 の調べ（Web の検索の抜粋と、それまでの知識）。オブジェクトを書いたときに保持の期限とモードを付け、期限まで上書き・削除を
+  断る仕組みが主なクラウドにある。S3 と GCS はオブジェクトごと、R2 はバケットの規則（接頭辞と期間）。どれも「緩いモード」（権限で外せる）と
+  「固いモード」（誰も短くできない）を持つ。AWS の「Vault Lock」は S3 Glacier の vault と AWS Backup の vault のもので、
+  オブジェクトを 1 つずつ書く用途の相当は S3 Object Lock の COMPLIANCE。requirement:print-manager の保管庫の写し先。
+lifecycle: active
+authority: observed
+aliases:
+- WORM
+- Object Lock
+- Vault Lock
+- 不変ストレージ
+- immutable storage
+- retention lock
+- legal hold
+facts:
+  aws_s3:
+    enable: バケットで Object Lock を有効にする（版の管理が要る）。既定の保持をバケットに置ける
+    put: PutObject に x-amz-object-lock-mode（GOVERNANCE か COMPLIANCE）と x-amz-object-lock-retain-until-date。保持を付けるアップロードは Content-MD5（か内容のチェックサム）が要る（SDK の文書の記述）
+    modes: GOVERNANCE は s3:BypassGovernanceRetention の権限で外せる。COMPLIANCE は root を含め誰も期限まで消せず、期限を短くできない
+    legal_hold: x-amz-object-lock-legal-hold（ON / OFF）。期限と別で、外すまで消せない
+    later: PutObjectRetention で期限を延ばせる（COMPLIANCE は短くできない）
+    vault_lock_name: S3 Glacier の Vault Lock と AWS Backup の Vault Lock は別の製品
+  gcs:
+    object_retention_lock: オブジェクトごとの retain-until。100 年まで。Unlocked（権限で変更・削除できる。XML API の GOVERNANCE）と Locked（期限を延ばすだけ。XML API の COMPLIANCE）
+    bucket_lock: バケット全体に一様の保持の方針を置いてロックする（別の機能）
+  azure_blob:
+    immutable_storage: 版ごとの時間ベースの保持の方針と legal hold。方針をロックすると短くできない（今回の調べでは確かめていない）
+  cloudflare_r2:
+    bucket_locks: 2025-03 から。規則は接頭辞と期間（か無期限）。1 バケットに 1000 規則まで、重なれば長い方。新しいオブジェクトにも既存のものにも効く。ライフサイクルの規則より強い。規則がある間はバケットを空にできない。設定は画面・Wrangler・API の PUT /lock
+    per_object: オブジェクトごとの指定は無い（バケットの規則に頼る）
+  minio:
+    object_lock: S3 互換の Object Lock を持つ。コミュニティ版は 2026-02 に保存庫が凍結（system:conditional-storage）
+  implications:
+  - S3 と GCS（XML API）はオブジェクトごとに書くときに付けられる。R2 は保管庫の接頭辞に規則を 1 つ置く形
+  - 起動時に「そのバケットで本当に効くか」を確かめる（効かない保存先に書くと黙って消せるものになる）。COMPLIANCE の確かめは消せないものが残る
+  - 試験は自前の偽物（見出しを守り、期限の前の DELETE と上書きを断る）と実際のクラウド
+  unverified:
+  - S3 の PutObject で Object Lock の見出しに Content-MD5 が必須か、他のチェックサムで足りるか（AWS の PutObject の原文を開いていない）
+  - GCS の XML API に S3 互換の Object Lock の見出しで書けるか、JSON API の retention が要るか
+  - Azure の版ごとの不変ストレージの API の細部（今回は調べていない）
+  - R2 の規則が後から外せるか（ロックの固さ）
+relations:
+- relation: informs
+  to: requirement:print-manager
+- relation: related_to
+  to: system:conditional-storage
+history:
+  surveyed:
+    summary: 2026-10-20 利用者が「vault lock で上書き・削除できないモードでファイルを書き出す」と求め、主なクラウドの WORM を検索で確かめた（AWS の SDK・CLI の文書、Cloudflare の bucket locks の文書、GCS の object lock の文書の抜粋）

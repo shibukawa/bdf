@@ -1,0 +1,88 @@
+id: requirement:fake-printers
+type: requirement
+title: 偽プリンタ — 種類の違うプリンタを何台も、壊れ方の筋書きつきで動かし、受けたものを絵に戻す（print/fakeprinter、tools/fakeprinter）
+summary: >-
+  bdf の印刷（print-m1〜m5）と Print Manager（requirement:print-manager）を、実機なしで確かめ、見せるための偽プリンタ。
+  各プリンタは 搬送路（ipp・ipps・socket・lpd・serial の pty・CUPS のサーバー）× 言語（PDF・PostScript・PWG・URF・PCLm・JPEG・
+  ZPL・SBPL・TPCL・ESC/POS・ESC/P・raw）× 能力（profile）× 振る舞い（faults の筋書き）で決まる。受けたジョブを記録し、
+  読み戻した絵を bdf の描画と比べる。Go のテストからも、YAML の農場のコマンド（画面と JSON の API）からも使う。
+  今の print/ipp/ipptest と print/raw/rawtest を土台にし、印刷のテストは全部これに移して ipptest・rawtest・手書きの偽物を消す（2026-10-20 利用者の決定）。叙述は knowledge-inputs/print-plan/fake-printers.ja.md（2026-10-20）。
+lifecycle: accepted
+authority: authored
+aliases:
+- fake printer
+- フェイクプリンタ
+- 偽プリンタ
+- printer emulator
+- 仮想プリンタ（試験用）
+- fakeprinter
+constraints:
+- 依存を足さない（Go の標準ライブラリと既存の print/・converter/・imagebdf）。PostScript の読み戻しだけ、手元に gs があれば使う
+- 既定で loopback だけを聞き、DNS-SD で広告しない。広告するときは m4 の応答者で、ホスト名は自分のもの（<機械>-fake.local）。OS のホスト名の A / AAAA を告げない
+- 能力の値（ラベル機の dpi・幅、言語）は print/pdl/profile.go の表から引き、2 か所に持たない
+- ラスタの言語の読み戻しは bdf の描画と 1 画素も違わないこと。PDF と PostScript は既存の golden と同じ許容
+- 印刷の Go のテストでプリンタ役を作るのは print/fakeprinter だけ。ipptest・rawtest・テストごとの httptest の IPP の手書きは移して消す（winspool と USB の装置ファイルは OS の口なので除く）
+- 移す前と後で、テストの数と確かめていることが減らない（表で突き合わせる）
+- 偽物そのものを外の実装で確かめる：ipptool の ipp-1.1・ipp-2.0・ipp-everywhere の検査、cupsd の ipp・socket・lpd のキューから lp で投げる、ippeveprinter との応答の差の比べ。外の実装は偽物を確かめる側に回す
+non_goals:
+- 本物のプリンタの代わり（色・紙送り・印字の濃さの再現）
+- スキャン（eSCL・IPP Scan）とファクス
+- 外の偽物（zplserver、escpos-netprinter、Labelary）をリポジトリや CI に入れること。二重確認はスクラッチで
+- SNMP、PJL の機器管理、ファームウェア
+facts:
+  existing:
+    ipptest: print/ipp/ipptest（670 行）。IPP Everywhere の http.Handler。形式・用紙・両面・色・解像度・PWG / URF / PCLm の能力・状態を欄で変える。15 のテストのファイルが使う
+    rawtest: print/raw/rawtest（270 行）。9100 と LPD。CutAfter、CutControl、Refuse、Back
+    pdl_readers: print/pdl/*_test.go の readZPL・readGFA・readSBPL・readTPCL・readESCPOS・readESCP（テストの中に閉じている）
+    ci: test/print/ci.sh。ippeveprinter、cupsd のキュー（lpadmin -m everywhere）、Python の 9100 の受け手、ipptool、gs
+  gaps:
+  - プロセスの外から使えない（画面の開発・見せ方・手での試し・利用者の設定の試しに要る）
+  - ラベル・レシート・連帳を受けて絵に戻す偽物が無い
+  - 壊れ方の組み合わせがテストごとに手で書かれている
+  - CUPS のサーバーの振る舞い（CUPS-Get-Printers、/printers、クラス）の偽物が無い
+  layout_provisional:
+    library: print/fakeprinter（公開。テストからも使う）
+    readers: print/pdl/pdlread
+    wrappers: print/ipp/ipptest と print/raw/rawtest は移した後に消す
+    command: tools/fakeprinter（リリースのバイナリに入れない）
+    farm: test/print/farm.yaml
+  presets_provisional: office-mfp、airprint-only、pwg-only、ps-office、pclm-inkjet、legacy-ipp11、cups-server、jetdirect-ps、lpd-legacy、zebra-zd421-203 / -300、sato-cl4nx、tec-bex4t1、epson-tm-t88、epson-vp-f2000
+  faults_provisional:
+  - 状態（stopped と media-empty・media-jam・door-open・toner-empty、何秒後に idle）
+  - ジョブ（aborted、完了しない、Get-Jobs から忘れる、job-id を 1 に戻す）
+  - 搬送（遅れ、帯域、n バイト目で切る、接続を受けない、server-error-busy・service-unavailable）
+  - IPP（形式・属性を断る、Basic を要る、証明書の作り直し・期限切れ、巨大な属性）
+  - ラベル機（~HS・DLE EOT に紙切れ・カバー開）
+open_questions:
+  command-home:
+    text: 農場のコマンドを tools/fakeprinter（開発用）に置くか、bdf fakeprinter（利用者が自分の設定を試せる）にするか
+    state: open
+    resolution: 暫定で tools/fakeprinter。リリースのバイナリの大きさと利用者向けの約束を増やさない。利用者の求めがあれば bdf に移す
+  public-package:
+    text: print/fakeprinter を公開のパッケージにするか internal にするか
+    state: open
+    resolution: 暫定で公開（bdf を使う側のアプリのテストでも使える）。API は実験的と書く
+  replace-ci-python:
+    text: ci.sh の Python の 9100 の受け手を偽物に替えるか
+    state: answered
+    resolution: 替える。2026-10-20 利用者「テストを全てそれをベースに」。ci.sh の bdf の側の確かめは農場に向け、ippeveprinter は偽物との差の比べだけに、cupsd・ipptool は偽物を確かめる側に
+  migrate-all:
+    text: 印刷のテストを全部偽物に移すか、包みで今のテストを残すか
+    state: answered
+    resolution: 全部移す。2026-10-20 利用者「偽プリンタをまずきちんと作って、テストを全てそれをベースに行うのを先にしたい」。移す一覧は fake-printers.ja.md §10.1
+relations:
+- relation: serves
+  to: requirement:print
+- relation: serves
+  to: requirement:print-manager
+- relation: informed_by
+  to: system:printer-emulators
+- relation: informed_by
+  to: system:label-printer-languages
+- relation: has_milestone
+  to: milestone:print-m6
+history:
+  accepted:
+    summary: 2026-10-20 利用者「偽プリンタをまずきちんと作って、テストを全てそれをベースに行うのを先にしたい」。print-m6 を印刷の次の実装に決め、テストの全部の移行と偽物そのものの確かめ（fake-printers.ja.md §10）を範囲に入れた
+  proposed:
+    summary: 2026-10-20 利用者「このプロジェクトのテストのために、フェイクプリンタを作ると良さそうな気がしている。ネット上にラベルプリンタなどは見かけたが。他のプロトコルも」。続けて /knowledge-memory で設計を求めた。既存の ipptest・rawtest・pdl のテストの読み手と外の偽物（system:printer-emulators）を調べ、fake-printers.ja.md に設計を書いた

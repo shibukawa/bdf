@@ -163,6 +163,11 @@ const (
 	OpCupsAddModifyPrinter Op = 0x4003
 	OpCupsDeletePrinter    Op = 0x4004
 	OpCupsGetClasses       Op = 0x4005
+	OpCupsAcceptJobs       Op = 0x4008
+	OpCupsRejectJobs       Op = 0x4009
+	OpCupsSetDefault       Op = 0x400a
+	OpCupsMoveJob          Op = 0x400d
+	OpCupsGetDocument      Op = 0x4027
 )
 
 var opNames = map[Op]string{
@@ -183,7 +188,8 @@ var opNames = map[Op]string{
 	OpDeregisterOutputDevice: "Deregister-Output-Device", OpUpdateDocumentStatus: "Update-Document-Status",
 	OpUpdateJobStatus: "Update-Job-Status", OpUpdateOutputDeviceAttributes: "Update-Output-Device-Attributes",
 	OpCupsGetDefault: "CUPS-Get-Default", OpCupsGetPrinters: "CUPS-Get-Printers", OpCupsAddModifyPrinter: "CUPS-Add-Modify-Printer",
-	OpCupsDeletePrinter: "CUPS-Delete-Printer", OpCupsGetClasses: "CUPS-Get-Classes",
+	OpCupsDeletePrinter: "CUPS-Delete-Printer", OpCupsGetClasses: "CUPS-Get-Classes", OpCupsAcceptJobs: "CUPS-Accept-Jobs",
+	OpCupsRejectJobs: "CUPS-Reject-Jobs", OpCupsSetDefault: "CUPS-Set-Default", OpCupsMoveJob: "CUPS-Move-Job", OpCupsGetDocument: "CUPS-Get-Document",
 }
 
 // String returns the name of the operation, or its number.

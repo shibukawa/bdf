@@ -1,0 +1,173 @@
+id: requirement:print-manager
+type: requirement
+title: BDF Print Manager — 刷ったものを上書き・削除できない保管庫に .bdf で残し、検索し、Drive のように見る（仮想プリンタ、WORM、索引、ビューア、利用者）
+summary: >-
+  bdf printd とは別のサービス（2026-10-20 利用者の決定。print/ の部品と bdf printd の上に立つ）として、紙に出さない出力先「保管庫（vault）」と、
+  その中身を検索して見る画面を足す。仮想プリンタ（archive://）に投げたもの、または実プリンタに刷ったものの控え（キューの archive:）を、
+  刷った .bdf と記録の JSON としてオブジェクトストレージに WORM（S3 Object Lock など）で書き、1 日の一覧をハッシュの鎖にする。
+  検索項目（日付・金額・取引先・書類の種類）は投げる側・帳票テンプレート・キューの規則・人の順で取り、索引は保管庫から作り直せる派生物にする。
+  主な用途は現場のペーパーレス（2026-10-20 利用者）：倉庫ごとの仮想プリンタ（display://）に刷った伝票を、登録した端末（タブレット）
+  だけに見せる。端末は登録コードと WebCrypto の取り出せない鍵で認証し、だれも開かなければ倉庫の実プリンタに逃がす。
+  電子帳簿保存法の書類の控えの電子保存に使える形を目指す（法令の判断はしない。system:denchoho）。プリンタの束ねには round-robin、
+  プリンタごとのキュー、ジョブの移動、CUPS のサーバーの名前の空間を足す。叙述は knowledge-inputs/print-plan/print-manager.ja.md（2026-10-20）。
+lifecycle: proposed
+authority: authored
+aliases:
+- Print Manager
+- BDF Print Manager
+- 保管庫
+- vault
+- archive printer
+- 仮想プリンタ
+- 電子帳簿保存法
+- 電帳法
+- ペーパーレス
+- paperless
+constraints:
+- 保管庫のオブジェクト（.bdf、受けたままの入力、記録の JSON、1 日の一覧）は書いた後に変えない。訂正は新しい項目の supersedes、削除は期限の後だけ
+- 変えられるもの（タグ、フォルダ、配達先、人が直した検索項目）は保管庫の外（スプールの DB、yuruidb）に、誰がいつ何を変えたかの履歴つきで置く
+- 索引は保管庫から作り直せる派生物。正は保管庫
+- 保存の層は yuruidb（decision:thin-store）の Blob。各社の SDK を同梱しない
+- WORM の既定のモードは governance。compliance は明示のときだけで、起動時に期限と対象を出す。lock none（ローカルのディレクトリ）は法令の用途に使えないと起動時と画面に出す
+- 起動時に、そのバケットで本当にロックが効くかを確かめ、外れたら保管庫を開かない
+- requesting-user-name（自己申告）を配達や権限の根拠にしない
+- 表示先（display://）の伝票は、その場所に登録した端末だけが見られる。端末の認証は端末に閉じた鍵（ブラウザの取り出せない鍵か、MDM の証明書）で、URL や Cookie を写しても他の端末では通らない
+- 端末に伝票を残さない（既定でオフラインなし、ダウンロードなし）
+- 紙への逃げ道を持てる（だれも開かない・端末がつながっていないとき、その場所の実プリンタに刷る）。ペーパーレスで出荷を止めない
+- 保管した文書の読み出しは権限の確認と監査の記録（誰がいつ何を見たか）を通す
+- 法令への適合を約束しない。docs は対応の表と、利用者が確かめる所を書く
+non_goals:
+- JIIMA の認証
+- 帳簿（仕訳帳・総勘定元帳）の保存。対象は書類（の控え）
+- スキャナ保存（紙の受け取りを読む）
+- .bdf への電子署名（今の形式に無い）
+- CUPS の管理の操作（CUPS-Add-Modify-Printer など）。設定は YAML と API
+- 複数の会社で共有するクラウドのサービス（テナント分離）
+facts:
+  existing_vs_new:
+    exists: スプール、キャンセル、実プリンタの束ね（ipp・socket・lpd・serial・usb・winspool）、キューの複数のプリンタ（policy any / failover）、IPP Everywhere・AirPrint のプリンタとして見せる（m4）、Document.SearchText、thumbnail、examples/search（Meilisearch）、状態のページ（print/server/web）
+    new: 保管庫と仮想プリンタ、WORM の書き出し、検索項目の取り出しと索引、Drive 的な画面、利用者・配達・見える範囲、round-robin、プリンタごとのキュー、ジョブの移動、CUPS の名前の空間
+  vault_layout: '<prefix>/docs/<yyyy>/<mm>/<dd>/<uuid>.bdf・.src・.json と <prefix>/manifests/<yyyy-mm-dd>.json（その日の uuid とハッシュと前の日の一覧の SHA-256）'
+  record_fields: uuid、.bdf と入力の SHA-256 と大きさ、ページ数、受けた時刻、キュー・出力先・利用者・ジョブ名・部数・用紙、出どころ（IPP・API・帳票）、検索項目（取引年月日・金額・取引先・書類の種類・書類番号）と取り出した方法と版、supersedes、保存の期限とモード
+  search_fields_order:
+  - 投げる側（API、bdf print -meta）
+  - 帳票テンプレートの検索項目への写し（archive の写像）
+  - キューの規則（SearchText への正規表現・位置）
+  - 人が画面で入れる（履歴つき）
+  printer_additions:
+    round_robin: policy round-robin。順に回し、止まっているプリンタは飛ばす
+    per_printer_queue: すべてのプリンタに同じ名前の暗黙のキュー（CUPS のプリンタ＝キュー）。設定の queues の同じ名前が勝つ
+    move_job: API、bdf jobs move、CUPS-Move-Job（requirement:print の spool.queue にあり未実装）
+  cups_namespace: /printers・/classes・/jobs、CUPS-Get-Printers・CUPS-Get-Classes・CUPS-Get-Default・CUPS-Move-Job・CUPS-Accept-Jobs・CUPS-Reject-Jobs・CUPS-Get-Document。client.conf の ServerName、lpstat -h、cups-browsed から見える
+  viewer: 左に保管庫・仮想プリンタ・自分の文書・自分あて・日付の木・未分類。一覧はサムネイルか表。検索の欄（本文、日付と金額の範囲、取引先、組み合わせ）。開くと bdf のビューア。詳細にハッシュ・期限・legal hold・訂正の鎖・項目の履歴。刷り直し、タグ、フォルダ、項目の修正、配達先
+  display:
+    destination: display://<場所>。キューとして /ipp/print/<場所> に見せ、基幹・WMS は今までどおり刷る。ジョブは .bdf にしてスプールに置いた時点で completed
+    slip_state: 新着 → 開いた（端末・時刻）→ 完了（端末で押す）。送った側が完了の前に Cancel-Job すると端末から消え、取り消しの印を残す
+    notify: 今の /events の SSE を場所ごとに絞る
+    fallback: 'locations.<場所>.fallback: {printer, after}。開かれない・端末がつながっていないとき実プリンタへ'
+    keep: 完了した伝票を端末に出す日数。控えは archive の設定で保管庫に（表示と保管は別の設定）
+    tablet_ui: 新着を大きく新しい順、着信の音、今日・未完了・完了、全画面の bdf のビューア、完了と「この倉庫で刷る」、切断の表示
+  device_auth:
+    default: 管理者が場所ごとに短い期限・1 回きりの登録コード（QR）を出す → 端末のページが WebCrypto の non-extractable な ECDSA P-256 の鍵を作り IndexedDB に置き、公開鍵とコードを送る → 端末 ID を場所に結ぶ（承認は設定）→ 開くたびに challenge に署名して短いセッション（HttpOnly、SameSite=Strict）→ 管理者が端末を外せる
+    stronger: MDM のある端末群はクライアント証明書の mTLS（iPadOS の Managed Device Attestation、Android Enterprise の鍵の証明）。場所ごとの IP の範囲の制限を重ねられる
+    not_passkeys: passkey は同期されて端末に閉じず、共有の端末に個人のアカウントが無い
+    workers: だれが完了したかは端末で名前か PIN を選ぶ（記録で、認証ではない）
+    weaknesses: ブラウザのデータを消すと登録が消える。iPadOS の Safari のストレージの消去を避けるためホーム画面の Web アプリで使う（未確認）。同じ端末で悪意のあるスクリプトが動けば鍵を使われる（取り出せはしない）
+    protection: 既定でオフラインなし・ダウンロードなし。強めるなら examples/secure-reader の要求ごとの封（エフェメラルの ECDH）、端末名と時刻の透かし
+  users: 画面は OIDC（Entra ID、Google Workspace）とトークン。IPP は利用者ごとの Basic。API のトークンに read（自分の・自分あて）と audit（全部を読むだけ）を足す
+  delivery_order_proposed:
+  - pm-1 現場の表示（display:// と場所、伝票の状態、場所ごとの SSE、登録コードと端末の鍵の認証、端末の管理、タブレットの画面、紙への逃げ道。保存はスプールのまま）
+  - pm-2 保管庫（archive:// とキュー・場所の archive:、記録と一覧の鎖、S3 Object Lock と lock none、検索項目の投げる側と規則、索引と検索の API、bdf archive search / get / verify、reindex）
+  - pm-3 事務所のビューア（Drive 的な画面、サムネイル、刷り直し、監査の記録、OIDC）
+  - pm-4 束ね方と CUPS（round-robin、プリンタごとのキュー、ジョブの移動、CUPS の名前の空間。print-m6 の S4 の後）。小さく独立なので前でもよい
+  - 後 mTLS（MDM）の端末認証、要求ごとの封、帳票テンプレートの検索項目、RFC 3161、GCS・Azure・R2 のロック、期限の過ぎたものの削除、複数台
+  yuruidb_needs:
+  - Blob の書き込みに保持の期限・モード・legal hold を渡す口（S3 の x-amz-object-lock-*、GCS の retention、Azure の immutability policy）
+  - 起動時にバケットのロックが効くかを確かめる口
+  - legal hold の付け外しと、期限の延長（短縮はできない）
+  size_estimate: 1 日 1000 ジョブ × 10 年で約 365 万件。本文 2 KB / 件で 7 GB 程度（暫定の見積もり、測っていない）
+open_questions:
+  order:
+    text: 偽プリンタ（print-m6）を先に作り Print Manager はその後か、Print Manager を先にするか
+    state: answered
+    resolution: 偽プリンタが先。2026-10-20 利用者「偽プリンタをまずきちんと作って、テストを全てそれをベースに行うのを先にしたい」（milestone:print-m6）。それまでの推奨の経緯：2026-10-20 に用途が現場の表示と分かり、推奨を「Print Manager の pm-1（現場の表示）が先、偽プリンタは並行してよい」に改めた（表示先は仮想なので偽プリンタ無しで作れる。紙への逃げ道の試験に偽物があると楽）。利用者の答えは未だ
+  product-shape:
+    text: bdf printd を広げる（1 つのバイナリ）か、bdf printd をライブラリとして使う別のサービスか、複数の会社で共有するクラウドのサービス（テナント分離）か
+    state: answered
+    resolution: bdf printd とは別のサービス。2026-10-20 利用者「bdf printd とは別にサービスを作りたい」（推奨の「広げる」は採らなかった）。bdf printd との関係は printd-relation
+  printd-relation:
+    text: 別のサービスと bdf printd の関係。A は print/ の部品（スプール、IPP のサーバー、変換）をライブラリとして組み込み、実プリンタにも自分で送る。B は表示・保管・検索・画面の中央のサービスで、IPP の受け口と INFRA の Infrastructure Printer を持ち、倉庫の実プリンタへは各拠点の bdf printd が INFRA（m4 の upstreams）で取りに来る。C は B の逆で、bdf printd が受けて Manager の API に渡す
+    state: deferred
+    resolution: pm-1 を始めるときに決める（print-m6 には依らない）。推奨は B（倉庫は NAT の向こうで、m4 の拠点の代理がそのまま使え、タブレットは中央に繋ぐ）。置き場所（このリポジトリの cmd/ か別のリポジトリか）も同じとき
+  paperless-meaning:
+    text: 「特定のユーザーに見せる（ペーパーレス）」は、刷ったものを決まった人に届ける（配達）か、仮想プリンタを使える・見える人を絞る（見せる範囲）か、両方か
+    state: answered
+    resolution: どちらでもなく「場所と端末」。2026-10-20 利用者「基本的にはペーパーレスで、伝票を見せる、という用途を考えていた。現場の倉庫ごとの仮想プリンタを作り、タブレットからアクセス。デバイス認証とかで認証してその端末からのみ見せる、といったことを想定していた」。display:// の表示先と端末の認証（facts.display、facts.device_auth）
+  viewer-login:
+    text: 画面のログインを最初から OIDC にするか、まずトークンで OIDC は後か
+    state: open
+    resolution: タブレットはデバイス認証（paperless-meaning の答えから）。事務所の人と管理者は暫定でまずトークン、OIDC は pm-3
+  search-engine:
+    text: 索引を自前（別の bbolt のファイルに項目と本文の 2-gram）にするか、外の検索エンジン（Meilisearch）にするか
+    state: open
+    resolution: 暫定で自前、Meilisearch に出す口も。規模（365 万件）で bbolt の 2-gram が足りるかは pm-1 で測って決める
+  default-lock-mode:
+    text: WORM の既定のモード
+    state: open
+    resolution: 暫定で governance。compliance は誰も期限まで消せず、設定の誤りを費用ごと戻せない
+  first-worm-store:
+    text: 最初に対応する WORM の保存先と試験の相手
+    state: open
+    resolution: 暫定で S3 Object Lock。試験は自前の S3 の偽物（Object Lock の見出しを守る）と実際の S3。MinIO のコミュニティ版は 2026-02 に凍結（system:conditional-storage）なので試験の主にしない
+  keep-source:
+    text: 刷った .bdf に加えて受けたままの入力（PDF など）も保存するか
+    state: open
+    resolution: 暫定でキューの設定、既定は残す
+  form-archive-fields:
+    text: 帳票テンプレートに検索項目への写しを書き、できた .bdf に項目を入れる仕組み（form 側の足し算）
+    state: deferred
+    resolution: pm-1 の後。pm-1 は投げる側と規則で足りる。帳票から刷る利用者が出たら
+  lock-probe:
+    text: 起動時のロックの確かめを compliance のバケットでどう行うか（確かめに書いたものが期限まで消せない）
+    state: open
+    resolution: 暫定で確かめ用の接頭辞に 1 日の期限で 1 つだけ書き、残ることを費用として受け入れる
+  device-auth:
+    text: 端末の認証の既定を、登録コード＋WebCrypto の取り出せない鍵（MDM 不要）にするか、MDM の証明書の mTLS にするか
+    state: open
+    resolution: 暫定で登録コード＋取り出せない鍵を既定、mTLS は MDM のある所の選択（後）。現場に MDM があるかで替える
+  device-offline:
+    text: 端末に伝票を残すか（電波の届かない場所で開けるか）
+    state: open
+    resolution: 暫定で残さない。倉庫の電波の事情で要るなら、期限つきで封をして持つ形（secure-reader の仕組み）を後で
+  device-approval:
+    text: 登録コードで足した端末を、管理者の承認なしで使えるようにするか
+    state: open
+    resolution: 暫定で承認なし（コードが 1 回きり・短い期限なので）。設定で承認を挟める
+  ios-storage-eviction:
+    text: iPadOS の Safari・ホーム画面の Web アプリで IndexedDB の鍵が消されないか
+    state: open
+    resolution: 実機で確かめる（未確認）。消えるなら mTLS か再登録の手間を受け入れる
+  ipp-basic-clients:
+    text: Windows の IPP クラスドライバ・macOS・iOS・Android が IPP の Basic 認証を問うか
+    state: open
+    resolution: 実機で確かめる（未確認）。問わないクライアントには利用者ごとの秘密の rp（/ipp/print/<キュー>-<秘密>）を代わりにするか
+relations:
+- relation: extends
+  to: requirement:print
+- relation: depends_on
+  to: decision:thin-store
+- relation: informed_by
+  to: system:worm-object-storage
+- relation: informed_by
+  to: system:denchoho
+- relation: informed_by
+  to: system:conditional-storage
+- relation: complements
+  to: requirement:form-template
+history:
+  order-and-shape-answered:
+    summary: 2026-10-20 利用者「偽プリンタをまずきちんと作って、テストを全てそれをベースに行うのを先にしたい」「bdf printd とは別にサービスを作りたい」。順番は print-m6 が先、形は別のサービス。bdf printd との関係（printd-relation）は pm-1 のときに決める
+  paperless-answered:
+    summary: 2026-10-20 利用者「基本的にはペーパーレスで、伝票を見せる、という用途を考えていた。現場の倉庫ごとの仮想プリンタを作り、タブレットからアクセス。デバイス認証とかで認証してその端末からのみ見せる、といったことを想定していた」。§7 を表示先（display://）とデバイス認証に書き直し、順番を現場の表示が先に並べ替えた
+  proposed:
+    summary: 2026-10-20 利用者「BDF Print Manager 的な CUPS サーバーとしても振る舞う Web サービスがあっても良いと思った。電子帳簿保存法対応で、印刷されたものをオブジェクトストレージに BDF で保存。vault lock で上書き・削除できないモードでファイルを書き出す。日付やファイル名、その他メタデータや本文の検索もできる、Google Drive 的なビューアを持つ。…実プリンタを何台もぶら下げられる。スプール機能を持ち、クライアントから任意のプリンタに直接送ることもできる。グループになっているプリンタにラウンドロビンで送るのもできる。キャンセルなどもできる。仮想プリンタを複数作ることもできて、特定のユーザーに見せる（ペーパーレス）のも可能」。続けて /knowledge-memory で設計を求めた。既存の bdf printd と並べ、print-manager.ja.md に設計を書いた

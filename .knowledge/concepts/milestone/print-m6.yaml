@@ -1,0 +1,82 @@
+id: milestone:print-m6
+type: milestone
+title: print-m6 — 偽プリンタの農場と、印刷のテストの全部の移行（print/fakeprinter、pdlread、faults、CUPS の名前の空間、tools/fakeprinter）
+summary: >-
+  requirement:fake-printers の最初の実装のまとまり。print/fakeprinter を作り、ラベル・レシート・連帳の
+  読み手を print/pdl/pdlread に出し、bdf print → 偽物 → 読み戻した絵 を bdf の描画と比べる。壊れ方の筋書きでスプールの再開・二重印刷の
+  防止を書き直し、CUPS のサーバーの偽物で bdf printers の CUPS の一覧を往復させ、YAML の農場と画面を tools/fakeprinter に置く。
+  印刷のテストを全部これに移して ipptest・rawtest・手書きの偽物を消し、偽物そのものを ipptool・cupsd・ippeveprinter で確かめる。
+  叙述は knowledge-inputs/print-plan/fake-printers.ja.md §9・§10。2026-10-20 利用者の決定で、Print Manager より先。
+lifecycle: accepted
+authority: authored
+scope:
+  milestone: print-m6
+constraints:
+- 印刷の Go のテストでプリンタ役を作るのは print/fakeprinter だけ（winspool と USB の装置ファイルを除く）
+- 移す前と後でテストの数と確かめが減らない
+- 依存を足さない
+- 既定は loopback だけ、DNS-SD の広告なし
+non_goals:
+- 外の偽物を CI に入れる
+- スキャン・ファクス
+- Print Manager の機能（保管庫・検索・画面）
+acceptance:
+  s1-core:
+    text: print/fakeprinter の device（搬送路・言語・profile・faults・記録）。偽物の各 IPP の profile が ipptool の ipp-1.1・ipp-2.0・ipp-everywhere の検査を通り、cupsd の ipp・socket・lpd のキューから lp で投げたジョブが偽物に届いて読み戻せ、ippeveprinter と同じ要求の並びに同じ状態コードと主な属性を返す
+    verified_by:
+    - fake-conformance
+  s2-readback:
+    text: m1〜m5 のすべての形式（PDF、PostScript（gs があるとき）、PWG、URF、PCLm、ZPL、SBPL、TPCL、ESC/POS、ESC/P）で、bdf print → 偽物 → 読み戻した絵が imagebdf の描画と一致する（ラスタの言語は画素ごと、PDF・PostScript は golden の許容）。印刷側バーコードは命令の一覧と絵の両方に出る
+    verified_by:
+    - readback-roundtrip
+  s3-faults:
+    text: 筋書き（状態、ジョブを忘れる、job-id を戻す、n バイト目で切る、遅れ、証明書の作り直し）でスプールの再開・二重印刷の防止・停止と再開・指紋の固定のテストを書き直し、決まった順で何度でも同じ結果になる
+    verified_by:
+    - spool-fault-tests
+  s4-cups:
+    text: cups の搬送路が /printers・/classes と CUPS-Get-Printers・CUPS-Get-Classes・CUPS-Get-Default・CUPS-Move-Job に答え、bdf printers -url で一覧が出る。クラスに投げたジョブがメンバーに流れる
+    verified_by:
+    - cups-fake-tests
+  s6-migration:
+    text: fake-printers.ja.md §10.1 の全部のテストを fakeprinter に移し、print/ipp/ipptest・print/raw/rawtest・test/print/raw9100.py・テストごとの IPP の手書きを消す。移す前と後のテストの名前と確かめの対応表があり、go test ./print/... ./cmd/bdf/ が通る。プリンタ役の手書きが無いことの小さな検査が CI にある
+    verified_by:
+    - print-tests
+    - migration-table
+  s5-farm:
+    text: go run ./tools/fakeprinter -config test/print/farm.yaml で十数台が起き、画面でジョブの属性・バイト列・読み戻した絵が見え、JSON の API で一覧と faults の注入ができる。ci.sh の Python の 9100 の受け手を置き換える
+    verified_by:
+    - farm-smoke
+    - ci-print
+verification:
+  fake-conformance:
+    state: not_run
+    method: integration
+    test: test/print/ci.sh の偽物の確かめの段（ipptool、cupsd、ippeveprinter との差）
+  migration-table:
+    state: not_run
+    method: static
+  print-tests:
+    state: not_run
+    method: unit
+    test: go test ./print/... ./cmd/bdf/ -run 'Print|Printer|Jobs|Printd'
+  readback-roundtrip:
+    state: not_run
+    method: integration
+  spool-fault-tests:
+    state: not_run
+    method: integration
+  cups-fake-tests:
+    state: not_run
+    method: integration
+  farm-smoke:
+    state: not_run
+    method: manual
+  ci-print:
+    state: not_run
+    method: integration
+    test: test/print/ci.sh（CI の print ジョブ）
+relations:
+- relation: implements
+  to: requirement:fake-printers
+- relation: follows
+  to: milestone:print-m5
