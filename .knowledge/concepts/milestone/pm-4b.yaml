@@ -1,0 +1,63 @@
+id: milestone:pm-4b
+type: milestone
+title: pm-4b — 規則で振り分ける filter ノードと、エディタの to・otherwise の選択部品
+summary: >-
+  milestone:pm-4 で見送った「規則で振り分けるフィルター」。新しい種類 filter は rules（match：name・user・format の RE2 と
+  min_pages・max_pages、to）を順に見て、最初に合った規則の to に流し、どれにも合わなければ otherwise へ、otherwise が無ければそこで
+  終える（足跡は dropped、理由つき）。規則の to と otherwise は辺として確かめ（存在・閉路）、キャンバスに描く。エディタの to（queue・
+  endpoint・inbox）と filter の otherwise はコンマ入力でなくノードのチェックボックスに（class の members は順序があるので文字のまま）。
+  2026-10-21 実装。
+lifecycle: active
+authority: authored
+scope:
+  milestone: pm-4b
+constraints:
+- 規則の正規表現は RE2（Go の regexp）。PUT のときに確かめ、合わなければ 400
+- filter は宛先でもある（どのノードも宛先）。閉路の確かめに規則の to と otherwise を数える
+- 規則に合わず otherwise も無いジョブは completed で終わる（足跡 dropped に理由）。失われたことが分かるよう、足跡は残す
+capabilities:
+  filter-rules:
+    state: implemented
+    about: capability:print-manager/filter-rules
+  node-pickers:
+    state: implemented
+    about: エディタの to・otherwise のチェックボックス
+acceptance:
+  f1-rules:
+    text: 規則の順に最初に合ったものへ（name の RE2、ページ数の下限、user と format の組）、合わなければ otherwise、無ければ dropped。壊れた正規表現・空の match・to の無い規則・無いノード・規則を通る閉路は 400
+    verified_by: [manager-tests]
+  f2-ui:
+    text: パレットに Filter。サイドバーに規則の行（name・user・format・pages・to）の追加と削除、otherwise の選択。to はチェックボックスで選ぶ
+    verified_by: [js-syntax]
+verification:
+  manager-tests:
+    state: passed
+    method: integration
+    test: go test -race ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/filter_test.go
+      locator: 'TestFilter：確かめ 6 件の 400、urgent → wh-a と wh-b、4 ページ → wh-b、erp の bdf → office、他は otherwise、otherwise 無しで dropped、閉路、送られている filter は消せない。2026-10-21 macOS'
+  js-syntax:
+    state: passed
+    method: static
+    test: node --check cmd/printmanager/public/*.js
+    authority: observed
+facts:
+  delivery:
+    implemented:
+      date: '2026-10-21'
+      packages:
+      - 'print/manager/filter.go（Rule・Match・compile・fits、checkRules、ruleTargets、routeFilter、describe）、model.go（KindFilter、Node.Rules・Otherwise、LegDropped、edges() に規則）、nodes.go（filter の確かめ）、route.go'
+      - 'cmd/printmanager/public：canvas.js（規則の辺、色、出力の口）、topology.js（picker・picked、ruleRow・rulesOf、filter のサイドバー、辺の追加は otherwise へ・削除は規則からも）、topology-view.js（規則の表示）、admin.js、pages.pw.html（パレット）、README'
+    decisions:
+    - 'user の照合は名乗り（ClaimedUser）と確かめた送り手の表示（SubmittedBy.Label）のどちらかに合えばよい'
+    - '口のドラッグで filter に辺を足すと otherwise に入る（規則はサイドバーで）。辺のクリックで外すと規則からも外す'
+    - 'class の members は順序が要るので文字の入力のまま'
+    unverified:
+    - 'ブラウザでの規則の編集（手で未確認）'
+relations:
+- relation: implements
+  to: requirement:print-manager
+- relation: follows
+  to: milestone:pm-4

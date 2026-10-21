@@ -119,6 +119,8 @@ const (
 	// KindSink keeps the latest documents that reach it, to look at on
 	// the topology (sink.go).
 	KindSink = "sink"
+	// KindFilter sends a job on by rules on what it is (filter.go).
+	KindFilter = "filter"
 )
 
 // What an endpoint accepts: documents, templates to fill, or both.
@@ -147,6 +149,10 @@ type Node struct {
 	// Members and Policy are a class's.
 	Members []string `json:"members,omitempty"`
 	Policy  string   `json:"policy,omitempty"`
+	// Rules and Otherwise are a filter's: the first rule that fits a job
+	// forwards it; none, Otherwise (empty: the job ends there).
+	Rules     []Rule   `json:"rules,omitempty"`
+	Otherwise []string `json:"otherwise,omitempty"`
 	// Keep is how long an inbox shows its released and discarded items,
 	// and a display its slips done or canceled (default 14 days).
 	Keep Duration `json:"keep,omitempty"`
@@ -206,10 +212,11 @@ func (n *Node) offlineAfter() time.Duration {
 
 func (n *Node) collection() string { return or(n.Collection, "archive-"+n.Name) }
 
-// edges are the nodes a node sends to: To, Members, and a display's
-// fallback printer.
+// edges are the nodes a node sends to: To, Members, a filter's rules and
+// Otherwise, and a display's fallback printer.
 func (n *Node) edges() []string {
 	out := append(append([]string{}, n.To...), n.Members...)
+	out = append(out, n.ruleTargets()...)
 	if n.Fallback != nil && n.Fallback.Printer != "" {
 		out = append(out, n.Fallback.Printer)
 	}
@@ -332,6 +339,7 @@ const (
 	LegFailed    = "failed"
 	LegCanceled  = "canceled"
 	LegKept      = "kept"
+	LegDropped   = "dropped"
 	LegError     = "error"
 )
 

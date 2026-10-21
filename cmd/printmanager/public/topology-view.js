@@ -104,6 +104,8 @@ function renderSidebar() {
   const parts = [head, stats];
   const out = [];
   for (const to of n.to || []) out.push(to);
+  for (const [i, r] of (n.rules || []).entries()) out.push((r.to || []).join(", ") + ` (rule ${i + 1})`);
+  for (const to of n.otherwise || []) out.push(to + " (otherwise)");
   for (const m of n.members || []) out.push(m + (n.policy === "failover" ? " (first)" : " (in turn)"));
   if (n.fallback && n.fallback.printer) out.push(n.fallback.printer + " (fallback)");
   if (out.length) parts.push(el("p", "→ " + out.join(", "), { className: "font-mono text-xs text-base-content/60" }));
