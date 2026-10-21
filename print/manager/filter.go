@@ -9,10 +9,11 @@ import (
 )
 
 // A filter sends a job on by rules: the first rule whose match fits the
-// job (its name, who sent it, its format, its pages) forwards it to the
-// rule's nodes; a job no rule fits goes to Otherwise, or ends there
-// (dropped) when there is none. Routing by what a job is, where an inbox
-// routes by hand.
+// job (its name, who sent it, its format, its pages, its metadata, the
+// kind of its payload) forwards it to the rule's nodes; a job no rule fits
+// goes to Otherwise, or ends there (dropped) when there is none. Routing
+// by what a job is, where an inbox routes by hand. What it sends on is
+// what reached it (the kind too).
 
 // Rule is a rule of a filter: where a job that matches goes.
 type Rule struct {
@@ -21,19 +22,30 @@ type Rule struct {
 }
 
 // Match is what a rule looks at; every condition given must hold. Name,
-// User and Format are regular expressions (RE2), User against the name
-// the sender gave and the verified sender's label.
+// User, Format and the values of Meta are regular expressions (RE2), User
+// against the name the sender gave and the verified sender's label, Meta
+// against the job's metadata by key (metaView: the sender's keys, the
+// entry's, the manager's $ keys and the payload's; a key the job lacks
+// does not fit). Kind is the payload's (bdf, data or any).
 type Match struct {
-	Name     string `json:"name,omitempty"`
-	User     string `json:"user,omitempty"`
-	Format   string `json:"format,omitempty"`
-	MinPages int    `json:"min_pages,omitempty"`
-	MaxPages int    `json:"max_pages,omitempty"`
+	Name     string            `json:"name,omitempty"`
+	User     string            `json:"user,omitempty"`
+	Format   string            `json:"format,omitempty"`
+	MinPages int               `json:"min_pages,omitempty"`
+	MaxPages int               `json:"max_pages,omitempty"`
+	Meta     map[string]string `json:"meta,omitempty"`
+	Kind     string            `json:"kind,omitempty"`
+}
+
+// empty tells a match with no condition.
+func (mt Match) empty() bool {
+	return mt.Name == "" && mt.User == "" && mt.Format == "" && mt.MinPages == 0 && mt.MaxPages == 0 && len(mt.Meta) == 0 && mt.Kind == ""
 }
 
 // compiled is a match's expressions, compiled.
 type compiled struct {
 	name, user, format *regexp.Regexp
+	meta               map[string]*regexp.Regexp
 	m                  Match
 }
 
@@ -54,14 +66,42 @@ func (mt Match) compile() (*compiled, error) {
 	if mt.MinPages < 0 || mt.MaxPages < 0 || (mt.MaxPages > 0 && mt.MinPages > mt.MaxPages) {
 		return nil, fmt.Errorf("%w: match pages %d..%d", ErrInvalid, mt.MinPages, mt.MaxPages)
 	}
-	if mt == (Match{}) {
-		return nil, fmt.Errorf("%w: a rule matches something (name, user, format or pages)", ErrInvalid)
+	if len(mt.Meta) > 0 {
+		c.meta = map[string]*regexp.Regexp{}
+		for k, expr := range mt.Meta {
+			if strings.TrimSpace(k) == "" {
+				return nil, fmt.Errorf("%w: match meta: a key is empty", ErrInvalid)
+			}
+			re, err := regexp.Compile(expr)
+			if err != nil {
+				return nil, fmt.Errorf("%w: match meta %s %q: %v", ErrInvalid, k, expr, err)
+			}
+			c.meta[k] = re
+		}
+	}
+	if mt.Kind != "" && !slices.Contains(payloadKinds, mt.Kind) {
+		return nil, fmt.Errorf("%w: match kind %q: bdf, data or any", ErrInvalid, mt.Kind)
+	}
+	if mt.empty() {
+		return nil, fmt.Errorf("%w: a rule matches something (name, user, format, pages, meta or kind)", ErrInvalid)
 	}
 	return c, nil
 }
 
-// fits tells a job the match fits.
-func (c *compiled) fits(j *Job) bool {
+// fits tells a job with a payload the match fits.
+func (c *compiled) fits(j *Job, p *Payload) bool {
+	if c.m.Kind != "" && (p == nil || p.Kind != c.m.Kind) {
+		return false
+	}
+	if len(c.meta) > 0 {
+		view := metaView(j, p)
+		for k, re := range c.meta {
+			v, ok := view[k]
+			if !ok || !re.MatchString(v) {
+				return false
+			}
+		}
+	}
 	if c.name != nil && !c.name.MatchString(j.Name) {
 		return false
 	}
@@ -128,7 +168,7 @@ func (m *Manager) routeFilter(ctx context.Context, r *routing, name, from string
 			r.add(Leg{Node: name, Kind: KindFilter, From: from, State: LegError, Error: err.Error()})
 			return
 		}
-		if c.fits(r.job) {
+		if c.fits(r.job, r.payload) {
 			r.add(Leg{Node: name, Kind: KindFilter, From: from, State: LegRouted, Member: fmt.Sprintf("rule %d", i+1)})
 			for _, to := range rule.To {
 				m.route(ctx, r, to, name, depth+1)
@@ -149,6 +189,9 @@ func (m *Manager) routeFilter(ctx context.Context, r *routing, name, from string
 // describe tells what a job is, for a leg that no rule fit.
 func describe(j *Job) string {
 	parts := []string{fmt.Sprintf("%d page(s)", j.Pages)}
+	if j.Kind != "" && j.Kind != PayloadBDF {
+		parts = append(parts, j.Kind)
+	}
 	if j.Format != "" {
 		parts = append(parts, j.Format)
 	}

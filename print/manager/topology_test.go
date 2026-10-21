@@ -330,7 +330,7 @@ func TestArchive(t *testing.T) {
 	if err != nil || len(page.Blobs) != 2 {
 		t.Fatalf("archived %+v %v", page, err)
 	}
-	key := archiveKey(j)
+	key := archiveKey(j, j.received())
 	if page.Blobs[0].ID != key+".bdf" || page.Blobs[1].ID != key+".json" || !strings.HasPrefix(key, "2026-10-20.0000000001.") {
 		t.Fatalf("keys %+v", page.Blobs)
 	}
@@ -343,7 +343,8 @@ func TestArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Close()
-	if rec.Job != 1 || rec.Name != "invoice" || rec.Pages != 3 || rec.SHA256 != j.SHA256 || rec.Archive != "audit" || rec.Dest != "audit-in" {
+	if rec.Job != 1 || rec.Name != "invoice" || rec.Pages != 3 || rec.SHA256 != j.SHA256 || rec.Archive != "audit" || rec.Dest != "audit-in" ||
+		rec.Kind != PayloadBDF || rec.Format != "bdf" || rec.Payload != j.ID || rec.Object != key+".bdf" || rec.Meta["$entry"] != "audit-in" || len(rec.Payloads) != 1 {
 		t.Fatalf("record %+v", rec)
 	}
 	r, err = st.Open(ctx, key+".bdf")
@@ -357,7 +358,7 @@ func TestArchive(t *testing.T) {
 		t.Fatalf("document %q %d", head, page.Blobs[0].Size)
 	}
 	// written once: a second delivery of the same job would not change it
-	if _, err := e.m().archive(ctx, &Node{Name: "audit", Kind: KindArchive, Store: store}, j); err != nil {
+	if _, err := e.m().archive(ctx, &Node{Name: "audit", Kind: KindArchive, Store: store}, j, j.received()); err != nil {
 		t.Fatal(err)
 	}
 	if page, _ := st.List(ctx, yuruidb.ListOptions{Limit: 10}); len(page.Blobs) != 2 {
@@ -469,6 +470,7 @@ func TestCupsGetPrinters(t *testing.T) {
 // with its own key, and the job flows from it.
 func TestEndpoint(t *testing.T) {
 	e := newEnv(t, nil)
+	ctx := context.Background()
 	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay}, http.StatusOK)
 	d := e.enroll("wh-a", "tablet")
 	d.board()
@@ -516,73 +518,135 @@ func TestEndpoint(t *testing.T) {
 		t.Fatalf("board %+v", b)
 	}
 
-	// a template of the endpoint, filled with data
+	// a template node fills its templates with the data an endpoint takes
 	tpl, err := os.ReadFile("../../testdata/form/pages.bdft")
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.node("forms", Node{Kind: KindTemplate, To: []string{"wh-a"}}, http.StatusBadRequest)
+	e.node("forms", Node{Kind: KindTemplate, Template: "slip", TemplateFrom: "doc_type", To: []string{"wh-a"}}, http.StatusBadRequest)
+	e.node("forms", Node{Kind: KindTemplate, Template: "no.dot", To: []string{"wh-a"}}, http.StatusBadRequest)
+	e.node("forms", Node{Kind: KindTemplate, Template: "slip", To: []string{"wh-a"}}, http.StatusOK)
 	var tp Template
-	json.Unmarshal(e.admin("PUT", "/api/nodes/intake/templates/slip?name=pages.bdft", tpl, http.StatusOK), &tp)
-	if tp.Format != "xlsx" || tp.Endpoint != "intake" || len(tp.Fields) == 0 || tp.Fields[0].Name != "pages" || tp.Size != int64(len(tpl)) {
+	json.Unmarshal(e.admin("PUT", "/api/nodes/forms/templates/slip?name=pages.bdft", tpl, http.StatusOK), &tp)
+	if tp.Format != "xlsx" || tp.Node != "forms" || len(tp.Fields) == 0 || tp.Fields[0].Name != "pages" || tp.Size != int64(len(tpl)) {
 		t.Fatalf("template %+v", tp)
 	}
 	var tps []Template
-	json.Unmarshal(e.admin("GET", "/api/nodes/intake/templates", nil, http.StatusOK), &tps)
+	json.Unmarshal(e.admin("GET", "/api/nodes/forms/templates", nil, http.StatusOK), &tps)
 	if len(tps) != 1 || tps[0].ID != "slip" {
 		t.Fatalf("templates %+v", tps)
 	}
-	if res, out := e.do(nil, "GET", "/api/nodes/intake/templates/slip/file", adminToken, nil); res.StatusCode != http.StatusOK || !bytes.Equal(out, tpl) {
+	if res, out := e.do(nil, "GET", "/api/nodes/forms/templates/slip/file", adminToken, nil); res.StatusCode != http.StatusOK || !bytes.Equal(out, tpl) {
 		t.Fatalf("file: %d", res.StatusCode)
 	}
-	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &topo)
-	if !slices.Equal(topo[0].Templates, []string{"slip"}) {
-		t.Fatalf("topology templates %+v", topo[0].Templates)
+	e.admin("PUT", "/api/nodes/forms/templates/no.dot?name=pages.bdft", tpl, http.StatusBadRequest)
+	e.admin("PUT", "/api/nodes/wh-a/templates/slip?name=pages.bdft", tpl, http.StatusNotFound)
+	if res, _ := e.do(nil, "PUT", "/api/nodes/forms/templates/bad", adminToken, []byte("not a template")); res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("not a template: %d", res.StatusCode)
 	}
-	fill := map[string]any{"template": "slip", "name": "slip 7", "data": map[string]any{"pages": []map[string]any{{"slip": "No. 7", "customer": "ACME", "carry_in": 10}, {"slip": "No. 7", "customer": "ACME", "carry_in": 20}}}}
-	res, out = e.do(nil, "POST", "/in/intake", made.Key, fill)
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("fill: %d %s", res.StatusCode, out)
-	}
-	json.Unmarshal(out, &j)
-	if j.Name != "slip 7" || j.Pages != 2 || j.Format != "form:xlsx" || j.State != JobCompleted {
-		t.Fatalf("filled job %+v", j)
-	}
-	if res, out := e.do(nil, "POST", "/in/intake", made.Key, map[string]any{"template": "nowhere", "data": map[string]any{}}); res.StatusCode != http.StatusNotFound {
-		t.Fatalf("no template: %d %s", res.StatusCode, out)
-	}
-	if res, out := e.do(nil, "POST", "/in/intake", made.Key, map[string]any{"data": map[string]any{}}); res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("no template named: %d %s", res.StatusCode, out)
-	}
-	// another endpoint's templates are its own
-	var other struct {
+	var din struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("other", Node{Kind: KindEndpoint, To: []string{"wh-a"}}, http.StatusOK), &other)
-	if res, _ := e.do(nil, "POST", "/in/other", other.Key, fill); res.StatusCode != http.StatusNotFound {
-		t.Fatalf("another endpoint's template: %d", res.StatusCode)
+	json.Unmarshal(e.node("data-in", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"forms"}}, http.StatusOK), &din)
+	var typed []TopoNode // a fresh slice: Unmarshal keeps the old elements' fields
+	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &typed)
+	byName := map[string]TopoNode{}
+	for _, n := range typed {
+		byName[n.Name] = n
 	}
-	e.admin("PUT", "/api/nodes/other/templates/slip?name=pages.bdft", tpl, http.StatusOK)
-	e.admin("PUT", "/api/nodes/other/templates/no.dot?name=pages.bdft", tpl, http.StatusBadRequest)
-	e.admin("PUT", "/api/nodes/wh-a/templates/slip?name=pages.bdft", tpl, http.StatusNotFound)
-	if res, _ := e.do(nil, "POST", "/in/other", other.Key, fill); res.StatusCode != http.StatusCreated {
-		t.Fatalf("other's own template: %d", res.StatusCode)
+	if f := byName["forms"]; !slices.Equal(f.Templates, []string{"slip"}) || f.Takes != PayloadData || !slices.Equal(f.Emits, []string{PayloadBDF}) {
+		t.Fatalf("topology forms %+v", f)
 	}
-	// what an endpoint takes: templates only, documents only, some formats
-	ctx := context.Background()
-	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Accept: AcceptTemplate}, http.StatusOK)
-	if res, _ := e.do(nil, "POST", "/in/intake?name=pick", made.Key, doc); res.StatusCode != http.StatusUnsupportedMediaType {
-		t.Fatalf("a document at a template endpoint: %d", res.StatusCode)
+	if d := byName["data-in"]; d.Takes != PayloadAny || !slices.Equal(d.Emits, []string{PayloadData}) || d.Output != "" {
+		t.Fatalf("topology data-in %+v", d)
 	}
-	if _, err := e.ippClient("intake").PrintJob(ctx, "x", "application/x-bdf", nil, bytes.NewReader(doc)); !ipp.IsStatus(err, ipp.StatusClientErrorDocumentFormatError) {
-		t.Fatalf("ipp to a template endpoint: %v", err)
+	data := map[string]any{"pages": []map[string]any{{"slip": "No. 7", "customer": "ACME", "carry_in": 10}, {"slip": "No. 7", "customer": "ACME", "carry_in": 20}}}
+	res, out = e.do(nil, "POST", "/in/data-in?name=slip-7.json", din.Key, data)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("data: %d %s", res.StatusCode, out)
 	}
-	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, fill); res.StatusCode != http.StatusCreated {
-		t.Fatalf("fill at a template endpoint: %d", res.StatusCode)
+	json.Unmarshal(out, &j)
+	if j.Kind != PayloadData || j.Format != "json" || j.Pages != 0 || j.State != JobProcessing || legs(&j) != "data-in:routed forms:pending" || len(j.Payloads) != 1 || j.Payloads[0].Kind != PayloadData {
+		t.Fatalf("data job %+v: %s", j, legs(&j))
 	}
+	if rep := e.tick(); rep.Delivered != 1 {
+		t.Fatalf("tick %+v", rep)
+	}
+	filled := e.job(j.Number)
+	if filled.State != JobCompleted || legs(filled) != "data-in:routed forms:done wh-a:shown" || len(filled.Payloads) != 2 {
+		t.Fatalf("filled job %+v: %s", filled, legs(filled))
+	}
+	if made := filled.Payloads[1]; made.Kind != PayloadBDF || made.Format != "bdf" || made.Pages != 2 || made.Made != "forms" || made.Name != "slip-7.bdf" || made.ID != filled.Legs[1].Ref ||
+		filled.Legs[1].Made != made.ID || filled.Legs[2].Payload != made.ID || filled.Legs[0].Payload != filled.ID {
+		t.Fatalf("payloads %+v legs %+v", filled.Payloads, filled.Legs)
+	}
+	if b := d.board(); b == nil || len(b.Open) != 2 || b.Open[1].Name != "slip-7.json" || b.Open[1].Pages != 2 || b.Open[1].Payload != filled.Payloads[1].ID {
+		t.Fatalf("board %+v", b)
+	}
+	// the document to show is the one made; the data is what was received
+	if res, out := e.do(nil, "GET", fmt.Sprintf("/api/jobs/%d/document", j.Number), adminToken, nil); res.StatusCode != http.StatusOK || !bytes.HasPrefix(out, bdf.Magic[:]) || res.Header.Get("Content-Type") != "application/x-bdf" {
+		t.Fatalf("document: %d %s", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+	if res, out := e.do(nil, "GET", fmt.Sprintf("/api/jobs/%d/document?payload=%s", j.Number, j.ID), adminToken, nil); res.StatusCode != http.StatusOK || !bytes.HasPrefix(out, []byte("{")) || res.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("data: %d %s", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+	if res, _ := e.do(nil, "GET", fmt.Sprintf("/api/jobs/%d/pages/1.png?payload=%s", j.Number, j.ID), adminToken, nil); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("a page of data: %d", res.StatusCode)
+	}
+	// a document is refused at a data endpoint, and data at a document one
+	if res, _ := e.do(nil, "POST", "/in/data-in?name=pick", din.Key, doc); res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("a document at a data endpoint: %d", res.StatusCode)
+	}
+	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, data); res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("data at a document endpoint: %d", res.StatusCode)
+	}
+	if _, err := e.ippClient("forms").PrintJob(context.Background(), "x", "application/x-bdf", nil, bytes.NewReader(doc)); !ipp.IsStatus(err, ipp.StatusClientErrorDocumentFormatError) {
+		t.Fatalf("ipp of a document to a template node: %v", err)
+	}
+	// no template of the id: the step fails for good, at once
+	e.node("forms", Node{Kind: KindTemplate, Template: "nowhere", To: []string{"wh-a"}}, http.StatusOK)
+	_, out = e.do(nil, "POST", "/in/data-in", din.Key, data)
+	json.Unmarshal(out, &j)
+	if rep := e.tick(); rep.Undelivered != 1 {
+		t.Fatalf("tick %+v", rep)
+	}
+	if got := e.job(j.Number); got.State != JobAborted || !strings.Contains(got.Legs[1].Error, "no template") {
+		t.Fatalf("no template %+v", got)
+	}
+	// the metadata names the template (a header's key is in lower case)
+	e.node("forms", Node{Kind: KindTemplate, TemplateFrom: "doc-type", To: []string{"wh-a"}}, http.StatusOK)
+	res, out = e.doWith(func(r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+din.Key)
+		r.Header.Set("X-Meta-Doc-Type", "slip")
+	}, "POST", "/in/data-in?name=by-meta", data)
+	json.Unmarshal(out, &j)
+	if res.StatusCode != http.StatusCreated || j.Meta["doc-type"] != "slip" || j.Meta["$entry"] != "data-in" || j.Meta["$sender"] != "data-in" || j.Meta["$sender_kind"] != PrincipalEndpoint || j.Meta["$file"] != "by-meta" || j.Meta["$source"] != "endpoint" {
+		t.Fatalf("meta: %d %+v", res.StatusCode, j.Meta)
+	}
+	if rep := e.tick(); rep.Delivered != 1 {
+		t.Fatalf("tick %+v", rep)
+	}
+	if got := e.job(j.Number); got.State != JobCompleted || legs(got) != "data-in:routed forms:done wh-a:shown" {
+		t.Fatalf("by meta %+v: %s", got, legs(got))
+	}
+	_, out = e.do(nil, "POST", "/in/data-in", din.Key, data)
+	json.Unmarshal(out, &j)
+	e.tick()
+	if got := e.job(j.Number); got.State != JobAborted || !strings.Contains(got.Legs[1].Error, "doc-type") {
+		t.Fatalf("no doc-type %+v", got)
+	}
+	// the templates go with their node
+	e.admin("DELETE", "/api/nodes/forms", nil, http.StatusConflict) // data-in sends to it
+	e.admin("DELETE", "/api/nodes/data-in", nil, http.StatusNoContent)
+	e.admin("DELETE", "/api/nodes/forms", nil, http.StatusNoContent)
+	e.admin("GET", "/api/nodes/forms/templates", nil, http.StatusNotFound)
+	if _, err := e.m().Template(ctx, "forms", "slip"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("forms' template stayed: %v", err)
+	}
+
+	// what an endpoint takes: some formats
 	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Accept: AcceptFile, Formats: []string{"PDF"}}, http.StatusOK)
-	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, fill); res.StatusCode != http.StatusUnsupportedMediaType {
-		t.Fatalf("fill at a file endpoint: %d", res.StatusCode)
-	}
 	if res, _ := e.do(nil, "POST", "/in/intake?name=pick", made.Key, doc); res.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("bdf at a pdf endpoint: %d", res.StatusCode)
 	}
@@ -592,7 +656,7 @@ func TestEndpoint(t *testing.T) {
 	}
 	var got Node
 	json.Unmarshal(e.admin("GET", "/api/nodes/intake", nil, http.StatusOK), &got)
-	if got.Accept != AcceptBoth || !slices.Equal(got.Formats, []string{"bdf", "pdf"}) || got.KeyHash != "" {
+	if got.Accept != AcceptFile || got.Output != OutputBDF || !slices.Equal(got.Formats, []string{"bdf", "pdf"}) || got.KeyHash != "" {
 		t.Fatalf("node %+v", got)
 	}
 	// the refusals are in the audit log
@@ -604,23 +668,8 @@ func TestEndpoint(t *testing.T) {
 			refused++
 		}
 	}
-	if refused != 3 {
+	if refused != 2 {
 		t.Fatalf("refusals audited: %d", refused)
-	}
-	// the templates go with their endpoint
-	e.admin("DELETE", "/api/nodes/other", nil, http.StatusNoContent)
-	e.admin("GET", "/api/nodes/other/templates", nil, http.StatusNotFound)
-	if _, err := e.m().Template(ctx, "other", "slip"); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("other's template stayed: %v", err)
-	}
-	e.admin("DELETE", "/api/nodes/intake/templates/slip", nil, http.StatusNoContent)
-	e.admin("DELETE", "/api/nodes/intake/templates/slip", nil, http.StatusNotFound)
-	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, fill); res.StatusCode != http.StatusNotFound {
-		t.Fatalf("a deleted template: %d", res.StatusCode)
-	}
-	// not a template
-	if res, _ := e.do(nil, "PUT", "/api/nodes/intake/templates/bad", adminToken, []byte("not a template")); res.StatusCode != http.StatusUnsupportedMediaType {
-		t.Fatalf("not a template: %d", res.StatusCode)
 	}
 
 	// the key rotated: the old one is refused

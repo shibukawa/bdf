@@ -127,7 +127,8 @@ facts:
     sidebar_common: 名前（読むだけ）、title、種類、scope と owner、IPP の宛先（/ipp/print/<名前>）、このノードのジョブ（/admin/jobs へ）、削除
     sidebar_by_kind:
       endpoint: REST の口。受けるもの（file / template / both。既定 both）と受けるファイルの形式（PDF だけ、など。許さない形式は 415 で断る。open_questions.endpoint-mode）、テンプレート（このノードの持ち物：アップロード、形式と項目の表、サンプルのデータ、削除）、許すアプリ（/admin/apps のアプリから選ぶ。pm-auth-2 までは今の鍵の表示と回転）、入口（POST /in/<名前> の URL と curl の例、REST の TCP のポート。facts.port_design）、to。IPP は無い（CUPS サーバーのノードの役）
-      cups: IPP と CUPS の口（OS の印刷、基幹の IPP、CUPS のクライアント）。ポート（ipp か ipps、TLS）、見せるノード（一旦は全ノード：各ノードが CUPS のプリンタ、class のノードは CUPS のクラス。辺で絞るのは後。open_questions.cups-server-node）、認証（人の IPP の合言葉・アプリの Basic。requirement:print-manager-auth の ipp_sender）、既定の宛先（CUPS-Get-Default。任意）。プロセスで動くときだけ置ける（サーバーレスでは pm-4 の HTTPS の /ipp/print のまま）
+      cups: IPP と CUPS の口（OS の印刷、基幹の IPP、CUPS のクライアント）。ポート（ipp か ipps、TLS）、流す先 to（endpoint と同じ「Forwards to」。そのポートはプリンタが 1 台のサーバーで、受けたものを to に流す。2026-10-21 に「全ノードを見せる」から改めた。open_questions.cups-server-node）、認証（人の IPP の合言葉・アプリの Basic。requirement:print-manager-auth の ipp_sender）、既定の宛先（CUPS-Get-Default。任意）。プロセスで動くときだけ置ける（サーバーレスでは pm-4 の HTTPS の /ipp/print のまま）
+
       display: 端末を足す（QR と URL。1 回きり・期限つき）、端末の一覧（名前、最後の接続、外す）、fallback（プリンタと after。点線の辺としても描く）、keep、offline_after、ボードの状態（開いている伝票の数、つながっている端末の数）
       printer: プロトコルと宛先（ipp / ipps / socket / lpd のスキーム、ホスト、ポート、パスを欄で取り、1 つの url に組み立てる。直接 url を書く欄も）、route（direct。branch は 501 のまま）、info、偽プリンタの絵（preview に tools/fakeprinter の API の URL があれば、最新のジョブのページを Manager が取り次いで見せる。開発とデモ向け）
       queue: to
@@ -171,7 +172,7 @@ open_questions:
   template-ownership:
     text: テンプレートを API エンドポイントのノードの持ち物にするか（利用者「テンプレートはAPIエンドポイントノードの持ち物ですかね」）。A は持ち物（そのノードのサイドバーでアップロード、id はノードの中で一意、ノードを消すとテンプレートも消える。同じテンプレートを 2 つのエンドポイントで使うなら 2 度上げる）。B は今のまま全体の一覧にエンドポイントが選ぶ（Templates のページを残す）
     state: answered
-    resolution: A（持ち物）。2026-10-21 利用者が選んだ。Templates のページは無くなり、facts.delivery.provisional_choices.template_ids の形で持つ
+    resolution: A（持ち物）。2026-10-21 利用者が選んだ。Templates のページは無くなり、facts.delivery.provisional_choices.template_ids の形で持つ。同日の後、requirement:document-flow で改まった：テンプレートはテンプレート変換ノードの持ち物に移り、エンドポイントは暗黙の変換をしない（accept は file / data）。移行は document-flow の template-migration
   endpoint-mode:
     text: 「テンプレート印刷機能を提供するのか、ファイル印刷機能を提供するのか、またその種類の選択」の形。A は受けるものの 3 択（file / template / both。既定 both。file だけならテンプレートの節を隠し、template だけなら文書の POST を断る）。B は種類ごとに別のノードの種類（api-file と api-template）。「その種類」が受けるファイルの形式の制限（PDF だけ、など）を指すかも確かめる
     state: answered
@@ -199,7 +200,12 @@ open_questions:
   cups-server-node:
     text: CUPS サーバーのノード（IPP と CUPS の口）が何を見せ、pm-4 の「どのノードも /ipp/print/<名前> の宛先」とどう並ぶか。A は明示だけ：CUPS サーバーのノードが to で繋いだノードだけをそのポートでプリンタ（class はクラス）として見せ、主の HTTPS の /ipp/print は無くす（入口は API と CUPS の 2 種類の明示のノードだけになる）。B は両方：pm-4 の /ipp/print（全ノード）を残し、CUPS サーバーのノードは選んだノードを別のポートで見せる追加の口。併せて、LAN で平文の ipp を許すか（ipps だけなら証明書の配り方が要る）
     state: answered
-    resolution: 一旦は全ノードを見せる（B の側。2026-10-21 利用者「全ノードは一旦見えても良いかなと思います」。推奨の A は採らなかった）。CUPS サーバーのノードはポートと認証を持つ IPP の口で、pm-4 の /ipp/print（全ノード）と同じものを別のポートで見せる。辺で見せるノードを絞るのは、OS のクライアントから隠したいノードが出たときに見直す。平文の ipp は LAN の CUPS サーバーのノードだけの選択で既定は ipps（Claude の暫定、未確認）
+    resolution: >-
+      当初（pm-5c）は全ノードを見せた（B の側。2026-10-21 利用者「全ノードは一旦見えても良いかなと思います」）。同日に利用者が改めた：「Printer Server は外に開いた入力を持ち、
+      受けたものは他のノードに流す（Printer に繋げば中継、Sink に繋げばプレビュー、Archive と Printer の両方、filter で PDF だけ保管。endpoint も同じ）」。
+      今の形：cups のノードは endpoint と同じに to を持ち（辺。閉路と削除の確かめに入る）、そのポートはプリンタが 1 台（そのノード自身。/printers/<名前>、/classes/<名前>、
+      /ipp/print/<名前>、素の IPP の /ipp/print）の CUPS サーバーで、lpstat -p はそれだけを返し、受けたものは to に流れる。別のノードの名前は 404（Claude の選択：
+      互換のために残さない。他のノードには辺で届く）。主の HTTPS の /ipp/print（全ノード）は pm-4 のまま。平文の ipp は LAN の CUPS サーバーのノードだけの選択で既定は ipps（Claude の暫定、未確認）
   virtual-printer-node:
     text: 「仮想プリンタもできたのでそちらも置けても良い」「最新のファイルを保持しておいてトポロジー上で閲覧できる」の形。A は Manager のノードの種類 sink（最新 N 件の文書を持ち、サイドバーとキャンバスにサムネイル。サーバーレスでも動く）。B は tools/fakeprinter をプリンタのノードとして置き（url で今も送れる）、その /api/…/pages の絵を Manager が取り次いで見せる（偽プリンタが動いている所だけ）。「仮想プリンタ」が偽プリンタ（requirement:fake-printers）を指すという読みは Claude の推定
     state: answered
@@ -324,6 +330,10 @@ history:
       2026-10-21 利用者「pm-5 の実装をこのセッションで始めてください」。milestone:pm-5 に実装した：ページの分割、エディタとサイドバー、
       Location と Printer を Node に畳む、テンプレートと accept・formats はエンドポイントの持ち物。暫定の選択のうち records（/api/nodes に寄せる、互換なし）、
       canvas_library（依存なしの SVG）、pages（ページごとの JS）、template_ids（<endpoint>.<id>）をそのまま使い、live_transport は pm-5b へ
+  superseded-template-owner:
+    summary: >-
+      2026-10-21 利用者「テンプレートはテンプレート変換ノードに移動します。エンドポイントは暗黙の変換はせずに、データ受信エンドポイント＋テンプレート変換が良いかと」。
+      template-ownership の A（エンドポイントの持ち物）と endpoint-mode の accept template は requirement:document-flow で改まる。実装はまだ pm-5 のまま
   answered-4:
     summary: >-
       2026-10-21 利用者「PDFだけ、などのファイル形式も考えていた。余計なファイルを受けない様に。2のスライスは了解です」。endpoint-mode を答え（file / template / both に

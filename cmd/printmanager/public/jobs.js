@@ -74,7 +74,7 @@ async function loadJobs() {
     const tr = el("tr");
     tr.append(
       el("td", "#" + j.number, { className: "font-mono" }),
-      el("td", j.name || "", { className: "font-semibold" }),
+      el("td", j.name || "", { className: "font-semibold", title: (j.kind || "bdf") + (j.format ? " · received as " + j.format : "") + (j.meta ? "\n" + Object.entries(j.meta).map(([k, v]) => k + ": " + (typeof v === "string" ? v : JSON.stringify(v))).join("\n") : "") }),
       el("td", j.dest, { className: "whitespace-nowrap font-mono text-sm" }),
       el("td", sender(j), { className: "text-sm" }),
       el("td", j.group || "—", { className: "hidden whitespace-nowrap text-sm md:table-cell" }),

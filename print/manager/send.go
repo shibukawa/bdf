@@ -126,25 +126,22 @@ func retryDelay(attempts int) time.Duration {
 }
 
 func (m *Manager) sendSlip(ctx context.Context, p *Node, s *Slip) (int32, error) {
-	doc, err := m.Document(ctx, s.Job)
+	doc, err := m.Document(ctx, firstOr(s.Payload, jobID(s.Job)))
 	if err != nil {
 		return 0, err
 	}
-	var meta *print.Meta
+	var meta map[string]any
 	if j, err := m.JobOfNumber(ctx, s.Job); err == nil {
 		meta = j.Meta
 	}
 	return m.send(ctx, p, doc, firstOr(s.Name, "slip-"+s.ID), meta)
 }
 
-// send prints a document on a printer, with what the job says about
-// itself (meta, which may be nil), and returns the printer's job id (0
+// send prints a document on a printer, with what the job's metadata
+// says for the printer (printMeta), and returns the printer's job id (0
 // for a raw printer, which has none).
-func (m *Manager) send(ctx context.Context, p *Node, doc *bdf.Document, name string, meta *print.Meta) (int32, error) {
-	opts := &print.Options{Ticket: print.Ticket{JobName: name}, FontDirs: m.o.FontDirs, NoSystemFonts: m.o.NoSystemFonts}
-	if meta != nil {
-		opts.Ticket.Meta = *meta
-	}
+func (m *Manager) send(ctx context.Context, p *Node, doc *bdf.Document, name string, meta map[string]any) (int32, error) {
+	opts := &print.Options{Ticket: print.Ticket{JobName: name, Meta: printMeta(meta)}, FontDirs: m.o.FontDirs, NoSystemFonts: m.o.NoSystemFonts}
 	if raw.IsURL(p.URL) {
 		rp, err := raw.Parse(p.URL)
 		if err != nil {
@@ -161,6 +158,37 @@ func (m *Manager) send(ctx context.Context, p *Node, doc *bdf.Document, name str
 		return res.Job.ID, nil
 	}
 	return 0, nil
+}
+
+// printMeta is what a job's metadata says for the printer, as print.Meta
+// carries it: the keys ipp.job-account-id, ipp.job-accounting-user-id,
+// ipp.document-metadata and ipp.x-… (what came in as those IPP
+// attributes, or was given as metadata under these keys) become the
+// attributes again. A value that is not one the attribute takes is left
+// out, as print.Meta.Take leaves it.
+func printMeta(meta map[string]any) print.Meta {
+	var m print.Meta
+	for k, v := range meta {
+		name, ok := strings.CutPrefix(k, "ipp.")
+		if !ok {
+			continue
+		}
+		var vals []ipp.Value
+		switch x := v.(type) {
+		case []string:
+			for _, s := range x {
+				vals = append(vals, ipp.Name(s))
+			}
+		case []any:
+			for _, e := range x {
+				vals = append(vals, ipp.Name(metaText(e)))
+			}
+		default:
+			vals = []ipp.Value{ipp.Name(metaText(v))}
+		}
+		m.Take(ipp.Attr(name, vals...))
+	}
+	return m
 }
 
 func firstOr(s, or string) string {

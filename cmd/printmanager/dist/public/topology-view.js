@@ -6,7 +6,7 @@
 // that the person sees, and a form to print there when they may. Nothing
 // is changed here.
 
-import { $, api, el, keptSection, kindBadge, KINDS, legsOf, sender, since, stateBadge, status } from "./admin.js";
+import { $, api, el, keptSection, kindBadge, KINDS, legsOf, PAYLOADS, sender, since, stateBadge, status } from "./admin.js";
 import { createCanvas } from "./canvas.js";
 
 const POLL_MS = 4000;
@@ -109,6 +109,10 @@ function renderSidebar() {
   for (const m of n.members || []) out.push(m + (n.policy === "failover" ? " (first)" : " (in turn)"));
   if (n.fallback && n.fallback.printer) out.push(n.fallback.printer + " (fallback)");
   if (out.length) parts.push(el("p", "→ " + out.join(", "), { className: "font-mono text-xs text-base-content/60" }));
+  const kinds = [];
+  if (n.takes) kinds.push("takes " + (PAYLOADS[n.takes] || n.takes));
+  if (n.emits && n.emits.length) kinds.push("sends on " + n.emits.map((k) => PAYLOADS[k] || k).join(" or "));
+  if (kinds.length) parts.push(el("p", kinds.join(" · "), { className: "text-xs text-base-content/60" }));
   const dest = dests.find((d) => d.name === n.name);
   if (dest) {
     const form = el("form", undefined, { className: "flex flex-col gap-2 border-t border-base-300 pt-3" });

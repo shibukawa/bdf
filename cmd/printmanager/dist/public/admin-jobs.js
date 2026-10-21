@@ -2,7 +2,7 @@
 // the route each took; a job not ended (or whose slip is still open) is
 // canceled here.
 
-import { $, api, button, cancellable, el, KINDS, legsOf, onChange, sender, since, stateBadge, status } from "./admin.js";
+import { $, api, button, cancellable, el, KINDS, legsOf, onChange, payloadBadge, sender, since, stateBadge, status } from "./admin.js";
 
 let dest = new URLSearchParams(location.search).get("dest") || "";
 
@@ -20,7 +20,7 @@ async function loadJobs() {
     const tr = el("tr");
     tr.append(
       el("td", "#" + j.number, { className: "font-mono" }),
-      el("td", j.name || "", { className: "font-semibold" }),
+      el("td", undefined, { className: "font-semibold", title: j.meta ? Object.entries(j.meta).map(([k, v]) => k + ": " + (typeof v === "string" ? v : JSON.stringify(v))).join("\n") : "" }),
       el("td", j.dest, { className: "whitespace-nowrap font-mono text-sm" }),
       el("td", sender(j), { className: "text-sm" }),
       el("td", since(j.received), { className: "whitespace-nowrap text-sm text-base-content/60" }),
@@ -28,6 +28,7 @@ async function loadJobs() {
       el("td", legsOf(j), { className: "font-mono text-xs" }),
       el("td", undefined, { className: "whitespace-nowrap" }),
     );
+    tr.children[1].append(j.name || "", " ", payloadBadge(j));
     tr.children[5].append(stateBadge(j.state));
     tr.lastChild.append(el("a", "Document", { className: "btn btn-xs btn-ghost mr-1", href: `/api/jobs/${j.id}/document` }));
     if (cancellable(j)) tr.lastChild.append(button("Cancel", () => api("POST", `/api/jobs/${j.id}/cancel`), "btn btn-xs btn-ghost text-error"));

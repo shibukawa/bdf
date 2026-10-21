@@ -169,7 +169,7 @@ open_questions:
   topology-kinds:
     text: 経路のノードの種類と名前（queue＝分岐、class、inbox、archive）をこのままにするか。tee・group などの名に替えるか。規則で振り分ける filter を足すか
     state: open
-    resolution: 暫定で CUPS の語に寄せた 4 種類（milestone:pm-4 の decisions）。filter は 2026-10-21 に足した（milestone:pm-4b：rules と otherwise）。endpoint・cups・sink は pm-4・pm-5c
+    resolution: 暫定で CUPS の語に寄せた 4 種類（milestone:pm-4 の decisions）。filter は 2026-10-21 に足した（milestone:pm-4b：rules と otherwise）。endpoint・cups・sink は pm-4・pm-5c。辺と口の種類（bdf・data・any）と変換・入出力のノードへの広がりは requirement:document-flow（2026-10-21 利用者の構想）
   node-visibility:
     text: 「外から見える仮想プリンタ」を、ノードの側の可視性にするか、認証（トークンごとの宛先）で絞るか
     state: open

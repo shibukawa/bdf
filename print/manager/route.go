@@ -11,11 +11,13 @@ import (
 	"github.com/shibukawa/yuruidb"
 )
 
-// routing is a job on its way through the topology: the legs it gets,
-// how many records that need its document were made, and the deliveries
-// made, to send in the background.
+// routing is a job on its way through the topology with a payload (the
+// one received, or one a node made): the legs it gets, how many records
+// that need its payloads were made, and the deliveries made, to send in
+// the background.
 type routing struct {
 	job        *Job
+	payload    *Payload
 	now        time.Time
 	legs       []Leg
 	live       int
@@ -27,13 +29,19 @@ func (r *routing) next() int { return len(r.job.Legs) + len(r.legs) }
 
 func (r *routing) add(l Leg) {
 	l.At = r.now
+	if l.Payload == "" && r.payload != nil {
+		l.Payload = r.payload.ID
+	}
 	r.legs = append(r.legs, l)
 }
 
 // route takes a job to a node, and on along the edges: a slip at a
-// location, a delivery to a printer or an archive, an item in an inbox,
-// and the next nodes of a queue or a class. A node that cannot take it
-// gets a leg of its error; the job goes on elsewhere.
+// location, a delivery to a printer or an archive, a step of a template or
+// a convert node, an item in an inbox, and the next nodes of a queue, an
+// entry (an endpoint, a CUPS server) or a class. A node that cannot take
+// it (one that does not take the payload's kind: the graph is typed when
+// a node is put, but a job may be on its way while it changes) gets a leg
+// of its error; the job goes on elsewhere.
 func (m *Manager) route(ctx context.Context, r *routing, name, from string, depth int) {
 	if depth > maxDepth {
 		r.add(Leg{Node: name, From: from, State: LegError, Error: "too deep: a cycle?"})
@@ -42,6 +50,10 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 	kind, err := m.kindOf(ctx, name)
 	if err != nil {
 		r.add(Leg{Node: name, From: from, State: LegError, Error: "no such node"})
+		return
+	}
+	if r.payload != nil && !takes(kind).has(r.payload.Kind) {
+		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: fmt.Sprintf("takes %s; this is %s", takes(kind), r.payload.Kind)})
 		return
 	}
 	switch kind {
@@ -57,8 +69,11 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		m.routeSink(ctx, r, name, from)
 	case KindFilter:
 		m.routeFilter(ctx, r, name, from, depth)
-	case KindQueue, KindEndpoint:
+	case KindTemplate, KindConvert:
+		m.routeDelivery(ctx, r, Leg{Node: name, Kind: kind, From: from}, "", "")
+	case KindQueue, KindEndpoint, KindCups:
 		n, err := m.Node(ctx, name)
+
 		if err != nil {
 			r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: err.Error()})
 			return
@@ -121,9 +136,9 @@ func (m *Manager) routeDisplay(ctx context.Context, r *routing, loc, from string
 		r.add(Leg{Node: loc, Kind: KindDisplay, From: from, State: LegError, Error: err.Error()})
 		return
 	}
-	j := r.job
+	j, p := r.job, r.payload
 	s := Slip{ID: slipID(j.Number, loc), Job: j.Number, Location: loc, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Source: j.Source, Format: j.Format,
-		Pages: j.Pages, Size: j.Size, SHA256: j.SHA256, Received: r.now, State: SlipNew}
+		Payload: p.ID, Pages: p.Pages, Size: p.Size, SHA256: p.SHA256, Received: r.now, State: SlipNew}
 	if l.Fallback != nil && l.Fallback.After > 0 {
 		s.FallbackAt = r.now.Add(l.Fallback.After.d())
 	}
@@ -387,10 +402,13 @@ func (m *Manager) tickJobs(ctx context.Context, rep *TickReport) error {
 	return errors.Join(errs...)
 }
 
-// removeJob deletes a job, its document and its deliveries.
+// deliveryKinds are the kinds of node whose leg names a delivery.
+var deliveryKinds = []string{KindPrinter, KindArchive, KindClass, KindTemplate, KindConvert}
+
+// removeJob deletes a job, its payloads and its deliveries.
 func (m *Manager) removeJob(ctx context.Context, j *Job) error {
 	for _, l := range j.Legs {
-		if l.Ref == "" || (l.Kind != KindPrinter && l.Kind != KindArchive && l.Kind != KindClass) {
+		if l.Ref == "" || !slices.Contains(deliveryKinds, l.Kind) {
 			continue
 		}
 		if rec, err := m.st.db.Get[deliveryRecord](ctx, l.Ref); err == nil {
@@ -399,8 +417,16 @@ func (m *Manager) removeJob(ctx context.Context, j *Job) error {
 			}
 		}
 	}
-	if err := m.st.docs.Remove(ctx, j.ID); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
-		return err
+	ids := []string{j.ID}
+	for _, p := range j.Payloads {
+		if !slices.Contains(ids, p.ID) {
+			ids = append(ids, p.ID)
+		}
+	}
+	for _, id := range ids {
+		if err := m.st.docs.Remove(ctx, id); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
+			return err
+		}
 	}
 	rec, err := m.st.db.Get[jobRecord](ctx, j.ID)
 	if err == nil {
