@@ -97,6 +97,12 @@ func (m *Manager) submitDoc(ctx context.Context, dest string, doc *bdf.Document,
 	if err != nil {
 		return nil, err
 	}
+	if group == "" && by.Kind == PrincipalApp {
+		// an app's jobs are its group's, when the destination gives none
+		if a, err := m.App(ctx, by.ID); err == nil {
+			group = a.Group
+		}
+	}
 	j := &Job{ID: jobID(number), Number: number, Dest: dest, Name: clip(in.Name, 255), SubmittedBy: by, ClaimedUser: clip(in.ClaimedUser, 255),
 		Group: group, Source: in.Source, Format: format, Pages: len(v.Pages), SHA256: hex.EncodeToString(h.Sum(nil)), Received: now,
 		State: JobProcessing, Legs: []Leg{}}

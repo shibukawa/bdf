@@ -163,7 +163,10 @@ type Node struct {
 	Accept  string   `json:"accept,omitempty"`
 	Formats []string `json:"formats,omitempty"`
 	// KeyHash is the hash of an endpoint's key (argon2id), never the key.
-	KeyHash string `json:"key_hash,omitempty"`
+	// Apps are the apps that may send to the endpoint with their own
+	// credentials (apps.go), besides the key.
+	KeyHash string   `json:"key_hash,omitempty"`
+	Apps    []string `json:"apps,omitempty"`
 	// Fallback prints a display's slips nobody opened in time, or all of
 	// them while no device of the display is connected, so that shipping
 	// does not stop. OfflineAfter is how long a device may be silent and
@@ -623,6 +626,8 @@ var (
 	ErrConflict = errors.New("manager: changed meanwhile")
 	// ErrUnauthorized is the error of a device or token not known.
 	ErrUnauthorized = errors.New("manager: not authorized")
+	// ErrForbidden is the error of what a known principal may not do.
+	ErrForbidden = errors.New("manager: not allowed")
 )
 
 // names are those of nodes: they are queue names in URLs, and record

@@ -16,6 +16,7 @@ const POLL_MS = 4000;
 let topo = []; // the nodes, as /api/topology lists them
 let formats = []; // the formats an endpoint may take
 let me = null; // /api/me: whether this process has ports of its own
+let apps = []; // the apps, for an endpoint's allow-list
 let selected = null; // the node in the sidebar
 let draft = null; // a node being added: {kind}
 let fitted = false;
@@ -45,6 +46,7 @@ async function load() {
     topo = t;
     if (!formats.length) formats = await api("GET", "/api/formats");
     if (!me) me = await api("GET", "/api/me");
+    apps = await api("GET", "/api/apps");
     $("node-names").replaceChildren(...topo.map((n) => el("option", undefined, { value: n.name })));
     if (selected && !topo.some((n) => n.name === selected)) selected = null;
     canvas.setData(topo, l.positions || {});
@@ -234,6 +236,14 @@ function renderSidebar() {
       }
       form.append(field("Formats taken", fmts, "None checked: every format the converter reads. A document of another format is refused, and the refusal is in the audit log."));
       form.append(portField(n, "Applications may POST to http://<this host>:<port>/ as well as to " + n.in + "."));
+      const appBoxes = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
+      for (const a of apps) {
+        const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
+        l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name: "app", value: a.id, checked: (n.apps || []).includes(a.id) }), a.id + (a.title ? " · " + a.title : ""));
+        appBoxes.append(l);
+      }
+      if (!apps.length) appBoxes.append(el("a", "No apps yet: register one", { className: "link text-sm", href: "/admin/apps" }));
+      form.append(field("Apps allowed", appBoxes, "Apps send here with their token (POST /oauth/token) or IPP Basic, within their scopes; the endpoint's own key works as well."));
       break;
     }
     case "cups":
@@ -319,6 +329,7 @@ async function save(ev) {
       body.to = names($("f-to").value);
       body.accept = $("f-accept").value;
       body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
+      body.apps = [...document.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
       if (dur("f-port")) body.port = Number(dur("f-port"));
       break;
     case "cups":

@@ -258,7 +258,7 @@ func TestLogin(t *testing.T) {
 			want = http.StatusOK
 		}
 		for path, script := range map[string]string{"/admin": "/public/topology.js", "/admin/inboxes": "/public/inboxes.js", "/admin/jobs": "/public/admin-jobs.js",
-			"/admin/deliveries": "/public/deliveries.js", "/audit": "/public/audit.js"} {
+			"/admin/deliveries": "/public/deliveries.js", "/admin/apps": "/public/apps.js", "/audit": "/public/audit.js"} {
 			code, body := b.get(path)
 			if code != want {
 				t.Errorf("%s on %s: %d; want %d", who, path, code, want)

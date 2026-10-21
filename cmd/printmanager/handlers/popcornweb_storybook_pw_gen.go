@@ -19,6 +19,13 @@ func init() {
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
+		Name:      "Apps",
+		Exported:  true,
+		NewParams: func() any { return new(AppsParams) },
+		Render:    func(params any) htmlbind.Fragment { return Apps(*params.(*AppsParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
 		Name:      "Audit",
 		Exported:  true,
 		NewParams: func() any { return new(AuditParams) },

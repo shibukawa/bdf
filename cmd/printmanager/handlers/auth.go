@@ -92,7 +92,7 @@ func (s loginStates) Prune(ctx context.Context, before time.Time, limit int) (in
 // button to the IdP), the devices' page and endpoints keep
 // their own sign-in (the device's key), the API and the printers take
 // their tokens (and the API the session too), the endpoints their keys.
-var publicPaths = []string{"/", "/tablet", "/public/**", "/api/**", manager.IPPPath + "/**", manager.InPath + "/**", "/device/**"}
+var publicPaths = []string{"/", "/tablet", "/public/**", "/api/**", manager.IPPPath + "/**", manager.InPath + "/**", "/oauth/**", "/device/**"}
 
 // ConfigureAuth sets popcornweb's [auth] and [session] for the pages:
 // what is the Print Manager's design (the OIDC mode, the paths a person

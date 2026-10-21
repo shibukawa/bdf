@@ -38,6 +38,9 @@ import (
 // InPath is where the endpoints are.
 const InPath = "/in"
 
+// OAuthTokenPath is where the apps take their tokens (apps.go).
+const OAuthTokenPath = "/oauth/token"
+
 // newKey makes an endpoint's key: 32 random bytes, in base64url.
 func newKey() string {
 	b := make([]byte, 32)
@@ -294,7 +297,8 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	var ep *Node
 	var by *Principal
-	if v, ok := h.viewerOf(r); ok && v.Admin && r.Header.Get("Authorization") != "" {
+	var app *Viewer // an app sends with its token: the endpoint must list it
+	if v, ok := h.viewerOf(r); ok && (v.Admin || v.Kind == PrincipalApp) && r.Header.Get("Authorization") != "" {
 		by = v.Principal()
 		n, err := h.m.endpoint(ctx, name)
 		if err != nil {
@@ -302,6 +306,9 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ep = n
+		if !v.Admin {
+			app = v
+		}
 	} else {
 		n, err := h.m.Endpoint(ctx, name, bearer(r))
 		if err != nil {
@@ -354,12 +361,20 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		fill.User = firstOr(fill.User, user)
+		if err := h.m.appMaySend(ctx, app, ep.Name, true); err != nil {
+			h.writeErr(w, err)
+			return
+		}
 		j, err := h.m.SubmitFill(ctx, ep, by, fill)
 		if err != nil {
 			refused(err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, j)
+		return
+	}
+	if err := h.m.appMaySend(ctx, app, ep.Name, false); err != nil {
+		h.writeErr(w, err)
 		return
 	}
 	j, err := h.m.Submit(ctx, ep.Name, Input{Name: r.URL.Query().Get("name"), By: by, ClaimedUser: user, Source: "endpoint", Doc: f, Size: n})

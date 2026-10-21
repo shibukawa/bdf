@@ -93,6 +93,20 @@ Safari asks for on its own, `/favicon.ico` and `/apple-touch-icon*.png`,
 get 401), so the IdP does not sign the same person in again without a
 word.
 
+**Apps** are the applications that send with credentials of their own (a
+business system, a WMS): an administrator registers one on `/admin/apps`
+(`PUT /api/apps/<id>` with its `scopes`; the secret comes back once,
+`POST /api/apps/<id>/secret` rotates it), and an endpoint lists the apps
+it takes (`apps`). The app takes a token at `POST /oauth/token` (the
+client credentials grant: `-u id:secret -d grant_type=client_credentials`,
+ten minutes) and sends with it as a bearer to `/in/<endpoint>`, or
+prints over IPP with the same id and secret as Basic; it sees and, with
+the scope `jobs.cancel`, cancels its own jobs. The scopes are `print`,
+`print.template`, `jobs.cancel`, `tick` (a scheduler's) and `admin` (a
+script's: the API as an administrator). An app's jobs are its `group`'s
+when the destination gives them none. Disabling an app refuses its
+credentials and the tokens out.
+
 Every node (a display, a printer, a queue, a class …) has a scope and an
 owner (`"scope":"group", "owner":"warehouse-a"`, a value of the groups
 claim; `personal` and a person's email; `shared`, the default): who may

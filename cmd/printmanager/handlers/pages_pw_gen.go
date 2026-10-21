@@ -58,6 +58,10 @@ type TopologyParams struct {
 	Account Account
 }
 
+type AppsParams struct {
+	Account Account
+}
+
 type InboxesParams struct {
 	Account Account
 }
@@ -141,15 +145,19 @@ var planTopologyOpsFill8Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 	planTopologyOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body gap-3\"> <div class=\"flex flex-wrap items-center gap-2\"> <h2 class=\"card-title\">Topology</h2> <div class=\"dropdown\"> <div tabindex=\"0\" role=\"button\" class=\"btn btn-sm btn-primary\">+ Add a node</div> <ul id=\"palette\" tabindex=\"0\" class=\"dropdown-content menu z-20 w-72 rounded-box bg-base-100 p-2 shadow-md\"> <li><a data-kind=\"endpoint\"><span class=\"font-semibold\">Endpoint</span><span class=\"text-xs text-base-content/60\">a REST entry for applications</span></a></li> <li><a data-kind=\"cups\"><span class=\"font-semibold\">CUPS server</span><span class=\"text-xs text-base-content/60\">an IPP entry on a port of its own, for computers</span></a></li> <li><a data-kind=\"queue\"><span class=\"font-semibold\">Queue</span><span class=\"text-xs text-base-content/60\">forwards to every node it points to</span></a></li> <li><a data-kind=\"class\"><span class=\"font-semibold\">Class</span><span class=\"text-xs text-base-content/60\">one member in turn, or the first</span></a></li> <li><a data-kind=\"inbox\"><span class=\"font-semibold\">Inbox</span><span class=\"text-xs text-base-content/60\">held until a person releases it</span></a></li> <li><a data-kind=\"display\"><span class=\"font-semibold\">Display</span><span class=\"text-xs text-base-content/60\">shown on the devices enrolled there</span></a></li> <li><a data-kind=\"printer\"><span class=\"font-semibold\">Printer</span><span class=\"text-xs text-base-content/60\">printed on paper</span></a></li> <li><a data-kind=\"archive\"><span class=\"font-semibold\">Archive</span><span class=\"text-xs text-base-content/60\">written once, never changed</span></a></li> <li><a data-kind=\"sink\"><span class=\"font-semibold\">Sink</span><span class=\"text-xs text-base-content/60\">keeps the latest documents, to look at</span></a></li> </ul> </div> <div class=\"join\"> <button id=\"zoom-out\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom out\">−</button> <button id=\"zoom-fit\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Fit the topology in the view\">Fit</button> <button id=\"zoom-in\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom in\">+</button> </div> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Drag the background to pan, wheel or pinch to zoom. Drag a node to move it; drag from its right port onto another node to connect them; click an edge to remove it; click a node to edit it in the sidebar.</span> </div> <div class=\"grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]\"> <div id=\"canvas-wrap\" class=\"relative h-[62vh] min-h-96 overflow-hidden rounded-box border border-base-300 bg-base-200\"> <svg id=\"canvas\" class=\"block h-full w-full select-none touch-none\" xmlns=\"http://www.w3.org/2000/svg\"></svg> </div> <aside id=\"sidebar\" class=\"max-h-[62vh] min-h-96 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-4\"></aside> </div> </div> </section> <datalist id=\"node-names\"></datalist> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">Enrollment code</h3> <p class=\"text-sm text-base-content/70\">Open the URL on the device, or scan the code there: the device makes its own key and enrolls itself at this display. The code works once.</p> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <dialog id=\"key-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">Endpoint key</h3> <p class=\"mt-2 text-sm text-base-content/70\">The key of <span id=\"key-name\" class=\"font-mono\"></span>. It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one.</p> <pre id=\"key-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"key-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/topology.js\"></script> "),
 }}
 
-var planInboxesOpsFill9Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
+var planAppsOpsFill9Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
+	planAppsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Apps</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Applications that send with credentials of their own. An app takes a token at <code class=\"font-mono\">POST /oauth/token</code> with its id and secret (client credentials) and sends to the endpoints that list it among their apps; over IPP it sends the same id and secret as Basic. The secret is shown once. The scopes tick and admin are for a scheduler and for scripts.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Id</th><th>Title</th><th>Scopes</th><th>Group</th><th>Endpoints</th><th>Last used</th><th></th></tr></thead><tbody id=\"apps\"></tbody></table> </div> <form id=\"app-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <input id=\"app-id\" class=\"input sm:col-span-1\" placeholder=\"id (erp)\" autocomplete=\"off\" required> <input id=\"app-title\" class=\"input sm:col-span-2\" placeholder=\"title\"> <input id=\"app-group\" class=\"input sm:col-span-2\" placeholder=\"group whose members see its jobs (optional)\"> <div id=\"app-scopes\" class=\"flex flex-wrap items-center gap-3 sm:col-span-6\"></div> <button id=\"app-submit\" type=\"submit\" class=\"btn btn-primary sm:col-span-1\">Add</button> <button id=\"app-cancel\" type=\"button\" class=\"btn btn-ghost sm:col-span-1\" hidden>Cancel</button> </form> </div> </section> <dialog id=\"secret-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">App secret</h3> <p class=\"mt-2 text-sm text-base-content/70\">The secret of <span id=\"secret-id\" class=\"font-mono\"></span>. It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working.</p> <pre id=\"secret-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"secret-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/apps.js\"></script> "),
+}}
+
+var planInboxesOpsFill10Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
 	planInboxesOps.Static(" <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"text-xl font-bold\">Inboxes</h2> <label class=\"input input-sm w-64\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name (for the record)\"> </label> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <section id=\"inboxes\" class=\"grid gap-4\"></section> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
 }}
 
-var planAdminJobsOpsFill10Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
+var planAdminJobsOpsFill11Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
 	planAdminJobsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Jobs</h2> <select id=\"jobs-dest\" class=\"select select-sm w-64\"></select> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/admin-jobs.js\"></script> "),
 }}
 
-var planDeliveriesOpsFill11Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
+var planDeliveriesOpsFill12Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
 	planDeliveriesOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Deliveries waiting</h2> <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">Tick now</button> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Jobs on their way to printers and archives. A process sends them in the background, a serverless deployment at the tick; a send that failed is tried again after a wait that grows, and retry sends it now.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>State</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/deliveries.js\"></script> "),
 }}
 
@@ -270,7 +278,7 @@ var planAdminNavOps = htmlbind.Builder[renderAdminNavParams]{}
 var planAdminNavPlan = &htmlbind.Plan[renderAdminNavParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[renderAdminNavParams]{
-		planAdminNavOps.Static(" <nav id=\"admin-nav\" role=\"tablist\" class=\"tabs tabs-box tabs-sm w-fit\"> <a role=\"tab\" class=\"tab\" href=\"/admin/topology\">Topology</a> <a role=\"tab\" class=\"tab\" href=\"/admin/inboxes\">Inboxes</a> <a role=\"tab\" class=\"tab\" href=\"/admin/jobs\">Jobs</a> <a role=\"tab\" class=\"tab\" href=\"/admin/deliveries\">Deliveries</a> <a role=\"tab\" class=\"tab\" href=\"/audit\">Audit</a> </nav> "),
+		planAdminNavOps.Static(" <nav id=\"admin-nav\" role=\"tablist\" class=\"tabs tabs-box tabs-sm w-fit\"> <a role=\"tab\" class=\"tab\" href=\"/admin/topology\">Topology</a> <a role=\"tab\" class=\"tab\" href=\"/admin/apps\">Apps</a> <a role=\"tab\" class=\"tab\" href=\"/admin/inboxes\">Inboxes</a> <a role=\"tab\" class=\"tab\" href=\"/admin/jobs\">Jobs</a> <a role=\"tab\" class=\"tab\" href=\"/admin/deliveries\">Deliveries</a> <a role=\"tab\" class=\"tab\" href=\"/audit\">Audit</a> </nav> "),
 	},
 }
 
@@ -366,6 +374,22 @@ var planTopologyPlan = &htmlbind.Plan[TopologyParams]{
 // Topology binds Topology to its parameters, producing a renderable fragment.
 func Topology(params TopologyParams) htmlbind.Fragment { return planTopologyPlan.Bind(params) }
 
+var planAppsOps = htmlbind.Builder[AppsParams]{}
+
+var planAppsPlan = &htmlbind.Plan[AppsParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[AppsParams]{
+		planAppsOps.Static(" "),
+		planAppsOps.Component(func(p AppsParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: "Apps · BDF Print Manager", Account: p.Account, Children: planAppsOpsFill9Plan.Bind(p)})
+		}),
+		planAppsOps.Static(" "),
+	},
+}
+
+// Apps binds Apps to its parameters, producing a renderable fragment.
+func Apps(params AppsParams) htmlbind.Fragment { return planAppsPlan.Bind(params) }
+
 var planInboxesOps = htmlbind.Builder[InboxesParams]{}
 
 var planInboxesPlan = &htmlbind.Plan[InboxesParams]{
@@ -373,7 +397,7 @@ var planInboxesPlan = &htmlbind.Plan[InboxesParams]{
 	Ops: []htmlbind.Op[InboxesParams]{
 		planInboxesOps.Static(" "),
 		planInboxesOps.Component(func(p InboxesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Print Manager", Account: p.Account, Children: planInboxesOpsFill9Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Print Manager", Account: p.Account, Children: planInboxesOpsFill10Plan.Bind(p)})
 		}),
 		planInboxesOps.Static(" "),
 	},
@@ -389,7 +413,7 @@ var planAdminJobsPlan = &htmlbind.Plan[AdminJobsParams]{
 	Ops: []htmlbind.Op[AdminJobsParams]{
 		planAdminJobsOps.Static(" "),
 		planAdminJobsOps.Component(func(p AdminJobsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Print Manager", Account: p.Account, Children: planAdminJobsOpsFill10Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Print Manager", Account: p.Account, Children: planAdminJobsOpsFill11Plan.Bind(p)})
 		}),
 		planAdminJobsOps.Static(" "),
 	},
@@ -405,7 +429,7 @@ var planDeliveriesPlan = &htmlbind.Plan[DeliveriesParams]{
 	Ops: []htmlbind.Op[DeliveriesParams]{
 		planDeliveriesOps.Static(" "),
 		planDeliveriesOps.Component(func(p DeliveriesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Print Manager", Account: p.Account, Children: planDeliveriesOpsFill11Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Print Manager", Account: p.Account, Children: planDeliveriesOpsFill12Plan.Bind(p)})
 		}),
 		planDeliveriesOps.Static(" "),
 	},

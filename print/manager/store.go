@@ -40,6 +40,7 @@ type (
 	auditRecord    AuditEntry
 	enrollRecord   enrollment
 	personRecord   Person
+	appRecord      App
 	counterRecord  struct {
 		Next int32 `json:"next"`
 	}
@@ -119,6 +120,7 @@ func OpenStore(ctx context.Context, records, documents string) (*Store, error) {
 		db.Bind[enrollRecord]("enrollments"),
 		db.Bind[counterRecord]("meta"),
 		db.Bind[personRecord]("people"),
+		db.Bind[appRecord]("apps"),
 		db.Bind[stateRecord]("states"),
 	} {
 		if err != nil {

@@ -370,6 +370,15 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 		return
 	}
 	name := firstOr(q.text("job-name"), q.text("document-name"))
+	if q.by.Kind == PrincipalApp {
+		// an app prints to the endpoints that list it
+		if v, ok := h.viewerOf(q.r); ok {
+			if err := h.m.appMaySend(ctx, v, q.dest, false); err != nil {
+				q.fail(ipp.StatusClientErrorNotAuthorized, "%v", err)
+				return
+			}
+		}
+	}
 	j, err := h.m.Submit(ctx, q.dest, Input{Name: name, By: q.by, ClaimedUser: q.text("requesting-user-name"), Source: "ipp", Doc: f, Size: n})
 	switch {
 	case errors.Is(err, ErrFormat):
@@ -486,12 +495,15 @@ func (h *handler) jobs(ctx context.Context, q *ippRequest) {
 }
 
 // submitter finds who sends jobs over IPP and the API: the admin token,
-// a submit token's name and secret (Basic, or bearer name:secret), or,
-// with no SubmitTokens, anyone (anonymous). A person's session sends from
-// the pages (submit).
+// a submit token's name and secret (Basic, or bearer name:secret), an
+// app (its token, or Basic client_id:secret), or, with no SubmitTokens,
+// anyone (anonymous). A person's session sends from the pages (submit).
 func (h *handler) submitter(r *http.Request) (*Principal, bool) {
-	if v, ok := h.viewerOf(r); ok && v.Kind == PrincipalToken {
+	if v, ok := h.viewerOf(r); ok && (v.Kind == PrincipalToken || v.Kind == PrincipalApp) {
 		return v.Principal(), true
+	}
+	if r.Header.Get("Authorization") != "" {
+		return nil, false // credentials given, and not known
 	}
 	if len(h.m.o.SubmitTokens) == 0 {
 		return &Principal{Kind: PrincipalAnonymous, Via: ViaNone}, true
