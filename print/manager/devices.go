@@ -22,7 +22,7 @@ import (
 )
 
 // A device enrolls with a one-time code an administrator made for a
-// location: its page makes an ECDSA P-256 key that cannot be exported
+// display: its page makes an ECDSA P-256 key that cannot be exported
 // (WebCrypto, non-extractable, kept in IndexedDB) and sends the public
 // key. Afterwards it signs a challenge for a session that lasts minutes,
 // and signs again when the session ends. A URL or a cookie copied to
@@ -44,10 +44,10 @@ type Enrollment struct {
 	Expires  time.Time `json:"expires"`
 }
 
-// NewEnrollment makes a one-time code for a location, valid for ttl
+// NewEnrollment makes a one-time code for a display, valid for ttl
 // (default 15 minutes).
 func (m *Manager) NewEnrollment(ctx context.Context, loc string, ttl time.Duration) (*Enrollment, error) {
-	if _, err := m.Location(ctx, loc); err != nil {
+	if _, err := m.display(ctx, loc); err != nil {
 		return nil, err
 	}
 	if ttl <= 0 {

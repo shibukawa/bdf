@@ -91,25 +91,11 @@ func (q *ippRequest) printerURI() string { return q.uri(q.dest) }
 
 // destInfo tells the kind and the title of a destination.
 func (m *Manager) destInfo(ctx context.Context, name string) (kind, title string, err error) {
-	kind, err = m.kindOf(ctx, name)
+	n, err := m.Node(ctx, name)
 	if err != nil {
 		return "", "", err
 	}
-	switch kind {
-	case KindDisplay:
-		if l, err := m.Location(ctx, name); err == nil {
-			title = l.Title
-		}
-	case KindPrinter:
-		if p, err := m.Printer(ctx, name); err == nil {
-			title = p.Info
-		}
-	default:
-		if n, err := m.Node(ctx, name); err == nil {
-			title = n.Title
-		}
-	}
-	return kind, or(title, name), nil
+	return n.Kind, or(n.Title, name), nil
 }
 
 // serveIPP serves an IPP request to a node's printer, or to the server

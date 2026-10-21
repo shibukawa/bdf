@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -57,8 +58,8 @@ func legs(j *Job) string {
 // board, one document, canceled together, removed together.
 func TestQueueFanout(t *testing.T) {
 	e := newEnv(t, nil)
-	e.admin("PUT", "/api/locations/wh-a", Location{Title: "A"}, http.StatusOK)
-	e.admin("PUT", "/api/locations/wh-b", Location{Title: "B"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Title: "A"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-b", Node{Kind: KindDisplay, Title: "B"}, http.StatusOK)
 	e.node("both", Node{Kind: KindQueue, Title: "両方の倉庫", To: []string{"wh-a", "wh-b"}}, http.StatusOK)
 	a, b := e.enroll("wh-a", "a"), e.enroll("wh-b", "b")
 
@@ -153,7 +154,7 @@ func TestClass(t *testing.T) {
 	}
 
 	// failover: the first member is not there; the next takes it
-	e.admin("PUT", "/api/printers/gone", Printer{URL: "ipp://127.0.0.1:1/ipp/print"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/gone", Node{Kind: KindPrinter, URL: "ipp://127.0.0.1:1/ipp/print"}, http.StatusOK)
 	e.node("osaka", Node{Kind: KindClass, Members: []string{"gone", "p2"}, Policy: PolicyFailover}, http.StatusOK)
 	e.printJob("osaka", "failover", 1)
 	rep = e.tick()
@@ -212,7 +213,7 @@ func TestPrinterDirect(t *testing.T) {
 func TestInbox(t *testing.T) {
 	e := newEnv(t, nil)
 	p := e.printer("laser")
-	e.admin("PUT", "/api/locations/wh-a", Location{}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay}, http.StatusOK)
 	e.node("review", Node{Kind: KindInbox, Title: "確認", To: []string{"wh-a", "laser"}, Keep: Duration(time.Hour)}, http.StatusOK)
 	e.node("in", Node{Kind: KindQueue, To: []string{"review"}}, http.StatusOK)
 	d := e.enroll("wh-a", "tablet")
@@ -368,17 +369,21 @@ func TestArchive(t *testing.T) {
 // the one namespace, and cycles; a node sent to is not deleted.
 func TestNodes(t *testing.T) {
 	e := newEnv(t, nil)
-	e.admin("PUT", "/api/locations/wh-a", Location{}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay}, http.StatusOK)
 	e.printer("laser")
-	e.admin("PUT", "/api/locations/wh-b", Location{Fallback: &Fallback{Printer: "laser"}}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-b", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "laser"}}, http.StatusOK)
 	e.node("x", Node{Kind: "tee", To: []string{"wh-a"}}, http.StatusBadRequest)
 	e.node("x", Node{Kind: KindQueue}, http.StatusBadRequest)
 	e.node("x", Node{Kind: KindQueue, To: []string{"nowhere"}}, http.StatusBadRequest)
 	e.node("x", Node{Kind: KindClass, Members: []string{"laser"}, Policy: "random"}, http.StatusBadRequest)
 	e.node("wh-a", Node{Kind: KindQueue, To: []string{"laser"}}, http.StatusConflict)
 	e.node("x", Node{Kind: KindQueue, To: []string{"x"}}, http.StatusBadRequest)
-	e.admin("PUT", "/api/locations/laser", Location{}, http.StatusConflict)
-	e.admin("PUT", "/api/printers/wh-a", Printer{URL: "ipp://127.0.0.1:1/ipp/print"}, http.StatusConflict)
+	e.admin("PUT", "/api/nodes/wh-c", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "wh-a"}}, http.StatusBadRequest)
+	e.admin("PUT", "/api/nodes/p", Node{Kind: KindPrinter}, http.StatusBadRequest)
+	e.node("x", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Accept: "maybe"}, http.StatusBadRequest)
+	e.node("x", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Formats: []string{"PDF/A"}}, http.StatusBadRequest)
+	e.admin("PUT", "/api/nodes/laser", Node{Kind: KindDisplay}, http.StatusConflict)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindPrinter, URL: "ipp://127.0.0.1:1/ipp/print"}, http.StatusConflict)
 
 	e.node("a", Node{Kind: KindQueue, To: []string{"wh-a"}}, http.StatusOK)
 	e.node("b", Node{Kind: KindQueue, To: []string{"a"}}, http.StatusOK)
@@ -396,12 +401,12 @@ func TestNodes(t *testing.T) {
 	}
 	// sent to: not deleted
 	e.admin("DELETE", "/api/nodes/a", nil, http.StatusConflict)
-	e.admin("DELETE", "/api/locations/wh-a", nil, http.StatusConflict)
-	e.admin("DELETE", "/api/printers/laser", nil, http.StatusConflict)
+	e.admin("DELETE", "/api/nodes/wh-a", nil, http.StatusConflict)
+	e.admin("DELETE", "/api/nodes/laser", nil, http.StatusConflict)
 	e.admin("DELETE", "/api/nodes/c", nil, http.StatusNoContent)
 	e.admin("DELETE", "/api/nodes/b", nil, http.StatusNoContent)
 	e.admin("DELETE", "/api/nodes/a", nil, http.StatusNoContent)
-	e.admin("DELETE", "/api/locations/wh-a", nil, http.StatusNoContent)
+	e.admin("DELETE", "/api/nodes/wh-a", nil, http.StatusNoContent)
 
 	var topo []TopoNode
 	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &topo)
@@ -417,7 +422,7 @@ func TestNodes(t *testing.T) {
 // CUPS clients list every node as a destination of the server.
 func TestCupsGetPrinters(t *testing.T) {
 	e := newEnv(t, nil)
-	e.admin("PUT", "/api/locations/wh-a", Location{Title: "第 1 倉庫"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Title: "第 1 倉庫"}, http.StatusOK)
 	e.printer("laser")
 	e.node("tokyo", Node{Kind: KindClass, Members: []string{"laser"}}, http.StatusOK)
 	e.node("review", Node{Kind: KindInbox}, http.StatusOK)
@@ -464,7 +469,7 @@ func TestCupsGetPrinters(t *testing.T) {
 // with its own key, and the job flows from it.
 func TestEndpoint(t *testing.T) {
 	e := newEnv(t, nil)
-	e.admin("PUT", "/api/locations/wh-a", Location{}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay}, http.StatusOK)
 	d := e.enroll("wh-a", "tablet")
 	d.board()
 
@@ -511,23 +516,27 @@ func TestEndpoint(t *testing.T) {
 		t.Fatalf("board %+v", b)
 	}
 
-	// a template, filled with data
+	// a template of the endpoint, filled with data
 	tpl, err := os.ReadFile("../../testdata/form/pages.bdft")
 	if err != nil {
 		t.Fatal(err)
 	}
 	var tp Template
-	json.Unmarshal(e.admin("PUT", "/api/templates/slip?name=pages.bdft", tpl, http.StatusOK), &tp)
-	if tp.Format != "xlsx" || len(tp.Fields) == 0 || tp.Fields[0].Name != "pages" || tp.Size != int64(len(tpl)) {
+	json.Unmarshal(e.admin("PUT", "/api/nodes/intake/templates/slip?name=pages.bdft", tpl, http.StatusOK), &tp)
+	if tp.Format != "xlsx" || tp.Endpoint != "intake" || len(tp.Fields) == 0 || tp.Fields[0].Name != "pages" || tp.Size != int64(len(tpl)) {
 		t.Fatalf("template %+v", tp)
 	}
 	var tps []Template
-	json.Unmarshal(e.admin("GET", "/api/templates", nil, http.StatusOK), &tps)
+	json.Unmarshal(e.admin("GET", "/api/nodes/intake/templates", nil, http.StatusOK), &tps)
 	if len(tps) != 1 || tps[0].ID != "slip" {
 		t.Fatalf("templates %+v", tps)
 	}
-	if res, out := e.do(nil, "GET", "/api/templates/slip/file", adminToken, nil); res.StatusCode != http.StatusOK || !bytes.Equal(out, tpl) {
+	if res, out := e.do(nil, "GET", "/api/nodes/intake/templates/slip/file", adminToken, nil); res.StatusCode != http.StatusOK || !bytes.Equal(out, tpl) {
 		t.Fatalf("file: %d", res.StatusCode)
+	}
+	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &topo)
+	if !slices.Equal(topo[0].Templates, []string{"slip"}) {
+		t.Fatalf("topology templates %+v", topo[0].Templates)
 	}
 	fill := map[string]any{"template": "slip", "name": "slip 7", "data": map[string]any{"pages": []map[string]any{{"slip": "No. 7", "customer": "ACME", "carry_in": 10}, {"slip": "No. 7", "customer": "ACME", "carry_in": 20}}}}
 	res, out = e.do(nil, "POST", "/in/intake", made.Key, fill)
@@ -544,15 +553,73 @@ func TestEndpoint(t *testing.T) {
 	if res, out := e.do(nil, "POST", "/in/intake", made.Key, map[string]any{"data": map[string]any{}}); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("no template named: %d %s", res.StatusCode, out)
 	}
-	// an endpoint that fills one template only
-	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Templates: []string{"slip"}}, http.StatusOK)
-	e.node("other", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Templates: []string{"nowhere"}}, http.StatusBadRequest)
-	e.admin("DELETE", "/api/templates/slip", nil, http.StatusConflict)
+	// another endpoint's templates are its own
+	var other struct {
+		Key string `json:"key"`
+	}
+	json.Unmarshal(e.node("other", Node{Kind: KindEndpoint, To: []string{"wh-a"}}, http.StatusOK), &other)
+	if res, _ := e.do(nil, "POST", "/in/other", other.Key, fill); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("another endpoint's template: %d", res.StatusCode)
+	}
+	e.admin("PUT", "/api/nodes/other/templates/slip?name=pages.bdft", tpl, http.StatusOK)
+	e.admin("PUT", "/api/nodes/other/templates/no.dot?name=pages.bdft", tpl, http.StatusBadRequest)
+	e.admin("PUT", "/api/nodes/wh-a/templates/slip?name=pages.bdft", tpl, http.StatusNotFound)
+	if res, _ := e.do(nil, "POST", "/in/other", other.Key, fill); res.StatusCode != http.StatusCreated {
+		t.Fatalf("other's own template: %d", res.StatusCode)
+	}
+	// what an endpoint takes: templates only, documents only, some formats
+	ctx := context.Background()
+	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Accept: AcceptTemplate}, http.StatusOK)
+	if res, _ := e.do(nil, "POST", "/in/intake?name=pick", made.Key, doc); res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("a document at a template endpoint: %d", res.StatusCode)
+	}
+	if _, err := e.ippClient("intake").PrintJob(ctx, "x", "application/x-bdf", nil, bytes.NewReader(doc)); !ipp.IsStatus(err, ipp.StatusClientErrorDocumentFormatError) {
+		t.Fatalf("ipp to a template endpoint: %v", err)
+	}
 	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, fill); res.StatusCode != http.StatusCreated {
-		t.Fatalf("fill with the key kept: %d", res.StatusCode)
+		t.Fatalf("fill at a template endpoint: %d", res.StatusCode)
+	}
+	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Accept: AcceptFile, Formats: []string{"PDF"}}, http.StatusOK)
+	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, fill); res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("fill at a file endpoint: %d", res.StatusCode)
+	}
+	if res, _ := e.do(nil, "POST", "/in/intake?name=pick", made.Key, doc); res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("bdf at a pdf endpoint: %d", res.StatusCode)
+	}
+	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Formats: []string{"bdf", "pdf"}}, http.StatusOK)
+	if res, _ := e.do(nil, "POST", "/in/intake?name=pick", made.Key, doc); res.StatusCode != http.StatusCreated {
+		t.Fatalf("bdf at a bdf endpoint: %d", res.StatusCode)
+	}
+	var got Node
+	json.Unmarshal(e.admin("GET", "/api/nodes/intake", nil, http.StatusOK), &got)
+	if got.Accept != AcceptBoth || !slices.Equal(got.Formats, []string{"bdf", "pdf"}) || got.KeyHash != "" {
+		t.Fatalf("node %+v", got)
+	}
+	// the refusals are in the audit log
+	var log []AuditEntry
+	json.Unmarshal(e.admin("GET", "/api/audit?limit=50", nil, http.StatusOK), &log)
+	refused := 0
+	for _, en := range log {
+		if en.Action == "refuse-document" && en.Subject == "intake" && en.Who == "intake" {
+			refused++
+		}
+	}
+	if refused != 3 {
+		t.Fatalf("refusals audited: %d", refused)
+	}
+	// the templates go with their endpoint
+	e.admin("DELETE", "/api/nodes/other", nil, http.StatusNoContent)
+	e.admin("GET", "/api/nodes/other/templates", nil, http.StatusNotFound)
+	if _, err := e.m().Template(ctx, "other", "slip"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other's template stayed: %v", err)
+	}
+	e.admin("DELETE", "/api/nodes/intake/templates/slip", nil, http.StatusNoContent)
+	e.admin("DELETE", "/api/nodes/intake/templates/slip", nil, http.StatusNotFound)
+	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, fill); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("a deleted template: %d", res.StatusCode)
 	}
 	// not a template
-	if res, _ := e.do(nil, "PUT", "/api/templates/bad", adminToken, []byte("not a template")); res.StatusCode != http.StatusUnsupportedMediaType {
+	if res, _ := e.do(nil, "PUT", "/api/nodes/intake/templates/bad", adminToken, []byte("not a template")); res.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("not a template: %d", res.StatusCode)
 	}
 
@@ -565,7 +632,7 @@ func TestEndpoint(t *testing.T) {
 	if res, _ := e.do(nil, "POST", "/in/intake", rot["key"], doc); res.StatusCode != http.StatusCreated {
 		t.Fatalf("the new key: %d", res.StatusCode)
 	}
-	e.admin("POST", "/api/nodes/wh-a/key", nil, http.StatusNotFound)
+	e.admin("POST", "/api/nodes/wh-a/key", nil, http.StatusBadRequest)
 	// the endpoint is an IPP printer too, and a destination of the API
 	if js := e.printJob("intake", "ipp", 1); js.State != ipp.JobCompleted {
 		t.Fatalf("ipp %+v", js)
@@ -600,7 +667,7 @@ func TestKeys(t *testing.T) {
 // and the audit log. (People sign in to the pages with OIDC: scope_test.)
 func TestTokens(t *testing.T) {
 	e := newEnv(t, func(o *Options) { o.SubmitTokens = map[string]string{"wms": "s3cret", "erp": "pw"} })
-	e.admin("PUT", "/api/locations/wh-a", Location{}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay}, http.StatusOK)
 	if res, _ := e.do(nil, "GET", "/api/me", "nobody:x", nil); res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("me with a wrong token: %d", res.StatusCode)
 	}
@@ -650,7 +717,7 @@ func TestTokens(t *testing.T) {
 		t.Fatalf("destinations: %d", res.StatusCode)
 	}
 	// the admin's pages' API is not the user's
-	for _, path := range []string{"/api/topology", "/api/audit", "/api/locations"} {
+	for _, path := range []string{"/api/topology", "/api/audit", "/api/nodes"} {
 		if res, _ := e.do(nil, "GET", path, "wms:s3cret", nil); res.StatusCode != http.StatusForbidden {
 			t.Fatalf("%s as a user: %d", path, res.StatusCode)
 		}
@@ -664,7 +731,7 @@ func TestTokens(t *testing.T) {
 	for _, en := range log {
 		actions = append(actions, en.Who+":"+en.Action)
 	}
-	want := []string{"admin:put-node", "wms:cancel-job", "admin:put-display"}
+	want := []string{"admin:put-node", "wms:cancel-job", "admin:put-node"}
 	if !slices.Equal(actions, want) {
 		t.Fatalf("audit %v", actions)
 	}

@@ -110,9 +110,9 @@ func (m *Manager) pick(ctx context.Context, n *Node) (string, error) {
 	return n.Members[int(i)%len(n.Members)], nil
 }
 
-// routeDisplay makes the job a slip at a location.
+// routeDisplay makes the job a slip at a display.
 func (m *Manager) routeDisplay(ctx context.Context, r *routing, loc, from string) {
-	l, err := m.Location(ctx, loc)
+	l, err := m.display(ctx, loc)
 	if err != nil {
 		r.add(Leg{Node: loc, Kind: KindDisplay, From: from, State: LegError, Error: err.Error()})
 		return

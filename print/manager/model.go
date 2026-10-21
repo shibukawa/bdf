@@ -62,29 +62,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	return err
 }
 
-// Location is a place where slips are shown instead of printed: a
-// warehouse, and the tablets enrolled there. Its slips come through the
-// queue of the same name (/ipp/print/<name>).
-type Location struct {
-	Name  string `json:"name"`
-	Title string `json:"title,omitempty"`
-	// Scope and Owner are who may send to it (as every node's: see
-	// Node.Scope).
-	Scope string `json:"scope,omitempty"`
-	Owner string `json:"owner,omitempty"`
-	// Fallback prints the slips nobody opened in time, or all of them
-	// while no device of the location is connected, so that shipping does
-	// not stop.
-	Fallback *Fallback `json:"fallback,omitempty"`
-	// Keep is how long a slip that was done or canceled stays on the
-	// devices (default 14 days); it is then removed.
-	Keep Duration `json:"keep,omitempty"`
-	// OfflineAfter is how long a device may be silent and still count as
-	// connected (default 2 minutes).
-	OfflineAfter Duration `json:"offline_after,omitempty"`
-}
-
-// Fallback is the printer that prints a location's slips on paper, and
+// Fallback is the printer that prints a display's slips on paper, and
 // after how long an unopened slip is printed (0: only while no device is
 // connected).
 type Fallback struct {
@@ -97,11 +75,6 @@ const (
 	defaultOfflineAfter = Duration(2 * time.Minute)
 )
 
-func (l *Location) keep() time.Duration { return time.Duration(or(l.Keep, defaultKeep)) }
-func (l *Location) offlineAfter() time.Duration {
-	return time.Duration(or(l.OfflineAfter, defaultOfflineAfter))
-}
-
 func or[T comparable](v, def T) T {
 	var zero T
 	if v == zero {
@@ -111,8 +84,8 @@ func or[T comparable](v, def T) T {
 }
 
 // Kinds of the nodes of a topology: what a job sent to a node becomes.
-// Locations (display) and printers are nodes too; the others are routing
-// nodes (Node), which an administrator composes.
+// Endpoints are entries; queues, classes and inboxes route; displays,
+// printers and archives are where a job ends.
 const (
 	// KindQueue forwards a job to every node of To: a virtual printer
 	// in front of others, and a fan-out when To has several.
@@ -133,10 +106,19 @@ const (
 	// or a template's id and the data to fill it with. It forwards the
 	// job to every node of To, as a queue does.
 	KindEndpoint = "endpoint"
-	// KindDisplay shows the job on the tablets of a location.
+	// KindDisplay shows the job as a slip on the devices enrolled at the
+	// display (the tablets of a warehouse), and prints on paper what
+	// nobody opened in time (Fallback).
 	KindDisplay = "display"
 	// KindPrinter prints the job on paper.
 	KindPrinter = "printer"
+)
+
+// What an endpoint accepts: documents, templates to fill, or both.
+const (
+	AcceptBoth     = "both"
+	AcceptFile     = "file"
+	AcceptTemplate = "template"
 )
 
 // Policies of a class.
@@ -145,31 +127,47 @@ const (
 	PolicyFailover   = "failover"
 )
 
-// Node is a routing node of the topology: a queue, a class, an inbox or
-// an archive. Its name is a destination (/ipp/print/<name>), in the one
-// namespace of locations, printers and nodes.
+// Node is a node of the topology, of any kind. Its name is a destination
+// (/ipp/print/<name>) in the one namespace; the settings are the kind's
+// (PutNode drops the others).
 type Node struct {
 	Name  string `json:"name"`
 	Kind  string `json:"kind"`
 	Title string `json:"title,omitempty"`
-	// To are the nodes a queue forwards to (all of them), or the nodes
-	// an inbox's items may be released to.
+	// To are the nodes a queue or an endpoint forwards to (all of them),
+	// or the nodes an inbox's items may be released to.
 	To []string `json:"to,omitempty"`
 	// Members and Policy are a class's.
 	Members []string `json:"members,omitempty"`
 	Policy  string   `json:"policy,omitempty"`
-	// Keep is how long an inbox shows its released and discarded items
-	// (default 14 days).
+	// Keep is how long an inbox shows its released and discarded items,
+	// and a display its slips done or canceled (default 14 days).
 	Keep Duration `json:"keep,omitempty"`
 	// Store is the archive's store, a URL as OpenStore takes for documents
 	// (bbolt, s3, r2, gcs); Collection the collection (the key prefix)
 	// its objects are in, "archive-<name>" by default.
 	Store      string `json:"store,omitempty"`
 	Collection string `json:"collection,omitempty"`
-	// Templates are the templates an endpoint fills (all when none);
-	// KeyHash is the hash of its key (argon2id), never the key.
-	Templates []string `json:"templates,omitempty"`
-	KeyHash   string   `json:"key_hash,omitempty"`
+	// Accept is what an endpoint takes: AcceptBoth (documents, and
+	// templates to fill; the default), AcceptFile or AcceptTemplate.
+	// Formats are the formats of the documents it takes, as the converter
+	// names them (pdf, docx, image … and bdf); none takes any. A
+	// document of another format is refused (ErrFormat).
+	Accept  string   `json:"accept,omitempty"`
+	Formats []string `json:"formats,omitempty"`
+	// KeyHash is the hash of an endpoint's key (argon2id), never the key.
+	KeyHash string `json:"key_hash,omitempty"`
+	// Fallback prints a display's slips nobody opened in time, or all of
+	// them while no device of the display is connected, so that shipping
+	// does not stop. OfflineAfter is how long a device may be silent and
+	// still count as connected (default 2 minutes).
+	Fallback     *Fallback `json:"fallback,omitempty"`
+	OfflineAfter Duration  `json:"offline_after,omitempty"`
+	// URL is a printer's: ipp://, ipps://, socket:// or lpd:// (a printer
+	// the manager reaches over the network); Route how its jobs reach it
+	// (RouteDirect, RouteBranch).
+	URL   string `json:"url,omitempty"`
+	Route string `json:"route,omitempty"`
 	// Scope is who may send to the node from the pages and whose its
 	// jobs are (ScopeShared, ScopeGroup, ScopePersonal; empty is
 	// shared), and Owner the group (a value of the IdP's groups claim)
@@ -180,14 +178,29 @@ type Node struct {
 }
 
 func (n *Node) keep() time.Duration { return time.Duration(or(n.Keep, defaultKeep)) }
+func (n *Node) offlineAfter() time.Duration {
+	return time.Duration(or(n.OfflineAfter, defaultOfflineAfter))
+}
 
 func (n *Node) collection() string { return or(n.Collection, "archive-"+n.Name) }
 
-// Template is a template kept for the endpoints to fill: a compiled
-// template (.bdft), or one of Excel, Word, PowerPoint, PDF forms, pdfme
-// or text, as form.Fill takes them.
+// edges are the nodes a node sends to: To, Members, and a display's
+// fallback printer.
+func (n *Node) edges() []string {
+	out := append(append([]string{}, n.To...), n.Members...)
+	if n.Fallback != nil && n.Fallback.Printer != "" {
+		out = append(out, n.Fallback.Printer)
+	}
+	return out
+}
+
+// Template is a template of an endpoint, which fills it with the data it
+// is sent: a compiled template (.bdft), or one of Excel, Word,
+// PowerPoint, PDF forms, pdfme or text, as form.Fill takes them. Its id
+// is unique within its endpoint.
 type Template struct {
 	ID       string      `json:"id"`
+	Endpoint string      `json:"endpoint"`
 	Name     string      `json:"name,omitempty"`
 	Format   string      `json:"format"`
 	Size     int64       `json:"size"`
@@ -462,21 +475,6 @@ const (
 	RouteBranch = "branch"
 )
 
-// Printer is a printer a manager prints on.
-type Printer struct {
-	Name string `json:"name"`
-	// URL is ipp://, ipps://, socket:// or lpd:// (a printer the manager
-	// reaches over the network).
-	URL   string `json:"url"`
-	Route string `json:"route,omitempty"`
-	Info  string `json:"info,omitempty"`
-	// Scope and Owner are who may send to it (see Node.Scope). A
-	// location's jobs are the group's of its fallback printer when the
-	// location names none.
-	Scope string `json:"scope,omitempty"`
-	Owner string `json:"owner,omitempty"`
-}
-
 // SlipState is where a slip is.
 type SlipState string
 
@@ -490,8 +488,8 @@ const (
 // ended tells a slip that is no longer to be worked on.
 func (s SlipState) ended() bool { return s == SlipDone || s == SlipCanceled }
 
-// Slip is a job shown at a location: a document as .bdf, and what
-// happened to it.
+// Slip is a job shown at a display (Location is its name): a document as
+// .bdf, and what happened to it.
 type Slip struct {
 	ID       string `json:"id"`
 	Job      int32  `json:"job"`
@@ -566,7 +564,7 @@ const (
 	whyDevice   = "device"
 )
 
-// Device is a tablet enrolled at a location. It proves itself with a key
+// Device is a tablet enrolled at a display (Location is its name). It proves itself with a key
 // it made and cannot export (WebCrypto, non-extractable): the manager
 // keeps the public key.
 type Device struct {
@@ -606,8 +604,8 @@ var (
 	ErrUnauthorized = errors.New("manager: not authorized")
 )
 
-// names are those of locations and printers: they are queue names in
-// URLs, and record ids.
+// names are those of nodes: they are queue names in URLs, and record
+// ids.
 var nameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
 
 func validName(s string) bool { return nameRE.MatchString(s) }

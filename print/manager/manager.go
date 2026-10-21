@@ -1,11 +1,12 @@
 // Package manager is the BDF Print Manager's core: a topology of nodes
-// a job flows through, as an administrator composes it. Locations show
-// jobs as slips on the tablets enrolled there (a warehouse) instead of
-// printing them, and print on paper what nobody opened; printers print;
-// queues forward to several nodes at once, classes to one of their
-// members in turn, inboxes hold jobs until a person sends them on, and
-// archives keep a copy that is never changed. Every node is an IPP
-// printer at /ipp/print/<name>.
+// a job flows through, as an administrator composes it. Endpoints take
+// documents and data from applications; queues forward to several nodes
+// at once, classes to one of their members in turn, inboxes hold jobs
+// until a person sends them on; displays show jobs as slips on the
+// tablets enrolled there (a warehouse) instead of printing them, and
+// print on paper what nobody opened; printers print; archives keep a copy
+// that is never changed. Every node is an IPP printer at
+// /ipp/print/<name>.
 //
 // A Manager holds no state of its own: everything is in its Store, so
 // that any request may reach any instance (a container, several, or a
@@ -195,135 +196,41 @@ func randomHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-// PutLocation adds a location or replaces its settings.
-func (m *Manager) PutLocation(ctx context.Context, l Location) error {
-	if !validName(l.Name) {
-		return fmt.Errorf("%w: location name %q", ErrInvalid, l.Name)
-	}
-	if l.Fallback != nil && !validName(l.Fallback.Printer) {
-		return fmt.Errorf("%w: fallback printer %q", ErrInvalid, l.Fallback.Printer)
-	}
-	if err := checkScope(l.Scope, l.Owner); err != nil {
-		return err
-	}
-	if err := m.nameFree(ctx, l.Name, KindDisplay); err != nil {
-		return err
-	}
-	_, err := change(ctx, m.st.db, l.Name, true, func(r *locationRecord) error {
-		*r = locationRecord(l)
-		return nil
-	})
-	return err
+// display returns a display node.
+func (m *Manager) display(ctx context.Context, name string) (*Node, error) {
+	return m.nodeOfKind(ctx, name, KindDisplay)
 }
 
-// Location returns a location.
-func (m *Manager) Location(ctx context.Context, name string) (*Location, error) {
-	if !validName(name) {
-		return nil, fmt.Errorf("%w: location %q", ErrNotFound, name)
-	}
-	rec, err := m.st.db.Get[locationRecord](ctx, name)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	l := Location(rec.Data)
-	l.Name = name
-	return &l, nil
+// printer returns a printer node.
+func (m *Manager) printer(ctx context.Context, name string) (*Node, error) {
+	return m.nodeOfKind(ctx, name, KindPrinter)
 }
 
-// Locations returns the locations, by name.
-func (m *Manager) Locations(ctx context.Context) ([]Location, error) {
-	recs, err := list[locationRecord](ctx, m.st.db)
+// nodeOfKind returns a node of a kind; one of another kind is not found.
+func (m *Manager) nodeOfKind(ctx context.Context, name, kind string) (*Node, error) {
+	n, err := m.Node(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Location, len(recs))
-	for i, r := range recs {
-		out[i] = Location(r.Data)
-		out[i].Name = r.ID()
+	if n.Kind != kind {
+		return nil, fmt.Errorf("%w: %s is a %s, not a %s", ErrNotFound, name, n.Kind, kind)
 	}
-	return out, nil
+	return n, nil
 }
 
-// DeleteLocation removes a location's settings; its slips and devices
-// stay until the location is added again. A location a node forwards to
-// stays.
-func (m *Manager) DeleteLocation(ctx context.Context, name string) error {
-	rec, err := m.st.db.Get[locationRecord](ctx, name)
-	if err != nil {
-		return mapErr(err)
-	}
-	if err := m.unreferenced(ctx, name); err != nil {
-		return err
-	}
-	return mapErr(m.st.db.Delete[locationRecord](ctx, name, rec.Revision()))
-}
-
-// PutPrinter adds a printer or replaces its settings.
-func (m *Manager) PutPrinter(ctx context.Context, p Printer) error {
-	if !validName(p.Name) {
-		return fmt.Errorf("%w: printer name %q", ErrInvalid, p.Name)
-	}
-	if p.Route == "" {
-		p.Route = RouteDirect
-	}
-	if p.Route != RouteDirect && p.Route != RouteBranch {
-		return fmt.Errorf("%w: route %q: direct or branch", ErrInvalid, p.Route)
-	}
-	if err := checkPrinterURL(p.URL); err != nil {
-		return err
-	}
-	if err := checkScope(p.Scope, p.Owner); err != nil {
-		return err
-	}
-	if err := m.nameFree(ctx, p.Name, KindPrinter); err != nil {
-		return err
-	}
-	_, err := change(ctx, m.st.db, p.Name, true, func(r *printerRecord) error {
-		*r = printerRecord(p)
-		return nil
-	})
-	return err
-}
-
-// Printer returns a printer.
-func (m *Manager) Printer(ctx context.Context, name string) (*Printer, error) {
-	if !validName(name) {
-		return nil, fmt.Errorf("%w: printer %q", ErrNotFound, name)
-	}
-	rec, err := m.st.db.Get[printerRecord](ctx, name)
-	if err != nil {
-		return nil, mapErr(err)
-	}
-	p := Printer(rec.Data)
-	p.Name = name
-	return &p, nil
-}
-
-// Printers returns the printers, by name.
-func (m *Manager) Printers(ctx context.Context) ([]Printer, error) {
-	recs, err := list[printerRecord](ctx, m.st.db)
+// nodesOfKind returns the nodes of a kind, by name.
+func (m *Manager) nodesOfKind(ctx context.Context, kind string) ([]Node, error) {
+	nodes, err := m.Nodes(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Printer, len(recs))
-	for i, r := range recs {
-		out[i] = Printer(r.Data)
-		out[i].Name = r.ID()
+	out := nodes[:0]
+	for _, n := range nodes {
+		if n.Kind == kind {
+			out = append(out, n)
+		}
 	}
 	return out, nil
-}
-
-// DeletePrinter removes a printer. One a node or a location's fallback
-// sends to stays.
-func (m *Manager) DeletePrinter(ctx context.Context, name string) error {
-	rec, err := m.st.db.Get[printerRecord](ctx, name)
-	if err != nil {
-		return mapErr(err)
-	}
-	if err := m.unreferenced(ctx, name); err != nil {
-		return err
-	}
-	return mapErr(m.st.db.Delete[printerRecord](ctx, name, rec.Revision()))
 }
 
 // touch changes a location's state, and its Seq so that its revision
@@ -412,9 +319,9 @@ func (m *Manager) BoardRev(ctx context.Context, loc string) (string, error) {
 	return fmt.Sprintf("%d", rec.Data.Seq), nil
 }
 
-// Board returns a location's board.
+// Board returns a display's board.
 func (m *Manager) Board(ctx context.Context, loc string) (*Board, error) {
-	l, err := m.Location(ctx, loc)
+	l, err := m.display(ctx, loc)
 	if err != nil {
 		return nil, err
 	}

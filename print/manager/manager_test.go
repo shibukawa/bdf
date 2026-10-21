@@ -183,7 +183,7 @@ type device struct {
 func (e *env) enroll(loc, name string) *device {
 	e.t.Helper()
 	var en Enrollment
-	json.Unmarshal(e.admin("POST", "/api/locations/"+loc+"/enrollments", nil, http.StatusCreated), &en)
+	json.Unmarshal(e.admin("POST", "/api/nodes/"+loc+"/enrollments", nil, http.StatusCreated), &en)
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	der, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	jar, _ := cookiejar.New(nil)
@@ -268,8 +268,15 @@ func (d *device) action(id, action string, status int) *Slip {
 // printer is a fake printer the manager prints on.
 func (e *env) printer(name string) *fakeprinter.Printer {
 	p := fakeprinter.New()
-	e.admin("PUT", "/api/printers/"+name, Printer{URL: fakeprinter.Start(e.t, p)}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/"+name, Node{Kind: KindPrinter, URL: fakeprinter.Start(e.t, p)}, http.StatusOK)
 	return p
+}
+
+// display puts a display node.
+func (e *env) display(name string, n Node) {
+	e.t.Helper()
+	n.Kind = KindDisplay
+	e.admin("PUT", "/api/nodes/"+name, n, http.StatusOK)
 }
 
 // ippClient prints to a location's printer.
@@ -288,7 +295,7 @@ func (e *env) printJob(loc, name string, pages int) *ipp.JobStatus {
 
 func TestDisplay(t *testing.T) {
 	e := newEnv(t, nil)
-	e.admin("PUT", "/api/locations/wh-a", Location{Title: "第 1 倉庫"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Title: "第 1 倉庫"}, http.StatusOK)
 	d := e.enroll("wh-a", "tablet 1")
 
 	b := d.board()
@@ -379,7 +386,7 @@ func TestDisplay(t *testing.T) {
 
 func TestSubmitAPI(t *testing.T) {
 	e := newEnv(t, func(o *Options) { o.SubmitTokens = map[string]string{"wms": "s3cret"} })
-	e.admin("PUT", "/api/locations/wh-a", Location{}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay}, http.StatusOK)
 	doc := testDoc(t, 1)
 	if res, _ := e.do(nil, "POST", "/api/locations/wh-a/slips?name=x", "", doc); res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("no token: %d", res.StatusCode)
@@ -408,7 +415,7 @@ func TestSubmitAPI(t *testing.T) {
 	if got.StatusCode != http.StatusOK || !bytes.HasPrefix(out, bdf.Magic[:]) {
 		t.Fatalf("document: %d", got.StatusCode)
 	}
-	for _, path := range []string{"/api/locations", "/api/printers", "/api/slips/" + s.ID} {
+	for _, path := range []string{"/api/nodes", "/api/topology", "/api/slips/" + s.ID} {
 		if res, _ := e.do(nil, "GET", path, "", nil); res.StatusCode != http.StatusUnauthorized {
 			t.Fatalf("%s without the admin token: %d", path, res.StatusCode)
 		}
@@ -418,7 +425,7 @@ func TestSubmitAPI(t *testing.T) {
 func TestFallback(t *testing.T) {
 	e := newEnv(t, nil)
 	p := e.printer("wh-a-laser")
-	e.admin("PUT", "/api/locations/wh-a", Location{Fallback: &Fallback{Printer: "wh-a-laser", After: Duration(10 * time.Minute)}}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "wh-a-laser", After: Duration(10 * time.Minute)}}, http.StatusOK)
 
 	// no device is connected: the slip is printed at the next tick
 	e.printJob("wh-a", "offline", 1)
@@ -478,8 +485,8 @@ func TestFallback(t *testing.T) {
 
 func TestFallbackFails(t *testing.T) {
 	e := newEnv(t, nil)
-	e.admin("PUT", "/api/printers/gone", Printer{URL: "ipp://127.0.0.1:1/ipp/print"}, http.StatusOK)
-	e.admin("PUT", "/api/locations/wh-a", Location{Fallback: &Fallback{Printer: "gone"}}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/gone", Node{Kind: KindPrinter, URL: "ipp://127.0.0.1:1/ipp/print"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "gone"}}, http.StatusOK)
 	e.printJob("wh-a", "x", 1)
 	r, err := e.m().Tick(context.Background())
 	if err == nil || r.Failed != 1 {
@@ -510,7 +517,7 @@ func TestFallbackFails(t *testing.T) {
 func TestTicksAtOnce(t *testing.T) {
 	e := newEnv(t, nil)
 	p := e.printer("laser")
-	e.admin("PUT", "/api/locations/wh-a", Location{Fallback: &Fallback{Printer: "laser"}}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "laser"}}, http.StatusOK)
 	for i := range 3 {
 		e.printJob("wh-a", fmt.Sprint("slip ", i), 1)
 	}
@@ -531,8 +538,8 @@ func TestTicksAtOnce(t *testing.T) {
 
 func TestDevices(t *testing.T) {
 	e := newEnv(t, nil)
-	e.admin("PUT", "/api/locations/wh-a", Location{}, http.StatusOK)
-	e.admin("PUT", "/api/locations/wh-b", Location{}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-b", Node{Kind: KindDisplay}, http.StatusOK)
 	a := e.enroll("wh-a", "a")
 	b := e.enroll("wh-b", "b")
 	e.printJob("wh-a", "for a", 1)
@@ -546,7 +553,7 @@ func TestDevices(t *testing.T) {
 
 	// a code is used once, and not after it expires
 	var en Enrollment
-	json.Unmarshal(e.admin("POST", "/api/locations/wh-a/enrollments?ttl=5m", nil, http.StatusCreated), &en)
+	json.Unmarshal(e.admin("POST", "/api/nodes/wh-a/enrollments?ttl=5m", nil, http.StatusCreated), &en)
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	der, _ := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	body := map[string]string{"code": en.Code, "key": base64.StdEncoding.EncodeToString(der)}
@@ -556,14 +563,14 @@ func TestDevices(t *testing.T) {
 	if res, _ := e.do(nil, "POST", "/device/enroll", "", body); res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("a code used twice: %d", res.StatusCode)
 	}
-	json.Unmarshal(e.admin("POST", "/api/locations/wh-a/enrollments?ttl=5m", nil, http.StatusCreated), &en)
+	json.Unmarshal(e.admin("POST", "/api/nodes/wh-a/enrollments?ttl=5m", nil, http.StatusCreated), &en)
 	e.clock.add(6 * time.Minute)
 	body["code"] = en.Code
 	if res, _ := e.do(nil, "POST", "/device/enroll", "", body); res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("an expired code: %d", res.StatusCode)
 	}
 	// a key that is not ECDSA P-256
-	json.Unmarshal(e.admin("POST", "/api/locations/wh-a/enrollments", nil, http.StatusCreated), &en)
+	json.Unmarshal(e.admin("POST", "/api/nodes/wh-a/enrollments", nil, http.StatusCreated), &en)
 	if res, _ := e.do(nil, "POST", "/device/enroll", "", map[string]string{"code": en.Code, "key": "AAAA"}); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("a bad key: %d", res.StatusCode)
 	}
@@ -604,7 +611,7 @@ func TestDevices(t *testing.T) {
 		t.Fatalf("a removed device: %d", res.StatusCode)
 	}
 	var ds []Device
-	json.Unmarshal(e.admin("GET", "/api/locations/wh-a/devices", nil, http.StatusOK), &ds)
+	json.Unmarshal(e.admin("GET", "/api/nodes/wh-a/devices", nil, http.StatusOK), &ds)
 	if len(ds) != 1 {
 		t.Fatalf("devices %+v", ds)
 	}

@@ -38,19 +38,24 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("POST "+IPPPath, h.serveIPP)
 	mux.HandleFunc("POST "+IPPPath+"/{$}", h.serveIPP)
 
-	mux.HandleFunc("GET /api/locations", h.adminOnly(h.listLocations))
-	mux.HandleFunc("GET /api/locations/{name}", h.adminOnly(h.getLocation))
-	mux.HandleFunc("PUT /api/locations/{name}", h.adminOnly(h.putLocation))
-	mux.HandleFunc("DELETE /api/locations/{name}", h.adminOnly(h.deleteLocation))
-	mux.HandleFunc("GET /api/locations/{name}/board", h.adminOnly(h.board))
-	mux.HandleFunc("GET /api/locations/{name}/devices", h.adminOnly(h.listDevices))
-	mux.HandleFunc("POST /api/locations/{name}/enrollments", h.adminOnly(h.enrollment))
+	// the nodes, of every kind; a display's board, devices and enrollment
+	// codes, and an endpoint's templates, are under their node
+	mux.HandleFunc("GET /api/nodes", h.adminOnly(h.listNodes))
+	mux.HandleFunc("GET /api/nodes/{name}", h.adminOnly(h.getNode))
+	mux.HandleFunc("PUT /api/nodes/{name}", h.adminOnly(h.putNode))
+	mux.HandleFunc("DELETE /api/nodes/{name}", h.adminOnly(h.deleteNode))
+	mux.HandleFunc("POST /api/nodes/{name}/key", h.adminOnly(h.rotateKey))
+	mux.HandleFunc("GET /api/nodes/{name}/board", h.adminOnly(h.board))
+	mux.HandleFunc("GET /api/nodes/{name}/devices", h.adminOnly(h.listDevices))
+	mux.HandleFunc("POST /api/nodes/{name}/enrollments", h.adminOnly(h.enrollment))
+	mux.HandleFunc("GET /api/nodes/{name}/templates", h.adminOnly(h.listTemplates))
+	mux.HandleFunc("GET /api/nodes/{name}/templates/{id}", h.adminOnly(h.getTemplate))
+	mux.HandleFunc("GET /api/nodes/{name}/templates/{id}/file", h.adminOnly(h.templateFile))
+	mux.HandleFunc("PUT /api/nodes/{name}/templates/{id}", h.adminOnly(h.putTemplate))
+	mux.HandleFunc("DELETE /api/nodes/{name}/templates/{id}", h.adminOnly(h.deleteTemplate))
+	mux.HandleFunc("GET /api/formats", h.adminOnly(h.formats))
 	mux.HandleFunc("POST /api/locations/{name}/slips", h.submit)
 	mux.HandleFunc("DELETE /api/devices/{id}", h.adminOnly(h.removeDevice))
-	mux.HandleFunc("GET /api/printers", h.adminOnly(h.listPrinters))
-	mux.HandleFunc("GET /api/printers/{name}", h.adminOnly(h.getPrinter))
-	mux.HandleFunc("PUT /api/printers/{name}", h.adminOnly(h.putPrinter))
-	mux.HandleFunc("DELETE /api/printers/{name}", h.adminOnly(h.deletePrinter))
 	mux.HandleFunc("GET /api/me", h.whoami)
 	mux.HandleFunc("GET /api/my/jobs", h.userOnly(h.myJobs))
 	mux.HandleFunc("GET /api/destinations", h.userOnly(h.destinations))
@@ -58,19 +63,9 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/slips/{id}", h.adminOnly(h.getSlip))
 	mux.HandleFunc("GET /api/slips/{id}/document", h.adminOnly(h.slipDocument))
 	mux.HandleFunc("POST /api/slips/{id}/cancel", h.adminOnly(h.cancelSlip))
-	mux.HandleFunc("GET /api/nodes", h.adminOnly(h.listNodes))
-	mux.HandleFunc("GET /api/nodes/{name}", h.adminOnly(h.getNode))
-	mux.HandleFunc("PUT /api/nodes/{name}", h.adminOnly(h.putNode))
-	mux.HandleFunc("DELETE /api/nodes/{name}", h.adminOnly(h.deleteNode))
-	mux.HandleFunc("POST /api/nodes/{name}/key", h.adminOnly(h.rotateKey))
 	mux.HandleFunc("GET /api/topology", h.adminOnly(h.topology))
 	mux.HandleFunc("GET /api/layout", h.adminOnly(h.getLayout))
 	mux.HandleFunc("PUT /api/layout", h.adminOnly(h.putLayout))
-	mux.HandleFunc("GET /api/templates", h.adminOnly(h.listTemplates))
-	mux.HandleFunc("GET /api/templates/{id}", h.adminOnly(h.getTemplate))
-	mux.HandleFunc("GET /api/templates/{id}/file", h.adminOnly(h.templateFile))
-	mux.HandleFunc("PUT /api/templates/{id}", h.adminOnly(h.putTemplate))
-	mux.HandleFunc("DELETE /api/templates/{id}", h.adminOnly(h.deleteTemplate))
 	mux.HandleFunc("POST "+InPath+"/{name}", h.serveIn)
 	mux.HandleFunc("GET /api/destinations/{name}/jobs", h.adminOnly(h.destJobs))
 	mux.HandleFunc("POST /api/destinations/{name}/jobs", h.submit)
@@ -165,48 +160,6 @@ func (h *handler) adminOnly(fn http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (h *handler) listLocations(w http.ResponseWriter, r *http.Request) {
-	ls, err := h.m.Locations(r.Context())
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, ls)
-}
-
-func (h *handler) getLocation(w http.ResponseWriter, r *http.Request) {
-	l, err := h.m.Location(r.Context(), r.PathValue("name"))
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, l)
-}
-
-func (h *handler) putLocation(w http.ResponseWriter, r *http.Request) {
-	var l Location
-	if err := readJSON(r, &l); err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	l.Name = r.PathValue("name")
-	if err := h.m.PutLocation(r.Context(), l); err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	h.m.audit(r.Context(), h.who(r), "put-display", l.Name, l.Title)
-	writeJSON(w, http.StatusOK, l)
-}
-
-func (h *handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
-	if err := h.m.DeleteLocation(r.Context(), r.PathValue("name")); err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	h.m.audit(r.Context(), h.who(r), "delete-display", r.PathValue("name"), "")
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (h *handler) board(w http.ResponseWriter, r *http.Request) {
 	b, err := h.m.Board(r.Context(), r.PathValue("name"))
 	if err != nil {
@@ -278,48 +231,6 @@ func (h *handler) removeDevice(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *handler) listPrinters(w http.ResponseWriter, r *http.Request) {
-	ps, err := h.m.Printers(r.Context())
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, ps)
-}
-
-func (h *handler) getPrinter(w http.ResponseWriter, r *http.Request) {
-	p, err := h.m.Printer(r.Context(), r.PathValue("name"))
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, p)
-}
-
-func (h *handler) putPrinter(w http.ResponseWriter, r *http.Request) {
-	var p Printer
-	if err := readJSON(r, &p); err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	p.Name = r.PathValue("name")
-	if err := h.m.PutPrinter(r.Context(), p); err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	h.m.audit(r.Context(), h.who(r), "put-printer", p.Name, p.URL)
-	writeJSON(w, http.StatusOK, p)
-}
-
-func (h *handler) deletePrinter(w http.ResponseWriter, r *http.Request) {
-	if err := h.m.DeletePrinter(r.Context(), r.PathValue("name")); err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	h.m.audit(r.Context(), h.who(r), "delete-printer", r.PathValue("name"), "")
-	w.WriteHeader(http.StatusNoContent)
-}
-
 func (h *handler) getSlip(w http.ResponseWriter, r *http.Request) {
 	s, err := h.m.Slip(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -352,10 +263,8 @@ func (h *handler) cancelSlip(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s)
 }
 
-// The topology: nodes, jobs, inboxes and deliveries.
-
-// The hash of an endpoint's key stays in the store: the API shows nodes
-// without it.
+// The topology: nodes, jobs, inboxes and deliveries. The hash of an
+// endpoint's key stays in the store: the API shows nodes without it.
 
 func (h *handler) listNodes(w http.ResponseWriter, r *http.Request) {
 	ns, err := h.m.Nodes(r.Context())
@@ -398,7 +307,7 @@ func (h *handler) putNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	got.KeyHash = ""
-	detail := n.Kind
+	detail := got.Kind
 	if key != "" {
 		detail += ", a key made"
 	}
@@ -551,7 +460,7 @@ func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
 }
 
 // submit takes a document (the body) for a destination: ?name= names it.
-// At /api/locations/{name}/slips the answer is the slip of the location;
+// At /api/locations/{name}/slips the answer is the slip of the display;
 // at /api/destinations/{name}/jobs, the job.
 func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 	by, ok := h.submitter(r)
@@ -692,7 +601,7 @@ func (h *handler) deviceOnly(fn deviceHandler) http.HandlerFunc {
 }
 
 func (h *handler) me(w http.ResponseWriter, r *http.Request, d *Device) {
-	l, err := h.m.Location(r.Context(), d.Location)
+	l, err := h.m.display(r.Context(), d.Location)
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -724,7 +633,7 @@ func (h *handler) deviceBoard(w http.ResponseWriter, r *http.Request, d *Device)
 	writeJSON(w, http.StatusOK, b)
 }
 
-// deviceSlip is a slip of the device's location.
+// deviceSlip is a slip of the device's display.
 func (h *handler) deviceSlip(w http.ResponseWriter, r *http.Request, d *Device) *Slip {
 	s, err := h.m.Slip(r.Context(), r.PathValue("id"))
 	if err == nil && s.Location != d.Location {
@@ -760,13 +669,13 @@ func (h *handler) deviceAction(w http.ResponseWriter, r *http.Request, d *Device
 	case "done":
 		s, err = h.m.Done(r.Context(), s.ID, by)
 	case "print":
-		l, lerr := h.m.Location(r.Context(), d.Location)
+		l, lerr := h.m.display(r.Context(), d.Location)
 		if lerr != nil {
 			h.writeErr(w, lerr)
 			return
 		}
 		if l.Fallback == nil {
-			h.writeErr(w, errors.Join(ErrInvalid, errors.New("the location has no printer")))
+			h.writeErr(w, errors.Join(ErrInvalid, errors.New("the display has no printer")))
 			return
 		}
 		s, err = h.m.PrintSlip(r.Context(), s.ID, l.Fallback.Printer, by)

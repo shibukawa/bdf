@@ -164,6 +164,7 @@ facts:
     endpoint: 2026-10-21 利用者の追加。endpoint は自分の鍵（argon2id のハッシュだけ保存、1 度だけ見せる）を持つ入口。POST /in/<名前> に文書、または JSON でテンプレートの id とデータ。テンプレートは PUT /api/templates/<id>（.bdft か form.Fill が受ける素のテンプレート）で任意の数。endpoint の templates で絞れる
     framing: 2026-10-21 利用者「ユースケースが倉庫のペーパーレスというだけでそれに限定するわけではない。SDN の様なソフトウェア定義の帳票ネットワーク。必ずしも紙に限定するわけではなく」。画面と README は英語で、display board・documents の語。API と記録の名前は pm-1 のまま
     canvas: 2026-10-21 利用者「GUI でレイアウトできると良い」。/admin の SVG のキャンバス：ドラッグで配置（/api/layout）、口から別のノードへドラッグで辺、辺のクリックで外す、クリックでフォームに読み込む
+    console: 2026-10-21 利用者の次の求め（1 ページ 1 項目、Blueprint 風のエディタとノードごとのサイドバー、プリンタと表示もノード、テンプレートと資格はエンドポイントの持ち物、一般の利用者にも読むだけで見える流れ）は requirement:print-manager-console
 open_questions:
   topology-kinds:
     text: 経路のノードの種類と名前（queue＝分岐、class、inbox、archive）をこのままにするか。tee・group などの名に替えるか。規則で振り分ける filter を足すか
@@ -172,11 +173,11 @@ open_questions:
   node-visibility:
     text: 「外から見える仮想プリンタ」を、ノードの側の可視性にするか、認証（トークンごとの宛先）で絞るか
     state: open
-    resolution: 暫定でどのノードも宛先（クラスにも保管にも直接刷れる）。見せる相手は requirement:print-manager-auth の範囲で絞る
+    resolution: 暫定でどのノードも宛先（クラスにも保管にも直接刷れる）。見せる相手は requirement:print-manager-auth の範囲で絞る。2026-10-21 利用者が CUPS サーバーのノード（IPP の口を明示のノードに。一旦は全ノードを見せる）を求めた：requirement:print-manager-console の cups-server-node
   endpoint-keys:
     text: エンドポイントの鍵を 1 つにしたまま（アプリごとにエンドポイント）か、鍵を複数・期限つき・鍵ごとの記録にするか。認証の milestone（requirement:print-manager-auth の client credentials）とどう合わせるか
     state: open
-    resolution: 暫定で 1 つ。回転はある。複数の鍵と期限は認証の milestone で
+    resolution: 暫定で 1 つ。回転はある。複数の鍵と期限は認証の milestone で。2026-10-21 利用者：アプリはエンドポイントと別に client credentials で登録し、エンドポイントに許すアプリを選ぶ（requirement:print-manager-console の endpoint-auth）
   fill-input:
     text: テンプレートの差し込みの入力を JSON の data だけにしたまま（CSV・YAML、画像の Files は無し）か
     state: open
@@ -314,6 +315,10 @@ relations:
 - relation: depends_on
   to: system:yuruidb
 history:
+  pm-5-implemented:
+    summary: 2026-10-21 milestone:pm-5（requirement:print-manager-console の最初の段）で、場所とプリンタは Node の種類（display・printer）になり、/api/locations と /api/printers は /api/nodes に寄った（/api/locations/<名前>/slips は残る）。テンプレートはエンドポイントの下（/api/nodes/<名前>/templates/<id>）。facts.topology の namespace・endpoint・canvas の記述はこの形に読み替える
+  console-requested:
+    summary: 2026-10-21 利用者「設定画面、topologyとかprinterとか色々並んでいるが、1ページで1項目にして欲しい。そして、printer, displayもtopologyの中で定義するようにしたい。テンプレートはAPIエンドポイントノードの持ち物ですかね」、続けて Blueprint 風のエディタ・ノードごとのサイドバー・一般の利用者に見える流れ。requirement:print-manager-console に分けて書いた
   pm-4-topology:
     summary: 2026-10-21 利用者「print manager 上で CUPS の仕組みを使って、トポロジー構造を構成できるようにしたい。…外から見える仮想プリンタを 3 つつくり、1 つは監査用書き込み専用ストレージにそのまま入れる。もう 1 つは特定の拠点の実プリンタにラウンドロビンで流す。もう 1 つは 2 つに分岐して、それぞれ仮想プリンタに入れて閲覧できるようにする…流れてきたら勝手に保存し、手動でピックアップしたものを手動で後続に流すフィルターというかインボックスみたいな仕組み」。pm-4 を pm-2 の前に出し、facts.topology の形で実装した（milestone:pm-4）
   pm-4-endpoints-canvas:

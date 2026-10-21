@@ -10,6 +10,8 @@ import (
 	"image/png"
 	"io"
 	"os"
+	"slices"
+	"strings"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print"
@@ -39,12 +41,21 @@ var ErrFormat = errors.New("manager: the document's format is not known")
 // Submit takes a document for a destination: it is made a .bdf document,
 // kept once as the job's, and the job is routed from the destination
 // through the topology (route). Deliveries to printers and archives are
-// sent after (Tick, or the background).
+// sent after (Tick, or the background). An endpoint takes the documents
+// of its Formats alone, and none when it takes templates only (ErrFormat).
 func (m *Manager) Submit(ctx context.Context, dest string, in Input) (*Job, error) {
-	if _, err := m.kindOf(ctx, dest); err != nil {
+	n, err := m.Node(ctx, dest)
+	if err != nil {
 		return nil, err
 	}
-	doc, format, err := m.document(ctx, in)
+	var formats []string
+	if n.Kind == KindEndpoint {
+		if n.Accept == AcceptTemplate {
+			return nil, fmt.Errorf("%w: %s takes templates to fill, not documents", ErrFormat, dest)
+		}
+		formats = n.Formats
+	}
+	doc, format, err := m.document(ctx, in, formats)
 	if err != nil {
 		return nil, err
 	}
@@ -121,13 +132,22 @@ func (m *Manager) submitDoc(ctx context.Context, dest string, doc *bdf.Document,
 	return j, nil
 }
 
-// document reads or converts what a sender sent.
-func (m *Manager) document(ctx context.Context, in Input) (*bdf.Document, string, error) {
+// accepted tells a format one of the formats accepted (none: every one).
+func accepted(formats []string, format string) bool {
+	return len(formats) == 0 || slices.Contains(formats, format)
+}
+
+// document reads or converts what a sender sent; formats, when given,
+// are the formats taken.
+func (m *Manager) document(ctx context.Context, in Input, formats []string) (*bdf.Document, string, error) {
 	if in.Size > m.o.MaxDocument {
 		return nil, "", fmt.Errorf("%w: %d bytes; at most %d", ErrInvalid, in.Size, m.o.MaxDocument)
 	}
 	head := make([]byte, len(bdf.Magic))
 	if n, _ := in.Doc.ReadAt(head, 0); n == len(head) && bytes.Equal(head, bdf.Magic[:]) {
+		if !accepted(formats, "bdf") {
+			return nil, "", fmt.Errorf("%w: bdf is not taken here (%s)", ErrFormat, strings.Join(formats, ", "))
+		}
 		r, err := bdf.OpenSingle(in.Doc, in.Size)
 		if err != nil {
 			return nil, "", fmt.Errorf("%w: %v", ErrFormat, err)
@@ -148,6 +168,9 @@ func (m *Manager) document(ctx context.Context, in Input) (*bdf.Document, string
 	format, ok := m.o.Converter.Detect(in.Doc, in.Size, in.Name)
 	if !ok {
 		return nil, "", ErrFormat
+	}
+	if !accepted(formats, format) {
+		return nil, "", fmt.Errorf("%w: %s is not taken here (%s)", ErrFormat, format, strings.Join(formats, ", "))
 	}
 	doc, _, err := m.o.Converter.Convert(ctx, in.Doc, in.Size, format, in.Name, "")
 	if err != nil {

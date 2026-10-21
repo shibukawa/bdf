@@ -12,10 +12,10 @@ import (
 func init() {
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
-		Name:      "Admin",
+		Name:      "AdminJobs",
 		Exported:  true,
-		NewParams: func() any { return new(AdminParams) },
-		Render:    func(params any) htmlbind.Fragment { return Admin(*params.(*AdminParams)) },
+		NewParams: func() any { return new(AdminJobsParams) },
+		Render:    func(params any) htmlbind.Fragment { return AdminJobs(*params.(*AdminJobsParams)) },
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
@@ -26,10 +26,24 @@ func init() {
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
+		Name:      "Deliveries",
+		Exported:  true,
+		NewParams: func() any { return new(DeliveriesParams) },
+		Render:    func(params any) htmlbind.Fragment { return Deliveries(*params.(*DeliveriesParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
 		Name:      "Forbidden",
 		Exported:  true,
 		NewParams: func() any { return new(ForbiddenParams) },
 		Render:    func(params any) htmlbind.Fragment { return Forbidden(*params.(*ForbiddenParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
+		Name:      "Inboxes",
+		Exported:  true,
+		NewParams: func() any { return new(InboxesParams) },
+		Render:    func(params any) htmlbind.Fragment { return Inboxes(*params.(*InboxesParams)) },
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
@@ -51,6 +65,27 @@ func init() {
 		Exported:  true,
 		NewParams: func() any { return new(TabletParams) },
 		Render:    func(params any) htmlbind.Fragment { return Tablet(*params.(*TabletParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
+		Name:      "Topology",
+		Exported:  true,
+		NewParams: func() any { return new(TopologyParams) },
+		Render:    func(params any) htmlbind.Fragment { return Topology(*params.(*TopologyParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
+		Name:      "renderAdminNav",
+		Exported:  false,
+		NewParams: func() any { return new(renderAdminNavParams) },
+		Render:    func(params any) htmlbind.Fragment { return renderAdminNav(*params.(*renderAdminNavParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
+		Name:      "renderAdminPage",
+		Exported:  false,
+		NewParams: func() any { return new(renderAdminPageParams) },
+		Render:    func(params any) htmlbind.Fragment { return renderAdminPage(*params.(*renderAdminPageParams)) },
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",

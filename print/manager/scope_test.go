@@ -35,16 +35,16 @@ func (e *env) as(who, method, path string, body any) (*http.Response, []byte) {
 func TestScope(t *testing.T) {
 	e := newEnv(t, withViewers)
 	ctx := context.Background()
-	e.admin("PUT", "/api/printers/wh-b-laser", Printer{URL: "ipp://127.0.0.1:1/ipp/print", Scope: ScopeGroup, Owner: "warehouse-b"}, http.StatusOK)
-	e.admin("PUT", "/api/locations/wh-a", Location{Scope: ScopeGroup, Owner: "warehouse-a"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-b-laser", Node{Kind: KindPrinter, URL: "ipp://127.0.0.1:1/ipp/print", Scope: ScopeGroup, Owner: "warehouse-b"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Scope: ScopeGroup, Owner: "warehouse-a"}, http.StatusOK)
 	// a location of no scope: shared, and its jobs are the group's of its
 	// fallback printer
-	e.admin("PUT", "/api/locations/wh-b", Location{Fallback: &Fallback{Printer: "wh-b-laser"}}, http.StatusOK)
-	e.admin("PUT", "/api/locations/office", Location{Scope: ScopeShared}, http.StatusOK)
-	e.admin("PUT", "/api/locations/alice-desk", Location{Scope: ScopePersonal, Owner: "alice@example.com"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/wh-b", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "wh-b-laser"}}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/office", Node{Kind: KindDisplay, Scope: ScopeShared}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/alice-desk", Node{Kind: KindDisplay, Scope: ScopePersonal, Owner: "alice@example.com"}, http.StatusOK)
 	e.admin("PUT", "/api/nodes/team-a", Node{Kind: KindQueue, To: []string{"wh-a"}, Scope: ScopeGroup, Owner: "warehouse-a"}, http.StatusOK)
-	e.admin("PUT", "/api/locations/bad", Location{Scope: ScopeGroup}, http.StatusBadRequest)
-	e.admin("PUT", "/api/locations/bad", Location{Scope: "team", Owner: "x"}, http.StatusBadRequest)
+	e.admin("PUT", "/api/nodes/bad", Node{Kind: KindDisplay, Scope: ScopeGroup}, http.StatusBadRequest)
+	e.admin("PUT", "/api/nodes/bad", Node{Kind: KindDisplay, Scope: "team", Owner: "x"}, http.StatusBadRequest)
 	e.admin("PUT", "/api/nodes/bad", Node{Kind: KindQueue, To: []string{"wh-a"}, Scope: ScopeShared, Owner: "x"}, http.StatusBadRequest)
 
 	doc := testDoc(t, 1)
@@ -156,7 +156,7 @@ func TestScope(t *testing.T) {
 	res, _ = e.doWith(func(r *http.Request) {
 		r.Header.Set("X-Test-Viewer", "root")
 		r.Header.Set("Origin", "https://evil.example")
-	}, "DELETE", "/api/locations/office", nil)
+	}, "DELETE", "/api/nodes/office", nil)
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("admin's session from another origin: %d", res.StatusCode)
 	}

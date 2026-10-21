@@ -154,9 +154,9 @@ func TestLogin(t *testing.T) {
 		}
 	}
 	// the settings, and jobs of the WMS (a submit token) to each warehouse
-	api("PUT", "/api/locations/wh-a", manager.Location{Title: "Warehouse A", Scope: manager.ScopeGroup, Owner: "warehouse-a"}, "t", http.StatusOK)
-	api("PUT", "/api/locations/wh-b", manager.Location{Title: "Warehouse B", Scope: manager.ScopeGroup, Owner: "warehouse-b"}, "t", http.StatusOK)
-	api("PUT", "/api/locations/office", manager.Location{Title: "Office"}, "t", http.StatusOK)
+	api("PUT", "/api/nodes/wh-a", manager.Node{Kind: manager.KindDisplay, Title: "Warehouse A", Scope: manager.ScopeGroup, Owner: "warehouse-a"}, "t", http.StatusOK)
+	api("PUT", "/api/nodes/wh-b", manager.Node{Kind: manager.KindDisplay, Title: "Warehouse B", Scope: manager.ScopeGroup, Owner: "warehouse-b"}, "t", http.StatusOK)
+	api("PUT", "/api/nodes/office", manager.Node{Kind: manager.KindDisplay, Title: "Office"}, "t", http.StatusOK)
 	api("POST", "/api/destinations/wh-a/jobs?name=picking-a&user=sato", doc(t), "wms:s3cret", http.StatusCreated)
 	api("POST", "/api/destinations/wh-b/jobs?name=picking-b", doc(t), "wms:s3cret", http.StatusCreated)
 
@@ -224,12 +224,12 @@ func TestLogin(t *testing.T) {
 	}
 	sees(alice, []string{"alice-memo", "picking-a"})
 	sees(bob, []string{"bob-memo", "picking-b"})
-	if code, body := alice.get("/jobs"); code != http.StatusOK || strings.Contains(body, `href="/admin"`) || !strings.Contains(body, "/public/jobs.js") {
+	if code, body := alice.get("/jobs"); code != http.StatusOK || strings.Contains(body, `href="/admin/topology"`) || !strings.Contains(body, "/public/jobs.js") {
 		t.Errorf("alice's /jobs: %d", code)
 	}
 	root := s.login("root")
 	sees(root, []string{"bob-memo", "alice-memo", "picking-b", "picking-a"})
-	if _, body := root.get("/jobs"); !strings.Contains(body, `href="/admin"`) {
+	if _, body := root.get("/jobs"); !strings.Contains(body, `href="/admin/topology"`) {
 		t.Error("root's /jobs has no Admin")
 	}
 
@@ -241,12 +241,13 @@ func TestLogin(t *testing.T) {
 		if who == "root" || who == "lead" {
 			want = http.StatusOK
 		}
-		for _, path := range []string{"/admin", "/audit"} {
+		for path, script := range map[string]string{"/admin": "/public/topology.js", "/admin/inboxes": "/public/inboxes.js", "/admin/jobs": "/public/admin-jobs.js",
+			"/admin/deliveries": "/public/deliveries.js", "/audit": "/public/audit.js"} {
 			code, body := b.get(path)
 			if code != want {
 				t.Errorf("%s on %s: %d; want %d", who, path, code, want)
 			}
-			if want == http.StatusOK && (strings.Contains(body, `name="token"`) || !strings.Contains(body, "/public"+path+".js")) {
+			if want == http.StatusOK && (strings.Contains(body, `name="token"`) || !strings.Contains(body, script)) {
 				t.Errorf("%s's %s: %.300s", who, path, body)
 			}
 		}
@@ -258,7 +259,7 @@ func TestLogin(t *testing.T) {
 	if code, body := root.get("/api/audit"); code != http.StatusOK || !strings.Contains(body, `"who":"Alice","action":"login"`) {
 		t.Errorf("root on the API: %d %s", code, body)
 	}
-	if code, _ := root.send("DELETE", "/api/locations/office", nil, func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") }); code != http.StatusForbidden {
+	if code, _ := root.send("DELETE", "/api/nodes/office", nil, func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") }); code != http.StatusForbidden {
 		t.Errorf("an admin's session from another origin: %d", code)
 	}
 

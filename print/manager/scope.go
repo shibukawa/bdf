@@ -161,37 +161,18 @@ func (v *Viewer) CanSendTo(scope, owner string) bool {
 }
 
 // destScope tells a destination's scope and owner, and the group its
-// jobs get: the destination's, or else (a location's) its fallback
+// jobs get: the destination's, or else (a display's) its fallback
 // printer's, when that is a group's.
 func (m *Manager) destScope(ctx context.Context, name string) (scope, owner, group string, err error) {
-	kind, err := m.kindOf(ctx, name)
+	n, err := m.Node(ctx, name)
 	if err != nil {
 		return "", "", "", err
 	}
-	switch kind {
-	case KindDisplay:
-		l, err := m.Location(ctx, name)
-		if err != nil {
-			return "", "", "", err
+	scope, owner = n.Scope, n.Owner
+	if n.Kind == KindDisplay && scope != ScopeGroup && n.Fallback != nil {
+		if p, err := m.printer(ctx, n.Fallback.Printer); err == nil && p.Scope == ScopeGroup {
+			group = p.Owner
 		}
-		scope, owner = l.Scope, l.Owner
-		if scope != ScopeGroup && l.Fallback != nil {
-			if p, err := m.Printer(ctx, l.Fallback.Printer); err == nil && p.Scope == ScopeGroup {
-				group = p.Owner
-			}
-		}
-	case KindPrinter:
-		p, err := m.Printer(ctx, name)
-		if err != nil {
-			return "", "", "", err
-		}
-		scope, owner = p.Scope, p.Owner
-	default:
-		n, err := m.Node(ctx, name)
-		if err != nil {
-			return "", "", "", err
-		}
-		scope, owner = n.Scope, n.Owner
 	}
 	if scope == ScopeGroup {
 		group = owner

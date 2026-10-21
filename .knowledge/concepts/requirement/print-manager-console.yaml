@@ -1,0 +1,314 @@
+id: requirement:print-manager-console
+type: requirement
+title: Print Manager の管理コンソール — 1 ページ 1 項目、Blueprint 風のトポロジーのエディタ（ノードを置いてつなぎ、サイドバーで設定）、プリンタと表示もノード、エンドポイントの持ち物（テンプレート・資格）、一般の利用者にも見える流れ
+summary: >-
+  requirement:print-manager の画面（milestone:pm-4 の /admin）を組み直す、2026-10-21 の利用者の要件。/admin に縦に並ぶ項目
+  （Topology・Templates・インボックス・Jobs・Deliveries・Printers・Displays）を 1 ページ 1 項目にし、トポロジーは Blueprint のような
+  ビジュアルのグラフエディタ（ノードを置いてつなぐ。ノードごとのサイドバーで設定）にする。プリンタと表示（display）もトポロジーの中で
+  ノードとして定義する。API エンドポイントのノードは、受けるもの（テンプレート印刷かファイル印刷か）の選択、テンプレートの一覧、
+  入口（「ポート設定」）、認証（client credentials）を持つ。表示のノードは初期化用の QR（URL）を出し、つないだ端末がデバイス認証を
+  経て使えるようになる。プリンタのノードはプロトコルと宛先。偽プリンタ（仮想プリンタ）を置き、最新のファイルをトポロジーの上で
+  見られてもよい。トポロジーは一般の利用者にも読むだけで見せ、ジョブの流れと溜まっている作業をビジュアルで見せる。
+  2026-10-21 に利用者が答えた：テンプレートはエンドポイントの持ち物、「ポート設定」はエンドポイントごとの TCP のポート（Lambda ではエンドポイントごとに
+  別のインスタンスを立ててそこから繋ぐ）、アプリはエンドポイントと別に登録してエンドポイントに許すアプリを選ぶ、仮想プリンタは sink のノードと偽プリンタの絵の両方。
+  続けて利用者が正した：API のノードは IPP の口ではなく、印刷機能を持った Web サービスと REST で繋がる口。IPP（CUPS）の口はそれとは別の CUPS サーバーのノード。
+  一般の利用者には全体のノードと、自分の権限で見られるジョブなどだけを見せる。CUPS サーバーのノードは全ノードを一旦見せる。サーバーレスは外部からの API 連携の入口で、
+  Manager が入口ごとにインスタンスを立てるのではなく、外部の Lambda が入力ノードの ID をパスに持つ REST API（POST /in/{node}）を叩く。API のノードは受けるもの（file / template / both）に加えて
+  受けるファイルの形式（PDF だけ、など）を持ち、余計なファイルを受けない。milestone は pm-5・pm-5b・pm-5c に分ける（合意済み）。残る問いは node-edit-live（deferred）だけ。
+lifecycle: active
+authority: authored
+aliases:
+- 管理画面
+- 設定画面
+- 管理コンソール
+- admin console
+- topology editor
+- トポロジーのエディタ
+- グラフエディタ
+- graph editor
+- Blueprint
+- node editor
+- サイドバー
+- sidebar
+- canvas
+- キャンバス
+- live view
+- 流れの表示
+constraints:
+- 画面の項目は 1 ページに 1 つ（/admin に全部を縦に並べない）。項目の間はナビで移る
+- プリンタと表示（display）はトポロジーのノードとして置き、編集する。別の節・別の表で足す形を残さない
+- ノードの設定はそのノードのサイドバーで行う（種類ごとの欄）。確かめはサーバー（pm-4 の PUT のまま：名指す先の存在、名前の重なり、閉路、送り先にされているノードは消せない）
+- テンプレート・資格（鍵）・端末の登録は、それぞれエンドポイント・表示のノードの持ち物として、そのノードのサイドバーから扱う
+- 一般の利用者にはトポロジーを変える口を出さない（読むだけ）。見える数と流れは requirement:print-manager-auth の範囲（CanSee・CanSendTo）に従い、人ごとに違ってよい。scope・owner・鍵のハッシュ・保管の store の URL は利用者に出さない
+- 画面は decision:print-manager-ui-daisyui の下（Tailwind + daisyUI、実行時の CDN なし、Node/npm なし）。エディタに外のライブラリを使うなら daisyUI と同じく版と sha256 を固定した 1 ファイルを置く
+- 画面の文は英語（pm-4 のまま。多言語の仕組みは作らない）
+- インスタンスに状態を持たない（pm-1）。流れの表示はポーリング（版・ETag）、プロセスでは SSE も。キャンバスの位置は /api/layout の記録のまま
+- 端末の資格は端末に閉じた鍵（requirement:print-manager の device_auth）。QR の URL は 1 回きり・短い期限で、写しても別の端末では登録できない
+- 変更の確かめ・鍵の表示と回転・端末の追加と削除は監査の記録に残る（pm-4 のまま）
+- API エンドポイントのノードは REST（HTTP）の口で、印刷機能を持った Web サービスが繋ぐ。IPP は話さない。IPP と CUPS の口は CUPS サーバーのノード（2026-10-21 利用者）
+- 一般の利用者に見せるのは全体のノード（名前と種類と辺）と、自分の権限で見られるジョブなど（CanSee）だけ（2026-10-21 利用者）
+non_goals:
+- トポロジーの版の管理（下書き・公開・差し戻し）。編集は今のまま PUT ごとに効く（open_questions.node-edit-live）
+- 複数のトポロジー（サイト・テナントごとのキャンバス）。1 つの名前の空間（pm-4）のまま
+- ジョブをドラッグで動かす（CUPS-Move-Job）。インボックスの「流す」がその役（pm-4 の non_goals のまま）
+- 規則で振り分ける filter ノード（requirement:print-manager の topology-kinds のまま。エディタの種類の表に 1 行で足せる形は保つ）
+- デバイスフロー（pm-auth-3）とアプリの /oauth/token（pm-auth-2）そのもの。ここでは画面の置き場所と形を決める
+capabilities:
+  pages-per-item:
+    state: implemented
+    about: capability:print-manager/console-pages
+  topology-editor:
+    state: implemented
+    about: capability:print-manager/topology-editor
+  printer-display-nodes:
+    state: implemented
+    about: capability:print-manager/printer-display-nodes
+  endpoint-sidebar:
+    state: implemented
+    about: capability:print-manager/endpoint-sidebar
+  display-sidebar:
+    state: implemented
+    about: capability:print-manager/display-sidebar
+  user-topology-view:
+    state: planned
+    about: capability:print-manager/user-topology-view
+  live-flow:
+    state: planned
+    about: capability:print-manager/live-flow
+  sink-node:
+    state: planned
+    about: capability:print-manager/sink-node
+  fake-printer-preview:
+    state: planned
+    about: capability:print-manager/fake-printer-preview
+  endpoint-ports:
+    state: planned
+    about: capability:print-manager/endpoint-ports
+  apps-page:
+    state: planned
+    about: capability:print-manager/apps-page
+  cups-server-node:
+    state: planned
+    about: capability:print-manager/cups-server-node
+facts:
+  request:
+    source_1: 2026-10-21 利用者「設定画面、topologyとかprinterとか色々並んでいるが、1ページで1項目にして欲しい。そして、printer, displayもtopologyの中で定義するようにしたい。テンプレートはAPIエンドポイントノードの持ち物ですかね」
+    source_2: >-
+      2026-10-21 利用者「トポロジー定義はblueprintの様なビジュアルのグラフエディタをイメージしている。ノードをおいてつないでいく。APIの場合は、テンプレート印刷機能を提供するのか、
+      ファイル印刷機能を提供するのか、またその種類の選択を置く。テンプレート一覧。ポート設定。あとは認証設定（client credential)。displayは拠点での閲覧ビューだと思うので、
+      初期化用QRコード（URL）を発行し、それにつないだらデバイス認証が始まって利用可能になる、みたいなのを想定している。それぞれのノードで、サイドバーで色々設定を行うのを想定している。
+      プリンタの場合はプロトコルとアドレスなどを設定。仮想プリンタもできたのでそちらも置けても良いかもしらない。最新のファイルを保持しておいてトポロジー上で閲覧できるとかでも」
+    source_3: 2026-10-21 利用者「トポロジー自体は変更はできなくても一般ユーザーに見えても良い気がしてきた。印刷ジョブとかが流れている、たまっているタスクがビジュアルで見えるというのができたら良いと思う」
+  current_state:
+    as_of: main の #118（milestone:pm-4 と milestone:pm-auth-1）、2026-10-21
+    admin_page: /admin の 1 ページに縦に：Topology（SVG のキャンバス、ノードの表、ノードのフォーム）、Templates（表とアップロード）、インボックスごとのカード、Jobs（宛先ごと）、Deliveries waiting、Printers（表とフォーム）、Displays（場所ごとのカードに端末と登録コード、フォーム）。上のバーに Tick now。別のページは /jobs（利用者）と /audit（cmd/printmanager/handlers/pages.pw.html、public/admin.js）
+    canvas: 依存なしの SVG。箱のドラッグで配置（/api/layout）、右の口から別のノードへドラッグで辺、辺のクリックで外す、箱のクリックで下のフォームに読み込む。パン・ズーム・パレット・サイドバーは無い。位置の無いノードは入口からの深さで並べる
+    records: 場所（Location：title、scope、owner、fallback、keep、offline_after）とプリンタ（Printer：url、route、info、scope、owner）は Node（kind、to、members、policy、keep、store、collection、templates、key_hash、scope、owner）と別の記録・別の API（/api/locations、/api/printers、/api/nodes）。名前の空間は 1 つ（pm-4）で、キャンバスには 3 つとも描かれる
+    templates: 全体の一覧（/api/templates/<id>、Blob のコレクション templates。登録時に形式と項目とサンプル）。エンドポイントは templates の列で差し込めるものを絞る（空なら全部）。差し込むのはエンドポイント（POST /in/<名前>）だけで、/jobs の印刷はファイルだけ
+    endpoint_auth: 鍵 1 つ（bdfk_、argon2id のハッシュだけ保存、作成と回転で 1 度だけ表示）。アプリの client credentials は requirement:print-manager-auth の pm-auth-2（未実装）
+    device_enroll: 管理者が表示ごとに登録コード（QR と /tablet?code=… の URL、1 回きり・期限つき）を出し、端末のページが WebCrypto の取り出せない鍵で登録する（pm-1）。デバイスフロー（端末がコードを出し、人が承認）は pm-auth-3（未実装）
+    users_view: 一般の利用者は /jobs（自分とグループのジョブ、送れるノードへの印刷）だけ。トポロジーは見えない
+    fake_printer: tools/fakeprinter（requirement:fake-printers、print-m6）は受けたジョブを持ち、/api/jobs と /api/printers/<p>/jobs/<id>/pages/<n> で読み戻した絵を返す。Manager のプリンタのノードから url で送れる（pm-4 の手の試験で使った）
+  pages_proposed:
+    nav: 左のナビ（daisyUI の drawer か menu）。/admin は Topology へ
+    topology: /admin/topology — エディタ（キャンバス＋パレット＋サイドバー）。すべての種類のノード（入口の endpoint と cups、経路の queue・class・inbox、出口の archive・display・printer・sink）をここで足す・直す・消す
+    inboxes: /admin/inboxes — 保留の項目、流す先の選択、流す・捨てる、作業者の名前。インボックスのサイドバーの「保留 n 件」からここへ飛ぶ
+    jobs: /admin/jobs — 宛先ごとのジョブ、足跡、取り消し。ノードのサイドバーの「このノードのジョブ」はここへ絞って飛ぶ
+    deliveries: /admin/deliveries — 送り待ち・失敗、retry、Tick now
+    audit: /audit のまま
+    apps: /admin/apps — アプリの登録（client credentials。requirement:print-manager-auth の pm-auth-2 の画面：名前、秘密は 1 度だけ見せて回す、許すエンドポイント・テンプレート・scope）。2026-10-21 利用者「アプリは別に登録」
+    removed: Templates・Printers・Displays の節（それぞれエンドポイント・プリンタ・表示のノードのサイドバーへ。テンプレートはエンドポイントの持ち物：2026-10-21 利用者の答え）
+    users: /topology（サインインした人は誰でも、読むだけ）。open_questions.user-view-scope
+  editor_proposed:
+    canvas: パン（背景のドラッグ）とズーム（ホイール・ピンチ）、格子に吸着、「全体を収める」。位置は /api/layout のまま
+    palette: 種類の一覧からキャンバスへドラッグ（またはクリックで置く）。置くと名前を求め、サイドバーが開く。名前は作った後は変えない（辺が名前で指す）
+    pins: 右の出力の口から別のノードの左の入力の口へドラッグして辺。queue・endpoint・inbox の to は実線、class の members は破線、display の fallback は点線（pm-4 の描き分けのまま）。入力の口はどのノードにもある（どのノードも宛先、pm-4）
+    selection: ノードのクリックで右のサイドバー。Delete で消す（送り先にされていれば 409 の理由を見せる）。辺のクリックで外す（確認つき）
+    sidebar_common: 名前（読むだけ）、title、種類、scope と owner、IPP の宛先（/ipp/print/<名前>）、このノードのジョブ（/admin/jobs へ）、削除
+    sidebar_by_kind:
+      endpoint: REST の口。受けるもの（file / template / both。既定 both）と受けるファイルの形式（PDF だけ、など。許さない形式は 415 で断る。open_questions.endpoint-mode）、テンプレート（このノードの持ち物：アップロード、形式と項目の表、サンプルのデータ、削除）、許すアプリ（/admin/apps のアプリから選ぶ。pm-auth-2 までは今の鍵の表示と回転）、入口（POST /in/<名前> の URL と curl の例、REST の TCP のポート。facts.port_design）、to。IPP は無い（CUPS サーバーのノードの役）
+      cups: IPP と CUPS の口（OS の印刷、基幹の IPP、CUPS のクライアント）。ポート（ipp か ipps、TLS）、見せるノード（一旦は全ノード：各ノードが CUPS のプリンタ、class のノードは CUPS のクラス。辺で絞るのは後。open_questions.cups-server-node）、認証（人の IPP の合言葉・アプリの Basic。requirement:print-manager-auth の ipp_sender）、既定の宛先（CUPS-Get-Default。任意）。プロセスで動くときだけ置ける（サーバーレスでは pm-4 の HTTPS の /ipp/print のまま）
+      display: 端末を足す（QR と URL。1 回きり・期限つき）、端末の一覧（名前、最後の接続、外す）、fallback（プリンタと after。点線の辺としても描く）、keep、offline_after、ボードの状態（開いている伝票の数、つながっている端末の数）
+      printer: プロトコルと宛先（ipp / ipps / socket / lpd のスキーム、ホスト、ポート、パスを欄で取り、1 つの url に組み立てる。直接 url を書く欄も）、route（direct。branch は 501 のまま）、info、偽プリンタの絵（preview に tools/fakeprinter の API の URL があれば、最新のジョブのページを Manager が取り次いで見せる。開発とデモ向け）
+      queue: to
+      class: members と policy（round-robin / failover）
+      inbox: to、keep、保留の数（/admin/inboxes へ）
+      archive: store、collection、書いた数
+      sink: 最新 N 件の文書を持ち、サイドバーとキャンバスにサムネイルを見せる受け口（N、keep）。保管（archive）と違い押し出されて消える
+    kind_table: 種類ごとの欄は 1 つの表（kind → 欄）に持ち、サーバーの Node の欄と 1 対 1 にする。filter や sink を足すときは表に 1 行
+  port_design:
+    source: 2026-10-21 利用者「TCPのポート。Lambdaの場合はそれぞれ別でインスタンスを立ててそこから繋げる様にすると良さそう」（「ポート設定」の問いへの答え）、続けて「APIはIPPの口ではなく、印刷機能を持ったWebサービスとRESTで繋がる口です。其れとは別にCUPSサーバーノードは必要かと思います」
+    reading: 入口のノードは 2 種類。API エンドポイントは REST（HTTP）の口で、HTTPS の /in/<名前> に加えて、プロセスで動くときは自分の TCP のポート（HTTP）を持てる。CUPS サーバーのノードは IPP と CUPS の口で、自分のポート（ipp・ipps）を持ち、一旦は全ノードを CUPS のプリンタとクラスとして見せる。サーバーレスは外部からの API 連携の入口そのもので、外部の Lambda が入力ノードの ID をパスに持つ REST API（POST /in/{node}。pm-4 の /in/<名前> がそれ）を叩く。Manager が入口ごとにインスタンスを立てることはしない（2026-10-21 利用者）
+    constraint_check: requirement:print-manager の制約「受け口は HTTPS の IPP と API だけ。LPD・9100 の受け口を持たない」は保てる（どちらの口も HTTP の上）。CUPS サーバーのノードを LAN で平文の ipp のポートで聞かせるかだけが、その制約の「HTTPS」からの小さな緩みで、cups-server-node の問いに含める。raw 9100・LPD は求められていない
+    serverless_shapes: 答え（open_questions.port-serverless）：Manager は 1 つの HTTPS の口（/in/{node}、/ipp/print/<名前>）だけで、入口のノードごとのインスタンスは立てない。外部の Lambda（連携する側）が入力ノードの ID をパスに入れて叩く。退けた案：入口ごとの小さな常駐（Fargate・EC2）、入口ごとの別の Lambda と Function URL、拠点の bdf printd の中継
+    process_shape: 設定にポートがある入口のノードだけ net.Listen（API は同じ REST を そのノードに固定して、CUPS は IPP を）。ポートの重なりと 1024 未満は PUT で断る。Serverless の設定ではポートの欄を出さず、PUT にポートがあれば 400 で断り、サイドバーは HTTPS の /in/<名前> の URL を見せる（暫定）
+    today: pm-4 では、どのノードも HTTPS の /ipp/print/<名前> の宛先で、/ipp/print が CUPS-Get-Printers に全ノードを返す（暗黙の 1 つの CUPS サーバー）。CUPS サーバーのノードはこれを明示のノードにする（cups-server-node）
+  live_proposed:
+    badges: ノードに数のバッジ。表示＝開いている伝票、インボックス＝保留、プリンタ・保管＝送り待ちと失敗、エンドポイント・キュー・クラス＝直近（例 1 時間）の件数
+    flow: 直近のジョブの足跡（Leg）を辺の上の点で流す（着いた順に、数秒で消える）。ジョブのクリックで足跡を強調
+    transport: 4 秒のポーリング（版・ETag、304。pm-1 のボードと同じ）。プロセスでは SSE も（requirement:print-manager の notify-transport のまま後）
+    api: GET /api/topology/live（ノードごとの数と直近の足跡。見える分だけ）
+  user_view_proposed:
+    who: サインインした人は誰でも（/topology）。変える口は出さない
+    what: ノードと辺の全体（名前と種類）。数と流れは自分の権限で見られるジョブ（CanSee）の分だけ（2026-10-21 利用者「いっぱんユーザーは全体ノードと自分の権限で見れるジョブなどだけにします」）。ノードのクリックで、送れるノード（CanSendTo）ならそこへの印刷のフォーム、見えるジョブの一覧
+    api: GET /api/topology を利用者にも開く（読むだけ。scope・owner・key_hash・store・collection・templates は出さない）
+  delivery:
+    current_milestone: pm-5b（pm-5 は 2026-10-21 に実装した：milestone:pm-5。分け方は利用者が了解）
+    outcome: 管理のコンソールが 1 ページ 1 項目になり、トポロジーはエディタ（パレット・ピン・サイドバー・パン・ズーム）で、プリンタと表示を含むすべてのノードを置いてつないで設定できる。エンドポイントのサイドバーでテンプレートと資格、表示のサイドバーで端末の QR と一覧、プリンタのサイドバーでプロトコルと宛先
+    then: pm-5b — 一般の利用者の読むだけのトポロジー（/topology）と流れの表示（数のバッジ、足跡の点）。pm-5c — 入口のノードのポート（API の REST、CUPS サーバーのノードの IPP。プロセスで動くときだけ）と sink・偽プリンタの絵
+    excluded: デバイスフロー（pm-auth-3）、アプリの登録と /oauth/token（pm-auth-2。/admin/apps はそのとき）、入口のポートと CUPS サーバーのノード（pm-5c。それまで pm-4 の /ipp/print のまま）。エンドポイントの資格の節は今の鍵の表示・回転で始め、pm-auth-2 で「許すアプリ」に替える
+    provisional_choices:
+      records: 場所とプリンタを Node の種類（display・printer）として /api/nodes に寄せる（Location・Printer の記録を Node に畳み、/api/locations と /api/printers の PUT・GET・DELETE は消す。/api/locations/<名前>/slips・board・devices・enrollments は残す）。互換は取らない（pm-auth-1 の Job.User と同じ扱い）。理由：画面だけで寄せると 1 つのサイドバーが 3 つの API を呼び分け、名前の確かめが 2 重になる。Claude の暫定
+      canvas_library: 依存なしの SVG のまま、パン・ズーム・パレット・ピン・サイドバーを足す。ノードは数十で、ミニマップや自動整列が要るほどではない。足りなくなったら版を固定した 1 ファイルのライブラリ（daisyUI と同じ置き方）。Claude の暫定
+      live_transport: 4 秒のポーリング（ETag）。Claude の暫定
+      pages: ページごとの部品（pages.pw.html）と JS（admin.js を topology.js・inboxes.js・admin-jobs.js・deliveries.js に分ける）。Claude の暫定
+      enroll_url: 表示のサイドバーの QR は pm-1 の登録コードの URL（/tablet?code=…）のまま。pm-auth-3 のデバイスフローに替えるときは同じ場所に「端末が出したコードを承認する」が並ぶ。Claude の暫定
+      template_ids: テンプレートの id はエンドポイントの中で一意（Blob のコレクションは templates のまま、鍵を <エンドポイント>.<id> に）。/in/<名前> の JSON の template はそのエンドポイントの中で引く。GET /api/templates は無くし /api/nodes/<名前>/templates/<id> に。Claude の暫定
+      sink_store: sink の文書はジョブの文書（job-documents）をそのまま指し、sink の記録が最新 N 件の番号を持つ。押し出された番号は Live を減らす（pm-4 の片付けに載る）。Claude の暫定
+      accept_formats: エンドポイントの受ける形式は、変換器が見分ける形式の名前の列（pdf、docx、xlsx、pptx、png、jpeg、bdf、pwg、urf など。空なら pm-4 のとおり全部）。確かめは Content-Type や拡張子でなく本文の見分け（converter の検出）で行い、合わなければ 415。テンプレートの差し込み（JSON）は形式の列と無関係。Claude の暫定
+    change_boundary: 種類ごとの欄の表（kind_table）と流れの API（/api/topology/live）を他から切り離し、種類の追加と通知の手段の変更がそこで閉じるようにする
+open_questions:
+  template-ownership:
+    text: テンプレートを API エンドポイントのノードの持ち物にするか（利用者「テンプレートはAPIエンドポイントノードの持ち物ですかね」）。A は持ち物（そのノードのサイドバーでアップロード、id はノードの中で一意、ノードを消すとテンプレートも消える。同じテンプレートを 2 つのエンドポイントで使うなら 2 度上げる）。B は今のまま全体の一覧にエンドポイントが選ぶ（Templates のページを残す）
+    state: answered
+    resolution: A（持ち物）。2026-10-21 利用者が選んだ。Templates のページは無くなり、facts.delivery.provisional_choices.template_ids の形で持つ
+  endpoint-mode:
+    text: 「テンプレート印刷機能を提供するのか、ファイル印刷機能を提供するのか、またその種類の選択」の形。A は受けるものの 3 択（file / template / both。既定 both。file だけならテンプレートの節を隠し、template だけなら文書の POST を断る）。B は種類ごとに別のノードの種類（api-file と api-template）。「その種類」が受けるファイルの形式の制限（PDF だけ、など）を指すかも確かめる
+    state: answered
+    resolution: A に加えて、受けるファイルの形式の一覧。2026-10-21 利用者「PDFだけ、などのファイル形式も考えていた。余計なファイルを受けない様に」。形式の表し方と確かめ方は facts.delivery.provisional_choices.accept_formats（Claude の暫定）
+  port-settings:
+    text: 「ポート設定」が何を指すか。A は入口の URL（POST /in/<名前>）と受け方（HTTP の API だけか、IPP の宛先 /ipp/print/<名前> としても受けるか）の表示と選択。B はエンドポイントごとの TCP のポート（別の listener。Lambda などサーバーレスでは作れない）。C は Blueprint の意味の口（ピン）＝出力の辺
+    state: answered
+    resolution: B（TCP のポート）。2026-10-21 利用者「TCPのポート。Lambdaの場合はそれぞれ別でインスタンスを立ててそこから繋げる様にすると良さそう」。推奨の A は採らなかった。形は facts.port_design、続きの問いは port-protocol と port-serverless
+  port-protocol:
+    text: エンドポイントの TCP のポートで何を話すか（HTTP の API、IPP、raw 9100、LPD。複数を選べるか）。raw 9100 と LPD は requirement:print-manager の制約「Manager は … LPD・9100 の受け口を持たない」とぶつかる。制約を緩めるか、HTTP と IPP だけにするか
+    state: answered
+    resolution: API エンドポイントのポートは REST（HTTP）だけ。IPP は別の CUPS サーバーのノードの口。2026-10-21 利用者「APIはIPPの口ではなく、印刷機能を持ったWebサービスとRESTで繋がる口です。其れとは別にCUPSサーバーノードは必要かと思います」。raw 9100・LPD は求められておらず、requirement:print-manager の制約はそのまま（facts.port_design.constraint_check）
+  port-serverless:
+    text: Lambda などで「エンドポイントごとに別のインスタンスを立ててそこから繋ぐ」の形。A はエンドポイントごとの小さな常駐（Fargate・EC2・拠点のコンテナ）が TCP を聞き、そのアプリの資格で Manager の /in/<名前> に転送。B はエンドポイントごとに別の Lambda と Function URL・ALB（HTTP だけ）。C は拠点の bdf printd が受けて Manager に渡す
+    state: answered
+    resolution: 2026-10-21 利用者「サーバーレスは外部からのAPI連携の入り口ぐらいですかね。そういう意味ではAPIエンドポイントの1つと言えるかと思います。外部lambdaから受けられる、パスパラメータに入力ノードIDが入ったAPIを作る感じですかね」。Manager は入口ごとのインスタンスを立てず、外部の Lambda が入力ノードの ID をパスに持つ REST API（POST /in/{node}。pm-4 の /in/<名前>）を叩く。推奨した A も B も採らなかった。エンドポイントのノードの TCP のポートはプロセスで動くときだけ（facts.port_design.process_shape）
+  endpoint-auth:
+    text: 認証設定（client credentials）の形。A はエンドポイント＝アプリ（client_id はノードの名前、client_secret は 1 度だけ見せて回せる。今の bdfk_ の鍵がそのまま secret。/oauth/token で短いトークン、当面は今の Bearer の鍵も通す）。B はアプリをエンドポイントと別に登録し、エンドポイントに許すアプリを選ぶ
+    state: answered
+    resolution: B（アプリは別に登録）。2026-10-21 利用者が選んだ（推奨の A は採らなかった）。アプリの登録は /admin/apps（1 ページ 1 項目の 1 つ。pm-auth-2 の principals.app の registered_by のとおり）、エンドポイントのサイドバーは「許すアプリ」を選ぶ。pm-auth-2 までは今の鍵の表示と回転
+  user-view-scope:
+    text: 一般の利用者に見せる範囲。A は全体のノードと辺（名前と種類）で、数と流れは自分が見えるジョブの分だけ。B は自分が送れるノードとその下流だけ。C は管理者と同じ全部（数も）
+    state: answered
+    resolution: A。2026-10-21 利用者「いっぱんユーザーは全体ノードと自分の権限で見れるジョブなどだけにします」
+  cups-server-node:
+    text: CUPS サーバーのノード（IPP と CUPS の口）が何を見せ、pm-4 の「どのノードも /ipp/print/<名前> の宛先」とどう並ぶか。A は明示だけ：CUPS サーバーのノードが to で繋いだノードだけをそのポートでプリンタ（class はクラス）として見せ、主の HTTPS の /ipp/print は無くす（入口は API と CUPS の 2 種類の明示のノードだけになる）。B は両方：pm-4 の /ipp/print（全ノード）を残し、CUPS サーバーのノードは選んだノードを別のポートで見せる追加の口。併せて、LAN で平文の ipp を許すか（ipps だけなら証明書の配り方が要る）
+    state: answered
+    resolution: 一旦は全ノードを見せる（B の側。2026-10-21 利用者「全ノードは一旦見えても良いかなと思います」。推奨の A は採らなかった）。CUPS サーバーのノードはポートと認証を持つ IPP の口で、pm-4 の /ipp/print（全ノード）と同じものを別のポートで見せる。辺で見せるノードを絞るのは、OS のクライアントから隠したいノードが出たときに見直す。平文の ipp は LAN の CUPS サーバーのノードだけの選択で既定は ipps（Claude の暫定、未確認）
+  virtual-printer-node:
+    text: 「仮想プリンタもできたのでそちらも置けても良い」「最新のファイルを保持しておいてトポロジー上で閲覧できる」の形。A は Manager のノードの種類 sink（最新 N 件の文書を持ち、サイドバーとキャンバスにサムネイル。サーバーレスでも動く）。B は tools/fakeprinter をプリンタのノードとして置き（url で今も送れる）、その /api/…/pages の絵を Manager が取り次いで見せる（偽プリンタが動いている所だけ）。「仮想プリンタ」が偽プリンタ（requirement:fake-printers）を指すという読みは Claude の推定
+    state: answered
+    resolution: 両方。2026-10-21 利用者が選んだ。製品の形は sink のノード、開発とデモではプリンタのノードの preview で偽プリンタの絵も見せる（facts.editor_proposed.sidebar_by_kind の sink と printer）。どちらも pm-5c
+  slice:
+    text: pm-5（管理のコンソール）と pm-5b（利用者の読むだけの表示と流れ）を分けるか
+    state: answered
+    resolution: 分ける：pm-5（コンソール）、pm-5b（利用者の読むだけの表示と流れ）、pm-5c（入口のポート、CUPS サーバーのノード、sink、偽プリンタの絵）。2026-10-21 利用者「2のスライスは了解です」
+  node-edit-live:
+    text: 編集中のトポロジーをすぐに効かせる（今の PUT ごと）か、まとめて保存にするか
+    state: deferred
+    resolution: 暫定で PUT ごと（サーバーの確かめをそのつど見せられる）。下書きが要るのは版の管理（non_goals）と一緒に見直す
+acceptance:
+  s1-pages:
+    text: /admin の各項目（トポロジー、インボックス、ジョブ、送り待ち）がそれぞれのページで、ナビで移れる。/admin はトポロジーへ。Templates・Printers・Displays の節は無い（それぞれノードのサイドバーに移っている）
+    scope: {milestone: pm-5}
+    verified_by: [app-tests, browser-console]
+  s2-editor:
+    text: パレットから置いたノード（7 種類すべて。display と printer も）がサーバーに作られ、口から口へのドラッグで辺が足され、クリックでサイドバーが開いて種類ごとの欄を直せる。パン・ズームの後も位置が /api/layout に残る。閉路・名前の重なり・送り先にされているノードの削除はサーバーの 409 の理由が画面に出る
+    scope: {milestone: pm-5}
+    verified_by: [manager-tests, browser-console]
+  s3-endpoint:
+    text: エンドポイントのサイドバーで、受けるもの（file / template / both）と受ける形式の選択、このノードのテンプレートのアップロードと一覧と削除、資格（鍵の表示は 1 度だけ、回転。pm-auth-2 の後は許すアプリ）、入口の URL が扱える。POST /in/<名前> の振る舞い（文書、テンプレートの差し込み、鍵の確かめ）は pm-4 のまま通り、template の id はそのエンドポイントの中で引く。許さない形式の文書（PDF だけのエンドポイントへの PNG など）と、受けないもの（template だけのエンドポイントへの文書）は 415 で断り、監査に残る
+    scope: {milestone: pm-5}
+    verified_by: [manager-tests, browser-console]
+  s4-display:
+    text: 表示のサイドバーで QR と URL を出し、端末のページがそれで登録でき（pm-1 の s2-device-auth のまま）、端末の一覧から外せる。fallback が点線の辺として描かれ、サイドバーからも変えられる
+    scope: {milestone: pm-5}
+    verified_by: [manager-tests, browser-console]
+  s5-printer:
+    text: プリンタのサイドバーでプロトコルと宛先を欄で入れると url に組み立てられ、そのプリンタに送ったジョブが届く（偽プリンタで確かめる）
+    scope: {milestone: pm-5}
+    verified_by: [manager-tests, browser-console]
+  s6-user-view:
+    text: サインインした一般の利用者が /topology で全体のノードと辺を見られ、変える口が無く、数と流れは自分が見えるジョブの分だけ。管理者には全部。利用者への /api/topology の答えに scope・owner・key_hash・store が無い
+    scope: {milestone: pm-5b}
+    verified_by: [scope-tests, browser-console]
+  s7-live:
+    text: ジョブを送ると、数秒のうちに通ったノードのバッジが増え、辺の上を点が流れる。インボックスの保留と送り待ちの数がバッジに出て、片付くと減る
+    scope: {milestone: pm-5b}
+    verified_by: [browser-console]
+verification:
+  manager-tests:
+    state: passed
+    method: integration
+    test: go test -race ./print/manager/
+    scope: {milestone: pm-5}
+    authority: observed
+    evidence: {path: print/manager/topology_test.go, locator: 'milestone:pm-5 の manager-tests を見よ。2026-10-21'}
+  scope-tests:
+    state: not_run
+    method: integration
+    test: go test -race -run TestScope ./print/manager/
+    scope: {milestone: pm-5b}
+  app-tests:
+    state: passed
+    method: unit
+    test: go test ./cmd/printmanager/...
+    scope: {milestone: pm-5}
+    authority: observed
+    evidence: {path: cmd/printmanager/handlers/login_test.go, locator: 'milestone:pm-5 の app-tests を見よ。2026-10-21'}
+  browser-console:
+    state: passed
+    method: manual
+    scope: {milestone: pm-5}
+    authority: observed
+    evidence: {path: cmd/printmanager/public/topology.js, locator: 'milestone:pm-5 の browser-console を見よ（pw dev の Ada Admin で、pm-5 の範囲だけ。Mina Member と偽プリンタの農場は未）。2026-10-21'}
+relations:
+- relation: refines
+  to: requirement:print-manager
+- relation: constrained_by
+  to: decision:print-manager-ui-daisyui
+- relation: depends_on
+  to: requirement:print-manager-auth
+- relation: informed_by
+  to: requirement:fake-printers
+- relation: builds_on
+  to: milestone:pm-4
+- relation: builds_on
+  to: milestone:pm-auth-1
+history:
+  proposed:
+    summary: >-
+      2026-10-21 利用者の 3 つの発言（facts.request）を受け、/knowledge-memory で整理した。main（#118、pm-4 と pm-auth-1 まで）の /admin（pages.pw.html、admin.js）と
+      print/manager の記録（Location・Printer・Node・Template）と API を読んで現状（facts.current_state）を書き、ページ・エディタ・流れ・利用者の表示の案と、
+      利用者に確かめる問い（open_questions）を立てた。暫定の選択（facts.delivery.provisional_choices）は Claude のもので未確認
+  answered-1:
+    summary: >-
+      2026-10-21 利用者が AskUserQuestion で 4 つに答えた：テンプレートはエンドポイントの持ち物（推奨どおり）、「ポート設定」は TCP のポートで Lambda では
+      エンドポイントごとに別のインスタンス（推奨の「入口の URL」は採らなかった）、アプリはエンドポイントと別に登録（推奨の「エンドポイント＝アプリ」は採らなかった）、
+      仮想プリンタは sink のノードと偽プリンタの絵の両方。ポートの答えから port-protocol（既存の制約との折り合い）と port-serverless を新しく立てた。
+      利用者に見せる範囲（user-view-scope）と milestone の分け方（slice）は聞いておらず、推奨のまま open
+  answered-2:
+    summary: >-
+      2026-10-21 利用者「APIはIPPの口ではなく、印刷機能を持ったWebサービスとRESTで繋がる口です。其れとは別にCUPSサーバーノードは必要かと思います。
+      いっぱんユーザーは全体ノードと自分の権限で見れるジョブなどだけにします」。port-protocol を答え（API は REST、IPP は CUPS サーバーのノード）、
+      user-view-scope を答え（A）、入口のノードを API と CUPS の 2 種類にして cups-server-node の問いを立てた。既存の制約（LPD・9100 の受け口なし）との
+      ぶつかりは無くなった。port-serverless の推奨を A から B に改めた
+  answered-3:
+    summary: >-
+      2026-10-21 利用者「全ノードは一旦見えても良いかなと思います。サーバーレスは外部からのAPI連携の入り口ぐらいですかね。そういう意味ではAPIエンドポイントの1つと言えるかと思います。
+      外部lambdaから受けられる、パスパラメータに入力ノードIDが入ったAPIを作る感じですかね」。cups-server-node を答え（全ノードを一旦見せる）、port-serverless を答え
+      （入口ごとのインスタンスは立てず、外部の Lambda が POST /in/{node} を叩く。既にある口）。入口のノードのポートはプロセスで動くときだけにした
+  pm-5-implemented:
+    summary: >-
+      2026-10-21 利用者「pm-5 の実装をこのセッションで始めてください」。milestone:pm-5 に実装した：ページの分割、エディタとサイドバー、
+      Location と Printer を Node に畳む、テンプレートと accept・formats はエンドポイントの持ち物。暫定の選択のうち records（/api/nodes に寄せる、互換なし）、
+      canvas_library（依存なしの SVG）、pages（ページごとの JS）、template_ids（<endpoint>.<id>）をそのまま使い、live_transport は pm-5b へ
+  answered-4:
+    summary: >-
+      2026-10-21 利用者「PDFだけ、などのファイル形式も考えていた。余計なファイルを受けない様に。2のスライスは了解です」。endpoint-mode を答え（file / template / both に
+      受ける形式の一覧を足す）、slice を答え（pm-5・pm-5b・pm-5c）。利用者の問いはこれで全部に答えがつき、残りは deferred の node-edit-live と Claude の暫定の選択だけ

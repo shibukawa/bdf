@@ -1,0 +1,131 @@
+id: milestone:pm-5
+type: milestone
+title: pm-5 — 管理コンソール：1 ページ 1 項目、トポロジーのエディタ（パレット・ピン・サイドバー・パン・ズーム）、プリンタと表示もノード、テンプレートと受けるものはエンドポイントの持ち物
+summary: >-
+  requirement:print-manager-console の最初の段。/admin に縦に並んでいた項目を /admin/topology・/admin/inboxes・/admin/jobs・
+  /admin/deliveries と /audit に分け（共通のナビ）、トポロジーは SVG のエディタにした：パレットから置き、右の口から別のノードへ
+  ドラッグで辺（表示の口は逃げ道のプリンタ）、背景のドラッグでパン、ホイール・ピンチでズーム、クリックしたノードを右のサイドバーで
+  種類ごとの欄で直す。サーバーでは Location と Printer を Node の種類（display・printer）に畳み、/api/locations と /api/printers を
+  消して /api/nodes に寄せた（表示のボード・端末・登録コード、エンドポイントのテンプレートはそのノードの下）。テンプレートは
+  エンドポイントの持ち物（記録と Blob の鍵は <endpoint>.<id>、ノードと一緒に消える）。エンドポイントは accept（both・file・template）と
+  formats（変換器の名前の列）を持ち、受けないものは 415 で断って監査に残す。2026-10-21 実装。pm-5b（利用者の読むだけの表示と流れ）と
+  pm-5c（入口のポート、CUPS サーバーのノード、sink、偽プリンタの絵）は後。
+lifecycle: active
+authority: authored
+scope:
+  milestone: pm-5
+constraints:
+- pm-1・pm-4 の制約のまま（インスタンスに状態を持たない、常駐に頼らない、print/manager は popcornweb に依らない）
+- 互換は取らない：pm-4 の locations・printers のコレクションは読まれない（新しい保存先で始める）
+- キャンバスは依存なしの SVG。Tailwind + daisyUI（decision:print-manager-ui-daisyui）、CDN なし
+capabilities:
+  pages-per-item:
+    state: implemented
+    about: capability:print-manager/console-pages
+  topology-editor:
+    state: implemented
+    about: capability:print-manager/topology-editor
+  printer-display-nodes:
+    state: implemented
+    about: capability:print-manager/printer-display-nodes
+  endpoint-sidebar:
+    state: implemented
+    about: capability:print-manager/endpoint-sidebar
+  display-sidebar:
+    state: implemented
+    about: capability:print-manager/display-sidebar
+  endpoint-accept-formats:
+    state: implemented
+    about: capability:print-manager/endpoint-accept-formats
+  user-topology-view:
+    state: planned
+    about: capability:print-manager/user-topology-view
+  live-flow:
+    state: planned
+    about: capability:print-manager/live-flow
+non_goals:
+- pm-5b（/topology の読むだけの表示、数のバッジと足跡の点）
+- pm-5c（入口のノードの TCP のポート、CUPS サーバーのノード、sink、偽プリンタの絵）
+- アプリの登録のページ（pm-auth-2）。エンドポイントの資格は今の鍵の表示と回転
+acceptance:
+  s1-pages:
+    text: /admin の各項目（トポロジー、インボックス、ジョブ、送り待ち）がそれぞれのページで、ナビで移れる。/admin はトポロジーへ。Templates・Printers・Displays の節は無い
+    verified_by: [app-tests, browser-console]
+  s2-editor:
+    text: パレットから置いたノード（display と printer も）がサーバーに作られ、口から口へのドラッグで辺が足され、クリックでサイドバーが開いて種類ごとの欄を直せる。動かした位置が /api/layout に残る
+    verified_by: [manager-tests, browser-console]
+  s3-endpoint:
+    text: エンドポイントのサイドバーで受けるものと形式、このノードのテンプレート、鍵の表示（1 度）と回転、入口の URL。受けない文書は 415 で監査に残る
+    verified_by: [manager-tests, browser-console]
+  s4-display:
+    text: 表示のサイドバーで QR と URL、端末の一覧、fallback（点線の辺）
+    verified_by: [manager-tests, browser-console]
+  s5-printer:
+    text: プリンタのサイドバーでプロトコルと宛先を欄で入れると url に組み立てられる
+    verified_by: [browser-console]
+verification:
+  manager-tests:
+    state: passed
+    method: integration
+    test: go test -race ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/topology_test.go
+      locator: 'TestNodes（逃げ道はプリンタだけ、プリンタは url が要る、accept・formats の確かめ、display と printer は種類を変えない、/api/nodes で全部）、TestEndpoint（/api/nodes/<名前>/templates/<id>、別のエンドポイントのテンプレートは 404、id に点は 400、template だけの入口は文書を 415（IPP も）、file だけは差し込みを 415、formats、refuse-document の監査 3 件、エンドポイントを消すとテンプレートも消える）。pm-1・pm-4・pm-auth-1 のテストは /api/nodes に書き換えて通った。2026-10-21 macOS'
+  app-tests:
+    state: passed
+    method: integration
+    test: go test ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/login_test.go
+      locator: 'TestLogin：管理者は /admin（→ topology.js）・/admin/inboxes・/admin/jobs・/admin/deliveries・/audit を開け、他は 403。AppBar の Admin は /admin/topology。TestApp・TestDevRoster は /api/nodes と PutNode に'
+  browser-console:
+    state: passed
+    method: manual
+    authority: observed
+    evidence:
+      path: cmd/printmanager/public/topology.js
+      locator: '2026-10-21 pw dev（開発用 IdP の Ada Admin）を内蔵ブラウザで：パレットからプリンタ laser（ipp://127.0.0.1:1/ipp/print を欄で組み立て）、表示 wh-a（fallback laser、10m）、エンドポイント intake（to wh-a、formats bdf・docx）を置き、鍵のモーダルが 1 度出た。ノードのドラッグで位置が /api/layout に残り、both の口から laser へのドラッグで辺（トースト both → laser）。サイドバー：エンドポイントの Entry・Key・Templates、表示の Devices と「Add a device」の QR のモーダル、インボックスの「1 held」。/admin/inboxes に保留 1 件、/admin/jobs に全ジョブ、/admin/deliveries、/audit に put-node の記録。直した所：datalist は属性で、pattern の v フラグ、新しいノードは空いた所に、サイドバーのスクロールを戻す'
+facts:
+  delivery:
+    plan: requirement:print-manager-console の facts（pages_proposed、editor_proposed、delivery）
+    implemented:
+      date: '2026-10-21'
+      packages:
+      - 'print/manager：model.go（Node に Accept・Formats・Fallback・OfflineAfter・URL・Route、Location と Printer を外す、Template に Endpoint、edges()）、nodes.go（種類ごとの PutNode、routingKinds だけ種類を変える、TopoNode は Node を埋め込み In・Templates・Held・Open・Devices・Pending、KnownFormats・checkFormats）、manager.go（display・printer・nodesOfKind）、store.go（locations・printers のコレクションを外す）、http.go（/api/nodes/{name}/board・devices・enrollments・templates、/api/formats；/api/locations と /api/printers の PUT・GET・DELETE を外し、/api/locations/{name}/slips は残す）、endpoint.go（テンプレートは <endpoint>.<id>、点の無い id、removeTemplatesOf、SubmitFill は accept file を 415、serveIn は refuse-document を監査）、submit.go（Submit がエンドポイントの accept と formats を見る）、send・deliver・scope・ipp・devices・route は Node に'
+      - 'cmd/printmanager：pages.pw.html（AdminNav、AdminPage、Topology・Inboxes・AdminJobs・Deliveries、Audit も AdminPage）、app.go（/admin → /admin/topology と 4 ページ）、public/admin.js（共通の部品、ナビの自分のタブ）、topology.js（エディタ）、inboxes.js、admin-jobs.js（?dest=、All jobs）、deliveries.js（Tick now）、audit.js、README'
+      - '.claude/launch.json（pw dev を 8080 で。preview_start 用）'
+    changed_from_plan:
+    - 'RotateKey をエンドポイントでないノードに呼ぶと 400（pm-4 は locationRecord が無く 404 だった）'
+    - 'accept は空でなく both を保存する（画面で読みやすい）'
+    - 'テンプレートの id は点を含まない（記録の id <endpoint>.<id> を最後の点で割るため）'
+    - 'formats の確かめは変換器が登録されているときだけ名前を見る（print/manager のテストは converter/all を入れない）'
+    decisions:
+    - '表示とプリンタは種類を変えない（伝票・端末・Delivery が名前で指す）。経路の種類（endpoint・queue・class・inbox・archive）は互いに変わる'
+    - '表示の出力の口は逃げ道のプリンタ（点線）。入力の口はどのノードにも（どのノードも宛先）'
+    - '新しいノードはパレットのクリックで下書きになり、画面の中央の空いた所に置かれ、サイドバーで名前を付けて Add。位置は保存のときに /api/layout に'
+    - 'Templates・Printers・Displays のページは無い。/api/locations/{name}/slips（伝票を返す送信）は残す'
+    found:
+    - 'HTML の pattern 属性は v フラグで読まれる：文字クラスの - は \- と書く'
+    - 'input.list は読むだけのプロパティ：datalist は setAttribute で'
+    - 'pw dev は public の変更でもアプリを立て直す。MANAGER_SECRET が無いとセッションの鍵が変わり、画面のセッションが切れる（.env.local に MANAGER_SECRET を置くと保つ）'
+    - 'pw の .pw.html は <Shell title={title}> のように部品の引数を式で渡せる'
+    unverified:
+    - 'ブラウザからのテンプレートのアップロード（API は Go のテストで確かめた）'
+    - '辺のクリックで外す（confirm のダイアログ。コードは pm-4 のまま）、ピンチのズーム（タッチの端末なし）、スマホの幅のエディタ'
+    - 'S3 などの保存先（bbolt だけ）'
+    known_gaps:
+    - 'pm-4 の保存先にある locations・printers の記録は読まれない（移行なし）'
+    - 'サイドバーの to・members はコンマ区切りの欄（datalist の補完だけ。選ぶ部品は無い）。辺の追加は口のドラッグで'
+    - '数のバッジは読み込み時のまま（自動の更新は pm-5b）'
+    - 'キャンバスの位置はズームの後も世界座標で保存するが、パンとズームそのものは保存しない（開くたびに Fit）'
+relations:
+- relation: implements
+  to: requirement:print-manager-console
+- relation: follows
+  to: milestone:pm-auth-1
+- relation: constrained_by
+  to: decision:print-manager-ui-daisyui
+- relation: depends_on
+  to: system:popcornweb

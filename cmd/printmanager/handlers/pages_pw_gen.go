@@ -36,13 +36,33 @@ type JobsParams struct {
 	Account Account
 }
 
+type renderAdminNavParams struct{}
+
+type renderAdminPageParams struct {
+	Title    string
+	Account  Account
+	Children htmlbind.Fragment
+}
+
 type AuditParams struct {
 	Account Account
 }
 
 type TabletParams struct{}
 
-type AdminParams struct {
+type TopologyParams struct {
+	Account Account
+}
+
+type InboxesParams struct {
+	Account Account
+}
+
+type AdminJobsParams struct {
+	Account Account
+}
+
+type DeliveriesParams struct {
 	Account Account
 }
 
@@ -84,28 +104,41 @@ var planJobsOpsFill3Plan = &htmlbind.Plan[JobsParams]{Ops: []htmlbind.Op[JobsPar
 	planJobsOps.Static("</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th class=\"hidden md:table-cell\">Group</th><th class=\"hidden sm:table-cell\">Received</th><th>State</th><th class=\"hidden lg:table-cell\">Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/jobs.js\"></script> "),
 }}
 
-var planAuditOpsFill4Plan = &htmlbind.Plan[AuditParams]{Ops: []htmlbind.Op[AuditParams]{
-	planAuditOps.Static(" "),
-	planAuditOps.Component(func(p AuditParams) htmlbind.Fragment {
+var planAdminPageOpsFill4Plan = &htmlbind.Plan[renderAdminPageParams]{Ops: []htmlbind.Op[renderAdminPageParams]{
+	planAdminPageOps.Static(" "),
+	planAdminPageOps.Component(func(p renderAdminPageParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account})
 	}),
-	planAuditOps.Static(" <main class=\"mx-auto grid max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Audit log</h2> <span class=\"text-sm text-base-content/60\">Sign-ins, changes of the topology, keys and templates, devices, what people did in inboxes, and cancellations. Newest first.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Subject</th><th>Detail</th></tr></thead><tbody id=\"audit\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Recent jobs and their routes</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> </main> <script type=\"module\" src=\"/public/audit.js\"></script> "),
+	planAdminPageOps.Static(" <main class=\"mx-auto flex max-w-[1600px] flex-col gap-4 p-4 sm:p-6\"> "),
+	planAdminPageOps.Component(func(p renderAdminPageParams) htmlbind.Fragment { return renderAdminNav(renderAdminNavParams{}) }),
+	planAdminPageOps.Static(" "),
+	planAdminPageOps.Slot(func(p renderAdminPageParams) htmlbind.Fragment { return p.Children },
+		nil),
+	planAdminPageOps.Static(" </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> "),
 }}
 
-var planTabletOpsFill5Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
+var planAuditOpsFill5Plan = &htmlbind.Plan[AuditParams]{Ops: []htmlbind.Op[AuditParams]{
+	planAuditOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Audit log</h2> <span class=\"text-sm text-base-content/60\">Sign-ins, changes of the topology, keys and templates, devices, documents an endpoint refused, what people did in inboxes, and cancellations. Newest first.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Subject</th><th>Detail</th></tr></thead><tbody id=\"audit\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Recent jobs and their routes</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/audit.js\"></script> "),
+}}
+
+var planTabletOpsFill6Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
 	planTabletOps.Static(" <div id=\"app\" class=\"min-h-screen\"> <header id=\"bar\" class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex min-w-0 flex-1 items-center gap-3\"> <h1 id=\"title\" class=\"truncate text-2xl font-bold\">Display board</h1> <span id=\"status\" class=\"badge\" hidden></span> </div> <label class=\"input input-lg w-full sm:w-56\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name\"> </label> </header> <section id=\"enroll\" class=\"mx-auto max-w-lg p-4 sm:p-8\" hidden> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h2 class=\"card-title text-2xl\">Enroll this device</h2> <p class=\"text-base-content/70\">Enter the enrollment code an administrator made. Only enrolled devices see the documents of their display.</p> <form id=\"enroll-form\" class=\"flex flex-col gap-4\"> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Enrollment code</legend> <input id=\"code\" class=\"input input-lg w-full font-mono tracking-widest uppercase\" autocomplete=\"off\" autocapitalize=\"characters\" required> </fieldset> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Device name</legend> <input id=\"device-name\" class=\"input input-lg w-full\" autocomplete=\"off\" placeholder=\"e.g. tablet at the shipping dock\"> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">Enroll</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">Open <span id=\"open-count\" class=\"badge badge-warning ml-2\" hidden></span></button> <button id=\"tab-ended\" role=\"tab\" class=\"tab flex-1 sm:flex-none\" type=\"button\">Done and canceled</button> </div> <ul id=\"open-list\" class=\"mt-4 grid gap-3\"></ul> <ul id=\"ended-list\" class=\"mt-4 grid gap-3\" hidden></ul> <div id=\"empty\" class=\"mt-16 text-center text-xl text-base-content/50\" hidden>No documents</div> </section> <section id=\"viewer\" hidden> <div class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <button id=\"back\" type=\"button\" class=\"btn btn-lg btn-ghost\">← Board</button> <span id=\"viewer-title\" class=\"min-w-0 flex-1 truncate text-lg font-semibold\"></span> <div class=\"flex gap-2\"> <button id=\"print\" type=\"button\" class=\"btn btn-lg btn-outline\" hidden>Print here</button> <button id=\"done\" type=\"button\" class=\"btn btn-lg btn-success\">Done</button> </div> </div> <div id=\"pages\" class=\"mx-auto grid max-w-5xl gap-4 p-4\"></div> </section> <div id=\"toasts\" class=\"toast toast-top toast-center z-50\"></div> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
 }}
 
-var planAdminOpsFill7Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
-	planAdminOps.Static(" <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">Tick now</button> "),
+var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body gap-3\"> <div class=\"flex flex-wrap items-center gap-2\"> <h2 class=\"card-title\">Topology</h2> <div class=\"dropdown\"> <div tabindex=\"0\" role=\"button\" class=\"btn btn-sm btn-primary\">+ Add a node</div> <ul id=\"palette\" tabindex=\"0\" class=\"dropdown-content menu z-20 w-72 rounded-box bg-base-100 p-2 shadow-md\"> <li><a data-kind=\"endpoint\"><span class=\"font-semibold\">Endpoint</span><span class=\"text-xs text-base-content/60\">a REST entry for applications</span></a></li> <li><a data-kind=\"queue\"><span class=\"font-semibold\">Queue</span><span class=\"text-xs text-base-content/60\">forwards to every node it points to</span></a></li> <li><a data-kind=\"class\"><span class=\"font-semibold\">Class</span><span class=\"text-xs text-base-content/60\">one member in turn, or the first</span></a></li> <li><a data-kind=\"inbox\"><span class=\"font-semibold\">Inbox</span><span class=\"text-xs text-base-content/60\">held until a person releases it</span></a></li> <li><a data-kind=\"display\"><span class=\"font-semibold\">Display</span><span class=\"text-xs text-base-content/60\">shown on the devices enrolled there</span></a></li> <li><a data-kind=\"printer\"><span class=\"font-semibold\">Printer</span><span class=\"text-xs text-base-content/60\">printed on paper</span></a></li> <li><a data-kind=\"archive\"><span class=\"font-semibold\">Archive</span><span class=\"text-xs text-base-content/60\">written once, never changed</span></a></li> </ul> </div> <div class=\"join\"> <button id=\"zoom-out\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom out\">−</button> <button id=\"zoom-fit\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Fit the topology in the view\">Fit</button> <button id=\"zoom-in\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom in\">+</button> </div> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Drag the background to pan, wheel or pinch to zoom. Drag a node to move it; drag from its right port onto another node to connect them; click an edge to remove it; click a node to edit it in the sidebar.</span> </div> <div class=\"grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]\"> <div id=\"canvas-wrap\" class=\"relative h-[62vh] min-h-96 overflow-hidden rounded-box border border-base-300 bg-base-200\"> <svg id=\"canvas\" class=\"block h-full w-full select-none touch-none\" xmlns=\"http://www.w3.org/2000/svg\"></svg> </div> <aside id=\"sidebar\" class=\"max-h-[62vh] min-h-96 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-4\"></aside> </div> </div> </section> <datalist id=\"node-names\"></datalist> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">Enrollment code</h3> <p class=\"text-sm text-base-content/70\">Open the URL on the device, or scan the code there: the device makes its own key and enrolls itself at this display. The code works once.</p> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <dialog id=\"key-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">Endpoint key</h3> <p class=\"mt-2 text-sm text-base-content/70\">The key of <span id=\"key-name\" class=\"font-mono\"></span>. It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one.</p> <pre id=\"key-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"key-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/topology.js\"></script> "),
 }}
 
-var planAdminOpsFill6Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
-	planAdminOps.Static(" "),
-	planAdminOps.Component(func(p AdminParams) htmlbind.Fragment {
-		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account, Children: planAdminOpsFill7Plan.Bind(p)})
-	}),
-	planAdminOps.Static(" <main id=\"admin\" class=\"mx-auto grid max-w-7xl grid-cols-1 gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Topology</h2> <span class=\"text-sm text-base-content/60\">Drag a node to move it. Drag from a node's right port onto another node to connect them; click an edge to remove it. Click a node to edit it below.</span> </div> <div class=\"overflow-x-auto rounded-box border border-base-300 bg-base-200\"> <svg id=\"canvas\" class=\"block select-none touch-none\" width=\"900\" height=\"320\" xmlns=\"http://www.w3.org/2000/svg\"></svg> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-zebra\"><thead><tr><th>Node</th><th>Kind</th><th>Edges</th><th>Settings</th><th></th></tr></thead><tbody id=\"topology\"></tbody></table> </div> <form id=\"node-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <select id=\"node-kind\" class=\"select sm:col-span-1\"> <option value=\"endpoint\">Endpoint (API entry)</option> <option value=\"queue\">Queue (fan-out)</option> <option value=\"class\">Class (one member)</option> <option value=\"inbox\">Inbox (held for a person)</option> <option value=\"archive\">Archive (written once)</option> </select> <input id=\"node-name\" class=\"input sm:col-span-2\" placeholder=\"name (intake, both, tokyo, review, audit)\" required> <input id=\"node-title\" class=\"input sm:col-span-3\" placeholder=\"title\"> <input id=\"node-to\" class=\"input sm:col-span-3\" placeholder=\"forwards to (comma-separated): wh-a, wh-b\"> <select id=\"node-policy\" class=\"select sm:col-span-1\" hidden> <option value=\"round-robin\">in turn (round-robin)</option> <option value=\"failover\">first member (failover)</option> </select> <input id=\"node-templates\" class=\"input sm:col-span-2\" placeholder=\"templates it fills (comma-separated; empty: any)\" hidden> <input id=\"node-keep\" class=\"input sm:col-span-1\" placeholder=\"keep (14d)\" hidden> <input id=\"node-store\" class=\"input sm:col-span-3\" placeholder=\"store: s3://bucket?region=… / bbolt:path\" hidden> <input id=\"node-collection\" class=\"input sm:col-span-2\" placeholder=\"collection (optional)\" hidden> <select id=\"node-scope\" class=\"select sm:col-span-1\" title=\"who may send to it from the pages, and whose its jobs are\"><option value=\"shared\">shared</option><option value=\"group\">group</option><option value=\"personal\">personal</option></select> <input id=\"node-owner\" class=\"input sm:col-span-2\" placeholder=\"owner: a group, or a person's email\"> <button type=\"submit\" class=\"btn btn-primary sm:col-span-1\">Add or update</button> </form> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Templates</h2> <p class=\"text-sm text-base-content/60\">A compiled template (.bdft), or one of Excel, Word, PowerPoint, a PDF form, pdfme or text. An endpoint fills one with the data it is sent: <code class=\"font-mono\">POST /in/&lt;endpoint&gt;</code> with <code class=\"font-mono\">&#123;\"template\": \"id\", \"data\": &#123;…&#125;&#125;</code>.</p> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Id</th><th>Format</th><th>Fields</th><th>Size</th><th>Uploaded</th><th></th></tr></thead><tbody id=\"templates\"></tbody></table> </div> <form id=\"template-form\" class=\"mt-2 flex flex-wrap gap-2\"> <input id=\"template-id\" class=\"input w-full sm:w-48\" placeholder=\"id (invoice)\" required> <input id=\"template-file\" type=\"file\" class=\"file-input w-full sm:flex-1\" required> <button type=\"submit\" class=\"btn btn-primary\">Upload</button> </form> </div> </section> <section id=\"inboxes\" class=\"grid gap-4\"></section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Jobs</h2> <select id=\"jobs-dest\" class=\"select select-sm\"></select> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>User</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Deliveries waiting</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Printers</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-zebra\"><thead><tr><th>Name</th><th>URL</th><th>Route</th><th></th></tr></thead><tbody id=\"printers\"></tbody></table> </div> <form id=\"printer-form\" class=\"mt-2 flex flex-wrap gap-2\"> <input id=\"printer-name\" class=\"input w-full sm:w-48\" placeholder=\"name (wh-a-laser)\" required> <input id=\"printer-url\" class=\"input w-full sm:flex-1\" placeholder=\"ipps://… / socket://…:9100\" required> <select id=\"printer-scope\" class=\"select w-full sm:w-32\" title=\"who may send to it from the pages, and whose its jobs are\"><option value=\"shared\">shared</option><option value=\"group\">group</option><option value=\"personal\">personal</option></select> <input id=\"printer-owner\" class=\"input w-full sm:w-56\" placeholder=\"owner: a group, or a person's email\"> <button type=\"submit\" class=\"btn btn-primary\">Add or update</button> </form> </div> </section> <section class=\"grid gap-4\"> <h2 class=\"text-xl font-bold\">Displays</h2> <p class=\"-mt-2 text-sm text-base-content/60\">A display shows its jobs on the devices enrolled there (tablets, screens), and can print on paper what nobody opened in time.</p> <div id=\"locations\" class=\"grid gap-4 lg:grid-cols-2\"></div> <form id=\"location-form\" class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h3 class=\"card-title text-base\">Add or update a display</h3> <div class=\"flex flex-wrap gap-2\"> <input id=\"location-name\" class=\"input w-full sm:w-40\" placeholder=\"name (wh-a)\" required> <input id=\"location-title\" class=\"input w-full sm:w-48\" placeholder=\"title (Warehouse A)\"> <input id=\"location-printer\" class=\"input w-full sm:w-48\" placeholder=\"fallback printer\"> <input id=\"location-after\" class=\"input w-full sm:w-28\" placeholder=\"after (10m)\"> <select id=\"location-scope\" class=\"select w-full sm:w-32\" title=\"who may send to it from the pages, and whose its jobs are\"><option value=\"shared\">shared</option><option value=\"group\">group</option><option value=\"personal\">personal</option></select> <input id=\"location-owner\" class=\"input w-full sm:w-56\" placeholder=\"owner: a group, or a person's email\"> <button type=\"submit\" class=\"btn btn-primary\">Add or update</button> </div> </div> </form> </section> </main> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">Enrollment code</h3> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <dialog id=\"key-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">Endpoint key</h3> <p class=\"mt-2 text-sm text-base-content/70\">The key of <span id=\"key-name\" class=\"font-mono\"></span>. It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one.</p> <pre id=\"key-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"key-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/admin.js\"></script> "),
+var planInboxesOpsFill8Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
+	planInboxesOps.Static(" <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"text-xl font-bold\">Inboxes</h2> <label class=\"input input-sm w-64\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name (for the record)\"> </label> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <section id=\"inboxes\" class=\"grid gap-4\"></section> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
+}}
+
+var planAdminJobsOpsFill9Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
+	planAdminJobsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Jobs</h2> <select id=\"jobs-dest\" class=\"select select-sm w-64\"></select> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/admin-jobs.js\"></script> "),
+}}
+
+var planDeliveriesOpsFill10Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
+	planDeliveriesOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Deliveries waiting</h2> <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">Tick now</button> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Jobs on their way to printers and archives. A process sends them in the background, a serverless deployment at the tick; a send that failed is tried again after a wait that grows, and retry sends it now.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>State</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/deliveries.js\"></script> "),
 }}
 
 var planShellOps = htmlbind.Builder[renderShellParams]{}
@@ -146,7 +179,7 @@ var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
 		planAppBarOps.Static(" <a href=\"/jobs\" class=\"btn btn-sm btn-ghost\">Jobs</a> "),
 		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Admin },
 			[]htmlbind.Op[renderAppBarParams]{
-				planAppBarOps.Static(" <a href=\"/admin\" class=\"btn btn-sm btn-ghost\">Admin</a> <a href=\"/audit\" class=\"btn btn-sm btn-ghost\">Audit</a> "),
+				planAppBarOps.Static(" <a href=\"/admin/topology\" class=\"btn btn-sm btn-ghost\">Admin</a> <a href=\"/audit\" class=\"btn btn-sm btn-ghost\">Audit</a> "),
 			},
 			nil),
 		planAppBarOps.Static(" <div class=\"flex min-w-0 items-center gap-2\"> <div class=\"avatar avatar-placeholder\""),
@@ -220,6 +253,41 @@ var planJobsPlan = &htmlbind.Plan[JobsParams]{
 // Jobs binds Jobs to its parameters, producing a renderable fragment.
 func Jobs(params JobsParams) htmlbind.Fragment { return planJobsPlan.Bind(params) }
 
+var planAdminNavOps = htmlbind.Builder[renderAdminNavParams]{}
+
+var planAdminNavPlan = &htmlbind.Plan[renderAdminNavParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[renderAdminNavParams]{
+		planAdminNavOps.Static(" <nav id=\"admin-nav\" role=\"tablist\" class=\"tabs tabs-box tabs-sm w-fit\"> <a role=\"tab\" class=\"tab\" href=\"/admin/topology\">Topology</a> <a role=\"tab\" class=\"tab\" href=\"/admin/inboxes\">Inboxes</a> <a role=\"tab\" class=\"tab\" href=\"/admin/jobs\">Jobs</a> <a role=\"tab\" class=\"tab\" href=\"/admin/deliveries\">Deliveries</a> <a role=\"tab\" class=\"tab\" href=\"/audit\">Audit</a> </nav> "),
+	},
+}
+
+// renderAdminNav binds AdminNav to its parameters, producing a renderable fragment.
+func renderAdminNav(params renderAdminNavParams) htmlbind.Fragment {
+	return planAdminNavPlan.Bind(params)
+}
+
+var planAdminPageOps = htmlbind.Builder[renderAdminPageParams]{}
+
+var planAdminPagePlan = &htmlbind.Plan[renderAdminPageParams]{
+	Head: nil,
+	Slots: func(p renderAdminPageParams) []htmlbind.Fragment {
+		return []htmlbind.Fragment{p.Children}
+	},
+	Ops: []htmlbind.Op[renderAdminPageParams]{
+		planAdminPageOps.Static(" "),
+		planAdminPageOps.Component(func(p renderAdminPageParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: p.Title, Children: planAdminPageOpsFill4Plan.Bind(p)})
+		}),
+		planAdminPageOps.Static(" "),
+	},
+}
+
+// renderAdminPage binds AdminPage to its parameters, producing a renderable fragment.
+func renderAdminPage(params renderAdminPageParams) htmlbind.Fragment {
+	return planAdminPagePlan.Bind(params)
+}
+
 var planAuditOps = htmlbind.Builder[AuditParams]{}
 
 var planAuditPlan = &htmlbind.Plan[AuditParams]{
@@ -227,7 +295,7 @@ var planAuditPlan = &htmlbind.Plan[AuditParams]{
 	Ops: []htmlbind.Op[AuditParams]{
 		planAuditOps.Static(" "),
 		planAuditOps.Component(func(p AuditParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "Audit · BDF Print Manager", Children: planAuditOpsFill4Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Audit · BDF Print Manager", Account: p.Account, Children: planAuditOpsFill5Plan.Bind(p)})
 		}),
 		planAuditOps.Static(" "),
 	},
@@ -243,7 +311,7 @@ var planTabletPlan = &htmlbind.Plan[TabletParams]{
 	Ops: []htmlbind.Op[TabletParams]{
 		planTabletOps.Static(" "),
 		planTabletOps.Component(func(p TabletParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "Display board", Children: planTabletOpsFill5Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: "Display board", Children: planTabletOpsFill6Plan.Bind(p)})
 		}),
 		planTabletOps.Static(" "),
 	},
@@ -252,18 +320,66 @@ var planTabletPlan = &htmlbind.Plan[TabletParams]{
 // Tablet binds Tablet to its parameters, producing a renderable fragment.
 func Tablet(params TabletParams) htmlbind.Fragment { return planTabletPlan.Bind(params) }
 
-var planAdminOps = htmlbind.Builder[AdminParams]{}
+var planTopologyOps = htmlbind.Builder[TopologyParams]{}
 
-var planAdminPlan = &htmlbind.Plan[AdminParams]{
+var planTopologyPlan = &htmlbind.Plan[TopologyParams]{
 	Head: nil,
-	Ops: []htmlbind.Op[AdminParams]{
-		planAdminOps.Static(" "),
-		planAdminOps.Component(func(p AdminParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "Admin · BDF Print Manager", Children: planAdminOpsFill6Plan.Bind(p)})
+	Ops: []htmlbind.Op[TopologyParams]{
+		planTopologyOps.Static(" "),
+		planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: "Topology · BDF Print Manager", Account: p.Account, Children: planTopologyOpsFill7Plan.Bind(p)})
 		}),
-		planAdminOps.Static(" "),
+		planTopologyOps.Static(" "),
 	},
 }
 
-// Admin binds Admin to its parameters, producing a renderable fragment.
-func Admin(params AdminParams) htmlbind.Fragment { return planAdminPlan.Bind(params) }
+// Topology binds Topology to its parameters, producing a renderable fragment.
+func Topology(params TopologyParams) htmlbind.Fragment { return planTopologyPlan.Bind(params) }
+
+var planInboxesOps = htmlbind.Builder[InboxesParams]{}
+
+var planInboxesPlan = &htmlbind.Plan[InboxesParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[InboxesParams]{
+		planInboxesOps.Static(" "),
+		planInboxesOps.Component(func(p InboxesParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Print Manager", Account: p.Account, Children: planInboxesOpsFill8Plan.Bind(p)})
+		}),
+		planInboxesOps.Static(" "),
+	},
+}
+
+// Inboxes binds Inboxes to its parameters, producing a renderable fragment.
+func Inboxes(params InboxesParams) htmlbind.Fragment { return planInboxesPlan.Bind(params) }
+
+var planAdminJobsOps = htmlbind.Builder[AdminJobsParams]{}
+
+var planAdminJobsPlan = &htmlbind.Plan[AdminJobsParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[AdminJobsParams]{
+		planAdminJobsOps.Static(" "),
+		planAdminJobsOps.Component(func(p AdminJobsParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Print Manager", Account: p.Account, Children: planAdminJobsOpsFill9Plan.Bind(p)})
+		}),
+		planAdminJobsOps.Static(" "),
+	},
+}
+
+// AdminJobs binds AdminJobs to its parameters, producing a renderable fragment.
+func AdminJobs(params AdminJobsParams) htmlbind.Fragment { return planAdminJobsPlan.Bind(params) }
+
+var planDeliveriesOps = htmlbind.Builder[DeliveriesParams]{}
+
+var planDeliveriesPlan = &htmlbind.Plan[DeliveriesParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[DeliveriesParams]{
+		planDeliveriesOps.Static(" "),
+		planDeliveriesOps.Component(func(p DeliveriesParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Print Manager", Account: p.Account, Children: planDeliveriesOpsFill10Plan.Bind(p)})
+		}),
+		planDeliveriesOps.Static(" "),
+	},
+}
+
+// Deliveries binds Deliveries to its parameters, producing a renderable fragment.
+func Deliveries(params DeliveriesParams) htmlbind.Fragment { return planDeliveriesPlan.Bind(params) }

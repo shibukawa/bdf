@@ -14,6 +14,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -24,12 +26,14 @@ import (
 	"github.com/shibukawa/yuruidb"
 )
 
-// An endpoint is an entry of the network for applications: POST
-// /in/<name> with the endpoint's key takes a document (PDF, Office,
-// images, .bdf …), or the id of a template and the data to fill it with
-// (JSON), and the job flows from the endpoint to its nodes. Each endpoint
+// An endpoint is an entry of the network for applications, over REST:
+// POST /in/<name> with the endpoint's key takes a document (PDF, Office,
+// images, .bdf …), or the id of one of the endpoint's templates and the
+// data to fill it with (JSON), and the job flows from the endpoint to its
+// nodes. What it takes is its Accept and Formats (PutNode). Each endpoint
 // has a key of its own, kept as a hash (argon2id); the key is shown once,
-// when the endpoint is made or its key rotated.
+// when the endpoint is made or its key rotated. Its templates are its
+// own: they go with it.
 
 // InPath is where the endpoints are.
 const InPath = "/in"
@@ -80,14 +84,16 @@ func checkKey(phc, key string) bool {
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
+// endpoint returns an endpoint node.
+func (m *Manager) endpoint(ctx context.Context, name string) (*Node, error) {
+	return m.nodeOfKind(ctx, name, KindEndpoint)
+}
+
 // Endpoint finds the endpoint a key opens.
 func (m *Manager) Endpoint(ctx context.Context, name, key string) (*Node, error) {
-	n, err := m.Node(ctx, name)
+	n, err := m.endpoint(ctx, name)
 	if err != nil {
 		return nil, err
-	}
-	if n.Kind != KindEndpoint {
-		return nil, fmt.Errorf("%w: %s is a %s", ErrNotFound, name, n.Kind)
 	}
 	if key == "" || n.KeyHash == "" || !checkKey(n.KeyHash, key) {
 		return nil, fmt.Errorf("%w: the endpoint's key", ErrUnauthorized)
@@ -98,12 +104,23 @@ func (m *Manager) Endpoint(ctx context.Context, name, key string) (*Node, error)
 // MaxTemplate bounds a template's file.
 const MaxTemplate = 32 << 20
 
-// PutTemplate keeps a template under an id, replacing one there. name is
-// its file name, which tells the format of a plain file (a compiled
-// template tells its own).
-func (m *Manager) PutTemplate(ctx context.Context, id, name string, r io.ReaderAt, size int64) (*Template, error) {
-	if !validName(id) {
-		return nil, fmt.Errorf("%w: template id %q", ErrInvalid, id)
+// templateIDRE is the shape of a template's id: a name without a dot, so
+// that the record's id (<endpoint>.<id>) splits at its last dot.
+var templateIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+// templateID is the record id (and the file's) of a template of an
+// endpoint.
+func templateID(endpoint, id string) string { return endpoint + "." + id }
+
+// PutTemplate keeps a template of an endpoint under an id, replacing one
+// there. name is its file name, which tells the format of a plain file
+// (a compiled template tells its own).
+func (m *Manager) PutTemplate(ctx context.Context, endpoint, id, name string, r io.ReaderAt, size int64) (*Template, error) {
+	if _, err := m.endpoint(ctx, endpoint); err != nil {
+		return nil, err
+	}
+	if !templateIDRE.MatchString(id) {
+		return nil, fmt.Errorf("%w: template id %q: letters, digits, _ and -", ErrInvalid, id)
 	}
 	if size > MaxTemplate {
 		return nil, fmt.Errorf("%w: %d bytes; a template is at most %d", ErrInvalid, size, MaxTemplate)
@@ -120,85 +137,100 @@ func (m *Manager) PutTemplate(ctx context.Context, id, name string, r io.ReaderA
 	if _, err := io.Copy(h, io.NewSectionReader(r, 0, size)); err != nil {
 		return nil, err
 	}
+	rid := templateID(endpoint, id)
 	// the file is replaced: removed, then written
-	if err := m.st.tpls.Remove(ctx, id); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
+	if err := m.st.tpls.Remove(ctx, rid); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
 		return nil, mapErr(err)
 	}
-	meta, err := m.st.tpls.Insert(ctx, id, io.NewSectionReader(r, 0, size))
+	meta, err := m.st.tpls.Insert(ctx, rid, io.NewSectionReader(r, 0, size))
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	t := Template{ID: id, Name: clip(name, 255), Format: format, Size: meta.Size, SHA256: hex.EncodeToString(h.Sum(nil)), Uploaded: m.now(), Fields: fields, Sample: sample}
-	if t.Fields == nil {
-		t.Fields = nil
-	}
-	if _, err := change(ctx, m.st.db, id, true, func(rec *templateRecord) error {
+	t := Template{ID: id, Endpoint: endpoint, Name: clip(name, 255), Format: format, Size: meta.Size, SHA256: hex.EncodeToString(h.Sum(nil)), Uploaded: m.now(), Fields: fields, Sample: sample}
+	if _, err := change(ctx, m.st.db, rid, true, func(rec *templateRecord) error {
 		*rec = templateRecord(t)
 		return nil
 	}); err != nil {
 		return nil, err
 	}
-	m.o.Log.Info("template", "id", id, "format", format, "fields", len(fields))
+	m.o.Log.Info("template", "endpoint", endpoint, "id", id, "format", format, "fields", len(fields))
 	return &t, nil
 }
 
-// Template returns a template's record.
-func (m *Manager) Template(ctx context.Context, id string) (*Template, error) {
-	if !validName(id) {
-		return nil, fmt.Errorf("%w: template %q", ErrNotFound, id)
+// Template returns a template of an endpoint.
+func (m *Manager) Template(ctx context.Context, endpoint, id string) (*Template, error) {
+	if !validName(endpoint) || !templateIDRE.MatchString(id) {
+		return nil, fmt.Errorf("%w: template %q of %q", ErrNotFound, id, endpoint)
 	}
-	rec, err := m.st.db.Get[templateRecord](ctx, id)
+	rec, err := m.st.db.Get[templateRecord](ctx, templateID(endpoint, id))
 	if err != nil {
 		return nil, mapErr(err)
 	}
 	t := Template(rec.Data)
-	t.ID = id
+	t.ID, t.Endpoint = id, endpoint
 	return &t, nil
 }
 
-// Templates returns the templates, by id.
-func (m *Manager) Templates(ctx context.Context) ([]Template, error) {
+// Templates returns the templates of an endpoint, by id.
+func (m *Manager) Templates(ctx context.Context, endpoint string) ([]Template, error) {
+	if _, err := m.endpoint(ctx, endpoint); err != nil {
+		return nil, err
+	}
+	return m.templatesOf(ctx, endpoint)
+}
+
+func (m *Manager) templatesOf(ctx context.Context, endpoint string) ([]Template, error) {
 	recs, err := list[templateRecord](ctx, m.st.db)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Template, len(recs))
-	for i, r := range recs {
-		out[i] = Template(r.Data)
-		out[i].ID = r.ID()
+	out := []Template{}
+	for _, r := range recs {
+		if r.Data.Endpoint == endpoint {
+			out = append(out, Template(r.Data))
+		}
 	}
+	slices.SortFunc(out, func(a, b Template) int { return strings.Compare(a.ID, b.ID) })
 	return out, nil
 }
 
-// DeleteTemplate removes a template; one an endpoint names stays.
-func (m *Manager) DeleteTemplate(ctx context.Context, id string) error {
-	rec, err := m.st.db.Get[templateRecord](ctx, id)
+// DeleteTemplate removes a template of an endpoint.
+func (m *Manager) DeleteTemplate(ctx context.Context, endpoint, id string) error {
+	if !validName(endpoint) || !templateIDRE.MatchString(id) {
+		return fmt.Errorf("%w: template %q of %q", ErrNotFound, id, endpoint)
+	}
+	rid := templateID(endpoint, id)
+	rec, err := m.st.db.Get[templateRecord](ctx, rid)
 	if err != nil {
 		return mapErr(err)
 	}
-	nodes, err := m.Nodes(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range nodes {
-		for _, t := range n.Templates {
-			if t == id {
-				return fmt.Errorf("%w: endpoint %s fills %s", ErrConflict, n.Name, id)
-			}
-		}
-	}
-	if err := m.st.db.Delete[templateRecord](ctx, id, rec.Revision()); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
+	if err := m.st.db.Delete[templateRecord](ctx, rid, rec.Revision()); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
 		return mapErr(err)
 	}
-	if err := m.st.tpls.Remove(ctx, id); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
+	if err := m.st.tpls.Remove(ctx, rid); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
 		return mapErr(err)
 	}
 	return nil
 }
 
+// removeTemplatesOf removes every template of an endpoint that is gone.
+func (m *Manager) removeTemplatesOf(ctx context.Context, endpoint string) error {
+	ts, err := m.templatesOf(ctx, endpoint)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, t := range ts {
+		if err := m.DeleteTemplate(ctx, endpoint, t.ID); err != nil && !errors.Is(err, ErrNotFound) {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // WriteTemplate writes a template's file.
-func (m *Manager) WriteTemplate(ctx context.Context, id string, w io.Writer) error {
-	r, err := m.st.tpls.Open(ctx, id)
+func (m *Manager) WriteTemplate(ctx context.Context, endpoint, id string, w io.Writer) error {
+	r, err := m.st.tpls.Open(ctx, templateID(endpoint, id))
 	if err != nil {
 		return mapErr(err)
 	}
@@ -218,25 +250,18 @@ type Fill struct {
 	Strict bool `json:"strict,omitempty"`
 }
 
-// SubmitFill fills a template and sends the form to a destination: an
-// endpoint's way of printing from data. The endpoint, when given, must
-// name the template among its templates (an endpoint with none fills
-// any).
-func (m *Manager) SubmitFill(ctx context.Context, dest string, ep *Node, by *Principal, f Fill) (*Job, error) {
-	if ep != nil && len(ep.Templates) > 0 {
-		found := false
-		for _, id := range ep.Templates {
-			found = found || id == f.Template
-		}
-		if !found {
-			return nil, fmt.Errorf("%w: %s fills %s only", ErrInvalid, ep.Name, strings.Join(ep.Templates, ", "))
-		}
+// SubmitFill fills a template of an endpoint and sends the form from the
+// endpoint: its way of printing from data. An endpoint that takes
+// documents only refuses (ErrFormat).
+func (m *Manager) SubmitFill(ctx context.Context, ep *Node, by *Principal, f Fill) (*Job, error) {
+	if ep.Accept == AcceptFile {
+		return nil, fmt.Errorf("%w: %s takes documents, not templates to fill", ErrFormat, ep.Name)
 	}
-	t, err := m.Template(ctx, f.Template)
+	t, err := m.Template(ctx, ep.Name, f.Template)
 	if err != nil {
 		return nil, err
 	}
-	r, err := m.st.tpls.Open(ctx, t.ID)
+	r, err := m.st.tpls.Open(ctx, templateID(ep.Name, t.ID))
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -255,14 +280,15 @@ func (m *Manager) SubmitFill(ctx context.Context, dest string, ep *Node, by *Pri
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	for _, w := range res.Warnings {
-		m.o.Log.Warn("fill", "template", t.ID, "warning", w)
+		m.o.Log.Warn("fill", "endpoint", ep.Name, "template", t.ID, "warning", w)
 	}
 	name := firstOr(f.Name, t.ID)
-	return m.submitDoc(ctx, dest, res.Doc, "form:"+t.Format, Input{Name: name, By: by, ClaimedUser: f.User, Source: "endpoint"})
+	return m.submitDoc(ctx, ep.Name, res.Doc, "form:"+t.Format, Input{Name: name, By: by, ClaimedUser: f.User, Source: "endpoint"})
 }
 
 // serveIn takes a request to an endpoint: a JSON request to fill a
-// template, or a document.
+// template, or a document. What the endpoint refuses (ErrFormat) is
+// recorded in the audit log.
 func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	name := r.PathValue("name")
@@ -270,8 +296,8 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 	var by *Principal
 	if v, ok := h.viewerOf(r); ok && v.Admin && r.Header.Get("Authorization") != "" {
 		by = v.Principal()
-		n, err := h.m.Node(ctx, name)
-		if err != nil || n.Kind != KindEndpoint {
+		n, err := h.m.endpoint(ctx, name)
+		if err != nil {
 			h.writeErr(w, ErrNotFound)
 			return
 		}
@@ -287,6 +313,12 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 		}
 		ep = n
 		by = &Principal{Kind: PrincipalEndpoint, ID: name, Via: ViaEndpointKey}
+	}
+	refused := func(err error) {
+		if errors.Is(err, ErrFormat) {
+			h.m.audit(ctx, by.Label(), "refuse-document", ep.Name, err.Error())
+		}
+		h.writeErr(w, err)
 	}
 	user := r.URL.Query().Get("user")
 	f, err := os.CreateTemp(h.m.o.TempDir, "bdf-pm-in-*")
@@ -322,9 +354,9 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		fill.User = firstOr(fill.User, user)
-		j, err := h.m.SubmitFill(ctx, ep.Name, ep, by, fill)
+		j, err := h.m.SubmitFill(ctx, ep, by, fill)
 		if err != nil {
-			h.writeErr(w, err)
+			refused(err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, j)
@@ -332,28 +364,25 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 	}
 	j, err := h.m.Submit(ctx, ep.Name, Input{Name: r.URL.Query().Get("name"), By: by, ClaimedUser: user, Source: "endpoint", Doc: f, Size: n})
 	if err != nil {
-		h.writeErr(w, err)
+		refused(err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, j)
 }
 
-// The templates' API.
+// The templates' API: under their endpoint.
 
 func (h *handler) listTemplates(w http.ResponseWriter, r *http.Request) {
-	ts, err := h.m.Templates(r.Context())
+	ts, err := h.m.Templates(r.Context(), r.PathValue("name"))
 	if err != nil {
 		h.writeErr(w, err)
 		return
-	}
-	if ts == nil {
-		ts = []Template{}
 	}
 	writeJSON(w, http.StatusOK, ts)
 }
 
 func (h *handler) getTemplate(w http.ResponseWriter, r *http.Request) {
-	t, err := h.m.Template(r.Context(), r.PathValue("id"))
+	t, err := h.m.Template(r.Context(), r.PathValue("name"), r.PathValue("id"))
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -362,7 +391,7 @@ func (h *handler) getTemplate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) templateFile(w http.ResponseWriter, r *http.Request) {
-	t, err := h.m.Template(r.Context(), r.PathValue("id"))
+	t, err := h.m.Template(r.Context(), r.PathValue("name"), r.PathValue("id"))
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -370,7 +399,7 @@ func (h *handler) templateFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(t.Size, 10))
 	w.Header().Set("Content-Disposition", `attachment; filename="`+firstOr(t.Name, t.ID)+`"`)
-	if err := h.m.WriteTemplate(r.Context(), t.ID, w); err != nil {
+	if err := h.m.WriteTemplate(r.Context(), t.Endpoint, t.ID, w); err != nil {
 		panic(http.ErrAbortHandler)
 	}
 }
@@ -390,22 +419,27 @@ func (h *handler) putTemplate(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, errors.Join(ErrInvalid, err))
 		return
 	}
-	t, err := h.m.PutTemplate(r.Context(), r.PathValue("id"), r.URL.Query().Get("name"), f, n)
+	t, err := h.m.PutTemplate(r.Context(), r.PathValue("name"), r.PathValue("id"), r.URL.Query().Get("name"), f, n)
 	if err != nil {
 		h.writeErr(w, err)
 		return
 	}
-	h.m.audit(r.Context(), h.who(r), "put-template", t.ID, t.Name)
+	h.m.audit(r.Context(), h.who(r), "put-template", t.Endpoint+"."+t.ID, t.Name)
 	writeJSON(w, http.StatusOK, t)
 }
 
 func (h *handler) deleteTemplate(w http.ResponseWriter, r *http.Request) {
-	if err := h.m.DeleteTemplate(r.Context(), r.PathValue("id")); err != nil {
+	if err := h.m.DeleteTemplate(r.Context(), r.PathValue("name"), r.PathValue("id")); err != nil {
 		h.writeErr(w, err)
 		return
 	}
-	h.m.audit(r.Context(), h.who(r), "delete-template", r.PathValue("id"), "")
+	h.m.audit(r.Context(), h.who(r), "delete-template", r.PathValue("name")+"."+r.PathValue("id"), "")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// formats answers the formats an endpoint may take.
+func (h *handler) formats(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, KnownFormats())
 }
 
 // The layout of the topology's canvas.
@@ -431,12 +465,12 @@ func (m *Manager) GetLayout(ctx context.Context) (*Layout, error) {
 // PutLayout moves nodes: the positions given replace those of the same
 // names; a position of a node that is gone is dropped.
 func (m *Manager) PutLayout(ctx context.Context, l Layout) (*Layout, error) {
-	topo, err := m.Topology(ctx)
+	nodes, err := m.Nodes(ctx)
 	if err != nil {
 		return nil, err
 	}
 	names := map[string]bool{}
-	for _, n := range topo {
+	for _, n := range nodes {
 		names[n.Name] = true
 	}
 	rec, err := change(ctx, m.st.db, layoutID, true, func(r *layoutRecord) error {

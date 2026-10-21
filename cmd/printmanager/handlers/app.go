@@ -118,7 +118,7 @@ func (a *App) StartTimer(ctx context.Context) (stop func()) {
 // Handler is the application: the pages, and the manager's printers, API
 // and devices' endpoints. The pages' scripts and style are the framework's
 // /public mount's. Every page but /tablet is for a person signed in
-// (ConfigureAuth); /admin and /audit for an administrator.
+// (ConfigureAuth); /admin/… and /audit for an administrator.
 func (a *App) Handler() http.Handler {
 	mux := pw.NewServeMux()
 	mh := manager.Handler(a.m)
@@ -128,7 +128,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("/api/", mh)
 	mux.Handle("/device/", mh)
 	// the pages: a sign-in at the top; the jobs of the person signed in;
-	// the administrator's topology and audit log
+	// the administrator's pages and audit log
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		if a.viewer(r) != nil {
@@ -140,8 +140,21 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /jobs", a.page(false, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Jobs(JobsParams{Account: ac}))
 	}))
+	// the administrator's pages, one item each; /admin is the topology
 	mux.HandleFunc("GET /admin", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
-		pw.WriteHTML(w, r, Admin(AdminParams{Account: ac}))
+		http.Redirect(w, r, "/admin/topology", http.StatusSeeOther)
+	}))
+	mux.HandleFunc("GET /admin/topology", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Topology(TopologyParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /admin/inboxes", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Inboxes(InboxesParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /admin/jobs", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, AdminJobs(AdminJobsParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /admin/deliveries", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Deliveries(DeliveriesParams{Account: ac}))
 	}))
 	mux.HandleFunc("GET /audit", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Audit(AuditParams{Account: ac}))

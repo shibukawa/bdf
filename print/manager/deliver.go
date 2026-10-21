@@ -202,7 +202,7 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		if err != nil {
 			return m.outcome(ctx, d, owner, printer, "", err, final)
 		}
-		p, err := m.Printer(sctx, printer)
+		p, err := m.printer(sctx, printer)
 		if err != nil {
 			return m.outcome(ctx, d, owner, printer, "", err, false)
 		}
