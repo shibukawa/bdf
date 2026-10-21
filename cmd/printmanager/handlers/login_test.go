@@ -81,12 +81,13 @@ func (s *site) browser() *browser {
 	return &browser{s: s, c: &http.Client{Jar: jar}}
 }
 
-// login opens / as a person and follows the sign-in through the IdP.
+// login signs a person in as the top page's button does, through the
+// IdP, and lands on /jobs.
 func (s *site) login(who string) *browser {
 	s.t.Helper()
 	b := s.browser()
 	s.idp.LoginAs(who)
-	code, body := b.get("/")
+	code, body := b.get("/auth/login?next=%2Fjobs")
 	if code != http.StatusOK || !strings.Contains(body, `id="account-name"`) {
 		s.t.Fatalf("%s's sign-in: %d %.400s", who, code, body)
 	}
@@ -153,15 +154,19 @@ func TestLogin(t *testing.T) {
 		}
 	}
 	// the settings, and jobs of the WMS (a submit token) to each warehouse
-	api("PUT", "/api/locations/wh-a", manager.Location{Title: "第 1 倉庫", Kind: manager.KindGroup, Owner: "warehouse-a"}, "t", http.StatusOK)
-	api("PUT", "/api/locations/wh-b", manager.Location{Title: "第 2 倉庫", Kind: manager.KindGroup, Owner: "warehouse-b"}, "t", http.StatusOK)
-	api("PUT", "/api/locations/office", manager.Location{Title: "事務所"}, "t", http.StatusOK)
-	api("POST", "/api/locations/wh-a/slips?name=picking-a&user=sato", doc(t), "wms:s3cret", http.StatusCreated)
-	api("POST", "/api/locations/wh-b/slips?name=picking-b", doc(t), "wms:s3cret", http.StatusCreated)
+	api("PUT", "/api/locations/wh-a", manager.Location{Title: "Warehouse A", Scope: manager.ScopeGroup, Owner: "warehouse-a"}, "t", http.StatusOK)
+	api("PUT", "/api/locations/wh-b", manager.Location{Title: "Warehouse B", Scope: manager.ScopeGroup, Owner: "warehouse-b"}, "t", http.StatusOK)
+	api("PUT", "/api/locations/office", manager.Location{Title: "Office"}, "t", http.StatusOK)
+	api("POST", "/api/destinations/wh-a/jobs?name=picking-a&user=sato", doc(t), "wms:s3cret", http.StatusCreated)
+	api("POST", "/api/destinations/wh-b/jobs?name=picking-b", doc(t), "wms:s3cret", http.StatusCreated)
 
-	// nobody signed in: every page but /tablet goes to the IdP
+	// nobody signed in: the top page is a sign-in, every other page but
+	// /tablet goes to the IdP
+	if code, body := s.browser().get("/"); code != http.StatusOK || !strings.Contains(body, `href="/auth/login?next=%2Fjobs"`) {
+		t.Errorf("/ signed out: %d %.300s", code, body)
+	}
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	for _, path := range []string{"/", "/admin"} {
+	for _, path := range []string{"/jobs", "/admin", "/audit"} {
 		res, err := noRedirect.Get(s.url + path)
 		if err != nil {
 			t.Fatal(err)
@@ -177,71 +182,80 @@ func TestLogin(t *testing.T) {
 
 	// a member of warehouse-a sends a job from the page, as herself
 	alice := s.login("alice")
-	if code, body := alice.post("/api/locations/office/slips?name=alice-memo&user=someone", doc(t)); code != http.StatusCreated {
+	if code, body := alice.post("/api/destinations/office/jobs?name=alice-memo&user=someone", doc(t)); code != http.StatusCreated {
 		t.Fatalf("alice's upload: %d %s", code, body)
 	}
-	if code, _ := alice.post("/api/locations/wh-b/slips?name=alice-wh-b", doc(t)); code != http.StatusForbidden {
+	if code, _ := alice.post("/api/destinations/wh-b/jobs?name=alice-wh-b", doc(t)); code != http.StatusForbidden {
 		t.Errorf("alice prints to warehouse-b: %d", code)
 	}
 	bob := s.login("bob")
-	if code, body := bob.post("/api/locations/office/slips?name=bob-memo", doc(t)); code != http.StatusCreated {
+	if code, body := bob.post("/api/destinations/office/jobs?name=bob-memo", doc(t)); code != http.StatusCreated {
 		t.Fatalf("bob's upload: %d %s", code, body)
 	}
 
-	slips, err := s.app.m.Slips(context.Background())
-	if err != nil {
-		t.Fatal(err)
+	jobs := func(b *browser) []manager.Job {
+		t.Helper()
+		code, body := b.get("/api/my/jobs")
+		if code != http.StatusOK {
+			t.Fatalf("/api/my/jobs: %d %s", code, body)
+		}
+		var js []manager.Job
+		json.Unmarshal([]byte(body), &js)
+		return js
 	}
-	for _, sl := range slips {
-		if sl.Name == "alice-memo" {
-			if by := sl.SubmittedBy; by == nil || by.Kind != manager.PrincipalUser || by.Via != manager.ViaOIDC || by.Name != "Alice" || sl.ClaimedUser != "someone" {
-				t.Errorf("alice's slip by %+v, claimed %q", sl.SubmittedBy, sl.ClaimedUser)
+	for _, j := range jobs(alice) {
+		if j.Name == "alice-memo" {
+			if by := j.SubmittedBy; by == nil || by.Kind != manager.PrincipalUser || by.Via != manager.ViaOIDC || by.Name != "Alice" || j.ClaimedUser != "someone" {
+				t.Errorf("alice's job by %+v, claimed %q", j.SubmittedBy, j.ClaimedUser)
 			}
 		}
 	}
 
 	// each sees their own and their groups' jobs, an admin all
-	sees := func(b *browser, want, not []string) {
+	sees := func(b *browser, want []string) {
 		t.Helper()
-		code, body := b.get("/")
-		if code != http.StatusOK {
-			t.Fatalf("/: %d", code)
+		var names []string
+		for _, j := range jobs(b) {
+			names = append(names, j.Name)
 		}
-		for _, n := range want {
-			if !strings.Contains(body, n) {
-				t.Errorf("does not see %s", n)
-			}
-		}
-		for _, n := range not {
-			if strings.Contains(body, n) {
-				t.Errorf("sees %s", n)
-			}
+		if strings.Join(names, ",") != strings.Join(want, ",") {
+			t.Errorf("sees %q; want %q", names, want)
 		}
 	}
-	sees(alice, []string{"alice-memo", "picking-a", "warehouse-a", "第 1 倉庫"}, []string{"bob-memo", "picking-b", "第 2 倉庫", `href="/admin"`})
-	sees(bob, []string{"bob-memo", "picking-b"}, []string{"alice-memo", "picking-a"})
+	sees(alice, []string{"alice-memo", "picking-a"})
+	sees(bob, []string{"bob-memo", "picking-b"})
+	if code, body := alice.get("/jobs"); code != http.StatusOK || strings.Contains(body, `href="/admin"`) || !strings.Contains(body, "/public/jobs.js") {
+		t.Errorf("alice's /jobs: %d", code)
+	}
 	root := s.login("root")
-	sees(root, []string{"alice-memo", "bob-memo", "picking-a", "picking-b", `href="/admin"`, "管理者"}, nil)
+	sees(root, []string{"bob-memo", "alice-memo", "picking-b", "picking-a"})
+	if _, body := root.get("/jobs"); !strings.Contains(body, `href="/admin"`) {
+		t.Error("root's /jobs has no Admin")
+	}
 
-	// /admin: the admins (by email, by a group of a nested claim), 403 for others
-	for who, b := range map[string]*browser{"alice": alice, "bob": bob, "root": root, "lead": s.login("lead")} {
+	// /admin and /audit: the admins (by email, by a group of a nested
+	// claim), 403 for others
+	lead := s.login("lead")
+	for who, b := range map[string]*browser{"alice": alice, "bob": bob, "root": root, "lead": lead} {
 		want := http.StatusForbidden
 		if who == "root" || who == "lead" {
 			want = http.StatusOK
 		}
-		code, body := b.get("/admin")
-		if code != want {
-			t.Errorf("%s on /admin: %d; want %d", who, code, want)
-		}
-		if want == http.StatusOK && (strings.Contains(body, `id="token"`) || !strings.Contains(body, "/public/admin.js")) {
-			t.Errorf("%s's /admin: %.300s", who, body)
+		for _, path := range []string{"/admin", "/audit"} {
+			code, body := b.get(path)
+			if code != want {
+				t.Errorf("%s on %s: %d; want %d", who, path, code, want)
+			}
+			if want == http.StatusOK && (strings.Contains(body, `name="token"`) || !strings.Contains(body, "/public"+path+".js")) {
+				t.Errorf("%s's %s: %.300s", who, path, body)
+			}
 		}
 	}
 	// the API: an admin's session works as the admin token did
-	if code, _ := alice.get("/api/locations"); code != http.StatusForbidden {
+	if code, _ := alice.get("/api/topology"); code != http.StatusForbidden {
 		t.Errorf("alice on the API: %d", code)
 	}
-	if code, body := root.get("/api/slips"); code != http.StatusOK || !strings.Contains(body, "alice-memo") {
+	if code, body := root.get("/api/audit"); code != http.StatusOK || !strings.Contains(body, `"who":"Alice","action":"login"`) {
 		t.Errorf("root on the API: %d %s", code, body)
 	}
 	if code, _ := root.send("DELETE", "/api/locations/office", nil, func(r *http.Request) { r.Header.Set("Origin", "https://evil.example") }); code != http.StatusForbidden {
@@ -253,7 +267,7 @@ func TestLogin(t *testing.T) {
 	for _, who := range []string{"carol", "mallory"} {
 		b := s.browser()
 		s.idp.LoginAs(who)
-		if code, _ := b.get("/"); code != http.StatusForbidden {
+		if code, _ := b.get("/jobs"); code != http.StatusForbidden {
 			t.Errorf("%s got in: %d", who, code)
 		}
 	}
@@ -267,8 +281,8 @@ func TestLogin(t *testing.T) {
 	if code, _ := alice.post("/auth/logout", nil); code != http.StatusSeeOther {
 		t.Errorf("logout: %d", code)
 	}
-	if code, _ := alice.get("/"); code != http.StatusSeeOther {
-		t.Errorf("/ after signing out: %d", code)
+	if code, _ := alice.get("/jobs"); code != http.StatusSeeOther {
+		t.Errorf("/jobs after signing out: %d", code)
 	}
 }
 

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -25,8 +24,9 @@ type handler struct {
 
 // Handler serves a manager over HTTP:
 //
-//	POST /ipp/print/{location}                 the location's IPP printer
-//	/api/…                                     the API (bearer AdminToken, or an admin's session)
+//	POST /ipp/print/{node}                     the node's IPP printer
+//	POST /ipp/print                            the server (CUPS-Get-Printers)
+//	/api/…                                     the API (bearer AdminToken, or a session of the pages)
 //	/device/…                                  the devices' endpoints (their session)
 //
 // It is mounted on the web application's mux; it holds nothing between
@@ -34,7 +34,9 @@ type handler struct {
 func Handler(m *Manager) http.Handler {
 	h := &handler{m: m}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST "+IPPPath+"/{location}", h.serveIPP)
+	mux.HandleFunc("POST "+IPPPath+"/{dest}", h.serveIPP)
+	mux.HandleFunc("POST "+IPPPath, h.serveIPP)
+	mux.HandleFunc("POST "+IPPPath+"/{$}", h.serveIPP)
 
 	mux.HandleFunc("GET /api/locations", h.adminOnly(h.listLocations))
 	mux.HandleFunc("GET /api/locations/{name}", h.adminOnly(h.getLocation))
@@ -49,10 +51,37 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/printers/{name}", h.adminOnly(h.getPrinter))
 	mux.HandleFunc("PUT /api/printers/{name}", h.adminOnly(h.putPrinter))
 	mux.HandleFunc("DELETE /api/printers/{name}", h.adminOnly(h.deletePrinter))
-	mux.HandleFunc("GET /api/slips", h.adminOnly(h.listSlips))
+	mux.HandleFunc("GET /api/me", h.whoami)
+	mux.HandleFunc("GET /api/my/jobs", h.userOnly(h.myJobs))
+	mux.HandleFunc("GET /api/destinations", h.userOnly(h.destinations))
+	mux.HandleFunc("GET /api/audit", h.adminOnly(h.auditLog))
 	mux.HandleFunc("GET /api/slips/{id}", h.adminOnly(h.getSlip))
 	mux.HandleFunc("GET /api/slips/{id}/document", h.adminOnly(h.slipDocument))
 	mux.HandleFunc("POST /api/slips/{id}/cancel", h.adminOnly(h.cancelSlip))
+	mux.HandleFunc("GET /api/nodes", h.adminOnly(h.listNodes))
+	mux.HandleFunc("GET /api/nodes/{name}", h.adminOnly(h.getNode))
+	mux.HandleFunc("PUT /api/nodes/{name}", h.adminOnly(h.putNode))
+	mux.HandleFunc("DELETE /api/nodes/{name}", h.adminOnly(h.deleteNode))
+	mux.HandleFunc("POST /api/nodes/{name}/key", h.adminOnly(h.rotateKey))
+	mux.HandleFunc("GET /api/topology", h.adminOnly(h.topology))
+	mux.HandleFunc("GET /api/layout", h.adminOnly(h.getLayout))
+	mux.HandleFunc("PUT /api/layout", h.adminOnly(h.putLayout))
+	mux.HandleFunc("GET /api/templates", h.adminOnly(h.listTemplates))
+	mux.HandleFunc("GET /api/templates/{id}", h.adminOnly(h.getTemplate))
+	mux.HandleFunc("GET /api/templates/{id}/file", h.adminOnly(h.templateFile))
+	mux.HandleFunc("PUT /api/templates/{id}", h.adminOnly(h.putTemplate))
+	mux.HandleFunc("DELETE /api/templates/{id}", h.adminOnly(h.deleteTemplate))
+	mux.HandleFunc("POST "+InPath+"/{name}", h.serveIn)
+	mux.HandleFunc("GET /api/destinations/{name}/jobs", h.adminOnly(h.destJobs))
+	mux.HandleFunc("POST /api/destinations/{name}/jobs", h.submit)
+	mux.HandleFunc("GET /api/jobs/{id}", h.ownJob(h.getJob))
+	mux.HandleFunc("GET /api/jobs/{id}/document", h.ownJob(h.jobDocument))
+	mux.HandleFunc("POST /api/jobs/{id}/cancel", h.ownJob(h.cancelJob))
+	mux.HandleFunc("GET /api/inboxes/{name}", h.adminOnly(h.inbox))
+	mux.HandleFunc("POST /api/items/{id}/release", h.adminOnly(h.release))
+	mux.HandleFunc("POST /api/items/{id}/discard", h.adminOnly(h.discardItem))
+	mux.HandleFunc("GET /api/deliveries", h.adminOnly(h.pending))
+	mux.HandleFunc("POST /api/deliveries/{id}/retry", h.adminOnly(h.retry))
 	mux.HandleFunc("POST /api/tick", h.tick)
 
 	mux.HandleFunc("POST /device/enroll", h.enroll)
@@ -117,48 +146,17 @@ func sameSecret(a, b string) bool {
 	return a != "" && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-func (h *handler) admin(r *http.Request) bool { return sameSecret(h.m.o.AdminToken, bearer(r)) }
-
-// viewer is the person signed in to the pages a request comes from, or
-// nil. A request that carries a credential of its own (Authorization) is
-// not the session's.
-func (h *handler) viewer(r *http.Request) *Viewer {
-	if h.m.o.Viewer == nil || r.Header.Get("Authorization") != "" {
-		return nil
-	}
-	return h.m.o.Viewer(r)
-}
-
-// sameOrigin tells a request that a page of the manager's own origin
-// made, or one that changes nothing. The session's cookie rides on every
-// request to the origin, so what it authorizes to change must come from
-// the origin's pages.
-func sameOrigin(r *http.Request) bool {
-	switch r.Method {
-	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return true
-	}
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
-		return site == "same-origin"
-	}
-	o, err := url.Parse(r.Header.Get("Origin"))
-	return err == nil && o.Host != "" && o.Host == r.Host
-}
-
-// adminOnly lets the admin token, or an admin signed in to the pages.
+// adminOnly serves a request of an administrator: the admin token, or
+// an admin signed in to the pages.
 func (h *handler) adminOnly(fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if h.admin(r) {
-			fn(w, r)
-			return
-		}
-		v := h.viewer(r)
+		v, ok := h.viewerOf(r)
 		switch {
-		case v == nil:
+		case !ok:
 			w.Header().Set("WWW-Authenticate", `Bearer realm="bdf print manager"`)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the admin token or an admin's sign-in is required"})
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the admin token or an administrator's sign-in is required"})
 		case !v.Admin:
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "admins only"})
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "administrators only"})
 		case !sameOrigin(r):
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "a request of another origin"})
 		default:
@@ -196,6 +194,7 @@ func (h *handler) putLocation(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "put-display", l.Name, l.Title)
 	writeJSON(w, http.StatusOK, l)
 }
 
@@ -204,6 +203,7 @@ func (h *handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "delete-display", r.PathValue("name"), "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -241,6 +241,7 @@ func (h *handler) enrollment(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "enrollment-code", r.PathValue("name"), "")
 	scheme := "http"
 	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
 		scheme = "https"
@@ -273,6 +274,7 @@ func (h *handler) removeDevice(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "remove-device", r.PathValue("id"), "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -305,6 +307,7 @@ func (h *handler) putPrinter(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "put-printer", p.Name, p.URL)
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -313,17 +316,8 @@ func (h *handler) deletePrinter(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "delete-printer", r.PathValue("name"), "")
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// listSlips answers every slip, the latest first.
-func (h *handler) listSlips(w http.ResponseWriter, r *http.Request) {
-	ss, err := h.m.Slips(r.Context())
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, ss)
 }
 
 func (h *handler) getSlip(w http.ResponseWriter, r *http.Request) {
@@ -344,17 +338,13 @@ func (h *handler) slipDocument(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/x-bdf")
 	w.Header().Set("Content-Length", strconv.FormatInt(s.Size, 10))
 	w.Header().Set("Content-Disposition", `attachment; filename="slip-`+s.ID+`.bdf"`)
-	if err := h.m.WriteDocument(r.Context(), s, w); err != nil {
+	if err := h.m.WriteDocument(r.Context(), s.Job, w); err != nil {
 		panic(http.ErrAbortHandler)
 	}
 }
 
 func (h *handler) cancelSlip(w http.ResponseWriter, r *http.Request) {
-	by := Mark{Worker: "admin"}
-	if v := h.viewer(r); v != nil {
-		by.Worker = clip(v.Principal().Label(), 80)
-	}
-	s, err := h.m.Cancel(r.Context(), r.PathValue("id"), by)
+	s, err := h.m.CancelSlip(r.Context(), r.PathValue("id"), Mark{Worker: "admin"})
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -362,20 +352,218 @@ func (h *handler) cancelSlip(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s)
 }
 
-// submit takes a document (the body) for a location: ?name= names it,
-// and ?user= is who the sender says sent it (shown only). A person signed
-// in to the pages sends it as themselves, to a location they may print
-// to.
+// The topology: nodes, jobs, inboxes and deliveries.
+
+// The hash of an endpoint's key stays in the store: the API shows nodes
+// without it.
+
+func (h *handler) listNodes(w http.ResponseWriter, r *http.Request) {
+	ns, err := h.m.Nodes(r.Context())
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	for i := range ns {
+		ns[i].KeyHash = ""
+	}
+	writeJSON(w, http.StatusOK, ns)
+}
+
+func (h *handler) getNode(w http.ResponseWriter, r *http.Request) {
+	n, err := h.m.Node(r.Context(), r.PathValue("name"))
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	n.KeyHash = ""
+	writeJSON(w, http.StatusOK, n)
+}
+
+// putNode puts a node; a new endpoint's key is in the answer, this once.
+func (h *handler) putNode(w http.ResponseWriter, r *http.Request) {
+	var n Node
+	if err := readJSON(r, &n); err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	n.Name = r.PathValue("name")
+	key, err := h.m.PutNode(r.Context(), n)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	got, err := h.m.Node(r.Context(), n.Name)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	got.KeyHash = ""
+	detail := n.Kind
+	if key != "" {
+		detail += ", a key made"
+	}
+	h.m.audit(r.Context(), h.who(r), "put-node", n.Name, detail)
+	writeJSON(w, http.StatusOK, nodeWithKey{got, key})
+}
+
+// nodeWithKey is a node and, once, an endpoint's key.
+type nodeWithKey struct {
+	*Node
+	Key string `json:"key,omitempty"`
+}
+
+func (h *handler) rotateKey(w http.ResponseWriter, r *http.Request) {
+	key, err := h.m.RotateKey(r.Context(), r.PathValue("name"))
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	h.m.audit(r.Context(), h.who(r), "rotate-key", r.PathValue("name"), "")
+	writeJSON(w, http.StatusOK, map[string]string{"name": r.PathValue("name"), "key": key})
+}
+
+func (h *handler) deleteNode(w http.ResponseWriter, r *http.Request) {
+	if err := h.m.DeleteNode(r.Context(), r.PathValue("name")); err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	h.m.audit(r.Context(), h.who(r), "delete-node", r.PathValue("name"), "")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *handler) topology(w http.ResponseWriter, r *http.Request) {
+	ns, err := h.m.Topology(r.Context())
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	if ns == nil {
+		ns = []TopoNode{}
+	}
+	writeJSON(w, http.StatusOK, ns)
+}
+
+// destJobs lists the last jobs sent to a destination: ?limit= bounds them.
+func (h *handler) destJobs(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	js, err := h.m.JobsOf(r.Context(), r.PathValue("name"), limit)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, js)
+}
+
+func (h *handler) getJob(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
+	writeJSON(w, http.StatusOK, j)
+}
+
+func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
+	w.Header().Set("Content-Type", "application/x-bdf")
+	w.Header().Set("Content-Length", strconv.FormatInt(j.Size, 10))
+	w.Header().Set("Content-Disposition", `attachment; filename="job-`+j.ID+`.bdf"`)
+	if err := h.m.WriteDocument(r.Context(), j.Number, w); err != nil {
+		panic(http.ErrAbortHandler)
+	}
+}
+
+// cancelJob cancels a job: the submitter's or an administrator's (the
+// members of its group see it only).
+func (h *handler) cancelJob(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
+	if !v.CanCancel(j) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the sender or an administrator cancels a job"})
+		return
+	}
+	j, err := h.m.Cancel(r.Context(), j.ID, Mark{Worker: clip(v.Label(), 80)})
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	h.m.audit(r.Context(), v.Label(), "cancel-job", j.ID, j.Name)
+	writeJSON(w, http.StatusOK, j)
+}
+
+func (h *handler) inbox(w http.ResponseWriter, r *http.Request) {
+	v, err := h.m.Inbox(r.Context(), r.PathValue("name"))
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// release sends an item on: {"to": [nodes], "worker": name}.
+func (h *handler) release(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		To     []string `json:"to"`
+		Worker string   `json:"worker"`
+	}
+	if r.ContentLength != 0 {
+		if err := readJSON(r, &in); err != nil {
+			h.writeErr(w, err)
+			return
+		}
+	}
+	it, err := h.m.Release(r.Context(), r.PathValue("id"), in.To, Mark{Worker: clip(strings.TrimSpace(firstOr(in.Worker, h.who(r))), 80)})
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	h.m.audit(r.Context(), h.who(r), "release-item", it.ID, strings.Join(it.Released.To, ", ")+firstOr(" by "+in.Worker, ""))
+	writeJSON(w, http.StatusOK, it)
+}
+
+func (h *handler) discardItem(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Worker string `json:"worker"`
+	}
+	if r.ContentLength != 0 {
+		if err := readJSON(r, &in); err != nil {
+			h.writeErr(w, err)
+			return
+		}
+	}
+	it, err := h.m.Discard(r.Context(), r.PathValue("id"), Mark{Worker: clip(strings.TrimSpace(firstOr(in.Worker, h.who(r))), 80)})
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	h.m.audit(r.Context(), h.who(r), "discard-item", it.ID, in.Worker)
+	writeJSON(w, http.StatusOK, it)
+}
+
+func (h *handler) pending(w http.ResponseWriter, r *http.Request) {
+	ds, err := h.m.Pending(r.Context())
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, ds)
+}
+
+func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
+	d, err := h.m.Retry(r.Context(), r.PathValue("id"))
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+// submit takes a document (the body) for a destination: ?name= names it.
+// At /api/locations/{name}/slips the answer is the slip of the location;
+// at /api/destinations/{name}/jobs, the job.
 func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 	by, ok := h.submitter(r)
-	if v := h.viewer(r); v != nil {
-		l, err := h.m.Location(r.Context(), r.PathValue("name"))
+	if v, signedIn := h.viewerOf(r); signedIn && v.Kind == PrincipalUser {
+		// a person signed in sends as themselves, to a node they may
+		scope, owner, _, err := h.m.destScope(r.Context(), r.PathValue("name"))
 		if err != nil {
 			h.writeErr(w, err)
 			return
 		}
-		if !v.CanPrintTo(l.Kind, l.Owner) || !sameOrigin(r) {
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not print to " + l.Name})
+		if !v.CanSendTo(scope, owner) || !sameOrigin(r) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not send to " + r.PathValue("name")})
 			return
 		}
 		by, ok = v.Principal(), true
@@ -401,12 +589,23 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	s, err := h.m.Submit(r.Context(), r.PathValue("name"), Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "api", Doc: f, Size: n})
+	dest := r.PathValue("name")
+	j, err := h.m.Submit(r.Context(), dest, Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "api", Doc: f, Size: n})
 	if err != nil {
 		h.writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, s)
+	if strings.HasPrefix(r.URL.Path, "/api/locations/") {
+		for _, l := range j.Legs {
+			if l.Kind == KindDisplay && l.Node == dest && l.Ref != "" {
+				if s, err := h.m.Slip(r.Context(), l.Ref); err == nil {
+					writeJSON(w, http.StatusCreated, s)
+					return
+				}
+			}
+		}
+	}
+	writeJSON(w, http.StatusCreated, j)
 }
 
 // tick runs Tick: for the admin, or the scheduler's TickToken.

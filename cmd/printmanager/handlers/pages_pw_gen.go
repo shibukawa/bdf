@@ -13,28 +13,6 @@ type Account struct {
 	Admin   bool
 }
 
-type SlipRow struct {
-	Job        int
-	Name       string
-	Location   string
-	State      string
-	StateLabel string
-	Pages      int
-	Received   string
-	By         string
-	Via        string
-	Claimed    string
-	Group      string
-	Mine       bool
-}
-
-type Place struct {
-	Name  string
-	Title string
-	Kind  string
-	Owner string
-}
-
 type renderShellParams struct {
 	Title    string
 	Children htmlbind.Fragment
@@ -42,25 +20,24 @@ type renderShellParams struct {
 
 type renderAppBarParams struct {
 	Title    string
-	SignedIn bool
 	Account  Account
 	Children htmlbind.Fragment
 }
 
-type HomeParams struct {
-	SignedIn  bool
-	Account   Account
-	Groups    []string
-	Slips     []SlipRow
-	NoSlips   bool
-	Locations []Place
-	Printers  []Place
-	CanPrint  bool
+type SignInParams struct {
+	Enabled bool
 }
 
 type ForbiddenParams struct {
-	SignedIn bool
-	Account  Account
+	Account Account
+}
+
+type JobsParams struct {
+	Account Account
+}
+
+type AuditParams struct {
+	Account Account
 }
 
 type TabletParams struct{}
@@ -69,306 +46,66 @@ type AdminParams struct {
 	Account Account
 }
 
-type planHomeOpsScope2 struct {
-	Outer HomeParams
-	Item  string
-	Index int
-}
-
-var planHomeOpsScope2Ops = htmlbind.Builder[planHomeOpsScope2]{}
-
-type planHomeOpsScope3 struct {
-	Outer HomeParams
-	Item  SlipRow
-	Index int
-}
-
-var planHomeOpsScope3Ops = htmlbind.Builder[planHomeOpsScope3]{}
-
-type planHomeOpsScope4 struct {
-	Outer HomeParams
-	Item  Place
-	Index int
-}
-
-var planHomeOpsScope4Ops = htmlbind.Builder[planHomeOpsScope4]{}
-
-type planHomeOpsScope5 struct {
-	Outer HomeParams
-	Item  Place
-	Index int
-}
-
-var planHomeOpsScope5Ops = htmlbind.Builder[planHomeOpsScope5]{}
-
-type planHomeOpsScope6 struct {
-	Outer HomeParams
-	Item  Place
-	Index int
-}
-
-var planHomeOpsScope6Ops = htmlbind.Builder[planHomeOpsScope6]{}
-
-var planHomeOpsFill1Plan = &htmlbind.Plan[HomeParams]{Ops: []htmlbind.Op[HomeParams]{
-	planHomeOps.Static(" "),
-	planHomeOps.Component(func(p HomeParams) htmlbind.Fragment {
-		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", SignedIn: p.SignedIn, Account: p.Account})
-	}),
-	planHomeOps.Static(" <main class=\"mx-auto grid max-w-5xl gap-6 p-4 sm:p-8\"> "),
-	planHomeOps.If(func(p HomeParams) bool { return !(p.SignedIn) },
-		[]htmlbind.Op[HomeParams]{
-			planHomeOps.Static(" <div role=\"alert\" class=\"alert alert-warning\"> <span>サインインが設定されていません（AUTH_OIDC_ISSUER）。開発のときだけ、こうして開きます。</span> </div> "),
+var planSignInOpsFill1Plan = &htmlbind.Plan[SignInParams]{Ops: []htmlbind.Op[SignInParams]{
+	planSignInOps.Static(" <main class=\"mx-auto flex min-h-screen max-w-md flex-col justify-center p-4\"> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h1 class=\"card-title text-2xl\">BDF Print Manager</h1> <p class=\"text-base-content/70\">A software-defined document network: documents enter at virtual printers and API endpoints, flow through the nodes you compose, and end on display boards, printers and archives.</p> "),
+	planSignInOps.If(func(p SignInParams) bool { return p.Enabled },
+		[]htmlbind.Op[SignInParams]{
+			planSignInOps.Static(" <a id=\"sign-in\" href=\"/auth/login?next=%2Fjobs\" class=\"btn btn-primary btn-block\">Sign in</a> <p class=\"text-center text-sm text-base-content/60\">with your organization's account</p> "),
 		},
-		nil),
-	planHomeOps.Static(" "),
-	planHomeOps.If(func(p HomeParams) bool { return p.SignedIn },
-		[]htmlbind.Op[HomeParams]{
-			planHomeOps.Static(" <section class=\"flex flex-wrap items-center gap-2\"> <h1 class=\"mr-2 text-2xl font-bold\">"),
-			planHomeOps.Text(func(p HomeParams) string { return p.Account.Name }),
-			planHomeOps.Static("さんのジョブ</h1> "),
-			planHomeOps.For(
-				func(p HomeParams) []string { return p.Groups },
-				func(p HomeParams, item string, index int) planHomeOpsScope2 {
-					return planHomeOpsScope2{Outer: p, Item: item, Index: index}
-				},
-				[]htmlbind.Op[planHomeOpsScope2]{
-					planHomeOpsScope2Ops.Static("<span class=\"badge badge-outline\">"),
-					planHomeOpsScope2Ops.Text(func(p planHomeOpsScope2) string { return p.Item }),
-					planHomeOpsScope2Ops.Static("</span>"),
-				}),
-			planHomeOps.Static(" <span class=\"flex-1\"></span> <a href=\"/tablet\" class=\"btn btn-sm\">端末の画面</a> "),
-			planHomeOps.If(func(p HomeParams) bool { return p.Account.Admin },
-				[]htmlbind.Op[HomeParams]{
-					planHomeOps.Static("<a href=\"/admin\" class=\"btn btn-sm btn-primary\">管理</a>"),
-				},
-				nil),
-			planHomeOps.Static(" </section> "),
-		},
-		nil),
-	planHomeOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">見えるジョブ</h2> <p class=\"text-sm text-base-content/60\">自分が刷ったものと、属するグループのもの"),
-	planHomeOps.Text(func(p HomeParams) string {
-		return (func() string {
-			if p.Account.Admin {
-				return "（管理者は全部）"
-			}
-			return ""
-		})()
-	}),
-	planHomeOps.Static("。</p> <div class=\"overflow-x-auto\"> <table id=\"slips\" class=\"table table-sm\"><thead><tr><th>#</th><th>名前</th><th>場所</th><th>状態</th><th class=\"hidden sm:table-cell\">送った人</th><th class=\"hidden md:table-cell\">グループ</th><th class=\"hidden sm:table-cell\">受けた時刻</th></tr></thead><tbody>"),
-	planHomeOps.For(
-		func(p HomeParams) []SlipRow { return p.Slips },
-		func(p HomeParams, item SlipRow, index int) planHomeOpsScope3 {
-			return planHomeOpsScope3{Outer: p, Item: item, Index: index}
-		},
-		[]htmlbind.Op[planHomeOpsScope3]{
-			planHomeOpsScope3Ops.Static("<tr"),
-			planHomeOpsScope3Ops.Attr("data-job", func(p planHomeOpsScope3) (string, bool) { return htmlbind.FormatInt(p.Item.Job), true }),
-			planHomeOpsScope3Ops.Static("><td class=\"font-mono\">"),
-			planHomeOpsScope3Ops.Raw(func(p planHomeOpsScope3) string { return htmlbind.FormatInt(p.Item.Job) }),
-			planHomeOpsScope3Ops.Static("</td><td class=\"max-w-48 break-words font-semibold\">"),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Name }),
-			planHomeOpsScope3Ops.Static("<div class=\"text-xs font-normal text-base-content/60 sm:hidden\">"),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.By }),
-			planHomeOpsScope3Ops.Static(" · "),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Received }),
-			planHomeOpsScope3Ops.Static("</div></td><td class=\"whitespace-nowrap font-mono text-sm\">"),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Location }),
-			planHomeOpsScope3Ops.Static("</td><td><span"),
-			planHomeOpsScope3Ops.Attr("class", func(p planHomeOpsScope3) (string, bool) {
-				return "badge badge-sm whitespace-nowrap " + htmlbind.Escape((func() string {
-					if p.Item.State == "done" {
-						return "badge-success"
-					}
-					return (func() string {
-						if p.Item.State == "canceled" {
-							return "badge-ghost"
-						}
-						return (func() string {
-							if p.Item.State == "opened" {
-								return "badge-info"
-							}
-							return "badge-warning"
-						})()
-					})()
-				})()), true
-			}),
-			planHomeOpsScope3Ops.Static(">"),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.StateLabel }),
-			planHomeOpsScope3Ops.Static("</span></td><td class=\"hidden sm:table-cell\"> <span class=\"font-semibold\">"),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.By }),
-			planHomeOpsScope3Ops.Static("</span>"),
-			planHomeOpsScope3Ops.If(func(p planHomeOpsScope3) bool { return p.Item.Mine },
-				[]htmlbind.Op[planHomeOpsScope3]{
-					planHomeOpsScope3Ops.Static(" <span class=\"badge badge-primary badge-xs\">自分</span>"),
-				},
-				nil),
-			planHomeOpsScope3Ops.Static(" <div class=\"text-xs text-base-content/60\">"),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Via }),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string {
-				return (func() string {
-					if p.Item.Claimed == "" {
-						return ""
-					}
-					return ("・名乗り: " + p.Item.Claimed)
-				})()
-			}),
-			planHomeOpsScope3Ops.Static("</div> </td><td class=\"hidden whitespace-nowrap md:table-cell\">"),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string {
-				return (func() string {
-					if p.Item.Group == "" {
-						return "—"
-					}
-					return p.Item.Group
-				})()
-			}),
-			planHomeOpsScope3Ops.Static("</td><td class=\"hidden whitespace-nowrap text-sm sm:table-cell\">"),
-			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Received }),
-			planHomeOpsScope3Ops.Static("</td></tr>"),
+		[]htmlbind.Op[SignInParams]{
+			planSignInOps.Static(" <div role=\"alert\" class=\"alert alert-warning\">No sign-in is configured (AUTH_OIDC_ISSUER): nobody signs in. Development only.</div> "),
 		}),
-	planHomeOps.Static("</tbody></table> </div> "),
-	planHomeOps.If(func(p HomeParams) bool { return p.NoSlips },
-		[]htmlbind.Op[HomeParams]{
-			planHomeOps.Static("<p id=\"no-slips\" class=\"py-6 text-center text-base-content/50\">見えるジョブはありません</p>"),
-		},
-		nil),
-	planHomeOps.Static(" </div> </section> <div class=\"grid gap-6 md:grid-cols-2\"> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">刷る</h2> "),
-	planHomeOps.If(func(p HomeParams) bool { return !(p.CanPrint) },
-		[]htmlbind.Op[HomeParams]{
-			planHomeOps.Static("<p class=\"text-base-content/50\">刷れる場所はありません</p>"),
-		},
-		nil),
-	planHomeOps.Static(" "),
-	planHomeOps.If(func(p HomeParams) bool { return p.CanPrint },
-		[]htmlbind.Op[HomeParams]{
-			planHomeOps.Static(" <form id=\"upload\" class=\"flex flex-col gap-3\"> <select id=\"upload-location\" class=\"select w-full\" required> "),
-			planHomeOps.For(
-				func(p HomeParams) []Place { return p.Locations },
-				func(p HomeParams, item Place, index int) planHomeOpsScope4 {
-					return planHomeOpsScope4{Outer: p, Item: item, Index: index}
-				},
-				[]htmlbind.Op[planHomeOpsScope4]{
-					planHomeOpsScope4Ops.Static("<option"),
-					planHomeOpsScope4Ops.Attr("value", func(p planHomeOpsScope4) (string, bool) { return htmlbind.Escape(p.Item.Name), true }),
-					planHomeOpsScope4Ops.Static(">"),
-					planHomeOpsScope4Ops.Text(func(p planHomeOpsScope4) string {
-						return (func() string {
-							if p.Item.Title == "" {
-								return p.Item.Name
-							}
-							return p.Item.Title
-						})()
-					}),
-					planHomeOpsScope4Ops.Static("</option>"),
-				}),
-			planHomeOps.Static(" </select> <input id=\"upload-file\" type=\"file\" class=\"file-input w-full\" required> <button type=\"submit\" class=\"btn btn-primary\">送る</button> </form> "),
-		},
-		nil),
-	planHomeOps.Static(" </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">刷れる場所とプリンタ</h2> <ul id=\"places\" class=\"list\"> "),
-	planHomeOps.For(
-		func(p HomeParams) []Place { return p.Locations },
-		func(p HomeParams, item Place, index int) planHomeOpsScope5 {
-			return planHomeOpsScope5{Outer: p, Item: item, Index: index}
-		},
-		[]htmlbind.Op[planHomeOpsScope5]{
-			planHomeOpsScope5Ops.Static(" <li class=\"list-row items-center\"> <div><div class=\"font-semibold\">"),
-			planHomeOpsScope5Ops.Text(func(p planHomeOpsScope5) string {
-				return (func() string {
-					if p.Item.Title == "" {
-						return p.Item.Name
-					}
-					return p.Item.Title
-				})()
-			}),
-			planHomeOpsScope5Ops.Static("</div><div class=\"font-mono text-xs text-base-content/60\">/ipp/print/"),
-			planHomeOpsScope5Ops.Text(func(p planHomeOpsScope5) string { return p.Item.Name }),
-			planHomeOpsScope5Ops.Static("</div></div> <span"),
-			planHomeOpsScope5Ops.Attr("class", func(p planHomeOpsScope5) (string, bool) {
-				return "badge badge-sm badge-soft whitespace-nowrap " + htmlbind.Escape((func() string {
-					if p.Item.Kind == "group" {
-						return "badge-secondary"
-					}
-					return (func() string {
-						if p.Item.Kind == "personal" {
-							return "badge-accent"
-						}
-						return "badge-neutral"
-					})()
-				})()), true
-			}),
-			planHomeOpsScope5Ops.Static(">"),
-			planHomeOpsScope5Ops.Text(func(p planHomeOpsScope5) string { return p.Item.Kind }),
-			planHomeOpsScope5Ops.Text(func(p planHomeOpsScope5) string {
-				return (func() string {
-					if p.Item.Owner == "" {
-						return ""
-					}
-					return (": " + p.Item.Owner)
-				})()
-			}),
-			planHomeOpsScope5Ops.Static("</span> </li> "),
-		}),
-	planHomeOps.Static(" "),
-	planHomeOps.For(
-		func(p HomeParams) []Place { return p.Printers },
-		func(p HomeParams, item Place, index int) planHomeOpsScope6 {
-			return planHomeOpsScope6{Outer: p, Item: item, Index: index}
-		},
-		[]htmlbind.Op[planHomeOpsScope6]{
-			planHomeOpsScope6Ops.Static(" <li class=\"list-row items-center\"> <div><div class=\"font-semibold\">🖨 "),
-			planHomeOpsScope6Ops.Text(func(p planHomeOpsScope6) string { return p.Item.Name }),
-			planHomeOpsScope6Ops.Static("</div><div class=\"text-xs text-base-content/60\">プリンタ</div></div> <span"),
-			planHomeOpsScope6Ops.Attr("class", func(p planHomeOpsScope6) (string, bool) {
-				return "badge badge-sm badge-soft whitespace-nowrap " + htmlbind.Escape((func() string {
-					if p.Item.Kind == "group" {
-						return "badge-secondary"
-					}
-					return (func() string {
-						if p.Item.Kind == "personal" {
-							return "badge-accent"
-						}
-						return "badge-neutral"
-					})()
-				})()), true
-			}),
-			planHomeOpsScope6Ops.Static(">"),
-			planHomeOpsScope6Ops.Text(func(p planHomeOpsScope6) string { return p.Item.Kind }),
-			planHomeOpsScope6Ops.Text(func(p planHomeOpsScope6) string {
-				return (func() string {
-					if p.Item.Owner == "" {
-						return ""
-					}
-					return (": " + p.Item.Owner)
-				})()
-			}),
-			planHomeOpsScope6Ops.Static("</span> </li> "),
-		}),
-	planHomeOps.Static(" </ul> </div> </section> </div> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> </main> <script type=\"module\" src=\"/public/home.js\"></script> "),
+	planSignInOps.Static(" <a href=\"/tablet\" class=\"link link-hover text-center text-sm text-base-content/60\">This is a display board's device</a> </div> </div> </main> "),
 }}
 
-var planForbiddenOpsFill7Plan = &htmlbind.Plan[ForbiddenParams]{Ops: []htmlbind.Op[ForbiddenParams]{
+var planForbiddenOpsFill2Plan = &htmlbind.Plan[ForbiddenParams]{Ops: []htmlbind.Op[ForbiddenParams]{
 	planForbiddenOps.Static(" "),
 	planForbiddenOps.Component(func(p ForbiddenParams) htmlbind.Fragment {
-		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", SignedIn: p.SignedIn, Account: p.Account})
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account})
 	}),
-	planForbiddenOps.Static(" <main class=\"mx-auto max-w-lg p-4 sm:p-8\"> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body items-center text-center\"> <h1 class=\"card-title text-2xl\">管理者だけのページです</h1> <p class=\"text-base-content/70\">"),
+	planForbiddenOps.Static(" <main class=\"mx-auto max-w-lg p-4 sm:p-8\"> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body items-center text-center\"> <h1 class=\"card-title text-2xl\">Administrators only</h1> <p class=\"text-base-content/70\">"),
 	planForbiddenOps.Text(func(p ForbiddenParams) string { return p.Account.Name }),
-	planForbiddenOps.Static("さんは管理者ではありません。自分とグループのジョブはトップのページで見られます。</p> <div class=\"card-actions\"><a href=\"/\" class=\"btn btn-primary\">トップへ</a></div> </div> </div> </main> "),
+	planForbiddenOps.Static(" is not an administrator. Your jobs and your groups' are on the Jobs page.</p> <div class=\"card-actions\"><a href=\"/jobs\" class=\"btn btn-primary\">Jobs</a></div> </div> </div> </main> "),
 }}
 
-var planTabletOpsFill8Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
-	planTabletOps.Static(" <div id=\"app\" class=\"min-h-screen\"> <header id=\"bar\" class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex min-w-0 flex-1 items-center gap-3\"> <h1 id=\"title\" class=\"truncate text-2xl font-bold\">伝票</h1> <span id=\"status\" class=\"badge\" hidden></span> </div> <label class=\"input input-lg w-full sm:w-56\"> <span class=\"label\">作業者</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"名前\"> </label> </header> <section id=\"enroll\" class=\"mx-auto max-w-lg p-4 sm:p-8\" hidden> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h2 class=\"card-title text-2xl\">この端末を登録する</h2> <p class=\"text-base-content/70\">管理者が出した登録コードを入れてください。登録した端末だけが伝票を見られます。</p> <form id=\"enroll-form\" class=\"flex flex-col gap-4\"> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">登録コード</legend> <input id=\"code\" class=\"input input-lg w-full font-mono tracking-widest uppercase\" autocomplete=\"off\" autocapitalize=\"characters\" required> </fieldset> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">端末の名前</legend> <input id=\"device-name\" class=\"input input-lg w-full\" autocomplete=\"off\" placeholder=\"例: 出荷口のタブレット\"> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">登録する</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">未完了 <span id=\"open-count\" class=\"badge badge-warning ml-2\" hidden></span></button> <button id=\"tab-ended\" role=\"tab\" class=\"tab flex-1 sm:flex-none\" type=\"button\">完了・取り消し</button> </div> <ul id=\"open-list\" class=\"mt-4 grid gap-3\"></ul> <ul id=\"ended-list\" class=\"mt-4 grid gap-3\" hidden></ul> <div id=\"empty\" class=\"mt-16 text-center text-xl text-base-content/50\" hidden>伝票はありません</div> </section> <section id=\"viewer\" hidden> <div class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <button id=\"back\" type=\"button\" class=\"btn btn-lg btn-ghost\">← 一覧</button> <span id=\"viewer-title\" class=\"min-w-0 flex-1 truncate text-lg font-semibold\"></span> <div class=\"flex gap-2\"> <button id=\"print\" type=\"button\" class=\"btn btn-lg btn-outline\" hidden>この倉庫で刷る</button> <button id=\"done\" type=\"button\" class=\"btn btn-lg btn-success\">完了</button> </div> </div> <div id=\"pages\" class=\"mx-auto grid max-w-5xl gap-4 p-4\"></div> </section> <div id=\"toasts\" class=\"toast toast-top toast-center z-50\"></div> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
+var planJobsOpsFill3Plan = &htmlbind.Plan[JobsParams]{Ops: []htmlbind.Op[JobsParams]{
+	planJobsOps.Static(" "),
+	planJobsOps.Component(func(p JobsParams) htmlbind.Fragment {
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account})
+	}),
+	planJobsOps.Static(" <main class=\"mx-auto grid max-w-6xl gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <form id=\"print-form\" class=\"card-body\"> <h2 class=\"card-title\">Print a document</h2> <p class=\"text-sm text-base-content/60\">PDF, Office documents, images and .bdf. It flows from the node chosen; the nodes listed are those you may send to.</p> <div class=\"flex flex-wrap gap-2\"> <select id=\"print-dest\" class=\"select w-full sm:w-64\" required></select> <input id=\"print-file\" type=\"file\" class=\"file-input w-full sm:flex-1\" required> <input id=\"print-name\" class=\"input w-full sm:w-48\" placeholder=\"job name (the file's)\"> <button type=\"submit\" class=\"btn btn-primary\">Print</button> </div> </form> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
+	planJobsOps.If(func(p JobsParams) bool { return p.Account.Admin },
+		[]htmlbind.Op[JobsParams]{
+			planJobsOps.Static("All jobs"),
+		},
+		[]htmlbind.Op[JobsParams]{
+			planJobsOps.Static("My jobs and my groups'"),
+		}),
+	planJobsOps.Static("</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th class=\"hidden md:table-cell\">Group</th><th class=\"hidden sm:table-cell\">Received</th><th>State</th><th class=\"hidden lg:table-cell\">Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/jobs.js\"></script> "),
 }}
 
-var planAdminOpsFill10Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
-	planAdminOps.Static(" <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">今すぐ tick</button> "),
+var planAuditOpsFill4Plan = &htmlbind.Plan[AuditParams]{Ops: []htmlbind.Op[AuditParams]{
+	planAuditOps.Static(" "),
+	planAuditOps.Component(func(p AuditParams) htmlbind.Fragment {
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account})
+	}),
+	planAuditOps.Static(" <main class=\"mx-auto grid max-w-6xl gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Audit log</h2> <span class=\"text-sm text-base-content/60\">Sign-ins, changes of the topology, keys and templates, devices, what people did in inboxes, and cancellations. Newest first.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Subject</th><th>Detail</th></tr></thead><tbody id=\"audit\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Recent jobs and their routes</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> </main> <script type=\"module\" src=\"/public/audit.js\"></script> "),
 }}
 
-var planAdminOpsFill9Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
+var planTabletOpsFill5Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
+	planTabletOps.Static(" <div id=\"app\" class=\"min-h-screen\"> <header id=\"bar\" class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex min-w-0 flex-1 items-center gap-3\"> <h1 id=\"title\" class=\"truncate text-2xl font-bold\">Display board</h1> <span id=\"status\" class=\"badge\" hidden></span> </div> <label class=\"input input-lg w-full sm:w-56\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name\"> </label> </header> <section id=\"enroll\" class=\"mx-auto max-w-lg p-4 sm:p-8\" hidden> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h2 class=\"card-title text-2xl\">Enroll this device</h2> <p class=\"text-base-content/70\">Enter the enrollment code an administrator made. Only enrolled devices see the documents of their display.</p> <form id=\"enroll-form\" class=\"flex flex-col gap-4\"> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Enrollment code</legend> <input id=\"code\" class=\"input input-lg w-full font-mono tracking-widest uppercase\" autocomplete=\"off\" autocapitalize=\"characters\" required> </fieldset> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Device name</legend> <input id=\"device-name\" class=\"input input-lg w-full\" autocomplete=\"off\" placeholder=\"e.g. tablet at the shipping dock\"> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">Enroll</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">Open <span id=\"open-count\" class=\"badge badge-warning ml-2\" hidden></span></button> <button id=\"tab-ended\" role=\"tab\" class=\"tab flex-1 sm:flex-none\" type=\"button\">Done and canceled</button> </div> <ul id=\"open-list\" class=\"mt-4 grid gap-3\"></ul> <ul id=\"ended-list\" class=\"mt-4 grid gap-3\" hidden></ul> <div id=\"empty\" class=\"mt-16 text-center text-xl text-base-content/50\" hidden>No documents</div> </section> <section id=\"viewer\" hidden> <div class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <button id=\"back\" type=\"button\" class=\"btn btn-lg btn-ghost\">← Board</button> <span id=\"viewer-title\" class=\"min-w-0 flex-1 truncate text-lg font-semibold\"></span> <div class=\"flex gap-2\"> <button id=\"print\" type=\"button\" class=\"btn btn-lg btn-outline\" hidden>Print here</button> <button id=\"done\" type=\"button\" class=\"btn btn-lg btn-success\">Done</button> </div> </div> <div id=\"pages\" class=\"mx-auto grid max-w-5xl gap-4 p-4\"></div> </section> <div id=\"toasts\" class=\"toast toast-top toast-center z-50\"></div> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
+}}
+
+var planAdminOpsFill7Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
+	planAdminOps.Static(" <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">Tick now</button> "),
+}}
+
+var planAdminOpsFill6Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
 	planAdminOps.Static(" "),
 	planAdminOps.Component(func(p AdminParams) htmlbind.Fragment {
-		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager · 管理", SignedIn: true, Account: p.Account, Children: planAdminOpsFill10Plan.Bind(p)})
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account, Children: planAdminOpsFill7Plan.Bind(p)})
 	}),
-	planAdminOps.Static(" <main id=\"admin\" class=\"mx-auto grid max-w-6xl gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">全部のジョブ</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>#</th><th>名前</th><th>場所</th><th>状態</th><th>送った人（確かめた）</th><th class=\"hidden sm:table-cell\">名乗り</th><th class=\"hidden md:table-cell\">グループ</th></tr></thead><tbody id=\"slips\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">プリンタ</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-zebra\"><thead><tr><th>名前</th><th>URL</th><th>経路</th><th>種類</th><th></th></tr></thead><tbody id=\"printers\"></tbody></table> </div> <form id=\"printer-form\" class=\"mt-2 flex flex-wrap gap-2\"> <input id=\"printer-name\" class=\"input w-full sm:w-48\" placeholder=\"名前 (wh-a-laser)\" required> <input id=\"printer-url\" class=\"input w-full sm:flex-1\" placeholder=\"ipps://… / socket://…:9100\" required> <select id=\"printer-kind\" class=\"select w-full sm:w-36\"><option value=\"shared\">共有</option><option value=\"group\">グループ</option><option value=\"personal\">個人</option></select> <input id=\"printer-owner\" class=\"input w-full sm:w-48\" placeholder=\"持ち主（グループかメール）\"> <button type=\"submit\" class=\"btn btn-primary\">追加・更新</button> </form> </div> </section> <section class=\"grid gap-4\"> <h2 class=\"text-xl font-bold\">場所</h2> <div id=\"locations\" class=\"grid gap-4 lg:grid-cols-2\"></div> <form id=\"location-form\" class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h3 class=\"card-title text-base\">場所を追加・更新</h3> <div class=\"flex flex-wrap gap-2\"> <input id=\"location-name\" class=\"input w-full sm:w-40\" placeholder=\"名前 (wh-a)\" required> <input id=\"location-title\" class=\"input w-full sm:w-48\" placeholder=\"表示名 (第 1 倉庫)\"> <input id=\"location-printer\" class=\"input w-full sm:w-48\" placeholder=\"紙に逃がすプリンタ\"> <input id=\"location-after\" class=\"input w-full sm:w-28\" placeholder=\"何分で (10m)\"> <select id=\"location-kind\" class=\"select w-full sm:w-36\"><option value=\"shared\">共有</option><option value=\"group\">グループ</option><option value=\"personal\">個人</option></select> <input id=\"location-owner\" class=\"input w-full sm:w-48\" placeholder=\"持ち主（グループかメール）\"> <button type=\"submit\" class=\"btn btn-primary\">追加・更新</button> </div> </div> </form> </section> </main> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">端末の登録コード</h3> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">閉じる</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>閉じる</button></form> </dialog> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/admin.js\"></script> "),
+	planAdminOps.Static(" <main id=\"admin\" class=\"mx-auto grid max-w-7xl gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Topology</h2> <span class=\"text-sm text-base-content/60\">Drag a node to move it. Drag from a node's right port onto another node to connect them; click an edge to remove it. Click a node to edit it below.</span> </div> <div class=\"overflow-x-auto rounded-box border border-base-300 bg-base-200\"> <svg id=\"canvas\" class=\"block select-none touch-none\" width=\"900\" height=\"320\" xmlns=\"http://www.w3.org/2000/svg\"></svg> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-zebra\"><thead><tr><th>Node</th><th>Kind</th><th>Edges</th><th>Settings</th><th></th></tr></thead><tbody id=\"topology\"></tbody></table> </div> <form id=\"node-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <select id=\"node-kind\" class=\"select sm:col-span-1\"> <option value=\"endpoint\">Endpoint (API entry)</option> <option value=\"queue\">Queue (fan-out)</option> <option value=\"class\">Class (one member)</option> <option value=\"inbox\">Inbox (held for a person)</option> <option value=\"archive\">Archive (written once)</option> </select> <input id=\"node-name\" class=\"input sm:col-span-2\" placeholder=\"name (intake, both, tokyo, review, audit)\" required> <input id=\"node-title\" class=\"input sm:col-span-3\" placeholder=\"title\"> <input id=\"node-to\" class=\"input sm:col-span-3\" placeholder=\"forwards to (comma-separated): wh-a, wh-b\"> <select id=\"node-policy\" class=\"select sm:col-span-1\" hidden> <option value=\"round-robin\">in turn (round-robin)</option> <option value=\"failover\">first member (failover)</option> </select> <input id=\"node-templates\" class=\"input sm:col-span-2\" placeholder=\"templates it fills (comma-separated; empty: any)\" hidden> <input id=\"node-keep\" class=\"input sm:col-span-1\" placeholder=\"keep (14d)\" hidden> <input id=\"node-store\" class=\"input sm:col-span-3\" placeholder=\"store: s3://bucket?region=… / bbolt:path\" hidden> <input id=\"node-collection\" class=\"input sm:col-span-2\" placeholder=\"collection (optional)\" hidden> <select id=\"node-scope\" class=\"select sm:col-span-1\" title=\"who may send to it from the pages, and whose its jobs are\"><option value=\"shared\">shared</option><option value=\"group\">group</option><option value=\"personal\">personal</option></select> <input id=\"node-owner\" class=\"input sm:col-span-2\" placeholder=\"owner: a group, or a person's email\"> <button type=\"submit\" class=\"btn btn-primary sm:col-span-1\">Add or update</button> </form> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Templates</h2> <p class=\"text-sm text-base-content/60\">A compiled template (.bdft), or one of Excel, Word, PowerPoint, a PDF form, pdfme or text. An endpoint fills one with the data it is sent: <code class=\"font-mono\">POST /in/&lt;endpoint&gt;</code> with <code class=\"font-mono\">&#123;\"template\": \"id\", \"data\": &#123;…&#125;&#125;</code>.</p> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Id</th><th>Format</th><th>Fields</th><th>Size</th><th>Uploaded</th><th></th></tr></thead><tbody id=\"templates\"></tbody></table> </div> <form id=\"template-form\" class=\"mt-2 flex flex-wrap gap-2\"> <input id=\"template-id\" class=\"input w-full sm:w-48\" placeholder=\"id (invoice)\" required> <input id=\"template-file\" type=\"file\" class=\"file-input w-full sm:flex-1\" required> <button type=\"submit\" class=\"btn btn-primary\">Upload</button> </form> </div> </section> <section id=\"inboxes\" class=\"grid gap-4\"></section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Jobs</h2> <select id=\"jobs-dest\" class=\"select select-sm\"></select> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>User</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Deliveries waiting</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Printers</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-zebra\"><thead><tr><th>Name</th><th>URL</th><th>Route</th><th></th></tr></thead><tbody id=\"printers\"></tbody></table> </div> <form id=\"printer-form\" class=\"mt-2 flex flex-wrap gap-2\"> <input id=\"printer-name\" class=\"input w-full sm:w-48\" placeholder=\"name (wh-a-laser)\" required> <input id=\"printer-url\" class=\"input w-full sm:flex-1\" placeholder=\"ipps://… / socket://…:9100\" required> <select id=\"printer-scope\" class=\"select w-full sm:w-32\" title=\"who may send to it from the pages, and whose its jobs are\"><option value=\"shared\">shared</option><option value=\"group\">group</option><option value=\"personal\">personal</option></select> <input id=\"printer-owner\" class=\"input w-full sm:w-56\" placeholder=\"owner: a group, or a person's email\"> <button type=\"submit\" class=\"btn btn-primary\">Add or update</button> </form> </div> </section> <section class=\"grid gap-4\"> <h2 class=\"text-xl font-bold\">Displays</h2> <p class=\"-mt-2 text-sm text-base-content/60\">A display shows its jobs on the devices enrolled there (tablets, screens), and can print on paper what nobody opened in time.</p> <div id=\"locations\" class=\"grid gap-4 lg:grid-cols-2\"></div> <form id=\"location-form\" class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h3 class=\"card-title text-base\">Add or update a display</h3> <div class=\"flex flex-wrap gap-2\"> <input id=\"location-name\" class=\"input w-full sm:w-40\" placeholder=\"name (wh-a)\" required> <input id=\"location-title\" class=\"input w-full sm:w-48\" placeholder=\"title (Warehouse A)\"> <input id=\"location-printer\" class=\"input w-full sm:w-48\" placeholder=\"fallback printer\"> <input id=\"location-after\" class=\"input w-full sm:w-28\" placeholder=\"after (10m)\"> <select id=\"location-scope\" class=\"select w-full sm:w-32\" title=\"who may send to it from the pages, and whose its jobs are\"><option value=\"shared\">shared</option><option value=\"group\">group</option><option value=\"personal\">personal</option></select> <input id=\"location-owner\" class=\"input w-full sm:w-56\" placeholder=\"owner: a group, or a person's email\"> <button type=\"submit\" class=\"btn btn-primary\">Add or update</button> </div> </div> </form> </section> </main> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">Enrollment code</h3> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <dialog id=\"key-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">Endpoint key</h3> <p class=\"mt-2 text-sm text-base-content/70\">The key of <span id=\"key-name\" class=\"font-mono\"></span>. It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one.</p> <pre id=\"key-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"key-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/admin.js\"></script> "),
 }}
 
 var planShellOps = htmlbind.Builder[renderShellParams]{}
@@ -379,7 +116,7 @@ var planShellPlan = &htmlbind.Plan[renderShellParams]{
 		return []htmlbind.Fragment{p.Children}
 	},
 	Ops: []htmlbind.Op[renderShellParams]{
-		planShellOps.Static("<!doctype html><html lang=\"ja\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"mobile-web-app-capable\" content=\"yes\"><title>"),
+		planShellOps.Static("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"mobile-web-app-capable\" content=\"yes\"><title>"),
 		planShellOps.Text(func(p renderShellParams) string { return p.Title }),
 		planShellOps.Static("</title><link rel=\"stylesheet\" href=\"/public/app.css\">"),
 		planShellOps.MergedHead(),
@@ -401,55 +138,55 @@ var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
 		return []htmlbind.Fragment{p.Children}
 	},
 	Ops: []htmlbind.Op[renderAppBarParams]{
-		planAppBarOps.Static(" <header class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex-1 min-w-0\"> <a href=\"/\" class=\"truncate text-lg font-bold tracking-tight sm:text-xl\">"),
+		planAppBarOps.Static(" <header class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex-1 min-w-0\"> <a href=\"/jobs\" class=\"truncate text-lg font-bold tracking-tight sm:text-xl\">"),
 		planAppBarOps.Text(func(p renderAppBarParams) string { return p.Title }),
-		planAppBarOps.Static("</a> </div> <div class=\"flex flex-wrap items-center gap-2\"> "),
+		planAppBarOps.Static("</a> </div> <nav class=\"flex flex-wrap items-center gap-2\"> "),
 		planAppBarOps.Slot(func(p renderAppBarParams) htmlbind.Fragment { return p.Children },
 			nil),
-		planAppBarOps.Static(" "),
-		planAppBarOps.If(func(p renderAppBarParams) bool { return p.SignedIn },
+		planAppBarOps.Static(" <a href=\"/jobs\" class=\"btn btn-sm btn-ghost\">Jobs</a> "),
+		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Admin },
 			[]htmlbind.Op[renderAppBarParams]{
-				planAppBarOps.Static(" <div class=\"flex min-w-0 items-center gap-2\"> <div class=\"avatar avatar-placeholder\""),
-				planAppBarOps.Attr("title", func(p renderAppBarParams) (string, bool) { return htmlbind.Escape(p.Account.Name), true }),
-				planAppBarOps.Static("> <div class=\"w-8 rounded-full bg-neutral text-neutral-content\"><span class=\"text-sm\">"),
-				planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Initial }),
-				planAppBarOps.Static("</span></div> </div> <div class=\"hidden min-w-0 flex-col leading-tight sm:flex\"> <span id=\"account-name\" class=\"max-w-48 truncate text-sm font-semibold\">"),
-				planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Name }),
-				planAppBarOps.Static("</span> <span class=\"max-w-48 truncate text-xs text-base-content/60\">"),
-				planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Email }),
-				planAppBarOps.Static("</span> </div> "),
-				planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Admin },
-					[]htmlbind.Op[renderAppBarParams]{
-						planAppBarOps.Static("<span class=\"badge badge-primary badge-sm\">管理者</span>"),
-					},
-					nil),
-				planAppBarOps.Static(" <form method=\"post\" action=\"/auth/logout\">"),
-				planAppBarOps.CSRFField("_csrf"),
-				planAppBarOps.Static(" <button id=\"logout\" type=\"submit\" class=\"btn btn-ghost btn-sm\">サインアウト</button> </form> </div> "),
+				planAppBarOps.Static(" <a href=\"/admin\" class=\"btn btn-sm btn-ghost\">Admin</a> <a href=\"/audit\" class=\"btn btn-sm btn-ghost\">Audit</a> "),
 			},
 			nil),
-		planAppBarOps.Static(" </div> </header> "),
+		planAppBarOps.Static(" <div class=\"flex min-w-0 items-center gap-2\"> <div class=\"avatar avatar-placeholder\""),
+		planAppBarOps.Attr("title", func(p renderAppBarParams) (string, bool) { return htmlbind.Escape(p.Account.Name), true }),
+		planAppBarOps.Static("> <div class=\"w-8 rounded-full bg-neutral text-neutral-content\"><span class=\"text-sm\">"),
+		planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Initial }),
+		planAppBarOps.Static("</span></div> </div> <div class=\"hidden min-w-0 flex-col leading-tight sm:flex\"> <span id=\"account-name\" class=\"max-w-48 truncate text-sm font-semibold\">"),
+		planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Name }),
+		planAppBarOps.Static("</span> <span class=\"max-w-48 truncate text-xs text-base-content/60\">"),
+		planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Email }),
+		planAppBarOps.Static("</span> </div> "),
+		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Admin },
+			[]htmlbind.Op[renderAppBarParams]{
+				planAppBarOps.Static("<span class=\"badge badge-primary badge-sm\">Admin</span>"),
+			},
+			nil),
+		planAppBarOps.Static(" <form method=\"post\" action=\"/auth/logout\">"),
+		planAppBarOps.CSRFField("_csrf"),
+		planAppBarOps.Static(" <button id=\"logout\" type=\"submit\" class=\"btn btn-sm btn-outline\">Sign out</button> </form> </div> </nav> </header> "),
 	},
 }
 
 // renderAppBar binds AppBar to its parameters, producing a renderable fragment.
 func renderAppBar(params renderAppBarParams) htmlbind.Fragment { return planAppBarPlan.Bind(params) }
 
-var planHomeOps = htmlbind.Builder[HomeParams]{}
+var planSignInOps = htmlbind.Builder[SignInParams]{}
 
-var planHomePlan = &htmlbind.Plan[HomeParams]{
+var planSignInPlan = &htmlbind.Plan[SignInParams]{
 	Head: nil,
-	Ops: []htmlbind.Op[HomeParams]{
-		planHomeOps.Static(" "),
-		planHomeOps.Component(func(p HomeParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "BDF Print Manager", Children: planHomeOpsFill1Plan.Bind(p)})
+	Ops: []htmlbind.Op[SignInParams]{
+		planSignInOps.Static(" "),
+		planSignInOps.Component(func(p SignInParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: "BDF Print Manager", Children: planSignInOpsFill1Plan.Bind(p)})
 		}),
-		planHomeOps.Static(" "),
+		planSignInOps.Static(" "),
 	},
 }
 
-// Home binds Home to its parameters, producing a renderable fragment.
-func Home(params HomeParams) htmlbind.Fragment { return planHomePlan.Bind(params) }
+// SignIn binds SignIn to its parameters, producing a renderable fragment.
+func SignIn(params SignInParams) htmlbind.Fragment { return planSignInPlan.Bind(params) }
 
 var planForbiddenOps = htmlbind.Builder[ForbiddenParams]{}
 
@@ -458,7 +195,7 @@ var planForbiddenPlan = &htmlbind.Plan[ForbiddenParams]{
 	Ops: []htmlbind.Op[ForbiddenParams]{
 		planForbiddenOps.Static(" "),
 		planForbiddenOps.Component(func(p ForbiddenParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "入れません · BDF Print Manager", Children: planForbiddenOpsFill7Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: "Forbidden · BDF Print Manager", Children: planForbiddenOpsFill2Plan.Bind(p)})
 		}),
 		planForbiddenOps.Static(" "),
 	},
@@ -467,6 +204,38 @@ var planForbiddenPlan = &htmlbind.Plan[ForbiddenParams]{
 // Forbidden binds Forbidden to its parameters, producing a renderable fragment.
 func Forbidden(params ForbiddenParams) htmlbind.Fragment { return planForbiddenPlan.Bind(params) }
 
+var planJobsOps = htmlbind.Builder[JobsParams]{}
+
+var planJobsPlan = &htmlbind.Plan[JobsParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[JobsParams]{
+		planJobsOps.Static(" "),
+		planJobsOps.Component(func(p JobsParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: "Jobs · BDF Print Manager", Children: planJobsOpsFill3Plan.Bind(p)})
+		}),
+		planJobsOps.Static(" "),
+	},
+}
+
+// Jobs binds Jobs to its parameters, producing a renderable fragment.
+func Jobs(params JobsParams) htmlbind.Fragment { return planJobsPlan.Bind(params) }
+
+var planAuditOps = htmlbind.Builder[AuditParams]{}
+
+var planAuditPlan = &htmlbind.Plan[AuditParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[AuditParams]{
+		planAuditOps.Static(" "),
+		planAuditOps.Component(func(p AuditParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: "Audit · BDF Print Manager", Children: planAuditOpsFill4Plan.Bind(p)})
+		}),
+		planAuditOps.Static(" "),
+	},
+}
+
+// Audit binds Audit to its parameters, producing a renderable fragment.
+func Audit(params AuditParams) htmlbind.Fragment { return planAuditPlan.Bind(params) }
+
 var planTabletOps = htmlbind.Builder[TabletParams]{}
 
 var planTabletPlan = &htmlbind.Plan[TabletParams]{
@@ -474,7 +243,7 @@ var planTabletPlan = &htmlbind.Plan[TabletParams]{
 	Ops: []htmlbind.Op[TabletParams]{
 		planTabletOps.Static(" "),
 		planTabletOps.Component(func(p TabletParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "伝票", Children: planTabletOpsFill8Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: "Display board", Children: planTabletOpsFill5Plan.Bind(p)})
 		}),
 		planTabletOps.Static(" "),
 	},
@@ -490,7 +259,7 @@ var planAdminPlan = &htmlbind.Plan[AdminParams]{
 	Ops: []htmlbind.Op[AdminParams]{
 		planAdminOps.Static(" "),
 		planAdminOps.Component(func(p AdminParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "管理 · BDF Print Manager", Children: planAdminOpsFill9Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: "Admin · BDF Print Manager", Children: planAdminOpsFill6Plan.Bind(p)})
 		}),
 		planAdminOps.Static(" "),
 	},

@@ -36,9 +36,11 @@ func (f *fixture) running() *Spool {
 	return s
 }
 
+// waitFor waits for a condition: long enough for the slow runners of CI
+// (Windows renders a 30-page job again after a release in seconds).
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for !cond() {
 		if time.Now().After(deadline) {
 			t.Fatalf("timed out waiting for %s", what)

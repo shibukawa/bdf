@@ -11,11 +11,11 @@ import (
 )
 
 // viewers are the people of a test, signed in by a header (the web
-// application's session in cmd/printmanager).
+// application's OIDC session in cmd/printmanager).
 var viewers = map[string]*Viewer{
-	"alice": {ID: "u-alice", Name: "Alice", Email: "alice@example.com", Groups: []string{"warehouse-a"}},
-	"bob":   {ID: "u-bob", Name: "Bob", Email: "bob@example.com", Groups: []string{"warehouse-b"}},
-	"root":  {ID: "u-root", Name: "Root", Email: "root@example.com", Admin: true},
+	"alice": {Kind: PrincipalUser, Via: ViaOIDC, ID: "u-alice", Name: "Alice", Email: "alice@example.com", Groups: []string{"warehouse-a"}},
+	"bob":   {Kind: PrincipalUser, Via: ViaOIDC, ID: "u-bob", Name: "Bob", Email: "bob@example.com", Groups: []string{"warehouse-b"}},
+	"root":  {Kind: PrincipalUser, Via: ViaOIDC, ID: "u-root", Name: "Root", Email: "root@example.com", Admin: true},
 }
 
 func withViewers(o *Options) {
@@ -35,104 +35,119 @@ func (e *env) as(who, method, path string, body any) (*http.Response, []byte) {
 func TestScope(t *testing.T) {
 	e := newEnv(t, withViewers)
 	ctx := context.Background()
-	e.admin("PUT", "/api/printers/wh-b-laser", Printer{URL: "ipp://127.0.0.1:1/ipp/print", Kind: KindGroup, Owner: "warehouse-b"}, http.StatusOK)
-	e.admin("PUT", "/api/locations/wh-a", Location{Kind: KindGroup, Owner: "warehouse-a"}, http.StatusOK)
-	// a location of no group: its slips are the group's of its fallback printer
+	e.admin("PUT", "/api/printers/wh-b-laser", Printer{URL: "ipp://127.0.0.1:1/ipp/print", Scope: ScopeGroup, Owner: "warehouse-b"}, http.StatusOK)
+	e.admin("PUT", "/api/locations/wh-a", Location{Scope: ScopeGroup, Owner: "warehouse-a"}, http.StatusOK)
+	// a location of no scope: shared, and its jobs are the group's of its
+	// fallback printer
 	e.admin("PUT", "/api/locations/wh-b", Location{Fallback: &Fallback{Printer: "wh-b-laser"}}, http.StatusOK)
-	e.admin("PUT", "/api/locations/office", Location{Kind: KindShared}, http.StatusOK)
-	e.admin("PUT", "/api/locations/alice-desk", Location{Kind: KindPersonal, Owner: "alice@example.com"}, http.StatusOK)
-	e.admin("PUT", "/api/locations/bad", Location{Kind: KindGroup}, http.StatusBadRequest)
-	e.admin("PUT", "/api/locations/bad", Location{Kind: "team", Owner: "x"}, http.StatusBadRequest)
+	e.admin("PUT", "/api/locations/office", Location{Scope: ScopeShared}, http.StatusOK)
+	e.admin("PUT", "/api/locations/alice-desk", Location{Scope: ScopePersonal, Owner: "alice@example.com"}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/team-a", Node{Kind: KindQueue, To: []string{"wh-a"}, Scope: ScopeGroup, Owner: "warehouse-a"}, http.StatusOK)
+	e.admin("PUT", "/api/locations/bad", Location{Scope: ScopeGroup}, http.StatusBadRequest)
+	e.admin("PUT", "/api/locations/bad", Location{Scope: "team", Owner: "x"}, http.StatusBadRequest)
+	e.admin("PUT", "/api/nodes/bad", Node{Kind: KindQueue, To: []string{"wh-a"}, Scope: ScopeShared, Owner: "x"}, http.StatusBadRequest)
 
 	doc := testDoc(t, 1)
-	submit := func(who, loc, name string, status int) *Slip {
+	submit := func(who, dest, name string, status int) *Job {
 		t.Helper()
 		var res *http.Response
 		var out []byte
+		path := "/api/destinations/" + dest + "/jobs?name=" + name
 		if who == "wms" {
-			res, out = e.do(nil, "POST", "/api/locations/"+loc+"/slips?name="+name+"&user=sato", "wms:s3cret", doc)
+			res, out = e.do(nil, "POST", path+"&user=sato", "wms:s3cret", doc)
 		} else {
-			res, out = e.as(who, "POST", "/api/locations/"+loc+"/slips?name="+name+"&user=someone-else", doc)
+			res, out = e.as(who, "POST", path+"&user=someone-else", doc)
 		}
 		if res.StatusCode != status {
-			t.Fatalf("%s to %s: %d %s; want %d", who, loc, res.StatusCode, out, status)
+			t.Fatalf("%s to %s: %d %s; want %d", who, dest, res.StatusCode, out, status)
 		}
-		var s Slip
-		json.Unmarshal(out, &s)
-		return &s
+		var j Job
+		json.Unmarshal(out, &j)
+		return &j
 	}
 	mine := submit("alice", "office", "alice-office", http.StatusCreated)
 	if by := mine.SubmittedBy; by == nil || *by != (Principal{Kind: PrincipalUser, ID: "u-alice", Name: "Alice", Via: ViaOIDC}) || mine.ClaimedUser != "someone-else" || mine.Group != "" {
-		t.Fatalf("alice's slip %+v by %+v", mine, mine.SubmittedBy)
+		t.Fatalf("alice's job %+v by %+v", mine, mine.SubmittedBy)
 	}
 	submit("alice", "alice-desk", "alice-desk", http.StatusCreated)
-	// wh-b is shared (no kind), and its slips are warehouse-b's
-	if s := submit("alice", "wh-b", "alice-wh-b", http.StatusCreated); s.Group != "warehouse-b" {
-		t.Fatalf("the fallback printer's group: %+v", s)
+	if j := submit("alice", "wh-b", "alice-wh-b", http.StatusCreated); j.Group != "warehouse-b" {
+		t.Fatalf("the fallback printer's group: %+v", j)
+	}
+	if j := submit("alice", "team-a", "alice-team", http.StatusCreated); j.Group != "warehouse-a" {
+		t.Fatalf("a group's queue: %+v", j)
 	}
 	submit("bob", "wh-a", "bob-wh-a", http.StatusForbidden)
 	submit("bob", "alice-desk", "bob-desk", http.StatusForbidden)
-	if s := submit("wms", "wh-a", "wms-wh-a", http.StatusCreated); s.Group != "warehouse-a" || s.SubmittedBy.Kind != PrincipalToken || s.ClaimedUser != "sato" {
-		t.Fatalf("wms's slip %+v", s)
+	if j := submit("wms", "wh-a", "wms-wh-a", http.StatusCreated); j.Group != "warehouse-a" || j.SubmittedBy.Kind != PrincipalToken || j.ClaimedUser != "sato" {
+		t.Fatalf("wms's job %+v", j)
 	}
 	submit("wms", "wh-b", "wms-wh-b", http.StatusCreated)
-	submit("bob", "office", "bob-office", http.StatusCreated)
+	bobs := submit("bob", "office", "bob-office", http.StatusCreated)
 	// a page of another site cannot send as the person
 	res, _ := e.doWith(func(r *http.Request) {
 		r.Header.Set("X-Test-Viewer", "alice")
 		r.Header.Set("Sec-Fetch-Site", "cross-site")
-	}, "POST", "/api/locations/office/slips", doc)
+	}, "POST", "/api/destinations/office/jobs", doc)
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("cross-site: %d", res.StatusCode)
 	}
 
-	names := func(who string) []string {
-		ss, err := e.m().SlipsOf(ctx, viewers[who])
-		if err != nil {
-			t.Fatal(err)
+	sees := func(who string) []string {
+		var js []Job
+		_, out := e.as(who, "GET", "/api/my/jobs", nil)
+		json.Unmarshal(out, &js)
+		var names []string
+		for _, j := range js {
+			names = append(names, j.Name)
 		}
-		var out []string
-		for _, s := range ss {
-			out = append(out, s.Name)
-		}
-		return out
+		return names
 	}
 	for who, want := range map[string][]string{
-		"alice": {"wms-wh-a", "alice-wh-b", "alice-desk", "alice-office"},
+		"alice": {"wms-wh-a", "alice-team", "alice-wh-b", "alice-desk", "alice-office"},
 		"bob":   {"bob-office", "wms-wh-b", "alice-wh-b"},
-		"root":  {"bob-office", "wms-wh-b", "wms-wh-a", "alice-wh-b", "alice-desk", "alice-office"},
+		"root":  {"bob-office", "wms-wh-b", "wms-wh-a", "alice-team", "alice-wh-b", "alice-desk", "alice-office"},
 	} {
-		if got := names(who); !slices.Equal(got, want) {
+		if got := sees(who); !slices.Equal(got, want) {
 			t.Errorf("%s sees %q; want %q", who, got, want)
 		}
 	}
-	if (&Viewer{ID: "u-carol"}).CanSee(mine) || (*Viewer)(nil).CanSee(mine) {
-		t.Error("an outsider sees alice's slip")
+	if (&Viewer{Kind: PrincipalUser, ID: "u-carol"}).CanSee(mine) || (*Viewer)(nil).CanSee(mine) {
+		t.Error("an outsider sees alice's job")
+	}
+	// a member of the group sees a job, but only its sender cancels it
+	if res, _ := e.as("bob", "GET", "/api/jobs/"+jobID(3), nil); res.StatusCode != http.StatusOK {
+		t.Errorf("bob on alice's warehouse-b job: %d", res.StatusCode)
+	}
+	if res, _ := e.as("bob", "POST", "/api/jobs/"+jobID(3)+"/cancel", nil); res.StatusCode != http.StatusForbidden {
+		t.Errorf("bob cancels alice's job: %d", res.StatusCode)
+	}
+	if res, _ := e.as("alice", "GET", "/api/jobs/"+bobs.ID, nil); res.StatusCode != http.StatusNotFound {
+		t.Errorf("alice on bob's job: %d", res.StatusCode)
+	}
+	if res, _ := e.as("alice", "POST", "/api/jobs/"+jobID(3)+"/cancel", nil); res.StatusCode != http.StatusOK {
+		t.Errorf("alice cancels her job: %d", res.StatusCode)
 	}
 
-	p, err := e.m().PlacesOf(ctx, viewers["alice"])
+	ds, err := e.m().Destinations(ctx, viewers["alice"])
 	if err != nil {
 		t.Fatal(err)
 	}
-	var places []string
-	for _, l := range p.Locations {
-		places = append(places, l.Name)
+	var names []string
+	for _, d := range ds {
+		names = append(names, d.Name)
 	}
-	if !slices.Equal(places, []string{"alice-desk", "office", "wh-a", "wh-b"}) {
-		t.Errorf("alice prints to %q", places)
-	}
-	if len(p.Printers) != 0 {
-		t.Errorf("alice prints on %+v", p.Printers)
+	if !slices.Equal(names, []string{"alice-desk", "office", "team-a", "wh-a", "wh-b"}) {
+		t.Errorf("alice sends to %q", names)
 	}
 
 	// the API: an admin's session, as the admin token; others are refused
-	if res, out := e.as("root", "GET", "/api/locations", nil); res.StatusCode != http.StatusOK {
+	if res, out := e.as("root", "GET", "/api/topology", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("admin: %d %s", res.StatusCode, out)
 	}
-	if res, _ := e.as("alice", "GET", "/api/locations", nil); res.StatusCode != http.StatusForbidden {
+	if res, _ := e.as("alice", "GET", "/api/topology", nil); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("alice on the API: %d", res.StatusCode)
 	}
-	if res, _ := e.as("", "GET", "/api/locations", nil); res.StatusCode != http.StatusUnauthorized {
+	if res, _ := e.as("", "GET", "/api/topology", nil); res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("nobody on the API: %d", res.StatusCode)
 	}
 	if res, _ := e.as("root", "POST", "/api/tick", nil); res.StatusCode != http.StatusOK {

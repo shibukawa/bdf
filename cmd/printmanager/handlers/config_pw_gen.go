@@ -29,6 +29,7 @@ func registerManagerConfigDefinition0() {
 			"manager.tick_token",
 			"manager.submit_tokens",
 			"manager.tick_interval",
+			"manager.job_keep",
 			"manager.serverless",
 			"manager.font_dirs",
 			"manager.no_system_fonts",
@@ -38,6 +39,7 @@ func registerManagerConfigDefinition0() {
 		Defaults: map[string]string{
 			"manager.records":         "bbolt:printmanager.db",
 			"manager.tick_interval":   "30s",
+			"manager.job_keep":        "336h",
 			"manager.serverless":      "false",
 			"manager.no_system_fonts": "false",
 			"manager.max_document_mb": "64",
@@ -51,6 +53,7 @@ func registerManagerConfigDefinition0() {
 			{Prefix: "manager", Key: "tick_token", Help: "bearer token a scheduler calls POST /api/tick with"},
 			{Prefix: "manager", Key: "submit_tokens", Help: "name:secret pairs that may send jobs; none lets anyone send", Kind: cliparser.KindArray},
 			{Prefix: "manager", Key: "tick_interval", Help: "how often the process ticks; 0 leaves it to a scheduler (serverless)"},
+			{Prefix: "manager", Key: "job_keep", Help: "how long a job that ended is kept (its record, and its document once nothing shows it)"},
 			{Prefix: "manager", Key: "serverless", Help: "refuse a store only one process can use, and tick only when called", Kind: cliparser.KindBool},
 			{Prefix: "manager", Key: "font_dirs", Help: "directories of the fonts of documents", Kind: cliparser.KindArray},
 			{Prefix: "manager", Key: "no_system_fonts", Help: "use only font_dirs", Kind: cliparser.KindBool},
@@ -66,6 +69,7 @@ func registerManagerConfigDefinition0() {
 			{Key: "tick_token", Kind: configbind.ScaffoldString, Help: "bearer token a scheduler calls POST /api/tick with"},
 			{Key: "submit_tokens", Kind: configbind.ScaffoldStringSlice, Help: "name:secret pairs that may send jobs; none lets anyone send"},
 			{Key: "tick_interval", Kind: configbind.ScaffoldDuration, Default: "30s", Help: "how often the process ticks; 0 leaves it to a scheduler (serverless)"},
+			{Key: "job_keep", Kind: configbind.ScaffoldDuration, Default: "336h", Help: "how long a job that ended is kept (its record, and its document once nothing shows it)"},
 			{Key: "serverless", Kind: configbind.ScaffoldBool, Default: "false", Help: "refuse a store only one process can use, and tick only when called"},
 			{Key: "font_dirs", Kind: configbind.ScaffoldStringSlice, Help: "directories of the fonts of documents"},
 			{Key: "no_system_fonts", Kind: configbind.ScaffoldBool, Default: "false", Help: "use only font_dirs"},
@@ -108,6 +112,15 @@ func applyManagerConfigDefinition0(dst any, o *configbind.Overlay) error {
 		p.TickInterval = d
 	} else {
 		p.TickInterval = 30000000000 // 30s
+	}
+	if v, ok := o.GetString("manager.job_keep"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("configbind: manager.job_keep: %w", err)
+		}
+		p.JobKeep = d
+	} else {
+		p.JobKeep = 1209600000000000 // 336h0m0s
 	}
 	if v, ok := o.GetString("manager.serverless"); ok {
 		bb, err := strconv.ParseBool(v)

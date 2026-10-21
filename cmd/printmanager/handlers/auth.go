@@ -88,10 +88,11 @@ func (s loginStates) Prune(ctx context.Context, before time.Time, limit int) (in
 	return int64(n), err
 }
 
-// The paths that are not the pages: the devices' page and endpoints keep
-// their own sign-in (the device's key), and the API and the printers take
-// their tokens.
-var publicPaths = []string{"/tablet", "/public/**", "/api/**", manager.IPPPath + "/**", "/device/**"}
+// The paths that are not the pages: the top page is the sign-in (a
+// button to the IdP), the devices' page and endpoints keep
+// their own sign-in (the device's key), the API and the printers take
+// their tokens (and the API the session too), the endpoints their keys.
+var publicPaths = []string{"/", "/tablet", "/public/**", "/api/**", manager.IPPPath + "/**", manager.InPath + "/**", "/device/**"}
 
 // ConfigureAuth sets popcornweb's [auth] and [session] for the pages:
 // what is the Print Manager's design (the OIDC mode, the paths a person
@@ -280,6 +281,7 @@ func (a *App) resolveAccount(ctx context.Context, id auth.Identity, _ bool) (aut
 	hd, _ := c.String("hd")
 	if !a.policy.allowed(id.Issuer, id.Subject, mail, hd, groups) {
 		a.log.Info("sign-in refused", "iss", id.Issuer, "sub", id.Subject)
+		a.m.Audit(ctx, firstOr(mail, id.Subject), "login-refused", "", id.Issuer)
 		return auth.Account{}, auth.ErrAccessDenied
 	}
 	name, _ := c.String("name")
@@ -292,6 +294,7 @@ func (a *App) resolveAccount(ctx context.Context, id auth.Identity, _ bool) (aut
 		return auth.Account{}, err
 	}
 	a.log.Info("sign-in", "person", pid, "iss", id.Issuer, "sub", id.Subject, "groups", len(groups))
+	a.m.Audit(ctx, firstOr(name, firstOr(mail, pid)), "login", pid, id.Issuer)
 	return auth.Account{ID: pid, DisplayName: name, Email: mail}, nil
 }
 
@@ -308,7 +311,7 @@ func (a *App) viewer(r *http.Request) *manager.Viewer {
 		}
 		return nil
 	}
-	return &manager.Viewer{ID: s.AccountID, Name: p.Name, Email: p.Email, Groups: p.Groups,
+	return &manager.Viewer{Kind: manager.PrincipalUser, Via: manager.ViaOIDC, ID: s.AccountID, Name: p.Name, Email: p.Email, Groups: p.Groups,
 		Admin: a.policy.admin(p.Issuer, p.Subject, p.Email, p.Groups)}
 }
 

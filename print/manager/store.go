@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/shibukawa/yuruidb"
@@ -30,8 +31,15 @@ import (
 type (
 	locationRecord Location
 	printerRecord  Printer
+	nodeRecord     Node
+	templateRecord Template
+	layoutRecord   Layout
+	jobRecord      Job
 	slipRecord     Slip
+	itemRecord     Item
+	deliveryRecord Delivery
 	deviceRecord   Device
+	auditRecord    AuditEntry
 	enrollRecord   enrollment
 	personRecord   Person
 	counterRecord  struct {
@@ -50,10 +58,16 @@ type (
 type Store struct {
 	db   *yuruidb.Store
 	docs *blob.Store
+	// tpls keeps the templates' files, beside the documents.
+	tpls *blob.Store
 	// Shared tells a store that several processes can use at once (a
 	// database or an object storage, not a file).
 	Shared bool
 	closed bool
+	// archives are the stores of the archive nodes, opened as they are
+	// first written to, by URL and collection.
+	mu       sync.Mutex
+	archives map[string]*blob.Store
 }
 
 // ErrStore is the error of a store that cannot keep a manager's records.
@@ -91,9 +105,20 @@ func OpenStore(ctx context.Context, records, documents string) (*Store, error) {
 	for _, err := range []error{
 		db.Bind[locationRecord]("locations"),
 		db.Bind[printerRecord]("printers"),
+		db.Bind[nodeRecord]("nodes"),
+		db.Bind[templateRecord]("templates"),
+		db.Bind[layoutRecord]("layout"),
 		db.Bind[locationState]("location-states"),
+		db.Bind[inboxState]("inbox-states"),
+		db.Bind[destState]("dest-states"),
+		db.Bind[jobRecord]("jobs"),
 		db.Bind[slipRecord]("slips"),
+		db.Bind[itemRecord]("items"),
+		db.Bind[deliveryRecord]("deliveries"),
+		db.Bind[pendingRecord]("pending-deliveries"),
+		db.Bind[dayRecord]("ended-days"),
 		db.Bind[deviceRecord]("devices"),
+		db.Bind[auditRecord]("audit"),
 		db.Bind[enrollRecord]("enrollments"),
 		db.Bind[counterRecord]("meta"),
 		db.Bind[personRecord]("people"),
@@ -109,7 +134,13 @@ func OpenStore(ctx context.Context, records, documents string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db, docs: docs, Shared: caps.Distributed}, nil
+	tpls, err := openBlobs(ctx, documents, templatesCollection)
+	if err != nil {
+		docs.Close()
+		db.Close()
+		return nil, err
+	}
+	return &Store{db: db, docs: docs, tpls: tpls, Shared: caps.Distributed, archives: map[string]*blob.Store{}}, nil
 }
 
 // Close closes the store.
@@ -118,7 +149,33 @@ func (s *Store) Close() error {
 		return nil
 	}
 	s.closed = true
-	return errors.Join(s.docs.Close(), s.db.Close())
+	errs := []error{s.docs.Close(), s.tpls.Close(), s.db.Close()}
+	s.mu.Lock()
+	for _, a := range s.archives {
+		errs = append(errs, a.Close())
+	}
+	s.archives = nil
+	s.mu.Unlock()
+	return errors.Join(errs...)
+}
+
+// archive opens the store of an archive node, or returns it opened.
+func (s *Store) archive(ctx context.Context, raw, collection string) (*blob.Store, error) {
+	key := raw + "|" + collection
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if a := s.archives[key]; a != nil {
+		return a, nil
+	}
+	if s.archives == nil {
+		return nil, fmt.Errorf("%w: closed", ErrStore)
+	}
+	a, err := openBlobs(ctx, raw, collection)
+	if err != nil {
+		return nil, err
+	}
+	s.archives[key] = a
+	return a, nil
 }
 
 // PutState keeps a value under a key until it is taken or expires: the
@@ -232,9 +289,18 @@ func openRecords(ctx context.Context, raw string) (*yuruidb.Store, error) {
 	return db, nil
 }
 
-const docsCollection = "slip-documents"
+const (
+	docsCollection      = "job-documents"
+	templatesCollection = "templates"
+)
 
 func openDocuments(ctx context.Context, raw string) (*blob.Store, error) {
+	return openBlobs(ctx, raw, docsCollection)
+}
+
+// openBlobs opens a store of blobs: the documents of the jobs, or those
+// of an archive.
+func openBlobs(ctx context.Context, raw, collection string) (*blob.Store, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrStore, err)
@@ -243,14 +309,14 @@ func openDocuments(ctx context.Context, raw string) (*blob.Store, error) {
 	var docs *blob.Store
 	switch u.Scheme {
 	case "bbolt":
-		docs, err = ybolt.OpenBlobs(ctx, ybolt.Config{Path: boltPath(u), Collection: docsCollection})
+		docs, err = ybolt.OpenBlobs(ctx, ybolt.Config{Path: boltPath(u), Collection: collection})
 	case "s3":
 		docs, err = s3.OpenBlobs(ctx, s3.Config{Bucket: u.Host, Region: q.Get("region"), Endpoint: q.Get("endpoint"),
-			AddressStyle: q.Get("address-style"), Collection: docsCollection})
+			AddressStyle: q.Get("address-style"), Collection: collection})
 	case "r2":
-		docs, err = r2.OpenBlobs(ctx, r2.Config{Bucket: u.Host, Endpoint: q.Get("endpoint"), Collection: docsCollection})
+		docs, err = r2.OpenBlobs(ctx, r2.Config{Bucket: u.Host, Endpoint: q.Get("endpoint"), Collection: collection})
 	case "gcs":
-		docs, err = gcs.OpenBlobs(ctx, gcs.Config{Bucket: u.Host, Endpoint: q.Get("endpoint"), Collection: docsCollection})
+		docs, err = gcs.OpenBlobs(ctx, gcs.Config{Bucket: u.Host, Endpoint: q.Get("endpoint"), Collection: collection})
 	default:
 		return nil, fmt.Errorf("%w: documents in %q: bbolt, s3, r2 or gcs", ErrStore, u.Scheme)
 	}

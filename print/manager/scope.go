@@ -8,12 +8,14 @@ import (
 	"time"
 )
 
-// Who sent a job and who may see it. A slip records the principal the
+// Who sent a job and who may see it. A job records the principal the
 // manager verified (SubmittedBy) apart from the name the sender gave
-// (ClaimedUser): ownership and scope come from the first alone. A person
-// signed in to the pages is a Viewer: the web application signs them in
-// (OIDC at an external IdP) and keeps the groups the IdP gave them; the
-// manager decides here what they may see and print to.
+// (ClaimedUser): ownership and scope come from the first alone. Whoever a
+// request is from is a Viewer: a person signed in to the pages (the web
+// application signs them in with OIDC at an external IdP and keeps the
+// groups the IdP gave them), or a token of the configuration (the admin
+// token, a submit token). The manager decides here what they may see and
+// send to.
 
 // Kinds of principals.
 const (
@@ -22,6 +24,8 @@ const (
 	// PrincipalToken is a sender with a token of the configuration: a
 	// submit token's name, or "admin" for the admin token.
 	PrincipalToken = "token"
+	// PrincipalEndpoint is an endpoint's key (POST /in/<name>).
+	PrincipalEndpoint = "endpoint"
 	// PrincipalAnonymous is a sender nobody verified (no submit tokens
 	// are configured).
 	PrincipalAnonymous = "anonymous"
@@ -32,14 +36,15 @@ const (
 	ViaOIDC        = "oidc"
 	ViaAdminToken  = "admin-token"
 	ViaSubmitToken = "submit-token"
+	ViaEndpointKey = "endpoint-key"
 	ViaNone        = "none"
 )
 
-// Principal is who did something, as the manager verified it.
+// Principal is who sent a job, as the manager verified it.
 type Principal struct {
 	Kind string `json:"kind"`
-	// ID is the person's (Viewer.ID) or the token's name; empty for an
-	// anonymous sender.
+	// ID is the person's (Viewer.ID), the token's or the endpoint's
+	// name; empty for an anonymous sender.
 	ID string `json:"id,omitempty"`
 	// Name is shown: the person's name or email at the time.
 	Name string `json:"name,omitempty"`
@@ -54,39 +59,44 @@ func (p *Principal) Label() string {
 	return firstOr(p.Name, firstOr(p.ID, p.Kind))
 }
 
-// Kinds of locations and printers: who may print to them, and the scope
-// their jobs have by default.
+// Scopes of nodes: who may send to them from the pages, and whose their
+// jobs are.
 const (
-	// KindShared: anyone signed in prints to it; a job is its submitter's
-	// alone. The kind of one that names none.
-	KindShared = "shared"
-	// KindGroup: the members of the Owner group print to it, and see its
+	// ScopeShared: anyone signed in sends to it; a job is its
+	// submitter's alone. The scope of one that names none.
+	ScopeShared = "shared"
+	// ScopeGroup: the members of the Owner group send to it, and see its
 	// jobs.
-	KindGroup = "group"
-	// KindPersonal: the Owner person alone (their ID or email).
-	KindPersonal = "personal"
+	ScopeGroup = "group"
+	// ScopePersonal: the Owner person alone (their ID or email).
+	ScopePersonal = "personal"
 )
 
-func checkKind(kind, owner string) error {
-	switch kind {
-	case "", KindShared:
-		if owner != "" && kind == KindShared {
-			return fmt.Errorf("%w: a shared one has no owner", ErrInvalid)
+func checkScope(scope, owner string) error {
+	switch scope {
+	case "", ScopeShared:
+		if owner != "" && scope == ScopeShared {
+			return fmt.Errorf("%w: a shared node has no owner", ErrInvalid)
 		}
 		return nil
-	case KindGroup, KindPersonal:
+	case ScopeGroup, ScopePersonal:
 		if strings.TrimSpace(owner) == "" {
-			return fmt.Errorf("%w: a %s one needs its owner", ErrInvalid, kind)
+			return fmt.Errorf("%w: a %s node needs its owner", ErrInvalid, scope)
 		}
 		return nil
 	}
-	return fmt.Errorf("%w: kind %q: personal, group or shared", ErrInvalid, kind)
+	return fmt.Errorf("%w: scope %q: personal, group or shared", ErrInvalid, scope)
 }
 
-// Viewer is a person signed in to the pages.
+// Viewer is whoever a request is from: a person signed in to the pages,
+// or a token.
 type Viewer struct {
+	// Kind and Via are as a Principal's (PrincipalUser and ViaOIDC for a
+	// person).
+	Kind string
+	Via  string
 	// ID is stable for the person (the web application derives it from
-	// the IdP's issuer and subject).
+	// the IdP's issuer and subject), or the token's name.
 	ID    string
 	Name  string
 	Email string
@@ -98,107 +108,95 @@ type Viewer struct {
 
 // Principal is the viewer as the submitter of a job.
 func (v *Viewer) Principal() *Principal {
-	return &Principal{Kind: PrincipalUser, ID: v.ID, Name: firstOr(v.Name, v.Email), Via: ViaOIDC}
+	return &Principal{Kind: v.Kind, ID: v.ID, Name: firstOr(v.Name, v.Email), Via: v.Via}
 }
+
+// Label is how the viewer is shown, and named in the audit log.
+func (v *Viewer) Label() string { return v.Principal().Label() }
 
 // Member tells a member of a group.
 func (v *Viewer) Member(group string) bool {
 	return group != "" && slices.Contains(v.Groups, group)
 }
 
-// is tells the person a personal one's owner names: their ID, or their
+// is tells the person a personal node's owner names: their ID, or their
 // email (as the IdP verified it).
 func (v *Viewer) is(owner string) bool {
-	return owner != "" && (owner == v.ID || v.Email != "" && strings.EqualFold(owner, v.Email))
+	return owner != "" && v.Kind == PrincipalUser && (owner == v.ID || v.Email != "" && strings.EqualFold(owner, v.Email))
 }
 
-// CanSee tells whether the viewer may see a slip: the submitter, the
+// Submitted tells the job's submitter.
+func (v *Viewer) Submitted(j *Job) bool {
+	by := j.SubmittedBy
+	return v != nil && by != nil && by.Kind == v.Kind && by.ID != "" && by.ID == v.ID
+}
+
+// CanSee tells whether the viewer may see a job: its submitter, the
 // members of its group, and the admins.
-func (v *Viewer) CanSee(s *Slip) bool {
-	if v == nil {
-		return false
-	}
-	if v.Admin || v.Member(s.Group) {
-		return true
-	}
-	by := s.SubmittedBy
-	return by != nil && by.Kind == PrincipalUser && by.ID == v.ID
+func (v *Viewer) CanSee(j *Job) bool {
+	return v != nil && (v.Admin || v.Member(j.Group) || v.Submitted(j))
 }
 
-// CanPrintTo tells whether the viewer may print to a location or printer
-// of a kind and owner.
-func (v *Viewer) CanPrintTo(kind, owner string) bool {
+// CanCancel tells whether the viewer may cancel a job: its submitter and
+// the admins (the members of its group only see it).
+func (v *Viewer) CanCancel(j *Job) bool {
+	return v != nil && (v.Admin || v.Submitted(j))
+}
+
+// CanSendTo tells whether the viewer may send to a node of a scope and
+// owner from the pages.
+func (v *Viewer) CanSendTo(scope, owner string) bool {
 	if v == nil {
 		return false
 	}
-	switch kind {
-	case "", KindShared:
+	switch scope {
+	case "", ScopeShared:
 		return true
-	case KindGroup:
+	case ScopeGroup:
 		return v.Admin || v.Member(owner)
-	case KindPersonal:
+	case ScopePersonal:
 		return v.Admin || v.is(owner)
 	}
 	return false
 }
 
-// slipGroup is the group a slip of a location gets: the location's, or
-// else its fallback printer's, when that is a group's.
-func (m *Manager) slipGroup(ctx context.Context, l *Location) string {
-	if l.Kind == KindGroup {
-		return l.Owner
+// destScope tells a destination's scope and owner, and the group its
+// jobs get: the destination's, or else (a location's) its fallback
+// printer's, when that is a group's.
+func (m *Manager) destScope(ctx context.Context, name string) (scope, owner, group string, err error) {
+	kind, err := m.kindOf(ctx, name)
+	if err != nil {
+		return "", "", "", err
 	}
-	if l.Fallback != nil {
-		if p, err := m.Printer(ctx, l.Fallback.Printer); err == nil && p.Kind == KindGroup {
-			return p.Owner
+	switch kind {
+	case KindDisplay:
+		l, err := m.Location(ctx, name)
+		if err != nil {
+			return "", "", "", err
 		}
+		scope, owner = l.Scope, l.Owner
+		if scope != ScopeGroup && l.Fallback != nil {
+			if p, err := m.Printer(ctx, l.Fallback.Printer); err == nil && p.Scope == ScopeGroup {
+				group = p.Owner
+			}
+		}
+	case KindPrinter:
+		p, err := m.Printer(ctx, name)
+		if err != nil {
+			return "", "", "", err
+		}
+		scope, owner = p.Scope, p.Owner
+	default:
+		n, err := m.Node(ctx, name)
+		if err != nil {
+			return "", "", "", err
+		}
+		scope, owner = n.Scope, n.Owner
 	}
-	return ""
-}
-
-// Slips returns every slip, the latest first.
-func (m *Manager) Slips(ctx context.Context) ([]Slip, error) {
-	recs, err := list[slipRecord](ctx, m.st.db)
-	if err != nil {
-		return nil, err
+	if scope == ScopeGroup {
+		group = owner
 	}
-	out := make([]Slip, len(recs))
-	for i, r := range recs {
-		out[i] = Slip(r.Data)
-	}
-	slices.SortFunc(out, func(a, b Slip) int { return strings.Compare(b.ID, a.ID) })
-	return out, nil
-}
-
-// SlipsOf returns the slips a viewer may see, the latest first.
-func (m *Manager) SlipsOf(ctx context.Context, v *Viewer) ([]Slip, error) {
-	all, err := m.Slips(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return slices.DeleteFunc(all, func(s Slip) bool { return !v.CanSee(&s) }), nil
-}
-
-// Places are the locations and printers a viewer may print to.
-type Places struct {
-	Locations []Location `json:"locations"`
-	Printers  []Printer  `json:"printers"`
-}
-
-// PlacesOf returns the locations and printers a viewer may print to.
-func (m *Manager) PlacesOf(ctx context.Context, v *Viewer) (*Places, error) {
-	ls, err := m.Locations(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ps, err := m.Printers(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &Places{
-		Locations: slices.DeleteFunc(ls, func(l Location) bool { return !v.CanPrintTo(l.Kind, l.Owner) }),
-		Printers:  slices.DeleteFunc(ps, func(p Printer) bool { return !v.CanPrintTo(p.Kind, p.Owner) }),
-	}, nil
+	return scope, owner, group, nil
 }
 
 // Person is what the web application keeps of a person who signed in:

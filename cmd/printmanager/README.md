@@ -1,10 +1,15 @@
 # BDF Print Manager
 
-Virtual printers that show slips on the tablets of a location (a warehouse)
-instead of printing them. A WMS or a business system prints to the
-location's IPP printer as it prints to any printer; the slip appears on the
-tablets enrolled there, and a printer of the location prints what nobody
-opened in time, or everything while no tablet is connected.
+A software-defined document network. Documents enter at virtual printers
+(every node is an IPP printer) and at API endpoints (a document, or a
+template and the data to fill it with), flow through the nodes an
+administrator composes — queues that fan out, classes that send to one
+member in turn, inboxes that hold a job until a person sends it on — and
+end on display boards (the devices enrolled at a location, such as the
+tablets of a warehouse), on printers, and in archives that keep a copy
+nobody changes. Paper is one destination among others. The topology is
+laid out on the admin page, as the printers and classes of a CUPS server
+are, with edges drawn between nodes (see *Topology* below).
 
 The manager is [print/manager](../../print/manager); this is its web
 application on [Popcorn Web](https://github.com/shibukawa/popcornweb). It
@@ -43,15 +48,16 @@ or with variables:
 | `MANAGER_SUBMIT_TOKENS` | `name:secret` pairs that may send jobs (IPP Basic, or bearer `name:secret`); none lets anyone send |
 | `MANAGER_SERVERLESS` | refuse a store one process keeps, and tick only when called |
 | `MANAGER_TICK_INTERVAL` | how often a process ticks (default 30s) |
+| `MANAGER_JOB_KEEP` | how long a job that ended is kept, with its document once nothing shows it (default 336h, 14 days) |
 
 ## Sign-in
 
 Every page but `/tablet` is for a person signed in at an OIDC IdP
 (authorization code with PKCE, through popcornweb's `plugin/auth`).
 Anyone the IdP signs in gets in, with no registration here, and sees
-their own jobs and their groups' jobs, and the locations and printers
-they may print to; the admins see everything and get `/admin`, the
-others get 403 there. The IdP is popcornweb's `[auth.oidc]`; who gets in
+their own jobs and their groups' jobs, and the nodes they may print to;
+the admins see everything and get `/admin` and `/audit`, the others get
+403 there. The IdP is popcornweb's `[auth.oidc]`; who gets in
 and who is an admin is `[oidc]`:
 
 | Variable | |
@@ -71,13 +77,15 @@ the session is a sealed cookie (`session.keyring.secret`, or made of
 `MANAGER_SECRET`). The groups are copied at each login; who is an admin
 is decided on each request.
 
-A location or a printer has a kind and an owner (`"kind":"group",
-"owner":"warehouse-a"`, a value of the groups claim; `personal` and a
-person's email; `shared`, the default): who may print to it, and the
-group whose members see the jobs of a location (else of its fallback
-printer). A job records who sent it as verified (`submitted_by`: the
-person signed in, the submit token, or anonymous) apart from the name the
-sender gave (`claimed_user`, shown only).
+Every node (a display, a printer, a queue, a class …) has a scope and an
+owner (`"scope":"group", "owner":"warehouse-a"`, a value of the groups
+claim; `personal` and a person's email; `shared`, the default): who may
+print to it from the pages, and the group whose members see the jobs
+sent to it (of a display with none, its fallback printer's). A job
+records who sent it as verified (`submitted_by`: the person signed in,
+the token, the endpoint, or anonymous) apart from the name the sender
+gave (`claimed_user`, shown only). The sender and the admins cancel a
+job; its group only sees it.
 
 For a local IdP, `print/fakeidp` serves one with people of your choosing
 (`fakeidp.New(...).Listen("127.0.0.1:9781")`).
@@ -87,20 +95,91 @@ identity, the container's or the instance's role.
 
 ## Use it
 
-1. Add a printer and a location (on `/admin`, or the API):
+A person signs in at the IdP (see Sign-in) and sees `/jobs`: their jobs
+and their groups', and a form that prints a document to a node they may
+print to. An administrator sees every job there, and goes on to `/admin`
+(the topology, the templates, the endpoints' keys, the inboxes, the
+deliveries, the displays and their devices) and `/audit` (who did what:
+sign-ins, changes, keys, devices, releases, cancellations). The API takes
+the session's cookie (from the manager's own pages) as it takes the
+tokens; scripts use the tokens.
+
+1. Add a printer and a display (a location: on `/admin`, or the API):
 
    ```sh
    curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/printers/wh-a-laser -d '{"url":"ipps://wh-a-laser.local/ipp/print"}'
-   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/locations/wh-a -d '{"title":"第 1 倉庫","kind":"group","owner":"warehouse-a","fallback":{"printer":"wh-a-laser","after":"10m"}}'
+   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/locations/wh-a -d '{"title":"第 1 倉庫","scope":"group","owner":"warehouse-a","fallback":{"printer":"wh-a-laser","after":"10m"}}'
    ```
 
-2. Enroll a tablet: "端末を足す" on `/admin` shows a one-time code and its QR
-   code; the tablet opens `/tablet?code=…`. Its page makes a key that cannot
+2. Enroll a tablet: "Add a device" on `/admin` shows a one-time code and its
+   QR code; the tablet opens `/tablet?code=…`. Its page makes a key that cannot
    be exported and keeps it; only that browser signs in as the device.
    Add the page to the home screen.
 3. Print to `ipp://<host>:<port>/ipp/print/wh-a` (or `POST /api/locations/wh-a/slips`
    with the document as the body). PDF, Office documents, images, PWG and
    Apple rasters and `.bdf` are taken.
+
+## Topology
+
+Locations, printers and the routing nodes below share one namespace, and
+each is an IPP printer at `/ipp/print/<name>` (a job sent to a printer's
+name is printed there; one sent to a location's name is shown there). A
+job sent to a node follows the edges from it; its record (`/api/jobs/<n>`)
+keeps a leg for every node it reached. The document is kept once for all
+of them.
+
+| Kind | Does | Settings |
+|---|---|---|
+| `endpoint` | an entry for applications: `POST /in/<name>` with the endpoint's own key takes a document, or `{"template": "<id>", "data": {…}}` to fill a template, and forwards the job to every node of `to`. The key is shown once, when the endpoint is made (`key` in the answer) or rotated (`POST /api/nodes/<name>/key`); the manager keeps only its argon2id hash | `to`, `templates` (the ids it may fill; empty: any) |
+| `queue` | forwards the job to every node of `to` (a fan-out when there are several) | `to` |
+| `class` | sends the job to one of `members`, in turn (`round-robin`, the default) or the first (`failover`); a printer that does not take it is skipped for the next member | `members`, `policy` |
+| `inbox` | holds the job until a person releases it to nodes (those of `to`, or any when `to` is empty) or discards it; ended items stay `keep` (14 days) | `to`, `keep` |
+| `archive` | writes the job's `.bdf` and a JSON record of it to `store` (a documents URL: `bbolt`, `s3`, `r2`, `gcs`), each object once, under `collection` (`archive-<name>`); the manager never changes or deletes them. Give the S3 bucket a default retention (Object Lock) for an audit trail nobody can change | `store`, `collection` |
+
+Three virtual printers and an endpoint, for example: an audit copy, a
+site's printers in turn, both warehouses at once, and an application that
+prints invoices from data.
+
+```sh
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/audit -d '{"kind":"archive","store":"s3://audit?region=ap-northeast-1"}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/invoices -d '{"kind":"queue","to":["audit"]}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/tokyo -d '{"kind":"class","members":["mfp-3f","mfp-4f"]}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/both -d '{"kind":"queue","to":["wh-a","wh-b"]}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/review -d '{"kind":"inbox","to":["wh-a","tokyo"]}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/templates/invoice?name=invoice.xlsx --data-binary @invoice.xlsx
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/erp -d '{"kind":"endpoint","to":["invoices"],"templates":["invoice"]}'
+# → {"name":"erp", …, "key":"bdfk_…"}: the application sends with that key
+curl -X POST -H "Authorization: Bearer bdfk_…" -H "Content-Type: application/json" localhost:8080/in/erp -d '{"template":"invoice","name":"INV-1","data":{"customer":"ACME","total":12000}}'
+curl -X POST -H "Authorization: Bearer bdfk_…" --data-binary @statement.pdf "localhost:8080/in/erp?name=statement"
+```
+
+A template is a compiled template (`.bdft`, from `bdf template compile`)
+or one of Excel, Word, PowerPoint, a PDF form, pdfme or text, as
+`bdf fill` takes them; `GET /api/templates/<id>` lists the fields its tags
+look up.
+
+A node is checked when it is put: the nodes it names exist, the name is
+free of the other kinds, and no path leads back to it. A node another one
+sends to is not deleted. Deliveries to printers and archives are sent by a
+process right after the job is routed, and by the tick (`POST /api/tick`;
+every minute on a serverless platform); one that fails is tried again
+after a growing wait, up to 20 times, and `POST /api/deliveries/<id>/retry`
+sends it again now. `/admin` shows the topology, the inboxes (release and
+discard), the jobs of a destination and the deliveries waiting; a CUPS
+client lists every node with CUPS-Get-Printers at `/ipp/print`
+(`bdf printers -url ipp://<host>:<port>/ipp/print`).
+
+`GET /auth/login` signs in at the IdP and `POST /auth/logout` out;
+`GET /api/me` tells who; `GET /api/my/jobs` lists a person's jobs and
+`GET /api/destinations` the nodes to print to; `GET /api/audit` is the log.
+The API of the topology, under the admin token: `GET /api/topology`;
+`GET`, `PUT` and `DELETE /api/nodes/<name>` and `POST /api/nodes/<name>/key`;
+`GET` and `PUT /api/layout` (where the nodes are drawn); `GET`, `PUT` and
+`DELETE /api/templates/<id>` and its `/file`; `GET` and `POST
+/api/destinations/<name>/jobs`; `GET /api/jobs/<n>`, its `/document` and
+`POST …/cancel`; `GET /api/inboxes/<name>`, `POST /api/items/<id>/release`
+(`{"to": [...], "worker": "..."}`) and `…/discard`; `GET /api/deliveries`
+and `POST /api/deliveries/<id>/retry`.
 
 ## On AWS Lambda
 

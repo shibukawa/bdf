@@ -143,6 +143,9 @@ func (e *env) send(c *http.Client, edit func(*http.Request), method, path string
 	if err != nil {
 		e.t.Fatal(err)
 	}
+	if _, raw := body.([]byte); body != nil && !raw {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	edit(req)
 	if c == nil {
 		c = http.DefaultClient
@@ -387,7 +390,7 @@ func TestSubmitAPI(t *testing.T) {
 	}
 	var s Slip
 	json.Unmarshal(out, &s)
-	if s.SubmittedBy == nil || *s.SubmittedBy != (Principal{Kind: PrincipalToken, ID: "wms", Via: ViaSubmitToken}) || s.Source != "api" || s.Pages != 1 {
+	if s.SubmittedBy == nil || *s.SubmittedBy != (Principal{Kind: PrincipalToken, ID: "wms", Name: "wms", Via: ViaSubmitToken}) || s.Source != "api" || s.Pages != 1 {
 		t.Fatalf("slip %+v", s)
 	}
 	if res, _ := e.do(nil, "POST", "/api/locations/wh-a/slips", "wms:s3cret", []byte("not a document")); res.StatusCode != http.StatusUnsupportedMediaType {

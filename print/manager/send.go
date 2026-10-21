@@ -126,7 +126,7 @@ func retryDelay(attempts int) time.Duration {
 }
 
 func (m *Manager) sendSlip(ctx context.Context, p *Printer, s *Slip) (int32, error) {
-	doc, err := m.Document(ctx, s)
+	doc, err := m.Document(ctx, s.Job)
 	if err != nil {
 		return 0, err
 	}
@@ -164,31 +164,57 @@ func firstOr(s, or string) string {
 
 // TickReport is what a tick did.
 type TickReport struct {
-	Printed  int `json:"printed"`
-	Failed   int `json:"failed"`
+	// Delivered and Undelivered count the deliveries to printers and
+	// archives sent, and the sends that failed (tried again later).
+	Delivered   int `json:"delivered"`
+	Undelivered int `json:"undelivered"`
+	// Printed and Failed count the slips printed on paper as a fallback,
+	// and those that could not be.
+	Printed int `json:"printed"`
+	Failed  int `json:"failed"`
+	// Removed, Items and Jobs count the slips, the items and the jobs
+	// removed after their keep.
 	Removed  int `json:"removed"`
+	Items    int `json:"items"`
+	Jobs     int `json:"jobs"`
 	Expired  int `json:"expired"`
 	Leased   int `json:"leased"`
 	Location int `json:"locations"`
 }
 
-// Tick does what is due: it prints on paper the slips nobody opened in
-// time (or every unopened slip of a location none of whose devices is
-// connected), removes the slips ended longer ago than their location
-// keeps them, and the enrollment codes expired. Any instance may call it,
-// at any time, as often as it likes: a scheduler of the platform (every
-// minute), or a timer of the process.
+// Tick does what is due: it sends the deliveries to printers and
+// archives that wait (or failed and are to be tried again), prints on
+// paper the slips nobody opened in time (or every unopened slip of a
+// location none of whose devices is connected), removes the slips and
+// the items ended longer ago than their location or inbox keeps them, the
+// jobs that ended and nothing shows any more, and the enrollment codes
+// expired. Any instance may call it, at any time, as often as it likes: a
+// scheduler of the platform (every minute), or a timer of the process.
 func (m *Manager) Tick(ctx context.Context) (*TickReport, error) {
 	rep := &TickReport{}
+	var errs []error
+	if err := m.tickDeliveries(ctx, rep); err != nil {
+		errs = append(errs, err)
+	}
 	locs, err := m.Locations(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var errs []error
 	for _, l := range locs {
 		rep.Location++
 		if err := m.tickLocation(ctx, &l, rep); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", l.Name, err))
+		}
+	}
+	nodes, err := m.Nodes(ctx)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	for _, n := range nodes {
+		if n.Kind == KindInbox {
+			if err := m.tickInbox(ctx, &n, rep); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))
+			}
 		}
 	}
 	codes, err := list[enrollRecord](ctx, m.st.db)
@@ -202,6 +228,9 @@ func (m *Manager) Tick(ctx context.Context) (*TickReport, error) {
 				rep.Expired++
 			}
 		}
+	}
+	if err := m.tickJobs(ctx, rep); err != nil {
+		errs = append(errs, err)
 	}
 	return rep, errors.Join(errs...)
 }

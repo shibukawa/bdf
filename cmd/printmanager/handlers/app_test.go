@@ -47,16 +47,25 @@ func TestApp(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, string(b)
 	}
-	// without an IdP (dev), nobody signs in: the pages say so, and
-	// nobody is an admin
+	// without an IdP (dev), nobody signs in: the top page says so, and
+	// the pages of people send to it (with one, the top page signs in at
+	// the IdP and the others go there: login_test)
 	for path, want := range map[string]string{"/": "AUTH_OIDC_ISSUER", "/tablet": "/public/tablet.js"} {
 		code, body := get(path, "")
 		if code != http.StatusOK || !strings.Contains(body, want) {
 			t.Errorf("%s: %d, no %s", path, code, want)
 		}
 	}
-	if code, _ := get("/admin", ""); code != http.StatusForbidden {
-		t.Errorf("/admin: %d", code)
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	for _, path := range []string{"/jobs", "/admin", "/audit"} {
+		res, err := noRedirect.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/" {
+			t.Errorf("%s without a session: %d %s", path, res.StatusCode, res.Header.Get("Location"))
+		}
 	}
 	// the manager's API is mounted
 	if code, _ := get("/api/locations", ""); code != http.StatusUnauthorized {
@@ -64,5 +73,19 @@ func TestApp(t *testing.T) {
 	}
 	if code, body := get("/api/locations", "t"); code != http.StatusOK || strings.TrimSpace(body) != "[]" {
 		t.Errorf("api: %d %s", code, body)
+	}
+	// the endpoints and the IPP server are mounted too: the manager
+	// answers (JSON), not the framework's page
+	for _, path := range []string{"/in/nowhere", "/ipp/print"} {
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader("{}"))
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode == http.StatusOK || !strings.Contains(string(b), "error") && !strings.Contains(string(b), "IPP") {
+			t.Errorf("%s: %d %s", path, res.StatusCode, b)
+		}
 	}
 }

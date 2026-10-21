@@ -48,7 +48,7 @@ func Open(ctx context.Context, cfg ManagerConfig, oidc OIDCConfig) (*App, error)
 		tokens[name] = secret
 	}
 	if cfg.AdminToken == "" {
-		log.Info("printmanager: no manager.admin_token; the API (/api) answers the admins signed in to the pages only")
+		log.Info("printmanager: no manager.admin_token; the API (/api) answers the administrators signed in to the pages only")
 	}
 	if oidc.GroupsClaim == "" {
 		oidc.GroupsClaim = "groups"
@@ -67,6 +67,10 @@ func Open(ctx context.Context, cfg ManagerConfig, oidc OIDCConfig) (*App, error)
 		Converter: conv, Secret: secret, FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts,
 		AdminToken: cfg.AdminToken, SubmitTokens: tokens, TickToken: cfg.TickToken, Viewer: a.viewer,
 		MaxDocument: int64(cfg.MaxDocumentMB) << 20, SecureCookies: cfg.SecureCookies, TabletPath: "/tablet", Log: log,
+		JobKeep: cfg.JobKeep,
+		// a process sends deliveries as jobs come; a function leaves them
+		// to the scheduler's tick
+		Background: !cfg.Serverless,
 	})
 	if err != nil {
 		st.Close()
@@ -114,34 +118,58 @@ func (a *App) StartTimer(ctx context.Context) (stop func()) {
 // Handler is the application: the pages, and the manager's printers, API
 // and devices' endpoints. The pages' scripts and style are the framework's
 // /public mount's. Every page but /tablet is for a person signed in
-// (ConfigureAuth); /admin for an admin.
+// (ConfigureAuth); /admin and /audit for an administrator.
 func (a *App) Handler() http.Handler {
 	mux := pw.NewServeMux()
 	mh := manager.Handler(a.m)
 	mux.Handle(manager.IPPPath+"/", mh)
+	mux.Handle(manager.IPPPath, mh)
+	mux.Handle(manager.InPath+"/", mh)
 	mux.Handle("/api/", mh)
 	mux.Handle("/device/", mh)
-	mux.HandleFunc("GET /{$}", a.home)
-	mux.HandleFunc("GET /tablet", func(w http.ResponseWriter, r *http.Request) {
-		pw.WriteHTML(w, r, Tablet(TabletParams{}))
-	})
-	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
-		v := a.viewer(r)
-		if v == nil || !v.Admin {
-			w.Header().Set("Cache-Control", "no-store")
-			pw.WriteHTML(&statusWriter{ResponseWriter: w, status: http.StatusForbidden}, r,
-				Forbidden(ForbiddenParams{SignedIn: v != nil, Account: account(v)}))
+	// the pages: a sign-in at the top; the jobs of the person signed in;
+	// the administrator's topology and audit log
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if a.viewer(r) != nil {
+			http.Redirect(w, r, "/jobs", http.StatusSeeOther)
 			return
 		}
-		pw.WriteHTML(w, r, Admin(AdminParams{Account: account(v)}))
+		pw.WriteHTML(w, r, SignIn(SignInParams{Enabled: auth.Protection().Protected != nil}))
+	})
+	mux.HandleFunc("GET /jobs", a.page(false, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Jobs(JobsParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /admin", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Admin(AdminParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /audit", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Audit(AuditParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /tablet", func(w http.ResponseWriter, r *http.Request) {
+		pw.WriteHTML(w, r, Tablet(TabletParams{}))
 	})
 	return mux
 }
 
-func account(v *manager.Viewer) Account {
-	if v == nil {
-		return Account{}
+// page serves a page of a person signed in; admin, of an administrator
+// (others get 403).
+func (a *App) page(admin bool, fn func(http.ResponseWriter, *http.Request, Account)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		v := a.viewer(r)
+		switch {
+		case v == nil:
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+		case admin && !v.Admin:
+			pw.WriteHTML(&statusWriter{ResponseWriter: w, status: http.StatusForbidden}, r, Forbidden(ForbiddenParams{Account: account(v)}))
+		default:
+			fn(w, r, account(v))
+		}
 	}
+}
+
+func account(v *manager.Viewer) Account {
 	name := firstOr(v.Name, v.Email)
 	initial := "?"
 	for _, r := range name {
@@ -156,49 +184,4 @@ func firstOr(s, or string) string {
 		return or
 	}
 	return s
-}
-
-var stateLabels = map[manager.SlipState]string{manager.SlipNew: "未開封", manager.SlipOpened: "開いた", manager.SlipDone: "完了", manager.SlipCanceled: "取り消し"}
-
-var viaLabels = map[string]string{manager.ViaOIDC: "サインイン", manager.ViaSubmitToken: "送信のトークン", manager.ViaAdminToken: "管理のトークン", manager.ViaNone: "確かめていない"}
-
-// home is everyone's page: the jobs they may see, and where they may
-// print.
-func (a *App) home(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	v := a.viewer(r)
-	if v == nil {
-		pw.WriteHTML(w, r, Home(HomeParams{NoSlips: true}))
-		return
-	}
-	ctx := r.Context()
-	slips, err := a.m.SlipsOf(ctx, v)
-	if err != nil {
-		a.log.Error("slips", "err", err)
-		http.Error(w, "the jobs cannot be read", http.StatusInternalServerError)
-		return
-	}
-	places, err := a.m.PlacesOf(ctx, v)
-	if err != nil {
-		a.log.Error("places", "err", err)
-		http.Error(w, "the places cannot be read", http.StatusInternalServerError)
-		return
-	}
-	p := HomeParams{SignedIn: true, Account: account(v), Groups: v.Groups, NoSlips: len(slips) == 0, CanPrint: len(places.Locations) > 0}
-	for _, s := range slips {
-		row := SlipRow{Job: int(s.Job), Name: firstOr(s.Name, "slip-"+s.ID), Location: s.Location, State: string(s.State),
-			StateLabel: stateLabels[s.State], Pages: s.Pages, Received: s.Received.Local().Format("2006-01-02 15:04"),
-			Claimed: s.ClaimedUser, Group: s.Group}
-		if by := s.SubmittedBy; by != nil {
-			row.By, row.Via, row.Mine = by.Label(), viaLabels[by.Via], by.Kind == manager.PrincipalUser && by.ID == v.ID
-		}
-		p.Slips = append(p.Slips, row)
-	}
-	for _, l := range places.Locations {
-		p.Locations = append(p.Locations, Place{Name: l.Name, Title: l.Title, Kind: firstOr(l.Kind, manager.KindShared), Owner: l.Owner})
-	}
-	for _, pr := range places.Printers {
-		p.Printers = append(p.Printers, Place{Name: pr.Name, Kind: firstOr(pr.Kind, manager.KindShared), Owner: pr.Owner})
-	}
-	pw.WriteHTML(w, r, Home(p))
 }
