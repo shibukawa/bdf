@@ -14,7 +14,7 @@ func TestFilter(t *testing.T) {
 	for _, d := range []string{"wh-a", "wh-b", "office"} {
 		e.display(d, Node{})
 	}
-	e.node("sort", Node{Kind: KindFilter}, http.StatusBadRequest)
+	e.node("sort", Node{Kind: KindFilter}, http.StatusOK) // not set up yet: no rules
 	e.node("sort", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Name: "("}, To: []string{"wh-a"}}}}, http.StatusBadRequest)
 	e.node("sort", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{}, To: []string{"wh-a"}}}}, http.StatusBadRequest)
 	e.node("sort", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Name: "x"}}}}, http.StatusBadRequest)

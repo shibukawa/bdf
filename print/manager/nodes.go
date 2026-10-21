@@ -21,6 +21,9 @@ import (
 // destination follows the edges (route). The graph is checked when a
 // node is put: every node it names exists, no path leads back to it, and
 // the kinds of payload that reach every node are ones it takes (typed).
+// A node may be put before it is set up (no to, no url, no store …): it
+// is placed on the canvas first and set up after, and a job that reaches
+// it ends there until it is (missing).
 
 // nodeKinds are the kinds of a node, in the order of a job's way.
 var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink}
@@ -48,14 +51,8 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 	switch n.Kind {
 	case KindQueue:
 		n.To = cleanNames(in.To)
-		if len(n.To) == 0 {
-			return "", fmt.Errorf("%w: a queue forwards to at least one node (to)", ErrInvalid)
-		}
-	case KindEndpoint, KindCups:
+	case KindEndpoint:
 		n.To = cleanNames(in.To)
-		if len(n.To) == 0 {
-			return "", fmt.Errorf("%w: a %s forwards what it receives to at least one node (to)", ErrInvalid, kindName(n.Kind))
-		}
 		n.Accept = or(in.Accept, AcceptFile)
 		if n.Accept != AcceptFile && n.Accept != AcceptData {
 			return "", fmt.Errorf("%w: accept %q: file or data", ErrInvalid, in.Accept)
@@ -75,30 +72,36 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 			return "", err
 		}
 		n.Port = in.Port
-		if n.Kind == KindEndpoint {
-			n.Apps = cleanNames(in.Apps)
-			for _, id := range n.Apps {
-				if _, err := m.App(ctx, id); err != nil {
-					return "", fmt.Errorf("%w: no app %q", ErrInvalid, id)
-				}
+		n.Apps = cleanNames(in.Apps)
+		for _, id := range n.Apps {
+			if _, err := m.App(ctx, id); err != nil {
+				return "", fmt.Errorf("%w: no app %q", ErrInvalid, id)
 			}
-		} else {
-			n.TLSCert, n.TLSKey = strings.TrimSpace(in.TLSCert), strings.TrimSpace(in.TLSKey)
-			if n.Port == 0 {
-				return "", fmt.Errorf("%w: a CUPS server listens on a port of its own (port)", ErrInvalid)
+		}
+	case KindCups:
+		// what computers print is a document (PDF, a raster): it is always
+		// made .bdf here, and anything the converter reads is taken
+		n.To = cleanNames(in.To)
+		if n.Meta, err = claimedMeta(in.Meta); err != nil {
+			return "", err
+		}
+		n.Port, n.TLSCert, n.TLSKey = in.Port, strings.TrimSpace(in.TLSCert), strings.TrimSpace(in.TLSKey)
+		if n.Port == 0 {
+			if m.o.NoPorts {
+				return "", fmt.Errorf("%w: a CUPS server listens on a port of its own, and there are no ports here (serverless)", ErrInvalid)
 			}
-			if (n.TLSCert == "") != (n.TLSKey == "") {
-				return "", fmt.Errorf("%w: a CUPS server's certificate takes both tls_cert and tls_key (files)", ErrInvalid)
+			if n.Port, err = m.freePort(ctx, n.Name); err != nil {
+				return "", err
 			}
+		}
+		if (n.TLSCert == "") != (n.TLSKey == "") {
+			return "", fmt.Errorf("%w: a CUPS server's certificate takes both tls_cert and tls_key (files)", ErrInvalid)
 		}
 	case KindTemplate:
 		n.To = cleanNames(in.To)
-		if len(n.To) == 0 {
-			return "", fmt.Errorf("%w: a template node sends the form it fills to at least one node (to)", ErrInvalid)
-		}
 		n.Template, n.TemplateFrom = strings.TrimSpace(in.Template), strings.TrimSpace(in.TemplateFrom)
-		if (n.Template == "") == (n.TemplateFrom == "") {
-			return "", fmt.Errorf("%w: a template node names the template it fills (template), or the metadata key that names one (template_from)", ErrInvalid)
+		if n.Template != "" && n.TemplateFrom != "" {
+			return "", fmt.Errorf("%w: a template node names the template it fills (template), or the metadata key that names one (template_from), not both", ErrInvalid)
 		}
 		if n.Template != "" && !templateIDRE.MatchString(n.Template) {
 			return "", fmt.Errorf("%w: template id %q: letters, digits, _ and -", ErrInvalid, n.Template)
@@ -106,9 +109,6 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		n.ListName, n.Strict = strings.TrimSpace(in.ListName), in.Strict
 	case KindConvert:
 		n.To = cleanNames(in.To)
-		if len(n.To) == 0 {
-			return "", fmt.Errorf("%w: a convert node sends the document it makes to at least one node (to)", ErrInvalid)
-		}
 		n.Formats = cleanFormats(in.Formats)
 		if err := checkFormats(n.Formats); err != nil {
 			return "", err
@@ -120,9 +120,6 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		}
 	case KindClass:
 		n.Members = cleanNames(in.Members)
-		if len(n.Members) == 0 {
-			return "", fmt.Errorf("%w: a class has at least one member", ErrInvalid)
-		}
 		n.Policy = or(in.Policy, PolicyRoundRobin)
 		if n.Policy != PolicyRoundRobin && n.Policy != PolicyFailover {
 			return "", fmt.Errorf("%w: policy %q: round-robin or failover", ErrInvalid, in.Policy)
@@ -133,24 +130,20 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 			return "", err
 		}
 		n.Rules, n.Otherwise = rules, cleanNames(in.Otherwise)
-		if len(n.Rules) == 0 && len(n.Otherwise) == 0 {
-			return "", fmt.Errorf("%w: a filter has rules, or nodes it sends to otherwise", ErrInvalid)
-		}
 	case KindInbox:
 		n.To, n.Keep = cleanNames(in.To), in.Keep
 	case KindArchive:
 		n.Store, n.Collection = strings.TrimSpace(in.Store), strings.TrimSpace(in.Collection)
-		if n.Store == "" {
-			return "", fmt.Errorf("%w: an archive has a store (bbolt, s3, r2 or gcs)", ErrInvalid)
-		}
 		if n.Collection != "" {
 			if err := yuruidb.ValidateCollection(n.Collection); err != nil {
 				return "", fmt.Errorf("%w: collection %q: letters, digits, _ and -", ErrInvalid, n.Collection)
 			}
 		}
 		// the store is opened now, so that a wrong URL is refused here
-		if _, err := m.st.archive(ctx, n.Store, n.collection()); err != nil {
-			return "", fmt.Errorf("%w: store: %v", ErrInvalid, err)
+		if n.Store != "" {
+			if _, err := m.st.archive(ctx, n.Store, n.collection()); err != nil {
+				return "", fmt.Errorf("%w: store: %v", ErrInvalid, err)
+			}
 		}
 	case KindDisplay:
 		n.Keep, n.OfflineAfter = in.Keep, in.OfflineAfter
@@ -165,8 +158,10 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		if n.Route != RouteDirect && n.Route != RouteBranch {
 			return "", fmt.Errorf("%w: route %q: direct or branch", ErrInvalid, in.Route)
 		}
-		if err := checkPrinterURL(n.URL); err != nil {
-			return "", err
+		if n.URL != "" {
+			if err := checkPrinterURL(n.URL); err != nil {
+				return "", err
+			}
 		}
 		n.Preview = strings.TrimSpace(in.Preview)
 		if err := checkPreviewURL(n.Preview); err != nil {
@@ -243,6 +238,66 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 	}
 	m.changed()
 	return key, nil
+}
+
+// firstPort is the first port a CUPS server node gets when it is put
+// without one: the next free of 6310 on.
+const firstPort = 6310
+
+// freePort chooses a port no other node has, for a node put without one.
+func (m *Manager) freePort(ctx context.Context, name string) (int, error) {
+	others, err := m.Nodes(ctx)
+	if err != nil {
+		return 0, err
+	}
+	taken := map[int]bool{}
+	for _, o := range others {
+		if o.Name != name && o.Port != 0 {
+			taken[o.Port] = true
+		}
+	}
+	for port := firstPort; port <= 65535; port++ {
+		if !taken[port] {
+			return port, nil
+		}
+	}
+	return 0, fmt.Errorf("%w: no port is free", ErrConflict)
+}
+
+// missing names what a node lacks to do its work: it may be put without
+// it (placed on the canvas first, set up after), and a job that reaches
+// it ends there until it has it.
+func (n *Node) missing() []string {
+	var out []string
+	switch n.Kind {
+	case KindQueue, KindEndpoint, KindCups, KindTemplate, KindConvert:
+		if len(n.To) == 0 {
+			out = append(out, "to")
+		}
+	case KindClass:
+		if len(n.Members) == 0 {
+			out = append(out, "members")
+		}
+	case KindFilter:
+		if len(n.Rules) == 0 && len(n.Otherwise) == 0 {
+			out = append(out, "rules")
+		}
+	case KindArchive:
+		if n.Store == "" {
+			out = append(out, "store")
+		}
+	case KindPrinter:
+		if n.URL == "" {
+			out = append(out, "url")
+		}
+	}
+	if n.Kind == KindTemplate && n.Template == "" && n.TemplateFrom == "" {
+		out = append(out, "template")
+	}
+	if n.Kind == KindCups && n.Port == 0 {
+		out = append(out, "port")
+	}
+	return out
 }
 
 // RotateKey gives an endpoint a new key, returned once; requests with the
@@ -481,6 +536,9 @@ type TopoNode struct {
 	Emits []string `json:"emits,omitempty"`
 	// Templates are the ids of a template node's templates.
 	Templates []string `json:"templates,omitempty"`
+	// Missing names what the node lacks to do its work (to, url, store
+	// …): it is not set up yet.
+	Missing []string `json:"missing,omitempty"`
 	// Held counts the items an inbox holds; Open the slips open at a
 	// display and Devices its devices; Pending the deliveries waiting at
 	// a printer, an archive or a class; Kept the jobs a sink keeps, and
@@ -521,7 +579,7 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 	out := make([]TopoNode, 0, len(nodes))
 	for _, n := range nodes {
 		n.KeyHash = ""
-		t := TopoNode{Node: n, IPP: IPPPath + "/" + n.Name, Takes: takesName(n.Kind)}
+		t := TopoNode{Node: n, IPP: IPPPath + "/" + n.Name, Takes: takesName(n.Kind), Missing: n.missing()}
 		if len(n.edges()) > 0 || n.Kind == KindEndpoint || n.Kind == KindCups {
 			t.Emits = n.emits(ty.reach[n.Name]).names()
 		}

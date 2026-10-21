@@ -70,12 +70,25 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 	case KindFilter:
 		m.routeFilter(ctx, r, name, from, depth)
 	case KindTemplate, KindConvert:
+		n, err := m.Node(ctx, name)
+		if err != nil {
+			r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: err.Error()})
+			return
+		}
+		if len(n.To) == 0 {
+			r.add(Leg{Node: name, Kind: kind, From: from, State: LegDropped, Error: "not set up: no node to forward to"})
+			return
+		}
 		m.routeDelivery(ctx, r, Leg{Node: name, Kind: kind, From: from}, "", "")
 	case KindQueue, KindEndpoint, KindCups:
 		n, err := m.Node(ctx, name)
 
 		if err != nil {
 			r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: err.Error()})
+			return
+		}
+		if len(n.To) == 0 {
+			r.add(Leg{Node: name, Kind: kind, From: from, State: LegDropped, Error: "not set up: no node to forward to"})
 			return
 		}
 		r.add(Leg{Node: name, Kind: kind, From: from, State: LegRouted})

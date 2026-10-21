@@ -20,7 +20,6 @@ let formats = []; // the formats an endpoint may take
 let me = null; // /api/me: whether this process has ports of its own
 let apps = []; // the apps, for an endpoint's allow-list
 let selected = null; // the node in the sidebar
-let draft = null; // a node being added: {kind}
 let fitted = false;
 let etag = ""; // the activity's revision
 
@@ -28,7 +27,6 @@ const canvas = createCanvas($("canvas"), {
   editable: true,
   onSelect(name) {
     selected = name;
-    draft = null;
     renderSidebar();
     $("sidebar").scrollTop = 0;
   },
@@ -39,7 +37,6 @@ const canvas = createCanvas($("canvas"), {
     addEdge(from, to).catch((e) => status(e.message, true));
   },
   onRemoveEdge: removeEdge,
-  draftLabel: () => $("f-name")?.value || "",
 });
 
 async function load() {
@@ -123,24 +120,45 @@ async function removeEdge(from, e) {
   }
 }
 
-// Adding a node: the palette makes a draft, placed at the centre of the
-// view clear of the others; the sidebar takes its name and settings, and
-// Add puts it.
-$("palette").addEventListener("click", (ev) => {
+// Adding a node: the palette puts it at once, with a name of its own
+// (endpoint-1, queue-2 …) and, for a CUPS server, a free port, placed at
+// the centre of the view clear of the others; it is set up in the sidebar
+// after. Until it is, it is "not set up" (what it lacks is shown), and a
+// job that reaches it ends there.
+function freeName(kind) {
+  const names = new Set(topo.map((n) => n.name));
+  for (let i = 1; ; i++) {
+    const name = `${kind}-${i}`;
+    if (!names.has(name)) return name;
+  }
+}
+
+$("palette").addEventListener("click", async (ev) => {
   const a = ev.target.closest("a[data-kind]");
   if (!a) return;
   ev.preventDefault();
   document.activeElement?.blur();
-  draft = { kind: a.dataset.kind, name: "", title: "" };
-  selected = null;
-  canvas.setDraft(draft, canvas.freeSpot(canvas.center()));
-  renderSidebar();
-  $("sidebar").scrollTop = 0;
-  $("f-name")?.focus();
+  const kind = a.dataset.kind;
+  if (kind === "cups" && me && me.ports === false) {
+    status("No ports here (serverless): a CUPS server node cannot listen", true);
+    return;
+  }
+  const name = freeName(kind);
+  try {
+    const res = await api("PUT", "/api/nodes/" + name, { kind });
+    await api("PUT", "/api/layout", { positions: { [name]: canvas.freeSpot(canvas.center()) } });
+    selected = name;
+    status(`${name} added: set it up in the sidebar`);
+    if (res.key) showKey(name, res.key);
+    await load();
+    canvas.setSelected(name);
+    $("sidebar").scrollTop = 0;
+  } catch (e) {
+    status(e.message, true);
+  }
 });
 
-// The sidebar: the node selected (or the draft), its kind's fields, and
-// what is at it.
+// The sidebar: the node selected, its kind's fields, and what is at it.
 
 function field(label, input, hint) {
   const f = el("fieldset", undefined, { className: "fieldset" });
@@ -357,28 +375,22 @@ function portField(n, what, required = false) {
 
 function renderSidebar() {
   const aside = $("sidebar");
-  const n = draft || topo.find((x) => x.name === selected);
+  const n = topo.find((x) => x.name === selected);
   if (!n) {
-    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. The ports and edges are colored by what flows: blue a .bdf document, green data (for a template node), grey any file as received (for a convert node); a printer takes .bdf only, so a file or data cannot be connected to it without a convert or a template node between.", { className: "text-sm text-base-content/60" }));
+    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”: it is put at once, with a name of its own, and set up here. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. The ports and edges are colored by what flows: blue a .bdf document, green data (for a template node), grey any file as received (for a convert node); a printer takes .bdf only, so a file or data cannot be connected to it without a convert or a template node between.", { className: "text-sm text-base-content/60" }));
     return;
   }
   const kind = n.kind;
   const form = el("form", undefined, { className: "flex flex-col gap-1" });
   const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
-  head.append(kindBadge(kind));
-  if (draft) head.append(el("span", "new", { className: "badge badge-outline" }));
-  else head.append(el("h3", n.name, { className: "font-mono text-lg font-semibold" }), scopeBadge(n));
+  head.append(kindBadge(kind), el("h3", n.name, { className: "font-mono text-lg font-semibold" }), scopeBadge(n));
   form.append(head);
-  if (draft) {
-    const name = input("f-name", "", { placeholder: "intake, both, tokyo, review, wh-a, laser, audit", required: true, pattern: "[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}", autocomplete: "off" });
-    name.addEventListener("input", () => canvas.draw());
-    form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>) and does not change later."));
+  if (n.missing && n.missing.length) {
+    form.append(el("div", `Not set up yet: ${n.missing.join(", ")}. A job that reaches it ends here until it is.`, { className: "alert alert-warning text-xs py-1", role: "status" }));
   }
   form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown instead of the name" })));
-  if (!draft) {
-    const k = kindsLine(n);
-    if (k) form.append(k);
-  }
+  const k = kindsLine(n);
+  if (k) form.append(k);
   switch (kind) {
     case "endpoint": {
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job. The port on the canvas adds one too."));
@@ -396,10 +408,9 @@ function renderSidebar() {
       break;
     }
     case "cups":
-      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets what computers print here: a printer makes it a relay, a sink shows the pages, a filter keeps only what fits. The port on the canvas adds one too."));
-      entryFields(form, n);
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets what computers print here (a document, made .bdf): a printer makes it a relay, a sink shows the pages, a filter keeps only what fits. The port on the canvas adds one too."));
       form.append(metaField(n));
-      form.append(portField(n, `Computers print to ipp://<this host>:<port>/printers/${n.name || "<name>"}, the one printer of this CUPS server; lpstat -h <host>:<port> -p lists it.`, true));
+      form.append(portField(n, `Computers print to ipp://<this host>:<port>/printers/${n.name || "<name>"}, the one printer of this CUPS server; lpstat -h <host>:<port> -p lists it. Chosen when the node was added; change it here.`, true));
       form.append(field("TLS certificate (file)", input("f-tls-cert", n.tls_cert || "", { placeholder: "/etc/bdf/cups.crt; empty: plain ipp" })));
       form.append(field("TLS key (file)", input("f-tls-key", n.tls_key || "", { placeholder: "/etc/bdf/cups.key" })));
       break;
@@ -414,7 +425,7 @@ function renderSidebar() {
       const ids = n.templates || [];
       const options = [["", "— named by the metadata below —"], ...ids.map((id) => [id, id])];
       if (n.template && !ids.includes(n.template)) options.push([n.template, n.template + " (not uploaded yet)"]);
-      form.append(field("Template", selectInput("f-template", options, n.template || ""), draft ? "Add the node first, then upload its templates below and choose one here." : "One of the templates uploaded below, filled with the data that reaches the node."));
+      form.append(field("Template", selectInput("f-template", options, n.template || ""), "One of the templates uploaded below, filled with the data that reaches the node."));
       form.append(field("Or the metadata key naming it", input("f-template-from", n.template_from || "", { placeholder: "doc_type: the sender's X-Meta-Doc-Type names the template" }), "A job whose metadata lacks the key, or names a template that is not here, fails here (no retry)."));
       form.append(field("Name of a list", input("f-list-name", n.list_name || "", { placeholder: "the file's name without its extension (orders for orders.csv)" }), "Data that is a list of records (a CSV file, a sheet, a JSON array) is the value of this name for the template; an object is the data itself."));
       const strict = el("label", undefined, { className: "inline-flex items-center gap-2 text-sm" });
@@ -476,31 +487,21 @@ function renderSidebar() {
   form.append(field("Scope", selectInput("f-scope", [["shared", "shared: anyone signed in may send"], ["group", "group: its members send and see the jobs"], ["personal", "personal: one person"]], n.scope || "shared")));
   form.append(field("Owner", input("f-owner", n.owner || "", { placeholder: "a group (a value of the groups claim), or a person's email" })));
   const actions = el("div", undefined, { className: "mt-2 flex flex-wrap gap-2" });
-  actions.append(el("button", draft ? "Add" : "Save", { type: "submit", className: "btn btn-sm btn-primary" }));
-  if (draft) {
-    const cancel = el("button", "Cancel", { type: "button", className: "btn btn-sm btn-ghost" });
-    cancel.addEventListener("click", () => {
-      draft = null;
-      canvas.setDraft(null, null);
-      renderSidebar();
-    });
-    actions.append(cancel);
-  } else {
-    const del = el("button", "Delete", { type: "button", className: "btn btn-sm btn-ghost text-error" });
-    del.addEventListener("click", () => remove(n.name));
-    actions.append(del);
-  }
+  actions.append(el("button", "Save", { type: "submit", className: "btn btn-sm btn-primary" }));
+  const del = el("button", "Delete", { type: "button", className: "btn btn-sm btn-ghost text-error" });
+  del.addEventListener("click", () => remove(n.name));
+  actions.append(del);
   form.append(actions);
   form.addEventListener("submit", save);
   aside.replaceChildren(form);
-  if (!draft) extras(n, aside);
+  extras(n, aside);
 }
 
 async function save(ev) {
   ev.preventDefault();
-  const n = draft || topo.find((x) => x.name === selected);
+  const n = topo.find((x) => x.name === selected);
   if (!n) return;
-  const name = draft ? $("f-name").value.trim() : n.name;
+  const name = n.name;
   const body = { kind: n.kind, title: $("f-title").value.trim(), scope: $("f-scope").value };
   if ($("f-owner").value.trim()) body.owner = $("f-owner").value.trim();
   const dur = (id) => ($(id).value.trim() ? $(id).value.trim() : undefined);
@@ -516,9 +517,6 @@ async function save(ev) {
       break;
     case "cups":
       body.to = picked("to");
-      body.accept = $("f-accept").value;
-      body.output = $("f-output").value;
-      body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
       body.meta = metaOf();
       body.port = Number($("f-port").value);
       if (dur("f-tls-cert")) body.tls_cert = dur("f-tls-cert");
@@ -573,12 +571,6 @@ async function save(ev) {
   }
   try {
     const res = await api("PUT", "/api/nodes/" + encodeURIComponent(name), body);
-    if (draft) {
-      await api("PUT", "/api/layout", { positions: { [name]: canvas.draftPos() } });
-      draft = null;
-      selected = name;
-      canvas.setSelected(name);
-    }
     status(`${name} saved`);
     if (res.key) showKey(name, res.key);
     await load();
@@ -780,13 +772,7 @@ $("key-copy").addEventListener("click", async () => {
 
 document.addEventListener("keydown", (ev) => {
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
-  if (ev.key === "Escape" && draft) {
-    draft = null;
-    canvas.setDraft(null, null);
-    renderSidebar();
-  } else if (ev.key === "Delete" && selected && !typing) {
-    remove(selected);
-  }
+  if (ev.key === "Delete" && selected && !typing) remove(selected);
 });
 
 // a link from another page names a node: /admin/topology#<name>

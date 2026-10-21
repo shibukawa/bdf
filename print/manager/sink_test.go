@@ -100,8 +100,20 @@ func TestPortHandler(t *testing.T) {
 	ctx := context.Background()
 	e.display("wh-a", Node{Title: "Warehouse A"})
 	e.printer("laser")
-	e.node("cups1", Node{Kind: KindCups, Port: 6310}, http.StatusBadRequest)
-	e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}}, http.StatusBadRequest)
+	// put before it is set up (no to), and without a port: a free one is chosen
+	var early struct {
+		Node
+		Key string `json:"key"`
+	}
+	json.Unmarshal(e.node("cups1", Node{Kind: KindCups}, http.StatusOK), &early)
+	if early.Port != 6310 || early.Key != "" {
+		t.Fatalf("a CUPS server put first: %+v", early)
+	}
+	json.Unmarshal(e.node("cups2", Node{Kind: KindCups, To: []string{"wh-a"}}, http.StatusOK), &early)
+	if early.Port != 6311 {
+		t.Fatalf("the next free port: %d", early.Port)
+	}
+	e.admin("DELETE", "/api/nodes/cups2", nil, http.StatusNoContent)
 	e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}, Port: 80}, http.StatusBadRequest)
 	e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}, Port: 6310, TLSCert: "cert.pem"}, http.StatusBadRequest)
 	e.node("cups1", Node{Kind: KindCups, To: []string{"nowhere"}, Port: 6310}, http.StatusBadRequest)
@@ -199,6 +211,9 @@ func TestPortHandler(t *testing.T) {
 	s.display("wh-a", Node{})
 	if out := s.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}, Port: 6310}, http.StatusBadRequest); !strings.Contains(string(out), "serverless") {
 		t.Fatalf("no ports: %s", out)
+	}
+	if out := s.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}}, http.StatusBadRequest); !strings.Contains(string(out), "serverless") {
+		t.Fatalf("no ports to choose from: %s", out)
 	}
 	// cupsDest: the server, and the node under CUPS's and IPP's paths
 	for path, want := range map[string]string{"/": "", "/admin": "", "/ipp/print": "cups1", "/printers/cups1": "cups1", "/classes/cups1": "cups1", "/ipp/print/cups1/": "cups1"} {

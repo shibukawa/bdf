@@ -49,7 +49,7 @@ func TestKinds(t *testing.T) {
 		t.Fatalf("typed: %s", out)
 	}
 	e.node("raw", Node{Kind: KindEndpoint, Output: "maybe", To: []string{"audit"}}, http.StatusBadRequest)
-	e.node("conv", Node{Kind: KindConvert}, http.StatusBadRequest)
+	e.node("conv", Node{Kind: KindConvert}, http.StatusOK) // not set up yet: no to
 	e.node("conv", Node{Kind: KindConvert, To: []string{"laser"}, Formats: []string{"PDF/A"}}, http.StatusBadRequest)
 	e.node("conv", Node{Kind: KindConvert, To: []string{"laser"}}, http.StatusOK)
 	e.node("fan", Node{Kind: KindQueue, To: []string{"audit", "conv"}}, http.StatusOK)

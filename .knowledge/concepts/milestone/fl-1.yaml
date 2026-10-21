@@ -60,6 +60,9 @@ acceptance:
   f5-downloads:
     text: GET /api/jobs/<n>/document は見せる .bdf（作ったもの）、?payload= で受けたもの（Content-Type は形式から、名前は元のファイル名）。data のペイロードの pages は 404
     verified_by: [manager-tests]
+  f7-put-first:
+    text: パレットのノードはその場で作られる（名前は <kind>-<n>、cups は空きポート）。設定が揃っていないノードは missing を持ち、届いたジョブは dropped か failed（not set up）で終わる。cups は常に .bdf を出す（accept・output・formats なし）
+    verified_by: [manager-tests]
   f6-ui:
     text: パレットに Template と Convert。サイドバーに Accepts・Sends on・Formats・Metadata added（入口）、Template・template_from・list_name・strict と Templates の節（template）、Formats（convert）、規則の meta と kind（filter）。キャンバスの口と辺が takes・emits の色。埋め込みの資産を pw generate で作り直した
     verified_by: [js-syntax, app-tests]
@@ -124,9 +127,17 @@ facts:
     - 'xlsx.ConvertGrid（csv・parquet が使う）にはページのビューが無いので、CSV・Parquet は print.PrintView が「no pages to print」で止まる。入口の convert でも convert ノードでも同じ（変換器の側の宿題）'
     - 'converter/image を import するテストはビルドが長い（数分）。go test の最初の 1 回だけ'
     unverified:
-    - 'ブラウザでの画面（口の色、サイドバー、テンプレートの節）'
+    - 'ブラウザでの画面（口の色、サイドバー、テンプレートの節、パレットからその場で置く流れ、未設定の破線）'
     - 'yuruidb の S3・R2・GCS でのペイロードの Blob（bbolt だけ）'
     - 'Lambda（tick だけで template・convert の段と continueWith が回ること）'
+    review_2026_10_22:
+      source: 2026-10-22 利用者「cups server には今受け取るフォーマットと変換するかフラグがあるが、cups server は送信側でベクトルかラスターの絵になっているはずで、ここは bdf が出てくるのみで変換は不要な気がしました。あと、今の編集は必須パラメータを入れて作成ボタンを押すとできるが、作成時にポートとか名前はデフォルトで入れておいて（重複がないものを選ぶ）、初回から作成済み状態で出て欲しい。中途半端な状態でフォーカスを外すと二度と編集できなくなってしまう」
+      changed:
+      - 'cups ノードから accept・output・formats を外した（PutNode は無視、entryKind は常に bdf、Submit は変換、画面の欄も無し）。meta と IPP の属性のメタデータは残す'
+      - 'ノードは設定が揃う前に置ける：to・members・rules・store・url・template が無くても PUT は通り、GET /api/topology の missing に足りないものが出る。届いたジョブは、to の無いノードでは dropped（not set up）、url の無い printer と store の無い archive では 1 回で failed（not set up）'
+      - 'cups の port が 0 なら 6310 から空いている番号を Manager が選ぶ（freePort）。サーバーレス（NoPorts）では 400 のまま'
+      - 'エディタの下書き（draft）を無くした：パレットを押すとその場で PUT（名前は <kind>-<n> で空いているもの、cups はポートが選ばれる）し、位置を置き、サイドバーで直す。未設定のノードは琥珀色の破線と「not set up」、サイドバーに足りないものの警告。名前の欄は無くなった（名前は後から変えない）'
+      tests: 'TestPortHandler（to 無しで 200、port 無しで 6310、次は 6311、サーバーレスは port 無しでも 400）、TestNodes（queue と printer を未設定で置き missing、dropped と no address）、filter・convert・template の未設定は 200'
     known_gaps:
     - 'transform の outcome（done）と continueWith の間で落ちると、段は done なのに to の足跡が無い（pm-4 の足跡の隙間と同じ種類）。見回りは無い'
     - 'キャンセルが outcome と continueWith の間に入ると continueWith は j.Canceled で止まるが、作ったペイロードは足跡の made に書かれない'

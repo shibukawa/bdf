@@ -69,7 +69,8 @@ constraints:
 - printer と外部 CUPS への送りの入力は bdf だけ。display も bdf だけ
 - archive はどの種類でも受け、受けたペイロードをそのまま書く（.bdf でなくても）。記録の JSON に kind・format と系譜を持つ
 - 入力の種類がそのまま出力の種類になるノード（queue・class・filter／branch・inbox・archive・sink・通知・出口）は、上流からの推論で種類が決まる。固定の入力の口に合わない種類が届きうる辺は PUT で断る（存在・重なり・閉路に型を足す）。実行時にも確かめ、合わなければ error の足跡で止める
-- 既定で今の図がそのまま動く：入口の convert は既定で on（今の振る舞い）、全部 bdf の図は型の推論で自動的に通る
+- 既定で今の図がそのまま動く：入口の output は既定で bdf（今の振る舞い）、全部 bdf の図は型の推論で自動的に通る
+- ノードは設定が揃う前に置ける（2026-10-22 利用者：パレットから置いた時点で作成済み、名前とポートは重ならない既定）。足りないものは GET /api/topology の missing に出し、届いたジョブはそこで終わる（dropped か failed）
 - エンドポイントは暗黙の変換をしない（2026-10-21 利用者）。テンプレートの差し込みはテンプレート変換ノードだけが行い、テンプレートはそのノードの持ち物。エンドポイントが持つ変換は convert（変換器で bdf に）だけ
 - 出口は bdf をそのまま送れる（2026-10-21 利用者：別拠点の bdf Print Manager が受け手のことがある）。描画ノードは選択で、出口の前に置くかは図で決める
 - メタデータは、IPP・HTTP の API で受けたものも、受信日時・ファイル名・送り手のようにナイーブに決まるものも、全部メタデータとして持つ（2026-10-21 利用者）。送り手が付けたものは名乗りで、経路とテンプレートの選択には使えるが、権限と見える範囲の根拠にしない（requesting-user-name の制約の延長）。Manager が確かめた値は送り手が上書きできない名前の空間に置く
@@ -184,7 +185,7 @@ facts:
       uses: テンプレートの選択、branch の規則、出口の宛先の差し込み（To・件名・パス・接頭辞。式でなく {meta.key} の置き換えだけ）、通知の文、保管庫の検索項目（pm-2）
       privacy: 監査ログと保管の記録に写る。個人情報を入れるかは設計者の運用
     nodes:
-      entry_flags: 'endpoint：accept file（既定）か data。file は convert on（既定）→ bdf、convert off → any（形式は見分けて format に）。data → data（data 以外は 415）。accept template は無くす（テンプレート変換ノードへ。2026-10-21 利用者）。cups：convert on / off。S3・FTP の入口も同じ。convert=on の変換は今と同じく入口で同期'
+      entry_flags: 'endpoint：accept file（既定）か data。file は output bdf（既定）か file（受けたまま：any。形式は見分けて format に）。data → data（data 以外は 415）。accept template は無くす（テンプレート変換ノードへ。2026-10-21 利用者）。cups：フラグなし、常に .bdf（2026-10-22 利用者「送信側でベクトルかラスターの絵になっているはずで、bdf が出てくるのみ」）。S3・FTP の入口は endpoint と同じ欄。output bdf の変換は今と同じく入口で同期'
       template: 'テンプレート（form.Fill が受けるもの：bdft・Excel・Word・PowerPoint・PDF フォーム・pdfme・テキスト）はこのノードの持ち物（2026-10-21 利用者）。data を差し込んで bdf を出す。選択は固定かメタデータの鍵（template_from）。無い id は error。CSV の行ごとの 1 文書は split に任せる（暫定）。pm-5 のエンドポイントのテンプレート（templates コレクション、<endpoint>.<id>）はこのノードに移す（移行はしない。2026-10-22 利用者：管理者が上げ直す、互換なし）'
       convert: any → bdf（入口と同じ変換器、formats で絞る）。csv・xlsx・parquet は表の文書。json・yaml は変換器が無いので断る（暫定）
       render: bdf → PDF（vector/pdfbdf）・PNG・SVG。2026-10-21 利用者が入れると答えた。出口の前に置くかは図で決める（.bdf のまま送る出力は残す）
@@ -372,6 +373,11 @@ history:
       通知・人の操作・人の入力・外部サービスを capabilities と facts.design.nodes に足し、段の案を 4 つに組み直した
   answered-2:
     summary: 2026-10-22 利用者「テンプレートは移行せず、管理者がテンプレート変換ノードに上げ直すでよい（互換なし）」。template-migration を answered に。fl-1 の前の問いは無くなった
+  fl-1-reviewed:
+    summary: >-
+      2026-10-22 利用者の指摘 2 つ：cups は送信側で絵になっているので bdf が出るのみ（accept・output・formats を外した）。ノードは
+      パレットから置いた時点で作成済みにし、名前とポートは重ならない既定を入れる（下書きを無くし、未設定のノードを missing で表す）。
+      milestone:fl-1 の facts.delivery.review_2026_10_22
   fl-1-implemented:
     summary: >-
       2026-10-22 利用者「fl-1 の実装を始めてください。暫定の既定はそのままで」。milestone:fl-1 に実装した：kinds.go・meta.go・transform.go、

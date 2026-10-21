@@ -71,16 +71,13 @@ function payloadText(kinds) {
 
 // createCanvas draws a topology in an svg. opts: editable (nodes move
 // and connect), onSelect(name or null), onMove(name, pos), onConnect(node,
-// toName), onRemoveEdge(node, edge), draftLabel() (the name typed for a
-// node being added).
+// toName), onRemoveEdge(node, edge).
 export function createCanvas(svg, opts = {}) {
-  const { editable = false, onSelect = () => {}, onMove = () => {}, onConnect = () => {}, onRemoveEdge = () => {}, draftLabel = () => "" } = opts;
+  const { editable = false, onSelect = () => {}, onMove = () => {}, onConnect = () => {}, onRemoveEdge = () => {} } = opts;
   let topo = []; // the nodes, as /api/topology lists them
   let layout = {}; // name -> {x, y}
   let live = null; // /api/topology/live
   let selected = null;
-  let draft = null; // {kind} of a node being added
-  let draftPos = null;
   let view = { x: PAD, y: PAD, k: 1 };
   let world = null; // the <g> of the world
   let flowsLayer = null;
@@ -195,17 +192,6 @@ export function createCanvas(svg, opts = {}) {
       }
     }
     for (const n of topo) world.append(nodeBox(n, pos(n.name), n.name === selected));
-    if (draft && draftPos) {
-      const g = svgEl("g", { transform: `translate(${draftPos.x} ${draftPos.y})`, class: "cursor-grab", "data-draft": "1" });
-      g.append(svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: FILL[draft.kind] || "#e5e7eb", stroke: "#4f46e5", "stroke-width": "2", "stroke-dasharray": "6 4" }));
-      const t = svgEl("text", { x: "10", y: "22", "font-size": "13", "font-weight": "600", fill: "#111827" });
-      t.textContent = draftLabel() || "new " + (KINDS[draft.kind] || draft.kind).toLowerCase();
-      const k = svgEl("text", { x: "10", y: "40", "font-size": "11", fill: "#374151" });
-      k.textContent = (KINDS[draft.kind] || draft.kind) + " · not saved yet";
-      g.append(t, k);
-      g.addEventListener("pointerdown", (ev) => startDrag(ev, null));
-      world.append(g);
-    }
     flowsLayer = svgEl("g", { id: "flows", "pointer-events": "none" });
     world.append(flowsLayer);
     svg.append(defs, world);
@@ -217,7 +203,11 @@ export function createCanvas(svg, opts = {}) {
   // kinds that send on.
   function nodeBox(n, p, isSelected) {
     const g = svgEl("g", { transform: `translate(${p.x} ${p.y})`, class: editable ? "cursor-grab" : "cursor-pointer", "data-name": n.name });
-    g.append(svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: FILL[n.kind] || "#e5e7eb", stroke: isSelected ? "#4f46e5" : "#94a3b8", "stroke-width": isSelected ? "3" : "1.5" }));
+    // a node not set up yet (no to, no address …) is drawn with a dashed amber border
+    const unfinished = n.missing && n.missing.length;
+    const rect = svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: FILL[n.kind] || "#e5e7eb", stroke: isSelected ? "#4f46e5" : unfinished ? "#d97706" : "#94a3b8", "stroke-width": isSelected ? "3" : unfinished ? "2" : "1.5" });
+    if (unfinished) rect.setAttribute("stroke-dasharray", "6 3");
+    g.append(rect);
     // a sink shows the first page of the latest document it keeps
     const latest = n.kind === "sink" ? (live ? (live.nodes[n.name] || {}).latest : n.latest) : "";
     const name = svgEl("text", { x: "10", y: "21", "font-size": "13", "font-weight": "600", fill: "#111827" });
@@ -225,10 +215,11 @@ export function createCanvas(svg, opts = {}) {
     const sub = svgEl("text", { x: "10", y: "39", "font-size": "11", fill: "#374151" });
     const parts = [KINDS[n.kind] || n.kind];
     if (n.title && n.title !== n.name) parts.push(n.name);
+    if (unfinished) parts.push("not set up");
     parts.push(...counts(n));
     sub.textContent = clipText(parts.join(" · "), latest ? 22 : 30);
     const title = svgEl("title");
-    title.textContent = `${n.name} (${KINDS[n.kind] || n.kind})${n.title ? ": " + n.title : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}`;
+    title.textContent = `${n.name} (${KINDS[n.kind] || n.kind})${n.title ? ": " + n.title : ""}${unfinished ? " · not set up yet: " + n.missing.join(", ") : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}`;
     g.append(title, name, sub);
     const c = live ? live.nodes[n.name] : null;
     if (c && (c.held || c.open || c.pending || c.failed)) {
@@ -364,8 +355,8 @@ export function createCanvas(svg, opts = {}) {
       const line = svgEl("path", { fill: "none", stroke: "#4f46e5", "stroke-width": "2", "stroke-dasharray": "4 3", "pointer-events": "none" });
       world.append(line);
       drag = { kind: "edge", from: n, line, x1: p.x + NODE_W, y1: p.y + NODE_H / 2 };
-    } else if (editable || !n) {
-      const p = n ? pos(n.name) : draftPos;
+    } else if (editable) {
+      const p = pos(n.name);
       const w = toWorld(s);
       drag = { kind: "move", node: n, dx: w.x - p.x, dy: w.y - p.y, moved: false };
     } else {
@@ -408,9 +399,7 @@ export function createCanvas(svg, opts = {}) {
       draw();
     } else if (drag.kind === "move") {
       const w = toWorld(s);
-      const p = { x: snap(w.x - drag.dx), y: snap(w.y - drag.dy) };
-      if (drag.node) layout[drag.node.name] = p;
-      else draftPos = p;
+      layout[drag.node.name] = { x: snap(w.x - drag.dx), y: snap(w.y - drag.dy) };
       drag.moved = true;
       draw();
     } else if (drag.kind === "edge") {
@@ -439,7 +428,6 @@ export function createCanvas(svg, opts = {}) {
         onSelect(d.node.name);
         return;
       case "move":
-        if (!d.node) return;
         if (d.moved) onMove(d.node.name, layout[d.node.name]);
         else {
           selected = d.node.name;
@@ -484,17 +472,8 @@ export function createCanvas(svg, opts = {}) {
     },
     setSelected(name) {
       selected = name;
-      draft = null;
-      draftPos = null;
       draw();
     },
-    setDraft(d, p) {
-      draft = d;
-      draftPos = p;
-      selected = null;
-      draw();
-    },
-    draftPos: () => draftPos,
     pos,
     freeSpot,
     center,

@@ -105,9 +105,12 @@ func takesName(kind string) string {
 }
 
 // entryKind is the kind an entry sends on of what it receives from
-// outside: data, the file as received (any), or the .bdf made of it.
+// outside: data, the file as received (any), or the .bdf made of it (a
+// CUPS server always: what computers print is made .bdf).
 func (n *Node) entryKind() kinds {
 	switch {
+	case n.Kind == KindCups:
+		return kindBDF
 	case n.Accept == AcceptData:
 		return kindData
 	case n.Output == OutputFile:

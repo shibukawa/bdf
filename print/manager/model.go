@@ -133,15 +133,15 @@ const (
 	KindConvert = "convert"
 )
 
-// What an entry (an endpoint, a CUPS server) accepts: documents (PDF,
-// Office, images, .bdf …; the default), or data (JSON, YAML, CSV, Excel,
-// Parquet: what a template node fills).
+// What an endpoint accepts: documents (PDF, Office, images, .bdf …; the
+// default), or data (JSON, YAML, CSV, Excel, Parquet: what a template
+// node fills).
 const (
 	AcceptFile = "file"
 	AcceptData = "data"
 )
 
-// What an entry sends on of a document: the .bdf document made of it
+// What an endpoint sends on of a document: the .bdf document made of it
 // (the default), or the file as it was received (kind any).
 const (
 	OutputBDF  = "bdf"
@@ -179,13 +179,14 @@ type Node struct {
 	// its objects are in, "archive-<name>" by default.
 	Store      string `json:"store,omitempty"`
 	Collection string `json:"collection,omitempty"`
-	// Accept is what an entry takes: AcceptFile (documents; the default)
-	// or AcceptData (data for a template node). Output is what it sends
-	// on of a document: OutputBDF (the .bdf made of it; the default) or
-	// OutputFile (as received). Formats are the formats it takes, as the
-	// converter names them (pdf, docx, image, csv … and bdf), of a
-	// convert node those it converts; none takes any. A document of
-	// another format is refused (ErrFormat).
+	// Accept is what an endpoint takes: AcceptFile (documents; the
+	// default) or AcceptData (data for a template node). Output is what
+	// it sends on of a document: OutputBDF (the .bdf made of it; the
+	// default) or OutputFile (as received). Formats are the formats it
+	// takes, as the converter names them (pdf, docx, image, csv … and
+	// bdf), of a convert node those it converts; none takes any. A
+	// document of another format is refused (ErrFormat). A CUPS server
+	// has none of these: what computers print is a document, made .bdf.
 	Accept  string   `json:"accept,omitempty"`
 	Output  string   `json:"output,omitempty"`
 	Formats []string `json:"formats,omitempty"`

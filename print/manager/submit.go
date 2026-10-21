@@ -63,8 +63,10 @@ func (m *Manager) Submit(ctx context.Context, dest string, in Input) (*Job, erro
 	accept, output, formats := AcceptFile, OutputBDF, []string(nil)
 	var entry *Node
 	switch n.Kind {
-	case KindEndpoint, KindCups:
+	case KindEndpoint:
 		accept, output, formats, entry = or(n.Accept, AcceptFile), or(n.Output, OutputBDF), n.Formats, n
+	case KindCups:
+		entry = n // a document, made .bdf
 	case KindTemplate:
 		accept = AcceptData
 	case KindConvert:

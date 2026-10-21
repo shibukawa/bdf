@@ -374,17 +374,43 @@ func TestNodes(t *testing.T) {
 	e.printer("laser")
 	e.admin("PUT", "/api/nodes/wh-b", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "laser"}}, http.StatusOK)
 	e.node("x", Node{Kind: "tee", To: []string{"wh-a"}}, http.StatusBadRequest)
-	e.node("x", Node{Kind: KindQueue}, http.StatusBadRequest)
 	e.node("x", Node{Kind: KindQueue, To: []string{"nowhere"}}, http.StatusBadRequest)
 	e.node("x", Node{Kind: KindClass, Members: []string{"laser"}, Policy: "random"}, http.StatusBadRequest)
 	e.node("wh-a", Node{Kind: KindQueue, To: []string{"laser"}}, http.StatusConflict)
 	e.node("x", Node{Kind: KindQueue, To: []string{"x"}}, http.StatusBadRequest)
 	e.admin("PUT", "/api/nodes/wh-c", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "wh-a"}}, http.StatusBadRequest)
-	e.admin("PUT", "/api/nodes/p", Node{Kind: KindPrinter}, http.StatusBadRequest)
+	e.admin("PUT", "/api/nodes/p", Node{Kind: KindPrinter, URL: "nowhere"}, http.StatusBadRequest)
 	e.node("x", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Accept: "maybe"}, http.StatusBadRequest)
 	e.node("x", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Formats: []string{"PDF/A"}}, http.StatusBadRequest)
 	e.admin("PUT", "/api/nodes/laser", Node{Kind: KindDisplay}, http.StatusConflict)
 	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindPrinter, URL: "ipp://127.0.0.1:1/ipp/print"}, http.StatusConflict)
+
+	// a node put before it is set up (no to, no url) is listed as missing
+	// what it lacks; a job that reaches it ends there
+	e.node("x", Node{Kind: KindQueue}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/p", Node{Kind: KindPrinter}, http.StatusOK)
+	var early []TopoNode
+	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &early)
+	for _, n := range early {
+		if (n.Name == "x" && !slices.Equal(n.Missing, []string{"to"})) || (n.Name == "p" && !slices.Equal(n.Missing, []string{"url"})) || (n.Name == "laser" && n.Missing != nil) {
+			t.Fatalf("missing of %s: %v", n.Name, n.Missing)
+		}
+	}
+	if js := e.printJob("x", "early", 1); js.State != ipp.JobCompleted {
+		t.Fatalf("to a queue not set up: %+v", js)
+	}
+	if j := e.job(1); legs(j) != "x:dropped" || !strings.Contains(j.Legs[0].Error, "not set up") {
+		t.Fatalf("job %+v: %s", j, legs(j))
+	}
+	e.printJob("p", "early", 1)
+	if rep := e.tick(); rep.Undelivered != 1 {
+		t.Fatalf("tick %+v", rep)
+	}
+	if j := e.job(2); j.State != JobAborted || !strings.Contains(j.Legs[0].Error, "no address") {
+		t.Fatalf("to a printer not set up %+v", j)
+	}
+	e.admin("DELETE", "/api/nodes/x", nil, http.StatusNoContent)
+	e.admin("DELETE", "/api/nodes/p", nil, http.StatusNoContent)
 
 	e.node("a", Node{Kind: KindQueue, To: []string{"wh-a"}}, http.StatusOK)
 	e.node("b", Node{Kind: KindQueue, To: []string{"a"}}, http.StatusOK)
@@ -523,7 +549,6 @@ func TestEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.node("forms", Node{Kind: KindTemplate, To: []string{"wh-a"}}, http.StatusBadRequest)
 	e.node("forms", Node{Kind: KindTemplate, Template: "slip", TemplateFrom: "doc_type", To: []string{"wh-a"}}, http.StatusBadRequest)
 	e.node("forms", Node{Kind: KindTemplate, Template: "no.dot", To: []string{"wh-a"}}, http.StatusBadRequest)
 	e.node("forms", Node{Kind: KindTemplate, Template: "slip", To: []string{"wh-a"}}, http.StatusOK)

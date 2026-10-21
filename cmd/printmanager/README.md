@@ -176,7 +176,7 @@ node it reached. The document is kept once for all of them.
 | Kind | Does | Settings |
 |---|---|---|
 | `endpoint` | a REST entry for applications: `POST /in/<name>` with the endpoint's own key takes a document as the body, or data (`accept: data`: JSON, YAML, CSV, an Excel workbook or a Parquet file, for a template node after it), and forwards the job to every node of `to`. `output` is what goes on of a document: `bdf` (the default: the .bdf made of it) or `file` (as received, for a convert node or an archive after it). `formats` are the formats it takes (as the converter names them: `pdf`, `docx`, `image`, `csv`, `bdf` …, and `json`, `yaml`; empty: any); a file of another format is refused (415) and the refusal is in the audit log. `meta` is metadata the endpoint adds to every job it takes. The key is shown once, when the endpoint is made (`key` in the answer) or rotated (`POST /api/nodes/<name>/key`); the manager keeps only its argon2id hash. With `port`, a process listens there too: every `POST` to it is to the endpoint | `to`, `accept`, `output`, `formats`, `meta`, `port` |
-| `cups` | an IPP entry for computers and business systems: a CUPS server on a `port` of the process's own, with one printer, the node itself (`lpstat -h <host>:<port> -p` lists it; computers print to `ipp://<host>:<port>/printers/<node>`), which forwards what it receives to every node of `to`; plain `ipp`, or `ipps` with `tls_cert` and `tls_key` (files). `accept`, `output`, `formats` and `meta` as an endpoint's; the job attributes of a Print-Job request are metadata (`ipp.media`, `ipp.copies` …) | `to`, `port`, `tls_cert`, `tls_key`, `accept`, `output`, `formats`, `meta` |
+| `cups` | an IPP entry for computers and business systems: a CUPS server on a `port` of the process's own (chosen for it when it is put without one, from 6310 on), with one printer, the node itself (`lpstat -h <host>:<port> -p` lists it; computers print to `ipp://<host>:<port>/printers/<node>`), which forwards what it receives to every node of `to`; plain `ipp`, or `ipps` with `tls_cert` and `tls_key` (files). What computers print is a document (PDF, a raster), always made `.bdf` here; `meta` as an endpoint's, and the job attributes of a Print-Job request are metadata (`ipp.media`, `ipp.copies` …) | `to`, `port`, `tls_cert`, `tls_key`, `meta` |
 
 | `queue` | forwards the job to every node of `to` (a fan-out when there are several) | `to` |
 | `class` | sends the job to one of `members`, in turn (`round-robin`, the default) or the first (`failover`); a printer that does not take it is skipped for the next member | `members`, `policy` |
@@ -255,15 +255,21 @@ a template yet.
 
 A node is checked when it is put: the nodes it names exist, the name is
 free of the other kinds, no path leads back to it, and every node takes
-the kinds of payload that reach it. A node another one sends to is not
-deleted. Deliveries to printers and archives, and the steps of template
+the kinds of payload that reach it. A node may be put before it is set up
+(no `to`, no `url`, no `store`, no `members`, no `rules`, no `template`):
+`GET /api/topology` lists what it lacks in `missing`, the editor draws it
+with a dashed amber border, and a job that reaches it ends there (dropped
+at a node with nothing to forward to, failed at a printer or an archive
+without its address or store) until it is set up. A node another one
+sends to is not deleted. Deliveries to printers and archives, and the steps of template
 and convert nodes, are done by a process right after the job is routed,
 and by the tick (`POST /api/tick`; every minute on a serverless
 platform); one that fails is tried again after a growing wait, up to 20
 times (not at all after a failure no retry mends: a template missing,
 data that cannot be read), and `POST /api/deliveries/<id>/retry` does it
 again now. `/admin/topology` is the editor (a palette of kinds,
-ports to connect, a sidebar for the node selected, pan and zoom; where the
+which puts a node at once with a name of its own, `endpoint-1`, `queue-2`
+…, to set up in the sidebar; ports to connect; pan and zoom; where the
 nodes are drawn is `/api/layout`); a CUPS client lists every node with
 CUPS-Get-Printers at `/ipp/print` (`bdf printers -url ipp://<host>:<port>/ipp/print`).
 

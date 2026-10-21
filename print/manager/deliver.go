@@ -200,8 +200,11 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		if err == nil && n.Kind != KindArchive {
 			err = fmt.Errorf("%s is a %s, not an archive", d.Node, n.Kind)
 		}
+		if err == nil && n.Store == "" {
+			err = errors.New("not set up: the archive has no store yet")
+		}
 		if err != nil {
-			return m.outcome(ctx, d, owner, "", "", err, false)
+			return m.outcome(ctx, d, owner, "", "", err, n != nil && n.Store == "")
 		}
 		key, err := m.archive(sctx, n, j, j.payload(d.Payload))
 		return m.outcome(ctx, d, owner, "", key, err, false)
@@ -237,6 +240,9 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		}
 		if p.Route == RouteBranch {
 			return m.outcome(ctx, d, owner, printer, "", ErrBranch, true)
+		}
+		if p.URL == "" {
+			return m.outcome(ctx, d, owner, printer, "", errors.New("not set up: the printer has no address yet"), true)
 		}
 		pl := j.payload(d.Payload)
 		if pl == nil || pl.Kind != PayloadBDF {
