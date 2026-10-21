@@ -1,0 +1,76 @@
+id: milestone:pm-auth-1b
+type: milestone
+title: pm-auth-1b — pm-auth-1 の残り：刷り直し、topology と audit の役割、退役した秘密の列
+summary: >-
+  requirement:print-manager-auth の最初の段で後回しにした 3 つ。刷り直し（POST /api/jobs/<n>/reprint：見えるジョブの文書を、自分の新しい
+  ジョブとして、送れるノードへ。/jobs の Reprint と /topology の Reprint here）。役割（OIDC_TOPOLOGY_ADMINS・_GROUPS で topology：
+  管理のページとトポロジーの API、OIDC_AUDITORS・_GROUPS で audit：/audit と監査ログとすべてのジョブの読み出し。管理者は両方。
+  manager の Viewer.Roles と Can、adminOnly は topology、auditOnly は audit）。鍵の列（MANAGER_PREVIOUS_SECRETS：退役した秘密で
+  封じた端末のセッション・アプリのトークン・画面のセッションが回転の間も開く。署名は今の秘密だけ）。2026-10-21 実装。
+lifecycle: active
+authority: authored
+scope:
+  milestone: pm-auth-1b
+constraints:
+- 刷り直しは「そのジョブが見える」かつ「行き先に送れる」とき（requirement:print-manager-auth の scopes.reprint）。新しいジョブの送り手は刷り直した人、Source は reprint、監査に残る
+- audit の役割は読むだけ（取り消し・刷り直しは自分のものだけ、設定は変えない）
+- 退役した秘密で署名しない。確かめるだけ
+capabilities:
+  reprint:
+    state: implemented
+    about: capability:print-manager/reprint
+  roles:
+    state: implemented
+    about: capability:print-manager/roles
+  session-key-ring:
+    state: implemented
+    about: capability:print-manager/session-key-ring
+acceptance:
+  r1-reprint:
+    text: 自分のジョブを同じノードへ、またグループのジョブを送れるノードへ刷り直せる（201、新しい番号、submitted_by は自分）。送れないノードへは 403、見えないジョブは 404。監査に reprint
+    verified_by: [manager-tests]
+  r2-roles:
+    text: topology の人は /admin と /api/nodes を使え /audit は 403、audit の人は /audit と /api/audit と全ジョブを読め /api/nodes は 403 で取り消せない。AppBar の Admin・Audit は役割に応じて出る
+    verified_by: [manager-tests, login-tests]
+  r3-keyring:
+    text: 秘密を替えて古いものを previous に置くと、古い秘密で封じたセッションが開き、新しいセッションは新しい秘密だけで開く。previous から外すと古いものは開かない。画面のセッションの鍵も同じ秘密から導く
+    verified_by: [manager-tests, login-tests]
+verification:
+  manager-tests:
+    state: passed
+    method: integration
+    test: go test -race ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/roles_test.go
+      locator: 'TestRolesAndReprint（tess は topology、audrey は audit：API の 200/403、audrey は全ジョブを見て取り消せない、publicTopology は役割で決まる。alice の刷り直し、wh-b へは 403、bob は alice のを 404、bob はグループの wms-b を office へ 201、監査に reprint）、TestKeyRing（古い秘密のセッションが previous で開き、新しいセッションは新しい秘密だけ、外すと閉じる）。2026-10-21 macOS'
+  login-tests:
+    state: passed
+    method: integration
+    test: go test ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/login_test.go
+      locator: 'TestLogin に tess（pm-topology）と audrey（pm-auditors）：/admin・/audit・/api/nodes・/api/audit の 200/403、AppBar のリンク、audrey が全ジョブを見る。TestConfigureAuth：auditors の形の確かめ、previous の鍵が session.keyring.previous_secrets に'
+facts:
+  delivery:
+    implemented:
+      date: '2026-10-21'
+      packages:
+      - 'print/manager：scope.go（RoleTopology・RoleAudit、Viewer.Roles・Can、CanSee に audit）、http.go（roleOnly、adminOnly=topology、auditOnly、/api/jobs/<n>/reprint、topology の設定は topology の役割に）、submit.go（Reprint）、manager.go（Options.PreviousSecrets）、devices.go（open は退役した秘密でも、signWith）'
+      - 'cmd/printmanager：config.go（TopologyAdmins・TopologyAdminGroups・Auditors・AuditorGroups、PreviousSecrets）、auth.go（policy.roles・listed、ConfigureAuth に previous、sessionKey、Viewer.Roles）、app.go（page(role)、Account.Topology・Audit、previous を manager へ）、pages.pw.html（Account、AppBar、Forbidden に role、Jobs の見出しは audit）、jobs.js（Reprint。Shift で上の選択のノードへ）、topology-view.js（Reprint here）、README'
+    decisions:
+    - 'adminOnly の口はすべて topology の役割に（インボックス・送り待ち・アプリも）。読むだけの監査は audit。細かい分け（apps だけ、など）は要るときに'
+    - '/jobs の刷り直しは同じノードへ。別のノードへは Shift を押しながら（上のフォームで選んだノード）。/topology ではそのノードへ'
+    - '退役した秘密は 32 バイト未満なら起動時に断る。画面のセッションの鍵は同じ HMAC の導出で previous_secrets に'
+    unverified:
+    - 'ブラウザでの Reprint ボタン（手で未確認）'
+    - '実の回転（MANAGER_SECRET を替えて MANAGER_PREVIOUS_SECRETS に古いものを置く手順）を本番で'
+    known_gaps:
+    - 'アプリの scope に topology・audit は無い（アプリの管理は admin の scope だけ）'
+    - 'audit の人の /jobs は全ジョブだが、/admin/jobs（宛先ごと）は topology の役割のページのまま'
+relations:
+- relation: implements
+  to: requirement:print-manager-auth
+- relation: follows
+  to: milestone:pm-auth-2

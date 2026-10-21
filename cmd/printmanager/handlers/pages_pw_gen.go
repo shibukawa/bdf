@@ -7,10 +7,12 @@ import (
 )
 
 type Account struct {
-	Name    string
-	Initial string
-	Email   string
-	Admin   bool
+	Name     string
+	Initial  string
+	Email    string
+	Admin    bool
+	Topology bool
+	Audit    bool
 }
 
 type renderShellParams struct {
@@ -30,6 +32,7 @@ type SignInParams struct {
 
 type ForbiddenParams struct {
 	Account Account
+	Role    string
 }
 
 type JobsParams struct {
@@ -91,9 +94,11 @@ var planForbiddenOpsFill2Plan = &htmlbind.Plan[ForbiddenParams]{Ops: []htmlbind.
 	planForbiddenOps.Component(func(p ForbiddenParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account})
 	}),
-	planForbiddenOps.Static(" <main class=\"mx-auto max-w-lg p-4 sm:p-8\"> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body items-center text-center\"> <h1 class=\"card-title text-2xl\">Administrators only</h1> <p class=\"text-base-content/70\">"),
+	planForbiddenOps.Static(" <main class=\"mx-auto max-w-lg p-4 sm:p-8\"> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body items-center text-center\"> <h1 class=\"card-title text-2xl\">Not your page</h1> <p class=\"text-base-content/70\">"),
 	planForbiddenOps.Text(func(p ForbiddenParams) string { return p.Account.Name }),
-	planForbiddenOps.Static(" is not an administrator. Your jobs and your groups' are on the Jobs page.</p> <div class=\"card-actions\"><a href=\"/jobs\" class=\"btn btn-primary\">Jobs</a></div> </div> </div> </main> "),
+	planForbiddenOps.Static(" does not have the role "),
+	planForbiddenOps.Text(func(p ForbiddenParams) string { return p.Role }),
+	planForbiddenOps.Static(". Your jobs and your groups' are on the Jobs page.</p> <div class=\"card-actions\"><a href=\"/jobs\" class=\"btn btn-primary\">Jobs</a></div> </div> </div> </main> "),
 }}
 
 var planJobsOpsFill3Plan = &htmlbind.Plan[JobsParams]{Ops: []htmlbind.Op[JobsParams]{
@@ -102,14 +107,14 @@ var planJobsOpsFill3Plan = &htmlbind.Plan[JobsParams]{Ops: []htmlbind.Op[JobsPar
 		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account})
 	}),
 	planJobsOps.Static(" <main class=\"mx-auto grid max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <form id=\"print-form\" class=\"card-body\"> <h2 class=\"card-title\">Print a document</h2> <p class=\"text-sm text-base-content/60\">PDF, Office documents, images and .bdf. It flows from the node chosen; the nodes listed are those you may send to.</p> <div class=\"flex flex-wrap gap-2\"> <select id=\"print-dest\" class=\"select w-full sm:w-64\" required></select> <input id=\"print-file\" type=\"file\" class=\"file-input w-full sm:flex-1\" required> <input id=\"print-name\" class=\"input w-full sm:w-48\" placeholder=\"job name (the file's)\"> <button type=\"submit\" class=\"btn btn-primary\">Print</button> </div> </form> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
-	planJobsOps.If(func(p JobsParams) bool { return p.Account.Admin },
+	planJobsOps.If(func(p JobsParams) bool { return p.Account.Audit },
 		[]htmlbind.Op[JobsParams]{
 			planJobsOps.Static("All jobs"),
 		},
 		[]htmlbind.Op[JobsParams]{
 			planJobsOps.Static("My jobs and my groups'"),
 		}),
-	planJobsOps.Static("</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th class=\"hidden md:table-cell\">Group</th><th class=\"hidden sm:table-cell\">Received</th><th>State</th><th class=\"hidden lg:table-cell\">Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/jobs.js\"></script> "),
+	planJobsOps.Static("</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th class=\"hidden md:table-cell\">Group</th><th class=\"hidden sm:table-cell\">Received</th><th>State</th><th class=\"hidden lg:table-cell\">Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> <p class=\"text-xs text-base-content/60\">Reprint sends the document again as a new job of yours, to the node it went to, or to another you may send to.</p> </div> </section> </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/jobs.js\"></script> "),
 }}
 
 var planAdminPageOpsFill4Plan = &htmlbind.Plan[renderAdminPageParams]{Ops: []htmlbind.Op[renderAdminPageParams]{
@@ -197,9 +202,15 @@ var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
 		planAppBarOps.Slot(func(p renderAppBarParams) htmlbind.Fragment { return p.Children },
 			nil),
 		planAppBarOps.Static(" <a href=\"/jobs\" class=\"btn btn-sm btn-ghost\">Jobs</a> <a href=\"/topology\" class=\"btn btn-sm btn-ghost\">Topology</a> "),
-		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Admin },
+		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Topology },
 			[]htmlbind.Op[renderAppBarParams]{
-				planAppBarOps.Static(" <a href=\"/admin/topology\" class=\"btn btn-sm btn-ghost\">Admin</a> <a href=\"/audit\" class=\"btn btn-sm btn-ghost\">Audit</a> "),
+				planAppBarOps.Static(" <a href=\"/admin/topology\" class=\"btn btn-sm btn-ghost\">Admin</a> "),
+			},
+			nil),
+		planAppBarOps.Static(" "),
+		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Audit },
+			[]htmlbind.Op[renderAppBarParams]{
+				planAppBarOps.Static(" <a href=\"/audit\" class=\"btn btn-sm btn-ghost\">Audit</a> "),
 			},
 			nil),
 		planAppBarOps.Static(" <div class=\"flex min-w-0 items-center gap-2\"> <div class=\"avatar avatar-placeholder\""),

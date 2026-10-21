@@ -286,6 +286,8 @@ history:
     summary: 2026-10-21 利用者「adminでなくても全員ログインが良いと思う。自分のアクセスできる範囲のデータが見られる、というのは必要だと思うので」。最初の段を、管理者だけの /admin のログインから、全員のログインと自分の見える範囲の画面に広げた（facts.delivery_proposed.first_step）
   first-step-implemented:
     summary: 2026-10-21 milestone:pm-auth-1 の最初の段（facts.delivery_proposed.first_step）を実装した。全員の OIDC ログイン、見える範囲の画面、/admin は管理者だけ（他は 403）、ブラウザで AdminToken を打つ形を外した、Slip.User を SubmittedBy と ClaimedUser に分けた（facts.who_printed.record）、偽の IdP（print/fakeidp）
+  pm-auth-1b-implemented:
+    summary: 2026-10-21 milestone:pm-auth-1b：pm-auth-1 の残り（刷り直し、topology と audit の役割、退役した秘密の列）を実装した。役割は OIDC_TOPOLOGY_ADMINS・_GROUPS と OIDC_AUDITORS・_GROUPS
   pm-auth-2-implemented:
     summary: 2026-10-21 利用者「残りの実装をまとめてお願いします」。milestone:pm-auth-2 を実装した：アプリの登録（/admin/apps、argon2id）、POST /oauth/token の client credentials、エンドポイントの apps、IPP の Basic、scope。設定のトークン（AdminToken・SubmitTokens・TickToken）は admin・tick のアプリに移るまで残す
   pending-merge:

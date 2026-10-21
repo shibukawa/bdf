@@ -66,7 +66,7 @@ func devServer(t *testing.T, policy OIDCConfig) (*testutil.Server, *App) {
 			ac := c.Get[auth.Config]()
 			sc := c.Get[sessionconfig.SessionConfig]()
 			ac.OIDC.Issuer, ac.OIDC.ClientID, ac.OIDC.ClientSecret = idp.Issuer, idp.ClientID, idp.ClientSecret
-			if err := ConfigureAuth(&ac, &sc, "a secret of thirty-two bytes or more", false, policy); err != nil {
+			if err := ConfigureAuth(&ac, &sc, "a secret of thirty-two bytes or more", nil, false, policy); err != nil {
 				t.Fatal(err)
 			}
 			c.Set(ac)

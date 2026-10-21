@@ -52,7 +52,8 @@ or with variables:
 |---|---|
 | `MANAGER_RECORDS` | store of the records: `bbolt:path`, `dynamodb://table?region=…`, `firestore://project/database`, `s3://bucket?region=…&endpoint=…`, `r2://bucket?endpoint=…`, `gcs://bucket` |
 | `MANAGER_DOCUMENTS` | store of the slips' documents (`bbolt`, `s3`, `r2`, `gcs`); empty for the records' store |
-| `MANAGER_SECRET` | signs the devices' sessions: 32 bytes or more, the same for every instance |
+| `MANAGER_SECRET` | signs the devices' sessions, the apps' tokens and the pages' sessions: 32 bytes or more, the same for every instance |
+| `MANAGER_PREVIOUS_SECRETS` | retired secrets that still open what was signed with them, while a rotation goes on (set the new secret, keep the old one here for a day, then drop it) |
 | `MANAGER_ADMIN_TOKEN` | bearer token of the API (`/api`), for scripts (people sign in) |
 | `MANAGER_TICK_TOKEN` | bearer token a scheduler calls `POST /api/tick` with |
 | `MANAGER_SUBMIT_TOKENS` | `name:secret` pairs that may send jobs (IPP Basic, or bearer `name:secret`); none lets anyone send |
@@ -78,6 +79,8 @@ and who is an admin is `[oidc]`:
 | `OIDC_GROUPS_PREFIX` | take only the groups of this prefix |
 | `OIDC_ADMINS` | admins: `issuer#subject`, or an email the IdP verified |
 | `OIDC_ADMIN_GROUPS` | groups whose members are admins (one admin rule is required outside dev) |
+| `OIDC_TOPOLOGY_ADMINS`, `OIDC_TOPOLOGY_ADMIN_GROUPS` | the role `topology`: the admin pages and the API of the topology (nodes, templates, keys, apps, devices, inboxes, deliveries), short of an admin |
+| `OIDC_AUDITORS`, `OIDC_AUDITOR_GROUPS` | the role `audit`: `/audit`, `GET /api/audit`, and every job (reading); an admin has both roles |
 | `OIDC_ALLOWED_ISSUERS`, `OIDC_ALLOWED_DOMAINS`, `OIDC_ALLOWED_GROUPS` | narrow who gets in (email domain or Google's `hd`; admins always get in) |
 
 The rest of `[auth]` and `[session]` is the Print Manager's
@@ -228,7 +231,10 @@ CUPS-Get-Printers at `/ipp/print` (`bdf printers -url ipp://<host>:<port>/ipp/pr
 
 `GET /auth/login` signs in at the IdP and `POST /auth/logout` out;
 `GET /api/me` tells who; `GET /api/my/jobs` lists a person's jobs and
-`GET /api/destinations` the nodes to print to; `GET /api/audit` is the log.
+`GET /api/destinations` the nodes to print to; `POST /api/jobs/<n>/reprint`
+(`{"to": "<node>"}`, or the job's node) sends a job the person sees again,
+as a new job of theirs, to a node they may send to; `GET /api/audit` is
+the log (the role `audit`).
 Everyone signed in reads `GET /api/topology` (the nodes and edges; an
 administrator gets the settings and the counts too), `GET /api/layout`
 (where they are drawn) and `GET /api/topology/live`: the activity of the

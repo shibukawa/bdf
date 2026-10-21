@@ -69,7 +69,7 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/me", h.whoami)
 	mux.HandleFunc("GET /api/my/jobs", h.userOnly(h.myJobs))
 	mux.HandleFunc("GET /api/destinations", h.userOnly(h.destinations))
-	mux.HandleFunc("GET /api/audit", h.adminOnly(h.auditLog))
+	mux.HandleFunc("GET /api/audit", h.auditOnly(h.auditLog))
 	mux.HandleFunc("GET /api/slips/{id}", h.adminOnly(h.getSlip))
 	mux.HandleFunc("GET /api/slips/{id}/document", h.adminOnly(h.slipDocument))
 	mux.HandleFunc("POST /api/slips/{id}/cancel", h.adminOnly(h.cancelSlip))
@@ -86,6 +86,7 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/jobs/{id}/document", h.ownJob(h.jobDocument))
 	mux.HandleFunc("GET /api/jobs/{id}/pages/{page}", h.ownJob(h.jobPage))
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", h.ownJob(h.cancelJob))
+	mux.HandleFunc("POST /api/jobs/{id}/reprint", h.ownJob(h.reprint))
 	mux.HandleFunc("GET /api/inboxes/{name}", h.adminOnly(h.inbox))
 	mux.HandleFunc("POST /api/items/{id}/release", h.adminOnly(h.release))
 	mux.HandleFunc("POST /api/items/{id}/discard", h.adminOnly(h.discardItem))
@@ -157,17 +158,29 @@ func sameSecret(a, b string) bool {
 	return a != "" && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-// adminOnly serves a request of an administrator: the admin token, or
-// an admin signed in to the pages.
+// adminOnly serves a request of whoever changes the topology: the admin
+// token, an app with the scope admin, or a person with the role topology
+// (an administrator has it).
 func (h *handler) adminOnly(fn http.HandlerFunc) http.HandlerFunc {
+	return h.roleOnly(RoleTopology, fn)
+}
+
+// auditOnly serves a request of whoever reads the audit log: the role
+// audit, or an administrator.
+func (h *handler) auditOnly(fn http.HandlerFunc) http.HandlerFunc {
+	return h.roleOnly(RoleAudit, fn)
+}
+
+// roleOnly serves a request of a viewer with a role.
+func (h *handler) roleOnly(role string, fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v, ok := h.viewerOf(r)
 		switch {
 		case !ok:
 			w.Header().Set("WWW-Authenticate", `Bearer realm="bdf print manager"`)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the admin token or an administrator's sign-in is required"})
-		case !v.Admin:
-			writeJSON(w, http.StatusForbidden, map[string]string{"error": "administrators only"})
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the admin token or a sign-in is required"})
+		case !v.Can(role):
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "the role " + role + " is required"})
 		case !sameOrigin(r):
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "a request of another origin"})
 		default:
@@ -365,7 +378,7 @@ func (h *handler) topology(w http.ResponseWriter, r *http.Request, v *Viewer) {
 	if ns == nil {
 		ns = []TopoNode{}
 	}
-	if !v.Admin {
+	if !v.Can(RoleTopology) {
 		ns = publicTopology(ns)
 	}
 	writeJSON(w, http.StatusOK, ns)
@@ -438,6 +451,42 @@ func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, v *Viewer,
 	if err := h.m.WriteDocument(r.Context(), j.Number, w); err != nil {
 		panic(http.ErrAbortHandler)
 	}
+}
+
+// reprint sends a job's document again, as a new job of the viewer, to
+// a node they may send to: {"to": "<node>"}, or the job's destination.
+func (h *handler) reprint(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
+	var in struct {
+		To string `json:"to"`
+	}
+	if r.ContentLength != 0 {
+		if err := readJSON(r, &in); err != nil {
+			h.writeErr(w, err)
+			return
+		}
+	}
+	dest := firstOr(in.To, j.Dest)
+	if v.Kind == PrincipalUser {
+		scope, owner, _, err := h.m.destScope(r.Context(), dest)
+		if err != nil {
+			h.writeErr(w, err)
+			return
+		}
+		if !v.CanSendTo(scope, owner) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not send to " + dest})
+			return
+		}
+	} else if err := h.m.appMaySend(r.Context(), v, dest, false); err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	again, err := h.m.Reprint(r.Context(), j, dest, v.Principal())
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	h.m.audit(r.Context(), v.Label(), "reprint", j.ID, "→ "+dest+" as "+again.ID)
+	writeJSON(w, http.StatusCreated, again)
 }
 
 // cancelJob cancels a job: the submitter's or an administrator's (the

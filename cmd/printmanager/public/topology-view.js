@@ -145,7 +145,23 @@ function renderSidebar() {
     li.append(row);
     li.append(el("div", `${sender(j)} · ${since(j.received)}`, { className: "text-xs text-base-content/60" }));
     li.append(el("div", legsOf(j), { className: "font-mono text-xs text-base-content/60 break-all", title: legsOf(j) }));
-    li.append(el("a", "Document", { className: "link text-xs", href: `/api/jobs/${j.id}/document` }));
+    const links = el("div", undefined, { className: "flex gap-3" });
+    links.append(el("a", "Document", { className: "link text-xs", href: `/api/jobs/${j.id}/document` }));
+    if (dest) {
+      const re = el("button", "Reprint here", { type: "button", className: "link text-xs" });
+      re.addEventListener("click", async () => {
+        try {
+          const again = await api("POST", `/api/jobs/${j.id}/reprint`, { to: n.name });
+          status(`Job #${again.number} is ${again.state}`);
+          etag = "";
+          await poll();
+        } catch (e) {
+          status(e.message, true);
+        }
+      });
+      links.append(re);
+    }
+    li.append(links);
     list.append(li);
   }
   sec.append(list);

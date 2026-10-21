@@ -87,6 +87,19 @@ async function loadJobs() {
     const actions = tr.lastChild;
     const a = el("a", "Document", { className: "btn btn-xs btn-ghost mr-1", href: `/api/jobs/${j.id}/document` });
     actions.append(a);
+    // a reprint, to the job's node or to another chosen in the form above
+    const re = el("button", "Reprint", { type: "button", className: "btn btn-xs btn-ghost mr-1", title: "Send the document again, to " + j.dest + " (hold Shift: to the node chosen above)" });
+    re.addEventListener("click", async (ev) => {
+      try {
+        const to = ev.shiftKey ? $("print-dest").value : j.dest;
+        const again = await api("POST", `/api/jobs/${j.id}/reprint`, JSON.stringify({ to }));
+        status(`Job #${again.number} is ${again.state} (a reprint of #${j.number} at ${to})`);
+        await loadJobs();
+      } catch (e) {
+        status(e.message, true);
+      }
+    });
+    actions.append(re);
     // the sender and an administrator cancel; the group only sees
     if ((mine(j) || me?.admin) && (!ENDED.includes(j.state) || (j.legs || []).some((l) => l.kind === "display" && l.state === "shown"))) {
       const b = el("button", "Cancel", { type: "button", className: "btn btn-xs btn-ghost text-error" });

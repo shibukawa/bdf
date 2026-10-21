@@ -64,6 +64,16 @@ func (p *Principal) Label() string {
 	return firstOr(p.Name, firstOr(p.ID, p.Kind))
 }
 
+// Roles of a person besides being an administrator (who has every
+// role): the web application gives them from the IdP's claims.
+const (
+	// RoleTopology changes the topology and what is at it: nodes,
+	// templates, keys, apps, devices, inboxes, deliveries.
+	RoleTopology = "topology"
+	// RoleAudit reads the audit log and every job.
+	RoleAudit = "audit"
+)
+
 // Scopes of nodes: who may send to them from the pages, and whose their
 // jobs are.
 const (
@@ -109,6 +119,8 @@ type Viewer struct {
 	Groups []string
 	// Scopes are an app's (granted to its token).
 	Scopes []string
+	// Roles are a person's (RoleTopology, RoleAudit).
+	Roles []string
 	// Admin sees everything and changes the settings.
 	Admin bool
 }
@@ -116,6 +128,11 @@ type Viewer struct {
 // Has tells a scope of the viewer (an administrator has every one).
 func (v *Viewer) Has(scope string) bool {
 	return v != nil && (v.Admin || slices.Contains(v.Scopes, scope))
+}
+
+// Can tells a role of the viewer (an administrator has every one).
+func (v *Viewer) Can(role string) bool {
+	return v != nil && (v.Admin || slices.Contains(v.Roles, role))
 }
 
 // Principal is the viewer as the submitter of a job.
@@ -144,9 +161,9 @@ func (v *Viewer) Submitted(j *Job) bool {
 }
 
 // CanSee tells whether the viewer may see a job: its submitter, the
-// members of its group, and the admins.
+// members of its group, the auditors and the admins.
 func (v *Viewer) CanSee(j *Job) bool {
-	return v != nil && (v.Admin || v.Member(j.Group) || v.Submitted(j))
+	return v != nil && (v.Admin || v.Can(RoleAudit) || v.Member(j.Group) || v.Submitted(j))
 }
 
 // CanCancel tells whether the viewer may cancel a job: its submitter (an

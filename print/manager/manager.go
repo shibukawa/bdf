@@ -37,9 +37,12 @@ type Options struct {
 	// Converter makes .bdf documents of what senders send (PDF, Office,
 	// rasters …); nil takes .bdf only.
 	Converter spool.Converter
-	// Secret signs the challenges and sessions of devices: at least 32
-	// random bytes, the same for every instance.
-	Secret []byte
+	// Secret signs the challenges and sessions of devices and the apps'
+	// tokens: at least 32 random bytes, the same for every instance.
+	// PreviousSecrets are retired ones, which still open what was signed
+	// with them while a rotation goes on; nothing is signed with them.
+	Secret          []byte
+	PreviousSecrets [][]byte
 	// FontDirs and NoSystemFonts find the fonts of documents, to draw
 	// their pages and print them.
 	FontDirs      []string
