@@ -717,7 +717,7 @@ func TestTokens(t *testing.T) {
 		t.Fatalf("destinations: %d", res.StatusCode)
 	}
 	// the admin's pages' API is not the user's
-	for _, path := range []string{"/api/topology", "/api/audit", "/api/nodes"} {
+	for _, path := range []string{"/api/deliveries", "/api/audit", "/api/nodes"} {
 		if res, _ := e.do(nil, "GET", path, "wms:s3cret", nil); res.StatusCode != http.StatusForbidden {
 			t.Fatalf("%s as a user: %d", path, res.StatusCode)
 		}

@@ -1,386 +1,77 @@
-// The editor of the topology. Nodes of every kind are placed on a canvas
-// (SVG, panned and zoomed), connected by dragging from a node's output
-// port onto another node, and set up in the sidebar: the fields of the
-// node's kind, and what is at it (an endpoint's templates and key, a
-// display's devices and enrollment codes). Everything goes through the
-// API; the server checks a node when it is put (its edges, its name, no
-// cycle).
+// The editor of the topology. Nodes of every kind are placed on the
+// canvas (canvas.js: panned and zoomed, with the activity running along
+// the edges), connected by dragging from a node's output port onto
+// another node, and set up in the sidebar: the fields of the node's kind,
+// and what is at it (an endpoint's templates and key, a display's
+// devices and enrollment codes). Everything goes through the API; the
+// server checks a node when it is put (its edges, its name, no cycle).
 
-import { $, api, badge, button, changed, el, kindBadge, KINDS, onChange, since, status } from "./admin.js";
+import { $, api, button, changed, el, kindBadge, KINDS, onChange, since, status } from "./admin.js";
+import { createCanvas } from "./canvas.js";
 
-const SVG = "http://www.w3.org/2000/svg";
-const NODE_W = 176;
-const NODE_H = 54;
-const COL = 240;
-const ROW = 84;
-const PAD = 24;
-const GRID = 8;
-const FILL = { endpoint: "#fde68a", queue: "#ddd6fe", class: "#c7d2fe", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db" };
-// the kinds with an output port: they send to other nodes (a display to
-// its fallback printer)
-const OUT_PORT = new Set(["endpoint", "queue", "class", "inbox", "display"]);
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
 const ACCEPTS = { both: "documents, and templates to fill", file: "documents only", template: "templates to fill only" };
+const POLL_MS = 4000;
 
 let topo = []; // the nodes, as /api/topology lists them
-let layout = {}; // name -> {x, y}
 let formats = []; // the formats an endpoint may take
 let selected = null; // the node in the sidebar
 let draft = null; // a node being added: {kind}
-let draftPos = null;
-let view = { x: PAD, y: PAD, k: 1 }; // the canvas's pan and zoom
 let fitted = false;
+let etag = ""; // the activity's revision
 
-const byName = () => Object.fromEntries(topo.map((n) => [n.name, n]));
+const canvas = createCanvas($("canvas"), {
+  editable: true,
+  onSelect(name) {
+    selected = name;
+    draft = null;
+    renderSidebar();
+    $("sidebar").scrollTop = 0;
+  },
+  onMove(name, p) {
+    api("PUT", "/api/layout", { positions: { [name]: p } }).catch((e) => status(e.message, true));
+  },
+  onConnect(from, to) {
+    addEdge(from, to).catch((e) => status(e.message, true));
+  },
+  onRemoveEdge: removeEdge,
+  draftLabel: () => $("f-name")?.value || "",
+});
 
 async function load() {
   try {
     const [t, l] = await Promise.all([api("GET", "/api/topology"), api("GET", "/api/layout")]);
     topo = t;
-    layout = l.positions || {};
     if (!formats.length) formats = await api("GET", "/api/formats");
-    autoLayout();
     $("node-names").replaceChildren(...topo.map((n) => el("option", undefined, { value: n.name })));
     if (selected && !topo.some((n) => n.name === selected)) selected = null;
+    canvas.setData(topo, l.positions || {});
     if (!fitted) {
-      fit();
+      canvas.fit();
       fitted = true;
     }
-    draw();
     renderSidebar();
   } catch (e) {
     status(e.message, true);
   }
 }
 
-// The canvas.
-
-function svgEl(tag, attrs = {}) {
-  const e = document.createElementNS(SVG, tag);
-  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-  return e;
-}
-
-// edgesOf are the edges from a node: to (a queue's, an endpoint's, an
-// inbox's), member (a class's) or fallback (a display's printer).
-function edgesOf(n) {
-  const out = [];
-  for (const to of n.to || []) out.push({ to, kind: "to" });
-  for (const to of n.members || []) out.push({ to, kind: "member" });
-  if (n.fallback && n.fallback.printer) out.push({ to: n.fallback.printer, kind: "fallback" });
-  return out;
-}
-
-// autoLayout places the nodes that have no position: in columns by their
-// depth from the entries, rows within a column.
-function autoLayout() {
-  const nodes = byName();
-  const incoming = {};
-  for (const n of topo) for (const e of edgesOf(n)) incoming[e.to] = (incoming[e.to] || 0) + 1;
-  const depth = {};
-  const walk = (name, d) => {
-    if ((depth[name] ?? -1) >= d) return;
-    depth[name] = d;
-    if (d > 20) return;
-    for (const e of edgesOf(nodes[name] || {})) if (nodes[e.to]) walk(e.to, d + 1);
-  };
-  for (const n of topo) if (!incoming[n.name]) walk(n.name, 0);
-  for (const n of topo) if (depth[n.name] === undefined) walk(n.name, 0);
-  const columns = {};
-  for (const n of topo) (columns[depth[n.name]] ||= []).push(n.name);
-  const taken = new Set(Object.values(layout).map((p) => `${Math.round(p.x)},${Math.round(p.y)}`));
-  for (const [d, names] of Object.entries(columns)) {
-    let row = 0;
-    for (const name of names) {
-      if (layout[name]) continue;
-      let p;
-      do {
-        p = { x: d * COL, y: row * ROW };
-        row++;
-      } while (taken.has(`${p.x},${p.y}`));
-      layout[name] = p;
-    }
-  }
-}
-
-function pos(name) {
-  return layout[name] || { x: 0, y: 0 };
-}
-
-// freeSpot is a place for a new node near a point, clear of the others:
-// to the right of them, then on the next row.
-function freeSpot(c) {
-  const taken = (p) => topo.some((n) => Math.abs(pos(n.name).x - p.x) < NODE_W + GRID && Math.abs(pos(n.name).y - p.y) < NODE_H + GRID);
-  const start = { x: snap(c.x - NODE_W / 2), y: snap(c.y - NODE_H / 2) };
-  let p = { ...start };
-  for (let i = 0; i < 64 && taken(p); i++) {
-    p = { x: p.x + COL, y: p.y };
-    if (p.x > start.x + 3 * COL) p = { x: start.x, y: p.y + ROW };
-  }
-  return p;
-}
-
-function snap(v) {
-  return Math.round(v / GRID) * GRID;
-}
-
-function clipText(s, n) {
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
-}
-
-// counts are what is at a node now.
-function counts(n) {
-  const out = [];
-  if (n.held) out.push(`${n.held} held`);
-  if (n.open) out.push(`${n.open} open`);
-  if (n.devices) out.push(`${n.devices} device${n.devices === 1 ? "" : "s"}`);
-  if (n.pending) out.push(`${n.pending} waiting`);
-  return out;
-}
-
-function draw() {
-  const svg = $("canvas");
-  svg.replaceChildren();
-  const defs = svgEl("defs");
-  const marker = svgEl("marker", { id: "arrow", viewBox: "0 0 10 10", refX: "10", refY: "5", markerWidth: "8", markerHeight: "8", orient: "auto-start-reverse" });
-  marker.append(svgEl("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: "#64748b" }));
-  defs.append(marker);
-  const world = svgEl("g", { id: "world", transform: `translate(${view.x} ${view.y}) scale(${view.k})` });
-  const nodes = byName();
-  for (const n of topo) {
-    for (const e of edgesOf(n)) {
-      if (!nodes[e.to]) continue;
-      const a = pos(n.name);
-      const b = pos(e.to);
-      const x1 = a.x + NODE_W;
-      const y1 = a.y + NODE_H / 2;
-      const x2 = b.x;
-      const y2 = b.y + NODE_H / 2;
-      const dx = Math.max(40, Math.abs(x2 - x1) / 2);
-      const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
-      const hit = svgEl("path", { d, fill: "none", stroke: "transparent", "stroke-width": "14", class: "cursor-pointer" });
-      const line = svgEl("path", { d, fill: "none", stroke: e.kind === "fallback" ? "#94a3b8" : "#64748b", "stroke-width": "2", "marker-end": "url(#arrow)", "pointer-events": "none" });
-      if (e.kind === "member") line.setAttribute("stroke-dasharray", "6 4");
-      if (e.kind === "fallback") line.setAttribute("stroke-dasharray", "2 4");
-      const title = svgEl("title");
-      title.textContent = e.kind === "fallback" ? `${n.name} prints on ${e.to} as a fallback (click to remove)` : `${n.name} → ${e.to} (click to remove)`;
-      hit.append(title);
-      hit.addEventListener("pointerdown", (ev) => ev.stopPropagation());
-      hit.addEventListener("click", () => removeEdge(n, e));
-      world.append(hit, line);
-    }
-  }
-  for (const n of topo) world.append(nodeBox(n, pos(n.name), n.name === selected));
-  if (draft && draftPos) {
-    const g = svgEl("g", { transform: `translate(${draftPos.x} ${draftPos.y})`, class: "cursor-grab", "data-draft": "1" });
-    g.append(svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: FILL[draft.kind] || "#e5e7eb", stroke: "#4f46e5", "stroke-width": "2", "stroke-dasharray": "6 4" }));
-    const t = svgEl("text", { x: "10", y: "22", "font-size": "13", "font-weight": "600", fill: "#111827" });
-    t.textContent = ($("f-name") && $("f-name").value) || "new " + (KINDS[draft.kind] || draft.kind).toLowerCase();
-    const k = svgEl("text", { x: "10", y: "40", "font-size": "11", fill: "#374151" });
-    k.textContent = (KINDS[draft.kind] || draft.kind) + " · not saved yet";
-    g.append(t, k);
-    g.addEventListener("pointerdown", (ev) => startDrag(ev, null));
-    world.append(g);
-  }
-  svg.append(defs, world);
-}
-
-// nodeBox draws a node: its title, its kind and what is at it, an input
-// port at the left and, for the kinds that send on, an output port at the
-// right.
-function nodeBox(n, p, isSelected) {
-  const g = svgEl("g", { transform: `translate(${p.x} ${p.y})`, class: "cursor-grab", "data-name": n.name });
-  g.append(svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: FILL[n.kind] || "#e5e7eb", stroke: isSelected ? "#4f46e5" : "#94a3b8", "stroke-width": isSelected ? "3" : "1.5" }));
-  const name = svgEl("text", { x: "10", y: "21", "font-size": "13", "font-weight": "600", fill: "#111827" });
-  name.textContent = clipText(n.title && n.title !== n.name ? n.title : n.name, 22);
-  const sub = svgEl("text", { x: "10", y: "39", "font-size": "11", fill: "#374151" });
-  const parts = [KINDS[n.kind] || n.kind];
-  if (n.title && n.title !== n.name) parts.push(n.name);
-  parts.push(...counts(n));
-  sub.textContent = clipText(parts.join(" · "), 30);
-  const title = svgEl("title");
-  title.textContent = `${n.name} (${KINDS[n.kind] || n.kind})${n.title ? ": " + n.title : ""}`;
-  g.append(title, name, sub);
-  g.append(svgEl("circle", { cx: "0", cy: NODE_H / 2, r: "5", fill: "#f8fafc", stroke: "#64748b", "stroke-width": "1.5" }));
-  if (OUT_PORT.has(n.kind)) {
-    const port = svgEl("circle", { cx: NODE_W, cy: NODE_H / 2, r: "7", fill: "#4f46e5", stroke: "#fff", "stroke-width": "2", class: "cursor-crosshair", "data-port": n.name });
-    const t = svgEl("title");
-    t.textContent = n.kind === "display" ? "Drag onto a printer: the fallback printer" : n.kind === "class" ? "Drag onto a node: a member" : "Drag onto a node to connect";
-    port.append(t);
-    g.append(port);
-  }
-  g.addEventListener("pointerdown", (ev) => startDrag(ev, n));
-  return g;
-}
-
-// Pan and zoom: the world is translated by view.x, view.y and scaled by
-// view.k. Screen points are relative to the canvas.
-
-function screenPoint(ev) {
-  const r = $("canvas").getBoundingClientRect();
-  return { x: ev.clientX - r.left, y: ev.clientY - r.top };
-}
-
-function toWorld(s) {
-  return { x: (s.x - view.x) / view.k, y: (s.y - view.y) / view.k };
-}
-
-function zoomAt(s, factor) {
-  const k = Math.min(3, Math.max(0.25, view.k * factor));
-  view = { x: s.x - (s.x - view.x) * (k / view.k), y: s.y - (s.y - view.y) * (k / view.k), k };
-  draw();
-}
-
-function canvasSize() {
-  const r = $("canvas").getBoundingClientRect();
-  return { w: r.width || 800, h: r.height || 400 };
-}
-
-function center() {
-  const { w, h } = canvasSize();
-  return toWorld({ x: w / 2, y: h / 2 });
-}
-
-// fit shows every node.
-function fit() {
-  const { w, h } = canvasSize();
-  if (!topo.length) {
-    view = { x: PAD, y: PAD, k: 1 };
-    return;
-  }
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const n of topo) {
-    const p = pos(n.name);
-    minX = Math.min(minX, p.x);
-    minY = Math.min(minY, p.y);
-    maxX = Math.max(maxX, p.x + NODE_W);
-    maxY = Math.max(maxY, p.y + NODE_H);
-  }
-  const k = Math.min(1.5, Math.max(0.25, Math.min((w - 2 * PAD) / (maxX - minX), (h - 2 * PAD) / (maxY - minY))));
-  view = { x: (w - (maxX - minX) * k) / 2 - minX * k, y: (h - (maxY - minY) * k) / 2 - minY * k, k };
-  draw();
-}
-
-// Dragging: the background pans, a node moves (a click selects it), a
-// port draws an edge, two pointers pinch.
-let drag = null;
-const pointers = new Map();
-let pinch = null;
-
-function startDrag(ev, n) {
-  if (ev.button !== 0) return;
-  ev.preventDefault();
-  ev.stopPropagation();
-  const s = screenPoint(ev);
-  const svg = $("canvas");
-  if (n && ev.target.dataset.port) {
-    const p = pos(n.name);
-    const line = svgEl("path", { fill: "none", stroke: "#4f46e5", "stroke-width": "2", "stroke-dasharray": "4 3", "pointer-events": "none" });
-    $("world").append(line);
-    drag = { kind: "edge", from: n, line, x1: p.x + NODE_W, y1: p.y + NODE_H / 2 };
-  } else {
-    const p = n ? pos(n.name) : draftPos;
-    const w = toWorld(s);
-    drag = { kind: "move", node: n, dx: w.x - p.x, dy: w.y - p.y, moved: false };
-  }
-  svg.setPointerCapture(ev.pointerId);
-}
-
-const canvas = $("canvas");
-
-canvas.addEventListener("pointerdown", (ev) => {
-  pointers.set(ev.pointerId, screenPoint(ev));
-  if (pointers.size === 2) {
-    const [a, b] = [...pointers.values()];
-    pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, k0: view.k, c0: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, x0: view.x, y0: view.y };
-    if (drag && drag.kind === "edge") drag.line.remove();
-    drag = null;
-    return;
-  }
-  if (ev.button !== 0) return;
-  const s = screenPoint(ev);
-  drag = { kind: "pan", sx: s.x, sy: s.y, x0: view.x, y0: view.y, moved: false };
-  canvas.setPointerCapture(ev.pointerId);
-});
-
-canvas.addEventListener("pointermove", (ev) => {
-  if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, screenPoint(ev));
-  if (pinch && pointers.size === 2) {
-    const [a, b] = [...pointers.values()];
-    const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-    const k = Math.min(3, Math.max(0.25, (pinch.k0 * d) / pinch.d0));
-    const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    view = { x: c.x - ((pinch.c0.x - pinch.x0) / pinch.k0) * k, y: c.y - ((pinch.c0.y - pinch.y0) / pinch.k0) * k, k };
-    draw();
-    return;
-  }
-  if (!drag) return;
-  const s = screenPoint(ev);
-  if (drag.kind === "pan") {
-    view = { ...view, x: drag.x0 + s.x - drag.sx, y: drag.y0 + s.y - drag.sy };
-    drag.moved = drag.moved || Math.abs(s.x - drag.sx) + Math.abs(s.y - drag.sy) > 3;
-    draw();
-  } else if (drag.kind === "move") {
-    const w = toWorld(s);
-    const p = { x: snap(w.x - drag.dx), y: snap(w.y - drag.dy) };
-    if (drag.node) layout[drag.node.name] = p;
-    else draftPos = p;
-    drag.moved = true;
-    draw();
-  } else {
-    const w = toWorld(s);
-    drag.line.setAttribute("d", `M ${drag.x1} ${drag.y1} L ${w.x} ${w.y}`);
-  }
-});
-
-async function endDrag(ev) {
-  pointers.delete(ev.pointerId);
-  if (pointers.size < 2) pinch = null;
-  if (!drag) return;
-  const d = drag;
-  drag = null;
+// poll reads the activity (every job, for an administrator) when its
+// revision changed.
+async function poll() {
   try {
-    switch (d.kind) {
-      case "pan":
-        if (!d.moved) {
-          selected = null;
-          draw();
-          renderSidebar();
-        }
-        return;
-      case "move":
-        if (!d.node) return;
-        if (d.moved) await api("PUT", "/api/layout", { positions: { [d.node.name]: layout[d.node.name] } });
-        else select(d.node.name);
-        return;
-      case "edge": {
-        d.line.remove();
-        const target = document.elementFromPoint(ev.clientX, ev.clientY)?.closest("g[data-name]");
-        if (target) await addEdge(d.from, target.dataset.name);
-      }
+    const res = await fetch("/api/topology/live", { headers: etag ? { "If-None-Match": etag } : {} });
+    if (res.status === 200) {
+      etag = res.headers.get("ETag") || "";
+      canvas.setLive(await res.json());
     }
-  } catch (e) {
-    status(e.message, true);
-  }
+  } catch {}
 }
-canvas.addEventListener("pointerup", endDrag);
-canvas.addEventListener("pointercancel", endDrag);
-canvas.addEventListener(
-  "wheel",
-  (ev) => {
-    ev.preventDefault();
-    zoomAt(screenPoint(ev), Math.exp(-ev.deltaY * 0.0015));
-  },
-  { passive: false },
-);
-$("zoom-in").addEventListener("click", () => zoomAt({ x: canvasSize().w / 2, y: canvasSize().h / 2 }, 1.25));
-$("zoom-out").addEventListener("click", () => zoomAt({ x: canvasSize().w / 2, y: canvasSize().h / 2 }, 0.8));
-$("zoom-fit").addEventListener("click", fit);
+
+$("zoom-in").addEventListener("click", () => canvas.zoomBy(1.25));
+$("zoom-out").addEventListener("click", () => canvas.zoomBy(0.8));
+$("zoom-fit").addEventListener("click", () => canvas.fit());
 $("refresh").addEventListener("click", load);
-window.addEventListener("resize", draw);
 
 // addEdge connects a node to a target through the API, which checks the
 // edge (the target exists, no cycle): a class's member, a display's
@@ -420,26 +111,17 @@ async function removeEdge(from, e) {
   }
 }
 
-function select(name) {
-  selected = name;
-  draft = null;
-  draftPos = null;
-  draw();
-  renderSidebar();
-  $("sidebar").scrollTop = 0;
-}
-
 // Adding a node: the palette makes a draft, placed at the centre of the
-// view; the sidebar takes its name and settings, and Save puts it.
+// view clear of the others; the sidebar takes its name and settings, and
+// Add puts it.
 $("palette").addEventListener("click", (ev) => {
   const a = ev.target.closest("a[data-kind]");
   if (!a) return;
   ev.preventDefault();
   document.activeElement?.blur();
   draft = { kind: a.dataset.kind, name: "", title: "" };
-  draftPos = freeSpot(center());
   selected = null;
-  draw();
+  canvas.setDraft(draft, canvas.freeSpot(canvas.center()));
   renderSidebar();
   $("sidebar").scrollTop = 0;
   $("f-name")?.focus();
@@ -527,7 +209,7 @@ function renderSidebar() {
   form.append(head);
   if (draft) {
     const name = input("f-name", "", { placeholder: "intake, both, tokyo, review, wh-a, laser, audit", required: true, pattern: "[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}", autocomplete: "off" });
-    name.addEventListener("input", draw);
+    name.addEventListener("input", () => canvas.draw());
     form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>) and does not change later."));
   }
   form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown instead of the name" })));
@@ -590,8 +272,7 @@ function renderSidebar() {
     const cancel = el("button", "Cancel", { type: "button", className: "btn btn-sm btn-ghost" });
     cancel.addEventListener("click", () => {
       draft = null;
-      draftPos = null;
-      draw();
+      canvas.setDraft(null, null);
       renderSidebar();
     });
     actions.append(cancel);
@@ -651,11 +332,10 @@ async function save(ev) {
   try {
     const res = await api("PUT", "/api/nodes/" + encodeURIComponent(name), body);
     if (draft) {
-      await api("PUT", "/api/layout", { positions: { [name]: draftPos } });
-      layout[name] = draftPos;
+      await api("PUT", "/api/layout", { positions: { [name]: canvas.draftPos() } });
       draft = null;
-      draftPos = null;
       selected = name;
+      canvas.setSelected(name);
     }
     status(`${name} saved`);
     if (res.key) showKey(name, res.key);
@@ -794,8 +474,7 @@ document.addEventListener("keydown", (ev) => {
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
   if (ev.key === "Escape" && draft) {
     draft = null;
-    draftPos = null;
-    draw();
+    canvas.setDraft(null, null);
     renderSidebar();
   } else if (ev.key === "Delete" && selected && !typing) {
     remove(selected);
@@ -803,6 +482,12 @@ document.addEventListener("keydown", (ev) => {
 });
 
 // a link from another page names a node: /admin/topology#<name>
-if (location.hash.length > 1) selected = decodeURIComponent(location.hash.slice(1));
+if (location.hash.length > 1) {
+  selected = decodeURIComponent(location.hash.slice(1));
+  canvas.setSelected(selected);
+}
 onChange(load);
-load();
+load().then(poll);
+setInterval(() => {
+  if (!document.hidden) poll();
+}, POLL_MS);

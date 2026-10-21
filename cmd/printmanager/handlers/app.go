@@ -140,6 +140,9 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /jobs", a.page(false, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Jobs(JobsParams{Account: ac}))
 	}))
+	mux.HandleFunc("GET /topology", a.page(false, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, TopologyView(TopologyViewParams{Account: ac}))
+	}))
 	// the administrator's pages, one item each; /admin is the topology
 	mux.HandleFunc("GET /admin", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		http.Redirect(w, r, "/admin/topology", http.StatusSeeOther)

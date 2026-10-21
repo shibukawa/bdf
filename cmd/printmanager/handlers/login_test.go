@@ -170,7 +170,7 @@ func TestLogin(t *testing.T) {
 		t.Errorf("/ signed out: %d %.300s", code, body)
 	}
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	for _, path := range []string{"/jobs", "/admin", "/audit"} {
+	for _, path := range []string{"/jobs", "/topology", "/admin", "/audit"} {
 		for _, accept := range []string{"text/html,*/*;q=0.8", "image/avif,image/webp,*/*"} {
 			req, _ := http.NewRequest("GET", s.url+path, nil)
 			req.Header.Set("Accept", accept)
@@ -239,6 +239,10 @@ func TestLogin(t *testing.T) {
 	if code, body := alice.get("/jobs"); code != http.StatusOK || strings.Contains(body, `href="/admin/topology"`) || !strings.Contains(body, "/public/jobs.js") {
 		t.Errorf("alice's /jobs: %d", code)
 	}
+	// the topology is everyone's to look at
+	if code, body := alice.get("/topology"); code != http.StatusOK || !strings.Contains(body, "/public/topology-view.js") || strings.Contains(body, "/public/topology.js") {
+		t.Errorf("alice's /topology: %d", code)
+	}
 	root := s.login("root")
 	sees(root, []string{"bob-memo", "alice-memo", "picking-b", "picking-a"})
 	if _, body := root.get("/jobs"); !strings.Contains(body, `href="/admin/topology"`) {
@@ -265,7 +269,7 @@ func TestLogin(t *testing.T) {
 		}
 	}
 	// the API: an admin's session works as the admin token did
-	if code, _ := alice.get("/api/topology"); code != http.StatusForbidden {
+	if code, _ := alice.get("/api/nodes"); code != http.StatusForbidden {
 		t.Errorf("alice on the API: %d", code)
 	}
 	if code, body := root.get("/api/audit"); code != http.StatusOK || !strings.Contains(body, `"who":"Alice","action":"login"`) {

@@ -38,6 +38,7 @@ component AppBar(title: string, account: Account, children: html?): html {
     <nav class="flex flex-wrap items-center gap-2">
       <slot />
       <a href="/jobs" class="btn btn-sm btn-ghost">Jobs</a>
+      <a href="/topology" class="btn btn-sm btn-ghost">Topology</a>
       {if account.admin}
         <a href="/admin/topology" class="btn btn-sm btn-ghost">Admin</a>
         <a href="/audit" class="btn btn-sm btn-ghost">Audit</a>
@@ -158,6 +159,40 @@ component AdminPage(title: string, account: Account, children: html): html {
       <slot required />
     </main>
     <div id="toasts" class="toast toast-end z-50"></div>
+  </Shell>
+}
+
+// TopologyView is everyone's view of the topology: the nodes and the
+// edges, with the activity of the jobs the person may see running along
+// them; a node shows its jobs, and prints there when the person may.
+// Nothing is changed here (the editor is the administrator's).
+export component TopologyView(account: Account): html {
+  <Shell title="Topology · BDF Print Manager">
+    <AppBar title="BDF Print Manager" account={account}></AppBar>
+    <main class="mx-auto flex max-w-[1600px] flex-col gap-4 p-4 sm:p-6">
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <h2 class="card-title">Topology</h2>
+            <div class="join">
+              <button id="zoom-out" type="button" class="btn btn-sm join-item" title="Zoom out">−</button>
+              <button id="zoom-fit" type="button" class="btn btn-sm join-item" title="Fit the topology in the view">Fit</button>
+              <button id="zoom-in" type="button" class="btn btn-sm join-item" title="Zoom in">+</button>
+            </div>
+            <span id="live" class="badge badge-ghost badge-sm"></span>
+            <span class="text-sm text-base-content/60">The network your documents flow through. The counts and the dots are the jobs you may see: yours and your groups'. Drag the background to pan, wheel or pinch to zoom; click a node for its jobs, and to print there when you may.</span>
+          </div>
+          <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <div id="canvas-wrap" class="relative h-[62vh] min-h-96 overflow-hidden rounded-box border border-base-300 bg-base-200">
+              <svg id="canvas" class="block h-full w-full select-none touch-none" xmlns="http://www.w3.org/2000/svg"></svg>
+            </div>
+            <aside id="sidebar" class="max-h-[62vh] min-h-96 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-4"></aside>
+          </div>
+        </div>
+      </section>
+    </main>
+    <div id="toasts" class="toast toast-end z-50"></div>
+    <script type="module" src="/public/topology-view.js"></script>
   </Shell>
 }
 
