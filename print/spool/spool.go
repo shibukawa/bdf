@@ -908,11 +908,14 @@ func (s *Spool) change(ctx context.Context, id int32, f func(j *Job, now time.Ti
 	e.busy = true
 	j := e.job.clone()
 	s.mu.Unlock()
-	defer s.release(e)
-	if err := f(&j, s.o.Now()); err != nil {
-		return Job{}, err
+	err := f(&j, s.o.Now())
+	if err == nil {
+		err = s.save(ctx, e, j)
 	}
-	if err := s.save(ctx, e, j); err != nil {
+	// released before the runner is woken: it skips a job that is still
+	// busy, and nothing else need wake it for an hour (the collect)
+	s.release(e)
+	if err != nil {
 		return Job{}, err
 	}
 	s.wake()
