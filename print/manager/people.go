@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -27,6 +28,12 @@ func (h *handler) viewerOf(r *http.Request) (*Viewer, bool) {
 	if sameSecret(h.m.o.AdminToken, tok) {
 		return &Viewer{Kind: PrincipalToken, Via: ViaAdminToken, ID: "admin", Name: "admin", Admin: true}, true
 	}
+	if tok != "" && !strings.Contains(tok, ":") {
+		// an app's token (apps.go)
+		if v, ok := h.m.appTokenViewer(r.Context(), tok); ok {
+			return v, true
+		}
+	}
 	name, secret, ok := r.BasicAuth()
 	if !ok && tok != "" {
 		name, secret, ok = strings.Cut(tok, ":")
@@ -34,6 +41,9 @@ func (h *handler) viewerOf(r *http.Request) (*Viewer, bool) {
 	if ok {
 		if want, known := h.m.o.SubmitTokens[name]; known && sameSecret(want, secret) {
 			return &Viewer{Kind: PrincipalToken, Via: ViaSubmitToken, ID: name, Name: name}, true
+		}
+		if v, ok := h.m.appBasicViewer(r.Context(), name, secret); ok {
+			return v, true
 		}
 		return nil, false
 	}
@@ -155,7 +165,8 @@ type Destination struct {
 	Owner string `json:"owner,omitempty"`
 }
 
-// Destinations returns the nodes a viewer may send to.
+// Destinations returns the nodes a viewer may send to: an app, the
+// endpoints that list it.
 func (m *Manager) Destinations(ctx context.Context, v *Viewer) ([]Destination, error) {
 	topo, err := m.Topology(ctx)
 	if err != nil {
@@ -163,7 +174,11 @@ func (m *Manager) Destinations(ctx context.Context, v *Viewer) ([]Destination, e
 	}
 	out := []Destination{}
 	for _, n := range topo {
-		if v.CanSendTo(n.Scope, n.Owner) {
+		allowed := v.CanSendTo(n.Scope, n.Owner)
+		if v.Kind == PrincipalApp && !v.Admin {
+			allowed = n.Kind == KindEndpoint && slices.Contains(n.Apps, v.ID)
+		}
+		if allowed {
 			out = append(out, Destination{Name: n.Name, Kind: n.Kind, Title: n.Title, Scope: n.Scope, Owner: n.Owner})
 		}
 	}

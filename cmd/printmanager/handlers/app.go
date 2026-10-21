@@ -133,6 +133,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle(manager.IPPPath+"/", mh)
 	mux.Handle(manager.IPPPath, mh)
 	mux.Handle(manager.InPath+"/", mh)
+	mux.Handle("/oauth/", mh)
 	mux.Handle("/api/", mh)
 	mux.Handle("/device/", mh)
 	// the pages: a sign-in at the top; the jobs of the person signed in;
@@ -157,6 +158,9 @@ func (a *App) Handler() http.Handler {
 	}))
 	mux.HandleFunc("GET /admin/topology", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Topology(TopologyParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /admin/apps", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Apps(AppsParams{Account: ac}))
 	}))
 	mux.HandleFunc("GET /admin/inboxes", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Inboxes(InboxesParams{Account: ac}))

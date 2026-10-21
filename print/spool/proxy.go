@@ -124,6 +124,7 @@ func (s *Spool) proxyJob(ctx context.Context, id int32, printer string, f func(j
 			}
 		}
 		s.release(e)
+		s.wake() // after the release: the runner skips a job still busy
 	}()
 	if err := f(&j, s.o.Now()); err != nil {
 		return j, err
@@ -131,7 +132,6 @@ func (s *Spool) proxyJob(ctx context.Context, id int32, printer string, f func(j
 	if err := s.commitErr(ctx, e, j); err != nil {
 		return Job{}, err
 	}
-	s.wake()
 	return j, nil
 }
 

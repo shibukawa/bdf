@@ -54,6 +54,13 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("PUT /api/nodes/{name}/templates/{id}", h.adminOnly(h.putTemplate))
 	mux.HandleFunc("DELETE /api/nodes/{name}/templates/{id}", h.adminOnly(h.deleteTemplate))
 	mux.HandleFunc("GET /api/formats", h.adminOnly(h.formats))
+	// the apps and their tokens (apps.go)
+	mux.HandleFunc("GET /api/apps", h.adminOnly(h.listApps))
+	mux.HandleFunc("GET /api/apps/{id}", h.adminOnly(h.getApp))
+	mux.HandleFunc("PUT /api/apps/{id}", h.adminOnly(h.putApp))
+	mux.HandleFunc("DELETE /api/apps/{id}", h.adminOnly(h.deleteApp))
+	mux.HandleFunc("POST /api/apps/{id}/secret", h.adminOnly(h.rotateAppSecret))
+	mux.HandleFunc("POST "+OAuthTokenPath, h.oauthToken)
 	mux.HandleFunc("GET /api/nodes/{name}/latest", h.userOnly(h.latest))
 	mux.HandleFunc("GET /api/nodes/{name}/preview", h.adminOnly(h.preview))
 	mux.HandleFunc("GET /api/nodes/{name}/preview/{job}/pages/{page}", h.adminOnly(h.previewPage))
@@ -113,6 +120,8 @@ func (h *handler) writeErr(w http.ResponseWriter, err error) {
 		status = http.StatusBadRequest
 	case errors.Is(err, ErrUnauthorized):
 		status = http.StatusUnauthorized
+	case errors.Is(err, ErrForbidden):
+		status = http.StatusForbidden
 	case errors.Is(err, ErrConflict), errors.Is(err, ErrLeased):
 		status = http.StatusConflict
 	case errors.Is(err, ErrFormat):
@@ -519,7 +528,13 @@ func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
 // at /api/destinations/{name}/jobs, the job.
 func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 	by, ok := h.submitter(r)
-	if v, signedIn := h.viewerOf(r); signedIn && v.Kind == PrincipalUser {
+	if v, signedIn := h.viewerOf(r); signedIn && v.Kind == PrincipalApp {
+		// an app sends to the endpoints that list it
+		if err := h.m.appMaySend(r.Context(), v, r.PathValue("name"), false); err != nil {
+			h.writeErr(w, err)
+			return
+		}
+	} else if signedIn && v.Kind == PrincipalUser {
 		// a person signed in sends as themselves, to a node they may
 		scope, owner, _, err := h.m.destScope(r.Context(), r.PathValue("name"))
 		if err != nil {
@@ -572,9 +587,14 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, j)
 }
 
-// tick runs Tick: for the admin, or the scheduler's TickToken.
+// tick runs Tick: for the admin, the scheduler's TickToken, or an app
+// with the scope tick.
 func (h *handler) tick(w http.ResponseWriter, r *http.Request) {
 	if sameSecret(h.m.o.TickToken, bearer(r)) {
+		h.runTick(w, r)
+		return
+	}
+	if v, ok := h.viewerOf(r); ok && v.Kind == PrincipalApp && v.Has(ScopeTick) {
 		h.runTick(w, r)
 		return
 	}

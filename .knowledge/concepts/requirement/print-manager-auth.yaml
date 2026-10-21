@@ -205,7 +205,7 @@ facts:
         画面からの送信は自分が送れるノードだけ（403）、セッションの Cookie を使う /api の変更は同じ origin（Sec-Fetch-Site か Origin）だけ、
         グループの人はジョブと文書を見られるが取り消せない、トップページはボタンだけのサインイン（pages_and_roles の「トップページはログイン画面」）
     pm-auth-1: 人の OIDC ログイン（admin と一般）、最初の管理者の設定（admins と admin_groups）、claim のキーを設定で選ぶグループ、プリンタの personal・group・shared、ジョブの持ち主と見える範囲、自分とグループのジョブの一覧・刷り直し・取り消し、監査の記録、偽の IdP、session-key の鍵の列
-    pm-auth-2: アプリ（管理画面で足す、/oauth/token の client credentials、scope とプリンタ・テンプレートの許可、IPP の Basic）。SubmitTokens・AdminToken・TickToken を外す
+    pm-auth-2: アプリ（管理画面で足す、/oauth/token の client credentials、scope とプリンタ・テンプレートの許可、IPP の Basic）。SubmitTokens・AdminToken・TickToken を外す。2026-10-21 milestone:pm-auth-2 で実装（許可はエンドポイントの apps、scope は print・print.template・jobs.cancel・tick・admin。設定のトークンはまだ残す）
     pm-auth-3: 仮想プリンタのサービスユーザーとデバイスフロー（登録コードを置き換える）
     later: private_key_jwt、外の IdP のトークンの連携、アプリの on-behalf-of（RFC 8693 のトークン交換）、DPoP、IPP の OAuth、auditor の役割
     relation_to_pm_plan: requirement:print-manager の delivery_order_proposed は OIDC を pm-3（事務所のビューア）に置いていた。認証は pm-2（保管庫）の前に置くのを推奨（保管庫の読み出しに見える範囲が要るので）。open_questions.order-vs-vault
@@ -286,5 +286,7 @@ history:
     summary: 2026-10-21 利用者「adminでなくても全員ログインが良いと思う。自分のアクセスできる範囲のデータが見られる、というのは必要だと思うので」。最初の段を、管理者だけの /admin のログインから、全員のログインと自分の見える範囲の画面に広げた（facts.delivery_proposed.first_step）
   first-step-implemented:
     summary: 2026-10-21 milestone:pm-auth-1 の最初の段（facts.delivery_proposed.first_step）を実装した。全員の OIDC ログイン、見える範囲の画面、/admin は管理者だけ（他は 403）、ブラウザで AdminToken を打つ形を外した、Slip.User を SubmittedBy と ClaimedUser に分けた（facts.who_printed.record）、偽の IdP（print/fakeidp）
+  pm-auth-2-implemented:
+    summary: 2026-10-21 利用者「残りの実装をまとめてお願いします」。milestone:pm-auth-2 を実装した：アプリの登録（/admin/apps、argon2id）、POST /oauth/token の client credentials、エンドポイントの apps、IPP の Basic、scope。設定のトークン（AdminToken・SubmitTokens・TickToken）は admin・tick のアプリに移るまで残す
   pending-merge:
     summary: pm-1 の作業ツリーが requirement:print-manager の open_questions.viewer-login を書き換えている。両方がマージされたら viewer-login を requirement:print-manager-auth に寄せる。shibukawa/bdf#114 にある decision:print-manager-ui-daisyui（Tailwind v4.3.3 と daisyUI v5.7.50 で実装済み）への constrained_by の関係も、#114 が入った後にここへ足す（今は相手が無くコンパイルが断る）。2026-10-21 #114 の後に両方を済ませた（viewer-login は answered、constrained_by を足した）

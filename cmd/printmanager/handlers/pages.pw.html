@@ -142,6 +142,7 @@ export component Jobs(account: Account): html {
 component AdminNav(): html {
   <nav id="admin-nav" role="tablist" class="tabs tabs-box tabs-sm w-fit">
     <a role="tab" class="tab" href="/admin/topology">Topology</a>
+    <a role="tab" class="tab" href="/admin/apps">Apps</a>
     <a role="tab" class="tab" href="/admin/inboxes">Inboxes</a>
     <a role="tab" class="tab" href="/admin/jobs">Jobs</a>
     <a role="tab" class="tab" href="/admin/deliveries">Deliveries</a>
@@ -359,6 +360,50 @@ export component Topology(account: Account): html {
       <form method="dialog" class="modal-backdrop"><button>Close</button></form>
     </dialog>
     <script type="module" src="/public/topology.js"></script>
+  </AdminPage>
+}
+
+// Apps is the page of the applications that send with credentials of
+// their own (client credentials): registered here with their scopes, the
+// secret shown once; an endpoint lists the apps it takes.
+export component Apps(account: Account): html {
+  <AdminPage title="Apps · BDF Print Manager" account={account}>
+    <section class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <div class="flex flex-wrap items-center gap-3">
+          <h2 class="card-title">Apps</h2>
+          <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
+          <span class="text-sm text-base-content/60">Applications that send with credentials of their own. An app takes a token at <code class="font-mono">POST /oauth/token</code> with its id and secret (client credentials) and sends to the endpoints that list it among their apps; over IPP it sends the same id and secret as Basic. The secret is shown once. The scopes tick and admin are for a scheduler and for scripts.</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead><tr><th>Id</th><th>Title</th><th>Scopes</th><th>Group</th><th>Endpoints</th><th>Last used</th><th></th></tr></thead>
+            <tbody id="apps"></tbody>
+          </table>
+        </div>
+        <form id="app-form" class="mt-2 grid gap-2 sm:grid-cols-6">
+          <input id="app-id" class="input sm:col-span-1" placeholder="id (erp)" autocomplete="off" required>
+          <input id="app-title" class="input sm:col-span-2" placeholder="title">
+          <input id="app-group" class="input sm:col-span-2" placeholder="group whose members see its jobs (optional)">
+          <div id="app-scopes" class="flex flex-wrap items-center gap-3 sm:col-span-6"></div>
+          <button id="app-submit" type="submit" class="btn btn-primary sm:col-span-1">Add</button>
+          <button id="app-cancel" type="button" class="btn btn-ghost sm:col-span-1" hidden>Cancel</button>
+        </form>
+      </div>
+    </section>
+    <dialog id="secret-modal" class="modal">
+      <div class="modal-box max-w-lg">
+        <h3 class="text-lg font-bold">App secret</h3>
+        <p class="mt-2 text-sm text-base-content/70">The secret of <span id="secret-id" class="font-mono"></span>. It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working.</p>
+        <pre id="secret-value" class="mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap"></pre>
+        <p id="secret-usage" class="mt-2 font-mono text-xs text-base-content/60 break-all"></p>
+        <div class="modal-action">
+          <form method="dialog"><button class="btn">Close</button></form>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+    </dialog>
+    <script type="module" src="/public/apps.js"></script>
   </AdminPage>
 }
 

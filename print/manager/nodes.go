@@ -58,6 +58,12 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 				return "", err
 			}
 			n.Port = in.Port
+			n.Apps = cleanNames(in.Apps)
+			for _, id := range n.Apps {
+				if _, err := m.App(ctx, id); err != nil {
+					return "", fmt.Errorf("%w: no app %q", ErrInvalid, id)
+				}
+			}
 		}
 	case KindCups:
 		n.Port, n.TLSCert, n.TLSKey = in.Port, strings.TrimSpace(in.TLSCert), strings.TrimSpace(in.TLSKey)

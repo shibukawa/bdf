@@ -85,7 +85,7 @@ capabilities:
     state: implemented
     about: capability:print-manager/endpoint-ports
   apps-page:
-    state: planned
+    state: implemented
     about: capability:print-manager/apps-page
   cups-server-node:
     state: implemented

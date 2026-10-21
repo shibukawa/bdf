@@ -1,0 +1,106 @@
+id: milestone:pm-auth-2
+type: milestone
+title: pm-auth-2 — アプリの登録と client credentials：/admin/apps、POST /oauth/token、エンドポイントが許すアプリ、IPP の Basic、scope
+summary: >-
+  requirement:print-manager-auth の 2 つ目の段。アプリ（基幹・WMS）は管理者が /admin/apps で登録し（id が client_id、scope、group、秘密は
+  1 度だけ、argon2id のハッシュだけ保存）、POST /oauth/token の client credentials（Basic か form）で 10 分のトークン（HMAC の封）を取り、
+  それを Bearer に /in/<endpoint> や API へ送る。IPP は同じ id と秘密の Basic。送れる先はアプリを apps に載せたエンドポイントだけ
+  （requirement:print-manager-console の endpoint-auth：アプリは別に登録、エンドポイントが許すアプリを選ぶ）。scope は print・
+  print.template・jobs.cancel・tick・admin。自分のジョブを見、jobs.cancel で取り消す。無効化と秘密の回転、監査。SubmitTokens・AdminToken・
+  TickToken は残した（移行先として admin と tick の scope のアプリがある）。2026-10-21 実装。
+lifecycle: active
+authority: authored
+scope:
+  milestone: pm-auth-2
+constraints:
+- 保存先にはアプリの秘密の argon2id のハッシュだけ（requirement:print-manager-auth の secret_hashing）
+- トークンは短く（10 分）、確かめるのは Manager だけ（HMAC の封。token-format の暫定のまま）。無効化は次の要求から効く（トークンの検査でアプリの記録を読む）
+- アプリが送れるのは、自分を apps に載せたエンドポイントだけ（/in、IPP、/api/destinations のどれでも）。人の権限を借りない
+- 主体ごとの記録（SubmittedBy は kind app、id、via client-credentials）。監査に put-app・rotate-app-secret・delete-app・token-refused
+capabilities:
+  apps-registry:
+    state: implemented
+    about: capability:print-manager/apps-registry
+  client-credentials:
+    state: implemented
+    about: capability:print-manager/client-credentials
+  endpoint-allowed-apps:
+    state: implemented
+    about: capability:print-manager/endpoint-allowed-apps
+  ipp-basic-apps:
+    state: implemented
+    about: capability:print-manager/ipp-basic-apps
+  remove-config-tokens:
+    state: planned
+    about: SubmitTokens・AdminToken・TickToken を外す（admin と tick の scope のアプリに移ってから）
+  private-key-jwt:
+    state: planned
+    about: client_secret の代わりの private_key_jwt（後）
+non_goals:
+- 人の IPP の合言葉（pm-auth の ipp_sender の人の側。人は画面から送る）
+- デバイスフロー（pm-auth-3）
+- アプリの on-behalf-of（requirement:print-manager-auth の app-on-behalf）
+acceptance:
+  a1-register:
+    text: PUT /api/apps/<id> は秘密を 1 度だけ返し、2 度目は返さない。scope は 5 つのどれか。無効化・回転・削除（エンドポイントが載せている間は 409）
+    verified_by: [apps-tests]
+  a2-token:
+    text: POST /oauth/token は Basic でも form でも client_credentials で 10 分のトークンを返し、違う秘密・知らない id は invalid_client、他の grant は unsupported_grant_type、アプリに無い scope は invalid_scope。トークンで /api/me がアプリ
+    verified_by: [apps-tests]
+  a3-send:
+    text: アプリを載せたエンドポイントは /in・/api/destinations・IPP の Basic で受け、載せないエンドポイントと表示は 403（IPP は client-error-not-authorized）。自分のジョブを見、jobs.cancel が無ければ取り消せない。差し込みは print.template
+    verified_by: [apps-tests]
+  a4-scopes:
+    text: tick の scope で POST /api/tick、admin の scope で管理の API。無効化でトークンも止まり、回転で古い秘密が止まり、期限で止まる
+    verified_by: [apps-tests]
+  a5-ui:
+    text: /admin/apps でアプリの追加・編集・無効化・回転・削除と秘密のモーダル。エンドポイントのサイドバーに「Apps allowed」
+    verified_by: [login-tests]
+verification:
+  apps-tests:
+    state: passed
+    method: integration
+    test: go test -race -run TestApps ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/apps_test.go
+      locator: 'TestApps：上の a1〜a4 を通しで。監査に put-app ×4 以上、rotate-app-secret、delete-app、token-refused ×3 以上。2026-10-21 macOS'
+  login-tests:
+    state: passed
+    method: integration
+    test: go test ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/login_test.go
+      locator: '/admin/apps は管理者に 200（apps.js）、他は 403'
+  browser-apps:
+    state: not_run
+    method: manual
+    test: pw dev で /admin/apps からアプリを作り、サイドバーでエンドポイントに載せ、curl -u で /oauth/token を取って /in に送る
+facts:
+  delivery:
+    implemented:
+      date: '2026-10-21'
+      packages:
+      - 'print/manager/apps.go：App、PutApp（秘密は新規のときだけ）、Apps、DeleteApp（載せているエンドポイントがあれば 409）、RotateAppSecret、verifyApp（id・秘密・ハッシュの digest で 5 分の覚え。インスタンスの中だけ）、burn（知らない id にも同じ重さ）、IssueAppToken、appTokenViewer、appBasicViewer、touchApp（1 分に 1 回）、appMaySend、/api/apps…、POST /oauth/token（RFC 6749 の誤りの形）'
+      - 'print/manager：model.go（Node.Apps、ErrForbidden → 403）、scope.go（PrincipalApp、ViaClientCredentials、Viewer.Scopes・Has、CanCancel はアプリに jobs.cancel）、people.go（viewerOf：管理トークン → アプリのトークン → Basic の SubmitTokens → Basic のアプリ → セッション。Destinations はアプリに載せたエンドポイントだけ）、nodes.go（apps の存在）、endpoint.go（serveIn のアプリの道、OAuthTokenPath）、ipp.go（submitter にアプリ、printJob で appMaySend）、http.go（submit で appMaySend、tick に scope tick）、submit.go（group が無ければアプリの group）、store.go（apps のコレクション）'
+      - 'cmd/printmanager：/admin/apps（Apps、apps.js：表、追加と編集、無効化、回転、削除、秘密のモーダルに curl の例）、ナビに Apps、エンドポイントのサイドバーに Apps allowed、/oauth/ の mount と publicPaths、README'
+    decisions:
+    - '1 つのアプリに 1 つの秘密（2 つで入れ替える案は後）。回転で古いものは即座に止まる'
+    - 'トークンの scope はアプリの scope の部分集合。トークンを確かめるたびにアプリの記録を読み、無効化と scope の縮小を即座に効かせる'
+    - 'アプリの Admin は scope admin（管理トークンの代わりに脚本が使える）。tick は scope tick'
+    - 'IPP の Basic は id:secret で、/ipp/print/<endpoint> だけに刷れる（CUPS サーバーのノードのポートでも同じ）'
+    - 'SubmitTokens・AdminToken・TickToken は外していない：テストと pw dev が頼っている。外すのは admin・tick のアプリに移してから（remove-config-tokens）'
+    unverified:
+    - 'ブラウザの /admin/apps と Apps allowed（手で未確認）'
+    - '本物の IdP の client credentials の連携（requirement:print-manager-auth の later）'
+    known_gaps:
+    - 'appChecks の覚えはプロセスの中だけ（Lambda では毎回 argon2id）。覚えは Disabled を見ないが、呼ぶ前に記録を読むので無効化は効く'
+    - 'トークンの失効の一覧は無い（10 分で消える）'
+relations:
+- relation: implements
+  to: requirement:print-manager-auth
+- relation: follows
+  to: milestone:pm-auth-1
+- relation: constrained_by
+  to: decision:print-manager-ui-daisyui

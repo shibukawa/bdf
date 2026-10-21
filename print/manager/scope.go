@@ -26,6 +26,8 @@ const (
 	PrincipalToken = "token"
 	// PrincipalEndpoint is an endpoint's key (POST /in/<name>).
 	PrincipalEndpoint = "endpoint"
+	// PrincipalApp is an app with credentials of its own (apps.go).
+	PrincipalApp = "app"
 	// PrincipalAnonymous is a sender nobody verified (no submit tokens
 	// are configured).
 	PrincipalAnonymous = "anonymous"
@@ -37,7 +39,10 @@ const (
 	ViaAdminToken  = "admin-token"
 	ViaSubmitToken = "submit-token"
 	ViaEndpointKey = "endpoint-key"
-	ViaNone        = "none"
+	// ViaClientCredentials is an app's token (POST /oauth/token) or its
+	// Basic client_id:secret.
+	ViaClientCredentials = "client-credentials"
+	ViaNone              = "none"
 )
 
 // Principal is who sent a job, as the manager verified it.
@@ -102,8 +107,15 @@ type Viewer struct {
 	Email string
 	// Groups are the values of the IdP's groups claim at the last login.
 	Groups []string
+	// Scopes are an app's (granted to its token).
+	Scopes []string
 	// Admin sees everything and changes the settings.
 	Admin bool
+}
+
+// Has tells a scope of the viewer (an administrator has every one).
+func (v *Viewer) Has(scope string) bool {
+	return v != nil && (v.Admin || slices.Contains(v.Scopes, scope))
 }
 
 // Principal is the viewer as the submitter of a job.
@@ -137,10 +149,11 @@ func (v *Viewer) CanSee(j *Job) bool {
 	return v != nil && (v.Admin || v.Member(j.Group) || v.Submitted(j))
 }
 
-// CanCancel tells whether the viewer may cancel a job: its submitter and
-// the admins (the members of its group only see it).
+// CanCancel tells whether the viewer may cancel a job: its submitter (an
+// app with the scope) and the admins (the members of its group only see
+// it).
 func (v *Viewer) CanCancel(j *Job) bool {
-	return v != nil && (v.Admin || v.Submitted(j))
+	return v != nil && (v.Admin || v.Submitted(j) && (v.Kind != PrincipalApp || v.Has(ScopeJobsCancel)))
 }
 
 // CanSendTo tells whether the viewer may send to a node of a scope and
