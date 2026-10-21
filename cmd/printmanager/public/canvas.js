@@ -1,5 +1,5 @@
 // The canvas of the topology, shared by the editor (topology.js) and
-// everyone's view (topology-view.js): nodes as boxes with what is at them,
+// everyone's view (topology.js, looking): nodes as boxes with what is at them,
 // edges as arrows, panned by dragging the background and zoomed by the
 // wheel or a pinch. In the editor, dragging a node moves it and dragging
 // from its right port onto another node connects them; a click selects.
