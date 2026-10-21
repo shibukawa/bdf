@@ -6,7 +6,7 @@
 // The flows of the last minutes (jobs going from a node to the next) run
 // as dots along the edges.
 
-import { KINDS } from "./admin.js";
+import { KINDS, PAYLOAD_COLOR, PAYLOADS } from "./admin.js";
 
 export const NODE_W = 176;
 export const NODE_H = 54;
@@ -15,10 +15,10 @@ const ROW = 84;
 const PAD = 24;
 const GRID = 8;
 const SVG = "http://www.w3.org/2000/svg";
-const FILL = { endpoint: "#fde68a", cups: "#fecaca", queue: "#ddd6fe", class: "#c7d2fe", filter: "#fbcfe8", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db", sink: "#bbf7d0" };
+const FILL = { endpoint: "#fde68a", cups: "#fecaca", queue: "#ddd6fe", class: "#c7d2fe", filter: "#fbcfe8", template: "#d9f99d", convert: "#a5f3fc", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db", sink: "#bbf7d0" };
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer)
-const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "inbox", "display"]);
+const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "inbox", "display"]);
 // the entries: their input is from outside the network (an endpoint's
 // REST, a CUPS server's IPP port), drawn as an arrow coming in
 const ENTRY = new Set(["endpoint", "cups"]);
@@ -52,6 +52,21 @@ export function edgesOf(n) {
 
 function clipText(s, n) {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+// payloadColor is the color of the kinds of payload a port or an edge
+// carries (takes and emits of /api/topology, kinds.go): one kind its
+// color, several purple, none grey.
+function payloadColor(kinds) {
+  const list = Array.isArray(kinds) ? kinds : kinds ? [kinds] : [];
+  if (list.length === 1) return PAYLOAD_COLOR[list[0]] || PAYLOAD_COLOR.any;
+  if (list.length > 1) return "#7c3aed";
+  return "#94a3b8";
+}
+
+function payloadText(kinds) {
+  const list = Array.isArray(kinds) ? kinds : kinds ? [kinds] : [];
+  return list.map((k) => PAYLOADS[k] || k).join(" or ") || "nothing yet";
 }
 
 // createCanvas draws a topology in an svg. opts: editable (nodes move
@@ -163,11 +178,13 @@ export function createCanvas(svg, opts = {}) {
         if (!nodes[e.to]) continue;
         const d = edgePath(n.name, e.to);
         const hit = svgEl("path", { d, fill: "none", stroke: "transparent", "stroke-width": "14", class: editable ? "cursor-pointer" : "" });
-        const line = svgEl("path", { d, fill: "none", stroke: e.kind === "fallback" ? "#94a3b8" : "#64748b", "stroke-width": "2", "marker-end": "url(#arrow)", "pointer-events": "none" });
+        // the edge carries what the node sends on: colored by that kind
+        const color = e.kind === "fallback" ? "#94a3b8" : payloadColor(n.emits);
+        const line = svgEl("path", { d, fill: "none", stroke: color, "stroke-width": "2", "marker-end": "url(#arrow)", "pointer-events": "none" });
         if (e.kind === "member") line.setAttribute("stroke-dasharray", "6 4");
         if (e.kind === "fallback") line.setAttribute("stroke-dasharray", "2 4");
         const title = svgEl("title");
-        const what = e.kind === "fallback" ? `${n.name} prints on ${e.to} as a fallback` : e.kind === "member" ? `${e.to} is a member of ${n.name}` : `${n.name} → ${e.to}`;
+        const what = e.kind === "fallback" ? `${n.name} prints on ${e.to} as a fallback` : e.kind === "member" ? `${e.to} is a member of ${n.name}` : `${n.name} → ${e.to}: ${payloadText(n.emits)}`;
         title.textContent = editable ? what + " (click to remove)" : what;
         hit.append(title);
         if (editable) {
@@ -237,13 +254,24 @@ export function createCanvas(svg, opts = {}) {
       inArrow.append(t);
       g.append(inArrow);
     }
-    // a CUPS server takes nothing from the other nodes: no input port
-    if (n.kind !== "cups") g.append(svgEl("circle", { cx: "0", cy: NODE_H / 2, r: "5", fill: "#f8fafc", stroke: "#64748b", "stroke-width": "1.5" }));
-
-    if (editable && OUT_PORT.has(n.kind)) {
-      const port = svgEl("circle", { cx: NODE_W, cy: NODE_H / 2, r: "7", fill: "#4f46e5", stroke: "#fff", "stroke-width": "2", class: "cursor-crosshair", "data-port": n.name });
+    // a CUPS server takes nothing from the other nodes: no input port.
+    // The ports are colored by the kind of payload they take and send on
+    if (n.kind !== "cups") {
+      const input = svgEl("circle", { cx: "0", cy: NODE_H / 2, r: "5", fill: "#f8fafc", stroke: payloadColor(n.takes), "stroke-width": "2" });
       const t = svgEl("title");
-      t.textContent = n.kind === "display" ? "Drag onto a printer: the fallback printer" : n.kind === "class" ? "Drag onto a node: a member" : "Drag onto a node to connect";
+      t.textContent = `Takes ${payloadText(n.takes)}`;
+      input.append(t);
+      g.append(input);
+    }
+    if (OUT_PORT.has(n.kind)) {
+      const port = svgEl("circle", { cx: NODE_W, cy: NODE_H / 2, r: editable ? "7" : "5", fill: payloadColor(n.emits), stroke: "#fff", "stroke-width": "2" });
+      if (editable) {
+        port.setAttribute("class", "cursor-crosshair");
+        port.setAttribute("data-port", n.name);
+      }
+      const t = svgEl("title");
+      const sends = `Sends on ${payloadText(n.emits)}`;
+      t.textContent = editable ? (n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : "Drag onto a node to connect. ") + sends : sends;
       port.append(t);
       g.append(port);
     }

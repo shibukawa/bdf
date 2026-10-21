@@ -6,18 +6,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
+	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/shibukawa/yuruidb"
 )
 
-// A delivery takes a job to a printer or an archive. It is made when the
-// job is routed and done later: by the next Tick, or at once in the
-// background of a process (Options.Background), under a lease so that two
-// instances do not both send it. A send that fails is tried again after
-// a wait that grows, on the next member of a class, and given up after
-// maxAttempts (the job is then aborted); an administrator may retry it.
+// A delivery takes a job's payload to a printer or an archive, or through
+// the step of a template or a convert node (transform.go). It is made
+// when the job is routed and done later: by the next Tick, or at once in
+// the background of a process (Options.Background), under a lease so
+// that two instances do not both do it. One that fails is tried again
+// after a wait that grows, on the next member of a class, and given up
+// after maxAttempts (the job is then aborted) or at once after a failure
+// no retry mends; an administrator may retry it.
 
 // maxAttempts is how many sends are tried before a delivery fails for
 // good: with retryDelay, about four hours.
@@ -32,6 +37,9 @@ func (m *Manager) routeDelivery(ctx context.Context, r *routing, leg Leg, printe
 	j := r.job
 	d := Delivery{ID: fmt.Sprintf("%s.%02d", j.ID, r.next()), Job: j.Number, Name: j.Name, Node: leg.Node, Kind: leg.Kind, Printer: printer, Class: class,
 		State: DeliveryPending, Created: r.now}
+	if r.payload != nil {
+		d.Payload = r.payload.ID
+	}
 	if d.Kind == KindClass {
 		d.Kind = KindPrinter
 	}
@@ -195,8 +203,29 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		if err != nil {
 			return m.outcome(ctx, d, owner, "", "", err, false)
 		}
-		key, err := m.archive(sctx, n, j)
+		key, err := m.archive(sctx, n, j, j.payload(d.Payload))
 		return m.outcome(ctx, d, owner, "", key, err, false)
+	case KindTemplate, KindConvert:
+		n, err := m.Node(sctx, d.Node)
+		if err == nil && n.Kind != d.Kind {
+			err = finalErr{fmt.Errorf("%s is a %s, not a %s node", d.Node, n.Kind, d.Kind)}
+		}
+		if err != nil {
+			return m.outcome(ctx, d, owner, "", "", err, isFinal(err))
+		}
+		p, err := m.transform(sctx, d, n, j)
+		if err != nil {
+			return m.outcome(ctx, d, owner, "", "", err, isFinal(err))
+		}
+		d, err = m.outcome(ctx, d, owner, "", p.ID, nil, false)
+		if err != nil || d.State != DeliveryDone {
+			return d, err
+		}
+		if err := m.continueWith(ctx, d, n, p); err != nil {
+			m.o.Log.Warn("continue after a step", "delivery", d.ID, "job", d.Job, "node", d.Node, "err", err)
+			return d, err
+		}
+		return d, nil
 	default:
 		printer, final, err := m.member(sctx, d)
 		if err != nil {
@@ -209,7 +238,11 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		if p.Route == RouteBranch {
 			return m.outcome(ctx, d, owner, printer, "", ErrBranch, true)
 		}
-		doc, err := m.Document(sctx, j.Number)
+		pl := j.payload(d.Payload)
+		if pl == nil || pl.Kind != PayloadBDF {
+			return m.outcome(ctx, d, owner, printer, "", fmt.Errorf("the payload %q is no .bdf document", d.Payload), true)
+		}
+		doc, err := m.Document(sctx, pl.ID)
 		if err != nil {
 			return m.outcome(ctx, d, owner, printer, "", err, false)
 		}
@@ -344,50 +377,76 @@ func (m *Manager) cancelDelivery(ctx context.Context, id string) error {
 	return nil
 }
 
-// ArchiveRecord is the record an archive keeps beside a job's document.
+// ArchiveRecord is the record an archive keeps beside the payload it
+// wrote: the job, the payload (Kind, Format, Pages, Size and SHA256 are
+// its), its metadata, and the job's way so far (Legs, Payloads).
 type ArchiveRecord struct {
-	Job         int32      `json:"job"`
-	Dest        string     `json:"dest"`
-	Name        string     `json:"name,omitempty"`
-	SubmittedBy *Principal `json:"submitted_by,omitempty"`
-	ClaimedUser string     `json:"claimed_user,omitempty"`
-	Source      string     `json:"source"`
-	Format      string     `json:"format,omitempty"`
-	Pages       int        `json:"pages"`
-	Size        int64      `json:"size"`
-	SHA256      string     `json:"sha256"`
-	Received    time.Time  `json:"received"`
-	Archived    time.Time  `json:"archived"`
-	Archive     string     `json:"archive"`
-	Legs        []Leg      `json:"legs"`
+	Job         int32          `json:"job"`
+	Dest        string         `json:"dest"`
+	Name        string         `json:"name,omitempty"`
+	SubmittedBy *Principal     `json:"submitted_by,omitempty"`
+	ClaimedUser string         `json:"claimed_user,omitempty"`
+	Source      string         `json:"source"`
+	Kind        string         `json:"kind"`
+	Format      string         `json:"format,omitempty"`
+	Pages       int            `json:"pages,omitempty"`
+	Size        int64          `json:"size"`
+	SHA256      string         `json:"sha256"`
+	Received    time.Time      `json:"received"`
+	Archived    time.Time      `json:"archived"`
+	Archive     string         `json:"archive"`
+	Payload     string         `json:"payload"`
+	Object      string         `json:"object"`
+	Meta        map[string]any `json:"meta,omitempty"`
+	Payloads    []Payload      `json:"payloads"`
+	Legs        []Leg          `json:"legs"`
 }
 
-// archiveKey names a job's objects in an archive: the day it was
-// received, its id and the start of its hash, so that the objects of a
-// day are listed together and a job is written once.
-func archiveKey(j *Job) string {
-	return j.Received.UTC().Format("2006-01-02") + "." + j.ID + "." + j.SHA256[:min(12, len(j.SHA256))]
+// archiveKey names a payload's objects in an archive: the day the job was
+// received, its id and the start of the payload's hash, so that the
+// objects of a day are listed together and a payload is written once.
+func archiveKey(j *Job, p *Payload) string {
+	return j.Received.UTC().Format("2006-01-02") + "." + j.ID + "." + p.SHA256[:min(12, len(p.SHA256))]
 }
 
-// archive writes a job's document and its record to an archive's store,
+// extensionOf is the extension of a payload's object in an archive, and
+// of its download: the file's, else its format's.
+func extensionOf(p *Payload) string {
+	if ext := path.Ext(strings.ReplaceAll(p.Name, "\\", "/")); len(ext) > 1 && len(ext) <= 8 && extRE.MatchString(ext) {
+		return strings.ToLower(ext)
+	}
+	switch p.Format {
+	case "", "pwg-raster", "urf", "image":
+		return ".bin"
+	}
+	return "." + p.Format
+}
+
+var extRE = regexp.MustCompile(`^\.[A-Za-z0-9]+$`)
+
+// archive writes a job's payload and its record to an archive's store,
 // each once: an object there already is taken as written (a retry after
 // the outcome of a write was not known).
-func (m *Manager) archive(ctx context.Context, n *Node, j *Job) (string, error) {
+func (m *Manager) archive(ctx context.Context, n *Node, j *Job, p *Payload) (string, error) {
+	if p == nil {
+		return "", errors.New("the job has no payload to archive")
+	}
 	st, err := m.st.archive(ctx, n.Store, n.collection())
 	if err != nil {
 		return "", err
 	}
-	key := archiveKey(j)
-	r, err := m.st.docs.Open(ctx, j.ID)
+	key := archiveKey(j, p)
+	r, err := m.st.docs.Open(ctx, p.ID)
 	if err != nil {
 		return "", mapErr(err)
 	}
 	defer r.Close()
-	if _, err := st.Insert(ctx, key+".bdf", r); err != nil && !errors.Is(err, yuruidb.ErrAlreadyExists) {
+	object := key + extensionOf(p)
+	if _, err := st.Insert(ctx, object, r); err != nil && !errors.Is(err, yuruidb.ErrAlreadyExists) {
 		return "", err
 	}
-	rec := ArchiveRecord{Job: j.Number, Dest: j.Dest, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Source: j.Source, Format: j.Format, Pages: j.Pages, Size: j.Size,
-		SHA256: j.SHA256, Received: j.Received, Archived: m.now(), Archive: n.Name, Legs: j.Legs}
+	rec := ArchiveRecord{Job: j.Number, Dest: j.Dest, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Source: j.Source, Kind: p.Kind, Format: p.Format, Pages: p.Pages, Size: p.Size,
+		SHA256: p.SHA256, Received: j.Received, Archived: m.now(), Archive: n.Name, Payload: p.ID, Object: object, Meta: j.Meta, Payloads: j.Payloads, Legs: j.Legs}
 	b, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
 		return "", err

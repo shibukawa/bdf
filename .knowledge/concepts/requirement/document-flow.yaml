@@ -1,0 +1,380 @@
+id: requirement:document-flow
+type: requirement
+title: Print Manager のトポロジーを汎用のドキュメント変換フロー（ETL）に — 辺と口の 3 つの種類（bdf・data・any）、入口の convert と data のフラグ、テンプレート変換・コンバート・描画・branch・通知・人の操作・入出力（SMTP・FTP・S3）のノード、登録した外部サービスが行う変換
+summary: >-
+  2026-10-21 利用者の構想。milestone:pm-4〜pm-5c のトポロジー（ジョブ＝常に .bdf の文書 1 つ、辺は名前だけ、変換は入口で同期）を、
+  データベースを想定しない汎用の ETL／ドキュメント変換フローに広げる。辺とその接合部（口）に 3 つの種類を設ける：bdf だけ、
+  「データ」（JSON・YAML・CSV・Excel・Parquet）、それ以外も流れる any。入口（API エンドポイント、CUPS サーバー）は convert の
+  フラグで出力が bdf か受けたままかを変え、API は data だけを受けるフラグで出力が data になる。data はテンプレート変換ノードで
+  bdf に、any はコンバートノードで bdf に強制キャストできる。API は追加のメタデータを送れ、変換（テンプレートの選択）や branch の
+  条件分岐のパラメータになる。branch は枝を増やせ、入力の種類がそのまま出力の種類になる（多相）。printer と外部 CUPS への送りの
+  入力は bdf だけ。archive はどの種類でも受ける。入出力のノードに SMTP・FTP(S)・S3 を足し、データ変換は登録した外部のマイクロ
+  サービス（企業固有の正規化など）が行う。同日の利用者の答え：メタデータは IPP・HTTP で受けたものも受信日時・ファイル名・送り手の
+  ようにナイーブに決まるものも全部、送りは at-least-once でよい、Lambda の 6 MB は簡易の形で本命は ECS・Cloud Run、失敗も含めて
+  Slack・メールへの通知ノード、bdf → PDF の描画ノードは入れるが別拠点の Print Manager へ .bdf のまま送る出力も残す、人の入力の入口と
+  スタンプ・署名の人の操作のノード、テンプレートはテンプレート変換ノードに移しエンドポイントは暗黙の変換をしない（データ受信の
+  エンドポイント + テンプレート変換）、S3 は入口が S3 Trigger で出口は書きっぱなし。Claude の整理：種類は口が宣言し辺の種類は口から
+  決まる、多相の口は上流からの推論で PUT の型検査に乗せる、ジョブの中身を「ペイロードの列 + メタデータ」にして変換をノードの
+  非同期の段（Delivery の一般化）にする、送り手のメタデータは名乗りで権限の根拠にしない、出口の資格は名前で指す。
+  叙述は knowledge-inputs/print-plan/document-flow.ja.md。
+lifecycle: active
+authority: authored
+aliases:
+- document flow
+- ドキュメント変換フロー
+- ETL
+- ETL フロー
+- 辺の種類
+- edge kind
+- port kind
+- 口の種類
+- コネクタ
+- connector
+- payload
+- ペイロード
+- metadata
+- メタデータ
+- template node
+- テンプレート変換ノード
+- convert node
+- コンバートノード
+- render node
+- 描画ノード
+- branch node
+- ブランチノード
+- transform node
+- 変換ノード
+- external service
+- 外部サービス
+- マイクロサービス
+- notify node
+- 通知ノード
+- Slack
+- human node
+- 人の操作
+- スタンプ
+- 署名
+- form entry
+- 人の入力
+- SMTP
+- FTP
+- FTPS
+- SFTP
+- S3 trigger
+- S3 イベント
+- 拡張
+- plugin
+constraints:
+- 辺（口）の種類は bdf・data・any の 3 つ。bdf ⊂ any、data ⊂ any、bdf と data は交わらない。data の形式は json・yaml・csv（tsv）・xlsx・parquet
+- printer と外部 CUPS への送りの入力は bdf だけ。display も bdf だけ
+- archive はどの種類でも受け、受けたペイロードをそのまま書く（.bdf でなくても）。記録の JSON に kind・format と系譜を持つ
+- 入力の種類がそのまま出力の種類になるノード（queue・class・filter／branch・inbox・archive・sink・通知・出口）は、上流からの推論で種類が決まる。固定の入力の口に合わない種類が届きうる辺は PUT で断る（存在・重なり・閉路に型を足す）。実行時にも確かめ、合わなければ error の足跡で止める
+- 既定で今の図がそのまま動く：入口の convert は既定で on（今の振る舞い）、全部 bdf の図は型の推論で自動的に通る
+- エンドポイントは暗黙の変換をしない（2026-10-21 利用者）。テンプレートの差し込みはテンプレート変換ノードだけが行い、テンプレートはそのノードの持ち物。エンドポイントが持つ変換は convert（変換器で bdf に）だけ
+- 出口は bdf をそのまま送れる（2026-10-21 利用者：別拠点の bdf Print Manager が受け手のことがある）。描画ノードは選択で、出口の前に置くかは図で決める
+- メタデータは、IPP・HTTP の API で受けたものも、受信日時・ファイル名・送り手のようにナイーブに決まるものも、全部メタデータとして持つ（2026-10-21 利用者）。送り手が付けたものは名乗りで、経路とテンプレートの選択には使えるが、権限と見える範囲の根拠にしない（requesting-user-name の制約の延長）。Manager が確かめた値は送り手が上書きできない名前の空間に置く
+- ジョブの記録は yuruidb の 256 KiB に収める。メタデータの鍵の数と大きさに上限を持つ
+- 出口（SMTP・FTP・S3・HTTP）と外部サービスの資格は名前で指し（環境変数かファイル）、yuruidb に取り出して使える秘密を置かない（requirement:print-manager-auth の制約を引き継ぐ）。メタデータの差し込みはメールのヘッダの注入とパスの逸脱を防ぐ
+- 変換と送りは要求の中で行わず、借りの下の段（Delivery の一般化）で行う。経路のノード（queue・class・filter・inbox）は今のまま即座。インスタンスに状態を持たない・常駐に頼らない（pm-1）は変えない
+- 送りと変換は at-least-once（2026-10-21 利用者）。冪等の鍵は <ジョブ>.<足跡の番地>（S3 は If-None-Match、FTP は一時名から改名、SMTP は Message-ID、HTTP は Idempotency-Key）。結果の分からない失敗は 2 度送ることがあり、受け手が鍵で抑える
+- 各社の SDK を同梱しない（S3 は yuruidb の Blob）。式言語（CEL・expr）と Wasm の実行系は当面入れない（規則は RE2 の表のまま）
+non_goals:
+- データベースを読み書きするノード（利用者「データベースを想定しない」）。データは入口から流れてくるものだけ
+- データの加工（列の選択・結合・集計）の組み込み。形式の変換・抽出・テンプレートまでにし、残りは登録した外部サービスに任せる
+- Parquet・Excel の書き出し（読み手はあるが書き手は無い。要るときに別に）
+- 汎用のワークフローエンジン（join、長い待ち、人の承認の多段）。inbox・人の操作のノードと tick で表せる範囲まで
+- Manager 自身が SMTP サーバーとして受ける（常駐が要る。サーバーレスでは外部の受信 → S3 の入口に任せる）
+- .bdf への暗号の電子署名（requirement:print-manager の non_goals のまま。人の操作の「署名」は見た目の署名。open_questions.signature-meaning）
+- S3 の出口での書いた後の確かめと記録（書きっぱなし。2026-10-21 利用者）。残す約束が要るものは archive
+capabilities:
+  typed-ports:
+    state: implemented
+    about: capability:print-manager/typed-ports
+  payloads-and-meta:
+    state: implemented
+    about: capability:print-manager/payloads
+  entry-flags:
+    state: implemented
+    about: capability:print-manager/entry-convert-flag
+  template-node:
+    state: implemented
+    about: capability:print-manager/template-node
+  convert-node:
+    state: implemented
+    about: capability:print-manager/convert-node
+  render-node:
+    state: planned
+    about: capability:print-manager/render-node
+  branch-meta-rules:
+    state: implemented
+    about: capability:print-manager/branch-meta-rules
+  extract-node:
+    state: planned
+    about: capability:print-manager/extract-node
+  io-nodes:
+    state: planned
+    about: capability:print-manager/io-nodes
+  s3-trigger-entry:
+    state: planned
+    about: capability:print-manager/s3-trigger-entry
+  notify-node:
+    state: planned
+    about: capability:print-manager/notify-node
+  external-services:
+    state: planned
+    about: capability:print-manager/external-services（登録した外部サービスが行う変換）
+  human-node:
+    state: planned
+    about: capability:print-manager/human-node（スタンプ・署名・承認）
+  form-entry:
+    state: planned
+    about: capability:print-manager/form-entry（人の入力の入口）
+facts:
+  request:
+    source: 2026-10-21 利用者（/knowledge-memory の引数。全文は document-flow.ja.md の冒頭）
+    points:
+    - 辺と接合部に 3 つの種類（bdf だけ、データ、それ以外も）
+    - 入口（API・CUPS）は convert のフラグで出力が bdf かそれ以外か。API は data だけのフラグで出力が data
+    - data はテンプレート変換ノードで bdf に。API の追加のメタデータで変換（テンプレートの選択）のパラメータ
+    - コンバートノードで any を bdf に強制キャスト
+    - printer の入力は bdf だけ。外部 CUPS への送りも
+    - メタデータで条件分岐。branch は枝を増やせ、入力の種類で出力の種類が変わる
+    - archive はどの種類でも
+    - 入出力のノードに SMTP・FTP(S)・S3（イベントトリガー）
+    - データ変換ノード。アプリが任意で拡張できる仕組み
+  answers_2026_10_21:
+    source: 2026-10-21 利用者の 2 度目の発言（Claude の整理と問いへの答え）
+    points:
+    - メタデータは IPP や HTTP の API で受け取ったもの、受信日時、ファイル名、送信者などナイーブに決まる要素もすべてメタデータとして扱う
+    - at least once でよい
+    - Lambda で簡易にやる場合は 6 MB だが ECS・Cloud Run を使うので問題ない
+    - 失敗なども含めて通知ノード（Slack・メールなど）があってもよい
+    - bdf から PDF の描画はよい。送信先が別拠点の bdf Print Manager のこともあるので、そのままのアウトプットは無くさない
+    - 人の入力はよい。スタンプ・署名の人間操作のノードは考えていた
+    - テンプレートはテンプレート変換ノードに移動。エンドポイントは暗黙の変換をせず「データ受信エンドポイント + テンプレート変換」
+    - データ変換は外部のマイクロサービスを登録できるようにして利用者が任意に作れるように（企業固有のルールでの正規化など）
+    - S3 のイベントは入力が S3 Trigger、出力は書きっぱなしでよい
+  current_state:
+    job: 文書 1 つ（job-documents の Blob、Live で守る）。中は必ず .bdf。submit.go の document() が形式を見分けて変換器で .bdf にしてから Job を作る。Job.Format は元の形式
+    edges: 名前だけ（To・Members・規則の to・Otherwise・Fallback）。PutNode が存在・重なり・閉路を確かめる（nodes.go）
+    entry: endpoint の accept（file / template / both）と formats。テンプレートはエンドポイントの持ち物（pm-5。この要件で改める）。差し込みは JSON の data だけ（form.LoadData は JSON・YAML・CSV・XLSX を読める）
+    steps: printer と archive への送りだけが Delivery（deliver.go。借り、20 回の再試行、背景か tick）。経路は route.go で即座
+    converters: csv・xlsx・parquet の変換器はある（表の文書）。json・yaml の変換器は無い。bdf → PDF は vector/pdfbdf、SVG は vector/svgbdf、PNG は raster
+    limits: MaxDocument（http.go・ipp.go）、記録 256 KiB（yuruidb）、宛先ごとの一覧 500
+    deployments: プロセス（ポート・背景の goroutine あり）とサーバーレス（NoPorts、tick）。ETL の本命は ECS・Cloud Run のプロセス、Lambda は簡易の API の入口（2026-10-21 利用者）
+  design:
+    kinds:
+      where: 口（入力・出力）が種類を宣言し、辺の種類はつないだ口から決まる（Claude の暫定）。辺そのものに種類を書かせない
+      fixed_out: 入口（フラグで決まる）、テンプレート変換（bdf）、コンバート（bdf）、描画（any）、人の入力の入口（data）
+      fixed_in: printer・外部 CUPS・display（bdf）、テンプレート変換（data）、人の操作のスタンプ・署名（bdf）
+      polymorphic: queue・class・filter／branch・inbox・archive・sink・通知・smtp・ftp・s3・http（入力の種類がそのまま出力）
+      inference: 入口の出力の種類から辺を下り、ノードごとに届きうる種類の集合を求める（閉路が無いので 1 回の走査）。固定の入力の口に合わない辺は PUT で 400。実行時は error の足跡
+      shape: data の形（record か table か）はペイロードの属性（読み手が付ける）で、口の種類にしない。スキーマ付きの口は後（expansions）
+      canvas: 口の色を種類で（Blueprint のピン）。多相は推論した色、any は灰色、合わない辺は赤。パレットを入口・経路・変換・人・出口に分ける
+    payload:
+      model: 1 つのジョブに複数のペイロード（受けたままの PDF、コンバートした .bdf、描画した PDF、スタンプを押した .bdf …）。Payload は kind・format・size・sha256・pages（bdf のとき）・作ったノード。Blob の ID は <ジョブ>.<足跡の番地>（再試行で 2 度書かない）
+      lineage: Leg に受けたペイロードと作ったペイロードを持たせる。保管の記録に写す（出所の説明）
+      live: Live はペイロードごと。要らなくなったものから消す
+      keep_source: requirement:print-manager の keep-source は図で表せる（convert=off の入口 → queue で分け、片方を archive（any）、片方をコンバート → printer）
+    metadata:
+      shape: meta（文字列の鍵と JSON の値）。暫定の上限 64 個・16 KiB
+      principle: 受けたものも決まるものも全部メタデータ（2026-10-21 利用者）。確かめた値と送り手の値を名前の空間で分ける
+      verified_keys_proposed: '$received（RFC 3339）、$entry（入口のノード）、$source（ipp / api / cups / s3 / ftp / mail / form / schedule）、$sender（確かめた主体の表示。SubmittedBy）、$file（ファイル名）、$format・$kind・$pages・$size・$sha256（今のペイロードの）、$job。Claude の暫定の名。送り手は上書きできない'
+      claimed_keys_proposed: 'name（job-name）、user（requesting-user-name。今の ClaimedUser）、ipp.<属性>（media・copies・sides など IPP の job attributes）、http.<ヘッダ>（X-Meta-* を鍵に）、API の本文の meta の項目、s3.bucket・s3.key と S3 のタグ、ftp.path、mail.from・mail.subject・mail.to、form の項目、テンプレートの項目（form-archive-fields の答えになる）、抽出のノードが足す鍵。Claude の暫定の名'
+      uses: テンプレートの選択、branch の規則、出口の宛先の差し込み（To・件名・パス・接頭辞。式でなく {meta.key} の置き換えだけ）、通知の文、保管庫の検索項目（pm-2）
+      privacy: 監査ログと保管の記録に写る。個人情報を入れるかは設計者の運用
+    nodes:
+      entry_flags: 'endpoint：accept file（既定）か data。file は convert on（既定）→ bdf、convert off → any（形式は見分けて format に）。data → data（data 以外は 415）。accept template は無くす（テンプレート変換ノードへ。2026-10-21 利用者）。cups：convert on / off。S3・FTP の入口も同じ。convert=on の変換は今と同じく入口で同期'
+      template: 'テンプレート（form.Fill が受けるもの：bdft・Excel・Word・PowerPoint・PDF フォーム・pdfme・テキスト）はこのノードの持ち物（2026-10-21 利用者）。data を差し込んで bdf を出す。選択は固定かメタデータの鍵（template_from）。無い id は error。CSV の行ごとの 1 文書は split に任せる（暫定）。pm-5 のエンドポイントのテンプレート（templates コレクション、<endpoint>.<id>）はこのノードに移す（移行はしない。2026-10-22 利用者：管理者が上げ直す、互換なし）'
+      convert: any → bdf（入口と同じ変換器、formats で絞る）。csv・xlsx・parquet は表の文書。json・yaml は変換器が無いので断る（暫定）
+      render: bdf → PDF（vector/pdfbdf）・PNG・SVG。2026-10-21 利用者が入れると答えた。出口の前に置くかは図で決める（.bdf のまま送る出力は残す）
+      extract: ペイロードを読んでメタデータに鍵を足す（JSON・YAML の道、CSV の列、.bdf の属性、PDF の文書情報）。ペイロードは変えない。branch はメタデータだけを見る
+      branch: pm-4b の filter の拡張。規則に meta.<鍵> の RE2 と min・max、kind・format・pages・size。規則ごとの口 + otherwise。多相
+      notify: '2026-10-21 利用者「失敗なども含めて通知ノード（Slack やメール）」。入力は any の多相で、通ったことを知らせる（ペイロードは添付しない。文は {meta.key}・{job}・{node}・{error} の置き換え）。経路は slack（Incoming Webhook の URL を資格の名前で）、mail（smtp の設定で文だけ）、http（JSON の webhook）。任意の to で次へ流せる（通ったら知らせて続ける）。失敗はノードの on_error の辺で通知に届く（facts.expansions.on-error-port）。短い間の多数の失敗をまとめる（digest）は後。Claude の暫定の形'
+      human: '2026-10-21 利用者「スタンプ、署名の人間操作のノード」。inbox の一般化：ジョブを持ち、範囲の中の人が画面で開いて操作し、to へ流す（か捨てる）。操作はスタンプ（登録した印影・日付印を位置に重ねる）、署名（画面で描くか登録した署名の画像を重ねる）、承認（操作なしで流す。今の inbox）、却下（捨てるか reject の辺へ）。スタンプと署名は bdf の入力に bdf の新しいペイロードを作る（系譜に誰がいつ）。監査に残す。暗号の署名ではない（open_questions.signature-meaning）。Claude の暫定の形'
+      form_entry: '2026-10-21 利用者「人の入力はよい」。入口の種類 form：範囲の中の人が画面でテンプレートの項目（form-m4 の JSON Schema か tag.Field から作る画面）を打ち、data のジョブを to へ。テンプレート変換ノードを後ろに置けば bdf に。Claude の暫定の形'
+      external_cups: printer の url が ipp://cups-host/printers/<名前> を指せるので既に表せる。暫定で printer のまま、サイドバーに CUPS の一覧から選ぶを足す
+      remote_manager: '別拠点の bdf Print Manager へ .bdf のまま送る（2026-10-21 利用者）。http の出口が相手の POST /in/<node> をアプリの資格（client credentials）で叩く形。相手の入口は convert off か bdf を受ける endpoint。暫定で http の出口の preset（Print Manager）にし、別の種類にしない'
+      archive_sink_inbox: archive は any を受けそのまま書く。sink は .bdf ならサムネイル、他は名前と大きさ。inbox は何でも持つ（人の操作のノードの「承認だけ」の形）
+    io:
+      outputs:
+        smtp: ホスト・ポート・STARTTLS/TLS・資格の名前・From・To・件名と本文のテンプレート。添付はペイロード（.bdf のままも、描画を前に置いた PDF も）。net/smtp（標準）
+        ftp: FTPS（明示的 TLS）か SFTP。資格の名前。パスのテンプレート。一時の名前に上げてから改名。外部の部品が要る（SFTP は x/crypto/ssh + sftp）
+        s3: 書きっぱなし（2026-10-21 利用者）。バケット・接頭辞のテンプレート・資格の名前。yuruidb の Blob（S3・R2・GCS）で If-None-Match の書き込み。archive との違いは「変えない約束と記録の JSON が無い」
+        http: URL・方法・ヘッダ・資格の名前。外部の Web サービスへ押す。別拠点の Print Manager への送りもこれ（facts.design.nodes.remote_manager）
+      inputs:
+        s3: 'S3 Trigger（2026-10-21 利用者）。常駐しないので待ち受けない。S3 のイベント → EventBridge（API destination）か Lambda → POST /in/<node> に {bucket, key}（参照）。Manager がノードの資格の名前で yuruidb の Blob から読む。形式はキーの末尾と中身で見分ける。tick の見回りは作らない（要るときに保険として）'
+        ftp: tick の見回り（一覧 → 新しい名前を取る → 済みの接頭辞へ改名か記録）。後の段
+        smtp_receive: 利用者の一覧に無い。サーバーレスは外部（SES の受信 → S3 Trigger）に任せ、プロセスでは IMAP の見回りか小さな受け口（後）
+        watch_folder: プロセスのときだけ。ディレクトリの見回り（後）
+      credentials: 名前で指す（credential smtp-main → 環境変数 PM_CRED_smtp_main かファイル）。cups の tls_cert・tls_key と同じ形
+      delivery: at-least-once（2026-10-21 利用者）。冪等の鍵 <ジョブ>.<足跡>。結果の分からない失敗は 2 度送ることがある（受け手が鍵で抑える。文書化）
+    extension:
+      chosen: '登録した外部のマイクロサービス（2026-10-21 利用者「外部のマイクロサービスを登録できる様にしてユーザーが任意で作れるようにしたい。企業固有のルールでの正規化など」）。Manager が呼ぶ側（押し出し）'
+      registry: 'サービスの登録（/admin/services。pm-auth-2 のアプリの登録と同じ置き方）：名前、URL、資格の名前（Manager がサービスに名乗る：Bearer か HMAC の署名）、入力と出力の種類の宣言（型の推論に乗せる）、時間切れ、冪等（再試行してよいか）、契約の版。transform ノードは登録したサービスを選び、ノードごとの設定（JSON）を添える'
+      contract: '入力：ペイロード（multipart の file）、kind・format、meta、ノードの設定。出力：ペイロード 0〜N（0 は捨てる、N は split）、kind・format、meta の差分、または失敗（4xx は error の足跡で止める、5xx と時間切れは再試行）。Claude の暫定の形'
+      alternatives_kept:
+        builtin: Go の manager.Options.Transforms（名前 → 関数）は組み込みの変換（コンバート・描画・抽出）の実装の土台として残す
+        pull: アプリが work を取りに来る引き取りの形は、サービスへの到達性が無い拠点が出たら足す
+        wasm: 後。実行系の依存と ABI
+  expansions:
+    split: 1 → N（CSV の行ごと、Parquet の行の群、zip の中、.bdf のページの範囲）。親子の系譜
+    batch-merge: N → 1（時間の窓か件数。.bdf のページの連結、CSV の連結）。窓の閉じは tick で
+    schedule-entry: cron の時刻にメタデータだけの空のジョブ（S3 から日次のレポートを作る起点）。tick で作れる
+    dedupe: sha256 かメタデータの鍵で 2 度目を捨てる（再送の多い FTP・S3 の入口の後ろ）
+    on-error-port: どのノードにも任意の on_error の辺（多相。入力のペイロード + 失敗の理由を meta に）。通知ノードに繋げば失敗の通知。dead-letter は 1 つの inbox に集めるだけ。全体の既定の on_error を設定で持つかは fl-2 で決める
+    schema-typed-data: 口に JSON Schema を宣言し tag.Field と突き合わせて PUT で確かめる
+    document-transforms: 透かし、面付け、ページの選択・回転、領域の黒塗り（スタンプと署名は人の操作のノードに入った）
+    data-transforms: 列の選択・改名、行の絞り込み、結合、集計、形式の書き出し。組み込みは形式の変換と抽出までにし、残りは外部サービスに（Parquet・XLSX の書き手は無い）
+    join: 相関の鍵で 2 つの入力を待つ。常駐しない前提で重い。後
+    notify-digest: 短い間の多数の失敗を 1 通にまとめる
+    rate-and-backpressure: ノードごとの同時数と毎分の上限、宛先ごとの一覧 500 と tick の件数の見直し
+    topology-versions: 型のある図を流れている最中に直すなら node-edit-live（requirement:print-manager-console）が前に出る
+    multiple-canvases: 用途ごとのキャンバス（名前の空間 1 つのままなら接頭辞の表示だけでも）
+    product-name: Print Manager の名が合わなくなる（README は software-defined document network）
+  considerations:
+  - 型検査を PUT に足す（存在・重なり・閉路 + 型）。推論は上流から 1 回の走査。実行時の確かめも残す
+  - ジョブの中身を「文書 1 つ」から「ペイロードの列 + メタデータ」に。Blob の ID・Live・保管の記録・/api/jobs の形が変わる。既存の図はペイロード 1 つの特別な場合
+  - 変換はノードの段（Delivery の一般化）。deliver.go が段の実行に広がり種類ごとの実行器を持つ。tick で動く配置では 1 回で終わる大きさに
+  - メタデータは全部持つが、送り手の値は名乗り。権限の根拠にしない。確かめた値は別の空間。大きさの上限
+  - 秘密は名前で指す。差し込みはヘッダの注入とパスの逸脱を防ぐ
+  - 冪等の鍵と at-least-once（利用者が受け入れた）
+  - 大きさ：本命は ECS・Cloud Run のプロセスで MaxDocument の設定だけが上限。Lambda は簡易の入口（同期の本文 6 MB。記憶）で、大きなものは presign の受け取り
+  - 互換：既定で今の図がそのまま動く。移行は型の推論で自動。エンドポイントのテンプレートだけは移行せず、管理者がテンプレート変換ノードに上げ直す（2026-10-22 利用者）
+  - 失敗の行き先（on_error → 通知・inbox）が ETL の運用の中心
+  - 人の操作のノードはジョブを長く持つ。範囲（誰が操作できるか）は printer の personal / group / shared と同じ型で
+  - 試験の偽物：偽の SMTP（プロセス内）、偽の FTP、S3 の偽物、偽の外部サービス（httptest）、偽の Slack。型検査は乱数の図で性質のテスト
+  - 依存：net/smtp は標準、FTPS・SFTP は外部の部品、式言語と Wasm は入れない
+  - 範囲の歯止め：組み込みは文書の変換・形式の変換・抽出・テンプレート・経路・入出力・通知・人の操作まで。データの加工は外部サービス
+  delivery:
+    current_milestone: fl-1 implemented（milestone:fl-1、2026-10-22）。次は fl-2
+    proposed_slices:
+      fl-1: 型とペイロード：種類と口、型の推論と PUT の確かめ、ペイロードの列とメタデータ（確かめた鍵と名乗りの鍵）、入口の accept file / data と convert、テンプレート変換ノード（テンプレートの移動）、コンバートノード、filter の meta の規則、キャンバスの色。確かめ：data の入口 → テンプレート変換 → printer、convert=off の入口 → queue → archive（any）とコンバート → printer の 2 つが通り、printer への data の辺が 400
+      fl-2: 出入口と通知：描画ノード、smtp・s3（書きっぱなし）・http（Print Manager の preset も）の出口、S3 Trigger の入口、資格の名前、on_error の辺と通知ノード（slack・mail・http）
+      fl-3: 外部サービス：サービスの登録（/admin/services）、transform ノード（押し出し）、契約と型の宣言、抽出ノード
+      fl-4: 人と運用：人の操作のノード（承認・スタンプ・署名）、人の入力の入口、split、dedupe、流量、ftp
+    provisional_choices:
+      kinds_on_ports: 種類は口が宣言、辺は口から。多相は推論（Claude）
+      payload_versions: ペイロードの列と足跡の系譜（Claude）
+      async_steps: 変換と出口は Delivery の一般化、入口の convert=on は同期のまま（Claude）
+      rules_re2: branch の規則は RE2 の表 + 数の比較。式言語なし（Claude）
+      credentials_by_name: 出口と外部サービスの資格は名前で環境変数かファイル（Claude）
+      filter_name: 種類の名は filter のまま、画面は Branch（Claude）
+      meta_keys: 確かめた鍵は $ の接頭辞、送り手の鍵は ipp.・http.・s3.・mail. の接頭辞（Claude）
+      notify_shape: 通知は多相の通過ノードで任意の to、失敗は on_error の辺から（Claude）
+      human_shape: 人の操作は inbox の一般化で、スタンプと署名は見た目の重ね描き（Claude）
+      remote_manager: 別拠点の Print Manager へは http の出口の preset（Claude）
+open_questions:
+  template-owner:
+    text: >-
+      テンプレートの持ち主。pm-5 で利用者が「エンドポイントの持ち物」を選んだが、この構想ではテンプレート変換ノードが差し込む。
+      A はテンプレート変換ノードの持ち物に移し、エンドポイントの accept template は「data の入口 + 暗黙のテンプレート変換」の省略形として当面残す。
+      B はエンドポイントの持ち物のまま、テンプレート変換ノードは上流のエンドポイントのテンプレートを引く
+    state: answered
+    resolution: >-
+      A より進めて、省略形も無し。2026-10-21 利用者「テンプレートはテンプレート変換ノードに移動します。エンドポイントは暗黙の変換はせずに、
+      データ受信エンドポイント＋テンプレート変換が良いかと」。エンドポイントの accept は file / data の 2 つになり、template は無くなる。
+      requirement:print-manager-console の template-ownership（エンドポイントの持ち物）はこれで改まる
+  template-migration:
+    text: pm-5 でエンドポイントに上げたテンプレート（templates コレクション、<endpoint>.<id>、endpoint の templates の絞り）をどう移すか。A は起動時の 1 度の移行（エンドポイントごとにテンプレート変換ノード <endpoint>-template を作って繋ぐ）。B は移行せず、管理者が上げ直す（pm-5 は同日の実装で使い手が少ない）
+    state: answered
+    resolution: B。2026-10-22 利用者「テンプレートは移行せず、管理者がテンプレート変換ノードに上げ直すでよい（互換なし）」。起動時の移行は作らず、pm-5 のエンドポイントのテンプレート（templates コレクション）は fl-1 で消える
+  kind-shape:
+    text: 3 つの種類で足りるか。data に形（record か table か）やスキーマを口の種類として持たせるか
+    state: open
+    resolution: 暫定で 3 つ。形はペイロードの属性、スキーマ付きの口は後（expansions.schema-typed-data）
+  convert-timing:
+    text: 入口の convert=on の変換を今のまま入口で同期に行うか、コンバートノードと同じ非同期の段にするか
+    state: open
+    resolution: 暫定で同期のまま（今の振る舞いと IPP の応答を保つ）。コンバートノードは段。大きな文書で要求の時間が足りなくなったら見直す
+  branch-rules:
+    text: branch の規則を RE2 の表（鍵ごとの RE2 と数の比較の AND）に留めるか、式言語（CEL・expr-lang）を入れるか。種類の名を filter のままにするか branch に改めるか
+    state: open
+    resolution: 暫定で RE2 の表（線形時間、依存なし）と filter の名のまま（画面は Branch）。AND だけで書けない条件が出たら見直す
+  extension-mode:
+    text: アプリの変換の形。B の押し出し（Manager がアプリの URL に POST）、C の引き取り（アプリが work を取りに来る）、両方、D の Wasm
+    state: answered
+    resolution: >-
+      B の押し出しで、相手は登録した外部のマイクロサービス。2026-10-21 利用者「データ変換は外部のマイクロサービスを登録できる様にしてユーザーが任意で作れるようにしたい。
+      企業固有のルールでの正規化など」。登録の形と契約は facts.design.extension（Claude の暫定）。C は到達性の無い拠点が出たら、D は後
+  service-auth:
+    text: Manager が外部サービスに名乗る形。A は資格の名前で Bearer（サービスごとの固定のトークン）。B は HMAC の署名（本文と時刻。相手が確かめる部品が要る）。C は pm-auth-2 の client credentials を逆向きに（サービスが認可サーバー）
+    state: open
+    resolution: 暫定で A（単純。TLS が前提）。fl-3 の前に決める
+  render-node:
+    text: 利用者の一覧に無い描画ノード（bdf → PDF/PNG/SVG）と http の出口を入れるか
+    state: answered
+    resolution: >-
+      描画ノードは入れる。2026-10-21 利用者「bdf から pdf の描画は良いですね。送信先も別拠点の bdf print manager がいる可能性もあるのでそのままアウトプットは無くす必要はないかと」。
+      出口は .bdf のまま送れることを制約にし、描画は図で前に置く選択。http の出口は別拠点の Print Manager への送りに要るので入れる（Claude の読み）
+  notify-shape:
+    text: 通知ノードの形。A は多相の通過ノード（通ったら知らせ、任意の to で続ける）で、失敗は各ノードの on_error の辺から届く。B は通知を図のノードにせず、ノードの設定（「失敗したら Slack」）にする
+    state: open
+    resolution: 推奨 A（利用者「通知ノード」。図に見える。on_error の辺が要る）。fl-2 の前に決める
+  signature-meaning:
+    text: 人の操作の「署名」は、画面で描く・登録した画像を重ねる見た目の署名か、鍵で署名する暗号の署名か
+    state: open
+    resolution: 暫定で見た目の署名（requirement:print-manager の non_goals「.bdf への電子署名」のまま）。暗号の署名が要るなら .bdf の形式の側の話
+  credentials-store:
+    text: 出口と外部サービスの資格を名前で環境変数かファイルから取る（画面では名前だけ）か、根の秘密で封をして yuruidb に置く（画面で設定できる）か
+    state: open
+    resolution: 暫定で名前（既存の制約と同じ）。画面だけで出口を足したい利用者が出たら封をする案
+  error-port:
+    text: 失敗の行き先。ノードごとの on_error の辺か、全体の既定（設定）か、両方か
+    state: open
+    resolution: 暫定でノードごとの任意の on_error の辺（無ければ今の failed／aborted）。通知ノードに繋ぐ。全体の既定は fl-2 で決める
+  builtin-scope:
+    text: データの加工（列・結合・集計）をどこまで組み込むか
+    state: answered
+    resolution: 組み込まない。2026-10-21 利用者の答え（外部のマイクロサービスで任意に作る）で、組み込みは形式の変換・抽出・テンプレートまで
+  s3-trigger-shape:
+    text: S3 の入口を、外部の Lambda が POST /in/<node> にキーを渡す形だけにするか、tick の見回りも持つか
+    state: answered
+    resolution: 入口は S3 Trigger（参照を POST）、出口は書きっぱなし。2026-10-21 利用者。見回りは作らない
+  product-name:
+    text: 「Print Manager」の名を変えるか
+    state: deferred
+    resolution: 実装が進んで用途が広がってから。README の software-defined document network が今の言い方
+relations:
+- relation: extends
+  to: requirement:print-manager
+- relation: extends
+  to: requirement:print-manager-console
+- relation: supersedes_part_of
+  to: requirement:print-manager-console
+- relation: constrained_by
+  to: requirement:print-manager-auth
+- relation: builds_on
+  to: milestone:pm-4
+- relation: builds_on
+  to: milestone:pm-4b
+- relation: builds_on
+  to: milestone:pm-5c
+- relation: depends_on
+  to: system:yuruidb
+- relation: informed_by
+  to: requirement:form-template
+- relation: informed_by
+  to: decision:thin-store
+history:
+  proposed:
+    summary: >-
+      2026-10-21 利用者の構想（facts.request）を /knowledge-memory で整理した。main（#126 まで）の print/manager（model.go・nodes.go・submit.go・
+      route.go・deliver.go）を読んで現状（facts.current_state）を書き、種類の置き場・ペイロードの列・メタデータ・ノードの足し算・入出力・拡張の案
+      （facts.design）と、利用者の一覧に無い発展（facts.expansions）、考慮すべきこと（facts.considerations）、段の切り方（facts.delivery）を立てた。
+      暫定の選択と推奨は Claude のもので未確認。問いは open_questions
+  answered-1:
+    summary: >-
+      2026-10-21 利用者が答えた（facts.answers_2026_10_21）：メタデータは受けたものも決まるものも全部、at-least-once でよい、本命は ECS・Cloud Run、
+      通知ノード（失敗も）、描画ノードは入れるが .bdf のままの出力も残す、人の入力とスタンプ・署名の人の操作、テンプレートはテンプレート変換ノードへ
+      （エンドポイントは暗黙の変換なし）、変換は登録した外部のマイクロサービス、S3 は入口が Trigger で出口は書きっぱなし。template-owner・extension-mode・
+      render-node・builtin-scope・s3-trigger-shape を answered に、template-migration・service-auth・notify-shape・signature-meaning を新しく立て、
+      通知・人の操作・人の入力・外部サービスを capabilities と facts.design.nodes に足し、段の案を 4 つに組み直した
+  answered-2:
+    summary: 2026-10-22 利用者「テンプレートは移行せず、管理者がテンプレート変換ノードに上げ直すでよい（互換なし）」。template-migration を answered に。fl-1 の前の問いは無くなった
+  fl-1-implemented:
+    summary: >-
+      2026-10-22 利用者「fl-1 の実装を始めてください。暫定の既定はそのままで」。milestone:fl-1 に実装した：kinds.go・meta.go・transform.go、
+      ジョブのペイロードの列とメタデータ、入口の accept と output、テンプレート変換とコンバートのノード、filter の meta と kind、
+      キャンバスの色。暫定の選択（kinds_on_ports・payload_versions・async_steps・rules_re2・meta_keys）はそのまま実装に入った。
+      分かったこと：CSV・Parquet の表の文書にはページが無く印刷できない（変換器の側）。lifecycle を active に

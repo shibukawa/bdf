@@ -172,7 +172,7 @@ open_questions:
   template-ownership:
     text: テンプレートを API エンドポイントのノードの持ち物にするか（利用者「テンプレートはAPIエンドポイントノードの持ち物ですかね」）。A は持ち物（そのノードのサイドバーでアップロード、id はノードの中で一意、ノードを消すとテンプレートも消える。同じテンプレートを 2 つのエンドポイントで使うなら 2 度上げる）。B は今のまま全体の一覧にエンドポイントが選ぶ（Templates のページを残す）
     state: answered
-    resolution: A（持ち物）。2026-10-21 利用者が選んだ。Templates のページは無くなり、facts.delivery.provisional_choices.template_ids の形で持つ
+    resolution: A（持ち物）。2026-10-21 利用者が選んだ。Templates のページは無くなり、facts.delivery.provisional_choices.template_ids の形で持つ。同日の後、requirement:document-flow で改まった：テンプレートはテンプレート変換ノードの持ち物に移り、エンドポイントは暗黙の変換をしない（accept は file / data）。移行は document-flow の template-migration
   endpoint-mode:
     text: 「テンプレート印刷機能を提供するのか、ファイル印刷機能を提供するのか、またその種類の選択」の形。A は受けるものの 3 択（file / template / both。既定 both。file だけならテンプレートの節を隠し、template だけなら文書の POST を断る）。B は種類ごとに別のノードの種類（api-file と api-template）。「その種類」が受けるファイルの形式の制限（PDF だけ、など）を指すかも確かめる
     state: answered
@@ -330,6 +330,10 @@ history:
       2026-10-21 利用者「pm-5 の実装をこのセッションで始めてください」。milestone:pm-5 に実装した：ページの分割、エディタとサイドバー、
       Location と Printer を Node に畳む、テンプレートと accept・formats はエンドポイントの持ち物。暫定の選択のうち records（/api/nodes に寄せる、互換なし）、
       canvas_library（依存なしの SVG）、pages（ページごとの JS）、template_ids（<endpoint>.<id>）をそのまま使い、live_transport は pm-5b へ
+  superseded-template-owner:
+    summary: >-
+      2026-10-21 利用者「テンプレートはテンプレート変換ノードに移動します。エンドポイントは暗黙の変換はせずに、データ受信エンドポイント＋テンプレート変換が良いかと」。
+      template-ownership の A（エンドポイントの持ち物）と endpoint-mode の accept template は requirement:document-flow で改まる。実装はまだ pm-5 のまま
   answered-4:
     summary: >-
       2026-10-21 利用者「PDFだけ、などのファイル形式も考えていた。余計なファイルを受けない様に。2のスライスは了解です」。endpoint-mode を答え（file / template / both に

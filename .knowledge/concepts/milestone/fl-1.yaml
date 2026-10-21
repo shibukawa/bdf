@@ -1,0 +1,141 @@
+id: milestone:fl-1
+type: milestone
+title: fl-1 — 型のある図とペイロード：辺と口の種類（bdf・data・any）、PUT の型検査、ジョブのペイロードの列とメタデータ、入口の accept と output、テンプレート変換とコンバートのノード、filter の meta と kind の規則、キャンバスの色
+summary: >-
+  requirement:document-flow の最初の段。2026-10-22 利用者「fl-1 の実装を始めてください。暫定の既定はそのままで」。print/manager に
+  kinds.go（PayloadBDF・PayloadData・PayloadAny、takes・emits、inferKinds、typed）、meta.go（claimedMeta・metaOfRequest・jobMeta・metaView）、
+  transform.go（テンプレートの CRUD とノード、fill・readData・convertPayload・keepDocument・continueWith）を足し、Job に Kind・Meta・Payloads、
+  Leg に Payload・Made、Slip・Item・Delivery に Payload を持たせた。入口（endpoint・cups）は accept（file / data）と output（bdf / file）と
+  formats と meta を持ち、テンプレートはテンプレート変換ノードの持ち物（エンドポイントの accept template と JSON の封筒は無くなった。移行なし）。
+  変換（template・convert）は Delivery の段で、できた .bdf は <ジョブ>.<足跡> の新しいペイロードとして足され、ノードの to へ続く。
+  キャンバスは takes・emits で口と辺に色を付け、サイドバーに Accepts・Sends on・Metadata added・Template・Convert の欄。同日実装。
+lifecycle: active
+authority: authored
+scope:
+  milestone: fl-1
+constraints:
+- requirement:document-flow の制約のまま（3 つの種類、printer・display は bdf だけ、template は data だけ、PUT の型検査と実行時の確かめ、既定で今の図が動く、送り手のメタデータは名乗り、256 KiB の記録、SDK なし）
+- テンプレートの移行はしない（2026-10-22 利用者）。pm-5 のエンドポイントのテンプレートの記録（templates コレクションの <endpoint>.<id>）は読まれない
+capabilities:
+  typed-ports:
+    state: implemented
+    about: capability:print-manager/typed-ports
+  payloads-and-meta:
+    state: implemented
+    about: capability:print-manager/payloads
+  entry-flags:
+    state: implemented
+    about: capability:print-manager/entry-convert-flag
+  template-node:
+    state: implemented
+    about: capability:print-manager/template-node
+  convert-node:
+    state: implemented
+    about: capability:print-manager/convert-node
+  branch-meta-rules:
+    state: implemented
+    about: capability:print-manager/branch-meta-rules
+  canvas-kind-colors:
+    state: implemented
+    about: capability:print-manager/canvas-kind-colors
+non_goals:
+- 描画ノード、出口（smtp・s3・http）、S3 Trigger、通知、on_error、資格の名前（fl-2）
+- 外部サービスの登録と transform ノード、抽出ノード（fl-3）
+- 人の操作のノード、人の入力の入口、split、dedupe、流量、ftp（fl-4）
+- ペイロードごとの Live（ペイロードはジョブと一緒に消す）
+- CSV・Parquet の表の文書の印刷ビュー（xlsx.ConvertGrid にページが無い。変換器の側）
+acceptance:
+  f1-typed:
+    text: output file の入口から printer への辺、data の入口から printer への辺、文書の入口から template への辺は 400 で、理由に入口からの道が出る。間に convert や template を置けば通る。queue の to を直して printer に届くようになる変更も 400。GET /api/topology に takes と emits
+    verified_by: [manager-tests]
+  f2-data-template:
+    text: accept data のエンドポイントに JSON を POST すると data のジョブになり、テンプレート変換ノードの段で pages.bdft を差し込んだ .bdf が 2 つ目のペイロードとして足され、display の伝票に 2 ページで出る。足跡の payload と made が繋がる。無い id は 1 回で failed（aborted）、template_from はメタデータの鍵で選ぶ、無ければ failed
+    verified_by: [manager-tests]
+  f3-convert:
+    text: output file の入口 → queue → archive（any）と convert → printer で、PNG が保管に .png のまま書かれ（記録に kind・format・meta・payloads・legs）、convert が 1 ページの .bdf を作って printer に刷られる。.bdf はそのまま通る。JSON は convert で「no document of json」の failed。CSV は保管に .csv で書かれ、convert は「no pages」の failed
+    verified_by: [manager-tests]
+  f4-meta:
+    text: X-Meta-* と ?meta.* と IPP の job attributes（ipp.copies・ipp.media・ipp.document-format）が meta に、入口の meta が送り手の鍵に勝ち、$job・$received・$entry・$source・$sender・$sender_kind・$file が付く。filter の meta の RE2 と kind の規則で振り分く。$ の鍵と 64 個・16 KiB 超えは 400。刷り直しはメタデータを持って行く
+    verified_by: [manager-tests]
+  f5-downloads:
+    text: GET /api/jobs/<n>/document は見せる .bdf（作ったもの）、?payload= で受けたもの（Content-Type は形式から、名前は元のファイル名）。data のペイロードの pages は 404
+    verified_by: [manager-tests]
+  f6-ui:
+    text: パレットに Template と Convert。サイドバーに Accepts・Sends on・Formats・Metadata added（入口）、Template・template_from・list_name・strict と Templates の節（template）、Formats（convert）、規則の meta と kind（filter）。キャンバスの口と辺が takes・emits の色。埋め込みの資産を pw generate で作り直した
+    verified_by: [js-syntax, app-tests]
+verification:
+  manager-tests:
+    state: passed
+    method: integration
+    test: go test -race ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/flow_test.go
+      locator: 'TestKinds（型検査の 400 と道、takes・emits、PNG の流れ、archive の .png と記録、ダウンロード、.bdf の通過、JSON と CSV の failed、不明の 415、convert への直接の送り、刷り直し）、TestMeta（ヘッダ・パラメータ・入口の meta・$ の鍵、filter の meta と kind、上限、IPP の属性、API の宛先の meta）、TestEndpoint（data エンドポイント → forms → wh-a、無い id、template_from、テンプレートの移動と削除）、TestApps（data は print.template）、TestArchive（記録の kind・format・payload）。2026-10-22 macOS、-race 27.9 秒'
+  app-tests:
+    state: passed
+    method: integration
+    test: go test ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: cmd/printmanager/public_test.go
+      locator: '埋め込みの資産が public と同じ（pw generate の後）。TestPorts・TestApp は変更なしで通る。2026-10-22'
+  js-syntax:
+    state: passed
+    method: static
+    test: node --check cmd/printmanager/public/*.js
+    authority: observed
+  browser:
+    state: not_run
+    method: manual
+    authority: observed
+    evidence:
+      path: cmd/printmanager/public/topology.js
+      locator: 'ブラウザでの確認は未。口の色、サイドバーの新しい欄、テンプレートの節の移動、規則の meta と kind の入力は手で確かめていない'
+facts:
+  delivery:
+    implemented:
+      date: '2026-10-22'
+      packages:
+      - 'print/manager/kinds.go（新）：PayloadBDF・PayloadData・PayloadAny、dataFormats（json・yaml・csv・xlsx・parquet）、kinds のビット集合、takes（printer・display は bdf、template は data、他は全部）、entryKind・emits（入口は in | 自分の種類、template・convert・display は bdf、他は in）、inferKinds（不動点）、typed（PUT の確かめ。道つきの理由）'
+      - 'print/manager/meta.go（新）：claimedMeta（64 個・16 KiB、$ で始まる鍵は断る）、metaOfRequest（?meta.<key>= と X-Meta-<Key>: 小文字の鍵）、jobMeta（送り手 < 入口 < $ の鍵）、claimedOf、metaView（規則とテンプレートが見る文字の表。name・user と $kind・$format・$pages・$size・$sha256・$payload）'
+      - 'print/manager/transform.go（新）：テンプレートの CRUD（endpoint.go から移動。Template.Node）、finalErr、transform（template は fill、convert は convertPayload か .bdf の通過）、readData（form.LoadData。JSON・YAML の配列は list_name か ファイル名）、keepDocument（<ジョブ>.<足跡> の Blob、AlreadyExists は書けたもの）、continueWith（ペイロードを足し、足跡の made、to へ route、kick）'
+      - 'print/manager/submit.go（書き直し）：Input に ContentType・Meta、receive（bdf / data / any、accept と output、detect：名前と Content-Type で json・yaml・csv、JSON の嗅ぎ分け、変換器）、submitPayload（Payload 0 の ID はジョブの ID、Meta）、Document・WritePayload・WritePage はペイロードの ID で、Reprint は受けたものを claimed の meta ごと、contentTypeOf'
+      - 'print/manager/model.go：KindTemplate・KindConvert、AcceptFile・AcceptData、OutputBDF・OutputFile、Node に Output・Meta・Template・TemplateFrom・ListName・Strict、Payload、Job に Kind・Meta・Payloads（payload・received・document）、Leg に Payload・Made、Slip・Item・Delivery に Payload'
+      - 'print/manager/nodes.go：nodeKinds と routingKinds に template・convert、PutNode の入口の accept・output・formats・meta と template・convert の確かめ、acyclic の後に typed、template でなくなったらテンプレートを消す、extraFormats に json・yaml、TopoNode に Takes・Emits、Templates は template ノードの'
+      - 'print/manager/route.go：routing に payload、add が足跡に payload を書く、route の takes の実行時の確かめ（error の足跡）、template・convert は routeDelivery、Slip の Payload、removeJob はペイロードの Blob を全部消す'
+      - 'print/manager/deliver.go：Delivery.Payload、deliver の template・convert の段（transform → outcome → continueWith）、printer は bdf のペイロードだけ、archive はペイロードを元の拡張子で書き記録に kind・format・meta・payload・object・payloads'
+      - 'print/manager/filter.go：Match に Meta（鍵ごとの RE2）と Kind、fits(j, p)、empty()'
+      - 'print/manager/endpoint.go：JSON の封筒と SubmitFill を無くし、serveIn は本文をそのまま（Content-Type と meta）、appMaySend は data で print.template'
+      - 'print/manager/http.go・ipp.go・inbox.go・send.go・ports.go：payloadOf（?payload=、見せる .bdf、受けたもの）、jobDocument の Content-Type と名前、jobPage の 404、submit の meta、ippMeta（job group の属性と document-format を ipp.<name> に、32 個まで）、ippFormats に text/csv・application/json、Item.Payload と Release の payload、伝票の印刷はペイロードから'
+      - 'cmd/printmanager/public：admin.js（KINDS・KIND_BADGE に template・convert、PAYLOADS・PAYLOAD_COLOR・payloadBadge）、canvas.js（FILL・OUT_PORT、payloadColor・payloadText、口と辺の色と題）、topology.js（ACCEPTS・OUTPUTS・KINDS_OF_PAYLOAD、metaRow・metaField・metaOf、formatsField・entryFields・kindsLine、template・convert のサイドバー、規則の meta と kind、save、extras のテンプレートの節は template に）、topology-view.js（takes・emits の行）、jobs.js・admin-jobs.js（meta の題と payloadBadge）、handlers/pages.pw.html（パレット）、README の Topology'
+    decisions:
+    - '種類は口が宣言し辺の種類は口から決まる。多相の口は入口からの推論（不動点）。PUT の typed は図の全ノードを確かめ、最初の違反を道つきで返す（requirement の provisional のとおり）'
+    - 'ジョブの Payload 0 の Blob の ID はジョブの ID のまま（pm-4 の job-documents と同じ）。作ったペイロードは Delivery の ID（<ジョブ>.<足跡の番地>）。Live はジョブごとのまま、ペイロードはジョブと一緒に消す'
+    - '入口の convert=on の変換は同期のまま（受けた .bdf は元のバイトのまま置く）。変換の段（template・convert）は Delivery の一般化で、最終の失敗（finalErr：テンプレートが無い、データが読めない、変換器が無い、JSON・YAML）は再試行しない'
+    - 'Job.Format は受けた形式のまま（filter の format の規則はこれ）。Payload.Format はバイトの形式。Job.Kind は受けたペイロードの種類'
+    - 'メタデータの鍵の名：確かめた鍵は $job・$received・$entry・$source・$sender・$sender_kind・$file、IPP は ipp.<属性名>、ヘッダは X-Meta-<Key> を小文字に（Doc-Type → doc-type。_ は使えない）、入口の meta が送り手に勝つ'
+    - 'アプリの scope：data の入口へ送るには print.template（pm-auth-2 の「テンプレートで刷る」の scope をそのまま使う）'
+    - 'テンプレート変換ノードの direct の送り（IPP・API）は accept data として扱う。convert ノードへの direct の送りは output file'
+    - 'readData：JSON・YAML はまず object として読み、だめなら list_name かファイル名の下の配列として。CSV・XLSX は form.LoadData のまま（Name は list_name）。Parquet はテンプレートに差し込めない（finalErr）'
+    - '保管の鍵は <日>.<ジョブ>.<ペイロードの sha12>、拡張子はファイル名のもの（無ければ形式、image と raster は .bin）'
+    found:
+    - 'json.Unmarshal を要素のある slice に行うと古い要素の欄が残る（テストで TopoNode の Output が前の要素の値に見えた）。新しい変数に読む'
+    - 'xlsx.ConvertGrid（csv・parquet が使う）にはページのビューが無いので、CSV・Parquet は print.PrintView が「no pages to print」で止まる。入口の convert でも convert ノードでも同じ（変換器の側の宿題）'
+    - 'converter/image を import するテストはビルドが長い（数分）。go test の最初の 1 回だけ'
+    unverified:
+    - 'ブラウザでの画面（口の色、サイドバー、テンプレートの節）'
+    - 'yuruidb の S3・R2・GCS でのペイロードの Blob（bbolt だけ）'
+    - 'Lambda（tick だけで template・convert の段と continueWith が回ること）'
+    known_gaps:
+    - 'transform の outcome（done）と continueWith の間で落ちると、段は done なのに to の足跡が無い（pm-4 の足跡の隙間と同じ種類）。見回りは無い'
+    - 'キャンセルが outcome と continueWith の間に入ると continueWith は j.Canceled で止まるが、作ったペイロードは足跡の made に書かれない'
+    - 'sink のサムネイルは j.document()（最後の .bdf）で、sink が data を持っているときは「画像なし」'
+    - 'CSV・Parquet の表の文書は印刷できない（found）'
+relations:
+- relation: implements
+  to: requirement:document-flow
+- relation: follows
+  to: milestone:pm-5c
+- relation: builds_on
+  to: milestone:pm-4b

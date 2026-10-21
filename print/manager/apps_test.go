@@ -146,10 +146,21 @@ func TestApps(t *testing.T) {
 	if res, _ := e.do(nil, "POST", "/api/jobs/"+j.ID+"/cancel", tok2, nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("cancel with the scope: %d", res.StatusCode)
 	}
-	// the token granted print.template no longer has it; filling needs it
-	if res, _ := e.do(nil, "POST", "/in/intake", tok, map[string]any{"template": "x", "data": map[string]any{}}); res.StatusCode != http.StatusForbidden {
-		t.Fatalf("fill without the scope: %d", res.StatusCode)
+	// the token granted print.template no longer has it; sending data (for
+	// a template node) needs it
+	e.node("forms", Node{Kind: KindTemplate, Template: "slip", To: []string{"wh-a"}}, http.StatusOK)
+	e.node("data-in", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"forms"}, Apps: []string{"erp"}}, http.StatusOK)
+	if res, _ := e.do(nil, "POST", "/in/data-in", tok2, map[string]any{"x": 1}); res.StatusCode != http.StatusForbidden {
+		t.Fatalf("data without the scope: %d", res.StatusCode)
 	}
+	e.admin("PUT", "/api/apps/erp", App{Scopes: []string{ScopePrint, ScopePrintTemplate, ScopeJobsCancel}, Group: "warehouse-a"}, http.StatusOK)
+	_, body = token("erp", made.Secret, "grant_type=client_credentials")
+	tok3 := body["access_token"].(string)
+	if res, out := e.do(nil, "POST", "/in/data-in", tok3, map[string]any{"x": 1}); res.StatusCode != http.StatusCreated {
+		t.Fatalf("data with the scope: %d %s", res.StatusCode, out)
+	}
+	e.admin("DELETE", "/api/nodes/data-in", nil, http.StatusNoContent)
+	e.admin("DELETE", "/api/nodes/forms", nil, http.StatusNoContent)
 	// its jobs are its group's now
 	res, out = e.do(nil, "POST", "/in/intake?name=grouped", tok2, doc)
 	json.Unmarshal(out, &j)

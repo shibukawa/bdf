@@ -31,7 +31,8 @@ import (
 const (
 	// ScopePrint sends documents to the endpoints that list the app.
 	ScopePrint = "print"
-	// ScopePrintTemplate fills the templates of those endpoints.
+	// ScopePrintTemplate sends data to those endpoints (for the template
+	// nodes after them).
 	ScopePrintTemplate = "print.template"
 	// ScopeJobsCancel cancels the app's own jobs.
 	ScopeJobsCancel = "jobs.cancel"
@@ -312,14 +313,14 @@ func (m *Manager) touchApp(ctx context.Context, a *App) {
 }
 
 // appMaySend tells whether an app may send to a destination: an endpoint
-// that lists it, with the scope of what it sends (fill: a template).
-// Other viewers pass.
-func (m *Manager) appMaySend(ctx context.Context, v *Viewer, dest string, fill bool) error {
+// that lists it, with the scope print (a document) or print.template
+// (data). nil, another kind of viewer and an administrator may.
+func (m *Manager) appMaySend(ctx context.Context, v *Viewer, dest string, data bool) error {
 	if v == nil || v.Kind != PrincipalApp || v.Admin {
 		return nil
 	}
 	need := ScopePrint
-	if fill {
+	if data {
 		need = ScopePrintTemplate
 	}
 	n, err := m.Node(ctx, dest)

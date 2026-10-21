@@ -39,7 +39,7 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("POST "+IPPPath+"/{$}", h.serveIPP)
 
 	// the nodes, of every kind; a display's board, devices and enrollment
-	// codes, and an endpoint's templates, are under their node
+	// codes, and a template node's templates, are under their node
 	mux.HandleFunc("GET /api/nodes", h.adminOnly(h.listNodes))
 	mux.HandleFunc("GET /api/nodes/{name}", h.adminOnly(h.getNode))
 	mux.HandleFunc("PUT /api/nodes/{name}", h.adminOnly(h.putNode))
@@ -278,7 +278,7 @@ func (h *handler) slipDocument(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/x-bdf")
 	w.Header().Set("Content-Length", strconv.FormatInt(s.Size, 10))
 	w.Header().Set("Content-Disposition", `attachment; filename="slip-`+s.ID+`.bdf"`)
-	if err := h.m.WriteDocument(r.Context(), s.Job, w); err != nil {
+	if err := h.m.WritePayload(r.Context(), firstOr(s.Payload, jobID(s.Job)), w); err != nil {
 		panic(http.ErrAbortHandler)
 	}
 }
@@ -416,11 +416,43 @@ func (h *handler) getJob(w http.ResponseWriter, r *http.Request, v *Viewer, j *J
 	writeJSON(w, http.StatusOK, j)
 }
 
-// jobPage draws a page of a job the viewer sees: /api/jobs/{id}/pages/{n}.png?w=.
+// payloadOf is the payload of a job a request names (?payload=), or the
+// .bdf document to show (the last one made, else the one received when
+// it is one), or, with bdf unset, the one received.
+func payloadOf(r *http.Request, j *Job, bdfOnly bool) (*Payload, error) {
+	if id := r.URL.Query().Get("payload"); id != "" {
+		p := j.payload(id)
+		if p == nil {
+			return nil, fmt.Errorf("%w: job %s has no payload %q", ErrNotFound, j.ID, id)
+		}
+		return p, nil
+	}
+	p := j.document()
+	if p == nil && !bdfOnly {
+		p = j.received()
+	}
+	if p == nil {
+		return nil, fmt.Errorf("%w: job %s has no .bdf document", ErrNotFound, j.ID)
+	}
+	return p, nil
+}
+
+// jobPage draws a page of a job the viewer sees:
+// /api/jobs/{id}/pages/{n}.png?w= (of the .bdf document to show, or
+// ?payload= one).
 func (h *handler) jobPage(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
 	n, err := strconv.Atoi(strings.TrimSuffix(r.PathValue("page"), ".png"))
 	if err != nil {
 		h.writeErr(w, ErrNotFound)
+		return
+	}
+	p, err := payloadOf(r, j, true)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	if p.Kind != PayloadBDF {
+		h.writeErr(w, fmt.Errorf("%w: the payload %s is %s, not a .bdf document", ErrNotFound, p.ID, p.Kind))
 		return
 	}
 	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
@@ -429,7 +461,7 @@ func (h *handler) jobPage(w http.ResponseWriter, r *http.Request, v *Viewer, j *
 	}
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	if err := h.m.WritePage(r.Context(), j.Number, j.Pages, n-1, width, w); err != nil {
+	if err := h.m.WritePage(r.Context(), p.ID, p.Pages, n-1, width, w); err != nil {
 		h.writeErr(w, err)
 	}
 }
@@ -444,11 +476,22 @@ func (h *handler) latest(w http.ResponseWriter, r *http.Request, v *Viewer) {
 	writeJSON(w, http.StatusOK, js)
 }
 
+// jobDocument downloads a payload of a job: the .bdf document to show,
+// else what was received (data, a file), or ?payload= one.
 func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
-	w.Header().Set("Content-Type", "application/x-bdf")
-	w.Header().Set("Content-Length", strconv.FormatInt(j.Size, 10))
-	w.Header().Set("Content-Disposition", `attachment; filename="job-`+j.ID+`.bdf"`)
-	if err := h.m.WriteDocument(r.Context(), j.Number, w); err != nil {
+	p, err := payloadOf(r, j, false)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	name := p.Name
+	if name == "" || strings.ContainsAny(name, `"\/`) {
+		name = "job-" + j.ID + extensionOf(p)
+	}
+	w.Header().Set("Content-Type", contentTypeOf(p.Format, p.Name))
+	w.Header().Set("Content-Length", strconv.FormatInt(p.Size, 10))
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	if err := h.m.WritePayload(r.Context(), p.ID, w); err != nil {
 		panic(http.ErrAbortHandler)
 	}
 }
@@ -618,7 +661,8 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	dest := r.PathValue("name")
-	j, err := h.m.Submit(r.Context(), dest, Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "api", Doc: f, Size: n})
+	j, err := h.m.Submit(r.Context(), dest, Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "api", Doc: f, Size: n,
+		ContentType: r.Header.Get("Content-Type"), Meta: metaOfRequest(r)})
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -832,7 +876,7 @@ func (h *handler) devicePage(w http.ResponseWriter, r *http.Request, d *Device) 
 	w.Header().Set("Content-Type", "image/png")
 	// the page does not change, but it is only the device's to see
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	if err := h.m.WritePage(r.Context(), s.Job, s.Pages, n-1, width, w); err != nil {
+	if err := h.m.WritePage(r.Context(), firstOr(s.Payload, jobID(s.Job)), s.Pages, n-1, width, w); err != nil {
 		h.writeErr(w, err)
 	}
 }
