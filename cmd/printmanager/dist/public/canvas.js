@@ -18,7 +18,10 @@ const SVG = "http://www.w3.org/2000/svg";
 const FILL = { endpoint: "#fde68a", cups: "#fecaca", queue: "#ddd6fe", class: "#c7d2fe", filter: "#fbcfe8", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db", sink: "#bbf7d0" };
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer)
-const OUT_PORT = new Set(["endpoint", "queue", "class", "filter", "inbox", "display"]);
+const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "inbox", "display"]);
+// the entries: their input is from outside the network (an endpoint's
+// REST, a CUPS server's IPP port), drawn as an arrow coming in
+const ENTRY = new Set(["endpoint", "cups"]);
 // a flow older than this is not run (the page was away)
 const FLOW_AGE_MS = 2 * 60 * 1000;
 
@@ -28,9 +31,9 @@ function svgEl(tag, attrs = {}) {
   return e;
 }
 
-// edgesOf are the edges from a node: to (a queue's, an endpoint's, an
-// inbox's, a filter's rules and otherwise), member (a class's) or
-// fallback (a display's printer).
+// edgesOf are the edges from a node: to (a queue's, an endpoint's, a CUPS
+// server's, an inbox's, a filter's rules and otherwise), member (a
+// class's) or fallback (a display's printer).
 export function edgesOf(n) {
   const out = [];
   const seen = new Set();
@@ -192,8 +195,9 @@ export function createCanvas(svg, opts = {}) {
   }
 
   // nodeBox draws a node: its title, its kind and what is at it, an input
-  // port at the left and, in the editor, an output port at the right for
-  // the kinds that send on.
+  // port at the left (an entry has an arrow from outside instead of, or
+  // besides, it) and, in the editor, an output port at the right for the
+  // kinds that send on.
   function nodeBox(n, p, isSelected) {
     const g = svgEl("g", { transform: `translate(${p.x} ${p.y})`, class: editable ? "cursor-grab" : "cursor-pointer", "data-name": n.name });
     g.append(svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: FILL[n.kind] || "#e5e7eb", stroke: isSelected ? "#4f46e5" : "#94a3b8", "stroke-width": isSelected ? "3" : "1.5" }));
@@ -224,8 +228,18 @@ export function createCanvas(svg, opts = {}) {
       g.append(svgEl("rect", { x: NODE_W - 48, y: 6, width: 40, height: 42, rx: "3", fill: "#fff", stroke: "#94a3b8" }));
       g.append(svgEl("image", { href: `/api/jobs/${latest}/pages/1.png?w=96`, x: NODE_W - 47, y: 7, width: 38, height: 40, preserveAspectRatio: "xMidYMin slice" }));
     }
-    // a CUPS server is an entry: nothing is sent to it from the network
+    if (ENTRY.has(n.kind)) {
+      // what an entry receives comes from outside: computers print to a
+      // CUPS server's port, applications POST to an endpoint
+      const inArrow = svgEl("path", { d: `M -30 ${NODE_H / 2} L -8 ${NODE_H / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": "url(#arrow)" });
+      const t = svgEl("title");
+      t.textContent = n.kind === "cups" ? `IPP${n.port ? " on port " + n.port : ""}: computers print here, and the job goes on along the edges` : `REST${n.port ? " on port " + n.port : ""}: applications POST here, and the job goes on along the edges`;
+      inArrow.append(t);
+      g.append(inArrow);
+    }
+    // a CUPS server takes nothing from the other nodes: no input port
     if (n.kind !== "cups") g.append(svgEl("circle", { cx: "0", cy: NODE_H / 2, r: "5", fill: "#f8fafc", stroke: "#64748b", "stroke-width": "1.5" }));
+
     if (editable && OUT_PORT.has(n.kind)) {
       const port = svgEl("circle", { cx: NODE_W, cy: NODE_H / 2, r: "7", fill: "#4f46e5", stroke: "#fff", "stroke-width": "2", class: "cursor-crosshair", "data-port": n.name });
       const t = svgEl("title");

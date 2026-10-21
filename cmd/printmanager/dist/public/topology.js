@@ -313,7 +313,8 @@ function renderSidebar() {
       break;
     }
     case "cups":
-      form.append(portField(n, "Computers print to ipp://<this host>:<port>/printers/<node>, and lpstat -h <host>:<port> -p lists every node, as on a CUPS server.", true));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets what computers print here: a printer makes it a relay, a sink shows the pages, a filter keeps only what fits. The port on the canvas adds one too."));
+      form.append(portField(n, `Computers print to ipp://<this host>:<port>/printers/${n.name || "<name>"}, the one printer of this CUPS server; lpstat -h <host>:<port> -p lists it.`, true));
       form.append(field("TLS certificate (file)", input("f-tls-cert", n.tls_cert || "", { placeholder: "/etc/bdf/cups.crt; empty: plain ipp" })));
       form.append(field("TLS key (file)", input("f-tls-key", n.tls_key || "", { placeholder: "/etc/bdf/cups.key" })));
       break;
@@ -410,6 +411,7 @@ async function save(ev) {
       if (dur("f-port")) body.port = Number(dur("f-port"));
       break;
     case "cups":
+      body.to = picked("to");
       body.port = Number($("f-port").value);
       if (dur("f-tls-cert")) body.tls_cert = dur("f-tls-cert");
       if (dur("f-tls-key")) body.tls_key = dur("f-tls-key");
@@ -508,8 +510,8 @@ function extras(n, aside) {
   }
   if (n.kind === "cups" && n.port) {
     const sec = section("Clients");
-    sec.append(hint("As on a CUPS server: every node is a printer there, a class a class. Add a printer on a computer with the URL, or list them:"));
-    sec.append(el("pre", `ipp://${location.hostname}:${n.port}/printers/<node>
+    sec.append(hint(`As on a CUPS server with one printer, ${n.name}: what is printed there goes on to ${(n.to || []).join(", ") || "nothing yet"}. Add the printer on a computer with the URL, or list it:`));
+    sec.append(el("pre", `ipp://${location.hostname}:${n.port}/printers/${n.name}
 lpstat -h ${location.hostname}:${n.port} -p`, { className: "overflow-x-auto rounded-box bg-base-200 p-2 font-mono text-xs whitespace-pre-wrap" }));
     aside.append(sec);
   }
@@ -627,8 +629,33 @@ function showKey(name, key) {
   $("key-name").textContent = name;
   $("key-value").textContent = key;
   $("key-usage").textContent = `curl -X POST -H "Authorization: Bearer ${key}" --data-binary @document.pdf "${location.origin}/in/${name}?name=document"`;
+  $("key-copy").textContent = "Copy";
   $("key-modal").showModal();
 }
+
+// The Copy button puts the key on the clipboard. Without the clipboard
+// API (a page that is not a secure context) the key is selected, so
+// that the keyboard's copy takes it.
+$("key-copy").addEventListener("click", async () => {
+  const key = $("key-value").textContent;
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(key);
+    copied = true;
+  } catch {
+    const whole = document.createRange();
+    whole.selectNodeContents($("key-value"));
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(whole);
+    try {
+      copied = document.execCommand("copy");
+    } catch {}
+  }
+  $("key-copy").textContent = copied ? "Copied" : "Selected: press Ctrl+C or ⌘C";
+  setTimeout(() => ($("key-copy").textContent = "Copy"), 2500);
+});
+
 
 document.addEventListener("keydown", (ev) => {
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);

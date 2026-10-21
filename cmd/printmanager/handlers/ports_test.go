@@ -35,7 +35,7 @@ func TestPorts(t *testing.T) {
 	if _, err := a.m.PutNode(ctx, manager.Node{Name: "wh-a", Kind: manager.KindDisplay}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.m.PutNode(ctx, manager.Node{Name: "cups1", Kind: manager.KindCups, Port: cupsPort}); err != nil {
+	if _, err := a.m.PutNode(ctx, manager.Node{Name: "cups1", Kind: manager.KindCups, To: []string{"wh-a"}, Port: cupsPort}); err != nil {
 		t.Fatal(err)
 	}
 	key, err := a.m.PutNode(ctx, manager.Node{Name: "api", Kind: manager.KindEndpoint, To: []string{"wh-a"}, Port: apiPort})
@@ -46,12 +46,17 @@ func TestPorts(t *testing.T) {
 	if open := a.ports.open(); len(open) != 2 {
 		t.Fatalf("ports open %v", open)
 	}
-	// a CUPS client prints to a node at /printers/<node> of the CUPS server's port
-	c := &ipp.Client{URL: fmt.Sprintf("http://127.0.0.1:%d/printers/wh-a", cupsPort), User: "lp"}
+	// a CUPS client prints to the CUPS server's one printer, the node, at
+	// /printers/<node> of its port; the job goes on to the display
+	c := &ipp.Client{URL: fmt.Sprintf("http://127.0.0.1:%d/printers/cups1", cupsPort), User: "lp"}
 	js, err := c.PrintJob(ctx, "from cups", "application/x-bdf", nil, bytes.NewReader(doc(t)))
 	if err != nil || js.State != ipp.JobCompleted {
 		t.Fatalf("print through the CUPS port: %+v %v", js, err)
 	}
+	if j, err := a.m.JobOfNumber(ctx, js.ID); err != nil || j.Dest != "cups1" || len(j.Legs) != 2 || j.Legs[1].Node != "wh-a" {
+		t.Fatalf("the job through the CUPS port: %+v %v", j, err)
+	}
+
 	// an application posts to the endpoint's port
 	req, _ := http.NewRequest("POST", fmt.Sprintf("http://127.0.0.1:%d/?name=x", apiPort), bytes.NewReader(doc(t)))
 	req.Header.Set("Authorization", "Bearer "+key)

@@ -312,7 +312,8 @@ export component Topology(account: Account): html {
             <div tabindex="0" role="button" class="btn btn-sm btn-primary">+ Add a node</div>
             <ul id="palette" tabindex="0" class="dropdown-content menu z-20 w-72 rounded-box bg-base-100 p-2 shadow-md">
               <li><a data-kind="endpoint"><span class="font-semibold">Endpoint</span><span class="text-xs text-base-content/60">a REST entry for applications</span></a></li>
-              <li><a data-kind="cups"><span class="font-semibold">CUPS server</span><span class="text-xs text-base-content/60">an IPP entry on a port of its own, for computers</span></a></li>
+              <li><a data-kind="cups"><span class="font-semibold">CUPS server</span><span class="text-xs text-base-content/60">an IPP port of its own for computers; forwards what it receives</span></a></li>
+
               <li><a data-kind="queue"><span class="font-semibold">Queue</span><span class="text-xs text-base-content/60">forwards to every node it points to</span></a></li>
               <li><a data-kind="class"><span class="font-semibold">Class</span><span class="text-xs text-base-content/60">one member in turn, or the first</span></a></li>
               <li><a data-kind="filter"><span class="font-semibold">Filter</span><span class="text-xs text-base-content/60">sends on by rules on what a job is</span></a></li>
@@ -362,6 +363,7 @@ export component Topology(account: Account): html {
         <pre id="key-value" class="mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap"></pre>
         <p id="key-usage" class="mt-2 font-mono text-xs text-base-content/60 break-all"></p>
         <div class="modal-action">
+          <button id="key-copy" type="button" class="btn btn-primary">Copy</button>
           <form method="dialog"><button class="btn">Close</button></form>
         </div>
       </div>

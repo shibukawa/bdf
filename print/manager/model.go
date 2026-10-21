@@ -84,8 +84,9 @@ func or[T comparable](v, def T) T {
 }
 
 // Kinds of the nodes of a topology: what a job sent to a node becomes.
-// Endpoints are entries; queues, classes and inboxes route; displays,
-// printers and archives are where a job ends.
+// Endpoints and CUPS servers are entries; queues, classes, filters and
+// inboxes route; displays, printers, archives and sinks are where a job
+// ends.
 const (
 	// KindQueue forwards a job to every node of To: a virtual printer
 	// in front of others, and a fan-out when To has several.
@@ -113,9 +114,11 @@ const (
 	// KindPrinter prints the job on paper.
 	KindPrinter = "printer"
 	// KindCups is an entry for computers and business systems: a CUPS
-	// server on a port of its own (IPP), which lists every node as its
-	// printers (sink.go, ports.go).
+	// server on a port of its own (IPP, ports.go), with one printer
+	// there, the node itself. It forwards what it receives to every node
+	// of To, as an endpoint does.
 	KindCups = "cups"
+
 	// KindSink keeps the latest documents that reach it, to look at on
 	// the topology (sink.go).
 	KindSink = "sink"
@@ -143,8 +146,8 @@ type Node struct {
 	Name  string `json:"name"`
 	Kind  string `json:"kind"`
 	Title string `json:"title,omitempty"`
-	// To are the nodes a queue or an endpoint forwards to (all of them),
-	// or the nodes an inbox's items may be released to.
+	// To are the nodes a queue, an endpoint or a CUPS server forwards to
+	// (all of them), or the nodes an inbox's items may be released to.
 	To []string `json:"to,omitempty"`
 	// Members and Policy are a class's.
 	Members []string `json:"members,omitempty"`

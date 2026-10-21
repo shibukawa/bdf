@@ -23,7 +23,9 @@ import (
 // not Create-Job and Send-Document), so that a request is all there is to
 // a job: no instance waits for a document. /ipp/print itself answers
 // CUPS-Get-Printers and CUPS-Get-Classes with every node, as a CUPS
-// server lists its destinations.
+// server lists its destinations. A CUPS server node's own port
+// (ports.go) is a CUPS server with one printer, the node, at
+// /printers/<node>: what is printed there follows the node's edges.
 
 // IPPPath is where the nodes' printers are.
 const IPPPath = "/ipp/print"
@@ -40,10 +42,13 @@ type ippRequest struct {
 	op  *ipp.Group
 	res *ipp.Message
 	// dest is the node the request is to ("" for the server itself),
-	// kind its kind and title its title.
-	dest  string
-	kind  string
-	title string
+	// kind its kind and title its title. server is the CUPS server node
+	// whose own port the request came on ("" on the manager's own
+	// server): its one printer is the node, at /printers/<name>.
+	dest   string
+	kind   string
+	title  string
+	server string
 	// by is who sent it, as verified (a token, or anonymous).
 	by *Principal
 }
@@ -83,7 +88,13 @@ func (q *ippRequest) scheme() string {
 	return "ipp"
 }
 
+// uri is a destination's printer-uri: on the manager's own server
+// /ipp/print/<name>, on a CUPS server's port /printers/<name>, as CUPS
+// names its printers.
 func (q *ippRequest) uri(dest string) string {
+	if q.server != "" {
+		return q.scheme() + "://" + q.r.Host + "/printers/" + dest
+	}
 	return q.scheme() + "://" + q.r.Host + IPPPath + "/" + dest
 }
 
@@ -101,12 +112,13 @@ func (m *Manager) destInfo(ctx context.Context, name string) (kind, title string
 // serveIPP serves an IPP request to a node's printer, or to the server
 // (no node).
 func (h *handler) serveIPP(w http.ResponseWriter, r *http.Request) {
-	h.serveIPPTo(w, r, r.PathValue("dest"))
+	h.serveIPPTo(w, r, r.PathValue("dest"), "")
 }
 
 // serveIPPTo serves an IPP request to a destination ("" the server), on
-// the manager's server or a CUPS server's port.
-func (h *handler) serveIPPTo(w http.ResponseWriter, r *http.Request, dest string) {
+// the manager's server (server "") or a CUPS server node's own port
+// (server its name: the one printer there).
+func (h *handler) serveIPPTo(w http.ResponseWriter, r *http.Request, dest, server string) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/ipp") {
 		http.Error(w, "an IPP request is application/ipp", http.StatusBadRequest)
 		return
@@ -118,7 +130,7 @@ func (h *handler) serveIPPTo(w http.ResponseWriter, r *http.Request, dest string
 		return
 	}
 	ctx := r.Context()
-	q := &ippRequest{w: w, r: r, by: by}
+	q := &ippRequest{w: w, r: r, by: by, server: server}
 	if dest != "" {
 		kind, title, err := h.m.destInfo(ctx, dest)
 		if err != nil {
@@ -169,6 +181,10 @@ func (h *handler) dispatch(ctx context.Context, q *ippRequest, body io.Reader) {
 		return
 	}
 	if q.dest == "" {
+		if q.server != "" {
+			q.fail(ipp.StatusClientErrorNotFound, "the server is not a printer: ask /printers/%s", q.server)
+			return
+		}
 		q.fail(ipp.StatusClientErrorNotFound, "the server is not a printer: ask %s/<name>", IPPPath)
 		return
 	}
@@ -238,8 +254,10 @@ func deviceURI(n *TopoNode) string {
 	return n.Kind + "://" + n.Name
 }
 
-// cupsPrinters answers CUPS-Get-Printers (every node) or CUPS-Get-Classes
-// (the classes, with their members).
+// cupsPrinters answers CUPS-Get-Printers (every node on the manager's own
+// server; on a CUPS server node's port, that node alone) or
+// CUPS-Get-Classes (the classes, with their members; none on a CUPS
+// server node's port).
 func (h *handler) cupsPrinters(ctx context.Context, q *ippRequest, classes bool) {
 	nodes, err := h.m.Topology(ctx)
 	if err != nil {
@@ -251,6 +269,10 @@ func (h *handler) cupsPrinters(ctx context.Context, q *ippRequest, classes bool)
 		if classes && n.Kind != KindClass {
 			continue
 		}
+		if q.server != "" && n.Name != q.server {
+			continue
+		}
+
 		attrs := []ipp.Attribute{
 			ipp.Attr("printer-name", ipp.Name(n.Name)),
 			ipp.Attr("printer-uri-supported", ipp.URI(q.uri(n.Name))),

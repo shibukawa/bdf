@@ -92,40 +92,80 @@ func TestSink(t *testing.T) {
 	}
 }
 
-// An entry node's own port: a CUPS server's IPP, an endpoint's REST.
+// An entry node's own port: a CUPS server's IPP, an endpoint's REST. A
+// CUPS server forwards what it receives along its edges, as an endpoint
+// does; its port is a CUPS server with one printer, the node.
 func TestPortHandler(t *testing.T) {
 	e := newEnv(t, nil)
 	ctx := context.Background()
 	e.display("wh-a", Node{Title: "Warehouse A"})
-	e.node("cups1", Node{Kind: KindCups}, http.StatusBadRequest)
-	e.node("cups1", Node{Kind: KindCups, Port: 80}, http.StatusBadRequest)
-	e.node("cups1", Node{Kind: KindCups, Port: 6310, TLSCert: "cert.pem"}, http.StatusBadRequest)
-	e.node("cups1", Node{Kind: KindCups, Title: "CUPS", Port: 6310}, http.StatusOK)
+	e.printer("laser")
+	e.node("cups1", Node{Kind: KindCups, Port: 6310}, http.StatusBadRequest)
+	e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}}, http.StatusBadRequest)
+	e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}, Port: 80}, http.StatusBadRequest)
+	e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}, Port: 6310, TLSCert: "cert.pem"}, http.StatusBadRequest)
+	e.node("cups1", Node{Kind: KindCups, To: []string{"nowhere"}, Port: 6310}, http.StatusBadRequest)
+	e.node("cups1", Node{Kind: KindCups, To: []string{"cups1"}, Port: 6310}, http.StatusBadRequest)
+	e.node("cups1", Node{Kind: KindCups, Title: "CUPS", To: []string{"wh-a", "laser"}, Port: 6310}, http.StatusOK)
 	e.node("api", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Port: 6310}, http.StatusConflict)
 	var made struct {
 		Key string `json:"key"`
 	}
 	json.Unmarshal(e.node("api", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Port: 6311}, http.StatusOK), &made)
+	// its edges are edges: a node it sends to stays, and no path leads back
+	e.admin("DELETE", "/api/nodes/laser", nil, http.StatusConflict)
+	if out := e.node("relay", Node{Kind: KindQueue, To: []string{"cups1"}}, http.StatusOK); len(out) == 0 {
+		t.Fatal("a queue may send to a CUPS server")
+	}
+	if out := e.node("cups1", Node{Kind: KindCups, To: []string{"relay"}, Port: 6310}, http.StatusBadRequest); !strings.Contains(string(out), "cycle") {
+		t.Fatalf("cycle: %s", out)
+	}
+	e.admin("DELETE", "/api/nodes/relay", nil, http.StatusNoContent)
 
-	// the CUPS server's port: the server at /, the nodes at /printers/<name>
+	// the CUPS server's port: the server at /, with one printer, the node
+	// at /printers/<node>; what is printed there follows the edges
 	cups := httptest.NewServer(PortHandler(e.m(), "cups1"))
 	defer cups.Close()
 	ps, err := (&ipp.Client{URL: cups.URL + "/", User: "lp"}).CupsGetPrinters(ctx)
-	if err != nil || len(ps) != 3 {
+	if err != nil || len(ps) != 1 || ps[0].Name != "cups1" || ps[0].Info != "CUPS" || ps[0].URI != strings.Replace(cups.URL, "http://", "ipp://", 1)+"/printers/cups1" {
 		t.Fatalf("CUPS-Get-Printers on the port: %+v %v", ps, err)
 	}
-	js, err := (&ipp.Client{URL: cups.URL + "/printers/wh-a", User: "lp"}).PrintJob(ctx, "from cups", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1)))
-	if err != nil || js.State != ipp.JobCompleted {
+	pa, err := (&ipp.Client{URL: cups.URL + "/printers/cups1", User: "lp"}).GetPrinterAttributes(ctx)
+	if err != nil || pa.Name != "cups1" || pa.URI != strings.Replace(cups.URL, "http://", "ipp://", 1)+"/printers/cups1" {
+		t.Fatalf("the printer's attributes on the port: %+v %v", pa, err)
+	}
+	// the delivery to the printer waits for the tick: the job is processing
+	js, err := (&ipp.Client{URL: cups.URL + "/printers/cups1", User: "lp"}).PrintJob(ctx, "from cups", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1)))
+	if err != nil || js.State != ipp.JobProcessing {
 		t.Fatalf("print through the port: %+v %v", js, err)
 	}
-	if j := e.job(1); j.Dest != "wh-a" || j.Source != "ipp" || legs(j) != "wh-a:shown" {
+	if j := e.job(1); j.Dest != "cups1" || j.Source != "ipp" || legs(j) != "cups1:routed wh-a:shown laser:pending" {
 		t.Fatalf("job %+v", j)
+	}
+	// a plain IPP client prints to /ipp/print of the port: the node too
+	if js, err := (&ipp.Client{URL: cups.URL + "/ipp/print", User: "lp"}).PrintJob(ctx, "plain ipp", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1))); err != nil || js.State != ipp.JobProcessing {
+		t.Fatalf("print to /ipp/print of the port: %+v %v", js, err)
+	}
+	if j := e.job(2); j.Dest != "cups1" || legs(j) != "cups1:routed wh-a:shown laser:pending" {
+		t.Fatalf("job %+v", j)
+	}
+	// another node's name is no printer on the port: it is reached along the edges
+	if _, err := (&ipp.Client{URL: cups.URL + "/printers/wh-a", User: "lp"}).PrintJob(ctx, "to a node", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1))); err == nil {
+		t.Fatal("printed to a node behind the CUPS server")
 	}
 	if res, _ := http.Post(cups.URL+"/nothing/here", "application/ipp", nil); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("a path that is no printer: %d", res.StatusCode)
 	}
 	if res, err := http.Get(cups.URL + "/"); err != nil || res.StatusCode != http.StatusOK {
 		t.Fatalf("GET on the port: %v", err)
+	}
+	// on the manager's own server the node is a destination like any
+	if js := e.printJob("cups1", "own server", 1); js.State != ipp.JobProcessing {
+		t.Fatalf("print to the node on the manager's server: %+v", js)
+	}
+
+	if j := e.job(3); j.Dest != "cups1" || legs(j) != "cups1:routed wh-a:shown laser:pending" {
+		t.Fatalf("job %+v", j)
 	}
 	// the endpoint's port: every POST is to it, with its key
 	api := httptest.NewServer(PortHandler(e.m(), "api"))
@@ -145,7 +185,8 @@ func TestPortHandler(t *testing.T) {
 	if post(made.Key) != http.StatusCreated || post("") != http.StatusUnauthorized {
 		t.Fatal("the endpoint's port")
 	}
-	if j := e.job(2); j.Dest != "api" || j.Source != "endpoint" {
+	if j := e.job(4); j.Dest != "api" || j.Source != "endpoint" {
+
 		t.Fatalf("job %+v", j)
 	}
 	// the node gone, or without its port: 404
@@ -155,17 +196,20 @@ func TestPortHandler(t *testing.T) {
 	}
 	// where there are no ports (serverless), none is given
 	s := newEnv(t, func(o *Options) { o.NoPorts = true })
-	if out := s.node("cups1", Node{Kind: KindCups, Port: 6310}, http.StatusBadRequest); !strings.Contains(string(out), "serverless") {
+	s.display("wh-a", Node{})
+	if out := s.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}, Port: 6310}, http.StatusBadRequest); !strings.Contains(string(out), "serverless") {
 		t.Fatalf("no ports: %s", out)
 	}
-	// cupsDest
-	for path, want := range map[string]string{"/": "", "/ipp/print": "", "/printers/wh-a": "wh-a", "/classes/tokyo": "tokyo", "/ipp/print/x": "x", "/admin": ""} {
-		if got, ok := cupsDest(path); !ok || got != want {
+	// cupsDest: the server, and the node under CUPS's and IPP's paths
+	for path, want := range map[string]string{"/": "", "/admin": "", "/ipp/print": "cups1", "/printers/cups1": "cups1", "/classes/cups1": "cups1", "/ipp/print/cups1/": "cups1"} {
+		if got, ok := cupsDest(path, "cups1"); !ok || got != want {
 			t.Errorf("%s: %q %v", path, got, ok)
 		}
 	}
-	if _, ok := cupsDest("/jobs/1"); ok {
-		t.Error("/jobs/1 is a destination")
+	for _, path := range []string{"/jobs/1", "/printers/wh-a", "/classes/tokyo", "/ipp/print/x", "/printers/cups1x", "/printers/"} {
+		if _, ok := cupsDest(path, "cups1"); ok {
+			t.Errorf("%s is a destination", path)
+		}
 	}
 }
 
