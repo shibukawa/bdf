@@ -188,6 +188,17 @@ func (m *Manager) document(ctx context.Context, in Input, formats []string) (*bd
 	return doc, format, nil
 }
 
+// Reprint sends a job's document again, as a new job of a principal, to
+// a destination: a reprint from the pages.
+func (m *Manager) Reprint(ctx context.Context, j *Job, dest string, by *Principal) (*Job, error) {
+	r, err := m.st.docs.Open(ctx, j.ID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer r.Close()
+	return m.Submit(ctx, dest, Input{Name: firstOr(j.Name, "job-"+j.ID), By: by, ClaimedUser: j.ClaimedUser, Source: "reprint", Doc: r, Size: r.Size})
+}
+
 // Document returns the document of a job.
 func (m *Manager) Document(ctx context.Context, job int32) (*bdf.Document, error) {
 	r, err := m.st.docs.Open(ctx, jobID(job))

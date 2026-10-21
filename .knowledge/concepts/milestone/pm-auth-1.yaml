@@ -39,17 +39,17 @@ capabilities:
     state: implemented
     about: pw dev で pw の開発用 OIDC の提供者（popcornweb.toml の [dev.idp]、cmd/printmanager/devidp.toml の 3 人、config.dev.toml の管理者の規則）。2026-10-21 利用者「pw devでテストしているときはpwコマンド内蔵のOIDCが使われる様にして欲しい」
   reprint:
-    state: planned
-    about: 自分とグループのジョブの刷り直し（取り消しは pm-4 の /jobs にあり、送った人と管理者に絞った）
+    state: implemented
+    about: 自分とグループのジョブの刷り直し（取り消しは pm-4 の /jobs にあり、送った人と管理者に絞った）。2026-10-21 milestone:pm-auth-1b で実装
   audit-log:
     state: implemented
     about: pm-4 の監査ログに OIDC のサインインとその拒否を足した。文書の読み出しは記録しない（後）
   roles:
-    state: planned
-    about: facts.pages_and_roles.roles_planned の topology-admin と auditor
+    state: implemented
+    about: facts.pages_and_roles.roles_planned の topology-admin と auditor。2026-10-21 milestone:pm-auth-1b で実装
   session-key-ring:
-    state: planned
-    about: session-key の鍵の列（今は session.keyring.previous_secrets で入れ替えられる。MANAGER_SECRET から作る鍵は 1 本）
+    state: implemented
+    about: session-key の鍵の列（今は session.keyring.previous_secrets で入れ替えられる。MANAGER_SECRET から作る鍵は 1 本）。2026-10-21 milestone:pm-auth-1b で実装
 non_goals:
 - アプリの client credentials、IPP の Basic、SubmitTokens・AdminToken・TickToken を外すこと（pm-auth-2）。/api の bearer の AdminToken はスクリプトのために残す
 - 仮想プリンタのサービスユーザーとデバイスフロー（pm-auth-3）。/tablet の端末の認証は pm-1 のまま

@@ -48,7 +48,7 @@ func main() {
 	if authCfg == nil || sessionCfg == nil {
 		log.Fatal("printmanager: popcornweb's auth and session settings are not registered")
 	}
-	if err := handlers.ConfigureAuth(authCfg, sessionCfg, mc.Secret, mc.SecureCookies, oc); err != nil {
+	if err := handlers.ConfigureAuth(authCfg, sessionCfg, mc.Secret, mc.PreviousSecrets, mc.SecureCookies, oc); err != nil {
 		log.Fatal(err)
 	}
 	// the startup summary shows the settings as they were read

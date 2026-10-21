@@ -99,10 +99,12 @@ var publicPaths = []string{"/", "/tablet", "/public/**", "/api/**", manager.IPPP
 // signs in for, where the state of logins is kept, a sealed cookie as the
 // session) rather than a deployment's choice. Outside dev it refuses to
 // go on without the IdP or an admin rule. secret is MANAGER_SECRET: the
-// session's keys are made of it when session.keyring.secret is not set.
+// session's keys are made of it when session.keyring.secret is not set;
+// previous are the retired secrets (MANAGER_PREVIOUS_SECRETS), whose keys
+// still read the sessions sealed with them.
 //
 // Without an IdP in dev, nobody signs in: the pages say so.
-func ConfigureAuth(a *auth.Config, s *sessionconfig.SessionConfig, secret string, secureCookies bool, o OIDCConfig) error {
+func ConfigureAuth(a *auth.Config, s *sessionconfig.SessionConfig, secret string, previous []string, secureCookies bool, o OIDCConfig) error {
 	o2 := a.OIDC
 	if o2.Issuer == "" && pw.Development() {
 		a.Enabled = false
@@ -121,9 +123,11 @@ func ConfigureAuth(a *auth.Config, s *sessionconfig.SessionConfig, secret string
 	if len(o.Admins) == 0 && len(o.AdminGroups) == 0 && !pw.Development() {
 		return errors.New("printmanager: oidc.admins (OIDC_ADMINS) or oidc.admin_groups (OIDC_ADMIN_GROUPS) is required: nobody would be an admin")
 	}
-	for _, e := range o.Admins {
-		if iss, sub, ok := strings.Cut(e, "#"); ok && (iss == "" || sub == "") || !ok && !strings.Contains(e, "@") {
-			return fmt.Errorf("printmanager: oidc.admins %q: issuer#subject or an email", e)
+	for name, list := range map[string][]string{"admins": o.Admins, "topology_admins": o.TopologyAdmins, "auditors": o.Auditors} {
+		for _, e := range list {
+			if iss, sub, ok := strings.Cut(e, "#"); ok && (iss == "" || sub == "") || !ok && !strings.Contains(e, "@") {
+				return fmt.Errorf("printmanager: oidc.%s %q: issuer#subject or an email", name, e)
+			}
 		}
 	}
 	a.Enabled = true
@@ -149,20 +153,30 @@ func ConfigureAuth(a *auth.Config, s *sessionconfig.SessionConfig, secret string
 		s.Backend = sessionconfig.SessionBackendCookie
 	}
 	if s.Keyring.Secret == "" {
-		key := make([]byte, 32)
 		if secret == "" {
+			key := make([]byte, 32)
 			rand.Read(key) // dev: the sessions end with the process
+			s.Keyring.Secret = base64.StdEncoding.EncodeToString(key)
 		} else {
-			mac := hmac.New(sha256.New, []byte(secret))
-			mac.Write([]byte("bdf print manager: session keyring"))
-			key = mac.Sum(nil)
+			s.Keyring.Secret = sessionKey(secret)
+			for _, p := range previous {
+				if p != "" {
+					s.Keyring.PreviousSecrets = append(s.Keyring.PreviousSecrets, sessionKey(p))
+				}
+			}
 		}
-		s.Keyring.Secret = base64.StdEncoding.EncodeToString(key)
 	}
 	if !secureCookies {
 		s.Cookie.Secure = false
 	}
 	return nil
+}
+
+// sessionKey is the session's key made of a manager secret.
+func sessionKey(secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte("bdf print manager: session keyring"))
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func loopback(host string) bool {
@@ -226,7 +240,26 @@ func domainOf(email string) string {
 
 // admin tells an admin: by issuer#subject, email, or a group.
 func (p policy) admin(iss, sub, email string, groups []string) bool {
-	for _, e := range p.Admins {
+	return listed(p.Admins, p.AdminGroups, iss, sub, email, groups)
+}
+
+// roles are the roles of a person short of an admin: topology and audit,
+// by issuer#subject, email, or a group.
+func (p policy) roles(iss, sub, email string, groups []string) []string {
+	var out []string
+	if listed(p.TopologyAdmins, p.TopologyAdminGroups, iss, sub, email, groups) {
+		out = append(out, manager.RoleTopology)
+	}
+	if listed(p.Auditors, p.AuditorGroups, iss, sub, email, groups) {
+		out = append(out, manager.RoleAudit)
+	}
+	return out
+}
+
+// listed tells a person named in a list (issuer#subject or email) or in
+// one of the groups.
+func listed(people, groupList []string, iss, sub, email string, groups []string) bool {
+	for _, e := range people {
 		if i, s, ok := strings.Cut(e, "#"); ok {
 			if i == iss && s == sub {
 				return true
@@ -235,7 +268,7 @@ func (p policy) admin(iss, sub, email string, groups []string) bool {
 			return true
 		}
 	}
-	for _, g := range p.AdminGroups {
+	for _, g := range groupList {
 		if slices.Contains(groups, g) {
 			return true
 		}
@@ -315,7 +348,7 @@ func (a *App) viewer(r *http.Request) *manager.Viewer {
 		p = &manager.Person{Issuer: s.Issuer, Subject: s.Subject, Name: s.DisplayName, Email: s.Email}
 	}
 	return &manager.Viewer{Kind: manager.PrincipalUser, Via: manager.ViaOIDC, ID: s.AccountID, Name: p.Name, Email: p.Email, Groups: p.Groups,
-		Admin: a.policy.admin(p.Issuer, p.Subject, p.Email, p.Groups)}
+		Roles: a.policy.roles(p.Issuer, p.Subject, p.Email, p.Groups), Admin: a.policy.admin(p.Issuer, p.Subject, p.Email, p.Groups)}
 }
 
 // statusWriter answers what a page writes with another status.

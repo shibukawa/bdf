@@ -190,9 +190,14 @@ func (m *Manager) RemoveDevice(ctx context.Context, id string) error {
 // ChallengeFor is how long a challenge may be signed.
 const ChallengeFor = 2 * time.Minute
 
-// sign is the manager's MAC of a kind of token and its payload.
+// sign is the manager's MAC of a kind of token and its payload, with the
+// current secret.
 func (m *Manager) sign(kind string, payload []byte) []byte {
-	h := hmac.New(sha256.New, m.o.Secret)
+	return signWith(m.o.Secret, kind, payload)
+}
+
+func signWith(secret []byte, kind string, payload []byte) []byte {
+	h := hmac.New(sha256.New, secret)
 	h.Write([]byte("bdf-print-manager\x00" + kind + "\x00"))
 	h.Write(payload)
 	return h.Sum(nil)
@@ -205,7 +210,8 @@ func (m *Manager) token(kind string, payload []byte) string {
 	return b64.EncodeToString(payload) + "." + b64.EncodeToString(m.sign(kind, payload))
 }
 
-// open checks a token's MAC and returns its payload.
+// open checks a token's MAC (the current secret, or a retired one still
+// kept) and returns its payload.
 func (m *Manager) open(kind, tok string) ([]byte, bool) {
 	p, mac, ok := strings.Cut(tok, ".")
 	if !ok {
@@ -213,10 +219,18 @@ func (m *Manager) open(kind, tok string) ([]byte, bool) {
 	}
 	payload, err1 := b64.DecodeString(p)
 	sum, err2 := b64.DecodeString(mac)
-	if err1 != nil || err2 != nil || !hmac.Equal(sum, m.sign(kind, payload)) {
+	if err1 != nil || err2 != nil {
 		return nil, false
 	}
-	return payload, true
+	if hmac.Equal(sum, m.sign(kind, payload)) {
+		return payload, true
+	}
+	for _, old := range m.o.PreviousSecrets {
+		if len(old) >= 32 && hmac.Equal(sum, signWith(old, kind, payload)) {
+			return payload, true
+		}
+	}
+	return nil, false
 }
 
 // Challenge returns a challenge for a device to sign: it expires after

@@ -29,9 +29,12 @@ var people = []fakeidp.User{
 	{Subject: "lead", Name: "Lead", Email: "lead@example.com", Groups: []string{"warehouse-a", "pm-admins"}},
 	{Subject: "carol", Name: "Carol", Email: "carol@elsewhere.example"},
 	{Subject: "mallory", Name: "Mallory", Email: "root@example.com", EmailUnverified: true},
+	{Subject: "tess", Name: "Tess", Email: "tess@example.com", Groups: []string{"pm-topology"}},
+	{Subject: "audrey", Name: "Audrey", Email: "audrey@example.com", Groups: []string{"pm-auditors"}},
 }
 
 var testPolicy = OIDCConfig{GroupsClaim: "realm_access.roles", Admins: []string{"root@example.com"}, AdminGroups: []string{"pm-admins"},
+	TopologyAdminGroups: []string{"pm-topology"}, AuditorGroups: []string{"pm-auditors"},
 	Allowed: AllowedConfig{Domains: []string{"example.com"}}}
 
 // site is the application served as pw serves it (the middleware, the
@@ -59,7 +62,7 @@ func newSite(t *testing.T) *site {
 		ac := c.Get[auth.Config]()
 		sc := c.Get[sessionconfig.SessionConfig]()
 		ac.OIDC.Issuer, ac.OIDC.ClientID, ac.OIDC.ClientSecret = issuer, fakeidp.ClientID, fakeidp.ClientSecret
-		if err := ConfigureAuth(&ac, &sc, "a secret of thirty-two bytes or more", false, testPolicy); err != nil {
+		if err := ConfigureAuth(&ac, &sc, "a secret of thirty-two bytes or more", nil, false, testPolicy); err != nil {
 			t.Fatal(err)
 		}
 		c.Set(ac)
@@ -268,6 +271,36 @@ func TestLogin(t *testing.T) {
 			}
 		}
 	}
+	// the roles short of an admin: topology opens the admin pages and the
+	// API of the topology, audit the audit log and every job; neither the
+	// other's
+	tess, audrey := s.login("tess"), s.login("audrey")
+	for who, b := range map[string]*browser{"tess": tess, "audrey": audrey} {
+		adminWant, auditWant := http.StatusForbidden, http.StatusOK
+		if who == "tess" {
+			adminWant, auditWant = http.StatusOK, http.StatusForbidden
+		}
+		if code, _ := b.get("/admin"); code != adminWant {
+			t.Errorf("%s on /admin: %d; want %d", who, code, adminWant)
+		}
+		if code, _ := b.get("/audit"); code != auditWant {
+			t.Errorf("%s on /audit: %d; want %d", who, code, auditWant)
+		}
+		if code, _ := b.get("/api/nodes"); code != adminWant {
+			t.Errorf("%s on /api/nodes: %d; want %d", who, code, adminWant)
+		}
+		if code, _ := b.get("/api/audit"); code != auditWant {
+			t.Errorf("%s on /api/audit: %d; want %d", who, code, auditWant)
+		}
+	}
+	if _, body := tess.get("/jobs"); !strings.Contains(body, `href="/admin/topology"`) || strings.Contains(body, `href="/audit"`) {
+		t.Error("tess's bar")
+	}
+	if _, body := audrey.get("/jobs"); strings.Contains(body, `href="/admin/topology"`) || !strings.Contains(body, `href="/audit"`) || !strings.Contains(body, "All jobs") {
+		t.Error("audrey's bar")
+	}
+	sees(audrey, []string{"bob-memo", "alice-memo", "picking-b", "picking-a"})
+
 	// the API: an admin's session works as the admin token did
 	if code, _ := alice.get("/api/nodes"); code != http.StatusForbidden {
 		t.Errorf("alice on the API: %d", code)
@@ -298,8 +331,8 @@ func TestLogin(t *testing.T) {
 		t.Errorf("root without a record: %d", code)
 	}
 
-	if n := s.idp.Logins(); n != 6 {
-		t.Errorf("%d sign-ins at the IdP; want 6", n)
+	if n := s.idp.Logins(); n != 8 {
+		t.Errorf("%d sign-ins at the IdP; want 8", n)
 	}
 
 	// signing out ends the session
@@ -319,26 +352,30 @@ func TestConfigureAuth(t *testing.T) {
 		a auth.Config
 		o OIDCConfig
 	}{
-		"no IdP":         {auth.Config{}, testPolicy},
-		"no secret":      {auth.Config{OIDC: auth.OIDCConfig{Issuer: "https://idp.example", ClientID: "pm"}}, testPolicy},
-		"no admin rule":  {ok, OIDCConfig{GroupsClaim: "groups"}},
-		"an admin typed": {ok, OIDCConfig{Admins: []string{"root"}}},
+		"no IdP":           {auth.Config{}, testPolicy},
+		"no secret":        {auth.Config{OIDC: auth.OIDCConfig{Issuer: "https://idp.example", ClientID: "pm"}}, testPolicy},
+		"no admin rule":    {ok, OIDCConfig{GroupsClaim: "groups"}},
+		"an admin typed":   {ok, OIDCConfig{Admins: []string{"root"}}},
+		"an auditor typed": {ok, OIDCConfig{Admins: []string{"a@example.com"}, Auditors: []string{"x#"}}},
 	} {
 		var s sessionconfig.SessionConfig
-		if err := ConfigureAuth(&c.a, &s, "secret", true, c.o); err == nil {
+		if err := ConfigureAuth(&c.a, &s, "secret", nil, true, c.o); err == nil {
 			t.Errorf("%s: started", name)
 		}
 	}
 	a, s := ok, sessionconfig.SessionConfig{Backend: sessionconfig.SessionBackendRDB, Cookie: sessionconfig.SessionCookieConfig{Secure: true}}
-	if err := ConfigureAuth(&a, &s, "secret", true, OIDCConfig{Admins: []string{"https://idp.example#123"}}); err != nil {
+	if err := ConfigureAuth(&a, &s, "secret", []string{"older"}, true, OIDCConfig{Admins: []string{"https://idp.example#123"}}); err != nil {
 		t.Fatal(err)
+	}
+	if len(s.Keyring.PreviousSecrets) != 1 || s.Keyring.PreviousSecrets[0] != sessionKey("older") || s.Keyring.PreviousSecrets[0] == s.Keyring.Secret {
+		t.Errorf("previous secrets %v", s.Keyring.PreviousSecrets)
 	}
 	if !a.Enabled || a.Mode != auth.ModeOIDCOnly || a.Backend != authBackend || a.OIDC.AllowLoopbackHTTP ||
 		!s.Enabled || s.Backend != sessionconfig.SessionBackendCookie || s.Keyring.Secret == "" || !s.Cookie.Secure {
 		t.Errorf("auth %+v, session %+v", a, s)
 	}
 	b, s2 := ok, sessionconfig.SessionConfig{}
-	ConfigureAuth(&b, &s2, "secret", true, OIDCConfig{AdminGroups: []string{"x"}})
+	ConfigureAuth(&b, &s2, "secret", nil, true, OIDCConfig{AdminGroups: []string{"x"}})
 	if s2.Keyring.Secret != s.Keyring.Secret {
 		t.Error("the session's keys differ between instances of one secret")
 	}

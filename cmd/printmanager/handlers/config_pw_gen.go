@@ -25,6 +25,7 @@ func registerManagerConfigDefinition0() {
 			"manager.records",
 			"manager.documents",
 			"manager.secret",
+			"manager.previous_secrets",
 			"manager.admin_token",
 			"manager.tick_token",
 			"manager.submit_tokens",
@@ -48,7 +49,8 @@ func registerManagerConfigDefinition0() {
 		FlagMetas: []cliparser.FieldMeta{
 			{Prefix: "manager", Key: "records", Help: "store of the records: bbolt:path, dynamodb://table?region=…, firestore://project/database, s3://bucket?region=…, r2://bucket?endpoint=…, gcs://bucket"},
 			{Prefix: "manager", Key: "documents", Help: "store of the slips' documents (bbolt, s3, r2, gcs); empty for the records' store"},
-			{Prefix: "manager", Key: "secret", Help: "signs the devices' sessions: 32 bytes or more, the same for every instance (required outside dev)"},
+			{Prefix: "manager", Key: "secret", Help: "signs the devices' sessions, the apps' tokens and the pages' sessions: 32 bytes or more, the same for every instance (required outside dev)"},
+			{Prefix: "manager", Key: "previous_secrets", Help: "retired secrets that still open what was signed with them, while a rotation goes on", Kind: cliparser.KindArray},
 			{Prefix: "manager", Key: "admin_token", Help: "bearer token of the API (/api), for scripts; people sign in with OIDC"},
 			{Prefix: "manager", Key: "tick_token", Help: "bearer token a scheduler calls POST /api/tick with"},
 			{Prefix: "manager", Key: "submit_tokens", Help: "name:secret pairs that may send jobs; none lets anyone send", Kind: cliparser.KindArray},
@@ -64,7 +66,8 @@ func registerManagerConfigDefinition0() {
 		Scaffold: []configbind.ScaffoldField{
 			{Key: "records", Kind: configbind.ScaffoldString, Default: "bbolt:printmanager.db", Help: "store of the records: bbolt:path, dynamodb://table?region=…, firestore://project/database, s3://bucket?region=…, r2://bucket?endpoint=…, gcs://bucket"},
 			{Key: "documents", Kind: configbind.ScaffoldString, Help: "store of the slips' documents (bbolt, s3, r2, gcs); empty for the records' store"},
-			{Key: "secret", Kind: configbind.ScaffoldString, Help: "signs the devices' sessions: 32 bytes or more, the same for every instance (required outside dev)"},
+			{Key: "secret", Kind: configbind.ScaffoldString, Help: "signs the devices' sessions, the apps' tokens and the pages' sessions: 32 bytes or more, the same for every instance (required outside dev)"},
+			{Key: "previous_secrets", Kind: configbind.ScaffoldStringSlice, Help: "retired secrets that still open what was signed with them, while a rotation goes on"},
 			{Key: "admin_token", Kind: configbind.ScaffoldString, Help: "bearer token of the API (/api), for scripts; people sign in with OIDC"},
 			{Key: "tick_token", Kind: configbind.ScaffoldString, Help: "bearer token a scheduler calls POST /api/tick with"},
 			{Key: "submit_tokens", Kind: configbind.ScaffoldStringSlice, Help: "name:secret pairs that may send jobs; none lets anyone send"},
@@ -94,6 +97,9 @@ func applyManagerConfigDefinition0(dst any, o *configbind.Overlay) error {
 	}
 	if v, ok := o.GetString("manager.secret"); ok {
 		p.Secret = v
+	}
+	if v, ok := o.GetMulti("manager.previous_secrets"); ok {
+		p.PreviousSecrets = v
 	}
 	if v, ok := o.GetString("manager.admin_token"); ok {
 		p.AdminToken = v
@@ -174,6 +180,10 @@ func registerOIDCConfigDefinition1() {
 			"oidc.groups_prefix",
 			"oidc.admins",
 			"oidc.admin_groups",
+			"oidc.topology_admins",
+			"oidc.topology_admin_groups",
+			"oidc.auditors",
+			"oidc.auditor_groups",
 			"oidc.allowed.issuers",
 			"oidc.allowed.domains",
 			"oidc.allowed.groups",
@@ -186,6 +196,10 @@ func registerOIDCConfigDefinition1() {
 			{Prefix: "oidc", Key: "groups_prefix", Help: "take only the groups of this prefix"},
 			{Prefix: "oidc", Key: "admins", Help: "admins: issuer#subject, or a verified email; at least one admin rule outside dev", Kind: cliparser.KindArray},
 			{Prefix: "oidc", Key: "admin_groups", Help: "groups whose members are admins", Kind: cliparser.KindArray},
+			{Prefix: "oidc", Key: "topology_admins", Help: "people with the role topology: issuer#subject, or a verified email", Kind: cliparser.KindArray},
+			{Prefix: "oidc", Key: "topology_admin_groups", Help: "groups whose members have the role topology", Kind: cliparser.KindArray},
+			{Prefix: "oidc", Key: "auditors", Help: "people with the role audit: issuer#subject, or a verified email", Kind: cliparser.KindArray},
+			{Prefix: "oidc", Key: "auditor_groups", Help: "groups whose members have the role audit", Kind: cliparser.KindArray},
 			{Prefix: "oidc", Key: "allowed.issuers", Help: "issuers whose people get in", Kind: cliparser.KindArray},
 			{Prefix: "oidc", Key: "allowed.domains", Help: "email domains (or Google's hd) whose people get in", Kind: cliparser.KindArray},
 			{Prefix: "oidc", Key: "allowed.groups", Help: "groups whose members get in", Kind: cliparser.KindArray},
@@ -196,6 +210,10 @@ func registerOIDCConfigDefinition1() {
 			{Key: "groups_prefix", Kind: configbind.ScaffoldString, Help: "take only the groups of this prefix"},
 			{Key: "admins", Kind: configbind.ScaffoldStringSlice, Help: "admins: issuer#subject, or a verified email; at least one admin rule outside dev"},
 			{Key: "admin_groups", Kind: configbind.ScaffoldStringSlice, Help: "groups whose members are admins"},
+			{Key: "topology_admins", Kind: configbind.ScaffoldStringSlice, Help: "people with the role topology: issuer#subject, or a verified email"},
+			{Key: "topology_admin_groups", Kind: configbind.ScaffoldStringSlice, Help: "groups whose members have the role topology"},
+			{Key: "auditors", Kind: configbind.ScaffoldStringSlice, Help: "people with the role audit: issuer#subject, or a verified email"},
+			{Key: "auditor_groups", Kind: configbind.ScaffoldStringSlice, Help: "groups whose members have the role audit"},
 			{Key: "allowed.issuers", Kind: configbind.ScaffoldStringSlice, Help: "issuers whose people get in"},
 			{Key: "allowed.domains", Kind: configbind.ScaffoldStringSlice, Help: "email domains (or Google's hd) whose people get in"},
 			{Key: "allowed.groups", Kind: configbind.ScaffoldStringSlice, Help: "groups whose members get in"},
@@ -221,6 +239,18 @@ func applyOIDCConfigDefinition1(dst any, o *configbind.Overlay) error {
 	}
 	if v, ok := o.GetMulti("oidc.admin_groups"); ok {
 		p.AdminGroups = v
+	}
+	if v, ok := o.GetMulti("oidc.topology_admins"); ok {
+		p.TopologyAdmins = v
+	}
+	if v, ok := o.GetMulti("oidc.topology_admin_groups"); ok {
+		p.TopologyAdminGroups = v
+	}
+	if v, ok := o.GetMulti("oidc.auditors"); ok {
+		p.Auditors = v
+	}
+	if v, ok := o.GetMulti("oidc.auditor_groups"); ok {
+		p.AuditorGroups = v
 	}
 	if v, ok := o.GetMulti("oidc.allowed.issuers"); ok {
 		p.Allowed.Issuers = v

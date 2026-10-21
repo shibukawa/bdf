@@ -62,11 +62,18 @@ func Open(ctx context.Context, cfg ManagerConfig, oidc OIDCConfig) (*App, error)
 		st.Close()
 		return nil, fmt.Errorf("printmanager: %s is one process's store; serverless needs one that instances share (dynamodb, firestore, s3, r2, gcs)", cfg.Records)
 	}
+	var previous [][]byte
+	for _, p := range cfg.PreviousSecrets {
+		if len(p) < 32 {
+			return nil, errors.New("printmanager: a previous secret has fewer than 32 bytes")
+		}
+		previous = append(previous, []byte(p))
+	}
 	a := &App{cfg: cfg, policy: policy{oidc}, st: st, log: log}
 	a.ports = newPorts(a)
 	conv := printconv.Converter{FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts}
 	a.m, err = manager.New(st, manager.Options{
-		Converter: conv, Secret: secret, FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts,
+		Converter: conv, Secret: secret, PreviousSecrets: previous, FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts,
 		AdminToken: cfg.AdminToken, SubmitTokens: tokens, TickToken: cfg.TickToken, Viewer: a.viewer,
 		MaxDocument: int64(cfg.MaxDocumentMB) << 20, SecureCookies: cfg.SecureCookies, TabletPath: "/tablet", Log: log,
 		JobKeep: cfg.JobKeep,
@@ -146,32 +153,33 @@ func (a *App) Handler() http.Handler {
 		}
 		pw.WriteHTML(w, r, SignIn(SignInParams{Enabled: auth.Protection().Protected != nil}))
 	})
-	mux.HandleFunc("GET /jobs", a.page(false, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	mux.HandleFunc("GET /jobs", a.page("", func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Jobs(JobsParams{Account: ac}))
 	}))
-	mux.HandleFunc("GET /topology", a.page(false, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	mux.HandleFunc("GET /topology", a.page("", func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, TopologyView(TopologyViewParams{Account: ac}))
 	}))
-	// the administrator's pages, one item each; /admin is the topology
-	mux.HandleFunc("GET /admin", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	// the pages of the role topology, one item each; /admin is the topology
+	mux.HandleFunc("GET /admin", a.page(manager.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		http.Redirect(w, r, "/admin/topology", http.StatusSeeOther)
 	}))
-	mux.HandleFunc("GET /admin/topology", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	mux.HandleFunc("GET /admin/topology", a.page(manager.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Topology(TopologyParams{Account: ac}))
 	}))
-	mux.HandleFunc("GET /admin/apps", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	mux.HandleFunc("GET /admin/apps", a.page(manager.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Apps(AppsParams{Account: ac}))
 	}))
-	mux.HandleFunc("GET /admin/inboxes", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	mux.HandleFunc("GET /admin/inboxes", a.page(manager.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Inboxes(InboxesParams{Account: ac}))
 	}))
-	mux.HandleFunc("GET /admin/jobs", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	mux.HandleFunc("GET /admin/jobs", a.page(manager.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, AdminJobs(AdminJobsParams{Account: ac}))
 	}))
-	mux.HandleFunc("GET /admin/deliveries", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	mux.HandleFunc("GET /admin/deliveries", a.page(manager.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Deliveries(DeliveriesParams{Account: ac}))
 	}))
-	mux.HandleFunc("GET /audit", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+	// the page of the role audit
+	mux.HandleFunc("GET /audit", a.page(manager.RoleAudit, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Audit(AuditParams{Account: ac}))
 	}))
 	mux.HandleFunc("GET /tablet", func(w http.ResponseWriter, r *http.Request) {
@@ -180,17 +188,17 @@ func (a *App) Handler() http.Handler {
 	return mux
 }
 
-// page serves a page of a person signed in; admin, of an administrator
-// (others get 403).
-func (a *App) page(admin bool, fn func(http.ResponseWriter, *http.Request, Account)) http.HandlerFunc {
+// page serves a page of a person signed in; with a role, of a person
+// with it (others get 403).
+func (a *App) page(role string, fn func(http.ResponseWriter, *http.Request, Account)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		v := a.viewer(r)
 		switch {
 		case v == nil:
 			http.Redirect(w, r, "/", http.StatusSeeOther)
-		case admin && !v.Admin:
-			pw.WriteHTML(&statusWriter{ResponseWriter: w, status: http.StatusForbidden}, r, Forbidden(ForbiddenParams{Account: account(v)}))
+		case role != "" && !v.Can(role):
+			pw.WriteHTML(&statusWriter{ResponseWriter: w, status: http.StatusForbidden}, r, Forbidden(ForbiddenParams{Account: account(v), Role: role}))
 		default:
 			fn(w, r, account(v))
 		}
@@ -204,7 +212,7 @@ func account(v *manager.Viewer) Account {
 		initial = strings.ToUpper(string(r))
 		break
 	}
-	return Account{Name: name, Initial: initial, Email: v.Email, Admin: v.Admin}
+	return Account{Name: name, Initial: initial, Email: v.Email, Admin: v.Admin, Topology: v.Can(manager.RoleTopology), Audit: v.Can(manager.RoleAudit)}
 }
 
 func firstOr(s, or string) string {
