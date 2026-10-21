@@ -12,12 +12,13 @@ import (
 	"github.com/shibukawa/yuruidb"
 )
 
-// The topology is a graph of nodes in one namespace: entries
-// (endpoints), routing nodes (queues, classes, inboxes) and exits
-// (displays, printers, archives), with edges from queues, endpoints and
-// inboxes (To), classes (Members) and displays (Fallback). A job sent to
-// a destination follows the edges (route). The graph is checked when a
-// node is put: every node it names exists, and no path leads back to it.
+// The topology is a graph of nodes in one namespace: entries (endpoints,
+// CUPS servers), routing nodes (queues, classes, filters, inboxes) and
+// exits (displays, printers, archives, sinks), with edges from queues,
+// endpoints, CUPS servers and inboxes (To), filters (Rules, Otherwise),
+// classes (Members) and displays (Fallback). A job sent to a destination
+// follows the edges (route). The graph is checked when a node is put:
+// every node it names exists, and no path leads back to it.
 
 // nodeKinds are the kinds of a node, in the order of a job's way.
 var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink}
@@ -66,8 +67,13 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 			}
 		}
 	case KindCups:
+		n.To = cleanNames(in.To)
+		if len(n.To) == 0 {
+			return "", fmt.Errorf("%w: a CUPS server forwards what it receives to at least one node (to)", ErrInvalid)
+		}
 		n.Port, n.TLSCert, n.TLSKey = in.Port, strings.TrimSpace(in.TLSCert), strings.TrimSpace(in.TLSKey)
 		if n.Port == 0 {
+
 			return "", fmt.Errorf("%w: a CUPS server listens on a port of its own (port)", ErrInvalid)
 		}
 		if (n.TLSCert == "") != (n.TLSKey == "") {

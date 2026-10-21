@@ -32,8 +32,9 @@ func (r *routing) add(l Leg) {
 
 // route takes a job to a node, and on along the edges: a slip at a
 // location, a delivery to a printer or an archive, an item in an inbox,
-// and the next nodes of a queue or a class. A node that cannot take it
-// gets a leg of its error; the job goes on elsewhere.
+// and the next nodes of a queue, an entry (an endpoint, a CUPS server) or
+// a class. A node that cannot take it gets a leg of its error; the job
+// goes on elsewhere.
 func (m *Manager) route(ctx context.Context, r *routing, name, from string, depth int) {
 	if depth > maxDepth {
 		r.add(Leg{Node: name, From: from, State: LegError, Error: "too deep: a cycle?"})
@@ -57,8 +58,9 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		m.routeSink(ctx, r, name, from)
 	case KindFilter:
 		m.routeFilter(ctx, r, name, from, depth)
-	case KindQueue, KindEndpoint:
+	case KindQueue, KindEndpoint, KindCups:
 		n, err := m.Node(ctx, name)
+
 		if err != nil {
 			r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: err.Error()})
 			return

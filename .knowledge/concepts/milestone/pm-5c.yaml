@@ -16,7 +16,7 @@ scope:
 constraints:
 - API のノードのポートは REST（HTTP）だけ、IPP は cups のノードだけ（requirement:print-manager-console の port-protocol）。raw 9100・LPD の受け口は持たない（requirement:print-manager の制約のまま）
 - ポートはプロセスの listener。サーバーレスでは断る（Options.NoPorts）。ポートは 1024〜65535 で、ノードの間で重ならない
-- cups のノードは一旦すべてのノードを見せる（requirement:print-manager-console の cups-server-node）。ノードそのものは宛先でない
+- cups のノードは一旦すべてのノードを見せ、ノードそのものは宛先でない（requirement:print-manager-console の cups-server-node）。2026-10-21 に改めた：cups のノードは to を持ち、そのポートはプリンタが 1 台（ノード自身）の CUPS サーバーで、受けたものを to に流す（capabilities.cups-exposure-by-edges）
 - sink が持つ文書は押し出されるまで消えない（Live）。sink を消すと手放す
 - preview は管理者だけが読み、Manager が農場へ取りに行く（管理者が決めた URL だけ。本文は 32 MiB まで、10 秒）
 capabilities:
@@ -36,8 +36,12 @@ capabilities:
     state: partial
     about: ipps は tls_cert・tls_key のファイルで（コードはある。証明書を置いて確かめていない）
   cups-exposure-by-edges:
-    state: planned
-    about: 辺で見せるノードを絞る（OS のクライアントから隠したいノードが出たとき）
+    state: implemented
+    about: >-
+      2026-10-21、利用者が「全ノードを見せる」を退けた（Printer Server は外に開いた入力を持ち、受けたものを他のノードに流す。endpoint も同じ）。cups のノードは endpoint と同じ to（辺：閉路と削除の確かめ、route は全部へ）を持ち、
+      そのポートはプリンタが 1 台（/printers/<ノード名>、/classes/<ノード名>、/ipp/print/<ノード名>、素の IPP の /ipp/print）の CUPS サーバー。lpstat -p はそのノードだけ、別のノードの名前は 404。
+      キャンバスに出力の口と外から入る矢印、サイドバーに Forwards to。TestPortHandler と TestPorts で確かめた
+
 non_goals:
 - ポートごとの認証の違い（cups のポートも IPP の Basic は今の SubmitTokens。アプリの client credentials と人の IPP の合言葉は pm-auth-2）
 - Lambda などサーバーレスでのポート（外部の Lambda が POST /in/{node} を叩く。requirement:print-manager-console の port-serverless）
