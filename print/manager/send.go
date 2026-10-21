@@ -56,7 +56,7 @@ func (m *Manager) PrintSlip(ctx context.Context, id, printer string, by Mark) (*
 // first, so that two managers do not both send it; a failed send is
 // tried again later (RetryAt).
 func (m *Manager) printSlip(ctx context.Context, id, printer, why, device string) (*Slip, error) {
-	p, err := m.Printer(ctx, printer)
+	p, err := m.printer(ctx, printer)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func retryDelay(attempts int) time.Duration {
 	return min(d, 15*time.Minute)
 }
 
-func (m *Manager) sendSlip(ctx context.Context, p *Printer, s *Slip) (int32, error) {
+func (m *Manager) sendSlip(ctx context.Context, p *Node, s *Slip) (int32, error) {
 	doc, err := m.Document(ctx, s.Job)
 	if err != nil {
 		return 0, err
@@ -135,7 +135,7 @@ func (m *Manager) sendSlip(ctx context.Context, p *Printer, s *Slip) (int32, err
 
 // send prints a document on a printer and returns the printer's job id
 // (0 for a raw printer, which has none).
-func (m *Manager) send(ctx context.Context, p *Printer, doc *bdf.Document, name string) (int32, error) {
+func (m *Manager) send(ctx context.Context, p *Node, doc *bdf.Document, name string) (int32, error) {
 	opts := &print.Options{Ticket: print.Ticket{JobName: name}, FontDirs: m.o.FontDirs, NoSystemFonts: m.o.NoSystemFonts}
 	if raw.IsURL(p.URL) {
 		rp, err := raw.Parse(p.URL)
@@ -185,8 +185,8 @@ type TickReport struct {
 // Tick does what is due: it sends the deliveries to printers and
 // archives that wait (or failed and are to be tried again), prints on
 // paper the slips nobody opened in time (or every unopened slip of a
-// location none of whose devices is connected), removes the slips and
-// the items ended longer ago than their location or inbox keeps them, the
+// display none of whose devices is connected), removes the slips and
+// the items ended longer ago than their display or inbox keeps them, the
 // jobs that ended and nothing shows any more, and the enrollment codes
 // expired. Any instance may call it, at any time, as often as it likes: a
 // scheduler of the platform (every minute), or a timer of the process.
@@ -196,22 +196,18 @@ func (m *Manager) Tick(ctx context.Context) (*TickReport, error) {
 	if err := m.tickDeliveries(ctx, rep); err != nil {
 		errs = append(errs, err)
 	}
-	locs, err := m.Locations(ctx)
+	nodes, err := m.Nodes(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for _, l := range locs {
-		rep.Location++
-		if err := m.tickLocation(ctx, &l, rep); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", l.Name, err))
-		}
-	}
-	nodes, err := m.Nodes(ctx)
-	if err != nil {
-		errs = append(errs, err)
-	}
 	for _, n := range nodes {
-		if n.Kind == KindInbox {
+		switch n.Kind {
+		case KindDisplay:
+			rep.Location++
+			if err := m.tickLocation(ctx, &n, rep); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))
+			}
+		case KindInbox:
 			if err := m.tickInbox(ctx, &n, rep); err != nil {
 				errs = append(errs, fmt.Errorf("%s: %w", n.Name, err))
 			}
@@ -235,7 +231,7 @@ func (m *Manager) Tick(ctx context.Context) (*TickReport, error) {
 	return rep, errors.Join(errs...)
 }
 
-func (m *Manager) tickLocation(ctx context.Context, l *Location, rep *TickReport) error {
+func (m *Manager) tickLocation(ctx context.Context, l *Node, rep *TickReport) error {
 	rec, err := m.st.db.Get[locationState](ctx, l.Name)
 	if err != nil {
 		if errors.Is(mapErr(err), ErrNotFound) {

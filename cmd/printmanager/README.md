@@ -116,44 +116,54 @@ identity, the container's or the instance's role.
 
 A person signs in at the IdP (see Sign-in) and sees `/jobs`: their jobs
 and their groups', and a form that prints a document to a node they may
-print to. An administrator sees every job there, and goes on to `/admin`
-(the topology, the templates, the endpoints' keys, the inboxes, the
-deliveries, the displays and their devices) and `/audit` (who did what:
-sign-ins, changes, keys, devices, releases, cancellations). The API takes
-the session's cookie (from the manager's own pages) as it takes the
-tokens; scripts use the tokens.
+print to. An administrator sees every job there, and goes on to the
+administrator's pages, one item each: `/admin/topology` (the editor of
+the topology: every node is placed, connected and set up there, with its
+templates, key or devices in the sidebar), `/admin/inboxes` (release and
+discard), `/admin/jobs` (every job and its route), `/admin/deliveries`
+(what waits for a printer or an archive, and the tick) and `/audit` (who
+did what: sign-ins, changes, keys, devices, refused documents, releases,
+cancellations). The API takes the session's cookie (from the manager's
+own pages) as it takes the tokens; scripts use the tokens.
 
-1. Add a printer and a display (a location: on `/admin`, or the API):
+1. Add a printer and a display (on the topology, or the API; both are
+   nodes):
 
    ```sh
-   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/printers/wh-a-laser -d '{"url":"ipps://wh-a-laser.local/ipp/print"}'
-   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/locations/wh-a -d '{"title":"第 1 倉庫","scope":"group","owner":"warehouse-a","fallback":{"printer":"wh-a-laser","after":"10m"}}'
+   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/wh-a-laser -d '{"kind":"printer","url":"ipps://wh-a-laser.local/ipp/print"}'
+   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/wh-a -d '{"kind":"display","title":"第 1 倉庫","scope":"group","owner":"warehouse-a","fallback":{"printer":"wh-a-laser","after":"10m"}}'
    ```
 
-2. Enroll a tablet: "Add a device" on `/admin` shows a one-time code and its
-   QR code; the tablet opens `/tablet?code=…`. Its page makes a key that cannot
-   be exported and keeps it; only that browser signs in as the device.
-   Add the page to the home screen.
+2. Enroll a tablet: "Add a device" in the display's sidebar on the topology
+   shows a one-time code and its QR code; the tablet opens `/tablet?code=…`.
+   Its page makes a key that cannot be exported and keeps it; only that
+   browser signs in as the device. Add the page to the home screen.
 3. Print to `ipp://<host>:<port>/ipp/print/wh-a` (or `POST /api/locations/wh-a/slips`
-   with the document as the body). PDF, Office documents, images, PWG and
-   Apple rasters and `.bdf` are taken.
+   with the document as the body, which answers with the slip). PDF, Office
+   documents, images, PWG and Apple rasters and `.bdf` are taken.
 
 ## Topology
 
-Locations, printers and the routing nodes below share one namespace, and
-each is an IPP printer at `/ipp/print/<name>` (a job sent to a printer's
-name is printed there; one sent to a location's name is shown there). A
-job sent to a node follows the edges from it; its record (`/api/jobs/<n>`)
-keeps a leg for every node it reached. The document is kept once for all
-of them.
+Every node, of every kind, is `PUT /api/nodes/<name>` with its `kind`
+and the kind's settings, in one namespace, and each is an IPP printer at
+`/ipp/print/<name>` (a job sent to a printer's name is printed there; one
+sent to a display's name is shown there). A job sent to a node follows
+the edges from it; its record (`/api/jobs/<n>`) keeps a leg for every
+node it reached. The document is kept once for all of them.
 
 | Kind | Does | Settings |
 |---|---|---|
-| `endpoint` | an entry for applications: `POST /in/<name>` with the endpoint's own key takes a document, or `{"template": "<id>", "data": {…}}` to fill a template, and forwards the job to every node of `to`. The key is shown once, when the endpoint is made (`key` in the answer) or rotated (`POST /api/nodes/<name>/key`); the manager keeps only its argon2id hash | `to`, `templates` (the ids it may fill; empty: any) |
+| `endpoint` | a REST entry for applications: `POST /in/<name>` with the endpoint's own key takes a document, or `{"template": "<id>", "data": {…}}` to fill one of the endpoint's templates, and forwards the job to every node of `to`. `accept` is what it takes (`both`, the default; `file`; `template`) and `formats` the formats of the documents it takes (as the converter names them: `pdf`, `docx`, `image`, `bdf` …; empty: any); a document it does not take is refused (415) and the refusal is in the audit log. The key is shown once, when the endpoint is made (`key` in the answer) or rotated (`POST /api/nodes/<name>/key`); the manager keeps only its argon2id hash | `to`, `accept`, `formats` |
 | `queue` | forwards the job to every node of `to` (a fan-out when there are several) | `to` |
 | `class` | sends the job to one of `members`, in turn (`round-robin`, the default) or the first (`failover`); a printer that does not take it is skipped for the next member | `members`, `policy` |
 | `inbox` | holds the job until a person releases it to nodes (those of `to`, or any when `to` is empty) or discards it; ended items stay `keep` (14 days) | `to`, `keep` |
+| `display` | shows the job as a slip on the devices enrolled there, and prints on paper what nobody opened within `fallback.after` (or every unopened slip while no device is connected); slips done or canceled stay `keep` (14 days) | `fallback` (`printer`, `after`), `keep`, `offline_after` |
+| `printer` | prints the job on paper, on a printer the manager reaches over the network (`ipp`, `ipps`, `socket`, `lpd`) | `url`, `route` (`direct`) |
 | `archive` | writes the job's `.bdf` and a JSON record of it to `store` (a documents URL: `bbolt`, `s3`, `r2`, `gcs`), each object once, under `collection` (`archive-<name>`); the manager never changes or deletes them. Give the S3 bucket a default retention (Object Lock) for an audit trail nobody can change | `store`, `collection` |
+
+Every node has a `scope` and an `owner` too (see Sign-in). A display or a
+printer keeps its kind; the other kinds change into one another, keeping
+the name.
 
 Three virtual printers and an endpoint, for example: an audit copy, a
 site's printers in turn, both warehouses at once, and an application that
@@ -165,17 +175,18 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/invoices 
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/tokyo -d '{"kind":"class","members":["mfp-3f","mfp-4f"]}'
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/both -d '{"kind":"queue","to":["wh-a","wh-b"]}'
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/review -d '{"kind":"inbox","to":["wh-a","tokyo"]}'
-curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/templates/invoice?name=invoice.xlsx --data-binary @invoice.xlsx
-curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/erp -d '{"kind":"endpoint","to":["invoices"],"templates":["invoice"]}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/erp -d '{"kind":"endpoint","to":["invoices"],"formats":["pdf"]}'
 # → {"name":"erp", …, "key":"bdfk_…"}: the application sends with that key
+curl -X PUT -H "Authorization: Bearer $TOKEN" "localhost:8080/api/nodes/erp/templates/invoice?name=invoice.xlsx" --data-binary @invoice.xlsx
 curl -X POST -H "Authorization: Bearer bdfk_…" -H "Content-Type: application/json" localhost:8080/in/erp -d '{"template":"invoice","name":"INV-1","data":{"customer":"ACME","total":12000}}'
 curl -X POST -H "Authorization: Bearer bdfk_…" --data-binary @statement.pdf "localhost:8080/in/erp?name=statement"
 ```
 
-A template is a compiled template (`.bdft`, from `bdf template compile`)
-or one of Excel, Word, PowerPoint, a PDF form, pdfme or text, as
-`bdf fill` takes them; `GET /api/templates/<id>` lists the fields its tags
-look up.
+A template belongs to its endpoint (`PUT /api/nodes/<name>/templates/<id>`;
+it goes when the endpoint does). It is a compiled template (`.bdft`, from
+`bdf template compile`) or one of Excel, Word, PowerPoint, a PDF form,
+pdfme or text, as `bdf fill` takes them; `GET /api/nodes/<name>/templates/<id>`
+lists the fields its tags look up.
 
 A node is checked when it is put: the nodes it names exist, the name is
 free of the other kinds, and no path leads back to it. A node another one
@@ -183,18 +194,22 @@ sends to is not deleted. Deliveries to printers and archives are sent by a
 process right after the job is routed, and by the tick (`POST /api/tick`;
 every minute on a serverless platform); one that fails is tried again
 after a growing wait, up to 20 times, and `POST /api/deliveries/<id>/retry`
-sends it again now. `/admin` shows the topology, the inboxes (release and
-discard), the jobs of a destination and the deliveries waiting; a CUPS
-client lists every node with CUPS-Get-Printers at `/ipp/print`
-(`bdf printers -url ipp://<host>:<port>/ipp/print`).
+sends it again now. `/admin/topology` is the editor (a palette of kinds,
+ports to connect, a sidebar for the node selected, pan and zoom; where the
+nodes are drawn is `/api/layout`); a CUPS client lists every node with
+CUPS-Get-Printers at `/ipp/print` (`bdf printers -url ipp://<host>:<port>/ipp/print`).
 
 `GET /auth/login` signs in at the IdP and `POST /auth/logout` out;
 `GET /api/me` tells who; `GET /api/my/jobs` lists a person's jobs and
 `GET /api/destinations` the nodes to print to; `GET /api/audit` is the log.
-The API of the topology, under the admin token: `GET /api/topology`;
-`GET`, `PUT` and `DELETE /api/nodes/<name>` and `POST /api/nodes/<name>/key`;
-`GET` and `PUT /api/layout` (where the nodes are drawn); `GET`, `PUT` and
-`DELETE /api/templates/<id>` and its `/file`; `GET` and `POST
+The API of the topology, under the admin token: `GET /api/topology`
+(every node, with what is at it: items held, slips open, devices,
+deliveries waiting); `GET`, `PUT` and `DELETE /api/nodes/<name>` and `POST
+/api/nodes/<name>/key`; a display's `GET …/board`, `GET …/devices` and
+`POST …/enrollments`, and `DELETE /api/devices/<id>`; an endpoint's `GET
+…/templates` and `GET`, `PUT` and `DELETE …/templates/<id>` and its
+`/file`; `GET /api/formats` (the formats an endpoint may take); `GET` and
+`PUT /api/layout` (where the nodes are drawn); `GET` and `POST
 /api/destinations/<name>/jobs`; `GET /api/jobs/<n>`, its `/document` and
 `POST …/cancel`; `GET /api/inboxes/<name>`, `POST /api/items/<id>/release`
 (`{"to": [...], "worker": "..."}`) and `…/discard`; `GET /api/deliveries`

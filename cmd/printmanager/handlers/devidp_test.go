@@ -86,10 +86,10 @@ func devServer(t *testing.T, policy OIDCConfig) (*testutil.Server, *App) {
 func TestDevRoster(t *testing.T) {
 	policy := devPolicy(t)
 	srv, a := devServer(t, policy)
-	if err := a.m.PutLocation(context.Background(), manager.Location{Name: "wh-a", Scope: manager.ScopeGroup, Owner: "warehouse-a"}); err != nil {
+	if _, err := a.m.PutNode(context.Background(), manager.Node{Name: "wh-a", Kind: manager.KindDisplay, Scope: manager.ScopeGroup, Owner: "warehouse-a"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.m.PutLocation(context.Background(), manager.Location{Name: "office"}); err != nil {
+	if _, err := a.m.PutNode(context.Background(), manager.Node{Name: "office", Kind: manager.KindDisplay}); err != nil {
 		t.Fatal(err)
 	}
 	for who, want := range map[string]struct {

@@ -1,3 +1,5 @@
+import "./admin.js";
+
 // The administrator's audit page: who did what, and the recent jobs with
 // their routes, through the API with the session's cookie.
 

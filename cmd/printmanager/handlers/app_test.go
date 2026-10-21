@@ -68,10 +68,10 @@ func TestApp(t *testing.T) {
 		}
 	}
 	// the manager's API is mounted
-	if code, _ := get("/api/locations", ""); code != http.StatusUnauthorized {
+	if code, _ := get("/api/nodes", ""); code != http.StatusUnauthorized {
 		t.Errorf("api without a token: %d", code)
 	}
-	if code, body := get("/api/locations", "t"); code != http.StatusOK || strings.TrimSpace(body) != "[]" {
+	if code, body := get("/api/nodes", "t"); code != http.StatusOK || strings.TrimSpace(body) != "[]" {
 		t.Errorf("api: %d %s", code, body)
 	}
 	// the endpoints and the IPP server are mounted too: the manager

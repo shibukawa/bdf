@@ -29,8 +29,6 @@ import (
 // Records of the collections. yuruidb binds a collection to a type, so
 // each collection has a type of its own.
 type (
-	locationRecord Location
-	printerRecord  Printer
 	nodeRecord     Node
 	templateRecord Template
 	layoutRecord   Layout
@@ -52,8 +50,8 @@ type (
 	}
 )
 
-// Store keeps the records of a manager (locations, printers, slips,
-// devices) and the documents of its slips. Every manager of the same
+// Store keeps the records of a manager (nodes, jobs, slips, devices) and
+// the documents of its jobs. Every manager of the same
 // store sees the same state: a manager holds none of its own.
 type Store struct {
 	db   *yuruidb.Store
@@ -103,8 +101,6 @@ func OpenStore(ctx context.Context, records, documents string) (*Store, error) {
 		return nil, fmt.Errorf("%w: %s does not make writes conditional", ErrStore, scheme(records))
 	}
 	for _, err := range []error{
-		db.Bind[locationRecord]("locations"),
-		db.Bind[printerRecord]("printers"),
 		db.Bind[nodeRecord]("nodes"),
 		db.Bind[templateRecord]("templates"),
 		db.Bind[layoutRecord]("layout"),

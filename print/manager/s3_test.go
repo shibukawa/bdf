@@ -31,7 +31,7 @@ func TestS3(t *testing.T) {
 	// the buckets outlive a run: a location of its own
 	loc := fmt.Sprintf("s3-%d", time.Now().UnixNano())
 	p := e.printer("laser-" + loc)
-	e.admin("PUT", "/api/locations/"+loc, Location{Fallback: &Fallback{Printer: "laser-" + loc, After: Duration(10 * time.Minute)}}, http.StatusOK)
+	e.admin("PUT", "/api/nodes/"+loc, Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "laser-" + loc, After: Duration(10 * time.Minute)}}, http.StatusOK)
 	d := e.enroll(loc, "tablet")
 	if b := d.board(); b == nil || len(b.Open) != 0 {
 		t.Fatalf("board %+v", b)
@@ -66,6 +66,6 @@ func TestS3(t *testing.T) {
 	if rep.Printed != 0 {
 		t.Fatalf("printed again: %+v", rep)
 	}
-	e.admin("DELETE", "/api/locations/"+loc, nil, http.StatusNoContent)
-	e.admin("DELETE", "/api/printers/laser-"+loc, nil, http.StatusNoContent)
+	e.admin("DELETE", "/api/nodes/"+loc, nil, http.StatusNoContent)
+	e.admin("DELETE", "/api/nodes/laser-"+loc, nil, http.StatusNoContent)
 }
