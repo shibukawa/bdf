@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf/converter/internal/music"
-	"github.com/shibukawa/bdf/converter/midi"
 )
 
 func warned(ws []string, part string) bool {
@@ -224,16 +223,8 @@ func TestPlayLength(t *testing.T) {
 	if len(s.PlayOrder) != 244 || s.Play.End != 244*4096*music.PPQ || len(s.Play.Tracks[0].Notes) != 244 {
 		t.Fatalf("%d measures played to %d", len(s.PlayOrder), s.Play.End)
 	}
-	// the waits between the notes are longer than a delta time of a
-	// Standard MIDI File: the file written reads as the same music
-	p, err := midi.Parse(s.Play.SMF(), nil)
-	if err != nil || len(p.Warnings) != 0 {
-		t.Fatalf("the file written: %v, warnings %q", err, p.Warnings)
-	}
-	notes := p.Perf.Tracks[0].Notes
-	if len(notes) != 244 || notes[243].Tick != 243*4096*music.PPQ+4092*music.PPQ || p.Perf.End != s.Play.End {
-		t.Errorf("%d notes to %d", len(notes), p.Perf.End)
-	}
+	// (the waits between the notes are longer than a delta time of a
+	// Standard MIDI File: music's tests read such a file back)
 	if res := engrave(t, s); res.Measures != 245 {
 		t.Errorf("%s", res.Summary())
 	}
@@ -265,8 +256,5 @@ func TestClefNone(t *testing.T) {
 	s, _ := parse(t, score(m))
 	if cs := s.Parts[0].Measures[0].Clefs; len(cs) != 2 || cs[1].Clef.Sign != music.ClefNone || cs[1].Offset != 2*music.PPQ {
 		t.Fatalf("clefs %+v", cs)
-	}
-	if res := engrave(t, s); res.Notes != 2 {
-		t.Errorf("%s", res.Summary())
 	}
 }

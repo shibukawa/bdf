@@ -95,10 +95,8 @@ func TestPrintRawText(t *testing.T) {
 	if err != nil || res.Format != "ESC/P (text)" || res.Sheets != 1 {
 		t.Fatalf("%+v %v", res, err)
 	}
+	// (what the text mode writes, print/pdl's tests check on this slip)
 	data := s.Jobs()[0].Data()
-	if !bytes.Contains(data, []byte("\x1bC\x21\x1bN\x02")) || !bytes.Contains(data, []byte("\x1c&")) || bytes.Contains(data, []byte("\x1b*")) {
-		t.Errorf("ESC/P of the slip: %q", data[:min(len(data), 64)])
-	}
 	// the names printed on the paper are left out: 得意先 in JIS
 	if bytes.Contains(data, []byte("\x46\x40\x30\x55\x40\x68")) {
 		t.Error("the preprinted paper was printed")
@@ -148,7 +146,9 @@ func TestPrintCUPSRaw(t *testing.T) {
 // TestDeviceTicket checks the settings of a ticket and that an IPP
 // printer of pages is told what it supports of them.
 func TestDeviceTicket(t *testing.T) {
-	for _, bad := range []Ticket{{Darkness: 200}, {Cut: "half"}, {CashDrawer: 3}, {MediaTracking: "holes"}, {PrintMode: "graphics"}, {LabelGap: -1}} {
+	// (the settings of the device, pdl.Settings.Check refuses and its tests
+	// try one by one; the gap of labels is the ticket's own)
+	for _, bad := range []Ticket{{CashDrawer: 3}, {LabelGap: -1}} {
 		if err := bad.Check(); err == nil {
 			t.Errorf("%+v: no error", bad)
 		}

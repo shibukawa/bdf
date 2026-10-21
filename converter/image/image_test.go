@@ -2,13 +2,11 @@ package image
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"unicode/utf16"
 
 	"github.com/shibukawa/bdf"
 )
@@ -174,8 +172,8 @@ func TestSniff(t *testing.T) {
 }
 
 // TestSVGVariants: an Illustrator SVG that names its namespace with an
-// entity, a UTF-16 document, a Latin-1 one, and an SVG without the SVG
-// namespace, which browsers do not draw.
+// entity, and an SVG without the SVG namespace, which browsers do not draw.
+// (The encodings of a document, internal/xmltree reads and tests.)
 func TestSVGVariants(t *testing.T) {
 	illustrator := `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [
@@ -185,18 +183,6 @@ func TestSVGVariants(t *testing.T) {
 	p, err := readSVG([]byte(illustrator))
 	if err != nil || len(p.warnings) != 0 || p.w != 64 || p.h != 32 || p.native.Title.First() != "Illustrated" {
 		t.Errorf("illustrator: %v %+v", err, p)
-	}
-	u := utf16.Encode([]rune(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 4"><desc>UTF-16 の説明</desc></svg>`))
-	b := []byte{0xff, 0xfe}
-	for _, c := range u {
-		b = binary.LittleEndian.AppendUint16(b, c)
-	}
-	if p, err := readSVG(b); err != nil || p.w != 8 || p.native.Description.First() != "UTF-16 の説明" {
-		t.Errorf("utf-16: %v %+v", err, p)
-	}
-	latin := []byte("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><svg xmlns=\"http://www.w3.org/2000/svg\"><title>Caf\xe9</title></svg>")
-	if p, err := readSVG(latin); err != nil || p.native.Title.First() != "Café" {
-		t.Errorf("latin-1: %v %+v", err, p)
 	}
 	if p, err := readSVG([]byte(`<svg width="1" height="1"/>`)); err != nil || len(p.warnings) != 1 {
 		t.Errorf("no namespace: %v %+v", err, p)

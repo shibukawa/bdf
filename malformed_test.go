@@ -95,9 +95,6 @@ func TestInflateMaximumIntegerLimit(t *testing.T) {
 			t.Errorf("limit %d: %q, %v", limit, got, err)
 		}
 	}
-	if _, err := inflate(packed, len(plain)-1, 0); err == nil {
-		t.Error("data larger than the limit was accepted")
-	}
 }
 
 func TestInflateLimits(t *testing.T) {

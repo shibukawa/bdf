@@ -107,19 +107,27 @@ func TestFunctions(t *testing.T) {
 // convert converts a testdata PDF and returns the document with a reader over it.
 func convert(t *testing.T, name string) (*Result, *bdf.Reader) {
 	t.Helper()
-	res, err := ConvertFile(filepath.Join("testdata", name), nil)
+	return convertWith(t, name, nil)
+}
+
+func convertWith(t *testing.T, name string, opts *Options) (*Result, *bdf.Reader) {
+	t.Helper()
+	res, err := ConvertFile(filepath.Join("testdata", name), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	return res, reopen(t, res)
+}
+
+// reopen writes the document of a conversion and opens it.
+func reopen(t *testing.T, res *Result) *bdf.Reader {
+	t.Helper()
+	b := encodeDoc(t, res.Doc)
+	r, err := bdf.OpenSingle(bytes.NewReader(b), int64(len(b)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return res, r
+	return r
 }
 
 func pageText(t *testing.T, r *bdf.Reader) string {
@@ -1112,15 +1120,7 @@ func convertBytes(t *testing.T, data []byte, opts *Options) (*Result, *bdf.Reade
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res, r
+	return res, reopen(t, res)
 }
 
 func TestConvertTagged(t *testing.T) {

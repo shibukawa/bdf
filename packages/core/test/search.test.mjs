@@ -66,20 +66,11 @@ test("a hit is located in the text it was normalized from", () => {
   assert.equal(split.text, "e\u0301x");
 });
 
-test("text index matches the extractor's ordinals", async () => {
+test("the extractor's separators: a line, a paragraph, a cell", async () => {
   const doc = await BdfDocument.open(new BufferSource(fixture));
   const view = doc.view("doc");
-  assert.ok(view.textIndex);
-  const runs = await doc.textIndex(view);
   const body = await doc.ensure(view.pages[0].layers[1].obj);
   const extracted = extractText(body, (h) => doc.objectSync(h));
-  const bodyRuns = runs.filter((r) => r.a === 0 && r.b === 1);
-  assert.equal(bodyRuns.length, extracted.length);
-  bodyRuns.forEach((r, i) => {
-    assert.equal(r.ordinal, extracted[i].ordinal);
-    assert.equal(r.text, extracted[i].text);
-    if (i > 0) assert.equal(r.sep, extracted[i].sep);
-  });
   // MARK LINE => space, MARK PARAGRAPH => break, MARK CELL => break
   assert.equal(extracted[1].sep, Sep.BREAK, "first paragraph after heading");
   assert.equal(extracted[2].sep, Sep.SPACE, "line inside a paragraph");
@@ -88,9 +79,10 @@ test("text index matches the extractor's ordinals", async () => {
 });
 
 test("Go text index and TS extractor agree on every page layer", async () => {
-  // the demo uses every structure MARK kind; both extractors must derive the same separators
+  // the demo uses every structure MARK kind; both extractors must derive the same separators and ordinals
   const doc = await BdfDocument.open(new BufferSource(fixture));
   for (const view of doc.manifest.views.filter((v) => v.pages)) {
+    assert.ok(view.textIndex);
     const index = await doc.textIndex(view);
     for (const [a, page] of view.pages.entries()) {
       for (const [b, layer] of page.layers.entries()) {
@@ -99,6 +91,7 @@ test("Go text index and TS extractor agree on every page layer", async () => {
         assert.equal(indexed.length, extracted.length, `${view.id} ${a}/${b}`);
         indexed.forEach((r, i) => {
           assert.equal(r.text, extracted[i].text);
+          assert.equal(r.ordinal, extracted[i].ordinal, `${view.id} ${a}/${b} run ${i} ${r.text}`);
           if (i > 0) assert.equal(r.sep, extracted[i].sep, `${view.id} ${a}/${b} run ${i} ${r.text}`);
         });
       }

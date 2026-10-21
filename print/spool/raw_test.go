@@ -51,10 +51,11 @@ func TestRunRaw(t *testing.T) {
 	if jb.Format != print.FormatPDF || jb.Reasons[0] != "job-completed-successfully" || jb.Printer.URL != strings.Split(lpd.URL, "?")[0] {
 		t.Errorf("LPD: %+v", jb)
 	}
-	if js := sock.Jobs(); len(js) != 1 || !bytes.HasPrefix(js[0].Data(), []byte("%!PS-Adobe-3.0\n")) || !bytes.Contains(js[0].Data(), []byte("/Duplex true /Tumble false")) {
+	// (what each printer is sent, print's tests of PrintRaw check)
+	if js := sock.Jobs(); len(js) != 1 {
 		t.Errorf("the 9100 printer has %d jobs", len(js))
 	}
-	if js := lpd.Jobs(); len(js) != 1 || !strings.Contains(string(js[0].Data()), "@PJL ENTER LANGUAGE=PDF\r\n%PDF-1.7") || !strings.Contains(js[0].Control, "J#2.1_b.bdf") {
+	if js := lpd.Jobs(); len(js) != 1 || !strings.Contains(js[0].Control, "J#2.1_b.bdf") {
 		t.Errorf("the LPD printer has %d jobs", len(js))
 	}
 	info := s.Printers()

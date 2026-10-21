@@ -44,6 +44,45 @@ func text(t *testing.T, doc *bdf.Document) string {
 	return b.String()
 }
 
+// compiled compiles a template with the data of the options as its sample,
+// checks that the compiled template describes the template (its format,
+// its source and its fields) and fills to the form the template filled to
+// (res), and returns the template compiled without a sample.
+func compiled(t *testing.T, name string, tpl []byte, res *Result, opts *Options) *Compiled {
+	t.Helper()
+	comp, err := Compile(bytes.NewReader(tpl), int64(len(tpl)), name, opts)
+	if err != nil {
+		t.Errorf("%s: compile: %v", name, err)
+		return nil
+	}
+	var bdft, direct, again bytes.Buffer
+	if err := comp.Doc.WriteSingle(&bdft); err != nil {
+		t.Fatal(err)
+	}
+	def, src, err := ReadTemplate(bytes.NewReader(bdft.Bytes()), int64(bdft.Len()))
+	if err != nil || def.Format != res.Format || !bytes.Equal(src, tpl) || !reflect.DeepEqual(def.Fields, res.Fields) {
+		t.Errorf("%s: the compiled template: %v, %+v", name, err, def)
+	}
+	filled, err := Fill(bytes.NewReader(bdft.Bytes()), int64(bdft.Len()), opts)
+	if err != nil {
+		t.Errorf("%s: filling the compiled template: %v", name, err)
+		return nil
+	}
+	res.Doc.WriteSingle(&direct)
+	filled.Doc.WriteSingle(&again)
+	if !bytes.Equal(direct.Bytes(), again.Bytes()) {
+		t.Errorf("%s: the compiled template fills to another form than the template (%d and %d bytes)", name, direct.Len(), again.Len())
+	}
+	bare := *opts
+	bare.Data, bare.Strict = nil, false
+	comp, err = Compile(bytes.NewReader(tpl), int64(len(tpl)), "", &bare)
+	if err != nil {
+		t.Errorf("%s: compile without a sample: %v", name, err)
+		return nil
+	}
+	return comp
+}
+
 func TestLoadData(t *testing.T) {
 	csv := "name,qty,code,ok,note\nA,2,007,true,\n\"B, the second\",1.5,12,FALSE,x\n"
 	sjis := []byte{0x96, 0xbc, 0x91, 0x4f, ',', 'n', '\n', 0x8e, 0x52, 0x93, 0x63, ',', '3', '\n'} // 名前,n / 山田,3 in Shift_JIS
@@ -130,8 +169,10 @@ func TestFill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// (the form itself, the sums of its rows among it, the Excel converter's
+	// tests check: here the data of the sources reaches it)
 	got := text(t, res.Doc)
-	for _, want := range []string{"Invoice A-7", "To: ACME", "Pen\n2\n120\n240", "Ink\n1\n800\n800", "Total\n1,040", "Tax\n104", "Sum\n1,144"} {
+	for _, want := range []string{"Invoice A-7", "To: ACME", "Pen\n2\n120\n240"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the form lacks %q:\n%s", want, got)
 		}
@@ -185,7 +226,8 @@ func TestFillOffice(t *testing.T) {
 			t.Fatal(err)
 		}
 		name := c.file[strings.LastIndex(c.file, "/")+1 : strings.LastIndex(c.file, ".")]
-		res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), &Options{Data: load(name), Files: os.DirFS("../test/xlsx/data"), Convert: testConvert()})
+		opts := &Options{Data: load(name), Files: os.DirFS("../test/xlsx/data"), Convert: testConvert()}
+		res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), opts)
 		if err != nil {
 			t.Errorf("%s: %v", c.file, err)
 			continue
@@ -203,30 +245,13 @@ func TestFillOffice(t *testing.T) {
 			t.Errorf("%s: warning: %s", c.file, w)
 		}
 		// compiled, it fills to the same form, and shows its tags without a sample
-		cmp, err := Compile(bytes.NewReader(tpl), int64(len(tpl)), name, &Options{Convert: testConvert()})
-		if err != nil {
-			t.Errorf("%s: compile: %v", c.file, err)
-			continue
-		}
-		if got := text(t, cmp.Doc); !strings.Contains(got, "{{") || len(cmp.Doc.Views) != 1 || cmp.Template.Format != c.format {
-			t.Errorf("%s: the pages of the compiled template (%d views):\n%s", c.file, len(cmp.Doc.Views), got)
-		}
-		if !reflect.DeepEqual(cmp.Template.Fields, res.Fields) {
-			t.Errorf("%s: the fields of the compiled template: %+v\nof the filled one: %+v", c.file, cmp.Template.Fields, res.Fields)
-		}
-		var bdft, direct, viaBDFT bytes.Buffer
-		if err := cmp.Doc.WriteSingle(&bdft); err != nil {
-			t.Fatal(err)
-		}
-		again, err := Fill(bytes.NewReader(bdft.Bytes()), int64(bdft.Len()), &Options{Data: load(name), Files: os.DirFS("../test/xlsx/data"), Convert: testConvert()})
-		if err != nil {
-			t.Errorf("%s: filling the compiled template: %v", c.file, err)
-			continue
-		}
-		res.Doc.WriteSingle(&direct)
-		again.Doc.WriteSingle(&viaBDFT)
-		if !bytes.Equal(direct.Bytes(), viaBDFT.Bytes()) {
-			t.Errorf("%s: the compiled template fills to another form than the template", c.file)
+		if bare := compiled(t, name, tpl, res, opts); bare != nil {
+			if got := text(t, bare.Doc); !strings.Contains(got, "{{") || len(bare.Doc.Views) != 1 || bare.Template.Format != c.format {
+				t.Errorf("%s: the pages of the compiled template (%d views):\n%s", c.file, len(bare.Doc.Views), got)
+			}
+			if !reflect.DeepEqual(bare.Template.Fields, res.Fields) {
+				t.Errorf("%s: the fields of the compiled template: %+v\nof the filled one: %+v", c.file, bare.Template.Fields, res.Fields)
+			}
 		}
 	}
 }
@@ -522,7 +547,8 @@ func TestSchema(t *testing.T) {
 }
 
 // TestFillPlaced fills the templates whose fields have places: a PDF with
-// the fields of a form, and a template of pdfme.
+// the fields of a form, and a template of pdfme. (The forms themselves,
+// converter/pdfform and converter/pdfme check; here one value each.)
 func TestFillPlaced(t *testing.T) {
 	load := func(name string) map[string]any {
 		b, err := os.ReadFile(name)
@@ -545,21 +571,21 @@ func TestFillPlaced(t *testing.T) {
 		bare, schema []string
 	}{
 		{"pdfform/testdata/application.pdf", FormatPDF, "../test/pdf/data/application.json", 2,
-			[]string{"Application", "Taro Yamada", "YAMADA TARO", "12800"},
+			[]string{"Taro Yamada"},
 			[]string{"Application"}, []string{`"applicant"`, `"maxLength": 7`, `"enum"`, `"United States"`, `"type": "boolean"`}},
 		{"pdfme/testdata/invoice.json", FormatPDFME, "../test/pdfme/data/invoice.json", 2,
-			[]string{"インボイス", "INV-2026-1014", "2026.10.14", "ストラップ X", "数量", "単価", "金額", "総額 46,200", "2 / 2"},
+			[]string{"INV-2026-1014"},
 			[]string{"インボイス", "INV-0001", "ノート\n2\n300\n600", "1 / 1"}, []string{`"customer"`, `"format": "date"`, `"mode": "rows"`, `"code": "qr"`, `"total"`}},
 		{"pdfme/testdata/certificate.json", FormatPDFME, "../test/pdfme/data/certificate.json", 1,
-			[]string{"Certificate of Completion", "Hanako Tanaka", "Score 92 / 100 (with distinction)", "October 14, 2026"},
+			[]string{"Hanako Tanaka"},
 			[]string{"Certificate of Completion", "Jane Doe"}, []string{`"honours"`, `"points"`, `"kind": "image"`}},
 	} {
 		tpl, err := os.ReadFile("../converter/" + c.file)
 		if err != nil {
 			t.Fatal(err)
 		}
-		data := load(c.data)
-		res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), &Options{Data: data, Strict: true, Convert: convert})
+		opts := &Options{Data: load(c.data), Strict: true, Convert: convert}
+		res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), opts)
 		if err != nil {
 			t.Errorf("%s: %v", c.file, err)
 			continue
@@ -586,45 +612,19 @@ func TestFillPlaced(t *testing.T) {
 				t.Errorf("%s: no %s in the schema\n%s", c.file, w, schema)
 			}
 		}
-		// compiled with the data as its sample, it fills to the same form
-		comp, err := Compile(bytes.NewReader(tpl), int64(len(tpl)), "template", &Options{Data: data, Convert: convert})
-		if err != nil {
-			t.Errorf("%s: %v", c.file, err)
-			continue
-		}
-		var bdft, direct, again bytes.Buffer
-		if err := comp.Doc.WriteSingle(&bdft); err != nil {
-			t.Fatal(err)
-		}
-		def, src, err := ReadTemplate(bytes.NewReader(bdft.Bytes()), int64(bdft.Len()))
-		if err != nil || def.Format != c.format || !bytes.Equal(src, tpl) || !reflect.DeepEqual(def.Fields, fields) {
-			t.Errorf("%s: the compiled template: %v, %+v", c.file, err, def)
-		}
-		filled, err := Fill(bytes.NewReader(bdft.Bytes()), int64(bdft.Len()), &Options{Data: data, Convert: convert})
-		if err != nil {
-			t.Errorf("%s: %v", c.file, err)
-			continue
-		}
-		res.Doc.WriteSingle(&direct)
-		filled.Doc.WriteSingle(&again)
-		if !bytes.Equal(direct.Bytes(), again.Bytes()) {
-			t.Errorf("%s: the compiled template fills to another form (%d and %d bytes)", c.file, direct.Len(), again.Len())
-		}
+		// compiled with the data as its sample, it fills to the same form;
 		// compiled without one, its pages are the template as it is: a
 		// template of pdfme with what its designer left in its fields
-		comp, err = Compile(bytes.NewReader(tpl), int64(len(tpl)), "", &Options{Convert: convert})
-		if err != nil {
-			t.Errorf("%s: %v", c.file, err)
-			continue
-		}
-		got = text(t, comp.Doc)
-		for _, w := range c.bare {
-			if !strings.Contains(got, w) {
-				t.Errorf("%s: no %q in the pages without a sample\n%s", c.file, w, got)
+		if bare := compiled(t, "template", tpl, res, opts); bare != nil {
+			got = text(t, bare.Doc)
+			for _, w := range c.bare {
+				if !strings.Contains(got, w) {
+					t.Errorf("%s: no %q in the pages without a sample\n%s", c.file, w, got)
+				}
 			}
-		}
-		if (comp.Template.Sample != nil) != (c.format == FormatPDFME) {
-			t.Errorf("%s: the sample of the compiled template: %v", c.file, comp.Template.Sample)
+			if (bare.Template.Sample != nil) != (c.format == FormatPDFME) {
+				t.Errorf("%s: the sample of the compiled template: %v", c.file, bare.Template.Sample)
+			}
 		}
 	}
 	// what is no template
@@ -636,7 +636,8 @@ func TestFillPlaced(t *testing.T) {
 }
 
 // TestFillText fills the templates of text with their data, compiles them,
-// and fills the compiled templates.
+// and fills the compiled templates. (The forms themselves, the tests of
+// converter/textform compare with the ones wanted; here one value each.)
 func TestFillText(t *testing.T) {
 	convert := &converter.Options{FontDirs: []string{"../converter/textform/testdata/fonts"}, NoSystemFonts: true}
 	for _, c := range []struct {
@@ -645,10 +646,10 @@ func TestFillText(t *testing.T) {
 		want   []string
 		schema []string
 	}{
-		{"slip", 1, []string{"納品書", "株式会社サンプル商事", "クリアファイル A4 10", "15,890", "（控）"}, []string{`"rows"`, `"mode": "slots"`, `"slots": 5`, `"address"`}},
-		{"rows", 3, []string{"出荷明細 S-2026-1020", "六角ボルト M4×15"}, []string{`"items"`, `"mode": "rows"`}},
-		{"pages", 3, []string{"請求明細書", "3 / 3 頁", "前頁より繰越      409,910"}, []string{`"pages"`, `"mode": "pages"`, `"carry_in"`}},
-		{"receipt", 1, []string{"サンプル珈琲店", "2個 × 単価420"}, []string{`"items"`, `"qty"`}},
+		{"slip", 1, []string{"株式会社サンプル商事"}, []string{`"rows"`, `"mode": "slots"`, `"slots": 5`, `"address"`}},
+		{"rows", 3, []string{"出荷明細 S-2026-1020"}, []string{`"items"`, `"mode": "rows"`}},
+		{"pages", 3, []string{"3 / 3 頁"}, []string{`"pages"`, `"mode": "pages"`, `"carry_in"`}},
+		{"receipt", 1, []string{"サンプル珈琲店"}, []string{`"items"`, `"qty"`}},
 	} {
 		tpl, err := os.ReadFile("../converter/textform/testdata/" + c.name + ".txt")
 		if err != nil {
@@ -662,7 +663,8 @@ func TestFillText(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), &Options{Data: data, Strict: true, Convert: convert})
+		opts := &Options{Data: data, Strict: true, Convert: convert}
+		res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), opts)
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -689,38 +691,12 @@ func TestFillText(t *testing.T) {
 				t.Errorf("%s: no %s in the schema\n%s", c.name, w, schema)
 			}
 		}
-		// compiled with the data as its sample, it fills to the same form
-		comp, err := Compile(bytes.NewReader(tpl), int64(len(tpl)), c.name+".txt", &Options{Data: data, Convert: convert})
-		if err != nil {
-			t.Errorf("%s: %v", c.name, err)
-			continue
-		}
-		var bdft, direct, again bytes.Buffer
-		if err := comp.Doc.WriteSingle(&bdft); err != nil {
-			t.Fatal(err)
-		}
-		def, src, err := ReadTemplate(bytes.NewReader(bdft.Bytes()), int64(bdft.Len()))
-		if err != nil || def.Format != FormatText || !bytes.Equal(src, tpl) || !reflect.DeepEqual(def.Fields, fields) {
-			t.Errorf("%s: the compiled template: %v, %+v", c.name, err, def)
-		}
-		filled, err := Fill(bytes.NewReader(bdft.Bytes()), int64(bdft.Len()), &Options{Data: data, Convert: convert})
-		if err != nil {
-			t.Errorf("%s: %v", c.name, err)
-			continue
-		}
-		res.Doc.WriteSingle(&direct)
-		filled.Doc.WriteSingle(&again)
-		if !bytes.Equal(direct.Bytes(), again.Bytes()) {
-			t.Errorf("%s: the compiled template fills to another form (%d and %d bytes)", c.name, direct.Len(), again.Len())
-		}
+		// compiled with the data as its sample, it fills to the same form;
 		// compiled without one, its pages are the template as it is
-		comp, err = Compile(bytes.NewReader(tpl), int64(len(tpl)), "", &Options{Convert: convert})
-		if err != nil {
-			t.Errorf("%s: %v", c.name, err)
-			continue
-		}
-		if got := text(t, comp.Doc); !strings.Contains(got, "{{") || comp.Template.Sample != nil || len(comp.Template.Fields) != len(fields) {
-			t.Errorf("%s: the pages without a sample:\n%s", c.name, got)
+		if bare := compiled(t, c.name+".txt", tpl, res, opts); bare != nil {
+			if got := text(t, bare.Doc); !strings.Contains(got, "{{") || bare.Template.Sample != nil || len(bare.Template.Fields) != len(fields) {
+				t.Errorf("%s: the pages without a sample:\n%s", c.name, got)
+			}
 		}
 	}
 	// text whose first tag is past the first KiB, and text without tags

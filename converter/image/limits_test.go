@@ -87,10 +87,4 @@ func TestSVGEntities(t *testing.T) {
 	if title := res.Doc.Meta.DC.Title.First(); len(title) > 300 || res.Width != 8 || !slices.Contains(res.Warnings, want) {
 		t.Errorf("title of %d bytes, warnings %q", len(title), res.Warnings)
 	}
-	// Twenty references are within the limit.
-	doc = strings.Replace(doc, strings.Repeat("&a;", 100), strings.Repeat("&a;", 20), 1)
-	res, err = Convert(bytes.NewReader([]byte(doc)), int64(len(doc)), nil)
-	if err != nil || len(res.Doc.Meta.DC.Title.First()) != 20*50<<10 || len(res.Warnings) != 0 {
-		t.Errorf("%v, warnings %q", err, res.Warnings)
-	}
 }

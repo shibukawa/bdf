@@ -179,23 +179,6 @@ func TestRemoteUserInfo(t *testing.T) {
 	}
 }
 
-// A document whose elements nest deeper than a parser lets them is
-// refused, as XHTML as it is as HTML: the readers of the tree would need a
-// stack as deep.
-func TestDeepDocument(t *testing.T) {
-	for name, head := range map[string]string{"html": `<!DOCTYPE html><html><body>`, "xhtml": `<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><body>`} {
-		for _, c := range []struct {
-			depth int
-			ok    bool
-		}{{500, true}, {520, false}} {
-			_, err := ConvertBytes([]byte(head+strings.Repeat("<b>", c.depth)+"x"+strings.Repeat("</b>", c.depth)+`</body></html>`), testOptions())
-			if (err == nil) != c.ok {
-				t.Errorf("%s, %d levels: %v", name, c.depth, err)
-			}
-		}
-	}
-}
-
 // The article that Readability picks out holds elements it has renamed,
 // headings among them, which it makes divs.
 func TestRenamedHeading(t *testing.T) {

@@ -1,6 +1,7 @@
 package jbig2
 
 import (
+	"bytes"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -61,16 +62,17 @@ func readFixture(t *testing.T, base string) (page, globals []byte, want *Bitmap)
 	return page, globals, want
 }
 
-// TestEncoderFixtures checks that the test encoder still produces the fixtures'
-// pages, so that the other tests exercise what Ghostscript verified.
+// TestEncoderFixtures checks that the test encoder still produces the
+// streams in testdata (TestGenerate wrote them from it, and Ghostscript
+// verified their pages), so that the other tests exercise what it verified.
 func TestEncoderFixtures(t *testing.T) {
 	for _, f := range fixtures() {
 		t.Run(f.name, func(t *testing.T) {
-			got, err := Decode(f.page, f.globals)
-			if err != nil {
-				t.Fatal(err)
+			page, globals, want := readFixture(t, filepath.Join("testdata", f.name))
+			if !bytes.Equal(page, f.page) || !bytes.Equal(globals, f.globals) {
+				t.Fatal("the encoder's stream differs from the one in testdata")
 			}
-			if d := diff(got, f.want); d != "" {
+			if d := diff(f.want, want); d != "" {
 				t.Fatal(d)
 			}
 		})

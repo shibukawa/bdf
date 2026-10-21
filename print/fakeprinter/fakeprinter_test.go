@@ -107,33 +107,8 @@ func TestIPPRefusals(t *testing.T) {
 	if _, err := c.PrintJob(ctx, "x", "image/jpeg", nil, strings.NewReader("x")); !ipp.IsStatus(err, ipp.StatusServerErrorBusy) {
 		t.Errorf("busy: %v", err)
 	}
-	p.SetAccepting(false)
-	if _, err := c.PrintJob(ctx, "x", "image/jpeg", nil, strings.NewReader("x")); !ipp.IsStatus(err, ipp.StatusServerErrorNotAcceptingJobs) {
-		t.Errorf("not accepting: %v", err)
-	}
-	p.SetAccepting(true)
-	p.Username, p.Password = "alice", "secret"
-	if _, err := c.GetPrinterAttributes(ctx); err == nil {
-		t.Error("no password")
-	}
-	c.Username, c.Password = "alice", "secret"
-	if _, err := c.GetPrinterAttributes(ctx); err != nil {
-		t.Errorf("with the password: %v", err)
-	}
-}
-
-func TestIPPOldPrinter(t *testing.T) {
-	ps, _ := fakeprinter.LookupPreset("legacy-ipp11")
-	p := ps.New("old")
-	c := client(fakeprinter.Start(t, p))
-	// IPP/2.0 falls back to 1.1
-	pr, err := c.GetPrinterAttributes(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if pr.MakeModel != "BDF Fake Old Printer" {
-		t.Errorf("%+v", pr)
-	}
+	// (a printer that is not accepting jobs, and one with a password, the
+	// client's tests in print/ipp try against this printer)
 }
 
 func TestIPPAttributes(t *testing.T) {
@@ -498,9 +473,11 @@ func TestOldPrinterDocuments(t *testing.T) {
 	c := client(fakeprinter.Start(t, p))
 	ctx := context.Background()
 	// (as bdf print does: the printer's attributes first, which finds its
-	// version)
-	if _, err := c.GetPrinterAttributes(ctx); err != nil {
+	// version: IPP/2.0 falls back to 1.1)
+	if pr, err := c.GetPrinterAttributes(ctx); err != nil {
 		t.Fatal(err)
+	} else if pr.MakeModel != "BDF Fake Old Printer" {
+		t.Errorf("%+v", pr)
 	}
 	for i := range 2 {
 		st, err := c.PrintJob(ctx, "x", "application/pdf", nil, strings.NewReader("%PDF-1.4 old"))

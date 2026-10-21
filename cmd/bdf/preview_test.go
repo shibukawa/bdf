@@ -139,7 +139,8 @@ func TestThumbnailAndRender(t *testing.T) {
 }
 
 // TestRenderAntialias checks that the flag reaches the rasterizer and that
-// its default remains the existing smoothed output at low and high scales.
+// its default remains the existing smoothed output (the rasterizer's tests
+// try the scales).
 func TestRenderAntialias(t *testing.T) {
 	dir := t.TempDir()
 	doc := bdf.NewDocument()
@@ -156,33 +157,29 @@ func TestRenderAntialias(t *testing.T) {
 	if err := os.WriteFile(in, data.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, scale := range []string{"1", "8"} {
-		t.Run("scale="+scale, func(t *testing.T) {
-			var smoothed []byte
-			for _, mode := range []string{"", "default", "on", "off"} {
-				out := filepath.Join(dir, "page.png")
-				args := []string{"render", "-q", "-scale", scale, "-no-system-fonts"}
-				if mode != "" {
-					args = append(args, "-antialias="+mode)
-				}
-				if status, stderr := run(t, append(args, in, out)...); status != 0 {
-					t.Fatalf("-antialias=%q: exit status %d: %s", mode, status, stderr)
-				}
-				pixels, err := os.ReadFile(out)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if mode == "" {
-					smoothed = pixels
-				} else if mode == "off" {
-					if bytes.Equal(smoothed, pixels) {
-						t.Error("off produced the smoothed image")
-					}
-				} else if !bytes.Equal(smoothed, pixels) {
-					t.Errorf("%s differs from the existing default", mode)
-				}
+	var smoothed []byte
+	for _, mode := range []string{"", "default", "on", "off"} {
+		out := filepath.Join(dir, "page.png")
+		args := []string{"render", "-q", "-scale", "8", "-no-system-fonts"}
+		if mode != "" {
+			args = append(args, "-antialias="+mode)
+		}
+		if status, stderr := run(t, append(args, in, out)...); status != 0 {
+			t.Fatalf("-antialias=%q: exit status %d: %s", mode, status, stderr)
+		}
+		pixels, err := os.ReadFile(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mode == "" {
+			smoothed = pixels
+		} else if mode == "off" {
+			if bytes.Equal(smoothed, pixels) {
+				t.Error("off produced the smoothed image")
 			}
-		})
+		} else if !bytes.Equal(smoothed, pixels) {
+			t.Errorf("%s differs from the existing default", mode)
+		}
 	}
 }
 
@@ -269,27 +266,27 @@ func TestRenderBatch(t *testing.T) {
 	if err := os.WriteFile(in, data.Bytes(), 0600); err != nil {
 		t.Fatal(err)
 	}
-	for _, aa := range []string{"on", "off"} {
-		pattern := filepath.Join(dir, "batch-{page}.png")
-		if status, stderr := run(t, "render", "-q", "-no-system-fonts", "-antialias="+aa, "-pages=2,1", "-workers=2", "-scale=1.5", in, pattern); status != 0 {
-			t.Fatalf("batch: %d %s", status, stderr)
+	// (that a batch draws the pages as single renders do, with or without
+	// antialiasing, the rasterizer's tests check; here the flags reach it)
+	pattern := filepath.Join(dir, "batch-{page}.png")
+	if status, stderr := run(t, "render", "-q", "-no-system-fonts", "-pages=2,1", "-workers=2", "-scale=1.5", in, pattern); status != 0 {
+		t.Fatalf("batch: %d %s", status, stderr)
+	}
+	for _, page := range []string{"1", "2"} {
+		single := filepath.Join(dir, "single.png")
+		if status, stderr := run(t, "render", "-q", "-no-system-fonts", "-page="+page, "-scale=1.5", in, single); status != 0 {
+			t.Fatalf("single: %d %s", status, stderr)
 		}
-		for _, page := range []string{"1", "2"} {
-			single := filepath.Join(dir, "single.png")
-			if status, stderr := run(t, "render", "-q", "-no-system-fonts", "-antialias="+aa, "-page="+page, "-scale=1.5", in, single); status != 0 {
-				t.Fatalf("single: %d %s", status, stderr)
-			}
-			want, err := os.ReadFile(single)
-			if err != nil {
-				t.Fatal(err)
-			}
-			got, err := os.ReadFile(strings.ReplaceAll(pattern, "{page}", page))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(got, want) {
-				t.Fatalf("batch page %s differs for AA %s", page, aa)
-			}
+		want, err := os.ReadFile(single)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(strings.ReplaceAll(pattern, "{page}", page))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("batch page %s differs", page)
 		}
 	}
 	if status, stderr := run(t, "render", "-q", "-no-system-fonts", "-pages=all", in, filepath.Join(dir, "all-{page}.png")); status != 0 {
@@ -377,40 +374,38 @@ func TestThumbnailOfProtectedInput(t *testing.T) {
 func TestRenderBands(t *testing.T) {
 	dir := t.TempDir()
 	doc := filepath.Join("..", "..", "testdata", "pdf", "chrome-doc.bdf")
-	for _, mono := range []string{"", "-mono=gray", "-mono=bilevel"} {
-		for _, ext := range []string{".png", ".tif"} {
-			whole, bands := filepath.Join(dir, "whole"+ext), filepath.Join(dir, "bands"+ext)
-			args := append([]string{"render", "-q", "-scale", "1.5"}, testFontFlags...)
-			if mono != "" {
-				args = append(args, mono)
+	// (that the bands of a page of each kind of pixel make the file of the
+	// whole page, image/rowenc's tests check; here the flags reach it, and
+	// the extension picks the file's format)
+	for _, ext := range []string{".png", ".tif"} {
+		whole, bands := filepath.Join(dir, "whole"+ext), filepath.Join(dir, "bands"+ext)
+		args := append([]string{"render", "-q", "-scale", "1.5", "-mono=bilevel"}, testFontFlags...)
+		if status, stderr := run(t, append(append(args, "-band=0"), doc, whole)...); status != 0 {
+			t.Fatalf("%s whole: exit status %d: %s", ext, status, stderr)
+		}
+		if status, stderr := run(t, append(append(args, "-band=20"), doc, bands)...); status != 0 {
+			t.Fatalf("%s bands: exit status %d: %s", ext, status, stderr)
+		}
+		a, err := os.ReadFile(whole)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := os.ReadFile(bands)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(a, b) {
+			t.Errorf("%s: the file of the bands differs from that of the whole page", ext)
+		}
+		if ext == ".tif" {
+			if !bytes.HasPrefix(a, []byte("II*\x00")) {
+				t.Error("not a TIFF file")
 			}
-			if status, stderr := run(t, append(append(args, "-band=0"), doc, whole)...); status != 0 {
-				t.Fatalf("%s %s whole: exit status %d: %s", mono, ext, status, stderr)
-			}
-			if status, stderr := run(t, append(append(args, "-band=20"), doc, bands)...); status != 0 {
-				t.Fatalf("%s %s bands: exit status %d: %s", mono, ext, status, stderr)
-			}
-			a, err := os.ReadFile(whole)
-			if err != nil {
-				t.Fatal(err)
-			}
-			b, err := os.ReadFile(bands)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(a, b) {
-				t.Errorf("%s %s: the file of the bands differs from that of the whole page", mono, ext)
-			}
-			if ext == ".tif" {
-				if !bytes.HasPrefix(a, []byte("II*\x00")) {
-					t.Errorf("%s: not a TIFF file", mono)
-				}
-				continue
-			}
-			w, h := pngSize(t, bands)
-			if w != 893 || h != 1263 {
-				t.Errorf("%s: %d×%d", mono, w, h)
-			}
+			continue
+		}
+		w, h := pngSize(t, bands)
+		if w != 893 || h != 1263 {
+			t.Errorf("%d×%d", w, h)
 		}
 	}
 	// a batch, written as the pages are drawn

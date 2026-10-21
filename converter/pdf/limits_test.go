@@ -109,14 +109,7 @@ func warned(res *Result, part string) bool {
 // first page too.
 func opened(t *testing.T, res *Result) (*bdf.Reader, bdf.Hash) {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := reopen(t, res)
 	return r, r.Manifest.Views[0].Pages[0].Layers[0].Obj
 }
 
