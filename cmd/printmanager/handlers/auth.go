@@ -298,7 +298,10 @@ func (a *App) resolveAccount(ctx context.Context, id auth.Identity, _ bool) (aut
 	return auth.Account{ID: pid, DisplayName: name, Email: mail}, nil
 }
 
-// viewer is the person signed in to the request's session, or nil.
+// viewer is the person signed in to the request's session, or nil. A
+// session whose person's record is gone (a store emptied, or replaced)
+// is still the person: the session's name and email, without groups
+// until the next login.
 func (a *App) viewer(r *http.Request) *manager.Viewer {
 	s, ok := auth.User(r.Context())
 	if !ok {
@@ -309,7 +312,7 @@ func (a *App) viewer(r *http.Request) *manager.Viewer {
 		if !errors.Is(err, manager.ErrNotFound) {
 			a.log.Warn("person", "id", s.AccountID, "err", err)
 		}
-		return nil
+		p = &manager.Person{Issuer: s.Issuer, Subject: s.Subject, Name: s.DisplayName, Email: s.Email}
 	}
 	return &manager.Viewer{Kind: manager.PrincipalUser, Via: manager.ViaOIDC, ID: s.AccountID, Name: p.Name, Email: p.Email, Groups: p.Groups,
 		Admin: a.policy.admin(p.Issuer, p.Subject, p.Email, p.Groups)}

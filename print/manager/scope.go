@@ -229,3 +229,12 @@ func (m *Manager) Person(ctx context.Context, id string) (*Person, error) {
 	p := Person(rec.Data)
 	return &p, nil
 }
+
+// DeletePerson forgets a person; they are kept again at their next login.
+func (m *Manager) DeletePerson(ctx context.Context, id string) error {
+	rec, err := m.st.db.Get[personRecord](ctx, id)
+	if err != nil {
+		return mapErr(err)
+	}
+	return mapErr(m.st.db.Delete[personRecord](ctx, id, rec.Revision()))
+}

@@ -272,6 +272,15 @@ func TestLogin(t *testing.T) {
 		}
 	}
 
+	// a session whose person's record is gone is still the person
+	// (without groups): the IdP's sign-in would answer it as signed in
+	if err := s.app.m.DeletePerson(context.Background(), personID(s.idp.Issuer, "root")); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := root.get("/admin"); code != http.StatusOK {
+		t.Errorf("root without a record: %d", code)
+	}
+
 	if n := s.idp.Logins(); n != 6 {
 		t.Errorf("%d sign-ins at the IdP; want 6", n)
 	}

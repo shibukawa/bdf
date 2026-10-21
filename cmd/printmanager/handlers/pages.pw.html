@@ -102,7 +102,7 @@ export component Forbidden(account: Account): html {
 export component Jobs(account: Account): html {
   <Shell title="Jobs · BDF Print Manager">
     <AppBar title="BDF Print Manager" account={account}></AppBar>
-    <main class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
+    <main class="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6">
       <section class="card bg-base-100 shadow-sm">
         <form id="print-form" class="card-body">
           <h2 class="card-title">Print a document</h2>
@@ -139,7 +139,7 @@ export component Jobs(account: Account): html {
 export component Audit(account: Account): html {
   <Shell title="Audit · BDF Print Manager">
     <AppBar title="BDF Print Manager" account={account}></AppBar>
-    <main class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
+    <main class="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6">
       <section class="card bg-base-100 shadow-sm">
         <div class="card-body">
           <div class="flex flex-wrap items-center gap-3">
@@ -238,7 +238,7 @@ export component Admin(account: Account): html {
     <AppBar title="BDF Print Manager" account={account}>
       <button id="tick" type="button" class="btn btn-sm">Tick now</button>
     </AppBar>
-    <main id="admin" class="mx-auto grid max-w-7xl gap-6 p-4 sm:p-6">
+    <main id="admin" class="mx-auto grid max-w-7xl grid-cols-1 gap-6 p-4 sm:p-6">
 
       <section class="card bg-base-100 shadow-sm">
         <div class="card-body">

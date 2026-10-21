@@ -102,7 +102,7 @@ verification:
     authority: observed
     evidence:
       path: cmd/printmanager/handlers/pages.pw.html
-      locator: '（main の pm-4 と合わせる前の画面で）2026-10-21 内蔵ブラウザで、偽の IdP（print/fakeidp を 127.0.0.1:9781 で、ユーザーを選ぶ画面）に向けた printmanager を開いた。管理者（メール）はタブレット幅で全部のジョブと /admin（全部のジョブの表、kind と owner の入力、トークンの欄は無い）、セッションで場所を足せた。warehouse-a の人はスマホ幅で自分と warehouse-a のジョブだけ、画面の送信が自分の名前で載り、/admin は 403 の画面。グループの無い人は他人のジョブを見ず、shared の場所だけに刷れ、/admin は 403。サインアウトは IdP の選び直し（prompt=select_account login）に戻った'
+      locator: '2026-10-21 main の pm-4 と合わせた後に内蔵ブラウザで、偽の IdP（print/fakeidp を 127.0.0.1:9781 で、ユーザーを選ぶ画面）に向けた printmanager を開いた。サインアウトした / はサインインのボタン。グループの無い人（タブレット幅）はジョブ 0 件、shared の Office だけに送れ、/admin は 403 の画面。warehouse-a の人（スマホ幅）は warehouse-a のジョブ（場所と group の queue）だけを見て、画面から送ったジョブが自分の名前で載り、取り消しは自分のものだけに出た。管理者（タブレット幅）は /admin のトポロジーに scope のバッジ、ノードの form で scope と owner を書けた。スマホ幅で /jobs が横にはみ出す（pm-4 の grid）のを grid-cols-1 で直した。人の記録が無いセッションが / と IdP の間を回るのを見つけて直した（セッションの名前とメールで見る）'
   real-idp:
     state: not_run
     method: manual
