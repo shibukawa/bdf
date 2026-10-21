@@ -320,7 +320,7 @@ func TestStrokeLimits(t *testing.T) {
 		t.Errorf("cut %v, %d points where 5000 are the limit", s.cut, n)
 	}
 	// dashes far too fine for the line, which lie outside of what shows
-	s = newStroker(&ls, 1).within(identity.translate(1e6, 0), image.Rect(0, 0, 16, 16))
+	s = newStroker(&ls, 1).within(identity.Translate(1e6, 0), image.Rect(0, 0, 16, 16))
 	start := time.Now()
 	s.stroke([]polyline{{pts: []point{{0, 0}, {1e6, 0}}}})
 	if !s.cut || len(s.out) != 0 || s.dashes >= 0 {

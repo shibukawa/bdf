@@ -62,7 +62,7 @@ func isSVG(b []byte) bool {
 // pixels): the one where a device pixel spans at most about two image
 // pixels.
 func (p *picture) levelFor(inv matrix) int {
-	f := inv.maxScale()
+	f := inv.MaxScale()
 	if !(f > 2) {
 		return 0
 	}

@@ -182,7 +182,7 @@ type annotTag struct {
 const maxStructElems = 1 << 22
 
 func newTagger(ex *exporter) *tagger {
-	t := &tagger{ex: ex, lang: ex.doc.Meta.DC.Language.First()}
+	t := &tagger{ex: ex, lang: ex.Doc.Meta.DC.Language.First()}
 	t.root = &structElem{tag: "Document"}
 	return t
 }

@@ -3,10 +3,11 @@ package imagebdf
 import (
 	stdcontext "context"
 	"errors"
-	"github.com/shibukawa/bdf"
 	"image"
 	"slices"
 	"testing"
+
+	"github.com/shibukawa/bdf"
 )
 
 func TestPagesOrderOwnershipAndCancellation(t *testing.T) {

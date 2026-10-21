@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/vector/internal/export"
 )
 
 // painted is what a gradient or a pattern is drawn with.
@@ -65,7 +66,7 @@ func (ex *exporter) paint(sty style, m matrix, stroke bool) painted {
 	key := patKey{p, m}
 	pat, ok := ex.patterns[key]
 	if !ok {
-		pat = named{name: ex.newName("P"), ref: ex.pw.add(fmt.Sprintf("<< /Type /Pattern /PatternType 2 /Shading %s /Matrix [%s] >>", sh.colors, m))}
+		pat = named{name: ex.newName("P"), ref: ex.pw.add(fmt.Sprintf("<< /Type /Pattern /PatternType 2 /Shading %s /Matrix [%s] >>", sh.colors, export.Mat(m)))}
 		ex.patterns[key] = pat
 	}
 	out := painted{ok: true, name: pat.name, ref: pat.ref, alpha: sh.alpha}
@@ -76,7 +77,7 @@ func (ex *exporter) paint(sty style, m matrix, stroke bool) painted {
 				return r
 			}
 			in := newStream(identity, identity)
-			in.op("%s cm %s sh", toPage.exact(), in.use("Shading", ex.newName("Sh"), sh.alphas))
+			in.op("%s cm %s sh", toPage.Exact(), in.use("Shading", ex.newName("Sh"), sh.alphas))
 			form := ex.pw.addStream(fmt.Sprintf(" /Type /XObject /Subtype /Form /BBox [%d %d %d %d] /Resources %s /Group << /Type /Group /S /Transparency /CS /DeviceGray >>",
 				-huge, -huge, huge, huge, in.resources()), in.b.Bytes(), true)
 			r := ex.pw.add("<< /Type /ExtGState /SMask << /Type /Mask /S /Luminosity /G " + form.String() + " >> >>")
@@ -87,53 +88,30 @@ func (ex *exporter) paint(sty style, m matrix, stroke bool) painted {
 	return out
 }
 
-// stop is a color stop of a gradient at an offset from 0 to 1.
-type stop struct {
-	off     float64
-	r, g, b float64
-	a       float64
-}
-
-// stops returns the stops of a gradient as Canvas uses them: in the order
-// of their offsets, from 0 to 1.
-func stopsOf(p *bdf.Paint) []stop {
-	var out []stop
-	last := 0.0
-	for _, s := range p.Stops {
-		off := float64(s.Offset)
-		if math.IsNaN(off) {
-			continue
-		}
-		// (a stop before the one before it is at its place)
-		off = math.Min(math.Max(off, last), 1)
-		last = off
-		c := uint32(s.Color)
-		out = append(out, stop{off, float64(c>>24) / 255, float64(c>>16&0xff) / 255, float64(c>>8&0xff) / 255, float64(c&0xff) / 255})
-	}
-	return out
-}
-
 // function writes the function of the colors (or of the alphas) of stops:
 // from 0 to 1, with the first and the last color outside the stops.
+// stop is a stop of a gradient (see export.Stop).
+type stop = export.Stop
+
 func (ex *exporter) function(stops []stop, alpha bool) ref {
 	val := func(s stop) string {
 		if alpha {
-			return fine(s.a)
+			return export.Fine(s.A)
 		}
-		return fine(s.r) + " " + fine(s.g) + " " + fine(s.b)
+		return export.Fine(s.R) + " " + export.Fine(s.G) + " " + export.Fine(s.B)
 	}
 	seg := func(a, b stop) string {
 		return fmt.Sprintf("<< /FunctionType 2 /Domain [0 1] /C0 [%s] /C1 [%s] /N 1 >>", val(a), val(b))
 	}
 	// the stops from 0 to 1
-	if stops[0].off > 0 {
+	if stops[0].Off > 0 {
 		first := stops[0]
-		first.off = 0
+		first.Off = 0
 		stops = append([]stop{first}, stops...)
 	}
-	if n := len(stops); stops[n-1].off < 1 {
+	if n := len(stops); stops[n-1].Off < 1 {
 		last := stops[n-1]
-		last.off = 1
+		last.Off = 1
 		stops = append(stops, last)
 	}
 	if len(stops) == 2 {
@@ -144,7 +122,7 @@ func (ex *exporter) function(stops []stop, alpha bool) ref {
 		fns.WriteString(seg(stops[i], stops[i+1]) + " ")
 		encode.WriteString("0 1 ")
 		if i > 0 {
-			bounds.WriteString(fine(stops[i].off) + " ")
+			bounds.WriteString(export.Fine(stops[i].Off) + " ")
 		}
 	}
 	return ex.pw.add(fmt.Sprintf("<< /FunctionType 3 /Domain [0 1] /Functions [%s] /Bounds [%s] /Encode [%s] >>", fns.String(), bounds.String(), encode.String()))
@@ -161,7 +139,7 @@ func (ex *exporter) shading(p *bdf.Paint) *shading {
 	}
 	sh := &shading{}
 	ex.shadings[p] = sh
-	stops := stopsOf(p)
+	stops := export.StopsOf(p)
 	want := map[byte]int{bdf.PaintLinear: 4, bdf.PaintRadial: 6, bdf.PaintConic: 3}[p.Kind]
 	if len(stops) == 0 || want == 0 || len(p.Coords) < want {
 		return sh // a gradient without stops draws nothing
@@ -176,8 +154,8 @@ func (ex *exporter) shading(p *bdf.Paint) *shading {
 	sh.ok = true
 	same, opaque := true, true
 	for _, s := range stops {
-		same = same && s == stop{s.off, stops[0].r, stops[0].g, stops[0].b, stops[0].a}
-		opaque = opaque && s.a == stops[0].a
+		same = same && s == stop{Off: s.Off, R: stops[0].R, G: stops[0].G, B: stops[0].B, A: stops[0].A}
+		opaque = opaque && s.A == stops[0].A
 	}
 	degenerate := p.Kind == bdf.PaintLinear && c[0] == c[2] && c[1] == c[3] ||
 		p.Kind == bdf.PaintRadial && c[0] == c[3] && c[1] == c[4] && c[2] == c[5]
@@ -188,12 +166,12 @@ func (ex *exporter) shading(p *bdf.Paint) *shading {
 	}
 	if same {
 		s := stops[0]
-		sh.solid, sh.color = true, bdf.RGBA(uint8(math.Round(s.r*255)), uint8(math.Round(s.g*255)), uint8(math.Round(s.b*255)), uint8(math.Round(s.a*255)))
+		sh.solid, sh.color = true, bdf.RGBA(uint8(math.Round(s.R*255)), uint8(math.Round(s.G*255)), uint8(math.Round(s.B*255)), uint8(math.Round(s.A*255)))
 		return sh
 	}
 	sh.alpha = 1
 	if opaque {
-		sh.alpha = stops[0].a
+		sh.alpha = stops[0].A
 	}
 	write := func(alpha bool) ref {
 		cs := "/DeviceRGB"
@@ -202,10 +180,10 @@ func (ex *exporter) shading(p *bdf.Paint) *shading {
 		}
 		switch p.Kind {
 		case bdf.PaintLinear:
-			return ex.pw.add(fmt.Sprintf("<< /ShadingType 2 /ColorSpace %s /Coords [%s] /Function %s /Extend [true true] >>", cs, nums(c...), ex.function(stops, alpha)))
+			return ex.pw.add(fmt.Sprintf("<< /ShadingType 2 /ColorSpace %s /Coords [%s] /Function %s /Extend [true true] >>", cs, export.Nums(c...), ex.function(stops, alpha)))
 		case bdf.PaintRadial:
 			c[2], c[5] = math.Max(c[2], 0), math.Max(c[5], 0)
-			return ex.pw.add(fmt.Sprintf("<< /ShadingType 3 /ColorSpace %s /Coords [%s] /Function %s /Extend [true true] >>", cs, nums(c...), ex.function(stops, alpha)))
+			return ex.pw.add(fmt.Sprintf("<< /ShadingType 3 /ColorSpace %s /Coords [%s] /Function %s /Extend [true true] >>", cs, export.Nums(c...), ex.function(stops, alpha)))
 		}
 		return ex.conic(c, stops, alpha)
 	}
@@ -222,17 +200,17 @@ func (ex *exporter) shading(p *bdf.Paint) *shading {
 func (ex *exporter) conic(c []float64, stops []stop, alpha bool) ref {
 	const steps = 180
 	at := func(t float64) stop {
-		if t <= stops[0].off {
+		if t <= stops[0].Off {
 			return stops[0]
 		}
 		for i := 1; i < len(stops); i++ {
-			if t <= stops[i].off {
+			if t <= stops[i].Off {
 				a, b := stops[i-1], stops[i]
 				k := 0.0
-				if b.off > a.off {
-					k = (t - a.off) / (b.off - a.off)
+				if b.Off > a.Off {
+					k = (t - a.Off) / (b.Off - a.Off)
 				}
-				return stop{t, a.r + (b.r-a.r)*k, a.g + (b.g-a.g)*k, a.b + (b.b-a.b)*k, a.a + (b.a-a.a)*k}
+				return stop{Off: t, R: a.R + (b.R-a.R)*k, G: a.G + (b.G-a.G)*k, B: a.B + (b.B-a.B)*k, A: a.A + (b.A-a.A)*k}
 			}
 		}
 		return stops[len(stops)-1]
@@ -246,9 +224,9 @@ func (ex *exporter) conic(c []float64, stops []stop, alpha bool) ref {
 		binary.Write(&data, binary.BigEndian, coord(x-c[1]))
 		binary.Write(&data, binary.BigEndian, coord(y-c[2]))
 		if alpha {
-			data.WriteByte(byte(math.Round(s.a * 255)))
+			data.WriteByte(byte(math.Round(s.A * 255)))
 		} else {
-			data.Write([]byte{byte(math.Round(s.r * 255)), byte(math.Round(s.g * 255)), byte(math.Round(s.b * 255))})
+			data.Write([]byte{byte(math.Round(s.R * 255)), byte(math.Round(s.G * 255)), byte(math.Round(s.B * 255))})
 		}
 	}
 	const radius = huge / 2
@@ -264,7 +242,7 @@ func (ex *exporter) conic(c []float64, stops []stop, alpha bool) ref {
 		cs, decode = "/DeviceGray", "0 1"
 	}
 	return ex.pw.addStream(fmt.Sprintf(" /ShadingType 4 /ColorSpace %s /BitsPerCoordinate 32 /BitsPerComponent 8 /BitsPerFlag 8 /Decode [%s %s %s %s %s]",
-		cs, num(c[1]-huge), num(c[1]+huge), num(c[2]-huge), num(c[2]+huge), decode), data.Bytes(), true)
+		cs, export.Num(c[1]-huge), export.Num(c[1]+huge), export.Num(c[2]-huge), export.Num(c[2]+huge), decode), data.Bytes(), true)
 }
 
 // tiling returns what an image pattern is drawn with: a tiling pattern, or
@@ -272,14 +250,14 @@ func (ex *exporter) conic(c []float64, stops []stop, alpha bool) ref {
 func (ex *exporter) tiling(sty style, m matrix, stroke bool) painted {
 	p := sty.paint
 	if sty.obj == nil || int(p.Image) >= len(sty.obj.Images) {
-		ex.warnf("bad image reference")
+		ex.Warnf("bad image reference")
 		return painted{}
 	}
 	pm := matrix{float64(p.Matrix[0]), float64(p.Matrix[1]), float64(p.Matrix[2]), float64(p.Matrix[3]), float64(p.Matrix[4]), float64(p.Matrix[5])}
-	if !pm.finite() {
+	if !pm.Finite() {
 		return painted{}
 	}
-	pt := m.mul(pm).areaScale()
+	pt := m.Mul(pm).AreaScale()
 	img := ex.imageOf(sty.obj.Images[p.Image], func(w, h float64) float64 { return pt }, true)
 	if img == nil || !(img.w > 0) || !(img.h > 0) {
 		return painted{}
@@ -288,7 +266,7 @@ func (ex *exporter) tiling(sty style, m matrix, stroke bool) painted {
 	// pattern has its y axis down, as that of the document)
 	cell := matrix{img.w, 0, 0, -img.h, 0, img.h}
 	if p.Repeat == bdf.NoRepeat && !stroke {
-		return painted{ok: true, image: img, matrix: pm.mul(cell), alpha: 1}
+		return painted{ok: true, image: img, matrix: pm.Mul(cell), alpha: 1}
 	}
 	key := patKey{p, m}
 	pat, ok := ex.patterns[key]
@@ -301,9 +279,9 @@ func (ex *exporter) tiling(sty style, m matrix, stroke bool) painted {
 			ys = huge
 		}
 		in := newStream(identity, identity)
-		in.op("%s cm %s Do", cell, in.use("XObject", img.name, img.ref))
+		in.op("%s cm %s Do", export.Mat(cell), in.use("XObject", img.name, img.ref))
 		pat = named{name: ex.newName("P"), ref: ex.pw.addStream(fmt.Sprintf(" /Type /Pattern /PatternType 1 /PaintType 1 /TilingType 1 /BBox [0 0 %s] /XStep %s /YStep %s /Matrix [%s] /Resources %s",
-			nums(img.w, img.h), num(xs), num(ys), m.mul(pm), in.resources()), in.b.Bytes(), true)}
+			export.Nums(img.w, img.h), export.Num(xs), export.Num(ys), export.Mat(m.Mul(pm)), in.resources()), in.b.Bytes(), true)}
 		ex.patterns[key] = pat
 	}
 	return painted{ok: true, name: pat.name, ref: pat.ref, alpha: 1}

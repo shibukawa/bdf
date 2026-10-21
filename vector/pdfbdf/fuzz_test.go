@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/vector/internal/vectortest"
 )
 
 // FuzzWrite writes a page of an object of any bytes: whatever the
 // instructions of the object, a file is written, and the writing does not
 // fail of itself.
 func FuzzWrite(f *testing.F) {
-	font, err := os.ReadFile(filepath.Join(testFonts[0], "MPLUS1p-Regular-subset.ttf"))
+	font, err := os.ReadFile(filepath.Join(vectortest.Fonts[0], "MPLUS1p-Regular-subset.ttf"))
 	if err != nil {
 		f.Fatal(err)
 	}

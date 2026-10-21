@@ -109,9 +109,9 @@ func TestPathsOutsideTheCanvas(t *testing.T) {
 				p.close()
 			}
 		}
-		m := identity.translate(rng.Float64()*8-4, rng.Float64()*8-4).scale(0.5+rng.Float64(), 0.5+rng.Float64())
+		m := identity.Translate(rng.Float64()*8-4, rng.Float64()*8-4).Scale(0.5+rng.Float64(), 0.5+rng.Float64())
 		if rng.Intn(3) == 0 {
-			m = m.mul(matrix{1, 0.3, -0.2, 1, 0, 0})
+			m = m.Mul(matrix{1, 0.3, -0.2, 1, 0, 0})
 		}
 		fast, slow := both(t, func() []byte { return covered(d.coverage(p, bdf.NonZero, m)) })
 		if !bytes.Equal(fast, slow) {

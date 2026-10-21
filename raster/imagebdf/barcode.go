@@ -53,7 +53,7 @@ func (d *drawer) barcodeMark(payload string) {
 // the box's size in pixels, and the quarter turns of the symbol: for a
 // transform that keeps the axes and does not mirror them.
 func frame(m matrix, box [4]float32) (f matrix, w, h float64, turns int, ok bool) {
-	if !m.finite() || m.det() <= 0 {
+	if !m.Finite() || m.Det() <= 0 {
 		return matrix{}, 0, 0, 0, false
 	}
 	sign := func(v float64) float64 {
@@ -83,7 +83,7 @@ func frame(m matrix, box [4]float32) (f matrix, w, h float64, turns int, ok bool
 	default:
 		turns = 3
 	}
-	x, y := m.apply(float64(box[0]), float64(box[1]))
+	x, y := m.Apply(float64(box[0]), float64(box[1]))
 	return matrix{ex[0], ex[1], ey[0], ey[1], math.Round(x), math.Round(y)}, w, h, turns, true
 }
 
@@ -99,7 +99,7 @@ func (d *drawer) drawSymbol(mk *barcode.Mark) bool {
 	}
 	if cb := d.r.opts.Barcode; cb != nil {
 		x, y := float64(mk.Box[0]), float64(mk.Box[1])
-		x, y = st.m.apply(x, y)
+		x, y = st.m.Apply(x, y)
 		if cb(Barcode{Mark: mk, X: x, Y: y, W: w, H: h, Turns: turns}) {
 			return true
 		}

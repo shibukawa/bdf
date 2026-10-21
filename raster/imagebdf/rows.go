@@ -142,8 +142,8 @@ func (r *Renderer) pageRows(p *bdf.Page, w, h int, mono Mono, yield func(y0 int,
 	pg := &pageBands{p: p, w: w, h: h, mono: mono, bg: bg, pm: matrix{sx, 0, 0, sy, 0, 0}}
 	whole := image.Rect(0, 0, w, h)
 	// the background is the canvas when the page covers the whole image
-	ax, ay := pg.pm.apply(0, 0)
-	bx, by := pg.pm.apply(float64(p.W), float64(p.H))
+	ax, ay := pg.pm.Apply(0, 0)
+	bx, by := pg.pm.Apply(float64(p.W), float64(p.H))
 	cover := r.rectMask(ax, ay, bx, by, whole)
 	pg.filled, pg.borders = pageBackground(cover, whole, &bg)
 	r.releaseMask(cover)
@@ -187,10 +187,10 @@ func (pl Place) matrix(w, h float64) matrix {
 		m = matrix{s, 0, 0, s, pl.X, pl.Y}
 	}
 	if pl.MirrorX {
-		m = matrix{-1, 0, 0, 1, float64(pl.W), 0}.mul(m)
+		m = matrix{-1, 0, 0, 1, float64(pl.W), 0}.Mul(m)
 	}
 	if pl.MirrorY {
-		m = matrix{1, 0, 0, -1, 0, float64(pl.H)}.mul(m)
+		m = matrix{1, 0, 0, -1, 0, float64(pl.H)}.Mul(m)
 	}
 	return m
 }

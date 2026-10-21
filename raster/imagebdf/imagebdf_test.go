@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/internal/textrun"
 )
 
 func near(a, b, eps float64) bool { return math.Abs(a-b) <= eps }
@@ -187,7 +188,7 @@ func TestVisualOrder(t *testing.T) {
 		{"abc שלום def", false, "abc םולש def"},
 		{"שלום abc", true, "abc םולש"},
 	} {
-		if got := string(visualOrder(c.s, c.rtl)); got != c.want {
+		if got := string(textrun.VisualOrder(c.s, c.rtl)); got != c.want {
 			t.Errorf("%q (rtl %v): %q, want %q", c.s, c.rtl, got, c.want)
 		}
 	}

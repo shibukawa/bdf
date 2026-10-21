@@ -8,6 +8,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/raster/imagebdf"
+	"github.com/shibukawa/bdf/vector/internal/export"
 	"github.com/shibukawa/bdf/vector/internal/flatten"
 )
 
@@ -104,20 +105,15 @@ const (
 )
 
 type exporter struct {
-	doc  *bdf.Document
+	export.Source
 	opts Options
 
-	objects  map[bdf.Hash]*bdf.ObjectPart
-	coll     map[bdf.Hash][]*bdf.Path
 	images   map[bdf.Hash]*psImage
 	shadings map[*bdf.Paint]*shading
 	fonts    *fonts
 	renderer *imagebdf.Renderer
 	views    map[*bdf.View]*bdf.View
 	pictures int
-	warnings []string
-	warned   map[string]bool
-
 	// the pass: b is the page being written, nil in the first pass, which
 	// finds the regions of what PostScript cannot draw
 	b       *bytes.Buffer
@@ -144,29 +140,18 @@ type exporter struct {
 	// the groups and soft masks open where the object being written
 	// began (or the group), which it does not end
 	groupFloor, maskFloor int
-	// seen holds the objects written before, again says that the object
-	// being written is one, and reused counts the instructions of such
-	seen   map[bdf.Hash]struct{}
-	again  bool
-	reused int
+	again                 bool
+	reused                int
 }
 
 func newExporter(doc *bdf.Document, opts *Options) *exporter {
-	ex := &exporter{doc: doc, objects: map[bdf.Hash]*bdf.ObjectPart{}, coll: map[bdf.Hash][]*bdf.Path{}, images: map[bdf.Hash]*psImage{},
-		views: map[*bdf.View]*bdf.View{}, warned: map[string]bool{}}
+	ex := &exporter{Source: export.Source{Doc: doc}, images: map[bdf.Hash]*psImage{}, views: map[*bdf.View]*bdf.View{}}
 	if opts != nil {
 		ex.opts = *opts
 	}
+	ex.SkipRoles = ex.opts.SkipRoles
 	ex.fonts = newFonts(ex)
 	return ex
-}
-
-func (ex *exporter) warnf(format string, args ...any) {
-	s := fmt.Sprintf(format, args...)
-	if !ex.warned[s] {
-		ex.warned[s] = true
-		ex.warnings = append(ex.warnings, s)
-	}
 }
 
 // begin starts a pass over a page: the first (b nil) finds the regions,
@@ -176,7 +161,7 @@ func (ex *exporter) begin(b *bytes.Buffer, regions *flatten.Regions) {
 	ex.st, ex.stack, ex.groups = initialState(), nil, nil
 	ex.floor, ex.unsave, ex.mask, ex.hidden, ex.skipped = 0, 0, 0, 0, 0
 	ex.masks, ex.groupFloor, ex.maskFloor = nil, 0, 0
-	ex.seen, ex.again, ex.reused = map[bdf.Hash]struct{}{}, false, 0
+	ex.Seen, ex.again, ex.reused = map[bdf.Hash]struct{}{}, false, 0
 	if b == nil {
 		ex.decisions = nil
 	}
@@ -200,36 +185,17 @@ func (ex *exporter) op(format string, args ...any) {
 	ex.b.WriteByte('\n')
 }
 
-func (ex *exporter) object(h bdf.Hash) *bdf.ObjectPart {
-	if o, ok := ex.objects[h]; ok {
-		return o
-	}
-	ex.objects[h] = nil
-	p := ex.doc.Part(h)
-	if p == nil {
-		ex.warnf("object %s is missing", h)
-		return nil
-	}
-	o, err := bdf.DecodeObject(p.Data)
-	if err != nil {
-		ex.warnf("object %s: %v", h, err)
-		return nil
-	}
-	ex.objects[h] = o
-	return o
-}
-
 // run writes the instructions of an object.
 func (ex *exporter) run(o *bdf.ObjectPart) {
 	if ex.depth > bdf.MaxUseDepth {
-		ex.warnf("objects nested too deep")
+		ex.Warnf("objects nested too deep")
 		return
 	}
 	ex.depth++
 	prev := ex.obj
 	ex.obj = o
 	if err := o.Walk(ex.instr); err != nil {
-		ex.warnf("object: %v", err)
+		ex.Warnf("object: %v", err)
 	}
 	ex.obj = prev
 	ex.depth--
@@ -237,7 +203,7 @@ func (ex *exporter) run(o *bdf.ObjectPart) {
 
 // top writes a layer of a page, from the initial state.
 func (ex *exporter) top(h bdf.Hash) {
-	o := ex.object(h)
+	o := ex.Object(h)
 	if o == nil {
 		return
 	}
@@ -249,7 +215,7 @@ func (ex *exporter) top(h bdf.Hash) {
 	ex.floor, ex.unsave, ex.skipped = 0, 0, 0
 	groups, masks := len(ex.groups), len(ex.masks)
 	again := ex.again
-	ex.again = ex.enter(h)
+	ex.again = ex.Enter(h)
 	ex.run(o)
 	ex.again = again
 	ex.unwind(groups, masks)
@@ -268,30 +234,6 @@ func (ex *exporter) unwind(groups, masks int) {
 	for len(ex.masks) > masks {
 		ex.maskEnd()
 	}
-}
-
-func (ex *exporter) enter(h bdf.Hash) bool {
-	if _, ok := ex.seen[h]; ok {
-		return true
-	}
-	ex.seen[h] = struct{}{}
-	return false
-}
-
-func f64(in bdf.Instr, i int) float64 {
-	if v, ok := in.Args[i].(float32); ok {
-		if f := float64(v); !math.IsNaN(f) && !math.IsInf(f, 0) {
-			return f
-		}
-	}
-	return 0
-}
-
-func u64(in bdf.Instr, i int) uint64 {
-	if v, ok := in.Args[i].(uint64); ok {
-		return v
-	}
-	return 0
 }
 
 // leftOut takes an instruction of what is not written, counting what
@@ -321,7 +263,7 @@ func (ex *exporter) leftOut(in bdf.Instr) {
 
 func (ex *exporter) save() {
 	if len(ex.stack) >= maxStates {
-		ex.warnf("more than %d states are saved at a time: the rest are not kept", maxStates)
+		ex.Warnf("more than %d states are saved at a time: the rest are not kept", maxStates)
 		ex.unsave++
 		return
 	}
@@ -344,7 +286,7 @@ func (ex *exporter) restore() {
 func (ex *exporter) instr(in bdf.Instr) {
 	if ex.again {
 		if ex.reused >= maxReusedInstructions {
-			ex.warnf("objects are drawn again too many times: the rest of them is not written")
+			ex.Warnf("objects are drawn again too many times: the rest of them is not written")
 			ex.leftOut(in)
 			return
 		}
@@ -361,167 +303,167 @@ func (ex *exporter) instr(in bdf.Instr) {
 	case bdf.OpRestore:
 		ex.restore()
 	case bdf.OpTransform:
-		ex.concat(matrix{f64(in, 0), f64(in, 1), f64(in, 2), f64(in, 3), f64(in, 4), f64(in, 5)})
+		ex.concat(matrix{export.F64(in, 0), export.F64(in, 1), export.F64(in, 2), export.F64(in, 3), export.F64(in, 4), export.F64(in, 5)})
 	case bdf.OpTranslate:
-		ex.concat(matrix{1, 0, 0, 1, f64(in, 0), f64(in, 1)})
+		ex.concat(matrix{1, 0, 0, 1, export.F64(in, 0), export.F64(in, 1)})
 	case bdf.OpScale:
-		ex.concat(matrix{f64(in, 0), 0, 0, f64(in, 1), 0, 0})
+		ex.concat(matrix{export.F64(in, 0), 0, 0, export.F64(in, 1), 0, 0})
 	case bdf.OpClipPath:
-		p := newPen(ex.buf(), identity)
-		if bp := ex.path(int(u64(in, 0))); bp != nil {
-			p.path(bp)
+		p := export.NewPen(ex.buf(), identity)
+		if bp := ex.Path(ex.obj, int(export.U64(in, 0))); bp != nil {
+			p.Path(bp)
 		}
-		if !p.drawn {
+		if !p.Drawn {
 			// nothing is inside a path without segments
 			ex.op("0 0 0 0 re")
 		}
 		ex.clipBox(p)
-		if byte(u64(in, 1)) == bdf.EvenOdd {
+		if byte(export.U64(in, 1)) == bdf.EvenOdd {
 			ex.op("W* n")
 		} else {
 			ex.op("W n")
 		}
 	case bdf.OpClipRect:
-		x, y, w, h := f64(in, 0), f64(in, 1), f64(in, 2), f64(in, 3)
-		st.clip = intersect(st.clip, st.ctm.bounds(x, y, x+w, y+h))
-		ex.op("%s re W n", nums(x, y, w, h))
+		x, y, w, h := export.F64(in, 0), export.F64(in, 1), export.F64(in, 2), export.F64(in, 3)
+		st.clip = intersect(st.clip, st.ctm.Bounds(x, y, x+w, y+h))
+		ex.op("%s re W n", export.Nums(x, y, w, h))
 	case bdf.OpFillColor:
-		st.fill = style{color: bdf.Color(u64(in, 0))}
+		st.fill = style{color: bdf.Color(export.U64(in, 0))}
 	case bdf.OpStrokeColor:
-		st.stroke = style{color: bdf.Color(u64(in, 0))}
+		st.stroke = style{color: bdf.Color(export.U64(in, 0))}
 	case bdf.OpFillPaint:
-		st.fill = ex.paintStyle(int(u64(in, 0)))
+		st.fill = ex.paintStyle(int(export.U64(in, 0)))
 	case bdf.OpStrokePaint:
-		st.stroke = ex.paintStyle(int(u64(in, 0)))
+		st.stroke = ex.paintStyle(int(export.U64(in, 0)))
 	case bdf.OpLine:
-		if w := f64(in, 0); w > 0 {
+		if w := export.F64(in, 0); w > 0 {
 			st.width = w
-			ex.op("%s w", num(w))
+			ex.op("%s w", export.Num(w))
 		}
-		if c := u64(in, 1); c <= 2 {
+		if c := export.U64(in, 1); c <= 2 {
 			st.cap = byte(c)
 			ex.op("%d J", c)
 		}
-		if j := u64(in, 2); j <= 2 {
+		if j := export.U64(in, 2); j <= 2 {
 			st.join = byte(j)
 			ex.op("%d j", j)
 		}
-		if m := f64(in, 3); m >= 1 {
+		if m := export.F64(in, 3); m >= 1 {
 			st.miter = m
-			ex.op("%s M", num(m))
+			ex.op("%s M", export.Num(m))
 		}
 	case bdf.OpDash:
 		segs, _ := in.Args[0].([]float32)
 		off, _ := in.Args[1].(float32)
 		ex.dash(segs, off)
 	case bdf.OpAlpha:
-		if a := f64(in, 0); a >= 0 && a <= 1 {
+		if a := export.F64(in, 0); a >= 0 && a <= 1 {
 			st.alpha = a
 		}
 	case bdf.OpBlend:
-		if b := u64(in, 0); b < uint64(len(bdf.BlendNames)) {
+		if b := export.U64(in, 0); b < uint64(len(bdf.BlendNames)) {
 			st.blend = byte(b)
 		}
 	case bdf.OpShadow:
 		// the blur and the offset are in the units of where they are set
-		k := st.ctm.areaScale()
+		k := st.ctm.AreaScale()
 		if k == 0 || math.IsNaN(k) || math.IsInf(k, 0) {
 			k = 1
 		}
-		st.shadow = bdf.Color(u64(in, 0))
-		st.shadowBlur = math.Min(math.Max(f64(in, 1)*k, 0), maxShadowBlur)
-		st.shadowDX, st.shadowDY = clampShadow(f64(in, 2)*k), clampShadow(f64(in, 3)*k)
+		st.shadow = bdf.Color(export.U64(in, 0))
+		st.shadowBlur = math.Min(math.Max(export.F64(in, 1)*k, 0), maxShadowBlur)
+		st.shadowDX, st.shadowDY = export.ClampShadow(export.F64(in, 2)*k), export.ClampShadow(export.F64(in, 3)*k)
 	case bdf.OpFilter:
 		f, _ := in.Args[0].(string)
 		st.filter = f != "" && f != "none"
 	case bdf.OpFont:
-		if i := u64(in, 0); i < uint64(len(ex.obj.Fonts)) {
+		if i := export.U64(in, 0); i < uint64(len(ex.obj.Fonts)) {
 			f := ex.obj.Fonts[i]
 			st.font = &f
 		}
-		st.size = f64(in, 1)
+		st.size = export.F64(in, 1)
 	case bdf.OpTextStyle:
-		st.align, st.baseline, st.dir = byte(u64(in, 0)), byte(u64(in, 1)), byte(u64(in, 2))
-		st.spacing = f64(in, 3)
+		st.align, st.baseline, st.dir = byte(export.U64(in, 0)), byte(export.U64(in, 1)), byte(export.U64(in, 2))
+		st.spacing = export.F64(in, 3)
 	case bdf.OpFillRect:
-		x, y, w, h := f64(in, 0), f64(in, 1), f64(in, 2), f64(in, 3)
+		x, y, w, h := export.F64(in, 0), export.F64(in, 1), export.F64(in, 2), export.F64(in, 3)
 		ex.fill([4]float64{math.Min(x, x+w), math.Min(y, y+h), math.Max(x, x+w), math.Max(y, y+h)}, func(b *bytes.Buffer) bool {
-			fmt.Fprintf(b, "%s re\n", nums(x, y, w, h))
+			fmt.Fprintf(b, "%s re\n", export.Nums(x, y, w, h))
 			return true
 		}, bdf.NonZero)
 	case bdf.OpStrokeRect:
-		x, y, w, h := f64(in, 0), f64(in, 1), f64(in, 2), f64(in, 3)
+		x, y, w, h := export.F64(in, 0), export.F64(in, 1), export.F64(in, 2), export.F64(in, 3)
 		ex.strokePath([4]float64{math.Min(x, x+w), math.Min(y, y+h), math.Max(x, x+w), math.Max(y, y+h)}, func(b *bytes.Buffer) bool {
-			fmt.Fprintf(b, "%s re\n", nums(x, y, w, h))
+			fmt.Fprintf(b, "%s re\n", export.Nums(x, y, w, h))
 			return true
 		})
 	case bdf.OpClearRect:
-		ex.clearRect(f64(in, 0), f64(in, 1), f64(in, 2), f64(in, 3))
+		ex.clearRect(export.F64(in, 0), export.F64(in, 1), export.F64(in, 2), export.F64(in, 3))
 	case bdf.OpFillPath, bdf.OpFillPathAt:
-		bp := ex.path(int(u64(in, 0)))
+		bp := ex.Path(ex.obj, int(export.U64(in, 0)))
 		if bp == nil {
 			return
 		}
 		m := identity
 		if in.Op == bdf.OpFillPathAt {
-			m = m.translate(f64(in, 2), f64(in, 3))
+			m = m.Translate(export.F64(in, 2), export.F64(in, 3))
 		}
-		probe := newPen(nil, m)
-		probe.path(bp)
-		ex.fill(probe.box, func(b *bytes.Buffer) bool {
-			p := newPen(b, m)
-			p.path(bp)
-			return p.drawn
-		}, byte(u64(in, 1)))
+		probe := export.NewPen(nil, m)
+		probe.Path(bp)
+		ex.fill(probe.Box, func(b *bytes.Buffer) bool {
+			p := export.NewPen(b, m)
+			p.Path(bp)
+			return p.Drawn
+		}, byte(export.U64(in, 1)))
 	case bdf.OpStrokePath:
-		if bp := ex.path(int(u64(in, 0))); bp != nil {
-			probe := newPen(nil, identity)
-			probe.path(bp)
-			ex.strokePath(probe.box, func(b *bytes.Buffer) bool {
-				p := newPen(b, identity)
-				p.path(bp)
-				return p.drawn
+		if bp := ex.Path(ex.obj, int(export.U64(in, 0))); bp != nil {
+			probe := export.NewPen(nil, identity)
+			probe.Path(bp)
+			ex.strokePath(probe.Box, func(b *bytes.Buffer) bool {
+				p := export.NewPen(b, identity)
+				p.Path(bp)
+				return p.Drawn
 			})
 		}
 	case bdf.OpFillPathRun:
 		glyphs, _ := in.Args[1].([]bdf.Glyph)
 		box := none
 		for _, g := range glyphs {
-			if bp := ex.path(int(g.Path)); bp != nil {
-				probe := newPen(nil, identity.translate(float64(g.X), float64(g.Y)))
-				probe.path(bp)
-				if probe.boxed {
-					box = union(box, probe.box)
+			if bp := ex.Path(ex.obj, int(g.Path)); bp != nil {
+				probe := export.NewPen(nil, identity.Translate(float64(g.X), float64(g.Y)))
+				probe.Path(bp)
+				if probe.Boxed {
+					box = union(box, probe.Box)
 				}
 			}
 		}
 		ex.fill(box, func(b *bytes.Buffer) bool {
 			drawn := false
 			for _, g := range glyphs {
-				if bp := ex.path(int(g.Path)); bp != nil {
-					p := newPen(b, identity.translate(float64(g.X), float64(g.Y)))
-					p.path(bp)
-					drawn = drawn || p.drawn
+				if bp := ex.Path(ex.obj, int(g.Path)); bp != nil {
+					p := export.NewPen(b, identity.Translate(float64(g.X), float64(g.Y)))
+					p.Path(bp)
+					drawn = drawn || p.Drawn
 				}
 			}
 			return drawn
-		}, byte(u64(in, 0)))
+		}, byte(export.U64(in, 0)))
 	case bdf.OpFillText, bdf.OpStrokeText:
 		str, _ := in.Args[0].(string)
-		ex.text(str, f64(in, 1), f64(in, 2), f64(in, 3), in.Op == bdf.OpStrokeText)
+		ex.text(str, export.F64(in, 1), export.F64(in, 2), export.F64(in, 3), in.Op == bdf.OpStrokeText)
 	case bdf.OpImage:
-		ex.image(int(u64(in, 0)), nil, f64(in, 1), f64(in, 2), f64(in, 3), f64(in, 4))
+		ex.image(int(export.U64(in, 0)), nil, export.F64(in, 1), export.F64(in, 2), export.F64(in, 3), export.F64(in, 4))
 	case bdf.OpImageSub:
-		src := &[4]float64{f64(in, 1), f64(in, 2), f64(in, 3), f64(in, 4)}
-		ex.image(int(u64(in, 0)), src, f64(in, 5), f64(in, 6), f64(in, 7), f64(in, 8))
+		src := &[4]float64{export.F64(in, 1), export.F64(in, 2), export.F64(in, 3), export.F64(in, 4)}
+		ex.image(int(export.U64(in, 0)), src, export.F64(in, 5), export.F64(in, 6), export.F64(in, 7), export.F64(in, 8))
 	case bdf.OpSmoothing:
-		st.smooth = u64(in, 0) != 0
+		st.smooth = export.U64(in, 0) != 0
 	case bdf.OpUse, bdf.OpUseAt:
-		i := u64(in, 0)
+		i := export.U64(in, 0)
 		if i >= uint64(len(ex.obj.Objects)) {
 			return
 		}
-		child := ex.object(ex.obj.Objects[i])
+		child := ex.Object(ex.obj.Objects[i])
 		if child == nil {
 			return
 		}
@@ -532,10 +474,10 @@ func (ex *exporter) instr(in bdf.Instr) {
 		ex.floor, ex.unsave = len(ex.stack), 0
 		ex.groupFloor, ex.maskFloor = groups, masks
 		if in.Op == bdf.OpUseAt {
-			ex.concat(matrix{1, 0, 0, 1, f64(in, 1), f64(in, 2)})
+			ex.concat(matrix{1, 0, 0, 1, export.F64(in, 1), export.F64(in, 2)})
 		}
 		again := ex.again
-		ex.again = ex.enter(ex.obj.Objects[i]) || again
+		ex.again = ex.Enter(ex.obj.Objects[i]) || again
 		ex.run(child)
 		ex.again = again
 		ex.unwind(groups, masks)
@@ -548,7 +490,7 @@ func (ex *exporter) instr(in bdf.Instr) {
 		ex.st = saved
 		ex.floor, ex.unsave = floor, unsave
 	case bdf.OpGroupBegin:
-		ex.groupBegin(f64(in, 0), byte(u64(in, 1)), f64(in, 2), f64(in, 3), f64(in, 4), f64(in, 5))
+		ex.groupBegin(export.F64(in, 0), byte(export.U64(in, 1)), export.F64(in, 2), export.F64(in, 3), export.F64(in, 4), export.F64(in, 5))
 	case bdf.OpGroupEnd:
 		ex.groupEnd()
 	case bdf.OpMaskBegin:
@@ -556,13 +498,6 @@ func (ex *exporter) instr(in bdf.Instr) {
 	case bdf.OpMaskEnd:
 		ex.maskEnd()
 	}
-}
-
-func clampShadow(v float64) float64 {
-	if math.IsNaN(v) {
-		return 0
-	}
-	return math.Min(math.Max(v, -1e6), 1e6)
 }
 
 // buf is the buffer of the second pass while it writes, nil otherwise.
@@ -574,22 +509,22 @@ func (ex *exporter) buf() *bytes.Buffer {
 }
 
 // clipBox narrows the box of the clip by a path.
-func (ex *exporter) clipBox(p *pen) {
+func (ex *exporter) clipBox(p *export.Pen) {
 	st := &ex.st
-	if !p.boxed {
+	if !p.Boxed {
 		st.clip = none
 		return
 	}
-	st.clip = intersect(st.clip, st.ctm.bounds(p.box[0], p.box[1], p.box[2], p.box[3]))
+	st.clip = intersect(st.clip, st.ctm.Bounds(p.Box[0], p.Box[1], p.Box[2], p.Box[3]))
 }
 
 // concat multiplies the transform of the state by m.
 func (ex *exporter) concat(m matrix) {
-	if !m.finite() {
+	if !m.Finite() {
 		return
 	}
-	ex.st.ctm = ex.st.ctm.mul(m)
-	ex.op("%s cm", m)
+	ex.st.ctm = ex.st.ctm.Mul(m)
+	ex.op("%s cm", export.Mat(m))
 }
 
 // dash sets the dashes of lines as Canvas does: a list with a value that
@@ -615,7 +550,7 @@ func (ex *exporter) dash(segs []float32, off float32) {
 		if i > 0 {
 			b.WriteByte(' ')
 		}
-		b.WriteString(num(float64(v)))
+		b.WriteString(export.Num(float64(v)))
 	}
 	if len(segs)%2 == 1 {
 		// an odd list is repeated
@@ -632,39 +567,12 @@ func (ex *exporter) dash(segs []float32, off float32) {
 		}
 		o = math.Mod(o, period) + period
 	}
-	ex.op("[%s] %s d", b.String(), num(o))
-}
-
-func (ex *exporter) path(i int) *bdf.Path {
-	if i < 0 || i >= len(ex.obj.Paths) {
-		ex.warnf("bad path reference")
-		return nil
-	}
-	e := ex.obj.Paths[i]
-	if e.Inline != nil {
-		return e.Inline
-	}
-	ps, ok := ex.coll[e.Hash]
-	if !ok {
-		if part := ex.doc.Part(e.Hash); part != nil {
-			var err error
-			if ps, err = bdf.DecodePathCollection(part.Data); err != nil {
-				ex.warnf("path collection %s: %v", e.Hash, err)
-			}
-		} else {
-			ex.warnf("path collection %s is missing", e.Hash)
-		}
-		ex.coll[e.Hash] = ps
-	}
-	if int(e.Index) < len(ps) {
-		return ps[e.Index]
-	}
-	return nil
+	ex.op("[%s] %s d", b.String(), export.Num(o))
 }
 
 func (ex *exporter) paintStyle(i int) style {
 	if i < 0 || i >= len(ex.obj.Paints) {
-		ex.warnf("bad paint reference")
+		ex.Warnf("bad paint reference")
 		return style{}
 	}
 	return style{paint: &ex.obj.Paints[i], obj: ex.obj}
@@ -713,7 +621,7 @@ func (ex *exporter) drawn(box [4]float64, reach float64, plain bool) bool {
 	if !(box[2] >= box[0]) || !(box[3] >= box[1]) {
 		return false
 	}
-	pageBox := st.ctm.bounds(box[0]-reach, box[1]-reach, box[2]+reach, box[3]+reach)
+	pageBox := st.ctm.Bounds(box[0]-reach, box[1]-reach, box[2]+reach, box[3]+reach)
 	shown := intersect(pageBox, st.clip)
 	if !(shown[2] > shown[0]) || !(shown[3] > shown[1]) {
 		if !st.shadowOn() {
@@ -744,11 +652,11 @@ func (ex *exporter) color(c bdf.Color) {
 	r, g, b := float64(uint32(c)>>24)/255, float64(uint32(c)>>16&0xff)/255, float64(uint32(c)>>8&0xff)/255
 	var key string
 	if ex.opts.Gray {
-		key = fine(luma(r, g, b)) + " g"
+		key = export.Fine(luma(r, g, b)) + " g"
 	} else if r == g && g == b {
-		key = fine(r) + " g"
+		key = export.Fine(r) + " g"
 	} else {
-		key = fine(r) + " " + fine(g) + " " + fine(b) + " rg"
+		key = export.Fine(r) + " " + export.Fine(g) + " " + export.Fine(b) + " rg"
 	}
 	if st.pColor != key && ex.writing() {
 		ex.op("%s", key)
@@ -826,14 +734,14 @@ func (ex *exporter) clearRect(x, y, w, h float64) {
 	if !ex.drawn([4]float64{math.Min(x, x+w), math.Min(y, y+h), math.Max(x, x+w), math.Max(y, y+h)}, 0, true) {
 		return
 	}
-	ex.op("q 1 g %s re f Q", nums(x, y, w, h))
+	ex.op("q 1 g %s re f Q", export.Nums(x, y, w, h))
 }
 
 // layer reports whether one more group or soft mask may be open; one past
 // the limit is left out with what is in it.
 func (ex *exporter) layer() bool {
 	if len(ex.groups)+ex.mask >= maxLayers {
-		ex.warnf("more than %d groups and soft masks are open: what is in the rest of them is not written", maxLayers)
+		ex.Warnf("more than %d groups and soft masks are open: what is in the rest of them is not written", maxLayers)
 		ex.skipped++
 		return false
 	}
@@ -851,7 +759,7 @@ func (ex *exporter) groupBegin(alpha float64, blend byte, x, y, w, h float64) {
 	st := &ex.st
 	f := &frame{box: none, rect: everywhere, clip: st.clip, saved: *st, stack: ex.stack, floor: ex.floor, unsaved: ex.unsave, maskFloor: ex.maskFloor}
 	if w > 0 && h > 0 {
-		f.rect = st.ctm.bounds(x, y, x+w, y+h)
+		f.rect = st.ctm.Bounds(x, y, x+w, y+h)
 	}
 	if st.shadowOn() {
 		f.shadowDX, f.shadowDY, f.shadowBlur = st.shadowDX, st.shadowDY, st.shadowBlur

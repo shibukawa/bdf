@@ -1,4 +1,4 @@
-package imagebdf
+package fontchain
 
 import (
 	"os"
@@ -9,6 +9,14 @@ import (
 	"github.com/shibukawa/bdf/internal/sfnt"
 )
 
+// face is the least a user of the package keeps of a font program.
+type face struct{ Program }
+
+func newFace(f *sfnt.Font, _ bool) *face { return &face{NewProgram(f)} }
+
+// An embedded face is drawn with alone while it has the glyphs: the fonts
+// of the system are looked up when a character is missing from it, and
+// only those that have the character are loaded.
 func TestEmbeddedFontLoadsFallbacksOnlyForMissingGlyphs(t *testing.T) {
 	data, err := os.ReadFile("../../converter/pptx/testdata/fonts/MPLUS1p-Regular-subset.ttf")
 	if err != nil {
@@ -32,32 +40,35 @@ func TestEmbeddedFontLoadsFallbacksOnlyForMissingGlyphs(t *testing.T) {
 	}
 	d := bdf.NewDocument()
 	hash := d.AddFont(program("Embedded", "A"))
-	r := New(d, &Options{NoSystemFonts: true, FontFS: fstest.MapFS{
+	fs := &Fonts[*face]{Doc: d, NoSystemFonts: true, FontFS: fstest.MapFS{
 		"fallback.ttf": {Data: program("Fallback", "B")},
 		"unused.ttf":   {Data: program("Unused", "C")},
-	}})
+	}, New: newFace, Warnf: func(format string, args ...any) { t.Errorf(format, args...) }, NotDone: "not drawn"}
 	ref := bdf.Font{Kind: bdf.FontEmbedded, Hash: hash, Family: "Fallback", Weight: 400}
-	c := r.fonts.chain(&ref)
+	c := fs.Chain(&ref)
 	ref.Family = "Unused" // must not alter the cached chain's deferred lookup
-	g, width := c.layout("AA", 12, 0, bdf.DirLTR)
-	if len(g) != 2 || width <= 0 || r.fonts.db != nil || len(r.fonts.files) != 0 {
+	g, width := c.Layout("AA", 12, 0, bdf.DirLTR)
+	if len(g) != 2 || width <= 0 || fs.db != nil || len(fs.files) != 0 {
 		t.Fatal("drawing the embedded characters loaded external fonts")
 	}
-	primary := g[0].use.face
-	baseline := c.baselineShift(bdf.BaselineTop, 12)
-	g, _ = c.layout("AB", 12, 0, bdf.DirLTR)
-	if len(g) != 2 || g[0].use.face != primary || g[1].use.face == primary || g[1].gid == 0 {
+	primary := g[0].Use.Face
+	baseline := c.BaselineShift(bdf.BaselineTop, 12)
+	g, _ = c.Layout("AB", 12, 0, bdf.DirLTR)
+	if len(g) != 2 || g[0].Use.Face != primary || g[1].Use.Face == primary || g[1].GID == 0 {
 		t.Fatal("missing character did not use its fallback")
 	}
-	if len(r.fonts.files) != 1 || c.baselineShift(bdf.BaselineTop, 12) != baseline {
+	if len(fs.files) != 1 || c.BaselineShift(bdf.BaselineTop, 12) != baseline {
 		t.Fatal("unused fallback loaded or primary baseline changed")
 	}
-	g, _ = c.layout("CBA", 12, 0, bdf.DirLTR)
-	if len(g) != 3 || g[0].gid == 0 || g[1].gid == 0 || g[2].use.face != primary || len(r.fonts.files) != 2 {
+	g, _ = c.Layout("CBA", 12, 0, bdf.DirLTR)
+	if len(g) != 3 || g[0].GID == 0 || g[1].GID == 0 || g[2].Use.Face != primary || len(fs.files) != 2 {
 		t.Fatal("later fallback changed the priority of earlier faces")
 	}
-	g, _ = c.layout("\U0010ffff", 12, 0, bdf.DirLTR)
-	if len(g) != 1 || g[0].gid != 0 || g[0].use.face != primary {
+	g, _ = c.Layout("\U0010ffff", 12, 0, bdf.DirLTR)
+	if len(g) != 1 || g[0].GID != 0 || g[0].Use.Face != primary {
 		t.Fatal("missing character must use the primary face's .notdef")
+	}
+	if len(fs.All) != 3 {
+		t.Fatalf("%d faces loaded", len(fs.All))
 	}
 }

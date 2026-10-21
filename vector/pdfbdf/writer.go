@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"math"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -117,55 +116,6 @@ func (pw *writer) finish(root, info ref) error {
 		return pw.err
 	}
 	return pw.w.Flush()
-}
-
-// num writes a number of a content stream or a dictionary: without an
-// exponent, with as many decimals as a place on a page or a color needs.
-func num(v float64) string {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return "0"
-	}
-	// (the numbers of PDF are single precision)
-	if v > 1e9 {
-		v = 1e9
-	} else if v < -1e9 {
-		v = -1e9
-	}
-	r := math.Round(v*1e4) / 1e4
-	if r == math.Trunc(r) {
-		return strconv.FormatInt(int64(r), 10)
-	}
-	return strconv.FormatFloat(r, 'f', -1, 64)
-}
-
-// nums writes numbers with spaces between them.
-func nums(vs ...float64) string {
-	var b strings.Builder
-	for i, v := range vs {
-		if i > 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteString(num(v))
-	}
-	return b.String()
-}
-
-// fine writes a number that is multiplied by a size (a scale of a matrix,
-// a width of a glyph), with more decimals than num.
-func fine(v float64) string {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		return "0"
-	}
-	if v > 1e9 {
-		v = 1e9
-	} else if v < -1e9 {
-		v = -1e9
-	}
-	r := math.Round(v*1e6) / 1e6
-	if r == math.Trunc(r) {
-		return strconv.FormatInt(int64(r), 10)
-	}
-	return strconv.FormatFloat(r, 'f', -1, 64)
 }
 
 // text writes a text string of a dictionary: as it is in parentheses when

@@ -385,7 +385,7 @@ func (sr *svgRenderer) render(s *surface, m matrix, w, h float64) {
 	ctx := &svgCtx{s: s, m: m, clip: &mask{r: s.bounds()}, vw: w, vh: h}
 	st := sr.compute(root, defaultStyle())
 	if vb, ok := viewBox(root.Attr["viewBox"]); ok {
-		ctx.m = ctx.m.mul(aspectTransform(vb, root.Attr["preserveAspectRatio"], 0, 0, w, h))
+		ctx.m = ctx.m.Mul(aspectTransform(vb, root.Attr["preserveAspectRatio"], 0, 0, w, h))
 		ctx.vw, ctx.vh = vb[2], vb[3]
 	}
 	sr.children(root, ctx, st)
@@ -493,7 +493,7 @@ func (sr *svgRenderer) node(n *svg.Node, ctx *svgCtx, parent svgStyle) {
 	st := sr.compute(n, parent)
 	c := *ctx
 	if t := n.Attr["transform"]; t != "" {
-		c.m = c.m.mul(matrix(svg.ParseTransform(t)))
+		c.m = c.m.Mul(matrix(svg.ParseTransform(t)))
 	}
 	if cp, _ := n.Declared("clip-path"); cp != "" && cp != "none" {
 		if target := sr.ref(cp); target != nil && target.Name == "clipPath" {
@@ -559,7 +559,7 @@ func (sr *svgRenderer) element(n *svg.Node, c *svgCtx, st svgStyle) {
 			sr.nested(target, true, c, st, x, y, n.Attr["width"], n.Attr["height"])
 		default:
 			uc := *c
-			uc.m = uc.m.translate(x, y)
+			uc.m = uc.m.Translate(x, y)
 			sr.node(target, &uc, st)
 		}
 	case "text":
@@ -612,10 +612,10 @@ func (sr *svgRenderer) nested(content *svg.Node, viaUse bool, c *svgCtx, st svgS
 		nc.clip = intersect(nc.clip, sr.coverage(p, nc.m, bdf.NonZero, nc.s.bounds()))
 	}
 	if vb, ok := viewBox(content.Attr["viewBox"]); ok {
-		nc.m = nc.m.mul(aspectTransform(vb, content.Attr["preserveAspectRatio"], x, y, w, h))
+		nc.m = nc.m.Mul(aspectTransform(vb, content.Attr["preserveAspectRatio"], x, y, w, h))
 		nc.vw, nc.vh = vb[2], vb[3]
 	} else {
-		nc.m = nc.m.translate(x, y)
+		nc.m = nc.m.Translate(x, y)
 		nc.vw, nc.vh = w, h
 	}
 	sr.children(content, &nc, st)
@@ -864,10 +864,10 @@ func (sr *svgRenderer) gradient(g *svg.Node, st svgStyle, bbox [4]float64, c *sv
 	}
 	m := c.m
 	if bboxUnits {
-		m = m.mul(matrix{bbox[2], 0, 0, bbox[3], bbox[0], bbox[1]})
+		m = m.Mul(matrix{bbox[2], 0, 0, bbox[3], bbox[0], bbox[1]})
 	}
 	if t := attr["gradientTransform"]; t != "" {
-		m = m.mul(matrix(svg.ParseTransform(t)))
+		m = m.Mul(matrix(svg.ParseTransform(t)))
 	}
 	p := &bdf.Paint{}
 	if g.Name == "linearGradient" {
@@ -927,11 +927,11 @@ func (sr *svgRenderer) clipMask(cp, el *svg.Node, c *svgCtx, st svgStyle) *mask 
 	if cp.Attr["clipPathUnits"] == "objectBoundingBox" {
 		if p := sr.shape(el, c, st); p != nil {
 			x0, y0, x1, y1 := p.bbox()
-			m = m.mul(matrix{x1 - x0, 0, 0, y1 - y0, x0, y0})
+			m = m.Mul(matrix{x1 - x0, 0, 0, y1 - y0, x0, y0})
 		}
 	}
 	if t := cp.Attr["transform"]; t != "" {
-		m = m.mul(matrix(svg.ParseTransform(t)))
+		m = m.Mul(matrix(svg.ParseTransform(t)))
 	}
 	var out *mask
 	bounds := c.s.bounds()
@@ -950,13 +950,13 @@ func (sr *svgRenderer) clipMask(cp, el *svg.Node, c *svgCtx, st svgStyle) *mask 
 		cst := sr.compute(ch, st)
 		cm := m
 		if t := ch.Attr["transform"]; t != "" {
-			cm = cm.mul(matrix(svg.ParseTransform(t)))
+			cm = cm.Mul(matrix(svg.ParseTransform(t)))
 		}
 		shape := ch
 		if ch.Name == "use" {
 			if t := sr.ref(ch.Attr["href"]); t != nil && t.Name != "use" {
 				shape = t
-				cm = cm.translate(c.length(ch.Attr["x"], 'x', cst.fontSize), c.length(ch.Attr["y"], 'y', cst.fontSize))
+				cm = cm.Translate(c.length(ch.Attr["x"], 'x', cst.fontSize), c.length(ch.Attr["y"], 'y', cst.fontSize))
 				cst = sr.compute(t, cst)
 			}
 		}
@@ -1046,7 +1046,7 @@ func (sr *svgRenderer) text(n *svg.Node, c *svgCtx, st svgStyle) {
 			if p.st.italic {
 				f.Style = bdf.StyleItalic
 			}
-			g, w := sr.r.fonts.chain(&f).layout(p.s, p.st.fontSize, p.st.letterSpacing, bdf.DirLTR)
+			g, w := sr.r.fonts.Chain(&f).Layout(p.s, p.st.fontSize, p.st.letterSpacing, bdf.DirLTR)
 			glyphs, widths = append(glyphs, g), append(widths, w)
 			total += w
 		}
@@ -1084,23 +1084,23 @@ func (sr *svgRenderer) glyphs(gs []placed, x, y float64, st svgStyle, c *svgCtx)
 	}
 	p := &path{}
 	for _, g := range gs {
-		o := g.use.face.outline(g.gid)
+		o := g.Use.Face.outline(g.GID)
 		if o == nil {
 			continue
 		}
-		k := st.fontSize / g.use.face.upem
-		gm := matrix{1, 0, 0, 1, x + g.x, y}.scale(k, -k)
-		if g.use.italic {
-			gm = gm.mul(matrix{1, 0, fakeItalicSkew, 1, 0, 0})
+		k := st.fontSize / g.Use.Face.Upem
+		gm := matrix{1, 0, 0, 1, x + g.X, y}.Scale(k, -k)
+		if g.Use.Italic {
+			gm = gm.Mul(matrix{1, 0, fakeItalicSkew, 1, 0, 0})
 		}
 		for _, s := range o.subs {
 			ns := subpath{closed: s.closed}
-			ns.start.x, ns.start.y = gm.apply(s.start.x, s.start.y)
+			ns.start.x, ns.start.y = gm.Apply(s.start.x, s.start.y)
 			for _, sg := range s.segs {
 				var q segment
 				q.kind = sg.kind
 				for i := 0; i < 3; i++ {
-					q.p[2*i], q.p[2*i+1] = gm.apply(sg.p[2*i], sg.p[2*i+1])
+					q.p[2*i], q.p[2*i+1] = gm.Apply(sg.p[2*i], sg.p[2*i+1])
 				}
 				ns.segs = append(ns.segs, q)
 			}
@@ -1165,7 +1165,7 @@ func (sr *svgRenderer) image(n *svg.Node, c *svgCtx, st svgStyle) {
 		}
 		iw, ih = si.w, si.h
 		w, h := sizeOr(c, n, st, iw, ih)
-		if pic, _ = si.rasterIn(sr.r, c.m.maxScale()*math.Max(w/iw, h/ih), sr.inside+1); pic == nil {
+		if pic, _ = si.rasterIn(sr.r, c.m.MaxScale()*math.Max(w/iw, h/ih), sr.inside+1); pic == nil {
 			return
 		}
 	} else {
@@ -1177,10 +1177,10 @@ func (sr *svgRenderer) image(n *svg.Node, c *svgCtx, st svgStyle) {
 	if !(w > 0 && h > 0) {
 		return
 	}
-	m := c.m.mul(aspectTransform([4]float64{0, 0, iw, ih}, n.Attr["preserveAspectRatio"], x, y, w, h))
+	m := c.m.Mul(aspectTransform([4]float64{0, 0, iw, ih}, n.Attr["preserveAspectRatio"], x, y, w, h))
 	// image pixels of the raster → device
-	full := m.mul(matrix{iw / float64(pic.w), 0, 0, ih / float64(pic.h), 0, 0})
-	inv, ok := full.invert()
+	full := m.Mul(matrix{iw / float64(pic.w), 0, 0, ih / float64(pic.h), 0, 0})
+	inv, ok := full.Invert()
 	if !ok {
 		return
 	}

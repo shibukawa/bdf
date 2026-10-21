@@ -55,8 +55,8 @@ func TestCompletedImagesOwnedAndInvalidated(t *testing.T) {
 	replacementHash, _ := rd.AddObject(replacement)
 	doc.Part(v.Pages[0].Layers[0].Obj).Data = rd.Part(replacementHash).Data
 	r.Invalidate()
-	if r.fonts.r != r || len(r.images.items) != 0 || len(r.textMasks.items) != 0 {
-		t.Fatal("Invalidate did not reset ownership and caches")
+	if r.fonts.Doc != doc || len(r.images.items) != 0 || len(r.textMasks.items) != 0 {
+		t.Fatal("Invalidate did not reset the fonts and caches")
 	}
 	assertImagesEqual(t, draw(), fresh())
 }

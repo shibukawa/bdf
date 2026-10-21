@@ -1,8 +1,10 @@
 package imagebdf
 
-import "testing"
+import (
+	"testing"
 
-import "github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf"
+)
 
 func TestAntialiasUnknownModeWarnsAndPreservesDefault(t *testing.T) {
 	o := bdf.NewObject().FillColor(0xff0000ff).FillRect(.25, .25, 3.5, 3.5)

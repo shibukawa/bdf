@@ -106,7 +106,7 @@ func (c *lru[K, V]) put(k K, v V, cost int) {
 // Document/view mutation
 // must never race with rendering. Page and view layout are also included in
 // completed-image keys, so changes to those layouts cannot return old pixels.
-func (r *Renderer) Invalidate() { *r = *New(r.doc, &r.opts); r.fonts.r = r }
+func (r *Renderer) Invalidate() { *r = *New(r.doc, &r.opts); r.fonts.Warnf = r.warnf }
 
 type imageKey struct {
 	kind                byte
@@ -231,14 +231,14 @@ func finiteCacheNumbers(values ...float64) bool {
 }
 
 func (r *Renderer) textMask(k textMaskKey) *mask {
-	if plain || r.textMasks.limit <= 0 || !k.m.finite() || !finiteCacheNumbers(k.size, k.spacing) {
+	if plain || r.textMasks.limit <= 0 || !k.m.Finite() || !finiteCacheNumbers(k.size, k.spacing) {
 		return nil
 	}
 	m, _ := r.textMasks.get(k)
 	return m
 }
 func (r *Renderer) keepTextMask(k textMaskKey, m *mask) {
-	if plain || r.textMasks.limit <= 0 || m == nil || !k.m.finite() || !finiteCacheNumbers(k.size, k.spacing) {
+	if plain || r.textMasks.limit <= 0 || m == nil || !k.m.Finite() || !finiteCacheNumbers(k.size, k.spacing) {
 		return
 	}
 	cost := entryCost[textMaskKey, *mask](len(m.a)*4 + len(k.text) + len(k.font.Family) + int(unsafe.Sizeof(*m)))

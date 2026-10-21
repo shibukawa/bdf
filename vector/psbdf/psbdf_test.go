@@ -12,7 +12,6 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,29 +21,11 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/font/woff2"
 	"github.com/shibukawa/bdf/internal/sfnt"
-	"github.com/shibukawa/bdf/raster/imagebdf"
+	"github.com/shibukawa/bdf/vector/internal/vectortest"
 )
 
-// testFonts are the fonts of the tests: text is laid out with them alone, so
-// that the files do not depend on the machine.
-var testFonts = []string{"../../converter/pptx/testdata/fonts"}
-
 func testOptions() *Options {
-	return &Options{FontDirs: testFonts, NoSystemFonts: true}
-}
-
-func load(t testing.TB, name string) *bdf.Document {
-	t.Helper()
-	r, err := bdf.OpenSingleFile(filepath.Join("../../testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.Close()
-	doc, err := r.ToDocument()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return doc
+	return &Options{FontDirs: vectortest.Fonts, NoSystemFonts: true}
 }
 
 func write(t testing.TB, doc *bdf.Document, opts *Options) (string, *Result) {
@@ -55,19 +36,6 @@ func write(t testing.TB, doc *bdf.Document, opts *Options) (string, *Result) {
 		t.Fatal(err)
 	}
 	return buf.String(), res
-}
-
-func one(t testing.TB, w, h float32, draw func(doc *bdf.Document, o *bdf.Object)) *bdf.Document {
-	t.Helper()
-	doc := bdf.NewDocument()
-	o := bdf.NewObject()
-	draw(doc, o)
-	o.SetBBox(0, 0, w, h)
-	hash, _ := doc.AddObject(o)
-	v := doc.NewView("pages", bdf.ViewFixed, "")
-	p := v.AddPage(w, h)
-	p.Layers = append(p.Layers, bdf.Layer{Role: bdf.RoleBody, Obj: hash})
-	return doc
 }
 
 // ghostscript draws the pages of a file at 72 dpi with Ghostscript, and
@@ -99,45 +67,6 @@ func ghostscript(t testing.TB, file string) []*image.RGBA {
 		rgba := image.NewRGBA(img.Bounds())
 		draw.Draw(rgba, rgba.Rect, img, img.Bounds().Min, draw.Src)
 		pages = append(pages, rgba)
-	}
-}
-
-func render(t testing.TB, doc *bdf.Document, v *bdf.View, page int) *image.RGBA {
-	t.Helper()
-	img, err := imagebdf.New(doc, &imagebdf.Options{FontDirs: testFonts, NoSystemFonts: true}).Page(v, page, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return img
-}
-
-// distance is the mean difference of the channels of two images, of 255,
-// where both are (Ghostscript rounds the size of a page down, the image
-// renderer up).
-func distance(a, b *image.RGBA) float64 {
-	w, h := min(a.Rect.Dx(), b.Rect.Dx()), min(a.Rect.Dy(), b.Rect.Dy())
-	if w == 0 || h == 0 || max(a.Rect.Dx(), b.Rect.Dx())-w > 1 || max(a.Rect.Dy(), b.Rect.Dy())-h > 1 {
-		return 255
-	}
-	sum := 0.0
-	for y := 0; y < h; y++ {
-		for x := 0; x < 4*w; x++ {
-			sum += math.Abs(float64(a.Pix[y*a.Stride+x]) - float64(b.Pix[y*b.Stride+x]))
-		}
-	}
-	return sum / float64(4*w*h)
-}
-
-// save writes the images of a page that differ, where $PSBDF_OUT says.
-func save(name string, imgs ...*image.RGBA) {
-	dir := os.Getenv("PSBDF_OUT")
-	if dir == "" {
-		return
-	}
-	for i, img := range imgs {
-		var b bytes.Buffer
-		png.Encode(&b, img)
-		os.WriteFile(filepath.Join(dir, name+"-"+string(rune('a'+i))+".png"), b.Bytes(), 0o644)
 	}
 }
 
@@ -202,7 +131,7 @@ func TestGhostscript(t *testing.T) {
 		{"epub/vertical.bdf", 6, 3, 0, 5},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			doc := load(t, c.name)
+			doc := vectortest.Load(t, c.name)
 			file, res := write(t, doc, testOptions())
 			if res.Pages != c.pages || res.Fonts != c.fonts || res.Pictures != c.pictures {
 				t.Errorf("%d pages, %d fonts and %d pictures, want %d, %d and %d", res.Pages, res.Fonts, res.Pictures, c.pages, c.fonts, c.pictures)
@@ -231,10 +160,10 @@ func TestGhostscript(t *testing.T) {
 					if n++; n > 3 {
 						break
 					}
-					a := render(t, doc, v, i)
-					if d := distance(a, got[n-1]); d > c.most {
+					a := vectortest.Render(t, doc, v, i)
+					if d := vectortest.Distance(a, got[n-1]); d > c.most {
 						t.Errorf("page %d differs by %.2f from that of the document (at most %.2f)", n, d, c.most)
-						save(strings.ReplaceAll(c.name, "/", "_")+"-"+string(rune('0'+n)), a, got[n-1])
+						vectortest.Save("PSBDF_OUT", strings.ReplaceAll(c.name, "/", "_")+"-"+string(rune('0'+n)), a, got[n-1])
 					}
 				}
 			}
@@ -313,7 +242,7 @@ func TestStructure(t *testing.T) {
 // TestPictures draws what PostScript cannot as pictures of the parts of
 // the page where it is drawn: the rest stays vectors.
 func TestPictures(t *testing.T) {
-	doc := one(t, 200, 100, func(doc *bdf.Document, o *bdf.Object) {
+	doc := vectortest.One(t, 200, 100, func(doc *bdf.Document, o *bdf.Object) {
 		o.FillColor(bdf.RGB(0, 0, 200)).FillRect(0, 0, 200, 100)
 		o.FillColor(bdf.RGB(250, 250, 0)).FillRect(150, 50, 30, 30) // under a picture: left out by the clip
 		o.FillColor(bdf.RGBA(255, 0, 0, 128)).FillRect(140, 40, 20, 20)
@@ -341,13 +270,13 @@ func TestPictures(t *testing.T) {
 		}
 	}
 	got := ghostscript(t, file)
-	if d := distance(render(t, doc, doc.Views[0], 0), got[0]); d > 1 {
+	if d := vectortest.Distance(vectortest.Render(t, doc, doc.Views[0], 0), got[0]); d > 1 {
 		t.Errorf("the page differs by %.2f from that of the document", d)
-		save("pictures", render(t, doc, doc.Views[0], 0), got[0])
+		vectortest.Save("PSBDF_OUT", "pictures", vectortest.Render(t, doc, doc.Views[0], 0), got[0])
 	}
 
 	// a page that is mostly pictures is one
-	doc = one(t, 100, 100, func(doc *bdf.Document, o *bdf.Object) {
+	doc = vectortest.One(t, 100, 100, func(doc *bdf.Document, o *bdf.Object) {
 		o.FillColor(bdf.RGB(0, 0, 200)).FillRect(0, 0, 100, 100)
 		o.Alpha(0.5).FillColor(bdf.RGB(255, 0, 0)).FillRect(10, 10, 80, 80)
 	})
@@ -360,7 +289,7 @@ func TestPictures(t *testing.T) {
 // TestPaints writes gradients as smooth shadings, and what PostScript
 // cannot draw of them as pictures.
 func TestPaints(t *testing.T) {
-	doc := one(t, 300, 100, func(doc *bdf.Document, o *bdf.Object) {
+	doc := vectortest.One(t, 300, 100, func(doc *bdf.Document, o *bdf.Object) {
 		lin := o.AddPaint(bdf.LinearGradient(0, 0, 100, 0, bdf.Stop{Offset: 0, Color: bdf.RGB(255, 0, 0)}, bdf.Stop{Offset: 0.5, Color: bdf.RGB(0, 255, 0)}, bdf.Stop{Offset: 1, Color: bdf.RGB(0, 0, 255)}))
 		rad := o.AddPaint(bdf.RadialGradient(150, 50, 0, 150, 50, 40, bdf.Stop{Offset: 0, Color: bdf.RGB(255, 255, 255)}, bdf.Stop{Offset: 1, Color: bdf.RGB(0, 0, 0)}))
 		fade := o.AddPaint(bdf.LinearGradient(200, 0, 300, 0, bdf.Stop{Offset: 0, Color: bdf.RGB(255, 0, 0)}, bdf.Stop{Offset: 1, Color: bdf.RGBA(255, 0, 0, 0)}))
@@ -396,9 +325,9 @@ func TestPaints(t *testing.T) {
 	}
 	// (Ghostscript does not smooth the edges of the clip of a shading)
 	got := ghostscript(t, file)
-	if d := distance(render(t, doc, doc.Views[0], 0), got[0]); d > 2.5 {
+	if d := vectortest.Distance(vectortest.Render(t, doc, doc.Views[0], 0), got[0]); d > 2.5 {
 		t.Errorf("the page differs by %.2f from that of the document", d)
-		save("paints", render(t, doc, doc.Views[0], 0), got[0])
+		vectortest.Save("PSBDF_OUT", "paints", vectortest.Render(t, doc, doc.Views[0], 0), got[0])
 	}
 	opts := testOptions()
 	opts.Gray = true
@@ -410,11 +339,11 @@ func TestPaints(t *testing.T) {
 
 // TestText writes text with Type 3 fonts of the outlines of its glyphs.
 func TestText(t *testing.T) {
-	font, err := os.ReadFile(filepath.Join(testFonts[0], "MPLUS1p-Regular-subset.ttf"))
+	font, err := os.ReadFile(filepath.Join(vectortest.Fonts[0], "MPLUS1p-Regular-subset.ttf"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	doc := one(t, 300, 200, func(doc *bdf.Document, o *bdf.Object) {
+	doc := vectortest.One(t, 300, 200, func(doc *bdf.Document, o *bdf.Object) {
 		f := o.AddFont(bdf.EmbeddedFont(doc.AddFont(font), 400, bdf.StyleNormal))
 		bold := o.AddFont(bdf.EmbeddedFont(doc.AddFont(font), 700, bdf.StyleItalic))
 		lin := o.AddPaint(bdf.LinearGradient(0, 0, 100, 0, bdf.Stop{Offset: 0, Color: bdf.RGB(255, 0, 0)}, bdf.Stop{Offset: 1, Color: bdf.RGB(0, 0, 255)}))
@@ -458,13 +387,13 @@ func TestText(t *testing.T) {
 		t.Errorf("%d strings of glyphs", strings.Count(file, "xshow"))
 	}
 	got := ghostscript(t, file)
-	if d := distance(render(t, doc, doc.Views[0], 0), got[0]); d > 2 {
+	if d := vectortest.Distance(vectortest.Render(t, doc, doc.Views[0], 0), got[0]); d > 2 {
 		t.Errorf("the page differs by %.2f from that of the document", d)
-		save("text", render(t, doc, doc.Views[0], 0), got[0])
+		vectortest.Save("PSBDF_OUT", "text", vectortest.Render(t, doc, doc.Views[0], 0), got[0])
 	}
 
 	// more glyphs than a font holds
-	doc = one(t, 600, 300, func(doc *bdf.Document, o *bdf.Object) {
+	doc = vectortest.One(t, 600, 300, func(doc *bdf.Document, o *bdf.Object) {
 		f := o.AddFont(bdf.EmbeddedFont(doc.AddFont(font), 400, bdf.StyleNormal))
 		o.Font(f, 8)
 		sf, err := sfnt.Parse(font)
@@ -504,7 +433,7 @@ func TestImages(t *testing.T) {
 	jpeg.Encode(&jb, photo, &jpeg.Options{Quality: 90})
 	png.Encode(&gb, gray)
 	png.Encode(&ab, alpha)
-	doc := one(t, 200, 100, func(doc *bdf.Document, o *bdf.Object) {
+	doc := vectortest.One(t, 200, 100, func(doc *bdf.Document, o *bdf.Object) {
 		j := o.AddImage(doc.AddImage(jb.Bytes()))
 		g := o.AddImage(doc.AddImage(gb.Bytes()))
 		a := o.AddImage(doc.AddImage(ab.Bytes()))
@@ -525,9 +454,9 @@ func TestImages(t *testing.T) {
 		}
 	}
 	got := ghostscript(t, file)
-	if d := distance(render(t, doc, doc.Views[0], 0), got[0]); d > 2 {
+	if d := vectortest.Distance(vectortest.Render(t, doc, doc.Views[0], 0), got[0]); d > 2 {
 		t.Errorf("the page differs by %.2f from that of the document", d)
-		save("images", render(t, doc, doc.Views[0], 0), got[0])
+		vectortest.Save("PSBDF_OUT", "images", vectortest.Render(t, doc, doc.Views[0], 0), got[0])
 	}
 }
 
@@ -537,8 +466,8 @@ func TestDeterministic(t *testing.T) {
 	if !woff2.Available() {
 		t.Skip("the fonts of the test documents are WOFF2, which this build does not read")
 	}
-	a, _ := write(t, load(t, "pptx/features.bdf"), testOptions())
-	b, _ := write(t, load(t, "pptx/features.bdf"), testOptions())
+	a, _ := write(t, vectortest.Load(t, "pptx/features.bdf"), testOptions())
+	b, _ := write(t, vectortest.Load(t, "pptx/features.bdf"), testOptions())
 	if a != b {
 		t.Error("a document is written as different files")
 	}
@@ -547,7 +476,7 @@ func TestDeterministic(t *testing.T) {
 // TestSkipRoles leaves out the layers of roles, in the vectors and in the
 // pictures.
 func TestSkipRoles(t *testing.T) {
-	doc := one(t, 100, 100, func(doc *bdf.Document, o *bdf.Object) {
+	doc := vectortest.One(t, 100, 100, func(doc *bdf.Document, o *bdf.Object) {
 		o.FillColor(bdf.RGBA(255, 0, 0, 128)).FillRect(10, 10, 20, 20)
 	})
 	bg := bdf.NewObject()
@@ -571,19 +500,7 @@ func TestSkipRoles(t *testing.T) {
 // that what it leaves open is closed.
 func TestLimits(t *testing.T) {
 	// objects that draw each other twice, forty deep
-	doc := bdf.NewDocument()
-	leaf := bdf.NewObject()
-	leaf.FillRect(0, 0, 1, 1).SetBBox(0, 0, 1, 1)
-	h, box := doc.AddObject(leaf)
-	for i := 0; i < 40; i++ {
-		o := bdf.NewObject()
-		r := o.AddObject(h, box)
-		o.Use(r).UseAt(r, 1, 1).SetBBox(0, 0, 2, 2)
-		h, box = doc.AddObject(o)
-	}
-	v := doc.NewView("pages", bdf.ViewFixed, "")
-	p := v.AddPage(10, 10)
-	p.Layers = append(p.Layers, bdf.Layer{Role: bdf.RoleBody, Obj: h})
+	doc := vectortest.DeepUses()
 	var buf bytes.Buffer
 	res, err := Write(&buf, doc, testOptions())
 	if err != nil {
@@ -597,7 +514,7 @@ func TestLimits(t *testing.T) {
 	inner := bdf.NewObject()
 	inner.GroupEnd().MaskEnd().Restore().FillRect(0, 0, 2, 2).GroupBegin(1, 0, 0, 0, 5, 5).Save().SetBBox(0, 0, 5, 5)
 	ih, ibox := bdf.NewDocument().AddObject(inner)
-	doc = one(t, 10, 10, func(doc *bdf.Document, o *bdf.Object) {
+	doc = vectortest.One(t, 10, 10, func(doc *bdf.Document, o *bdf.Object) {
 		ih, ibox = doc.AddObject(inner)
 		r := o.AddObject(ih, ibox)
 		o.GroupEnd().MaskEnd().Restore().Restore()

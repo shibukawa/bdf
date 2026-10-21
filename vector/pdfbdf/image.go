@@ -1,7 +1,6 @@
 package pdfbdf
 
 import (
-	"bytes"
 	"fmt"
 	"image"
 	"image/draw"
@@ -10,6 +9,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/image/imgconv"
 	"github.com/shibukawa/bdf/raster/imagebdf"
+	"github.com/shibukawa/bdf/vector/internal/export"
 )
 
 // pdfImage is an image of the document as an image XObject of the file.
@@ -33,9 +33,9 @@ func (ex *exporter) imageOf(h bdf.Hash, scale func(w, h float64) float64, smooth
 		return img
 	}
 	ex.images[h] = nil
-	part := ex.doc.Part(h)
+	part := ex.Doc.Part(h)
 	if part == nil {
-		ex.warnf("image %s is missing", h)
+		ex.Warnf("image %s is missing", h)
 		return nil
 	}
 	data := part.Data
@@ -45,7 +45,7 @@ func (ex *exporter) imageOf(h bdf.Hash, scale func(w, h float64) float64, smooth
 		interpolate = ex.interpolate()
 	}
 	switch format := imgconv.Sniff(data); {
-	case isSVG(data):
+	case export.IsSVG(data):
 		px := func(w, h float64) float64 {
 			k := scale(w, h) * svgDPI / 72
 			if !(k > 0) || math.IsInf(k, 0) {
@@ -55,10 +55,10 @@ func (ex *exporter) imageOf(h bdf.Hash, scale func(w, h float64) float64, smooth
 		}
 		pix, w, hh, warnings, err := imagebdf.SVGImage(data, px, &imagebdf.Options{FontFS: ex.opts.FontFS, FontDirs: ex.opts.FontDirs, NoSystemFonts: ex.opts.NoSystemFonts})
 		for _, w := range warnings {
-			ex.warnf("%s", w)
+			ex.Warnf("%s", w)
 		}
 		if err != nil {
-			ex.warnf("an SVG image is not drawn: %v", err)
+			ex.Warnf("an SVG image is not drawn: %v", err)
 			return nil
 		}
 		out.w, out.h = w, hh
@@ -98,11 +98,11 @@ func (ex *exporter) decoded(h bdf.Hash, out *pdfImage, data []byte, interpolate 
 	if err != nil {
 		switch format := imgconv.Sniff(data); {
 		case format == "avif":
-			ex.warnf("AVIF images are not written")
+			ex.Warnf("AVIF images are not written")
 		case err == imgconv.ErrTooLarge:
-			ex.warnf("an image of more than %d pixels is not written", imgconv.MaxDecodePixels)
+			ex.Warnf("an image of more than %d pixels is not written", imgconv.MaxDecodePixels)
 		default:
-			ex.warnf("an image (%s) cannot be decoded", format)
+			ex.Warnf("an image (%s) cannot be decoded", format)
 		}
 		return nil
 	}
@@ -209,14 +209,6 @@ func unfilter(data []byte, w, comps int) []byte {
 	return out
 }
 
-// isSVG reports whether image bytes are SVG markup (after a byte order
-// mark and white space) rather than an encoded bitmap, as the viewer tells.
-func isSVG(b []byte) bool {
-	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
-	b = bytes.TrimLeft(b, " \t\r\n")
-	return len(b) > 0 && b[0] == '<'
-}
-
 // jpegInfo reads the size and the number of components of a JPEG image
 // that a PDF can hold as it is: of 8 bits, coded with Huffman tables,
 // gray or of three components.
@@ -262,7 +254,7 @@ func jpegInfo(data []byte) (w, h, comps int, ok bool) {
 // image) of it, into the rectangle (x, y, w, h).
 func (ex *exporter) image(i int, src *[4]float64, x, y, w, h float64) {
 	if i < 0 || i >= len(ex.obj.Images) {
-		ex.warnf("bad image reference")
+		ex.Warnf("bad image reference")
 		return
 	}
 	if w == 0 || h == 0 {
@@ -271,7 +263,7 @@ func (ex *exporter) image(i int, src *[4]float64, x, y, w, h float64) {
 	s := ex.s
 	st := &s.st
 	// how large a unit of the image is on the page
-	pt := s.toPage.mul(st.ctm).areaScale()
+	pt := s.toPage.Mul(st.ctm).AreaScale()
 	img := ex.imageOf(ex.obj.Images[i], func(nw, nh float64) float64 {
 		if src != nil {
 			nw, nh = src[2], src[3]
@@ -294,13 +286,13 @@ func (ex *exporter) image(i int, src *[4]float64, x, y, w, h float64) {
 	}
 	ex.blendMode()
 	if st.alpha != st.pCa {
-		s.op("%s gs", ex.extGState("/ca "+fine(st.alpha)))
+		s.op("%s gs", ex.extGState("/ca "+export.Fine(st.alpha)))
 		st.pCa = st.alpha
 	}
 	name := s.use("XObject", img.name, img.ref)
 	if src == nil {
 		// the unit square of an image has its y axis up
-		s.op("q %s cm %s Do Q", matrix{w, 0, 0, -h, x, y + h}, name)
+		s.op("q %s cm %s Do Q", export.Mat(matrix{w, 0, 0, -h, x, y + h}), name)
 		return
 	}
 	sx, sy, sw, sh := src[0], src[1], src[2], src[3]
@@ -311,5 +303,5 @@ func (ex *exporter) image(i int, src *[4]float64, x, y, w, h float64) {
 	// the rectangle
 	fw, fh := img.w*w/sw, img.h*h/sh
 	fx, fy := x-sx*w/sw, y-sy*h/sh
-	s.op("q %s re W n %s cm %s Do Q", nums(x, y, w, h), matrix{fw, 0, 0, -fh, fx, fy + fh}, name)
+	s.op("q %s re W n %s cm %s Do Q", export.Nums(x, y, w, h), export.Mat(matrix{fw, 0, 0, -fh, fx, fy + fh}), name)
 }
