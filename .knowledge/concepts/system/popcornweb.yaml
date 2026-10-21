@@ -45,6 +45,7 @@ facts:
     build_target: 'v0.5.12 で pw build --target=lambda が通る。config.prod.toml は有るときだけ同梱し、無ければ Dockerfile に COPY を書かない。bdf の手書きの Dockerfile は消した（pw の成果物は .pw/build/lambda/nethttp、linux/amd64）'
     config: '[]string の default はカンマ区切り（v0.5.12 で配列風の既定は生成で断られる）。アプリの資源を開く前に pw.ParseConfig と pw.RunFrameworkAction（v0.5.12 で pw に出た）'
     csrf_cors_defaults: 'v0.5.11 では CSRF の include と CORS の include・allowed_methods・allowed_headers・exposed_headers の既定が配列の文字列のまま 1 つの値になり、CSRF を有効にすると起動しなかった（2026-10-21 再現）。v0.5.12 で直った'
+    dev_idp: '2026-10-21 popcornweb.toml の [dev.idp]（enabled、config = cmd/printmanager/devidp.toml）で pw dev が開発用の OIDC の提供者を起こし、走るごとのクライアントを作って AUTH_OIDC_ISSUER・CLIENT_ID・CLIENT_SECRET をアプリに渡す（v0.5.12 で bdf の形のまま動いた）。plugin/auth の [auth.oidc] がその変数を読み、ConfigureAuth が dev のループバックの issuer に allow_loopback_http を付ける。管理者の規則など [oidc] は直下の config.dev.toml（APP_ENV が dev のときだけ読まれる）。roster は入れ子の claim の表を書けない（claims.groups のように 1 段だけ）。pw doctor は dev 以外で [dev.idp] を error（PW0430）、auth.enabled が設定ファイルで false なのを note（PW0405、実際は ConfigureAuth が実行時に入れる）にする。pw dev の console のポート 18081 が他の pw に取られていても走る。試験は testutil.WithIdentityProvider と WithIdPConfig で同じ提供者と roster を使える（TestDevRoster）'
     feedback: '2026-10-21 の依頼文 knowledge-inputs/print-plan/popcornweb-public-assets-request.md は v0.5.12 で答えられた（Ask 1〜3 と補足）。bdf の /static/ の自前の配信と手書きの Dockerfile は消した'
 relations:
 - relation: informs

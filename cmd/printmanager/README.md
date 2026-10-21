@@ -19,22 +19,32 @@ runs as one process on a site's server or as a function of AWS Lambda.
 
 ## Run it
 
-Copy `.env.example` to `.env.local` (git ignores it) and fill in the
-secret and the IdP. Then, from the repository's root, either
+From the repository's root, either
 
 ```sh
 pw dev
 ```
 
 which regenerates the pages and the public tree, rebuilds and restarts on
-every change, or
+every change, and signs people in at pw's development OpenID Provider
+(`[dev.idp]` in `popcornweb.toml`): it gives the Print Manager its issuer
+and a client of the run (`AUTH_OIDC_*`), so nothing about the IdP is typed.
+Signing in is picking one of the people of
+[devidp.toml](devidp.toml), no password checked: Ada Admin (`pm-admins`,
+the administrators by `config.dev.toml`), Mina Member (`warehouse-a`) and
+Otto Outsider (no groups). Editing the roster takes effect without a
+restart; `TestDevRoster` checks that its people still hit the rules. Or
 
 ```sh
 go run ./cmd/printmanager
 ```
 
-In development (no `APP_ENV`), it keeps its store in `printmanager.db` and
-makes a random secret. Configure it with `config.{APP_ENV}.toml` (the
+with an IdP of your own in `.env.local` (copy `.env.example`; git ignores
+it). Neither needs a secret in development.
+
+In development (no `APP_ENV`), it reads `config.dev.toml` at the
+repository's root (the `[oidc]` rules above, plain-http cookies), keeps its
+store in `printmanager.db` and makes a random secret. Configure it with `config.{APP_ENV}.toml` (the
 `[manager]` table; `printmanager --generate-config toml` prints every key)
 or with variables:
 
@@ -87,8 +97,11 @@ the token, the endpoint, or anonymous) apart from the name the sender
 gave (`claimed_user`, shown only). The sender and the admins cancel a
 job; its group only sees it.
 
-For a local IdP, `print/fakeidp` serves one with people of your choosing
-(`fakeidp.New(...).Listen("127.0.0.1:9781")`).
+`pw dev`'s provider is the local IdP. The tests also use
+`print/fakeidp` (`fakeidp.New(...).Listen("127.0.0.1:9781")` serves it by
+hand), for what the roster cannot say: a nested groups claim
+(`realm_access.roles`), an email the IdP did not verify, a token tampered
+with.
 
 AWS credentials come from the environment (`AWS_ACCESS_KEY_ID` …), web
 identity, the container's or the instance's role.
