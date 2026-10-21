@@ -74,11 +74,12 @@ export function badge(text, cls = "badge-ghost") {
   return el("span", text, { className: "badge " + cls });
 }
 
-export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink" };
+export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", filter: "Filter", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
   sink: "badge-success badge-soft",
+  filter: "badge-secondary badge-soft",
   queue: "badge-primary badge-soft",
   class: "badge-primary badge-soft",
   inbox: "badge-warning badge-soft",

@@ -55,6 +55,8 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		m.routeInbox(ctx, r, name, from)
 	case KindSink:
 		m.routeSink(ctx, r, name, from)
+	case KindFilter:
+		m.routeFilter(ctx, r, name, from, depth)
 	case KindQueue, KindEndpoint:
 		n, err := m.Node(ctx, name)
 		if err != nil {

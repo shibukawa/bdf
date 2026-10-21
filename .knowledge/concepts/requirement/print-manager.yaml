@@ -169,7 +169,7 @@ open_questions:
   topology-kinds:
     text: 経路のノードの種類と名前（queue＝分岐、class、inbox、archive）をこのままにするか。tee・group などの名に替えるか。規則で振り分ける filter を足すか
     state: open
-    resolution: 暫定で CUPS の語に寄せた 4 種類（milestone:pm-4 の decisions）。filter は要るときに足す
+    resolution: 暫定で CUPS の語に寄せた 4 種類（milestone:pm-4 の decisions）。filter は 2026-10-21 に足した（milestone:pm-4b：rules と otherwise）。endpoint・cups・sink は pm-4・pm-5c
   node-visibility:
     text: 「外から見える仮想プリンタ」を、ノードの側の可視性にするか、認証（トークンごとの宛先）で絞るか
     state: open
@@ -315,6 +315,8 @@ relations:
 - relation: depends_on
   to: system:yuruidb
 history:
+  pm-4b-filter:
+    summary: 2026-10-21 利用者「残りの実装をまとめてお願いします」の一部として milestone:pm-4b：filter ノード（rules・otherwise・dropped）とエディタの選択部品
   pm-5-implemented:
     summary: 2026-10-21 milestone:pm-5（requirement:print-manager-console の最初の段）で、場所とプリンタは Node の種類（display・printer）になり、/api/locations と /api/printers は /api/nodes に寄った（/api/locations/<名前>/slips は残る）。テンプレートはエンドポイントの下（/api/nodes/<名前>/templates/<id>）。facts.topology の namespace・endpoint・canvas の記述はこの形に読み替える
   console-requested:

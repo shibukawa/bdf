@@ -15,10 +15,10 @@ const ROW = 84;
 const PAD = 24;
 const GRID = 8;
 const SVG = "http://www.w3.org/2000/svg";
-const FILL = { endpoint: "#fde68a", cups: "#fecaca", queue: "#ddd6fe", class: "#c7d2fe", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db", sink: "#bbf7d0" };
+const FILL = { endpoint: "#fde68a", cups: "#fecaca", queue: "#ddd6fe", class: "#c7d2fe", filter: "#fbcfe8", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db", sink: "#bbf7d0" };
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer)
-const OUT_PORT = new Set(["endpoint", "queue", "class", "inbox", "display"]);
+const OUT_PORT = new Set(["endpoint", "queue", "class", "filter", "inbox", "display"]);
 // a flow older than this is not run (the page was away)
 const FLOW_AGE_MS = 2 * 60 * 1000;
 
@@ -29,12 +29,21 @@ function svgEl(tag, attrs = {}) {
 }
 
 // edgesOf are the edges from a node: to (a queue's, an endpoint's, an
-// inbox's), member (a class's) or fallback (a display's printer).
+// inbox's, a filter's rules and otherwise), member (a class's) or
+// fallback (a display's printer).
 export function edgesOf(n) {
   const out = [];
-  for (const to of n.to || []) out.push({ to, kind: "to" });
-  for (const to of n.members || []) out.push({ to, kind: "member" });
-  if (n.fallback && n.fallback.printer) out.push({ to: n.fallback.printer, kind: "fallback" });
+  const seen = new Set();
+  const to = (name, kind) => {
+    if (seen.has(kind + ":" + name)) return;
+    seen.add(kind + ":" + name);
+    out.push({ to: name, kind });
+  };
+  for (const x of n.to || []) to(x, "to");
+  for (const r of n.rules || []) for (const x of r.to || []) to(x, "to");
+  for (const x of n.otherwise || []) to(x, "to");
+  for (const x of n.members || []) to(x, "member");
+  if (n.fallback && n.fallback.printer) to(n.fallback.printer, "fallback");
   return out;
 }
 

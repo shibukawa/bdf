@@ -85,6 +85,9 @@ async function addEdge(from, to) {
   const n = await api("GET", "/api/nodes/" + from.name);
   if (n.kind === "display") {
     n.fallback = { ...(n.fallback || {}), printer: to };
+  } else if (n.kind === "filter") {
+    if ((n.otherwise || []).includes(to)) return;
+    n.otherwise = [...(n.otherwise || []), to];
   } else {
     const field = n.kind === "class" ? "members" : "to";
     const list = n[field] || [];
@@ -103,7 +106,10 @@ async function removeEdge(from, e) {
   try {
     const n = await api("GET", "/api/nodes/" + from.name);
     if (e.kind === "fallback") n.fallback = null;
-    else {
+    else if (n.kind === "filter") {
+      n.otherwise = (n.otherwise || []).filter((x) => x !== e.to);
+      n.rules = (n.rules || []).map((r) => ({ ...r, to: (r.to || []).filter((x) => x !== e.to) })).filter((r) => r.to.length);
+    } else {
       const field = e.kind === "member" ? "members" : "to";
       n[field] = (n[field] || []).filter((x) => x !== e.to);
     }
@@ -147,6 +153,66 @@ function input(id, value, attrs = {}) {
   const e = el("input", undefined, { id, className: "input input-sm w-full", value: value ?? "", ...rest });
   if (list) e.setAttribute("list", list);
   return e;
+}
+
+// picker is the nodes a node may send to, as checkboxes (name: the
+// checkboxes' name; except the node itself and the entries).
+function picker(name, chosen, except) {
+  const box = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
+  const names = topo.filter((x) => x.name !== except && x.kind !== "cups").map((x) => x.name);
+  for (const x of names) {
+    const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
+    l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name, value: x, checked: chosen.includes(x) }), x);
+    box.append(l);
+  }
+  // one chosen that is not there any more stays chosen, so that it is not lost unseen
+  for (const x of chosen) {
+    if (names.includes(x)) continue;
+    const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm text-error" });
+    l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name, value: x, checked: true }), x + " (gone)");
+    box.append(l);
+  }
+  if (!names.length) box.append(el("span", "No other node yet", { className: "text-xs text-base-content/60" }));
+  return box;
+}
+
+const picked = (name) => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map((c) => c.value);
+
+// ruleRow is a rule of a filter in the sidebar.
+function ruleRow(r = { match: {}, to: [] }) {
+  const row = el("div", undefined, { className: "rule grid grid-cols-2 gap-1 rounded-box bg-base-200 p-2" });
+  const m = r.match || {};
+  row.append(
+    el("input", undefined, { className: "input input-xs", placeholder: "name matches (RE2)", value: m.name || "", "data-k": "name" }),
+    el("input", undefined, { className: "input input-xs", placeholder: "user matches", value: m.user || "", "data-k": "user" }),
+    el("input", undefined, { className: "input input-xs", placeholder: "format matches (pdf, bdf …)", value: m.format || "", "data-k": "format" }),
+    el("div", undefined, { className: "flex gap-1" }),
+  );
+  row.lastChild.append(el("input", undefined, { className: "input input-xs w-full", placeholder: "pages ≥", value: m.min_pages || "", inputMode: "numeric", "data-k": "min_pages" }), el("input", undefined, { className: "input input-xs w-full", placeholder: "pages ≤", value: m.max_pages || "", inputMode: "numeric", "data-k": "max_pages" }));
+  const to = el("input", undefined, { className: "input input-xs col-span-2", placeholder: "→ nodes, comma-separated", value: (r.to || []).join(", "), "data-k": "to" });
+  to.setAttribute("list", "node-names");
+  const drop = el("button", "remove the rule", { type: "button", className: "btn btn-xs btn-ghost col-span-2 justify-self-end text-error" });
+  drop.addEventListener("click", () => row.remove());
+  row.append(to, drop);
+  return row;
+}
+
+// rulesOf reads the filter's rules from the sidebar.
+function rulesOf() {
+  const out = [];
+  for (const row of document.querySelectorAll("#f-rules .rule")) {
+    const v = (k) => row.querySelector(`[data-k="${k}"]`).value.trim();
+    const match = {};
+    if (v("name")) match.name = v("name");
+    if (v("user")) match.user = v("user");
+    if (v("format")) match.format = v("format");
+    if (v("min_pages")) match.min_pages = Number(v("min_pages"));
+    if (v("max_pages")) match.max_pages = Number(v("max_pages"));
+    const to = names(v("to"));
+    if (!Object.keys(match).length && !to.length) continue;
+    out.push({ match, to });
+  }
+  return out;
 }
 
 function selectInput(id, options, value) {
@@ -226,7 +292,7 @@ function renderSidebar() {
   form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown instead of the name" })));
   switch (kind) {
     case "endpoint": {
-      form.append(field("Forwards to", input("f-to", (n.to || []).join(", "), { placeholder: "nodes, comma-separated", list: "node-names" }), "Every node named gets the job. The port on the canvas adds one too."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job. The port on the canvas adds one too."));
       form.append(field("Accepts", selectInput("f-accept", Object.entries(ACCEPTS), n.accept || "both")));
       const fmts = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
       for (const f of formats) {
@@ -255,14 +321,25 @@ function renderSidebar() {
       form.append(field("Latest", input("f-latest", n.latest || "", { placeholder: "10", inputMode: "numeric" }), "How many of the latest documents it keeps; an older one goes when a newer comes. Their first pages show here and on the canvas."));
       break;
     case "queue":
-      form.append(field("Forwards to", input("f-to", (n.to || []).join(", "), { placeholder: "nodes, comma-separated", list: "node-names", required: true }), "Every node named gets the job: a fan-out when there are several."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job: a fan-out when there are several."));
       break;
+    case "filter": {
+      const rules = el("div", undefined, { id: "f-rules", className: "flex flex-col gap-2" });
+      for (const r of n.rules || []) rules.append(ruleRow(r));
+      const add = el("button", "+ a rule", { type: "button", className: "btn btn-xs w-fit" });
+      add.addEventListener("click", () => rules.append(ruleRow()));
+      const box = el("div", undefined, { className: "flex flex-col gap-2" });
+      box.append(rules, add);
+      form.append(field("Rules, in order", box, "The first rule that fits the job sends it to its nodes. name, user (the sender) and format are regular expressions; pages are bounds."));
+      form.append(field("Otherwise", picker("otherwise", n.otherwise || [], n.name), "Where a job no rule fits goes; none: it ends here (dropped)."));
+      break;
+    }
     case "class":
       form.append(field("Members", input("f-members", (n.members || []).join(", "), { placeholder: "mfp-3f, mfp-4f", list: "node-names", required: true })));
       form.append(field("Policy", selectInput("f-policy", [["round-robin", "in turn (round-robin)"], ["failover", "the first member (failover)"]], n.policy || "round-robin"), "A printer that does not take the job is skipped for the next member."));
       break;
     case "inbox":
-      form.append(field("A person releases to", input("f-to", (n.to || []).join(", "), { placeholder: "nodes, comma-separated; empty: any node", list: "node-names" })));
+      form.append(field("A person releases to", picker("to", n.to || [], n.name), "The nodes a person may release to; none chosen: any node."));
       form.append(field("Keep", input("f-keep", n.keep || "", { placeholder: "14d" }), "How long released and discarded items stay shown."));
       break;
     case "archive":
@@ -326,7 +403,7 @@ async function save(ev) {
   const dur = (id) => ($(id).value.trim() ? $(id).value.trim() : undefined);
   switch (n.kind) {
     case "endpoint":
-      body.to = names($("f-to").value);
+      body.to = picked("to");
       body.accept = $("f-accept").value;
       body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
       body.apps = [...document.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
@@ -341,14 +418,18 @@ async function save(ev) {
       if (dur("f-latest")) body.latest = Number(dur("f-latest"));
       break;
     case "queue":
-      body.to = names($("f-to").value);
+      body.to = picked("to");
+      break;
+    case "filter":
+      body.rules = rulesOf();
+      body.otherwise = picked("otherwise");
       break;
     case "class":
       body.members = names($("f-members").value);
       body.policy = $("f-policy").value;
       break;
     case "inbox":
-      body.to = names($("f-to").value);
+      body.to = picked("to");
       body.keep = dur("f-keep");
       break;
     case "archive":

@@ -54,8 +54,8 @@ capabilities:
     state: planned
     about: capability:print-manager/roles
   filter-rules:
-    state: planned
-    about: capability:print-manager/filter-rules
+    state: implemented
+    about: capability:print-manager/filter-rules（2026-10-21 milestone:pm-4b）
 non_goals:
 - 保管庫の Object Lock の見出し・1 日の一覧の鎖・検索項目（pm-2。archive はその土台）
 - CUPS-Move-Job と job-hold-until（インボックスがその役）

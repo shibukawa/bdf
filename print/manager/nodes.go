@@ -20,12 +20,12 @@ import (
 // node is put: every node it names exists, and no path leads back to it.
 
 // nodeKinds are the kinds of a node, in the order of a job's way.
-var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink}
+var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink}
 
 // routingKinds are the kinds a node changes between, keeping its name. A
 // display, a printer or a sink keeps its kind: its slips, devices,
 // deliveries or kept jobs name it.
-var routingKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindInbox, KindArchive}
+var routingKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindInbox, KindArchive}
 
 // PutNode adds a node or replaces its settings; the settings of other
 // kinds are dropped. An endpoint added gets a key, returned once (Key);
@@ -86,6 +86,15 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		n.Policy = or(in.Policy, PolicyRoundRobin)
 		if n.Policy != PolicyRoundRobin && n.Policy != PolicyFailover {
 			return "", fmt.Errorf("%w: policy %q: round-robin or failover", ErrInvalid, in.Policy)
+		}
+	case KindFilter:
+		rules, err := checkRules(in.Rules)
+		if err != nil {
+			return "", err
+		}
+		n.Rules, n.Otherwise = rules, cleanNames(in.Otherwise)
+		if len(n.Rules) == 0 && len(n.Otherwise) == 0 {
+			return "", fmt.Errorf("%w: a filter has rules, or nodes it sends to otherwise", ErrInvalid)
 		}
 	case KindInbox:
 		n.To, n.Keep = cleanNames(in.To), in.Keep
