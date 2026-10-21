@@ -6,7 +6,7 @@
 // devices and enrollment codes). Everything goes through the API; the
 // server checks a node when it is put (its edges, its name, no cycle).
 
-import { $, api, button, changed, el, kindBadge, KINDS, onChange, since, status } from "./admin.js";
+import { $, api, button, changed, el, keptSection, kindBadge, KINDS, onChange, since, status } from "./admin.js";
 import { createCanvas } from "./canvas.js";
 
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
@@ -15,6 +15,7 @@ const POLL_MS = 4000;
 
 let topo = []; // the nodes, as /api/topology lists them
 let formats = []; // the formats an endpoint may take
+let me = null; // /api/me: whether this process has ports of its own
 let selected = null; // the node in the sidebar
 let draft = null; // a node being added: {kind}
 let fitted = false;
@@ -43,6 +44,7 @@ async function load() {
     const [t, l] = await Promise.all([api("GET", "/api/topology"), api("GET", "/api/layout")]);
     topo = t;
     if (!formats.length) formats = await api("GET", "/api/formats");
+    if (!me) me = await api("GET", "/api/me");
     $("node-names").replaceChildren(...topo.map((n) => el("option", undefined, { value: n.name })));
     if (selected && !topo.some((n) => n.name === selected)) selected = null;
     canvas.setData(topo, l.positions || {});
@@ -193,6 +195,13 @@ function composeURL() {
   return `${scheme}://${host}${port ? ":" + port : ""}${path}`;
 }
 
+// portField is the port of an entry node, when this process has ports.
+function portField(n, what, required = false) {
+  const none = me && me.ports === false;
+  const f = field("Port (this process only)", input("f-port", n.port || "", { placeholder: required ? "6310" : "empty: the manager's own port only", inputMode: "numeric", required, disabled: none }), none ? "Not available here (serverless): applications call the manager's own API, and there is no IPP port." : what);
+  return f;
+}
+
 function renderSidebar() {
   const aside = $("sidebar");
   const n = draft || topo.find((x) => x.name === selected);
@@ -224,8 +233,17 @@ function renderSidebar() {
         fmts.append(l);
       }
       form.append(field("Formats taken", fmts, "None checked: every format the converter reads. A document of another format is refused, and the refusal is in the audit log."));
+      form.append(portField(n, "Applications may POST to http://<this host>:<port>/ as well as to " + n.in + "."));
       break;
     }
+    case "cups":
+      form.append(portField(n, "Computers print to ipp://<this host>:<port>/printers/<node>, and lpstat -h <host>:<port> -p lists every node, as on a CUPS server.", true));
+      form.append(field("TLS certificate (file)", input("f-tls-cert", n.tls_cert || "", { placeholder: "/etc/bdf/cups.crt; empty: plain ipp" })));
+      form.append(field("TLS key (file)", input("f-tls-key", n.tls_key || "", { placeholder: "/etc/bdf/cups.key" })));
+      break;
+    case "sink":
+      form.append(field("Latest", input("f-latest", n.latest || "", { placeholder: "10", inputMode: "numeric" }), "How many of the latest documents it keeps; an older one goes when a newer comes. Their first pages show here and on the canvas."));
+      break;
     case "queue":
       form.append(field("Forwards to", input("f-to", (n.to || []).join(", "), { placeholder: "nodes, comma-separated", list: "node-names", required: true }), "Every node named gets the job: a fan-out when there are several."));
       break;
@@ -261,6 +279,7 @@ function renderSidebar() {
       setTimeout(update);
       for (const id of ["f-scheme", "f-host", "f-port", "f-path"]) form.querySelector("#" + id).addEventListener("input", update);
       form.append(field("Route", selectInput("f-route", [["direct", "direct: the manager sends to it"], ["branch", "branch: a bdf printd of the site fetches (not yet)"]], n.route || "direct")));
+      form.append(field("Preview (a fake printer)", input("f-preview", n.preview || "", { placeholder: "http://127.0.0.1:8650/api/printers/eve" }), "The printer on a tools/fakeprinter farm's API: what it received is shown below. For development and demonstrations."));
       break;
     }
   }
@@ -300,6 +319,15 @@ async function save(ev) {
       body.to = names($("f-to").value);
       body.accept = $("f-accept").value;
       body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
+      if (dur("f-port")) body.port = Number(dur("f-port"));
+      break;
+    case "cups":
+      body.port = Number($("f-port").value);
+      if (dur("f-tls-cert")) body.tls_cert = dur("f-tls-cert");
+      if (dur("f-tls-key")) body.tls_key = dur("f-tls-key");
+      break;
+    case "sink":
+      if (dur("f-latest")) body.latest = Number(dur("f-latest"));
       break;
     case "queue":
       body.to = names($("f-to").value);
@@ -327,6 +355,7 @@ async function save(ev) {
     case "printer":
       body.url = composeURL();
       body.route = $("f-route").value;
+      if (dur("f-preview")) body.preview = dur("f-preview");
       break;
   }
   try {
@@ -384,6 +413,45 @@ function extras(n, aside) {
     const dev = section("Devices");
     aside.append(dev);
     devicesSection(n, dev).catch((e) => status(e.message, true));
+  }
+  if (n.kind === "cups" && n.port) {
+    const sec = section("Clients");
+    sec.append(hint("As on a CUPS server: every node is a printer there, a class a class. Add a printer on a computer with the URL, or list them:"));
+    sec.append(el("pre", `ipp://${location.hostname}:${n.port}/printers/<node>
+lpstat -h ${location.hostname}:${n.port} -p`, { className: "overflow-x-auto rounded-box bg-base-200 p-2 font-mono text-xs whitespace-pre-wrap" }));
+    aside.append(sec);
+  }
+  if (n.kind === "sink") {
+    keptSection(n.name).then((sec) => aside.append(sec)).catch((e) => status(e.message, true));
+  }
+  if (n.kind === "printer" && n.preview) {
+    const sec = section("Preview");
+    aside.append(sec);
+    previewSection(n, sec).catch((e) => status(e.message, true));
+  }
+}
+
+// previewSection shows what the printer's fake printer received: the
+// latest jobs, and the pages read back of the newest.
+async function previewSection(n, box) {
+  box.append(hint("What the fake printer on the farm received, as it read it back."));
+  const jobs = await api("GET", `/api/nodes/${n.name}/preview`);
+  if (!jobs.length) {
+    box.append(el("p", "Nothing received yet.", { className: "text-xs text-base-content/60" }));
+    return;
+  }
+  const latest = jobs[0];
+  box.append(el("p", `#${latest.id} ${latest.name || ""} · ${latest.state || ""} · ${since(latest.created)}`, { className: "text-sm font-semibold" }));
+  const pages = el("div", undefined, { className: "flex flex-col gap-2" });
+  for (let k = 1; k <= (latest.pages || 0); k++) {
+    pages.append(el("img", undefined, { src: `/api/nodes/${n.name}/preview/${latest.id}/pages/${k}.png`, alt: `page ${k}`, className: "w-full rounded bg-white shadow-sm", loading: "lazy" }));
+  }
+  if (!latest.pages) pages.append(el("p", "The farm could not read it back as pages.", { className: "text-xs text-base-content/60" }));
+  box.append(pages);
+  if (jobs.length > 1) {
+    const list = el("ul", undefined, { className: "text-xs text-base-content/60" });
+    for (const j of jobs.slice(1)) list.append(el("li", `#${j.id} ${j.name || ""} · ${since(j.created)}`));
+    box.append(el("p", "Before it:", { className: "text-xs font-semibold" }), list);
   }
 }
 

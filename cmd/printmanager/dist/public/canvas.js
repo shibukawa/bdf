@@ -15,7 +15,7 @@ const ROW = 84;
 const PAD = 24;
 const GRID = 8;
 const SVG = "http://www.w3.org/2000/svg";
-const FILL = { endpoint: "#fde68a", queue: "#ddd6fe", class: "#c7d2fe", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db" };
+const FILL = { endpoint: "#fde68a", cups: "#fecaca", queue: "#ddd6fe", class: "#c7d2fe", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db", sink: "#bbf7d0" };
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer)
 const OUT_PORT = new Set(["endpoint", "queue", "class", "inbox", "display"]);
@@ -121,6 +121,7 @@ export function createCanvas(svg, opts = {}) {
     if (l.open) out.push(`${l.open} open`);
     if (l.pending) out.push(`${l.pending} waiting`);
     if (l.failed) out.push(`${l.failed} failed`);
+    if (l.kept) out.push(`${l.kept} kept`);
     if (!live && n.devices) out.push(`${n.devices} device${n.devices === 1 ? "" : "s"}`);
     if (live && l.recent) out.push(`${l.recent}/h`);
     return out;
@@ -187,13 +188,15 @@ export function createCanvas(svg, opts = {}) {
   function nodeBox(n, p, isSelected) {
     const g = svgEl("g", { transform: `translate(${p.x} ${p.y})`, class: editable ? "cursor-grab" : "cursor-pointer", "data-name": n.name });
     g.append(svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: FILL[n.kind] || "#e5e7eb", stroke: isSelected ? "#4f46e5" : "#94a3b8", "stroke-width": isSelected ? "3" : "1.5" }));
+    // a sink shows the first page of the latest document it keeps
+    const latest = n.kind === "sink" ? (live ? (live.nodes[n.name] || {}).latest : n.latest) : "";
     const name = svgEl("text", { x: "10", y: "21", "font-size": "13", "font-weight": "600", fill: "#111827" });
-    name.textContent = clipText(n.title && n.title !== n.name ? n.title : n.name, 22);
+    name.textContent = clipText(n.title && n.title !== n.name ? n.title : n.name, latest ? 16 : 22);
     const sub = svgEl("text", { x: "10", y: "39", "font-size": "11", fill: "#374151" });
     const parts = [KINDS[n.kind] || n.kind];
     if (n.title && n.title !== n.name) parts.push(n.name);
     parts.push(...counts(n));
-    sub.textContent = clipText(parts.join(" · "), 30);
+    sub.textContent = clipText(parts.join(" · "), latest ? 22 : 30);
     const title = svgEl("title");
     title.textContent = `${n.name} (${KINDS[n.kind] || n.kind})${n.title ? ": " + n.title : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}`;
     g.append(title, name, sub);
@@ -208,7 +211,12 @@ export function createCanvas(svg, opts = {}) {
       badge.append(t);
       g.append(badge);
     }
-    g.append(svgEl("circle", { cx: "0", cy: NODE_H / 2, r: "5", fill: "#f8fafc", stroke: "#64748b", "stroke-width": "1.5" }));
+    if (latest) {
+      g.append(svgEl("rect", { x: NODE_W - 48, y: 6, width: 40, height: 42, rx: "3", fill: "#fff", stroke: "#94a3b8" }));
+      g.append(svgEl("image", { href: `/api/jobs/${latest}/pages/1.png?w=96`, x: NODE_W - 47, y: 7, width: 38, height: 40, preserveAspectRatio: "xMidYMin slice" }));
+    }
+    // a CUPS server is an entry: nothing is sent to it from the network
+    if (n.kind !== "cups") g.append(svgEl("circle", { cx: "0", cy: NODE_H / 2, r: "5", fill: "#f8fafc", stroke: "#64748b", "stroke-width": "1.5" }));
     if (editable && OUT_PORT.has(n.kind)) {
       const port = svgEl("circle", { cx: NODE_W, cy: NODE_H / 2, r: "7", fill: "#4f46e5", stroke: "#fff", "stroke-width": "2", class: "cursor-crosshair", "data-port": n.name });
       const t = svgEl("title");

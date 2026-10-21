@@ -158,17 +158,25 @@ node it reached. The document is kept once for all of them.
 
 | Kind | Does | Settings |
 |---|---|---|
-| `endpoint` | a REST entry for applications: `POST /in/<name>` with the endpoint's own key takes a document, or `{"template": "<id>", "data": {…}}` to fill one of the endpoint's templates, and forwards the job to every node of `to`. `accept` is what it takes (`both`, the default; `file`; `template`) and `formats` the formats of the documents it takes (as the converter names them: `pdf`, `docx`, `image`, `bdf` …; empty: any); a document it does not take is refused (415) and the refusal is in the audit log. The key is shown once, when the endpoint is made (`key` in the answer) or rotated (`POST /api/nodes/<name>/key`); the manager keeps only its argon2id hash | `to`, `accept`, `formats` |
+| `endpoint` | a REST entry for applications: `POST /in/<name>` with the endpoint's own key takes a document, or `{"template": "<id>", "data": {…}}` to fill one of the endpoint's templates, and forwards the job to every node of `to`. `accept` is what it takes (`both`, the default; `file`; `template`) and `formats` the formats of the documents it takes (as the converter names them: `pdf`, `docx`, `image`, `bdf` …; empty: any); a document it does not take is refused (415) and the refusal is in the audit log. The key is shown once, when the endpoint is made (`key` in the answer) or rotated (`POST /api/nodes/<name>/key`); the manager keeps only its argon2id hash. With `port`, a process listens there too: every `POST` to it is to the endpoint | `to`, `accept`, `formats`, `port` |
+| `cups` | an IPP entry for computers and business systems: a CUPS server on a `port` of the process's own, which lists every node as its printers (`lpstat -h <host>:<port> -p`) and prints to `ipp://<host>:<port>/printers/<node>` (`/classes/<node>` too); plain `ipp`, or `ipps` with `tls_cert` and `tls_key` (files). Nothing is sent to the node itself | `port`, `tls_cert`, `tls_key` |
 | `queue` | forwards the job to every node of `to` (a fan-out when there are several) | `to` |
 | `class` | sends the job to one of `members`, in turn (`round-robin`, the default) or the first (`failover`); a printer that does not take it is skipped for the next member | `members`, `policy` |
 | `inbox` | holds the job until a person releases it to nodes (those of `to`, or any when `to` is empty) or discards it; ended items stay `keep` (14 days) | `to`, `keep` |
 | `display` | shows the job as a slip on the devices enrolled there, and prints on paper what nobody opened within `fallback.after` (or every unopened slip while no device is connected); slips done or canceled stay `keep` (14 days) | `fallback` (`printer`, `after`), `keep`, `offline_after` |
-| `printer` | prints the job on paper, on a printer the manager reaches over the network (`ipp`, `ipps`, `socket`, `lpd`) | `url`, `route` (`direct`) |
+| `printer` | prints the job on paper, on a printer the manager reaches over the network (`ipp`, `ipps`, `socket`, `lpd`). With `preview`, the URL of the printer on a fake printer farm's API (`tools/fakeprinter`: `http://host:port/api/printers/<printer>`), what the fake printer received is shown beside the node, as the farm read it back (`GET /api/nodes/<name>/preview`, `…/preview/<job>/pages/<p>.png`) | `url`, `route` (`direct`), `preview` |
 | `archive` | writes the job's `.bdf` and a JSON record of it to `store` (a documents URL: `bbolt`, `s3`, `r2`, `gcs`), each object once, under `collection` (`archive-<name>`); the manager never changes or deletes them. Give the S3 bucket a default retention (Object Lock) for an audit trail nobody can change | `store`, `collection` |
+| `sink` | keeps the `latest` documents that reach it (10) to look at on the topology (the first page shows on the node, every page in the sidebar: `GET /api/nodes/<name>/latest`, `GET /api/jobs/<n>/pages/<p>.png`); an older one goes when a newer comes | `latest` |
 
-Every node has a `scope` and an `owner` too (see Sign-in). A display or a
-printer keeps its kind; the other kinds change into one another, keeping
-the name.
+Every node has a `scope` and an `owner` too (see Sign-in). A display, a
+printer or a sink keeps its kind; the other kinds change into one
+another, keeping the name.
+
+A port of an entry node is the process's: it is opened when the node is
+put and closed when the node loses it (and checked at every tick), on
+every address of the host. A serverless deployment (`MANAGER_SERVERLESS`)
+refuses ports: applications call the manager's own `/in/<name>`, and
+there is no IPP port of a node's own there.
 
 Three virtual printers and an endpoint, for example: an audit copy, a
 site's printers in turn, both warehouses at once, and an application that

@@ -211,13 +211,14 @@ func (m *Manager) WriteDocument(ctx context.Context, job int32, w io.Writer) err
 // MaxPageWidth bounds the width of a page drawn for a device.
 const MaxPageWidth = 2400
 
-// WritePage draws a page (from 0) of a slip as PNG, width pixels wide.
-func (m *Manager) WritePage(ctx context.Context, s *Slip, page, width int, w io.Writer) error {
-	if page < 0 || page >= s.Pages {
-		return fmt.Errorf("%w: page %d of %d", ErrNotFound, page+1, s.Pages)
+// WritePage draws a page (from 0, of pages) of a job's document as PNG,
+// width pixels wide.
+func (m *Manager) WritePage(ctx context.Context, job int32, pages, page, width int, w io.Writer) error {
+	if page < 0 || page >= pages {
+		return fmt.Errorf("%w: page %d of %d", ErrNotFound, page+1, pages)
 	}
-	width = min(max(width, 200), MaxPageWidth)
-	doc, err := m.Document(ctx, s.Job)
+	width = min(max(width, 64), MaxPageWidth)
+	doc, err := m.Document(ctx, job)
 	if err != nil {
 		return err
 	}

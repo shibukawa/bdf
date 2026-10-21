@@ -20,12 +20,12 @@ import (
 // node is put: every node it names exists, and no path leads back to it.
 
 // nodeKinds are the kinds of a node, in the order of a job's way.
-var nodeKinds = []string{KindEndpoint, KindQueue, KindClass, KindInbox, KindArchive, KindDisplay, KindPrinter}
+var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink}
 
 // routingKinds are the kinds a node changes between, keeping its name. A
-// display or a printer keeps its kind: its slips, devices and deliveries
-// name it.
-var routingKinds = []string{KindEndpoint, KindQueue, KindClass, KindInbox, KindArchive}
+// display, a printer or a sink keeps its kind: its slips, devices,
+// deliveries or kept jobs name it.
+var routingKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindInbox, KindArchive}
 
 // PutNode adds a node or replaces its settings; the settings of other
 // kinds are dropped. An endpoint added gets a key, returned once (Key);
@@ -57,6 +57,20 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 			if err := checkFormats(n.Formats); err != nil {
 				return "", err
 			}
+			n.Port = in.Port
+		}
+	case KindCups:
+		n.Port, n.TLSCert, n.TLSKey = in.Port, strings.TrimSpace(in.TLSCert), strings.TrimSpace(in.TLSKey)
+		if n.Port == 0 {
+			return "", fmt.Errorf("%w: a CUPS server listens on a port of its own (port)", ErrInvalid)
+		}
+		if (n.TLSCert == "") != (n.TLSKey == "") {
+			return "", fmt.Errorf("%w: a CUPS server's certificate takes both tls_cert and tls_key (files)", ErrInvalid)
+		}
+	case KindSink:
+		n.Latest = in.Latest
+		if n.Latest < 0 || n.Latest > 1000 {
+			return "", fmt.Errorf("%w: latest %d: a sink keeps 1 to 1000 documents", ErrInvalid, in.Latest)
 		}
 	case KindClass:
 		n.Members = cleanNames(in.Members)
@@ -98,6 +112,27 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		}
 		if err := checkPrinterURL(n.URL); err != nil {
 			return "", err
+		}
+		n.Preview = strings.TrimSpace(in.Preview)
+		if err := checkPreviewURL(n.Preview); err != nil {
+			return "", err
+		}
+	}
+	if n.Port != 0 {
+		if m.o.NoPorts {
+			return "", fmt.Errorf("%w: ports of their own are not available here (serverless): applications call the API instead", ErrInvalid)
+		}
+		if n.Port < 1024 || n.Port > 65535 {
+			return "", fmt.Errorf("%w: port %d: 1024 to 65535", ErrInvalid, n.Port)
+		}
+		others, err := m.Nodes(ctx)
+		if err != nil {
+			return "", err
+		}
+		for _, o := range others {
+			if o.Port == n.Port && o.Name != n.Name {
+				return "", fmt.Errorf("%w: port %d is %s's", ErrConflict, n.Port, o.Name)
+			}
 		}
 	}
 	for _, name := range n.edges() {
@@ -148,6 +183,7 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 			m.o.Log.Warn("remove the templates of a node", "node", n.Name, "err", err)
 		}
 	}
+	m.changed()
 	return key, nil
 }
 
@@ -277,8 +313,12 @@ func (m *Manager) DeleteNode(ctx context.Context, name string) error {
 	if err := m.st.db.Delete[nodeRecord](ctx, name, rec.Revision()); err != nil {
 		return mapErr(err)
 	}
-	if rec.Data.Kind == KindEndpoint {
+	m.changed()
+	switch rec.Data.Kind {
+	case KindEndpoint:
 		return m.removeTemplatesOf(ctx, name)
+	case KindSink:
+		return m.dropSink(ctx, name)
 	}
 	return nil
 }
@@ -380,11 +420,14 @@ type TopoNode struct {
 	Templates []string `json:"templates,omitempty"`
 	// Held counts the items an inbox holds; Open the slips open at a
 	// display and Devices its devices; Pending the deliveries waiting at
-	// a printer, an archive or a class.
-	Held    int `json:"held,omitempty"`
-	Open    int `json:"open,omitempty"`
-	Devices int `json:"devices,omitempty"`
-	Pending int `json:"pending,omitempty"`
+	// a printer, an archive or a class; Kept the jobs a sink keeps, and
+	// Latest the newest of them.
+	Held    int    `json:"held,omitempty"`
+	Open    int    `json:"open,omitempty"`
+	Devices int    `json:"devices,omitempty"`
+	Pending int    `json:"pending,omitempty"`
+	Kept    int    `json:"kept,omitempty"`
+	Latest  string `json:"latest,omitempty"`
 }
 
 // Topology returns every node, by name.
@@ -429,6 +472,10 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 			}
 		case KindPrinter, KindClass:
 			t.Pending = pending[n.Name]
+		case KindSink:
+			if ids := m.sinkJobs(ctx, n.Name); len(ids) > 0 {
+				t.Kept, t.Latest = len(ids), ids[len(ids)-1]
+			}
 		}
 		out = append(out, t)
 	}

@@ -6,7 +6,7 @@
 // that the person sees, and a form to print there when they may. Nothing
 // is changed here.
 
-import { $, api, el, kindBadge, KINDS, legsOf, sender, since, stateBadge, status } from "./admin.js";
+import { $, api, el, keptSection, kindBadge, KINDS, legsOf, sender, since, stateBadge, status } from "./admin.js";
 import { createCanvas } from "./canvas.js";
 
 const POLL_MS = 4000;
@@ -151,6 +151,7 @@ function renderSidebar() {
   sec.append(list);
   parts.push(sec);
   aside.replaceChildren(...parts);
+  if (n.kind === "sink") keptSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
 }
 
 $("zoom-in").addEventListener("click", () => canvas.zoomBy(1.25));

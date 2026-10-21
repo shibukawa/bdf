@@ -72,6 +72,12 @@ type Options struct {
 	// right after it is routed, in a goroutine of the process; without
 	// it the next Tick does (a function of a serverless platform).
 	Background bool
+	// NoPorts refuses nodes with a port of their own (a serverless
+	// deployment has no listeners of its own); OnChange is called after a
+	// node is put or deleted, for the process to open and close the ports
+	// (cmd/printmanager).
+	NoPorts  bool
+	OnChange func()
 	// TempDir holds documents while they are converted ("" the system's).
 	TempDir string
 	Log     *slog.Logger
@@ -113,6 +119,13 @@ func New(st *Store, o Options) (*Manager, error) {
 }
 
 func (m *Manager) now() time.Time { return m.o.Now().UTC().Truncate(time.Millisecond) }
+
+// changed tells the process that the nodes changed.
+func (m *Manager) changed() {
+	if m.o.OnChange != nil {
+		m.o.OnChange()
+	}
+}
 
 // mapErr turns yuruidb's errors into the manager's.
 func mapErr(err error) error {

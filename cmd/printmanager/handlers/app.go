@@ -22,6 +22,7 @@ type App struct {
 	policy policy
 	st     *manager.Store
 	m      *manager.Manager
+	ports  *ports
 	log    *slog.Logger
 }
 
@@ -62,15 +63,17 @@ func Open(ctx context.Context, cfg ManagerConfig, oidc OIDCConfig) (*App, error)
 		return nil, fmt.Errorf("printmanager: %s is one process's store; serverless needs one that instances share (dynamodb, firestore, s3, r2, gcs)", cfg.Records)
 	}
 	a := &App{cfg: cfg, policy: policy{oidc}, st: st, log: log}
+	a.ports = newPorts(a)
 	conv := printconv.Converter{FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts}
 	a.m, err = manager.New(st, manager.Options{
 		Converter: conv, Secret: secret, FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts,
 		AdminToken: cfg.AdminToken, SubmitTokens: tokens, TickToken: cfg.TickToken, Viewer: a.viewer,
 		MaxDocument: int64(cfg.MaxDocumentMB) << 20, SecureCookies: cfg.SecureCookies, TabletPath: "/tablet", Log: log,
 		JobKeep: cfg.JobKeep,
-		// a process sends deliveries as jobs come; a function leaves them
-		// to the scheduler's tick
-		Background: !cfg.Serverless,
+		// a process sends deliveries as jobs come, and listens on the
+		// ports of the entry nodes; a function leaves the deliveries to
+		// the scheduler's tick and has no ports
+		Background: !cfg.Serverless, NoPorts: cfg.Serverless, OnChange: a.ports.kick,
 	})
 	if err != nil {
 		st.Close()
@@ -85,19 +88,24 @@ func Open(ctx context.Context, cfg ManagerConfig, oidc OIDCConfig) (*App, error)
 	return a, nil
 }
 
-// Close closes the store.
+// Close closes the ports and the store.
 func (a *App) Close() error {
+	a.ports.closeAll()
 	authStore.CompareAndSwap(a.st, nil)
 	return a.st.Close()
 }
 
-// StartTimer ticks every TickInterval while the process runs; serverless,
-// or with no interval, a scheduler calls POST /api/tick instead.
+// StartTimer ticks every TickInterval while the process runs, and keeps
+// the ports of the entry nodes open; serverless, or with no interval, a
+// scheduler calls POST /api/tick instead (and there are no ports).
 func (a *App) StartTimer(ctx context.Context) (stop func()) {
-	if a.cfg.Serverless || a.cfg.TickInterval <= 0 {
-		return func() {}
-	}
 	ctx, cancel := context.WithCancel(ctx)
+	if !a.cfg.Serverless {
+		go a.ports.run(ctx, a.cfg.TickInterval)
+	}
+	if a.cfg.Serverless || a.cfg.TickInterval <= 0 {
+		return cancel
+	}
 	go func() {
 		t := time.NewTicker(a.cfg.TickInterval)
 		defer t.Stop()

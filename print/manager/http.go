@@ -54,6 +54,9 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("PUT /api/nodes/{name}/templates/{id}", h.adminOnly(h.putTemplate))
 	mux.HandleFunc("DELETE /api/nodes/{name}/templates/{id}", h.adminOnly(h.deleteTemplate))
 	mux.HandleFunc("GET /api/formats", h.adminOnly(h.formats))
+	mux.HandleFunc("GET /api/nodes/{name}/latest", h.userOnly(h.latest))
+	mux.HandleFunc("GET /api/nodes/{name}/preview", h.adminOnly(h.preview))
+	mux.HandleFunc("GET /api/nodes/{name}/preview/{job}/pages/{page}", h.adminOnly(h.previewPage))
 	mux.HandleFunc("POST /api/locations/{name}/slips", h.submit)
 	mux.HandleFunc("DELETE /api/devices/{id}", h.adminOnly(h.removeDevice))
 	mux.HandleFunc("GET /api/me", h.whoami)
@@ -74,6 +77,7 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("POST /api/destinations/{name}/jobs", h.submit)
 	mux.HandleFunc("GET /api/jobs/{id}", h.ownJob(h.getJob))
 	mux.HandleFunc("GET /api/jobs/{id}/document", h.ownJob(h.jobDocument))
+	mux.HandleFunc("GET /api/jobs/{id}/pages/{page}", h.ownJob(h.jobPage))
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", h.ownJob(h.cancelJob))
 	mux.HandleFunc("GET /api/inboxes/{name}", h.adminOnly(h.inbox))
 	mux.HandleFunc("POST /api/items/{id}/release", h.adminOnly(h.release))
@@ -388,6 +392,34 @@ func (h *handler) destJobs(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) getJob(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
 	writeJSON(w, http.StatusOK, j)
+}
+
+// jobPage draws a page of a job the viewer sees: /api/jobs/{id}/pages/{n}.png?w=.
+func (h *handler) jobPage(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
+	n, err := strconv.Atoi(strings.TrimSuffix(r.PathValue("page"), ".png"))
+	if err != nil {
+		h.writeErr(w, ErrNotFound)
+		return
+	}
+	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
+	if width == 0 {
+		width = 800
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	if err := h.m.WritePage(r.Context(), j.Number, j.Pages, n-1, width, w); err != nil {
+		h.writeErr(w, err)
+	}
+}
+
+// latest lists the jobs a sink keeps that the viewer sees, newest first.
+func (h *handler) latest(w http.ResponseWriter, r *http.Request, v *Viewer) {
+	js, err := h.m.Latest(r.Context(), r.PathValue("name"), v)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, js)
 }
 
 func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
@@ -731,7 +763,7 @@ func (h *handler) devicePage(w http.ResponseWriter, r *http.Request, d *Device) 
 	w.Header().Set("Content-Type", "image/png")
 	// the page does not change, but it is only the device's to see
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	if err := h.m.WritePage(r.Context(), s, n-1, width, w); err != nil {
+	if err := h.m.WritePage(r.Context(), s.Job, s.Pages, n-1, width, w); err != nil {
 		h.writeErr(w, err)
 	}
 }

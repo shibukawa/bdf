@@ -106,6 +106,7 @@ func OpenStore(ctx context.Context, records, documents string) (*Store, error) {
 		db.Bind[layoutRecord]("layout"),
 		db.Bind[locationState]("location-states"),
 		db.Bind[inboxState]("inbox-states"),
+		db.Bind[sinkState]("sink-states"),
 		db.Bind[destState]("dest-states"),
 		db.Bind[jobRecord]("jobs"),
 		db.Bind[slipRecord]("slips"),
