@@ -1,0 +1,112 @@
+id: milestone:pm-5c
+type: milestone
+title: pm-5c — 入口ノードの自分のポート（API の REST、CUPS サーバーのノードの IPP）、最新の文書を持つ sink、偽プリンタの絵を見せるプリンタの preview
+summary: >-
+  requirement:print-manager-console の 3 つ目の段。入口のノードはプロセスで動くときだけ自分の TCP ポートを持てる：endpoint は port で REST
+  （そのポートへの POST はすべてそのエンドポイント）、新しい種類 cups は port で IPP と CUPS（/printers/<ノード>・/classes/<ノード>、/ は
+  サーバー。全ノードを一旦見せる。tls_cert・tls_key で ipps、無ければ平文の ipp）。プロセス（cmd/printmanager の ports）がノードの
+  変更（Options.OnChange）と tick ごとに listener を開け閉めし、サーバーレス（Options.NoPorts）は port を 400 で断る。新しい種類 sink は
+  最新 latest 件（既定 10）の文書を持ち（押し出されたものは Live を減らす）、ノードの上に最新の 1 ページ目、サイドバーに全部の 1 ページ目
+  （GET /api/nodes/<名前>/latest、GET /api/jobs/<n>/pages/<p>.png は見える人に）。プリンタの preview（tools/fakeprinter の農場の API の
+  URL）で、偽プリンタが受けたジョブと読み戻した絵を Manager が取り次いで見せる。2026-10-21 実装。
+lifecycle: active
+authority: authored
+scope:
+  milestone: pm-5c
+constraints:
+- API のノードのポートは REST（HTTP）だけ、IPP は cups のノードだけ（requirement:print-manager-console の port-protocol）。raw 9100・LPD の受け口は持たない（requirement:print-manager の制約のまま）
+- ポートはプロセスの listener。サーバーレスでは断る（Options.NoPorts）。ポートは 1024〜65535 で、ノードの間で重ならない
+- cups のノードは一旦すべてのノードを見せる（requirement:print-manager-console の cups-server-node）。ノードそのものは宛先でない
+- sink が持つ文書は押し出されるまで消えない（Live）。sink を消すと手放す
+- preview は管理者だけが読み、Manager が農場へ取りに行く（管理者が決めた URL だけ。本文は 32 MiB まで、10 秒）
+capabilities:
+  endpoint-ports:
+    state: implemented
+    about: capability:print-manager/endpoint-ports
+  cups-server-node:
+    state: implemented
+    about: capability:print-manager/cups-server-node
+  sink-node:
+    state: implemented
+    about: capability:print-manager/sink-node
+  fake-printer-preview:
+    state: implemented
+    about: capability:print-manager/fake-printer-preview
+  cups-tls:
+    state: partial
+    about: ipps は tls_cert・tls_key のファイルで（コードはある。証明書を置いて確かめていない）
+  cups-exposure-by-edges:
+    state: planned
+    about: 辺で見せるノードを絞る（OS のクライアントから隠したいノードが出たとき）
+non_goals:
+- ポートごとの認証の違い（cups のポートも IPP の Basic は今の SubmitTokens。アプリの client credentials と人の IPP の合言葉は pm-auth-2）
+- Lambda などサーバーレスでのポート（外部の Lambda が POST /in/{node} を叩く。requirement:print-manager-console の port-serverless）
+- 偽プリンタ以外の preview（実機の状態の見張りは pm-4 の残り）
+acceptance:
+  c1-ports:
+    text: port を持つ endpoint と cups をプロセスが聞く。cups のポートで CUPS-Get-Printers が全ノードを返し、/printers/<ノード> への Print-Job が通る。endpoint のポートへの POST は鍵つきで 201、鍵なしで 401。ポートを外すと listener が閉じる。サーバーレスでは port が 400
+    verified_by: [manager-tests, app-tests]
+  c2-sink:
+    text: sink は latest 件を持ち、古いものを手放す（Live 0、keep の後に消える）。見える人だけが一覧と 1 ページ目の絵を取れる。トポロジーと live に kept と latest が出る。sink を消すと持っていたジョブを手放す
+    verified_by: [manager-tests, browser-sink]
+  c3-preview:
+    text: preview を持つプリンタの /api/nodes/<名前>/preview が農場のジョブ（最新のページ数つき）を返し、/preview/<job>/pages/<p>.png が絵を取り次ぐ。preview の無いプリンタは 404、悪い URL は 400
+    verified_by: [manager-tests]
+  c4-ui:
+    text: パレットに CUPS server と Sink。サイドバーに port（サーバーレスでは無効）、TLS のファイル、latest、preview。sink のノードに最新の 1 ページ目のサムネイル、サイドバーに持っている文書の一覧。cups のサイドバーに ipp:// の URL と lpstat の例
+    verified_by: [browser-sink]
+verification:
+  manager-tests:
+    state: passed
+    method: integration
+    test: go test -race ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/sink_test.go
+      locator: 'TestSink（latest 2 に 3 件、最初は Live 0、erp は自分の 1 件、ページの絵は見える人だけ、topology と live の kept・latest、keep の後に手放したものだけ消える、sink の削除で手放す）、TestPortHandler（port 無し・1024 未満・片方の証明書・重なるポートを断る、PortHandler の cups で CupsGetPrinters と /printers/wh-a への Print-Job、/nothing は 404、endpoint のポートは鍵で 201・無しで 401、ポートを外すと 404、NoPorts は 400、cupsDest）、TestPreview（httptest の農場：ジョブ 2 件と最新のページ数、PNG の取り次ぎ、無いページは 404、preview の無いプリンタと表示は 404、悪い URL は 400）。2026-10-21 macOS'
+  app-tests:
+    state: passed
+    method: integration
+    test: go test ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/ports_test.go
+      locator: 'TestPorts：空いているポートで cups と endpoint を置き reconcile、ipp.Client が 127.0.0.1:<port>/printers/wh-a に刷り、endpoint のポートへの POST が 201、ポートを外した後の reconcile で閉じる'
+  browser-sink:
+    state: passed
+    method: manual
+    authority: observed
+    evidence:
+      path: cmd/printmanager/public/canvas.js
+      locator: '2026-10-21 pw dev を内蔵ブラウザで：API で sink latest（group warehouse-a）と cups1（port 6310）を作り both → latest に流した。curl http://127.0.0.1:6310/ がノードの JSON を返し、/printers/nowhere は 404（プロセスの listener が OnChange で開いた）。Mina Member の /topology で sink と cups のノードが描かれ、sink にサムネイル、Kept here に 1 ページ目、ジョブの足跡に latest:kept'
+facts:
+  delivery:
+    implemented:
+      date: '2026-10-21'
+      packages:
+      - 'print/manager：model.go（KindCups・KindSink、Node に Preview・Port・TLSCert・TLSKey・Latest、LegKept）、nodes.go（種類ごとの確かめ、ポートの重なり、NoPorts、changed()、Topology の Kept・Latest）、sink.go（routeSink、Latest、dropSink、sinkState）、ports.go（PortHandler：ノードを要求ごとに読み、endpoint は serveIn、cups は cupsDest → serveIPPTo）、preview.go（Preview・WritePreviewPage、/api/nodes/<名前>/preview）、live.go（Kept・Latest）、http.go（/api/nodes/<名前>/latest、/api/jobs/<n>/pages/<p>.png は ownJob）、people.go（/api/me に ports）、submit.go（WritePage はジョブ番号とページ数で）'
+      - 'cmd/printmanager/handlers：ports.go（listener の reconcile：OnChange の kick と tick、閉じる、open()）、app.go（NoPorts と OnChange、StartTimer で run、Close で閉じる）'
+      - 'cmd/printmanager/public：admin.js（KINDS に cups・sink、keptSection）、canvas.js（色、cups に入力の口なし、sink のサムネイル、kept の数）、topology.js（port・TLS・latest・preview の欄、Clients・Kept here・Preview の節、/api/me の ports）、topology-view.js（sink の Kept here）、pages.pw.html（パレット）'
+    decisions:
+    - 'ポートの listener は ":<port>"（全アドレス）。TLS は cups だけ（API のポートは HTTP。TLS は前段のプロキシか、後で）'
+    - 'PortHandler はノードを要求ごとに読む：種類やポートが変わっても再起動なし。ポートを失ったノードのハンドラは 404 を返し、listener は次の reconcile で閉じる'
+    - 'sink の記録は job の番号の列（最新が末尾）。文書は job-documents のまま、Live で守る。同じジョブが 2 度着いても 1 つ'
+    - 'ページの絵の口 /api/jobs/<n>/pages/<p>.png は ownJob（CanSee）：sink のサムネイルも、/jobs からの表示にも使える'
+    - 'preview の URL は農場の API の /api/printers/<printer>：origin と名前に割り、/api/jobs?printer= と /api/printers/<p>/jobs/<id>/pages/<n> を叩く'
+    unverified:
+    - 'ipps の cups（証明書のファイルを置いて試していない）'
+    - '本物の CUPS クライアント（lpstat -h、Windows の IPP）から cups のポートへ（ipp.Client と偽物の形には合わせた）'
+    - 'ブラウザでの管理者のサイドバー（cups の Clients、printer の Preview 節）は未確認。tools/fakeprinter の農場は起こしていない'
+    known_gaps:
+    - 'cups のポートの認証は SubmitTokens の Basic のまま（pm-auth-2 まで）'
+    - 'ポートが開けないとき（使用中）は警告のログだけで、画面には出ない'
+    - 'sink の一覧は newest first だが CanSee で絞った後の数は latest より少なくなりうる（見えないものは数に出ない）'
+relations:
+- relation: implements
+  to: requirement:print-manager-console
+- relation: follows
+  to: milestone:pm-5b
+- relation: informed_by
+  to: requirement:fake-printers
+- relation: constrained_by
+  to: decision:print-manager-ui-daisyui

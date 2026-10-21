@@ -76,19 +76,19 @@ capabilities:
     state: implemented
     about: capability:print-manager/live-flow
   sink-node:
-    state: planned
+    state: implemented
     about: capability:print-manager/sink-node
   fake-printer-preview:
-    state: planned
+    state: implemented
     about: capability:print-manager/fake-printer-preview
   endpoint-ports:
-    state: planned
+    state: implemented
     about: capability:print-manager/endpoint-ports
   apps-page:
     state: planned
     about: capability:print-manager/apps-page
   cups-server-node:
-    state: planned
+    state: implemented
     about: capability:print-manager/cups-server-node
 facts:
   request:
@@ -153,7 +153,7 @@ facts:
     what: ノードと辺の全体（名前と種類）。数と流れは自分の権限で見られるジョブ（CanSee）の分だけ（2026-10-21 利用者「いっぱんユーザーは全体ノードと自分の権限で見れるジョブなどだけにします」）。ノードのクリックで、送れるノード（CanSendTo）ならそこへの印刷のフォーム、見えるジョブの一覧
     api: GET /api/topology を利用者にも開く（読むだけ。scope・owner・key_hash・store・collection・templates は出さない）
   delivery:
-    current_milestone: pm-5c（pm-5 と pm-5b は 2026-10-21 に実装した：milestone:pm-5、milestone:pm-5b）
+    current_milestone: done（pm-5・pm-5b・pm-5c を 2026-10-21 に実装した：milestone:pm-5、milestone:pm-5b、milestone:pm-5c。残りは apps-page（pm-auth-2）と cups の辺による絞り込み）
     outcome: 管理のコンソールが 1 ページ 1 項目になり、トポロジーはエディタ（パレット・ピン・サイドバー・パン・ズーム）で、プリンタと表示を含むすべてのノードを置いてつないで設定できる。エンドポイントのサイドバーでテンプレートと資格、表示のサイドバーで端末の QR と一覧、プリンタのサイドバーでプロトコルと宛先
     then: pm-5b — 一般の利用者の読むだけのトポロジー（/topology）と流れの表示（数のバッジ、足跡の点）。pm-5c — 入口のノードのポート（API の REST、CUPS サーバーのノードの IPP。プロセスで動くときだけ）と sink・偽プリンタの絵
     excluded: デバイスフロー（pm-auth-3）、アプリの登録と /oauth/token（pm-auth-2。/admin/apps はそのとき）、入口のポートと CUPS サーバーのノード（pm-5c。それまで pm-4 の /ipp/print のまま）。エンドポイントの資格の節は今の鍵の表示・回転で始め、pm-auth-2 で「許すアプリ」に替える
@@ -311,6 +311,10 @@ history:
       2026-10-21 利用者「全ノードは一旦見えても良いかなと思います。サーバーレスは外部からのAPI連携の入り口ぐらいですかね。そういう意味ではAPIエンドポイントの1つと言えるかと思います。
       外部lambdaから受けられる、パスパラメータに入力ノードIDが入ったAPIを作る感じですかね」。cups-server-node を答え（全ノードを一旦見せる）、port-serverless を答え
       （入口ごとのインスタンスは立てず、外部の Lambda が POST /in/{node} を叩く。既にある口）。入口のノードのポートはプロセスで動くときだけにした
+  pm-5c-implemented:
+    summary: >-
+      2026-10-21 利用者「5cをお願いします」。milestone:pm-5c に実装した：endpoint の port（REST）と新しい種類 cups（IPP、全ノードを見せる、tls_cert・tls_key）、
+      プロセスの listener（OnChange と tick で reconcile、サーバーレスは NoPorts）、sink（latest 件、サムネイル、/api/jobs/<n>/pages/<p>.png）、プリンタの preview（偽プリンタの農場の API を取り次ぐ）
   pm-5b-implemented:
     summary: >-
       2026-10-21 利用者「pm-5b を始めてください。main から新しいブランチで」。milestone:pm-5b に実装した：/topology（誰でも、読むだけ）、GET /api/topology を利用者に

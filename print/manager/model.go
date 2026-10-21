@@ -112,6 +112,13 @@ const (
 	KindDisplay = "display"
 	// KindPrinter prints the job on paper.
 	KindPrinter = "printer"
+	// KindCups is an entry for computers and business systems: a CUPS
+	// server on a port of its own (IPP), which lists every node as its
+	// printers (sink.go, ports.go).
+	KindCups = "cups"
+	// KindSink keeps the latest documents that reach it, to look at on
+	// the topology (sink.go).
+	KindSink = "sink"
 )
 
 // What an endpoint accepts: documents, templates to fill, or both.
@@ -165,9 +172,21 @@ type Node struct {
 	OfflineAfter Duration  `json:"offline_after,omitempty"`
 	// URL is a printer's: ipp://, ipps://, socket:// or lpd:// (a printer
 	// the manager reaches over the network); Route how its jobs reach it
-	// (RouteDirect, RouteBranch).
-	URL   string `json:"url,omitempty"`
-	Route string `json:"route,omitempty"`
+	// (RouteDirect, RouteBranch). Preview is a printer's fake printer on a
+	// farm (tools/fakeprinter): the URL of the printer on the farm's API,
+	// whose pages are shown beside the node (preview.go).
+	URL     string `json:"url,omitempty"`
+	Route   string `json:"route,omitempty"`
+	Preview string `json:"preview,omitempty"`
+	// Port is a port of the process's own that an endpoint (REST) or a
+	// CUPS server (IPP) listens on (ports.go); TLSCert and TLSKey are the
+	// files of a CUPS server's certificate (none: plain ipp).
+	Port    int    `json:"port,omitempty"`
+	TLSCert string `json:"tls_cert,omitempty"`
+	TLSKey  string `json:"tls_key,omitempty"`
+	// Latest is how many of the latest documents a sink keeps (default
+	// 10).
+	Latest int `json:"latest,omitempty"`
 	// Scope is who may send to the node from the pages and whose its
 	// jobs are (ScopeShared, ScopeGroup, ScopePersonal; empty is
 	// shared), and Owner the group (a value of the IdP's groups claim)
@@ -288,7 +307,8 @@ type Leg struct {
 	At   time.Time `json:"at"`
 	// State is routed (queue, class), shown or canceled (display), held,
 	// released or discarded (inbox), pending, done, failed or canceled
-	// (printer, archive), or error when the node could not take it.
+	// (printer, archive), kept (sink), or error when the node could not
+	// take it.
 	State string `json:"state"`
 	// Ref is the slip, the item or the delivery made here.
 	Ref string `json:"ref,omitempty"`
@@ -308,6 +328,7 @@ const (
 	LegDone      = "done"
 	LegFailed    = "failed"
 	LegCanceled  = "canceled"
+	LegKept      = "kept"
 	LegError     = "error"
 )
 

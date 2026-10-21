@@ -101,6 +101,12 @@ func (m *Manager) destInfo(ctx context.Context, name string) (kind, title string
 // serveIPP serves an IPP request to a node's printer, or to the server
 // (no node).
 func (h *handler) serveIPP(w http.ResponseWriter, r *http.Request) {
+	h.serveIPPTo(w, r, r.PathValue("dest"))
+}
+
+// serveIPPTo serves an IPP request to a destination ("" the server), on
+// the manager's server or a CUPS server's port.
+func (h *handler) serveIPPTo(w http.ResponseWriter, r *http.Request, dest string) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/ipp") {
 		http.Error(w, "an IPP request is application/ipp", http.StatusBadRequest)
 		return
@@ -113,7 +119,7 @@ func (h *handler) serveIPP(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	q := &ippRequest{w: w, r: r, by: by}
-	if dest := r.PathValue("dest"); dest != "" {
+	if dest != "" {
 		kind, title, err := h.m.destInfo(ctx, dest)
 		if err != nil {
 			http.Error(w, "no such printer", http.StatusNotFound)

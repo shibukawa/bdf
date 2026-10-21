@@ -38,6 +38,10 @@ type LiveNode struct {
 	// Recent counts the jobs that reached the node in the last
 	// recentWindow.
 	Recent int `json:"recent,omitempty"`
+	// Kept counts the jobs a sink keeps, and Latest is the newest of
+	// them (its id).
+	Kept   int    `json:"kept,omitempty"`
+	Latest string `json:"latest,omitempty"`
 }
 
 // Flow is a job that went from one node to the next.
@@ -67,6 +71,7 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 	h := sha256.New()
 	// the recent counts age: the revision changes every minute
 	fmt.Fprintf(h, "%d\n", now.Unix()/60)
+	kept := map[string]map[string]bool{} // by sink, the jobs it keeps
 	for i := range jobs {
 		j := &jobs[i]
 		if !v.CanSee(j) {
@@ -88,6 +93,19 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 				n.Pending++
 			case LegFailed:
 				n.Failed++
+			case LegKept:
+				if kept[l.Node] == nil {
+					kept[l.Node] = map[string]bool{}
+					for _, id := range m.sinkJobs(ctx, l.Node) {
+						kept[l.Node][id] = true
+					}
+				}
+				if kept[l.Node][j.ID] {
+					n.Kept++
+					if n.Latest == "" {
+						n.Latest = j.ID // the jobs come newest first
+					}
+				}
 			case LegShown:
 				// the leg stays shown: the slip tells whether it is still
 				// open (a job that needs no record any more has none)
@@ -124,7 +142,7 @@ func publicTopology(ns []TopoNode) []TopoNode {
 	for i := range ns {
 		n := &ns[i]
 		n.Node = Node{Name: n.Name, Kind: n.Kind, Title: n.Title, To: n.To, Members: n.Members, Policy: n.Policy, Fallback: n.Fallback}
-		n.In, n.Templates, n.Held, n.Open, n.Devices, n.Pending = "", nil, 0, 0, 0, 0
+		n.In, n.Templates, n.Held, n.Open, n.Devices, n.Pending, n.Kept, n.Latest = "", nil, 0, 0, 0, 0, 0, ""
 	}
 	return ns
 }

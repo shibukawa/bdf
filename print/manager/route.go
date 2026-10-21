@@ -53,6 +53,8 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		m.routeDelivery(ctx, r, Leg{Node: name, Kind: KindArchive, From: from}, "", "")
 	case KindInbox:
 		m.routeInbox(ctx, r, name, from)
+	case KindSink:
+		m.routeSink(ctx, r, name, from)
 	case KindQueue, KindEndpoint:
 		n, err := m.Node(ctx, name)
 		if err != nil {

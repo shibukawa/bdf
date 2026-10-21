@@ -70,8 +70,12 @@ func (h *handler) whoami(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"kind": v.Kind, "id": v.ID, "name": v.Label(), "email": v.Email,
-		"groups": v.Groups, "admin": v.Admin})
+	me := map[string]any{"kind": v.Kind, "id": v.ID, "name": v.Label(), "email": v.Email, "groups": v.Groups, "admin": v.Admin}
+	if v.Admin {
+		// the pages: whether entry nodes may have ports of their own here
+		me["ports"] = !h.m.o.NoPorts
+	}
+	writeJSON(w, http.StatusOK, me)
 }
 
 type viewerHandler func(http.ResponseWriter, *http.Request, *Viewer)

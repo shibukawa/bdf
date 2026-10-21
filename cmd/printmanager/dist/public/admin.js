@@ -74,9 +74,11 @@ export function badge(text, cls = "badge-ghost") {
   return el("span", text, { className: "badge " + cls });
 }
 
-export const KINDS = { endpoint: "Endpoint", queue: "Queue", class: "Class", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer" };
+export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
+  cups: "badge-error badge-soft",
+  sink: "badge-success badge-soft",
   queue: "badge-primary badge-soft",
   class: "badge-primary badge-soft",
   inbox: "badge-warning badge-soft",
@@ -113,6 +115,25 @@ export function stateBadge(state) {
 // ended, or one whose slip is still open on a board.
 export function cancellable(j) {
   return !ENDED.includes(j.state) || (j.legs || []).some((l) => l.kind === "display" && l.state === "shown");
+}
+
+// keptSection lists the jobs a sink keeps that the viewer sees, newest
+// first, with the first page of each.
+export async function keptSection(name) {
+  const box = el("div", undefined, { className: "mt-3 flex flex-col gap-2 border-t border-base-300 pt-3" });
+  box.append(el("h4", "Kept here", { className: "font-semibold" }));
+  const jobs = await api("GET", `/api/nodes/${encodeURIComponent(name)}/latest`);
+  if (!jobs.length) box.append(el("p", "Nothing yet.", { className: "text-xs text-base-content/60" }));
+  const grid = el("div", undefined, { className: "grid grid-cols-2 gap-2" });
+  for (const j of jobs) {
+    const card = el("a", undefined, { className: "flex flex-col gap-1 rounded-box bg-base-200 p-2 text-xs hover:bg-base-300", href: `/api/jobs/${j.id}/document`, title: `#${j.number} ${j.name || ""}` });
+    card.append(el("img", undefined, { src: `/api/jobs/${j.id}/pages/1.png?w=240`, alt: `page 1 of #${j.number}`, className: "aspect-[1/1.3] w-full rounded bg-white object-cover object-top shadow-sm", loading: "lazy" }));
+    card.append(el("span", `#${j.number} ${j.name || ""}`, { className: "truncate font-semibold" }));
+    card.append(el("span", `${j.pages} page${j.pages === 1 ? "" : "s"} · ${since(j.received)}`, { className: "text-base-content/60" }));
+    grid.append(card);
+  }
+  box.append(grid);
+  return box;
 }
 
 // the nav's own tab
