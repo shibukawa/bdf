@@ -85,7 +85,13 @@ The rest of `[auth]` and `[session]` is the Print Manager's
 IdP is kept in the records' store, so that any instance finishes it, and
 the session is a sealed cookie (`session.keyring.secret`, or made of
 `MANAGER_SECRET`). The groups are copied at each login; who is an admin
-is decided on each request.
+is decided on each request. A sign-in after a sign-out asks the IdP to
+let the person choose who they are: popcornweb (0.5.14 or later) marks
+`/auth/login` to carry `prompt=select_account login` until a sign-in
+completes, and sends only requests for a page to the sign-in (the icons
+Safari asks for on its own, `/favicon.ico` and `/apple-touch-icon*.png`,
+get 401), so the IdP does not sign the same person in again without a
+word.
 
 Every node (a display, a printer, a queue, a class …) has a scope and an
 owner (`"scope":"group", "owner":"warehouse-a"`, a value of the groups
