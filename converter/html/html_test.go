@@ -14,6 +14,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"golang.org/x/text/encoding/japanese"
 )
 
@@ -35,15 +36,7 @@ func convertHTML(t *testing.T, src string, opts *Options) (*Result, *bdf.Reader)
 // reopen writes a converted document and reads it back.
 func reopen(t *testing.T, res *Result) *bdf.Reader {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
+	return convtest.Reopen(t, res.Doc)
 }
 
 // content is what the objects of a view hold: the text with breaks as
@@ -356,18 +349,14 @@ func TestSVG(t *testing.T) {
 	if len(docs) != 5 {
 		t.Fatalf("%d SVG parts: %q", len(docs), docs)
 	}
-	// the inline ones are SVG files: the namespaces, the text color for
-	// currentColor, the symbol and gradient the icon uses, the picture as a
-	// data: URL, HTML in the SVG with its namespace, no scripts
+	// the inline ones are SVG files (their shape, converter/internal/webdoc
+	// tests): the layout's text color reaches them for currentColor, and a
+	// void HTML element in one is closed
 	icon, pic := docs[3], docs[4]
-	for _, s := range []string{`<svg viewBox="0 0 16 16" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" color="#1f2328">`,
-		`<defs><symbol id="dot" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="url(#g)"></circle></symbol><linearGradient id="g">`} {
-		if !strings.Contains(icon, s) {
-			t.Errorf("icon lacks %s:\n%s", s, icon)
-		}
+	if !strings.Contains(icon, `<svg viewBox="0 0 16 16" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" color="#1f2328">`) {
+		t.Errorf("icon lacks the text color:\n%s", icon)
 	}
-	if !strings.Contains(pic, `<image href="data:image/png;base64,`) || !strings.Contains(pic, `<div xmlns="http://www.w3.org/1999/xhtml">html <br></br> inside</div>`) ||
-		strings.Contains(pic, "script") {
+	if !strings.Contains(pic, `<div xmlns="http://www.w3.org/1999/xhtml">html <br></br> inside</div>`) {
 		t.Errorf("picture SVG:\n%s", pic)
 	}
 	for _, w := range res.Warnings {

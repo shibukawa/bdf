@@ -24,19 +24,14 @@ var operations = []ipp.Op{
 	ipp.OpIdentifyPrinter,
 }
 
-// jobTemplate are the job template attributes a fake printer takes.
-var jobTemplate = []string{
-	"copies", "finishings", "ipp-attribute-fidelity", "job-hold-until", "job-name", "job-priority", "media", "media-col",
-	"multiple-document-handling", "number-up", "orientation-requested", "output-bin", "overrides", "page-ranges",
-	"print-color-mode", "print-content-optimize", "print-quality", "print-rendering-intent", "print-scaling",
-	"printer-resolution", "sides",
-}
+// allAttrs is what a request without requested-attributes asks for.
+var allAttrs = []string{"all"}
 
 // jobGroups are the groups of job attributes requested-attributes names:
 // "job-template" the job template attributes, "job-description" the
 // others (filter lets every name not in a group through as itself).
 var jobGroups = map[string][]string{
-	"job-template": jobTemplate,
+	"job-template": ipp.JobTemplateAttrs,
 	"job-description": {"job-id", "job-uri", "job-uuid", "job-printer-uri", "job-name", "job-originating-user-name", "job-state",
 		"job-state-reasons", "job-state-message", "number-of-documents", "job-printer-up-time", "job-k-octets",
 		"job-impressions-completed", "job-media-sheets-completed", "time-at-creation", "time-at-processing", "time-at-completed",
@@ -276,7 +271,7 @@ func (p *Printer) handle(q *request) {
 		}
 	case ipp.OpGetJobAttributes:
 		if j := p.jobOf(q); j != nil {
-			q.res.Add(ipp.TagJob, filter(p.jobAttrs(j, q), requested(q.op, nil), jobGroups)...)
+			q.res.Add(ipp.TagJob, ipp.Filter(p.jobAttrs(j, q), ipp.Requested(q.op, allAttrs), jobGroups)...)
 		}
 	case ipp.OpGetJobs:
 		p.getJobs(q)
@@ -312,7 +307,7 @@ func (p *Printer) handle(q *request) {
 		p.notify(Event{Kind: "job", Job: j.ID})
 	case ipp.OpIdentifyPrinter:
 	case ipp.OpCupsGetPrinters:
-		q.res.Add(ipp.TagPrinter, filter(p.cupsAttrs(q, q.printerURI()), requested(q.op, nil), nil)...)
+		q.res.Add(ipp.TagPrinter, ipp.Filter(p.cupsAttrs(q, q.printerURI()), ipp.Requested(q.op, allAttrs), nil)...)
 	default:
 		q.fail(ipp.StatusServerErrorOperationNotSupported, "%s", q.req.Op())
 	}
@@ -598,7 +593,7 @@ func (p *Printer) getJobs(q *request) {
 	mine, _ := q.op.Get("my-jobs").Bool()
 	user := q.op.Get("requesting-user-name").Text()
 	limit, _ := q.op.Get("limit").Int()
-	req := requested(q.op, []string{"job-id", "job-uri"})
+	req := ipp.Requested(q.op, []string{"job-id", "job-uri"})
 	n := 0
 	// the newest first, as CUPS and the printers list them
 	for i := len(p.jobs) - 1; i >= 0; i-- {
@@ -614,13 +609,13 @@ func (p *Printer) getJobs(q *request) {
 			break
 		}
 		n++
-		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: filter(p.jobAttrs(j, q), req, jobGroups)})
+		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: ipp.Filter(p.jobAttrs(j, q), req, jobGroups)})
 	}
 }
 
 // jobStatus are the attributes of a job in the answer to its creation.
 func (p *Printer) jobStatus(j *Job, q *request) []ipp.Attribute {
-	return filter(p.jobAttrs(j, q), []string{"job-id", "job-uri", "job-state", "job-state-reasons", "job-state-message", "job-uuid"}, nil)
+	return ipp.Filter(p.jobAttrs(j, q), []string{"job-id", "job-uri", "job-state", "job-state-reasons", "job-state-message", "job-uuid"}, nil)
 }
 
 func (p *Printer) jobAttrs(j *Job, q *request) []ipp.Attribute {
@@ -706,41 +701,4 @@ func (p *Printer) upTime(t time.Time) int {
 		return 1
 	}
 	return int(t.Sub(p.started)/time.Second) + 1
-}
-
-// requested is requested-attributes, or def without it.
-func requested(op *ipp.Group, def []string) []string {
-	a := op.Get("requested-attributes")
-	if a == nil {
-		if def == nil {
-			return []string{"all"}
-		}
-		return def
-	}
-	return a.Strings()
-}
-
-// filter keeps the attributes requested; groups names the groups of
-// attribute names ("job-template" …) a request may ask for.
-func filter(attrs []ipp.Attribute, req []string, groups map[string][]string) []ipp.Attribute {
-	want := map[string]bool{}
-	for _, r := range req {
-		if r == "all" {
-			return attrs
-		}
-		if names, ok := groups[r]; ok {
-			for _, n := range names {
-				want[n] = true
-			}
-			continue
-		}
-		want[r] = true
-	}
-	var out []ipp.Attribute
-	for _, a := range attrs {
-		if want[a.Name] {
-			out = append(out, a)
-		}
-	}
-	return out
 }

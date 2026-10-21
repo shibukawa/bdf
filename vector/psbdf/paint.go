@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/vector/internal/export"
 )
 
 // shading is a gradient or a pattern of a document, as PostScript draws
@@ -26,32 +27,6 @@ type shading struct {
 	dict string
 }
 
-// stop is a color stop of a gradient at an offset from 0 to 1.
-type stop struct {
-	off     float64
-	r, g, b float64
-	a       float64
-}
-
-// stopsOf returns the stops of a gradient as Canvas uses them: in the
-// order of their offsets, from 0 to 1.
-func stopsOf(p *bdf.Paint) []stop {
-	var out []stop
-	last := 0.0
-	for _, s := range p.Stops {
-		off := float64(s.Offset)
-		if math.IsNaN(off) {
-			continue
-		}
-		// (a stop before the one before it is at its place)
-		off = math.Min(math.Max(off, last), 1)
-		last = off
-		c := uint32(s.Color)
-		out = append(out, stop{off, float64(c>>24) / 255, float64(c>>16&0xff) / 255, float64(c>>8&0xff) / 255, float64(c&0xff) / 255})
-	}
-	return out
-}
-
 // shading returns how a gradient or a pattern is drawn.
 func (ex *exporter) shading(p *bdf.Paint) *shading {
 	if ex.shadings == nil {
@@ -67,7 +42,7 @@ func (ex *exporter) shading(p *bdf.Paint) *shading {
 		sh.ok = true
 		return sh
 	}
-	stops := stopsOf(p)
+	stops := export.StopsOf(p)
 	want := map[byte]int{bdf.PaintLinear: 4, bdf.PaintRadial: 6, bdf.PaintConic: 3}[p.Kind]
 	if len(stops) == 0 || want == 0 || len(p.Coords) < want {
 		return sh // a gradient without stops draws nothing
@@ -88,12 +63,12 @@ func (ex *exporter) shading(p *bdf.Paint) *shading {
 	sh.ok = true
 	same, opaque := true, true
 	for _, s := range stops {
-		same = same && s == stop{s.off, stops[0].r, stops[0].g, stops[0].b, stops[0].a}
-		opaque = opaque && s.a == 1
+		same = same && s == stop{Off: s.Off, R: stops[0].R, G: stops[0].G, B: stops[0].B, A: stops[0].A}
+		opaque = opaque && s.A == 1
 	}
 	if same {
 		s := stops[0]
-		sh.solid, sh.color = true, bdf.RGBA(uint8(math.Round(s.r*255)), uint8(math.Round(s.g*255)), uint8(math.Round(s.b*255)), uint8(math.Round(s.a*255)))
+		sh.solid, sh.color = true, bdf.RGBA(uint8(math.Round(s.R*255)), uint8(math.Round(s.G*255)), uint8(math.Round(s.B*255)), uint8(math.Round(s.A*255)))
 		return sh
 	}
 	if p.Kind == bdf.PaintRadial {
@@ -119,31 +94,34 @@ func (ex *exporter) shadingDict(sh *shading) string {
 	if sh.kind == bdf.PaintRadial {
 		typ = 3
 	}
-	sh.dict = fmt.Sprintf("<< /ShadingType %d /ColorSpace %s /Coords [%s] /Function %s /Extend [true true] >>", typ, cs, nums(sh.coords...), ex.function(sh.stops))
+	sh.dict = fmt.Sprintf("<< /ShadingType %d /ColorSpace %s /Coords [%s] /Function %s /Extend [true true] >>", typ, cs, export.Nums(sh.coords...), ex.function(sh.stops))
 	return sh.dict
 }
 
 // function writes the function of the colors of stops: from 0 to 1, with
 // the first and the last color outside the stops.
+// stop is a stop of a gradient (see export.Stop).
+type stop = export.Stop
+
 func (ex *exporter) function(stops []stop) string {
 	val := func(s stop) string {
 		if ex.opts.Gray {
-			return fine(luma(s.r, s.g, s.b))
+			return export.Fine(luma(s.R, s.G, s.B))
 		}
-		return fine(s.r) + " " + fine(s.g) + " " + fine(s.b)
+		return export.Fine(s.R) + " " + export.Fine(s.G) + " " + export.Fine(s.B)
 	}
 	seg := func(a, b stop) string {
 		return fmt.Sprintf("<< /FunctionType 2 /Domain [0 1] /C0 [%s] /C1 [%s] /N 1 >>", val(a), val(b))
 	}
 	// the stops from 0 to 1
-	if stops[0].off > 0 {
+	if stops[0].Off > 0 {
 		first := stops[0]
-		first.off = 0
+		first.Off = 0
 		stops = append([]stop{first}, stops...)
 	}
-	if n := len(stops); stops[n-1].off < 1 {
+	if n := len(stops); stops[n-1].Off < 1 {
 		last := stops[n-1]
-		last.off = 1
+		last.Off = 1
 		stops = append(stops, last)
 	}
 	if len(stops) == 2 {
@@ -154,7 +132,7 @@ func (ex *exporter) function(stops []stop) string {
 		fns.WriteString("\n" + seg(stops[i], stops[i+1]))
 		encode.WriteString("0 1 ")
 		if i > 0 {
-			bounds.WriteString(fine(stops[i].off) + " ")
+			bounds.WriteString(export.Fine(stops[i].Off) + " ")
 		}
 	}
 	return fmt.Sprintf("<< /FunctionType 3 /Domain [0 1] /Functions [%s\n] /Bounds [%s] /Encode [%s] >>", fns.String(), bounds.String(), encode.String())

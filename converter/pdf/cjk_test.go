@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // cjkPDF shows text in non-embedded CID fonts through predefined CMaps and
@@ -42,7 +43,7 @@ BT /F4 20 Tf 20 200 Td <0465> Tj ET`
 	if len(res.Warnings) != 0 {
 		t.Errorf("warnings: %v", res.Warnings)
 	}
-	txt := pageText(t, r)
+	txt := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"あいうA", "日本", "中文", "亜"} {
 		if !strings.Contains(txt, want) {
 			t.Errorf("text %q lacks %q", txt, want)
@@ -81,7 +82,7 @@ func TestConvertCJKFixture(t *testing.T) {
 	if len(res.Warnings) != 0 {
 		t.Errorf("warnings: %v", res.Warnings)
 	}
-	txt := pageText(t, r)
+	txt := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"明朝体の日本語 Shift_JIS", "ゴシック体：UCS-2 の文字列", "简体中文的文本", "繁體中文的文字", "한국어 텍스트",
 		"縦書き「かぎ括弧」、ー。", "縦組み（丸括弧）ー", "たてがきのテキスト"} {
 		if !strings.Contains(txt, want) {

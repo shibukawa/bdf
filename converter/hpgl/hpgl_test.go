@@ -16,6 +16,7 @@ import (
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/cad"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/internal/fontdb"
 	"golang.org/x/text/encoding/japanese"
@@ -37,32 +38,8 @@ func convert(t *testing.T, name string, opts *Options) (*Result, *bdf.Reader) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	return res, r
-}
-
-func plainText(t *testing.T, r *bdf.Reader) string {
-	t.Helper()
-	h, err := bdf.ParseHash(r.Manifest.Views[0].TextIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := r.Part(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	idx, err := bdf.DecodeTextIndex(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bdf.PlainText(idx)
 }
 
 // plotted is a plot read with the converter's state left to inspect.
@@ -115,7 +92,7 @@ func TestShapes(t *testing.T) {
 	if got := m.Meta.DC.Title.First(); got != "HP-GL/2 test plot" {
 		t.Errorf("title %q", got)
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"Stick font 0.25 x 0.35 cm", "Large", "Default size: 9 characters per inch", "Turned 45", "Slanted",
 		"Line one", "Line two", "LO1", "LO19", "DOWN", "Univers Bold 14 pt", "CG Times Italic 12 pt", "文字 テスト", "テスト図"} {
 		if !strings.Contains(text, want) {
@@ -149,7 +126,7 @@ func TestJob(t *testing.T) {
 	if got := r.Manifest.Meta.DC.Title.First(); got != "Plotter job page" {
 		t.Errorf("title %q", got)
 	}
-	if text := plainText(t, r); !strings.Contains(text, "Portrait page") || !strings.Contains(text, "Raster image above") {
+	if text := convtest.PlainText(t, r, 0); !strings.Contains(text, "Portrait page") || !strings.Contains(text, "Raster image above") {
 		t.Errorf("text %q", text)
 	}
 	// the image of the first page is upright below the pen: its top left
@@ -175,7 +152,7 @@ func TestHPGL1(t *testing.T) {
 	if len(res.Warnings) > 0 {
 		t.Errorf("warnings: %q", res.Warnings)
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"HP-GL PEN PLOTTER", "VERTICAL"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text lacks %q: %q", want, text)

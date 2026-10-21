@@ -5,63 +5,14 @@ import (
 	"math"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/internal/affine"
 )
 
 // matrix is an affine transform as Canvas 2D keeps it: x' = a x + c y + e,
-// y' = b x + d y + f.
-type matrix [6]float64
+// y' = b x + d y + f (see affine.Matrix).
+type matrix = affine.Matrix
 
-var identity = matrix{1, 0, 0, 1, 0, 0}
-
-// mul returns m × n: n applies first (ctx.transform(n) on a context at m).
-func (m matrix) mul(n matrix) matrix {
-	return matrix{
-		m[0]*n[0] + m[2]*n[1],
-		m[1]*n[0] + m[3]*n[1],
-		m[0]*n[2] + m[2]*n[3],
-		m[1]*n[2] + m[3]*n[3],
-		m[0]*n[4] + m[2]*n[5] + m[4],
-		m[1]*n[4] + m[3]*n[5] + m[5],
-	}
-}
-
-func (m matrix) apply(x, y float64) (float64, float64) {
-	return m[0]*x + m[2]*y + m[4], m[1]*x + m[3]*y + m[5]
-}
-
-func (m matrix) translate(x, y float64) matrix { return m.mul(matrix{1, 0, 0, 1, x, y}) }
-func (m matrix) scale(x, y float64) matrix     { return m.mul(matrix{x, 0, 0, y, 0, 0}) }
-
-func (m matrix) det() float64 { return m[0]*m[3] - m[1]*m[2] }
-
-func (m matrix) invert() (matrix, bool) {
-	d := m.det()
-	if d == 0 || math.IsNaN(d) || math.IsInf(d, 0) {
-		return matrix{}, false
-	}
-	return matrix{
-		m[3] / d, -m[1] / d, -m[2] / d, m[0] / d,
-		(m[2]*m[5] - m[3]*m[4]) / d, (m[1]*m[4] - m[0]*m[5]) / d,
-	}, true
-}
-
-// maxScale is the largest factor the transform stretches a length by.
-func (m matrix) maxScale() float64 {
-	return math.Max(math.Hypot(m[0], m[1]), math.Hypot(m[2], m[3]))
-}
-
-// areaScale is the square root of the area factor (the zoom of a uniform
-// transform).
-func (m matrix) areaScale() float64 { return math.Sqrt(math.Abs(m.det())) }
-
-func (m matrix) finite() bool {
-	for _, v := range m {
-		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return false
-		}
-	}
-	return true
-}
+var identity = affine.Identity
 
 type point struct{ x, y float64 }
 
@@ -392,15 +343,10 @@ func (p *path) extent() (box [4]float64, ok bool) {
 	return b, ok
 }
 
-// flatten turns the path into polylines through m, with curves split until
-// they deviate from their chords by less than tol (in the output space).
-func (p *path) flatten(m matrix, tol float64) []polyline {
-	return p.flattenTo(&scratch{}, make([]polyline, 0, len(p.subs)), m, tol)
-}
-
-// flattenTo is flatten with the memory of a renderer: the polylines are
-// added to out and their points to those sc holds, where they last until
-// sc is reset for the next drawing.
+// flattenTo turns the path into polylines through m, with curves split
+// until they deviate from their chords by less than tol (in the output
+// space). The polylines are added to out and their points to those sc
+// holds, where they last until sc is reset for the next drawing.
 func (p *path) flattenTo(sc *scratch, out []polyline, m matrix, tol float64) []polyline {
 	if sc.limited {
 		return out
@@ -413,24 +359,24 @@ func (p *path) flattenTo(sc *scratch, out []polyline, m matrix, tol float64) []p
 			return out
 		}
 		start := len(buf)
-		x0, y0 := m.apply(s.start.x, s.start.y)
+		x0, y0 := m.Apply(s.start.x, s.start.y)
 		buf = append(buf, point{x0, y0})
 		cx, cy := x0, y0
 		for _, g := range s.segs {
 			switch g.kind {
 			case segLine:
-				x, y := m.apply(g.p[0], g.p[1])
+				x, y := m.Apply(g.p[0], g.p[1])
 				buf = append(buf, point{x, y})
 				cx, cy = x, y
 			case segQuad:
-				qx, qy := m.apply(g.p[0], g.p[1])
-				x, y := m.apply(g.p[2], g.p[3])
+				qx, qy := m.Apply(g.p[0], g.p[1])
+				x, y := m.Apply(g.p[2], g.p[3])
 				buf = flattenQuad(buf, cx, cy, qx, qy, x, y, tol)
 				cx, cy = x, y
 			case segCubic:
-				ax, ay := m.apply(g.p[0], g.p[1])
-				bx, by := m.apply(g.p[2], g.p[3])
-				x, y := m.apply(g.p[4], g.p[5])
+				ax, ay := m.Apply(g.p[0], g.p[1])
+				bx, by := m.Apply(g.p[2], g.p[3])
+				x, y := m.Apply(g.p[4], g.p[5])
 				buf = flattenCubic(buf, cx, cy, ax, ay, bx, by, x, y, tol)
 				cx, cy = x, y
 			}
@@ -463,7 +409,7 @@ func outside(box [4]float64, reach float64, m matrix, bounds image.Rectangle) bo
 	}
 	x0, y0, x1, y1 := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 	for _, c := range [4][2]float64{{box[0] - reach, box[1] - reach}, {box[2] + reach, box[1] - reach}, {box[0] - reach, box[3] + reach}, {box[2] + reach, box[3] + reach}} {
-		px, py := m.apply(c[0], c[1])
+		px, py := m.Apply(c[0], c[1])
 		if math.IsNaN(px) || math.IsNaN(py) {
 			return false
 		}
@@ -476,7 +422,7 @@ func outside(box [4]float64, reach float64, m matrix, bounds image.Rectangle) bo
 func boxUnder(box [4]float64, m matrix) [4]float64 {
 	x0, y0, x1, y1 := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 	for _, c := range [4][2]float64{{box[0], box[1]}, {box[2], box[1]}, {box[0], box[3]}, {box[2], box[3]}} {
-		px, py := m.apply(c[0], c[1])
+		px, py := m.Apply(c[0], c[1])
 		if math.IsNaN(px) || math.IsNaN(py) {
 			return [4]float64{px, py, px, py}
 		}

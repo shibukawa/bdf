@@ -112,14 +112,6 @@ func layersText(t *testing.T, obj func(bdf.Hash) *bdf.ObjectPart, page *bdf.Page
 	return b.String()
 }
 
-func singleBytes(t *testing.T, doc *bdf.Document) []byte {
-	var b bytes.Buffer
-	if err := doc.WriteSingle(&b); err != nil {
-		t.Fatal(err)
-	}
-	return b.Bytes()
-}
-
 // TestStream converts the test PDFs a page at a time in several orders:
 // each page document holds what its page needs beyond the pages before,
 // and Finish makes the document Convert makes (the same bytes when the
@@ -198,7 +190,7 @@ func TestStream(t *testing.T) {
 					t.Error("Page after Finish")
 				}
 				if name == "in order" {
-					if !bytes.Equal(singleBytes(t, res.Doc), singleBytes(t, want.Doc)) {
+					if !bytes.Equal(encodeDoc(t, res.Doc), encodeDoc(t, want.Doc)) {
 						t.Error("Finish made other bytes than Convert")
 					}
 					return

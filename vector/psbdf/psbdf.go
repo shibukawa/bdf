@@ -36,6 +36,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/raster/imagebdf"
+	"github.com/shibukawa/bdf/vector/internal/export"
 	"github.com/shibukawa/bdf/vector/internal/flatten"
 )
 
@@ -133,7 +134,7 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 	for i, b := range bodies {
 		fmt.Fprintf(w, "%%%%Page: %d %d\n", i+1, i+1)
 		if i > 0 && sheets[i] != sheets[i-1] {
-			fmt.Fprintf(w, "%%%%BeginPageSetup\n%s%%%%EndPageSetup\n", feature("PageSize", fmt.Sprintf("/PageSize [%s]", nums(sheets[i][0], sheets[i][1]))))
+			fmt.Fprintf(w, "%%%%BeginPageSetup\n%s%%%%EndPageSetup\n", feature("PageSize", fmt.Sprintf("/PageSize [%s]", export.Nums(sheets[i][0], sheets[i][1]))))
 		}
 		if _, err := w.Write(b); err != nil {
 			return nil, err
@@ -142,12 +143,12 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 	if _, err := io.WriteString(w, "%%Trailer\nend\n%%EOF\n"); err != nil {
 		return nil, err
 	}
-	return &Result{Pages: len(pages), Fonts: ex.fonts.count(), Pictures: ex.pictures, Warnings: ex.warnings}, nil
+	return &Result{Pages: len(pages), Fonts: ex.fonts.count(), Pictures: ex.pictures, Warnings: ex.Warnings}, nil
 }
 
 // pages returns the pages to write.
 func (ex *exporter) pages() ([]pageOut, error) {
-	doc := ex.doc
+	doc := ex.Doc
 	var views []*bdf.View
 	if len(ex.opts.Views) > 0 {
 		for _, id := range ex.opts.Views {
@@ -205,7 +206,7 @@ func (ex *exporter) pages() ([]pageOut, error) {
 func (ex *exporter) place(pg pageOut) (sheetW, sheetH float64, m matrix) {
 	if ex.opts.Place != nil {
 		sw, sh, mm := ex.opts.Place(pg.w, pg.h)
-		if sw > 0 && sh > 0 && matrix(mm).finite() {
+		if sw > 0 && sh > 0 && matrix(mm).Finite() {
 			return sw, sh, matrix(mm)
 		}
 	}
@@ -241,19 +242,19 @@ func (ex *exporter) header(b *bytes.Buffer, pages int, sheets [][2]float64) {
 	}
 	title := ex.opts.Title
 	if title == "" {
-		title = ex.doc.Meta.DC.Title.First()
+		title = ex.Doc.Meta.DC.Title.First()
 	}
 	b.WriteString("%!PS-Adobe-3.0\n%%Creator: bdf (vector/psbdf)\n")
 	if title != "" {
 		fmt.Fprintf(b, "%%%%Title: %s\n", psText(title))
 	}
 	fmt.Fprintf(b, "%%%%LanguageLevel: 3\n%%%%Pages: %d\n%%%%BoundingBox: 0 0 %d %d\n%%%%HiResBoundingBox: 0 0 %s\n%%%%DocumentData: Clean7Bit\n%%%%EndComments\n",
-		pages, int(math.Ceil(maxW)), int(math.Ceil(maxH)), nums(maxW, maxH))
+		pages, int(math.Ceil(maxW)), int(math.Ceil(maxH)), export.Nums(maxW, maxH))
 	b.WriteString("%%BeginProlog\n%%BeginResource: procset bdf 1 0\n")
 	b.WriteString(prolog)
 	b.WriteString("%%EndResource\n%%EndProlog\n%%BeginSetup\n")
 	o := ex.opts
-	b.WriteString(feature("PageSize", fmt.Sprintf("/PageSize [%s]", nums(sheets[0][0], sheets[0][1]))))
+	b.WriteString(feature("PageSize", fmt.Sprintf("/PageSize [%s]", export.Nums(sheets[0][0], sheets[0][1]))))
 	if o.Copies > 1 {
 		b.WriteString(feature("NumCopies", fmt.Sprintf("/NumCopies %d", o.Copies)))
 		if o.Collate {
@@ -323,12 +324,12 @@ func (ex *exporter) page(pg pageOut, n int) []byte {
 	boxes := regions.Merge(pg.w, pg.h, 1)
 	// the second: the vectors
 	ex.begin(b, nil)
-	fmt.Fprintf(b, "%s cm\n", place)
+	fmt.Fprintf(b, "%s cm\n", export.Mat(place))
 	if len(boxes) > 0 {
 		// the page, with holes where the pictures go (the boxes do not overlap)
-		fmt.Fprintf(b, "q %s re", nums(-huge, -huge, 2*huge, 2*huge))
+		fmt.Fprintf(b, "q %s re", export.Nums(-huge, -huge, 2*huge, 2*huge))
 		for _, bx := range boxes {
-			fmt.Fprintf(b, " %s re", nums(bx[0], bx[1], bx[2]-bx[0], bx[3]-bx[1]))
+			fmt.Fprintf(b, " %s re", export.Nums(bx[0], bx[1], bx[2]-bx[0], bx[3]-bx[1]))
 		}
 		b.WriteString(" W* n\n")
 	}
@@ -349,27 +350,18 @@ const huge = 1 << 15
 // layers writes the layers of a page that are not skipped.
 func (ex *exporter) layers(p *bdf.Page) {
 	for _, l := range p.Layers {
-		if ex.skip(l.Role) {
+		if ex.Skip(l.Role) {
 			continue
 		}
 		ex.top(l.Obj)
 	}
 }
 
-func (ex *exporter) skip(role string) bool {
-	for _, r := range ex.opts.SkipRoles {
-		if r == role {
-			return true
-		}
-	}
-	return false
-}
-
 // picturesOf draws the rectangles of a page as pictures of what the image
 // renderer draws there.
 func (ex *exporter) picturesOf(b *bytes.Buffer, pg pageOut, boxes [][4]float64) {
 	if ex.renderer == nil {
-		ex.renderer = imagebdf.New(ex.doc, &imagebdf.Options{FontFS: ex.opts.FontFS, FontDirs: ex.opts.FontDirs, NoSystemFonts: ex.opts.NoSystemFonts,
+		ex.renderer = imagebdf.New(ex.Doc, &imagebdf.Options{FontFS: ex.opts.FontFS, FontDirs: ex.opts.FontDirs, NoSystemFonts: ex.opts.NoSystemFonts,
 			ImageCacheBytes: -1})
 	}
 	dpi := float64(ex.opts.RasterDPI)
@@ -380,14 +372,14 @@ func (ex *exporter) picturesOf(b *bytes.Buffer, pg pageOut, boxes [][4]float64) 
 	for _, bx := range boxes {
 		img, err := flatten.Picture(ex.renderer, view, pg.index, bx, dpi)
 		if err != nil {
-			ex.warnf("a part of a page is not drawn: %v", err)
+			ex.Warnf("a part of a page is not drawn: %v", err)
 			continue
 		}
 		ex.pictures++
 		writeImage(b, ex.picture(img), matrix{bx[2] - bx[0], 0, 0, bx[3] - bx[1], bx[0], bx[1]}, false)
 	}
 	for _, w := range ex.renderer.Warnings() {
-		ex.warnf("%s", w)
+		ex.Warnf("%s", w)
 	}
 }
 
@@ -409,7 +401,7 @@ func (ex *exporter) withoutSkipped(v *bdf.View) *bdf.View {
 		cp := *p
 		cp.Layers = nil
 		for _, l := range p.Layers {
-			if !ex.skip(l.Role) {
+			if !ex.Skip(l.Role) {
 				cp.Layers = append(cp.Layers, l)
 			}
 		}

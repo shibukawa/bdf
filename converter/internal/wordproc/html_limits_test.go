@@ -1,7 +1,6 @@
 package wordproc
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"math"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 )
@@ -46,14 +46,7 @@ func parseHTML(t *testing.T, src string) *html.Node {
 // and paragraphs separated by spaces.
 func viewText(t *testing.T, res *Result, view int) string {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	var words []string
 	for _, pg := range r.Manifest.Views[view].Pages {
 		for _, l := range pg.Layers {
@@ -74,15 +67,6 @@ func viewText(t *testing.T, res *Result, view int) string {
 		}
 	}
 	return strings.Join(strings.Fields(strings.Join(words, " ")), " ")
-}
-
-func hasWarning(res *Result, part string) bool {
-	for _, w := range res.Warnings {
-		if strings.Contains(w, part) {
-			return true
-		}
-	}
-	return false
 }
 
 func elem(tag string, a atom.Atom, kids ...*html.Node) *html.Node {
@@ -206,7 +190,7 @@ func TestHTMLStripsLimit(t *testing.T) {
 	maxStrips = 20
 	doc := parseHTML(t, `<p>first</p>`+strings.Repeat(`<p><img src="x.png" width="10" height="8000"></p>`, 5)+`<p>last</p>`)
 	res := layoutHTML(t, &HTMLDocument{Body: doc, Image: onePixel}, ViewsScroll)
-	if res.Strips < 20 || res.Strips > 24 || !hasWarning(res, "(20 strips)") {
+	if res.Strips < 20 || res.Strips > 24 || !convtest.HasWarning(res.Warnings, "(20 strips)") {
 		t.Errorf("%d strips, warnings %q", res.Strips, res.Warnings)
 	}
 	if got := viewText(t, res, 0); got != "first" {
@@ -284,14 +268,7 @@ func TestStripsOfLongDocument(t *testing.T) {
 // converted document.
 func viewInstrs(t *testing.T, res *Result, view int, fn func(in bdf.Instr)) {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	for _, pg := range r.Manifest.Views[view].Pages {
 		for _, l := range pg.Layers {
 			o, err := r.Object(l.Obj)
@@ -344,7 +321,7 @@ func TestHTMLSpanSlots(t *testing.T) {
 	res = layoutHTML(t, &HTMLDocument{Body: parseHTML(t, table+table)}, ViewsScroll)
 	cells := viewMarks(t, res, 0, bdf.MarkCell)
 	second := slices.Index(cells[1:], "A1:C2") + 1
-	if got := cells[second : second+3]; second < 3 || !slices.Equal(got, []string{"A1:C2", "D1", "E1"}) || !hasWarning(res, "span more than 60 rows and columns") {
+	if got := cells[second : second+3]; second < 3 || !slices.Equal(got, []string{"A1:C2", "D1", "E1"}) || !convtest.HasWarning(res.Warnings, "span more than 60 rows and columns") {
 		t.Errorf("cells of the second table %q, warnings %q", got, res.Warnings)
 	}
 }
@@ -362,7 +339,7 @@ func TestHTMLSVGBytes(t *testing.T) {
 	body := parseHTML(t, b.String())
 	res := layoutHTML(t, &HTMLDocument{Body: body, MaxSVG: 10000}, ViewsScroll)
 	// each document is some 2600 bytes: three of them
-	if n := viewImages(t, res, 0); n != 3 || len(res.Warnings) != 1 || !hasWarning(res, "svg elements after them are left out") {
+	if n := viewImages(t, res, 0); n != 3 || len(res.Warnings) != 1 || !convtest.HasWarning(res.Warnings, "svg elements after them are left out") {
 		t.Errorf("%d svg elements drawn, warnings %q", n, res.Warnings)
 	}
 	if got := viewText(t, res, 0); got != "0 1 2 3 4 5 6 7" {

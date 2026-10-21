@@ -9,6 +9,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/internal/gauss"
 	"github.com/shibukawa/bdf/raster/imagebdf"
+	"github.com/shibukawa/bdf/vector/internal/export"
 )
 
 // A PDF has no shadows: the shadow of what is drawn is written as a
@@ -32,13 +33,6 @@ const (
 	shadowDPI = 300
 )
 
-func clampShadow(v float64) float64 {
-	if math.IsNaN(v) {
-		return 0
-	}
-	return math.Min(math.Max(v, -1e6), 1e6)
-}
-
 // reach is how far a line reaches beyond its path, in units of the state.
 func (st *gstate) reach() float64 {
 	return st.width / 2 * math.Max(math.Sqrt2, st.miter)
@@ -60,7 +54,7 @@ func (sh *shadows) part(ex *exporter, h bdf.Hash) {
 		return
 	}
 	sh.have[h] = true
-	if p := ex.doc.Part(h); p != nil {
+	if p := ex.Doc.Part(h); p != nil {
 		sh.doc.AddPart(p.Type, p.Data)
 	}
 }
@@ -73,7 +67,7 @@ func (sh *shadows) deps(ex *exporter, o *bdf.ObjectPart) {
 			continue
 		}
 		sh.part(ex, h)
-		if p := ex.doc.Part(h); p != nil && p.Type == bdf.PartObject {
+		if p := ex.Doc.Part(h); p != nil && p.Type == bdf.PartObject {
 			if child, err := bdf.DecodeObject(p.Data); err == nil {
 				sh.deps(ex, child)
 			}
@@ -117,9 +111,9 @@ func (ex *exporter) castShadow(box [4]float64, reach float64, shape func(o *bdf.
 	if !st.shadowOn() {
 		return
 	}
-	to := s.toPage.mul(st.ctm)
-	back, ok := to.invert()
-	if !ok || !to.finite() {
+	to := s.toPage.Mul(st.ctm)
+	back, ok := to.Invert()
+	if !ok || !to.Finite() {
 		return
 	}
 	if ex.shadows == nil {
@@ -132,7 +126,7 @@ func (ex *exporter) castShadow(box [4]float64, reach float64, shape func(o *bdf.
 	// far as the blur reaches
 	sigma := st.shadowBlur / 2
 	pad := math.Ceil(3 * sigma)
-	b := to.bounds(box[0]-reach, box[1]-reach, box[2]+reach, box[3]+reach)
+	b := to.Bounds(box[0]-reach, box[1]-reach, box[2]+reach, box[3]+reach)
 	x0, y0, x1, y1 := b[0]-pad, b[1]-pad, b[2]+pad, b[3]+pad
 	if ex.pageW > 0 {
 		// (nothing of a shadow shows outside the page)
@@ -156,7 +150,7 @@ func (ex *exporter) castShadow(box [4]float64, reach float64, shape func(o *bdf.
 		return
 	}
 	if sh.pixels+w*h > maxShadowsPixels {
-		ex.warnf("the shadows of a document have more than %d pixels in all: the rest of them are not drawn", maxShadowsPixels)
+		ex.Warnf("the shadows of a document have more than %d pixels in all: the rest of them are not drawn", maxShadowsPixels)
 		return
 	}
 	sh.pixels += w * h
@@ -164,7 +158,7 @@ func (ex *exporter) castShadow(box [4]float64, reach float64, shape func(o *bdf.
 
 	// what casts the shadow, by itself, on a page of the place of the shadow
 	o := bdf.NewObject()
-	m := matrix{1, 0, 0, 1, -x0, -y0}.mul(to)
+	m := matrix{1, 0, 0, 1, -x0, -y0}.Mul(to)
 	o.Transform(float32(m[0]), float32(m[1]), float32(m[2]), float32(m[3]), float32(m[4]), float32(m[5]))
 	sh.styleOf(ex, o, st.fill, false)
 	sh.styleOf(ex, o, st.stroke, true)
@@ -188,7 +182,7 @@ func (ex *exporter) castShadow(box [4]float64, reach float64, shape func(o *bdf.
 	view := &bdf.View{ID: "shadow", Kind: bdf.ViewFixed, Pages: []*bdf.Page{{W: pw, H: ph, Layers: []bdf.Layer{{Role: bdf.RoleBody, Obj: obj}}}}}
 	img, err := sh.r.PageSize(view, 0, w, h)
 	if err != nil {
-		ex.warnf("a shadow is not drawn: %v", err)
+		ex.Warnf("a shadow is not drawn: %v", err)
 		return
 	}
 	// its alpha, blurred
@@ -236,10 +230,10 @@ func (ex *exporter) castShadow(box [4]float64, reach float64, shape func(o *bdf.
 	ex.blendMode()
 	ex.scoped(func() {
 		if a := alphaOf(st.shadow); a != st.pCa {
-			s.op("%s gs", ex.extGState("/ca "+fine(a)))
+			s.op("%s gs", ex.extGState("/ca "+export.Fine(a)))
 		}
 		place := matrix{x1 - x0, 0, 0, -(y1 - y0), x0 + st.shadowDX, y1 + st.shadowDY}
-		s.op("%s cm %s cm %s Do", back.exact(), place, s.use("XObject", out.name, out.ref))
+		s.op("%s cm %s cm %s Do", back.Exact(), export.Mat(place), s.use("XObject", out.name, out.ref))
 	})
 	if content != nil {
 		s.setMC(ex.tags, content)
@@ -255,7 +249,7 @@ func (ex *exporter) runShadow(rule byte, glyphs []bdf.Glyph) {
 	}
 	var run []placed
 	for _, g := range glyphs {
-		bp := ex.path(int(g.Path))
+		bp := ex.Path(ex.obj, int(g.Path))
 		if bp == nil {
 			continue
 		}

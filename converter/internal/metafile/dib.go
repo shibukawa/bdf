@@ -4,7 +4,6 @@ import (
 	"errors"
 	"image"
 	"image/color"
-	"image/draw"
 
 	"github.com/shibukawa/bdf/image/imgconv"
 )
@@ -32,7 +31,7 @@ func decodeDIB(bmi, bits []byte) (*image.NRGBA, error) {
 		if err != nil {
 			return nil, err
 		}
-		return toNRGBA(img), nil
+		return imgconv.ToNRGBA(img), nil
 	}
 	topDown := h < 0
 	if h < 0 {
@@ -159,14 +158,4 @@ func dibBits(bmi []byte) []byte {
 		return nil
 	}
 	return bmi[off:]
-}
-
-func toNRGBA(img image.Image) *image.NRGBA {
-	if n, ok := img.(*image.NRGBA); ok {
-		return n
-	}
-	b := img.Bounds()
-	out := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(out, out.Bounds(), img, b.Min, draw.Src)
-	return out
 }

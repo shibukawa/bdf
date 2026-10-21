@@ -59,6 +59,15 @@ func (s SVGSize) Ratio() float64 {
 	return 0
 }
 
+// Natural returns the natural size, else the view box's size, and 0, 0
+// for an image with neither.
+func (s SVGSize) Natural() (w, h float64) {
+	if s.W > 0 && s.H > 0 {
+		return s.W, s.H
+	}
+	return s.ViewW, s.ViewH
+}
+
 // Pixels returns the size of the image's pixels in CSS px (docs/spec.md
 // §6.2): the natural size, else the view box's size, else 300 × 150 (the
 // default size of replaced elements) for what is missing.
@@ -77,6 +86,16 @@ func (s SVGSize) Pixels() (w, h float64) {
 		h = 150
 	}
 	return w, h
+}
+
+// SVGDocSize reads the size an SVG document says it has from its root
+// element; ok is false when the document's first element is not svg.
+func SVGDocSize(data []byte) (s SVGSize, ok bool) {
+	width, height, viewBox, ok := SVGRoot(data)
+	if !ok {
+		return SVGSize{}, false
+	}
+	return ParseSVGSize(width, height, viewBox), true
 }
 
 // SVGRoot returns the size attributes of an SVG document's root element;

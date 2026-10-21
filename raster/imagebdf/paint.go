@@ -82,7 +82,7 @@ type gradientShader struct {
 }
 
 func newGradientShader(p *bdf.Paint, m matrix, lut *gradientLUT) shader {
-	inv, ok := m.invert()
+	inv, ok := m.Invert()
 	if !ok || len(p.Stops) == 0 {
 		return solid{}
 	}
@@ -128,7 +128,7 @@ func (g *gradientShader) shade(x, y, n int, dst []float32) {
 		}
 		// the place along the gradient is affine along the row: it is
 		// worked out at the first pixel and stepped to the rest
-		ux, uy := g.inv.apply(float64(x)+0.5, fy)
+		ux, uy := g.inv.Apply(float64(x)+0.5, fy)
 		t := ((ux-x0)*dx + (uy-y0)*dy) / l
 		dt := (g.inv[0]*dx + g.inv[1]*dy) / l
 		for i := 0; i < n; i++ {
@@ -138,7 +138,7 @@ func (g *gradientShader) shade(x, y, n int, dst []float32) {
 		}
 	case bdf.PaintRadial:
 		for i := 0; i < n; i++ {
-			ux, uy := g.inv.apply(float64(x+i)+0.5, fy)
+			ux, uy := g.inv.Apply(float64(x+i)+0.5, fy)
 			var col [4]float32
 			if t, ok := radialT(ux, uy, c); ok {
 				col = g.lut.at(t)
@@ -147,7 +147,7 @@ func (g *gradientShader) shade(x, y, n int, dst []float32) {
 		}
 	case bdf.PaintConic:
 		for i := 0; i < n; i++ {
-			ux, uy := g.inv.apply(float64(x+i)+0.5, fy)
+			ux, uy := g.inv.Apply(float64(x+i)+0.5, fy)
 			a := math.Atan2(uy-float64(c[2]), ux-float64(c[1])) - float64(c[0])
 			t := math.Mod(a/(2*math.Pi), 1)
 			if t < 0 {
@@ -207,20 +207,20 @@ type patternShader struct {
 
 func newPatternShader(r *Renderer, st *style, m matrix) shader {
 	pm := st.paint.Matrix
-	full := m.mul(matrix{float64(pm[0]), float64(pm[1]), float64(pm[2]), float64(pm[3]), float64(pm[4]), float64(pm[5])})
+	full := m.Mul(matrix{float64(pm[0]), float64(pm[1]), float64(pm[2]), float64(pm[3]), float64(pm[4]), float64(pm[5])})
 	img := st.image
 	if st.svg != nil {
 		// an SVG cell as large as it is drawn
-		img, _ = st.svg.raster(r, full.maxScale())
+		img, _ = st.svg.raster(r, full.MaxScale())
 		if img == nil {
 			return solid{} // no room for the raster: the renderer has said so
 		}
-		full = full.scale(st.svg.w/float64(img.w), st.svg.h/float64(img.h))
+		full = full.Scale(st.svg.w/float64(img.w), st.svg.h/float64(img.h))
 	}
 	if img == nil {
 		return solid{}
 	}
-	inv, ok := full.invert()
+	inv, ok := full.Invert()
 	if !ok {
 		return solid{}
 	}
@@ -230,7 +230,7 @@ func newPatternShader(r *Renderer, st *style, m matrix) shader {
 func (p *patternShader) shade(x, y, n int, dst []float32) {
 	w, h := float64(p.img.w), float64(p.img.h)
 	for i := 0; i < n; i++ {
-		ix, iy := p.inv.apply(float64(x+i)+0.5, float64(y)+0.5)
+		ix, iy := p.inv.Apply(float64(x+i)+0.5, float64(y)+0.5)
 		var col [4]float32
 		inX, inY := ix >= 0 && ix < w, iy >= 0 && iy < h
 		switch p.repeat {
@@ -269,7 +269,7 @@ type imageShader struct {
 
 func (s *imageShader) shade(x, y, n int, dst []float32) {
 	for i := 0; i < n; i++ {
-		ix, iy := s.inv.apply(float64(x+i)+0.5, float64(y)+0.5)
+		ix, iy := s.inv.Apply(float64(x+i)+0.5, float64(y)+0.5)
 		ix = math.Min(math.Max(ix, s.sx0), s.sx1)
 		iy = math.Min(math.Max(iy, s.sy0), s.sy1)
 		var col [4]float32

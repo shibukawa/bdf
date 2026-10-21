@@ -6,13 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/music"
-	"github.com/shibukawa/bdf/converter/midi"
 )
-
-func warned(ws []string, part string) bool {
-	return slices.ContainsFunc(ws, func(w string) bool { return strings.Contains(w, part) })
-}
 
 // engrave builds a score without the fonts of the system.
 func engrave(t *testing.T, s *music.Score) *music.Result {
@@ -54,7 +50,7 @@ func TestStaffMeasuresBudget(t *testing.T) {
 	if len(s.Measures) != 3906 || len(s.Parts) != 16 || len(s.Parts[15].Measures) != 3906 {
 		t.Errorf("%d measures, %d parts", len(s.Measures), len(s.Parts))
 	}
-	if !warned(w, "more than 1000000 measures on the staves (256 staves of 3907 measures); the measures after 3906 are left out") {
+	if !convtest.HasWarning(w, "more than 1000000 measures on the staves (256 staves of 3907 measures); the measures after 3906 are left out") {
 		t.Errorf("warnings %q", w)
 	}
 
@@ -67,7 +63,7 @@ func TestStaffMeasuresBudget(t *testing.T) {
 		t.Errorf("3 measures: %s, warnings %q", res.Summary(), w)
 	}
 	s, w = parse(t, parts(2, whole, whole, whole, whole+`<barline><repeat direction="backward"/></barline>`))
-	if res := engrave(t, s); !warned(w, "the measures after 3 are left out") || res.Measures != 3 || s.Play.End != 3*4*music.PPQ {
+	if res := engrave(t, s); !convtest.HasWarning(w, "the measures after 3 are left out") || res.Measures != 3 || s.Play.End != 3*4*music.PPQ {
 		t.Errorf("4 measures: %s, played to %d, warnings %q", res.Summary(), s.Play.End, w)
 	}
 
@@ -85,7 +81,7 @@ func TestStaffMeasuresBudget(t *testing.T) {
 	}
 	b.WriteString(`</score-timewise>`)
 	s, w = parse(t, b.String())
-	if !warned(w, "more than 12 measures in the parts") || !warned(w, "the measures after 6 are left out") {
+	if !convtest.HasWarning(w, "more than 12 measures in the parts") || !convtest.HasWarning(w, "the measures after 6 are left out") {
 		t.Errorf("warnings %q", w)
 	}
 	if len(s.Measures) != 6 || len(s.Parts) != 2 || len(events(s, 0, 5)) != 1 || len(events(s, 1, 5)) != 0 {
@@ -105,7 +101,7 @@ func TestMeasureBudget(t *testing.T) {
 	if got := len(events(s, 0, 0)); got != maxInMeasure || len(events(s, 0, 1)) != 1 {
 		t.Errorf("%d notes", got)
 	}
-	if !warned(w, "more than 10000 notes, slurs, syllables and directions in a measure of a part") {
+	if !convtest.HasWarning(w, "more than 10000 notes, slurs, syllables and directions in a measure of a part") {
 		t.Errorf("warnings %q", w)
 	}
 	// slurs, syllables, directions and clef changes count: a note with
@@ -144,7 +140,7 @@ func TestTempoMarksBudget(t *testing.T) {
 	if got := len(s.Measures[0].Tempo); got != maxTempoMarks {
 		t.Errorf("%d tempo marks", got)
 	}
-	if len(w) != 1 || !warned(w, "more than 64 tempo marks in a measure") {
+	if len(w) != 1 || !convtest.HasWarning(w, "more than 64 tempo marks in a measure") {
 		t.Errorf("warnings %q", w)
 	}
 }
@@ -164,7 +160,7 @@ func TestVersesBudget(t *testing.T) {
 	if last := events(s, 0, 0)[1].Lyrics; len(last) != 1 || last[0].Verse != maxVerses || last[0].Text != "li" {
 		t.Errorf("the second note: %+v", last)
 	}
-	if len(w) != 1 || !warned(w, "more than 99 verses of lyrics") {
+	if len(w) != 1 || !convtest.HasWarning(w, "more than 99 verses of lyrics") {
 		t.Errorf("warnings %q", w)
 	}
 }
@@ -203,7 +199,7 @@ func TestEndingNumbers(t *testing.T) {
 	m := attrs(1) + `<barline location="left"><ending number="` + number + `" type="start"/></barline>` + n("C5", 4, "whole") +
 		`<barline location="right"><ending number="` + number + `" type="stop"/><repeat direction="backward"/></barline>`
 	s, w := parse(t, score(m, n("C5", 4, "whole")))
-	if !warned(w, "more than 100 numbers on a volta") {
+	if !convtest.HasWarning(w, "more than 100 numbers on a volta") {
 		t.Errorf("warnings %q", w)
 	}
 	if e := s.Measures[0].Ending; e == nil || len(e.Text) > 500 || len(s.PlayOrder) != 101 {
@@ -218,22 +214,14 @@ func TestPlayLength(t *testing.T) {
 	ms := slices.Repeat([]string{long}, 245)
 	ms[0] = attrs(1) + long
 	s, w := parse(t, score(ms...))
-	if !warned(w, "plays longer than 1000000 quarter notes") {
+	if !convtest.HasWarning(w, "plays longer than 1000000 quarter notes") {
 		t.Errorf("warnings %q", w)
 	}
 	if len(s.PlayOrder) != 244 || s.Play.End != 244*4096*music.PPQ || len(s.Play.Tracks[0].Notes) != 244 {
 		t.Fatalf("%d measures played to %d", len(s.PlayOrder), s.Play.End)
 	}
-	// the waits between the notes are longer than a delta time of a
-	// Standard MIDI File: the file written reads as the same music
-	p, err := midi.Parse(s.Play.SMF(), nil)
-	if err != nil || len(p.Warnings) != 0 {
-		t.Fatalf("the file written: %v, warnings %q", err, p.Warnings)
-	}
-	notes := p.Perf.Tracks[0].Notes
-	if len(notes) != 244 || notes[243].Tick != 243*4096*music.PPQ+4092*music.PPQ || p.Perf.End != s.Play.End {
-		t.Errorf("%d notes to %d", len(notes), p.Perf.End)
-	}
+	// (the waits between the notes are longer than a delta time of a
+	// Standard MIDI File: music's tests read such a file back)
 	if res := engrave(t, s); res.Measures != 245 {
 		t.Errorf("%s", res.Summary())
 	}
@@ -254,7 +242,7 @@ func TestPlayBudgets(t *testing.T) {
 	if len(s.PlayOrder) != 5 || len(s.Play.Tempo) != 10 || len(s.Play.Tracks[0].Lyrics) != 10 || len(s.Play.Tracks[0].Notes) != 20 {
 		t.Errorf("%d measures played, %d tempo changes, %d syllables", len(s.PlayOrder), len(s.Play.Tempo), len(s.Play.Tracks[0].Lyrics))
 	}
-	if len(w) != 2 || !warned(w, "more than 10 tempo changes are played") || !warned(w, "more than 10 syllables are sung") {
+	if len(w) != 2 || !convtest.HasWarning(w, "more than 10 tempo changes are played") || !convtest.HasWarning(w, "more than 10 syllables are sung") {
 		t.Errorf("warnings %q", w)
 	}
 }
@@ -265,8 +253,5 @@ func TestClefNone(t *testing.T) {
 	s, _ := parse(t, score(m))
 	if cs := s.Parts[0].Measures[0].Clefs; len(cs) != 2 || cs[1].Clef.Sign != music.ClefNone || cs[1].Offset != 2*music.PPQ {
 		t.Fatalf("clefs %+v", cs)
-	}
-	if res := engrave(t, s); res.Notes != 2 {
-		t.Errorf("%s", res.Summary())
 	}
 }

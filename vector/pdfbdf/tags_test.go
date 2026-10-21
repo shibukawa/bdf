@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/vector/internal/vectortest"
 )
 
 // pdfObjects reads the objects of a file written without compression, by
@@ -169,7 +170,7 @@ func checkMarked(t *testing.T, file string) (artifacts, pieces int) {
 // document, with the content of the pages marked as that of its elements
 // and the rest as artifacts.
 func TestTagged(t *testing.T) {
-	font, err := os.ReadFile(filepath.Join(testFonts[0], "MPLUS1p-Regular-subset.ttf"))
+	font, err := os.ReadFile(filepath.Join(vectortest.Fonts[0], "MPLUS1p-Regular-subset.ttf"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +347,7 @@ func TestTagged(t *testing.T) {
 	o.Tagged = false
 	plain, _ := write(t, doc, o)
 	for i := 0; i < 2; i++ {
-		if d := distance(render(t, back(t, data), 0, i), render(t, back(t, plain), 0, i)); d != 0 {
+		if d := vectortest.Distance(render(t, back(t, data), 0, i), render(t, back(t, plain), 0, i)); d != 0 {
 			t.Errorf("page %d differs by %.3f from that of the file without tags", i+1, d)
 		}
 	}
@@ -354,7 +355,7 @@ func TestTagged(t *testing.T) {
 		t.Error("a file without tags has marked content")
 	}
 	// the same file every time
-	again, _ := write(t, doc, &Options{FontDirs: testFonts, NoSystemFonts: true, NoCompression: true, Tagged: true})
+	again, _ := write(t, doc, &Options{FontDirs: vectortest.Fonts, NoSystemFonts: true, NoCompression: true, Tagged: true})
 	if !bytes.Equal(again, data) {
 		t.Error("the tagged file is not the same when it is written again")
 	}
@@ -376,7 +377,7 @@ func TestTaggedDocuments(t *testing.T) {
 		if _, err := os.Stat(filepath.Join("../../testdata", name)); err != nil {
 			continue // (a document this build has no fixture of)
 		}
-		doc := load(t, name)
+		doc := vectortest.Load(t, name)
 		o := testOptions()
 		o.NoCompression, o.Tagged = true, true
 		data, _ := write(t, doc, o)
@@ -396,7 +397,7 @@ func TestTaggedDocuments(t *testing.T) {
 // TestPDFA writes PDF/A files: with the output intent of sRGB and the
 // name of the standard, and without what the standard has no place for.
 func TestPDFA(t *testing.T) {
-	doc := load(t, "form/pptx-fixed.bdf")
+	doc := vectortest.Load(t, "form/pptx-fixed.bdf")
 	o := testOptions()
 	o.NoCompression = true
 	plain, _ := write(t, doc, o)
@@ -428,7 +429,7 @@ func TestPDFA(t *testing.T) {
 			t.Errorf("%s: tagged = %v", level, tagged)
 		}
 		// the pages are those of the file that is no PDF/A (but for the smoothing of images)
-		if d := distance(render(t, back(t, data), 0, 0), render(t, back(t, plain), 0, 0)); d > 0.5 {
+		if d := vectortest.Distance(render(t, back(t, data), 0, 0), render(t, back(t, plain), 0, 0)); d > 0.5 {
 			t.Errorf("%s: the page differs by %.3f", level, d)
 		}
 	}
@@ -462,11 +463,11 @@ func TestPDFA(t *testing.T) {
 	}
 
 	// a character that no font has is left out of a PDF/A file, with a warning
-	font, err := os.ReadFile(filepath.Join(testFonts[0], "MPLUS1p-Regular-subset.ttf"))
+	font, err := os.ReadFile(filepath.Join(vectortest.Fonts[0], "MPLUS1p-Regular-subset.ttf"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	missing := one(t, 200, 100, func(doc *bdf.Document, o *bdf.Object) {
+	missing := vectortest.One(t, 200, 100, func(doc *bdf.Document, o *bdf.Object) {
 		o.Font(o.AddFont(bdf.EmbeddedFont(doc.AddFont(font), 400, bdf.StyleNormal)), 20).FillText("AกB", 10, 50, 0)
 	})
 	o = testOptions()
@@ -482,7 +483,7 @@ func TestPDFA(t *testing.T) {
 		t.Errorf("%d runs of text, want one on each side of the character", n)
 	}
 	// (private use text at level a: said, not hidden)
-	pua := one(t, 200, 100, func(doc *bdf.Document, o *bdf.Object) {
+	pua := vectortest.One(t, 200, 100, func(doc *bdf.Document, o *bdf.Object) {
 		o.Font(o.AddFont(bdf.EmbeddedFont(doc.AddFont(font), 400, bdf.StyleNormal)), 20).FillText("A", 10, 50, 0)
 	})
 	o.PDFA = "2a"

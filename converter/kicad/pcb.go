@@ -33,7 +33,6 @@ type pcb struct {
 	copper     []string     // copper layers from the front to the back
 	holes      *cad.Drawing // the holes of pads
 	vias       []viaSpan    // the vias, drawn over the layers they join
-	outline    *cad.Drawing // Edge.Cuts, for the layer views
 	vars       func(string) (string, bool)
 	maskMargin float64
 }

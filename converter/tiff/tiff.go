@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -62,16 +61,7 @@ type Result struct {
 
 // ConvertFile converts a TIFF file.
 func ConvertFile(path string, opts *Options) (*Result, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return Convert(f, st.Size(), opts)
+	return converter.OpenFile(path, func(r io.ReaderAt, size int64) (*Result, error) { return Convert(r, size, opts) })
 }
 
 // Convert converts a TIFF file read from r.

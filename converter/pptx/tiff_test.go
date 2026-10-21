@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/tiff"
 	"github.com/shibukawa/bdf/image/imgconv"
 )
@@ -40,14 +41,7 @@ func TestTIFFPictures(t *testing.T) {
 	if len(res.Warnings) != 0 {
 		t.Errorf("warnings: %v", res.Warnings)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	o, err := r.Object(body(r.Manifest.Views[0].Pages[0]))
 	if err != nil {
 		t.Fatal(err)

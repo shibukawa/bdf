@@ -1,8 +1,6 @@
 package visio
 
 import (
-	"image"
-	"image/draw"
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -81,7 +79,7 @@ func (c *converter) picture(fd *ooxml.Node, part string) *picture {
 			c.warnf("picture: %v", err)
 			return pc
 		}
-		res, _ := imgconv.EncodeImage(toNRGBA(img), true, c.opts.Images)
+		res, _ := imgconv.EncodeImage(imgconv.ToNRGBA(img), true, c.opts.Images)
 		data = res.Data
 	case imgconv.Sniff(data) == "":
 		c.warnOnce("picfmt", "a picture in an unsupported format is not drawn")
@@ -93,16 +91,6 @@ func (c *converter) picture(fd *ooxml.Node, part string) *picture {
 	}
 	pc.hash, pc.ok = c.doc.AddImage(data), true
 	return pc
-}
-
-func toNRGBA(img image.Image) *image.NRGBA {
-	if n, ok := img.(*image.NRGBA); ok {
-		return n
-	}
-	b := img.Bounds()
-	out := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(out, out.Bounds(), img, b.Min, draw.Src)
-	return out
 }
 
 // drawForeign draws the picture of a foreign shape.

@@ -94,8 +94,6 @@ type item struct {
 	path string // in the container
 }
 
-func (it *item) has(prop string) bool { return hasToken(it.Properties, prop) }
-
 type itemref struct {
 	IDRef      string
 	Linear     string

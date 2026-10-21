@@ -43,7 +43,6 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/image/imgconv"
-	"github.com/shibukawa/bdf/internal/fontdb"
 )
 
 // AntialiasMode selects how geometric edges are rasterized. It does not
@@ -385,7 +384,7 @@ func New(doc *bdf.Document, opts *Options) *Renderer {
 		r.warnf("unknown antialias mode %d: using antialiasing", r.opts.Antialias)
 		r.opts.Antialias = AntialiasDefault
 	}
-	r.fonts = &fonts{r: r, parts: map[bdf.Hash]*fontFace{}, files: map[*fontdb.Face]*fontFace{}, chains: map[bdf.Font]*fontChain{}}
+	r.fonts = &fonts{Doc: r.doc, FontFS: r.opts.FontFS, FontDirs: r.opts.FontDirs, NoSystemFonts: r.opts.NoSystemFonts, New: newFace, Warnf: r.warnf, NotDone: "not drawn"}
 	r.images.limit = cacheLimit(r.opts.ImageCacheBytes, DefaultImageCacheBytes)
 	r.textMasks = &textMaskCache{lru: lru[textMaskKey, *mask]{limit: cacheLimit(r.opts.TextCacheBytes, DefaultTextCacheBytes)}}
 	return r
@@ -813,8 +812,8 @@ func (r *Renderer) background() solid {
 // clipTo returns the coverage of a rectangle in units under m, within the
 // canvas.
 func (d *drawer) clipTo(m matrix, x, y, w, h float64) *mask {
-	ax, ay := m.apply(x, y)
-	bx, by := m.apply(x+w, y+h)
+	ax, ay := m.Apply(x, y)
+	bx, by := m.Apply(x+w, y+h)
 	return d.r.rectMask(ax, ay, bx, by, d.ctx.target.bounds())
 }
 
@@ -823,8 +822,8 @@ func (r *Renderer) drawPage(p *bdf.Page, region bdf.Rect, w, h int, mono Mono) i
 	// the background is the canvas when the page covers the whole image
 	sx, sy := float64(w)/float64(region.W), float64(h)/float64(region.H)
 	pm := matrix{sx, 0, 0, sy, -float64(region.X) * sx, -float64(region.Y) * sy}
-	ax, ay := pm.apply(0, 0)
-	bx, by := pm.apply(float64(p.W), float64(p.H))
+	ax, ay := pm.Apply(0, 0)
+	bx, by := pm.Apply(float64(p.W), float64(p.H))
 	whole := r.rectMask(ax, ay, bx, by, image.Rect(0, 0, w, h))
 	filled, borders := pageBackground(whole, image.Rect(0, 0, w, h), &bg)
 	r.releaseMask(whole)
@@ -879,10 +878,10 @@ func (r *Renderer) drawContinuous(v *bdf.View, region bdf.Rect, w, h int, mono M
 		if top >= float64(region.Y+region.H) || y <= float64(region.Y) {
 			continue
 		}
-		pm := m.translate(0, top)
+		pm := m.Translate(0, top)
 		clip := d.clipTo(pm, 0, 0, float64(b.W), float64(b.H))
 		d.ctx.target.fillBackground(clip, bg)
-		pm = pm.translate(-float64(b.X), -float64(b.Y))
+		pm = pm.Translate(-float64(b.X), -float64(b.Y))
 		for _, l := range p.Layers {
 			if l.Role != bdf.RoleBody && l.Role != bdf.RoleAnnotation {
 				continue
@@ -964,7 +963,7 @@ func (r *Renderer) drawSheet(v *bdf.View, region bdf.Rect, w, h int, mono Mono) 
 			r.warnf("bad tile hash %q", p.hash)
 			continue
 		}
-		tm := m.translate(float64(p.tx)*tile, float64(p.ty)*tile)
+		tm := m.Translate(float64(p.tx)*tile, float64(p.ty)*tile)
 		d.drawTop(hash, tm, d.clipTo(tm, 0, 0, tile, tile))
 	}
 	return d.finishMono(mono)
@@ -1067,18 +1066,18 @@ func (r *Renderer) gridlines(d *drawer, v *bdf.View, region bdf.Rect, m matrix) 
 			}
 		}
 	}
-	_, top := m.apply(0, float64(region.Y))
-	_, bottom := m.apply(0, y1)
+	_, top := m.Apply(0, float64(region.Y))
+	_, bottom := m.Apply(0, y1)
 	walk(v.Cols, float64(region.X), x1, func(x float64) float64 {
-		px, _ := m.apply(x, 0)
+		px, _ := m.Apply(x, 0)
 		return math.Round(px)
 	}, func(px float64, again bool) bool {
 		return line(px, top, px+1, bottom, again)
 	})
-	left, _ := m.apply(float64(region.X), 0)
-	right, _ := m.apply(x1, 0)
+	left, _ := m.Apply(float64(region.X), 0)
+	right, _ := m.Apply(x1, 0)
 	walk(v.Rows, float64(region.Y), y1, func(y float64) float64 {
-		_, py := m.apply(0, y)
+		_, py := m.Apply(0, y)
 		return math.Round(py)
 	}, func(py float64, again bool) bool {
 		return line(left, py, right, py+1, again)

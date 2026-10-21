@@ -74,14 +74,6 @@ func blocks(w int) int { return (w + blockPixels - 1) / blockPixels }
 
 func (s *surface) bounds() image.Rectangle { return image.Rect(s.ox, s.oy, s.ox+s.w, s.oy+s.h) }
 
-// whole is the image the canvas is the whole or a band of (see page).
-func (s *surface) whole() image.Rectangle {
-	if s.page.Empty() {
-		return s.bounds()
-	}
-	return s.page
-}
-
 // at returns the index in pix of the pixel at (x, y) of the device, which
 // must lie on the canvas.
 func (s *surface) at(x, y int) int { return 4 * ((y-s.oy)*s.w + x - s.ox) }

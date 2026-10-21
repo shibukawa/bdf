@@ -12,6 +12,7 @@ import (
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 )
 
@@ -28,32 +29,8 @@ func convert(t *testing.T, name string) (*Result, *bdf.Reader) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	return res, r
-}
-
-func plainText(t *testing.T, r *bdf.Reader) string {
-	t.Helper()
-	h, err := bdf.ParseHash(r.Manifest.Views[0].TextIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := r.Part(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	idx, err := bdf.DecodeTextIndex(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bdf.PlainText(idx)
 }
 
 // instrs lists the instructions of an object with a given opcode.
@@ -105,7 +82,7 @@ func TestConvertShapes(t *testing.T) {
 	if layer(pages[0], bdf.RoleBackground) != layer(pages[1], bdf.RoleBackground) {
 		t.Error("the background page is not shared")
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"BDF from Visio: shapes.vsdx", "Theme quick styles", "Turned", "Left aligned text wraps",
 		"bold", "日本語の文章は", "縦書きのテキスト", "connector label", "Nested item"} {
 		if !strings.Contains(text, want) {
@@ -149,7 +126,7 @@ func TestFlow(t *testing.T) {
 	if len(pages[0].Layers) != 2 {
 		t.Fatalf("layers %+v", pages[0].Layers)
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"Start", "Collect input", "Valid?", "Yes", "No", "Report error", "Flowchart test drawing"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text %q missing", want)

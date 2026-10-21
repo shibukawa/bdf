@@ -15,7 +15,6 @@ import (
 	"io"
 	"io/fs"
 	"math"
-	"os"
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -94,16 +93,7 @@ type converter struct {
 
 // ConvertFile converts a DXF file.
 func ConvertFile(path string, opts *Options) (*Result, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return Convert(f, st.Size(), opts)
+	return conv.OpenFile(path, func(r io.ReaderAt, size int64) (*Result, error) { return Convert(r, size, opts) })
 }
 
 // maxSize bounds the files read.

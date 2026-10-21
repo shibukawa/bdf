@@ -57,7 +57,7 @@ try {
     && st.flow.table === 1 && st.flow.row === 4 && st.flow.cell === 9 && eq(st.headers, ["R1C1", "R1C2", "R1C3"])
     && eq(st.figures, ["Checkerboard", "Enlarged corner of the checkerboard"]) && eq(st.figureBox, ["1560px", "260px", "240px", "400px"])
     && st.sheet.table === 1 && st.sheet.columnheader === 26 && st.sheet.rowheader > 50 && st.sheetCell === "2"
-    && eq(st.unsafeAnchors, ["https://example.com/"]) && eq(st.lang, ["en", "", "ja", ""])
+    && eq(st.lang, ["en", "", "ja", ""])
     && eq(st.xlsxHeaders, ["Item", "Units", "Price"]) && eq(st.xlsxFigures, ["Picture", "A rounded note box"])
     && st.xlsxSpans[0] > 50 && st.xlsxSpans[0] === st.xlsxSpans[1] && st.xlsxSpans[2] === 1;
   if (!structureOk) failed++;

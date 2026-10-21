@@ -139,12 +139,10 @@ func (s *Symbol) Origin() (x, y, w, h int) {
 
 // render draws pages for a printer of few dots.
 type render struct {
-	r     *imagebdf.Renderer
-	view  *bdf.View
-	o     *Options
-	p     Profile
-	warns []string
-
+	r    *imagebdf.Renderer
+	view *bdf.View
+	o    *Options
+	p    Profile
 	// symbols is set while a page is drawn whose symbols the printer
 	// prints, with those it takes
 	mu      sync.Mutex

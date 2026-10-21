@@ -246,16 +246,13 @@ async function structureCheck(client: BdfWorkerClient, xlsx: BdfWorkerClient) {
   // a converted workbook: the header row of a table, a picture and a shape with descriptions
   let placed = 0;
   const workbook = buildTextLayer(await xlsx.sheetContent("sheet1", [{ x: 0, y: 0, w: 400, h: 700 }, { x: 400, y: 0, w: 400, h: 700 }]), 1, { sheet: { rows: 41, cols: 14 }, onSpan: () => placed++ });
-  // links a document must not turn into anchors, and a run in another language
+  // a run in another language (the links a document must not turn into
+  // anchors, packages/render's tests of the text layer try)
   const run = (text: string, x: number, lang?: string) => ({ text, x, y: 20, advance: 40, size: 10, font: undefined, align: 0, matrix: [1, 0, 0, 1, 0, 0] as [number, number, number, number, number, number], sep: 1, ordinal: 0, altText: false, node: 0, lang });
-  const unsafe = buildTextLayer({
-    runs: [run("safe", 0), run("日本語", 100, "ja"), run("evil", 200)],
+  const tagged = buildTextLayer({
+    runs: [run("plain", 0), run("日本語", 100, "ja"), run("more", 200)],
     nodes: [{ kind: "paragraph", parent: -1 }],
-    links: [
-      { x: 0, y: 0, w: 60, h: 30, url: "https://example.com/", after: 2, node: 0 },
-      { x: 200, y: 0, w: 60, h: 30, url: "javascript:alert(1)", after: 2, node: 0 },
-      { x: 300, y: 0, w: 60, h: 30, url: "data:text/html,x", after: 2, node: 0 },
-    ],
+    links: [],
   }, 1, { lang: "en" });
   return {
     slide: roles(slide),
@@ -270,8 +267,7 @@ async function structureCheck(client: BdfWorkerClient, xlsx: BdfWorkerClient) {
     xlsxHeaders: [...workbook.querySelectorAll("[role=columnheader]")].map((e) => e.textContent),
     xlsxFigures: [...workbook.querySelectorAll("[role=img]")].map((e) => e.getAttribute("aria-label")),
     xlsxSpans: [placed, workbook.querySelectorAll("span").length, workbook.querySelectorAll("[role=table]").length],
-    unsafeAnchors: [...unsafe.querySelectorAll("a")].map((a) => a.getAttribute("href")),
-    lang: [unsafe.lang, ...[...unsafe.querySelectorAll("span")].map((s) => s.lang)],
+    lang: [tagged.lang, ...[...tagged.querySelectorAll("span")].map((s) => s.lang)],
   };
 }
 

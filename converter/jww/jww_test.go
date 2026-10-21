@@ -11,6 +11,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/cad"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // The test drawings are made by test/jww/gen.py from Jw_cad's published
@@ -30,32 +31,8 @@ func convert(t *testing.T, name string, opts *Options) (*Result, *bdf.Reader) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	return res, r
-}
-
-func plainText(t *testing.T, r *bdf.Reader) string {
-	t.Helper()
-	h, err := bdf.ParseHash(r.Manifest.Views[0].TextIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := r.Part(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	idx, err := bdf.DecodeTextIndex(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bdf.PlainText(idx)
 }
 
 func TestShapes(t *testing.T) {
@@ -77,7 +54,7 @@ func TestShapes(t *testing.T) {
 	if got := m.Meta.DC.Description.First(); got != "テスト図" {
 		t.Errorf("memo %q", got)
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"文字のサイズ 5mm", "Jw_cad 2026 ハンカク", "字間 あり", "ヨコナガ", "イタリック", "ボールド",
 		"カイテン 30°", "タテガキ", "4000", "A"} {
 		if !strings.Contains(text, want) {
@@ -103,7 +80,7 @@ func TestOld(t *testing.T) {
 	if res.W != 297 || res.H != 210 {
 		t.Errorf("page %v × %v mm", res.W, res.H)
 	}
-	if text := plainText(t, r); !strings.Contains(text, "キュウ バージョン") {
+	if text := convtest.PlainText(t, r, 0); !strings.Contains(text, "キュウ バージョン") {
 		t.Errorf("text %q", text)
 	}
 }

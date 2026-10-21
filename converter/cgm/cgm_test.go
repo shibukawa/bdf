@@ -5,8 +5,6 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"math"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,6 +14,7 @@ import (
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/cad"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/internal/fontdb"
 	"golang.org/x/text/encoding/japanese"
@@ -39,46 +38,13 @@ func convertBytes(t *testing.T, data []byte, opts *Options) (*Result, *bdf.Reade
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	return res, r
-}
-
-func read(t *testing.T, name string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
 }
 
 func convert(t *testing.T, name string, opts *Options) (*Result, *bdf.Reader) {
 	t.Helper()
-	return convertBytes(t, read(t, name), opts)
-}
-
-func plainText(t *testing.T, r *bdf.Reader) string {
-	t.Helper()
-	h, err := bdf.ParseHash(r.Manifest.Views[0].TextIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := r.Part(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	idx, err := bdf.DecodeTextIndex(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bdf.PlainText(idx)
+	return convertBytes(t, convtest.Read(t, name), opts)
 }
 
 // pictures interprets a metafile and returns its pictures, and the
@@ -120,7 +86,7 @@ func TestShapes(t *testing.T) {
 	if got := m.Meta.DC.Language.First(); got != "ja" {
 		t.Errorf("language %q", got)
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"Turned 45", "Red Blue", "Boxed text", "JIS: 日本語の文字", "縦書き", "CGM test drawing",
 		"© converter/cgm", "図枠 A3"} {
 		if !strings.Contains(text, want) {
@@ -134,8 +100,8 @@ func TestShapes(t *testing.T) {
 
 // The clear text encoding of the same metafile draws the same.
 func TestClearTextMatchesBinary(t *testing.T) {
-	bin, w1 := pictures(t, read(t, "shapes.cgm"))
-	txt, w2 := pictures(t, read(t, "shapes-text.cgm"))
+	bin, w1 := pictures(t, convtest.Read(t, "shapes.cgm"))
+	txt, w2 := pictures(t, convtest.Read(t, "shapes-text.cgm"))
 	if len(w1)+len(w2) > 0 {
 		t.Errorf("warnings: %q %q", w1, w2)
 	}
@@ -169,7 +135,7 @@ func TestIllustration(t *testing.T) {
 	if !near(float64(pages[0].W), 297*mm, 0.01) || !near(float64(pages[0].H), 297*mm*600/800, 0.01) {
 		t.Errorf("page %v × %v pt", pages[0].W, pages[0].H)
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"Übersicht — ×2 °C", "A1", "Page 2"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text %q lacks %q", text, want)
@@ -189,7 +155,7 @@ func TestIllustration(t *testing.T) {
 	}
 	// the y axis of the VDC is down, the character up vector (0, -1): the
 	// text is upright on the page
-	pics, _ := pictures(t, read(t, "illustration.cgm"))
+	pics, _ := pictures(t, convtest.Read(t, "illustration.cgm"))
 	found := false
 	for _, it := range pics[0].d.Items {
 		if it.Text() == "Übersicht — ×2 °C" {
@@ -235,13 +201,13 @@ func TestShiftJIS(t *testing.T) {
 	if !near(float64(p.W), 210*mm, 0.01) || !near(float64(p.H), 297*mm, 0.01) {
 		t.Errorf("page %v × %v pt", p.W, p.H)
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"図枠", "説明文字 テスト", "日本語の文字"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text %q lacks %q", text, want)
 		}
 	}
-	elems, text2, _, _ := readElements(read(t, "sjis.cgm"))
+	elems, text2, _, _ := readElements(convtest.Read(t, "sjis.cgm"))
 	in := newInterp(&converter{opts: &Options{}, warned: map[string]bool{}}, text2)
 	in.scan = true
 	in.run(iterate(elems))
@@ -260,11 +226,11 @@ func TestPages(t *testing.T) {
 	if res.Pages != 1 || res.Pictures != 2 {
 		t.Fatalf("%d pages of %d pictures", res.Pages, res.Pictures)
 	}
-	if text := plainText(t, r); !strings.Contains(text, "Page 2") || strings.Contains(text, "Übersicht") {
+	if text := convtest.PlainText(t, r, 0); !strings.Contains(text, "Page 2") || strings.Contains(text, "Übersicht") {
 		t.Errorf("text %q", text)
 	}
 	opts.Pages = conv.PageList(3)
-	data := read(t, "illustration.cgm")
+	data := convtest.Read(t, "illustration.cgm")
 	if _, err := Convert(bytes.NewReader(data), int64(len(data)), opts); err == nil || !strings.Contains(err.Error(), "out of range") {
 		t.Errorf("page 3: %v", err)
 	}
@@ -279,7 +245,7 @@ func gzipped(b []byte) []byte {
 }
 
 func TestGzip(t *testing.T) {
-	data := gzipped(read(t, "sjis.cgm"))
+	data := gzipped(convtest.Read(t, "sjis.cgm"))
 	if !Detect(data[:min(len(data), 1024)], bytes.NewReader(data), int64(len(data))) {
 		t.Fatal("not detected")
 	}
@@ -295,10 +261,10 @@ func TestDetect(t *testing.T) {
 		data []byte
 		want bool
 	}{
-		{"binary", read(t, "shapes.cgm"), true},
-		{"clear text", read(t, "shapes-text.cgm"), true},
+		{"binary", convtest.Read(t, "shapes.cgm"), true},
+		{"clear text", convtest.Read(t, "shapes-text.cgm"), true},
 		{"clear text with a comment", []byte("% made by hand %\n  beg_mf 'x';\nmfversion 1;\n"), true},
-		{"gzip", gzipped(read(t, "shapes.cgm")), true},
+		{"gzip", gzipped(convtest.Read(t, "shapes.cgm")), true},
 		{"gzip of text", gzipped([]byte("hello, world")), false},
 		{"begin metafile alone", []byte{0x00, 0x22, 0x01, 'a', 0x10, 0x22, 0x00, 0x01}, true},
 		{"csv", []byte("0,1,2\n3,4,5\n"), false},
@@ -490,7 +456,7 @@ func TestScaleFactor(t *testing.T) {
 // Truncated and damaged metafiles convert, or fail, without hanging.
 func TestDamaged(t *testing.T) {
 	for _, name := range []string{"shapes.cgm", "shapes-text.cgm", "illustration.cgm"} {
-		data := read(t, name)
+		data := convtest.Read(t, name)
 		start := time.Now()
 		for n := 0; n < len(data); n += max(len(data)/97, 1) {
 			Convert(bytes.NewReader(data[:n]), int64(n), &Options{NoSystemFonts: true, NoTextIndex: true, Warn: func(string) {}})

@@ -55,18 +55,17 @@ type sheet struct {
 
 // model is what an SFC file defines, in the order it defines it.
 type model struct {
-	colors   map[int]bdf.Color // user colors, from 17
-	types    map[int][]float64 // user line types, from 17 (mm)
-	widths   map[int]float64   // user widths, from 11
-	fonts    []string          // font codes from 1
-	layers   []layer           // layer codes from 1
-	sfigs    map[string]*sfig
-	curves   []*ccurve // composite curves from 1
-	sheet    *sheet
-	title    map[string]string
-	bg       *bdf.Color // the background of the drawing, from an attribute
-	unknown  map[string]int
-	versions string
+	colors  map[int]bdf.Color // user colors, from 17
+	types   map[int][]float64 // user line types, from 17 (mm)
+	widths  map[int]float64   // user widths, from 11
+	fonts   []string          // font codes from 1
+	layers  []layer           // layer codes from 1
+	sfigs   map[string]*sfig
+	curves  []*ccurve // composite curves from 1
+	sheet   *sheet
+	title   map[string]string
+	bg      *bdf.Color // the background of the drawing, from an attribute
+	unknown map[string]int
 }
 
 // buildModel reads the features of an SFC file: the tables they define,

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // softMaskPDF masks a red square with an alpha mask (a half-transparent
@@ -88,7 +89,7 @@ func TestSoftMask(t *testing.T) {
 		t.Errorf("luminosity backdrop %v, want white", backdrops[1])
 	}
 	// Text inside a mask is not content.
-	if txt := pageText(t, r); !strings.Contains(txt, "masked") || strings.Contains(txt, "masktext") {
+	if txt := convtest.PlainText(t, r, 0); !strings.Contains(txt, "masked") || strings.Contains(txt, "masktext") {
 		t.Errorf("text = %q", txt)
 	}
 }

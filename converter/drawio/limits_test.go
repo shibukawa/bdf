@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // Tests that malformed or hostile input ends in an error or a warning
@@ -120,7 +121,7 @@ func TestDecompressionBombStencil(t *testing.T) {
 	data := limitsModel(`<mxCell id="v" parent="1" vertex="1" style="shape=stencil(` + deflateRaw(4<<20) + `)"><mxGeometry width="10" height="10" as="geometry"/></mxCell>`)
 	res := convertWithin(t, data, 10*time.Second)
 	// the stencil is dropped with a warning; the cell is still drawn
-	if !hasWarning(res, "cannot be read") {
+	if !convtest.HasWarning(res.Warnings, "cannot be read") {
 		t.Fatalf("want a warning that the stencil could not be read, got %v", res.Warnings)
 	}
 }
@@ -133,7 +134,7 @@ func TestStencilNestingLimit(t *testing.T) {
 		strings.Repeat("<path>", n) + strings.Repeat("</path>", n) + `</foreground></shape>`
 	data := limitsModel(`<mxCell id="v" parent="1" vertex="1" style="shape=stencil(` + deflate(shape) + `)"><mxGeometry width="100" height="100" as="geometry"/></mxCell>`)
 	res := convertWithin(t, data, 10*time.Second)
-	if !hasWarning(res, "deeply nested stencil") {
+	if !convtest.HasWarning(res.Warnings, "deeply nested stencil") {
 		t.Fatalf("want a deep-stencil warning, got %v", res.Warnings)
 	}
 }
@@ -146,7 +147,7 @@ func TestLabelNestingLimit(t *testing.T) {
 	label := strings.Repeat("&lt;b&gt;", n) + "x"
 	data := limitsModel(`<mxCell id="v" parent="1" vertex="1" value="` + label + `" style="html=1"><mxGeometry width="100" height="100" as="geometry"/></mxCell>`)
 	res := convertWithin(t, data, 10*time.Second)
-	if !hasWarning(res, "deeply nested label") {
+	if !convtest.HasWarning(res.Warnings, "deeply nested label") {
 		t.Fatalf("want a deep-label warning, got %v", res.Warnings)
 	}
 }
@@ -158,7 +159,7 @@ func TestFormulaLengthLimit(t *testing.T) {
 	data := []byte(`<mxGraphModel math="1"><root><mxCell id="0"/><mxCell id="1" parent="0"/>` +
 		`<mxCell id="v" parent="1" vertex="1" value="$$` + tex + `$$" style="html=1"><mxGeometry width="100" height="100" as="geometry"/></mxCell></root></mxGraphModel>`)
 	res := convertWithin(t, data, 10*time.Second)
-	if !hasWarning(res, "too long to typeset") {
+	if !convtest.HasWarning(res.Warnings, "too long to typeset") {
 		t.Fatalf("want a formula-length warning, got %v", res.Warnings)
 	}
 }
@@ -191,15 +192,6 @@ func TestIndexCloseTag(t *testing.T) {
 	}
 }
 
-func hasWarning(res *Result, substr string) bool {
-	for _, w := range res.Warnings {
-		if strings.Contains(w, substr) {
-			return true
-		}
-	}
-	return false
-}
-
 // TestPlaceholderLimit converts a label made of placeholders of a long
 // attribute: what they stand for is not written out beyond the limit.
 func TestPlaceholderLimit(t *testing.T) {
@@ -215,7 +207,7 @@ func TestPlaceholderLimit(t *testing.T) {
 		t.Errorf("the label starts %q and ends %q", got[:3], got[len(got)-3:])
 	}
 	res := convertWithin(t, limitsModel(cells), 20*time.Second)
-	if !hasWarning(res, "placeholders") {
+	if !convtest.HasWarning(res.Warnings, "placeholders") {
 		t.Errorf("warnings %q", res.Warnings)
 	}
 	// a label within the limit is whole (%c% stands for nothing, %% for %)
@@ -247,7 +239,7 @@ func TestPatternBudget(t *testing.T) {
 			`<mxGeometry width="100" height="900" as="geometry"/></mxCell>`)
 	}
 	res := convertWithin(t, limitsModel(b.String()), 20*time.Second)
-	if !hasWarning(res, "lines of patterns") {
+	if !convtest.HasWarning(res.Warnings, "lines of patterns") {
 		t.Errorf("warnings %q", res.Warnings)
 	}
 	lines := 0

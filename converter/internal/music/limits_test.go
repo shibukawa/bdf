@@ -7,16 +7,13 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // engrave builds a score without the fonts of the system.
 func engrave(t *testing.T, s *Score) (*Result, error) {
 	t.Helper()
 	return Build(s, Options{Source: "test", FontDirs: []string{"../../pptx/testdata/fonts"}, NoSystemFonts: true})
-}
-
-func hasWarning(ws []string, part string) bool {
-	return slices.ContainsFunc(ws, func(w string) bool { return strings.Contains(w, part) })
 }
 
 // manyTracks makes a performance of n tracks of one quarter note each; the
@@ -105,14 +102,14 @@ func TestNotateLateTrack(t *testing.T) {
 	if len(s.Measures) != maxMeasures || len(s.Parts) != 1 || s.Parts[0].Name != "early" {
 		t.Fatalf("%d measures, %d parts", len(s.Measures), len(s.Parts))
 	}
-	if !hasWarning(s.warnings, "longer than 20000 measures") {
+	if !convtest.HasWarning(s.warnings, "longer than 20000 measures") {
 		t.Errorf("warnings %q", s.warnings)
 	}
 
 	// Build reports what Notate left out
 	s = Notate(melody(60, q), NotateOptions{})
 	s.warnings = []string{"left out"}
-	if res, err := engrave(t, s); err != nil || !hasWarning(res.Warnings, "left out") {
+	if res, err := engrave(t, s); err != nil || !convtest.HasWarning(res.Warnings, "left out") {
 		t.Errorf("warnings %v, error %v", res, err)
 	}
 }
@@ -166,7 +163,7 @@ func TestCuesBudget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasWarning(res.Warnings, "more than 7 cues") {
+	if !convtest.HasWarning(res.Warnings, "more than 7 cues") {
 		t.Errorf("warnings %q", res.Warnings)
 	}
 	cues, err := bdf.DecodeCues(res.Doc.Part(mustHash(t, res.Doc.Views[0].Play.Cues)).Data)

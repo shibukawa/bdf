@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"unicode"
 
@@ -104,16 +103,7 @@ func Kind(r io.ReaderAt, size int64) string {
 
 // ConvertFile converts an .ai file.
 func ConvertFile(path string, opts *Options) (*Result, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return Convert(f, st.Size(), opts)
+	return converter.OpenFile(path, func(r io.ReaderAt, size int64) (*Result, error) { return Convert(r, size, opts) })
 }
 
 // Convert converts an Illustrator file read from r.

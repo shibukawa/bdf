@@ -11,6 +11,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 )
 
@@ -111,32 +112,7 @@ func convertEdited(t *testing.T, name string, edits map[string]func(string) stri
 // reopen writes a converted document and reads it back.
 func reopen(t *testing.T, res *Result) *bdf.Reader {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
-}
-
-func plainText(t *testing.T, r *bdf.Reader) string {
-	t.Helper()
-	h, err := bdf.ParseHash(r.Manifest.Views[0].TextIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := r.Part(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	idx, err := bdf.DecodeTextIndex(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bdf.PlainText(idx)
+	return convtest.Reopen(t, res.Doc)
 }
 
 // opCounts counts the instructions of an object and the objects it uses.
@@ -287,7 +263,7 @@ func TestConvertBasic(t *testing.T) {
 	if v.Title != "PowerPoint test deck" {
 		t.Errorf("view title = %q", v.Title)
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{
 		"BDF from PowerPoint\nSlides rendered directly from DrawingML",
 		"• First level bullet with enough words to wrap onto a second line inside the placeholder",
@@ -417,7 +393,7 @@ func TestFigures(t *testing.T) {
 	}
 	// the text itself does not change
 	_, plain := convert(t, "basic.pptx", testOptions())
-	if a, b := plainText(t, r), plainText(t, plain); a != b {
+	if a, b := convtest.PlainText(t, r, 0), convtest.PlainText(t, plain, 0); a != b {
 		t.Errorf("text changed:\n%s\n---\n%s", a, b)
 	}
 }
@@ -455,7 +431,7 @@ func TestSharedLayers(t *testing.T) {
 	if c[1].Obj != a[1].Obj || c[2].Obj == a[2].Obj {
 		t.Errorf("master/layout sharing across layouts is wrong")
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"BDF features deck", "Share", "Q1", "East", "45%", "日本語のスライド",
 		"箇条書きの一行目です。長い文章は枠の幅で折り返され、句読点は行頭に来ません。", "縦書きで、読みます。", "プリセット形状", "Callout"} {
 		if !strings.Contains(text, want) {
@@ -468,7 +444,7 @@ func TestOptions(t *testing.T) {
 	opts := testOptions()
 	opts.Hidden = true
 	res, r := convert(t, "basic.pptx", opts)
-	if res.Slides != 6 || !strings.Contains(plainText(t, r), "Hidden slide") {
+	if res.Slides != 6 || !strings.Contains(convtest.PlainText(t, r, 0), "Hidden slide") {
 		t.Errorf("Hidden: %d slides", res.Slides)
 	}
 	opts = testOptions()

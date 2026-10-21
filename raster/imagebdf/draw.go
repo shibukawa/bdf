@@ -226,7 +226,7 @@ func (b *bandRecord) skips(i int, canvas image.Rectangle) bool {
 func deviceBox(box [4]float64, reach float64, m matrix) image.Rectangle {
 	x0, y0, x1, y1 := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 	for _, c := range [4][2]float64{{box[0] - reach, box[1] - reach}, {box[2] + reach, box[1] - reach}, {box[0] - reach, box[3] + reach}, {box[2] + reach, box[3] + reach}} {
-		px, py := m.apply(c[0], c[1])
+		px, py := m.Apply(c[0], c[1])
 		if math.IsNaN(px) || math.IsNaN(py) {
 			return everywhere
 		}
@@ -496,11 +496,11 @@ func (d *drawer) instr(in bdf.Instr) {
 	case bdf.OpRestore:
 		d.restore()
 	case bdf.OpTransform:
-		st.m = st.m.mul(matrix{f64(in, 0), f64(in, 1), f64(in, 2), f64(in, 3), f64(in, 4), f64(in, 5)})
+		st.m = st.m.Mul(matrix{f64(in, 0), f64(in, 1), f64(in, 2), f64(in, 3), f64(in, 4), f64(in, 5)})
 	case bdf.OpTranslate:
-		st.m = st.m.translate(f64(in, 0), f64(in, 1))
+		st.m = st.m.Translate(f64(in, 0), f64(in, 1))
 	case bdf.OpScale:
-		st.m = st.m.scale(f64(in, 0), f64(in, 1))
+		st.m = st.m.Scale(f64(in, 0), f64(in, 1))
 	case bdf.OpClipPath:
 		if p := d.path(int(u64(in, 0))); p != nil {
 			d.clip(d.coverage(p, byte(u64(in, 1)), st.m))
@@ -538,7 +538,7 @@ func (d *drawer) instr(in bdf.Instr) {
 			st.blend = byte(b)
 		}
 	case bdf.OpShadow:
-		s := st.m.areaScale()
+		s := st.m.AreaScale()
 		if s == 0 || math.IsNaN(s) {
 			s = 1
 		}
@@ -554,7 +554,7 @@ func (d *drawer) instr(in bdf.Instr) {
 			st.shadowDY = clampF(v)
 		}
 		if o := d.orient; o != nil {
-			st.shadowDX, st.shadowDY = o.apply(st.shadowDX, st.shadowDY)
+			st.shadowDX, st.shadowDY = o.Apply(st.shadowDX, st.shadowDY)
 		}
 	case bdf.OpFilter:
 		if s, _ := in.Args[0].(string); s != "" && s != "none" {
@@ -594,7 +594,7 @@ func (d *drawer) instr(in bdf.Instr) {
 		}
 	case bdf.OpFillPathAt:
 		if p := d.path(int(u64(in, 0))); p != nil {
-			d.fillPath(p, byte(u64(in, 1)), st.m.translate(f64(in, 2), f64(in, 3)))
+			d.fillPath(p, byte(u64(in, 1)), st.m.Translate(f64(in, 2), f64(in, 3)))
 		}
 	case bdf.OpFillPathRun:
 		rule := byte(u64(in, 0))
@@ -605,14 +605,14 @@ func (d *drawer) instr(in bdf.Instr) {
 			var box image.Rectangle
 			for _, g := range glyphs {
 				if p := d.path(int(g.Path)); p != nil {
-					box = box.Union(pathBox(p, 0, st.m.translate(float64(g.X), float64(g.Y))))
+					box = box.Union(pathBox(p, 0, st.m.Translate(float64(g.X), float64(g.Y))))
 				}
 			}
 			d.note(box)
 		}
 		for _, g := range glyphs {
 			if p := d.path(int(g.Path)); p != nil {
-				m := st.m.translate(float64(g.X), float64(g.Y))
+				m := st.m.Translate(float64(g.X), float64(g.Y))
 				if hidden(p, 0, m, bounds) {
 					continue
 				}
@@ -651,7 +651,7 @@ func (d *drawer) instr(in bdf.Instr) {
 		d.again = d.enter(d.obj.Objects[i]) || again
 		st.made = nil
 		if in.Op == bdf.OpUseAt {
-			st.m = st.m.translate(f64(in, 1), f64(in, 2))
+			st.m = st.m.Translate(f64(in, 1), f64(in, 2))
 		}
 		d.run(child)
 		d.again = again
@@ -697,7 +697,7 @@ func (d *drawer) path(i int) *path {
 
 // coverage rasterizes a path in user space under a transform.
 func (d *drawer) coverage(p *path, rule byte, m matrix) *mask {
-	if !m.finite() {
+	if !m.Finite() {
 		return &mask{}
 	}
 	bounds := d.bounds()
@@ -707,8 +707,8 @@ func (d *drawer) coverage(p *path, rule byte, m matrix) *mask {
 	// an axis-aligned rectangle: exact coverage without scanning
 	if len(p.subs) >= 1 && m[1] == 0 && m[2] == 0 {
 		if x0, y0, x1, y1, ok := p.isRect(); ok {
-			ax, ay := m.apply(x0, y0)
-			bx, by := m.apply(x1, y1)
+			ax, ay := m.Apply(x0, y0)
+			bx, by := m.Apply(x1, y1)
 			return d.r.rectMask(ax, ay, bx, by, bounds)
 		}
 	}
@@ -756,7 +756,7 @@ const strokeCut = "a line has too many dashes, joins and caps: the rest of it is
 // as its joins and caps go.
 func (ls lineStyle) reach(m matrix) float64 {
 	w := ls.width
-	if scale := m.areaScale(); scale > 0 && w*scale < 1 {
+	if scale := m.AreaScale(); scale > 0 && w*scale < 1 {
 		w = 1 / scale
 	}
 	return w / 2 * math.Max(math.Sqrt2, ls.miterReach())
@@ -774,10 +774,10 @@ func strokeMask(p *path, m matrix, ls lineStyle, bounds image.Rectangle) (*mask,
 // cut reports that the outline passed the limits of a stroke and is drawn
 // without the rest.
 func (sc *scratch) strokeMask(p *path, m matrix, ls lineStyle, bounds image.Rectangle) (cov *mask, alpha float32, cut bool) {
-	if !m.finite() {
+	if !m.Finite() {
 		return &mask{}, 0, false
 	}
-	scale := m.areaScale()
+	scale := m.AreaScale()
 	if scale == 0 {
 		return &mask{}, 0, false
 	}
@@ -789,7 +789,7 @@ func (sc *scratch) strokeMask(p *path, m matrix, ls lineStyle, bounds image.Rect
 	if hidden(p, ls.width/2*math.Max(math.Sqrt2, ls.miterReach()), m, bounds) {
 		return &mask{}, alpha, false
 	}
-	ms := m.maxScale()
+	ms := m.MaxScale()
 	sc.polys = p.flattenTo(sc, sc.polys, identity, flatTol/ms)
 	if sc.limited {
 		return &mask{}, alpha, false
@@ -799,7 +799,7 @@ func (sc *scratch) strokeMask(p *path, m matrix, ls lineStyle, bounds image.Rect
 	outline := s.out
 	for i := range outline {
 		for j, q := range outline[i].pts {
-			x, y := m.apply(q.x, q.y)
+			x, y := m.Apply(q.x, q.y)
 			outline[i].pts[j] = point{x, y}
 		}
 	}
@@ -892,36 +892,36 @@ func (d *drawer) text(s string, x, y, advance float64, stroke bool) {
 	if st.size <= 0 || s == "" {
 		return
 	}
-	ch := d.r.fonts.chain(st.font)
-	glyphs, width := ch.layout(s, st.size, st.spacing, st.dir)
+	ch := d.r.fonts.Chain(st.font)
+	glyphs, width := ch.Layout(s, st.size, st.spacing, st.dir)
 	if len(glyphs) == 0 {
 		return
 	}
-	m := st.m.translate(x, y)
+	m := st.m.Translate(x, y)
 	if advance > 0 && width > 0 && math.Abs(width-advance)/advance > 0.005 {
-		m = m.scale(advance/width, 1)
+		m = m.Scale(advance/width, 1)
 	}
 	switch st.align {
 	case bdf.AlignRight:
-		m = m.translate(-width, 0)
+		m = m.Translate(-width, 0)
 	case bdf.AlignCenter:
-		m = m.translate(-width/2, 0)
+		m = m.Translate(-width/2, 0)
 	case bdf.AlignEnd:
 		if st.dir != bdf.DirRTL {
-			m = m.translate(-width, 0)
+			m = m.Translate(-width, 0)
 		}
 	case bdf.AlignStart:
 		if st.dir == bdf.DirRTL {
-			m = m.translate(-width, 0)
+			m = m.Translate(-width, 0)
 		}
 	}
-	m = m.translate(0, ch.baselineShift(st.baseline, st.size))
+	m = m.Translate(0, ch.BaselineShift(st.baseline, st.size))
 	if stroke {
 		d.strokeText(glyphs, m)
 		return
 	}
 	// synthesized bold outlines what is filled, in device space
-	boldW := fakeBoldWidth(st.size * m.areaScale())
+	boldW := fakeBoldWidth(st.size * m.AreaScale())
 	if d.noting() {
 		d.note(d.textBox(glyphs, m, boldW, identity))
 	}
@@ -942,16 +942,16 @@ func (d *drawer) text(s string, x, y, advance float64, stroke bool) {
 	bold := newStroker(&lineStyle{width: boldW, join: bdf.JoinRound, miter: 10}, 1).within(identity, bounds)
 	fill := sc.polys
 	for _, g := range glyphs {
-		p := g.use.face.outline(g.gid)
+		p := g.Use.Face.outline(g.GID)
 		if p == nil {
 			continue
 		}
-		k := st.size / g.use.face.upem
-		gm := m.translate(g.x, 0).scale(k, -k)
-		if g.use.italic {
-			gm = gm.mul(matrix{1, 0, fakeItalicSkew, 1, 0, 0})
+		k := st.size / g.Use.Face.Upem
+		gm := m.Translate(g.X, 0).Scale(k, -k)
+		if g.Use.Italic {
+			gm = gm.Mul(matrix{1, 0, fakeItalicSkew, 1, 0, 0})
 		}
-		thick := g.use.bold && boldW > 0
+		thick := g.Use.Bold && boldW > 0
 		if box, ok := p.extent(); ok && !plain {
 			reach := 0.0
 			if thick {
@@ -1015,21 +1015,21 @@ func (d *drawer) textBox(glyphs []placed, m matrix, boldW float64, um matrix) im
 	var box image.Rectangle
 	size := d.ctx.st.size
 	for _, g := range glyphs {
-		p := g.use.face.outline(g.gid)
+		p := g.Use.Face.outline(g.GID)
 		if p == nil {
 			continue
 		}
-		k := size / g.use.face.upem
-		gm := um.translate(g.x, 0).scale(k, -k)
-		if g.use.italic {
-			gm = gm.mul(matrix{1, 0, fakeItalicSkew, 1, 0, 0})
+		k := size / g.Use.Face.Upem
+		gm := um.Translate(g.X, 0).Scale(k, -k)
+		if g.Use.Italic {
+			gm = gm.Mul(matrix{1, 0, fakeItalicSkew, 1, 0, 0})
 		}
 		b, ok := p.extent()
 		if !ok {
 			continue
 		}
 		r := deviceBox(boxUnder(b, gm), 0, m)
-		if g.use.bold && boldW > 0 {
+		if g.Use.Bold && boldW > 0 {
 			r = r.Inset(-int(math.Ceil(boldW)))
 		}
 		box = box.Union(r)
@@ -1043,43 +1043,43 @@ func (d *drawer) strokeText(glyphs []placed, m matrix) {
 	st := &d.ctx.st
 	sc, bounds := d.r.scratch(), d.bounds()
 	ls := st.line
-	scale := m.areaScale()
+	scale := m.AreaScale()
 	alpha := float32(1)
 	if dw := ls.width * scale; dw < 1 && scale > 0 {
 		alpha, ls.width = float32(dw), 1/scale
 	}
 	reach := ls.width / 2 * math.Max(math.Sqrt2, ls.miterReach())
 	if d.noting() {
-		d.note(d.textBox(glyphs, m, 0, identity).Inset(-int(math.Ceil(reach*m.maxScale())) - 1))
+		d.note(d.textBox(glyphs, m, 0, identity).Inset(-int(math.Ceil(reach*m.MaxScale())) - 1))
 	}
 	lines := sc.polys
 	for _, g := range glyphs {
-		p := g.use.face.outline(g.gid)
+		p := g.Use.Face.outline(g.GID)
 		if p == nil {
 			continue
 		}
-		k := st.size / g.use.face.upem
-		um := matrix{1, 0, 0, 1, 0, 0}.translate(g.x, 0).scale(k, -k)
-		if g.use.italic {
-			um = um.mul(matrix{1, 0, fakeItalicSkew, 1, 0, 0})
+		k := st.size / g.Use.Face.Upem
+		um := matrix{1, 0, 0, 1, 0, 0}.Translate(g.X, 0).Scale(k, -k)
+		if g.Use.Italic {
+			um = um.Mul(matrix{1, 0, fakeItalicSkew, 1, 0, 0})
 		}
 		if box, ok := p.extent(); ok && !plain && outside(boxUnder(box, um), reach, m, bounds) {
 			continue
 		}
-		lines = p.flattenTo(sc, lines, um, flatTol/math.Max(m.maxScale(), 1e-9))
+		lines = p.flattenTo(sc, lines, um, flatTol/math.Max(m.MaxScale(), 1e-9))
 		if sc.limited {
 			return
 		}
 	}
 	sc.polys = lines
-	outline := newStroker(&ls, m.maxScale()).within(m, bounds)
+	outline := newStroker(&ls, m.MaxScale()).within(m, bounds)
 	outline.stroke(lines)
 	if outline.cut {
 		d.r.warnf(strokeCut)
 	}
 	for i := range outline.out {
 		for j, q := range outline.out[i].pts {
-			px, py := m.apply(q.x, q.y)
+			px, py := m.Apply(q.x, q.y)
 			outline.out[i].pts[j] = point{px, py}
 		}
 	}
@@ -1157,7 +1157,7 @@ func (d *drawer) image(i int, src *[4]float64, x, y, w, h float64) {
 	if pic == nil {
 		// drawn as sharp as it is shown: a raster at the device scale
 		var k float64
-		pic, k = si.raster(d.r, st.m.maxScale()*math.Max(math.Abs(w/sw), math.Abs(h/sh)))
+		pic, k = si.raster(d.r, st.m.MaxScale()*math.Max(math.Abs(w/sw), math.Abs(h/sh)))
 		if pic == nil {
 			return
 		}
@@ -1165,8 +1165,8 @@ func (d *drawer) image(i int, src *[4]float64, x, y, w, h float64) {
 		sx, sy, sw, sh = sx*k, sy*ky, sw*k, sh*ky
 	}
 	// device → image pixels: invert (m × dest rect ← source rect)
-	full := st.m.mul(matrix{w / sw, 0, 0, h / sh, x - sx*w/sw, y - sy*h/sh})
-	inv, ok := full.invert()
+	full := st.m.Mul(matrix{w / sw, 0, 0, h / sh, x - sx*w/sw, y - sy*h/sh})
+	inv, ok := full.Invert()
 	if !ok {
 		return
 	}
@@ -1208,7 +1208,7 @@ func (d *drawer) groupBegin(alpha float32, blend byte, x, y, w, h float64) {
 	m := st.m
 	x0, y0, x1, y1 := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 	for _, c := range [][2]float64{{x, y}, {x + w, y}, {x, y + h}, {x + w, y + h}} {
-		px, py := m.apply(c[0], c[1])
+		px, py := m.Apply(c[0], c[1])
 		x0, y0, x1, y1 = math.Min(x0, px), math.Min(y0, py), math.Max(x1, px), math.Max(y1, py)
 	}
 	r := image.Rect(int(math.Floor(clampF(x0))), int(math.Floor(clampF(y0))), int(math.Ceil(clampF(x1))), int(math.Ceil(clampF(y1))))

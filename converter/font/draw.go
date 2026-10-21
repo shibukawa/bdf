@@ -82,14 +82,6 @@ func (p *pen) rect(x, y, w, h float64, c bdf.Color) {
 	p.cv.Drawn = true
 }
 
-// frame draws the outline of a rectangle with hairlines of color c.
-func (p *pen) frame(x, y, w, h, t float64, c bdf.Color) {
-	p.rect(x, y, w, t, c)
-	p.rect(x, y+h-t, w, t, c)
-	p.rect(x, y, t, h, c)
-	p.rect(x+w-t, y, t, h, c)
-}
-
 // linkTo makes a rectangle a link to an anchor of the view.
 func (p *pen) linkTo(x, y, w, h float64, anchor string) {
 	if p.link == nil {
@@ -320,10 +312,6 @@ func (t *texter) line(s string, size float64, bold bool) *textLine {
 	}
 	l.width = x
 	return l
-}
-
-func (t *texter) width(s string, size float64, bold bool) float64 {
-	return t.line(s, size, bold).width
 }
 
 // fit shortens s with an ellipsis until it is at most w wide.

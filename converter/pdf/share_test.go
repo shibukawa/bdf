@@ -2,7 +2,6 @@ package pdf
 
 import (
 	"bytes"
-	"path/filepath"
 	"testing"
 
 	"github.com/shibukawa/bdf"
@@ -60,30 +59,9 @@ func TestSharePrefixAcrossPages(t *testing.T) {
 	t.Logf("shared %d bytes; sizes: shared %d, plain %d", shared.SharedBytes, len(encodeDoc(t, shared.Doc)), len(encodeDoc(t, plain.Doc)))
 }
 
-func convertWith(t *testing.T, name string, opts *Options) (*Result, *bdf.Reader) {
-	t.Helper()
-	res, err := ConvertFile(filepath.Join("testdata", name), opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res, r
-}
-
 func decodeObj(t *testing.T, r *bdf.Reader, h bdf.Hash) *bdf.ObjectPart {
 	t.Helper()
-	b, err := r.Part(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	o, err := bdf.DecodeObject(b)
+	o, err := r.Object(h)
 	if err != nil {
 		t.Fatal(err)
 	}

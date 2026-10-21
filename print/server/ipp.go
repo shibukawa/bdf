@@ -987,7 +987,7 @@ func (x *ippServer) getJobAttributes(q *ippRequest) {
 	} else {
 		attrs = x.jobAttrs(q, j, q.caller.sees(j))
 	}
-	q.res.Add(ipp.TagJob, filterAttrs(attrs, requested(q.op, jobAll), jobGroups)...)
+	q.res.Add(ipp.TagJob, ipp.Filter(attrs, ipp.Requested(q.op, jobAll), jobGroups)...)
 }
 
 // getJobs lists the jobs of the queue.
@@ -1031,7 +1031,7 @@ func (x *ippServer) getJobs(q *ippRequest) {
 		}
 		return !st.Done()
 	}
-	req := requested(q.op, []string{"job-id", "job-uri"})
+	req := ipp.Requested(q.op, []string{"job-id", "job-uri"})
 	var groups [][]ipp.Attribute
 	x.expire()
 	x.mu.Lock()
@@ -1047,11 +1047,11 @@ func (x *ippServer) getJobs(q *ippRequest) {
 	// the newest first, as printers list them
 	slices.Reverse(jobs)
 	for _, in := range ins {
-		groups = append(groups, filterAttrs(x.incomingAttrs(q, in), req, jobGroups))
+		groups = append(groups, ipp.Filter(x.incomingAttrs(q, in), req, jobGroups))
 	}
 	for i := range jobs {
 		if keep(jobs[i].ID, jobs[i].State) {
-			groups = append(groups, filterAttrs(x.jobAttrs(q, &jobs[i], q.caller.sees(&jobs[i])), req, jobGroups))
+			groups = append(groups, ipp.Filter(x.jobAttrs(q, &jobs[i], q.caller.sees(&jobs[i])), req, jobGroups))
 		}
 	}
 	if limit > 0 && len(groups) > limit {
@@ -1060,39 +1060,6 @@ func (x *ippServer) getJobs(q *ippRequest) {
 	for _, g := range groups {
 		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: g})
 	}
-}
-
-// requested is the requested-attributes of a request, or def.
-func requested(op *ipp.Group, def []string) []string {
-	if a := op.Get("requested-attributes"); a != nil {
-		return a.Strings()
-	}
-	return def
-}
-
-// filterAttrs keeps the attributes requested: by name, or by the names of
-// groups ("all", "job-template" …).
-func filterAttrs(attrs []ipp.Attribute, req []string, groups map[string][]string) []ipp.Attribute {
-	want := map[string]bool{}
-	for _, r := range req {
-		if r == "all" {
-			return attrs
-		}
-		if names, ok := groups[r]; ok {
-			for _, n := range names {
-				want[n] = true
-			}
-			continue
-		}
-		want[r] = true
-	}
-	var out []ipp.Attribute
-	for _, a := range attrs {
-		if want[a.Name] {
-			out = append(out, a)
-		}
-	}
-	return out
 }
 
 // basic finds the token of a name and secret (IPP's Basic

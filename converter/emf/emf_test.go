@@ -10,6 +10,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // testFonts are the M PLUS 1p subsets of the PowerPoint converter's tests.
@@ -87,19 +88,6 @@ func testWMF() []byte {
 	return b.Bytes()
 }
 
-func reopen(t *testing.T, doc *bdf.Document) *bdf.Reader {
-	t.Helper()
-	var buf bytes.Buffer
-	if err := doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
-}
-
 func TestConvertEMF(t *testing.T) {
 	data := testEMF()
 	res, err := Convert(bytes.NewReader(data), int64(len(data)), &Options{FontDirs: []string{testFonts}, NoSystemFonts: true})
@@ -115,7 +103,7 @@ func TestConvertEMF(t *testing.T) {
 	if res.EmbeddedFonts != 1 {
 		t.Errorf("embedded fonts = %d", res.EmbeddedFonts)
 	}
-	r := reopen(t, res.Doc)
+	r := convtest.Reopen(t, res.Doc)
 	m := r.Manifest
 	if m.Meta.Source != "emf" || m.Meta.DC.Title.First() != "Sample" {
 		t.Errorf("source %q, title %q", m.Meta.Source, m.Meta.DC.Title.First())

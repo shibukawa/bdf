@@ -13,6 +13,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/cad"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/internal/fontdb"
 )
@@ -43,23 +44,6 @@ func convert(t *testing.T, name string, opts *Options) (*Result, *bdf.Reader, []
 		t.Fatal(err)
 	}
 	return res, r, buf.Bytes()
-}
-
-func plainText(t *testing.T, r *bdf.Reader) string {
-	t.Helper()
-	h, err := bdf.ParseHash(r.Manifest.Views[0].TextIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := r.Part(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	idx, err := bdf.DecodeTextIndex(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bdf.PlainText(idx)
 }
 
 // firstFill returns the first fill color of the page: its background.
@@ -123,7 +107,7 @@ func TestShapes(t *testing.T) {
 	if got := firstFill(t, r); got != bdf.RGB(16, 24, 48) {
 		t.Errorf("background %08x", got)
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"SXF テスト図", "文字1", "文字5", "文字9", "カイテン 30°", "スラント", "字間 アリ", "縦書き",
 		"60", "60°", "R12", "20", "ラベル", "1", "A"} {
 		if !strings.Contains(text, want) {

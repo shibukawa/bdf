@@ -160,16 +160,6 @@ func (s *stroker) square(c point) {
 	s.quad(point{c.x - hw, c.y - hw}, point{c.x + hw, c.y - hw}, point{c.x + hw, c.y + hw}, point{c.x - hw, c.y + hw})
 }
 
-// strokePolys returns the outline of a stroke of the polylines (user
-// space) as polygons that all wind the same way, for a nonzero fill.
-// devScale is the device pixels per user unit, for the smoothness of round
-// parts.
-func strokePolys(lines []polyline, ls *lineStyle, devScale float64) []polyline {
-	s := newStroker(ls, devScale)
-	s.stroke(lines)
-	return s.out
-}
-
 // stroke adds the outline of the polylines (user space).
 func (s *stroker) stroke(lines []polyline) {
 	ls := s.ls

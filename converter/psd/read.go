@@ -95,7 +95,6 @@ type mask struct {
 }
 
 func (m *mask) disabled() bool { return m.flags&2 != 0 }
-func (m *mask) empty() bool    { return m.bottom <= m.top || m.right <= m.left }
 
 type layer struct {
 	top, left, bottom, right int
@@ -116,9 +115,6 @@ type layer struct {
 	effects      bool        // has layer effects turned on
 	keys         []string    // the additional information keys
 }
-
-func (l *layer) w() int { return l.right - l.left }
-func (l *layer) h() int { return l.bottom - l.top }
 
 type artboard struct {
 	top, left, bottom, right int

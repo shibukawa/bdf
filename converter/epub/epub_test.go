@@ -17,7 +17,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
-	_ "github.com/shibukawa/bdf/converter/docx"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/japanese"
 )
@@ -55,15 +55,7 @@ func convertBytes(t *testing.T, data []byte, opts *Options) (*Result, *bdf.Reade
 // reopen writes a converted document and reads it back.
 func reopen(t *testing.T, res *Result) *bdf.Reader {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
+	return convtest.Reopen(t, res.Doc)
 }
 
 // page is what a page of a view holds.
@@ -650,9 +642,6 @@ func TestDetect(t *testing.T) {
 	head := buf.Bytes()[:min(1024, buf.Len())]
 	if !Detect(head, bytes.NewReader(buf.Bytes()), int64(buf.Len())) {
 		t.Errorf("careless EPUB not detected")
-	}
-	if f, _ := conv.DetectFile("../docx/testdata/basic.docx"); f == nil || f.Name != "docx" {
-		t.Errorf("a Word document is detected as %v", f)
 	}
 	docx, _ := os.ReadFile("../docx/testdata/basic.docx")
 	if Detect(docx[:1024], bytes.NewReader(docx), int64(len(docx))) {

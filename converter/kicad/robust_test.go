@@ -11,19 +11,8 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
-
-// within fails the test when f does not return in time.
-func within(t *testing.T, d time.Duration, what string, f func()) {
-	t.Helper()
-	done := make(chan struct{})
-	go func() { f(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(d):
-		t.Fatalf("%s did not finish in %v", what, d)
-	}
-}
 
 // convertQuietly converts an input, and fails the test on an internal
 // error (a panic recovered while drawing a page).
@@ -55,7 +44,7 @@ func TestTruncated(t *testing.T) {
 		data := readTestdata(t, name)
 		for i := 1; i <= 64; i++ {
 			n := len(data) * i / 64
-			within(t, 10*time.Second, fmt.Sprintf("%s cut at %d", name, n), func() {
+			convtest.Within(t, 10*time.Second, fmt.Sprintf("%s cut at %d", name, n), func() {
 				if strings.HasSuffix(name, ".kicad_wks") {
 					wks := data[:n]
 					files := converter.FileMap{"frame.kicad_sch": readTestdata(t, "frame/frame.kicad_sch"), "frame.kicad_wks": wks}
@@ -89,7 +78,7 @@ func TestMutated(t *testing.T) {
 					sub := number.FindStringSubmatch(m)
 					return strings.Replace(m, sub[1], v, 1)
 				})
-				within(t, 10*time.Second, fmt.Sprintf("%s with every fifth number (from %d) %s", name, k, v), func() {
+				convtest.Within(t, 10*time.Second, fmt.Sprintf("%s with every fifth number (from %d) %s", name, k, v), func() {
 					opts := testOptions()
 					opts.FileName = path.Base(name)
 					convertQuietly(t, []byte(mutated), opts)
@@ -114,7 +103,7 @@ func TestSelfSheet(t *testing.T) {
 	opts.FileName, opts.Refs = "self.kicad_sch", o.ReadRef
 	var res *Result
 	var err error
-	within(t, 10*time.Second, "a sheet that contains itself", func() { res, err = convertQuietly(t, src, opts) })
+	convtest.Within(t, 10*time.Second, "a sheet that contains itself", func() { res, err = convertQuietly(t, src, opts) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +139,7 @@ func TestHostileValues(t *testing.T) {
 		`(image (at 0 0) (scale 1e300) (data "iVBORw0KGgo="))`,
 		`(sheet (at 0 0) (size 1e300 -1) (uuid "00000000-0000-0000-0000-000000000009") (property "Sheetname" "S" (at 0 0 0) (effects (font (size 1.27 1.27)))) (property "Sheetfile" "" (at 0 0 0) (effects (font (size 1.27 1.27)))))`,
 	)
-	within(t, 10*time.Second, "a schematic", func() {
+	convtest.Within(t, 10*time.Second, "a schematic", func() {
 		if _, err := convertQuietly(t, []byte(sch), nil); err != nil {
 			t.Error(err)
 		}
@@ -173,7 +162,7 @@ func TestHostileValues(t *testing.T) {
     (pad "3" smd custom (at 0 0) (size 1 1) (layers "F.Cu") (primitives (gr_poly (pts) (width 0)) (gr_arc (start 0 0) (end 0 0) (angle 1e300) (width 1))))
     (pad "4" smd trapezoid (at 0 0) (size 1 1) (rect_delta 1e300 -1e300) (layers "F.Cu"))
     (fp_text reference "R1" (at 0 0) (layer "F.SilkS") (effects (font (size 1 1) (thickness 0.1))))))`
-	within(t, 10*time.Second, "a board", func() {
+	convtest.Within(t, 10*time.Second, "a board", func() {
 		if _, err := convertQuietly(t, []byte(pcb), nil); err != nil {
 			t.Error(err)
 		}
@@ -204,7 +193,7 @@ func TestHostileValues(t *testing.T) {
 		w.Write(b)
 	}
 	zw.Close()
-	within(t, 30*time.Second, "121 pages of a drawing sheet that repeats", func() {
+	convtest.Within(t, 30*time.Second, "121 pages of a drawing sheet that repeats", func() {
 		res, err := convertQuietly(t, zb.Bytes(), nil)
 		if err != nil {
 			t.Fatal(err)

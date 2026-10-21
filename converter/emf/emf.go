@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/converter/internal/metafile"
@@ -65,16 +65,7 @@ const maxSize = 1 << 30
 
 // ConvertFile converts a .emf or .wmf file.
 func ConvertFile(path string, opts *Options) (*Result, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return Convert(f, st.Size(), opts)
+	return converter.OpenFile(path, func(r io.ReaderAt, size int64) (*Result, error) { return Convert(r, size, opts) })
 }
 
 // Convert converts a metafile read from r.

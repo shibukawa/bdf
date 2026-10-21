@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -21,6 +20,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/image/imgconv"
 )
 
@@ -96,27 +96,11 @@ func converted(t *testing.T, data []byte) *Result {
 	return res
 }
 
-func warned(res *Result, part string) bool {
-	for _, w := range res.Warnings {
-		if strings.Contains(w, part) {
-			return true
-		}
-	}
-	return false
-}
-
 // opened writes the document and opens it; it returns the body of the
 // first page too.
 func opened(t *testing.T, res *Result) (*bdf.Reader, bdf.Hash) {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := reopen(t, res)
 	return r, r.Manifest.Views[0].Pages[0].Layers[0].Obj
 }
 
@@ -180,7 +164,7 @@ func TestDamagedStreams(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				res := converted(t, data)
-				if c.warning == "" && len(res.Warnings) > 0 || c.warning != "" && !warned(res, c.warning) {
+				if c.warning == "" && len(res.Warnings) > 0 || c.warning != "" && !convtest.HasWarning(res.Warnings, c.warning) {
 					t.Errorf("warnings: %q, want %q", res.Warnings, c.warning)
 				}
 				if fills := bodyOps(t, res)[bdf.OpFillPath]; fills != c.fills {
@@ -445,7 +429,7 @@ func TestColorSpaceDepth(t *testing.T) {
 		{"as deep as the limit", nested(maxColorSpaceDepth), false},
 	} {
 		res := converted(t, pagePDF("/ColorSpace << /CS0 "+c.cs+" >>", [2]string{"", "/CS0 cs 0 0 10 10 re f"}, `[/Indexed 5 0 R 1 <000000ffffff>]`))
-		if warned(res, "colour spaces nested too deeply") != c.warning {
+		if convtest.HasWarning(res.Warnings, "colour spaces nested too deeply") != c.warning {
 			t.Errorf("%s: warnings %q", c.name, res.Warnings)
 		}
 	}
@@ -579,20 +563,11 @@ func TestStreamLimit(t *testing.T) {
 		if n > limit {
 			fills, uses = 1, 0
 		}
-		if ops := bodyOps(t, res); warned(res, "form XObject: FlateDecode: the stream decodes to more than 65536 bytes") != (n > limit) ||
+		if ops := bodyOps(t, res); convtest.HasWarning(res.Warnings, "form XObject: FlateDecode: the stream decodes to more than 65536 bytes") != (n > limit) ||
 			ops[bdf.OpFillPath] != fills || ops[bdf.OpUse] != uses {
 			t.Errorf("form of %d bytes: warnings %q, instructions %v", n, res.Warnings, ops)
 		}
 	}
-}
-
-// allocated returns the bytes that f allocates.
-func allocated(f func()) uint64 {
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	f()
-	runtime.ReadMemStats(&after)
-	return after.TotalAlloc - before.TotalAlloc
 }
 
 // TestImageData: the samples of an image are decoded as far as its rows.
@@ -601,7 +576,7 @@ func TestImageData(t *testing.T) {
 		[2]string{"/Type /XObject /Subtype /Image /Width 2 /Height 2 /BitsPerComponent 8 /ColorSpace /DeviceGray /Filter /FlateDecode", deflated(make([]byte, 32<<20))},
 		[2]string{"/Type /XObject /Subtype /Image /Width 2 /Height 2 /ImageMask true /Filter /FlateDecode", deflated(make([]byte, 32<<20))})
 	var res *Result
-	if n := allocated(func() { res = converted(t, data) }); n > 8<<20 {
+	if n := convtest.Allocated(func() { res = converted(t, data) }); n > 8<<20 {
 		t.Errorf("%d bytes allocated for two images of four pixels", n)
 	}
 	if len(res.Warnings) != 0 || bodyOps(t, res)[bdf.OpImage] != 2 {
@@ -635,7 +610,7 @@ func TestImageSize(t *testing.T) {
 		{"/Width 2 /Height 2 /BitsPerComponent 1 /Filter /CCITTFaxDecode /DecodeParms << /K -1 /Columns 65536 /Rows 2 >>", 0, "CCITTFaxDecode with 65536 columns"},
 	} {
 		var res *Result
-		n := allocated(func() {
+		n := convtest.Allocated(func() {
 			var err error
 			res, err = convertIn(t, 5*time.Second, pagePDF("/XObject << /Im 5 0 R >>", [2]string{"", "/Im Do"},
 				[2]string{"/Type /XObject /Subtype /Image " + c.dict, "\xff\xff\xff\xff"},
@@ -648,7 +623,7 @@ func TestImageSize(t *testing.T) {
 			t.Errorf("%s: %d bytes allocated", c.dict, n)
 		}
 		images := bodyOps(t, res)[bdf.OpImage]
-		if c.warning == "" && (len(res.Warnings) != 0 || images != 1) || c.warning != "" && (!warned(res, c.warning) || images != 0) {
+		if c.warning == "" && (len(res.Warnings) != 0 || images != 1) || c.warning != "" && (!convtest.HasWarning(res.Warnings, c.warning) || images != 0) {
 			t.Errorf("%s: warnings %q, %d images", c.dict, res.Warnings, images)
 		}
 	}
@@ -666,7 +641,7 @@ func TestImageSize(t *testing.T) {
 	// The rows of a CCITT image are those of the image at most: a bit of
 	// Group 4 data is a white row after a white row, of 512 bytes here.
 	var res *Result
-	n := allocated(func() {
+	n := convtest.Allocated(func() {
 		res = converted(t, pagePDF("/XObject << /Im 5 0 R >>", [2]string{"", "/Im Do"},
 			[2]string{"/Type /XObject /Subtype /Image /Width 4096 /Height 2 /BitsPerComponent 1 /Filter /CCITTFaxDecode /DecodeParms << /K -1 /Columns 4096 /Rows 2000000000 >>",
 				strings.Repeat("\xff", 8<<10)}))
@@ -1279,7 +1254,7 @@ func TestSharedReferences(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !warned(res, "form XObjects converted for too many structures") || c.reconverted <= maxReconversions {
+		if !convtest.HasWarning(res.Warnings, "form XObjects converted for too many structures") || c.reconverted <= maxReconversions {
 			t.Errorf("warnings %q, %d forms converted again", res.Warnings, c.reconverted)
 		}
 	})
@@ -1290,7 +1265,7 @@ func TestNesting(t *testing.T) {
 	content := strings.Repeat("q 1 0 0 1 1 0 cm ", maxSaveDepth+50) + "0 0 10 10 re f " + strings.Repeat("Q ", maxSaveDepth+50) + "0 0 10 10 re f"
 	res := converted(t, pagePDF("", [2]string{"", content}))
 	ops := bodyOps(t, res)
-	if !warned(res, "q operators nested more than 1024 deep") || ops[bdf.OpSave] != maxSaveDepth || ops[bdf.OpRestore] != maxSaveDepth || ops[bdf.OpFillPath] != 2 {
+	if !convtest.HasWarning(res.Warnings, "q operators nested more than 1024 deep") || ops[bdf.OpSave] != maxSaveDepth || ops[bdf.OpRestore] != maxSaveDepth || ops[bdf.OpFillPath] != 2 {
 		t.Errorf("warnings %q, instructions %v", res.Warnings, ops)
 	}
 	res = converted(t, pagePDF("", [2]string{"", strings.Repeat("q ", maxSaveDepth) + "0 0 10 10 re f " + strings.Repeat("Q ", maxSaveDepth)}))
@@ -1308,7 +1283,7 @@ func TestNesting(t *testing.T) {
 		t.Fatal(err)
 	}
 	r, _ := opened(t, res)
-	if got := pageText(t, r); !strings.Contains(got, "A") || !strings.Contains(got, "y") || strings.Contains(got, "x") {
+	if got := convtest.PlainText(t, r, 0); !strings.Contains(got, "A") || !strings.Contains(got, "y") || strings.Contains(got, "x") {
 		t.Errorf("text %q", got)
 	}
 }

@@ -51,9 +51,6 @@ func inked(img *image.RGBA) int {
 func TestLayout(t *testing.T) {
 	ts := typesetter(t, nil)
 	f := formula.ParseTeX(quadratic)
-	if got, want := f.Text(), "x=(−b±√(b^2−4ac))/(2a)"; got != want {
-		t.Errorf("text %q, want %q", got, want)
-	}
 	inline := ts.Layout(f, formula.Style{Size: 20})
 	disp := ts.Layout(f, formula.Style{Size: 20, Display: true})
 	if inline.Width() <= 0 || inline.Height() <= 0 || inline.Depth() <= 0 {

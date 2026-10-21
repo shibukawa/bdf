@@ -13,6 +13,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/image/imgconv"
 )
 
@@ -160,15 +161,8 @@ func TestMetafilesAndRecolor(t *testing.T) {
 	if len(res.Warnings) != 0 {
 		t.Errorf("warnings: %v", res.Warnings)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if text := plainText(t, r); !strings.Contains(text, "EMF text") || !strings.Contains(text, "WMF text") {
+	r := convtest.Reopen(t, res.Doc)
+	if text := convtest.PlainText(t, r, 0); !strings.Contains(text, "EMF text") || !strings.Contains(text, "WMF text") {
 		t.Errorf("metafile text missing: %q", text)
 	}
 	o, err := r.Object(body(r.Manifest.Views[0].Pages[0]))

@@ -2,13 +2,11 @@ package tiff
 
 import (
 	"bytes"
-	"compress/zlib"
 	"encoding/binary"
 	"slices"
 	"testing"
 
 	"github.com/shibukawa/bdf/converter/internal/tiff"
-	"github.com/shibukawa/bdf/image/imgconv"
 )
 
 // made builds a classic little-endian TIFF: the header, data (at offset 8),
@@ -79,26 +77,6 @@ func TestLimits(t *testing.T) {
 	if p := res.Doc.Views[0].Pages; len(p) != 1 || res.Pages != 1 || !slices.Equal(res.Warnings, want) {
 		t.Errorf("%d pages, warnings %q", len(p), res.Warnings)
 	}
-
-	// Forty pages that share a megabyte of zeros deflated to a kilobyte:
-	// the file has the pages decoded that its size allows.
-	var z bytes.Buffer
-	zw, _ := zlib.NewWriterLevel(&z, zlib.BestCompression)
-	zw.Write(make([]byte, 1024*1024))
-	zw.Close()
-	page := grey(1024, 1024, tiff.CompressionDeflate, 1)
-	page[5][3], page[6][3], page[7][3] = 8, 1024, uint32(z.Len()) // one strip
-	var pages [][][4]uint32
-	for range 40 {
-		pages = append(pages, page)
-	}
-	b = made(z.Bytes(), pages...)
-	res, err = Convert(bytes.NewReader(b), int64(len(b)), &Options{Images: imgconv.Options{MaxPixels: 64 * 64}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want = []string{"tiff: the file has its data read or decoded over and over: page 11 and those after it are left out"}
-	if res.Pages != 10 || !slices.Equal(res.Warnings, want) {
-		t.Errorf("%d pages, warnings %q", res.Pages, res.Warnings)
-	}
+	// (how many pages a file of a shared, deflated strip has decoded,
+	// converter/internal/tiff's tests count)
 }

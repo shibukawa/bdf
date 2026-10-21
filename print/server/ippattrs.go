@@ -52,14 +52,6 @@ var (
 	handlings        = []string{"separate-documents-collated-copies", "separate-documents-uncollated-copies"}
 )
 
-// jobCreationAttrs are the job template attributes taken.
-var jobCreationAttrs = []string{
-	"copies", "finishings", "ipp-attribute-fidelity", "job-hold-until", "job-name", "job-priority", "media", "media-col",
-	"multiple-document-handling", "number-up", "orientation-requested", "output-bin", "overrides", "page-ranges",
-	"print-color-mode", "print-content-optimize", "print-quality", "print-rendering-intent", "print-scaling",
-	"printer-resolution", "sides",
-}
-
 // queueCaps is what a queue prints on: its first printer's capabilities,
 // or none when it has not answered (or tells nothing, as 9100 and LPD).
 func (x *ippServer) queueCaps(name string) *ipp.Printer {
@@ -332,7 +324,7 @@ var (
 // answered with.
 func (x *ippServer) jobStatusAttrs(q *ippRequest, j *spool.Job) []ipp.Attribute {
 	attrs := x.jobAttrs(q, j, true)
-	return filterAttrs(attrs, []string{"job-id", "job-uri", "job-uuid", "job-state", "job-state-reasons", "job-state-message"}, nil)
+	return ipp.Filter(attrs, []string{"job-id", "job-uri", "job-uuid", "job-state", "job-state-reasons", "job-state-message"}, nil)
 }
 
 // jobAttrs are the attributes of a job of the spool. A job of another
@@ -359,7 +351,7 @@ func (x *ippServer) jobAttrs(q *ippRequest, j *spool.Job, visible bool) []ipp.At
 		ipp.Attr("job-name", ipp.Name(name)),
 		ipp.Attr("job-originating-user-name", ipp.Name(user)),
 		ipp.Attr("job-state", ipp.Enum(int(j.State))),
-		ipp.Attr("job-state-reasons", keywordValues(publicReasons(reasons))...),
+		ipp.Attr("job-state-reasons", ipp.Keywords(publicReasons(reasons))...),
 		ipp.Attr("job-state-message", ipp.Text(clip127(msg))),
 		ipp.Attr("number-of-documents", ipp.Integer(1)),
 		ipp.Attr("job-printer-up-time", ipp.Integer(x.upTime(time.Now()))),
@@ -427,7 +419,7 @@ func (x *ippServer) incomingAttrs(q *ippRequest, in *incoming) []ipp.Attribute {
 		ipp.Attr("job-name", ipp.Name(name)),
 		ipp.Attr("job-originating-user-name", ipp.Name(user)),
 		ipp.Attr("job-state", ipp.Enum(int(in.state))),
-		ipp.Attr("job-state-reasons", keywordValues(in.reasons)...),
+		ipp.Attr("job-state-reasons", ipp.Keywords(in.reasons)...),
 		ipp.Attr("job-state-message", ipp.Text("")),
 		ipp.Attr("number-of-documents", ipp.Integer(0)),
 		ipp.Attr("job-printer-up-time", ipp.Integer(x.upTime(time.Now()))),
@@ -476,7 +468,7 @@ func ticketAttrs(t *print.Ticket) []ipp.Attribute {
 		attrs = append(attrs, ipp.Attr("orientation-requested", ipp.Enum(int(t.Orientation))))
 	}
 	if len(t.Finishings) > 0 {
-		attrs = append(attrs, ipp.Attr("finishings", enumValues(t.Finishings)...))
+		attrs = append(attrs, ipp.Attr("finishings", ipp.Enums(t.Finishings)...))
 	}
 	if t.OutputBin != "" {
 		attrs = append(attrs, ipp.Attr("output-bin", ipp.Keyword(t.OutputBin)))
@@ -519,22 +511,6 @@ func pageRangeValues(pages []int) []ipp.Value {
 	return out
 }
 
-func keywordValues(s []string) []ipp.Value {
-	out := make([]ipp.Value, len(s))
-	for i, v := range s {
-		out[i] = ipp.Keyword(v)
-	}
-	return out
-}
-
-func enumValues(ns []int) []ipp.Value {
-	out := make([]ipp.Value, len(ns))
-	for i, n := range ns {
-		out[i] = ipp.Enum(n)
-	}
-	return out
-}
-
 func resolutionValues(dpis []int) []ipp.Value {
 	out := make([]ipp.Value, len(dpis))
 	for i, d := range dpis {
@@ -551,10 +527,6 @@ func (q *ippRequest) moreInfo() string {
 	}
 	return scheme + "://" + q.r.Host + q.queue.path
 }
-
-// printerGroups are the groups of printer attributes requested-attributes
-// names.
-var printerGroups = map[string][]string{}
 
 // queueState is the printer-state of a queue: stopped when it is paused
 // or its printers are, processing while it has a job at a printer.
@@ -620,7 +592,7 @@ func (x *ippServer) getPrinterAttributes(q *ippRequest) {
 		return
 	}
 	attrs := x.printerAttrs(q)
-	req := requested(q.op, []string{"all"})
+	req := ipp.Requested(q.op, []string{"all"})
 	// media-col-database is told when asked by name, as printers do
 	if !slices.Contains(req, "media-col-database") {
 		attrs = slices.DeleteFunc(attrs, func(a ipp.Attribute) bool { return a.Name == "media-col-database" })
@@ -629,26 +601,7 @@ func (x *ippServer) getPrinterAttributes(q *ippRequest) {
 		q.res.Add(ipp.TagPrinter, attrs...)
 		return
 	}
-	q.res.Add(ipp.TagPrinter, filterAttrs(attrs, req, x.printerAttrGroups(attrs))...)
-}
-
-// printerAttrGroups are the groups of printer attributes: the template
-// ones are the -default, -supported, -ready of job template attributes,
-// the description ones the others.
-func (x *ippServer) printerAttrGroups(attrs []ipp.Attribute) map[string][]string {
-	var tmpl, desc []string
-	for _, a := range attrs {
-		base := a.Name
-		for _, suf := range []string{"-default", "-supported", "-ready", "-database"} {
-			base = strings.TrimSuffix(base, suf)
-		}
-		if base != a.Name && (slices.Contains(jobCreationAttrs, base) || base == "media-col" || base == "media") {
-			tmpl = append(tmpl, a.Name)
-		} else {
-			desc = append(desc, a.Name)
-		}
-	}
-	return map[string][]string{"job-template": tmpl, "printer-description": desc}
+	q.res.Add(ipp.TagPrinter, ipp.Filter(attrs, req, ipp.PrinterGroups(attrs))...)
 }
 
 // printerAttrs are the attributes of a queue as an IPP Everywhere and
@@ -781,7 +734,7 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		ipp.Attr("printer-geo-location", ipp.OutOfBand(ipp.TagUnknown)),
 		ipp.Attr("printer-icons", icons...),
 		ipp.Attr("printer-state", ipp.Enum(int(st))),
-		ipp.Attr("printer-state-reasons", keywordValues(reasons)...),
+		ipp.Attr("printer-state-reasons", ipp.Keywords(reasons)...),
 		ipp.Attr("printer-state-message", ipp.Text(clip127(msg))),
 		ipp.Attr("printer-is-accepting-jobs", ipp.Boolean(accepting)),
 		ipp.Attr("printer-up-time", ipp.Integer(x.upTime(time.Now()))),
@@ -799,7 +752,7 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		ipp.Attr("natural-language-configured", ipp.Language("en")),
 		ipp.Attr("generated-natural-language-supported", ipp.Language("en")),
 		ipp.Attr("compression-supported", ipp.Keyword("none"), ipp.Keyword("deflate"), ipp.Keyword("gzip")),
-		ipp.Attr("document-format-supported", mimeValues(documentFormats)...),
+		ipp.Attr("document-format-supported", ipp.MimeTypes(documentFormats)...),
 		ipp.Attr("document-format-default", ipp.MimeType("application/octet-stream")),
 		ipp.Attr("document-format-preferred", ipp.MimeType("application/pdf")),
 		ipp.Attr("pdf-versions-supported", pdfVersions...),
@@ -810,7 +763,7 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		ipp.Attr("job-ids-supported", ipp.Boolean(true)),
 		ipp.Attr("preferred-attributes-supported", ipp.Boolean(false)),
 		ipp.Attr("which-jobs-supported", which...),
-		ipp.Attr("job-creation-attributes-supported", keywordValues(jobCreationAttrs)...),
+		ipp.Attr("job-creation-attributes-supported", ipp.Keywords(ipp.JobTemplateAttrs)...),
 		ipp.Attr("printer-get-attributes-supported", ipp.Keyword("document-format")),
 		ipp.Attr("overrides-supported", ipp.Keyword("document-number"), ipp.Keyword("pages")),
 		ipp.Attr("identify-actions-supported", ipp.Keyword("display")),
@@ -820,13 +773,13 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		ipp.Attr("copies-supported", ipp.NewRange(1, 999)),
 		ipp.Attr("copies-default", ipp.Integer(1)),
 		ipp.Attr("page-ranges-supported", ipp.Boolean(true)),
-		ipp.Attr("job-hold-until-supported", keywordValues(holds)...),
+		ipp.Attr("job-hold-until-supported", ipp.Keywords(holds)...),
 		ipp.Attr("job-hold-until-default", ipp.Keyword("no-hold")),
 		ipp.Attr("job-priority-supported", ipp.Integer(100)),
 		ipp.Attr("job-priority-default", ipp.Integer(50)),
 		ipp.Attr("job-sheets-supported", ipp.Keyword("none")),
 		ipp.Attr("job-sheets-default", ipp.Keyword("none")),
-		ipp.Attr("multiple-document-handling-supported", keywordValues(handlings)...),
+		ipp.Attr("multiple-document-handling-supported", ipp.Keywords(handlings)...),
 		ipp.Attr("multiple-document-handling-default", ipp.Keyword(handlings[0])),
 		ipp.Attr("number-up-supported", ipp.Integer(1)),
 		ipp.Attr("number-up-default", ipp.Integer(1)),
@@ -836,38 +789,38 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		ipp.Attr("print-quality-default", ipp.Enum(4)),
 		ipp.Attr("printer-resolution-supported", resolutionValues(rasterResolutions)...),
 		ipp.Attr("printer-resolution-default", ipp.NewResolution(300, 300, ipp.UnitsDPI)),
-		ipp.Attr("print-scaling-supported", keywordValues(scalings)...),
+		ipp.Attr("print-scaling-supported", ipp.Keywords(scalings)...),
 		ipp.Attr("print-scaling-default", ipp.Keyword("auto")),
-		ipp.Attr("print-color-mode-supported", keywordValues(modes)...),
+		ipp.Attr("print-color-mode-supported", ipp.Keywords(modes)...),
 		ipp.Attr("print-color-mode-default", ipp.Keyword("auto")),
 		ipp.Attr("color-supported", ipp.Boolean(color)),
-		ipp.Attr("print-content-optimize-supported", keywordValues(contentOptimizes)...),
+		ipp.Attr("print-content-optimize-supported", ipp.Keywords(contentOptimizes)...),
 		ipp.Attr("print-content-optimize-default", ipp.Keyword("auto")),
-		ipp.Attr("print-rendering-intent-supported", keywordValues(renderingIntents)...),
+		ipp.Attr("print-rendering-intent-supported", ipp.Keywords(renderingIntents)...),
 		ipp.Attr("print-rendering-intent-default", ipp.Keyword("auto")),
-		ipp.Attr("sides-supported", keywordValues(sides)...),
+		ipp.Attr("sides-supported", ipp.Keywords(sides)...),
 		ipp.Attr("sides-default", ipp.Keyword("one-sided")),
-		ipp.Attr("finishings-supported", enumValues(finishings)...),
+		ipp.Attr("finishings-supported", ipp.Enums(finishings)...),
 		ipp.Attr("finishings-default", ipp.Enum(3)),
-		ipp.Attr("media-supported", keywordValues(media)...),
+		ipp.Attr("media-supported", ipp.Keywords(media)...),
 		ipp.Attr("media-default", ipp.Keyword(ready[0])),
-		ipp.Attr("media-ready", keywordValues(ready)...),
+		ipp.Attr("media-ready", ipp.Keywords(ready)...),
 		ipp.Attr("media-col-supported", ipp.Keyword("media-bottom-margin"), ipp.Keyword("media-left-margin"), ipp.Keyword("media-right-margin"),
 			ipp.Keyword("media-size"), ipp.Keyword("media-size-name"), ipp.Keyword("media-source"), ipp.Keyword("media-top-margin"), ipp.Keyword("media-type")),
 		ipp.Attr("media-col-database", mediaDB...),
 		ipp.Attr("media-col-ready", mediaReady...),
 		ipp.Attr("media-col-default", mediaReady[0]),
 		ipp.Attr("media-size-supported", mediaSizes...),
-		ipp.Attr("media-source-supported", keywordValues(sources)...),
-		ipp.Attr("media-type-supported", keywordValues(types)...),
+		ipp.Attr("media-source-supported", ipp.Keywords(sources)...),
+		ipp.Attr("media-type-supported", ipp.Keywords(types)...),
 		ipp.Attr("media-top-margin-supported", ipp.Integer(top)),
 		ipp.Attr("media-bottom-margin-supported", ipp.Integer(bottom)),
 		ipp.Attr("media-left-margin-supported", ipp.Integer(left)),
 		ipp.Attr("media-right-margin-supported", ipp.Integer(right)),
 		ipp.Attr("pwg-raster-document-resolution-supported", resolutionValues(rasterResolutions)...),
-		ipp.Attr("pwg-raster-document-type-supported", keywordValues(rasterTypes)...),
+		ipp.Attr("pwg-raster-document-type-supported", ipp.Keywords(rasterTypes)...),
 		ipp.Attr("pwg-raster-document-sheet-back", ipp.Keyword("normal")),
-		ipp.Attr("urf-supported", keywordValues(urfSupported)...),
+		ipp.Attr("urf-supported", ipp.Keywords(urfSupported)...),
 		ipp.Attr("printer-supply", ipp.OctetString([]byte("index=1;class=unknown;type=other;unit=percent;maxcapacity=100;level=-2;colorantname=unknown;"))),
 		ipp.Attr("printer-supply-description", ipp.Text("supplies of the printers behind the server")),
 		ipp.Attr("job-k-octets-supported", ipp.NewRange(0, int(min(x.s.maxDocument()/1024, math.MaxInt32)))),
@@ -894,7 +847,7 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		attrs = append(attrs, ipp.Attr("printer-paper-max", ipp.Keyword(paperMax)))
 	}
 	if caps != nil && len(caps.OutputBins) > 0 {
-		attrs = append(attrs, ipp.Attr("output-bin-supported", keywordValues(caps.OutputBins)...),
+		attrs = append(attrs, ipp.Attr("output-bin-supported", ipp.Keywords(caps.OutputBins)...),
 			ipp.Attr("output-bin-default", ipp.Keyword(cmp(caps.OutputBinDefault, caps.OutputBins[0]))))
 	}
 	return attrs
@@ -905,14 +858,6 @@ func cmp(s, def string) string {
 		return def
 	}
 	return s
-}
-
-func mimeValues(s []string) []ipp.Value {
-	out := make([]ipp.Value, len(s))
-	for i, v := range s {
-		out[i] = ipp.MimeType(v)
-	}
-	return out
 }
 
 // margins are the margins of the queue's printer in hundredths of a

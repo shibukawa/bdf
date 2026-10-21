@@ -42,15 +42,6 @@ func (r *bitReader) bytes(n int) ([]byte, error) {
 	return r.data[i : i+n], nil
 }
 
-// rest returns the bytes from the (aligned) position on.
-func (r *bitReader) rest() []byte {
-	i := r.pos >> 3
-	if i >= len(r.data) {
-		return nil
-	}
-	return r.data[i:]
-}
-
 // Kinds of Huffman table lines (B.2).
 const (
 	lineNormal = iota

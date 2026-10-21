@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/converter/internal/cad"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
 	"github.com/shibukawa/bdf/internal/fontdb"
 	"golang.org/x/text/encoding/charmap"
@@ -42,23 +43,11 @@ func drawing(t *testing.T, data []byte) (*converter, *cad.Drawing) {
 	return c, out
 }
 
-// within fails the test when f does not return in time.
-func within(t *testing.T, d time.Duration, what string, f func()) {
-	t.Helper()
-	done := make(chan struct{})
-	go func() { f(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(d):
-		t.Fatalf("%s did not finish in %v", what, d)
-	}
-}
-
 func TestInfiniteAngles(t *testing.T) {
 	for _, angles := range [][2]string{{"1e20", "0"}, {"0", "-inf"}, {"nan", "90"}} {
 		data := entities("0", "ARC", "8", "0", "10", "0", "20", "0", "40", "1", "50", angles[0], "51", angles[1],
 			"0", "ELLIPSE", "8", "0", "10", "0", "20", "0", "11", "1", "21", "0", "40", "0.5", "41", angles[0], "42", angles[1])
-		within(t, 2*time.Second, "arcs with angles "+angles[0]+", "+angles[1], func() { drawing(t, data) })
+		convtest.Within(t, 2*time.Second, "arcs with angles "+angles[0]+", "+angles[1], func() { drawing(t, data) })
 	}
 	if _, _, ok := arcAngles(1e300, 0, false); !ok {
 		// huge but finite angles are reduced, not refused
@@ -79,7 +68,7 @@ func TestBlockCycle(t *testing.T) {
 		"0", "ENDSEC", "0", "EOF")
 	var c *converter
 	var out *cad.Drawing
-	within(t, 5*time.Second, "a block that inserts itself", func() { c, out = drawing(t, data) })
+	convtest.Within(t, 5*time.Second, "a block that inserts itself", func() { c, out = drawing(t, data) })
 	if len(out.Items) != 1 {
 		t.Errorf("%d items, want the block's line once", len(out.Items))
 	}
@@ -101,14 +90,14 @@ func TestHatchCounts(t *testing.T) {
 		if code != "95" {
 			pairs = append(pairs, code, "50000000")
 		}
-		within(t, 2*time.Second, "a hatch with a count of 50000000 in "+code, func() { drawing(t, entities(pairs...)) })
+		convtest.Within(t, 2*time.Second, "a hatch with a count of 50000000 in "+code, func() { drawing(t, entities(pairs...)) })
 	}
 	// an array of inserts whose size overflows
 	data := dxfText("0", "SECTION", "2", "BLOCKS", "0", "BLOCK", "8", "0", "2", "B", "10", "0", "20", "0",
 		"0", "LINE", "8", "0", "10", "0", "20", "0", "11", "1", "21", "1", "0", "ENDBLK", "0", "ENDSEC",
 		"0", "SECTION", "2", "ENTITIES", "0", "INSERT", "8", "0", "2", "B", "70", "2000000000", "71", "2000000000",
 		"0", "ENDSEC", "0", "EOF")
-	within(t, 2*time.Second, "a huge MINSERT", func() { drawing(t, data) })
+	convtest.Within(t, 2*time.Second, "a huge MINSERT", func() { drawing(t, data) })
 }
 
 // TestSplineEdgeBefore2010 reads a hatch of AutoCAD 2000 whose last edge is
@@ -204,7 +193,7 @@ func TestR12Viewport(t *testing.T) {
 	if n := len(r.Manifest.Views); n != 2 {
 		t.Fatalf("%d views", n)
 	}
-	text := plainText(t, r, 1)
+	text := convtest.PlainText(t, r, 1)
 	if !strings.Contains(text, "MODEL TEXT") {
 		t.Errorf("the viewport does not show model space: %q", text)
 	}
@@ -220,7 +209,7 @@ func TestMlineElementCount(t *testing.T) {
 		"11", "0", "21", "0", "74", "1", "41", "0",
 		"11", "5", "21", "5", "74", "1", "41", "0")
 	var out *cad.Drawing
-	within(t, 5*time.Second, "a multiline of 1e18 elements", func() { _, out = drawing(t, data) })
+	convtest.Within(t, 5*time.Second, "a multiline of 1e18 elements", func() { _, out = drawing(t, data) })
 	if len(out.Items) != 1 {
 		t.Errorf("%d items, want the one element the vertices describe", len(out.Items))
 	}
@@ -238,7 +227,7 @@ func TestPolygonMeshCounts(t *testing.T) {
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
 		var out *cad.Drawing
-		within(t, 5*time.Second, "a mesh of "+mn[0]+" by "+mn[1], func() { _, out = drawing(t, data) })
+		convtest.Within(t, 5*time.Second, "a mesh of "+mn[0]+" by "+mn[1], func() { _, out = drawing(t, data) })
 		runtime.ReadMemStats(&after)
 		if n := after.TotalAlloc - before.TotalAlloc; n > 16<<20 {
 			t.Errorf("mesh of %s by %s: %d bytes allocated", mn[0], mn[1], n)
@@ -270,7 +259,7 @@ func TestPointBudget(t *testing.T) {
 		"0", "ENDSEC", "0", "EOF")
 	var c *converter
 	var out *cad.Drawing
-	within(t, 20*time.Second, "an array of long polylines", func() { c, out = drawing(t, dxfText(pairs...)) })
+	convtest.Within(t, 20*time.Second, "an array of long polylines", func() { c, out = drawing(t, dxfText(pairs...)) })
 	if n := out.Points(); n <= maxPoints-vertices || n > maxPoints+vertices {
 		t.Errorf("%d points drawn, want the %d of the budget", n, maxPoints)
 	}

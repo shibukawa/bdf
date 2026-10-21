@@ -141,7 +141,7 @@ func (u *upstream) register(ctx context.Context) error {
 	m := u.request(ipp.OpUpdateOutputDeviceAttributes)
 	attrs := []ipp.Attribute{
 		ipp.Attr("printer-state", ipp.Enum(int(st))),
-		ipp.Attr("printer-state-reasons", keywordValues(reasons)...),
+		ipp.Attr("printer-state-reasons", ipp.Keywords(reasons)...),
 		ipp.Attr("printer-state-message", ipp.Text(clip127(msg))),
 		ipp.Attr("printer-is-accepting-jobs", ipp.Boolean(accepting)),
 	}
@@ -335,7 +335,7 @@ func (u *upstream) report(ctx context.Context, j spool.Job) {
 	reasons := publicReasons(orNone(j.Reasons))
 	attrs := []ipp.Attribute{
 		ipp.Attr("output-device-job-state", ipp.Enum(int(j.State))),
-		ipp.Attr("output-device-job-state-reasons", keywordValues(reasons)...),
+		ipp.Attr("output-device-job-state-reasons", ipp.Keywords(reasons)...),
 		ipp.Attr("job-impressions-completed", ipp.Integer(j.Impressions)),
 	}
 	if j.Message != "" {

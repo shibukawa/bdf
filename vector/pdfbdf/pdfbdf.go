@@ -55,7 +55,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/internal/fontdb"
+	"github.com/shibukawa/bdf/vector/internal/export"
 )
 
 // Options controls the writing of a file.
@@ -120,7 +120,7 @@ const maxPageSide = 14400
 var ErrNoPages = errors.New("pdfbdf: the document has no pages")
 
 type exporter struct {
-	doc  *bdf.Document
+	export.Source
 	opts Options
 	pw   *writer
 
@@ -129,8 +129,6 @@ type exporter struct {
 	tags *tagger
 	pdfa *pdfaLevel
 
-	objects  map[bdf.Hash]*bdf.ObjectPart
-	coll     map[bdf.Hash][]*bdf.Path
 	images   map[bdf.Hash]*pdfImage
 	shadings map[*bdf.Paint]*shading
 	patterns map[patKey]named
@@ -142,9 +140,6 @@ type exporter struct {
 	// first page of a layer that pages share), in units of the document
 	pageW, pageH float64
 	names        int
-	warnings     []string
-	warned       map[string]bool
-
 	// the stream being written, the object whose instructions are run,
 	// and the groups and soft masks that are open
 	s      *stream
@@ -159,11 +154,8 @@ type exporter struct {
 	floor, unsaved int
 	floors         []int
 	skipped        int
-	// seen holds the objects written before, again says that the object
-	// being written is one, and reused counts the instructions of such
-	seen   map[bdf.Hash]struct{}
-	again  bool
-	reused int
+	again          bool
+	reused         int
 }
 
 // layerKey is a layer on pages of a size: the object of the layer, and
@@ -196,33 +188,6 @@ type pageOut struct {
 	index   int // in its view
 }
 
-func (ex *exporter) warnf(format string, args ...any) {
-	s := fmt.Sprintf(format, args...)
-	if !ex.warned[s] {
-		ex.warned[s] = true
-		ex.warnings = append(ex.warnings, s)
-	}
-}
-
-func (ex *exporter) object(h bdf.Hash) *bdf.ObjectPart {
-	if o, ok := ex.objects[h]; ok {
-		return o
-	}
-	ex.objects[h] = nil
-	p := ex.doc.Part(h)
-	if p == nil {
-		ex.warnf("object %s is missing", h)
-		return nil
-	}
-	o, err := bdf.DecodeObject(p.Data)
-	if err != nil {
-		ex.warnf("object %s: %v", h, err)
-		return nil
-	}
-	ex.objects[h] = o
-	return o
-}
-
 // Write writes a document as a PDF file.
 func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err error) {
 	defer func() {
@@ -233,13 +198,13 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 	if doc == nil {
 		return nil, errors.New("pdfbdf: no document")
 	}
-	ex := &exporter{doc: doc, objects: map[bdf.Hash]*bdf.ObjectPart{}, coll: map[bdf.Hash][]*bdf.Path{}, images: map[bdf.Hash]*pdfImage{},
-		shadings: map[*bdf.Paint]*shading{}, patterns: map[patKey]named{}, gstates: map[string]named{}, forms: map[layerKey]*layerForm{},
-		warned: map[string]bool{}, seen: map[bdf.Hash]struct{}{}}
+	ex := &exporter{Source: export.Source{Doc: doc}, images: map[bdf.Hash]*pdfImage{},
+		shadings: map[*bdf.Paint]*shading{}, patterns: map[patKey]named{}, gstates: map[string]named{}, forms: map[layerKey]*layerForm{}}
 	if opts != nil {
 		ex.opts = *opts
 	}
-	ex.fonts = &fonts{ex: ex, parts: map[bdf.Hash]*face{}, files: map[*fontdb.Face]*face{}, chains: map[bdf.Font]*fontChain{}}
+	ex.SkipRoles = ex.opts.SkipRoles
+	ex.fonts = &fonts{Doc: doc, FontFS: ex.opts.FontFS, FontDirs: ex.opts.FontDirs, NoSystemFonts: ex.opts.NoSystemFonts, New: ex.newFace, Warnf: ex.Warnf, NotDone: "not written"}
 	if ex.pdfa, err = parsePDFA(ex.opts.PDFA); err != nil {
 		return nil, err
 	}
@@ -314,7 +279,7 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 				continue
 			}
 			// (the page has its y axis up)
-			rect := nums(l.x0*k, (pg.h-l.y1)*k, l.x1*k, (pg.h-l.y0)*k)
+			rect := export.Nums(l.x0*k, (pg.h-l.y1)*k, l.x1*k, (pg.h-l.y0)*k)
 			tagged := ""
 			annot := pw.alloc()
 			if t := ex.tags; t != nil {
@@ -333,9 +298,9 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 			pw.put(annot, fmt.Sprintf("<< /Type /Annot /Subtype /Link /Rect [%s] /Border [0 0 0] /F 4%s %s >>", rect, tagged, action))
 			annots.WriteString(annot.String() + " ")
 		}
-		dict := fmt.Sprintf("<< /Type /Page /Parent %s /MediaBox [0 0 %s] /Resources %s /Contents %s", tree, nums(pg.w*k, pg.h*k), pg.res, pg.content)
+		dict := fmt.Sprintf("<< /Type /Page /Parent %s /MediaBox [0 0 %s] /Resources %s /Contents %s", tree, export.Nums(pg.w*k, pg.h*k), pg.res, pg.content)
 		if pg.unit != 1 {
-			dict += " /UserUnit " + num(pg.unit)
+			dict += " /UserUnit " + export.Num(pg.unit)
 		}
 		if ex.tags != nil {
 			// (the keys go through the page in the order of its structure)
@@ -377,12 +342,12 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 	if err := pw.finish(catalog, ex.info()); err != nil {
 		return nil, fmt.Errorf("pdfbdf: %w", err)
 	}
-	return &Result{Pages: len(pages), Fonts: nfonts, Warnings: ex.warnings}, nil
+	return &Result{Pages: len(pages), Fonts: nfonts, Warnings: ex.Warnings}, nil
 }
 
 // views returns the views to write.
 func (ex *exporter) views() ([]*bdf.View, error) {
-	doc := ex.doc
+	doc := ex.Doc
 	if len(ex.opts.Views) > 0 {
 		var out []*bdf.View
 		for _, id := range ex.opts.Views {
@@ -417,15 +382,6 @@ func (ex *exporter) views() ([]*bdf.View, error) {
 	return all, nil
 }
 
-func (ex *exporter) skip(role string) bool {
-	for _, r := range ex.opts.SkipRoles {
-		if r == role {
-			return true
-		}
-	}
-	return false
-}
-
 // shared makes forms of the layers that more than one page has. The form
 // of a layer is drawn in the space of the page of the file (see
 // stream.base): it holds the transform of the pages of its size.
@@ -439,7 +395,7 @@ func (ex *exporter) shared(pages []*pageOut) {
 		for _, l := range pg.view.Pages[pg.index].Layers {
 			// (in a tagged file the content of a page is marked as that
 			// of the page: a layer of content is written for each page)
-			if !ex.skip(l.Role) && (ex.tags == nil || artifactRole(l.Role)) {
+			if !ex.Skip(l.Role) && (ex.tags == nil || artifactRole(l.Role)) {
 				count[layerKey{l.Obj, pg.flip}]++
 			}
 		}
@@ -450,11 +406,11 @@ func (ex *exporter) shared(pages []*pageOut) {
 		}
 		for _, l := range pg.view.Pages[pg.index].Layers {
 			key := layerKey{l.Obj, pg.flip}
-			if count[key] < 2 || ex.forms[key] != nil || ex.skip(l.Role) {
+			if count[key] < 2 || ex.forms[key] != nil || ex.Skip(l.Role) {
 				continue
 			}
 			s := newStream(identity, pg.flip)
-			s.op("%s cm", pg.flip.exact())
+			s.op("%s cm", pg.flip.Exact())
 			ex.s, ex.pageW, ex.pageH = s, pg.w, pg.h
 			if ex.tags != nil {
 				ex.tags.off++ // (the form is an artifact as a whole, where it is drawn)
@@ -506,22 +462,22 @@ func (ex *exporter) size(pg *pageOut) {
 func (ex *exporter) page(pg *pageOut) {
 	s := newStream(identity, pg.flip)
 	s.page = true
-	s.op("%s cm", pg.flip.exact())
+	s.op("%s cm", pg.flip.Exact())
 	ex.s, ex.pageW, ex.pageH = s, pg.w, pg.h
 	if ex.tags != nil {
 		ex.tags.page = pg
 	}
-	back, _ := pg.flip.invert()
+	back, _ := pg.flip.Invert()
 	v := pg.view
 	switch {
 	case pg.index >= 0:
 		for _, l := range v.Pages[pg.index].Layers {
-			if ex.skip(l.Role) {
+			if ex.Skip(l.Role) {
 				continue
 			}
 			if f := ex.forms[layerKey{l.Obj, pg.flip}]; f != nil {
 				ex.tagArtifact()
-				s.op("q %s cm %s Do Q", back.exact(), s.use("XObject", f.name, f.ref))
+				s.op("q %s cm %s Do Q", back.Exact(), s.use("XObject", f.name, f.ref))
 				s.links = append(s.links, f.links...)
 				continue
 			}
@@ -577,7 +533,7 @@ func (ex *exporter) scroll(v *bdf.View) {
 		}
 		ex.scoped(func() {
 			saved := s.st.ctm
-			s.op("%s re W n", nums(0, y, float64(b.W), float64(b.H)))
+			s.op("%s re W n", export.Nums(0, y, float64(b.W), float64(b.H)))
 			ex.concat(matrix{1, 0, 0, 1, -float64(b.X), y - float64(b.Y)})
 			for _, l := range p.Layers {
 				if l.Role == bdf.RoleBody || l.Role == bdf.RoleAnnotation {
@@ -665,7 +621,7 @@ func (ex *exporter) sheet(v *bdf.View, pg *pageOut) {
 	if v.Gridlines {
 		// the lines between the cells, as the viewer draws them
 		ex.tagArtifact()
-		s.op("q 0.851 0.851 0.851 RG %s w", num(0.5*pg.unit))
+		s.op("q 0.851 0.851 0.851 RG %s w", export.Num(0.5*pg.unit))
 		lines := 0
 		walk := func(runs []bdf.Run, limit float64, draw func(pos float64)) {
 			pos := 0.0
@@ -683,18 +639,18 @@ func (ex *exporter) sheet(v *bdf.View, pg *pageOut) {
 				}
 			}
 		}
-		walk(v.Cols, pg.w, func(x float64) { s.op("%s m %s l", nums(x, 0), nums(x, pg.h)) })
-		walk(v.Rows, pg.h, func(y float64) { s.op("%s m %s l", nums(0, y), nums(pg.w, y)) })
+		walk(v.Cols, pg.w, func(x float64) { s.op("%s m %s l", export.Nums(x, 0), export.Nums(x, pg.h)) })
+		walk(v.Rows, pg.h, func(y float64) { s.op("%s m %s l", export.Nums(0, y), export.Nums(pg.w, y)) })
 		s.op("S Q")
 		if lines >= maxGridLines {
-			ex.warnf("a sheet has more than %d gridlines: the rest are not written", maxGridLines)
+			ex.Warnf("a sheet has more than %d gridlines: the rest are not written", maxGridLines)
 		}
 	}
 	for _, t := range tilesOf(v) {
 		ex.scoped(func() {
 			saved := s.st.ctm
 			ex.concat(matrix{1, 0, 0, 1, float64(t.tx) * tile, float64(t.ty) * tile})
-			s.op("0 0 %s re W n", nums(tile, tile))
+			s.op("0 0 %s re W n", export.Nums(tile, tile))
 			ex.top(t.hash)
 			s.st.ctm = saved
 		})
@@ -787,7 +743,7 @@ const producer = "BDF (github.com/shibukawa/bdf)"
 
 // info writes the document information dictionary.
 func (ex *exporter) info() ref {
-	dc := ex.doc.Meta.DC
+	dc := ex.Doc.Meta.DC
 	var b strings.Builder
 	b.WriteString("<<")
 	add := func(key, v string) {
@@ -812,7 +768,7 @@ func (ex *exporter) info() ref {
 
 // metadata writes the metadata of the document as an XMP packet.
 func (ex *exporter) metadata() ref {
-	dc := ex.doc.Meta.DC
+	dc := ex.Doc.Meta.DC
 	esc := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;")
 	clean := func(s string) string {
 		// (what XML has no place for)

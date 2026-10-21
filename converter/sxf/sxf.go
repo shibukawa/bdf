@@ -18,7 +18,6 @@ import (
 	"io"
 	"io/fs"
 	"maps"
-	"os"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -26,6 +25,7 @@ import (
 	"github.com/shibukawa/bdf/converter/internal/ziputil"
 
 	"github.com/shibukawa/bdf"
+	conv "github.com/shibukawa/bdf/converter" // the name converter is taken by the conversion state
 	"github.com/shibukawa/bdf/converter/internal/cad"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/fontset"
@@ -75,16 +75,7 @@ type Result struct {
 
 // ConvertFile converts an SXF file.
 func ConvertFile(path string, opts *Options) (*Result, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return Convert(f, st.Size(), opts)
+	return conv.OpenFile(path, func(r io.ReaderAt, size int64) (*Result, error) { return Convert(r, size, opts) })
 }
 
 const maxSize = 1 << 30

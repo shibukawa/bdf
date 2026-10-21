@@ -291,8 +291,7 @@ test("a sheet is drawn whatever its manifest says of its size", async () => {
   // the whole of a sheet as large as a sheet may be
   const whole = await draw({ tile: 1, gridlines: false, cols: [[1 << 24, 1 << 24]], rows: [[1, 1 << 24]] }, { x: 0, y: 0, w: 2 ** 48, h: 2 ** 24 });
   assert.equal(whole.fillText, 1);
-  await assert.rejects(draw({ tile: 1e-3 }, chunk), BdfFormatError);
-  await assert.rejects(draw({ rows: [[1e11, 0]] }, chunk), BdfFormatError);
+  // (a sheet whose numbers are out of range is refused when the document opens: core's tests)
 });
 
 test("the size of an SVG image is found in a head of many starts of tags", () => {
