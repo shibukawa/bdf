@@ -172,7 +172,13 @@ facts:
   testing_proposed: 偽の IdP（httptest の上で OIDC の discovery・JWKS・認可コード・ID トークンを出す）を print-m6 の偽プリンタと同じ考えで作り、全部の試験をそれに載せる。実の IdP（Entra・Google・Keycloak）は手で確かめる
   delivery_proposed:
     current_milestone: pm-auth-1（暫定の名前。pm-1 がマージされた後）
-    first_step: 画面（/admin）に入るときの OIDC のログイン。2026-10-21 利用者「まず画面に入る時にOIDCのログインが欲しい気がします」。ブラウザで AdminToken を打つ形を外し、admins・admin_groups に当たる人だけが /admin に入る。偽の IdP で試す。/tablet は端末の認証のまま
+    first_step:
+      what: 画面に入るときの OIDC のログインを全員に。2026-10-21 利用者「まず画面に入る時にOIDCのログインが欲しい気がします」「adminでなくても全員ログインが良いと思う。自分のアクセスできる範囲のデータが見られる、というのは必要だと思うので」
+      everyone: IdP で認証できた人は誰でも入れる（Print Manager に人の登録は要らない）。入った人には自分の見える範囲（facts.scopes.job_visibility）のジョブと、自分が刷れるプリンタ・場所だけを出す
+      admin: admins・admin_groups に当たる人は、加えて全部のジョブと設定（/admin）。それ以外の人が /admin を開くと 403
+      needs: 見える範囲を決めるため、場所・プリンタに持ち主のグループ（claim の値）と種類（personal・group・shared）を設定で持たせ、ジョブに submitted_by を記録する（facts.who_printed.record_proposed）
+      excluded: 刷り直し・取り消しの画面、アプリの client credentials、デバイスフロー（後の段）。/tablet は端末の認証のまま
+      allowed_users_proposed: 暫定で IdP が認証した人は全員入れる。会社の外の人も入れる IdP（Google の個人のアカウントなど）では、設定 oidc.allowed（issuer、メールのドメイン hd、グループ）で絞る
     pm-auth-1: 人の OIDC ログイン（admin と一般）、最初の管理者の設定（admins と admin_groups）、claim のキーを設定で選ぶグループ、プリンタの personal・group・shared、ジョブの持ち主と見える範囲、自分とグループのジョブの一覧・刷り直し・取り消し、監査の記録、偽の IdP、session-key の鍵の列
     pm-auth-2: アプリ（管理画面で足す、/oauth/token の client credentials、scope とプリンタ・テンプレートの許可、IPP の Basic）。SubmitTokens・AdminToken・TickToken を外す
     pm-auth-3: 仮想プリンタのサービスユーザーとデバイスフロー（登録コードを置き換える）
@@ -249,5 +255,7 @@ history:
     summary: 2026-10-21 利用者「アプリの client_secret、人の IPP 用の合言葉はargon2とかbcryptをつかって、ソルト＋ハッシュを保存が良いと思う」。SHA-256 の推奨を改め、argon2id（PHC の文字列）にした。要求ごとの IPP の Basic の重さは facts.secret_hashing.mitigations_proposed
   login-first-and-who-printed:
     summary: 2026-10-21 利用者「まず画面に入る時にOIDCのログインが欲しい気がします。印刷する時に誰が印刷したか、という情報って取れるのか？」。pm-auth-1 の最初を画面の OIDC のログインにし（facts.delivery_proposed.first_step）、誰が刷ったかを道ごとに整理した（facts.who_printed）。pm-1 の Slip.User が確かめた名前と自己申告を混ぜていることを見つけた
+  everyone-logs-in:
+    summary: 2026-10-21 利用者「adminでなくても全員ログインが良いと思う。自分のアクセスできる範囲のデータが見られる、というのは必要だと思うので」。最初の段を、管理者だけの /admin のログインから、全員のログインと自分の見える範囲の画面に広げた（facts.delivery_proposed.first_step）
   pending-merge:
     summary: pm-1 の作業ツリーが requirement:print-manager の open_questions.viewer-login を書き換えている。両方がマージされたら viewer-login を requirement:print-manager-auth に寄せる。shibukawa/bdf#114 にある decision:print-manager-ui-daisyui（Tailwind v4.3.3 と daisyUI v5.7.50 で実装済み）への constrained_by の関係も、#114 が入った後にここへ足す（今は相手が無くコンパイルが断る）
