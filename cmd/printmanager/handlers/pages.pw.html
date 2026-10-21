@@ -19,54 +19,122 @@ component Shell(title: string, children: html): html {
   </html>
 }
 
-// AppBar is the bar at the top of a page; its children go to its end
-// (the place of a login, later).
-component AppBar(title: string, children: html?): html {
+// AppBar is the bar at the top of a page: the pages of the person signed
+// in (admin: the administrator's too) and the way out; its children go
+// before them.
+component AppBar(title: string, name: string, admin: bool, children: html?): html {
   <header class="navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm">
     <div class="flex-1 min-w-0">
-      <a href="/" class="text-xl font-bold tracking-tight">{title}</a>
+      <a href="/jobs" class="text-xl font-bold tracking-tight">{title}</a>
     </div>
-    <div class="flex flex-wrap items-center gap-2"><slot /></div>
+    <nav class="flex flex-wrap items-center gap-2">
+      <slot />
+      <a href="/jobs" class="btn btn-sm btn-ghost">Jobs</a>
+      {if admin}
+        <a href="/admin" class="btn btn-sm btn-ghost">Admin</a>
+        <a href="/audit" class="btn btn-sm btn-ghost">Audit</a>
+      {/if}
+      <form method="post" action="/logout" class="contents">
+        <button type="submit" class="btn btn-sm btn-outline">Sign out <span class="font-mono text-xs opacity-70">{name}</span></button>
+      </form>
+    </nav>
   </header>
 }
 
-export component Home(): html {
+// Login is the top page: a sign-in.
+export component Login(failed: bool): html {
   <Shell title="BDF Print Manager">
-    <AppBar title="BDF Print Manager"></AppBar>
-    <main class="mx-auto max-w-4xl p-4 sm:p-8">
-      <section class="hero rounded-box bg-base-100 py-10 shadow-sm">
-        <div class="hero-content text-center">
-          <div class="max-w-xl">
-            <h1 class="text-3xl font-bold sm:text-4xl">A software-defined document network</h1>
-            <p class="py-4 text-base-content/70">Documents enter at virtual printers and API endpoints, flow through queues, classes and inboxes you compose, and end on display boards, printers and archives. Paper is one destination among others.</p>
-            <div class="flex flex-wrap justify-center gap-3">
-              <a href="/admin" class="btn btn-primary btn-lg">Admin</a>
-              <a href="/tablet" class="btn btn-lg">Display board</a>
-            </div>
+    <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center p-4">
+      <div class="card bg-base-100 shadow-md">
+        <form method="post" action="/login" class="card-body gap-4">
+          <h1 class="card-title text-2xl">BDF Print Manager</h1>
+          <p class="text-base-content/70">A software-defined document network: documents enter at virtual printers and API endpoints, flow through the nodes you compose, and end on display boards, printers and archives.</p>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Token</legend>
+            <input name="token" type="password" autocomplete="current-password" class="input w-full" placeholder="admin token, or name:secret" required autofocus>
+            <p class="label">An administrator signs in with the admin token; a user with a submit token's name and secret.</p>
+          </fieldset>
+          {if failed}
+            <div role="alert" class="alert alert-error">The token is not known.</div>
+          {/if}
+          <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+          <a href="/tablet" class="link link-hover text-center text-sm text-base-content/60">This is a display board's device</a>
+        </form>
+      </div>
+    </main>
+  </Shell>
+}
+
+// Jobs is a person's page: their jobs, and printing a document to a
+// node. An administrator sees every job.
+export component Jobs(name: string, admin: bool): html {
+  <Shell title="Jobs · BDF Print Manager">
+    <AppBar title="BDF Print Manager" name={name} admin={admin}></AppBar>
+    <main class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
+      <section class="card bg-base-100 shadow-sm">
+        <form id="print-form" class="card-body">
+          <h2 class="card-title">Print a document</h2>
+          <p class="text-sm text-base-content/60">PDF, Office documents, images and .bdf. It flows from the node chosen.</p>
+          <div class="flex flex-wrap gap-2">
+            <select id="print-dest" class="select w-full sm:w-64" required></select>
+            <input id="print-file" type="file" class="file-input w-full sm:flex-1" required>
+            <input id="print-name" class="input w-full sm:w-48" placeholder="job name (the file's)">
+            <button type="submit" class="btn btn-primary">Print</button>
+          </div>
+        </form>
+      </section>
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="card-title">{if admin}All jobs{else}My jobs{/if}</h2>
+            <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>User</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead>
+              <tbody id="jobs"></tbody>
+            </table>
           </div>
         </div>
       </section>
-      <div class="mt-6 grid gap-4 sm:grid-cols-3">
-        <div class="card bg-base-100 shadow-sm">
-          <div class="card-body">
-            <h2 class="card-title">Entries</h2>
-            <p class="text-base-content/70">Every node is an IPP printer at <code class="font-mono text-sm">/ipp/print/&lt;name&gt;</code>. Endpoints take documents, or a template and data, at <code class="font-mono text-sm">POST /in/&lt;name&gt;</code> with their own key.</p>
-          </div>
-        </div>
-        <div class="card bg-base-100 shadow-sm">
-          <div class="card-body">
-            <h2 class="card-title">Routing</h2>
-            <p class="text-base-content/70">A queue forwards to every node it names, a class to one of its members in turn, an inbox holds a job until a person sends it on. Lay them out on the admin page.</p>
-          </div>
-        </div>
-        <div class="card bg-base-100 shadow-sm">
-          <div class="card-body">
-            <h2 class="card-title">Ends</h2>
-            <p class="text-base-content/70">Displays show jobs on enrolled devices and print on paper what nobody opened; printers print; archives keep a copy that is never changed.</p>
-          </div>
-        </div>
-      </div>
     </main>
+    <div id="toasts" class="toast toast-end z-50"></div>
+    <script type="module" src="/public/jobs.js"></script>
+  </Shell>
+}
+
+// Audit is the administrator's page of who did what.
+export component Audit(name: string): html {
+  <Shell title="Audit · BDF Print Manager">
+    <AppBar title="BDF Print Manager" name={name} admin={true}></AppBar>
+    <main class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="card-title">Audit log</h2>
+            <span class="text-sm text-base-content/60">Sign-ins, changes of the topology, keys and templates, devices, what people did in inboxes, and cancellations. Newest first.</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Subject</th><th>Detail</th></tr></thead>
+              <tbody id="audit"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="card-title">Recent jobs and their routes</h2>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>User</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead>
+              <tbody id="jobs"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/public/audit.js"></script>
   </Shell>
 }
 
@@ -133,21 +201,12 @@ export component Tablet(): html {
   </Shell>
 }
 
-export component Admin(): html {
+export component Admin(name: string): html {
   <Shell title="Admin · BDF Print Manager">
-    <AppBar title="BDF Print Manager · Admin">
+    <AppBar title="BDF Print Manager" name={name} admin={true}>
       <button id="tick" type="button" class="btn btn-sm">Tick now</button>
     </AppBar>
     <main id="admin" class="mx-auto grid max-w-7xl gap-6 p-4 sm:p-6">
-      <section class="card bg-base-100 shadow-sm">
-        <form id="token-form" class="card-body">
-          <h2 class="card-title">Admin token</h2>
-          <div class="join w-full max-w-xl">
-            <input id="token" type="password" autocomplete="off" class="input join-item w-full" placeholder="MANAGER_ADMIN_TOKEN">
-            <button type="submit" class="btn btn-primary join-item">Use</button>
-          </div>
-        </form>
-      </section>
 
       <section class="card bg-base-100 shadow-sm">
         <div class="card-body">

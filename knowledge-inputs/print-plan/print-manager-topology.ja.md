@@ -112,6 +112,16 @@ PUT のときに、名指すノードが全部あること、名前が別の種�
 
 `/admin` の **キャンバス**（SVG、依存なし）：ノードは種類ごとの色の箱、辺は矢印（クラスのメンバーは破線、場所の逃げ道は点線）。箱をドラッグして動かす（`PUT /api/layout` に位置を保存。`layout` の記録 1 つ、消えたノードの位置は落とす）。右の丸い口から別のノードへドラッグすると辺を足す（PUT /api/nodes でその `to`・`members` に足す。存在・閉路の確かめはサーバー）。辺をクリックで外す（確認つき）。箱をクリックで下のフォームに読み込んで編集。位置の無いノードは、入口からの深さで列、同じ列で行に並べる（autoLayout）。パン・ズームは無い（広い SVG を横スクロール）。
 
+### 1.14 ログインと役割（2026-10-21 の追加）
+
+利用者「トップページはログイン画面が良いかと思います。admin も一般ユーザーの上位互換なので、一般ユーザーとしての画面が表示され、特別な管理者向けページに遷移できてトポロジーの管理（API キー発行とかもふくめて）や監査情報の閲覧ができるという感じです。将来的にはトポロジー管理と監査もロールを分けて個別に権限が付与できる様にした方が良い気がしています」。
+
+- `/` はログイン。今の資格は pm-1 のトークン：管理者トークンで管理者、submit トークンの `name:secret` で一般の利用者。セッションは manager が署名するクッキー（端末のものと同じ仕組み、12 時間、`POST /logout` で終える）。失敗と成功は監査に残る。
+- `/jobs`（ログイン後の画面）：自分のジョブ（管理者は全部）と、ノードを選んで文書を刷るフォーム。`GET /api/my/jobs`、`GET /api/destinations`、`/api/jobs/<n>`（自分のものだけ。管理者は全部）。
+- `/admin`（トポロジー・テンプレート・エンドポイントの鍵・インボックス・送り待ち・場所と端末）と `/audit`（監査ログと最近のジョブの足跡）は管理者だけ。ログインしていなければ `/` へ。
+- **監査ログ**（`audit` のコレクション。ID は時刻の逆順で、新しい順に並ぶ）：ログインの成否、ノード・プリンタ・場所・テンプレートの変更、鍵の回転、登録コード、端末の登録と削除、インボックスの流す・捨てる、取り消し。
+- **役割**：今は管理者と利用者の 2 つ。利用者の言う「トポロジー管理」と「監査」の分離は、`requirement:print-manager-auth` に役割（user、topology-admin、auditor、admin はその上位）として書き、OIDC と一緒に実装する。
+
 ## 2. 構成
 
 ```
@@ -124,8 +134,9 @@ print/manager/submit.go     受け付け（Job を作り routing へ）、文書
 print/manager/ipp.go        どのノードも宛先、CUPS-Get-Printers / Classes
 print/manager/http.go       /api/nodes、/api/topology、/api/destinations、/api/jobs、/api/inboxes、/api/items、/api/deliveries
 print/manager/endpoint.go   エンドポイントの鍵（argon2id）、/in/<名前>、テンプレートの登録・差し込み、キャンバスの位置
+print/manager/people.go     人のログイン（管理者トークン・submit トークン）、セッションのクッキー、自分のジョブ、監査ログ
 print/manager/store.go      新しいコレクション、テンプレートの Blob、保管の Blob の保存先の cache
-cmd/printmanager            管理の画面（pages.pw.html、admin.js：キャンバス・テンプレート・鍵の表示）、英語の文、MANAGER_JOB_KEEP、Background
+cmd/printmanager            ログイン（/）、利用者（/jobs、jobs.js）、管理（/admin、admin.js：キャンバス・テンプレート・鍵）、監査（/audit、audit.js）の画面、英語の文、MANAGER_JOB_KEEP、Background
 ```
 
 ## 3. pm-1 から変えた所
@@ -139,7 +150,7 @@ cmd/printmanager            管理の画面（pages.pw.html、admin.js：キャ�
 
 ## 4. 試験
 
-`go test -race ./print/manager/`：TestQueueFanout（分岐、2 枚の伝票、取り消し、片付けで文書も消える）、TestClass（4 件が 2 台に交互、failover で落ちた 1 台を飛ばす、retry）、TestPrinterDirect（プリンタに直接、Background で tick なし）、TestInbox（保留、流す先の制限、流す、全部に流す、捨てる、取り消し、消せない、keep）、TestArchive（bbolt の保管に 2 つのオブジェクト、記録の中身、2 度書かない、悪い URL は 400）、TestNodes（種類・辺・名前・閉路・削除の確かめ、Topology）、TestCupsGetPrinters（`ipp.Client.CupsGetPrinters` で全ノード、クラスの印）、TestEndpoint（鍵は 1 度だけ、鍵なし・別の鍵は 401、文書、`pages.bdft` の登録と JSON での差し込み、無いテンプレート、テンプレートの制限と削除の拒否、鍵の回転、IPP の宛先、レイアウト）、TestKeys（argon2id の PHC）。pm-1 のテストはそのまま通る。
+`go test -race ./print/manager/`：TestQueueFanout（分岐、2 枚の伝票、取り消し、片付けで文書も消える）、TestClass（4 件が 2 台に交互、failover で落ちた 1 台を飛ばす、retry）、TestPrinterDirect（プリンタに直接、Background で tick なし）、TestInbox（保留、流す先の制限、流す、全部に流す、捨てる、取り消し、消せない、keep）、TestArchive（bbolt の保管に 2 つのオブジェクト、記録の中身、2 度書かない、悪い URL は 400）、TestNodes（種類・辺・名前・閉路・削除の確かめ、Topology）、TestCupsGetPrinters（`ipp.Client.CupsGetPrinters` で全ノード、クラスの印）、TestEndpoint（鍵は 1 度だけ、鍵なし・別の鍵は 401、文書、`pages.bdft` の登録と JSON での差し込み、無いテンプレート、テンプレートの制限と削除の拒否、鍵の回転、IPP の宛先、レイアウト）、TestKeys（argon2id の PHC）、TestLogin（フォームと JSON のログイン、利用者は自分のジョブだけ、管理者は全部、管理の API は利用者に 401、監査ログの順、ログアウトと期限）。pm-1 のテストはそのまま通る。
 
 手で：偽プリンタの農場（`tools/fakeprinter`）の mfp-3f・postscript を使い、`/admin` でクラス・分岐・インボックス・保管を組み、API で 8 件送って、インボックスから画面で流した。クラスは mfp-3f と postscript に交互に、分岐は 2 つの倉庫のボードに、保管の bbolt に `.bdf` と `.json`。
 
@@ -158,3 +169,4 @@ cmd/printmanager            管理の画面（pages.pw.html、admin.js：キャ�
 - **テンプレートの差し込みの入力の形**は JSON の `data` だけ（CSV・YAML は `form.LoadData` が読めるが口を作っていない）。画像（`Files`）も渡せない。
 - **キャンバス**はパン・ズームなし、ノードの追加はフォームから。辺の種類は to と members だけで、インボックスの「人が選ぶ」辺も同じ矢印（点線にはしていない）。
 - 画面の文は英語だけ（多言語の仕組みは無い）。
+- **ログインは pm-1 のトークンのまま**（管理者トークン、submit トークンの name:secret）。OIDC と役割（topology-admin・auditor）は認証の milestone。CSRF は popcornweb の既定（無効）のまま、クッキーは SameSite=Lax。

@@ -392,6 +392,7 @@ func (h *handler) putTemplate(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "put-template", t.ID, t.Name)
 	writeJSON(w, http.StatusOK, t)
 }
 
@@ -400,6 +401,7 @@ func (h *handler) deleteTemplate(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "delete-template", r.PathValue("id"), "")
 	w.WriteHeader(http.StatusNoContent)
 }
 

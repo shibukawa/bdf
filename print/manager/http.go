@@ -51,6 +51,12 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/printers/{name}", h.adminOnly(h.getPrinter))
 	mux.HandleFunc("PUT /api/printers/{name}", h.adminOnly(h.putPrinter))
 	mux.HandleFunc("DELETE /api/printers/{name}", h.adminOnly(h.deletePrinter))
+	mux.HandleFunc("POST /login", h.login)
+	mux.HandleFunc("POST /logout", h.logout)
+	mux.HandleFunc("GET /api/me", h.whoami)
+	mux.HandleFunc("GET /api/my/jobs", h.userOnly(h.myJobs))
+	mux.HandleFunc("GET /api/destinations", h.userOnly(h.destinations))
+	mux.HandleFunc("GET /api/audit", h.adminOnly(h.auditLog))
 	mux.HandleFunc("GET /api/slips/{id}", h.adminOnly(h.getSlip))
 	mux.HandleFunc("GET /api/slips/{id}/document", h.adminOnly(h.slipDocument))
 	mux.HandleFunc("POST /api/slips/{id}/cancel", h.adminOnly(h.cancelSlip))
@@ -70,9 +76,9 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("POST "+InPath+"/{name}", h.serveIn)
 	mux.HandleFunc("GET /api/destinations/{name}/jobs", h.adminOnly(h.destJobs))
 	mux.HandleFunc("POST /api/destinations/{name}/jobs", h.submit)
-	mux.HandleFunc("GET /api/jobs/{id}", h.adminOnly(h.getJob))
-	mux.HandleFunc("GET /api/jobs/{id}/document", h.adminOnly(h.jobDocument))
-	mux.HandleFunc("POST /api/jobs/{id}/cancel", h.adminOnly(h.cancelJob))
+	mux.HandleFunc("GET /api/jobs/{id}", h.ownJob(h.getJob))
+	mux.HandleFunc("GET /api/jobs/{id}/document", h.ownJob(h.jobDocument))
+	mux.HandleFunc("POST /api/jobs/{id}/cancel", h.ownJob(h.cancelJob))
 	mux.HandleFunc("GET /api/inboxes/{name}", h.adminOnly(h.inbox))
 	mux.HandleFunc("POST /api/items/{id}/release", h.adminOnly(h.release))
 	mux.HandleFunc("POST /api/items/{id}/discard", h.adminOnly(h.discardItem))
@@ -142,7 +148,18 @@ func sameSecret(a, b string) bool {
 	return a != "" && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-func (h *handler) admin(r *http.Request) bool { return sameSecret(h.m.o.AdminToken, bearer(r)) }
+// admin tells a request of an administrator: the admin token (bearer),
+// or a session signed in with it.
+func (h *handler) admin(r *http.Request) bool {
+	if sameSecret(h.m.o.AdminToken, bearer(r)) {
+		return true
+	}
+	if c, err := r.Cookie(UserCookie); err == nil {
+		p, ok := h.m.UserSession(c.Value)
+		return ok && p.Admin
+	}
+	return false
+}
 
 func (h *handler) adminOnly(fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -184,6 +201,7 @@ func (h *handler) putLocation(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "put-display", l.Name, l.Title)
 	writeJSON(w, http.StatusOK, l)
 }
 
@@ -192,6 +210,7 @@ func (h *handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "delete-display", r.PathValue("name"), "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -229,6 +248,7 @@ func (h *handler) enrollment(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "enrollment-code", r.PathValue("name"), "")
 	scheme := "http"
 	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
 		scheme = "https"
@@ -261,6 +281,7 @@ func (h *handler) removeDevice(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "remove-device", r.PathValue("id"), "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -293,6 +314,7 @@ func (h *handler) putPrinter(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "put-printer", p.Name, p.URL)
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -301,6 +323,7 @@ func (h *handler) deletePrinter(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "delete-printer", r.PathValue("name"), "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -382,6 +405,11 @@ func (h *handler) putNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	got.KeyHash = ""
+	detail := n.Kind
+	if key != "" {
+		detail += ", a key made"
+	}
+	h.m.audit(r.Context(), h.who(r), "put-node", n.Name, detail)
 	writeJSON(w, http.StatusOK, nodeWithKey{got, key})
 }
 
@@ -397,6 +425,7 @@ func (h *handler) rotateKey(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "rotate-key", r.PathValue("name"), "")
 	writeJSON(w, http.StatusOK, map[string]string{"name": r.PathValue("name"), "key": key})
 }
 
@@ -405,6 +434,7 @@ func (h *handler) deleteNode(w http.ResponseWriter, r *http.Request) {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "delete-node", r.PathValue("name"), "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -431,21 +461,11 @@ func (h *handler) destJobs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, js)
 }
 
-func (h *handler) getJob(w http.ResponseWriter, r *http.Request) {
-	j, err := h.m.Job(r.Context(), r.PathValue("id"))
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
+func (h *handler) getJob(w http.ResponseWriter, r *http.Request, p Principal, j *Job) {
 	writeJSON(w, http.StatusOK, j)
 }
 
-func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request) {
-	j, err := h.m.Job(r.Context(), r.PathValue("id"))
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
+func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, p Principal, j *Job) {
 	w.Header().Set("Content-Type", "application/x-bdf")
 	w.Header().Set("Content-Length", strconv.FormatInt(j.Size, 10))
 	w.Header().Set("Content-Disposition", `attachment; filename="job-`+j.ID+`.bdf"`)
@@ -454,17 +474,13 @@ func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *handler) cancelJob(w http.ResponseWriter, r *http.Request) {
-	j, err := h.m.Job(r.Context(), r.PathValue("id"))
+func (h *handler) cancelJob(w http.ResponseWriter, r *http.Request, p Principal, j *Job) {
+	j, err := h.m.Cancel(r.Context(), j.ID, Mark{Worker: p.Name})
 	if err != nil {
 		h.writeErr(w, err)
 		return
 	}
-	j, err = h.m.Cancel(r.Context(), j.ID, Mark{Worker: "admin"})
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
+	h.m.audit(r.Context(), p.Name, "cancel-job", j.ID, j.Name)
 	writeJSON(w, http.StatusOK, j)
 }
 
@@ -489,11 +505,12 @@ func (h *handler) release(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	it, err := h.m.Release(r.Context(), r.PathValue("id"), in.To, Mark{Worker: clip(strings.TrimSpace(firstOr(in.Worker, "admin")), 80)})
+	it, err := h.m.Release(r.Context(), r.PathValue("id"), in.To, Mark{Worker: clip(strings.TrimSpace(firstOr(in.Worker, h.who(r))), 80)})
 	if err != nil {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "release-item", it.ID, strings.Join(it.Released.To, ", ")+firstOr(" by "+in.Worker, ""))
 	writeJSON(w, http.StatusOK, it)
 }
 
@@ -507,11 +524,12 @@ func (h *handler) discardItem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	it, err := h.m.Discard(r.Context(), r.PathValue("id"), Mark{Worker: clip(strings.TrimSpace(firstOr(in.Worker, "admin")), 80)})
+	it, err := h.m.Discard(r.Context(), r.PathValue("id"), Mark{Worker: clip(strings.TrimSpace(firstOr(in.Worker, h.who(r))), 80)})
 	if err != nil {
 		h.writeErr(w, err)
 		return
 	}
+	h.m.audit(r.Context(), h.who(r), "discard-item", it.ID, in.Worker)
 	writeJSON(w, http.StatusOK, it)
 }
 

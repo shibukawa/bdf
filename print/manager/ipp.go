@@ -489,11 +489,17 @@ func (h *handler) jobs(ctx context.Context, q *ippRequest) {
 	}
 }
 
-// submitter finds who sends jobs: with SubmitTokens, a token's name and
-// secret (Basic) or the admin token; without, anyone ("").
+// submitter finds who sends jobs: the admin token, a person's session,
+// or, with SubmitTokens, a token's name and secret (Basic, or bearer
+// name:secret); without tokens, anyone ("").
 func (h *handler) submitter(r *http.Request) (string, bool) {
 	if h.admin(r) {
 		return "admin", true
+	}
+	if c, err := r.Cookie(UserCookie); err == nil {
+		if p, ok := h.m.UserSession(c.Value); ok {
+			return p.Name, true
+		}
 	}
 	if len(h.m.o.SubmitTokens) == 0 {
 		return "", true

@@ -112,14 +112,43 @@ func (a *App) Handler() http.Handler {
 	mux.Handle(manager.InPath+"/", mh)
 	mux.Handle("/api/", mh)
 	mux.Handle("/device/", mh)
+	mux.Handle("POST /login", mh)
+	mux.Handle("POST /logout", mh)
+	// the pages: a sign-in at the top; the jobs of the person signed in;
+	// the administrator's topology and audit log
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		pw.WriteHTML(w, r, Home(HomeParams{}))
+		if _, ok := a.m.PrincipalOf(r); ok {
+			http.Redirect(w, r, "/jobs", http.StatusSeeOther)
+			return
+		}
+		pw.WriteHTML(w, r, Login(LoginParams{Failed: r.URL.Query().Get("error") != ""}))
+	})
+	mux.HandleFunc("GET /jobs", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := a.m.PrincipalOf(r)
+		if !ok {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		pw.WriteHTML(w, r, Jobs(JobsParams{Name: p.Name, Admin: p.Admin}))
+	})
+	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := a.m.PrincipalOf(r)
+		if !ok || !p.Admin {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		pw.WriteHTML(w, r, Admin(AdminParams{Name: p.Name}))
+	})
+	mux.HandleFunc("GET /audit", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := a.m.PrincipalOf(r)
+		if !ok || !p.Admin {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		pw.WriteHTML(w, r, Audit(AuditParams{Name: p.Name}))
 	})
 	mux.HandleFunc("GET /tablet", func(w http.ResponseWriter, r *http.Request) {
 		pw.WriteHTML(w, r, Tablet(TabletParams{}))
-	})
-	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
-		pw.WriteHTML(w, r, Admin(AdminParams{}))
 	})
 	return mux
 }

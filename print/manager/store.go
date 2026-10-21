@@ -36,6 +36,7 @@ type (
 	itemRecord     Item
 	deliveryRecord Delivery
 	deviceRecord   Device
+	auditRecord    AuditEntry
 	enrollRecord   enrollment
 	counterRecord  struct {
 		Next int32 `json:"next"`
@@ -108,6 +109,7 @@ func OpenStore(ctx context.Context, records, documents string) (*Store, error) {
 		db.Bind[pendingRecord]("pending-deliveries"),
 		db.Bind[dayRecord]("ended-days"),
 		db.Bind[deviceRecord]("devices"),
+		db.Bind[auditRecord]("audit"),
 		db.Bind[enrollRecord]("enrollments"),
 		db.Bind[counterRecord]("meta"),
 	} {

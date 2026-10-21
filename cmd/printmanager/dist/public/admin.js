@@ -2,15 +2,10 @@
 // queues, classes, inboxes, archives) drawn on a canvas and listed in a
 // table, the templates, the inboxes, the jobs of a destination, the
 // deliveries waiting, and the devices of the displays with their
-// enrollment codes. Everything goes through the API with the admin token
-// (kept in this tab's sessionStorage only).
+// enrollment codes. Everything goes through the API, authorized
+// with the session's cookie (the sign-in at /).
 
 const $ = (id) => document.getElementById(id);
-let token = "";
-try {
-  token = sessionStorage.getItem("bdf-pm-admin") || "";
-} catch {}
-$("token").value = token;
 
 // status shows a message for a while, as a toast.
 function status(text, bad) {
@@ -23,12 +18,18 @@ function status(text, bad) {
   setTimeout(() => t.remove(), bad ? 6000 : 3000);
 }
 
+// api calls the API with the session's cookie; a session that ended
+// sends the page back to the sign-in.
 async function api(method, path, body, raw) {
   const res = await fetch(path, {
     method,
-    headers: { Authorization: "Bearer " + token, ...(body && !raw ? { "Content-Type": "application/json" } : {}) },
+    headers: body && !raw ? { "Content-Type": "application/json" } : {},
     body: body ? (raw ? body : JSON.stringify(body)) : undefined,
   });
+  if (res.status === 401) {
+    location.href = "/";
+    throw new Error("signed out");
+  }
   if (res.status === 204) return null;
   const out = await res.json();
   if (!res.ok) throw new Error(out.error || res.statusText);
@@ -81,7 +82,6 @@ let worker = ""; // who releases items
 let selected = ""; // the node in the form
 
 async function load() {
-  if (!token) return;
   try {
     const printers = await api("GET", "/api/printers");
     const rows = printers.map((p) => {
@@ -673,14 +673,6 @@ $("template-form").addEventListener("submit", async (ev) => {
   } catch (e) {
     status(e.message, true);
   }
-});
-$("token-form").addEventListener("submit", (ev) => {
-  ev.preventDefault();
-  token = $("token").value;
-  try {
-    sessionStorage.setItem("bdf-pm-admin", token);
-  } catch {}
-  load();
 });
 $("tick").addEventListener("click", async () => {
   try {

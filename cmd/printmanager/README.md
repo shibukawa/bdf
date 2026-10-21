@@ -55,6 +55,16 @@ identity, the container's or the instance's role.
 
 ## Use it
 
+The top page is a sign-in: an administrator signs in with the admin token,
+a user with a submit token's `name:secret` (OIDC and finer roles come with
+the authentication milestone). A user sees `/jobs`: the jobs sent under
+their name, and a form that prints a document to a node. An administrator
+sees every job there, and goes on to `/admin` (the topology, the
+templates, the endpoints' keys, the inboxes, the deliveries, the displays
+and their devices) and `/audit` (who did what: sign-ins, changes, keys,
+devices, releases, cancellations). The API takes the session's cookie as
+it takes the tokens.
+
 1. Add a printer and a display (a location: on `/admin`, or the API):
 
    ```sh
@@ -120,6 +130,9 @@ discard), the jobs of a destination and the deliveries waiting; a CUPS
 client lists every node with CUPS-Get-Printers at `/ipp/print`
 (`bdf printers -url ipp://<host>:<port>/ipp/print`).
 
+`POST /login` (`token=`, or JSON `{"token": …}`) signs in and `POST /logout`
+out; `GET /api/me` tells who; `GET /api/my/jobs` lists a person's jobs and
+`GET /api/destinations` the nodes to print to; `GET /api/audit` is the log.
 The API of the topology, under the admin token: `GET /api/topology`;
 `GET`, `PUT` and `DELETE /api/nodes/<name>` and `POST /api/nodes/<name>/key`;
 `GET` and `PUT /api/layout` (where the nodes are drawn); `GET`, `PUT` and

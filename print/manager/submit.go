@@ -101,6 +101,9 @@ func (m *Manager) submitDoc(ctx context.Context, dest string, doc *bdf.Document,
 	if err := m.touchDest(ctx, dest, j.ID); err != nil {
 		return j, err
 	}
+	if err := m.touchDest(ctx, allJobs, j.ID); err != nil {
+		return j, err
+	}
 	m.o.Log.Info("job", "dest", dest, "job", number, "name", j.Name, "pages", j.Pages, "source", j.Source, "state", j.State, "legs", len(j.Legs))
 	m.kick(r.deliveries)
 	return j, nil

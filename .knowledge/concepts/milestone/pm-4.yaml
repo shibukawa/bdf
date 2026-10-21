@@ -47,6 +47,12 @@ capabilities:
   canvas:
     state: implemented
     about: capability:print-manager/canvas
+  login-audit:
+    state: implemented
+    about: capability:print-manager/login-audit
+  roles:
+    state: planned
+    about: capability:print-manager/roles
   filter-rules:
     state: planned
     about: capability:print-manager/filter-rules
@@ -95,6 +101,12 @@ acceptance:
     verified_by:
     - manager-tests
     - browser-admin
+  s10-login:
+    text: / はログイン。管理者トークンで管理者、submit トークンの name:secret で利用者、他は断る（監査に残る）。利用者は /jobs で自分のジョブだけを見て取り消し、ノードに文書を刷る。管理者は全ジョブ、/admin、/audit（新しい順の監査ログ）。管理の API は利用者に 401。ログアウトと 12 時間で終わる
+    verified_by:
+    - manager-tests
+    - app-tests
+    - browser-admin
   s9-canvas:
     text: /admin のキャンバスに全ノードが描かれ、ドラッグで動かした位置が /api/layout に残り、口から別のノードへのドラッグで辺が足され、辺のクリックで外れる。消えたノードの位置は落ちる
     verified_by:
@@ -108,7 +120,7 @@ verification:
     authority: observed
     evidence:
       path: print/manager/topology_test.go
-      locator: 'TestQueueFanout、TestClass、TestPrinterDirect、TestInbox、TestArchive、TestNodes、TestCupsGetPrinters、TestEndpoint（鍵、文書、pages.bdft の差し込み、回転、レイアウト）、TestKeys。pm-1 の TestDisplay 〜 TestDuration もそのまま。2026-10-21 macOS で -race が通った'
+      locator: 'TestQueueFanout、TestClass、TestPrinterDirect、TestInbox、TestArchive、TestNodes、TestCupsGetPrinters、TestEndpoint（鍵、文書、pages.bdft の差し込み、回転、レイアウト）、TestKeys、TestLogin（ログイン、自分のジョブ、監査ログ、ログアウト）。pm-1 の TestDisplay 〜 TestDuration もそのまま。2026-10-21 macOS で -race が通った'
   app-tests:
     state: passed
     method: unit
@@ -116,7 +128,7 @@ verification:
     authority: observed
     evidence:
       path: cmd/printmanager/handlers/app_test.go
-      locator: 'TestApp（pm-1 のまま。JobKeep と Background の設定を足した後も通る）'
+      locator: 'TestApp（/ はログインのフォーム、/jobs・/admin・/audit はログイン無しで / へ、管理者トークンでログインすると開く、/in と /ipp/print の載せ）'
   browser-admin:
     state: passed
     method: manual
@@ -140,6 +152,7 @@ facts:
       packages:
       - 'print/manager：model.go（Node、Job・Leg、Item、Delivery）、nodes.go（PUT・一覧・削除、名前の空間、参照、閉路、Topology）、route.go（routing、クラスの選択、Job の記録、取り消し、宛先ごとの一覧、ジョブの片付け）、inbox.go、deliver.go（借りの下の送り、次のメンバー、保管の書き込み、retry、tick）、submit.go（Submit は宛先と Job）、ipp.go（全ノードが宛先、CUPS-Get-Printers / Classes）、http.go（/api/nodes、/api/topology、/api/destinations、/api/jobs、/api/inboxes、/api/items、/api/deliveries）、store.go（コレクション、保管の Blob の cache）'
       - 'print/manager/endpoint.go：エンドポイントの鍵（argon2id、x/crypto が直接の依存に）、/in/<名前>、テンプレートの登録（form.Describe・Fields）と差し込み（form.Fill → submitDoc）、キャンバスの位置（layout）'
+      - 'print/manager/people.go：人のログイン（POST /login、/logout、GET /api/me）、署名したクッキー（12 時間）、自分のジョブ（/api/my/jobs、/api/jobs/<n> は自分のものだけ）、/api/destinations、監査ログ（audit コレクション、新しい順の ID、/api/audit）'
       - 'cmd/printmanager：英語の画面（Home は「software-defined document network」、端末は display board）、/admin のキャンバス（SVG）・テンプレート・鍵の表示・インボックス・ジョブ・送り待ちの節（pages.pw.html、admin.js、tablet.js）、MANAGER_JOB_KEEP、Background（サーバーレスでなければ）、README の Topology'
     changed_from_plan:
       - '伝票の ID は <番号>.<場所>（1 つのジョブが 2 つの場所に出る）。文書のコレクションは job-documents'
@@ -151,6 +164,7 @@ facts:
       - 'テンプレートは文書の Blob の保存先のコレクション templates。差し込みの入力は JSON の data だけ。エンドポイントの templates で絞る'
       - 'キャンバスは依存なしの SVG。位置は layout の記録 1 つ。辺の追加・削除は PUT /api/nodes を通す（確かめはサーバー）。パン・ズームなし'
       - '画面の文は英語だけ（多言語の仕組みは作らない）。API と記録の名前（location、slip）は pm-1 のまま'
+      - 'ログインは pm-1 のトークンのまま（OIDC は認証の milestone）。役割は今は管理者と利用者の 2 つ。topology-admin と auditor の分離は requirement:print-manager-auth の facts.pages_and_roles'
       - '1 つの名前の空間（CUPS の printers と classes と同じ）。辺は名前だけ'
       - 'どのノードも宛先。見せる相手の制限は認証（requirement:print-manager-auth）に任せ、ノードに可視性を持たせない'
       - 'queue = to のすべてに流す（分岐）。class = members の 1 つ（round-robin はクラスごとの数え、failover は先頭）。失敗の後はどちらも次のメンバーへ'

@@ -228,6 +228,16 @@ func (m *Manager) JobsOf(ctx context.Context, dest string, limit int) ([]Job, er
 	if _, err := m.kindOf(ctx, dest); err != nil {
 		return nil, err
 	}
+	return m.jobsOfState(ctx, dest, limit)
+}
+
+// RecentJobs returns the last jobs of every destination, latest first.
+func (m *Manager) RecentJobs(ctx context.Context, limit int) ([]Job, error) {
+	return m.jobsOfState(ctx, allJobs, limit)
+}
+
+// jobsOfState reads the jobs a destination state lists.
+func (m *Manager) jobsOfState(ctx context.Context, dest string, limit int) ([]Job, error) {
 	rec, err := m.st.db.Get[destState](ctx, dest)
 	if errors.Is(err, yuruidb.ErrNotFound) {
 		return []Job{}, nil

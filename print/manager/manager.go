@@ -161,6 +161,11 @@ func change[T any](ctx context.Context, db *yuruidb.Store, id string, create boo
 
 var errSkip = errors.New("manager: no change")
 
+// yuruidbListOptions is a page of a listing.
+func yuruidbListOptions(limit int, cursor string) yuruidb.ListOptions {
+	return yuruidb.ListOptions{Limit: limit, Cursor: cursor}
+}
+
 // list reads every record of a collection.
 func list[T any](ctx context.Context, db *yuruidb.Store) ([]yuruidb.Record[T], error) {
 	var all []yuruidb.Record[T]
