@@ -32,6 +32,10 @@ type Input struct {
 	// reads.
 	Doc  io.ReaderAt
 	Size int64
+	// Meta is what the job says about itself: the account it is charged
+	// to, document-metadata, attributes of one's own (x-…). It goes to
+	// the printer with the job.
+	Meta print.Meta
 }
 
 // ErrFormat is the error of a document neither .bdf nor of a format the
@@ -47,6 +51,9 @@ func (m *Manager) Submit(ctx context.Context, dest string, in Input) (*Job, erro
 	n, err := m.Node(ctx, dest)
 	if err != nil {
 		return nil, err
+	}
+	if err := in.Meta.Check(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	var formats []string
 	if n.Kind == KindEndpoint {
@@ -106,6 +113,9 @@ func (m *Manager) submitDoc(ctx context.Context, dest string, doc *bdf.Document,
 	j := &Job{ID: jobID(number), Number: number, Dest: dest, Name: clip(in.Name, 255), SubmittedBy: by, ClaimedUser: clip(in.ClaimedUser, 255),
 		Group: group, Source: in.Source, Format: format, Pages: len(v.Pages), SHA256: hex.EncodeToString(h.Sum(nil)), Received: now,
 		State: JobProcessing, Legs: []Leg{}}
+	if !in.Meta.Empty() {
+		j.Meta = &in.Meta
+	}
 	meta, err := m.st.docs.Insert(ctx, j.ID, f)
 	if err != nil {
 		return nil, mapErr(err)

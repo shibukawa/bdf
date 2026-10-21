@@ -213,7 +213,7 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		if err != nil {
 			return m.outcome(ctx, d, owner, printer, "", err, false)
 		}
-		jobID, err := m.send(sctx, p, doc, firstOr(d.Name, "job-"+j.ID))
+		jobID, err := m.send(sctx, p, doc, firstOr(d.Name, "job-"+j.ID), j.Meta)
 		result := ""
 		if err == nil && jobID != 0 {
 			result = fmt.Sprint(jobID)

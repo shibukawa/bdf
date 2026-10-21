@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/form/tag"
+	"github.com/shibukawa/bdf/print"
 )
 
 // Duration is a time.Duration written as text: "90s", "10m", "2h", and
@@ -288,6 +289,10 @@ type Job struct {
 	// ?user= of the API, the user of an endpoint's data): shown, never
 	// trusted.
 	ClaimedUser string `json:"claimed_user,omitempty"`
+	// Meta is what the job said about itself: the account it is charged
+	// to (job-account-id), document-metadata, attributes of its own
+	// (x-…). It goes to the printer with the job.
+	Meta *print.Meta `json:"meta,omitempty"`
 	// Group is the group whose members see the job besides its
 	// submitter: the destination's (or, of a location, its fallback
 	// printer's) when it was received. Empty: the submitter's alone.

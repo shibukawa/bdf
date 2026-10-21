@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
 )
 
@@ -370,6 +371,7 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 		return
 	}
 	name := firstOr(q.text("job-name"), q.text("document-name"))
+	meta := h.meta(q)
 	if q.by.Kind == PrincipalApp {
 		// an app prints to the endpoints that list it
 		if v, ok := h.viewerOf(q.r); ok {
@@ -379,7 +381,7 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 			}
 		}
 	}
-	j, err := h.m.Submit(ctx, q.dest, Input{Name: name, By: q.by, ClaimedUser: q.text("requesting-user-name"), Source: "ipp", Doc: f, Size: n})
+	j, err := h.m.Submit(ctx, q.dest, Input{Name: name, By: q.by, ClaimedUser: q.text("requesting-user-name"), Source: "ipp", Doc: f, Size: n, Meta: meta})
 	switch {
 	case errors.Is(err, ErrFormat):
 		q.fail(ipp.StatusClientErrorDocumentFormatError, "%v", err)
@@ -399,6 +401,33 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 		ipp.Attr("job-state", ipp.Enum(int(st))),
 		ipp.Attr("job-state-reasons", ipp.Keyword(reason)),
 	)
+}
+
+// meta reads what a Print-Job says of its job: document-metadata (an
+// operation attribute), job-account-id, job-accounting-user-id and
+// attributes of one's own (x-…) among the job template attributes. One
+// whose value cannot be taken is answered unsupported; the other job
+// template attributes are not read (the nodes print as they are set).
+func (h *handler) meta(q *ippRequest) print.Meta {
+	var m print.Meta
+	var unsupported []ipp.Attribute
+	if a := q.op.Get("document-metadata"); a != nil {
+		if _, ok := m.Take(*a); !ok {
+			unsupported = append(unsupported, *a)
+		}
+	}
+	if g := q.req.Group(ipp.TagJob); g != nil {
+		for _, a := range g.Attrs {
+			if known, ok := m.Take(a); known && !ok {
+				unsupported = append(unsupported, a)
+			}
+		}
+	}
+	if len(unsupported) > 0 {
+		q.res.Add(ipp.TagUnsupportedGroup, unsupported...)
+		q.res.Code = uint16(ipp.StatusOKIgnoredOrSubstituted)
+	}
+	return m
 }
 
 // job finds the job a request names (job-id, or job-uri), of the
@@ -453,6 +482,9 @@ func (h *handler) jobAttributes(q *ippRequest, j *Job) []ipp.Attribute {
 	}
 	if !j.Ended.IsZero() {
 		attrs = append(attrs, ipp.Attr("time-at-completed", ipp.Integer(int(j.Ended.Unix()&0x7fffffff))))
+	}
+	if j.Meta != nil {
+		attrs = append(attrs, j.Meta.Attrs()...)
 	}
 	return attrs
 }

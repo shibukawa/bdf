@@ -87,6 +87,10 @@ type Ticket struct {
 	// default: the text mode for ESC/P when the document has a print image,
 	// else the dots.
 	PrintMode string `json:"bdf-print-mode,omitempty"`
+
+	// Meta is what the job says about itself: the account it is charged
+	// to, what describes its document, attributes of one's own.
+	Meta
 }
 
 // Merge fills what a ticket does not ask with what defaults ask: the
@@ -137,6 +141,7 @@ func (t Ticket) Merge(defaults Ticket) Ticket {
 	setInt(&t.PerforationSkip, defaults.PerforationSkip)
 	t.NoPrinterBarcodes = t.NoPrinterBarcodes || defaults.NoPrinterBarcodes
 	set(&t.PrintMode, defaults.PrintMode)
+	t.Meta = t.Meta.merge(defaults.Meta)
 	return t
 }
 
@@ -279,6 +284,7 @@ func jobAttributes(t *Ticket, p *ipp.Printer, format, media string, printerCopie
 		_, ok := p.Has("job-priority-supported")
 		a.add("job-priority", ok, ipp.Integer(t.Priority))
 	}
+	t.Meta.jobAttrs(p, &a)
 	deviceJobAttributes(t, p, &a)
 	return a
 }
@@ -317,6 +323,9 @@ func (t *Ticket) check() error {
 	}
 	if t.LabelGap < 0 || t.PerforationSkip < 0 {
 		return fmt.Errorf("print: a gap or a skip of less than nothing")
+	}
+	if err := t.Meta.check(); err != nil {
+		return err
 	}
 	s := t.deviceSettings()
 	if err := s.Check(); err != nil {

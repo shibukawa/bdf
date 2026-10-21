@@ -253,7 +253,7 @@ func TestIPPAttributes(t *testing.T) {
 	f := newIPPFixture(t, ippConfigYAML)
 	c := f.client("office", "alice")
 	ctx := context.Background()
-	bad := []ipp.Attribute{ipp.Attr("media", ipp.Keyword("iso_a0_841x1189mm")), ipp.Attr("x-unknown", ipp.Integer(1))}
+	bad := []ipp.Attribute{ipp.Attr("media", ipp.Keyword("iso_a0_841x1189mm")), ipp.Attr("job-unknown", ipp.Integer(1))}
 	m := c.NewRequest(ipp.OpValidateJob)
 	m.Add(ipp.TagOperation, ipp.Attr("ipp-attribute-fidelity", ipp.Boolean(true)))
 	m.Add(ipp.TagJob, bad...)
@@ -261,7 +261,7 @@ func TestIPPAttributes(t *testing.T) {
 	if statusOf(err) != ipp.StatusClientErrorAttributesOrValuesNotSupported {
 		t.Fatalf("fidelity: %v", err)
 	}
-	if g := res.Group(ipp.TagUnsupportedGroup); g == nil || len(g.Attrs) != 2 || g.Get("x-unknown").OutOfBand() != ipp.TagUnsupported {
+	if g := res.Group(ipp.TagUnsupportedGroup); g == nil || len(g.Attrs) != 2 || g.Get("job-unknown").OutOfBand() != ipp.TagUnsupported {
 		t.Fatalf("unsupported: %+v", res.Groups)
 	}
 	// without fidelity, the job is taken without them

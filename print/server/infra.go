@@ -226,7 +226,7 @@ func (x *ippServer) fetchableJobs(q *ippRequest, printer, device string) {
 		if j.Printer.Device != "" {
 			attrs = append(attrs, ipp.Attr("output-device-assigned", ipp.Name(j.Printer.Device)))
 		}
-		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: ipp.Filter(attrs, req, jobGroups)})
+		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: ipp.Filter(attrs, req, jobGroupsOf(&j.Ticket))})
 	}
 }
 

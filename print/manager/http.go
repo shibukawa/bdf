@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/image/barcode"
+	"github.com/shibukawa/bdf/print"
 )
 
 // SessionCookie is the cookie of a device's session.
@@ -618,7 +619,7 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	dest := r.PathValue("name")
-	j, err := h.m.Submit(r.Context(), dest, Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "api", Doc: f, Size: n})
+	j, err := h.m.Submit(r.Context(), dest, Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "api", Doc: f, Size: n, Meta: metaQuery(q)})
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -634,6 +635,28 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusCreated, j)
+}
+
+// metaQuery reads what a submission's query says of the job:
+// job-account-id, job-accounting-user-id, document-metadata (repeatable)
+// and attributes of one's own (x-…, repeatable).
+func metaQuery(q map[string][]string) print.Meta {
+	m := print.Meta{Metadata: q["document-metadata"]}
+	if v := q["job-account-id"]; len(v) > 0 {
+		m.AccountID = v[0]
+	}
+	if v := q["job-accounting-user-id"]; len(v) > 0 {
+		m.AccountingUserID = v[0]
+	}
+	for k, vs := range q {
+		if strings.HasPrefix(k, "x-") {
+			if m.Custom == nil {
+				m.Custom = map[string]print.Strings{}
+			}
+			m.Custom[k] = vs
+		}
+	}
+	return m
 }
 
 // tick runs Tick: for the admin, the scheduler's TickToken, or an app

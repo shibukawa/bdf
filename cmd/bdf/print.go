@@ -113,6 +113,11 @@ func printCmd(args []string) {
 	wait := fs.Duration("wait", 10*time.Minute, "how long to wait for the job to be done (0: return once it is sent)")
 	maxImpressions := fs.Int("max-impressions", 10000, "the most pages to send (pages times copies)")
 	jobName := fs.String("job-name", "", "job-name (default: the file's name)")
+	account := fs.String("account", "", "job-account-id: the account the job is charged to (a department, a project)")
+	accountingUser := fs.String("accounting-user", "", "job-accounting-user-id: the user of the account")
+	var metadata, attributes stringList
+	fs.Var(&metadata, "metadata", "document-metadata, as key=value with a key of Dublin Core (title, creator, identifier, subject …) or one that begins with x- (repeatable)")
+	fs.Var(&attributes, "attribute", "a job attribute of one's own, as x-name=value (repeatable)")
 	timeout := fs.Duration("timeout", 2*time.Second, "how long to look for a printer named on the network")
 	allow := fs.Bool("allow-plaintext", false, "print an encrypted document or password-protected input (read with $"+passwordEnv+") over a connection without TLS")
 	var params stringList
@@ -149,7 +154,18 @@ func printCmd(args []string) {
 		Resolution: *resolution, Scaling: raster.Scaling(*scaling), OutputBin: *bin, HoldUntil: *hold, Priority: *priority,
 		JobName: *jobName, Darkness: *darkness, Speed: int(math.Round(*speed * 100)), MediaTracking: *tracking,
 		LabelGap: int(math.Round(*gap * 100)), Cut: *cut, CashDrawer: *drawer, PerforationSkip: int(math.Round(*perforation * 100)),
-		NoPrinterBarcodes: *noPrinterBarcodes, PrintMode: *printMode}
+		NoPrinterBarcodes: *noPrinterBarcodes, PrintMode: *printMode,
+		Meta: print.Meta{AccountID: *account, AccountingUserID: *accountingUser, Metadata: metadata}}
+	for _, kv := range attributes {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			badUsage("print", "-attribute "+kv+": x-name=value")
+		}
+		if t.Custom == nil {
+			t.Custom = map[string]print.Strings{}
+		}
+		t.Custom[k] = append(t.Custom[k], v)
+	}
 	var prof *pdl.Profile
 	if *profile != "" {
 		p, ok := pdl.LookupProfile(*profile)

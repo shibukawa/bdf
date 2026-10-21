@@ -130,13 +130,21 @@ func (m *Manager) sendSlip(ctx context.Context, p *Node, s *Slip) (int32, error)
 	if err != nil {
 		return 0, err
 	}
-	return m.send(ctx, p, doc, firstOr(s.Name, "slip-"+s.ID))
+	var meta *print.Meta
+	if j, err := m.JobOfNumber(ctx, s.Job); err == nil {
+		meta = j.Meta
+	}
+	return m.send(ctx, p, doc, firstOr(s.Name, "slip-"+s.ID), meta)
 }
 
-// send prints a document on a printer and returns the printer's job id
-// (0 for a raw printer, which has none).
-func (m *Manager) send(ctx context.Context, p *Node, doc *bdf.Document, name string) (int32, error) {
+// send prints a document on a printer, with what the job says about
+// itself (meta, which may be nil), and returns the printer's job id (0
+// for a raw printer, which has none).
+func (m *Manager) send(ctx context.Context, p *Node, doc *bdf.Document, name string, meta *print.Meta) (int32, error) {
 	opts := &print.Options{Ticket: print.Ticket{JobName: name}, FontDirs: m.o.FontDirs, NoSystemFonts: m.o.NoSystemFonts}
+	if meta != nil {
+		opts.Ticket.Meta = *meta
+	}
 	if raw.IsURL(p.URL) {
 		rp, err := raw.Parse(p.URL)
 		if err != nil {
