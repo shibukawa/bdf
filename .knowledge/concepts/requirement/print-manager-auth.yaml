@@ -139,6 +139,17 @@ facts:
       what: 保管庫（S3 Object Lock）の資格（pm-2）
       store_proposed: Lambda は IAM ロール（鍵なし）。オンプレは環境変数か Roles Anywhere（requirement:print-manager の facts）
     no_kek_needed: 保存先に取り出せる秘密を置かないので、暫定で保存先の中身を暗号化する鍵（KEK）は要らない。IdP の設定を画面から変えたくなったら KEK か基盤の秘密の置き場への書き込みが要る（そのときに決める）
+  who_printed:
+    question: 刷ったときに誰が刷ったかが取れるか（2026-10-21 利用者）
+    by_path:
+      web: 画面（OIDC でログインした人）からの送信は、ID トークンの issuer と sub（とメールアドレス）で確かに取れる
+      app: client credentials のアプリからは、確かなのはアプリまで。アプリの中で誰が刷ったかは、アプリが渡す名前（自己申告。信頼するのはアプリを信じる分だけ）
+      ipp_authenticated: OS の印刷（IPP）は、人ごとの IPP の合言葉（Basic）で入ったときだけ IdP の人に結べる。OS が Basic を問うかは未確認（ipp-basic-clients）
+      ipp_anonymous: 認証なしの IPP は requesting-user-name（OS のログイン名などの自己申告）しかなく、IdP の人に結べない
+      wms_to_display: 基幹・WMS から仮想プリンタへは送り手がアプリ（システム）。現場で誰が操作したかは WMS が名乗る名前だけ
+      tablet: 端末で完了を押した人は、端末で選ぶ名前か PIN の記録で、認証ではない（requirement:print-manager の device_auth.workers）
+    record_proposed: ジョブの記録に 2 つの欄を分けて持つ。submitted_by は確かめた主体（種類 user・app・device と ID、確かめた方法）。claimed_user は送り手が名乗った名前（requesting-user-name・アプリが渡した名前）で、表示するだけ。持ち主・見える範囲・権限は submitted_by だけから決める（アプリの on-behalf-of を許すときは app-on-behalf の答え次第）
+    pm1_state: pm-1 の伝票は User の 1 つの欄に、トークンの名前か、トークンが無いときの requesting-user-name を入れている（print/manager の ipp.go の submitter、model.go の Slip.User）。確かめた名前と自己申告が見分けられないので、pm-auth-1 で分ける
   secret_hashing:
     rule: アプリの client_secret と人の IPP の合言葉は、ソルトつきの遅いハッシュで保存する（2026-10-21 利用者「argon2とかbcryptをつかって、ソルト＋ハッシュを保存が良い」）
     algorithm_proposed: argon2id（golang.org/x/crypto/argon2。x/crypto は bdf の go.mod に間接の依存で既にある）。bcrypt は 72 バイトで切れ、メモリを使わないので次点
@@ -161,6 +172,7 @@ facts:
   testing_proposed: 偽の IdP（httptest の上で OIDC の discovery・JWKS・認可コード・ID トークンを出す）を print-m6 の偽プリンタと同じ考えで作り、全部の試験をそれに載せる。実の IdP（Entra・Google・Keycloak）は手で確かめる
   delivery_proposed:
     current_milestone: pm-auth-1（暫定の名前。pm-1 がマージされた後）
+    first_step: 画面（/admin）に入るときの OIDC のログイン。2026-10-21 利用者「まず画面に入る時にOIDCのログインが欲しい気がします」。ブラウザで AdminToken を打つ形を外し、admins・admin_groups に当たる人だけが /admin に入る。偽の IdP で試す。/tablet は端末の認証のまま
     pm-auth-1: 人の OIDC ログイン（admin と一般）、最初の管理者の設定（admins と admin_groups）、claim のキーを設定で選ぶグループ、プリンタの personal・group・shared、ジョブの持ち主と見える範囲、自分とグループのジョブの一覧・刷り直し・取り消し、監査の記録、偽の IdP、session-key の鍵の列
     pm-auth-2: アプリ（管理画面で足す、/oauth/token の client credentials、scope とプリンタ・テンプレートの許可、IPP の Basic）。SubmitTokens・AdminToken・TickToken を外す
     pm-auth-3: 仮想プリンタのサービスユーザーとデバイスフロー（登録コードを置き換える）
@@ -235,5 +247,7 @@ history:
     summary: 2026-10-21 利用者が AskUserQuestion で、認可サーバーは混成、範囲はプリンタが既定、仮想プリンタは届いたジョブを見る（推奨の 3 つ）を選び、グループは「idpのclaimだが、どのキーがそれに該当するかは設定で持てる様にする必要がある」と答えた
   secret-hash-chosen:
     summary: 2026-10-21 利用者「アプリの client_secret、人の IPP 用の合言葉はargon2とかbcryptをつかって、ソルト＋ハッシュを保存が良いと思う」。SHA-256 の推奨を改め、argon2id（PHC の文字列）にした。要求ごとの IPP の Basic の重さは facts.secret_hashing.mitigations_proposed
+  login-first-and-who-printed:
+    summary: 2026-10-21 利用者「まず画面に入る時にOIDCのログインが欲しい気がします。印刷する時に誰が印刷したか、という情報って取れるのか？」。pm-auth-1 の最初を画面の OIDC のログインにし（facts.delivery_proposed.first_step）、誰が刷ったかを道ごとに整理した（facts.who_printed）。pm-1 の Slip.User が確かめた名前と自己申告を混ぜていることを見つけた
   pending-merge:
     summary: pm-1 の作業ツリーが requirement:print-manager の open_questions.viewer-login を書き換えている。両方がマージされたら viewer-login を requirement:print-manager-auth に寄せる。shibukawa/bdf#114 にある decision:print-manager-ui-daisyui（Tailwind v4.3.3 と daisyUI v5.7.50 で実装済み）への constrained_by の関係も、#114 が入った後にここへ足す（今は相手が無くコンパイルが断る）
