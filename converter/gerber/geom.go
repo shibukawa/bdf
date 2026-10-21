@@ -247,8 +247,6 @@ func (m affine) det() float64 { return m[0]*m[3] - m[1]*m[2] }
 // determinant's magnitude).
 func (m affine) scale() float64 { return math.Sqrt(math.Abs(m.det())) }
 
-func (m affine) linear() bool { return m[4] == 0 && m[5] == 0 }
-
 func translate(d vec) affine { return affine{1, 0, 0, 1, d.X, d.Y} }
 
 func rotate(deg float64) affine {
@@ -281,19 +279,6 @@ func (c *contour) transform(m affine) contour {
 			}
 		}
 		out.segs[i] = t
-	}
-	return out
-}
-
-// translated returns the contour moved by d.
-func (c *contour) translated(d vec) contour {
-	out := contour{start: c.start.add(d), segs: make([]seg, len(c.segs))}
-	for i, s := range c.segs {
-		s.to = s.to.add(d)
-		if s.arc {
-			s.c = s.c.add(d)
-		}
-		out.segs[i] = s
 	}
 	return out
 }

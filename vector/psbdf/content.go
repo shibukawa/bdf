@@ -127,7 +127,6 @@ type exporter struct {
 	stack  []gstate
 	obj    *bdf.ObjectPart
 	depth  int
-	alt    bool
 	floor  int
 	unsave int
 	groups []*frame

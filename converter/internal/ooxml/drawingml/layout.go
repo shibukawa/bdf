@@ -259,17 +259,12 @@ type laidOut struct {
 	width  float64 // widest line
 }
 
-// layoutBody lays out paragraphs in a column of the given width and returns
-// the lines with baselines relative to the top of the text.
-func layoutBody(paras []*para, width float64, wrap bool) *laidOut {
-	return layoutBodyLimit(paras, width, wrap, 0)
-}
-
-// layoutBodyLimit is layoutBody for text that flows on into other boxes:
-// when limit is positive it stops after the paragraph that reaches that
-// height, and the paragraphs are laid out on copies of their items, so
-// that the ones left over (justified lines stretch their items) can be
-// laid out again elsewhere.
+// layoutBodyLimit lays out paragraphs in a column of the given width and
+// returns the lines with baselines relative to the top of the text. For
+// text that flows on into other boxes, limit is positive: it stops after
+// the paragraph that reaches that height, and the paragraphs are laid out
+// on copies of their items, so that the ones left over (justified lines
+// stretch their items) can be laid out again elsewhere.
 func layoutBodyLimit(paras []*para, width float64, wrap bool, limit float64) *laidOut {
 	lo := &laidOut{}
 	y := 0.0

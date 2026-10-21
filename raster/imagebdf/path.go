@@ -392,15 +392,10 @@ func (p *path) extent() (box [4]float64, ok bool) {
 	return b, ok
 }
 
-// flatten turns the path into polylines through m, with curves split until
-// they deviate from their chords by less than tol (in the output space).
-func (p *path) flatten(m matrix, tol float64) []polyline {
-	return p.flattenTo(&scratch{}, make([]polyline, 0, len(p.subs)), m, tol)
-}
-
-// flattenTo is flatten with the memory of a renderer: the polylines are
-// added to out and their points to those sc holds, where they last until
-// sc is reset for the next drawing.
+// flattenTo turns the path into polylines through m, with curves split
+// until they deviate from their chords by less than tol (in the output
+// space). The polylines are added to out and their points to those sc
+// holds, where they last until sc is reset for the next drawing.
 func (p *path) flattenTo(sc *scratch, out []polyline, m matrix, tol float64) []polyline {
 	if sc.limited {
 		return out

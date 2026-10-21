@@ -753,11 +753,6 @@ func (r *Responder) additional(c *mdnsConn, answers []dnsmessage.Resource, ifInd
 	return out
 }
 
-// send sends a response of records: multicast, or to an address.
-func (r *Responder) send(c *mdnsConn, to *net.UDPAddr, answers, extra []dnsmessage.Resource) {
-	r.sendID(c, to, 0, nil, answers, extra, 0)
-}
-
 // maxPacket bounds a message: one that fits an Ethernet frame is not
 // fragmented, which Wi-Fi drops of multicast.
 const maxPacket = 1400

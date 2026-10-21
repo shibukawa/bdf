@@ -460,16 +460,6 @@ func (r rect) intersect(o rect) rect {
 	return rect{math.Max(r.x0, o.x0), math.Max(r.y0, o.y0), math.Min(r.x1, o.x1), math.Min(r.y1, o.y1)}
 }
 
-func (r rect) union(o rect) rect {
-	if r.empty() {
-		return o
-	}
-	if o.empty() {
-		return r
-	}
-	return rect{math.Min(r.x0, o.x0), math.Min(r.y0, o.y0), math.Max(r.x1, o.x1), math.Max(r.y1, o.y1)}
-}
-
 // transformRect returns the bounding box of the rectangle's corners after m.
 func (m matrix) transformRect(r rect) rect {
 	xs := [4]float64{}

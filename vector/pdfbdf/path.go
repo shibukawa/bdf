@@ -32,7 +32,6 @@ func (m matrix) apply(x, y float64) (float64, float64) {
 }
 
 func (m matrix) translate(x, y float64) matrix { return m.mul(matrix{1, 0, 0, 1, x, y}) }
-func (m matrix) scale(x, y float64) matrix     { return m.mul(matrix{x, 0, 0, y, 0, 0}) }
 
 // areaScale is how much the transform scales lengths, as the root of how
 // much it scales areas.

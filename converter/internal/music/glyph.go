@@ -57,9 +57,6 @@ func sym(name string) *glyph {
 	return g
 }
 
-// width is the width of the glyph's bounding box.
-func (g *glyph) width() float64 { return g.x1 - g.x0 }
-
 // anchor returns a named anchor, or (0, 0).
 func (g *glyph) anchor(name string) (x, y float64) {
 	a := g.anchors[name]
@@ -115,15 +112,6 @@ func parseOutline(d string, k float64) *outline {
 		}
 	}
 	return o
-}
-
-// path returns the outline scaled by s (pt per staff space).
-func (o *outline) path(s float64) *bdf.Path {
-	p := &bdf.Path{Verbs: append([]byte(nil), o.verbs...), Args: make([]float32, len(o.args))}
-	for i, v := range o.args {
-		p.Args[i] = f32(v * s)
-	}
-	return p
 }
 
 func f32(v float64) float32 {

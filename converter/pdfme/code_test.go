@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/image/barcode"
 	"github.com/shibukawa/bdf/converter/internal/formbox"
+	"github.com/shibukawa/bdf/image/barcode"
 )
 
 // pdfme owns the text below its bars, including whether it is drawn.

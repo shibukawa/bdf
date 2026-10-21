@@ -44,13 +44,12 @@ type coverImage struct {
 // the lyrics and the chapters. The text is set in the viewer's sans-serif
 // font, so lines are wrapped on estimated widths and left unmeasured.
 type card struct {
-	doc   *bdf.Document
-	o     *bdf.Object
-	w     float32 // the page width
-	y     float32 // the baseline of the next line
-	reg   bdf.FontRef
-	bold  bdf.FontRef
-	table int // rows of the details table
+	doc  *bdf.Document
+	o    *bdf.Object
+	w    float32 // the page width
+	y    float32 // the baseline of the next line
+	reg  bdf.FontRef
+	bold bdf.FontRef
 	// cues tie the time of the audio to the lines of the card: the
 	// synchronized lyrics, else the chapters (docs/spec.md §4.4).
 	cues bdf.Cues

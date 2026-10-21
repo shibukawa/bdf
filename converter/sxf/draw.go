@@ -340,11 +340,10 @@ func (r *renderer) marker(code int, p cad.Point, angle, scale float64, c bdf.Col
 // hatchLine is a family of hatch lines: through a point at an angle,
 // spaced apart, in a line style.
 type hatchLine struct {
-	style        lineStyle
-	x, y         float64
-	spacing      float64
-	angle        float64 // degrees
-	patternShift float64
+	style   lineStyle
+	x, y    float64
+	spacing float64
+	angle   float64 // degrees
 }
 
 // hatch draws hatch lines inside a boundary given in the coordinates that

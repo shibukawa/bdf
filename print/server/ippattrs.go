@@ -552,10 +552,6 @@ func (q *ippRequest) moreInfo() string {
 	return scheme + "://" + q.r.Host + q.queue.path
 }
 
-// printerGroups are the groups of printer attributes requested-attributes
-// names.
-var printerGroups = map[string][]string{}
-
 // queueState is the printer-state of a queue: stopped when it is paused
 // or its printers are, processing while it has a job at a printer.
 func (x *ippServer) queueState(name string) (ipp.PrinterState, []string, string, bool) {

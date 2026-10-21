@@ -73,7 +73,6 @@ type rower struct {
 	kind          Kind
 	written       int
 	row           []byte // the bytes of a row, for packing
-	bits          []byte // a byte a pixel of a bilevel row from gray pixels
 }
 
 func newRower(width, height int, kind Kind) (*rower, error) {

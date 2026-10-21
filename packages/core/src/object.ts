@@ -1,5 +1,5 @@
 import { ByteReader, BdfFormatError } from "./bytes.js";
-import { Op, OPSET_VERSION, OP_NAMES, PaintKind, FontKind, VERB_ARGS } from "./opcodes.js";
+import { Op, OPSET_VERSION, PaintKind, FontKind, VERB_ARGS } from "./opcodes.js";
 import type { ObjectPart, PathData, PathEntry, Paint, Font, Glyph, OpSink, Hash } from "./types.js";
 
 const PAINT_COORDS = [4, 6, 3];
@@ -265,7 +265,7 @@ export class NoopSink implements OpSink {
 export function opHistogram(o: ObjectPart): Record<string, number> {
   const counts: Record<string, number> = {};
   const sink = new Proxy(new NoopSink(), {
-    get(target, prop) {
+    get(_target, prop) {
       return (..._args: unknown[]) => {
         const name = String(prop);
         counts[name] = (counts[name] ?? 0) + 1;
@@ -276,4 +276,3 @@ export function opHistogram(o: ObjectPart): Record<string, number> {
   return counts;
 }
 
-export { OP_NAMES };

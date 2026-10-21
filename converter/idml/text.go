@@ -49,7 +49,6 @@ type textStyle struct {
 	fillTint  float64
 	leading   float64 // points; 0 for auto
 	autoLead  float64 // percent
-	hasText   bool
 }
 
 // resolveText reads the character properties along a chain of elements
@@ -127,7 +126,6 @@ var languages = map[string]string{
 type storyText struct {
 	body     *ooxml.Node
 	vertical bool
-	hasText  bool
 }
 
 // storyBody builds the text body of a story; pageNum is the number of the

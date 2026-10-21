@@ -293,7 +293,5 @@ func (s *sheetInst) uses(file string) bool {
 	return false
 }
 
-func (s *sheetInst) displayPath() string { return s.namePath }
-
 // fileBase is the file name of a sheet's file.
 func (s *sheetInst) fileBase() string { return path.Base(s.file.path) }

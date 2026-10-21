@@ -76,7 +76,6 @@ type system struct {
 type staffLayout struct {
 	prims        []prim
 	above, below float64 // extents (above is negative)
-	lyricsY      []float64
 }
 
 // engraver lays out and draws one score.
