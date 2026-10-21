@@ -118,7 +118,7 @@ func (m *Manager) routeDisplay(ctx context.Context, r *routing, loc, from string
 		return
 	}
 	j := r.job
-	s := Slip{ID: slipID(j.Number, loc), Job: j.Number, Location: loc, Name: j.Name, User: j.User, Source: j.Source, Format: j.Format,
+	s := Slip{ID: slipID(j.Number, loc), Job: j.Number, Location: loc, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Source: j.Source, Format: j.Format,
 		Pages: j.Pages, Size: j.Size, SHA256: j.SHA256, Received: r.now, State: SlipNew}
 	if l.Fallback != nil && l.Fallback.After > 0 {
 		s.FallbackAt = r.now.Add(l.Fallback.After.d())

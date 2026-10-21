@@ -19,47 +19,79 @@ component Shell(title: string, children: html): html {
   </html>
 }
 
+// Account is the person signed in.
+type Account {
+  name: string
+  initial: string
+  email: string
+  admin: bool
+}
+
 // AppBar is the bar at the top of a page: the pages of the person signed
-// in (admin: the administrator's too) and the way out; its children go
-// before them.
-component AppBar(title: string, name: string, admin: bool, children: html?): html {
+// in (admin: the administrator's too), who they are, and the way out
+// (the IdP's sign-in ends); its children go before them.
+component AppBar(title: string, account: Account, children: html?): html {
   <header class="navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm">
     <div class="flex-1 min-w-0">
-      <a href="/jobs" class="text-xl font-bold tracking-tight">{title}</a>
+      <a href="/jobs" class="truncate text-lg font-bold tracking-tight sm:text-xl">{title}</a>
     </div>
     <nav class="flex flex-wrap items-center gap-2">
       <slot />
       <a href="/jobs" class="btn btn-sm btn-ghost">Jobs</a>
-      {if admin}
+      {if account.admin}
         <a href="/admin" class="btn btn-sm btn-ghost">Admin</a>
         <a href="/audit" class="btn btn-sm btn-ghost">Audit</a>
       {/if}
-      <form method="post" action="/logout" class="contents">
-        <button type="submit" class="btn btn-sm btn-outline">Sign out <span class="font-mono text-xs opacity-70">{name}</span></button>
-      </form>
+      <div class="flex min-w-0 items-center gap-2">
+        <div class="avatar avatar-placeholder" title={account.name}>
+          <div class="w-8 rounded-full bg-neutral text-neutral-content"><span class="text-sm">{account.initial}</span></div>
+        </div>
+        <div class="hidden min-w-0 flex-col leading-tight sm:flex">
+          <span id="account-name" class="max-w-48 truncate text-sm font-semibold">{account.name}</span>
+          <span class="max-w-48 truncate text-xs text-base-content/60">{account.email}</span>
+        </div>
+        {if account.admin}<span class="badge badge-primary badge-sm">Admin</span>{/if}
+        <form method="post" action="/auth/logout">
+          <button id="logout" type="submit" class="btn btn-sm btn-outline">Sign out</button>
+        </form>
+      </div>
     </nav>
   </header>
 }
 
-// Login is the top page: a sign-in.
-export component Login(failed: bool): html {
+// SignIn is the top page: a sign-in at the IdP (enabled), or, with no
+// IdP configured (development only), a word that nobody signs in.
+export component SignIn(enabled: bool): html {
   <Shell title="BDF Print Manager">
     <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center p-4">
       <div class="card bg-base-100 shadow-md">
-        <form method="post" action="/login" class="card-body gap-4">
+        <div class="card-body gap-4">
           <h1 class="card-title text-2xl">BDF Print Manager</h1>
           <p class="text-base-content/70">A software-defined document network: documents enter at virtual printers and API endpoints, flow through the nodes you compose, and end on display boards, printers and archives.</p>
-          <fieldset class="fieldset">
-            <legend class="fieldset-legend">Token</legend>
-            <input name="token" type="password" autocomplete="current-password" class="input w-full" placeholder="admin token, or name:secret" required autofocus>
-            <p class="label">An administrator signs in with the admin token; a user with a submit token's name and secret.</p>
-          </fieldset>
-          {if failed}
-            <div role="alert" class="alert alert-error">The token is not known.</div>
+          {if enabled}
+            <a id="sign-in" href="/auth/login?next=%2Fjobs" class="btn btn-primary btn-block">Sign in</a>
+            <p class="text-center text-sm text-base-content/60">with your organization's account</p>
+          {else}
+            <div role="alert" class="alert alert-warning">No sign-in is configured (AUTH_OIDC_ISSUER): nobody signs in. Development only.</div>
           {/if}
-          <button type="submit" class="btn btn-primary btn-block">Sign in</button>
           <a href="/tablet" class="link link-hover text-center text-sm text-base-content/60">This is a display board's device</a>
-        </form>
+        </div>
+      </div>
+    </main>
+  </Shell>
+}
+
+// Forbidden is the page of what the person signed in may not open.
+export component Forbidden(account: Account): html {
+  <Shell title="Forbidden · BDF Print Manager">
+    <AppBar title="BDF Print Manager" account={account}></AppBar>
+    <main class="mx-auto max-w-lg p-4 sm:p-8">
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body items-center text-center">
+          <h1 class="card-title text-2xl">Administrators only</h1>
+          <p class="text-base-content/70">{account.name} is not an administrator. Your jobs and your groups' are on the Jobs page.</p>
+          <div class="card-actions"><a href="/jobs" class="btn btn-primary">Jobs</a></div>
+        </div>
       </div>
     </main>
   </Shell>
@@ -67,14 +99,14 @@ export component Login(failed: bool): html {
 
 // Jobs is a person's page: their jobs, and printing a document to a
 // node. An administrator sees every job.
-export component Jobs(name: string, admin: bool): html {
+export component Jobs(account: Account): html {
   <Shell title="Jobs · BDF Print Manager">
-    <AppBar title="BDF Print Manager" name={name} admin={admin}></AppBar>
-    <main class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
+    <AppBar title="BDF Print Manager" account={account}></AppBar>
+    <main class="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6">
       <section class="card bg-base-100 shadow-sm">
         <form id="print-form" class="card-body">
           <h2 class="card-title">Print a document</h2>
-          <p class="text-sm text-base-content/60">PDF, Office documents, images and .bdf. It flows from the node chosen.</p>
+          <p class="text-sm text-base-content/60">PDF, Office documents, images and .bdf. It flows from the node chosen; the nodes listed are those you may send to.</p>
           <div class="flex flex-wrap gap-2">
             <select id="print-dest" class="select w-full sm:w-64" required></select>
             <input id="print-file" type="file" class="file-input w-full sm:flex-1" required>
@@ -86,12 +118,12 @@ export component Jobs(name: string, admin: bool): html {
       <section class="card bg-base-100 shadow-sm">
         <div class="card-body">
           <div class="flex flex-wrap items-center gap-3">
-            <h2 class="card-title">{if admin}All jobs{else}My jobs{/if}</h2>
+            <h2 class="card-title">{if account.admin}All jobs{else}My jobs and my groups'{/if}</h2>
             <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
           </div>
           <div class="overflow-x-auto">
             <table class="table table-sm">
-              <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>User</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead>
+              <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th class="hidden md:table-cell">Group</th><th class="hidden sm:table-cell">Received</th><th>State</th><th class="hidden lg:table-cell">Route</th><th></th></tr></thead>
               <tbody id="jobs"></tbody>
             </table>
           </div>
@@ -104,10 +136,10 @@ export component Jobs(name: string, admin: bool): html {
 }
 
 // Audit is the administrator's page of who did what.
-export component Audit(name: string): html {
+export component Audit(account: Account): html {
   <Shell title="Audit · BDF Print Manager">
-    <AppBar title="BDF Print Manager" name={name} admin={true}></AppBar>
-    <main class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
+    <AppBar title="BDF Print Manager" account={account}></AppBar>
+    <main class="mx-auto grid max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6">
       <section class="card bg-base-100 shadow-sm">
         <div class="card-body">
           <div class="flex flex-wrap items-center gap-3">
@@ -127,7 +159,7 @@ export component Audit(name: string): html {
           <h2 class="card-title">Recent jobs and their routes</h2>
           <div class="overflow-x-auto">
             <table class="table table-sm">
-              <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>User</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead>
+              <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead>
               <tbody id="jobs"></tbody>
             </table>
           </div>
@@ -201,12 +233,12 @@ export component Tablet(): html {
   </Shell>
 }
 
-export component Admin(name: string): html {
+export component Admin(account: Account): html {
   <Shell title="Admin · BDF Print Manager">
-    <AppBar title="BDF Print Manager" name={name} admin={true}>
+    <AppBar title="BDF Print Manager" account={account}>
       <button id="tick" type="button" class="btn btn-sm">Tick now</button>
     </AppBar>
-    <main id="admin" class="mx-auto grid max-w-7xl gap-6 p-4 sm:p-6">
+    <main id="admin" class="mx-auto grid max-w-7xl grid-cols-1 gap-6 p-4 sm:p-6">
 
       <section class="card bg-base-100 shadow-sm">
         <div class="card-body">
@@ -242,6 +274,8 @@ export component Admin(name: string): html {
             <input id="node-keep" class="input sm:col-span-1" placeholder="keep (14d)" hidden>
             <input id="node-store" class="input sm:col-span-3" placeholder="store: s3://bucket?region=… / bbolt:path" hidden>
             <input id="node-collection" class="input sm:col-span-2" placeholder="collection (optional)" hidden>
+            <select id="node-scope" class="select sm:col-span-1" title="who may send to it from the pages, and whose its jobs are"><option value="shared">shared</option><option value="group">group</option><option value="personal">personal</option></select>
+            <input id="node-owner" class="input sm:col-span-2" placeholder="owner: a group, or a person's email">
             <button type="submit" class="btn btn-primary sm:col-span-1">Add or update</button>
           </form>
         </div>
@@ -306,6 +340,8 @@ export component Admin(name: string): html {
           <form id="printer-form" class="mt-2 flex flex-wrap gap-2">
             <input id="printer-name" class="input w-full sm:w-48" placeholder="name (wh-a-laser)" required>
             <input id="printer-url" class="input w-full sm:flex-1" placeholder="ipps://… / socket://…:9100" required>
+            <select id="printer-scope" class="select w-full sm:w-32" title="who may send to it from the pages, and whose its jobs are"><option value="shared">shared</option><option value="group">group</option><option value="personal">personal</option></select>
+            <input id="printer-owner" class="input w-full sm:w-56" placeholder="owner: a group, or a person's email">
             <button type="submit" class="btn btn-primary">Add or update</button>
           </form>
         </div>
@@ -323,6 +359,8 @@ export component Admin(name: string): html {
               <input id="location-title" class="input w-full sm:w-48" placeholder="title (Warehouse A)">
               <input id="location-printer" class="input w-full sm:w-48" placeholder="fallback printer">
               <input id="location-after" class="input w-full sm:w-28" placeholder="after (10m)">
+              <select id="location-scope" class="select w-full sm:w-32" title="who may send to it from the pages, and whose its jobs are"><option value="shared">shared</option><option value="group">group</option><option value="personal">personal</option></select>
+              <input id="location-owner" class="input w-full sm:w-56" placeholder="owner: a group, or a person's email">
               <button type="submit" class="btn btn-primary">Add or update</button>
             </div>
           </div>

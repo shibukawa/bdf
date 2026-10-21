@@ -1,5 +1,6 @@
-// A person's page: print a document to a node, and see their jobs (an
-// administrator: every job), through the API with the session's cookie.
+// A person's page: print a document to a node they may send to, and see
+// their jobs and their groups' (an administrator: every job), through the
+// API with the session's cookie.
 
 const $ = (id) => document.getElementById(id);
 
@@ -41,9 +42,24 @@ function legsOf(j) {
     .join(" → ");
 }
 
+// sender is who sent a job, as verified, and the name they gave.
+function sender(j) {
+  const by = j.submitted_by || {};
+  const who = by.name || by.id || by.kind || "";
+  return j.claimed_user && j.claimed_user !== who ? `${who} (as ${j.claimed_user})` : who;
+}
+
+let me = null;
+
+// mine tells a job the person sent.
+function mine(j) {
+  const by = j.submitted_by || {};
+  return me && by.kind === me.kind && by.id === me.id;
+}
+
 function stateBadge(state) {
   const cls = state === "completed" ? "badge-success badge-soft" : state === "held" ? "badge-warning" : state === "processing" ? "badge-info" : "badge-ghost";
-  return el("span", state, { className: "badge " + cls });
+  return el("span", state, { className: "badge whitespace-nowrap " + cls });
 }
 
 async function loadDestinations() {
@@ -59,18 +75,20 @@ async function loadJobs() {
     tr.append(
       el("td", "#" + j.number, { className: "font-mono" }),
       el("td", j.name || "", { className: "font-semibold" }),
-      el("td", j.dest, { className: "font-mono text-sm" }),
-      el("td", j.user || "", { className: "text-sm" }),
-      el("td", new Date(j.received).toLocaleString(), { className: "text-sm text-base-content/60" }),
+      el("td", j.dest, { className: "whitespace-nowrap font-mono text-sm" }),
+      el("td", sender(j), { className: "text-sm" }),
+      el("td", j.group || "—", { className: "hidden whitespace-nowrap text-sm md:table-cell" }),
+      el("td", new Date(j.received).toLocaleString(), { className: "hidden text-sm text-base-content/60 sm:table-cell" }),
       el("td"),
-      el("td", legsOf(j), { className: "font-mono text-xs" }),
-      el("td"),
+      el("td", legsOf(j), { className: "hidden font-mono text-xs lg:table-cell" }),
+      el("td", undefined, { className: "whitespace-nowrap" }),
     );
-    tr.children[5].append(stateBadge(j.state));
+    tr.children[6].append(stateBadge(j.state));
     const actions = tr.lastChild;
     const a = el("a", "Document", { className: "btn btn-xs btn-ghost mr-1", href: `/api/jobs/${j.id}/document` });
     actions.append(a);
-    if (!ENDED.includes(j.state) || (j.legs || []).some((l) => l.kind === "display" && l.state === "shown")) {
+    // the sender and an administrator cancel; the group only sees
+    if ((mine(j) || me?.admin) && (!ENDED.includes(j.state) || (j.legs || []).some((l) => l.kind === "display" && l.state === "shown"))) {
       const b = el("button", "Cancel", { type: "button", className: "btn btn-xs btn-ghost text-error" });
       b.addEventListener("click", async () => {
         try {
@@ -86,7 +104,7 @@ async function loadJobs() {
   });
   if (!rows.length) {
     const tr = el("tr");
-    tr.append(el("td", "No jobs yet", { colSpan: 8, className: "text-base-content/50" }));
+    tr.append(el("td", "No jobs yet", { colSpan: 9, className: "text-base-content/50" }));
     rows.push(tr);
   }
   $("jobs").replaceChildren(...rows);
@@ -94,6 +112,7 @@ async function loadJobs() {
 
 async function load() {
   try {
+    me = me || (await api("GET", "/api/me"));
     await loadDestinations();
     await loadJobs();
   } catch (e) {

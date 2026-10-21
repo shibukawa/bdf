@@ -18,7 +18,7 @@ import (
 // routeInbox holds the job in an inbox.
 func (m *Manager) routeInbox(ctx context.Context, r *routing, name, from string) {
 	j := r.job
-	it := Item{ID: itemID(j.Number, name), Job: j.Number, Inbox: name, Name: j.Name, User: j.User, Dest: j.Dest, Pages: j.Pages, Received: r.now, State: ItemHeld}
+	it := Item{ID: itemID(j.Number, name), Job: j.Number, Inbox: name, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Dest: j.Dest, Pages: j.Pages, Received: r.now, State: ItemHeld}
 	_, err := m.st.db.Insert(ctx, it.ID, itemRecord(it))
 	if errors.Is(err, yuruidb.ErrAlreadyExists) {
 		r.add(Leg{Node: name, Kind: KindInbox, From: from, State: LegError, Ref: it.ID, Error: "the job passed this inbox already"})

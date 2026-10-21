@@ -26,7 +26,7 @@ type handler struct {
 //
 //	POST /ipp/print/{node}                     the node's IPP printer
 //	POST /ipp/print                            the server (CUPS-Get-Printers)
-//	/api/…                                     the API (bearer AdminToken)
+//	/api/…                                     the API (bearer AdminToken, or a session of the pages)
 //	/device/…                                  the devices' endpoints (their session)
 //
 // It is mounted on the web application's mux; it holds nothing between
@@ -51,8 +51,6 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/printers/{name}", h.adminOnly(h.getPrinter))
 	mux.HandleFunc("PUT /api/printers/{name}", h.adminOnly(h.putPrinter))
 	mux.HandleFunc("DELETE /api/printers/{name}", h.adminOnly(h.deletePrinter))
-	mux.HandleFunc("POST /login", h.login)
-	mux.HandleFunc("POST /logout", h.logout)
 	mux.HandleFunc("GET /api/me", h.whoami)
 	mux.HandleFunc("GET /api/my/jobs", h.userOnly(h.myJobs))
 	mux.HandleFunc("GET /api/destinations", h.userOnly(h.destinations))
@@ -148,27 +146,22 @@ func sameSecret(a, b string) bool {
 	return a != "" && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-// admin tells a request of an administrator: the admin token (bearer),
-// or a session signed in with it.
-func (h *handler) admin(r *http.Request) bool {
-	if sameSecret(h.m.o.AdminToken, bearer(r)) {
-		return true
-	}
-	if c, err := r.Cookie(UserCookie); err == nil {
-		p, ok := h.m.UserSession(c.Value)
-		return ok && p.Admin
-	}
-	return false
-}
-
+// adminOnly serves a request of an administrator: the admin token, or
+// an admin signed in to the pages.
 func (h *handler) adminOnly(fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !h.admin(r) {
+		v, ok := h.viewerOf(r)
+		switch {
+		case !ok:
 			w.Header().Set("WWW-Authenticate", `Bearer realm="bdf print manager"`)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the admin token is required"})
-			return
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the admin token or an administrator's sign-in is required"})
+		case !v.Admin:
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "administrators only"})
+		case !sameOrigin(r):
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "a request of another origin"})
+		default:
+			fn(w, r)
 		}
-		fn(w, r)
 	}
 }
 
@@ -461,11 +454,11 @@ func (h *handler) destJobs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, js)
 }
 
-func (h *handler) getJob(w http.ResponseWriter, r *http.Request, p Principal, j *Job) {
+func (h *handler) getJob(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
 	writeJSON(w, http.StatusOK, j)
 }
 
-func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, p Principal, j *Job) {
+func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
 	w.Header().Set("Content-Type", "application/x-bdf")
 	w.Header().Set("Content-Length", strconv.FormatInt(j.Size, 10))
 	w.Header().Set("Content-Disposition", `attachment; filename="job-`+j.ID+`.bdf"`)
@@ -474,13 +467,19 @@ func (h *handler) jobDocument(w http.ResponseWriter, r *http.Request, p Principa
 	}
 }
 
-func (h *handler) cancelJob(w http.ResponseWriter, r *http.Request, p Principal, j *Job) {
-	j, err := h.m.Cancel(r.Context(), j.ID, Mark{Worker: p.Name})
+// cancelJob cancels a job: the submitter's or an administrator's (the
+// members of its group see it only).
+func (h *handler) cancelJob(w http.ResponseWriter, r *http.Request, v *Viewer, j *Job) {
+	if !v.CanCancel(j) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the sender or an administrator cancels a job"})
+		return
+	}
+	j, err := h.m.Cancel(r.Context(), j.ID, Mark{Worker: clip(v.Label(), 80)})
 	if err != nil {
 		h.writeErr(w, err)
 		return
 	}
-	h.m.audit(r.Context(), p.Name, "cancel-job", j.ID, j.Name)
+	h.m.audit(r.Context(), v.Label(), "cancel-job", j.ID, j.Name)
 	writeJSON(w, http.StatusOK, j)
 }
 
@@ -555,7 +554,20 @@ func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
 // At /api/locations/{name}/slips the answer is the slip of the location;
 // at /api/destinations/{name}/jobs, the job.
 func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.submitter(r)
+	by, ok := h.submitter(r)
+	if v, signedIn := h.viewerOf(r); signedIn && v.Kind == PrincipalUser {
+		// a person signed in sends as themselves, to a node they may
+		scope, owner, _, err := h.m.destScope(r.Context(), r.PathValue("name"))
+		if err != nil {
+			h.writeErr(w, err)
+			return
+		}
+		if !v.CanSendTo(scope, owner) || !sameOrigin(r) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not send to " + r.PathValue("name")})
+			return
+		}
+		by, ok = v.Principal(), true
+	}
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "a submit token is required"})
 		return
@@ -578,7 +590,7 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	dest := r.PathValue("name")
-	j, err := h.m.Submit(r.Context(), dest, Input{Name: q.Get("name"), User: firstOr(user, q.Get("user")), Source: "api", Doc: f, Size: n})
+	j, err := h.m.Submit(r.Context(), dest, Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "api", Doc: f, Size: n})
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -598,10 +610,14 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 
 // tick runs Tick: for the admin, or the scheduler's TickToken.
 func (h *handler) tick(w http.ResponseWriter, r *http.Request) {
-	if !h.admin(r) && !sameSecret(h.m.o.TickToken, bearer(r)) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the tick token is required"})
+	if sameSecret(h.m.o.TickToken, bearer(r)) {
+		h.runTick(w, r)
 		return
 	}
+	h.adminOnly(h.runTick)(w, r)
+}
+
+func (h *handler) runTick(w http.ResponseWriter, r *http.Request) {
 	rep, err := h.m.Tick(r.Context())
 	if err != nil {
 		h.m.o.Log.Warn("tick", "err", err)

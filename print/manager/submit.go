@@ -20,8 +20,10 @@ import (
 type Input struct {
 	// Name is the job's name (job-name, or the file's).
 	Name string
-	// User is who the sender says sent it (requesting-user-name).
-	User string
+	// By is who sent it, as verified; nil is an anonymous sender.
+	By *Principal
+	// ClaimedUser is who the sender says sent it (requesting-user-name).
+	ClaimedUser string
 	// Source is "ipp" or "api".
 	Source string
 	// Doc is the document, of Size bytes: .bdf, or what the converter
@@ -76,8 +78,17 @@ func (m *Manager) submitDoc(ctx context.Context, dest string, doc *bdf.Document,
 		return nil, err
 	}
 	now := m.now()
-	j := &Job{ID: jobID(number), Number: number, Dest: dest, Name: clip(in.Name, 255), User: clip(in.User, 255), Source: in.Source,
-		Format: format, Pages: len(v.Pages), SHA256: hex.EncodeToString(h.Sum(nil)), Received: now, State: JobProcessing, Legs: []Leg{}}
+	by := in.By
+	if by == nil {
+		by = &Principal{Kind: PrincipalAnonymous, Via: ViaNone}
+	}
+	_, _, group, err := m.destScope(ctx, dest)
+	if err != nil {
+		return nil, err
+	}
+	j := &Job{ID: jobID(number), Number: number, Dest: dest, Name: clip(in.Name, 255), SubmittedBy: by, ClaimedUser: clip(in.ClaimedUser, 255),
+		Group: group, Source: in.Source, Format: format, Pages: len(v.Pages), SHA256: hex.EncodeToString(h.Sum(nil)), Received: now,
+		State: JobProcessing, Legs: []Leg{}}
 	meta, err := m.st.docs.Insert(ctx, j.ID, f)
 	if err != nil {
 		return nil, mapErr(err)
@@ -104,7 +115,8 @@ func (m *Manager) submitDoc(ctx context.Context, dest string, doc *bdf.Document,
 	if err := m.touchDest(ctx, allJobs, j.ID); err != nil {
 		return j, err
 	}
-	m.o.Log.Info("job", "dest", dest, "job", number, "name", j.Name, "pages", j.Pages, "source", j.Source, "state", j.State, "legs", len(j.Legs))
+	m.o.Log.Info("job", "dest", dest, "job", number, "name", j.Name, "pages", j.Pages, "source", j.Source, "state", j.State, "legs", len(j.Legs),
+		"by", by.Kind+":"+by.ID, "via", by.Via)
 	m.kick(r.deliveries)
 	return j, nil
 }

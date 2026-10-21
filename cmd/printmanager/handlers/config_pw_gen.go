@@ -13,6 +13,7 @@ import (
 
 func init() {
 	registerManagerConfigDefinition0()
+	registerOIDCConfigDefinition1()
 }
 
 func registerManagerConfigDefinition0() {
@@ -48,7 +49,7 @@ func registerManagerConfigDefinition0() {
 			{Prefix: "manager", Key: "records", Help: "store of the records: bbolt:path, dynamodb://table?region=…, firestore://project/database, s3://bucket?region=…, r2://bucket?endpoint=…, gcs://bucket"},
 			{Prefix: "manager", Key: "documents", Help: "store of the slips' documents (bbolt, s3, r2, gcs); empty for the records' store"},
 			{Prefix: "manager", Key: "secret", Help: "signs the devices' sessions: 32 bytes or more, the same for every instance (required outside dev)"},
-			{Prefix: "manager", Key: "admin_token", Help: "bearer token of the API (/api)"},
+			{Prefix: "manager", Key: "admin_token", Help: "bearer token of the API (/api), for scripts; people sign in with OIDC"},
 			{Prefix: "manager", Key: "tick_token", Help: "bearer token a scheduler calls POST /api/tick with"},
 			{Prefix: "manager", Key: "submit_tokens", Help: "name:secret pairs that may send jobs; none lets anyone send", Kind: cliparser.KindArray},
 			{Prefix: "manager", Key: "tick_interval", Help: "how often the process ticks; 0 leaves it to a scheduler (serverless)"},
@@ -64,7 +65,7 @@ func registerManagerConfigDefinition0() {
 			{Key: "records", Kind: configbind.ScaffoldString, Default: "bbolt:printmanager.db", Help: "store of the records: bbolt:path, dynamodb://table?region=…, firestore://project/database, s3://bucket?region=…, r2://bucket?endpoint=…, gcs://bucket"},
 			{Key: "documents", Kind: configbind.ScaffoldString, Help: "store of the slips' documents (bbolt, s3, r2, gcs); empty for the records' store"},
 			{Key: "secret", Kind: configbind.ScaffoldString, Help: "signs the devices' sessions: 32 bytes or more, the same for every instance (required outside dev)"},
-			{Key: "admin_token", Kind: configbind.ScaffoldString, Help: "bearer token of the API (/api)"},
+			{Key: "admin_token", Kind: configbind.ScaffoldString, Help: "bearer token of the API (/api), for scripts; people sign in with OIDC"},
 			{Key: "tick_token", Kind: configbind.ScaffoldString, Help: "bearer token a scheduler calls POST /api/tick with"},
 			{Key: "submit_tokens", Kind: configbind.ScaffoldStringSlice, Help: "name:secret pairs that may send jobs; none lets anyone send"},
 			{Key: "tick_interval", Kind: configbind.ScaffoldDuration, Default: "30s", Help: "how often the process ticks; 0 leaves it to a scheduler (serverless)"},
@@ -159,6 +160,76 @@ func applyManagerConfigDefinition0(dst any, o *configbind.Overlay) error {
 		p.SecureCookies = bb
 	} else {
 		p.SecureCookies = true
+	}
+	return nil
+}
+
+func registerOIDCConfigDefinition1() {
+	configbind.Register[OIDCConfig](configbind.Definition{
+		TypeName: "github.com/shibukawa/bdf/cmd/printmanager/handlers.OIDCConfig",
+		Prefix:   "oidc",
+		Doc:      "OIDCConfig is the [oidc] table, or the OIDC_* variables: who of the people the IdP signs in (popcornweb's [auth.oidc]: issuer, client_id, client_secret, redirect_url) gets in, their groups, and the admins",
+		KnownKeys: []string{
+			"oidc.groups_claim",
+			"oidc.groups_prefix",
+			"oidc.admins",
+			"oidc.admin_groups",
+			"oidc.allowed.issuers",
+			"oidc.allowed.domains",
+			"oidc.allowed.groups",
+		},
+		Defaults: map[string]string{
+			"oidc.groups_claim": "groups",
+		},
+		FlagMetas: []cliparser.FieldMeta{
+			{Prefix: "oidc", Key: "groups_claim", Help: "claim of the groups: a name, or a dotted path (realm_access.roles); a string or an array of them"},
+			{Prefix: "oidc", Key: "groups_prefix", Help: "take only the groups of this prefix"},
+			{Prefix: "oidc", Key: "admins", Help: "admins: issuer#subject, or a verified email; at least one admin rule outside dev", Kind: cliparser.KindArray},
+			{Prefix: "oidc", Key: "admin_groups", Help: "groups whose members are admins", Kind: cliparser.KindArray},
+			{Prefix: "oidc", Key: "allowed.issuers", Help: "issuers whose people get in", Kind: cliparser.KindArray},
+			{Prefix: "oidc", Key: "allowed.domains", Help: "email domains (or Google's hd) whose people get in", Kind: cliparser.KindArray},
+			{Prefix: "oidc", Key: "allowed.groups", Help: "groups whose members get in", Kind: cliparser.KindArray},
+		},
+		Apply: applyOIDCConfigDefinition1,
+		Scaffold: []configbind.ScaffoldField{
+			{Key: "groups_claim", Kind: configbind.ScaffoldString, Default: "groups", Help: "claim of the groups: a name, or a dotted path (realm_access.roles); a string or an array of them"},
+			{Key: "groups_prefix", Kind: configbind.ScaffoldString, Help: "take only the groups of this prefix"},
+			{Key: "admins", Kind: configbind.ScaffoldStringSlice, Help: "admins: issuer#subject, or a verified email; at least one admin rule outside dev"},
+			{Key: "admin_groups", Kind: configbind.ScaffoldStringSlice, Help: "groups whose members are admins"},
+			{Key: "allowed.issuers", Kind: configbind.ScaffoldStringSlice, Help: "issuers whose people get in"},
+			{Key: "allowed.domains", Kind: configbind.ScaffoldStringSlice, Help: "email domains (or Google's hd) whose people get in"},
+			{Key: "allowed.groups", Kind: configbind.ScaffoldStringSlice, Help: "groups whose members get in"},
+		},
+	})
+}
+
+func applyOIDCConfigDefinition1(dst any, o *configbind.Overlay) error {
+	p, ok := dst.(*OIDCConfig)
+	if !ok || p == nil {
+		return fmt.Errorf("configbind: apply OIDCConfig: bad destination")
+	}
+	if v, ok := o.GetString("oidc.groups_claim"); ok {
+		p.GroupsClaim = v
+	} else {
+		p.GroupsClaim = "groups"
+	}
+	if v, ok := o.GetString("oidc.groups_prefix"); ok {
+		p.GroupsPrefix = v
+	}
+	if v, ok := o.GetMulti("oidc.admins"); ok {
+		p.Admins = v
+	}
+	if v, ok := o.GetMulti("oidc.admin_groups"); ok {
+		p.AdminGroups = v
+	}
+	if v, ok := o.GetMulti("oidc.allowed.issuers"); ok {
+		p.Allowed.Issuers = v
+	}
+	if v, ok := o.GetMulti("oidc.allowed.domains"); ok {
+		p.Allowed.Domains = v
+	}
+	if v, ok := o.GetMulti("oidc.allowed.groups"); ok {
+		p.Allowed.Groups = v
 	}
 	return nil
 }

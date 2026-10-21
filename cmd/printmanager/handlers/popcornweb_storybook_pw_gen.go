@@ -26,6 +26,13 @@ func init() {
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
+		Name:      "Forbidden",
+		Exported:  true,
+		NewParams: func() any { return new(ForbiddenParams) },
+		Render:    func(params any) htmlbind.Fragment { return Forbidden(*params.(*ForbiddenParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
 		Name:      "Jobs",
 		Exported:  true,
 		NewParams: func() any { return new(JobsParams) },
@@ -33,10 +40,10 @@ func init() {
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
-		Name:      "Login",
+		Name:      "SignIn",
 		Exported:  true,
-		NewParams: func() any { return new(LoginParams) },
-		Render:    func(params any) htmlbind.Fragment { return Login(*params.(*LoginParams)) },
+		NewParams: func() any { return new(SignInParams) },
+		Render:    func(params any) htmlbind.Fragment { return SignIn(*params.(*SignInParams)) },
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",

@@ -207,8 +207,8 @@ open_questions:
     resolution: どちらでもなく「場所と端末」。2026-10-20 利用者「基本的にはペーパーレスで、伝票を見せる、という用途を考えていた。現場の倉庫ごとの仮想プリンタを作り、タブレットからアクセス。デバイス認証とかで認証してその端末からのみ見せる、といったことを想定していた」。display:// の表示先と端末の認証（facts.display、facts.device_auth）
   viewer-login:
     text: 画面のログインを最初から OIDC にするか、まずトークンで OIDC は後か
-    state: open
-    resolution: タブレットはデバイス認証（paperless-meaning の答えから）。事務所の人と管理者は暫定でまずトークン、OIDC は pm-3。popcornweb が OIDC を持つので、前に寄せる費用は小さい
+    state: answered
+    resolution: タブレットはデバイス認証（paperless-meaning の答えから）。事務所の人と管理者は最初から OIDC（requirement:print-manager-auth、2026-10-21 利用者。milestone:pm-auth-1 で実装）
   search-engine:
     text: 索引を自前（別の bbolt のファイルに項目と本文の 2-gram）にするか、外の検索エンジン（Meilisearch）にするか
     state: open

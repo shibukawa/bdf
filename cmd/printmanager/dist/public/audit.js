@@ -14,6 +14,13 @@ async function api(path) {
   return out;
 }
 
+// sender is who sent a job, as verified, and the name they gave.
+function sender(j) {
+  const by = j.submitted_by || {};
+  const who = by.name || by.id || by.kind || "";
+  return j.claimed_user && j.claimed_user !== who ? `${who} (as ${j.claimed_user})` : who;
+}
+
 function el(tag, text, attrs = {}) {
   const e = document.createElement(tag);
   if (text !== undefined) e.textContent = text;
@@ -54,7 +61,7 @@ async function load() {
       el("td", "#" + j.number, { className: "font-mono" }),
       el("td", j.name || "", { className: "font-semibold" }),
       el("td", j.dest, { className: "font-mono text-sm" }),
-      el("td", j.user || "", { className: "text-sm" }),
+      el("td", sender(j), { className: "text-sm" }),
       el("td", j.source, { className: "text-sm" }),
       el("td", new Date(j.received).toLocaleString(), { className: "text-sm text-base-content/60 whitespace-nowrap" }),
       el("td", j.state),

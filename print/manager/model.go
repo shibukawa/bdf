@@ -68,6 +68,10 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 type Location struct {
 	Name  string `json:"name"`
 	Title string `json:"title,omitempty"`
+	// Scope and Owner are who may send to it (as every node's: see
+	// Node.Scope).
+	Scope string `json:"scope,omitempty"`
+	Owner string `json:"owner,omitempty"`
 	// Fallback prints the slips nobody opened in time, or all of them
 	// while no device of the location is connected, so that shipping does
 	// not stop.
@@ -166,6 +170,13 @@ type Node struct {
 	// KeyHash is the hash of its key (argon2id), never the key.
 	Templates []string `json:"templates,omitempty"`
 	KeyHash   string   `json:"key_hash,omitempty"`
+	// Scope is who may send to the node from the pages and whose its
+	// jobs are (ScopeShared, ScopeGroup, ScopePersonal; empty is
+	// shared), and Owner the group (a value of the IdP's groups claim)
+	// or the person (ID or email) it belongs to. The jobs sent to a
+	// group's node are the group's: its members see them.
+	Scope string `json:"scope,omitempty"`
+	Owner string `json:"owner,omitempty"`
 }
 
 func (n *Node) keep() time.Duration { return time.Duration(or(n.Keep, defaultKeep)) }
@@ -226,9 +237,19 @@ type Job struct {
 	ID     string `json:"id"`
 	Number int32  `json:"number"`
 	// Dest is the node the sender sent it to.
-	Dest     string    `json:"dest"`
-	Name     string    `json:"name,omitempty"`
-	User     string    `json:"user,omitempty"`
+	Dest string `json:"dest"`
+	Name string `json:"name,omitempty"`
+	// SubmittedBy is who sent it, as the manager verified it; ownership
+	// and scope come from it alone.
+	SubmittedBy *Principal `json:"submitted_by,omitempty"`
+	// ClaimedUser is who the sender said sent it (requesting-user-name,
+	// ?user= of the API, the user of an endpoint's data): shown, never
+	// trusted.
+	ClaimedUser string `json:"claimed_user,omitempty"`
+	// Group is the group whose members see the job besides its
+	// submitter: the destination's (or, of a location, its fallback
+	// printer's) when it was received. Empty: the submitter's alone.
+	Group    string    `json:"group,omitempty"`
 	Source   string    `json:"source"`
 	Format   string    `json:"format,omitempty"`
 	Pages    int       `json:"pages"`
@@ -334,15 +355,16 @@ const (
 
 // Item is a job held in an inbox until a person releases it.
 type Item struct {
-	ID       string    `json:"id"`
-	Job      int32     `json:"job"`
-	Inbox    string    `json:"inbox"`
-	Name     string    `json:"name,omitempty"`
-	User     string    `json:"user,omitempty"`
-	Dest     string    `json:"dest"`
-	Pages    int       `json:"pages"`
-	Received time.Time `json:"received"`
-	State    ItemState `json:"state"`
+	ID          string     `json:"id"`
+	Job         int32      `json:"job"`
+	Inbox       string     `json:"inbox"`
+	Name        string     `json:"name,omitempty"`
+	SubmittedBy *Principal `json:"submitted_by,omitempty"`
+	ClaimedUser string     `json:"claimed_user,omitempty"`
+	Dest        string     `json:"dest"`
+	Pages       int        `json:"pages"`
+	Received    time.Time  `json:"received"`
+	State       ItemState  `json:"state"`
 	// Released tells where it went and who sent it; Discarded who
 	// discarded it (or canceled the job).
 	Released  *Release `json:"released,omitempty"`
@@ -448,6 +470,11 @@ type Printer struct {
 	URL   string `json:"url"`
 	Route string `json:"route,omitempty"`
 	Info  string `json:"info,omitempty"`
+	// Scope and Owner are who may send to it (see Node.Scope). A
+	// location's jobs are the group's of its fallback printer when the
+	// location names none.
+	Scope string `json:"scope,omitempty"`
+	Owner string `json:"owner,omitempty"`
 }
 
 // SlipState is where a slip is.
@@ -470,19 +497,19 @@ type Slip struct {
 	Job      int32  `json:"job"`
 	Location string `json:"location"`
 	Name     string `json:"name,omitempty"`
-	// User is requesting-user-name as the sender told it: shown, never
-	// trusted.
-	User     string    `json:"user,omitempty"`
-	Source   string    `json:"source"` // "ipp" or "api"
-	Format   string    `json:"format,omitempty"`
-	Pages    int       `json:"pages"`
-	Size     int64     `json:"size"`
-	SHA256   string    `json:"sha256"`
-	Received time.Time `json:"received"`
-	State    SlipState `json:"state"`
-	Opened   *Mark     `json:"opened,omitempty"`
-	Done     *Mark     `json:"done,omitempty"`
-	Canceled *Mark     `json:"canceled,omitempty"`
+	// SubmittedBy and ClaimedUser are the job's.
+	SubmittedBy *Principal `json:"submitted_by,omitempty"`
+	ClaimedUser string     `json:"claimed_user,omitempty"`
+	Source      string     `json:"source"` // "ipp" or "api"
+	Format      string     `json:"format,omitempty"`
+	Pages       int        `json:"pages"`
+	Size        int64      `json:"size"`
+	SHA256      string     `json:"sha256"`
+	Received    time.Time  `json:"received"`
+	State       SlipState  `json:"state"`
+	Opened      *Mark      `json:"opened,omitempty"`
+	Done        *Mark      `json:"done,omitempty"`
+	Canceled    *Mark      `json:"canceled,omitempty"`
 	// FallbackAt is when an unopened slip is printed on paper; zero
 	// when the location has no fallback.
 	FallbackAt time.Time `json:"fallback_at,omitzero"`

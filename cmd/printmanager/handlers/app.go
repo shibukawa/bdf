@@ -12,19 +12,23 @@ import (
 
 	"github.com/shibukawa/bdf/print/manager"
 	"github.com/shibukawa/bdf/print/printconv"
+	"github.com/shibukawa/popcornweb/plugin/auth"
 	"github.com/shibukawa/popcornweb/pw"
 )
 
 // App is the manager of the configured store, and the pages around it.
 type App struct {
-	cfg ManagerConfig
-	st  *manager.Store
-	m   *manager.Manager
-	log *slog.Logger
+	cfg    ManagerConfig
+	policy policy
+	st     *manager.Store
+	m      *manager.Manager
+	log    *slog.Logger
 }
 
-// Open opens the store and makes the manager.
-func Open(ctx context.Context, cfg ManagerConfig) (*App, error) {
+// Open opens the store and makes the manager. oidc is who of the people
+// the IdP signs in gets in, and who is an admin (ConfigureAuth sets the
+// sign-in itself).
+func Open(ctx context.Context, cfg ManagerConfig, oidc OIDCConfig) (*App, error) {
 	log := slog.Default()
 	secret := []byte(cfg.Secret)
 	if len(secret) == 0 {
@@ -44,7 +48,10 @@ func Open(ctx context.Context, cfg ManagerConfig) (*App, error) {
 		tokens[name] = secret
 	}
 	if cfg.AdminToken == "" {
-		log.Warn("printmanager: no manager.admin_token; the API (/api) answers nobody")
+		log.Info("printmanager: no manager.admin_token; the API (/api) answers the administrators signed in to the pages only")
+	}
+	if oidc.GroupsClaim == "" {
+		oidc.GroupsClaim = "groups"
 	}
 	st, err := manager.OpenStore(ctx, cfg.Records, cfg.Documents)
 	if err != nil {
@@ -54,10 +61,11 @@ func Open(ctx context.Context, cfg ManagerConfig) (*App, error) {
 		st.Close()
 		return nil, fmt.Errorf("printmanager: %s is one process's store; serverless needs one that instances share (dynamodb, firestore, s3, r2, gcs)", cfg.Records)
 	}
+	a := &App{cfg: cfg, policy: policy{oidc}, st: st, log: log}
 	conv := printconv.Converter{FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts}
-	m, err := manager.New(st, manager.Options{
+	a.m, err = manager.New(st, manager.Options{
 		Converter: conv, Secret: secret, FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts,
-		AdminToken: cfg.AdminToken, SubmitTokens: tokens, TickToken: cfg.TickToken,
+		AdminToken: cfg.AdminToken, SubmitTokens: tokens, TickToken: cfg.TickToken, Viewer: a.viewer,
 		MaxDocument: int64(cfg.MaxDocumentMB) << 20, SecureCookies: cfg.SecureCookies, TabletPath: "/tablet", Log: log,
 		JobKeep: cfg.JobKeep,
 		// a process sends deliveries as jobs come; a function leaves them
@@ -71,11 +79,17 @@ func Open(ctx context.Context, cfg ManagerConfig) (*App, error) {
 	if len(tokens) == 0 {
 		log.Warn("printmanager: no manager.submit_tokens; anyone who reaches the printers may send them jobs")
 	}
-	return &App{cfg: cfg, st: st, m: m, log: log}, nil
+	// plugin/auth's state of logins, and its accounts, are this app's
+	authStore.Store(st)
+	auth.SetAccountResolver(a.resolveAccount)
+	return a, nil
 }
 
 // Close closes the store.
-func (a *App) Close() error { return a.st.Close() }
+func (a *App) Close() error {
+	authStore.CompareAndSwap(a.st, nil)
+	return a.st.Close()
+}
 
 // StartTimer ticks every TickInterval while the process runs; serverless,
 // or with no interval, a scheduler calls POST /api/tick instead.
@@ -103,7 +117,8 @@ func (a *App) StartTimer(ctx context.Context) (stop func()) {
 
 // Handler is the application: the pages, and the manager's printers, API
 // and devices' endpoints. The pages' scripts and style are the framework's
-// /public mount's.
+// /public mount's. Every page but /tablet is for a person signed in
+// (ConfigureAuth); /admin and /audit for an administrator.
 func (a *App) Handler() http.Handler {
 	mux := pw.NewServeMux()
 	mh := manager.Handler(a.m)
@@ -112,43 +127,61 @@ func (a *App) Handler() http.Handler {
 	mux.Handle(manager.InPath+"/", mh)
 	mux.Handle("/api/", mh)
 	mux.Handle("/device/", mh)
-	mux.Handle("POST /login", mh)
-	mux.Handle("POST /logout", mh)
 	// the pages: a sign-in at the top; the jobs of the person signed in;
 	// the administrator's topology and audit log
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := a.m.PrincipalOf(r); ok {
+		w.Header().Set("Cache-Control", "no-store")
+		if a.viewer(r) != nil {
 			http.Redirect(w, r, "/jobs", http.StatusSeeOther)
 			return
 		}
-		pw.WriteHTML(w, r, Login(LoginParams{Failed: r.URL.Query().Get("error") != ""}))
+		pw.WriteHTML(w, r, SignIn(SignInParams{Enabled: auth.Protection().Protected != nil}))
 	})
-	mux.HandleFunc("GET /jobs", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := a.m.PrincipalOf(r)
-		if !ok {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		pw.WriteHTML(w, r, Jobs(JobsParams{Name: p.Name, Admin: p.Admin}))
-	})
-	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := a.m.PrincipalOf(r)
-		if !ok || !p.Admin {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		pw.WriteHTML(w, r, Admin(AdminParams{Name: p.Name}))
-	})
-	mux.HandleFunc("GET /audit", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := a.m.PrincipalOf(r)
-		if !ok || !p.Admin {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
-			return
-		}
-		pw.WriteHTML(w, r, Audit(AuditParams{Name: p.Name}))
-	})
+	mux.HandleFunc("GET /jobs", a.page(false, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Jobs(JobsParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /admin", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Admin(AdminParams{Account: ac}))
+	}))
+	mux.HandleFunc("GET /audit", a.page(true, func(w http.ResponseWriter, r *http.Request, ac Account) {
+		pw.WriteHTML(w, r, Audit(AuditParams{Account: ac}))
+	}))
 	mux.HandleFunc("GET /tablet", func(w http.ResponseWriter, r *http.Request) {
 		pw.WriteHTML(w, r, Tablet(TabletParams{}))
 	})
 	return mux
+}
+
+// page serves a page of a person signed in; admin, of an administrator
+// (others get 403).
+func (a *App) page(admin bool, fn func(http.ResponseWriter, *http.Request, Account)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		v := a.viewer(r)
+		switch {
+		case v == nil:
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+		case admin && !v.Admin:
+			pw.WriteHTML(&statusWriter{ResponseWriter: w, status: http.StatusForbidden}, r, Forbidden(ForbiddenParams{Account: account(v)}))
+		default:
+			fn(w, r, account(v))
+		}
+	}
+}
+
+func account(v *manager.Viewer) Account {
+	name := firstOr(v.Name, v.Email)
+	initial := "?"
+	for _, r := range name {
+		initial = strings.ToUpper(string(r))
+		break
+	}
+	return Account{Name: name, Initial: initial, Email: v.Email, Admin: v.Admin}
+}
+
+func firstOr(s, or string) string {
+	if s == "" {
+		return or
+	}
+	return s
 }

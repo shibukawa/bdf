@@ -4,9 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,18 +16,18 @@ func TestApp(t *testing.T) {
 
 	serverless := cfg
 	serverless.Serverless = true
-	if a, err := Open(ctx, serverless); err == nil {
+	if a, err := Open(ctx, serverless, OIDCConfig{}); err == nil {
 		a.Close()
 		t.Fatal("serverless on a bbolt file")
 	}
 	bad := cfg
 	bad.SubmitTokens = []string{"no-secret"}
-	if a, err := Open(ctx, bad); err == nil {
+	if a, err := Open(ctx, bad, OIDCConfig{}); err == nil {
 		a.Close()
 		t.Fatal("a submit token without its secret")
 	}
 
-	a, err := Open(ctx, cfg)
+	a, err := Open(ctx, cfg, OIDCConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,13 +47,15 @@ func TestApp(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, string(b)
 	}
-	for path, want := range map[string]string{"/": `action="/login"`, "/tablet": "/public/tablet.js"} {
+	// without an IdP (dev), nobody signs in: the top page says so, and
+	// the pages of people send to it (with one, the top page signs in at
+	// the IdP and the others go there: login_test)
+	for path, want := range map[string]string{"/": "AUTH_OIDC_ISSUER", "/tablet": "/public/tablet.js"} {
 		code, body := get(path, "")
 		if code != http.StatusOK || !strings.Contains(body, want) {
 			t.Errorf("%s: %d, no %s", path, code, want)
 		}
 	}
-	// the pages of people need a sign-in: they send to the top
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	for _, path := range []string{"/jobs", "/admin", "/audit"} {
 		res, err := noRedirect.Get(srv.URL + path)
@@ -65,28 +65,6 @@ func TestApp(t *testing.T) {
 		res.Body.Close()
 		if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/" {
 			t.Errorf("%s without a session: %d %s", path, res.StatusCode, res.Header.Get("Location"))
-		}
-	}
-	// signed in with the admin token, the pages open
-	jar, _ := cookiejar.New(nil)
-	c := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	res, err := c.PostForm(srv.URL+"/login", url.Values{"token": {"t"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/jobs" {
-		t.Fatalf("login: %d %s", res.StatusCode, res.Header.Get("Location"))
-	}
-	for path, want := range map[string]string{"/jobs": "/public/jobs.js", "/admin": "/public/admin.js", "/audit": "/public/audit.js"} {
-		res, err := c.Get(srv.URL + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		b, _ := io.ReadAll(res.Body)
-		res.Body.Close()
-		if res.StatusCode != http.StatusOK || !strings.Contains(string(b), want) || !strings.Contains(string(b), "Sign out") {
-			t.Errorf("%s signed in: %d, no %s", path, res.StatusCode, want)
 		}
 	}
 	// the manager's API is mounted

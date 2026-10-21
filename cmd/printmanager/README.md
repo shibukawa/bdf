@@ -19,8 +19,8 @@ runs as one process on a site's server or as a function of AWS Lambda.
 
 ## Run it
 
-Copy `.env.example` to `.env.local` (git ignores it) and fill in the admin
-token and the secret. Then, from the repository's root, either
+Copy `.env.example` to `.env.local` (git ignores it) and fill in the
+secret and the IdP. Then, from the repository's root, either
 
 ```sh
 pw dev
@@ -43,33 +43,72 @@ or with variables:
 | `MANAGER_RECORDS` | store of the records: `bbolt:path`, `dynamodb://table?region=…`, `firestore://project/database`, `s3://bucket?region=…&endpoint=…`, `r2://bucket?endpoint=…`, `gcs://bucket` |
 | `MANAGER_DOCUMENTS` | store of the slips' documents (`bbolt`, `s3`, `r2`, `gcs`); empty for the records' store |
 | `MANAGER_SECRET` | signs the devices' sessions: 32 bytes or more, the same for every instance |
-| `MANAGER_ADMIN_TOKEN` | bearer token of the API (`/api`) and of the page `/admin` |
+| `MANAGER_ADMIN_TOKEN` | bearer token of the API (`/api`), for scripts (people sign in) |
 | `MANAGER_TICK_TOKEN` | bearer token a scheduler calls `POST /api/tick` with |
 | `MANAGER_SUBMIT_TOKENS` | `name:secret` pairs that may send jobs (IPP Basic, or bearer `name:secret`); none lets anyone send |
 | `MANAGER_SERVERLESS` | refuse a store one process keeps, and tick only when called |
 | `MANAGER_TICK_INTERVAL` | how often a process ticks (default 30s) |
 | `MANAGER_JOB_KEEP` | how long a job that ended is kept, with its document once nothing shows it (default 336h, 14 days) |
 
+## Sign-in
+
+Every page but `/tablet` is for a person signed in at an OIDC IdP
+(authorization code with PKCE, through popcornweb's `plugin/auth`).
+Anyone the IdP signs in gets in, with no registration here, and sees
+their own jobs and their groups' jobs, and the nodes they may print to;
+the admins see everything and get `/admin` and `/audit`, the others get
+403 there. The IdP is popcornweb's `[auth.oidc]`; who gets in
+and who is an admin is `[oidc]`:
+
+| Variable | |
+|---|---|
+| `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET` | the IdP and this client (required outside dev) |
+| `AUTH_OIDC_REDIRECT_URL` | `https://<host>/auth/callback`, as registered at the IdP (outside dev) |
+| `OIDC_GROUPS_CLAIM` | claim of the groups: `groups`, `roles`, or a dotted path such as Keycloak's `realm_access.roles` (it must be in the ID token) |
+| `OIDC_GROUPS_PREFIX` | take only the groups of this prefix |
+| `OIDC_ADMINS` | admins: `issuer#subject`, or an email the IdP verified |
+| `OIDC_ADMIN_GROUPS` | groups whose members are admins (one admin rule is required outside dev) |
+| `OIDC_ALLOWED_ISSUERS`, `OIDC_ALLOWED_DOMAINS`, `OIDC_ALLOWED_GROUPS` | narrow who gets in (email domain or Google's `hd`; admins always get in) |
+
+The rest of `[auth]` and `[session]` is the Print Manager's
+(`handlers.ConfigureAuth`): the state of a login on its way through the
+IdP is kept in the records' store, so that any instance finishes it, and
+the session is a sealed cookie (`session.keyring.secret`, or made of
+`MANAGER_SECRET`). The groups are copied at each login; who is an admin
+is decided on each request.
+
+Every node (a display, a printer, a queue, a class …) has a scope and an
+owner (`"scope":"group", "owner":"warehouse-a"`, a value of the groups
+claim; `personal` and a person's email; `shared`, the default): who may
+print to it from the pages, and the group whose members see the jobs
+sent to it (of a display with none, its fallback printer's). A job
+records who sent it as verified (`submitted_by`: the person signed in,
+the token, the endpoint, or anonymous) apart from the name the sender
+gave (`claimed_user`, shown only). The sender and the admins cancel a
+job; its group only sees it.
+
+For a local IdP, `print/fakeidp` serves one with people of your choosing
+(`fakeidp.New(...).Listen("127.0.0.1:9781")`).
+
 AWS credentials come from the environment (`AWS_ACCESS_KEY_ID` …), web
 identity, the container's or the instance's role.
 
 ## Use it
 
-The top page is a sign-in: an administrator signs in with the admin token,
-a user with a submit token's `name:secret` (OIDC and finer roles come with
-the authentication milestone). A user sees `/jobs`: the jobs sent under
-their name, and a form that prints a document to a node. An administrator
-sees every job there, and goes on to `/admin` (the topology, the
-templates, the endpoints' keys, the inboxes, the deliveries, the displays
-and their devices) and `/audit` (who did what: sign-ins, changes, keys,
-devices, releases, cancellations). The API takes the session's cookie as
-it takes the tokens.
+A person signs in at the IdP (see Sign-in) and sees `/jobs`: their jobs
+and their groups', and a form that prints a document to a node they may
+print to. An administrator sees every job there, and goes on to `/admin`
+(the topology, the templates, the endpoints' keys, the inboxes, the
+deliveries, the displays and their devices) and `/audit` (who did what:
+sign-ins, changes, keys, devices, releases, cancellations). The API takes
+the session's cookie (from the manager's own pages) as it takes the
+tokens; scripts use the tokens.
 
 1. Add a printer and a display (a location: on `/admin`, or the API):
 
    ```sh
    curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/printers/wh-a-laser -d '{"url":"ipps://wh-a-laser.local/ipp/print"}'
-   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/locations/wh-a -d '{"title":"第 1 倉庫","fallback":{"printer":"wh-a-laser","after":"10m"}}'
+   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/locations/wh-a -d '{"title":"第 1 倉庫","scope":"group","owner":"warehouse-a","fallback":{"printer":"wh-a-laser","after":"10m"}}'
    ```
 
 2. Enroll a tablet: "Add a device" on `/admin` shows a one-time code and its
@@ -130,8 +169,8 @@ discard), the jobs of a destination and the deliveries waiting; a CUPS
 client lists every node with CUPS-Get-Printers at `/ipp/print`
 (`bdf printers -url ipp://<host>:<port>/ipp/print`).
 
-`POST /login` (`token=`, or JSON `{"token": …}`) signs in and `POST /logout`
-out; `GET /api/me` tells who; `GET /api/my/jobs` lists a person's jobs and
+`GET /auth/login` signs in at the IdP and `POST /auth/logout` out;
+`GET /api/me` tells who; `GET /api/my/jobs` lists a person's jobs and
 `GET /api/destinations` the nodes to print to; `GET /api/audit` is the log.
 The API of the topology, under the admin token: `GET /api/topology`;
 `GET`, `PUT` and `DELETE /api/nodes/<name>` and `POST /api/nodes/<name>/key`;

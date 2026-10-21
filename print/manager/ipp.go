@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -45,9 +44,17 @@ type ippRequest struct {
 	dest  string
 	kind  string
 	title string
-	// user is who sent it: the token's name, or what the sender said
-	// without a token.
-	user string
+	// by is who sent it, as verified (a token, or anonymous).
+	by *Principal
+}
+
+// user is who the request is from, to show: the token's name, or else
+// requesting-user-name.
+func (q *ippRequest) user() string {
+	if q.by.Kind == PrincipalToken {
+		return q.by.ID
+	}
+	return firstOr(q.text("requesting-user-name"), "anonymous")
 }
 
 func (q *ippRequest) attr(name string) *ipp.Attribute {
@@ -112,14 +119,14 @@ func (h *handler) serveIPP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "an IPP request is application/ipp", http.StatusBadRequest)
 		return
 	}
-	user, ok := h.submitter(r)
+	by, ok := h.submitter(r)
 	if !ok {
 		w.Header().Set("WWW-Authenticate", `Basic realm="bdf print manager"`)
 		http.Error(w, "a token's name and secret are required", http.StatusUnauthorized)
 		return
 	}
 	ctx := r.Context()
-	q := &ippRequest{w: w, r: r, user: user}
+	q := &ippRequest{w: w, r: r, by: by}
 	if dest := r.PathValue("dest"); dest != "" {
 		kind, title, err := h.m.destInfo(ctx, dest)
 		if err != nil {
@@ -136,9 +143,6 @@ func (h *handler) serveIPP(w http.ResponseWriter, r *http.Request) {
 	q.req, q.op = req, req.Group(ipp.TagOperation)
 	q.res = ipp.NewResponse(ipp.StatusOK, req.RequestID, "utf-8", "en")
 	q.res.Version = req.Version
-	if user == "" {
-		q.user = firstOr(q.text("requesting-user-name"), "anonymous")
-	}
 	switch {
 	case req.Version.Major < 1 || req.Version.Major > 2:
 		q.res.Version = ipp.Version20
@@ -197,7 +201,7 @@ func (h *handler) dispatch(ctx context.Context, q *ippRequest, body io.Reader) {
 		if j == nil {
 			return
 		}
-		if _, err := h.m.Cancel(ctx, j.ID, Mark{Worker: q.user}); err != nil {
+		if _, err := h.m.Cancel(ctx, j.ID, Mark{Worker: clip(q.user(), 80)}); err != nil {
 			q.fail(ipp.StatusClientErrorNotPossible, "the job is %s", j.State)
 		}
 	default:
@@ -374,7 +378,7 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 		return
 	}
 	name := firstOr(q.text("job-name"), q.text("document-name"))
-	j, err := h.m.Submit(ctx, q.dest, Input{Name: name, User: q.user, Source: "ipp", Doc: f, Size: n})
+	j, err := h.m.Submit(ctx, q.dest, Input{Name: name, By: q.by, ClaimedUser: q.text("requesting-user-name"), Source: "ipp", Doc: f, Size: n})
 	switch {
 	case errors.Is(err, ErrFormat):
 		q.fail(ipp.StatusClientErrorDocumentFormatError, "%v", err)
@@ -440,7 +444,7 @@ func (h *handler) jobAttributes(q *ippRequest, j *Job) []ipp.Attribute {
 		ipp.Attr("job-uri", ipp.URI(q.printerURI()+"/"+strconv.Itoa(int(j.Number)))),
 		ipp.Attr("job-printer-uri", ipp.URI(q.printerURI())),
 		ipp.Attr("job-name", ipp.Name(firstOr(j.Name, "job-"+j.ID))),
-		ipp.Attr("job-originating-user-name", ipp.Name(firstOr(j.User, "anonymous"))),
+		ipp.Attr("job-originating-user-name", ipp.Name(firstOr(j.ClaimedUser, firstOr(j.SubmittedBy.Label(), "anonymous")))),
 		ipp.Attr("job-state", ipp.Enum(int(st))),
 		ipp.Attr("job-state-reasons", ipp.Keyword(reason)),
 		ipp.Attr("job-impressions-completed", ipp.Integer(j.Pages)),
@@ -489,33 +493,16 @@ func (h *handler) jobs(ctx context.Context, q *ippRequest) {
 	}
 }
 
-// submitter finds who sends jobs: the admin token, a person's session,
-// or, with SubmitTokens, a token's name and secret (Basic, or bearer
-// name:secret); without tokens, anyone ("").
-func (h *handler) submitter(r *http.Request) (string, bool) {
-	if h.admin(r) {
-		return "admin", true
-	}
-	if c, err := r.Cookie(UserCookie); err == nil {
-		if p, ok := h.m.UserSession(c.Value); ok {
-			return p.Name, true
-		}
+// submitter finds who sends jobs over IPP and the API: the admin token,
+// a submit token's name and secret (Basic, or bearer name:secret), or,
+// with no SubmitTokens, anyone (anonymous). A person's session sends from
+// the pages (submit).
+func (h *handler) submitter(r *http.Request) (*Principal, bool) {
+	if v, ok := h.viewerOf(r); ok && v.Kind == PrincipalToken {
+		return v.Principal(), true
 	}
 	if len(h.m.o.SubmitTokens) == 0 {
-		return "", true
+		return &Principal{Kind: PrincipalAnonymous, Via: ViaNone}, true
 	}
-	name, secret, ok := r.BasicAuth()
-	if !ok {
-		if tok, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); found {
-			name, secret, ok = strings.Cut(tok, ":")
-		}
-	}
-	if !ok {
-		return "", false
-	}
-	want, known := h.m.o.SubmitTokens[name]
-	if !known || subtle.ConstantTimeCompare([]byte(want), []byte(secret)) != 1 {
-		return "", false
-	}
-	return name, true
+	return nil, false
 }

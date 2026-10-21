@@ -29,6 +29,9 @@ func (m *Manager) PutNode(ctx context.Context, n Node) (key string, err error) {
 	if !slices.Contains(nodeKinds, n.Kind) {
 		return "", fmt.Errorf("%w: kind %q: %s", ErrInvalid, n.Kind, strings.Join(nodeKinds, ", "))
 	}
+	if err := checkScope(n.Scope, n.Owner); err != nil {
+		return "", err
+	}
 	n.To = cleanNames(n.To)
 	n.Members = cleanNames(n.Members)
 	n.Templates = cleanNames(n.Templates)
@@ -329,6 +332,9 @@ type TopoNode struct {
 	// Templates are an endpoint's, and In its path.
 	Templates []string `json:"templates,omitempty"`
 	In        string   `json:"in,omitempty"`
+	// Scope and Owner are who may send to the node (Node.Scope).
+	Scope string `json:"scope,omitempty"`
+	Owner string `json:"owner,omitempty"`
 	// Held counts the items an inbox holds.
 	Held int `json:"held,omitempty"`
 }
@@ -341,14 +347,16 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 		return nil, err
 	}
 	for _, l := range locs {
-		out = append(out, TopoNode{Name: l.Name, Kind: KindDisplay, Title: l.Title, IPP: IPPPath + "/" + l.Name, Fallback: l.Fallback, Keep: l.Keep})
+		out = append(out, TopoNode{Name: l.Name, Kind: KindDisplay, Title: l.Title, IPP: IPPPath + "/" + l.Name, Fallback: l.Fallback, Keep: l.Keep,
+			Scope: l.Scope, Owner: l.Owner})
 	}
 	printers, err := m.Printers(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range printers {
-		out = append(out, TopoNode{Name: p.Name, Kind: KindPrinter, Title: p.Info, IPP: IPPPath + "/" + p.Name, URL: p.URL, Route: p.Route})
+		out = append(out, TopoNode{Name: p.Name, Kind: KindPrinter, Title: p.Info, IPP: IPPPath + "/" + p.Name, URL: p.URL, Route: p.Route,
+			Scope: p.Scope, Owner: p.Owner})
 	}
 	nodes, err := m.Nodes(ctx)
 	if err != nil {
@@ -356,7 +364,7 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 	}
 	for _, n := range nodes {
 		t := TopoNode{Name: n.Name, Kind: n.Kind, Title: n.Title, IPP: IPPPath + "/" + n.Name, To: n.To, Members: n.Members, Policy: n.Policy,
-			Store: n.Store, Keep: n.Keep, Templates: n.Templates}
+			Store: n.Store, Keep: n.Keep, Templates: n.Templates, Scope: n.Scope, Owner: n.Owner}
 		if n.Kind == KindArchive {
 			t.Collection = n.collection()
 		}

@@ -2,12 +2,15 @@ package manager
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/shibukawa/yuruidb"
 	"github.com/shibukawa/yuruidb/blob"
@@ -38,8 +41,14 @@ type (
 	deviceRecord   Device
 	auditRecord    AuditEntry
 	enrollRecord   enrollment
+	personRecord   Person
 	counterRecord  struct {
 		Next int32 `json:"next"`
+	}
+	// stateRecord is a value kept for a while under a key: see PutState.
+	stateRecord struct {
+		Payload []byte    `json:"payload"`
+		Expires time.Time `json:"expires"`
 	}
 )
 
@@ -112,6 +121,8 @@ func OpenStore(ctx context.Context, records, documents string) (*Store, error) {
 		db.Bind[auditRecord]("audit"),
 		db.Bind[enrollRecord]("enrollments"),
 		db.Bind[counterRecord]("meta"),
+		db.Bind[personRecord]("people"),
+		db.Bind[stateRecord]("states"),
 	} {
 		if err != nil {
 			db.Close()
@@ -165,6 +176,61 @@ func (s *Store) archive(ctx context.Context, raw, collection string) (*blob.Stor
 	}
 	s.archives[key] = a
 	return a, nil
+}
+
+// PutState keeps a value under a key until it is taken or expires: the
+// state of a login on its way through the IdP, which any instance may
+// finish. A key kept already is ErrConflict.
+func (s *Store) PutState(ctx context.Context, key string, payload []byte, expires time.Time) error {
+	_, err := s.db.Insert(ctx, stateID(key), stateRecord{Payload: payload, Expires: expires.UTC()})
+	return mapErr(err)
+}
+
+// TakeState returns the value of a key and removes it, so that it is
+// taken once: ErrNotFound when it is not there, was taken meanwhile, or
+// expired before now.
+func (s *Store) TakeState(ctx context.Context, key string, now time.Time) ([]byte, error) {
+	id := stateID(key)
+	rec, err := s.db.Get[stateRecord](ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	if err := s.db.Delete[stateRecord](ctx, id, rec.Revision()); err != nil {
+		if errors.Is(err, yuruidb.ErrConflict) || errors.Is(err, yuruidb.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, mapErr(err)
+	}
+	if !now.Before(rec.Data.Expires) {
+		return nil, ErrNotFound
+	}
+	return rec.Data.Payload, nil
+}
+
+// PruneStates removes up to limit values that expired before a time, and
+// tells how many it removed.
+func (s *Store) PruneStates(ctx context.Context, before time.Time, limit int) (int, error) {
+	recs, err := list[stateRecord](ctx, s.db)
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, r := range recs {
+		if n >= limit {
+			break
+		}
+		if r.Data.Expires.Before(before) && s.db.Delete[stateRecord](ctx, r.ID(), r.Revision()) == nil {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// stateID is the record id of a key: a digest, which every backend takes
+// whatever the key's characters.
+func stateID(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
 }
 
 func scheme(u string) string {

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/cookiejar"
 	"os"
 	"path/filepath"
 	"slices"
@@ -505,7 +504,7 @@ func TestEndpoint(t *testing.T) {
 	}
 	var j Job
 	json.Unmarshal(out, &j)
-	if j.Dest != "intake" || j.Source != "endpoint" || j.User != "intake" || j.Pages != 2 || legs(&j) != "intake:routed wh-a:shown" {
+	if j.Dest != "intake" || j.Source != "endpoint" || j.SubmittedBy.Kind != PrincipalEndpoint || j.SubmittedBy.ID != "intake" || j.Pages != 2 || legs(&j) != "intake:routed wh-a:shown" {
 		t.Fatalf("job %+v: %s", j, legs(&j))
 	}
 	if b := d.board(); b == nil || len(b.Open) != 1 || b.Open[0].Name != "pick" {
@@ -596,116 +595,80 @@ func TestKeys(t *testing.T) {
 	}
 }
 
-// People sign in with the admin token or a submit token: a user sees
-// and cancels their own jobs and prints; an administrator sees every job
-// and the audit log.
-func TestLogin(t *testing.T) {
+// Scripts use the admin token or a submit token: a token's user sees and
+// cancels the jobs it sent and prints; an administrator sees every job
+// and the audit log. (People sign in to the pages with OIDC: scope_test.)
+func TestTokens(t *testing.T) {
 	e := newEnv(t, func(o *Options) { o.SubmitTokens = map[string]string{"wms": "s3cret", "erp": "pw"} })
 	e.admin("PUT", "/api/locations/wh-a", Location{}, http.StatusOK)
-	login := func(token string, status int) *http.Client {
-		t.Helper()
-		jar, _ := cookiejar.New(nil)
-		c := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-		req, _ := http.NewRequest("POST", e.srv.URL+"/login", strings.NewReader("token="+token))
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		res, err := c.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		res.Body.Close()
-		if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != map[int]string{http.StatusOK: "/jobs", http.StatusUnauthorized: "/?error=1"}[status] {
-			t.Fatalf("login %q: %d %s", token, res.StatusCode, res.Header.Get("Location"))
-		}
-		return c
+	if res, _ := e.do(nil, "GET", "/api/me", "nobody:x", nil); res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("me with a wrong token: %d", res.StatusCode)
 	}
-	wrong := login("nobody:x", http.StatusUnauthorized)
-	if res, _ := e.do(wrong, "GET", "/api/me", "", nil); res.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("me without a session: %d", res.StatusCode)
+	var me struct {
+		Name  string
+		Admin bool
 	}
-	user := login("wms:s3cret", http.StatusOK)
-	admin := login(adminToken, http.StatusOK)
-	var p Principal
-	_, out := e.do(user, "GET", "/api/me", "", nil)
-	json.Unmarshal(out, &p)
-	if p.Name != "wms" || p.Admin {
-		t.Fatalf("user %+v", p)
+	_, out := e.do(nil, "GET", "/api/me", "wms:s3cret", nil)
+	json.Unmarshal(out, &me)
+	if me.Name != "wms" || me.Admin {
+		t.Fatalf("user %+v", me)
 	}
-	_, out = e.do(admin, "GET", "/api/me", "", nil)
-	json.Unmarshal(out, &p)
-	if p.Name != "admin" || !p.Admin {
-		t.Fatalf("admin %+v", p)
-	}
-	// JSON login too
-	if res, out := e.do(nil, "POST", "/login", "", map[string]string{"token": "erp:pw"}); res.StatusCode != http.StatusOK || !strings.Contains(string(out), `"name":"erp"`) {
-		t.Fatalf("json login: %d %s", res.StatusCode, out)
+	_, out = e.do(nil, "GET", "/api/me", adminToken, nil)
+	json.Unmarshal(out, &me)
+	if me.Name != "admin" || !me.Admin {
+		t.Fatalf("admin %+v", me)
 	}
 
-	// the user prints with the session, and sees their jobs only
+	// the user prints with the token, and sees its jobs only
 	doc := testDoc(t, 1)
-	if res, out := e.do(user, "POST", "/api/destinations/wh-a/jobs?name=mine", "", doc); res.StatusCode != http.StatusCreated {
+	if res, out := e.do(nil, "POST", "/api/destinations/wh-a/jobs?name=mine", "wms:s3cret", doc); res.StatusCode != http.StatusCreated {
 		t.Fatalf("print as a user: %d %s", res.StatusCode, out)
 	}
 	e.do(nil, "POST", "/api/destinations/wh-a/jobs?name=erps", "erp:pw", doc)
 	var jobs []Job
-	_, out = e.do(user, "GET", "/api/my/jobs", "", nil)
+	_, out = e.do(nil, "GET", "/api/my/jobs", "wms:s3cret", nil)
 	json.Unmarshal(out, &jobs)
-	if len(jobs) != 1 || jobs[0].Name != "mine" || jobs[0].User != "wms" {
+	if len(jobs) != 1 || jobs[0].Name != "mine" || *jobs[0].SubmittedBy != (Principal{Kind: PrincipalToken, ID: "wms", Name: "wms", Via: ViaSubmitToken}) {
 		t.Fatalf("my jobs %+v", jobs)
 	}
-	_, out = e.do(admin, "GET", "/api/my/jobs", "", nil)
+	_, out = e.do(nil, "GET", "/api/my/jobs", adminToken, nil)
 	json.Unmarshal(out, &jobs)
 	if len(jobs) != 2 || jobs[0].Name != "erps" {
 		t.Fatalf("admin's jobs %+v", jobs)
 	}
 	// another's job is not there for a user; their own is
-	if res, _ := e.do(user, "GET", "/api/jobs/2", "", nil); res.StatusCode != http.StatusNotFound {
+	if res, _ := e.do(nil, "GET", "/api/jobs/2", "wms:s3cret", nil); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("another's job: %d", res.StatusCode)
 	}
-	if res, _ := e.do(user, "GET", "/api/jobs/1/document", "", nil); res.StatusCode != http.StatusOK {
+	if res, _ := e.do(nil, "GET", "/api/jobs/1/document", "wms:s3cret", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("own document: %d", res.StatusCode)
 	}
-	if res, _ := e.do(user, "POST", "/api/jobs/1/cancel", "", nil); res.StatusCode != http.StatusOK {
+	if res, _ := e.do(nil, "POST", "/api/jobs/1/cancel", "wms:s3cret", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("cancel own job: %d", res.StatusCode)
 	}
-	if res, _ := e.do(user, "GET", "/api/destinations", "", nil); res.StatusCode != http.StatusOK {
+	if res, _ := e.do(nil, "GET", "/api/destinations", "wms:s3cret", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("destinations: %d", res.StatusCode)
 	}
 	// the admin's pages' API is not the user's
 	for _, path := range []string{"/api/topology", "/api/audit", "/api/locations"} {
-		if res, _ := e.do(user, "GET", path, "", nil); res.StatusCode != http.StatusUnauthorized {
+		if res, _ := e.do(nil, "GET", path, "wms:s3cret", nil); res.StatusCode != http.StatusForbidden {
 			t.Fatalf("%s as a user: %d", path, res.StatusCode)
 		}
-	}
-	if res, _ := e.do(admin, "GET", "/api/topology", "", nil); res.StatusCode != http.StatusOK {
-		t.Fatal("the admin's session does not open the API")
 	}
 
 	// the audit log, newest first
 	var log []AuditEntry
-	e.do(admin, "PUT", "/api/nodes/q", "", Node{Kind: KindQueue, To: []string{"wh-a"}})
-	_, out = e.do(admin, "GET", "/api/audit?limit=100", "", nil)
-	json.Unmarshal(out, &log)
+	e.admin("PUT", "/api/nodes/q", Node{Kind: KindQueue, To: []string{"wh-a"}}, http.StatusOK)
+	json.Unmarshal(e.admin("GET", "/api/audit?limit=100", nil, http.StatusOK), &log)
 	var actions []string
 	for _, en := range log {
 		actions = append(actions, en.Who+":"+en.Action)
 	}
-	want := []string{"admin:put-node", "wms:cancel-job", "erp:login", "admin:login", "wms:login", "nobody:login-failed", "admin:put-display"}
+	want := []string{"admin:put-node", "wms:cancel-job", "admin:put-display"}
 	if !slices.Equal(actions, want) {
 		t.Fatalf("audit %v", actions)
 	}
 	if log[0].Subject != "q" || log[1].Subject != jobID(1) {
 		t.Fatalf("audit subjects %+v", log[:2])
-	}
-
-	// the session ends; logout ends it before
-	if res, _ := e.do(user, "POST", "/logout", "", nil); res.StatusCode != http.StatusSeeOther {
-		t.Fatal("logout")
-	}
-	if res, _ := e.do(user, "GET", "/api/me", "", nil); res.StatusCode != http.StatusUnauthorized {
-		t.Fatal("a session after logout")
-	}
-	e.clock.add(UserSessionFor + time.Minute)
-	if res, _ := e.do(admin, "GET", "/api/me", "", nil); res.StatusCode != http.StatusUnauthorized {
-		t.Fatal("a session after its time")
 	}
 }

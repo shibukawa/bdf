@@ -346,19 +346,20 @@ func (m *Manager) cancelDelivery(ctx context.Context, id string) error {
 
 // ArchiveRecord is the record an archive keeps beside a job's document.
 type ArchiveRecord struct {
-	Job      int32     `json:"job"`
-	Dest     string    `json:"dest"`
-	Name     string    `json:"name,omitempty"`
-	User     string    `json:"user,omitempty"`
-	Source   string    `json:"source"`
-	Format   string    `json:"format,omitempty"`
-	Pages    int       `json:"pages"`
-	Size     int64     `json:"size"`
-	SHA256   string    `json:"sha256"`
-	Received time.Time `json:"received"`
-	Archived time.Time `json:"archived"`
-	Archive  string    `json:"archive"`
-	Legs     []Leg     `json:"legs"`
+	Job         int32      `json:"job"`
+	Dest        string     `json:"dest"`
+	Name        string     `json:"name,omitempty"`
+	SubmittedBy *Principal `json:"submitted_by,omitempty"`
+	ClaimedUser string     `json:"claimed_user,omitempty"`
+	Source      string     `json:"source"`
+	Format      string     `json:"format,omitempty"`
+	Pages       int        `json:"pages"`
+	Size        int64      `json:"size"`
+	SHA256      string     `json:"sha256"`
+	Received    time.Time  `json:"received"`
+	Archived    time.Time  `json:"archived"`
+	Archive     string     `json:"archive"`
+	Legs        []Leg      `json:"legs"`
 }
 
 // archiveKey names a job's objects in an archive: the day it was
@@ -385,7 +386,7 @@ func (m *Manager) archive(ctx context.Context, n *Node, j *Job) (string, error) 
 	if _, err := st.Insert(ctx, key+".bdf", r); err != nil && !errors.Is(err, yuruidb.ErrAlreadyExists) {
 		return "", err
 	}
-	rec := ArchiveRecord{Job: j.Number, Dest: j.Dest, Name: j.Name, User: j.User, Source: j.Source, Format: j.Format, Pages: j.Pages, Size: j.Size,
+	rec := ArchiveRecord{Job: j.Number, Dest: j.Dest, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Source: j.Source, Format: j.Format, Pages: j.Pages, Size: j.Size,
 		SHA256: j.SHA256, Received: j.Received, Archived: m.now(), Archive: n.Name, Legs: j.Legs}
 	b, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {

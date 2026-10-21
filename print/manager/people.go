@@ -2,211 +2,117 @@ package manager
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 )
 
-// People sign in on the pages: an administrator with the admin token, a
-// user with a submit token's name and secret. The session is a cookie
-// the manager signs (as the devices' is), so that any instance reads it.
-// This is the provisional scheme of pm-1's tokens; the authentication of
-// people over OIDC, and the roles of administrators (the topology, the
-// audit) are requirement:print-manager-auth.
+// People sign in to the pages with OIDC: the web application signs them
+// in and Options.Viewer tells the manager who they are, with the groups
+// the IdP gave them. Scripts and senders use the tokens of the
+// configuration: the admin token (an administrator), a submit token (a
+// user of its name). What each may see and send to is scope.go's.
 
-// UserCookie is the cookie of a person's session.
-const UserCookie = "bdf_pm_user"
-
-// Principal is who a request is from: an administrator, or a user of a
-// name (a submit token's).
-type Principal struct {
-	Name  string `json:"name"`
-	Admin bool   `json:"admin"`
-}
-
-// Login checks a token: the admin token, or a submit token as
-// name:secret.
-func (m *Manager) Login(token string) (Principal, bool) {
-	token = strings.TrimSpace(token)
-	if sameSecret(m.o.AdminToken, token) {
-		return Principal{Name: "admin", Admin: true}, true
+// viewerOf finds who a request is from: the admin token (bearer), a
+// submit token (bearer name:secret, or Basic), or a person signed in to
+// the pages (their session). A request with a credential that is not
+// known is nobody's.
+func (h *handler) viewerOf(r *http.Request) (*Viewer, bool) {
+	tok := bearer(r)
+	if sameSecret(h.m.o.AdminToken, tok) {
+		return &Viewer{Kind: PrincipalToken, Via: ViaAdminToken, ID: "admin", Name: "admin", Admin: true}, true
 	}
-	name, secret, ok := strings.Cut(token, ":")
-	if !ok {
-		return Principal{}, false
+	name, secret, ok := r.BasicAuth()
+	if !ok && tok != "" {
+		name, secret, ok = strings.Cut(tok, ":")
 	}
-	want, known := m.o.SubmitTokens[name]
-	if !known || !sameSecret(want, secret) {
-		return Principal{}, false
-	}
-	return Principal{Name: name}, true
-}
-
-// UserSessionFor is how long a person's session lasts.
-const UserSessionFor = 12 * time.Hour
-
-// userSession makes the session of a principal.
-func (m *Manager) userSession(p Principal) (string, time.Time) {
-	until := m.now().Add(UserSessionFor)
-	admin := "0"
-	if p.Admin {
-		admin = "1"
-	}
-	return m.token("user", []byte(p.Name+"|"+admin+"|"+strconv.FormatInt(until.Unix(), 10))), until
-}
-
-// UserSession reads a session: one not expired, of a user still known
-// (the admin, or a submit token's name).
-func (m *Manager) UserSession(tok string) (Principal, bool) {
-	payload, ok := m.open("user", tok)
-	if !ok {
-		return Principal{}, false
-	}
-	parts := strings.Split(string(payload), "|")
-	if len(parts) != 3 {
-		return Principal{}, false
-	}
-	until, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil || m.now().Unix() > until {
-		return Principal{}, false
-	}
-	p := Principal{Name: parts[0], Admin: parts[1] == "1"}
-	if p.Admin {
-		return p, m.o.AdminToken != ""
-	}
-	_, known := m.o.SubmitTokens[p.Name]
-	return p, known
-}
-
-// PrincipalOf finds who a request is from: the admin token (bearer), a
-// submit token (bearer name:secret, or Basic), or a person's session
-// (cookie).
-func (m *Manager) PrincipalOf(r *http.Request) (Principal, bool) {
-	if tok := bearer(r); tok != "" {
-		if p, ok := m.Login(tok); ok {
-			return p, true
+	if ok {
+		if want, known := h.m.o.SubmitTokens[name]; known && sameSecret(want, secret) {
+			return &Viewer{Kind: PrincipalToken, Via: ViaSubmitToken, ID: name, Name: name}, true
 		}
+		return nil, false
 	}
-	if name, secret, ok := r.BasicAuth(); ok {
-		if p, ok := m.Login(name + ":" + secret); ok {
-			return p, true
-		}
+	if r.Header.Get("Authorization") != "" || h.m.o.Viewer == nil {
+		return nil, false
 	}
-	if c, err := r.Cookie(UserCookie); err == nil {
-		return m.UserSession(c.Value)
-	}
-	return Principal{}, false
+	v := h.m.o.Viewer(r)
+	return v, v != nil
 }
 
-// login signs a person in: a form (token=…, then a redirect to /jobs,
-// or back to / with ?error=1) or JSON ({"token": …}, then the
-// principal).
-func (h *handler) login(w http.ResponseWriter, r *http.Request) {
-	var token string
-	isJSON := strings.HasPrefix(r.Header.Get("Content-Type"), "application/json")
-	if isJSON {
-		var in struct {
-			Token string `json:"token"`
-		}
-		if err := readJSON(r, &in); err != nil {
-			h.writeErr(w, err)
-			return
-		}
-		token = in.Token
-	} else {
-		if err := r.ParseForm(); err != nil {
-			h.writeErr(w, errors.Join(ErrInvalid, err))
-			return
-		}
-		token = r.PostForm.Get("token")
+// sameOrigin tells a request that a page of the manager's own origin
+// made, or one that changes nothing. The session's cookie rides on every
+// request to the origin, so what it authorizes to change must come from
+// the origin's pages.
+func sameOrigin(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
 	}
-	p, ok := h.m.Login(token)
-	if !ok {
-		name, _, _ := strings.Cut(token, ":")
-		h.m.audit(r.Context(), clip(firstOr(name, "?"), 80), "login-failed", "", "")
-		if isJSON {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the token is not known"})
-			return
-		}
-		http.Redirect(w, r, "/?error=1", http.StatusSeeOther)
-		return
+	if r.Header.Get("Authorization") != "" {
+		return true // not the cookie's
 	}
-	tok, until := h.m.userSession(p)
-	http.SetCookie(w, &http.Cookie{Name: UserCookie, Value: tok, Path: "/", MaxAge: int(UserSessionFor / time.Second), HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, Secure: h.m.o.SecureCookies})
-	h.m.audit(r.Context(), p.Name, "login", "", "")
-	if isJSON {
-		writeJSON(w, http.StatusOK, struct {
-			Principal
-			Until time.Time `json:"until"`
-		}{p, until})
-		return
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
+		return site == "same-origin"
 	}
-	http.Redirect(w, r, "/jobs", http.StatusSeeOther)
+	o, err := url.Parse(r.Header.Get("Origin"))
+	return err == nil && o.Host != "" && o.Host == r.Host
 }
 
-func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
-	if p, ok := h.m.PrincipalOf(r); ok {
-		h.m.audit(r.Context(), p.Name, "logout", "", "")
-	}
-	http.SetCookie(w, &http.Cookie{Name: UserCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: h.m.o.SecureCookies})
-	if strings.HasPrefix(r.Header.Get("Accept"), "application/json") {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-// whoami answers the principal of a request.
+// whoami answers who a request is from.
 func (h *handler) whoami(w http.ResponseWriter, r *http.Request) {
-	p, ok := h.m.PrincipalOf(r)
+	v, ok := h.viewerOf(r)
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
 		return
 	}
-	writeJSON(w, http.StatusOK, p)
+	writeJSON(w, http.StatusOK, map[string]any{"kind": v.Kind, "id": v.ID, "name": v.Label(), "email": v.Email,
+		"groups": v.Groups, "admin": v.Admin})
 }
 
-// userOnly serves a request of a signed-in person.
-func (h *handler) userOnly(fn func(http.ResponseWriter, *http.Request, Principal)) http.HandlerFunc {
+type viewerHandler func(http.ResponseWriter, *http.Request, *Viewer)
+
+// userOnly serves a request of anyone signed in (or with a token).
+func (h *handler) userOnly(fn viewerHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		p, ok := h.m.PrincipalOf(r)
-		if !ok {
+		v, ok := h.viewerOf(r)
+		switch {
+		case !ok:
 			w.Header().Set("WWW-Authenticate", `Bearer realm="bdf print manager"`)
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
-			return
+		case !sameOrigin(r):
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "a request of another origin"})
+		default:
+			fn(w, r, v)
 		}
-		fn(w, r, p)
 	}
 }
 
-// ownJob serves a request about a job of the person's: any job for an
-// administrator, the jobs sent under their name for a user.
-func (h *handler) ownJob(fn func(http.ResponseWriter, *http.Request, Principal, *Job)) http.HandlerFunc {
-	return h.userOnly(func(w http.ResponseWriter, r *http.Request, p Principal) {
+// ownJob serves a request about a job the viewer may see.
+func (h *handler) ownJob(fn func(http.ResponseWriter, *http.Request, *Viewer, *Job)) http.HandlerFunc {
+	return h.userOnly(func(w http.ResponseWriter, r *http.Request, v *Viewer) {
 		j, err := h.m.Job(r.Context(), r.PathValue("id"))
-		if err == nil && !p.Admin && j.User != p.Name {
+		if err == nil && !v.CanSee(j) {
 			err = ErrNotFound
 		}
 		if err != nil {
 			h.writeErr(w, err)
 			return
 		}
-		fn(w, r, p, j)
+		fn(w, r, v, j)
 	})
 }
 
 // allJobs is the destination state that lists every job.
 const allJobs = "-all"
 
-// MyJobs returns the last jobs of a person, latest first: every job for
-// an administrator, those sent under their name for a user.
-func (m *Manager) MyJobs(ctx context.Context, p Principal, limit int) ([]Job, error) {
+// MyJobs returns the last jobs a viewer may see, latest first: their
+// own, their groups', every job for an administrator.
+func (m *Manager) MyJobs(ctx context.Context, v *Viewer, limit int) ([]Job, error) {
 	jobs, err := m.jobsOfState(ctx, allJobs, 0)
 	if err != nil {
 		return nil, err
@@ -219,16 +125,16 @@ func (m *Manager) MyJobs(ctx context.Context, p Principal, limit int) ([]Job, er
 		if len(out) >= limit {
 			break
 		}
-		if p.Admin || j.User == p.Name {
+		if v.CanSee(&j) {
 			out = append(out, j)
 		}
 	}
 	return out, nil
 }
 
-func (h *handler) myJobs(w http.ResponseWriter, r *http.Request, p Principal) {
+func (h *handler) myJobs(w http.ResponseWriter, r *http.Request, v *Viewer) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	js, err := h.m.MyJobs(r.Context(), p, limit)
+	js, err := h.m.MyJobs(r.Context(), v, limit)
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -241,21 +147,32 @@ type Destination struct {
 	Name  string `json:"name"`
 	Kind  string `json:"kind"`
 	Title string `json:"title,omitempty"`
+	Scope string `json:"scope,omitempty"`
+	Owner string `json:"owner,omitempty"`
 }
 
-// destinations lists the nodes a person may print to: every node, for
-// now (the scopes of requirement:print-manager-auth narrow it later).
-func (h *handler) destinations(w http.ResponseWriter, r *http.Request, p Principal) {
-	topo, err := h.m.Topology(r.Context())
+// Destinations returns the nodes a viewer may send to.
+func (m *Manager) Destinations(ctx context.Context, v *Viewer) ([]Destination, error) {
+	topo, err := m.Topology(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []Destination{}
+	for _, n := range topo {
+		if v.CanSendTo(n.Scope, n.Owner) {
+			out = append(out, Destination{Name: n.Name, Kind: n.Kind, Title: n.Title, Scope: n.Scope, Owner: n.Owner})
+		}
+	}
+	return out, nil
+}
+
+func (h *handler) destinations(w http.ResponseWriter, r *http.Request, v *Viewer) {
+	ds, err := h.m.Destinations(r.Context(), v)
 	if err != nil {
 		h.writeErr(w, err)
 		return
 	}
-	out := make([]Destination, len(topo))
-	for i, n := range topo {
-		out[i] = Destination{Name: n.Name, Kind: n.Kind, Title: n.Title}
-	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, ds)
 }
 
 // The audit log: who did what, kept newest first.
@@ -277,6 +194,11 @@ var auditSeq atomic.Uint32
 // the sequence of the process, both reversed.
 func (m *Manager) auditID(at time.Time) string {
 	return fmt.Sprintf("%019d.%010d.%s", math.MaxInt64-at.UnixNano(), math.MaxUint32-auditSeq.Add(1), randomHex(2))
+}
+
+// Audit records an action of the web application's (a sign-in).
+func (m *Manager) Audit(ctx context.Context, who, action, subject, detail string) {
+	m.audit(ctx, who, action, subject, detail)
 }
 
 // audit records an action; a record that cannot be written is logged.
@@ -330,8 +252,8 @@ func (h *handler) auditLog(w http.ResponseWriter, r *http.Request) {
 // who names the principal of a request for the audit log, or the
 // sender a request says it is.
 func (h *handler) who(r *http.Request) string {
-	if p, ok := h.m.PrincipalOf(r); ok {
-		return p.Name
+	if v, ok := h.viewerOf(r); ok {
+		return v.Label()
 	}
 	return "?"
 }

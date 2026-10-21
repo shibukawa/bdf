@@ -222,7 +222,7 @@ type Fill struct {
 // endpoint's way of printing from data. The endpoint, when given, must
 // name the template among its templates (an endpoint with none fills
 // any).
-func (m *Manager) SubmitFill(ctx context.Context, dest string, ep *Node, f Fill) (*Job, error) {
+func (m *Manager) SubmitFill(ctx context.Context, dest string, ep *Node, by *Principal, f Fill) (*Job, error) {
 	if ep != nil && len(ep.Templates) > 0 {
 		found := false
 		for _, id := range ep.Templates {
@@ -258,7 +258,7 @@ func (m *Manager) SubmitFill(ctx context.Context, dest string, ep *Node, f Fill)
 		m.o.Log.Warn("fill", "template", t.ID, "warning", w)
 	}
 	name := firstOr(f.Name, t.ID)
-	return m.submitDoc(ctx, dest, res.Doc, "form:"+t.Format, Input{Name: name, User: f.User, Source: "endpoint"})
+	return m.submitDoc(ctx, dest, res.Doc, "form:"+t.Format, Input{Name: name, By: by, ClaimedUser: f.User, Source: "endpoint"})
 }
 
 // serveIn takes a request to an endpoint: a JSON request to fill a
@@ -267,7 +267,9 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	name := r.PathValue("name")
 	var ep *Node
-	if h.admin(r) {
+	var by *Principal
+	if v, ok := h.viewerOf(r); ok && v.Admin && r.Header.Get("Authorization") != "" {
+		by = v.Principal()
 		n, err := h.m.Node(ctx, name)
 		if err != nil || n.Kind != KindEndpoint {
 			h.writeErr(w, ErrNotFound)
@@ -284,8 +286,9 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ep = n
+		by = &Principal{Kind: PrincipalEndpoint, ID: name, Via: ViaEndpointKey}
 	}
-	user := firstOr(r.URL.Query().Get("user"), name)
+	user := r.URL.Query().Get("user")
 	f, err := os.CreateTemp(h.m.o.TempDir, "bdf-pm-in-*")
 	if err != nil {
 		h.writeErr(w, err)
@@ -319,7 +322,7 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		fill.User = firstOr(fill.User, user)
-		j, err := h.m.SubmitFill(ctx, ep.Name, ep, fill)
+		j, err := h.m.SubmitFill(ctx, ep.Name, ep, by, fill)
 		if err != nil {
 			h.writeErr(w, err)
 			return
@@ -327,7 +330,7 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusCreated, j)
 		return
 	}
-	j, err := h.m.Submit(ctx, ep.Name, Input{Name: r.URL.Query().Get("name"), User: user, Source: "endpoint", Doc: f, Size: n})
+	j, err := h.m.Submit(ctx, ep.Name, Input{Name: r.URL.Query().Get("name"), By: by, ClaimedUser: user, Source: "endpoint", Doc: f, Size: n})
 	if err != nil {
 		h.writeErr(w, err)
 		return

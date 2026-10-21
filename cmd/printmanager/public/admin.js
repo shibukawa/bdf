@@ -220,7 +220,7 @@ async function loadTopology() {
     const name = el("td", undefined, { className: "font-semibold" });
     name.append(el("div", n.title && n.title !== n.name ? `${n.title} (${n.name})` : n.name), el("div", n.ipp, { className: "font-mono text-xs text-base-content/60" }));
     tr.append(name, el("td"), el("td", edgesText(n), { className: "font-mono text-sm" }), el("td", settingsText(n), { className: "font-mono text-xs break-all" }), el("td"));
-    tr.children[1].append(badge(KINDS[n.kind] || n.kind, KIND_BADGE[n.kind] || "badge-primary badge-soft"));
+    tr.children[1].append(badge(KINDS[n.kind] || n.kind, KIND_BADGE[n.kind] || "badge-primary badge-soft"), " ", scopeBadge(n));
     if (ROUTING.includes(n.kind)) {
       tr.lastChild.append(button("Edit", async () => select(n.name), "btn btn-xs btn-ghost mr-1"));
       if (n.kind === "endpoint") tr.lastChild.append(button("Rotate key", () => rotateKey(n.name), "btn btn-xs btn-ghost mr-1"));
@@ -465,6 +465,27 @@ async function removeEdge(from, e) {
   }
 }
 
+// sender is who sent a job, as verified, and the name they gave.
+function sender(j) {
+  const by = j.submitted_by || {};
+  const who = by.name || by.id || by.kind || "";
+  return j.claimed_user && j.claimed_user !== who ? `${who} (as ${j.claimed_user})` : who;
+}
+
+// scopeBadge tells who may send to a node, and whose its jobs are.
+function scopeBadge(n) {
+  const scope = n.scope || "shared";
+  const cls = { group: "badge badge-sm badge-soft badge-secondary whitespace-nowrap", personal: "badge badge-sm badge-soft badge-accent whitespace-nowrap" }[scope] || "badge badge-sm badge-ghost whitespace-nowrap";
+  return el("span", scope + (n.owner ? ": " + n.owner : ""), { className: cls });
+}
+
+// scoped puts the scope and owner of a form in a body.
+function scoped(form, body) {
+  body.scope = $(form + "-scope").value;
+  if ($(form + "-owner").value) body.owner = $(form + "-owner").value;
+  return body;
+}
+
 // select puts a routing node in the form, to edit it.
 async function select(name) {
   const n = topo.find((x) => x.name === name);
@@ -483,6 +504,8 @@ async function select(name) {
   $("node-keep").value = n.keep || "";
   $("node-store").value = n.store || "";
   $("node-collection").value = n.collection || "";
+  $("node-scope").value = n.scope || "shared";
+  $("node-owner").value = n.owner || "";
   nodeFields();
   drawCanvas();
   $("node-form").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -510,7 +533,7 @@ async function loadInboxes(inboxes) {
     const tbody = el("tbody");
     for (const it of v.held) {
       const tr = el("tr");
-      tr.append(el("td", "#" + it.job, { className: "font-mono" }), el("td", it.name || "", { className: "font-semibold" }), el("td", it.user || "", { className: "text-sm" }), el("td", since(it.received), { className: "text-sm text-base-content/60" }), el("td"), el("td"));
+      tr.append(el("td", "#" + it.job, { className: "font-mono" }), el("td", it.name || "", { className: "font-semibold" }), el("td", sender(it), { className: "text-sm" }), el("td", since(it.received), { className: "text-sm text-base-content/60" }), el("td"), el("td"));
       const choice = tr.children[4];
       const boxes = [];
       if (v.to.length) {
@@ -563,7 +586,7 @@ async function loadJobs() {
     const jobs = await api("GET", `/api/destinations/${jobsDest}/jobs?limit=50`);
     for (const j of jobs) {
       const tr = el("tr");
-      tr.append(el("td", "#" + j.number, { className: "font-mono" }), el("td", j.name || "", { className: "font-semibold" }), el("td", j.user || "", { className: "text-sm" }), el("td", since(j.received), { className: "text-sm text-base-content/60" }), el("td"), el("td", legsOf(j), { className: "font-mono text-xs" }), el("td"));
+      tr.append(el("td", "#" + j.number, { className: "font-mono" }), el("td", j.name || "", { className: "font-semibold" }), el("td", sender(j), { className: "text-sm" }), el("td", since(j.received), { className: "text-sm text-base-content/60" }), el("td"), el("td", legsOf(j), { className: "font-mono text-xs" }), el("td"));
       tr.children[4].append(badge(STATES[j.state] || j.state, j.state === "completed" ? "badge-success badge-soft" : j.state === "held" ? "badge-warning" : j.state === "processing" ? "badge-info" : "badge-ghost"));
       if (!["completed", "canceled", "aborted"].includes(j.state) || (j.legs || []).some((l) => l.kind === "display" && l.state === "shown")) {
         tr.lastChild.append(button("Cancel", () => api("POST", `/api/jobs/${j.id}/cancel`), "btn btn-xs btn-ghost text-error"));
@@ -638,7 +661,7 @@ const names = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
 $("node-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const kind = $("node-kind").value;
-  const body = { kind, title: $("node-title").value };
+  const body = scoped("node", { kind, title: $("node-title").value });
   if (kind === "class") {
     body.members = names($("node-to").value);
     body.policy = $("node-policy").value;
@@ -686,7 +709,7 @@ $("tick").addEventListener("click", async () => {
 $("printer-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   try {
-    await api("PUT", "/api/printers/" + $("printer-name").value, { url: $("printer-url").value });
+    await api("PUT", "/api/printers/" + $("printer-name").value, scoped("printer", { url: $("printer-url").value }));
     ev.target.reset();
     await load();
   } catch (e) {
@@ -695,7 +718,7 @@ $("printer-form").addEventListener("submit", async (ev) => {
 });
 $("location-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const body = { title: $("location-title").value };
+  const body = scoped("location", { title: $("location-title").value });
   if ($("location-printer").value) {
     body.fallback = { printer: $("location-printer").value };
     if ($("location-after").value) body.fallback.after = $("location-after").value;
