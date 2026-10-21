@@ -354,3 +354,7 @@ pm-1 を始めるときに決めるもの：
 - `list-by-location`、`notify-transport`、`tick-trigger`：上の暫定のとおり。
 - `workers-target`：後。
 
+
+## 12. トポロジー（pm-4、2026-10-21）
+
+利用者の求めで pm-4（§10）を前に出し、§4 の「束ね方」を**ノードの組み替え**に広げた：場所・プリンタ・キュー（分岐）・クラス（round-robin / failover）・インボックス（人が流す）・保管（書いたら変えない）が 1 つの名前の空間でノードになり、どのノードも `/ipp/print/<名前>` の宛先。ジョブは通ったノードの足跡を持つ。叙述は `print-manager-topology.ja.md`、記録は `milestone:pm-4`。

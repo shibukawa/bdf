@@ -17,6 +17,7 @@ type ManagerConfig struct {
 	TickToken     string        `default:"" help:"bearer token a scheduler calls POST /api/tick with"`
 	SubmitTokens  []string      `help:"name:secret pairs that may send jobs; none lets anyone send"`
 	TickInterval  time.Duration `default:"30s" help:"how often the process ticks; 0 leaves it to a scheduler (serverless)"`
+	JobKeep       time.Duration `default:"336h" help:"how long a job that ended is kept (its record, and its document once nothing shows it)"`
 	Serverless    bool          `default:"false" help:"refuse a store only one process can use, and tick only when called"`
 	FontDirs      []string      `help:"directories of the fonts of documents"`
 	NoSystemFonts bool          `default:"false" help:"use only font_dirs"`

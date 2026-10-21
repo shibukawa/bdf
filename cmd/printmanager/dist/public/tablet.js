@@ -86,7 +86,7 @@ async function enroll(ev) {
     history.replaceState(null, "", location.pathname);
     await start();
   } catch (e) {
-    $("enroll-error").textContent = "登録できませんでした: " + e.message;
+    $("enroll-error").textContent = "Could not enroll: " + e.message;
     $("enroll-error").hidden = false;
   }
 }
@@ -105,7 +105,7 @@ async function login() {
     await db.clear();
     me = null;
     show("enroll");
-    throw new Error("この端末は登録されていません");
+    throw new Error("This device is not enrolled");
   }
   if (!res.ok) throw new Error("session " + res.status);
 }
@@ -143,12 +143,12 @@ function beep() {
   } catch {}
 }
 
-const stateText = { new: "新着", opened: "開いた", done: "完了", canceled: "取り消し" };
+const stateText = { new: "New", opened: "Opened", done: "Done", canceled: "Canceled" };
 const stateBadge = { new: "badge-warning", opened: "badge-info", done: "badge-success", canceled: "badge-error" };
 
 function time(s) {
   const d = new Date(s);
-  return d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function item(s) {
@@ -165,15 +165,15 @@ function item(s) {
   badge.textContent = stateText[s.state] || s.state;
   const name = document.createElement("span");
   name.className = "min-w-0 flex-1 break-words text-xl font-semibold sm:text-2xl";
-  name.textContent = s.name || "伝票 " + s.job;
+  name.textContent = s.name || "Document " + s.job;
   const meta = document.createElement("span");
   meta.className = "w-full text-base text-base-content/60";
-  meta.textContent = `#${s.job} · ${time(s.received)} · ${s.pages} ページ`;
+  meta.textContent = `#${s.job} · ${time(s.received)} · ${s.pages} page${s.pages === 1 ? "" : "s"}`;
   body.append(badge, name);
   if (s.printed && s.printed.length) {
     const p = document.createElement("span");
     p.className = "badge badge-outline badge-lg";
-    p.textContent = "紙に出した";
+    p.textContent = "Printed on paper";
     body.append(p);
   }
   body.append(meta);
@@ -204,7 +204,7 @@ async function poll() {
       const fresh = board.open.filter((s) => s.state === "new" && !known.has(s.id));
       if (!first && fresh.length) {
         beep();
-        toast(fresh.length === 1 ? `新しい伝票: ${fresh[0].name || "#" + fresh[0].job}` : `新しい伝票が ${fresh.length} 件`, "warning", true);
+        toast(fresh.length === 1 ? `New: ${fresh[0].name || "#" + fresh[0].job}` : `${fresh.length} new documents`, "warning", true);
       }
       first = false;
       known = new Set(board.open.map((s) => s.id));
@@ -212,22 +212,22 @@ async function poll() {
     } else if (res.status !== 304) {
       throw new Error("board " + res.status);
     }
-    status("接続中 · " + new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }));
+    status("Connected · " + new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
-    status("つながっていません: " + e.message, true);
+    status("Not connected: " + e.message, true);
   }
 }
 
 async function openSlip(s) {
   current = s;
   show("viewer");
-  $("viewer-title").textContent = `${s.name || "伝票 " + s.job} (#${s.job})`;
+  $("viewer-title").textContent = `${s.name || "Document " + s.job} (#${s.job})`;
   $("print").hidden = !(info && info.can_print);
   const width = Math.min(2400, Math.round(window.innerWidth * (window.devicePixelRatio || 1)));
   const pages = [];
   for (let n = 1; n <= s.pages; n++) {
     const img = document.createElement("img");
-    img.alt = `${n} ページ`;
+    img.alt = `page ${n}`;
     img.className = "w-full rounded-box bg-white shadow-md";
     img.loading = n <= 2 ? "eager" : "lazy";
     img.src = `/device/slips/${encodeURIComponent(s.id)}/pages/${n}.png?w=${width}`;
@@ -280,7 +280,7 @@ $("done").addEventListener("click", async () => {
   try {
     await post(`/device/slips/${encodeURIComponent(current.id)}/done`);
     closeSlip();
-    toast("完了にしました", "success");
+    toast("Marked done", "success");
   } catch (e) {
     toast(e.message, "error");
   }
@@ -288,9 +288,9 @@ $("done").addEventListener("click", async () => {
 $("print").addEventListener("click", async () => {
   try {
     await post(`/device/slips/${encodeURIComponent(current.id)}/print`);
-    toast("刷りました", "success");
+    toast("Printed", "success");
   } catch (e) {
-    toast("刷れませんでした: " + e.message, "error");
+    toast("Could not print: " + e.message, "error");
   }
 });
 for (const t of ["open", "ended"]) {

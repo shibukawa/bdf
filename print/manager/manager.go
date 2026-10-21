@@ -1,7 +1,11 @@
-// Package manager is the BDF Print Manager's core: virtual printers that
-// show slips on the tablets of a location (a warehouse) instead of
-// printing them, the devices enrolled there, and the printers that print
-// on paper what nobody opened.
+// Package manager is the BDF Print Manager's core: a topology of nodes
+// a job flows through, as an administrator composes it. Locations show
+// jobs as slips on the tablets enrolled there (a warehouse) instead of
+// printing them, and print on paper what nobody opened; printers print;
+// queues forward to several nodes at once, classes to one of their
+// members in turn, inboxes hold jobs until a person sends them on, and
+// archives keep a copy that is never changed. Every node is an IPP
+// printer at /ipp/print/<name>.
 //
 // A Manager holds no state of its own: everything is in its Store, so
 // that any request may reach any instance (a container, several, or a
@@ -54,6 +58,13 @@ type Options struct {
 	// TabletPath is the devices' page, which an enrollment's URL opens
 	// with ?code= (default /tablet).
 	TabletPath string
+	// JobKeep is how long a job that ended stays (its record and, once
+	// nothing shows it any more, its document): 14 days by default.
+	JobKeep time.Duration
+	// Background sends the deliveries of a job (to printers and archives)
+	// right after it is routed, in a goroutine of the process; without
+	// it the next Tick does (a function of a serverless platform).
+	Background bool
 	// TempDir holds documents while they are converted ("" the system's).
 	TempDir string
 	Log     *slog.Logger
@@ -81,6 +92,9 @@ func New(st *Store, o Options) (*Manager, error) {
 	}
 	if o.TabletPath == "" {
 		o.TabletPath = "/tablet"
+	}
+	if o.JobKeep <= 0 {
+		o.JobKeep = 14 * 24 * time.Hour
 	}
 	if o.Log == nil {
 		o.Log = slog.New(slog.DiscardHandler)
@@ -178,6 +192,9 @@ func (m *Manager) PutLocation(ctx context.Context, l Location) error {
 	if l.Fallback != nil && !validName(l.Fallback.Printer) {
 		return fmt.Errorf("%w: fallback printer %q", ErrInvalid, l.Fallback.Printer)
 	}
+	if err := m.nameFree(ctx, l.Name, KindDisplay); err != nil {
+		return err
+	}
 	_, err := change(ctx, m.st.db, l.Name, true, func(r *locationRecord) error {
 		*r = locationRecord(l)
 		return nil
@@ -214,11 +231,15 @@ func (m *Manager) Locations(ctx context.Context) ([]Location, error) {
 }
 
 // DeleteLocation removes a location's settings; its slips and devices
-// stay until the location is added again.
+// stay until the location is added again. A location a node forwards to
+// stays.
 func (m *Manager) DeleteLocation(ctx context.Context, name string) error {
 	rec, err := m.st.db.Get[locationRecord](ctx, name)
 	if err != nil {
 		return mapErr(err)
+	}
+	if err := m.unreferenced(ctx, name); err != nil {
+		return err
 	}
 	return mapErr(m.st.db.Delete[locationRecord](ctx, name, rec.Revision()))
 }
@@ -235,6 +256,9 @@ func (m *Manager) PutPrinter(ctx context.Context, p Printer) error {
 		return fmt.Errorf("%w: route %q: direct or branch", ErrInvalid, p.Route)
 	}
 	if err := checkPrinterURL(p.URL); err != nil {
+		return err
+	}
+	if err := m.nameFree(ctx, p.Name, KindPrinter); err != nil {
 		return err
 	}
 	_, err := change(ctx, m.st.db, p.Name, true, func(r *printerRecord) error {
@@ -272,11 +296,15 @@ func (m *Manager) Printers(ctx context.Context) ([]Printer, error) {
 	return out, nil
 }
 
-// DeletePrinter removes a printer.
+// DeletePrinter removes a printer. One a node or a location's fallback
+// sends to stays.
 func (m *Manager) DeletePrinter(ctx context.Context, name string) error {
 	rec, err := m.st.db.Get[printerRecord](ctx, name)
 	if err != nil {
 		return mapErr(err)
+	}
+	if err := m.unreferenced(ctx, name); err != nil {
+		return err
 	}
 	return mapErr(m.st.db.Delete[printerRecord](ctx, name, rec.Revision()))
 }
@@ -316,12 +344,19 @@ func (m *Manager) Slip(ctx context.Context, id string) (*Slip, error) {
 	return &s, nil
 }
 
-// SlipOfJob returns the slip of a job number.
+// SlipOfJob returns the first slip of a job number: the one at the first
+// location the job reached.
 func (m *Manager) SlipOfJob(ctx context.Context, job int32) (*Slip, error) {
-	if job <= 0 {
-		return nil, ErrNotFound
+	j, err := m.JobOfNumber(ctx, job)
+	if err != nil {
+		return nil, err
 	}
-	return m.Slip(ctx, slipID(job))
+	for _, l := range j.Legs {
+		if l.Kind == KindDisplay && l.Ref != "" {
+			return m.Slip(ctx, l.Ref)
+		}
+	}
+	return nil, fmt.Errorf("%w: job %d has no slip", ErrNotFound, job)
 }
 
 // changeSlip changes a slip; a change of its state touches its location.
@@ -447,9 +482,10 @@ func (m *Manager) Done(ctx context.Context, id string, by Mark) (*Slip, error) {
 	return s, m.end(ctx, s)
 }
 
-// Cancel cancels a slip that is not done: it leaves the devices, with a
-// mark that it was canceled.
-func (m *Manager) Cancel(ctx context.Context, id string, by Mark) (*Slip, error) {
+// CancelSlip cancels a slip that is not done: it leaves the devices, with
+// a mark that it was canceled. The job goes on elsewhere; Cancel cancels
+// the job.
+func (m *Manager) CancelSlip(ctx context.Context, id string, by Mark) (*Slip, error) {
 	by.At = m.now()
 	s, err := m.changeSlip(ctx, id, func(s *Slip) error {
 		if s.State.ended() {
@@ -464,16 +500,17 @@ func (m *Manager) Cancel(ctx context.Context, id string, by Mark) (*Slip, error)
 	return s, m.end(ctx, s)
 }
 
-// removeSlip deletes an ended slip and its document.
+// removeSlip deletes an ended slip; the job's document stays while
+// something else needs it (release).
 func (m *Manager) removeSlip(ctx context.Context, s *Slip) error {
-	if err := m.st.docs.Remove(ctx, s.ID); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
-		return err
-	}
 	rec, err := m.st.db.Get[slipRecord](ctx, s.ID)
-	if err == nil {
-		err = m.st.db.Delete[slipRecord](ctx, s.ID, rec.Revision())
-	}
-	if err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
+	switch {
+	case err == nil:
+		if err := m.st.db.Delete[slipRecord](ctx, s.ID, rec.Revision()); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
+			return mapErr(err)
+		}
+		m.release(ctx, s.Job)
+	case !errors.Is(err, yuruidb.ErrNotFound):
 		return mapErr(err)
 	}
 	return m.touch(ctx, s.Location, func(st *locationState) {

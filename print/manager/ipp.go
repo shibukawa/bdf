@@ -17,17 +17,20 @@ import (
 	"github.com/shibukawa/bdf/print/ipp"
 )
 
-// Each location is an IPP printer at /ipp/print/<location>: a sender
-// (a WMS, a business system, an office PC) prints to it as to any
-// printer, over HTTP(S) on the manager's own port. The job is completed
-// as soon as its slip is on the board. Only the operations of one request
-// are taken (Print-Job, not Create-Job and Send-Document), so that a
-// request is all there is to a job: no instance waits for a document.
+// Every node is an IPP printer at /ipp/print/<name>: a sender (a WMS, a
+// business system, an office PC) prints to it as to any printer, over
+// HTTP(S) on the manager's own port, and the job follows the topology
+// from there. Only the operations of one request are taken (Print-Job,
+// not Create-Job and Send-Document), so that a request is all there is to
+// a job: no instance waits for a document. /ipp/print itself answers
+// CUPS-Get-Printers and CUPS-Get-Classes with every node, as a CUPS
+// server lists its destinations.
 
-// IPPPath is where the locations' printers are.
+// IPPPath is where the nodes' printers are.
 const IPPPath = "/ipp/print"
 
-var ippOperations = []ipp.Op{ipp.OpPrintJob, ipp.OpValidateJob, ipp.OpCancelJob, ipp.OpGetJobAttributes, ipp.OpGetJobs, ipp.OpGetPrinterAttributes}
+var ippOperations = []ipp.Op{ipp.OpPrintJob, ipp.OpValidateJob, ipp.OpCancelJob, ipp.OpGetJobAttributes, ipp.OpGetJobs, ipp.OpGetPrinterAttributes,
+	ipp.OpCupsGetPrinters, ipp.OpCupsGetClasses, ipp.OpCupsGetDefault}
 
 var ippFormats = []string{"application/octet-stream", "application/pdf", "application/x-bdf", "image/pwg-raster", "image/urf", "image/jpeg", "image/png"}
 
@@ -37,7 +40,11 @@ type ippRequest struct {
 	req *ipp.Message
 	op  *ipp.Group
 	res *ipp.Message
-	loc *Location
+	// dest is the node the request is to ("" for the server itself),
+	// kind its kind and title its title.
+	dest  string
+	kind  string
+	title string
 	// user is who sent it: the token's name, or what the sender said
 	// without a token.
 	user string
@@ -69,11 +76,37 @@ func (q *ippRequest) scheme() string {
 	return "ipp"
 }
 
-func (q *ippRequest) printerURI() string {
-	return q.scheme() + "://" + q.r.Host + IPPPath + "/" + q.loc.Name
+func (q *ippRequest) uri(dest string) string {
+	return q.scheme() + "://" + q.r.Host + IPPPath + "/" + dest
 }
 
-// serveIPP serves an IPP request to a location's printer.
+func (q *ippRequest) printerURI() string { return q.uri(q.dest) }
+
+// destInfo tells the kind and the title of a destination.
+func (m *Manager) destInfo(ctx context.Context, name string) (kind, title string, err error) {
+	kind, err = m.kindOf(ctx, name)
+	if err != nil {
+		return "", "", err
+	}
+	switch kind {
+	case KindDisplay:
+		if l, err := m.Location(ctx, name); err == nil {
+			title = l.Title
+		}
+	case KindPrinter:
+		if p, err := m.Printer(ctx, name); err == nil {
+			title = p.Info
+		}
+	default:
+		if n, err := m.Node(ctx, name); err == nil {
+			title = n.Title
+		}
+	}
+	return kind, or(title, name), nil
+}
+
+// serveIPP serves an IPP request to a node's printer, or to the server
+// (no node).
 func (h *handler) serveIPP(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/ipp") {
 		http.Error(w, "an IPP request is application/ipp", http.StatusBadRequest)
@@ -86,17 +119,21 @@ func (h *handler) serveIPP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	loc, err := h.m.Location(ctx, r.PathValue("location"))
-	if err != nil {
-		http.Error(w, "no such printer", http.StatusNotFound)
-		return
+	q := &ippRequest{w: w, r: r, user: user}
+	if dest := r.PathValue("dest"); dest != "" {
+		kind, title, err := h.m.destInfo(ctx, dest)
+		if err != nil {
+			http.Error(w, "no such printer", http.StatusNotFound)
+			return
+		}
+		q.dest, q.kind, q.title = dest, kind, title
 	}
 	req, body, err := ipp.DecodeFrom(bufio.NewReaderSize(r.Body, 64<<10), &ipp.Limits{MaxBytes: 1 << 20, MaxAttributes: 1000, MaxValues: 1000, MaxValueBytes: 64 << 10, MaxDepth: 4})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	q := &ippRequest{w: w, r: r, req: req, op: req.Group(ipp.TagOperation), loc: loc, user: user}
+	q.req, q.op = req, req.Group(ipp.TagOperation)
 	q.res = ipp.NewResponse(ipp.StatusOK, req.RequestID, "utf-8", "en")
 	q.res.Version = req.Version
 	if user == "" {
@@ -125,6 +162,21 @@ func (h *handler) serveIPP(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) dispatch(ctx context.Context, q *ippRequest, body io.Reader) {
 	switch q.req.Op() {
+	case ipp.OpCupsGetPrinters:
+		h.cupsPrinters(ctx, q, false)
+		return
+	case ipp.OpCupsGetClasses:
+		h.cupsPrinters(ctx, q, true)
+		return
+	case ipp.OpCupsGetDefault:
+		q.fail(ipp.StatusClientErrorNotFound, "no default destination: name one")
+		return
+	}
+	if q.dest == "" {
+		q.fail(ipp.StatusClientErrorNotFound, "the server is not a printer: ask %s/<name>", IPPPath)
+		return
+	}
+	switch q.req.Op() {
 	case ipp.OpGetPrinterAttributes:
 		h.printerAttributes(ctx, q)
 	case ipp.OpValidateJob:
@@ -134,19 +186,19 @@ func (h *handler) dispatch(ctx context.Context, q *ippRequest, body io.Reader) {
 	case ipp.OpPrintJob:
 		h.printJob(ctx, q, body)
 	case ipp.OpGetJobAttributes:
-		s := h.job(ctx, q)
-		if s != nil {
-			q.res.Add(ipp.TagJob, h.jobAttributes(q, s)...)
+		j := h.job(ctx, q)
+		if j != nil {
+			q.res.Add(ipp.TagJob, h.jobAttributes(q, j)...)
 		}
 	case ipp.OpGetJobs:
 		h.jobs(ctx, q)
 	case ipp.OpCancelJob:
-		s := h.job(ctx, q)
-		if s == nil {
+		j := h.job(ctx, q)
+		if j == nil {
 			return
 		}
-		if _, err := h.m.Cancel(ctx, s.ID, Mark{Worker: q.user}); err != nil {
-			q.fail(ipp.StatusClientErrorNotPossible, "the job is %s", s.State)
+		if _, err := h.m.Cancel(ctx, j.ID, Mark{Worker: q.user}); err != nil {
+			q.fail(ipp.StatusClientErrorNotPossible, "the job is %s", j.State)
 		}
 	default:
 		q.fail(ipp.StatusServerErrorOperationNotSupported, "%s is not supported", q.req.Op())
@@ -162,7 +214,7 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-// printerUUID is a location's printer-uuid: the same for the same name.
+// printerUUID is a node's printer-uuid: the same for the same name.
 func printerUUID(name string) string {
 	sum := sha256.Sum256([]byte("bdf-print-manager\x00" + name))
 	b := sum[:16]
@@ -172,10 +224,73 @@ func printerUUID(name string) string {
 	return "urn:uuid:" + x[:8] + "-" + x[8:12] + "-" + x[12:16] + "-" + x[16:20] + "-" + x[20:]
 }
 
+// cupsPrinterType is CUPS's printer-type of a node: the bit of a class
+// for classes, none for the rest.
+func cupsPrinterType(kind string) int {
+	if kind == KindClass {
+		return 1 // CUPS_PRINTER_CLASS
+	}
+	return 0
+}
+
+// deviceURI is the device-uri a node is shown with: a printer's URL, or
+// the kind of the node as a scheme.
+func deviceURI(n *TopoNode) string {
+	if n.Kind == KindPrinter {
+		return n.URL
+	}
+	return n.Kind + "://" + n.Name
+}
+
+// cupsPrinters answers CUPS-Get-Printers (every node) or CUPS-Get-Classes
+// (the classes, with their members).
+func (h *handler) cupsPrinters(ctx context.Context, q *ippRequest, classes bool) {
+	nodes, err := h.m.Topology(ctx)
+	if err != nil {
+		q.fail(ipp.StatusServerErrorInternal, "%v", err)
+		return
+	}
+	for i := range nodes {
+		n := &nodes[i]
+		if classes && n.Kind != KindClass {
+			continue
+		}
+		attrs := []ipp.Attribute{
+			ipp.Attr("printer-name", ipp.Name(n.Name)),
+			ipp.Attr("printer-uri-supported", ipp.URI(q.uri(n.Name))),
+			ipp.Attr("printer-info", ipp.Text(or(n.Title, n.Name))),
+			ipp.Attr("printer-location", ipp.Text(or(n.Title, n.Name))),
+			ipp.Attr("printer-make-and-model", ipp.Text("BDF Print Manager "+n.Kind)),
+			ipp.Attr("printer-uuid", ipp.URI(printerUUID(n.Name))),
+			ipp.Attr("printer-state", ipp.Enum(3)),
+			ipp.Attr("printer-state-reasons", ipp.Keyword("none")),
+			ipp.Attr("printer-is-accepting-jobs", ipp.Boolean(true)),
+			ipp.Attr("printer-type", ipp.Integer(cupsPrinterType(n.Kind))),
+			ipp.Attr("device-uri", ipp.URI(deviceURI(n))),
+		}
+		if n.Kind == KindClass {
+			names := make([]ipp.Value, len(n.Members))
+			uris := make([]ipp.Value, len(n.Members))
+			for i, mem := range n.Members {
+				names[i], uris[i] = ipp.Name(mem), ipp.URI(q.uri(mem))
+			}
+			attrs = append(attrs, ipp.Attr("member-names", names...), ipp.Attr("member-uris", uris...))
+		}
+		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagPrinter, Attrs: attrs})
+	}
+	if len(q.res.Groups) == 1 { // the operation group alone
+		q.fail(ipp.StatusClientErrorNotFound, "no destinations")
+	}
+}
+
 func (h *handler) printerAttributes(ctx context.Context, q *ippRequest) {
-	open := 0
-	if b, err := h.m.Board(ctx, q.loc.Name); err == nil {
-		open = len(b.Open)
+	queued := 0
+	if jobs, err := h.m.JobsOf(ctx, q.dest, 0); err == nil {
+		for _, j := range jobs {
+			if !j.State.ended() {
+				queued++
+			}
+		}
 	}
 	ops := make([]ipp.Value, len(ippOperations))
 	for i, op := range ippOperations {
@@ -197,15 +312,16 @@ func (h *handler) printerAttributes(ctx context.Context, q *ippRequest) {
 		ipp.Attr("printer-uri-supported", ipp.URI(q.printerURI())),
 		ipp.Attr("uri-security-supported", ipp.Keyword(security)),
 		ipp.Attr("uri-authentication-supported", ipp.Keyword(auth)),
-		ipp.Attr("printer-name", ipp.Name(q.loc.Name)),
-		ipp.Attr("printer-info", ipp.Text(or(q.loc.Title, q.loc.Name))),
-		ipp.Attr("printer-location", ipp.Text(or(q.loc.Title, q.loc.Name))),
-		ipp.Attr("printer-make-and-model", ipp.Text("BDF Print Manager")),
-		ipp.Attr("printer-uuid", ipp.URI(printerUUID(q.loc.Name))),
+		ipp.Attr("printer-name", ipp.Name(q.dest)),
+		ipp.Attr("printer-info", ipp.Text(q.title)),
+		ipp.Attr("printer-location", ipp.Text(q.title)),
+		ipp.Attr("printer-make-and-model", ipp.Text("BDF Print Manager "+q.kind)),
+		ipp.Attr("printer-uuid", ipp.URI(printerUUID(q.dest))),
+		ipp.Attr("printer-type", ipp.Integer(cupsPrinterType(q.kind))),
 		ipp.Attr("printer-state", ipp.Enum(3)), // idle
 		ipp.Attr("printer-state-reasons", ipp.Keyword("none")),
 		ipp.Attr("printer-is-accepting-jobs", ipp.Boolean(true)),
-		ipp.Attr("queued-job-count", ipp.Integer(open)),
+		ipp.Attr("queued-job-count", ipp.Integer(queued)),
 		ipp.Attr("printer-up-time", ipp.Integer(int(h.m.now().Unix()&0x7fffffff))),
 		ipp.Attr("ipp-versions-supported", ipp.Keyword("1.1"), ipp.Keyword("2.0")),
 		ipp.Attr("operations-supported", ops...),
@@ -258,7 +374,7 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 		return
 	}
 	name := firstOr(q.text("job-name"), q.text("document-name"))
-	s, err := h.m.Submit(ctx, q.loc.Name, Input{Name: name, User: q.user, Source: "ipp", Doc: f, Size: n})
+	j, err := h.m.Submit(ctx, q.dest, Input{Name: name, User: q.user, Source: "ipp", Doc: f, Size: n})
 	switch {
 	case errors.Is(err, ErrFormat):
 		q.fail(ipp.StatusClientErrorDocumentFormatError, "%v", err)
@@ -267,21 +383,22 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 		q.fail(ipp.StatusClientErrorBadRequest, "%v", err)
 		return
 	case err != nil:
-		h.m.o.Log.Error("ipp: print-job", "location", q.loc.Name, "err", err)
+		h.m.o.Log.Error("ipp: print-job", "dest", q.dest, "err", err)
 		q.fail(ipp.StatusServerErrorInternal, "the job could not be kept")
 		return
 	}
+	st, reason := ippState(j)
 	q.res.Add(ipp.TagJob,
-		ipp.Attr("job-id", ipp.Integer(int(s.Job))),
-		ipp.Attr("job-uri", ipp.URI(q.printerURI()+"/"+strconv.Itoa(int(s.Job)))),
-		ipp.Attr("job-state", ipp.Enum(int(ipp.JobCompleted))),
-		ipp.Attr("job-state-reasons", ipp.Keyword("job-completed-successfully")),
+		ipp.Attr("job-id", ipp.Integer(int(j.Number))),
+		ipp.Attr("job-uri", ipp.URI(q.printerURI()+"/"+strconv.Itoa(int(j.Number)))),
+		ipp.Attr("job-state", ipp.Enum(int(st))),
+		ipp.Attr("job-state-reasons", ipp.Keyword(reason)),
 	)
 }
 
 // job finds the job a request names (job-id, or job-uri), of the
-// request's location.
-func (h *handler) job(ctx context.Context, q *ippRequest) *Slip {
+// request's destination.
+func (h *handler) job(ctx context.Context, q *ippRequest) *Job {
 	var id int32
 	if a := q.attr("job-id"); a != nil {
 		id, _ = a.Int()
@@ -293,61 +410,82 @@ func (h *handler) job(ctx context.Context, q *ippRequest) *Slip {
 		q.fail(ipp.StatusClientErrorBadRequest, "no job-id")
 		return nil
 	}
-	s, err := h.m.SlipOfJob(ctx, id)
-	if err != nil || s.Location != q.loc.Name {
+	j, err := h.m.JobOfNumber(ctx, id)
+	if err != nil || j.Dest != q.dest {
 		q.fail(ipp.StatusClientErrorNotFound, "no job %d", id)
 		return nil
 	}
-	return s
+	return j
 }
 
-func ippState(s *Slip) (ipp.JobState, string) {
-	if s.State == SlipCanceled {
+// ippState is a job's job-state and job-state-reasons.
+func ippState(j *Job) (ipp.JobState, string) {
+	switch j.State {
+	case JobProcessing:
+		return ipp.JobProcessing, "job-printing"
+	case JobHeld:
+		return ipp.JobPendingHeld, "job-hold-until-specified"
+	case JobCanceled:
 		return ipp.JobCanceled, "job-canceled-by-user"
+	case JobAborted:
+		return ipp.JobAborted, "aborted-by-system"
 	}
 	return ipp.JobCompleted, "job-completed-successfully"
 }
 
-func (h *handler) jobAttributes(q *ippRequest, s *Slip) []ipp.Attribute {
-	st, reason := ippState(s)
-	return []ipp.Attribute{
-		ipp.Attr("job-id", ipp.Integer(int(s.Job))),
-		ipp.Attr("job-uri", ipp.URI(q.printerURI()+"/"+strconv.Itoa(int(s.Job)))),
+func (h *handler) jobAttributes(q *ippRequest, j *Job) []ipp.Attribute {
+	st, reason := ippState(j)
+	attrs := []ipp.Attribute{
+		ipp.Attr("job-id", ipp.Integer(int(j.Number))),
+		ipp.Attr("job-uri", ipp.URI(q.printerURI()+"/"+strconv.Itoa(int(j.Number)))),
 		ipp.Attr("job-printer-uri", ipp.URI(q.printerURI())),
-		ipp.Attr("job-name", ipp.Name(firstOr(s.Name, "slip-"+s.ID))),
-		ipp.Attr("job-originating-user-name", ipp.Name(firstOr(s.User, "anonymous"))),
+		ipp.Attr("job-name", ipp.Name(firstOr(j.Name, "job-"+j.ID))),
+		ipp.Attr("job-originating-user-name", ipp.Name(firstOr(j.User, "anonymous"))),
 		ipp.Attr("job-state", ipp.Enum(int(st))),
 		ipp.Attr("job-state-reasons", ipp.Keyword(reason)),
-		ipp.Attr("job-impressions-completed", ipp.Integer(s.Pages)),
-		ipp.Attr("time-at-creation", ipp.Integer(int(s.Received.Unix()&0x7fffffff))),
-		ipp.Attr("time-at-completed", ipp.Integer(int(s.Received.Unix()&0x7fffffff))),
+		ipp.Attr("job-impressions-completed", ipp.Integer(j.Pages)),
+		ipp.Attr("time-at-creation", ipp.Integer(int(j.Received.Unix()&0x7fffffff))),
 	}
+	if !j.Ended.IsZero() {
+		attrs = append(attrs, ipp.Attr("time-at-completed", ipp.Integer(int(j.Ended.Unix()&0x7fffffff))))
+	}
+	return attrs
 }
 
-// jobs answers Get-Jobs: the board's slips, as completed (or canceled)
-// jobs; which-jobs not-completed has none.
+// jobs answers Get-Jobs: the jobs sent to the destination, those not
+// completed by default (RFC 8011), the completed ones with which-jobs
+// completed, all with which-jobs all.
 func (h *handler) jobs(ctx context.Context, q *ippRequest) {
-	if w := q.text("which-jobs"); w == "not-completed" {
-		return
-	}
+	which := firstOr(q.text("which-jobs"), "not-completed")
 	limit := 1000
 	if a := q.attr("limit"); a != nil {
 		if n, ok := a.Int(); ok && n > 0 {
 			limit = int(n)
 		}
 	}
-	b, err := h.m.Board(ctx, q.loc.Name)
+	jobs, err := h.m.JobsOf(ctx, q.dest, 0)
 	if err != nil {
 		q.fail(ipp.StatusServerErrorInternal, "%v", err)
 		return
 	}
-	all := append(b.Open, b.Ended...)
-	for i := range all {
-		if i >= limit {
+	n := 0
+	for i := range jobs {
+		j := &jobs[i]
+		switch which {
+		case "completed":
+			if !j.State.ended() {
+				continue
+			}
+		case "not-completed":
+			if j.State.ended() {
+				continue
+			}
+		}
+		if n++; n > limit {
 			break
 		}
 		// a group for each job (Add would join them)
-		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: h.jobAttributes(q, &all[i])})
+		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: h.jobAttributes(q, j)})
 	}
 }
 

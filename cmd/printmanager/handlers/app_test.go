@@ -60,4 +60,18 @@ func TestApp(t *testing.T) {
 	if code, body := get("/api/locations", "t"); code != http.StatusOK || strings.TrimSpace(body) != "[]" {
 		t.Errorf("api: %d %s", code, body)
 	}
+	// the endpoints and the IPP server are mounted too: the manager
+	// answers (JSON), not the framework's page
+	for _, path := range []string{"/in/nowhere", "/ipp/print"} {
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader("{}"))
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode == http.StatusOK || !strings.Contains(string(b), "error") && !strings.Contains(string(b), "IPP") {
+			t.Errorf("%s: %d %s", path, res.StatusCode, b)
+		}
+	}
 }
