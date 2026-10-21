@@ -17,8 +17,8 @@ import (
 
 // routeInbox holds the job in an inbox.
 func (m *Manager) routeInbox(ctx context.Context, r *routing, name, from string) {
-	j := r.job
-	it := Item{ID: itemID(j.Number, name), Job: j.Number, Inbox: name, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Dest: j.Dest, Pages: j.Pages, Received: r.now, State: ItemHeld}
+	j, p := r.job, r.payload
+	it := Item{ID: itemID(j.Number, name), Job: j.Number, Inbox: name, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Dest: j.Dest, Payload: p.ID, Pages: p.Pages, Received: r.now, State: ItemHeld}
 	_, err := m.st.db.Insert(ctx, it.ID, itemRecord(it))
 	if errors.Is(err, yuruidb.ErrAlreadyExists) {
 		r.add(Leg{Node: name, Kind: KindInbox, From: from, State: LegError, Ref: it.ID, Error: "the job passed this inbox already"})
@@ -162,7 +162,7 @@ func (m *Manager) Release(ctx context.Context, id string, to []string, by Mark) 
 	if err := m.endItem(ctx, it.Inbox, id); err != nil {
 		return it, err
 	}
-	r := &routing{job: j, now: by.At}
+	r := &routing{job: j, now: by.At, payload: j.payload(it.Payload)}
 	for _, name := range to {
 		m.route(ctx, r, name, it.Inbox, 0)
 	}

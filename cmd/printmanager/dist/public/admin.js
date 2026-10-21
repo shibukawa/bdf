@@ -74,12 +74,14 @@ export function badge(text, cls = "badge-ghost") {
   return el("span", text, { className: "badge " + cls });
 }
 
-export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", filter: "Filter", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink" };
+export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
   sink: "badge-success badge-soft",
   filter: "badge-secondary badge-soft",
+  template: "badge-secondary badge-soft",
+  convert: "badge-secondary badge-soft",
   queue: "badge-primary badge-soft",
   class: "badge-primary badge-soft",
   inbox: "badge-warning badge-soft",
@@ -90,6 +92,22 @@ export const KIND_BADGE = {
 
 export function kindBadge(kind) {
   return badge(KINDS[kind] || kind, KIND_BADGE[kind] || "badge-ghost");
+}
+
+// The kinds of payload that flow along the edges (kinds.go): a .bdf
+// document, data for a template, or any file as received. Ports and
+// edges are colored by them.
+export const PAYLOADS = { bdf: ".bdf document", data: "data (JSON, YAML, CSV, Excel, Parquet)", any: "any file" };
+export const PAYLOAD_COLOR = { bdf: "#2563eb", data: "#16a34a", any: "#64748b" };
+
+// payloadBadge tells what a job carries: its kind and format.
+export function payloadBadge(j) {
+  const kind = j.kind || "bdf";
+  const b = badge(kind === "bdf" ? ".bdf" : kind + " · " + (j.format || ""), "badge-sm badge-outline whitespace-nowrap");
+  b.style.borderColor = PAYLOAD_COLOR[kind] || PAYLOAD_COLOR.any;
+  b.style.color = PAYLOAD_COLOR[kind] || PAYLOAD_COLOR.any;
+  b.title = (PAYLOADS[kind] || kind) + (j.format ? ", received as " + j.format : "");
+  return b;
 }
 
 // sender is who sent a job, as verified, and the name they gave.

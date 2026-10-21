@@ -30,7 +30,7 @@ func PortHandler(m *Manager, name string) http.Handler {
 		switch n.Kind {
 		case KindEndpoint:
 			if r.Method != http.MethodPost {
-				writeJSON(w, http.StatusOK, map[string]any{"node": name, "kind": n.Kind, "port": n.Port, "post": "a document, or JSON naming a template and its data, with the endpoint's key"})
+				writeJSON(w, http.StatusOK, map[string]any{"node": name, "kind": n.Kind, "port": n.Port, "post": "a document, or data, as the body, with the endpoint's key"})
 				return
 			}
 			r.SetPathValue("name", name)

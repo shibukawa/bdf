@@ -6,11 +6,13 @@
 // devices and enrollment codes). Everything goes through the API; the
 // server checks a node when it is put (its edges, its name, no cycle).
 
-import { $, api, button, changed, el, keptSection, kindBadge, KINDS, onChange, since, status } from "./admin.js";
+import { $, api, button, changed, el, keptSection, kindBadge, KINDS, onChange, PAYLOADS, since, status } from "./admin.js";
 import { createCanvas } from "./canvas.js";
 
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
-const ACCEPTS = { both: "documents, and templates to fill", file: "documents only", template: "templates to fill only" };
+const ACCEPTS = { file: "documents (PDF, Office, images, .bdf …)", data: "data (JSON, YAML, CSV, Excel, Parquet)" };
+const OUTPUTS = { bdf: "the .bdf document made of it", file: "the file as received (a convert node makes the document later)" };
+const KINDS_OF_PAYLOAD = { "": "any", bdf: ".bdf document", data: "data", any: "any other file" };
 const POLL_MS = 4000;
 
 let topo = []; // the nodes, as /api/topology lists them
@@ -189,6 +191,10 @@ function ruleRow(r = { match: {}, to: [] }) {
     el("div", undefined, { className: "flex gap-1" }),
   );
   row.lastChild.append(el("input", undefined, { className: "input input-xs w-full", placeholder: "pages ≥", value: m.min_pages || "", inputMode: "numeric", "data-k": "min_pages" }), el("input", undefined, { className: "input input-xs w-full", placeholder: "pages ≤", value: m.max_pages || "", inputMode: "numeric", "data-k": "max_pages" }));
+  const meta = el("input", undefined, { className: "input input-xs", placeholder: "metadata matches: key=RE2, key2=RE2", value: Object.entries(m.meta || {}).map(([k, v]) => k + "=" + v).join(", "), "data-k": "meta", title: "The sender's keys, the entry's, and $job, $entry, $sender, $file, $kind, $format, $pages …" });
+  const kind = el("select", undefined, { className: "select select-xs", "data-k": "kind" });
+  for (const [v, label] of Object.entries(KINDS_OF_PAYLOAD)) kind.append(el("option", v ? "payload: " + label : "payload: any kind", { value: v, selected: v === (m.kind || "") }));
+  row.append(meta, kind);
   const to = el("input", undefined, { className: "input input-xs col-span-2", placeholder: "→ nodes, comma-separated", value: (r.to || []).join(", "), "data-k": "to" });
   to.setAttribute("list", "node-names");
   const drop = el("button", "remove the rule", { type: "button", className: "btn btn-xs btn-ghost col-span-2 justify-self-end text-error" });
@@ -208,6 +214,13 @@ function rulesOf() {
     if (v("format")) match.format = v("format");
     if (v("min_pages")) match.min_pages = Number(v("min_pages"));
     if (v("max_pages")) match.max_pages = Number(v("max_pages"));
+    if (v("kind")) match.kind = v("kind");
+    const meta = {};
+    for (const pair of v("meta").split(",")) {
+      const i = pair.indexOf("=");
+      if (i > 0) meta[pair.slice(0, i).trim()] = pair.slice(i + 1).trim();
+    }
+    if (Object.keys(meta).length) match.meta = meta;
     const to = names(v("to"));
     if (!Object.keys(match).length && !to.length) continue;
     out.push({ match, to });
@@ -219,6 +232,78 @@ function selectInput(id, options, value) {
   const s = el("select", undefined, { id, className: "select select-sm w-full" });
   for (const [v, label] of options) s.append(el("option", label, { value: v, selected: v === value }));
   return s;
+}
+
+// metaRows are the metadata an entry adds to every job it takes, as
+// rows of key and value in the sidebar.
+function metaRow(k = "", v = "") {
+  const row = el("div", undefined, { className: "meta grid grid-cols-[1fr_1fr_auto] gap-1" });
+  row.append(el("input", undefined, { className: "input input-xs", placeholder: "key (site)", value: k, "data-k": "key" }), el("input", undefined, { className: "input input-xs", placeholder: "value (tokyo)", value: v, "data-k": "value" }));
+  const drop = el("button", "×", { type: "button", className: "btn btn-xs btn-ghost text-error" });
+  drop.addEventListener("click", () => row.remove());
+  row.append(drop);
+  return row;
+}
+
+function metaField(n) {
+  const rows = el("div", undefined, { id: "f-meta", className: "flex flex-col gap-1" });
+  for (const [k, v] of Object.entries(n.meta || {})) rows.append(metaRow(k, typeof v === "string" ? v : JSON.stringify(v)));
+  const add = el("button", "+ a key", { type: "button", className: "btn btn-xs w-fit" });
+  add.addEventListener("click", () => rows.append(metaRow()));
+  const box = el("div", undefined, { className: "flex flex-col gap-1" });
+  box.append(rows, add);
+  return field("Metadata added", box, "Keys this entry adds to every job it takes (a site, a department): they win over the sender's (X-Meta-* headers, ?meta.<key>=), and filters route by them. Keys starting with $ are the manager's.");
+}
+
+// metaOf reads the metadata rows: a value that is JSON (a number, true,
+// an object) is kept as that, else as text.
+function metaOf() {
+  const out = {};
+  for (const row of document.querySelectorAll("#f-meta .meta")) {
+    const k = row.querySelector('[data-k="key"]').value.trim();
+    const v = row.querySelector('[data-k="value"]').value;
+    if (!k) continue;
+    try {
+      out[k] = /^[-\d\[{"tfn]/.test(v.trim()) ? JSON.parse(v) : v;
+    } catch {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+// formatsField is the formats an entry takes, or a convert node converts.
+function formatsField(n, label, what) {
+  const fmts = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
+  for (const f of formats) {
+    const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
+    l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name: "fmt", value: f, checked: (n.formats || []).includes(f) }), f);
+    fmts.append(l);
+  }
+  return field(label, fmts, what);
+}
+
+// entryFields are what an entry takes and sends on: documents or data,
+// the formats, and whether a document goes on as the .bdf made of it or
+// as received.
+function entryFields(form, n) {
+  const accept = selectInput("f-accept", Object.entries(ACCEPTS), n.accept || "file");
+  const output = selectInput("f-output", Object.entries(OUTPUTS), n.output || "bdf");
+  const sync = () => (output.disabled = accept.value === "data");
+  accept.addEventListener("change", sync);
+  setTimeout(sync);
+  form.append(field("Accepts", accept, "Data is for a template node after this entry: the edges leaving it carry data."));
+  form.append(field("Sends on", output, "Of a document: converted here (printers and displays take .bdf), or as received for a convert node or an archive after this. Data always goes on as it is."));
+  form.append(formatsField(n, "Formats taken", "None checked: every format the converter reads (and json, yaml for data). A file of another format is refused, and the refusal is in the audit log."));
+}
+
+// kindsLine tells what a node takes and sends on, as the API inferred
+// it from the entries.
+function kindsLine(n) {
+  const parts = [];
+  if (n.takes) parts.push("takes " + (PAYLOADS[n.takes] || n.takes));
+  if (n.emits && n.emits.length) parts.push("sends on " + n.emits.map((k) => PAYLOADS[k] || k).join(" or "));
+  return parts.length ? el("p", parts.join(" · "), { className: "text-xs text-base-content/60" }) : null;
 }
 
 const names = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -274,7 +359,7 @@ function renderSidebar() {
   const aside = $("sidebar");
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) {
-    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer.", { className: "text-sm text-base-content/60" }));
+    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. The ports and edges are colored by what flows: blue a .bdf document, green data (for a template node), grey any file as received (for a convert node); a printer takes .bdf only, so a file or data cannot be connected to it without a convert or a template node between.", { className: "text-sm text-base-content/60" }));
     return;
   }
   const kind = n.kind;
@@ -290,17 +375,15 @@ function renderSidebar() {
     form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>) and does not change later."));
   }
   form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown instead of the name" })));
+  if (!draft) {
+    const k = kindsLine(n);
+    if (k) form.append(k);
+  }
   switch (kind) {
     case "endpoint": {
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job. The port on the canvas adds one too."));
-      form.append(field("Accepts", selectInput("f-accept", Object.entries(ACCEPTS), n.accept || "both")));
-      const fmts = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
-      for (const f of formats) {
-        const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
-        l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name: "fmt", value: f, checked: (n.formats || []).includes(f) }), f);
-        fmts.append(l);
-      }
-      form.append(field("Formats taken", fmts, "None checked: every format the converter reads. A document of another format is refused, and the refusal is in the audit log."));
+      entryFields(form, n);
+      form.append(metaField(n));
       form.append(portField(n, "Applications may POST to http://<this host>:<port>/ as well as to " + n.in + "."));
       const appBoxes = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
       for (const a of apps) {
@@ -314,6 +397,8 @@ function renderSidebar() {
     }
     case "cups":
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets what computers print here: a printer makes it a relay, a sink shows the pages, a filter keeps only what fits. The port on the canvas adds one too."));
+      entryFields(form, n);
+      form.append(metaField(n));
       form.append(portField(n, `Computers print to ipp://<this host>:<port>/printers/${n.name || "<name>"}, the one printer of this CUPS server; lpstat -h <host>:<port> -p lists it.`, true));
       form.append(field("TLS certificate (file)", input("f-tls-cert", n.tls_cert || "", { placeholder: "/etc/bdf/cups.crt; empty: plain ipp" })));
       form.append(field("TLS key (file)", input("f-tls-key", n.tls_key || "", { placeholder: "/etc/bdf/cups.key" })));
@@ -324,6 +409,23 @@ function renderSidebar() {
     case "queue":
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job: a fan-out when there are several."));
       break;
+    case "template": {
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The form filled (.bdf) goes to every node chosen."));
+      const ids = n.templates || [];
+      const options = [["", "— named by the metadata below —"], ...ids.map((id) => [id, id])];
+      if (n.template && !ids.includes(n.template)) options.push([n.template, n.template + " (not uploaded yet)"]);
+      form.append(field("Template", selectInput("f-template", options, n.template || ""), draft ? "Add the node first, then upload its templates below and choose one here." : "One of the templates uploaded below, filled with the data that reaches the node."));
+      form.append(field("Or the metadata key naming it", input("f-template-from", n.template_from || "", { placeholder: "doc_type: the sender's X-Meta-Doc-Type names the template" }), "A job whose metadata lacks the key, or names a template that is not here, fails here (no retry)."));
+      form.append(field("Name of a list", input("f-list-name", n.list_name || "", { placeholder: "the file's name without its extension (orders for orders.csv)" }), "Data that is a list of records (a CSV file, a sheet, a JSON array) is the value of this name for the template; an object is the data itself."));
+      const strict = el("label", undefined, { className: "inline-flex items-center gap-2 text-sm" });
+      strict.append(el("input", undefined, { id: "f-strict", type: "checkbox", className: "checkbox checkbox-sm", checked: !!n.strict }), "Strict: refuse data that lacks a name the template looks up (else the tag is left empty, with a warning)");
+      form.append(strict);
+      break;
+    }
+    case "convert":
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The .bdf document made goes to every node chosen; a .bdf that reaches the node goes on as it is."));
+      form.append(formatsField(n, "Formats converted", "None checked: every format the converter reads. A file of another format fails here (no retry); JSON and YAML have no document of their own: fill a template with them."));
+      break;
     case "filter": {
       const rules = el("div", undefined, { id: "f-rules", className: "flex flex-col gap-2" });
       for (const r of n.rules || []) rules.append(ruleRow(r));
@@ -331,7 +433,7 @@ function renderSidebar() {
       add.addEventListener("click", () => rules.append(ruleRow()));
       const box = el("div", undefined, { className: "flex flex-col gap-2" });
       box.append(rules, add);
-      form.append(field("Rules, in order", box, "The first rule that fits the job sends it to its nodes. name, user (the sender) and format are regular expressions; pages are bounds."));
+      form.append(field("Rules, in order", box, "The first rule that fits the job sends it to its nodes. name, user (the sender), format and the values of the metadata are regular expressions; pages are bounds; the kind of payload is .bdf, data or any other file. What reaches the filter goes on as it is."));
       form.append(field("Otherwise", picker("otherwise", n.otherwise || [], n.name), "Where a job no rule fits goes; none: it ends here (dropped)."));
       break;
     }
@@ -406,15 +508,32 @@ async function save(ev) {
     case "endpoint":
       body.to = picked("to");
       body.accept = $("f-accept").value;
+      body.output = $("f-output").value;
       body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
+      body.meta = metaOf();
       body.apps = [...document.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
       if (dur("f-port")) body.port = Number(dur("f-port"));
       break;
     case "cups":
       body.to = picked("to");
+      body.accept = $("f-accept").value;
+      body.output = $("f-output").value;
+      body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
+      body.meta = metaOf();
       body.port = Number($("f-port").value);
       if (dur("f-tls-cert")) body.tls_cert = dur("f-tls-cert");
       if (dur("f-tls-key")) body.tls_key = dur("f-tls-key");
+      break;
+    case "template":
+      body.to = picked("to");
+      if ($("f-template").value) body.template = $("f-template").value;
+      if (dur("f-template-from")) body.template_from = dur("f-template-from");
+      if (dur("f-list-name")) body.list_name = dur("f-list-name");
+      if ($("f-strict").checked) body.strict = true;
+      break;
+    case "convert":
+      body.to = picked("to");
+      body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
       break;
     case "sink":
       if (dur("f-latest")) body.latest = Number(dur("f-latest"));
@@ -470,7 +589,7 @@ async function save(ev) {
 }
 
 async function remove(name) {
-  if (!confirm(`Delete ${name}? A node another one sends to stays. An endpoint's templates go with it; a display's slips and devices stay until it is added again.`)) return;
+  if (!confirm(`Delete ${name}? A node another one sends to stays. A template node's templates go with it; a display's slips and devices stay until it is added again.`)) return;
   try {
     await api("DELETE", "/api/nodes/" + encodeURIComponent(name));
     selected = null;
@@ -494,13 +613,16 @@ function extras(n, aside) {
   aside.append(links);
   if (n.kind === "endpoint") {
     const entry = section("Entry");
-    entry.append(hint("Applications POST a document, or JSON naming a template and its data, with the key as a bearer token."));
+    entry.append(hint(n.accept === "data" ? "Applications POST the data (JSON, YAML, CSV, an Excel workbook or a Parquet file) as the body, with the key as a bearer token; ?name= names the job, X-Meta-* headers and ?meta.<key>= give metadata." : "Applications POST a document as the body, with the key as a bearer token; ?name= names the job, X-Meta-* headers and ?meta.<key>= give metadata."));
     entry.append(el("pre", `POST ${location.origin}${n.in}`, { className: "overflow-x-auto rounded-box bg-base-200 p-2 font-mono text-xs break-all whitespace-pre-wrap" }));
     const key = section("Key");
     key.append(hint("Shown once, when the endpoint was made or the key rotated; the manager keeps only its hash. Rotating it makes a new one and the old one stops working."));
     key.append(button("Rotate key", async () => showKey(n.name, (await api("POST", `/api/nodes/${n.name}/key`)).key), "btn btn-sm btn-outline w-fit"));
+    aside.append(entry, key);
+  }
+  if (n.kind === "template") {
     const tpls = section("Templates");
-    aside.append(entry, key, tpls);
+    aside.append(tpls);
     templatesSection(n, tpls).catch((e) => status(e.message, true));
   }
   if (n.kind === "display") {
@@ -550,8 +672,7 @@ async function previewSection(n, box) {
 }
 
 async function templatesSection(n, box) {
-  box.append(hint(`This endpoint fills them with the data it is sent: POST ${n.in} with JSON naming the template ("template") and its data ("data"). A compiled template (.bdft), or Excel, Word, PowerPoint, a PDF form, pdfme or text.`));
-  if (n.accept === "file") box.append(el("p", "This endpoint takes documents only: its templates are not filled until Accepts changes.", { className: "text-xs text-warning" }));
+  box.append(hint("This node fills one of them (the one chosen above, or the one the metadata names) with the data that reaches it from a data endpoint. A compiled template (.bdft), or Excel, Word, PowerPoint, a PDF form, pdfme or text."));
   const ts = await api("GET", `/api/nodes/${n.name}/templates`);
   const table = el("table", undefined, { className: "table table-xs" });
   const tbody = el("tbody");

@@ -17,7 +17,7 @@ summary: >-
   決まる、多相の口は上流からの推論で PUT の型検査に乗せる、ジョブの中身を「ペイロードの列 + メタデータ」にして変換をノードの
   非同期の段（Delivery の一般化）にする、送り手のメタデータは名乗りで権限の根拠にしない、出口の資格は名前で指す。
   叙述は knowledge-inputs/print-plan/document-flow.ja.md。
-lifecycle: proposed
+lifecycle: active
 authority: authored
 aliases:
 - document flow
@@ -88,25 +88,25 @@ non_goals:
 - S3 の出口での書いた後の確かめと記録（書きっぱなし。2026-10-21 利用者）。残す約束が要るものは archive
 capabilities:
   typed-ports:
-    state: planned
+    state: implemented
     about: capability:print-manager/typed-ports
   payloads-and-meta:
-    state: planned
+    state: implemented
     about: capability:print-manager/payloads
   entry-flags:
-    state: planned
+    state: implemented
     about: capability:print-manager/entry-convert-flag
   template-node:
-    state: planned
+    state: implemented
     about: capability:print-manager/template-node
   convert-node:
-    state: planned
+    state: implemented
     about: capability:print-manager/convert-node
   render-node:
     state: planned
     about: capability:print-manager/render-node
   branch-meta-rules:
-    state: planned
+    state: implemented
     about: capability:print-manager/branch-meta-rules
   extract-node:
     state: planned
@@ -247,7 +247,7 @@ facts:
   - 依存：net/smtp は標準、FTPS・SFTP は外部の部品、式言語と Wasm は入れない
   - 範囲の歯止め：組み込みは文書の変換・形式の変換・抽出・テンプレート・経路・入出力・通知・人の操作まで。データの加工は外部サービス
   delivery:
-    current_milestone: none（要件の整理まで。実装の指示は未）
+    current_milestone: fl-1 implemented（milestone:fl-1、2026-10-22）。次は fl-2
     proposed_slices:
       fl-1: 型とペイロード：種類と口、型の推論と PUT の確かめ、ペイロードの列とメタデータ（確かめた鍵と名乗りの鍵）、入口の accept file / data と convert、テンプレート変換ノード（テンプレートの移動）、コンバートノード、filter の meta の規則、キャンバスの色。確かめ：data の入口 → テンプレート変換 → printer、convert=off の入口 → queue → archive（any）とコンバート → printer の 2 つが通り、printer への data の辺が 400
       fl-2: 出入口と通知：描画ノード、smtp・s3（書きっぱなし）・http（Print Manager の preset も）の出口、S3 Trigger の入口、資格の名前、on_error の辺と通知ノード（slack・mail・http）
@@ -372,3 +372,9 @@ history:
       通知・人の操作・人の入力・外部サービスを capabilities と facts.design.nodes に足し、段の案を 4 つに組み直した
   answered-2:
     summary: 2026-10-22 利用者「テンプレートは移行せず、管理者がテンプレート変換ノードに上げ直すでよい（互換なし）」。template-migration を answered に。fl-1 の前の問いは無くなった
+  fl-1-implemented:
+    summary: >-
+      2026-10-22 利用者「fl-1 の実装を始めてください。暫定の既定はそのままで」。milestone:fl-1 に実装した：kinds.go・meta.go・transform.go、
+      ジョブのペイロードの列とメタデータ、入口の accept と output、テンプレート変換とコンバートのノード、filter の meta と kind、
+      キャンバスの色。暫定の選択（kinds_on_ports・payload_versions・async_steps・rules_re2・meta_keys）はそのまま実装に入った。
+      分かったこと：CSV・Parquet の表の文書にはページが無く印刷できない（変換器の側）。lifecycle を active に

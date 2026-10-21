@@ -126,7 +126,7 @@ func retryDelay(attempts int) time.Duration {
 }
 
 func (m *Manager) sendSlip(ctx context.Context, p *Node, s *Slip) (int32, error) {
-	doc, err := m.Document(ctx, s.Job)
+	doc, err := m.Document(ctx, firstOr(s.Payload, jobID(s.Job)))
 	if err != nil {
 		return 0, err
 	}

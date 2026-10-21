@@ -33,7 +33,42 @@ const IPPPath = "/ipp/print"
 var ippOperations = []ipp.Op{ipp.OpPrintJob, ipp.OpValidateJob, ipp.OpCancelJob, ipp.OpGetJobAttributes, ipp.OpGetJobs, ipp.OpGetPrinterAttributes,
 	ipp.OpCupsGetPrinters, ipp.OpCupsGetClasses, ipp.OpCupsGetDefault}
 
-var ippFormats = []string{"application/octet-stream", "application/pdf", "application/x-bdf", "image/pwg-raster", "image/urf", "image/jpeg", "image/png"}
+var ippFormats = []string{"application/octet-stream", "application/pdf", "application/x-bdf", "image/pwg-raster", "image/urf", "image/jpeg", "image/png", "text/csv", "application/json"}
+
+// maxIPPMeta bounds the job attributes of a request taken as metadata.
+const maxIPPMeta = 32
+
+// ippMeta is the metadata of a Print-Job request: its job template
+// attributes (the job group: media, copies, sides …) and its
+// document-format, as ipp.<name>.
+func ippMeta(req *ipp.Message) map[string]any {
+	out := map[string]any{}
+	add := func(a *ipp.Attribute) {
+		if len(out) >= maxIPPMeta || !metaKeyRE.MatchString(a.Name) {
+			return
+		}
+		if n, ok := a.Int(); ok && len(a.Values) == 1 && (a.Values[0].Tag == ipp.TagInteger || a.Values[0].Tag == ipp.TagEnum) {
+			out["ipp."+a.Name] = n
+			return
+		}
+		if t := a.Text(); t != "" {
+			out["ipp."+a.Name] = clip(t, 255)
+			return
+		}
+		out["ipp."+a.Name] = clip(a.String(), 255)
+	}
+	if g := req.Group(ipp.TagOperation); g != nil {
+		if a := g.Get("document-format"); a != nil {
+			add(a)
+		}
+	}
+	if g := req.Group(ipp.TagJob); g != nil {
+		for i := range g.Attrs {
+			add(&g.Attrs[i])
+		}
+	}
+	return out
+}
 
 type ippRequest struct {
 	w   http.ResponseWriter
@@ -401,7 +436,8 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 			}
 		}
 	}
-	j, err := h.m.Submit(ctx, q.dest, Input{Name: name, By: q.by, ClaimedUser: q.text("requesting-user-name"), Source: "ipp", Doc: f, Size: n})
+	j, err := h.m.Submit(ctx, q.dest, Input{Name: name, By: q.by, ClaimedUser: q.text("requesting-user-name"), Source: "ipp", Doc: f, Size: n,
+		ContentType: q.text("document-format"), Meta: ippMeta(q.req)})
 	switch {
 	case errors.Is(err, ErrFormat):
 		q.fail(ipp.StatusClientErrorDocumentFormatError, "%v", err)

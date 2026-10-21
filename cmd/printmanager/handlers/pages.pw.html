@@ -300,8 +300,9 @@ export component Tablet(): html {
 }
 
 // Topology is the editor of the topology: every node (endpoints, queues,
-// classes, inboxes, displays, printers, archives) is placed, connected
-// and set up here; the node selected is edited in the sidebar.
+// classes, filters, template and convert nodes, inboxes, displays,
+// printers, archives, sinks) is placed, connected and set up here; the
+// node selected is edited in the sidebar.
 export component Topology(account: Account): html {
   <AdminPage title="Topology · BDF Print Manager" account={account}>
     <section class="card bg-base-100 shadow-sm">
@@ -316,7 +317,9 @@ export component Topology(account: Account): html {
 
               <li><a data-kind="queue"><span class="font-semibold">Queue</span><span class="text-xs text-base-content/60">forwards to every node it points to</span></a></li>
               <li><a data-kind="class"><span class="font-semibold">Class</span><span class="text-xs text-base-content/60">one member in turn, or the first</span></a></li>
-              <li><a data-kind="filter"><span class="font-semibold">Filter</span><span class="text-xs text-base-content/60">sends on by rules on what a job is</span></a></li>
+              <li><a data-kind="filter"><span class="font-semibold">Filter</span><span class="text-xs text-base-content/60">sends on by rules on what a job is, and its metadata</span></a></li>
+              <li><a data-kind="template"><span class="font-semibold">Template</span><span class="text-xs text-base-content/60">fills a template with data, into a .bdf document</span></a></li>
+              <li><a data-kind="convert"><span class="font-semibold">Convert</span><span class="text-xs text-base-content/60">makes a .bdf document of a file received as it is</span></a></li>
               <li><a data-kind="inbox"><span class="font-semibold">Inbox</span><span class="text-xs text-base-content/60">held until a person releases it</span></a></li>
               <li><a data-kind="display"><span class="font-semibold">Display</span><span class="text-xs text-base-content/60">shown on the devices enrolled there</span></a></li>
               <li><a data-kind="printer"><span class="font-semibold">Printer</span><span class="text-xs text-base-content/60">printed on paper</span></a></li>

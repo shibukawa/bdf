@@ -221,3 +221,15 @@ ETL の定番のうち、利用者の一覧に無いもの。入れる・入れ�
 
 残る問い（`requirement:document-flow` の `open_questions`）：`notify-shape` と `error-port`（fl-2 の前）、`service-auth`（fl-3 の前）、`signature-meaning`（fl-4 の前）、それ以外は暫定の既定で進められる。
 
+## 10. fl-1 の実装（2026-10-22）
+
+`milestone:fl-1`。利用者「fl-1 の実装を始めてください。暫定の既定はそのままで」。
+
+- **型**：`kinds.go`。口の種類は `takes(kind)`（printer・display は bdf、template は data、他は全部）と `Node.emits(in)`（入口は `in | entryKind`、template・convert・display は bdf、他は `in`）。`inferKinds` が入口から不動点まで辿り、`typed` が PUT のたびに全ノードを確かめる（理由に「raw → fan → laser」の道）。`/api/topology` に `takes` と `emits`。実行時は `route` の先頭で `takes(kind).has(payload.Kind)`。
+- **ペイロード**：`Job.Payloads`（受けたものの ID はジョブの ID のまま、作ったものは Delivery の ID `<ジョブ>.<足跡>`）、`Leg.Payload`・`Leg.Made`、Slip・Item・Delivery に `Payload`。Live はジョブごとのまま（ペイロードはジョブと一緒に消す）。
+- **メタデータ**：`meta.go`。送り手（`X-Meta-*`、`?meta.*`、IPP の job attributes を `ipp.<名>`）< 入口の `meta` < `$` の鍵。規則とテンプレートは `metaView`（文字の表 + `name`・`user` + ペイロードの `$kind` …）を見る。ヘッダの鍵は小文字（`Doc-Type` → `doc-type`）。
+- **入口**：`accept: file | data`、`output: bdf | file`（data のときは空）、`formats`、`meta`。テンプレートの差し込みと JSON の封筒は無くなった。`cups` も同じ欄。
+- **変換の段**：`transform.go`。Delivery の `Kind` が template・convert のとき `transform` → `outcome`（done）→ `continueWith`（ペイロードを足し、`to` へ route、kick）。最終の失敗（`finalErr`）は再試行しない。
+- **分かったこと**：CSV・Parquet の表の文書（`xlsx.ConvertGrid`）にはページのビューが無く、印刷（`print.PrintView`）で止まる。入口の convert でも convert ノードでも同じ。変換器の側の宿題（grid の印刷ビュー）。
+- **未確認**：ブラウザの画面、S3・R2・GCS、Lambda。
+

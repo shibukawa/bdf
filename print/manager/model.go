@@ -124,13 +124,28 @@ const (
 	KindSink = "sink"
 	// KindFilter sends a job on by rules on what it is (filter.go).
 	KindFilter = "filter"
+	// KindTemplate fills one of its templates with the data that reaches
+	// it (kind data) and sends the form on as .bdf (transform.go).
+	KindTemplate = "template"
+	// KindConvert makes a .bdf document of whatever reaches it (a PDF, an
+	// Office document, a CSV file …), as an entry does when it converts,
+	// and sends it on (transform.go).
+	KindConvert = "convert"
 )
 
-// What an endpoint accepts: documents, templates to fill, or both.
+// What an entry (an endpoint, a CUPS server) accepts: documents (PDF,
+// Office, images, .bdf …; the default), or data (JSON, YAML, CSV, Excel,
+// Parquet: what a template node fills).
 const (
-	AcceptBoth     = "both"
-	AcceptFile     = "file"
-	AcceptTemplate = "template"
+	AcceptFile = "file"
+	AcceptData = "data"
+)
+
+// What an entry sends on of a document: the .bdf document made of it
+// (the default), or the file as it was received (kind any).
+const (
+	OutputBDF  = "bdf"
+	OutputFile = "file"
 )
 
 // Policies of a class.
@@ -164,13 +179,29 @@ type Node struct {
 	// its objects are in, "archive-<name>" by default.
 	Store      string `json:"store,omitempty"`
 	Collection string `json:"collection,omitempty"`
-	// Accept is what an endpoint takes: AcceptBoth (documents, and
-	// templates to fill; the default), AcceptFile or AcceptTemplate.
-	// Formats are the formats of the documents it takes, as the converter
-	// names them (pdf, docx, image … and bdf); none takes any. A
-	// document of another format is refused (ErrFormat).
+	// Accept is what an entry takes: AcceptFile (documents; the default)
+	// or AcceptData (data for a template node). Output is what it sends
+	// on of a document: OutputBDF (the .bdf made of it; the default) or
+	// OutputFile (as received). Formats are the formats it takes, as the
+	// converter names them (pdf, docx, image, csv … and bdf), of a
+	// convert node those it converts; none takes any. A document of
+	// another format is refused (ErrFormat).
 	Accept  string   `json:"accept,omitempty"`
+	Output  string   `json:"output,omitempty"`
 	Formats []string `json:"formats,omitempty"`
+	// Meta is metadata an entry adds to every job it takes in: its keys
+	// win over the sender's (meta.go).
+	Meta map[string]any `json:"meta,omitempty"`
+	// Template is the id of the template a template node fills, or
+	// TemplateFrom the metadata key whose value names it (a sender's
+	// "doc_type", say). ListName is the name the data gets when it is a
+	// list of records (a CSV file, a sheet, a JSON array): the file's name
+	// by default. Strict refuses data that lacks a name the template
+	// looks up.
+	Template     string `json:"template,omitempty"`
+	TemplateFrom string `json:"template_from,omitempty"`
+	ListName     string `json:"list_name,omitempty"`
+	Strict       bool   `json:"strict,omitempty"`
 	// KeyHash is the hash of an endpoint's key (argon2id), never the key.
 	// Apps are the apps that may send to the endpoint with their own
 	// credentials (apps.go), besides the key.
@@ -226,13 +257,13 @@ func (n *Node) edges() []string {
 	return out
 }
 
-// Template is a template of an endpoint, which fills it with the data it
-// is sent: a compiled template (.bdft), or one of Excel, Word,
+// Template is a template of a template node, which fills it with the data
+// that reaches it: a compiled template (.bdft), or one of Excel, Word,
 // PowerPoint, PDF forms, pdfme or text, as form.Fill takes them. Its id
-// is unique within its endpoint.
+// is unique within its node.
 type Template struct {
 	ID       string      `json:"id"`
-	Endpoint string      `json:"endpoint"`
+	Node     string      `json:"node"`
 	Name     string      `json:"name,omitempty"`
 	Format   string      `json:"format"`
 	Size     int64       `json:"size"`
@@ -240,7 +271,7 @@ type Template struct {
 	Uploaded time.Time   `json:"uploaded"`
 	Fields   []tag.Field `json:"fields"`
 	// Sample is data the template shows itself filled with, when it
-	// has some: a start for the data an endpoint is sent.
+	// has some: a start for the data a sender sends.
 	Sample map[string]any `json:"sample,omitempty"`
 }
 
@@ -275,9 +306,34 @@ func (s JobState) ended() bool {
 	return s == JobCompleted || s == JobCanceled || s == JobAborted
 }
 
-// Job is a document a sender sent to a destination, and its way through
-// the topology: a leg for each node it reached. The document is kept once
-// (by the job's number) for every slip, item and delivery of the job.
+// Payload is one of the things a job carries: what was received (a .bdf
+// document, data, or any file), and what the nodes made of it (the .bdf
+// a template or a convert node made). Its bytes are kept under its ID
+// (the job's for the one received, <job>.<leg> for one a node made).
+type Payload struct {
+	ID string `json:"id"`
+	// Kind is PayloadBDF, PayloadData or PayloadAny; Format the format of
+	// the bytes (bdf, pdf, csv, json …); Name the file's name, when the
+	// sender gave one.
+	Kind   string `json:"kind"`
+	Format string `json:"format,omitempty"`
+	Name   string `json:"name,omitempty"`
+	// Pages counts the pages of a .bdf document.
+	Pages  int    `json:"pages,omitempty"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
+	// Made is the node that made it ("" for the one received), and At
+	// when.
+	Made string    `json:"made,omitempty"`
+	At   time.Time `json:"at"`
+}
+
+// Job is what a sender sent to a destination (a document, or data), and
+// its way through the topology: a leg for each node it reached, and the
+// payloads the nodes made on the way. Kind, Format, Pages, Size and
+// SHA256 are the received payload's (Format the format received, before
+// an entry converted it). The payloads are kept for every slip, item and
+// delivery of the job.
 type Job struct {
 	ID     string `json:"id"`
 	Number int32  `json:"number"`
@@ -296,15 +352,21 @@ type Job struct {
 	// printer's) when it was received. Empty: the submitter's alone.
 	Group    string    `json:"group,omitempty"`
 	Source   string    `json:"source"`
+	Kind     string    `json:"kind,omitempty"`
 	Format   string    `json:"format,omitempty"`
 	Pages    int       `json:"pages"`
 	Size     int64     `json:"size"`
 	SHA256   string    `json:"sha256"`
 	Received time.Time `json:"received"`
-	State    JobState  `json:"state"`
-	Ended    time.Time `json:"ended,omitzero"`
-	Canceled *Mark     `json:"canceled,omitempty"`
-	Legs     []Leg     `json:"legs"`
+	// Meta is the job's metadata: what the sender gave (a claim, shown
+	// and routed by, never trusted), what the entry added, and what the
+	// manager verified (the keys that start with $). See meta.go.
+	Meta     map[string]any `json:"meta,omitempty"`
+	Payloads []Payload      `json:"payloads"`
+	State    JobState       `json:"state"`
+	Ended    time.Time      `json:"ended,omitzero"`
+	Canceled *Mark          `json:"canceled,omitempty"`
+	Legs     []Leg          `json:"legs"`
 	// Live counts the records that still need the document (slips,
 	// items, pending deliveries): the job and the document are removed
 	// when it ended and nothing needs it.
@@ -325,9 +387,43 @@ type Leg struct {
 	State string `json:"state"`
 	// Ref is the slip, the item or the delivery made here.
 	Ref string `json:"ref,omitempty"`
-	// Member is the member a class chose.
+	// Member is the member a class chose, or the rule of a filter.
 	Member string `json:"member,omitempty"`
-	Error  string `json:"error,omitempty"`
+	// Payload is the payload the node got, and Made the one it made of it
+	// (a template or a convert node).
+	Payload string `json:"payload,omitempty"`
+	Made    string `json:"made,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+// payload finds a payload of the job by its id; "" is the one received.
+func (j *Job) payload(id string) *Payload {
+	for i := range j.Payloads {
+		if j.Payloads[i].ID == id || (id == "" && i == 0) {
+			return &j.Payloads[i]
+		}
+	}
+	return nil
+}
+
+// received is the payload received, or nil.
+func (j *Job) received() *Payload {
+	if len(j.Payloads) == 0 {
+		return nil
+	}
+	return &j.Payloads[0]
+}
+
+// document is the .bdf payload to show for the job: the last one made,
+// or the one received when it is a .bdf document; nil when the job has
+// none.
+func (j *Job) document() *Payload {
+	for i := len(j.Payloads) - 1; i >= 0; i-- {
+		if j.Payloads[i].Kind == PayloadBDF {
+			return &j.Payloads[i]
+		}
+	}
+	return nil
 }
 
 // States of a leg.
@@ -410,9 +506,11 @@ type Item struct {
 	SubmittedBy *Principal `json:"submitted_by,omitempty"`
 	ClaimedUser string     `json:"claimed_user,omitempty"`
 	Dest        string     `json:"dest"`
-	Pages       int        `json:"pages"`
-	Received    time.Time  `json:"received"`
-	State       ItemState  `json:"state"`
+	// Payload is the job's payload held here.
+	Payload  string    `json:"payload,omitempty"`
+	Pages    int       `json:"pages"`
+	Received time.Time `json:"received"`
+	State    ItemState `json:"state"`
 	// Released tells where it went and who sent it; Discarded who
 	// discarded it (or canceled the job).
 	Released  *Release `json:"released,omitempty"`
@@ -446,17 +544,20 @@ const (
 	DeliveryCanceled DeliveryState = "canceled"
 )
 
-// Delivery is a job on its way to a printer or an archive: made when the
-// job is routed, done by a tick (or right away, in the background of a
-// process) under a lease, tried again after a failure.
+// Delivery is a job on its way to a printer or an archive, or a step of a
+// template or a convert node: made when the job is routed, done by a
+// tick (or right away, in the background of a process) under a lease,
+// tried again after a failure.
 type Delivery struct {
 	ID   string `json:"id"`
 	Job  int32  `json:"job"`
 	Name string `json:"name,omitempty"`
-	// Node is the printer, the archive or the class the job was routed
-	// to; Printer the printer it goes to now (a member, of a class).
+	// Node is the printer, the archive, the class or the transforming
+	// node the job was routed to; Printer the printer it goes to now (a
+	// member, of a class). Payload is the job's payload it takes.
 	Node    string `json:"node"`
 	Kind    string `json:"kind"`
+	Payload string `json:"payload,omitempty"`
 	Printer string `json:"printer,omitempty"`
 	Class   string `json:"class,omitempty"`
 	// Tried are the members of the class that did not take it, so that
@@ -535,14 +636,16 @@ type Slip struct {
 	ClaimedUser string     `json:"claimed_user,omitempty"`
 	Source      string     `json:"source"` // "ipp" or "api"
 	Format      string     `json:"format,omitempty"`
-	Pages       int        `json:"pages"`
-	Size        int64      `json:"size"`
-	SHA256      string     `json:"sha256"`
-	Received    time.Time  `json:"received"`
-	State       SlipState  `json:"state"`
-	Opened      *Mark      `json:"opened,omitempty"`
-	Done        *Mark      `json:"done,omitempty"`
-	Canceled    *Mark      `json:"canceled,omitempty"`
+	// Payload is the job's .bdf payload shown here.
+	Payload  string    `json:"payload,omitempty"`
+	Pages    int       `json:"pages"`
+	Size     int64     `json:"size"`
+	SHA256   string    `json:"sha256"`
+	Received time.Time `json:"received"`
+	State    SlipState `json:"state"`
+	Opened   *Mark     `json:"opened,omitempty"`
+	Done     *Mark     `json:"done,omitempty"`
+	Canceled *Mark     `json:"canceled,omitempty"`
 	// FallbackAt is when an unopened slip is printed on paper; zero
 	// when the location has no fallback.
 	FallbackAt time.Time `json:"fallback_at,omitzero"`
