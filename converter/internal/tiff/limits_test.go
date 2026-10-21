@@ -5,10 +5,10 @@ import (
 	"compress/zlib"
 	"encoding/binary"
 	"errors"
-	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/image/imgconv"
 )
 
@@ -53,15 +53,6 @@ func grey(w, h, compression, n int) [][4]uint32 {
 		{TagStripOffsets, 4, 1, 8}, {TagRowsPerStrip, 4, 1, uint32(h)}, {TagStripByteCounts, 4, 1, uint32(n)}}
 }
 
-// allocated returns the bytes f allocates.
-func allocated(f func()) uint64 {
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	f()
-	runtime.ReadMemStats(&after)
-	return after.TotalAlloc - before.TotalAlloc
-}
-
 // read returns the bytes read from a file since it was opened.
 func read(f *File) int64 { return readFactor*f.size + readSlack - f.toRead }
 
@@ -94,7 +85,7 @@ func TestPlausible(t *testing.T) {
 	// A page of 4096 × 4096 pixels with 16 bytes of them is not decoded.
 	d := made(make([]byte, 16), grey(4096, 4096, CompressionNone, 16)).Pages()[0]
 	var err error
-	n := allocated(func() { _, _, err = d.Decode() })
+	n := convtest.Allocated(func() { _, _, err = d.Decode() })
 	if err == nil || !strings.Contains(err.Error(), "16 bytes of pixel data for a 4096×4096 image") || n > 64<<10 {
 		t.Errorf("error %v, %d bytes allocated", err, n)
 	}
@@ -139,7 +130,7 @@ func TestTagValues(t *testing.T) {
 	if f.size != size {
 		t.Fatalf("file of %d bytes, want %d", f.size, size)
 	}
-	n := allocated(func() {
+	n := convtest.Allocated(func() {
 		for _, d := range f.Pages() {
 			img, damaged, err := d.Decode()
 			if w, h := d.Size(); err != nil || damaged || w != 8 || h != 8 || d.Orientation() != 8 || img.Bounds().Dx() != 8 {
@@ -187,7 +178,7 @@ func TestSharedData(t *testing.T) {
 	f = made(data, page, grey(8, 8, CompressionNone, 64))
 	var damaged bool
 	var err error
-	n := allocated(func() { _, damaged, err = f.Pages()[0].Decode() })
+	n := convtest.Allocated(func() { _, damaged, err = f.Pages()[0].Decode() })
 	if err != nil || !damaged || !f.Spent() || n > 4<<20 {
 		t.Errorf("compressed: damaged %v, %v, spent %v, %d bytes allocated", damaged, err, f.Spent(), n)
 	}

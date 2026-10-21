@@ -6,10 +6,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"maps"
-	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/internal/otlayout"
 	"github.com/shibukawa/bdf/internal/sfnt"
 )
@@ -17,15 +17,6 @@ import (
 // Fonts are untrusted input. These tests read fonts that say they hold
 // more than they do: tables, names and substitutions that share their
 // bytes, so that a small file would be read into gigabytes, or for hours.
-
-// allocated returns the bytes fn allocates.
-func allocated(fn func()) uint64 {
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	fn()
-	runtime.ReadMemStats(&after)
-	return after.TotalAlloc - before.TotalAlloc
-}
 
 // words writes 16-bit numbers.
 func words(v ...int) []byte {
@@ -71,7 +62,7 @@ func TestWOFFTablesBounded(t *testing.T) {
 	}
 	file = append(file, z.Bytes()...)
 	var err error
-	if n := allocated(func() { _, err = load(file) }); err == nil || !strings.Contains(err.Error(), "larger than") || n > 1<<20 {
+	if n := convtest.Allocated(func() { _, err = load(file) }); err == nil || !strings.Contains(err.Error(), "larger than") || n > 1<<20 {
 		t.Errorf("tables of %d MiB together: %d bytes allocated, error %v", tables*size>>20, n, err)
 	}
 	// the web fonts of the tests are read as before
@@ -89,7 +80,7 @@ func TestCollectionFaces(t *testing.T) {
 	data := collection(sfnt.Build(tb, false), 64)
 	var fl *file
 	var err error
-	if n := allocated(func() { fl, err = load(data) }); err != nil || len(fl.faces) != 64 || n > 1<<20 {
+	if n := convtest.Allocated(func() { fl, err = load(data) }); err != nil || len(fl.faces) != 64 || n > 1<<20 {
 		t.Fatalf("%d bytes allocated, error %v", n, err)
 	}
 	for _, fc := range fl.faces {
@@ -135,7 +126,7 @@ func TestNamesBounded(t *testing.T) {
 	name = append(name, strings.Repeat("\x00a", length/2)...)
 	var names []nameRec
 	var cut bool
-	if n := allocated(func() { names, cut = parseNames(name) }); !cut || len(names) != maxNames/length || n > 16*maxNames {
+	if n := convtest.Allocated(func() { names, cut = parseNames(name) }); !cut || len(names) != maxNames/length || n > 16*maxNames {
 		t.Errorf("%d names, cut %v, %d bytes allocated", len(names), cut, n)
 	}
 	// language tags are counted with them

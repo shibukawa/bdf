@@ -11,6 +11,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/xlsx"
 )
 
@@ -260,14 +261,7 @@ func TestConvert(t *testing.T) {
 	if len(res.Warnings) != 0 || res.EmbeddedFonts != 2 {
 		t.Errorf("warnings %q, %d embedded font(s)", res.Warnings, res.EmbeddedFonts)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	m := r.Manifest
 	if m.Meta.Source != "parquet" || len(m.Views) != 1 || m.Views[0].Title != "basic" || m.Views[0].Freeze == nil || m.Views[0].Freeze.Rows != 2 {
 		t.Fatalf("meta %+v, views %+v", m.Meta, m.Views)

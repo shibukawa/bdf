@@ -307,11 +307,11 @@ func (c *CUPS) classAttributes(q *request, k *class, members []*Printer) {
 	}
 	attrs = append(attrs, ipp.Attr("member-names", names...), ipp.Attr("member-uris", uris...),
 		ipp.Attr("printer-type", ipp.Integer(cupsPrinterType(first)|1)))
-	req := requested(q.op, nil)
+	req := ipp.Requested(q.op, allAttrs)
 	if !slices.Contains(req, "media-col-database") {
 		attrs = slices.DeleteFunc(attrs, func(a ipp.Attribute) bool { return a.Name == "media-col-database" })
 	}
-	q.res.Add(ipp.TagPrinter, filter(attrs, req, printerGroups(attrs))...)
+	q.res.Add(ipp.TagPrinter, ipp.Filter(attrs, req, ipp.PrinterGroups(attrs))...)
 }
 
 // getJobs answers Get-Jobs of printers: their jobs, the newest first.
@@ -359,7 +359,7 @@ func (c *CUPS) serveCUPS(q *request) {
 			p.lock()
 			attrs := p.cupsAttrs(q, c.uri(q, "printers", p.Name))
 			p.mu.Unlock()
-			q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagPrinter, Attrs: filter(attrs, requested(q.op, nil), nil)})
+			q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagPrinter, Attrs: ipp.Filter(attrs, ipp.Requested(q.op, allAttrs), nil)})
 		}
 		c.listClasses(q)
 	case ipp.OpCupsGetClasses:
@@ -374,7 +374,7 @@ func (c *CUPS) serveCUPS(q *request) {
 			p.lock()
 			attrs := p.cupsAttrs(q, c.uri(q, "printers", p.Name))
 			p.mu.Unlock()
-			q.res.Add(ipp.TagPrinter, filter(attrs, requested(q.op, nil), nil)...)
+			q.res.Add(ipp.TagPrinter, ipp.Filter(attrs, ipp.Requested(q.op, allAttrs), nil)...)
 		case k != nil:
 			q.res.Add(ipp.TagPrinter, ipp.Attr("printer-name", ipp.Name(k.name)), ipp.Attr("printer-uri-supported", ipp.URI(c.uri(q, "classes", k.name))),
 				ipp.Attr("printer-type", ipp.Integer(1)))
@@ -434,7 +434,7 @@ func (c *CUPS) listClasses(q *request) {
 			ipp.Attr("member-names", names...),
 			ipp.Attr("member-uris", uris...),
 		}
-		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagPrinter, Attrs: filter(attrs, requested(q.op, nil), nil)})
+		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagPrinter, Attrs: ipp.Filter(attrs, ipp.Requested(q.op, allAttrs), nil)})
 	}
 }
 

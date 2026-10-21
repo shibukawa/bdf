@@ -3,11 +3,9 @@ package drawingml
 import (
 	"bytes"
 	"image"
-	"image/draw"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -110,7 +108,9 @@ func (c *Renderer) image(part, rid string) *imageEntry {
 		return e
 	}
 	if format == "svg" {
-		e.w, e.h = svgSize(data)
+		if s, ok := imgconv.SVGDocSize(data); ok {
+			e.w, e.h = s.Natural()
+		}
 	} else if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil {
 		e.w, e.h = float64(cfg.Width), float64(cfg.Height)
 	}
@@ -124,50 +124,4 @@ func (c *Renderer) image(part, rid string) *imageEntry {
 	return e
 }
 
-func toNRGBA(img image.Image) *image.NRGBA {
-	if n, ok := img.(*image.NRGBA); ok {
-		return n
-	}
-	b := img.Bounds()
-	out := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(out, out.Bounds(), img, b.Min, draw.Src)
-	return out
-}
-
-var (
-	svgTag     = regexp.MustCompile(`(?s)<svg\b[^>]*>`)
-	svgAttr    = regexp.MustCompile(`\b(width|height|viewBox)\s*=\s*["']([^"']*)["']`)
-	svgNumUnit = regexp.MustCompile(`^\s*([0-9.]+)\s*(px|pt)?\s*$`)
-)
-
-// svgSize reads the intrinsic size of an SVG document.
-func svgSize(data []byte) (w, h float64) {
-	tag := svgTag.Find(data)
-	var vb []float64
-	for _, m := range svgAttr.FindAllSubmatch(tag, -1) {
-		v := string(m[2])
-		switch string(m[1]) {
-		case "width", "height":
-			if mm := svgNumUnit.FindStringSubmatch(v); mm != nil {
-				f, _ := strconv.ParseFloat(mm[1], 64)
-				if mm[2] == "pt" {
-					f *= 96.0 / 72
-				}
-				if string(m[1]) == "width" {
-					w = f
-				} else {
-					h = f
-				}
-			}
-		case "viewBox":
-			for _, s := range strings.FieldsFunc(v, func(r rune) bool { return r == ' ' || r == ',' }) {
-				f, _ := strconv.ParseFloat(s, 64)
-				vb = append(vb, f)
-			}
-		}
-	}
-	if (w == 0 || h == 0) && len(vb) == 4 {
-		w, h = vb[2], vb[3]
-	}
-	return w, h
-}
+var ()

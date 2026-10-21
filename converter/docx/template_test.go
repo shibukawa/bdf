@@ -5,16 +5,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html"
-	"image"
-	"image/color"
-	"image/png"
-	"io/fs"
 	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/form/tag"
 	"github.com/shibukawa/bdf/image/barcode"
 )
@@ -300,17 +297,6 @@ func TestFillHeaderAndTextBox(t *testing.T) {
 	}
 }
 
-// tplPNG makes a picture of a size.
-func tplPNG(w, h int) []byte {
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for i := 0; i < w*h; i++ {
-		img.Set(i%w, i/w, color.RGBA{200, uint8(i), 30, 255})
-	}
-	var buf bytes.Buffer
-	png.Encode(&buf, img)
-	return buf.Bytes()
-}
-
 // tpic makes a run with a picture in the line: 100 × 100 pt, with an
 // alternative text.
 func tpic(descr string) string {
@@ -322,8 +308,8 @@ func tpic(descr string) string {
 }
 
 func TestFillPicture(t *testing.T) {
-	photo := "data:image/png;base64," + base64.StdEncoding.EncodeToString(tplPNG(40, 10))
-	parts := map[string]string{"word/media/image1.png": string(tplPNG(4, 4))}
+	photo := "data:image/png;base64," + base64.StdEncoding.EncodeToString(convtest.PNG(40, 10))
+	parts := map[string]string{"word/media/image1.png": string(convtest.PNG(4, 4))}
 	body := tp(tpic("{{%photo}} the photo")) + tp(tpic("{{%photo | fit:cover}}")) + tp(tpic("{{%photo | fit:stretch}}")) + tp(tpic("a picture"))
 	images := func(r *bdf.Reader) []string {
 		var got []string
@@ -424,78 +410,11 @@ func TestInspectFields(t *testing.T) {
 	}
 }
 
-// codeBounds recognizes bars/modules followed optionally by closed digit
-// outlines. Digits must use curves and stay below the bars; the returned box
-// includes both, so frame bounds are checked by the caller's expected symbol.
-func codeBounds(p *bdf.Path) (rects, contours int, box [4]float32) {
-	if p == nil || len(p.Verbs) < 8 || p.Verbs[0] != bdf.VerbRect {
-		return
-	}
-	box = [4]float32{p.Args[0], p.Args[1], p.Args[0], p.Args[1]}
-	grow := func(x, y float32) {
-		box[0], box[1] = min(box[0], x), min(box[1], y)
-		box[2], box[3] = max(box[2], x), max(box[3], y)
-	}
-	at := 0
-	for rects < len(p.Verbs) && p.Verbs[rects] == bdf.VerbRect {
-		grow(p.Args[at], p.Args[at+1])
-		grow(p.Args[at]+p.Args[at+2], p.Args[at+1]+p.Args[at+3])
-		at += 4
-		rects++
-	}
-	if rects < 8 {
-		return 0, 0, [4]float32{}
-	}
-	bottom, curves, closed := box[3], 0, 0
-	for _, verb := range p.Verbs[rects:] {
-		points := 0
-		switch verb {
-		case bdf.VerbMove:
-			contours++
-			points = 1
-		case bdf.VerbLine:
-			points = 1
-		case bdf.VerbQuad:
-			curves++
-			points = 2
-		case bdf.VerbClose:
-			closed++
-		default:
-			return 0, 0, [4]float32{}
-		}
-		for ; points > 0; points-- {
-			x, y := p.Args[at], p.Args[at+1]
-			if y <= bottom {
-				return 0, 0, [4]float32{}
-			}
-			grow(x, y)
-			at += 2
-		}
-	}
-	if contours > 0 && (curves == 0 || closed != contours) {
-		return 0, 0, [4]float32{}
-	}
-	return
-}
-
-// rectBox summarizes code modules/bars, digit contours and their full bounds.
-func rectBox(p *bdf.Path) string {
-	rects, contours, box := codeBounds(p)
-	if rects == 0 {
-		return ""
-	}
-	label := ""
-	if contours > 0 {
-		label = fmt.Sprintf(" + %d contours below bars", contours)
-	}
-	return fmt.Sprintf("%d rects of %.2f × %.2f%s", rects, box[2]-box[0], box[3]-box[1], label)
-}
-
 // TestFillCodes fills picture tags that ask for a QR code or a barcode:
 // the symbol of the value is drawn in the place of the picture, and in
 // each row of a table that is filled.
 func TestFillCodes(t *testing.T) {
-	parts := map[string]string{"word/media/image1.png": string(tplPNG(4, 4))}
+	parts := map[string]string{"word/media/image1.png": string(convtest.PNG(4, 4))}
 	body := tp(tpic("{{%url | qr}}")) + tp(tpic("{{%jan | barcode:jan}} the article")) +
 		ttbl([]string{"{{#items}}{{name}}", tpic("{{%code | barcode:code128 | quiet:0}}") + tr("{{/items}}")}) + tp(tpic("a picture"))
 	const url, jan = "https://example.com/invoice/1024", "4901234567894"
@@ -513,7 +432,7 @@ func TestFillCodes(t *testing.T) {
 				case bdf.OpImage:
 					got = append(got, "image")
 				case bdf.OpFillPath:
-					if s := rectBox(o.Paths[int(in.Args[0].(uint64))].Inline); s != "" {
+					if s := convtest.RectBox(o.Paths[int(in.Args[0].(uint64))].Inline); s != "" {
 						got = append(got, s)
 					}
 				case bdf.OpMark:
@@ -537,7 +456,7 @@ func TestFillCodes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return rectBox(s.Path(0, 0, w, h))
+		return convtest.RectBox(s.Path(0, 0, w, h))
 	}
 	res, r := fillDocx(t, body, parts, data)
 	noWarnings(t, res)
@@ -583,25 +502,13 @@ func TestFillCodes(t *testing.T) {
 	}
 }
 
-// countingFS counts the files opened of it (tag.PictureData opens a file
-// to read it).
-type countingFS struct {
-	fstest.MapFS
-	reads int
-}
-
-func (c *countingFS) Open(name string) (fs.File, error) {
-	c.reads++
-	return c.MapFS.Open(name)
-}
-
 // TestFillPictureOnce reads a picture that the data names once, however
 // many pictures of the template it replaces: the same stamp on the page of
 // each item.
 func TestFillPictureOnce(t *testing.T) {
-	parts := map[string]string{"word/media/image1.png": string(tplPNG(4, 4))}
+	parts := map[string]string{"word/media/image1.png": string(convtest.PNG(4, 4))}
 	body := tp("{{#people | pages}}{{name}}") + tp(tpic("{{%stamp}}")) + tp("{{/people}}")
-	files := &countingFS{MapFS: fstest.MapFS{"stamp.png": {Data: tplPNG(40, 10)}}}
+	files := &convtest.CountingFS{MapFS: fstest.MapFS{"stamp.png": {Data: convtest.PNG(40, 10)}}}
 	file := docxBytes(t, body, parts)
 	res, err := Fill(bytes.NewReader(file), int64(len(file)), &TemplateData{Files: files, Data: map[string]any{"stamp": "stamp.png",
 		"people": []any{map[string]any{"name": "A"}, map[string]any{"name": "B"}, map[string]any{"name": "C"}}}}, testOptions())
@@ -610,17 +517,17 @@ func TestFillPictureOnce(t *testing.T) {
 	}
 	noWarnings(t, res)
 	r := reopen(t, &res.Result)
-	if n := len(r.Manifest.Views[0].Pages); n != 3 || files.reads != 1 {
-		t.Errorf("%d pages, the stamp read %d times", n, files.reads)
+	if n := len(r.Manifest.Views[0].Pages); n != 3 || files.Reads != 1 {
+		t.Errorf("%d pages, the stamp read %d times", n, files.Reads)
 	}
 	// a picture that is not among the files is told for each place, and looked for once
-	files.reads = 0
+	files.Reads = 0
 	res, err = Fill(bytes.NewReader(file), int64(len(file)), &TemplateData{Files: files, Data: map[string]any{"stamp": "missing.png",
 		"people": []any{map[string]any{"name": "A"}, map[string]any{"name": "B"}}}}, testOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files.reads != 1 || len(res.Warnings) != 2 || !strings.Contains(res.Warnings[0], `the picture of "stamp" is not read`) {
-		t.Errorf("read %d times, warnings %q", files.reads, res.Warnings)
+	if files.Reads != 1 || len(res.Warnings) != 2 || !strings.Contains(res.Warnings[0], `the picture of "stamp" is not read`) {
+		t.Errorf("read %d times, warnings %q", files.Reads, res.Warnings)
 	}
 }

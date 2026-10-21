@@ -4,24 +4,14 @@ import (
 	"bytes"
 	"image"
 	"image/png"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/image/imgconv"
 )
-
-func read(t *testing.T, name string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
 
 // withoutComposite marks a file as saved without "Maximize Compatibility":
 // its version information says the image data is not the composite.
@@ -48,14 +38,7 @@ func convert(t *testing.T, data []byte, opts *Options) converted {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	c := converted{res: res, r: r}
 	for _, p := range r.Manifest.Views[0].Pages {
 		o, err := r.Object(p.Layers[0].Obj)
@@ -129,7 +112,7 @@ func near(c [4]uint8, want [4]uint8, tol int) bool {
 }
 
 func TestConvertLayers(t *testing.T) {
-	data := read(t, "layers.psd")
+	data := convtest.Read(t, "layers.psd")
 	if f := converter.Detect(bytes.NewReader(data), int64(len(data))); f == nil || f.Name != "psd" {
 		t.Fatalf("detected as %v", f)
 	}
@@ -174,7 +157,7 @@ func TestConvertLayers(t *testing.T) {
 }
 
 func TestConvertArtboards(t *testing.T) {
-	data := read(t, "artboards.psd")
+	data := convtest.Read(t, "artboards.psd")
 	c := convert(t, data, nil)
 	if len(c.res.Warnings) != 0 {
 		t.Errorf("warnings: %v", c.res.Warnings)
@@ -250,7 +233,7 @@ func TestColorModes(t *testing.T) {
 		// CMYK with transparency: the yellow disc on nothing
 		{"cmyk.psd", []check{{14, 6, [4]uint8{230, 230, 51, 191}}, {0, 0, [4]uint8{0, 0, 0, 0}}}, 6}, // CMYK and the matte round
 	} {
-		img := convert(t, read(t, c.file), nil).pages[0]
+		img := convert(t, convtest.Read(t, c.file), nil).pages[0]
 		for _, k := range c.checks {
 			got := rgbaAt(img, k.x, k.y)
 			if k.want[3] == 0 && got[3] == 0 {
@@ -264,9 +247,9 @@ func TestColorModes(t *testing.T) {
 
 	// The same layers in other depths and in the large document format:
 	// composite and composited layers agree, and agree with 8 bits.
-	ref := convert(t, read(t, "large.psb"), nil).pages[0]
+	ref := convert(t, convtest.Read(t, "large.psb"), nil).pages[0]
 	for _, name := range []string{"large.psb", "rgb32.psd", "gray16.psd"} {
-		data := read(t, name)
+		data := convtest.Read(t, name)
 		c := convert(t, data, nil)
 		d := convert(t, withoutComposite(t, data), nil)
 		if len(d.res.Warnings) != 1 {
@@ -277,7 +260,7 @@ func TestColorModes(t *testing.T) {
 			sameImage(t, name+" against 8 bits", c.pages[0], ref, 2)
 		}
 	}
-	gray := convert(t, read(t, "gray16.psd"), nil).pages[0]
+	gray := convert(t, convtest.Read(t, "gray16.psd"), nil).pages[0]
 	if px := rgbaAt(gray, 0, 0); px[0] != px[1] || px[1] != px[2] || px[3] != 255 {
 		t.Errorf("gray16: %v", px)
 	}
@@ -299,7 +282,7 @@ func TestCorrupt(t *testing.T) {
 		return int(seed>>8) % n
 	}
 	for _, name := range []string{"layers.psd", "artboards.psd", "gray16.psd", "rgb32.psd", "large.psb", "indexed.psd"} {
-		data := read(t, name)
+		data := convtest.Read(t, name)
 		for _, variant := range [][]byte{data, withoutComposite(t, data)} {
 			for i := 0; i < 60; i++ {
 				b := bytes.Clone(variant)

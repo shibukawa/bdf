@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // FuzzFill fills a template (paragraphs, a table, a picture and a header)
@@ -27,7 +29,7 @@ func FuzzFill(f *testing.F) {
 			`<w:sectPr><w:headerReference w:type="default" r:id="rIdheader"/><w:pgSz w:w="6000" w:h="8000"/><w:pgMar w:top="1000" w:bottom="1000" w:left="1000" w:right="1000" w:header="500" w:footer="500"/></w:sectPr>`
 		parts := map[string]string{
 			"word/header.xml":       `<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` + tp(c) + `</w:hdr>`,
-			"word/media/image1.png": string(tplPNG(4, 4)),
+			"word/media/image1.png": string(convtest.PNG(4, 4)),
 		}
 		file := docxBytes(t, body, parts)
 		res, err := Fill(bytes.NewReader(file), int64(len(file)), &TemplateData{Data: v, Format: tplFormat}, testOptions())

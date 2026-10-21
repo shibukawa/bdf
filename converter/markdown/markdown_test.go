@@ -8,6 +8,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"golang.org/x/text/encoding/japanese"
 )
 
@@ -30,14 +31,7 @@ func convert(t *testing.T, res *Result, err error) (*bdf.Reader, *content) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	c := &content{marks: map[byte][]string{}}
 	var b strings.Builder
 	for _, pg := range r.Manifest.Views[0].Pages {

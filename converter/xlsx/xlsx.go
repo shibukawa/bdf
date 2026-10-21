@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -150,16 +149,7 @@ type sheetRef struct {
 
 // ConvertFile converts a .xlsx file.
 func ConvertFile(path string, opts *Options) (*Result, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return Convert(f, st.Size(), opts)
+	return conv.OpenFile(path, func(r io.ReaderAt, size int64) (*Result, error) { return Convert(r, size, opts) })
 }
 
 // openWorkbook opens a workbook for a conversion: its shared strings, its

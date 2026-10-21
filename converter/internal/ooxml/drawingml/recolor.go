@@ -223,7 +223,7 @@ func (c *Renderer) recolored(e *imageEntry, rc *recolor) *imageEntry {
 		c.warnf("image %s: %v", e.target, err)
 		return e
 	}
-	n := toNRGBA(img)
+	n := imgconv.ToNRGBA(img)
 	if n == img {
 		n = image.NewNRGBA(n.Rect)
 		copy(n.Pix, img.(*image.NRGBA).Pix)

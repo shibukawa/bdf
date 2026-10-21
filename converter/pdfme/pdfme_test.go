@@ -4,10 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
-	"io/fs"
 	"math"
 	"os"
 	"strings"
@@ -16,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/formbox"
 	"github.com/shibukawa/bdf/form/tag"
 )
@@ -454,18 +451,6 @@ func FuzzFill(f *testing.F) {
 	})
 }
 
-// countingFS counts the files opened of it (tag.PictureData opens a file
-// to read it).
-type countingFS struct {
-	fstest.MapFS
-	reads int
-}
-
-func (c *countingFS) Open(name string) (fs.File, error) {
-	c.reads++
-	return c.MapFS.Open(name)
-}
-
 // TestPicturesOnce reads a picture that the data names once, however many
 // pages show it: a picture of the base page is on every page of a table
 // that goes on over pages.
@@ -479,13 +464,13 @@ func TestPicturesOnce(t *testing.T) {
 		"schemas":[[{"name":"items","type":"table","position":{"x":5,"y":6},"width":90,"height":10,"showHead":false,"head":["name","price"],
 		"headWidthPercentages":[70,30],"bodyStyles":{"fontSize":8,"padding":1},"content":"[]"},
 		{"name":"photo","type":"image","position":{"x":5,"y":30},"width":10,"height":10}]]}`)
-	files := &countingFS{MapFS: fstest.MapFS{"logo.png": {Data: tplPNG(30, 6)}, "photo.png": {Data: tplPNG(10, 10)}}}
+	files := &convtest.CountingFS{MapFS: fstest.MapFS{"logo.png": {Data: convtest.PNG(30, 6)}, "photo.png": {Data: convtest.PNG(10, 10)}}}
 	res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), &TemplateData{Files: files, Data: map[string]any{"items": "[" + strings.Join(rows, ",") + "]", "photo": "photo.png"}}, testOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Pages < 3 || files.reads != 2 || len(res.Warnings) != 0 {
-		t.Errorf("%d pages, %d files read, warnings %q", res.Pages, files.reads, res.Warnings)
+	if res.Pages < 3 || files.Reads != 2 || len(res.Warnings) != 0 {
+		t.Errorf("%d pages, %d files read, warnings %q", res.Pages, files.Reads, res.Warnings)
 	}
 	images := 0
 	for _, part := range res.Doc.Parts() {
@@ -498,23 +483,12 @@ func TestPicturesOnce(t *testing.T) {
 	}
 	// a picture that is not read is told once, for all the pages (the
 	// logo and the missing photo are each opened once)
-	files.reads = 0
+	files.Reads = 0
 	res, err = Fill(bytes.NewReader(tpl), int64(len(tpl)), &TemplateData{Files: files, Data: map[string]any{"items": "[" + strings.Join(rows, ",") + "]", "photo": "missing.png"}}, testOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files.reads != 2 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], `the picture of "photo" is left out`) {
-		t.Errorf("%d files read, warnings %q", files.reads, res.Warnings)
+	if files.Reads != 2 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], `the picture of "photo" is left out`) {
+		t.Errorf("%d files read, warnings %q", files.Reads, res.Warnings)
 	}
-}
-
-// tplPNG makes a picture of a size.
-func tplPNG(w, h int) []byte {
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for i := 0; i < w*h; i++ {
-		img.Set(i%w, i/w, color.RGBA{200, uint8(i), 30, 255})
-	}
-	var buf bytes.Buffer
-	png.Encode(&buf, img)
-	return buf.Bytes()
 }

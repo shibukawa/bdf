@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // The test drawings are made by test/dxf/gen.py (ezdxf); text is laid out
@@ -25,14 +26,7 @@ func convertData(t *testing.T, data []byte, opts *Options) (*Result, *bdf.Reader
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	return res, r
 }
 
@@ -42,32 +36,8 @@ func convert(t *testing.T, name string) (*Result, *bdf.Reader) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := convtest.Reopen(t, res.Doc)
 	return res, r
-}
-
-func plainText(t *testing.T, r *bdf.Reader, view int) string {
-	t.Helper()
-	h, err := bdf.ParseHash(r.Manifest.Views[view].TextIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := r.Part(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	idx, err := bdf.DecodeTextIndex(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bdf.PlainText(idx)
 }
 
 func TestShapes(t *testing.T) {
@@ -82,7 +52,7 @@ func TestShapes(t *testing.T) {
 	if m.Meta.Source != "dxf" {
 		t.Errorf("source %q", m.Meta.Source)
 	}
-	text := plainText(t, r, 0)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"LEFT 字", "CENTER", "FIT テキスト", "ALIGNED", "Ø50 ±0.1 45° UNDER", "カイテン 30°",
 		"図の文字は", "おおきく、アンダーライン、Bold", "長い文字は", "CENTERED", "MTEXT", "60", "R12", "MULTI", "LEADER", "A1", "A3"} {
 		if !strings.Contains(text, want) {
@@ -126,7 +96,7 @@ func TestLayout(t *testing.T) {
 	if abs(float64(p.W)-420*72/25.4) > 0.01 || abs(float64(p.H)-297*72/25.4) > 0.01 {
 		t.Errorf("paper %v × %v", p.W, p.H)
 	}
-	text := plainText(t, r, 1)
+	text := convtest.PlainText(t, r, 1)
 	if !strings.Contains(text, "テスト図 1:100 / 1:200") {
 		t.Errorf("title block missing:\n%s", text)
 	}
@@ -160,7 +130,7 @@ func TestLayout(t *testing.T) {
 
 func TestShiftJIS(t *testing.T) {
 	_, r := convert(t, "r12-sjis.dxf")
-	if text := plainText(t, r, 0); !strings.Contains(text, "シフトJIS の文字") {
+	if text := convtest.PlainText(t, r, 0); !strings.Contains(text, "シフトJIS の文字") {
 		t.Errorf("text: %q", text)
 	}
 	if got := r.Manifest.Meta.DC.Language.First(); got != "ja" {
@@ -199,7 +169,7 @@ func TestEncodings(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			_, r := convertData(t, minimal(c.codepage, c.text), nil)
-			if got := strings.TrimSpace(plainText(t, r, 0)); got != c.want {
+			if got := strings.TrimSpace(convtest.PlainText(t, r, 0)); got != c.want {
 				t.Errorf("text %q, want %q", got, c.want)
 			}
 		})

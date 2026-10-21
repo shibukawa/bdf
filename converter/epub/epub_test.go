@@ -17,6 +17,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/japanese"
 )
@@ -54,15 +55,7 @@ func convertBytes(t *testing.T, data []byte, opts *Options) (*Result, *bdf.Reade
 // reopen writes a converted document and reads it back.
 func reopen(t *testing.T, res *Result) *bdf.Reader {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
+	return convtest.Reopen(t, res.Doc)
 }
 
 // page is what a page of a view holds.

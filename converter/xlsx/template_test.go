@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/shibukawa/bdf/image/barcode"
 	"image"
 	"image/color"
 	"image/png"
@@ -16,6 +15,9 @@ import (
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/shibukawa/bdf/converter/internal/convtest"
+	"github.com/shibukawa/bdf/image/barcode"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/form/tag"
@@ -771,60 +773,6 @@ func TestFillDepth(t *testing.T) {
 	}
 }
 
-// codeBounds recognizes bars/modules followed optionally by closed digit
-// outlines. Digits must use curves and stay below the bars; the returned box
-// includes both, so frame bounds are checked by the caller's expected symbol.
-func codeBounds(p *bdf.Path) (rects, contours int, box [4]float32) {
-	if p == nil || len(p.Verbs) < 8 || p.Verbs[0] != bdf.VerbRect {
-		return
-	}
-	box = [4]float32{p.Args[0], p.Args[1], p.Args[0], p.Args[1]}
-	grow := func(x, y float32) {
-		box[0], box[1] = min(box[0], x), min(box[1], y)
-		box[2], box[3] = max(box[2], x), max(box[3], y)
-	}
-	at := 0
-	for rects < len(p.Verbs) && p.Verbs[rects] == bdf.VerbRect {
-		grow(p.Args[at], p.Args[at+1])
-		grow(p.Args[at]+p.Args[at+2], p.Args[at+1]+p.Args[at+3])
-		at += 4
-		rects++
-	}
-	if rects < 8 {
-		return 0, 0, [4]float32{}
-	}
-	bottom, curves, closed := box[3], 0, 0
-	for _, verb := range p.Verbs[rects:] {
-		points := 0
-		switch verb {
-		case bdf.VerbMove:
-			contours++
-			points = 1
-		case bdf.VerbLine:
-			points = 1
-		case bdf.VerbQuad:
-			curves++
-			points = 2
-		case bdf.VerbClose:
-			closed++
-		default:
-			return 0, 0, [4]float32{}
-		}
-		for ; points > 0; points-- {
-			x, y := p.Args[at], p.Args[at+1]
-			if y <= bottom {
-				return 0, 0, [4]float32{}
-			}
-			grow(x, y)
-			at += 2
-		}
-	}
-	if contours > 0 && (curves == 0 || closed != contours) {
-		return 0, 0, [4]float32{}
-	}
-	return
-}
-
 // symbols lists the figures and their modules/bars, digit contours and bounds.
 func symbols(t *testing.T, doc *bdf.Document) []string {
 	t.Helper()
@@ -845,7 +793,7 @@ func symbols(t *testing.T, doc *bdf.Document) []string {
 				}
 			case bdf.OpFillPath:
 				p := o.Paths[int(in.Args[0].(uint64))].Inline
-				rects, contours, box := codeBounds(p)
+				rects, contours, box := convtest.CodeBounds(p)
 				if rects == 0 {
 					return
 				}

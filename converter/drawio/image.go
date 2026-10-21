@@ -8,8 +8,6 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"net/url"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -58,7 +56,9 @@ func (c *converter) imageFor(src string) *imageRef {
 		return nil
 	case "svg":
 		ref = &imageRef{}
-		ref.w, ref.h = svgSize(data)
+		if s, ok := imgconv.SVGDocSize(data); ok {
+			ref.w, ref.h = s.Natural()
+		}
 	default:
 		ref = &imageRef{}
 		if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil {
@@ -130,40 +130,4 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-var (
-	svgTag     = regexp.MustCompile(`(?s)<svg\b[^>]*>`)
-	svgAttr    = regexp.MustCompile(`\b(width|height|viewBox)\s*=\s*["']([^"']*)["']`)
-	svgNumUnit = regexp.MustCompile(`^\s*([0-9.]+)\s*(px|pt)?\s*$`)
-)
-
-// svgSize reads the intrinsic size of an SVG document.
-func svgSize(data []byte) (w, h float64) {
-	tag := svgTag.Find(data)
-	var vb []float64
-	for _, m := range svgAttr.FindAllSubmatch(tag, -1) {
-		v := string(m[2])
-		switch string(m[1]) {
-		case "width", "height":
-			if mm := svgNumUnit.FindStringSubmatch(v); mm != nil {
-				f, _ := strconv.ParseFloat(mm[1], 64)
-				if mm[2] == "pt" {
-					f *= 96.0 / 72
-				}
-				if string(m[1]) == "width" {
-					w = f
-				} else {
-					h = f
-				}
-			}
-		case "viewBox":
-			for _, s := range strings.FieldsFunc(v, func(r rune) bool { return r == ' ' || r == ',' }) {
-				f, _ := strconv.ParseFloat(s, 64)
-				vb = append(vb, f)
-			}
-		}
-	}
-	if (w == 0 || h == 0) && len(vb) == 4 {
-		w, h = vb[2], vb[3]
-	}
-	return w, h
-}
+var ()

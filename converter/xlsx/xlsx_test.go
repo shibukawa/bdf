@@ -13,6 +13,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
 )
 
@@ -264,15 +265,7 @@ func convertEdited(t *testing.T, name string, edits map[string]func(string) stri
 
 func reopen(t *testing.T, res *Result) *bdf.Reader {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
+	return convtest.Reopen(t, res.Doc)
 }
 
 func indexRuns(t *testing.T, r *bdf.Reader, v *bdf.View) []bdf.IndexRun {

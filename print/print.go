@@ -608,7 +608,7 @@ func (j *job) raster(w io.Writer, media, format string) error {
 		mono = imagebdf.Gray
 	}
 	r := imagebdf.New(j.doc, ro)
-	view := skipLayers(j.view, j.o.SkipRoles)
+	view := pdl.SkipLayers(j.view, j.o.SkipRoles)
 	duplex, tumble := j.t.duplex()
 	cf, ff, err := raster.Back(back, tumble)
 	if err != nil {

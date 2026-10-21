@@ -16,11 +16,11 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"path/filepath"
 	"strconv"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/xmp"
 )
 
@@ -64,15 +64,6 @@ var formatNames = map[string]string{
 
 // ConvertFile converts an image file.
 func ConvertFile(path string, opts *Options) (*Result, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
 	o := Options{}
 	if opts != nil {
 		o = *opts
@@ -80,7 +71,7 @@ func ConvertFile(path string, opts *Options) (*Result, error) {
 	if o.FileName == "" {
 		o.FileName = filepath.Base(path)
 	}
-	return Convert(f, st.Size(), &o)
+	return converter.OpenFile(path, func(r io.ReaderAt, size int64) (*Result, error) { return Convert(r, size, &o) })
 }
 
 // Convert converts an image read from r.

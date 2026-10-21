@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf/print/ipp"
+	"github.com/shibukawa/bdf/print/pdl"
 )
 
 // Listener is a raw transport of a printer on a port: the raw port 9100
@@ -435,22 +436,10 @@ func Sniff(b []byte) string {
 		return "image/jpeg"
 	case bytes.HasPrefix(b, []byte("\x89PNG")):
 		return "image/png"
-	case bytes.HasPrefix(b, []byte("^XA")), bytes.HasPrefix(b, []byte("~")) && bytes.Contains(b[:min(len(b), 64)], []byte("^XA")):
-		return "zpl"
-	case bytes.HasPrefix(b, []byte("\x02\x1bA")):
-		return "sbpl"
-	case bytes.HasPrefix(b, []byte("{D")):
-		return "tpcl"
-	case bytes.HasPrefix(b, []byte("\x1b@")):
-		head := b[:min(len(b), 64)]
-		if bytes.Contains(head, []byte("\x1dP")) || bytes.Contains(head, []byte("\x1dv0")) {
-			return "escpos"
-		}
-		return "escp"
 	case bytes.HasPrefix(b, []byte("\x1bE")):
 		return "pcl"
 	}
-	return ""
+	return pdl.Sniff(b[:min(len(b), 64)])
 }
 
 // PJL returns the lines of the PJL header of a document, and the document

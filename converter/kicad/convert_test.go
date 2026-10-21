@@ -10,6 +10,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // testOptions are options that read only the test fonts.
@@ -38,15 +39,7 @@ func convertBytes(t *testing.T, data []byte, opts *Options) (*Result, *bdf.Reade
 
 func reread(t *testing.T, doc *bdf.Document) *bdf.Reader {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
+	return convtest.Reopen(t, doc)
 }
 
 // pageText returns the texts of a page, one a line.

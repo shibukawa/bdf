@@ -616,3 +616,20 @@ func (p Pages) String() string {
 	}
 	return strings.Join(parts, ",")
 }
+
+// OpenFile opens the file at path for a converter's ConvertFile: convert
+// is called with the file and its size, and the file is closed after it.
+func OpenFile[R any](path string, convert func(r io.ReaderAt, size int64) (R, error)) (R, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		var zero R
+		return zero, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		var zero R
+		return zero, err
+	}
+	return convert(f, st.Size())
+}

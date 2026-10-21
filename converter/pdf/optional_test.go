@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // paintSeq lists what an object and the objects it USEs paint, in walk
@@ -104,7 +105,7 @@ BT /F1 12 Tf 72 700 Td (one ) Tj /OC /B BDC (two ) Tj EMC (three) Tj ET`
 	if got != want {
 		t.Errorf("got  %s\nwant %s", got, want)
 	}
-	if text := pageText(t, r); text != "one three" && text != "one  three" {
+	if text := convtest.PlainText(t, r, 0); text != "one three" && text != "one  three" {
 		t.Errorf("text = %q", text)
 	}
 

@@ -54,35 +54,6 @@ func PrintView(doc *bdf.Document, id string) (*bdf.View, error) {
 	return nil, ErrNoPages
 }
 
-// skipLayers returns the view with the layers of the roles left out of
-// its pages (the paper of a preprinted form already has them), or the
-// view itself when there are none to leave out.
-func skipLayers(v *bdf.View, roles []string) *bdf.View {
-	if len(roles) == 0 {
-		return v
-	}
-	skip := map[string]bool{}
-	for _, r := range roles {
-		skip[r] = true
-	}
-	out := *v
-	out.Pages = make([]*bdf.Page, len(v.Pages))
-	for i, p := range v.Pages {
-		if p == nil {
-			continue
-		}
-		q := *p
-		q.Layers = nil
-		for _, l := range p.Layers {
-			if !skip[l.Role] {
-				q.Layers = append(q.Layers, l)
-			}
-		}
-		out.Pages[i] = &q
-	}
-	return &out
-}
-
 // pageNumbers returns the zero-based pages of a view that a selection
 // of one-based pages names (nil for all), dropping the numbers past the
 // view's pages.

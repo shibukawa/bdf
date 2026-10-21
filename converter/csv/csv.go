@@ -16,12 +16,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/xlsx"
 )
 
@@ -103,15 +103,6 @@ type Result struct {
 
 // ConvertFile converts a CSV or TSV file; the sheet is named after it.
 func ConvertFile(path string, opts *Options) (*Result, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
 	o := Options{}
 	if opts != nil {
 		o = *opts
@@ -119,7 +110,7 @@ func ConvertFile(path string, opts *Options) (*Result, error) {
 	if o.Name == "" {
 		o.Name = sheetName(path)
 	}
-	return Convert(f, st.Size(), &o)
+	return converter.OpenFile(path, func(r io.ReaderAt, size int64) (*Result, error) { return Convert(r, size, &o) })
 }
 
 // sheetName is the name Excel gives the sheet of a CSV file: the file

@@ -253,7 +253,7 @@ func Write(w io.Writer, doc *bdf.Document, view *bdf.View, opts *Options) (*Resu
 			return res, err
 		}
 	}
-	view = skipLayers(view, o.SkipRoles)
+	view = SkipLayers(view, o.SkipRoles)
 	rd := newRender(doc, view, &o, o.Profile)
 	switch o.Profile.Language {
 	case ZPL:
@@ -330,8 +330,10 @@ func (e *errWriter) str(s string) { io.WriteString(e, s) }
 
 func (e *errWriter) printf(format string, args ...any) { fmt.Fprintf(e, format, args...) }
 
-// skipLayers returns the view with the layers of the roles left out.
-func skipLayers(v *bdf.View, roles []string) *bdf.View {
+// SkipLayers returns the view with the layers of the roles left out of
+// its pages (the paper of a preprinted form already has them), or the
+// view itself when there are none to leave out.
+func SkipLayers(v *bdf.View, roles []string) *bdf.View {
 	if len(roles) == 0 {
 		return v
 	}

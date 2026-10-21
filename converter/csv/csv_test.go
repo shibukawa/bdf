@@ -7,6 +7,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/xlsx"
 )
 
@@ -14,19 +15,6 @@ import (
 // only, so that the output does not depend on the machine.
 func testOptions() *Options {
 	return &Options{FontDirs: []string{"../pptx/testdata/fonts"}, NoSystemFonts: true}
-}
-
-func reopen(t *testing.T, doc *bdf.Document) *bdf.Reader {
-	t.Helper()
-	var buf bytes.Buffer
-	if err := doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
 }
 
 func sheetText(t *testing.T, r *bdf.Reader) string {
@@ -73,7 +61,7 @@ func TestConvertFiles(t *testing.T) {
 		if len(res.Warnings) != 0 || res.EmbeddedFonts != 2 {
 			t.Errorf("%s: warnings %q, %d font(s)", c.file, res.Warnings, res.EmbeddedFonts)
 		}
-		r := reopen(t, res.Doc)
+		r := convtest.Reopen(t, res.Doc)
 		m := r.Manifest
 		name := strings.TrimSuffix(c.file, c.file[strings.LastIndexByte(c.file, '.'):])
 		if m.Meta.Source != "csv" || len(m.Views) != 1 || m.Views[0].Title != name || m.Views[0].Freeze == nil || m.Views[0].Freeze.Rows != 1 {

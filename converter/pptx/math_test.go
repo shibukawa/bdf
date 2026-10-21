@@ -3,6 +3,8 @@ package pptx
 import (
 	"strings"
 	"testing"
+
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // Equations are laid out from their Office Math (the a14 choice), not drawn
@@ -15,7 +17,7 @@ func TestMath(t *testing.T) {
 			t.Errorf("warning %q", w)
 		}
 	}
-	text := plainText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{
 		"x=(−b±√(b^2−4ac))/(2a)",
 		"∑_(k=1)^n k^2=(n(n+1)(2n+1))/6",

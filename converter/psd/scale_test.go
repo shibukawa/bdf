@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/image/imgconv"
 )
 
@@ -151,7 +152,7 @@ func TestPlacement(t *testing.T) {
 // pixel stands for pixels that differ; on the whole the pictures agree.
 func TestBlendModesReduced(t *testing.T) {
 	for _, name := range []string{"layers.psd", "artboards.psd"} {
-		data := withoutComposite(t, read(t, name))
+		data := withoutComposite(t, convtest.Read(t, name))
 		o := capped(60 * 45)
 		o.NoArtboards = true
 		c := convert(t, data, o)
@@ -188,7 +189,7 @@ func TestBlendModesReduced(t *testing.T) {
 
 	// The pages of artboards are cut from the reduced composite where the
 	// artboards are placed, and have the size they are stored with.
-	data := withoutComposite(t, read(t, "artboards.psd"))
+	data := withoutComposite(t, convtest.Read(t, "artboards.psd"))
 	c := convert(t, data, capped(50*40))
 	full := convert(t, data, whole)
 	if len(c.pages) != 3 || c.res.Scaled != 3 {
@@ -237,7 +238,7 @@ func TestLimitsReduced(t *testing.T) {
 	data = layered(64, 48, []testLayer{{bottom: 48, right: 64, rgb: [3]uint8{0, 0, 255}}, {top: 4, left: 4, bottom: 8, right: 8, rgb: [3]uint8{255, 0, 0}}})
 	limit(t, &maxLayerPixels, 16*12)
 	c = convert(t, data, capped(16*12))
-	if px := rgbaAt(c.pages[0], 1, 1); px != [4]uint8{255, 0, 0, 255} || rgbaAt(c.pages[0], 5, 5)[3] != 0 || !hasWarning(c.res.Warnings, "too large to draw") {
+	if px := rgbaAt(c.pages[0], 1, 1); px != [4]uint8{255, 0, 0, 255} || rgbaAt(c.pages[0], 5, 5)[3] != 0 || !convtest.HasWarning(c.res.Warnings, "too large to draw") {
 		t.Errorf("large layer: %v at 1,1, warnings %q", px, c.res.Warnings)
 	}
 
@@ -248,7 +249,7 @@ func TestLimitsReduced(t *testing.T) {
 	limit(t, &maxCompositeWork, 1<<32)
 	data = layered(1024, 1024, []testLayer{{top: 100, left: 100, bottom: 108, right: 108, rgb: [3]uint8{255, 0, 0}}})
 	var err error
-	n := allocated(func() { _, err = Convert(bytes.NewReader(data), int64(len(data)), capped(16*16)) })
+	n := convtest.Allocated(func() { _, err = Convert(bytes.NewReader(data), int64(len(data)), capped(16*16)) })
 	if err != nil || n > 4<<20 {
 		t.Errorf("canvas of 1024 × 1024 pixels stored as 16 × 16: %v, %d bytes allocated", err, n)
 	}
@@ -264,7 +265,7 @@ func TestNotReduced(t *testing.T) {
 		"large.psb":     "fc74452f2206b8b78c99fe61678803f22132a70c3534d001116ff5827d68bdbf",
 		"gray16.psd":    "e3e0c7a83342d012d61cd7ffc1cb42aab51c9d5f412f96b6387bd2572692d8fe",
 	} {
-		c := convert(t, withoutComposite(t, read(t, name)), nil)
+		c := convert(t, withoutComposite(t, convtest.Read(t, name)), nil)
 		h := sha256.New()
 		for _, p := range c.pages {
 			fmt.Fprintf(h, "%v", p.Bounds())

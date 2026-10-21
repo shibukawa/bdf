@@ -18,6 +18,7 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/types"
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/font/woff2"
 	"github.com/shibukawa/bdf/internal/cff"
 	"github.com/shibukawa/bdf/internal/sfnt"
@@ -122,30 +123,7 @@ func convertWith(t *testing.T, name string, opts *Options) (*Result, *bdf.Reader
 // reopen writes the document of a conversion and opens it.
 func reopen(t *testing.T, res *Result) *bdf.Reader {
 	t.Helper()
-	b := encodeDoc(t, res.Doc)
-	r, err := bdf.OpenSingle(bytes.NewReader(b), int64(len(b)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
-}
-
-func pageText(t *testing.T, r *bdf.Reader) string {
-	t.Helper()
-	v := r.Manifest.Views[0]
-	h, err := bdf.ParseHash(v.TextIndex)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := r.Part(h)
-	if err != nil {
-		t.Fatal(err)
-	}
-	idx, err := bdf.DecodeTextIndex(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bdf.PlainText(idx)
+	return convtest.Reopen(t, res.Doc)
 }
 
 func opCounts(t *testing.T, r *bdf.Reader, h bdf.Hash) map[byte]int {
@@ -187,7 +165,7 @@ func TestConvertChromeSlides(t *testing.T) {
 	if fonts < 4 || images < 2 {
 		t.Fatalf("fonts=%d images=%d", fonts, images)
 	}
-	text := pageText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"Shapes, gradients and text", "quick brown fox", "ligatures", "a link to example.com", "R2C2"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text index lacks %q", want)
@@ -212,7 +190,7 @@ func TestConvertChromeSlides(t *testing.T) {
 
 func TestConvertChromeDoc(t *testing.T) {
 	_, r := convert(t, "chrome-doc.pdf")
-	text := pageText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"BDF conversion", "Each page is a list of objects", "Justified text", "hyperlink"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text index lacks %q", want)
@@ -282,7 +260,7 @@ func TestConvertReportlab(t *testing.T) {
 	if v := r.Manifest.Views[0]; v.Title != "reportlab fixture" {
 		t.Errorf("view title = %q", v.Title)
 	}
-	text := pageText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"Helvetica: The quick brown fox", "café naïve — “quotes” • bullet ½ ©", "right aligned text", "rotated 30 degrees", "word spacing six between words", "invisible text (searchable)"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text index lacks %q", want)
@@ -457,7 +435,7 @@ func TestConvertWebFonts(t *testing.T) {
 	if !restricted || !noSubset {
 		t.Fatalf("license warnings missing: %v", res.Warnings)
 	}
-	text := pageText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"OpenType CFF (.otf): The quick brown fox", "Web font (.woff2): jumps over the lazy dog", "café naïve résumé", "Restricted License: system font", "Preview & Print: embedded"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text index lacks %q", want)
@@ -525,7 +503,7 @@ func TestConvertCairoCFF(t *testing.T) {
 	if len(res.Warnings) != 0 {
 		t.Fatalf("warnings: %v", res.Warnings)
 	}
-	text := pageText(t, r)
+	text := convtest.PlainText(t, r, 0)
 	for _, want := range []string{"Type1C via cairo: Hello, world", "CIDFontType0C:", "ภาษาไทย", "café — “quotes” ½"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text index lacks %q", want)
@@ -728,7 +706,7 @@ func TestConvertType1(t *testing.T) {
 		if len(res.Warnings) != 0 {
 			t.Fatalf("%s: warnings: %v", c.file, res.Warnings)
 		}
-		text := pageText(t, r)
+		text := convtest.PlainText(t, r, 0)
 		for _, want := range c.text {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s: text index lacks %q in %q", c.file, want, text)
@@ -1166,7 +1144,7 @@ func TestConvertTagged(t *testing.T) {
 			t.Errorf("page %d without parent tree:\n got %s\nwant %s", i+1, got, want)
 		}
 	}
-	lines := strings.Split(pageText(t, r), "\n")
+	lines := strings.Split(convtest.PlainText(t, r, 0), "\n")
 	if want := []string{"header", `T\itle`, "Para one", "Item one", "Nested", "2. Item two", "Head", "Row", "Cell", "Mixed english tail deutsch", "Chapter 2", "inform", "inform"}; !slices.Equal(lines, want) {
 		t.Errorf("text = %q", lines)
 	}

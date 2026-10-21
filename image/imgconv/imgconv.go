@@ -157,7 +157,7 @@ func Optimize(data []byte, opts Options) (Result, error) {
 		return keep, err
 	}
 	lossless := format != "jpeg"
-	best, err := encodeBest(toNRGBA(img), lossless, opts, len(data))
+	best, err := encodeBest(ToNRGBA(img), lossless, opts, len(data))
 	if err != nil {
 		return keep, err
 	}
@@ -245,7 +245,9 @@ func PhotoLike(img *image.NRGBA, maxColors int) bool {
 	return false
 }
 
-func toNRGBA(img image.Image) *image.NRGBA {
+// ToNRGBA returns the image as an NRGBA image with its origin at 0, 0:
+// the image itself when it is one.
+func ToNRGBA(img image.Image) *image.NRGBA {
 	if n, ok := img.(*image.NRGBA); ok {
 		return n
 	}

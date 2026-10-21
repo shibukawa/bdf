@@ -6,12 +6,12 @@ import (
 	"compress/zlib"
 	"encoding/binary"
 	"math"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 )
 
 // Files that state sizes their data does not bear out, and documents whose
@@ -145,10 +145,6 @@ func limit[T any](t *testing.T, v *T, n T) {
 	t.Cleanup(func() { *v = old })
 }
 
-func hasWarning(warnings []string, part string) bool {
-	return slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, part) })
-}
-
 // red is a red square in the middle of a canvas of 8 × 8 pixels.
 var red = testLayer{top: 2, left: 2, bottom: 6, right: 6, rgb: [3]uint8{255, 0, 0}}
 
@@ -173,7 +169,7 @@ func TestCompositeLimits(t *testing.T) {
 	}
 	// One group more: it is left out, and no buffer is made for it.
 	c = convert(t, nested(maxGroupNest+1), nil)
-	if px := rgbaAt(c.pages[0], 3, 3); px[3] != 0 || !hasWarning(c.res.Warnings, "groups more than 16 deep are not drawn") {
+	if px := rgbaAt(c.pages[0], 3, 3); px[3] != 0 || !convtest.HasWarning(c.res.Warnings, "groups more than 16 deep are not drawn") {
 		t.Errorf("%d groups: %v at 3,3, warnings %v", maxGroupNest+1, px, c.res.Warnings)
 	}
 
@@ -185,7 +181,7 @@ func TestCompositeLimits(t *testing.T) {
 	}
 	limit(t, &maxCompositeWork, 3*(64+8))
 	c = convert(t, layered(8, 8, ls), nil)
-	if !hasWarning(c.res.Warnings, "the layers are too many or too large to composite them all; the rest are not drawn") {
+	if !convtest.HasWarning(c.res.Warnings, "the layers are too many or too large to composite them all; the rest are not drawn") {
 		t.Errorf("warnings %v", c.res.Warnings)
 	}
 	for y, want := range []uint8{255, 255, 255, 0, 0, 0, 0, 0} {
@@ -198,7 +194,7 @@ func TestCompositeLimits(t *testing.T) {
 	limit(t, &maxCompositeWork, 1<<32)
 	limit(t, &maxLayerPixels, 8*8)
 	c = convert(t, layered(8, 8, []testLayer{{left: -1, bottom: 8, right: 8, rgb: [3]uint8{0, 255, 0}}, red}), nil)
-	if px := rgbaAt(c.pages[0], 3, 3); px != [4]uint8{255, 0, 0, 255} || rgbaAt(c.pages[0], 0, 0)[3] != 0 || !hasWarning(c.res.Warnings, "too large to draw") {
+	if px := rgbaAt(c.pages[0], 3, 3); px != [4]uint8{255, 0, 0, 255} || rgbaAt(c.pages[0], 0, 0)[3] != 0 || !convtest.HasWarning(c.res.Warnings, "too large to draw") {
 		t.Errorf("large layer: %v at 3,3, warnings %v", px, c.res.Warnings)
 	}
 	// and a canvas too large to composite is an error, before any buffer
@@ -220,7 +216,7 @@ func TestLiveBuffers(t *testing.T) {
 		t.Errorf("2 groups: %v at 3,3, warnings %v", px, c.res.Warnings)
 	}
 	c = convert(t, nested(3), nil)
-	if px := rgbaAt(c.pages[0], 3, 3); px[3] != 0 || !hasWarning(c.res.Warnings, "groups more than 2 deep are not drawn") {
+	if px := rgbaAt(c.pages[0], 3, 3); px[3] != 0 || !convtest.HasWarning(c.res.Warnings, "groups more than 2 deep are not drawn") {
 		t.Errorf("3 groups: %v at 3,3, warnings %v", px, c.res.Warnings)
 	}
 
@@ -234,7 +230,7 @@ func TestLiveBuffers(t *testing.T) {
 	}
 	limit(t, &maxLivePixels, 2*8*8)
 	c = convert(t, data, nil)
-	if px := rgbaAt(c.pages[0], 3, 3); px != [4]uint8{255, 0, 0, 255} || !hasWarning(c.res.Warnings, "groups more than 1 deep are not drawn") {
+	if px := rgbaAt(c.pages[0], 3, 3); px != [4]uint8{255, 0, 0, 255} || !convtest.HasWarning(c.res.Warnings, "groups more than 1 deep are not drawn") {
 		t.Errorf("clipped group without room: %v at 3,3, warnings %v", px, c.res.Warnings)
 	}
 
@@ -280,15 +276,6 @@ func TestArtboardPages(t *testing.T) {
 	}
 }
 
-// allocated returns the bytes f allocates.
-func allocated(f func()) uint64 {
-	var before, after runtime.MemStats
-	runtime.ReadMemStats(&before)
-	f()
-	runtime.ReadMemStats(&after)
-	return after.TotalAlloc - before.TotalAlloc
-}
-
 func TestCompressedSize(t *testing.T) {
 	// A composite of 1024 × 1024 pixels with next to no data: the file is
 	// refused for that, before room is made for its samples.
@@ -302,7 +289,7 @@ func TestCompressedSize(t *testing.T) {
 		{"RLE", slices.Concat(head, be16(compRLE), make([]byte, 2*1024*3))},
 	} {
 		var err error
-		n := allocated(func() { _, err = Convert(bytes.NewReader(c.data), int64(len(c.data)), nil) })
+		n := convtest.Allocated(func() { _, err = Convert(bytes.NewReader(c.data), int64(len(c.data)), nil) })
 		if err == nil || !strings.Contains(err.Error(), "too little data for the size of the image") {
 			t.Errorf("%s composite: error %v", c.name, err)
 		}
@@ -318,7 +305,7 @@ func TestCompressedSize(t *testing.T) {
 		slices.Concat(be16(compRLE), make([]byte, 2*1024)),
 	} {
 		var err error
-		n := allocated(func() { _, err = s.decodeChannel(data) })
+		n := convtest.Allocated(func() { _, err = s.decodeChannel(data) })
 		if err == nil || !strings.Contains(err.Error(), "too little data for the size of the image") || n > 1<<16 {
 			t.Errorf("channel with compression %d: error %v, %d bytes allocated", data[1], err, n)
 		}
@@ -347,7 +334,7 @@ func TestDescriptorList(t *testing.T) {
 	data := slices.Concat([]byte("VlLs"), be32(1<<20), make([]byte, 1<<20))
 	var v any
 	var ok bool
-	n := allocated(func() {
+	n := convtest.Allocated(func() {
 		v, ok = readValue(&cursor{r: bytes.NewReader(data), end: int64(len(data))}, 0)
 	})
 	if ok || v != nil || n > 1<<16 {

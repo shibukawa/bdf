@@ -170,7 +170,7 @@ func (x *ippServer) infra(q *ippRequest) {
 		}
 		// the job's state here: the proxy cancels a job canceled here
 		q.res.Add(ipp.TagJob, ipp.Attr("job-id", ipp.Integer(int(j.ID))), ipp.Attr("job-state", ipp.Enum(int(j.State))),
-			ipp.Attr("job-state-reasons", keywordValues(publicReasons(orNone(j.Reasons)))...))
+			ipp.Attr("job-state-reasons", ipp.Keywords(publicReasons(orNone(j.Reasons)))...))
 	case ipp.OpUpdateActiveJobs:
 		x.updateActiveJobs(q, printer, device)
 	}
@@ -210,7 +210,7 @@ func (x *ippServer) fetchableJobs(q *ippRequest, printer, device string) {
 	if n, ok := q.op.Get("limit").Int(); ok && n > 0 {
 		limit = int(n)
 	}
-	req := requested(q.op, []string{"job-id", "job-uri"})
+	req := ipp.Requested(q.op, []string{"job-id", "job-uri"})
 	for i, j := range x.s.sp.Fetchable(printer, device) {
 		if limit > 0 && i >= limit {
 			break
@@ -226,7 +226,7 @@ func (x *ippServer) fetchableJobs(q *ippRequest, printer, device string) {
 		if j.Printer.Device != "" {
 			attrs = append(attrs, ipp.Attr("output-device-assigned", ipp.Name(j.Printer.Device)))
 		}
-		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: filterAttrs(attrs, req, jobGroups)})
+		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: ipp.Filter(attrs, req, jobGroups)})
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"golang.org/x/text/encoding/japanese"
 )
 
@@ -35,15 +36,7 @@ func convertHTML(t *testing.T, src string, opts *Options) (*Result, *bdf.Reader)
 // reopen writes a converted document and reads it back.
 func reopen(t *testing.T, res *Result) *bdf.Reader {
 	t.Helper()
-	var buf bytes.Buffer
-	if err := res.Doc.WriteSingle(&buf); err != nil {
-		t.Fatal(err)
-	}
-	r, err := bdf.OpenSingle(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return r
+	return convtest.Reopen(t, res.Doc)
 }
 
 // content is what the objects of a view hold: the text with breaks as
