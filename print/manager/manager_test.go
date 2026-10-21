@@ -115,6 +115,21 @@ func (e *env) m() *Manager {
 // do sends a request; body is JSON unless it is bytes.
 func (e *env) do(c *http.Client, method, path, token string, body any) (*http.Response, []byte) {
 	e.t.Helper()
+	return e.send(c, func(r *http.Request) {
+		if token != "" {
+			r.Header.Set("Authorization", "Bearer "+token)
+		}
+	}, method, path, body)
+}
+
+// doWith sends a request that edit changes first.
+func (e *env) doWith(edit func(*http.Request), method, path string, body any) (*http.Response, []byte) {
+	e.t.Helper()
+	return e.send(nil, edit, method, path, body)
+}
+
+func (e *env) send(c *http.Client, edit func(*http.Request), method, path string, body any) (*http.Response, []byte) {
+	e.t.Helper()
 	var r io.Reader
 	switch b := body.(type) {
 	case nil:
@@ -128,9 +143,7 @@ func (e *env) do(c *http.Client, method, path, token string, body any) (*http.Re
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
+	edit(req)
 	if c == nil {
 		c = http.DefaultClient
 	}
@@ -293,7 +306,8 @@ func TestDisplay(t *testing.T) {
 		t.Fatalf("board %+v", b)
 	}
 	s := b.Open[0]
-	if s.Name != "picking list 1" || s.Pages != 2 || s.State != SlipNew || s.User != "wms" || s.Source != "ipp" {
+	if s.Name != "picking list 1" || s.Pages != 2 || s.State != SlipNew || s.Source != "ipp" ||
+		s.ClaimedUser != "wms" || s.SubmittedBy == nil || s.SubmittedBy.Kind != PrincipalAnonymous {
 		t.Fatalf("slip %+v", s)
 	}
 
@@ -373,7 +387,7 @@ func TestSubmitAPI(t *testing.T) {
 	}
 	var s Slip
 	json.Unmarshal(out, &s)
-	if s.User != "wms" || s.Source != "api" || s.Pages != 1 {
+	if s.SubmittedBy == nil || *s.SubmittedBy != (Principal{Kind: PrincipalToken, ID: "wms", Via: ViaSubmitToken}) || s.Source != "api" || s.Pages != 1 {
 		t.Fatalf("slip %+v", s)
 	}
 	if res, _ := e.do(nil, "POST", "/api/locations/wh-a/slips", "wms:s3cret", []byte("not a document")); res.StatusCode != http.StatusUnsupportedMediaType {

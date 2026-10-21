@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"slices"
 	"time"
 
@@ -45,6 +46,11 @@ type Options struct {
 	SubmitTokens map[string]string
 	// TickToken authorizes POST /api/tick alone (a scheduler's).
 	TickToken string
+	// Viewer returns the person signed in to the pages a request comes
+	// from (the web application's session), or nil. An admin uses the
+	// API as the AdminToken does; anyone sends jobs to the locations
+	// they may print to.
+	Viewer func(*http.Request) *Viewer
 	// MaxDocument bounds a document received (default 64 MiB).
 	MaxDocument int64
 	// SessionFor is how long a device's session lasts before it signs a
@@ -178,6 +184,9 @@ func (m *Manager) PutLocation(ctx context.Context, l Location) error {
 	if l.Fallback != nil && !validName(l.Fallback.Printer) {
 		return fmt.Errorf("%w: fallback printer %q", ErrInvalid, l.Fallback.Printer)
 	}
+	if err := checkKind(l.Kind, l.Owner); err != nil {
+		return err
+	}
 	_, err := change(ctx, m.st.db, l.Name, true, func(r *locationRecord) error {
 		*r = locationRecord(l)
 		return nil
@@ -235,6 +244,9 @@ func (m *Manager) PutPrinter(ctx context.Context, p Printer) error {
 		return fmt.Errorf("%w: route %q: direct or branch", ErrInvalid, p.Route)
 	}
 	if err := checkPrinterURL(p.URL); err != nil {
+		return err
+	}
+	if err := checkKind(p.Kind, p.Owner); err != nil {
 		return err
 	}
 	_, err := change(ctx, m.st.db, p.Name, true, func(r *printerRecord) error {

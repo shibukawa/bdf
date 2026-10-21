@@ -20,8 +20,10 @@ import (
 type Input struct {
 	// Name is the job's name (job-name, or the file's).
 	Name string
-	// User is who the sender says sent it (requesting-user-name).
-	User string
+	// By is who sent it, as verified; nil is an anonymous sender.
+	By *Principal
+	// ClaimedUser is who the sender says sent it (requesting-user-name).
+	ClaimedUser string
 	// Source is "ipp" or "api".
 	Source string
 	// Doc is the document, of Size bytes: .bdf, or what the converter
@@ -67,8 +69,13 @@ func (m *Manager) Submit(ctx context.Context, loc string, in Input) (*Slip, erro
 		return nil, err
 	}
 	now := m.now()
-	s := Slip{ID: slipID(job), Job: job, Location: loc, Name: clip(in.Name, 255), User: clip(in.User, 255), Source: in.Source,
-		Format: format, Pages: len(v.Pages), SHA256: hex.EncodeToString(h.Sum(nil)), Received: now, State: SlipNew}
+	by := in.By
+	if by == nil {
+		by = &Principal{Kind: PrincipalAnonymous, Via: ViaNone}
+	}
+	s := Slip{ID: slipID(job), Job: job, Location: loc, Name: clip(in.Name, 255), SubmittedBy: by, ClaimedUser: clip(in.ClaimedUser, 255),
+		Group: m.slipGroup(ctx, l), Source: in.Source, Format: format, Pages: len(v.Pages), SHA256: hex.EncodeToString(h.Sum(nil)),
+		Received: now, State: SlipNew}
 	if l.Fallback != nil && l.Fallback.After > 0 {
 		s.FallbackAt = now.Add(l.Fallback.After.d())
 	}
@@ -84,7 +91,8 @@ func (m *Manager) Submit(ctx context.Context, loc string, in Input) (*Slip, erro
 	if err := m.touch(ctx, loc, func(st *locationState) { st.Open = append(st.Open, s.ID) }); err != nil {
 		return nil, err
 	}
-	m.o.Log.Info("slip", "location", loc, "job", job, "name", s.Name, "pages", s.Pages, "source", s.Source)
+	m.o.Log.Info("slip", "location", loc, "job", job, "name", s.Name, "pages", s.Pages, "source", s.Source,
+		"by", by.Kind+":"+by.ID, "via", by.Via)
 	return &s, nil
 }
 

@@ -1,0 +1,142 @@
+id: milestone:pm-auth-1
+type: milestone
+title: pm-auth-1 — Print Manager の画面に全員の OIDC ログイン（認可コード + PKCE）、見える範囲のジョブの画面、管理者だけの /admin、確かめた送り手と名乗りの分離、偽の IdP
+summary: >-
+  requirement:print-manager-auth の最初の段（facts.delivery_proposed.first_step）。/tablet 以外の画面は IdP にログインしてから。
+  入った人は自分のジョブとグループのジョブ、自分が刷れる場所とプリンタだけを見る。admins・admin_groups に当たる人は加えて /admin（全部のジョブと設定）、
+  他の人は 403。ブラウザで AdminToken を打つ形を外した。伝票は確かめた送り手（SubmittedBy）と名乗り（ClaimedUser）を分けて持つ。
+  popcornweb の plugin/auth に載せ、ログインの途中の状態は yuruidb、セッションは封をしたクッキーで、サーバーレスのまま。2026-10-21 実装。
+  pm-auth-1 の残り（刷り直し・取り消し、監査の記録、session-key の鍵の列）は後。
+lifecycle: active
+authority: authored
+scope:
+  milestone: pm-auth-1
+constraints:
+- インスタンスに状態を持たない（milestone:pm-1 のまま）。ログインの途中の状態は manager の保存先、セッションはクッキー
+- 持ち主と見える範囲は SubmittedBy だけから決める。ClaimedUser（requesting-user-name など）は表示だけ
+- print/manager は popcornweb に依らない。人は Options.Viewer（*Viewer を返す関数）で渡り、判断（CanSee・CanPrintTo）は manager に置く
+- 本番（dev 以外）は IdP の設定（issuer・client_id・client_secret）と管理者の規則が 1 つ以上無ければ起動しない
+capabilities:
+  oidc-login:
+    state: implemented
+    about: 全員の OIDC ログイン（認可コード + PKCE S256）とサインアウト、AppBar の端に名前
+  job-scope:
+    state: implemented
+    about: 送った人・ジョブのグループの人・管理者だけが見る。場所とプリンタの kind（personal・group・shared）と owner
+  admin-page:
+    state: implemented
+    about: /admin は管理者だけ（他は 403）、/api は管理者のセッションでも
+  submitted-by:
+    state: implemented
+    about: Slip.SubmittedBy（確かめた主体）と Slip.ClaimedUser（名乗り）
+  fake-idp:
+    state: implemented
+    about: print/fakeidp（httptest の上の OIDC の偽物）
+  reprint-cancel:
+    state: planned
+    about: 自分とグループのジョブの刷り直し、自分のジョブの取り消し
+  audit-log:
+    state: planned
+    about: ログイン・読み出し・権限の変更の記録
+  session-key-ring:
+    state: planned
+    about: session-key の鍵の列（今は session.keyring.previous_secrets で入れ替えられる。MANAGER_SECRET から作る鍵は 1 本）
+non_goals:
+- アプリの client credentials、IPP の Basic、SubmitTokens・AdminToken・TickToken を外すこと（pm-auth-2）。/api の bearer の AdminToken はスクリプトのために残す
+- 仮想プリンタのサービスユーザーとデバイスフロー（pm-auth-3）。/tablet の端末の認証は pm-1 のまま
+- 文書の読み出し（ページ・ダウンロード）を一般の人に開くこと。見るのは一覧だけ
+acceptance:
+  a1-login:
+    text: 誰もログインしていなければ / と /admin は IdP へ（/auth/login 経由の 303）。/tablet・/public・/api・/ipp・/device は保護しない。IdP で認証できた人は誰でも入れ（Print Manager に人の登録は要らない）、oidc.allowed（issuer、メールのドメインか hd、グループ）で絞れる。メールが確かめられていない人は管理者のメールでも入らない。サインアウトでセッションが終わる
+    verified_by:
+    - login-tests
+    - browser-roles
+  a2-scope:
+    text: 人は自分のジョブとグループのジョブだけを見て、自分が刷れる場所とプリンタだけが出る。管理者は全部。画面から送った文書は OIDC の人（via oidc）の伝票になり、刷れない場所には 403
+    verified_by:
+    - scope-tests
+    - login-tests
+    - browser-roles
+  a3-admin:
+    text: oidc.admins（issuer#subject かメール）か、oidc.groups_claim（点の道。realm_access.roles など）の値が oidc.admin_groups にある人は /admin に入る。他は 403。管理者のセッションで /api が使え、別の origin からの変更は 403
+    verified_by:
+    - login-tests
+    - scope-tests
+    - browser-roles
+  a4-startup:
+    text: dev 以外では、IdP の設定か管理者の規則が無ければ、また admins の書き方が違えば起動しない。dev で issuer が無ければ誰もログインせず、画面がそう言う
+    verified_by:
+    - login-tests
+    - app-tests
+verification:
+  scope-tests:
+    state: passed
+    method: integration
+    test: go test -race ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/scope_test.go
+      locator: 'TestScope（場所の kind と owner、逃げ道のプリンタのグループ、セッションの送信と 403、SlipsOf と PlacesOf、管理者のセッションの /api、別の origin）、TestStates（ログインの状態の 1 回きりと期限）。2026-10-21 macOS で通った'
+  login-tests:
+    state: passed
+    method: integration
+    test: go test -race ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/login_test.go
+      locator: 'TestLogin は popcornweb の testutil.TestRun（本物のミドルウェアと plugin/auth）を print/fakeidp に向け、6 人のログインを IdP の往復で通す（グループは realm_access.roles）。TestConfigureAuth（本番で断る 4 つ、セッションの鍵が secret で同じ）、TestGroups（点の道、文字列か配列、prefix）。2026-10-21 macOS で通った'
+  app-tests:
+    state: passed
+    method: unit
+    test: go test ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/app_test.go
+      locator: 'TestApp（IdP の無い dev：/ はそう言い、/admin は 403）'
+  browser-roles:
+    state: passed
+    method: manual
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/pages.pw.html
+      locator: '2026-10-21 内蔵ブラウザで、偽の IdP（print/fakeidp を 127.0.0.1:9781 で、ユーザーを選ぶ画面）に向けた printmanager を開いた。管理者（メール）はタブレット幅で全部のジョブと /admin（全部のジョブの表、kind と owner の入力、トークンの欄は無い）、セッションで場所を足せた。warehouse-a の人はスマホ幅で自分と warehouse-a のジョブだけ、画面の送信が自分の名前で載り、/admin は 403 の画面。グループの無い人は他人のジョブを見ず、shared の場所だけに刷れ、/admin は 403。サインアウトは IdP の選び直し（prompt=select_account login）に戻った'
+  real-idp:
+    state: not_run
+    method: manual
+    test: Entra ID・Google Workspace・Keycloak の実の IdP で、グループの claim と JWKS（alg の無い鍵）を確かめる
+facts:
+  implemented:
+    date: '2026-10-21'
+    packages:
+    - 'print/manager：scope.go（Principal、Viewer、CanSee・CanPrintTo、SlipsOf・PlacesOf、Person）、model.go（Location・Printer の kind と owner、Slip の SubmittedBy・ClaimedUser・Group）、store.go（states と people の集まり、PutState・TakeState・PruneStates）、http.go（Options.Viewer、管理者のセッション、同じ origin、GET /api/slips）、ipp.go と submit.go（確かめた送り手）'
+    - 'cmd/printmanager/handlers：auth.go（ConfigureAuth、plugin/auth の backend「yuruidb」、account resolver、グループの claim、管理者と allowed の判断）、config.go（[oidc]）、app.go（/ の見える範囲の画面、/admin の 403）、pages.pw.html（Account・SlipRow・Place、AppBar の端、Home、Forbidden）'
+    - 'cmd/printmanager/public：home.js（画面からの送信）、admin.js（トークンを外し、全部のジョブ、kind と owner）'
+    - 'print/fakeidp：discovery、JWKS、authorize（LoginAs か選ぶ画面）、token（PKCE S256、client_secret_basic・post）、RS256 の ID トークン、グループを点の道に、Tamper'
+    - 'cmd/printmanager/main.go：pw.ParseConfig の後に pwconfig.Bound で [auth] と [session] を ConfigureAuth が直す'
+  found:
+  - 'popcornweb：plugin/auth の状態の backend は rdb・dynamo・firestore だけを持つが、auth.RegisterBackend で自前（RawStore の Put・Take）を足せる。yuruidb の Delete（版つき）で 1 回きりの Take になる'
+  - 'popcornweb：起動の要約は読んだときの設定を出す。pwconfig.Bound で直した [auth] は要約では enabled=false のまま。printmanager が自分で 1 行出す'
+  - 'popcornweb：plugin/auth の claim は ID トークンだけ（UserInfo は読まない）。グループは ID トークンに入っている必要がある'
+  - 'popcornweb：contrib/jwt の JWKS は alg の無い鍵を飛ばす（記憶では Entra の JWKS に alg が無い。未確認）'
+  - 'popcornweb：testutil は sqlite・pgx・mysql・goose を引く。バイナリには入らないが go.mod に間接の依存が 20 行増えた'
+  - 'popcornweb：pw.WriteHTML は状態を選べない。403 の画面は WriteHeader を差し替える ResponseWriter で'
+  - 'サインアウトは logout_scope reconfirm の既定で、次の認可の要求に prompt=select_account login が付く'
+  unverified:
+  - '実の IdP（Entra ID、Google Workspace、Keycloak）。グループの claim の形、200 を超えるグループ、alg の無い JWKS'
+  - 'Lambda などの複数のインスタンスでのログイン（状態は保存先にあるので通るはず）'
+  known_gaps:
+  - 'セッションはクッキーの backend なので、サインアウトの前に写したクッキーは期限まで使える（popcornweb が本番で警告する）。即時に終えるなら session.backend を dynamo などに'
+  - 'グループはログインのときのもの。IdP で外れても次のログインまで残る（auth.session.ttl が上限、既定 24 時間）'
+  - '見える範囲の一覧は全部の伝票を読んで絞る（場所や人ごとの索引は無い）'
+  - 'pm-1 の伝票の user の欄は読まない（SubmittedBy の無い古い伝票は送った人が無く、グループも無い）'
+relations:
+- relation: implements
+  to: requirement:print-manager-auth
+- relation: depends_on
+  to: system:popcornweb
+- relation: depends_on
+  to: system:yuruidb
+- relation: constrained_by
+  to: decision:print-manager-ui-daisyui
+- relation: follows
+  to: milestone:pm-1

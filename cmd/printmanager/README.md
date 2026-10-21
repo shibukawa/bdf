@@ -14,8 +14,8 @@ runs as one process on a site's server or as a function of AWS Lambda.
 
 ## Run it
 
-Copy `.env.example` to `.env.local` (git ignores it) and fill in the admin
-token and the secret. Then, from the repository's root, either
+Copy `.env.example` to `.env.local` (git ignores it) and fill in the
+secret and the IdP. Then, from the repository's root, either
 
 ```sh
 pw dev
@@ -38,11 +38,49 @@ or with variables:
 | `MANAGER_RECORDS` | store of the records: `bbolt:path`, `dynamodb://table?region=…`, `firestore://project/database`, `s3://bucket?region=…&endpoint=…`, `r2://bucket?endpoint=…`, `gcs://bucket` |
 | `MANAGER_DOCUMENTS` | store of the slips' documents (`bbolt`, `s3`, `r2`, `gcs`); empty for the records' store |
 | `MANAGER_SECRET` | signs the devices' sessions: 32 bytes or more, the same for every instance |
-| `MANAGER_ADMIN_TOKEN` | bearer token of the API (`/api`) and of the page `/admin` |
+| `MANAGER_ADMIN_TOKEN` | bearer token of the API (`/api`), for scripts (people sign in) |
 | `MANAGER_TICK_TOKEN` | bearer token a scheduler calls `POST /api/tick` with |
 | `MANAGER_SUBMIT_TOKENS` | `name:secret` pairs that may send jobs (IPP Basic, or bearer `name:secret`); none lets anyone send |
 | `MANAGER_SERVERLESS` | refuse a store one process keeps, and tick only when called |
 | `MANAGER_TICK_INTERVAL` | how often a process ticks (default 30s) |
+
+## Sign-in
+
+Every page but `/tablet` is for a person signed in at an OIDC IdP
+(authorization code with PKCE, through popcornweb's `plugin/auth`).
+Anyone the IdP signs in gets in, with no registration here, and sees
+their own jobs and their groups' jobs, and the locations and printers
+they may print to; the admins see everything and get `/admin`, the
+others get 403 there. The IdP is popcornweb's `[auth.oidc]`; who gets in
+and who is an admin is `[oidc]`:
+
+| Variable | |
+|---|---|
+| `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET` | the IdP and this client (required outside dev) |
+| `AUTH_OIDC_REDIRECT_URL` | `https://<host>/auth/callback`, as registered at the IdP (outside dev) |
+| `OIDC_GROUPS_CLAIM` | claim of the groups: `groups`, `roles`, or a dotted path such as Keycloak's `realm_access.roles` (it must be in the ID token) |
+| `OIDC_GROUPS_PREFIX` | take only the groups of this prefix |
+| `OIDC_ADMINS` | admins: `issuer#subject`, or an email the IdP verified |
+| `OIDC_ADMIN_GROUPS` | groups whose members are admins (one admin rule is required outside dev) |
+| `OIDC_ALLOWED_ISSUERS`, `OIDC_ALLOWED_DOMAINS`, `OIDC_ALLOWED_GROUPS` | narrow who gets in (email domain or Google's `hd`; admins always get in) |
+
+The rest of `[auth]` and `[session]` is the Print Manager's
+(`handlers.ConfigureAuth`): the state of a login on its way through the
+IdP is kept in the records' store, so that any instance finishes it, and
+the session is a sealed cookie (`session.keyring.secret`, or made of
+`MANAGER_SECRET`). The groups are copied at each login; who is an admin
+is decided on each request.
+
+A location or a printer has a kind and an owner (`"kind":"group",
+"owner":"warehouse-a"`, a value of the groups claim; `personal` and a
+person's email; `shared`, the default): who may print to it, and the
+group whose members see the jobs of a location (else of its fallback
+printer). A job records who sent it as verified (`submitted_by`: the
+person signed in, the submit token, or anonymous) apart from the name the
+sender gave (`claimed_user`, shown only).
+
+For a local IdP, `print/fakeidp` serves one with people of your choosing
+(`fakeidp.New(...).Listen("127.0.0.1:9781")`).
 
 AWS credentials come from the environment (`AWS_ACCESS_KEY_ID` …), web
 identity, the container's or the instance's role.
@@ -53,7 +91,7 @@ identity, the container's or the instance's role.
 
    ```sh
    curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/printers/wh-a-laser -d '{"url":"ipps://wh-a-laser.local/ipp/print"}'
-   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/locations/wh-a -d '{"title":"第 1 倉庫","fallback":{"printer":"wh-a-laser","after":"10m"}}'
+   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/locations/wh-a -d '{"title":"第 1 倉庫","kind":"group","owner":"warehouse-a","fallback":{"printer":"wh-a-laser","after":"10m"}}'
    ```
 
 2. Enroll a tablet: "端末を足す" on `/admin` shows a one-time code and its QR

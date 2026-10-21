@@ -19,45 +19,168 @@ component Shell(title: string, children: html): html {
   </html>
 }
 
-// AppBar is the bar at the top of a page; its children go to its end
-// (the place of a login, later).
-component AppBar(title: string, children: html?): html {
+// Account is the person signed in.
+type Account {
+  name: string
+  initial: string
+  email: string
+  admin: bool
+}
+
+// SlipRow is a job (a slip) on the page of the jobs a person may see.
+type SlipRow {
+  job: int
+  name: string
+  location: string
+  state: string
+  stateLabel: string
+  pages: int
+  received: string
+  by: string
+  via: string
+  claimed: string
+  group: string
+  mine: bool
+}
+
+// Place is a location or a printer a person may print to.
+type Place {
+  name: string
+  title: string
+  kind: string
+  owner: string
+}
+
+// AppBar is the bar at the top of a page; its end is who is signed in
+// (and their sign-out), then its children.
+component AppBar(title: string, signedIn: bool, account: Account, children: html?): html {
   <header class="navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm">
     <div class="flex-1 min-w-0">
-      <a href="/" class="text-xl font-bold tracking-tight">{title}</a>
+      <a href="/" class="truncate text-lg font-bold tracking-tight sm:text-xl">{title}</a>
     </div>
-    <div class="flex flex-wrap items-center gap-2"><slot /></div>
+    <div class="flex flex-wrap items-center gap-2">
+      <slot />
+      {if signedIn}
+        <div class="flex min-w-0 items-center gap-2">
+          <div class="avatar avatar-placeholder" title={account.name}>
+            <div class="w-8 rounded-full bg-neutral text-neutral-content"><span class="text-sm">{account.initial}</span></div>
+          </div>
+          <div class="hidden min-w-0 flex-col leading-tight sm:flex">
+            <span id="account-name" class="max-w-48 truncate text-sm font-semibold">{account.name}</span>
+            <span class="max-w-48 truncate text-xs text-base-content/60">{account.email}</span>
+          </div>
+          {if account.admin}<span class="badge badge-primary badge-sm">管理者</span>{/if}
+          <form method="post" action="/auth/logout">
+            <button id="logout" type="submit" class="btn btn-ghost btn-sm">サインアウト</button>
+          </form>
+        </div>
+      {/if}
+    </div>
   </header>
 }
 
-export component Home(): html {
+// Home is everyone's page: the jobs they may see (their own, their
+// groups', or all for an admin) and where they may print.
+export component Home(signedIn: bool, account: Account, groups: string[], slips: SlipRow[], noSlips: bool, locations: Place[], printers: Place[], canPrint: bool): html {
   <Shell title="BDF Print Manager">
-    <AppBar title="BDF Print Manager"></AppBar>
-    <main class="mx-auto max-w-4xl p-4 sm:p-8">
-      <section class="hero rounded-box bg-base-100 py-10 shadow-sm">
-        <div class="hero-content text-center">
-          <div class="max-w-xl">
-            <h1 class="text-3xl font-bold sm:text-4xl">倉庫の伝票を、紙でなく端末に</h1>
-            <p class="py-4 text-base-content/70">倉庫ごとの仮想プリンタに刷られた伝票を、登録した端末だけに見せます。だれも開かなければ、その倉庫のプリンタに刷ります。</p>
-            <div class="flex flex-wrap justify-center gap-3">
-              <a href="/tablet" class="btn btn-primary btn-lg">端末の画面</a>
-              <a href="/admin" class="btn btn-lg">管理</a>
-            </div>
+    <AppBar title="BDF Print Manager" signedIn={signedIn} account={account}></AppBar>
+    <main class="mx-auto grid max-w-5xl gap-6 p-4 sm:p-8">
+      {if not signedIn}
+        <div role="alert" class="alert alert-warning">
+          <span>サインインが設定されていません（AUTH_OIDC_ISSUER）。開発のときだけ、こうして開きます。</span>
+        </div>
+      {/if}
+      {if signedIn}
+        <section class="flex flex-wrap items-center gap-2">
+          <h1 class="mr-2 text-2xl font-bold">{account.name}さんのジョブ</h1>
+          {for g in groups}<span class="badge badge-outline">{g}</span>{/for}
+          <span class="flex-1"></span>
+          <a href="/tablet" class="btn btn-sm">端末の画面</a>
+          {if account.admin}<a href="/admin" class="btn btn-sm btn-primary">管理</a>{/if}
+        </section>
+      {/if}
+
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="card-title">見えるジョブ</h2>
+          <p class="text-sm text-base-content/60">自分が刷ったものと、属するグループのもの{account.admin ? "（管理者は全部）" : ""}。</p>
+          <div class="overflow-x-auto">
+            <table id="slips" class="table table-sm">
+              <thead><tr><th>#</th><th>名前</th><th>場所</th><th>状態</th><th class="hidden sm:table-cell">送った人</th><th class="hidden md:table-cell">グループ</th><th class="hidden sm:table-cell">受けた時刻</th></tr></thead>
+              <tbody>
+                {for s in slips}
+                  <tr data-job={s.job}>
+                    <td class="font-mono">{s.job}</td>
+                    <td class="max-w-48 break-words font-semibold">{s.name}<div class="text-xs font-normal text-base-content/60 sm:hidden">{s.by} · {s.received}</div></td>
+                    <td class="whitespace-nowrap font-mono text-sm">{s.location}</td>
+                    <td><span class="badge badge-sm whitespace-nowrap {s.state == 'done' ? 'badge-success' : s.state == 'canceled' ? 'badge-ghost' : s.state == 'opened' ? 'badge-info' : 'badge-warning'}">{s.stateLabel}</span></td>
+                    <td class="hidden sm:table-cell">
+                      <span class="font-semibold">{s.by}</span>{if s.mine} <span class="badge badge-primary badge-xs">自分</span>{/if}
+                      <div class="text-xs text-base-content/60">{s.via}{s.claimed == "" ? "" : "・名乗り: " + s.claimed}</div>
+                    </td>
+                    <td class="hidden whitespace-nowrap md:table-cell">{s.group == "" ? "—" : s.group}</td>
+                    <td class="hidden whitespace-nowrap text-sm sm:table-cell">{s.received}</td>
+                  </tr>
+                {/for}
+              </tbody>
+            </table>
           </div>
+          {if noSlips}<p id="no-slips" class="py-6 text-center text-base-content/50">見えるジョブはありません</p>{/if}
         </div>
       </section>
-      <div class="mt-6 grid gap-4 sm:grid-cols-2">
-        <div class="card bg-base-100 shadow-sm">
+
+      <div class="grid gap-6 md:grid-cols-2">
+        <section class="card bg-base-100 shadow-sm">
           <div class="card-body">
-            <h2 class="card-title">端末</h2>
-            <p class="text-base-content/70">タブレットで端末の画面を開き、管理者が出した登録コードで登録します。登録した端末だけが伝票を見られます。</p>
+            <h2 class="card-title">刷る</h2>
+            {if not canPrint}<p class="text-base-content/50">刷れる場所はありません</p>{/if}
+            {if canPrint}
+              <form id="upload" class="flex flex-col gap-3">
+                <select id="upload-location" class="select w-full" required>
+                  {for l in locations}<option value={l.name}>{l.title == "" ? l.name : l.title}</option>{/for}
+                </select>
+                <input id="upload-file" type="file" class="file-input w-full" required>
+                <button type="submit" class="btn btn-primary">送る</button>
+              </form>
+            {/if}
           </div>
-        </div>
-        <div class="card bg-base-100 shadow-sm">
+        </section>
+        <section class="card bg-base-100 shadow-sm">
           <div class="card-body">
-            <h2 class="card-title">送る側</h2>
-            <p class="text-base-content/70">IPP のプリンタ <code class="font-mono text-sm">/ipp/print/&lt;場所&gt;</code> か、API の <code class="font-mono text-sm">POST /api/locations/&lt;場所&gt;/slips</code> に送ります。</p>
+            <h2 class="card-title">刷れる場所とプリンタ</h2>
+            <ul id="places" class="list">
+              {for l in locations}
+                <li class="list-row items-center">
+                  <div><div class="font-semibold">{l.title == "" ? l.name : l.title}</div><div class="font-mono text-xs text-base-content/60">/ipp/print/{l.name}</div></div>
+                  <span class="badge badge-sm badge-soft whitespace-nowrap {l.kind == 'group' ? 'badge-secondary' : l.kind == 'personal' ? 'badge-accent' : 'badge-neutral'}">{l.kind}{l.owner == "" ? "" : ": " + l.owner}</span>
+                </li>
+              {/for}
+              {for p in printers}
+                <li class="list-row items-center">
+                  <div><div class="font-semibold">🖨 {p.name}</div><div class="text-xs text-base-content/60">プリンタ</div></div>
+                  <span class="badge badge-sm badge-soft whitespace-nowrap {p.kind == 'group' ? 'badge-secondary' : p.kind == 'personal' ? 'badge-accent' : 'badge-neutral'}">{p.kind}{p.owner == "" ? "" : ": " + p.owner}</span>
+                </li>
+              {/for}
+            </ul>
           </div>
+        </section>
+      </div>
+      <div id="toasts" class="toast toast-end z-50"></div>
+    </main>
+    <script type="module" src="/public/home.js"></script>
+  </Shell>
+}
+
+// Forbidden is the page of what the person signed in may not open.
+export component Forbidden(signedIn: bool, account: Account): html {
+  <Shell title="入れません · BDF Print Manager">
+    <AppBar title="BDF Print Manager" signedIn={signedIn} account={account}></AppBar>
+    <main class="mx-auto max-w-lg p-4 sm:p-8">
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body items-center text-center">
+          <h1 class="card-title text-2xl">管理者だけのページです</h1>
+          <p class="text-base-content/70">{account.name}さんは管理者ではありません。自分とグループのジョブはトップのページで見られます。</p>
+          <div class="card-actions"><a href="/" class="btn btn-primary">トップへ</a></div>
         </div>
       </div>
     </main>
@@ -127,20 +250,22 @@ export component Tablet(): html {
   </Shell>
 }
 
-export component Admin(): html {
+export component Admin(account: Account): html {
   <Shell title="管理 · BDF Print Manager">
-    <AppBar title="BDF Print Manager · 管理">
+    <AppBar title="BDF Print Manager · 管理" signedIn={true} account={account}>
       <button id="tick" type="button" class="btn btn-sm">今すぐ tick</button>
     </AppBar>
     <main id="admin" class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
       <section class="card bg-base-100 shadow-sm">
-        <form id="token-form" class="card-body">
-          <h2 class="card-title">管理のトークン</h2>
-          <div class="join w-full max-w-xl">
-            <input id="token" type="password" autocomplete="off" class="input join-item w-full" placeholder="MANAGER_ADMIN_TOKEN">
-            <button type="submit" class="btn btn-primary join-item">使う</button>
+        <div class="card-body">
+          <h2 class="card-title">全部のジョブ</h2>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>#</th><th>名前</th><th>場所</th><th>状態</th><th>送った人（確かめた）</th><th class="hidden sm:table-cell">名乗り</th><th class="hidden md:table-cell">グループ</th></tr></thead>
+              <tbody id="slips"></tbody>
+            </table>
           </div>
-        </form>
+        </div>
       </section>
 
       <section class="card bg-base-100 shadow-sm">
@@ -148,13 +273,15 @@ export component Admin(): html {
           <h2 class="card-title">プリンタ</h2>
           <div class="overflow-x-auto">
             <table class="table table-zebra">
-              <thead><tr><th>名前</th><th>URL</th><th>経路</th><th></th></tr></thead>
+              <thead><tr><th>名前</th><th>URL</th><th>経路</th><th>種類</th><th></th></tr></thead>
               <tbody id="printers"></tbody>
             </table>
           </div>
           <form id="printer-form" class="mt-2 flex flex-wrap gap-2">
             <input id="printer-name" class="input w-full sm:w-48" placeholder="名前 (wh-a-laser)" required>
             <input id="printer-url" class="input w-full sm:flex-1" placeholder="ipps://… / socket://…:9100" required>
+            <select id="printer-kind" class="select w-full sm:w-36"><option value="shared">共有</option><option value="group">グループ</option><option value="personal">個人</option></select>
+            <input id="printer-owner" class="input w-full sm:w-48" placeholder="持ち主（グループかメール）">
             <button type="submit" class="btn btn-primary">追加・更新</button>
           </form>
         </div>
@@ -171,6 +298,8 @@ export component Admin(): html {
               <input id="location-title" class="input w-full sm:w-48" placeholder="表示名 (第 1 倉庫)">
               <input id="location-printer" class="input w-full sm:w-48" placeholder="紙に逃がすプリンタ">
               <input id="location-after" class="input w-full sm:w-28" placeholder="何分で (10m)">
+              <select id="location-kind" class="select w-full sm:w-36"><option value="shared">共有</option><option value="group">グループ</option><option value="personal">個人</option></select>
+              <input id="location-owner" class="input w-full sm:w-48" placeholder="持ち主（グループかメール）">
               <button type="submit" class="btn btn-primary">追加・更新</button>
             </div>
           </div>

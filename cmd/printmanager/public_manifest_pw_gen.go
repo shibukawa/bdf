@@ -8,17 +8,23 @@ import "github.com/shibukawa/popcornweb/middlewares"
 // the request path reads bytes and computes nothing.
 func init() {
 	middlewares.RegisterPublicManifest([]middlewares.AssetEntry{
-		{URL: "admin.js", CacheControl: "public, no-cache", Revision: "5f8d58ce2273c5bf", Representations: []middlewares.AssetRepresentation{
-			{Path: "admin.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 7195, ETag: "\"542ee0af34224bae9f47923b021e7de2\"", Preference: 1, External: false},
-			{Path: "admin.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 2067, ETag: "\"3209744a593690beed4575c68d6440a0\"", Preference: 1, External: false},
-			{Path: "admin.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 2472, ETag: "\"be2873add6df833dae83b6d66d1cd7dd\"", Preference: 1, External: false},
-			{Path: "admin.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 2516, ETag: "\"f069042820b5d00a1211c613da538c9d\"", Preference: 1, External: false},
+		{URL: "admin.js", CacheControl: "public, no-cache", Revision: "54ceb62354ddf4b1", Representations: []middlewares.AssetRepresentation{
+			{Path: "admin.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 9379, ETag: "\"25cefc0f49d383fbbeae3b3ea24ce0cb\"", Preference: 1, External: false},
+			{Path: "admin.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 2607, ETag: "\"757079d093395dc2e441b371b11abe44\"", Preference: 1, External: false},
+			{Path: "admin.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 3116, ETag: "\"1773b336b306cccdc5da26d01265fc2a\"", Preference: 1, External: false},
+			{Path: "admin.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 3112, ETag: "\"d6beb20d5719e6b339c5233c478be662\"", Preference: 1, External: false},
 		}},
-		{URL: "app.css", CacheControl: "public, no-cache", Revision: "86da5040070d99bb", Representations: []middlewares.AssetRepresentation{
-			{Path: "app.css", MediaType: "text/css; charset=utf-8", ContentEncoding: "", Length: 71933, ETag: "\"d774e0d60050d5e347c0247c44bf6de5\"", Preference: 1, External: false},
-			{Path: "app.css.br", MediaType: "text/css; charset=utf-8", ContentEncoding: "br", Length: 10425, ETag: "\"c27c48f2ad17f3d403c1b8314ef413e5\"", Preference: 1, External: false},
-			{Path: "app.css.gz", MediaType: "text/css; charset=utf-8", ContentEncoding: "gzip", Length: 11945, ETag: "\"01427a46c1ca16783bcd53f374a071c4\"", Preference: 1, External: false},
-			{Path: "app.css.zstd", MediaType: "text/css; charset=utf-8", ContentEncoding: "zstd", Length: 11903, ETag: "\"b3e50a8293514eb3c8a427265271fba5\"", Preference: 1, External: false},
+		{URL: "app.css", CacheControl: "public, no-cache", Revision: "7fcc168f91ad5b50", Representations: []middlewares.AssetRepresentation{
+			{Path: "app.css", MediaType: "text/css; charset=utf-8", ContentEncoding: "", Length: 86899, ETag: "\"331a81ead26bf379ec26b4cdf4af16e4\"", Preference: 1, External: false},
+			{Path: "app.css.br", MediaType: "text/css; charset=utf-8", ContentEncoding: "br", Length: 11569, ETag: "\"caee54d11968849ca9e02537668d7a90\"", Preference: 1, External: false},
+			{Path: "app.css.gz", MediaType: "text/css; charset=utf-8", ContentEncoding: "gzip", Length: 13447, ETag: "\"acc778920142c11fd5e1fd8f43f91ef6\"", Preference: 1, External: false},
+			{Path: "app.css.zstd", MediaType: "text/css; charset=utf-8", ContentEncoding: "zstd", Length: 13244, ETag: "\"4f3c9d3213c496059a0c7465a2aa8c49\"", Preference: 1, External: false},
+		}},
+		{URL: "home.js", CacheControl: "public, no-cache", Revision: "f628dcaa3617a92c", Representations: []middlewares.AssetRepresentation{
+			{Path: "home.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 1236, ETag: "\"25461240c14f582f4ada09d6fffc4f12\"", Preference: 1, External: false},
+			{Path: "home.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 541, ETag: "\"8a4f157354ca7459529955ebe6d69fa3\"", Preference: 1, External: false},
+			{Path: "home.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 716, ETag: "\"306a9b1c2776d769dff3b44e40f41d20\"", Preference: 1, External: false},
+			{Path: "home.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 727, ETag: "\"7f0223b1ae4f23eddbceff07cdd1dc69\"", Preference: 1, External: false},
 		}},
 		{URL: "tablet.js", CacheControl: "public, no-cache", Revision: "e5c25a20f1ed8e52", Representations: []middlewares.AssetRepresentation{
 			{Path: "tablet.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 11109, ETag: "\"fbb60814ee2d21275220283fae7fd33b\"", Preference: 1, External: false},

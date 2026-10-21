@@ -16,18 +16,18 @@ func TestApp(t *testing.T) {
 
 	serverless := cfg
 	serverless.Serverless = true
-	if a, err := Open(ctx, serverless); err == nil {
+	if a, err := Open(ctx, serverless, OIDCConfig{}); err == nil {
 		a.Close()
 		t.Fatal("serverless on a bbolt file")
 	}
 	bad := cfg
 	bad.SubmitTokens = []string{"no-secret"}
-	if a, err := Open(ctx, bad); err == nil {
+	if a, err := Open(ctx, bad, OIDCConfig{}); err == nil {
 		a.Close()
 		t.Fatal("a submit token without its secret")
 	}
 
-	a, err := Open(ctx, cfg)
+	a, err := Open(ctx, cfg, OIDCConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,11 +47,16 @@ func TestApp(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, string(b)
 	}
-	for path, want := range map[string]string{"/": "/tablet", "/tablet": "/public/tablet.js", "/admin": "/public/admin.js"} {
+	// without an IdP (dev), nobody signs in: the pages say so, and
+	// nobody is an admin
+	for path, want := range map[string]string{"/": "AUTH_OIDC_ISSUER", "/tablet": "/public/tablet.js"} {
 		code, body := get(path, "")
 		if code != http.StatusOK || !strings.Contains(body, want) {
 			t.Errorf("%s: %d, no %s", path, code, want)
 		}
+	}
+	if code, _ := get("/admin", ""); code != http.StatusForbidden {
+		t.Errorf("/admin: %d", code)
 	}
 	// the manager's API is mounted
 	if code, _ := get("/api/locations", ""); code != http.StatusUnauthorized {

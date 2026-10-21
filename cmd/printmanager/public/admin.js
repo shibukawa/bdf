@@ -1,13 +1,8 @@
-// The administrator's page: printers, locations, devices and their
-// enrollment codes, through the API with the admin token (kept in this
-// tab's sessionStorage only).
+// The administrator's page: every job, printers, locations, devices and
+// their enrollment codes, through the API as the admin signed in (the
+// session's cookie; the server shows this page to admins only).
 
 const $ = (id) => document.getElementById(id);
-let token = "";
-try {
-  token = sessionStorage.getItem("bdf-pm-admin") || "";
-} catch {}
-$("token").value = token;
 
 // status shows a message for a while, as a toast.
 function status(text, bad) {
@@ -23,7 +18,7 @@ function status(text, bad) {
 async function api(method, path, body) {
   const res = await fetch(path, {
     method,
-    headers: { Authorization: "Bearer " + token, ...(body ? { "Content-Type": "application/json" } : {}) },
+    headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 204) return null;
@@ -63,21 +58,69 @@ function stat(title, value) {
   return s;
 }
 
+const kinds = { shared: "共有", group: "グループ", personal: "個人" };
+
+// kind is a badge of who may print to a location or printer.
+function kind(k, owner) {
+  const cls =
+    { group: "badge badge-sm badge-soft badge-secondary whitespace-nowrap", personal: "badge badge-sm badge-soft badge-accent whitespace-nowrap" }[k] ||
+    "badge badge-sm badge-soft badge-neutral whitespace-nowrap";
+  return el("span", kinds[k || "shared"] + (owner ? ": " + owner : ""), { className: cls });
+}
+
+const states = {
+  new: ["未開封", "badge badge-sm badge-warning whitespace-nowrap"],
+  opened: ["開いた", "badge badge-sm badge-info whitespace-nowrap"],
+  done: ["完了", "badge badge-sm badge-success whitespace-nowrap"],
+  canceled: ["取り消し", "badge badge-sm badge-ghost whitespace-nowrap"],
+};
+const via = { oidc: "サインイン", "submit-token": "送信のトークン", "admin-token": "管理のトークン", none: "確かめていない" };
+
+async function loadSlips() {
+  const slips = await api("GET", "/api/slips");
+  const rows = slips.map((s) => {
+    const tr = el("tr");
+    const [label, cls] = states[s.state] || [s.state, "badge badge-sm"];
+    const by = s.submitted_by || { kind: "anonymous", via: "none" };
+    const who = el("td");
+    who.append(el("div", by.name || by.id || "—", { className: "font-semibold" }), el("div", via[by.via] || by.via, { className: "text-xs text-base-content/60" }));
+    const st = el("td");
+    st.append(el("span", label, { className: cls }));
+    tr.append(
+      el("td", String(s.job), { className: "font-mono" }),
+      el("td", s.name || "slip-" + s.id, { className: "max-w-48 break-words" }),
+      el("td", s.location, { className: "font-mono text-sm" }),
+      st,
+      who,
+      el("td", s.claimed_user || "—", { className: "hidden sm:table-cell" }),
+      el("td", s.group || "—", { className: "hidden md:table-cell" }),
+    );
+    return tr;
+  });
+  if (!rows.length) {
+    const tr = el("tr");
+    tr.append(el("td", "ジョブはまだありません", { colSpan: 7, className: "text-base-content/50" }));
+    rows.push(tr);
+  }
+  $("slips").replaceChildren(...rows);
+}
+
 async function load() {
-  if (!token) return;
   try {
+    await loadSlips();
     const printers = await api("GET", "/api/printers");
     const rows = printers.map((p) => {
       const tr = el("tr");
       const route = el("span", p.route, { className: "badge badge-ghost" });
-      tr.append(el("td", p.name, { className: "font-semibold" }), el("td", p.url, { className: "font-mono text-sm break-all" }), el("td"), el("td"));
+      tr.append(el("td", p.name, { className: "font-semibold" }), el("td", p.url, { className: "font-mono text-sm break-all" }), el("td"), el("td"), el("td"));
       tr.children[2].append(route);
-      tr.lastChild.append(button("削除", () => api("DELETE", "/api/printers/" + p.name), "btn btn-sm btn-ghost text-error"));
+      tr.children[3].append(kind(p.kind, p.owner));
+      tr.lastChild.append(button("削除", () => api("DELETE", "/api/printers/" + p.name), "btn btn-sm btn-ghost whitespace-nowrap text-error"));
       return tr;
     });
     if (!rows.length) {
       const tr = el("tr");
-      tr.append(el("td", "プリンタはまだありません", { colSpan: 4, className: "text-base-content/50" }));
+      tr.append(el("td", "プリンタはまだありません", { colSpan: 5, className: "text-base-content/50" }));
       rows.push(tr);
     }
     $("printers").replaceChildren(...rows);
@@ -92,7 +135,7 @@ async function load() {
       const fb = l.fallback
         ? el("span", `紙に逃がす: ${l.fallback.printer}${l.fallback.after ? "（" + l.fallback.after + " で）" : "（端末がつながっていないとき）"}`, { className: "badge badge-info badge-soft" })
         : el("span", "紙に逃がさない", { className: "badge badge-ghost" });
-      head.append(fb);
+      head.append(fb, kind(l.kind, l.owner));
       body.append(head, el("p", `IPP: /ipp/print/${l.name}`, { className: "font-mono text-sm text-base-content/60" }));
       const board = await api("GET", `/api/locations/${l.name}/board`);
       const stats = el("div", undefined, { className: "stats stats-horizontal bg-base-200" });
@@ -142,14 +185,6 @@ async function load() {
   }
 }
 
-$("token-form").addEventListener("submit", (ev) => {
-  ev.preventDefault();
-  token = $("token").value;
-  try {
-    sessionStorage.setItem("bdf-pm-admin", token);
-  } catch {}
-  load();
-});
 $("tick").addEventListener("click", async () => {
   try {
     const r = await api("POST", "/api/tick");
@@ -162,7 +197,9 @@ $("tick").addEventListener("click", async () => {
 $("printer-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   try {
-    await api("PUT", "/api/printers/" + $("printer-name").value, { url: $("printer-url").value });
+    const body = { url: $("printer-url").value, kind: $("printer-kind").value };
+    if ($("printer-owner").value) body.owner = $("printer-owner").value;
+    await api("PUT", "/api/printers/" + $("printer-name").value, body);
     ev.target.reset();
     await load();
   } catch (e) {
@@ -171,7 +208,8 @@ $("printer-form").addEventListener("submit", async (ev) => {
 });
 $("location-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  const body = { title: $("location-title").value };
+  const body = { title: $("location-title").value, kind: $("location-kind").value };
+  if ($("location-owner").value) body.owner = $("location-owner").value;
   if ($("location-printer").value) {
     body.fallback = { printer: $("location-printer").value };
     if ($("location-after").value) body.fallback.after = $("location-after").value;

@@ -66,6 +66,12 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 type Location struct {
 	Name  string `json:"name"`
 	Title string `json:"title,omitempty"`
+	// Kind is who may print to it (KindShared, KindGroup, KindPersonal;
+	// empty is shared), and Owner the group (a value of the IdP's groups
+	// claim) or the person (ID or email) it belongs to. The slips of a
+	// group's location are the group's: its members see them.
+	Kind  string `json:"kind,omitempty"`
+	Owner string `json:"owner,omitempty"`
 	// Fallback prints the slips nobody opened in time, or all of them
 	// while no device of the location is connected, so that shipping does
 	// not stop.
@@ -123,6 +129,10 @@ type Printer struct {
 	URL   string `json:"url"`
 	Route string `json:"route,omitempty"`
 	Info  string `json:"info,omitempty"`
+	// Kind and Owner are as a Location's. A location's slips are the
+	// group's of its fallback printer when the location names none.
+	Kind  string `json:"kind,omitempty"`
+	Owner string `json:"owner,omitempty"`
 }
 
 // SlipState is where a slip is.
@@ -145,9 +155,16 @@ type Slip struct {
 	Job      int32  `json:"job"`
 	Location string `json:"location"`
 	Name     string `json:"name,omitempty"`
-	// User is requesting-user-name as the sender told it: shown, never
-	// trusted.
-	User     string    `json:"user,omitempty"`
+	// SubmittedBy is who sent it, as the manager verified it; ownership
+	// and scope come from it alone.
+	SubmittedBy *Principal `json:"submitted_by,omitempty"`
+	// ClaimedUser is who the sender said sent it (requesting-user-name,
+	// or ?user= of the API): shown, never trusted.
+	ClaimedUser string `json:"claimed_user,omitempty"`
+	// Group is the group whose members see the slip besides its
+	// submitter: the location's, or its fallback printer's, when it
+	// was received. Empty: the submitter's alone.
+	Group    string    `json:"group,omitempty"`
 	Source   string    `json:"source"` // "ipp" or "api"
 	Format   string    `json:"format,omitempty"`
 	Pages    int       `json:"pages"`

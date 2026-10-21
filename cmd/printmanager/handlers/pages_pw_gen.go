@@ -6,6 +6,35 @@ import (
 	"github.com/shibukawa/tinybind-go/htmlbind"
 )
 
+type Account struct {
+	Name    string
+	Initial string
+	Email   string
+	Admin   bool
+}
+
+type SlipRow struct {
+	Job        int
+	Name       string
+	Location   string
+	State      string
+	StateLabel string
+	Pages      int
+	Received   string
+	By         string
+	Via        string
+	Claimed    string
+	Group      string
+	Mine       bool
+}
+
+type Place struct {
+	Name  string
+	Title string
+	Kind  string
+	Owner string
+}
+
 type renderShellParams struct {
 	Title    string
 	Children htmlbind.Fragment
@@ -13,37 +42,333 @@ type renderShellParams struct {
 
 type renderAppBarParams struct {
 	Title    string
+	SignedIn bool
+	Account  Account
 	Children htmlbind.Fragment
 }
 
-type HomeParams struct{}
+type HomeParams struct {
+	SignedIn  bool
+	Account   Account
+	Groups    []string
+	Slips     []SlipRow
+	NoSlips   bool
+	Locations []Place
+	Printers  []Place
+	CanPrint  bool
+}
+
+type ForbiddenParams struct {
+	SignedIn bool
+	Account  Account
+}
 
 type TabletParams struct{}
 
-type AdminParams struct{}
+type AdminParams struct {
+	Account Account
+}
+
+type planHomeOpsScope2 struct {
+	Outer HomeParams
+	Item  string
+	Index int
+}
+
+var planHomeOpsScope2Ops = htmlbind.Builder[planHomeOpsScope2]{}
+
+type planHomeOpsScope3 struct {
+	Outer HomeParams
+	Item  SlipRow
+	Index int
+}
+
+var planHomeOpsScope3Ops = htmlbind.Builder[planHomeOpsScope3]{}
+
+type planHomeOpsScope4 struct {
+	Outer HomeParams
+	Item  Place
+	Index int
+}
+
+var planHomeOpsScope4Ops = htmlbind.Builder[planHomeOpsScope4]{}
+
+type planHomeOpsScope5 struct {
+	Outer HomeParams
+	Item  Place
+	Index int
+}
+
+var planHomeOpsScope5Ops = htmlbind.Builder[planHomeOpsScope5]{}
+
+type planHomeOpsScope6 struct {
+	Outer HomeParams
+	Item  Place
+	Index int
+}
+
+var planHomeOpsScope6Ops = htmlbind.Builder[planHomeOpsScope6]{}
 
 var planHomeOpsFill1Plan = &htmlbind.Plan[HomeParams]{Ops: []htmlbind.Op[HomeParams]{
 	planHomeOps.Static(" "),
 	planHomeOps.Component(func(p HomeParams) htmlbind.Fragment {
-		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager"})
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", SignedIn: p.SignedIn, Account: p.Account})
 	}),
-	planHomeOps.Static(" <main class=\"mx-auto max-w-4xl p-4 sm:p-8\"> <section class=\"hero rounded-box bg-base-100 py-10 shadow-sm\"> <div class=\"hero-content text-center\"> <div class=\"max-w-xl\"> <h1 class=\"text-3xl font-bold sm:text-4xl\">倉庫の伝票を、紙でなく端末に</h1> <p class=\"py-4 text-base-content/70\">倉庫ごとの仮想プリンタに刷られた伝票を、登録した端末だけに見せます。だれも開かなければ、その倉庫のプリンタに刷ります。</p> <div class=\"flex flex-wrap justify-center gap-3\"> <a href=\"/tablet\" class=\"btn btn-primary btn-lg\">端末の画面</a> <a href=\"/admin\" class=\"btn btn-lg\">管理</a> </div> </div> </div> </section> <div class=\"mt-6 grid gap-4 sm:grid-cols-2\"> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">端末</h2> <p class=\"text-base-content/70\">タブレットで端末の画面を開き、管理者が出した登録コードで登録します。登録した端末だけが伝票を見られます。</p> </div> </div> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">送る側</h2> <p class=\"text-base-content/70\">IPP のプリンタ <code class=\"font-mono text-sm\">/ipp/print/&lt;場所&gt;</code> か、API の <code class=\"font-mono text-sm\">POST /api/locations/&lt;場所&gt;/slips</code> に送ります。</p> </div> </div> </div> </main> "),
+	planHomeOps.Static(" <main class=\"mx-auto grid max-w-5xl gap-6 p-4 sm:p-8\"> "),
+	planHomeOps.If(func(p HomeParams) bool { return !(p.SignedIn) },
+		[]htmlbind.Op[HomeParams]{
+			planHomeOps.Static(" <div role=\"alert\" class=\"alert alert-warning\"> <span>サインインが設定されていません（AUTH_OIDC_ISSUER）。開発のときだけ、こうして開きます。</span> </div> "),
+		},
+		nil),
+	planHomeOps.Static(" "),
+	planHomeOps.If(func(p HomeParams) bool { return p.SignedIn },
+		[]htmlbind.Op[HomeParams]{
+			planHomeOps.Static(" <section class=\"flex flex-wrap items-center gap-2\"> <h1 class=\"mr-2 text-2xl font-bold\">"),
+			planHomeOps.Text(func(p HomeParams) string { return p.Account.Name }),
+			planHomeOps.Static("さんのジョブ</h1> "),
+			planHomeOps.For(
+				func(p HomeParams) []string { return p.Groups },
+				func(p HomeParams, item string, index int) planHomeOpsScope2 {
+					return planHomeOpsScope2{Outer: p, Item: item, Index: index}
+				},
+				[]htmlbind.Op[planHomeOpsScope2]{
+					planHomeOpsScope2Ops.Static("<span class=\"badge badge-outline\">"),
+					planHomeOpsScope2Ops.Text(func(p planHomeOpsScope2) string { return p.Item }),
+					planHomeOpsScope2Ops.Static("</span>"),
+				}),
+			planHomeOps.Static(" <span class=\"flex-1\"></span> <a href=\"/tablet\" class=\"btn btn-sm\">端末の画面</a> "),
+			planHomeOps.If(func(p HomeParams) bool { return p.Account.Admin },
+				[]htmlbind.Op[HomeParams]{
+					planHomeOps.Static("<a href=\"/admin\" class=\"btn btn-sm btn-primary\">管理</a>"),
+				},
+				nil),
+			planHomeOps.Static(" </section> "),
+		},
+		nil),
+	planHomeOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">見えるジョブ</h2> <p class=\"text-sm text-base-content/60\">自分が刷ったものと、属するグループのもの"),
+	planHomeOps.Text(func(p HomeParams) string {
+		return (func() string {
+			if p.Account.Admin {
+				return "（管理者は全部）"
+			}
+			return ""
+		})()
+	}),
+	planHomeOps.Static("。</p> <div class=\"overflow-x-auto\"> <table id=\"slips\" class=\"table table-sm\"><thead><tr><th>#</th><th>名前</th><th>場所</th><th>状態</th><th class=\"hidden sm:table-cell\">送った人</th><th class=\"hidden md:table-cell\">グループ</th><th class=\"hidden sm:table-cell\">受けた時刻</th></tr></thead><tbody>"),
+	planHomeOps.For(
+		func(p HomeParams) []SlipRow { return p.Slips },
+		func(p HomeParams, item SlipRow, index int) planHomeOpsScope3 {
+			return planHomeOpsScope3{Outer: p, Item: item, Index: index}
+		},
+		[]htmlbind.Op[planHomeOpsScope3]{
+			planHomeOpsScope3Ops.Static("<tr"),
+			planHomeOpsScope3Ops.Attr("data-job", func(p planHomeOpsScope3) (string, bool) { return htmlbind.FormatInt(p.Item.Job), true }),
+			planHomeOpsScope3Ops.Static("><td class=\"font-mono\">"),
+			planHomeOpsScope3Ops.Raw(func(p planHomeOpsScope3) string { return htmlbind.FormatInt(p.Item.Job) }),
+			planHomeOpsScope3Ops.Static("</td><td class=\"max-w-48 break-words font-semibold\">"),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Name }),
+			planHomeOpsScope3Ops.Static("<div class=\"text-xs font-normal text-base-content/60 sm:hidden\">"),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.By }),
+			planHomeOpsScope3Ops.Static(" · "),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Received }),
+			planHomeOpsScope3Ops.Static("</div></td><td class=\"whitespace-nowrap font-mono text-sm\">"),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Location }),
+			planHomeOpsScope3Ops.Static("</td><td><span"),
+			planHomeOpsScope3Ops.Attr("class", func(p planHomeOpsScope3) (string, bool) {
+				return "badge badge-sm whitespace-nowrap " + htmlbind.Escape((func() string {
+					if p.Item.State == "done" {
+						return "badge-success"
+					}
+					return (func() string {
+						if p.Item.State == "canceled" {
+							return "badge-ghost"
+						}
+						return (func() string {
+							if p.Item.State == "opened" {
+								return "badge-info"
+							}
+							return "badge-warning"
+						})()
+					})()
+				})()), true
+			}),
+			planHomeOpsScope3Ops.Static(">"),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.StateLabel }),
+			planHomeOpsScope3Ops.Static("</span></td><td class=\"hidden sm:table-cell\"> <span class=\"font-semibold\">"),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.By }),
+			planHomeOpsScope3Ops.Static("</span>"),
+			planHomeOpsScope3Ops.If(func(p planHomeOpsScope3) bool { return p.Item.Mine },
+				[]htmlbind.Op[planHomeOpsScope3]{
+					planHomeOpsScope3Ops.Static(" <span class=\"badge badge-primary badge-xs\">自分</span>"),
+				},
+				nil),
+			planHomeOpsScope3Ops.Static(" <div class=\"text-xs text-base-content/60\">"),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Via }),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string {
+				return (func() string {
+					if p.Item.Claimed == "" {
+						return ""
+					}
+					return ("・名乗り: " + p.Item.Claimed)
+				})()
+			}),
+			planHomeOpsScope3Ops.Static("</div> </td><td class=\"hidden whitespace-nowrap md:table-cell\">"),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string {
+				return (func() string {
+					if p.Item.Group == "" {
+						return "—"
+					}
+					return p.Item.Group
+				})()
+			}),
+			planHomeOpsScope3Ops.Static("</td><td class=\"hidden whitespace-nowrap text-sm sm:table-cell\">"),
+			planHomeOpsScope3Ops.Text(func(p planHomeOpsScope3) string { return p.Item.Received }),
+			planHomeOpsScope3Ops.Static("</td></tr>"),
+		}),
+	planHomeOps.Static("</tbody></table> </div> "),
+	planHomeOps.If(func(p HomeParams) bool { return p.NoSlips },
+		[]htmlbind.Op[HomeParams]{
+			planHomeOps.Static("<p id=\"no-slips\" class=\"py-6 text-center text-base-content/50\">見えるジョブはありません</p>"),
+		},
+		nil),
+	planHomeOps.Static(" </div> </section> <div class=\"grid gap-6 md:grid-cols-2\"> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">刷る</h2> "),
+	planHomeOps.If(func(p HomeParams) bool { return !(p.CanPrint) },
+		[]htmlbind.Op[HomeParams]{
+			planHomeOps.Static("<p class=\"text-base-content/50\">刷れる場所はありません</p>"),
+		},
+		nil),
+	planHomeOps.Static(" "),
+	planHomeOps.If(func(p HomeParams) bool { return p.CanPrint },
+		[]htmlbind.Op[HomeParams]{
+			planHomeOps.Static(" <form id=\"upload\" class=\"flex flex-col gap-3\"> <select id=\"upload-location\" class=\"select w-full\" required> "),
+			planHomeOps.For(
+				func(p HomeParams) []Place { return p.Locations },
+				func(p HomeParams, item Place, index int) planHomeOpsScope4 {
+					return planHomeOpsScope4{Outer: p, Item: item, Index: index}
+				},
+				[]htmlbind.Op[planHomeOpsScope4]{
+					planHomeOpsScope4Ops.Static("<option"),
+					planHomeOpsScope4Ops.Attr("value", func(p planHomeOpsScope4) (string, bool) { return htmlbind.Escape(p.Item.Name), true }),
+					planHomeOpsScope4Ops.Static(">"),
+					planHomeOpsScope4Ops.Text(func(p planHomeOpsScope4) string {
+						return (func() string {
+							if p.Item.Title == "" {
+								return p.Item.Name
+							}
+							return p.Item.Title
+						})()
+					}),
+					planHomeOpsScope4Ops.Static("</option>"),
+				}),
+			planHomeOps.Static(" </select> <input id=\"upload-file\" type=\"file\" class=\"file-input w-full\" required> <button type=\"submit\" class=\"btn btn-primary\">送る</button> </form> "),
+		},
+		nil),
+	planHomeOps.Static(" </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">刷れる場所とプリンタ</h2> <ul id=\"places\" class=\"list\"> "),
+	planHomeOps.For(
+		func(p HomeParams) []Place { return p.Locations },
+		func(p HomeParams, item Place, index int) planHomeOpsScope5 {
+			return planHomeOpsScope5{Outer: p, Item: item, Index: index}
+		},
+		[]htmlbind.Op[planHomeOpsScope5]{
+			planHomeOpsScope5Ops.Static(" <li class=\"list-row items-center\"> <div><div class=\"font-semibold\">"),
+			planHomeOpsScope5Ops.Text(func(p planHomeOpsScope5) string {
+				return (func() string {
+					if p.Item.Title == "" {
+						return p.Item.Name
+					}
+					return p.Item.Title
+				})()
+			}),
+			planHomeOpsScope5Ops.Static("</div><div class=\"font-mono text-xs text-base-content/60\">/ipp/print/"),
+			planHomeOpsScope5Ops.Text(func(p planHomeOpsScope5) string { return p.Item.Name }),
+			planHomeOpsScope5Ops.Static("</div></div> <span"),
+			planHomeOpsScope5Ops.Attr("class", func(p planHomeOpsScope5) (string, bool) {
+				return "badge badge-sm badge-soft whitespace-nowrap " + htmlbind.Escape((func() string {
+					if p.Item.Kind == "group" {
+						return "badge-secondary"
+					}
+					return (func() string {
+						if p.Item.Kind == "personal" {
+							return "badge-accent"
+						}
+						return "badge-neutral"
+					})()
+				})()), true
+			}),
+			planHomeOpsScope5Ops.Static(">"),
+			planHomeOpsScope5Ops.Text(func(p planHomeOpsScope5) string { return p.Item.Kind }),
+			planHomeOpsScope5Ops.Text(func(p planHomeOpsScope5) string {
+				return (func() string {
+					if p.Item.Owner == "" {
+						return ""
+					}
+					return (": " + p.Item.Owner)
+				})()
+			}),
+			planHomeOpsScope5Ops.Static("</span> </li> "),
+		}),
+	planHomeOps.Static(" "),
+	planHomeOps.For(
+		func(p HomeParams) []Place { return p.Printers },
+		func(p HomeParams, item Place, index int) planHomeOpsScope6 {
+			return planHomeOpsScope6{Outer: p, Item: item, Index: index}
+		},
+		[]htmlbind.Op[planHomeOpsScope6]{
+			planHomeOpsScope6Ops.Static(" <li class=\"list-row items-center\"> <div><div class=\"font-semibold\">🖨 "),
+			planHomeOpsScope6Ops.Text(func(p planHomeOpsScope6) string { return p.Item.Name }),
+			planHomeOpsScope6Ops.Static("</div><div class=\"text-xs text-base-content/60\">プリンタ</div></div> <span"),
+			planHomeOpsScope6Ops.Attr("class", func(p planHomeOpsScope6) (string, bool) {
+				return "badge badge-sm badge-soft whitespace-nowrap " + htmlbind.Escape((func() string {
+					if p.Item.Kind == "group" {
+						return "badge-secondary"
+					}
+					return (func() string {
+						if p.Item.Kind == "personal" {
+							return "badge-accent"
+						}
+						return "badge-neutral"
+					})()
+				})()), true
+			}),
+			planHomeOpsScope6Ops.Static(">"),
+			planHomeOpsScope6Ops.Text(func(p planHomeOpsScope6) string { return p.Item.Kind }),
+			planHomeOpsScope6Ops.Text(func(p planHomeOpsScope6) string {
+				return (func() string {
+					if p.Item.Owner == "" {
+						return ""
+					}
+					return (": " + p.Item.Owner)
+				})()
+			}),
+			planHomeOpsScope6Ops.Static("</span> </li> "),
+		}),
+	planHomeOps.Static(" </ul> </div> </section> </div> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> </main> <script type=\"module\" src=\"/public/home.js\"></script> "),
 }}
 
-var planTabletOpsFill2Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
+var planForbiddenOpsFill7Plan = &htmlbind.Plan[ForbiddenParams]{Ops: []htmlbind.Op[ForbiddenParams]{
+	planForbiddenOps.Static(" "),
+	planForbiddenOps.Component(func(p ForbiddenParams) htmlbind.Fragment {
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", SignedIn: p.SignedIn, Account: p.Account})
+	}),
+	planForbiddenOps.Static(" <main class=\"mx-auto max-w-lg p-4 sm:p-8\"> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body items-center text-center\"> <h1 class=\"card-title text-2xl\">管理者だけのページです</h1> <p class=\"text-base-content/70\">"),
+	planForbiddenOps.Text(func(p ForbiddenParams) string { return p.Account.Name }),
+	planForbiddenOps.Static("さんは管理者ではありません。自分とグループのジョブはトップのページで見られます。</p> <div class=\"card-actions\"><a href=\"/\" class=\"btn btn-primary\">トップへ</a></div> </div> </div> </main> "),
+}}
+
+var planTabletOpsFill8Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
 	planTabletOps.Static(" <div id=\"app\" class=\"min-h-screen\"> <header id=\"bar\" class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex min-w-0 flex-1 items-center gap-3\"> <h1 id=\"title\" class=\"truncate text-2xl font-bold\">伝票</h1> <span id=\"status\" class=\"badge\" hidden></span> </div> <label class=\"input input-lg w-full sm:w-56\"> <span class=\"label\">作業者</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"名前\"> </label> </header> <section id=\"enroll\" class=\"mx-auto max-w-lg p-4 sm:p-8\" hidden> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h2 class=\"card-title text-2xl\">この端末を登録する</h2> <p class=\"text-base-content/70\">管理者が出した登録コードを入れてください。登録した端末だけが伝票を見られます。</p> <form id=\"enroll-form\" class=\"flex flex-col gap-4\"> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">登録コード</legend> <input id=\"code\" class=\"input input-lg w-full font-mono tracking-widest uppercase\" autocomplete=\"off\" autocapitalize=\"characters\" required> </fieldset> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">端末の名前</legend> <input id=\"device-name\" class=\"input input-lg w-full\" autocomplete=\"off\" placeholder=\"例: 出荷口のタブレット\"> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">登録する</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">未完了 <span id=\"open-count\" class=\"badge badge-warning ml-2\" hidden></span></button> <button id=\"tab-ended\" role=\"tab\" class=\"tab flex-1 sm:flex-none\" type=\"button\">完了・取り消し</button> </div> <ul id=\"open-list\" class=\"mt-4 grid gap-3\"></ul> <ul id=\"ended-list\" class=\"mt-4 grid gap-3\" hidden></ul> <div id=\"empty\" class=\"mt-16 text-center text-xl text-base-content/50\" hidden>伝票はありません</div> </section> <section id=\"viewer\" hidden> <div class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <button id=\"back\" type=\"button\" class=\"btn btn-lg btn-ghost\">← 一覧</button> <span id=\"viewer-title\" class=\"min-w-0 flex-1 truncate text-lg font-semibold\"></span> <div class=\"flex gap-2\"> <button id=\"print\" type=\"button\" class=\"btn btn-lg btn-outline\" hidden>この倉庫で刷る</button> <button id=\"done\" type=\"button\" class=\"btn btn-lg btn-success\">完了</button> </div> </div> <div id=\"pages\" class=\"mx-auto grid max-w-5xl gap-4 p-4\"></div> </section> <div id=\"toasts\" class=\"toast toast-top toast-center z-50\"></div> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
 }}
 
-var planAdminOpsFill4Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
+var planAdminOpsFill10Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
 	planAdminOps.Static(" <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">今すぐ tick</button> "),
 }}
 
-var planAdminOpsFill3Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
+var planAdminOpsFill9Plan = &htmlbind.Plan[AdminParams]{Ops: []htmlbind.Op[AdminParams]{
 	planAdminOps.Static(" "),
 	planAdminOps.Component(func(p AdminParams) htmlbind.Fragment {
-		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager · 管理", Children: planAdminOpsFill4Plan.Bind(p)})
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager · 管理", SignedIn: true, Account: p.Account, Children: planAdminOpsFill10Plan.Bind(p)})
 	}),
-	planAdminOps.Static(" <main id=\"admin\" class=\"mx-auto grid max-w-6xl gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <form id=\"token-form\" class=\"card-body\"> <h2 class=\"card-title\">管理のトークン</h2> <div class=\"join w-full max-w-xl\"> <input id=\"token\" type=\"password\" autocomplete=\"off\" class=\"input join-item w-full\" placeholder=\"MANAGER_ADMIN_TOKEN\"> <button type=\"submit\" class=\"btn btn-primary join-item\">使う</button> </div> </form> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">プリンタ</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-zebra\"><thead><tr><th>名前</th><th>URL</th><th>経路</th><th></th></tr></thead><tbody id=\"printers\"></tbody></table> </div> <form id=\"printer-form\" class=\"mt-2 flex flex-wrap gap-2\"> <input id=\"printer-name\" class=\"input w-full sm:w-48\" placeholder=\"名前 (wh-a-laser)\" required> <input id=\"printer-url\" class=\"input w-full sm:flex-1\" placeholder=\"ipps://… / socket://…:9100\" required> <button type=\"submit\" class=\"btn btn-primary\">追加・更新</button> </form> </div> </section> <section class=\"grid gap-4\"> <h2 class=\"text-xl font-bold\">場所</h2> <div id=\"locations\" class=\"grid gap-4 lg:grid-cols-2\"></div> <form id=\"location-form\" class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h3 class=\"card-title text-base\">場所を追加・更新</h3> <div class=\"flex flex-wrap gap-2\"> <input id=\"location-name\" class=\"input w-full sm:w-40\" placeholder=\"名前 (wh-a)\" required> <input id=\"location-title\" class=\"input w-full sm:w-48\" placeholder=\"表示名 (第 1 倉庫)\"> <input id=\"location-printer\" class=\"input w-full sm:w-48\" placeholder=\"紙に逃がすプリンタ\"> <input id=\"location-after\" class=\"input w-full sm:w-28\" placeholder=\"何分で (10m)\"> <button type=\"submit\" class=\"btn btn-primary\">追加・更新</button> </div> </div> </form> </section> </main> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">端末の登録コード</h3> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">閉じる</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>閉じる</button></form> </dialog> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/admin.js\"></script> "),
+	planAdminOps.Static(" <main id=\"admin\" class=\"mx-auto grid max-w-6xl gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">全部のジョブ</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>#</th><th>名前</th><th>場所</th><th>状態</th><th>送った人（確かめた）</th><th class=\"hidden sm:table-cell\">名乗り</th><th class=\"hidden md:table-cell\">グループ</th></tr></thead><tbody id=\"slips\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">プリンタ</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-zebra\"><thead><tr><th>名前</th><th>URL</th><th>経路</th><th>種類</th><th></th></tr></thead><tbody id=\"printers\"></tbody></table> </div> <form id=\"printer-form\" class=\"mt-2 flex flex-wrap gap-2\"> <input id=\"printer-name\" class=\"input w-full sm:w-48\" placeholder=\"名前 (wh-a-laser)\" required> <input id=\"printer-url\" class=\"input w-full sm:flex-1\" placeholder=\"ipps://… / socket://…:9100\" required> <select id=\"printer-kind\" class=\"select w-full sm:w-36\"><option value=\"shared\">共有</option><option value=\"group\">グループ</option><option value=\"personal\">個人</option></select> <input id=\"printer-owner\" class=\"input w-full sm:w-48\" placeholder=\"持ち主（グループかメール）\"> <button type=\"submit\" class=\"btn btn-primary\">追加・更新</button> </form> </div> </section> <section class=\"grid gap-4\"> <h2 class=\"text-xl font-bold\">場所</h2> <div id=\"locations\" class=\"grid gap-4 lg:grid-cols-2\"></div> <form id=\"location-form\" class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h3 class=\"card-title text-base\">場所を追加・更新</h3> <div class=\"flex flex-wrap gap-2\"> <input id=\"location-name\" class=\"input w-full sm:w-40\" placeholder=\"名前 (wh-a)\" required> <input id=\"location-title\" class=\"input w-full sm:w-48\" placeholder=\"表示名 (第 1 倉庫)\"> <input id=\"location-printer\" class=\"input w-full sm:w-48\" placeholder=\"紙に逃がすプリンタ\"> <input id=\"location-after\" class=\"input w-full sm:w-28\" placeholder=\"何分で (10m)\"> <select id=\"location-kind\" class=\"select w-full sm:w-36\"><option value=\"shared\">共有</option><option value=\"group\">グループ</option><option value=\"personal\">個人</option></select> <input id=\"location-owner\" class=\"input w-full sm:w-48\" placeholder=\"持ち主（グループかメール）\"> <button type=\"submit\" class=\"btn btn-primary\">追加・更新</button> </div> </div> </form> </section> </main> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">端末の登録コード</h3> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">閉じる</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>閉じる</button></form> </dialog> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/admin.js\"></script> "),
 }}
 
 var planShellOps = htmlbind.Builder[renderShellParams]{}
@@ -76,12 +401,34 @@ var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
 		return []htmlbind.Fragment{p.Children}
 	},
 	Ops: []htmlbind.Op[renderAppBarParams]{
-		planAppBarOps.Static(" <header class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex-1 min-w-0\"> <a href=\"/\" class=\"text-xl font-bold tracking-tight\">"),
+		planAppBarOps.Static(" <header class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex-1 min-w-0\"> <a href=\"/\" class=\"truncate text-lg font-bold tracking-tight sm:text-xl\">"),
 		planAppBarOps.Text(func(p renderAppBarParams) string { return p.Title }),
-		planAppBarOps.Static("</a> </div> <div class=\"flex flex-wrap items-center gap-2\">"),
+		planAppBarOps.Static("</a> </div> <div class=\"flex flex-wrap items-center gap-2\"> "),
 		planAppBarOps.Slot(func(p renderAppBarParams) htmlbind.Fragment { return p.Children },
 			nil),
-		planAppBarOps.Static("</div> </header> "),
+		planAppBarOps.Static(" "),
+		planAppBarOps.If(func(p renderAppBarParams) bool { return p.SignedIn },
+			[]htmlbind.Op[renderAppBarParams]{
+				planAppBarOps.Static(" <div class=\"flex min-w-0 items-center gap-2\"> <div class=\"avatar avatar-placeholder\""),
+				planAppBarOps.Attr("title", func(p renderAppBarParams) (string, bool) { return htmlbind.Escape(p.Account.Name), true }),
+				planAppBarOps.Static("> <div class=\"w-8 rounded-full bg-neutral text-neutral-content\"><span class=\"text-sm\">"),
+				planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Initial }),
+				planAppBarOps.Static("</span></div> </div> <div class=\"hidden min-w-0 flex-col leading-tight sm:flex\"> <span id=\"account-name\" class=\"max-w-48 truncate text-sm font-semibold\">"),
+				planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Name }),
+				planAppBarOps.Static("</span> <span class=\"max-w-48 truncate text-xs text-base-content/60\">"),
+				planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Email }),
+				planAppBarOps.Static("</span> </div> "),
+				planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Admin },
+					[]htmlbind.Op[renderAppBarParams]{
+						planAppBarOps.Static("<span class=\"badge badge-primary badge-sm\">管理者</span>"),
+					},
+					nil),
+				planAppBarOps.Static(" <form method=\"post\" action=\"/auth/logout\">"),
+				planAppBarOps.CSRFField("_csrf"),
+				planAppBarOps.Static(" <button id=\"logout\" type=\"submit\" class=\"btn btn-ghost btn-sm\">サインアウト</button> </form> </div> "),
+			},
+			nil),
+		planAppBarOps.Static(" </div> </header> "),
 	},
 }
 
@@ -104,6 +451,22 @@ var planHomePlan = &htmlbind.Plan[HomeParams]{
 // Home binds Home to its parameters, producing a renderable fragment.
 func Home(params HomeParams) htmlbind.Fragment { return planHomePlan.Bind(params) }
 
+var planForbiddenOps = htmlbind.Builder[ForbiddenParams]{}
+
+var planForbiddenPlan = &htmlbind.Plan[ForbiddenParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[ForbiddenParams]{
+		planForbiddenOps.Static(" "),
+		planForbiddenOps.Component(func(p ForbiddenParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: "入れません · BDF Print Manager", Children: planForbiddenOpsFill7Plan.Bind(p)})
+		}),
+		planForbiddenOps.Static(" "),
+	},
+}
+
+// Forbidden binds Forbidden to its parameters, producing a renderable fragment.
+func Forbidden(params ForbiddenParams) htmlbind.Fragment { return planForbiddenPlan.Bind(params) }
+
 var planTabletOps = htmlbind.Builder[TabletParams]{}
 
 var planTabletPlan = &htmlbind.Plan[TabletParams]{
@@ -111,7 +474,7 @@ var planTabletPlan = &htmlbind.Plan[TabletParams]{
 	Ops: []htmlbind.Op[TabletParams]{
 		planTabletOps.Static(" "),
 		planTabletOps.Component(func(p TabletParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "伝票", Children: planTabletOpsFill2Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: "伝票", Children: planTabletOpsFill8Plan.Bind(p)})
 		}),
 		planTabletOps.Static(" "),
 	},
@@ -127,7 +490,7 @@ var planAdminPlan = &htmlbind.Plan[AdminParams]{
 	Ops: []htmlbind.Op[AdminParams]{
 		planAdminOps.Static(" "),
 		planAdminOps.Component(func(p AdminParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "管理 · BDF Print Manager", Children: planAdminOpsFill3Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: "管理 · BDF Print Manager", Children: planAdminOpsFill9Plan.Bind(p)})
 		}),
 		planAdminOps.Static(" "),
 	},

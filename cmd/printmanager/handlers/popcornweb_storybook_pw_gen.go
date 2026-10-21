@@ -19,6 +19,13 @@ func init() {
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
+		Name:      "Forbidden",
+		Exported:  true,
+		NewParams: func() any { return new(ForbiddenParams) },
+		Render:    func(params any) htmlbind.Fragment { return Forbidden(*params.(*ForbiddenParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
 		Name:      "Home",
 		Exported:  true,
 		NewParams: func() any { return new(HomeParams) },

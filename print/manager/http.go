@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -25,7 +26,7 @@ type handler struct {
 // Handler serves a manager over HTTP:
 //
 //	POST /ipp/print/{location}                 the location's IPP printer
-//	/api/…                                     the API (bearer AdminToken)
+//	/api/…                                     the API (bearer AdminToken, or an admin's session)
 //	/device/…                                  the devices' endpoints (their session)
 //
 // It is mounted on the web application's mux; it holds nothing between
@@ -48,6 +49,7 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/printers/{name}", h.adminOnly(h.getPrinter))
 	mux.HandleFunc("PUT /api/printers/{name}", h.adminOnly(h.putPrinter))
 	mux.HandleFunc("DELETE /api/printers/{name}", h.adminOnly(h.deletePrinter))
+	mux.HandleFunc("GET /api/slips", h.adminOnly(h.listSlips))
 	mux.HandleFunc("GET /api/slips/{id}", h.adminOnly(h.getSlip))
 	mux.HandleFunc("GET /api/slips/{id}/document", h.adminOnly(h.slipDocument))
 	mux.HandleFunc("POST /api/slips/{id}/cancel", h.adminOnly(h.cancelSlip))
@@ -117,14 +119,51 @@ func sameSecret(a, b string) bool {
 
 func (h *handler) admin(r *http.Request) bool { return sameSecret(h.m.o.AdminToken, bearer(r)) }
 
+// viewer is the person signed in to the pages a request comes from, or
+// nil. A request that carries a credential of its own (Authorization) is
+// not the session's.
+func (h *handler) viewer(r *http.Request) *Viewer {
+	if h.m.o.Viewer == nil || r.Header.Get("Authorization") != "" {
+		return nil
+	}
+	return h.m.o.Viewer(r)
+}
+
+// sameOrigin tells a request that a page of the manager's own origin
+// made, or one that changes nothing. The session's cookie rides on every
+// request to the origin, so what it authorizes to change must come from
+// the origin's pages.
+func sameOrigin(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
+		return site == "same-origin"
+	}
+	o, err := url.Parse(r.Header.Get("Origin"))
+	return err == nil && o.Host != "" && o.Host == r.Host
+}
+
+// adminOnly lets the admin token, or an admin signed in to the pages.
 func (h *handler) adminOnly(fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !h.admin(r) {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="bdf print manager"`)
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the admin token is required"})
+		if h.admin(r) {
+			fn(w, r)
 			return
 		}
-		fn(w, r)
+		v := h.viewer(r)
+		switch {
+		case v == nil:
+			w.Header().Set("WWW-Authenticate", `Bearer realm="bdf print manager"`)
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the admin token or an admin's sign-in is required"})
+		case !v.Admin:
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "admins only"})
+		case !sameOrigin(r):
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "a request of another origin"})
+		default:
+			fn(w, r)
+		}
 	}
 }
 
@@ -277,6 +316,16 @@ func (h *handler) deletePrinter(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// listSlips answers every slip, the latest first.
+func (h *handler) listSlips(w http.ResponseWriter, r *http.Request) {
+	ss, err := h.m.Slips(r.Context())
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, ss)
+}
+
 func (h *handler) getSlip(w http.ResponseWriter, r *http.Request) {
 	s, err := h.m.Slip(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -301,7 +350,11 @@ func (h *handler) slipDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) cancelSlip(w http.ResponseWriter, r *http.Request) {
-	s, err := h.m.Cancel(r.Context(), r.PathValue("id"), Mark{Worker: "admin"})
+	by := Mark{Worker: "admin"}
+	if v := h.viewer(r); v != nil {
+		by.Worker = clip(v.Principal().Label(), 80)
+	}
+	s, err := h.m.Cancel(r.Context(), r.PathValue("id"), by)
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -309,9 +362,24 @@ func (h *handler) cancelSlip(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s)
 }
 
-// submit takes a document (the body) for a location: ?name= names it.
+// submit takes a document (the body) for a location: ?name= names it,
+// and ?user= is who the sender says sent it (shown only). A person signed
+// in to the pages sends it as themselves, to a location they may print
+// to.
 func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
-	user, ok := h.submitter(r)
+	by, ok := h.submitter(r)
+	if v := h.viewer(r); v != nil {
+		l, err := h.m.Location(r.Context(), r.PathValue("name"))
+		if err != nil {
+			h.writeErr(w, err)
+			return
+		}
+		if !v.CanPrintTo(l.Kind, l.Owner) || !sameOrigin(r) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "you may not print to " + l.Name})
+			return
+		}
+		by, ok = v.Principal(), true
+	}
 	if !ok {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "a submit token is required"})
 		return
@@ -333,7 +401,7 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	s, err := h.m.Submit(r.Context(), r.PathValue("name"), Input{Name: q.Get("name"), User: firstOr(user, q.Get("user")), Source: "api", Doc: f, Size: n})
+	s, err := h.m.Submit(r.Context(), r.PathValue("name"), Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "api", Doc: f, Size: n})
 	if err != nil {
 		h.writeErr(w, err)
 		return
@@ -343,10 +411,14 @@ func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 
 // tick runs Tick: for the admin, or the scheduler's TickToken.
 func (h *handler) tick(w http.ResponseWriter, r *http.Request) {
-	if !h.admin(r) && !sameSecret(h.m.o.TickToken, bearer(r)) {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "the tick token is required"})
+	if sameSecret(h.m.o.TickToken, bearer(r)) {
+		h.runTick(w, r)
 		return
 	}
+	h.adminOnly(h.runTick)(w, r)
+}
+
+func (h *handler) runTick(w http.ResponseWriter, r *http.Request) {
 	rep, err := h.m.Tick(r.Context())
 	if err != nil {
 		h.m.o.Log.Warn("tick", "err", err)

@@ -148,8 +148,9 @@ facts:
       ipp_anonymous: 認証なしの IPP は requesting-user-name（OS のログイン名などの自己申告）しかなく、IdP の人に結べない
       wms_to_display: 基幹・WMS から仮想プリンタへは送り手がアプリ（システム）。現場で誰が操作したかは WMS が名乗る名前だけ
       tablet: 端末で完了を押した人は、端末で選ぶ名前か PIN の記録で、認証ではない（requirement:print-manager の device_auth.workers）
+    record: 2026-10-21 milestone:pm-auth-1 で実装。print/manager の Slip.SubmittedBy（Principal：kind は user・token・anonymous、id、name、via は oidc・submit-token・admin-token・none）と Slip.ClaimedUser（IPP の requesting-user-name、API の ?user=）。画面からの送信は OIDC の人（via oidc）、トークンの送信はトークンの名前（via submit-token）、トークンの無い構成の IPP は anonymous（via none）。Slip.User は無くなった（pm-1 の記録の user の欄は読まれない。互換は取らない）
     record_proposed: ジョブの記録に 2 つの欄を分けて持つ。submitted_by は確かめた主体（種類 user・app・device と ID、確かめた方法）。claimed_user は送り手が名乗った名前（requesting-user-name・アプリが渡した名前）で、表示するだけ。持ち主・見える範囲・権限は submitted_by だけから決める（アプリの on-behalf-of を許すときは app-on-behalf の答え次第）
-    pm1_state: pm-1 の伝票は User の 1 つの欄に、トークンの名前か、トークンが無いときの requesting-user-name を入れている（print/manager の ipp.go の submitter、model.go の Slip.User）。確かめた名前と自己申告が見分けられないので、pm-auth-1 で分ける
+    pm1_state: （milestone:pm-auth-1 で解消）pm-1 の伝票は User の 1 つの欄に、トークンの名前か、トークンが無いときの requesting-user-name を入れている（print/manager の ipp.go の submitter、model.go の Slip.User）。確かめた名前と自己申告が見分けられないので、pm-auth-1 で分ける
   secret_hashing:
     rule: アプリの client_secret と人の IPP の合言葉は、ソルトつきの遅いハッシュで保存する（2026-10-21 利用者「argon2とかbcryptをつかって、ソルト＋ハッシュを保存が良い」）
     algorithm_proposed: argon2id（golang.org/x/crypto/argon2。x/crypto は bdf の go.mod に間接の依存で既にある）。bcrypt は 72 バイトで切れ、メモリを使わないので次点
@@ -171,7 +172,7 @@ facts:
     MANAGER_SECRET: session-key（鍵の列にする）
   testing_proposed: 偽の IdP（httptest の上で OIDC の discovery・JWKS・認可コード・ID トークンを出す）を print-m6 の偽プリンタと同じ考えで作り、全部の試験をそれに載せる。実の IdP（Entra・Google・Keycloak）は手で確かめる
   delivery_proposed:
-    current_milestone: pm-auth-1（暫定の名前。pm-1 がマージされた後）
+    current_milestone: pm-auth-1（milestone:pm-auth-1。first_step を 2026-10-21 に実装）
     first_step:
       what: 画面に入るときの OIDC のログインを全員に。2026-10-21 利用者「まず画面に入る時にOIDCのログインが欲しい気がします」「adminでなくても全員ログインが良いと思う。自分のアクセスできる範囲のデータが見られる、というのは必要だと思うので」
       everyone: IdP で認証できた人は誰でも入れる（Print Manager に人の登録は要らない）。入った人には自分の見える範囲（facts.scopes.job_visibility）のジョブと、自分が刷れるプリンタ・場所だけを出す
@@ -179,6 +180,18 @@ facts:
       needs: 見える範囲を決めるため、場所・プリンタに持ち主のグループ（claim の値）と種類（personal・group・shared）を設定で持たせ、ジョブに submitted_by を記録する（facts.who_printed.record_proposed）
       excluded: 刷り直し・取り消しの画面、アプリの client credentials、デバイスフロー（後の段）。/tablet は端末の認証のまま
       allowed_users_proposed: 暫定で IdP が認証した人は全員入れる。会社の外の人も入れる IdP（Google の個人のアカウントなど）では、設定 oidc.allowed（issuer、メールのドメイン hd、グループ）で絞る
+      state: implemented（2026-10-21、milestone:pm-auth-1）
+      implemented: >-
+        popcornweb の plugin/auth（oidc_only、認可コード + PKCE S256）。ログインの途中の状態（state・nonce・verifier）は manager の保存先（yuruidb の states）に置く auth の backend「yuruidb」、
+        人のセッションは popcornweb の cookie の backend（keyring は session.keyring.secret、無ければ MANAGER_SECRET から HMAC で作る）。どちらもインスタンスに状態を持たない。
+        設定は [oidc]（OIDC_*）：groups_claim（点の道）、groups_prefix、admins（issuer#subject かメール）、admin_groups、allowed.issuers・domains・groups。
+        IdP の issuer・client_id・client_secret は popcornweb の [auth.oidc]（AUTH_OIDC_*）。auth と session の残り（mode、保護する道、backend）は cmd/printmanager の ConfigureAuth が決める。
+        グループはログインのたびに人の記録（people）に写し、管理者かは要求ごとにその記録と設定から決める。場所とプリンタに kind（personal・group・shared）と owner。
+        ジョブの group は場所の（group のとき）、無ければ逃げ道のプリンタの。見える＝送った人・group の人・管理者
+      unconfirmed_choices: >-
+        Claude の暫定（利用者は未確認）：admins の書き方 issuer#subject、メールは email_verified が false でないときだけ使う、admins は allowed を通さずに入れる、
+        kind の無い場所・プリンタは shared、personal の owner は人の ID かメール、group の決め方（場所、無ければ逃げ道のプリンタ）、
+        画面からの送信は自分が刷れる場所だけ（403）、セッションの Cookie を使う /api の変更は同じ origin（Sec-Fetch-Site か Origin）だけ
     pm-auth-1: 人の OIDC ログイン（admin と一般）、最初の管理者の設定（admins と admin_groups）、claim のキーを設定で選ぶグループ、プリンタの personal・group・shared、ジョブの持ち主と見える範囲、自分とグループのジョブの一覧・刷り直し・取り消し、監査の記録、偽の IdP、session-key の鍵の列
     pm-auth-2: アプリ（管理画面で足す、/oauth/token の client credentials、scope とプリンタ・テンプレートの許可、IPP の Basic）。SubmitTokens・AdminToken・TickToken を外す
     pm-auth-3: 仮想プリンタのサービスユーザーとデバイスフロー（登録コードを置き換える）
@@ -236,6 +249,8 @@ open_questions:
 relations:
 - relation: refines
   to: requirement:print-manager
+- relation: constrained_by
+  to: decision:print-manager-ui-daisyui
 - relation: depends_on
   to: decision:thin-store
 - relation: extends
@@ -257,5 +272,7 @@ history:
     summary: 2026-10-21 利用者「まず画面に入る時にOIDCのログインが欲しい気がします。印刷する時に誰が印刷したか、という情報って取れるのか？」。pm-auth-1 の最初を画面の OIDC のログインにし（facts.delivery_proposed.first_step）、誰が刷ったかを道ごとに整理した（facts.who_printed）。pm-1 の Slip.User が確かめた名前と自己申告を混ぜていることを見つけた
   everyone-logs-in:
     summary: 2026-10-21 利用者「adminでなくても全員ログインが良いと思う。自分のアクセスできる範囲のデータが見られる、というのは必要だと思うので」。最初の段を、管理者だけの /admin のログインから、全員のログインと自分の見える範囲の画面に広げた（facts.delivery_proposed.first_step）
+  first-step-implemented:
+    summary: 2026-10-21 milestone:pm-auth-1 の最初の段（facts.delivery_proposed.first_step）を実装した。全員の OIDC ログイン、見える範囲の画面、/admin は管理者だけ（他は 403）、ブラウザで AdminToken を打つ形を外した、Slip.User を SubmittedBy と ClaimedUser に分けた（facts.who_printed.record）、偽の IdP（print/fakeidp）
   pending-merge:
-    summary: pm-1 の作業ツリーが requirement:print-manager の open_questions.viewer-login を書き換えている。両方がマージされたら viewer-login を requirement:print-manager-auth に寄せる。shibukawa/bdf#114 にある decision:print-manager-ui-daisyui（Tailwind v4.3.3 と daisyUI v5.7.50 で実装済み）への constrained_by の関係も、#114 が入った後にここへ足す（今は相手が無くコンパイルが断る）
+    summary: pm-1 の作業ツリーが requirement:print-manager の open_questions.viewer-login を書き換えている。両方がマージされたら viewer-login を requirement:print-manager-auth に寄せる。shibukawa/bdf#114 にある decision:print-manager-ui-daisyui（Tailwind v4.3.3 と daisyUI v5.7.50 で実装済み）への constrained_by の関係も、#114 が入った後にここへ足す（今は相手が無くコンパイルが断る）。2026-10-21 #114 の後に両方を済ませた（viewer-login は answered、constrained_by を足した）
