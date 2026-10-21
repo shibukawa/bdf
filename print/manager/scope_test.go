@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -144,7 +145,7 @@ func TestScope(t *testing.T) {
 	if res, out := e.as("root", "GET", "/api/topology", nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("admin: %d %s", res.StatusCode, out)
 	}
-	if res, _ := e.as("alice", "GET", "/api/topology", nil); res.StatusCode != http.StatusForbidden {
+	if res, _ := e.as("alice", "GET", "/api/nodes", nil); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("alice on the API: %d", res.StatusCode)
 	}
 	if res, _ := e.as("", "GET", "/api/topology", nil); res.StatusCode != http.StatusUnauthorized {
@@ -159,6 +160,64 @@ func TestScope(t *testing.T) {
 	}, "DELETE", "/api/nodes/office", nil)
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("admin's session from another origin: %d", res.StatusCode)
+	}
+
+	// everyone signed in sees the whole topology (its nodes and edges, not
+	// its settings) and where it is drawn; an administrator the settings
+	// too; nobody else at all
+	res, out := e.as("alice", "GET", "/api/topology", nil)
+	if res.StatusCode != http.StatusOK || strings.Contains(string(out), `"scope"`) || strings.Contains(string(out), `"owner"`) || strings.Contains(string(out), `"url"`) {
+		t.Fatalf("alice's topology: %d %s", res.StatusCode, out)
+	}
+	var topo []TopoNode
+	json.Unmarshal(out, &topo)
+	if len(topo) != 6 || topo[4].Name != "wh-b" || topo[4].Fallback == nil || topo[4].Fallback.Printer != "wh-b-laser" || topo[2].To[0] != "wh-a" {
+		t.Fatalf("alice's topology %+v", topo)
+	}
+	if _, out := e.as("root", "GET", "/api/topology", nil); !strings.Contains(string(out), `"scope":"group"`) {
+		t.Fatalf("root's topology without the settings: %s", out)
+	}
+	if res, _ := e.as("", "GET", "/api/topology", nil); res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("nobody's topology: %d", res.StatusCode)
+	}
+	if res, _ := e.as("alice", "GET", "/api/layout", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("alice's layout: %d", res.StatusCode)
+	}
+	// the activity is that of the jobs each may see
+	liveOf := func(who string) *Live {
+		t.Helper()
+		res, out := e.as(who, "GET", "/api/topology/live", nil)
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("%s's live: %d %s", who, res.StatusCode, out)
+		}
+		var l Live
+		json.Unmarshal(out, &l)
+		return &l
+	}
+	a := liveOf("alice")
+	if a.Nodes["wh-a"].Open != 2 || a.Nodes["office"].Open != 1 || a.Nodes["alice-desk"].Open != 1 || a.Nodes["wh-b"].Open != 0 || a.Nodes["team-a"].Recent != 1 || a.Nodes["wh-a"].Recent != 2 {
+		t.Fatalf("alice's live %+v", a.Nodes)
+	}
+	if !slices.ContainsFunc(a.Flows, func(f Flow) bool { return f.From == "team-a" && f.To == "wh-a" && f.Name == "alice-team" }) {
+		t.Fatalf("alice's flows %+v", a.Flows)
+	}
+	if b := liveOf("bob"); b.Nodes["wh-b"].Open != 1 || b.Nodes["office"].Open != 1 || b.Nodes["wh-a"].Open != 0 || b.Nodes["alice-desk"].Open != 0 {
+		t.Fatalf("bob's live %+v", b.Nodes)
+	}
+	if r := liveOf("root"); r.Nodes["office"].Open != 2 || r.Nodes["wh-a"].Open != 2 || r.Nodes["wh-b"].Open != 1 {
+		t.Fatalf("root's live %+v", r.Nodes)
+	}
+	// a client polls with the revision: 304 while nothing changed
+	res, _ = e.doWith(func(r *http.Request) {
+		r.Header.Set("X-Test-Viewer", "alice")
+		r.Header.Set("If-None-Match", `"`+a.Rev+`"`)
+	}, "GET", "/api/topology/live", nil)
+	if res.StatusCode != http.StatusNotModified {
+		t.Fatalf("live with its revision: %d", res.StatusCode)
+	}
+	submit("alice", "office", "alice-again", http.StatusCreated)
+	if again := liveOf("alice"); again.Rev == a.Rev || again.Nodes["office"].Open != 2 {
+		t.Fatalf("live after a job: %+v", again)
 	}
 }
 

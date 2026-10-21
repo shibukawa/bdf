@@ -63,8 +63,11 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/slips/{id}", h.adminOnly(h.getSlip))
 	mux.HandleFunc("GET /api/slips/{id}/document", h.adminOnly(h.slipDocument))
 	mux.HandleFunc("POST /api/slips/{id}/cancel", h.adminOnly(h.cancelSlip))
-	mux.HandleFunc("GET /api/topology", h.adminOnly(h.topology))
-	mux.HandleFunc("GET /api/layout", h.adminOnly(h.getLayout))
+	// the topology is everyone's to see (an administrator sees its
+	// settings too), as is where it is drawn; its activity is the viewer's
+	mux.HandleFunc("GET /api/topology", h.userOnly(h.topology))
+	mux.HandleFunc("GET /api/topology/live", h.userOnly(h.live))
+	mux.HandleFunc("GET /api/layout", h.userOnly(func(w http.ResponseWriter, r *http.Request, _ *Viewer) { h.getLayout(w, r) }))
 	mux.HandleFunc("PUT /api/layout", h.adminOnly(h.putLayout))
 	mux.HandleFunc("POST "+InPath+"/{name}", h.serveIn)
 	mux.HandleFunc("GET /api/destinations/{name}/jobs", h.adminOnly(h.destJobs))
@@ -340,7 +343,7 @@ func (h *handler) deleteNode(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *handler) topology(w http.ResponseWriter, r *http.Request) {
+func (h *handler) topology(w http.ResponseWriter, r *http.Request, v *Viewer) {
 	ns, err := h.m.Topology(r.Context())
 	if err != nil {
 		h.writeErr(w, err)
@@ -349,7 +352,27 @@ func (h *handler) topology(w http.ResponseWriter, r *http.Request) {
 	if ns == nil {
 		ns = []TopoNode{}
 	}
+	if !v.Admin {
+		ns = publicTopology(ns)
+	}
 	writeJSON(w, http.StatusOK, ns)
+}
+
+// live answers the topology's activity the viewer sees, or 304 while its
+// revision (the ETag) is the one the client has.
+func (h *handler) live(w http.ResponseWriter, r *http.Request, v *Viewer) {
+	l, err := h.m.Live(r.Context(), v)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	etag := `"` + l.Rev + `"`
+	w.Header().Set("ETag", etag)
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	writeJSON(w, http.StatusOK, l)
 }
 
 // destJobs lists the last jobs sent to a destination: ?limit= bounds them.

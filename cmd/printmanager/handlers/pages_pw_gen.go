@@ -44,6 +44,10 @@ type renderAdminPageParams struct {
 	Children htmlbind.Fragment
 }
 
+type TopologyViewParams struct {
+	Account Account
+}
+
 type AuditParams struct {
 	Account Account
 }
@@ -117,27 +121,35 @@ var planAdminPageOpsFill4Plan = &htmlbind.Plan[renderAdminPageParams]{Ops: []htm
 	planAdminPageOps.Static(" </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> "),
 }}
 
-var planAuditOpsFill5Plan = &htmlbind.Plan[AuditParams]{Ops: []htmlbind.Op[AuditParams]{
+var planTopologyViewOpsFill5Plan = &htmlbind.Plan[TopologyViewParams]{Ops: []htmlbind.Op[TopologyViewParams]{
+	planTopologyViewOps.Static(" "),
+	planTopologyViewOps.Component(func(p TopologyViewParams) htmlbind.Fragment {
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account})
+	}),
+	planTopologyViewOps.Static(" <main class=\"mx-auto flex max-w-[1600px] flex-col gap-4 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body gap-3\"> <div class=\"flex flex-wrap items-center gap-2\"> <h2 class=\"card-title\">Topology</h2> <div class=\"join\"> <button id=\"zoom-out\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom out\">−</button> <button id=\"zoom-fit\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Fit the topology in the view\">Fit</button> <button id=\"zoom-in\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom in\">+</button> </div> <span id=\"live\" class=\"badge badge-ghost badge-sm\"></span> <span class=\"text-sm text-base-content/60\">The network your documents flow through. The counts and the dots are the jobs you may see: yours and your groups'. Drag the background to pan, wheel or pinch to zoom; click a node for its jobs, and to print there when you may.</span> </div> <div class=\"grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]\"> <div id=\"canvas-wrap\" class=\"relative h-[62vh] min-h-96 overflow-hidden rounded-box border border-base-300 bg-base-200\"> <svg id=\"canvas\" class=\"block h-full w-full select-none touch-none\" xmlns=\"http://www.w3.org/2000/svg\"></svg> </div> <aside id=\"sidebar\" class=\"max-h-[62vh] min-h-96 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-4\"></aside> </div> </div> </section> </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/topology-view.js\"></script> "),
+}}
+
+var planAuditOpsFill6Plan = &htmlbind.Plan[AuditParams]{Ops: []htmlbind.Op[AuditParams]{
 	planAuditOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Audit log</h2> <span class=\"text-sm text-base-content/60\">Sign-ins, changes of the topology, keys and templates, devices, documents an endpoint refused, what people did in inboxes, and cancellations. Newest first.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Subject</th><th>Detail</th></tr></thead><tbody id=\"audit\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Recent jobs and their routes</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/audit.js\"></script> "),
 }}
 
-var planTabletOpsFill6Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
+var planTabletOpsFill7Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
 	planTabletOps.Static(" <div id=\"app\" class=\"min-h-screen\"> <header id=\"bar\" class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex min-w-0 flex-1 items-center gap-3\"> <h1 id=\"title\" class=\"truncate text-2xl font-bold\">Display board</h1> <span id=\"status\" class=\"badge\" hidden></span> </div> <label class=\"input input-lg w-full sm:w-56\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name\"> </label> </header> <section id=\"enroll\" class=\"mx-auto max-w-lg p-4 sm:p-8\" hidden> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h2 class=\"card-title text-2xl\">Enroll this device</h2> <p class=\"text-base-content/70\">Enter the enrollment code an administrator made. Only enrolled devices see the documents of their display.</p> <form id=\"enroll-form\" class=\"flex flex-col gap-4\"> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Enrollment code</legend> <input id=\"code\" class=\"input input-lg w-full font-mono tracking-widest uppercase\" autocomplete=\"off\" autocapitalize=\"characters\" required> </fieldset> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Device name</legend> <input id=\"device-name\" class=\"input input-lg w-full\" autocomplete=\"off\" placeholder=\"e.g. tablet at the shipping dock\"> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">Enroll</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">Open <span id=\"open-count\" class=\"badge badge-warning ml-2\" hidden></span></button> <button id=\"tab-ended\" role=\"tab\" class=\"tab flex-1 sm:flex-none\" type=\"button\">Done and canceled</button> </div> <ul id=\"open-list\" class=\"mt-4 grid gap-3\"></ul> <ul id=\"ended-list\" class=\"mt-4 grid gap-3\" hidden></ul> <div id=\"empty\" class=\"mt-16 text-center text-xl text-base-content/50\" hidden>No documents</div> </section> <section id=\"viewer\" hidden> <div class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <button id=\"back\" type=\"button\" class=\"btn btn-lg btn-ghost\">← Board</button> <span id=\"viewer-title\" class=\"min-w-0 flex-1 truncate text-lg font-semibold\"></span> <div class=\"flex gap-2\"> <button id=\"print\" type=\"button\" class=\"btn btn-lg btn-outline\" hidden>Print here</button> <button id=\"done\" type=\"button\" class=\"btn btn-lg btn-success\">Done</button> </div> </div> <div id=\"pages\" class=\"mx-auto grid max-w-5xl gap-4 p-4\"></div> </section> <div id=\"toasts\" class=\"toast toast-top toast-center z-50\"></div> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
 }}
 
-var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill8Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body gap-3\"> <div class=\"flex flex-wrap items-center gap-2\"> <h2 class=\"card-title\">Topology</h2> <div class=\"dropdown\"> <div tabindex=\"0\" role=\"button\" class=\"btn btn-sm btn-primary\">+ Add a node</div> <ul id=\"palette\" tabindex=\"0\" class=\"dropdown-content menu z-20 w-72 rounded-box bg-base-100 p-2 shadow-md\"> <li><a data-kind=\"endpoint\"><span class=\"font-semibold\">Endpoint</span><span class=\"text-xs text-base-content/60\">a REST entry for applications</span></a></li> <li><a data-kind=\"queue\"><span class=\"font-semibold\">Queue</span><span class=\"text-xs text-base-content/60\">forwards to every node it points to</span></a></li> <li><a data-kind=\"class\"><span class=\"font-semibold\">Class</span><span class=\"text-xs text-base-content/60\">one member in turn, or the first</span></a></li> <li><a data-kind=\"inbox\"><span class=\"font-semibold\">Inbox</span><span class=\"text-xs text-base-content/60\">held until a person releases it</span></a></li> <li><a data-kind=\"display\"><span class=\"font-semibold\">Display</span><span class=\"text-xs text-base-content/60\">shown on the devices enrolled there</span></a></li> <li><a data-kind=\"printer\"><span class=\"font-semibold\">Printer</span><span class=\"text-xs text-base-content/60\">printed on paper</span></a></li> <li><a data-kind=\"archive\"><span class=\"font-semibold\">Archive</span><span class=\"text-xs text-base-content/60\">written once, never changed</span></a></li> </ul> </div> <div class=\"join\"> <button id=\"zoom-out\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom out\">−</button> <button id=\"zoom-fit\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Fit the topology in the view\">Fit</button> <button id=\"zoom-in\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom in\">+</button> </div> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Drag the background to pan, wheel or pinch to zoom. Drag a node to move it; drag from its right port onto another node to connect them; click an edge to remove it; click a node to edit it in the sidebar.</span> </div> <div class=\"grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]\"> <div id=\"canvas-wrap\" class=\"relative h-[62vh] min-h-96 overflow-hidden rounded-box border border-base-300 bg-base-200\"> <svg id=\"canvas\" class=\"block h-full w-full select-none touch-none\" xmlns=\"http://www.w3.org/2000/svg\"></svg> </div> <aside id=\"sidebar\" class=\"max-h-[62vh] min-h-96 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-4\"></aside> </div> </div> </section> <datalist id=\"node-names\"></datalist> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">Enrollment code</h3> <p class=\"text-sm text-base-content/70\">Open the URL on the device, or scan the code there: the device makes its own key and enrolls itself at this display. The code works once.</p> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <dialog id=\"key-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">Endpoint key</h3> <p class=\"mt-2 text-sm text-base-content/70\">The key of <span id=\"key-name\" class=\"font-mono\"></span>. It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one.</p> <pre id=\"key-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"key-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/topology.js\"></script> "),
 }}
 
-var planInboxesOpsFill8Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
+var planInboxesOpsFill9Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
 	planInboxesOps.Static(" <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"text-xl font-bold\">Inboxes</h2> <label class=\"input input-sm w-64\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name (for the record)\"> </label> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <section id=\"inboxes\" class=\"grid gap-4\"></section> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
 }}
 
-var planAdminJobsOpsFill9Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
+var planAdminJobsOpsFill10Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
 	planAdminJobsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Jobs</h2> <select id=\"jobs-dest\" class=\"select select-sm w-64\"></select> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/admin-jobs.js\"></script> "),
 }}
 
-var planDeliveriesOpsFill10Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
+var planDeliveriesOpsFill11Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
 	planDeliveriesOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Deliveries waiting</h2> <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">Tick now</button> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Jobs on their way to printers and archives. A process sends them in the background, a serverless deployment at the tick; a send that failed is tried again after a wait that grows, and retry sends it now.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>State</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/deliveries.js\"></script> "),
 }}
 
@@ -176,7 +188,7 @@ var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
 		planAppBarOps.Static("</a> </div> <nav class=\"flex flex-wrap items-center gap-2\"> "),
 		planAppBarOps.Slot(func(p renderAppBarParams) htmlbind.Fragment { return p.Children },
 			nil),
-		planAppBarOps.Static(" <a href=\"/jobs\" class=\"btn btn-sm btn-ghost\">Jobs</a> "),
+		planAppBarOps.Static(" <a href=\"/jobs\" class=\"btn btn-sm btn-ghost\">Jobs</a> <a href=\"/topology\" class=\"btn btn-sm btn-ghost\">Topology</a> "),
 		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Admin },
 			[]htmlbind.Op[renderAppBarParams]{
 				planAppBarOps.Static(" <a href=\"/admin/topology\" class=\"btn btn-sm btn-ghost\">Admin</a> <a href=\"/audit\" class=\"btn btn-sm btn-ghost\">Audit</a> "),
@@ -288,6 +300,24 @@ func renderAdminPage(params renderAdminPageParams) htmlbind.Fragment {
 	return planAdminPagePlan.Bind(params)
 }
 
+var planTopologyViewOps = htmlbind.Builder[TopologyViewParams]{}
+
+var planTopologyViewPlan = &htmlbind.Plan[TopologyViewParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[TopologyViewParams]{
+		planTopologyViewOps.Static(" "),
+		planTopologyViewOps.Component(func(p TopologyViewParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: "Topology · BDF Print Manager", Children: planTopologyViewOpsFill5Plan.Bind(p)})
+		}),
+		planTopologyViewOps.Static(" "),
+	},
+}
+
+// TopologyView binds TopologyView to its parameters, producing a renderable fragment.
+func TopologyView(params TopologyViewParams) htmlbind.Fragment {
+	return planTopologyViewPlan.Bind(params)
+}
+
 var planAuditOps = htmlbind.Builder[AuditParams]{}
 
 var planAuditPlan = &htmlbind.Plan[AuditParams]{
@@ -295,7 +325,7 @@ var planAuditPlan = &htmlbind.Plan[AuditParams]{
 	Ops: []htmlbind.Op[AuditParams]{
 		planAuditOps.Static(" "),
 		planAuditOps.Component(func(p AuditParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Audit · BDF Print Manager", Account: p.Account, Children: planAuditOpsFill5Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Audit · BDF Print Manager", Account: p.Account, Children: planAuditOpsFill6Plan.Bind(p)})
 		}),
 		planAuditOps.Static(" "),
 	},
@@ -311,7 +341,7 @@ var planTabletPlan = &htmlbind.Plan[TabletParams]{
 	Ops: []htmlbind.Op[TabletParams]{
 		planTabletOps.Static(" "),
 		planTabletOps.Component(func(p TabletParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "Display board", Children: planTabletOpsFill6Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: "Display board", Children: planTabletOpsFill7Plan.Bind(p)})
 		}),
 		planTabletOps.Static(" "),
 	},
@@ -327,7 +357,7 @@ var planTopologyPlan = &htmlbind.Plan[TopologyParams]{
 	Ops: []htmlbind.Op[TopologyParams]{
 		planTopologyOps.Static(" "),
 		planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Topology · BDF Print Manager", Account: p.Account, Children: planTopologyOpsFill7Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Topology · BDF Print Manager", Account: p.Account, Children: planTopologyOpsFill8Plan.Bind(p)})
 		}),
 		planTopologyOps.Static(" "),
 	},
@@ -343,7 +373,7 @@ var planInboxesPlan = &htmlbind.Plan[InboxesParams]{
 	Ops: []htmlbind.Op[InboxesParams]{
 		planInboxesOps.Static(" "),
 		planInboxesOps.Component(func(p InboxesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Print Manager", Account: p.Account, Children: planInboxesOpsFill8Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Print Manager", Account: p.Account, Children: planInboxesOpsFill9Plan.Bind(p)})
 		}),
 		planInboxesOps.Static(" "),
 	},
@@ -359,7 +389,7 @@ var planAdminJobsPlan = &htmlbind.Plan[AdminJobsParams]{
 	Ops: []htmlbind.Op[AdminJobsParams]{
 		planAdminJobsOps.Static(" "),
 		planAdminJobsOps.Component(func(p AdminJobsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Print Manager", Account: p.Account, Children: planAdminJobsOpsFill9Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Print Manager", Account: p.Account, Children: planAdminJobsOpsFill10Plan.Bind(p)})
 		}),
 		planAdminJobsOps.Static(" "),
 	},
@@ -375,7 +405,7 @@ var planDeliveriesPlan = &htmlbind.Plan[DeliveriesParams]{
 	Ops: []htmlbind.Op[DeliveriesParams]{
 		planDeliveriesOps.Static(" "),
 		planDeliveriesOps.Component(func(p DeliveriesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Print Manager", Account: p.Account, Children: planDeliveriesOpsFill10Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Print Manager", Account: p.Account, Children: planDeliveriesOpsFill11Plan.Bind(p)})
 		}),
 		planDeliveriesOps.Static(" "),
 	},

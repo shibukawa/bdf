@@ -116,7 +116,12 @@ identity, the container's or the instance's role.
 
 A person signs in at the IdP (see Sign-in) and sees `/jobs`: their jobs
 and their groups', and a form that prints a document to a node they may
-print to. An administrator sees every job there, and goes on to the
+print to. `/topology` shows everyone the network as the administrator
+laid it out (the nodes, their kinds and edges; not their settings), with
+the activity of the jobs the person may see: how many are open, held or
+waiting at each node, and the jobs of the last minutes running along the
+edges; a node lists the person's jobs there and prints there when they
+may. An administrator sees every job, and goes on to the
 administrator's pages, one item each: `/admin/topology` (the editor of
 the topology: every node is placed, connected and set up there, with its
 templates, key or devices in the sidebar), `/admin/inboxes` (release and
@@ -202,9 +207,13 @@ CUPS-Get-Printers at `/ipp/print` (`bdf printers -url ipp://<host>:<port>/ipp/pr
 `GET /auth/login` signs in at the IdP and `POST /auth/logout` out;
 `GET /api/me` tells who; `GET /api/my/jobs` lists a person's jobs and
 `GET /api/destinations` the nodes to print to; `GET /api/audit` is the log.
-The API of the topology, under the admin token: `GET /api/topology`
-(every node, with what is at it: items held, slips open, devices,
-deliveries waiting); `GET`, `PUT` and `DELETE /api/nodes/<name>` and `POST
+Everyone signed in reads `GET /api/topology` (the nodes and edges; an
+administrator gets the settings and the counts too), `GET /api/layout`
+(where they are drawn) and `GET /api/topology/live`: the activity of the
+jobs they may see, as counts at each node (`held`, `open`, `pending`,
+`failed`, `recent` in the last hour) and the legs of the last ten minutes
+(`flows`), with an ETag to poll with (304 while nothing changed). The
+rest of the topology's API is the admin token's: `GET`, `PUT` and `DELETE /api/nodes/<name>` and `POST
 /api/nodes/<name>/key`; a display's `GET …/board`, `GET …/devices` and
 `POST …/enrollments`, and `DELETE /api/devices/<id>`; an endpoint's `GET
 …/templates` and `GET`, `PUT` and `DELETE …/templates/<id>` and its

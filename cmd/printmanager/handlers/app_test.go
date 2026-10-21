@@ -57,7 +57,7 @@ func TestApp(t *testing.T) {
 		}
 	}
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	for _, path := range []string{"/jobs", "/admin", "/audit"} {
+	for _, path := range []string{"/jobs", "/topology", "/admin", "/audit"} {
 		res, err := noRedirect.Get(srv.URL + path)
 		if err != nil {
 			t.Fatal(err)
