@@ -18,3 +18,11 @@ queries = []
 public = "cmd/printmanager/public"
 derived = "cmd/printmanager/dist/public"
 embed = "cmd/printmanager/public.go"
+
+# pw dev runs pw's development OpenID Provider (dev only: pw doctor flags
+# it in any other environment) and gives the Print Manager its issuer and a
+# client of the run (AUTH_OIDC_*). Its people are cmd/printmanager's
+# roster; config.dev.toml makes pm-admins the administrators.
+[dev.idp]
+enabled = true
+config = "cmd/printmanager/devidp.toml"

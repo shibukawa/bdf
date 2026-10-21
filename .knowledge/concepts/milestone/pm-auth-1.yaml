@@ -31,7 +31,10 @@ capabilities:
     about: Slip.SubmittedBy（確かめた主体）と Slip.ClaimedUser（名乗り）
   fake-idp:
     state: implemented
-    about: print/fakeidp（httptest の上の OIDC の偽物）
+    about: print/fakeidp（httptest の上の OIDC の偽物）。入れ子のグループの claim、確かめていないメール、改ざんしたトークンの試験に
+  pw-dev-idp:
+    state: implemented
+    about: pw dev で pw の開発用 OIDC の提供者（popcornweb.toml の [dev.idp]、cmd/printmanager/devidp.toml の 3 人、config.dev.toml の管理者の規則）。2026-10-21 利用者「pw devでテストしているときはpwコマンド内蔵のOIDCが使われる様にして欲しい」
   reprint:
     state: planned
     about: 自分とグループのジョブの刷り直し（取り消しは pm-4 の /jobs にあり、送った人と管理者に絞った）
@@ -103,6 +106,21 @@ verification:
     evidence:
       path: cmd/printmanager/handlers/pages.pw.html
       locator: '2026-10-21 main の pm-4 と合わせた後に内蔵ブラウザで、偽の IdP（print/fakeidp を 127.0.0.1:9781 で、ユーザーを選ぶ画面）に向けた printmanager を開いた。サインアウトした / はサインインのボタン。グループの無い人（タブレット幅）はジョブ 0 件、shared の Office だけに送れ、/admin は 403 の画面。warehouse-a の人（スマホ幅）は warehouse-a のジョブ（場所と group の queue）だけを見て、画面から送ったジョブが自分の名前で載り、取り消しは自分のものだけに出た。管理者（タブレット幅）は /admin のトポロジーに scope のバッジ、ノードの form で scope と owner を書けた。スマホ幅で /jobs が横にはみ出す（pm-4 の grid）のを grid-cols-1 で直した。人の記録が無いセッションが / と IdP の間を回るのを見つけて直した（セッションの名前とメールで見る）'
+  pw-dev:
+    state: passed
+    method: manual
+    authority: observed
+    evidence:
+      path: cmd/printmanager/devidp.toml
+      locator: '2026-10-21 pw dev（v0.5.12、bdf の直下の popcornweb.toml のまま）が開発用の提供者を起こし、アプリが「people sign in with OIDC … admin_groups=1」と出した。内蔵ブラウザで / のサインインから pw の利用者の選ぶ画面へ。Ada Admin（pm-admins）は管理者で表示を 3 つ足し、全部のジョブと監査ログ（3 人のサインイン）を見た。Mina Member（warehouse-a、スマホ幅）は office と wh-a に送れ wh-b は 403、見えるのは自分の wh-a のジョブだけ、/admin は 403。Otto Outsider は office だけ、ジョブ 0 件、他人のジョブは 404、/admin・/audit は 403。サインアウトで /api/me が 401'
+  dev-roster-test:
+    state: passed
+    method: integration
+    test: go test -run TestDevRoster ./cmd/printmanager/handlers
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/devidp_test.go
+      locator: 'pw の開発用の提供者（testutil.WithIdentityProvider）を devidp.toml の roster と config.dev.toml の [oidc] で走らせ、3 人の /admin と送れるノードを確かめる'
   real-idp:
     state: not_run
     method: manual
