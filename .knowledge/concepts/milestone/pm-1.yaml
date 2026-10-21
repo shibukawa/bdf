@@ -1,0 +1,157 @@
+id: milestone:pm-1
+type: milestone
+title: pm-1 — 現場の表示（倉庫ごとの仮想プリンタ、端末の登録と鍵の認証、紙への逃げ道）を popcornweb と yuruidb の上に、プロセスでもサーバーレスでも
+summary: >-
+  requirement:print-manager の最初の実装のまとまり。print/manager（状態を持たない芯：場所、プリンタ、伝票、端末、IPP の受け口、
+  API、tick）と cmd/printmanager（popcornweb のアプリ：設定、タブレット・管理の画面、プロセスの時計）。保存は yuruidb の URL で選ぶ
+  （bbolt の 1 ファイル、記録も文書も S3、DynamoDB の記録など）。実プリンタへは direct（print.Print・PrintRaw を借りの下で）。
+  2026-10-20〜21 に実装。保管庫（S3 の Object Lock）は pm-2。
+lifecycle: active
+authority: authored
+scope:
+  milestone: pm-1
+constraints:
+- インスタンスに状態を持たない。どの試験も要求ごとに Manager を作り直す
+- 常駐の処理に頼らない。期限は tick（POST /api/tick か、プロセスの時計）
+- print/manager は popcornweb に依らない（http.Handler を出し、cmd/printmanager が載せる）
+- 保存先は yuruidb の条件付きの書き込みを持つものだけ。サーバーレスでは 1 つのプロセスの保存先（bbolt）を断る
+capabilities:
+  display:
+    state: implemented
+    about: capability:print-manager/display
+  device-auth:
+    state: implemented
+    about: capability:print-manager/device-auth
+  fallback-direct:
+    state: implemented
+    about: capability:print-manager/fallback-direct
+  fallback-branch:
+    state: planned
+    about: capability:print-manager/fallback-branch
+  sse:
+    state: planned
+    about: capability:print-manager/sse
+non_goals:
+- 保管庫と電子帳簿保存（pm-2）
+- 事務所のビューア・検索・OIDC（pm-3）
+- branch の route（拠点の printd が INFRA で取る）。今は ErrBranch（501）
+- Create-Job と Send-Document（受け口は 1 つの要求で終わる Print-Job だけ）
+acceptance:
+  s1-display:
+    text: 場所の IPP のプリンタ（/ipp/print/<場所>）か API に送った文書（.bdf、PDF など）が伝票になり、その場所の端末のボードに出る。端末はページを PNG で見て、開いた・完了を付ける。ボードは版（ETag）で問い、変わらなければ 304。送った側の Cancel-Job で取り消し、Get-Job-Attributes・Get-Jobs で状態が見える。完了・取り消しは keep の後に片付く
+    verified_by:
+    - manager-tests
+    - browser-tablet
+  s2-device-auth:
+    text: 登録コードは 1 回きりで期限つき。端末の取り出せない ECDSA P-256 の鍵の署名で短いセッション（HMAC の封、10 分）を得る。別の鍵の署名、期限の過ぎた challenge、書き換えたクッキー、外した端末、別の場所の伝票は通らない
+    verified_by:
+    - manager-tests
+    - browser-tablet
+  s3-fallback:
+    text: 場所の端末がどれもつながっていなければ次の tick で、つながっていれば after の後に、開かれていない伝票を紙に刷る（1 回だけ）。開いた伝票は刷らない。端末から「この倉庫で刷る」。刷れなければ記録して後で再試行。同時の tick でも 1 回だけ刷る（伝票の借り）
+    verified_by:
+    - manager-tests
+    - s3-tests
+  s4-serverless:
+    text: 要求ごとに Manager を作り直しても全部の流れが通る。記録も文書も S3 互換の保存先で同じ流れと同時の tick が通る。サーバーレスの設定は bbolt を断り、本番で secret が無ければ起動しない。distroless のコンテナで本番・サーバーレスの設定で起動し、S3 の保存先で PDF を変換して受ける
+    verified_by:
+    - manager-tests
+    - s3-tests
+    - app-tests
+    - container-smoke
+  s5-app:
+    text: popcornweb のアプリが設定（[manager] と MANAGER_*）を読み、タブレット・管理の画面と manager の口を出す。生成物（*_pw_gen.go）はコミットし、CI が pw generate --code-only の差分で古さを見る
+    verified_by:
+    - app-tests
+    - browser-tablet
+  s6-lambda:
+    text: deploy/lambda/Dockerfile（Lambda Web Adapter）を AWS Lambda に置き、DynamoDB の記録と S3 の文書、EventBridge Scheduler の tick で動く
+    verified_by:
+    - lambda-deploy
+verification:
+  manager-tests:
+    state: passed
+    method: integration
+    test: go test -race ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/manager_test.go
+      locator: 'TestDisplay、TestSubmitAPI、TestFallback、TestFallbackFails、TestTicksAtOnce（8 本の tick で 3 枚だけ）、TestDevices、TestStore、TestDuration。どれも要求ごとに New した Manager（httptest）。偽プリンタは print/fakeprinter。2026-10-21 macOS で -race -count=2 が通った'
+  s3-tests:
+    state: passed
+    method: integration
+    test: BDF_PM_S3_ENDPOINT=http://127.0.0.1:19000 AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… go test -race -run TestS3 ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/s3_test.go
+      locator: '記録も文書も S3（rustfs/rustfs:latest をローカルの Docker で。バケット pm-records・pm-docs）。yuruidb の S3 の確かめ（条件付きの書き込み）が通り、6 本の同時の tick で 2 枚だけ刷った。2026-10-21 -race -count=3 で通った。実際の AWS の S3 では未確認'
+  app-tests:
+    state: passed
+    method: unit
+    test: go test ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/app_test.go
+      locator: 'TestApp（サーバーレスで bbolt を断る、secret の無い submit token を断る、/・/tablet・/admin の画面、/api の載せ）'
+  browser-tablet:
+    state: passed
+    method: manual
+    authority: observed
+    evidence:
+      path: cmd/printmanager/public/tablet.js
+      locator: '2026-10-21 内蔵ブラウザで：登録コードの URL から登録（WebCrypto の鍵）、API で送った PDF（converter/pdf/testdata/reportlab-mixed.pdf）が 4 秒のポーリングでボードに出て、開いてページの PNG を見て、完了で「完了・取り消し」に移った。/admin でトークンを入れ、端末の一覧と登録コードの QR を出した'
+  container-smoke:
+    state: passed
+    method: manual
+    authority: observed
+    evidence:
+      path: cmd/printmanager/deploy/lambda/Dockerfile
+      locator: '2026-10-21 linux/arm64 のバイナリを gcr.io/distroless/cc-debian12 に入れ、APP_ENV=prod・MANAGER_SERVERLESS=true・S3（rustfs）で起動し、場所を作って PDF を送ると変換して受けた。Lambda Web Adapter のイメージは取ってきていない（Dockerfile は組み立てていない）'
+  lambda-deploy:
+    state: not_run
+    method: manual
+    test: deploy/lambda/Dockerfile を ECR に置き、Lambda・DynamoDB・S3・EventBridge Scheduler で動かす
+facts:
+  delivery:
+    plan: knowledge-inputs/print-plan/print-manager.ja.md §7・§11（2026-10-20）
+    implemented:
+      date: '2026-10-21'
+      packages:
+      - 'print/manager：store.go（URL で yuruidb の記録と Blob を開く）、model.go、manager.go（場所・プリンタ・ボード・状態）、submit.go（受け付け、変換、ページの PNG）、devices.go（登録コード、鍵、challenge、セッション）、send.go（借りの下の送り、tick）、ipp.go、http.go'
+      - 'print/printconv：cmd/bdf の printConverter を移した（bdf printd と Manager で共用）'
+      - 'cmd/printmanager：main.go、handlers（config.go、app.go、pages.pw.html と生成物）、public（tablet.js、admin.js、app.css）、deploy/lambda/Dockerfile、README.md'
+      - 'リポジトリの直下に popcornweb.toml（pw は go.mod の隣を求める。生成は cmd/printmanager/handlers だけ）。CI に生成物の古さの確かめ'
+    changed_from_plan:
+      - '端末のセッションは popcornweb の session ではなく manager の HMAC のクッキー（MaxAge 10 分、SameSite=Strict、HttpOnly）。print/manager を popcornweb から離し、ストア無しで試せるようにした'
+      - '場所ごとの一覧（list-by-location）は場所の状態の記録（Open・Ended・Devices の ID の集合と Seq）。Seq がボードの ETag'
+      - '通知はポーリングだけ（4 秒、ETag、304）。SSE は作っていない'
+      - '受け口は Print-Job だけ（Create-Job は持たない）。伝票ができた時点でジョブは completed'
+      - '伝票の ID はジョブの番号（記録の版で守る数え）の 10 桁'
+      - '端末がつながっているかは LastSeen（30 秒より細かくは書かない）と offline_after（既定 2 分）'
+      - 'pw build --target=lambda は使えない（直下の public.go と config.prod.toml を求める）。pw の生成する Dockerfile と同じ形（Lambda Web Adapter 1.0.1 と distroless static）を手で置いた'
+    found:
+      - 'popcornweb：pw generate はプロジェクトの直下に go.mod を求め、資産の段は直下の public.go（package が bdf と衝突）を求める。--code-only で Go だけ書けば足り、静的ファイルは pw.WithPublicFS に自前の embed を渡す。生成は決定的（2 回の md5 が同じ）'
+      - 'popcornweb：[]string の設定の default は JSON でなくカンマ区切り（default:"[]" は "[]" という 1 つの値になる）。default を書かない'
+      - 'popcornweb：pw.ParseConfig は冪等。pw.Run の前に設定を読んで保存先を開ける。ただし --generate-config などは pwconfig.RunFrameworkAction を先に呼ばないと保存先を開いてしまう'
+      - 'popcornweb：既定の CSP は script-src self だけ。インラインのスクリプトは使わず /public の JS に'
+      - 'ipp.Message.Add は同じタグの最初のグループに足す。Get-Jobs のジョブは Groups に直接 1 つずつ足す'
+      - 'クッキーの Expires を Manager の時計で書くと、試験の時計（過去）でブラウザが捨てる。MaxAge にした'
+      - 'バイナリ：darwin arm64 45 MB（変換器をすべて含む）、linux amd64 で -s -w 34 MB。go.mod の直接の依存に popcornweb と tinybind-go、go.sum が 142 行増えた'
+    unverified:
+      - '実際の AWS（Lambda、DynamoDB、S3、EventBridge Scheduler、VPC と Direct Connect からのプリンタへの送り）。DynamoDB Local のイメージは手元に無く、取ってこなかった'
+      - 'iPadOS・Android の実機（IndexedDB の鍵が消えないか、ホーム画面の Web アプリ）'
+      - 'Windows・macOS・iOS のクライアントから Create-Job なしのプリンタに刷れるか'
+      - '冷えた起動の時間'
+    known_gaps:
+      - 'challenge は 2 分の間なら何度でも使える（保存しないため）。TLS の上の盗聴でしか使えないが、1 回きりにするなら記録が要る'
+      - '伝票の記録を書いた後、場所の状態に足す前に落ちると、その伝票はボードに出ない（片付けの見回りは無い）'
+      - '紙への逃げ道を刷る間、Lambda の呼び出しが 1 枚ずつ待つ（leaseFor 5 分の内）'
+relations:
+- relation: implements
+  to: requirement:print-manager
+- relation: depends_on
+  to: system:popcornweb
+- relation: depends_on
+  to: system:yuruidb
+- relation: follows
+  to: milestone:print-m6

@@ -1,4 +1,4 @@
-package main
+package printconv
 
 import (
 	"bytes"
@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	_ "github.com/shibukawa/bdf/converter/markdown"
+	_ "github.com/shibukawa/bdf/converter/pptx"
 	"github.com/shibukawa/bdf/print/spool"
 )
 
-func TestPrintConverter(t *testing.T) {
-	c := printConverter{fontDirs: []string{filepath.Join("..", "..", "converter", "pptx", "testdata", "fonts")}, noSystem: true}
+func TestConverter(t *testing.T) {
+	c := Converter{FontDirs: []string{filepath.Join("..", "..", "converter", "pptx", "testdata", "fonts")}, NoSystemFonts: true}
 	ctx := context.Background()
 	read := func(path string) *bytes.Reader {
 		b, err := os.ReadFile(path)
@@ -27,11 +29,11 @@ func TestPrintConverter(t *testing.T) {
 	if f, ok := c.Detect(deck, deck.Size(), "deck.pptx"); !ok || f != "pptx" {
 		t.Fatalf("by name: %q %v", f, ok)
 	}
-	if f, ok := c.Detect(deck, deck.Size(), "upload"); !ok || f != encryptedOffice {
+	if f, ok := c.Detect(deck, deck.Size(), "upload"); !ok || f != EncryptedOffice {
 		t.Fatalf("by its encryption: %q %v", f, ok)
 	}
 	const password = "パスワード🔑bdf"
-	for _, format := range []string{"pptx", encryptedOffice} {
+	for _, format := range []string{"pptx", EncryptedOffice} {
 		if _, _, err := c.Convert(ctx, deck, deck.Size(), format, "deck.pptx", ""); !errors.Is(err, spool.ErrPasswordRequired) {
 			t.Fatalf("%s without the password: %v", format, err)
 		}

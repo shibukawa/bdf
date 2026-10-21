@@ -1,0 +1,17 @@
+/* The pages' stylesheet: Tailwind CSS v4 (the standalone CLI) with
+   daisyUI 5, built into public/app.css by go generate (see public.go).
+   daisyui.mjs and daisyui-theme.mjs are daisyUI v5.7.50's release files
+   (https://github.com/saadeghi/daisyui/releases/tag/v5.7.50), kept here
+   so that no Node, npm or CDN is needed. */
+@import "tailwindcss" source(none);
+@source "../handlers/*.pw.html";
+@source "../public/*.js";
+@plugin "./daisyui.mjs" {
+  themes: light --default, dark --prefersdark;
+}
+
+/* the QR code the manager draws as SVG */
+.qr svg {
+  width: 100%;
+  height: 100%;
+}

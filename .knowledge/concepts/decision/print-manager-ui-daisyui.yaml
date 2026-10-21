@@ -1,0 +1,47 @@
+id: decision:print-manager-ui-daisyui
+type: decision
+title: Print Manager の画面は Tailwind CSS と daisyUI で作る（タブレット・管理・事務所）
+summary: >-
+  2026-10-21 利用者「UIはdaisy UIを使ってもっとモダンに作って欲しい」。pm-1 の画面（cmd/printmanager の pages.pw.html と
+  手書きの app.css）を daisyUI の部品（navbar、card、table、badge、modal、tabs、toast など）に置き換える。CSS は Tailwind の
+  スタンドアロンのバイナリで作り、バイナリに埋め込む（実行時に CDN を使わない）。
+lifecycle: accepted
+authority: authored
+aliases:
+- daisyUI
+- daisy UI
+- Tailwind
+- UI
+- 画面
+constraints:
+- 実行時に外の CDN を読まない。倉庫・オンプレの LAN の中でも同じ見た目で動く
+- Node と npm を Print Manager の組み立てに持ち込まない。Tailwind はスタンドアロンのバイナリ、daisyUI はその @plugin に読ませる .mjs のファイル
+- 版を固定し、作った CSS をコミットして CI で作り直しの差分を見る（*_pw_gen.go と同じ扱い）
+- タブレットの画面は指で押す大きさ（daisyUI の btn-lg など）と、遠くから読める新着の表示を保つ（requirement:print-manager の tablet_ui）
+facts:
+  popcornweb_support: popcornweb（v0.5.11）は Tailwind をスタンドアロンのバイナリで動かし、[assets.tailwind] と CSS の入口（@import "tailwindcss"、@source で .pw.html を見せる、@plugin で assets/plugins/*.mjs）を持つ。pw dev がウォッチャ、pw generate が minify して作る（docs の ja/guides/frontend/styling.md、ja/pw/project/generate.md を 2026-10-21 に読んだ）
+  bdf_constraint: bdf では pw generate --code-only を使う（直下に public.go を置けない。system:popcornweb の in_bdf_module）。--code-only は Tailwind を作らないので、tailwindcss を直に呼んで cmd/printmanager/public に CSS を書く手順が要る
+  daisyui_standalone: daisyUI 5 は Tailwind 4 のスタンドアロンの CLI 向けに daisyui.mjs と daisyui-theme.mjs をリリースに置く（2026-10-21 に v5.7.50 のリリースで確かめた。351,408 バイトと 45,999 バイト）。cmd/printmanager/tailwind に置き、sha256 を tailwind/VERSIONS に書いた
+  implemented:
+    date: '2026-10-21'
+    versions: tailwindcss v4.3.3（手元は Homebrew、CI はリリースの tailwindcss-linux-x64 を sha256 で確かめて使う）、daisyUI v5.7.50（利用者が版を選んだ）
+    build: cmd/printmanager/public.go の go:generate が tailwindcss --input tailwind/app.css --output public/app.css --minify を呼ぶ。入口は @import "tailwindcss" source(none)、@source で handlers/*.pw.html と public/*.js、@plugin "./daisyui.mjs" { themes light --default, dark --prefersdark }。出力 71 KB を embed
+    ci: CI の go ジョブで tailwindcss を取ってきて go generate し、続けて pw generate（v0.5.12 の [assets] で cmd/printmanager/dist/public に作る）を走らせ、cmd/printmanager の差分を見る。配信は popcornweb の /public（manifest、圧縮の副ファイル）
+    js_classes: JS が作る要素のクラスも Tailwind が拾うよう、クラス名は文字どおりに書く（alert-${kind} のような組み立ては拾われない）
+    pages: Shell（文書）と AppBar（右の端に後でログインを置ける）を部品にし、ページは Shell の中の別の部品。ログインやデバイスフローの承認のページも同じ形で足せる
+    checked: 内蔵ブラウザでタブレット（768）とスマホ（375）の幅、明るい・暗いテーマで、登録、伝票の着信（大きなトースト）、開く、完了、刷れないときのトースト、/admin のプリンタ・場所・端末と登録コードのモーダルを確かめた
+  themes_proposed: light と dark（prefers-color-scheme に従う）。タブレットは明るい倉庫で読むので既定は light
+  scope: タブレット（/tablet）、管理（/admin）、今後の事務所のビューア（pm-3）と認証の画面（requirement:print-manager-auth の管理者・一般の画面、デバイスフローの承認）
+open_questions:
+  css-build:
+    text: Tailwind の CSS をどう作るか（tailwindcss を直に呼ぶ make・go generate の手順か、popcornweb に --code-only でも CSS を作る口を頼むか）
+    state: answered
+    resolution: go generate から tailwindcss のスタンドアロンのバイナリを呼び、CSS をコミットする。CI はバイナリを版と sha256 つきで取ってきて差分を見る（2026-10-21 に実装）
+relations:
+- relation: constrains
+  to: requirement:print-manager
+history:
+  chosen:
+    summary: 2026-10-21 利用者「UIはdaisy UIを使ってもっとモダンに作って欲しい」（認証認可の整理の続きで）。実装は pm-1 の作業ツリー（print-manager-requirements-6fb34b、未コミット）の画面に対して行う
+  implemented:
+    summary: 2026-10-21 pm-1 の作業ツリーで実装した（認証認可の整理のセッションからの依頼）。この作業ツリーには requirement:print-manager-auth が無いので、それへの constrains の関係は外した（認証の作業ツリーが入るときに足し直す）。daisyUI の版は利用者が v5.7.50 を選んだ。画面の動きは変えず、刷れなかった理由を端末に返す（502）ように直した

@@ -12,6 +12,7 @@ import (
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/print/fakeprinter"
+	"github.com/shibukawa/bdf/print/printconv"
 	"github.com/shibukawa/bdf/print/server"
 	"github.com/shibukawa/bdf/print/server/client"
 )
@@ -28,7 +29,7 @@ func printServer(t *testing.T, extra string) (string, *server.Server, *fakeprint
 	cfg.Spool = filepath.Join(t.TempDir(), "spool.db")
 	cfg.TempDir = t.TempDir()
 	fonts := filepath.Join("..", "..", "converter", "pptx", "testdata", "fonts")
-	srv, err := server.New(context.Background(), cfg, server.Options{Converter: printConverter{fontDirs: []string{fonts}, noSystem: true}})
+	srv, err := server.New(context.Background(), cfg, server.Options{Converter: printconv.Converter{FontDirs: []string{fonts}, NoSystemFonts: true}})
 	if err != nil {
 		t.Fatal(err)
 	}

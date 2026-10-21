@@ -1,4 +1,9 @@
-package main
+// Package printconv converts the documents a print server receives into
+// .bdf documents of pages, with the converters registered in package
+// converter (import converter/all, or the converters a program needs) and
+// print/raster for the rasters of driverless clients. bdf printd and the
+// Print Manager use it.
+package printconv
 
 import (
 	"context"
@@ -15,22 +20,29 @@ import (
 	"github.com/shibukawa/bdf/print/spool"
 )
 
+// PrintView names the view of pages of a format whose default view has no
+// pages to print, or "".
+func PrintView(format string) string { return printViews[format] }
+
 // printViews are the views of the formats whose default views have no
 // pages to print: an Excel workbook as Excel prints it, HTML and Markdown
 // as A4 pages instead of one long column.
 var printViews = map[string]string{"xlsx": "print", "html": "pages", "markdown": "pages"}
 
-// printConverter converts the documents bdf printd receives with the
-// converters of bdf generate, into views of pages (printViews). HTML,
-// Markdown and EPUB leave out the images of the network (remote=false):
-// the server is no way into the networks it reaches. Nothing beside a
-// document is read.
-type printConverter struct {
-	fontDirs []string
-	noSystem bool
+// Converter converts the documents a server receives with the registered
+// converters, into views of pages (printViews). HTML, Markdown and EPUB
+// leave out the images of the network (remote=false): the server is no
+// way into the networks it reaches. Nothing beside a document is read. It
+// is a spool.Converter.
+type Converter struct {
+	// FontDirs and NoSystemFonts find the fonts of the documents.
+	FontDirs      []string
+	NoSystemFonts bool
 }
 
-func (c printConverter) Detect(r io.ReaderAt, size int64, name string) (string, bool) {
+// Detect names the format of a document, by its content and then by its
+// name.
+func (c Converter) Detect(r io.ReaderAt, size int64, name string) (string, bool) {
 	// the rasters of driverless clients, which the IPP server takes
 	head := make([]byte, 8)
 	if n, _ := r.ReadAt(head, 0); n > 0 {
@@ -56,16 +68,16 @@ func (c printConverter) Detect(r io.ReaderAt, size int64, name string) (string, 
 	if f == nil {
 		// an encrypted Office document tells its format once decrypted
 		if protected, _ := converter.CheckPassword(r, size, ""); protected {
-			return encryptedOffice, true
+			return EncryptedOffice, true
 		}
 		return "", false
 	}
 	return f.Name, true
 }
 
-// encryptedOffice is the format of an encrypted Office document whose
+// EncryptedOffice is the format of an encrypted Office document whose
 // name does not tell which it is.
-const encryptedOffice = "office-encrypted"
+const EncryptedOffice = "office-encrypted"
 
 // The raster formats, which print/raster reads (converter does not: the
 // converters are built without print).
@@ -74,7 +86,8 @@ const (
 	formatURF = "urf"
 )
 
-func (c printConverter) Convert(ctx context.Context, r io.ReaderAt, size int64, format, name, password string) (*bdf.Document, []string, error) {
+// Convert makes a document of one in a format Detect named.
+func (c Converter) Convert(ctx context.Context, r io.ReaderAt, size int64, format, name, password string) (*bdf.Document, []string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -82,8 +95,8 @@ func (c printConverter) Convert(ctx context.Context, r io.ReaderAt, size int64, 
 		doc, _, err := raster.Document(ctx, io.NewSectionReader(r, 0, size), &raster.DocumentOptions{Title: name})
 		return doc, nil, err
 	}
-	opts := &converter.Options{FontDirs: c.fontDirs, NoSystemFonts: c.noSystem, Password: password, FileName: name, Params: map[string]string{}}
-	if format == encryptedOffice {
+	opts := &converter.Options{FontDirs: c.FontDirs, NoSystemFonts: c.NoSystemFonts, Password: password, FileName: name, Params: map[string]string{}}
+	if format == EncryptedOffice {
 		format = "" // detected once decrypted
 	} else {
 		f := converter.Lookup(format)

@@ -20,6 +20,7 @@ import (
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
 	"github.com/shibukawa/bdf/print/pdl"
+	"github.com/shibukawa/bdf/print/printconv"
 	"github.com/shibukawa/bdf/print/raster"
 	"github.com/shibukawa/bdf/print/raw"
 	"github.com/shibukawa/bdf/print/server/client"
@@ -306,8 +307,8 @@ func printCmd(args []string) {
 	} else {
 		opts := &converter.Options{FontDirs: ro.FontDirs, NoSystemFonts: ro.NoSystemFonts, Password: os.Getenv(passwordEnv), Pages: selection,
 			Params: map[string]string{}}
-		if f, err := converter.DetectFile(in); err == nil && printViews[f.Name] != "" {
-			opts.Params["views"] = printViews[f.Name] // views of pages
+		if f, err := converter.DetectFile(in); err == nil && printconv.PrintView(f.Name) != "" {
+			opts.Params["views"] = printconv.PrintView(f.Name) // views of pages
 		}
 		for _, kv := range params {
 			name, value, ok := strings.Cut(kv, "=")

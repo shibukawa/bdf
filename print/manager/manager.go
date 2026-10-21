@@ -1,0 +1,486 @@
+// Package manager is the BDF Print Manager's core: virtual printers that
+// show slips on the tablets of a location (a warehouse) instead of
+// printing them, the devices enrolled there, and the printers that print
+// on paper what nobody opened.
+//
+// A Manager holds no state of its own: everything is in its Store, so
+// that any request may reach any instance (a container, several, or a
+// function of AWS Lambda). Nothing runs in the background either: what is
+// due is done by Tick, which a scheduler calls (or a timer of the
+// process). The web application is cmd/printmanager; Handler is its API,
+// its IPP printers and the devices' endpoints.
+package manager
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"slices"
+	"time"
+
+	"github.com/shibukawa/bdf/print/spool"
+	"github.com/shibukawa/yuruidb"
+)
+
+// Options configures a manager.
+type Options struct {
+	// Converter makes .bdf documents of what senders send (PDF, Office,
+	// rasters …); nil takes .bdf only.
+	Converter spool.Converter
+	// Secret signs the challenges and sessions of devices: at least 32
+	// random bytes, the same for every instance.
+	Secret []byte
+	// FontDirs and NoSystemFonts find the fonts of documents, to draw
+	// their pages and print them.
+	FontDirs      []string
+	NoSystemFonts bool
+	// AdminToken authorizes the API (bearer); SubmitTokens are the names
+	// and secrets that may send jobs (IPP Basic, or bearer name:secret).
+	// With no SubmitTokens anyone may send.
+	AdminToken   string
+	SubmitTokens map[string]string
+	// TickToken authorizes POST /api/tick alone (a scheduler's).
+	TickToken string
+	// MaxDocument bounds a document received (default 64 MiB).
+	MaxDocument int64
+	// SessionFor is how long a device's session lasts before it signs a
+	// challenge again (default 10 minutes); SecureCookies sets Secure.
+	SessionFor    time.Duration
+	SecureCookies bool
+	// TabletPath is the devices' page, which an enrollment's URL opens
+	// with ?code= (default /tablet).
+	TabletPath string
+	// TempDir holds documents while they are converted ("" the system's).
+	TempDir string
+	Log     *slog.Logger
+	// Now is the clock (default time.Now).
+	Now func() time.Time
+}
+
+// Manager is a view of a Store. It is cheap to make: an instance may make
+// one per request.
+type Manager struct {
+	st *Store
+	o  Options
+}
+
+// New makes a manager of a store.
+func New(st *Store, o Options) (*Manager, error) {
+	if len(o.Secret) < 32 {
+		return nil, fmt.Errorf("%w: the secret has %d bytes; it needs 32", ErrInvalid, len(o.Secret))
+	}
+	if o.MaxDocument <= 0 {
+		o.MaxDocument = 64 << 20
+	}
+	if o.SessionFor <= 0 {
+		o.SessionFor = 10 * time.Minute
+	}
+	if o.TabletPath == "" {
+		o.TabletPath = "/tablet"
+	}
+	if o.Log == nil {
+		o.Log = slog.New(slog.DiscardHandler)
+	}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	return &Manager{st: st, o: o}, nil
+}
+
+func (m *Manager) now() time.Time { return m.o.Now().UTC().Truncate(time.Millisecond) }
+
+// mapErr turns yuruidb's errors into the manager's.
+func mapErr(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, yuruidb.ErrNotFound):
+		return fmt.Errorf("%w: %w", ErrNotFound, err)
+	case errors.Is(err, yuruidb.ErrConflict), errors.Is(err, yuruidb.ErrAlreadyExists):
+		return fmt.Errorf("%w: %w", ErrConflict, err)
+	}
+	return err
+}
+
+// tries is how many times a read-modify-write is tried against others
+// writing the same record.
+const tries = 16
+
+// change reads a record, changes it and writes it back, again while
+// another write comes between; a record not there is made when create is
+// set (fn sees the zero value). fn returning errSkip leaves the record as
+// it is.
+func change[T any](ctx context.Context, db *yuruidb.Store, id string, create bool, fn func(*T) error) (T, error) {
+	var zero T
+	for range tries {
+		rec, err := db.Get[T](ctx, id)
+		missing := errors.Is(err, yuruidb.ErrNotFound)
+		if err != nil && !(missing && create) {
+			return zero, mapErr(err)
+		}
+		v := rec.Data
+		if missing {
+			v = zero
+		}
+		if err := fn(&v); err != nil {
+			if errors.Is(err, errSkip) {
+				return v, nil
+			}
+			return zero, err
+		}
+		if missing {
+			_, err = db.Insert(ctx, id, v)
+		} else {
+			_, err = db.Update(ctx, id, v, rec.Revision())
+		}
+		if errors.Is(err, yuruidb.ErrConflict) || errors.Is(err, yuruidb.ErrAlreadyExists) {
+			continue
+		}
+		return v, mapErr(err)
+	}
+	return zero, ErrConflict
+}
+
+var errSkip = errors.New("manager: no change")
+
+// list reads every record of a collection.
+func list[T any](ctx context.Context, db *yuruidb.Store) ([]yuruidb.Record[T], error) {
+	var all []yuruidb.Record[T]
+	cursor := ""
+	for {
+		page, err := db.List[T](ctx, yuruidb.ListOptions{Limit: 200, Cursor: cursor})
+		if err != nil {
+			return nil, mapErr(err)
+		}
+		all = append(all, page.Records...)
+		if page.Cursor == "" {
+			return all, nil
+		}
+		cursor = page.Cursor
+	}
+}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// PutLocation adds a location or replaces its settings.
+func (m *Manager) PutLocation(ctx context.Context, l Location) error {
+	if !validName(l.Name) {
+		return fmt.Errorf("%w: location name %q", ErrInvalid, l.Name)
+	}
+	if l.Fallback != nil && !validName(l.Fallback.Printer) {
+		return fmt.Errorf("%w: fallback printer %q", ErrInvalid, l.Fallback.Printer)
+	}
+	_, err := change(ctx, m.st.db, l.Name, true, func(r *locationRecord) error {
+		*r = locationRecord(l)
+		return nil
+	})
+	return err
+}
+
+// Location returns a location.
+func (m *Manager) Location(ctx context.Context, name string) (*Location, error) {
+	if !validName(name) {
+		return nil, fmt.Errorf("%w: location %q", ErrNotFound, name)
+	}
+	rec, err := m.st.db.Get[locationRecord](ctx, name)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	l := Location(rec.Data)
+	l.Name = name
+	return &l, nil
+}
+
+// Locations returns the locations, by name.
+func (m *Manager) Locations(ctx context.Context) ([]Location, error) {
+	recs, err := list[locationRecord](ctx, m.st.db)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Location, len(recs))
+	for i, r := range recs {
+		out[i] = Location(r.Data)
+		out[i].Name = r.ID()
+	}
+	return out, nil
+}
+
+// DeleteLocation removes a location's settings; its slips and devices
+// stay until the location is added again.
+func (m *Manager) DeleteLocation(ctx context.Context, name string) error {
+	rec, err := m.st.db.Get[locationRecord](ctx, name)
+	if err != nil {
+		return mapErr(err)
+	}
+	return mapErr(m.st.db.Delete[locationRecord](ctx, name, rec.Revision()))
+}
+
+// PutPrinter adds a printer or replaces its settings.
+func (m *Manager) PutPrinter(ctx context.Context, p Printer) error {
+	if !validName(p.Name) {
+		return fmt.Errorf("%w: printer name %q", ErrInvalid, p.Name)
+	}
+	if p.Route == "" {
+		p.Route = RouteDirect
+	}
+	if p.Route != RouteDirect && p.Route != RouteBranch {
+		return fmt.Errorf("%w: route %q: direct or branch", ErrInvalid, p.Route)
+	}
+	if err := checkPrinterURL(p.URL); err != nil {
+		return err
+	}
+	_, err := change(ctx, m.st.db, p.Name, true, func(r *printerRecord) error {
+		*r = printerRecord(p)
+		return nil
+	})
+	return err
+}
+
+// Printer returns a printer.
+func (m *Manager) Printer(ctx context.Context, name string) (*Printer, error) {
+	if !validName(name) {
+		return nil, fmt.Errorf("%w: printer %q", ErrNotFound, name)
+	}
+	rec, err := m.st.db.Get[printerRecord](ctx, name)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	p := Printer(rec.Data)
+	p.Name = name
+	return &p, nil
+}
+
+// Printers returns the printers, by name.
+func (m *Manager) Printers(ctx context.Context) ([]Printer, error) {
+	recs, err := list[printerRecord](ctx, m.st.db)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Printer, len(recs))
+	for i, r := range recs {
+		out[i] = Printer(r.Data)
+		out[i].Name = r.ID()
+	}
+	return out, nil
+}
+
+// DeletePrinter removes a printer.
+func (m *Manager) DeletePrinter(ctx context.Context, name string) error {
+	rec, err := m.st.db.Get[printerRecord](ctx, name)
+	if err != nil {
+		return mapErr(err)
+	}
+	return mapErr(m.st.db.Delete[printerRecord](ctx, name, rec.Revision()))
+}
+
+// touch changes a location's state, and its Seq so that its revision
+// changes.
+func (m *Manager) touch(ctx context.Context, loc string, fn func(*locationState)) error {
+	_, err := change(ctx, m.st.db, loc, true, func(s *locationState) error {
+		fn(s)
+		s.Seq++
+		return nil
+	})
+	return err
+}
+
+// nextJob takes the next job number, from 1.
+func (m *Manager) nextJob(ctx context.Context) (int32, error) {
+	var job int32
+	_, err := change(ctx, m.st.db, "next-job", true, func(c *counterRecord) error {
+		if c.Next <= 0 || c.Next == 1<<31-1 {
+			c.Next = 1
+		}
+		job = c.Next
+		c.Next++
+		return nil
+	})
+	return job, err
+}
+
+// Slip returns a slip.
+func (m *Manager) Slip(ctx context.Context, id string) (*Slip, error) {
+	rec, err := m.st.db.Get[slipRecord](ctx, id)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	s := Slip(rec.Data)
+	return &s, nil
+}
+
+// SlipOfJob returns the slip of a job number.
+func (m *Manager) SlipOfJob(ctx context.Context, job int32) (*Slip, error) {
+	if job <= 0 {
+		return nil, ErrNotFound
+	}
+	return m.Slip(ctx, slipID(job))
+}
+
+// changeSlip changes a slip; a change of its state touches its location.
+func (m *Manager) changeSlip(ctx context.Context, id string, fn func(*Slip) error) (*Slip, error) {
+	r, err := change(ctx, m.st.db, id, false, func(r *slipRecord) error {
+		return fn((*Slip)(r))
+	})
+	if err != nil {
+		return nil, err
+	}
+	s := Slip(r)
+	return &s, nil
+}
+
+// Board is what a location's devices show: the open slips, oldest first,
+// and the ended ones still shown, latest first. Rev changes whenever any
+// of them does.
+type Board struct {
+	Location string `json:"location"`
+	Title    string `json:"title"`
+	Rev      string `json:"rev"`
+	Open     []Slip `json:"open"`
+	Ended    []Slip `json:"ended"`
+}
+
+// BoardRev returns the revision of a location's board, which a device
+// compares with the one it has before reading the board again.
+func (m *Manager) BoardRev(ctx context.Context, loc string) (string, error) {
+	rec, err := m.st.db.Get[locationState](ctx, loc)
+	if errors.Is(err, yuruidb.ErrNotFound) {
+		return "0", nil
+	}
+	if err != nil {
+		return "", mapErr(err)
+	}
+	return fmt.Sprintf("%d", rec.Data.Seq), nil
+}
+
+// Board returns a location's board.
+func (m *Manager) Board(ctx context.Context, loc string) (*Board, error) {
+	l, err := m.Location(ctx, loc)
+	if err != nil {
+		return nil, err
+	}
+	b := &Board{Location: loc, Title: or(l.Title, l.Name), Rev: "0", Open: []Slip{}, Ended: []Slip{}}
+	rec, err := m.st.db.Get[locationState](ctx, loc)
+	if errors.Is(err, yuruidb.ErrNotFound) {
+		return b, nil
+	}
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	b.Rev = fmt.Sprintf("%d", rec.Data.Seq)
+	read := func(ids []string) ([]Slip, error) {
+		out := make([]Slip, 0, len(ids))
+		for _, id := range ids {
+			s, err := m.Slip(ctx, id)
+			if errors.Is(err, ErrNotFound) {
+				continue // removed meanwhile
+			}
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, *s)
+		}
+		return out, nil
+	}
+	if b.Open, err = read(rec.Data.Open); err != nil {
+		return nil, err
+	}
+	ended := slices.Clone(rec.Data.Ended)
+	slices.Reverse(ended)
+	if b.Ended, err = read(ended); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+// end moves a slip from a location's open slips to its ended ones.
+func (m *Manager) end(ctx context.Context, s *Slip) error {
+	return m.touch(ctx, s.Location, func(st *locationState) {
+		st.Open = slices.DeleteFunc(st.Open, func(id string) bool { return id == s.ID })
+		if !slices.Contains(st.Ended, s.ID) {
+			st.Ended = append(st.Ended, s.ID)
+		}
+	})
+}
+
+// Open marks a slip opened by a device; a slip opened before stays as it
+// was.
+func (m *Manager) Open(ctx context.Context, id string, by Mark) (*Slip, error) {
+	by.At = m.now()
+	changed := false
+	s, err := m.changeSlip(ctx, id, func(s *Slip) error {
+		if s.State != SlipNew {
+			return errSkip
+		}
+		s.State, s.Opened, changed = SlipOpened, &by, true
+		return nil
+	})
+	if err != nil || !changed {
+		return s, err
+	}
+	return s, m.touch(ctx, s.Location, func(*locationState) {})
+}
+
+// Done marks a slip done.
+func (m *Manager) Done(ctx context.Context, id string, by Mark) (*Slip, error) {
+	by.At = m.now()
+	s, err := m.changeSlip(ctx, id, func(s *Slip) error {
+		if s.State.ended() {
+			return fmt.Errorf("%w: the slip is %s", ErrConflict, s.State)
+		}
+		if s.Opened == nil {
+			s.Opened = &by
+		}
+		s.State, s.Done = SlipDone, &by
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s, m.end(ctx, s)
+}
+
+// Cancel cancels a slip that is not done: it leaves the devices, with a
+// mark that it was canceled.
+func (m *Manager) Cancel(ctx context.Context, id string, by Mark) (*Slip, error) {
+	by.At = m.now()
+	s, err := m.changeSlip(ctx, id, func(s *Slip) error {
+		if s.State.ended() {
+			return fmt.Errorf("%w: the slip is %s", ErrConflict, s.State)
+		}
+		s.State, s.Canceled = SlipCanceled, &by
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s, m.end(ctx, s)
+}
+
+// removeSlip deletes an ended slip and its document.
+func (m *Manager) removeSlip(ctx context.Context, s *Slip) error {
+	if err := m.st.docs.Remove(ctx, s.ID); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
+		return err
+	}
+	rec, err := m.st.db.Get[slipRecord](ctx, s.ID)
+	if err == nil {
+		err = m.st.db.Delete[slipRecord](ctx, s.ID, rec.Revision())
+	}
+	if err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
+		return mapErr(err)
+	}
+	return m.touch(ctx, s.Location, func(st *locationState) {
+		st.Ended = slices.DeleteFunc(st.Ended, func(id string) bool { return id == s.ID })
+		st.Open = slices.DeleteFunc(st.Open, func(id string) bool { return id == s.ID })
+	})
+}
+
+// discard drains and closes what a sender sent past what is read.
+func discard(r io.Reader) { io.Copy(io.Discard, io.LimitReader(r, 1<<20)) }

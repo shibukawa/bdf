@@ -1,0 +1,61 @@
+id: system:popcornweb
+type: system
+title: Popcorn Web — net/http の上の型つきの Web フレームワーク（テンプレート・SQL を生成、コンテナとサーバーレスに同じソースで出す）
+summary: >-
+  github.com/shibukawa/popcornweb（利用者が作成。2026-10-20 にコミット 5af5b03 を読んだ）。ルーティングは net/http の ServeMux、
+  ハンドラーは http.HandlerFunc のままで、.pw.html（型つきのテンプレート）と .pw.sql を Go に生成する。セッション、OIDC と passkey、
+  CSRF、SSE などの型つきのストリーム、WebSocket、S3 互換のオブジェクトストレージ、OpenTelemetry を持ち、pw build の --target で
+  Lambda（Web Adapter）、Azure Functions、Cloud Run functions、Vercel、Cloudflare Workers に出せる。requirement:print-manager の
+  Web の土台（2026-10-20 利用者の指定）。
+lifecycle: active
+authority: observed
+aliases:
+- popcornweb
+- Popcorn Web
+- pw
+facts:
+  module: github.com/shibukawa/popcornweb。Go 1.27 以上。アプリは github.com/shibukawa/popcornweb/pw を import する。TinyGo でもコンパイルできる作り（生成した道筋に反射を使わない）
+  routing: pw.ServeMux は net/http.ServeMux の型の別名。ミドルウェアは func(http.Handler) http.Handler。既存の http.Handler をそのまま載せられる
+  project: popcornweb.toml のあるディレクトリがプロジェクト。pw generate が _pw_gen.go を書く（git に入れない）。pw dev が生成・移行・ビルド・再起動を回す
+  config: 型つきの設定。TOML と環境変数、環境ごと（config.dev.toml・config.prod.toml）。Workers では TOML を読まず、ビルドが環境変数に展開する
+  sessions: Shared・ReadOnly はクッキー、Private・ServerOnly はストア。backend cookie は何も保存しない（ストア無しで動く）。トークンのクッキーは 256 ビットの乱数でストアの鍵はその SHA-256。keyring の秘密で封と署名
+  auth: OIDC（Authorization Code と PKCE）、WebAuthn の passkey、jwt_only（bearer を確かめるだけ）
+  realtime: 型つきのストリーム（SSE・NDJSON・JSON の配列をクライアントが選ぶ）、live rendering、signals、WebSocket
+  storage:
+    rdb: .pw.sql の型つきの SQL。SQLite、PostgreSQL、MySQL・MariaDB。Workers では D1
+    nosql: .pw.dynamo（DynamoDB）と Firestore
+    object: storage.Open(名前) で Get・Head・Put・Delete・List・Presign。backend は local・s3（tinygodriver の storage/s3。SDK なしの SigV4）・r2（Workers の binding）
+    object_lock: storage と tinygodriver の S3 に Object Lock の見出し（retention・legal hold）を渡す口は無い（2026-10-20 に grep で確かめた）
+    body_limit: server.max_request_body の既定は 10 MiB
+  serverless:
+    process_hosts: PORT のコンテナ（Cloud Run services、App Runner、Container Apps）が第一候補
+    lambda: main を変えず AWS Lambda Web Adapter を extensions に入れる。Function URL・API Gateway・ALB、buffered と response streaming
+    azure_functions: custom handler の HTTP 転送だけ。Queue trigger などの非 HTTP の束縛は対象外
+    source_targets: Vercel Go と Cloud Run functions は生成した source tree をリモートでビルドする
+    cloudflare_workers: Wasm（TinyGo か Go）。ファイルシステム無し、要求ごとに instantiate、プロセスの状態は残らない。local と s3 の storage を断り r2 だけ。最初の書き込みの前に本文を読み切る。ホストの Go の ServeMux の method 付きパターンは TinyGo が照合できない
+    limits: Functions のホストは応答を buffer し、実行時間を限り、idle を凍らせ、一時のストレージしか無いことがある。別のインスタンスに届く要求のセッションと rate limit には共有のストアが要る
+    non_http: 非 HTTP の trigger（キュー、タイマーのイベント）は対応しない。定期の処理はスケジューラから HTTP で叩く形になる
+  yuruidb: popcornweb の中に yuruidb を使うところは無い（grep）。yuruidb はアプリの側で import して使う
+  dependencies: tinygodriver v1.2.12、tinybind-go、syumai/workers ほか（go.mod）。bdf は tinygodriver v1.3.5 を既に使う
+  in_bdf_module:
+    project_root: pw はプロジェクトの直下に go.mod を求める（v0.5.12 でも同じ）。bdf では popcornweb.toml をリポジトリの直下に置き、[generate] の各項目を cmd/printmanager/handlers だけにしている
+    assets_v0_5_12: 'v0.5.12（2026-10-21、bdf の依頼を受けた popcornweb PR 3）で [assets] public・derived・embed を popcornweb.toml に書ける。bdf は cmd/printmanager/public・cmd/printmanager/dist/public・cmd/printmanager/public.go（package main、//go:embed all:dist/public）。manifest（public_manifest_pw_gen.go）は public.go の隣、manifest.json・routes.json・キャッシュは dist の下'
+    generated: '*_pw_gen.go、dist/public（gz・br・zstd の副ファイルを含む 156 KB）、public_manifest_pw_gen.go をコミットする。bdf の go build と go test は生成を走らせないため。CI は tailwindcss で CSS を作り、pw generate を走らせ、cmd/printmanager に差分が無いことを見る。作り直しは決定的（2 回の md5 が同じ）'
+    dev: 'pw dev は SERVER_PUBLIC_LOCAL_ROOT（server.public.local_root）に derived の場所を渡し、/public を作った木から配る。public の編集は数秒で反映。v0.5.12 は作った木に無いとき埋め込みの木に戻り、木が無ければ起動時に 1 度警告する'
+    build_target: 'v0.5.12 で pw build --target=lambda が通る。config.prod.toml は有るときだけ同梱し、無ければ Dockerfile に COPY を書かない。bdf の手書きの Dockerfile は消した（pw の成果物は .pw/build/lambda/nethttp、linux/amd64）'
+    config: '[]string の default はカンマ区切り（v0.5.12 で配列風の既定は生成で断られる）。アプリの資源を開く前に pw.ParseConfig と pw.RunFrameworkAction（v0.5.12 で pw に出た）'
+    csrf_cors_defaults: 'v0.5.11 では CSRF の include と CORS の include・allowed_methods・allowed_headers・exposed_headers の既定が配列の文字列のまま 1 つの値になり、CSRF を有効にすると起動しなかった（2026-10-21 再現）。v0.5.12 で直った'
+    feedback: '2026-10-21 の依頼文 knowledge-inputs/print-plan/popcornweb-public-assets-request.md は v0.5.12 で答えられた（Ask 1〜3 と補足）。bdf の /static/ の自前の配信と手書きの Dockerfile は消した'
+relations:
+- relation: informs
+  to: requirement:print-manager
+- relation: related_to
+  to: system:yuruidb
+history:
+  read:
+    summary: 2026-10-20 利用者「ウェブフレームワークには https://github.com/shibukawa/popcornweb これを利用して欲しい」。README と docs（serverless、object-storage、session-storage）と go.mod を読んだ（コミット 5af5b03）
+  used-in-pm-1:
+    summary: 2026-10-21 pm-1 で v0.5.11 を bdf の go.mod に入れて cmd/printmanager を作った。facts.in_bdf_module に分かったことを書いた（milestone:pm-1）
+  v0-5-12:
+    summary: 2026-10-21 利用者「popcornweb 0.5.12 がリリースされて修正が入りました。これを使ってみてください」。[assets] で cmd/printmanager の下に公開の木を置き、/public で配り、pw build --target=lambda を使う形に移った。pw dev・本番の形・作り直しの決定性を確かめた
+
