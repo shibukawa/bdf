@@ -4,7 +4,9 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,10 +49,44 @@ func TestApp(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, string(b)
 	}
-	for path, want := range map[string]string{"/": "/tablet", "/tablet": "/public/tablet.js", "/admin": "/public/admin.js"} {
+	for path, want := range map[string]string{"/": `action="/login"`, "/tablet": "/public/tablet.js"} {
 		code, body := get(path, "")
 		if code != http.StatusOK || !strings.Contains(body, want) {
 			t.Errorf("%s: %d, no %s", path, code, want)
+		}
+	}
+	// the pages of people need a sign-in: they send to the top
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	for _, path := range []string{"/jobs", "/admin", "/audit"} {
+		res, err := noRedirect.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/" {
+			t.Errorf("%s without a session: %d %s", path, res.StatusCode, res.Header.Get("Location"))
+		}
+	}
+	// signed in with the admin token, the pages open
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	res, err := c.PostForm(srv.URL+"/login", url.Values{"token": {"t"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/jobs" {
+		t.Fatalf("login: %d %s", res.StatusCode, res.Header.Get("Location"))
+	}
+	for path, want := range map[string]string{"/jobs": "/public/jobs.js", "/admin": "/public/admin.js", "/audit": "/public/audit.js"} {
+		res, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK || !strings.Contains(string(b), want) || !strings.Contains(string(b), "Sign out") {
+			t.Errorf("%s signed in: %d, no %s", path, res.StatusCode, want)
 		}
 	}
 	// the manager's API is mounted
@@ -59,5 +95,19 @@ func TestApp(t *testing.T) {
 	}
 	if code, body := get("/api/locations", "t"); code != http.StatusOK || strings.TrimSpace(body) != "[]" {
 		t.Errorf("api: %d %s", code, body)
+	}
+	// the endpoints and the IPP server are mounted too: the manager
+	// answers (JSON), not the framework's page
+	for _, path := range []string{"/in/nowhere", "/ipp/print"} {
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader("{}"))
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode == http.StatusOK || !strings.Contains(string(b), "error") && !strings.Contains(string(b), "IPP") {
+			t.Errorf("%s: %d %s", path, res.StatusCode, b)
+		}
 	}
 }

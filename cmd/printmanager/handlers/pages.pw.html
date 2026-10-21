@@ -6,7 +6,7 @@ package handlers
 // in a Shell.
 component Shell(title: string, children: html): html {
   <!doctype html>
-  <html lang="ja">
+  <html lang="en">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -19,80 +19,154 @@ component Shell(title: string, children: html): html {
   </html>
 }
 
-// AppBar is the bar at the top of a page; its children go to its end
-// (the place of a login, later).
-component AppBar(title: string, children: html?): html {
+// AppBar is the bar at the top of a page: the pages of the person signed
+// in (admin: the administrator's too) and the way out; its children go
+// before them.
+component AppBar(title: string, name: string, admin: bool, children: html?): html {
   <header class="navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm">
     <div class="flex-1 min-w-0">
-      <a href="/" class="text-xl font-bold tracking-tight">{title}</a>
+      <a href="/jobs" class="text-xl font-bold tracking-tight">{title}</a>
     </div>
-    <div class="flex flex-wrap items-center gap-2"><slot /></div>
+    <nav class="flex flex-wrap items-center gap-2">
+      <slot />
+      <a href="/jobs" class="btn btn-sm btn-ghost">Jobs</a>
+      {if admin}
+        <a href="/admin" class="btn btn-sm btn-ghost">Admin</a>
+        <a href="/audit" class="btn btn-sm btn-ghost">Audit</a>
+      {/if}
+      <form method="post" action="/logout" class="contents">
+        <button type="submit" class="btn btn-sm btn-outline">Sign out <span class="font-mono text-xs opacity-70">{name}</span></button>
+      </form>
+    </nav>
   </header>
 }
 
-export component Home(): html {
+// Login is the top page: a sign-in.
+export component Login(failed: bool): html {
   <Shell title="BDF Print Manager">
-    <AppBar title="BDF Print Manager"></AppBar>
-    <main class="mx-auto max-w-4xl p-4 sm:p-8">
-      <section class="hero rounded-box bg-base-100 py-10 shadow-sm">
-        <div class="hero-content text-center">
-          <div class="max-w-xl">
-            <h1 class="text-3xl font-bold sm:text-4xl">倉庫の伝票を、紙でなく端末に</h1>
-            <p class="py-4 text-base-content/70">倉庫ごとの仮想プリンタに刷られた伝票を、登録した端末だけに見せます。だれも開かなければ、その倉庫のプリンタに刷ります。</p>
-            <div class="flex flex-wrap justify-center gap-3">
-              <a href="/tablet" class="btn btn-primary btn-lg">端末の画面</a>
-              <a href="/admin" class="btn btn-lg">管理</a>
-            </div>
-          </div>
-        </div>
-      </section>
-      <div class="mt-6 grid gap-4 sm:grid-cols-2">
-        <div class="card bg-base-100 shadow-sm">
-          <div class="card-body">
-            <h2 class="card-title">端末</h2>
-            <p class="text-base-content/70">タブレットで端末の画面を開き、管理者が出した登録コードで登録します。登録した端末だけが伝票を見られます。</p>
-          </div>
-        </div>
-        <div class="card bg-base-100 shadow-sm">
-          <div class="card-body">
-            <h2 class="card-title">送る側</h2>
-            <p class="text-base-content/70">IPP のプリンタ <code class="font-mono text-sm">/ipp/print/&lt;場所&gt;</code> か、API の <code class="font-mono text-sm">POST /api/locations/&lt;場所&gt;/slips</code> に送ります。</p>
-          </div>
-        </div>
+    <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center p-4">
+      <div class="card bg-base-100 shadow-md">
+        <form method="post" action="/login" class="card-body gap-4">
+          <h1 class="card-title text-2xl">BDF Print Manager</h1>
+          <p class="text-base-content/70">A software-defined document network: documents enter at virtual printers and API endpoints, flow through the nodes you compose, and end on display boards, printers and archives.</p>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Token</legend>
+            <input name="token" type="password" autocomplete="current-password" class="input w-full" placeholder="admin token, or name:secret" required autofocus>
+            <p class="label">An administrator signs in with the admin token; a user with a submit token's name and secret.</p>
+          </fieldset>
+          {if failed}
+            <div role="alert" class="alert alert-error">The token is not known.</div>
+          {/if}
+          <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+          <a href="/tablet" class="link link-hover text-center text-sm text-base-content/60">This is a display board's device</a>
+        </form>
       </div>
     </main>
   </Shell>
 }
 
+// Jobs is a person's page: their jobs, and printing a document to a
+// node. An administrator sees every job.
+export component Jobs(name: string, admin: bool): html {
+  <Shell title="Jobs · BDF Print Manager">
+    <AppBar title="BDF Print Manager" name={name} admin={admin}></AppBar>
+    <main class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
+      <section class="card bg-base-100 shadow-sm">
+        <form id="print-form" class="card-body">
+          <h2 class="card-title">Print a document</h2>
+          <p class="text-sm text-base-content/60">PDF, Office documents, images and .bdf. It flows from the node chosen.</p>
+          <div class="flex flex-wrap gap-2">
+            <select id="print-dest" class="select w-full sm:w-64" required></select>
+            <input id="print-file" type="file" class="file-input w-full sm:flex-1" required>
+            <input id="print-name" class="input w-full sm:w-48" placeholder="job name (the file's)">
+            <button type="submit" class="btn btn-primary">Print</button>
+          </div>
+        </form>
+      </section>
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="card-title">{if admin}All jobs{else}My jobs{/if}</h2>
+            <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>User</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead>
+              <tbody id="jobs"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+    <div id="toasts" class="toast toast-end z-50"></div>
+    <script type="module" src="/public/jobs.js"></script>
+  </Shell>
+}
+
+// Audit is the administrator's page of who did what.
+export component Audit(name: string): html {
+  <Shell title="Audit · BDF Print Manager">
+    <AppBar title="BDF Print Manager" name={name} admin={true}></AppBar>
+    <main class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="card-title">Audit log</h2>
+            <span class="text-sm text-base-content/60">Sign-ins, changes of the topology, keys and templates, devices, what people did in inboxes, and cancellations. Newest first.</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Subject</th><th>Detail</th></tr></thead>
+              <tbody id="audit"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="card-title">Recent jobs and their routes</h2>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>User</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead>
+              <tbody id="jobs"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/public/audit.js"></script>
+  </Shell>
+}
+
 export component Tablet(): html {
-  <Shell title="伝票">
+  <Shell title="Display board">
     <div id="app" class="min-h-screen">
       <header id="bar" class="navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm">
         <div class="flex min-w-0 flex-1 items-center gap-3">
-          <h1 id="title" class="truncate text-2xl font-bold">伝票</h1>
+          <h1 id="title" class="truncate text-2xl font-bold">Display board</h1>
           <span id="status" class="badge" hidden></span>
         </div>
         <label class="input input-lg w-full sm:w-56">
-          <span class="label">作業者</span>
-          <input id="worker" autocomplete="off" placeholder="名前">
+          <span class="label">Worker</span>
+          <input id="worker" autocomplete="off" placeholder="name">
         </label>
       </header>
 
       <section id="enroll" class="mx-auto max-w-lg p-4 sm:p-8" hidden>
         <div class="card bg-base-100 shadow-md">
           <div class="card-body gap-4">
-            <h2 class="card-title text-2xl">この端末を登録する</h2>
-            <p class="text-base-content/70">管理者が出した登録コードを入れてください。登録した端末だけが伝票を見られます。</p>
+            <h2 class="card-title text-2xl">Enroll this device</h2>
+            <p class="text-base-content/70">Enter the enrollment code an administrator made. Only enrolled devices see the documents of their display.</p>
             <form id="enroll-form" class="flex flex-col gap-4">
               <fieldset class="fieldset">
-                <legend class="fieldset-legend text-base">登録コード</legend>
+                <legend class="fieldset-legend text-base">Enrollment code</legend>
                 <input id="code" class="input input-lg w-full font-mono tracking-widest uppercase" autocomplete="off" autocapitalize="characters" required>
               </fieldset>
               <fieldset class="fieldset">
-                <legend class="fieldset-legend text-base">端末の名前</legend>
-                <input id="device-name" class="input input-lg w-full" autocomplete="off" placeholder="例: 出荷口のタブレット">
+                <legend class="fieldset-legend text-base">Device name</legend>
+                <input id="device-name" class="input input-lg w-full" autocomplete="off" placeholder="e.g. tablet at the shipping dock">
               </fieldset>
-              <button type="submit" class="btn btn-primary btn-lg btn-block">登録する</button>
+              <button type="submit" class="btn btn-primary btn-lg btn-block">Enroll</button>
             </form>
             <div id="enroll-error" role="alert" class="alert alert-error" hidden></div>
           </div>
@@ -101,21 +175,21 @@ export component Tablet(): html {
 
       <section id="board" class="mx-auto max-w-5xl p-4" hidden>
         <div role="tablist" class="tabs tabs-box tabs-lg w-full sm:w-fit">
-          <button id="tab-open" role="tab" class="tab tab-active flex-1 sm:flex-none" type="button">未完了 <span id="open-count" class="badge badge-warning ml-2" hidden></span></button>
-          <button id="tab-ended" role="tab" class="tab flex-1 sm:flex-none" type="button">完了・取り消し</button>
+          <button id="tab-open" role="tab" class="tab tab-active flex-1 sm:flex-none" type="button">Open <span id="open-count" class="badge badge-warning ml-2" hidden></span></button>
+          <button id="tab-ended" role="tab" class="tab flex-1 sm:flex-none" type="button">Done and canceled</button>
         </div>
         <ul id="open-list" class="mt-4 grid gap-3"></ul>
         <ul id="ended-list" class="mt-4 grid gap-3" hidden></ul>
-        <div id="empty" class="mt-16 text-center text-xl text-base-content/50" hidden>伝票はありません</div>
+        <div id="empty" class="mt-16 text-center text-xl text-base-content/50" hidden>No documents</div>
       </section>
 
       <section id="viewer" hidden>
         <div class="navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm">
-          <button id="back" type="button" class="btn btn-lg btn-ghost">← 一覧</button>
+          <button id="back" type="button" class="btn btn-lg btn-ghost">← Board</button>
           <span id="viewer-title" class="min-w-0 flex-1 truncate text-lg font-semibold"></span>
           <div class="flex gap-2">
-            <button id="print" type="button" class="btn btn-lg btn-outline" hidden>この倉庫で刷る</button>
-            <button id="done" type="button" class="btn btn-lg btn-success">完了</button>
+            <button id="print" type="button" class="btn btn-lg btn-outline" hidden>Print here</button>
+            <button id="done" type="button" class="btn btn-lg btn-success">Done</button>
           </div>
         </div>
         <div id="pages" class="mx-auto grid max-w-5xl gap-4 p-4"></div>
@@ -127,51 +201,129 @@ export component Tablet(): html {
   </Shell>
 }
 
-export component Admin(): html {
-  <Shell title="管理 · BDF Print Manager">
-    <AppBar title="BDF Print Manager · 管理">
-      <button id="tick" type="button" class="btn btn-sm">今すぐ tick</button>
+export component Admin(name: string): html {
+  <Shell title="Admin · BDF Print Manager">
+    <AppBar title="BDF Print Manager" name={name} admin={true}>
+      <button id="tick" type="button" class="btn btn-sm">Tick now</button>
     </AppBar>
-    <main id="admin" class="mx-auto grid max-w-6xl gap-6 p-4 sm:p-6">
+    <main id="admin" class="mx-auto grid max-w-7xl gap-6 p-4 sm:p-6">
+
       <section class="card bg-base-100 shadow-sm">
-        <form id="token-form" class="card-body">
-          <h2 class="card-title">管理のトークン</h2>
-          <div class="join w-full max-w-xl">
-            <input id="token" type="password" autocomplete="off" class="input join-item w-full" placeholder="MANAGER_ADMIN_TOKEN">
-            <button type="submit" class="btn btn-primary join-item">使う</button>
+        <div class="card-body">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="card-title">Topology</h2>
+            <span class="text-sm text-base-content/60">Drag a node to move it. Drag from a node's right port onto another node to connect them; click an edge to remove it. Click a node to edit it below.</span>
           </div>
-        </form>
+          <div class="overflow-x-auto rounded-box border border-base-300 bg-base-200">
+            <svg id="canvas" class="block select-none touch-none" width="900" height="320" xmlns="http://www.w3.org/2000/svg"></svg>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table table-zebra">
+              <thead><tr><th>Node</th><th>Kind</th><th>Edges</th><th>Settings</th><th></th></tr></thead>
+              <tbody id="topology"></tbody>
+            </table>
+          </div>
+          <form id="node-form" class="mt-2 grid gap-2 sm:grid-cols-6">
+            <select id="node-kind" class="select sm:col-span-1">
+              <option value="endpoint">Endpoint (API entry)</option>
+              <option value="queue">Queue (fan-out)</option>
+              <option value="class">Class (one member)</option>
+              <option value="inbox">Inbox (held for a person)</option>
+              <option value="archive">Archive (written once)</option>
+            </select>
+            <input id="node-name" class="input sm:col-span-2" placeholder="name (intake, both, tokyo, review, audit)" required>
+            <input id="node-title" class="input sm:col-span-3" placeholder="title">
+            <input id="node-to" class="input sm:col-span-3" placeholder="forwards to (comma-separated): wh-a, wh-b">
+            <select id="node-policy" class="select sm:col-span-1" hidden>
+              <option value="round-robin">in turn (round-robin)</option>
+              <option value="failover">first member (failover)</option>
+            </select>
+            <input id="node-templates" class="input sm:col-span-2" placeholder="templates it fills (comma-separated; empty: any)" hidden>
+            <input id="node-keep" class="input sm:col-span-1" placeholder="keep (14d)" hidden>
+            <input id="node-store" class="input sm:col-span-3" placeholder="store: s3://bucket?region=… / bbolt:path" hidden>
+            <input id="node-collection" class="input sm:col-span-2" placeholder="collection (optional)" hidden>
+            <button type="submit" class="btn btn-primary sm:col-span-1">Add or update</button>
+          </form>
+        </div>
       </section>
 
       <section class="card bg-base-100 shadow-sm">
         <div class="card-body">
-          <h2 class="card-title">プリンタ</h2>
+          <h2 class="card-title">Templates</h2>
+          <p class="text-sm text-base-content/60">A compiled template (.bdft), or one of Excel, Word, PowerPoint, a PDF form, pdfme or text. An endpoint fills one with the data it is sent: <code class="font-mono">POST /in/&lt;endpoint&gt;</code> with <code class="font-mono">&#123;"template": "id", "data": &#123;…&#125;&#125;</code>.</p>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>Id</th><th>Format</th><th>Fields</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
+              <tbody id="templates"></tbody>
+            </table>
+          </div>
+          <form id="template-form" class="mt-2 flex flex-wrap gap-2">
+            <input id="template-id" class="input w-full sm:w-48" placeholder="id (invoice)" required>
+            <input id="template-file" type="file" class="file-input w-full sm:flex-1" required>
+            <button type="submit" class="btn btn-primary">Upload</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="inboxes" class="grid gap-4"></section>
+
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <div class="flex flex-wrap items-center gap-3">
+            <h2 class="card-title">Jobs</h2>
+            <select id="jobs-dest" class="select select-sm"></select>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>No.</th><th>Name</th><th>User</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead>
+              <tbody id="jobs"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="card-title">Deliveries waiting</h2>
+          <div class="overflow-x-auto">
+            <table class="table table-sm">
+              <thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead>
+              <tbody id="deliveries"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <h2 class="card-title">Printers</h2>
           <div class="overflow-x-auto">
             <table class="table table-zebra">
-              <thead><tr><th>名前</th><th>URL</th><th>経路</th><th></th></tr></thead>
+              <thead><tr><th>Name</th><th>URL</th><th>Route</th><th></th></tr></thead>
               <tbody id="printers"></tbody>
             </table>
           </div>
           <form id="printer-form" class="mt-2 flex flex-wrap gap-2">
-            <input id="printer-name" class="input w-full sm:w-48" placeholder="名前 (wh-a-laser)" required>
+            <input id="printer-name" class="input w-full sm:w-48" placeholder="name (wh-a-laser)" required>
             <input id="printer-url" class="input w-full sm:flex-1" placeholder="ipps://… / socket://…:9100" required>
-            <button type="submit" class="btn btn-primary">追加・更新</button>
+            <button type="submit" class="btn btn-primary">Add or update</button>
           </form>
         </div>
       </section>
 
       <section class="grid gap-4">
-        <h2 class="text-xl font-bold">場所</h2>
+        <h2 class="text-xl font-bold">Displays</h2>
+        <p class="-mt-2 text-sm text-base-content/60">A display shows its jobs on the devices enrolled there (tablets, screens), and can print on paper what nobody opened in time.</p>
         <div id="locations" class="grid gap-4 lg:grid-cols-2"></div>
         <form id="location-form" class="card bg-base-100 shadow-sm">
           <div class="card-body">
-            <h3 class="card-title text-base">場所を追加・更新</h3>
+            <h3 class="card-title text-base">Add or update a display</h3>
             <div class="flex flex-wrap gap-2">
-              <input id="location-name" class="input w-full sm:w-40" placeholder="名前 (wh-a)" required>
-              <input id="location-title" class="input w-full sm:w-48" placeholder="表示名 (第 1 倉庫)">
-              <input id="location-printer" class="input w-full sm:w-48" placeholder="紙に逃がすプリンタ">
-              <input id="location-after" class="input w-full sm:w-28" placeholder="何分で (10m)">
-              <button type="submit" class="btn btn-primary">追加・更新</button>
+              <input id="location-name" class="input w-full sm:w-40" placeholder="name (wh-a)" required>
+              <input id="location-title" class="input w-full sm:w-48" placeholder="title (Warehouse A)">
+              <input id="location-printer" class="input w-full sm:w-48" placeholder="fallback printer">
+              <input id="location-after" class="input w-full sm:w-28" placeholder="after (10m)">
+              <button type="submit" class="btn btn-primary">Add or update</button>
             </div>
           </div>
         </form>
@@ -180,16 +332,28 @@ export component Admin(): html {
 
     <dialog id="enroll-modal" class="modal">
       <div class="modal-box max-w-md text-center">
-        <h3 class="text-lg font-bold">端末の登録コード</h3>
+        <h3 class="text-lg font-bold">Enrollment code</h3>
         <div id="qr" class="qr mx-auto my-4 size-56 rounded-box bg-white p-2"></div>
         <p id="enroll-code" class="font-mono text-4xl font-bold tracking-widest"></p>
         <p class="mt-3 break-all"><a id="enroll-url" class="link link-primary"></a></p>
         <p id="enroll-expires" class="mt-2 text-sm text-base-content/60"></p>
         <div class="modal-action justify-center">
-          <form method="dialog"><button class="btn">閉じる</button></form>
+          <form method="dialog"><button class="btn">Close</button></form>
         </div>
       </div>
-      <form method="dialog" class="modal-backdrop"><button>閉じる</button></form>
+      <form method="dialog" class="modal-backdrop"><button>Close</button></form>
+    </dialog>
+    <dialog id="key-modal" class="modal">
+      <div class="modal-box max-w-lg">
+        <h3 class="text-lg font-bold">Endpoint key</h3>
+        <p class="mt-2 text-sm text-base-content/70">The key of <span id="key-name" class="font-mono"></span>. It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one.</p>
+        <pre id="key-value" class="mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap"></pre>
+        <p id="key-usage" class="mt-2 font-mono text-xs text-base-content/60 break-all"></p>
+        <div class="modal-action">
+          <form method="dialog"><button class="btn">Close</button></form>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>Close</button></form>
     </dialog>
     <div id="toasts" class="toast toast-end z-50"></div>
     <script type="module" src="/public/admin.js"></script>

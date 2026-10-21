@@ -119,6 +119,7 @@ func (m *Manager) Enroll(ctx context.Context, code, name, key string) (*Device, 
 		return nil, err
 	}
 	m.o.Log.Info("device enrolled", "location", d.Location, "device", id, "name", name)
+	m.audit(ctx, "device:"+id, "enroll", d.Location, name)
 	return &d, nil
 }
 

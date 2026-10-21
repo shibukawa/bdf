@@ -128,6 +128,9 @@ func (e *env) do(c *http.Client, method, path, token string, body any) (*http.Re
 	if err != nil {
 		e.t.Fatal(err)
 	}
+	if _, raw := body.([]byte); body != nil && !raw {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

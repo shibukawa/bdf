@@ -9,7 +9,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.2" # the patch with the fix of GO-2026-6617 and GO-2026-6612/6613, which the runner's cache lacks
+          go-version: "1.27.3" # the patch with the fix of GO-2026-6809 (crypto/x509), after 6617 and 6612/6613, which the runner's cache lacks
       # Go 1.27's unreachable analyzer flags the goto-shaped bodies of the
       # generated codec (image/imgconv/internal/webpw), so that check is off.
       - run: go vet -unreachable=false ./...
@@ -226,7 +226,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
       - name: CUPS, ippeveprinter, Avahi and Ghostscript
         run: |
           sudo apt-get update
@@ -246,7 +246,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27.2"
+          go-version: "1.27.3"
       - run: go vet ./print/... && go test ./print/...
   web:
     if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)

@@ -40,6 +40,15 @@ non_goals:
 - 複数の会社で共有するテナント分離（requirement:print-manager の non_goals のまま）
 - 汎用の認可エンジン（OpenFGA、Cedar など）の導入。役割と持ち主とグループで足りる間は Go の 1 つの判断関数
 facts:
+  pages_and_roles:
+    source: 2026-10-21 利用者「トップページはログイン画面が良い。admin も一般ユーザーの上位互換なので、一般ユーザーとしての画面が表示され、特別な管理者向けページに遷移できてトポロジーの管理（API キー発行とかもふくめて）や監査情報の閲覧ができる。将来的にはトポロジー管理と監査もロールを分けて個別に権限が付与できる様に」
+    now: milestone:pm-4 で / をログイン（管理者トークン、submit トークンの name:secret）、/jobs を利用者の画面（自分のジョブ、ノードへの印刷）、/admin（トポロジー、テンプレート、エンドポイントの鍵、インボックス、送り待ち、場所と端末）と /audit（監査ログ）を管理者だけに。監査ログは print/manager/people.go の audit コレクション
+    roles_planned:
+      user: 自分のジョブを見る・取り消す・刷る（範囲は principals の job_scope）
+      topology-admin: ノード・テンプレート・エンドポイントの鍵・場所・プリンタ・端末の変更
+      auditor: 監査ログと全ジョブの足跡の閲覧（変更はしない）
+      admin: すべて（topology-admin と auditor の上位）
+    note: 役割は OIDC の claim（グループ）から与える（user の groups_from_idp のとおり）。topology-admin と auditor を分けるのは利用者の求め（2026-10-21）
   terminology: >-
     「OIDC クレデンシャルフロー」は OAuth 2.0 の client credentials grant（RFC 6749 4.4）。ID トークンは出ず、人ではなくアプリが主体。
     デバイスフローは OAuth 2.0 Device Authorization Grant（RFC 8628）。どちらも OIDC そのものではなく、同じ認可サーバーの別の grant
