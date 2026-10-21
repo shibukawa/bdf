@@ -94,9 +94,12 @@ func (s *site) login(who string) *browser {
 	return b
 }
 
+// send asks as a browser does for a page (Accept names text/html): the
+// guard sends only such requests to the sign-in, and answers the rest 401.
 func (b *browser) send(method, path string, body []byte, edit func(*http.Request)) (int, string) {
 	b.s.t.Helper()
 	req, _ := http.NewRequest(method, b.s.url+path, bytes.NewReader(body))
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	if edit != nil {
 		edit(req)
 	}
@@ -161,19 +164,28 @@ func TestLogin(t *testing.T) {
 	api("POST", "/api/destinations/wh-b/jobs?name=picking-b", doc(t), "wms:s3cret", http.StatusCreated)
 
 	// nobody signed in: the top page is a sign-in, every other page but
-	// /tablet goes to the IdP
+	// /tablet goes to the IdP when a browser asks for the page, and is 401
+	// to anything else (an icon a browser fetches on its own, a script)
 	if code, body := s.browser().get("/"); code != http.StatusOK || !strings.Contains(body, `href="/auth/login?next=%2Fjobs"`) {
 		t.Errorf("/ signed out: %d %.300s", code, body)
 	}
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	for _, path := range []string{"/jobs", "/admin", "/audit"} {
-		res, err := noRedirect.Get(s.url + path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		res.Body.Close()
-		if res.StatusCode != http.StatusSeeOther || !strings.HasPrefix(res.Header.Get("Location"), "/auth/login") {
-			t.Errorf("%s without a sign-in: %d %s", path, res.StatusCode, res.Header.Get("Location"))
+		for _, accept := range []string{"text/html,*/*;q=0.8", "image/avif,image/webp,*/*"} {
+			req, _ := http.NewRequest("GET", s.url+path, nil)
+			req.Header.Set("Accept", accept)
+			res, err := noRedirect.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			if strings.HasPrefix(accept, "text/html") {
+				if res.StatusCode != http.StatusSeeOther || !strings.HasPrefix(res.Header.Get("Location"), "/auth/login") {
+					t.Errorf("%s without a sign-in: %d %s", path, res.StatusCode, res.Header.Get("Location"))
+				}
+			} else if res.StatusCode != http.StatusUnauthorized {
+				t.Errorf("%s asked for as an image without a sign-in: %d %s", path, res.StatusCode, res.Header.Get("Location"))
+			}
 		}
 	}
 	if code, body := s.browser().get("/tablet"); code != http.StatusOK || !strings.Contains(body, "/public/tablet.js") {

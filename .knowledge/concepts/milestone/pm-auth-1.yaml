@@ -20,6 +20,9 @@ capabilities:
   oidc-login:
     state: implemented
     about: 全員の OIDC ログイン（認可コード + PKCE S256）とサインアウト、AppBar の端に名前
+  sign-in-after-sign-out:
+    state: implemented
+    about: サインアウトの後のサインインは IdP に人を選ばせる（popcornweb の reconfirm：サインインが完了するまで /auth/login に prompt=select_account login）。ブラウザが勝手に取りに来るアイコン（/favicon.ico、Safari の /apple-touch-icon*.png）は 0.5.14 のガードがサインインへ送らず 401。bdf 側は popcornweb を 0.5.14 に上げ、TestSignOutThenChoose で確かめる。2026-10-21 利用者「signout後のsign inはpromptをselect userの様な形にしてユーザーが選択できるようにして欲しい」
   job-scope:
     state: implemented
     about: 送った人・ジョブのグループの人・管理者だけが見る（取り消しは送った人と管理者）。すべてのノードの scope（personal・group・shared）と owner
@@ -53,10 +56,11 @@ non_goals:
 - 文書の読み出し（ページ・ダウンロード）を一般の人に開くこと。見るのは一覧だけ
 acceptance:
   a1-login:
-    text: 誰もログインしていなければ / はサインインのボタン、/jobs・/admin・/audit は IdP へ（/auth/login 経由の 303）。/tablet・/public・/api・/ipp・/in・/device は保護しない。IdP で認証できた人は誰でも入れ（Print Manager に人の登録は要らない）、oidc.allowed（issuer、メールのドメインか hd、グループ）で絞れる。メールが確かめられていない人は管理者のメールでも入らない。サインアウトでセッションが終わる
+    text: 誰もログインしていなければ / はサインインのボタン、/jobs・/admin・/audit は IdP へ（/auth/login 経由の 303）。/tablet・/public・/api・/ipp・/in・/device は保護しない。IdP で認証できた人は誰でも入れ（Print Manager に人の登録は要らない）、oidc.allowed（issuer、メールのドメインか hd、グループ）で絞れる。メールが確かめられていない人は管理者のメールでも入らない。サインアウトでセッションが終わり、次のサインインは IdP が人を選ばせる（IdP が同じ人を黙って通さない）。ページを求めない要求（Safari のアイコンの取得、Accept に text/html の無い curl）は 303 ではなく 401
     verified_by:
     - login-tests
     - browser-roles
+    - sign-out-choose-test
   a2-scope:
     text: 人は自分のジョブとグループのジョブだけを見て（/api/my/jobs、/api/jobs/<n>）、自分が送れるノードだけが出る（/api/destinations）。管理者は全部。画面から送った文書は OIDC の人（via oidc）のジョブになり、送れないノードには 403。グループの人は見られるが取り消せない（403）
     verified_by:
@@ -121,6 +125,14 @@ verification:
     evidence:
       path: cmd/printmanager/handlers/devidp_test.go
       locator: 'pw の開発用の提供者（testutil.WithIdentityProvider）を devidp.toml の roster と config.dev.toml の [oidc] で走らせ、3 人の /admin と送れるノードを確かめる'
+  sign-out-choose-test:
+    state: passed
+    method: integration
+    test: go test -run TestSignOutThenChoose ./cmd/printmanager/handlers
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/devidp_test.go
+      locator: 'pw の開発用の提供者（admin を先に選んだまま）で、サインイン → サインアウト → Safari の 3 つのアイコンの要求（401 で /auth/login へ行かない）→ 始めただけのサインイン 2 つ（別のタブやプリフェッチ）→ 人の /auth/login の Location に prompt=select_account → IdP が選ぶ画面（Ada Admin と Mina Member）→ member を選ぶと /api/me が Mina Member。popcornweb 0.5.12 では落ちる（アイコンの要求が IdP まで行き、最初の 1 つが印を使う）。2026-10-21 macOS で通った'
   real-idp:
     state: not_run
     method: manual
@@ -143,6 +155,7 @@ facts:
   - 'popcornweb：testutil は sqlite・pgx・mysql・goose を引く。バイナリには入らないが go.mod に間接の依存が 20 行増えた'
   - 'popcornweb：pw.WriteHTML は状態を選べない。403 の画面は WriteHeader を差し替える ResponseWriter で'
   - 'サインアウトは logout_scope reconfirm の既定で、次の認可の要求に prompt=select_account login が付く'
+  - '2026-10-21 利用者の Safari でサインアウトの後に選ぶ画面が出なかった。.log の pw dev の記録で、サインアウト直後の /auth/login（441 バイト、prompt 付き）の 2 秒後にもう 1 つ /auth/login（409 バイト、prompt 無し）が来て callback まで進んでいた。Safari は / を開くと /apple-touch-icon-precomposed.png・/apple-touch-icon.png・/favicon.ico を cookie 付きで取りに来て、保護されたパスなので /auth/login へ 303、popcornweb の 1 回きりの reconfirm のクッキー（pw_session_reconfirm、Path=/auth/login）を最初の 1 つが使い、残りは IdP のセッションから黙って通って callback まで進む（人がクリックする前にサインインし直されている。修正を外した TestSignOutThenChoose がそう落ちる）。内蔵ブラウザ（Chromium）は favicon の要求に Lax のクッキーを付けないので再現しなかった。popcornweb 0.5.14（PR 5「An icon fetch no longer spends the reconfirm mark」）で直った：ガードはページを求める要求（Sec-Fetch-Dest: document か Accept の text/html、pw の更新のヘッダ）だけをサインインへ送り他は 401、印はサインインの callback が消す。bdf は go.mod と CI の pw を 0.5.14 に上げ、テストのブラウザは Accept: text/html を送る'
   unverified:
   - '実の IdP（Entra ID、Google Workspace、Keycloak）。グループの claim の形、200 を超えるグループ、alg の無い JWKS'
   - 'Lambda などの複数のインスタンスでのログイン（状態は保存先にあるので通るはず）'
@@ -152,6 +165,7 @@ facts:
   - '見える範囲の一覧は最近のジョブ（500）を読んで絞る（人やグループごとの索引は無い）'
   - 'それまでのジョブの user の欄は読まない（SubmittedBy の無い古いジョブは送った人が無く、グループも無い）'
   - 'サインアウトは popcornweb の /auth/logout が受け、監査ログに書かない'
+  - 'pw dev のバイナリは 0.5.13 のままでもよい（開発用の提供者は 0.5.12 から変わっていない）。アプリは go.mod の 0.5.14 で組まれる'
 relations:
 - relation: implements
   to: requirement:print-manager-auth

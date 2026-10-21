@@ -521,6 +521,10 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	if sub.Name == "" {
 		sub.Name = "document"
 	}
+	// The job is submitted now, before its document is received and
+	// written: a hold until a time a little ahead holds it, however long
+	// the writes take (on a slow disk, longer than the hold).
+	now := s.o.Now()
 	up := sub.Upload
 	if up == nil {
 		var err error
@@ -584,7 +588,6 @@ func (s *Spool) Submit(ctx context.Context, sub Submission) (Job, error) {
 	if _, err := s.st.putDoc(ctx, key, f); err != nil {
 		return Job{}, err
 	}
-	now := s.o.Now()
 	if sub.Ticket.JobName == "" {
 		sub.Ticket.JobName = sub.Name
 	}
