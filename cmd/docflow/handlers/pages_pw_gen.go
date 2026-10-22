@@ -183,7 +183,7 @@ var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 	planTopologyOps.Static(" <div class=\"join\"> <button id=\"zoom-out\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom out\">−</button> <button id=\"zoom-fit\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Fit the topology in the view\">Fit</button> <button id=\"zoom-in\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom in\">+</button> </div> "),
 	planTopologyOps.If(func(p TopologyParams) bool { return p.Account.Topology },
 		[]htmlbind.Op[TopologyParams]{
-			planTopologyOps.Static(" <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> "),
+			planTopologyOps.Static(" <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <a href=\"/api/openapi.json\" download=\"docflow.openapi.json\" class=\"btn btn-sm btn-ghost\" title=\"The OpenAPI document of every endpoint and export\">OpenAPI</a> "),
 		},
 		nil),
 	planTopologyOps.Static(" <span id=\"live\" class=\"badge badge-ghost badge-sm\"></span> "),

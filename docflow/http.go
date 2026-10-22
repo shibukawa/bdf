@@ -88,6 +88,9 @@ func Handler(m *Manager) http.Handler {
 	// settings too), as is where it is drawn; its activity is the viewer's
 	mux.HandleFunc("GET /api/topology", h.userOnly(h.topology))
 	mux.HandleFunc("GET /api/kinds", h.userOnly(func(w http.ResponseWriter, r *http.Request, _ *Viewer) { writeJSON(w, http.StatusOK, KindInfos()) }))
+	// the OpenAPI document of the endpoints it publishes (openapi.go): the
+	// viewer's to use
+	mux.HandleFunc("GET "+OpenAPIPath, h.userOnly(h.openAPI))
 	mux.HandleFunc("GET /api/topology/live", h.userOnly(h.live))
 	mux.HandleFunc("GET /api/layout", h.userOnly(func(w http.ResponseWriter, r *http.Request, _ *Viewer) { h.getLayout(w, r) }))
 	mux.HandleFunc("PUT /api/layout", h.adminOnly(h.putLayout))
@@ -236,11 +239,7 @@ func (h *handler) enrollment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.m.audit(r.Context(), h.who(r), "enrollment-code", r.PathValue("name"), "")
-	scheme := "http"
-	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
-		scheme = "https"
-	}
-	u := scheme + "://" + r.Host + h.m.o.TabletPath + "?code=" + e.Code
+	u := origin(r) + h.m.o.TabletPath + "?code=" + e.Code
 	writeJSON(w, http.StatusCreated, struct {
 		*Enrollment
 		URL string `json:"url"`

@@ -29,6 +29,8 @@ curl -X POST -H "Authorization: Bearer bdfk_…" \
 - `X-Meta-<Key>` headers and `?meta.<key>=` parameters are the job's metadata ([Metadata](flow.md#metadata)).
 - The answer is the job (201), with its number and its legs so far. A document of a format the endpoint does not take is refused (415), and the refusal is in the audit log; a wrong key is refused (401).
 
+The endpoint's OpenAPI document — the link OpenAPI in its sidebar, or `GET /api/openapi.json?node=<name>` — says what it takes: the media types, the schema of the data its templates fill, and the metadata the nodes after it look at ([OpenAPI](api.md#openapi)).
+
 With a `port`, a process listens on that port too, and every POST to it is to this endpoint: for an application that cannot set a path. A serverless deployment has no ports.
 
 ## CUPS server nodes {#cups}

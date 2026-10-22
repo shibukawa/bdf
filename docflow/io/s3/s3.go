@@ -54,7 +54,8 @@ const DefaultPath = "{{meta.$job}}/{{meta.$name}}"
 
 func init() {
 	docflow.RegisterKind(docflow.Kind{Name: KindS3, Title: "S3", Role: docflow.RoleExit, Check: checkS3, Send: send})
-	docflow.RegisterKind(docflow.Kind{Name: KindTrigger, Title: "S3 Trigger", Role: docflow.RoleEntry, PassesOn: true, Keyed: true, Check: checkTrigger, Fetch: fetch})
+	docflow.RegisterKind(docflow.Kind{Name: KindTrigger, Title: "S3 Trigger", Role: docflow.RoleEntry, PassesOn: true, Keyed: true, Check: checkTrigger, Fetch: fetch,
+		FetchSchema: refSchema})
 }
 
 func checkS3(ctx context.Context, m *docflow.Manager, in docflow.Node, n *docflow.Node) error {

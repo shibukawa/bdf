@@ -319,6 +319,7 @@ export component Topology(account: Account): html {
             </div>
             {if account.topology}
               <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
+              <a href="/api/openapi.json" download="docflow.openapi.json" class="btn btn-sm btn-ghost" title="The OpenAPI document of every endpoint and export">OpenAPI</a>
             {/if}
             <span id="live" class="badge badge-ghost badge-sm"></span>
             {if account.topology}

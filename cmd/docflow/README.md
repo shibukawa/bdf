@@ -111,7 +111,12 @@ the scope `jobs.cancel`, cancels its own jobs. The scopes are `print`,
 it: [help/en/exports.md](help/en/exports.md)), `tick` (a scheduler's) and `admin` (a
 script's: the API as an administrator). An app's jobs are its `group`'s
 when the destination gives them none. Disabling an app refuses its
-credentials and the tokens out.
+credentials and the tokens out. `GET /api/openapi.json` is the OpenAPI
+3.1 document of what the topology publishes, made of it as it is: the
+endpoints (the formats they take, the JSON Schema of the data their
+templates fill, the metadata the nodes after them look at) and the
+exports; an app reads the ones that list it, `?node=` narrows it
+([help/en/api.md](help/en/api.md#openapi)).
 
 A **public client** is a frontend of one's own in people's browsers (a
 customer portal, a single-page app on another origin): registered with

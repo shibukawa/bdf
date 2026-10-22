@@ -887,6 +887,8 @@ function extras(n, aside) {
   if (n.kind !== "export") row.append(el("a", "Jobs sent here", { className: "link", href: "/admin/jobs?dest=" + encodeURIComponent(n.name) }));
   if (n.kind === "inbox") row.append(el("a", `${n.held || 0} held: open the inbox`, { className: "link", href: "/admin/inboxes" }));
   if (n.pending) row.append(el("a", `${n.pending} deliveries waiting`, { className: "link", href: "/admin/deliveries" }));
+  // what an entry or an export publishes, for an application's developer
+  if (n.in || n.kind === "export") row.append(el("a", "OpenAPI", { className: "link", href: "/api/openapi.json?node=" + encodeURIComponent(n.name), download: n.name + ".openapi.json" }));
   links.append(row);
   aside.append(links);
   if (n.kind === "endpoint") {

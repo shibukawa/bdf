@@ -88,6 +88,9 @@ type Kind struct {
 	// (an S3 event), and reads the document it names; none, the body is
 	// the document.
 	Fetch func(ctx context.Context, o *Fetch) (*Fetched, error)
+	// FetchSchema is the JSON Schema of the reference Fetch reads, for the
+	// OpenAPI document (openapi.go); none, any JSON object.
+	FetchSchema map[string]any
 
 	// route takes a job that reaches a node of a core kind; a kind with
 	// none sends to an exit (Send), or forwards along To.
