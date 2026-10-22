@@ -1,0 +1,48 @@
+id: requirement:data-tables
+type: requirement
+title: データ表（描かれない表）: グラフの系列・CSV・Parquet・Excel の値を Parquet の Part で持つ
+summary: 描画とは別に、表としての値（列名・型・行）を Part `table`（Apache Parquet）で持ち、manifest の `tables` で一覧し、MARK DATA で図と結ぶ。bdf tables / bdf table、wasm、Markdown の表の書き出しまで。2026-10-22 の提案（knowledge-inputs/data-tables/design.ja.md）。
+lifecycle: proposed
+authority: authored
+aliases:
+- hidden tables
+- data tables
+- bdf tables
+constraints:
+- wire format 1.0 の互換を保つ。tables は任意メンバー、table は知らない Part type、DATA は知らない MARK kind として v1 の読み手に無視される
+- 表の中身は Apache Parquet そのもの。BDF の書き手が作る表は平坦なスカラー列・PLAIN・UNCOMPRESSED。入力が Parquet ならそのファイルをそのまま
+- 検索用テキストには入れない（描かれた文字と重なる）
+facts:
+  storage:
+    part: "t: table（application/vnd.apache.parquet）"
+    manifest: "tables: [{id, title, part, rows, columns: [{name, type}], view, page}]"
+    types: string / number / integer / boolean / date / datetime / other
+    mark: "MARK kind 14 DATA（payload: 表の id）。FIGURE の直後に置く。区切りに影響しない"
+    limits: tables 65536、columns 16384。取り出しは行数と大きさを制限できる
+  producers:
+    charts: drawingml のグラフ 1 つに 1 表（横持ち / 縦持ち / 散布図）。表があれば代替テキストは「種類: 題」だけ
+    csv: 全行。1 行目のヘッダー判定、型の推定
+    parquet: 入力ファイルそのまま
+    xlsx: シートごとの使用範囲（列名 A, B…）と ListObject のテーブル
+    defaults: 64 MiB・1,048,576 行まで。-param table=none / all
+  api:
+    go: bdf.Table、Document.AddTable / Tables、Reader.Table、encoding/parquet（Write / Schema / Read）、converter/parquet.ReadTable
+    cli: bdf tables、bdf table -format csv|json|parquet、bdf markdown -tables inline|files|none
+    wasm: tables、table
+    ts: Manifest.tables、TextNode.data
+  markdown: DATA のある図は代替テキストの後に GFM の表（100 行まで。超えた分は <id>.csv を隣に）
+  estimate: 約 4 日（encoding/parquet 1、core と spec 0.5、CLI と wasm 0.5、グラフ 0.5、CSV と Parquet 0.5、Excel 1、Markdown 0.5）
+open_questions:
+- 列の型の語彙でよいか
+- 表があるグラフの代替テキストから数値を外すか
+- CSV・Parquet・Excel の既定の上限（64 MiB・1,048,576 行）でよいか
+- Excel の ListObject も出すか
+- encoding/parquet を新設し converter/parquet の読み手を後で寄せる方針でよいか
+- コマンド名 bdf tables / bdf table と Markdown の既定（100 行までインライン）でよいか
+relations:
+- relation: informed_by
+  to: source:data-tables-plan
+- relation: follows
+  to: requirement:markdown-export
+- relation: depends_on
+  to: requirement:markdown-export
