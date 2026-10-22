@@ -934,6 +934,20 @@ BDF v1 の読み手が Go 以外にも書かれる（C の libbdf）ので、「
 
 **まだしないこと**: HP-GL/2 の書き手（CAD の現場の声を待つ。`flatten` を共有して `vector/hpglbdf` に置ける）、PCL XL と各社の PDL、PJL による状態の取得（9100 の見張り）、受けた PDF を変換せずに PDF のプリンタへ渡すこと（素通し。スプールが `.bdf` でない文書を送れるようにする変更）、IPP の通知（`ippget`）、ラベル・レシート・連帳の言語（print-m5）、スプールの保存先を S3 や RDB に替えることと複数台で回すこと（m2 の後で決める）。
 
+## 3.37 署名（sign、internal/cms、`bdf sign`・`bdf verify`）
+
+文書が署名の後に変えられたことを見つけるための電子署名（spec §3.7）。要件は `.knowledge` の `requirement:tamper-evidence`。
+
+**何に署名するか**: 文書のバイト列そのものではなく、manifest の正規形（RFC 8785 の JCS。`parts` の `off` を除く）の SHA-256 と、各 Part の格納バイト列の SHA-256 を並べた小さな JSON（payload）。案は 3 つあった。(1) ファイルのバイト列。1 ファイル形式と分割形式を組み替えると署名が壊れる。(2) manifest の生のバイト列。分割形式は `off` を消して字下げして書くので、やはり壊れる。(3) 正規形と Part のダイジェスト。採ったのは (3) で、組み替えの後も署名が成り立つ（テストで確かめる）。Part 名（SHA-256 の先頭 16 バイト）は衝突への強さが 64 ビットしかなく、テンプレートを作る側のように Part を用意できる者は衝突する 2 つを作れるので、名前には頼らず 32 バイトのダイジェストを署名する。格納バイト列なので、暗号化した文書にも鍵なしで署名・検証できる（署名した人の証明書は外から読める。封印するかは要件の未決の論点）。
+
+**形式**: CMS の SignedData（payload を中に持つ）と X.509 の証明書。PDF の署名（PAdES）と同じ実装・同じ鍵・同じ証明書を使えるように、独自の署名形式は作らなかった。`internal/cms` は署名に要る形だけを持つ自前の実装（`encoding/asn1` と `crypto/x509`）。署名属性は content-type・message-digest・signing-time・signing-certificate-v2、署名なし属性に RFC 3161 のタイムスタンプ。読み取りは信頼できない入力として、大きさ・数・入れ子に上限を置き、fuzz の的を持つ。OpenSSL（`openssl cms -verify`、`openssl ts -reply`・`-verify`）と双方向に突き合わせるテストがある。
+
+**置き場所**: 1 ファイル形式は Part の領域の後ろに署名の並びと 16 バイトのフッター（`bdfs`）。ヘッダーの flags を立てる案は、今の読み手が未定義のビットを拒否するので採らなかった。Go・TypeScript・libbdf の読み手は範囲がファイルに収まるかだけを見ていて、末尾のブロックがあっても文書を読める（conformance に `part/signatures-after-parts` を足した）。分割形式は `signatures.json`。`bdf split`・`bdf join` は署名を移す。
+
+**連署**: 署名は前から順に足し、後の署名の payload は前の署名の DER の SHA-256 を持つ。前の署名を外す・順を変えると後の署名が成り立たなくなる。`claims` に署名した人の役割と、立会人型の署名なら見たこと（誰が何をしたか）を入れる。CMS の独自属性にすると OID の枝を持つ必要があるので、payload の JSON に入れた。
+
+**検証**: 署名が成り立つか（`Signature.Err`）と、署名した人が信頼できるか（`TrustErr`。タイムスタンプの時刻か今の時刻で鎖をたどる）を分けて報告する。証明書の失効（CRL、OCSP）は見ない（長期の検証と一緒に後で）。
+
 ## 4. テキストの扱い
 
 一番忠実度を左右する部分。3 段階を用意する。
@@ -1067,6 +1081,7 @@ bdf/
 ├── converter/pdfform/ 入力欄のある PDF（AcroForm）をテンプレートとして埋める（§3.34）
 ├── converter/pdfme/   pdfme のテンプレートを埋める（§3.34。式の評価器と動的レイアウトを持つ）
 ├── converter/textform/ テキストのテンプレート（連帳・伝票・レシートの行と桁の格子）を埋める（§3.34）
+├── sign/              文書の署名と検証（§3.37。CMS は internal/cms）
 ├── segment/           区間を要求ごとに封印して返す HTTP ハンドラ（§3.30。wasm に net/http を持ち込まないよう bdf とは別のパッケージ）
 ├── cmd/bdfwasm/       ブラウザ内変換用の wasm モジュール（§2）
 ├── image/imgconv/     画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）

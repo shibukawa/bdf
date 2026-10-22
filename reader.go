@@ -33,6 +33,7 @@ type Reader struct {
 	load     func(PartEntry) ([]byte, error) // stored bytes
 	aead     cipher.AEAD                     // set by Unlock
 	file     io.Closer                       // the file OpenSingleFile opened
+	mjson    []byte                          // the JSON of the stored manifest, as it was read
 
 	pageMu    sync.Mutex
 	pageParts map[pageKey][]Hash // what each page needs, for WriteSegment
@@ -90,7 +91,7 @@ func OpenSingle(r io.ReaderAt, size int64) (*Reader, error) {
 		return nil, &FormatError{Msg: "encryption flag does not match the manifest"}
 	}
 	base := moff + mlen
-	return newReader(&m, func(e PartEntry) ([]byte, error) {
+	return newReader(&m, mj, func(e PartEntry) ([]byte, error) {
 		if !inRange(e.Off, int64(e.Len), size-base) {
 			return nil, &FormatError{Msg: "part out of range"}
 		}
@@ -147,7 +148,7 @@ func OpenSplit(dir string) (*Reader, error) {
 	if err := readManifest(mj, &m); err != nil {
 		return nil, err
 	}
-	return newReader(&m, func(e PartEntry) ([]byte, error) {
+	return newReader(&m, mj, func(e PartEntry) ([]byte, error) {
 		b, err := readFileLimited(filepath.Join(dir, "parts", e.H.String()), e.Len)
 		if err != nil {
 			return nil, err
@@ -209,8 +210,8 @@ func inRange(off, n, size int64) bool {
 	return off >= 0 && n >= 0 && off <= size && n <= size-off
 }
 
-func newReader(m *Manifest, load func(PartEntry) ([]byte, error)) *Reader {
-	r := &Reader{Manifest: m, stored: m, load: load}
+func newReader(m *Manifest, mj []byte, load func(PartEntry) ([]byte, error)) *Reader {
+	r := &Reader{Manifest: m, stored: m, load: load, mjson: mj}
 	r.entries = entries(m)
 	return r
 }
@@ -221,6 +222,25 @@ func entries(m *Manifest) map[Hash]PartEntry {
 		out[e.H] = e
 	}
 	return out
+}
+
+// StoredManifest returns the manifest as the document stores it (that of an
+// encrypted document is its outer manifest), and its JSON as it was read
+// (decompressed). Signatures (package sign) cover the stored form, which
+// needs no password.
+func (r *Reader) StoredManifest() (*Manifest, []byte) { return r.stored, r.mjson }
+
+// StoredPart returns the bytes of a part of the stored manifest as they are
+// stored: compressed as its entry says, sealed for an encrypted document.
+func (r *Reader) StoredPart(e PartEntry) ([]byte, error) {
+	b, err := r.load(e)
+	if err != nil {
+		return nil, err
+	}
+	if len(b) != e.Len {
+		return nil, fmt.Errorf("bdf: part %s is %d bytes, not %d", e.H, len(b), e.Len)
+	}
+	return b, nil
 }
 
 // Encrypted reports whether the document is encrypted.

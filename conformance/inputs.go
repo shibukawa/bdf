@@ -240,6 +240,21 @@ func synthetic() []input {
 	}
 	c := add("part/identity", "single", "a part stored as it is", single(fmt.Sprintf(`{"bdf":1,"parts":[{"h":"%s","t":"img","enc":"identity","len":10,"size":10,"off":0}]}`, h), data), OK)
 	c.wantReads = map[string]string{h.String(): OK}
+	// the block of signatures that follows the parts of a signed document
+	// (spec §3.7): a reader that does not check signatures reads the
+	// document as it is
+	sig := []byte("0\x80 a signature, not read here")
+	block := &w{}
+	block.u32(uint32(len(sig)))
+	block.bytes(sig)
+	n := len(block.b)
+	block.bytes([]byte("bdfs"))
+	block.u16(1)
+	block.u16(1)
+	block.u64(uint64(n))
+	c = add("part/signatures-after-parts", "single", "a signed document: its block of signatures follows the parts",
+		cat(single(fmt.Sprintf(`{"bdf":1,"parts":[{"h":"%s","t":"img","enc":"identity","len":10,"size":10,"off":0}]}`, h), data), block.b), OK)
+	c.wantReads = map[string]string{h.String(): OK}
 	plain := make([]byte, 1<<20)
 	zeros := deflate(plain, flate.BestCompression)
 	hz := bdf.HashOf(plain)

@@ -1,0 +1,96 @@
+id: milestone:sig-1
+type: milestone
+title: sig-1 — BDF の署名と検証（CMS、末尾のブロック、bdf sign / bdf verify）
+summary: >-
+  requirement:tamper-evidence の最初の段。.bdf に CMS の署名を前から順に足し、署名の後の変更を見つける。署名する内容は manifest の正規形（JCS）と
+  各 Part の格納バイト列の SHA-256（32 バイト）と前の署名のダイジェストと claims。1 ファイル形式は末尾のブロック、分割形式は signatures.json。
+  RFC 3161 のタイムスタンプ。2026-10-23 に実装し、Go のテスト、OpenSSL との相互の突き合わせ、TypeScript と libbdf で開けることの確認、fuzz が通った。
+  仕様は spec §3.7、設計は docs/design.md §3.37、使い方は docs/architecture/cli.md。
+lifecycle: active
+authority: authored
+scope:
+  milestone: sig-1
+  input: bdf (single, split, encrypted)
+  output: bdf with signatures, signatures.json
+constraints:
+- 署名を知らない読み手が署名付きの文書をそのまま開ける（ヘッダーの flags は変えない）
+- 署名の前後で文書の本体のバイト列は変わらない
+- 鍵は crypto.Signer で受ける。CLI は PEM のファイル
+non_goals:
+- PDF の署名（sig-2）
+- .bdff の値の署名と Docflow の署名のノード（sig-3）
+- 証明書の失効（CRL、OCSP）、長期の検証、ビューアでの表示
+- PKCS #12 の読み込み（openssl pkcs12 -nodes で PEM にする。x/crypto/pkcs12 は今の既定の AES の p12 を読めない）
+capabilities:
+  bdf-signature:
+    state: implemented
+    about: capability:sign/document
+  cms:
+    state: implemented
+    about: capability:internal/cms
+  timestamp:
+    state: implemented
+    about: capability:internal/cms/tsp
+  cli:
+    state: implemented
+    about: capability:cmd/bdf/sign-verify
+facts:
+  packages: 'sign（Read・ReadSplit・Document.Sign・WriteSingle・WriteSplit・Verify、Canonical の JCS）、internal/cms（Sign・Parse・Verify・VerifyChain・AddUnsigned、RequestTimeStamp・ReadTimeStamp・TimeStampToken）、internal/cms/cmstest（テストの CA と TSA）。bdf.Reader に StoredManifest・StoredPart を足した'
+  manifest_digest: 当初案の「manifest の平文のバイト列」は分割形式が off を消して字下げして書くので組み替えで壊れる。JSON として読み、parts の off を除いて JCS（RFC 8785）で書いたものの SHA-256 にした
+  payload_in_cms: 当初案の detached をやめ、payload を CMS の中に持つ（claims を運ぶため。openssl cms -verify がそのまま検証できる）
+  encrypted: 暗号化した文書は格納の形（外側の manifest、封印した Part）に署名する。鍵なしで署名・検証でき、署名した人の証明書は外から見える。当初の暫定案（署名を封印する）とは違うので open_questions.encrypted-documents は開いたまま
+  split_join: bdf split・bdf join が署名を移す（payload が両形式で同じなので署名は成り立つ）
+  conformance: part/signatures-after-parts を足した（Part の後ろの署名のブロックがあっても文書を開き、Part を読む）
+acceptance:
+  detect:
+    text: Part のバイト、manifest（メタデータ）、前の署名の削除・入れ替え、ブロックの破損のそれぞれで検証が落ちる
+    verified_by:
+    - sign-unit
+  forms:
+    text: 1 ファイル形式で付けた署名が分割形式でも成り立ち、分割形式で足した署名と合わせて検証できる。暗号化した文書を鍵なしで署名・検証できる
+    verified_by:
+    - sign-unit
+  interop:
+    text: OpenSSL が CMS の署名を検証し、OpenSSL の TSA の応答を読み、こちらの TSA のトークンを OpenSSL が検証する。OpenSSL で作った CA と鍵で bdf sign / verify が通る
+    verified_by:
+    - cms-unit
+    - cli-check
+  readers:
+    text: 署名付きの文書を TypeScript（@bdfkit/core）と libbdf が開いて文字を読める
+    verified_by:
+    - readers-check
+verification:
+  sign-unit:
+    state: passed
+    method: unit
+    test: go test ./sign/（TestSign、TestSplit、TestEncrypted、TestTimeStamp、TestCanonical）、FuzzRead 45 秒
+    authority: observed
+    evidence:
+      path: sign/sign_test.go
+      locator: 2 つの署名（ECDSA と RSA、claims）、別の根、Part の 1 バイト、メタデータ、署名の削除と入れ替え、ブロックの破損、RFC 8785 の数値とキーの順の例
+  cms-unit:
+    state: passed
+    method: unit
+    test: go test ./internal/cms/（TestSignVerify、TestTimeStamp、TestOpenSSL）、FuzzParse 60 秒（534 万回）
+    authority: observed
+    evidence:
+      path: internal/cms/cms_test.go
+      locator: OpenSSL 4.0.3 の cms -verify（ECDSA・RSA、attached・detached）、ts -reply の応答の読み取り、ts -verify によるこちらのトークンの検証
+  cli-check:
+    state: passed
+    method: manual
+    test: OpenSSL で作った CA と鍵で bdf sign -role author、bdf verify -roots（valid、根なしは NOT TRUSTED で終了コード 1）、split → verify、join → verify
+    authority: observed
+  readers-check:
+    state: passed
+    method: manual
+    test: 署名した testdata/form/pdf-contract.bdf を packages/core の BdfDocument.open と、libbdf（build-release の libbdf.a）の bdf_doc_open_memory・bdf_doc_search_text で開いた
+    authority: observed
+relations:
+- relation: implements
+  to: requirement:tamper-evidence
+- relation: follows
+  to: milestone:form-m7
+history:
+  implemented:
+    summary: 2026-10-23 利用者「順に実装をお願いしたい」により form-m7 に続けて実装
