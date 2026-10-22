@@ -102,7 +102,7 @@ func retryDelay(attempts int) time.Duration {
 // sendSlip sends a slip's document out of an exit (a printer), with its
 // job's metadata, and returns the printer's job id (0 for none).
 func (m *Manager) sendSlip(ctx context.Context, k *Kind, p *Node, s *Slip) (int32, error) {
-	o := &Out{Node: p, Payload: &Payload{ID: firstOr(s.Payload, jobID(s.Job)), Kind: PayloadBDF, Format: "bdf"}, Name: firstOr(s.Name, "slip-"+s.ID), m: m}
+	o := &Out{ID: "slip." + s.ID, Node: p, Payload: &Payload{ID: firstOr(s.Payload, jobID(s.Job)), Kind: PayloadBDF, Format: "bdf"}, Name: firstOr(s.Name, "slip-"+s.ID), m: m}
 	if j, err := m.JobOfNumber(ctx, s.Job); err == nil {
 		o.Job, o.Meta = j, j.Meta
 	}

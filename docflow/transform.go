@@ -357,6 +357,39 @@ func (m *Manager) keepDocument(ctx context.Context, id, node, name string, doc *
 	return &Payload{ID: id, Kind: PayloadBDF, Format: "bdf", Name: name, Pages: pages, Size: size, SHA256: hex.EncodeToString(h.Sum(nil)), Made: node, At: m.now()}, nil
 }
 
+// keepMade keeps what a step of an adapter's node made as a payload
+// under an id, as keepDocument does.
+func (m *Manager) keepMade(ctx context.Context, id, node string, made *Made) (*Payload, error) {
+	if kindBit(made.Kind) == 0 {
+		return nil, final("%s made a payload of no kind (%q)", node, made.Kind)
+	}
+	h := sha256.New()
+	var size int64
+	meta, err := m.st.docs.Insert(ctx, id, io.TeeReader(io.LimitReader(made.Body, m.o.MaxDocument+1), h))
+	switch {
+	case errors.Is(err, yuruidb.ErrAlreadyExists):
+		r, err := m.st.docs.Open(ctx, id)
+		if err != nil {
+			return nil, mapErr(err)
+		}
+		defer r.Close()
+		h = sha256.New()
+		if _, err := io.Copy(h, r); err != nil {
+			return nil, err
+		}
+		size = r.Size
+	case err != nil:
+		return nil, mapErr(err)
+	default:
+		size = meta.Size
+	}
+	if size > m.o.MaxDocument {
+		m.st.docs.Remove(ctx, id)
+		return nil, final("%s made %d bytes; a document is at most %d", node, size, m.o.MaxDocument)
+	}
+	return &Payload{ID: id, Kind: made.Kind, Format: made.Format, Name: made.Name, Pages: made.Pages, Size: size, SHA256: hex.EncodeToString(h.Sum(nil)), Made: node, At: m.now()}, nil
+}
+
 // continueWith sends a job on from a node with the payload the node
 // made: the payload is added to the job, the node's leg says what it
 // made, and the job follows the node's edges with it.
@@ -378,7 +411,7 @@ func (m *Manager) continueFrom(ctx context.Context, d *Delivery, n *Node, p *Pay
 	if j.payload(p.ID) == nil {
 		j.Payloads = append(j.Payloads, *p)
 	}
-	r := &routing{job: j, now: m.now(), payload: j.payload(p.ID), archived: archived}
+	r := &routing{job: j, now: m.now(), payload: j.payload(p.ID), archived: archived, cause: d.Cause}
 	for _, to := range n.To {
 		m.route(ctx, r, to, n.Name, 0)
 	}

@@ -167,7 +167,7 @@ async function removeEdge(from, e) {
       n.otherwise = (n.otherwise || []).filter((x) => x !== e.to);
       n.rules = (n.rules || []).map((r) => ({ ...r, to: (r.to || []).filter((x) => x !== e.to) })).filter((r) => r.to.length);
     } else {
-      const field = e.kind === "member" ? "members" : "to";
+      const field = e.kind === "member" ? "members" : e.kind === "error" ? "on_error" : "to";
       n[field] = (n[field] || []).filter((x) => x !== e.to);
     }
     delete n.name;
@@ -176,6 +176,30 @@ async function removeEdge(from, e) {
   } catch (err) {
     status(err.message, true);
   }
+}
+
+// The kinds of the adapters (docflow/io, docflow/render) are set as JSON
+// in the sidebar: their settings, and what they mean.
+const ADAPTER_SETTINGS = {
+  render: "to, format (pdf or png), page (of a png).",
+  notify: "via (slack, mail or http), text, credential (slack: the webhook's URL), url (http; mail: smtp://host:587), from, recipients, mail_subject, to.",
+  smtp: "url (smtp://host:587, smtps://host:465), credential (user:password), from, recipients, mail_subject, text.",
+  s3: "url (s3://bucket?region=…&endpoint=…), credential (access-key:secret-key), path (the key; {{meta.$job}}/{{meta.$name}} by default).",
+  "s3-trigger": "url (s3://bucket?region=…), credential, path (the prefix of the keys it takes), to, accept, output, formats, meta. An S3 event's reference is POSTed to /in/<name> with the node's key.",
+  http: "url, method (POST or PUT), headers, credential (the Authorization: a token as Bearer).",
+};
+
+// SETTINGS are the fields of a node an adapter's kind may have.
+const SETTINGS = ["to", "url", "credential", "format", "page", "via", "text", "from", "recipients", "mail_subject", "path", "method", "headers", "accept", "output", "formats", "meta"];
+
+function settingsOf(n, kind) {
+  const out = {};
+  for (const k of SETTINGS) if (n[k] !== undefined && n[k] !== "" && !(Array.isArray(n[k]) && !n[k].length)) out[k] = n[k];
+  if (!Object.keys(out).length) {
+    out.to = [];
+    if (kind === "notify") out.via = "slack";
+  }
+  return out;
 }
 
 // Adding a node: the palette makes a draft, placed at the centre of the
@@ -574,6 +598,11 @@ function renderSidebar() {
     const k = kindsLine(n);
     if (k) form.append(k);
   }
+  if (kind !== "export") form.append(field("On error", picker("on_error", n.on_error || [], n.name), "Where the job goes, with what reached this node, when its send or step fails for good (a notify node); none chosen: the manager's default, or the job stops here."));
+  if (ADAPTER_SETTINGS[kind]) {
+    const box = el("textarea", undefined, { id: "f-settings", className: "textarea textarea-sm w-full font-mono", rows: 8, value: JSON.stringify(settingsOf(n, kind), null, 2) });
+    form.append(field("Settings (JSON)", box, ADAPTER_SETTINGS[kind] + " Credentials are names: the secret is the server's DOCFLOW_CRED_<name>, or a file. Text, recipients, paths and headers may use {{meta.<key>}}."));
+  }
   switch (kind) {
     case "endpoint": {
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job. The port on the canvas adds one too."));
@@ -719,6 +748,15 @@ async function save(ev) {
   const body = { kind: n.kind, title: $("f-title").value.trim(), description: $("f-description").value.trim(), scope: $("f-scope").value };
   if ($("f-owner").value.trim()) body.owner = $("f-owner").value.trim();
   if ($("f-no-ipp")?.checked) body.no_ipp = true;
+  if ($("f-settings")) {
+    try {
+      Object.assign(body, JSON.parse($("f-settings").value || "{}"));
+    } catch (e) {
+      status("Settings: " + e.message, true);
+      return;
+    }
+  }
+  if (document.querySelector('input[name="on_error"]')) body.on_error = picked("on_error");
   const dur = (id) => ($(id).value.trim() ? $(id).value.trim() : undefined);
   switch (n.kind) {
     case "endpoint":

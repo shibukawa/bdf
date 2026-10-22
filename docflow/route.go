@@ -20,7 +20,10 @@ type routing struct {
 	payload *Payload
 	// archived is what the last archive on the way wrote (the job goes on
 	// from an archive once it wrote): what an export lists.
-	archived   *archiveRef
+	archived *archiveRef
+	// cause is the failure the job left a node for along an on_error
+	// edge: the deliveries made on the way carry it.
+	cause      *Failure
 	now        time.Time
 	legs       []Leg
 	live       int
@@ -65,6 +68,8 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: "no such kind of node here: " + kind})
 	case k.route != nil:
 		k.route(m, ctx, r, name, from, depth)
+	case k.Step != nil:
+		m.routeDelivery(ctx, r, Leg{Node: name, Kind: kind, From: from}, "", "", kind)
 	case k.Send != nil:
 		m.routeDelivery(ctx, r, Leg{Node: name, Kind: kind, From: from}, name, "", kind)
 	case k.PassesOn:
@@ -407,7 +412,7 @@ func namesDelivery(kind string) bool {
 	case KindArchive, KindClass, KindTemplate, KindConvert:
 		return true
 	}
-	return sendsOut(kind)
+	return sendsOut(kind) || steps(kind)
 }
 
 // removeJob deletes a job, its payloads and its deliveries.

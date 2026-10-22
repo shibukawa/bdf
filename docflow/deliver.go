@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"regexp"
 	"slices"
@@ -37,7 +38,7 @@ var errNotDue = errors.New("manager: not due")
 func (m *Manager) routeDelivery(ctx context.Context, r *routing, leg Leg, target, class, kind string) {
 	j := r.job
 	d := Delivery{ID: fmt.Sprintf("%s.%02d", j.ID, r.next()), Job: j.Number, Name: j.Name, Node: leg.Node, Kind: kind, Printer: target, Class: class,
-		State: DeliveryPending, Created: r.now}
+		State: DeliveryPending, Created: r.now, Cause: r.cause}
 	if r.payload != nil {
 		d.Payload = r.payload.ID
 	}
@@ -235,6 +236,9 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		}
 		return d, nil
 	default:
+		if steps(d.Kind) {
+			return m.step(ctx, sctx, d, owner, j)
+		}
 		target, final, err := m.member(sctx, d)
 		if err != nil {
 			return m.outcome(ctx, d, owner, target, "", err, final)
@@ -252,9 +256,59 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		if pl == nil || !k.takes().has(pl.Kind) {
 			return m.outcome(ctx, d, owner, target, "", fmt.Errorf("the payload %q is not what %s takes (%s)", d.Payload, target, k.takes()), true)
 		}
-		result, err := k.Send(sctx, &Out{Node: n, Job: j, Payload: pl, Name: firstOr(d.Name, "job-"+j.ID), Meta: j.Meta, m: m})
+		result, err := k.Send(sctx, m.out(d, n, j, pl))
 		return m.outcome(ctx, d, owner, target, result, err, isFinal(err))
 	}
+}
+
+// out is what an exit sends, or a step takes, for a delivery.
+func (m *Manager) out(d *Delivery, n *Node, j *Job, p *Payload) *Out {
+	meta := j.Meta
+	if d.Cause != nil {
+		meta = maps.Clone(j.Meta)
+		if meta == nil {
+			meta = map[string]any{}
+		}
+		meta["$error"], meta["$error_node"] = d.Cause.Error, d.Cause.Node
+	}
+	return &Out{ID: d.ID, Node: n, Job: j, Payload: p, Name: firstOr(d.Name, "job-"+j.ID), Meta: meta, Cause: d.Cause, m: m}
+}
+
+// step does the step of an adapter's node (Kind.Step) for a delivery,
+// and sends the job on from the node with what the step made, or with
+// what reached it.
+func (m *Manager) step(ctx, sctx context.Context, d *Delivery, owner string, j *Job) (*Delivery, error) {
+	n, err := m.Node(sctx, d.Node)
+	if err == nil && n.Kind != d.Kind {
+		err = finalErr{fmt.Errorf("%s is a %s, not a %s node", d.Node, n.Kind, d.Kind)}
+	}
+	if err != nil {
+		return m.outcome(ctx, d, owner, "", "", err, isFinal(err))
+	}
+	k := kindNamed(n.Kind)
+	in := j.payload(d.Payload)
+	if in == nil || !k.takes().has(in.Kind) {
+		return m.outcome(ctx, d, owner, "", "", fmt.Errorf("the payload %q is not what %s takes (%s)", d.Payload, n.Name, k.takes()), true)
+	}
+	made, err := k.Step(sctx, m.out(d, n, j, in))
+	if err != nil {
+		return m.outcome(ctx, d, owner, "", "", err, isFinal(err))
+	}
+	p := in
+	if made != nil {
+		if p, err = m.keepMade(sctx, d.ID, n.Name, made); err != nil {
+			return m.outcome(ctx, d, owner, "", "", err, isFinal(err))
+		}
+	}
+	d, err = m.outcome(ctx, d, owner, "", p.ID, nil, false)
+	if err != nil || d.State != DeliveryDone || len(n.To) == 0 {
+		return d, err
+	}
+	if err := m.continueFrom(ctx, d, n, p, made != nil, nil); err != nil {
+		m.o.Log.Warn("continue after a step", "delivery", d.ID, "job", d.Job, "node", d.Node, "err", err)
+		return d, err
+	}
+	return d, nil
 }
 
 // exit returns a node of a kind that sends out, and its kind.
@@ -353,7 +407,15 @@ func (m *Manager) outcome(ctx context.Context, d *Delivery, owner, printer, resu
 	}
 	if ended {
 		m.unpend(ctx, d.ID)
+		var r *routing
+		if d.State == DeliveryFailed {
+			r = m.routeError(ctx, d)
+		}
 		if _, err := m.changeJob(ctx, jobID(d.Job), func(j *Job) error {
+			if r != nil {
+				j.Legs = append(j.Legs, r.legs...)
+				j.Live += r.live
+			}
 			if l := j.leg(d.ID); l != nil {
 				l.State, l.Error = LegDone, ""
 				if d.State == DeliveryFailed {
@@ -368,11 +430,43 @@ func (m *Manager) outcome(ctx context.Context, d *Delivery, owner, printer, resu
 		}); err != nil && !errors.Is(err, ErrNotFound) {
 			return d, err
 		}
+		if r != nil {
+			m.kick(r.deliveries)
+		}
 	}
 	if sendErr != nil {
 		return d, fmt.Errorf("%w: %s: %v", ErrPrint, d.Node, sendErr)
 	}
 	return d, nil
+}
+
+// routeError routes a job whose delivery failed for good along the
+// node's on_error edges, with the payload that reached it and the
+// failure: the node's OnError, or else the manager's (Options.OnError),
+// unless the job is on an error's way already, so that a notify node
+// that fails does not tell of itself. nil: nowhere to go.
+func (m *Manager) routeError(ctx context.Context, d *Delivery) *routing {
+	var to []string
+	if n, err := m.Node(ctx, d.Node); err == nil {
+		to = n.OnError
+	}
+	if len(to) == 0 && d.Cause == nil {
+		to = m.o.OnError
+	}
+	to = slices.DeleteFunc(slices.Clone(to), func(name string) bool { return name == d.Node })
+	if len(to) == 0 {
+		return nil
+	}
+	j, err := m.JobOfNumber(ctx, d.Job)
+	if err != nil || j.Canceled != nil {
+		return nil
+	}
+	r := &routing{job: j, now: m.now(), payload: j.payload(d.Payload), cause: &Failure{Node: d.Node, Error: d.LastError}}
+	for _, name := range to {
+		m.route(ctx, r, name, d.Node, 0)
+	}
+	m.o.Log.Info("on error", "delivery", d.ID, "job", d.Job, "node", d.Node, "to", to)
+	return r
 }
 
 // cancelDelivery stops a pending delivery; one being sent finishes, and

@@ -60,6 +60,8 @@ or with variables:
 | `DOCFLOW_SERVERLESS` | refuse a store one process keeps, and tick only when called |
 | `DOCFLOW_TICK_INTERVAL` | how often a process ticks (default 30s) |
 | `DOCFLOW_JOB_KEEP` | how long a job that ended is kept, with its document once nothing shows it (default 336h, 14 days) |
+| `DOCFLOW_ON_ERROR` | nodes a job goes to when a send or a step fails for good at a node without `on_error` edges (a `notify` node) |
+| `DOCFLOW_CREDENTIAL_DIR` | directory of the credentials nodes name, a file each; `DOCFLOW_CRED_<name>` comes first |
 
 ## Sign-in
 
@@ -200,12 +202,19 @@ The kinds are registered with the engine ([docflow](../../docflow)), and
 core has the routing, transforming and keeping kinds. Inputs and outputs
 are adapters under [docflow/io](../../docflow/io): `printer`, `cups` and
 every node's IPP printer are
-[docflow/io/ipp](../../docflow/io/ipp), which this application imports.
+[docflow/io/ipp](../../docflow/io/ipp); `smtp` is
+[docflow/io/smtp](../../docflow/io/smtp), `s3` and `s3-trigger`
+[docflow/io/s3](../../docflow/io/s3), `http`
+[docflow/io/http](../../docflow/io/http), `notify`
+[docflow/io/notify](../../docflow/io/notify), and `render`
+[docflow/render](../../docflow/render). This application imports them
+all.
 
 | Kind | Does | Settings |
 |---|---|---|
 | `endpoint` | a REST entry for applications: `POST /in/<name>` with the endpoint's own key takes a document as the body, or data (`accept: data`: JSON, YAML, CSV, an Excel workbook or a Parquet file, for a template node after it), and forwards the job to every node of `to`. `output` is what goes on of a document: `bdf` (the default: the .bdf made of it) or `file` (as received, for a convert node or an archive after it). `formats` are the formats it takes (as the converter names them: `pdf`, `docx`, `image`, `csv`, `bdf` …, and `json`, `yaml`; empty: any); a file of another format is refused (415) and the refusal is in the audit log. `meta` is metadata the endpoint adds to every job it takes. The key is shown once, when the endpoint is made (`key` in the answer) or rotated (`POST /api/nodes/<name>/key`); the manager keeps only its argon2id hash. With `port`, a process listens there too: every `POST` to it is to the endpoint | `to`, `accept`, `output`, `formats`, `meta`, `port` |
 | `cups` | an IPP entry for computers and business systems: a CUPS server on a `port` of the process's own, with one printer, the node itself (`lpstat -h <host>:<port> -p` lists it; computers print to `ipp://<host>:<port>/printers/<node>`), which forwards what it receives to every node of `to`; plain `ipp`, or `ipps` with `tls_cert` and `tls_key` (files). `accept`, `output`, `formats` and `meta` as an endpoint's; the job attributes of a Print-Job request are metadata (`ipp.media`, `ipp.copies` …) | `to`, `port`, `tls_cert`, `tls_key`, `accept`, `output`, `formats`, `meta` |
+| `s3-trigger` | an S3 Trigger: it does not listen to the bucket; an S3 event goes to an EventBridge rule (an API destination) or a Lambda, which posts the object's reference to `POST /in/<name>` with the node's key (made and rotated as an endpoint's): `{"bucket": …, "key": …}`, an S3 notification (`Records`, one object) or EventBridge's event (`detail`). The node reads the object from its bucket (`url`: `s3://bucket?region=…`, `&endpoint=…` for another service than AWS's) with its `credential`, takes only keys under `path` (a prefix) of that bucket, and forwards the job to `to` with `s3.bucket` and `s3.key` in its metadata. `accept`, `output`, `formats` and `meta` as an endpoint's | `url`, `credential`, `path`, `to`, `accept`, `output`, `formats`, `meta` |
 
 | `queue` | forwards the job to every node of `to` (a fan-out when there are several) | `to` |
 | `class` | sends the job to one of `members`, in turn (`round-robin`, the default) or the first (`failover`); a printer that does not take it is skipped for the next member | `members`, `policy` |
@@ -217,7 +226,39 @@ every node's IPP printer are
 | `printer` | prints the job on paper, on a printer the manager reaches over the network (`ipp`, `ipps`, `socket`, `lpd`). With `preview`, the URL of the printer on a fake printer farm's API (`tools/fakeprinter`: `http://host:port/api/printers/<printer>`), what the fake printer received is shown beside the node, as the farm read it back (`GET /api/nodes/<name>/preview`, `…/preview/<job>/pages/<p>.png`) | `url`, `route` (`direct`), `preview` |
 | `archive` | writes the payload that reaches it (a `.bdf`, or any file or data as received) and a JSON record of the job (its metadata, payloads and legs) to `store` (a documents URL: `bbolt`, `s3`, `r2`, `gcs`), each object once, under `collection` (`archive-<name>`); the manager never changes or deletes them. Give the S3 bucket a default retention (Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to` (an export) | `store`, `collection`, `to` |
 | `sink` | keeps the `latest` documents that reach it (10) to look at on the topology (the first page shows on the node, every page in the sidebar: `GET /api/nodes/<name>/latest`, `GET /api/jobs/<n>/pages/<p>.png`); an older one goes when a newer comes | `latest` |
+| `render` | draws the .bdf that reaches it as a PDF (`format: pdf`, the default) or a PNG image of one page (`format: png`, `page`, 150 dpi), for an exit whose far side has no viewer of BDF, and sends the file on (kind `any`) to `to`. SVG waits for vector/svgbdf. The step is done like a delivery | `to`, `format`, `page` |
+| `notify` | tells that a job passed it, `via` `slack` (the `credential` is the incoming webhook's URL), `mail` (an SMTP server's settings, as `smtp`'s, without an attachment) or `http` (a JSON object to `url`: `text`, `job`, `name`, `node`, `error`, `error_node`, `meta`), and sends what reached it on to `to`, if any. `text` is what it says; by default the job and the node, or the failure. Failures reach it along `on_error` edges | `via`, `text`, `credential`, `url`, `from`, `recipients`, `mail_subject`, `to` |
+| `smtp` | mails what reaches it as an attachment: `url` is the server (`smtp://host:587`, STARTTLS when offered; `smtps://host:465`), the `credential` `user:password`, `from`, `recipients`, `mail_subject` and `text` the mail. The Message-ID is the delivery's id | `url`, `credential`, `from`, `recipients`, `mail_subject`, `text` |
+| `s3` | writes what reaches it to a bucket (`url` as an S3 Trigger's), under the key `path` (`{{meta.$job}}/{{meta.$name}}`), once (`If-None-Match: *`; an object there already is taken as written) and without a record: what must be kept goes to an archive. The `credential` is `access-key:secret-key[:session-token]`; none takes AWS's own (the environment, the role) | `url`, `credential`, `path` |
+| `http` | sends what reaches it as the body of a request: `url`, `method` (`POST`, `PUT`), `headers`; the `credential` is the Authorization (a token as Bearer, or a whole value). The sender's metadata goes as `X-Meta-*` headers, so that another docflow's endpoint takes it (`url` its `/in/<node>`, the credential an app's token); `Idempotency-Key` is the delivery's id. 408, 429 and 5xx are tried again; any other answer fails for good | `url`, `method`, `headers`, `credential` |
 | `export` | lists what an archive before it wrote (an archive sends a job on along its `to` once it wrote it), for applications and people to fetch at `GET /out/<name>`: each entry under the owner the metadata key `by` names (a customer's id the sender gave), with the metadata of `fields`; the latest `entries` (1000) are listed. See *Exports* below | `by`, `subject`, `fields`, `entries`, `apps` |
+
+The settings of the exits and the notify node expand `{{meta.<key>}}`
+(nothing more: no expressions) with the job's metadata as a filter sees
+it, and `$node`, `$delivery`, `$name` (the payload's name), `$error` and
+`$error_node`; a key not there is empty. A header's value loses its line
+breaks, a key or a path its `..` and leading `/`. A `credential` is a
+name, never the secret: the value is the environment's
+`DOCFLOW_CRED_<name>` (`-` as `_`), else the file `<name>` in
+`docflow.credential_dir` (`DOCFLOW_CREDENTIAL_DIR`). Every exit sends at
+least once: a send whose outcome is not known is sent again, with the
+same delivery id as the receiving side's key.
+
+Every node has `on_error` too: the nodes a job goes to, with the
+payload that reached the node, when its send or step fails for good
+(a `notify` node, say), carrying `$error` and `$error_node`. A node
+without them sends its failures to `docflow.on_error`
+(`DOCFLOW_ON_ERROR`), unless the job is on an error's way already; with
+neither, the job stops there, aborted, as before. An `on_error` edge is
+typed as the others, by what reaches its node.
+
+```sh
+# an invoice drawn as a PDF, mailed, and Slack told when the mail fails
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/ops -d '{"kind":"notify","via":"slack","credential":"slack-ops"}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/mail -d '{"kind":"smtp","url":"smtp://smtp.example.com:587","credential":"smtp-main","from":"billing@example.com","recipients":["{{meta.email}}"],"mail_subject":"Invoice {{meta.order}}","on_error":["ops"]}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/pdf -d '{"kind":"render","to":["mail"]}'
+# DOCFLOW_CRED_slack_ops=https://hooks.slack.com/services/… and DOCFLOW_CRED_smtp_main=user:password in the environment
+```
 
 Every node has a `title` and a `description` too (as a C4 element: the
 name in the title bar, `[kind]` and the title under it, then the

@@ -256,6 +256,32 @@ type Node struct {
 	// /ipp/print/<name> (docflow/io/ipp), for a node only applications
 	// or other nodes send to. A CUPS server's own port stays IPP.
 	NoIPP bool `json:"no_ipp,omitempty"`
+	// OnError are the nodes a job goes to, with the payload that reached
+	// the node, when the node's send or step fails for good (a notify
+	// node, say); none, the manager's (Options.OnError), or the job stops
+	// there, aborted. Every node has them.
+	OnError []string `json:"on_error,omitempty"`
+	// Credential names the secret of an exit or a notify node: the
+	// environment's DOCFLOW_CRED_<name>, or a file (credential.go). It
+	// is never the secret.
+	Credential string `json:"credential,omitempty"`
+	// The settings of the exits and steps of docflow/io and
+	// docflow/render, which expand {{meta.<key>}} (Out.Expand): Format and
+	// Page are what a render node makes (pdf, png or svg; the page of a
+	// png or an svg); From, Recipients and MailSubject a mail's (smtp, and a
+	// notify node's by mail); Text a mail's text or a notification's;
+	// Path the key an s3 exit writes; Method and Headers an http exit's
+	// request; Via is how a notify node tells (slack, mail or http).
+	Format      string            `json:"format,omitempty"`
+	Page        int               `json:"page,omitempty"`
+	From        string            `json:"from,omitempty"`
+	Recipients  []string          `json:"recipients,omitempty"`
+	MailSubject string            `json:"mail_subject,omitempty"`
+	Text        string            `json:"text,omitempty"`
+	Path        string            `json:"path,omitempty"`
+	Method      string            `json:"method,omitempty"`
+	Headers     map[string]string `json:"headers,omitempty"`
+	Via         string            `json:"via,omitempty"`
 }
 
 func (n *Node) keep() time.Duration { return time.Duration(or(n.Keep, defaultKeep)) }
@@ -266,12 +292,33 @@ func (n *Node) offlineAfter() time.Duration {
 func (n *Node) collection() string { return or(n.Collection, "archive-"+n.Name) }
 
 // edges are the nodes a node sends to: To, Members, a filter's rules and
-// Otherwise, and a display's fallback printer.
+// Otherwise, a display's fallback printer, and OnError.
 func (n *Node) edges() []string {
+	return append(n.flowEdges(), n.OnError...)
+}
+
+// flowEdges are the edges along which a node sends what it emits: all but
+// OnError, which carry what reached it.
+func (n *Node) flowEdges() []string {
 	out := append(append([]string{}, n.To...), n.Members...)
 	out = append(out, n.ruleTargets()...)
 	if n.Fallback != nil && n.Fallback.Printer != "" {
 		out = append(out, n.Fallback.Printer)
+	}
+	return out
+}
+
+// sends tells the kinds a node sends along each of its edges, given the
+// kinds that reach it: what it emits along the edges of its flow, what
+// reached it along OnError.
+func (n *Node) sends(in kinds) map[string]kinds {
+	out := map[string]kinds{}
+	emits := n.emits(in)
+	for _, to := range n.flowEdges() {
+		out[to] |= emits
+	}
+	for _, to := range n.OnError {
+		out[to] |= in
 	}
 	return out
 }
@@ -593,6 +640,8 @@ type Delivery struct {
 	// Result is the printer's job id, or the archive's key.
 	Result string    `json:"result,omitempty"`
 	Done   time.Time `json:"done,omitzero"`
+	// Cause is the failure that sent the job here along an on_error edge.
+	Cause *Failure `json:"cause,omitempty"`
 }
 
 // inboxState is what changes in an inbox: its held items and the ended

@@ -1,0 +1,122 @@
+id: milestone:fl-2
+type: milestone
+title: fl-2 — 出入口と通知。描画ノード（bdf → PDF・PNG・SVG）、smtp・s3・http の出口、S3 Trigger の入口、名前で指す資格、on_error の辺と notify ノード（slack・mail・http）。全部 df-1 の種類の登録に載せる
+summary: >-
+  requirement:document-flow の段 fl-2（document-flow.ja.md §4・§8・§9）。milestone:df-1 の Kind と RegisterKind に載せ、入出力の種類は
+  docflow/io/<名前> の包みごとに init で登録する（docflow/io/ipp と同じ形）。出口は Kind.Send と docflow.Out（at-least-once の delivery）。
+  描画と通知は送りではなく段なので、Kind に段の口 Step を足す（芯の route を持たない種類の段：delivery として借りの下で行い、作った
+  ペイロードを To へ、何も作らなければ届いたものをそのまま To へ）。設定は平らな Node の項目（df-1 の利用者の答え）。宛先・件名・
+  パスの差し込みは {{meta.<鍵>}} の置き換えだけ（式言語なし）。資格は credential に名前だけを置き、値は環境変数 DOCFLOW_CRED_<名前>
+  かファイル（Options.CredentialDir/<名前>）から読み、yuruidb には置かない。失敗はノードの on_error の辺で、届いたペイロードと失敗の
+  理由（$error・$error_node）を持って先へ流れ、notify ノードに繋げる。2026-10-23 利用者の答え：notify-shape は「図のノード」、error-port は
+  「on_error と全体の既定」（無いノードの失敗は Options.OnError へ。既に失敗の道にあるジョブは既定へ送らない）。他の形は Claude のもの。
+  SVG の描画は vector/svgbdf が main に無い（ブランチ claude/bdf-renderer-svg-output-4e1ba5）ので後にし、render は pdf と png。
+lifecycle: active
+authority: authored
+scope:
+  milestone: fl-2
+constraints:
+- 芯（package docflow）は SMTP・S3・HTTP の出口と描画の部品（vector/pdfbdf・vector/svgbdf・raster/imagebdf）を import しない。種類はそれぞれ docflow/io/smtp・docflow/io/s3・docflow/io/http・docflow/io/notify・docflow/render
+- 出口の送りは delivery（借り、再試行、Final で最終）。冪等の鍵は delivery の ID（<ジョブ>.<足跡>）：SMTP は Message-ID、S3 は If-None-Match（412 は書いた扱い）、HTTP は Idempotency-Key。結果の分からない失敗は 2 度送ることがある
+- 出口は .bdf をそのまま送れる（requirement:document-flow の制約）。smtp・s3・http は any を受ける
+- 資格の値は yuruidb にもログにも API の応答にも出さない。Node に入るのは名前（credential）だけ。名前の形は鍵の形（英数字・_・-）、環境変数の名は DOCFLOW_CRED_ に名前の - を _ にしたもの
+- 差し込みは {{meta.<鍵>}} だけ（metaView の鍵：送り手の鍵、name、user、$ の鍵、それに $node・$delivery・$error・$error_node）。無い鍵は空。メールのヘッダと HTTP のヘッダの値は改行を落とす。S3 のキーとファイルの名は .. と頭の / を落とし、制御文字を落とす
+- on_error の辺は任意。無ければ今のとおり delivery は failed、ジョブは止まる。ある辺は To と同じ型の検査を受け、運ぶ種類はノードが受けたもの（入力）
+- S3 Trigger は待ち受けない（pm-1：常駐に頼らない）。外の Lambda か EventBridge が POST /in/<node> にオブジェクトの参照（{bucket, key}、S3 の通知、EventBridge の S3 イベントのどれか）を送り、Manager がノードの資格で読む。鍵はエンドポイントと同じ argon2id の鍵（POST /api/nodes/<n>/key）。ノードの bucket 以外は断る
+- 各社の SDK を入れない。S3 は自前の小さな PUT と GET に yuruidb/auth/aws の SigV4。SMTP は net/smtp
+non_goals:
+- ftp の出口と入口（fl-4）
+- notify の digest（短い間の多数をまとめる）
+- S3 の見回り（tick の ListObjects。2026-10-21 利用者：入口は Trigger だけ）
+- 資格を封をして yuruidb に置くこと（open_questions.credentials-store）
+- エディタの種類ごとの専用の入力欄（アダプタの種類は JSON の設定欄で書く。パレット・役割の色・on_error の選択と破線の辺はある）
+- SVG の描画（vector/svgbdf が main に入ってから）
+capabilities:
+  step-hook:
+    state: implemented
+    about: docflow.Kind.Step（delivery の段。Made を返せば新しいペイロード、nil なら届いたものを To へ）と Out.ID・Out.Cause・Expand
+  render-node:
+    state: implemented
+    about: docflow/render の種類 render：.bdf を format（pdf・png）に。png は 1 ページ（page、既定 1、150 dpi）。svg は PUT で断る（後）
+  smtp-output:
+    state: implemented
+    about: docflow/io/smtp の種類 smtp：url（smtp:// は STARTTLS（相手が出せば）、smtps:// は TLS）、credential（user:password）、from、recipients、mail_subject、text。ペイロードを添付
+  s3-output:
+    state: implemented
+    about: docflow/io/s3 の種類 s3：url（s3://bucket?region=&endpoint=）、path（キーのテンプレート、既定 {{meta.$job}}/{{meta.$name}}）、credential（access:secret[:token]、無ければ AWS の既定の連鎖）
+  s3-trigger:
+    state: implemented
+    about: docflow/io/s3 の種類 s3-trigger（入口）：POST /in/<node> に参照、入口の設定（accept・output・formats・meta）、メタデータ s3.bucket・s3.key
+  http-output:
+    state: implemented
+    about: docflow/io/http の種類 http：url、method（POST・PUT）、headers、credential（Bearer）。X-Meta-* でメタデータを付ける（相手が docflow の /in/<node> なら受けたまま）
+  credentials:
+    state: implemented
+    about: docflow.Credential（環境変数かファイル）と Node.Credential
+  on-error:
+    state: implemented
+    about: Node.OnError。最終の失敗で、届いたペイロードを on_error の先へ。$error・$error_node を Out.Meta に
+  notify-node:
+    state: implemented
+    about: docflow/io/notify の種類 notify：via（slack・mail・http）、text、任意の to で続ける
+  interpolation:
+    state: implemented
+    about: docflow.Expand・ExpandHeader・ExpandPath（{{meta.<鍵>}}）
+acceptance:
+  f1-render:
+    text: endpoint → render(pdf・png) → http の流れで、相手に PDF と 1 ページの PNG が届く。svg と data の辺は PUT で断る
+    verified_by: [io-tests]
+  f2-smtp:
+    text: 試しの SMTP サーバーにメールが届き、件名・宛先が差し込まれ、ペイロードが添付され、Message-ID が delivery の ID。ヘッダの改行は落ちる
+    verified_by: [io-tests]
+  f3-s3:
+    text: 試しの S3 に If-None-Match で書く。2 度目（412）は done。キーは差し込みで、.. は落ちる。S3 Trigger の POST /in/<node> がオブジェクトを読んでジョブにする（3 つの形）、別の bucket と鍵の無い要求は断る
+    verified_by: [io-tests]
+  f4-http:
+    text: 試しの HTTP サーバーに Idempotency-Key・Authorization・X-Meta-* 付きで届く。5xx は再試行、4xx は最終
+    verified_by: [io-tests]
+  f5-credentials:
+    text: 資格は環境変数とファイルから読める。無い名前の送りは失敗し（再試行）、値は API とログに出ない
+    verified_by: [io-tests]
+  f6-on-error:
+    text: 最終の失敗のノードの on_error の先に notify があれば、slack（試しの webhook）に $error を含む文が届き、to の先にも流れる。on_error の無いノードは今のとおり
+    verified_by: [io-tests]
+  f7-editor:
+    text: エディタのパレットに新しい種類、サイドバーに on_error の選択とアダプタの JSON の設定欄、on_error の辺は破線。保存で設定と on_error が残る
+    verified_by: [editor]
+verification:
+  io-tests:
+    state: passed
+    method: integration
+    test: go test ./docflow/... ./cmd/docflow/...（試しの SMTP・S3・HTTP のサーバーは同じプロセスの中）
+    authority: observed
+    evidence:
+      path: docflow/io/notify/notify_test.go
+      locator: 'render_test.go（TestRender・TestRenderSettings）、smtp_test.go（TestMail・TestMailFails）、s3_test.go（TestS3Out・TestS3Trigger。S3 は httptest の偽物で SigV4 の見出しを確かめる）、http_test.go、notify_test.go（TestOnError・TestOnErrorDefault・TestNotifyPasses・TestOnErrorTyped・TestNotifyMail）、docflow/expand_test.go。2026-10-23 macOS'
+  editor:
+    state: passed
+    method: manual
+    test: pw dev の /topology で erp → pdf → mail（on_error → ops）を開き、mail の題を変えて保存（設定と on_error が残る）、パレットから http を JSON の設定で足す
+    authority: observed
+  vet:
+    state: passed
+    method: static
+    test: go vet -unreachable=false ./...
+    authority: observed
+facts:
+  implementation:
+    core: 'docflow/kind.go：Kind.Step（delivery の段。Made か nil）・Keyed（/in/<name> の鍵）・Fetch（参照から読む）、Out.ID・Cause・Expand・ExpandHeader・ExpandPath・ExpandFunc、Failure、Made、Fetch・Fetched、CleanNames・CleanPath・PagesView。credential.go：Credential・CredentialEnv・CheckCredential・ErrCredential'
+    steps: 'route は Step のある種類を delivery に（target なし）。deliver の既定の枝で steps(d.Kind) なら step：Made を keepMade で <delivery> の ID に置き、continueFrom で To へ（nil なら届いたもの）。continueFrom は Cause を引き継ぐ'
+    on_error: 'Node.OnError は全種類の共通の設定（PutNode）。edges に含み（存在・閉路・削除の守り）、型は sends（flowEdges は emits、OnError は届いたもの）。accepts は OnError の先で絞る。outcome が最終の失敗で routeError：ノードの OnError、無ければ Options.OnError（Cause の無いジョブだけ）、自分は除く。足跡は失敗の記録と同じ changeJob で'
+    keyed_entries: 'nodes.go の鍵の発行と RotateKey は keyed(kind)。serveIn は endpoint(keyed) を引き、Kind.Fetch があれば本文（1 MiB まで）を参照として読み、Fetched の名前とメタデータでジョブに'
+    view_keys: 'Expand の鍵：metaView（送り手の鍵、name、user、$job …、$kind …）に $node・$delivery・$name（ペイロードの名、無ければジョブの）・$error・$error_node。表示の fallback の sendSlip も ID（slip.<id>）を持つ'
+    adapters: 'docflow/render（render）、docflow/io/smtp（smtp。Check・Send・Mail・ContentType・AttachmentName を notify と http が使う）、docflow/io/s3（s3・s3-trigger。自前の PUT・GET に yuruidb/auth/aws の Sign。資格なしは AWS の既定の連鎖）、docflow/io/http（http。Do・Request・CheckURL）、docflow/io/notify（notify。slack・mail・http）'
+    web_app: 'cmd/docflow/handlers が全部を blank import。docflow.on_error・docflow.credential_dir（DOCFLOW_ON_ERROR・DOCFLOW_CREDENTIAL_DIR）。エディタ：KINDS・ROLE_OF・パレット・On error の選択・JSON の設定欄・error の辺（破線）'
+    tests: 'docflow/internal/flowtest（Env・Hook・SMTP の偽物）を各アダプタのテストが使う'
+relations:
+- relation: refines
+  to: requirement:document-flow
+- relation: builds_on
+  to: milestone:df-1
+- relation: builds_on
+  to: milestone:fl-1

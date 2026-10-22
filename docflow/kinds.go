@@ -164,8 +164,7 @@ func inferKinds(nodes map[string]*Node) *typing {
 	for range len(nodes) + 2 {
 		changed := false
 		for _, n := range nodes {
-			out := n.emits(t.reach[n.Name])
-			for _, to := range n.edges() {
+			for to, out := range n.sends(t.reach[n.Name]) {
 				if nodes[to] == nil {
 					continue
 				}
@@ -220,11 +219,14 @@ func accepts(nodes map[string]*Node) map[string]kinds {
 	for range len(nodes) + 2 {
 		changed := false
 		for name, n := range nodes {
-			if !passesOn(n.Kind) {
-				continue
+			// what reaches a node goes on along OnError as it is, and
+			// along every edge of one that passes it on
+			edges := n.OnError
+			if passesOn(n.Kind) {
+				edges = n.edges()
 			}
 			a := takes(n.Kind)
-			for _, to := range n.edges() {
+			for _, to := range edges {
 				if nodes[to] != nil {
 					a &= acc[to]
 				}
@@ -246,13 +248,12 @@ func accepts(nodes map[string]*Node) map[string]kinds {
 func (t *typing) broken(nodes map[string]*Node) map[string]map[string]kinds {
 	out := map[string]map[string]kinds{}
 	for _, n := range nodes {
-		emits := n.emits(t.reach[n.Name])
-		for _, to := range n.edges() {
+		for to, sent := range n.sends(t.reach[n.Name]) {
 			x := nodes[to]
 			if x == nil {
 				continue
 			}
-			if bad := emits &^ takes(x.Kind); bad != 0 {
+			if bad := sent &^ takes(x.Kind); bad != 0 {
 				if out[n.Name] == nil {
 					out[n.Name] = map[string]kinds{}
 				}
@@ -276,7 +277,7 @@ func (n *Node) withoutEdges(names map[string]bool) *Node {
 		return out
 	}
 	c := *n
-	c.To, c.Members, c.Otherwise = keep(n.To), keep(n.Members), keep(n.Otherwise)
+	c.To, c.Members, c.Otherwise, c.OnError = keep(n.To), keep(n.Members), keep(n.Otherwise), keep(n.OnError)
 	c.Rules = slices.Clone(n.Rules)
 	for i := range c.Rules {
 		c.Rules[i].To = keep(n.Rules[i].To)

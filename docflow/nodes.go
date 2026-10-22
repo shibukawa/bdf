@@ -37,7 +37,7 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		return "", err
 	}
 	n := Node{Name: in.Name, Kind: in.Kind, Title: clip(strings.TrimSpace(in.Title), 255), Description: clip(strings.TrimSpace(in.Description), 1000), Scope: in.Scope, Owner: in.Owner,
-		NoIPP: in.NoIPP}
+		NoIPP: in.NoIPP, OnError: cleanNames(in.OnError)}
 	if k.Role == RoleEntry {
 		if err := checkEntry(k, in, &n); err != nil {
 			return "", err
@@ -90,10 +90,10 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		return "", err
 	}
 	var hash string
-	if n.Kind == KindEndpoint {
+	if keyed(n.Kind) {
 		// a new endpoint, or one that was another kind, gets a key; an
-		// endpoint keeps its
-		if cur != nil && cur.Kind == KindEndpoint && cur.KeyHash != "" {
+		// endpoint keeps its (and so does a keyed entry of an adapter)
+		if cur != nil && cur.Kind == n.Kind && cur.KeyHash != "" {
 			hash = cur.KeyHash
 		} else {
 			key = newKey()
@@ -103,7 +103,7 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		}
 	}
 	_, err = change(ctx, m.st.db, n.Name, true, func(r *nodeRecord) error {
-		if hash == "" && r.Kind == KindEndpoint && n.Kind == KindEndpoint {
+		if hash == "" && r.Kind == n.Kind && keyed(n.Kind) {
 			hash = r.KeyHash // put twice at once
 		}
 		*r = nodeRecord(n)
@@ -132,7 +132,7 @@ func (m *Manager) RotateKey(ctx context.Context, name string) (string, error) {
 		return "", err
 	}
 	_, err = change(ctx, m.st.db, name, false, func(r *nodeRecord) error {
-		if r.Kind != KindEndpoint {
+		if !keyed(r.Kind) {
 			return fmt.Errorf("%w: %s is a %s, not an endpoint", ErrInvalid, name, r.Kind)
 		}
 		r.KeyHash = hash
@@ -436,11 +436,12 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 			}
 			t.Broken[to] = bad.names()
 		}
+		if keyed(n.Kind) {
+			t.In = InPath + "/" + n.Name
+		}
 		switch n.Kind {
 		case KindArchive:
 			t.Collection = n.collection()
-		case KindEndpoint:
-			t.In = InPath + "/" + n.Name
 		case KindTemplate:
 			t.Templates = byNode[n.Name]
 			slices.Sort(t.Templates)

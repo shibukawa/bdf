@@ -79,9 +79,16 @@ func checkKey(phc, key string) bool {
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
-// endpoint returns an endpoint node.
+// endpoint returns an endpoint node, or a keyed entry of an adapter's.
 func (m *Manager) endpoint(ctx context.Context, name string) (*Node, error) {
-	return m.nodeOfKind(ctx, name, KindEndpoint)
+	n, err := m.Node(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if !keyed(n.Kind) {
+		return nil, fmt.Errorf("%w: %s is a %s, not an endpoint", ErrNotFound, name, n.Kind)
+	}
+	return n, nil
 }
 
 // Endpoint finds the endpoint a key opens.
@@ -140,7 +147,27 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.Remove(f.Name())
 	defer f.Close()
-	n, err := io.Copy(f, io.LimitReader(r.Body, h.m.o.MaxDocument+1))
+	q := r.URL.Query()
+	body, name, meta, contentType := r.Body, q.Get("name"), metaOfRequest(r), r.Header.Get("Content-Type")
+	if k := kindNamed(ep.Kind); k != nil && k.Fetch != nil {
+		// the body names the document (an S3 event): the node reads it
+		ref, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			h.writeErr(w, errors.Join(ErrInvalid, err))
+			return
+		}
+		got, err := k.Fetch(ctx, &Fetch{Node: ep, Body: ref, m: h.m})
+		if err != nil {
+			h.writeErr(w, err)
+			return
+		}
+		defer got.Body.Close()
+		body, name, contentType = got.Body, firstOr(name, got.Name), ""
+		for k, v := range got.Meta {
+			meta[k] = v
+		}
+	}
+	n, err := io.Copy(f, io.LimitReader(body, h.m.o.MaxDocument+1))
 	if err != nil {
 		h.writeErr(w, errors.Join(ErrInvalid, err))
 		return
@@ -149,9 +176,8 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "the document is too large"})
 		return
 	}
-	q := r.URL.Query()
-	j, err := h.m.Submit(ctx, ep.Name, Input{Name: q.Get("name"), By: by, ClaimedUser: q.Get("user"), Source: "endpoint", Doc: f, Size: n,
-		ContentType: r.Header.Get("Content-Type"), Meta: metaOfRequest(r)})
+	j, err := h.m.Submit(ctx, ep.Name, Input{Name: name, By: by, ClaimedUser: q.Get("user"), Source: "endpoint", Doc: f, Size: n,
+		ContentType: contentType, Meta: meta})
 	if err != nil {
 		if errors.Is(err, ErrFormat) {
 			h.m.audit(ctx, by.Label(), "refuse-document", ep.Name, err.Error())
