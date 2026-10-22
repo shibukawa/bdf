@@ -100,12 +100,13 @@ func takes(kind string) kinds {
 // passesOn tells a kind of node that sends on what reaches it (and, an
 // entry, what it receives): what it may take at its input is what every
 // node after it takes, so that its first edge, on either side, types it
-// as the wildcard pin of a visual editor is typed. A template or a
-// convert node sends on the .bdf it makes whatever reaches it, a display
-// the .bdf it shows; the others send nothing on.
+// as the wildcard pin of a visual editor is typed; so does an archive,
+// which sends on what it wrote. A template or a convert node sends on the
+// .bdf it makes whatever reaches it, a display the .bdf it shows; the
+// others send nothing on.
 func passesOn(kind string) bool {
 	switch kind {
-	case KindQueue, KindClass, KindFilter, KindInbox, KindEndpoint, KindCups:
+	case KindQueue, KindClass, KindFilter, KindInbox, KindEndpoint, KindCups, KindArchive:
 		return true
 	}
 	return false

@@ -69,6 +69,9 @@ func (m *Manager) Submit(ctx context.Context, dest string, in Input) (*Job, erro
 		accept = AcceptData
 	case KindConvert:
 		output = OutputFile
+	case KindExport:
+		// an export lists what an archive wrote: a job sent to it has none
+		return nil, fmt.Errorf("%w: %s is an export, which lists what an archive before it wrote: send to an entry", ErrInvalid, dest)
 	}
 	claimed, err := claimedMeta(in.Meta)
 	if err != nil {

@@ -73,7 +73,8 @@ func TestKinds(t *testing.T) {
 	for _, n := range topo {
 		kinds[n.Name] = n.Takes + "<" + strings.Join(n.Emits, "+")
 	}
-	want := map[string]string{"raw": "any<any", "fan": "any<any", "conv": "any<bdf", "laser": "bdf<", "audit": "any<", "forms": "data<bdf"}
+	// an archive sends on what it wrote (an export after it), as a queue does
+	want := map[string]string{"raw": "any<any", "fan": "any<any", "conv": "any<bdf", "laser": "bdf<", "audit": "any<any", "forms": "data<bdf"}
 	for name, w := range want {
 		if kinds[name] != w {
 			t.Errorf("%s: %s; want %s", name, kinds[name], w)

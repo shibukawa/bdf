@@ -361,6 +361,13 @@ func (m *Manager) keepDocument(ctx context.Context, id, node, name string, doc *
 // made: the payload is added to the job, the node's leg says what it
 // made, and the job follows the node's edges with it.
 func (m *Manager) continueWith(ctx context.Context, d *Delivery, n *Node, p *Payload) error {
+	return m.continueFrom(ctx, d, n, p, true, nil)
+}
+
+// continueFrom routes the job on from a node whose step is done, with a
+// payload: one the node made (made: the leg's Made), or the one it took
+// (an archive, which sends on what it wrote, archived).
+func (m *Manager) continueFrom(ctx context.Context, d *Delivery, n *Node, p *Payload, made bool, archived *archiveRef) error {
 	j, err := m.JobOfNumber(ctx, d.Job)
 	if err != nil {
 		return err
@@ -371,7 +378,7 @@ func (m *Manager) continueWith(ctx context.Context, d *Delivery, n *Node, p *Pay
 	if j.payload(p.ID) == nil {
 		j.Payloads = append(j.Payloads, *p)
 	}
-	r := &routing{job: j, now: m.now(), payload: j.payload(p.ID)}
+	r := &routing{job: j, now: m.now(), payload: j.payload(p.ID), archived: archived}
 	for _, to := range n.To {
 		m.route(ctx, r, to, n.Name, 0)
 	}
@@ -379,7 +386,7 @@ func (m *Manager) continueWith(ctx context.Context, d *Delivery, n *Node, p *Pay
 		if j.payload(p.ID) == nil {
 			j.Payloads = append(j.Payloads, *p)
 		}
-		if l := j.leg(d.ID); l != nil {
+		if l := j.leg(d.ID); l != nil && made {
 			l.Made = p.ID
 		}
 		j.Legs = append(j.Legs, r.legs...)

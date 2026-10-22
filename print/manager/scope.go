@@ -42,7 +42,11 @@ const (
 	// ViaClientCredentials is an app's token (POST /oauth/token) or its
 	// Basic client_id:secret.
 	ViaClientCredentials = "client-credentials"
-	ViaNone              = "none"
+	// ViaOAuth is a person's token, which a frontend registered as a
+	// public client got for them (the authorization code grant with
+	// PKCE at /oauth/authorize, oauth.go).
+	ViaOAuth = "oauth"
+	ViaNone  = "none"
 )
 
 // Principal is who sent a job, as the manager verified it.
@@ -117,13 +121,72 @@ type Viewer struct {
 	Email string
 	// Groups are the values of the IdP's groups claim at the last login.
 	Groups []string
-	// Scopes are an app's (granted to its token).
+	// Subject is the person's subject at the IdP (sub), when the web
+	// application knows it: what an export compares with a document's
+	// owner under SubjectSub.
+	Subject string
+	// Scopes are an app's (granted to its token), or a person's token's.
 	Scopes []string
 	// Roles are a person's (RoleTopology, RoleAudit).
 	Roles []string
 	// Admin sees everything and changes the settings.
 	Admin bool
 }
+
+// What of a person an export compares with the owner a document's
+// metadata names (Node.Subject).
+const (
+	// SubjectEmail is the person's email, as the IdP verified it (the
+	// default).
+	SubjectEmail = "email"
+	// SubjectSub is the person's subject at the IdP.
+	SubjectSub = "sub"
+	// SubjectID is the person's ID at the manager (Viewer.ID).
+	SubjectID = "id"
+	// SubjectGroup is any of the person's groups.
+	SubjectGroup = "group"
+)
+
+var exportSubjects = []string{SubjectEmail, SubjectSub, SubjectID, SubjectGroup}
+
+// identities are the values of the viewer an owner is compared with,
+// under a subject: a person's email, subject, ID, or groups. Nothing for
+// a viewer that is not a person.
+func (v *Viewer) identities(subject string) []string {
+	if v == nil || v.Kind != PrincipalUser {
+		return nil
+	}
+	var out []string
+	switch subject {
+	case "", SubjectEmail:
+		out = []string{v.Email}
+	case SubjectSub:
+		out = []string{v.Subject}
+	case SubjectID:
+		out = []string{v.ID}
+	case SubjectGroup:
+		out = v.Groups
+	}
+	return slices.DeleteFunc(slices.Clone(out), func(s string) bool { return s == "" })
+}
+
+// owns tells whether the viewer is the owner named, under a subject: an
+// email is compared without case.
+func (v *Viewer) owns(subject, owner string) bool {
+	if owner == "" {
+		return false
+	}
+	for _, id := range v.identities(subject) {
+		if id == owner || (subject == "" || subject == SubjectEmail) && strings.EqualFold(id, owner) {
+			return true
+		}
+	}
+	return false
+}
+
+// Token tells a person's token (ViaOAuth): it opens the export
+// endpoints and /api/me alone, not the pages' API.
+func (v *Viewer) Token() bool { return v != nil && v.Kind == PrincipalUser && v.Via == ViaOAuth }
 
 // Has tells a scope of the viewer (an administrator has every one).
 func (v *Viewer) Has(scope string) bool {

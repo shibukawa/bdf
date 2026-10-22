@@ -41,7 +41,12 @@ type (
 	enrollRecord   enrollment
 	personRecord   Person
 	appRecord      App
-	counterRecord  struct {
+	// exportEntryRecord is an entry of an export (export-entries,
+	// <node>.<job>); the lists of an export's entries are exportList
+	// (export-lists: <node> for every one, <node>.<owner's hash> for an
+	// owner's).
+	exportEntryRecord ExportEntry
+	counterRecord     struct {
 		Next int32 `json:"next"`
 	}
 	// stateRecord is a value kept for a while under a key: see PutState.
@@ -122,6 +127,8 @@ func OpenStore(ctx context.Context, records, documents string) (*Store, error) {
 		db.Bind[personRecord]("people"),
 		db.Bind[appRecord]("apps"),
 		db.Bind[stateRecord]("states"),
+		db.Bind[exportEntryRecord]("export-entries"),
+		db.Bind[exportList]("export-lists"),
 	} {
 		if err != nil {
 			db.Close()

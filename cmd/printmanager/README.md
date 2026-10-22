@@ -105,10 +105,26 @@ client credentials grant: `-u id:secret -d grant_type=client_credentials`,
 ten minutes) and sends with it as a bearer to `/in/<endpoint>`, or
 prints over IPP with the same id and secret as Basic; it sees and, with
 the scope `jobs.cancel`, cancels its own jobs. The scopes are `print`,
-`print.template`, `jobs.cancel`, `tick` (a scheduler's) and `admin` (a
+`print.template`, `jobs.cancel`, `export` (reads the exports that list
+it: see *Exports* below), `tick` (a scheduler's) and `admin` (a
 script's: the API as an administrator). An app's jobs are its `group`'s
 when the destination gives them none. Disabling an app refuses its
 credentials and the tokens out.
+
+A **public client** is a frontend of one's own in people's browsers (a
+customer portal, a single-page app on another origin): registered with
+`"public": true` and its `redirect_uris` (https, or http on localhost),
+it has no secret, and gets a token of the person using it with the
+authorization code grant and PKCE (S256): the frontend sends the person
+to `GET /oauth/authorize?response_type=code&client_id=…&redirect_uri=…&code_challenge=…&code_challenge_method=S256&state=…`,
+where they sign in at the IdP as for the pages (once a session; the
+registration is the consent, no screen asks), and comes back with a
+`code`, which it exchanges at `POST /oauth/token`
+(`grant_type=authorization_code`, `client_id`, `code`, `code_verifier`,
+`redirect_uri`) for a token of an hour. The token is the person, with
+the client's scopes: it opens the exports and `/api/me`, nothing else of
+the API. A page of the client's origin may call the token endpoint and
+the exports (CORS).
 
 Every node (a display, a printer, a queue, a class …) has a scope and an
 owner (`"scope":"group", "owner":"warehouse-a"`, a value of the groups
@@ -190,15 +206,16 @@ node it reached. The document is kept once for all of them.
 | `inbox` | holds the job until a person releases it to nodes (those of `to`, or any when `to` is empty) or discards it; ended items stay `keep` (14 days) | `to`, `keep` |
 | `display` | shows the job as a slip on the devices enrolled there, and prints on paper what nobody opened within `fallback.after` (or every unopened slip while no device is connected); slips done or canceled stay `keep` (14 days) | `fallback` (`printer`, `after`), `keep`, `offline_after` |
 | `printer` | prints the job on paper, on a printer the manager reaches over the network (`ipp`, `ipps`, `socket`, `lpd`). With `preview`, the URL of the printer on a fake printer farm's API (`tools/fakeprinter`: `http://host:port/api/printers/<printer>`), what the fake printer received is shown beside the node, as the farm read it back (`GET /api/nodes/<name>/preview`, `…/preview/<job>/pages/<p>.png`) | `url`, `route` (`direct`), `preview` |
-| `archive` | writes the payload that reaches it (a `.bdf`, or any file or data as received) and a JSON record of the job (its metadata, payloads and legs) to `store` (a documents URL: `bbolt`, `s3`, `r2`, `gcs`), each object once, under `collection` (`archive-<name>`); the manager never changes or deletes them. Give the S3 bucket a default retention (Object Lock) for an audit trail nobody can change | `store`, `collection` |
+| `archive` | writes the payload that reaches it (a `.bdf`, or any file or data as received) and a JSON record of the job (its metadata, payloads and legs) to `store` (a documents URL: `bbolt`, `s3`, `r2`, `gcs`), each object once, under `collection` (`archive-<name>`); the manager never changes or deletes them. Give the S3 bucket a default retention (Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to` (an export) | `store`, `collection`, `to` |
 | `sink` | keeps the `latest` documents that reach it (10) to look at on the topology (the first page shows on the node, every page in the sidebar: `GET /api/nodes/<name>/latest`, `GET /api/jobs/<n>/pages/<p>.png`); an older one goes when a newer comes | `latest` |
+| `export` | lists what an archive before it wrote (an archive sends a job on along its `to` once it wrote it), for applications and people to fetch at `GET /out/<name>`: each entry under the owner the metadata key `by` names (a customer's id the sender gave), with the metadata of `fields`; the latest `entries` (1000) are listed. See *Exports* below | `by`, `subject`, `fields`, `entries`, `apps` |
 
 Every node has a `title` and a `description` too (as a C4 element: the
 name in the title bar, `[kind]` and the title under it, then the
 description, a note of what it is for, up to 1000 characters, the first
 lines on the canvas), and a `scope` and an `owner` (see Sign-in). A display, a
-printer or a sink keeps its kind; the other kinds change into one
-another, keeping the name.
+printer, a sink or an export keeps its kind; the other kinds change into
+one another, keeping the name.
 
 What flows along an edge has a kind: a `bdf` document, `data` (JSON,
 YAML, CSV, Excel, Parquet) or `any` other file as received. An entry
@@ -266,6 +283,60 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/erp-data 
 curl -X POST -H "Authorization: Bearer bdfk_…" -H "Content-Type: application/json" "localhost:8080/in/erp-data?name=INV-1" -d '{"customer":"ACME","total":12000}'
 ```
 
+### Exports
+
+An export is where documents leave the network for the applications and
+people that fetch them: an archive writes the document for good, and the
+export after it lists it. A way that reaches an export without an
+archive is refused when a node is put (400, with the way), and a job
+sent straight to an export ends there with an error. The entries stay
+when the job's record goes: the document is read from the archive.
+
+| | |
+|---|---|
+| `GET /out/<name>` | the entries the reader may read, newest first (`?owner=` one owner's, `?limit=`, 100 by default) |
+| `GET /out/<name>/<job>` | one entry: the job's number, name, kind, format, pages, size, sha256, owner, fields, who sent it, where the archive wrote it |
+| `GET /out/<name>/<job>/record` | the archive's record of the job (its metadata, payloads and legs when it was written) |
+| `GET /out/<name>/<job>/document` | the document as the archive wrote it (in the audit log) |
+
+Who reads what:
+
+- **A backend** (an app the export lists in `apps`, with the scope
+  `export`) reads every entry with its client-credentials token, and
+  narrows to one of its users with `?owner=`; so do the administrators
+  and the auditors.
+- **A person** reads the entries whose owner is them: the value of `by`
+  is compared with their `subject`: `email` (the default, as the IdP
+  verified it, without case), `sub` (their subject at the IdP), `id`
+  (their ID here) or `group` (any of their groups). An export without
+  `by` shows them what they could see of the job (their own, their
+  groups'). They read with the pages' session, or with a token a
+  frontend got for them (a public client, above). The export's `scope`
+  and `owner` say who may read it at all, as they say who may send to a
+  node.
+- Anything else is **not found** (404), not forbidden: an entry of
+  another owner, of a job that is not there, of a job sent elsewhere.
+
+The owner is what the sender claimed (`X-Meta-Customer`, `?meta.customer=`,
+an entry's `meta`): whoever may send to the entry decides whose a
+document is. Give the entry to the backends that know their users, or
+fix the owner with the entry's `meta`.
+
+```sh
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/apps/portal-api -d '{"scopes":["export"]}'
+# → {"id":"portal-api", …, "secret":"bdfa_…"}
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/statements -d '{"kind":"export","by":"customer","fields":["invoice"],"apps":["portal-api"]}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/vault -d '{"kind":"archive","store":"s3://vault?region=ap-northeast-1","to":["statements"]}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/billing -d '{"kind":"endpoint","to":["vault"]}'
+curl -X POST -H "Authorization: Bearer bdfk_…" --data-binary @inv.pdf "localhost:8080/in/billing?name=INV-1&meta.customer=alice@example.com&meta.invoice=INV-1"
+# the backend lists one customer's, and downloads one
+TOKEN2=$(curl -s -u 'portal-api:bdfa_…' -d grant_type=client_credentials localhost:8080/oauth/token | jq -r .access_token)
+curl -H "Authorization: Bearer $TOKEN2" "localhost:8080/out/statements?owner=alice@example.com"
+curl -H "Authorization: Bearer $TOKEN2" -O -J localhost:8080/out/statements/1/document
+# a frontend: a public client, whose users read their own
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/apps/portal -d '{"public":true,"scopes":["export"],"redirect_uris":["https://portal.example.com/callback"]}'
+```
+
 A template belongs to its template node (`PUT /api/nodes/<name>/templates/<id>`;
 it goes when the node does). It is a compiled template (`.bdft`, from
 `bdf template compile`) or one of Excel, Word, PowerPoint, a PDF form,
@@ -289,6 +360,9 @@ ports to connect, a sidebar for the node selected, pan and zoom; where the
 nodes are drawn is `/api/layout`); a CUPS client lists every node with
 CUPS-Get-Printers at `/ipp/print` (`bdf printers -url ipp://<host>:<port>/ipp/print`).
 
+`GET /oauth/authorize` sends a person signed in back to a public client
+with a code, and `POST /oauth/token` makes tokens (client credentials,
+or the code); `GET /out/<name>/…` are the exports (above).
 `GET /auth/login` signs in at the IdP and `POST /auth/logout` out;
 `GET /api/me` tells who; `GET /api/my/jobs` lists a person's jobs and
 `GET /api/destinations` the nodes to print to; `POST /api/jobs/<n>/reprint`

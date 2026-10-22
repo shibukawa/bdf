@@ -27,6 +27,8 @@ type handler struct {
 //	POST /ipp/print/{node}                     the node's IPP printer
 //	POST /ipp/print                            the server (CUPS-Get-Printers)
 //	/api/…                                     the API (bearer AdminToken, or a session of the pages)
+//	/in/{name}, /out/{name}                    the endpoints and the exports (keys, apps' tokens, people)
+//	/oauth/…                                   the apps' and the frontends' tokens
 //	/device/…                                  the devices' endpoints (their session)
 //
 // It is mounted on the web application's mux; it holds nothing between
@@ -60,7 +62,16 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("PUT /api/apps/{id}", h.adminOnly(h.putApp))
 	mux.HandleFunc("DELETE /api/apps/{id}", h.adminOnly(h.deleteApp))
 	mux.HandleFunc("POST /api/apps/{id}/secret", h.adminOnly(h.rotateAppSecret))
-	mux.HandleFunc("POST "+OAuthTokenPath, h.oauthToken)
+	mux.HandleFunc("POST "+OAuthTokenPath, h.cors(h.oauthToken))
+	mux.HandleFunc("OPTIONS "+OAuthTokenPath, h.cors(nil))
+	mux.HandleFunc("GET "+OAuthAuthorizePath, h.oauthAuthorize)
+	// the exports (export.go): read by apps with their tokens, people with
+	// the pages' session or a token a frontend got for them
+	mux.HandleFunc("GET "+OutPath+"/{node}", h.cors(h.listExport))
+	mux.HandleFunc("GET "+OutPath+"/{node}/{job}", h.cors(h.getExportEntry))
+	mux.HandleFunc("GET "+OutPath+"/{node}/{job}/record", h.cors(h.exportRecord))
+	mux.HandleFunc("GET "+OutPath+"/{node}/{job}/document", h.cors(h.exportDocument))
+	mux.HandleFunc("OPTIONS "+OutPath+"/{rest...}", h.cors(nil))
 	mux.HandleFunc("GET /api/nodes/{name}/latest", h.userOnly(h.latest))
 	mux.HandleFunc("GET /api/nodes/{name}/preview", h.adminOnly(h.preview))
 	mux.HandleFunc("GET /api/nodes/{name}/preview/{job}/pages/{page}", h.adminOnly(h.previewPage))

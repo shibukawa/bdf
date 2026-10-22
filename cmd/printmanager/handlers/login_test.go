@@ -418,3 +418,106 @@ func TestGroups(t *testing.T) {
 		}
 	}
 }
+
+// A frontend sends a person to /oauth/authorize: signed out, the person
+// goes to the IdP first; signed in, back to the frontend with a code.
+func TestOAuthAuthorize(t *testing.T) {
+	s := newSite(t)
+	api := func(method, path string, body any, status int) {
+		t.Helper()
+		j, _ := json.Marshal(body)
+		req, _ := http.NewRequest(method, s.url+path, bytes.NewReader(j))
+		req.Header.Set("Authorization", "Bearer t")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != status {
+			t.Fatalf("%s %s: %d %s; want %d", method, path, res.StatusCode, out, status)
+		}
+	}
+	api("PUT", "/api/apps/portal", manager.App{Public: true, Scopes: []string{manager.ScopeExport}, RedirectURIs: []string{"https://portal.example/cb"}}, http.StatusOK)
+	authorize := "/oauth/authorize?response_type=code&client_id=portal&redirect_uri=https%3A%2F%2Fportal.example%2Fcb&state=s1&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
+	stop := func(b *browser) *http.Client {
+		return &http.Client{Jar: b.c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	}
+	// signed out: to the IdP, with the way back
+	b := s.browser()
+	req, _ := http.NewRequest("GET", s.url+authorize, nil)
+	req.Header.Set("Accept", "text/html,*/*;q=0.8")
+	res, err := stop(b).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther || !strings.HasPrefix(res.Header.Get("Location"), "/auth/login?next=%2Foauth%2Fauthorize") {
+		t.Fatalf("signed out: %d %s", res.StatusCode, res.Header.Get("Location"))
+	}
+	// signed in: back to the frontend with a code and the state
+	alice := s.login("alice")
+	req, _ = http.NewRequest("GET", s.url+authorize, nil)
+	req.Header.Set("Accept", "text/html,*/*;q=0.8")
+	res, err = stop(alice).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	loc := res.Header.Get("Location")
+	if res.StatusCode != http.StatusFound || !strings.HasPrefix(loc, "https://portal.example/cb?code=") || !strings.Contains(loc, "state=s1") {
+		t.Fatalf("signed in: %d %s", res.StatusCode, loc)
+	}
+	// the code is exchanged with the verifier of the challenge above (RFC
+	// 7636's example), and the token is the person at the exports
+	code := strings.TrimPrefix(strings.SplitN(strings.TrimPrefix(loc, "https://portal.example/cb?"), "&", 2)[0], "code=")
+	form := "grant_type=authorization_code&client_id=portal&code=" + code + "&code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk&redirect_uri=https%3A%2F%2Fportal.example%2Fcb"
+	req, _ = http.NewRequest("POST", s.url+"/oauth/token", strings.NewReader(form))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "https://portal.example")
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tok struct {
+		AccessToken string `json:"access_token"`
+		Scope       string `json:"scope"`
+	}
+	json.NewDecoder(res.Body).Decode(&tok)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || tok.AccessToken == "" || tok.Scope != "export" || res.Header.Get("Access-Control-Allow-Origin") != "https://portal.example" {
+		t.Fatalf("the token: %d %+v %q", res.StatusCode, tok, res.Header.Get("Access-Control-Allow-Origin"))
+	}
+	req, _ = http.NewRequest("GET", s.url+"/api/me", nil)
+	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var me struct {
+		Kind, Email string
+		Groups      []string
+	}
+	json.NewDecoder(res.Body).Decode(&me)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || me.Kind != manager.PrincipalUser || me.Email != "alice@example.com" || len(me.Groups) != 1 {
+		t.Fatalf("me with the token: %d %+v", res.StatusCode, me)
+	}
+	// the exports are served by the application: the token reads one, and
+	// the session of the pages too
+	api("PUT", "/api/nodes/out", manager.Node{Kind: manager.KindExport, By: "customer"}, http.StatusOK)
+	req, _ = http.NewRequest("GET", s.url+"/out/out", nil)
+	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || strings.TrimSpace(string(out)) != "[]" {
+		t.Fatalf("/out with the token: %d %s", res.StatusCode, out)
+	}
+	if code, body := alice.send("GET", "/out/out/1", nil, func(r *http.Request) { r.Header.Set("Accept", "application/json") }); code != http.StatusNotFound || !strings.Contains(body, "not found") {
+		t.Fatalf("/out with the session: %d %s", code, body)
+	}
+}

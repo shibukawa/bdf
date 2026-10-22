@@ -203,8 +203,18 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		if err != nil {
 			return m.outcome(ctx, d, owner, "", "", err, false)
 		}
-		key, err := m.archive(sctx, n, j, j.payload(d.Payload))
-		return m.outcome(ctx, d, owner, "", key, err, false)
+		p := j.payload(d.Payload)
+		key, err := m.archive(sctx, n, j, p)
+		d, err = m.outcome(ctx, d, owner, "", key, err, false)
+		if err != nil || d.State != DeliveryDone || len(n.To) == 0 || p == nil {
+			return d, err
+		}
+		// what it wrote goes on: an export after it lists it
+		if err := m.continueFrom(ctx, d, n, p, false, &archiveRef{Node: n.Name, Key: key}); err != nil {
+			m.o.Log.Warn("continue after an archive", "delivery", d.ID, "job", d.Job, "node", d.Node, "err", err)
+			return d, err
+		}
+		return d, nil
 	case KindTemplate, KindConvert:
 		n, err := m.Node(sctx, d.Node)
 		if err == nil && n.Kind != d.Kind {

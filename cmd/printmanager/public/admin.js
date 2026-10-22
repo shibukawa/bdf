@@ -74,11 +74,12 @@ export function badge(text, cls = "badge-ghost") {
   return el("span", text, { className: "badge " + cls });
 }
 
-export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink" };
+export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "Export" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
   sink: "badge-success badge-soft",
+  export: "badge-accent badge-soft",
   filter: "badge-secondary badge-soft",
   template: "badge-secondary badge-soft",
   convert: "badge-secondary badge-soft",
@@ -153,6 +154,26 @@ export async function keptSection(name) {
     grid.append(card);
   }
   box.append(grid);
+  return box;
+}
+
+// listedSection shows the entries of an export the viewer may read:
+// what an archive before it wrote, with the owner each is listed for.
+export async function listedSection(name) {
+  const box = el("div", undefined, { className: "mt-3 flex flex-col gap-2 border-t border-base-300 pt-3" });
+  box.append(el("h4", "Listed here", { className: "font-semibold" }));
+  const entries = await api("GET", `/out/${encodeURIComponent(name)}?limit=20`);
+  if (!entries.length) box.append(el("p", "Nothing you may read yet.", { className: "text-xs text-base-content/60" }));
+  const list = el("ul", undefined, { className: "flex flex-col gap-1 text-xs" });
+  for (const e of entries) {
+    const li = el("li", undefined, { className: "flex flex-wrap items-center gap-x-2 rounded-box bg-base-200 px-2 py-1" });
+    li.append(el("a", `#${e.job} ${e.name || ""}`, { className: "link font-semibold", href: `/out/${encodeURIComponent(name)}/${e.job}/document`, title: "download the document from the archive" }));
+    if (e.owner) li.append(el("span", e.owner, { className: "badge badge-ghost badge-xs" }));
+    li.append(el("span", `${e.pages ? e.pages + " page" + (e.pages === 1 ? "" : "s") + " · " : ""}${e.format || e.kind} · ${since(e.received)}`, { className: "text-base-content/60" }));
+    for (const [k, v] of Object.entries(e.fields || {})) li.append(el("span", `${k}: ${v}`, { className: "font-mono text-base-content/60" }));
+    list.append(li);
+  }
+  box.append(list);
   return box;
 }
 
