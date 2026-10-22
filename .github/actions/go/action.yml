@@ -1,0 +1,43 @@
+name: Go, with its caches
+description: >
+  actions/setup-go, and the module and build caches (GOMODCACHE and
+  GOCACHE) of the job restored from its newest run on main. Pull requests
+  only read them: the job saves them on main, at its end, with
+  actions/cache/save and the outputs of this action. (setup-go's own cache
+  was saved by whichever job of a pull request came first, in the scope of
+  that pull request, under a key of go.sum it never saved again, so every
+  pull request built everything from nothing.)
+  Go trims GOCACHE of what it has not used for five days; a new version of
+  Go starts both afresh, which also drops the modules no longer used.
+inputs:
+  go-version:
+    description: the version of Go
+    required: true
+outputs:
+  path:
+    description: the directories of the cache, for actions/cache/save
+    value: ${{ steps.env.outputs.path }}
+  key:
+    description: the key to save the cache under, for actions/cache/save
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v7
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+    - id: env
+      shell: bash
+      run: |
+        {
+          echo 'path<<EOF'
+          go env GOMODCACHE GOCACHE
+          echo EOF
+        } >>"$GITHUB_OUTPUT"
+    - id: restore
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ steps.env.outputs.path }}
+        key: go-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ inputs.go-version }}-${{ github.sha }}
+        restore-keys: go-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}-${{ inputs.go-version }}-
