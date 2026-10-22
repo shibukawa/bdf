@@ -40,9 +40,12 @@ const (
 	ScopeTick = "tick"
 	// ScopeAdmin uses the API as an administrator (a script).
 	ScopeAdmin = "admin"
+	// ScopeExport reads the exports that list the app (export.go); of a
+	// person's token, the exports they may read.
+	ScopeExport = "export"
 )
 
-var appScopes = []string{ScopePrint, ScopePrintTemplate, ScopeJobsCancel, ScopeTick, ScopeAdmin}
+var appScopes = []string{ScopePrint, ScopePrintTemplate, ScopeJobsCancel, ScopeTick, ScopeAdmin, ScopeExport}
 
 // AppTokenFor is how long an app's token lasts; an app takes another
 // with its credentials.
@@ -58,8 +61,14 @@ type App struct {
 	// Group is the group whose members see the app's jobs, when the
 	// destination gives them none.
 	Group string `json:"group,omitempty"`
+	// Public tells a public client: a frontend in people's browsers,
+	// which keeps no secret and gets tokens of the people using it with
+	// the authorization code grant (oauth.go), sent back to one of its
+	// RedirectURIs.
+	Public       bool     `json:"public,omitempty"`
+	RedirectURIs []string `json:"redirect_uris,omitempty"`
 	// SecretHash is the argon2id hash of its secret, never the secret;
-	// the API leaves it out.
+	// the API leaves it out. A public client has none.
 	SecretHash string `json:"secret_hash,omitempty"`
 	// Disabled refuses its credentials, keeping it.
 	Disabled bool      `json:"disabled,omitempty"`
@@ -76,7 +85,8 @@ func newAppSecret() string {
 
 // PutApp registers an app or changes it: its scopes, title, group and
 // whether it is disabled. A new app gets a secret, returned once; an app
-// keeps its (RotateAppSecret makes a new one).
+// keeps its (RotateAppSecret makes a new one). A public client gets
+// none: its redirect URIs are checked instead.
 func (m *Manager) PutApp(ctx context.Context, in App) (secret string, err error) {
 	if !validName(in.ID) {
 		return "", fmt.Errorf("%w: app id %q", ErrInvalid, in.ID)
@@ -90,10 +100,28 @@ func (m *Manager) PutApp(ctx context.Context, in App) (secret string, err error)
 			return "", fmt.Errorf("%w: scope %q: %s", ErrInvalid, s, strings.Join(appScopes, ", "))
 		}
 	}
-	a := App{ID: in.ID, Title: clip(strings.TrimSpace(in.Title), 255), Scopes: scopes, Group: strings.TrimSpace(in.Group), Disabled: in.Disabled}
+	uris, err := checkRedirectURIs(in.RedirectURIs)
+	if err != nil {
+		return "", err
+	}
+	if in.Public && len(uris) == 0 {
+		return "", fmt.Errorf("%w: a public client has at least one redirect URI", ErrInvalid)
+	}
+	if !in.Public && len(uris) > 0 {
+		return "", fmt.Errorf("%w: redirect URIs are a public client's", ErrInvalid)
+	}
+	a := App{ID: in.ID, Title: clip(strings.TrimSpace(in.Title), 255), Scopes: scopes, Group: strings.TrimSpace(in.Group), Public: in.Public, RedirectURIs: uris, Disabled: in.Disabled}
 	var hash string
 	_, err = change(ctx, m.st.db, a.ID, true, func(r *appRecord) error {
-		if r.SecretHash == "" {
+		switch {
+		case a.Public:
+			hash, secret = "", "" // no secret: a browser keeps none
+			if r.Created.IsZero() {
+				a.Created = m.now()
+			} else {
+				a.Created, a.LastUsed = r.Created, r.LastUsed
+			}
+		case r.SecretHash == "":
 			if hash == "" {
 				secret = newAppSecret()
 				if hash, err = hashKey(secret); err != nil {
@@ -101,7 +129,10 @@ func (m *Manager) PutApp(ctx context.Context, in App) (secret string, err error)
 				}
 			}
 			a.Created = m.now()
-		} else {
+			if !r.Created.IsZero() {
+				a.Created, a.LastUsed = r.Created, r.LastUsed // was a public client
+			}
+		default:
 			hash, secret = r.SecretHash, ""
 			a.Created, a.LastUsed = r.Created, r.LastUsed
 		}
@@ -170,6 +201,9 @@ func (m *Manager) RotateAppSecret(ctx context.Context, id string) (string, error
 		return "", err
 	}
 	if _, err := change(ctx, m.st.db, id, false, func(r *appRecord) error {
+		if r.Public {
+			return fmt.Errorf("%w: %s is a public client, which has no secret", ErrInvalid, id)
+		}
 		r.SecretHash = hash
 		return nil
 	}); err != nil {
@@ -418,7 +452,8 @@ func (h *handler) rotateAppSecret(w http.ResponseWriter, r *http.Request) {
 }
 
 // oauthToken is POST /oauth/token: the client credentials grant (RFC
-// 6749 §4.4), the client in Basic or in the form, an optional scope.
+// 6749 §4.4), the client in Basic or in the form, an optional scope; or
+// the authorization code grant of a public client (oauth.go).
 func (h *handler) oauthToken(w http.ResponseWriter, r *http.Request) {
 	oauthErr := func(status int, code, desc string) {
 		if status == http.StatusUnauthorized {
@@ -431,8 +466,13 @@ func (h *handler) oauthToken(w http.ResponseWriter, r *http.Request) {
 		oauthErr(http.StatusBadRequest, "invalid_request", "the form could not be read")
 		return
 	}
-	if grant := r.PostForm.Get("grant_type"); grant != "client_credentials" {
-		oauthErr(http.StatusBadRequest, "unsupported_grant_type", "client_credentials only")
+	switch r.PostForm.Get("grant_type") {
+	case "client_credentials":
+	case "authorization_code":
+		h.oauthCodeGrant(w, r, oauthErr)
+		return
+	default:
+		oauthErr(http.StatusBadRequest, "unsupported_grant_type", "client_credentials or authorization_code")
 		return
 	}
 	id, secret, ok := r.BasicAuth()

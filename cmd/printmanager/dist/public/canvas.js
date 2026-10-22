@@ -44,7 +44,7 @@ const GAP = 30; // between the rows the nodes are laid out in
 // what picks by rules (filter), what makes a new payload of it
 // (transform), and where it ends (sink).
 export const ROLES = { source: "Source", flow: "Control flow", filter: "Filter", transform: "Transform", sink: "Sink" };
-export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", template: "transform", convert: "transform", display: "sink", printer: "sink", archive: "sink", sink: "sink" };
+export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", template: "transform", convert: "transform", display: "sink", printer: "sink", archive: "sink", sink: "sink", export: "sink" };
 export const ROLE_COLOR = { source: "#0f766e", flow: "#4338ca", filter: "#be185d", transform: "#c2410c", sink: "#334155" };
 // The icons of the kinds: strokes in a 24 by 24 box.
 const ICONS = {
@@ -60,16 +60,21 @@ const ICONS = {
   printer: ["M6 9V3h12v6", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v7H6z"],
   archive: ["M3 4h18v4H3z", "M5 8v12h14V8", "M10 12h4"],
   sink: ["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
+  // a tray with an arrow going out: documents fetched from outside
+  export: ["M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5", "M12 3v12", "M7 8l5-5 5 5"],
 };
 // the kinds with an output port: they send to other nodes (a display to
-// its fallback printer)
-const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "inbox", "display"]);
+// its fallback printer, an archive what it wrote)
+const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "inbox", "display", "archive"]);
+// the exits read from outside: applications and people fetch what an
+// export lists, drawn as an arrow going out
+const EXIT = new Set(["export"]);
 // the entries: their input is from outside the network (an endpoint's
 // REST, a CUPS server's IPP port), drawn as an arrow coming in
 const ENTRY = new Set(["endpoint", "cups"]);
 // the kinds of node that send on what reaches them: typed by their first
 // edge, on either side (kinds.go: passesOn)
-const PASSES_ON = new Set(["queue", "class", "filter", "inbox", "endpoint", "cups"]);
+const PASSES_ON = new Set(["queue", "class", "filter", "inbox", "endpoint", "cups", "archive"]);
 // the kinds of node that send on a .bdf whatever reaches them: a template
 // or a convert node the one it makes, a display the one its fallback
 // printer prints
@@ -197,7 +202,7 @@ export function legend(box) {
     s.append(svgEl("rect", { x: "1", y: "2", width: "12", height: "10", rx: "2", fill }));
     return s;
   };
-  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "by rules", transform: "template, convert", sink: "display, printer, archive, sink" };
+  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "by rules", transform: "template, convert", sink: "display, printer, archive, sink, export" };
   box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), `${label} (${of[role]})`)), item(dot(PAYLOAD_COLOR.bdf, "#fff"), ".bdf document"), item(dot(PAYLOAD_COLOR.data, "#fff"), "data (for a template node)"), item(dot(PAYLOAD_COLOR.any, "#fff"), "any file as received (for a convert node)"), item(dot(MIXED_COLOR, "#fff"), "several kinds"), item(dot(ANY_KIND_COLOR, "#fff"), "takes any kind"), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), "not typed yet: its first edge types it"), item(line(BROKEN_COLOR, "6 4"), "no longer connects: the node after does not take what reaches it"));
 }
 
@@ -412,6 +417,7 @@ export function createCanvas(svg, opts = {}) {
     if (l.pending) out.push(`${l.pending} waiting`);
     if (l.failed) out.push(`${l.failed} failed`);
     if (l.kept) out.push(`${l.kept} kept`);
+    if (l.listed) out.push(`${l.listed} listed`);
     if (!live && n.devices) out.push(`${n.devices} device${n.devices === 1 ? "" : "s"}`);
     if (live && l.recent) out.push(`${l.recent}/h`);
     return out;
@@ -622,6 +628,14 @@ export function createCanvas(svg, opts = {}) {
       inArrow.append(x);
       g.append(inArrow);
     }
+    if (EXIT.has(n.kind)) {
+      // what an export lists is fetched from outside: GET /out/<name>
+      const outArrow = svgEl("path", { d: `M ${NODE_W + 8} ${h / 2} L ${NODE_W + 30} ${h / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": arrow("#64748b") });
+      const x = svgEl("title");
+      x.textContent = "REST: applications and people fetch the documents listed here (GET /out/" + n.name + ")";
+      outArrow.append(x);
+      g.append(outArrow);
+    }
     // a CUPS server takes nothing from the other nodes: no input port.
     // The ports are colored by the kind of payload they take and send
     // on; one not typed yet is hollow
@@ -652,7 +666,7 @@ export function createCanvas(svg, opts = {}) {
       }
       const x = svgEl("title");
       const sends = t.out.length ? `${asList(n.emits).length ? "Sends on" : "Carries"} ${payloadText(t.out)}` : "Not typed yet: the first edge types it";
-      x.textContent = editable ? (n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : "Drag onto a node to connect. ") + sends : sends;
+      x.textContent = editable ? (n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : n.kind === "archive" ? "Drag onto a node: what the archive wrote goes on there (an export lists it). " : "Drag onto a node to connect. ") + sends : sends;
       port.append(x);
       g.append(port);
     }

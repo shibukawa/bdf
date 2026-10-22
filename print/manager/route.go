@@ -16,8 +16,11 @@ import (
 // that need its payloads were made, and the deliveries made, to send in
 // the background.
 type routing struct {
-	job        *Job
-	payload    *Payload
+	job     *Job
+	payload *Payload
+	// archived is what the last archive on the way wrote (the job goes on
+	// from an archive once it wrote): what an export lists.
+	archived   *archiveRef
 	now        time.Time
 	legs       []Leg
 	live       int
@@ -67,6 +70,8 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		m.routeInbox(ctx, r, name, from)
 	case KindSink:
 		m.routeSink(ctx, r, name, from)
+	case KindExport:
+		m.routeExport(ctx, r, name, from)
 	case KindFilter:
 		m.routeFilter(ctx, r, name, from, depth)
 	case KindTemplate, KindConvert:

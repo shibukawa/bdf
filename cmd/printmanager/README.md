@@ -105,10 +105,26 @@ client credentials grant: `-u id:secret -d grant_type=client_credentials`,
 ten minutes) and sends with it as a bearer to `/in/<endpoint>`, or
 prints over IPP with the same id and secret as Basic; it sees and, with
 the scope `jobs.cancel`, cancels its own jobs. The scopes are `print`,
-`print.template`, `jobs.cancel`, `tick` (a scheduler's) and `admin` (a
+`print.template`, `jobs.cancel`, `export` (reads the exports that list
+it: [help/en/exports.md](help/en/exports.md)), `tick` (a scheduler's) and `admin` (a
 script's: the API as an administrator). An app's jobs are its `group`'s
 when the destination gives them none. Disabling an app refuses its
 credentials and the tokens out.
+
+A **public client** is a frontend of one's own in people's browsers (a
+customer portal, a single-page app on another origin): registered with
+`"public": true` and its `redirect_uris` (https, or http on localhost),
+it has no secret, and gets a token of the person using it with the
+authorization code grant and PKCE (S256): the frontend sends the person
+to `GET /oauth/authorize?response_type=code&client_id=…&redirect_uri=…&code_challenge=…&code_challenge_method=S256&state=…`,
+where they sign in at the IdP as for the pages (once a session; the
+registration is the consent, no screen asks), and comes back with a
+`code`, which it exchanges at `POST /oauth/token`
+(`grant_type=authorization_code`, `client_id`, `code`, `code_verifier`,
+`redirect_uri`) for a token of an hour. The token is the person, with
+the client's scopes: it opens the exports and `/api/me`, nothing else of
+the API. A page of the client's origin may call the token endpoint and
+the exports (CORS).
 
 Every node (a display, a printer, a queue, a class …) has a scope and an
 owner (`"scope":"group", "owner":"warehouse-a"`, a value of the groups
@@ -155,10 +171,12 @@ editor of the topology, apps, inboxes, jobs, deliveries) and the role
 `audit` gets `/audit`. Every node is `PUT /api/nodes/<name>` with its
 `kind` and the kind's settings — `endpoint`, `cups`, `queue`, `class`,
 `filter`, `template`, `convert`, `inbox`, `display`, `printer`,
-`archive`, `sink` ([help/en/nodes.md](help/en/nodes.md)) — and an IPP
-printer at `/ipp/print/<name>`; a display's tablets are enrolled with a
-one-time code from the display's sidebar
-([help/en/displays.md](help/en/displays.md)), and the API is
+`archive`, `sink`, `export` ([help/en/nodes.md](help/en/nodes.md)) —
+and an IPP printer at `/ipp/print/<name>`; a display's tablets are
+enrolled with a one-time code from the display's sidebar
+([help/en/displays.md](help/en/displays.md)); an export after an
+archive lets backends and people's frontends fetch the documents at
+`/out/<name>` ([help/en/exports.md](help/en/exports.md)); and the API is
 [help/en/api.md](help/en/api.md). For example: an audit copy, a site's
 printers in turn, both warehouses at once, a review before printing, and
 an application that prints invoices from data:

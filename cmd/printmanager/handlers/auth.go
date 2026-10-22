@@ -92,7 +92,9 @@ func (s loginStates) Prune(ctx context.Context, before time.Time, limit int) (in
 // button to the IdP), the devices' page and endpoints keep
 // their own sign-in (the device's key), the API and the printers take
 // their tokens (and the API the session too), the endpoints their keys.
-var publicPaths = []string{"/", "/tablet", "/public/**", "/api/**", manager.IPPPath + "/**", manager.InPath + "/**", "/oauth/**", "/device/**"}
+// /oauth/authorize is a page: a person is sent to the IdP from it, and
+// comes back to it with their session.
+var publicPaths = []string{"/", "/tablet", "/public/**", "/api/**", manager.IPPPath + "/**", manager.InPath + "/**", manager.OutPath + "/**", manager.OAuthTokenPath, "/device/**"}
 
 // ConfigureAuth sets popcornweb's [auth] and [session] for the pages:
 // what is the Print Manager's design (the OIDC mode, the paths a person
@@ -347,7 +349,7 @@ func (a *App) viewer(r *http.Request) *manager.Viewer {
 		}
 		p = &manager.Person{Issuer: s.Issuer, Subject: s.Subject, Name: s.DisplayName, Email: s.Email}
 	}
-	return &manager.Viewer{Kind: manager.PrincipalUser, Via: manager.ViaOIDC, ID: s.AccountID, Name: p.Name, Email: p.Email, Groups: p.Groups,
+	return &manager.Viewer{Kind: manager.PrincipalUser, Via: manager.ViaOIDC, ID: s.AccountID, Name: p.Name, Email: p.Email, Groups: p.Groups, Subject: p.Subject,
 		Roles: a.policy.roles(p.Issuer, p.Subject, p.Email, p.Groups), Admin: a.policy.admin(p.Issuer, p.Subject, p.Email, p.Groups)}
 }
 

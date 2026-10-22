@@ -1,0 +1,127 @@
+id: requirement:print-manager-export
+type: requirement
+title: Print Manager のデータ取り出し口 — archive が書いたものを認証で取り出す export のノード、メタデータの持ち主で絞り他人のものは 404、バックエンドは client credentials、フロントエンドは公開クライアントの認可コード + PKCE
+summary: >-
+  2026-10-22 利用者「print manager にデータ取り出しのエンドポイントという sink を作りたい。認証で archive から取り出す。メタデータでフィルタをして、
+  送信したユーザーの ID にマッチしなければ 404 みたいなこともしたい。バックエンドサーバーから client credential でアクセス以外に、oauth でフロントエンドから
+  アクセスとかも考えたい」。Claude の形：新しい種類 export（今の sink は画面で最新を見るもので文書を手放すので別にした）。archive に to を足し、書き終えたら
+  後ろへ続ける。export は archive の後ろにだけ置け（PUT で道を確かめ、実行時は経路が最後の archive の鍵を運ぶ）、項目を記録して GET /out/<名前> で出す。
+  文書は archive から読むのでジョブの記録が消えても残る。持ち主はメタデータの鍵 by の値で、人の email・sub・id・group と比べ、合わなければ 404。
+  バックエンドは export の apps に載ったアプリが scope export で全部を読み ?owner= で絞る。フロントエンドは公開クライアント（秘密なし、redirect URI）として
+  登録し、Manager の /oauth/authorize（認可コード + PKCE S256、同意の画面なし）で人の 1 時間のトークンを取り、/out と /api/me だけに使う（CORS は登録した origin）。
+  叙述は knowledge-inputs/print-plan/print-manager-export.ja.md。
+lifecycle: active
+authority: authored
+aliases:
+- export
+- データ取り出し
+- 取り出し口
+- data export
+- sink
+- /out
+- 持ち主
+- owner
+- public client
+- 公開クライアント
+- authorization code
+- 認可コード
+- PKCE
+- frontend
+- フロントエンド
+- BFF
+constraints:
+- 取り出すのは archive が書いたものだけ。export は archive の後ろ（archive の to）に置き、archive を通らない道は PUT で 400、export に直接送るジョブは 400、途中のノードに直接送られたジョブは export で error の足跡。export は宛先の一覧に出ない
+- 文書は archive から読む（ジョブの job-documents ではない）。ジョブの記録が JobKeep で消えても項目と文書は残る
+- 読めないものは 404（他人の持ち主、無いジョブ、別の export のジョブ、?owner= で他人）。資格が無ければ 401、読む権限の無い主体（submit トークン、載っていないアプリ、scope の無いアプリ・トークン）は 403
+- 持ち主は送り手の名乗り（requirement:document-flow のメタデータの制約のまま）。入口に送れる者が誰の文書かを決める。文書化する
+- 人のトークンは役割を持たず、/out と /api/me にだけ効く。要求ごとに人の記録とクライアントを読み直す（無効化・scope の縮小が即座に効く）
+- 保存先に取り出して使える秘密を置かない（requirement:print-manager-auth のまま）。公開クライアントは秘密を持たない。code はログインの状態と同じ置き場に 5 分、1 度だけ
+- redirect URI は登録したものと完全一致。登録に無いクライアントと redirect URI にはリダイレクトしない
+- 文書の取り出しは監査に残す（export-document）。code とトークンの発行と失敗も（oauth-code、user-token、code-refused）
+non_goals:
+- 一覧の取り出しの監査（文書だけ）
+- 同意の画面（社内のフロントエンドの想定。登録が同意）
+- refresh token（期限が来たら authorize をもう一度）
+- 外の IdP が出したアクセストークンの確かめ（open_questions.frontend-token-source）
+- presigned URL での直接の取り出し
+capabilities:
+  export-node:
+    state: implemented
+    about: capability:print-manager/export-node
+  archive-edges:
+    state: implemented
+    about: capability:print-manager/archive-edges
+  owner-filter:
+    state: implemented
+    about: capability:print-manager/export-owner-filter
+  backend-reader:
+    state: implemented
+    about: capability:print-manager/export-backend-reader
+  public-client-pkce:
+    state: implemented
+    about: capability:print-manager/public-client-pkce
+  idp-token-validation:
+    state: planned
+    about: 会社の IdP のアクセストークン（JWT）を JWKS で確かめて人にする（open_questions.frontend-token-source）
+facts:
+  request:
+    source: 2026-10-22 利用者
+    points:
+    - データ取り出しのエンドポイントという sink を作りたい
+    - 認証で archive から取り出す
+    - メタデータでフィルタし、送信したユーザーの ID に合わなければ 404
+    - バックエンドサーバーから client credentials
+    - OAuth でフロントエンドから
+  design:
+    kind: 'export（KindExport）。設定は by（持ち主のメタデータの鍵。$ の鍵・name・user も可）、subject（email 既定・sub・id・group）、fields（項目に写すメタデータの鍵、16 まで）、entries（一覧の件数、既定 1000、上限 5000）、apps（読めるバックエンド）、scope と owner（読める人の外枠）'
+    archive_edge: 'archive に to。Delivery が done になったら continueFrom で to へ続け、routing.archived に archive の名前と鍵（archiveKey）を運ぶ。queue・class・filter は経路の中で運ぶ。template・convert は新しいペイロード、inbox の流し直しは新しい経路なので運ばない'
+    path_check: 'exportsArchived：入口・入ってくる辺の無いノード・template・convert・inbox から辺を辿り、archive で止まる。export に着けば 400（理由に道）'
+    entry: 'export-entries の <ノード>.<ジョブ>：番号・名前・種類・形式・ページ・大きさ・sha256・受けた時刻・載せた時刻・archive・鍵・オブジェクト・ペイロード・持ち主・fields・送った主体・名乗り・グループ。Insert（あれば何もしない）'
+    lists: 'export-lists の <ノード>（全員）と <ノード>.<持ち主のハッシュ>（持ち主の値は email なら小文字）。最新 entries 件の ID、新しいものが末尾'
+    endpoints: 'GET /out/<名前>（?owner=、?limit= 既定 100）、/out/<名前>/<ジョブ>、…/record（archive の記録の JSON）、…/document（archive の文書。Content-Disposition に元の名前と拡張子）'
+    readers: '管理者・監査・scope admin のアプリは全部。アプリは export の apps に載り scope export で全部。人は by の値が自分（subject で比べる）。by が無ければ CanSee と同じ（送った本人・ジョブのグループ）。export の scope・owner は CanSendTo で外枠'
+    public_client: 'App.Public と RedirectURIs（https、localhost だけ http、fragment なし、8 つまで）。秘密なし（PutApp は秘密を作らず、RotateAppSecret は 400、client credentials は 401）'
+    authorize: 'GET /oauth/authorize（popcornweb の保護の中）。response_type=code、client_id、redirect_uri（完全一致）、code_challenge と code_challenge_method=S256、scope（クライアントの部分集合）、state。code は 32 バイト、5 分、PutState に置き TakeState で 1 度だけ'
+    token: 'POST /oauth/token の authorization_code。client_id（form か Basic のユーザー名）・code・code_verifier・redirect_uri。1 時間の HMAC の封（種類 user：人の ID・期限・scope・クライアント）。viewerOf は /out と /api/me でだけ人にする'
+    cors: '登録した redirect URI の origin に Access-Control-Allow-Origin（/oauth/token と /out/**、OPTIONS の preflight）。Allow-Credentials なし'
+  alternatives:
+    sink_extended: '今の sink を広げる案。sink は画面で最新を見るためにジョブの文書を Live で守り、押し出したら手放すので、取り出し口の寿命（保管と同じ）と合わない。別の種類にした'
+    export_reads_job_docs: 'export がジョブの文書（job-documents）を Live で守る案。JobKeep の後も持つには Live を減らさない必要があり、ジョブが消えない。archive から読む方にした'
+    idp_jwt: 'フロントエンドが会社の IdP からこの API 向けのアクセストークンを取り、Manager が JWKS で確かめる案。IdP の管理画面での登録と IdP ごとの aud・scope の違いが要る。後（open_questions.frontend-token-source）'
+    bff: 'フロントエンドのバックエンドが client credentials と ?owner= で読み、ブラウザにトークンを置かない。Manager の追加なしで今もできる。README に書いた'
+  delivery:
+    current_milestone: milestone:pm-export-1（2026-10-22 実装）
+open_questions:
+  node-name:
+    text: 種類の名前。利用者は sink と呼んだ。今の sink（画面で最新を見る）を広げるか、別の export か
+    state: open
+    resolution: 暫定で別の種類 export（facts.alternatives.sink_extended）
+  frontend-token-source:
+    text: フロントエンドのトークンを Manager が出す（公開クライアントと PKCE）か、会社の IdP が出したアクセストークン（JWT）を確かめるか、両方か
+    state: open
+    resolution: 暫定で Manager が出す（requirement:print-manager-auth の hybrid の延長）。IdP のトークンの確かめは後
+  owner-trust:
+    text: 持ち主を送り手の名乗りのままにするか。確かめた送り手（$sender）の分だけ、入口の meta で固定したものだけ、などの選択を足すか
+    state: open
+    resolution: 暫定で名乗りのまま。入口に送れる者を絞るか入口の meta で固定する（README）
+  entry-retention:
+    text: export の項目をいつ刈るか。archive は消さないので今は消えない。件数が大きくなると dropExport の走査も重い
+    state: open
+    resolution: 暫定で消さない。保管庫（pm-2）の保持の期限と一緒に決める
+  paging:
+    text: 一覧のページ送り（カーソル）、日付や fields での絞り込み
+    state: open
+    resolution: 暫定で新しい順の limit と ?owner= だけ
+  consent:
+    text: 同意の画面を出すか（社外のフロントエンドを許すとき）
+    state: open
+    resolution: 暫定で無し。登録が同意
+relations:
+- relation: refines
+  to: requirement:print-manager
+- relation: builds_on
+  to: requirement:print-manager-auth
+- relation: builds_on
+  to: requirement:document-flow
+- relation: informed_by
+  to: milestone:pm-auth-2

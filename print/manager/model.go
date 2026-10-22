@@ -131,6 +131,11 @@ const (
 	// Office document, a CSV file …), as an entry does when it converts,
 	// and sends it on (transform.go).
 	KindConvert = "convert"
+	// KindExport is an exit applications and people fetch documents from:
+	// it lists what an archive before it wrote, each entry under the
+	// owner its metadata names, and serves them at GET /out/<name>
+	// (export.go).
+	KindExport = "export"
 )
 
 // What an entry (an endpoint, a CUPS server) accepts: documents (PDF,
@@ -166,7 +171,8 @@ type Node struct {
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
 	// To are the nodes a queue, an endpoint or a CUPS server forwards to
-	// (all of them), or the nodes an inbox's items may be released to.
+	// (all of them), the nodes an archive sends on to once it wrote, or
+	// the nodes an inbox's items may be released to.
 	To []string `json:"to,omitempty"`
 	// Members and Policy are a class's.
 	Members []string `json:"members,omitempty"`
@@ -234,6 +240,18 @@ type Node struct {
 	// Latest is how many of the latest documents a sink keeps (default
 	// 10).
 	Latest int `json:"latest,omitempty"`
+	// By, Subject, Fields and Entries are an export's: By is the metadata
+	// key whose value says whose a document is (a customer's id the
+	// sender gave, say), Subject what of a person is compared with it
+	// (SubjectEmail, the default, SubjectSub, SubjectID or SubjectGroup),
+	// Fields the metadata keys copied into the entries listed, and
+	// Entries how many of the latest entries are listed for one owner,
+	// and for everyone (default 1000). Apps are the apps that may read
+	// it, as an endpoint's are those that may send.
+	By      string   `json:"by,omitempty"`
+	Subject string   `json:"subject,omitempty"`
+	Fields  []string `json:"fields,omitempty"`
+	Entries int      `json:"entries,omitempty"`
 	// Scope is who may send to the node from the pages and whose its
 	// jobs are (ScopeShared, ScopeGroup, ScopePersonal; empty is
 	// shared), and Owner the group (a value of the IdP's groups claim)
@@ -386,12 +404,13 @@ type Leg struct {
 	At   time.Time `json:"at"`
 	// State is routed (queue, class), shown or canceled (display), held,
 	// released or discarded (inbox), pending, done, failed or canceled
-	// (printer, archive), kept (sink), or error when the node could not
-	// take it.
+	// (printer, archive), kept (sink), listed (export), or error when the
+	// node could not take it.
 	State string `json:"state"`
 	// Ref is the slip, the item or the delivery made here.
 	Ref string `json:"ref,omitempty"`
-	// Member is the member a class chose, or the rule of a filter.
+	// Member is the member a class chose, the rule of a filter, or the
+	// owner an export listed the job for.
 	Member string `json:"member,omitempty"`
 	// Payload is the payload the node got, and Made the one it made of it
 	// (a template or a convert node).
@@ -442,6 +461,7 @@ const (
 	LegFailed    = "failed"
 	LegCanceled  = "canceled"
 	LegKept      = "kept"
+	LegListed    = "listed"
 	LegDropped   = "dropped"
 	LegError     = "error"
 )

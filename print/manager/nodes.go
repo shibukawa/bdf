@@ -23,11 +23,11 @@ import (
 // the kinds of payload that reach every node are ones it takes (typed).
 
 // nodeKinds are the kinds of a node, in the order of a job's way.
-var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink}
+var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink, KindExport}
 
 // routingKinds are the kinds a node changes between, keeping its name. A
-// display, a printer or a sink keeps its kind: its slips, devices,
-// deliveries or kept jobs name it.
+// display, a printer, a sink or an export keeps its kind: its slips,
+// devices, deliveries, kept jobs or entries name it.
 var routingKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindInbox, KindArchive}
 
 // PutNode adds a node or replaces its settings; the settings of other
@@ -118,6 +118,10 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		if n.Latest < 0 || n.Latest > 1000 {
 			return "", fmt.Errorf("%w: latest %d: a sink keeps 1 to 1000 documents", ErrInvalid, in.Latest)
 		}
+	case KindExport:
+		if err := m.checkExport(ctx, in, &n); err != nil {
+			return "", err
+		}
 	case KindClass:
 		n.Members = cleanNames(in.Members)
 		if len(n.Members) == 0 {
@@ -139,6 +143,8 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 	case KindInbox:
 		n.To, n.Keep = cleanNames(in.To), in.Keep
 	case KindArchive:
+		// what it wrote goes on to To, once written (deliver)
+		n.To = cleanNames(in.To)
 		n.Store, n.Collection = strings.TrimSpace(in.Store), strings.TrimSpace(in.Collection)
 		if n.Store == "" {
 			return "", fmt.Errorf("%w: an archive has a store (bbolt, s3, r2 or gcs)", ErrInvalid)
@@ -205,6 +211,9 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		return "", err
 	}
 	if err := m.typed(ctx, &n); err != nil {
+		return "", err
+	}
+	if err := m.exportsArchived(ctx, &n); err != nil {
 		return "", err
 	}
 	cur, err := m.Node(ctx, n.Name)
@@ -377,6 +386,8 @@ func (m *Manager) DeleteNode(ctx context.Context, name string) error {
 		return m.removeTemplatesOf(ctx, name)
 	case KindSink:
 		return m.dropSink(ctx, name)
+	case KindExport:
+		return m.dropExport(ctx, name)
 	}
 	return nil
 }
@@ -492,13 +503,15 @@ type TopoNode struct {
 	// Held counts the items an inbox holds; Open the slips open at a
 	// display and Devices its devices; Pending the deliveries waiting at
 	// a printer, an archive or a class; Kept the jobs a sink keeps, and
-	// Latest the newest of them.
+	// Latest the newest of them; Listed the entries an export lists (of
+	// every owner).
 	Held    int    `json:"held,omitempty"`
 	Open    int    `json:"open,omitempty"`
 	Devices int    `json:"devices,omitempty"`
 	Pending int    `json:"pending,omitempty"`
 	Kept    int    `json:"kept,omitempty"`
 	Latest  string `json:"latest,omitempty"`
+	Listed  int    `json:"listed,omitempty"`
 }
 
 // Topology returns every node, by name.
@@ -570,6 +583,8 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 			if ids := m.sinkJobs(ctx, n.Name); len(ids) > 0 {
 				t.Kept, t.Latest = len(ids), ids[len(ids)-1]
 			}
+		case KindExport:
+			t.Listed = len(m.exportJobs(ctx, exportListID(n.Name, "")))
 		}
 		out = append(out, t)
 	}
