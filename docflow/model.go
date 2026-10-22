@@ -127,7 +127,8 @@ const (
 	// KindExport is an exit applications and people fetch documents from:
 	// it lists what an archive before it wrote, each entry under the
 	// owner its metadata names, and serves them at GET /out/<name>
-	// (export.go).
+	// (export.go). It is shown as HTTP (pull), beside the HTTP (push) of
+	// docflow/io/http.
 	KindExport = "export"
 	// KindSign signs the .bdf document that reaches it with the key of
 	// the manager, as a witness of who sent it, and sends it on
@@ -280,7 +281,8 @@ type Node struct {
 	// png or an svg); From, Recipients and MailSubject a mail's (smtp, and a
 	// notify node's by mail); Text a mail's text or a notification's;
 	// Path the key an s3 exit writes; Method and Headers an http exit's
-	// request; Via is how a notify node tells (slack, mail or http).
+	// request, and Body how it carries the document (direct or
+	// multipart); Via is how a notify node tells (slack, mail or http).
 	Format      string            `json:"format,omitempty"`
 	Page        int               `json:"page,omitempty"`
 	From        string            `json:"from,omitempty"`
@@ -290,6 +292,7 @@ type Node struct {
 	Path        string            `json:"path,omitempty"`
 	Method      string            `json:"method,omitempty"`
 	Headers     map[string]string `json:"headers,omitempty"`
+	Body        string            `json:"body,omitempty"`
 	Via         string            `json:"via,omitempty"`
 }
 

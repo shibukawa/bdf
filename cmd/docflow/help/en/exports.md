@@ -1,10 +1,10 @@
-# Exports
+# HTTP (pull) {#exports}
 
-An export is where documents leave the network for the applications and people that fetch them: a customer portal that shows each customer their invoices, a backend that files what was printed. An archive writes the document for good, and the export after it lists it; applications and people read the list and the documents at `/out/<name>`.
+An HTTP (pull) node — the kind `export`, an export for short — is where documents leave the network for the applications and people that fetch them: a customer portal that shows each customer their invoices, a backend that files what was printed. An archive writes the document for good, and the export after it lists it; applications and people read the list and the documents at `/out/<name>`. For the manager to send documents to a web service itself, use an [HTTP (push)](nodes.md#http) node instead.
 
 ## Setting one up {#setup}
 
-Put an archive, and an export after it: drag from the archive's right port onto the export on the Topology page, or give the archive `"to": ["<export>"]`. Once the archive wrote a job, the job goes on to the export, which lists it: an entry with where the archive wrote it and whose it is. The settings are in [Export](nodes.md#export).
+Put an archive, and an export after it: drag from the archive's right port onto the export on the Topology page, or give the archive `"to": ["<export>"]`. Once the archive wrote a job, the job goes on to the export, which lists it: an entry with where the archive wrote it and whose it is. The settings are in [HTTP (pull)](nodes.md#export).
 
 - A way that reaches an export without an archive before it is refused when a node is saved (400, with the way), and a job sent straight to an export ends there with an error leg. An export is not a node to print to.
 - The documents stay in the archive, which keeps them for good: an entry outlives the job's record ([States](jobs.md#states)).

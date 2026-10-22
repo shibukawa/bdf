@@ -31,7 +31,7 @@ func init() {
 		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
 			m.routeSink(ctx, r, name, from)
 		}})
-	RegisterKind(Kind{Name: KindExport, Role: RoleExit, Fixed: true, Check: func(ctx context.Context, m *Manager, in Node, n *Node) error { return m.checkExport(ctx, in, n) },
+	RegisterKind(Kind{Name: KindExport, Title: "HTTP (pull)", Role: RoleExit, Fixed: true, Check: func(ctx context.Context, m *Manager, in Node, n *Node) error { return m.checkExport(ctx, in, n) },
 		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
 			m.routeExport(ctx, r, name, from)
 		}})

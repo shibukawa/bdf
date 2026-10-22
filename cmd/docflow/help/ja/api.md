@@ -83,9 +83,9 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 | `POST /api/deliveries/<id>/retry` | 今すぐ送り直す |
 | `POST /api/tick` | やるべきことを行う（[ティック](inboxes.md#tick)）。ティックトークン、スコープ `tick` のアプリ、管理トークン、または役割 `topology` の人 |
 
-## エクスポート {#exports}
+## HTTP (pull) {#exports}
 
-バックエンドのトークン、フロントエンドが得た本人のトークン、またはページのセッションで読みます（[エクスポート](exports.md)）。
+バックエンドのトークン、フロントエンドが得た本人のトークン、またはページのセッションで読みます（[HTTP (pull)](exports.md)）。
 
 | | |
 |---|---|

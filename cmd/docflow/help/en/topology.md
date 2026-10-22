@@ -12,7 +12,7 @@ The canvas draws the nodes where the administrator placed them. A node is a whit
 | Control flow | queue, class, inbox |
 | Filter | filter |
 | Transform | template, convert |
-| Sink | display, printer, archive, sink, export |
+| Sink | display, printer, archive, sink, HTTP (pull) |
 
 The ports and the edges are colored by what flows along them ([Kinds of payload](flow.md#kinds)): blue a `.bdf` document, green data, amber any file as received, purple several kinds. A port not typed yet is hollow and dashed: a queue, a class, a filter or an inbox takes the kind of its first edge. An edge drawn dashed and red no longer connects ([Broken edges](flow.md#broken)). An export has a dashed arrow going out: applications and people fetch what it lists. The legend under the canvas names the colors.
 
@@ -30,7 +30,7 @@ Without the role topology, the page only looks. Click a node, and the sidebar sh
 - **Print here**, when you may send to the node ([Scopes of nodes](roles.md#scopes)): a file and a name for the job, as on [Jobs](jobs.md#print); otherwise "You may not print here";
 - **Jobs here**: your jobs that were sent to the node or reached it, with their state, who sent them, when and their route; Document downloads one, and Reprint here sends it again to this node, as a new job of yours.
 
-A sink also shows the latest documents it kept, and an export the entries listed there that you may read ([Exports](exports.md)).
+A sink also shows the latest documents it kept, and an export the entries listed there that you may read ([HTTP (pull)](exports.md)).
 
 ## The editor {#editor}
 
@@ -58,7 +58,7 @@ Besides the settings of its kind ([Node kinds](nodes.md)), the sidebar of a save
 - of a display, its devices, when each was last seen, and Add a device, which shows a one-time code and its QR code ([Display boards](displays.md));
 - of a CUPS server node, the URL computers add the printer with, and the command that lists it ([CUPS server nodes](entries.md#cups));
 - of a sink, the latest documents it kept, with their pages;
-- of an export, the URLs readers fetch from, and the entries listed there ([Exports](exports.md));
+- of an export, the URLs readers fetch from, and the entries listed there ([HTTP (pull)](exports.md));
 - of a printer with a preview, what the fake printer received ([Printer](nodes.md#printer)).
 
 Help at the top of the sidebar opens the section of the node's kind in this manual.

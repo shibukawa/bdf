@@ -83,9 +83,9 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 | `POST /api/deliveries/<id>/retry` | send one again now |
 | `POST /api/tick` | do what is due ([The tick](inboxes.md#tick)): the tick token, an app with the scope `tick`, the admin token, or a person with the role `topology` |
 
-## Exports {#exports}
+## HTTP (pull) {#exports}
 
-A backend's token, a frontend's token of the person, or the pages' session ([Exports](exports.md)):
+A backend's token, a frontend's token of the person, or the pages' session ([HTTP (pull)](exports.md)):
 
 | | |
 |---|---|

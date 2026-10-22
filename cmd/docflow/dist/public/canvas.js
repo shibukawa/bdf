@@ -62,8 +62,11 @@ const ICONS = {
   printer: ["M6 9V3h12v6", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v7H6z"],
   archive: ["M3 4h18v4H3z", "M5 8v12h14V8", "M10 12h4"],
   sink: ["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
-  // a tray with an arrow going out: documents fetched from outside
+  // the two HTTP exits, on the same tray: HTTP (pull) an arrow going up
+  // out of it, documents fetched from outside; HTTP (push) an arrow
+  // turning out to the right, documents sent to a web service
   export: ["M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5", "M12 3v12", "M7 8l5-5 5 5"],
+  http: ["M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5", "M12 15V9a2 2 0 0 1 2-2h7", "M17 3l4 4-4 4"],
 };
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer, an archive what it wrote)
@@ -208,7 +211,7 @@ export function legend(box) {
     s.append(svgEl("rect", { x: "1", y: "2", width: "12", height: "10", rx: "2", fill }));
     return s;
   };
-  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "by rules", transform: "template, convert, sign", sink: "display, printer, archive, sink, export" };
+  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "by rules", transform: "template, convert, sign", sink: "display, printer, archive, sink, HTTP (pull)" };
   box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), `${label} (${of[role]})`)), item(dot(PAYLOAD_COLOR.bdf, "#fff"), ".bdf document"), item(dot(PAYLOAD_COLOR.data, "#fff"), "data (for a template node)"), item(dot(PAYLOAD_COLOR.any, "#fff"), "any file as received (for a convert node)"), item(dot(MIXED_COLOR, "#fff"), "several kinds"), item(dot(ANY_KIND_COLOR, "#fff"), "takes any kind"), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), "not typed yet: its first edge types it"), item(line(BROKEN_COLOR, "6 4"), "no longer connects: the node after does not take what reaches it"));
 }
 
@@ -675,7 +678,7 @@ export function createCanvas(svg, opts = {}) {
       }
       const x = svgEl("title");
       const sends = t.out.length ? `${asList(n.emits).length ? "Sends on" : "Carries"} ${payloadText(t.out)}` : "Not typed yet: the first edge types it";
-      x.textContent = editable ? (n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : n.kind === "archive" ? "Drag onto a node: what the archive wrote goes on there (an export lists it). " : "Drag onto a node to connect. ") + sends : sends;
+      x.textContent = editable ? (n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : n.kind === "archive" ? "Drag onto a node: what the archive wrote goes on there (an HTTP (pull) node lists it). " : "Drag onto a node to connect. ") + sends : sends;
       port.append(x);
       g.append(port);
     }

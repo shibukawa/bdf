@@ -1,27 +1,39 @@
-// Package http is the HTTP output of docflow: the kind http sends what
-// reaches the node to a web service, as the body of a request. A program
-// that imports the package has the kind; docflow/io/notify posts its
-// webhooks with Do.
+// Package http is the HTTP output of docflow: the kind http, shown as
+// HTTP (push), sends what reaches the node to a web service in a request
+// (the export node, HTTP (pull), is where applications fetch documents
+// instead). A program that imports the package has the kind;
+// docflow/io/notify posts its webhooks with Do.
 //
 // The node's URL expands {{meta.<key>}} (each value URL-escaped), its
 // Method is POST (the default) or PUT, and its Headers expand
 // {{meta.<key>}} too, without line breaks. Its credential is the
 // request's Authorization: a token sent as Bearer, or a whole value with
-// its scheme ("Basic …"). The sender's metadata goes along as X-Meta-<key>
-// headers, so that another docflow's endpoint (POST /in/<node>, with an
-// app's token as the credential) takes it as its sender's: .bdf goes to
-// another site as it is (2026-10-21). Every request has an
-// Idempotency-Key, the delivery's id, the same on every try (a send is
-// at least once). 2xx is done; 408, 429 and 5xx are tried again; any
-// other answer, a redirect too, fails for good.
+// its scheme ("Basic …"). Its Body is how the request carries the
+// document and the sender's metadata:
+//
+//   - direct (the default): the document is the body, as it is, and the
+//     metadata goes along as X-Meta-<key> headers, so that another
+//     docflow's endpoint (POST /in/<node>, with an app's token as the
+//     credential) takes it as its sender's: .bdf goes to another site as
+//     it is (2026-10-21).
+//   - multipart: the body is multipart/form-data, the metadata a JSON
+//     object in the part meta, then the document in the part file, with
+//     its name and type (2026-10-23).
+//
+// Every request has an Idempotency-Key, the delivery's id, the same on
+// every try (a send is at least once). 2xx is done; 408, 429 and 5xx are
+// tried again; any other answer, a redirect too, fails for good.
 package http
 
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	nethttp "net/http"
+	"net/textproto"
 	"net/url"
 	"regexp"
 	"strings"
@@ -34,8 +46,18 @@ import (
 // KindHTTP is the kind of the HTTP output.
 const KindHTTP = "http"
 
+// The ways a request carries the document (Node.Body).
+const (
+	// BodyDirect sends the document as the body, the metadata in
+	// X-Meta-* headers.
+	BodyDirect = "direct"
+	// BodyMultipart sends multipart/form-data: the metadata as JSON in
+	// the part meta, the document in the part file.
+	BodyMultipart = "multipart"
+)
+
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindHTTP, Title: "HTTP", Role: docflow.RoleExit, Check: check, Send: send})
+	docflow.RegisterKind(docflow.Kind{Name: KindHTTP, Title: "HTTP (push)", Role: docflow.RoleExit, Check: check, Send: send})
 }
 
 // headerRE is the shape of a header's name.
@@ -59,10 +81,20 @@ func check(ctx context.Context, m *docflow.Manager, in docflow.Node, n *docflow.
 	if n.Method != nethttp.MethodPost && n.Method != nethttp.MethodPut {
 		return fmt.Errorf("%w: method %q: POST or PUT", docflow.ErrInvalid, in.Method)
 	}
+	n.Body = strings.ToLower(strings.TrimSpace(in.Body))
+	if n.Body == "" {
+		n.Body = BodyDirect
+	}
+	if n.Body != BodyDirect && n.Body != BodyMultipart {
+		return fmt.Errorf("%w: body %q: direct (the document as the body) or multipart (form-data)", docflow.ErrInvalid, in.Body)
+	}
 	for k, v := range in.Headers {
 		k = nethttp.CanonicalHeaderKey(strings.TrimSpace(k))
 		if !headerRE.MatchString(k) || reserved[k] {
 			return fmt.Errorf("%w: header %q", docflow.ErrInvalid, k)
+		}
+		if n.Body == BodyMultipart && (k == "Content-Type" || k == "Content-Disposition") {
+			return fmt.Errorf("%w: header %q: a multipart body sets its own", docflow.ErrInvalid, k)
 		}
 		if n.Headers == nil {
 			n.Headers = map[string]string{}
@@ -158,19 +190,62 @@ func send(ctx context.Context, o *docflow.Out) (string, error) {
 		return "", err
 	}
 	h := nethttp.Header{}
-	for k, v := range o.Meta {
-		if !strings.HasPrefix(k, "$") && headerRE.MatchString("X-Meta-"+k) {
-			h.Set("X-Meta-"+k, oneLine(docflow.MetaText(v)))
+	if n.Body == BodyMultipart {
+		if body, err = multipartBody(o, body, h); err != nil {
+			return "", docflow.Final(err)
+		}
+	} else {
+		for k, v := range o.Meta {
+			if !strings.HasPrefix(k, "$") && headerRE.MatchString("X-Meta-"+k) {
+				h.Set("X-Meta-"+k, oneLine(docflow.MetaText(v)))
+			}
 		}
 	}
 	for k, v := range n.Headers {
 		h.Set(k, o.ExpandHeader(v))
 	}
-	if h.Get("Content-Type") == "" {
-		h.Set("Content-Type", smtp.ContentType(o.Payload.Format))
+	if n.Body != BodyMultipart {
+		if h.Get("Content-Type") == "" {
+			h.Set("Content-Type", smtp.ContentType(o.Payload.Format))
+		}
+		h.Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(smtp.AttachmentName(o), `"`, "")+`"`)
 	}
-	h.Set("Content-Disposition", `attachment; filename="`+strings.ReplaceAll(smtp.AttachmentName(o), `"`, "")+`"`)
 	return Do(ctx, o.Manager(), &Request{Method: n.Method, URL: o.ExpandFunc(n.URL, url.QueryEscape), Header: h, Body: body, Credential: n.Credential, Key: o.ID})
+}
+
+// multipartBody wraps the document in multipart/form-data, after the
+// sender's metadata: the part meta, a JSON object of it (the values as
+// they were given), and the part file, the document with its name and
+// type. It sets the request's Content-Type.
+func multipartBody(o *docflow.Out, doc []byte, h nethttp.Header) ([]byte, error) {
+	meta := map[string]any{}
+	for k, v := range o.Meta {
+		if !strings.HasPrefix(k, "$") {
+			meta[k] = v
+		}
+	}
+	js, err := json.Marshal(meta)
+	if err != nil {
+		return nil, err
+	}
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+	part, err := w.CreatePart(textproto.MIMEHeader{"Content-Disposition": {`form-data; name="meta"`}, "Content-Type": {"application/json"}})
+	if err != nil {
+		return nil, err
+	}
+	part.Write(js)
+	part, err = w.CreatePart(textproto.MIMEHeader{"Content-Disposition": {multipart.FileContentDisposition("file", oneLine(smtp.AttachmentName(o)))},
+		"Content-Type": {smtp.ContentType(o.Payload.Format)}})
+	if err != nil {
+		return nil, err
+	}
+	part.Write(doc)
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	h.Set("Content-Type", w.FormDataContentType())
+	return b.Bytes(), nil
 }
 
 func oneLine(s string) string {

@@ -3,10 +3,15 @@ package http_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"mime"
+	"mime/multipart"
 	nethttp "net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -61,6 +66,61 @@ func TestHTTPOut(t *testing.T) {
 	}
 }
 
+// A multipart body: the metadata the sender gave as JSON in the part
+// meta (its values as given, none of the manager's), the document in the
+// part file with its name and type; no X-Meta-* headers, and the node's
+// own headers still sent.
+func TestHTTPOutMultipart(t *testing.T) {
+	hook := flowtest.NewHook(t, nethttp.StatusOK)
+	e := flowtest.New(t, nil)
+	e.Put(docflow.Node{Name: "erp", Kind: http.KindHTTP, URL: hook.URL + "/upload", Body: "Multipart", Headers: map[string]string{"X-Order": "{{meta.order}}"}},
+		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"erp"}})
+	doc := flowtest.Doc(t, 1)
+	j := e.Submit("in", `a "b".bdf`, doc, map[string]any{"customer": "a&b", "order": "7\r\nX-Evil: 1", "count": 3, "tags": []any{"x", "y"}})
+	e.Tick()
+	if d := e.Delivery(j, "erp"); d.State != docflow.DeliveryDone {
+		t.Fatalf("%s %s", d.State, d.LastError)
+	}
+	got := hook.Got()
+	if len(got) != 1 {
+		t.Fatalf("%d requests", len(got))
+	}
+	r := got[0]
+	for k := range r.Header {
+		if strings.HasPrefix(k, "X-Meta-") || k == "Content-Disposition" {
+			t.Errorf("header %s", k)
+		}
+	}
+	if r.Header.Get("X-Order") != "7  X-Evil: 1" || r.Header.Get("Idempotency-Key") == "" {
+		t.Errorf("headers %v", r.Header)
+	}
+	typ, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || typ != "multipart/form-data" {
+		t.Fatalf("Content-Type %q: %v", r.Header.Get("Content-Type"), err)
+	}
+	mr := multipart.NewReader(bytes.NewReader(r.Body), params["boundary"])
+	p, err := mr.NextPart()
+	if err != nil || p.FormName() != "meta" || p.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("first part %v: %v", p, err)
+	}
+	var meta map[string]any
+	if err := json.NewDecoder(p).Decode(&meta); err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]any{"customer": "a&b", "order": "7\r\nX-Evil: 1", "count": 3.0, "tags": []any{"x", "y"}}; !reflect.DeepEqual(meta, want) {
+		t.Errorf("meta %v", meta)
+	}
+	if p, err = mr.NextPart(); err != nil || p.FormName() != "file" || p.FileName() != `a "b".bdf` || p.Header.Get("Content-Type") != "application/vnd.bdf" {
+		t.Fatalf("second part %v: %v", p, err)
+	}
+	if b, _ := io.ReadAll(p); !bytes.Equal(b, doc) {
+		t.Error("file")
+	}
+	if _, err := mr.NextPart(); err != io.EOF {
+		t.Errorf("a third part: %v", err)
+	}
+}
+
 // A refusal (4xx) and a redirect fail for good; the settings are
 // checked.
 func TestHTTPRefused(t *testing.T) {
@@ -86,6 +146,8 @@ func TestHTTPRefused(t *testing.T) {
 		{Name: "x", Kind: http.KindHTTP, URL: hook.URL, Method: "DELETE"},
 		{Name: "x", Kind: http.KindHTTP, URL: hook.URL, Headers: map[string]string{"Authorization": "x"}},
 		{Name: "x", Kind: http.KindHTTP, URL: hook.URL, Headers: map[string]string{"Bad Header": "x"}},
+		{Name: "x", Kind: http.KindHTTP, URL: hook.URL, Body: "json"},
+		{Name: "x", Kind: http.KindHTTP, URL: hook.URL, Body: http.BodyMultipart, Headers: map[string]string{"content-type": "text/plain"}},
 	} {
 		if _, err := e.M().PutNode(ctx, n); !errors.Is(err, docflow.ErrInvalid) {
 			t.Errorf("%+v: %v", n, err)

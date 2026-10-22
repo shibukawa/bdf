@@ -186,11 +186,11 @@ const ADAPTER_SETTINGS = {
   smtp: "url (smtp://host:587, smtps://host:465), credential (user:password), from, recipients, mail_subject, text.",
   s3: "url (s3://bucket?region=…&endpoint=…), credential (access-key:secret-key), path (the key; {{meta.$job}}/{{meta.$name}} by default).",
   "s3-trigger": "url (s3://bucket?region=…), credential, path (the prefix of the keys it takes), to, accept, output, formats, meta. An S3 event's reference is POSTed to /in/<name> with the node's key.",
-  http: "url, method (POST or PUT), headers, credential (the Authorization: a token as Bearer).",
+  http: "url, method (POST or PUT), body (direct: the document as the body, the metadata as X-Meta-* headers; multipart: form-data, the metadata as JSON in the part meta and the document in the part file), headers, credential (the Authorization: a token as Bearer).",
 };
 
 // SETTINGS are the fields of a node an adapter's kind may have.
-const SETTINGS = ["to", "url", "credential", "format", "page", "via", "text", "from", "recipients", "mail_subject", "path", "method", "headers", "accept", "output", "formats", "meta"];
+const SETTINGS = ["to", "url", "credential", "format", "page", "via", "text", "from", "recipients", "mail_subject", "path", "method", "body", "headers", "accept", "output", "formats", "meta"];
 
 function settingsOf(n, kind) {
   const out = {};
@@ -698,7 +698,7 @@ function renderSidebar() {
       form.append(field("Keep", input("f-keep", n.keep || "", { placeholder: "14d" }), "How long released and discarded items stay shown."));
       break;
     case "archive":
-      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Once written, the job goes on to every node chosen: an export after the archive lists the document for applications and people to fetch. The port on the canvas adds one too."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Once written, the job goes on to every node chosen: an HTTP (pull) node after the archive lists the document for applications and people to fetch. The port on the canvas adds one too."));
       form.append(field("Store", input("f-store", n.store || "", { placeholder: "s3://bucket?region=… or bbolt:path", required: true }), "A documents URL: bbolt, s3, r2 or gcs. Each job's .bdf and record are written once; the manager never changes or deletes them."));
       form.append(field("Collection", input("f-collection", n.collection || "", { placeholder: "archive-" + (n.name || "<name>") })));
       break;

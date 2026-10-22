@@ -1,6 +1,6 @@
 # BDF Docflow
 
-Docflow is a software-defined document network. A document enters at an entry — an application's endpoint, a CUPS server a computer prints to, any node's own IPP printer, or the form on the Jobs page — and flows through the nodes an administrator composed: queues that fan out, classes that send to one member in turn, filters that route by what a job is, inboxes that hold a job until a person sends it on, template nodes that fill a form with data, convert nodes that make a document of a file. It ends on display boards (the tablets enrolled at a location), on printers, in archives that keep a copy nobody changes, in sinks that keep the latest documents to look at, and in exports that applications and people fetch them from. Paper is one destination among others.
+Docflow is a software-defined document network. A document enters at an entry — an application's endpoint, a CUPS server a computer prints to, any node's own IPP printer, or the form on the Jobs page — and flows through the nodes an administrator composed: queues that fan out, classes that send to one member in turn, filters that route by what a job is, inboxes that hold a job until a person sends it on, template nodes that fill a form with data, convert nodes that make a document of a file. It ends on display boards (the tablets enrolled at a location), on printers, in archives that keep a copy nobody changes, in sinks that keep the latest documents to look at, in exports (HTTP (pull) nodes) that applications and people fetch them from, and in web services it is sent to (HTTP (push)). Paper is one destination among others.
 
 ## The pages {#pages}
 
@@ -29,5 +29,5 @@ The process holds nothing: the records and the documents are in a store, so the 
 
 - **You print.** [Jobs](jobs.md). The nodes you may send to are those shared with everyone, your groups' and your own ([Scopes](roles.md#scopes)).
 - **You lay out the network.** [Topology](topology.md), then [Node kinds](nodes.md) for each node's settings, [What flows](flow.md) for what may be connected to what, [Templates and data](templates.md) when forms are filled from data, and [Display boards](displays.md) for the tablets.
-- **You connect an application.** [Where documents come in](entries.md): endpoints and their keys, apps and their tokens, CUPS server nodes and IPP; [Exports](exports.md) for applications and people that fetch documents; then [The API](api.md).
+- **You connect an application.** [Where documents come in](entries.md): endpoints and their keys, apps and their tokens, CUPS server nodes and IPP; [HTTP (pull)](exports.md) for applications and people that fetch documents; then [The API](api.md).
 - **You run the service.** [Running the manager](operate.md).

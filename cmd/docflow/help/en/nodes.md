@@ -1,6 +1,6 @@
 # Node kinds
 
-Every node has a kind, and the settings of its kind. The entries — endpoints and CUPS servers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. Every node, whatever its kind, is also an IPP printer at `/ipp/print/<name>` ([IPP](entries.md#ipp)), unless “No IPP printer” is ticked in its sidebar (`no_ipp`): such a node is reached only from the nodes before it, and IPP clients do not list it.
+Every node has a kind, and the settings of its kind. The entries — endpoints and CUPS servers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, archives and sinks are where a job ends; an HTTP (pull) node after an archive is where applications and people fetch it, and an HTTP (push) node sends it to a web service. Every node, whatever its kind, is also an IPP printer at `/ipp/print/<name>` ([IPP](entries.md#ipp)), unless “No IPP printer” is ticked in its sidebar (`no_ipp`): such a node is reached only from the nodes before it, and IPP clients do not list it.
 
 ## Every node {#common}
 
@@ -132,13 +132,13 @@ Prints the job on paper, on a printer the manager reaches over the network. It t
 
 ## Archive {#archive}
 
-Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to`: an export, which lists it ([Exports](exports.md)).
+Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to`: an HTTP (pull) node, which lists it ([HTTP (pull)](exports.md)).
 
 | Setting | |
 |---|---|
 | Store (`store`) | a documents store: `bbolt:path`, `s3://bucket?region=…`, `r2://bucket?endpoint=…`, `gcs://bucket` |
 | Collection (`collection`) | the prefix of its objects: `archive-<name>` by default |
-| Forwards to (`to`) | the nodes the job goes on to once written: exports |
+| Forwards to (`to`) | the nodes the job goes on to once written: HTTP (pull) nodes |
 
 ## Sink {#sink}
 
@@ -148,9 +148,9 @@ Keeps the latest documents that reach it, to look at on the topology: the first 
 |---|---|
 | Latest (`latest`) | how many it keeps (10) |
 
-## Export {#export}
+## HTTP (pull) {#export}
 
-Lists what an archive before it wrote, for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. A way that reaches it without an archive is refused, and nothing is printed to it. [Exports](exports.md) has who reads what, backends and frontends.
+The kind `export`. Lists what an archive before it wrote, for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. A way that reaches it without an archive is refused, and nothing is printed to it. [HTTP (pull)](exports.md) has who reads what, backends and frontends. To send documents to a web service instead, the manager making the request, use [HTTP (push)](#http).
 
 | Setting | |
 |---|---|
@@ -210,15 +210,16 @@ Writes what reaches it to a bucket, once, and does not look back: an object ther
 | Bucket (`url`), Credential (`credential`) | as an S3 Trigger's |
 | Key (`path`) | with `{{meta.<key>}}`: `{{meta.$job}}/{{meta.$name}}` by default; a value cannot leave the prefix (no `..`, no leading `/`) |
 
-## HTTP {#http}
+## HTTP (push) {#http}
 
-Sends what reaches it to a web service as the body of a request, with the job's metadata as `X-Meta-*` headers and the delivery's id as the `Idempotency-Key`. To another Docflow, the URL is its `/in/<node>` and the credential an app's token: the `.bdf` goes there as it is. 408, 429 and 5xx are tried again; any other answer fails for good.
+The kind `http`. Sends what reaches it to a web service in a request, the document and the job's metadata as `body` says, with the delivery's id as the `Idempotency-Key`. To another Docflow, the URL is its `/in/<node>`, the body `direct` and the credential an app's token: the `.bdf` goes there as it is, its metadata as the sender's. 408, 429 and 5xx are tried again; any other answer fails for good. The other way round, applications fetching documents, is [HTTP (pull)](#export).
 
 | Setting | |
 |---|---|
 | URL (`url`) | `http(s)://…`, with `{{meta.<key>}}` (each value URL-escaped) |
 | Method (`method`) | `POST` (the default) or `PUT` |
-| Headers (`headers`) | more headers, with `{{meta.<key>}}` |
+| Body (`body`) | `direct` (the default): the document is the body as it is, with its `Content-Type` and its name in `Content-Disposition`, and the metadata goes in `X-Meta-<key>` headers. `multipart`: the body is `multipart/form-data`, the metadata a JSON object in the part `meta` (its values as given), then the document in the part `file`, with its name and type. Either way, the manager's keys (`$…`) are not sent |
+| Headers (`headers`) | more headers, with `{{meta.<key>}}`; with a `multipart` body, not `Content-Type` or `Content-Disposition` |
 | Credential (`credential`) | the Authorization: a token, sent as Bearer, or a whole value (`Basic …`) |
 
 These kinds have no form of their own in the sidebar: their settings are a JSON box there.
