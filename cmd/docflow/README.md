@@ -189,9 +189,18 @@ own pages) as it takes the tokens; scripts use the tokens.
 Every node, of every kind, is `PUT /api/nodes/<name>` with its `kind`
 and the kind's settings, in one namespace, and each is an IPP printer at
 `/ipp/print/<name>` (a job sent to a printer's name is printed there; one
-sent to a display's name is shown there). A job sent to a node follows
-the edges from it; its record (`/api/jobs/<n>`) keeps a leg for every
-node it reached. The document is kept once for all of them.
+sent to a display's name is shown there), unless it has `no_ipp: true`:
+such a node is reached only from the nodes before it, and is not listed
+to IPP clients. A job sent to a node follows the edges from it; its
+record (`/api/jobs/<n>`) keeps a leg for every node it reached. The
+document is kept once for all of them.
+
+The kinds are registered with the engine ([docflow](../../docflow)), and
+`GET /api/kinds` lists them with their roles and what they take. The
+core has the routing, transforming and keeping kinds. Inputs and outputs
+are adapters under [docflow/io](../../docflow/io): `printer`, `cups` and
+every node's IPP printer are
+[docflow/io/ipp](../../docflow/io/ipp), which this application imports.
 
 | Kind | Does | Settings |
 |---|---|---|

@@ -24,8 +24,7 @@ type handler struct {
 
 // Handler serves a manager over HTTP:
 //
-//	POST /ipp/print/{node}                     the node's IPP printer
-//	POST /ipp/print                            the server (CUPS-Get-Printers)
+//	the ingresses' prefixes                    (Prefixes: docflow/io/ipp's /ipp/print)
 //	/api/…                                     the API (bearer AdminToken, or a session of the pages)
 //	/in/{name}, /out/{name}                    the endpoints and the exports (keys, apps' tokens, people)
 //	/oauth/…                                   the apps' and the frontends' tokens
@@ -36,9 +35,10 @@ type handler struct {
 func Handler(m *Manager) http.Handler {
 	h := &handler{m: m}
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST "+IPPPath+"/{dest}", h.serveIPP)
-	mux.HandleFunc("POST "+IPPPath, h.serveIPP)
-	mux.HandleFunc("POST "+IPPPath+"/{$}", h.serveIPP)
+	// the ingresses' routes (docflow/io/ipp: every node's IPP printer)
+	for _, in := range ingresses() {
+		in.Mount(m, mux)
+	}
 
 	// the nodes, of every kind; a display's board, devices and enrollment
 	// codes, and a template node's templates, are under their node
@@ -87,6 +87,7 @@ func Handler(m *Manager) http.Handler {
 	// the topology is everyone's to see (an administrator sees its
 	// settings too), as is where it is drawn; its activity is the viewer's
 	mux.HandleFunc("GET /api/topology", h.userOnly(h.topology))
+	mux.HandleFunc("GET /api/kinds", h.userOnly(func(w http.ResponseWriter, r *http.Request, _ *Viewer) { writeJSON(w, http.StatusOK, KindInfos()) }))
 	mux.HandleFunc("GET /api/topology/live", h.userOnly(h.live))
 	mux.HandleFunc("GET /api/layout", h.userOnly(func(w http.ResponseWriter, r *http.Request, _ *Viewer) { h.getLayout(w, r) }))
 	mux.HandleFunc("PUT /api/layout", h.adminOnly(h.putLayout))
@@ -138,7 +139,7 @@ func (h *handler) writeErr(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, ErrFormat):
 		status = http.StatusUnsupportedMediaType
-	case errors.Is(err, ErrBranch):
+	case errors.Is(err, ErrUnsupported):
 		status = http.StatusNotImplemented
 	case errors.Is(err, ErrPrint):
 		status = http.StatusBadGateway

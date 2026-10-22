@@ -94,7 +94,17 @@ func (s loginStates) Prune(ctx context.Context, before time.Time, limit int) (in
 // their tokens (and the API the session too), the endpoints their keys.
 // /oauth/authorize is a page: a person is sent to the IdP from it, and
 // comes back to it with their session.
-var publicPaths = []string{"/", "/tablet", "/public/**", "/api/**", docflow.IPPPath + "/**", docflow.InPath + "/**", docflow.OutPath + "/**", docflow.OAuthTokenPath, "/device/**"}
+var publicPaths = append([]string{"/", "/tablet", "/public/**", "/api/**", docflow.InPath + "/**", docflow.OutPath + "/**", docflow.OAuthTokenPath, "/device/**"}, ingressPaths()...)
+
+// ingressPaths are the paths of the ingresses registered (docflow/io/ipp:
+// /ipp/print), whose senders bring their own credentials.
+func ingressPaths() []string {
+	var out []string
+	for _, p := range docflow.Prefixes() {
+		out = append(out, p+"/**")
+	}
+	return out
+}
 
 // ConfigureAuth sets popcornweb's [auth] and [session] for the pages:
 // what is Docflow's design (the OIDC mode, the paths a person

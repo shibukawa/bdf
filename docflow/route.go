@@ -59,26 +59,16 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: fmt.Sprintf("takes %s; this is %s", takes(kind), r.payload.Kind)})
 		return
 	}
-	switch kind {
-	case KindDisplay:
-		m.routeDisplay(ctx, r, name, from)
-	case KindPrinter:
-		m.routeDelivery(ctx, r, Leg{Node: name, Kind: KindPrinter, From: from}, name, "")
-	case KindArchive:
-		m.routeDelivery(ctx, r, Leg{Node: name, Kind: KindArchive, From: from}, "", "")
-	case KindInbox:
-		m.routeInbox(ctx, r, name, from)
-	case KindSink:
-		m.routeSink(ctx, r, name, from)
-	case KindExport:
-		m.routeExport(ctx, r, name, from)
-	case KindFilter:
-		m.routeFilter(ctx, r, name, from, depth)
-	case KindTemplate, KindConvert:
-		m.routeDelivery(ctx, r, Leg{Node: name, Kind: kind, From: from}, "", "")
-	case KindQueue, KindEndpoint, KindCups:
+	k := kindNamed(kind)
+	switch {
+	case k == nil:
+		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: "no such kind of node here: " + kind})
+	case k.route != nil:
+		k.route(m, ctx, r, name, from, depth)
+	case k.Send != nil:
+		m.routeDelivery(ctx, r, Leg{Node: name, Kind: kind, From: from}, name, "", kind)
+	case k.PassesOn:
 		n, err := m.Node(ctx, name)
-
 		if err != nil {
 			r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: err.Error()})
 			return
@@ -87,28 +77,31 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		for _, to := range n.To {
 			m.route(ctx, r, to, name, depth+1)
 		}
-	case KindClass:
-		n, err := m.Node(ctx, name)
-		if err != nil {
-			r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: err.Error()})
-			return
-		}
-		member, err := m.pick(ctx, n)
-		if err != nil {
-			r.add(Leg{Node: name, Kind: KindClass, From: from, State: LegError, Error: err.Error()})
-			return
-		}
-		if mk, err := m.kindOf(ctx, member); err == nil && mk == KindPrinter {
-			// the class's leg is the delivery's: a member that fails is
-			// skipped for the next (deliver)
-			m.routeDelivery(ctx, r, Leg{Node: name, Kind: KindClass, From: from, Member: member}, member, name)
-			return
-		}
-		r.add(Leg{Node: name, Kind: KindClass, From: from, State: LegRouted, Member: member})
-		m.route(ctx, r, member, name, depth+1)
 	default:
 		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: "cannot take a job"})
 	}
+}
+
+// routeClass sends a job to a member of a class. A member that sends out
+// (a printer) is the class's delivery: one that fails is skipped for the
+// next (deliver).
+func (m *Manager) routeClass(ctx context.Context, r *routing, name, from string, depth int) {
+	n, err := m.Node(ctx, name)
+	if err != nil {
+		r.add(Leg{Node: name, Kind: KindClass, From: from, State: LegError, Error: err.Error()})
+		return
+	}
+	member, err := m.pick(ctx, n)
+	if err != nil {
+		r.add(Leg{Node: name, Kind: KindClass, From: from, State: LegError, Error: err.Error()})
+		return
+	}
+	if mk, err := m.kindOf(ctx, member); err == nil && sendsOut(mk) {
+		m.routeDelivery(ctx, r, Leg{Node: name, Kind: KindClass, From: from, Member: member}, member, name, mk)
+		return
+	}
+	r.add(Leg{Node: name, Kind: KindClass, From: from, State: LegRouted, Member: member})
+	m.route(ctx, r, member, name, depth+1)
 }
 
 // pick chooses the member of a class a job goes to: the next in turn
@@ -407,13 +400,20 @@ func (m *Manager) tickJobs(ctx context.Context, rep *TickReport) error {
 	return errors.Join(errs...)
 }
 
-// deliveryKinds are the kinds of node whose leg names a delivery.
-var deliveryKinds = []string{KindPrinter, KindArchive, KindClass, KindTemplate, KindConvert}
+// namesDelivery tells a kind of node whose leg names a delivery: an
+// exit that sends out, a class, an archive, a step.
+func namesDelivery(kind string) bool {
+	switch kind {
+	case KindArchive, KindClass, KindTemplate, KindConvert:
+		return true
+	}
+	return sendsOut(kind)
+}
 
 // removeJob deletes a job, its payloads and its deliveries.
 func (m *Manager) removeJob(ctx context.Context, j *Job) error {
 	for _, l := range j.Legs {
-		if l.Ref == "" || !slices.Contains(deliveryKinds, l.Kind) {
+		if l.Ref == "" || !namesDelivery(l.Kind) {
 			continue
 		}
 		if rec, err := m.st.db.Get[deliveryRecord](ctx, l.Ref); err == nil {

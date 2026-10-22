@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf/docflow"
+	docflowipp "github.com/shibukawa/bdf/docflow/io/ipp"
 	"github.com/shibukawa/bdf/print/ipp"
 )
 
@@ -35,7 +36,7 @@ func TestPorts(t *testing.T) {
 	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "wh-a", Kind: docflow.KindDisplay}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "cups1", Kind: docflow.KindCups, To: []string{"wh-a"}, Port: cupsPort}); err != nil {
+	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "cups1", Kind: docflowipp.KindCups, To: []string{"wh-a"}, Port: cupsPort}); err != nil {
 		t.Fatal(err)
 	}
 	key, err := a.m.PutNode(ctx, docflow.Node{Name: "api", Kind: docflow.KindEndpoint, To: []string{"wh-a"}, Port: apiPort})

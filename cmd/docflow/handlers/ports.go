@@ -72,7 +72,7 @@ func (p *ports) reconcile(ctx context.Context) {
 	}
 	want := map[int]docflow.Node{}
 	for _, n := range nodes {
-		if n.Port > 0 && (n.Kind == docflow.KindEndpoint || n.Kind == docflow.KindCups) {
+		if n.Port > 0 && docflow.ServesPort(n.Kind) {
 			want[n.Port] = n
 		}
 	}

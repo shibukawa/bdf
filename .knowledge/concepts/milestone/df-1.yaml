@@ -1,0 +1,90 @@
+id: milestone:df-1
+type: milestone
+title: df-1 — ノードの種類の登録と入口の登録。IPP の入出口（printer・cups・/ipp/print）を docflow/io/ipp のアダプタにし、芯は印刷を知らない。ノードごとに IPP の公開を切れる
+summary: >-
+  requirement:docflow の capabilities.io-adapters の最初の段。2026-10-22 利用者「print もインタフェースの 1 つで、IPP を入出力にできる、
+  特定のプリンタにも出力できる、みたいにしたい。他のファイル I/O と同列に」。同日の利用者の答え：種類ごとの設定は今の平らな Node のまま
+  （config のオブジェクトにはしない。アダプタは Node の項目を読む）、IPP の入口は既定でどのノードも /ipp/print/<名前> のまま、ノードごとに
+  切れる（no_ipp）、今回出すのは IPP の入出口まで（display は登録の口に載せるだけで芯に残す）、置き場所は docflow/io/<名前>。
+  Claude の形：docflow に Kind（名前・役割・受ける種類・通すか・作る種類・設定の確かめ・出口の送り・自分のポート）の登録 RegisterKind と、
+  入口の登録 RegisterIngress（Manager のハンドラに道を足し、ノードの宛先を出す）。登録は database/sql のドライバのように init で、
+  cmd/docflow が docflow/io/ipp を import する。芯の種類も同じ表に載せ、PutNode・route・deliver・型付けの switch を表引きにする。
+  class の member と display の fallback は「printer」ではなく「送りのある出口」（fallback は .bdf を受けるもの）。
+lifecycle: active
+authority: authored
+scope:
+  milestone: df-1
+constraints:
+- 芯（package docflow）は print・print/ipp・print/raw を import しない。プリンタへの送り、URL の確かめ、IPP のサーバー、CUPS のポート、printMeta は docflow/io/ipp
+- 種類ごとの設定は平らな Node の項目のまま（url・route・preview・port・tls_cert・tls_key）。API と保存の形は変えない。足すのは no_ipp だけ
+- no_ipp のノードは /ipp/print/<名前> で 404、CUPS-Get-Printers に出ない。cups ノードの自分のポートは no_ipp に関わらず IPP（それがそのノードの役目）
+- 種類の登録は init で 1 度。同じ名前の 2 度目は panic。登録の無い種類の PUT は今と同じ 400、保存済みのノードの種類の登録が無ければ route は error の足跡
+- 出口の送りは今の delivery（at-least-once、リースの下、再試行、class の次の member）に載る。最終の失敗は docflow.Final で包む
+- 内部テスト（package docflow）は外部テストのファイル 1 つで docflow/io/ipp を blank import して、今と同じ全体の流れを試す
+non_goals:
+- 種類ごとの設定の config オブジェクト化（利用者の答え）
+- display・endpoint（REST）の外出し（endpoint は fl-2 の http と一緒に）
+- 外のプロセスのアダプタ（requirement:docflow の open_questions.io-adapter-boundary）
+capabilities:
+  kind-registry:
+    state: implemented
+    about: docflow.Kind と RegisterKind・Kinds。芯の種類も表から。nodeKinds・routingKinds・takes・passesOn・emits・kindName・deliveryKinds を表引きに
+  ingress-registry:
+    state: implemented
+    about: docflow.Ingress と RegisterIngress。Handler が登録の道を足し、TopoNode.Addresses に入口ごとの宛先
+  ipp-adapter:
+    state: implemented
+    about: docflow/io/ipp に printer（出口）・cups（入口の種類）・ipp（/ipp/print の入口）。ErrBranch・RouteDirect・RouteBranch もそちら
+  no-ipp:
+    state: implemented
+    about: Node.NoIPP（json no_ipp）とエディタのチェックボックス
+  kinds-api:
+    state: implemented
+    about: GET /api/kinds（登録の表：名前・役割・題・受ける・通す・作る・出口か・入口か）。エディタはまだ自分の表を使う（fl-2 で揃える）
+facts:
+  implementation:
+    registry: 'docflow/kind.go：Kind（Name・Title・Role・Takes・PassesOn・Makes・Fixed・Check・Ready・Send・Serve、芯だけの route）、RegisterKind・Kinds・KindInfos、Ingress（Name・Prefix・Mount・Address）と RegisterIngress・Prefixes、Out（Node・Job・Payload・Name・Meta、Document・Open）、Final、ErrUnsupported、ServesPort。芯の種類は kinds_core.go の init'
+    engine_api: 'アダプタに出したもの：Manager.Options・Now・Sender（submitter）・MaySend（アプリの宛先）、JobState.Ended、MetaKeyOK、MetaText、CheckPreviewURL、Converter（spool.Converter と同じメソッド。芯は print/spool を import しない）。ページのビューの選び方は print.PrintView と同じ形の pagesView を芯に'
+    typing: 'takes・passesOn・emits は表から（入口は in | entryKind、Makes があればそれ）。登録の無い種類は何でも受ける（壊れた辺に見せない）、route は「no such kind of node here」の error の足跡'
+    exits: 'route は Send のある種類を delivery に（target＝そのノード）。class の member は Send のある種類（d.Kind は member の種類）。deliver は Ready（branch の printer：ErrBranch＝ErrUnsupported、最終）、受ける種類の確かめ（最終）、Send の結果を記録。display の fallback は Send があり .bdf を受ける種類、printSlip も同じ道'
+    ipp_package: 'docflow/io/ipp：ipp.go（登録・mount・Address）、server.go（/ipp/print の IPP と CUPS の操作。no_ipp は /ipp/print で 404 と CUPS-Get-Printers から外す）、cups.go（checkCups・serveCups・cupsDest）、printer.go（checkPrinter・ready・send・printMeta、RouteDirect・RouteBranch・ErrBranch）'
+    web_app: 'cmd/docflow/handlers が docflow/io/ipp を blank import、Prefixes を mux と公開の道に、ports は ServesPort'
+    editor: 'サイドバーに「No IPP printer」のチェックボックス（export 以外）、IPP の宛先は TopoNode.Addresses（ipp）から。TopoNode.IPP は無くした'
+    tests: 'docflow/adapters_test.go（package docflow_test）が io/ipp を blank import し、内部テストは今のまま。kinds_names_test.go に KindPrinter・KindCups・IPPPath・RouteBranch の名前。kind_test.go：TestKindRegistry（役割の順・printer・cups・endpoint・template、登録の無い種類の 400、2 度目の panic）、TestNoIPP（404、一覧、addresses、前のノードからは通る、戻す）。io/ipp に TestCupsDest'
+acceptance:
+  d1-tests:
+    text: go test ./docflow/... ./cmd/docflow/... が今のテストのまま通る（printer・cups・/ipp/print の流れを含む）
+    verified_by: [docflow-tests]
+  d2-no-print:
+    text: docflow の依存に bdf/print の部品が無い
+    verified_by: [deps]
+  d3-no-ipp:
+    text: no_ipp のノードに IPP で Print-Job が 404、CUPS-Get-Printers に出ない、addresses に ipp が無い、前のノードからは通る、外すと戻る
+    verified_by: [docflow-tests, editor]
+  d4-registry:
+    text: GET /api/kinds が入口・経路・変換・出口の順。登録の無い種類の PUT は 400（登録のある種類の名前を出す）、同じ名前の 2 度目の登録は panic
+    verified_by: [docflow-tests]
+verification:
+  docflow-tests:
+    state: passed
+    method: integration
+    test: go test ./docflow/... ./cmd/docflow/...
+    authority: observed
+    evidence:
+      path: docflow/kind_test.go
+      locator: TestKindRegistry、TestNoIPP。2026-10-22 macOS
+  deps:
+    state: passed
+    method: static
+    test: go list -deps ./docflow | grep bdf/print（空）
+    authority: observed
+  editor:
+    state: passed
+    method: manual
+    test: pw dev の /admin/topology で no_ipp のノードを開き、チェックを外して保存。/api/topology の no_ipp が消え、サイドバーに IPP の宛先
+    authority: observed
+relations:
+- relation: refines
+  to: requirement:docflow
+- relation: builds_on
+  to: milestone:fl-1

@@ -28,15 +28,27 @@ import (
 	"slices"
 	"time"
 
-	"github.com/shibukawa/bdf/print/spool"
+	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/yuruidb"
 )
+
+// Converter makes .bdf documents of files of other formats, as
+// print/printconv does (the spool's converter has the same methods).
+type Converter interface {
+	// Detect names the format of a document, or says it is unknown; name
+	// is its file name, whose extension tells the formats whose content
+	// does not (CSV, Markdown).
+	Detect(r io.ReaderAt, size int64, name string) (format string, ok bool)
+	// Convert makes a document of one in a format Detect named; a
+	// password opens an encrypted one.
+	Convert(ctx context.Context, r io.ReaderAt, size int64, format, name, password string) (*bdf.Document, []string, error)
+}
 
 // Options configures a manager.
 type Options struct {
 	// Converter makes .bdf documents of what senders send (PDF, Office,
 	// rasters …); nil takes .bdf only.
-	Converter spool.Converter
+	Converter Converter
 	// Secret signs the challenges and sessions of devices and the apps'
 	// tokens: at least 32 random bytes, the same for every instance.
 	// PreviousSecrets are retired ones, which still open what was signed
@@ -217,9 +229,11 @@ func (m *Manager) display(ctx context.Context, name string) (*Node, error) {
 	return m.nodeOfKind(ctx, name, KindDisplay)
 }
 
-// printer returns a printer node.
+// printer returns a node that sends out what reaches it (a printer: a
+// display's fallback, a device's print).
 func (m *Manager) printer(ctx context.Context, name string) (*Node, error) {
-	return m.nodeOfKind(ctx, name, KindPrinter)
+	n, _, err := m.exit(ctx, name)
+	return n, err
 }
 
 // nodeOfKind returns a node of a kind; one of another kind is not found.

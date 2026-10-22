@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf/converter"
-	"github.com/shibukawa/yuruidb"
 )
 
 // The topology is a graph of nodes in one namespace: entries (endpoints,
@@ -22,14 +21,6 @@ import (
 // node is put: every node it names exists, no path leads back to it, and
 // the kinds of payload that reach every node are ones it takes (typed).
 
-// nodeKinds are the kinds of a node, in the order of a job's way.
-var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink, KindExport}
-
-// routingKinds are the kinds a node changes between, keeping its name. A
-// display, a printer, a sink or an export keeps its kind: its slips,
-// devices, deliveries, kept jobs or entries name it.
-var routingKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindInbox, KindArchive}
-
 // PutNode adds a node or replaces its settings; the settings of other
 // kinds are dropped. An endpoint added gets a key, returned once (Key);
 // PutNode keeps the key and the templates of an endpoint that is one
@@ -38,144 +29,22 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 	if !validName(in.Name) {
 		return "", fmt.Errorf("%w: node name %q", ErrInvalid, in.Name)
 	}
-	if !slices.Contains(nodeKinds, in.Kind) {
-		return "", fmt.Errorf("%w: kind %q: %s", ErrInvalid, in.Kind, strings.Join(nodeKinds, ", "))
+	k := kindNamed(in.Kind)
+	if k == nil {
+		return "", fmt.Errorf("%w: kind %q: %s", ErrInvalid, in.Kind, strings.Join(kindNames(), ", "))
 	}
 	if err := checkScope(in.Scope, in.Owner); err != nil {
 		return "", err
 	}
-	n := Node{Name: in.Name, Kind: in.Kind, Title: clip(strings.TrimSpace(in.Title), 255), Description: clip(strings.TrimSpace(in.Description), 1000), Scope: in.Scope, Owner: in.Owner}
-	switch n.Kind {
-	case KindQueue:
-		n.To = cleanNames(in.To)
-		if len(n.To) == 0 {
-			return "", fmt.Errorf("%w: a queue forwards to at least one node (to)", ErrInvalid)
-		}
-	case KindEndpoint, KindCups:
-		n.To = cleanNames(in.To)
-		if len(n.To) == 0 {
-			return "", fmt.Errorf("%w: a %s forwards what it receives to at least one node (to)", ErrInvalid, kindName(n.Kind))
-		}
-		n.Accept = or(in.Accept, AcceptFile)
-		if n.Accept != AcceptFile && n.Accept != AcceptData {
-			return "", fmt.Errorf("%w: accept %q: file or data", ErrInvalid, in.Accept)
-		}
-		n.Output = or(in.Output, OutputBDF)
-		if n.Output != OutputBDF && n.Output != OutputFile {
-			return "", fmt.Errorf("%w: output %q: bdf (the document made of the file) or file (as received)", ErrInvalid, in.Output)
-		}
-		if n.Accept == AcceptData {
-			n.Output = "" // data goes on as it is
-		}
-		n.Formats = cleanFormats(in.Formats)
-		if err := checkFormats(n.Formats); err != nil {
+	n := Node{Name: in.Name, Kind: in.Kind, Title: clip(strings.TrimSpace(in.Title), 255), Description: clip(strings.TrimSpace(in.Description), 1000), Scope: in.Scope, Owner: in.Owner,
+		NoIPP: in.NoIPP}
+	if k.Role == RoleEntry {
+		if err := checkEntry(k, in, &n); err != nil {
 			return "", err
 		}
-		if n.Meta, err = claimedMeta(in.Meta); err != nil {
-			return "", err
-		}
-		n.Port = in.Port
-		if n.Kind == KindEndpoint {
-			n.Apps = cleanNames(in.Apps)
-			for _, id := range n.Apps {
-				if _, err := m.App(ctx, id); err != nil {
-					return "", fmt.Errorf("%w: no app %q", ErrInvalid, id)
-				}
-			}
-		} else {
-			n.TLSCert, n.TLSKey = strings.TrimSpace(in.TLSCert), strings.TrimSpace(in.TLSKey)
-			if n.Port == 0 {
-				return "", fmt.Errorf("%w: a CUPS server listens on a port of its own (port)", ErrInvalid)
-			}
-			if (n.TLSCert == "") != (n.TLSKey == "") {
-				return "", fmt.Errorf("%w: a CUPS server's certificate takes both tls_cert and tls_key (files)", ErrInvalid)
-			}
-		}
-	case KindTemplate:
-		n.To = cleanNames(in.To)
-		if len(n.To) == 0 {
-			return "", fmt.Errorf("%w: a template node sends the form it fills to at least one node (to)", ErrInvalid)
-		}
-		n.Template, n.TemplateFrom = strings.TrimSpace(in.Template), strings.TrimSpace(in.TemplateFrom)
-		if (n.Template == "") == (n.TemplateFrom == "") {
-			return "", fmt.Errorf("%w: a template node names the template it fills (template), or the metadata key that names one (template_from)", ErrInvalid)
-		}
-		if n.Template != "" && !templateIDRE.MatchString(n.Template) {
-			return "", fmt.Errorf("%w: template id %q: letters, digits, _ and -", ErrInvalid, n.Template)
-		}
-		n.ListName, n.Strict = strings.TrimSpace(in.ListName), in.Strict
-	case KindConvert:
-		n.To = cleanNames(in.To)
-		if len(n.To) == 0 {
-			return "", fmt.Errorf("%w: a convert node sends the document it makes to at least one node (to)", ErrInvalid)
-		}
-		n.Formats = cleanFormats(in.Formats)
-		if err := checkFormats(n.Formats); err != nil {
-			return "", err
-		}
-	case KindSink:
-		n.Latest = in.Latest
-		if n.Latest < 0 || n.Latest > 1000 {
-			return "", fmt.Errorf("%w: latest %d: a sink keeps 1 to 1000 documents", ErrInvalid, in.Latest)
-		}
-	case KindExport:
-		if err := m.checkExport(ctx, in, &n); err != nil {
-			return "", err
-		}
-	case KindClass:
-		n.Members = cleanNames(in.Members)
-		if len(n.Members) == 0 {
-			return "", fmt.Errorf("%w: a class has at least one member", ErrInvalid)
-		}
-		n.Policy = or(in.Policy, PolicyRoundRobin)
-		if n.Policy != PolicyRoundRobin && n.Policy != PolicyFailover {
-			return "", fmt.Errorf("%w: policy %q: round-robin or failover", ErrInvalid, in.Policy)
-		}
-	case KindFilter:
-		rules, err := checkRules(in.Rules)
-		if err != nil {
-			return "", err
-		}
-		n.Rules, n.Otherwise = rules, cleanNames(in.Otherwise)
-		if len(n.Rules) == 0 && len(n.Otherwise) == 0 {
-			return "", fmt.Errorf("%w: a filter has rules, or nodes it sends to otherwise", ErrInvalid)
-		}
-	case KindInbox:
-		n.To, n.Keep = cleanNames(in.To), in.Keep
-	case KindArchive:
-		// what it wrote goes on to To, once written (deliver)
-		n.To = cleanNames(in.To)
-		n.Store, n.Collection = strings.TrimSpace(in.Store), strings.TrimSpace(in.Collection)
-		if n.Store == "" {
-			return "", fmt.Errorf("%w: an archive has a store (bbolt, s3, r2 or gcs)", ErrInvalid)
-		}
-		if n.Collection != "" {
-			if err := yuruidb.ValidateCollection(n.Collection); err != nil {
-				return "", fmt.Errorf("%w: collection %q: letters, digits, _ and -", ErrInvalid, n.Collection)
-			}
-		}
-		// the store is opened now, so that a wrong URL is refused here
-		if _, err := m.st.archive(ctx, n.Store, n.collection()); err != nil {
-			return "", fmt.Errorf("%w: store: %v", ErrInvalid, err)
-		}
-	case KindDisplay:
-		n.Keep, n.OfflineAfter = in.Keep, in.OfflineAfter
-		if in.Fallback != nil && strings.TrimSpace(in.Fallback.Printer) != "" {
-			n.Fallback = &Fallback{Printer: strings.TrimSpace(in.Fallback.Printer), After: in.Fallback.After}
-			if k, err := m.kindOf(ctx, n.Fallback.Printer); err != nil || k != KindPrinter {
-				return "", fmt.Errorf("%w: fallback printer %q is not a printer", ErrInvalid, n.Fallback.Printer)
-			}
-		}
-	case KindPrinter:
-		n.URL, n.Route = strings.TrimSpace(in.URL), or(in.Route, RouteDirect)
-		if n.Route != RouteDirect && n.Route != RouteBranch {
-			return "", fmt.Errorf("%w: route %q: direct or branch", ErrInvalid, in.Route)
-		}
-		if err := checkPrinterURL(n.URL); err != nil {
-			return "", err
-		}
-		n.Preview = strings.TrimSpace(in.Preview)
-		if err := checkPreviewURL(n.Preview); err != nil {
+	}
+	if k.Check != nil {
+		if err := k.Check(ctx, m, in, &n); err != nil {
 			return "", err
 		}
 	}
@@ -412,7 +281,7 @@ func (m *Manager) nameFree(ctx context.Context, name, kind string) error {
 	if err != nil {
 		return err
 	}
-	if have != kind && !(slices.Contains(routingKinds, kind) && slices.Contains(routingKinds, have)) {
+	if have != kind && !(changes(kind) && changes(have)) {
 		return fmt.Errorf("%w: %q is a %s already", ErrConflict, name, have)
 	}
 	return nil
@@ -482,9 +351,10 @@ func (m *Manager) acyclic(ctx context.Context, n *Node) error {
 // key's hash left out) and what is at it now.
 type TopoNode struct {
 	Node
-	// IPP is the destination's path; In an endpoint's.
-	IPP string `json:"ipp"`
-	In  string `json:"in,omitempty"`
+	// Addresses are where the node is reached, by ingress (ipp: its IPP
+	// printer's path); In is an endpoint's path.
+	Addresses map[string]string `json:"addresses,omitempty"`
+	In        string            `json:"in,omitempty"`
 	// Takes is the kind of payload the node takes at its input (bdf,
 	// data or any), and Emits the kinds it sends on along its edges, as
 	// inferred from the entries (kinds.go). Accepts are the kinds its
@@ -538,17 +408,26 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 	for i := range nodes {
 		byName[nodes[i].Name] = &nodes[i]
 	}
+	ins := ingresses()
 	ty := inferKinds(byName)
 	acc := accepts(byName)
 	broken := ty.broken(byName)
 	out := make([]TopoNode, 0, len(nodes))
 	for _, n := range nodes {
 		n.KeyHash = ""
-		t := TopoNode{Node: n, IPP: IPPPath + "/" + n.Name, Takes: takesName(n.Kind), Accepts: acc[n.Name].names()}
+		t := TopoNode{Node: n, Takes: takesName(n.Kind), Accepts: acc[n.Name].names(), Pending: pending[n.Name]}
+		for _, in := range ins {
+			if a := in.Address(&n); a != "" {
+				if t.Addresses == nil {
+					t.Addresses = map[string]string{}
+				}
+				t.Addresses[in.Name] = a
+			}
+		}
 		if t.Accepts == nil {
 			t.Accepts = []string{}
 		}
-		if passesOn(n.Kind) || n.Kind == KindTemplate || n.Kind == KindConvert || n.Kind == KindDisplay {
+		if k := kindNamed(n.Kind); k != nil && (k.PassesOn || k.Makes != "") {
 			t.Emits = n.emits(ty.reach[n.Name]).names()
 		}
 		for to, bad := range broken[n.Name] {
@@ -560,15 +439,11 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 		switch n.Kind {
 		case KindArchive:
 			t.Collection = n.collection()
-			t.Pending = pending[n.Name]
 		case KindEndpoint:
 			t.In = InPath + "/" + n.Name
 		case KindTemplate:
 			t.Templates = byNode[n.Name]
 			slices.Sort(t.Templates)
-			t.Pending = pending[n.Name]
-		case KindConvert:
-			t.Pending = pending[n.Name]
 		case KindInbox:
 			if st, err := m.st.db.Get[inboxState](ctx, n.Name); err == nil {
 				t.Held = len(st.Data.Held)
@@ -577,8 +452,6 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 			if st, err := m.st.db.Get[locationState](ctx, n.Name); err == nil {
 				t.Open, t.Devices = len(st.Data.Open), len(st.Data.Devices)
 			}
-		case KindPrinter, KindClass:
-			t.Pending = pending[n.Name]
 		case KindSink:
 			if ids := m.sinkJobs(ctx, n.Name); len(ids) > 0 {
 				t.Kept, t.Latest = len(ids), ids[len(ids)-1]
@@ -592,10 +465,9 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 	return out, nil
 }
 
-// kindName is a kind as it is said: "CUPS server" for cups.
-func kindName(kind string) string {
-	if kind == KindCups {
-		return "CUPS server"
-	}
-	return kind
+// changes tells a kind a node may change from and to, keeping its name:
+// one registered that is not Fixed.
+func changes(kind string) bool {
+	k := kindNamed(kind)
+	return k != nil && !k.Fixed
 }
