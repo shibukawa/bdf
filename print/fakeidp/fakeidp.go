@@ -3,7 +3,7 @@
 // people of a test and their groups in a claim of any path
 // ("groups", "roles", Keycloak's "realm_access.roles"). It checks no
 // password: a test says who signs in next (LoginAs), or a person picks
-// themselves on its page. It is to the Print Manager's sign-in what
+// themselves on its page. It is to Docflow's sign-in what
 // print/fakeprinter is to its printers.
 //
 //	idp := fakeidp.New(fakeidp.User{Subject: "alice", Email: "alice@example.com", Groups: []string{"warehouse-a"}})
@@ -33,7 +33,7 @@ import (
 
 // Default credentials of the one client the provider knows.
 const (
-	ClientID     = "printmanager"
+	ClientID     = "docflow"
 	ClientSecret = "fake-client-secret"
 )
 

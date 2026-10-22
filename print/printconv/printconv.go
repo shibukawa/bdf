@@ -2,7 +2,7 @@
 // .bdf documents of pages, with the converters registered in package
 // converter (import converter/all, or the converters a program needs) and
 // print/raster for the rasters of driverless clients. bdf printd and the
-// Print Manager use it.
+// Docflow use it.
 package printconv
 
 import (

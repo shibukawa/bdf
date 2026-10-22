@@ -42,34 +42,34 @@ verification:
   scope-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     authority: observed
     evidence:
-      path: print/manager/scope_test.go
+      path: docflow/scope_test.go
       locator: 'TestScope の末尾：alice の /api/topology は 200 で scope・owner・url が無く 6 ノード、root には scope がある、誰でもない人は 401、/api/layout は利用者も 200。/api/topology/live は alice（wh-a open 2、office 1、alice-desk 1、wh-b 0、team-a recent 1、flows に team-a→wh-a）、bob（wh-b 1、office 1）、root（office 2）で違い、If-None-Match で 304、ジョブを送ると版が変わる。TestTokens の管理者だけの道は /api/deliveries に。2026-10-21 macOS'
   login-tests:
     state: passed
     method: integration
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/login_test.go
+      path: cmd/docflow/handlers/login_test.go
       locator: 'サインインしていない /topology は IdP へ、alice の /topology は 200 で topology-view.js を読み topology.js は無い、alice の /api/nodes は 403'
   browser-view:
     state: passed
     method: manual
     authority: observed
     evidence:
-      path: cmd/printmanager/public/topology-view.js
+      path: cmd/docflow/public/topology-view.js
       locator: '2026-10-21 pw dev を内蔵ブラウザで Mina Member（warehouse-a）として：/topology に全 5 ノードと辺、group warehouse-a の queue both に管理トークンで送ったジョブが both 1/h・wh-a 1 open 1/h・バッジ 1 として出て、管理者が review に送った保留のジョブは数に出ない。Live の表示が 4 秒ごとに更新。ノードのクリックで数・印刷のフォーム・自分のジョブの一覧'
 facts:
   delivery:
     implemented:
       date: '2026-10-21'
       packages:
-      - 'print/manager/live.go：Live・LiveNode・Flow、Manager.Live（直近 500 件のジョブを CanSee で絞り、足跡から数える。display の open は Slip の状態、Live > 0 のジョブだけ読む。版は分の刻みとジョブ・伝票の状態の digest）、publicTopology（設定と数を落とす）'
-      - 'print/manager/http.go：GET /api/topology を userOnly に（管理者以外は publicTopology）、GET /api/topology/live（ETag、304）、GET /api/layout を userOnly に'
-      - 'cmd/printmanager：/topology（TopologyView、public/topology-view.js）、AppBar に Topology、public/canvas.js（エディタと共有：パン・ズーム・ピンチ、ドラッグ、口、下書き、数のバッジ、点の animateMotion）、topology.js はキャンバスを canvas.js に任せて 4 秒ごとに live を読む'
+      - 'docflow/live.go：Live・LiveNode・Flow、Manager.Live（直近 500 件のジョブを CanSee で絞り、足跡から数える。display の open は Slip の状態、Live > 0 のジョブだけ読む。版は分の刻みとジョブ・伝票の状態の digest）、publicTopology（設定と数を落とす）'
+      - 'docflow/http.go：GET /api/topology を userOnly に（管理者以外は publicTopology）、GET /api/topology/live（ETag、304）、GET /api/layout を userOnly に'
+      - 'cmd/docflow：/topology（TopologyView、public/topology-view.js）、AppBar に Topology、public/canvas.js（エディタと共有：パン・ズーム・ピンチ、ドラッグ、口、下書き、数のバッジ、点の animateMotion）、topology.js はキャンバスを canvas.js に任せて 4 秒ごとに live を読む'
     decisions:
     - '利用者向けの数はトポロジーの数（管理者の全件）でなく /api/topology/live の自分の分。エディタも live があれば live の数を出す（無ければトポロジーの数）'
     - '点は直近 10 分の足跡のうち、ページがまだ走らせていないもの（job:from>to の鍵）だけ、2 分より古いものは走らせない'

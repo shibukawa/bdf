@@ -125,7 +125,7 @@ archive は any を受け、受けたペイロードをそのまま書く（`.bd
 | `s3` | バケット・接頭辞のテンプレート・資格の名前 | yuruidb の Blob（S3・R2・GCS）で書ける。archive との違いは「変えない約束と記録の JSON が無い、ただの置き場」 |
 | `http`（利用者の一覧に無い。Claude が足した） | URL・方法・ヘッダ・資格の名前 | 外部の Web サービスへ押す。serverless の外部 Lambda と対になる |
 
-**資格は名前で指す**（`credential: smtp-main` → 環境変数 `PM_CRED_smtp_main` かファイル）。yuruidb には置かない（`requirement:print-manager-auth` の制約「取り出して使える秘密を置かない」）。cups の `tls_cert`・`tls_key` がファイルのパスなのと同じ形。問い：根の秘密で封をして yuruidb に置く（画面で設定できる）案との比較（§7 の問い 7）。
+**資格は名前で指す**（`credential: smtp-main` → 環境変数 `DOCFLOW_CRED_smtp_main` かファイル）。yuruidb には置かない（`requirement:print-manager-auth` の制約「取り出して使える秘密を置かない」）。cups の `tls_cert`・`tls_key` がファイルのパスなのと同じ形。問い：根の秘密で封をして yuruidb に置く（画面で設定できる）案との比較（§7 の問い 7）。
 
 **宛先の差し込み**（To・件名・パス・接頭辞）はメタデータから。式でなく `{meta.key}` の置き換えだけにし、パスは `..`・`/` の頭を落とす、メールのヘッダは改行を落とす（ヘッダの注入とパスの逸脱を防ぐ）。
 

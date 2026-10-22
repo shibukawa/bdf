@@ -33,23 +33,23 @@ verification:
   manager-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     authority: observed
     evidence:
-      path: print/manager/filter_test.go
+      path: docflow/filter_test.go
       locator: 'TestFilter：確かめ 6 件の 400、urgent → wh-a と wh-b、4 ページ → wh-b、erp の bdf → office、他は otherwise、otherwise 無しで dropped、閉路、送られている filter は消せない。2026-10-21 macOS'
   js-syntax:
     state: passed
     method: static
-    test: node --check cmd/printmanager/public/*.js
+    test: node --check cmd/docflow/public/*.js
     authority: observed
 facts:
   delivery:
     implemented:
       date: '2026-10-21'
       packages:
-      - 'print/manager/filter.go（Rule・Match・compile・fits、checkRules、ruleTargets、routeFilter、describe）、model.go（KindFilter、Node.Rules・Otherwise、LegDropped、edges() に規則）、nodes.go（filter の確かめ）、route.go'
-      - 'cmd/printmanager/public：canvas.js（規則の辺、色、出力の口）、topology.js（picker・picked、ruleRow・rulesOf、filter のサイドバー、辺の追加は otherwise へ・削除は規則からも）、topology-view.js（規則の表示）、admin.js、pages.pw.html（パレット）、README'
+      - 'docflow/filter.go（Rule・Match・compile・fits、checkRules、ruleTargets、routeFilter、describe）、model.go（KindFilter、Node.Rules・Otherwise、LegDropped、edges() に規則）、nodes.go（filter の確かめ）、route.go'
+      - 'cmd/docflow/public：canvas.js（規則の辺、色、出力の口）、topology.js（picker・picked、ruleRow・rulesOf、filter のサイドバー、辺の追加は otherwise へ・削除は規則からも）、topology-view.js（規則の表示）、admin.js、pages.pw.html（パレット）、README'
     decisions:
     - 'user の照合は名乗り（ClaimedUser）と確かめた送り手の表示（SubmittedBy.Label）のどちらかに合えばよい'
     - '口のドラッグで filter に辺を足すと otherwise に入る（規則はサイドバーで）。辺のクリックで外すと規則からも外す'
