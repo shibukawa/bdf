@@ -68,7 +68,7 @@ constraints:
 - 辺（口）の種類は bdf・data・any の 3 つ。bdf ⊂ any、data ⊂ any、bdf と data は交わらない。data の形式は json・yaml・csv（tsv）・xlsx・parquet
 - printer と外部 CUPS への送りの入力は bdf だけ。display も bdf だけ
 - archive はどの種類でも受け、受けたペイロードをそのまま書く（.bdf でなくても）。記録の JSON に kind・format と系譜を持つ
-- 入力の種類がそのまま出力の種類になるノード（queue・class・filter／branch・inbox・archive・sink・通知・出口）は、上流からの推論で種類が決まる。固定の入力の口に合わない種類が届きうる辺は PUT で断る（存在・重なり・閉路に型を足す）。実行時にも確かめ、合わなければ error の足跡で止める
+- 入力の種類がそのまま出力の種類になるノード（queue・class・filter／branch・inbox・archive・sink・通知・出口）は、上流からの推論で種類が決まる。固定の入力の口に合わない種類が届きうる辺は PUT で断る（存在・重なり・閉路に型を足す）。実行時にも確かめ、合わなければ error の足跡で止める。断るのは新しい辺だけで、設定の変更（入口の accept・output、種類の変更）で既にある辺が合わなくなるのは通し、壊れた辺として図に出す（2026-10-22 milestone:fl-1b）
 - 既定で今の図がそのまま動く：入口の convert は既定で on（今の振る舞い）、全部 bdf の図は型の推論で自動的に通る
 - エンドポイントは暗黙の変換をしない（2026-10-21 利用者）。テンプレートの差し込みはテンプレート変換ノードだけが行い、テンプレートはそのノードの持ち物。エンドポイントが持つ変換は convert（変換器で bdf に）だけ
 - 出口は bdf をそのまま送れる（2026-10-21 利用者：別拠点の bdf Print Manager が受け手のことがある）。描画ノードは選択で、出口の前に置くかは図で決める
@@ -168,9 +168,9 @@ facts:
       fixed_out: 入口（フラグで決まる）、テンプレート変換（bdf）、コンバート（bdf）、描画（any）、人の入力の入口（data）
       fixed_in: printer・外部 CUPS・display（bdf）、テンプレート変換（data）、人の操作のスタンプ・署名（bdf）
       polymorphic: queue・class・filter／branch・inbox・archive・sink・通知・smtp・ftp・s3・http（入力の種類がそのまま出力）
-      inference: 入口の出力の種類から辺を下り、ノードごとに届きうる種類の集合を求める（閉路が無いので 1 回の走査）。固定の入力の口に合わない辺は PUT で 400。実行時は error の足跡
+      inference: 入口の出力の種類から辺を下り、ノードごとに届きうる種類の集合を求める（閉路が無いので 1 回の走査）。固定の入力の口に合わない新しい辺は PUT で 400、設定の変更で合わなくなった辺は broken として残す。後ろ向きにも下り、ノードに今送れる種類（accepts：自分の takes と後ろの全ノードの accepts の共通部分）を出す。実行時は error の足跡
       shape: data の形（record か table か）はペイロードの属性（読み手が付ける）で、口の種類にしない。スキーマ付きの口は後（expansions）
-      canvas: 口の色を種類で（Blueprint のピン）。多相は推論した色、any は灰色、合わない辺は赤。パレットを入口・経路・変換・人・出口に分ける
+      canvas: 口・辺・ノードの枠の色を種類で（Blueprint のピン）。多相は推論した色か後ろの accepts の色（最初の辺で型が決まる）、未定は中空の破線、any は琥珀、複数は紫、合わない辺は赤の破線。ドラッグ中は受けない先を薄く。パレットを入口・経路・変換・人・出口に分ける
     payload:
       model: 1 つのジョブに複数のペイロード（受けたままの PDF、コンバートした .bdf、描画した PDF、スタンプを押した .bdf …）。Payload は kind・format・size・sha256・pages（bdf のとき）・作ったノード。Blob の ID は <ジョブ>.<足跡の番地>（再試行で 2 度書かない）
       lineage: Leg に受けたペイロードと作ったペイロードを持たせる。保管の記録に写す（出所の説明）
@@ -378,3 +378,9 @@ history:
       ジョブのペイロードの列とメタデータ、入口の accept と output、テンプレート変換とコンバートのノード、filter の meta と kind、
       キャンバスの色。暫定の選択（kinds_on_ports・payload_versions・async_steps・rules_re2・meta_keys）はそのまま実装に入った。
       分かったこと：CSV・Parquet の表の文書にはページが無く印刷できない（変換器の側）。lifecycle を active に
+  fl-1b-editor:
+    summary: >-
+      2026-10-22 利用者「UE5 みたいに、トポロジーのエッジを流れるデータ種でノードの色を変えて接続の可否が分かりやすくして欲しい。
+      分岐のようなやつは最初に繋がれたもので出口も変わるように。設定を変えて繋がらなくなったものは破線などになると良い」。
+      milestone:fl-1b：/api/topology に accepts と broken、typed は新しい辺だけ断る、キャンバスの枠・口・辺の色と未定の中空、
+      ドラッグ中の可否、壊れた辺の赤い破線。constraints と design.kinds の inference・canvas を改めた

@@ -44,7 +44,7 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 	if err := checkScope(in.Scope, in.Owner); err != nil {
 		return "", err
 	}
-	n := Node{Name: in.Name, Kind: in.Kind, Title: clip(strings.TrimSpace(in.Title), 255), Scope: in.Scope, Owner: in.Owner}
+	n := Node{Name: in.Name, Kind: in.Kind, Title: clip(strings.TrimSpace(in.Title), 255), Description: clip(strings.TrimSpace(in.Description), 1000), Scope: in.Scope, Owner: in.Owner}
 	switch n.Kind {
 	case KindQueue:
 		n.To = cleanNames(in.To)
@@ -476,9 +476,17 @@ type TopoNode struct {
 	In  string `json:"in,omitempty"`
 	// Takes is the kind of payload the node takes at its input (bdf,
 	// data or any), and Emits the kinds it sends on along its edges, as
-	// inferred from the entries (kinds.go).
-	Takes string   `json:"takes,omitempty"`
-	Emits []string `json:"emits,omitempty"`
+	// inferred from the entries (kinds.go). Accepts are the kinds its
+	// input may take now: what it takes, within what every node after it
+	// takes (a queue in front of a printer takes .bdf alone; none: nothing
+	// fits). Broken are the edges along which the node sends a kind the
+	// node after it does not take, by the node's name: left by a change
+	// of settings, drawn broken by the editor, and a job gets a leg of
+	// the error there.
+	Takes   string              `json:"takes,omitempty"`
+	Emits   []string            `json:"emits,omitempty"`
+	Accepts []string            `json:"accepts"`
+	Broken  map[string][]string `json:"broken,omitempty"`
 	// Templates are the ids of a template node's templates.
 	Templates []string `json:"templates,omitempty"`
 	// Held counts the items an inbox holds; Open the slips open at a
@@ -518,12 +526,23 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 		byName[nodes[i].Name] = &nodes[i]
 	}
 	ty := inferKinds(byName)
+	acc := accepts(byName)
+	broken := ty.broken(byName)
 	out := make([]TopoNode, 0, len(nodes))
 	for _, n := range nodes {
 		n.KeyHash = ""
-		t := TopoNode{Node: n, IPP: IPPPath + "/" + n.Name, Takes: takesName(n.Kind)}
-		if len(n.edges()) > 0 || n.Kind == KindEndpoint || n.Kind == KindCups {
+		t := TopoNode{Node: n, IPP: IPPPath + "/" + n.Name, Takes: takesName(n.Kind), Accepts: acc[n.Name].names()}
+		if t.Accepts == nil {
+			t.Accepts = []string{}
+		}
+		if passesOn(n.Kind) || n.Kind == KindTemplate || n.Kind == KindConvert || n.Kind == KindDisplay {
 			t.Emits = n.emits(ty.reach[n.Name]).names()
+		}
+		for to, bad := range broken[n.Name] {
+			if t.Broken == nil {
+				t.Broken = map[string][]string{}
+			}
+			t.Broken[to] = bad.names()
 		}
 		switch n.Kind {
 		case KindArchive:

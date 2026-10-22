@@ -60,7 +60,10 @@ func TestQueueFanout(t *testing.T) {
 	e := newEnv(t, nil)
 	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Title: "A"}, http.StatusOK)
 	e.admin("PUT", "/api/nodes/wh-b", Node{Kind: KindDisplay, Title: "B"}, http.StatusOK)
-	e.node("both", Node{Kind: KindQueue, Title: "両方の倉庫", To: []string{"wh-a", "wh-b"}}, http.StatusOK)
+	e.node("both", Node{Kind: KindQueue, Title: "両方の倉庫", Description: "  Every slip goes to both warehouses.\nThe night shift reads wh-b. " + strings.Repeat("x", 1000), To: []string{"wh-a", "wh-b"}}, http.StatusOK)
+	if n, err := e.m().Node(context.Background(), "both"); err != nil || !strings.HasPrefix(n.Description, "Every slip goes to both warehouses.\nThe night") || len(n.Description) != 1000 {
+		t.Fatalf("description %+v %v", n, err)
+	}
 	a, b := e.enroll("wh-a", "a"), e.enroll("wh-b", "b")
 
 	js := e.printJob("both", "picking", 2)
