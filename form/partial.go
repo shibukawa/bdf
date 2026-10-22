@@ -370,8 +370,9 @@ func partlyFilled(doc *bdf.Document, src []byte, def *Template, format string, f
 		t.Fields = []tag.Field{}
 	}
 	if def != nil {
-		t.Name, t.From = def.Name, def.From
-		if t.From == "" {
+		// the compiled template the form was made of: that of a partly
+		// filled form, or the compiled template itself
+		if t.Name, t.From = def.Name, def.From; !def.IsPartial() {
 			t.From = def.digest
 		}
 	}
