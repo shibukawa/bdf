@@ -1,0 +1,43 @@
+name: Save the caches of Go
+description: >
+  Saves the module and build caches that .github/actions/go restored, with
+  the build cache (GOCACHE) cut down to what the job used. Each run saves
+  them under a new key, starting from the last one, and Go trims GOCACHE
+  only of what it has not used for five days, so without this the cache
+  grew by what each commit built (572 to 706 MB in one push for the go job).
+inputs:
+  path:
+    description: the path output of .github/actions/go
+    required: true
+  key:
+    description: the key output of .github/actions/go
+    required: true
+  since:
+    description: the since output of .github/actions/go
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        dir=$(go env GOCACHE)
+        if command -v cygpath >/dev/null; then dir=$(cygpath -u "$dir"); fi
+        before=$(du -sh "$dir" | cut -f1)
+        # Go sets the time of an action entry (-a) when it uses it, unless
+        # the time is less than an hour old already, so the entries the job
+        # used are newer than an hour before the restore.
+        mins=$(( ($(date +%s) - ${{ inputs.since }}) / 60 + 61 ))
+        find "$dir" -mindepth 2 -maxdepth 2 -type f -name '*-a' -mmin "+$mins" -delete
+        # then the outputs (-d) no action entry leads to. An action entry
+        # reads "v1 <action ID> <output ID> <size> <time>", and a -d is a
+        # directory when it holds an executable of go run.
+        find "$dir" -mindepth 2 -maxdepth 2 -type f -name '*-a' -exec cat {} + |
+          awk '{ print $3 "-d" }' | LC_ALL=C sort -u >"$RUNNER_TEMP/gocache-used"
+        find "$dir" -mindepth 2 -maxdepth 2 -name '*-d' | sed 's|.*/||' | LC_ALL=C sort |
+          LC_ALL=C comm -23 - "$RUNNER_TEMP/gocache-used" |
+          awk -v dir="$dir" '{ print dir "/" substr($0, 1, 2) "/" $0 }' | tr '\n' '\0' | xargs -0 rm -rf
+        echo "GOCACHE: $before before, $(du -sh "$dir" | cut -f1) of it kept"
+    - uses: actions/cache/save@v6
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
