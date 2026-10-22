@@ -17,9 +17,13 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      FONT_PACKAGES: fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea fonts-ipaexfont-gothic fonts-ipaexfont-mincho fonts-dejavu-core
+      STIX: 2.13b171
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - id: go
+        uses: ./.github/actions/go
         with:
           go-version: "1.27.2" # the patch with the fix of GO-2026-6617 and GO-2026-6612/6613, which the runner's cache lacks
       - uses: actions/setup-node@v7
@@ -30,22 +34,33 @@ jobs:
       # (Liberation for Arial, Times New Roman and Courier New, Carlito for
       # Calibri, Caladea for Cambria, IPAex for Japanese, DejaVu for symbols,
       # STIX Two Math for Cambria Math), published with their licenses. The
-      # page fetches the ones a document uses.
-      - name: fonts
+      # page fetches the ones a document uses. They are kept in the cache of
+      # Actions: the Ubuntu mirror of the runners now and then sends the
+      # packages at 40 kB/s, which took minutes.
+      - id: fonts-key
         run: |
-          pkgs="fonts-liberation fonts-crosextra-carlito fonts-crosextra-caladea fonts-ipaexfont-gothic fonts-ipaexfont-mincho fonts-dejavu-core"
+          . /etc/os-release
+          echo "key=site-fonts-$ID-$VERSION_ID-$(echo "$FONT_PACKAGES $STIX" | sha256sum | cut -c1-16)" >>"$GITHUB_OUTPUT"
+      - id: fonts-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/fonts
+          key: ${{ steps.fonts-key.outputs.key }}
+      - name: fonts
+        if: steps.fonts-cache.outputs.cache-hit != 'true'
+        run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends $pkgs
+          sudo apt-get install -y --no-install-recommends $FONT_PACKAGES
           dir="$RUNNER_TEMP/fonts"
           mkdir -p "$dir"
-          for pkg in $pkgs; do
+          for pkg in $FONT_PACKAGES; do
             dpkg -L "$pkg" | grep -E '\.(ttf|otf|ttc)$' | xargs -r cp -L -t "$dir"
             cp "/usr/share/doc/$pkg/copyright" "$dir/$pkg.copyright.txt"
           done
           # STIX Two Math, the formula font: formulas are laid out with
           # the parameters and glyph variants of its OpenType MATH table
-          stix=stixfonts-2.13b171
-          curl -fsSL -o "$RUNNER_TEMP/stix.zip" https://github.com/stipub/stixfonts/archive/refs/tags/v2.13b171.zip
+          stix=stixfonts-$STIX
+          curl -fsSL -o "$RUNNER_TEMP/stix.zip" "https://github.com/stipub/stixfonts/archive/refs/tags/v$STIX.zip"
           unzip -j -o "$RUNNER_TEMP/stix.zip" "$stix/fonts/static_otf/STIXTwoMath-Regular.otf" -d "$dir"
           unzip -p "$RUNNER_TEMP/stix.zip" "$stix/OFL.txt" > "$dir/STIXTwoMath.OFL.txt"
           ls -l "$dir"
@@ -54,6 +69,11 @@ jobs:
         env:
           BDF_SITE_FONTS: ${{ runner.temp }}/fonts
       - run: node test/site.mjs
+      - if: "!cancelled() && github.event_name == 'push'"
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ steps.go.outputs.path }}
+          key: ${{ steps.go.outputs.key }}
       - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'
         with:
