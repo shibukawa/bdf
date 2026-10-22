@@ -1,0 +1,122 @@
+id: requirement:partial-fill
+type: requirement
+title: 一部だけ埋めた帳票（.bdff）と、手書きサイン・印影の画像欄
+summary: >-
+  .bdft のパラメータを全部は与えず、一部を空欄のまま残した「記入中の帳票」を .bdff として作る。
+  契約書なら自分の名前などを入れて相手に渡し、相手がウェブサイト（または手元）で残りを埋めると .bdf が完成する。
+  .bdff は .bdft と同じ BDF コンテナで、テンプレート（src、同じハッシュ）・埋めた値・残りのフィールド名と、
+  残りだけの JSON Schema を持つ。あわせて、テキストではなく絵を受ける欄として、手書きのサイン（描画パッド）と印影（画像の取り込み）を
+  画像のフィールドの入力の種類として足す。2026-10-22 利用者の提案。設計は Claude の案で、未確定の論点は open_questions。
+lifecycle: active
+aliases:
+- .bdff
+- 部分入力
+- 記入中の帳票
+- partial fill
+- サイン欄
+- signature field
+- 印影
+authority: authored
+constraints:
+- .bdff は BDF コンテナ（spec §4.5 の .bdft と同じ Part の型 src と tpl）。ビューア・サムネイル・テキスト抽出はふつうの文書として開ける。ページは埋めた値で穴埋めし、残りの欄は空のまま描く
+- src は .bdft のものをそのまま持つ（同じバイト列なので同じハッシュ。テンプレートを配った側とで内容アドレスが共有される）
+- 残りを埋めるときは .bdff の値と新しいデータを合わせて元のテンプレートを 1 回で穴埋めする（.bdff のページの上に描き足さない）。結果は .bdft＋全部のデータで埋めたものと同じバイト列になる（決定性）
+- 新しいデータが埋めた値を書き換えることは許さない（同じ名前を与えたら誤り）。残りの名前に無い名前も誤り
+- サインの欄は画像のフィールドの一種で、値は画像（Options.Files の FS か data URL）。テンプレートの側は画像の欄と同じ箱で、新しい描き方は足さない
+- 手書きのサインの画像は電子署名ではない。改ざんの検出や本人性の証明をこの機能が名乗らない（ドキュメントにもそう書く）
+non_goals:
+- 電子署名そのもの（requirement:tamper-evidence で扱う）
+- 誰がどの欄を埋めるかの役割と順序の管理（DocuSign の受信者の役割に当たるもの）。最初は「残り」1 組だけ（open_questions.roles）
+- 配列（明細の行）の一部の項目だけを残すこと。区間は全部埋めるか全部残すか
+- ページの上に入力欄を重ねる画面（ページの横のフォームで足りる。欄の座標が要るので後で）
+open_questions:
+  extension-name:
+    text: 拡張子と呼び名。利用者案は .bdff。.bdft のまま tpl に filled を足すだけにする案もある
+    state: answered
+    resolution: >-
+      2026-10-22 利用者「順に実装をお願いしたい」で暫定案のまま form-m7 として実装（milestone:form-m7）。暫定案（Claude）：.bdff を採る。テンプレート（だれでも何度でも埋める）と記入中の 1 通の書類（相手が残りを埋めて 1 回で終わる）は扱いが違い、
+      ファイルの一覧や受け渡しの画面で見分けられる方がよい。中身は同じ tpl の形で、filled のある tpl を .bdff と呼ぶ。spec §4.5 に節を足す
+  open-list:
+    text: 残す欄をどう決めるか。(a) 明示した名前だけを残し、ほかの欠けは誤り、(b) データが与えなかった名前を全部残す
+    state: answered
+    resolution: 2026-10-22 利用者「順に実装をお願いしたい」で暫定案のまま form-m7 として実装（milestone:form-m7）。暫定案（Claude）：(a)。送る側が名前を書き漏らしたまま相手に送る事故を防ぐ。CLI は bdf fill -open party_b,signature_b。(b) は -open '*' で選べる
+  open-granularity:
+    text: 残す単位。スキーマのプロパティの道（party_b.name のようにドットで入れ子）で、配列（区間）は丸ごと。オブジェクトの一部だけ残せる
+    state: answered
+    resolution: 2026-10-22 利用者「順に実装をお願いしたい」で暫定案のまま form-m7 として実装（milestone:form-m7）。この単位で実装
+  integrity:
+    text: 受け取った人が .bdff の埋めた値（tpl の filled）を書き換えられる。改ざんをどう扱うか
+    state: answered
+    resolution: >-
+      2026-10-22 利用者「bdf やそこから生成される pdf への改ざん防止機能はまた欲しい」。requirement:tamper-evidence で扱う。
+      送る側は .bdff の値（src のハッシュ・filled・open）に CMS で署名し、完成品はその署名を tpl に持ったまま、受け手か立会人が文書全体にもう 1 度署名する。
+      ウェブで埋める使い方ではサーバーが .bdff を持つので、署名がなくても相手は値を書き換えられない
+  roles:
+    text: 3 者以上の書類（申請者・承認者・保証人）で、残りを何組かに分けて順に埋めるか。.bdff をさらに一部だけ埋めて .bdff を作れば連鎖はできる
+    state: deferred
+    resolution: 最初は .bdff → .bdff の連鎖だけを許し（残りの一部を埋めると残りの少ない .bdff）、役割の名前は持たない。役割ごとの欄の割り当てが要る例が出たら見直す
+  signature-format:
+    text: 描画パッドの出力を SVG（線のパス）にするか PNG にするか
+    state: answered
+    resolution: >-
+      2026-10-22 利用者「順に実装をお願いしたい」で暫定案のまま form-m7 として実装（milestone:form-m7）。暫定案（Claude）：SVG。線の座標だけなので小さく、PDF でも拡大してもぼけない（spec §6.2 は SVG の画像を持てる。vector/pdfbdf も SVG を描く）。
+      サイトのパッドは Pointer Events の筆圧を線の太さにする。取り込みの画像（印影・スキャンしたサイン）は PNG / JPEG のまま
+  seal-mode:
+    text: 印影（判子の画像）を別の入力の種類にするか。透過（白を抜く）と朱色の単色化、円や角の切り抜きを入力の側でするか
+    state: answered
+    resolution: 2026-10-22 利用者「順に実装をお願いしたい」で暫定案のまま form-m7 として実装（milestone:form-m7）。暫定案（Claude）：signature（描く）と seal（画像を選んで白を抜く）の 2 つ。どちらも値は画像で、テンプレートの側は同じ画像の欄
+  signed-metadata:
+    text: サインした日時・名前を一緒に残すか
+    state: answered
+    resolution: 2026-10-22 利用者「順に実装をお願いしたい」で暫定案のまま form-m7 として実装（milestone:form-m7）。暫定案（Claude）：テンプレートの側の別の欄（日付の値）として作者が置く。サインの欄そのものは画像だけを持つ。監査の記録は Docflow の trace（人の操作のノード）の仕事
+relations:
+- relation: extends
+  to: requirement:form-template
+- relation: depends_on
+  to: milestone:form-m4
+- relation: has_milestone
+  to: milestone:form-m7
+- relation: related_to
+  to: requirement:document-flow
+- relation: complemented_by
+  to: requirement:tamper-evidence
+facts:
+  file:
+    container: BDF コンテナ。Part は src（テンプレートのバイト列。.bdft と同じハッシュ）と tpl（記述の JSON）とページ
+    tpl_additions: >-
+      spec §4.5 の tpl に 3 つ足す。filled（埋めた値。データと同じ JSON の木）、open（残りの名前の配列。ドットの道）、
+      from（元の .bdft の tpl の source とスキーマのハッシュ。どのテンプレートの版かを照合する）。schema は残りの欄だけの JSON Schema にする（フォームの画面はこれだけで組める）。sample は持たない
+    pages: 埋めた値で穴埋めし、残りの欄は空で描く（Strict でない穴埋めと同じ見た目）。残りの欄を目立たせる印（MARK の role）は後で
+    completion: 残りを全部埋めると tpl を持たないふつうの .bdf。残りの一部なら残りの少ない .bdff
+  api_sketch:
+    go: 'form.Options に Open []string を足す。Fill は Open があれば .bdff の Document と Template（Filled・Open）を返す。.bdff を Fill に渡すと filled とデータを合わせ、src を穴埋めする（ReadTemplate が filled を読む）'
+    cli: 'bdf fill -data mine.yaml -open party_b,sign_b contract.bdft contract.bdff、bdf fill -data theirs.yaml contract.bdff contract.bdf、bdf template schema contract.bdff（残りだけ）'
+    wasm_site: サイトのフォームのページが .bdff を受け取り、残りの欄だけの入力を出す。埋めた値は読むだけで見せる
+  signature_field:
+    current: >-
+      2026-10-22 時点で画像の欄は {{%photo}}（fit: contain / cover / stretch）。pdfme の signature の型は画像の欄に読み替えている（converter/pdfme/pdfme.go）。
+      PDF フォームの署名の欄（/FT /Sig）は FormSignature として読むが、穴埋めでは飛ばしている（converter/pdfform/pdfform.go の shows）
+    proposal: >-
+      画像の欄に入力の種類（tag.Field の input、スキーマの x-bdf.input）を足す: signature（描画パッド）と seal（画像を選んで白を抜く）。
+      タグは {{%sign_a | signature}}、{{%seal_a | seal}}。PDF の /Sig と pdfme の signature は input: signature の画像の欄になり、/Sig の欄の箱に画像を描く
+    site: フォームのページで input が signature の欄に描画パッド（canvas、やり直し、消す）を出し、SVG を data URL で値にする。seal はファイル選択と白抜き
+  web_flow: >-
+    ウェブサイトで残りを埋める流れは Docflow（requirement:document-flow）の人の操作のノードで作れる: 送る側の .bdff を受け、相手に URL を送り、相手の残りの値で完成させて
+    archive に入れる。サーバーが .bdff を持つので埋めた値は相手から書き換えられない
+  delivery:
+    next_milestone: form-m7（2026-10-22 実装済み、milestone:form-m7）
+    outcome: >-
+      Excel・Word・PDF フォームの .bdft から -open で .bdff を作り、サイトのフォームのページで残りを埋めて .bdf と PDF にする。
+      サインの欄（signature の描画パッド）が Excel の {{%sign | signature}} と PDF の /Sig で動く
+    approaches:
+      tpl_filled: 推奨。.bdft の tpl に filled・open を足すだけ。穴埋めの核は変わらず、合わせたデータで 1 回穴埋め。決定性がそのまま保てる
+      overlay: .bdff のページを土台に、残りの欄だけを上に描く。穴埋めは速いが、行の増える区間やあふれで配置が変わる帳票では成り立たない（採らない）
+      separate_part: 埋めた値を別の Part の型（t は fill）にする。tpl を書き換えずに済むが、Part の型が増え、tpl は 1 つまでの規則と二重になる
+    acceptance_draft:
+    - .bdft＋全部のデータの .bdf と、.bdft →（一部）.bdff →（残り）.bdf が同じバイト列
+    - 埋めた名前をもう一度与えた穴埋めと、残りに無い名前を与えた穴埋めが誤りになる
+    - .bdff のスキーマが残りの欄だけを持ち、サイトのフォームが残りだけを出す
+    - signature の欄に描いた SVG が .bdf と PDF の両方で欄の箱に収まる
+history:
+  proposed:
+    summary: 2026-10-22 利用者がチャットで提案（「bdft に規定のパラメータセット、残りのパラメータ名を組み合わせたファイルで bdff みたいな名前はどうか」「絵（サイン）を入れる欄」）。Claude が既存の tpl・画像の欄・pdfme と PDF の署名の欄を読んで設計案を書いた

@@ -53,7 +53,7 @@ async function sampleStyle(page, style) {
   const suffix = style === "modern" ? "-modern" : "";
   const expected = [
     ...["fixed", "rows", "pages"].flatMap((shape) => ["xlsx", "docx", "pptx"].map((format) => `form-${shape}${suffix}.${format}`)),
-    "application.pdf", `pdfme-invoice${suffix}.json`, "pdfme-certificate.json", "text-slip.txt", "text-receipt.txt",
+    "application.pdf", "contract.pdf", `pdfme-invoice${suffix}.json`, "pdfme-certificate.json", "text-slip.txt", "text-receipt.txt",
   ];
   assert.deepEqual(await page.locator("#presets button").evaluateAll((buttons) => buttons.filter((button) => button.checkVisibility()).map((button) => button.title)), expected);
 }
@@ -303,6 +303,39 @@ try {
       }
     }
   }
+  // A contract: party A draws a signature on the pad and leaves party B for
+  // the other person; the page offers a partly filled form (.bdff), which,
+  // opened on the page, asks for party B only and completes the contract.
+  await page.locator("#tabTemplate").click();
+  await openSample(page, "contract.pdf");
+  const pad = page.locator(".signature canvas").first();
+  await pad.scrollIntoViewIfNeeded();
+  const box = await pad.boundingBox();
+  let previousHref = await page.locator("#saveBdf").getAttribute("href");
+  await page.mouse.move(box.x + 20, box.y + box.height * 0.7);
+  await page.mouse.down();
+  for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + 20 + i * 25, box.y + box.height * (i % 2 ? 0.3 : 0.7));
+  await page.mouse.up();
+  await page.waitForFunction((href) => document.querySelector("#saveBdf").getAttribute("href") !== href, previousHref, { timeout: 120_000 });
+  const signed = JSON.parse(await page.locator("#json").inputValue());
+  assert.match(signed.party_a.sign, /^data:image\/svg\+xml;base64,/, "the drawn signature is an SVG image in the data");
+  previousHref = await page.locator("#saveBdf").getAttribute("href");
+  await page.locator(".handon label", { hasText: "party_b.name" }).locator("input").check();
+  await page.locator(".handon label", { hasText: "party_b.sign" }).locator("input").check();
+  await page.waitForFunction((href) => document.querySelector("#saveBdf").getAttribute("href") !== href && document.querySelector("#saveBdf").download.endsWith(".bdff"), previousHref, { timeout: 120_000 });
+  assert.match(await page.locator("#status").textContent(), /partly filled form \(party_b\.name, party_b\.sign left open\)/);
+  const handed = await page.locator("#saveBdf").evaluate(async (a) => Array.from(new Uint8Array(await (await fetch(a.href)).arrayBuffer())));
+  await page.locator("#file").setInputFiles({ name: "contract.bdff", mimeType: "application/octet-stream", buffer: Buffer.from(handed) });
+  await page.waitForFunction(() => document.querySelector("#status").hasAttribute("data-error") || document.querySelector("#status").textContent.startsWith("contract.bdff filled"), null, { timeout: 120_000 });
+  assert.match(await page.locator(".note.partial").textContent(), /2 values are filled in already\. Fill in the rest: party_b\.name, party_b\.sign/);
+  assert.deepEqual(Object.keys(JSON.parse(await page.locator("#json").inputValue())), ["party_b"], "the partly filled form asks for party B only");
+  assert.equal(await page.locator("#saveBdf").getAttribute("download"), "contract.bdf", "with all of party B given, the form is complete");
+  previousHref = await page.locator("#saveBdf").getAttribute("href");
+  await page.getByLabel("Name of party B", { exact: true }).fill("ACME Corporation");
+  await page.waitForFunction((href) => document.querySelector("#saveBdf").getAttribute("href") !== href, previousHref, { timeout: 120_000 });
+  const done = await filledText(page);
+  assert.ok(done.includes("Taro Yamada") && done.includes("ACME Corporation"), done);
+
   // A missing special field name must not turn Object.prototype into the
   // object edited by a nested form. Exercise the actual schema -> controls
   // -> JSON path, after removing the template's default data in the JSON tab.
@@ -320,7 +353,7 @@ try {
   assert.deepEqual(JSON.parse(await page.locator("#json").inputValue()), JSON.parse('{"customer":{"__proto__":{"formValue":"ordinary data"}}}'));
 
   assert.deepEqual(errors, []);
-  console.log("form page browser regression test passed: remote font fetch/cache/PDF embedding, tabs, edits, preview paper, both sample styles, modern deep link, invoice continuation pages, special field names");
+  console.log("form page browser regression test passed: remote font fetch/cache/PDF embedding, tabs, edits, preview paper, both sample styles, modern deep link, invoice continuation pages, a signature and a partly filled contract, special field names");
 } finally {
   await browser?.close();
   await new Promise((resolve) => server?.close(resolve) ?? resolve());

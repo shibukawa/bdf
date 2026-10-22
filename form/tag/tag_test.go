@@ -252,3 +252,28 @@ func TestParseText(t *testing.T) {
 		t.Error("Parse takes width")
 	}
 }
+
+// TestInputs reads the options of picture tags that say what a person
+// gives for the picture.
+func TestInputs(t *testing.T) {
+	for in, want := range map[string]Token{
+		"{{%sign | signature}}":          {Input: InputSignature},
+		"{{%seal | seal | fit:contain}}": {Input: InputSeal, Fit: FitContain},
+		"{{%photo}}":                     {},
+	} {
+		toks, err := Parse(in)
+		if err != nil || len(toks) != 1 || toks[0].Input != want.Input || toks[0].Fit != want.Fit {
+			t.Errorf("%s: %+v, %v", in, toks, err)
+		}
+	}
+	for in, msg := range map[string]string{
+		"{{sign | signature}}":         "an option it does not take",
+		"{{%sign | signature | seal}}": "an option it does not take",
+		"{{%sign | signature:x}}":      "an option it does not take",
+		"{{%url | qr | signature}}":    "is a code",
+	} {
+		if _, err := Parse(in); err == nil || !strings.Contains(err.Error(), msg) {
+			t.Errorf("%s: %v", in, err)
+		}
+	}
+}

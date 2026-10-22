@@ -157,6 +157,9 @@ export interface TemplateFields {
   format?: string;
   /** The sample of the data that the template has for itself: a compiled template (.bdft), a template of pdfme. */
   sample?: string;
+  /** Of a partly filled form (.bdff): the names it leaves open (its schema is theirs), and the JSON of the values it holds. */
+  open?: string[];
+  filled?: string;
 }
 
 export interface FillOptions extends ConvertOptions {
@@ -166,6 +169,8 @@ export interface FillOptions extends ConvertOptions {
   files?: Record<string, Uint8Array>;
   /** Fail when the data lacks a name of a tag (default: the tag is left empty, with a warning). */
   strict?: boolean;
+  /** Names of the data to leave open: the result is a partly filled form (.bdff) that another fill completes. */
+  open?: string[];
 }
 
 /** A filled template: a bdf document. */
@@ -175,6 +180,8 @@ export interface Filled {
   format: string;
   pages: number;
   warnings: string[];
+  /** The names that the document, a partly filled form (.bdff), leaves open; none for a complete one. */
+  open?: string[];
 }
 
 export type ConvertRequest =

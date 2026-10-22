@@ -638,18 +638,25 @@ func (x *expander) picture(t tag.Token, sc *tag.Scope, c srcCell, dst int) error
 			f.c.warnf("sheet %q cell %s: the picture of %q is left out: %v", x.ts.ws.name, cellRef(c.row, c.col), t.Name, err)
 			return nil
 		}
-		cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
-		if format := imgconv.Sniff(data); err != nil || format == "" || format == "svg" || cfg.Width <= 0 || cfg.Height <= 0 {
-			if f.strict {
-				return f.errorf(x.ts, c.row, c.col, "the picture of %q is not a PNG, JPEG or GIF image", t.Name)
+		if imgconv.Sniff(data) == "svg" {
+			// (as it is: a signature drawn on a pad is one)
+			if s, ok := imgconv.SVGDocSize(data); ok {
+				pic.hash = f.c.doc.AddImage(data)
+				pic.w, pic.h = s.Pixels()
 			}
-			f.c.warnf("sheet %q cell %s: the picture of %q is not a PNG, JPEG or GIF image; it is left out", x.ts.ws.name, cellRef(c.row, c.col), t.Name)
+		} else if cfg, _, err := image.DecodeConfig(bytes.NewReader(data)); err == nil && imgconv.Sniff(data) != "" && cfg.Width > 0 && cfg.Height > 0 {
+			if res, err := imgconv.Optimize(data, f.c.opts.Images); err == nil || res.Data != nil {
+				data = res.Data
+			}
+			pic.hash, pic.w, pic.h = f.c.doc.AddImage(data), float64(cfg.Width), float64(cfg.Height)
+		}
+		if pic.w <= 0 {
+			if f.strict {
+				return f.errorf(x.ts, c.row, c.col, "the picture of %q is not a PNG, JPEG, GIF or SVG image", t.Name)
+			}
+			f.c.warnf("sheet %q cell %s: the picture of %q is not a PNG, JPEG, GIF or SVG image; it is left out", x.ts.ws.name, cellRef(c.row, c.col), t.Name)
 			return nil
 		}
-		if res, err := imgconv.Optimize(data, f.c.opts.Images); err == nil || res.Data != nil {
-			data = res.Data
-		}
-		pic.hash, pic.w, pic.h = f.c.doc.AddImage(data), float64(cfg.Width), float64(cfg.Height)
 	}
 	if pic.w <= 0 {
 		return nil // left out, as told before

@@ -92,6 +92,11 @@ jobs:
           # the templates whose fields have places: a PDF with form fields, and templates of pdfme
           go run ./cmd/bdf fill -q -font-dir converter/pptx/testdata/fonts -no-system-fonts -data test/pdf/data/application.json converter/pdfform/testdata/application.pdf /tmp/form-pdf-application.bdf
           check_fixture /tmp/form-pdf-application.bdf testdata/form/pdf-application.bdf
+          # a partly filled form (.bdff) of a contract with signature fields, and the contract completed of it
+          go run ./cmd/bdf fill -q -font-dir converter/pptx/testdata/fonts -no-system-fonts -files test/pdf/data -data test/pdf/data/contract-a.json -open party_b converter/pdfform/testdata/contract.pdf /tmp/form-pdf-contract.bdff
+          check_fixture /tmp/form-pdf-contract.bdff testdata/form/pdf-contract.bdff
+          go run ./cmd/bdf fill -q -font-dir converter/pptx/testdata/fonts -no-system-fonts -files test/pdf/data -data test/pdf/data/contract-b.json testdata/form/pdf-contract.bdff /tmp/form-pdf-contract.bdf
+          check_fixture /tmp/form-pdf-contract.bdf testdata/form/pdf-contract.bdf
           for n in invoice certificate; do
             go run ./cmd/bdf fill -q -font-dir converter/pptx/testdata/fonts -no-system-fonts -data "test/pdfme/data/$n.json" "converter/pdfme/testdata/$n.json" "/tmp/form-pdfme-$n.bdf"
             check_fixture "/tmp/form-pdfme-$n.bdf" "testdata/form/pdfme-$n.bdf"

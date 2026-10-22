@@ -157,10 +157,12 @@ func (f *formFlags) warn(warnings []string) {
 func fill(args []string) {
 	fs := flag.NewFlagSet("fill", flag.ExitOnError)
 	f := addFormFlags(fs, "fill", "data", "data of the template: a JSON or YAML object as file, or a value under a name as name=file: a list of a CSV or TSV file or of the sheets of a workbook (.xlsx), a JSON or YAML value (repeatable; a later object replaces the values of the same names)")
+	var open stringList
+	fs.Var(&open, "open", "names of the data to leave open, comma-separated (repeatable; * for every name that the data does not give): write a partly filled form (.bdff) that another fill completes with the data of those names")
 	each := fs.String("each", "", "fill the template once for each item of a list, given as -data gives one (file, or name=file to put the item under a name instead of making its values those of the data); the output path names each form with tags: out/{{no}}.bdf")
 	preview := addPreviewFlags(fs)
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .txt | .bdft> <out.bdf | out.txt | outdir/>\n  fills a template with data, and writes the form. A template is an Excel workbook, a Word document or a\n  PowerPoint presentation whose text holds tags such as {{name}} (the form is the pages the workbook prints,\n  the pages of the document or the slides), a PDF with form fields or a template of pdfme (.json), whose\n  fields are filled in their places, a template of text (.txt: the characters of a form on a grid of columns\n  and lines), or a compiled template. The form of a template of text is also written as plain text (out.txt;\n  -param encoding=shift_jis, newline=crlf, paper=preprinted)")
+		fmt.Fprintln(os.Stderr, "usage: bdf fill [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .txt | .bdft | .bdff> <out.bdf | out.bdff | out.txt | outdir/>\n  fills a template with data, and writes the form. A template is an Excel workbook, a Word document or a\n  PowerPoint presentation whose text holds tags such as {{name}} (the form is the pages the workbook prints,\n  the pages of the document or the slides), a PDF with form fields or a template of pdfme (.json), whose\n  fields are filled in their places, a template of text (.txt: the characters of a form on a grid of columns\n  and lines), a compiled template (.bdft) or a partly filled form (.bdff; the data then gives the names\n  that it leaves open). With -open the form is a partly filled form. The form of a template of text is also written as plain text (out.txt;\n  -param encoding=shift_jis, newline=crlf, paper=preprinted)")
 		fs.PrintDefaults()
 	}
 	fs.Parse(args)
@@ -176,6 +178,13 @@ func fill(args []string) {
 	opts, files, err := f.options(in, data)
 	check(err)
 	defer files.Close()
+	for _, o := range open {
+		for _, name := range strings.Split(o, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				opts.Open = append(opts.Open, name)
+			}
+		}
+	}
 	one := func(data map[string]any, out string) {
 		o := *opts
 		o.Data = data
@@ -197,6 +206,14 @@ func fill(args []string) {
 		}
 		f.finish(res.Doc)
 		f.warn(res.Warnings)
+		if res.Partial != nil {
+			if isDir(out) {
+				f.fail("a partly filled form is one file")
+			}
+			check(writeSingle(res.Doc, out))
+			fmt.Fprintf(os.Stderr, "%s: a partly filled form, open: %s, %d warning(s)\n", out, strings.Join(res.Partial.Open, ", "), len(res.Warnings))
+			return
+		}
 		pages := 0
 		for _, v := range res.Doc.Views {
 			pages += len(v.Pages)
@@ -308,9 +325,10 @@ func templateCmd(args []string) {
   bdf template compile [flags] <template.xlsx | .docx | .pptx | .pdf | .json | .txt> <out.bdft>
                                      check a template and write it as a compiled template: a BDF document
                                      that shows the template (filled with -sample data) and holds it
-  bdf template schema [-json-schema] <template.xlsx | .docx | .pptx | .pdf | .json | .txt | .bdft> [out.json]
+  bdf template schema [-json-schema] <template.xlsx | .docx | .pptx | .pdf | .json | .txt | .bdft | .bdff> [out.json]
                                      write the names that a template asks of data (the names its tags look
-                                     up, or its fields), as JSON (with -json-schema: a JSON Schema of the data)
+                                     up, or its fields), as JSON (with -json-schema: a JSON Schema of the data;
+                                     of a partly filled form, that of the names it leaves open)
 
   A template is an Office document with tags, a PDF with form fields, a template of pdfme (.json), or a
   template of text (.txt) with tags.`)
@@ -377,6 +395,15 @@ func templateCmd(args []string) {
 		if fields == nil {
 			fields = []tag.Field{}
 		}
+		list := map[string]any{"fields": fields}
+		if bytes.HasPrefix(tpl, bdf.Magic[:]) {
+			// (a partly filled form: the names it leaves open)
+			def, _, err := form.ReadTemplate(bytes.NewReader(tpl), int64(len(tpl)))
+			check(err)
+			if def.IsPartial() {
+				list["open"] = def.Open
+			}
+		}
 		var b []byte
 		if *jsonSchema {
 			// (a compiled template has its schema; a sample makes another)
@@ -389,7 +416,7 @@ func templateCmd(args []string) {
 			b, err = form.SchemaOf(bytes.NewReader(tpl), int64(len(tpl)), sample)
 			check(err)
 		} else {
-			b, err = json.MarshalIndent(map[string]any{"fields": fields}, "", "  ")
+			b, err = json.MarshalIndent(list, "", "  ")
 			check(err)
 			b = append(b, '\n')
 		}

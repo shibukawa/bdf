@@ -1,0 +1,117 @@
+id: milestone:form-m7
+type: milestone
+title: form-m7 — 一部だけ埋めた帳票（.bdff）と、サイン・印影の画像の欄
+summary: >-
+  requirement:partial-fill の最初の段。form.Options.Open（bdf fill -open）で名前を空けたまま穴埋めして .bdff を作り、別の人がその名前だけを埋めて完成させる。
+  画像のタグに入力の種類（| signature、| seal）を足し、PDF フォームの署名欄と pdfme の signature をサインの欄にした。デモサイトのフォームのページは
+  描画パッド・印影の白抜き・「Leave for another person」・.bdff の読み込みを持つ。2026-10-22 に実装し、Go のテスト、サイトのスモークテスト、ブラウザの回帰テストが通った。
+  説明は docs/forms.md・forms.ja.md、仕様は spec §4.5、設計は docs/design.md §3.34。
+lifecycle: active
+authority: authored
+scope:
+  milestone: form-m7
+  input: xlsx, docx, pptx, pdf (AcroForm), pdfme, text, bdft, bdff
+  output: bdf, bdff, JSON Schema
+constraints:
+- .bdff は .bdft と同じ tpl に filled・open・from を足したもの。tpl の version は 1 のまま（足した項目は任意）
+- 完成品は全部のデータで一度に埋めたものとバイト列まで同じ
+- 作るときは全部の名前を渡すか -open に書く。完成させるデータは open の名前だけ
+- 書き換えからは守らない（requirement:tamper-evidence）
+non_goals:
+- 役割（誰がどの欄を埋めるか）と順序の管理
+- 配列の一部だけを空けること
+- ページの上に入力欄を重ねる画面
+capabilities:
+  partial-fill:
+    state: implemented
+    about: capability:form/partial-fill
+  picture-inputs:
+    state: implemented
+    about: capability:form/picture-inputs
+  pdf-signature-field:
+    state: implemented
+    about: capability:pdfform/signature
+  site-handon:
+    state: implemented
+    about: capability:site/form-partial
+facts:
+  api: 'form.Options.Open（OpenAll は "*"）、Result.Partial（*Template）、Template.Filled・Open・From・IsPartial。prepare（form/partial.go）が名前を確かめ、filled と新しいデータを合わせる'
+  names: スキーマの木（schemaTree。Schema から切り出した）の、配列に入らない道。オブジェクトの中の値も空けられる。.bdff のスキーマは openObject で空けた名前だけを書く
+  data: 値は JSON に通して持つ（YAML の日付は文字列）。パスで渡した画像は data URL にして filled に入れる。空けた名前の「データにない」警告は変換器の文言を読んで除く
+  cli: 'bdf fill -open（カンマ区切り、繰り返し可）。.bdff は 1 ファイル形式でだけ書く。bdf template schema は .bdff の open を出し、-json-schema は空けた名前だけ'
+  inputs: 'tag.Token.Input / tag.Field.Input（signature、seal）、スキーマの x-bdf.input。xlsx・docx・pptx のフィールドの合流で引き継ぐ'
+  pdf_signature: converter/pdfform は /FT /Sig を input signature の画像の欄にし、欄の箱の中央に収めて描く（drawPicture）。SVG の大きさの読み取りを pdfme から formbox.SVGSize に移した
+  wasm_site: bdfwasm の fill が open を受けて結果に open を、fields が .bdff の open と filled を返す。フォームのページは signature に描画パッド（線の SVG）、seal に白抜き、Leave for another person のチェック、.bdff の保存と読み込み
+  sample: デモサイトに契約書のサンプル（converter/pdfform/testdata/contract.pdf。test/pdf/gen_contract.py が依存なしで書く）
+  found_on_the_way:
+  - converter/pdfform の draw は Fill の warnings の写しに足していたので、draw の中の warn（テキストの索引の失敗）が結果に届いていなかった。draw の中の warn にした
+  - サインの画像の置き場所の積和を arm64 が融合して amd64 と下位ビットが違った（fixture の比較で見つけた）。積を float64() で丸めてから足す
+  - フォームのページで描画パッドを label の中に置くと、パッドを押したクリックが label の最初のボタン（Clear）に送られて消えた。パッドと印影は div と aria-labelledby にした
+acceptance:
+  same-bytes:
+    text: Excel・Word・PowerPoint・PDF フォームで、.bdft →（一部）.bdff →（残り）.bdf と、2 段の .bdff を経たものが、全部のデータで一度に埋めたものと同じバイト列
+    verified_by:
+    - form-unit
+    - site-smoke
+  errors:
+    text: 埋めた名前・空けていない名前・空けた名前の書き忘れ・配列の中の名前・データと -open の重なりが誤りになる
+    verified_by:
+    - form-unit
+  signature:
+    text: PDF の署名欄に SVG のサインが箱の中に描かれ、読めない画像は警告になる。サイトのパッドで書いたサインが data URL の SVG になる
+    verified_by:
+    - pdfform-unit
+    - browser-check
+  deterministic:
+    text: 契約書の .bdff と完成品が amd64 と arm64 で同じバイト列
+    verified_by:
+    - fixture-replay
+verification:
+  form-unit:
+    state: passed
+    method: unit
+    test: go test ./form/...（TestPartial、TestPartialNames、TestPartialContract、TestInputs）
+    authority: observed
+    evidence:
+      path: form/partial_test.go
+      locator: 3 つの Office の form-fixed と契約書の PDF。.bdff のページの文字、スキーマ、SchemaOf、Compile の拒否、誤りの 6 つ
+  pdfform-unit:
+    state: passed
+    method: unit
+    test: go test ./converter/pdfform/（TestFillSignature）
+    authority: observed
+    evidence:
+      path: converter/pdfform/pdfform_test.go
+      locator: Inspect の input、甲の箱のインク、読めない乙の画像の警告
+  site-smoke:
+    state: passed
+    method: integration
+    test: node site/build.mjs && node test/site.mjs
+    authority: observed
+    evidence:
+      path: test/site.mjs
+      locator: contract.pdf のスキーマの input、wasm の fill の open、.bdff の fields（open、filled、スキーマ）、完成品と一度に埋めたものの一致、埋めた名前の拒否
+  browser-check:
+    state: passed
+    method: integration
+    test: CHROMIUM_PATH=Chrome node test/form-page.mjs
+    authority: observed
+    evidence:
+      path: test/form-page.mjs
+      locator: パッドにマウスで書いたサインが JSON に入る、乙の 2 つを空けると .bdff、.bdff を開くと乙の欄だけ、乙の名前を入れると完成。画面写真でパッドと Leave for another person の配置を見た
+  fixture-replay:
+    state: passed
+    method: integration
+    test: GOARCH=amd64 のビルドと arm64 のビルドで test/pdf/data/contract-a.json・contract-b.json を埋めて cmp（ci.yml にも追加）
+    authority: observed
+    evidence:
+      path: .github/workflows/ci.yml
+      locator: testdata/form/pdf-contract.bdff、pdf-contract.bdf
+relations:
+- relation: follows
+  to: milestone:form-m6
+- relation: implements
+  to: requirement:partial-fill
+history:
+  implemented:
+    summary: 2026-10-22 利用者「順に実装をお願いしたい」（requirement:partial-fill と requirement:tamper-evidence を順に）。暫定案のまま実装した

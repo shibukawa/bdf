@@ -528,7 +528,7 @@ func (f *filler) collectFields(ts *tplSheet) {
 			case tag.Value:
 				f.field(tag.Field{Name: t.Name, Kind: tag.FieldValue, In: in, Format: t.Format}, at)
 			case tag.Image:
-				f.field(tag.Field{Name: t.Name, Kind: tag.FieldImage, In: in, Code: t.Code}, at)
+				f.field(tag.Field{Name: t.Name, Kind: tag.FieldImage, In: in, Code: t.Code, Input: t.Input}, at)
 			case tag.Open, tag.Inverted:
 				fd := tag.Field{Name: t.Name, Kind: tag.FieldSection, In: in, Inverted: t.Kind == tag.Inverted}
 				if tc.rowLevel[i] {
@@ -580,6 +580,9 @@ func (f *filler) field(fd tag.Field, at string) {
 	} else {
 		if old.Format == "" {
 			old.Format = fd.Format
+		}
+		if old.Input == "" {
+			old.Input = fd.Input
 		}
 		if old.Mode == "" {
 			old.Mode, old.Slots = fd.Mode, fd.Slots

@@ -2,6 +2,7 @@ package pdfform
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"math"
 	"os"
@@ -255,5 +256,58 @@ func TestFillLongText(t *testing.T) {
 	}
 	if text := pageText(t, res.Doc); len(text) != 2 || !strings.Contains(text[1], "word word") {
 		t.Errorf("the pages: %d", len(text))
+	}
+}
+
+// testSignature is a drawn signature: an SVG image of strokes.
+const testSignature = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50"><path d="M5 40 C40 0 60 60 100 20 S160 40 195 10" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/></svg>`
+
+// TestFillSignature draws the pictures of signatures in the boxes of the
+// signature fields of a form.
+func TestFillSignature(t *testing.T) {
+	b, err := os.ReadFile("testdata/contract.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields, err := Inspect(bytes.NewReader(b), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, f := range fields {
+		got = append(got, f.Name+" "+f.Kind+" "+f.Input)
+	}
+	if want := "party_a.name value |party_a.sign image signature|party_b.name value |party_b.sign image signature"; strings.Join(got, "|") != want {
+		t.Errorf("fields: %q", got)
+	}
+	url := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(testSignature))
+	res, err := Fill(bytes.NewReader(b), &TemplateData{Data: map[string]any{
+		"party_a": map[string]any{"name": "Taro Yamada", "sign": url},
+		"party_b": map[string]any{"name": "ACME", "sign": "nothing.png"},
+	}}, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], `the picture of "party_b.sign" is left out`) {
+		t.Errorf("warnings: %q", res.Warnings)
+	}
+	img, err := imagebdf.New(res.Doc, &imagebdf.Options{FontDirs: testOptions().FontDirs, NoSystemFonts: true}).Page(res.Doc.Views[0], 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ink := func(x0, y0, x1, y1 float64) int {
+		n := 0
+		for y := int(595 - y1); y < int(595-y0); y++ {
+			for x := int(x0); x < int(x1); x++ {
+				if c := img.RGBAAt(x, y); int(c.R)+int(c.G)+int(c.B) < 300 {
+					n++
+				}
+			}
+		}
+		return n
+	}
+	// (the box of the signature of party A, inside its lines; and that of B)
+	if a, b := ink(112, 404, 378, 434), ink(112, 324, 378, 354); a < 100 || b != 0 {
+		t.Errorf("the ink of the signatures: %d and %d", a, b)
 	}
 }

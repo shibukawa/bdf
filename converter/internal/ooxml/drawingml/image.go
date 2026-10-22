@@ -38,6 +38,18 @@ const injectedPrefix = "\x00image:"
 // when the data is not a picture that is stored.
 func (c *Renderer) InjectImage(data []byte) (rid string, w, h float64, ok bool) {
 	format := imgconv.Sniff(data)
+	if format == "svg" {
+		// (as it is: a signature drawn on a pad is one)
+		s, ok := imgconv.SVGDocSize(data)
+		if !ok {
+			return "", 0, 0, false
+		}
+		e := &imageEntry{hash: c.doc.AddImage(data), ok: true}
+		e.w, e.h = s.Pixels()
+		rid = injectedPrefix + e.hash.String()
+		c.images[rid] = e
+		return rid, e.w, e.h, true
+	}
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if format == "" || format == "svg" || err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
 		return "", 0, 0, false

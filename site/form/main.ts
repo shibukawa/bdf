@@ -6,6 +6,11 @@
 // vector/pdfbdf, as a server uses them). The page makes a form of the JSON
 // Schema of the data the tags ask for, fills the template with what is typed
 // into it, draws the filled form, and saves it as a PDF file.
+//
+// Names may be left for another person: the page then writes a partly filled
+// form (.bdff) of the rest, and a partly filled form opened here asks for
+// the names it leaves open only. A picture of a signature is drawn on a pad,
+// and the white of the picture of a seal is taken out.
 import type { Manifest, Page } from "@bdfkit/core";
 import { BdfWorkerClient } from "@bdfkit/render";
 import { ConverterClient } from "../../examples/common/convert.js";
@@ -27,6 +32,8 @@ interface Info {
   /** What a reader sees of the choices of an enum, in their order. */
   labels?: string[];
   multiline?: boolean;
+  /** What a person gives for a picture: a signature drawn on a pad, the picture of a seal. */
+  input?: "signature" | "seal";
 }
 
 /** The part of JSON Schema that form.Schema writes. */
@@ -61,6 +68,9 @@ interface Template {
   bytes: ArrayBuffer;
   schema: Schema;
   schemaText: string;
+  /** Of a partly filled form: the names it leaves open, and how many values it holds. */
+  open?: string[];
+  held?: number;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -89,6 +99,8 @@ let data: JsonObject = {};
 const pictures = new Map<string, Uint8Array>();
 /** Bumped by each template: what was started for the one before is dropped. */
 let opening = 0;
+/** The names that this person leaves for another (the fill is then a partly filled form). */
+const leaveOpen = new Set<string>();
 /** The filled form: the document, and what is offered of it. */
 let filled: Uint8Array | undefined;
 let bdfURL = "";
@@ -152,6 +164,8 @@ function control(s: Schema, value: Json | undefined, set: (v: Json) => void, inT
     box.onchange = () => set(box.checked);
     return box;
   }
+  if (isPicture(s) && s["x-bdf"]?.input === "signature") return signatureControl(value, set);
+  if (isPicture(s) && s["x-bdf"]?.input === "seal") return sealControl(value, set);
   if (isPicture(s)) return pictureControl(value, set);
   if (s.enum?.length) {
     // one of the choices of a field, or none
@@ -225,6 +239,152 @@ function pictureControl(value: Json | undefined, set: (v: Json) => void): HTMLEl
   return box;
 }
 
+/** A signature drawn on a pad with a pen, a finger or a mouse: an SVG image of its strokes, as a data: URL. */
+function signatureControl(value: Json | undefined, set: (v: Json) => void): HTMLElement {
+  const W = 360, H = 120;
+  const box = document.createElement("span");
+  box.className = "signature";
+  const pad = document.createElement("canvas");
+  pad.width = W * 2;
+  pad.height = H * 2;
+  pad.setAttribute("role", "img");
+  pad.ariaLabel = "signature pad: draw here";
+  const ctx = pad.getContext("2d")!;
+  ctx.scale(2, 2);
+  ctx.lineCap = ctx.lineJoin = "round";
+  /** The strokes: points of x, y and the width of the pen there. */
+  let strokes: [number, number, number][][] = [];
+  const old = shown(value);
+  if (old.startsWith("data:")) {
+    // (a signature given before: shown until another is drawn)
+    const img = new Image();
+    img.onload = () => { if (!strokes.length) ctx.drawImage(img, 0, 0, W, H); };
+    img.src = old;
+  }
+  const at = (e: PointerEvent): [number, number, number] => {
+    const r = pad.getBoundingClientRect();
+    const pressure = e.pointerType === "mouse" || !e.pressure ? 0.5 : e.pressure;
+    return [Math.round((e.clientX - r.left) / r.width * W * 10) / 10, Math.round((e.clientY - r.top) / r.height * H * 10) / 10, Math.round((1 + 4 * pressure) * 10) / 10];
+  };
+  let current: [number, number, number][] | undefined;
+  pad.onpointerdown = (e) => {
+    if (!strokes.length) ctx.clearRect(0, 0, W, H);
+    pad.setPointerCapture(e.pointerId);
+    current = [at(e)];
+    strokes.push(current);
+  };
+  pad.onpointermove = (e) => {
+    if (!current) return;
+    const p = at(e), q = current[current.length - 1];
+    ctx.lineWidth = p[2];
+    ctx.beginPath();
+    ctx.moveTo(q[0], q[1]);
+    ctx.lineTo(p[0], p[1]);
+    ctx.stroke();
+    current.push(p);
+  };
+  pad.onpointerup = pad.onpointercancel = () => {
+    if (!current) return;
+    current = undefined;
+    set(signatureSVG(strokes, W, H));
+  };
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.textContent = "Clear";
+  clear.onclick = () => {
+    strokes = [];
+    ctx.clearRect(0, 0, W, H);
+    set("");
+  };
+  box.append(pad, clear);
+  return box;
+}
+
+/** The strokes of a signature as an SVG image: a path of each piece of a stroke, as wide as the pen was there. */
+function signatureSVG(strokes: [number, number, number][][], w: number, h: number): string {
+  const paths = strokes.map((st) => {
+    if (st.length === 1) return `<circle cx="${st[0][0]}" cy="${st[0][1]}" r="${st[0][2] / 2}"/>`;
+    // (pieces of the same width are one path)
+    let out = "", d = "", width = -1;
+    for (let i = 1; i < st.length; i++) {
+      const [x0, y0] = st[i - 1], [x1, y1, wd] = st[i];
+      if (wd !== width) {
+        if (d) out += `<path d="${d}" stroke-width="${width}"/>`;
+        d = `M${x0} ${y0}`;
+        width = wd;
+      }
+      d += `L${x1} ${y1}`;
+    }
+    return out + `<path d="${d}" stroke-width="${width}"/>`;
+  });
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><g fill="#000" stroke="#000" fill-opacity="1" stroke-linecap="round" stroke-linejoin="round"><g fill="none">${paths.filter((p) => p.startsWith("<path")).join("")}</g>${paths.filter((p) => p.startsWith("<circle")).join("")}</g></svg>`;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+/** The picture of a seal: a picked picture whose white (the paper it was stamped on) is taken out, as a PNG data: URL. */
+function sealControl(value: Json | undefined, set: (v: Json) => void): HTMLElement {
+  const box = document.createElement("span");
+  box.className = "picture seal";
+  const view = document.createElement("img");
+  view.alt = "the seal";
+  const old = shown(value);
+  if (old.startsWith("data:")) view.src = old;
+  view.hidden = !view.src;
+  const pick = document.createElement("input");
+  pick.type = "file";
+  pick.accept = "image/png,image/jpeg,image/gif,image/webp";
+  pick.hidden = true;
+  pick.onchange = async () => {
+    const file = pick.files?.[0];
+    pick.value = "";
+    if (!file) return;
+    try {
+      const url = await whiteOut(file);
+      view.src = url;
+      view.hidden = false;
+      set(url);
+    } catch (e) {
+      setStatus(failure(e));
+    }
+  };
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "Choose…";
+  button.onclick = () => pick.click();
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.textContent = "Clear";
+  clear.onclick = () => {
+    view.removeAttribute("src");
+    view.hidden = true;
+    set("");
+  };
+  box.append(view, button, clear, pick);
+  return box;
+}
+
+/** Takes the white out of a picture: the lighter a pixel, the more transparent; at most 1024 pixels on a side. */
+async function whiteOut(file: Blob): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const k = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(bitmap.width * k));
+  c.height = Math.max(1, Math.round(bitmap.height * k));
+  const ctx = c.getContext("2d")!;
+  ctx.drawImage(bitmap, 0, 0, c.width, c.height);
+  bitmap.close();
+  const img = ctx.getImageData(0, 0, c.width, c.height);
+  const px = img.data;
+  for (let i = 0; i < px.length; i += 4) {
+    // (the ink is what is darker than the paper: its alpha, from the lightest channel)
+    const light = Math.min(px[i], px[i + 1], px[i + 2]);
+    const alpha = light > 224 ? 0 : light < 128 ? 255 : Math.round((224 - light) / 96 * 255);
+    px[i + 3] = Math.min(px[i + 3], alpha);
+  }
+  ctx.putImageData(img, 0, 0);
+  return c.toDataURL("image/png");
+}
+
 /** A labelled control, for a name of an object. */
 function field(name: string, s: Schema, value: Json | undefined, set: (v: Json) => void): HTMLElement {
   const title = s.title ?? name;
@@ -236,10 +396,17 @@ function field(name: string, s: Schema, value: Json | undefined, set: (v: Json) 
     group.append(legend, properties(s, value, set));
     return group;
   }
-  const label = document.createElement("label");
+  // (a pad or a picture with buttons is not in a label: a click on the label goes to its first button)
+  const drawn = isPicture(s) && !!s["x-bdf"]?.input;
+  const label = document.createElement(drawn ? "div" : "label");
   const c = control(s, value, set, false);
   const text = document.createElement("span");
   text.textContent = title;
+  if (drawn) {
+    text.id = `name${nextId++}`;
+    c.setAttribute("role", "group");
+    c.setAttribute("aria-labelledby", text.id);
+  }
   text.title = where(s);
   const code = s["x-bdf"]?.code;
   if (code) {
@@ -378,6 +545,60 @@ function list(title: string, s: Schema, items: Json[], set: (v: Json) => void): 
   return group;
 }
 
+/** The names of the data that may be left open: those of the values and the lists of objects, with dots (a list as a whole). */
+function names(s: Schema, prefix = ""): { name: string; title: string }[] {
+  return Object.entries(s.properties ?? {}).flatMap(([name, p]) => {
+    const path = prefix ? `${prefix}.${name}` : name;
+    if (isObject(p) && !isList(p)) return names(p, path);
+    return [{ name: path, title: path.split(".").length > 1 ? `${p.title ?? name} (${path})` : p.title ?? name }];
+  });
+}
+
+/** The data without the names left open. */
+function withoutOpen(d: JsonObject): JsonObject {
+  if (!leaveOpen.size) return d;
+  const out = structuredClone(d);
+  for (const path of leaveOpen) {
+    const parts = path.split(".");
+    let at: Json | undefined = out;
+    for (const p of parts.slice(0, -1)) at = at !== null && typeof at === "object" && !Array.isArray(at) ? valueOf(at, p) : undefined;
+    if (at !== null && typeof at === "object" && !Array.isArray(at)) delete at[parts[parts.length - 1]];
+  }
+  return out;
+}
+
+/** The choice of the names that another person fills in: they get a partly filled form (.bdff). */
+function handOn(): HTMLElement {
+  const group = document.createElement("fieldset");
+  group.className = "handon";
+  const legend = document.createElement("legend");
+  legend.textContent = "Leave for another person";
+  const note = document.createElement("p");
+  note.className = "note";
+  note.textContent = "The names checked here are left open: the document is then a partly filled form (.bdff), which the other person opens on this page to fill in the rest.";
+  group.append(legend, note);
+  for (const n of names(template!.schema)) {
+    const label = document.createElement("label");
+    label.className = "check";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = leaveOpen.has(n.name);
+    // (a name of its own: the label of the field of the name is another)
+    box.ariaLabel = `leave ${n.title} for another person`;
+    box.onchange = () => {
+      if (box.checked) leaveOpen.add(n.name);
+      else leaveOpen.delete(n.name);
+      if (template) how(template);
+      schedule();
+    };
+    const text = document.createElement("span");
+    text.textContent = n.title;
+    label.append(box, text);
+    group.append(label);
+  }
+  return group;
+}
+
 /** Make the form of the template's schema, with the data in it. */
 function buildForm() {
   if (!template) return;
@@ -390,10 +611,18 @@ function buildForm() {
     fieldsBox.replaceChildren(p);
     return;
   }
-  fieldsBox.replaceChildren(properties(template.schema, data, (v) => {
+  const parts: HTMLElement[] = [];
+  if (template.open) {
+    const p = document.createElement("p");
+    p.className = "note partial";
+    p.textContent = `A partly filled form: ${template.held} ${template.held === 1 ? "value is" : "values are"} filled in already. Fill in the rest: ${template.open.join(", ")}.`;
+    parts.push(p);
+  }
+  parts.push(properties(template.schema, data, (v) => {
     data = v as JsonObject;
     changed();
-  }));
+  }), handOn());
+  fieldsBox.replaceChildren(...parts);
   if (focusNext) document.getElementById(focusNext)?.focus();
   focusNext = "";
 }
@@ -508,11 +737,12 @@ async function fillOnce() {
   const token = opening;
   const t0 = performance.now();
   // the pictures the data names, of those picked or fetched
-  const text = JSON.stringify(data);
-  const files = pictureFiles(data, pictures);
+  const given = withoutOpen(data);
+  const text = JSON.stringify(given);
+  const files = pictureFiles(given, pictures);
   let res;
   try {
-    res = await converter.fill(MODULE, t.bytes, { data: text, files, fonts: FONTS, name: t.name });
+    res = await converter.fill(MODULE, t.bytes, { data: text, files, fonts: FONTS, name: t.name, open: [...leaveOpen] });
   } catch (e) {
     if (token === opening) setStatus(failure(e));
     return;
@@ -523,13 +753,17 @@ async function fillOnce() {
   if (bdfURL) URL.revokeObjectURL(bdfURL);
   bdfURL = URL.createObjectURL(new Blob([filled as BlobPart], { type: "application/octet-stream" }));
   saveBdf.href = bdfURL;
-  saveBdf.download = `${t.base}.bdf`;
+  // (a partly filled form is handed on as a .bdff)
+  const partly = !!res.open?.length;
+  saveBdf.download = `${t.base}.${partly ? "bdff" : "bdf"}`;
+  saveBdf.textContent = partly ? ".bdff" : ".bdf";
+  saveBdf.title = partly ? `a partly filled form: ${res.open!.join(", ")} left open` : "the filled form as a bdf document";
   saveBdf.hidden = false;
   savePdf.disabled = false;
   setWarnings(res.warnings);
   await draw(filled.slice().buffer as ArrayBuffer);
   if (token !== opening) return;
-  setStatus(`${t.name} filled in ${took.toFixed(0)} ms: ${res.pages} ${res.pages === 1 ? "page" : "pages"}, ${kb(filled.length)} as a bdf document`);
+  setStatus(`${t.name} filled in ${took.toFixed(0)} ms: ${res.pages} ${res.pages === 1 ? "page" : "pages"}, ${kb(filled.length)} as a ${partly ? `partly filled form (${res.open!.join(", ")} left open)` : "bdf document"}`);
 }
 
 function setWarnings(list: string[]) {
@@ -705,6 +939,11 @@ async function openTemplate(name: string, bytes: ArrayBuffer, sample?: JsonObjec
   if (token !== opening) return;
   const schema = JSON.parse(res.schema) as Schema;
   template = { name, base, bytes, schema, schemaText: res.schema };
+  if (res.open) {
+    template.open = res.open;
+    template.held = res.filled ? countValues(JSON.parse(res.filled) as Json) : 0;
+  }
+  leaveOpen.clear();
   // a compiled template brings its sample
   const given = sample ?? (res.sample ? (JSON.parse(res.sample) as JsonObject) : undefined);
   data = given ? structuredClone(given) : (blank(schema) as JsonObject);
@@ -730,14 +969,25 @@ async function openTemplate(name: string, bytes: ArrayBuffer, sample?: JsonObjec
   await fillNow();
 }
 
+/** The values that data holds: those that are not objects. */
+function countValues(v: Json): number {
+  if (v !== null && typeof v === "object" && !Array.isArray(v)) return Object.values(v).reduce<number>((n, e) => n + countValues(e), 0);
+  return 1;
+}
+
 /** How a server does the same: with the bdf command, and with the Go packages. */
 function how(t: Template) {
+  const open = [...leaveOpen];
+  const fill = open.length
+    ? `bdf fill -data ${t.base}.json -open ${open.join(",")} ${t.name} ${t.base}.bdff   # a partly filled form
+bdf fill -data rest.json ${t.base}.bdff ${t.base}.bdf             # the other person fills in the rest`
+    : `bdf fill -data ${t.base}.json ${t.name} ${t.base}.bdf`;
   $("cli").textContent = `bdf template schema -json-schema ${t.name} ${t.base}.schema.json   # what the form above is made of
-bdf fill -data ${t.base}.json ${t.name} ${t.base}.bdf
+${fill}
 bdf pdf ${t.base}.bdf ${t.base}.pdf            # -tagged for a tagged PDF, -pdfa 2a for a PDF/A file`;
   $("go").textContent = `schema, err := form.SchemaOf(template, size, nil) // the JSON Schema of the data
 // …
-res, err := form.Fill(template, size, &form.Options{Data: data})
+res, err := form.Fill(template, size, &form.Options{Data: data${open.length ? `, Open: []string{${open.map((n) => JSON.stringify(n)).join(", ")}}` : ""}})${open.length ? " // res.Partial: a .bdff" : ""}
 // …
 _, err = pdfbdf.Write(w, res.Doc, &pdfbdf.Options{}) // Tagged: true, PDFA: "2a"`;
   $("how").hidden = false;

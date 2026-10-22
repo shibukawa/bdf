@@ -7,8 +7,10 @@
 // of the field, whose parts are the names of an object in an object
 // ("applicant.name"). A text field takes a text or a number, a checkbox
 // true or false, a group of radio buttons the value of one of its buttons,
-// and a choice field one of its choices. A field that the data has no
-// value for is left as the file has it.
+// and a choice field one of its choices, and a signature field a picture
+// (a drawn signature: the path of a file or a data: URL), which is drawn
+// in its box. A field that the data has no value for is left as the file
+// has it.
 //
 // The values are drawn here, not by the file: a text in the font, the size,
 // the color and the alignment that the field says (in a font of the
@@ -43,6 +45,8 @@ type TemplateData struct {
 	// Format writes a number that fills a text field (nil: as the General
 	// format of a spreadsheet writes it).
 	Format tag.Formatter
+	// Files holds the pictures that the data names by their paths.
+	Files fs.FS
 }
 
 // Options controls the conversion of the file and the fonts of the values.
@@ -142,8 +146,10 @@ func fieldList(fields []pdf.FormField) []tag.Field {
 			if fd.Value != "" && fd.Value != "Off" {
 				f.Default = fd.Value
 			}
+		case pdf.FormSignature:
+			f.Kind, f.Input = tag.FieldImage, tag.InputSignature
 		default:
-			continue // (a button to press, a signature: nothing that data fills)
+			continue // (a button to press: nothing that data fills)
 		}
 		seen := map[int]bool{}
 		for _, w := range fd.Widgets {
@@ -212,7 +218,7 @@ func Fill(rs io.ReadSeeker, t *TemplateData, opts *Options) (*Result, error) {
 		return nil, fmt.Errorf("pdfform: the PDF has no pages")
 	}
 	view := doc.Views[0]
-	return draw(doc, view, fields, list, texts, opts, res.Protected, warnings, warn)
+	return draw(doc, view, fields, list, texts, t.Files, opts, res.Protected, warnings)
 }
 
 // shows tells what the widgets of the fields show when the form is filled
@@ -221,7 +227,7 @@ func shows(fields []pdf.FormField, data map[string]any, t *TemplateData, texts m
 	show := map[string]pdf.FormShow{}
 	for i := range fields {
 		fd := &fields[i]
-		if fd.Kind == pdf.FormButton || fd.Kind == pdf.FormSignature {
+		if fd.Kind == pdf.FormButton {
 			continue
 		}
 		v, ok := lookup(data, fd.Name)
@@ -233,6 +239,12 @@ func shows(fields []pdf.FormField, data map[string]any, t *TemplateData, texts m
 			continue
 		}
 		switch fd.Kind {
+		case pdf.FormSignature:
+			// (drawn over the box: the field shows what the file has, a
+			// signature that is none yet)
+			if name, _ := v.(string); name != "" {
+				texts[fd.Name] = name
+			}
 		case pdf.FormCheckbox:
 			state := "Off"
 			if s, isText := v.(string); isText && s != "" {
@@ -291,8 +303,10 @@ func shows(fields []pdf.FormField, data map[string]any, t *TemplateData, texts m
 }
 
 // draw draws the texts of the fields over the pages of the converted file.
-func draw(doc *bdf.Document, view *bdf.View, fields []pdf.FormField, list []tag.Field, texts map[string]string, opts *Options, protected bool,
-	warnings []string, warn func(string, ...any)) (*Result, error) {
+func draw(doc *bdf.Document, view *bdf.View, fields []pdf.FormField, list []tag.Field, texts map[string]string, files fs.FS, opts *Options, protected bool,
+	warnings []string) (*Result, error) {
+	// (the warnings of the fill so far, and those of the drawing after them)
+	warn := func(format string, args ...any) { warnings = append(warnings, fmt.Sprintf(format, args...)) }
 	r := formbox.New(doc, formbox.Options{FontFS: opts.FontFS, FontDirs: opts.FontDirs, NoSystemFonts: opts.NoSystemFonts, SystemFonts: opts.SystemFonts,
 		NoSubset: opts.NoSubset, NoWOFF2: opts.NoWOFF2, IgnoreFSType: opts.IgnoreFSType, Images: opts.Images,
 		Warn: func(msg string) { warnings = append(warnings, msg) }})
@@ -314,6 +328,10 @@ func draw(doc *bdf.Document, view *bdf.View, fields []pdf.FormField, list []tag.
 				l = r.Layer(float64(pg.W), float64(pg.H))
 				layers[w.Page] = l
 			}
+			if fd.Kind == pdf.FormSignature {
+				drawPicture(r, l, fd, w, text, files, warn)
+				continue
+			}
 			drawText(r, l, fd, w, text)
 		}
 	}
@@ -334,6 +352,42 @@ func draw(doc *bdf.Document, view *bdf.View, fields []pdf.FormField, list []tag.
 		}
 	}
 	return &Result{Doc: doc, Warnings: warnings, Fields: list, Pages: len(view.Pages), Protected: protected}, nil
+}
+
+// drawPicture draws the picture of a signature field in a widget: whole,
+// in the middle of its box.
+func drawPicture(r *formbox.Renderer, l *formbox.Layer, fd *pdf.FormField, w *pdf.FormWidget, name string, files fs.FS, warn func(string, ...any)) {
+	data, err := tag.PictureData(files, name)
+	if err != nil {
+		warn("the picture of %q is left out: %v", fd.Name, err)
+		return
+	}
+	pic, ok := r.Picture(data)
+	if !ok {
+		warn("the picture of %q is left out: it is not a picture that is read", fd.Name)
+		return
+	}
+	b := math.Max(w.Border, 0)
+	bw, bh := w.W-2*b, w.H-2*b
+	if bw <= 0 || bh <= 0 {
+		return
+	}
+	pw, ph := pic.W, pic.H
+	if pw <= 0 || ph <= 0 {
+		if pw, ph = formbox.SVGSize(data); pw <= 0 || ph <= 0 {
+			pw, ph = bw, bh
+		}
+	}
+	scale := math.Min(bw/pw, bh/ph)
+	// (the products rounded before they are added: the same places on
+	// machines that fuse a multiply and an add, and on those that do not)
+	iw, ih := float64(pw*scale), float64(ph*scale)
+	o := l.Obj
+	o.Save()
+	l.Transform(w.Matrix)
+	l.Mark(bdf.MarkFigure, fd.Name)
+	l.Image(pic, b+(bw-iw)/2, b+(bh-ih)/2, iw, ih)
+	o.Restore()
 }
 
 // onState is the state that the boxes of a checkbox show when it is on.

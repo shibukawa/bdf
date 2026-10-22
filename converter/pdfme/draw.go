@@ -1,7 +1,6 @@
 package pdfme
 
 import (
-	"bytes"
 	"encoding/json"
 	"math"
 	"strconv"
@@ -614,60 +613,6 @@ func (f *filler) circleMark(l *formbox.Layer, s *schema, v any, b box) {
 	l.Stroke(p, bw, col, false)
 }
 
-// svgSize reads the size of an SVG image: of its viewBox, or its width
-// and height.
-func svgSize(data []byte) (w, h float64) {
-	i := bytes.Index(data, []byte("<svg"))
-	if i < 0 {
-		return 0, 0
-	}
-	tagEnd := bytes.IndexByte(data[i:], '>')
-	if tagEnd < 0 {
-		return 0, 0
-	}
-	head := string(data[i : i+tagEnd])
-	attr := func(name string) string {
-		for rest := head; ; {
-			j := strings.Index(rest, name+"=")
-			if j < 0 {
-				return ""
-			}
-			before := byte(' ')
-			if j > 0 {
-				before = rest[j-1]
-			}
-			rest = rest[j+len(name)+1:]
-			if before != ' ' && before != '\t' && before != '\n' && before != '\r' || rest == "" {
-				continue
-			}
-			if q := rest[0]; q == '"' || q == '\'' {
-				if e := strings.IndexByte(rest[1:], q); e >= 0 {
-					return rest[1 : 1+e]
-				}
-			}
-			return ""
-		}
-	}
-	num := func(s string) float64 {
-		s = strings.TrimSpace(s)
-		end := 0
-		for end < len(s) && (s[end] >= '0' && s[end] <= '9' || s[end] == '.' || s[end] == '-' || s[end] == '+' || s[end] == 'e') {
-			end++
-		}
-		v, _ := strconv.ParseFloat(s[:end], 64)
-		return v
-	}
-	if vb := strings.FieldsFunc(attr("viewBox"), func(r rune) bool { return r == ' ' || r == ',' || r == '\t' || r == '\n' }); len(vb) == 4 {
-		if w, h = num(vb[2]), num(vb[3]); w > 0 && h > 0 {
-			return w, h
-		}
-	}
-	if w, h = num(attr("width")), num(attr("height")); w > 0 && h > 0 {
-		return w, h
-	}
-	return 0, 0
-}
-
 // loaded is a picture that the data named, as it was read: the picture of
 // the document (its size is 0 × 0 for an SVG image that says none), or
 // why it is left out.
@@ -699,7 +644,7 @@ func (f *filler) load(name string) loaded {
 		} else {
 			ld.pic, ld.ok = pic, true
 			if pic.W <= 0 || pic.H <= 0 {
-				ld.pic.W, ld.pic.H = svgSize(data)
+				ld.pic.W, ld.pic.H = formbox.SVGSize(data)
 			}
 		}
 	}
