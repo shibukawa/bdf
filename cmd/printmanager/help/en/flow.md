@@ -15,7 +15,7 @@ What flows along an edge is of one of three kinds:
 What a node sends on:
 
 - an entry (an endpoint, a CUPS server) sends what its settings say: with `accept: data`, data; with `output: file`, the file as received; else the `.bdf` made of the document (the default);
-- a template node and a convert node send the `.bdf` they made;
+- a template node and a convert node send the `.bdf` they made, and along `original` what reached them, as it was;
 - a display sends what its fallback printer prints, `.bdf`;
 - every other node sends on what reached it.
 
@@ -35,6 +35,22 @@ A job carries its payloads: what was received — its `kind`, `format`, `pages`,
 
 The formats are the converter's names — `bdf`, `pdf`, `docx`, `xlsx`, `pptx`, `image` … — and `json`, `yaml`, `csv`, `xlsx` and `parquet` for data; `GET /api/formats` lists what an entry may take. What is sent is told by its name or its content type (JSON, YAML, CSV), or by its content. An Excel workbook or a CSV file is data when it is passed on as received (an entry with `accept: data` or `output: file`), and a document when an entry makes a `.bdf` of it.
 
+## Originals and traces {#traces}
+
+A template or a convert node sends the `.bdf` it makes along `to` and, along `original`, what it took as it was — the data, the file received: an archive of originals beside an archive of what was made, say. An edge along `original` carries what reaches the node, so a file received does not go to a printer that way; the canvas draws it with a short dash.
+
+Both sides go on with a `trace` of the step:
+
+| | |
+|---|---|
+| `id` | the step's id, the same on both sides |
+| `node`, `kind` | the template or convert node |
+| `role` | the side: `source` along `original`, `output` along `to` |
+| `source`, `output` | both payloads — `payload`, `kind`, `format`, `name`, `sha256` — with the `key` and the `object` an archive names each by (`<received day>.<job id>.<sha256 head>`; the record is `<key>.json`) |
+| `fingerprints` | every step of the payload's lineage, oldest first: `id`, `node`, `role` |
+
+An archive writes the trace into its record, and an export into its entries, so that from either object the other is found by its name in the archive it went to. The manager does not look for it, nor know whether it was written. The trace goes with the payload through queues, filters, classes, inboxes and an archive, until the next template or convert node, whose trace keeps the fingerprints of the old: two objects many steps apart — a PDF received, and the stamped `.bdf` made of the `.bdf` made of it — are matched by the step ids their fingerprints have in common. Both sides are of the same job, so an export after each archive lists them under the same job number.
+
 ## Metadata {#metadata}
 
 Metadata goes with a job through the topology. It comes from three sources, each key once, the later winning:
@@ -45,7 +61,7 @@ Metadata goes with a job through the topology. It comes from three sources, each
 
 A key is letters, digits, `_`, `.`, `-` and `/`, up to 64 characters; a job has at most 64 keys and 16 KiB of metadata. The Jobs pages show a job's metadata when hovering its name, and an archive's record keeps it.
 
-At a node, a filter's rules and a template node's `template_from` see the job's metadata, its `name` and `user`, and the payload that reached the node: `$kind`, `$format`, `$pages`, `$size`, `$sha256` and `$payload` (its id).
+At a node, a filter's rules and a template node's `template_from` see the job's metadata, its `name` and `user`, and the payload that reached the node: `$kind`, `$format`, `$pages`, `$size`, `$sha256` and `$payload` (its id), and the trace of the step it came out of or went into: `$trace`, `$trace_role`, `$trace_node`, `$trace_peer` and `$fingerprints` ([Originals and traces](#traces)).
 
 ### What goes on to the printer {#ipp-attributes}
 

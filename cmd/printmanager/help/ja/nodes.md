@@ -73,6 +73,7 @@
 | 設定 | |
 |---|---|
 | Forwards to（`to`） | 埋めた帳票の行き先 |
+| The data as it came to（`original`） | 到達したままのデータの行き先。帳票と同じトレースが付きます（[原本とトレース](flow.md#traces)） |
 | Template（`template`） | 埋めるテンプレート。id で指定します |
 | Template from（`template_from`） | 代わりに、値がテンプレートを指すメタデータのキー（送り手の `doc-type`） |
 | List name（`list_name`） | レコードの一覧（CSV ファイル、シート、JSON の配列）であるデータがテンプレートの中で持つ名前。既定はファイル名 |
@@ -87,6 +88,7 @@
 | 設定 | |
 |---|---|
 | Forwards to（`to`） | 文書の行き先 |
+| The file as it came to（`original`） | 到達したままのファイルの行き先。文書と同じトレースが付きます（[原本とトレース](flow.md#traces)） |
 | Formats（`formats`） | 変換する形式。空ならコンバータが読めるすべてを変換します |
 
 ## インボックス {#inbox}

@@ -73,6 +73,7 @@ Fills one of its templates with the data that reaches it, and sends the form on 
 | Setting | |
 |---|---|
 | Forwards to (`to`) | the nodes the filled form goes to |
+| The data as it came to (`original`) | the nodes the data goes to as it reached the node, traced with the form ([Originals and traces](flow.md#traces)) |
 | Template (`template`) | the template to fill, by its id |
 | Template from (`template_from`) | instead: the metadata key whose value names the template (a sender's `doc-type`) |
 | List name (`list_name`) | the name data that is a list of records (a CSV file, a sheet, a JSON array) gets in the template; the file's name by default |
@@ -87,6 +88,7 @@ Makes a `.bdf` document of a file that reaches it as received — a PDF, an Offi
 | Setting | |
 |---|---|
 | Forwards to (`to`) | the nodes the document goes to |
+| The file as it came to (`original`) | the nodes the file goes to as it reached the node, traced with the document ([Originals and traces](flow.md#traces)) |
 | Formats (`formats`) | the formats it converts; none converts any the converter reads |
 
 ## Inbox {#inbox}

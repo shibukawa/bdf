@@ -167,7 +167,7 @@ async function removeEdge(from, e) {
       n.otherwise = (n.otherwise || []).filter((x) => x !== e.to);
       n.rules = (n.rules || []).map((r) => ({ ...r, to: (r.to || []).filter((x) => x !== e.to) })).filter((r) => r.to.length);
     } else {
-      const field = e.kind === "member" ? "members" : "to";
+      const field = e.kind === "member" ? "members" : e.kind === "original" ? "original" : "to";
       n[field] = (n[field] || []).filter((x) => x !== e.to);
     }
     delete n.name;
@@ -216,10 +216,10 @@ function input(id, value, attrs = {}) {
 // checkboxes' name; except the node itself and the entries), each with a
 // dot of what it takes; one that would not take what the node carries
 // says so.
-function picker(name, chosen, except) {
+function picker(name, chosen, except, carried) {
   const box = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
   const from = draft || topo.find((x) => x.name === selected) || {};
-  const carries = typeOf(from).out;
+  const carries = carried || typeOf(from).out;
   const names = topo.filter((x) => x.name !== except && x.kind !== "cups").map((x) => x.name);
   for (const x of names) {
     const target = topo.find((t) => t.name === x);
@@ -471,6 +471,7 @@ function viewSidebar() {
   for (const to of n.to || []) out.push(to);
   for (const [i, r] of (n.rules || []).entries()) out.push((r.to || []).join(", ") + ` (rule ${i + 1})`);
   for (const to of n.otherwise || []) out.push(to + " (otherwise)");
+  for (const to of n.original || []) out.push(to + " (original)");
   for (const m of n.members || []) out.push(m + (n.policy === "failover" ? " (first)" : " (in turn)"));
   if (n.fallback && n.fallback.printer) out.push(n.fallback.printer + " (fallback)");
   if (out.length) parts.push(el("p", "→ " + out.join(", "), { className: "font-mono text-xs text-base-content/60" }));
@@ -621,6 +622,7 @@ function renderSidebar() {
       break;
     case "template": {
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "The form filled (.bdf) goes to every node chosen."));
+      form.append(field("The data as it came to", picker("original", n.original || [], n.name, n.reaches || []), "What reached the node goes on as it was to every node chosen (an archive of originals, say), with the same trace as the document made: each archive's record names the other's object."));
       const ids = n.templates || [];
       const options = [["", "— named by the metadata below —"], ...ids.map((id) => [id, id])];
       if (n.template && !ids.includes(n.template)) options.push([n.template, n.template + " (not uploaded yet)"]);
@@ -634,6 +636,7 @@ function renderSidebar() {
     }
     case "convert":
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "The .bdf document made goes to every node chosen; a .bdf that reaches the node goes on as it is."));
+      form.append(field("The file as it came to", picker("original", n.original || [], n.name, n.reaches || []), "What reached the node goes on as it was to every node chosen (an archive of originals, say), with the same trace as the document made: each archive's record names the other's object."));
       form.append(formatsField(n, "Formats converted", "None checked: every format the converter reads. A file of another format fails here (no retry); JSON and YAML have no document of their own: fill a template with them."));
       break;
     case "filter": {
@@ -744,9 +747,11 @@ async function save(ev) {
       if (dur("f-template-from")) body.template_from = dur("f-template-from");
       if (dur("f-list-name")) body.list_name = dur("f-list-name");
       if ($("f-strict").checked) body.strict = true;
+      body.original = picked("original");
       break;
     case "convert":
       body.to = picked("to");
+      body.original = picked("original");
       body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
       break;
     case "sink":
