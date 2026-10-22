@@ -1432,7 +1432,7 @@ func (f *filler) fillPicture(drawing *ooxml.Node, pt picTag, sc *tag.Scope) (*oo
 			if data, err := tag.PictureData(f.files, name); err != nil {
 				in.why = "is not read: " + err.Error()
 			} else if in.rid, in.w, in.h, in.ok = f.c.r.InjectImage(data); !in.ok {
-				in.why = "is not a PNG, JPEG, GIF, BMP or WebP image"
+				in.why = "is not a PNG, JPEG, GIF, BMP, WebP or SVG image"
 			}
 			f.loaded[name] = in
 		}
