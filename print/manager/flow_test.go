@@ -437,4 +437,36 @@ func TestOriginalTrace(t *testing.T) {
 	if a.Trace.peer().Object != b.Object || b.Trace.peer().Object != a.Object || a.Trace.Source.Key != archiveKey(got, src) || b.Trace.Output.SHA256 != made.SHA256 {
 		t.Fatalf("peers %+v / %s, %+v / %s", a.Trace, a.Object, b.Trace, b.Object)
 	}
+	fps := func(tr *Trace) string {
+		var out []string
+		for _, f := range tr.Fingerprints {
+			out = append(out, f.Node+":"+f.Role)
+		}
+		return strings.Join(out, " ")
+	}
+	if fps(a.Trace) != "conv:output" || fps(b.Trace) != "conv:source" {
+		t.Fatalf("fingerprints %s / %s", fps(a.Trace), fps(b.Trace))
+	}
+
+	// two steps: what conv made goes through stamp (a .bdf goes on as it
+	// is) before the archive; its record keeps conv's fingerprint, which
+	// the original's shares
+	e.node("stamp", Node{Kind: KindConvert, To: []string{"made"}}, http.StatusOK)
+	e.node("conv", Node{Kind: KindConvert, To: []string{"stamp"}, Original: []string{"side"}}, http.StatusOK)
+	res, out = e.do(nil, "POST", "/in/raw?name=photo2.png", raw.Key, append(pic, 0))
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("png: %d %s", res.StatusCode, out)
+	}
+	json.Unmarshal(out, &j)
+	e.tick()
+	e.tick()
+	e.tick()
+	got = e.job(j.Number)
+	if got.State != JobCompleted || legs(got) != "raw:routed conv:done stamp:done side:routed(rule 1) orig:done made:done" {
+		t.Fatalf("job %s: %+v", legs(got), got.Legs)
+	}
+	a, b = record(madeStore, "archive-made", &got.Payloads[1]), record(origStore, "archive-orig", got.received())
+	if fps(a.Trace) != "conv:output stamp:output" || fps(b.Trace) != "conv:source" || a.Trace.Fingerprints[0].ID != b.Trace.ID || a.Trace.ID == b.Trace.ID {
+		t.Fatalf("fingerprints %+v / %+v", a.Trace, b.Trace)
+	}
 }

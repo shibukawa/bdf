@@ -22,7 +22,8 @@ import (
 // rules and templates also see name and user (the job's), $kind,
 // $format, $pages, $size, $sha256 and $payload of the payload there, and
 // $trace, $trace_role, $trace_node and $trace_peer of the step it came
-// out of or went into (metaView, trace.go).
+// out of or went into, and $fingerprints of its lineage (metaView,
+// trace.go).
 
 const (
 	maxMetaKeys  = 64
@@ -116,7 +117,8 @@ func claimedOf(meta map[string]any) map[string]any {
 // the payload's $kind, $format, $pages, $size, $sha256 and $payload, and
 // of its trace (nil: none) the step's id ($trace), the side
 // ($trace_role: source or output), the node ($trace_node) and the key
-// the other side is archived by ($trace_peer).
+// the other side is archived by ($trace_peer), and the ids of the steps
+// of its lineage, comma-separated ($fingerprints).
 func metaView(j *Job, p *Payload, t *Trace) map[string]string {
 	out := make(map[string]string, len(j.Meta)+12)
 	for k, v := range j.Meta {
@@ -129,6 +131,7 @@ func metaView(j *Job, p *Payload, t *Trace) map[string]string {
 	}
 	if t != nil {
 		out["$trace"], out["$trace_role"], out["$trace_node"], out["$trace_peer"] = t.ID, t.Role, t.Node, t.peer().Key
+		out["$fingerprints"] = t.fingerprintIDs()
 	}
 	return out
 }

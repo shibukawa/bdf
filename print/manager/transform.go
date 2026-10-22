@@ -386,7 +386,7 @@ func (m *Manager) continueFrom(ctx context.Context, d *Delivery, n *Node, p *Pay
 		if in == nil {
 			in = r.payload
 		}
-		r.trace = newTrace(d, n, j, in, r.payload, TraceOutput)
+		r.trace = newTrace(d, n, j, in, r.payload, TraceOutput, d.Trace)
 		for _, to := range n.To {
 			m.route(ctx, r, to, n.Name, 0)
 		}

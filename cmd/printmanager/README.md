@@ -273,8 +273,13 @@ entries, so that from either object the other is found by its name in
 the archive it went to; the manager does not look for it, nor know
 whether it was written. The trace goes with the payload through queues,
 filters, classes, inboxes and an archive, until the next template or
-convert node; a filter's rules see it as `$trace`, `$trace_role`,
-`$trace_node` and `$trace_peer` (the other side's key). An edge along
+convert node, whose trace keeps its `fingerprints`: every step of the
+payload's lineage, oldest first (`id`, `node`, `role`). The other side's
+name is the next step's alone; two objects many steps apart (a PDF
+received, and the stamped .bdf made of the .bdf made of it) are matched
+by the step ids their fingerprints have in common. A filter's rules see
+the trace as `$trace`, `$trace_role`, `$trace_node`, `$trace_peer` (the
+other side's key) and `$fingerprints` (the ids, comma-separated). An edge along
 `original` carries what reaches the node, so that it is typed as an
 edge of a queue is (a file received does not go to a printer); the
 editor draws it dashed. Both sides are of the same job, so an export
