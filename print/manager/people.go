@@ -80,7 +80,8 @@ func (h *handler) whoami(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "not signed in"})
 		return
 	}
-	me := map[string]any{"kind": v.Kind, "id": v.ID, "name": v.Label(), "email": v.Email, "groups": v.Groups, "admin": v.Admin}
+	me := map[string]any{"kind": v.Kind, "id": v.ID, "name": v.Label(), "email": v.Email, "groups": v.Groups, "admin": v.Admin,
+		"topology": v.Can(RoleTopology), "audit": v.Can(RoleAudit)}
 	if v.Admin {
 		// the pages: whether entry nodes may have ports of their own here
 		me["ports"] = !h.m.o.NoPorts

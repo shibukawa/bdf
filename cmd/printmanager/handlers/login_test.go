@@ -239,17 +239,21 @@ func TestLogin(t *testing.T) {
 	}
 	sees(alice, []string{"alice-memo", "picking-a"})
 	sees(bob, []string{"bob-memo", "picking-b"})
-	if code, body := alice.get("/jobs"); code != http.StatusOK || strings.Contains(body, `href="/admin/topology"`) || !strings.Contains(body, "/public/jobs.js") {
+	if code, body := alice.get("/jobs"); code != http.StatusOK || strings.Contains(body, `href="/admin"`) || !strings.Contains(body, "/public/jobs.js") {
 		t.Errorf("alice's /jobs: %d", code)
 	}
-	// the topology is everyone's to look at
-	if code, body := alice.get("/topology"); code != http.StatusOK || !strings.Contains(body, "/public/topology-view.js") || strings.Contains(body, "/public/topology.js") {
+	// the topology is everyone's to look at; its editor (the palette) is
+	// the role's
+	if code, body := alice.get("/topology"); code != http.StatusOK || !strings.Contains(body, "/public/topology.js") || strings.Contains(body, `id="palette"`) {
 		t.Errorf("alice's /topology: %d", code)
 	}
 	root := s.login("root")
 	sees(root, []string{"bob-memo", "alice-memo", "picking-b", "picking-a"})
-	if _, body := root.get("/jobs"); !strings.Contains(body, `href="/admin/topology"`) {
+	if _, body := root.get("/jobs"); !strings.Contains(body, `href="/admin"`) {
 		t.Error("root's /jobs has no Admin")
+	}
+	if code, body := root.get("/topology"); code != http.StatusOK || !strings.Contains(body, `id="palette"`) || !strings.Contains(body, `id="admin-nav"`) {
+		t.Errorf("root's /topology: %d, no editor", code)
 	}
 
 	// /admin and /audit: the admins (by email, by a group of a nested
@@ -293,10 +297,16 @@ func TestLogin(t *testing.T) {
 			t.Errorf("%s on /api/audit: %d; want %d", who, code, auditWant)
 		}
 	}
-	if _, body := tess.get("/jobs"); !strings.Contains(body, `href="/admin/topology"`) || strings.Contains(body, `href="/audit"`) {
+	if _, body := tess.get("/jobs"); !strings.Contains(body, `href="/admin"`) || strings.Contains(body, `href="/audit"`) {
 		t.Error("tess's bar")
 	}
-	if _, body := audrey.get("/jobs"); strings.Contains(body, `href="/admin/topology"`) || !strings.Contains(body, `href="/audit"`) || !strings.Contains(body, "All jobs") {
+	if _, body := tess.get("/topology"); !strings.Contains(body, `id="palette"`) {
+		t.Error("tess's /topology has no editor")
+	}
+	if _, body := audrey.get("/topology"); strings.Contains(body, `id="palette"`) || strings.Contains(body, `id="admin-nav"`) {
+		t.Error("audrey's /topology has the editor")
+	}
+	if _, body := audrey.get("/jobs"); strings.Contains(body, `href="/admin"`) || !strings.Contains(body, `href="/audit"`) || !strings.Contains(body, "All jobs") {
 		t.Error("audrey's bar")
 	}
 	sees(audrey, []string{"bob-memo", "alice-memo", "picking-b", "picking-a"})
