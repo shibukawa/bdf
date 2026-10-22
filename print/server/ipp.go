@@ -687,6 +687,12 @@ func (x *ippServer) sendDocument(q *ippRequest) {
 	if pw := q.op.Get("document-password"); pw != nil {
 		in.job.password = pw.Text()
 	}
+	if a := q.op.Get("document-metadata"); a != nil {
+		if _, ok := in.job.ticket.Meta.Take(*a); !ok {
+			q.res.Add(ipp.TagUnsupportedGroup, *a)
+			q.res.Code = uint16(ipp.StatusOKIgnoredOrSubstituted)
+		}
+	}
 	x.mu.Unlock()
 	if !last {
 		q.res.Add(ipp.TagJob, x.incomingAttrs(q, in)...)
@@ -987,7 +993,13 @@ func (x *ippServer) getJobAttributes(q *ippRequest) {
 	} else {
 		attrs = x.jobAttrs(q, j, q.caller.sees(j))
 	}
-	q.res.Add(ipp.TagJob, ipp.Filter(attrs, ipp.Requested(q.op, jobAll), jobGroups)...)
+	var groups map[string][]string
+	if in != nil {
+		groups = jobGroupsOf(&in.job.ticket)
+	} else {
+		groups = jobGroupsOf(&j.Ticket)
+	}
+	q.res.Add(ipp.TagJob, ipp.Filter(attrs, ipp.Requested(q.op, jobAll), groups)...)
 }
 
 // getJobs lists the jobs of the queue.
@@ -1047,11 +1059,11 @@ func (x *ippServer) getJobs(q *ippRequest) {
 	// the newest first, as printers list them
 	slices.Reverse(jobs)
 	for _, in := range ins {
-		groups = append(groups, ipp.Filter(x.incomingAttrs(q, in), req, jobGroups))
+		groups = append(groups, ipp.Filter(x.incomingAttrs(q, in), req, jobGroupsOf(&in.job.ticket)))
 	}
 	for i := range jobs {
 		if keep(jobs[i].ID, jobs[i].State) {
-			groups = append(groups, ipp.Filter(x.jobAttrs(q, &jobs[i], q.caller.sees(&jobs[i])), req, jobGroups))
+			groups = append(groups, ipp.Filter(x.jobAttrs(q, &jobs[i], q.caller.sees(&jobs[i])), req, jobGroupsOf(&jobs[i].Ticket)))
 		}
 	}
 	if limit > 0 && len(groups) > limit {

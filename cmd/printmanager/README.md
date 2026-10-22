@@ -162,7 +162,11 @@ own pages) as it takes the tokens; scripts use the tokens.
    browser signs in as the device. Add the page to the home screen.
 3. Print to `ipp://<host>:<port>/ipp/print/wh-a` (or `POST /api/locations/wh-a/slips`
    with the document as the body, which answers with the slip). PDF, Office
-   documents, images, PWG and Apple rasters and `.bdf` are taken.
+   documents, images, PWG and Apple rasters and `.bdf` are taken. The
+   metadata keys `ipp.job-account-id`, `ipp.job-accounting-user-id`,
+   `ipp.document-metadata` and `ipp.x-…` go to the printer as those IPP
+   attributes: an IPP request's own give them, or `?meta.ipp.job-account-id=…`
+   of a `POST`.
 
 ## Topology
 
