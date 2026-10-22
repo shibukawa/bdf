@@ -359,7 +359,10 @@ function renderSidebar() {
   const aside = $("sidebar");
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) {
-    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. The ports and edges are colored by what flows: blue a .bdf document, green data (for a template node), grey any file as received (for a convert node); a printer takes .bdf only, so a file or data cannot be connected to it without a convert or a template node between.", { className: "text-sm text-base-content/60" }));
+    aside.replaceChildren(
+      el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. The ports and edges are colored by what flows: blue a .bdf document, green data (for a template node), grey any file as received (for a convert node); a printer takes .bdf only, so a file or data cannot be connected to it without a convert or a template node between.", { className: "text-sm text-base-content/60" }),
+      el("a", "The manual: the editor, and every kind of node", { className: "link mt-2 block text-sm", href: "/help/topology#editor", target: "_blank", rel: "noopener" }),
+    );
     return;
   }
   const kind = n.kind;
@@ -368,6 +371,8 @@ function renderSidebar() {
   head.append(kindBadge(kind));
   if (draft) head.append(el("span", "new", { className: "badge badge-outline" }));
   else head.append(el("h3", n.name, { className: "font-mono text-lg font-semibold" }), scopeBadge(n));
+  // the manual's section of the kind (the language is the browser's)
+  head.append(el("a", "Help", { className: "link link-hover ml-auto text-xs text-base-content/60", href: "/help/nodes#" + kind, target: "_blank", rel: "noopener", title: "The manual: " + (KINDS[kind] || kind) + " nodes" }));
   form.append(head);
   if (draft) {
     const name = input("f-name", "", { placeholder: "intake, both, tokyo, review, wh-a, laser, audit", required: true, pattern: "[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}", autocomplete: "off" });

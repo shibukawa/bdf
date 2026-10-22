@@ -4,6 +4,7 @@ package handlers
 
 import (
 	"github.com/shibukawa/tinybind-go/htmlbind"
+	"net/url"
 )
 
 type Account struct {
@@ -13,6 +14,23 @@ type Account struct {
 	Admin    bool
 	Topology bool
 	Audit    bool
+}
+
+type HelpSection struct {
+	Title string
+	Href  url.URL
+}
+
+type HelpChapter struct {
+	Title    string
+	Href     url.URL
+	Current  bool
+	Sections []HelpSection
+}
+
+type HelpLang struct {
+	Label string
+	Href  url.URL
 }
 
 type renderShellParams struct {
@@ -75,6 +93,15 @@ type AdminJobsParams struct {
 
 type DeliveriesParams struct {
 	Account Account
+}
+
+type HelpParams struct {
+	Account  Account
+	Title    string
+	Language string
+	Chapters []HelpChapter
+	Langs    []HelpLang
+	Body     string
 }
 
 var planSignInOpsFill1Plan = &htmlbind.Plan[SignInParams]{Ops: []htmlbind.Op[SignInParams]{
@@ -166,6 +193,93 @@ var planDeliveriesOpsFill12Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbi
 	planDeliveriesOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Deliveries waiting</h2> <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">Tick now</button> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Jobs on their way to printers and archives. A process sends them in the background, a serverless deployment at the tick; a send that failed is tried again after a wait that grows, and retry sends it now.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>State</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/deliveries.js\"></script> "),
 }}
 
+type planHelpOpsScope14 struct {
+	Outer HelpParams
+	Item  HelpLang
+	Index int
+}
+
+var planHelpOpsScope14Ops = htmlbind.Builder[planHelpOpsScope14]{}
+
+type planHelpOpsScope15 struct {
+	Outer HelpParams
+	Item  HelpChapter
+	Index int
+}
+
+var planHelpOpsScope15Ops = htmlbind.Builder[planHelpOpsScope15]{}
+
+type planHelpOpsScope15OpsScope16 struct {
+	Outer planHelpOpsScope15
+	Item  HelpSection
+	Index int
+}
+
+var planHelpOpsScope15OpsScope16Ops = htmlbind.Builder[planHelpOpsScope15OpsScope16]{}
+
+var planHelpOpsFill13Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpParams]{
+	planHelpOps.Static(" "),
+	planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
+		return renderAppBar(renderAppBarParams{Title: "BDF Print Manager", Account: p.Account})
+	}),
+	planHelpOps.Static(" <main class=\"mx-auto grid max-w-7xl grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[17rem_minmax(0,1fr)]\"> <article id=\"help\""),
+	planHelpOps.Attr("lang", func(p HelpParams) (string, bool) { return htmlbind.Escape(p.Language), true }),
+	planHelpOps.Static(" class=\"prose max-w-none rounded-box bg-base-100 p-6 shadow-sm dark:prose-invert sm:p-8 lg:col-start-2 lg:row-start-1\"> <div class=\"not-prose -mt-2 mb-4 flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm\"> <a href=\"#help-nav\" class=\"link link-hover lg:hidden\">Contents</a> "),
+	planHelpOps.For(
+		func(p HelpParams) []HelpLang { return p.Langs },
+		func(p HelpParams, item HelpLang, index int) planHelpOpsScope14 {
+			return planHelpOpsScope14{Outer: p, Item: item, Index: index}
+		},
+		[]htmlbind.Op[planHelpOpsScope14]{
+			planHelpOpsScope14Ops.Static(" <a"),
+			planHelpOpsScope14Ops.URLAttr("href", func(p planHelpOpsScope14) (string, bool) { return p.Item.Href.String(), true }),
+			planHelpOpsScope14Ops.Static(" class=\"link link-hover\">"),
+			planHelpOpsScope14Ops.Text(func(p planHelpOpsScope14) string { return p.Item.Label }),
+			planHelpOpsScope14Ops.Static("</a> "),
+		}),
+	planHelpOps.Static(" </div> "),
+	planHelpOps.Raw(func(p HelpParams) string { return string(p.Body) }),
+	planHelpOps.Static(" </article> <nav aria-label=\"Manual\" class=\"lg:sticky lg:top-20 lg:col-start-1 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto\"> <ul id=\"help-nav\" class=\"menu w-full rounded-box bg-base-100 shadow-sm\"> "),
+	planHelpOps.For(
+		func(p HelpParams) []HelpChapter { return p.Chapters },
+		func(p HelpParams, item HelpChapter, index int) planHelpOpsScope15 {
+			return planHelpOpsScope15{Outer: p, Item: item, Index: index}
+		},
+		[]htmlbind.Op[planHelpOpsScope15]{
+			planHelpOpsScope15Ops.Static(" "),
+			planHelpOpsScope15Ops.If(func(p planHelpOpsScope15) bool { return p.Item.Current },
+				[]htmlbind.Op[planHelpOpsScope15]{
+					planHelpOpsScope15Ops.Static(" <li> <a"),
+					planHelpOpsScope15Ops.URLAttr("href", func(p planHelpOpsScope15) (string, bool) { return p.Item.Href.String(), true }),
+					planHelpOpsScope15Ops.Static(" class=\"menu-active\">"),
+					planHelpOpsScope15Ops.Text(func(p planHelpOpsScope15) string { return p.Item.Title }),
+					planHelpOpsScope15Ops.Static("</a> <ul> "),
+					planHelpOpsScope15Ops.For(
+						func(p planHelpOpsScope15) []HelpSection { return p.Item.Sections },
+						func(p planHelpOpsScope15, item HelpSection, index int) planHelpOpsScope15OpsScope16 {
+							return planHelpOpsScope15OpsScope16{Outer: p, Item: item, Index: index}
+						},
+						[]htmlbind.Op[planHelpOpsScope15OpsScope16]{
+							planHelpOpsScope15OpsScope16Ops.Static(" <li><a"),
+							planHelpOpsScope15OpsScope16Ops.URLAttr("href", func(p planHelpOpsScope15OpsScope16) (string, bool) { return p.Item.Href.String(), true }),
+							planHelpOpsScope15OpsScope16Ops.Static(">"),
+							planHelpOpsScope15OpsScope16Ops.Text(func(p planHelpOpsScope15OpsScope16) string { return p.Item.Title }),
+							planHelpOpsScope15OpsScope16Ops.Static("</a></li> "),
+						}),
+					planHelpOpsScope15Ops.Static(" </ul> </li> "),
+				},
+				[]htmlbind.Op[planHelpOpsScope15]{
+					planHelpOpsScope15Ops.Static(" <li><a"),
+					planHelpOpsScope15Ops.URLAttr("href", func(p planHelpOpsScope15) (string, bool) { return p.Item.Href.String(), true }),
+					planHelpOpsScope15Ops.Static(">"),
+					planHelpOpsScope15Ops.Text(func(p planHelpOpsScope15) string { return p.Item.Title }),
+					planHelpOpsScope15Ops.Static("</a></li> "),
+				}),
+			planHelpOpsScope15Ops.Static(" "),
+		}),
+	planHelpOps.Static(" </ul> </nav> </main> "),
+}}
+
 var planShellOps = htmlbind.Builder[renderShellParams]{}
 
 var planShellPlan = &htmlbind.Plan[renderShellParams]{
@@ -213,7 +327,7 @@ var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
 				planAppBarOps.Static(" <a href=\"/audit\" class=\"btn btn-sm btn-ghost\">Audit</a> "),
 			},
 			nil),
-		planAppBarOps.Static(" <div class=\"flex min-w-0 items-center gap-2\"> <div class=\"avatar avatar-placeholder\""),
+		planAppBarOps.Static(" <a href=\"/help\" class=\"btn btn-sm btn-ghost\" title=\"The manual\">Help</a> <div class=\"flex min-w-0 items-center gap-2\"> <div class=\"avatar avatar-placeholder\""),
 		planAppBarOps.Attr("title", func(p renderAppBarParams) (string, bool) { return htmlbind.Escape(p.Account.Name), true }),
 		planAppBarOps.Static("> <div class=\"w-8 rounded-full bg-neutral text-neutral-content\"><span class=\"text-sm\">"),
 		planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Initial }),
@@ -448,3 +562,19 @@ var planDeliveriesPlan = &htmlbind.Plan[DeliveriesParams]{
 
 // Deliveries binds Deliveries to its parameters, producing a renderable fragment.
 func Deliveries(params DeliveriesParams) htmlbind.Fragment { return planDeliveriesPlan.Bind(params) }
+
+var planHelpOps = htmlbind.Builder[HelpParams]{}
+
+var planHelpPlan = &htmlbind.Plan[HelpParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[HelpParams]{
+		planHelpOps.Static(" "),
+		planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: p.Title, Children: planHelpOpsFill13Plan.Bind(p)})
+		}),
+		planHelpOps.Static(" "),
+	},
+}
+
+// Help binds Help to its parameters, producing a renderable fragment.
+func Help(params HelpParams) htmlbind.Fragment { return planHelpPlan.Bind(params) }
