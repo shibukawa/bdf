@@ -102,8 +102,9 @@ func takes(kind string) kinds {
 // node after it takes, so that its first edge, on either side, types it
 // as the wildcard pin of a visual editor is typed; so does an archive,
 // which sends on what it wrote. A template or a convert node sends on the
-// .bdf it makes whatever reaches it, a display the .bdf it shows; the
-// others send nothing on.
+// .bdf it makes whatever reaches it (and what reached it along Original,
+// which accepts types), a display the .bdf it shows; the others send
+// nothing on.
 func passesOn(kind string) bool {
 	switch kind {
 	case KindQueue, KindClass, KindFilter, KindInbox, KindEndpoint, KindCups, KindArchive:
@@ -138,17 +139,40 @@ func (n *Node) entryKind() kinds {
 
 // emits tells the kinds a node sends on along its edges, given the kinds
 // that reach it (in): an entry what it receives from outside besides
-// what reaches it, a template or a convert node the .bdf it makes, a
+// what reaches it, a template or a convert node the .bdf it makes (and
+// what reaches it, when it sends that on along Original: emitsTo), a
 // display the .bdf its fallback printer prints, every other node what
 // reaches it.
 func (n *Node) emits(in kinds) kinds {
 	switch n.Kind {
 	case KindEndpoint, KindCups:
 		return in | n.entryKind()
-	case KindTemplate, KindConvert, KindDisplay:
+	case KindTemplate, KindConvert:
+		if len(n.Original) > 0 {
+			return kindBDF | in
+		}
+		return kindBDF
+	case KindDisplay:
 		return kindBDF
 	}
 	return in
+}
+
+// emitsTo tells the kinds a node sends on along its edge to a node: of a
+// template or a convert node, what reaches it along Original (as it took
+// it) and the .bdf it makes along To; of the others, what it emits.
+func (n *Node) emitsTo(in kinds, to string) kinds {
+	if n.Kind != KindTemplate && n.Kind != KindConvert {
+		return n.emits(in)
+	}
+	var out kinds
+	if slices.Contains(n.To, to) {
+		out |= kindBDF
+	}
+	if slices.Contains(n.Original, to) {
+		out |= in
+	}
+	return out
 }
 
 // typing is the kinds that reach each node, and from where.
@@ -166,12 +190,11 @@ func inferKinds(nodes map[string]*Node) *typing {
 	for range len(nodes) + 2 {
 		changed := false
 		for _, n := range nodes {
-			out := n.emits(t.reach[n.Name])
 			for _, to := range n.edges() {
 				if nodes[to] == nil {
 					continue
 				}
-				add := out &^ t.reach[to]
+				add := n.emitsTo(t.reach[n.Name], to) &^ t.reach[to]
 				if add == 0 {
 					continue
 				}
@@ -209,8 +232,9 @@ func (t *typing) path(node, kind string) []string {
 }
 
 // accepts tells, for every node, the kinds its input may take now: what
-// the node takes, and, for a node that passes on what reaches it, what
-// every node it sends to accepts in turn (a queue in front of a printer
+// the node takes, and, for a node that passes on what reaches it (or a
+// template or a convert node, along Original), what every node it sends
+// it to accepts in turn (a queue in front of a printer
 // takes .bdf alone; one in front of a printer and a template node takes
 // nothing). A graph of nodes that are not there yet is not refused here:
 // an edge to a name that is no node is left out.
@@ -222,11 +246,15 @@ func accepts(nodes map[string]*Node) map[string]kinds {
 	for range len(nodes) + 2 {
 		changed := false
 		for name, n := range nodes {
+			along := n.edges()
 			if !passesOn(n.Kind) {
-				continue
+				if len(n.Original) == 0 {
+					continue
+				}
+				along = n.Original
 			}
 			a := takes(n.Kind)
-			for _, to := range n.edges() {
+			for _, to := range along {
 				if nodes[to] != nil {
 					a &= acc[to]
 				}
@@ -248,13 +276,12 @@ func accepts(nodes map[string]*Node) map[string]kinds {
 func (t *typing) broken(nodes map[string]*Node) map[string]map[string]kinds {
 	out := map[string]map[string]kinds{}
 	for _, n := range nodes {
-		emits := n.emits(t.reach[n.Name])
 		for _, to := range n.edges() {
 			x := nodes[to]
 			if x == nil {
 				continue
 			}
-			if bad := emits &^ takes(x.Kind); bad != 0 {
+			if bad := n.emitsTo(t.reach[n.Name], to) &^ takes(x.Kind); bad != 0 {
 				if out[n.Name] == nil {
 					out[n.Name] = map[string]kinds{}
 				}
@@ -278,7 +305,7 @@ func (n *Node) withoutEdges(names map[string]bool) *Node {
 		return out
 	}
 	c := *n
-	c.To, c.Members, c.Otherwise = keep(n.To), keep(n.Members), keep(n.Otherwise)
+	c.To, c.Original, c.Members, c.Otherwise = keep(n.To), keep(n.Original), keep(n.Members), keep(n.Otherwise)
 	c.Rules = slices.Clone(n.Rules)
 	for i := range c.Rules {
 		c.Rules[i].To = keep(n.Rules[i].To)
