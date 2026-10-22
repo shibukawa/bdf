@@ -103,7 +103,7 @@ capabilities:
     state: implemented
     about: capability:print-manager/convert-node
   render-node:
-    state: planned
+    state: implemented
     about: capability:print-manager/render-node
   branch-meta-rules:
     state: implemented
@@ -112,13 +112,13 @@ capabilities:
     state: planned
     about: capability:print-manager/extract-node
   io-nodes:
-    state: planned
-    about: capability:print-manager/io-nodes
+    state: partial
+    about: capability:print-manager/io-nodes（smtp・s3・http は milestone:fl-2、ftp は fl-4）
   s3-trigger-entry:
-    state: planned
+    state: implemented
     about: capability:print-manager/s3-trigger-entry
   notify-node:
-    state: planned
+    state: implemented
     about: capability:print-manager/notify-node
   external-services:
     state: planned
@@ -309,8 +309,8 @@ open_questions:
       出口は .bdf のまま送れることを制約にし、描画は図で前に置く選択。http の出口は別拠点の Print Manager への送りに要るので入れる（Claude の読み）
   notify-shape:
     text: 通知ノードの形。A は多相の通過ノード（通ったら知らせ、任意の to で続ける）で、失敗は各ノードの on_error の辺から届く。B は通知を図のノードにせず、ノードの設定（「失敗したら Slack」）にする
-    state: open
-    resolution: 推奨 A（利用者「通知ノード」。図に見える。on_error の辺が要る）。fl-2 の前に決める
+    state: answered
+    resolution: A。2026-10-23 利用者が「図のノード」を選んだ。notify は多相の通過ノード（通ったら知らせ、任意の to で続ける）で、失敗は on_error の辺から届く。milestone:fl-2
   signature-meaning:
     text: 人の操作の「署名」は、画面で描く・登録した画像を重ねる見た目の署名か、鍵で署名する暗号の署名か
     state: open
@@ -321,8 +321,10 @@ open_questions:
     resolution: 暫定で名前（既存の制約と同じ）。画面だけで出口を足したい利用者が出たら封をする案
   error-port:
     text: 失敗の行き先。ノードごとの on_error の辺か、全体の既定（設定）か、両方か
-    state: open
-    resolution: 暫定でノードごとの任意の on_error の辺（無ければ今の failed／aborted）。通知ノードに繋ぐ。全体の既定は fl-2 で決める
+    state: answered
+    resolution: >-
+      両方。2026-10-23 利用者が「on_error と全体の既定」を選んだ。ノードごとの任意の on_error の辺が先で、無いノードの最終の失敗は全体の既定
+      （Options.OnError、cmd/docflow の DOCFLOW_ON_ERROR：ノードの名前の列）へ。どちらも無ければ今の failed。milestone:fl-2
   builtin-scope:
     text: データの加工（列・結合・集計）をどこまで組み込むか
     state: answered
@@ -384,3 +386,9 @@ history:
       分岐のようなやつは最初に繋がれたもので出口も変わるように。設定を変えて繋がらなくなったものは破線などになると良い」。
       milestone:fl-1b：/api/topology に accepts と broken、typed は新しい辺だけ断る、キャンバスの枠・口・辺の色と未定の中空、
       ドラッグ中の可否、壊れた辺の赤い破線。constraints と design.kinds の inference・canvas を改めた
+  fl-2-implemented:
+    summary: >-
+      2026-10-23 利用者が notify-shape（図のノード）と error-port（on_error と全体の既定）に答えた。milestone:fl-2 に実装した：Kind.Step・Keyed・Fetch、
+      Out.Expand（{{meta.<鍵>}}）、名前で指す資格（DOCFLOW_CRED_<名前> かファイル）、Node.OnError と Options.OnError、docflow/render（pdf・png）、
+      docflow/io/smtp・s3（s3 と s3-trigger）・http・notify。SVG の描画は vector/svgbdf が main に無いので後。render-node・s3-trigger-entry・notify-node を implemented、
+      io-nodes を partial に

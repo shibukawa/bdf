@@ -74,7 +74,7 @@ export function badge(text, cls = "badge-ghost") {
   return el("span", text, { className: "badge " + cls });
 }
 
-export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "Export" };
+export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "Export", render: "Render", notify: "Notify", smtp: "Mail (SMTP)", s3: "S3", "s3-trigger": "S3 Trigger", http: "HTTP" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
