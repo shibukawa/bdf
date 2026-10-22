@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/converter"
+	"github.com/shibukawa/bdf/form"
 	"github.com/shibukawa/bdf/internal/cms"
 	"github.com/shibukawa/bdf/internal/cms/cmstest"
 )
@@ -178,5 +180,39 @@ func TestSignVeraPDF(t *testing.T) {
 		if !strings.Contains(string(out), "PASS") {
 			t.Errorf("PDF/A-%s: %s", level, out)
 		}
+	}
+}
+
+// TestSignOnSheet shows the signature on the picture of a template of
+// Excel: the name of its tag is that of the picture, in a tile of a sheet.
+func TestSignOnSheet(t *testing.T) {
+	tpl, err := os.ReadFile("../../converter/xlsx/testdata/form-fixed.xlsx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile("../../test/xlsx/data/form-fixed.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := form.LoadData(form.Source{FileName: "form-fixed.json", Data: b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data["photo"] = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNjAgMTIwIj48cGF0aCBkPSJNMTAgMTAwIEwxODAgMjAgTDM1MCAxMDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzAwMCIvPjwvc3ZnPg=="
+	res, err := form.Fill(bytes.NewReader(tpl), int64(len(tpl)), &form.Options{Data: data, Convert: &converter.Options{FontDirs: []string{"../../converter/pptx/testdata/fonts"}, NoSystemFonts: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca := cmstest.NewAuthority("BDF test root")
+	id := ca.Issue("Taro Yamada", false)
+	pdf, wr := signedPDF(t, res.Doc, &Options{Sign: &Signature{Key: id.Key, Chain: id.Chain, Field: "photo"}})
+	if len(wr.Warnings) != 0 {
+		t.Errorf("warnings: %v", wr.Warnings)
+	}
+	if _, err := verifyPDF(t, pdf); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(pdf, []byte("/Rect [0 0 0 0]")) || !bytes.Contains(pdf, []byte("/FT /Sig /T (photo)")) {
+		t.Error("the signature does not show on the picture")
 	}
 }
