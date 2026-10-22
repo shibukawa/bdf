@@ -4,7 +4,7 @@
 
 ## ノードのテンプレート {#templates}
 
-テンプレートは Admin → Topology のノードのサイドバー（Templates: id とファイル）でアップロードするか、`PUT /api/nodes/<node>/templates/<id>` にファイルをボディとして送ります（[テンプレート](api.md#templates)）。テンプレートはノードとともにあります。ノードを削除するとテンプレートも消えます。
+テンプレートは Topology ページのノードのサイドバー（Templates: id とファイル）でアップロードするか、`PUT /api/nodes/<node>/templates/<id>` にファイルをボディとして送ります（[テンプレート](api.md#templates)）。テンプレートはノードとともにあります。ノードを削除するとテンプレートも消えます。
 
 テンプレートは `bdf fill` が受け取るものです。
 

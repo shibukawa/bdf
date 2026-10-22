@@ -8,7 +8,7 @@
 
 ## IPP {#ipp}
 
-すべてのノードは `ipp://<host>:<port>/ipp/print/<name>` の IPP プリンタです（マネージャーが TLS の後ろにあれば `ipps://`）。キューの名前に印刷したジョブは先へ送られ、プリンタの名前なら印刷され、ディスプレイの名前なら表示されます。コンピュータはノードを IPP プリンタとして追加します。`bdf printers -url ipp://<host>:<port>/ipp/print` はすべてのノードを一覧します。CUPS クライアントの `lpstat` も同じです（CUPS-Get-Printers）。リクエストのジョブ属性（`media`、`copies`、`job-name` ……）はメタデータ `ipp.<name>` としてジョブとともに流れます。
+すべてのノードは `ipp://<host>:<port>/ipp/print/<name>` の IPP プリンタです（マネージャーが TLS の後ろにあれば `ipps://`）。キューの名前に印刷したジョブは先へ送られ、プリンタの名前なら印刷され、ディスプレイの名前なら表示されます。コンピュータはノードを IPP プリンタとして追加します。`bdf printers -url ipp://<host>:<port>/ipp/print` はすべてのノードを一覧します。CUPS クライアントの `lpstat` も同じです（CUPS-Get-Printers）。リクエストのジョブ属性（`media`、`copies`、`job-name` ……）と `document-metadata` はメタデータ `ipp.<name>` としてジョブとともに流れます。アカウント（`job-account-id`、`job-accounting-user-id`）、`document-metadata`、独自の属性（`x-…`）は、ジョブが届くプリンタへ渡ります（[プリンタへ渡るもの](flow.md#ipp-attributes)）。
 
 IPP で印刷できる人は運用者の `submit_tokens` で決まります。1 つでも設定されていれば、クライアントはトークンの名前とシークレットを Basic 認証で渡します（アプリも id とシークレットを同じように渡します）。設定がなければ、マネージャーに届く誰もが送れます。クライアントが渡す requesting-user-name は「(as …)」として表示されるだけで、確認はしません。
 

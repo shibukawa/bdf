@@ -6,8 +6,9 @@ Every node has a kind, and the settings of its kind. The entries — endpoints a
 
 | Setting | |
 |---|---|
-| Name | the node's name ([Names and titles](topology.md#names)) |
-| Title | shown instead of the name |
+| Name | the node's name ([Names, titles and descriptions](topology.md#names)) |
+| Title | shown under the name |
+| Description (`description`) | a note of what the node is for, up to 1000 characters: its first lines in the node on the canvas, all of it in the sidebar |
 | Scope, Owner | who may send to the node from the pages, and whose its jobs are: `shared` (everyone signed in), `group` with the group as owner, or `personal` with the person's email as owner ([Scopes of nodes](roles.md#scopes)) |
 
 A line in the sidebar tells what the node takes and what it sends on ([Kinds of payload](flow.md#kinds)).

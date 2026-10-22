@@ -8,7 +8,7 @@ The form on [Jobs](jobs.md#print), and the form of a node on the [Topology](topo
 
 ## IPP {#ipp}
 
-Every node is an IPP printer at `ipp://<host>:<port>/ipp/print/<name>` (`ipps://` when the manager is behind TLS): a job printed to a queue's name is forwarded, to a printer's name printed, to a display's name shown. A computer adds the node as an IPP printer; `bdf printers -url ipp://<host>:<port>/ipp/print` lists every node, as a CUPS client's `lpstat` does (CUPS-Get-Printers). The job attributes of the request (`media`, `copies`, `job-name` …) go with the job as metadata, `ipp.<name>`.
+Every node is an IPP printer at `ipp://<host>:<port>/ipp/print/<name>` (`ipps://` when the manager is behind TLS): a job printed to a queue's name is forwarded, to a printer's name printed, to a display's name shown. A computer adds the node as an IPP printer; `bdf printers -url ipp://<host>:<port>/ipp/print` lists every node, as a CUPS client's `lpstat` does (CUPS-Get-Printers). The job attributes of the request (`media`, `copies`, `job-name` …) and its `document-metadata` go with the job as metadata, `ipp.<name>`; the account (`job-account-id`, `job-accounting-user-id`), `document-metadata` and attributes of one's own (`x-…`) go on to the printers the job reaches ([What goes on to the printer](flow.md#ipp-attributes)).
 
 Who may print over IPP is the operator's `submit_tokens`: with any set, the client gives a token's name and secret as Basic authentication (an app gives its id and secret the same way); with none, anyone who reaches the manager may send. The requesting-user-name the client gives is shown as "(as …)", never checked.
 

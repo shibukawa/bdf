@@ -451,7 +451,7 @@ function viewSidebar() {
     const p = el("p", undefined, { className: "text-sm text-base-content/60" });
     p.append("Click a node to see the jobs sent there that you may see, and to print there when you may. ");
     if (live && Object.keys(live.nodes).length === 0) p.append("Nothing of yours is in the network right now.");
-    aside.replaceChildren(p);
+    aside.replaceChildren(p, el("a", "The manual: this page, and what each node does", { className: "link mt-2 block text-sm", href: "/help/topology#view", target: "_blank", rel: "noopener" }));
     return;
   }
   const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });

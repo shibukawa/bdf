@@ -4,7 +4,7 @@ A template node fills a form with data and sends the form on as a `.bdf` documen
 
 ## The templates of a node {#templates}
 
-A template is uploaded in the node's sidebar on Admin → Topology (Templates: an id and a file), or with `PUT /api/nodes/<node>/templates/<id>` with the file as the body ([Templates](api.md#templates)). It goes with the node: deleting the node deletes its templates.
+A template is uploaded in the node's sidebar on the Topology page (Templates: an id and a file), or with `PUT /api/nodes/<node>/templates/<id>` with the file as the body ([Templates](api.md#templates)). It goes with the node: deleting the node deletes its templates.
 
 A template is one of what `bdf fill` takes:
 

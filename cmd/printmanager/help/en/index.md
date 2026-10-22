@@ -7,8 +7,8 @@ The Print Manager is a software-defined document network. A document enters at a
 | Page | Who | What |
 |---|---|---|
 | Jobs | everyone signed in | print a document to a node you may send to; your jobs and your groups' ([Jobs](jobs.md)) |
-| Topology | everyone signed in | the network as it is laid out, with the activity of the jobs you may see ([The view](topology.md#view)) |
-| Admin → Topology | the role topology | the editor: nodes placed, connected and set up ([The editor](topology.md#editor), [Node kinds](nodes.md)) |
+| Topology | everyone signed in | the network as it is laid out, with the activity of the jobs you may see; print at a node ([Looking](topology.md#view)) |
+| Topology, as the editor | the role topology | the same page: nodes placed, connected and set up ([The editor](topology.md#editor), [Node kinds](nodes.md)); Admin in the bar leads there |
 | Admin → Apps | the role topology | the applications that send with credentials of their own ([Apps](entries.md#apps)) |
 | Admin → Inboxes | the role topology | release or discard what the inboxes hold ([Inboxes](inboxes.md#inboxes)) |
 | Admin → Jobs | the role topology | every job, or those sent to one node, and the route each took |

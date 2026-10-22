@@ -7,8 +7,8 @@ Print Manager は、ソフトウェアで定義する文書のネットワーク
 | ページ | 誰が | 何を |
 |---|---|---|
 | Jobs | サインインした全員 | 送れるノードに文書を印刷する。自分のジョブと自分のグループのジョブ（[ジョブ](jobs.md)） |
-| Topology | サインインした全員 | 配置されたとおりのネットワークと、見られるジョブの動き（[ビュー](topology.md#view)） |
-| Admin → Topology | 役割 topology | エディタ。ノードを置き、つなぎ、設定する（[エディタ](topology.md#editor)、[ノードの種類](nodes.md)） |
+| Topology | サインインした全員 | 配置されたとおりのネットワークと、見られるジョブの動き。ノードで印刷する（[見る](topology.md#view)） |
+| Topology（エディタ） | 役割 topology | 同じページ。ノードを置き、つなぎ、設定する（[エディタ](topology.md#editor)、[ノードの種類](nodes.md)）。バーの Admin もここに行く |
 | Admin → Apps | 役割 topology | 自前の資格情報で送るアプリケーション（[アプリ](entries.md#apps)） |
 | Admin → Inboxes | 役割 topology | インボックスに留まったものを送り出す、または破棄する（[インボックス](inboxes.md#inboxes)） |
 | Admin → Jobs | 役割 topology | すべてのジョブ、または 1 つのノードに送られたジョブと、それぞれがたどった経路 |

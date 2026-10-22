@@ -9,7 +9,7 @@ Every page but the devices' `/tablet` is for a person signed in at the organizat
 | Role | Pages | |
 |---|---|---|
 | everyone signed in | Jobs, Topology, Help | print to the nodes they may send to; see their jobs and their groups' |
-| `topology` | Admin → Topology, Apps, Inboxes, Jobs, Deliveries | lay out the network and what is at it — nodes, templates, keys, apps, devices, inboxes, deliveries — and see every job |
+| `topology` | Topology as the editor; Admin → Apps, Inboxes, Jobs, Deliveries | lay out the network and what is at it — nodes, templates, keys, apps, devices, inboxes, deliveries — and see every job |
 | `audit` | Audit | the audit log, and every job (reading) |
 | administrator | all | both roles, and the API as the admin token |
 

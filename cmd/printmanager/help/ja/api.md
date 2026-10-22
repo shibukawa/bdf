@@ -14,7 +14,7 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 
 | | |
 |---|---|
-| `GET /api/me` | リクエストの主。種類（人、アプリ、トークン）、id、名前、メールアドレス、グループ、管理者かどうか |
+| `GET /api/me` | リクエストの主。種類（人、アプリ、トークン）、id、名前、メールアドレス、グループ、管理者かどうか、役割（`topology`、`audit`） |
 | `GET /auth/login`、`POST /auth/logout` | プロバイダでサインインする。サインアウトする |
 | `POST /oauth/token` | アプリのトークン。クライアントクレデンシャルグラント |
 
@@ -40,7 +40,7 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 
 | | |
 |---|---|
-| `GET /api/topology` | ノードとエッジ。`takes` と `emits` 付き。管理者には設定と数も |
+| `GET /api/topology` | ノードとエッジ。`takes`、`emits`、`accepts`（いまノードに送れるもの）、`broken`（そこから出る、もうつながっていないエッジ。[壊れたエッジ](flow.md#broken)）付き。管理者には設定と数も |
 | `GET /api/topology/live` | 呼び手が見られるジョブの動き。各ノードの数と直近 10 分のレグ。ポーリング用の ETag（変化がなければ 304） |
 | `GET`、`PUT /api/layout` | ノードを描く位置 |
 | `GET /api/nodes`、`GET /api/nodes/<name>` | すべてのノード。1 つのノード |

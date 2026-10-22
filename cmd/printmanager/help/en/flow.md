@@ -10,7 +10,7 @@ What flows along an edge is of one of three kinds:
 |---|---|---|
 | `bdf` | a `.bdf` document: what printers, displays and the pages show | blue |
 | `data` | data for a template: JSON, YAML, CSV, an Excel workbook or a Parquet file | green |
-| `any` | any other file as it was received — a PDF, an Office document, a picture — for a convert node or an archive | grey |
+| `any` | any other file as it was received — a PDF, an Office document, a picture — for a convert node or an archive | amber |
 
 What a node sends on:
 
@@ -19,9 +19,15 @@ What a node sends on:
 - a display sends what its fallback printer prints, `.bdf`;
 - every other node sends on what reached it.
 
-What a node takes: a printer and a display take `bdf` only; a template node takes `data` only; every other node takes anything. When a node is saved, the kinds that reach every node are inferred from the entries along the edges, and an edge that would bring a kind a node does not take is refused; the message names the path, "laser (printer) takes bdf, but any reaches it: raw → fan → laser". `GET /api/topology` shows each node's `takes` and `emits`, and the editor colors the ports and the edges by them.
+What a node takes: a printer and a display take `bdf` only; a template node takes `data` only; every other node takes anything. What may be sent to a node now is narrower: what it takes, within what every node after it takes. A queue in front of a printer takes `.bdf` alone, as it would carry nothing else that the printer could print; a queue, a class, a filter or an inbox with no edge yet takes the kind of its first edge, on either side. The canvas colors the ports and the edges by these kinds — blue `bdf`, green `data`, amber `any`, purple several — and draws a port not typed yet hollow and dashed.
 
-A job's payload is checked again at every node it reaches, so that a topology changed while the job was on its way does not break it: a node that cannot take the payload gets a leg in `error`.
+When a node is saved, the kinds that reach every node are inferred from the entries along the edges, and a new edge that would bring a kind a node does not take is refused; the message names the path, "laser (printer) takes bdf, but any reaches it: raw → fan → laser". `GET /api/topology` shows each node's `takes`, `emits`, `accepts` (what may be sent to it now) and `broken`.
+
+## Broken edges {#broken}
+
+A change of a node's settings alone — an entry that takes data now, a queue made a template node — is saved even when it leaves an edge carrying what the node after it does not take. The edge stays, broken: the canvas draws it dashed and red with a mark, the sidebar of the node it leaves says why, and the save says which edges it broke. Mend it by putting a convert or a template node between, by changing the setting back, or by removing the edge.
+
+A job's payload is checked again at every node it reaches, so that a broken edge, or a topology changed while the job was on its way, does not break the job: a node that cannot take the payload gets a leg in `error`.
 
 ## Payloads {#payloads}
 
@@ -40,6 +46,10 @@ Metadata goes with a job through the topology. It comes from three sources, each
 A key is letters, digits, `_`, `.`, `-` and `/`, up to 64 characters; a job has at most 64 keys and 16 KiB of metadata. The Jobs pages show a job's metadata when hovering its name, and an archive's record keeps it.
 
 At a node, a filter's rules and a template node's `template_from` see the job's metadata, its `name` and `user`, and the payload that reached the node: `$kind`, `$format`, `$pages`, `$size`, `$sha256` and `$payload` (its id).
+
+### What goes on to the printer {#ipp-attributes}
+
+A few keys go on to the printer as the IPP attributes of the same names, when a printer node prints the job: `ipp.job-account-id` and `ipp.job-accounting-user-id` (the account the print is charged to, PWG 5100.7), `ipp.document-metadata` (`key=value` strings with Dublin Core's keys or keys that begin with `x-`, PWG 5100.13) and `ipp.x-…` (attributes of one's own). An IPP request's own attributes give them, or the metadata of a request to an endpoint or the API: `?meta.ipp.job-account-id=sales`. A value the attribute does not take is left out; whether the printer uses the rest is the printer's.
 
 ## Rules of a filter {#rules}
 

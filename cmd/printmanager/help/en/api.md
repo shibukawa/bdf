@@ -14,7 +14,7 @@ An error is `{"error": "…"}` with its status: 400 a request the manager cannot
 
 | | |
 |---|---|
-| `GET /api/me` | who the request is from: its kind (a person, an app, a token), id, name, email and groups, and whether an administrator |
+| `GET /api/me` | who the request is from: its kind (a person, an app, a token), id, name, email and groups, whether an administrator, and its roles (`topology`, `audit`) |
 | `GET /auth/login`, `POST /auth/logout` | sign in at the provider, sign out |
 | `POST /oauth/token` | an app's token: the client credentials grant |
 
@@ -40,7 +40,7 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 
 | | |
 |---|---|
-| `GET /api/topology` | the nodes and their edges, with `takes` and `emits`; an administrator gets the settings and the counts too |
+| `GET /api/topology` | the nodes and their edges, with `takes`, `emits`, `accepts` (what may be sent to the node now) and `broken` (the edges from it that no longer connect: [Broken edges](flow.md#broken)); an administrator gets the settings and the counts too |
 | `GET /api/topology/live` | the activity of the jobs the caller sees: counts at each node, and the legs of the last ten minutes; an ETag to poll with (304 while nothing changed) |
 | `GET`, `PUT /api/layout` | where the nodes are drawn |
 | `GET /api/nodes`, `GET /api/nodes/<name>` | every node; one node |

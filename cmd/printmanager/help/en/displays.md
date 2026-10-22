@@ -4,7 +4,7 @@ A display is a node that shows jobs instead of printing them: on the devices enr
 
 ## The display {#display}
 
-A display's settings are on Admin → Topology ([Display](nodes.md#display)): its fallback printer and after how long an unopened slip is printed, how long ended slips stay on the board, and how long a device may be silent and still count as connected. While no device of the display is connected, every unopened slip is printed. A display takes `.bdf` documents only; put a convert node before it for files as received.
+A display's settings are in its sidebar on the Topology page ([Display](nodes.md#display)): its fallback printer and after how long an unopened slip is printed, how long ended slips stay on the board, and how long a device may be silent and still count as connected. While no device of the display is connected, every unopened slip is printed. A display takes `.bdf` documents only; put a convert node before it for files as received.
 
 The jobs sent to a display are its group's ([Scopes of nodes](roles.md#scopes)); a display with no group of its own gives its jobs its fallback printer's group.
 
@@ -12,7 +12,7 @@ The jobs sent to a display are its group's ([Scopes of nodes](roles.md#scopes));
 
 A device is enrolled with a one-time code an administrator makes for the display:
 
-1. On Admin → Topology, open the display and press **Add a device (QR code)** under Devices. The dialog shows a code of ten characters, its QR code, the URL `/tablet?code=…`, and until when the code is valid (15 minutes).
+1. On the Topology page, open the display and press **Add a device (QR code)** under Devices. The dialog shows a code of ten characters, its QR code, the URL `/tablet?code=…`, and until when the code is valid (15 minutes).
 2. On the device, open the URL (scan the QR code, or open `/tablet` and type the code), give the device a name — "tablet at the shipping dock" — and enroll it.
 3. Add the page to the home screen: it is the device's board from now on.
 
