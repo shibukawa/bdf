@@ -19,10 +19,11 @@ import (
 // configuration: the admin token (an administrator), a submit token (a
 // user of its name). What each may see and send to is scope.go's.
 
-// viewerOf finds who a request is from: the admin token (bearer), a
-// submit token (bearer name:secret, or Basic), or a person signed in to
-// the pages (their session). A request with a credential that is not
-// known is nobody's.
+// viewerOf finds who a request is from: the admin token (bearer), an
+// app's token, a submit token (bearer name:secret, or Basic), a person's
+// token (a frontend's, at the exports and /api/me alone), or a person
+// signed in to the pages (their session). A request with a credential
+// that is not known is nobody's.
 func (h *handler) viewerOf(r *http.Request) (*Viewer, bool) {
 	tok := bearer(r)
 	if sameSecret(h.m.o.AdminToken, tok) {
@@ -32,6 +33,14 @@ func (h *handler) viewerOf(r *http.Request) (*Viewer, bool) {
 		// an app's token (apps.go)
 		if v, ok := h.m.appTokenViewer(r.Context(), tok); ok {
 			return v, true
+		}
+		// a person's token (oauth.go): it opens the exports and /api/me,
+		// not the pages' API
+		if v, ok := h.m.userTokenViewer(r.Context(), tok); ok {
+			if strings.HasPrefix(r.URL.Path, OutPath+"/") || r.URL.Path == "/api/me" {
+				return v, true
+			}
+			return nil, false
 		}
 	}
 	name, secret, ok := r.BasicAuth()
@@ -175,6 +184,9 @@ func (m *Manager) Destinations(ctx context.Context, v *Viewer) ([]Destination, e
 	}
 	out := []Destination{}
 	for _, n := range topo {
+		if n.Kind == KindExport {
+			continue // read from, never sent to
+		}
 		allowed := v.CanSendTo(n.Scope, n.Owner)
 		if v.Kind == PrincipalApp && !v.Admin {
 			allowed = n.Kind == KindEndpoint && slices.Contains(n.Apps, v.ID)

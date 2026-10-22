@@ -10,13 +10,14 @@
 // edges, its name, no cycle). Looking: a node shows the jobs sent to it
 // that the person sees, and a form to print there when they may.
 
-import { $, api, button, changed, el, keptSection, kindBadge, KINDS, legsOf, onChange, PAYLOADS, sender, since, stateBadge, status } from "./admin.js";
+import { $, api, button, changed, el, keptSection, kindBadge, KINDS, legsOf, listedSection, onChange, PAYLOADS, sender, since, stateBadge, status } from "./admin.js";
 import { createCanvas } from "./canvas.js";
 
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
 const ACCEPTS = { file: "documents (PDF, Office, images, .bdf …)", data: "data (JSON, YAML, CSV, Excel, Parquet)" };
 const OUTPUTS = { bdf: "the .bdf document made of it", file: "the file as received (a convert node makes the document later)" };
 const KINDS_OF_PAYLOAD = { "": "any", bdf: ".bdf document", data: "data", any: "any other file" };
+const SUBJECTS = { email: "email: the person's email, as the IdP verified it", sub: "sub: the person's subject at the IdP", id: "id: the person's ID here", group: "group: any of the person's groups" };
 const POLL_MS = 4000;
 
 let topo = []; // the nodes, as /api/topology lists them
@@ -491,6 +492,7 @@ function viewSidebar() {
   parts.push(sec);
   aside.replaceChildren(...parts);
   if (n.kind === "sink") keptSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
+  if (n.kind === "export") listedSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
 }
 
 function renderSidebar() {
@@ -545,6 +547,22 @@ function renderSidebar() {
     case "sink":
       form.append(field("Latest", input("f-latest", n.latest || "", { placeholder: "10", inputMode: "numeric" }), "How many of the latest documents it keeps; an older one goes when a newer comes. Their first pages show here and on the canvas."));
       break;
+    case "export": {
+      form.append(field("Owner's key", input("f-by", n.by || "", { placeholder: "customer_id (a metadata key); empty: a person reads what they could see of the job", autocomplete: "off" }), "The metadata key whose value says whose a document is: a person reads the documents whose value is them, under the subject below. A backend reads every one."));
+      form.append(field("Subject", selectInput("f-subject", Object.entries(SUBJECTS), n.subject || "email"), "What of a person is compared with the owner's value."));
+      form.append(field("Fields", input("f-fields", (n.fields || []).join(", "), { placeholder: "invoice_no, doc_type (metadata keys, comma-separated)" }), "Metadata copied into the entries listed, for the reader to show or pick by."));
+      form.append(field("Entries", input("f-entries", n.entries || "", { placeholder: "1000", inputMode: "numeric" }), "How many of the latest entries are listed for one owner, and for everyone; an older entry is still read by its job's number."));
+      const appBoxes = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
+      for (const a of apps) {
+        if (a.public) continue;
+        const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
+        l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name: "app", value: a.id, checked: (n.apps || []).includes(a.id) }), a.id + (a.title ? " · " + a.title : ""));
+        appBoxes.append(l);
+      }
+      if (!appBoxes.childElementCount) appBoxes.append(el("a", "No backend apps yet: register one", { className: "link text-sm", href: "/admin/apps" }));
+      form.append(field("Apps allowed", appBoxes, "Backends that read every entry with their token (the scope export). A frontend (a public client) reads as the person using it, with a token of theirs: it needs no listing here."));
+      break;
+    }
     case "queue":
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job: a fan-out when there are several."));
       break;
@@ -585,6 +603,7 @@ function renderSidebar() {
       form.append(field("Keep", input("f-keep", n.keep || "", { placeholder: "14d" }), "How long released and discarded items stay shown."));
       break;
     case "archive":
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Once written, the job goes on to every node chosen: an export after the archive lists the document for applications and people to fetch. The port on the canvas adds one too."));
       form.append(field("Store", input("f-store", n.store || "", { placeholder: "s3://bucket?region=… or bbolt:path", required: true }), "A documents URL: bbolt, s3, r2 or gcs. Each job's .bdf and record are written once; the manager never changes or deletes them."));
       form.append(field("Collection", input("f-collection", n.collection || "", { placeholder: "archive-" + (n.name || "<name>") })));
       break;
@@ -612,7 +631,10 @@ function renderSidebar() {
       break;
     }
   }
-  form.append(field("Scope", selectInput("f-scope", [["shared", "shared: anyone signed in may send"], ["group", "group: its members send and see the jobs"], ["personal", "personal: one person"]], n.scope || "shared")));
+  const scopes = kind === "export"
+    ? [["shared", "shared: anyone signed in may read their own"], ["group", "group: its members may read their own"], ["personal", "personal: one person"]]
+    : [["shared", "shared: anyone signed in may send"], ["group", "group: its members send and see the jobs"], ["personal", "personal: one person"]];
+  form.append(field("Scope", selectInput("f-scope", scopes, n.scope || "shared")));
   form.append(field("Owner", input("f-owner", n.owner || "", { placeholder: "a group (a value of the groups claim), or a person's email" })));
   const actions = el("div", undefined, { className: "mt-2 flex flex-wrap gap-2" });
   actions.append(el("button", draft ? "Add" : "Save", { type: "submit", className: "btn btn-sm btn-primary" }));
@@ -677,6 +699,13 @@ async function save(ev) {
     case "sink":
       if (dur("f-latest")) body.latest = Number(dur("f-latest"));
       break;
+    case "export":
+      if (dur("f-by")) body.by = dur("f-by");
+      body.subject = $("f-subject").value;
+      body.fields = names($("f-fields").value);
+      if (dur("f-entries")) body.entries = Number(dur("f-entries"));
+      body.apps = [...document.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
+      break;
     case "queue":
       body.to = picked("to");
       break;
@@ -693,6 +722,7 @@ async function save(ev) {
       body.keep = dur("f-keep");
       break;
     case "archive":
+      body.to = picked("to");
       body.store = $("f-store").value.trim();
       if ($("f-collection").value.trim()) body.collection = $("f-collection").value.trim();
       break;
@@ -743,9 +773,10 @@ async function remove(name) {
 // and templates, a display's devices.
 function extras(n, aside) {
   const links = el("div", undefined, { className: "mt-3 flex flex-col gap-1 border-t border-base-300 pt-3 text-sm" });
-  links.append(el("span", "IPP: " + n.ipp, { className: "font-mono text-xs text-base-content/60 break-all" }));
+  // an export is read from, never sent to: no IPP destination
+  if (n.kind !== "export") links.append(el("span", "IPP: " + n.ipp, { className: "font-mono text-xs text-base-content/60 break-all" }));
   const row = el("div", undefined, { className: "flex flex-wrap gap-3" });
-  row.append(el("a", "Jobs sent here", { className: "link", href: "/admin/jobs?dest=" + encodeURIComponent(n.name) }));
+  if (n.kind !== "export") row.append(el("a", "Jobs sent here", { className: "link", href: "/admin/jobs?dest=" + encodeURIComponent(n.name) }));
   if (n.kind === "inbox") row.append(el("a", `${n.held || 0} held: open the inbox`, { className: "link", href: "/admin/inboxes" }));
   if (n.pending) row.append(el("a", `${n.pending} deliveries waiting`, { className: "link", href: "/admin/deliveries" }));
   links.append(row);
@@ -778,6 +809,16 @@ lpstat -h ${location.hostname}:${n.port} -p`, { className: "overflow-x-auto roun
   }
   if (n.kind === "sink") {
     keptSection(n.name).then((sec) => aside.append(sec)).catch((e) => status(e.message, true));
+  }
+  if (n.kind === "export") {
+    const sec = section("Readers");
+    sec.append(hint("Applications and people fetch what is listed here: the entries newest first (?owner= one owner's, ?limit=), one entry, the archive's record of it, and the document itself. A backend sends its token (POST /oauth/token, client credentials, the scope export); a frontend sends the token it got for the person (a public client, /oauth/authorize with PKCE); the pages use their session."));
+    sec.append(el("pre", `GET ${location.origin}/out/${n.name}
+GET ${location.origin}/out/${n.name}/<job>
+GET ${location.origin}/out/${n.name}/<job>/record
+GET ${location.origin}/out/${n.name}/<job>/document`, { className: "overflow-x-auto rounded-box bg-base-200 p-2 font-mono text-xs whitespace-pre-wrap" }));
+    aside.append(sec);
+    listedSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
   }
   if (n.kind === "printer" && n.preview) {
     const sec = section("Preview");

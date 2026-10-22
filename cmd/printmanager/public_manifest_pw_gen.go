@@ -14,23 +14,23 @@ func init() {
 			{Path: "admin-jobs.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 1231, ETag: "\"09245285eac37d9ccbd7a6fd7ffb581f\"", Preference: 1, External: false},
 			{Path: "admin-jobs.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 1274, ETag: "\"27d57fe6330bdb59c3a97ff47fd0114e\"", Preference: 1, External: false},
 		}},
-		{URL: "admin.js", CacheControl: "public, no-cache", Revision: "13f0c88dd12f4612", Representations: []middlewares.AssetRepresentation{
-			{Path: "admin.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 6494, ETag: "\"640800191590f37e5b7e96c46da15563\"", Preference: 1, External: false},
-			{Path: "admin.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 2303, ETag: "\"4d9f392704fc5f361e1b15e50b8b645c\"", Preference: 1, External: false},
-			{Path: "admin.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 2687, ETag: "\"5a2a38b40fca8b96d8f81136a0f62544\"", Preference: 1, External: false},
-			{Path: "admin.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 2715, ETag: "\"c3329f699fc621d58893466db22d6182\"", Preference: 1, External: false},
+		{URL: "admin.js", CacheControl: "public, no-cache", Revision: "721a1dffdc7fb4ff", Representations: []middlewares.AssetRepresentation{
+			{Path: "admin.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 8035, ETag: "\"7a5947b2fee9b6d9b42fe2d789f68cba\"", Preference: 1, External: false},
+			{Path: "admin.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 2614, ETag: "\"df3b933dff57de870197a8564eadb37a\"", Preference: 1, External: false},
+			{Path: "admin.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 3031, ETag: "\"ad58ee075c52ce749e09247ad984a38c\"", Preference: 1, External: false},
+			{Path: "admin.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 3057, ETag: "\"9f248d635ba07d065ffaff1a24a0cc5e\"", Preference: 1, External: false},
 		}},
-		{URL: "app.css", CacheControl: "public, no-cache", Revision: "833dc22dd6526831", Representations: []middlewares.AssetRepresentation{
-			{Path: "app.css", MediaType: "text/css; charset=utf-8", ContentEncoding: "", Length: 118568, ETag: "\"50d082a501b7bc6322b64734cbe18567\"", Preference: 1, External: false},
-			{Path: "app.css.br", MediaType: "text/css; charset=utf-8", ContentEncoding: "br", Length: 15213, ETag: "\"b82b906a9abb26191175f7749f7de0e2\"", Preference: 1, External: false},
-			{Path: "app.css.gz", MediaType: "text/css; charset=utf-8", ContentEncoding: "gzip", Length: 17718, ETag: "\"d5710c413dfaba76a0792c5f49940184\"", Preference: 1, External: false},
-			{Path: "app.css.zstd", MediaType: "text/css; charset=utf-8", ContentEncoding: "zstd", Length: 17346, ETag: "\"4c0f904f972dc7edb46c99ffa243896a\"", Preference: 1, External: false},
+		{URL: "app.css", CacheControl: "public, no-cache", Revision: "02f01fb171333a70", Representations: []middlewares.AssetRepresentation{
+			{Path: "app.css", MediaType: "text/css; charset=utf-8", ContentEncoding: "", Length: 122008, ETag: "\"7cf77aa1011f4eb842ee7a9628a34a4d\"", Preference: 1, External: false},
+			{Path: "app.css.br", MediaType: "text/css; charset=utf-8", ContentEncoding: "br", Length: 15396, ETag: "\"1fb16adad0b5500d4c775eb48d07e350\"", Preference: 1, External: false},
+			{Path: "app.css.gz", MediaType: "text/css; charset=utf-8", ContentEncoding: "gzip", Length: 18096, ETag: "\"6ef4984179f294e54f6048924ded8afb\"", Preference: 1, External: false},
+			{Path: "app.css.zstd", MediaType: "text/css; charset=utf-8", ContentEncoding: "zstd", Length: 17608, ETag: "\"09a2500ea9119d0e380e9a98050d0638\"", Preference: 1, External: false},
 		}},
-		{URL: "apps.js", CacheControl: "public, no-cache", Revision: "7f4ebcc2e3503101", Representations: []middlewares.AssetRepresentation{
-			{Path: "apps.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 4423, ETag: "\"cbafa6d81b017308a6fc8ff34ee9f3ca\"", Preference: 1, External: false},
-			{Path: "apps.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 1486, ETag: "\"166ea39c34eb339232ab0e1968b50805\"", Preference: 1, External: false},
-			{Path: "apps.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 1749, ETag: "\"bf2c8883148c6805da8e14448215c6f1\"", Preference: 1, External: false},
-			{Path: "apps.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 1798, ETag: "\"30dc52960ecf9d2d457820918ada6bd5\"", Preference: 1, External: false},
+		{URL: "apps.js", CacheControl: "public, no-cache", Revision: "a4db5b5eec54f40b", Representations: []middlewares.AssetRepresentation{
+			{Path: "apps.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 5464, ETag: "\"0436f7d15842c524f2b556d515e33838\"", Preference: 1, External: false},
+			{Path: "apps.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 1763, ETag: "\"45e8528c481e9eaaa2157ef2086402fd\"", Preference: 1, External: false},
+			{Path: "apps.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 2062, ETag: "\"fc23d90786066c3d71e27f330fc84bc1\"", Preference: 1, External: false},
+			{Path: "apps.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 2082, ETag: "\"128802af3fbf667c707ef632f0126972\"", Preference: 1, External: false},
 		}},
 		{URL: "audit.js", CacheControl: "public, no-cache", Revision: "765f94136d3bc91d", Representations: []middlewares.AssetRepresentation{
 			{Path: "audit.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 2838, ETag: "\"812152a72ea9153562c82248ef944577\"", Preference: 1, External: false},
@@ -38,11 +38,11 @@ func init() {
 			{Path: "audit.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 1055, ETag: "\"7f1c103932e29c246a5b69675fb1baaa\"", Preference: 1, External: false},
 			{Path: "audit.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 1086, ETag: "\"268ac5b7bb5c9966997b63b1e6878dcb\"", Preference: 1, External: false},
 		}},
-		{URL: "canvas.js", CacheControl: "public, no-cache", Revision: "8144418028369d03", Representations: []middlewares.AssetRepresentation{
-			{Path: "canvas.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 21401, ETag: "\"6c1dbc01e83a52d9a0f5955d3a2ec05b\"", Preference: 1, External: false},
-			{Path: "canvas.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 6159, ETag: "\"0b3dc94aa12d0905a388d7f46b779e60\"", Preference: 1, External: false},
-			{Path: "canvas.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 6993, ETag: "\"ccce757a0c86b1e7bbbfece64728b6ef\"", Preference: 1, External: false},
-			{Path: "canvas.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 7008, ETag: "\"eaab4b7a2319c812ad40390a9df00023\"", Preference: 1, External: false},
+		{URL: "canvas.js", CacheControl: "public, no-cache", Revision: "98fcb26f3acf2aab", Representations: []middlewares.AssetRepresentation{
+			{Path: "canvas.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 22282, ETag: "\"b8826d3b1c290b847de1437c68b7f478\"", Preference: 1, External: false},
+			{Path: "canvas.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 6352, ETag: "\"e05864ef3780e33622fbd7d680edc919\"", Preference: 1, External: false},
+			{Path: "canvas.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 7199, ETag: "\"5025178ad5abef3a3af41a1c332f60b8\"", Preference: 1, External: false},
+			{Path: "canvas.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 7219, ETag: "\"efc6ad9d5f48d81083fc88d8030882de\"", Preference: 1, External: false},
 		}},
 		{URL: "deliveries.js", CacheControl: "public, no-cache", Revision: "3a9f0b1ca7ad5d06", Representations: []middlewares.AssetRepresentation{
 			{Path: "deliveries.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 1834, ETag: "\"7cfd88898b2e0e637cf226f269baa7e5\"", Preference: 1, External: false},
@@ -68,11 +68,11 @@ func init() {
 			{Path: "tablet.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 3921, ETag: "\"a97f58c66738e793e78f6de5ab86a6a0\"", Preference: 1, External: false},
 			{Path: "tablet.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 3949, ETag: "\"b2e8997c011d58aeca74e343de9ee9af\"", Preference: 1, External: false},
 		}},
-		{URL: "topology.js", CacheControl: "public, no-cache", Revision: "af32fedc946598be", Representations: []middlewares.AssetRepresentation{
-			{Path: "topology.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 50041, ETag: "\"86a8a8e571f22c2ff999d795e6ad0fb2\"", Preference: 1, External: false},
-			{Path: "topology.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 12606, ETag: "\"4ba8c4969504e2cebfd2cc2c3cc9f510\"", Preference: 1, External: false},
-			{Path: "topology.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 14373, ETag: "\"c130c0e659b6c2eb920bd19349ead37e\"", Preference: 1, External: false},
-			{Path: "topology.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 14280, ETag: "\"bc5876dd88c6f44e21a721a44d9b3d06\"", Preference: 1, External: false},
+		{URL: "topology.js", CacheControl: "public, no-cache", Revision: "f450d748797315cc", Representations: []middlewares.AssetRepresentation{
+			{Path: "topology.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 54154, ETag: "\"e811d6f8f025ad8e892659581a18b117\"", Preference: 1, External: false},
+			{Path: "topology.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 13387, ETag: "\"47c801bc8cdbd3c96e015348cdb91327\"", Preference: 1, External: false},
+			{Path: "topology.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 15273, ETag: "\"2ec04499f69496ccafb8aed11d645f26\"", Preference: 1, External: false},
+			{Path: "topology.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 15145, ETag: "\"ae85fa565e4217ac67b2b38787b07b19\"", Preference: 1, External: false},
 		}},
 	})
 }

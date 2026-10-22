@@ -15,10 +15,13 @@ const ROW = 84;
 const PAD = 24;
 const GRID = 8;
 const SVG = "http://www.w3.org/2000/svg";
-const FILL = { endpoint: "#fde68a", cups: "#fecaca", queue: "#ddd6fe", class: "#c7d2fe", filter: "#fbcfe8", template: "#d9f99d", convert: "#a5f3fc", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db", sink: "#bbf7d0" };
+const FILL = { endpoint: "#fde68a", cups: "#fecaca", queue: "#ddd6fe", class: "#c7d2fe", filter: "#fbcfe8", template: "#d9f99d", convert: "#a5f3fc", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db", sink: "#bbf7d0", export: "#fef08a" };
 // the kinds with an output port: they send to other nodes (a display to
-// its fallback printer)
-const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "inbox", "display"]);
+// its fallback printer, an archive what it wrote)
+const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "inbox", "display", "archive"]);
+// the exits read from outside: applications and people fetch what an
+// export lists, drawn as an arrow going out
+const EXIT = new Set(["export"]);
 // the entries: their input is from outside the network (an endpoint's
 // REST, a CUPS server's IPP port), drawn as an arrow coming in
 const ENTRY = new Set(["endpoint", "cups"]);
@@ -149,6 +152,7 @@ export function createCanvas(svg, opts = {}) {
     if (l.pending) out.push(`${l.pending} waiting`);
     if (l.failed) out.push(`${l.failed} failed`);
     if (l.kept) out.push(`${l.kept} kept`);
+    if (l.listed) out.push(`${l.listed} listed`);
     if (!live && n.devices) out.push(`${n.devices} device${n.devices === 1 ? "" : "s"}`);
     if (live && l.recent) out.push(`${l.recent}/h`);
     return out;
@@ -254,6 +258,14 @@ export function createCanvas(svg, opts = {}) {
       inArrow.append(t);
       g.append(inArrow);
     }
+    if (EXIT.has(n.kind)) {
+      // what an export lists is fetched from outside: GET /out/<name>
+      const outArrow = svgEl("path", { d: `M ${NODE_W + 8} ${NODE_H / 2} L ${NODE_W + 30} ${NODE_H / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": "url(#arrow)" });
+      const t = svgEl("title");
+      t.textContent = "REST: applications and people fetch the documents listed here (GET /out/" + n.name + ")";
+      outArrow.append(t);
+      g.append(outArrow);
+    }
     // a CUPS server takes nothing from the other nodes: no input port.
     // The ports are colored by the kind of payload they take and send on
     if (n.kind !== "cups") {
@@ -271,7 +283,7 @@ export function createCanvas(svg, opts = {}) {
       }
       const t = svgEl("title");
       const sends = `Sends on ${payloadText(n.emits)}`;
-      t.textContent = editable ? (n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : "Drag onto a node to connect. ") + sends : sends;
+      t.textContent = editable ? (n.kind === "display" ? "Drag onto a printer: the fallback printer. " : n.kind === "class" ? "Drag onto a node: a member. " : n.kind === "archive" ? "Drag onto a node: what the archive wrote goes on there (an export lists it). " : "Drag onto a node to connect. ") + sends : sends;
       port.append(t);
       g.append(port);
     }

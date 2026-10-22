@@ -1,0 +1,107 @@
+id: milestone:pm-export-1
+type: milestone
+title: pm-export-1 — export のノード、archive の to、/out の口と持ち主の 404、バックエンドの scope export、公開クライアントの認可コード + PKCE
+summary: >-
+  requirement:print-manager-export の最初の段。2026-10-22 実装。print/manager に export.go（KindExport、exportsArchived、routeExport、
+  Entry・Entries、dropExport、/out の口）と oauth.go（公開クライアント、CORS、/oauth/authorize、RedeemCode、userTokenViewer）を足し、
+  archive に to（done の後に continueFrom で続け、routing.archived で鍵を運ぶ）、App に Public・RedirectURIs、scope export、Viewer に Subject と
+  ViaOAuth を足した。画面はパレットの Export、export のサイドバー、archive の Forwards to と出力の口、/admin/apps の公開クライアント。
+lifecycle: active
+authority: authored
+scope:
+  milestone: pm-export-1
+constraints:
+- requirement:print-manager-export の制約のまま
+capabilities:
+  export-node:
+    state: implemented
+    about: capability:print-manager/export-node
+  archive-edges:
+    state: implemented
+    about: capability:print-manager/archive-edges
+  owner-filter:
+    state: implemented
+    about: capability:print-manager/export-owner-filter
+  backend-reader:
+    state: implemented
+    about: capability:print-manager/export-backend-reader
+  public-client-pkce:
+    state: implemented
+    about: capability:print-manager/public-client-pkce
+non_goals:
+- 外の IdP のトークンの確かめ、refresh token、同意の画面、presigned URL、ページ送り、項目の刈り込み
+acceptance:
+  e1-path:
+    text: archive を通らずに export に着く道（queue・endpoint・convert・inbox から、別のノードの変更で開く道も）は PUT で 400 で、理由に道。archive → filter → export は通る。export に直接送ったジョブは 400（宛先の一覧にも出ない）、filter に直接送ったジョブは export で error の足跡
+    verified_by: [manager-tests]
+  e2-owner:
+    text: by の値が人の email（大文字小文字を区別しない）・sub・group と合う項目だけが一覧と 1 項目に出る。他人のもの・無いジョブ・別の export・?owner= で他人は 404。by の無い export は CanSee と同じ
+    verified_by: [manager-tests]
+  e3-backend:
+    text: export の apps に載り scope export のアプリは全部を読み ?owner= で絞る。scope の無いアプリ・載っていないアプリ・submit トークンは 403、資格なしは 401。管理者も全部
+    verified_by: [manager-tests]
+  e4-archive:
+    text: 文書と記録は archive から読み、ジョブの記録が消えた後も読める。文書の取り出しは監査に残る。archive の段の 2 度目で 2 度載らない。export を消すと項目と一覧が消え、archive は残る
+    verified_by: [manager-tests]
+  e5-pkce:
+    text: 公開クライアントは redirect URI が要り秘密が無い。authorize は登録の無いクライアントと redirect URI に 400、未ログインは IdP へ、S256 以外と scope の誤りは redirect に error。code は 1 度だけで verifier と redirect URI が合うときだけトークン。トークンは /out と /api/me だけに効き、scope の縮小・無効化・期限で止まる。登録した origin に CORS
+    verified_by: [manager-tests, app-tests]
+  e6-ui:
+    text: パレットに Export。export のサイドバーに Owner's key・Subject・Fields・Entries・Apps allowed と Readers・Listed here。archive に Forwards to と出力の口。/admin/apps に公開クライアントと redirect URI、scope export
+    verified_by: [js-syntax]
+verification:
+  manager-tests:
+    state: passed
+    method: integration
+    test: go test -race ./print/manager/
+    authority: observed
+    evidence:
+      path: print/manager/export_test.go
+      locator: 'TestExport、TestExportAfterFilter、TestOAuthCode。2026-10-22 macOS'
+  app-tests:
+    state: passed
+    method: integration
+    test: go test ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: cmd/printmanager/handlers/login_test.go
+      locator: 'TestOAuthAuthorize：popcornweb と print/fakeidp で、未ログインの /oauth/authorize は /auth/login へ、ログイン後は code、RFC 7636 の例の verifier で交換、トークンで /api/me。埋め込みの資産は pw generate の後'
+  js-syntax:
+    state: passed
+    method: static
+    test: node --check cmd/printmanager/public/*.js
+    authority: observed
+  browser:
+    state: passed
+    method: manual
+    authority: observed
+    evidence:
+      path: cmd/printmanager/public/topology.js
+      locator: '2026-10-22 pw dev（8081）を内蔵ブラウザで：API で billing → vault（archive、to statements）→ statements（export、by customer、fields invoice）を置き 3 件送った。Mina Member の /topology で Statements のサイドバーの Listed here は member@example.com の INV-3 だけ、セッションの /out/statements も 1 件。Ada Admin の編集のサイドバーに Owner''s key・Subject・Fields・Entries・Apps allowed・Readers・3 件。/admin/apps で公開クライアント（http://localhost:5173/callback、scope export）を足し、秘密なしで保存。後で dev の記録から消した' 
+facts:
+  delivery:
+    implemented:
+      date: '2026-10-22'
+      packages:
+      - 'print/manager/export.go（新）、oauth.go（新）、model.go、scope.go、apps.go、deliver.go、transform.go（continueFrom）、route.go、people.go、nodes.go、live.go、store.go、http.go'
+      - 'cmd/printmanager：handlers/auth.go（publicPaths に /out/** と /oauth/token、Viewer.Subject）、pages.pw.html、public/admin.js・canvas.js・topology.js・apps.js、README の Exports と public client'
+    decisions:
+    - '持ち主の一覧の鍵は subject で比べる形（email は小文字）にしてからハッシュ。Alice@Example.com と alice@example.com は 1 つの一覧'
+    - 'by に $ の鍵・name・user も書ける（metaView の鍵）。fields も同じ'
+    - '取り出しのファイル名は元の名前に拡張子を足す（inv-1 → inv-1.bdf）'
+    - '人のトークンは /out と /api/me 以外では viewerOf が nobody を返す（401）'
+    found:
+    - 'yuruidb は 1 つの型を 1 つのコレクションに結ぶ。exportList の別名の型を Bind しても Get[exportList] は「data type is not bound」になる。型そのものを Bind する'
+    - 'cmd/printmanager の App.Handler は口ごとに manager.Handler を mount する。/out/ を足し忘れて 404（ブラウザの確認で見つけた）。TestOAuthAuthorize に /out の確かめを足した'
+    - 'export を選んだ一般の人のサイドバーに Print here が出た（export も宛先だった）。Submit は export を 400 で断り、Destinations から外した。サイドバーの scope の文を読みの意味に、IPP の行を消した'
+    known_gaps:
+    - 'export の項目は消えない。dropExport は export-entries と export-lists を全部走査する'
+    - 'archive の done と continueFrom の間で落ちると export に載らない（fl-1 の continueWith と同じ隙間）'
+    - 'inbox の to が空のとき、人が export に直接流すと error の足跡（PUT では止められない）'
+relations:
+- relation: implements
+  to: requirement:print-manager-export
+- relation: follows
+  to: milestone:fl-1
+- relation: builds_on
+  to: milestone:pm-auth-2

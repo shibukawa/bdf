@@ -4,7 +4,7 @@
 
 import { $, api, badge, button, el, onChange, since, status } from "./admin.js";
 
-const SCOPES = { print: "print: send documents", "print.template": "print.template: fill templates", "jobs.cancel": "jobs.cancel: cancel its own jobs", tick: "tick: POST /api/tick", admin: "admin: the API as an administrator" };
+const SCOPES = { print: "print: send documents", "print.template": "print.template: fill templates", "jobs.cancel": "jobs.cancel: cancel its own jobs", export: "export: read the exports", tick: "tick: POST /api/tick", admin: "admin: the API as an administrator" };
 
 let editing = ""; // the app in the form
 
@@ -21,14 +21,17 @@ async function load() {
     const rows = apps.map((a) => {
       const tr = el("tr", undefined, { className: a.disabled ? "opacity-60" : "" });
       const lists = topo.filter((n) => (n.apps || []).includes(a.id)).map((n) => n.name);
-      tr.append(el("td", a.id, { className: "font-mono font-semibold" }), el("td", a.title || ""), el("td"), el("td", a.group || "", { className: "text-sm" }), el("td", lists.join(", "), { className: "font-mono text-xs" }), el("td", a.last_used ? since(a.last_used) : "never", { className: "whitespace-nowrap text-sm text-base-content/60" }), el("td", undefined, { className: "whitespace-nowrap" }));
+      const where = a.public ? (a.redirect_uris || []).join(", ") : lists.join(", ");
+      tr.append(el("td", a.id, { className: "font-mono font-semibold" }), el("td", a.title || ""), el("td"), el("td", a.group || "", { className: "text-sm" }), el("td", where, { className: "font-mono text-xs break-all" }), el("td", a.last_used ? since(a.last_used) : "never", { className: "whitespace-nowrap text-sm text-base-content/60" }), el("td", undefined, { className: "whitespace-nowrap" }));
+      if (a.public) tr.children[2].append(badge("public client", "badge-info badge-soft mr-1"));
       for (const s of a.scopes || []) tr.children[2].append(badge(s, s === "admin" ? "badge-error badge-soft mr-1" : "badge-ghost mr-1"));
       if (a.disabled) tr.children[2].append(badge("disabled", "badge-warning"));
       const actions = tr.lastChild;
+      const saved = { title: a.title, scopes: a.scopes, group: a.group, public: a.public, redirect_uris: a.redirect_uris };
+      actions.append(button("Edit", async () => edit(a), "btn btn-xs btn-ghost mr-1"));
+      if (!a.public) actions.append(button("Rotate secret", async () => showSecret(a.id, (await api("POST", `/api/apps/${a.id}/secret`)).secret), "btn btn-xs btn-ghost mr-1"));
       actions.append(
-        button("Edit", async () => edit(a), "btn btn-xs btn-ghost mr-1"),
-        button("Rotate secret", async () => showSecret(a.id, (await api("POST", `/api/apps/${a.id}/secret`)).secret), "btn btn-xs btn-ghost mr-1"),
-        button(a.disabled ? "Enable" : "Disable", () => api("PUT", "/api/apps/" + a.id, { title: a.title, scopes: a.scopes, group: a.group, disabled: !a.disabled }), "btn btn-xs btn-ghost mr-1"),
+        button(a.disabled ? "Enable" : "Disable", () => api("PUT", "/api/apps/" + a.id, { ...saved, disabled: !a.disabled }), "btn btn-xs btn-ghost mr-1"),
         button("Delete", () => api("DELETE", "/api/apps/" + a.id), "btn btn-xs btn-ghost text-error"),
       );
       return tr;
@@ -60,16 +63,25 @@ function edit(a) {
   $("app-id").readOnly = true;
   $("app-title").value = a.title || "";
   $("app-group").value = a.group || "";
+  $("app-public").checked = !!a.public;
+  $("app-redirects").value = (a.redirect_uris || []).join("\n");
+  publicFields();
   scopeBoxes(a.scopes || []);
   $("app-submit").textContent = "Save " + a.id;
   $("app-cancel").hidden = false;
   $("app-form").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
+// publicFields shows the redirect URIs of a public client.
+function publicFields() {
+  $("app-redirects").hidden = !$("app-public").checked;
+}
+
 function reset() {
   editing = "";
   $("app-form").reset();
   $("app-id").readOnly = false;
+  publicFields();
   scopeBoxes(["print"]);
   $("app-submit").textContent = "Add";
   $("app-cancel").hidden = true;
@@ -80,10 +92,15 @@ $("app-form").addEventListener("submit", async (ev) => {
   const id = $("app-id").value.trim();
   const body = { title: $("app-title").value.trim(), scopes: [...document.querySelectorAll('input[name="scope"]:checked')].map((c) => c.value) };
   if ($("app-group").value.trim()) body.group = $("app-group").value.trim();
+  if ($("app-public").checked) {
+    body.public = true;
+    body.redirect_uris = $("app-redirects").value.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  }
   try {
     const a = await api("PUT", "/api/apps/" + encodeURIComponent(id), body);
     reset();
     if (a.secret) showSecret(id, a.secret);
+    else if (a.public) status(`${id} saved: a public client, with no secret. Its frontend sends people to ${location.origin}/oauth/authorize (PKCE) and exchanges the code at /oauth/token`);
     else status(`${id} saved`);
     await load();
   } catch (e) {
@@ -91,6 +108,7 @@ $("app-form").addEventListener("submit", async (ev) => {
   }
 });
 $("app-cancel").addEventListener("click", reset);
+$("app-public").addEventListener("change", publicFields);
 $("refresh").addEventListener("click", load);
 onChange(load);
 reset();

@@ -140,6 +140,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle(manager.IPPPath+"/", mh)
 	mux.Handle(manager.IPPPath, mh)
 	mux.Handle(manager.InPath+"/", mh)
+	mux.Handle(manager.OutPath+"/", mh)
 	mux.Handle("/oauth/", mh)
 	mux.Handle("/api/", mh)
 	mux.Handle("/device/", mh)
