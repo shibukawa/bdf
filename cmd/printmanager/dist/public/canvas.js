@@ -34,6 +34,11 @@ const SVG = "http://www.w3.org/2000/svg";
 const BASE_FILL = "#ffffff";
 const BORDER = "#cbd5e1";
 const HEAD_H = 22; // the title bar
+const TAG_Y = 37; // the baseline of the [kind] line
+const DESC_Y = 52; // the baseline of the first line of the description
+const LINE_H = 13;
+const MAX_LINES = 5; // of a description on the canvas
+const GAP = 30; // between the rows the nodes are laid out in
 // The roles of the kinds, which color a node's title bar: where a job
 // comes in from outside (source), what passes it on (control flow),
 // what picks by rules (filter), what makes a new payload of it
@@ -199,10 +204,11 @@ export function legend(box) {
 // createCanvas draws a topology in an svg. opts: editable (nodes move
 // and connect), onSelect(name or null), onMove(name, pos), onConnect(node,
 // toName), onReject(node, toName, why) (an edge dropped on a node that
-// cannot take it), onRemoveEdge(node, edge), draftLabel() (the name typed
-// for a node being added).
+// cannot take it), onRemoveEdge(node, edge), draftLabel() and
+// draftNote() (the name and the description typed for a node being
+// added).
 export function createCanvas(svg, opts = {}) {
-  const { editable = false, onSelect = () => {}, onMove = () => {}, onConnect = () => {}, onReject = () => {}, onRemoveEdge = () => {}, draftLabel = () => "" } = opts;
+  const { editable = false, onSelect = () => {}, onMove = () => {}, onConnect = () => {}, onReject = () => {}, onRemoveEdge = () => {}, draftLabel = () => "", draftNote = () => "" } = opts;
   let topo = []; // the nodes, as /api/topology lists them
   let layout = {}; // name -> {x, y}
   let live = null; // /api/topology/live
@@ -220,8 +226,94 @@ export function createCanvas(svg, opts = {}) {
 
   const byName = () => Object.fromEntries(topo.map((n) => [n.name, n]));
 
+  // A node's description is written in the node, as the description of
+  // a C4 element is, wrapped over the lines of the node (the first
+  // MAX_LINES of them): the node is as tall as they need. The text is
+  // measured at the canvas's font with a 2D context.
+  let ctx2d = null;
+  let family = "";
+  function textWidth(s, size) {
+    if (ctx2d === null) {
+      try {
+        ctx2d = document.createElement("canvas").getContext("2d") || false;
+        family = getComputedStyle(svg).fontFamily || "sans-serif";
+      } catch {
+        ctx2d = false;
+      }
+    }
+    if (!ctx2d) return s.length * size * 0.55;
+    ctx2d.font = `${size}px ${family}`;
+    return ctx2d.measureText(s).width;
+  }
+
+  // wrap breaks a text into lines no wider than width: at a space when
+  // there is one, else between a Japanese character and its neighbour
+  // (a word in Latin letters stays whole, and a line does not start
+  // with a closing mark), else anywhere (a long word); at most max
+  // lines, the last ending in … when there was more.
+  const wrapped = new Map();
+  const isCJK = (ch) => /[\u3000-\u30ff\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/.test(ch || "");
+  const noLineStart = "、。，．）」』】〕〉》〙〗！？：；ーぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮヵヶ";
+  function wrap(text, width, max) {
+    const key = `${width}|${text}`;
+    if (wrapped.has(key)) return wrapped.get(key);
+    const lines = [];
+    let more = false;
+    const paras = text
+      .split(/\r?\n/)
+      .map((p) => p.replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    for (const s of paras) {
+      let i = 0;
+      while (i < s.length) {
+        if (lines.length >= max) {
+          more = true;
+          break;
+        }
+        let n = 1;
+        while (i + n < s.length && textWidth(s.slice(i, i + n + 1), 11) <= width) n++;
+        let cut = n;
+        if (i + n < s.length) {
+          const sp = s.slice(i, i + n).lastIndexOf(" ");
+          if (sp > 0) cut = sp + 1;
+          else {
+            for (let k = n; k > 0; k--) {
+              if ((isCJK(s[i + k - 1]) || isCJK(s[i + k])) && !noLineStart.includes(s[i + k])) {
+                cut = k;
+                break;
+              }
+            }
+          }
+        }
+        lines.push(s.slice(i, i + cut).trimEnd());
+        i += cut;
+        while (s[i] === " ") i++;
+      }
+      if (more) break;
+    }
+    if (more && lines.length) {
+      let last = lines[lines.length - 1];
+      while (last.length && textWidth(last + "…", 11) > width) last = last.slice(0, -1);
+      lines[lines.length - 1] = last + "…";
+    }
+    if (wrapped.size > 500) wrapped.clear();
+    wrapped.set(key, lines);
+    return lines;
+  }
+
+  // latestOf is the latest document a sink keeps, whose first page it
+  // shows.
+  const latestOf = (n) => (n.kind === "sink" ? (live ? (live.nodes[n.name] || {}).latest : n.latest) || "" : "");
+
+  // linesOf are the lines of a node's description on the canvas.
+  const linesOf = (n) => (n.description ? wrap(n.description, NODE_W - 20 - (latestOf(n) ? 44 : 0), MAX_LINES) : []);
+  const heightOfLines = (count) => (count ? DESC_Y + (count - 1) * LINE_H + 11 : NODE_H);
+  const heightOf = (n) => heightOfLines(linesOf(n).length);
+  let heights = {}; // by name, as drawn last
+
   // autoLayout places the nodes that have no position: in columns by
-  // their depth from the entries, rows within a column.
+  // their depth from the entries, rows within a column, each as tall as
+  // its node.
   function autoLayout() {
     const nodes = byName();
     const incoming = {};
@@ -237,17 +329,17 @@ export function createCanvas(svg, opts = {}) {
     for (const n of topo) if (depth[n.name] === undefined) walk(n.name, 0);
     const columns = {};
     for (const n of topo) (columns[depth[n.name]] ||= []).push(n.name);
-    const taken = new Set(Object.values(layout).map((p) => `${Math.round(p.x)},${Math.round(p.y)}`));
+    const placed = () => Object.entries(layout).map(([name, p]) => ({ x: p.x, y: p.y, h: heightOf(nodes[name] || {}) }));
     for (const [d, names] of Object.entries(columns)) {
-      let row = 0;
+      const x = d * COL;
+      let y = 0;
       for (const name of names) {
         if (layout[name]) continue;
-        let p;
-        do {
-          p = { x: d * COL, y: row * ROW };
-          row++;
-        } while (taken.has(`${p.x},${p.y}`));
-        layout[name] = p;
+        const h = heightOf(nodes[name]);
+        const hits = (y) => placed().some((q) => Math.abs(q.x - x) < NODE_W + GRID && y < q.y + q.h + GRID && y + h + GRID > q.y);
+        while (hits(y)) y += GRID;
+        layout[name] = { x, y };
+        y += h + GAP;
       }
     }
   }
@@ -258,7 +350,7 @@ export function createCanvas(svg, opts = {}) {
   // freeSpot is a place for a new node near a point, clear of the
   // others: to the right of them, then on the next row.
   function freeSpot(c) {
-    const taken = (p) => topo.some((n) => Math.abs(pos(n.name).x - p.x) < NODE_W + GRID && Math.abs(pos(n.name).y - p.y) < NODE_H + GRID);
+    const taken = (p) => topo.some((n) => Math.abs(pos(n.name).x - p.x) < NODE_W + GRID && p.y < pos(n.name).y + heightOf(n) + GRID && p.y + NODE_H + GRID > pos(n.name).y);
     const start = { x: snap(c.x - NODE_W / 2), y: snap(c.y - NODE_H / 2) };
     let p = { ...start };
     for (let i = 0; i < 64 && taken(p); i++) {
@@ -333,8 +425,8 @@ export function createCanvas(svg, opts = {}) {
     return { d: `M ${x1} ${y1} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${x2} ${y2}`, mid: { x: (x1 + 3 * c1.x + 3 * c2.x + x2) / 8, y: (y1 + 3 * c1.y + 3 * c2.y + y2) / 8 } };
   }
 
-  const outPoint = (name) => ({ x: pos(name).x + NODE_W, y: pos(name).y + NODE_H / 2 });
-  const inPoint = (name) => ({ x: pos(name).x, y: pos(name).y + NODE_H / 2 });
+  const outPoint = (name) => ({ x: pos(name).x + NODE_W, y: pos(name).y + (heights[name] ?? NODE_H) / 2 });
+  const inPoint = (name) => ({ x: pos(name).x, y: pos(name).y + (heights[name] ?? NODE_H) / 2 });
 
   function edgePath(from, to) {
     const a = outPoint(from);
@@ -364,6 +456,7 @@ export function createCanvas(svg, opts = {}) {
     svg.replaceChildren();
     defs = svgEl("defs");
     markers.clear();
+    heights = Object.fromEntries(topo.map((n) => [n.name, heightOf(n)]));
     world = svgEl("g", { id: "world", transform: `translate(${view.x} ${view.y}) scale(${view.k})` });
     const nodes = byName();
     for (const n of topo) {
@@ -415,7 +508,9 @@ export function createCanvas(svg, opts = {}) {
     for (const n of topo) world.append(nodeBox(n, pos(n.name), n.name === selected));
     if (draft && draftPos) {
       const g = svgEl("g", { transform: `translate(${draftPos.x} ${draftPos.y})`, class: "cursor-grab", "data-draft": "1" });
-      box(g, draft.kind, draftLabel() || "new " + (KINDS[draft.kind] || draft.kind).toLowerCase(), (KINDS[draft.kind] || draft.kind) + " · not saved yet", 22, 30);
+      const kind = KINDS[draft.kind] || draft.kind;
+      const lines = draftNote() ? wrap(draftNote(), NODE_W - 20, MAX_LINES) : [];
+      box(g, draft.kind, draftLabel() || "new " + kind.toLowerCase(), kind, "not saved yet", lines, heightOfLines(lines.length), 22, 30);
       g.firstChild.setAttribute("stroke", "#4f46e5");
       g.firstChild.setAttribute("stroke-width", "2");
       g.firstChild.setAttribute("stroke-dasharray", "6 4");
@@ -446,11 +541,12 @@ export function createCanvas(svg, opts = {}) {
   // kinds that send on. The border and the ports are colored by what the
   // node is typed with. While an edge is dragged, a node that would not
   // take it fades, and the port of one that would is lit.
-  // box draws the body of a node into a group: the white box, the title
-  // bar in the role's color with the kind's icon and the title, and a
-  // line under it.
-  function box(g, kind, title, line, titleMax, lineMax) {
-    g.append(svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: BASE_FILL, stroke: BORDER, "stroke-width": "1.5" }));
+  // box draws the body of a node into a group, as a C4 element: the
+  // white box of a height, the title bar in the role's color with the
+  // kind's icon and the title, the kind as a tag ([Printer]) with what
+  // is at the node after it, and the lines of the description.
+  function box(g, kind, title, tag, rest, lines, h, titleMax, restMax) {
+    g.append(svgEl("rect", { width: NODE_W, height: h, rx: "8", fill: BASE_FILL, stroke: BORDER, "stroke-width": "1.5" }));
     g.append(svgEl("path", { d: `M 0 8 a 8 8 0 0 1 8 -8 h ${NODE_W - 16} a 8 8 0 0 1 8 8 v ${HEAD_H - 8} h ${-NODE_W} z`, fill: roleColor(kind) }));
     const icon = iconOf(kind, 14);
     icon.setAttribute("x", "8");
@@ -458,9 +554,17 @@ export function createCanvas(svg, opts = {}) {
     icon.setAttribute("color", "#fff");
     const name = svgEl("text", { x: "27", y: "15.5", "font-size": "12", "font-weight": "600", fill: "#fff" });
     name.textContent = clipText(title, titleMax);
-    const sub = svgEl("text", { x: "10", y: "42", "font-size": "11", fill: "#374151" });
-    sub.textContent = clipText(line, lineMax);
+    const sub = svgEl("text", { x: "10", y: TAG_Y, "font-size": "10.5", fill: "#374151" });
+    const t = svgEl("tspan", { fill: "#6b7280", "font-weight": "500" });
+    t.textContent = `[${tag}]`;
+    sub.append(t);
+    if (rest) sub.append(" · " + clipText(rest, Math.max(6, restMax - tag.length - 3)));
     g.append(icon, name, sub);
+    lines.forEach((line, i) => {
+      const l = svgEl("text", { x: "10", y: DESC_Y + i * LINE_H, "font-size": "11", fill: "#4b5563" });
+      l.textContent = line;
+      g.append(l);
+    });
   }
 
   function nodeBox(n, p, isSelected) {
@@ -470,14 +574,16 @@ export function createCanvas(svg, opts = {}) {
     const faded = cm && !cm.ok && !cm.already;
     const g = svgEl("g", { transform: `translate(${p.x} ${p.y})`, class: editable ? "cursor-grab" : "cursor-pointer", "data-name": n.name });
     if (faded) g.setAttribute("opacity", "0.35");
-    if (isSelected) g.append(svgEl("rect", { x: "-4", y: "-4", width: NODE_W + 8, height: NODE_H + 8, rx: "11", fill: "none", stroke: "#4f46e5", "stroke-width": "2", opacity: "0.7" }));
+    const lines = linesOf(n);
+    const h = heightOfLines(lines.length);
+    if (isSelected) g.append(svgEl("rect", { x: "-4", y: "-4", width: NODE_W + 8, height: h + 8, rx: "11", fill: "none", stroke: "#4f46e5", "stroke-width": "2", opacity: "0.7" }));
     // a sink shows the first page of the latest document it keeps
-    const latest = n.kind === "sink" ? (live ? (live.nodes[n.name] || {}).latest : n.latest) : "";
-    const parts = [KINDS[n.kind] || n.kind];
+    const latest = latestOf(n);
+    const parts = [];
     if (n.title && n.title !== n.name) parts.push(n.name);
     parts.push(...counts(n));
     const first = g.childElementCount;
-    box(g, n.kind, n.title && n.title !== n.name ? n.title : n.name, parts.join(" · "), latest ? 14 : 20, latest ? 22 : 30);
+    box(g, n.kind, n.title && n.title !== n.name ? n.title : n.name, KINDS[n.kind] || n.kind, parts.join(" · "), lines, h, latest ? 14 : 20, latest ? 24 : 32);
     // a node nothing fits any more is marked
     if (t.dead) {
       g.children[first].setAttribute("stroke", BROKEN_COLOR);
@@ -487,7 +593,7 @@ export function createCanvas(svg, opts = {}) {
     const typed = [];
     if (t.in.length || t.anyKind) typed.push("takes " + (t.anyKind ? "any kind" : payloadText(t.in)));
     if (t.out.length) typed.push("sends on " + payloadText(t.out));
-    title.textContent = `${n.name} (${KINDS[n.kind] || n.kind}, ${ROLES[ROLE_OF[n.kind]] || ""})${n.title ? ": " + n.title : ""}${typed.length ? " · " + typed.join(", ") : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}`;
+    title.textContent = `${n.name} (${KINDS[n.kind] || n.kind}, ${ROLES[ROLE_OF[n.kind]] || ""})${n.title ? ": " + n.title : ""}${typed.length ? " · " + typed.join(", ") : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}${n.description ? "\n" + n.description : ""}`;
     g.append(title);
     const l = live ? live.nodes[n.name] : null;
     if (l && (l.held || l.open || l.pending || l.failed)) {
@@ -507,7 +613,7 @@ export function createCanvas(svg, opts = {}) {
     if (ENTRY.has(n.kind)) {
       // what an entry receives comes from outside: computers print to a
       // CUPS server's port, applications POST to an endpoint
-      const inArrow = svgEl("path", { d: `M -30 ${NODE_H / 2} L -8 ${NODE_H / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": arrow("#64748b") });
+      const inArrow = svgEl("path", { d: `M -30 ${h / 2} L -8 ${h / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": arrow("#64748b") });
       const x = svgEl("title");
       x.textContent = n.kind === "cups" ? `IPP${n.port ? " on port " + n.port : ""}: computers print here, and the job goes on along the edges` : `REST${n.port ? " on port " + n.port : ""}: applications POST here, and the job goes on along the edges`;
       inArrow.append(x);
@@ -517,8 +623,8 @@ export function createCanvas(svg, opts = {}) {
     // The ports are colored by the kind of payload they take and send
     // on; one not typed yet is hollow
     if (n.kind !== "cups") {
-      if (cm && cm.ok) g.append(svgEl("circle", { cx: "0", cy: NODE_H / 2, r: "14", fill: c.color, opacity: "0.25" }));
-      const input = svgEl("circle", { cx: "0", cy: NODE_H / 2, r: cm && cm.ok ? "8" : "6", fill: "#f8fafc", stroke: "#fff", "stroke-width": "2" });
+      if (cm && cm.ok) g.append(svgEl("circle", { cx: "0", cy: h / 2, r: "14", fill: c.color, opacity: "0.25" }));
+      const input = svgEl("circle", { cx: "0", cy: h / 2, r: cm && cm.ok ? "8" : "6", fill: "#f8fafc", stroke: "#fff", "stroke-width": "2" });
       if (t.dead) input.setAttribute("stroke", BROKEN_COLOR);
       else if (t.in.length) input.setAttribute("fill", payloadColor(t.in));
       else if (t.anyKind) input.setAttribute("fill", ANY_KIND_COLOR);
@@ -532,7 +638,7 @@ export function createCanvas(svg, opts = {}) {
       g.append(input);
     }
     if (OUT_PORT.has(n.kind)) {
-      const port = svgEl("circle", { cx: NODE_W, cy: NODE_H / 2, r: editable ? "7" : "5", fill: t.out.length ? payloadColor(t.out) : "#f8fafc", stroke: "#fff", "stroke-width": "2" });
+      const port = svgEl("circle", { cx: NODE_W, cy: h / 2, r: editable ? "7" : "5", fill: t.out.length ? payloadColor(t.out) : "#f8fafc", stroke: "#fff", "stroke-width": "2" });
       if (!t.out.length) {
         port.setAttribute("stroke", UNTYPED_COLOR);
         port.setAttribute("stroke-dasharray", "2 2");
@@ -616,7 +722,7 @@ export function createCanvas(svg, opts = {}) {
       minX = Math.min(minX, p.x);
       minY = Math.min(minY, p.y);
       maxX = Math.max(maxX, p.x + NODE_W);
-      maxY = Math.max(maxY, p.y + NODE_H);
+      maxY = Math.max(maxY, p.y + heightOf(n));
     }
     const k = Math.min(1.5, Math.max(0.25, Math.min((w - 2 * PAD) / (maxX - minX), (h - 2 * PAD) / (maxY - minY))));
     view = { x: (w - (maxX - minX) * k) / 2 - minX * k, y: (h - (maxY - minY) * k) / 2 - minY * k, k };

@@ -193,7 +193,10 @@ node it reached. The document is kept once for all of them.
 | `archive` | writes the payload that reaches it (a `.bdf`, or any file or data as received) and a JSON record of the job (its metadata, payloads and legs) to `store` (a documents URL: `bbolt`, `s3`, `r2`, `gcs`), each object once, under `collection` (`archive-<name>`); the manager never changes or deletes them. Give the S3 bucket a default retention (Object Lock) for an audit trail nobody can change | `store`, `collection` |
 | `sink` | keeps the `latest` documents that reach it (10) to look at on the topology (the first page shows on the node, every page in the sidebar: `GET /api/nodes/<name>/latest`, `GET /api/jobs/<n>/pages/<p>.png`); an older one goes when a newer comes | `latest` |
 
-Every node has a `scope` and an `owner` too (see Sign-in). A display, a
+Every node has a `title` (shown instead of its name), a `description`
+(a note of what it is for, shown in the node under its `[kind]` as the
+description of a C4 element is; up to 1000 characters, the first lines
+on the canvas), and a `scope` and an `owner` too (see Sign-in). A display, a
 printer or a sink keeps its kind; the other kinds change into one
 another, keeping the name.
 

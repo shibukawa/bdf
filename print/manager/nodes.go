@@ -44,7 +44,7 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 	if err := checkScope(in.Scope, in.Owner); err != nil {
 		return "", err
 	}
-	n := Node{Name: in.Name, Kind: in.Kind, Title: clip(strings.TrimSpace(in.Title), 255), Scope: in.Scope, Owner: in.Owner}
+	n := Node{Name: in.Name, Kind: in.Kind, Title: clip(strings.TrimSpace(in.Title), 255), Description: clip(strings.TrimSpace(in.Description), 1000), Scope: in.Scope, Owner: in.Owner}
 	switch n.Kind {
 	case KindQueue:
 		n.To = cleanNames(in.To)

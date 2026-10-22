@@ -57,6 +57,7 @@ const canvas = createCanvas($("canvas"), {
   },
   onRemoveEdge: removeEdge,
   draftLabel: () => $("f-name")?.value || "",
+  draftNote: () => $("f-description")?.value || "",
 });
 
 async function load() {
@@ -462,7 +463,9 @@ function viewSidebar() {
     s.append(el("div", v, { className: "stat-value text-xl" }), el("div", label, { className: "stat-title text-xs" }));
     stats.append(s);
   }
-  const parts = [head, stats];
+  const parts = [head];
+  if (n.description) parts.push(el("p", n.description, { className: "whitespace-pre-wrap text-sm text-base-content/80" }));
+  parts.push(stats);
   const out = [];
   for (const to of n.to || []) out.push(to);
   for (const [i, r] of (n.rules || []).entries()) out.push((r.to || []).join(", ") + ` (rule ${i + 1})`);
@@ -556,6 +559,9 @@ function renderSidebar() {
     form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>) and does not change later."));
   }
   form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown instead of the name" })));
+  const note = el("textarea", undefined, { id: "f-description", className: "textarea textarea-sm w-full", rows: 3, value: n.description || "", placeholder: "what it is for: the invoices of the ERP, PDF only; printed on the 3rd floor …" });
+  note.addEventListener("input", () => canvas.draw());
+  form.append(field("Description", note, "A note shown in the node, under its [kind], as in a C4 diagram: the first lines on the canvas, all of it here."));
   if (!draft) {
     const k = kindsLine(n);
     if (k) form.append(k);
@@ -682,7 +688,7 @@ async function save(ev) {
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) return;
   const name = draft ? $("f-name").value.trim() : n.name;
-  const body = { kind: n.kind, title: $("f-title").value.trim(), scope: $("f-scope").value };
+  const body = { kind: n.kind, title: $("f-title").value.trim(), description: $("f-description").value.trim(), scope: $("f-scope").value };
   if ($("f-owner").value.trim()) body.owner = $("f-owner").value.trim();
   const dur = (id) => ($(id).value.trim() ? $(id).value.trim() : undefined);
   switch (n.kind) {

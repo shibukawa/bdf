@@ -12,7 +12,9 @@ summary: >-
   トーストに理由。凡例を両ページに。同日実装。続けて利用者「ノードの色が派手なので、ベースの色は同じでタイトルのハイライトカラーで
   sink, source, filter, control flow などの特性で色分けするようにして欲しいのと、アイコンをつけて欲しいです。作成時も」：種類ごとの塗りと
   型の枠をやめ、ノードは白い箱に役割（source・control flow・filter・transform・sink）の色の題の帯と種類のアイコン。下書き・パレット・
-  サイドバーにも同じアイコン。型の色は口と辺だけに。
+  サイドバーにも同じアイコン。型の色は口と辺だけに。続けて「C4 モデルのように、ノードの中にコメントを書けるようにして欲しい。ノード種別は
+  [Printer] のようにタグ的表現で」：ノードに description（1000 文字まで）を足し、題の帯の下に [種類] のタグと、折り返した説明の行（5 行まで、
+  ノードはその分だけ高く）。サイドバーに Description の欄（下書きにも描く）、閲覧ページのサイドバーに全文。
 lifecycle: active
 authority: authored
 scope:
@@ -25,6 +27,9 @@ capabilities:
   typed-canvas:
     state: implemented
     about: capability:print-manager/canvas-kind-colors（口・辺の色、未定の中空、どれでも受ける灰、複数の紫。枠の色は同日に取り下げ）
+  description-in-node:
+    state: implemented
+    about: Node.Description（PUT で 1000 文字に切る、公開のトポロジーにも）、キャンバスの [種類] のタグと折り返した説明（canvas.js の wrap：2D context の measureText、空白で、無ければどこでも折る）、高さは行数で（heightOf）、自動配置と fit と口の位置もそれに
   role-title-bars:
     state: implemented
     about: ノードは白い箱、題の帯が役割の色（source 青緑、control flow 藍、filter 桃、transform 橙、sink 墨）、種類のアイコン（canvas.js の ICONS、iconOf）。下書き・パレット・サイドバーにも
@@ -47,6 +52,9 @@ acceptance:
   f3-new-edge:
     text: '壊れた辺があっても、新しい辺で合わない種類が届く PUT は 400（forms (template) takes data, but bdf reaches it: din → q → forms）'
     verified_by: [manager-tests]
+  f6-description:
+    text: 'PUT の description は trim して 1000 文字に切られ、GET /api/topology（管理者にも一般にも）に出る。キャンバスでは帯の下に [Endpoint] · 名前 · 数、その下に説明の行（英語は空白で、日本語は文字で折り返し、5 行目で …）。説明のあるノードは高く、口と辺はその中央。下書きは入力中の説明を描く'
+    verified_by: [manager-tests, screenshots]
   f5-roles:
     text: 'ノードの塗りは全部白、枠は薄い灰（選択は藍の輪、何も合わないノードは赤）。題の帯が役割の色で、左に種類のアイコンと白い題。下書きも同じ帯とアイコンに破線の藍の枠。パレットの項目とサイドバーの頭に役割の色のアイコン。凡例に役割の帯'
     verified_by: [screenshots, js-syntax]
@@ -89,6 +97,7 @@ facts:
     - 'any の色は灰から琥珀に（未定の中空の灰と見分けるため）。admin.js の PAYLOAD_COLOR の 1 行で戻せる'
     - '役割は 5 つ：source（endpoint・cups）、control flow（queue・class・inbox）、filter（filter）、transform（template・convert）、sink（display・printer・archive・sink）。利用者の挙げた 4 つに transform を足した（filter は規則で選ぶだけでペイロードを変えないので別）。帯の色は型の色（青・緑・琥珀・紫）と離した'
     - 'アイコンは自前の 24×24 の線画（外部のアイコン集は入れない）'
+    - '説明は C4 の要素のとおり名前・[種類]・説明の順。幅は 176 のまま、行数で高さを変える（最大 5 行、残りは …）。口はノードの縦の中央のまま（説明の長さで辺の付く高さが変わる）'
     - 'member の辺は破線をやめ中空の矢印に（破線は壊れた辺の印にした）。fallback は丸い点線のまま'
     unverified:
     - '本物のサーバーでの画面（サイドバーの picker・kindsLine・トースト）。canvas.js は偽のデータで見た'
