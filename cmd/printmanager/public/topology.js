@@ -14,7 +14,7 @@
 // sees, and a form to print there when they may.
 
 import { $, api, button, changed, el, keptSection, kindBadge, KINDS, legsOf, onChange, PAYLOADS, sender, since, stateBadge, status } from "./admin.js";
-import { createCanvas, legend, payloadColor, typeOf } from "./canvas.js";
+import { createCanvas, iconOf, legend, payloadColor, roleColor, typeOf } from "./canvas.js";
 
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
 const ACCEPTS = { file: "documents (PDF, Office, images, .bdf …)", data: "data (JSON, YAML, CSV, Excel, Parquet)" };
@@ -117,6 +117,16 @@ $("zoom-out").addEventListener("click", () => canvas.zoomBy(0.8));
 $("zoom-fit").addEventListener("click", () => canvas.fit());
 if (editable) $("refresh").addEventListener("click", load);
 legend($("legend"));
+// the palette's kinds get their icons, in their roles' colors
+for (const a of document.querySelectorAll("#palette a[data-kind]")) a.prepend(kindIcon(a.dataset.kind, 18));
+
+// kindIcon is the icon of a kind, in its role's color.
+function kindIcon(kind, size) {
+  const i = iconOf(kind, size);
+  i.style.color = roleColor(kind);
+  i.classList.add("shrink-0");
+  return i;
+}
 
 // brokenEdges names the edges that no longer carry what the node after
 // them takes.
@@ -444,7 +454,7 @@ function viewSidebar() {
     return;
   }
   const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
-  head.append(kindBadge(n.kind), el("h3", n.title && n.title !== n.name ? n.title : n.name, { className: "text-lg font-semibold" }));
+  head.append(kindIcon(n.kind, 20), kindBadge(n.kind), el("h3", n.title && n.title !== n.name ? n.title : n.name, { className: "text-lg font-semibold" }));
   if (n.title && n.title !== n.name) head.append(el("span", n.name, { className: "font-mono text-sm text-base-content/60" }));
   const stats = el("div", undefined, { className: "stats stats-horizontal flex-wrap bg-base-200" });
   for (const [v, label] of countsOf(n.name)) {
@@ -530,13 +540,13 @@ function renderSidebar() {
   const aside = $("sidebar");
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) {
-    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. The ports, the edges and the borders are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take.", { className: "text-sm text-base-content/60" }));
+    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take.", { className: "text-sm text-base-content/60" }));
     return;
   }
   const kind = n.kind;
   const form = el("form", undefined, { className: "flex flex-col gap-1" });
   const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
-  head.append(kindBadge(kind));
+  head.append(kindIcon(kind, 20), kindBadge(kind));
   if (draft) head.append(el("span", "new", { className: "badge badge-outline" }));
   else head.append(el("h3", n.name, { className: "font-mono text-lg font-semibold" }), scopeBadge(n));
   form.append(head);

@@ -215,11 +215,14 @@ the error where it reaches the node that does not take it. `GET
 be sent to it now: what it takes, within what every node after it takes,
 so that a queue in front of a printer takes `bdf` alone, as a wildcard
 pin is typed by its first edge) and `broken` (the edges from it that no
-longer connect, with the kinds), and the editor colors the ports, the
-edges and the borders of the nodes by them (blue bdf, green data, amber
-any, purple several; hollow and dashed a node not typed yet), fades the
-nodes that would not take the edge being dragged, and draws a broken
-edge dashed and red. A job carries its `payloads`: what was received
+longer connect, with the kinds), and the editor colors the ports and the
+edges by them (blue bdf, green data, amber any, purple several; hollow
+and dashed a port not typed yet), fades the nodes that would not take
+the edge being dragged, and draws a broken edge dashed and red. A node's
+title bar is colored by its role (source: endpoint, cups; control flow:
+queue, class, inbox; filter; transform: template, convert; sink:
+display, printer, archive, sink), with an icon of its kind. A job
+carries its `payloads`: what was received
 (`kind`, `format`, `pages`, `size`, `sha256`) and what the template and
 convert nodes made of it (`made`), each leg saying which payload it got
 (`payload`) and made (`made`); `GET /api/jobs/<n>/document` downloads

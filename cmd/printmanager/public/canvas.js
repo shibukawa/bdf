@@ -6,10 +6,13 @@
 // The flows of the last minutes (jobs going from a node to the next) run
 // as dots along the edges.
 //
-// The graph is typed (kinds.go): what flows along an edge is a .bdf
-// document, data or any file as received, and the ports, the edges and
-// the border of every node are colored by it, as the pins and the wires
-// of a visual editor are. A node that passes on what reaches it (a
+// Every node is a white box with a title bar colored by its role (where
+// a job comes in, what passes it on, what picks, what makes a new
+// payload, where it ends) and an icon of its kind. The graph is typed
+// (kinds.go): what flows along an edge is a .bdf document, data or any
+// file as received, and the ports and the edges are colored by it, as
+// the pins and the wires of a visual editor are. A node that passes on
+// what reaches it (a
 // queue, a class, a filter, an inbox) is typed by its first edge, on
 // either side: a queue in front of a printer carries .bdf, and so says
 // its input port; one with no edge yet is not typed (hollow, dashed).
@@ -28,7 +31,31 @@ const ROW = 84;
 const PAD = 24;
 const GRID = 8;
 const SVG = "http://www.w3.org/2000/svg";
-const FILL = { endpoint: "#fde68a", cups: "#fecaca", queue: "#ddd6fe", class: "#c7d2fe", filter: "#fbcfe8", template: "#d9f99d", convert: "#a5f3fc", inbox: "#fed7aa", archive: "#e5e7eb", display: "#bfdbfe", printer: "#d1d5db", sink: "#bbf7d0" };
+const BASE_FILL = "#ffffff";
+const BORDER = "#cbd5e1";
+const HEAD_H = 22; // the title bar
+// The roles of the kinds, which color a node's title bar: where a job
+// comes in from outside (source), what passes it on (control flow),
+// what picks by rules (filter), what makes a new payload of it
+// (transform), and where it ends (sink).
+export const ROLES = { source: "Source", flow: "Control flow", filter: "Filter", transform: "Transform", sink: "Sink" };
+export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", template: "transform", convert: "transform", display: "sink", printer: "sink", archive: "sink", sink: "sink" };
+export const ROLE_COLOR = { source: "#0f766e", flow: "#4338ca", filter: "#be185d", transform: "#c2410c", sink: "#334155" };
+// The icons of the kinds: strokes in a 24 by 24 box.
+const ICONS = {
+  endpoint: ["M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4", "M3 12h10", "M9 8l4 4-4 4"],
+  cups: ["M4 5h16v6H4z", "M4 13h16v6H4z", "M7 8h.01", "M7 16h.01", "M15 8h2", "M15 16h2"],
+  queue: ["M12 3l9 5-9 5-9-5z", "M3 13l9 5 9-5", "M3 17l9 5 9-5"],
+  class: ["M17 3l4 4-4 4", "M3 11V9a2 2 0 0 1 2-2h16", "M7 21l-4-4 4-4", "M21 13v2a2 2 0 0 1-2 2H3"],
+  filter: ["M4 4h16l-6 8v6l-4 2v-8z"],
+  template: ["M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z", "M14 3v5h5", "M9 13h6", "M9 17h4"],
+  convert: ["M21 12a9 9 0 0 1-15 6.7L3 16", "M3 12a9 9 0 0 1 15-6.7L21 8", "M3 21v-5h5", "M21 3v5h-5"],
+  inbox: ["M5.5 5h13l3.5 7v7H2v-7z", "M2 12h5l2 3h6l2-3h5"],
+  display: ["M3 4h18v12H3z", "M8 21h8", "M12 16v5"],
+  printer: ["M6 9V3h12v6", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v7H6z"],
+  archive: ["M3 4h18v4H3z", "M5 8v12h14V8", "M10 12h4"],
+  sink: ["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
+};
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer)
 const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "inbox", "display"]);
@@ -58,6 +85,16 @@ function svgEl(tag, attrs = {}) {
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
   return e;
 }
+
+// iconOf is the icon of a kind of node, as an svg of a size, drawn in
+// the current color (color: the role's, white on a title bar).
+export function iconOf(kind, size = 14) {
+  const svg = svgEl("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" });
+  for (const d of ICONS[kind] || ICONS.queue) svg.append(svgEl("path", { d }));
+  return svg;
+}
+
+export const roleColor = (kind) => ROLE_COLOR[ROLE_OF[kind] || "flow"];
 
 // edgesOf are the edges from a node: to (a queue's, an endpoint's, a CUPS
 // server's, an inbox's, a filter's rules and otherwise), member (a
@@ -150,7 +187,13 @@ export function legend(box) {
     s.append(svgEl("path", { d: "M 1 7 L 25 7", stroke: color, "stroke-width": "2", "stroke-dasharray": dash }));
     return s;
   };
-  box.replaceChildren(item(dot(PAYLOAD_COLOR.bdf, "#fff"), ".bdf document"), item(dot(PAYLOAD_COLOR.data, "#fff"), "data (for a template node)"), item(dot(PAYLOAD_COLOR.any, "#fff"), "any file as received (for a convert node)"), item(dot(MIXED_COLOR, "#fff"), "several kinds"), item(dot(ANY_KIND_COLOR, "#fff"), "takes any kind"), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), "not typed yet: its first edge types it"), item(line(BROKEN_COLOR, "6 4"), "no longer connects: the node after does not take what reaches it"));
+  const bar = (fill) => {
+    const s = svgEl("svg", { width: "14", height: "14", viewBox: "0 0 14 14" });
+    s.append(svgEl("rect", { x: "1", y: "2", width: "12", height: "10", rx: "2", fill }));
+    return s;
+  };
+  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "by rules", transform: "template, convert", sink: "display, printer, archive, sink" };
+  box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), `${label} (${of[role]})`)), item(dot(PAYLOAD_COLOR.bdf, "#fff"), ".bdf document"), item(dot(PAYLOAD_COLOR.data, "#fff"), "data (for a template node)"), item(dot(PAYLOAD_COLOR.any, "#fff"), "any file as received (for a convert node)"), item(dot(MIXED_COLOR, "#fff"), "several kinds"), item(dot(ANY_KIND_COLOR, "#fff"), "takes any kind"), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), "not typed yet: its first edge types it"), item(line(BROKEN_COLOR, "6 4"), "no longer connects: the node after does not take what reaches it"));
 }
 
 // createCanvas draws a topology in an svg. opts: editable (nodes move
@@ -372,12 +415,10 @@ export function createCanvas(svg, opts = {}) {
     for (const n of topo) world.append(nodeBox(n, pos(n.name), n.name === selected));
     if (draft && draftPos) {
       const g = svgEl("g", { transform: `translate(${draftPos.x} ${draftPos.y})`, class: "cursor-grab", "data-draft": "1" });
-      g.append(svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: FILL[draft.kind] || "#e5e7eb", stroke: "#4f46e5", "stroke-width": "2", "stroke-dasharray": "6 4" }));
-      const t = svgEl("text", { x: "10", y: "22", "font-size": "13", "font-weight": "600", fill: "#111827" });
-      t.textContent = draftLabel() || "new " + (KINDS[draft.kind] || draft.kind).toLowerCase();
-      const k = svgEl("text", { x: "10", y: "40", "font-size": "11", fill: "#374151" });
-      k.textContent = (KINDS[draft.kind] || draft.kind) + " · not saved yet";
-      g.append(t, k);
+      box(g, draft.kind, draftLabel() || "new " + (KINDS[draft.kind] || draft.kind).toLowerCase(), (KINDS[draft.kind] || draft.kind) + " · not saved yet", 22, 30);
+      g.firstChild.setAttribute("stroke", "#4f46e5");
+      g.firstChild.setAttribute("stroke-width", "2");
+      g.firstChild.setAttribute("stroke-dasharray", "6 4");
       g.addEventListener("pointerdown", (ev) => startDrag(ev, null));
       world.append(g);
     }
@@ -405,6 +446,23 @@ export function createCanvas(svg, opts = {}) {
   // kinds that send on. The border and the ports are colored by what the
   // node is typed with. While an edge is dragged, a node that would not
   // take it fades, and the port of one that would is lit.
+  // box draws the body of a node into a group: the white box, the title
+  // bar in the role's color with the kind's icon and the title, and a
+  // line under it.
+  function box(g, kind, title, line, titleMax, lineMax) {
+    g.append(svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: BASE_FILL, stroke: BORDER, "stroke-width": "1.5" }));
+    g.append(svgEl("path", { d: `M 0 8 a 8 8 0 0 1 8 -8 h ${NODE_W - 16} a 8 8 0 0 1 8 8 v ${HEAD_H - 8} h ${-NODE_W} z`, fill: roleColor(kind) }));
+    const icon = iconOf(kind, 14);
+    icon.setAttribute("x", "8");
+    icon.setAttribute("y", "4");
+    icon.setAttribute("color", "#fff");
+    const name = svgEl("text", { x: "27", y: "15.5", "font-size": "12", "font-weight": "600", fill: "#fff" });
+    name.textContent = clipText(title, titleMax);
+    const sub = svgEl("text", { x: "10", y: "42", "font-size": "11", fill: "#374151" });
+    sub.textContent = clipText(line, lineMax);
+    g.append(icon, name, sub);
+  }
+
   function nodeBox(n, p, isSelected) {
     const t = typeOf(n);
     const c = connecting();
@@ -413,25 +471,24 @@ export function createCanvas(svg, opts = {}) {
     const g = svgEl("g", { transform: `translate(${p.x} ${p.y})`, class: editable ? "cursor-grab" : "cursor-pointer", "data-name": n.name });
     if (faded) g.setAttribute("opacity", "0.35");
     if (isSelected) g.append(svgEl("rect", { x: "-4", y: "-4", width: NODE_W + 8, height: NODE_H + 8, rx: "11", fill: "none", stroke: "#4f46e5", "stroke-width": "2", opacity: "0.7" }));
-    const border = t.dead ? BROKEN_COLOR : t.in.length ? payloadColor(t.in) : t.anyKind ? ANY_KIND_COLOR : UNTYPED_COLOR;
-    const box = svgEl("rect", { width: NODE_W, height: NODE_H, rx: "8", fill: FILL[n.kind] || "#e5e7eb", stroke: border, "stroke-width": "2" });
-    if (!t.in.length && !t.anyKind && !t.dead) box.setAttribute("stroke-dasharray", "5 4");
-    g.append(box);
     // a sink shows the first page of the latest document it keeps
     const latest = n.kind === "sink" ? (live ? (live.nodes[n.name] || {}).latest : n.latest) : "";
-    const name = svgEl("text", { x: "10", y: "21", "font-size": "13", "font-weight": "600", fill: "#111827" });
-    name.textContent = clipText(n.title && n.title !== n.name ? n.title : n.name, latest ? 16 : 22);
-    const sub = svgEl("text", { x: "10", y: "39", "font-size": "11", fill: "#374151" });
     const parts = [KINDS[n.kind] || n.kind];
     if (n.title && n.title !== n.name) parts.push(n.name);
     parts.push(...counts(n));
-    sub.textContent = clipText(parts.join(" · "), latest ? 22 : 30);
+    const first = g.childElementCount;
+    box(g, n.kind, n.title && n.title !== n.name ? n.title : n.name, parts.join(" · "), latest ? 14 : 20, latest ? 22 : 30);
+    // a node nothing fits any more is marked
+    if (t.dead) {
+      g.children[first].setAttribute("stroke", BROKEN_COLOR);
+      g.children[first].setAttribute("stroke-width", "2");
+    }
     const title = svgEl("title");
     const typed = [];
     if (t.in.length || t.anyKind) typed.push("takes " + (t.anyKind ? "any kind" : payloadText(t.in)));
     if (t.out.length) typed.push("sends on " + payloadText(t.out));
-    title.textContent = `${n.name} (${KINDS[n.kind] || n.kind})${n.title ? ": " + n.title : ""}${typed.length ? " · " + typed.join(", ") : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}`;
-    g.append(title, name, sub);
+    title.textContent = `${n.name} (${KINDS[n.kind] || n.kind}, ${ROLES[ROLE_OF[n.kind]] || ""})${n.title ? ": " + n.title : ""}${typed.length ? " · " + typed.join(", ") : ""}${counts(n).length ? " · " + counts(n).join(", ") : ""}`;
+    g.append(title);
     const l = live ? live.nodes[n.name] : null;
     if (l && (l.held || l.open || l.pending || l.failed)) {
       // a badge of what waits at the node
@@ -444,8 +501,8 @@ export function createCanvas(svg, opts = {}) {
       g.append(badge);
     }
     if (latest) {
-      g.append(svgEl("rect", { x: NODE_W - 48, y: 6, width: 40, height: 42, rx: "3", fill: "#fff", stroke: "#94a3b8" }));
-      g.append(svgEl("image", { href: `/api/jobs/${latest}/pages/1.png?w=96`, x: NODE_W - 47, y: 7, width: 38, height: 40, preserveAspectRatio: "xMidYMin slice" }));
+      g.append(svgEl("rect", { x: NODE_W - 46, y: 4, width: 40, height: 46, rx: "3", fill: "#fff", stroke: "#94a3b8" }));
+      g.append(svgEl("image", { href: `/api/jobs/${latest}/pages/1.png?w=96`, x: NODE_W - 45, y: 5, width: 38, height: 44, preserveAspectRatio: "xMidYMin slice" }));
     }
     if (ENTRY.has(n.kind)) {
       // what an entry receives comes from outside: computers print to a

@@ -9,7 +9,10 @@ summary: >-
   辺は残す（broken。実行時は route の error の足跡のまま）。キャンバスは口・辺・ノードの枠を種類の色に（bdf 青、data 緑、any 琥珀、複数は紫、
   未定は中空の破線、どれでも受ける入力は濃い灰）、通過ノード（queue・class・filter・inbox）は届く種類か後ろの accepts で型が決まり（最初の辺）、
   辺のドラッグ中は受けない先を薄くし線を赤くして理由を出し、受ける先の口に吸い付く。壊れた辺は赤の破線と「!」の印、サイドバーと保存の
-  トーストに理由。凡例を両ページに。同日実装。
+  トーストに理由。凡例を両ページに。同日実装。続けて利用者「ノードの色が派手なので、ベースの色は同じでタイトルのハイライトカラーで
+  sink, source, filter, control flow などの特性で色分けするようにして欲しいのと、アイコンをつけて欲しいです。作成時も」：種類ごとの塗りと
+  型の枠をやめ、ノードは白い箱に役割（source・control flow・filter・transform・sink）の色の題の帯と種類のアイコン。下書き・パレット・
+  サイドバーにも同じアイコン。型の色は口と辺だけに。
 lifecycle: active
 authority: authored
 scope:
@@ -21,7 +24,10 @@ constraints:
 capabilities:
   typed-canvas:
     state: implemented
-    about: capability:print-manager/canvas-kind-colors（枠・口・辺の色、未定の中空、どれでも受ける灰、複数の紫）
+    about: capability:print-manager/canvas-kind-colors（口・辺の色、未定の中空、どれでも受ける灰、複数の紫。枠の色は同日に取り下げ）
+  role-title-bars:
+    state: implemented
+    about: ノードは白い箱、題の帯が役割の色（source 青緑、control flow 藍、filter 桃、transform 橙、sink 墨）、種類のアイコン（canvas.js の ICONS、iconOf）。下書き・パレット・サイドバーにも
   wildcard-typing:
     state: implemented
     about: 通過ノードは最初の辺で型が決まる（届く種類か、後ろの accepts）。出口の口と辺もその色
@@ -41,6 +47,9 @@ acceptance:
   f3-new-edge:
     text: '壊れた辺があっても、新しい辺で合わない種類が届く PUT は 400（forms (template) takes data, but bdf reaches it: din → q → forms）'
     verified_by: [manager-tests]
+  f5-roles:
+    text: 'ノードの塗りは全部白、枠は薄い灰（選択は藍の輪、何も合わないノードは赤）。題の帯が役割の色で、左に種類のアイコンと白い題。下書きも同じ帯とアイコンに破線の藍の枠。パレットの項目とサイドバーの頭に役割の色のアイコン。凡例に役割の帯'
+    verified_by: [screenshots, js-syntax]
   f4-canvas:
     text: '口・辺・枠が種類の色、未定の queue・inbox は中空の破線、何も合わない queue は赤、member は中空の矢印、fallback は点線、壊れた辺は赤の破線と「!」。raw（any）から printer へのドラッグは受けない先が薄くなり線が赤く「laser takes .bdf document, but raw carries any file as received: put a convert node between」、archive へは口に吸い付き「→ audit」。凡例'
     verified_by: [screenshots, js-syntax]
@@ -70,6 +79,7 @@ facts:
       packages:
       - 'print/manager/kinds.go：passesOn、accepts（後ろ向きの不動点）、typing.broken、Node.withoutEdges、typed（前の辺を除いた before と after の broken の差だけ 400。理由の道は from の path + to）'
       - 'print/manager/nodes.go：TopoNode に Accepts（omitempty なし。空は []）と Broken、Emits は passesOn・template・convert・display に常に'
+      - 'cmd/printmanager/public/canvas.js：ROLES・ROLE_OF・ROLE_COLOR・ICONS、iconOf・roleColor の export、box（白い箱、役割の帯、アイコン、題、下の行）を nodeBox と下書きが共用、凡例に役割。topology.js：パレットの a[data-kind] と サイドバーの頭に kindIcon。topology-view.js：サイドバーの頭にアイコン'
       - 'cmd/printmanager/public/canvas.js（書き直し）：typeOf（in・out・accepts・anyKind・dead）、payloadColor・payloadText・legend の export、色ごとの marker（member は中空）、curve の中点に壊れた辺の印、canConnect・compatOf・reaches、ドラッグ中の薄化・吸い付き・ラベル（右端で左に）、ポーリングの再描画で線が消えない、onReject'
       - 'cmd/printmanager/public/topology.js：onReject のトースト、picker に種類の点と「would not take it」、kindsLine に accepts と broken、保存後に増えた broken のトースト、凡例、説明文。admin.js：any の色を琥珀（#d97706）に。topology-view.js：凡例。handlers/pages.pw.html：#legend と説明。README の Topology。pw generate と go generate（tailwind）で dist・app.css・manifest を作り直した'
     decisions:
@@ -77,6 +87,8 @@ facts:
     - 'accepts は takes ∩ 後ろの accepts の共通部分（通過ノードと入口だけ下る。template・convert・display は作るものが bdf なので自分の takes のまま）。値は空・bdf・data・全部のどれか'
     - '画面の「運ぶ種類」は emits、無ければ通過ノードの accepts が絞られていればそれ（printer の前の queue は bdf として扱い、template へは繋げない。サーバーは何も流れないので通すが、画面は UE5 の wildcard のとおり断る）'
     - 'any の色は灰から琥珀に（未定の中空の灰と見分けるため）。admin.js の PAYLOAD_COLOR の 1 行で戻せる'
+    - '役割は 5 つ：source（endpoint・cups）、control flow（queue・class・inbox）、filter（filter）、transform（template・convert）、sink（display・printer・archive・sink）。利用者の挙げた 4 つに transform を足した（filter は規則で選ぶだけでペイロードを変えないので別）。帯の色は型の色（青・緑・琥珀・紫）と離した'
+    - 'アイコンは自前の 24×24 の線画（外部のアイコン集は入れない）'
     - 'member の辺は破線をやめ中空の矢印に（破線は壊れた辺の印にした）。fallback は丸い点線のまま'
     unverified:
     - '本物のサーバーでの画面（サイドバーの picker・kindsLine・トースト）。canvas.js は偽のデータで見た'
