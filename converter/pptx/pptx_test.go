@@ -3,6 +3,7 @@ package pptx
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	parquetenc "github.com/shibukawa/bdf/encoding/parquet"
 )
 
 // testOptions restricts fonts to the test font directory so that output
@@ -159,7 +161,7 @@ func markCounts(t *testing.T, r *bdf.Reader, h bdf.Hash) map[byte]int {
 func structure(t *testing.T, r *bdf.Reader, h bdf.Hash) string {
 	t.Helper()
 	names := map[byte]string{bdf.MarkParagraph: "P", bdf.MarkCell: "CELL", bdf.MarkBox: "BOX", bdf.MarkHeading: "H",
-		bdf.MarkList: "LIST", bdf.MarkListItem: "LI", bdf.MarkTable: "TABLE", bdf.MarkFigure: "FIG", bdf.MarkEnd: "END", bdf.MarkLang: "LANG"}
+		bdf.MarkList: "LIST", bdf.MarkListItem: "LI", bdf.MarkTable: "TABLE", bdf.MarkFigure: "FIG", bdf.MarkEnd: "END", bdf.MarkLang: "LANG", bdf.MarkData: "DATA"}
 	var out []string
 	inText, space := false, false
 	var alt *string
@@ -304,9 +306,9 @@ func TestStructure(t *testing.T) {
 		// the title placeholders are headings, after their BOX
 		{1, "BOX | H(1) | BDF from PowerPoint | BOX | Slides rendered directly from DrawingML"},
 		// bullets are list items, nested by level; numbered ones too
-		{2, "BOX | H(1) | Bullets and levels | BOX | LIST | LI | • First level bullet with enough words to wrap onto a second line inside the placeholder" +
-			" | LIST | LI | – Second level | LIST | LI | • Third level | END | END | LI | • A link to example.com" +
-			" | LIST | LI | 1. numbered one | LI | 2. numbered two | LI | 3. numbered three | END | END"},
+		{2, "BOX | H(1) | Bullets and levels | BOX | LIST(bullet) | LI | • First level bullet with enough words to wrap onto a second line inside the placeholder" +
+			" | LIST(bullet) | LI | – Second level | LIST(bullet) | LI | • Third level | END | END | LI | • A link to example.com" +
+			" | LIST(ordered) | LI | 1. numbered one | LI | 2. numbered two | LI | 3. numbered three | END | END"},
 		// Japanese text (kana) is marked; the Han-only run of a Japanese
 		// paragraph and the vertical line (in the parent, before its
 		// ALT_TEXT) too; Latin runs return to the document's language
@@ -332,10 +334,10 @@ func TestStructure(t *testing.T) {
 		page int
 		want string
 	}{
-		{1, "BOX | H(1) | Master and layout | BOX | LIST | LI | • The band at the bottom comes from the slide master | LI | • The orange bar comes from the layout | END"},
+		{1, "BOX | H(1) | Master and layout | BOX | LIST(bullet) | LI | • The band at the bottom comes from the slide master | LI | • The orange bar comes from the layout | END"},
 		// Han-only text keeps the Japanese in effect (the table cells)
-		{4, "BOX | H(1) | LANG(ja) | 日本語のスライド | BOX | LIST | LI | • 箇条書きの一行目です。長い文章は枠の幅で折り返され、句読点は行頭に来ません。" +
-			" | LIST | LI | – 二段目の項目 | END | LI | • 英数字 | LANG() | ABC | LANG(ja) | と | LANG() | 123 | LANG(ja) | の混在 | END" +
+		{4, "BOX | H(1) | LANG(ja) | 日本語のスライド | BOX | LIST(bullet) | LI | • 箇条書きの一行目です。長い文章は枠の幅で折り返され、句読点は行頭に来ません。" +
+			" | LIST(bullet) | LI | – 二段目の項目 | END | LI | • 英数字 | LANG() | ABC | LANG(ja) | と | LANG() | 123 | LANG(ja) | の混在 | END" +
 			" | BOX | 縦書きで、読みます。 | TABLE | CELL(A1 col) | BOX | 項目 | CELL(B1 col) | BOX | 説明" +
 			" | CELL(A2) | BOX | 図形 | CELL(B2) | BOX | プリセット形状 | CELL(A3) | BOX | 表 | CELL(B3) | BOX | 表のスタイル | END"},
 	} {
@@ -492,5 +494,60 @@ func TestDeterministic(t *testing.T) {
 	}
 	if !bytes.Equal(outs[0], outs[1]) {
 		t.Fatal("conversion is not deterministic")
+	}
+}
+
+// TestChartTables checks the tables of the charts of a presentation: one
+// per chart, placed on its slide, wide when the series share their
+// categories and long when they do not; the figure of the chart names its
+// table, and describes the kind and the title only.
+func TestChartTables(t *testing.T) {
+	_, r := convert(t, "features.pptx", testOptions())
+	var got []string
+	for _, tb := range r.Manifest.Tables {
+		cols := ""
+		for i, c := range tb.Columns {
+			if i > 0 {
+				cols += ", "
+			}
+			cols += c.Name + ":" + c.Type
+		}
+		got = append(got, fmt.Sprintf("%s %q %s/%d %d rows: %s", tb.ID, tb.Title, tb.View, tb.Page, tb.Rows, cols))
+	}
+	want := []string{
+		"chart-1 \"\" slides/3 4 rows: Category:string, East:number, West:number, North:number",
+		"chart-2 \"\" slides/3 4 rows: Category:string, East:number, West:number, North:number",
+		"chart-3 \"Share\" slides/3 4 rows: Category:string, Share:number",
+		"chart-4 \"\" slides/3 3 rows: Category:string, Stacked 1:number, Stacked 2:number",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("tables:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	_, data, err := r.Table("chart-3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := parquetenc.Read(data, parquetenc.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tb.Rows) != 4 || tb.Rows[0][0] != "Alpha" || tb.Rows[0][1] != 0.45 {
+		t.Errorf("chart-3 rows = %#v", tb.Rows)
+	}
+	s := structure(t, r, body(r.Manifest.Views[0].Pages[2]))
+	for _, want := range []string{"FIG(Column chart) | DATA(chart-1)", "FIG(Pie chart: Share) | DATA(chart-3)"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("structure lacks %q:\n%s", want, s)
+		}
+	}
+	// without tables the figures describe the values
+	opts := testOptions()
+	opts.Data = "none"
+	_, r = convert(t, "features.pptx", opts)
+	if len(r.Manifest.Tables) != 0 {
+		t.Errorf("with Data none, tables = %d", len(r.Manifest.Tables))
+	}
+	if s := structure(t, r, body(r.Manifest.Views[0].Pages[2])); !strings.Contains(s, "FIG(Pie chart: Share; Share: Alpha 0.45, Beta 0.25, Gamma 0.2, Delta 0.1)") || strings.Contains(s, "DATA(") {
+		t.Errorf("structure without tables:\n%s", s)
 	}
 }

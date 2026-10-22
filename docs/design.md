@@ -603,7 +603,7 @@ EPUB は ZIP に入った XHTML と CSS と画像なので、リフロー型の�
 
 **デモサイト**: `cmd/bdfwasm` を `-tags previewonly` でビルドした 5 つ目のモジュール（`bdf-preview.wasm`、約 9.5 MB、gzip 2.8 MB）は変換器を持たず、`imagebdf`・`thumbnail`・`SearchText` で単一ファイル形式の BDF のサムネイルとテキストを作る。ビューアの「Thumbnail and text」を開くと、表示中の文書（変換したもの、開いた BDF、`?src=` の単一ファイル）を渡し、そのとき初めてモジュールを読み込む。大きさ（64・128・256・512）、レイアウト（auto・crop・fit）、形式を選べる。ビューアの TS の描画で作らないのは、サーバーが作るのと同じものを見せるためである。形式は PNG と JPEG だけにした。WebP のエンコーダを入れるとモジュールが gzip で約 1 MB 増えるので、ほかのモジュールと同じく `bdf_noconv` でビルドしている。ブラウザにはシステムのフォントがないので、名前で参照するフォント（HTML・Markdown・EPUB）はサイトのフォントのディレクトリ（`imagebdf.Options.FontFS`）から探す。パスワード付きの入力から変換した文書と暗号化した BDF のものも作る（パスワードを入れて開いた人が自分で頼むのが `-allow-plaintext` にあたる）が、暗号化されないことをパネルに書く。暗号化した BDF にはビューアが開いたときのパスワードを渡す。
 
-**PDF の保存とフォームのページ**: 同じモジュールに `pdf`（`vector/pdfbdf`）を足し、デモサイトのビューアは「Download PDF」で表示中の文書を PDF にする（約 1 MB、gzip 0.26 MB の増加）。押したときに初めてモジュールを読み込む。このモジュールだけは WOFF2 の伸張を入れてビルドする（タグ `bdf_woff2dec`。Brotli の伸張だけで約 1.8 MB、gzip 0.4 MB）。`bdf` コマンドが作った文書のフォントは WOFF2 で、これがないと PDF とサムネイルから文字が抜けるためである。ブラウザの中で変換した文書のフォントは圧縮していないので、ほかのモジュールには要らない。暗号化した BDF には PDF の保存を出さない（平文の PDF になるため）。
+**PDF の保存とフォームのページ**: 同じモジュールに `pdf`（`vector/pdfbdf`）を足し、デモサイトのビューアは「Download as…」で表示中の文書を PDF にする（§3.37 の Markdown も同じダイアログから）（約 1 MB、gzip 0.26 MB の増加）。押したときに初めてモジュールを読み込む。このモジュールだけは WOFF2 の伸張を入れてビルドする（タグ `bdf_woff2dec`。Brotli の伸張だけで約 1.8 MB、gzip 0.4 MB）。`bdf` コマンドが作った文書のフォントは WOFF2 で、これがないと PDF とサムネイルから文字が抜けるためである。ブラウザの中で変換した文書のフォントは圧縮していないので、ほかのモジュールには要らない。暗号化した BDF には PDF の保存を出さない（平文の PDF になるため）。
 
 フォームのページ（`site/form`）は、帳票のテンプレートを試すためのもので、6 つ目のモジュール（`-tags formonly`、`bdf-form.wasm`、約 26 MB、gzip 7.0 MB）を使う。Word・Excel・PowerPoint・PDF の変換器と `form`・`pdfbdf` だけを入れ、`fields`（タグやフィールドの一覧と JSON Schema、形式、テンプレートが持つサンプル）・`fill`・`pdf` を出す。PDF フォームと pdfme の土台の PDF を読むために PDF の変換器が入り、それまでの約 18 MB（gzip 5.1 MB）から増えた。Office 系のモジュールに足さなかったのは、ビューアの利用者の読み込みを増やさないためと、フォームのページだけを開く人が 30 MB のモジュールを読まずに済むようにするためである。ページは、スキーマから入力欄を組み立てる（オブジェクトは枠、値だけの項目の配列は表、入れ子の配列は項目ごとの枠、真偽値はチェックボックス、日付は日付の入力、画像はファイルの選択、`enum` は選択肢。`default` があれば最初の値にし、`maxLength` は入力の上限にする）。値の型が決まっていない欄（`["string", "number"]`）は、JSON の数値の書き方なら数値として渡す（Excel の数式がその値で計算できるように。`007` は文字列のまま）。入力が止まって 0.25 秒後に穴埋めし直し、描いてあるページは新しい絵ができるまで残す（ちらつかない）。サンプルは 3 つの形態 × 3 つの形式に、PDF フォーム 1 つと pdfme のテンプレート 2 つを足したもので、テストのテンプレートとデータをそのまま使う。PDF は、通常のもの、タグ付き、PDF/A（2b・2u・2a）から選んで保存できる。
 
@@ -936,7 +936,42 @@ BDF v1 の読み手が Go 以外にも書かれる（C の libbdf）ので、「
 
 **まだしないこと**: HP-GL/2 の書き手（CAD の現場の声を待つ。`flatten` を共有して `vector/hpglbdf` に置ける）、PCL XL と各社の PDL、PJL による状態の取得（9100 の見張り）、受けた PDF を変換せずに PDF のプリンタへ渡すこと（素通し。スプールが `.bdf` でない文書を送れるようにする変更）、IPP の通知（`ippget`）、ラベル・レシート・連帳の言語（print-m5）、スプールの保存先を S3 や RDB に替えることと複数台で回すこと（m2 の後で決める）。
 
-## 3.37 署名（sign、internal/cms、`bdf sign`・`bdf verify`）
+## 3.37 Markdown への書き出し（text/markdownbdf、`bdf markdown`）
+
+RAG や LLM に文書を読ませる、Wiki に貼る、といった用途のために、文書を Markdown に書き出す。元ファイル（PDF・Word・PowerPoint）からそれぞれ書く案は採らず、BDF から書く。
+
+- BDF は Markdown が表せる構造をほぼ全部持っている。§7.8 の MARK（見出しのレベル、段落、リストの入れ子、表のセル参照と見出しセル、図と代替テキスト、言語）、LINK、フォントの太さと斜体、画像の Part、Dublin Core。この構造はもともと読み上げ（テキストレイヤー）・検索・タグ付き PDF のためにあり、`packages/core/src/text.ts` の `extractContent` と `vector/pdfbdf` の tagger が同じ木を組んでいる。Go 側にも `bdf.ExtractContent`（`text.ts` の双子: run と構造ノード、LINK、IMAGE）を置き、Markdown はその木の書き手の 1 つとした。
+- 1 つの実装で全入力形式に効き、変換済みの BDF（キャッシュ、検索サーバー）からも作れ、変換器を持たない wasm モジュールにも載せられる。直接変換は変換器ごとに書き手が要り、しかもタグなし PDF はどちらの道でも同じヒューリスティックになる。
+- 出力はディレクトリ（`<name>.md` と、ハッシュを名前にした画像）。ページ区切りは書かない。ビューは scroll があればそれ（Word・HTML・Markdown・EPUB。ページで段落が途切れない）、なければ全部。シートは 1 つの表。
+
+MARK にないものは補うか諦める。
+
+- **埋め込みフォントの太さ・斜体**: `fontset` は埋め込みフォントを常に w400・通常体で記録する（ブラウザが合成の太字を重ねないため。合成した太字だけ 700）。書き手は Part の OS/2 テーブル（usWeightClass、fsSelection）をフォントごとに 1 回読んで判定する。wire format は変えない。
+- **箇条書きと番号付き、コード、引用**: §7.8 に payload の語の規約を足した（kind は増やさない。読み手は知らない語を無視するので互換）。LIST の `bullet` / `ordered`、PARAGRAPH と BOX の `code`、入れ子の深さだけ繰り返す `quote`。wordproc（Word の numbering、HTML・Markdown・EPUB の ul / ol / pre / blockquote）、drawingml（buAutoNum か buChar か）、タグ付き PDF（L の ListNumbering、BlockQuote の祖先）が書き、`bdf.ExtractContent` と `text.ts` が読む。`pdfbdf` は `quote` を BlockQuote 要素に、`bullet` / `ordered` を L の ListNumbering に戻す。語のない文書（古い BDF、タグなし PDF）では、項目の先頭 run が記号（• ◦ – 1. a) ①）なら取り除いて数字なら番号付きにし、等幅フォント（generic family `monospace`）の段落をコードの行とする。ただし等幅の段落がビューの半分以上なら本文のフォントと見てコードにしない。段落の中の LINE は折り返しなので空白で結ぶ。
+- **上付き・下付き**: 隣の run より小さいフォントで、ベースラインが上下にずれた run を `<sup>` / `<sub>` にし、前後の空白を詰める（脚注番号、x<sup>2</sup>、H<sub>2</sub>O）。
+- **柱・フッター・ページ番号**: Word は header / footer のレイヤーなので役割で省ける。PDF は本文の中にあるので、ページのあるビューで、上下 10% の余白に置かれた短い段落のうち、数字を除いた文字列が 2 ページ以上の同じ位置にあるもの（雑誌名、論文の題、「Page 3 of 9」）、余白に単独で置かれたページ番号（「3」「- 3 -」「3 / 12」「iv」）、そして 2 ページ目以降でそれらが見つかった位置にある段落（奇数ページと偶数ページで柱が違う）を省く。1 ページ目の題や著者は 1 回しか現れないので残る。`-keep-running` で残せる。
+- **タグなし PDF**: MARK が無い Object は、行の間隔（1.6 行以上の空き）とフォントの変化で段落に分け、本文より 1.2 倍以上大きい行や太字だけの短い行を見出しにする。上付き・下付きの run は行の区切りに数えない。2 段組は内容ストリームの順に従う（Word・Chrome・LaTeX・reportlab はこの順が読み順。段を y 順に出す生成器では段が混ざる）。
+- **文書内リンク**（`#page=N`）: 行き先がないので既定では文字だけにする。
+- **図とグラフ**: 代替テキストのある FIGURE は、読み上げと同じく代替テキストで表す（中に画像があれば画像の alt に、なければ斜体の文）。中に描かれた文字（グラフの軸ラベル）は出さない。代替テキストのない FIGURE は中の文字をそのまま出す。drawingml のグラフ（PowerPoint・Excel・Word）は、枠に説明がなければ変換器が FIGURE で囲み、データを文書の表（§3.38）に入れて DATA で結ぶ。代替テキストは種類と題だけで、Markdown には図の後に表が続く。表を持たないとき（`-param data=none`）は代替テキストに系列ごとの分類と値（8 系列・24 点まで）を書く（`describe`）。読み上げにも効く。
+- **Word のスタイル**: 段落スタイルとその基底の id・名前に `quote` を含むもの（Quote、Intense Quote）は `quote`、`code` か `preformatted` を含むもの（HTML Preformatted、Source Code）は `code` の語を PARAGRAPH に付ける（`styles.paraRole`）。
+- **諦めたもの**: 下線・取り消し線（線として描かれる）、タスクリストのチェック、脚注の `[^1]` 化、タグなし PDF の表。
+
+**ブラウザでの書き出し**: `previewonly` モジュールに `markdown` を足し、デモサイトのビューアの「Download as…」は PDF（タグ付きの選択）か Markdown（画像をテキストと一緒に zip に入れる・data URL で埋め込む・省く、柱とページ番号を残す、文書内リンクを残す）を選んで書き出す。zip は Go の `archive/zip` で作る（圧縮は既にリンクしている klauspost/compress の flate）。
+
+テストは `testdata` の全文書で「書いたレイヤーの run の文字列が Markdown に残っている」ことを確かめ（リストの記号は除く）、Markdown のフィクスチャの往復、Word・PowerPoint・Excel・タグ付き PDF・タグなし PDF の要点と、柱・ページ番号の除去を固定する。
+
+## 3.38 データ表（encoding/parquet、`bdf tables`、`bdf table`）
+
+BDF は描画済みの表示リストなので、グラフの系列や CSV・Parquet・Excel の値は表示用の文字になり、値としては失われていた。RAG・LLM・データツールが型付きの値を取り出せるよう、文書は描画とは別に**表としての値**を持てるようにした（spec §4.6）。設計の叙述は `knowledge-inputs/data-tables/design.ja.md`。
+
+- **格納**: Part type `table`（Apache Parquet そのもの。`application/vnd.apache.parquet`）。manifest の `tables: [{id, title, part, rows, columns: [{name, type}], view, page}]` が一覧で、`view`・`page` は表が表す図の場所（シートの表は `view` だけ）。型の語彙は `string` / `number` / `integer` / `boolean` / `date` / `datetime` / `other`（Parquet の論理型をこの 7 つに丸める。`other` は入れ子や decimal など、読んだままの値）。図と表は MARK kind 14 `DATA`（payload: 表の id）で結び、FIGURE の直後に置く。wire format 1.0 の読み手には `tables` は知らない任意メンバー、`table` は知らない Part type、DATA は知らない kind として無視される（互換）。
+- **Parquet にした理由**: 列に型がある、pandas・DuckDB・Arrow がそのまま読む、Excel の 100 万行でも小さい、仕様準拠の読み手が `converter/parquet` に既にある。CSV は型がなく、JSON は大きい。`encoding/parquet` を新設し、BDF の書き手が作る表は平坦なスカラー列・PLAIN・RLE の定義レベル・1 row group・非圧縮にした（読み手の最小集合で読める）。読み手は PLAIN と辞書、データページ v1/v2、非圧縮・Snappy・gzip を読む（`converter/parquet` の読み手は暫定的に `ReadTable` で寄せ、`bdf table` は `encoding/parquet` が読めないファイルをそちらで読む）。
+- **書き手**: drawingml のグラフは 1 つに 1 表（`chart-<n>`。全系列が同じ分類なら横持ち `Category, East, West`、違えば縦持ち `Series, Category, Value`、散布図は `Series, X, Y`）。CSV は全行（`data`。1 行目のヘッダー判定は変換器のもの、型は値の文字列から推定。先頭ゼロの `0012` は文字列のまま）。Parquet は入力ファイルそのもの（`data`）。Excel はシートごとの使用範囲（`sheet<n>`。列名は `A, B…`、値は型付き: 数値は列が全部整数なら integer、表示書式が日付なら date / datetime、文字列、真偽、エラーは null。型の混じる列は表示文字列のまま）と ListObject のテーブル（`table-<k>`。見出し行の列名、集計行は除く）。
+- **上限**: 既定で 1 表 1,048,576 行・64 MiB まで、Excel のセル範囲は 16,777,216 セルまで（表はメモリ上にセルごとに組む）。`-param data=all` で行数・大きさの上限を外す（セルは 67,108,864 まで）、`-param data=none` で持たない。パラメータ名は `table` が CSV・Parquet で Excel のテーブルスタイルに使われていたため `data`。PowerPoint・Word の `data=none` はグラフの表を持たない。
+- **取り出し**: Go は `bdf.Table`、`Document.AddTable` / `AddTableRows`、`Reader.Table`、`encoding/parquet` の `Write` / `Encode` / `Read` / `WriteCSV` / `WriteJSON`。CLI は `bdf tables`（一覧、`-json`）と `bdf table -format csv|json|parquet -rows N`。wasm（previewonly）は `tables` と `table`。TypeScript は `Manifest.tables` と `TextNode.data`。検索用テキストには入れない（描かれた文字と重なる）。
+- **Markdown**: DATA のある図は代替テキストの後に GFM の表を書く（既定 100 行まで。超える表は `<id>.csv` を隣に書いてリンク）。`-tables files` でシートの表も含めて全部を CSV に、`none` で書かない。
+
+## 3.39 署名（sign、internal/cms、`bdf sign`・`bdf verify`）
 
 文書が署名の後に変えられたことを見つけるための電子署名（spec §3.7）。要件は `.knowledge` の `requirement:tamper-evidence`。
 
@@ -1083,7 +1118,7 @@ bdf/
 ├── converter/pdfform/ 入力欄のある PDF（AcroForm）をテンプレートとして埋める（§3.34）
 ├── converter/pdfme/   pdfme のテンプレートを埋める（§3.34。式の評価器と動的レイアウトを持つ）
 ├── converter/textform/ テキストのテンプレート（連帳・伝票・レシートの行と桁の格子）を埋める（§3.34）
-├── sign/              文書の署名と検証（§3.37。CMS は internal/cms）
+├── sign/              文書の署名と検証（§3.39。CMS は internal/cms）
 ├── segment/           区間を要求ごとに封印して返す HTTP ハンドラ（§3.30。wasm に net/http を持ち込まないよう bdf とは別のパッケージ）
 ├── cmd/bdfwasm/       ブラウザ内変換用の wasm モジュール（§2）
 ├── image/imgconv/     画像の格納方針と WebP/AVIF 変換（internal/ は wasm2go で生成した純 Go コーデック）

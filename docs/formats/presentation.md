@@ -19,13 +19,14 @@ What's read:
 - Formulas written as Office Math (the fallback image some files also save alongside them is ignored), laid out by the same formula engine used for Word, Excel and HTML.
 - Fonts, resolved the same way as for Word and Excel: the real family, then a metric-compatible substitute, then a generic family; only the glyphs actually used are embedded, as WOFF2.
 
-How it's laid out: each slide becomes one page, in slide order; hidden slides are excluded unless asked for. Titles become headings, bullet levels become nested lists, and tables and pictures/shapes/charts become tables and figures with alt text in the accessible text layer. The language of each run of text is inferred from its script when that would otherwise be misread from a template's default language tag.
+How it's laid out: each slide becomes one page, in slide order; hidden slides are excluded unless asked for. Titles become headings, bullet levels become nested lists, and tables and pictures/shapes/charts become tables and figures with alt text in the accessible text layer; a chart's data is also kept as a table of the document, named by its figure ([spec §4.6](../spec.md#46-データ表tables), `bdf tables`). The language of each run of text is inferred from its script when that would otherwise be misread from a template's default language tag.
 
 Options (`-param`, from `bdf generate -h`):
 
 | Option | Values | Default |
 |---|---|---|
 | `-param hidden=` | `true` | hidden slides excluded |
+| `-param data=` | `none` | the data of charts stored as tables of the document ([bdf tables](../architecture/cli.md#tables-table)) |
 
 `-hidden` is shorthand for `-param hidden=true` (Excel's `-hidden` does the same for hidden sheets). `-pages` selects which slides to convert, and the general font flags `-font-dir`, `-fonts system`, `-no-subset`, `-no-woff2`, `-no-system-fonts` and `-ignore-fstype` apply to PowerPoint the same way they do to Word and Excel.
 

@@ -361,7 +361,7 @@ func TestArchive(t *testing.T) {
 		t.Fatalf("document %q %d", head, page.Blobs[0].Size)
 	}
 	// written once: a second delivery of the same job would not change it
-	if _, err := e.m().archive(ctx, &Node{Name: "audit", Kind: KindArchive, Store: store}, j, j.received()); err != nil {
+	if _, err := e.m().archive(ctx, &Node{Name: "audit", Kind: KindArchive, Store: store}, j, j.received(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if page, _ := st.List(ctx, yuruidb.ListOptions{Limit: 10}); len(page.Blobs) != 2 {

@@ -5,7 +5,7 @@ summary: >-
   requirement:tamper-evidence の最初の段。.bdf に CMS の署名を前から順に足し、署名の後の変更を見つける。署名する内容は manifest の正規形（JCS）と
   各 Part の格納バイト列の SHA-256（32 バイト）と前の署名のダイジェストと claims。1 ファイル形式は末尾のブロック、分割形式は signatures.json。
   RFC 3161 のタイムスタンプ。2026-10-23 に実装し、Go のテスト、OpenSSL との相互の突き合わせ、TypeScript と libbdf で開けることの確認、fuzz が通った。
-  仕様は spec §3.7、設計は docs/design.md §3.37、使い方は docs/architecture/cli.md。
+  仕様は spec §3.7、設計は docs/design.md §3.39、使い方は docs/architecture/cli.md。
 lifecycle: active
 authority: authored
 scope:

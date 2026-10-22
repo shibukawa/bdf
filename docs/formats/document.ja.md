@@ -15,6 +15,7 @@ Word の文書、HTML のページ、Markdown の文書は、どれも行・段�
 | オプション | 値 | 既定 |
 |---|---|---|
 | `-param views=` | `both`、`pages`、`scroll` | `both`（ページと scroll View の両方） |
+| `-param data=` | `none` | グラフのデータを文書の表として持つ（[bdf tables](../architecture/cli.ja.md#tables-table)） |
 
 詳細は[design.md §3.9](../design.md#39-word--bdf-変換器converterdocxの構造)を参照してください。
 

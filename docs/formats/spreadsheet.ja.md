@@ -26,6 +26,7 @@ Excel のブック、CSV・TSV の表、Apache Parquet のファイルは、BDF 
 | `-param hidden=` | `true` | 非表示シートを除く |
 | `-param views=` | `sheet`、`print`、`both` | `sheet`（Excel の画面の見た目）。`print` は印刷のページ、`both` は両方 |
 | `-param paper=` | `a3`、`a4`、`a5`、`b4`、`b5`、`letter`、`legal` など | ページ設定に用紙がないシートの用紙。日本語のブックは `a4`、それ以外は `letter` |
+| `-param data=` | `all`、`none` | 値を文書の表として持つ（[下記](#値の表)）。既定の上限の範囲で |
 
 `-hidden`（`-param hidden=true` の短縮形）で非表示シートも含められる。マクロシートとダイアログシートは常に読まず、警告を出す。詳細は [design.md §3.6](../design.md#36-excel--bdf-変換器converterxlsxの構造) を、シートのセルがどのように Tile に分割されるかは [design.md §6](../design.md#6-excel-シートの-tile-化) を参照。
 
@@ -71,6 +72,7 @@ Excel は印刷のときに行の高さと列幅をプリンタの画素に丸�
 | `-param quote=` | `double`、`single`、`none` | 推定 |
 | `-param header=` | `true`、`false` | 推定 |
 | `-param table=` | 組み込みの Excel テーブルスタイル（例: `TableStyleMedium2`） | なし |
+| `-param data=` | `all`、`none` | 行を文書の表として持つ（[下記](#値の表)）。既定の上限の範囲で |
 
 詳細は [design.md §3.10](../design.md#310-csvtsv--bdf-変換器convertercsvの構造) を参照。
 
@@ -98,5 +100,12 @@ Excel は印刷のときに行の高さと列幅をプリンタの画素に丸�
 | `-param rows=` | 数値、または `all` | `10000` |
 | `-param types=` | `true`、`false` | `true` |
 | `-param table=` | 組み込みの Excel テーブルスタイル（例: `TableStyleMedium2`） | なし |
+| `-param data=` | `all`、`none` | ファイルを文書の表として持つ（[下記](#値の表)）。既定の上限の範囲で |
 
 詳細は [design.md §3.26](../design.md#326-parquet--bdf-変換器converterparquetの構造) を参照。
+
+## 値の表
+
+シートの描画は値を文字として見せる。文書はそれとは別に、値を値のまま、描画の隣の表として持つ（[spec §4.6](../spec.md#46-データ表tables)）。列と型を manifest に載せた Apache Parquet の Part である。Excel のブックは、シートごとに使用範囲の表 1 つ（`sheet1`、`sheet2` …。列名はシートと同じ `A`、`B` …。列の型は値から決める: `integer`、`number`、セルの表示書式が日付なら `date` / `datetime`、`boolean`、`string`。型の混じる列はセルの表示文字列を持ち、エラーのセルは null）と、Excel のテーブルごとに 1 つ（`table-1` …。列名は見出し行、集計行は除く）を、グラフごとの表に加えて持つ。CSV ファイルは全行を表 `data` として持ち、列の型は文字列から推定する（数値、日付、真偽。それ以外は、先頭にゼロのある数も含めて文字列のまま）。Parquet ファイルはファイルそのものを表 `data` として持つ。
+
+既定では 1 表 1,048,576 行・64 MiB まで持つ（Excel のセルの範囲は 16,777,216 セルまで。超えると警告して持たない）。`-param data=all` で上限を外し、`-param data=none` で持たない。`bdf tables` が表の一覧を、`bdf table` が 1 つを CSV・JSON・Parquet で書き出す。[bdf コマンド](../architecture/cli.ja.md#tables-table)を参照。
