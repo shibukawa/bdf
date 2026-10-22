@@ -88,7 +88,11 @@ bdf pdf -view print1 book.bdf sheet1.pdf            # ビューを選ぶ（繰�
 bdf pdf -skip background -skip master slip.bdf slip.pdf   # レイヤーを役割で省く
 bdf pdf -tagged report.bdf report.pdf               # タグ付き PDF: 文書の構造を持ち、スクリーンリーダーで読める
 bdf pdf -pdfa 2a invoice.bdf invoice.pdf            # 保存用の PDF/A（2b、2u、2a、3b、3u、3a）
+bdf pdf -sign-key alice.key -sign-cert alice-chain.pem -sign-field party_a.sign contract.bdf contract.pdf
+                                                    # 署名した PDF（PAdES）。署名欄の絵の上に署名を見せる
 ```
+
+`-sign-key` と `-sign-cert` は、PAdES の形でファイルに署名します（ファイルの署名以外のバイトに対する CMS の署名、`/SubFilter /ETSI.CAdES.detached`）。鍵と証明書は `bdf sign` と同じ形です。Acrobat などの PDF の読み手が検証できます。`-sign-field` は帳票の署名欄の絵（`{{%sign | signature}}`、PDF フォームの署名欄、pdfme の `signature`）の名前で、署名はその箱の上、手書きのサインに重ねて見えます。省くとどのページにも見えない署名になります。`-tsa` はタイムスタンプを足し（B-T）、`-certify 1|2|3` はその後に許す変更を決めた認証署名にします。`-sign-name`・`-sign-reason`・`-sign-location` は、署名が署名した人について言うことです。`-tagged` や `-pdfa` と一緒に使えます。`.bdf` の署名（`bdf sign`）は PDF に移りません。PDF に書き出す人が PDF に署名します。
 
 既定では、ページのあるビュー（`fixed`・`flow`）をすべて書き出し、ページのない文書は全体を 1 ページにします。`-font-dir` と `-no-system-fonts` は、文書が名前で参照するフォントを探す場所です。`-ignore-fstype` は、埋め込みを許可していないシステムのフォントも埋め込みます（権利があるときだけ。既定ではその文字をアウトラインで描きます）。`-no-compression` はストリームを圧縮せずに書きます（中身を読むため）。暗号化した文書には `-allow-plaintext` が必要です（PDF は暗号化されません）。
 

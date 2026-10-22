@@ -260,6 +260,10 @@ func (ex *exporter) image(i int, src *[4]float64, x, y, w, h float64) {
 	if w == 0 || h == 0 {
 		return
 	}
+	if ex.sigNext {
+		ex.sigNext = false
+		ex.fieldRect(x, y, w, h)
+	}
 	s := ex.s
 	st := &s.st
 	// how large a unit of the image is on the page

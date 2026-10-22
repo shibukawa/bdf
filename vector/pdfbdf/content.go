@@ -620,10 +620,11 @@ func (ex *exporter) instr(in bdf.Instr) {
 		url, _ := in.Args[4].(string)
 		ex.link(export.F64(in, 0), export.F64(in, 1), export.F64(in, 2), export.F64(in, 3), url)
 	case bdf.OpMark:
+		payload, _ := in.Args[1].(string)
 		if byte(export.U64(in, 0)) == bdf.MarkAltText {
-			payload, _ := in.Args[1].(string)
 			ex.alt = &payload
 		}
+		ex.markField(byte(export.U64(in, 0)), payload)
 	}
 }
 

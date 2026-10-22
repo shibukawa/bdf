@@ -88,7 +88,11 @@ bdf pdf -view print1 book.bdf sheet1.pdf            # choose views (repeatable)
 bdf pdf -skip background -skip master slip.bdf slip.pdf   # leave layers out by their roles
 bdf pdf -tagged report.bdf report.pdf               # a tagged PDF: with the structure of the document, for screen readers
 bdf pdf -pdfa 2a invoice.bdf invoice.pdf            # a PDF/A file (2b, 2u, 2a, 3b, 3u, 3a), for keeping
+bdf pdf -sign-key alice.key -sign-cert alice-chain.pem -sign-field party_a.sign contract.bdf contract.pdf
+                                                    # signed (PAdES), shown on the picture of a signature field
 ```
+
+`-sign-key` and `-sign-cert` sign the file as PAdES does (a CMS signature over the bytes of the file around it, `/SubFilter /ETSI.CAdES.detached`), with a key and certificates as `bdf sign` takes them. Acrobat and other readers check it. `-sign-field` names the picture of a signature field of the form (`{{%sign | signature}}`, a signature field of a PDF form, a `signature` of pdfme): the signature shows on its box, over the drawn signature; without it the signature shows on no page. `-tsa` adds a time-stamp (B-T), `-certify 1|2|3` makes it the certification of the file with the changes it permits after it, and `-sign-name`, `-sign-reason` and `-sign-location` are what it says of the signer. It works with `-tagged` and `-pdfa`. The signature of a `.bdf` (`bdf sign`) does not carry over to the PDF: whoever writes the PDF signs it.
 
 By default all the views of pages (`fixed`, `flow`) are written, and a document without pages becomes one page. `-font-dir` and `-no-system-fonts` say where the fonts the document refers to by name are looked for. `-ignore-fstype` embeds fonts of the system that do not allow it (only with the rights to; by default their text is drawn as outlines). `-no-compression` writes the streams as they are, to read them. An encrypted document needs `-allow-plaintext` (the PDF is not encrypted).
 
