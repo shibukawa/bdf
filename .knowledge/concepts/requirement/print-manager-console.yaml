@@ -101,7 +101,7 @@ facts:
     source_3: 2026-10-21 利用者「トポロジー自体は変更はできなくても一般ユーザーに見えても良い気がしてきた。印刷ジョブとかが流れている、たまっているタスクがビジュアルで見えるというのができたら良いと思う」
   current_state:
     as_of: main の #118（milestone:pm-4 と milestone:pm-auth-1）、2026-10-21
-    admin_page: /admin の 1 ページに縦に：Topology（SVG のキャンバス、ノードの表、ノードのフォーム）、Templates（表とアップロード）、インボックスごとのカード、Jobs（宛先ごと）、Deliveries waiting、Printers（表とフォーム）、Displays（場所ごとのカードに端末と登録コード、フォーム）。上のバーに Tick now。別のページは /jobs（利用者）と /audit（cmd/printmanager/handlers/pages.pw.html、public/admin.js）
+    admin_page: /admin の 1 ページに縦に：Topology（SVG のキャンバス、ノードの表、ノードのフォーム）、Templates（表とアップロード）、インボックスごとのカード、Jobs（宛先ごと）、Deliveries waiting、Printers（表とフォーム）、Displays（場所ごとのカードに端末と登録コード、フォーム）。上のバーに Tick now。別のページは /jobs（利用者）と /audit（cmd/docflow/handlers/pages.pw.html、public/admin.js）
     canvas: 依存なしの SVG。箱のドラッグで配置（/api/layout）、右の口から別のノードへドラッグで辺、辺のクリックで外す、箱のクリックで下のフォームに読み込む。パン・ズーム・パレット・サイドバーは無い。位置の無いノードは入口からの深さで並べる
     records: 場所（Location：title、scope、owner、fallback、keep、offline_after）とプリンタ（Printer：url、route、info、scope、owner）は Node（kind、to、members、policy、keep、store、collection、templates、key_hash、scope、owner）と別の記録・別の API（/api/locations、/api/printers、/api/nodes）。名前の空間は 1 つ（pm-4）で、キャンバスには 3 つとも描かれる
     templates: 全体の一覧（/api/templates/<id>、Blob のコレクション templates。登録時に形式と項目とサンプル）。エンドポイントは templates の列で差し込めるものを絞る（空なら全部）。差し込むのはエンドポイント（POST /in/<名前>）だけで、/jobs の印刷はファイルだけ
@@ -251,36 +251,36 @@ verification:
   manager-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     scope: {milestone: pm-5}
     authority: observed
-    evidence: {path: print/manager/topology_test.go, locator: 'milestone:pm-5 の manager-tests を見よ。2026-10-21'}
+    evidence: {path: docflow/topology_test.go, locator: 'milestone:pm-5 の manager-tests を見よ。2026-10-21'}
   scope-tests:
     state: passed
     method: integration
-    test: go test -race -run TestScope ./print/manager/
+    test: go test -race -run TestScope ./docflow/
     scope: {milestone: pm-5b}
     authority: observed
-    evidence: {path: print/manager/scope_test.go, locator: 'milestone:pm-5b の scope-tests を見よ。2026-10-21'}
+    evidence: {path: docflow/scope_test.go, locator: 'milestone:pm-5b の scope-tests を見よ。2026-10-21'}
   browser-view:
     state: passed
     method: manual
     scope: {milestone: pm-5b}
     authority: observed
-    evidence: {path: cmd/printmanager/public/topology-view.js, locator: 'milestone:pm-5b の browser-view を見よ。2026-10-21'}
+    evidence: {path: cmd/docflow/public/topology-view.js, locator: 'milestone:pm-5b の browser-view を見よ。2026-10-21'}
   app-tests:
     state: passed
     method: unit
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     scope: {milestone: pm-5}
     authority: observed
-    evidence: {path: cmd/printmanager/handlers/login_test.go, locator: 'milestone:pm-5 の app-tests を見よ。2026-10-21'}
+    evidence: {path: cmd/docflow/handlers/login_test.go, locator: 'milestone:pm-5 の app-tests を見よ。2026-10-21'}
   browser-console:
     state: passed
     method: manual
     scope: {milestone: pm-5}
     authority: observed
-    evidence: {path: cmd/printmanager/public/topology.js, locator: 'milestone:pm-5 の browser-console を見よ（pw dev の Ada Admin で、pm-5 の範囲だけ。Mina Member と偽プリンタの農場は未）。2026-10-21'}
+    evidence: {path: cmd/docflow/public/topology.js, locator: 'milestone:pm-5 の browser-console を見よ（pw dev の Ada Admin で、pm-5 の範囲だけ。Mina Member と偽プリンタの農場は未）。2026-10-21'}
 relations:
 - relation: refines
   to: requirement:print-manager

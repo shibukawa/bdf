@@ -86,22 +86,22 @@ pm-auth の `authorization_server: hybrid`（人は外の IdP、機械には Man
 ## 2. 構成
 
 ```
-print/manager/export.go     KindExport の設定（checkExport）、exportsArchived（PUT の道の確かめ）、routeExport・listAt、Entry・Entries、dropExport、/out の口（exportViewer・sees・exportObject）
-print/manager/oauth.go      公開クライアントの redirect URI、CORS、/oauth/authorize、RedeemCode、userTokenViewer、authorization_code の grant
-print/manager/model.go      KindExport、Node に By・Subject・Fields・Entries、LegListed、archive の To
-print/manager/scope.go      ViaOAuth、Viewer.Subject、SubjectEmail・Sub・ID・Group、identities・owns、Token()
-print/manager/apps.go       ScopeExport、App.Public・RedirectURIs、PutApp と RotateAppSecret の公開クライアント、/oauth/token の grant の振り分け
-print/manager/deliver.go    archive の done の後に continueFrom（archiveRef つき）
-print/manager/transform.go  continueWith を continueFrom（made の有無と archiveRef）に一般化
-print/manager/route.go      routing.archived、KindExport の route
-print/manager/people.go     viewerOf に人のトークン（/out と /api/me だけ）
-print/manager/store.go      export-entries・export-lists
-cmd/printmanager            publicPaths に /out/** と /oauth/token（/oauth/authorize は保護の中）、viewer に Subject、パレットに Export、export のサイドバー（Owner's key・Subject・Fields・Entries・Apps allowed、Readers、Listed here）、archive の Forwards to と出力の口、/admin/apps の公開クライアントと redirect URI、README の Exports
+docflow/export.go     KindExport の設定（checkExport）、exportsArchived（PUT の道の確かめ）、routeExport・listAt、Entry・Entries、dropExport、/out の口（exportViewer・sees・exportObject）
+docflow/oauth.go      公開クライアントの redirect URI、CORS、/oauth/authorize、RedeemCode、userTokenViewer、authorization_code の grant
+docflow/model.go      KindExport、Node に By・Subject・Fields・Entries、LegListed、archive の To
+docflow/scope.go      ViaOAuth、Viewer.Subject、SubjectEmail・Sub・ID・Group、identities・owns、Token()
+docflow/apps.go       ScopeExport、App.Public・RedirectURIs、PutApp と RotateAppSecret の公開クライアント、/oauth/token の grant の振り分け
+docflow/deliver.go    archive の done の後に continueFrom（archiveRef つき）
+docflow/transform.go  continueWith を continueFrom（made の有無と archiveRef）に一般化
+docflow/route.go      routing.archived、KindExport の route
+docflow/people.go     viewerOf に人のトークン（/out と /api/me だけ）
+docflow/store.go      export-entries・export-lists
+cmd/docflow            publicPaths に /out/** と /oauth/token（/oauth/authorize は保護の中）、viewer に Subject、パレットに Export、export のサイドバー（Owner's key・Subject・Fields・Entries・Apps allowed、Readers、Listed here）、archive の Forwards to と出力の口、/admin/apps の公開クライアントと redirect URI、README の Exports
 ```
 
 ## 3. 試験
 
-`go test -race ./print/manager/`：TestExport（設定の 400、archive の無い道の 400 と道、template・convert・inbox からの道、filter を挟む道、持ち主のメールの大文字小文字、alice・bob・root・バックエンド・scope なし・載っていないアプリ・submit トークン・資格なし、group の export、1 項目の 200 と 404 の表、文書と記録、監査、topology と live の数、archive の段の 2 度目で 2 度載らない、直接送られた export は error、by なしの export、subject group、ジョブが消えた後も項目と文書、export の削除で項目と一覧が消え他の export は残る）、TestExportAfterFilter（archive → filter → 2 つの export、直接 filter は error）、TestOAuthCode（公開クライアントの登録の確かめ、秘密なし、client credentials は 401、authorize の 400・401・redirect の error、S256 以外、scope、code の 1 度きり、verifier と redirect URI の不一致、トークンの scope と期限、/api/me、他の API は 401、CORS と preflight、scope の縮小・無効化・期限、監査、機密クライアントに戻すと秘密）。`go test ./cmd/printmanager/...`：TestOAuthAuthorize（実の popcornweb と偽の IdP で、未ログインは /auth/login へ、ログイン後は code、RFC 7636 の例の verifier で交換、トークンで /api/me）。
+`go test -race ./docflow/`：TestExport（設定の 400、archive の無い道の 400 と道、template・convert・inbox からの道、filter を挟む道、持ち主のメールの大文字小文字、alice・bob・root・バックエンド・scope なし・載っていないアプリ・submit トークン・資格なし、group の export、1 項目の 200 と 404 の表、文書と記録、監査、topology と live の数、archive の段の 2 度目で 2 度載らない、直接送られた export は error、by なしの export、subject group、ジョブが消えた後も項目と文書、export の削除で項目と一覧が消え他の export は残る）、TestExportAfterFilter（archive → filter → 2 つの export、直接 filter は error）、TestOAuthCode（公開クライアントの登録の確かめ、秘密なし、client credentials は 401、authorize の 400・401・redirect の error、S256 以外、scope、code の 1 度きり、verifier と redirect URI の不一致、トークンの scope と期限、/api/me、他の API は 401、CORS と preflight、scope の縮小・無効化・期限、監査、機密クライアントに戻すと秘密）。`go test ./cmd/docflow/...`：TestOAuthAuthorize（実の popcornweb と偽の IdP で、未ログインは /auth/login へ、ログイン後は code、RFC 7636 の例の verifier で交換、トークンで /api/me）。
 
 ## 4. 残り（問い）
 

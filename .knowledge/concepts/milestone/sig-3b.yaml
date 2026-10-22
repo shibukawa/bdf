@@ -2,8 +2,8 @@ id: milestone:sig-3b
 type: milestone
 title: sig-3b — Docflow の立会人の署名のノード（sign）
 summary: >-
-  requirement:tamper-evidence の 3 つ目の段の後半。Docflow（print/manager）に sign ノードを足した。届いた .bdf に管理者の鍵で文書の署名（package sign）を付け、
-  claims に役割（既定 witness）・ノード・ジョブ・送った人（管理者が確かめたもの）・受け取った時刻を入れて次へ送る。鍵は manager.sign_key_file・sign_cert_file（PEM のファイル）、
+  requirement:tamper-evidence の 3 つ目の段の後半。Docflow（docflow）に sign ノードを足した。届いた .bdf に管理者の鍵で文書の署名（package sign）を付け、
+  claims に役割（既定 witness）・ノード・ジョブ・送った人（管理者が確かめたもの）・受け取った時刻を入れて次へ送る。鍵は docflow.sign_key_file・sign_cert_file（PEM のファイル）、
   TSA は sign_tsa。2026-10-23 実装。トポロジーの画面（追加メニュー、アイコン、変換の役割、設定のフォーム）も対応。
 lifecycle: active
 authority: authored
@@ -25,7 +25,7 @@ capabilities:
 facts:
   node: KindSign = "sign"。takes bdf、emits bdf、配達の種類（route・deliver・transform）、sign_role（64 バイトまで）
   claims: role、witness（"BDF Docflow"）、node、job、number、received、submitted_by（kind・id・name・via）
-  code: print/manager/signnode.go（signPayload、keepBytes）。PEM の読み込みは sign.ParsePEM に移し、bdf コマンドと共有
+  code: docflow/signnode.go（signPayload、keepBytes）。PEM の読み込みは sign.ParsePEM に移し、bdf コマンドと共有
   ui: admin.js（KINDS、バッジ）、canvas.js（transform の役割、ペンのアイコン、出口の口、MAKES_BDF）、topology.js（Forwards to、Role）、pages.pw.html（追加メニュー）。pw generate で dist と生成物を作り直した
 acceptance:
   flow:
@@ -37,14 +37,14 @@ verification:
   manager-unit:
     state: passed
     method: integration
-    test: go test ./print/manager/（TestSignNode と既存の全テスト）、go test ./cmd/printmanager/...
+    test: go test ./docflow/（TestSignNode と既存の全テスト）、go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: print/manager/signnode_test.go
+      path: docflow/signnode_test.go
   browser-check:
     state: passed
     method: manual
-    test: pw dev（MANAGER_SIGN_KEY_FILE・CERT_FILE、スクラッチの bbolt）で Ada Admin として /topology。API で contracts → witness → keep を作り、契約書を POST、ジョブの脚が witness:done keep:kept、文書の末尾に bdfs の署名のブロック。キャンバスで sign ノードが変換の色とペンのアイコン、編集のフォームに Forwards to と Role
+    test: pw dev（MANAGER_SIGN_KEY_FILE・CERT_FILE（改名前の printmanager で確認）、スクラッチの bbolt）で Ada Admin として /topology。API で contracts → witness → keep を作り、契約書を POST、ジョブの脚が witness:done keep:kept、文書の末尾に bdfs の署名のブロック。キャンバスで sign ノードが変換の色とペンのアイコン、編集のフォームに Forwards to と Role
     authority: observed
 relations:
 - relation: implements

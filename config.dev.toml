@@ -1,13 +1,13 @@
-# The Print Manager's settings in development (pw dev, or go run
-# ./cmd/printmanager from here; APP_ENV unset or dev). Secrets go in
+# Docflow's settings in development (pw dev, or go run
+# ./cmd/docflow from here; APP_ENV unset or dev). Secrets go in
 # .env.local (.env.example). Under pw dev, the IdP is pw's development
 # provider (popcornweb.toml [dev.idp]), whose people are
-# cmd/printmanager/devidp.toml.
+# cmd/docflow/devidp.toml.
 
-[manager]
+[docflow]
 # plain http on localhost: the devices' cookie without Secure
 secure_cookies = false
 
 [oidc]
 groups_claim = "groups"
-admin_groups = ["pm-admins"]
+admin_groups = ["docflow-admins"]
