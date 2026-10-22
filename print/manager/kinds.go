@@ -10,10 +10,15 @@ import (
 // Kinds of a payload: what flows along an edge. Every node takes some of
 // them at its input (takes) and sends some on at its output (emits). The
 // graph is typed when a node is put (typed): the kinds that reach every
-// node are inferred from the entries along the edges, and a kind reaching
-// a node that does not take it (data a printer, say) is refused. A job's
-// payload is checked again at every node it reaches (route), so that a
-// graph changed while a job was on its way does not break it.
+// node are inferred from the entries along the edges, and a new edge that
+// brings a kind to a node that does not take it (data to a printer, say)
+// is refused. A change of a node's settings may leave an edge that no
+// longer carries what the node after it takes (an entry taking data now,
+// in front of a printer): the edge stays, broken, for the editor to show
+// and the administrator to mend. A job's payload is checked again at
+// every node it reaches (route), so that a broken edge, or a graph
+// changed while a job was on its way, gives the job a leg of the error
+// there and does not break it.
 const (
 	// PayloadBDF is a .bdf document: what printers, displays and the
 	// pages take.
@@ -90,6 +95,20 @@ func takes(kind string) kinds {
 		return kindData
 	}
 	return allKinds
+}
+
+// passesOn tells a kind of node that sends on what reaches it (and, an
+// entry, what it receives): what it may take at its input is what every
+// node after it takes, so that its first edge, on either side, types it
+// as the wildcard pin of a visual editor is typed. A template or a
+// convert node sends on the .bdf it makes whatever reaches it, a display
+// the .bdf it shows; the others send nothing on.
+func passesOn(kind string) bool {
+	switch kind {
+	case KindQueue, KindClass, KindFilter, KindInbox, KindEndpoint, KindCups:
+		return true
+	}
+	return false
 }
 
 // takesName is the input of a kind of node as the API shows it: bdf,
@@ -188,9 +207,94 @@ func (t *typing) path(node, kind string) []string {
 	}
 }
 
-// typed refuses a graph in which a kind reaches a node that does not take
-// it, with n put as it is: every node is checked, since a change of n
-// (an entry taking data now, say) changes what reaches the nodes after it.
+// accepts tells, for every node, the kinds its input may take now: what
+// the node takes, and, for a node that passes on what reaches it, what
+// every node it sends to accepts in turn (a queue in front of a printer
+// takes .bdf alone; one in front of a printer and a template node takes
+// nothing). A graph of nodes that are not there yet is not refused here:
+// an edge to a name that is no node is left out.
+func accepts(nodes map[string]*Node) map[string]kinds {
+	acc := make(map[string]kinds, len(nodes))
+	for name, n := range nodes {
+		acc[name] = takes(n.Kind)
+	}
+	for range len(nodes) + 2 {
+		changed := false
+		for name, n := range nodes {
+			if !passesOn(n.Kind) {
+				continue
+			}
+			a := takes(n.Kind)
+			for _, to := range n.edges() {
+				if nodes[to] != nil {
+					a &= acc[to]
+				}
+			}
+			if a != acc[name] {
+				acc[name] = a
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return acc
+}
+
+// broken tells the edges along which a node sends a kind the node after it
+// does not take: by the node that sends, then the node sent to, the kinds.
+func (t *typing) broken(nodes map[string]*Node) map[string]map[string]kinds {
+	out := map[string]map[string]kinds{}
+	for _, n := range nodes {
+		emits := n.emits(t.reach[n.Name])
+		for _, to := range n.edges() {
+			x := nodes[to]
+			if x == nil {
+				continue
+			}
+			if bad := emits &^ takes(x.Kind); bad != 0 {
+				if out[n.Name] == nil {
+					out[n.Name] = map[string]kinds{}
+				}
+				out[n.Name][to] |= bad
+			}
+		}
+	}
+	return out
+}
+
+// withoutEdges is a copy of the node without its edges to the names
+// given.
+func (n *Node) withoutEdges(names map[string]bool) *Node {
+	keep := func(list []string) []string {
+		var out []string
+		for _, x := range list {
+			if !names[x] {
+				out = append(out, x)
+			}
+		}
+		return out
+	}
+	c := *n
+	c.To, c.Members, c.Otherwise = keep(n.To), keep(n.Members), keep(n.Otherwise)
+	c.Rules = slices.Clone(n.Rules)
+	for i := range c.Rules {
+		c.Rules[i].To = keep(n.Rules[i].To)
+	}
+	if c.Fallback != nil && names[c.Fallback.Printer] {
+		c.Fallback = nil
+	}
+	return &c
+}
+
+// typed refuses a new edge of n (one the node did not have) along which a
+// kind reaches a node that does not take it, with n put as it is: every
+// node is checked, since an edge of n changes what reaches the nodes
+// after it. A change of the settings of n alone (an entry taking data
+// now, say; a queue made a template node) is not refused for the edges
+// it leaves broken: the topology shows them (TopoNode.Broken), and a job
+// gets a leg of the error where it reaches a node that does not take it.
 func (m *Manager) typed(ctx context.Context, n *Node) error {
 	list, err := m.Nodes(ctx)
 	if err != nil {
@@ -200,18 +304,39 @@ func (m *Manager) typed(ctx context.Context, n *Node) error {
 	for i := range list {
 		nodes[list[i].Name] = &list[i]
 	}
+	fresh := map[string]bool{}
+	for _, to := range n.edges() {
+		fresh[to] = true
+	}
+	if cur := nodes[n.Name]; cur != nil {
+		for _, to := range cur.edges() {
+			delete(fresh, to)
+		}
+	}
+	nodes[n.Name] = n.withoutEdges(fresh)
+	before := inferKinds(nodes).broken(nodes)
 	nodes[n.Name] = n
 	t := inferKinds(nodes)
-	names := make([]string, 0, len(nodes))
-	for name := range nodes {
-		names = append(names, name)
+	after := t.broken(nodes)
+	froms := make([]string, 0, len(after))
+	for from := range after {
+		froms = append(froms, from)
 	}
-	slices.Sort(names)
-	for _, name := range names {
-		x := nodes[name]
-		if bad := t.reach[name] &^ takes(x.Kind); bad != 0 {
+	slices.Sort(froms)
+	for _, from := range froms {
+		tos := make([]string, 0, len(after[from]))
+		for to := range after[from] {
+			tos = append(tos, to)
+		}
+		slices.Sort(tos)
+		for _, to := range tos {
+			bad := after[from][to] &^ before[from][to]
+			if bad == 0 {
+				continue
+			}
 			kind := bad.names()[0]
-			return fmt.Errorf("%w: %s (%s) takes %s, but %s reaches it: %s", ErrInvalid, name, x.Kind, takes(x.Kind), kind, strings.Join(t.path(name, kind), " → "))
+			x := nodes[to]
+			return fmt.Errorf("%w: %s (%s) takes %s, but %s reaches it: %s", ErrInvalid, to, x.Kind, takes(x.Kind), kind, strings.Join(append(t.path(from, kind), to), " → "))
 		}
 	}
 	return nil

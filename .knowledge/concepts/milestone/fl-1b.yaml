@@ -1,0 +1,90 @@
+id: milestone:fl-1b
+type: milestone
+title: fl-1b — 型で色の付くエディタ：ノードの枠と口を流れる種類の色に、多相のノードは最初の辺で型が決まる、ドラッグ中に繋げる先が分かる、設定の変更で合わなくなった辺は破線
+summary: >-
+  milestone:fl-1 のキャンバスへの利用者の注文（2026-10-22）「UE5 みたいに、トポロジーのエッジを流れるデータ種でノードの色を変えて接続の可否が
+  分かりやすくして欲しい。分岐のようなやつは最初に繋がれたもので出口も変わるように。設定を変えて繋がらなくなったものは破線などになると良い」。
+  サーバーは /api/topology に accepts（今そのノードに送れる種類：自分の takes と、後ろの全ノードの accepts の共通部分。printer の前の
+  queue は bdf だけ）と broken（送り先が受けない種類を運ぶ辺）を足し、typed は「新しい辺」だけを 400 にして、設定の変更で合わなくなった
+  辺は残す（broken。実行時は route の error の足跡のまま）。キャンバスは口・辺・ノードの枠を種類の色に（bdf 青、data 緑、any 琥珀、複数は紫、
+  未定は中空の破線、どれでも受ける入力は濃い灰）、通過ノード（queue・class・filter・inbox）は届く種類か後ろの accepts で型が決まり（最初の辺）、
+  辺のドラッグ中は受けない先を薄くし線を赤くして理由を出し、受ける先の口に吸い付く。壊れた辺は赤の破線と「!」の印、サイドバーと保存の
+  トーストに理由。凡例を両ページに。同日実装。
+lifecycle: active
+authority: authored
+scope:
+  milestone: fl-1b
+constraints:
+- 新しい辺（そのノードが持っていなかった辺）で合わない種類が届くようになる PUT は 400 のまま（fl-1 の f1-typed）。設定の変更（入口の accept・output、種類の変更）で既にある辺が合わなくなるのは断らず broken に出す
+- 壊れた辺を流れたジョブは route の実行時の確かめで error の足跡（fl-1 のまま。足跡は completed に数えられる）
+- 画面の接続の可否はサーバーと同じ規則（自分・cups・display は printer だけ・重複・閉路・種類）。断るのは画面で先に、サーバーでも
+capabilities:
+  typed-canvas:
+    state: implemented
+    about: capability:print-manager/canvas-kind-colors（枠・口・辺の色、未定の中空、どれでも受ける灰、複数の紫）
+  wildcard-typing:
+    state: implemented
+    about: 通過ノードは最初の辺で型が決まる（届く種類か、後ろの accepts）。出口の口と辺もその色
+  connect-feedback:
+    state: implemented
+    about: 辺のドラッグ中に受けない先を薄く、線を赤く、理由のラベル、受ける先の口への吸い付き、落としたときのトースト
+  broken-edges:
+    state: implemented
+    about: 設定の変更で合わなくなった辺（broken）を赤の破線と「!」で、サイドバーと保存のトーストに理由
+acceptance:
+  f1-accepts:
+    text: 'GET /api/topology の accepts：printer の前の queue は bdf、printer と template の前の queue は空（"accepts":[]）、archive・convert・何も繋がない入口は 3 つ全部。emits は通過ノード・template・convert・display に常に出る'
+    verified_by: [manager-tests]
+  f2-broken:
+    text: 'data の入口 → template を file（bdf）に変えると 200 で、入口の broken に {template: [bdf]}、入口の accepts は data。文書を送ると足跡は din:routed forms:error（takes data）。同じ辺のまま再 PUT は 200、accept を data に戻すと broken が消える'
+    verified_by: [manager-tests]
+  f3-new-edge:
+    text: '壊れた辺があっても、新しい辺で合わない種類が届く PUT は 400（forms (template) takes data, but bdf reaches it: din → q → forms）'
+    verified_by: [manager-tests]
+  f4-canvas:
+    text: '口・辺・枠が種類の色、未定の queue・inbox は中空の破線、何も合わない queue は赤、member は中空の矢印、fallback は点線、壊れた辺は赤の破線と「!」。raw（any）から printer へのドラッグは受けない先が薄くなり線が赤く「laser takes .bdf document, but raw carries any file as received: put a convert node between」、archive へは口に吸い付き「→ audit」。凡例'
+    verified_by: [screenshots, js-syntax]
+verification:
+  manager-tests:
+    state: passed
+    method: integration
+    test: go test ./print/manager/ ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: print/manager/flow_test.go
+      locator: 'TestKinds の後半（accepts、dead end の "accepts":[]、din の broken と足跡、新しい辺の 400、直して消える）。2026-10-22 linux'
+  js-syntax:
+    state: passed
+    method: static
+    test: node --check cmd/printmanager/public/*.js
+    authority: observed
+  screenshots:
+    state: passed
+    method: manual
+    test: 偽の /api/topology を読ませた canvas.js を Chromium（playwright-core）で描き、静止・受けない先へのドラッグ・受ける先へのドラッグの 3 枚を見た
+    authority: observed
+facts:
+  delivery:
+    implemented:
+      date: '2026-10-22'
+      packages:
+      - 'print/manager/kinds.go：passesOn、accepts（後ろ向きの不動点）、typing.broken、Node.withoutEdges、typed（前の辺を除いた before と after の broken の差だけ 400。理由の道は from の path + to）'
+      - 'print/manager/nodes.go：TopoNode に Accepts（omitempty なし。空は []）と Broken、Emits は passesOn・template・convert・display に常に'
+      - 'cmd/printmanager/public/canvas.js（書き直し）：typeOf（in・out・accepts・anyKind・dead）、payloadColor・payloadText・legend の export、色ごとの marker（member は中空）、curve の中点に壊れた辺の印、canConnect・compatOf・reaches、ドラッグ中の薄化・吸い付き・ラベル（右端で左に）、ポーリングの再描画で線が消えない、onReject'
+      - 'cmd/printmanager/public/topology.js：onReject のトースト、picker に種類の点と「would not take it」、kindsLine に accepts と broken、保存後に増えた broken のトースト、凡例、説明文。admin.js：any の色を琥珀（#d97706）に。topology-view.js：凡例。handlers/pages.pw.html：#legend と説明。README の Topology。pw generate と go generate（tailwind）で dist・app.css・manifest を作り直した'
+    decisions:
+    - 'サーバーの typed は「新しい辺」だけを断る：PUT の前のノードの辺との差を取り、新しい辺を除いた図の broken と全部の図の broken の差があれば 400。設定の変更だけの PUT は通り、辺は broken として残る（利用者の「設定を変えて繋がらなくなったものは破線」はサーバーが断っては起きないので）'
+    - 'accepts は takes ∩ 後ろの accepts の共通部分（通過ノードと入口だけ下る。template・convert・display は作るものが bdf なので自分の takes のまま）。値は空・bdf・data・全部のどれか'
+    - '画面の「運ぶ種類」は emits、無ければ通過ノードの accepts が絞られていればそれ（printer の前の queue は bdf として扱い、template へは繋げない。サーバーは何も流れないので通すが、画面は UE5 の wildcard のとおり断る）'
+    - 'any の色は灰から琥珀に（未定の中空の灰と見分けるため）。admin.js の PAYLOAD_COLOR の 1 行で戻せる'
+    - 'member の辺は破線をやめ中空の矢印に（破線は壊れた辺の印にした）。fallback は丸い点線のまま'
+    unverified:
+    - '本物のサーバーでの画面（サイドバーの picker・kindsLine・トースト）。canvas.js は偽のデータで見た'
+    known_gaps:
+    - '壊れた辺を通ったジョブの足跡は error だが、ジョブの state は completed（fl-1 のまま）'
+    - 'filter の規則の kind（data だけを流す規則）は推論に乗らない（fl-1 のまま保守的）'
+relations:
+- relation: implements
+  to: requirement:document-flow
+- relation: follows
+  to: milestone:fl-1
