@@ -1,0 +1,18 @@
+id: source:data-tables-plan
+title: データ表（描かれない表）の設計（叙述）
+adapter: document
+location:
+  root: knowledge-inputs/data-tables
+  include: ["**/*.md"]
+scope: {topic: data-tables}
+depends_on: []
+upstream:
+  kind: design
+  locator: 2026-10-22 の設計メモ。§3.37（Markdown）の「グラフの系列を表として出すか」から
+  snapshot: "2026-10-22"
+coverage:
+  partial: true
+  features:
+    requirements: collected
+    design: collected
+    implementation_plan: collected

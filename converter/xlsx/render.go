@@ -257,6 +257,7 @@ func (c *converter) worksheet(ref sheetRef, id string) (*bdf.View, map[string]*c
 	s := c.newSheetCtx(ws)
 
 	v := c.doc.NewView(id, bdf.ViewSheet, ws.name)
+	c.r.SetPlace(id, 0)
 	v.Tile = tileSize
 	v.Gridlines = ws.showGrid
 	if ws.freezeC > 0 || ws.freezeR > 0 {

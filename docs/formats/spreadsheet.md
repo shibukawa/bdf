@@ -26,6 +26,7 @@ Options (`-param`, from `bdf generate -h`):
 | `-param hidden=` | `true` | hidden sheets excluded |
 | `-param views=` | `sheet`, `print`, `both` | `sheet` (the sheets as Excel shows them); `print` is the printed pages, `both` both |
 | `-param paper=` | `a3`, `a4`, `a5`, `b4`, `b5`, `letter`, `legal` … | the paper of sheets whose page setup names none: `a4` for a Japanese workbook, else `letter` |
+| `-param data=` | `all`, `none` | the values as tables of the document (see [below](#the-values-as-tables)), within the default limits |
 
 `-hidden` (shorthand for `-param hidden=true`) includes hidden sheets; macro and dialog sheets are always skipped, with a warning. See [design.md §3.6](../design.md#36-excel--bdf-変換器converterxlsxの構造) for the internals, and [design.md §6](../design.md#6-excel-シートの-tile-化) for how a sheet's cells are split into the Tiles a `sheet` View is drawn from.
 
@@ -71,6 +72,7 @@ Options (`-param`, from `bdf generate -h`):
 | `-param quote=` | `double`, `single`, `none` | detected |
 | `-param header=` | `true`, `false` | guessed |
 | `-param table=` | a built-in Excel table style, e.g. `TableStyleMedium2` | none |
+| `-param data=` | `all`, `none` | the rows as a table of the document (see [below](#the-values-as-tables)), within the default limits |
 
 See [design.md §3.10](../design.md#310-csvtsv--bdf-変換器convertercsvの構造) for the internals.
 
@@ -98,5 +100,12 @@ Options (`-param`, from `bdf generate -h`):
 | `-param rows=` | a number, or `all` | `10000` |
 | `-param types=` | `true`, `false` | `true` |
 | `-param table=` | a built-in Excel table style, e.g. `TableStyleMedium2` | none |
+| `-param data=` | `all`, `none` | the file as a table of the document (see [below](#the-values-as-tables)), within the default limits |
 
 See [design.md §3.26](../design.md#326-parquet--bdf-変換器converterparquetの構造) for the internals.
+
+## The values as tables
+
+The drawing of a sheet shows the values as text; a document also keeps them as values, in tables beside its drawing ([spec §4.6](../spec.md#46-データ表tables)): Apache Parquet parts listed in the manifest with their columns and types. An Excel workbook gets one table per sheet for its used range (`sheet1`, `sheet2` …; the columns named `A`, `B` … after the sheet's, a column typed by its values — `integer`, `number`, a `date` or `datetime` when the cells' formats show one, `boolean`, `string`; a column of mixed values holds the text the cells show, and an error cell is a null) and one per Excel table (`table-1` …, with its header names, without its totals row), besides a table per chart. A CSV file is stored as the table `data`, every row, each column typed from its text (a number, a date, a boolean; anything else, a number with leading zeros included, stays text). A Parquet file is stored as it is, as the table `data`.
+
+By default a table is stored up to 1,048,576 rows and 64 MiB (a range of Excel cells up to 16,777,216 cells; a larger one is skipped with a warning); `-param data=all` lifts the limits and `-param data=none` stores none. `bdf tables` lists the tables and `bdf table` writes one as CSV, JSON or Parquet; see [the bdf command](../architecture/cli.md#tables-table).

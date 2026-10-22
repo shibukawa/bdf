@@ -20,7 +20,9 @@ type routing struct {
 	payload *Payload
 	// archived is what the last archive on the way wrote (the job goes on
 	// from an archive once it wrote): what an export lists.
-	archived   *archiveRef
+	archived *archiveRef
+	// trace is the step the payload came out of, or went into (trace.go).
+	trace      *Trace
 	now        time.Time
 	legs       []Leg
 	live       int

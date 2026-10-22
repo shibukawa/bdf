@@ -48,6 +48,7 @@ component AppBar(title: string, account: Account, children: html?): html {
       {if account.audit}
         <a href="/audit" class="btn btn-sm btn-ghost">Audit</a>
       {/if}
+      <a href="/help" class="btn btn-sm btn-ghost" title="The manual">Help</a>
       <div class="flex min-w-0 items-center gap-2">
         <div class="avatar avatar-placeholder" title={account.name}>
           <div class="w-8 rounded-full bg-neutral text-neutral-content"><span class="text-sm">{account.initial}</span></div>
@@ -474,4 +475,61 @@ export component Deliveries(account: Account): html {
     </section>
     <script type="module" src="/public/deliveries.js"></script>
   </AdminPage>
+}
+
+// Help is the manual: a chapter of the embedded Markdown (package help),
+// rendered by it, with the manual's other languages above it, and the
+// chapters beside it (after it on a phone) with the sections of the one
+// shown. The body is the renderer's own HTML of a file of the
+// repository, nobody else's.
+type HelpSection {
+  title: string
+  href: url
+}
+
+type HelpChapter {
+  title: string
+  href: url
+  current: bool
+  sections: HelpSection[]
+}
+
+type HelpLang {
+  label: string
+  href: url
+}
+
+export component Help(account: Account, title: string, language: string, chapters: HelpChapter[], langs: HelpLang[], body: string): html {
+  <Shell title={title}>
+    <AppBar title="BDF Print Manager" account={account}></AppBar>
+    <main class="mx-auto grid max-w-7xl grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[17rem_minmax(0,1fr)]">
+      <article id="help" lang={language} class="prose max-w-none rounded-box bg-base-100 p-6 shadow-sm dark:prose-invert sm:p-8 lg:col-start-2 lg:row-start-1">
+        <div class="not-prose -mt-2 mb-4 flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm">
+          <a href="#help-nav" class="link link-hover lg:hidden">Contents</a>
+          {for l in langs}
+            <a href={l.href} class="link link-hover">{l.label}</a>
+          {/for}
+        </div>
+        {RawHTML(body)}
+      </article>
+      <nav aria-label="Manual" class="lg:sticky lg:top-20 lg:col-start-1 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
+        <ul id="help-nav" class="menu w-full rounded-box bg-base-100 shadow-sm">
+          {for c in chapters}
+            {if c.current}
+              <li>
+                <a href={c.href} class="menu-active">{c.title}</a>
+                <ul>
+                  {for s in c.sections}
+                    <li><a href={s.href}>{s.title}</a></li>
+                  {/for}
+                </ul>
+              </li>
+            {else}
+              <li><a href={c.href}>{c.title}</a></li>
+            {/if}
+          {/for}
+        </ul>
+      </nav>
+    </main>
+  </Shell>
 }

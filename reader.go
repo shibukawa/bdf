@@ -388,6 +388,7 @@ func (r *Reader) ToDocument() (*Document, error) {
 	d := NewDocument()
 	d.Meta = r.Manifest.Meta
 	d.Views = r.Manifest.Views
+	d.Tables = r.Manifest.Tables
 	for _, e := range r.Manifest.Parts {
 		b, err := r.Part(e.H)
 		if err != nil {
@@ -510,4 +511,22 @@ func inflate(b []byte, limit, size int) ([]byte, error) {
 		}
 	}
 	return out.Bytes(), nil
+}
+
+// Table returns a table of the document (docs/spec.md §4.6) and the bytes
+// of its Parquet file. The tables of a locked document cannot be read.
+func (r *Reader) Table(id string) (*Table, []byte, error) {
+	t := r.Manifest.Table(id)
+	if t == nil {
+		return nil, nil, fmt.Errorf("bdf: no table %q", id)
+	}
+	h, err := ParseHash(t.Part)
+	if err != nil {
+		return nil, nil, fmt.Errorf("bdf: table %s: %w", id, err)
+	}
+	data, err := r.Part(h)
+	if err != nil {
+		return nil, nil, fmt.Errorf("bdf: table %s: %w", id, err)
+	}
+	return t, data, nil
 }

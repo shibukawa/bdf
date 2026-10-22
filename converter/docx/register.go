@@ -15,7 +15,10 @@ func init() {
 		Name:        "docx",
 		Description: "Word document",
 		Extensions:  []string{".docx", ".docm", ".dotx", ".dotm"},
-		Params:      []conv.Param{{Name: "views", Usage: "both (default): pages and scroll views; pages: only the pages; scroll: only the one long column"}},
+		Params: []conv.Param{
+			{Name: "views", Usage: "both (default): pages and scroll views; pages: only the pages; scroll: only the one long column"},
+			{Name: "data", Usage: conv.ChartDataParamUsage},
+		},
 		// an Office Open XML package with a word processing document part
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool {
 			if !bytes.HasPrefix(head, []byte("PK\x03\x04")) {
@@ -45,6 +48,9 @@ func init() {
 			return p.Has("word/document.xml")
 		},
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
+			if _, err := conv.DataParam(o.Param("data")); err != nil {
+				return nil, fmt.Errorf("docx: %w", err)
+			}
 			res, err := Convert(r, size, OptionsOf(o))
 			if err != nil {
 				return nil, err
@@ -61,7 +67,8 @@ func OptionsOf(o *conv.Options) *Options {
 	if o == nil {
 		return nil
 	}
-	return &Options{Pages: o.Pages, Views: o.Param("views"), Title: o.Title, Images: o.Images,
+	data, _ := conv.DataParam(o.Param("data")) // a wrong value is reported by the registry's Convert
+	return &Options{Pages: o.Pages, Views: o.Param("views"), Title: o.Title, Images: o.Images, Data: data,
 		FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
 		NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn}
 }
