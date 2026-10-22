@@ -66,7 +66,7 @@ func (e *emitter) op(o *op) {
 		e.close(0)
 	}
 	if o.text {
-		e.enter(o.ctx, o.leaf, o.level)
+		e.enter(o.ctx, o.leaf, o.level, o.role)
 	}
 	o.fn(e, o.dx, o.dy)
 }
@@ -87,8 +87,9 @@ func (e *emitter) close(n int) {
 }
 
 // enter moves into the structure ctx and writes the mark that starts the
-// text: a paragraph or heading, a line of a paragraph.
-func (e *emitter) enter(ctx []*frame, leaf byte, level int) {
+// text: a paragraph or heading, a line of a paragraph. role is a word of
+// the paragraph's own ("quote", "code"; docs/spec.md §7.8).
+func (e *emitter) enter(ctx []*frame, leaf byte, level int, role string) {
 	n := 0
 	for n < len(e.stack) && n < len(ctx) && e.stack[n] == ctx[n] {
 		n++
@@ -123,7 +124,11 @@ func (e *emitter) enter(ctx []*frame, leaf byte, level int) {
 	case 'P':
 		// a cell, list item or text box starts a paragraph already
 		if !opened {
-			e.cv.Obj.Mark(bdf.MarkParagraph, boxWords(ctx, true))
+			words := boxWords(ctx, true)
+			if role != "" && !strings.Contains(" "+words+" ", " "+role+" ") {
+				words = strings.TrimSpace(role + " " + words)
+			}
+			e.cv.Obj.Mark(bdf.MarkParagraph, words)
 		}
 	case 'L':
 		e.cv.Obj.Mark(bdf.MarkLine, "")

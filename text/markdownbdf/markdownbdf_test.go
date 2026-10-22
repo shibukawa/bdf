@@ -220,7 +220,8 @@ func TestWriteDir(t *testing.T) {
 
 // TestNoTextLost checks every test document: each run of text of the
 // layers that are written appears in the Markdown (list markers aside,
-// which the list's own replace).
+// which the list's own replace, and the text in figures with alternative
+// text, which stands for it).
 func TestNoTextLost(t *testing.T) {
 	files, _ := filepath.Glob("../../testdata/*/*.bdf")
 	if len(files) == 0 {
@@ -274,11 +275,22 @@ func TestNoTextLost(t *testing.T) {
 			if o == nil {
 				return
 			}
-			runs, _ := bdf.ExtractText(o, resolve)
-			for i := range runs {
-				r := &runs[i]
+			c, _ := bdf.ExtractContent(o, resolve)
+			if c == nil {
+				return
+			}
+			inFigure := func(node int) bool {
+				for i := node; i >= 0; i = c.Nodes[i].Parent {
+					if c.Nodes[i].Kind == bdf.NodeFigure && c.Nodes[i].Alt != "" {
+						return true
+					}
+				}
+				return false
+			}
+			for i := range c.Runs {
+				r := &c.Runs[i]
 				text := strings.TrimSpace(r.Text)
-				if text == "" || keep != nil && !keep(r) || bulletRe.MatchString(text) || orderedRe.MatchString(text) {
+				if text == "" || keep != nil && !keep(r) || bulletRe.MatchString(text) || orderedRe.MatchString(text) || inFigure(r.Node) {
 					continue
 				}
 				if !strings.Contains(md, unescape(text)) && missing < 5 {
@@ -322,4 +334,31 @@ func TestRunning(t *testing.T) {
 	wantLines(t, md, "Footnotes go at the bottom", "# Text and paragraphs")
 	md, _, _ = write(t, d, &Options{Views: []string{"pages"}, SkipRoles: []string{}, KeepRunning: true})
 	wantLines(t, md, "BDF test document Page 1")
+}
+
+// TestWordStyles writes a Word document whose paragraph styles say what
+// their paragraphs are: quotations become a block quotation, lines of code
+// a fenced block.
+func TestWordStyles(t *testing.T) {
+	md, _, _ := write(t, open(t, "docx/styles.bdf"), nil)
+	wantLines(t, md,
+		"\n> *A quotation set in the Quote style: a line that is not the author's own.*\n>\n> *The second paragraph of the quotation, in the same style.*\n>\n> *An intense quotation, set in the Intense Quote style.*\n\nThen a paragraph",
+		"\n```\nfunc main() {\n    fmt.Println(\"hello\")\n}\nx := 1 // a style based on HTML Preformatted\n```\n\nThe end of the document.",
+	)
+}
+
+// TestCharts writes a deck with charts: each is a figure whose alternative
+// text tells its kind, its title and its data, in place of its labels.
+func TestCharts(t *testing.T) {
+	md, _, _ := write(t, open(t, "pptx/features.bdf"), nil)
+	wantLines(t, md,
+		"\n# Charts\n\n*Column chart; East: Q1 20.4, Q2 27.4, Q3 90, Q4 20.4; West: Q1 30.6,",
+		"\n*Pie chart: Share; Share: Alpha 0.45, Beta 0.25, Gamma 0.2, Delta 0.1*\n",
+		"\n*Bar chart; Stacked 1: A 3, B 5, C 2; Stacked 2: A 2, B 1, C 4*\n",
+	)
+	for _, label := range []string{"\nQ1\n", "\nEast\n", "\n45%\n"} {
+		if strings.Contains(md, label) {
+			t.Errorf("a chart's label %q is written on its own", strings.TrimSpace(label))
+		}
+	}
 }

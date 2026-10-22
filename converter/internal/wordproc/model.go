@@ -46,6 +46,7 @@ type para struct {
 	anchors   []*floatObj
 	bookmarks []string
 	heading   int      // 1-6 for headings
+	role      string   // "quote" or "code", from the names of its styles (docs/spec.md §7.8)
 	ctx       []*frame // structure it is in (tables, lists, text boxes)
 	sect      *section // the section this paragraph ends, if any
 	hasText   bool
@@ -391,7 +392,7 @@ func (w *walker) paragraph(n *ooxml.Node) *para {
 	c := w.c
 	pPr := n.Child("pPr")
 	styleID := c.st.paraStyle(val(pPr.Child("pStyle")))
-	p := &para{part: w.part, style: styleID}
+	p := &para{part: w.part, style: styleID, role: c.st.paraRole(styleID)}
 	p.pp = c.paraProps(styleID, w.tl, pPr)
 	p.mark = c.runStyle(c.runProps(styleID, "", w.tl, pPr.Child("rPr")), "", w.dark)
 	p.markFace = c.face(p.mark, 'x')

@@ -1,6 +1,7 @@
 package drawingml
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -59,7 +60,11 @@ type chartCtx struct {
 	nseries    int
 }
 
-func (s *Drawing) drawChart(cv *canvas.Canvas, sh *shape, xf xform, rid string) {
+// drawChart draws the chart a graphic frame refers to. figure says the
+// frame is in a FIGURE of its own already (one with alternative text);
+// otherwise the chart is drawn in one whose alternative text tells its
+// kind, its title and its data.
+func (s *Drawing) drawChart(cv *canvas.Canvas, sh *shape, xf xform, rid string, figure bool) {
 	r, ok := s.c.pkg.Target(sh.part, rid)
 	if !ok {
 		return
@@ -71,16 +76,12 @@ func (s *Drawing) drawChart(cv *canvas.Canvas, sh *shape, xf xform, rid string) 
 	}
 	ch := &chartCtx{s: s, cv: cv, part: r.Target, root: root, x: xf.X, y: xf.Y, w: xf.W, h: xf.H}
 	ch.base = root.Path("txPr", "p", "pPr", "defRPr")
-	ch.draw()
+	ch.draw(figure)
 	cv.Drawn = true
 }
 
-func (ch *chartCtx) draw() {
+func (ch *chartCtx) draw(figure bool) {
 	s, cv := ch.s, ch.cv
-	cv.Obj.Save()
-	cv.Obj.Translate(f32(ch.x), f32(ch.y))
-	// chart area
-	s.boxFill(cv, ch.root.Child("spPr"), ch.part, 0, 0, ch.w, ch.h)
 	chart := ch.root.Child("chart")
 	pa := chart.Child("plotArea")
 	var plots []*chartPlot
@@ -89,9 +90,17 @@ func (ch *chartCtx) draw() {
 			plots = append(plots, p)
 		}
 	}
+	autoDeleted := chart.Child("autoTitleDeleted").AttrStr("val", "0") == "1"
+	if !figure {
+		cv.Obj.Mark(bdf.MarkFigure, ch.describe(chart, plots, autoDeleted))
+		defer cv.Obj.Mark(bdf.MarkEnd, "")
+	}
+	cv.Obj.Save()
+	cv.Obj.Translate(f32(ch.x), f32(ch.y))
+	// chart area
+	s.boxFill(cv, ch.root.Child("spPr"), ch.part, 0, 0, ch.w, ch.h)
 	// title
 	top, bottom, left, right := 7.0, ch.h-7, 7.0, ch.w-7
-	autoDeleted := chart.Child("autoTitleDeleted").AttrStr("val", "0") == "1"
 	if t := chart.Child("title"); t != nil && !autoDeleted {
 		top += ch.title(t, plots, top)
 	} else if t == nil && !autoDeleted && len(plots) == 1 && len(plots[0].series) == 1 {
@@ -446,6 +455,123 @@ func (ch *chartCtx) label(st *runStyle, text string, x, y float64, ha, va byte) 
 func (ch *chartCtx) lineHeight(st *runStyle) float64 {
 	fc := ch.s.c.faceFor(st, 'x')
 	return (fc.Asc + fc.Desc) * st.size
+}
+
+// describe writes the alternative text of a chart, for readers that do
+// not see it and for the text written of it: its kind and title, then the
+// data of its series (the categories and values, within bounds).
+func (ch *chartCtx) describe(chart *ooxml.Node, plots []*chartPlot, autoDeleted bool) string {
+	var b strings.Builder
+	if len(plots) > 0 {
+		b.WriteString(chartKindName(plots[0]))
+	} else {
+		b.WriteString("Chart")
+	}
+	if title := ch.titleText(chart, plots, autoDeleted); title != "" {
+		b.WriteString(": ")
+		b.WriteString(title)
+	}
+	const maxSeries, maxPoints, maxLen = 8, 24, 1200
+	n := 0
+	for _, p := range plots {
+		for _, se := range p.series {
+			if n >= maxSeries || b.Len() > maxLen {
+				b.WriteString("; …")
+				return b.String()
+			}
+			n++
+			name := strings.TrimSpace(se.name)
+			if name == "" {
+				name = fmt.Sprintf("Series %d", n)
+			}
+			b.WriteString("; ")
+			b.WriteString(name)
+			b.WriteString(": ")
+			for i, v := range se.vals {
+				if i >= maxPoints {
+					b.WriteString(", …")
+					break
+				}
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				val := "–"
+				if !math.IsNaN(v) {
+					val = formatNumber(v, se.format)
+				}
+				switch {
+				case p.kind == "scatter" && i < len(se.xs):
+					fmt.Fprintf(&b, "(%s, %s)", formatNumber(se.xs[i], ""), val)
+				case i < len(se.cats) && strings.TrimSpace(se.cats[i]) != "":
+					b.WriteString(strings.TrimSpace(se.cats[i]))
+					b.WriteByte(' ')
+					b.WriteString(val)
+				default:
+					b.WriteString(val)
+				}
+			}
+		}
+	}
+	return b.String()
+}
+
+// chartKindName names the kind of a plot as Office does.
+func chartKindName(p *chartPlot) string {
+	switch p.kind {
+	case "bar":
+		if p.horizontal {
+			return "Bar chart"
+		}
+		return "Column chart"
+	case "line":
+		return "Line chart"
+	case "area":
+		return "Area chart"
+	case "pie":
+		return "Pie chart"
+	case "doughnut":
+		return "Doughnut chart"
+	case "scatter":
+		return "Scatter chart"
+	}
+	return "Chart"
+}
+
+// titleText is the text of the title of a chart, as title draws it ("" for
+// none, and for Office's default text).
+func (ch *chartCtx) titleText(chart *ooxml.Node, plots []*chartPlot, autoDeleted bool) string {
+	if autoDeleted {
+		return ""
+	}
+	t := chart.Child("title")
+	if t == nil {
+		if len(plots) == 1 && len(plots[0].series) == 1 {
+			return strings.TrimSpace(plots[0].series[0].name)
+		}
+		return ""
+	}
+	if rich := t.Path("tx", "rich"); rich != nil {
+		var parts []string
+		for _, p := range rich.Children("p") {
+			var line strings.Builder
+			for _, r := range p.Children("r") {
+				if tt := r.Child("t"); tt != nil {
+					line.WriteString(tt.Content())
+				}
+			}
+			if s := strings.TrimSpace(line.String()); s != "" {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, " ")
+	}
+	if t.Path("tx", "strRef") != nil {
+		return strings.TrimSpace(strings.Join(ch.cacheStrings(t.Child("tx")), " "))
+	}
+	if len(plots) == 1 && len(plots[0].series) == 1 {
+		return strings.TrimSpace(plots[0].series[0].name)
+	}
+	return ""
 }
 
 // title draws the chart title and returns the height it takes.

@@ -25,15 +25,15 @@ facts:
     running: ページのあるビューで、上下 10% の余白の短い段落のうち、数字を除いて 2 ページ以上の同じ位置にあるものと、単独のページ番号を省く（-keep-running）
     untagged_pdf: 行間とフォントで段落に分け、大きい行・太字の短い行を見出しに。2 段組は内容ストリームの順
   browser: previewonly の markdown メソッド（images files / embed / none、zip、keepRunning、internalLinks）。ビューアの Download as… ダイアログで PDF（tagged）か Markdown を選ぶ
+  figures: 代替テキストのある FIGURE はその文（画像の alt か斜体）で表し、中の文字は出さない（読み上げの規則と同じ）。drawingml のグラフは変換器が FIGURE で囲み、種類・題・系列の値を代替テキストにする（2026-10-22）
+  word_styles: 段落スタイルの id・名前（基底も）に quote を含めば quote、code か preformatted を含めば code の語（converter/docx/testdata/styles.docx）
   not_recovered:
   - 下線・取り消し線、タスクリストのチェック、脚注の [^1]
-  - グラフ（drawingml が FIGURE で囲んでいないので軸ラベルの羅列）
   - 複数行の見出し行の表（GFM は 1 行）
   verification: testdata の全文書で run の文字列が残ることを確認（リストの記号を除く）。Markdown フィクスチャの往復、Word・PowerPoint・Excel・タグ付き PDF・タグなし PDF の要点
   evidence_2026_10_22: reportlab で作った 3 ページ 2 段組の論文風 PDF で、段の読み順が保たれ、柱・フッター・ページ番号が落ち、脚注番号が <sup> になった
 open_questions:
-- drawingml のグラフを FIGURE（alt = タイトル）で囲むか
-- Word の引用スタイル（Quote / Intense Quote）やコードのスタイルを quote / code の語にするか
+- グラフの系列を代替テキストではなく表として出すか（BDF に描かれない表を持つ仕組みはない）
 relations:
 - relation: sibling_of
   to: requirement:pdf-export

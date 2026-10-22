@@ -368,9 +368,10 @@ func (w *writer) block(n *node, inCell bool, depth int) string {
 	return ""
 }
 
-// figure writes a figure: its images with its alternative text, the text
-// alone when nothing else of it is written, and the text drawn in it (a
-// chart's labels, a diagram's words), which stays content.
+// figure writes a figure: its images with its alternative text, or that
+// text alone. The text drawn in a figure with alternative text (a chart's
+// labels) is left to it, as a reader of the document aloud leaves it
+// (docs/spec.md §7.8); the text of a figure without stands.
 func (w *writer) figure(n *node, inCell bool, depth int) string {
 	var images, rest []*node
 	for _, k := range n.kids {
@@ -396,7 +397,9 @@ func (w *writer) figure(n *node, inCell bool, depth int) string {
 	if len(parts) == 0 && alt != "" {
 		parts = append(parts, "*"+escape(alt)+"*")
 	}
-	parts = append(parts, w.blocks(rest, inCell, depth)...)
+	if alt == "" {
+		parts = append(parts, w.blocks(rest, inCell, depth)...)
+	}
 	return strings.Join(parts, "\n\n")
 }
 
