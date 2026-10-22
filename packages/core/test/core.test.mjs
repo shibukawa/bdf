@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, extractText, extractContent, parseCellRef, objectDeps, SplitSource, dcValues } from "../dist/index.js";
+import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, extractText, extractContent, parseCellRef, payloadWords, objectDeps, SplitSource, dcValues } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
 const fixture = new Uint8Array(await readFile(new URL("testdata/demo.bdf", root)));
@@ -101,6 +101,23 @@ test("cell references", () => {
   assert.deepEqual(parseCellRef("AA1 row"), { row: 0, col: 26, rows: 1, cols: 1, scope: "row" });
   assert.equal(parseCellRef("R1C1"), undefined);
   assert.equal(parseCellRef("A0"), undefined);
+});
+
+test("payload words: code, quotations and the kind of a list's markers", async () => {
+  assert.deepEqual(payloadWords("P quote quote"), { quote: 2 });
+  assert.deepEqual(payloadWords("code"), { code: true });
+  assert.deepEqual(payloadWords("ordered quote"), { list: "ordered", quote: 1 });
+  assert.deepEqual(payloadWords(""), {});
+  // the Markdown fixture: a code block, a quotation in a quotation, bulleted and numbered lists
+  const md = await BdfDocument.open(new BufferSource(new Uint8Array(await readFile(new URL("testdata/markdown/basic.bdf", root)))));
+  const o = await md.ensure(md.view("scroll").pages[0].layers[0].obj);
+  const c = extractContent(o, (h) => md.objectSync(h));
+  const nodeOf = (text) => c.nodes[c.runs.find((r) => r.text.startsWith(text)).node];
+  assert.equal(nodeOf("func main").code, true);
+  assert.equal(nodeOf("引用の段落").quote, 1);
+  assert.equal(nodeOf("入れ子の引用").quote, 2);
+  assert.equal(c.nodes[c.nodes[nodeOf("項目").parent].parent].list, "bullet");
+  assert.equal(c.nodes[c.nodes[nodeOf("番号付き").parent].parent].list, "ordered");
 });
 
 test("content: headings, lists, tables, figures and links", async () => {

@@ -108,6 +108,7 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (*Result, error) {
 					return nil, err
 				}
 			}
+			wr.guess = guessCode([]*node{root})
 			out = append(out, wr.sheet(root)...)
 			continue
 		}
@@ -126,8 +127,9 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (*Result, error) {
 		if !opts.KeepRunning && v.Kind != bdf.ViewScroll {
 			dropRunning(roots, v.Pages)
 		}
+		wr.guess = guessCode(roots)
 		for _, root := range roots {
-			out = append(out, wr.blocks(root.kids, false)...)
+			out = append(out, wr.blocks(root.kids, false, 0)...)
 		}
 	}
 	_, err = io.WriteString(w, strings.Join(out, "\n\n")+"\n")
@@ -232,6 +234,8 @@ type writer struct {
 	faces  map[bdf.Hash]*face
 	images map[bdf.Hash]string // the path of each image written ("" when it could not be)
 	res    *Result
+	// guess says the monospaced paragraphs of the view are code (guessCode)
+	guess bool
 }
 
 func (w *writer) warnf(format string, args ...any) {
@@ -267,6 +271,9 @@ type node struct {
 	level  int
 	cell   *bdf.CellRef
 	alt    string
+	code   bool   // a line of code (the payload's word)
+	quote  int    // how deep in quotations (the payload's words)
+	list   string // "bullet", "ordered" or "" (the payload's word)
 	runs   []*run
 	image  bdf.Hash
 	// index is the index of the node in the content it came from, offset
@@ -327,7 +334,7 @@ func (w *writer) extract(root *node, h bdf.Hash, keep func(*bdf.TextRun) bool) e
 	base = max(base, countNodes(root))
 	nodes := make([]*node, len(c.Nodes))
 	for i, tn := range c.Nodes {
-		n := &node{kind: tn.Kind, level: tn.Level, cell: tn.Cell, alt: tn.Alt, index: base + i}
+		n := &node{kind: tn.Kind, level: tn.Level, cell: tn.Cell, alt: tn.Alt, code: tn.Code, quote: tn.Quote, list: tn.List, index: base + i}
 		nodes[i] = n
 		parent := root
 		if tn.Parent >= 0 {

@@ -17,21 +17,23 @@ facts:
   layers: header / footer / master / background は既定で省く（-skip、-skip none）
   recovered:
     bold_italic: 埋め込みフォントは fontset が w400 で記録するので、Part の OS/2（usWeightClass、fsSelection）をフォントごとに 1 回読む
-    lists: 項目の先頭 run が記号なら取り除き、数字なら番号付き
-    code: 等幅フォントの段落をコードの行にし、続く行を 1 つのフェンスに
+    payload_words: §7.8 の規約（2026-10-22）。LIST の bullet / ordered、PARAGRAPH・BOX の code、入れ子の数だけ繰り返す quote。wordproc・drawingml・pdf が書き、ExtractContent と text.ts が読み、pdfbdf は BlockQuote と ListNumbering に戻す
+    lists: 語があればそれで種類を決め、先頭 run が記号なら取り除く。語がなければ記号の形から推定
+    code: 語があればコードの行。なければ等幅フォントの段落（ビューの半分未満のとき）。続く行を 1 つのフェンスに
+    quote: 語の数だけ "> " を重ねる。引用の中のリストは LIST の語で
     sup_sub: 隣より小さいフォントでベースラインがずれた run を <sup> / <sub> に
     running: ページのあるビューで、上下 10% の余白の短い段落のうち、数字を除いて 2 ページ以上の同じ位置にあるものと、単独のページ番号を省く（-keep-running）
     untagged_pdf: 行間とフォントで段落に分け、大きい行・太字の短い行を見出しに。2 段組は内容ストリームの順
+  browser: previewonly の markdown メソッド（images files / embed / none、zip、keepRunning、internalLinks）。ビューアの Download as… ダイアログで PDF（tagged）か Markdown を選ぶ
   not_recovered:
-  - 引用（箱と棒）、下線・取り消し線、タスクリストのチェック、脚注の [^1]
+  - 下線・取り消し線、タスクリストのチェック、脚注の [^1]
   - グラフ（drawingml が FIGURE で囲んでいないので軸ラベルの羅列）
   - 複数行の見出し行の表（GFM は 1 行）
   verification: testdata の全文書で run の文字列が残ることを確認（リストの記号を除く）。Markdown フィクスチャの往復、Word・PowerPoint・Excel・タグ付き PDF・タグなし PDF の要点
   evidence_2026_10_22: reportlab で作った 3 ページ 2 段組の論文風 PDF で、段の読み順が保たれ、柱・フッター・ページ番号が落ち、脚注番号が <sup> になった
 open_questions:
-- PARAGRAPH payload（code / quote）、LIST payload（bullet / ordered）の規約を §7.8 に書くか
 - drawingml のグラフを FIGURE（alt = タイトル）で囲むか
-- wasm の previewonly に markdown を載せ、デモサイトに置くか
+- Word の引用スタイル（Quote / Intense Quote）やコードのスタイルを quote / code の語にするか
 relations:
 - relation: sibling_of
   to: requirement:pdf-export

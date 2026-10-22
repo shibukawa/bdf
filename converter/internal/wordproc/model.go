@@ -371,7 +371,7 @@ func (w *walker) listCtx(p *para, listed bool) []*frame {
 			w.lists = w.lists[:n-1]
 		}
 		if n := len(w.lists); n == 0 || w.lists[n-1].lvl < lvl {
-			w.lists = append(w.lists, openList{lvl: lvl, numID: p.pp.numID, list: &frame{kind: fList}})
+			w.lists = append(w.lists, openList{lvl: lvl, numID: p.pp.numID, list: &frame{kind: fList, payload: listKind(w.c.num.level(p.pp.numID, lvl))}})
 		}
 		w.lists[len(w.lists)-1].item = &frame{kind: fItem}
 	case p.hasText:
@@ -960,4 +960,16 @@ func allowedNoKinsoku(a, b rune) bool {
 		return false
 	}
 	return fontdb.IsCJK(a) || fontdb.IsCJK(b)
+}
+
+// listKind is the payload of a LIST mark for a level of numbering: the
+// kind of the markers of its items (docs/spec.md §7.8).
+func listKind(l *numLevel) string {
+	switch {
+	case l == nil || l.format == "none":
+		return ""
+	case l.format == "bullet":
+		return "bullet"
+	}
+	return "ordered"
 }

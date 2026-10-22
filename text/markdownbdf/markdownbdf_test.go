@@ -71,6 +71,7 @@ func TestMarkdownRoundTrip(t *testing.T) {
 		"- 項目 1\n- 項目 2\n  - 入れ子の項目 A\n  - 入れ子の項目 B\n    1. 番号付き\n    2. 番号付き\n- 項目 3\n",
 		"1. 手順 1\n2. 手順 2\n\n   続きの段落。\n",
 		"```\nfunc main() {\n    fmt.Println(\"こんにちは、世界\") // タブで字下げ\n",
+		"\n## 引用とコード\n\n> 引用の段落です。\n>\n> > 入れ子の引用。\n\n```\n", // the words of the marks: quote, quote quote, code
 		"| 左寄せ | 中央 | 右寄せ |\n|---|---|---|\n| りんご | 赤 | 120 |\n",
 		"![グラデーションの画像](images/",
 		"見出しへのリンク: リスト、脚注<sup>1</sup>。", // links into the document drop their targets; a footnote mark is a superscript

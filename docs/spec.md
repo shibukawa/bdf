@@ -684,14 +684,14 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 
 | kind | 名前 | payload | 意味 |
 |---|---|---|---|
-| 0 | PARAGRAPH | 任意 | 段落の開始。以降の run は前の run と結合されない |
+| 0 | PARAGRAPH | 語の列（下記） | 段落の開始。以降の run は前の run と結合されない |
 | 1 | LINE | 任意 | 同じ段落内の行の開始。前の run との間に空白 1 つがあるものとして扱う |
 | 2 | CELL | セル参照（例 `B12`） | 表・シートのセルの開始。PARAGRAPH と同じ境界 |
-| 3 | BOX | 任意 | テキストボックス・図形内テキストの開始。PARAGRAPH と同じ境界 |
+| 3 | BOX | 語の列（下記） | テキストボックス・図形内テキストの開始。PARAGRAPH と同じ境界 |
 | 4 | ALT_TEXT | 文字列 | 直後の描画命令 1 つ（`FILL_TEXT` / `STROKE_TEXT` / `FILL_PATH_AT` / `FILL_PATH_RUN` / `USE` / `USE_AT`）が表す文字列。テキスト抽出ではその命令の文字列の代わりにこの文字列を、位置はその命令の位置を使う（`USE` / `USE_AT` では、子 Object の bbox の x 方向の範囲をこの文字列の範囲とし、位置を bbox の左端に、字送りを bbox の幅にする）。合字や私用領域の文字で描いた run の本来の文字列、アウトライン化した文字、1 文字ずつ描いた縦書きなどに使う。描画命令が続かない場合は位置なしの run になる |
 | 5 | WRAP | 任意 | 同じ段落内の行の折り返し。前の run との間に区切りを入れずに結合する。和文など語を空白で区切らない文字の間で折り返した行に使い、行をまたぐ検索を可能にする |
 | 6 | HEADING | レベル `1`〜`6` | 見出しの段落の開始。PARAGRAPH と同じ境界 |
-| 7 | LIST | 任意 | リストを開く（END で閉じる） |
+| 7 | LIST | 語の列（下記） | リストを開く（END で閉じる） |
 | 8 | LIST_ITEM | 任意 | 最も内側の LIST の項目の開始。次の LIST_ITEM か LIST の END までが項目の中身（入れ子の LIST や続きの段落を含められる）。最も内側が LIST でなければ PARAGRAPH と同じ |
 | 9 | TABLE | 任意 | 表を開く（END で閉じる）。中のセルは CELL で始める |
 | 10 | FIGURE | 代替テキスト | 図を開く（END で閉じる）。範囲は中の描画命令の外接矩形。代替テキストが空なら装飾で、読み上げない |
@@ -703,6 +703,21 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 - `MARK` を出さないエンコーダのために、読み手は位置に基づく推定（y が変われば行、同じ行で字送りの 0.2 倍以上の隙間があれば空白）で補ってよい。ただし推定は不正確なので、エンコーダは `MARK` を出すことが強く推奨される。
 - run どうしの区切りは kind だけで決まる。LINE は空白、WRAP は連結、PARAGRAPH / CELL / BOX / HEADING / LIST / LIST_ITEM / TABLE / FIGURE / END は段落境界。ALT_TEXT と LANG は区切りに影響しない（LANG の後の run は位置による推定のままで、保留中の ALT_TEXT もそのまま次の描画命令に付く）。BARCODE も区切りに影響しない。
 - 読み手は知らない kind の `MARK` を無視する（描画にもテキストにも影響しない）。
+
+#### payload の語
+
+PARAGRAPH・BOX・LIST の payload は空白で区切った語の列で、読み手は知っている語だけを見る（知らない語は無視する。書き手は段落の出自など、ほかの語を置いてよい）。語は区切りに影響しない。
+
+| 語 | 置ける MARK | 意味 |
+|---|---|---|
+| `code` | PARAGRAPH、BOX | コードの行。等幅で、空白はそのまま。続く `code` の段落は 1 つのコードブロック |
+| `quote` | PARAGRAPH、BOX、LIST | 引用の中にある。入れ子の深さの数だけ繰り返す（`quote quote` は 2 段目） |
+| `bullet` | LIST | 項目の記号は箇条書きの印（•、– など） |
+| `ordered` | LIST | 項目の記号は番号（1.、a)、i. など） |
+
+- 項目の記号は項目の最初の run として描く（LIST_ITEM の直後、LINE で本文と区切る）。`bullet` / `ordered` は記号の種類を言うだけで、記号を描くかどうかは書き手が決める。
+- 引用の中の LIST は `quote` を持ち、その項目の段落（LIST_ITEM で始まる）は持たなくてよい。LIST_ITEM で始まらない続きの段落は PARAGRAPH に `quote` を持つ。
+- HEADING の payload はレベルの数字 1 つ（引用の中の見出しもレベルだけ）。
 
 #### BARCODE の payload
 

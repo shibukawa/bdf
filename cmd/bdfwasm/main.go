@@ -113,6 +113,20 @@
 //	  pdfa?: string,     // a PDF/A file: "2b", "2u", "2a" (tagged), "3b", "3u" or "3a"
 //	}): Promise<{pdf: Uint8Array, pages: number, fonts: number, warnings: string[]}>
 //
+// The preview module writes a single-file bdf as Markdown, as bdf markdown
+// does (text/markdownbdf):
+//
+//	bdfConverter.markdown(bdf: Uint8Array, options?: {
+//	  password?: string,       // the password of an encrypted document (the Markdown is plain text)
+//	  views?: string[],        // the ids of the views to write (default: the scroll view when there is one, else all)
+//	  skip?: string[],         // roles of layers to leave out (default: header, footer, master and background)
+//	  keepRunning?: boolean,   // keep the running heads, feet and page numbers of pages
+//	  internalLinks?: boolean, // keep links into the document itself (#page=N)
+//	  images?: string,         // "files" (default: images as files, returned beside the text), "embed" (as data URLs in the text) or "none"
+//	  zip?: boolean,           // also a zip file of the text (name.md) and the image files
+//	  name?: string,           // the name of the text in the zip file (default "document")
+//	}): Promise<{markdown: Uint8Array, images: {name: string, data: Uint8Array}[], zip?: Uint8Array, views: number, warnings: string[]}>
+//
 // The form module (-tags formonly) has the converters of the templates of
 // forms (Word, Excel, PowerPoint, PDF forms and the templates of pdfme)
 // and package form: it reads what a template asks of data (its tags, or

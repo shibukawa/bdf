@@ -95,7 +95,7 @@ func (e *emitter) enter(ctx []*frame, leaf byte, level int) {
 	}
 	e.close(n)
 	opened := false
-	for _, f := range ctx[n:] {
+	for i, f := range ctx[n:] {
 		switch f.kind {
 		case fTable:
 			e.cv.Obj.Mark(bdf.MarkTable, "")
@@ -103,12 +103,12 @@ func (e *emitter) enter(ctx []*frame, leaf byte, level int) {
 			e.cv.Obj.Mark(bdf.MarkCell, f.payload)
 			opened = true
 		case fList:
-			e.cv.Obj.Mark(bdf.MarkList, "")
+			e.cv.Obj.Mark(bdf.MarkList, strings.TrimSpace(f.payload+" "+boxWords(ctx[:n+i], false)))
 		case fItem:
 			e.cv.Obj.Mark(bdf.MarkListItem, "")
 			opened = true
 		case fBox:
-			e.cv.Obj.Mark(bdf.MarkBox, "")
+			e.cv.Obj.Mark(bdf.MarkBox, boxWords(ctx[:n+i+1], true))
 			opened = true
 		case fFigure:
 			e.cv.Obj.Mark(bdf.MarkFigure, f.payload)
@@ -123,13 +123,35 @@ func (e *emitter) enter(ctx []*frame, leaf byte, level int) {
 	case 'P':
 		// a cell, list item or text box starts a paragraph already
 		if !opened {
-			e.cv.Obj.Mark(bdf.MarkParagraph, "")
+			e.cv.Obj.Mark(bdf.MarkParagraph, boxWords(ctx, true))
 		}
 	case 'L':
 		e.cv.Obj.Mark(bdf.MarkLine, "")
 	case 'W':
 		e.cv.Obj.Mark(bdf.MarkWrap, "")
 	}
+}
+
+// boxWords is the payload of the mark of a paragraph in the boxes of ctx
+// (docs/spec.md §7.8): "quote" once for each quotation it is in, and
+// "code" when the innermost box holds code (code says whether that word
+// is wanted: a list in a code box is not code).
+func boxWords(ctx []*frame, code bool) string {
+	var words []string
+	var inner *frame
+	for _, f := range ctx {
+		if f.kind != fBox {
+			continue
+		}
+		inner = f
+		if f.payload == "quote" {
+			words = append(words, "quote")
+		}
+	}
+	if code && inner != nil && inner.payload == "code" {
+		words = append([]string{"code"}, words...)
+	}
+	return strings.Join(words, " ")
 }
 
 func (e *emitter) setFont(fc *fontset.Choice, size float64) {

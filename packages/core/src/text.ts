@@ -61,6 +61,23 @@ export interface TextNode {
   alt?: string;
   /** Figure: bounding box of what it draws, clipped, in the extraction space. */
   bounds?: Rect;
+  /** Paragraph: a line of code (the word "code" of its payload; spec §7.8). */
+  code?: true;
+  /** Paragraph or list: how deep in quotations (the count of the word "quote" of its payload). */
+  quote?: number;
+  /** List: the kind of its items' markers (the word "bullet" or "ordered" of its payload). */
+  list?: "bullet" | "ordered";
+}
+
+/** Read the words of a PARAGRAPH, BOX or LIST payload (spec §7.8); unknown words are ignored. */
+export function payloadWords(payload: string): Pick<TextNode, "code" | "quote" | "list"> {
+  const out: Pick<TextNode, "code" | "quote" | "list"> = {};
+  for (const w of payload.split(/\s+/)) {
+    if (w === "code") out.code = true;
+    else if (w === "quote") out.quote = (out.quote ?? 0) + 1;
+    else if (w === "bullet" || w === "ordered") out.list = w;
+  }
+  return out;
 }
 
 /** A LINK area: the bounding box of its rectangle in the extraction space. */
@@ -266,13 +283,13 @@ class Extraction {
   /** Apply a structure MARK (spec §7.8). */
   structure(kind: number, payload: string, st: State) {
     switch (kind) {
-      case Mark.PARAGRAPH: case Mark.BOX: this.reserved = { kind: "paragraph" }; break;
+      case Mark.PARAGRAPH: case Mark.BOX: this.reserved = { kind: "paragraph", ...payloadWords(payload) }; break;
       case Mark.HEADING: {
-        const level = Number(payload);
+        const level = Number(payload.trim().split(/\s+/)[0]);
         this.reserved = Number.isInteger(level) && level >= 1 && level <= 6 ? { kind: "heading", level } : { kind: "heading" };
         break;
       }
-      case Mark.LIST: this.openNode({ kind: "list" }); break;
+      case Mark.LIST: this.openNode({ kind: "list", ...payloadWords(payload) }); break;
       case Mark.LIST_ITEM:
         if (this.topKind() === "item") this.closeTop();
         if (this.topKind() === "list") this.openNode({ kind: "item" });

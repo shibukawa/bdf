@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/shibukawa/bdf"
 )
@@ -20,7 +21,26 @@ var (
 	numRe     = regexp.MustCompile(`\d+`)
 	listRe    = regexp.MustCompile(`^\s*(-|\d+\.) `)
 	startRe   = regexp.MustCompile(`^\d{1,9}[.)] `)
+	// orderedMarkerRe matches the marker of an item of a list that says it
+	// is numbered: a number or letters with a period or a parenthesis, a
+	// number alone (also full-width), a circled number.
+	orderedMarkerRe = regexp.MustCompile(`^(\(?[\p{N}\p{L}]{1,4}[.)．）、]|\p{N}{1,4}|[①-⑳㉑-㉟])$`)
 )
+
+// bulletMarker reports whether a run is the marker of an item of a list
+// that says it is bulleted: a few characters, none a letter or a digit.
+func bulletMarker(s string) bool {
+	rs := []rune(s)
+	if len(rs) == 0 || len(rs) > 3 {
+		return false
+	}
+	for _, r := range rs {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
 
 // escape keeps the characters of text from being read as Markdown.
 func escape(s string) string {
@@ -174,10 +194,16 @@ func codeLine(runs []*run) string {
 	return strings.TrimRight(b.String(), " ")
 }
 
-// isCode reports whether a paragraph is a line of code: all its text in a
-// monospaced font.
-func isCode(n *node) bool {
+// isCode reports whether a paragraph is a line of code: one its mark says
+// is, or, when guess is set, one whose text is all in a monospaced font.
+func isCode(n *node, guess bool) bool {
 	if n.kind != bdf.NodeParagraph || len(n.runs) == 0 {
+		return false
+	}
+	if n.code {
+		return true
+	}
+	if !guess {
 		return false
 	}
 	for _, r := range n.runs {
@@ -186,6 +212,30 @@ func isCode(n *node) bool {
 		}
 	}
 	return true
+}
+
+// guessCode reports whether the monospaced paragraphs of a view, whose
+// marks do not say they are code, are code: when most of its paragraphs
+// are not monospaced (a document set in a monospaced font is not a
+// listing).
+func guessCode(roots []*node) bool {
+	mono, all := 0, 0
+	var count func(n *node)
+	count = func(n *node) {
+		for _, k := range n.kids {
+			if k.kind == bdf.NodeParagraph && len(k.runs) > 0 {
+				all++
+				if isCode(k, true) {
+					mono++
+				}
+			}
+			count(k)
+		}
+	}
+	for _, r := range roots {
+		count(r)
+	}
+	return mono > 0 && (all < 4 || mono*2 < all)
 }
 
 // imagePath writes an image once and returns the path the Markdown refers
@@ -235,16 +285,32 @@ func imageExt(d []byte) string {
 }
 
 // blocks writes a sequence of nodes as blocks: paragraphs, headings, lists,
-// tables, figures, and fences of the lines of code among them. inCell says
-// the blocks are in a cell or an item, where a heading is a bold line.
-func (w *writer) blocks(kids []*node, inCell bool) []string {
+// tables, figures, fences of the lines of code among them, and quotations
+// of the nodes deeper in quotations than depth, the depth of the
+// quotation the blocks are in. inCell says the blocks are in a cell or an
+// item, where a heading is a bold line.
+func (w *writer) blocks(kids []*node, inCell bool, depth int) []string {
 	var out []string
+	guess := w.guess
 	for i := 0; i < len(kids); i++ {
 		k := kids[i]
-		if isCode(k) {
+		if k.quote > depth {
+			// a quotation: the nodes in it, written one level down
+			j := i
+			for ; j < len(kids) && kids[j].quote > depth; j++ {
+			}
+			inner := strings.Join(w.blocks(kids[i:j], inCell, depth+1), "\n\n")
+			i = j - 1
+			if inner == "" {
+				continue
+			}
+			out = append(out, "> "+strings.ReplaceAll(strings.ReplaceAll(inner, "\n", "\n> "), "> \n", ">\n"))
+			continue
+		}
+		if isCode(k, guess) {
 			var lines []string
 			j := i
-			for ; j < len(kids) && isCode(kids[j]); j++ {
+			for ; j < len(kids) && kids[j].quote <= depth && isCode(kids[j], guess); j++ {
 				lines = append(lines, codeLine(kids[j].runs))
 			}
 			i = j - 1
@@ -257,14 +323,14 @@ func (w *writer) blocks(kids []*node, inCell bool) []string {
 			out = append(out, fence+"\n"+strings.Join(lines, "\n")+"\n"+fence)
 			continue
 		}
-		if s := w.block(k, inCell); s != "" {
+		if s := w.block(k, inCell, depth); s != "" {
 			out = append(out, s)
 		}
 	}
 	return out
 }
 
-func (w *writer) block(n *node, inCell bool) string {
+func (w *writer) block(n *node, inCell bool, depth int) string {
 	switch n.kind {
 	case bdf.NodeParagraph, bdf.NodeCaption, bdf.NodeCell:
 		t := strings.TrimSpace(inline(n.runs, false))
@@ -291,13 +357,13 @@ func (w *writer) block(n *node, inCell bool) string {
 		}
 		return ""
 	case bdf.NodeFigure:
-		return w.figure(n, inCell)
+		return w.figure(n, inCell, depth)
 	case bdf.NodeList:
-		return w.list(n)
+		return w.list(n, depth)
 	case bdf.NodeTable:
 		return w.table(n)
 	case bdf.NodeItem:
-		return strings.Join(w.blocks(n.kids, true), "\n\n")
+		return strings.Join(w.blocks(n.kids, true, depth), "\n\n")
 	}
 	return ""
 }
@@ -305,7 +371,7 @@ func (w *writer) block(n *node, inCell bool) string {
 // figure writes a figure: its images with its alternative text, the text
 // alone when nothing else of it is written, and the text drawn in it (a
 // chart's labels, a diagram's words), which stays content.
-func (w *writer) figure(n *node, inCell bool) string {
+func (w *writer) figure(n *node, inCell bool, depth int) string {
 	var images, rest []*node
 	for _, k := range n.kids {
 		if k.kind == kindImage {
@@ -330,13 +396,14 @@ func (w *writer) figure(n *node, inCell bool) string {
 	if len(parts) == 0 && alt != "" {
 		parts = append(parts, "*"+escape(alt)+"*")
 	}
-	parts = append(parts, w.blocks(rest, inCell)...)
+	parts = append(parts, w.blocks(rest, inCell, depth)...)
 	return strings.Join(parts, "\n\n")
 }
 
 // marker tells whether the first run of an item is the marker the
-// converter drew for it, and whether it numbers the item.
-func marker(it *node) (first *node, ordered bool, text string) {
+// converter drew for it, and whether it numbers the item. kind is what
+// the list's mark says its markers are ("bullet", "ordered" or "").
+func marker(it *node, kind string) (first *node, ordered bool, text string) {
 	if len(it.kids) == 0 {
 		return nil, false, ""
 	}
@@ -345,6 +412,18 @@ func marker(it *node) (first *node, ordered bool, text string) {
 		return first, false, ""
 	}
 	t := strings.TrimSpace(first.runs[0].Text)
+	switch kind {
+	case "bullet":
+		if bulletMarker(t) || bulletRe.MatchString(t) {
+			return first, false, t
+		}
+		return first, false, ""
+	case "ordered":
+		if orderedMarkerRe.MatchString(t) || orderedRe.MatchString(t) {
+			return first, true, t
+		}
+		return first, true, ""
+	}
 	switch {
 	case bulletRe.MatchString(t):
 		return first, false, t
@@ -356,19 +435,19 @@ func marker(it *node) (first *node, ordered bool, text string) {
 
 // list writes a list: an item a line, what follows its first paragraph
 // indented under it, a nested list right after the item it is in.
-func (w *writer) list(n *node) string {
+func (w *writer) list(n *node, depth int) string {
 	var lines []string
 	num := 0
-	ordered := false
+	ordered := n.list == "ordered"
 	for i, it := range n.kids {
 		if it.kind != bdf.NodeItem {
-			if s := w.block(it, true); s != "" {
+			if s := w.block(it, true, depth); s != "" {
 				lines = append(lines, s)
 			}
 			continue
 		}
-		first, ord, mk := marker(it)
-		if i == 0 {
+		first, ord, mk := marker(it, n.list)
+		if i == 0 && n.list == "" {
 			ordered = ord
 		}
 		kids := it.kids
@@ -394,7 +473,7 @@ func (w *writer) list(n *node) string {
 		}
 		pad := strings.Repeat(" ", len(bullet))
 		item := bullet + head
-		for _, b := range w.blocks(kids, true) {
+		for _, b := range w.blocks(kids, true, depth) {
 			b = pad + strings.ReplaceAll(b, "\n", "\n"+pad)
 			b = strings.ReplaceAll(b, "\n"+pad+"\n", "\n\n")
 			if listRe.MatchString(b) {
@@ -423,7 +502,7 @@ func (w *writer) cellText(n *node) string {
 			}
 		}
 	} else {
-		for _, b := range w.blocks(n.kids, true) {
+		for _, b := range w.blocks(n.kids, true, 0) {
 			parts = append(parts, strings.ReplaceAll(b, "\n", "<br>"))
 		}
 	}
@@ -539,5 +618,5 @@ func (w *writer) sheet(root *node) []string {
 	if len(cells) > 0 {
 		out = append(out, w.grid(cells))
 	}
-	return append(out, w.blocks(rest, false)...)
+	return append(out, w.blocks(rest, false, 0)...)
 }

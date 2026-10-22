@@ -89,6 +89,30 @@ type TextNode struct {
 	Cell *CellRef
 	// Alt is the alternative text of a figure ("" when it is decorative).
 	Alt string
+	// Code says a paragraph is a line of code (the word "code" of its
+	// payload; docs/spec.md §7.8).
+	Code bool
+	// Quote is how deep in quotations a paragraph or a list is: the count
+	// of the word "quote" in its payload.
+	Quote int
+	// List is the kind of the markers of a list's items: "bullet",
+	// "ordered", or "" when the payload does not say.
+	List string
+}
+
+// words reads the payload of a PARAGRAPH, BOX or LIST mark into a node:
+// the words it knows (docs/spec.md §7.8), the others ignored.
+func (n *TextNode) words(payload string) {
+	for _, w := range strings.Fields(payload) {
+		switch w {
+		case "code":
+			n.Code = true
+		case "quote":
+			n.Quote++
+		case "bullet", "ordered":
+			n.List = w
+		}
+	}
 }
 
 // CellRef is the payload of a CELL mark: a reference or a range, of a
@@ -328,15 +352,21 @@ func (t *textExtractor) closeTop() {
 func (t *textExtractor) structure(kind byte, payload string) {
 	switch kind {
 	case MarkParagraph, MarkBox:
-		t.reserved = &TextNode{Kind: NodeParagraph}
+		n := &TextNode{Kind: NodeParagraph}
+		n.words(payload)
+		t.reserved = n
 	case MarkHeading:
 		n := &TextNode{Kind: NodeHeading}
-		if l, err := strconv.Atoi(strings.TrimSpace(payload)); err == nil && l >= 1 && l <= 6 {
-			n.Level = l
+		if f := strings.Fields(payload); len(f) > 0 {
+			if l, err := strconv.Atoi(f[0]); err == nil && l >= 1 && l <= 6 {
+				n.Level = l
+			}
 		}
 		t.reserved = n
 	case MarkList:
-		t.openNode(TextNode{Kind: NodeList})
+		n := TextNode{Kind: NodeList}
+		n.words(payload)
+		t.openNode(n)
 	case MarkListItem:
 		if t.topIs(NodeItem) {
 			t.closeTop()

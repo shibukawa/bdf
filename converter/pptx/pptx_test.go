@@ -304,9 +304,9 @@ func TestStructure(t *testing.T) {
 		// the title placeholders are headings, after their BOX
 		{1, "BOX | H(1) | BDF from PowerPoint | BOX | Slides rendered directly from DrawingML"},
 		// bullets are list items, nested by level; numbered ones too
-		{2, "BOX | H(1) | Bullets and levels | BOX | LIST | LI | • First level bullet with enough words to wrap onto a second line inside the placeholder" +
-			" | LIST | LI | – Second level | LIST | LI | • Third level | END | END | LI | • A link to example.com" +
-			" | LIST | LI | 1. numbered one | LI | 2. numbered two | LI | 3. numbered three | END | END"},
+		{2, "BOX | H(1) | Bullets and levels | BOX | LIST(bullet) | LI | • First level bullet with enough words to wrap onto a second line inside the placeholder" +
+			" | LIST(bullet) | LI | – Second level | LIST(bullet) | LI | • Third level | END | END | LI | • A link to example.com" +
+			" | LIST(ordered) | LI | 1. numbered one | LI | 2. numbered two | LI | 3. numbered three | END | END"},
 		// Japanese text (kana) is marked; the Han-only run of a Japanese
 		// paragraph and the vertical line (in the parent, before its
 		// ALT_TEXT) too; Latin runs return to the document's language
@@ -332,10 +332,10 @@ func TestStructure(t *testing.T) {
 		page int
 		want string
 	}{
-		{1, "BOX | H(1) | Master and layout | BOX | LIST | LI | • The band at the bottom comes from the slide master | LI | • The orange bar comes from the layout | END"},
+		{1, "BOX | H(1) | Master and layout | BOX | LIST(bullet) | LI | • The band at the bottom comes from the slide master | LI | • The orange bar comes from the layout | END"},
 		// Han-only text keeps the Japanese in effect (the table cells)
-		{4, "BOX | H(1) | LANG(ja) | 日本語のスライド | BOX | LIST | LI | • 箇条書きの一行目です。長い文章は枠の幅で折り返され、句読点は行頭に来ません。" +
-			" | LIST | LI | – 二段目の項目 | END | LI | • 英数字 | LANG() | ABC | LANG(ja) | と | LANG() | 123 | LANG(ja) | の混在 | END" +
+		{4, "BOX | H(1) | LANG(ja) | 日本語のスライド | BOX | LIST(bullet) | LI | • 箇条書きの一行目です。長い文章は枠の幅で折り返され、句読点は行頭に来ません。" +
+			" | LIST(bullet) | LI | – 二段目の項目 | END | LI | • 英数字 | LANG() | ABC | LANG(ja) | と | LANG() | 123 | LANG(ja) | の混在 | END" +
 			" | BOX | 縦書きで、読みます。 | TABLE | CELL(A1 col) | BOX | 項目 | CELL(B1 col) | BOX | 説明" +
 			" | CELL(A2) | BOX | 図形 | CELL(B2) | BOX | プリセット形状 | CELL(A3) | BOX | 表 | CELL(B3) | BOX | 表のスタイル | END"},
 	} {
