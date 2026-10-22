@@ -125,18 +125,18 @@ PUT のときに、名指すノードが全部あること、名前が別の種�
 ## 2. 構成
 
 ```
-print/manager/model.go      Node、Job・Leg、Item、Delivery、状態、ID の形
-print/manager/nodes.go      ノードの PUT・一覧・削除、名前の空間、参照の確かめ、閉路の検出、Topology
-print/manager/route.go      routing（辺をたどる）、クラスの選択、Job の記録、取り消し、宛先ごとの一覧、ジョブの片付け
-print/manager/inbox.go      項目、流す、捨てる、インボックスの状態と片付け
-print/manager/deliver.go    Delivery、借りの下の送り、クラスの次のメンバー、保管の書き込み、再試行、tick
-print/manager/submit.go     受け付け（Job を作り routing へ）、文書はジョブの番号で
-print/manager/ipp.go        どのノードも宛先、CUPS-Get-Printers / Classes
-print/manager/http.go       /api/nodes、/api/topology、/api/destinations、/api/jobs、/api/inboxes、/api/items、/api/deliveries
-print/manager/endpoint.go   エンドポイントの鍵（argon2id）、/in/<名前>、テンプレートの登録・差し込み、キャンバスの位置
-print/manager/people.go     人のログイン（管理者トークン・submit トークン）、セッションのクッキー、自分のジョブ、監査ログ
-print/manager/store.go      新しいコレクション、テンプレートの Blob、保管の Blob の保存先の cache
-cmd/printmanager            ログイン（/）、利用者（/jobs、jobs.js）、管理（/admin、admin.js：キャンバス・テンプレート・鍵）、監査（/audit、audit.js）の画面、英語の文、MANAGER_JOB_KEEP、Background
+docflow/model.go      Node、Job・Leg、Item、Delivery、状態、ID の形
+docflow/nodes.go      ノードの PUT・一覧・削除、名前の空間、参照の確かめ、閉路の検出、Topology
+docflow/route.go      routing（辺をたどる）、クラスの選択、Job の記録、取り消し、宛先ごとの一覧、ジョブの片付け
+docflow/inbox.go      項目、流す、捨てる、インボックスの状態と片付け
+docflow/deliver.go    Delivery、借りの下の送り、クラスの次のメンバー、保管の書き込み、再試行、tick
+docflow/submit.go     受け付け（Job を作り routing へ）、文書はジョブの番号で
+docflow/ipp.go        どのノードも宛先、CUPS-Get-Printers / Classes
+docflow/http.go       /api/nodes、/api/topology、/api/destinations、/api/jobs、/api/inboxes、/api/items、/api/deliveries
+docflow/endpoint.go   エンドポイントの鍵（argon2id）、/in/<名前>、テンプレートの登録・差し込み、キャンバスの位置
+docflow/people.go     人のログイン（管理者トークン・submit トークン）、セッションのクッキー、自分のジョブ、監査ログ
+docflow/store.go      新しいコレクション、テンプレートの Blob、保管の Blob の保存先の cache
+cmd/docflow            ログイン（/）、利用者（/jobs、jobs.js）、管理（/admin、admin.js：キャンバス・テンプレート・鍵）、監査（/audit、audit.js）の画面、英語の文、MANAGER_JOB_KEEP、Background
 ```
 
 ## 3. pm-1 から変えた所
@@ -150,7 +150,7 @@ cmd/printmanager            ログイン（/）、利用者（/jobs、jobs.js）
 
 ## 4. 試験
 
-`go test -race ./print/manager/`：TestQueueFanout（分岐、2 枚の伝票、取り消し、片付けで文書も消える）、TestClass（4 件が 2 台に交互、failover で落ちた 1 台を飛ばす、retry）、TestPrinterDirect（プリンタに直接、Background で tick なし）、TestInbox（保留、流す先の制限、流す、全部に流す、捨てる、取り消し、消せない、keep）、TestArchive（bbolt の保管に 2 つのオブジェクト、記録の中身、2 度書かない、悪い URL は 400）、TestNodes（種類・辺・名前・閉路・削除の確かめ、Topology）、TestCupsGetPrinters（`ipp.Client.CupsGetPrinters` で全ノード、クラスの印）、TestEndpoint（鍵は 1 度だけ、鍵なし・別の鍵は 401、文書、`pages.bdft` の登録と JSON での差し込み、無いテンプレート、テンプレートの制限と削除の拒否、鍵の回転、IPP の宛先、レイアウト）、TestKeys（argon2id の PHC）、TestLogin（フォームと JSON のログイン、利用者は自分のジョブだけ、管理者は全部、管理の API は利用者に 401、監査ログの順、ログアウトと期限）。pm-1 のテストはそのまま通る。
+`go test -race ./docflow/`：TestQueueFanout（分岐、2 枚の伝票、取り消し、片付けで文書も消える）、TestClass（4 件が 2 台に交互、failover で落ちた 1 台を飛ばす、retry）、TestPrinterDirect（プリンタに直接、Background で tick なし）、TestInbox（保留、流す先の制限、流す、全部に流す、捨てる、取り消し、消せない、keep）、TestArchive（bbolt の保管に 2 つのオブジェクト、記録の中身、2 度書かない、悪い URL は 400）、TestNodes（種類・辺・名前・閉路・削除の確かめ、Topology）、TestCupsGetPrinters（`ipp.Client.CupsGetPrinters` で全ノード、クラスの印）、TestEndpoint（鍵は 1 度だけ、鍵なし・別の鍵は 401、文書、`pages.bdft` の登録と JSON での差し込み、無いテンプレート、テンプレートの制限と削除の拒否、鍵の回転、IPP の宛先、レイアウト）、TestKeys（argon2id の PHC）、TestLogin（フォームと JSON のログイン、利用者は自分のジョブだけ、管理者は全部、管理の API は利用者に 401、監査ログの順、ログアウトと期限）。pm-1 のテストはそのまま通る。
 
 手で：偽プリンタの農場（`tools/fakeprinter`）の mfp-3f・postscript を使い、`/admin` でクラス・分岐・インボックス・保管を組み、API で 8 件送って、インボックスから画面で流した。クラスは mfp-3f と postscript に交互に、分岐は 2 つの倉庫のボードに、保管の bbolt に `.bdf` と `.json`。
 

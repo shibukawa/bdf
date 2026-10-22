@@ -39,18 +39,18 @@ verification:
   manager-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     authority: observed
     evidence:
-      path: print/manager/roles_test.go
+      path: docflow/roles_test.go
       locator: 'TestRolesAndReprint（tess は topology、audrey は audit：API の 200/403、audrey は全ジョブを見て取り消せない、publicTopology は役割で決まる。alice の刷り直し、wh-b へは 403、bob は alice のを 404、bob はグループの wms-b を office へ 201、監査に reprint）、TestKeyRing（古い秘密のセッションが previous で開き、新しいセッションは新しい秘密だけ、外すと閉じる）。2026-10-21 macOS'
   login-tests:
     state: passed
     method: integration
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/login_test.go
+      path: cmd/docflow/handlers/login_test.go
       locator: 'TestLogin に tess（pm-topology）と audrey（pm-auditors）：/admin・/audit・/api/nodes・/api/audit の 200/403、AppBar のリンク、audrey が全ジョブを見る。TestConfigureAuth：auditors の形の確かめ、previous の鍵が session.keyring.previous_secrets に'
 facts:
   delivery:
@@ -58,7 +58,7 @@ facts:
       date: '2026-10-21'
       packages:
       - 'print/manager：scope.go（RoleTopology・RoleAudit、Viewer.Roles・Can、CanSee に audit）、http.go（roleOnly、adminOnly=topology、auditOnly、/api/jobs/<n>/reprint、topology の設定は topology の役割に）、submit.go（Reprint）、manager.go（Options.PreviousSecrets）、devices.go（open は退役した秘密でも、signWith）'
-      - 'cmd/printmanager：config.go（TopologyAdmins・TopologyAdminGroups・Auditors・AuditorGroups、PreviousSecrets）、auth.go（policy.roles・listed、ConfigureAuth に previous、sessionKey、Viewer.Roles）、app.go（page(role)、Account.Topology・Audit、previous を manager へ）、pages.pw.html（Account、AppBar、Forbidden に role、Jobs の見出しは audit）、jobs.js（Reprint。Shift で上の選択のノードへ）、topology-view.js（Reprint here）、README'
+      - 'cmd/docflow：config.go（TopologyAdmins・TopologyAdminGroups・Auditors・AuditorGroups、PreviousSecrets）、auth.go（policy.roles・listed、ConfigureAuth に previous、sessionKey、Viewer.Roles）、app.go（page(role)、Account.Topology・Audit、previous を manager へ）、pages.pw.html（Account、AppBar、Forbidden に role、Jobs の見出しは audit）、jobs.js（Reprint。Shift で上の選択のノードへ）、topology-view.js（Reprint here）、README'
     decisions:
     - 'adminOnly の口はすべて topology の役割に（インボックス・送り待ち・アプリも）。読むだけの監査は audit。細かい分け（apps だけ、など）は要るときに'
     - '/jobs の刷り直しは同じノードへ。別のノードへは Shift を押しながら（上のフォームで選んだノード）。/topology ではそのノードへ'

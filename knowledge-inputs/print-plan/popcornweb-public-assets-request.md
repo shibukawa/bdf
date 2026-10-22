@@ -1,22 +1,22 @@
 # Change request: public assets of a project that is not at the module's root
 
-**From:** bdf (`github.com/shibukawa/bdf`), the Print Manager (`cmd/printmanager`)
+**From:** bdf (`github.com/shibukawa/bdf`), the Print Manager (`cmd/docflow`)
 **Against:** `github.com/shibukawa/popcornweb` v0.5.11
 **Date:** 2026-10-21
-**Status:** answered in v0.5.12 (popcornweb PR 3): `[assets] public`, `derived` and `embed`; `pw dev` passes the derived tree as `server.public.local_root`, falls back to the embedded tree on an ordinary miss and warns once of a missing tree; `config.prod.toml` is optional for every target; list defaults are comma-separated and an array-looking default is refused. Adopted in bdf on 2026-10-21: the Print Manager's public tree is in `cmd/printmanager`, served at `/public`, and packaged by `pw build --target=lambda`.
+**Status:** answered in v0.5.12 (popcornweb PR 3): `[assets] public`, `derived` and `embed`; `pw dev` passes the derived tree as `server.public.local_root`, falls back to the embedded tree on an ordinary miss and warns once of a missing tree; `config.prod.toml` is optional for every target; list defaults are comma-separated and an array-looking default is refused. Adopted in bdf on 2026-10-21: the Print Manager's public tree is in `cmd/docflow`, served at `/public`, and packaged by `pw build --target=lambda`.
 
 ## The situation
 
-The BDF Print Manager is a Popcorn Web application that lives inside a larger Go module. Its source is in bdf's `cmd/printmanager`, beside the bdf command, and shares bdf's single `go.mod`. The bdf maintainer chose this layout deliberately.
+The BDF Print Manager is a Popcorn Web application that lives inside a larger Go module. Its source is in bdf's `cmd/docflow`, beside the bdf command, and shares bdf's single `go.mod`. The bdf maintainer chose this layout deliberately.
 
-pw wants `go.mod` beside `popcornweb.toml`. Placing `popcornweb.toml` in `cmd/printmanager` fails with "open …/cmd/printmanager/go.mod: no such file or directory". So `popcornweb.toml` sits at bdf's root, and `[generate]` names only `cmd/printmanager/handlers`. Code generation works this way.
+pw wants `go.mod` beside `popcornweb.toml`. Placing `popcornweb.toml` in `cmd/docflow` fails with "open …/cmd/docflow/go.mod: no such file or directory". So `popcornweb.toml` sits at bdf's root, and `[generate]` names only `cmd/docflow/handlers`. Code generation works this way.
 
 The public assets do not. Everything about them is fixed to the project root, and bdf's root is package `bdf`:
 
 | What | Where pw looks (v0.5.11) | Why that fails in bdf |
 | --- | --- | --- |
 | The embed scaffold | `<root>/public.go` containing `//go:embed all:dist/public` (`internal/pwcli/derivedassets.go`, `verifyPublicEmbed`, line 399) | `<root>` is package `bdf`. A `package publicassets` file there breaks the library, so it cannot be placed. |
-| The authored tree | `<root>/public` (`derivedassets.go` line 223) | The application's files are in `cmd/printmanager/public`. |
+| The authored tree | `<root>/public` (`derivedassets.go` line 223) | The application's files are in `cmd/docflow/public`. |
 | The derived tree | `<root>/dist/public` (`derivedPublicDir`, line 31) | It is never written, because the step stops at `verifyPublicEmbed`. |
 | The development mount | `dist/public` of the working directory, and nothing else (`middlewares/publicassets.go`: `localPublicRoot` line 26, `resolvePublicAsset` line 495) | Under the `pwdev` tag a miss is a 404. The tree passed with `pw.WithPublicFS` is never consulted. |
 | Lambda packaging | `<root>/public.go` and `<root>/config.prod.toml` (`internal/pwcli/deployment.go` line 138) | Same as above. The application is configured by environment variables only and has no `config.prod.toml`. |
@@ -30,9 +30,9 @@ The same binary built with `go build` serves the files, because outside `pwdev` 
 ### What bdf does today (to be removed once this is answered)
 
 - `pw generate --code-only`, which skips the asset step. The `*_pw_gen.go` files are committed, and CI checks them for drift.
-- The pages' scripts and style are served by the application itself at `/static/`, from its own embed, with an ETag. `pw.WithPublicFS` still gets the same tree, because `server.public.enabled` refuses to start without one. This is `cmd/printmanager/handlers/static.go`.
+- The pages' scripts and style are served by the application itself at `/static/`, from its own embed, with an ETag. `pw.WithPublicFS` still gets the same tree, because `server.public.enabled` refuses to start without one. This is `cmd/docflow/handlers/static.go`.
 - The style is built with the standalone `tailwindcss` from `go generate`, not from `[assets.tailwind]`.
-- `pw build --target=lambda` is not used. `cmd/printmanager/deploy/lambda/Dockerfile` copies the Dockerfile pw would write (Lambda Web Adapter 1.0.1, distroless static).
+- `pw build --target=lambda` is not used. `cmd/docflow/deploy/lambda/Dockerfile` copies the Dockerfile pw would write (Lambda Web Adapter 1.0.1, distroless static).
 
 ## Summary of the asks
 
@@ -49,19 +49,19 @@ Ask 1 is the one that matters. With it, bdf deletes `static.go` and the hand-wri
 ```toml
 # popcornweb.toml at bdf's root
 [assets]
-public = "cmd/printmanager/public"           # authored tree (default "public")
-derived = "cmd/printmanager/dist/public"     # derived tree (default "dist/public")
-embed = "cmd/printmanager/public.go"         # the file verifyPublicEmbed checks (default "public.go")
+public = "cmd/docflow/public"           # authored tree (default "public")
+derived = "cmd/docflow/dist/public"     # derived tree (default "dist/public")
+embed = "cmd/docflow/public.go"         # the file verifyPublicEmbed checks (default "public.go")
 ```
 
 - Paths are relative to the directory of `popcornweb.toml`. A path that leaves it, or goes through a symbolic link, is refused, as `safeLocalPath` refuses today.
-- `verifyPublicEmbed` checks the configured file. The directive it looks for is the derived tree relative to that file's own directory: here `//go:embed all:dist/public` in `cmd/printmanager/public.go`. That is what lets the embed file live in package `main` of `cmd/printmanager` rather than at the root.
+- `verifyPublicEmbed` checks the configured file. The directive it looks for is the derived tree relative to that file's own directory: here `//go:embed all:dist/public` in `cmd/docflow/public.go`. That is what lets the embed file live in package `main` of `cmd/docflow` rather than at the root.
 - `pw dev` and `pw generate` write the derived tree, the manifest and `public_manifest_pw_gen.go` beside the configured embed file, not at the root. `[assets.tailwind]`'s `input` and `output` already take paths, and would just be written relative to the same root.
-- The running application needs the derived tree's location under `pwdev`. Today it is the constant `localPublicRoot`. One way: a setting `server.public.local_root` (default `dist/public`), which `pw dev` sets for the process it starts (for example, as `SERVER_PUBLIC_LOCAL_ROOT=cmd/printmanager/dist/public`). Another: `pw dev` starts the process in the project's working directory and passes the path relative to that. Either is fine for bdf. What it must not do is assume that the working directory holds `dist/public`.
+- The running application needs the derived tree's location under `pwdev`. Today it is the constant `localPublicRoot`. One way: a setting `server.public.local_root` (default `dist/public`), which `pw dev` sets for the process it starts (for example, as `SERVER_PUBLIC_LOCAL_ROOT=cmd/docflow/dist/public`). Another: `pw dev` starts the process in the project's working directory and passes the path relative to that. Either is fine for bdf. What it must not do is assume that the working directory holds `dist/public`.
 
 ### Why configuration rather than moving the project root
 
-We considered asking for the opposite: let `popcornweb.toml` sit below `go.mod` (here, in `cmd/printmanager`), find `go.mod` by walking up, and resolve everything relative to the project directory. That would also solve this. But it changes how every generated import path is computed, and how the working directory, `config.{env}.toml` and `.env*` are found. It is the larger change.
+We considered asking for the opposite: let `popcornweb.toml` sit below `go.mod` (here, in `cmd/docflow`), find `go.mod` by walking up, and resolve everything relative to the project directory. That would also solve this. But it changes how every generated import path is computed, and how the working directory, `config.{env}.toml` and `.env*` are found. It is the larger change.
 
 Ask 1 touches only the asset step, the development mount and packaging. Projects that do not set `[assets]` see no difference.
 
