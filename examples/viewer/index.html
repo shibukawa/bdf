@@ -79,15 +79,20 @@
   /* the status and the timing change as the reader works (a cell's text when cells are selected): they are cut to
      the room left on the header's line, so that the header keeps its height and the stage does not move under the pointer */
   .info { color: #666; flex: 1 1 0; min-width: 16em; display: flex; justify-content: flex-end; gap: 12px; align-items: center; }
-  .info #download, .info #savePdf { flex: none; white-space: nowrap; }
+  .info #download, .info #saveAs { flex: none; white-space: nowrap; }
   #status, #timing { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #status { max-width: 32em; }
   #status[data-error] { color: #b00020; }
   #timing { flex-shrink: 100; } /* gives way first */
   #progress { width: 96px; }
-  #pwDialog { border: 1px solid #999; border-radius: 6px; padding: 16px 20px; }
-  #pwDialog h2 { font-size: 15px; margin: 0 0 8px; }
-  #pwDialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  dialog { border: 1px solid #999; border-radius: 6px; padding: 16px 20px; }
+  dialog h2 { font-size: 15px; margin: 0 0 8px; }
+  dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  #saveDialog fieldset { border: 1px solid #ddd; border-radius: 4px; margin: 8px 0; padding: 6px 10px; display: flex; flex-direction: column; gap: 4px; }
+  #saveDialog legend { color: #666; font-size: 12px; padding: 0 4px; }
+  #saveDialog .formats { flex-direction: row; gap: 16px; }
+  #saveDialog label { display: flex; align-items: center; gap: 6px; }
+  #saveDialog select { max-width: 24em; }
   #pwMessage[data-error] { color: #b00020; }
   #warnings { position: relative; }
   #warnings summary { cursor: pointer; color: #8a5a00; }
@@ -174,7 +179,7 @@
     <span id="timing"></span>
     <a id="download" hidden>Download .bdf</a>
     <!-- site -->
-    <button id="savePdf" type="button" hidden title="write the document as a PDF file, inside the browser">Download PDF</button>
+    <button id="saveAs" type="button" hidden title="write the document as a PDF or a Markdown file, inside the browser">Download as…</button>
     <!-- /site -->
   </span>
 </header>
@@ -206,6 +211,30 @@
   <button class="step" id="prevView" title="previous view" aria-label="previous view" disabled>◀</button><button class="step" id="nextView" title="next view" aria-label="next view" disabled>▶</button>
   <span class="tabs" id="tabs" role="tablist" aria-label="views"></span>
 </nav>
+<!-- site -->
+<dialog id="saveDialog" aria-labelledby="saveTitle">
+  <form method="dialog">
+    <h2 id="saveTitle">Download as…</h2>
+    <fieldset class="formats"><legend>Format</legend>
+      <label><input type="radio" name="format" value="pdf" checked> PDF</label>
+      <label><input type="radio" name="format" value="markdown"> Markdown</label>
+    </fieldset>
+    <fieldset id="pdfOptions"><legend>PDF</legend>
+      <label><input type="checkbox" id="pdfTagged"> Tagged: the structure of the document, for screen readers</label>
+    </fieldset>
+    <fieldset id="mdOptions" hidden><legend>Markdown</legend>
+      <label>Images <select id="mdImages">
+        <option value="zip">as files, in a .zip with the text</option>
+        <option value="embed">embedded in the text (data URLs)</option>
+        <option value="none">left out</option>
+      </select></label>
+      <label><input type="checkbox" id="mdRunning"> Keep running heads, feet and page numbers</label>
+      <label><input type="checkbox" id="mdLinks"> Keep links into the document (#page=N)</label>
+    </fieldset>
+    <div class="buttons"><button value="ok">Download</button><button type="button" id="saveCancel">Cancel</button></div>
+  </form>
+</dialog>
+<!-- /site -->
 <dialog id="pwDialog" aria-labelledby="pwTitle" aria-describedby="pwMessage">
   <form method="dialog">
     <h2 id="pwTitle">Encrypted document</h2>

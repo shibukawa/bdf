@@ -264,12 +264,16 @@ func (t *structTree) target(e *structElem) *mcTarget {
 	}
 	tg := &mcTarget{tagged: true}
 	var leaf, group *structElem
+	quotes := 0 // the BlockQuote elements passed: how deep in quotations the content is
 	for i := len(chain) - 1; i >= 0; i-- {
 		x := chain[i]
 		top := len(tg.frames) - 1
+		if x.typ == "BlockQuote" {
+			quotes++
+		}
 		switch x.class() {
 		case clsList:
-			tg.frames = append(tg.frames, structFrame{kind: bdf.MarkList, id: x})
+			tg.frames = append(tg.frames, structFrame{kind: bdf.MarkList, id: x, payload: strings.TrimSpace(t.listKind(x) + strings.Repeat(" quote", quotes))})
 			leaf, group = nil, nil
 		case clsTable:
 			tg.frames = append(tg.frames, structFrame{kind: bdf.MarkTable, id: x})
@@ -307,7 +311,9 @@ func (t *structTree) target(e *structElem) *mcTarget {
 		leaf = group
 	}
 	if leaf != nil {
-		tg.leaf, tg.leafID, tg.leafKind, tg.leafPayload = leaf, leaf, bdf.MarkParagraph, leaf.typ
+		// the payload of a paragraph: its structure type, and a "quote" for
+		// each quotation it is in (docs/spec.md §7.8)
+		tg.leaf, tg.leafID, tg.leafKind, tg.leafPayload = leaf, leaf, bdf.MarkParagraph, leaf.typ+strings.Repeat(" quote", quotes)
 		if leaf.class() == clsHeading {
 			tg.leafKind, tg.leafPayload = bdf.MarkHeading, strconv.Itoa(max(headingLevel(leaf.typ), 1))
 		}
@@ -437,6 +443,24 @@ func cellName(col, row int) string {
 		b = append([]byte{byte('A' + (col-1)%26)}, b...)
 	}
 	return string(b) + strconv.Itoa(row+1)
+}
+
+// listKind is the payload of the LIST mark of a list element: the kind of
+// the markers of its items, from its ListNumbering attribute, or "" when it
+// has none (docs/spec.md §7.8).
+func (t *structTree) listKind(e *structElem) string {
+	for _, a := range t.attrs(e) {
+		switch t.p.name(a["ListNumbering"]) {
+		case "":
+		case "None":
+			return ""
+		case "Disc", "Circle", "Square", "Unordered":
+			return "bullet"
+		default: // Decimal, UpperRoman, LowerRoman, UpperAlpha, LowerAlpha, Ordered
+			return "ordered"
+		}
+	}
+	return ""
 }
 
 // attrs returns the attribute dictionaries of an element (/A: a dictionary

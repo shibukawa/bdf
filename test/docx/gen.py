@@ -26,6 +26,10 @@ feature is in the markup exactly as Word writes it:
   upright characters, punctuation, small kana, turned Latin text and
   numbers, horizontal-in-vertical numbers, emphasis marks and underlines, numbered articles, an inline
   picture, a table, a footnote, and horizontal headers and footers.
+- styles.docx: paragraph styles that say what their paragraphs are:
+  quotations (Quote, Intense Quote) and code (HTML Preformatted, and a
+  style based on it), which the converter writes as the words of their
+  marks (docs/spec.md §7.8).
 - form-fixed.docx, form-rows.docx and form-pages.docx: templates, whose
   text holds tags that data replaces (docx.Fill): a form of one page with
   values of every kind, a picture, a text box, a header and a footer; a
@@ -437,6 +441,47 @@ def grid():
     }, ct)
 
 
+def styles():
+    """Paragraph styles that say what their paragraphs are: quotations and code."""
+    extra = (
+        '<w:style w:type="paragraph" w:styleId="Quote"><w:name w:val="Quote"/><w:basedOn w:val="a"/><w:next w:val="a"/>'
+        '<w:pPr><w:spacing w:before="200" w:after="160"/><w:ind w:left="864" w:right="864"/><w:jc w:val="center"/></w:pPr>'
+        '<w:rPr><w:i/><w:color w:val="404040"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="IntenseQuote"><w:name w:val="Intense Quote"/><w:basedOn w:val="a"/><w:next w:val="a"/>'
+        '<w:pPr><w:pBdr><w:top w:val="single" w:sz="4" w:space="10" w:color="4472C4"/><w:bottom w:val="single" w:sz="4" w:space="10" w:color="4472C4"/></w:pBdr>'
+        '<w:spacing w:before="360" w:after="360"/><w:ind w:left="864" w:right="864"/><w:jc w:val="center"/></w:pPr>'
+        '<w:rPr><w:i/><w:color w:val="4472C4"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="HTMLPreformatted"><w:name w:val="HTML Preformatted"/><w:basedOn w:val="a"/>'
+        '<w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:jc w:val="left"/></w:pPr>'
+        '<w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/><w:sz w:val="20"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="SourceCode"><w:name w:val="Source Code"/><w:basedOn w:val="HTMLPreformatted"/></w:style>')
+    styles_xml = STYLES.replace("</w:styles>", extra + "</w:styles>")
+    body = [
+        para(run("Styles that say what a paragraph is", '<w:b/><w:sz w:val="28"/>')),
+        para(run(LOREM)),
+        para(run("A quotation set in the Quote style: a line that is not the author's own."), style="Quote"),
+        para(run("The second paragraph of the quotation, in the same style."), style="Quote"),
+        para(run("An intense quotation, set in the Intense Quote style."), style="IntenseQuote"),
+        para(run("Then a paragraph of the text again, after the quotations.")),
+        para(run("func main() {"), style="HTMLPreformatted"),
+        para(run("    fmt.Println(\"hello\")"), style="HTMLPreformatted"),
+        para(run("}"), style="HTMLPreformatted"),
+        para(run("x := 1 // a style based on HTML Preformatted"), style="SourceCode"),
+        para(run("The end of the document.")),
+    ]
+    last = ('<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
+            '<w:pgMar w:top="1701" w:right="1701" w:bottom="1701" w:left="1701" w:header="851" w:footer="992" w:gutter="0"/>'
+            '<w:cols w:space="425"/></w:sectPr>')
+    document = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document {NS}><w:body>{"".join(body)}{last}</w:body></w:document>'
+    package(os.path.join(OUT, "styles.docx"), document, {
+        "word/styles.xml": styles_xml, "word/numbering.xml": NUMBERING, "word/settings.xml": settings(), "word/theme/theme1.xml": THEME,
+        "docProps/core.xml": core("Paragraph styles", "BDF"),
+    }, {
+        "rId1": ("styles", "styles.xml"), "rId2": ("numbering", "numbering.xml"), "rId3": ("settings", "settings.xml"),
+        "rId4": ("theme", "theme/theme1.xml"),
+    })
+
+
 VJA = ("\u7e26\u66f8\u304d\u3067\u306f\u3001\u884c\u306f\u4e0a\u304b\u3089\u4e0b\u3078\u9032\u307f\u3001\u53f3\u304b\u3089\u5de6\u3078"
        "\u4e26\u3073\u307e\u3059\u3002\u6f22\u5b57\u3084\u4eee\u540d\u306f\u6b63\u7acb\u3057\u3001\u53e5\u8aad\u70b9\u306f\u53f3\u4e0a\u306b"
        "\u5bc4\u308a\u307e\u3059\u3002\u9577\u97f3\u8a18\u53f7\u300c\u30fc\u300d\u3084\u304b\u3063\u3053\u306f\u884c\u3068\u4e00\u7dd2\u306b"
@@ -798,4 +843,5 @@ if __name__ == "__main__":
     grid()
     vertical()
     math()
+    styles()
     forms()

@@ -2,6 +2,7 @@ package wordproc
 
 import (
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	"strings"
 )
 
 // style is a style definition (w:style).
@@ -303,4 +304,21 @@ func condTypes(look tblLook, row, col, rows, cols, rowBand, colBand int) []strin
 		out = append(out, "seCell")
 	}
 	return out
+}
+
+// paraRole tells what the names of a paragraph style and of those it is
+// based on say its paragraphs are: a quotation (Quote, Intense Quote) or
+// code (HTML Preformatted, Code, Source Code), as the word of their marks
+// (docs/spec.md §7.8); "" for other styles.
+func (s *styles) paraRole(id string) string {
+	for _, st := range s.chain(id) {
+		key := strings.ToLower(st.id + " " + st.name)
+		switch {
+		case strings.Contains(key, "quote"):
+			return "quote"
+		case strings.Contains(key, "code"), strings.Contains(key, "preformatted"):
+			return "code"
+		}
+	}
+	return ""
 }
