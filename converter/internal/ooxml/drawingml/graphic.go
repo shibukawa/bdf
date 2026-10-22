@@ -86,7 +86,7 @@ func (s *Drawing) DrawGraphic(cv *canvas.Canvas, graphic *ooxml.Node, part strin
 			s.drawElem(cv, k, part, g, 0)
 		}
 	case strings.HasSuffix(uri, "/chart") || el.Name == "chart":
-		s.drawChart(cv, sh, xf, el.RelID("id"))
+		s.drawChart(cv, sh, xf, el.RelID("id"), false)
 	case strings.HasSuffix(uri, "/diagram") || el.Name == "relIds":
 		s.drawDiagram(cv, sh, xf, el, 0)
 	default:

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, extractText, extractContent, parseCellRef, objectDeps, SplitSource, dcValues } from "../dist/index.js";
+import { BufferSource, BdfDocument, parseHeader, walk, NoopSink, opHistogram, extractText, extractContent, parseCellRef, payloadWords, objectDeps, SplitSource, dcValues } from "../dist/index.js";
 
 const root = new URL("../../../", import.meta.url);
 const fixture = new Uint8Array(await readFile(new URL("testdata/demo.bdf", root)));
@@ -103,6 +103,34 @@ test("cell references", () => {
   assert.equal(parseCellRef("A0"), undefined);
 });
 
+test("tables: the manifest lists them with their columns", async () => {
+  const doc = await BdfDocument.open(new BufferSource(fixture));
+  const tables = doc.manifest.tables ?? [];
+  assert.deepEqual(tables.map((t) => [t.id, t.title, t.rows, t.view, t.page, t.columns.map((c) => `${c.name}:${c.type}`)]),
+    [["table-1", "Section 1", 3, "doc", 1, ["R1C1:string", "R1C2:integer", "R1C3:number"]]]);
+  const part = doc.manifest.parts.find((p) => p.h === tables[0].part);
+  assert.equal(part.t, "table");
+  const bytes = await doc.part(tables[0].part);
+  assert.equal(new TextDecoder("latin1").decode(bytes.subarray(0, 4)), "PAR1");
+});
+
+test("payload words: code, quotations and the kind of a list's markers", async () => {
+  assert.deepEqual(payloadWords("P quote quote"), { quote: 2 });
+  assert.deepEqual(payloadWords("code"), { code: true });
+  assert.deepEqual(payloadWords("ordered quote"), { list: "ordered", quote: 1 });
+  assert.deepEqual(payloadWords(""), {});
+  // the Markdown fixture: a code block, a quotation in a quotation, bulleted and numbered lists
+  const md = await BdfDocument.open(new BufferSource(new Uint8Array(await readFile(new URL("testdata/markdown/basic.bdf", root)))));
+  const o = await md.ensure(md.view("scroll").pages[0].layers[0].obj);
+  const c = extractContent(o, (h) => md.objectSync(h));
+  const nodeOf = (text) => c.nodes[c.runs.find((r) => r.text.startsWith(text)).node];
+  assert.equal(nodeOf("func main").code, true);
+  assert.equal(nodeOf("引用の段落").quote, 1);
+  assert.equal(nodeOf("入れ子の引用").quote, 2);
+  assert.equal(c.nodes[c.nodes[nodeOf("項目").parent].parent].list, "bullet");
+  assert.equal(c.nodes[c.nodes[nodeOf("番号付き").parent].parent].list, "ordered");
+});
+
 test("content: headings, lists, tables, figures and links", async () => {
   const doc = await BdfDocument.open(new BufferSource(fixture));
   const content = async (view, page, layer) => {
@@ -135,6 +163,27 @@ test("content: headings, lists, tables, figures and links", async () => {
   const logo = (await content("doc", 0, 2)).nodes.find((n) => n.kind === "figure");
   assert.equal(logo.alt, "BDF logo");
   assert.ok(logo.bounds.w > 20 && logo.bounds.w < 25 && logo.bounds.y > 780);
+});
+
+test("tables of charts: listed in the manifest, named by their figures", async () => {
+  const doc = await BdfDocument.open(new BufferSource(new Uint8Array(await readFile(new URL("testdata/pptx/features.bdf", root)))));
+  const tables = doc.manifest.tables ?? [];
+  assert.deepEqual(tables.map((t) => [t.id, t.title ?? "", t.view, t.page, t.rows, t.columns.map((c) => c.name).join(",")]), [
+    ["chart-1", "", "slides", 3, 4, "Category,East,West,North"],
+    ["chart-2", "", "slides", 3, 4, "Category,East,West,North"],
+    ["chart-3", "Share", "slides", 3, 4, "Category,Share"],
+    ["chart-4", "", "slides", 3, 3, "Category,Stacked 1,Stacked 2"],
+  ]);
+  const page = doc.view("slides").pages[2];
+  const body = page.layers.find((l) => l.role === "body");
+  const c = extractContent(await doc.ensure(body.obj), (h) => doc.objectSync(h));
+  const figs = c.nodes.filter((n) => n.kind === "figure");
+  assert.deepEqual(figs.map((f) => [f.alt, f.data]), [
+    ["Column chart", "chart-1"], ["Line chart", "chart-2"], ["Pie chart: Share", "chart-3"], ["Bar chart", "chart-4"],
+  ]);
+  // the part is the Parquet file
+  const bytes = await doc.part(tables[2].part);
+  assert.equal(new TextDecoder().decode(bytes.subarray(0, 4)), "PAR1");
 });
 
 test("converted PDF: structure from the tagged tree, and links over their text", async () => {

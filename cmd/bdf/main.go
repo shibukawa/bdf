@@ -34,6 +34,12 @@ func usage() {
                                      draw a page (bdf thumbnail -h, text -h, render -h for flags)
   bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                      write the pages as a PDF file (bdf pdf -h for flags)
+  bdf markdown [flags] <file.bdf | dir> <outdir>
+                                     write the document as Markdown, with its images, in a
+                                     directory (bdf markdown -h for flags)
+  bdf tables [-json] <file.bdf | dir> list the tables the document holds beside its drawing
+  bdf table [flags] <file.bdf | dir> <id> [out]
+                                     write a table as CSV, JSON or Parquet (bdf table -h for flags)
   bdf print [flags] -printer <url | name> <file.bdf | dir | input>
                                      print on an IPP printer or a CUPS queue, without a driver:
                                      as PDF, or as PWG Raster drawn here (bdf print -h for flags);
@@ -178,6 +184,12 @@ func main() {
 		textCmd(os.Args[2:])
 	case "pdf":
 		pdfCmd(os.Args[2:])
+	case "markdown":
+		markdownCmd(os.Args[2:])
+	case "tables":
+		tablesCmd(os.Args[2:])
+	case "table":
+		tableCmd(os.Args[2:])
 	case "print":
 		printCmd(os.Args[2:])
 	case "printers":

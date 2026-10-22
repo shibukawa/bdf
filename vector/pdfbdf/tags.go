@@ -36,7 +36,7 @@ type structElem struct {
 	page  *pageOut
 	lang  string
 	alt   string
-	attrs string // the entries of its attribute object, of the owner Table
+	attrs string // the entries of its attribute object, with its owner (/O)
 	// grid is where a cell of a table is, when its MARK told.
 	grid *cellRef
 	// kept is set for an element with content, or with an element that
@@ -252,7 +252,18 @@ func (t *tagger) item() {
 	t.push(&tagNode{kind: nodeItem, elem: li, into: t.elem("LBody", li)})
 }
 
-// cellAttrs writes the attributes of a cell of a table.
+// hasWord reports whether a word is among those of a payload (docs/spec.md
+// §7.8).
+func hasWord(payload, word string) bool {
+	for _, w := range strings.Fields(payload) {
+		if w == word {
+			return true
+		}
+	}
+	return false
+}
+
+// cellAttrs writes the attributes of a cell of a table, of the owner Table.
 func cellAttrs(c *cellRef) string {
 	if c == nil {
 		return ""
@@ -270,7 +281,10 @@ func cellAttrs(c *cellRef) string {
 	case "row":
 		b.WriteString(" /Scope /Row")
 	}
-	return b.String()
+	if b.Len() == 0 {
+		return ""
+	}
+	return "/O /Table" + b.String()
 }
 
 // cell adds a cell to a table: in the row of its reference, a new row
@@ -406,7 +420,11 @@ func (t *tagger) mark(kind byte, payload string) {
 	}
 	switch kind {
 	case bdf.MarkParagraph, bdf.MarkBox:
-		t.reserved = &leafKind{tag: "P"}
+		tag := "P"
+		if hasWord(payload, "quote") {
+			tag = "BlockQuote"
+		}
+		t.reserved = &leafKind{tag: tag}
 	case bdf.MarkHeading:
 		level := 1
 		if n, err := strconv.Atoi(strings.TrimSpace(payload)); err == nil && n >= 1 && n <= 6 {
@@ -414,7 +432,14 @@ func (t *tagger) mark(kind byte, payload string) {
 		}
 		t.reserved = &leafKind{tag: "H" + strconv.Itoa(level)}
 	case bdf.MarkList:
-		t.push(&tagNode{kind: nodeList, elem: t.elem("L", t.parent())})
+		l := t.elem("L", t.parent())
+		switch {
+		case hasWord(payload, "bullet"):
+			l.attrs = "/O /List /ListNumbering /Disc"
+		case hasWord(payload, "ordered"):
+			l.attrs = "/O /List /ListNumbering /Decimal"
+		}
+		t.push(&tagNode{kind: nodeList, elem: l})
 	case bdf.MarkListItem:
 		if t.topKind() == nodeItem {
 			t.pop()
@@ -692,7 +717,7 @@ func (t *tagger) write() string {
 			b.WriteString(" /Alt " + text(e.alt))
 		}
 		if e.attrs != "" {
-			b.WriteString(" /A << /O /Table" + e.attrs + " >>")
+			b.WriteString(" /A << " + e.attrs + " >>")
 		}
 		b.WriteString(" /K [")
 		for i := range e.kids {

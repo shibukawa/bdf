@@ -301,7 +301,7 @@ func marks(t *testing.T, r *bdf.Reader, h bdf.Hash) ([]string, map[byte]int) {
 			counts[in.Op]++
 			switch in.Op {
 			case bdf.OpMark:
-				out = append(out, strings.TrimSpace(string("PLCBAWHlLTFEG"[in.Args[0].(uint64)])+" "+in.Args[1].(string)))
+				out = append(out, strings.TrimSpace(string("PLCBAWHlLTFEGbD"[in.Args[0].(uint64)])+" "+in.Args[1].(string)))
 			case bdf.OpUse, bdf.OpUseAt:
 				walk(o.Objects[int(in.Args[0].(uint64))])
 			}

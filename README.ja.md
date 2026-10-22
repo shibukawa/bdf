@@ -26,8 +26,8 @@ npm パッケージとしての表示・ブラウザ内変換は [npm パッケ�
 
 | 場所 | 内容 |
 |---|---|
-| `*.go`、`converter/`、`raster/`、`contrib/`、`internal/` | Go のエンコーダ・デコーダと、入力形式ごとの変換器パッケージ |
-| `form/`、`vector/` | 帳票のテンプレートをデータで穴埋めする: タグを書いた Excel・Word・PowerPoint、入力欄のある PDF、pdfme のテンプレート、連帳やレシートの行を書いたテキスト（QR コードとバーコードは `image/barcode/`）。文書を PDF に書き出す（タグ付き PDF と PDF/A も） |
+| `*.go`、`converter/`、`encoding/`、`raster/`、`contrib/`、`internal/` | Go のエンコーダ・デコーダ、入力形式ごとの変換器パッケージ、文書が持つ値の表の Parquet エンコーディング |
+| `form/`、`vector/`、`text/` | 帳票のテンプレートをデータで穴埋めする: タグを書いた Excel・Word・PowerPoint、入力欄のある PDF、pdfme のテンプレート、連帳やレシートの行を書いたテキスト（QR コードとバーコードは `image/barcode/`）。文書を PDF（タグ付き PDF と PDF/A も）と Markdown に書き出す |
 | `packages/` | デコーダ、レンダラー、表示面、TinyGo を使うブラウザ内変換の npm パッケージ |
 | `examples/`、`site/` | デモビューア、サーバー構成のサンプル 4 つ、GitHub Pages で公開しているサイト |
 | `docs/` | このドキュメント |

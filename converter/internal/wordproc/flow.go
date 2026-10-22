@@ -19,6 +19,7 @@ type op struct {
 	top    bool     // drawn outside any structure (floating objects)
 	leaf   byte     // mark before the text: 'P' paragraph, 'H' heading, 'L' line, 'W' wrap
 	level  int      // heading level
+	role   string   // "quote" or "code": a word of the paragraph's mark
 	dx, dy float64
 	fn     func(e *emitter, dx, dy float64)
 }
@@ -765,7 +766,7 @@ func (f *flow) floatBottom(y float64) float64 {
 func (f *flow) emitLine(ln *line, y float64, first bool) {
 	p := ln.p
 	x := f.x0
-	o := op{y0: y, y1: y + ln.height, text: true, ctx: p.ctx}
+	o := op{y0: y, y1: y + ln.height, text: true, ctx: p.ctx, role: p.role}
 	switch {
 	case first && p.heading > 0:
 		o.leaf, o.level = 'H', p.heading

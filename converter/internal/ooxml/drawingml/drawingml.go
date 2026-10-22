@@ -34,6 +34,10 @@ type Config struct {
 	Images imgconv.Options
 	// Warn receives non-fatal problems.
 	Warn func(msg string)
+	// NoTables leaves the values of charts out of the document, which
+	// otherwise holds them as tables beside its drawing (docs/spec.md
+	// §4.6); the figures then describe the values.
+	NoTables bool
 }
 
 // Renderer draws the DrawingML of one document. It keeps what the pages
@@ -53,11 +57,28 @@ type Renderer struct {
 	// formulas (see math.go)
 	eq      *equation.Engine
 	mathRun *runStyle // the style of the formula being laid out
+
+	// the tables of charts (docs/spec.md §4.6): where the drawings are
+	// (SetPlace), and how many were stored
+	view     string
+	page     int
+	tables   int
+	noTables bool
+}
+
+// SetPlace tells the renderer where the drawings that follow are shown:
+// the id of the view, and the page in it (from 1; 0 for a sheet or when
+// the page is not known), for the tables of charts (docs/spec.md §4.6).
+func (c *Renderer) SetPlace(view string, page int) {
+	if c == nil {
+		return
+	}
+	c.view, c.page = view, page
 }
 
 // New returns a renderer for a document.
 func New(cfg Config) *Renderer {
-	return &Renderer{pkg: cfg.Package, doc: cfg.Doc, fonts: cfg.Fonts, imgOpts: cfg.Images, warn: cfg.Warn,
+	return &Renderer{pkg: cfg.Package, doc: cfg.Doc, fonts: cfg.Fonts, imgOpts: cfg.Images, warn: cfg.Warn, noTables: cfg.NoTables,
 		warned: map[string]bool{}, themes: map[string]*theme{}, images: map[string]*imageEntry{},
 		patterns: map[string]bdf.Hash{}, tableStyles: map[string]*ooxml.Node{}}
 }

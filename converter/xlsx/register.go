@@ -20,6 +20,7 @@ func init() {
 			{Name: "hidden", Usage: "true: include hidden sheets"},
 			{Name: "views", Usage: "sheet (default): the sheets as Excel shows them; print: the pages Excel prints (print areas, page setup, print titles, header and footer); both"},
 			{Name: "paper", Usage: "the paper of printed pages whose sheet names none: " + strings.Join(PaperNames(), ", ") + " (default: a4 for a Japanese workbook, else letter)"},
+			{Name: "data", Usage: conv.DataParamUsage},
 		},
 		// an Office Open XML package with a workbook part
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool {
@@ -46,7 +47,7 @@ func init() {
 
 // OptionsOf returns the options of this package for the options of a
 // conversion by the registry (nil for nil): those that apply to workbooks,
-// with the parameters "hidden", "views" and "paper".
+// with the parameters "hidden", "views", "paper" and "data".
 func OptionsOf(o *conv.Options) (*Options, error) {
 	if o == nil {
 		return nil, nil
@@ -55,7 +56,11 @@ func OptionsOf(o *conv.Options) (*Options, error) {
 	if err != nil {
 		return nil, fmt.Errorf("xlsx: %w", err)
 	}
-	return &Options{Sheets: o.Pages, Hidden: hidden, Title: o.Title, Images: o.Images,
+	data, err := conv.DataParam(o.Param("data"))
+	if err != nil {
+		return nil, fmt.Errorf("xlsx: %w", err)
+	}
+	return &Options{Sheets: o.Pages, Hidden: hidden, Title: o.Title, Images: o.Images, Data: data,
 		FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
 		NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn,
 		Views: o.Params["views"], Paper: o.Params["paper"], FileName: filepath.Base(o.FileName)}, nil

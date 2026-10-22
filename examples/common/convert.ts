@@ -110,6 +110,43 @@ export interface PdfOptions {
   pdfa?: string;
 }
 
+/** A document written as Markdown (see cmd/bdfwasm's markdown). */
+export interface MarkdownFile {
+  /** The text, UTF-8. */
+  markdown: Uint8Array;
+  /** The images the text refers to, as files beside it (options.images "files"), and the CSV files of tables; none otherwise. */
+  images: { name: string; data: Uint8Array }[];
+  /** The tables written, inline or as files. */
+  tables: number;
+  /** A zip file of the text (name.md) and the images, when asked for. */
+  zip?: Uint8Array;
+  /** The views written. */
+  views: number;
+  /** What the text leaves out. */
+  warnings: string[];
+}
+
+export interface MarkdownOptions {
+  /** The password of an encrypted document (the text is plain). */
+  password?: string;
+  /** The ids of the views to write (default: the scroll view when there is one, else all). */
+  views?: string[];
+  /** Roles of layers to leave out (default: header, footer, master and background). */
+  skip?: string[];
+  /** Keep the running heads, feet and page numbers of pages. */
+  keepRunning?: boolean;
+  /** Keep links into the document itself (#page=N), which have no target in Markdown. */
+  internalLinks?: boolean;
+  /** Images: as files returned beside the text (default), embedded in it as data URLs, or left out. */
+  images?: "files" | "embed" | "none";
+  /** The tables the document holds (the data of charts): inline (default), as CSV files beside the text, or left out. */
+  tables?: "inline" | "files" | "none";
+  /** Also a zip file of the text and the image files. */
+  zip?: boolean;
+  /** The name of the text in the zip file (default "document"). */
+  name?: string;
+}
+
 /** What a template of a form asks of data (see cmd/bdfwasm's fields), as JSON texts. */
 export interface TemplateFields {
   /** The names the tags look up, as bdf template schema lists them. */
@@ -147,9 +184,10 @@ export type ConvertRequest =
   | { id: number; type: "thumbnail"; module: string; data: ArrayBuffer; options: ThumbnailOptions }
   | { id: number; type: "text"; module: string; data: ArrayBuffer; options: { password?: string } }
   | { id: number; type: "pdf"; module: string; data: ArrayBuffer; options: PdfOptions }
+  | { id: number; type: "markdown"; module: string; data: ArrayBuffer; options: MarkdownOptions }
   | { id: number; type: "fields"; module: string; data: ArrayBuffer; options: { sample?: string } }
   | { id: number; type: "fill"; module: string; data: ArrayBuffer; options: FillOptions };
-export type ConvertResult = Converted | Opened | ConvertedPage | Thumbnail | SearchText | PdfFile | TemplateFields | Filled | null;
+export type ConvertResult = Converted | Opened | ConvertedPage | Thumbnail | SearchText | PdfFile | MarkdownFile | TemplateFields | Filled | null;
 export type ConvertResponse = { id: number; ok: true; result: ConvertResult } | { id: number; ok: false; error: string; code?: string };
 
 /** A failed conversion; code is "password-required", "wrong-password" or "unknown-format" when it is one of those. */
@@ -298,6 +336,10 @@ export class ConverterClient {
   /** Write a single-file bdf (transferred) as a PDF file, with the preview or the form module at the URL. */
   pdf(module: string, data: ArrayBuffer, options: PdfOptions = {}): Promise<PdfFile> {
     return this.call<PdfFile>({ type: "pdf", module, data, options }, [data]);
+  }
+  /** Write a single-file bdf (transferred) as Markdown, with the preview module at the URL. */
+  markdown(module: string, data: ArrayBuffer, options: MarkdownOptions = {}): Promise<MarkdownFile> {
+    return this.call<MarkdownFile>({ type: "markdown", module, data, options }, [data]);
   }
   /** What a template of a form (copied) asks of data, with the form module at the URL. */
   fields(module: string, data: ArrayBuffer, options: { sample?: string } = {}): Promise<TemplateFields> {

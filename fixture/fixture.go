@@ -11,6 +11,7 @@ import (
 	"math"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/encoding/parquet"
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/image/math/fixed"
 )
@@ -333,6 +334,16 @@ func buildFlow(d *bdf.Document, fonts *Fonts, iconH bdf.Hash, iconBB bdf.Rect) {
 		bodyH, _ := d.AddObject(body)
 		p := v.AddPage(w, h, bdf.Layer{Role: bdf.RoleHeader, Obj: headerH}, bdf.Layer{Role: bdf.RoleBody, Obj: bodyH}, bdf.Layer{Role: bdf.RoleFooter, Obj: footerH})
 		p.Body = &bdf.RectDef{X: mx, Y: my, W: w - 2*mx, H: h - 2*my}
+		if page == 0 {
+			// the values of the table, as a table the document holds (docs/spec.md §4.6)
+			rows := &parquet.Table{Columns: []parquet.Column{{Name: "R1C1", Type: parquet.String}, {Name: "R1C2", Type: parquet.Integer}, {Name: "R1C3", Type: parquet.Number}}}
+			for r := 2; r <= 4; r++ {
+				rows.Rows = append(rows.Rows, []any{fmt.Sprintf("R%dC1", r), int64(r), float64(r) / 2})
+			}
+			if _, err := d.AddTableRows("table-1", "Section 1", rows, v.ID, 1); err != nil {
+				panic(err)
+			}
+		}
 	}
 }
 

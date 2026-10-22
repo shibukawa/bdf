@@ -693,7 +693,7 @@ func (s *Drawing) drawFrame(cv *canvas.Canvas, sh *shape, depth int) {
 	defer func() { endFigure(cv, fig) }()
 	switch {
 	case strings.HasSuffix(uri, "/chart"):
-		s.drawChart(cv, sh, xf, gd.Child("chart").RelID("id"))
+		s.drawChart(cv, sh, xf, gd.Child("chart").RelID("id"), fig)
 	case strings.HasSuffix(uri, "/diagram"):
 		s.drawDiagram(cv, sh, xf, gd.Child("relIds"), depth)
 	default:
