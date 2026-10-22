@@ -890,6 +890,8 @@ BDF v1 の読み手が Go 以外にも書かれる（C の libbdf）ので、「
 
 **確かめ方**: テストは、書き出した PDF を自前の PDF 変換器で読み直し、元の文書と同じ絵になることをラスタライザで比べる（文字は読み直した文書の検索用テキストでも確かめる）。testdata の全文書は Ghostscript で描いて突き合わせ、ソフトマスクとパターンは Quartz でも確かめた。同じ文書からは同じバイト列ができる（amd64 と arm64 でも同じ）。`FuzzWrite` は任意の命令列を書き出す。
 
+**署名（`sign.go`、PAdES）**: `Options.Sign` で、書き出したファイルに PAdES（ETSI EN 319 142-1）の署名を付ける。B-B と、TSA の印を足した B-T。ファイルをメモリに書き、署名の辞書の `/ByteRange` と `/Contents` を決まった幅の仮の値で書いておき、最後に範囲を埋めてから、`/Contents` を除くバイト列に CMS の detached の署名（`internal/cms`。PAdES なので signing-time 属性は持たず、時刻は `/M`）をして 16 進で入れる。増分の保存ではなく最初の書き出しの中で署名するので、PDF/A とタグ付きの出力はそのまま（veraPDF で 2b・2u・2a が通る）。見える署名は、`Options.Sign.Field` の名前の Figure の MARK（帳票の署名欄の絵。`converter/pdfform` と pdfme が欄の名前で付ける）の直後の画像の箱に、署名のウィジェットを重ねる。箱はリンクの矩形と同じ道でページまで運ぶ（共有されたレイヤーのフォームやグループの中でも）。ウィジェットの外観は空のフォームで、絵はページの内容にある。`Certify` は DocMDP の認証署名（`/Perms`）。`.bdf` の署名は PDF に移せないので、PDF に書き出す人が署名する。pyHanko（INTACT・TRUSTED、B-T は TSA も信頼）と veraPDF で確かめた。
+
 ## 3.36 印刷（print、print/ipp、print/raster、print/raw、print/pdl、print/spool、print/server、vector/psbdf、`bdf print`、`bdf printd`）
 
 帳票の最後の出口は紙である。OS のドライバを使わず、Go だけでプリンタに印刷する。要件の整理は `knowledge-inputs/print-plan/`（`print-requirements.ja.md`、`print-m1.ja.md`〜`print-m5.ja.md`）と `.knowledge/` の `requirement:print`。

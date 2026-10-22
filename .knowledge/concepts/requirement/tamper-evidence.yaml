@@ -82,6 +82,8 @@ relations:
   to: requirement:print-manager-auth
 - relation: has_milestone
   to: milestone:sig-1
+- relation: has_milestone
+  to: milestone:sig-2
 facts:
   threat_model:
     protects: >-

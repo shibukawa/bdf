@@ -1,0 +1,69 @@
+id: milestone:sig-2
+type: milestone
+title: sig-2 — PDF の署名（PAdES B-B・B-T、署名欄に見える署名、DocMDP）
+summary: >-
+  requirement:tamper-evidence の 2 つ目の段。vector/pdfbdf の Options.Sign（bdf pdf -sign-key）で、書き出した PDF に PAdES の署名を付ける。
+  /SubFilter /ETSI.CAdES.detached、TSA の印で B-T、DocMDP の認証署名。見える署名は帳票の署名欄の絵（Figure の MARK の名前）の箱にウィジェットを重ねる。
+  2026-10-23 に実装し、Go のテスト、pyHanko（INTACT・TRUSTED、B-T は VALID）、veraPDF（PDF/A-2b・2u・2a）、Ghostscript での描画が通った。
+lifecycle: active
+authority: authored
+scope:
+  milestone: sig-2
+  input: bdf
+  output: pdf (signed, PAdES B-B / B-T, PDF/A, tagged)
+constraints:
+- 増分の保存はしない。最初の書き出しの中で署名する
+- 署名の後も PDF/A とタグ付きの出力のまま
+- .bdf の署名は PDF に移せない（PDF に書き出す人が署名する）
+non_goals:
+- B-LT / B-LTA（DSS、失効情報）
+- 署名した PDF への追記（2 人目の署名を PDF に増分で足すこと）
+- ブラウザ（wasm の pdf）での署名（鍵をブラウザに置く場面がまだない）
+capabilities:
+  pades:
+    state: implemented
+    about: capability:pdfbdf/pades
+  visible-field:
+    state: implemented
+    about: capability:pdfbdf/signature-field
+  docmdp:
+    state: implemented
+    about: capability:pdfbdf/docmdp
+facts:
+  writer: '/ByteRange と /Contents を決まった幅の仮の値で書き、ファイルをメモリに作ってから範囲を埋め、/Contents を除くバイトに CMS の detached の署名（signing-time 属性なし、時刻は /M）。/Contents の大きさは空の内容への署名の DER の長さ＋64、TSA があれば 16 KiB 足す'
+  field: Options.Sign.Field の名前の Figure の MARK の直後の画像の箱を、リンクの矩形と同じ道でページまで運ぶ（共有レイヤーのフォームやグループの中でも）。ウィジェットは /F 132、外観は空のフォーム。見つからなければ警告して見えない署名（/Rect [0 0 0 0]）
+  field_names: converter/pdfform と pdfme は欄の名前、Excel のテンプレートはタグの名前を Figure の MARK に付ける（TestSignOnSheet）
+  catalog: /AcroForm << /Fields [widget] /SigFlags 3 >>、Certify なら /Perms << /DocMDP >> と署名の辞書の /Reference
+  found_on_the_way: Office のテンプレート（xlsx・docx・pptx）が SVG の画像を「PNG、JPEG、GIF ではない」と捨てていた。サイトの描画パッドのサインは SVG なので、form-m7 のブランチで直した（SVG はそのまま、大きさは spec §6.2 の規則）
+acceptance:
+  readers:
+    text: 署名した PDF を pyHanko が INTACT・TRUSTED と判定し、TSA の印のある認証署名を VALID と判定する
+    verified_by:
+    - pyhanko-check
+  pdfa:
+    text: 署名した PDF/A-2b・2u・2a が veraPDF に通る
+    verified_by:
+    - pdfbdf-unit
+  detect:
+    text: 署名の外の 1 バイトの変更で検証が落ちる。署名欄のウィジェットが PDF フォームの署名欄の箱の中にあり、Excel のテンプレートでも絵の上に出る
+    verified_by:
+    - pdfbdf-unit
+verification:
+  pdfbdf-unit:
+    state: passed
+    method: unit
+    test: go test ./vector/pdfbdf/（TestSign、TestSignVeraPDF、TestSignOnSheet）
+    authority: observed
+    evidence:
+      path: vector/pdfbdf/sign_test.go
+      locator: ByteRange がファイル全体を覆う、CMS の検証、/M の時刻、ウィジェットの矩形、1 バイトの改ざん、TSA、DocMDP、Certify 4 と証明書なしの誤り、veraPDF 2b・2u・2a
+  pyhanko-check:
+    state: passed
+    method: manual
+    test: スクラッチの venv の pyhanko sign validate --trust-replace --trust（OpenSSL で作った CA の鍵で bdf pdf -sign-field と -pdfa 2b -certify 2、テストの TSA の印のある認証署名）
+    authority: observed
+relations:
+- relation: implements
+  to: requirement:tamper-evidence
+- relation: follows
+  to: milestone:sig-1

@@ -43,6 +43,7 @@
 package pdfbdf
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -102,6 +103,9 @@ type Options struct {
 	// Unicode), "2a" (and it is tagged: Tagged is set), or "3b", "3u" and
 	// "3a", the same of part 3. "" writes a PDF that names no standard.
 	PDFA string
+	// Sign signs the file (PAdES): nil writes a file without a signature.
+	// The file is then made in memory before it is written.
+	Sign *Signature
 }
 
 // Result tells what was written.
@@ -156,6 +160,10 @@ type exporter struct {
 	skipped        int
 	again          bool
 	reused         int
+	// sigNext says that the next picture is that of the signature field
+	// (Options.Sign), and sigRef is the signature dictionary
+	sigNext bool
+	sigRef  ref
 }
 
 // layerKey is a layer on pages of a size: the object of the layer, and
@@ -186,6 +194,8 @@ type pageOut struct {
 	links   []link
 	view    *bdf.View
 	index   int // in its view
+	// sigWidget is the widget of the signature on the page (0: none)
+	sigWidget ref
 }
 
 // Write writes a document as a PDF file.
@@ -218,6 +228,12 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 	level := ex.opts.CompressionLevel
 	if level < 1 || level > 9 {
 		level = 6
+	}
+	out := w
+	var signing bytes.Buffer
+	if ex.opts.Sign != nil {
+		// (the file is signed once all of it is written)
+		w = &signing
 	}
 	ex.pw = newWriter(w, !ex.opts.NoCompression, level)
 	pw := ex.pw
@@ -268,11 +284,40 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 	for _, pg := range pages {
 		place[pg.view] = append(place[pg.view], pg)
 	}
+	sigCatalog := ""
+	if ex.opts.Sign != nil {
+		// the field of the signature: on the picture of the field, when
+		// the document has it
+		var place *sigPlace
+		for _, pg := range pages {
+			k := 1 / pg.unit
+			kept := pg.links[:0]
+			for _, l := range pg.links {
+				if strings.HasPrefix(l.url, sigFieldPrefix) {
+					if place == nil {
+						place = &sigPlace{pg: pg, rect: export.Nums(l.x0*k, (pg.h-l.y1)*k, l.x1*k, (pg.h-l.y0)*k)}
+					}
+					continue
+				}
+				kept = append(kept, l)
+			}
+			pg.links = kept
+		}
+		if place == nil && ex.opts.Sign.Field != "" {
+			ex.Warnf("the document has no picture of %q: the signature shows on no page", ex.opts.Sign.Field)
+		}
+		if _, sigCatalog, err = ex.sigObjects(place, pages); err != nil {
+			return nil, err
+		}
+	}
 	var kids strings.Builder
 	for _, pg := range pages {
 		kids.WriteString(pg.ref.String() + " ")
 		k := 1 / pg.unit
 		var annots strings.Builder
+		if pg.sigWidget != 0 {
+			annots.WriteString(pg.sigWidget.String() + " ")
+		}
 		for _, l := range pg.links {
 			action := ex.linkAction(l.url, pg, place)
 			if action == "" {
@@ -325,6 +370,7 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 	if ex.pdfa != nil {
 		cat += ex.outputIntent()
 	}
+	cat += sigCatalog
 	if lang := doc.Meta.DC.Language.First(); lang != "" {
 		cat += " /Lang " + text(lang)
 	}
@@ -341,6 +387,15 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (res *Result, err erro
 	pw.put(catalog, cat+" >>")
 	if err := pw.finish(catalog, ex.info()); err != nil {
 		return nil, fmt.Errorf("pdfbdf: %w", err)
+	}
+	if ex.opts.Sign != nil {
+		data := signing.Bytes()
+		if err := sign(data, ex.opts.Sign); err != nil {
+			return nil, err
+		}
+		if _, err := out.Write(data); err != nil {
+			return nil, fmt.Errorf("pdfbdf: %w", err)
+		}
 	}
 	return &Result{Pages: len(pages), Fonts: nfonts, Warnings: ex.Warnings}, nil
 }

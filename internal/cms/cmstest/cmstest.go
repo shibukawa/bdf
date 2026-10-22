@@ -111,6 +111,15 @@ func (id *Identity) PEM() (certs, key []byte) {
 	return certs, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: k})
 }
 
+// PEMOf writes certificates as PEM.
+func (id *Identity) PEMOf(certs ...*x509.Certificate) ([]byte, error) {
+	var out []byte
+	for _, c := range certs {
+		out = append(out, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.Raw})...)
+	}
+	return out, nil
+}
+
 // TSA is a time-stamp authority over HTTP.
 type TSA struct {
 	*httptest.Server
