@@ -1,0 +1,50 @@
+name: apt, with its packages cached
+description: >
+  Runs commands that install packages with apt-get, with the package files
+  (.deb) kept in the cache of Actions. The Ubuntu mirror of the runners now
+  and then sends them at 40 kB/s, which made installing take minutes (9.5
+  for the 26 MB of Chromium's libraries). The cache is named after the
+  files in it, so it is saved again only when apt fetched others: a newer
+  version, another package.
+inputs:
+  name:
+    description: what the packages are for, which names the cache
+    required: true
+  run:
+    description: the commands that install them, apt-get update included
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: os
+      shell: bash
+      run: |
+        . /etc/os-release
+        echo "prefix=apt-$ID-$VERSION_ID-$(dpkg --print-architecture)-${{ inputs.name }}" >>"$GITHUB_OUTPUT"
+    - id: restore
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/apt-archives
+        key: ${{ steps.os.outputs.prefix }}
+        restore-keys: ${{ steps.os.outputs.prefix }}-
+    - shell: bash
+      run: |
+        mkdir -p ~/apt-archives
+        find ~/apt-archives -maxdepth 1 -name '*.deb' -exec sudo cp -t /var/cache/apt/archives/ {} +
+    - shell: bash
+      run: ${{ inputs.run }}
+    - id: files
+      shell: bash
+      run: |
+        # without the files of versions the mirror no longer has
+        sudo apt-get autoclean -qq
+        rm -rf ~/apt-archives
+        mkdir ~/apt-archives
+        find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp -t ~/apt-archives/ {} +
+        echo "$(ls ~/apt-archives | wc -l) package files, $(du -sh ~/apt-archives | cut -f1)"
+        echo "key=${{ steps.os.outputs.prefix }}-$(ls ~/apt-archives | sha256sum | cut -c1-16)" >>"$GITHUB_OUTPUT"
+    - if: steps.files.outputs.key != steps.restore.outputs.cache-matched-key
+      uses: actions/cache/save@v6
+      with:
+        path: ~/apt-archives
+        key: ${{ steps.files.outputs.key }}

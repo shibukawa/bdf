@@ -1,13 +1,18 @@
 name: ci
+# Runs on main too, which saves the caches of Go (.github/actions/go) that
+# pull requests restore: a cache saved by a pull request is only for it.
 on:
   pull_request:
+  push:
+    branches: [main]
 jobs:
   go:
-    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    if: github.event_name == 'push' || contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - id: go
+        uses: ./.github/actions/go
         with:
           go-version: "1.27.3" # the patch with the fix of GO-2026-6809 (crypto/x509), after 6617 and 6612/6613, which the runner's cache lacks
       # Go 1.27's unreachable analyzer flags the goto-shaped bodies of the
@@ -217,39 +222,59 @@ jobs:
         with:
           name: bdf-conformance
           path: /tmp/bdf-conformance.tar.gz
+      - if: "!cancelled() && github.event_name == 'push'"
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ steps.go.outputs.path }}
+          key: ${{ steps.go.outputs.key }}
   print:
     # bdf print against printers that are not bdf's own: CUPS's
     # ippeveprinter (an IPP Everywhere printer) and a CUPS queue of it
-    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    if: github.event_name == 'push' || contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - id: go
+        uses: ./.github/actions/go
         with:
           go-version: "1.27.3"
       - name: CUPS, ippeveprinter, Avahi and Ghostscript
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cups cups-ipp-utils cups-filters avahi-daemon ghostscript
-          sudo systemctl start avahi-daemon cups
+        uses: ./.github/actions/apt
+        with:
+          name: print
+          run: |
+            sudo apt-get update
+            sudo apt-get install -y cups cups-ipp-utils cups-filters avahi-daemon ghostscript
+            sudo systemctl start avahi-daemon cups
       # the PostScript files drawn by Ghostscript and compared with the pages
       - run: go test ./vector/psbdf/ ./print/...
       - run: test/print/ci.sh
+      - if: "!cancelled() && github.event_name == 'push'"
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ steps.go.outputs.path }}
+          key: ${{ steps.go.outputs.key }}
   print-os:
     # the printing packages build and pass on Windows and macOS too
-    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    if: github.event_name == 'push' || contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     strategy:
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - id: go
+        uses: ./.github/actions/go
         with:
           go-version: "1.27.3"
       - run: go vet ./print/... && go test ./print/...
+      - if: "!cancelled() && github.event_name == 'push'"
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ steps.go.outputs.path }}
+          key: ${{ steps.go.outputs.key }}
   web:
-    if: contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+    if: github.event_name == 'push' || contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -260,5 +285,16 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=high
       - run: npm test
-      - run: npx playwright-core install --with-deps chromium
+      - name: Chromium's libraries
+        uses: ./.github/actions/apt
+        with:
+          name: playwright-chromium
+          run: npx playwright-core install-deps chromium
+      - id: playwright
+        run: echo "version=$(node -p 'require("./node_modules/playwright-core/package.json").version')" >>"$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium
+      - run: npx playwright-core install chromium
       - run: npm run test:browser
