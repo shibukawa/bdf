@@ -49,6 +49,7 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 | `DELETE /api/nodes/<name>` | 削除する。ほかのノードが送り先にしている間はできません |
 | `POST /api/nodes/<name>/key` | エンドポイントのキーを回す。新しいキーを 1 度だけ |
 | `GET /api/formats` | 入口が受け取れる形式 |
+| `GET /api/openapi.json?node=` | 呼び出し元が使えるエンドポイントとエクスポートの OpenAPI 文書（[OpenAPI](#openapi)） |
 
 ## テンプレート {#templates}
 
@@ -102,6 +103,21 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 | `DELETE /api/apps/<id>` | 削除する |
 | `POST /api/apps/<id>/secret` | シークレットを回す |
 | `GET /api/audit?limit=` | 監査ログ（役割 `audit`） |
+
+## OpenAPI {#openapi}
+
+`GET /api/openapi.json` は、トポロジーが公開しているものを、いまのトポロジーから作った OpenAPI 3.1 の文書です。アプリケーションの開発者はこれからクライアントを生成したり、OpenAPI を読むツールでエンドポイントを試したりします。
+
+- すべてのエンドポイントの `POST /in/<name>`。受け取る形式のメディアタイプが入ります。`accept: data` のエンドポイントなら、ボディのスキーマはデータが届くテンプレートのデータの JSON Schema です（[データ](templates.md#data)）。`?meta.<key>=` パラメータは後ろのノードが見るキーです。フィルタのルール、テンプレートノードの `template_from`（値はテンプレートの ID）、エクスポートの `by` と `fields`、出口の設定の `{{meta.<key>}}` です。エンドポイント自身が設定するキーは載りません。そちらの値が勝つからです。
+- すべてのエクスポートの `GET /out/<name>` とそのエントリ。エントリにはエクスポートの fields が入ります。
+- 送ったジョブを追うアプリ向けの `GET /api/jobs/<n>`、`…/document`、`POST …/cancel`。
+- 入り方。エンドポイントのキー、管理トークン、アプリのトークン（`/oauth/token` のクライアントクレデンシャル）、人のトークン（PKCE 付きの認可コード）です。
+
+載る範囲は読み手のものです。役割 `topology` と管理トークンにはすべてのエンドポイントとエクスポートが、アプリには自分を載せていて送るスコープ（文書なら `print`、データなら `print.template`）のあるエンドポイントと、自分を載せていてスコープ `export` のあるエクスポートが、サインインした人にはエクスポートが載ります。`?node=<name>`（繰り返すか、カンマ区切り）でそのノードだけに絞ります。読み手に何も公開していないノードは見つかりません（404）。`info.version` は残りの部分のハッシュで、公開しているものが変わると変わります。トポロジーのページの OpenAPI で文書全体を、エンドポイントやエクスポートのサイドバーにある同じ名前のリンクでそのノードの分をダウンロードできます。
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" "https://<host>/api/openapi.json?node=erp" > erp.openapi.json
+```
 
 ## IPP {#ipp}
 

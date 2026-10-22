@@ -34,6 +34,8 @@ The owner is what the sender claimed: whoever may send to the entry decides whos
 | `GET /out/<name>/<job>/record` | the archive's record of the job: its metadata, payloads and legs when it was written |
 | `GET /out/<name>/<job>/document` | the document as the archive wrote it; each download is in the audit log |
 
+The export's OpenAPI document — the link OpenAPI in its sidebar, or `GET /api/openapi.json?node=<name>` — describes these, with the fields of its entries ([OpenAPI](api.md#openapi)).
+
 What the reader may not read is **not found** (404), not forbidden: an entry of another owner, of a job that is not there, of a job sent elsewhere. An export does not say what it holds.
 
 ## Backends {#backends}

@@ -39,6 +39,26 @@ type event struct {
 	} `json:"detail"`
 }
 
+// refSchema is the JSON Schema of what parseRef reads, for the OpenAPI
+// document of the topology.
+var refSchema = map[string]any{
+	"type":        "object",
+	"description": "The object to read, one a request: {\"bucket\", \"key\"}, an S3 event notification of one record, or EventBridge's event of S3. The bucket, when given, is the node's.",
+	"anyOf": []any{
+		map[string]any{"required": []string{"key"}, "properties": map[string]any{"bucket": map[string]any{"type": "string"}, "key": map[string]any{"type": "string"}}},
+		map[string]any{"required": []string{"Records"}, "properties": map[string]any{"Records": map[string]any{"type": "array", "minItems": 1, "maxItems": 1, "items": map[string]any{
+			"type": "object", "properties": map[string]any{"s3": map[string]any{"type": "object", "properties": map[string]any{
+				"bucket": map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}},
+				"object": map[string]any{"type": "object", "properties": map[string]any{"key": map[string]any{"type": "string", "description": "URL-encoded, + a space"}}},
+			}}},
+		}}}},
+		map[string]any{"required": []string{"detail"}, "properties": map[string]any{"detail": map[string]any{"type": "object", "properties": map[string]any{
+			"bucket": map[string]any{"type": "object", "properties": map[string]any{"name": map[string]any{"type": "string"}}},
+			"object": map[string]any{"type": "object", "properties": map[string]any{"key": map[string]any{"type": "string"}}},
+		}}}},
+	},
+}
+
 // parseRef reads the reference of a request: {bucket, key}, an S3
 // notification (whose key is URL-encoded, + a space), or EventBridge's
 // event. One object a request.

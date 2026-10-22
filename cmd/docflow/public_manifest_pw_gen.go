@@ -68,11 +68,11 @@ func init() {
 			{Path: "tablet.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 3920, ETag: "\"c68b3bbe93cca2ef98203d73dc27970d\"", Preference: 1, External: false},
 			{Path: "tablet.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 3950, ETag: "\"69dfc0aec713e09f30a78ccfe16f0661\"", Preference: 1, External: false},
 		}},
-		{URL: "topology.js", CacheControl: "public, no-cache", Revision: "e40ebea24ee068a9", Representations: []middlewares.AssetRepresentation{
-			{Path: "topology.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 63936, ETag: "\"22297795bb1915de2db0e434599582e0\"", Preference: 1, External: false},
-			{Path: "topology.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 16095, ETag: "\"d57bfca5fa3f3190a2bff7b2a36b3004\"", Preference: 1, External: false},
-			{Path: "topology.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 18434, ETag: "\"052d42f338200ef575ff85786bf49285\"", Preference: 1, External: false},
-			{Path: "topology.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 18178, ETag: "\"9ca463c323050a0dc922b706cc2bc055\"", Preference: 1, External: false},
+		{URL: "topology.js", CacheControl: "public, no-cache", Revision: "9c1281d7c00ea50c", Representations: []middlewares.AssetRepresentation{
+			{Path: "topology.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 64198, ETag: "\"39acba4cd15a55daa44b055816f92e99\"", Preference: 1, External: false},
+			{Path: "topology.js.br", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "br", Length: 16164, ETag: "\"ae4ddbed7f30e708a936a320fad98724\"", Preference: 1, External: false},
+			{Path: "topology.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 18519, ETag: "\"013950bee266698576b92e21a7cb765a\"", Preference: 1, External: false},
+			{Path: "topology.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 18259, ETag: "\"78a1d32a4e7370fa9d40e594c3479488\"", Preference: 1, External: false},
 		}},
 	})
 }
