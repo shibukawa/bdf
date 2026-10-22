@@ -1,0 +1,64 @@
+id: milestone:sig-3a
+type: milestone
+title: sig-3a — 一部だけ埋めた帳票の値への署名と、完成品の値の記録
+summary: >-
+  requirement:tamper-evidence の 3 つ目の段の前半。form.Options.Sign（bdf fill -sign-key）で、穴埋めが渡した値・空けた名前・テンプレートの SHA-256 に CMS で署名する。
+  .bdff の tpl の signed に持ち、完成品は値の記録（新しい Part の型 fill）に全部の値と署名を持つ。form.VerifyValues と bdf verify が確かめる。2026-10-23 実装。
+  Docflow の立会人の署名のノードは sig-3b。
+lifecycle: active
+authority: authored
+scope:
+  milestone: sig-3a
+  input: bdft, bdff, templates
+  output: bdff (signed values), bdf with a fill record
+constraints:
+- 署名のない帳票の完成品は今までどおり（記録を足さない。全部のデータで一度に埋めたものとバイト列が同じ）
+- 値への署名はページを覆わない。ページは sign（bdf sign）の文書の署名で、記録も覆う
+non_goals:
+- Docflow のノード（sig-3b）
+- 記録から帳票を作り直して比べる強い検査（同じフォントが要る。決定性があるのでできるが、まだ道具にしていない）
+capabilities:
+  value-signatures:
+    state: implemented
+    about: capability:form/value-signatures
+  fill-record:
+    state: implemented
+    about: capability:form/fill-record
+facts:
+  payload: 'JCS の {"bdf-form-values":1, format, source（src の SHA-256）, from, filled, open, claims}。CMS の中に持つ（sign の文書の署名と同じ形）'
+  checks: format・source・from が同じ、署名した値がすべて帳票に同じ値である、帳票の open の名前がどれも署名した open の中にある
+  storage: tpl の signed（base64 の DER の配列）。完成品は bdf.PartFill（"fill"）の Record に version・format・source・from・filled（全部）・signed
+  cli: bdf fill -sign-key -sign-cert -sign-role -tsa、bdf verify は文書の署名と値の署名を並べて報告（-json は values）
+  found_on_the_way: コンパイルしていないテンプレートから作った .bdff から、さらに .bdff を作ると、from に前の .bdff の digest が入っていた（form-m7 の誤り）。form-m7 のブランチで直してテストを足した
+acceptance:
+  chain:
+    text: 甲が値に署名した .bdff を乙が完成させて署名し、完成品の 2 つの署名が成り立つ（TSA の印つき）
+    verified_by:
+    - form-unit
+  tamper:
+    text: 完成させる前に .bdff の甲の値を書き換えると甲の署名が落ち、甲が埋めた名前を空け直しても落ちる
+    verified_by:
+    - form-unit
+  cli:
+    text: bdf fill -sign-key で .bdff、乙が完成、立会人が bdf sign、bdf verify が両方を valid と報告
+    verified_by:
+    - cli-check
+verification:
+  form-unit:
+    state: passed
+    method: unit
+    test: go test ./form/（TestValueSignatures）
+    authority: observed
+    evidence:
+      path: form/values_test.go
+      locator: 2 つの署名、記録の Part、値の書き換え、名前の空け直し、署名のない帳票
+  cli-check:
+    state: passed
+    method: manual
+    test: OpenSSL で作った鍵で bdf fill -sign-key -open party_b → bdf fill（乙） → bdf sign -role witness → bdf verify -roots
+    authority: observed
+relations:
+- relation: implements
+  to: requirement:tamper-evidence
+- relation: follows
+  to: milestone:sig-2

@@ -402,7 +402,20 @@ bdf fill -data theirs.json contract.bdff contract.bdf                # party B c
 - A name with dots leaves a value of an object open (`-open party_b.sign`). A list (the rows of a table) is filled, or left open, as a whole.
 - The pictures given by the paths of files are kept in the partly filled form as `data:` URLs: the other person does not have the files.
 - Values are kept as JSON keeps them: a date of YAML becomes its text. Give dates as text (`2026-10-22`) for the same form either way.
-- A partly filled form is not protected against changes: whoever has the file can change the values it holds. When the other party fills in their part on a website, keep the .bdff on the server and take only their values.
+- A partly filled form is not protected against changes: whoever has the file can change the values it holds. When the other party fills in their part on a website, keep the .bdff on the server and take only their values. When the file goes from hand to hand, sign the values (below).
+
+### Signing the values
+
+`-sign-key` and `-sign-cert` sign what a fill gives: the values the form holds then, the names it leaves open, and the template (its SHA-256), not the pages, which change as the others fill in theirs. The partly filled form keeps the signature, and the form completed of it keeps a record of its values with every signature (a part of the type `fill`, spec §4.5).
+
+```sh
+bdf fill -data mine.yaml -open party_b -sign-key alice.key -sign-cert alice.pem -sign-role author contract.bdft contract.bdff
+bdf fill -data theirs.json -sign-key bob.key -sign-cert bob.pem contract.bdff contract.bdf
+bdf sign -key witness.key -cert witness.pem -role witness contract.bdf    # the pages, and the record
+bdf verify -roots ca.pem contract.bdf
+```
+
+`bdf verify` checks each signature of values: that every value signed is that of the form, and that the form leaves open no name the signer filled. A value changed in the .bdff before it was completed breaks the signature of whoever gave it. The pages are signed by `bdf sign` ([sign, verify](architecture/cli.md#sign-verify)), whose signature covers the record too. Signing a form without `-open` signs all of its values.
 
 On the [form page](https://shibukawa.github.io/bdf/form/), check the names under *Leave for another person*: the page offers the document as a .bdff, and a .bdff opened there asks for the names it leaves open only.
 

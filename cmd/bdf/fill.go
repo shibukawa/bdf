@@ -159,6 +159,10 @@ func fill(args []string) {
 	f := addFormFlags(fs, "fill", "data", "data of the template: a JSON or YAML object as file, or a value under a name as name=file: a list of a CSV or TSV file or of the sheets of a workbook (.xlsx), a JSON or YAML value (repeatable; a later object replaces the values of the same names)")
 	var open stringList
 	fs.Var(&open, "open", "names of the data to leave open, comma-separated (repeatable; * for every name that the data does not give): write a partly filled form (.bdff) that another fill completes with the data of those names")
+	signKey := fs.String("sign-key", "", "sign the values that the data gives (a partly filled form holds the signature, a completed form a record of its values with it): the private key, in PEM (as bdf sign takes it)")
+	signCert := fs.String("sign-cert", "", "with -sign-key: the certificate of the key, followed by those of its chain (PEM)")
+	signRole := fs.String("sign-role", "", "with -sign-key: the role of the signer, signed with the values (author, counterparty …)")
+	signTSA := fs.String("tsa", "", "with -sign-key: URL of a time-stamp authority (RFC 3161) that stamps the signature")
 	each := fs.String("each", "", "fill the template once for each item of a list, given as -data gives one (file, or name=file to put the item under a name instead of making its values those of the data); the output path names each form with tags: out/{{no}}.bdf")
 	preview := addPreviewFlags(fs)
 	fs.Usage = func() {
@@ -178,6 +182,17 @@ func fill(args []string) {
 	opts, files, err := f.options(in, data)
 	check(err)
 	defer files.Close()
+	if *signKey != "" {
+		if *signCert == "" {
+			f.fail("-sign-key needs -sign-cert")
+		}
+		key, chain, err := loadSigner(*signKey, *signCert)
+		check(err)
+		opts.Sign = &form.ValueSigner{Key: key, Chain: chain, TSA: *signTSA}
+		if *signRole != "" {
+			opts.Sign.Claims = map[string]any{"role": *signRole}
+		}
+	}
 	for _, o := range open {
 		for _, name := range strings.Split(o, ",") {
 			if name = strings.TrimSpace(name); name != "" {
