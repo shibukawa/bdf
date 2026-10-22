@@ -10,6 +10,7 @@
 | Title | 名前の下に表示します |
 | Description（`description`） | ノードが何のためにあるかのメモ。1000 文字まで。最初の数行がキャンバスのノードの中に、全文がサイドバーに出ます |
 | Scope、Owner | ページからノードに送れる人と、そのジョブが誰のものか。`shared`（サインインした全員）、`group` で所有者にグループ、`personal` で所有者に本人のメールアドレス（[ノードのスコープ](roles.md#scopes)） |
+| On error（`on_error`） | このノードの送りや段が最終的に失敗したとき、届いたものを持ってジョブが向かうノード。たとえば[通知](#notify)ノード。無ければ全体の既定（`docflow.on_error`）へ、それも無ければジョブはここで中止します（[失敗の行き先](#on-error)） |
 
 サイドバーの 1 行が、ノードが受け取るものと送り出すものを示します（[ペイロードの種類](flow.md#kinds)）。
 
@@ -149,3 +150,74 @@
 | Fields（`fields`） | 一覧のエントリに写すメタデータキー。読み手が表示や選択に使います（16 個まで） |
 | Entries（`entries`） | 全員分と所有者ごとに一覧する最新のエントリ数（1000）。それより古いエントリも、ジョブの番号で読めます |
 | Apps allowed（`apps`） | トークンですべてのエントリを読むバックエンド（スコープ `export`）。フロントエンドは本人として読むので、載せる必要はありません |
+
+## S3 Trigger {#s3-trigger}
+
+バケットに置かれたオブジェクトの入口です。バケットを待ち受けはしません。S3 のイベントを EventBridge のルール（API destination）か Lambda に送り、そこからオブジェクトの参照を `POST /in/<name>` にノードのキーを添えて送ります。キーはエンドポイントと同じく作られ、ローテーションできます。ボディは `{"bucket": …, "key": …}`、S3 の通知（`Records`、オブジェクト 1 つ）、EventBridge のイベント（`detail`）のどれかです。ノードが自分でオブジェクトを読み、ジョブはメタデータに `s3.bucket` と `s3.key` を持って先へ進みます。
+
+| 設定 | |
+|---|---|
+| Bucket（`url`） | `s3://bucket?region=…`。AWS 以外のサービス（MinIO、R2）には `&endpoint=…` |
+| Credential（`credential`） | `access-key:secret-key`、または `:session-token` 付き。無ければ AWS の既定（環境変数、ロール）（[資格](#credentials)） |
+| Prefix（`path`） | 受け取るキーの接頭辞。それ以外のキーや別のバケットは拒否します（403） |
+| Forwards to、Accepts、Sends on、Formats、Metadata | エンドポイントと同じ |
+
+## 描画 {#render}
+
+届いた `.bdf` 文書を PDF に、または 1 ページを PNG 画像（150 dpi）に描きます。BDF のビューアを持たない相手（メールの読み手、Web サービス）へ送る出口の前に置きます。描いたファイルは任意のファイルとして `to` へ進みます。配信と同じく裏で行います。
+
+| 設定 | |
+|---|---|
+| Forwards to（`to`） | ファイルを送るノード |
+| Format（`format`） | `pdf`（既定）か `png`。SVG はまだありません |
+| Page（`page`） | PNG にするページ（1） |
+
+## 通知 {#notify}
+
+ジョブが通ったことを知らせ、届いたものを `to` があればそこへ送ります。失敗は [on_error](#on-error) の辺からエラーと一緒に届きます。文書は送りません。
+
+| 設定 | |
+|---|---|
+| Via（`via`） | `slack`：Incoming Webhook。URL を資格に置きます。`mail`：メール。メールノードと同じ設定で、添付はありません。`http`：JSON（`text`、`job`、`name`、`node`、`error`、`error_node`、`meta`）を `url` に POST。資格は Authorization に使います |
+| Text（`text`） | 知らせる文。`{{meta.<key>}}` が使えます。既定ではジョブとノード、失敗ならノードとエラー |
+| Forwards to（`to`） | ジョブが続けて向かうノード |
+
+## メール（SMTP） {#smtp}
+
+届いたものを添付してメールで送ります。Message-ID は配信の ID で、再試行しても変わりません。
+
+| 設定 | |
+|---|---|
+| Server（`url`） | `smtp://host:587`（サーバーが出せば STARTTLS）か `smtps://host:465` |
+| Credential（`credential`） | `user:password`。TLS の上か、同じマシンにだけ渡します |
+| From、Recipients、Subject、Text（`from`、`recipients`、`mail_subject`、`text`） | メールの中身。`{{meta.<key>}}` が使えます |
+
+## S3 {#s3}
+
+届いたものをバケットに 1 度だけ書き、後は見ません。既にあるオブジェクトは書いたものとみなします。記録と一緒に残す必要があるものは[アーカイブ](#archive)へ送ります。
+
+| 設定 | |
+|---|---|
+| Bucket（`url`）、Credential（`credential`） | S3 Trigger と同じ |
+| Key（`path`） | `{{meta.<key>}}` が使えます。既定は `{{meta.$job}}/{{meta.$name}}`。値は接頭辞の外へ出られません（`..` と先頭の `/` を落とします） |
+
+## HTTP {#http}
+
+届いたものをリクエストのボディとして Web サービスへ送ります。ジョブのメタデータは `X-Meta-*` ヘッダに、配信の ID は `Idempotency-Key` になります。別の Docflow へ送るなら、URL を相手の `/in/<node>` に、資格をアプリのトークンにします。`.bdf` はそのまま届きます。408、429、5xx は再試行し、それ以外の応答は最終的な失敗です。
+
+| 設定 | |
+|---|---|
+| URL（`url`） | `http(s)://…`。`{{meta.<key>}}` が使えます（値は URL 用にエスケープ） |
+| Method（`method`） | `POST`（既定）か `PUT` |
+| Headers（`headers`） | 追加のヘッダ。`{{meta.<key>}}` が使えます |
+| Credential（`credential`） | Authorization。トークンなら Bearer で送り、`Basic …` のように方式付きならそのまま |
+
+これらの種類にはサイドバーの専用の欄がなく、設定は JSON の欄に書きます。
+
+## 失敗の行き先 {#on-error}
+
+送りや段が最終的に失敗すると（拒否、テンプレートが無い、再試行の最後）、ジョブはノードの `on_error` の辺（破線）を通り、届いたものと、次のノードから見える `$error` と `$error_node` を持って進みます。辺の無いノードの失敗は全体の既定（`docflow.on_error`、`DOCFLOW_ON_ERROR`）へ向かいます。ただし既に失敗の道にいるジョブは既定へ送りません。通知ノードの失敗が自分を知らせ続けないためです。どちらも無ければ、ジョブはそこで中止します。どの場合もジョブは中止です。辺は知らせるためのもので、直すものではありません。
+
+## 資格と `{{meta.<key>}}` {#credentials}
+
+ノードは資格を名前で指します（`credential`）。秘密そのものはノードと一緒に保存されません。値は環境変数 `DOCFLOW_CRED_<name>`（`-` は `_`）、無ければ `docflow.credential_dir` の中のファイル `<name>` です。出口と通知ノードの設定には `{{meta.<key>}}` が使えます。式はありません。使える鍵はジョブのメタデータ（[メタデータ](flow.md#metadata)）と、`$node`、`$delivery`、`$name`（文書の名前）、`$error`、`$error_node` です。無い鍵は空になります。ヘッダは改行を、キーは `..` を落とします。出口はどれも少なくとも 1 度送ります。結果の分からない送りは同じ配信の ID でもう 1 度送るので、相手はそれで見分けます。

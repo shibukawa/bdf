@@ -23,6 +23,8 @@ type DocflowConfig struct {
 	FontDirs        []string      `help:"directories of the fonts of documents"`
 	NoSystemFonts   bool          `default:"false" help:"use only font_dirs"`
 	MaxDocumentMB   int           `default:"64" help:"largest document taken, in MiB"`
+	OnError         []string      `help:"nodes a job goes to when a send or a step fails for good at a node with no on_error edges (a notify node)"`
+	CredentialDir   string        `default:"" help:"directory of the credentials nodes name, a file each (DOCFLOW_CRED_<name> comes first)"`
 	SecureCookies   bool          `default:"true" help:"Secure on the devices' cookie (false only for plain http in development)"`
 }
 
