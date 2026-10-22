@@ -15,6 +15,7 @@ Two views come out of a single document: the pages themselves (a flow view with 
 | Option | Values | Default |
 |---|---|---|
 | `-param views=` | `both`, `pages`, `scroll` | `both` — pages and the scroll view |
+| `-param data=` | `none` | the data of charts stored as tables of the document ([bdf tables](../architecture/cli.md#tables-table)) |
 
 See [design.md §3.9](../design.md#39-word--bdf-変換器converterdocxの構造) for the internals.
 

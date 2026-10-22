@@ -358,6 +358,7 @@ func (s *sheetCtx) putLink(rg cellRange, target string) {
 // chartSheetSafe renders a chart sheet as a one-page fixed view.
 func (c *converter) chartSheetSafe(ref sheetRef, id string) (v *bdf.View, layers []*canvas.Canvas) {
 	v = c.doc.NewView(id, bdf.ViewFixed, ref.name)
+	c.r.SetPlace(id, 1)
 	w, h := 720.0, 540.0
 	cv := c.cvs.New()
 	func() {

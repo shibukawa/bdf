@@ -5,7 +5,7 @@
 // gives their text for a search index and writes them as PDF files; the
 // form module reads and fills the templates of forms. A classic worker, so
 // that it can load Go's wasm_exec.js.
-import type { ConvertRequest, ConvertResponse, ConvertOptions, ConvertResult, Converted, ConvertedPage, FillOptions, Filled, Opened, PdfFile, PdfOptions, SearchText, TemplateFields, Thumbnail, ThumbnailOptions } from "./convert.js";
+import type { ConvertRequest, ConvertResponse, ConvertOptions, ConvertResult, Converted, ConvertedPage, FillOptions, Filled, Opened, PdfFile, PdfOptions, SearchText, TemplateFields, Thumbnail, ThumbnailOptions, MarkdownFile, MarkdownOptions } from "./convert.js";
 
 /** A conversion done a page at a time, as cmd/bdfwasm returns it. */
 interface GoStream {
@@ -23,6 +23,7 @@ interface Converter {
   thumbnail?(data: Uint8Array, options: ThumbnailOptions): Promise<Thumbnail>;
   text?(data: Uint8Array, options: { password?: string }): Promise<SearchText>;
   pdf?(data: Uint8Array, options: PdfOptions): Promise<PdfFile>;
+  markdown?(data: Uint8Array, options: MarkdownOptions): Promise<MarkdownFile>;
   fields?(data: Uint8Array, options: { sample?: string }): Promise<TemplateFields>;
   fill?(data: Uint8Array, options: FillOptions): Promise<Filled>;
 }
@@ -76,7 +77,7 @@ async function preview(url: string): Promise<Required<Converter>> {
 }
 
 /** A call of the module at a URL that not every module has. */
-async function method<K extends "pdf" | "fields" | "fill">(url: string, name: K): Promise<NonNullable<Converter[K]>> {
+async function method<K extends "pdf" | "markdown" | "fields" | "fill">(url: string, name: K): Promise<NonNullable<Converter[K]>> {
   const m = await load(url);
   const fn = m[name];
   if (!fn) throw new Error(`${url}: a module without ${name}`);
@@ -108,6 +109,8 @@ async function handle(req: ConvertRequest): Promise<ConvertResult> {
       return (await preview(req.module)).text(new Uint8Array(req.data), req.options);
     case "pdf":
       return (await method(req.module, "pdf"))(new Uint8Array(req.data), req.options);
+    case "markdown":
+      return (await method(req.module, "markdown"))(new Uint8Array(req.data), req.options);
     case "fields":
       return (await method(req.module, "fields"))(new Uint8Array(req.data), req.options);
     case "fill":
@@ -125,6 +128,11 @@ self.onmessage = async (ev: MessageEvent<ConvertRequest>) => {
     if (result && "bdf" in result) transfer.push(result.bdf.buffer);
     if (result && "image" in result) transfer.push(result.image.buffer);
     if (result && "pdf" in result) transfer.push(result.pdf.buffer);
+    if (result && "markdown" in result) {
+      transfer.push(result.markdown.buffer);
+      if (result.zip) transfer.push(result.zip.buffer);
+      for (const im of result.images) transfer.push(im.data.buffer);
+    }
   } catch (e) {
     const err = e as Error & { code?: string };
     res = { id, ok: false, error: err.message ?? String(e), code: err.code };

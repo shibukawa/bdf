@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/shibukawa/bdf"
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/xlsx"
+	parquetenc "github.com/shibukawa/bdf/encoding/parquet"
 )
 
 // testOptions lays text out with the test fonts of the PowerPoint tests
@@ -173,5 +175,84 @@ func TestDetect(t *testing.T) {
 	long := strings.Repeat("x", 1500) + ",y\n1,2\n3,4\n"
 	if !detect([]byte(long[:1024]), strings.NewReader(long), int64(len(long))) {
 		t.Error("long first record: not detected")
+	}
+}
+
+// TestValueTypes checks how the values of a column are typed for the
+// table of the document: numbers, dates and booleans by their text,
+// leading zeros and anything else kept as text.
+func TestValueTypes(t *testing.T) {
+	for _, c := range []struct {
+		v    string
+		want parquetenc.Type
+	}{
+		{"12", parquetenc.Integer}, {"-3", parquetenc.Integer}, {"0", parquetenc.Integer},
+		{"0012", parquetenc.String}, {"1.5", parquetenc.Number}, {"1.5e3", parquetenc.Number}, {".5", parquetenc.Number},
+		{"2024-01-15", parquetenc.Date}, {"2024-02-30", parquetenc.String},
+		{"2024-05-20T14:05:00Z", parquetenc.DateTime}, {"2024-04-01 09:30", parquetenc.DateTime},
+		{"TRUE", parquetenc.Boolean}, {"false", parquetenc.Boolean},
+		{"$4.50", parquetenc.String}, {"12,500", parquetenc.String}, {"2024/3/1", parquetenc.String},
+	} {
+		if got := valueType(c.v); got != c.want {
+			t.Errorf("%q: %s, want %s", c.v, got, c.want)
+		}
+	}
+	rows := [][]xlsx.GridCell{{{Text: "n"}, {Text: "d"}}, {{Text: "1"}, {Text: "2024-01-15"}}, {{Text: "2.5"}, {Text: ""}}, {{Text: ""}, {Text: "2024-01-16"}}}
+	tb := valuesTable(rows, true)
+	if len(tb.Columns) != 2 || tb.Columns[0] != (parquetenc.Column{Name: "n", Type: parquetenc.Number}) || tb.Columns[1] != (parquetenc.Column{Name: "d", Type: parquetenc.Date}) {
+		t.Errorf("columns = %+v", tb.Columns)
+	}
+	if len(tb.Rows) != 3 || tb.Rows[0][0] != 1.0 || tb.Rows[1][1] != nil || tb.Rows[2][0] != nil {
+		t.Errorf("rows = %#v", tb.Rows)
+	}
+	if d, _ := tb.Rows[2][1].(time.Time); d.Format("2006-01-02") != "2024-01-16" {
+		t.Errorf("date = %v", tb.Rows[2][1])
+	}
+	// without a header row the columns are numbered, and the first row is
+	// one of the values
+	tb = valuesTable(rows[1:], false)
+	if tb.Columns[0].Name != "C1" || tb.Columns[1].Name != "C2" || len(tb.Rows) != 3 {
+		t.Errorf("without header: %+v, %d rows", tb.Columns, len(tb.Rows))
+	}
+}
+
+// TestDataTable checks the table of values a converted file holds: every
+// row, typed by column; none with Data none.
+func TestDataTable(t *testing.T) {
+	res, err := ConvertFile("testdata/basic.csv", testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := convtest.Reopen(t, res.Doc)
+	entry, data, err := r.Table("data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Title != "basic" || entry.Rows != 10 || entry.View != "sheet1" || len(entry.Columns) != 9 {
+		t.Errorf("table = %+v", entry)
+	}
+	types := map[string]string{}
+	for _, c := range entry.Columns {
+		types[c.Name] = c.Type
+	}
+	for name, want := range map[string]string{"ID": "integer", "Product": "string", "Price": "string", "Released": "string", "Code": "string", "Note": "string"} {
+		if types[name] != want {
+			t.Errorf("%s: %s, want %s", name, types[name], want)
+		}
+	}
+	tb, err := parquetenc.Read(data, parquetenc.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tb.Rows) != 10 || tb.Rows[0][0] != int64(1) || tb.Rows[0][7] != "0012" || tb.Rows[2][8] != "Two lines:\r\nwarm and cool" || tb.Rows[4][8] != nil {
+		t.Errorf("rows = %#v", tb.Rows[:5])
+	}
+	opts := testOptions()
+	opts.Data = "none"
+	if res, err = ConvertFile("testdata/basic.csv", opts); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Doc.Tables) != 0 {
+		t.Errorf("with Data none, tables = %d", len(res.Doc.Tables))
 	}
 }

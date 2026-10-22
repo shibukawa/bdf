@@ -3,7 +3,9 @@ package bdf
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/shibukawa/bdf/encoding/parquet"
 	"io"
 	"os"
 	"path/filepath"
@@ -27,6 +29,9 @@ const defaultMinCompress = 512
 type Document struct {
 	Meta  Meta
 	Views []*View
+	// Tables are the tables the document holds beside its drawing
+	// (docs/spec.md §4.6): see AddTable.
+	Tables []*Table
 
 	// CompressionLevel is the flate level of the deflate-raw parts: 1
 	// (BestSpeed) to 9 (BestCompression). The default, 6, is what
@@ -218,7 +223,7 @@ func (d *Document) encodeParts() ([]encodedPart, error) {
 }
 
 func (d *Document) manifest(parts []encodedPart) *Manifest {
-	m := &Manifest{BDF: FormatVersion, Opset: OpsetVersion, Unit: "pt", Meta: d.Meta, Views: d.Views}
+	m := &Manifest{BDF: FormatVersion, Opset: OpsetVersion, Unit: "pt", Meta: d.Meta, Views: d.Views, Tables: d.Tables}
 	if m.Meta.Generator == "" {
 		m.Meta.Generator = "bdf-go/0.1"
 	}
@@ -375,6 +380,66 @@ func writeSplit(dir string, m *Manifest, data [][]byte) error {
 	for i, e := range sm.Parts {
 		if err := os.WriteFile(filepath.Join(dir, "parts", e.H.String()), data[i], 0o644); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// AddTable adds a table the document holds beside its drawing (docs/spec.md
+// §4.6): t names it, and data is the Apache Parquet file of its rows,
+// which becomes a PartTable part (t.Part is set). The id must be new to
+// the document; the rows and the columns of t should be those of the
+// file (AddTableRows makes both of a table in memory).
+func (d *Document) AddTable(t *Table, data []byte) error {
+	switch {
+	case t == nil || t.ID == "":
+		return errors.New("bdf: a table needs an id")
+	case d.Table(t.ID) != nil:
+		return fmt.Errorf("bdf: a table %q already", t.ID)
+	case len(d.Tables) >= MaxTables:
+		return fmt.Errorf("bdf: more than %d tables", MaxTables)
+	case len(t.Columns) > MaxTableColumns:
+		return fmt.Errorf("bdf: table %s: %d columns, more than %d", t.ID, len(t.Columns), MaxTableColumns)
+	case len(data) < 12 || string(data[:4]) != "PAR1":
+		return fmt.Errorf("bdf: table %s: not a Parquet file", t.ID)
+	case t.Rows < 0 || t.Page < 0:
+		return fmt.Errorf("bdf: table %s: numbers out of range", t.ID)
+	}
+	t.Part = d.AddPart(PartTable, data).String()
+	d.Tables = append(d.Tables, t)
+	return nil
+}
+
+// AddTableRows adds a table in memory (encoding/parquet.Table) as a table
+// of the document, written as a Parquet file: id and title name it, and
+// view and page say where the figure it is the data of is (page from 1;
+// 0 for a sheet, "" for none).
+func (d *Document) AddTableRows(id, title string, rows *parquet.Table, view string, page int) (*Table, error) {
+	data, err := parquet.Encode(rows)
+	if err != nil {
+		return nil, fmt.Errorf("bdf: table %s: %w", id, err)
+	}
+	t := &Table{ID: id, Title: title, Rows: int64(len(rows.Rows)), Columns: tableColumns(rows.Columns), View: view, Page: page}
+	if err := d.AddTable(t, data); err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
+// tableColumns lists columns as the manifest has them.
+func tableColumns(cols []parquet.Column) []TableColumn {
+	out := make([]TableColumn, len(cols))
+	for i, c := range cols {
+		out[i] = TableColumn{Name: c.Name, Type: c.Type.String()}
+	}
+	return out
+}
+
+// Table returns the table with an id, or nil.
+func (d *Document) Table(id string) *Table {
+	for _, t := range d.Tables {
+		if t.ID == id {
+			return t
 		}
 	}
 	return nil

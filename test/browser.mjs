@@ -58,7 +58,7 @@ try {
     && eq(st.figures, ["Checkerboard", "Enlarged corner of the checkerboard"]) && eq(st.figureBox, ["1560px", "260px", "240px", "400px"])
     && st.sheet.table === 1 && st.sheet.columnheader === 26 && st.sheet.rowheader > 50 && st.sheetCell === "2"
     && eq(st.lang, ["en", "", "ja", ""])
-    && eq(st.xlsxHeaders, ["Item", "Units", "Price"]) && eq(st.xlsxFigures, ["Picture", "A rounded note box"])
+    && eq(st.xlsxHeaders, ["Item", "Units", "Price"]) && eq(st.xlsxFigures, ["Column chart: Units", "Picture", "A rounded note box"])
     && st.xlsxSpans[0] > 50 && st.xlsxSpans[0] === st.xlsxSpans[1] && st.xlsxSpans[2] === 1;
   if (!structureOk) failed++;
   console.log(`structure: ${structureOk ? "ok" : "FAIL"} (${JSON.stringify(st)})`);

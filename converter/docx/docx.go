@@ -76,6 +76,10 @@ type Options struct {
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
+	// Data says whether the values of charts are stored as tables the
+	// document holds beside its drawing (docs/spec.md §4.6): "none" not
+	// at all; "" and "all" alike, a chart's values being few.
+	Data string
 }
 
 // Result is the outcome of a conversion.

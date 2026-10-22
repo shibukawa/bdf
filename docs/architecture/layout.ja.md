@@ -11,6 +11,8 @@
 | `raster/ebitenginebdf/` | パスだけの Object（数式など）を Ebitengine で描く。Ebitengine に依存するので独自の `go.mod` を持つ別モジュール。`raster/internal/shapes` は Object を塗りと線の図形の並びに展開する共通部分 |
 | `image/formula/` | LaTeX・MathML の数式を組んでパスだけの Object にする公開パッケージ。数式フォント（STIX Two Math）を同梱 |
 | `vector/pdfbdf/` | 文書を PDF に書き出す。命令列を内容ストリームに、文字を埋め込んだフォントの文字に、グループとソフトマスクを透明グループにする。影は `raster/imagebdf` で描いた画像にする。タグ付き PDF（`MARK` 命令から作る構造木）と PDF/A も書く |
+| `text/markdownbdf/` | 文書を Markdown に書き出す。`MARK` 命令の構造をブロックに、フォントを強調とコードに、リンク、画像は本文の隣のファイルに、グラフの表は図の後の表に。PDF のページの柱とページ番号は省く |
+| `encoding/parquet/` | 文書が描画とは別に持つ値の表（spec §4.6）の Apache Parquet の Part を読み書きする。書き手（平坦な列、PLAIN、非圧縮）と、BDF と一般的なツールが書くものの読み手。表の CSV・JSON |
 | `print/` | プリンタに印刷する: 印刷指示（IPP の属性の名前のチケット）、送る形式の選択（PDF、受けなければ PWG Raster）、用紙の名前（PWG 5101.1）、ジョブを作って文書を流し、終わるまで待つ。`print/ipp` は IPP のメッセージの読み書き（RFC 8010）、クライアント、能力、mDNS の探索（DNS-SD）、`ipps` の証明書の指紋の記録。`print/fakeprinter` はテストのための偽のプリンタ（IPP・9100・LPD・シリアル・CUPS のサーバー、壊れ方の注入。CUPS の ipptool と ippeveprinter で確かめてある）、`print/fakeprinter/readback` は受けたものを絵に戻す。`tools/fakeprinter` はその農場（YAML、画面、API）。`print/raster` は PWG Raster の書き手（`raster/imagebdf` の帯から流す）と用紙への配置。`bdf print`・`bdf printers` が使う。`print/spool` はジョブと文書を 1 つのファイルに（yuruidb を通して）保存し、プリンタへ送り、見届け、送り直し、落ちた後を二重に刷らずに直す。`print/server` は `bdf printd` のプリントサーバー（設定、HTTP の API、トークン、イベント、メトリクス）、`print/server/client` はその Go のクライアント |
 | `form/` | 帳票のテンプレートをデータで穴埋めする: データの読み込み、テンプレートの判別、データの JSON Schema、コンパイル済みテンプレート（.bdft）。`form/tag` は Office のテンプレート（Excel・Word・PowerPoint）のタグの読み手。`converter/pdfform` は入力欄のある PDF を、`converter/pdfme` は pdfme のテンプレートを埋める。[帳票を作る](../forms.ja.md)を参照 |
 | `thumbnail/` | 文書のサムネイル。文書の種類によるレイアウトと、PNG・JPEG・WebP の書き出し |
@@ -32,7 +34,7 @@
 | `converter/pptx` | PowerPoint（.pptx） |
 | `converter/xlsx` | Excel（.xlsx） |
 | `converter/csv` | CSV・TSV（描画は `converter/xlsx`） |
-| `converter/parquet` | Apache Parquet（描画は `converter/xlsx`） |
+| `converter/parquet` | Apache Parquet（描画は `converter/xlsx`。ファイルそのものを文書の表として持つ） |
 | `converter/docx` | Word（.docx） |
 | `converter/visio` | Visio（.vsdx） |
 | `converter/idml` | InDesign（.idml） |

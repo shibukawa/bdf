@@ -5,7 +5,7 @@ import type { ObjectPart, Font, Hash, PathData, Rect, Glyph } from "./types.js";
 /** MARK kinds (docs/spec.md §7.8). */
 export const Mark = {
   PARAGRAPH: 0, LINE: 1, CELL: 2, BOX: 3, ALT_TEXT: 4, WRAP: 5,
-  HEADING: 6, LIST: 7, LIST_ITEM: 8, TABLE: 9, FIGURE: 10, END: 11, LANG: 12, BARCODE: 13,
+  HEADING: 6, LIST: 7, LIST_ITEM: 8, TABLE: 9, FIGURE: 10, END: 11, LANG: 12, BARCODE: 13, DATA: 14,
 } as const;
 
 /** Separators between consecutive runs (docs/spec.md §7.9). */
@@ -61,6 +61,25 @@ export interface TextNode {
   alt?: string;
   /** Figure: bounding box of what it draws, clipped, in the extraction space. */
   bounds?: Rect;
+  /** Figure: the id of the table it is the data of (its DATA mark; spec §4.6). */
+  data?: string;
+  /** Paragraph: a line of code (the word "code" of its payload; spec §7.8). */
+  code?: true;
+  /** Paragraph or list: how deep in quotations (the count of the word "quote" of its payload). */
+  quote?: number;
+  /** List: the kind of its items' markers (the word "bullet" or "ordered" of its payload). */
+  list?: "bullet" | "ordered";
+}
+
+/** Read the words of a PARAGRAPH, BOX or LIST payload (spec §7.8); unknown words are ignored. */
+export function payloadWords(payload: string): Pick<TextNode, "code" | "quote" | "list"> {
+  const out: Pick<TextNode, "code" | "quote" | "list"> = {};
+  for (const w of payload.split(/\s+/)) {
+    if (w === "code") out.code = true;
+    else if (w === "quote") out.quote = (out.quote ?? 0) + 1;
+    else if (w === "bullet" || w === "ordered") out.list = w;
+  }
+  return out;
 }
 
 /** A LINK area: the bounding box of its rectangle in the extraction space. */
@@ -266,13 +285,13 @@ class Extraction {
   /** Apply a structure MARK (spec §7.8). */
   structure(kind: number, payload: string, st: State) {
     switch (kind) {
-      case Mark.PARAGRAPH: case Mark.BOX: this.reserved = { kind: "paragraph" }; break;
+      case Mark.PARAGRAPH: case Mark.BOX: this.reserved = { kind: "paragraph", ...payloadWords(payload) }; break;
       case Mark.HEADING: {
-        const level = Number(payload);
+        const level = Number(payload.trim().split(/\s+/)[0]);
         this.reserved = Number.isInteger(level) && level >= 1 && level <= 6 ? { kind: "heading", level } : { kind: "heading" };
         break;
       }
-      case Mark.LIST: this.openNode({ kind: "list" }); break;
+      case Mark.LIST: this.openNode({ kind: "list", ...payloadWords(payload) }); break;
       case Mark.LIST_ITEM:
         if (this.topKind() === "item") this.closeTop();
         if (this.topKind() === "list") this.openNode({ kind: "item" });
@@ -301,6 +320,12 @@ class Extraction {
     const b = box && intersect(box, clip);
     if (!b) return;
     for (const f of this.figures) this.nodes[f].bounds = union(this.nodes[f].bounds, b);
+  }
+
+  /** Name the table of the innermost open figure. */
+  data(id: string) {
+    const f = this.figures[this.figures.length - 1];
+    if (f !== undefined) this.nodes[f].data = id;
   }
 
   link(x: number, y: number, w: number, h: number, url: string, m: Matrix) {
@@ -347,6 +372,7 @@ class TextSink extends NoopSink {
       case Mark.WRAP: this.ex.flushAlt(this.st); this.ex.mark(Sep.NONE); break;
       // no separator, and a pending ALT_TEXT still belongs to the next drawing op
       case Mark.LANG: this.ex.lang = payload; break;
+      case Mark.DATA: this.ex.data(payload); break;
     }
   }
   override link(x: number, y: number, w: number, h: number, url: string) { if (!this.masking) this.ex.link(x, y, w, h, url, this.st.m); }
