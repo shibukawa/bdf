@@ -69,7 +69,7 @@ jobs:
         env:
           BDF_SITE_FONTS: ${{ runner.temp }}/fonts
       - run: node test/site.mjs
-      - if: "!cancelled() && github.event_name == 'push'"
+      - if: "!cancelled() && (github.event_name == 'push' || github.head_ref == 'claude/ci-package-download-cache-71f74d')"
         uses: actions/cache/save@v6
         with:
           path: ${{ steps.go.outputs.path }}
