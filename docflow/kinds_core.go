@@ -21,6 +21,7 @@ func init() {
 		}})
 	RegisterKind(Kind{Name: KindTemplate, Role: RoleStep, Takes: []string{PayloadData}, Makes: PayloadBDF, Check: checkTemplate, route: routeStep(KindTemplate)})
 	RegisterKind(Kind{Name: KindConvert, Role: RoleStep, Makes: PayloadBDF, Check: checkConvert, route: routeStep(KindConvert)})
+	RegisterKind(Kind{Name: KindSign, Role: RoleStep, Takes: []string{PayloadBDF}, Makes: PayloadBDF, Check: checkSign, route: routeStep(KindSign)})
 	RegisterKind(Kind{Name: KindArchive, Role: RoleExit, PassesOn: true, Check: checkArchive, route: routeStep(KindArchive)})
 	RegisterKind(Kind{Name: KindDisplay, Role: RoleExit, Takes: []string{PayloadBDF}, Makes: PayloadBDF, Fixed: true, Check: checkDisplay,
 		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
@@ -120,6 +121,18 @@ func checkConvert(ctx context.Context, m *Manager, in Node, n *Node) error {
 	n.Formats = cleanFormats(in.Formats)
 	n.Original = cleanNames(in.Original)
 	return checkFormats(n.Formats)
+}
+
+func checkSign(ctx context.Context, m *Manager, in Node, n *Node) error {
+	n.To = cleanNames(in.To)
+	if len(n.To) == 0 {
+		return fmt.Errorf("%w: a sign node sends the document it signs to at least one node (to)", ErrInvalid)
+	}
+	n.SignRole = strings.TrimSpace(in.SignRole)
+	if len(n.SignRole) > 64 {
+		return fmt.Errorf("%w: sign_role is 64 bytes at most", ErrInvalid)
+	}
+	return nil
 }
 
 func checkSink(ctx context.Context, m *Manager, in Node, n *Node) error {

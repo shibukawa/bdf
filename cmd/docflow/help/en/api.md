@@ -49,6 +49,7 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 | `DELETE /api/nodes/<name>` | delete it; not while another node sends to it |
 | `POST /api/nodes/<name>/key` | rotate an endpoint's key: the new one, once |
 | `GET /api/formats` | the formats an entry may take |
+| `GET /api/openapi.json?node=` | the OpenAPI document of the endpoints and exports the caller may use ([OpenAPI](#openapi)) |
 
 ## Templates {#templates}
 
@@ -102,6 +103,21 @@ A backend's token, a frontend's token of the person, or the pages' session ([Exp
 | `DELETE /api/apps/<id>` | delete it |
 | `POST /api/apps/<id>/secret` | rotate its secret |
 | `GET /api/audit?limit=` | the audit log (the role `audit`) |
+
+## OpenAPI {#openapi}
+
+`GET /api/openapi.json` is an OpenAPI 3.1 document of what the topology publishes, made of it as it is now: an application's developer generates a client of it, or tries the endpoints in a tool that reads OpenAPI.
+
+- Every endpoint's `POST /in/<name>`, with the media types of the formats it takes. Of an endpoint with `accept: data`, the body's schema is the JSON Schema of the data of the templates its data reaches ([The data](templates.md#data)), and the `?meta.<key>=` parameters are the keys the nodes after it look at: a filter's rules, a template node's `template_from` (its templates' ids as the values), an export's `by` and `fields`, and the `{{meta.<key>}}` of an exit's settings. A key the endpoint sets itself is left out: its value wins.
+- Every export's `GET /out/<name>` and its entries, which carry the export's fields.
+- `GET /api/jobs/<n>`, `…/document` and `POST …/cancel`, for an app that follows the jobs it sent.
+- The ways in: an endpoint's key, the admin token, an app's token (client credentials at `/oauth/token`), a person's token (the authorization code with PKCE).
+
+What it describes is the reader's: the role `topology` and the admin token get every endpoint and export; an app, the endpoints that list it with the scope to send (`print` for documents, `print.template` for data) and the exports that list it with the scope `export`; a person signed in, the exports. `?node=<name>` (again, or names with commas) narrows it to those nodes; a node that publishes nothing to the reader is not found (404). Its `info.version` is a hash of the rest, which changes when what is published changes. On the topology's page, OpenAPI downloads the whole document, and the link of the same name in an endpoint's or an export's sidebar the node's.
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" "https://<host>/api/openapi.json?node=erp" > erp.openapi.json
+```
 
 ## IPP {#ipp}
 

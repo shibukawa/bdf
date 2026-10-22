@@ -93,6 +93,9 @@ type Options struct {
 	// (cmd/docflow).
 	NoPorts  bool
 	OnChange func()
+	// Signer is the key that sign nodes sign with (nil: a sign node fails
+	// its jobs).
+	Signer *Signer
 	// TempDir holds documents while they are converted ("" the system's).
 	TempDir string
 	// CredentialDir holds the credentials the nodes name, a file each

@@ -38,6 +38,9 @@ func registerDocflowConfigDefinition0() {
 			"docflow.on_error",
 			"docflow.credential_dir",
 			"docflow.secure_cookies",
+			"docflow.sign_key_file",
+			"docflow.sign_cert_file",
+			"docflow.sign_tsa",
 		},
 		Defaults: map[string]string{
 			"docflow.records":         "bbolt:docflow.db",
@@ -65,6 +68,9 @@ func registerDocflowConfigDefinition0() {
 			{Prefix: "docflow", Key: "on_error", Help: "nodes a job goes to when a send or a step fails for good at a node with no on_error edges (a notify node)", Kind: cliparser.KindArray},
 			{Prefix: "docflow", Key: "credential_dir", Help: "directory of the credentials nodes name, a file each (DOCFLOW_CRED_<name> comes first)"},
 			{Prefix: "docflow", Key: "secure_cookies", Help: "Secure on the devices' cookie (false only for plain http in development)", Kind: cliparser.KindBool},
+			{Prefix: "docflow", Key: "sign_key_file", Help: "file of the private key (PEM) that sign nodes sign documents with, as a witness"},
+			{Prefix: "docflow", Key: "sign_cert_file", Help: "file of the certificate of the signing key (PEM), followed by those of its chain"},
+			{Prefix: "docflow", Key: "sign_tsa", Help: "URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes"},
 		},
 		Apply: applyDocflowConfigDefinition0,
 		Scaffold: []configbind.ScaffoldField{
@@ -84,6 +90,9 @@ func registerDocflowConfigDefinition0() {
 			{Key: "on_error", Kind: configbind.ScaffoldStringSlice, Help: "nodes a job goes to when a send or a step fails for good at a node with no on_error edges (a notify node)"},
 			{Key: "credential_dir", Kind: configbind.ScaffoldString, Help: "directory of the credentials nodes name, a file each (DOCFLOW_CRED_<name> comes first)"},
 			{Key: "secure_cookies", Kind: configbind.ScaffoldBool, Default: "true", Help: "Secure on the devices' cookie (false only for plain http in development)"},
+			{Key: "sign_key_file", Kind: configbind.ScaffoldString, Help: "file of the private key (PEM) that sign nodes sign documents with, as a witness"},
+			{Key: "sign_cert_file", Kind: configbind.ScaffoldString, Help: "file of the certificate of the signing key (PEM), followed by those of its chain"},
+			{Key: "sign_tsa", Kind: configbind.ScaffoldString, Help: "URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes"},
 		},
 	})
 }
@@ -178,6 +187,15 @@ func applyDocflowConfigDefinition0(dst any, o *configbind.Overlay) error {
 		p.SecureCookies = bb
 	} else {
 		p.SecureCookies = true
+	}
+	if v, ok := o.GetString("docflow.sign_key_file"); ok {
+		p.SignKeyFile = v
+	}
+	if v, ok := o.GetString("docflow.sign_cert_file"); ok {
+		p.SignCertFile = v
+	}
+	if v, ok := o.GetString("docflow.sign_tsa"); ok {
+		p.SignTSA = v
 	}
 	return nil
 }

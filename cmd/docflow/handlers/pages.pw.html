@@ -297,6 +297,7 @@ export component Topology(account: Account): html {
                   <li><a data-kind="filter"><span class="font-semibold">Filter</span><span class="text-xs text-base-content/60">sends on by rules on what a job is, and its metadata</span></a></li>
                   <li><a data-kind="template"><span class="font-semibold">Template</span><span class="text-xs text-base-content/60">fills a template with data, into a .bdf document</span></a></li>
                   <li><a data-kind="convert"><span class="font-semibold">Convert</span><span class="text-xs text-base-content/60">makes a .bdf document of a file received as it is</span></a></li>
+                  <li><a data-kind="sign"><span class="font-semibold">Sign</span><span class="text-xs text-base-content/60">signs a .bdf document as a witness of who sent it</span></a></li>
                   <li><a data-kind="inbox"><span class="font-semibold">Inbox</span><span class="text-xs text-base-content/60">held until a person releases it</span></a></li>
                   <li><a data-kind="display"><span class="font-semibold">Display</span><span class="text-xs text-base-content/60">shown on the devices enrolled there</span></a></li>
                   <li><a data-kind="printer"><span class="font-semibold">Printer</span><span class="text-xs text-base-content/60">printed on paper</span></a></li>
@@ -319,6 +320,7 @@ export component Topology(account: Account): html {
             </div>
             {if account.topology}
               <button id="refresh" type="button" class="btn btn-sm btn-ghost">Refresh</button>
+              <a href="/api/openapi.json" download="docflow.openapi.json" class="btn btn-sm btn-ghost" title="The OpenAPI document of every endpoint and export">OpenAPI</a>
             {/if}
             <span id="live" class="badge badge-ghost badge-sm"></span>
             {if account.topology}

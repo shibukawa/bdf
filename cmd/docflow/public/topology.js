@@ -674,6 +674,10 @@ function renderSidebar() {
       form.append(field("The file as it came to", picker("original", n.original || [], n.name, n.reaches || []), "What reached the node goes on as it was to every node chosen (an archive of originals, say), with the same trace as the document made: each archive's record names the other's object."));
       form.append(formatsField(n, "Formats converted", "None checked: every format the converter reads. A file of another format fails here (no retry); JSON and YAML have no document of their own: fill a template with them."));
       break;
+    case "sign":
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The signed .bdf goes to every node chosen."));
+      form.append(field("Role", input("f-sign-role", n.sign_role || "", { placeholder: "witness" }), "The role the signature says Docflow signs in. The signature also says the node, the job, who sent it (as Docflow verified it) and when it was received; bdf verify shows them. The key is the manager's (docflow.sign_key_file); without one the node fails its jobs."));
+      break;
     case "filter": {
       const rules = el("div", undefined, { id: "f-rules", className: "flex flex-col gap-2" });
       for (const r of n.rules || []) rules.append(ruleRow(r));
@@ -799,6 +803,10 @@ async function save(ev) {
       body.original = picked("original");
       body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
       break;
+    case "sign":
+      body.to = picked("to");
+      if (dur("f-sign-role")) body.sign_role = dur("f-sign-role");
+      break;
     case "sink":
       if (dur("f-latest")) body.latest = Number(dur("f-latest"));
       break;
@@ -887,6 +895,8 @@ function extras(n, aside) {
   if (n.kind !== "export") row.append(el("a", "Jobs sent here", { className: "link", href: "/admin/jobs?dest=" + encodeURIComponent(n.name) }));
   if (n.kind === "inbox") row.append(el("a", `${n.held || 0} held: open the inbox`, { className: "link", href: "/admin/inboxes" }));
   if (n.pending) row.append(el("a", `${n.pending} deliveries waiting`, { className: "link", href: "/admin/deliveries" }));
+  // what an entry or an export publishes, for an application's developer
+  if (n.in || n.kind === "export") row.append(el("a", "OpenAPI", { className: "link", href: "/api/openapi.json?node=" + encodeURIComponent(n.name), download: n.name + ".openapi.json" }));
   links.append(row);
   aside.append(links);
   if (n.kind === "endpoint") {
