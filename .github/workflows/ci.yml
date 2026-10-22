@@ -222,7 +222,7 @@ jobs:
         with:
           name: bdf-conformance
           path: /tmp/bdf-conformance.tar.gz
-      - if: "!cancelled() && (github.event_name == 'push' || github.head_ref == 'claude/ci-package-download-cache-71f74d')"
+      - if: "!cancelled() && github.event_name == 'push'"
         uses: actions/cache/save@v6
         with:
           path: ${{ steps.go.outputs.path }}
@@ -249,7 +249,7 @@ jobs:
       # the PostScript files drawn by Ghostscript and compared with the pages
       - run: go test ./vector/psbdf/ ./print/...
       - run: test/print/ci.sh
-      - if: "!cancelled() && (github.event_name == 'push' || github.head_ref == 'claude/ci-package-download-cache-71f74d')"
+      - if: "!cancelled() && github.event_name == 'push'"
         uses: actions/cache/save@v6
         with:
           path: ${{ steps.go.outputs.path }}
@@ -268,7 +268,7 @@ jobs:
         with:
           go-version: "1.27.3"
       - run: go vet ./print/... && go test ./print/...
-      - if: "!cancelled() && (github.event_name == 'push' || github.head_ref == 'claude/ci-package-download-cache-71f74d')"
+      - if: "!cancelled() && github.event_name == 'push'"
         uses: actions/cache/save@v6
         with:
           path: ${{ steps.go.outputs.path }}
