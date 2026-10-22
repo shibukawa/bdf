@@ -37,7 +37,7 @@ capabilities:
     about: print/fakeidp（httptest の上の OIDC の偽物）。入れ子のグループの claim、確かめていないメール、改ざんしたトークンの試験に
   pw-dev-idp:
     state: implemented
-    about: pw dev で pw の開発用 OIDC の提供者（popcornweb.toml の [dev.idp]、cmd/printmanager/devidp.toml の 3 人、config.dev.toml の管理者の規則）。2026-10-21 利用者「pw devでテストしているときはpwコマンド内蔵のOIDCが使われる様にして欲しい」
+    about: pw dev で pw の開発用 OIDC の提供者（popcornweb.toml の [dev.idp]、cmd/docflow/devidp.toml の 3 人、config.dev.toml の管理者の規則）。2026-10-21 利用者「pw devでテストしているときはpwコマンド内蔵のOIDCが使われる様にして欲しい」
   reprint:
     state: implemented
     about: 自分とグループのジョブの刷り直し（取り消しは pm-4 の /jobs にあり、送った人と管理者に絞った）。2026-10-21 milestone:pm-auth-1b で実装
@@ -82,56 +82,56 @@ verification:
   scope-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     authority: observed
     evidence:
-      path: print/manager/scope_test.go
+      path: docflow/scope_test.go
       locator: 'TestScope（場所・プリンタ・queue の scope と owner、逃げ道のプリンタのグループ、セッションの送信と 403、/api/my/jobs と Destinations、グループの人は見るが取り消せない、管理者のセッションの /api、別の origin）、TestTokens（pm-4 の TestLogin をトークンだけに）、TestStates（ログインの状態の 1 回きりと期限）。2026-10-21 main の pm-4 と合わせた後に macOS で通った'
   login-tests:
     state: passed
     method: integration
-    test: go test -race ./cmd/printmanager/...
+    test: go test -race ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/login_test.go
+      path: cmd/docflow/handlers/login_test.go
       locator: 'TestLogin は popcornweb の testutil.TestRun（本物のミドルウェアと plugin/auth）を print/fakeidp に向け、6 人のログインを IdP の往復で通す（グループは realm_access.roles、/admin と /audit、監査ログのサインイン）。TestConfigureAuth（本番で断る 4 つ、セッションの鍵が secret で同じ）、TestGroups（点の道、文字列か配列、prefix）。2026-10-21 macOS で通った'
   app-tests:
     state: passed
     method: unit
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/app_test.go
+      path: cmd/docflow/handlers/app_test.go
       locator: 'TestApp（IdP の無い dev：/ はそう言い、/jobs・/admin・/audit は / へ）'
   browser-roles:
     state: passed
     method: manual
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/pages.pw.html
+      path: cmd/docflow/handlers/pages.pw.html
       locator: '2026-10-21 main の pm-4 と合わせた後に内蔵ブラウザで、偽の IdP（print/fakeidp を 127.0.0.1:9781 で、ユーザーを選ぶ画面）に向けた printmanager を開いた。サインアウトした / はサインインのボタン。グループの無い人（タブレット幅）はジョブ 0 件、shared の Office だけに送れ、/admin は 403 の画面。warehouse-a の人（スマホ幅）は warehouse-a のジョブ（場所と group の queue）だけを見て、画面から送ったジョブが自分の名前で載り、取り消しは自分のものだけに出た。管理者（タブレット幅）は /admin のトポロジーに scope のバッジ、ノードの form で scope と owner を書けた。スマホ幅で /jobs が横にはみ出す（pm-4 の grid）のを grid-cols-1 で直した。人の記録が無いセッションが / と IdP の間を回るのを見つけて直した（セッションの名前とメールで見る）'
   pw-dev:
     state: passed
     method: manual
     authority: observed
     evidence:
-      path: cmd/printmanager/devidp.toml
+      path: cmd/docflow/devidp.toml
       locator: '2026-10-21 pw dev（v0.5.12、bdf の直下の popcornweb.toml のまま）が開発用の提供者を起こし、アプリが「people sign in with OIDC … admin_groups=1」と出した。内蔵ブラウザで / のサインインから pw の利用者の選ぶ画面へ。Ada Admin（pm-admins）は管理者で表示を 3 つ足し、全部のジョブと監査ログ（3 人のサインイン）を見た。Mina Member（warehouse-a、スマホ幅）は office と wh-a に送れ wh-b は 403、見えるのは自分の wh-a のジョブだけ、/admin は 403。Otto Outsider は office だけ、ジョブ 0 件、他人のジョブは 404、/admin・/audit は 403。サインアウトで /api/me が 401'
   dev-roster-test:
     state: passed
     method: integration
-    test: go test -run TestDevRoster ./cmd/printmanager/handlers
+    test: go test -run TestDevRoster ./cmd/docflow/handlers
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/devidp_test.go
+      path: cmd/docflow/handlers/devidp_test.go
       locator: 'pw の開発用の提供者（testutil.WithIdentityProvider）を devidp.toml の roster と config.dev.toml の [oidc] で走らせ、3 人の /admin と送れるノードを確かめる'
   sign-out-choose-test:
     state: passed
     method: integration
-    test: go test -run TestSignOutThenChoose ./cmd/printmanager/handlers
+    test: go test -run TestSignOutThenChoose ./cmd/docflow/handlers
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/devidp_test.go
+      path: cmd/docflow/handlers/devidp_test.go
       locator: 'pw の開発用の提供者（admin を先に選んだまま）で、サインイン → サインアウト → Safari の 3 つのアイコンの要求（401 で /auth/login へ行かない）→ 始めただけのサインイン 2 つ（別のタブやプリフェッチ）→ 人の /auth/login の Location に prompt=select_account → IdP が選ぶ画面（Ada Admin と Mina Member）→ member を選ぶと /api/me が Mina Member。popcornweb 0.5.12 では落ちる（アイコンの要求が IdP まで行き、最初の 1 つが印を使う）。2026-10-21 macOS で通った'
   real-idp:
     state: not_run
@@ -142,11 +142,11 @@ facts:
     date: '2026-10-21'
     packages:
     - 'print/manager：scope.go（Principal、Viewer、CanSee・CanCancel・CanSendTo、destScope、Person）、model.go（Location・Printer・Node の scope と owner、Job の SubmittedBy・ClaimedUser・Group）、store.go（states と people の集まり、PutState・TakeState・PruneStates）、http.go（Options.Viewer、管理者のセッション、同じ origin）、ipp.go と submit.go（確かめた送り手）'
-    - 'cmd/printmanager/handlers：auth.go（ConfigureAuth、plugin/auth の backend「yuruidb」、account resolver、グループの claim、管理者と allowed の判断、サインインの監査）、config.go（[oidc]）、app.go（/ のサインイン、/jobs・/admin・/audit、管理者でなければ 403）、pages.pw.html（Account、AppBar の名前と /auth/logout、SignIn、Forbidden）'
-    - 'cmd/printmanager/public：jobs.js（送った人・グループ、取り消しは送った人と管理者）、admin.js（ノード・プリンタ・表示の scope と owner）、audit.js（送った人）'
+    - 'cmd/docflow/handlers：auth.go（ConfigureAuth、plugin/auth の backend「yuruidb」、account resolver、グループの claim、管理者と allowed の判断、サインインの監査）、config.go（[oidc]）、app.go（/ のサインイン、/jobs・/admin・/audit、管理者でなければ 403）、pages.pw.html（Account、AppBar の名前と /auth/logout、SignIn、Forbidden）'
+    - 'cmd/docflow/public：jobs.js（送った人・グループ、取り消しは送った人と管理者）、admin.js（ノード・プリンタ・表示の scope と owner）、audit.js（送った人）'
     - 'print/manager：people.go（pm-4 のトークンのセッションを外し、viewerOf でトークンと OIDC のセッションを 1 つの Viewer に）、endpoint.go（エンドポイントの鍵を主体に）'
     - 'print/fakeidp：discovery、JWKS、authorize（LoginAs か選ぶ画面）、token（PKCE S256、client_secret_basic・post）、RS256 の ID トークン、グループを点の道に、Tamper'
-    - 'cmd/printmanager/main.go：pw.ParseConfig の後に pwconfig.Bound で [auth] と [session] を ConfigureAuth が直す'
+    - 'cmd/docflow/main.go：pw.ParseConfig の後に pwconfig.Bound で [auth] と [session] を ConfigureAuth が直す'
   found:
   - 'popcornweb：plugin/auth の状態の backend は rdb・dynamo・firestore だけを持つが、auth.RegisterBackend で自前（RawStore の Put・Take）を足せる。yuruidb の Delete（版つき）で 1 回きりの Take になる'
   - 'popcornweb：起動の要約は読んだときの設定を出す。pwconfig.Bound で直した [auth] は要約では enabled=false のまま。printmanager が自分で 1 行出す'

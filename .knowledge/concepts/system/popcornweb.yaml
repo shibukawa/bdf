@@ -38,14 +38,14 @@ facts:
   yuruidb: popcornweb の中に yuruidb を使うところは無い（grep）。yuruidb はアプリの側で import して使う
   dependencies: tinygodriver v1.2.12、tinybind-go、syumai/workers ほか（go.mod）。bdf は tinygodriver v1.3.5 を既に使う
   in_bdf_module:
-    project_root: pw はプロジェクトの直下に go.mod を求める（v0.5.12 でも同じ）。bdf では popcornweb.toml をリポジトリの直下に置き、[generate] の各項目を cmd/printmanager/handlers だけにしている
-    assets_v0_5_12: 'v0.5.12（2026-10-21、bdf の依頼を受けた popcornweb PR 3）で [assets] public・derived・embed を popcornweb.toml に書ける。bdf は cmd/printmanager/public・cmd/printmanager/dist/public・cmd/printmanager/public.go（package main、//go:embed all:dist/public）。manifest（public_manifest_pw_gen.go）は public.go の隣、manifest.json・routes.json・キャッシュは dist の下'
-    generated: '*_pw_gen.go、dist/public（gz・br・zstd の副ファイルを含む 156 KB）、public_manifest_pw_gen.go をコミットする。bdf の go build と go test は生成を走らせないため。CI は tailwindcss で CSS を作り、pw generate を走らせ、cmd/printmanager に差分が無いことを見る。作り直しは決定的（2 回の md5 が同じ）'
+    project_root: pw はプロジェクトの直下に go.mod を求める（v0.5.12 でも同じ）。bdf では popcornweb.toml をリポジトリの直下に置き、[generate] の各項目を cmd/docflow/handlers だけにしている
+    assets_v0_5_12: 'v0.5.12（2026-10-21、bdf の依頼を受けた popcornweb PR 3）で [assets] public・derived・embed を popcornweb.toml に書ける。bdf は cmd/docflow/public・cmd/docflow/dist/public・cmd/docflow/public.go（package main、//go:embed all:dist/public）。manifest（public_manifest_pw_gen.go）は public.go の隣、manifest.json・routes.json・キャッシュは dist の下'
+    generated: '*_pw_gen.go、dist/public（gz・br・zstd の副ファイルを含む 156 KB）、public_manifest_pw_gen.go をコミットする。bdf の go build と go test は生成を走らせないため。CI は tailwindcss で CSS を作り、pw generate を走らせ、cmd/docflow に差分が無いことを見る。作り直しは決定的（2 回の md5 が同じ）'
     dev: 'pw dev は SERVER_PUBLIC_LOCAL_ROOT（server.public.local_root）に derived の場所を渡し、/public を作った木から配る。public の編集は数秒で反映。v0.5.12 は作った木に無いとき埋め込みの木に戻り、木が無ければ起動時に 1 度警告する'
     build_target: 'v0.5.12 で pw build --target=lambda が通る。config.prod.toml は有るときだけ同梱し、無ければ Dockerfile に COPY を書かない。bdf の手書きの Dockerfile は消した（pw の成果物は .pw/build/lambda/nethttp、linux/amd64）'
     config: '[]string の default はカンマ区切り（v0.5.12 で配列風の既定は生成で断られる）。アプリの資源を開く前に pw.ParseConfig と pw.RunFrameworkAction（v0.5.12 で pw に出た）'
     csrf_cors_defaults: 'v0.5.11 では CSRF の include と CORS の include・allowed_methods・allowed_headers・exposed_headers の既定が配列の文字列のまま 1 つの値になり、CSRF を有効にすると起動しなかった（2026-10-21 再現）。v0.5.12 で直った'
-    dev_idp: '2026-10-21 popcornweb.toml の [dev.idp]（enabled、config = cmd/printmanager/devidp.toml）で pw dev が開発用の OIDC の提供者を起こし、走るごとのクライアントを作って AUTH_OIDC_ISSUER・CLIENT_ID・CLIENT_SECRET をアプリに渡す（v0.5.12 で bdf の形のまま動いた）。plugin/auth の [auth.oidc] がその変数を読み、ConfigureAuth が dev のループバックの issuer に allow_loopback_http を付ける。管理者の規則など [oidc] は直下の config.dev.toml（APP_ENV が dev のときだけ読まれる）。roster は入れ子の claim の表を書けない（claims.groups のように 1 段だけ）。pw doctor は dev 以外で [dev.idp] を error（PW0430）、auth.enabled が設定ファイルで false なのを note（PW0405、実際は ConfigureAuth が実行時に入れる）にする。pw dev の console のポート 18081 が他の pw に取られていても走る。試験は testutil.WithIdentityProvider と WithIdPConfig で同じ提供者と roster を使える（TestDevRoster）'
+    dev_idp: '2026-10-21 popcornweb.toml の [dev.idp]（enabled、config = cmd/docflow/devidp.toml）で pw dev が開発用の OIDC の提供者を起こし、走るごとのクライアントを作って AUTH_OIDC_ISSUER・CLIENT_ID・CLIENT_SECRET をアプリに渡す（v0.5.12 で bdf の形のまま動いた）。plugin/auth の [auth.oidc] がその変数を読み、ConfigureAuth が dev のループバックの issuer に allow_loopback_http を付ける。管理者の規則など [oidc] は直下の config.dev.toml（APP_ENV が dev のときだけ読まれる）。roster は入れ子の claim の表を書けない（claims.groups のように 1 段だけ）。pw doctor は dev 以外で [dev.idp] を error（PW0430）、auth.enabled が設定ファイルで false なのを note（PW0405、実際は ConfigureAuth が実行時に入れる）にする。pw dev の console のポート 18081 が他の pw に取られていても走る。試験は testutil.WithIdentityProvider と WithIdPConfig で同じ提供者と roster を使える（TestDevRoster）'
     reconfirm_v0_5_14: '2026-10-21 サインアウト（logout_scope reconfirm）の印は v0.5.12 まで 1 回きりのクッキーで、/auth/login を読んだ要求が使った。Safari が勝手に取りに来るアイコン（/favicon.ico、/apple-touch-icon*.png）が保護されたパスで 303 され、追従した要求が印を使い、人のクリックは IdP のセッションから黙って通った（bdf の Print Manager で発見、.log の pw dev の記録で確認）。v0.5.14（popcornweb PR 5）で、ガードはページを求める要求（Sec-Fetch-Dest: document か Accept の text/html、pw の更新のヘッダ）だけをサインインへ送り他は 401、印はサインインの callback が消す。Accept を送らない Go の http.Client は保護されたページで 303 ではなく 401 を受けるので、試験のブラウザは Accept: text/html を送る'
     feedback: '2026-10-21 の依頼文 knowledge-inputs/print-plan/popcornweb-public-assets-request.md は v0.5.12 で答えられた（Ask 1〜3 と補足）。bdf の /static/ の自前の配信と手書きの Dockerfile は消した'
 relations:
@@ -57,7 +57,7 @@ history:
   read:
     summary: 2026-10-20 利用者「ウェブフレームワークには https://github.com/shibukawa/popcornweb これを利用して欲しい」。README と docs（serverless、object-storage、session-storage）と go.mod を読んだ（コミット 5af5b03）
   used-in-pm-1:
-    summary: 2026-10-21 pm-1 で v0.5.11 を bdf の go.mod に入れて cmd/printmanager を作った。facts.in_bdf_module に分かったことを書いた（milestone:pm-1）
+    summary: 2026-10-21 pm-1 で v0.5.11 を bdf の go.mod に入れて cmd/docflow を作った。facts.in_bdf_module に分かったことを書いた（milestone:pm-1）
   v0-5-12:
-    summary: 2026-10-21 利用者「popcornweb 0.5.12 がリリースされて修正が入りました。これを使ってみてください」。[assets] で cmd/printmanager の下に公開の木を置き、/public で配り、pw build --target=lambda を使う形に移った。pw dev・本番の形・作り直しの決定性を確かめた
+    summary: 2026-10-21 利用者「popcornweb 0.5.12 がリリースされて修正が入りました。これを使ってみてください」。[assets] で cmd/docflow の下に公開の木を置き、/public で配り、pw build --target=lambda を使う形に移った。pw dev・本番の形・作り直しの決定性を確かめた
 

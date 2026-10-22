@@ -116,33 +116,33 @@ verification:
   manager-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     authority: observed
     evidence:
-      path: print/manager/topology_test.go
+      path: docflow/topology_test.go
       locator: 'TestQueueFanout、TestClass、TestPrinterDirect、TestInbox、TestArchive、TestNodes、TestCupsGetPrinters、TestEndpoint（鍵、文書、pages.bdft の差し込み、回転、レイアウト）、TestKeys、TestLogin（ログイン、自分のジョブ、監査ログ、ログアウト）。pm-1 の TestDisplay 〜 TestDuration もそのまま。2026-10-21 macOS で -race が通った'
   app-tests:
     state: passed
     method: unit
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/app_test.go
+      path: cmd/docflow/handlers/app_test.go
       locator: 'TestApp（/ はログインのフォーム、/jobs・/admin・/audit はログイン無しで / へ、管理者トークンでログインすると開く、/in と /ipp/print の載せ）'
   browser-admin:
     state: passed
     method: manual
     authority: observed
     evidence:
-      path: cmd/printmanager/public/admin.js
+      path: cmd/docflow/public/admin.js
       locator: '2026-10-21 内蔵ブラウザで：tools/fakeprinter の農場（mfp-3f、postscript）を相手に、プリンタ 3 台・場所 2 つ・クラス tokyo・キュー both/invoices・インボックス review・保管 audit（bbolt）を API で組み、8 件送った。クラスは mfp-3f と postscript に交互、both は 2 つのボードに、invoices は保管と tokyo に。/admin のトポロジーの表、インボックスから「流す」で wh-a と tokyo へ（伝票と mfp-3f への送り）、ジョブの表に足跡が出た'
   s3-tests:
     state: not_run
     method: integration
-    test: BDF_PM_S3_ENDPOINT=… go test -run TestS3 ./print/manager/
+    test: BDF_DOCFLOW_S3_ENDPOINT=… go test -run TestS3 ./docflow/
     authority: observed
     evidence:
-      path: print/manager/s3_test.go
+      path: docflow/s3_test.go
       locator: 'pm-1 の S3 の試験は今回走らせていない（rustfs を上げていない）。保管の S3 の保存先も未確認'
 facts:
   delivery:
@@ -151,9 +151,9 @@ facts:
       date: '2026-10-21'
       packages:
       - 'print/manager：model.go（Node、Job・Leg、Item、Delivery）、nodes.go（PUT・一覧・削除、名前の空間、参照、閉路、Topology）、route.go（routing、クラスの選択、Job の記録、取り消し、宛先ごとの一覧、ジョブの片付け）、inbox.go、deliver.go（借りの下の送り、次のメンバー、保管の書き込み、retry、tick）、submit.go（Submit は宛先と Job）、ipp.go（全ノードが宛先、CUPS-Get-Printers / Classes）、http.go（/api/nodes、/api/topology、/api/destinations、/api/jobs、/api/inboxes、/api/items、/api/deliveries）、store.go（コレクション、保管の Blob の cache）'
-      - 'print/manager/endpoint.go：エンドポイントの鍵（argon2id、x/crypto が直接の依存に）、/in/<名前>、テンプレートの登録（form.Describe・Fields）と差し込み（form.Fill → submitDoc）、キャンバスの位置（layout）'
-      - 'print/manager/people.go：人のログイン（POST /login、/logout、GET /api/me）、署名したクッキー（12 時間）、自分のジョブ（/api/my/jobs、/api/jobs/<n> は自分のものだけ）、/api/destinations、監査ログ（audit コレクション、新しい順の ID、/api/audit）'
-      - 'cmd/printmanager：英語の画面（Home は「software-defined document network」、端末は display board）、/admin のキャンバス（SVG）・テンプレート・鍵の表示・インボックス・ジョブ・送り待ちの節（pages.pw.html、admin.js、tablet.js）、MANAGER_JOB_KEEP、Background（サーバーレスでなければ）、README の Topology'
+      - 'docflow/endpoint.go：エンドポイントの鍵（argon2id、x/crypto が直接の依存に）、/in/<名前>、テンプレートの登録（form.Describe・Fields）と差し込み（form.Fill → submitDoc）、キャンバスの位置（layout）'
+      - 'docflow/people.go：人のログイン（POST /login、/logout、GET /api/me）、署名したクッキー（12 時間）、自分のジョブ（/api/my/jobs、/api/jobs/<n> は自分のものだけ）、/api/destinations、監査ログ（audit コレクション、新しい順の ID、/api/audit）'
+      - 'cmd/docflow：英語の画面（Home は「software-defined document network」、端末は display board）、/admin のキャンバス（SVG）・テンプレート・鍵の表示・インボックス・ジョブ・送り待ちの節（pages.pw.html、admin.js、tablet.js）、MANAGER_JOB_KEEP、Background（サーバーレスでなければ）、README の Topology'
     changed_from_plan:
       - '伝票の ID は <番号>.<場所>（1 つのジョブが 2 つの場所に出る）。文書のコレクションは job-documents'
       - 'IPP の Cancel-Job はジョブの取り消し（伝票の取り消しは CancelSlip に分けた）。完了したジョブでも伝票が開いていれば取り消せる'

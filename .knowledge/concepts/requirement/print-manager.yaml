@@ -326,7 +326,7 @@ history:
   pm-4-endpoints-canvas:
     summary: 2026-10-21 利用者「入口のノードとしては API エンドポイントも欲しいです。…bdft ファイルが複数登録でき、データとテンプレート ID を渡すとプリントが行える…UI は全部英語に…SDN の様なソフトウェア定義の帳票ネットワーク…必ずしも紙に限定するわけではなく」「GUI でレイアウトできると良い」。同じ milestone に endpoint・テンプレート・英語の画面・キャンバスを足し、枠組みを帳票ネットワークに広げた（facts.topology の endpoint・framing・canvas）
   pm-1-implemented:
-    summary: 2026-10-20 利用者「一旦実装をお願いします」（/goal）。pm-1（現場の表示）を print/manager と cmd/printmanager に実装した（milestone:pm-1）。popcornweb の pw はプロジェクトの直下に go.mod を求めるので popcornweb.toml をリポジトリの直下に置き、pw generate --code-only の生成物をコミットした。端末のセッションは popcornweb の session でなく manager の HMAC のクッキー。S3 互換（rustfs）で記録も文書も置く形を確かめ、DynamoDB と実際の Lambda は未確認
+    summary: 2026-10-20 利用者「一旦実装をお願いします」（/goal）。pm-1（現場の表示）を print/manager と cmd/docflow に実装した（milestone:pm-1）。popcornweb の pw はプロジェクトの直下に go.mod を求めるので popcornweb.toml をリポジトリの直下に置き、pw generate --code-only の生成物をコミットした。端末のセッションは popcornweb の session でなく manager の HMAC のクッキー。S3 互換（rustfs）で記録も文書も置く形を確かめ、DynamoDB と実際の Lambda は未確認
   on-prem-vault:
     summary: 2026-10-20 利用者「オンプレでサーバープロセスを動かしながら、保存用ストレージだけ S3 というユースケースもあり得るかと思います」。配置の 1 つとして足し、資格情報（Roles Anywhere は Provider の注入）、回線の断の間の outbox とディスク、WORM になるまでの遅れの記録、時計、保持の起点を facts.on_prem_vault に書いた
   platform-storage-serverless:

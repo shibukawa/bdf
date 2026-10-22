@@ -60,18 +60,18 @@ verification:
   apps-tests:
     state: passed
     method: integration
-    test: go test -race -run TestApps ./print/manager/
+    test: go test -race -run TestApps ./docflow/
     authority: observed
     evidence:
-      path: print/manager/apps_test.go
+      path: docflow/apps_test.go
       locator: 'TestApps：上の a1〜a4 を通しで。監査に put-app ×4 以上、rotate-app-secret、delete-app、token-refused ×3 以上。2026-10-21 macOS'
   login-tests:
     state: passed
     method: integration
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/login_test.go
+      path: cmd/docflow/handlers/login_test.go
       locator: '/admin/apps は管理者に 200（apps.js）、他は 403'
   browser-apps:
     state: not_run
@@ -82,9 +82,9 @@ facts:
     implemented:
       date: '2026-10-21'
       packages:
-      - 'print/manager/apps.go：App、PutApp（秘密は新規のときだけ）、Apps、DeleteApp（載せているエンドポイントがあれば 409）、RotateAppSecret、verifyApp（id・秘密・ハッシュの digest で 5 分の覚え。インスタンスの中だけ）、burn（知らない id にも同じ重さ）、IssueAppToken、appTokenViewer、appBasicViewer、touchApp（1 分に 1 回）、appMaySend、/api/apps…、POST /oauth/token（RFC 6749 の誤りの形）'
+      - 'docflow/apps.go：App、PutApp（秘密は新規のときだけ）、Apps、DeleteApp（載せているエンドポイントがあれば 409）、RotateAppSecret、verifyApp（id・秘密・ハッシュの digest で 5 分の覚え。インスタンスの中だけ）、burn（知らない id にも同じ重さ）、IssueAppToken、appTokenViewer、appBasicViewer、touchApp（1 分に 1 回）、appMaySend、/api/apps…、POST /oauth/token（RFC 6749 の誤りの形）'
       - 'print/manager：model.go（Node.Apps、ErrForbidden → 403）、scope.go（PrincipalApp、ViaClientCredentials、Viewer.Scopes・Has、CanCancel はアプリに jobs.cancel）、people.go（viewerOf：管理トークン → アプリのトークン → Basic の SubmitTokens → Basic のアプリ → セッション。Destinations はアプリに載せたエンドポイントだけ）、nodes.go（apps の存在）、endpoint.go（serveIn のアプリの道、OAuthTokenPath）、ipp.go（submitter にアプリ、printJob で appMaySend）、http.go（submit で appMaySend、tick に scope tick）、submit.go（group が無ければアプリの group）、store.go（apps のコレクション）'
-      - 'cmd/printmanager：/admin/apps（Apps、apps.js：表、追加と編集、無効化、回転、削除、秘密のモーダルに curl の例）、ナビに Apps、エンドポイントのサイドバーに Apps allowed、/oauth/ の mount と publicPaths、README'
+      - 'cmd/docflow：/admin/apps（Apps、apps.js：表、追加と編集、無効化、回転、削除、秘密のモーダルに curl の例）、ナビに Apps、エンドポイントのサイドバーに Apps allowed、/oauth/ の mount と publicPaths、README'
     decisions:
     - '1 つのアプリに 1 つの秘密（2 つで入れ替える案は後）。回転で古いものは即座に止まる'
     - 'トークンの scope はアプリの scope の部分集合。トークンを確かめるたびにアプリの記録を読み、無効化と scope の縮小を即座に効かせる'

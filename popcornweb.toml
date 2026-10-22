@@ -1,28 +1,28 @@
-# The Print Manager (cmd/printmanager) is a Popcorn Web application; pw
+# Docflow (cmd/docflow) is a Popcorn Web application; pw
 # finds a project by this file, next to go.mod. Each purpose reads only the
 # directories listed here: the rest of the module is not pw's.
 [project]
-name = "printmanager"
-main = "./cmd/printmanager"
+name = "docflow"
+main = "./cmd/docflow"
 
 [generate]
-handlers = ["cmd/printmanager/handlers"]
-templates = ["cmd/printmanager/handlers"]
-config = ["cmd/printmanager/handlers"]
+handlers = ["cmd/docflow/handlers"]
+templates = ["cmd/docflow/handlers"]
+config = ["cmd/docflow/handlers"]
 queries = []
 
 # The application's public tree is with it, not at the module's root
-# (package bdf): pw builds cmd/printmanager/public into dist/public there,
+# (package bdf): pw builds cmd/docflow/public into dist/public there,
 # beside public.go of package main, which embeds it.
 [assets]
-public = "cmd/printmanager/public"
-derived = "cmd/printmanager/dist/public"
-embed = "cmd/printmanager/public.go"
+public = "cmd/docflow/public"
+derived = "cmd/docflow/dist/public"
+embed = "cmd/docflow/public.go"
 
 # pw dev runs pw's development OpenID Provider (dev only: pw doctor flags
-# it in any other environment) and gives the Print Manager its issuer and a
-# client of the run (AUTH_OIDC_*). Its people are cmd/printmanager's
-# roster; config.dev.toml makes pm-admins the administrators.
+# it in any other environment) and gives Docflow its issuer and a
+# client of the run (AUTH_OIDC_*). Its people are cmd/docflow's
+# roster; config.dev.toml makes docflow-admins the administrators.
 [dev.idp]
 enabled = true
-config = "cmd/printmanager/devidp.toml"
+config = "cmd/docflow/devidp.toml"
