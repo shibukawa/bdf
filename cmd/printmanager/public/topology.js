@@ -558,7 +558,7 @@ function renderSidebar() {
     name.addEventListener("input", () => canvas.draw());
     form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>) and does not change later."));
   }
-  form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown instead of the name" })));
+  form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown in the node beside its kind" })));
   const note = el("textarea", undefined, { id: "f-description", className: "textarea textarea-sm w-full", rows: 3, value: n.description || "", placeholder: "what it is for: the invoices of the ERP, PDF only; printed on the 3rd floor …" });
   note.addEventListener("input", () => canvas.draw());
   form.append(field("Description", note, "A note shown in the node, under its [kind], as in a C4 diagram: the first lines on the canvas, all of it here."));

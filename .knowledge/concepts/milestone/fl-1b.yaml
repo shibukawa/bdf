@@ -97,7 +97,7 @@ facts:
     - 'any の色は灰から琥珀に（未定の中空の灰と見分けるため）。admin.js の PAYLOAD_COLOR の 1 行で戻せる'
     - '役割は 5 つ：source（endpoint・cups）、control flow（queue・class・inbox）、filter（filter）、transform（template・convert）、sink（display・printer・archive・sink）。利用者の挙げた 4 つに transform を足した（filter は規則で選ぶだけでペイロードを変えないので別）。帯の色は型の色（青・緑・琥珀・紫）と離した'
     - 'アイコンは自前の 24×24 の線画（外部のアイコン集は入れない）'
-    - '説明は C4 の要素のとおり名前・[種類]・説明の順。幅は 176 のまま、行数で高さを変える（最大 5 行、残りは …）。口はノードの縦の中央のまま（説明の長さで辺の付く高さが変わる）'
+    - '利用者「名前はタイトルバーに、本体に種別と説明」：帯は常に name（title があっても）、本体の行は [種類] · title · 数。説明は C4 の要素のとおり名前・[種類]・説明の順。幅は 176 のまま、行数で高さを変える（最大 5 行、残りは …）。口はノードの縦の中央のまま（説明の長さで辺の付く高さが変わる）'
     - 'member の辺は破線をやめ中空の矢印に（破線は壊れた辺の印にした）。fallback は丸い点線のまま'
     unverified:
     - '本物のサーバーでの画面（サイドバーの picker・kindsLine・トースト）。canvas.js は偽のデータで見た'

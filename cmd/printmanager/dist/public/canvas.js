@@ -543,8 +543,9 @@ export function createCanvas(svg, opts = {}) {
   // take it fades, and the port of one that would is lit.
   // box draws the body of a node into a group, as a C4 element: the
   // white box of a height, the title bar in the role's color with the
-  // kind's icon and the title, the kind as a tag ([Printer]) with what
-  // is at the node after it, and the lines of the description.
+  // kind's icon and the node's name, the kind as a tag ([Printer]) with
+  // the title and what is at the node after it, and the lines of the
+  // description.
   function box(g, kind, title, tag, rest, lines, h, titleMax, restMax) {
     g.append(svgEl("rect", { width: NODE_W, height: h, rx: "8", fill: BASE_FILL, stroke: BORDER, "stroke-width": "1.5" }));
     g.append(svgEl("path", { d: `M 0 8 a 8 8 0 0 1 8 -8 h ${NODE_W - 16} a 8 8 0 0 1 8 8 v ${HEAD_H - 8} h ${-NODE_W} z`, fill: roleColor(kind) }));
@@ -579,11 +580,13 @@ export function createCanvas(svg, opts = {}) {
     if (isSelected) g.append(svgEl("rect", { x: "-4", y: "-4", width: NODE_W + 8, height: h + 8, rx: "11", fill: "none", stroke: "#4f46e5", "stroke-width": "2", opacity: "0.7" }));
     // a sink shows the first page of the latest document it keeps
     const latest = latestOf(n);
+    // the name is the title bar's; the kind, the title and what is at
+    // the node are the line under it
     const parts = [];
-    if (n.title && n.title !== n.name) parts.push(n.name);
+    if (n.title && n.title !== n.name) parts.push(n.title);
     parts.push(...counts(n));
     const first = g.childElementCount;
-    box(g, n.kind, n.title && n.title !== n.name ? n.title : n.name, KINDS[n.kind] || n.kind, parts.join(" · "), lines, h, latest ? 14 : 20, latest ? 24 : 32);
+    box(g, n.kind, n.name, KINDS[n.kind] || n.kind, parts.join(" · "), lines, h, latest ? 14 : 20, latest ? 24 : 32);
     // a node nothing fits any more is marked
     if (t.dead) {
       g.children[first].setAttribute("stroke", BROKEN_COLOR);
