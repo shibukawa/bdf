@@ -127,6 +127,18 @@
 //	  name?: string,           // the name of the text in the zip file (default "document")
 //	}): Promise<{markdown: Uint8Array, images: {name: string, data: Uint8Array}[], zip?: Uint8Array, views: number, warnings: string[]}>
 //
+// The preview module lists the tables a document holds beside its drawing
+// (docs/spec.md §4.6) and writes one, as bdf tables and bdf table do:
+//
+//	bdfConverter.tables(bdf: Uint8Array, options?: {password?: string}):
+//	  Promise<{id: string, title: string, part: string, rows: number, columns: {name: string, type: string}[], view: string, page: number}[]>
+//	bdfConverter.table(bdf: Uint8Array, options: {
+//	  id: string,        // the table (as tables lists them)
+//	  format?: string,   // "csv" (default), "json", or "parquet" (the file as the document holds it)
+//	  rows?: number,     // the most rows written (default: all, up to 1048576)
+//	  password?: string,
+//	}): Promise<{data: Uint8Array, format: string, table: {…}, rowsRead?: number}>
+//
 // The form module (-tags formonly) has the converters of the templates of
 // forms (Word, Excel, PowerPoint, PDF forms and the templates of pdfme)
 // and package form: it reads what a template asks of data (its tags, or

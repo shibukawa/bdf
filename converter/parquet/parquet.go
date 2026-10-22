@@ -32,6 +32,7 @@ import (
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/xlsx"
+	parquetenc "github.com/shibukawa/bdf/encoding/parquet"
 )
 
 // DefaultRows is the number of rows shown unless Options.Rows says
@@ -512,4 +513,39 @@ func language(names []xlsx.GridCell, rows [][]xlsx.GridCell) string {
 		return "ko"
 	}
 	return ""
+}
+
+// ReadTable reads the rows of any Parquet file, as text: the columns' names,
+// and the values as the sheet shows them (nested values as JSON,
+// geometries as WKT), in columns of type String. rows bounds the rows read
+// as Options.Rows does (-1 for as many as a sheet holds). It reads what
+// encoding/parquet does not: every encoding, codec and nested type.
+func ReadTable(r io.ReaderAt, size int64, rows int) (*parquetenc.Table, error) {
+	var warnings []string
+	g, _, err := table(r, size, &Options{Rows: rows, NoTypes: true}, func(msg string) { warnings = append(warnings, msg) })
+	if err != nil {
+		return nil, err
+	}
+	if len(g.Rows) == 0 {
+		return nil, errors.New("parquet: no columns")
+	}
+	t := &parquetenc.Table{}
+	for _, c := range g.Rows[0] {
+		t.Columns = append(t.Columns, parquetenc.Column{Name: c.Text, Type: parquetenc.String})
+	}
+	for _, r := range g.Rows[1:] {
+		row := make([]any, len(t.Columns))
+		for j := range row {
+			if j < len(r) {
+				row[j] = r[j].Text
+			}
+		}
+		t.Rows = append(t.Rows, row)
+	}
+	for _, w := range warnings {
+		if strings.HasPrefix(w, "column ") {
+			return t, fmt.Errorf("parquet: %s", w)
+		}
+	}
+	return t, nil
 }

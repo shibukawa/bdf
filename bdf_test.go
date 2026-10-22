@@ -259,7 +259,7 @@ func TestExtractContent(t *testing.T) {
 	o.Mark(MarkTable, "").FillText("caption", 0, 60, 35)
 	o.Mark(MarkCell, "A1 col").FillText("head", 0, 75, 20).Mark(MarkCell, "B1:C1").FillText("wide", 30, 75, 20).Mark(MarkEnd, "")
 	o.Mark(MarkParagraph, "").FillText("before", 0, 90, 30).Image(img, 0, 100, 50, 50)
-	o.Mark(MarkFigure, "chart").Image(img, 0, 160, 50, 50).FillText("label", 0, 220, 25).Mark(MarkEnd, "")
+	o.Mark(MarkFigure, "chart").Mark(MarkData, "chart-1").Image(img, 0, 160, 50, 50).FillText("label", 0, 220, 25).Mark(MarkEnd, "")
 	o.Mark(MarkLang, "ja").Mark(MarkCell, "B12").FillText("セル", 0, 240, 20)
 	o.Mark(MarkLang, "").Mark(MarkBox, "P quote").FillText("said", 0, 255, 20)
 	o.Mark(MarkParagraph, "code quote quote").FillText("x := 1", 0, 270, 30)
@@ -281,6 +281,9 @@ func TestExtractContent(t *testing.T) {
 		if n.Alt != "" {
 			s += ":" + n.Alt
 		}
+		if n.Data != "" {
+			s += "=" + n.Data
+		}
 		if n.Code {
 			s += ":code"
 		}
@@ -292,7 +295,7 @@ func TestExtractContent(t *testing.T) {
 		}
 		nodes = append(nodes, s)
 	}
-	want := "heading:-1:h2 list:-1 item:1 paragraph:2 list:2 item:4 paragraph:5 item:1 paragraph:7 table:-1 caption:9 cell:9:0,0+1,1col paragraph:11 cell:9:0,1+1,2 paragraph:13 paragraph:-1 figure:-1:chart paragraph:16 cell:-1:11,1+1,1 paragraph:-1:quote1 paragraph:-1:code:quote2 list:-1:quote1:ordered item:21 paragraph:22"
+	want := "heading:-1:h2 list:-1 item:1 paragraph:2 list:2 item:4 paragraph:5 item:1 paragraph:7 table:-1 caption:9 cell:9:0,0+1,1col paragraph:11 cell:9:0,1+1,2 paragraph:13 paragraph:-1 figure:-1:chart=chart-1 paragraph:16 cell:-1:11,1+1,1 paragraph:-1:quote1 paragraph:-1:code:quote2 list:-1:quote1:ordered item:21 paragraph:22"
 	if got := strings.Join(nodes, " "); got != want {
 		t.Fatalf("nodes = %s\nwant    %s", got, want)
 	}

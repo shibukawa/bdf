@@ -162,6 +162,30 @@
    }
   }
  ],
+ "tables": [
+  {
+   "id": "table-1",
+   "title": "Section 1",
+   "part": "4efed209e6da6544edd74452def289d5",
+   "rows": 3,
+   "columns": [
+    {
+     "name": "R1C1",
+     "type": "string"
+    },
+    {
+     "name": "R1C2",
+     "type": "integer"
+    },
+    {
+     "name": "R1C3",
+     "type": "number"
+    }
+   ],
+   "view": "doc",
+   "page": 1
+  }
+ ],
  "parts": [
   {
    "h": "2111522c0a6938872d5bfcdc5e45535f",
@@ -249,6 +273,14 @@
    "enc": "deflate-raw",
    "len": 898,
    "size": 1749,
+   "off": 0
+  },
+  {
+   "h": "4efed209e6da6544edd74452def289d5",
+   "t": "table",
+   "enc": "identity",
+   "len": 311,
+   "size": 311,
    "off": 0
   },
   {

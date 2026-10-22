@@ -103,6 +103,17 @@ test("cell references", () => {
   assert.equal(parseCellRef("A0"), undefined);
 });
 
+test("tables: the manifest lists them with their columns", async () => {
+  const doc = await BdfDocument.open(new BufferSource(fixture));
+  const tables = doc.manifest.tables ?? [];
+  assert.deepEqual(tables.map((t) => [t.id, t.title, t.rows, t.view, t.page, t.columns.map((c) => `${c.name}:${c.type}`)]),
+    [["table-1", "Section 1", 3, "doc", 1, ["R1C1:string", "R1C2:integer", "R1C3:number"]]]);
+  const part = doc.manifest.parts.find((p) => p.h === tables[0].part);
+  assert.equal(part.t, "table");
+  const bytes = await doc.part(tables[0].part);
+  assert.equal(new TextDecoder("latin1").decode(bytes.subarray(0, 4)), "PAR1");
+});
+
 test("payload words: code, quotations and the kind of a list's markers", async () => {
   assert.deepEqual(payloadWords("P quote quote"), { quote: 2 });
   assert.deepEqual(payloadWords("code"), { code: true });

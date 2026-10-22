@@ -5,7 +5,7 @@ import type { ObjectPart, Font, Hash, PathData, Rect, Glyph } from "./types.js";
 /** MARK kinds (docs/spec.md §7.8). */
 export const Mark = {
   PARAGRAPH: 0, LINE: 1, CELL: 2, BOX: 3, ALT_TEXT: 4, WRAP: 5,
-  HEADING: 6, LIST: 7, LIST_ITEM: 8, TABLE: 9, FIGURE: 10, END: 11, LANG: 12, BARCODE: 13,
+  HEADING: 6, LIST: 7, LIST_ITEM: 8, TABLE: 9, FIGURE: 10, END: 11, LANG: 12, BARCODE: 13, DATA: 14,
 } as const;
 
 /** Separators between consecutive runs (docs/spec.md §7.9). */
@@ -61,6 +61,8 @@ export interface TextNode {
   alt?: string;
   /** Figure: bounding box of what it draws, clipped, in the extraction space. */
   bounds?: Rect;
+  /** Figure: the id of the table it is the data of (its DATA mark; spec §4.6). */
+  data?: string;
   /** Paragraph: a line of code (the word "code" of its payload; spec §7.8). */
   code?: true;
   /** Paragraph or list: how deep in quotations (the count of the word "quote" of its payload). */
@@ -320,6 +322,12 @@ class Extraction {
     for (const f of this.figures) this.nodes[f].bounds = union(this.nodes[f].bounds, b);
   }
 
+  /** Name the table of the innermost open figure. */
+  data(id: string) {
+    const f = this.figures[this.figures.length - 1];
+    if (f !== undefined) this.nodes[f].data = id;
+  }
+
   link(x: number, y: number, w: number, h: number, url: string, m: Matrix) {
     this.links.push({ ...boxOf(m, x, y, w, h), url, after: this.runs.length - 1, node: this.leaf >= 0 ? this.leaf : this.top() });
   }
@@ -364,6 +372,7 @@ class TextSink extends NoopSink {
       case Mark.WRAP: this.ex.flushAlt(this.st); this.ex.mark(Sep.NONE); break;
       // no separator, and a pending ALT_TEXT still belongs to the next drawing op
       case Mark.LANG: this.ex.lang = payload; break;
+      case Mark.DATA: this.ex.data(payload); break;
     }
   }
   override link(x: number, y: number, w: number, h: number, url: string) { if (!this.masking) this.ex.link(x, y, w, h, url, this.st.m); }

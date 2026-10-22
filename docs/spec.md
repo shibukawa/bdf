@@ -270,7 +270,7 @@ JSON。読みやすさとツールでの扱いやすさを優先する。巨大�
 
 平文の完全な manifest は `bdf: 1` と `opset: 1` を持つ。暗号化文書の外側の manifest は `bdf: 1` と暗号化情報、封印された Part 一覧だけを持ち、`opset` と `views` は封印された内側の manifest に置く。manifest の `opset` は読み手の早期判定用の補助情報で、省略または `0` なら読み手は Object ごとの値を使う。読み手は未知の任意メンバーを無視してよいが、この仕様で必須と定めたメンバーの欠落や不正値を受け入れてはならない。
 
-`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx` / `seq` / `audio`（§4.4）/ `tpl` と `src`（§4.5）/ `text`（テキストのテンプレートで作った帳票の印字像。行と桁の格子の幾何と、ページごとの行の文字、プレ印刷の用紙と倍角の範囲を持つ UTF-8 の JSON。プリンタのテキストモードとプレーンテキストの書き出しが使う。形は Go の package `form/textpart` が定める）。暗号化した文書の外側の manifest では `sealed`（§3.5）。読み手は、どの View や Object からも参照されない Part を読み込まなくてよい。知らない `t` の Part も同じで、文書を開く妨げにしてはならない。
+`parts[].t` の値: `obj` / `font` / `img` / `path` / `idx` / `seq` / `audio`（§4.4）/ `tpl` と `src`（§4.5）/ `table`（§4.6。Apache Parquet のファイル）/ `text`（テキストのテンプレートで作った帳票の印字像。行と桁の格子の幾何と、ページごとの行の文字、プレ印刷の用紙と倍角の範囲を持つ UTF-8 の JSON。プリンタのテキストモードとプレーンテキストの書き出しが使う。形は Go の package `form/textpart` が定める）。暗号化した文書の外側の manifest では `sealed`（§3.5）。読み手は、どの View や Object からも参照されない Part を読み込まなくてよい。知らない `t` の Part も同じで、文書を開く妨げにしてはならない。
 
 **数値の範囲** — manifest の数値は、読み手のループの回数と確保する大きさ（範囲に入る Tile、シートのグリッド線、連続モードの帯）を決める。読み手は文書を開くときに一度だけ確かめ、範囲の外の値を持つ文書は不正として開かない。
 
@@ -496,6 +496,43 @@ cue ×n（時刻順）:
 - 穴埋めの規則（タグの書き方、行の繰り返し）はこの仕様の範囲外で、`src` の形式ごとに処理系が定める（Go の実装は package `form`、形式ごとには `converter/xlsx`・`converter/docx`・`converter/pptx`・`converter/pdfform`・`converter/pdfme`・`converter/textform` の `Fill`）。
 - 1 つの文書が持つ `tpl` は 1 つまで。暗号化した文書では、ほかの Part と同じく封印される。
 
+### 4.6 データ表（tables）
+
+文書は、描画とは別に **表としての値** を持てる。グラフの系列、CSV や Parquet の入力の行、Excel のシートの値がそれで、RAG やデータツールが型付きの値を取り出すためのもの。描画には関係せず、知らない読み手は無視する（`tables` は任意メンバー、`table` は知らない `t` の Part、DATA は知らない kind の MARK）。
+
+```jsonc
+"tables": [
+  { "id": "chart-1",                   // 文書内で一意。書き手が付ける（chart-1、sheet1、data …）
+    "title": "Sales by quarter",       // 任意
+    "part": "<hash>",                  // t: table の Part
+    "rows": 4,                         // 行数
+    "columns": [                       // 列。一覧のためで、Part の Parquet のスキーマと一致する
+      { "name": "Quarter", "type": "string" },
+      { "name": "East",    "type": "number" } ],
+    "view": "slides", "page": 3 }      // 任意: 表が表す図のある View とページ（1 から。sheet の表は view だけ）
+]
+```
+
+**`table` Part** — Apache Parquet ファイルそのもの（`application/vnd.apache.parquet`）。表 1 つに Part 1 つ。BDF の書き手が作る表は平坦なスカラー列、PLAIN 符号化、RLE の定義レベル、row group 1 つ、無圧縮で書く（Part 自体が deflate される）。入力が Parquet なら、そのファイルをそのまま格納してよい（符号化・圧縮・入れ子の型も入力のまま）。
+
+`columns[].type` の語彙と Parquet の型の対応:
+
+| type | Parquet | 意味 |
+|---|---|---|
+| `string` | BYTE_ARRAY（STRING / UTF8） | 文字列 |
+| `number` | DOUBLE、FLOAT、DECIMAL | 数値 |
+| `integer` | INT64、INT32 | 整数 |
+| `boolean` | BOOLEAN | 真偽 |
+| `date` | INT32（DATE） | 日付 |
+| `datetime` | INT64（TIMESTAMP）、INT96 | 日時（UTC） |
+| `other` | それ以外（入れ子、固定長のバイト列など） | 読み手は Parquet のスキーマで判断する |
+
+- どの列も null を持てる。
+- 上限: `tables` は 65536 まで、`columns` は 1 表 16384 まで。読み手は取り出すときに行数と大きさを制限してよい。
+- 図との結び付けは MARK の DATA（§7.8。payload は表の id）で、FIGURE の直後に置く。シートの表は DATA を持たず `view` で結ぶ。
+- 暗号化した文書では Part として封印され、`tables` は manifest と一緒に封印される。
+- 検索用テキスト（§7.9）には入れない。
+
 ## 5. Object Part
 
 描画命令列と、それが参照するリソース表を持つ自己完結した Part。ページ、マスター、Tile、部品はすべてこの形式。
@@ -697,11 +734,12 @@ SHADOW の `blur`・`dx`・`dy` は unit で表す。Canvas の影は変換行�
 | 10 | FIGURE | 代替テキスト | 図を開く（END で閉じる）。範囲は中の描画命令の外接矩形。代替テキストが空なら装飾で、読み上げない |
 | 11 | END | 任意 | 開いている LIST / TABLE / FIGURE のうち最も内側を閉じる。開いていなければ何もしない |
 | 12 | LANG | 言語（BCP 47）。空なら文書の既定（`meta.dc.language` の最初の値） | 以降の run の言語 |
+| 14 | DATA | 表の id | 開いている FIGURE（直前の FIGURE の中）が表すデータ表（§4.6）。区切りに影響しない |
 | 13 | BARCODE | JSON（下記） | 次の描画命令 1 つ（`FILL_PATH` / `FILL_PATH_AT` / `FILL_RECT` / `USE` / `USE_AT`。間の状態の命令は数えない）が QR コードかバーコードの記号を描くことを示す。描画には影響しない。ラベルプリンタの書き手はその命令をプリンタのバーコード命令に置き換えてよく、低解像度のラスタはモジュールを画素に揃えて描き直してよい。知らない読み手はそのまま描く。テキスト抽出の run にはならない |
 
 - `MARK` の効果は次の `FILL_TEXT` / `STROKE_TEXT` / `ALT_TEXT` に及び、run どうしの結合規則を決める。同じ行で書式だけが変わった run の間には `MARK` を置かない（結合される）。
 - `MARK` を出さないエンコーダのために、読み手は位置に基づく推定（y が変われば行、同じ行で字送りの 0.2 倍以上の隙間があれば空白）で補ってよい。ただし推定は不正確なので、エンコーダは `MARK` を出すことが強く推奨される。
-- run どうしの区切りは kind だけで決まる。LINE は空白、WRAP は連結、PARAGRAPH / CELL / BOX / HEADING / LIST / LIST_ITEM / TABLE / FIGURE / END は段落境界。ALT_TEXT と LANG は区切りに影響しない（LANG の後の run は位置による推定のままで、保留中の ALT_TEXT もそのまま次の描画命令に付く）。BARCODE も区切りに影響しない。
+- run どうしの区切りは kind だけで決まる。LINE は空白、WRAP は連結、PARAGRAPH / CELL / BOX / HEADING / LIST / LIST_ITEM / TABLE / FIGURE / END は段落境界。ALT_TEXT と LANG は区切りに影響しない（LANG の後の run は位置による推定のままで、保留中の ALT_TEXT もそのまま次の描画命令に付く）。BARCODE と DATA も区切りに影響しない。
 - 読み手は知らない kind の `MARK` を無視する（描画にもテキストにも影響しない）。
 
 #### payload の語

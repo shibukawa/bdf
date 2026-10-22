@@ -23,6 +23,7 @@ const (
 	MarkEnd       byte = 11 // closes the innermost list, table or figure
 	MarkLang      byte = 12 // payload: BCP 47 language of the runs that follow ("" = document default)
 	MarkBarcode   byte = 13 // payload: JSON of the symbol the next drawing draws (image/barcode.Mark)
+	MarkData      byte = 14 // payload: the id of the table (docs/spec.md §4.6) the open figure is the data of
 )
 
 // Separators between consecutive text runs (docs/spec.md §7.9).
@@ -89,6 +90,9 @@ type TextNode struct {
 	Cell *CellRef
 	// Alt is the alternative text of a figure ("" when it is decorative).
 	Alt string
+	// Data is the id of the table a figure is the data of (its DATA mark;
+	// docs/spec.md §4.6), "" when it has none.
+	Data string
 	// Code says a paragraph is a line of code (the word "code" of its
 	// payload; docs/spec.md §7.8).
 	Code bool
@@ -497,6 +501,14 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix, reused bool) error {
 				t.structure(kind, payload)
 			case MarkLang:
 				t.lang = payload
+			case MarkData:
+				// the table of the innermost open figure
+				for i := len(t.open) - 1; i >= 0; i-- {
+					if n := &t.nodes[t.open[i]]; n.Kind == NodeFigure {
+						n.Data = payload
+						break
+					}
+				}
 			case MarkWrap:
 				t.flushAlt(st)
 				t.mark(SepNone)
