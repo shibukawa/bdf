@@ -1,0 +1,102 @@
+id: requirement:docflow
+type: requirement
+title: BDF Docflow — Print Manager を汎用のドキュメントワークフローエンジンとして改名し、印刷を入出力の 1 つに降ろす。トポロジーの YAML、試し流し、流れの目視、系譜と再実行、トレース
+summary: >-
+  2026-10-22 利用者「print manager が一通りできてきた。当初は print を中心としたフローだったが、ファイル入出力（HTTP・mail・ftp）なども入り、
+  汎用のドキュメントワークフローエンジンになった。より良い名前を定義してリネームしたい。よりジェネリックにするために必要な機能を考えたい」。
+  名前は Claude の 4 案（Docflow・Switchboard・Mailroom・Relay）から利用者が Docflow を選んだ。パッケージは print/manager → docflow/（package docflow）、
+  コマンドは cmd/printmanager → cmd/docflow。同じ日の利用者の続き：「print もインタフェースの 1 つで、IPP を入出力にできる、特定のプリンタにも出力できる、
+  みたいにしたい。他のファイル I/O と同列に。YAML 入出力も良い。dry run も良い。トポロジー上をデータが流れるのも目視できると良い。やり直し、トレースも」。
+  requirement:print-manager 以下の要件とマイルストーン（pm-・fl-）は経緯としてその名前のまま残し、これが上に立つ。
+lifecycle: active
+authority: authored
+aliases:
+- Docflow
+- BDF Docflow
+- docflow
+- ドキュメントワークフロー
+- document workflow engine
+- 改名
+- rename
+- Print Manager
+- I/O adapter
+- 入出力のアダプタ
+- node kind registry
+- ノードの種類の登録
+- topology YAML
+- トポロジーの YAML
+- dry run
+- 試し流し
+- live flow
+- 流れの目視
+- lineage
+- 系譜
+- replay
+- やり直し
+- trace
+- トレース
+- OpenTelemetry
+constraints:
+- 名前は Docflow（製品名は BDF Docflow）。Go のパッケージは docflow/、コマンドは cmd/docflow、設定は [docflow] の表と DOCFLOW_* の環境変数
+- 外から見える名前は全部 docflow に揃えた（画面の題、Basic・Bearer の realm、printer-make-and-model、IPP の requesting-user-name、端末の Cookie bdf_docflow_device、タブレットの IndexedDB bdf-docflow、既定の docflow.db、偽の IdP の client_id、開発のグループ docflow-admins・docflow-topology・docflow-auditors、試験の BDF_DOCFLOW_S3_ENDPOINT、予定の資格 DOCFLOW_CRED_*）。設定の互換は持たない（改名の時点で本番の配備は無い前提）
+- '署名と導出の札（bdf-print-manager と NUL、bdf print manager: session keyring）は変えない。端末の署名・画面のセッション・ノードの printer-uuid が改名の前後で変わらないように'
+- 印刷は入出力の 1 つ。エンジンの芯は印刷を知らず、IPP の入口・出口、特定のプリンタ、外の CUPS、表示の端末は HTTP・SMTP・FTP・S3 と同じ登録の口に載る（capabilities.io-adapters）
+non_goals:
+- 設定・Cookie・環境変数の旧名の読み替え
+- pm-・fl- のマイルストーンと requirement:print-manager* の改名（経緯として残す）
+- 型 Manager の改名（docflow.Manager のままで読める）
+capabilities:
+  rename:
+    state: implemented
+    about: print/manager → docflow、cmd/printmanager → cmd/docflow、画面と設定と外から見える名前
+  io-adapters:
+    state: partial
+    about: >-
+      ノードの種類の登録：受ける種類・出す種類（requirement:document-flow の bdf・data・any）、設定のスキーマ、実行（経路・段・入口の口）を持つ
+      種類をエンジンに登録する。芯（queue・class・filter・inbox・archive・template・convert・export）と、入出力のアダプタ（ipp-in・ipp-out＝特定の
+      プリンタ・cups・display・http・smtp・ftp・s3）を分け、印刷のものは print/ 側から登録する。IPP は入口（どのノードも IPP の宛先、の今の形）と
+      出口（特定のプリンタへ送る）の両方を持つ
+  topology-yaml:
+    state: planned
+    about: トポロジーの YAML の書き出しと読み込み、差分、環境の間の持ち上げ（dev → prod）。版と下書き（requirement:document-flow §6 の 13）と組
+  dry-run:
+    state: planned
+    about: 見本のペイロードとメタデータを入れ、どの経路を通り何ができるかを外への副作用なしに見る。出口は送らずに送るはずのもの（宛先・名前・中身）を返す。プリンタの preview と sink の一般化
+  live-flow:
+    state: planned
+    about: トポロジーの図の上でジョブが辺を流れるのを目視する（/topology の live を、ジョブの点が辺を動き、ノードに溜まる・失敗するのが見える形に）。dry-run の結果も同じ絵で見せる
+  lineage-replay:
+    state: planned
+    about: ジョブの系譜（split・merge の親子、ノードごとのペイロードの版）を残し、任意のノードから流し直す（刷り直しの一般化）。on_error と dead-letter の運用の土台
+  tracing:
+    state: planned
+    about: ノードごとの件数・失敗・遅れと、ジョブ 1 つの通り道のトレース（OpenTelemetry に出せる形）
+facts:
+  naming:
+    chosen: Docflow
+    candidates: 'Docflow（既にある言葉 document-flow・fl- と揃い、印刷に寄らない。推した）、Switchboard（README の「文書のネットワーク」の比喩。経路に寄る）、Mailroom（digital mailroom。SMTP と紛れる）、Relay（素通しの印象）'
+    location: '芯をトップレベルの docflow/ へ 1 度だけ移した。print/ の部品（ipp・spool・printconv・fakeidp・fakeprinter）は print/ に残る。go build ./cmd/docflow をモジュールの根で走らせると、出力の docflow が同名のディレクトリとぶつかるので -o を使う'
+  order:
+    source: Claude の案（確認待ち）
+    steps:
+    - io-adapters を fl-2（出入口と通知）の前に。fl-2 の smtp・s3・http を最初から登録の口に載せる（最初の段は milestone:df-1、2026-10-22 実装）
+    - fl-2 に出力の名前の差し込み（{{meta.x}} の置き換えだけ。式言語は入れない）
+    - topology-yaml と版・下書き
+    - dry-run と live-flow（同じ絵）
+    - lineage-replay と tracing
+open_questions:
+  io-adapter-boundary:
+    text: アダプタの境界。Go のインタフェースで同じプロセスに登録するだけか、外のプロセス（requirement:document-flow §5 の外部サービス）も同じ契約に載せるか
+    state: open
+    resolution: 暫定で同じプロセスの登録。外部サービスは transform の契約のまま
+  yaml-secrets:
+    text: YAML の書き出しにアプリ・エンドポイントの鍵や資格の名前をどこまで含めるか
+    state: open
+    resolution: 暫定で秘密は含めず名前だけ（資格は名前で指す、のまま）
+relations:
+- relation: refines
+  to: requirement:print-manager
+- relation: builds_on
+  to: requirement:document-flow
+- relation: builds_on
+  to: requirement:print-manager-console

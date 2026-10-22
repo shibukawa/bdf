@@ -67,48 +67,48 @@ verification:
   manager-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     authority: observed
     evidence:
-      path: print/manager/flow_test.go
+      path: docflow/flow_test.go
       locator: 'TestKinds（型検査の 400 と道、takes・emits、PNG の流れ、archive の .png と記録、ダウンロード、.bdf の通過、JSON と CSV の failed、不明の 415、convert への直接の送り、刷り直し）、TestMeta（ヘッダ・パラメータ・入口の meta・$ の鍵、filter の meta と kind、上限、IPP の属性、API の宛先の meta）、TestEndpoint（data エンドポイント → forms → wh-a、無い id、template_from、テンプレートの移動と削除）、TestApps（data は print.template）、TestArchive（記録の kind・format・payload）。2026-10-22 macOS、-race 27.9 秒'
   app-tests:
     state: passed
     method: integration
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/public_test.go
+      path: cmd/docflow/public_test.go
       locator: '埋め込みの資産が public と同じ（pw generate の後）。TestPorts・TestApp は変更なしで通る。2026-10-22'
   js-syntax:
     state: passed
     method: static
-    test: node --check cmd/printmanager/public/*.js
+    test: node --check cmd/docflow/public/*.js
     authority: observed
   browser:
     state: not_run
     method: manual
     authority: observed
     evidence:
-      path: cmd/printmanager/public/topology.js
+      path: cmd/docflow/public/topology.js
       locator: 'ブラウザでの確認は未。口の色、サイドバーの新しい欄、テンプレートの節の移動、規則の meta と kind の入力は手で確かめていない'
 facts:
   delivery:
     implemented:
       date: '2026-10-22'
       packages:
-      - 'print/manager/kinds.go（新）：PayloadBDF・PayloadData・PayloadAny、dataFormats（json・yaml・csv・xlsx・parquet）、kinds のビット集合、takes（printer・display は bdf、template は data、他は全部）、entryKind・emits（入口は in | 自分の種類、template・convert・display は bdf、他は in）、inferKinds（不動点）、typed（PUT の確かめ。道つきの理由）'
-      - 'print/manager/meta.go（新）：claimedMeta（64 個・16 KiB、$ で始まる鍵は断る）、metaOfRequest（?meta.<key>= と X-Meta-<Key>: 小文字の鍵）、jobMeta（送り手 < 入口 < $ の鍵）、claimedOf、metaView（規則とテンプレートが見る文字の表。name・user と $kind・$format・$pages・$size・$sha256・$payload）'
-      - 'print/manager/transform.go（新）：テンプレートの CRUD（endpoint.go から移動。Template.Node）、finalErr、transform（template は fill、convert は convertPayload か .bdf の通過）、readData（form.LoadData。JSON・YAML の配列は list_name か ファイル名）、keepDocument（<ジョブ>.<足跡> の Blob、AlreadyExists は書けたもの）、continueWith（ペイロードを足し、足跡の made、to へ route、kick）'
-      - 'print/manager/submit.go（書き直し）：Input に ContentType・Meta、receive（bdf / data / any、accept と output、detect：名前と Content-Type で json・yaml・csv、JSON の嗅ぎ分け、変換器）、submitPayload（Payload 0 の ID はジョブの ID、Meta）、Document・WritePayload・WritePage はペイロードの ID で、Reprint は受けたものを claimed の meta ごと、contentTypeOf'
-      - 'print/manager/model.go：KindTemplate・KindConvert、AcceptFile・AcceptData、OutputBDF・OutputFile、Node に Output・Meta・Template・TemplateFrom・ListName・Strict、Payload、Job に Kind・Meta・Payloads（payload・received・document）、Leg に Payload・Made、Slip・Item・Delivery に Payload'
-      - 'print/manager/nodes.go：nodeKinds と routingKinds に template・convert、PutNode の入口の accept・output・formats・meta と template・convert の確かめ、acyclic の後に typed、template でなくなったらテンプレートを消す、extraFormats に json・yaml、TopoNode に Takes・Emits、Templates は template ノードの'
-      - 'print/manager/route.go：routing に payload、add が足跡に payload を書く、route の takes の実行時の確かめ（error の足跡）、template・convert は routeDelivery、Slip の Payload、removeJob はペイロードの Blob を全部消す'
-      - 'print/manager/deliver.go：Delivery.Payload、deliver の template・convert の段（transform → outcome → continueWith）、printer は bdf のペイロードだけ、archive はペイロードを元の拡張子で書き記録に kind・format・meta・payload・object・payloads'
-      - 'print/manager/filter.go：Match に Meta（鍵ごとの RE2）と Kind、fits(j, p)、empty()'
-      - 'print/manager/endpoint.go：JSON の封筒と SubmitFill を無くし、serveIn は本文をそのまま（Content-Type と meta）、appMaySend は data で print.template'
-      - 'print/manager/http.go・ipp.go・inbox.go・send.go・ports.go：payloadOf（?payload=、見せる .bdf、受けたもの）、jobDocument の Content-Type と名前、jobPage の 404、submit の meta、ippMeta（job group の属性と document-format を ipp.<name> に、32 個まで）、ippFormats に text/csv・application/json、Item.Payload と Release の payload、伝票の印刷はペイロードから'
-      - 'cmd/printmanager/public：admin.js（KINDS・KIND_BADGE に template・convert、PAYLOADS・PAYLOAD_COLOR・payloadBadge）、canvas.js（FILL・OUT_PORT、payloadColor・payloadText、口と辺の色と題）、topology.js（ACCEPTS・OUTPUTS・KINDS_OF_PAYLOAD、metaRow・metaField・metaOf、formatsField・entryFields・kindsLine、template・convert のサイドバー、規則の meta と kind、save、extras のテンプレートの節は template に）、topology-view.js（takes・emits の行）、jobs.js・admin-jobs.js（meta の題と payloadBadge）、handlers/pages.pw.html（パレット）、README の Topology'
+      - 'docflow/kinds.go（新）：PayloadBDF・PayloadData・PayloadAny、dataFormats（json・yaml・csv・xlsx・parquet）、kinds のビット集合、takes（printer・display は bdf、template は data、他は全部）、entryKind・emits（入口は in | 自分の種類、template・convert・display は bdf、他は in）、inferKinds（不動点）、typed（PUT の確かめ。道つきの理由）'
+      - 'docflow/meta.go（新）：claimedMeta（64 個・16 KiB、$ で始まる鍵は断る）、metaOfRequest（?meta.<key>= と X-Meta-<Key>: 小文字の鍵）、jobMeta（送り手 < 入口 < $ の鍵）、claimedOf、metaView（規則とテンプレートが見る文字の表。name・user と $kind・$format・$pages・$size・$sha256・$payload）'
+      - 'docflow/transform.go（新）：テンプレートの CRUD（endpoint.go から移動。Template.Node）、finalErr、transform（template は fill、convert は convertPayload か .bdf の通過）、readData（form.LoadData。JSON・YAML の配列は list_name か ファイル名）、keepDocument（<ジョブ>.<足跡> の Blob、AlreadyExists は書けたもの）、continueWith（ペイロードを足し、足跡の made、to へ route、kick）'
+      - 'docflow/submit.go（書き直し）：Input に ContentType・Meta、receive（bdf / data / any、accept と output、detect：名前と Content-Type で json・yaml・csv、JSON の嗅ぎ分け、変換器）、submitPayload（Payload 0 の ID はジョブの ID、Meta）、Document・WritePayload・WritePage はペイロードの ID で、Reprint は受けたものを claimed の meta ごと、contentTypeOf'
+      - 'docflow/model.go：KindTemplate・KindConvert、AcceptFile・AcceptData、OutputBDF・OutputFile、Node に Output・Meta・Template・TemplateFrom・ListName・Strict、Payload、Job に Kind・Meta・Payloads（payload・received・document）、Leg に Payload・Made、Slip・Item・Delivery に Payload'
+      - 'docflow/nodes.go：nodeKinds と routingKinds に template・convert、PutNode の入口の accept・output・formats・meta と template・convert の確かめ、acyclic の後に typed、template でなくなったらテンプレートを消す、extraFormats に json・yaml、TopoNode に Takes・Emits、Templates は template ノードの'
+      - 'docflow/route.go：routing に payload、add が足跡に payload を書く、route の takes の実行時の確かめ（error の足跡）、template・convert は routeDelivery、Slip の Payload、removeJob はペイロードの Blob を全部消す'
+      - 'docflow/deliver.go：Delivery.Payload、deliver の template・convert の段（transform → outcome → continueWith）、printer は bdf のペイロードだけ、archive はペイロードを元の拡張子で書き記録に kind・format・meta・payload・object・payloads'
+      - 'docflow/filter.go：Match に Meta（鍵ごとの RE2）と Kind、fits(j, p)、empty()'
+      - 'docflow/endpoint.go：JSON の封筒と SubmitFill を無くし、serveIn は本文をそのまま（Content-Type と meta）、appMaySend は data で print.template'
+      - 'docflow/http.go・ipp.go・inbox.go・send.go・ports.go：payloadOf（?payload=、見せる .bdf、受けたもの）、jobDocument の Content-Type と名前、jobPage の 404、submit の meta、ippMeta（job group の属性と document-format を ipp.<name> に、32 個まで）、ippFormats に text/csv・application/json、Item.Payload と Release の payload、伝票の印刷はペイロードから'
+      - 'cmd/docflow/public：admin.js（KINDS・KIND_BADGE に template・convert、PAYLOADS・PAYLOAD_COLOR・payloadBadge）、canvas.js（FILL・OUT_PORT、payloadColor・payloadText、口と辺の色と題）、topology.js（ACCEPTS・OUTPUTS・KINDS_OF_PAYLOAD、metaRow・metaField・metaOf、formatsField・entryFields・kindsLine、template・convert のサイドバー、規則の meta と kind、save、extras のテンプレートの節は template に）、topology-view.js（takes・emits の行）、jobs.js・admin-jobs.js（meta の題と payloadBadge）、handlers/pages.pw.html（パレット）、README の Topology'
     decisions:
     - '種類は口が宣言し辺の種類は口から決まる。多相の口は入口からの推論（不動点）。PUT の typed は図の全ノードを確かめ、最初の違反を道つきで返す（requirement の provisional のとおり）'
     - 'ジョブの Payload 0 の Blob の ID はジョブの ID のまま（pm-4 の job-documents と同じ）。作ったペイロードは Delivery の ID（<ジョブ>.<足跡の番地>）。Live はジョブごとのまま、ペイロードはジョブと一緒に消す'

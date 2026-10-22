@@ -207,7 +207,7 @@ facts:
         ftp: tick の見回り（一覧 → 新しい名前を取る → 済みの接頭辞へ改名か記録）。後の段
         smtp_receive: 利用者の一覧に無い。サーバーレスは外部（SES の受信 → S3 Trigger）に任せ、プロセスでは IMAP の見回りか小さな受け口（後）
         watch_folder: プロセスのときだけ。ディレクトリの見回り（後）
-      credentials: 名前で指す（credential smtp-main → 環境変数 PM_CRED_smtp_main かファイル）。cups の tls_cert・tls_key と同じ形
+      credentials: 名前で指す（credential smtp-main → 環境変数 DOCFLOW_CRED_smtp_main かファイル）。cups の tls_cert・tls_key と同じ形
       delivery: at-least-once（2026-10-21 利用者）。冪等の鍵 <ジョブ>.<足跡>。結果の分からない失敗は 2 度送ることがある（受け手が鍵で抑える。文書化）
     extension:
       chosen: '登録した外部のマイクロサービス（2026-10-21 利用者「外部のマイクロサービスを登録できる様にしてユーザーが任意で作れるようにしたい。企業固有のルールでの正規化など」）。Manager が呼ぶ側（押し出し）'

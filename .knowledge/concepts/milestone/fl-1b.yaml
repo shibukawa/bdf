@@ -65,15 +65,15 @@ verification:
   manager-tests:
     state: passed
     method: integration
-    test: go test ./print/manager/ ./cmd/printmanager/...
+    test: go test ./docflow/ ./cmd/docflow/...
     authority: observed
     evidence:
-      path: print/manager/flow_test.go
+      path: docflow/flow_test.go
       locator: 'TestKinds の後半（accepts、dead end の "accepts":[]、din の broken と足跡、新しい辺の 400、直して消える）。2026-10-22 linux'
   js-syntax:
     state: passed
     method: static
-    test: node --check cmd/printmanager/public/*.js
+    test: node --check cmd/docflow/public/*.js
     authority: observed
   screenshots:
     state: passed
@@ -85,11 +85,11 @@ facts:
     implemented:
       date: '2026-10-22'
       packages:
-      - 'print/manager/kinds.go：passesOn、accepts（後ろ向きの不動点）、typing.broken、Node.withoutEdges、typed（前の辺を除いた before と after の broken の差だけ 400。理由の道は from の path + to）'
-      - 'print/manager/nodes.go：TopoNode に Accepts（omitempty なし。空は []）と Broken、Emits は passesOn・template・convert・display に常に'
-      - 'cmd/printmanager/public/canvas.js：ROLES・ROLE_OF・ROLE_COLOR・ICONS、iconOf・roleColor の export、box（白い箱、役割の帯、アイコン、題、下の行）を nodeBox と下書きが共用、凡例に役割。topology.js：パレットの a[data-kind] と サイドバーの頭に kindIcon。topology-view.js：サイドバーの頭にアイコン'
-      - 'cmd/printmanager/public/canvas.js（書き直し）：typeOf（in・out・accepts・anyKind・dead）、payloadColor・payloadText・legend の export、色ごとの marker（member は中空）、curve の中点に壊れた辺の印、canConnect・compatOf・reaches、ドラッグ中の薄化・吸い付き・ラベル（右端で左に）、ポーリングの再描画で線が消えない、onReject'
-      - 'cmd/printmanager/public/topology.js：onReject のトースト、picker に種類の点と「would not take it」、kindsLine に accepts と broken、保存後に増えた broken のトースト、凡例、説明文。admin.js：any の色を琥珀（#d97706）に。topology-view.js：凡例。handlers/pages.pw.html：#legend と説明。README の Topology。pw generate と go generate（tailwind）で dist・app.css・manifest を作り直した'
+      - 'docflow/kinds.go：passesOn、accepts（後ろ向きの不動点）、typing.broken、Node.withoutEdges、typed（前の辺を除いた before と after の broken の差だけ 400。理由の道は from の path + to）'
+      - 'docflow/nodes.go：TopoNode に Accepts（omitempty なし。空は []）と Broken、Emits は passesOn・template・convert・display に常に'
+      - 'cmd/docflow/public/canvas.js：ROLES・ROLE_OF・ROLE_COLOR・ICONS、iconOf・roleColor の export、box（白い箱、役割の帯、アイコン、題、下の行）を nodeBox と下書きが共用、凡例に役割。topology.js：パレットの a[data-kind] と サイドバーの頭に kindIcon。topology-view.js：サイドバーの頭にアイコン'
+      - 'cmd/docflow/public/canvas.js（書き直し）：typeOf（in・out・accepts・anyKind・dead）、payloadColor・payloadText・legend の export、色ごとの marker（member は中空）、curve の中点に壊れた辺の印、canConnect・compatOf・reaches、ドラッグ中の薄化・吸い付き・ラベル（右端で左に）、ポーリングの再描画で線が消えない、onReject'
+      - 'cmd/docflow/public/topology.js：onReject のトースト、picker に種類の点と「would not take it」、kindsLine に accepts と broken、保存後に増えた broken のトースト、凡例、説明文。admin.js：any の色を琥珀（#d97706）に。topology-view.js：凡例。handlers/pages.pw.html：#legend と説明。README の Topology。pw generate と go generate（tailwind）で dist・app.css・manifest を作り直した'
     decisions:
     - 'サーバーの typed は「新しい辺」だけを断る：PUT の前のノードの辺との差を取り、新しい辺を除いた図の broken と全部の図の broken の差があれば 400。設定の変更だけの PUT は通り、辺は broken として残る（利用者の「設定を変えて繋がらなくなったものは破線」はサーバーが断っては起きないので）'
     - 'accepts は takes ∩ 後ろの accepts の共通部分（通過ノードと入口だけ下る。template・convert・display は作るものが bdf なので自分の takes のまま）。値は空・bdf・data・全部のどれか'
