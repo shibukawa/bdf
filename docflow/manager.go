@@ -98,6 +98,13 @@ type Options struct {
 	Signer *Signer
 	// TempDir holds documents while they are converted ("" the system's).
 	TempDir string
+	// CredentialDir holds the credentials the nodes name, a file each
+	// (credential.go); the environment's DOCFLOW_CRED_* come first.
+	CredentialDir string
+	// OnError are the nodes a job goes to from a send or a step that
+	// failed for good at a node with no on_error edges of its own (a
+	// notify node, say); none, the job stops there, aborted.
+	OnError []string
 	Log     *slog.Logger
 	// Now is the clock (default time.Now).
 	Now func() time.Time

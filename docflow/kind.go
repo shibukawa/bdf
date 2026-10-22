@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +76,18 @@ type Kind struct {
 	Send func(ctx context.Context, o *Out) (result string, err error)
 	// Serve serves a node of an entry on its own port (Node.Port).
 	Serve func(m *Manager, n *Node) http.Handler
+	// Step is the step of a node of the kind (a render or a notify
+	// node): a job that reaches the node becomes a delivery, done in the
+	// background at least once as Send is, and the job goes on from the
+	// node's To with what Step made, or, with nil, with what reached it.
+	Step func(ctx context.Context, o *Out) (*Made, error)
+	// Keyed gives a node of an entry a key, as an endpoint has: POST
+	// /in/<name> with it sends to the node (an S3 Trigger).
+	Keyed bool
+	// Fetch takes what a request to a keyed entry carries, a reference
+	// (an S3 event), and reads the document it names; none, the body is
+	// the document.
+	Fetch func(ctx context.Context, o *Fetch) (*Fetched, error)
 
 	// route takes a job that reaches a node of a core kind; a kind with
 	// none sends to an exit (Send), or forwards along To.
@@ -173,6 +187,22 @@ func ServesPort(kind string) bool {
 	return k != nil && k.Serve != nil
 }
 
+// keyed tells a kind of entry whose node has a key that sends to it at
+// POST /in/<name>: an endpoint, and a keyed entry of an adapter.
+func keyed(kind string) bool {
+	if kind == KindEndpoint {
+		return true
+	}
+	k := kindNamed(kind)
+	return k != nil && k.Keyed && k.Role == RoleEntry
+}
+
+// steps tells a kind whose node does a step of an adapter's (Kind.Step).
+func steps(kind string) bool {
+	k := kindNamed(kind)
+	return k != nil && k.Step != nil
+}
+
 // sendsOut tells a kind that sends what reaches it out of the topology:
 // the member of a class, the fallback of a display (with .bdf).
 func sendsOut(kind string) bool {
@@ -222,15 +252,63 @@ func Prefixes() []string {
 	return out
 }
 
-// Out is a payload an exit sends out of the topology.
+// Out is a payload an exit sends out of the topology, or a step takes.
 type Out struct {
+	// ID is the delivery's: <job>.<leg>, the same on every try, the key
+	// a far side tells a second send of the same by (a Message-ID, an
+	// Idempotency-Key).
+	ID      string
 	Node    *Node
 	Job     *Job
 	Payload *Payload
 	// Name is the job's name for the far side (the job's, or the slip's).
 	Name string
+	// Meta is the job's metadata, with $error and $error_node when the
+	// job came along an on_error edge (Cause).
 	Meta map[string]any
+	// Cause is the failure that sent the job here along an on_error
+	// edge, or nil.
+	Cause *Failure
+	// Trace is the step the payload came out of, or went into, on its
+	// way here, or nil ($trace … in Expand).
+	Trace *Trace
+	m     *Manager
+}
+
+// Failure is a send or a step that failed for good, which the job left
+// along an on_error edge.
+type Failure struct {
+	Node  string `json:"node"`
+	Error string `json:"error"`
+}
+
+// Made is a payload a step made: Body is read once, into the job's
+// documents.
+type Made struct {
+	Kind   string
+	Format string
+	Name   string
+	Pages  int
+	Body   io.Reader
+}
+
+// Fetch is a request to a keyed entry that carries a reference (Kind.Fetch).
+type Fetch struct {
+	Node *Node
+	// Body is the request's body, of 1 MiB at most.
+	Body []byte
 	m    *Manager
+}
+
+// Manager is the engine the request came to.
+func (f *Fetch) Manager() *Manager { return f.m }
+
+// Fetched is the document a reference names: its name, the metadata it
+// comes with (as a sender's), and its bytes, read once and closed.
+type Fetched struct {
+	Name string
+	Meta map[string]any
+	Body io.ReadCloser
 }
 
 // Document reads the payload as a .bdf document.
@@ -246,6 +324,100 @@ func (o *Out) Open(ctx context.Context) (io.ReadCloser, error) {
 
 // Manager is the engine the payload is sent by.
 func (o *Out) Manager() *Manager { return o.m }
+
+// view is the metadata as the templates of a node see it: metaView,
+// with $node, $delivery and $name (the payload's name, else the job's),
+// and $error and $error_node of a job that
+// came along an on_error edge.
+func (o *Out) view() map[string]string {
+	j := o.Job
+	if j == nil {
+		j = &Job{Name: o.Name} // a slip whose job is gone
+	}
+	v := metaView(j, o.Payload, o.Trace)
+	for k, x := range o.Meta {
+		if _, ok := v[k]; !ok {
+			v[k] = metaText(x)
+		}
+	}
+	v["$node"], v["$delivery"] = o.Node.Name, o.ID
+	if o.Payload != nil {
+		v["$name"] = firstOr(o.Payload.Name, o.Name)
+	}
+	if o.Cause != nil {
+		v["$error"], v["$error_node"] = o.Cause.Error, o.Cause.Node
+	}
+	return v
+}
+
+// Expand replaces every {{meta.<key>}} in s with the value of the key
+// (Out.view): a sender's key, name and user, or one of the manager's ($job,
+// $file, $node, $error …); a key not there is empty. There is no other
+// expression.
+func (o *Out) Expand(s string) string { return expand(s, o.view()) }
+
+// ExpandFunc expands s as Expand does, with every value escaped by esc
+// first (url.QueryEscape, for a URL).
+func (o *Out) ExpandFunc(s string, esc func(string) string) string {
+	v := o.view()
+	for k, x := range v {
+		v[k] = esc(x)
+	}
+	return expand(s, v)
+}
+
+// ExpandHeader expands s for a header of a mail or a request: without
+// line breaks or other control characters, so that a value cannot add a
+// header.
+func (o *Out) ExpandHeader(s string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, o.Expand(s)))
+}
+
+// ExpandPath expands s for a path (an object's key, a file's name): every
+// value is cleaned of control characters, backslashes and .. segments,
+// and the path of a leading slash, so that a value cannot leave the
+// prefix it is put under.
+func (o *Out) ExpandPath(s string) string {
+	v := o.view()
+	for k, x := range v {
+		v[k] = cleanPathPart(x)
+	}
+	return CleanPath(expand(s, v))
+}
+
+var expandRE = regexp.MustCompile(`\{\{\s*meta\.([^{}\s]+)\s*\}\}`)
+
+func expand(s string, view map[string]string) string {
+	return expandRE.ReplaceAllStringFunc(s, func(m string) string {
+		return view[expandRE.FindStringSubmatch(m)[1]]
+	})
+}
+
+// cleanPathPart cleans a value put into a path: no control characters,
+// no backslashes, no .. or . segment.
+func cleanPathPart(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || r == '\\' {
+			return -1
+		}
+		return r
+	}, s)
+	parts := strings.Split(s, "/")
+	parts = slices.DeleteFunc(parts, func(p string) bool { return p == ".." || p == "." })
+	return strings.Join(parts, "/")
+}
+
+// CleanPath makes a path relative and clean: no leading slash, no empty,
+// . or .. segment.
+func CleanPath(s string) string {
+	parts := slices.DeleteFunc(strings.Split(cleanPathPart(s), "/"), func(p string) bool { return p == "" })
+	return strings.Join(parts, "/")
+}
 
 // ErrUnsupported is the error of what a node cannot do yet (a printer a
 // branch fetches from).
@@ -285,6 +457,14 @@ func (m *Manager) MaySend(ctx context.Context, r *http.Request, dest string) err
 	return nil
 }
 
+// CleanNames trims a list of node names, without empty ones and
+// duplicates: the edges of a node's settings.
+func CleanNames(names []string) []string { return cleanNames(names) }
+
+// PagesView is the view of a document whose pages are printed, drawn and
+// counted: its first fixed or flow view of pages, else a scroll view.
+func PagesView(doc *bdf.Document) (*bdf.View, error) { return pagesView(doc) }
+
 // Ended tells a state a job does not leave.
 func (s JobState) Ended() bool { return s.ended() }
 
@@ -313,6 +493,10 @@ type KindInfo struct {
 	// its own (an endpoint, a CUPS server).
 	SendsOut bool `json:"sends_out,omitempty"`
 	Port     bool `json:"port,omitempty"`
+	// Step tells a kind whose step is done in the background (render,
+	// notify); Keyed an entry with a key of its own at /in/<name>.
+	Step  bool `json:"step,omitempty"`
+	Keyed bool `json:"keyed,omitempty"`
 }
 
 // KindInfos are the kinds registered, as the API tells them.
@@ -321,7 +505,7 @@ func KindInfos() []KindInfo {
 	out := make([]KindInfo, 0, len(ks))
 	for _, k := range ks {
 		out = append(out, KindInfo{Name: k.Name, Title: k.title(), Role: k.Role, Takes: k.takes().names(), PassesOn: k.PassesOn, Makes: k.Makes, Fixed: k.Fixed,
-			SendsOut: k.Send != nil, Port: ServesPort(k.Name)})
+			SendsOut: k.Send != nil, Port: ServesPort(k.Name), Step: k.Step != nil, Keyed: keyed(k.Name)})
 	}
 	return out
 }

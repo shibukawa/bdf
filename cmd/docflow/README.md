@@ -62,6 +62,8 @@ or with variables:
 | `DOCFLOW_SIGN_TSA` | URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes |
 | `DOCFLOW_TICK_INTERVAL` | how often a process ticks (default 30s) |
 | `DOCFLOW_JOB_KEEP` | how long a job that ended is kept, with its document once nothing shows it (default 336h, 14 days) |
+| `DOCFLOW_ON_ERROR` | nodes a job goes to when a send or a step fails for good at a node without `on_error` edges (a `notify` node) |
+| `DOCFLOW_CREDENTIAL_DIR` | directory of the credentials nodes name, a file each; `DOCFLOW_CRED_<name>` comes first |
 
 ## Sign-in
 
@@ -187,8 +189,14 @@ The kinds are registered with the engine ([docflow](../../docflow)), and
 `GET /api/kinds` lists them with their roles and what they take. The
 core has the routing, transforming and keeping kinds. Inputs and outputs
 are adapters under [docflow/io](../../docflow/io): `printer`, `cups` and
-every node's IPP printer are [docflow/io/ipp](../../docflow/io/ipp),
-which this application imports.
+every node's IPP printer are [docflow/io/ipp](../../docflow/io/ipp);
+`smtp` is [docflow/io/smtp](../../docflow/io/smtp), `s3` and `s3-trigger`
+[docflow/io/s3](../../docflow/io/s3), `http`
+[docflow/io/http](../../docflow/io/http), `notify`
+[docflow/io/notify](../../docflow/io/notify), and `render`
+[docflow/render](../../docflow/render). This application imports them
+all; the manual (help/en/nodes.md) tells their settings, `on_error` and
+the credentials they name.
 
 
 ```sh

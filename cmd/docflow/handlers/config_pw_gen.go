@@ -35,6 +35,8 @@ func registerDocflowConfigDefinition0() {
 			"docflow.font_dirs",
 			"docflow.no_system_fonts",
 			"docflow.max_document_mb",
+			"docflow.on_error",
+			"docflow.credential_dir",
 			"docflow.secure_cookies",
 			"docflow.sign_key_file",
 			"docflow.sign_cert_file",
@@ -63,6 +65,8 @@ func registerDocflowConfigDefinition0() {
 			{Prefix: "docflow", Key: "font_dirs", Help: "directories of the fonts of documents", Kind: cliparser.KindArray},
 			{Prefix: "docflow", Key: "no_system_fonts", Help: "use only font_dirs", Kind: cliparser.KindBool},
 			{Prefix: "docflow", Key: "max_document_mb", Help: "largest document taken, in MiB"},
+			{Prefix: "docflow", Key: "on_error", Help: "nodes a job goes to when a send or a step fails for good at a node with no on_error edges (a notify node)", Kind: cliparser.KindArray},
+			{Prefix: "docflow", Key: "credential_dir", Help: "directory of the credentials nodes name, a file each (DOCFLOW_CRED_<name> comes first)"},
 			{Prefix: "docflow", Key: "secure_cookies", Help: "Secure on the devices' cookie (false only for plain http in development)", Kind: cliparser.KindBool},
 			{Prefix: "docflow", Key: "sign_key_file", Help: "file of the private key (PEM) that sign nodes sign documents with, as a witness"},
 			{Prefix: "docflow", Key: "sign_cert_file", Help: "file of the certificate of the signing key (PEM), followed by those of its chain"},
@@ -83,6 +87,8 @@ func registerDocflowConfigDefinition0() {
 			{Key: "font_dirs", Kind: configbind.ScaffoldStringSlice, Help: "directories of the fonts of documents"},
 			{Key: "no_system_fonts", Kind: configbind.ScaffoldBool, Default: "false", Help: "use only font_dirs"},
 			{Key: "max_document_mb", Kind: configbind.ScaffoldInt, Default: "64", Help: "largest document taken, in MiB"},
+			{Key: "on_error", Kind: configbind.ScaffoldStringSlice, Help: "nodes a job goes to when a send or a step fails for good at a node with no on_error edges (a notify node)"},
+			{Key: "credential_dir", Kind: configbind.ScaffoldString, Help: "directory of the credentials nodes name, a file each (DOCFLOW_CRED_<name> comes first)"},
 			{Key: "secure_cookies", Kind: configbind.ScaffoldBool, Default: "true", Help: "Secure on the devices' cookie (false only for plain http in development)"},
 			{Key: "sign_key_file", Kind: configbind.ScaffoldString, Help: "file of the private key (PEM) that sign nodes sign documents with, as a witness"},
 			{Key: "sign_cert_file", Kind: configbind.ScaffoldString, Help: "file of the certificate of the signing key (PEM), followed by those of its chain"},
@@ -166,6 +172,12 @@ func applyDocflowConfigDefinition0(dst any, o *configbind.Overlay) error {
 		p.MaxDocumentMB = int(n)
 	} else {
 		p.MaxDocumentMB = 64
+	}
+	if v, ok := o.GetMulti("docflow.on_error"); ok {
+		p.OnError = v
+	}
+	if v, ok := o.GetString("docflow.credential_dir"); ok {
+		p.CredentialDir = v
 	}
 	if v, ok := o.GetString("docflow.secure_cookies"); ok {
 		bb, err := strconv.ParseBool(v)

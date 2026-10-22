@@ -15,9 +15,14 @@ import (
 
 	"github.com/shibukawa/bdf/cmd/docflow/help"
 	"github.com/shibukawa/bdf/docflow"
-
-	// the IPP input and output: printers, CUPS servers, /ipp/print
+	// the inputs and outputs: printers, CUPS servers and /ipp/print;
+	// mail, S3 and its trigger, HTTP; the notify and render nodes
+	_ "github.com/shibukawa/bdf/docflow/io/http"
 	_ "github.com/shibukawa/bdf/docflow/io/ipp"
+	_ "github.com/shibukawa/bdf/docflow/io/notify"
+	_ "github.com/shibukawa/bdf/docflow/io/s3"
+	_ "github.com/shibukawa/bdf/docflow/io/smtp"
+	_ "github.com/shibukawa/bdf/docflow/render"
 	"github.com/shibukawa/bdf/print/printconv"
 	"github.com/shibukawa/popcornweb/plugin/auth"
 	"github.com/shibukawa/popcornweb/pw"
@@ -88,7 +93,7 @@ func Open(ctx context.Context, cfg DocflowConfig, oidc OIDCConfig) (*App, error)
 		Converter: conv, Secret: secret, PreviousSecrets: previous, FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts,
 		AdminToken: cfg.AdminToken, SubmitTokens: tokens, TickToken: cfg.TickToken, Viewer: a.viewer,
 		MaxDocument: int64(cfg.MaxDocumentMB) << 20, SecureCookies: cfg.SecureCookies, TabletPath: "/tablet", Log: log,
-		JobKeep: cfg.JobKeep,
+		JobKeep: cfg.JobKeep, OnError: cfg.OnError, CredentialDir: cfg.CredentialDir,
 		// a process sends deliveries as jobs come, and listens on the
 		// ports of the entry nodes; a function leaves the deliveries to
 		// the scheduler's tick and has no ports

@@ -10,6 +10,7 @@ Every node has a kind, and the settings of its kind. The entries — endpoints a
 | Title | shown under the name |
 | Description (`description`) | a note of what the node is for, up to 1000 characters: its first lines in the node on the canvas, all of it in the sidebar |
 | Scope, Owner | who may send to the node from the pages, and whose its jobs are: `shared` (everyone signed in), `group` with the group as owner, or `personal` with the person's email as owner ([Scopes of nodes](roles.md#scopes)) |
+| On error (`on_error`) | the nodes a job goes to, with what reached this node, when its send or step fails for good: a [notify](#notify) node, say. None: the manager's default (`docflow.on_error`), or the job stops here, aborted ([On error](#on-error)) |
 
 A line in the sidebar tells what the node takes and what it sends on ([Kinds of payload](flow.md#kinds)).
 
@@ -158,3 +159,74 @@ Lists what an archive before it wrote, for applications and people to fetch at `
 | Fields (`fields`) | metadata keys copied into the entries listed, for the reader to show or pick by (up to 16) |
 | Entries (`entries`) | how many of the latest entries are listed for everyone and for each owner (1000); an older entry is still read by its job's number |
 | Apps allowed (`apps`) | the backends that read every entry with their token (the scope `export`); a frontend reads as the person and needs no listing |
+
+## S3 Trigger {#s3-trigger}
+
+An entry for the objects put in a bucket. It does not listen to the bucket: an S3 event goes to an EventBridge rule (an API destination) or a Lambda, which posts the object's reference to `POST /in/<name>` with the node's key, made and rotated as an endpoint's. The body is `{"bucket": …, "key": …}`, an S3 notification (`Records`, one object), or the event EventBridge sends (`detail`). The node reads the object itself, and the job goes on with `s3.bucket` and `s3.key` in its metadata.
+
+| Setting | |
+|---|---|
+| Bucket (`url`) | `s3://bucket?region=…`; `&endpoint=…` for a service other than AWS's (MinIO, R2) |
+| Credential (`credential`) | `access-key:secret-key`, or with `:session-token`; none takes AWS's own (the environment, the role) ([Credentials](#credentials)) |
+| Prefix (`path`) | the keys it takes are under this prefix; a key elsewhere, or another bucket, is refused (403) |
+| Forwards to, Accepts, Sends on, Formats, Metadata | as an endpoint's |
+
+## Render {#render}
+
+Draws the `.bdf` document that reaches it as a PDF, or one page of it as a PNG image (150 dpi), for an exit whose far side has no viewer of BDF: a mail's reader, a web service. The file goes on to `to` as any other file. Done like a delivery, in the background.
+
+| Setting | |
+|---|---|
+| Forwards to (`to`) | the nodes the file goes to |
+| Format (`format`) | `pdf` (the default) or `png`; SVG is not there yet |
+| Page (`page`) | the page of a PNG (1) |
+
+## Notify {#notify}
+
+Tells that a job passed it, and sends what reached it on to `to`, if any. Failures reach it along [on_error](#on-error) edges, with the error. It sends no document.
+
+| Setting | |
+|---|---|
+| Via (`via`) | `slack`: an incoming webhook, whose URL is the credential; `mail`: a mail, with a Mail node's settings and no attachment; `http`: a JSON object (`text`, `job`, `name`, `node`, `error`, `error_node`, `meta`) posted to `url`, the credential its Authorization |
+| Text (`text`) | what it says, with `{{meta.<key>}}`; by default the job and the node, or of a failure the node and the error |
+| Forwards to (`to`) | the nodes the job goes on to |
+
+## Mail (SMTP) {#smtp}
+
+Mails what reaches it, as an attachment. The Message-ID is the delivery's id, the same on every try.
+
+| Setting | |
+|---|---|
+| Server (`url`) | `smtp://host:587` (STARTTLS when the server offers it) or `smtps://host:465` |
+| Credential (`credential`) | `user:password`, given only over TLS or to the machine itself |
+| From, Recipients, Subject, Text (`from`, `recipients`, `mail_subject`, `text`) | the mail, with `{{meta.<key>}}` |
+
+## S3 {#s3}
+
+Writes what reaches it to a bucket, once, and does not look back: an object there already is taken as written. What must be kept, with a record, goes to an [archive](#archive).
+
+| Setting | |
+|---|---|
+| Bucket (`url`), Credential (`credential`) | as an S3 Trigger's |
+| Key (`path`) | with `{{meta.<key>}}`: `{{meta.$job}}/{{meta.$name}}` by default; a value cannot leave the prefix (no `..`, no leading `/`) |
+
+## HTTP {#http}
+
+Sends what reaches it to a web service as the body of a request, with the job's metadata as `X-Meta-*` headers and the delivery's id as the `Idempotency-Key`. To another Docflow, the URL is its `/in/<node>` and the credential an app's token: the `.bdf` goes there as it is. 408, 429 and 5xx are tried again; any other answer fails for good.
+
+| Setting | |
+|---|---|
+| URL (`url`) | `http(s)://…`, with `{{meta.<key>}}` (each value URL-escaped) |
+| Method (`method`) | `POST` (the default) or `PUT` |
+| Headers (`headers`) | more headers, with `{{meta.<key>}}` |
+| Credential (`credential`) | the Authorization: a token, sent as Bearer, or a whole value (`Basic …`) |
+
+These kinds have no form of their own in the sidebar: their settings are a JSON box there.
+
+## On error {#on-error}
+
+A send or a step that fails for good — a refusal, a missing template, the last of its tries — goes along the node's `on_error` edges, drawn dashed, with what reached the node and `$error` and `$error_node` in what the next nodes see. A node without them sends its failures to the manager's default (`docflow.on_error`, `DOCFLOW_ON_ERROR`), unless the job is on an error's way already, so that a notify node that fails does not tell of itself. With neither, the job stops there, aborted. The job is aborted either way: the edges tell, they do not mend.
+
+## Credentials and `{{meta.<key>}}` {#credentials}
+
+A node names its credential (`credential`); the secret is never stored with it. The value is the environment's `DOCFLOW_CRED_<name>` (`-` as `_`), else the file `<name>` in `docflow.credential_dir`. The settings of the exits and notify nodes may use `{{meta.<key>}}` — nothing more, no expressions — with the job's metadata ([Metadata](flow.md#metadata)) and `$node`, `$delivery`, `$name` (the document's name), `$error` and `$error_node`; a key not there is empty. A header loses its line breaks, a key its `..`. Every exit sends at least once: a send whose outcome is not known is sent again, with the same delivery id, for the far side to tell.
