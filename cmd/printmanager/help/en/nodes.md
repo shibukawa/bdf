@@ -1,6 +1,6 @@
 # Node kinds
 
-Every node has a kind, and the settings of its kind. The entries — endpoints and CUPS servers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; displays, printers, archives and sinks are where a job ends. Every node, whatever its kind, is also an IPP printer at `/ipp/print/<name>` ([IPP](entries.md#ipp)).
+Every node has a kind, and the settings of its kind. The entries — endpoints and CUPS servers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; displays, printers, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. Every node, whatever its kind, is also an IPP printer at `/ipp/print/<name>` ([IPP](entries.md#ipp)).
 
 ## Every node {#common}
 
@@ -120,12 +120,13 @@ Prints the job on paper, on a printer the manager reaches over the network. It t
 
 ## Archive {#archive}
 
-Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change.
+Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to`: an export, which lists it ([Exports](exports.md)).
 
 | Setting | |
 |---|---|
 | Store (`store`) | a documents store: `bbolt:path`, `s3://bucket?region=…`, `r2://bucket?endpoint=…`, `gcs://bucket` |
 | Collection (`collection`) | the prefix of its objects: `archive-<name>` by default |
+| Forwards to (`to`) | the nodes the job goes on to once written: exports |
 
 ## Sink {#sink}
 
@@ -134,3 +135,15 @@ Keeps the latest documents that reach it, to look at on the topology: the first 
 | Setting | |
 |---|---|
 | Latest (`latest`) | how many it keeps (10) |
+
+## Export {#export}
+
+Lists what an archive before it wrote, for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. A way that reaches it without an archive is refused, and nothing is printed to it. [Exports](exports.md) has who reads what, backends and frontends.
+
+| Setting | |
+|---|---|
+| Owner's key (`by`) | the metadata key whose value says whose a document is: a customer's id or email the sender gave. Empty: a person reads what they could see of the job |
+| Subject (`subject`) | what of a person is compared with the owner: `email` (the default), `sub`, `id` or `group` ([Whose a document is](exports.md#owners)) |
+| Fields (`fields`) | metadata keys copied into the entries listed, for the reader to show or pick by (up to 16) |
+| Entries (`entries`) | how many of the latest entries are listed for everyone and for each owner (1000); an older entry is still read by its job's number |
+| Apps allowed (`apps`) | the backends that read every entry with their token (the scope `export`); a frontend reads as the person and needs no listing |

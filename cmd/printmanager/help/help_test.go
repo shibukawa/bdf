@@ -122,7 +122,7 @@ func TestLinks(t *testing.T) {
 // manager has, under the kind's name: the editor links to them.
 func TestKinds(t *testing.T) {
 	kinds := []string{manager.KindEndpoint, manager.KindCups, manager.KindQueue, manager.KindClass, manager.KindFilter, manager.KindTemplate,
-		manager.KindConvert, manager.KindInbox, manager.KindDisplay, manager.KindPrinter, manager.KindArchive, manager.KindSink}
+		manager.KindConvert, manager.KindInbox, manager.KindDisplay, manager.KindPrinter, manager.KindArchive, manager.KindSink, manager.KindExport}
 	for _, lang := range Languages {
 		p, ok := Get(lang, "nodes")
 		if !ok {

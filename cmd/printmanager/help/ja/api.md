@@ -16,7 +16,8 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 |---|---|
 | `GET /api/me` | リクエストの主。種類（人、アプリ、トークン）、id、名前、メールアドレス、グループ、管理者かどうか、役割（`topology`、`audit`） |
 | `GET /auth/login`、`POST /auth/logout` | プロバイダでサインインする。サインアウトする |
-| `POST /oauth/token` | アプリのトークン。クライアントクレデンシャルグラント |
+| `POST /oauth/token` | トークン。アプリのものはクライアントクレデンシャルグラントで、公開クライアントのための人のものは PKCE 付きの認可コードグラントで |
+| `GET /oauth/authorize` | サインインした人をコード付きで公開クライアントへ戻す（[フロントエンド](exports.md#frontends)） |
 
 ## ジョブ {#jobs}
 
@@ -81,12 +82,23 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 | `POST /api/deliveries/<id>/retry` | 今すぐ送り直す |
 | `POST /api/tick` | やるべきことを行う（[ティック](inboxes.md#tick)）。ティックトークン、スコープ `tick` のアプリ、管理トークン、または役割 `topology` の人 |
 
+## エクスポート {#exports}
+
+バックエンドのトークン、フロントエンドが得た本人のトークン、またはページのセッションで読みます（[エクスポート](exports.md)）。
+
+| | |
+|---|---|
+| `GET /out/<name>?owner=&limit=` | 読み手が読めるエントリ。新しい順 |
+| `GET /out/<name>/<job>` | 1 つのエントリ |
+| `GET /out/<name>/<job>/record` | アーカイブのジョブの記録 |
+| `GET /out/<name>/<job>/document` | アーカイブが書いたとおりの文書 |
+
 ## アプリと監査 {#apps}
 
 | | |
 |---|---|
 | `GET /api/apps`、`GET /api/apps/<id>` | アプリ。1 つのアプリ |
-| `PUT /api/apps/<id>` | 登録または変更する。`title`、`scopes`、`group`、`disabled`。新しいアプリの応答には `secret` が 1 度だけ入ります |
+| `PUT /api/apps/<id>` | 登録または変更する。`title`、`scopes`、`group`、`disabled`、公開クライアントなら `public` と `redirect_uris`。新しいアプリの応答には `secret` が 1 度だけ入ります（公開クライアントにはありません） |
 | `DELETE /api/apps/<id>` | 削除する |
 | `POST /api/apps/<id>/secret` | シークレットを回す |
 | `GET /api/audit?limit=` | 監査ログ（役割 `audit`） |

@@ -37,13 +37,14 @@ A CUPS server node ([CUPS server](nodes.md#cups)) is for computers and business 
 
 ## Apps {#apps}
 
-An app is an application that sends with credentials of its own rather than an endpoint's key: the credentials are the app's, and the audit log and the jobs say which app sent. An administrator registers one on Admin → Apps: an id, a title, the group whose members see its jobs (optional), and its scopes:
+An app is an application that sends, or reads exports, with credentials of its own rather than an endpoint's key: the credentials are the app's, and the audit log and the jobs say which app sent. An administrator registers one on Admin → Apps: an id, a title, the group whose members see its jobs (optional), and its scopes:
 
 | Scope | |
 |---|---|
 | `print` | send documents |
 | `print.template` | fill templates: send data |
 | `jobs.cancel` | cancel its own jobs |
+| `export` | read the exports that list it ([Backends](exports.md#backends)) |
 | `tick` | call `POST /api/tick`: a scheduler |
 | `admin` | the API as an administrator: a script |
 

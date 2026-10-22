@@ -45,6 +45,8 @@ The Audit page (the role `audit`) lists who did what, newest first: when, who, t
 | `enrollment-code`, `enroll`, `remove-device` | a code made for a display, a device enrolled, a device removed |
 | `refuse-document` | an entry refused a document for its format |
 | `token-refused` | an app's credentials refused at `/oauth/token` |
+| `oauth-code`, `user-token`, `code-refused` | a code given to a public client for a person, a token of the person made of it, an exchange of a code refused |
+| `export-document` | a document downloaded from an export, and by whom |
 | `release-item`, `discard-item` | an inbox's item released or discarded, and by whom |
 | `cancel-job`, `reprint` | a job canceled, a job reprinted |
 

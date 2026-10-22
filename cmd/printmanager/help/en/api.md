@@ -16,7 +16,8 @@ An error is `{"error": "…"}` with its status: 400 a request the manager cannot
 |---|---|
 | `GET /api/me` | who the request is from: its kind (a person, an app, a token), id, name, email and groups, whether an administrator, and its roles (`topology`, `audit`) |
 | `GET /auth/login`, `POST /auth/logout` | sign in at the provider, sign out |
-| `POST /oauth/token` | an app's token: the client credentials grant |
+| `POST /oauth/token` | a token: an app's by the client credentials grant, or a person's for a public client by the authorization code grant with PKCE |
+| `GET /oauth/authorize` | sends a person signed in back to a public client with a code ([Frontends](exports.md#frontends)) |
 
 ## Jobs {#jobs}
 
@@ -81,12 +82,23 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 | `POST /api/deliveries/<id>/retry` | send one again now |
 | `POST /api/tick` | do what is due ([The tick](inboxes.md#tick)): the tick token, an app with the scope `tick`, the admin token, or a person with the role `topology` |
 
+## Exports {#exports}
+
+A backend's token, a frontend's token of the person, or the pages' session ([Exports](exports.md)):
+
+| | |
+|---|---|
+| `GET /out/<name>?owner=&limit=` | the entries the reader may read, newest first |
+| `GET /out/<name>/<job>` | one entry |
+| `GET /out/<name>/<job>/record` | the archive's record of the job |
+| `GET /out/<name>/<job>/document` | the document, as the archive wrote it |
+
 ## Apps and audit {#apps}
 
 | | |
 |---|---|
 | `GET /api/apps`, `GET /api/apps/<id>` | the apps; one app |
-| `PUT /api/apps/<id>` | register or change one: `title`, `scopes`, `group`, `disabled`; the answer of a new app carries its `secret`, once |
+| `PUT /api/apps/<id>` | register or change one: `title`, `scopes`, `group`, `disabled`, and `public` with `redirect_uris` for a public client; the answer of a new app carries its `secret`, once (a public client has none) |
 | `DELETE /api/apps/<id>` | delete it |
 | `POST /api/apps/<id>/secret` | rotate its secret |
 | `GET /api/audit?limit=` | the audit log (the role `audit`) |

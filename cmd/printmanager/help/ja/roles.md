@@ -45,6 +45,8 @@ Audit ページ（役割 `audit`）には、誰が何をしたかが新しい順
 | `enrollment-code`、`enroll`、`remove-device` | ディスプレイのコードの発行、デバイスの登録、デバイスの削除 |
 | `refuse-document` | 入口が形式を理由に文書を拒否した |
 | `token-refused` | `/oauth/token` でアプリの資格情報が拒否された |
+| `oauth-code`、`user-token`、`code-refused` | 公開クライアントに人のためのコードを発行した、そのコードから人のトークンを作った、コードの交換を拒否した |
+| `export-document` | エクスポートから文書がダウンロードされた。誰がしたか |
 | `release-item`、`discard-item` | インボックスの項目の送り出しと破棄、および誰がしたか |
 | `cancel-job`、`reprint` | ジョブの取り消し、ジョブの再印刷 |
 
