@@ -19,9 +19,11 @@ import (
 // administrator set up; nothing is authorized by them. The keys the
 // manager verifies start with $, which a sender's cannot: $job,
 // $received, $entry, $source, $sender, $sender_kind and $file. At a node,
-// rules and templates also see name and user (the job's), and $kind,
-// $format, $pages, $size, $sha256 and $payload of the payload there
-// (metaView).
+// rules and templates also see name and user (the job's), $kind,
+// $format, $pages, $size, $sha256 and $payload of the payload there, and
+// $trace, $trace_role, $trace_node and $trace_peer of the step it came
+// out of or went into, and $fingerprints of its lineage (metaView,
+// trace.go).
 
 const (
 	maxMetaKeys  = 64
@@ -111,10 +113,14 @@ func claimedOf(meta map[string]any) map[string]any {
 }
 
 // metaView is a job's metadata as rules and templates see it at a node
-// with a payload: every value as text, with name and user (the job's)
-// and the payload's $kind, $format, $pages, $size, $sha256 and $payload.
-func metaView(j *Job, p *Payload) map[string]string {
-	out := make(map[string]string, len(j.Meta)+8)
+// with a payload: every value as text, with name and user (the job's),
+// the payload's $kind, $format, $pages, $size, $sha256 and $payload, and
+// of its trace (nil: none) the step's id ($trace), the side
+// ($trace_role: source or output), the node ($trace_node) and the key
+// the other side is archived by ($trace_peer), and the ids of the steps
+// of its lineage, comma-separated ($fingerprints).
+func metaView(j *Job, p *Payload, t *Trace) map[string]string {
+	out := make(map[string]string, len(j.Meta)+12)
 	for k, v := range j.Meta {
 		out[k] = metaText(v)
 	}
@@ -122,6 +128,10 @@ func metaView(j *Job, p *Payload) map[string]string {
 	if p != nil {
 		out["$kind"], out["$format"], out["$payload"], out["$sha256"] = p.Kind, p.Format, p.ID, p.SHA256
 		out["$pages"], out["$size"] = strconv.Itoa(p.Pages), strconv.FormatInt(p.Size, 10)
+	}
+	if t != nil {
+		out["$trace"], out["$trace_role"], out["$trace_node"], out["$trace_peer"] = t.ID, t.Role, t.Node, t.peer().Key
+		out["$fingerprints"] = t.fingerprintIDs()
 	}
 	return out
 }

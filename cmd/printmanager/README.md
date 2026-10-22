@@ -106,7 +106,7 @@ ten minutes) and sends with it as a bearer to `/in/<endpoint>`, or
 prints over IPP with the same id and secret as Basic; it sees and, with
 the scope `jobs.cancel`, cancels its own jobs. The scopes are `print`,
 `print.template`, `jobs.cancel`, `export` (reads the exports that list
-it: see *Exports* below), `tick` (a scheduler's) and `admin` (a
+it: [help/en/exports.md](help/en/exports.md)), `tick` (a scheduler's) and `admin` (a
 script's: the API as an administrator). An app's jobs are its `group`'s
 when the destination gives them none. Disabling an app refuses its
 credentials and the tokens out.
@@ -147,125 +147,39 @@ identity, the container's or the instance's role.
 
 ## Use it
 
-A person signs in at the IdP (see Sign-in) and sees `/jobs`: their jobs
-and their groups', and a form that prints a document to a node they may
-print to. `/topology` shows everyone the network as the administrator
-laid it out (the nodes, their kinds and edges; not their settings), with
-the activity of the jobs the person may see: how many are open, held or
-waiting at each node, and the jobs of the last minutes running along the
-edges; a node lists the person's jobs there and prints there when they
-may. An administrator sees every job, and goes on to the
-administrator's pages, one item each: `/admin/topology` (the editor of
-the topology: every node is placed, connected and set up there, with its
-templates, key or devices in the sidebar), `/admin/inboxes` (release and
-discard), `/admin/jobs` (every job and its route), `/admin/deliveries`
-(what waits for a printer or an archive, and the tick) and `/audit` (who
-did what: sign-ins, changes, keys, devices, refused documents, releases,
-cancellations). The API takes the session's cookie (from the manager's
-own pages) as it takes the tokens; scripts use the tokens.
+The manual is in the application: **Help** in the bar of every page, at
+`/help`, in English and Japanese by the browser's language. Its chapters
+are the Markdown files of [help/en](help/en) and [help/ja](help/ja),
+embedded by [package help](help/help.go) and rendered when served
+(goldmark, no raw HTML): the pages, the topology and its editor, every
+kind of node and its settings, what flows along the edges and the
+metadata, templates and data, the entries (endpoints, CUPS server nodes,
+apps, IPP), display boards and devices, inboxes and deliveries, sign-in,
+roles and audit, the API, and the configuration. A link between chapters
+is written as `jobs.md`, so that the files read on GitHub too; every
+chapter has the same section ids in every language, so that the pages
+link to the manual without a language (the editor's sidebar links
+`/help/nodes#printer`), and `help_test.go` checks the links, the ids,
+and that every kind of node has its section. Changing the manual is
+editing the Markdown: no generation.
 
-1. Add a printer and a display (on the topology, or the API; both are
-   nodes):
-
-   ```sh
-   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/wh-a-laser -d '{"kind":"printer","url":"ipps://wh-a-laser.local/ipp/print"}'
-   curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/wh-a -d '{"kind":"display","title":"第 1 倉庫","scope":"group","owner":"warehouse-a","fallback":{"printer":"wh-a-laser","after":"10m"}}'
-   ```
-
-2. Enroll a tablet: "Add a device" in the display's sidebar on the topology
-   shows a one-time code and its QR code; the tablet opens `/tablet?code=…`.
-   Its page makes a key that cannot be exported and keeps it; only that
-   browser signs in as the device. Add the page to the home screen.
-3. Print to `ipp://<host>:<port>/ipp/print/wh-a` (or `POST /api/locations/wh-a/slips`
-   with the document as the body, which answers with the slip). PDF, Office
-   documents, images, PWG and Apple rasters and `.bdf` are taken. The
-   metadata keys `ipp.job-account-id`, `ipp.job-accounting-user-id`,
-   `ipp.document-metadata` and `ipp.x-…` go to the printer as those IPP
-   attributes: an IPP request's own give them, or `?meta.ipp.job-account-id=…`
-   of a `POST`.
-
-## Topology
-
-Every node, of every kind, is `PUT /api/nodes/<name>` with its `kind`
-and the kind's settings, in one namespace, and each is an IPP printer at
-`/ipp/print/<name>` (a job sent to a printer's name is printed there; one
-sent to a display's name is shown there). A job sent to a node follows
-the edges from it; its record (`/api/jobs/<n>`) keeps a leg for every
-node it reached. The document is kept once for all of them.
-
-| Kind | Does | Settings |
-|---|---|---|
-| `endpoint` | a REST entry for applications: `POST /in/<name>` with the endpoint's own key takes a document as the body, or data (`accept: data`: JSON, YAML, CSV, an Excel workbook or a Parquet file, for a template node after it), and forwards the job to every node of `to`. `output` is what goes on of a document: `bdf` (the default: the .bdf made of it) or `file` (as received, for a convert node or an archive after it). `formats` are the formats it takes (as the converter names them: `pdf`, `docx`, `image`, `csv`, `bdf` …, and `json`, `yaml`; empty: any); a file of another format is refused (415) and the refusal is in the audit log. `meta` is metadata the endpoint adds to every job it takes. The key is shown once, when the endpoint is made (`key` in the answer) or rotated (`POST /api/nodes/<name>/key`); the manager keeps only its argon2id hash. With `port`, a process listens there too: every `POST` to it is to the endpoint | `to`, `accept`, `output`, `formats`, `meta`, `port` |
-| `cups` | an IPP entry for computers and business systems: a CUPS server on a `port` of the process's own, with one printer, the node itself (`lpstat -h <host>:<port> -p` lists it; computers print to `ipp://<host>:<port>/printers/<node>`), which forwards what it receives to every node of `to`; plain `ipp`, or `ipps` with `tls_cert` and `tls_key` (files). `accept`, `output`, `formats` and `meta` as an endpoint's; the job attributes of a Print-Job request are metadata (`ipp.media`, `ipp.copies` …) | `to`, `port`, `tls_cert`, `tls_key`, `accept`, `output`, `formats`, `meta` |
-
-| `queue` | forwards the job to every node of `to` (a fan-out when there are several) | `to` |
-| `class` | sends the job to one of `members`, in turn (`round-robin`, the default) or the first (`failover`); a printer that does not take it is skipped for the next member | `members`, `policy` |
-| `filter` | sends the job on by `rules`: the first whose `match` fits (`name`, `user` and `format` as RE2 regular expressions, `min_pages`, `max_pages`, `meta` as regular expressions by key of the job's metadata, `kind` of the payload: `bdf`, `data` or `any`) forwards it to the rule's `to`; a job no rule fits goes to `otherwise`, or ends there (dropped) when there is none. What reaches it goes on as it is | `rules`, `otherwise` |
-| `template` | fills one of its templates (`PUT /api/nodes/<name>/templates/<id>`; they go with the node) with the data that reaches it, and sends the form on as a .bdf document to every node of `to`. `template` names the template, or `template_from` the metadata key whose value names it (a sender's `X-Meta-Doc-Type`); `list_name` names data that is a list of records (a CSV file, a sheet, a JSON array; the file's name by default), an object is the data itself; `strict` refuses data that lacks a name the template looks up. The step is done like a delivery (the background, or the tick), and fails for good when the template is missing or the data cannot be read | `to`, `template`, `template_from`, `list_name`, `strict` |
-| `convert` | makes a .bdf document of a file that reaches it as received (a PDF, an Office document, a picture …; `formats` limits which), and sends it on to every node of `to`; a .bdf goes on as it is. JSON and YAML have no document of their own (fill a template with them), and a CSV or Parquet file has no pages to print yet. The step is done like a delivery | `to`, `formats` |
-| `inbox` | holds the job until a person releases it to nodes (those of `to`, or any when `to` is empty) or discards it; ended items stay `keep` (14 days) | `to`, `keep` |
-| `display` | shows the job as a slip on the devices enrolled there, and prints on paper what nobody opened within `fallback.after` (or every unopened slip while no device is connected); slips done or canceled stay `keep` (14 days) | `fallback` (`printer`, `after`), `keep`, `offline_after` |
-| `printer` | prints the job on paper, on a printer the manager reaches over the network (`ipp`, `ipps`, `socket`, `lpd`). With `preview`, the URL of the printer on a fake printer farm's API (`tools/fakeprinter`: `http://host:port/api/printers/<printer>`), what the fake printer received is shown beside the node, as the farm read it back (`GET /api/nodes/<name>/preview`, `…/preview/<job>/pages/<p>.png`) | `url`, `route` (`direct`), `preview` |
-| `archive` | writes the payload that reaches it (a `.bdf`, or any file or data as received) and a JSON record of the job (its metadata, payloads and legs) to `store` (a documents URL: `bbolt`, `s3`, `r2`, `gcs`), each object once, under `collection` (`archive-<name>`); the manager never changes or deletes them. Give the S3 bucket a default retention (Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to` (an export) | `store`, `collection`, `to` |
-| `sink` | keeps the `latest` documents that reach it (10) to look at on the topology (the first page shows on the node, every page in the sidebar: `GET /api/nodes/<name>/latest`, `GET /api/jobs/<n>/pages/<p>.png`); an older one goes when a newer comes | `latest` |
-| `export` | lists what an archive before it wrote (an archive sends a job on along its `to` once it wrote it), for applications and people to fetch at `GET /out/<name>`: each entry under the owner the metadata key `by` names (a customer's id the sender gave), with the metadata of `fields`; the latest `entries` (1000) are listed. See *Exports* below | `by`, `subject`, `fields`, `entries`, `apps` |
-
-Every node has a `title` and a `description` too (as a C4 element: the
-name in the title bar, `[kind]` and the title under it, then the
-description, a note of what it is for, up to 1000 characters, the first
-lines on the canvas), and a `scope` and an `owner` (see Sign-in). A display, a
-printer, a sink or an export keeps its kind; the other kinds change into
-one another, keeping the name.
-
-What flows along an edge has a kind: a `bdf` document, `data` (JSON,
-YAML, CSV, Excel, Parquet) or `any` other file as received. An entry
-sends on what its `accept` and `output` say, a template or a convert
-node the .bdf it makes, every other node what reaches it; a printer or
-a display takes `bdf` only, a template node `data` only. The kinds that
-reach every node are inferred from the entries along the edges when a
-node is put, and a new edge that would bring a kind a node does not
-take is refused (400: "laser (printer) takes bdf, but any reaches it:
-raw → fan → laser"). A change of a node's settings alone (an entry
-taking data now, a queue made a template node) is not refused for the
-edges it leaves carrying what the node after them does not take: they
-stay, broken, until mended (a convert or a template node put between,
-the setting changed back, or the edge removed), and a job gets a leg of
-the error where it reaches the node that does not take it. `GET
-/api/topology` shows each node's `takes`, `emits`, `accepts` (what may
-be sent to it now: what it takes, within what every node after it takes,
-so that a queue in front of a printer takes `bdf` alone, as a wildcard
-pin is typed by its first edge) and `broken` (the edges from it that no
-longer connect, with the kinds), and the editor colors the ports and the
-edges by them (blue bdf, green data, amber any, purple several; hollow
-and dashed a port not typed yet), fades the nodes that would not take
-the edge being dragged, and draws a broken edge dashed and red. A node's
-title bar is colored by its role (source: endpoint, cups; control flow:
-queue, class, inbox; filter; transform: template, convert; sink:
-display, printer, archive, sink), with an icon of its kind. A job
-carries its `payloads`: what was received
-(`kind`, `format`, `pages`, `size`, `sha256`) and what the template and
-convert nodes made of it (`made`), each leg saying which payload it got
-(`payload`) and made (`made`); `GET /api/jobs/<n>/document` downloads
-the .bdf document to show (the last made, or the one received), and
-`?payload=<id>` any of them. A job's `meta` is its metadata: what the
-sender gave (`X-Meta-<Key>` headers and `?meta.<key>=` parameters of
-the API, the job attributes of an IPP request as `ipp.<name>`; claims,
-routed by and never trusted), what the entry added (`meta`), and what
-the manager verified, under keys that start with `$`: `$job`,
-`$received`, `$entry`, `$source`, `$sender`, `$sender_kind`, `$file`. A
-filter's rules and a template node's `template_from` see those, and the
-payload's `$kind`, `$format`, `$pages`, `$size` and `$sha256`, and the
-job's `name` and `user`.
-
-A port of an entry node is the process's: it is opened when the node is
-put and closed when the node loses it (and checked at every tick), on
-every address of the host. A serverless deployment (`MANAGER_SERVERLESS`)
-refuses ports: applications call the manager's own `/in/<name>`, and
-there is no IPP port of a node's own there.
-
-Three virtual printers and an endpoint, for example: an audit copy, a
-site's printers in turn, both warehouses at once, and an application that
-prints invoices from data.
+In short: a person signs in at the IdP (see Sign-in) and sees `/jobs`,
+their jobs and their groups' and a form that prints to a node they may
+send to, and `/topology`, the network with the activity of their jobs.
+The role `topology` gets the administrator's pages under `/admin` (the
+editor of the topology, apps, inboxes, jobs, deliveries) and the role
+`audit` gets `/audit`. Every node is `PUT /api/nodes/<name>` with its
+`kind` and the kind's settings — `endpoint`, `cups`, `queue`, `class`,
+`filter`, `template`, `convert`, `inbox`, `display`, `printer`,
+`archive`, `sink`, `export` ([help/en/nodes.md](help/en/nodes.md)) —
+and an IPP printer at `/ipp/print/<name>`; a display's tablets are
+enrolled with a one-time code from the display's sidebar
+([help/en/displays.md](help/en/displays.md)); an export after an
+archive lets backends and people's frontends fetch the documents at
+`/out/<name>` ([help/en/exports.md](help/en/exports.md)); and the API is
+[help/en/api.md](help/en/api.md). For example: an audit copy, a site's
+printers in turn, both warehouses at once, a review before printing, and
+an application that prints invoices from data:
 
 ```sh
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/audit -d '{"kind":"archive","store":"s3://audit?region=ap-northeast-1"}'
@@ -282,109 +196,6 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" "localhost:8080/api/nodes/forms/te
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/erp-data -d '{"kind":"endpoint","accept":"data","to":["forms"]}'
 curl -X POST -H "Authorization: Bearer bdfk_…" -H "Content-Type: application/json" "localhost:8080/in/erp-data?name=INV-1" -d '{"customer":"ACME","total":12000}'
 ```
-
-### Exports
-
-An export is where documents leave the network for the applications and
-people that fetch them: an archive writes the document for good, and the
-export after it lists it. A way that reaches an export without an
-archive is refused when a node is put (400, with the way), and a job
-sent straight to an export ends there with an error. The entries stay
-when the job's record goes: the document is read from the archive.
-
-| | |
-|---|---|
-| `GET /out/<name>` | the entries the reader may read, newest first (`?owner=` one owner's, `?limit=`, 100 by default) |
-| `GET /out/<name>/<job>` | one entry: the job's number, name, kind, format, pages, size, sha256, owner, fields, who sent it, where the archive wrote it |
-| `GET /out/<name>/<job>/record` | the archive's record of the job (its metadata, payloads and legs when it was written) |
-| `GET /out/<name>/<job>/document` | the document as the archive wrote it (in the audit log) |
-
-Who reads what:
-
-- **A backend** (an app the export lists in `apps`, with the scope
-  `export`) reads every entry with its client-credentials token, and
-  narrows to one of its users with `?owner=`; so do the administrators
-  and the auditors.
-- **A person** reads the entries whose owner is them: the value of `by`
-  is compared with their `subject`: `email` (the default, as the IdP
-  verified it, without case), `sub` (their subject at the IdP), `id`
-  (their ID here) or `group` (any of their groups). An export without
-  `by` shows them what they could see of the job (their own, their
-  groups'). They read with the pages' session, or with a token a
-  frontend got for them (a public client, above). The export's `scope`
-  and `owner` say who may read it at all, as they say who may send to a
-  node.
-- Anything else is **not found** (404), not forbidden: an entry of
-  another owner, of a job that is not there, of a job sent elsewhere.
-
-The owner is what the sender claimed (`X-Meta-Customer`, `?meta.customer=`,
-an entry's `meta`): whoever may send to the entry decides whose a
-document is. Give the entry to the backends that know their users, or
-fix the owner with the entry's `meta`.
-
-```sh
-curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/apps/portal-api -d '{"scopes":["export"]}'
-# → {"id":"portal-api", …, "secret":"bdfa_…"}
-curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/statements -d '{"kind":"export","by":"customer","fields":["invoice"],"apps":["portal-api"]}'
-curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/vault -d '{"kind":"archive","store":"s3://vault?region=ap-northeast-1","to":["statements"]}'
-curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/billing -d '{"kind":"endpoint","to":["vault"]}'
-curl -X POST -H "Authorization: Bearer bdfk_…" --data-binary @inv.pdf "localhost:8080/in/billing?name=INV-1&meta.customer=alice@example.com&meta.invoice=INV-1"
-# the backend lists one customer's, and downloads one
-TOKEN2=$(curl -s -u 'portal-api:bdfa_…' -d grant_type=client_credentials localhost:8080/oauth/token | jq -r .access_token)
-curl -H "Authorization: Bearer $TOKEN2" "localhost:8080/out/statements?owner=alice@example.com"
-curl -H "Authorization: Bearer $TOKEN2" -O -J localhost:8080/out/statements/1/document
-# a frontend: a public client, whose users read their own
-curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/apps/portal -d '{"public":true,"scopes":["export"],"redirect_uris":["https://portal.example.com/callback"]}'
-```
-
-A template belongs to its template node (`PUT /api/nodes/<name>/templates/<id>`;
-it goes when the node does). It is a compiled template (`.bdft`, from
-`bdf template compile`) or one of Excel, Word, PowerPoint, a PDF form,
-pdfme or text, as `bdf fill` takes them; `GET /api/nodes/<name>/templates/<id>`
-lists the fields its tags look up. The data that fills it is a JSON or
-YAML object, a CSV file or an Excel workbook (a list of records gets the
-node's `list_name`, or the file's name); a Parquet file is not filled into
-a template yet.
-
-A node is checked when it is put: the nodes it names exist, the name is
-free of the other kinds, no path leads back to it, and every node takes
-the kinds of payload that reach it. A node another one sends to is not
-deleted. Deliveries to printers and archives, and the steps of template
-and convert nodes, are done by a process right after the job is routed,
-and by the tick (`POST /api/tick`; every minute on a serverless
-platform); one that fails is tried again after a growing wait, up to 20
-times (not at all after a failure no retry mends: a template missing,
-data that cannot be read), and `POST /api/deliveries/<id>/retry` does it
-again now. `/admin/topology` is the editor (a palette of kinds,
-ports to connect, a sidebar for the node selected, pan and zoom; where the
-nodes are drawn is `/api/layout`); a CUPS client lists every node with
-CUPS-Get-Printers at `/ipp/print` (`bdf printers -url ipp://<host>:<port>/ipp/print`).
-
-`GET /oauth/authorize` sends a person signed in back to a public client
-with a code, and `POST /oauth/token` makes tokens (client credentials,
-or the code); `GET /out/<name>/…` are the exports (above).
-`GET /auth/login` signs in at the IdP and `POST /auth/logout` out;
-`GET /api/me` tells who; `GET /api/my/jobs` lists a person's jobs and
-`GET /api/destinations` the nodes to print to; `POST /api/jobs/<n>/reprint`
-(`{"to": "<node>"}`, or the job's node) sends a job the person sees again,
-as a new job of theirs, to a node they may send to; `GET /api/audit` is
-the log (the role `audit`).
-Everyone signed in reads `GET /api/topology` (the nodes and edges; an
-administrator gets the settings and the counts too), `GET /api/layout`
-(where they are drawn) and `GET /api/topology/live`: the activity of the
-jobs they may see, as counts at each node (`held`, `open`, `pending`,
-`failed`, `recent` in the last hour) and the legs of the last ten minutes
-(`flows`), with an ETag to poll with (304 while nothing changed). The
-rest of the topology's API is the admin token's: `GET`, `PUT` and `DELETE /api/nodes/<name>` and `POST
-/api/nodes/<name>/key`; a display's `GET …/board`, `GET …/devices` and
-`POST …/enrollments`, and `DELETE /api/devices/<id>`; a template node's `GET
-…/templates` and `GET`, `PUT` and `DELETE …/templates/<id>` and its
-`/file`; `GET /api/formats` (the formats an entry may take); `GET` and
-`PUT /api/layout` (where the nodes are drawn); `GET` and `POST
-/api/destinations/<name>/jobs`; `GET /api/jobs/<n>`, its `/document` and
-`POST …/cancel`; `GET /api/inboxes/<name>`, `POST /api/items/<id>/release`
-(`{"to": [...], "worker": "..."}`) and `…/discard`; `GET /api/deliveries`
-and `POST /api/deliveries/<id>/retry`.
 
 ## On AWS Lambda
 
@@ -409,7 +220,8 @@ pw reads `popcornweb.toml` at the repository's root (it wants it beside
 `go.mod`): `[generate]` names only `cmd/printmanager/handlers`, and
 `[assets]` places the public tree in `cmd/printmanager` (`public`, built
 into `dist/public` and embedded by `public.go`). After changing the pages
-(`.pw.html`), `handlers/config.go` or a file in `public`, run from the
+(`.pw.html`), `handlers/config.go` or a file in `public` (the manual in
+`help/` needs nothing: the Markdown is embedded as it is), run from the
 repository's root:
 
 ```sh
@@ -424,7 +236,8 @@ plain `go build` embeds what is committed.
 
 The pages use [Tailwind CSS](https://tailwindcss.com) and
 [daisyUI](https://daisyui.com), built into `public/app.css` (committed, and
-embedded in the binary: no CDN). No Node or npm: the standalone
+embedded in the binary: no CDN); the manual's HTML is styled by Tailwind's
+typography plugin (`prose`), which the standalone CLI bundles. No Node or npm: the standalone
 `tailwindcss` CLI loads daisyUI's release files in `tailwind/` (versions
 and hashes in `tailwind/VERSIONS`). After changing the pages' markup or
 classes, with that CLI on the PATH (`brew install tailwindcss`):

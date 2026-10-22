@@ -68,6 +68,10 @@ type Options struct {
 	NoTextIndex bool
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.
 	Warn func(msg string)
+	// Data says whether the values of charts are stored as tables the
+	// document holds beside its drawing (docs/spec.md §4.6): "none" not
+	// at all; "" and "all" alike, a chart's values being few.
+	Data string
 
 	// fill is set by Fill: the presentation is a template (template.go).
 	fill *filler
@@ -128,7 +132,7 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	db := fontdb.New(opts.FontFS, opts.FontDirs, !opts.NoSystemFonts)
 	c.fonts = fontset.New(db, warn)
 	c.cvs = canvas.NewBuilder(c.doc, c.fonts)
-	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, Warn: warn})
+	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, NoTables: opts.Data == "none", Warn: warn})
 	if len(db.Faces) == 0 && !opts.SystemFonts {
 		c.warnf("no fonts found; text is laid out with estimated metrics and not embedded")
 	}
@@ -425,6 +429,7 @@ func (c *converter) renderSlide(j slideJob, page int) ([]layer, error) {
 		return nil, err
 	}
 	s.page = page
+	c.r.SetPlace("slides", page)
 	slide, part := s.slide, s.part
 
 	var layers []layer

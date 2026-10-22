@@ -14,7 +14,10 @@ func init() {
 		Name:        "pptx",
 		Description: "PowerPoint presentation",
 		Extensions:  []string{".pptx", ".pptm", ".ppsx", ".ppsm", ".potx", ".potm"},
-		Params:      []conv.Param{{Name: "hidden", Usage: "true: include hidden slides"}},
+		Params: []conv.Param{
+			{Name: "hidden", Usage: "true: include hidden slides"},
+			{Name: "data", Usage: conv.ChartDataParamUsage},
+		},
 		// an Office Open XML package with a presentation part
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool {
 			if !bytes.HasPrefix(head, []byte("PK\x03\x04")) {
@@ -48,7 +51,11 @@ func OptionsOf(o *conv.Options) (*Options, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pptx: %w", err)
 	}
-	return &Options{Slides: o.Pages, Hidden: hidden, Title: o.Title, Images: o.Images,
+	data, err := conv.DataParam(o.Param("data"))
+	if err != nil {
+		return nil, fmt.Errorf("pptx: %w", err)
+	}
+	return &Options{Slides: o.Pages, Hidden: hidden, Title: o.Title, Images: o.Images, Data: data,
 		FontFS: o.FontFS, FontDirs: o.FontDirs, NoSystemFonts: o.NoSystemFonts, SystemFonts: o.SystemFonts, NoSubset: o.NoSubset,
 		NoWOFF2: o.NoWOFF2, IgnoreFSType: o.IgnoreFSType, NoTextIndex: o.NoTextIndex, Warn: o.Warn}, nil
 }

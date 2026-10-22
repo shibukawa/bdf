@@ -34,6 +34,9 @@ const (
 	PartImage  = "img"
 	PartPath   = "path"
 	PartIndex  = "idx"
+	// PartTable is a table the document holds beside its drawing: an
+	// Apache Parquet file (docs/spec.md §4.6).
+	PartTable = "table"
 	// PartSeq is a Standard MIDI File that a view plays (docs/spec.md §4.4).
 	PartSeq = "seq"
 	// PartAudio is an audio file that a view plays, as it is (docs/spec.md
@@ -75,9 +78,50 @@ type Manifest struct {
 	Meta       Meta        `json:"meta,omitzero"`
 	// Segment, in a segment document, names the pages it carries
 	// (docs/spec.md §3.6).
-	Segment *Segment    `json:"segment,omitempty"`
-	Views   []*View     `json:"views,omitempty"`
-	Parts   []PartEntry `json:"parts"`
+	Segment *Segment `json:"segment,omitempty"`
+	Views   []*View  `json:"views,omitempty"`
+	// Tables are the tables the document holds beside its drawing
+	// (docs/spec.md §4.6).
+	Tables []*Table    `json:"tables,omitempty"`
+	Parts  []PartEntry `json:"parts"`
+}
+
+// Table is a table a document holds beside its drawing (docs/spec.md
+// §4.6): the data of a chart, the cells of a sheet, the rows of a CSV or
+// Parquet file, as an Apache Parquet file in a PartTable part.
+type Table struct {
+	// ID names the table in the document ("chart-1", "sheet1", "data").
+	ID    string `json:"id"`
+	Title string `json:"title,omitempty"`
+	// Part is the hash of the part that holds the Parquet file.
+	Part string `json:"part"`
+	// Rows is the count of rows, and Columns the columns, as the Parquet
+	// file's schema has them: a listing without decoding the file.
+	Rows    int64         `json:"rows"`
+	Columns []TableColumn `json:"columns"`
+	// View and Page tell where the figure the table is the data of is:
+	// the view's id and the page in it, from 1 (0 for a view without
+	// pages: the table of a sheet); "" when the table is not shown.
+	View string `json:"view,omitempty"`
+	Page int    `json:"page,omitempty"`
+}
+
+// TableColumn is a column of a table: its name, and its type ("string",
+// "number", "integer", "boolean", "date", "datetime" or "other";
+// encoding/parquet.Type).
+type TableColumn struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// Table returns the table with an id, or nil.
+func (m *Manifest) Table(id string) *Table {
+	for _, t := range m.Tables {
+		if t != nil && t.ID == id {
+			return t
+		}
+	}
+	return nil
 }
 
 // Meta holds document metadata.
@@ -203,6 +247,10 @@ const (
 	MinEntrySize = 1.0 / 64
 	// DefaultTile is the tile size of a sheet view that states none.
 	DefaultTile = 2048
+	// MaxTables bounds the tables of a document, and MaxTableColumns the
+	// columns of a table (docs/spec.md §4.6).
+	MaxTables       = 1 << 16
+	MaxTableColumns = 1 << 14
 )
 
 // TileSize returns the size of the tiles of a sheet view: Tile, or
@@ -263,6 +311,24 @@ func (m *Manifest) check() error {
 		if f := v.Freeze; f != nil && (f.Cols < 0 || f.Rows < 0) {
 			return &FormatError{Msg: fmt.Sprintf("view %s: bad frozen panes", v.ID)}
 		}
+	}
+	if len(m.Tables) > MaxTables {
+		return &FormatError{Msg: fmt.Sprintf("%d tables, more than %d", len(m.Tables), MaxTables)}
+	}
+	ids := make(map[string]bool, len(m.Tables))
+	for _, t := range m.Tables {
+		switch {
+		case t == nil:
+			return &FormatError{Msg: "null table"}
+		case t.ID == "" || ids[t.ID]:
+			return &FormatError{Msg: fmt.Sprintf("table %q: no id, or one of another table", t.ID)}
+		case t.Rows < 0 || len(t.Columns) > MaxTableColumns || t.Page < 0:
+			return &FormatError{Msg: fmt.Sprintf("table %s: numbers out of range", t.ID)}
+		}
+		if _, err := ParseHash(t.Part); err != nil {
+			return &FormatError{Msg: fmt.Sprintf("table %s: bad part %q", t.ID, t.Part)}
+		}
+		ids[t.ID] = true
 	}
 	return nil
 }

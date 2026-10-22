@@ -44,8 +44,8 @@ assert.deepEqual(modules.preview.formats, []);
 // (and the PDF converter: a PDF with form fields, and the base PDF of a template of pdfme)
 assert.deepEqual(modules.form.formats.map((f) => f.name), ["csv", "docx", "pdf", "pptx", "xlsx"]);
 // what each module does besides converting
-const calls = (m) => ["thumbnail", "text", "pdf", "fields", "fill"].filter((name) => typeof m[name] === "function");
-assert.deepEqual(calls(modules.preview), ["thumbnail", "text", "pdf"]);
+const calls = (m) => ["thumbnail", "text", "pdf", "markdown", "tables", "table", "fields", "fill"].filter((name) => typeof m[name] === "function");
+assert.deepEqual(calls(modules.preview), ["thumbnail", "text", "pdf", "markdown", "tables", "table"]);
 assert.deepEqual(calls(modules.form), ["pdf", "fields", "fill"]);
 assert.deepEqual(calls(modules.office), []);
 // the image module converts images and audio files (their covers and tags), neither needing fonts
@@ -173,6 +173,28 @@ try {
 } catch (e) {
   failed++;
   console.log(`FAIL synced.mp3 audio: ${e.message}`);
+}
+
+// the preview module writes a converted document as Markdown: the text, the images it refers to as files, a zip of
+// both, or the images embedded in the text
+try {
+  const sample = converted.find((c) => c.name.endsWith(".docx")) ?? converted[0];
+  const res = await modules.preview.markdown(sample.bdf, { name: "sample", zip: true });
+  const text = new TextDecoder().decode(res.markdown);
+  assert.match(text, /^---\n|^# /m, "a front matter or a heading");
+  assert.deepEqual([...res.zip.subarray(0, 2)], [0x50, 0x4b], "a zip file");
+  assert.ok(res.images.length > 0, "the sample has pictures");
+  for (const im of res.images) assert.ok(text.includes(`](${im.name})`), `${im.name} is referred to`);
+  const embedded = await modules.preview.markdown(sample.bdf, { images: "embed" });
+  assert.equal(embedded.images.length, 0);
+  assert.match(new TextDecoder().decode(embedded.markdown), /\]\(data:image\//);
+  assert.equal(embedded.zip, undefined);
+  const bare = await modules.preview.markdown(sample.bdf, { images: "none" });
+  assert.doesNotMatch(new TextDecoder().decode(bare.markdown), /!\[/);
+  console.log(`ok   ${sample.name}: Markdown of ${res.markdown.length} bytes, ${res.images.length} image(s), a zip of ${res.zip.length} bytes`);
+} catch (e) {
+  failed++;
+  console.log(`FAIL markdown: ${e.message}`);
 }
 
 /** What a PDF file says of itself: its pages, and the fonts embedded in it. */

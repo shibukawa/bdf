@@ -338,10 +338,11 @@ const (
 )
 
 type bullet struct {
-	text string
-	st   *runStyle
-	fc   *fontset.Choice
-	w    float64
+	text    string
+	st      *runStyle
+	fc      *fontset.Choice
+	w       float64
+	ordered bool // a number (buAutoNum), not a character
 }
 
 // paragraphs builds the paragraphs of a text body.
@@ -440,6 +441,9 @@ func (s *Drawing) paragraphs(tf *textFrame, fontScale, lnReduce float64) []*para
 				}
 				schemes[lvl] = scheme
 				pa.bullet = s.makeBullet(tf, pa, autoNumber(scheme, counters[lvl]), "", fontScale)
+				if pa.bullet != nil {
+					pa.bullet.ordered = true
+				}
 			} else {
 				counters[lvl], schemes[lvl] = 0, ""
 				if bu != nil && (bu.Name == "buChar" || bu.Name == "buBlip") {

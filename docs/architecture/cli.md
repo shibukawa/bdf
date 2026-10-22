@@ -11,6 +11,9 @@ bdf template schema [-json-schema] <template> [out.json]
                                    check a template and write it compiled; write what it asks of data
 bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                    write the pages as a PDF file (bdf pdf -h for flags)
+bdf markdown [flags] <file.bdf | dir> <outdir>
+                                   write the document as Markdown, with its images, in a directory
+                                   (bdf markdown -h for flags)
 bdf print [flags] -printer <url | name> <file.bdf | dir | input>
                                    print on an IPP printer or a CUPS queue, without a driver
                                    (-server: on a queue of a print server)
@@ -91,6 +94,35 @@ bdf pdf -pdfa 2a invoice.bdf invoice.pdf            # a PDF/A file (2b, 2u, 2a, 
 ```
 
 By default all the views of pages (`fixed`, `flow`) are written, and a document without pages becomes one page. `-font-dir` and `-no-system-fonts` say where the fonts the document refers to by name are looked for. `-ignore-fstype` embeds fonts of the system that do not allow it (only with the rights to; by default their text is drawn as outlines). `-no-compression` writes the streams as they are, to read them. An encrypted document needs `-allow-plaintext` (the PDF is not encrypted).
+
+## markdown
+
+Write the document as Markdown, in a directory: `<outdir>/<name>.md`, named after the input, with its images beside it as files named by their hashes. The structure the document's `MARK` instructions carry (headings, paragraphs, lists, tables with their header cells, figures with their alternative texts; [spec §7.8](../spec.md)) becomes the blocks of GitHub Flavored Markdown, bold and italic fonts become emphasis, monospaced fonts code (a run of lines of code becomes a fenced block), `LINK`s become links, and the Dublin Core metadata a YAML front matter.
+
+```sh
+bdf generate paper.pdf paper.bdf && bdf markdown paper.bdf paper/   # paper/paper.md and its images
+bdf markdown -view sheet1 book.bdf out/                            # choose views (repeatable)
+bdf markdown -keep-running report.bdf out/                         # keep running heads, feet and page numbers
+bdf markdown -skip none slides.bdf out/                            # keep the master, background, header and footer layers too
+bdf markdown -internal-links book.bdf out/                         # keep links into the document (#page=N)
+bdf markdown -tables files book.bdf out/                           # every table as a CSV file beside the text, sheets too
+```
+
+By default the scroll view is written when the document has one (Word, HTML, Markdown and EPUB documents: the same text laid out without pages, so nothing is split by a page), else every view, a sheet becoming one table under its name. The header, footer, master and background layers are left out (`-skip` chooses the roles; `-skip none` keeps them all), and so are the running heads, feet and page numbers that the pages of a PDF hold in their content: the short text at the same place in the top or bottom margin of two pages or more, and page numbers alone there (`-keep-running` keeps them). Links into the document itself have no target in Markdown, so their text stands alone unless `-internal-links` is given. A PDF without structure tags gets its paragraphs and headings guessed from the spacing and the fonts of its lines. Quotations, code and the kind of a list's markers come from the words of the marks ([spec §7.8](../spec.md)), which the Word, HTML, Markdown, EPUB, PowerPoint and tagged-PDF converters write; a document without them has its code guessed from monospaced fonts and its list markers from what was drawn. A figure with alternative text is written as that text (an image with it when it holds one), as it is read aloud: a chart's names its kind and its title, and the table of its data follows it (see `tables` below): inline, as a GitHub Flavored Markdown table of up to 100 rows, a longer one as a CSV file beside the text that the Markdown links to (`-tables files` writes every table that way, the tables of sheets too; `-tables none` writes none). Underlines and strikes are drawn, not marked, so they are not told apart. An encrypted document needs `-allow-plaintext` (the Markdown is plain text). From Go, `text/markdownbdf` does the same.
+
+## tables, table
+
+A document can hold tables of values beside its drawing ([spec §4.6](../spec.md)): the data of the charts of a PowerPoint, Excel or Word file, the rows of a CSV file, a Parquet file as it is, and the used range (`sheet1`, `sheet2` …, with the letters of the columns for names) and the tables (`table-1` …, with their header names) of each sheet of an Excel workbook. They are Apache Parquet parts, listed in the manifest with their columns and types (`string`, `number`, `integer`, `boolean`, `date`, `datetime`, `other`), their titles, and the view and page of the figure they belong to. `bdf tables` lists them; `bdf table` writes one as CSV, JSON or the Parquet part itself.
+
+```sh
+bdf tables deck.bdf                                # chart-1: 4 rows × 4 columns (slides, page 3) …
+bdf tables -json book.bdf                          # the tables member of the manifest
+bdf table deck.bdf chart-1                         # CSV to the standard output
+bdf table -format json -rows 10 book.bdf sheet1    # the first rows as JSON
+bdf table -format parquet book.bdf table-1 t.parquet   # the part as it is
+```
+
+The converters store the tables of Excel, CSV and Parquet files by default up to 1,048,576 rows and 64 MiB each (a range of Excel cells up to 16,777,216 cells); `-param data=all` lifts the limits and `-param data=none` stores none, which for a PowerPoint or Word file leaves out the tables of its charts (their figures then describe the values). An encrypted document needs `-allow-plaintext`. From Go, `Reader.Table` returns a table's entry and bytes and `encoding/parquet` reads and writes them; in the browser, the preview module's `tables` and `table` calls do the same.
 
 ## print, printers
 

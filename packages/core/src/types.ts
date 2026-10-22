@@ -14,6 +14,8 @@ export interface Manifest {
   segment?: Segment;
   views: View[];
   parts: PartEntry[];
+  /** The tables the document holds beside its drawing (spec §4.6). */
+  tables?: Table[];
 }
 
 /** Pages [from, to) of a view (0-based): those a segment document carries (spec §3.6). */
@@ -97,6 +99,30 @@ export interface DublinCore {
  * pages, stored as strips that are shown stacked (docs/spec.md §4.1).
  */
 export type ViewKind = "fixed" | "flow" | "sheet" | "scroll";
+
+/**
+ * A table a document holds beside its drawing (spec §4.6): the data of a
+ * chart, the cells of a sheet, the rows of a CSV or Parquet file, as an
+ * Apache Parquet file in a "table" part.
+ */
+export interface Table {
+  /** The table's id in the document ("chart-1", "sheet1", "data"). */
+  id: string;
+  title?: string;
+  /** The "table" part: the Parquet file. */
+  part: Hash;
+  rows: number;
+  /** The columns, as the file's schema has them. */
+  columns: TableColumn[];
+  /** The view, and the page in it (from 1; 0 for a sheet), of the figure the table is the data of. */
+  view?: string;
+  page?: number;
+}
+
+export interface TableColumn {
+  name: string;
+  type: "string" | "number" | "integer" | "boolean" | "date" | "datetime" | "other";
+}
 
 export interface View {
   id: string;
