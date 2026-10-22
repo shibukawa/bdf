@@ -227,3 +227,31 @@ func TestPartialContract(t *testing.T) {
 		t.Errorf("the completed contract:\n%s", got)
 	}
 }
+
+// TestPictureSVG fills the pictures of the Office templates with an SVG
+// image, as the signature pad of the form page makes.
+func TestPictureSVG(t *testing.T) {
+	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 120" width="360" height="120"><path d="M10 100 L180 20 L350 100" fill="none" stroke="#000" stroke-width="4"/></svg>`
+	for _, file := range []string{"xlsx/testdata/form-fixed.xlsx", "docx/testdata/form-fixed.docx", "pptx/testdata/form-fixed.pptx"} {
+		tpl, err := os.ReadFile("../converter/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data := loadJSON(t, "form-fixed")
+		data["photo"] = "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(svg))
+		res, err := Fill(bytes.NewReader(tpl), int64(len(tpl)), &Options{Data: data, Convert: testConvert()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, w := range res.Warnings {
+			t.Errorf("%s: warning: %s", file, w)
+		}
+		found := false
+		for _, p := range res.Doc.Parts() {
+			found = found || p.Type == "img" && bytes.Equal(p.Data, []byte(svg))
+		}
+		if !found {
+			t.Errorf("%s: the SVG picture is not in the form", file)
+		}
+	}
+}
