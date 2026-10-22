@@ -274,8 +274,8 @@ dialog.password .buttons { display: flex; justify-content: flex-end; gap: .5rem;
 .tool details.how summary { cursor: pointer; font-weight: 600; }
 .tool details.how pre:first-of-type { margin-top: .75rem; }
 .fields .props { display: grid; gap: .6rem; }
-.fields label.field { display: grid; gap: .15rem; }
-.fields label.field > span, .fields label.check > span { font-size: .875rem; font-weight: 600; }
+.fields label.field, .fields div.field { display: grid; gap: .15rem; }
+.fields label.field > span, .fields div.field > span, .fields label.check > span { font-size: .875rem; font-weight: 600; }
 .fields label.check { display: flex; gap: .5rem; align-items: center; }
 .fields small { color: var(--muted); font-weight: 400; }
 .fields input:not([type="checkbox"]), .fields textarea, .fields select { width: 100%; min-width: 0; padding: .3rem .5rem; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: .9375rem; line-height: 1.4; }
@@ -291,6 +291,13 @@ dialog.password .buttons { display: flex; justify-content: flex-end; gap: .5rem;
 .fields td input:not([type="checkbox"]) { min-width: 4.5rem; padding: .2rem .4rem; }
 .fields td:last-child { width: 1.75rem; padding-right: 0; }
 .fields .picture { display: flex; gap: .4rem; }
+.fields .signature { display: flex; gap: .4rem; align-items: end; }
+.fields .signature canvas { width: min(100%, 360px); aspect-ratio: 3; background: #fff; border: 1px dashed var(--border); border-radius: 6px; touch-action: none; cursor: crosshair; color-scheme: light; }
+.fields .seal { align-items: center; }
+.fields .seal img { width: 4rem; height: 4rem; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 6px; }
+.fields .handon { background: var(--subtle); }
+.fields .handon .note { margin: 0 0 .4rem; }
+.fields .note.partial { margin: 0; padding: .5rem .75rem; background: var(--subtle); border-radius: 6px; }
 .fields button { padding: .2rem .7rem; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: .875rem; cursor: pointer; white-space: nowrap; }
 .fields button:hover:not(:disabled) { border-color: var(--muted); }
 .fields button:disabled { opacity: .5; cursor: default; }

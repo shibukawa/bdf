@@ -462,7 +462,7 @@ func (f *filler) scanDeep(n *ooxml.Node, loc tplLoc) error {
 			}
 			pt.alt = strings.TrimSpace(pt.alt)
 			f.pics[n] = pt
-			f.use(tag.Field{Name: pt.tok.Name, Kind: tag.FieldImage, Code: pt.tok.Code}, loc, nil)
+			f.use(tag.Field{Name: pt.tok.Name, Kind: tag.FieldImage, Code: pt.tok.Code, Input: pt.tok.Input}, loc, nil)
 			break
 		}
 	}
@@ -857,6 +857,9 @@ func (f *filler) fieldList() []tag.Field {
 			o := &out[i]
 			if o.Format == "" {
 				o.Format = fd.Format
+			}
+			if o.Input == "" {
+				o.Input = fd.Input
 			}
 			if o.Mode == "" {
 				o.Mode, o.Slots = fd.Mode, fd.Slots
@@ -1429,7 +1432,7 @@ func (f *filler) fillPicture(drawing *ooxml.Node, pt picTag, sc *tag.Scope) (*oo
 			if data, err := tag.PictureData(f.files, name); err != nil {
 				in.why = "is not read: " + err.Error()
 			} else if in.rid, in.w, in.h, in.ok = f.c.r.InjectImage(data); !in.ok {
-				in.why = "is not a PNG, JPEG, GIF, BMP or WebP image"
+				in.why = "is not a PNG, JPEG, GIF, BMP, WebP or SVG image"
 			}
 			f.loaded[name] = in
 		}

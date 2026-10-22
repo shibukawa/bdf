@@ -46,6 +46,7 @@ type para struct {
 	anchors   []*floatObj
 	bookmarks []string
 	heading   int      // 1-6 for headings
+	role      string   // "quote" or "code", from the names of its styles (docs/spec.md §7.8)
 	ctx       []*frame // structure it is in (tables, lists, text boxes)
 	sect      *section // the section this paragraph ends, if any
 	hasText   bool
@@ -371,7 +372,7 @@ func (w *walker) listCtx(p *para, listed bool) []*frame {
 			w.lists = w.lists[:n-1]
 		}
 		if n := len(w.lists); n == 0 || w.lists[n-1].lvl < lvl {
-			w.lists = append(w.lists, openList{lvl: lvl, numID: p.pp.numID, list: &frame{kind: fList}})
+			w.lists = append(w.lists, openList{lvl: lvl, numID: p.pp.numID, list: &frame{kind: fList, payload: listKind(w.c.num.level(p.pp.numID, lvl))}})
 		}
 		w.lists[len(w.lists)-1].item = &frame{kind: fItem}
 	case p.hasText:
@@ -391,7 +392,7 @@ func (w *walker) paragraph(n *ooxml.Node) *para {
 	c := w.c
 	pPr := n.Child("pPr")
 	styleID := c.st.paraStyle(val(pPr.Child("pStyle")))
-	p := &para{part: w.part, style: styleID}
+	p := &para{part: w.part, style: styleID, role: c.st.paraRole(styleID)}
 	p.pp = c.paraProps(styleID, w.tl, pPr)
 	p.mark = c.runStyle(c.runProps(styleID, "", w.tl, pPr.Child("rPr")), "", w.dark)
 	p.markFace = c.face(p.mark, 'x')
@@ -960,4 +961,16 @@ func allowedNoKinsoku(a, b rune) bool {
 		return false
 	}
 	return fontdb.IsCJK(a) || fontdb.IsCJK(b)
+}
+
+// listKind is the payload of a LIST mark for a level of numbering: the
+// kind of the markers of its items (docs/spec.md §7.8).
+func listKind(l *numLevel) string {
+	switch {
+	case l == nil || l.format == "none":
+		return ""
+	case l.format == "bullet":
+		return "bullet"
+	}
+	return "ordered"
 }

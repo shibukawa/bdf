@@ -12,6 +12,7 @@ import (
 	"image"
 	"io/fs"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -335,4 +336,58 @@ func (l *Layer) Stroke(p *bdf.Path, width float64, c bdf.Color, round bool) {
 	o.StrokeColor(c).Line(float32(width), lineCap, join, 10).Dash(nil, 0)
 	o.StrokePath(o.AddPath(p))
 	l.cv.Drawn = true
+}
+
+// SVGSize reads the size of an SVG image: of its viewBox, or its width
+// and height (0 × 0 for one that says neither).
+func SVGSize(data []byte) (w, h float64) {
+	i := bytes.Index(data, []byte("<svg"))
+	if i < 0 {
+		return 0, 0
+	}
+	tagEnd := bytes.IndexByte(data[i:], '>')
+	if tagEnd < 0 {
+		return 0, 0
+	}
+	head := string(data[i : i+tagEnd])
+	attr := func(name string) string {
+		for rest := head; ; {
+			j := strings.Index(rest, name+"=")
+			if j < 0 {
+				return ""
+			}
+			before := byte(' ')
+			if j > 0 {
+				before = rest[j-1]
+			}
+			rest = rest[j+len(name)+1:]
+			if before != ' ' && before != '\t' && before != '\n' && before != '\r' || rest == "" {
+				continue
+			}
+			if q := rest[0]; q == '"' || q == '\'' {
+				if e := strings.IndexByte(rest[1:], q); e >= 0 {
+					return rest[1 : 1+e]
+				}
+			}
+			return ""
+		}
+	}
+	num := func(s string) float64 {
+		s = strings.TrimSpace(s)
+		end := 0
+		for end < len(s) && (s[end] >= '0' && s[end] <= '9' || s[end] == '.' || s[end] == '-' || s[end] == '+' || s[end] == 'e') {
+			end++
+		}
+		v, _ := strconv.ParseFloat(s[:end], 64)
+		return v
+	}
+	if vb := strings.FieldsFunc(attr("viewBox"), func(r rune) bool { return r == ' ' || r == ',' || r == '\t' || r == '\n' }); len(vb) == 4 {
+		if w, h = num(vb[2]), num(vb[3]); w > 0 && h > 0 {
+			return w, h
+		}
+	}
+	if w, h = num(attr("width")), num(attr("height")); w > 0 && h > 0 {
+		return w, h
+	}
+	return 0, 0
 }

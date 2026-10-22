@@ -68,7 +68,7 @@ func convertDOCX(r io.ReaderAt, size int64, opts *Options, fill *filler) (res *R
 	}
 	p.Supported = func(prefix string) bool { return supported[prefix] }
 	c.pkg = p
-	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, Warn: c.warn})
+	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, NoTables: opts.Data == "none", Warn: c.warn})
 	c.checkFonts()
 	c.main = "word/document.xml"
 	if rel, ok := p.RelOfType("", "/officeDocument"); ok {
@@ -79,6 +79,7 @@ func convertDOCX(r io.ReaderAt, size int64, opts *Options, fill *filler) (res *R
 		return nil, fmt.Errorf("docx: %w", err)
 	}
 	c.dr = c.r.NewDrawing(c.main, nil, c)
+	c.r.SetPlace("pages", 0)
 	c.loadSettings()
 	c.loadStyles()
 	c.baseSize = c.runProps(c.st.defPara, "", nil).sz

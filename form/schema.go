@@ -17,7 +17,8 @@ const SchemaDialect = "https://json-schema.org/draft/2020-12/schema"
 // SchemaKeyword is the keyword of the schemas of Schema that holds what a
 // template says of a name: the kind of its tags ("value", "section" or
 // "image"), their number format, how a section repeats ("mode", and
-// "slots"), the symbology of a code ("code"), where the tags are ("at"),
+// "slots"), the symbology of a code ("code"), what a person gives for a
+// picture ("input": "signature" or "seal"), where the tags are ("at"),
 // what a person is shown for the values of a choice ("labels"), and that a
 // text may have several lines ("multiline").
 const SchemaKeyword = "x-bdf"
@@ -59,6 +60,33 @@ const (
 // Nothing is required: a tag whose name the data lacks is left empty.
 // Construction is limited to 65,536 fields and nodes, nested at most 256 levels.
 func Schema(fields []tag.Field, sample map[string]any) ([]byte, error) {
+	root, err := schemaTree(fields, sample)
+	if err != nil {
+		return nil, err
+	}
+	return writeSchema(root.object())
+}
+
+// writeSchema writes the schema of the object of the data.
+func writeSchema(out *ordered) ([]byte, error) {
+	doc := &ordered{}
+	doc.set("$schema", SchemaDialect)
+	for i, k := range out.keys {
+		doc.set(k, out.vals[i])
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(doc); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// schemaTree places the fields of a template in the tree of the names of
+// its data.
+func schemaTree(fields []tag.Field, sample map[string]any) (*schemaNode, error) {
 	if len(fields) > maxSchemaNodes {
 		return nil, fmt.Errorf("form: the schema has more than %d fields", maxSchemaNodes)
 	}
@@ -87,20 +115,7 @@ func Schema(fields []tag.Field, sample map[string]any) ([]byte, error) {
 			return nil, err
 		}
 	}
-	out := root.object()
-	doc := &ordered{}
-	doc.set("$schema", SchemaDialect)
-	for i, k := range out.keys {
-		doc.set(k, out.vals[i])
-	}
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(doc); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return root, nil
 }
 
 // SchemaOf returns the JSON Schema of the data of a template. A compiled
@@ -152,6 +167,7 @@ type schemaNode struct {
 	self     bool
 	inverted bool
 	code     string
+	input    string
 	format   string
 	mode     string
 	slots    int
@@ -290,6 +306,9 @@ func (n *schemaNode) place(fd tag.Field, in []string, field int) error {
 		if leaf.code == "" {
 			leaf.code = fd.Code
 		}
+		if leaf.input == "" {
+			leaf.input = fd.Input
+		}
 	default:
 		leaf.value = true
 		if leaf.format == "" {
@@ -390,7 +409,17 @@ func (n *schemaNode) schema() *ordered {
 		o = &ordered{}
 		o.set("type", "string")
 		o.set("format", "uri-reference")
-		o.set("description", "A picture: the path of a file, or a data: URL.")
+		switch n.input {
+		case tag.InputSignature:
+			o.set("description", "A signature that a person draws: a picture, the path of a file or a data: URL.")
+		case tag.InputSeal:
+			o.set("description", "The picture of a seal: the path of a file, or a data: URL.")
+		default:
+			o.set("description", "A picture: the path of a file, or a data: URL.")
+		}
+		if n.input != "" {
+			info.set("input", n.input)
+		}
 	case n.code != "":
 		o = &ordered{}
 		o.set("type", "string")

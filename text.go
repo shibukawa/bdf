@@ -1,6 +1,11 @@
 package bdf
 
-import "math"
+import (
+	"fmt"
+	"math"
+	"strconv"
+	"strings"
+)
 
 // MARK kinds (docs/spec.md §7.8).
 const (
@@ -18,6 +23,7 @@ const (
 	MarkEnd       byte = 11 // closes the innermost list, table or figure
 	MarkLang      byte = 12 // payload: BCP 47 language of the runs that follow ("" = document default)
 	MarkBarcode   byte = 13 // payload: JSON of the symbol the next drawing draws (image/barcode.Mark)
+	MarkData      byte = 14 // payload: the id of the table (docs/spec.md §4.6) the open figure is the data of
 )
 
 // Separators between consecutive text runs (docs/spec.md §7.9).
@@ -40,6 +46,158 @@ type TextRun struct {
 	Sep     byte // separator from the previous run, from MARKs or position heuristics
 	Ordinal int  // position in the extraction order of the top-level object
 	AltText bool
+	Node    int    // index of the structure node the run belongs to (TextContent.Nodes)
+	Lang    string // BCP 47 language set by a LANG mark; "" for the document's default
+}
+
+// NodeKind is the kind of a structure node (docs/spec.md §7.8). Leaves
+// (paragraph, heading, caption, a cell outside a table) hold runs;
+// containers (list, item, table, a cell inside a table, figure) hold nodes.
+type NodeKind byte
+
+// Kinds of structure nodes.
+const (
+	NodeParagraph NodeKind = iota
+	NodeHeading
+	NodeCaption
+	NodeList
+	NodeItem
+	NodeTable
+	NodeCell
+	NodeFigure
+)
+
+var nodeKindNames = [...]string{"paragraph", "heading", "caption", "list", "item", "table", "cell", "figure"}
+
+func (k NodeKind) String() string {
+	if int(k) < len(nodeKindNames) {
+		return nodeKindNames[k]
+	}
+	return fmt.Sprintf("node(%d)", byte(k))
+}
+
+// TextNode is a node of the structure of an object: what its MARKs say the
+// text is (docs/spec.md §7.8). Nodes point at their parent by index.
+type TextNode struct {
+	Kind   NodeKind
+	Parent int // index of the enclosing node, -1 at the top level
+	// Level is the level of a heading, 1 to 6, or 0 when the payload is
+	// not a level.
+	Level int
+	// Cell is the place of a cell: relative to its table inside a TABLE,
+	// that of the sheet outside one. Nil when the payload is not a
+	// reference.
+	Cell *CellRef
+	// Alt is the alternative text of a figure ("" when it is decorative).
+	Alt string
+	// Data is the id of the table a figure is the data of (its DATA mark;
+	// docs/spec.md §4.6), "" when it has none.
+	Data string
+	// Code says a paragraph is a line of code (the word "code" of its
+	// payload; docs/spec.md §7.8).
+	Code bool
+	// Quote is how deep in quotations a paragraph or a list is: the count
+	// of the word "quote" in its payload.
+	Quote int
+	// List is the kind of the markers of a list's items: "bullet",
+	// "ordered", or "" when the payload does not say.
+	List string
+}
+
+// words reads the payload of a PARAGRAPH, BOX or LIST mark into a node:
+// the words it knows (docs/spec.md §7.8), the others ignored.
+func (n *TextNode) words(payload string) {
+	for _, w := range strings.Fields(payload) {
+		switch w {
+		case "code":
+			n.Code = true
+		case "quote":
+			n.Quote++
+		case "bullet", "ordered":
+			n.List = w
+		}
+	}
+}
+
+// CellRef is the payload of a CELL mark: a reference or a range, of a
+// header cell or not ("B2", "A4:B4 col").
+type CellRef struct {
+	Row, Col   int    // of the top-left cell, from 0
+	Rows, Cols int    // the cells spanned, 1 or more
+	Scope      string // "col" (a column header), "row" (a row header) or ""
+}
+
+// ParseCellRef reads the payload of a CELL mark.
+func ParseCellRef(payload string) (CellRef, bool) {
+	s := strings.TrimSpace(payload)
+	scope := ""
+	if i := strings.LastIndexAny(s, " \t"); i >= 0 {
+		switch tail := s[i+1:]; tail {
+		case "col", "row":
+			scope, s = tail, strings.TrimSpace(s[:i])
+		default:
+			return CellRef{}, false
+		}
+	}
+	one := func(s string) (row, col int, ok bool) {
+		i := 0
+		for i < len(s) && (s[i] >= 'A' && s[i] <= 'Z' || s[i] >= 'a' && s[i] <= 'z') {
+			col = col*26 + int(s[i]|0x20-'a') + 1
+			if i++; i > 4 {
+				return 0, 0, false
+			}
+		}
+		if i == 0 || i == len(s) || len(s)-i > 8 {
+			return 0, 0, false
+		}
+		n, err := strconv.Atoi(s[i:])
+		if err != nil || n < 1 {
+			return 0, 0, false
+		}
+		return n - 1, col - 1, true
+	}
+	a, b, isRange := strings.Cut(s, ":")
+	r0, c0, ok := one(a)
+	if !ok {
+		return CellRef{}, false
+	}
+	out := CellRef{Row: r0, Col: c0, Rows: 1, Cols: 1, Scope: scope}
+	if isRange {
+		r1, c1, ok := one(b)
+		if !ok {
+			return CellRef{}, false
+		}
+		out.Rows, out.Cols = max(1, r1-r0+1), max(1, c1-c0+1)
+	}
+	return out, true
+}
+
+// TextLink is a LINK: the bounding box of its rectangle in the extraction
+// space, and where it came in the text.
+type TextLink struct {
+	X, Y, W, H float32
+	URL        string
+	After      int // index of the last run before the LINK (-1 before the first)
+	Node       int // the leaf, else the container, open at the LINK (-1 at the top level)
+}
+
+// TextImage is an IMAGE or IMAGE_SUB: the part it draws, the bounding box
+// it is drawn in, and where it came in the text.
+type TextImage struct {
+	Hash       Hash
+	X, Y, W, H float32
+	After      int // index of the last run before the image (-1 before the first)
+	Node       int // the leaf, else the container, open at the image (-1 at the top level)
+	Before     int // index of the first node made after the image (len(Nodes) at the image)
+}
+
+// TextContent is the text of an object with its structure: the runs, the
+// nodes they belong to, the links and the images, in walk order.
+type TextContent struct {
+	Runs   []TextRun
+	Nodes  []TextNode
+	Links  []TextLink
+	Images []TextImage
 }
 
 type matrix [6]float32
@@ -111,6 +269,154 @@ type textExtractor struct {
 	alt     *string // ALT_TEXT waiting for the drawing op it describes
 	limits  *useLimits
 	depth   int // of the object being walked: 0 is the top-level one
+
+	// the structure (docs/spec.md §7.8), which runs on through USE in
+	// walk order
+	nodes    []TextNode
+	open     []int     // open containers, outermost first
+	leaf     int       // the leaf the next run joins (-1: start one)
+	reserved *TextNode // the leaf a leaf MARK reserved for the next run
+	lang     string
+	links    []TextLink
+	images   []TextImage
+}
+
+func (t *textExtractor) top() int {
+	if n := len(t.open); n > 0 {
+		return t.open[n-1]
+	}
+	return -1
+}
+
+func (t *textExtractor) topKind() (NodeKind, bool) {
+	if i := t.top(); i >= 0 {
+		return t.nodes[i].Kind, true
+	}
+	return 0, false
+}
+
+func (t *textExtractor) topIs(k NodeKind) bool {
+	got, ok := t.topKind()
+	return ok && got == k
+}
+
+// here is the node that what comes next is in: the leaf, else the
+// innermost container, else -1.
+func (t *textExtractor) here() int {
+	if t.leaf >= 0 && t.reserved == nil {
+		return t.leaf
+	}
+	return t.top()
+}
+
+func (t *textExtractor) add(n TextNode) int {
+	n.Parent = t.top()
+	t.nodes = append(t.nodes, n)
+	return len(t.nodes) - 1
+}
+
+// leafNode is the leaf of the next run: the one the last leaf MARK
+// reserved, or an implicit one (text right in a list is an item of it,
+// right in a table its caption).
+func (t *textExtractor) leafNode() int {
+	if t.leaf >= 0 && t.reserved == nil {
+		return t.leaf
+	}
+	r := t.reserved
+	t.reserved = nil
+	if t.topIs(NodeList) {
+		t.openNode(TextNode{Kind: NodeItem})
+	}
+	switch {
+	case t.topIs(NodeTable):
+		t.leaf = t.add(TextNode{Kind: NodeCaption})
+	case r != nil:
+		t.leaf = t.add(*r)
+	default:
+		t.leaf = t.add(TextNode{Kind: NodeParagraph})
+	}
+	return t.leaf
+}
+
+func (t *textExtractor) openNode(n TextNode) {
+	t.open = append(t.open, t.add(n))
+	t.leaf, t.reserved = -1, nil
+}
+
+func (t *textExtractor) closeTop() {
+	if n := len(t.open); n > 0 {
+		t.open = t.open[:n-1]
+	}
+	t.leaf, t.reserved = -1, nil
+}
+
+// structure applies a structure MARK (docs/spec.md §7.8): a leaf MARK
+// reserves the kind of the next run's leaf, a container MARK opens or
+// closes a container.
+func (t *textExtractor) structure(kind byte, payload string) {
+	switch kind {
+	case MarkParagraph, MarkBox:
+		n := &TextNode{Kind: NodeParagraph}
+		n.words(payload)
+		t.reserved = n
+	case MarkHeading:
+		n := &TextNode{Kind: NodeHeading}
+		if f := strings.Fields(payload); len(f) > 0 {
+			if l, err := strconv.Atoi(f[0]); err == nil && l >= 1 && l <= 6 {
+				n.Level = l
+			}
+		}
+		t.reserved = n
+	case MarkList:
+		n := TextNode{Kind: NodeList}
+		n.words(payload)
+		t.openNode(n)
+	case MarkListItem:
+		if t.topIs(NodeItem) {
+			t.closeTop()
+		}
+		if t.topIs(NodeList) {
+			t.openNode(TextNode{Kind: NodeItem})
+		} else {
+			t.reserved = &TextNode{Kind: NodeParagraph}
+		}
+	case MarkTable:
+		t.openNode(TextNode{Kind: NodeTable})
+	case MarkCell:
+		var ref *CellRef
+		if c, ok := ParseCellRef(payload); ok {
+			ref = &c
+		}
+		if t.topIs(NodeCell) {
+			t.closeTop()
+		}
+		if t.topIs(NodeTable) {
+			t.openNode(TextNode{Kind: NodeCell, Cell: ref})
+		} else {
+			t.reserved = &TextNode{Kind: NodeCell, Cell: ref}
+		}
+	case MarkFigure:
+		t.openNode(TextNode{Kind: NodeFigure, Alt: payload})
+	case MarkEnd:
+		if t.topIs(NodeItem) || t.topIs(NodeCell) {
+			t.closeTop()
+		}
+		if len(t.open) > 0 {
+			t.closeTop()
+		}
+	}
+}
+
+// box is the bounding box of a rectangle moved by m.
+func box(m matrix, x, y, w, h float32) (bx, by, bw, bh float32) {
+	x0, y0 := float32(math.Inf(1)), float32(math.Inf(1))
+	x1, y1 := float32(math.Inf(-1)), float32(math.Inf(-1))
+	for _, p := range [4][2]float32{{x, y}, {x + w, y}, {x, y + h}, {x + w, y + h}} {
+		tx := m[0]*p[0] + m[2]*p[1] + m[4]
+		ty := m[1]*p[0] + m[3]*p[1] + m[5]
+		x0, y0, x1, y1 = min(x0, tx), min(y0, ty), max(x1, tx), max(y1, ty)
+	}
+	return x0, y0, x1 - x0, y1 - y0
 }
 
 // child returns the child object an instruction draws, nil for one that is
@@ -192,6 +498,17 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix, reused bool) error {
 			case MarkParagraph, MarkCell, MarkBox, MarkHeading, MarkList, MarkListItem, MarkTable, MarkFigure, MarkEnd:
 				t.flushAlt(st)
 				t.mark(SepBreak)
+				t.structure(kind, payload)
+			case MarkLang:
+				t.lang = payload
+			case MarkData:
+				// the table of the innermost open figure
+				for i := len(t.open) - 1; i >= 0; i-- {
+					if n := &t.nodes[t.open[i]]; n.Kind == NodeFigure {
+						n.Data = payload
+						break
+					}
+				}
 			case MarkWrap:
 				t.flushAlt(st)
 				t.mark(SepNone)
@@ -200,8 +517,8 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix, reused bool) error {
 				p := payload
 				t.alt = &p
 			}
-			// MarkLang and unknown kinds leave the separator to the next MARK
-			// or to the position guess.
+			// LANG and unknown kinds leave the separator to the next MARK or
+			// to the position guess.
 		case OpFillText, OpStrokeText:
 			if t.alt != nil {
 				// The drawing op right after ALT_TEXT renders that text.
@@ -224,6 +541,20 @@ func (t *textExtractor) walk(o *ObjectPart, m matrix, reused bool) error {
 				}
 				t.alt = nil
 			}
+		case OpLink:
+			x, y, w, h := box(st.m, f(in, 0), f(in, 1), f(in, 2), f(in, 3))
+			t.links = append(t.links, TextLink{X: x, Y: y, W: w, H: h, URL: in.Args[4].(string), After: len(t.runs) - 1, Node: t.here()})
+		case OpImage, OpImageSub:
+			i := in.Args[0].(uint64)
+			if i >= uint64(len(o.Images)) {
+				return
+			}
+			at := 1 // the destination rectangle
+			if in.Op == OpImageSub {
+				at = 5
+			}
+			x, y, w, h := box(st.m, f(in, at), f(in, at+1), f(in, at+2), f(in, at+3))
+			t.images = append(t.images, TextImage{Hash: o.Images[i], X: x, Y: y, W: w, H: h, After: len(t.runs) - 1, Node: t.here(), Before: len(t.nodes)})
 		case OpUse, OpUseAt:
 			if t.alt != nil {
 				x, y := float32(0), float32(0)
@@ -271,6 +602,7 @@ var textOps = [256]bool{
 	OpSave: true, OpRestore: true, OpTransform: true, OpTranslate: true, OpScale: true,
 	OpFont: true, OpTextStyle: true, OpFillText: true, OpStrokeText: true,
 	OpUse: true, OpUseAt: true, OpMaskBegin: true, OpMaskEnd: true, OpMark: true,
+	OpLink: true, OpImage: true, OpImageSub: true,
 }
 
 // flushAlt emits an ALT_TEXT that no drawing op consumed, without a position.
@@ -304,6 +636,7 @@ func (t *textExtractor) emit(text string, x, y, advance float32, st textState, a
 		t.limits.fail("too many text runs")
 		return
 	}
+	run.Node, run.Lang = t.leafNode(), t.lang
 	t.runs = append(t.runs, run)
 }
 
@@ -334,11 +667,25 @@ func ExtractText(o *ObjectPart, resolve func(Hash) *ObjectPart) ([]TextRun, erro
 	return extractText(o, resolve, &useLimits{})
 }
 
+// ExtractContent returns the runs of an object together with its structure
+// (headings, lists, tables, figures: the MARKs of docs/spec.md §7.8), its
+// links and its images, for text layers and for writing the document as
+// text. The runs are the same as ExtractText's, and so are the limits.
+func ExtractContent(o *ObjectPart, resolve func(Hash) *ObjectPart) (*TextContent, error) {
+	t, err := extract(o, resolve, &useLimits{})
+	return &TextContent{Runs: t.runs, Nodes: t.nodes, Links: t.links, Images: t.images}, err
+}
+
 // extractText is ExtractText with limits that count across the top-level
 // objects of a document.
 func extractText(o *ObjectPart, resolve func(Hash) *ObjectPart, limits *useLimits) ([]TextRun, error) {
-	t := &textExtractor{resolve: resolve, limits: limits}
+	t, err := extract(o, resolve, limits)
+	return t.runs, err
+}
+
+func extract(o *ObjectPart, resolve func(Hash) *ObjectPart, limits *useLimits) (*textExtractor, error) {
+	t := &textExtractor{resolve: resolve, limits: limits, leaf: -1}
 	err := t.walk(o, matrix{1, 0, 0, 1, 0, 0}, false)
 	t.flushAlt(textState{m: matrix{1, 0, 0, 1, 0, 0}, size: 10})
-	return t.runs, err
+	return t, err
 }

@@ -14,10 +14,14 @@ package csv
 
 import (
 	"fmt"
+	parquetenc "github.com/shibukawa/bdf/encoding/parquet"
 	"io"
 	"io/fs"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/shibukawa/bdf"
@@ -80,6 +84,10 @@ type Options struct {
 	IgnoreFSType bool
 	// NoTextIndex skips building the text index part.
 	NoTextIndex bool
+	// Data says whether the values are stored as a table the document
+	// holds beside the sheet (docs/spec.md §4.6): "" within the limits,
+	// "all" whatever their size, "none" not at all.
+	Data string
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
@@ -217,6 +225,11 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("csv: %s", strings.TrimPrefix(err.Error(), "xlsx: "))
 	}
+	if opts.Data != "none" {
+		if tb := valuesTable(rows, res.Header); tb != nil {
+			storeTable(xr.Doc, tb, opts.Name, opts.Data, warn)
+		}
+	}
 	xr.Doc.Meta.Source = "csv"
 	res.Doc, res.EmbeddedFonts = xr.Doc, xr.EmbeddedFonts
 	res.Warnings = append(warnings, xr.Warnings...)
@@ -300,5 +313,178 @@ func codeColumns(rows [][]xlsx.GridCell, first, rest []digitStat, header bool) {
 				cells[j].Number = false
 			}
 		}
+	}
+}
+
+// valuesTable is the values of the records as a table the document holds
+// (docs/spec.md §4.6): the first record names the columns when it is a
+// header, else they are C1, C2, …; a column is of the type of all its
+// values (integers, numbers, dates, times or booleans; text otherwise).
+func valuesTable(rows [][]xlsx.GridCell, header bool) *parquetenc.Table {
+	cols := 0
+	for _, r := range rows {
+		cols = max(cols, len(r))
+	}
+	if cols == 0 {
+		return nil
+	}
+	t := &parquetenc.Table{Columns: make([]parquetenc.Column, cols)}
+	names := map[string]bool{}
+	for j := range cols {
+		name := ""
+		if header && j < len(rows[0]) {
+			name = strings.TrimSpace(rows[0][j].Text)
+		}
+		if name == "" {
+			name = fmt.Sprintf("C%d", j+1)
+		}
+		for k := 2; names[name]; k++ {
+			name = fmt.Sprintf("%s (%d)", strings.TrimSpace(rows[0][j].Text), k)
+		}
+		names[name] = true
+		t.Columns[j].Name = name
+	}
+	data := rows
+	if header {
+		data = rows[1:]
+	}
+	for j := range cols {
+		t.Columns[j].Type = columnType(data, j)
+	}
+	t.Rows = make([][]any, len(data))
+	for i, r := range data {
+		row := make([]any, cols)
+		for j := range cols {
+			if j < len(r) {
+				row[j] = typedValue(t.Columns[j].Type, r[j].Text)
+			}
+		}
+		t.Rows[i] = row
+	}
+	return t
+}
+
+// columnType is the type of a column: that of all its values that are
+// not empty (numbers of integers and others are numbers), else text.
+func columnType(rows [][]xlsx.GridCell, j int) parquetenc.Type {
+	typ := parquetenc.Other
+	for _, r := range rows {
+		if j >= len(r) {
+			continue
+		}
+		v := strings.TrimSpace(r[j].Text)
+		if v == "" {
+			continue
+		}
+		k := valueType(v)
+		switch {
+		case typ == parquetenc.Other:
+			typ = k
+		case typ == k:
+		case typ == parquetenc.Integer && k == parquetenc.Number, typ == parquetenc.Number && k == parquetenc.Integer:
+			typ = parquetenc.Number
+		default:
+			return parquetenc.String
+		}
+	}
+	if typ == parquetenc.Other {
+		return parquetenc.String
+	}
+	return typ
+}
+
+var (
+	intRe      = regexp.MustCompile(`^[+-]?(0|[1-9][0-9]{0,17})$`)
+	numRe      = regexp.MustCompile(`^[+-]?((0|[1-9][0-9]*)(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?$`)
+	dateRe     = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
+	dateTimeRe = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2}(\.[0-9]+)?)?(Z|[+-][0-9]{2}:?[0-9]{2})?$`)
+)
+
+// valueType is the type a value (trimmed, not empty) reads as.
+func valueType(v string) parquetenc.Type {
+	switch {
+	case intRe.MatchString(v):
+		return parquetenc.Integer
+	case numRe.MatchString(v):
+		return parquetenc.Number
+	case dateRe.MatchString(v):
+		if _, err := time.Parse("2006-01-02", v); err == nil {
+			return parquetenc.Date
+		}
+	case dateTimeRe.MatchString(v):
+		if _, ok := parseDateTime(v); ok {
+			return parquetenc.DateTime
+		}
+	}
+	switch strings.ToLower(v) {
+	case "true", "false":
+		return parquetenc.Boolean
+	}
+	return parquetenc.String
+}
+
+func parseDateTime(v string) (time.Time, bool) {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05Z0700", "2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04:05Z07:00", "2006-01-02 15:04:05", "2006-01-02 15:04"} {
+		if t, err := time.Parse(layout, v); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
+}
+
+// typedValue reads a value as its column's type; "" is a null, and what
+// does not read as the type is kept as text in a column of text.
+func typedValue(typ parquetenc.Type, text string) any {
+	v := strings.TrimSpace(text)
+	if v == "" {
+		return nil
+	}
+	switch typ {
+	case parquetenc.Integer:
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			return n
+		}
+	case parquetenc.Number:
+		f, err := strconv.ParseFloat(v, 64)
+		if err == nil {
+			return f
+		}
+	case parquetenc.Boolean:
+		return strings.EqualFold(v, "true")
+	case parquetenc.Date:
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			return t
+		}
+	case parquetenc.DateTime:
+		if t, ok := parseDateTime(v); ok {
+			return t
+		}
+	}
+	return text
+}
+
+// storeTable adds a table of values to the document under the data
+// parameter's mode: within the limits, unless the mode is all.
+func storeTable(doc *bdf.Document, t *parquetenc.Table, title, mode string, warn func(string)) {
+	data, err := parquetenc.Encode(t)
+	if err != nil {
+		warn(fmt.Sprintf("the values are not stored as a table: %v", err))
+		return
+	}
+	if !converter.TableFits(mode, int64(len(t.Rows)), len(data)) {
+		warn(fmt.Sprintf("the values (%d rows, %d MiB) are not stored as a table: more than the default allows (data=all stores them)", len(t.Rows), len(data)>>20))
+		return
+	}
+	view := ""
+	if len(doc.Views) > 0 {
+		view = doc.Views[0].ID
+	}
+	entry := &bdf.Table{ID: "data", Title: title, Rows: int64(len(t.Rows)), View: view}
+	for _, c := range t.Columns {
+		entry.Columns = append(entry.Columns, bdf.TableColumn{Name: c.Name, Type: c.Type.String()})
+	}
+	if err := doc.AddTable(entry, data); err != nil {
+		warn(fmt.Sprintf("the values are not stored as a table: %v", err))
 	}
 }

@@ -735,7 +735,7 @@ func (r *htmlReader) node(n *html.Node, st *hstyle) {
 	case atom.Li:
 		// an item outside a list
 		r.block(0, 0, func() {
-			s := r.nest(st)
+			s := r.nest(st, "")
 			r.item(n, bullet("", s.listDepth), s)
 		})
 	case atom.Table:
@@ -992,12 +992,16 @@ func (r *htmlReader) list(n *html.Node, css map[string]string, st *hstyle) {
 		gap = r.em(blockGap)
 	}
 	r.block(gap, gap, func() {
-		s := r.nest(r.blockStyle(n, css, st))
 		ordered := n.DataAtom == atom.Ol
 		typ := attrStr(n, "type")
 		if t := css["list-style-type"]; t != "" {
 			typ = t
 		}
+		kind := "bullet"
+		if ordered || isOrderedType(typ) {
+			kind = "ordered"
+		}
+		s := r.nest(r.blockStyle(n, css, st), kind)
 		num := 1
 		if v, err := strconv.Atoi(attrStr(n, "start")); err == nil {
 			num = v
@@ -1040,14 +1044,15 @@ func (r *htmlReader) list(n *html.Node, css map[string]string, st *hstyle) {
 }
 
 // nest returns the style of the items of a list in st: one level deeper
-// (lists deeper than maxIndent levels are not indented further).
-func (r *htmlReader) nest(st *hstyle) *hstyle {
+// (lists deeper than maxIndent levels are not indented further). kind is
+// the payload of the list's mark: the kind of its markers.
+func (r *htmlReader) nest(st *hstyle, kind string) *hstyle {
 	s := st.block()
 	s.listDepth++
 	if s.listDepth <= maxIndent {
 		s.indL += r.em(listIndent)
 	}
-	s.frames = st.inFrames(&frame{kind: fList})
+	s.frames = st.inFrames(&frame{kind: fList, payload: kind})
 	return s
 }
 
@@ -1154,7 +1159,7 @@ func (r *htmlReader) quote(n *html.Node, st *hstyle) {
 	s := st.chars()
 	s.rp.color = mutedColor
 	bar := &border{style: "single", width: r.em(quoteBar), color: ruleColor}
-	r.box(n, s, [4]float64{0, r.em(quotePad), 0, 0}, func(ce *cell) { ce.borders[sLeft] = bar })
+	r.box(n, s, [4]float64{0, r.em(quotePad), 0, 0}, "quote", func(ce *cell) { ce.borders[sLeft] = bar })
 }
 
 // code reads a pre: a shaded box of monospaced text whose white space is
@@ -1165,13 +1170,15 @@ func (r *htmlReader) code(n *html.Node, st *hstyle) {
 	s.rp.sz *= codeSize
 	s.pre, s.lh, s.jc = true, codeLH, "left"
 	pad := r.em(codePad)
-	r.box(n, s, [4]float64{pad, pad, pad, pad}, func(ce *cell) { ce.shd, ce.hasShd = codeBlockBG, true })
+	r.box(n, s, [4]float64{pad, pad, pad, pad}, "code", func(ce *cell) { ce.shd, ce.hasShd = codeBlockBG, true })
 }
 
 // box lays an element's content out in a box of one cell (a table without
 // structure): with padding (top, left, bottom, right), the width of the
 // column and the margins of a block; style sets its borders and shading.
-func (r *htmlReader) box(n *html.Node, st *hstyle, pad [4]float64, style func(*cell)) {
+// role is what the box is, as the payload of its BOX mark and of the
+// marks of the paragraphs in it ("quote", "code"; docs/spec.md §7.8).
+func (r *htmlReader) box(n *html.Node, st *hstyle, pad [4]float64, role string, style func(*cell)) {
 	if st.tables >= maxTables {
 		r.block(r.em(blockGap), r.em(blockGap), func() { r.children(n, st.block()) })
 		return
@@ -1180,11 +1187,12 @@ func (r *htmlReader) box(n *html.Node, st *hstyle, pad [4]float64, style func(*c
 	s := st.block()
 	s.indL, s.listDepth = 0, 0
 	s.tables++
+	s.frames = st.inFrames(&frame{kind: fBox, payload: role})
 	blocks := r.read(n, s, false)
 	if len(blocks) == 0 {
 		return
 	}
-	ce := &cell{blocks: blocks, span: 1, rowSpan: 1, vAlign: "top", mar: pad, ctx: st.inFrames()}
+	ce := &cell{blocks: blocks, span: 1, rowSpan: 1, vAlign: "top", mar: pad, ctx: s.frames}
 	style(ce)
 	t := &table{jc: "left", ind: st.indL, rowBand: 1, colBand: 1, rows: []*row{{cells: []*cell{ce}}}, grid: []float64{0},
 		before: r.em(blockGap), after: r.em(blockGap)}

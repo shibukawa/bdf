@@ -633,3 +633,44 @@ func OpenFile[R any](path string, convert func(r io.ReaderAt, size int64) (R, er
 	}
 	return convert(f, st.Size())
 }
+
+// Limits of the tables the converters store beside the drawing (docs/spec.md
+// §4.6): the rows of a CSV file, a Parquet file as it is, or a sheet. A
+// larger one is left out, with a warning, unless the data parameter says
+// "all".
+const (
+	DefaultTableRows  = 1 << 20
+	DefaultTableBytes = 64 << 20
+)
+
+// DataParam reads the data parameter of the formats that store their
+// values as a table: "" (the default: up to the limits), "none" or
+// "all".
+func DataParam(v string) (string, error) {
+	switch strings.ToLower(v) {
+	case "", "default":
+		return "", nil
+	case "none", "all":
+		return strings.ToLower(v), nil
+	}
+	return "", fmt.Errorf("parameter data: %q is not none, all or default", v)
+}
+
+// DataParamUsage describes the data parameter.
+const DataParamUsage = "the values as a table the document holds beside its drawing (bdf tables): default (up to 1048576 rows and 64 MiB), all or none"
+
+// ChartDataParamUsage describes the data parameter of the formats whose
+// tables are the values of their charts.
+const ChartDataParamUsage = "none: the values of charts are not stored as tables the document holds beside its drawing (bdf tables)"
+
+// TableFits reports whether a table of rows rows and size bytes is stored
+// under the data parameter's mode.
+func TableFits(mode string, rows int64, size int) bool {
+	switch mode {
+	case "none":
+		return false
+	case "all":
+		return true
+	}
+	return rows <= DefaultTableRows && size <= DefaultTableBytes
+}

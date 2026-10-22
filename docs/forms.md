@@ -34,6 +34,7 @@ In Excel, the paper, margins, print area, print titles, page breaks, header and 
 | `{{^items}} … {{/items}}` | An inverted section: when the list is empty or the value is false |
 | `{{%photo}}` | A picture, fitted in the cell (or its merged range) in Excel, and in the frame of a picture of the template in Word and PowerPoint. `{{%photo \| fit:cover}}` covers the frame, `fit:stretch` stretches |
 | `{{%url \| qr}}`, `{{%jan \| barcode:jan}}` | The QR code or the barcode of a value ([QR codes and barcodes](#qr-codes-and-barcodes)) |
+| `{{%sign \| signature}}`, `{{%seal \| seal}}` | A picture, as `{{%photo}}` is, that a person gives in a way of its own: a signature drawn by hand, the picture of a seal ([Signatures and seals](#signatures-and-seals)) |
 
 - The braces, marks and quotes may be the full-width or curly ones that input methods and Word put in their place (`｛｛`, `＃`, `“ ”`).
 - `\{{` is `{{` as text, not a tag.
@@ -162,11 +163,12 @@ bdf pdf application.bdf filled.pdf
 | Checkbox | `true` or `false` |
 | Radio buttons | The value of the button that is on |
 | List, dropdown | The value of a choice. The field shows what a reader sees of it |
+| Signature | A picture: a signature drawn by hand, drawn whole in the middle of the box of the field ([Signatures and seals](#signatures-and-seals)) |
 
 - The name of a field is the name the data has its value by. A field `applicant.name` is `name` of the object `applicant` (the name as it is, with its dot, works too).
 - The schema has what the file says of each field: the choices (`enum`, with what a reader sees of them in `x-bdf.labels`), the most characters (`maxLength`), the value the file has (`default`), and the tooltip of the field as its title.
 - The text is drawn in the size, the color and the alignment the field says, in a font of the machine that has its characters. The fonts of a form are often Latin only, so Japanese text does not depend on them.
-- A field that the data has no value for stays as the file has it, with a warning (an error with `-strict`). Buttons to press and signature fields are not filled.
+- A field that the data has no value for stays as the file has it, with a warning (an error with `-strict`). Buttons to press are not filled.
 - The borders and backgrounds of the fields stay. A checkbox or a radio button shows the appearance the file has for its state.
 
 ## Templates of pdfme
@@ -383,6 +385,40 @@ bdf template schema invoice.bdft        # the names the tags look up, as JSON
 bdf fill -data order.yaml invoice.bdft out.bdf
 ```
 
+## Partly filled forms (.bdff)
+
+A form may be filled by more than one person: the sender fills in their part of a contract and signs it, and the other party fills in theirs. `-open` names what is left for later; `bdf fill` then writes a partly filled form (.bdff) of the rest:
+
+```sh
+bdf fill -data mine.yaml -open party_b contract.bdft contract.bdff   # party A's part
+bdf template schema -json-schema contract.bdff                       # what is left: party_b
+bdf fill -data theirs.json contract.bdff contract.bdf                # party B completes it
+```
+
+- A partly filled form is a compiled template that holds the values given so far. Its pages show the template filled with them, with what is left open empty; it opens in the viewer as any document. Its schema is that of the names left open only, so a page that asks for the data shows the other person their part and nothing else.
+- Completing it fills the template once, with the values it holds and the data given: the document is the one the template filled with all of the data at once makes, byte for byte.
+- The data that completes it gives the names left open and no others: a name filled already, or one the form does not leave open, is an error. Every name left open is given (`null` gives none), or left open again with `-open`, which makes another partly filled form for a third person. `-open '*'` leaves open every name the data does not give.
+- Making one, every name of the template is given or named by `-open`: a name forgotten is an error, not a blank on a form someone else signs.
+- A name with dots leaves a value of an object open (`-open party_b.sign`). A list (the rows of a table) is filled, or left open, as a whole.
+- The pictures given by the paths of files are kept in the partly filled form as `data:` URLs: the other person does not have the files.
+- Values are kept as JSON keeps them: a date of YAML becomes its text. Give dates as text (`2026-10-22`) for the same form either way.
+- A partly filled form is not protected against changes: whoever has the file can change the values it holds. When the other party fills in their part on a website, keep the .bdff on the server and take only their values.
+
+On the [form page](https://shibukawa.github.io/bdf/form/), check the names under *Leave for another person*: the page offers the document as a .bdff, and a .bdff opened there asks for the names it leaves open only.
+
+## Signatures and seals
+
+`{{%sign | signature}}` and `{{%seal | seal}}` are pictures, filled and drawn as `{{%photo}}` is (`| fit:` too). What differs is what a person gives for them, and the schema says so in `x-bdf.input`:
+
+| Input | On the form page |
+|---|---|
+| `signature` | A pad to draw on with a pen, a finger or a mouse. The strokes become an SVG image (a `data:` URL), sharp in a PDF at any size |
+| `seal` | A picture of a seal (a hanko) to pick, whose white is taken out, so that it can be laid over text |
+
+The signature fields of a PDF form (`/FT /Sig`) and the `signature` fields of pdfme are pictures of `signature` input in the same way.
+
+A drawn signature is a picture of a signature, not a digital signature: it proves nothing of who drew it, nor that the document was not changed after.
+
 ## The JSON Schema of the data, and forms for it
 
 What a template asks of data comes out as a JSON Schema: for a library that makes a form of a schema, or for checking data. The fields of the [form page](https://shibukawa.github.io/bdf/form/) are made of it.
@@ -401,7 +437,7 @@ Tags do not say the types of their values, so the schema is what the tags sugges
 | `{{customer.name}}` | The property `name` of the object `customer` |
 | A section with names or `{{.}}` in it, or with `\| rows` or `\| pages` | A list, of objects or of values. A section of slots has its number of slots as `maxItems` |
 | Another section (`{{#paid}}■{{/paid}}`) | True or false |
-| `{{%photo}}` | A text: the path of a file, or a `data:` URL |
+| `{{%photo}}` | A text: the path of a file, or a `data:` URL. `\| signature` and `\| seal` add `"input"` to its `x-bdf` |
 | `{{%url \| qr}}`, `{{%jan \| barcode:jan}}` | A text: what the code says |
 
 - The properties are in the order of the template. The `x-bdf` of each holds the kind of its tags (`kind`), their number format (`format`), how a section repeats (`mode`, `slots`), the kind of a code (`code`) and where the tags are (`at`).
@@ -421,7 +457,7 @@ res, err := form.Fill(template, size, &form.Options{Data: data})
 err = res.Doc.WriteSingle(out)
 ```
 
-`form.Fill` tells the format of a template from its content (an Office file, a PDF form, a template of pdfme, a template of text, a compiled template). `form.Fields` returns the names the tags look up, `form.SchemaOf` the JSON Schema of the data, and `form.Compile` a compiled template. For a known format, `xlsx.Fill`, `docx.Fill`, `pptx.Fill` and `textform.Fill` can be called directly. `textpart.Read` reads the print image of a form of text from a document, and `textform.Plain` writes it as plain text. `pdfbdf.Write` writes a PDF file.
+`form.Fill` tells the format of a template from its content (an Office file, a PDF form, a template of pdfme, a template of text, a compiled template, a partly filled form). With `Options.Open` it makes a partly filled form, described by `res.Partial`. `form.Fields` returns the names the tags look up, `form.SchemaOf` the JSON Schema of the data, and `form.Compile` a compiled template. For a known format, `xlsx.Fill`, `docx.Fill`, `pptx.Fill` and `textform.Fill` can be called directly. `textpart.Read` reads the print image of a form of text from a document, and `textform.Plain` writes it as plain text. `pdfbdf.Write` writes a PDF file.
 
 ```go
 res, err := pdfbdf.Write(out, doc, &pdfbdf.Options{})                          // a PDF file

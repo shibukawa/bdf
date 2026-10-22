@@ -44,8 +44,8 @@ assert.deepEqual(modules.preview.formats, []);
 // (and the PDF converter: a PDF with form fields, and the base PDF of a template of pdfme)
 assert.deepEqual(modules.form.formats.map((f) => f.name), ["csv", "docx", "pdf", "pptx", "xlsx"]);
 // what each module does besides converting
-const calls = (m) => ["thumbnail", "text", "pdf", "fields", "fill"].filter((name) => typeof m[name] === "function");
-assert.deepEqual(calls(modules.preview), ["thumbnail", "text", "pdf"]);
+const calls = (m) => ["thumbnail", "text", "pdf", "markdown", "tables", "table", "fields", "fill"].filter((name) => typeof m[name] === "function");
+assert.deepEqual(calls(modules.preview), ["thumbnail", "text", "pdf", "markdown", "tables", "table"]);
 assert.deepEqual(calls(modules.form), ["pdf", "fields", "fill"]);
 assert.deepEqual(calls(modules.office), []);
 // the image module converts images and audio files (their covers and tags), neither needing fonts
@@ -175,6 +175,28 @@ try {
   console.log(`FAIL synced.mp3 audio: ${e.message}`);
 }
 
+// the preview module writes a converted document as Markdown: the text, the images it refers to as files, a zip of
+// both, or the images embedded in the text
+try {
+  const sample = converted.find((c) => c.name.endsWith(".docx")) ?? converted[0];
+  const res = await modules.preview.markdown(sample.bdf, { name: "sample", zip: true });
+  const text = new TextDecoder().decode(res.markdown);
+  assert.match(text, /^---\n|^# /m, "a front matter or a heading");
+  assert.deepEqual([...res.zip.subarray(0, 2)], [0x50, 0x4b], "a zip file");
+  assert.ok(res.images.length > 0, "the sample has pictures");
+  for (const im of res.images) assert.ok(text.includes(`](${im.name})`), `${im.name} is referred to`);
+  const embedded = await modules.preview.markdown(sample.bdf, { images: "embed" });
+  assert.equal(embedded.images.length, 0);
+  assert.match(new TextDecoder().decode(embedded.markdown), /\]\(data:image\//);
+  assert.equal(embedded.zip, undefined);
+  const bare = await modules.preview.markdown(sample.bdf, { images: "none" });
+  assert.doesNotMatch(new TextDecoder().decode(bare.markdown), /!\[/);
+  console.log(`ok   ${sample.name}: Markdown of ${res.markdown.length} bytes, ${res.images.length} image(s), a zip of ${res.zip.length} bytes`);
+} catch (e) {
+  failed++;
+  console.log(`FAIL markdown: ${e.message}`);
+}
+
 /** What a PDF file says of itself: its pages, and the fonts embedded in it. */
 function pdfInfo(b) {
   const text = new TextDecoder("latin1").decode(b);
@@ -195,7 +217,7 @@ for (const font of remoteFonts) {
   assert.ok(font.size > 0 && font.scan.length > 0);
 }
 const forms = JSON.parse(await readFile(join(site, "forms/index.json"), "utf8"));
-assert.deepEqual(forms.map((f) => f.id), ["fixed", "rows", "pages", "application", "pdfme-invoice", "pdfme-certificate", "text-slip", "text-receipt"]);
+assert.deepEqual(forms.map((f) => f.id), ["fixed", "rows", "pages", "application", "contract", "pdfme-invoice", "pdfme-certificate", "text-slip", "text-receipt"]);
 /** The format of a template of the page, by its name. */
 const formatOf = (name) => (name.startsWith("pdfme-") ? "pdfme" : name.endsWith(".txt") ? "text" : name.split(".").pop());
 const styledSchemas = new Map();
@@ -244,6 +266,24 @@ for (const shape of forms) {
         assert.equal(props.zip.maxLength, 7);
         assert.equal(props.agree.type, "boolean");
         assert.equal(props.applicant.properties.name.type, "string");
+      }
+      if (shape.id === "contract") {
+        assert.equal(props.party_a.properties.sign["x-bdf"].input, "signature");
+        // one party fills in theirs and signs, and leaves the other open: a partly filled form (.bdff)
+        const sign = "data:image/svg+xml;base64," + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 30"><path d="M5 25 L45 5 L85 25" fill="none" stroke="#000" stroke-width="3"/></svg>').toString("base64");
+        const a = { name: "Taro Yamada", sign }, b = { name: "ACME Corporation", sign };
+        const partly = await modules.form.fill(template, { data: JSON.stringify({ party_a: a }), open: ["party_b"], fonts: formFonts });
+        assert.deepEqual(partly.open, ["party_b"]);
+        assert.deepEqual(partly.warnings, []);
+        const handed = await modules.form.fields(partly.bdf, {});
+        assert.deepEqual(handed.open, ["party_b"]);
+        assert.deepEqual(Object.keys(JSON.parse(handed.schema).properties), ["party_b"]);
+        assert.equal(JSON.parse(handed.filled).party_a.name, "Taro Yamada");
+        const done = await modules.form.fill(partly.bdf, { data: JSON.stringify({ party_b: b }), fonts: formFonts });
+        const once = await modules.form.fill(template, { data: JSON.stringify({ party_a: a, party_b: b }), fonts: formFonts });
+        assert.equal(done.open, undefined);
+        assert.deepEqual(done.bdf, once.bdf, "the completed form is the form filled at once");
+        await assert.rejects(modules.form.fill(partly.bdf, { data: JSON.stringify({ party_a: b, party_b: b }), fonts: formFonts }), /filled already/);
       }
       if (shape.id === "pdfme-invoice") {
         assert.deepEqual(Object.keys(props.items.items.properties), ["項目", "数量", "単価", "金額"]);
@@ -294,7 +334,7 @@ for (const shape of forms) {
       const want = {
         fixed: ["明細書", "Date", "株式会社みなと商事", "デスクオーガナイザー", "1024", "13,200"],
         rows: ["請求書", "INV-2026-1014", "付箋セット", "23,958"],
-        pages: ["納品書", "DN-2026-1014", "当頁計", "36,180"], application: ["Taro Yamada", "12800"],
+        pages: ["納品書", "DN-2026-1014", "当頁計", "36,180"], application: ["Taro Yamada", "12800"], contract: ["Contract", "Taro Yamada", "ACME Corporation"],
         "pdfme-invoice": ["請求書", "INV-2026-1014", "ファイルボックス", "総額", "23,958"],
         "pdfme-certificate": ["Hanako Tanaka", "Score 92 / 100 (with distinction)", "October 14, 2026"],
         "text-slip": ["納品書", "株式会社サンプル商事", "15,890", "（控）"],
