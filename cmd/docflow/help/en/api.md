@@ -25,7 +25,7 @@ An error is `{"error": "…"}` with its status: 400 a request the manager cannot
 |---|---|
 | `GET /api/my/jobs?limit=` | the jobs the caller sees: theirs and their groups' (an administrator: every job) |
 | `GET /api/destinations` | the nodes the caller may send to |
-| `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | send the body — a document, or data for a template node — to a node; `X-Meta-*` headers as well. 201 and the job |
+| `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | send the body — a document, or data for a template node — to a node; `X-Meta-*` headers as well, or a `multipart/form-data` body as an endpoint takes it. 201 and the job |
 | `POST /api/locations/<display>/slips` | the same, to a display: the older name |
 | `GET /api/destinations/<node>/jobs?limit=` | the jobs sent to a node (admin) |
 | `GET /api/jobs/<n>` | a job: its payloads, metadata and legs |

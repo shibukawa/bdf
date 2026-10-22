@@ -55,7 +55,7 @@ An archive writes the trace into its record, and an export into its entries, so 
 
 Metadata goes with a job through the topology. It comes from three sources, each key once, the later winning:
 
-1. **The sender's.** `X-Meta-<Key>` headers (the key in lower case) and `?meta.<key>=` parameters of a request to an endpoint or to the API, and the job attributes of an IPP request as `ipp.<name>` (`ipp.media`, `ipp.copies`, `ipp.job-name` …). These are claims: a filter routes by them and a template node picks its template by them, as the administrator set up; nothing is authorized by them.
+1. **The sender's.** `X-Meta-<Key>` headers (the key in lower case) and `?meta.<key>=` parameters of a request to an endpoint or to the API, and the JSON object in the part `meta` of its `multipart/form-data` body ([Endpoints](entries.md#endpoints)), and the job attributes of an IPP request as `ipp.<name>` (`ipp.media`, `ipp.copies`, `ipp.job-name` …). These are claims: a filter routes by them and a template node picks its template by them, as the administrator set up; nothing is authorized by them.
 2. **The entry's.** The `meta` of the endpoint or the CUPS server the job came in at.
 3. **The manager's**, under keys that start with `$`, which a sender cannot write: `$job` (the number), `$received` (when), `$entry` (the node the job was sent to), `$source` (the way it came in), `$sender` and `$sender_kind` (who, as verified: a person, an app, a token, an endpoint, anonymous), `$file` (the job's name).
 

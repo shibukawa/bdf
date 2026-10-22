@@ -212,7 +212,7 @@ Writes what reaches it to a bucket, once, and does not look back: an object ther
 
 ## HTTP (push) {#http}
 
-The kind `http`. Sends what reaches it to a web service in a request, the document and the job's metadata as `body` says, with the delivery's id as the `Idempotency-Key`. To another Docflow, the URL is its `/in/<node>`, the body `direct` and the credential an app's token: the `.bdf` goes there as it is, its metadata as the sender's. 408, 429 and 5xx are tried again; any other answer fails for good. The other way round, applications fetching documents, is [HTTP (pull)](#export).
+The kind `http`. Sends what reaches it to a web service in a request, the document and the job's metadata as `body` says, with the delivery's id as the `Idempotency-Key`. To another Docflow, the URL is its `/in/<node>` and the credential its key or an app's token: the `.bdf` goes there as it is, with its name and its metadata as the sender's, in either body ([Endpoints](entries.md#endpoints)). 408, 429 and 5xx are tried again; any other answer fails for good. The other way round, applications fetching documents, is [HTTP (pull)](#export).
 
 | Setting | |
 |---|---|

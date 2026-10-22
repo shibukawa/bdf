@@ -121,6 +121,45 @@ func TestHTTPOutMultipart(t *testing.T) {
 	}
 }
 
+// To another Docflow's endpoint, with the endpoint's key: either body
+// arrives as the same document, with its name and the sender's
+// metadata (a number stays one in multipart, a header is text).
+func TestHTTPToDocflow(t *testing.T) {
+	dir := t.TempDir()
+	e := flowtest.New(t, func(o *docflow.Options) { o.CredentialDir = dir })
+	key := e.Put(docflow.Node{Name: "keep", Kind: docflow.KindSink}, docflow.Node{Name: "remote", Kind: docflow.KindEndpoint, To: []string{"keep"}})
+	if err := os.WriteFile(filepath.Join(dir, "remote"), []byte(key), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.Put(docflow.Node{Name: "direct", Kind: http.KindHTTP, URL: e.Srv.URL + "/in/remote", Credential: "remote"},
+		docflow.Node{Name: "multi", Kind: http.KindHTTP, URL: e.Srv.URL + "/in/remote", Credential: "remote", Body: http.BodyMultipart},
+		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"direct", "multi"}})
+	doc := flowtest.Doc(t, 2)
+	j := e.Submit("in", "請求書.bdf", doc, map[string]any{"customer": "a&b", "count": 3})
+	e.Tick()
+	want := map[string]any{"direct": "3", "multi": 3.0}
+	for _, node := range []string{"direct", "multi"} {
+		if d := e.Delivery(j, node); d.State != docflow.DeliveryDone || d.Result != "201 Created" {
+			t.Fatalf("%s: %s %s %s", node, d.State, d.Result, d.LastError)
+		}
+	}
+	got := map[string]any{}
+	for n := j.Number + 1; n <= j.Number+2; n++ {
+		r := e.Job(n)
+		if r.Dest != "remote" || r.Name != "請求書.bdf" || r.Meta["customer"] != "a&b" || r.Meta["$sender_kind"] != docflow.PrincipalEndpoint || !bytes.Equal(e.Payload(r.Payloads[0].ID), doc) {
+			t.Fatalf("job %d: %s %q %+v", n, r.Dest, r.Name, r.Meta)
+		}
+		if _, ok := r.Meta["count"].(string); ok {
+			got["direct"] = r.Meta["count"]
+		} else {
+			got["multi"] = r.Meta["count"]
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("count %v", got)
+	}
+}
+
 // A refusal (4xx) and a redirect fail for good; the settings are
 // checked.
 func TestHTTPRefused(t *testing.T) {

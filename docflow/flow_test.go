@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -358,6 +361,93 @@ func TestMeta(t *testing.T) {
 		if n.Name == "sort" && (n.Rules[0].Match.Meta["dept"] != "^sales$" || n.Rules[1].Match.Kind != PayloadData) {
 			t.Fatalf("topology %+v", n)
 		}
+	}
+}
+
+// An entry takes a multipart/form-data body as well as the document as
+// the body, by the request's Content-Type (docflow/io/http sends either):
+// the document in the part file, its name and type the part's, and the
+// metadata a JSON object in the part meta, over the headers'. A body as
+// it is takes its name from Content-Disposition when there is no ?name=.
+// The API's submit reads the same; what is not of the shape is refused.
+func TestMultipartIntake(t *testing.T) {
+	e := newEnv(t, func(o *Options) { o.Converter = printconv.Converter{NoSystemFonts: true} })
+	e.node("keep", Node{Kind: KindSink}, http.StatusOK)
+	var mp struct {
+		Key string `json:"key"`
+	}
+	json.Unmarshal(e.node("mp", Node{Kind: KindEndpoint, Output: OutputFile, To: []string{"keep"}}, http.StatusOK), &mp)
+	type part struct{ name, file, typ, body string }
+	form := func(parts ...part) ([]byte, string) {
+		var b bytes.Buffer
+		w := multipart.NewWriter(&b)
+		for _, p := range parts {
+			h := textproto.MIMEHeader{"Content-Disposition": {`form-data; name="` + p.name + `"`}}
+			if p.file != "" {
+				h.Set("Content-Disposition", multipart.FileContentDisposition(p.name, p.file))
+			}
+			if p.typ != "" {
+				h.Set("Content-Type", p.typ)
+			}
+			pw, _ := w.CreatePart(h)
+			pw.Write([]byte(p.body))
+		}
+		w.Close()
+		return b.Bytes(), w.FormDataContentType()
+	}
+	send := func(token, path string, body []byte, header map[string]string) (int, *Job, string) {
+		t.Helper()
+		res, out := e.doWith(func(r *http.Request) {
+			r.Header.Set("Authorization", "Bearer "+token)
+			for k, v := range header {
+				r.Header.Set(k, v)
+			}
+		}, "POST", path, body)
+		var j Job
+		json.Unmarshal(out, &j)
+		return res.StatusCode, &j, string(out)
+	}
+	doc := testDoc(t, 1)
+	file := part{name: "file", file: "請求書.bdf", typ: "application/vnd.bdf", body: string(doc)}
+	body, ct := form(part{name: "meta", typ: "application/json", body: `{"customer": "a&b", "count": 3, "tags": ["x"]}`}, file)
+	status, j, out := send(mp.Key, "/in/mp", body, map[string]string{"Content-Type": ct, "X-Meta-Customer": "header", "X-Meta-Dept": "ops"})
+	if status != http.StatusCreated {
+		t.Fatalf("%d %s", status, out)
+	}
+	if j.Name != "請求書.bdf" || j.Meta["customer"] != "a&b" || j.Meta["dept"] != "ops" || j.Meta["count"] != float64(3) || !reflect.DeepEqual(j.Meta["tags"], []any{"x"}) ||
+		len(j.Payloads) == 0 || j.Payloads[0].Format != "bdf" || j.Payloads[0].Size != int64(len(doc)) || legs(j) != "mp:routed keep:kept" {
+		t.Fatalf("multipart %+v %+v %s", j.Meta, j.Payloads, legs(j))
+	}
+	// the file before the meta; the part's type tells the format, and
+	// ?name= is over the part's name
+	body, ct = form(part{name: "file", file: "people.txt", typ: "text/csv", body: "id,name\n1,Ann\n"}, part{name: "meta", body: `{}`})
+	if status, j, out = send(mp.Key, "/in/mp?name=people", body, map[string]string{"Content-Type": ct}); status != http.StatusCreated || j.Name != "people" || j.Payloads[0].Format != "csv" {
+		t.Fatalf("csv: %d %s", status, out)
+	}
+	// a body as it is: its name from Content-Disposition
+	if status, j, out = send(mp.Key, "/in/mp", doc, map[string]string{"Content-Disposition": `attachment; filename*=UTF-8''%E8%AB%8B%E6%B1%82%E6%9B%B8.bdf`}); status != http.StatusCreated || j.Name != "請求書.bdf" {
+		t.Fatalf("direct: %d %s", status, out)
+	}
+	// the API's submit
+	body, ct = form(file)
+	if status, j, out = send(adminToken, "/api/destinations/mp/jobs", body, map[string]string{"Content-Type": ct}); status != http.StatusCreated || j.Name != "請求書.bdf" || j.Payloads[0].Size != int64(len(doc)) {
+		t.Fatalf("submit: %d %s", status, out)
+	}
+	for what, parts := range map[string][]part{
+		"no file":      {{name: "meta", body: `{}`}},
+		"meta a list":  {{name: "meta", body: `[1]`}, file},
+		"meta null":    {{name: "meta", body: `null`}, file},
+		"a manager's":  {{name: "meta", body: `{"$job": 1}`}, file},
+		"another part": {{name: "extra", body: "x"}, file},
+		"two files":    {file, file},
+	} {
+		body, ct := form(parts...)
+		if status, _, out := send(mp.Key, "/in/mp", body, map[string]string{"Content-Type": ct}); status != http.StatusBadRequest {
+			t.Errorf("%s: %d %s", what, status, out)
+		}
+	}
+	if status, _, out := send(mp.Key, "/in/mp", doc, map[string]string{"Content-Type": "multipart/form-data"}); status != http.StatusBadRequest {
+		t.Errorf("no boundary: %d %s", status, out)
 	}
 }
 

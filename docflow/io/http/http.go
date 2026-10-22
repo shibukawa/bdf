@@ -11,14 +11,16 @@
 // its scheme ("Basic …"). Its Body is how the request carries the
 // document and the sender's metadata:
 //
-//   - direct (the default): the document is the body, as it is, and the
-//     metadata goes along as X-Meta-<key> headers, so that another
-//     docflow's endpoint (POST /in/<node>, with an app's token as the
-//     credential) takes it as its sender's: .bdf goes to another site as
-//     it is (2026-10-21).
+//   - direct (the default): the document is the body, as it is, its name
+//     in Content-Disposition, and the metadata goes along as X-Meta-<key>
+//     headers (2026-10-21).
 //   - multipart: the body is multipart/form-data, the metadata a JSON
 //     object in the part meta, then the document in the part file, with
 //     its name and type (2026-10-23).
+//
+// Another docflow's endpoint (POST /in/<node>, with its key or an app's
+// token as the credential) takes either as its sender's: .bdf goes to
+// another site as it is, with its name and metadata.
 //
 // Every request has an Idempotency-Key, the delivery's id, the same on
 // every try (a send is at least once). 2xx is done; 408, 429 and 5xx are

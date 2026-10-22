@@ -25,7 +25,7 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 |---|---|
 | `GET /api/my/jobs?limit=` | 呼び手が見られるジョブ。自分のものと自分のグループのもの（管理者はすべてのジョブ） |
 | `GET /api/destinations` | 呼び手が送れるノード |
-| `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | ボディ（文書、またはテンプレートノード向けのデータ）をノードに送る。`X-Meta-*` ヘッダも使えます。201 とジョブ |
+| `POST /api/destinations/<node>/jobs?name=&user=&meta.<key>=` | ボディ（文書、またはテンプレートノード向けのデータ）をノードに送る。`X-Meta-*` ヘッダも使えます。エンドポイントと同じく `multipart/form-data` のボディも受け取ります。201 とジョブ |
 | `POST /api/locations/<display>/slips` | 同じものをディスプレイに。古い名前です |
 | `GET /api/destinations/<node>/jobs?limit=` | ノードに送られたジョブ（管理者） |
 | `GET /api/jobs/<n>` | ジョブ。ペイロード、メタデータ、レグ |

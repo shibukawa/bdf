@@ -224,7 +224,7 @@ func (d *apiDoc) entry(n *Node) {
 	if len(n.To) > 0 {
 		desc = append(desc, "It goes on to "+d.names(n.To)+".")
 	}
-	desc = append(desc, "The answer is the job, which an app follows at /api/jobs/{id}. The sender's metadata is ?meta.<key>= parameters, or X-Meta-<Key> headers (the key in lower case); the parameters below are the keys the nodes after this one look at, and any other key goes along too.")
+	desc = append(desc, "The answer is the job, which an app follows at /api/jobs/{id}. The sender's metadata is ?meta.<key>= parameters, or X-Meta-<Key> headers (the key in lower case), or in a multipart/form-data body a JSON object in the part meta, beside the document in the part file; the parameters below are the keys the nodes after this one look at, and any other key goes along too.")
 	security := []any{map[string]any{"key": []string{}}, map[string]any{"admin": []string{}}}
 	if n.Kind == KindEndpoint {
 		scope := ScopePrint
@@ -311,7 +311,8 @@ func mediaTypeOf(format string) string {
 
 // entryBody is the content an entry takes: of a reference, its schema;
 // of data, the schema of the templates it reaches; of documents, the
-// media types of its formats.
+// media types of its formats. Either may come in multipart/form-data
+// too (withMultipart).
 func (d *apiDoc) entryBody(n *Node, k *Kind) map[string]any {
 	binary := map[string]any{"type": "string", "format": "binary"}
 	if k != nil && k.Fetch != nil {
@@ -326,9 +327,9 @@ func (d *apiDoc) entryBody(n *Node, k *Kind) map[string]any {
 		formats = dataFormats
 	}
 	if len(formats) == 0 {
-		return map[string]any{"application/octet-stream": map[string]any{"schema": map[string]any{
+		return withMultipart(map[string]any{"application/octet-stream": map[string]any{"schema": map[string]any{
 			"type": "string", "format": "binary", "description": "A document of any format the converter reads (" + strings.Join(KnownFormats(), ", ") + "), told by its content and ?name=.",
-		}}}
+		}}})
 	}
 	data := d.dataSchema(n)
 	byType := map[string][]string{}
@@ -358,7 +359,29 @@ func (d *apiDoc) entryBody(n *Node, k *Kind) map[string]any {
 		}
 		out[t] = map[string]any{"schema": s}
 	}
-	return out
+	return withMultipart(out)
+}
+
+// withMultipart adds to the media types of a body the same in
+// multipart/form-data (readBody): the document, of one of those types, in
+// the part file, after the metadata as a JSON object in the part meta.
+func withMultipart(content map[string]any) map[string]any {
+	types := slices.Sorted(maps.Keys(content))
+	content["multipart/form-data"] = map[string]any{
+		"schema": map[string]any{
+			"type":     "object",
+			"required": []string{"file"},
+			"properties": map[string]any{
+				"meta": map[string]any{"type": "object", "description": "The sender's metadata, over the X-Meta-* headers and ?meta.<key>= parameters."},
+				"file": map[string]any{"type": "string", "format": "binary", "description": "The document, as the body of the other media types; its name is the job's unless ?name= is given."},
+			},
+		},
+		"encoding": map[string]any{
+			"meta": map[string]any{"contentType": "application/json"},
+			"file": map[string]any{"contentType": strings.Join(types, ", ")},
+		},
+	}
+	return content
 }
 
 // dataSchema is the schema of the data an entry takes: that of the one
