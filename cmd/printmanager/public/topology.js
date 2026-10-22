@@ -631,6 +631,10 @@ function renderSidebar() {
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "The .bdf document made goes to every node chosen; a .bdf that reaches the node goes on as it is."));
       form.append(formatsField(n, "Formats converted", "None checked: every format the converter reads. A file of another format fails here (no retry); JSON and YAML have no document of their own: fill a template with them."));
       break;
+    case "sign":
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The signed .bdf goes to every node chosen."));
+      form.append(field("Role", input("f-sign-role", n.sign_role || "", { placeholder: "witness" }), "The role the signature says the manager signs in. The signature also says the node, the job, who sent it (as the manager verified it) and when it was received; bdf verify shows them. The key is the manager's (manager.sign_key_file); without one the node fails its jobs."));
+      break;
     case "filter": {
       const rules = el("div", undefined, { id: "f-rules", className: "flex flex-col gap-2" });
       for (const r of n.rules || []) rules.append(ruleRow(r));
@@ -743,6 +747,10 @@ async function save(ev) {
     case "convert":
       body.to = picked("to");
       body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
+      break;
+    case "sign":
+      body.to = picked("to");
+      if (dur("f-sign-role")) body.sign_role = dur("f-sign-role");
       break;
     case "sink":
       if (dur("f-latest")) body.latest = Number(dur("f-latest"));

@@ -36,6 +36,9 @@ func registerManagerConfigDefinition0() {
 			"manager.no_system_fonts",
 			"manager.max_document_mb",
 			"manager.secure_cookies",
+			"manager.sign_key_file",
+			"manager.sign_cert_file",
+			"manager.sign_tsa",
 		},
 		Defaults: map[string]string{
 			"manager.records":         "bbolt:printmanager.db",
@@ -61,6 +64,9 @@ func registerManagerConfigDefinition0() {
 			{Prefix: "manager", Key: "no_system_fonts", Help: "use only font_dirs", Kind: cliparser.KindBool},
 			{Prefix: "manager", Key: "max_document_mb", Help: "largest document taken, in MiB"},
 			{Prefix: "manager", Key: "secure_cookies", Help: "Secure on the devices' cookie (false only for plain http in development)", Kind: cliparser.KindBool},
+			{Prefix: "manager", Key: "sign_key_file", Help: "file of the private key (PEM) that sign nodes sign documents with, as a witness"},
+			{Prefix: "manager", Key: "sign_cert_file", Help: "file of the certificate of the signing key (PEM), followed by those of its chain"},
+			{Prefix: "manager", Key: "sign_tsa", Help: "URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes"},
 		},
 		Apply: applyManagerConfigDefinition0,
 		Scaffold: []configbind.ScaffoldField{
@@ -78,6 +84,9 @@ func registerManagerConfigDefinition0() {
 			{Key: "no_system_fonts", Kind: configbind.ScaffoldBool, Default: "false", Help: "use only font_dirs"},
 			{Key: "max_document_mb", Kind: configbind.ScaffoldInt, Default: "64", Help: "largest document taken, in MiB"},
 			{Key: "secure_cookies", Kind: configbind.ScaffoldBool, Default: "true", Help: "Secure on the devices' cookie (false only for plain http in development)"},
+			{Key: "sign_key_file", Kind: configbind.ScaffoldString, Help: "file of the private key (PEM) that sign nodes sign documents with, as a witness"},
+			{Key: "sign_cert_file", Kind: configbind.ScaffoldString, Help: "file of the certificate of the signing key (PEM), followed by those of its chain"},
+			{Key: "sign_tsa", Kind: configbind.ScaffoldString, Help: "URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes"},
 		},
 	})
 }
@@ -166,6 +175,15 @@ func applyManagerConfigDefinition0(dst any, o *configbind.Overlay) error {
 		p.SecureCookies = bb
 	} else {
 		p.SecureCookies = true
+	}
+	if v, ok := o.GetString("manager.sign_key_file"); ok {
+		p.SignKeyFile = v
+	}
+	if v, ok := o.GetString("manager.sign_cert_file"); ok {
+		p.SignCertFile = v
+	}
+	if v, ok := o.GetString("manager.sign_tsa"); ok {
+		p.SignTSA = v
 	}
 	return nil
 }

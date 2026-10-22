@@ -44,7 +44,7 @@ const GAP = 30; // between the rows the nodes are laid out in
 // what picks by rules (filter), what makes a new payload of it
 // (transform), and where it ends (sink).
 export const ROLES = { source: "Source", flow: "Control flow", filter: "Filter", transform: "Transform", sink: "Sink" };
-export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", template: "transform", convert: "transform", display: "sink", printer: "sink", archive: "sink", sink: "sink", export: "sink" };
+export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", template: "transform", convert: "transform", sign: "transform", display: "sink", printer: "sink", archive: "sink", sink: "sink", export: "sink" };
 export const ROLE_COLOR = { source: "#0f766e", flow: "#4338ca", filter: "#be185d", transform: "#c2410c", sink: "#334155" };
 // The icons of the kinds: strokes in a 24 by 24 box.
 const ICONS = {
@@ -55,6 +55,8 @@ const ICONS = {
   filter: ["M4 4h16l-6 8v6l-4 2v-8z"],
   template: ["M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z", "M14 3v5h5", "M9 13h6", "M9 17h4"],
   convert: ["M21 12a9 9 0 0 1-15 6.7L3 16", "M3 12a9 9 0 0 1 15-6.7L21 8", "M3 21v-5h5", "M21 3v5h-5"],
+  // a pen over a line: a signature
+  sign: ["M3 21h18", "M14.5 4.5l5 5L9 20H4v-5z", "M12.5 6.5l5 5"],
   inbox: ["M5.5 5h13l3.5 7v7H2v-7z", "M2 12h5l2 3h6l2-3h5"],
   display: ["M3 4h18v12H3z", "M8 21h8", "M12 16v5"],
   printer: ["M6 9V3h12v6", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v7H6z"],
@@ -65,7 +67,7 @@ const ICONS = {
 };
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer, an archive what it wrote)
-const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "inbox", "display", "archive"]);
+const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "sign", "inbox", "display", "archive"]);
 // the exits read from outside: applications and people fetch what an
 // export lists, drawn as an arrow going out
 const EXIT = new Set(["export"]);
@@ -76,9 +78,9 @@ const ENTRY = new Set(["endpoint", "cups"]);
 // edge, on either side (kinds.go: passesOn)
 const PASSES_ON = new Set(["queue", "class", "filter", "inbox", "endpoint", "cups", "archive"]);
 // the kinds of node that send on a .bdf whatever reaches them: a template
-// or a convert node the one it makes, a display the one its fallback
-// printer prints
-const MAKES_BDF = new Set(["template", "convert", "display"]);
+// or a convert node the one it makes, a sign node the one it signs, a
+// display the one its fallback printer prints
+const MAKES_BDF = new Set(["template", "convert", "sign", "display"]);
 const ALL = ["bdf", "data", "any"];
 // the colors besides the kinds' (admin.js: PAYLOAD_COLOR): several kinds
 // at once, a port or an edge not typed yet, an input that takes any kind
@@ -202,7 +204,7 @@ export function legend(box) {
     s.append(svgEl("rect", { x: "1", y: "2", width: "12", height: "10", rx: "2", fill }));
     return s;
   };
-  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "by rules", transform: "template, convert", sink: "display, printer, archive, sink, export" };
+  const of = { source: "endpoint, CUPS server", flow: "queue, class, inbox", filter: "by rules", transform: "template, convert, sign", sink: "display, printer, archive, sink, export" };
   box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), `${label} (${of[role]})`)), item(dot(PAYLOAD_COLOR.bdf, "#fff"), ".bdf document"), item(dot(PAYLOAD_COLOR.data, "#fff"), "data (for a template node)"), item(dot(PAYLOAD_COLOR.any, "#fff"), "any file as received (for a convert node)"), item(dot(MIXED_COLOR, "#fff"), "several kinds"), item(dot(ANY_KIND_COLOR, "#fff"), "takes any kind"), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), "not typed yet: its first edge types it"), item(line(BROKEN_COLOR, "6 4"), "no longer connects: the node after does not take what reaches it"));
 }
 

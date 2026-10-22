@@ -89,7 +89,7 @@ func (k kinds) String() string { return strings.Join(k.names(), ", ") }
 // anything.
 func takes(kind string) kinds {
 	switch kind {
-	case KindPrinter, KindDisplay:
+	case KindPrinter, KindDisplay, KindSign:
 		return kindBDF
 	case KindTemplate:
 		return kindData
@@ -145,7 +145,7 @@ func (n *Node) emits(in kinds) kinds {
 	switch n.Kind {
 	case KindEndpoint, KindCups:
 		return in | n.entryKind()
-	case KindTemplate, KindConvert, KindDisplay:
+	case KindTemplate, KindConvert, KindDisplay, KindSign:
 		return kindBDF
 	}
 	return in

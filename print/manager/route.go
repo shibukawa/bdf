@@ -74,7 +74,7 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 		m.routeExport(ctx, r, name, from)
 	case KindFilter:
 		m.routeFilter(ctx, r, name, from, depth)
-	case KindTemplate, KindConvert:
+	case KindTemplate, KindConvert, KindSign:
 		m.routeDelivery(ctx, r, Leg{Node: name, Kind: kind, From: from}, "", "")
 	case KindQueue, KindEndpoint, KindCups:
 		n, err := m.Node(ctx, name)
@@ -408,7 +408,7 @@ func (m *Manager) tickJobs(ctx context.Context, rep *TickReport) error {
 }
 
 // deliveryKinds are the kinds of node whose leg names a delivery.
-var deliveryKinds = []string{KindPrinter, KindArchive, KindClass, KindTemplate, KindConvert}
+var deliveryKinds = []string{KindPrinter, KindArchive, KindClass, KindTemplate, KindConvert, KindSign}
 
 // removeJob deletes a job, its payloads and its deliveries.
 func (m *Manager) removeJob(ctx context.Context, j *Job) error {

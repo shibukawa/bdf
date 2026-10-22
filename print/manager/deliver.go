@@ -215,7 +215,7 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 			return d, err
 		}
 		return d, nil
-	case KindTemplate, KindConvert:
+	case KindTemplate, KindConvert, KindSign:
 		n, err := m.Node(sctx, d.Node)
 		if err == nil && n.Kind != d.Kind {
 			err = finalErr{fmt.Errorf("%s is a %s, not a %s node", d.Node, n.Kind, d.Kind)}

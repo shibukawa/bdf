@@ -81,6 +81,9 @@ type Options struct {
 	// (cmd/printmanager).
 	NoPorts  bool
 	OnChange func()
+	// Signer is the key that sign nodes sign with (nil: a sign node fails
+	// its jobs).
+	Signer *Signer
 	// TempDir holds documents while they are converted ("" the system's).
 	TempDir string
 	Log     *slog.Logger

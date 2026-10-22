@@ -23,12 +23,12 @@ import (
 // the kinds of payload that reach every node are ones it takes (typed).
 
 // nodeKinds are the kinds of a node, in the order of a job's way.
-var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink, KindExport}
+var nodeKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindSign, KindInbox, KindArchive, KindDisplay, KindPrinter, KindSink, KindExport}
 
 // routingKinds are the kinds a node changes between, keeping its name. A
 // display, a printer, a sink or an export keeps its kind: its slips,
 // devices, deliveries, kept jobs or entries name it.
-var routingKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindInbox, KindArchive}
+var routingKinds = []string{KindEndpoint, KindCups, KindQueue, KindClass, KindFilter, KindTemplate, KindConvert, KindSign, KindInbox, KindArchive}
 
 // PutNode adds a node or replaces its settings; the settings of other
 // kinds are dropped. An endpoint added gets a key, returned once (Key);
@@ -112,6 +112,15 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		n.Formats = cleanFormats(in.Formats)
 		if err := checkFormats(n.Formats); err != nil {
 			return "", err
+		}
+	case KindSign:
+		n.To = cleanNames(in.To)
+		if len(n.To) == 0 {
+			return "", fmt.Errorf("%w: a sign node sends the document it signs to at least one node (to)", ErrInvalid)
+		}
+		n.SignRole = strings.TrimSpace(in.SignRole)
+		if len(n.SignRole) > 64 {
+			return "", fmt.Errorf("%w: sign_role is 64 bytes at most", ErrInvalid)
 		}
 	case KindSink:
 		n.Latest = in.Latest
@@ -548,7 +557,7 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 		if t.Accepts == nil {
 			t.Accepts = []string{}
 		}
-		if passesOn(n.Kind) || n.Kind == KindTemplate || n.Kind == KindConvert || n.Kind == KindDisplay {
+		if passesOn(n.Kind) || n.Kind == KindTemplate || n.Kind == KindConvert || n.Kind == KindSign || n.Kind == KindDisplay {
 			t.Emits = n.emits(ty.reach[n.Name]).names()
 		}
 		for to, bad := range broken[n.Name] {
@@ -567,7 +576,7 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 			t.Templates = byNode[n.Name]
 			slices.Sort(t.Templates)
 			t.Pending = pending[n.Name]
-		case KindConvert:
+		case KindConvert, KindSign:
 			t.Pending = pending[n.Name]
 		case KindInbox:
 			if st, err := m.st.db.Get[inboxState](ctx, n.Name); err == nil {

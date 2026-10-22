@@ -1,0 +1,55 @@
+id: milestone:sig-3b
+type: milestone
+title: sig-3b — Docflow の立会人の署名のノード（sign）
+summary: >-
+  requirement:tamper-evidence の 3 つ目の段の後半。Docflow（print/manager）に sign ノードを足した。届いた .bdf に管理者の鍵で文書の署名（package sign）を付け、
+  claims に役割（既定 witness）・ノード・ジョブ・送った人（管理者が確かめたもの）・受け取った時刻を入れて次へ送る。鍵は manager.sign_key_file・sign_cert_file（PEM のファイル）、
+  TSA は sign_tsa。2026-10-23 実装。トポロジーの画面（追加メニュー、アイコン、変換の役割、設定のフォーム）も対応。
+lifecycle: active
+authority: authored
+scope:
+  milestone: sig-3b
+  input: bdf
+  output: bdf (signed)
+constraints:
+- 鍵は crypto.Signer（Options.Signer）。設定は PEM のファイルのパス。KMS はこの口で後から差し込める
+- 署名の手順は他の変換と同じ配達（リース、再試行、鍵がないなど直らない誤りは final）
+non_goals:
+- AWS KMS などの鍵の置き場の実装（requirement:print-manager-auth の key-storage と一緒に決める）
+- 人がブラウザで自分の鍵で署名する当事者型（鍵の置き場がない）
+- /help の説明（ヘルプのページはこのブランチの基にない）
+capabilities:
+  sign-node:
+    state: implemented
+    about: capability:docflow/sign-node
+facts:
+  node: KindSign = "sign"。takes bdf、emits bdf、配達の種類（route・deliver・transform）、sign_role（64 バイトまで）
+  claims: role、witness（"BDF Docflow"）、node、job、number、received、submitted_by（kind・id・name・via）
+  code: print/manager/signnode.go（signPayload、keepBytes）。PEM の読み込みは sign.ParsePEM に移し、bdf コマンドと共有
+  ui: admin.js（KINDS、バッジ）、canvas.js（transform の役割、ペンのアイコン、出口の口、MAKES_BDF）、topology.js（Forwards to、Role）、pages.pw.html（追加メニュー）。pw generate で dist と生成物を作り直した
+acceptance:
+  flow:
+    text: endpoint → sign → sink で、ジョブが witness:done になり、文書の署名が成り立ち（TSA の印つき）、claims に役割・ノード・ジョブ・送った人が入る。鍵のない管理者では failed
+    verified_by:
+    - manager-unit
+    - browser-check
+verification:
+  manager-unit:
+    state: passed
+    method: integration
+    test: go test ./print/manager/（TestSignNode と既存の全テスト）、go test ./cmd/printmanager/...
+    authority: observed
+    evidence:
+      path: print/manager/signnode_test.go
+  browser-check:
+    state: passed
+    method: manual
+    test: pw dev（MANAGER_SIGN_KEY_FILE・CERT_FILE、スクラッチの bbolt）で Ada Admin として /topology。API で contracts → witness → keep を作り、契約書を POST、ジョブの脚が witness:done keep:kept、文書の末尾に bdfs の署名のブロック。キャンバスで sign ノードが変換の色とペンのアイコン、編集のフォームに Forwards to と Role
+    authority: observed
+relations:
+- relation: implements
+  to: requirement:tamper-evidence
+- relation: follows
+  to: milestone:sig-3a
+- relation: related_to
+  to: requirement:document-flow
