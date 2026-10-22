@@ -84,6 +84,9 @@ type Printer struct {
 	// (successful-ok-ignored-or-substituted-attributes), as RFC 8011
 	// says; by default the printer refuses it, as many printers do.
 	IgnoreUnsupported bool
+	// NoCustom makes the printer one that knows no attribute of one's
+	// own (x-…): such an attribute is unsupported.
+	NoCustom bool
 	// Only11 refuses IPP/2.x with server-error-version-not-supported.
 	Only11 bool
 	// NoChunked refuses requests without a length (chunked), with HTTP

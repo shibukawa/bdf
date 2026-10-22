@@ -1,13 +1,20 @@
-// The editor of the topology. Nodes of every kind are placed on the
-// canvas (canvas.js: panned and zoomed, with the activity running along
-// the edges), connected by dragging from a node's output port onto
-// another node, and set up in the sidebar: the fields of the node's kind,
-// and what is at it (an endpoint's templates and key, a display's
-// devices and enrollment codes). Everything goes through the API; the
-// server checks a node when it is put (its edges, its name, no cycle).
+// The topology: everyone's page, and the editor of a person with the
+// role topology. The nodes and the edges are drawn on the canvas
+// (canvas.js: panned and zoomed, with the activity of the jobs the
+// person may see running along the edges, polled with its revision).
+// Editing: nodes of every kind are placed, connected by dragging from a
+// node's output port onto another node, and set up in the sidebar (the
+// fields of the node's kind, and what is at it: an endpoint's templates
+// and key, a display's devices and enrollment codes); everything goes
+// through the API, and the server checks a node when it is put (its
+// edges, its name, no cycle, and that every node takes the kinds of
+// payload that reach it along a new edge; a change of settings may
+// leave an edge broken, which the canvas draws dashed and the sidebar
+// explains). Looking: a node shows the jobs sent to it that the person
+// sees, and a form to print there when they may.
 
-import { $, api, button, changed, el, keptSection, kindBadge, KINDS, onChange, PAYLOADS, since, status } from "./admin.js";
-import { createCanvas } from "./canvas.js";
+import { $, api, button, changed, el, keptSection, kindBadge, KINDS, legsOf, onChange, PAYLOADS, sender, since, stateBadge, status } from "./admin.js";
+import { createCanvas, iconOf, legend, payloadColor, roleColor, typeOf } from "./canvas.js";
 
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
 const ACCEPTS = { file: "documents (PDF, Office, images, .bdf …)", data: "data (JSON, YAML, CSV, Excel, Parquet)" };
@@ -23,9 +30,16 @@ let selected = null; // the node in the sidebar
 let draft = null; // a node being added: {kind}
 let fitted = false;
 let etag = ""; // the activity's revision
+let live = null; // the activity, as /api/topology/live last told it
+// editable: the server rendered the editor's controls (the palette) for
+// a person with the role topology; anyone else looks, and prints where
+// they may. The API checks the role itself.
+const editable = !!$("palette");
+let dests = []; // looking: the nodes the person may send to
+let jobs = []; // looking: the jobs the person sees, latest first
 
 const canvas = createCanvas($("canvas"), {
-  editable: true,
+  editable,
   onSelect(name) {
     selected = name;
     draft = null;
@@ -38,18 +52,26 @@ const canvas = createCanvas($("canvas"), {
   onConnect(from, to) {
     addEdge(from, to).catch((e) => status(e.message, true));
   },
+  onReject(from, to, why) {
+    status(`${from.name} → ${to}: ${why}`, true);
+  },
   onRemoveEdge: removeEdge,
   draftLabel: () => $("f-name")?.value || "",
+  draftNote: () => $("f-description")?.value || "",
 });
 
 async function load() {
   try {
     const [t, l] = await Promise.all([api("GET", "/api/topology"), api("GET", "/api/layout")]);
     topo = t;
-    if (!formats.length) formats = await api("GET", "/api/formats");
-    if (!me) me = await api("GET", "/api/me");
-    apps = await api("GET", "/api/apps");
-    $("node-names").replaceChildren(...topo.map((n) => el("option", undefined, { value: n.name })));
+    if (editable) {
+      if (!formats.length) formats = await api("GET", "/api/formats");
+      if (!me) me = await api("GET", "/api/me");
+      apps = await api("GET", "/api/apps");
+      $("node-names").replaceChildren(...topo.map((n) => el("option", undefined, { value: n.name })));
+    } else {
+      [dests, jobs] = await Promise.all([api("GET", "/api/destinations"), api("GET", "/api/my/jobs?limit=200")]);
+    }
     if (selected && !topo.some((n) => n.name === selected)) selected = null;
     canvas.setData(topo, l.positions || {});
     if (!fitted) {
@@ -62,22 +84,54 @@ async function load() {
   }
 }
 
-// poll reads the activity (every job, for an administrator) when its
-// revision changed.
+// poll reads the activity (the jobs the person sees; every job, for an
+// administrator) when its revision changed, and, looking, the jobs with
+// it.
 async function poll() {
   try {
     const res = await fetch("/api/topology/live", { headers: etag ? { "If-None-Match": etag } : {} });
+    if (res.status === 401) {
+      location.href = "/";
+      return;
+    }
     if (res.status === 200) {
       etag = res.headers.get("ETag") || "";
-      canvas.setLive(await res.json());
+      live = await res.json();
+      canvas.setLive(live);
+      if (!editable) {
+        jobs = await api("GET", "/api/my/jobs?limit=200");
+        renderSidebar();
+      }
+    } else if (res.status !== 304) {
+      throw new Error("live " + res.status);
     }
-  } catch {}
+    $("live").textContent = "Live · " + new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    $("live").className = "badge badge-success badge-soft badge-sm";
+  } catch (e) {
+    $("live").textContent = "Not connected: " + e.message;
+    $("live").className = "badge badge-error badge-sm";
+  }
 }
 
 $("zoom-in").addEventListener("click", () => canvas.zoomBy(1.25));
 $("zoom-out").addEventListener("click", () => canvas.zoomBy(0.8));
 $("zoom-fit").addEventListener("click", () => canvas.fit());
-$("refresh").addEventListener("click", load);
+if (editable) $("refresh").addEventListener("click", load);
+legend($("legend"));
+// the palette's kinds get their icons, in their roles' colors
+for (const a of document.querySelectorAll("#palette a[data-kind]")) a.prepend(kindIcon(a.dataset.kind, 18));
+
+// kindIcon is the icon of a kind, in its role's color.
+function kindIcon(kind, size) {
+  const i = iconOf(kind, size);
+  i.style.color = roleColor(kind);
+  i.classList.add("shrink-0");
+  return i;
+}
+
+// brokenEdges names the edges that no longer carry what the node after
+// them takes.
+const brokenEdges = (t) => t.flatMap((n) => Object.entries(n.broken || {}).map(([to, kinds]) => `${n.name} → ${to} (${kinds.map((k) => PAYLOADS[k] || k).join(", ")})`));
 
 // addEdge connects a node to a target through the API, which checks the
 // edge (the target exists, no cycle): a class's member, a display's
@@ -126,7 +180,7 @@ async function removeEdge(from, e) {
 // Adding a node: the palette makes a draft, placed at the centre of the
 // view clear of the others; the sidebar takes its name and settings, and
 // Add puts it.
-$("palette").addEventListener("click", (ev) => {
+if (editable) $("palette").addEventListener("click", (ev) => {
   const a = ev.target.closest("a[data-kind]");
   if (!a) return;
   ev.preventDefault();
@@ -158,13 +212,24 @@ function input(id, value, attrs = {}) {
 }
 
 // picker is the nodes a node may send to, as checkboxes (name: the
-// checkboxes' name; except the node itself and the entries).
+// checkboxes' name; except the node itself and the entries), each with a
+// dot of what it takes; one that would not take what the node carries
+// says so.
 function picker(name, chosen, except) {
   const box = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
+  const from = draft || topo.find((x) => x.name === selected) || {};
+  const carries = typeOf(from).out;
   const names = topo.filter((x) => x.name !== except && x.kind !== "cups").map((x) => x.name);
   for (const x of names) {
-    const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
-    l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name, value: x, checked: chosen.includes(x) }), x);
+    const target = topo.find((t) => t.name === x);
+    const t = typeOf(target);
+    const bad = carries.filter((k) => !t.accepts.includes(k));
+    const text = (kinds) => kinds.map((k) => PAYLOADS[k] || k).join(" or ");
+    const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" + (bad.length ? " text-error" : ""), title: bad.length ? `${x} takes ${text(t.accepts) || "nothing now"}, but this carries ${text(bad)}` : `may be sent ${t.accepts.length === 3 ? "any kind" : text(t.accepts)}` });
+    const dot = el("span", undefined, { className: "inline-block size-2.5 rounded-full border border-base-100" });
+    dot.style.background = t.dead ? "#dc2626" : t.in.length ? payloadColor(t.in) : t.anyKind ? "#475569" : "#f8fafc";
+    if (!t.in.length && !t.anyKind && !t.dead) dot.style.borderColor = "#94a3b8";
+    l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name, value: x, checked: chosen.includes(x) }), dot, x + (bad.length ? " (would not take it)" : ""));
     box.append(l);
   }
   // one chosen that is not there any more stays chosen, so that it is not lost unseen
@@ -298,12 +363,22 @@ function entryFields(form, n) {
 }
 
 // kindsLine tells what a node takes and sends on, as the API inferred
-// it from the entries.
+// it from the entries, what may be sent to it now (what the nodes after
+// it take), and the edges from it that no longer connect.
 function kindsLine(n) {
+  const box = el("div", undefined, { className: "flex flex-col gap-1 text-xs text-base-content/60" });
+  const text = (kinds) => kinds.map((k) => PAYLOADS[k] || k).join(" or ");
   const parts = [];
   if (n.takes) parts.push("takes " + (PAYLOADS[n.takes] || n.takes));
-  if (n.emits && n.emits.length) parts.push("sends on " + n.emits.map((k) => PAYLOADS[k] || k).join(" or "));
-  return parts.length ? el("p", parts.join(" · "), { className: "text-xs text-base-content/60" }) : null;
+  const acc = n.accepts || [];
+  if (n.accepts && acc.length < 3 && !(acc.length === 1 && acc[0] === n.takes)) parts.push(acc.length ? `may be sent ${text(acc)} only (what is after it takes)` : "nothing fits it now: the nodes after it take different kinds");
+  if (n.emits && n.emits.length) parts.push("sends on " + text(n.emits));
+  if (parts.length) box.append(el("p", parts.join(" · ")));
+  for (const [to, kinds] of Object.entries(n.broken || {})) {
+    const target = topo.find((x) => x.name === to);
+    box.append(el("p", `⚠ → ${to} no longer connects: ${to} takes ${target ? PAYLOADS[target.takes] || target.takes : "something else"}, but ${text(kinds)} reaches it from here. Put a convert or a template node between, change what this node takes, or remove the edge; a job gets an error there meanwhile.`, { className: "text-error" }));
+  }
+  return box.childElementCount ? box : null;
 }
 
 const names = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -355,12 +430,121 @@ function portField(n, what, required = false) {
   return f;
 }
 
+// Looking: the sidebar of a node is its counts, a form to print there
+// when the person may, and the jobs there they see.
+
+function countsOf(name) {
+  const c = (live && live.nodes[name]) || {};
+  const out = [];
+  if (c.open) out.push([String(c.open), "open"]);
+  if (c.held) out.push([String(c.held), "held"]);
+  if (c.pending) out.push([String(c.pending), "waiting"]);
+  if (c.failed) out.push([String(c.failed), "failed"]);
+  out.push([String(c.recent || 0), "in the last hour"]);
+  return out;
+}
+
+function viewSidebar() {
+  const aside = $("sidebar");
+  const n = topo.find((x) => x.name === selected);
+  if (!n) {
+    const p = el("p", undefined, { className: "text-sm text-base-content/60" });
+    p.append("Click a node to see the jobs sent there that you may see, and to print there when you may. ");
+    if (live && Object.keys(live.nodes).length === 0) p.append("Nothing of yours is in the network right now.");
+    aside.replaceChildren(p);
+    return;
+  }
+  const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
+  head.append(kindIcon(n.kind, 20), kindBadge(n.kind), el("h3", n.title && n.title !== n.name ? n.title : n.name, { className: "text-lg font-semibold" }));
+  if (n.title && n.title !== n.name) head.append(el("span", n.name, { className: "font-mono text-sm text-base-content/60" }));
+  const stats = el("div", undefined, { className: "stats stats-horizontal flex-wrap bg-base-200" });
+  for (const [v, label] of countsOf(n.name)) {
+    const s = el("div", undefined, { className: "stat px-3 py-2" });
+    s.append(el("div", v, { className: "stat-value text-xl" }), el("div", label, { className: "stat-title text-xs" }));
+    stats.append(s);
+  }
+  const parts = [head];
+  if (n.description) parts.push(el("p", n.description, { className: "whitespace-pre-wrap text-sm text-base-content/80" }));
+  parts.push(stats);
+  const out = [];
+  for (const to of n.to || []) out.push(to);
+  for (const [i, r] of (n.rules || []).entries()) out.push((r.to || []).join(", ") + ` (rule ${i + 1})`);
+  for (const to of n.otherwise || []) out.push(to + " (otherwise)");
+  for (const m of n.members || []) out.push(m + (n.policy === "failover" ? " (first)" : " (in turn)"));
+  if (n.fallback && n.fallback.printer) out.push(n.fallback.printer + " (fallback)");
+  if (out.length) parts.push(el("p", "→ " + out.join(", "), { className: "font-mono text-xs text-base-content/60" }));
+  const k = kindsLine(n);
+  if (k) parts.push(k);
+  const dest = dests.find((d) => d.name === n.name);
+  if (dest) {
+    const form = el("form", undefined, { className: "flex flex-col gap-2 border-t border-base-300 pt-3" });
+    form.append(el("h4", "Print here", { className: "font-semibold" }));
+    const file = el("input", undefined, { type: "file", className: "file-input file-input-sm w-full", required: true });
+    const name = el("input", undefined, { className: "input input-sm w-full", placeholder: "job name (the file's)" });
+    form.append(file, name, el("button", "Print", { type: "submit", className: "btn btn-sm btn-primary w-fit" }));
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const f = file.files[0];
+      if (!f) return;
+      try {
+        const j = await api("POST", `/api/destinations/${encodeURIComponent(n.name)}/jobs?name=${encodeURIComponent(name.value || f.name)}`, f, true);
+        status(`Job #${j.number} is ${j.state}`);
+        file.value = "";
+        name.value = "";
+        etag = "";
+        await poll();
+      } catch (e) {
+        status(e.message, true);
+      }
+    });
+    parts.push(form);
+  } else {
+    parts.push(el("p", "You may not print here.", { className: "text-xs text-base-content/60" }));
+  }
+  const mine = jobs.filter((j) => j.dest === n.name || (j.legs || []).some((l) => l.node === n.name));
+  const sec = el("div", undefined, { className: "flex flex-col gap-2 border-t border-base-300 pt-3" });
+  sec.append(el("h4", `Jobs here (${mine.length})`, { className: "font-semibold" }));
+  if (!mine.length) sec.append(el("p", "None of yours.", { className: "text-xs text-base-content/60" }));
+  const list = el("ul", undefined, { className: "flex flex-col gap-2" });
+  for (const j of mine.slice(0, 20)) {
+    const li = el("li", undefined, { className: "rounded-box bg-base-200 p-2 text-sm" });
+    const row = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
+    row.append(el("span", "#" + j.number, { className: "font-mono" }), el("span", j.name || "", { className: "font-semibold" }), stateBadge(j.state));
+    li.append(row);
+    li.append(el("div", `${sender(j)} · ${since(j.received)}`, { className: "text-xs text-base-content/60" }));
+    li.append(el("div", legsOf(j), { className: "font-mono text-xs text-base-content/60 break-all", title: legsOf(j) }));
+    const links = el("div", undefined, { className: "flex gap-3" });
+    links.append(el("a", "Document", { className: "link text-xs", href: `/api/jobs/${j.id}/document` }));
+    if (dest) {
+      const re = el("button", "Reprint here", { type: "button", className: "link text-xs" });
+      re.addEventListener("click", async () => {
+        try {
+          const again = await api("POST", `/api/jobs/${j.id}/reprint`, { to: n.name });
+          status(`Job #${again.number} is ${again.state}`);
+          etag = "";
+          await poll();
+        } catch (e) {
+          status(e.message, true);
+        }
+      });
+      links.append(re);
+    }
+    li.append(links);
+    list.append(li);
+  }
+  sec.append(list);
+  parts.push(sec);
+  aside.replaceChildren(...parts);
+  if (n.kind === "sink") keptSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
+}
+
 function renderSidebar() {
+  if (!editable) return viewSidebar();
   const aside = $("sidebar");
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) {
     aside.replaceChildren(
-      el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. The ports and edges are colored by what flows: blue a .bdf document, green data (for a template node), grey any file as received (for a convert node); a printer takes .bdf only, so a file or data cannot be connected to it without a convert or a template node between.", { className: "text-sm text-base-content/60" }),
+      el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take.", { className: "text-sm text-base-content/60" }),
       el("a", "The manual: the editor, and every kind of node", { className: "link mt-2 block text-sm", href: "/help/topology#editor", target: "_blank", rel: "noopener" }),
     );
     return;
@@ -368,7 +552,7 @@ function renderSidebar() {
   const kind = n.kind;
   const form = el("form", undefined, { className: "flex flex-col gap-1" });
   const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
-  head.append(kindBadge(kind));
+  head.append(kindIcon(kind, 20), kindBadge(kind));
   if (draft) head.append(el("span", "new", { className: "badge badge-outline" }));
   else head.append(el("h3", n.name, { className: "font-mono text-lg font-semibold" }), scopeBadge(n));
   // the manual's section of the kind (the language is the browser's)
@@ -379,7 +563,10 @@ function renderSidebar() {
     name.addEventListener("input", () => canvas.draw());
     form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>) and does not change later."));
   }
-  form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown instead of the name" })));
+  form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown in the node beside its kind" })));
+  const note = el("textarea", undefined, { id: "f-description", className: "textarea textarea-sm w-full", rows: 3, value: n.description || "", placeholder: "what it is for: the invoices of the ERP, PDF only; printed on the 3rd floor …" });
+  note.addEventListener("input", () => canvas.draw());
+  form.append(field("Description", note, "A note shown in the node, under its [kind], as in a C4 diagram: the first lines on the canvas, all of it here."));
   if (!draft) {
     const k = kindsLine(n);
     if (k) form.append(k);
@@ -506,7 +693,7 @@ async function save(ev) {
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) return;
   const name = draft ? $("f-name").value.trim() : n.name;
-  const body = { kind: n.kind, title: $("f-title").value.trim(), scope: $("f-scope").value };
+  const body = { kind: n.kind, title: $("f-title").value.trim(), description: $("f-description").value.trim(), scope: $("f-scope").value };
   if ($("f-owner").value.trim()) body.owner = $("f-owner").value.trim();
   const dur = (id) => ($(id).value.trim() ? $(id).value.trim() : undefined);
   switch (n.kind) {
@@ -577,6 +764,7 @@ async function save(ev) {
       break;
   }
   try {
+    const was = new Set(brokenEdges(topo));
     const res = await api("PUT", "/api/nodes/" + encodeURIComponent(name), body);
     if (draft) {
       await api("PUT", "/api/layout", { positions: { [name]: canvas.draftPos() } });
@@ -587,6 +775,10 @@ async function save(ev) {
     status(`${name} saved`);
     if (res.key) showKey(name, res.key);
     await load();
+    // a change of settings may leave an edge carrying what the node
+    // after it does not take: said here, and drawn dashed
+    const broke = brokenEdges(topo).filter((e) => !was.has(e));
+    if (broke.length) status(`Saved, but ${broke.join("; ")} no longer connect${broke.length === 1 ? "s" : ""}: the node after does not take what reaches it (the dashed edge). Put a convert or a template node between, or remove the edge.`, true);
     $("sidebar").scrollTop = 0;
   } catch (e) {
     status(e.message, true);
@@ -762,7 +954,7 @@ function showKey(name, key) {
 // The Copy button puts the key on the clipboard. Without the clipboard
 // API (a page that is not a secure context) the key is selected, so
 // that the keyboard's copy takes it.
-$("key-copy").addEventListener("click", async () => {
+if (editable) $("key-copy").addEventListener("click", async () => {
   const key = $("key-value").textContent;
   let copied = false;
   try {
@@ -783,7 +975,7 @@ $("key-copy").addEventListener("click", async () => {
 });
 
 
-document.addEventListener("keydown", (ev) => {
+if (editable) document.addEventListener("keydown", (ev) => {
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
   if (ev.key === "Escape" && draft) {
     draft = null;
@@ -794,7 +986,7 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
-// a link from another page names a node: /admin/topology#<name>
+// a link from another page names a node: /topology#<name>
 if (location.hash.length > 1) {
   selected = decodeURIComponent(location.hash.slice(1));
   canvas.setSelected(selected);
@@ -804,3 +996,12 @@ load().then(poll);
 setInterval(() => {
   if (!document.hidden) poll();
 }, POLL_MS);
+if (!editable) {
+  // looking, the nodes are read again now and then (editing, Refresh)
+  setInterval(() => {
+    if (!document.hidden) load();
+  }, 60000);
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) poll();
+});

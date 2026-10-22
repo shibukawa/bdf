@@ -10,7 +10,8 @@ import (
 // stands for in requested-attributes, and what a printer lists in
 // job-creation-attributes-supported.
 var JobTemplateAttrs = []string{
-	"copies", "finishings", "ipp-attribute-fidelity", "job-hold-until", "job-name", "job-priority", "media", "media-col",
+	"copies", "finishings", "ipp-attribute-fidelity", "job-account-id", "job-accounting-user-id", "job-hold-until", "job-name",
+	"job-priority", "media", "media-col",
 	"multiple-document-handling", "number-up", "orientation-requested", "output-bin", "overrides", "page-ranges",
 	"print-color-mode", "print-content-optimize", "print-quality", "print-rendering-intent", "print-scaling",
 	"printer-resolution", "sides",

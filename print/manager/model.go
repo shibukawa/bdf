@@ -158,9 +158,13 @@ const (
 // (/ipp/print/<name>) in the one namespace; the settings are the kind's
 // (PutNode drops the others).
 type Node struct {
-	Name  string `json:"name"`
-	Kind  string `json:"kind"`
-	Title string `json:"title,omitempty"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	// Title is shown instead of the name; Description is a note of what
+	// the node is for, shown in the node as the description of a C4
+	// element is (its first lines on the canvas, all of it beside).
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
 	// To are the nodes a queue, an endpoint or a CUPS server forwards to
 	// (all of them), or the nodes an inbox's items may be released to.
 	To []string `json:"to,omitempty"`

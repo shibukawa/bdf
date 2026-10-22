@@ -395,6 +395,10 @@ type JobStatus struct {
 	Impressions int32  // job-impressions-completed, or -1 when the printer does not say
 	// Attrs are the job attributes as received.
 	Attrs []Attribute
+	// Unsupported are the attributes the printer did not take, as the
+	// answer to a request that makes a job listed them (its
+	// unsupported-attributes group).
+	Unsupported []Attribute
 }
 
 func (j *JobStatus) String() string {
@@ -487,12 +491,13 @@ func (c *Client) CreateJob(ctx context.Context, name string, job []Attribute) (*
 	if err != nil {
 		return nil, err
 	}
-	return jobStatus(groupAttrs(res, TagJob)), nil
+	return madeJob(res), nil
 }
 
 // SendDocument sends a document of the format to a job, streaming doc.
-// last tells the printer the job has no more documents.
-func (c *Client) SendDocument(ctx context.Context, jobID int32, name, format string, doc io.Reader, last bool) (*JobStatus, error) {
+// last tells the printer the job has no more documents. op are more
+// operation attributes of the document (document-metadata …).
+func (c *Client) SendDocument(ctx context.Context, jobID int32, name, format string, doc io.Reader, last bool, op ...Attribute) (*JobStatus, error) {
 	m := c.NewRequest(OpSendDocument)
 	m.Add(TagOperation, Attr("job-id", Integer(int(jobID))))
 	if name != "" {
@@ -502,22 +507,29 @@ func (c *Client) SendDocument(ctx context.Context, jobID int32, name, format str
 		m.Add(TagOperation, Attr("document-format", MimeType(format)))
 	}
 	m.Add(TagOperation, Attr("last-document", Boolean(last)))
+	if len(op) > 0 {
+		m.Add(TagOperation, op...)
+	}
 	res, err := c.Do(ctx, m, doc)
 	if err != nil {
 		return nil, err
 	}
-	return jobStatus(groupAttrs(res, TagJob)), nil
+	return madeJob(res), nil
 }
 
 // PrintJob prints one document as a job of the attributes, streaming
-// doc.
-func (c *Client) PrintJob(ctx context.Context, name, format string, job []Attribute, doc io.Reader) (*JobStatus, error) {
+// doc. op are more operation attributes of the document
+// (document-metadata …).
+func (c *Client) PrintJob(ctx context.Context, name, format string, job []Attribute, doc io.Reader, op ...Attribute) (*JobStatus, error) {
 	m := c.NewRequest(OpPrintJob)
 	if name != "" {
 		m.Add(TagOperation, Attr("job-name", Name(name)))
 	}
 	if format != "" {
 		m.Add(TagOperation, Attr("document-format", MimeType(format)))
+	}
+	if len(op) > 0 {
+		m.Add(TagOperation, op...)
 	}
 	if len(job) > 0 {
 		m.Add(TagJob, job...)
@@ -526,7 +538,15 @@ func (c *Client) PrintJob(ctx context.Context, name, format string, job []Attrib
 	if err != nil {
 		return nil, err
 	}
-	return jobStatus(groupAttrs(res, TagJob)), nil
+	return madeJob(res), nil
+}
+
+// madeJob is the status of a job a request made, with what the printer
+// did not take.
+func madeJob(res *Message) *JobStatus {
+	js := jobStatus(groupAttrs(res, TagJob))
+	js.Unsupported = groupAttrs(res, TagUnsupportedGroup)
+	return js
 }
 
 // GetJobAttributes asks about a job.

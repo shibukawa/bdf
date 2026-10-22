@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"math"
+	"slices"
 	"strings"
 	"time"
 
@@ -297,6 +298,7 @@ func (j *job) send(format, media string, data []byte, attrs []ipp.Attribute, fal
 	}
 	j.res.Format = format
 	name := firstOr(j.t.JobName, "document")
+	op := j.t.Meta.opAttrs()
 	body := func() (io.Reader, func() error) {
 		if data != nil {
 			return bytes.NewReader(data), func() error { return nil }
@@ -316,6 +318,7 @@ func (j *job) send(format, media string, data []byte, attrs []ipp.Attribute, fal
 		if js, err = j.c.CreateJob(j.ctx, name, attrs); err != nil {
 			return err
 		}
+		j.unsupported(js)
 		j.res.Job = js
 		j.event(Event{Kind: "created", Job: js})
 		if j.o.OnCreated != nil {
@@ -326,7 +329,7 @@ func (j *job) send(format, media string, data []byte, attrs []ipp.Attribute, fal
 		}
 		r, wait := body()
 		cr := counted(r)
-		sent, err := j.c.SendDocument(j.ctx, js.ID, name, format, cr, true)
+		sent, err := j.c.SendDocument(j.ctx, js.ID, name, format, cr, true, op...)
 		werr := wait()
 		if err != nil {
 			if ipp.IsStatus(err, ipp.StatusClientErrorDocumentFormatNotSupported) && format == FormatPDF && fallback != "" {
@@ -337,7 +340,7 @@ func (j *job) send(format, media string, data []byte, attrs []ipp.Attribute, fal
 				j.res.Format = format
 				r, wait = body()
 				cr = counted(r)
-				sent, err = j.c.SendDocument(j.ctx, js.ID, name, format, cr, true)
+				sent, err = j.c.SendDocument(j.ctx, js.ID, name, format, cr, true, op...)
 				werr = wait()
 			}
 			if err != nil {
@@ -355,12 +358,13 @@ func (j *job) send(format, media string, data []byte, attrs []ipp.Attribute, fal
 		if werr != nil {
 			return werr
 		}
+		j.unsupported(sent)
 		js = merge(js, sent)
 		j.res.Bytes = cr.n
 	} else {
 		r, wait := body()
 		cr := counted(r)
-		js, err = j.c.PrintJob(j.ctx, name, format, attrs, cr)
+		js, err = j.c.PrintJob(j.ctx, name, format, attrs, cr, op...)
 		werr := wait()
 		if err != nil {
 			if werr != nil && !errors.Is(werr, io.ErrClosedPipe) {
@@ -371,6 +375,7 @@ func (j *job) send(format, media string, data []byte, attrs []ipp.Attribute, fal
 		if werr != nil {
 			return werr
 		}
+		j.unsupported(js)
 		j.res.Bytes = cr.n
 		if j.o.OnCreated != nil {
 			if err := j.o.OnCreated(js); err != nil {
@@ -438,6 +443,20 @@ func (j *job) attributes(format, media string) ([]ipp.Attribute, error) {
 // printerCopies tells whether the printer makes the copies; otherwise
 // the document holds them.
 func (j *job) printerCopies() bool { return sendCopies(j.p, j.t.copies()) }
+
+// unsupported notes the attributes the printer answered it did not take
+// (a printer without Validate-Job, or one asked document-metadata, says
+// so only once the job is made).
+func (j *job) unsupported(js *ipp.JobStatus) {
+	if js == nil {
+		return
+	}
+	for _, a := range js.Unsupported {
+		if s := a.Name + "=" + a.String(); !slices.Contains(j.res.Unsupported, s) {
+			j.res.Unsupported = append(j.res.Unsupported, s)
+		}
+	}
+}
 
 // without leaves out of the attributes the ones the printer named
 // unsupported.

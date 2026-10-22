@@ -158,15 +158,19 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /jobs", a.page("", func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Jobs(JobsParams{Account: ac}))
 	}))
+	// the topology is everyone's page: a person with the role topology
+	// edits it there, the others look (the page renders the editor's
+	// controls by the role; the API checks the role itself)
 	mux.HandleFunc("GET /topology", a.page("", func(w http.ResponseWriter, r *http.Request, ac Account) {
-		pw.WriteHTML(w, r, TopologyView(TopologyViewParams{Account: ac}))
+		pw.WriteHTML(w, r, Topology(TopologyParams{Account: ac}))
 	}))
-	// the pages of the role topology, one item each; /admin is the topology
+	// the pages of the role topology, one item each; /admin and
+	// /admin/topology (as it was) are the topology
 	mux.HandleFunc("GET /admin", a.page(manager.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
-		http.Redirect(w, r, "/admin/topology", http.StatusSeeOther)
+		http.Redirect(w, r, "/topology", http.StatusSeeOther)
 	}))
 	mux.HandleFunc("GET /admin/topology", a.page(manager.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
-		pw.WriteHTML(w, r, Topology(TopologyParams{Account: ac}))
+		http.Redirect(w, r, "/topology", http.StatusSeeOther)
 	}))
 	mux.HandleFunc("GET /admin/apps", a.page(manager.RoleTopology, func(w http.ResponseWriter, r *http.Request, ac Account) {
 		pw.WriteHTML(w, r, Apps(AppsParams{Account: ac}))

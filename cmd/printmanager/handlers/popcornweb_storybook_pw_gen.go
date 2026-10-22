@@ -89,13 +89,6 @@ func init() {
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
-		Name:      "TopologyView",
-		Exported:  true,
-		NewParams: func() any { return new(TopologyViewParams) },
-		Render:    func(params any) htmlbind.Fragment { return TopologyView(*params.(*TopologyViewParams)) },
-	})
-	pwstory.Register(pwstory.Template{
-		Package:   "handlers",
 		Name:      "renderAdminNav",
 		Exported:  false,
 		NewParams: func() any { return new(renderAdminNavParams) },

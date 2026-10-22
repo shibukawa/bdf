@@ -125,6 +125,12 @@ func (x *ippServer) jobRequest(q *ippRequest) (jobRequest, bool) {
 		}
 		return int(v.Int), true
 	}
+	// document-metadata comes with the document (an operation attribute)
+	if a := q.op.Get("document-metadata"); a != nil {
+		if _, ok := t.Meta.Take(*a); !ok {
+			bad(*a)
+		}
+	}
 	var job []ipp.Attribute
 	if g := q.req.Group(ipp.TagJob); g != nil {
 		job = g.Attrs
@@ -228,7 +234,15 @@ func (x *ippServer) jobRequest(q *ippRequest) (jobRequest, bool) {
 			// the pages and documents of overrides are not drawn
 			// differently: taken, and left
 		default:
-			bad(ipp.Attr(a.Name, ipp.OutOfBand(ipp.TagUnsupported)))
+			// the account and attributes of one's own (x-…) are kept
+			// with the job
+			if known, ok := t.Meta.Take(a); known {
+				if !ok {
+					bad(a)
+				}
+			} else {
+				bad(ipp.Attr(a.Name, ipp.OutOfBand(ipp.TagUnsupported)))
+			}
 		}
 	}
 	if len(unsupported) > 0 {
@@ -310,15 +324,32 @@ var (
 		"job-state", "job-state-reasons", "job-state-message", "number-of-documents", "time-at-creation", "time-at-processing",
 		"time-at-completed", "job-printer-up-time", "date-time-at-creation", "date-time-at-processing", "date-time-at-completed",
 		"job-k-octets", "job-impressions-completed", "job-media-sheets-completed", "document-format-supplied", "document-name-supplied",
-		"number-of-intervening-jobs",
+		"number-of-intervening-jobs", "document-metadata",
 	}
 	jobTemplate = []string{
-		"copies", "finishings", "job-hold-until", "job-priority", "media", "media-col", "multiple-document-handling", "orientation-requested",
-		"output-bin", "page-ranges", "print-color-mode", "print-quality", "print-scaling", "printer-resolution", "sides",
+		"copies", "finishings", "job-account-id", "job-accounting-user-id", "job-hold-until", "job-priority", "media", "media-col",
+		"multiple-document-handling", "orientation-requested", "output-bin", "page-ranges", "print-color-mode", "print-quality",
+		"print-scaling", "printer-resolution", "sides",
 	}
 	jobGroups = map[string][]string{"job-description": jobDescription, "job-template": jobTemplate}
 	jobAll    = []string{"all"}
+	// jobCreationAttrs is job-creation-attributes-supported: the job
+	// template attributes and document-metadata.
+	jobCreationAttrs = append(slices.Clone(ipp.JobTemplateAttrs), "document-metadata")
 )
+
+// jobGroupsOf are the groups of a job's attributes, with the attributes
+// of its own (x-…) among the job template ones.
+func jobGroupsOf(t *print.Ticket) map[string][]string {
+	if len(t.Custom) == 0 {
+		return jobGroups
+	}
+	tmpl := slices.Clone(jobTemplate)
+	for name := range t.Custom {
+		tmpl = append(tmpl, name)
+	}
+	return map[string][]string{"job-description": jobDescription, "job-template": tmpl}
+}
 
 // jobStatusAttrs are the attributes of a job a request that makes one is
 // answered with.
@@ -487,7 +518,7 @@ func ticketAttrs(t *print.Ticket) []ipp.Attribute {
 	if len(t.Pages) > 0 {
 		attrs = append(attrs, ipp.Attr("page-ranges", pageRangeValues(t.Pages)...))
 	}
-	return attrs
+	return append(attrs, t.Meta.Attrs()...)
 }
 
 func cmpOr(n, def int) int {
@@ -763,7 +794,7 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		ipp.Attr("job-ids-supported", ipp.Boolean(true)),
 		ipp.Attr("preferred-attributes-supported", ipp.Boolean(false)),
 		ipp.Attr("which-jobs-supported", which...),
-		ipp.Attr("job-creation-attributes-supported", ipp.Keywords(ipp.JobTemplateAttrs)...),
+		ipp.Attr("job-creation-attributes-supported", ipp.Keywords(jobCreationAttrs)...),
 		ipp.Attr("printer-get-attributes-supported", ipp.Keyword("document-format")),
 		ipp.Attr("overrides-supported", ipp.Keyword("document-number"), ipp.Keyword("pages")),
 		ipp.Attr("identify-actions-supported", ipp.Keyword("display")),
@@ -777,6 +808,10 @@ func (x *ippServer) printerAttrs(q *ippRequest) []ipp.Attribute {
 		ipp.Attr("job-hold-until-default", ipp.Keyword("no-hold")),
 		ipp.Attr("job-priority-supported", ipp.Integer(100)),
 		ipp.Attr("job-priority-default", ipp.Integer(50)),
+		ipp.Attr("job-account-id-supported", ipp.Boolean(true)),
+		ipp.Attr("job-account-id-default", ipp.OutOfBand(ipp.TagNoValue)),
+		ipp.Attr("job-accounting-user-id-supported", ipp.Boolean(true)),
+		ipp.Attr("job-accounting-user-id-default", ipp.OutOfBand(ipp.TagNoValue)),
 		ipp.Attr("job-sheets-supported", ipp.Keyword("none")),
 		ipp.Attr("job-sheets-default", ipp.Keyword("none")),
 		ipp.Attr("multiple-document-handling-supported", ipp.Keywords(handlings)...),

@@ -58,7 +58,7 @@ temp-dir: /var/tmp/bdf
 ```
 
 - **printers**: URL（`ipp://`、`ipps://`、`http://`、`https://`。CUPS のキューは `ipp://host:631/printers/<名前>`）、Basic 認証を求めるプリンタの利用者とパスワード（`password-env` か `password-file`）、`ipps` のプリンタの証明書。`fingerprint` で固定し、書かなければ最初に見た証明書をスプールに記録して以後はそれを求めます（CUPS と同じ）。`insecure: true` はどの証明書も受けます。IPP の無いプリンタは `socket://host:9100` か `lpd://host/queue` で、受ける形式 `format`（`ps` が既定、か `pdf`）と `pjl`（文書の前の PJL の見出し。既定は PDF のときだけ）を書きます。チケットをファイルの中に書いた PostScript か PDF を送り、ジョブの状態は返らず、動いていると分かっている間は接続を試しません。ラベル・レシート・連帳のプリンタ（[下](#ラベルレシート連帳)）は、`format` に言語（`zpl`、`sbpl`、`tpcl`、`escpos`、`escp`）か `profile` に機種を書き、`socket://`、`lpd://`、`serial://`、`usb://`、`winspool://` で、または IPP で CUPS の raw キュー（データをそのまま渡す）に送ります。
-- **queues**: プリンタの順、方針、チケットの `defaults`（IPP の名前: `copies`、`sides`、`media`、`media-source`、`media-type`、`print-color-mode`、`print-quality`、`printer-resolution`、`print-scaling`、`orientation-requested`、`finishings`、`output-bin` など。ジョブのチケットがこの上に重なる）、送り方。
+- **queues**: プリンタの順、方針、チケットの `defaults`（IPP の名前: `copies`、`sides`、`media`、`media-source`、`media-type`、`print-color-mode`、`print-quality`、`printer-resolution`、`print-scaling`、`orientation-requested`、`finishings`、`output-bin` など。ジョブが自分について言うこと、`job-account-id`、`job-accounting-user-id`、`document-metadata`、`bdf-attributes`（`x-` で始まる独自の属性）も。ジョブのチケットがこの上に重なる）、送り方。
 - **retention**: 終わったジョブの文書を残す期間（7 日）と、記録（実績）を残す期間（400 日）。
 - **limits**: 文書の大きさ（256 MiB。超えると 413）、終わっていないジョブの数とその文書の量（1 万件と 10 GiB。超えると 507）、ジョブのページ数、同時に変換・描画するジョブの数（0 は CPU 数）、プリンタに送り直す期間、同時に受ける投入とイベントの接続の数。
 - 期間は `s`、`m`、`h`、`d`、大きさは `KiB`、`MiB`、`GiB`（`KB` なども）。知らないキーは誤りにします（打ち間違いを黙って無視しない）。相対パスは設定ファイルのディレクトリからです。設定は起動時に読みます。
@@ -99,6 +99,8 @@ curl -F document=@invoice.bdf -F 'ticket={"sides":"two-sided-long-edge","copies"
      -H "Authorization: Bearer $TOKEN" https://print.example.local:8640/api/v1/queues/office/jobs
 ```
 
+チケットには、ジョブが自分について言うことも書けます。サーバーはジョブと一緒に持ち、IPP で答え、プリンタにも送ります。`job-account-id` と `job-accounting-user-id`（課金先の部門やプロジェクトと、その利用者。受けると言うプリンタに頼みます）、`document-metadata`（文書を説明する `key=value` の文字列。キーは Dublin Core の `title`、`creator`、`identifier`、`subject`、`description`、`date` など、または `x-` で始まる独自のもの。プリンタはジョブと一緒に持ちます）、`bdf-attributes`（`x-` で始まる独自のジョブ属性。`{"x-cost-center": "cc-42", "x-tags": ["a", "b"]}` のように書き、そのまま送ります。知らないプリンタはそう答え、それ抜きで刷ります。`strict` なら失敗します）。`bdf print` では `-account`、`-accounting-user`、`-metadata key=value`、`-attribute x-name=value` です。
+
 `/api/v1` の外に、`/healthz`（動いている間は 200）、`/metrics`（Prometheus のテキスト。キューと状態ごとのジョブ、終わったジョブ、枚数、プリンタの状態、送ったバイト、送り直し、スプールの大きさ）、`/`（状態のページ。読むだけで、トークンはページで渡せます）があります。
 
 Go からは [`print/server/client`](https://github.com/shibukawa/bdf/tree/main/print/server/client) が API のクライアントです（`Submit`、`Job`、`Jobs`、`Cancel` など、`Wait`、`Events`、`Accounting`）。bdf のほかの部分に依りません。プログラムにサーバーを組み込むこともできます。[`print/server`](https://github.com/shibukawa/bdf/tree/main/print/server) が設定のスプールを開き、`http.Handler` を返します（[サンプル](examples/print-server.ja.md)）。
@@ -128,7 +130,7 @@ queues:
 ```
 
 - **プリンタ**: `ipp://host:8631/ipp/print/<キュー>` と `ipps://…`（同じポート。接続の最初のバイトで TLS を見分けます）。操作は IPP Everywhere が求めるもの（Print-Job、Validate-Job、Create-Job、Send-Document、Close-Job、Cancel-Job、Cancel-My-Jobs、Get-Job-Attributes、Get-Jobs、Get-Printer-Attributes、Identify-Printer）と Hold-Job・Release-Job。ジョブの id はスプールのもの（`bdf jobs` と同じ番号）、状態もスプールのものです。CUPS の `ipptool` の IPP/1.1・IPP/2.0・IPP Everywhere の属性の検査が通ります（`test/print/ipp-everywhere-server.test`）。
-- **ジョブが頼むこと**はチケットになります。`copies`、`sides`、`media` か `media-col`（大きさはキューの用紙に合わせる）、`print-color-mode`、`print-quality`、`printer-resolution`、`page-ranges`、`print-scaling`、`orientation-requested`、`finishings`、`output-bin`、`job-hold-until`、`job-priority`。キューにできないことは返事で伝え、`ipp-attribute-fidelity` があればジョブを断ります。`document-password` は暗号化した PDF・Office 文書・`.bdf` を開き、投入と同じくメモリにだけ持ちます。
+- **ジョブが頼むこと**はチケットになります。`copies`、`sides`、`media` か `media-col`（大きさはキューの用紙に合わせる）、`print-color-mode`、`print-quality`、`printer-resolution`、`page-ranges`、`print-scaling`、`orientation-requested`、`finishings`、`output-bin`、`job-hold-until`、`job-priority`、それにジョブが自分について言うこと: `job-account-id`、`job-accounting-user-id`、`x-` で始まる独自の属性、文書と一緒に来る `document-metadata`（Print-Job、Send-Document）。これらは Get-Job-Attributes で答え、後ろのプリンタにも送ります。キューにできないことは返事で伝え、`ipp-attribute-fidelity` があればジョブを断ります。`document-password` は暗号化した PDF・Office 文書・`.bdf` を開き、投入と同じくメモリにだけ持ちます。
 - **できると名乗ること**はキューの最初のプリンタのもの（用紙、トレイ、仕上げ、カラー、両面）に、サーバーが自分でするもの（部数、ページ範囲、合わせ方）を足したものです。まだ答えていないプリンタと、9100・LPD のプリンタは事務機の用紙で見せます。
 - **誰が**: `auth: none` ではネットワークの誰もが、クライアントの名乗る `requesting-user-name` で印刷し、その名前のジョブを取り消せます。他人のジョブは名前を隠して一覧に出ます。`auth: basic` ではトークンの名前と秘密を求め（OS が 1 回聞いて覚えます）、秘密が TLS を通るように別の機械からの ipp を断り、`_ipps._tcp` だけを広告します。トークンのキューと役割は API と同じに効きます。
 - **DNS-SD**: 各キューを `_ipp._tcp` と `_ipps._tcp` で、サブタイプ `_print`（IPP Everywhere）と `_universal`（AirPrint）を付けて広告します。ホスト名はサーバー自身のもの（`<機械>-bdf.local`。機械の名前は OS の応答者のもの）で、TXT にはクライアントが選ぶ材料（`pdl`、`URF`、`Color`、`Duplex`、`PaperMax`、`TLS`、`air` …）を入れ、後ろのプリンタが答えたら更新します。mDNS のポートは Bonjour・Avahi・Windows と共有します。

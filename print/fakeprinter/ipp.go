@@ -409,10 +409,12 @@ func (p *Printer) takes(a ipp.Attribute) bool {
 	case "output-bin":
 		return slices.Contains(p.OutputBins, a.Text())
 	case "job-name", "multiple-document-handling", "orientation-requested", "job-hold-until", "job-priority", "number-up",
-		"print-content-optimize", "print-rendering-intent", "overrides":
+		"print-content-optimize", "print-rendering-intent", "overrides", "job-account-id", "job-accounting-user-id":
 		return true
 	}
-	return false
+	// attributes of one's own (x-…) are taken, as a printer that keeps
+	// them does, unless the printer is one that knows none
+	return strings.HasPrefix(a.Name, "x-") && !p.NoCustom
 }
 
 // takesMediaCol tells whether the printer takes a media-col: its source
@@ -454,6 +456,7 @@ func (p *Printer) createJob(q *request) {
 			j.held = true
 		}
 	}
+	keepMetadata(j, q)
 	p.add(j)
 	if q.req.Op() == ipp.OpCreateJob && p.dropCreate {
 		p.dropCreate = false
@@ -497,6 +500,7 @@ func (p *Printer) sendDocument(q *request) {
 		return
 	}
 	j.Format = f
+	keepMetadata(j, q)
 	peek, _ := q.body.Peek(1)
 	if len(peek) > 0 || !last {
 		if err := p.receive(j, q); err != nil {
@@ -611,6 +615,18 @@ func (p *Printer) getJobs(q *request) {
 		n++
 		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: ipp.Filter(p.jobAttrs(j, q), req, jobGroups)})
 	}
+}
+
+// keepMetadata keeps the document-metadata of a Print-Job or
+// Send-Document with the job, as PWG 5100.13 asks (a job status
+// attribute of the same name).
+func keepMetadata(j *Job, q *request) {
+	a := q.op.Get("document-metadata")
+	if a == nil {
+		return
+	}
+	attrs := slices.DeleteFunc(slices.Clone(j.Attrs), func(x ipp.Attribute) bool { return x.Name == "document-metadata" })
+	j.Attrs = append(attrs, *a)
 }
 
 // jobStatus are the attributes of a job in the answer to its creation.

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
 )
 
@@ -427,6 +428,7 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 		return
 	}
 	name := firstOr(q.text("job-name"), q.text("document-name"))
+	meta := h.meta(q)
 	if q.by.Kind == PrincipalApp {
 		// an app prints to the endpoints that list it
 		if v, ok := h.viewerOf(q.r); ok {
@@ -437,7 +439,7 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 		}
 	}
 	j, err := h.m.Submit(ctx, q.dest, Input{Name: name, By: q.by, ClaimedUser: q.text("requesting-user-name"), Source: "ipp", Doc: f, Size: n,
-		ContentType: q.text("document-format"), Meta: ippMeta(q.req)})
+		ContentType: q.text("document-format"), Meta: meta})
 	switch {
 	case errors.Is(err, ErrFormat):
 		q.fail(ipp.StatusClientErrorDocumentFormatError, "%v", err)
@@ -457,6 +459,45 @@ func (h *handler) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 		ipp.Attr("job-state", ipp.Enum(int(st))),
 		ipp.Attr("job-state-reasons", ipp.Keyword(reason)),
 	)
+}
+
+// meta is the metadata of a Print-Job (ippMeta), with document-metadata
+// (an operation attribute, PWG 5100.13) as ipp.document-metadata. The
+// attributes a printer node asks the printer again (job-account-id,
+// job-accounting-user-id, document-metadata and x-…, see printMeta) are
+// checked as print.Meta takes them: one whose value cannot be taken is
+// answered unsupported and not kept; one of several values is kept as
+// the list of them.
+func (h *handler) meta(q *ippRequest) map[string]any {
+	meta := ippMeta(q.req)
+	var m print.Meta
+	var unsupported []ipp.Attribute
+	if a := q.op.Get("document-metadata"); a != nil {
+		if _, ok := m.Take(*a); ok {
+			meta["ipp.document-metadata"] = a.Strings()
+		} else {
+			unsupported = append(unsupported, *a)
+		}
+	}
+	if g := q.req.Group(ipp.TagJob); g != nil {
+		for _, a := range g.Attrs {
+			known, ok := m.Take(a)
+			switch {
+			case known && !ok:
+				unsupported = append(unsupported, a)
+				delete(meta, "ipp."+a.Name)
+			case known && len(a.Values) > 1:
+				if _, kept := meta["ipp."+a.Name]; kept {
+					meta["ipp."+a.Name] = a.Strings()
+				}
+			}
+		}
+	}
+	if len(unsupported) > 0 {
+		q.res.Add(ipp.TagUnsupportedGroup, unsupported...)
+		q.res.Code = uint16(ipp.StatusOKIgnoredOrSubstituted)
+	}
+	return meta
 }
 
 // job finds the job a request names (job-id, or job-uri), of the
@@ -512,7 +553,8 @@ func (h *handler) jobAttributes(q *ippRequest, j *Job) []ipp.Attribute {
 	if !j.Ended.IsZero() {
 		attrs = append(attrs, ipp.Attr("time-at-completed", ipp.Integer(int(j.Ended.Unix()&0x7fffffff))))
 	}
-	return attrs
+	pm := printMeta(j.Meta)
+	return append(attrs, pm.Attrs()...)
 }
 
 // jobs answers Get-Jobs: the jobs sent to the destination, those not
