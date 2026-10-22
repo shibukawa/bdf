@@ -123,9 +123,12 @@
 //	  keepRunning?: boolean,   // keep the running heads, feet and page numbers of pages
 //	  internalLinks?: boolean, // keep links into the document itself (#page=N)
 //	  images?: string,         // "files" (default: images as files, returned beside the text), "embed" (as data URLs in the text) or "none"
-//	  zip?: boolean,           // also a zip file of the text (name.md) and the image files
+//	  tables?: string,         // the tables the document holds (the data of charts): "inline" (default), "files" (CSV files beside the text) or "none"
+//	  zip?: boolean,           // also a zip file of the text (name.md) and the image and CSV files
 //	  name?: string,           // the name of the text in the zip file (default "document")
-//	}): Promise<{markdown: Uint8Array, images: {name: string, data: Uint8Array}[], zip?: Uint8Array, views: number, warnings: string[]}>
+//	}): Promise<{markdown: Uint8Array, images: {name: string, data: Uint8Array}[], zip?: Uint8Array, views: number, tables: number, warnings: string[]}>
+//
+// images holds the image files and the CSV files of tables alike.
 //
 // The preview module lists the tables a document holds beside its drawing
 // (docs/spec.md §4.6) and writes one, as bdf tables and bdf table do:

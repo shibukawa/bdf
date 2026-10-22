@@ -24,6 +24,7 @@ func init() {
 			{Name: "quote", Usage: "double, single or none (default: detected)"},
 			{Name: "header", Usage: "true or false: the first row is a header row (default: guessed)"},
 			{Name: "table", Usage: "format the sheet as an Excel table with a built-in style, e.g. TableStyleMedium2"},
+			{Name: "data", Usage: conv.DataParamUsage},
 		},
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool { return detect(head, r, size) },
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
@@ -39,6 +40,9 @@ func init() {
 			}
 			if opts.Quote, err = quoteParam(o.Param("quote")); err != nil {
 				return nil, err
+			}
+			if opts.Data, err = conv.DataParam(o.Param("data")); err != nil {
+				return nil, fmt.Errorf("csv: %w", err)
 			}
 			switch v := strings.ToLower(o.Param("header")); v {
 			case "", "auto":

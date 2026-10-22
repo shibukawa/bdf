@@ -22,15 +22,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/shibukawa/bdf/converter"
 	"io"
 	"io/fs"
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
 	"unicode"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/xlsx"
 	parquetenc "github.com/shibukawa/bdf/encoding/parquet"
 )
@@ -93,6 +94,10 @@ type Options struct {
 	IgnoreFSType bool
 	// NoTextIndex skips building the text index part.
 	NoTextIndex bool
+	// Data says whether the file is stored as it is, as a table the
+	// document holds beside the sheet (docs/spec.md §4.6): "" within the
+	// limits, "all" whatever its size, "none" not at all.
+	Data string
 	// Warn receives non-fatal problems; when nil they are collected in
 	// Result.Warnings.
 	Warn func(msg string)
@@ -233,6 +238,9 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		NoTextIndex: opts.NoTextIndex, Warn: opts.Warn})
 	if err != nil {
 		return nil, fmt.Errorf("parquet: %s", strings.TrimPrefix(err.Error(), "xlsx: "))
+	}
+	if opts.Data != "none" {
+		storeFile(xr.Doc, r, size, opts, warn)
 	}
 	xr.Doc.Meta.Source = "parquet"
 	res.Doc, res.EmbeddedFonts = xr.Doc, xr.EmbeddedFonts
@@ -548,4 +556,39 @@ func ReadTable(r io.ReaderAt, size int64, rows int) (*parquetenc.Table, error) {
 		}
 	}
 	return t, nil
+}
+
+// storeFile stores the file as it is as a table the document holds
+// (docs/spec.md §4.6), under the data parameter's mode: within the
+// limits, unless the mode is all.
+func storeFile(doc *bdf.Document, r io.ReaderAt, size int64, opts *Options, warn func(string)) {
+	if !converter.TableFits(opts.Data, 0, int(min(size, math.MaxInt32))) {
+		warn(fmt.Sprintf("the file (%d MiB) is not stored as a table: more than the default allows (data=all stores it)", size>>20))
+		return
+	}
+	data := make([]byte, size)
+	if _, err := r.ReadAt(data, 0); err != nil && err != io.EOF {
+		warn(fmt.Sprintf("the file is not stored as a table: %v", err))
+		return
+	}
+	cols, rows, err := parquetenc.Schema(data)
+	if err != nil {
+		warn(fmt.Sprintf("the file is not stored as a table: %v", err))
+		return
+	}
+	if !converter.TableFits(opts.Data, rows, len(data)) {
+		warn(fmt.Sprintf("the file (%d rows) is not stored as a table: more than the default allows (data=all stores it)", rows))
+		return
+	}
+	view := ""
+	if len(doc.Views) > 0 {
+		view = doc.Views[0].ID
+	}
+	entry := &bdf.Table{ID: "data", Title: opts.Name, Rows: rows, View: view}
+	for _, c := range cols {
+		entry.Columns = append(entry.Columns, bdf.TableColumn{Name: c.Name, Type: c.Type.String()})
+	}
+	if err := doc.AddTable(entry, data); err != nil {
+		warn(fmt.Sprintf("the file is not stored as a table: %v", err))
+	}
 }

@@ -735,6 +735,7 @@ if (saveButton) {
         if (zipped) name = `${source.base}.zip`;
         warnings = res.warnings;
         summary = `${res.views} ${res.views === 1 ? "view" : "views"}, ${res.images.length} ${res.images.length === 1 ? "image" : "images"}`;
+        if (res.tables > 0) summary += `, ${res.tables} ${res.tables === 1 ? "table" : "tables"}`;
       } else {
         const res = await converterWorker().pdf(shared(PREVIEW_MODULE), data, { fonts: shared(FONTS), tagged: $<HTMLInputElement>("pdfTagged").checked });
         file = new Blob([res.pdf as BlobPart], { type: "application/pdf" });

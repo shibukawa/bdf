@@ -2,6 +2,7 @@ package markdownbdf
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"regexp"
 	"sort"
@@ -10,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/shibukawa/bdf"
+	"github.com/shibukawa/bdf/encoding/parquet"
 )
 
 var (
@@ -400,7 +402,148 @@ func (w *writer) figure(n *node, inCell bool, depth int) string {
 	if alt == "" {
 		parts = append(parts, w.blocks(rest, inCell, depth)...)
 	}
+	if n.data != "" {
+		// the table the figure is the data of
+		if t := w.doc.Table(n.data); t != nil {
+			parts = append(parts, w.tableBlocks(t, inCell)...)
+		}
+	}
 	return strings.Join(parts, "\n\n")
+}
+
+// tableBlocks writes a table the document holds (docs/spec.md §4.6) as
+// Options.Tables says: inline, up to InlineRows rows and the whole as a
+// CSV file when there are more; or as a CSV file alone.
+func (w *writer) tableBlocks(t *bdf.Table, inCell bool) []string {
+	mode := w.opts.Tables
+	if mode == "" {
+		mode = "inline"
+	}
+	if mode == "none" {
+		return nil
+	}
+	data := w.tableData(t)
+	if data == nil {
+		return nil
+	}
+	var out []string
+	if mode == "inline" {
+		limit := w.opts.InlineRows
+		if limit <= 0 {
+			limit = DefaultInlineRows
+		}
+		tb, err := parquet.Read(data, parquet.Limits{MaxRows: limit + 1})
+		if err != nil {
+			w.warnf("table %s: %v", t.ID, err)
+			return nil
+		}
+		more := len(tb.Rows) > limit
+		if more {
+			tb.Rows = tb.Rows[:limit]
+		}
+		if g := gfmTable(tb, inCell); g != "" {
+			out = append(out, g)
+			w.res.Tables++
+		}
+		if !more {
+			return out
+		}
+		if link := w.tableFile(t); link != "" {
+			return append(out, link)
+		}
+		return append(out, fmt.Sprintf("(%d of %d rows)", limit, t.Rows))
+	}
+	if link := w.tableFile(t); link != "" {
+		out = append(out, link)
+	}
+	return out
+}
+
+// tableData is the Parquet file of a table, nil when it is missing.
+func (w *writer) tableData(t *bdf.Table) []byte {
+	h, err := bdf.ParseHash(t.Part)
+	if err != nil {
+		w.warnf("table %s: %v", t.ID, err)
+		return nil
+	}
+	part := w.doc.Part(h)
+	if part == nil {
+		w.warnf("table %s: its part is missing", t.ID)
+		return nil
+	}
+	return part.Data
+}
+
+// tableFile writes a table as a CSV file (once) and returns the line that
+// links to it, "" when files are not written.
+func (w *writer) tableFile(t *bdf.Table) string {
+	if w.opts.File == nil {
+		return ""
+	}
+	path, done := w.csvs[t.ID]
+	if !done {
+		path = ""
+		if data := w.tableData(t); data != nil {
+			tb, err := parquet.Read(data, parquet.Limits{})
+			if err != nil {
+				w.warnf("table %s: %v", t.ID, err)
+			} else {
+				var b bytes.Buffer
+				if err := parquet.WriteCSV(&b, tb); err == nil {
+					if p, err := w.opts.File(t.ID+".csv", b.Bytes()); err != nil {
+						w.warnf("table %s: %v", t.ID, err)
+					} else {
+						path = p
+						w.res.Tables++
+					}
+				}
+			}
+		}
+		w.csvs[t.ID] = path
+	}
+	if path == "" {
+		return ""
+	}
+	title := t.Title
+	if title == "" {
+		title = t.ID
+	}
+	return fmt.Sprintf("[%s: %d rows × %d columns](%s)", escape(title), t.Rows, len(t.Columns), path)
+}
+
+// gfmTable writes a table in memory as a GitHub Flavored Markdown table.
+func gfmTable(t *parquet.Table, inCell bool) string {
+	if len(t.Columns) == 0 {
+		return ""
+	}
+	cell := func(s string) string {
+		s = escape(s)
+		s = strings.ReplaceAll(s, "\r\n", "<br>")
+		s = strings.ReplaceAll(s, "\n", "<br>")
+		return s
+	}
+	var lines []string
+	names := make([]string, len(t.Columns))
+	for i, c := range t.Columns {
+		names[i] = cell(c.Name)
+	}
+	lines = append(lines, "| "+strings.Join(names, " | ")+" |", "|"+strings.Repeat("---|", len(t.Columns)))
+	for _, r := range t.Rows {
+		cols := make([]string, len(t.Columns))
+		for j, c := range t.Columns {
+			var v any
+			if j < len(r) {
+				v = r[j]
+			}
+			cols[j] = cell(parquet.Text(c, v))
+		}
+		lines = append(lines, "| "+strings.Join(cols, " | ")+" |")
+	}
+	s := strings.Join(lines, "\n")
+	if inCell {
+		s = strings.ReplaceAll(s, "\n", "<br>")
+	}
+	return s
 }
 
 // marker tells whether the first run of an item is the marker the

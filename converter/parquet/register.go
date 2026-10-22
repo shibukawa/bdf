@@ -19,6 +19,7 @@ func init() {
 			{Name: "rows", Usage: fmt.Sprintf("the number of rows shown, or all (default: %d)", DefaultRows)},
 			{Name: "types", Usage: "true or false: a row of the column types under their names (default: true)"},
 			{Name: "table", Usage: "format the sheet as an Excel table with a built-in style, e.g. TableStyleMedium2"},
+			{Name: "data", Usage: conv.DataParamUsage},
 		},
 		Detect: func(head []byte, r io.ReaderAt, size int64) bool { return detect(head, r, size) },
 		Convert: func(r io.ReaderAt, size int64, o *conv.Options) (*conv.Result, error) {
@@ -38,6 +39,10 @@ func init() {
 					return nil, fmt.Errorf("parquet: parameter rows: %q is not a positive number or all", v)
 				}
 				opts.Rows = n
+			}
+			var err error
+			if opts.Data, err = conv.DataParam(o.Param("data")); err != nil {
+				return nil, fmt.Errorf("parquet: %w", err)
 			}
 			if v := o.Param("types"); v != "" {
 				b, err := strconv.ParseBool(v)

@@ -1,8 +1,8 @@
 id: requirement:data-tables
 type: requirement
-title: データ表（描かれない表）: グラフの系列・CSV・Parquet・Excel の値を Parquet の Part で持つ
-summary: 描画とは別に、表としての値（列名・型・行）を Part `table`（Apache Parquet）で持ち、manifest の `tables` で一覧し、MARK DATA で図と結ぶ。bdf tables / bdf table、wasm、Markdown の表の書き出しまで。2026-10-22 の提案（knowledge-inputs/data-tables/design.ja.md）。
-lifecycle: proposed
+title: "データ表（描かれない表）: グラフの系列・CSV・Parquet・Excel の値を Parquet の Part で持つ"
+summary: 描画とは別に、表としての値（列名・型・行）を Part `table`（Apache Parquet）で持ち、manifest の `tables` で一覧し、MARK DATA で図と結ぶ。bdf tables / bdf table、wasm、Markdown の表の書き出しまで。2026-10-22 に提案し、同日すべての提示どおりに決めて実装した（knowledge-inputs/data-tables/design.ja.md、docs/design.md §3.38）。
+lifecycle: active
 authority: authored
 aliases:
 - hidden tables
@@ -20,11 +20,11 @@ facts:
     mark: "MARK kind 14 DATA（payload: 表の id）。FIGURE の直後に置く。区切りに影響しない"
     limits: tables 65536、columns 16384。取り出しは行数と大きさを制限できる
   producers:
-    charts: drawingml のグラフ 1 つに 1 表（横持ち / 縦持ち / 散布図）。表があれば代替テキストは「種類: 題」だけ
+    charts: "drawingml のグラフ 1 つに 1 表（横持ち / 縦持ち / 散布図）。表があれば代替テキストは「種類: 題」だけ"
     csv: 全行。1 行目のヘッダー判定、型の推定
     parquet: 入力ファイルそのまま
-    xlsx: シートごとの使用範囲（列名 A, B…）と ListObject のテーブル
-    defaults: 64 MiB・1,048,576 行まで。-param table=none / all
+    xlsx: シートごとの使用範囲 sheet<n>（列名 A, B…。値は型付き。数値は列が全部整数なら integer、表示書式が日付なら date / datetime、型の混じる列は表示文字列、エラーは null）と ListObject のテーブル table-<k>（見出し行の列名、集計行は除く）。描画がセルを解放する前に組む
+    defaults: 64 MiB・1,048,576 行まで。Excel のセル範囲は 2^24 セルまで（all でも 2^26）。-param data=none / all（table は Excel のテーブルスタイルに使われていた）。PowerPoint・Word の data=none はグラフの表を持たない
   api:
     go: bdf.Table、Document.AddTable / Tables、Reader.Table、encoding/parquet（Write / Schema / Read）、converter/parquet.ReadTable
     cli: bdf tables、bdf table -format csv|json|parquet、bdf markdown -tables inline|files|none
@@ -32,12 +32,16 @@ facts:
     ts: Manifest.tables、TextNode.data
   markdown: DATA のある図は代替テキストの後に GFM の表（100 行まで。超えた分は <id>.csv を隣に）
   estimate: 約 4 日（encoding/parquet 1、core と spec 0.5、CLI と wasm 0.5、グラフ 0.5、CSV と Parquet 0.5、Excel 1、Markdown 0.5）
+decisions:
+- 列の型の語彙は string / number / integer / boolean / date / datetime / other（2026-10-22）
+- 表があるグラフの代替テキストは「種類: 題」だけ。表を持たないときは値も書く（2026-10-22）
+- CSV・Parquet・Excel の既定の上限は 64 MiB・1,048,576 行（2026-10-22）
+- Excel は使用範囲に加えて ListObject のテーブルも出す（2026-10-22）
+- encoding/parquet を新設。converter/parquet の読み手は ReadTable で暫定的に寄せ、統合は後で（2026-10-22）
+- コマンドは bdf tables / bdf table。Markdown の既定は 100 行までインライン、超えたら CSV を隣に（2026-10-22）
 open_questions:
-- 列の型の語彙でよいか
-- 表があるグラフの代替テキストから数値を外すか
-- CSV・Parquet・Excel の既定の上限（64 MiB・1,048,576 行）でよいか
-- Excel の ListObject も出すか
-- encoding/parquet を新設し converter/parquet の読み手を後で寄せる方針でよいか
+- converter/parquet の読み手を encoding/parquet に統合する時期
+- Excel のシートの表で見出し行を列名にするか（今は A, B… と行位置を保つ）
 - コマンド名 bdf tables / bdf table と Markdown の既定（100 行までインライン）でよいか
 relations:
 - relation: informed_by

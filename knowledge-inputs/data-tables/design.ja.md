@@ -1,6 +1,6 @@
 # データ表（描かれない表）の設計
 
-2026-10-22。グラフの系列、CSV・Parquet の入力、Excel のシートといった「表としての値」を、描画とは別に BDF に持たせる。RAG・LLM・データツールが値を型付きで取り出せるようにし、Markdown にはグラフの表を書く。状態: 提案（`requirement:data-tables`）。
+2026-10-22。グラフの系列、CSV・Parquet の入力、Excel のシートといった「表としての値」を、描画とは別に BDF に持たせる。RAG・LLM・データツールが値を型付きで取り出せるようにし、Markdown にはグラフの表を書く。状態: 2026-10-22 に全項目を提示どおり決めて実装（`requirement:data-tables`、docs/design.md §3.38）。パラメータ名は `table` が CSV・Parquet の Excel テーブルスタイルに使われていたため `data` にした。
 
 ## 1. 要件
 
@@ -113,7 +113,7 @@ func ReadTable(r io.ReaderAt, size int64, opts *ReadOptions) (*parquet.Table, er
 bdf tables <file.bdf | dir>                 表の一覧: id、行数×列数、列名と型、題、場所
 bdf table [-format csv|json|parquet] <file.bdf | dir> <id> [out]
                                             表を取り出す（既定: CSV を標準出力に。parquet は Part そのまま）
-bdf generate -param table=none|all …        表を持たない / 上限なしで持つ（CSV・Parquet・Excel）
+bdf generate -param data=none|all …         表を持たない / 上限なしで持つ（CSV・Parquet・Excel。PowerPoint・Word は none だけ）
 bdf markdown -tables inline|files|none …    図の表を GFM の表で書く（既定 inline: 100 行まで。超える表は <id>.csv を隣に書いてリンク）
 ```
 
@@ -159,9 +159,11 @@ bdfConverter.table(bdf, {id, format: "csv" | "json" | "parquet"}) → {data: Uin
 
 ## 8. 決めてほしいこと
 
+2026-10-22: すべて提示のとおりでよい、と決まった。
+
 1. 列の型の語彙（`string` / `number` / `integer` / `boolean` / `date` / `datetime` / `other`）でよいか。
 2. 表があるグラフの代替テキストから数値を外してよいか（「種類: 題」だけにする）。
-3. CSV・Parquet・Excel の既定（64 MiB・1,048,576 行まで持つ。`-param table=none` で外す）でよいか。
+3. CSV・Parquet・Excel の既定（64 MiB・1,048,576 行まで持つ。`-param data=none` で外す）でよいか。
 4. Excel は「シートごとの使用範囲」に加えて ListObject のテーブルも出すか。
 5. `encoding/parquet` を新設し、最初は書き手と平坦な読み手だけにして、`converter/parquet` の読み手は後で寄せる方針でよいか。
 6. コマンド名 `bdf tables` / `bdf table` と、Markdown の既定（100 行までインライン、超えたら CSV を隣に）でよいか。

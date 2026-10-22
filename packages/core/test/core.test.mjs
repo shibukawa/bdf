@@ -165,6 +165,27 @@ test("content: headings, lists, tables, figures and links", async () => {
   assert.ok(logo.bounds.w > 20 && logo.bounds.w < 25 && logo.bounds.y > 780);
 });
 
+test("tables of charts: listed in the manifest, named by their figures", async () => {
+  const doc = await BdfDocument.open(new BufferSource(new Uint8Array(await readFile(new URL("testdata/pptx/features.bdf", root)))));
+  const tables = doc.manifest.tables ?? [];
+  assert.deepEqual(tables.map((t) => [t.id, t.title ?? "", t.view, t.page, t.rows, t.columns.map((c) => c.name).join(",")]), [
+    ["chart-1", "", "slides", 3, 4, "Category,East,West,North"],
+    ["chart-2", "", "slides", 3, 4, "Category,East,West,North"],
+    ["chart-3", "Share", "slides", 3, 4, "Category,Share"],
+    ["chart-4", "", "slides", 3, 3, "Category,Stacked 1,Stacked 2"],
+  ]);
+  const page = doc.view("slides").pages[2];
+  const body = page.layers.find((l) => l.role === "body");
+  const c = extractContent(await doc.ensure(body.obj), (h) => doc.objectSync(h));
+  const figs = c.nodes.filter((n) => n.kind === "figure");
+  assert.deepEqual(figs.map((f) => [f.alt, f.data]), [
+    ["Column chart", "chart-1"], ["Line chart", "chart-2"], ["Pie chart: Share", "chart-3"], ["Bar chart", "chart-4"],
+  ]);
+  // the part is the Parquet file
+  const bytes = await doc.part(tables[2].part);
+  assert.equal(new TextDecoder().decode(bytes.subarray(0, 4)), "PAR1");
+});
+
 test("converted PDF: structure from the tagged tree, and links over their text", async () => {
   // Chrome's content leaves a cm in effect; the LINK must still land on its text
   const doc = await BdfDocument.open(new BufferSource(new Uint8Array(await readFile(new URL("testdata/pdf/chrome-doc.bdf", root)))));

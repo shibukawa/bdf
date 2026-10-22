@@ -3,12 +3,14 @@ package drawingml
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/converter/internal/canvas"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	"github.com/shibukawa/bdf/encoding/parquet"
 )
 
 // Charts are drawn from the values cached in the chart part (c:numCache,
@@ -92,7 +94,22 @@ func (ch *chartCtx) draw(figure bool) {
 	}
 	autoDeleted := chart.Child("autoTitleDeleted").AttrStr("val", "0") == "1"
 	if !figure {
-		cv.Obj.Mark(bdf.MarkFigure, ch.describe(chart, plots, autoDeleted))
+		// the chart is a figure: its data as a table of the document, and
+		// the kind, title and (without a table) data as its text
+		id := ""
+		if tb := chartTable(plots); tb != nil && !s.c.noTables {
+			id = fmt.Sprintf("chart-%d", s.c.tables+1)
+			if _, err := s.c.doc.AddTableRows(id, ch.titleText(chart, plots, autoDeleted), tb, s.c.view, s.c.page); err != nil {
+				s.c.warn(fmt.Sprintf("chart: its table is not stored: %v", err))
+				id = ""
+			} else {
+				s.c.tables++
+			}
+		}
+		cv.Obj.Mark(bdf.MarkFigure, ch.describe(chart, plots, autoDeleted, id == ""))
+		if id != "" {
+			cv.Obj.Mark(bdf.MarkData, id)
+		}
 		defer cv.Obj.Mark(bdf.MarkEnd, "")
 	}
 	cv.Obj.Save()
@@ -458,9 +475,10 @@ func (ch *chartCtx) lineHeight(st *runStyle) float64 {
 }
 
 // describe writes the alternative text of a chart, for readers that do
-// not see it and for the text written of it: its kind and title, then the
-// data of its series (the categories and values, within bounds).
-func (ch *chartCtx) describe(chart *ooxml.Node, plots []*chartPlot, autoDeleted bool) string {
+// not see it and for the text written of it: its kind and title, then,
+// when data is set (the chart has no table of its own), the data of its
+// series (the categories and values, within bounds).
+func (ch *chartCtx) describe(chart *ooxml.Node, plots []*chartPlot, autoDeleted, data bool) string {
 	var b strings.Builder
 	if len(plots) > 0 {
 		b.WriteString(chartKindName(plots[0]))
@@ -470,6 +488,9 @@ func (ch *chartCtx) describe(chart *ooxml.Node, plots []*chartPlot, autoDeleted 
 	if title := ch.titleText(chart, plots, autoDeleted); title != "" {
 		b.WriteString(": ")
 		b.WriteString(title)
+	}
+	if !data {
+		return b.String()
 	}
 	const maxSeries, maxPoints, maxLen = 8, 24, 1200
 	n := 0
@@ -513,6 +534,90 @@ func (ch *chartCtx) describe(chart *ooxml.Node, plots []*chartPlot, autoDeleted 
 		}
 	}
 	return b.String()
+}
+
+// chartTable is the data of a chart as a table (docs/spec.md §4.6): when
+// every series has the categories of the first, a column of categories
+// and one for each series; else the series, categories (or the X of a
+// scatter plot) and values, a row each. Nil for a chart without values.
+func chartTable(plots []*chartPlot) *parquet.Table {
+	var series []*chartSeries
+	scatter := false
+	for _, p := range plots {
+		for _, se := range p.series {
+			if len(se.vals) > 0 {
+				series = append(series, se)
+			}
+		}
+		scatter = scatter || p.kind == "scatter"
+	}
+	if len(series) == 0 {
+		return nil
+	}
+	name := func(i int, se *chartSeries) string {
+		if n := strings.TrimSpace(se.name); n != "" {
+			return n
+		}
+		return fmt.Sprintf("Series %d", i+1)
+	}
+	first := series[0]
+	wide := !scatter && len(first.cats) >= len(first.vals)
+	for _, se := range series[1:] {
+		if !wide || len(se.vals) != len(first.vals) || !slices.Equal(se.cats[:min(len(se.cats), len(se.vals))], first.cats[:min(len(first.cats), len(first.vals))]) {
+			wide = false
+			break
+		}
+	}
+	t := &parquet.Table{}
+	num := func(v float64) any {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return nil
+		}
+		return v
+	}
+	if wide {
+		t.Columns = []parquet.Column{{Name: "Category", Type: parquet.String}}
+		names := map[string]bool{"Category": true}
+		for i, se := range series {
+			n := name(i, se)
+			for k := 2; names[n]; k++ {
+				n = fmt.Sprintf("%s (%d)", name(i, se), k)
+			}
+			names[n] = true
+			t.Columns = append(t.Columns, parquet.Column{Name: n, Type: parquet.Number})
+		}
+		for i := range first.vals {
+			row := make([]any, 0, len(series)+1)
+			row = append(row, first.cats[i])
+			for _, se := range series {
+				row = append(row, num(se.vals[i]))
+			}
+			t.Rows = append(t.Rows, row)
+		}
+		return t
+	}
+	if scatter {
+		t.Columns = []parquet.Column{{Name: "Series", Type: parquet.String}, {Name: "X", Type: parquet.Number}, {Name: "Y", Type: parquet.Number}}
+	} else {
+		t.Columns = []parquet.Column{{Name: "Series", Type: parquet.String}, {Name: "Category", Type: parquet.String}, {Name: "Value", Type: parquet.Number}}
+	}
+	for i, se := range series {
+		for j, v := range se.vals {
+			var key any
+			switch {
+			case scatter && j < len(se.xs):
+				key = num(se.xs[j])
+			case scatter:
+				key = nil
+			case j < len(se.cats):
+				key = se.cats[j]
+			default:
+				key = fmt.Sprint(j + 1)
+			}
+			t.Rows = append(t.Rows, []any{name(i, se), key, num(v)})
+		}
+	}
+	return t
 }
 
 // chartKindName names the kind of a plot as Office does.

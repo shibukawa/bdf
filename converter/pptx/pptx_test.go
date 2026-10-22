@@ -3,6 +3,7 @@ package pptx
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/internal/ooxml"
+	parquetenc "github.com/shibukawa/bdf/encoding/parquet"
 )
 
 // testOptions restricts fonts to the test font directory so that output
@@ -159,7 +161,7 @@ func markCounts(t *testing.T, r *bdf.Reader, h bdf.Hash) map[byte]int {
 func structure(t *testing.T, r *bdf.Reader, h bdf.Hash) string {
 	t.Helper()
 	names := map[byte]string{bdf.MarkParagraph: "P", bdf.MarkCell: "CELL", bdf.MarkBox: "BOX", bdf.MarkHeading: "H",
-		bdf.MarkList: "LIST", bdf.MarkListItem: "LI", bdf.MarkTable: "TABLE", bdf.MarkFigure: "FIG", bdf.MarkEnd: "END", bdf.MarkLang: "LANG"}
+		bdf.MarkList: "LIST", bdf.MarkListItem: "LI", bdf.MarkTable: "TABLE", bdf.MarkFigure: "FIG", bdf.MarkEnd: "END", bdf.MarkLang: "LANG", bdf.MarkData: "DATA"}
 	var out []string
 	inText, space := false, false
 	var alt *string
@@ -492,5 +494,60 @@ func TestDeterministic(t *testing.T) {
 	}
 	if !bytes.Equal(outs[0], outs[1]) {
 		t.Fatal("conversion is not deterministic")
+	}
+}
+
+// TestChartTables checks the tables of the charts of a presentation: one
+// per chart, placed on its slide, wide when the series share their
+// categories and long when they do not; the figure of the chart names its
+// table, and describes the kind and the title only.
+func TestChartTables(t *testing.T) {
+	_, r := convert(t, "features.pptx", testOptions())
+	var got []string
+	for _, tb := range r.Manifest.Tables {
+		cols := ""
+		for i, c := range tb.Columns {
+			if i > 0 {
+				cols += ", "
+			}
+			cols += c.Name + ":" + c.Type
+		}
+		got = append(got, fmt.Sprintf("%s %q %s/%d %d rows: %s", tb.ID, tb.Title, tb.View, tb.Page, tb.Rows, cols))
+	}
+	want := []string{
+		"chart-1 \"\" slides/3 4 rows: Category:string, East:number, West:number, North:number",
+		"chart-2 \"\" slides/3 4 rows: Category:string, East:number, West:number, North:number",
+		"chart-3 \"Share\" slides/3 4 rows: Category:string, Share:number",
+		"chart-4 \"\" slides/3 3 rows: Category:string, Stacked 1:number, Stacked 2:number",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("tables:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	_, data, err := r.Table("chart-3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb, err := parquetenc.Read(data, parquetenc.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tb.Rows) != 4 || tb.Rows[0][0] != "Alpha" || tb.Rows[0][1] != 0.45 {
+		t.Errorf("chart-3 rows = %#v", tb.Rows)
+	}
+	s := structure(t, r, body(r.Manifest.Views[0].Pages[2]))
+	for _, want := range []string{"FIG(Column chart) | DATA(chart-1)", "FIG(Pie chart: Share) | DATA(chart-3)"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("structure lacks %q:\n%s", want, s)
+		}
+	}
+	// without tables the figures describe the values
+	opts := testOptions()
+	opts.Data = "none"
+	_, r = convert(t, "features.pptx", opts)
+	if len(r.Manifest.Tables) != 0 {
+		t.Errorf("with Data none, tables = %d", len(r.Manifest.Tables))
+	}
+	if s := structure(t, r, body(r.Manifest.Views[0].Pages[2])); !strings.Contains(s, "FIG(Pie chart: Share; Share: Alpha 0.45, Beta 0.25, Gamma 0.2, Delta 0.1)") || strings.Contains(s, "DATA(") {
+		t.Errorf("structure without tables:\n%s", s)
 	}
 }

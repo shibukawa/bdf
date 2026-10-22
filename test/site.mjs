@@ -44,8 +44,8 @@ assert.deepEqual(modules.preview.formats, []);
 // (and the PDF converter: a PDF with form fields, and the base PDF of a template of pdfme)
 assert.deepEqual(modules.form.formats.map((f) => f.name), ["csv", "docx", "pdf", "pptx", "xlsx"]);
 // what each module does besides converting
-const calls = (m) => ["thumbnail", "text", "pdf", "markdown", "fields", "fill"].filter((name) => typeof m[name] === "function");
-assert.deepEqual(calls(modules.preview), ["thumbnail", "text", "pdf", "markdown"]);
+const calls = (m) => ["thumbnail", "text", "pdf", "markdown", "tables", "table", "fields", "fill"].filter((name) => typeof m[name] === "function");
+assert.deepEqual(calls(modules.preview), ["thumbnail", "text", "pdf", "markdown", "tables", "table"]);
 assert.deepEqual(calls(modules.form), ["pdf", "fields", "fill"]);
 assert.deepEqual(calls(modules.office), []);
 // the image module converts images and audio files (their covers and tags), neither needing fonts

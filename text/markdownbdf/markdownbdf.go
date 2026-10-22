@@ -51,7 +51,23 @@ type Options struct {
 	// written beside the text. Nil leaves the images out, and a figure
 	// keeps its alternative text.
 	Image func(name string, data []byte) (string, error)
+	// Tables says how the tables the document holds beside its drawing
+	// (docs/spec.md §4.6; the data of charts) are written: "inline" (the
+	// default: a table of the figure's data after its text, up to
+	// InlineRows rows, and the whole as a CSV file beside the text when
+	// there are more and File is set), "files" (as CSV files only, linked
+	// from the figure; the tables of sheets too) or "none".
+	Tables string
+	// InlineRows is the most rows of a table written inline (100 when 0).
+	InlineRows int
+	// File is called for each CSV file of a table, as Image is for images.
+	// Nil writes no files: a table of more rows than InlineRows is cut.
+	File func(name string, data []byte) (string, error)
 }
+
+// DefaultInlineRows is the rows of a table written inline when
+// Options.InlineRows is 0.
+const DefaultInlineRows = 100
 
 // DefaultSkipRoles are the roles of the layers that are not the content of
 // a page: what is under it and around it on every page.
@@ -61,6 +77,7 @@ var DefaultSkipRoles = []string{bdf.RoleHeader, bdf.RoleFooter, bdf.RoleMaster, 
 type Result struct {
 	Views    int
 	Images   int
+	Tables   int // the tables written, inline or as files
 	Warnings []string
 }
 
@@ -73,8 +90,13 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	switch opts.Tables {
+	case "", "inline", "files", "none":
+	default:
+		return nil, fmt.Errorf("markdownbdf: Tables must be inline, files or none, not %q", opts.Tables)
+	}
 	wr := &writer{doc: doc, opts: opts, objs: map[bdf.Hash]*bdf.ObjectPart{}, faces: map[bdf.Hash]*face{},
-		images: map[bdf.Hash]string{}, res: &Result{Views: len(views)}}
+		images: map[bdf.Hash]string{}, csvs: map[string]string{}, res: &Result{Views: len(views)}}
 	skip := map[string]bool{}
 	roles := opts.SkipRoles
 	if roles == nil {
@@ -110,6 +132,16 @@ func Write(w io.Writer, doc *bdf.Document, opts *Options) (*Result, error) {
 			}
 			wr.guess = guessCode([]*node{root})
 			out = append(out, wr.sheet(root)...)
+			if opts.Tables == "files" {
+				// the tables of the sheet, as files
+				for _, t := range doc.Tables {
+					if t.View == v.ID && t.Page == 0 {
+						if link := wr.tableFile(t); link != "" {
+							out = append(out, link)
+						}
+					}
+				}
+			}
 			continue
 		}
 		roots := make([]*node, len(v.Pages))
@@ -149,6 +181,7 @@ func WriteDir(dir, name string, doc *bdf.Document, opts *Options) (*Result, erro
 	o.Image = func(file string, data []byte) (string, error) {
 		return file, os.WriteFile(filepath.Join(dir, file), data, 0o644)
 	}
+	o.File = o.Image
 	path := filepath.Join(dir, name+".md")
 	f, err := os.Create(path)
 	if err != nil {
@@ -233,6 +266,7 @@ type writer struct {
 	objs   map[bdf.Hash]*bdf.ObjectPart
 	faces  map[bdf.Hash]*face
 	images map[bdf.Hash]string // the path of each image written ("" when it could not be)
+	csvs   map[string]string   // the path of the CSV file of each table written ("" when it could not be)
 	res    *Result
 	// guess says the monospaced paragraphs of the view are code (guessCode)
 	guess bool
@@ -271,6 +305,7 @@ type node struct {
 	level  int
 	cell   *bdf.CellRef
 	alt    string
+	data   string // the id of the table a figure is the data of
 	code   bool   // a line of code (the payload's word)
 	quote  int    // how deep in quotations (the payload's words)
 	list   string // "bullet", "ordered" or "" (the payload's word)
@@ -334,7 +369,7 @@ func (w *writer) extract(root *node, h bdf.Hash, keep func(*bdf.TextRun) bool) e
 	base = max(base, countNodes(root))
 	nodes := make([]*node, len(c.Nodes))
 	for i, tn := range c.Nodes {
-		n := &node{kind: tn.Kind, level: tn.Level, cell: tn.Cell, alt: tn.Alt, code: tn.Code, quote: tn.Quote, list: tn.List, index: base + i}
+		n := &node{kind: tn.Kind, level: tn.Level, cell: tn.Cell, alt: tn.Alt, data: tn.Data, code: tn.Code, quote: tn.Quote, list: tn.List, index: base + i}
 		nodes[i] = n
 		parent := root
 		if tn.Parent >= 0 {

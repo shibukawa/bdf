@@ -11,7 +11,8 @@
 | `raster/ebitenginebdf/` | Draws objects of paths (formulas, say) with Ebitengine. A module of its own, with its own `go.mod`, since it depends on Ebitengine; `raster/internal/shapes` is the shared part that turns an object into a list of filled and stroked shapes |
 | `image/formula/` | The public package that lays out LaTeX and MathML formulas as objects of paths; embeds the formula font (STIX Two Math) |
 | `vector/pdfbdf/` | Writes documents as PDF files: the instructions as content streams, text in the embedded fonts, groups and soft masks as transparency groups, shadows as pictures drawn by `raster/imagebdf`. Tagged PDF (the structure tree, from the `MARK` instructions) and PDF/A |
-| `text/markdownbdf/` | Writes documents as Markdown: the structure of the `MARK` instructions as blocks, fonts as emphasis and code, links, images as files beside the text; the running heads and page numbers of PDF pages left out |
+| `text/markdownbdf/` | Writes documents as Markdown: the structure of the `MARK` instructions as blocks, fonts as emphasis and code, links, images as files beside the text, the tables of charts as tables after their figures; the running heads and page numbers of PDF pages left out |
+| `encoding/parquet/` | Reads and writes the Apache Parquet parts that hold the tables of values a document carries beside its drawing (spec §4.6): the writer (flat columns, PLAIN, uncompressed) and a reader of what BDF and common tools write; CSV and JSON of a table |
 | `print/` | Printing: a ticket (named as IPP's job attributes), the format to send (PDF, else PWG Raster), PWG media names, and a job made, its document streamed and waited for. `print/ipp` reads and writes IPP messages (RFC 8010) and is the client: capabilities, mDNS browsing (DNS-SD), fingerprints of `ipps` certificates. `print/fakeprinter` is printers that are not there, for tests (IPP, 9100, LPD, serial lines, a CUPS server; faults injected; checked against CUPS's ipptool and ippeveprinter), and `print/fakeprinter/readback` turns what they received back into pages. `tools/fakeprinter` runs a farm of them (YAML, a page, an API). `print/raster` writes PWG Raster from the bands of `raster/imagebdf` and places pages on sheets. `bdf print` and `bdf printers` use them. `print/spool` keeps jobs and their documents in one file (through yuruidb), sends them to printers, follows them, retries, and puts right what a crash left without printing a job twice. `print/server` is the print server of `bdf printd` (configuration, HTTP API, tokens, events, metrics), and `print/server/client` its Go client |
 | `form/` | Filling templates of forms with data: loading data, telling templates apart, the JSON Schema of the data, compiled templates (.bdft). `form/tag` reads the tags of the Office templates (Excel, Word, PowerPoint); `converter/pdfform` fills a PDF with form fields and `converter/pdfme` a template of pdfme. See [Making forms](../forms.md) |
 | `thumbnail/` | Thumbnails of documents: the layout by kind of document, and PNG/JPEG/WebP encoding |
@@ -33,7 +34,7 @@
 | `converter/pptx` | PowerPoint (.pptx) |
 | `converter/xlsx` | Excel (.xlsx) |
 | `converter/csv` | CSV and TSV (drawn by `converter/xlsx`) |
-| `converter/parquet` | Apache Parquet (drawn by `converter/xlsx`) |
+| `converter/parquet` | Apache Parquet (drawn by `converter/xlsx`; the file itself kept as a table of the document) |
 | `converter/docx` | Word (.docx) |
 | `converter/visio` | Visio (.vsdx) |
 | `converter/idml` | InDesign (.idml) |

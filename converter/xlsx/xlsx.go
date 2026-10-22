@@ -68,6 +68,12 @@ type Options struct {
 	NoTextIndex bool
 	// Warn receives non-fatal problems; when nil they are collected in Result.Warnings.
 	Warn func(msg string)
+	// Data says whether the values of the sheets are stored as tables the
+	// document holds beside its drawing (docs/spec.md §4.6; the used range
+	// of a sheet as sheet<n>, its tables as table-<k>): "" within the
+	// default limits (converter.DefaultTableRows, DefaultTableBytes),
+	// "all" whatever their size, "none" not at all.
+	Data string
 
 	// Views selects the views of a worksheet: ViewsSheet (the default when
 	// ""), the sheet as Excel shows it; ViewsPrint, the pages Excel prints
@@ -113,6 +119,7 @@ type converter struct {
 
 	wbPart   string
 	date1904 bool
+	nTables  int // the tables (ListObjects) stored as tables of values
 	sst      []*richText
 	st       *styles
 	locale   string // "ja" when the workbook is Japanese (built-in formats differ)
@@ -163,7 +170,7 @@ func openWorkbook(r io.ReaderAt, size int64, opts *Options) (*converter, *ooxml.
 	// text or pictures of their fallbacks
 	p.Choose = ooxml.MathChoice
 	c := newConverter(p, opts)
-	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, Warn: func(msg string) { c.warnf("%s", msg) }})
+	c.r = drawingml.New(drawingml.Config{Package: p, Doc: c.doc, Fonts: c.fonts, Images: opts.Images, NoTables: opts.Data == "none", Warn: func(msg string) { c.warnf("%s", msg) }})
 
 	c.wbPart = "xl/workbook.xml"
 	if r, ok := p.RelOfType("", "/officeDocument"); ok {
@@ -288,6 +295,15 @@ func Convert(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 			v, layers := c.chartSheetSafe(ref, id)
 			pending = append(pending, pendingView{view: v, layers: layers})
 		} else {
+			// the values of the sheet are stored before its cells are
+			// released by the drawing
+			if ws, err := c.sheetOf(ref); err == nil {
+				view := id
+				if views == ViewsPrint {
+					view = "print" + strconv.Itoa(n)
+				}
+				c.storeSheetTables(ws, n, view)
+			}
 			if views != ViewsPrint {
 				v, tiles, err := c.worksheetSafe(ref, id)
 				if err != nil {

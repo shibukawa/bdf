@@ -26,7 +26,7 @@ For an npm integration, including server-converted BDF and browser conversion pr
 
 | Path | Contents |
 |---|---|
-| `*.go`, `converter/`, `raster/`, `contrib/`, `internal/` | The Go encoder/decoder and one converter package per input format |
+| `*.go`, `converter/`, `encoding/`, `raster/`, `contrib/`, `internal/` | The Go encoder/decoder, one converter package per input format, and the Parquet encoding of the tables of values a document holds |
 | `form/`, `vector/`, `text/` | Filling templates of forms with data: Excel, Word and PowerPoint files with tags, PDFs with form fields, templates of pdfme, text files of the lines of continuous forms and receipts (QR codes and barcodes are `image/barcode/`); and writing documents as PDF files, tagged and PDF/A too, and as Markdown |
 | `packages/` | The decoder, renderer, viewer surface and TinyGo-backed browser converter npm packages |
 | `examples/`, `site/` | The demo viewer, four sample server architectures, and the site published on GitHub Pages |

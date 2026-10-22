@@ -42,7 +42,7 @@ func markdownCall(_ js.Value, args []js.Value) any {
 	}
 	wantZip := option(args, "zip").Truthy()
 	opts := &markdownbdf.Options{Views: strs(args, "views"), InternalLinks: option(args, "internalLinks").Truthy(),
-		KeepRunning: option(args, "keepRunning").Truthy()}
+		KeepRunning: option(args, "keepRunning").Truthy(), Tables: str(args, "tables")}
 	if skip := strs(args, "skip"); skip != nil {
 		opts.SkipRoles = skip
 	}
@@ -62,6 +62,7 @@ func markdownCall(_ js.Value, args []js.Value) any {
 				files = append(files, file{name, data})
 				return name, nil
 			}
+			opts.File = opts.Image
 		case "embed":
 			opts.Image = func(file string, data []byte) (string, error) {
 				return "data:" + mimeOf(file) + ";base64," + base64.StdEncoding.EncodeToString(data), nil
@@ -72,7 +73,7 @@ func markdownCall(_ js.Value, args []js.Value) any {
 		if err != nil {
 			return nil, err
 		}
-		out := map[string]any{"markdown": bytesToJS(md.Bytes()), "views": res.Views, "warnings": anys(res.Warnings)}
+		out := map[string]any{"markdown": bytesToJS(md.Bytes()), "views": res.Views, "tables": res.Tables, "warnings": anys(res.Warnings)}
 		list := make([]any, 0, len(files))
 		for _, f := range files {
 			list = append(list, map[string]any{"name": f.name, "data": bytesToJS(f.data)})

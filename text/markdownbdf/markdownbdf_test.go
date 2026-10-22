@@ -350,12 +350,16 @@ func TestWordStyles(t *testing.T) {
 // TestCharts writes a deck with charts: each is a figure whose alternative
 // text tells its kind, its title and its data, in place of its labels.
 func TestCharts(t *testing.T) {
-	md, _, _ := write(t, open(t, "pptx/features.bdf"), nil)
+	md, _, res := write(t, open(t, "pptx/features.bdf"), nil)
+	// a chart is its description and, inline, the table of its data
 	wantLines(t, md,
-		"\n# Charts\n\n*Column chart; East: Q1 20.4, Q2 27.4, Q3 90, Q4 20.4; West: Q1 30.6,",
-		"\n*Pie chart: Share; Share: Alpha 0.45, Beta 0.25, Gamma 0.2, Delta 0.1*\n",
-		"\n*Bar chart; Stacked 1: A 3, B 5, C 2; Stacked 2: A 2, B 1, C 4*\n",
+		"\n# Charts\n\n*Column chart*\n\n| Category | East | West | North |\n|---|---|---|---|\n| Q1 | 20.4 | 30.6 | 45.9 |\n",
+		"\n*Pie chart: Share*\n\n| Category | Share |\n|---|---|\n| Alpha | 0.45 |\n",
+		"\n*Bar chart*\n\n| Category | Stacked 1 | Stacked 2 |\n|---|---|---|\n| A | 3 | 2 |\n| B | 5 | 1 |\n| C | 2 | 4 |\n",
 	)
+	if res.Tables != 4 {
+		t.Errorf("tables = %d, want 4", res.Tables)
+	}
 	for _, label := range []string{"\nQ1\n", "\nEast\n", "\n45%\n"} {
 		if strings.Contains(md, label) {
 			t.Errorf("a chart's label %q is written on its own", strings.TrimSpace(label))

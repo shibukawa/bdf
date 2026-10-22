@@ -114,8 +114,10 @@ export interface PdfOptions {
 export interface MarkdownFile {
   /** The text, UTF-8. */
   markdown: Uint8Array;
-  /** The images the text refers to, as files beside it (options.images "files"); none otherwise. */
+  /** The images the text refers to, as files beside it (options.images "files"), and the CSV files of tables; none otherwise. */
   images: { name: string; data: Uint8Array }[];
+  /** The tables written, inline or as files. */
+  tables: number;
   /** A zip file of the text (name.md) and the images, when asked for. */
   zip?: Uint8Array;
   /** The views written. */
@@ -137,6 +139,8 @@ export interface MarkdownOptions {
   internalLinks?: boolean;
   /** Images: as files returned beside the text (default), embedded in it as data URLs, or left out. */
   images?: "files" | "embed" | "none";
+  /** The tables the document holds (the data of charts): inline (default), as CSV files beside the text, or left out. */
+  tables?: "inline" | "files" | "none";
   /** Also a zip file of the text and the image files. */
   zip?: boolean;
   /** The name of the text in the zip file (default "document"). */
