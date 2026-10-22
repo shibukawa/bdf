@@ -40,12 +40,16 @@ bdf encrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
                                    encrypt a document with a password
 bdf decrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
                                    write an encrypted document without its encryption
+bdf sign -key key.pem -cert chain.pem [flags] <file.bdf | dir> [out.bdf]
+                                   add a signature (CMS, X.509) after those a document has
+bdf verify [-roots roots.pem] <file.bdf | dir>
+                                   check the signatures of a document
 bdf demo <file.bdf | dir/>         write the fixture document (dir/ ends with a slash)
 bdf conformance [-testdata dir] <dir>
                                    write the conformance suite for other readers (package conformance)
 ```
 
-An encrypted document is read with the password in `$BDF_PASSWORD`; `split` and `join` copy it without needing the password.
+An encrypted document is read with the password in `$BDF_PASSWORD`; `split` and `join` copy it without needing the password, and keep the signatures of a document.
 
 ## generate
 
@@ -227,6 +231,20 @@ BDF_PASSWORD=… bdf decrypt in.bdf out.bdf   # remove the encryption (needs the
 ```
 
 `generate` can do this in one step too, with `-encrypt auto` (the default: only when the input needed a password), `always`, or `never`.
+
+## sign, verify
+
+```sh
+bdf sign -key alice.key -cert alice-chain.pem -role author contract.bdf signed.bdf
+bdf sign -key bob.key -cert bob-chain.pem -role counterparty -tsa https://tsa.example/ signed.bdf
+bdf verify -roots ca.pem signed.bdf
+```
+
+`sign` adds a signature after those a document has (spec §3.7): a CMS signature with the X.509 certificate of the signer, over the SHA-256 of the manifest and of every part, and of the signatures before it. The key is PEM (PKCS #8, EC or PKCS #1; a PKCS #12 file is written as PEM by `openssl pkcs12 -in key.p12 -nodes`), and `-cert` is the certificate of the key followed by its chain. `-role` and `-claims file.json` are signed with the document; `-tsa` has a time-stamp authority (RFC 3161) stamp the signature. Without an output, the file is signed in its place; a document of the split form is signed in its directory (`signatures.json`).
+
+`verify` reports, for each signature, whether it holds (nothing changed after it: no part, no page, no signature before it) and whether its signer is trusted (`-roots`, or the roots of the system), at the time of its time-stamp when it has one. It exits with 1 when a signature does not hold or is not trusted, or when there is none; `-json` writes the report as JSON.
+
+A signature finds changes; it does not prevent them. `split` and `join` keep the signatures, which hold in either form. A drawn signature in a form is a picture, not a signature of `sign`.
 
 ## demo
 

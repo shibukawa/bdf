@@ -6,7 +6,7 @@ summary: >-
   RFC 3161 のタイムスタンプを付け、Adobe Acrobat などふつうの PDF の読み手が検証できるようにする。一部だけ埋めた帳票（requirement:partial-fill）では、
   送る側が自分の値に署名し、残りを埋めた完成品にもう一度署名する連鎖にする。2026-10-22 利用者の要望「bdf やそこから生成される pdf への改ざん防止機能はまた欲しい」。
   設計は Claude の案で、未確定の論点は open_questions。
-lifecycle: proposed
+lifecycle: active
 aliases:
 - 改ざん防止
 - 改ざん検知
@@ -39,25 +39,25 @@ open_questions:
       署名の属性に入れてサーバーの鍵で署名する）。ウェブで残りを埋める流れに合い、相手に証明書を求めない。当事者型はファイルの鍵で同じコードを通して確かめる
   bdf-placement:
     text: 1 ファイル形式で署名をどこに置くか。(a) Part の領域の後ろに付ける末尾のブロック（"bdfs" の印と長さ。ヘッダーの flags は立てない）、(b) ヘッダーの flags に新しいビット、(c) 別ファイル（foo.bdf.sig）
-    state: open
+    state: answered
     resolution: >-
-      暫定案（Claude）：(a)。分割形式では manifest.json の隣の signatures.json。(b) は今の読み手が未定義のビットを拒否する（spec §3.3）ので、
+      2026-10-23 sig-1 で実装（milestone:sig-1）。暫定案（Claude）：(a)。分割形式では manifest.json の隣の signatures.json。(b) は今の読み手が未定義のビットを拒否する（spec §3.3）ので、
       署名を知らない読み手で開けなくなる。(c) は 1 ファイルで配れない。Go の OpenSingle は範囲がファイルに収まるかだけを見て末尾の余りを拒否しないことを読んだ（reader.go）。
       TypeScript のビューアと libbdf が末尾の余りを受け入れるかは未確認
   cms-implementation:
     text: CMS をどう持つか。自前（encoding/asn1 と crypto/x509 で、署名に要る SignedData だけ）か、github.com/digitorus/pkcs7 などのライブラリか
-    state: open
+    state: answered
     resolution: >-
-      暫定案（Claude）：自前。必要なのは SignedData の 1 つの形（署名属性の contentType・messageDigest・signingCertificateV2、署名なし属性のタイムスタンプ）と、
+      2026-10-23 sig-1 で実装（milestone:sig-1）。暫定案（Claude）：自前。必要なのは SignedData の 1 つの形（署名属性の contentType・messageDigest・signingCertificateV2、署名なし属性のタイムスタンプ）と、
       検証での読み取りだけで、読み取りは信頼できない入力になる（ほかの読み手と同じく上限と fuzz を置く）。openssl cms -verify と pyHanko で突き合わせる
   algorithms:
     text: 署名のアルゴリズム
-    state: open
-    resolution: 暫定案（Claude）：ECDSA P-256 と RSA（PKCS#1 v1.5 と PSS、2048 ビット以上）、ハッシュは SHA-256。Ed25519 は Adobe Acrobat が検証しないので PDF では使わない
+    state: answered
+    resolution: 2026-10-23 sig-1 で実装（milestone:sig-1）。暫定案（Claude）：ECDSA P-256 と RSA（PKCS#1 v1.5 と PSS、2048 ビット以上）、ハッシュは SHA-256。Ed25519 は Adobe Acrobat が検証しないので PDF では使わない
   encrypted-documents:
     text: 暗号化した文書（spec §3.5）に署名するとき、署名を外に見せるか（鍵なしで検証できるが、署名した人の証明書が外から読める）、封印するか
     state: open
-    resolution: 暫定案（Claude）：平文の文書に署名し、署名のブロックも封印する（AAD は ASCII の signature）。鍵を持つ人だけが署名した人を知る。区間の文書（§3.6、要求ごとの封印）は後
+    resolution: sig-1 は格納の形（外側の manifest と封印した Part）に署名した（鍵なしで署名・検証でき、証明書は外から見える）。次の暫定案はまだ実装していない。暫定案（Claude）：平文の文書に署名し、署名のブロックも封印する（AAD は ASCII の signature）。鍵を持つ人だけが署名した人を知る。区間の文書（§3.6、要求ごとの封印）は後
   timestamp:
     text: タイムスタンプ局（TSA）。試験は FreeTSA などの公開の局、本番は認定タイムスタンプ（電子帳簿保存法で使う、日本データ通信協会の認定）を設定で選ぶ
     state: open
@@ -80,6 +80,8 @@ relations:
   to: requirement:document-flow
 - relation: related_to
   to: requirement:print-manager-auth
+- relation: has_milestone
+  to: milestone:sig-1
 facts:
   threat_model:
     protects: >-
@@ -88,9 +90,9 @@ facts:
     does_not_protect: 署名の鍵を盗まれること、署名する前の内容が正しいこと、文書を消されること（それは保管の Object Lock）、画面の上での見た目の偽装（署名のないコピーを見せる）
   bdf:
     signed_content: >-
-      署名する内容は文書そのものではなく、次を並べた小さな JSON（決まった順のキー、空白なし）: 版、manifest の平文のバイト列の SHA-256、
-      manifest の parts の順に各 Part の格納バイト列の SHA-256（32 バイト）。CMS の SignedData はこれを外に置く形（detached）で署名する。
-      検証は全部の Part を読んで SHA-256 を計算し直す
+      署名する内容は文書そのものではなく、次を並べた小さな JSON（RFC 8785 の JCS）: 版、manifest の正規形（JSON として読み parts の off を除いて JCS で書いたもの）の SHA-256、
+      manifest の parts の順に各 Part の格納バイト列の SHA-256（32 バイト）、前の署名の DER の SHA-256、claims。CMS の SignedData はこれを中に持つ（sig-1 で決めた。当初案の
+      「manifest の平文のバイト列」と detached は、分割形式が manifest を書き直すことと claims を運ぶ必要から変えた）。検証は全部の Part を読んで SHA-256 を計算し直す
     block: '1 ファイル形式は Part の領域の後ろに、署名の並び（CMS の DER を n 個）と、"bdfs"・版・長さの 16 バイトの末尾。分割形式は signatures.json（base64 の DER の配列）'
     multiple: 署名は並べて足せる（連署）。後の署名は、前の署名の DER のハッシュも署名する内容に入れて、前の署名を外されたら分かるようにする
     attributes: 署名属性に署名した人の役割（bdf の名前の空間の属性。送り手・受け手・立会人）と、立会人型なら操作した人（OIDC の issuer と sub、メール）を入れる

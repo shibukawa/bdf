@@ -61,6 +61,10 @@ func usage() {
                                      encrypt a document with a password
   bdf decrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
                                      write an encrypted document without its encryption
+  bdf sign -key key.pem -cert chain.pem [flags] <file.bdf | dir> [out.bdf]
+                                     add a signature (CMS, X.509) after those a document has
+  bdf verify [-roots roots.pem] <file.bdf | dir>
+                                     check the signatures of a document (bdf sign -h, bdf verify -h)
   bdf segment [flags] <file.bdf | dir> <out.bdf>
                                      write the segment of pages that holds a page, sealed for a
                                      reader's public key (bdf segment -h for flags)
@@ -69,7 +73,7 @@ func usage() {
                                      write the conformance suite for other readers (package conformance)
 
 An encrypted document is read with the password in $BDF_PASSWORD; split and
-join copy it without the password.`)
+join copy it without the password, and keep the signatures of a document.`)
 	os.Exit(2)
 }
 
@@ -256,6 +260,7 @@ func main() {
 		r, err := bdf.OpenSingleFile(os.Args[2])
 		check(err)
 		check(r.WriteSplit(os.Args[3]))
+		copySignatures(os.Args[2], os.Args[3])
 	case "join":
 		if len(os.Args) < 4 {
 			usage()
@@ -265,6 +270,11 @@ func main() {
 		f, err := os.Create(os.Args[3])
 		check(err)
 		check(errors.Join(r.WriteSingle(f), f.Close()))
+		copySignatures(os.Args[2], os.Args[3])
+	case "sign":
+		signCmd(os.Args[2:])
+	case "verify":
+		verifyCmd(os.Args[2:])
 	case "encrypt", "decrypt":
 		crypt(os.Args[1], os.Args[2:])
 	case "segment":

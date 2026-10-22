@@ -40,12 +40,16 @@ bdf encrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
                                    パスワードで文書を暗号化する
 bdf decrypt [-password-file f] <file.bdf | dir> <out.bdf | dir/>
                                    暗号化を解いて書き出す
+bdf sign -key key.pem -cert chain.pem [flags] <file.bdf | dir> [out.bdf]
+                                   文書に署名を足す（CMS、X.509。前の署名の後に）
+bdf verify [-roots roots.pem] <file.bdf | dir>
+                                   文書の署名を確かめる
 bdf demo <file.bdf | dir/>         フィクスチャ文書を書き出す（dir/ は末尾がスラッシュ）
 bdf conformance [-testdata dir] <dir>
                                    他の読み手のための適合テストを書き出す（conformance パッケージ）
 ```
 
-暗号化された文書は `$BDF_PASSWORD` のパスワードで読みます。`split` と `join` はパスワードなしで使えます。
+暗号化された文書は `$BDF_PASSWORD` のパスワードで読みます。`split` と `join` はパスワードなしで使え、文書の署名を保ちます。
 
 ## generate
 
@@ -227,6 +231,20 @@ BDF_PASSWORD=… bdf decrypt in.bdf out.bdf   # 暗号化を解除（開くの�
 ```
 
 `generate` は `-encrypt auto`（既定: 入力にパスワードが要ったときだけ）・`always`・`never` で、この 2 段階を一度にできます。
+
+## sign, verify
+
+```sh
+bdf sign -key alice.key -cert alice-chain.pem -role author contract.bdf signed.bdf
+bdf sign -key bob.key -cert bob-chain.pem -role counterparty -tsa https://tsa.example/ signed.bdf
+bdf verify -roots ca.pem signed.bdf
+```
+
+`sign` は、文書がすでに持つ署名の後ろに署名を 1 つ足します（spec §3.7）。署名は署名した人の X.509 証明書を付けた CMS の署名で、manifest とすべての Part、それより前の署名の SHA-256 を覆います。鍵は PEM です（PKCS #8、EC、PKCS #1。PKCS #12 のファイルは `openssl pkcs12 -in key.p12 -nodes` で PEM にできます）。`-cert` には鍵の証明書と、それに続く鎖を渡します。`-role` と `-claims file.json` は文書と一緒に署名されます。`-tsa` はタイムスタンプ局（RFC 3161）に署名の時刻を印してもらいます。出力を省くと、ファイルをその場で署名します。分割形式の文書は、そのディレクトリの `signatures.json` に署名します。
+
+`verify` は署名ごとに、署名が成り立つか（署名の後に Part・ページ・前の署名のどれも変わっていないか）と、署名した人が信頼できるか（`-roots`、なければシステムの根の証明書）を報告します。タイムスタンプがあれば、その時刻で証明書を確かめます。署名が成り立たないか信頼できないとき、または署名が 1 つもないときは終了コード 1 で終わります。`-json` は結果を JSON で書きます。
+
+署名は変更を見つけるもので、変更を防ぐものではありません。`split` と `join` は署名を保ち、署名はどちらの形式でも成り立ちます。帳票の手書きのサインは絵で、`sign` の署名ではありません。
 
 ## demo
 

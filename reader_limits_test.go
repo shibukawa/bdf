@@ -111,7 +111,7 @@ func TestUnlockStoredManifestLimit(t *testing.T) {
 		}
 	}
 	loaded := false
-	r := newReader(m, func(PartEntry) ([]byte, error) {
+	r := newReader(m, nil, func(PartEntry) ([]byte, error) {
 		loaded = true
 		return nil, io.ErrUnexpectedEOF
 	})
