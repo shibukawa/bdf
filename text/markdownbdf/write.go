@@ -1,0 +1,543 @@
+package markdownbdf
+
+import (
+	"bytes"
+	"math"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/shibukawa/bdf"
+)
+
+var (
+	// bulletRe matches the marker of an item of a bulleted list, as the
+	// converters draw them.
+	bulletRe = regexp.MustCompile(`^[•◦▪▫●○■□◆◇‣⁃·\-–—*►➢✓✔☐☑]$`)
+	// orderedRe matches the marker of an item of a numbered list.
+	orderedRe = regexp.MustCompile(`^(\(?\d{1,3}[.)]|\(\d{1,3}\)|[a-zA-Z][.)]|[ivxlcIVXLC]{1,5}[.)]|[①-⑳])$`)
+	numRe     = regexp.MustCompile(`\d+`)
+	listRe    = regexp.MustCompile(`^\s*(-|\d+\.) `)
+	startRe   = regexp.MustCompile(`^\d{1,9}[.)] `)
+)
+
+// escape keeps the characters of text from being read as Markdown.
+func escape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch r {
+		case '\\', '*', '_', '`', '[', ']', '<', '>', '|', '~':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// escapeStart keeps the first characters of a block from starting another
+// kind of block.
+func escapeStart(s string) string {
+	t := strings.TrimLeft(s, " ")
+	if t == "" {
+		return s
+	}
+	switch {
+	case strings.HasPrefix(t, "#"), strings.HasPrefix(t, ">"), strings.HasPrefix(t, "+ "), strings.HasPrefix(t, "- "), strings.HasPrefix(t, "---"):
+		return "\\" + s
+	}
+	if m := startRe.FindString(t); m != "" {
+		return s[:len(m)-2] + "\\" + s[len(m)-2:]
+	}
+	return s
+}
+
+// style is what the Markdown wraps a stretch of runs in.
+type style struct {
+	bold, italic, mono bool
+	shift              int // 1 a superscript, -1 a subscript
+	link               string
+}
+
+// shifts tells the runs that are superscripts (1) or subscripts (-1): the
+// runs in a smaller font than the run before or after them, raised or
+// lowered from its baseline.
+func shifts(runs []*run) []int {
+	out := make([]int, len(runs))
+	for i, r := range runs {
+		if r.AltText || r.Size <= 0 {
+			continue
+		}
+		var ref *run
+		switch {
+		case i > 0 && runs[i-1].Size > r.Size*1.15 && !runs[i-1].AltText:
+			ref = runs[i-1]
+		case i+1 < len(runs) && runs[i+1].Size > r.Size*1.15 && !runs[i+1].AltText:
+			ref = runs[i+1]
+		default:
+			continue
+		}
+		switch dy := ref.Y - r.Y; {
+		case dy > ref.Size*0.15 && dy < ref.Size*1.2:
+			out[i] = 1
+		case dy < -ref.Size*0.05 && dy > -ref.Size*0.8:
+			out[i] = -1
+		}
+	}
+	return out
+}
+
+// adjacent reports whether a run starts right where the one before it ends.
+func adjacent(prev, cur *run) bool {
+	return prev.Advance > 0 && cur.X-(prev.X+prev.Advance) < prev.Size*0.3 && abs(float64(cur.X-(prev.X+prev.Advance))) < float64(prev.Size)
+}
+
+// inline writes the runs of a leaf. In a heading, or a header cell, the
+// weight of the whole is not emphasis.
+func inline(runs []*run, heading bool) string {
+	var b strings.Builder
+	var cur style
+	var seg strings.Builder
+	shift := shifts(runs)
+	flush := func() {
+		t := seg.String()
+		seg.Reset()
+		if t == "" {
+			return
+		}
+		// the spaces around a stretch stay outside its markers
+		lead := t[:len(t)-len(strings.TrimLeft(t, " "))]
+		trail := t[len(strings.TrimRight(t, " ")):]
+		core := strings.TrimSpace(t)
+		b.WriteString(lead)
+		if core != "" {
+			open, close := "", ""
+			if cur.mono {
+				open, close = "`", "`"
+				core = strings.ReplaceAll(core, "`", "``")
+			} else {
+				core = escape(core)
+				if cur.bold && !heading {
+					open, close = "**"+open, close+"**"
+				}
+				if cur.italic {
+					open, close = "*"+open, close+"*"
+				}
+			}
+			switch cur.shift {
+			case 1:
+				open, close = "<sup>"+open, close+"</sup>"
+			case -1:
+				open, close = "<sub>"+open, close+"</sub>"
+			}
+			if cur.link != "" {
+				open, close = "["+open, close+"]("+cur.link+")"
+			}
+			b.WriteString(open + core + close)
+		}
+		b.WriteString(trail)
+	}
+	for i, r := range runs {
+		s := style{bold: r.bold, italic: r.italic, mono: r.mono, shift: shift[i], link: r.link}
+		sep := ""
+		if i > 0 && r.Sep != bdf.SepNone {
+			sep = " "
+			// a superscript or subscript joins the word it is on (its
+			// baseline differs, which looks like a line break)
+			if (shift[i] != 0 || shift[i-1] != 0) && adjacent(runs[i-1], r) {
+				sep = ""
+			}
+		}
+		if s != cur {
+			flush()
+			b.WriteString(sep)
+			cur = s
+		} else {
+			seg.WriteString(sep)
+		}
+		seg.WriteString(r.Text)
+	}
+	flush()
+	return b.String()
+}
+
+// codeLine writes the runs of a paragraph of code as they are: a line of
+// a code block, whose wrapped lines (LINE marks) join with a space.
+func codeLine(runs []*run) string {
+	var b strings.Builder
+	for i, r := range runs {
+		if i > 0 && r.Sep != bdf.SepNone {
+			b.WriteByte(' ')
+		}
+		b.WriteString(r.Text)
+	}
+	return strings.TrimRight(b.String(), " ")
+}
+
+// isCode reports whether a paragraph is a line of code: all its text in a
+// monospaced font.
+func isCode(n *node) bool {
+	if n.kind != bdf.NodeParagraph || len(n.runs) == 0 {
+		return false
+	}
+	for _, r := range n.runs {
+		if !r.mono && strings.TrimSpace(r.Text) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// imagePath writes an image once and returns the path the Markdown refers
+// to it by ("" when it is not written).
+func (w *writer) imagePath(h bdf.Hash) string {
+	if p, ok := w.images[h]; ok {
+		return p
+	}
+	path := ""
+	if w.opts.Image != nil {
+		if part := w.doc.Part(h); part == nil {
+			w.warnf("image %s is missing", h)
+		} else {
+			name := h.String()[:16] + imageExt(part.Data)
+			p, err := w.opts.Image(name, part.Data)
+			if err != nil {
+				w.warnf("image %s: %v", name, err)
+			} else {
+				path = p
+				w.res.Images++
+			}
+		}
+	}
+	w.images[h] = path
+	return path
+}
+
+// imageExt tells the extension of an image file by its first bytes.
+func imageExt(d []byte) string {
+	switch {
+	case bytes.HasPrefix(d, []byte("\x89PNG")):
+		return ".png"
+	case bytes.HasPrefix(d, []byte("\xff\xd8")):
+		return ".jpg"
+	case bytes.HasPrefix(d, []byte("GIF8")):
+		return ".gif"
+	case bytes.HasPrefix(d, []byte("RIFF")) && len(d) > 12 && string(d[8:12]) == "WEBP":
+		return ".webp"
+	case len(d) > 12 && string(d[4:8]) == "ftyp":
+		return ".avif"
+	case bytes.HasPrefix(d, []byte("BM")):
+		return ".bmp"
+	case bytes.Contains(d[:min(len(d), 1024)], []byte("<svg")):
+		return ".svg"
+	}
+	return ".bin"
+}
+
+// blocks writes a sequence of nodes as blocks: paragraphs, headings, lists,
+// tables, figures, and fences of the lines of code among them. inCell says
+// the blocks are in a cell or an item, where a heading is a bold line.
+func (w *writer) blocks(kids []*node, inCell bool) []string {
+	var out []string
+	for i := 0; i < len(kids); i++ {
+		k := kids[i]
+		if isCode(k) {
+			var lines []string
+			j := i
+			for ; j < len(kids) && isCode(kids[j]); j++ {
+				lines = append(lines, codeLine(kids[j].runs))
+			}
+			i = j - 1
+			fence := "```"
+			for _, l := range lines {
+				for strings.Contains(l, fence) {
+					fence += "`"
+				}
+			}
+			out = append(out, fence+"\n"+strings.Join(lines, "\n")+"\n"+fence)
+			continue
+		}
+		if s := w.block(k, inCell); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func (w *writer) block(n *node, inCell bool) string {
+	switch n.kind {
+	case bdf.NodeParagraph, bdf.NodeCaption, bdf.NodeCell:
+		t := strings.TrimSpace(inline(n.runs, false))
+		if t == "" {
+			return ""
+		}
+		return escapeStart(t)
+	case bdf.NodeHeading:
+		t := strings.TrimSpace(inline(n.runs, true))
+		if t == "" {
+			return ""
+		}
+		if inCell {
+			return "**" + t + "**"
+		}
+		level := n.level
+		if level == 0 {
+			level = 1
+		}
+		return strings.Repeat("#", level) + " " + t
+	case kindImage:
+		if p := w.imagePath(n.image); p != "" {
+			return "![](" + p + ")"
+		}
+		return ""
+	case bdf.NodeFigure:
+		return w.figure(n, inCell)
+	case bdf.NodeList:
+		return w.list(n)
+	case bdf.NodeTable:
+		return w.table(n)
+	case bdf.NodeItem:
+		return strings.Join(w.blocks(n.kids, true), "\n\n")
+	}
+	return ""
+}
+
+// figure writes a figure: its images with its alternative text, the text
+// alone when nothing else of it is written, and the text drawn in it (a
+// chart's labels, a diagram's words), which stays content.
+func (w *writer) figure(n *node, inCell bool) string {
+	var images, rest []*node
+	for _, k := range n.kids {
+		if k.kind == kindImage {
+			images = append(images, k)
+		} else {
+			rest = append(rest, k)
+		}
+	}
+	alt := strings.TrimSpace(n.alt)
+	var parts []string
+	for _, im := range images {
+		p := w.imagePath(im.image)
+		if p == "" {
+			continue
+		}
+		a := ""
+		if len(parts) == 0 {
+			a = escape(alt)
+		}
+		parts = append(parts, "!["+a+"]("+p+")")
+	}
+	if len(parts) == 0 && alt != "" {
+		parts = append(parts, "*"+escape(alt)+"*")
+	}
+	parts = append(parts, w.blocks(rest, inCell)...)
+	return strings.Join(parts, "\n\n")
+}
+
+// marker tells whether the first run of an item is the marker the
+// converter drew for it, and whether it numbers the item.
+func marker(it *node) (first *node, ordered bool, text string) {
+	if len(it.kids) == 0 {
+		return nil, false, ""
+	}
+	first = it.kids[0]
+	if !first.leaf() || len(first.runs) == 0 {
+		return first, false, ""
+	}
+	t := strings.TrimSpace(first.runs[0].Text)
+	switch {
+	case bulletRe.MatchString(t):
+		return first, false, t
+	case orderedRe.MatchString(t):
+		return first, true, t
+	}
+	return first, false, ""
+}
+
+// list writes a list: an item a line, what follows its first paragraph
+// indented under it, a nested list right after the item it is in.
+func (w *writer) list(n *node) string {
+	var lines []string
+	num := 0
+	ordered := false
+	for i, it := range n.kids {
+		if it.kind != bdf.NodeItem {
+			if s := w.block(it, true); s != "" {
+				lines = append(lines, s)
+			}
+			continue
+		}
+		first, ord, mk := marker(it)
+		if i == 0 {
+			ordered = ord
+		}
+		kids := it.kids
+		head := ""
+		if first != nil && first.leaf() {
+			runs := first.runs
+			if mk != "" {
+				if ordered && i == 0 {
+					if m := numRe.FindString(mk); m != "" {
+						num, _ = strconv.Atoi(m)
+						num--
+					}
+				}
+				runs = runs[1:]
+			}
+			head = strings.TrimSpace(inline(runs, first.kind == bdf.NodeHeading))
+			kids = kids[1:]
+		}
+		bullet := "- "
+		if ordered {
+			num++
+			bullet = strconv.Itoa(num) + ". "
+		}
+		pad := strings.Repeat(" ", len(bullet))
+		item := bullet + head
+		for _, b := range w.blocks(kids, true) {
+			b = pad + strings.ReplaceAll(b, "\n", "\n"+pad)
+			b = strings.ReplaceAll(b, "\n"+pad+"\n", "\n\n")
+			if listRe.MatchString(b) {
+				item += "\n" + b
+			} else {
+				item += "\n\n" + b
+			}
+		}
+		lines = append(lines, item)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// cellText writes what is in a cell on one line of a table.
+func (w *writer) cellText(n *node) string {
+	header := n.cell != nil && n.cell.Scope != ""
+	var parts []string
+	if n.leaf() {
+		if t := strings.TrimSpace(inline(n.runs, header)); t != "" {
+			parts = append(parts, t)
+		}
+	} else if header {
+		for _, k := range n.kids {
+			if t := strings.TrimSpace(inline(k.runs, true)); t != "" {
+				parts = append(parts, t)
+			}
+		}
+	} else {
+		for _, b := range w.blocks(n.kids, true) {
+			parts = append(parts, strings.ReplaceAll(b, "\n", "<br>"))
+		}
+	}
+	return strings.Join(parts, "<br>")
+}
+
+// grid writes cells as a table: the cells with references in their
+// places, a cell that spans columns or rows in its top-left one. A table
+// without a header row gets an empty one, as the format wants one.
+func (w *writer) grid(cells []*node) string {
+	type slot struct {
+		n *node
+		c bdf.CellRef
+	}
+	var slots []slot
+	rowSet := map[int]bool{}
+	minC, maxC := math.MaxInt, -1
+	for _, c := range cells {
+		if c.cell == nil {
+			continue
+		}
+		slots = append(slots, slot{c, *c.cell})
+		rowSet[c.cell.Row] = true
+		minC, maxC = min(minC, c.cell.Col), max(maxC, c.cell.Col+c.cell.Cols-1)
+	}
+	if len(slots) == 0 {
+		// cells without places: one a row
+		var lines []string
+		for _, c := range cells {
+			lines = append(lines, "| "+w.cellText(c)+" |")
+		}
+		if len(lines) == 0 {
+			return ""
+		}
+		return strings.Join(append([]string{"| |", "|---|"}, lines...), "\n")
+	}
+	rows := make([]int, 0, len(rowSet))
+	for r := range rowSet {
+		rows = append(rows, r)
+	}
+	sort.Ints(rows)
+	at := map[[2]int]*slot{}
+	for i := range slots {
+		s := &slots[i]
+		if _, ok := at[[2]int{s.c.Row, s.c.Col}]; !ok {
+			at[[2]int{s.c.Row, s.c.Col}] = s
+		}
+	}
+	header := false
+	for _, s := range slots {
+		if s.c.Row == rows[0] && s.c.Scope == "col" {
+			header = true
+		}
+	}
+	width := maxC - minC + 1
+	var lines []string
+	if !header {
+		lines = append(lines, "|"+strings.Repeat(" |", width), "|"+strings.Repeat("---|", width))
+	}
+	for i, r := range rows {
+		cols := make([]string, width)
+		for c := minC; c <= maxC; c++ {
+			if s := at[[2]int{r, c}]; s != nil {
+				cols[c-minC] = w.cellText(s.n)
+			}
+		}
+		lines = append(lines, "| "+strings.Join(cols, " | ")+" |")
+		if i == 0 && header {
+			lines = append(lines, "|"+strings.Repeat("---|", width))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// table writes a table: its caption, then its cells.
+func (w *writer) table(n *node) string {
+	var caption, cells []*node
+	for _, k := range n.kids {
+		switch k.kind {
+		case bdf.NodeCell:
+			cells = append(cells, k)
+		case bdf.NodeCaption:
+			caption = append(caption, k)
+		}
+	}
+	out := w.grid(cells)
+	if len(caption) > 0 {
+		var ts []string
+		for _, c := range caption {
+			if t := strings.TrimSpace(inline(c.runs, false)); t != "" {
+				ts = append(ts, t)
+			}
+		}
+		if len(ts) > 0 {
+			out = escapeStart(strings.Join(ts, " ")) + "\n\n" + out
+		}
+	}
+	return out
+}
+
+// sheet writes the cells of a sheet (CELLs outside a table) as one table,
+// and what else is drawn on it as blocks.
+func (w *writer) sheet(root *node) []string {
+	var cells, rest []*node
+	for _, k := range root.kids {
+		if k.kind == bdf.NodeCell && k.cell != nil {
+			cells = append(cells, k)
+		} else {
+			rest = append(rest, k)
+		}
+	}
+	var out []string
+	if len(cells) > 0 {
+		out = append(out, w.grid(cells))
+	}
+	return append(out, w.blocks(rest, false)...)
+}

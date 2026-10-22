@@ -11,6 +11,9 @@ bdf template schema [-json-schema] <template> [out.json]
                                    テンプレートを検査してコンパイル済みにする、タグが引く名前を書き出す
 bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                    ページを PDF に書き出す（フラグは bdf pdf -h）
+bdf markdown [flags] <file.bdf | dir> <outdir>
+                                   文書を Markdown にして、画像と一緒にディレクトリに書き出す
+                                   （フラグは bdf markdown -h）
 bdf print [flags] -printer <url | name> <file.bdf | dir | input>
                                    IPP のプリンタや CUPS のキューに、ドライバなしで印刷する
                                    （-server: プリントサーバーのキューに置く）
@@ -87,6 +90,20 @@ bdf pdf -pdfa 2a invoice.bdf invoice.pdf            # 保存用の PDF/A（2b、
 ```
 
 既定では、ページのあるビュー（`fixed`・`flow`）をすべて書き出し、ページのない文書は全体を 1 ページにします。`-font-dir` と `-no-system-fonts` は、文書が名前で参照するフォントを探す場所です。`-ignore-fstype` は、埋め込みを許可していないシステムのフォントも埋め込みます（権利があるときだけ。既定ではその文字をアウトラインで描きます）。`-no-compression` はストリームを圧縮せずに書きます（中身を読むため）。暗号化した文書には `-allow-plaintext` が必要です（PDF は暗号化されません）。
+
+## markdown
+
+文書を Markdown としてディレクトリに書き出します。`<outdir>/<name>.md`（入力のファイル名）と、その隣にハッシュを名前にした画像ファイルが入ります。文書の `MARK` 命令が持つ構造（見出し、段落、リスト、見出しセル付きの表、代替テキスト付きの図。[spec §7.8](../spec.md)）が GitHub Flavored Markdown のブロックになり、太字・斜体のフォントは強調に、等幅フォントはコードに（等幅の行が続けばフェンスのコードブロックに）、`LINK` はリンクに、Dublin Core のメタデータは YAML の front matter になります。
+
+```sh
+bdf generate paper.pdf paper.bdf && bdf markdown paper.bdf paper/   # paper/paper.md と画像
+bdf markdown -view sheet1 book.bdf out/                            # ビューを選ぶ（繰り返せる）
+bdf markdown -keep-running report.bdf out/                         # 柱・フッター・ページ番号を残す
+bdf markdown -skip none slides.bdf out/                            # マスター・背景・ヘッダー・フッターのレイヤーも残す
+bdf markdown -internal-links book.bdf out/                         # 文書内へのリンク（#page=N）を残す
+```
+
+既定では、scroll ビューがあればそれを書き出します（Word・HTML・Markdown・EPUB の文書。同じ本文をページなしで組み直したもので、ページで途切れません）。なければ全ビューを書き、シートはシート名の見出しの下の 1 つの表になります。ヘッダー・フッター・マスター・背景のレイヤーは省きます（`-skip` で役割を選ぶ。`-skip none` で全部残す）。PDF のページが本文の中に持つ柱・フッター・ページ番号も省きます。2 ページ以上の上下の余白の同じ位置にある短い文字列と、余白に単独で置かれたページ番号がそれです（`-keep-running` で残す）。文書内へのリンクは Markdown に行き先がないので、`-internal-links` を付けなければ文字だけになります。構造タグのない PDF は、行の間隔とフォントから段落と見出しを推定します。下線・取り消し線・引用・リストの記号の種類は描かれているだけで印がないので区別しません（箇条書きか番号付きかは、変換器が描いた記号から判断します）。暗号化した文書には `-allow-plaintext` が必要です（Markdown は平文です）。Go からは `text/markdownbdf` が同じことをします。
 
 ## print, printers
 

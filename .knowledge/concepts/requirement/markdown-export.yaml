@@ -1,0 +1,39 @@
+id: requirement:markdown-export
+type: requirement
+title: BDF → Markdown 書き出し（text/markdownbdf、bdf markdown）
+summary: RAG・LLM・Wiki のために文書を Markdown にする。元ファイルからの直接変換ではなく BDF の MARK（§7.8）の構造から書く。2026-10-22 に text/markdownbdf と bdf markdown として実装（docs/design.md §3.37）。
+lifecycle: active
+authority: authored
+aliases:
+- bdf markdown
+- markdownbdf
+constraints:
+- 元ファイル（PDF・Word・PowerPoint）ごとの書き手は作らない。BDF 経由の 1 本で全形式に効かせ、変換済みの BDF からも作れるようにする
+- wire format は変えない。足りない情報は読み手のヒューリスティックで補い、確実にしたいものは MARK の payload の規約（互換）として後から足す
+- 出力はディレクトリ: <name>.md と、ハッシュを名前にした画像。ページ区切りは書かない
+facts:
+  structure_source: bdf.ExtractContent（packages/core/src/text.ts の extractContent の双子。run と構造ノード、LINK、IMAGE）。pdfbdf の tagger は独自の木のまま（後から寄せられる）
+  views: scroll があればそれ（Word・HTML・Markdown・EPUB。ページで途切れない）、なければ全ビュー。シートはシート名の見出しの下の 1 つの表
+  layers: header / footer / master / background は既定で省く（-skip、-skip none）
+  recovered:
+    bold_italic: 埋め込みフォントは fontset が w400 で記録するので、Part の OS/2（usWeightClass、fsSelection）をフォントごとに 1 回読む
+    lists: 項目の先頭 run が記号なら取り除き、数字なら番号付き
+    code: 等幅フォントの段落をコードの行にし、続く行を 1 つのフェンスに
+    sup_sub: 隣より小さいフォントでベースラインがずれた run を <sup> / <sub> に
+    running: ページのあるビューで、上下 10% の余白の短い段落のうち、数字を除いて 2 ページ以上の同じ位置にあるものと、単独のページ番号を省く（-keep-running）
+    untagged_pdf: 行間とフォントで段落に分け、大きい行・太字の短い行を見出しに。2 段組は内容ストリームの順
+  not_recovered:
+  - 引用（箱と棒）、下線・取り消し線、タスクリストのチェック、脚注の [^1]
+  - グラフ（drawingml が FIGURE で囲んでいないので軸ラベルの羅列）
+  - 複数行の見出し行の表（GFM は 1 行）
+  verification: testdata の全文書で run の文字列が残ることを確認（リストの記号を除く）。Markdown フィクスチャの往復、Word・PowerPoint・Excel・タグ付き PDF・タグなし PDF の要点
+  evidence_2026_10_22: reportlab で作った 3 ページ 2 段組の論文風 PDF で、段の読み順が保たれ、柱・フッター・ページ番号が落ち、脚注番号が <sup> になった
+open_questions:
+- PARAGRAPH payload（code / quote）、LIST payload（bullet / ordered）の規約を §7.8 に書くか
+- drawingml のグラフを FIGURE（alt = タイトル）で囲むか
+- wasm の previewonly に markdown を載せ、デモサイトに置くか
+relations:
+- relation: sibling_of
+  to: requirement:pdf-export
+- relation: depends_on
+  to: requirement:document-flow

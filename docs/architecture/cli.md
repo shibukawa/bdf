@@ -11,6 +11,9 @@ bdf template schema [-json-schema] <template> [out.json]
                                    check a template and write it compiled; write what it asks of data
 bdf pdf [flags] <file.bdf | dir> <out.pdf>
                                    write the pages as a PDF file (bdf pdf -h for flags)
+bdf markdown [flags] <file.bdf | dir> <outdir>
+                                   write the document as Markdown, with its images, in a directory
+                                   (bdf markdown -h for flags)
 bdf print [flags] -printer <url | name> <file.bdf | dir | input>
                                    print on an IPP printer or a CUPS queue, without a driver
                                    (-server: on a queue of a print server)
@@ -87,6 +90,20 @@ bdf pdf -pdfa 2a invoice.bdf invoice.pdf            # a PDF/A file (2b, 2u, 2a, 
 ```
 
 By default all the views of pages (`fixed`, `flow`) are written, and a document without pages becomes one page. `-font-dir` and `-no-system-fonts` say where the fonts the document refers to by name are looked for. `-ignore-fstype` embeds fonts of the system that do not allow it (only with the rights to; by default their text is drawn as outlines). `-no-compression` writes the streams as they are, to read them. An encrypted document needs `-allow-plaintext` (the PDF is not encrypted).
+
+## markdown
+
+Write the document as Markdown, in a directory: `<outdir>/<name>.md`, named after the input, with its images beside it as files named by their hashes. The structure the document's `MARK` instructions carry (headings, paragraphs, lists, tables with their header cells, figures with their alternative texts; [spec §7.8](../spec.md)) becomes the blocks of GitHub Flavored Markdown, bold and italic fonts become emphasis, monospaced fonts code (a run of lines of code becomes a fenced block), `LINK`s become links, and the Dublin Core metadata a YAML front matter.
+
+```sh
+bdf generate paper.pdf paper.bdf && bdf markdown paper.bdf paper/   # paper/paper.md and its images
+bdf markdown -view sheet1 book.bdf out/                            # choose views (repeatable)
+bdf markdown -keep-running report.bdf out/                         # keep running heads, feet and page numbers
+bdf markdown -skip none slides.bdf out/                            # keep the master, background, header and footer layers too
+bdf markdown -internal-links book.bdf out/                         # keep links into the document (#page=N)
+```
+
+By default the scroll view is written when the document has one (Word, HTML, Markdown and EPUB documents: the same text laid out without pages, so nothing is split by a page), else every view, a sheet becoming one table under its name. The header, footer, master and background layers are left out (`-skip` chooses the roles; `-skip none` keeps them all), and so are the running heads, feet and page numbers that the pages of a PDF hold in their content: the short text at the same place in the top or bottom margin of two pages or more, and page numbers alone there (`-keep-running` keeps them). Links into the document itself have no target in Markdown, so their text stands alone unless `-internal-links` is given. A PDF without structure tags gets its paragraphs and headings guessed from the spacing and the fonts of its lines. Underlines, strikes, quotations and the kind of a list's markers are drawn, not marked, so they are not told apart (a bulleted or numbered item is told by the marker the converter drew). An encrypted document needs `-allow-plaintext` (the Markdown is plain text). From Go, `text/markdownbdf` does the same.
 
 ## print, printers
 

@@ -246,3 +246,89 @@ func TestExtractTextStructureMarks(t *testing.T) {
 		t.Fatalf("ALT_TEXT run lost its drawing op across LANG: %+v", runs[5])
 	}
 }
+
+func TestExtractContent(t *testing.T) {
+	o := NewObject()
+	f := o.AddFont(SystemFont("sans-serif", 400, StyleNormal))
+	img := o.AddImage(HashOf([]byte("picture")))
+	o.Font(f, 10)
+	o.Mark(MarkHeading, "2").FillText("Title", 0, 0, 25)
+	o.Mark(MarkList, "").Mark(MarkListItem, "").FillText("one", 0, 15, 15)
+	o.Mark(MarkList, "").Mark(MarkListItem, "").FillText("nested", 10, 30, 30).Mark(MarkEnd, "")
+	o.Mark(MarkListItem, "").FillText("two", 0, 45, 15).Link(0, 37, 15, 10, "https://example.com/").Mark(MarkEnd, "")
+	o.Mark(MarkTable, "").FillText("caption", 0, 60, 35)
+	o.Mark(MarkCell, "A1 col").FillText("head", 0, 75, 20).Mark(MarkCell, "B1:C1").FillText("wide", 30, 75, 20).Mark(MarkEnd, "")
+	o.Mark(MarkParagraph, "").FillText("before", 0, 90, 30).Image(img, 0, 100, 50, 50)
+	o.Mark(MarkFigure, "chart").Image(img, 0, 160, 50, 50).FillText("label", 0, 220, 25).Mark(MarkEnd, "")
+	o.Mark(MarkLang, "ja").Mark(MarkCell, "B12").FillText("セル", 0, 240, 20)
+	obj, _ := DecodeObject(o.Encode())
+	c, err := ExtractContent(obj, func(Hash) *ObjectPart { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nodes []string
+	for _, n := range c.Nodes {
+		s := fmt.Sprintf("%s:%d", n.Kind, n.Parent)
+		if n.Level > 0 {
+			s += fmt.Sprintf(":h%d", n.Level)
+		}
+		if n.Cell != nil {
+			s += fmt.Sprintf(":%d,%d+%d,%d%s", n.Cell.Row, n.Cell.Col, n.Cell.Rows, n.Cell.Cols, n.Cell.Scope)
+		}
+		if n.Alt != "" {
+			s += ":" + n.Alt
+		}
+		nodes = append(nodes, s)
+	}
+	want := "heading:-1:h2 list:-1 item:1 paragraph:2 list:2 item:4 paragraph:5 item:1 paragraph:7 table:-1 caption:9 cell:9:0,0+1,1col paragraph:11 cell:9:0,1+1,2 paragraph:13 paragraph:-1 figure:-1:chart paragraph:16 cell:-1:11,1+1,1"
+	if got := strings.Join(nodes, " "); got != want {
+		t.Fatalf("nodes = %s\nwant    %s", got, want)
+	}
+	var runs []string
+	for _, r := range c.Runs {
+		runs = append(runs, fmt.Sprintf("%s@%d%s", r.Text, r.Node, r.Lang))
+	}
+	if got, want := strings.Join(runs, " "), "Title@0 one@3 nested@6 two@8 caption@10 head@12 wide@14 before@15 label@17 セル@18ja"; got != want {
+		t.Fatalf("runs = %s\nwant   %s", got, want)
+	}
+	if len(c.Links) != 1 || c.Links[0].URL != "https://example.com/" || c.Links[0].After != 3 || c.Links[0].Node != 8 {
+		t.Fatalf("links = %+v", c.Links)
+	}
+	if len(c.Images) != 2 {
+		t.Fatalf("images = %+v", c.Images)
+	}
+	// the first image interrupts a paragraph; the second is in the figure, before its text
+	if im := c.Images[0]; im.Node != 15 || im.After != 7 || im.Before != 16 || im.X != 0 || im.Y != 100 || im.W != 50 {
+		t.Errorf("image 1 = %+v", im)
+	}
+	if im := c.Images[1]; im.Node != 16 || im.After != 7 || im.Before != 17 {
+		t.Errorf("image 2 = %+v", im)
+	}
+	// ExtractText gives the same runs
+	runs2, err := ExtractText(obj, func(Hash) *ObjectPart { return nil })
+	if err != nil || len(runs2) != len(c.Runs) {
+		t.Fatalf("ExtractText: %d runs, %v", len(runs2), err)
+	}
+}
+
+func TestParseCellRef(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want CellRef
+		ok   bool
+	}{
+		{"A1", CellRef{0, 0, 1, 1, ""}, true},
+		{"b12 row", CellRef{11, 1, 1, 1, "row"}, true},
+		{"B2:C3 col", CellRef{1, 1, 2, 2, "col"}, true},
+		{"AA1", CellRef{0, 26, 1, 1, ""}, true},
+		{"", CellRef{}, false},
+		{"12", CellRef{}, false},
+		{"A0", CellRef{}, false},
+		{"A1 top", CellRef{}, false},
+	} {
+		got, ok := ParseCellRef(tc.in)
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("ParseCellRef(%q) = %+v, %v; want %+v, %v", tc.in, got, ok, tc.want, tc.ok)
+		}
+	}
+}
