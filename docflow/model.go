@@ -165,8 +165,11 @@ type Node struct {
 	Description string `json:"description,omitempty"`
 	// To are the nodes a queue, an endpoint or a CUPS server forwards to
 	// (all of them), the nodes an archive sends on to once it wrote, or
-	// the nodes an inbox's items may be released to.
-	To []string `json:"to,omitempty"`
+	// the nodes an inbox's items may be released to; of a template or a
+	// convert node, the nodes the document it makes goes to, and Original
+	// those the payload it took goes to as it was (trace.go).
+	To       []string `json:"to,omitempty"`
+	Original []string `json:"original,omitempty"`
 	// Members and Policy are a class's.
 	Members []string `json:"members,omitempty"`
 	Policy  string   `json:"policy,omitempty"`
@@ -265,10 +268,10 @@ func (n *Node) offlineAfter() time.Duration {
 
 func (n *Node) collection() string { return or(n.Collection, "archive-"+n.Name) }
 
-// edges are the nodes a node sends to: To, Members, a filter's rules and
+// edges are the nodes a node sends to: To, Original, Members, a filter's rules and
 // Otherwise, and a display's fallback printer.
 func (n *Node) edges() []string {
-	out := append(append([]string{}, n.To...), n.Members...)
+	out := append(append(append([]string{}, n.To...), n.Original...), n.Members...)
 	out = append(out, n.ruleTargets()...)
 	if n.Fallback != nil && n.Fallback.Printer != "" {
 		out = append(out, n.Fallback.Printer)
@@ -527,8 +530,10 @@ type Item struct {
 	SubmittedBy *Principal `json:"submitted_by,omitempty"`
 	ClaimedUser string     `json:"claimed_user,omitempty"`
 	Dest        string     `json:"dest"`
-	// Payload is the job's payload held here.
+	// Payload is the job's payload held here, and Trace the step it came
+	// out of (trace.go), which goes on with it when it is released.
 	Payload  string    `json:"payload,omitempty"`
+	Trace    *Trace    `json:"trace,omitempty"`
 	Pages    int       `json:"pages"`
 	Received time.Time `json:"received"`
 	State    ItemState `json:"state"`
@@ -593,6 +598,9 @@ type Delivery struct {
 	// Result is the printer's job id, or the archive's key.
 	Result string    `json:"result,omitempty"`
 	Done   time.Time `json:"done,omitzero"`
+	// Trace is the step the payload came out of, or went into, on its
+	// way here (trace.go): an archive writes it into its record.
+	Trace *Trace `json:"trace,omitempty"`
 }
 
 // inboxState is what changes in an inbox: its held items and the ended

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shibukawa/bdf/cmd/docflow/help"
 	"github.com/shibukawa/bdf/docflow"
 	// the IPP input and output: printers, CUPS servers, /ipp/print
 	_ "github.com/shibukawa/bdf/docflow/io/ipp"
@@ -135,7 +136,8 @@ func (a *App) StartTimer(ctx context.Context) (stop func()) {
 // Handler is the application: the pages, and the manager's printers, API
 // and devices' endpoints. The pages' scripts and style are the framework's
 // /public mount's. Every page but /tablet is for a person signed in
-// (ConfigureAuth); /admin/… and /audit for an administrator.
+// (ConfigureAuth); /admin/… and /audit for an administrator; /help is the
+// manual.
 func (a *App) Handler() http.Handler {
 	mux := pw.NewServeMux()
 	mh := docflow.Handler(a.m)
@@ -194,6 +196,13 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /tablet", func(w http.ResponseWriter, r *http.Request) {
 		pw.WriteHTML(w, r, Tablet(TabletParams{}))
 	})
+	// the manual, for everyone signed in (help.go)
+	mux.HandleFunc("GET /help", a.page("", a.help))
+	mux.HandleFunc("GET /help/{first}", a.page("", a.help))
+	mux.HandleFunc("GET /help/{first}/{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, help.Path+"/"+r.PathValue("first"), http.StatusSeeOther)
+	})
+	mux.HandleFunc("GET /help/{first}/{second}", a.page("", a.help))
 	return mux
 }
 

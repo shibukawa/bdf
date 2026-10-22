@@ -167,7 +167,7 @@ async function removeEdge(from, e) {
       n.otherwise = (n.otherwise || []).filter((x) => x !== e.to);
       n.rules = (n.rules || []).map((r) => ({ ...r, to: (r.to || []).filter((x) => x !== e.to) })).filter((r) => r.to.length);
     } else {
-      const field = e.kind === "member" ? "members" : "to";
+      const field = e.kind === "member" ? "members" : e.kind === "original" ? "original" : "to";
       n[field] = (n[field] || []).filter((x) => x !== e.to);
     }
     delete n.name;
@@ -216,10 +216,10 @@ function input(id, value, attrs = {}) {
 // checkboxes' name; except the node itself and the entries), each with a
 // dot of what it takes; one that would not take what the node carries
 // says so.
-function picker(name, chosen, except) {
+function picker(name, chosen, except, carried) {
   const box = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
   const from = draft || topo.find((x) => x.name === selected) || {};
-  const carries = typeOf(from).out;
+  const carries = carried || typeOf(from).out;
   const names = topo.filter((x) => x.name !== except && x.kind !== "cups").map((x) => x.name);
   for (const x of names) {
     const target = topo.find((t) => t.name === x);
@@ -452,7 +452,7 @@ function viewSidebar() {
     const p = el("p", undefined, { className: "text-sm text-base-content/60" });
     p.append("Click a node to see the jobs sent there that you may see, and to print there when you may. ");
     if (live && Object.keys(live.nodes).length === 0) p.append("Nothing of yours is in the network right now.");
-    aside.replaceChildren(p);
+    aside.replaceChildren(p, el("a", "The manual: this page, and what each node does", { className: "link mt-2 block text-sm", href: "/help/topology#view", target: "_blank", rel: "noopener" }));
     return;
   }
   const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
@@ -471,6 +471,7 @@ function viewSidebar() {
   for (const to of n.to || []) out.push(to);
   for (const [i, r] of (n.rules || []).entries()) out.push((r.to || []).join(", ") + ` (rule ${i + 1})`);
   for (const to of n.otherwise || []) out.push(to + " (otherwise)");
+  for (const to of n.original || []) out.push(to + " (original)");
   for (const m of n.members || []) out.push(m + (n.policy === "failover" ? " (first)" : " (in turn)"));
   if (n.fallback && n.fallback.printer) out.push(n.fallback.printer + " (fallback)");
   if (out.length) parts.push(el("p", "→ " + out.join(", "), { className: "font-mono text-xs text-base-content/60" }));
@@ -545,7 +546,10 @@ function renderSidebar() {
   const aside = $("sidebar");
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) {
-    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take.", { className: "text-sm text-base-content/60" }));
+    aside.replaceChildren(
+      el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take.", { className: "text-sm text-base-content/60" }),
+      el("a", "The manual: the editor, and every kind of node", { className: "link mt-2 block text-sm", href: "/help/topology#editor", target: "_blank", rel: "noopener" }),
+    );
     return;
   }
   const kind = n.kind;
@@ -554,6 +558,8 @@ function renderSidebar() {
   head.append(kindIcon(kind, 20), kindBadge(kind));
   if (draft) head.append(el("span", "new", { className: "badge badge-outline" }));
   else head.append(el("h3", n.name, { className: "font-mono text-lg font-semibold" }), scopeBadge(n));
+  // the manual's section of the kind (the language is the browser's)
+  head.append(el("a", "Help", { className: "link link-hover ml-auto text-xs text-base-content/60", href: "/help/nodes#" + kind, target: "_blank", rel: "noopener", title: "The manual: " + (KINDS[kind] || kind) + " nodes" }));
   form.append(head);
   if (draft) {
     const name = input("f-name", "", { placeholder: "intake, both, tokyo, review, wh-a, laser, audit", required: true, pattern: "[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}", autocomplete: "off" });
@@ -622,6 +628,7 @@ function renderSidebar() {
       break;
     case "template": {
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "The form filled (.bdf) goes to every node chosen."));
+      form.append(field("The data as it came to", picker("original", n.original || [], n.name, n.reaches || []), "What reached the node goes on as it was to every node chosen (an archive of originals, say), with the same trace as the document made: each archive's record names the other's object."));
       const ids = n.templates || [];
       const options = [["", "— named by the metadata below —"], ...ids.map((id) => [id, id])];
       if (n.template && !ids.includes(n.template)) options.push([n.template, n.template + " (not uploaded yet)"]);
@@ -635,6 +642,7 @@ function renderSidebar() {
     }
     case "convert":
       form.append(field("Forwards to", picker("to", n.to || [], n.name), "The .bdf document made goes to every node chosen; a .bdf that reaches the node goes on as it is."));
+      form.append(field("The file as it came to", picker("original", n.original || [], n.name, n.reaches || []), "What reached the node goes on as it was to every node chosen (an archive of originals, say), with the same trace as the document made: each archive's record names the other's object."));
       form.append(formatsField(n, "Formats converted", "None checked: every format the converter reads. A file of another format fails here (no retry); JSON and YAML have no document of their own: fill a template with them."));
       break;
     case "filter": {
@@ -746,9 +754,11 @@ async function save(ev) {
       if (dur("f-template-from")) body.template_from = dur("f-template-from");
       if (dur("f-list-name")) body.list_name = dur("f-list-name");
       if ($("f-strict").checked) body.strict = true;
+      body.original = picked("original");
       break;
     case "convert":
       body.to = picked("to");
+      body.original = picked("original");
       body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
       break;
     case "sink":

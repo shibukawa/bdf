@@ -82,6 +82,9 @@ type ExportEntry struct {
 	Key     string `json:"key"`
 	Object  string `json:"object"`
 	Payload string `json:"payload,omitempty"`
+	// Trace is the step the document came out of or went into, which
+	// names the other side's objects (trace.go).
+	Trace *Trace `json:"trace,omitempty"`
 	// Owner is whose the document is: the value of the export's By in
 	// the job's metadata; empty when the job had none.
 	Owner string `json:"owner,omitempty"`
@@ -255,9 +258,9 @@ func (m *Manager) routeExport(ctx context.Context, r *routing, name, from string
 		return
 	}
 	j, p := r.job, r.payload
-	view := metaView(j, p)
+	view := metaView(j, p, r.trace)
 	e := ExportEntry{Job: j.Number, Name: j.Name, Kind: p.Kind, Format: p.Format, Pages: p.Pages, Size: p.Size, SHA256: p.SHA256, Received: j.Received, Listed: r.now,
-		Archive: r.archived.Node, Key: r.archived.Key, Object: r.archived.Key + extensionOf(p), Payload: p.ID, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Group: j.Group}
+		Archive: r.archived.Node, Key: r.archived.Key, Object: r.archived.Key + extensionOf(p), Payload: p.ID, Trace: r.trace, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Group: j.Group}
 	if n.By != "" {
 		e.Owner = clip(view[n.By], 255)
 	}

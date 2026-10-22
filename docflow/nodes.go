@@ -15,7 +15,8 @@ import (
 // CUPS servers), routing nodes (queues, classes, filters, inboxes),
 // transforming nodes (templates, converts) and exits (displays, printers,
 // archives, sinks), with edges from queues, endpoints, CUPS servers,
-// template and convert nodes and inboxes (To), filters (Rules,
+// template and convert nodes and inboxes (To; a template or a convert
+// node's Original, too), filters (Rules,
 // Otherwise), classes (Members) and displays (Fallback). A job sent to a
 // destination follows the edges (route). The graph is checked when a
 // node is put: every node it names exists, no path leads back to it, and
@@ -364,8 +365,11 @@ type TopoNode struct {
 	// node after it does not take, by the node's name: left by a change
 	// of settings, drawn broken by the editor, and a job gets a leg of
 	// the error there.
+	// Reaches, of a template or a convert node, is the kinds that reach
+	// it: what it sends on along Original.
 	Takes   string              `json:"takes,omitempty"`
 	Emits   []string            `json:"emits,omitempty"`
+	Reaches []string            `json:"reaches,omitempty"`
 	Accepts []string            `json:"accepts"`
 	Broken  map[string][]string `json:"broken,omitempty"`
 	// Templates are the ids of a template node's templates.
@@ -429,6 +433,9 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 		}
 		if k := kindNamed(n.Kind); k != nil && (k.PassesOn || k.Makes != "") {
 			t.Emits = n.emits(ty.reach[n.Name]).names()
+		}
+		if n.Kind == KindTemplate || n.Kind == KindConvert {
+			t.Reaches = ty.reach[n.Name].names()
 		}
 		for to, bad := range broken[n.Name] {
 			if t.Broken == nil {
