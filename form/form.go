@@ -33,6 +33,11 @@
 // Compile makes a compiled template (.bdft) of a template: a BDF document
 // that holds the template with what it asks of data, and shows it filled
 // with sample data. It is checked once, and is filled like the template.
+//
+// A fill may leave names of the data open (Options.Open): it makes a partly
+// filled form (.bdff), which holds the values given, and which another fill
+// completes with the values of the names left open, as when one party of a
+// contract fills in theirs and the other party the rest.
 package form
 
 import (
@@ -42,6 +47,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"strconv"
 	"strings"
 
 	"github.com/shibukawa/bdf"
@@ -69,6 +75,13 @@ type Options struct {
 	// to keep) and the parameters of the format ("views", "paper" …). nil
 	// converts with the defaults.
 	Convert *converter.Options
+	// Open are the names of the data that the fill leaves open: with any,
+	// Fill makes a partly filled form (a .bdff; Result.Partial) of the
+	// values that the data gives, which another fill completes. OpenAll
+	// leaves open every name that the data does not give. Otherwise every
+	// name of a partly filled form or of a template that is filled partly
+	// is given or left open (null gives none); see Template.Filled.
+	Open []string
 }
 
 // Result is a filled template.
@@ -79,6 +92,9 @@ type Result struct {
 	Fields []tag.Field
 	// Format is the format of the template (FormatXLSX …).
 	Format string
+	// Partial describes the partly filled form that Doc is when the fill
+	// left names open (Options.Open), and is nil when Doc is complete.
+	Partial *Template
 }
 
 // Formats of templates: the documents of Office with tags in their text,
@@ -164,11 +180,63 @@ func Fill(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 	if opts == nil {
 		opts = &Options{}
 	}
-	format, src, n, _, err := source(r, size)
+	format, src, n, def, err := source(r, size)
 	if err != nil {
 		return nil, err
 	}
-	return fill(format, src, n, opts)
+	var fields []tag.Field
+	if def != nil {
+		fields = def.Fields
+	} else if len(opts.Open) > 0 {
+		if fields, err = Fields(src, n); err != nil {
+			return nil, err
+		}
+	}
+	p, err := prepare(def, fields, opts)
+	if err != nil || p == nil {
+		if err != nil {
+			return nil, err
+		}
+		return fill(format, src, n, opts)
+	}
+	o := *opts
+	o.Data, o.Open = p.data, nil
+	if len(p.open) > 0 {
+		o.Strict = false
+	}
+	res, err := fill(format, src, n, &o)
+	if err != nil || len(p.open) == 0 {
+		return res, err
+	}
+	res.Warnings = withoutOpen(res.Warnings, p.open)
+	data := make([]byte, n)
+	if _, err := io.ReadFull(io.NewSectionReader(src, 0, n), data); err != nil {
+		return nil, fmt.Errorf("form: %w", err)
+	}
+	if fields == nil {
+		fields = res.Fields
+	}
+	if res.Partial, err = partlyFilled(res.Doc, data, def, format, fields, p); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// withoutOpen drops the warnings of names that the data lacks because
+// they are left open.
+func withoutOpen(warnings []string, open []string) []string {
+	out := warnings[:0]
+	for _, w := range warnings {
+		if _, rest, ok := strings.Cut(w, "the data has no "); ok {
+			if q, err := strconv.QuotedPrefix(rest); err == nil {
+				if name, err := strconv.Unquote(q); err == nil && (under(open, name) || within(open, name)) {
+					continue
+				}
+			}
+		}
+		out = append(out, w)
+	}
+	return out
 }
 
 func fill(format string, r io.ReaderAt, size int64, opts *Options) (*Result, error) {
@@ -201,7 +269,7 @@ func fill(format string, r io.ReaderAt, size int64, opts *Options) (*Result, err
 		}
 		return &Result{Doc: res.Doc, Warnings: res.Warnings, Fields: res.Fields, Format: format}, nil
 	case FormatPDF:
-		res, err := pdfform.Fill(io.NewSectionReader(r, 0, size), &pdfform.TemplateData{Data: opts.Data, Strict: opts.Strict, Format: xlsx.Formatter()}, pdfform.OptionsOf(opts.Convert))
+		res, err := pdfform.Fill(io.NewSectionReader(r, 0, size), &pdfform.TemplateData{Data: opts.Data, Strict: opts.Strict, Files: opts.Files, Format: xlsx.Formatter()}, pdfform.OptionsOf(opts.Convert))
 		if err != nil {
 			return nil, err
 		}
@@ -294,9 +362,26 @@ type Template struct {
 	Sample map[string]any `json:"sample,omitempty"`
 	// Schema is the JSON Schema of the data (Schema, made of the fields
 	// and the sample): what a program makes a form for the data of,
-	// without reading the template.
+	// without reading the template. That of a partly filled form is the
+	// schema of the names it leaves open.
 	Schema json.RawMessage `json:"schema,omitempty"`
+
+	// Filled are the values of a partly filled form (a .bdff): its pages
+	// show the template filled with them. Open are the names that it
+	// leaves open, which the data that completes it gives, and no others.
+	// From is the SHA-256 (in hex) of the description of the compiled
+	// template that the form was made of ("" for a template that was not
+	// compiled).
+	Filled map[string]any `json:"filled,omitempty"`
+	Open   []string       `json:"open,omitempty"`
+	From   string         `json:"from,omitempty"`
+
+	// digest is the SHA-256 of the description as it was read.
+	digest string
 }
+
+// IsPartial reports whether a description is that of a partly filled form.
+func (t *Template) IsPartial() bool { return t.Filled != nil || len(t.Open) > 0 }
 
 // Compiled is a compiled template.
 type Compiled struct {
@@ -325,6 +410,9 @@ func Compile(r io.ReaderAt, size int64, name string, opts *Options) (*Compiled, 
 		return nil, err
 	}
 	if def != nil {
+		if def.IsPartial() {
+			return nil, fmt.Errorf("form: the template is a partly filled form; fill in the rest of it")
+		}
 		return nil, fmt.Errorf("form: the template is a compiled template already")
 	}
 	data := make([]byte, n)
@@ -444,6 +532,10 @@ func ReadTemplate(r io.ReaderAt, size int64) (*Template, []byte, error) {
 		if def.Sample != nil {
 			tag.Normalize(def.Sample)
 		}
+		if def.Filled != nil {
+			tag.Normalize(def.Filled)
+		}
+		def.digest = templateDigest(b)
 		return def, src, nil
 	}
 	return nil, nil, fmt.Errorf("form: the document is not a compiled template (it has no %q part)", bdf.PartTemplate)

@@ -488,13 +488,32 @@ cue ×n（時刻順）:
 }
 ```
 
-- `kind` は `value` / `section` / `image`。`image` の `code` は、その場所に画像ではなく値の記号を描くことを示す（`qr`、`ean13`、`ean8`、`upca`、`code39`、`code128`、`gs1-128`、`itf`、`itf14`、`nw7`）。`in` はそのタグを囲む区間の名前（外側から）。`mode` は区間が行（段落、スライド）を繰り返す方法（`rows` / `slots` / `pages`）、`slots` は `slots` の区間が持つ行数。`at` はタグのある場所で、書き方は `src` の形式による（Excel はセルの番地、Word は `paragraph 3` や `table 1, row 2, cell 1`、PowerPoint は `slide 2: 図形の名前`、テキストは `line 12`）。
+- `kind` は `value` / `section` / `image`。`image` の `code` は、その場所に画像ではなく値の記号を描くことを示す（`qr`、`ean13`、`ean8`、`upca`、`code39`、`code128`、`gs1-128`、`itf`、`itf14`、`nw7`）。`image` の `input` は、人がその画像をどう渡すかを示す（`signature` は手で書くサイン、`seal` は白を抜いた印影の画像。どちらも描き方はほかの画像と同じ）。`in` はそのタグを囲む区間の名前（外側から）。`mode` は区間が行（段落、スライド）を繰り返す方法（`rows` / `slots` / `pages`）、`slots` は `slots` の区間が持つ行数。`at` はタグのある場所で、書き方は `src` の形式による（Excel はセルの番地、Word は `paragraph 3` や `table 1, row 2, cell 1`、PowerPoint は `slide 2: 図形の名前`、テキストは `line 12`）。
 - `name` が `"."` の `value` は、それを囲む区間の項目そのものを書くタグ（`{{.}}`）で、その区間の項目がオブジェクトではなく値であることを示す。
 - `format` が `pdf`（入力欄を持つ PDF）と `pdfme`（pdfme のテンプレートの JSON）の `src` は、タグではなく場所の決まったフィールドを持つ。`fields` はそのフィールドで、`name` のドットはオブジェクトの入れ子を表す（`applicant.name`）。フィールドが自分について知っていることを、次の任意の項目で書く: `type`（値の型。`string` / `number` / `boolean` / `date` / `date-time`）、`options`（選択肢の値）と `labels`（その表示名。`options` と同じ順）、`label`（人に見せる名前）、`default`（テンプレートに入っている値）、`maxLength`（最大の文字数）、`multiline`（複数行のテキスト）。`at` は `page 2` のように書く。
-- `schema` は、データの形を JSON Schema（2020-12）で書いたもの。`fields` と `sample` から作られ、プロパティは `fields` の順に並ぶ。区間は配列・オブジェクト・真偽値のどれか、値は文字列か数値として書かれ、各プロパティの `x-bdf` に `fields` の `kind`・`format`・`mode`・`slots`・`code`・`at`・`labels`・`multiline` が入る（`type` は型と `format` に、`options` は `enum` に、`default`・`maxLength` は同じ名前のキーワードに、`label` は `title` になる）。入力フォームを作る処理系は、`src` を読まずにこれを使える。`schema` のない記述では、`fields` から作る。
+- `schema` は、データの形を JSON Schema（2020-12）で書いたもの。`fields` と `sample` から作られ、プロパティは `fields` の順に並ぶ。区間は配列・オブジェクト・真偽値のどれか、値は文字列か数値として書かれ、各プロパティの `x-bdf` に `fields` の `kind`・`format`・`mode`・`slots`・`code`・`input`・`at`・`labels`・`multiline` が入る（`type` は型と `format` に、`options` は `enum` に、`default`・`maxLength` は同じ名前のキーワードに、`label` は `title` になる）。入力フォームを作る処理系は、`src` を読まずにこれを使える。`schema` のない記述では、`fields` から作る。
 - どの View もこの 2 つの Part を参照しない。文書の読み手はこれらを無視する。穴埋めをする処理系だけが読み、`src` をデータで穴埋めして、別の文書を作る。
 - 穴埋めの規則（タグの書き方、行の繰り返し）はこの仕様の範囲外で、`src` の形式ごとに処理系が定める（Go の実装は package `form`、形式ごとには `converter/xlsx`・`converter/docx`・`converter/pptx`・`converter/pdfform`・`converter/pdfme`・`converter/textform` の `Fill`）。
 - 1 つの文書が持つ `tpl` は 1 つまで。暗号化した文書では、ほかの Part と同じく封印される。
+
+**一部だけ埋めた帳票**（拡張子 `.bdff`）は、データの一部の名前の値を持ち、残りの名前を後で埋めるために空けておくコンパイル済みテンプレート。`tpl` に次の任意の項目が付く。
+
+```jsonc
+{
+  …,                            // コンパイル済みテンプレートと同じ項目（sample は持たない）
+  "filled": { "party_a": { "name": "…", "sign": "data:image/svg+xml;base64,…" } },
+  "open": ["party_b"],          // 空けてある名前
+  "from": "9f2c…",              // 元のコンパイル済みテンプレートの tpl の SHA-256（64 桁の hex。任意）
+  "schema": { … }               // open の名前だけの JSON Schema
+}
+```
+
+- `filled` は、それまでに渡されたデータ（JSON の木）。View は `src` を `filled` で穴埋めしたページで、`open` の名前は空のまま描かれる。画像は `data:` URL で持つ（ファイルのパスは持たない）。
+- `open` の名前は、オブジェクトの入れ子をドットでつないだもの（`party_b`、`party_b.sign`）。配列（区間）は丸ごと空けるか、丸ごと埋める。
+- `from` は、元にしたコンパイル済みテンプレートの `tpl` の Part のバイト列の SHA-256。コンパイルしていないテンプレートから作ったときは無い。一部だけ埋めた帳票からさらに作った帳票は、同じ `from` を引き継ぐ。
+- `schema` は `open` の名前だけを持つ。入力フォームはこれだけで組める。
+- 残りを埋める処理系は、`filled` と新しいデータを合わせて `src` を 1 回で穴埋めする。新しいデータは `open` の名前だけを持ち、`filled` の値を書き換えない。`open` の名前をすべて埋めた結果は `tpl` を持たないふつうの文書で、テンプレートを全部のデータで一度に穴埋めした文書と同じになる。
+- `filled` と `open` は書き換えから守られていない。
 
 ## 5. Object Part
 

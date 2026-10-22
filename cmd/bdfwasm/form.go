@@ -75,6 +75,20 @@ func fieldsCall(_ js.Value, args []js.Value) any {
 			return nil, err
 		}
 		out["format"] = format
+		if bytes.HasPrefix(data, bdf.Magic[:]) {
+			// a partly filled form: the names it leaves open, and what it holds
+			def, _, err := form.ReadTemplate(bytes.NewReader(data), int64(len(data)))
+			if err != nil {
+				return nil, err
+			}
+			if def.IsPartial() {
+				b, err := json.Marshal(def.Filled)
+				if err != nil {
+					return nil, err
+				}
+				out["open"], out["filled"] = anys(def.Open), string(b)
+			}
+		}
 		if own != nil {
 			b, err := json.Marshal(own)
 			if err != nil {
@@ -121,12 +135,23 @@ func fillCall(_ js.Value, args []js.Value) any {
 		return reject(fmt.Errorf("fill: %w", err))
 	}
 	strict := option(args, "strict").Truthy()
+	var open []string
+	if v := option(args, "open"); v.Type() == js.TypeObject {
+		if v.Length() > maxFormFiles {
+			return reject(fmt.Errorf("fill: open: more than %d names", maxFormFiles))
+		}
+		for i := 0; i < v.Length(); i++ {
+			if e := v.Index(i); e.Type() == js.TypeString {
+				open = append(open, e.String())
+			}
+		}
+	}
 	return promise(func() (any, error) {
 		opts, err := req.options()
 		if err != nil {
 			return nil, err
 		}
-		res, err := form.Fill(bytes.NewReader(req.data), int64(len(req.data)), &form.Options{Data: data, Strict: strict, Files: files, Convert: opts})
+		res, err := form.Fill(bytes.NewReader(req.data), int64(len(req.data)), &form.Options{Data: data, Strict: strict, Files: files, Convert: opts, Open: open})
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +163,11 @@ func fillCall(_ js.Value, args []js.Value) any {
 		for _, v := range res.Doc.Views {
 			pages += len(v.Pages)
 		}
-		return map[string]any{"bdf": b, "format": res.Format, "pages": pages, "warnings": anys(res.Warnings)}, nil
+		out := map[string]any{"bdf": b, "format": res.Format, "pages": pages, "warnings": anys(res.Warnings)}
+		if res.Partial != nil {
+			out["open"] = anys(res.Partial.Open)
+		}
+		return out, nil
 	})
 }
 

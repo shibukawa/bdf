@@ -462,7 +462,7 @@ func (f *filler) scanDeep(n *ooxml.Node, loc tplLoc) error {
 			}
 			pt.alt = strings.TrimSpace(pt.alt)
 			f.pics[n] = pt
-			f.use(tag.Field{Name: pt.tok.Name, Kind: tag.FieldImage, Code: pt.tok.Code}, loc, nil)
+			f.use(tag.Field{Name: pt.tok.Name, Kind: tag.FieldImage, Code: pt.tok.Code, Input: pt.tok.Input}, loc, nil)
 			break
 		}
 	}
@@ -857,6 +857,9 @@ func (f *filler) fieldList() []tag.Field {
 			o := &out[i]
 			if o.Format == "" {
 				o.Format = fd.Format
+			}
+			if o.Input == "" {
+				o.Input = fd.Input
 			}
 			if o.Mode == "" {
 				o.Mode, o.Slots = fd.Mode, fd.Slots

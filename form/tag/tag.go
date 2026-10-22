@@ -9,6 +9,7 @@
 //	{{#items}} … {{/items}}  a section: once for each item of a list, or when the value is true
 //	{{^items}} … {{/items}}  an inverted section: when the list is empty or the value is false
 //	{{%photo}}               a picture ({{%photo | fit:cover}})
+//	{{%sign | signature}}    a picture that a person draws: a signature ({{%seal | seal}} the picture of a seal)
 //	{{%url | qr}}            a QR code of a value ({{%url | qr:H}}, with the level of error correction)
 //	{{%jan | barcode:ean13}} a barcode of a value (the symbologies of image/barcode)
 //
@@ -99,6 +100,17 @@ const (
 	FitStretch = "stretch"
 )
 
+// Inputs of pictures (Token.Input, Field.Input): what a person gives for
+// the picture, which a page that asks for the data asks with. Either is a
+// picture as any other is.
+const (
+	// InputSignature is a signature that the person draws by hand.
+	InputSignature = "signature"
+	// InputSeal is the picture of a seal (a hanko): a picture that the
+	// person picks, of which the white is taken out.
+	InputSeal = "seal"
+)
+
 // Token is a piece of template text: text, or a tag.
 type Token struct {
 	Kind Kind
@@ -123,6 +135,9 @@ type Token struct {
 	Mode string
 	// Fit is how an Image fills its place ("" is FitContain).
 	Fit string
+	// Input is what a person gives for the picture of an Image
+	// (InputSignature, InputSeal; "" for any picture).
+	Input string
 	// Code is the symbology of an Image that is a QR code or a barcode of
 	// its value, not a picture that the value names (barcode.QR,
 	// barcode.EAN13 …; "" for a picture). Level is the level of error
@@ -340,6 +355,8 @@ func parseTag(body string, pos int, text bool) (Token, error) {
 			tok.Format, tok.HasFormat = arg, true
 		case name == "fit" && tok.Kind == Image && (arg == FitContain || arg == FitCover || arg == FitStretch):
 			tok.Fit = arg
+		case (name == InputSignature || name == InputSeal) && tok.Kind == Image && !hasArg && tok.Input == "":
+			tok.Input = name
 		case name == "qr" && tok.Kind == Image && (!hasArg || len(arg) == 1 && strings.Contains("LMQH", strings.ToUpper(arg))):
 			tok.Code, tok.Level = barcode.QR, strings.ToUpper(arg)
 		case name == "barcode" && tok.Kind == Image && hasArg && barcode.Kind(arg) != "":
@@ -365,6 +382,9 @@ func parseTag(body string, pos int, text bool) (Token, error) {
 		default:
 			return tok, errorf(pos, "the tag {{%s}} has an option it does not take: %s", tok.Name, strings.TrimFunc(f, space))
 		}
+	}
+	if tok.Input != "" && tok.Code != "" {
+		return tok, errorf(pos, "the tag {{%%%s}} is a code; it does not take %s", tok.Name, tok.Input)
 	}
 	if tok.Overflow != "" && tok.Width == 0 {
 		return tok, errorf(pos, "the tag {{%s}} takes %s with its columns only (width:n, right:n or center:n)", tok.Name, tok.Overflow)
@@ -476,6 +496,9 @@ type Field struct {
 	// the value ("qr", "ean13" …): the value is then what the symbol
 	// says, not the name of a picture.
 	Code string `json:"code,omitempty"`
+	// Input is what a person gives for a picture (InputSignature,
+	// InputSeal; "" for any picture).
+	Input string `json:"input,omitempty"`
 	// At is where the tags are ("Sheet1!B5").
 	At []string `json:"at"`
 

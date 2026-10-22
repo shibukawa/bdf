@@ -1,0 +1,133 @@
+id: requirement:tamper-evidence
+type: requirement
+title: BDF と、そこから書き出す PDF の改ざん検知（電子署名とタイムスタンプ）
+summary: >-
+  .bdf に電子署名を付け、だれが・いつ・どの内容に署名したかを検証できるようにする。PDF の書き出し（vector/pdfbdf）でも PAdES の署名と
+  RFC 3161 のタイムスタンプを付け、Adobe Acrobat などふつうの PDF の読み手が検証できるようにする。一部だけ埋めた帳票（requirement:partial-fill）では、
+  送る側が自分の値に署名し、残りを埋めた完成品にもう一度署名する連鎖にする。2026-10-22 利用者の要望「bdf やそこから生成される pdf への改ざん防止機能はまた欲しい」。
+  設計は Claude の案で、未確定の論点は open_questions。
+lifecycle: proposed
+aliases:
+- 改ざん防止
+- 改ざん検知
+- 電子署名
+- digital signature
+- PAdES
+- タイムスタンプ
+- bdf sign
+- bdf verify
+authority: authored
+constraints:
+- 署名がするのは改ざんの「検知」。書き換えそのものを止める（防止）のは保管の側（Docflow の archive の S3 Object Lock）と暗号化の役目で、ドキュメントでもそう分けて書く
+- 署名は全部の Part の SHA-256 を 32 バイトのまま覆う。Part 名（先頭 16 バイト）は衝突への強さが 64 ビットしかなく、テンプレートを作った側が衝突する 2 つの Part を用意できる立場にあるので、Part 名だけを署名しない
+- 署名は manifest を書き換えずに付け足せる。署名のない既存の .bdf にも後から署名でき、single ↔ split の組み替えで署名が壊れない
+- 署名を知らない読み手（TypeScript のビューア、libbdf、古い Go）は署名付きの文書をそのまま開ける
+- 署名の形式は CMS（RFC 5652）の SignedData と X.509 の証明書。BDF と PDF で同じ実装・同じ鍵・同じ証明書を使う
+- 決定性は崩さない。署名とタイムスタンプは文書の本体の外にあり、本体のバイト列は署名の前後で同じ
+- 鍵の秘密を BDF の処理系がファイルに書かない。署名は crypto.Signer を受けて行い、鍵の置き場（ファイル、PKCS#12、AWS KMS、HSM）は呼び出し側が選ぶ
+non_goals:
+- 法的な効力の判断（電子署名法の推定効、電子帳簿保存法の要件を満たすかどうか）。満たすための部品（本人の証明書での署名、認定タイムスタンプ）は用意するが、適合を名乗らない
+- 認証局の運営、証明書の発行
+- 署名した PDF をさらに編集する機能（増分の保存での注釈・フォームの追記）
+- 署名の画像（手書きのサイン）と電子署名を同じものとして扱うこと。見た目の欄としてつなげるだけ（facts.pdf.appearance）
+open_questions:
+  signer-model:
+    text: だれの鍵で署名するか。当事者型（署名する本人の証明書。マイナンバーカードの署名用証明書や民間の認証局）と立会人型（Docflow のサーバーの鍵で「この人がこの操作をした」と署名）
+    state: open
+    resolution: >-
+      暫定案（Claude）：処理系は両方を同じ API で扱う（crypto.Signer と証明書の鎖を受けるだけ）。最初に通すのは立会人型（Docflow の人の操作のノードが、サインインした人の名前と操作を
+      署名の属性に入れてサーバーの鍵で署名する）。ウェブで残りを埋める流れに合い、相手に証明書を求めない。当事者型はファイルの鍵で同じコードを通して確かめる
+  bdf-placement:
+    text: 1 ファイル形式で署名をどこに置くか。(a) Part の領域の後ろに付ける末尾のブロック（"bdfs" の印と長さ。ヘッダーの flags は立てない）、(b) ヘッダーの flags に新しいビット、(c) 別ファイル（foo.bdf.sig）
+    state: open
+    resolution: >-
+      暫定案（Claude）：(a)。分割形式では manifest.json の隣の signatures.json。(b) は今の読み手が未定義のビットを拒否する（spec §3.3）ので、
+      署名を知らない読み手で開けなくなる。(c) は 1 ファイルで配れない。Go の OpenSingle は範囲がファイルに収まるかだけを見て末尾の余りを拒否しないことを読んだ（reader.go）。
+      TypeScript のビューアと libbdf が末尾の余りを受け入れるかは未確認
+  cms-implementation:
+    text: CMS をどう持つか。自前（encoding/asn1 と crypto/x509 で、署名に要る SignedData だけ）か、github.com/digitorus/pkcs7 などのライブラリか
+    state: open
+    resolution: >-
+      暫定案（Claude）：自前。必要なのは SignedData の 1 つの形（署名属性の contentType・messageDigest・signingCertificateV2、署名なし属性のタイムスタンプ）と、
+      検証での読み取りだけで、読み取りは信頼できない入力になる（ほかの読み手と同じく上限と fuzz を置く）。openssl cms -verify と pyHanko で突き合わせる
+  algorithms:
+    text: 署名のアルゴリズム
+    state: open
+    resolution: 暫定案（Claude）：ECDSA P-256 と RSA（PKCS#1 v1.5 と PSS、2048 ビット以上）、ハッシュは SHA-256。Ed25519 は Adobe Acrobat が検証しないので PDF では使わない
+  encrypted-documents:
+    text: 暗号化した文書（spec §3.5）に署名するとき、署名を外に見せるか（鍵なしで検証できるが、署名した人の証明書が外から読める）、封印するか
+    state: open
+    resolution: 暫定案（Claude）：平文の文書に署名し、署名のブロックも封印する（AAD は ASCII の signature）。鍵を持つ人だけが署名した人を知る。区間の文書（§3.6、要求ごとの封印）は後
+  timestamp:
+    text: タイムスタンプ局（TSA）。試験は FreeTSA などの公開の局、本番は認定タイムスタンプ（電子帳簿保存法で使う、日本データ通信協会の認定）を設定で選ぶ
+    state: open
+  ltv:
+    text: 長期の検証（PAdES B-LT / B-LTA。証明書の失効情報を PDF の DSS に入れ、文書のタイムスタンプを重ねる）をいつ入れるか
+    state: deferred
+    resolution: 最初は B-B と B-T。証明書の期限（多くは 1〜3 年）を過ぎても検証させたいという要望が出たら B-LT
+  viewer-verify:
+    text: ビューアで署名の検証結果を見せるか
+    state: deferred
+    resolution: >-
+      いずれ見せる。bdf-preview.wasm は Go なので crypto/x509 で鎖の検証ができ、TypeScript に ASN.1 を持たなくてよい。信頼する根の証明書の一覧をどこから持つかが論点。
+      最初は bdf verify とサーバーの検証だけ
+relations:
+- relation: complements
+  to: requirement:partial-fill
+- relation: depends_on
+  to: requirement:pdf-export
+- relation: related_to
+  to: requirement:document-flow
+- relation: related_to
+  to: requirement:print-manager-auth
+facts:
+  threat_model:
+    protects: >-
+      文書を受け取った人・保管した人・途中の経路が、署名した後に文字・画像・ページ・テンプレートの値を変えたこと、Part を差し替えたこと、ページを足し引きしたことを検証で見つける。
+      署名の後に別の人が署名し直した（署名を剥がして自分の署名に替えた）ことは、証明書の名前で見分ける
+    does_not_protect: 署名の鍵を盗まれること、署名する前の内容が正しいこと、文書を消されること（それは保管の Object Lock）、画面の上での見た目の偽装（署名のないコピーを見せる）
+  bdf:
+    signed_content: >-
+      署名する内容は文書そのものではなく、次を並べた小さな JSON（決まった順のキー、空白なし）: 版、manifest の平文のバイト列の SHA-256、
+      manifest の parts の順に各 Part の格納バイト列の SHA-256（32 バイト）。CMS の SignedData はこれを外に置く形（detached）で署名する。
+      検証は全部の Part を読んで SHA-256 を計算し直す
+    block: '1 ファイル形式は Part の領域の後ろに、署名の並び（CMS の DER を n 個）と、"bdfs"・版・長さの 16 バイトの末尾。分割形式は signatures.json（base64 の DER の配列）'
+    multiple: 署名は並べて足せる（連署）。後の署名は、前の署名の DER のハッシュも署名する内容に入れて、前の署名を外されたら分かるようにする
+    attributes: 署名属性に署名した人の役割（bdf の名前の空間の属性。送り手・受け手・立会人）と、立会人型なら操作した人（OIDC の issuer と sub、メール）を入れる
+    cli: 'bdf sign -key key.pem -cert chain.pem [-tsa URL] in.bdf out.bdf、bdf verify [-roots roots.pem] doc.bdf（署名した人、時刻、覆う範囲、壊れた Part の名前を出す）'
+  partial_fill_chain:
+    summary: >-
+      一部を埋めた帳票（.bdff）は、送る側が「値」に署名する。署名する内容は tpl の src のハッシュ・filled・open・schema のハッシュで、絵（ページ）には署名しない。
+      完成した .bdf はその署名をそのまま tpl に持ち、受け手か立会人がもう 1 度、文書全体に署名する
+    why_values: 送る側の署名を完成品まで運ぶため。ページの絵は残りを埋めると変わるが、送る側の値と元のテンプレートは変わらない。値の署名なら完成品の tpl の上でそのまま検証できる
+    check: 検証は (1) 送る側の署名が tpl の値とテンプレートのハッシュに合う、(2) 完成品の filled が送る側の値を全部同じに含み、増えたのは open の名前だけ、(3) 文書の署名が全体に合う、の 3 つ
+    recompute: 決定性があるので、同じフォントを持つ検証者は src と filled から穴埋めし直して、完成品の Part と同じバイト列になることも確かめられる（任意の強い検査）
+  pdf:
+    standard: PAdES（ETSI EN 319 142-1）の B-B と B-T。/Type /Sig、/SubFilter /ETSI.CAdES.detached、/ByteRange で /Contents の外を全部覆う
+    writer: >-
+      vector/pdfbdf が最後に署名の辞書と /Contents の場所（予約した 16 進の 0）を書き、/ByteRange を埋めてから、その範囲の SHA-256 に CMS で署名して /Contents に入れる。
+      増分の保存ではなく最初の書き出しの中で署名する（PDF/A とタグ付きの出力はそのまま）
+    certify: 作成者の署名は DocMDP の認証署名（/P 1、変更を一切許さない）にできる。受け手の連署が要るときは /P 2（フォームの入力と署名だけ許す）
+    appearance: >-
+      見える署名の欄は、テンプレートのサインの欄（requirement:partial-fill の input: signature の画像の欄）の箱に、署名の注釈（/FT /Sig のウィジェット）を重ねる。
+      描いたサインの画像が欄の外観になり、Acrobat で欄を押すと電子署名の検証結果が出る
+    from_bdf: 署名付きの .bdf を PDF にするときは、PDF に書き出す人（ふつうは Docflow のサーバー）が自分の鍵で PDF に署名する。BDF の署名は PDF に移せないので、PDF の署名属性に元の .bdf の manifest の SHA-256 を入れて対応を残す
+  keys:
+    signer: crypto.Signer と証明書の鎖を受ける。CLI はファイル（PEM、PKCS#12）。Docflow は AWS KMS の非対称鍵（Lambda に秘密を置かない）を候補にする
+    relates_to: Print Manager の根の秘密の置き場の論点（requirement:print-manager-auth の key-storage）と同じ所に決める
+  validation_plan:
+  - BDF の署名は openssl cms -verify -binary -content で、署名する内容の JSON を外から与えて検証する
+  - PDF の署名は pyHanko（スクラッチの venv）の validate、qpdf --check、Adobe Acrobat Reader（手で）。PDF/A の出力は署名の後も veraPDF に通す
+  - タイムスタンプは openssl ts -verify
+  - 改ざんの検査は 1 バイトずつ書き換えた文書（manifest、各 Part、末尾のブロック、PDF の /ByteRange の内と外）で検証が落ちること
+  - CMS の読み取りと末尾のブロックに fuzz の的を足す（fuzz-harnesses の FuzzReader と同じ扱い）
+  delivery:
+    proposed_milestones:
+      sig-1: BDF の署名と検証（CMS の自前の実装、末尾のブロックと signatures.json、bdf sign / bdf verify、ファイルの鍵、連署）
+      sig-2: PDF の PAdES B-B / B-T（pdfbdf の署名、TSA、DocMDP、サインの欄を見える署名に）
+      sig-3: 一部を埋めた帳票の値の署名の連鎖と、Docflow の署名のノード（立会人型、KMS）
+      later: B-LT / B-LTA、ビューアでの検証の表示、区間の文書の署名
+    order_note: sig-1 と sig-2 は互いに独立。partial-fill（form-m7）は sig-3 より前に入る
+history:
+  proposed:
+    summary: 2026-10-22 利用者がチャットで要望。Claude が spec §3（Part 名、暗号化）、Go の OpenSingle、vector/pdfbdf を読んで設計案を書いた

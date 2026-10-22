@@ -195,7 +195,7 @@ for (const font of remoteFonts) {
   assert.ok(font.size > 0 && font.scan.length > 0);
 }
 const forms = JSON.parse(await readFile(join(site, "forms/index.json"), "utf8"));
-assert.deepEqual(forms.map((f) => f.id), ["fixed", "rows", "pages", "application", "pdfme-invoice", "pdfme-certificate", "text-slip", "text-receipt"]);
+assert.deepEqual(forms.map((f) => f.id), ["fixed", "rows", "pages", "application", "contract", "pdfme-invoice", "pdfme-certificate", "text-slip", "text-receipt"]);
 /** The format of a template of the page, by its name. */
 const formatOf = (name) => (name.startsWith("pdfme-") ? "pdfme" : name.endsWith(".txt") ? "text" : name.split(".").pop());
 const styledSchemas = new Map();
@@ -244,6 +244,24 @@ for (const shape of forms) {
         assert.equal(props.zip.maxLength, 7);
         assert.equal(props.agree.type, "boolean");
         assert.equal(props.applicant.properties.name.type, "string");
+      }
+      if (shape.id === "contract") {
+        assert.equal(props.party_a.properties.sign["x-bdf"].input, "signature");
+        // one party fills in theirs and signs, and leaves the other open: a partly filled form (.bdff)
+        const sign = "data:image/svg+xml;base64," + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 30"><path d="M5 25 L45 5 L85 25" fill="none" stroke="#000" stroke-width="3"/></svg>').toString("base64");
+        const a = { name: "Taro Yamada", sign }, b = { name: "ACME Corporation", sign };
+        const partly = await modules.form.fill(template, { data: JSON.stringify({ party_a: a }), open: ["party_b"], fonts: formFonts });
+        assert.deepEqual(partly.open, ["party_b"]);
+        assert.deepEqual(partly.warnings, []);
+        const handed = await modules.form.fields(partly.bdf, {});
+        assert.deepEqual(handed.open, ["party_b"]);
+        assert.deepEqual(Object.keys(JSON.parse(handed.schema).properties), ["party_b"]);
+        assert.equal(JSON.parse(handed.filled).party_a.name, "Taro Yamada");
+        const done = await modules.form.fill(partly.bdf, { data: JSON.stringify({ party_b: b }), fonts: formFonts });
+        const once = await modules.form.fill(template, { data: JSON.stringify({ party_a: a, party_b: b }), fonts: formFonts });
+        assert.equal(done.open, undefined);
+        assert.deepEqual(done.bdf, once.bdf, "the completed form is the form filled at once");
+        await assert.rejects(modules.form.fill(partly.bdf, { data: JSON.stringify({ party_a: b, party_b: b }), fonts: formFonts }), /filled already/);
       }
       if (shape.id === "pdfme-invoice") {
         assert.deepEqual(Object.keys(props.items.items.properties), ["項目", "数量", "単価", "金額"]);
@@ -294,7 +312,7 @@ for (const shape of forms) {
       const want = {
         fixed: ["明細書", "Date", "株式会社みなと商事", "デスクオーガナイザー", "1024", "13,200"],
         rows: ["請求書", "INV-2026-1014", "付箋セット", "23,958"],
-        pages: ["納品書", "DN-2026-1014", "当頁計", "36,180"], application: ["Taro Yamada", "12800"],
+        pages: ["納品書", "DN-2026-1014", "当頁計", "36,180"], application: ["Taro Yamada", "12800"], contract: ["Contract", "Taro Yamada", "ACME Corporation"],
         "pdfme-invoice": ["請求書", "INV-2026-1014", "ファイルボックス", "総額", "23,958"],
         "pdfme-certificate": ["Hanako Tanaka", "Score 92 / 100 (with distinction)", "October 14, 2026"],
         "text-slip": ["納品書", "株式会社サンプル商事", "15,890", "（控）"],

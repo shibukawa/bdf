@@ -105,6 +105,8 @@ const FORM_STYLES = [{ id: "standard", suffix: "" }, { id: "modern", suffix: "-m
 const FORM_PLACED = [
   { id: "application", label: "An application", about: "a PDF with form fields: texts, a comb of digits, checkboxes, radio buttons and a choice, filled in their places",
     data: ["test/pdf/data/application.json", "application.json"], template: ["converter/pdfform/testdata/application.pdf", "application.pdf", "PDF form"] },
+  { id: "contract", label: "A contract", about: "a PDF with the names and the signature fields of two parties: draw a signature, or leave a party for the other person to fill in (.bdff)",
+    data: ["test/pdf/data/contract.json", "contract.json"], template: ["converter/pdfform/testdata/contract.pdf", "contract.pdf", "PDF form"] },
   { id: "pdfme-invoice", label: "An invoice of pdfme", about: "an itemized invoice with tax, a due date and payment details, designed with pdfme",
     data: ["site/form/samples/pdfme-invoice.data.json", "pdfme-invoice.data.json"], template: ["site/form/samples/pdfme-invoice.json", "pdfme-invoice.json", "pdfme"] },
   { id: "pdfme-certificate", label: "A certificate of pdfme", about: "a template of pdfme over a base PDF: a name in the size that fits, a date, a text with an expression, a signature",

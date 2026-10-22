@@ -409,6 +409,9 @@ func (t *template) fields() []tag.Field {
 				}
 			case s.typ == "image" || s.typ == "signature" || s.typ == "svg":
 				f.Kind = tag.FieldImage
+				if s.typ == "signature" {
+					f.Input = tag.InputSignature
+				}
 			case isMark(s.typ):
 				f.Type, f.Default = "boolean", content == "true"
 			case s.typ == "table":
