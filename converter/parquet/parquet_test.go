@@ -13,6 +13,7 @@ import (
 	conv "github.com/shibukawa/bdf/converter"
 	"github.com/shibukawa/bdf/converter/internal/convtest"
 	"github.com/shibukawa/bdf/converter/xlsx"
+	parquetenc "github.com/shibukawa/bdf/encoding/parquet"
 )
 
 // The files of testdata are written by test/parquet/gen.py; their values
@@ -382,4 +383,43 @@ func FuzzTable(f *testing.F) {
 			t.Errorf("%v to read %d bytes", d, len(b))
 		}
 	})
+}
+
+// TestStoreFile checks that the file is held as a table of the document,
+// as it is; not with Data none.
+func TestStoreFile(t *testing.T) {
+	opts := &Options{FontDirs: []string{"../pptx/testdata/fonts"}, NoSystemFonts: true}
+	res, err := ConvertFile(filepath.Join("testdata", "basic.parquet"), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := convtest.Reopen(t, res.Doc)
+	entry, data, err := r.Table("data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(filepath.Join("testdata", "basic.parquet"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, want) {
+		t.Errorf("the table is not the file (%d bytes, want %d)", len(data), len(want))
+	}
+	if entry.Title != "basic" || entry.Rows != res.Rows || len(entry.Columns) != res.Cols || entry.View != "sheet1" {
+		t.Errorf("table = %+v (file: %d rows, %d columns)", entry, res.Rows, res.Cols)
+	}
+	tb, err := parquetenc.Read(data, parquetenc.Limits{MaxRows: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tb.Rows) != 2 || len(tb.Columns) != res.Cols {
+		t.Errorf("read %d rows × %d columns", len(tb.Rows), len(tb.Columns))
+	}
+	opts.Data = "none"
+	if res, err = ConvertFile(filepath.Join("testdata", "basic.parquet"), opts); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Doc.Tables) != 0 {
+		t.Errorf("with Data none, tables = %d", len(res.Doc.Tables))
+	}
 }

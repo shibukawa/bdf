@@ -424,7 +424,11 @@ func (e *textEmitter) startParagraph(pa *para, first bool) {
 	case pa.bullet != nil:
 		e.closeLists(pa.lvl)
 		if n := len(e.lists); n == 0 || e.lists[n-1] < pa.lvl {
-			e.cv.Obj.Mark(bdf.MarkList, "")
+			kind := "bullet"
+			if pa.bullet.ordered {
+				kind = "ordered"
+			}
+			e.cv.Obj.Mark(bdf.MarkList, kind)
 			e.lists = append(e.lists, pa.lvl)
 		}
 		e.cv.Obj.Mark(bdf.MarkListItem, "")

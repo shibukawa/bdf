@@ -396,11 +396,11 @@ async function openFile(name: string, data: ArrayBuffer, at = attempt(name)) {
   at.bytes = data.byteLength;
   at.kind = kind;
   if (kind === "bdf") {
-    // (the worker takes the buffer: the copy is what a PDF file is written of)
-    const copy = pdfButton ? bdfFile(new Uint8Array(data)) : undefined;
+    // (the worker takes the buffer: the copy is what a PDF or a Markdown file is written of)
+    const copy = saveButton ? bdfFile(new Uint8Array(data)) : undefined;
     const opened = await load({ kind: "buffer", buffer: data }, name, token);
     // an encrypted document is not offered as a file that is not
-    if (opened && opened.password === undefined && token === opening) setPdf(copy, base);
+    if (opened && opened.password === undefined && token === opening) setSave(copy, base);
     return;
   }
   const busy = `converting ${name}…`;
@@ -656,7 +656,7 @@ function setDownload(file?: Blob, base = "") {
   if (downloadURL) URL.revokeObjectURL(downloadURL);
   downloadURL = "";
   a.hidden = !file;
-  setPdf(file, base);
+  setSave(file, base);
   if (!file) {
     a.removeAttribute("href");
     return;
@@ -666,44 +666,91 @@ function setDownload(file?: Blob, base = "") {
 }
 
 /**
- * The module that writes PDF files (cmd/bdfwasm built with -tags
- * previewonly), and the button of the demo site that asks for one: the
- * viewer by itself has neither.
+ * The module that writes PDF and Markdown files (cmd/bdfwasm built with
+ * -tags previewonly), and the button of the demo site that asks for one,
+ * with a dialog of the formats and their options: the viewer by itself has
+ * neither.
  */
-const PDF_MODULE = "lib/bdf-preview.wasm";
-const pdfButton = document.getElementById("savePdf") as HTMLButtonElement | null;
-/** The document shown as a single file, which the PDF file is written of. */
-let pdfSource: { file: Blob; base: string } | undefined;
+const PREVIEW_MODULE = "lib/bdf-preview.wasm";
+const saveButton = document.getElementById("saveAs") as HTMLButtonElement | null;
+/** The document shown as a single file, which the file asked for is written of. */
+let saveSource: { file: Blob; base: string } | undefined;
 
-/** Offer the document shown as a PDF file (none without file): written when it is asked for. */
-function setPdf(file?: Blob, base = "") {
-  pdfSource = file ? { file, base } : undefined;
-  if (pdfButton) pdfButton.hidden = !file;
+/** Offer the document shown as a PDF or a Markdown file (none without file): written when it is asked for. */
+function setSave(file?: Blob, base = "") {
+  saveSource = file ? { file, base } : undefined;
+  if (saveButton) saveButton.hidden = !file;
 }
 
-if (pdfButton) {
-  pdfButton.onclick = async () => {
-    const source = pdfSource;
+/** Hand the reader a file to save. */
+function offerFile(file: Blob, name: string) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
+}
+
+if (saveButton) {
+  const dialog = $<HTMLDialogElement>("saveDialog");
+  const form = dialog.querySelector("form")!;
+  const format = () => (form.elements.namedItem("format") as RadioNodeList).value;
+  const showOptions = () => {
+    $("pdfOptions").hidden = format() !== "pdf";
+    $("mdOptions").hidden = format() !== "markdown";
+  };
+  form.addEventListener("change", showOptions);
+  saveButton.onclick = () => {
+    showOptions();
+    dialog.showModal();
+  };
+  $("saveCancel").onclick = () => dialog.close("cancel");
+  dialog.addEventListener("close", () => {
+    if (dialog.returnValue === "ok") void save(format() === "markdown");
+    dialog.returnValue = "";
+  });
+
+  /** Write the document shown as a file of the format chosen, with its options, and offer it. */
+  const save = async (markdown: boolean) => {
+    const source = saveSource;
     if (!source) return;
-    pdfButton.disabled = true;
-    setTiming("writing the PDF…");
+    saveButton.disabled = true;
+    setTiming(markdown ? "writing the Markdown…" : "writing the PDF…");
+    let name = `${source.base}.${markdown ? "md" : "pdf"}`;
     try {
       const t0 = performance.now();
-      const res = await converterWorker().pdf(shared(PDF_MODULE), await source.file.arrayBuffer(), { fonts: shared(FONTS) });
-      const file = new Blob([res.pdf as BlobPart], { type: "application/pdf" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(file);
-      a.download = `${source.base}.pdf`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 60_000);
-      for (const w of res.warnings) console.warn(`bdf viewer: ${source.base}.pdf: ${w}`);
-      const left = res.warnings.length ? `, ${res.warnings.length} ${res.warnings.length === 1 ? "warning" : "warnings"} (see the console)` : "";
-      setTiming(`${source.base}.pdf written in ${(performance.now() - t0).toFixed(0)} ms: ${res.pages} ${res.pages === 1 ? "page" : "pages"}, ${(file.size / 1024).toFixed(0)} KB${left}`);
+      const data = await source.file.arrayBuffer();
+      let file: Blob;
+      let warnings: string[];
+      let summary: string;
+      if (markdown) {
+        const images = $<HTMLSelectElement>("mdImages").value as "zip" | "embed" | "none";
+        const res = await converterWorker().markdown(shared(PREVIEW_MODULE), data, {
+          images: images === "zip" ? "files" : images, zip: images === "zip", name: source.base,
+          keepRunning: $<HTMLInputElement>("mdRunning").checked, internalLinks: $<HTMLInputElement>("mdLinks").checked,
+        });
+        // the text alone when it refers to no file
+        const zipped = images === "zip" && res.images.length > 0 && res.zip;
+        file = zipped ? new Blob([res.zip as BlobPart], { type: "application/zip" }) : new Blob([res.markdown as BlobPart], { type: "text/markdown" });
+        if (zipped) name = `${source.base}.zip`;
+        warnings = res.warnings;
+        summary = `${res.views} ${res.views === 1 ? "view" : "views"}, ${res.images.length} ${res.images.length === 1 ? "image" : "images"}`;
+        if (res.tables > 0) summary += `, ${res.tables} ${res.tables === 1 ? "table" : "tables"}`;
+      } else {
+        const res = await converterWorker().pdf(shared(PREVIEW_MODULE), data, { fonts: shared(FONTS), tagged: $<HTMLInputElement>("pdfTagged").checked });
+        file = new Blob([res.pdf as BlobPart], { type: "application/pdf" });
+        warnings = res.warnings;
+        summary = `${res.pages} ${res.pages === 1 ? "page" : "pages"}`;
+      }
+      offerFile(file, name);
+      for (const w of warnings) console.warn(`bdf viewer: ${name}: ${w}`);
+      const left = warnings.length ? `, ${warnings.length} ${warnings.length === 1 ? "warning" : "warnings"} (see the console)` : "";
+      setTiming(`${name} written in ${(performance.now() - t0).toFixed(0)} ms: ${summary}, ${(file.size / 1024).toFixed(0)} KB${left}`);
     } catch (e) {
       setTiming("");
-      showFailure(`${source.base}.pdf could not be written`, e);
+      showFailure(`${name} could not be written`, e);
     } finally {
-      pdfButton.disabled = false;
+      saveButton.disabled = false;
     }
   };
 }
@@ -786,7 +833,7 @@ function init() {
   // shortcut is the browser's. The next and previous match keys (Cmd/Ctrl+G, F3) step through the box's hits.
   window.addEventListener("keydown", (e) => {
     const key = findKey(e);
-    if (!key || e.defaultPrevented || !current || $("searchBox").hidden || $<HTMLDialogElement>("pwDialog").open) return;
+    if (!key || e.defaultPrevented || !current || $("searchBox").hidden || $<HTMLDialogElement>("pwDialog").open || document.querySelector<HTMLDialogElement>("#saveDialog")?.open) return;
     if (key === "open") {
       if (document.activeElement === q) return;
       e.preventDefault();

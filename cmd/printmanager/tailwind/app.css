@@ -9,6 +9,20 @@
 @plugin "./daisyui.mjs" {
   themes: light --default, dark --prefersdark;
 }
+/* the manual (/help): Markdown rendered to plain HTML, styled as prose;
+   the plugin is bundled with the standalone CLI */
+@plugin "@tailwindcss/typography";
+
+/* a link to a section of the manual lands below the sticky bar */
+#help :is(h1, h2, h3, h4) {
+  scroll-margin-top: 5rem;
+}
+
+/* the manual's tables keep to the page on a phone: a long path or URL in
+   a cell breaks where it must */
+#help :is(td, th) {
+  overflow-wrap: anywhere;
+}
 
 /* the QR code the manager draws as SVG */
 .qr svg {
