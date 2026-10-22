@@ -315,7 +315,7 @@ export component Topology(account: Account): html {
             {/if}
             <span id="live" class="badge badge-ghost badge-sm"></span>
             {if account.topology}
-              <span class="text-sm text-base-content/60">Drag the background to pan, wheel or pinch to zoom. Drag a node to move it; drag from its right port onto another node to connect them; click an edge to remove it; click a node to edit it in the sidebar.</span>
+              <span class="text-sm text-base-content/60">Drag the background to pan, wheel or pinch to zoom. Drag a node to move it; drag from its right port onto another node to connect them (a node that would not take what the edge carries fades, and the wire turns red over it); click an edge to remove it; click a node to edit it in the sidebar.</span>
             {else}
               <span class="text-sm text-base-content/60">The network your documents flow through. The counts and the dots are the jobs you may see: yours and your groups'. Drag the background to pan, wheel or pinch to zoom; click a node for its jobs, and to print there when you may.</span>
             {/if}
@@ -326,6 +326,7 @@ export component Topology(account: Account): html {
             </div>
             <aside id="sidebar" class="max-h-[62vh] min-h-96 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-4"></aside>
           </div>
+          <div id="legend" class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/60"></div>
         </div>
       </section>
       {if account.topology}

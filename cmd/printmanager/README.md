@@ -210,7 +210,10 @@ node it reached. The document is kept once for all of them.
 | `sink` | keeps the `latest` documents that reach it (10) to look at on the topology (the first page shows on the node, every page in the sidebar: `GET /api/nodes/<name>/latest`, `GET /api/jobs/<n>/pages/<p>.png`); an older one goes when a newer comes | `latest` |
 | `export` | lists what an archive before it wrote (an archive sends a job on along its `to` once it wrote it), for applications and people to fetch at `GET /out/<name>`: each entry under the owner the metadata key `by` names (a customer's id the sender gave), with the metadata of `fields`; the latest `entries` (1000) are listed. See *Exports* below | `by`, `subject`, `fields`, `entries`, `apps` |
 
-Every node has a `scope` and an `owner` too (see Sign-in). A display, a
+Every node has a `title` and a `description` too (as a C4 element: the
+name in the title bar, `[kind]` and the title under it, then the
+description, a note of what it is for, up to 1000 characters, the first
+lines on the canvas), and a `scope` and an `owner` (see Sign-in). A display, a
 printer, a sink or an export keeps its kind; the other kinds change into
 one another, keeping the name.
 
@@ -220,11 +223,26 @@ sends on what its `accept` and `output` say, a template or a convert
 node the .bdf it makes, every other node what reaches it; a printer or
 a display takes `bdf` only, a template node `data` only. The kinds that
 reach every node are inferred from the entries along the edges when a
-node is put, and an edge that would bring a kind a node does not take
-is refused (400: "laser (printer) takes bdf, but any reaches it: raw →
-fan → laser"); `GET /api/topology` shows each node's `takes` and
-`emits`, and the editor colors the ports and edges by them (blue bdf,
-green data, grey any). A job carries its `payloads`: what was received
+node is put, and a new edge that would bring a kind a node does not
+take is refused (400: "laser (printer) takes bdf, but any reaches it:
+raw → fan → laser"). A change of a node's settings alone (an entry
+taking data now, a queue made a template node) is not refused for the
+edges it leaves carrying what the node after them does not take: they
+stay, broken, until mended (a convert or a template node put between,
+the setting changed back, or the edge removed), and a job gets a leg of
+the error where it reaches the node that does not take it. `GET
+/api/topology` shows each node's `takes`, `emits`, `accepts` (what may
+be sent to it now: what it takes, within what every node after it takes,
+so that a queue in front of a printer takes `bdf` alone, as a wildcard
+pin is typed by its first edge) and `broken` (the edges from it that no
+longer connect, with the kinds), and the editor colors the ports and the
+edges by them (blue bdf, green data, amber any, purple several; hollow
+and dashed a port not typed yet), fades the nodes that would not take
+the edge being dragged, and draws a broken edge dashed and red. A node's
+title bar is colored by its role (source: endpoint, cups; control flow:
+queue, class, inbox; filter; transform: template, convert; sink:
+display, printer, archive, sink), with an icon of its kind. A job
+carries its `payloads`: what was received
 (`kind`, `format`, `pages`, `size`, `sha256`) and what the template and
 convert nodes made of it (`made`), each leg saying which payload it got
 (`payload`) and made (`made`); `GET /api/jobs/<n>/document` downloads

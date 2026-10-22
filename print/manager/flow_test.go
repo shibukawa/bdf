@@ -73,12 +73,70 @@ func TestKinds(t *testing.T) {
 	for _, n := range topo {
 		kinds[n.Name] = n.Takes + "<" + strings.Join(n.Emits, "+")
 	}
-	want := map[string]string{"raw": "any<any", "fan": "any<any", "conv": "any<bdf", "laser": "bdf<", "audit": "any<", "forms": "data<bdf"}
+	// an archive sends on what it wrote (an export after it), as a queue does
+	want := map[string]string{"raw": "any<any", "fan": "any<any", "conv": "any<bdf", "laser": "bdf<", "audit": "any<any", "forms": "data<bdf"}
 	for name, w := range want {
 		if kinds[name] != w {
 			t.Errorf("%s: %s; want %s", name, kinds[name], w)
 		}
 	}
+
+	// what a node may take now is what every node after it takes: a queue
+	// in front of the printer takes .bdf alone, one in front of the
+	// printer and the template node nothing (its first edge types it, as
+	// a wildcard pin's does)
+	e.node("q", Node{Kind: KindQueue, To: []string{"laser"}}, http.StatusOK)
+	accepts := func() map[string]string {
+		var topo []TopoNode
+		json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &topo)
+		out := map[string]string{}
+		for _, n := range topo {
+			out[n.Name] = strings.Join(n.Accepts, "+")
+			for to, bad := range n.Broken {
+				out[n.Name+">"+to] = strings.Join(bad, "+")
+			}
+		}
+		return out
+	}
+	if got := accepts(); got["q"] != "bdf" || got["fan"] != "bdf+data+any" || got["conv"] != "bdf+data+any" || got["forms"] != "data" || got["laser"] != "bdf" || got["raw"] != "bdf+data+any" {
+		t.Fatalf("accepts %v", got)
+	}
+	e.node("q", Node{Kind: KindQueue, To: []string{"laser", "forms"}}, http.StatusOK)
+	if got := accepts(); got["q"] != "" || !strings.Contains(string(e.admin("GET", "/api/topology", nil, http.StatusOK)), `"accepts":[]`) {
+		t.Fatalf("a dead end accepts nothing: %v", got)
+	}
+	// a change of settings that leaves an edge carrying what the node
+	// after it does not take is not refused: the edge is shown broken,
+	// and a job gets a leg of the error there
+	var din struct {
+		Key string `json:"key"`
+	}
+	json.Unmarshal(e.node("din", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"forms"}}, http.StatusOK), &din)
+	e.node("din", Node{Kind: KindEndpoint, To: []string{"forms"}}, http.StatusOK)
+	if got := accepts(); got["din>forms"] != "bdf" || got["din"] != "data" || len(got) != 8+1 {
+		t.Fatalf("broken %v", got)
+	}
+	bres, bout := e.do(nil, "POST", "/in/din?name=doc", din.Key, testDoc(t, 1))
+	var bj Job
+	json.Unmarshal(bout, &bj)
+	if bres.StatusCode != http.StatusCreated || legs(&bj) != "din:routed forms:error" || !strings.Contains(bj.Legs[1].Error, "takes data") {
+		t.Fatalf("along a broken edge: %d %s %+v", bres.StatusCode, legs(&bj), bj.Legs)
+	}
+	// a new edge along which a kind reaches a node that does not take it
+	// is refused still, broken edges or not
+	e.node("q", Node{Kind: KindQueue, To: []string{"forms"}}, http.StatusOK)
+	if out := e.node("din", Node{Kind: KindEndpoint, To: []string{"forms", "q"}}, http.StatusBadRequest); !strings.Contains(string(out), "forms (template) takes data, but bdf reaches it: din → q → forms") {
+		t.Fatalf("a new edge: %s", out)
+	}
+	// and the same edges put again are not refused for the broken one
+	e.node("din", Node{Kind: KindEndpoint, To: []string{"forms"}, Title: "documents"}, http.StatusOK)
+	// mended: the entry takes data again
+	e.node("din", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"forms"}}, http.StatusOK)
+	if got := accepts(); got["din>forms"] != "" || len(got) != 8 {
+		t.Fatalf("mended %v", got)
+	}
+	e.admin("DELETE", "/api/nodes/din", nil, http.StatusNoContent)
+	e.admin("DELETE", "/api/nodes/q", nil, http.StatusNoContent)
 
 	// a picture received as it is (any file): kept at the archive as it
 	// came, made a document by the convert node and printed

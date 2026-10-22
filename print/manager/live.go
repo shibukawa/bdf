@@ -144,7 +144,7 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 func publicTopology(ns []TopoNode) []TopoNode {
 	for i := range ns {
 		n := &ns[i]
-		n.Node = Node{Name: n.Name, Kind: n.Kind, Title: n.Title, To: n.To, Members: n.Members, Policy: n.Policy, Fallback: n.Fallback}
+		n.Node = Node{Name: n.Name, Kind: n.Kind, Title: n.Title, Description: n.Description, To: n.To, Members: n.Members, Policy: n.Policy, Fallback: n.Fallback}
 		n.In, n.Templates, n.Held, n.Open, n.Devices, n.Pending, n.Kept, n.Latest, n.Listed = "", nil, 0, 0, 0, 0, 0, "", 0
 	}
 	return ns

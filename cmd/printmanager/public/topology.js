@@ -7,11 +7,14 @@
 // fields of the node's kind, and what is at it: an endpoint's templates
 // and key, a display's devices and enrollment codes); everything goes
 // through the API, and the server checks a node when it is put (its
-// edges, its name, no cycle). Looking: a node shows the jobs sent to it
-// that the person sees, and a form to print there when they may.
+// edges, its name, no cycle, and that every node takes the kinds of
+// payload that reach it along a new edge; a change of settings may
+// leave an edge broken, which the canvas draws dashed and the sidebar
+// explains). Looking: a node shows the jobs sent to it that the person
+// sees, and a form to print there when they may.
 
 import { $, api, button, changed, el, keptSection, kindBadge, KINDS, legsOf, listedSection, onChange, PAYLOADS, sender, since, stateBadge, status } from "./admin.js";
-import { createCanvas } from "./canvas.js";
+import { createCanvas, iconOf, legend, payloadColor, roleColor, typeOf } from "./canvas.js";
 
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
 const ACCEPTS = { file: "documents (PDF, Office, images, .bdf …)", data: "data (JSON, YAML, CSV, Excel, Parquet)" };
@@ -50,8 +53,12 @@ const canvas = createCanvas($("canvas"), {
   onConnect(from, to) {
     addEdge(from, to).catch((e) => status(e.message, true));
   },
+  onReject(from, to, why) {
+    status(`${from.name} → ${to}: ${why}`, true);
+  },
   onRemoveEdge: removeEdge,
   draftLabel: () => $("f-name")?.value || "",
+  draftNote: () => $("f-description")?.value || "",
 });
 
 async function load() {
@@ -111,6 +118,21 @@ $("zoom-in").addEventListener("click", () => canvas.zoomBy(1.25));
 $("zoom-out").addEventListener("click", () => canvas.zoomBy(0.8));
 $("zoom-fit").addEventListener("click", () => canvas.fit());
 if (editable) $("refresh").addEventListener("click", load);
+legend($("legend"));
+// the palette's kinds get their icons, in their roles' colors
+for (const a of document.querySelectorAll("#palette a[data-kind]")) a.prepend(kindIcon(a.dataset.kind, 18));
+
+// kindIcon is the icon of a kind, in its role's color.
+function kindIcon(kind, size) {
+  const i = iconOf(kind, size);
+  i.style.color = roleColor(kind);
+  i.classList.add("shrink-0");
+  return i;
+}
+
+// brokenEdges names the edges that no longer carry what the node after
+// them takes.
+const brokenEdges = (t) => t.flatMap((n) => Object.entries(n.broken || {}).map(([to, kinds]) => `${n.name} → ${to} (${kinds.map((k) => PAYLOADS[k] || k).join(", ")})`));
 
 // addEdge connects a node to a target through the API, which checks the
 // edge (the target exists, no cycle): a class's member, a display's
@@ -191,13 +213,24 @@ function input(id, value, attrs = {}) {
 }
 
 // picker is the nodes a node may send to, as checkboxes (name: the
-// checkboxes' name; except the node itself and the entries).
+// checkboxes' name; except the node itself and the entries), each with a
+// dot of what it takes; one that would not take what the node carries
+// says so.
 function picker(name, chosen, except) {
   const box = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
+  const from = draft || topo.find((x) => x.name === selected) || {};
+  const carries = typeOf(from).out;
   const names = topo.filter((x) => x.name !== except && x.kind !== "cups").map((x) => x.name);
   for (const x of names) {
-    const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
-    l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name, value: x, checked: chosen.includes(x) }), x);
+    const target = topo.find((t) => t.name === x);
+    const t = typeOf(target);
+    const bad = carries.filter((k) => !t.accepts.includes(k));
+    const text = (kinds) => kinds.map((k) => PAYLOADS[k] || k).join(" or ");
+    const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" + (bad.length ? " text-error" : ""), title: bad.length ? `${x} takes ${text(t.accepts) || "nothing now"}, but this carries ${text(bad)}` : `may be sent ${t.accepts.length === 3 ? "any kind" : text(t.accepts)}` });
+    const dot = el("span", undefined, { className: "inline-block size-2.5 rounded-full border border-base-100" });
+    dot.style.background = t.dead ? "#dc2626" : t.in.length ? payloadColor(t.in) : t.anyKind ? "#475569" : "#f8fafc";
+    if (!t.in.length && !t.anyKind && !t.dead) dot.style.borderColor = "#94a3b8";
+    l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name, value: x, checked: chosen.includes(x) }), dot, x + (bad.length ? " (would not take it)" : ""));
     box.append(l);
   }
   // one chosen that is not there any more stays chosen, so that it is not lost unseen
@@ -331,12 +364,22 @@ function entryFields(form, n) {
 }
 
 // kindsLine tells what a node takes and sends on, as the API inferred
-// it from the entries.
+// it from the entries, what may be sent to it now (what the nodes after
+// it take), and the edges from it that no longer connect.
 function kindsLine(n) {
+  const box = el("div", undefined, { className: "flex flex-col gap-1 text-xs text-base-content/60" });
+  const text = (kinds) => kinds.map((k) => PAYLOADS[k] || k).join(" or ");
   const parts = [];
   if (n.takes) parts.push("takes " + (PAYLOADS[n.takes] || n.takes));
-  if (n.emits && n.emits.length) parts.push("sends on " + n.emits.map((k) => PAYLOADS[k] || k).join(" or "));
-  return parts.length ? el("p", parts.join(" · "), { className: "text-xs text-base-content/60" }) : null;
+  const acc = n.accepts || [];
+  if (n.accepts && acc.length < 3 && !(acc.length === 1 && acc[0] === n.takes)) parts.push(acc.length ? `may be sent ${text(acc)} only (what is after it takes)` : "nothing fits it now: the nodes after it take different kinds");
+  if (n.emits && n.emits.length) parts.push("sends on " + text(n.emits));
+  if (parts.length) box.append(el("p", parts.join(" · ")));
+  for (const [to, kinds] of Object.entries(n.broken || {})) {
+    const target = topo.find((x) => x.name === to);
+    box.append(el("p", `⚠ → ${to} no longer connects: ${to} takes ${target ? PAYLOADS[target.takes] || target.takes : "something else"}, but ${text(kinds)} reaches it from here. Put a convert or a template node between, change what this node takes, or remove the edge; a job gets an error there meanwhile.`, { className: "text-error" }));
+  }
+  return box.childElementCount ? box : null;
 }
 
 const names = (s) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -413,7 +456,7 @@ function viewSidebar() {
     return;
   }
   const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
-  head.append(kindBadge(n.kind), el("h3", n.title && n.title !== n.name ? n.title : n.name, { className: "text-lg font-semibold" }));
+  head.append(kindIcon(n.kind, 20), kindBadge(n.kind), el("h3", n.title && n.title !== n.name ? n.title : n.name, { className: "text-lg font-semibold" }));
   if (n.title && n.title !== n.name) head.append(el("span", n.name, { className: "font-mono text-sm text-base-content/60" }));
   const stats = el("div", undefined, { className: "stats stats-horizontal flex-wrap bg-base-200" });
   for (const [v, label] of countsOf(n.name)) {
@@ -421,7 +464,9 @@ function viewSidebar() {
     s.append(el("div", v, { className: "stat-value text-xl" }), el("div", label, { className: "stat-title text-xs" }));
     stats.append(s);
   }
-  const parts = [head, stats];
+  const parts = [head];
+  if (n.description) parts.push(el("p", n.description, { className: "whitespace-pre-wrap text-sm text-base-content/80" }));
+  parts.push(stats);
   const out = [];
   for (const to of n.to || []) out.push(to);
   for (const [i, r] of (n.rules || []).entries()) out.push((r.to || []).join(", ") + ` (rule ${i + 1})`);
@@ -500,13 +545,13 @@ function renderSidebar() {
   const aside = $("sidebar");
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) {
-    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. The ports and edges are colored by what flows: blue a .bdf document, green data (for a template node), grey any file as received (for a convert node); a printer takes .bdf only, so a file or data cannot be connected to it without a convert or a template node between.", { className: "text-sm text-base-content/60" }));
+    aside.replaceChildren(el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take.", { className: "text-sm text-base-content/60" }));
     return;
   }
   const kind = n.kind;
   const form = el("form", undefined, { className: "flex flex-col gap-1" });
   const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
-  head.append(kindBadge(kind));
+  head.append(kindIcon(kind, 20), kindBadge(kind));
   if (draft) head.append(el("span", "new", { className: "badge badge-outline" }));
   else head.append(el("h3", n.name, { className: "font-mono text-lg font-semibold" }), scopeBadge(n));
   form.append(head);
@@ -515,7 +560,10 @@ function renderSidebar() {
     name.addEventListener("input", () => canvas.draw());
     form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>) and does not change later."));
   }
-  form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown instead of the name" })));
+  form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown in the node beside its kind" })));
+  const note = el("textarea", undefined, { id: "f-description", className: "textarea textarea-sm w-full", rows: 3, value: n.description || "", placeholder: "what it is for: the invoices of the ERP, PDF only; printed on the 3rd floor …" });
+  note.addEventListener("input", () => canvas.draw());
+  form.append(field("Description", note, "A note shown in the node, under its [kind], as in a C4 diagram: the first lines on the canvas, all of it here."));
   if (!draft) {
     const k = kindsLine(n);
     if (k) form.append(k);
@@ -662,7 +710,7 @@ async function save(ev) {
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) return;
   const name = draft ? $("f-name").value.trim() : n.name;
-  const body = { kind: n.kind, title: $("f-title").value.trim(), scope: $("f-scope").value };
+  const body = { kind: n.kind, title: $("f-title").value.trim(), description: $("f-description").value.trim(), scope: $("f-scope").value };
   if ($("f-owner").value.trim()) body.owner = $("f-owner").value.trim();
   const dur = (id) => ($(id).value.trim() ? $(id).value.trim() : undefined);
   switch (n.kind) {
@@ -741,6 +789,7 @@ async function save(ev) {
       break;
   }
   try {
+    const was = new Set(brokenEdges(topo));
     const res = await api("PUT", "/api/nodes/" + encodeURIComponent(name), body);
     if (draft) {
       await api("PUT", "/api/layout", { positions: { [name]: canvas.draftPos() } });
@@ -751,6 +800,10 @@ async function save(ev) {
     status(`${name} saved`);
     if (res.key) showKey(name, res.key);
     await load();
+    // a change of settings may leave an edge carrying what the node
+    // after it does not take: said here, and drawn dashed
+    const broke = brokenEdges(topo).filter((e) => !was.has(e));
+    if (broke.length) status(`Saved, but ${broke.join("; ")} no longer connect${broke.length === 1 ? "s" : ""}: the node after does not take what reaches it (the dashed edge). Put a convert or a template node between, or remove the edge.`, true);
     $("sidebar").scrollTop = 0;
   } catch (e) {
     status(e.message, true);

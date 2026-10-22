@@ -96,10 +96,11 @@ export function kindBadge(kind) {
 }
 
 // The kinds of payload that flow along the edges (kinds.go): a .bdf
-// document, data for a template, or any file as received. Ports and
-// edges are colored by them.
-export const PAYLOADS = { bdf: ".bdf document", data: "data (JSON, YAML, CSV, Excel, Parquet)", any: "any file" };
-export const PAYLOAD_COLOR = { bdf: "#2563eb", data: "#16a34a", any: "#64748b" };
+// document, data for a template, or any file as received. Ports, edges
+// and the borders of the nodes are colored by them (canvas.js), as are
+// the jobs' badges: blue, green, amber.
+export const PAYLOADS = { bdf: ".bdf document", data: "data (JSON, YAML, CSV, Excel, Parquet)", any: "any file as received" };
+export const PAYLOAD_COLOR = { bdf: "#2563eb", data: "#16a34a", any: "#d97706" };
 
 // payloadBadge tells what a job carries: its kind and format.
 export function payloadBadge(j) {

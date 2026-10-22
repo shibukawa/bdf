@@ -90,6 +90,7 @@ facts:
     - 'by に $ の鍵・name・user も書ける（metaView の鍵）。fields も同じ'
     - '取り出しのファイル名は元の名前に拡張子を足す（inv-1 → inv-1.bdf）'
     - '人のトークンは /out と /api/me 以外では viewerOf が nobody を返す（401）'
+    - 'main の fl-1b（#131）を合わせたとき、archive を passesOn（ワイルドカードの口）に入れた：archive → printer なら archive の入力も bdf だけになる。キャンバスの PASSES_ON も同じ。export の役は sink（題の帯の色）、アイコンは外へ出る矢印の盆'
     found:
     - 'yuruidb は 1 つの型を 1 つのコレクションに結ぶ。exportList の別名の型を Bind しても Get[exportList] は「data type is not bound」になる。型そのものを Bind する'
     - 'cmd/printmanager の App.Handler は口ごとに manager.Handler を mount する。/out/ を足し忘れて 404（ブラウザの確認で見つけた）。TestOAuthAuthorize に /out の確かめを足した'
