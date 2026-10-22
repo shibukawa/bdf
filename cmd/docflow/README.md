@@ -58,6 +58,8 @@ or with variables:
 | `DOCFLOW_TICK_TOKEN` | bearer token a scheduler calls `POST /api/tick` with |
 | `DOCFLOW_SUBMIT_TOKENS` | `name:secret` pairs that may send jobs (IPP Basic, or bearer `name:secret`); none lets anyone send |
 | `DOCFLOW_SERVERLESS` | refuse a store one process keeps, and tick only when called |
+| `DOCFLOW_SIGN_KEY_FILE`, `DOCFLOW_SIGN_CERT_FILE` | the private key (PEM) that sign nodes sign with, and its certificate followed by its chain |
+| `DOCFLOW_SIGN_TSA` | URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes |
 | `DOCFLOW_TICK_INTERVAL` | how often a process ticks (default 30s) |
 | `DOCFLOW_JOB_KEEP` | how long a job that ended is kept, with its document once nothing shows it (default 336h, 14 days) |
 | `DOCFLOW_ON_ERROR` | nodes a job goes to when a send or a step fails for good at a node without `on_error` edges (a `notify` node) |
@@ -172,7 +174,7 @@ The role `topology` gets the administrator's pages under `/admin` (the
 editor of the topology, apps, inboxes, jobs, deliveries) and the role
 `audit` gets `/audit`. Every node is `PUT /api/nodes/<name>` with its
 `kind` and the kind's settings — `endpoint`, `cups`, `queue`, `class`,
-`filter`, `template`, `convert`, `inbox`, `display`, `printer`,
+`filter`, `template`, `convert`, `sign`, `inbox`, `display`, `printer`,
 `archive`, `sink`, `export` ([help/en/nodes.md](help/en/nodes.md)) —
 and an IPP printer at `/ipp/print/<name>` unless it has `no_ipp: true`; a display's tablets are
 enrolled with a one-time code from the display's sidebar

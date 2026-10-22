@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	"github.com/shibukawa/bdf/sign"
 
 	"github.com/shibukawa/bdf/cmd/docflow/help"
 	"github.com/shibukawa/bdf/docflow"
@@ -78,6 +81,11 @@ func Open(ctx context.Context, cfg DocflowConfig, oidc OIDCConfig) (*App, error)
 		}
 		previous = append(previous, []byte(p))
 	}
+	signer, err := loadSigner(cfg)
+	if err != nil {
+		st.Close()
+		return nil, err
+	}
 	a := &App{cfg: cfg, policy: policy{oidc}, st: st, log: log}
 	a.ports = newPorts(a)
 	conv := printconv.Converter{FontDirs: cfg.FontDirs, NoSystemFonts: cfg.NoSystemFonts}
@@ -89,7 +97,7 @@ func Open(ctx context.Context, cfg DocflowConfig, oidc OIDCConfig) (*App, error)
 		// a process sends deliveries as jobs come, and listens on the
 		// ports of the entry nodes; a function leaves the deliveries to
 		// the scheduler's tick and has no ports
-		Background: !cfg.Serverless, NoPorts: cfg.Serverless, OnChange: a.ports.kick,
+		Background: !cfg.Serverless, NoPorts: cfg.Serverless, OnChange: a.ports.kick, Signer: signer,
 	})
 	if err != nil {
 		st.Close()
@@ -244,4 +252,28 @@ func firstOr(s, or string) string {
 		return or
 	}
 	return s
+}
+
+// loadSigner reads the key that sign nodes sign with: none without
+// docflow.sign_key_file.
+func loadSigner(cfg DocflowConfig) (*docflow.Signer, error) {
+	if cfg.SignKeyFile == "" && cfg.SignCertFile == "" {
+		return nil, nil
+	}
+	if cfg.SignKeyFile == "" || cfg.SignCertFile == "" {
+		return nil, errors.New("docflow: docflow.sign_key_file and docflow.sign_cert_file go together")
+	}
+	kb, err := os.ReadFile(cfg.SignKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("docflow: docflow.sign_key_file: %w", err)
+	}
+	cb, err := os.ReadFile(cfg.SignCertFile)
+	if err != nil {
+		return nil, fmt.Errorf("docflow: docflow.sign_cert_file: %w", err)
+	}
+	key, chain, err := sign.ParsePEM(kb, cb)
+	if err != nil {
+		return nil, fmt.Errorf("docflow: the signing key: %w", err)
+	}
+	return &docflow.Signer{Key: key, Chain: chain, TSA: cfg.SignTSA}, nil
 }

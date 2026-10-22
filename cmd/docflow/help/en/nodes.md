@@ -1,6 +1,6 @@
 # Node kinds
 
-Every node has a kind, and the settings of its kind. The entries — endpoints and CUPS servers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; displays, printers, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. Every node, whatever its kind, is also an IPP printer at `/ipp/print/<name>` ([IPP](entries.md#ipp)), unless “No IPP printer” is ticked in its sidebar (`no_ipp`): such a node is reached only from the nodes before it, and IPP clients do not list it.
+Every node has a kind, and the settings of its kind. The entries — endpoints and CUPS servers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. Every node, whatever its kind, is also an IPP printer at `/ipp/print/<name>` ([IPP](entries.md#ipp)), unless “No IPP printer” is ticked in its sidebar (`no_ipp`): such a node is reached only from the nodes before it, and IPP clients do not list it.
 
 ## Every node {#common}
 
@@ -91,6 +91,15 @@ Makes a `.bdf` document of a file that reaches it as received — a PDF, an Offi
 | Forwards to (`to`) | the nodes the document goes to |
 | The file as it came to (`original`) | the nodes the file goes to as it reached the node, traced with the document ([Originals and traces](flow.md#traces)) |
 | Formats (`formats`) | the formats it converts; none converts any the converter reads |
+
+## Sign {#sign}
+
+Signs the `.bdf` document that reaches it with Docflow's key, as a witness, and sends the signed document on to every node of `to`. The person who sent the job holds no key: Docflow vouches for them. The signature says what Docflow saw — the role, the node, the job, who sent it as Docflow verified it and when it was received — and `bdf verify` shows it. It finds a change made to the document after it; it does not prevent one. The key is Docflow's (`DOCFLOW_SIGN_KEY_FILE` and `DOCFLOW_SIGN_CERT_FILE`, with `DOCFLOW_SIGN_TSA` for a time-stamp); without one the node fails its jobs. The step is done like a delivery.
+
+| Setting | |
+|---|---|
+| Forwards to (`to`) | the nodes the signed document goes to |
+| Role (`sign_role`) | the role the signature says Docflow signs in (`witness` when empty) |
 
 ## Inbox {#inbox}
 
