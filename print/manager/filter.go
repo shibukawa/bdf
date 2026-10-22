@@ -89,12 +89,12 @@ func (mt Match) compile() (*compiled, error) {
 }
 
 // fits tells a job with a payload the match fits.
-func (c *compiled) fits(j *Job, p *Payload) bool {
+func (c *compiled) fits(j *Job, p *Payload, t *Trace) bool {
 	if c.m.Kind != "" && (p == nil || p.Kind != c.m.Kind) {
 		return false
 	}
 	if len(c.meta) > 0 {
-		view := metaView(j, p)
+		view := metaView(j, p, t)
 		for k, re := range c.meta {
 			v, ok := view[k]
 			if !ok || !re.MatchString(v) {
@@ -168,7 +168,7 @@ func (m *Manager) routeFilter(ctx context.Context, r *routing, name, from string
 			r.add(Leg{Node: name, Kind: KindFilter, From: from, State: LegError, Error: err.Error()})
 			return
 		}
-		if c.fits(r.job, r.payload) {
+		if c.fits(r.job, r.payload, r.trace) {
 			r.add(Leg{Node: name, Kind: KindFilter, From: from, State: LegRouted, Member: fmt.Sprintf("rule %d", i+1)})
 			for _, to := range rule.To {
 				m.route(ctx, r, to, name, depth+1)

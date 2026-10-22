@@ -201,8 +201,8 @@ node it reached. The document is kept once for all of them.
 | `queue` | forwards the job to every node of `to` (a fan-out when there are several) | `to` |
 | `class` | sends the job to one of `members`, in turn (`round-robin`, the default) or the first (`failover`); a printer that does not take it is skipped for the next member | `members`, `policy` |
 | `filter` | sends the job on by `rules`: the first whose `match` fits (`name`, `user` and `format` as RE2 regular expressions, `min_pages`, `max_pages`, `meta` as regular expressions by key of the job's metadata, `kind` of the payload: `bdf`, `data` or `any`) forwards it to the rule's `to`; a job no rule fits goes to `otherwise`, or ends there (dropped) when there is none. What reaches it goes on as it is | `rules`, `otherwise` |
-| `template` | fills one of its templates (`PUT /api/nodes/<name>/templates/<id>`; they go with the node) with the data that reaches it, and sends the form on as a .bdf document to every node of `to`. `template` names the template, or `template_from` the metadata key whose value names it (a sender's `X-Meta-Doc-Type`); `list_name` names data that is a list of records (a CSV file, a sheet, a JSON array; the file's name by default), an object is the data itself; `strict` refuses data that lacks a name the template looks up. The step is done like a delivery (the background, or the tick), and fails for good when the template is missing or the data cannot be read | `to`, `template`, `template_from`, `list_name`, `strict` |
-| `convert` | makes a .bdf document of a file that reaches it as received (a PDF, an Office document, a picture …; `formats` limits which), and sends it on to every node of `to`; a .bdf goes on as it is. JSON and YAML have no document of their own (fill a template with them), and a CSV or Parquet file has no pages to print yet. The step is done like a delivery | `to`, `formats` |
+| `template` | fills one of its templates (`PUT /api/nodes/<name>/templates/<id>`; they go with the node) with the data that reaches it, and sends the form on as a .bdf document to every node of `to`. `template` names the template, or `template_from` the metadata key whose value names it (a sender's `X-Meta-Doc-Type`); `list_name` names data that is a list of records (a CSV file, a sheet, a JSON array; the file's name by default), an object is the data itself; `strict` refuses data that lacks a name the template looks up. The step is done like a delivery (the background, or the tick), and fails for good when the template is missing or the data cannot be read. The data as it came goes on to every node of `original` (see *Originals and traces* below) | `to`, `original`, `template`, `template_from`, `list_name`, `strict` |
+| `convert` | makes a .bdf document of a file that reaches it as received (a PDF, an Office document, a picture …; `formats` limits which), and sends it on to every node of `to`; a .bdf goes on as it is. JSON and YAML have no document of their own (fill a template with them), and a CSV or Parquet file has no pages to print yet. The step is done like a delivery. The file as it came goes on to every node of `original` (see *Originals and traces* below) | `to`, `original`, `formats` |
 | `inbox` | holds the job until a person releases it to nodes (those of `to`, or any when `to` is empty) or discards it; ended items stay `keep` (14 days) | `to`, `keep` |
 | `display` | shows the job as a slip on the devices enrolled there, and prints on paper what nobody opened within `fallback.after` (or every unopened slip while no device is connected); slips done or canceled stay `keep` (14 days) | `fallback` (`printer`, `after`), `keep`, `offline_after` |
 | `printer` | prints the job on paper, on a printer the manager reaches over the network (`ipp`, `ipps`, `socket`, `lpd`). With `preview`, the URL of the printer on a fake printer farm's API (`tools/fakeprinter`: `http://host:port/api/printers/<printer>`), what the fake printer received is shown beside the node, as the farm read it back (`GET /api/nodes/<name>/preview`, `…/preview/<job>/pages/<p>.png`) | `url`, `route` (`direct`), `preview` |
@@ -256,6 +256,29 @@ the manager verified, under keys that start with `$`: `$job`,
 filter's rules and a template node's `template_from` see those, and the
 payload's `$kind`, `$format`, `$pages`, `$size` and `$sha256`, and the
 job's `name` and `user`.
+
+### Originals and traces
+
+A template or a convert node sends the .bdf it makes along `to` and,
+along `original`, what it took as it was (the data, the file received):
+an archive of originals beside an archive of what was made, say. Both go
+on with a `trace` of the step: its `id` (the step's delivery id, the
+same on both sides), the `node`, the `role` of this side (`source` along
+`original`, `output` along `to`), and both payloads (`source`,
+`output`: `payload`, `kind`, `format`, `name`, `sha256`) with the
+`key` and the `object` an archive names each by
+(`<received day>.<job id>.<sha256 head>`, the record `<key>.json`). An
+archive writes the trace into its record, and an export into its
+entries, so that from either object the other is found by its name in
+the archive it went to; the manager does not look for it, nor know
+whether it was written. The trace goes with the payload through queues,
+filters, classes, inboxes and an archive, until the next template or
+convert node; a filter's rules see it as `$trace`, `$trace_role`,
+`$trace_node` and `$trace_peer` (the other side's key). An edge along
+`original` carries what reaches the node, so that it is typed as an
+edge of a queue is (a file received does not go to a printer); the
+editor draws it dashed. Both sides are of the same job, so an export
+after each archive lists them under the same job number.
 
 A port of an entry node is the process's: it is opened when the node is
 put and closed when the node loses it (and checked at every tick), on

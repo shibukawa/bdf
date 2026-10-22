@@ -360,3 +360,81 @@ func TestMeta(t *testing.T) {
 		}
 	}
 }
+
+// A convert node sends the document it makes along To and the file it
+// took, as it was, along Original: to archives of their own, each record
+// with the same trace, which names the other's objects. A filter sees the
+// trace; a printer along Original, which a file does not reach, is
+// refused.
+func TestOriginalTrace(t *testing.T) {
+	e := newEnv(t, func(o *Options) { o.Converter = printconv.Converter{NoSystemFonts: true} })
+	ctx := context.Background()
+	e.printer("laser")
+	dir := t.TempDir()
+	madeStore := "bbolt:" + filepath.ToSlash(filepath.Join(dir, "made.db"))
+	origStore := "bbolt:" + filepath.ToSlash(filepath.Join(dir, "orig.db"))
+	e.node("made", Node{Kind: KindArchive, Store: madeStore}, http.StatusOK)
+	e.node("orig", Node{Kind: KindArchive, Store: origStore}, http.StatusOK)
+	e.node("conv", Node{Kind: KindConvert, To: []string{"made"}}, http.StatusOK)
+	var raw struct {
+		Key string `json:"key"`
+	}
+	json.Unmarshal(e.node("raw", Node{Kind: KindEndpoint, Output: OutputFile, To: []string{"conv"}}, http.StatusOK), &raw)
+	// the file goes on along Original as it came: not to a printer
+	if out := e.node("conv", Node{Kind: KindConvert, To: []string{"made"}, Original: []string{"laser"}}, http.StatusBadRequest); !strings.Contains(string(out), "laser (printer) takes bdf, but any reaches it: raw → conv → laser") {
+		t.Fatalf("typed original: %s", out)
+	}
+	// along Original through a filter that routes by the trace's side
+	e.node("side", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Meta: map[string]string{"$trace_role": "^source$"}}, To: []string{"orig"}}}}, http.StatusOK)
+	e.node("conv", Node{Kind: KindConvert, To: []string{"made"}, Original: []string{"side"}}, http.StatusOK)
+	var topo []TopoNode
+	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &topo)
+	for _, n := range topo {
+		if n.Name == "conv" && (strings.Join(n.Reaches, "+") != "any" || strings.Join(n.Emits, "+") != "bdf+any" || len(n.Broken) != 0) {
+			t.Fatalf("conv %+v", n)
+		}
+		if n.Name == "side" && strings.Join(n.Accepts, "+") != "bdf+data+any" {
+			t.Fatalf("side %+v", n)
+		}
+	}
+
+	pic := testPNG(t)
+	res, out := e.do(nil, "POST", "/in/raw?name=photo.png", raw.Key, pic)
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("png: %d %s", res.StatusCode, out)
+	}
+	var j Job
+	json.Unmarshal(out, &j)
+	e.tick()
+	e.tick()
+	got := e.job(j.Number)
+	if got.State != JobCompleted || legs(got) != "raw:routed conv:done made:done side:routed(rule 1) orig:done" || len(got.Payloads) != 2 {
+		t.Fatalf("job %s: %+v", legs(got), got.Legs)
+	}
+	record := func(store, collection string, p *Payload) ArchiveRecord {
+		st, err := e.st.archive(ctx, store, collection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, err := st.Open(ctx, archiveKey(got, p)+".json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Close()
+		var rec ArchiveRecord
+		json.NewDecoder(r).Decode(&rec)
+		return rec
+	}
+	src, made := got.received(), &got.Payloads[1]
+	a, b := record(madeStore, "archive-made", made), record(origStore, "archive-orig", src)
+	if a.Trace == nil || b.Trace == nil || a.Trace.ID != got.Legs[1].Ref || b.Trace.ID != a.Trace.ID || a.Trace.Node != "conv" {
+		t.Fatalf("traces %+v %+v", a.Trace, b.Trace)
+	}
+	if a.Trace.Role != TraceOutput || b.Trace.Role != TraceSource || a.Format != "bdf" || b.Format != "image" {
+		t.Fatalf("sides %+v %+v", a, b)
+	}
+	// each names the other's objects in its own archive
+	if a.Trace.peer().Object != b.Object || b.Trace.peer().Object != a.Object || a.Trace.Source.Key != archiveKey(got, src) || b.Trace.Output.SHA256 != made.SHA256 {
+		t.Fatalf("peers %+v / %s, %+v / %s", a.Trace, a.Object, b.Trace, b.Object)
+	}
+}

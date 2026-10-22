@@ -239,7 +239,7 @@ func (m *Manager) transform(ctx context.Context, d *Delivery, n *Node, j *Job) (
 func (m *Manager) fill(ctx context.Context, n *Node, j *Job, in *Payload) (*bdf.Document, error) {
 	id := n.Template
 	if n.TemplateFrom != "" {
-		if id = metaView(j, in)[n.TemplateFrom]; id == "" {
+		if id = metaView(j, in, nil)[n.TemplateFrom]; id == "" {
 			return nil, final("the metadata has no %s to name the template", n.TemplateFrom)
 		}
 	}
@@ -359,14 +359,16 @@ func (m *Manager) keepDocument(ctx context.Context, id, node, name string, doc *
 
 // continueWith sends a job on from a node with the payload the node
 // made: the payload is added to the job, the node's leg says what it
-// made, and the job follows the node's edges with it.
+// made, and the job follows the node's To with it and its Original with
+// the payload the node took, each with the trace of the step.
 func (m *Manager) continueWith(ctx context.Context, d *Delivery, n *Node, p *Payload) error {
 	return m.continueFrom(ctx, d, n, p, true, nil)
 }
 
 // continueFrom routes the job on from a node whose step is done, with a
-// payload: one the node made (made: the leg's Made), or the one it took
-// (an archive, which sends on what it wrote, archived).
+// payload: one the node made (made: the leg's Made, and the payload the
+// node took goes along Original), or the one it took (an archive, which
+// sends on what it wrote, archived, with the trace it came with).
 func (m *Manager) continueFrom(ctx context.Context, d *Delivery, n *Node, p *Payload, made bool, archived *archiveRef) error {
 	j, err := m.JobOfNumber(ctx, d.Job)
 	if err != nil {
@@ -378,9 +380,24 @@ func (m *Manager) continueFrom(ctx context.Context, d *Delivery, n *Node, p *Pay
 	if j.payload(p.ID) == nil {
 		j.Payloads = append(j.Payloads, *p)
 	}
-	r := &routing{job: j, now: m.now(), payload: j.payload(p.ID), archived: archived}
-	for _, to := range n.To {
-		m.route(ctx, r, to, n.Name, 0)
+	r := &routing{job: j, now: m.now(), payload: j.payload(p.ID), archived: archived, trace: d.Trace}
+	if made {
+		in := j.payload(d.Payload)
+		if in == nil {
+			in = r.payload
+		}
+		r.trace = newTrace(d, n, j, in, r.payload, TraceOutput)
+		for _, to := range n.To {
+			m.route(ctx, r, to, n.Name, 0)
+		}
+		r.payload, r.trace = in, r.trace.as(TraceSource)
+		for _, to := range n.Original {
+			m.route(ctx, r, to, n.Name, 0)
+		}
+	} else {
+		for _, to := range n.To {
+			m.route(ctx, r, to, n.Name, 0)
+		}
 	}
 	if _, err := m.changeJob(ctx, j.ID, func(j *Job) error {
 		if j.payload(p.ID) == nil {
