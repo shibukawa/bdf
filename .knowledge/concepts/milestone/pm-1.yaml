@@ -3,7 +3,7 @@ type: milestone
 title: pm-1 — 現場の表示（倉庫ごとの仮想プリンタ、端末の登録と鍵の認証、紙への逃げ道）を popcornweb と yuruidb の上に、プロセスでもサーバーレスでも
 summary: >-
   requirement:print-manager の最初の実装のまとまり。print/manager（状態を持たない芯：場所、プリンタ、伝票、端末、IPP の受け口、
-  API、tick）と cmd/printmanager（popcornweb のアプリ：設定、タブレット・管理の画面、プロセスの時計）。保存は yuruidb の URL で選ぶ
+  API、tick）と cmd/docflow（popcornweb のアプリ：設定、タブレット・管理の画面、プロセスの時計）。保存は yuruidb の URL で選ぶ
   （bbolt の 1 ファイル、記録も文書も S3、DynamoDB の記録など）。実プリンタへは direct（print.Print・PrintRaw を借りの下で）。
   2026-10-20〜21 に実装。保管庫（S3 の Object Lock）は pm-2。
 lifecycle: active
@@ -13,7 +13,7 @@ scope:
 constraints:
 - インスタンスに状態を持たない。どの試験も要求ごとに Manager を作り直す
 - 常駐の処理に頼らない。期限は tick（POST /api/tick か、プロセスの時計）
-- print/manager は popcornweb に依らない（http.Handler を出し、cmd/printmanager が載せる）
+- print/manager は popcornweb に依らない（http.Handler を出し、cmd/docflow が載せる）
 - 保存先は yuruidb の条件付きの書き込みを持つものだけ。サーバーレスでは 1 つのプロセスの保存先（bbolt）を断る
 capabilities:
   display:
@@ -72,40 +72,40 @@ verification:
   manager-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     authority: observed
     evidence:
-      path: print/manager/manager_test.go
+      path: docflow/manager_test.go
       locator: 'TestDisplay、TestSubmitAPI、TestFallback、TestFallbackFails、TestTicksAtOnce（8 本の tick で 3 枚だけ）、TestDevices、TestStore、TestDuration。どれも要求ごとに New した Manager（httptest）。偽プリンタは print/fakeprinter。2026-10-21 macOS で -race -count=2 が通った'
   s3-tests:
     state: passed
     method: integration
-    test: BDF_PM_S3_ENDPOINT=http://127.0.0.1:19000 AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… go test -race -run TestS3 ./print/manager/
+    test: BDF_DOCFLOW_S3_ENDPOINT=http://127.0.0.1:19000 AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=… go test -race -run TestS3 ./docflow/
     authority: observed
     evidence:
-      path: print/manager/s3_test.go
+      path: docflow/s3_test.go
       locator: '記録も文書も S3（rustfs/rustfs:latest をローカルの Docker で。バケット pm-records・pm-docs）。yuruidb の S3 の確かめ（条件付きの書き込み）が通り、6 本の同時の tick で 2 枚だけ刷った。2026-10-21 -race -count=3 で通った。実際の AWS の S3 では未確認'
   app-tests:
     state: passed
     method: unit
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/app_test.go
+      path: cmd/docflow/handlers/app_test.go
       locator: 'TestApp（サーバーレスで bbolt を断る、secret の無い submit token を断る、/・/tablet・/admin の画面、/api の載せ）'
   browser-tablet:
     state: passed
     method: manual
     authority: observed
     evidence:
-      path: cmd/printmanager/public/tablet.js
+      path: cmd/docflow/public/tablet.js
       locator: '2026-10-21 内蔵ブラウザで：登録コードの URL から登録（WebCrypto の鍵）、API で送った PDF（converter/pdf/testdata/reportlab-mixed.pdf）が 4 秒のポーリングでボードに出て、開いてページの PNG を見て、完了で「完了・取り消し」に移った。/admin でトークンを入れ、端末の一覧と登録コードの QR を出した'
   container-smoke:
     state: passed
     method: manual
     authority: observed
     evidence:
-      path: cmd/printmanager/deploy/lambda/Dockerfile
+      path: cmd/docflow/deploy/lambda/Dockerfile
       locator: '2026-10-21 linux/arm64 のバイナリを gcr.io/distroless/cc-debian12 に入れ、APP_ENV=prod・MANAGER_SERVERLESS=true・S3（rustfs）で起動し、場所を作って PDF を送ると変換して受けた。Lambda Web Adapter のイメージは取ってきていない（Dockerfile は組み立てていない）'
   lambda-deploy:
     state: not_run
@@ -119,8 +119,8 @@ facts:
       packages:
       - 'print/manager：store.go（URL で yuruidb の記録と Blob を開く）、model.go、manager.go（場所・プリンタ・ボード・状態）、submit.go（受け付け、変換、ページの PNG）、devices.go（登録コード、鍵、challenge、セッション）、send.go（借りの下の送り、tick）、ipp.go、http.go'
       - 'print/printconv：cmd/bdf の printConverter を移した（bdf printd と Manager で共用）'
-      - 'cmd/printmanager：main.go、handlers（config.go、app.go、pages.pw.html と生成物）、public（tablet.js、admin.js、app.css）、deploy/lambda/Dockerfile、README.md'
-      - 'リポジトリの直下に popcornweb.toml（pw は go.mod の隣を求める。生成は cmd/printmanager/handlers だけ）。CI に生成物の古さの確かめ'
+      - 'cmd/docflow：main.go、handlers（config.go、app.go、pages.pw.html と生成物）、public（tablet.js、admin.js、app.css）、deploy/lambda/Dockerfile、README.md'
+      - 'リポジトリの直下に popcornweb.toml（pw は go.mod の隣を求める。生成は cmd/docflow/handlers だけ）。CI に生成物の古さの確かめ'
     changed_from_plan:
       - '端末のセッションは popcornweb の session ではなく manager の HMAC のクッキー（MaxAge 10 分、SameSite=Strict、HttpOnly）。print/manager を popcornweb から離し、ストア無しで試せるようにした'
       - '場所ごとの一覧（list-by-location）は場所の状態の記録（Open・Ended・Devices の ID の集合と Seq）。Seq がボードの ETag'

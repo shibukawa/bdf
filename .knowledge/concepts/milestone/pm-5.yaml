@@ -67,25 +67,25 @@ verification:
   manager-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     authority: observed
     evidence:
-      path: print/manager/topology_test.go
+      path: docflow/topology_test.go
       locator: 'TestNodes（逃げ道はプリンタだけ、プリンタは url が要る、accept・formats の確かめ、display と printer は種類を変えない、/api/nodes で全部）、TestEndpoint（/api/nodes/<名前>/templates/<id>、別のエンドポイントのテンプレートは 404、id に点は 400、template だけの入口は文書を 415（IPP も）、file だけは差し込みを 415、formats、refuse-document の監査 3 件、エンドポイントを消すとテンプレートも消える）。pm-1・pm-4・pm-auth-1 のテストは /api/nodes に書き換えて通った。2026-10-21 macOS'
   app-tests:
     state: passed
     method: integration
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/login_test.go
+      path: cmd/docflow/handlers/login_test.go
       locator: 'TestLogin：管理者は /admin（→ topology.js）・/admin/inboxes・/admin/jobs・/admin/deliveries・/audit を開け、他は 403。AppBar の Admin は /admin/topology。TestApp・TestDevRoster は /api/nodes と PutNode に'
   browser-console:
     state: passed
     method: manual
     authority: observed
     evidence:
-      path: cmd/printmanager/public/topology.js
+      path: cmd/docflow/public/topology.js
       locator: '2026-10-21 pw dev（開発用 IdP の Ada Admin）を内蔵ブラウザで：パレットからプリンタ laser（ipp://127.0.0.1:1/ipp/print を欄で組み立て）、表示 wh-a（fallback laser、10m）、エンドポイント intake（to wh-a、formats bdf・docx）を置き、鍵のモーダルが 1 度出た。ノードのドラッグで位置が /api/layout に残り、both の口から laser へのドラッグで辺（トースト both → laser）。サイドバー：エンドポイントの Entry・Key・Templates、表示の Devices と「Add a device」の QR のモーダル、インボックスの「1 held」。/admin/inboxes に保留 1 件、/admin/jobs に全ジョブ、/admin/deliveries、/audit に put-node の記録。直した所：datalist は属性で、pattern の v フラグ、新しいノードは空いた所に、サイドバーのスクロールを戻す'
 facts:
   delivery:
@@ -94,7 +94,7 @@ facts:
       date: '2026-10-21'
       packages:
       - 'print/manager：model.go（Node に Accept・Formats・Fallback・OfflineAfter・URL・Route、Location と Printer を外す、Template に Endpoint、edges()）、nodes.go（種類ごとの PutNode、routingKinds だけ種類を変える、TopoNode は Node を埋め込み In・Templates・Held・Open・Devices・Pending、KnownFormats・checkFormats）、manager.go（display・printer・nodesOfKind）、store.go（locations・printers のコレクションを外す）、http.go（/api/nodes/{name}/board・devices・enrollments・templates、/api/formats；/api/locations と /api/printers の PUT・GET・DELETE を外し、/api/locations/{name}/slips は残す）、endpoint.go（テンプレートは <endpoint>.<id>、点の無い id、removeTemplatesOf、SubmitFill は accept file を 415、serveIn は refuse-document を監査）、submit.go（Submit がエンドポイントの accept と formats を見る）、send・deliver・scope・ipp・devices・route は Node に'
-      - 'cmd/printmanager：pages.pw.html（AdminNav、AdminPage、Topology・Inboxes・AdminJobs・Deliveries、Audit も AdminPage）、app.go（/admin → /admin/topology と 4 ページ）、public/admin.js（共通の部品、ナビの自分のタブ）、topology.js（エディタ）、inboxes.js、admin-jobs.js（?dest=、All jobs）、deliveries.js（Tick now）、audit.js、README'
+      - 'cmd/docflow：pages.pw.html（AdminNav、AdminPage、Topology・Inboxes・AdminJobs・Deliveries、Audit も AdminPage）、app.go（/admin → /admin/topology と 4 ページ）、public/admin.js（共通の部品、ナビの自分のタブ）、topology.js（エディタ）、inboxes.js、admin-jobs.js（?dest=、All jobs）、deliveries.js（Tick now）、audit.js、README'
       - '.claude/launch.json（pw dev を 8080 で。preview_start 用）'
     changed_from_plan:
     - 'RotateKey をエンドポイントでないノードに呼ぶと 400（pm-4 は locationRecord が無く 404 だった）'

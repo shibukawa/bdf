@@ -42,7 +42,7 @@ non_goals:
 facts:
   pages_and_roles:
     source: 2026-10-21 利用者「トップページはログイン画面が良い。admin も一般ユーザーの上位互換なので、一般ユーザーとしての画面が表示され、特別な管理者向けページに遷移できてトポロジーの管理（API キー発行とかもふくめて）や監査情報の閲覧ができる。将来的にはトポロジー管理と監査もロールを分けて個別に権限が付与できる様に」
-    now: milestone:pm-4 で / をログイン（管理者トークン、submit トークンの name:secret）、/jobs を利用者の画面（自分のジョブ、ノードへの印刷）、/admin（トポロジー、テンプレート、エンドポイントの鍵、インボックス、送り待ち、場所と端末）と /audit（監査ログ）を管理者だけに。監査ログは print/manager/people.go の audit コレクション
+    now: milestone:pm-4 で / をログイン（管理者トークン、submit トークンの name:secret）、/jobs を利用者の画面（自分のジョブ、ノードへの印刷）、/admin（トポロジー、テンプレート、エンドポイントの鍵、インボックス、送り待ち、場所と端末）と /audit（監査ログ）を管理者だけに。監査ログは docflow/people.go の audit コレクション
     after_pm_auth_1: milestone:pm-auth-1 で画面のトークンのログインを OIDC に置き換えた。/ は IdP へのサインインのボタン（サインイン済みなら /jobs へ）、/jobs・/admin・/audit はサインインしていなければ IdP へ、/admin と /audit は管理者でなければ 403。トークンは API（スクリプト）だけに残る。サインインとその拒否を監査ログに書く（サインアウトは popcornweb の /auth/logout で、記録しない）
     roles_planned:
       user: 自分のジョブを見る・取り消す・刷る（範囲は principals の job_scope）
@@ -195,7 +195,7 @@ facts:
         popcornweb の plugin/auth（oidc_only、認可コード + PKCE S256）。ログインの途中の状態（state・nonce・verifier）は manager の保存先（yuruidb の states）に置く auth の backend「yuruidb」、
         人のセッションは popcornweb の cookie の backend（keyring は session.keyring.secret、無ければ MANAGER_SECRET から HMAC で作る）。どちらもインスタンスに状態を持たない。
         設定は [oidc]（OIDC_*）：groups_claim（点の道）、groups_prefix、admins（issuer#subject かメール）、admin_groups、allowed.issuers・domains・groups。
-        IdP の issuer・client_id・client_secret は popcornweb の [auth.oidc]（AUTH_OIDC_*）。auth と session の残り（mode、保護する道、backend）は cmd/printmanager の ConfigureAuth が決める。
+        IdP の issuer・client_id・client_secret は popcornweb の [auth.oidc]（AUTH_OIDC_*）。auth と session の残り（mode、保護する道、backend）は cmd/docflow の ConfigureAuth が決める。
         グループはログインのたびに人の記録（people）に写し、管理者かは要求ごとにその記録と設定から決める。milestone:pm-4 のトポロジーの上で、すべてのノード（表示・プリンタ・queue・class など）に scope（personal・group・shared）と owner。
         ジョブの group は送り先のノードの（group のとき）、表示で無ければ逃げ道のプリンタの。見える＝送った人・group の人・管理者。取り消せる＝送った人・管理者（open_questions.group-cancel の暫定のとおり）。
         画面は pm-4 の /jobs（自分とグループのジョブ、刷れるノードへの印刷）・/admin・/audit。トークン（管理・送信）は Viewer として同じ判断に載る
@@ -275,7 +275,7 @@ history:
       出力先のプリンタのデバイスが個人用、グループ用みたいな感じかもしれないが」。主体は OIDC 認可コードの admin（全部の履歴、仮想プリンタ・アプリの追加）と
       一般（印刷、自分の履歴とスプール）、OIDC クレデンシャルフローの他の Web アプリ（ファイルとテンプレートの印刷）、OIDC デバイスフローの仮想プリンタ＝
       サービスユーザー（タブレットなどから受け取ったファイルのみ）。/knowledge-memory で整理を求めた。pm-1（作業ツリー print-manager-requirements-6fb34b、
-      未コミット）の print/manager と cmd/printmanager の今の認証（MANAGER_SECRET の HMAC、AdminToken、SubmitTokens、TickToken、登録コード）を読んで書いた
+      未コミット）の print/manager と cmd/docflow の今の認証（MANAGER_SECRET の HMAC、AdminToken、SubmitTokens、TickToken、登録コード）を読んで書いた
   answered-1:
     summary: 2026-10-21 利用者が AskUserQuestion で、認可サーバーは混成、範囲はプリンタが既定、仮想プリンタは届いたジョブを見る（推奨の 3 つ）を選び、グループは「idpのclaimだが、どのキーがそれに該当するかは設定で持てる様にする必要がある」と答えた
   secret-hash-chosen:

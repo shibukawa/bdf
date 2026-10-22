@@ -1,0 +1,84 @@
+package handlers
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"path/filepath"
+	"testing"
+
+	"github.com/shibukawa/bdf/docflow"
+	docflowipp "github.com/shibukawa/bdf/docflow/io/ipp"
+	"github.com/shibukawa/bdf/print/ipp"
+)
+
+// The process listens on the ports of the entry nodes, and stops when a
+// node loses its port.
+func TestPorts(t *testing.T) {
+	ctx := context.Background()
+	a, err := Open(ctx, DocflowConfig{Records: "bbolt:" + filepath.Join(t.TempDir(), "pm.db"), AdminToken: "t", MaxDocumentMB: 1}, OIDCConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	free := func() int {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		port := ln.Addr().(*net.TCPAddr).Port
+		ln.Close()
+		return port
+	}
+	cupsPort, apiPort := free(), free()
+	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "wh-a", Kind: docflow.KindDisplay}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "cups1", Kind: docflowipp.KindCups, To: []string{"wh-a"}, Port: cupsPort}); err != nil {
+		t.Fatal(err)
+	}
+	key, err := a.m.PutNode(ctx, docflow.Node{Name: "api", Kind: docflow.KindEndpoint, To: []string{"wh-a"}, Port: apiPort})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ports.reconcile(ctx)
+	if open := a.ports.open(); len(open) != 2 {
+		t.Fatalf("ports open %v", open)
+	}
+	// a CUPS client prints to the CUPS server's one printer, the node, at
+	// /printers/<node> of its port; the job goes on to the display
+	c := &ipp.Client{URL: fmt.Sprintf("http://127.0.0.1:%d/printers/cups1", cupsPort), User: "lp"}
+	js, err := c.PrintJob(ctx, "from cups", "application/x-bdf", nil, bytes.NewReader(doc(t)))
+	if err != nil || js.State != ipp.JobCompleted {
+		t.Fatalf("print through the CUPS port: %+v %v", js, err)
+	}
+	if j, err := a.m.JobOfNumber(ctx, js.ID); err != nil || j.Dest != "cups1" || len(j.Legs) != 2 || j.Legs[1].Node != "wh-a" {
+		t.Fatalf("the job through the CUPS port: %+v %v", j, err)
+	}
+
+	// an application posts to the endpoint's port
+	req, _ := http.NewRequest("POST", fmt.Sprintf("http://127.0.0.1:%d/?name=x", apiPort), bytes.NewReader(doc(t)))
+	req.Header.Set("Authorization", "Bearer "+key)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		t.Fatalf("post to the endpoint's port: %d", res.StatusCode)
+	}
+	// the endpoint loses its port: the listener closes
+	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "api", Kind: docflow.KindEndpoint, To: []string{"wh-a"}}); err != nil {
+		t.Fatal(err)
+	}
+	a.ports.reconcile(ctx)
+	if open := a.ports.open(); len(open) != 1 || open[0] != cupsPort {
+		t.Fatalf("ports open %v", open)
+	}
+	if res, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/", apiPort), "application/octet-stream", nil); err == nil {
+		res.Body.Close()
+		t.Fatal("the endpoint's port is still open")
+	}
+}

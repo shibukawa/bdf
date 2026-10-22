@@ -53,38 +53,38 @@ verification:
   manager-tests:
     state: passed
     method: integration
-    test: go test -race ./print/manager/
+    test: go test -race ./docflow/
     authority: observed
     evidence:
-      path: print/manager/export_test.go
+      path: docflow/export_test.go
       locator: 'TestExport、TestExportAfterFilter、TestOAuthCode。2026-10-22 macOS'
   app-tests:
     state: passed
     method: integration
-    test: go test ./cmd/printmanager/...
+    test: go test ./cmd/docflow/...
     authority: observed
     evidence:
-      path: cmd/printmanager/handlers/login_test.go
+      path: cmd/docflow/handlers/login_test.go
       locator: 'TestOAuthAuthorize：popcornweb と print/fakeidp で、未ログインの /oauth/authorize は /auth/login へ、ログイン後は code、RFC 7636 の例の verifier で交換、トークンで /api/me。埋め込みの資産は pw generate の後'
   js-syntax:
     state: passed
     method: static
-    test: node --check cmd/printmanager/public/*.js
+    test: node --check cmd/docflow/public/*.js
     authority: observed
   browser:
     state: passed
     method: manual
     authority: observed
     evidence:
-      path: cmd/printmanager/public/topology.js
+      path: cmd/docflow/public/topology.js
       locator: '2026-10-22 pw dev（8081）を内蔵ブラウザで：API で billing → vault（archive、to statements）→ statements（export、by customer、fields invoice）を置き 3 件送った。Mina Member の /topology で Statements のサイドバーの Listed here は member@example.com の INV-3 だけ、セッションの /out/statements も 1 件。Ada Admin の編集のサイドバーに Owner''s key・Subject・Fields・Entries・Apps allowed・Readers・3 件。/admin/apps で公開クライアント（http://localhost:5173/callback、scope export）を足し、秘密なしで保存。後で dev の記録から消した' 
 facts:
   delivery:
     implemented:
       date: '2026-10-22'
       packages:
-      - 'print/manager/export.go（新）、oauth.go（新）、model.go、scope.go、apps.go、deliver.go、transform.go（continueFrom）、route.go、people.go、nodes.go、live.go、store.go、http.go'
-      - 'cmd/printmanager：handlers/auth.go（publicPaths に /out/** と /oauth/token、Viewer.Subject）、pages.pw.html、public/admin.js・canvas.js・topology.js・apps.js、README の Exports と public client'
+      - 'docflow/export.go（新）、oauth.go（新）、model.go、scope.go、apps.go、deliver.go、transform.go（continueFrom）、route.go、people.go、nodes.go、live.go、store.go、http.go'
+      - 'cmd/docflow：handlers/auth.go（publicPaths に /out/** と /oauth/token、Viewer.Subject）、pages.pw.html、public/admin.js・canvas.js・topology.js・apps.js、README の Exports と public client'
     decisions:
     - '持ち主の一覧の鍵は subject で比べる形（email は小文字）にしてからハッシュ。Alice@Example.com と alice@example.com は 1 つの一覧'
     - 'by に $ の鍵・name・user も書ける（metaView の鍵）。fields も同じ'
@@ -93,7 +93,7 @@ facts:
     - 'main の fl-1b（#131）を合わせたとき、archive を passesOn（ワイルドカードの口）に入れた：archive → printer なら archive の入力も bdf だけになる。キャンバスの PASSES_ON も同じ。export の役は sink（題の帯の色）、アイコンは外へ出る矢印の盆'
     found:
     - 'yuruidb は 1 つの型を 1 つのコレクションに結ぶ。exportList の別名の型を Bind しても Get[exportList] は「data type is not bound」になる。型そのものを Bind する'
-    - 'cmd/printmanager の App.Handler は口ごとに manager.Handler を mount する。/out/ を足し忘れて 404（ブラウザの確認で見つけた）。TestOAuthAuthorize に /out の確かめを足した'
+    - 'cmd/docflow の App.Handler は口ごとに manager.Handler を mount する。/out/ を足し忘れて 404（ブラウザの確認で見つけた）。TestOAuthAuthorize に /out の確かめを足した'
     - 'live の listed は足跡の数だったので、同じ名前で消して置き直した export に古い件数が出た（main を合わせた後のブラウザの確認で見つけた）。sink の kept と同じく、export の今の一覧にあるジョブだけを数える'
     - 'export を選んだ一般の人のサイドバーに Print here が出た（export も宛先だった）。Submit は export を 400 で断り、Destinations から外した。サイドバーの scope の文を読みの意味に、IPP の行を消した'
     known_gaps:
