@@ -70,10 +70,11 @@ jobs:
           BDF_SITE_FONTS: ${{ runner.temp }}/fonts
       - run: node test/site.mjs
       - if: "!cancelled() && github.event_name == 'push'"
-        uses: actions/cache/save@v6
+        uses: ./.github/actions/go-save
         with:
           path: ${{ steps.go.outputs.path }}
           key: ${{ steps.go.outputs.key }}
+          since: ${{ steps.go.outputs.since }}
       - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'
         with:

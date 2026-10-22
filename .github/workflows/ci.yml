@@ -228,10 +228,11 @@ jobs:
           name: bdf-conformance
           path: /tmp/bdf-conformance.tar.gz
       - if: "!cancelled() && github.event_name == 'push'"
-        uses: actions/cache/save@v6
+        uses: ./.github/actions/go-save
         with:
           path: ${{ steps.go.outputs.path }}
           key: ${{ steps.go.outputs.key }}
+          since: ${{ steps.go.outputs.since }}
   print:
     # bdf print against printers that are not bdf's own: CUPS's
     # ippeveprinter (an IPP Everywhere printer) and a CUPS queue of it
@@ -255,10 +256,11 @@ jobs:
       - run: go test ./vector/psbdf/ ./print/...
       - run: test/print/ci.sh
       - if: "!cancelled() && github.event_name == 'push'"
-        uses: actions/cache/save@v6
+        uses: ./.github/actions/go-save
         with:
           path: ${{ steps.go.outputs.path }}
           key: ${{ steps.go.outputs.key }}
+          since: ${{ steps.go.outputs.since }}
   print-os:
     # the printing packages build and pass on Windows and macOS too
     if: github.event_name == 'push' || contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
@@ -274,10 +276,11 @@ jobs:
           go-version: "1.27.3"
       - run: go vet ./print/... && go test ./print/...
       - if: "!cancelled() && github.event_name == 'push'"
-        uses: actions/cache/save@v6
+        uses: ./.github/actions/go-save
         with:
           path: ${{ steps.go.outputs.path }}
           key: ${{ steps.go.outputs.key }}
+          since: ${{ steps.go.outputs.since }}
   web:
     if: github.event_name == 'push' || contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
     runs-on: ubuntu-latest
