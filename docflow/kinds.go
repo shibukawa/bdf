@@ -186,11 +186,11 @@ func inferKinds(nodes map[string]*Node) *typing {
 	for range len(nodes) + 2 {
 		changed := false
 		for _, n := range nodes {
-			for _, to := range n.edges() {
+			for to, out := range n.sends(t.reach[n.Name]) {
 				if nodes[to] == nil {
 					continue
 				}
-				add := n.emitsTo(t.reach[n.Name], to) &^ t.reach[to]
+				add := out &^ t.reach[to]
 				if add == 0 {
 					continue
 				}
@@ -242,12 +242,15 @@ func accepts(nodes map[string]*Node) map[string]kinds {
 	for range len(nodes) + 2 {
 		changed := false
 		for name, n := range nodes {
-			along := n.edges()
-			if !passesOn(n.Kind) {
-				if len(n.Original) == 0 {
-					continue
-				}
-				along = n.Original
+			// what reaches a node goes on along OnError as it is, along
+			// Original of a template or a convert node, and along every
+			// edge of one that passes it on
+			along := append(slices.Clone(n.Original), n.OnError...)
+			if passesOn(n.Kind) {
+				along = n.edges()
+			}
+			if len(along) == 0 {
+				continue
 			}
 			a := takes(n.Kind)
 			for _, to := range along {
@@ -272,12 +275,12 @@ func accepts(nodes map[string]*Node) map[string]kinds {
 func (t *typing) broken(nodes map[string]*Node) map[string]map[string]kinds {
 	out := map[string]map[string]kinds{}
 	for _, n := range nodes {
-		for _, to := range n.edges() {
+		for to, sent := range n.sends(t.reach[n.Name]) {
 			x := nodes[to]
 			if x == nil {
 				continue
 			}
-			if bad := n.emitsTo(t.reach[n.Name], to) &^ takes(x.Kind); bad != 0 {
+			if bad := sent &^ takes(x.Kind); bad != 0 {
 				if out[n.Name] == nil {
 					out[n.Name] = map[string]kinds{}
 				}
@@ -301,7 +304,7 @@ func (n *Node) withoutEdges(names map[string]bool) *Node {
 		return out
 	}
 	c := *n
-	c.To, c.Original, c.Members, c.Otherwise = keep(n.To), keep(n.Original), keep(n.Members), keep(n.Otherwise)
+	c.To, c.Original, c.Members, c.Otherwise, c.OnError = keep(n.To), keep(n.Original), keep(n.Members), keep(n.Otherwise), keep(n.OnError)
 	c.Rules = slices.Clone(n.Rules)
 	for i := range c.Rules {
 		c.Rules[i].To = keep(n.Rules[i].To)

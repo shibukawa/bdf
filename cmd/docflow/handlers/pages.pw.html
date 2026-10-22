@@ -303,6 +303,12 @@ export component Topology(account: Account): html {
                   <li><a data-kind="archive"><span class="font-semibold">Archive</span><span class="text-xs text-base-content/60">written once, never changed</span></a></li>
                   <li><a data-kind="sink"><span class="font-semibold">Sink</span><span class="text-xs text-base-content/60">keeps the latest documents, to look at</span></a></li>
                   <li><a data-kind="export"><span class="font-semibold">Export</span><span class="text-xs text-base-content/60">lists what an archive wrote, for applications and people to fetch</span></a></li>
+                  <li><a data-kind="s3-trigger"><span class="font-semibold">S3 Trigger</span><span class="text-xs text-base-content/60">takes the objects an S3 event names</span></a></li>
+                  <li><a data-kind="render"><span class="font-semibold">Render</span><span class="text-xs text-base-content/60">draws a .bdf document as a PDF, or a page as a PNG</span></a></li>
+                  <li><a data-kind="notify"><span class="font-semibold">Notify</span><span class="text-xs text-base-content/60">tells Slack, a mail or a webhook; failures come along on_error</span></a></li>
+                  <li><a data-kind="smtp"><span class="font-semibold">Mail (SMTP)</span><span class="text-xs text-base-content/60">mails it as an attachment</span></a></li>
+                  <li><a data-kind="s3"><span class="font-semibold">S3</span><span class="text-xs text-base-content/60">written to a bucket, once</span></a></li>
+                  <li><a data-kind="http"><span class="font-semibold">HTTP</span><span class="text-xs text-base-content/60">sent to a web service</span></a></li>
                 </ul>
               </div>
             {/if}
