@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shibukawa/bdf/form"
 	"github.com/shibukawa/bdf/sign"
 )
 
@@ -181,7 +182,15 @@ func verifyCmd(args []string) {
 	check(err)
 	sigs, err := d.Verify(o)
 	check(err)
-	ok := len(sigs) > 0
+	// the signatures of the values of a form (bdf fill -sign-key)
+	var values []*form.ValueSignature
+	if st, err := os.Stat(fs.Arg(0)); err == nil && !st.IsDir() {
+		b, err := os.ReadFile(fs.Arg(0))
+		check(err)
+		values, err = form.VerifyValues(bytes.NewReader(b), int64(len(b)), o)
+		check(err)
+	}
+	ok := len(sigs)+len(values) > 0
 	type report struct {
 		Index     int            `json:"index"`
 		Signer    string         `json:"signer,omitempty"`
@@ -217,15 +226,43 @@ func verifyCmd(args []string) {
 		}
 		reports = append(reports, r)
 	}
+	var valueReports []report
+	for _, s := range values {
+		ok = ok && s.Valid()
+		r := report{Index: s.Index + 1, Valid: s.Valid()}
+		if s.Values != nil {
+			r.Claims = s.Values.Claims
+		}
+		if s.Certificate != nil {
+			r.Signer = s.Certificate.Subject.String()
+		}
+		if !s.SigningTime.IsZero() {
+			r.Signed = s.SigningTime.Format(time.RFC3339)
+		}
+		if !s.TimeStamp.IsZero() {
+			r.TimeStamp = s.TimeStamp.Format(time.RFC3339)
+		}
+		if s.Err != nil {
+			r.Error = s.Err.Error()
+		}
+		if s.TrustErr != nil {
+			r.Trust = s.TrustErr.Error()
+		}
+		valueReports = append(valueReports, r)
+	}
 	if *asJSON {
-		b, err := json.MarshalIndent(map[string]any{"signatures": reports, "valid": ok}, "", "  ")
+		b, err := json.MarshalIndent(map[string]any{"signatures": reports, "values": valueReports, "valid": ok}, "", "  ")
 		check(err)
 		os.Stdout.Write(append(b, '\n'))
 	} else {
-		if len(sigs) == 0 {
+		if len(sigs)+len(values) == 0 {
 			fmt.Println("no signatures")
 		}
-		for _, r := range reports {
+		for i, r := range append(reports, valueReports...) {
+			kind := "signature"
+			if i >= len(reports) {
+				kind = "signature of the values of the form"
+			}
 			state := "valid"
 			switch {
 			case r.Error != "":
@@ -233,7 +270,7 @@ func verifyCmd(args []string) {
 			case r.Trust != "":
 				state = "holds, NOT TRUSTED"
 			}
-			fmt.Printf("signature %d: %s\n  signer: %s\n", r.Index, state, r.Signer)
+			fmt.Printf("%s %d: %s\n  signer: %s\n", kind, r.Index, state, r.Signer)
 			if r.Signed != "" {
 				fmt.Printf("  signed: %s (the signer's clock)\n", r.Signed)
 			}

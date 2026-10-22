@@ -84,6 +84,8 @@ relations:
   to: milestone:sig-1
 - relation: has_milestone
   to: milestone:sig-2
+- relation: has_milestone
+  to: milestone:sig-3a
 facts:
   threat_model:
     protects: >-
