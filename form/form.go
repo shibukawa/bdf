@@ -47,6 +47,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -82,6 +83,10 @@ type Options struct {
 	// name of a partly filled form or of a template that is filled partly
 	// is given or left open (null gives none); see Template.Filled.
 	Open []string
+	// Sign signs the values that the fill gives the form (values.go): a
+	// partly filled form holds the signature, and a form completed of it
+	// a record of its values with the signatures (VerifyValues).
+	Sign *ValueSigner
 }
 
 // Result is a filled template.
@@ -205,18 +210,47 @@ func Fill(r io.ReaderAt, size int64, opts *Options) (*Result, error) {
 		o.Strict = false
 	}
 	res, err := fill(format, src, n, &o)
-	if err != nil || len(p.open) == 0 {
-		return res, err
+	if err != nil {
+		return nil, err
 	}
-	res.Warnings = withoutOpen(res.Warnings, p.open)
+	var signed [][]byte
+	if def != nil {
+		signed = slices.Clone(def.Signed)
+	}
+	if len(p.open) == 0 && len(signed) == 0 && opts.Sign == nil {
+		return res, nil
+	}
 	data := make([]byte, n)
 	if _, err := io.ReadFull(io.NewSectionReader(src, 0, n), data); err != nil {
 		return nil, fmt.Errorf("form: %w", err)
 	}
+	// the compiled template the form was made of: that of a partly
+	// filled form, or the compiled template itself
+	from := ""
+	if def != nil {
+		if from = def.From; !def.IsPartial() {
+			from = def.digest
+		}
+	}
+	if opts.Sign != nil {
+		der, err := signValues(opts.Sign, &Values{Format: format, Source: sourceDigest(data), From: from, Filled: p.filled, Open: p.open})
+		if err != nil {
+			return nil, err
+		}
+		signed = append(signed, der)
+	}
+	if len(p.open) == 0 {
+		// complete: the record of its values, with the signatures
+		if err := record(res.Doc, format, sourceDigest(data), from, p.data, signed); err != nil {
+			return nil, err
+		}
+		return res, nil
+	}
+	res.Warnings = withoutOpen(res.Warnings, p.open)
 	if fields == nil {
 		fields = res.Fields
 	}
-	if res.Partial, err = partlyFilled(res.Doc, data, def, format, fields, p); err != nil {
+	if res.Partial, err = partlyFilled(res.Doc, data, def, format, from, fields, p, signed); err != nil {
 		return nil, err
 	}
 	return res, nil
@@ -375,6 +409,10 @@ type Template struct {
 	Filled map[string]any `json:"filled,omitempty"`
 	Open   []string       `json:"open,omitempty"`
 	From   string         `json:"from,omitempty"`
+	// Signed are the signatures of the values of a partly filled form
+	// (the DER of CMS signatures; values.go), of those who filled in
+	// their parts, in their order.
+	Signed [][]byte `json:"signed,omitempty"`
 
 	// digest is the SHA-256 of the description as it was read.
 	digest string

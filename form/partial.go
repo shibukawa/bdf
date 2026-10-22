@@ -266,7 +266,7 @@ func prepare(def *Template, fields []tag.Field, opts *Options) (*partial, error)
 	if def != nil {
 		filled, open = def.Filled, def.Open
 	}
-	if filled == nil && len(open) == 0 && len(opts.Open) == 0 {
+	if filled == nil && len(open) == 0 && len(opts.Open) == 0 && opts.Sign == nil {
 		return nil, nil
 	}
 	if filled == nil {
@@ -355,7 +355,7 @@ func templateDigest(b []byte) string {
 
 // partlyFilled makes the document of a partly filled form: doc is the
 // template filled with the values of p.
-func partlyFilled(doc *bdf.Document, src []byte, def *Template, format string, fields []tag.Field, p *partial) (*Template, error) {
+func partlyFilled(doc *bdf.Document, src []byte, def *Template, format, from string, fields []tag.Field, p *partial, signed [][]byte) (*Template, error) {
 	root, err := schemaTree(fields, p.filled)
 	if err != nil {
 		return nil, err
@@ -365,15 +365,12 @@ func partlyFilled(doc *bdf.Document, src []byte, def *Template, format string, f
 		return nil, err
 	}
 	t := &Template{Version: TemplateVersion, Format: format, Fields: fields,
-		Schema: schema, Filled: p.filled, Open: p.open}
+		Schema: schema, Filled: p.filled, Open: p.open, From: from, Signed: signed}
 	if t.Fields == nil {
 		t.Fields = []tag.Field{}
 	}
 	if def != nil {
-		t.Name, t.From = def.Name, def.From
-		if t.From == "" {
-			t.From = def.digest
-		}
+		t.Name = def.Name
 	}
 	t.Source = doc.AddPart(bdf.PartSource, src).String()
 	b, err := json.Marshal(t)
