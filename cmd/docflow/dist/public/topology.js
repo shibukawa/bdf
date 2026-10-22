@@ -564,12 +564,18 @@ function renderSidebar() {
   if (draft) {
     const name = input("f-name", "", { placeholder: "intake, both, tokyo, review, wh-a, laser, audit", required: true, pattern: "[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}", autocomplete: "off" });
     name.addEventListener("input", () => canvas.draw());
-    form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>) and does not change later."));
+    form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>, unless IPP is off) and does not change later."));
   }
   form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown in the node beside its kind" })));
   const note = el("textarea", undefined, { id: "f-description", className: "textarea textarea-sm w-full", rows: 3, value: n.description || "", placeholder: "what it is for: the invoices of the ERP, PDF only; printed on the 3rd floor …" });
   note.addEventListener("input", () => canvas.draw());
   form.append(field("Description", note, "A note shown in the node, under its [kind], as in a C4 diagram: the first lines on the canvas, all of it here."));
+  // an export is read from, never sent to: no IPP printer either way
+  if (kind !== "export") {
+    const noIPP = el("label", undefined, { className: "inline-flex items-center gap-2 text-sm" });
+    noIPP.append(el("input", undefined, { id: "f-no-ipp", type: "checkbox", className: "checkbox checkbox-sm", checked: !!n.no_ipp }), "No IPP printer: computers cannot print to this node at /ipp/print (other nodes still send to it)");
+    form.append(noIPP);
+  }
   if (!draft) {
     const k = kindsLine(n);
     if (k) form.append(k);
@@ -720,6 +726,7 @@ async function save(ev) {
   const name = draft ? $("f-name").value.trim() : n.name;
   const body = { kind: n.kind, title: $("f-title").value.trim(), description: $("f-description").value.trim(), scope: $("f-scope").value };
   if ($("f-owner").value.trim()) body.owner = $("f-owner").value.trim();
+  if ($("f-no-ipp")?.checked) body.no_ipp = true;
   const dur = (id) => ($(id).value.trim() ? $(id).value.trim() : undefined);
   switch (n.kind) {
     case "endpoint":
@@ -836,8 +843,8 @@ async function remove(name) {
 // and templates, a display's devices.
 function extras(n, aside) {
   const links = el("div", undefined, { className: "mt-3 flex flex-col gap-1 border-t border-base-300 pt-3 text-sm" });
-  // an export is read from, never sent to: no IPP destination
-  if (n.kind !== "export") links.append(el("span", "IPP: " + n.ipp, { className: "font-mono text-xs text-base-content/60 break-all" }));
+  // where the node is reached (an export is read from, never sent to)
+  for (const [via, path] of Object.entries(n.addresses || {})) links.append(el("span", `${via.toUpperCase()}: ${path}`, { className: "font-mono text-xs text-base-content/60 break-all" }));
   const row = el("div", undefined, { className: "flex flex-wrap gap-3" });
   if (n.kind !== "export") row.append(el("a", "Jobs sent here", { className: "link", href: "/admin/jobs?dest=" + encodeURIComponent(n.name) }));
   if (n.kind === "inbox") row.append(el("a", `${n.held || 0} held: open the inbox`, { className: "link", href: "/admin/inboxes" }));

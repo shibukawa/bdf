@@ -83,10 +83,11 @@ func or[T comparable](v, def T) T {
 	return v
 }
 
-// Kinds of the nodes of a topology: what a job sent to a node becomes.
-// Endpoints and CUPS servers are entries; queues, classes, filters and
-// inboxes route; displays, printers, archives and sinks are where a job
-// ends.
+// The core's kinds of node (kinds_core.go): what a job sent to a node
+// becomes. Endpoints are entries; queues, classes, filters and inboxes
+// route; template and convert nodes make a payload; displays, archives,
+// sinks and exports are where a job ends. The kinds of the adapters of
+// docflow/io (printers, CUPS servers) are theirs.
 const (
 	// KindQueue forwards a job to every node of To: a virtual printer
 	// in front of others, and a fan-out when To has several.
@@ -111,14 +112,6 @@ const (
 	// display (the tablets of a warehouse), and prints on paper what
 	// nobody opened in time (Fallback).
 	KindDisplay = "display"
-	// KindPrinter prints the job on paper.
-	KindPrinter = "printer"
-	// KindCups is an entry for computers and business systems: a CUPS
-	// server on a port of its own (IPP, ports.go), with one printer
-	// there, the node itself. It forwards what it receives to every node
-	// of To, as an endpoint does.
-	KindCups = "cups"
-
 	// KindSink keeps the latest documents that reach it, to look at on
 	// the topology (sink.go).
 	KindSink = "sink"
@@ -228,7 +221,7 @@ type Node struct {
 	OfflineAfter Duration  `json:"offline_after,omitempty"`
 	// URL is a printer's: ipp://, ipps://, socket:// or lpd:// (a printer
 	// the manager reaches over the network); Route how its jobs reach it
-	// (RouteDirect, RouteBranch). Preview is a printer's fake printer on a
+	// (direct, branch: docflow/io/ipp). Preview is a printer's fake printer on a
 	// farm (tools/fakeprinter): the URL of the printer on the farm's API,
 	// whose pages are shown beside the node (preview.go).
 	URL     string `json:"url,omitempty"`
@@ -262,6 +255,10 @@ type Node struct {
 	// group's node are the group's: its members see them.
 	Scope string `json:"scope,omitempty"`
 	Owner string `json:"owner,omitempty"`
+	// NoIPP keeps the node from being an IPP printer at
+	// /ipp/print/<name> (docflow/io/ipp), for a node only applications
+	// or other nodes send to. A CUPS server's own port stays IPP.
+	NoIPP bool `json:"no_ipp,omitempty"`
 }
 
 func (n *Node) keep() time.Duration { return time.Duration(or(n.Keep, defaultKeep)) }
@@ -631,17 +628,6 @@ type dayRecord struct {
 type pendingRecord struct {
 	Job int32 `json:"job"`
 }
-
-// Routes of a printer: how its jobs reach it.
-const (
-	// RouteDirect: the manager sends the job itself (the printer is on a
-	// network the manager reaches: the same LAN, or a VPC with Direct
-	// Connect or a VPN).
-	RouteDirect = "direct"
-	// RouteBranch: a bdf printd of the branch fetches the job (INFRA).
-	// Not done yet.
-	RouteBranch = "branch"
-)
 
 // SlipState is where a slip is.
 type SlipState string

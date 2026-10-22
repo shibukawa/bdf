@@ -172,7 +172,7 @@ editor of the topology, apps, inboxes, jobs, deliveries) and the role
 `kind` and the kind's settings — `endpoint`, `cups`, `queue`, `class`,
 `filter`, `template`, `convert`, `inbox`, `display`, `printer`,
 `archive`, `sink`, `export` ([help/en/nodes.md](help/en/nodes.md)) —
-and an IPP printer at `/ipp/print/<name>`; a display's tablets are
+and an IPP printer at `/ipp/print/<name>` unless it has `no_ipp: true`; a display's tablets are
 enrolled with a one-time code from the display's sidebar
 ([help/en/displays.md](help/en/displays.md)); an export after an
 archive lets backends and people's frontends fetch the documents at
@@ -180,6 +180,14 @@ archive lets backends and people's frontends fetch the documents at
 [help/en/api.md](help/en/api.md). For example: an audit copy, a site's
 printers in turn, both warehouses at once, a review before printing, and
 an application that prints invoices from data:
+
+The kinds are registered with the engine ([docflow](../../docflow)), and
+`GET /api/kinds` lists them with their roles and what they take. The
+core has the routing, transforming and keeping kinds. Inputs and outputs
+are adapters under [docflow/io](../../docflow/io): `printer`, `cups` and
+every node's IPP printer are [docflow/io/ipp](../../docflow/io/ipp),
+which this application imports.
+
 
 ```sh
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/audit -d '{"kind":"archive","store":"s3://audit?region=ap-northeast-1"}'

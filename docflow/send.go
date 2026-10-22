@@ -4,18 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
-
-	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/print"
-	"github.com/shibukawa/bdf/print/ipp"
-	"github.com/shibukawa/bdf/print/raw"
 )
-
-// ErrBranch is the error of a printer that a branch's bdf printd is to
-// fetch the jobs of: not done yet.
-var ErrBranch = errors.New("manager: printers of a branch (route branch) are not supported yet")
 
 // ErrPrint is the error of a printer that did not take a slip.
 var ErrPrint = errors.New("manager: the printer did not print")
@@ -27,26 +19,6 @@ var ErrLeased = errors.New("manager: the slip is being printed")
 // manager that held it stopped).
 const leaseFor = 5 * time.Minute
 
-// checkPrinterURL takes the printers a manager reaches over the network:
-// IPP, and 9100 and LPD. Serial, USB and Windows queues are a branch
-// printd's.
-func checkPrinterURL(u string) error {
-	if raw.IsURL(u) {
-		p, err := raw.Parse(u)
-		if err != nil {
-			return fmt.Errorf("%w: %v", ErrInvalid, err)
-		}
-		if p.Scheme != "socket" && p.Scheme != "lpd" {
-			return fmt.Errorf("%w: %s: a printer of a manager is reached over the network (ipp, ipps, socket, lpd)", ErrInvalid, u)
-		}
-		return nil
-	}
-	if _, _, err := ipp.ParseURL(u); err != nil {
-		return fmt.Errorf("%w: %v", ErrInvalid, err)
-	}
-	return nil
-}
-
 // PrintSlip prints a slip on a printer now, as a device asked.
 func (m *Manager) PrintSlip(ctx context.Context, id, printer string, by Mark) (*Slip, error) {
 	return m.printSlip(ctx, id, printer, whyDevice, by.Device)
@@ -56,12 +28,14 @@ func (m *Manager) PrintSlip(ctx context.Context, id, printer string, by Mark) (*
 // first, so that two managers do not both send it; a failed send is
 // tried again later (RetryAt).
 func (m *Manager) printSlip(ctx context.Context, id, printer, why, device string) (*Slip, error) {
-	p, err := m.printer(ctx, printer)
+	p, k, err := m.exit(ctx, printer)
 	if err != nil {
 		return nil, err
 	}
-	if p.Route == RouteBranch {
-		return nil, ErrBranch
+	if k.Ready != nil {
+		if err := k.Ready(p); err != nil {
+			return nil, err
+		}
 	}
 	owner := randomHex(8)
 	now := m.now()
@@ -85,7 +59,7 @@ func (m *Manager) printSlip(ctx context.Context, id, printer, why, device string
 		return s, nil // nothing to print (errSkip)
 	}
 	sctx, cancel := context.WithTimeout(ctx, leaseFor-30*time.Second)
-	job, sendErr := m.sendSlip(sctx, p, s)
+	job, sendErr := m.sendSlip(sctx, k, p, s)
 	cancel()
 	done := m.now()
 	s, err = m.changeSlip(context.WithoutCancel(ctx), id, func(s *Slip) error {
@@ -125,70 +99,19 @@ func retryDelay(attempts int) time.Duration {
 	return min(d, 15*time.Minute)
 }
 
-func (m *Manager) sendSlip(ctx context.Context, p *Node, s *Slip) (int32, error) {
-	doc, err := m.Document(ctx, firstOr(s.Payload, jobID(s.Job)))
-	if err != nil {
-		return 0, err
-	}
-	var meta map[string]any
+// sendSlip sends a slip's document out of an exit (a printer), with its
+// job's metadata, and returns the printer's job id (0 for none).
+func (m *Manager) sendSlip(ctx context.Context, k *Kind, p *Node, s *Slip) (int32, error) {
+	o := &Out{Node: p, Payload: &Payload{ID: firstOr(s.Payload, jobID(s.Job)), Kind: PayloadBDF, Format: "bdf"}, Name: firstOr(s.Name, "slip-"+s.ID), m: m}
 	if j, err := m.JobOfNumber(ctx, s.Job); err == nil {
-		meta = j.Meta
+		o.Job, o.Meta = j, j.Meta
 	}
-	return m.send(ctx, p, doc, firstOr(s.Name, "slip-"+s.ID), meta)
-}
-
-// send prints a document on a printer, with what the job's metadata
-// says for the printer (printMeta), and returns the printer's job id (0
-// for a raw printer, which has none).
-func (m *Manager) send(ctx context.Context, p *Node, doc *bdf.Document, name string, meta map[string]any) (int32, error) {
-	opts := &print.Options{Ticket: print.Ticket{JobName: name, Meta: printMeta(meta)}, FontDirs: m.o.FontDirs, NoSystemFonts: m.o.NoSystemFonts}
-	if raw.IsURL(p.URL) {
-		rp, err := raw.Parse(p.URL)
-		if err != nil {
-			return 0, err
-		}
-		_, err = print.PrintRaw(ctx, rp, doc, opts)
-		return 0, err
-	}
-	res, err := print.Print(ctx, &ipp.Client{URL: p.URL, User: "bdf-docflow"}, doc, opts)
+	res, err := k.Send(ctx, o)
 	if err != nil {
 		return 0, err
 	}
-	if res.Job != nil {
-		return res.Job.ID, nil
-	}
-	return 0, nil
-}
-
-// printMeta is what a job's metadata says for the printer, as print.Meta
-// carries it: the keys ipp.job-account-id, ipp.job-accounting-user-id,
-// ipp.document-metadata and ipp.x-… (what came in as those IPP
-// attributes, or was given as metadata under these keys) become the
-// attributes again. A value that is not one the attribute takes is left
-// out, as print.Meta.Take leaves it.
-func printMeta(meta map[string]any) print.Meta {
-	var m print.Meta
-	for k, v := range meta {
-		name, ok := strings.CutPrefix(k, "ipp.")
-		if !ok {
-			continue
-		}
-		var vals []ipp.Value
-		switch x := v.(type) {
-		case []string:
-			for _, s := range x {
-				vals = append(vals, ipp.Name(s))
-			}
-		case []any:
-			for _, e := range x {
-				vals = append(vals, ipp.Name(metaText(e)))
-			}
-		default:
-			vals = []ipp.Value{ipp.Name(metaText(v))}
-		}
-		m.Take(ipp.Attr(name, vals...))
-	}
-	return m
+	id, _ := strconv.ParseInt(res, 10, 32)
+	return int32(id), nil
 }
 
 func firstOr(s, or string) string {

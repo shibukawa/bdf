@@ -1,6 +1,6 @@
 # Node kinds
 
-Every node has a kind, and the settings of its kind. The entries — endpoints and CUPS servers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; displays, printers, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. Every node, whatever its kind, is also an IPP printer at `/ipp/print/<name>` ([IPP](entries.md#ipp)).
+Every node has a kind, and the settings of its kind. The entries — endpoints and CUPS servers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; displays, printers, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. Every node, whatever its kind, is also an IPP printer at `/ipp/print/<name>` ([IPP](entries.md#ipp)), unless “No IPP printer” is ticked in its sidebar (`no_ipp`): such a node is reached only from the nodes before it, and IPP clients do not list it.
 
 ## Every node {#common}
 

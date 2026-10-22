@@ -50,7 +50,7 @@ capabilities:
     state: implemented
     about: print/manager → docflow、cmd/printmanager → cmd/docflow、画面と設定と外から見える名前
   io-adapters:
-    state: planned
+    state: partial
     about: >-
       ノードの種類の登録：受ける種類・出す種類（requirement:document-flow の bdf・data・any）、設定のスキーマ、実行（経路・段・入口の口）を持つ
       種類をエンジンに登録する。芯（queue・class・filter・inbox・archive・template・convert・export）と、入出力のアダプタ（ipp-in・ipp-out＝特定の
@@ -79,7 +79,7 @@ facts:
   order:
     source: Claude の案（確認待ち）
     steps:
-    - io-adapters を fl-2（出入口と通知）の前に。fl-2 の smtp・s3・http を最初から登録の口に載せる
+    - io-adapters を fl-2（出入口と通知）の前に。fl-2 の smtp・s3・http を最初から登録の口に載せる（最初の段は milestone:df-1、2026-10-22 実装）
     - fl-2 に出力の名前の差し込み（{{meta.x}} の置き換えだけ。式言語は入れない）
     - topology-yaml と版・下書き
     - dry-run と live-flow（同じ絵）

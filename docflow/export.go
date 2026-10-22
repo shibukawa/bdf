@@ -192,7 +192,7 @@ func (m *Manager) exportsArchived(ctx context.Context, n *Node) error {
 	for name, x := range nodes {
 		switch {
 		case x.Kind == KindArchive:
-		case x.Kind == KindEndpoint, x.Kind == KindCups, x.Kind == KindTemplate, x.Kind == KindConvert, x.Kind == KindInbox, !incoming[name]:
+		case isEntry(x.Kind), x.Kind == KindTemplate, x.Kind == KindConvert, x.Kind == KindInbox, !incoming[name]:
 			roots = append(roots, name)
 		}
 	}

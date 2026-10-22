@@ -17,7 +17,6 @@ import (
 	"strings"
 
 	"github.com/shibukawa/bdf"
-	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/raster/imagebdf"
 )
 
@@ -62,14 +61,14 @@ func (m *Manager) Submit(ctx context.Context, dest string, in Input) (*Job, erro
 	}
 	accept, output, formats := AcceptFile, OutputBDF, []string(nil)
 	var entry *Node
-	switch n.Kind {
-	case KindEndpoint, KindCups:
+	switch {
+	case isEntry(n.Kind):
 		accept, output, formats, entry = or(n.Accept, AcceptFile), or(n.Output, OutputBDF), n.Formats, n
-	case KindTemplate:
+	case n.Kind == KindTemplate:
 		accept = AcceptData
-	case KindConvert:
+	case n.Kind == KindConvert:
 		output = OutputFile
-	case KindExport:
+	case n.Kind == KindExport:
 		// an export lists what an archive wrote: a job sent to it has none
 		return nil, fmt.Errorf("%w: %s is an export, which lists what an archive before it wrote: send to an entry", ErrInvalid, dest)
 	}
@@ -286,9 +285,28 @@ func readBDF(r io.ReaderAt, size int64) (*bdf.Document, error) {
 	return doc, nil
 }
 
+// pagesView is the view of a document that is printed and shown: the
+// first view of pages (fixed or flow), or the first scroll view, whose
+// strips are pages too; as print.PrintView picks it.
+func pagesView(doc *bdf.Document) (*bdf.View, error) {
+	sheets := false
+	for _, kinds := range [][]string{{bdf.ViewFixed, bdf.ViewFlow}, {bdf.ViewScroll}} {
+		for _, v := range doc.Views {
+			sheets = sheets || v.Kind == bdf.ViewSheet
+			if slices.Contains(kinds, v.Kind) && len(v.Pages) > 0 {
+				return v, nil
+			}
+		}
+	}
+	if sheets {
+		return nil, errors.New("the document has no pages to print: its views are sheets, which have no pages (an Excel workbook has its print view with -param views=print)")
+	}
+	return nil, errors.New("the document has no pages to print")
+}
+
 // pagesOf counts the pages of a document as it is printed.
 func pagesOf(doc *bdf.Document) (int, error) {
-	v, err := print.PrintView(doc, "")
+	v, err := pagesView(doc)
 	if err != nil {
 		return 0, fmt.Errorf("%w: %v", ErrFormat, err)
 	}
@@ -423,7 +441,7 @@ func (m *Manager) WritePage(ctx context.Context, payload string, pages, page, wi
 	if err != nil {
 		return err
 	}
-	v, err := print.PrintView(doc, "")
+	v, err := pagesView(doc)
 	if err != nil {
 		return err
 	}

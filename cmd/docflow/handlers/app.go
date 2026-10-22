@@ -12,6 +12,8 @@ import (
 
 	"github.com/shibukawa/bdf/cmd/docflow/help"
 	"github.com/shibukawa/bdf/docflow"
+	// the IPP input and output: printers, CUPS servers, /ipp/print
+	_ "github.com/shibukawa/bdf/docflow/io/ipp"
 	"github.com/shibukawa/bdf/print/printconv"
 	"github.com/shibukawa/popcornweb/plugin/auth"
 	"github.com/shibukawa/popcornweb/pw"
@@ -139,8 +141,10 @@ func (a *App) StartTimer(ctx context.Context) (stop func()) {
 func (a *App) Handler() http.Handler {
 	mux := pw.NewServeMux()
 	mh := docflow.Handler(a.m)
-	mux.Handle(docflow.IPPPath+"/", mh)
-	mux.Handle(docflow.IPPPath, mh)
+	for _, p := range docflow.Prefixes() {
+		mux.Handle(p+"/", mh)
+		mux.Handle(p, mh)
+	}
 	mux.Handle(docflow.InPath+"/", mh)
 	mux.Handle(docflow.OutPath+"/", mh)
 	mux.Handle("/oauth/", mh)

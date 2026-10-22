@@ -31,17 +31,15 @@ const maxAttempts = 20
 // errNotDue is the error of a delivery whose RetryAt has not come.
 var errNotDue = errors.New("manager: not due")
 
-// routeDelivery makes a delivery for a leg: to printer (a member, when
-// the leg is a class's), or to the archive the leg names.
-func (m *Manager) routeDelivery(ctx context.Context, r *routing, leg Leg, printer, class string) {
+// routeDelivery makes a delivery for a leg: to the exit target of a kind
+// (a member, when the leg is a class's), or of the node the leg names (an
+// archive, a step).
+func (m *Manager) routeDelivery(ctx context.Context, r *routing, leg Leg, target, class, kind string) {
 	j := r.job
-	d := Delivery{ID: fmt.Sprintf("%s.%02d", j.ID, r.next()), Job: j.Number, Name: j.Name, Node: leg.Node, Kind: leg.Kind, Printer: printer, Class: class,
+	d := Delivery{ID: fmt.Sprintf("%s.%02d", j.ID, r.next()), Job: j.Number, Name: j.Name, Node: leg.Node, Kind: kind, Printer: target, Class: class,
 		State: DeliveryPending, Created: r.now, Trace: r.trace}
 	if r.payload != nil {
 		d.Payload = r.payload.ID
-	}
-	if d.Kind == KindClass {
-		d.Kind = KindPrinter
 	}
 	if _, err := m.st.db.Insert(ctx, d.ID, deliveryRecord(d)); err != nil {
 		leg.State, leg.Error = LegError, mapErr(err).Error()
@@ -237,32 +235,39 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		}
 		return d, nil
 	default:
-		printer, final, err := m.member(sctx, d)
+		target, final, err := m.member(sctx, d)
 		if err != nil {
-			return m.outcome(ctx, d, owner, printer, "", err, final)
+			return m.outcome(ctx, d, owner, target, "", err, final)
 		}
-		p, err := m.printer(sctx, printer)
+		n, k, err := m.exit(sctx, target)
 		if err != nil {
-			return m.outcome(ctx, d, owner, printer, "", err, false)
+			return m.outcome(ctx, d, owner, target, "", err, false)
 		}
-		if p.Route == RouteBranch {
-			return m.outcome(ctx, d, owner, printer, "", ErrBranch, true)
+		if k.Ready != nil {
+			if err := k.Ready(n); err != nil {
+				return m.outcome(ctx, d, owner, target, "", err, true)
+			}
 		}
 		pl := j.payload(d.Payload)
-		if pl == nil || pl.Kind != PayloadBDF {
-			return m.outcome(ctx, d, owner, printer, "", fmt.Errorf("the payload %q is no .bdf document", d.Payload), true)
+		if pl == nil || !k.takes().has(pl.Kind) {
+			return m.outcome(ctx, d, owner, target, "", fmt.Errorf("the payload %q is not what %s takes (%s)", d.Payload, target, k.takes()), true)
 		}
-		doc, err := m.Document(sctx, pl.ID)
-		if err != nil {
-			return m.outcome(ctx, d, owner, printer, "", err, false)
-		}
-		jobID, err := m.send(sctx, p, doc, firstOr(d.Name, "job-"+j.ID), j.Meta)
-		result := ""
-		if err == nil && jobID != 0 {
-			result = fmt.Sprint(jobID)
-		}
-		return m.outcome(ctx, d, owner, printer, result, err, false)
+		result, err := k.Send(sctx, &Out{Node: n, Job: j, Payload: pl, Name: firstOr(d.Name, "job-"+j.ID), Meta: j.Meta, m: m})
+		return m.outcome(ctx, d, owner, target, result, err, isFinal(err))
 	}
+}
+
+// exit returns a node of a kind that sends out, and its kind.
+func (m *Manager) exit(ctx context.Context, name string) (*Node, *Kind, error) {
+	n, err := m.Node(ctx, name)
+	if err != nil {
+		return nil, nil, err
+	}
+	k := kindNamed(n.Kind)
+	if k == nil || k.Send == nil {
+		return nil, nil, fmt.Errorf("%w: %s is a %s, which sends nothing out", ErrNotFound, name, n.Kind)
+	}
+	return n, k, nil
 }
 
 // member chooses the printer a delivery goes to now: the one it was
@@ -279,7 +284,7 @@ func (m *Manager) member(ctx context.Context, d *Delivery) (printer string, fina
 	}
 	var members []string
 	for _, name := range n.Members {
-		if k, err := m.kindOf(ctx, name); err == nil && k == KindPrinter {
+		if k, err := m.kindOf(ctx, name); err == nil && sendsOut(k) {
 			members = append(members, name)
 		}
 	}

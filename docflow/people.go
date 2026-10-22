@@ -289,3 +289,20 @@ func (h *handler) who(r *http.Request) string {
 	}
 	return "?"
 }
+
+// submitter finds who sends jobs over IPP and the API: the admin token,
+// a submit token's name and secret (Basic, or bearer name:secret), an
+// app (its token, or Basic client_id:secret), or, with no SubmitTokens,
+// anyone (anonymous). A person's session sends from the pages (submit).
+func (h *handler) submitter(r *http.Request) (*Principal, bool) {
+	if v, ok := h.viewerOf(r); ok && (v.Kind == PrincipalToken || v.Kind == PrincipalApp) {
+		return v.Principal(), true
+	}
+	if r.Header.Get("Authorization") != "" {
+		return nil, false // credentials given, and not known
+	}
+	if len(h.m.o.SubmitTokens) == 0 {
+		return &Principal{Kind: PrincipalAnonymous, Via: ViaNone}, true
+	}
+	return nil, false
+}

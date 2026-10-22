@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/shibukawa/bdf/docflow"
+	docflowipp "github.com/shibukawa/bdf/docflow/io/ipp"
 )
 
 // Every chapter is in every language, with a title, and nothing a
@@ -119,10 +120,16 @@ func TestLinks(t *testing.T) {
 }
 
 // The chapter of the node kinds has a section for every kind of node the
-// manager has, under the kind's name: the editor links to them.
+// application registers (the core's, and docflow/io/ipp's), under the
+// kind's name: the editor links to them.
 func TestKinds(t *testing.T) {
-	kinds := []string{docflow.KindEndpoint, docflow.KindCups, docflow.KindQueue, docflow.KindClass, docflow.KindFilter, docflow.KindTemplate,
-		docflow.KindConvert, docflow.KindInbox, docflow.KindDisplay, docflow.KindPrinter, docflow.KindArchive, docflow.KindSink, docflow.KindExport}
+	var kinds []string
+	for _, k := range docflow.Kinds() {
+		kinds = append(kinds, k.Name)
+	}
+	if !slices.Contains(kinds, docflowipp.KindPrinter) || !slices.Contains(kinds, docflowipp.KindCups) {
+		t.Fatalf("the IPP adapter is not registered: %v", kinds)
+	}
 	for _, lang := range Languages {
 		p, ok := Get(lang, "nodes")
 		if !ok {

@@ -84,15 +84,13 @@ func (k kinds) names() []string {
 
 func (k kinds) String() string { return strings.Join(k.names(), ", ") }
 
-// takes tells the kinds a node of a kind takes at its input: printers and
-// displays .bdf documents, template nodes data, every other node
-// anything.
+// takes tells the kinds a node of a kind takes at its input (Kind.Takes:
+// printers and displays .bdf documents, template nodes data, every other
+// node anything). A kind not registered takes anything, so that a node of
+// it is not shown broken; a job that reaches it gets a leg of the error.
 func takes(kind string) kinds {
-	switch kind {
-	case KindPrinter, KindDisplay:
-		return kindBDF
-	case KindTemplate:
-		return kindData
+	if k := kindNamed(kind); k != nil {
+		return k.takes()
 	}
 	return allKinds
 }
@@ -101,16 +99,13 @@ func takes(kind string) kinds {
 // entry, what it receives): what it may take at its input is what every
 // node after it takes, so that its first edge, on either side, types it
 // as the wildcard pin of a visual editor is typed; so does an archive,
-// which sends on what it wrote. A template or a convert node sends on the
-// .bdf it makes whatever reaches it (and what reached it along Original,
-// which accepts types), a display the .bdf it shows; the others send
-// nothing on.
+// which sends on what it wrote (Kind.PassesOn). A template or a convert
+// node sends on the .bdf it makes whatever reaches it (Kind.Makes), and
+// what reached it along Original, which accepts types; a display the
+// .bdf it shows; the others send nothing on.
 func passesOn(kind string) bool {
-	switch kind {
-	case KindQueue, KindClass, KindFilter, KindInbox, KindEndpoint, KindCups, KindArchive:
-		return true
-	}
-	return false
+	k := kindNamed(kind)
+	return k != nil && k.PassesOn
 }
 
 // takesName is the input of a kind of node as the API shows it: bdf,
@@ -144,16 +139,17 @@ func (n *Node) entryKind() kinds {
 // display the .bdf its fallback printer prints, every other node what
 // reaches it.
 func (n *Node) emits(in kinds) kinds {
-	switch n.Kind {
-	case KindEndpoint, KindCups:
+	k := kindNamed(n.Kind)
+	switch {
+	case k == nil:
+		return in
+	case k.Role == RoleEntry:
 		return in | n.entryKind()
-	case KindTemplate, KindConvert:
+	case k.Makes != "":
 		if len(n.Original) > 0 {
-			return kindBDF | in
+			return kindBit(k.Makes) | in
 		}
-		return kindBDF
-	case KindDisplay:
-		return kindBDF
+		return kindBit(k.Makes)
 	}
 	return in
 }
