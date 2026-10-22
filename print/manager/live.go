@@ -72,7 +72,8 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 	h := sha256.New()
 	// the recent counts age: the revision changes every minute
 	fmt.Fprintf(h, "%d\n", now.Unix()/60)
-	kept := map[string]map[string]bool{} // by sink, the jobs it keeps
+	kept := map[string]map[string]bool{}   // by sink, the jobs it keeps
+	listed := map[string]map[string]bool{} // by export, the jobs it lists now
 	for i := range jobs {
 		j := &jobs[i]
 		if !v.CanSee(j) {
@@ -95,7 +96,17 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 			case LegFailed:
 				n.Failed++
 			case LegListed:
-				n.Listed++
+				// the leg stays listed: the export's list tells whether it
+				// lists the job still (an export deleted and put again does not)
+				if listed[l.Node] == nil {
+					listed[l.Node] = map[string]bool{}
+					for _, id := range m.exportJobs(ctx, exportListID(l.Node, "")) {
+						listed[l.Node][id] = true
+					}
+				}
+				if listed[l.Node][j.ID] {
+					n.Listed++
+				}
 			case LegKept:
 				if kept[l.Node] == nil {
 					kept[l.Node] = map[string]bool{}

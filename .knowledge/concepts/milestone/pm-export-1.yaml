@@ -94,6 +94,7 @@ facts:
     found:
     - 'yuruidb は 1 つの型を 1 つのコレクションに結ぶ。exportList の別名の型を Bind しても Get[exportList] は「data type is not bound」になる。型そのものを Bind する'
     - 'cmd/printmanager の App.Handler は口ごとに manager.Handler を mount する。/out/ を足し忘れて 404（ブラウザの確認で見つけた）。TestOAuthAuthorize に /out の確かめを足した'
+    - 'live の listed は足跡の数だったので、同じ名前で消して置き直した export に古い件数が出た（main を合わせた後のブラウザの確認で見つけた）。sink の kept と同じく、export の今の一覧にあるジョブだけを数える'
     - 'export を選んだ一般の人のサイドバーに Print here が出た（export も宛先だった）。Submit は export を 400 で断り、Destinations から外した。サイドバーの scope の文を読みの意味に、IPP の行を消した'
     known_gaps:
     - 'export の項目は消えない。dropExport は export-entries と export-lists を全部走査する'

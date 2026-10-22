@@ -593,4 +593,22 @@ func TestExportAfterFilter(t *testing.T) {
 	if l := legs(e.job(4)); l != "by-type:routed(rule 1) invoices:error" {
 		t.Fatalf("straight to the filter: %s", l)
 	}
+	// the activity counts what an export lists now: one deleted and put
+	// again under the same name lists nothing, whatever the legs say
+	live := func() LiveNode {
+		t.Helper()
+		var l Live
+		_, out := e.as("root", "GET", "/api/topology/live", nil)
+		json.Unmarshal(out, &l)
+		return l.Nodes["invoices"]
+	}
+	if n := live(); n.Listed != 1 {
+		t.Fatalf("live before %+v", n)
+	}
+	e.node("by-type", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Meta: map[string]string{"type": "^receipt$"}}, To: []string{"receipts"}}}, Otherwise: []string{"seen"}}, http.StatusOK)
+	e.admin("DELETE", "/api/nodes/invoices", nil, http.StatusNoContent)
+	e.node("invoices", Node{Kind: KindExport, By: "customer"}, http.StatusOK)
+	if n := live(); n.Listed != 0 {
+		t.Fatalf("live after the export was put again %+v", n)
+	}
 }
