@@ -179,6 +179,13 @@ func TestPartialNames(t *testing.T) {
 		if c.want == "" {
 			if err != nil || res.Partial == nil || res.Partial.From != "" || res.Partial.Format != FormatXLSX {
 				t.Errorf("%v: %v %+v", c.open, err, res)
+				continue
+			}
+			// a partly filled form of it has no compiled template either
+			bdff := write(t, res)
+			again, err := Fill(bytes.NewReader(bdff), int64(len(bdff)), &Options{Data: map[string]any{}, Open: []string{"items"}, Convert: testConvert()})
+			if err != nil || again.Partial.From != "" {
+				t.Errorf("a partly filled form of a partly filled form of a template: %v %+v", err, again.Partial)
 			}
 			continue
 		}
