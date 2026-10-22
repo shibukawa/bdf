@@ -38,7 +38,7 @@ var errNotDue = errors.New("manager: not due")
 func (m *Manager) routeDelivery(ctx context.Context, r *routing, leg Leg, target, class, kind string) {
 	j := r.job
 	d := Delivery{ID: fmt.Sprintf("%s.%02d", j.ID, r.next()), Job: j.Number, Name: j.Name, Node: leg.Node, Kind: kind, Printer: target, Class: class,
-		State: DeliveryPending, Created: r.now, Cause: r.cause}
+		State: DeliveryPending, Created: r.now, Trace: r.trace, Cause: r.cause}
 	if r.payload != nil {
 		d.Payload = r.payload.ID
 	}
@@ -203,7 +203,7 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 			return m.outcome(ctx, d, owner, "", "", err, false)
 		}
 		p := j.payload(d.Payload)
-		key, err := m.archive(sctx, n, j, p)
+		key, err := m.archive(sctx, n, j, p, d.Trace)
 		d, err = m.outcome(ctx, d, owner, "", key, err, false)
 		if err != nil || d.State != DeliveryDone || len(n.To) == 0 || p == nil {
 			return d, err
@@ -271,7 +271,7 @@ func (m *Manager) out(d *Delivery, n *Node, j *Job, p *Payload) *Out {
 		}
 		meta["$error"], meta["$error_node"] = d.Cause.Error, d.Cause.Node
 	}
-	return &Out{ID: d.ID, Node: n, Job: j, Payload: p, Name: firstOr(d.Name, "job-"+j.ID), Meta: meta, Cause: d.Cause, m: m}
+	return &Out{ID: d.ID, Node: n, Job: j, Payload: p, Name: firstOr(d.Name, "job-"+j.ID), Meta: meta, Cause: d.Cause, Trace: d.Trace, m: m}
 }
 
 // step does the step of an adapter's node (Kind.Step) for a delivery,
@@ -488,7 +488,9 @@ func (m *Manager) cancelDelivery(ctx context.Context, id string) error {
 
 // ArchiveRecord is the record an archive keeps beside the payload it
 // wrote: the job, the payload (Kind, Format, Pages, Size and SHA256 are
-// its), its metadata, and the job's way so far (Legs, Payloads).
+// its), its metadata, the job's way so far (Legs, Payloads), and the
+// trace of the step the payload came out of or went into, which names
+// the other side's objects (trace.go).
 type ArchiveRecord struct {
 	Job         int32          `json:"job"`
 	Dest        string         `json:"dest"`
@@ -509,6 +511,7 @@ type ArchiveRecord struct {
 	Meta        map[string]any `json:"meta,omitempty"`
 	Payloads    []Payload      `json:"payloads"`
 	Legs        []Leg          `json:"legs"`
+	Trace       *Trace         `json:"trace,omitempty"`
 }
 
 // archiveKey names a payload's objects in an archive: the day the job was
@@ -536,7 +539,7 @@ var extRE = regexp.MustCompile(`^\.[A-Za-z0-9]+$`)
 // archive writes a job's payload and its record to an archive's store,
 // each once: an object there already is taken as written (a retry after
 // the outcome of a write was not known).
-func (m *Manager) archive(ctx context.Context, n *Node, j *Job, p *Payload) (string, error) {
+func (m *Manager) archive(ctx context.Context, n *Node, j *Job, p *Payload, trace *Trace) (string, error) {
 	if p == nil {
 		return "", errors.New("the job has no payload to archive")
 	}
@@ -555,7 +558,7 @@ func (m *Manager) archive(ctx context.Context, n *Node, j *Job, p *Payload) (str
 		return "", err
 	}
 	rec := ArchiveRecord{Job: j.Number, Dest: j.Dest, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Source: j.Source, Kind: p.Kind, Format: p.Format, Pages: p.Pages, Size: p.Size,
-		SHA256: p.SHA256, Received: j.Received, Archived: m.now(), Archive: n.Name, Payload: p.ID, Object: object, Meta: j.Meta, Payloads: j.Payloads, Legs: j.Legs}
+		SHA256: p.SHA256, Received: j.Received, Archived: m.now(), Archive: n.Name, Payload: p.ID, Object: object, Meta: j.Meta, Payloads: j.Payloads, Legs: j.Legs, Trace: trace}
 	b, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
 		return "", err

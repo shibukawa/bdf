@@ -269,6 +269,9 @@ type Out struct {
 	// Cause is the failure that sent the job here along an on_error
 	// edge, or nil.
 	Cause *Failure
+	// Trace is the step the payload came out of, or went into, on its
+	// way here, or nil ($trace … in Expand).
+	Trace *Trace
 	m     *Manager
 }
 
@@ -331,7 +334,7 @@ func (o *Out) view() map[string]string {
 	if j == nil {
 		j = &Job{Name: o.Name} // a slip whose job is gone
 	}
-	v := metaView(j, o.Payload)
+	v := metaView(j, o.Payload, o.Trace)
 	for k, x := range o.Meta {
 		if _, ok := v[k]; !ok {
 			v[k] = metaText(x)

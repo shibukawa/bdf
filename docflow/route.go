@@ -21,6 +21,8 @@ type routing struct {
 	// archived is what the last archive on the way wrote (the job goes on
 	// from an archive once it wrote): what an export lists.
 	archived *archiveRef
+	// trace is the step the payload came out of, or went into (trace.go).
+	trace *Trace
 	// cause is the failure the job left a node for along an on_error
 	// edge: the deliveries made on the way carry it.
 	cause      *Failure

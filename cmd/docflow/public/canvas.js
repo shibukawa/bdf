@@ -107,7 +107,8 @@ export function iconOf(kind, size = 14) {
 export const roleColor = (kind) => ROLE_COLOR[ROLE_OF[kind] || "flow"];
 
 // edgesOf are the edges from a node: to (a queue's, an endpoint's, a CUPS
-// server's, an inbox's, a filter's rules and otherwise), member (a
+// server's, an inbox's, a filter's rules and otherwise), original (what a
+// template or a convert node took, sent on as it was), member (a
 // class's), fallback (a display's printer) or error (on_error: where the
 // job goes when the node's send or step fails for good).
 export function edgesOf(n) {
@@ -121,6 +122,7 @@ export function edgesOf(n) {
   for (const x of n.to || []) to(x, "to");
   for (const r of n.rules || []) for (const x of r.to || []) to(x, "to");
   for (const x of n.otherwise || []) to(x, "to");
+  for (const x of n.original || []) to(x, "original");
   for (const x of n.members || []) to(x, "member");
   if (n.fallback && n.fallback.printer) to(n.fallback.printer, "fallback");
   for (const x of n.on_error || []) to(x, "error");
@@ -479,21 +481,22 @@ export function createCanvas(svg, opts = {}) {
         // what is after it): colored by that; broken when the node after
         // it does not take what reaches it along it
         const broken = (n.broken || {})[e.to];
-        const kinds = e.kind === "fallback" ? ["bdf"] : e.kind === "error" ? t.in : t.out;
+        const kinds = e.kind === "fallback" ? ["bdf"] : e.kind === "original" ? asList(n.reaches) : e.kind === "error" ? t.in : t.out;
         const color = broken ? BROKEN_COLOR : payloadColor(kinds);
         const line = svgEl("path", { d, fill: "none", stroke: color, "stroke-width": broken ? "2.5" : kinds.length ? "2" : "1.5", "marker-end": arrow(color, e.kind === "member"), "pointer-events": "none" });
         if (broken) line.setAttribute("stroke-dasharray", "8 5");
-        else if (e.kind === "error") line.setAttribute("stroke-dasharray", "3 4");
+        else if (e.kind === "error") line.setAttribute("stroke-dasharray", "6 3 1 3");
         else if (e.kind === "fallback") {
           line.setAttribute("stroke-dasharray", "1 5");
           line.setAttribute("stroke-linecap", "round");
-        }
+        } else if (e.kind === "original") line.setAttribute("stroke-dasharray", "4 3");
         const title = svgEl("title");
         let what;
         if (broken) {
           const fix = mend(asList(broken), typeOf(nodes[e.to]).accepts);
           what = `${n.name} → ${e.to} no longer connects: ${e.to} takes ${payloadText(nodes[e.to].takes)}, but ${payloadText(broken)} reaches it here${fix ? ": " + fix : ""}, or remove the edge`;
         } else if (e.kind === "fallback") what = `${n.name} prints on ${e.to} as a fallback`;
+        else if (e.kind === "original") what = `${n.name} sends what it took, as it was, to ${e.to}: ${kinds.length ? payloadText(kinds) : "not typed yet"} (traced with what it made)`;
         else if (e.kind === "error") what = `${n.name} → ${e.to} on error: what reached ${n.name}, when its send or step fails for good`;
         else if (e.kind === "member") what = `${e.to} is a member of ${n.name}: ${kinds.length ? payloadText(kinds) : "not typed yet"}`;
         else what = `${n.name} → ${e.to}: ${kinds.length ? payloadText(kinds) : "not typed yet"}`;

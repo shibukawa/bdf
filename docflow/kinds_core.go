@@ -108,6 +108,7 @@ func checkTemplate(ctx context.Context, m *Manager, in Node, n *Node) error {
 		return fmt.Errorf("%w: template id %q: letters, digits, _ and -", ErrInvalid, n.Template)
 	}
 	n.ListName, n.Strict = strings.TrimSpace(in.ListName), in.Strict
+	n.Original = cleanNames(in.Original)
 	return nil
 }
 
@@ -117,6 +118,7 @@ func checkConvert(ctx context.Context, m *Manager, in Node, n *Node) error {
 		return fmt.Errorf("%w: a convert node sends the document it makes to at least one node (to)", ErrInvalid)
 	}
 	n.Formats = cleanFormats(in.Formats)
+	n.Original = cleanNames(in.Original)
 	return checkFormats(n.Formats)
 }
 
