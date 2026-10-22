@@ -48,6 +48,11 @@ const (
 	// passes them over.
 	PartTemplate = "tpl"
 	PartSource   = "src"
+	// PartFill is the record of a form completed from a partly filled
+	// form whose values were signed: the values, and the signatures of
+	// those who gave them, as JSON (package form; docs/spec.md §4.5). No
+	// view refers to it.
+	PartFill = "fill"
 	// PartText is the print image of a form filled from a template of
 	// plain text: its grid of columns and lines, and the characters of
 	// each line, as JSON (package form/textpart; docs/spec.md §4). No view

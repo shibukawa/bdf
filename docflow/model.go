@@ -129,6 +129,10 @@ const (
 	// owner its metadata names, and serves them at GET /out/<name>
 	// (export.go).
 	KindExport = "export"
+	// KindSign signs the .bdf document that reaches it with the key of
+	// the manager, as a witness of who sent it, and sends it on
+	// (signnode.go).
+	KindSign = "sign"
 )
 
 // What an entry (an endpoint, a CUPS server) accepts: documents (PDF,
@@ -207,6 +211,8 @@ type Node struct {
 	Template     string `json:"template,omitempty"`
 	TemplateFrom string `json:"template_from,omitempty"`
 	ListName     string `json:"list_name,omitempty"`
+	// SignRole is the role a sign node signs in (RoleWitness when "").
+	SignRole string `json:"sign_role,omitempty"`
 	Strict       bool   `json:"strict,omitempty"`
 	// KeyHash is the hash of an endpoint's key (argon2id), never the key.
 	// Apps are the apps that may send to the endpoint with their own

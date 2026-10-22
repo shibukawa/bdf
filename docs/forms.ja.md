@@ -407,7 +407,20 @@ bdf fill -data theirs.json contract.bdff contract.bdf                # 乙が残
 - ドットを含む名前で、オブジェクトの中の値だけを残せます（`-open party_b.sign`）。リスト（表の行）は、全部埋めるか全部残すかのどちらかです。
 - ファイルのパスで渡した画像は、`data:` URL にして .bdff の中に入れます。相手はそのファイルを持っていないからです。
 - 値は JSON の形で持ちます。YAML の日付は文字列になります。どちらの経路でも同じ帳票にするには、日付を文字列（`2026-10-22`）で渡します。
-- .bdff は書き換えから守られていません。ファイルを持つ人は、中の値を変えられます。相手がウェブサイトで残りを埋める使い方なら、.bdff はサーバーに置いたまま、相手からは残りの値だけを受け取ります。
+- .bdff は書き換えから守られていません。ファイルを持つ人は、中の値を変えられます。相手がウェブサイトで残りを埋める使い方なら、.bdff はサーバーに置いたまま、相手からは残りの値だけを受け取ります。ファイルを手から手へ渡すなら、値に署名します（次の節）。
+
+### 値に署名する
+
+`-sign-key` と `-sign-cert` は、その穴埋めで渡したものに署名します。署名するのは、そのときの帳票の値・空けた名前・テンプレート（の SHA-256）で、ページではありません。ページは他の人が埋めると変わるからです。.bdff は署名を持ち、そこから完成させた帳票は、値の記録とすべての署名を持ちます（型 `fill` の Part、spec §4.5）。
+
+```sh
+bdf fill -data mine.yaml -open party_b -sign-key alice.key -sign-cert alice.pem -sign-role author contract.bdft contract.bdff
+bdf fill -data theirs.json -sign-key bob.key -sign-cert bob.pem contract.bdff contract.bdf
+bdf sign -key witness.key -cert witness.pem -role witness contract.bdf    # ページと記録に
+bdf verify -roots ca.pem contract.bdf
+```
+
+`bdf verify` は値の署名ごとに、署名した値がすべて帳票の値と同じか、署名した人が埋めた名前を帳票が空けていないかを確かめます。完成させる前に .bdff の値を書き換えると、その値を渡した人の署名が成り立たなくなります。ページへの署名は `bdf sign` です（[sign, verify](architecture/cli.ja.md#sign-verify)）。その署名は記録も覆います。`-open` なしで署名すると、帳票の値をすべて署名します。
 
 [フォームのページ](https://shibukawa.github.io/bdf/form/)では、「Leave for another person」で名前にチェックを付けると、文書を .bdff として保存できます。そのページで .bdff を開くと、残した名前の欄だけが出ます。
 

@@ -411,7 +411,7 @@ func (m *Manager) tickJobs(ctx context.Context, rep *TickReport) error {
 // exit that sends out, a class, an archive, a step.
 func namesDelivery(kind string) bool {
 	switch kind {
-	case KindArchive, KindClass, KindTemplate, KindConvert:
+	case KindArchive, KindClass, KindTemplate, KindConvert, KindSign:
 		return true
 	}
 	return sendsOut(kind) || steps(kind)

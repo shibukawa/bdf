@@ -26,6 +26,9 @@ type DocflowConfig struct {
 	OnError         []string      `help:"nodes a job goes to when a send or a step fails for good at a node with no on_error edges (a notify node)"`
 	CredentialDir   string        `default:"" help:"directory of the credentials nodes name, a file each (DOCFLOW_CRED_<name> comes first)"`
 	SecureCookies   bool          `default:"true" help:"Secure on the devices' cookie (false only for plain http in development)"`
+	SignKeyFile     string        `default:"" help:"file of the private key (PEM) that sign nodes sign documents with, as a witness"`
+	SignCertFile    string        `default:"" help:"file of the certificate of the signing key (PEM), followed by those of its chain"`
+	SignTSA         string        `default:"" help:"URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes"`
 }
 
 // OIDCConfig is the [oidc] table, or the OIDC_* variables: who of the

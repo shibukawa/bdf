@@ -225,6 +225,8 @@ func (m *Manager) transform(ctx context.Context, d *Delivery, n *Node, j *Job) (
 			return in, nil
 		}
 		doc, err = m.convertPayload(ctx, n, in)
+	case KindSign:
+		return m.signPayload(ctx, d, n, j, in)
 	default:
 		return nil, final("%s is a %s: it transforms nothing", n.Name, n.Kind)
 	}

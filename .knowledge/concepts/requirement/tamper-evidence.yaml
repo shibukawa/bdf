@@ -33,9 +33,9 @@ non_goals:
 open_questions:
   signer-model:
     text: だれの鍵で署名するか。当事者型（署名する本人の証明書。マイナンバーカードの署名用証明書や民間の認証局）と立会人型（Docflow のサーバーの鍵で「この人がこの操作をした」と署名）
-    state: open
+    state: answered
     resolution: >-
-      暫定案（Claude）：処理系は両方を同じ API で扱う（crypto.Signer と証明書の鎖を受けるだけ）。最初に通すのは立会人型（Docflow の人の操作のノードが、サインインした人の名前と操作を
+      2026-10-23 sig-3b で立会人型（Docflow の sign ノード）を実装、当事者型は bdf sign・bdf fill -sign-key で同じ API。暫定案（Claude）：処理系は両方を同じ API で扱う（crypto.Signer と証明書の鎖を受けるだけ）。最初に通すのは立会人型（Docflow の人の操作のノードが、サインインした人の名前と操作を
       署名の属性に入れてサーバーの鍵で署名する）。ウェブで残りを埋める流れに合い、相手に証明書を求めない。当事者型はファイルの鍵で同じコードを通して確かめる
   bdf-placement:
     text: 1 ファイル形式で署名をどこに置くか。(a) Part の領域の後ろに付ける末尾のブロック（"bdfs" の印と長さ。ヘッダーの flags は立てない）、(b) ヘッダーの flags に新しいビット、(c) 別ファイル（foo.bdf.sig）
@@ -84,6 +84,10 @@ relations:
   to: milestone:sig-1
 - relation: has_milestone
   to: milestone:sig-2
+- relation: has_milestone
+  to: milestone:sig-3a
+- relation: has_milestone
+  to: milestone:sig-3b
 facts:
   threat_model:
     protects: >-

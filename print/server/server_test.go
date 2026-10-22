@@ -551,11 +551,20 @@ func TestPrintAndFollow(t *testing.T) {
 	if err != nil || res2.StatusCode != 401 {
 		t.Fatalf("metrics without token: %v %v", err, res2.StatusCode)
 	}
-	req, _ = http.NewRequest("GET", f.http.URL+"/metrics", nil)
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-	res2, _ = http.DefaultClient.Do(req)
-	b, _ := io.ReadAll(res2.Body)
-	res2.Body.Close()
+	// (the last job may still be finishing on a slow machine: its
+	// counts move once it completed)
+	var b []byte
+	for deadline := time.Now().Add(10 * time.Second); ; {
+		req, _ = http.NewRequest("GET", f.http.URL+"/metrics", nil)
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+		res2, _ = http.DefaultClient.Do(req)
+		b, _ = io.ReadAll(res2.Body)
+		res2.Body.Close()
+		if bytes.Contains(b, []byte(`bdf_print_jobs_total{queue="office",state="completed"} 2`)) || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	for _, want := range []string{
 		`bdf_print_jobs_total{queue="office",state="completed"} 2`,
 		`bdf_print_sheets_total{queue="office"} 2`,

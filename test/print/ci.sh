@@ -21,6 +21,9 @@
 # for lpadmin and Ghostscript (gs). BDF names the bdf command (default:
 # go run).
 set -euo pipefail
+# (a command piped into grep writes to a grep that reads all of it: grep -q
+# quits at its first match, and the command would die of SIGPIPE, which
+# pipefail makes the script's failure)
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 bdf=${BDF:-}
@@ -137,7 +140,7 @@ test "$status" -eq 4
 
 # a CUPS queue of the printer, as Linux and macOS have them
 sudo lpadmin -p bdftest -E -v "$url" -m everywhere
-"$bdf" printers -cups local | grep -q '^bdftest'
+"$bdf" printers -cups local | grep '^bdftest' >/dev/null
 before=$(received '%PDF-')
 "$bdf" print -printer ipp://localhost:631/printers/bdftest "${fonts[@]}" -wait 5m testdata/form/pptx-fixed.bdf
 # CUPS sends the job on to the fake
@@ -163,8 +166,8 @@ for _ in $(seq 60); do
 done
 test "$(jobs_of raw)" -gt "$rawbefore"
 test "$(jobs_of lpd)" -ge 1
-curl -sf "http://127.0.0.1:8650/api/jobs?printer=lpd" | grep -q '"format": "application/pdf"'
-last=$(curl -sf "http://127.0.0.1:8650/api/jobs?printer=eve" | grep -m1 '"id":' | tr -dc '0-9')
+curl -sf "http://127.0.0.1:8650/api/jobs?printer=lpd" | grep '"format": "application/pdf"' >/dev/null
+last=$(curl -sf "http://127.0.0.1:8650/api/jobs?printer=eve" | awk '/"id":/ && !n { print; n = 1 }' | tr -dc '0-9')
 curl -sf "http://127.0.0.1:8650/api/printers/eve/jobs/$last/pages" | tee "$work/pages.json"
 grep -q '"pages"' "$work/pages.json"
 if grep -q '"error"' "$work/pages.json"; then exit 1; fi
@@ -207,21 +210,21 @@ kill -INT "$printd"
 wait "$printd"
 start_printd
 for _ in $(seq 120); do
-  if "$bdf" jobs -server "$server" show "$job" | grep -q '^state: *completed'; then break; fi
+  if "$bdf" jobs -server "$server" show "$job" | grep '^state: *completed' >/dev/null; then break; fi
   sleep 1
 done
 "$bdf" jobs -server "$server" -all
-"$bdf" jobs -server "$server" show "$job" | grep -q '^state: *completed'
+"$bdf" jobs -server "$server" show "$job" | grep '^state: *completed' >/dev/null
 test "$(received '%PDF-')" -eq $((before + 1))
 # the printers of PostScript and of the raw port
 psjob=$("$bdf" print -server "$server" -queue postscript -q testdata/form/rows.bdf)
 rawjob=$("$bdf" print -server "$server" -queue old -q testdata/form/rows.bdf)
 for j in "$psjob" "$rawjob"; do
   for _ in $(seq 120); do
-    if "$bdf" jobs -server "$server" show "$j" | grep -q '^state: *completed'; then break; fi
+    if "$bdf" jobs -server "$server" show "$j" | grep '^state: *completed' >/dev/null; then break; fi
     sleep 1
   done
-  "$bdf" jobs -server "$server" show "$j" | grep -q '^state: *completed'
+  "$bdf" jobs -server "$server" show "$j" | grep '^state: *completed' >/dev/null
 done
 test "$(received '%!PS-Adobe-3.0' "$psspool")" -eq 3
 test "$(received '%!PS-Adobe-3.0' "$rawdir")" -eq 2
@@ -244,7 +247,7 @@ ipptool -t -f "$work/photo.jpg" "$ippuri" "$tests/print-job.test"
 # the jobs of the queue are done
 idle() {
   for _ in $(seq 300); do
-    if ! "$bdf" jobs -server "$server" -queue office | grep -q '^ *[0-9]'; then return; fi
+    if ! "$bdf" jobs -server "$server" -queue office | grep '^ *[0-9]' >/dev/null; then return; fi
     sleep 1
   done
   return 1

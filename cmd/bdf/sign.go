@@ -5,7 +5,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shibukawa/bdf/form"
 	"github.com/shibukawa/bdf/sign"
 )
 
@@ -33,47 +33,20 @@ func readSigned(path string) (*sign.Document, error) {
 	return sign.Read(bytes.NewReader(b), int64(len(b)))
 }
 
-// loadSigner reads a private key (PKCS #8, EC or PKCS #1 in PEM) and the
-// certificates of its chain (PEM, the key's first).
+// loadSigner reads a private key and the certificates of its chain from
+// files of PEM (sign.ParsePEM).
 func loadSigner(keyFile, certFile string) (crypto.Signer, []*x509.Certificate, error) {
 	kb, err := os.ReadFile(keyFile)
 	if err != nil {
 		return nil, nil, err
 	}
-	var key crypto.Signer
-	for rest := kb; key == nil; {
-		var blk *pem.Block
-		if blk, rest = pem.Decode(rest); blk == nil {
-			return nil, nil, fmt.Errorf("%s holds no private key in PEM (a PKCS #12 file is written as PEM by openssl pkcs12 -in key.p12 -nodes)", keyFile)
-		}
-		var k any
-		switch blk.Type {
-		case "PRIVATE KEY":
-			k, err = x509.ParsePKCS8PrivateKey(blk.Bytes)
-		case "EC PRIVATE KEY":
-			k, err = x509.ParseECPrivateKey(blk.Bytes)
-		case "RSA PRIVATE KEY":
-			k, err = x509.ParsePKCS1PrivateKey(blk.Bytes)
-		case "ENCRYPTED PRIVATE KEY":
-			return nil, nil, fmt.Errorf("%s: the key is encrypted; write it without its password (openssl pkey -in key.pem -out plain.pem)", keyFile)
-		default:
-			continue
-		}
-		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", keyFile, err)
-		}
-		s, ok := k.(crypto.Signer)
-		if !ok {
-			return nil, nil, fmt.Errorf("%s: the key does not sign", keyFile)
-		}
-		key = s
-	}
-	certs, err := loadCerts(certFile)
+	cb, err := os.ReadFile(certFile)
 	if err != nil {
 		return nil, nil, err
 	}
-	if len(certs) == 0 {
-		return nil, nil, fmt.Errorf("%s holds no certificate", certFile)
+	key, certs, err := sign.ParsePEM(kb, cb)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s, %s: %w", keyFile, certFile, err)
 	}
 	return key, certs, nil
 }
@@ -83,22 +56,7 @@ func loadCerts(file string) ([]*x509.Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-	var out []*x509.Certificate
-	for rest := b; ; {
-		var blk *pem.Block
-		if blk, rest = pem.Decode(rest); blk == nil {
-			break
-		}
-		if blk.Type != "CERTIFICATE" {
-			continue
-		}
-		c, err := x509.ParseCertificate(blk.Bytes)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", file, err)
-		}
-		out = append(out, c)
-	}
-	return out, nil
+	return sign.ParseCertificates(b)
 }
 
 // signCmd adds a signature to a document.
@@ -181,7 +139,15 @@ func verifyCmd(args []string) {
 	check(err)
 	sigs, err := d.Verify(o)
 	check(err)
-	ok := len(sigs) > 0
+	// the signatures of the values of a form (bdf fill -sign-key)
+	var values []*form.ValueSignature
+	if st, err := os.Stat(fs.Arg(0)); err == nil && !st.IsDir() {
+		b, err := os.ReadFile(fs.Arg(0))
+		check(err)
+		values, err = form.VerifyValues(bytes.NewReader(b), int64(len(b)), o)
+		check(err)
+	}
+	ok := len(sigs)+len(values) > 0
 	type report struct {
 		Index     int            `json:"index"`
 		Signer    string         `json:"signer,omitempty"`
@@ -217,15 +183,43 @@ func verifyCmd(args []string) {
 		}
 		reports = append(reports, r)
 	}
+	var valueReports []report
+	for _, s := range values {
+		ok = ok && s.Valid()
+		r := report{Index: s.Index + 1, Valid: s.Valid()}
+		if s.Values != nil {
+			r.Claims = s.Values.Claims
+		}
+		if s.Certificate != nil {
+			r.Signer = s.Certificate.Subject.String()
+		}
+		if !s.SigningTime.IsZero() {
+			r.Signed = s.SigningTime.Format(time.RFC3339)
+		}
+		if !s.TimeStamp.IsZero() {
+			r.TimeStamp = s.TimeStamp.Format(time.RFC3339)
+		}
+		if s.Err != nil {
+			r.Error = s.Err.Error()
+		}
+		if s.TrustErr != nil {
+			r.Trust = s.TrustErr.Error()
+		}
+		valueReports = append(valueReports, r)
+	}
 	if *asJSON {
-		b, err := json.MarshalIndent(map[string]any{"signatures": reports, "valid": ok}, "", "  ")
+		b, err := json.MarshalIndent(map[string]any{"signatures": reports, "values": valueReports, "valid": ok}, "", "  ")
 		check(err)
 		os.Stdout.Write(append(b, '\n'))
 	} else {
-		if len(sigs) == 0 {
+		if len(sigs)+len(values) == 0 {
 			fmt.Println("no signatures")
 		}
-		for _, r := range reports {
+		for i, r := range append(reports, valueReports...) {
+			kind := "signature"
+			if i >= len(reports) {
+				kind = "signature of the values of the form"
+			}
 			state := "valid"
 			switch {
 			case r.Error != "":
@@ -233,7 +227,7 @@ func verifyCmd(args []string) {
 			case r.Trust != "":
 				state = "holds, NOT TRUSTED"
 			}
-			fmt.Printf("signature %d: %s\n  signer: %s\n", r.Index, state, r.Signer)
+			fmt.Printf("%s %d: %s\n  signer: %s\n", kind, r.Index, state, r.Signer)
 			if r.Signed != "" {
 				fmt.Printf("  signed: %s (the signer's clock)\n", r.Signed)
 			}
