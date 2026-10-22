@@ -266,11 +266,29 @@ export component Tablet(): html {
   </Shell>
 }
 
+// PaletteGroup is a heading of the topology's palette and the kinds of
+// node under it, read down a column and never split across two: the
+// palette flows in two columns from md, and from xl each group starts a
+// column of its own. The list under the heading is not indented, and its
+// descriptions wrap.
+component PaletteGroup(title: string, children: html): html {
+  <li class="block break-inside-avoid xl:break-before-column">
+    <h3 class="menu-title">{title}</h3>
+    <ul class="ms-0 ps-0 whitespace-normal before:hidden"><slot required /></ul>
+  </li>
+}
+
+// PaletteKind is a kind of node in the palette: its name over what it
+// does (topology.js puts the kind's icon before them).
+component PaletteKind(kind: string, name: string, children: html): html {
+  <li><a data-kind={kind}><span class="flex flex-col"><span class="font-semibold">{name}</span><span class="text-xs text-base-content/60"><slot required /></span></span></a></li>
+}
+
 // Topology is the topology, everyone's page: the nodes and the edges,
 // with the activity of the jobs the person may see running along them.
 // A person with the role topology edits it here as well: the palette
-// adds a node (an endpoint, a queue, a class, a filter, a template or
-// convert node, an inbox, a display, a printer, an archive, a sink),
+// adds a node of a kind, under Source, Control, Convert and Sink as the
+// roles go (canvas.js ROLE_OF; Control is control flow and filter),
 // dragging moves and connects, and the sidebar sets the node selected
 // up; anyone else sees a node's jobs there, and prints there when they
 // may. The script tells the two apart by the palette, which only the
@@ -287,30 +305,40 @@ export component Topology(account: Account): html {
           <div class="flex flex-wrap items-center gap-2">
             <h2 class="card-title">Topology</h2>
             {if account.topology}
-              <div class="dropdown">
+              <div class="dropdown max-sm:static">
                 <div tabindex="0" role="button" class="btn btn-sm btn-primary">+ Add a node</div>
-                <ul id="palette" tabindex="0" class="dropdown-content menu z-20 w-72 rounded-box bg-base-100 p-2 shadow-md">
-                  <li><a data-kind="endpoint"><span class="font-semibold">Endpoint</span><span class="text-xs text-base-content/60">a REST entry for applications</span></a></li>
-                  <li><a data-kind="cups"><span class="font-semibold">CUPS server</span><span class="text-xs text-base-content/60">an IPP port of its own for computers; forwards what it receives</span></a></li>
-                  <li><a data-kind="queue"><span class="font-semibold">Queue</span><span class="text-xs text-base-content/60">forwards to every node it points to</span></a></li>
-                  <li><a data-kind="class"><span class="font-semibold">Class</span><span class="text-xs text-base-content/60">one member in turn, or the first</span></a></li>
-                  <li><a data-kind="filter"><span class="font-semibold">Filter</span><span class="text-xs text-base-content/60">sends on by rules on what a job is, and its metadata</span></a></li>
-                  <li><a data-kind="template"><span class="font-semibold">Template</span><span class="text-xs text-base-content/60">fills a template with data, into a .bdf document</span></a></li>
-                  <li><a data-kind="convert"><span class="font-semibold">Convert</span><span class="text-xs text-base-content/60">makes a .bdf document of a file received as it is</span></a></li>
-                  <li><a data-kind="sign"><span class="font-semibold">Sign</span><span class="text-xs text-base-content/60">signs a .bdf document as a witness of who sent it</span></a></li>
-                  <li><a data-kind="inbox"><span class="font-semibold">Inbox</span><span class="text-xs text-base-content/60">held until a person releases it</span></a></li>
-                  <li><a data-kind="display"><span class="font-semibold">Display</span><span class="text-xs text-base-content/60">shown on the devices enrolled there</span></a></li>
-                  <li><a data-kind="printer"><span class="font-semibold">Printer</span><span class="text-xs text-base-content/60">printed on paper</span></a></li>
-                  <li><a data-kind="archive"><span class="font-semibold">Archive</span><span class="text-xs text-base-content/60">written once, never changed</span></a></li>
-                  <li><a data-kind="sink"><span class="font-semibold">Sink</span><span class="text-xs text-base-content/60">keeps the latest documents, to look at</span></a></li>
-                  <li><a data-kind="export"><span class="font-semibold">Export</span><span class="text-xs text-base-content/60">lists what an archive wrote, for applications and people to fetch</span></a></li>
-                  <li><a data-kind="s3-trigger"><span class="font-semibold">S3 Trigger</span><span class="text-xs text-base-content/60">takes the objects an S3 event names</span></a></li>
-                  <li><a data-kind="render"><span class="font-semibold">Render</span><span class="text-xs text-base-content/60">draws a .bdf document as a PDF, or a page as a PNG</span></a></li>
-                  <li><a data-kind="notify"><span class="font-semibold">Notify</span><span class="text-xs text-base-content/60">tells Slack, a mail or a webhook; failures come along on_error</span></a></li>
-                  <li><a data-kind="smtp"><span class="font-semibold">Mail (SMTP)</span><span class="text-xs text-base-content/60">mails it as an attachment</span></a></li>
-                  <li><a data-kind="s3"><span class="font-semibold">S3</span><span class="text-xs text-base-content/60">written to a bucket, once</span></a></li>
-                  <li><a data-kind="http"><span class="font-semibold">HTTP</span><span class="text-xs text-base-content/60">sent to a web service</span></a></li>
-                </ul>
+                <div tabindex="0" class="dropdown-content z-20 max-h-[75vh] w-80 overflow-y-auto max-sm:inset-x-4 max-sm:w-auto md:w-[38rem] lg:w-[44rem] xl:w-[64rem] rounded-box bg-base-100 shadow-md">
+                  <ul id="palette" class="menu w-full md:block md:columns-2 xl:columns-4">
+                    <PaletteGroup title="Source">
+                      <PaletteKind kind="endpoint" name="Endpoint">a REST entry for applications</PaletteKind>
+                      <PaletteKind kind="cups" name="CUPS server">an IPP port of its own for computers; forwards what it receives</PaletteKind>
+                      <PaletteKind kind="s3-trigger" name="S3 Trigger">takes the objects an S3 event names</PaletteKind>
+                    </PaletteGroup>
+                    <PaletteGroup title="Control">
+                      <PaletteKind kind="queue" name="Queue">forwards to every node it points to</PaletteKind>
+                      <PaletteKind kind="class" name="Class">one member in turn, or the first</PaletteKind>
+                      <PaletteKind kind="filter" name="Filter">sends on by rules on what a job is, and its metadata</PaletteKind>
+                      <PaletteKind kind="inbox" name="Inbox">held until a person releases it</PaletteKind>
+                      <PaletteKind kind="notify" name="Notify">tells Slack, a mail or a webhook; failures come along on_error</PaletteKind>
+                    </PaletteGroup>
+                    <PaletteGroup title="Convert">
+                      <PaletteKind kind="template" name="Template">fills a template with data, into a .bdf document</PaletteKind>
+                      <PaletteKind kind="convert" name="Convert">makes a .bdf document of a file received as it is</PaletteKind>
+                      <PaletteKind kind="sign" name="Sign">signs a .bdf document as a witness of who sent it</PaletteKind>
+                      <PaletteKind kind="render" name="Render">draws a .bdf document as a PDF, or a page as a PNG</PaletteKind>
+                    </PaletteGroup>
+                    <PaletteGroup title="Sink">
+                      <PaletteKind kind="display" name="Display">shown on the devices enrolled there</PaletteKind>
+                      <PaletteKind kind="printer" name="Printer">printed on paper</PaletteKind>
+                      <PaletteKind kind="archive" name="Archive">written once, never changed</PaletteKind>
+                      <PaletteKind kind="sink" name="Sink">keeps the latest documents, to look at</PaletteKind>
+                      <PaletteKind kind="export" name="Export">lists what an archive wrote, for applications and people to fetch</PaletteKind>
+                      <PaletteKind kind="smtp" name="Mail (SMTP)">mails it as an attachment</PaletteKind>
+                      <PaletteKind kind="s3" name="S3">written to a bucket, once</PaletteKind>
+                      <PaletteKind kind="http" name="HTTP">sent to a web service</PaletteKind>
+                    </PaletteGroup>
+                  </ul>
+                </div>
               </div>
             {/if}
             <div class="join">
