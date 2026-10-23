@@ -6,23 +6,42 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/shibukawa/bdf/docflow"
+	docflowipp "github.com/shibukawa/bdf/docflow/io/ipp"
+	"github.com/shibukawa/bdf/print/ipp"
 )
 
 // ports are the listeners of the entry nodes that have a port of their
 // own (an endpoint's REST, a CUPS server's IPP): one per node, opened and
 // closed as the nodes change (the manager's OnChange, and every tick in
 // case a port could not be opened), and closed with the app. A serverless
-// deployment has none (docflow.Options.NoPorts).
+// deployment has none (docflow.Options.NoPorts). The CUPS servers that
+// say so (dnssd) are advertised with DNS-SD on the local links while
+// their ports are open.
 type ports struct {
 	a       *App
 	mu      sync.Mutex
 	servers map[int]*portServer
 	kicked  chan struct{}
+	// ads are the services advertised now, as a key, and adv their
+	// responder's; mdns configures the responders (tests: a port of
+	// their own on the loopback).
+	ads  string
+	adv  *advertising
+	mdns ipp.ResponderOptions
+}
+
+// advertising is a responder of mDNS announcing services: stop says
+// goodbye, done is closed once it did.
+type advertising struct {
+	stop context.CancelFunc
+	done chan struct{}
 }
 
 type portServer struct {
@@ -109,14 +128,94 @@ func (p *ports) reconcile(ctx context.Context) {
 		}()
 		p.a.log.Info("port open", "node", n.Name, "kind", n.Kind, "port", port, "tls", n.TLSCert != "")
 	}
+	var open []docflow.Node
+	for port, n := range want {
+		if _, ok := p.servers[port]; ok {
+			open = append(open, n)
+		}
+	}
+	slices.SortFunc(open, func(a, b docflow.Node) int { return strings.Compare(a.Name, b.Name) })
+	p.advertise(ctx, open)
+}
+
+// advertise announces the CUPS servers of nodes (those listening) that
+// say so, with DNS-SD, on a host name of the process's own
+// ("<computer>-docflow.local"): the computer's own is its system
+// responder's, which takes another's records of it as a conflict and
+// renames the computer. When they change, the old services say goodbye
+// before the new are announced (a goodbye after would take the new
+// away). A responder that cannot start is tried again at the next
+// reconcile.
+func (p *ports) advertise(ctx context.Context, nodes []docflow.Node) {
+	machine := machineName()
+	ads := docflowipp.Advertisements(p.a.m, nodes, machine)
+	key := fmt.Sprint(ads)
+	if key == p.ads {
+		return
+	}
+	p.stopAdvertising()
+	p.ads = key
+	if len(ads) == 0 {
+		return
+	}
+	actx, stop := context.WithCancel(ctx)
+	adv := &advertising{stop: stop, done: make(chan struct{})}
+	p.adv = adv
+	o := p.mdns
+	o.Host, o.Log = machine+"-docflow.local", p.a.log
+	go func() {
+		defer close(adv.done)
+		r, err := ipp.Advertise(actx, ads, o)
+		if err != nil {
+			p.a.log.Warn("DNS-SD", "err", err)
+			p.mu.Lock()
+			if p.adv == adv {
+				p.ads = ""
+			}
+			p.mu.Unlock()
+			return
+		}
+		p.a.log.Info("DNS-SD: advertised", "host", r.Host(), "services", strings.Join(r.Names(), ", "))
+		<-actx.Done()
+		r.Close()
+	}()
+}
+
+// stopAdvertising says goodbye to the services advertised, and waits
+// until it is said.
+func (p *ports) stopAdvertising() {
+	if p.adv == nil {
+		return
+	}
+	p.adv.stop()
+	<-p.adv.done
+	p.adv, p.ads = nil, ""
+}
+
+// machineName is the computer's name, a label ("office-mac"): what the
+// services are named after and their host name is made of.
+func machineName() string {
+	h, err := os.Hostname()
+	if err != nil || h == "" {
+		return "docflow"
+	}
+	h, _, _ = strings.Cut(h, ".")
+	// the host name's label ("<name>-docflow") is 63 bytes at most
+	for len(h) > 55 {
+		r := []rune(h)
+		h = string(r[:len(r)-1])
+	}
+	return h
 }
 
 func tlsKey(n docflow.Node) string { return n.TLSCert + "|" + n.TLSKey }
 
-// closeAll closes every listener (the app closes).
+// closeAll closes every listener (the app closes), and says goodbye to
+// the services advertised.
 func (p *ports) closeAll() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.stopAdvertising()
 	for port, s := range p.servers {
 		s.srv.Close()
 		delete(p.servers, port)

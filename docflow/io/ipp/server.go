@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -210,6 +211,11 @@ func (s *server) dispatch(ctx context.Context, q *ippRequest, body io.Reader) {
 		q.fail(ipp.StatusClientErrorNotFound, "no default destination: name one")
 		return
 	}
+	if q.attr("printer-uri") == nil {
+		// a printer's operations name the printer (RFC 8011 §4.2)
+		q.fail(ipp.StatusClientErrorBadRequest, "no printer-uri")
+		return
+	}
 	if q.dest == "" {
 		if q.server != "" {
 			q.fail(ipp.StatusClientErrorNotFound, "the server is not a printer: ask /printers/%s", q.server)
@@ -288,7 +294,7 @@ func (s *server) cupsPrinters(ctx context.Context, q *ippRequest, classes bool) 
 			ipp.Attr("printer-uri-supported", ipp.URI(q.uri(n.Name))),
 			ipp.Attr("printer-info", ipp.Text(or(n.Title, n.Name))),
 			ipp.Attr("printer-location", ipp.Text(or(n.Title, n.Name))),
-			ipp.Attr("printer-make-and-model", ipp.Text("BDF Docflow "+n.Kind)),
+			ipp.Attr("printer-make-and-model", ipp.Text(makeModel)),
 			ipp.Attr("printer-uuid", ipp.URI(printerUUID(n.Name))),
 			ipp.Attr("printer-state", ipp.Enum(3)),
 			ipp.Attr("printer-state-reasons", ipp.Keyword("none")),
@@ -303,7 +309,16 @@ func (s *server) cupsPrinters(ctx context.Context, q *ippRequest, classes bool) 
 	}
 }
 
+// printerAttributes answers Get-Printer-Attributes: the node as an
+// AirPrint and IPP Everywhere printer (airPrintAttrs), the attributes
+// requested (all by default); media-col-database when asked by name, as
+// printers tell it.
 func (s *server) printerAttributes(ctx context.Context, q *ippRequest) {
+	if f := q.attr("document-format"); f != nil && !contains(ippFormats, f.Text()) {
+		q.fail(ipp.StatusClientErrorDocumentFormatNotSupported, "document-format %s", f.Text())
+		q.res.Add(ipp.TagUnsupportedGroup, *f)
+		return
+	}
 	queued := 0
 	if jobs, err := s.m.JobsOf(ctx, q.dest, 0); err == nil {
 		for _, j := range jobs {
@@ -311,14 +326,6 @@ func (s *server) printerAttributes(ctx context.Context, q *ippRequest) {
 				queued++
 			}
 		}
-	}
-	ops := make([]ipp.Value, len(ippOperations))
-	for i, op := range ippOperations {
-		ops[i] = ipp.Enum(int(op))
-	}
-	formats := make([]ipp.Value, len(ippFormats))
-	for i, f := range ippFormats {
-		formats[i] = ipp.MimeType(f)
 	}
 	auth := "none"
 	if len(s.m.Options().SubmitTokens) > 0 {
@@ -328,43 +335,12 @@ func (s *server) printerAttributes(ctx context.Context, q *ippRequest) {
 	if q.scheme() == "ipps" {
 		security = "tls"
 	}
-	q.res.Add(ipp.TagPrinter,
-		ipp.Attr("printer-uri-supported", ipp.URI(q.printerURI())),
-		ipp.Attr("uri-security-supported", ipp.Keyword(security)),
-		ipp.Attr("uri-authentication-supported", ipp.Keyword(auth)),
-		ipp.Attr("printer-name", ipp.Name(q.dest)),
-		ipp.Attr("printer-info", ipp.Text(q.title)),
-		ipp.Attr("printer-location", ipp.Text(q.title)),
-		ipp.Attr("printer-make-and-model", ipp.Text("BDF Docflow "+q.kind)),
-		ipp.Attr("printer-uuid", ipp.URI(printerUUID(q.dest))),
-		ipp.Attr("printer-type", ipp.Integer(0)),
-		ipp.Attr("printer-state", ipp.Enum(3)), // idle
-		ipp.Attr("printer-state-reasons", ipp.Keyword("none")),
-		ipp.Attr("printer-is-accepting-jobs", ipp.Boolean(true)),
-		ipp.Attr("queued-job-count", ipp.Integer(queued)),
-		ipp.Attr("printer-up-time", ipp.Integer(int(s.m.Now().Unix()&0x7fffffff))),
-		ipp.Attr("ipp-versions-supported", ipp.Keyword("1.1"), ipp.Keyword("2.0")),
-		ipp.Attr("operations-supported", ops...),
-		ipp.Attr("charset-configured", ipp.Charset("utf-8")),
-		ipp.Attr("charset-supported", ipp.Charset("utf-8")),
-		ipp.Attr("natural-language-configured", ipp.Language("en")),
-		ipp.Attr("generated-natural-language-supported", ipp.Language("en")),
-		ipp.Attr("document-format-default", ipp.MimeType("application/octet-stream")),
-		ipp.Attr("document-format-supported", formats...),
-		ipp.Attr("compression-supported", ipp.Keyword("none")),
-		ipp.Attr("pdl-override-supported", ipp.Keyword("not-attempted")),
-		ipp.Attr("multiple-document-jobs-supported", ipp.Boolean(false)),
-		ipp.Attr("job-ids-supported", ipp.Boolean(true)),
-		ipp.Attr("copies-default", ipp.Integer(1)),
-		ipp.Attr("copies-supported", ipp.NewRange(1, 1)),
-		ipp.Attr("sides-default", ipp.Keyword("one-sided")),
-		ipp.Attr("sides-supported", ipp.Keyword("one-sided")),
-		ipp.Attr("media-default", ipp.Keyword("iso_a4_210x297mm")),
-		ipp.Attr("media-supported", ipp.Keyword("iso_a4_210x297mm"), ipp.Keyword("na_letter_8.5x11in")),
-		ipp.Attr("print-color-mode-default", ipp.Keyword("auto")),
-		ipp.Attr("print-color-mode-supported", ipp.Keyword("auto"), ipp.Keyword("color"), ipp.Keyword("monochrome")),
-		ipp.Attr("color-supported", ipp.Boolean(true)),
-	)
+	attrs := s.airPrintAttrs(q, queued, auth, security)
+	req := ipp.Requested(q.op, []string{"all"})
+	if !slices.Contains(req, "media-col-database") {
+		attrs = slices.DeleteFunc(attrs, func(a ipp.Attribute) bool { return a.Name == "media-col-database" })
+	}
+	q.res.Add(ipp.TagPrinter, ipp.Filter(attrs, req, ipp.PrinterGroups(attrs))...)
 }
 
 // printJob takes a Print-Job: its document follows the request.
@@ -404,6 +380,11 @@ func (s *server) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 	}
 	j, err := s.m.Submit(ctx, q.dest, docflow.Input{Name: name, By: q.by, ClaimedUser: q.text("requesting-user-name"), Source: "ipp", Doc: f, Size: n,
 		ContentType: q.text("document-format"), Meta: meta})
+	if j == nil && (errors.Is(err, docflow.ErrFormat) || errors.Is(err, docflow.ErrInvalid)) {
+		// no job tells it: a client retries what is refused (a Mac's queue
+		// every few seconds), so the log does
+		s.m.Options().Log.Warn("ipp: print-job refused", "dest", q.dest, "name", name, "format", q.text("document-format"), "user", q.user(), "err", err)
+	}
 	switch {
 	case errors.Is(err, docflow.ErrFormat):
 		q.fail(ipp.StatusClientErrorDocumentFormatError, "%v", err)
@@ -514,6 +495,9 @@ func (s *server) jobAttributes(q *ippRequest, j *docflow.Job) []ipp.Attribute {
 		ipp.Attr("job-state-reasons", ipp.Keyword(reason)),
 		ipp.Attr("job-impressions-completed", ipp.Integer(j.Pages)),
 		ipp.Attr("time-at-creation", ipp.Integer(int(j.Received.Unix()&0x7fffffff))),
+		// a job is processed as it is received
+		ipp.Attr("time-at-processing", ipp.Integer(int(j.Received.Unix()&0x7fffffff))),
+		ipp.Attr("job-printer-up-time", ipp.Integer(int(s.m.Now().Unix()&0x7fffffff))),
 	}
 	if !j.Ended.IsZero() {
 		attrs = append(attrs, ipp.Attr("time-at-completed", ipp.Integer(int(j.Ended.Unix()&0x7fffffff))))
@@ -524,8 +508,10 @@ func (s *server) jobAttributes(q *ippRequest, j *docflow.Job) []ipp.Attribute {
 
 // jobs answers Get-Jobs: the jobs sent to the destination, those not
 // completed by default (RFC 8011), the completed ones with which-jobs
-// completed, all with which-jobs all.
+// completed, all with which-jobs all; their job-id and job-uri unless
+// requested-attributes asks for more.
 func (s *server) jobs(ctx context.Context, q *ippRequest) {
+	req := ipp.Requested(q.op, []string{"job-id", "job-uri"})
 	which := firstOr(q.text("which-jobs"), "not-completed")
 	limit := 1000
 	if a := q.attr("limit"); a != nil {
@@ -555,6 +541,6 @@ func (s *server) jobs(ctx context.Context, q *ippRequest) {
 			break
 		}
 		// a group for each job (Add would join them)
-		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: s.jobAttributes(q, j)})
+		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagJob, Attrs: ipp.Filter(s.jobAttributes(q, j), req, nil)})
 	}
 }

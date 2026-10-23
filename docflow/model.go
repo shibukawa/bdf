@@ -251,10 +251,13 @@ type Node struct {
 	Preview string `json:"preview,omitempty"`
 	// Port is a port of the process's own that an endpoint (REST) or a
 	// CUPS server (IPP) listens on (ports.go); TLSCert and TLSKey are the
-	// files of a CUPS server's certificate (none: plain ipp).
+	// files of a CUPS server's certificate (none: plain ipp). DNSSD
+	// advertises a CUPS server's printer on the local links (Bonjour), as
+	// an AirPrint printer computers and phones find.
 	Port    int    `json:"port,omitempty"`
 	TLSCert string `json:"tls_cert,omitempty"`
 	TLSKey  string `json:"tls_key,omitempty"`
+	DNSSD   bool   `json:"dnssd,omitempty"`
 	// Latest is how many of the latest documents a sink keeps (default
 	// 10).
 	Latest int `json:"latest,omitempty"`

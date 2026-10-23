@@ -945,6 +945,13 @@ function settingsForm(n) {
       form.append(portField(n, _("Computers print to ipp://<this host>:<port>/printers/{name}, the one printer of this CUPS server (Usage). Empty: the first port free from 6310.", { name: n.name || "<name>" }), _("empty: the first free from 6310")));
       form.append(field(_("TLS certificate (file)"), input("f-tls-cert", n.tls_cert || "", { placeholder: _("/etc/bdf/cups.crt; empty: plain ipp") })));
       form.append(field(_("TLS key (file)"), input("f-tls-key", n.tls_key || "", { placeholder: "/etc/bdf/cups.key" })));
+      {
+        // a new one is advertised, where nodes have ports
+        const none = !!(me && me.ports === false);
+        const bonjour = el("label", undefined, { className: "inline-flex items-center gap-2 text-sm" });
+        bonjour.append(el("input", undefined, { id: "f-dnssd", type: "checkbox", className: "checkbox checkbox-sm", checked: draft ? !none : !!n.dnssd, disabled: none }), _("Bonjour: advertised on the local network, where Macs, iPhones and iPads find it as an AirPrint printer"));
+        form.append(bonjour);
+      }
       form.append(appsField(n, _("Apps print here with their id and secret as IPP Basic, within their scopes; computers print as the submit tokens allow.")));
       break;
     case "sink":
@@ -1136,6 +1143,7 @@ async function save(ev) {
       if (dur("f-port")) body.port = Number(dur("f-port"));
       if (dur("f-tls-cert")) body.tls_cert = dur("f-tls-cert");
       if (dur("f-tls-key")) body.tls_key = dur("f-tls-key");
+      if ($("f-dnssd").checked) body.dnssd = true;
       break;
     case "template":
       body.to = picked("to");
@@ -1342,13 +1350,16 @@ function printerSetup(n) {
     : _("Computers and business systems add it as an IPP printer, as a printer of a CUPS server: what they print goes on to no node yet (connect it in Settings), made .bdf.")));
   sec.append(pre(url));
   const steps = el("ul", undefined, { className: "flex list-disc flex-col gap-1 pl-5 text-sm" });
+  if (own && n.dnssd) {
+    steps.append(el("li", _("Macs, iPhones and iPads on the local network find it with Bonjour as {name} @ <this computer>: macOS: System Settings → Printers & Scanners → Add Printer → Default, Use: AirPrint; iPhone and iPad: Print → Printer.", { name: n.title || n.name })));
+  }
   steps.append(
-    el("li", _("macOS: System Settings → Printers & Scanners → Add Printer → IP: address {host}, protocol IPP (Internet Printing Protocol), queue {queue}.", { host, queue })),
+    el("li", _("macOS: System Settings → Printers & Scanners → Add Printer → IP: address {host}, protocol IPP (Internet Printing Protocol), queue {queue}, Use: AirPrint. Not Generic PostScript Printer: its PostScript is not taken.", { host, queue })),
     el("li", _("Windows: Settings → Printers & scanners → Add device → Add manually → Select a shared printer by name: {url}.", { url: `${scheme === "ipps" ? "https" : "http"}://${host}/${queue}` })),
     el("li", _("Linux, or a Mac's Terminal (CUPS):")),
   );
   sec.append(steps);
-  sec.append(pre(`lpadmin -p ${n.name} -E -v ${url}` + (own ? `\nlpstat -h ${host} -p` : "")));
+  sec.append(pre(`lpadmin -p ${n.name} -E -v ${url} -m everywhere` + (own ? `\nlpstat -h ${host} -p` : "")));
   const listed = n.apps || [];
   sec.append(hint(sentences(
     _("When the manager has submit tokens (DOCFLOW_SUBMIT_TOKENS), the computer asks for a name and a password: a token's name and its secret."),
