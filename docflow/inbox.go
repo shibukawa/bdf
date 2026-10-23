@@ -13,13 +13,13 @@ import (
 // An inbox holds the jobs that reach it as items, until a person
 // releases one to a node (one of the inbox's To, when it names any) or
 // discards it: a filter worked by hand. An item released or discarded
-// stays, shown as ended, for the inbox's keep. The HTTP (pull) nodes of
+// stays, shown as ended, for the inbox's keep. The downloaders of
 // its To are not where it releases to: they list each item while it is
 // held, for applications to fetch (a stocked file), and no longer once
 // it is released or discarded.
 
 // routeInbox holds the job in an inbox, and lists it at the inbox's
-// HTTP (pull) nodes.
+// downloaders.
 func (m *Manager) routeInbox(ctx context.Context, r *routing, name, from string, depth int) {
 	j, p := r.job, r.payload
 	var pulls []string
@@ -53,7 +53,7 @@ func (m *Manager) routeInbox(ctx context.Context, r *routing, name, from string,
 	}
 }
 
-// pullsOf splits an inbox's To: the HTTP (pull) nodes that list what it
+// pullsOf splits an inbox's To: the downloaders that list what it
 // holds, and the nodes it releases to.
 func (m *Manager) pullsOf(ctx context.Context, n *Node) (pulls, release []string) {
 	for _, to := range n.To {
@@ -66,7 +66,7 @@ func (m *Manager) pullsOf(ctx context.Context, n *Node) (pulls, release []string
 	return pulls, release
 }
 
-// moveListedAt renames an HTTP (pull) node in the items held that it
+// moveListedAt renames a downloader in the items held that it
 // lists, so that their release takes them off it under its new name.
 func (m *Manager) moveListedAt(ctx context.Context, from, to string) error {
 	items, err := list[itemRecord](ctx, m.st.db)
@@ -92,13 +92,13 @@ func (m *Manager) moveListedAt(ctx context.Context, from, to string) error {
 	return nil
 }
 
-// unlistItem takes an item that is no longer held off the HTTP (pull)
-// nodes that list it. One that fails is logged: the export reads the
+// unlistItem takes an item that is no longer held off the downloaders
+// that list it. One that fails is logged: the downloader reads the
 // item before it shows the entry.
 func (m *Manager) unlistItem(ctx context.Context, it *Item) {
 	for _, name := range it.Listed {
 		if err := m.unlist(ctx, name, it.Job); err != nil {
-			m.o.Log.Warn("unlist an item", "item", it.ID, "export", name, "err", err)
+			m.o.Log.Warn("unlist an item", "item", it.ID, "downloader", name, "err", err)
 		}
 	}
 }
@@ -183,7 +183,7 @@ func (m *Manager) Inbox(ctx context.Context, name string) (*InboxView, error) {
 
 // Release sends a held item on to nodes: those named, or all of the
 // inbox's To when none is. When the inbox names nodes, only those may be
-// chosen; its HTTP (pull) nodes are not among them, nor is any such node.
+// chosen; its downloaders are not among them, nor is any such node.
 func (m *Manager) Release(ctx context.Context, id string, to []string, by Mark) (*Item, error) {
 	by.At = m.now()
 	it, err := m.Item(ctx, id)

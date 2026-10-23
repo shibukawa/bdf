@@ -23,11 +23,23 @@ type handler struct {
 	m *Manager
 }
 
+// APIPath is where the API is. The nodes a request reaches from outside
+// are under it by their kind and their name (NodePath): an uploader takes
+// documents at POST /api/upload/<name>, an inbox is worked at
+// /api/inbox/<name>, a downloader read at /api/download/<name>, and a
+// keyed entry of an adapter takes what it reads at its kind's
+// (/api/s3-trigger/<name>), all on the manager's own server.
+const APIPath = "/api"
+
+// NodePath is where the API reaches a node of a kind.
+func NodePath(kind, name string) string { return APIPath + "/" + kind + "/" + name }
+
 // Handler serves a manager over HTTP:
 //
 //	the ingresses' prefixes                    (Prefixes: docflow/io/ipp's /ipp/print)
 //	/api/…                                     the API (bearer AdminToken, or a session of the pages)
-//	/in/{name}, /out/{name}                    the endpoints and the exports (keys, apps' tokens, people)
+//	/api/upload/{name}, /api/inbox/{name},     the nodes reached from outside, under their kind (keys,
+//	/api/download/{name}                       apps' tokens, people)
 //	/oauth/…                                   the apps' and the frontends' tokens
 //	/device/…                                  the devices' endpoints (their session)
 //
@@ -67,13 +79,33 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("POST "+OAuthTokenPath, h.cors(h.oauthToken))
 	mux.HandleFunc("OPTIONS "+OAuthTokenPath, h.cors(nil))
 	mux.HandleFunc("GET "+OAuthAuthorizePath, h.oauthAuthorize)
-	// the exports (export.go): read by apps with their tokens, people with
-	// the pages' session or a token a frontend got for them
-	mux.HandleFunc("GET "+OutPath+"/{node}", h.cors(h.listExport))
-	mux.HandleFunc("GET "+OutPath+"/{node}/{job}", h.cors(h.getExportEntry))
-	mux.HandleFunc("GET "+OutPath+"/{node}/{job}/record", h.cors(h.exportRecord))
-	mux.HandleFunc("GET "+OutPath+"/{node}/{job}/document", h.cors(h.exportDocument))
-	mux.HandleFunc("OPTIONS "+OutPath+"/{rest...}", h.cors(nil))
+	// the nodes reached from outside, under their kind (NodePath): the
+	// keyed entries take jobs (upload.go: the key, apps' tokens); the
+	// inboxes are worked (inboxapi.go) and the downloaders read
+	// (download.go) by apps with their tokens, people with the pages'
+	// session or a token a frontend got for them, and the pages of a
+	// public client's origin (CORS)
+	for _, k := range Kinds() {
+		if keyed(k.Name) {
+			mux.HandleFunc("POST "+APIPath+"/"+k.Name+"/{name}", h.serveIn(k.Name))
+		}
+	}
+	inbox, download := APIPath+"/"+KindInbox, APIPath+"/"+KindDownload
+	mux.HandleFunc("GET "+inbox, h.cors(h.listInboxes))
+	mux.HandleFunc("GET "+inbox+"/{node}", h.cors(h.inbox))
+	mux.HandleFunc("GET "+inbox+"/{node}/{job}", h.cors(h.getItem))
+	mux.HandleFunc("GET "+inbox+"/{node}/{job}/thumbnail", h.cors(h.itemThumbnail))
+	mux.HandleFunc("GET "+inbox+"/{node}/{job}/pages/{page}", h.cors(h.itemPage))
+	mux.HandleFunc("GET "+inbox+"/{node}/{job}/document", h.cors(h.itemDocument))
+	mux.HandleFunc("POST "+inbox+"/{node}/{job}/release", h.cors(h.release))
+	mux.HandleFunc("POST "+inbox+"/{node}/{job}/discard", h.cors(h.discardItem))
+	mux.HandleFunc("OPTIONS "+inbox+"/{rest...}", h.cors(nil))
+	mux.HandleFunc("GET "+download+"/{node}", h.cors(h.listDownload))
+	mux.HandleFunc("GET "+download+"/{node}/{job}", h.cors(h.getDownloadEntry))
+	mux.HandleFunc("GET "+download+"/{node}/{job}/record", h.cors(h.downloadRecord))
+	mux.HandleFunc("GET "+download+"/{node}/{job}/document", h.cors(h.downloadDocument))
+	mux.HandleFunc("GET "+download+"/{node}/{job}/pages/{page}", h.cors(h.downloadPage))
+	mux.HandleFunc("OPTIONS "+download+"/{rest...}", h.cors(nil))
 	mux.HandleFunc("GET /api/nodes/{name}/latest", h.userOnly(h.latest))
 	mux.HandleFunc("GET /api/nodes/{name}/preview", h.adminOnly(h.preview))
 	mux.HandleFunc("GET /api/nodes/{name}/preview/{job}/pages/{page}", h.adminOnly(h.previewPage))
@@ -97,7 +129,6 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/topology/live", h.userOnly(h.live))
 	mux.HandleFunc("GET /api/layout", h.userOnly(func(w http.ResponseWriter, r *http.Request, _ *Viewer) { h.getLayout(w, r) }))
 	mux.HandleFunc("PUT /api/layout", h.adminOnly(h.putLayout))
-	mux.HandleFunc("POST "+InPath+"/{name}", h.serveIn)
 	mux.HandleFunc("GET /api/destinations/{name}/jobs", h.adminOnly(h.destJobs))
 	mux.HandleFunc("POST /api/destinations/{name}/jobs", h.submit)
 	mux.HandleFunc("GET /api/jobs/{id}", h.ownJob(h.getJob))
@@ -105,9 +136,6 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("GET /api/jobs/{id}/pages/{page}", h.ownJob(h.jobPage))
 	mux.HandleFunc("POST /api/jobs/{id}/cancel", h.ownJob(h.cancelJob))
 	mux.HandleFunc("POST /api/jobs/{id}/reprint", h.ownJob(h.reprint))
-	mux.HandleFunc("GET /api/inboxes/{name}", h.adminOnly(h.inbox))
-	mux.HandleFunc("POST /api/items/{id}/release", h.adminOnly(h.release))
-	mux.HandleFunc("POST /api/items/{id}/discard", h.adminOnly(h.discardItem))
 	mux.HandleFunc("GET /api/deliveries", h.adminOnly(h.pending))
 	mux.HandleFunc("POST /api/deliveries/{id}/retry", h.adminOnly(h.retry))
 	mux.HandleFunc("POST /api/tick", h.tick)
@@ -317,8 +345,8 @@ func (h *handler) cancelSlip(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s)
 }
 
-// The topology: nodes, jobs, inboxes and deliveries. The hash of an
-// endpoint's key stays in the store: the API shows nodes without it.
+// The topology: nodes, jobs, inboxes and deliveries. The hash of a
+// keyed entry's key stays in the store: the API shows nodes without it.
 
 func (h *handler) listNodes(w http.ResponseWriter, r *http.Request) {
 	ns, err := h.m.Nodes(r.Context())
@@ -342,7 +370,8 @@ func (h *handler) getNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, n)
 }
 
-// putNode puts a node; a new endpoint's key is in the answer, this once.
+// putNode puts a node; a new keyed entry's key is in the answer, this
+// once.
 func (h *handler) putNode(w http.ResponseWriter, r *http.Request) {
 	var n Node
 	if err := readJSON(r, &n); err != nil {
@@ -369,7 +398,7 @@ func (h *handler) putNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, nodeWithKey{got, key})
 }
 
-// nodeWithKey is a node and, once, an endpoint's key.
+// nodeWithKey is a node and, once, a keyed entry's key.
 type nodeWithKey struct {
 	*Node
 	Key string `json:"key,omitempty"`
@@ -626,55 +655,6 @@ func (h *handler) cancelJob(w http.ResponseWriter, r *http.Request, v *Viewer, j
 	writeJSON(w, http.StatusOK, j)
 }
 
-func (h *handler) inbox(w http.ResponseWriter, r *http.Request) {
-	v, err := h.m.Inbox(r.Context(), r.PathValue("name"))
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-// release sends an item on: {"to": [nodes], "worker": name}.
-func (h *handler) release(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		To     []string `json:"to"`
-		Worker string   `json:"worker"`
-	}
-	if r.ContentLength != 0 {
-		if err := readJSON(r, &in); err != nil {
-			h.writeErr(w, err)
-			return
-		}
-	}
-	it, err := h.m.Release(r.Context(), r.PathValue("id"), in.To, Mark{Worker: clip(strings.TrimSpace(firstOr(in.Worker, h.who(r))), 80)})
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	h.m.audit(r.Context(), h.who(r), "release-item", it.ID, strings.Join(it.Released.To, ", ")+firstOr(" by "+in.Worker, ""))
-	writeJSON(w, http.StatusOK, it)
-}
-
-func (h *handler) discardItem(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Worker string `json:"worker"`
-	}
-	if r.ContentLength != 0 {
-		if err := readJSON(r, &in); err != nil {
-			h.writeErr(w, err)
-			return
-		}
-	}
-	it, err := h.m.Discard(r.Context(), r.PathValue("id"), Mark{Worker: clip(strings.TrimSpace(firstOr(in.Worker, h.who(r))), 80)})
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	h.m.audit(r.Context(), h.who(r), "discard-item", it.ID, in.Worker)
-	writeJSON(w, http.StatusOK, it)
-}
-
 func (h *handler) pending(w http.ResponseWriter, r *http.Request) {
 	ds, err := h.m.Pending(r.Context())
 	if err != nil {
@@ -699,7 +679,7 @@ func (h *handler) retry(w http.ResponseWriter, r *http.Request) {
 func (h *handler) submit(w http.ResponseWriter, r *http.Request) {
 	by, ok := h.submitter(r)
 	if v, signedIn := h.viewerOf(r); signedIn && v.Kind == PrincipalApp {
-		// an app sends to the endpoints that list it
+		// an app sends to the entries that list it
 		if err := h.m.appMaySend(r.Context(), v, r.PathValue("name"), false); err != nil {
 			h.writeErr(w, err)
 			return

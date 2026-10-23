@@ -13,7 +13,7 @@ import (
 	"github.com/shibukawa/bdf/docflow/render"
 )
 
-// An endpoint's .bdf drawn as a PDF and as a PNG of its second page, and
+// An uploader's .bdf drawn as a PDF and as a PNG of its second page, and
 // sent on to a web service.
 func TestRender(t *testing.T) {
 	e := flowtest.New(t, nil)
@@ -21,7 +21,7 @@ func TestRender(t *testing.T) {
 	e.Put(docflow.Node{Name: "out", Kind: "http", URL: hook.URL + "/files"},
 		docflow.Node{Name: "pdf", Kind: render.KindRender, To: []string{"out"}},
 		docflow.Node{Name: "png", Kind: render.KindRender, Format: "png", Page: 2, To: []string{"out"}},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"pdf", "png"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"pdf", "png"}})
 	j := e.Submit("in", "invoice.pdf", flowtest.Doc(t, 2), nil)
 	e.Tick()
 	got := hook.Got()
@@ -81,10 +81,10 @@ func TestRenderSettings(t *testing.T) {
 	}
 	// data cannot reach a render node
 	e.Put(docflow.Node{Name: "r", Kind: render.KindRender, Format: "png", Page: 3, To: []string{"out"}})
-	if _, err := e.M().PutNode(ctx, docflow.Node{Name: "data", Kind: docflow.KindEndpoint, Accept: docflow.AcceptData, To: []string{"r"}}); !errors.Is(err, docflow.ErrInvalid) {
+	if _, err := e.M().PutNode(ctx, docflow.Node{Name: "data", Kind: docflow.KindUpload, Accept: docflow.AcceptData, To: []string{"r"}}); !errors.Is(err, docflow.ErrInvalid) {
 		t.Errorf("data to render: %v", err)
 	}
-	e.Put(docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"r"}})
+	e.Put(docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"r"}})
 	j := e.Submit("in", "one", flowtest.Doc(t, 1), nil)
 	e.Tick()
 	if d := e.Delivery(j, "r"); d.State != docflow.DeliveryFailed || d.Attempts != 1 {

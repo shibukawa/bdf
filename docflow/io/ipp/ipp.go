@@ -6,7 +6,8 @@
 // serves them.
 //
 // A CUPS server node is the one way IPP enters the topology (the other
-// entries, an endpoint or an S3 trigger, take files over HTTP). Its own
+// entries, an uploader or an S3 trigger, take files over HTTP, at the
+// API). Its own
 // port is a CUPS server with one printer, the node, at /printers/<node>;
 // the node is also an IPP printer at /ipp/print/<name> of the manager's
 // own server (an ingress: on a serverless deployment, with no ports, the
@@ -46,7 +47,7 @@ func init() {
 	docflow.RegisterKind(docflow.Kind{Name: KindCupsOut, Title: "CUPS server (sink)", Role: docflow.RoleExit, Takes: []string{docflow.PayloadBDF}, Fixed: true,
 		Check: checkCupsOut, Send: sendCupsOut, Discover: discoverQueues})
 	docflow.RegisterKind(docflow.Kind{Name: KindPrinter, Role: docflow.RoleExit, Takes: []string{docflow.PayloadBDF}, Fixed: true,
-		Check: checkPrinter, Ready: ready, Send: send})
+		Check: checkPrinter, Ready: ready, Send: send, Discover: discoverPrinters})
 	docflow.RegisterIngress(docflow.Ingress{Name: "ipp", Prefix: Path, Mount: mount, Address: func(n *docflow.Node) string {
 		if n.Kind != KindCups {
 			return "" // IPP enters at a CUPS server alone

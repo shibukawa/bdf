@@ -44,7 +44,7 @@ Who gets in, and who has which role ([Roles](roles.md#roles)), is `[oidc]`:
 
 ## Serverless {#serverless}
 
-On AWS Lambda (through the Lambda Web Adapter) the function is configured with variables, `DOCFLOW_SERVERLESS=true` among them; the records are in DynamoDB (a table with the string keys `pk` and `sk`) and the documents in S3; EventBridge Scheduler calls `POST /api/tick` every minute with the tick token. There are no ports of the nodes' own: applications call the manager's `/in/<name>`. To print on a site's printers, the function is in a VPC that reaches them. Building the function and its image is in the repository's README.
+On AWS Lambda (through the Lambda Web Adapter) the function is configured with variables, `DOCFLOW_SERVERLESS=true` among them; the records are in DynamoDB (a table with the string keys `pk` and `sk`) and the documents in S3; EventBridge Scheduler calls `POST /api/tick` every minute with the tick token. There are no ports of the nodes' own: computers print to `/ipp/print/<name>`, and applications call the API (`/api/upload/<name>`, `/api/inbox/<name>`, `/api/download/<name>`) as anywhere. To print on a site's printers, the function is in a VPC that reaches them. Building the function and its image is in the repository's README.
 
 ## Printers and fonts {#printers}
 

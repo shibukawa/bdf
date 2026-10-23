@@ -48,10 +48,10 @@ func TestKinds(t *testing.T) {
 	e.node("audit", Node{Kind: KindArchive, Store: store}, http.StatusOK)
 	// a file as received does not go to a printer, nor does data; a
 	// convert node in between takes anything and sends a .bdf on
-	if out := e.node("raw", Node{Kind: KindEndpoint, Output: OutputFile, To: []string{"laser"}}, http.StatusBadRequest); !strings.Contains(string(out), "takes bdf") || !strings.Contains(string(out), "any reaches it: raw → laser") {
+	if out := e.node("raw", Node{Kind: KindUpload, Output: OutputFile, To: []string{"laser"}}, http.StatusBadRequest); !strings.Contains(string(out), "takes bdf") || !strings.Contains(string(out), "any reaches it: raw → laser") {
 		t.Fatalf("typed: %s", out)
 	}
-	e.node("raw", Node{Kind: KindEndpoint, Output: "maybe", To: []string{"audit"}}, http.StatusBadRequest)
+	e.node("raw", Node{Kind: KindUpload, Output: "maybe", To: []string{"audit"}}, http.StatusBadRequest)
 	// a node is put before the nodes after it
 	e.node("conv", Node{Kind: KindConvert}, http.StatusOK)
 	e.node("conv", Node{Kind: KindConvert, To: []string{"laser"}, Formats: []string{"PDF/A"}}, http.StatusBadRequest)
@@ -60,15 +60,15 @@ func TestKinds(t *testing.T) {
 	var raw struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("raw", Node{Kind: KindEndpoint, Output: OutputFile, To: []string{"fan"}}, http.StatusOK), &raw)
+	json.Unmarshal(e.node("raw", Node{Kind: KindUpload, Output: OutputFile, To: []string{"fan"}}, http.StatusOK), &raw)
 	// a change deeper in the graph is checked against every entry: the
 	// queue cannot send to the printer while a file as received reaches it
 	if out := e.node("fan", Node{Kind: KindQueue, To: []string{"audit", "conv", "laser"}}, http.StatusBadRequest); !strings.Contains(string(out), "raw → fan → laser") {
 		t.Fatalf("typed through a queue: %s", out)
 	}
-	e.node("din", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"laser"}}, http.StatusBadRequest)
+	e.node("din", Node{Kind: KindUpload, Accept: AcceptData, To: []string{"laser"}}, http.StatusBadRequest)
 	e.node("forms", Node{Kind: KindTemplate, Template: "x", To: []string{"laser"}}, http.StatusOK)
-	if out := e.node("docs", Node{Kind: KindEndpoint, To: []string{"forms"}}, http.StatusBadRequest); !strings.Contains(string(out), "takes data, but bdf reaches it") {
+	if out := e.node("docs", Node{Kind: KindUpload, To: []string{"forms"}}, http.StatusBadRequest); !strings.Contains(string(out), "takes data, but bdf reaches it") {
 		t.Fatalf("typed template: %s", out)
 	}
 	var topo []TopoNode
@@ -77,7 +77,7 @@ func TestKinds(t *testing.T) {
 	for _, n := range topo {
 		kinds[n.Name] = n.Takes + "<" + strings.Join(n.Emits, "+")
 	}
-	// an archive sends on what it wrote (an export after it), as a queue does
+	// an archive sends on what it wrote (a downloader after it), as a queue does
 	want := map[string]string{"raw": "any<any", "fan": "any<any", "conv": "any<bdf", "laser": "bdf<", "audit": "any<any", "forms": "data<bdf"}
 	for name, w := range want {
 		if kinds[name] != w {
@@ -115,12 +115,12 @@ func TestKinds(t *testing.T) {
 	var din struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("din", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"forms"}}, http.StatusOK), &din)
-	e.node("din", Node{Kind: KindEndpoint, To: []string{"forms"}}, http.StatusOK)
+	json.Unmarshal(e.node("din", Node{Kind: KindUpload, Accept: AcceptData, To: []string{"forms"}}, http.StatusOK), &din)
+	e.node("din", Node{Kind: KindUpload, To: []string{"forms"}}, http.StatusOK)
 	if got := accepts(); got["din>forms"] != "bdf" || got["din"] != "data" || len(got) != 8+1 {
 		t.Fatalf("broken %v", got)
 	}
-	bres, bout := e.do(nil, "POST", "/in/din?name=doc", din.Key, testDoc(t, 1))
+	bres, bout := e.do(nil, "POST", "/api/upload/din?name=doc", din.Key, testDoc(t, 1))
 	var bj Job
 	json.Unmarshal(bout, &bj)
 	if bres.StatusCode != http.StatusCreated || legs(&bj) != "din:routed forms:error" || !strings.Contains(bj.Legs[1].Error, "takes data") {
@@ -129,13 +129,13 @@ func TestKinds(t *testing.T) {
 	// a new edge along which a kind reaches a node that does not take it
 	// is refused still, broken edges or not
 	e.node("q", Node{Kind: KindQueue, To: []string{"forms"}}, http.StatusOK)
-	if out := e.node("din", Node{Kind: KindEndpoint, To: []string{"forms", "q"}}, http.StatusBadRequest); !strings.Contains(string(out), "forms (template) takes data, but bdf reaches it: din → q → forms") {
+	if out := e.node("din", Node{Kind: KindUpload, To: []string{"forms", "q"}}, http.StatusBadRequest); !strings.Contains(string(out), "forms (template) takes data, but bdf reaches it: din → q → forms") {
 		t.Fatalf("a new edge: %s", out)
 	}
 	// and the same edges put again are not refused for the broken one
-	e.node("din", Node{Kind: KindEndpoint, To: []string{"forms"}, Title: "documents"}, http.StatusOK)
+	e.node("din", Node{Kind: KindUpload, To: []string{"forms"}, Title: "documents"}, http.StatusOK)
 	// mended: the entry takes data again
-	e.node("din", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"forms"}}, http.StatusOK)
+	e.node("din", Node{Kind: KindUpload, Accept: AcceptData, To: []string{"forms"}}, http.StatusOK)
 	if got := accepts(); got["din>forms"] != "" || len(got) != 8 {
 		t.Fatalf("mended %v", got)
 	}
@@ -145,7 +145,7 @@ func TestKinds(t *testing.T) {
 	// a picture received as it is (any file): kept at the archive as it
 	// came, made a document by the convert node and printed
 	pic := testPNG(t)
-	res, out := e.do(nil, "POST", "/in/raw?name=photo.png", raw.Key, pic)
+	res, out := e.do(nil, "POST", "/api/upload/raw?name=photo.png", raw.Key, pic)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("png: %d %s", res.StatusCode, out)
 	}
@@ -201,7 +201,7 @@ func TestKinds(t *testing.T) {
 	// node has no pages of it yet (a sheet has no print view), so that
 	// step fails for good
 	csv := []byte("id,name\n1,Ann\n2,Bob\n")
-	res, out = e.do(nil, "POST", "/in/raw?name=people.csv", raw.Key, csv)
+	res, out = e.do(nil, "POST", "/api/upload/raw?name=people.csv", raw.Key, csv)
 	json.Unmarshal(out, &j)
 	if res.StatusCode != http.StatusCreated || j.Kind != PayloadData || j.Format != "csv" {
 		t.Fatalf("csv: %d %+v", res.StatusCode, j)
@@ -218,7 +218,7 @@ func TestKinds(t *testing.T) {
 
 	// a .bdf document received as it is stays one: the convert node sends
 	// it on as it is, and the printer prints it
-	res, out = e.do(nil, "POST", "/in/raw?name=plain", raw.Key, testDoc(t, 2))
+	res, out = e.do(nil, "POST", "/api/upload/raw?name=plain", raw.Key, testDoc(t, 2))
 	json.Unmarshal(out, &j)
 	if res.StatusCode != http.StatusCreated || j.Kind != PayloadBDF || j.Pages != 2 {
 		t.Fatalf("bdf as received: %d %+v", res.StatusCode, j)
@@ -230,7 +230,7 @@ func TestKinds(t *testing.T) {
 		t.Fatalf("bdf through convert %+v: %s", got, legs(got))
 	}
 	// data with no document of it: the convert node fails for good
-	res, out = e.do(nil, "POST", "/in/raw?name=x.json", raw.Key, map[string]any{"a": 1})
+	res, out = e.do(nil, "POST", "/api/upload/raw?name=x.json", raw.Key, map[string]any{"a": 1})
 	json.Unmarshal(out, &j)
 	if res.StatusCode != http.StatusCreated || j.Kind != PayloadData || j.Format != "json" {
 		t.Fatalf("json: %d %+v", res.StatusCode, j)
@@ -242,7 +242,7 @@ func TestKinds(t *testing.T) {
 		t.Fatalf("json through convert %+v", got)
 	}
 	// what is not known at all is refused at the entry
-	if res, _ := e.do(nil, "POST", "/in/raw?name=x.bin", raw.Key, []byte("\x00\x01\x02 nothing")); res.StatusCode != http.StatusUnsupportedMediaType {
+	if res, _ := e.do(nil, "POST", "/api/upload/raw?name=x.bin", raw.Key, []byte("\x00\x01\x02 nothing")); res.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("unknown: %d", res.StatusCode)
 	}
 	// a direct submission to the convert node takes the file as it is
@@ -286,14 +286,14 @@ func TestMeta(t *testing.T) {
 	e.node("sort", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Kind: "text"}, To: []string{"conv"}}}}, http.StatusBadRequest)
 	e.node("sort", Node{Kind: KindFilter, Rules: []Rule{{Match: Match{Meta: map[string]string{"": "x"}}, To: []string{"conv"}}}}, http.StatusBadRequest)
 	e.node("sort", Node{Kind: KindFilter, Rules: []Rule{
-		{Match: Match{Meta: map[string]string{"dept": "^sales$", "$sender_kind": "^endpoint$"}}, To: []string{"conv"}},
+		{Match: Match{Meta: map[string]string{"dept": "^sales$", "$sender_kind": "^key$"}}, To: []string{"conv"}},
 		{Match: Match{Kind: PayloadData}, To: []string{"keep"}},
 	}, Otherwise: []string{"audit"}}, http.StatusOK)
-	e.node("tagged", Node{Kind: KindEndpoint, Output: OutputFile, To: []string{"sort"}, Meta: map[string]any{"$site": "tokyo"}}, http.StatusBadRequest)
+	e.node("tagged", Node{Kind: KindUpload, Output: OutputFile, To: []string{"sort"}, Meta: map[string]any{"$site": "tokyo"}}, http.StatusBadRequest)
 	var tagged struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("tagged", Node{Kind: KindEndpoint, Output: OutputFile, To: []string{"sort"}, Meta: map[string]any{"site": "tokyo", "floor": 3}}, http.StatusOK), &tagged)
+	json.Unmarshal(e.node("tagged", Node{Kind: KindUpload, Output: OutputFile, To: []string{"sort"}, Meta: map[string]any{"site": "tokyo", "floor": 3}}, http.StatusOK), &tagged)
 	csv := []byte("id,name\n1,Ann\n")
 	send := func(name string, body any, edit func(*http.Request)) *Job {
 		t.Helper()
@@ -302,7 +302,7 @@ func TestMeta(t *testing.T) {
 			if edit != nil {
 				edit(r)
 			}
-		}, "POST", "/in/tagged?name="+name, body)
+		}, "POST", "/api/upload/tagged?name="+name, body)
 		if res.StatusCode != http.StatusCreated {
 			t.Fatalf("%s: %d %s", name, res.StatusCode, out)
 		}
@@ -331,16 +331,16 @@ func TestMeta(t *testing.T) {
 	for i := range 65 {
 		many[fmt.Sprint("k", i)] = i
 	}
-	if res, _ := e.do(nil, "POST", "/in/tagged?name=many.json", tagged.Key, many); res.StatusCode != http.StatusCreated {
+	if res, _ := e.do(nil, "POST", "/api/upload/tagged?name=many.json", tagged.Key, many); res.StatusCode != http.StatusCreated {
 		t.Fatalf("a JSON body is data, not metadata: %d", res.StatusCode)
 	}
 	if res, _ := e.doWith(func(r *http.Request) {
 		r.Header.Set("Authorization", "Bearer "+tagged.Key)
 		r.Header.Set("X-Meta-$job", "9")
-	}, "POST", "/in/tagged?name=d", testDoc(t, 1)); res.StatusCode != http.StatusBadRequest {
+	}, "POST", "/api/upload/tagged?name=d", testDoc(t, 1)); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("a $ key: %d", res.StatusCode)
 	}
-	if res, _ := e.do(nil, "POST", "/in/tagged?name=e&meta.a="+strings.Repeat("x", 17<<10), tagged.Key, testDoc(t, 1)); res.StatusCode != http.StatusBadRequest {
+	if res, _ := e.do(nil, "POST", "/api/upload/tagged?name=e&meta.a="+strings.Repeat("x", 17<<10), tagged.Key, testDoc(t, 1)); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("too much: %d", res.StatusCode)
 	}
 	// IPP, at a CUPS server with metadata of its own: the job attributes,
@@ -384,7 +384,7 @@ func TestMultipartIntake(t *testing.T) {
 	var mp struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("mp", Node{Kind: KindEndpoint, Output: OutputFile, To: []string{"keep"}}, http.StatusOK), &mp)
+	json.Unmarshal(e.node("mp", Node{Kind: KindUpload, Output: OutputFile, To: []string{"keep"}}, http.StatusOK), &mp)
 	type part struct{ name, file, typ, body string }
 	form := func(parts ...part) ([]byte, string) {
 		var b bytes.Buffer
@@ -418,7 +418,7 @@ func TestMultipartIntake(t *testing.T) {
 	doc := testDoc(t, 1)
 	file := part{name: "file", file: "請求書.bdf", typ: "application/vnd.bdf", body: string(doc)}
 	body, ct := form(part{name: "meta", typ: "application/json", body: `{"customer": "a&b", "count": 3, "tags": ["x"]}`}, file)
-	status, j, out := send(mp.Key, "/in/mp", body, map[string]string{"Content-Type": ct, "X-Meta-Customer": "header", "X-Meta-Dept": "ops"})
+	status, j, out := send(mp.Key, "/api/upload/mp", body, map[string]string{"Content-Type": ct, "X-Meta-Customer": "header", "X-Meta-Dept": "ops"})
 	if status != http.StatusCreated {
 		t.Fatalf("%d %s", status, out)
 	}
@@ -429,11 +429,11 @@ func TestMultipartIntake(t *testing.T) {
 	// the file before the meta; the part's type tells the format, and
 	// ?name= is over the part's name
 	body, ct = form(part{name: "file", file: "people.txt", typ: "text/csv", body: "id,name\n1,Ann\n"}, part{name: "meta", body: `{}`})
-	if status, j, out = send(mp.Key, "/in/mp?name=people", body, map[string]string{"Content-Type": ct}); status != http.StatusCreated || j.Name != "people" || j.Payloads[0].Format != "csv" {
+	if status, j, out = send(mp.Key, "/api/upload/mp?name=people", body, map[string]string{"Content-Type": ct}); status != http.StatusCreated || j.Name != "people" || j.Payloads[0].Format != "csv" {
 		t.Fatalf("csv: %d %s", status, out)
 	}
 	// a body as it is: its name from Content-Disposition
-	if status, j, out = send(mp.Key, "/in/mp", doc, map[string]string{"Content-Disposition": `attachment; filename*=UTF-8''%E8%AB%8B%E6%B1%82%E6%9B%B8.bdf`}); status != http.StatusCreated || j.Name != "請求書.bdf" {
+	if status, j, out = send(mp.Key, "/api/upload/mp", doc, map[string]string{"Content-Disposition": `attachment; filename*=UTF-8''%E8%AB%8B%E6%B1%82%E6%9B%B8.bdf`}); status != http.StatusCreated || j.Name != "請求書.bdf" {
 		t.Fatalf("direct: %d %s", status, out)
 	}
 	// the API's submit
@@ -450,11 +450,11 @@ func TestMultipartIntake(t *testing.T) {
 		"two files":    {file, file},
 	} {
 		body, ct := form(parts...)
-		if status, _, out := send(mp.Key, "/in/mp", body, map[string]string{"Content-Type": ct}); status != http.StatusBadRequest {
+		if status, _, out := send(mp.Key, "/api/upload/mp", body, map[string]string{"Content-Type": ct}); status != http.StatusBadRequest {
 			t.Errorf("%s: %d %s", what, status, out)
 		}
 	}
-	if status, _, out := send(mp.Key, "/in/mp", doc, map[string]string{"Content-Type": "multipart/form-data"}); status != http.StatusBadRequest {
+	if status, _, out := send(mp.Key, "/api/upload/mp", doc, map[string]string{"Content-Type": "multipart/form-data"}); status != http.StatusBadRequest {
 		t.Errorf("no boundary: %d %s", status, out)
 	}
 }
@@ -477,7 +477,7 @@ func TestOriginalTrace(t *testing.T) {
 	var raw struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("raw", Node{Kind: KindEndpoint, Output: OutputFile, To: []string{"conv"}}, http.StatusOK), &raw)
+	json.Unmarshal(e.node("raw", Node{Kind: KindUpload, Output: OutputFile, To: []string{"conv"}}, http.StatusOK), &raw)
 	// the file goes on along Original as it came: not to a printer
 	if out := e.node("conv", Node{Kind: KindConvert, To: []string{"made"}, Original: []string{"laser"}}, http.StatusBadRequest); !strings.Contains(string(out), "laser (printer) takes bdf, but any reaches it: raw → conv → laser") {
 		t.Fatalf("typed original: %s", out)
@@ -497,7 +497,7 @@ func TestOriginalTrace(t *testing.T) {
 	}
 
 	pic := testPNG(t)
-	res, out := e.do(nil, "POST", "/in/raw?name=photo.png", raw.Key, pic)
+	res, out := e.do(nil, "POST", "/api/upload/raw?name=photo.png", raw.Key, pic)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("png: %d %s", res.StatusCode, out)
 	}
@@ -551,7 +551,7 @@ func TestOriginalTrace(t *testing.T) {
 	// the original's shares
 	e.node("stamp", Node{Kind: KindConvert, To: []string{"made"}}, http.StatusOK)
 	e.node("conv", Node{Kind: KindConvert, To: []string{"stamp"}, Original: []string{"side"}}, http.StatusOK)
-	res, out = e.do(nil, "POST", "/in/raw?name=photo2.png", raw.Key, append(pic, 0))
+	res, out = e.do(nil, "POST", "/api/upload/raw?name=photo2.png", raw.Key, append(pic, 0))
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("png: %d %s", res.StatusCode, out)
 	}

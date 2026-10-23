@@ -40,7 +40,7 @@ var Languages = []string{"en", "ja"}
 // Chapters in the order of the manual: the files' names, without .md,
 // the same in every language. The first is the overview, served at
 // /help/<lang> as well.
-var Chapters = []string{"index", "jobs", "topology", "nodes", "flow", "templates", "entries", "exports", "displays", "inboxes", "roles", "api", "operate"}
+var Chapters = []string{"index", "jobs", "topology", "nodes", "flow", "templates", "entries", "downloads", "displays", "inboxes", "roles", "api", "operate"}
 
 // Page is a chapter rendered: its title (the heading at the top), the
 // body as HTML, and its sections (the second-level headings) for a table

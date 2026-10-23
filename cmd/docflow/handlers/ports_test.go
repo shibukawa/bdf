@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,8 +17,8 @@ import (
 	"golang.org/x/net/dns/dnsmessage"
 )
 
-// The process listens on the ports of the entry nodes, and stops when a
-// node loses its port.
+// The process listens on the ports of the CUPS server nodes, and stops
+// when a node goes; an uploader has none (it is at the API).
 func TestPorts(t *testing.T) {
 	ctx := context.Background()
 	a, err := Open(ctx, DocflowConfig{Records: "bbolt:" + filepath.Join(t.TempDir(), "pm.db"), AdminToken: "t", MaxDocumentMB: 1}, OIDCConfig{})
@@ -38,15 +39,16 @@ func TestPorts(t *testing.T) {
 	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "wh-a", Kind: docflow.KindDisplay}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "cups1", Kind: docflowipp.KindCups, To: []string{"wh-a"}, Port: cupsPort}); err != nil {
+	// not announced on the network the test runs on (TestPortsAdvertise)
+	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "cups1", Kind: docflowipp.KindCups, To: []string{"wh-a"}, Port: cupsPort, DNSSD: new(false)}); err != nil {
 		t.Fatal(err)
 	}
-	key, err := a.m.PutNode(ctx, docflow.Node{Name: "api", Kind: docflow.KindEndpoint, To: []string{"wh-a"}, Port: apiPort})
+	key, err := a.m.PutNode(ctx, docflow.Node{Name: "api", Kind: docflow.KindUpload, To: []string{"wh-a"}, Port: apiPort})
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.ports.reconcile(ctx)
-	if open := a.ports.open(); len(open) != 2 {
+	if open := a.ports.open(); len(open) != 1 || open[0] != cupsPort {
 		t.Fatalf("ports open %v", open)
 	}
 	// a CUPS client prints to the CUPS server's one printer, the node, at
@@ -60,8 +62,11 @@ func TestPorts(t *testing.T) {
 		t.Fatalf("the job through the CUPS port: %+v %v", j, err)
 	}
 
-	// an application posts to the endpoint's port
-	req, _ := http.NewRequest("POST", fmt.Sprintf("http://127.0.0.1:%d/?name=x", apiPort), bytes.NewReader(doc(t)))
+	// an application posts to the uploader at the API of the manager's
+	// own server
+	srv := httptest.NewServer(a.Handler())
+	defer srv.Close()
+	req, _ := http.NewRequest("POST", srv.URL+docflow.NodePath(docflow.KindUpload, "api")+"?name=x", bytes.NewReader(doc(t)))
 	req.Header.Set("Authorization", "Bearer "+key)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -69,26 +74,30 @@ func TestPorts(t *testing.T) {
 	}
 	res.Body.Close()
 	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("post to the endpoint's port: %d", res.StatusCode)
-	}
-	// the endpoint loses its port: the listener closes
-	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "api", Kind: docflow.KindEndpoint, To: []string{"wh-a"}}); err != nil {
-		t.Fatal(err)
-	}
-	a.ports.reconcile(ctx)
-	if open := a.ports.open(); len(open) != 1 || open[0] != cupsPort {
-		t.Fatalf("ports open %v", open)
+		t.Fatalf("post to the uploader: %d", res.StatusCode)
 	}
 	if res, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/", apiPort), "application/octet-stream", nil); err == nil {
 		res.Body.Close()
-		t.Fatal("the endpoint's port is still open")
+		t.Fatal("something listens on the uploader's port")
+	}
+	// the CUPS server goes: the listener closes
+	if err := a.m.DeleteNode(ctx, "cups1"); err != nil {
+		t.Fatal(err)
+	}
+	a.ports.reconcile(ctx)
+	if open := a.ports.open(); len(open) != 0 {
+		t.Fatalf("ports open %v", open)
+	}
+	if res, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/", cupsPort), "application/ipp", nil); err == nil {
+		res.Body.Close()
+		t.Fatal("the CUPS server's port is still open")
 	}
 }
 
-// A CUPS server node that says so is advertised with DNS-SD while its
-// port is open, as "<title> @ <computer>" on a host name of the
-// process's own; it stops when the node no longer says so. The
-// responder is asked on the loopback, at a port of the test's own.
+// A CUPS server node is advertised with DNS-SD while its port is open,
+// as "<title> @ <computer>" on a host name of the process's own, unless
+// it says not to (dnssd false): then it stops. The responder is asked on
+// the loopback, at a port of the test's own.
 func TestPortsAdvertise(t *testing.T) {
 	ctx := context.Background()
 	a, err := Open(ctx, DocflowConfig{Records: "bbolt:" + filepath.Join(t.TempDir(), "pm.db"), AdminToken: "t", MaxDocumentMB: 1}, OIDCConfig{})
@@ -109,7 +118,7 @@ func TestPortsAdvertise(t *testing.T) {
 	mdnsPort := uc.LocalAddr().(*net.UDPAddr).Port
 	uc.Close()
 	a.ports.mdns = ipp.ResponderOptions{Port: mdnsPort, Interfaces: []net.Interface{}, Loopback: true}
-	put := func(dnssd bool) {
+	put := func(dnssd *bool) {
 		t.Helper()
 		if _, err := a.m.PutNode(ctx, docflow.Node{Name: "wh-a", Kind: docflow.KindDisplay}); err != nil {
 			t.Fatal(err)
@@ -149,7 +158,7 @@ func TestPortsAdvertise(t *testing.T) {
 		}
 		return ans[0].Body.(*dnsmessage.PTRResource).PTR.String()
 	}
-	put(true)
+	put(nil)
 	want := "Office @ " + machineName() + "._ipp._tcp.local."
 	got := ""
 	for i := 0; i < 50 && got == ""; i++ {
@@ -164,8 +173,8 @@ func TestPortsAdvertise(t *testing.T) {
 	if got := ask(time.Second); got != want {
 		t.Fatalf("advertised %q after a reconcile", got)
 	}
-	// the node no longer says so: goodbye
-	put(false)
+	// the node says not to: goodbye
+	put(new(false))
 	if got := ask(500 * time.Millisecond); got != "" {
 		t.Fatalf("still advertised: %q", got)
 	}

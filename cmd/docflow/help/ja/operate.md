@@ -44,7 +44,7 @@
 
 ## サーバーレス {#serverless}
 
-AWS Lambda（Lambda Web Adapter 経由）では、関数は環境変数で設定し、`DOCFLOW_SERVERLESS=true` を含めます。記録は DynamoDB（文字列キー `pk` と `sk` のテーブル）に、文書は S3 に置きます。EventBridge Scheduler が毎分、ティックトークンで `POST /api/tick` を呼びます。ノード自身のポートはありません。アプリケーションはマネージャーの `/in/<name>` を呼びます。拠点のプリンタに印刷するには、関数をそこに届く VPC に置きます。関数とそのイメージのビルドはリポジトリの README にあります。
+AWS Lambda（Lambda Web Adapter 経由）では、関数は環境変数で設定し、`DOCFLOW_SERVERLESS=true` を含めます。記録は DynamoDB（文字列キー `pk` と `sk` のテーブル）に、文書は S3 に置きます。EventBridge Scheduler が毎分、ティックトークンで `POST /api/tick` を呼びます。ノード自身のポートはありません。コンピュータは `/ipp/print/<name>` に印刷し、アプリケーションはどこでも同じように API（`/api/upload/<name>`、`/api/inbox/<name>`、`/api/download/<name>`）を呼びます。拠点のプリンタに印刷するには、関数をそこに届く VPC に置きます。関数とそのイメージのビルドはリポジトリの README にあります。
 
 ## プリンタとフォント {#printers}
 

@@ -74,7 +74,7 @@ func TestBranch(t *testing.T) {
 	e.node("route", Node{Kind: KindBranch, Default: []string{"in"}}, http.StatusBadRequest)
 	e.printer("laser")
 	e.node("forms", Node{Kind: KindTemplate, To: []string{"laser"}}, http.StatusOK)
-	e.node("docs", Node{Kind: KindEndpoint, To: []string{"route"}}, http.StatusOK)
+	e.node("docs", Node{Kind: KindUpload, To: []string{"route"}}, http.StatusOK)
 	if out := e.node("route", Node{Kind: KindBranch, Cases: []Case{{When: []Check{{Key: "x"}}, To: []string{"forms"}}}}, http.StatusBadRequest); !strings.Contains(string(out), "takes data, but bdf reaches it") {
 		t.Errorf("typed: %s", out)
 	}

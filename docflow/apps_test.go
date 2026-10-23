@@ -14,7 +14,7 @@ import (
 )
 
 // An app sends with credentials of its own: a token of the client
-// credentials grant, or Basic over IPP, to the endpoints that list it,
+// credentials grant, or Basic over IPP, to the uploaders that list it,
 // within its scopes.
 func TestApps(t *testing.T) {
 	e := newEnv(t, nil)
@@ -86,13 +86,13 @@ func TestApps(t *testing.T) {
 		t.Fatalf("me %+v", me)
 	}
 
-	// an endpoint that lists the app takes its documents; one that does
+	// an uploader that lists the app takes its documents; one that does
 	// not refuses; so does a display
-	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Apps: []string{"nobody"}}, http.StatusBadRequest)
-	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Apps: []string{"erp"}}, http.StatusOK)
-	e.node("other", Node{Kind: KindEndpoint, To: []string{"wh-a"}}, http.StatusOK)
+	e.node("intake", Node{Kind: KindUpload, To: []string{"wh-a"}, Apps: []string{"nobody"}}, http.StatusBadRequest)
+	e.node("intake", Node{Kind: KindUpload, To: []string{"wh-a"}, Apps: []string{"erp"}}, http.StatusOK)
+	e.node("other", Node{Kind: KindUpload, To: []string{"wh-a"}}, http.StatusOK)
 	doc := testDoc(t, 1)
-	res, out := e.do(nil, "POST", "/in/intake?name=from-erp", tok, doc)
+	res, out := e.do(nil, "POST", "/api/upload/intake?name=from-erp", tok, doc)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("the app at its endpoint: %d %s", res.StatusCode, out)
 	}
@@ -101,7 +101,7 @@ func TestApps(t *testing.T) {
 	if j.SubmittedBy == nil || *j.SubmittedBy != (Principal{Kind: PrincipalApp, ID: "erp", Name: "ERP 2", Via: ViaClientCredentials}) {
 		t.Fatalf("submitted by %+v", j.SubmittedBy)
 	}
-	if res, _ := e.do(nil, "POST", "/in/other?name=x", tok, doc); res.StatusCode != http.StatusForbidden {
+	if res, _ := e.do(nil, "POST", "/api/upload/other?name=x", tok, doc); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("the app at another endpoint: %d", res.StatusCode)
 	}
 	if res, _ := e.do(nil, "POST", "/api/destinations/wh-a/jobs?name=x", tok, doc); res.StatusCode != http.StatusForbidden {
@@ -117,7 +117,7 @@ func TestApps(t *testing.T) {
 		t.Fatalf("the app's destinations %+v", ds)
 	}
 	// over IPP, with Basic client_id:secret, at a CUPS server that lists
-	// it, in front of its endpoint
+	// it, in front of its uploader
 	e.node("erp-cups", Node{Kind: KindCups, To: []string{"intake"}, Apps: []string{"erp"}}, http.StatusOK)
 	c := e.ippClient("erp-cups")
 	c.User, c.Username, c.Password = "erp", "erp", made.Secret
@@ -153,20 +153,20 @@ func TestApps(t *testing.T) {
 	// the token granted print.template no longer has it; sending data (for
 	// a template node) needs it
 	e.node("forms", Node{Kind: KindTemplate, Template: "slip", To: []string{"wh-a"}}, http.StatusOK)
-	e.node("data-in", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"forms"}, Apps: []string{"erp"}}, http.StatusOK)
-	if res, _ := e.do(nil, "POST", "/in/data-in", tok2, map[string]any{"x": 1}); res.StatusCode != http.StatusForbidden {
+	e.node("data-in", Node{Kind: KindUpload, Accept: AcceptData, To: []string{"forms"}, Apps: []string{"erp"}}, http.StatusOK)
+	if res, _ := e.do(nil, "POST", "/api/upload/data-in", tok2, map[string]any{"x": 1}); res.StatusCode != http.StatusForbidden {
 		t.Fatalf("data without the scope: %d", res.StatusCode)
 	}
 	e.admin("PUT", "/api/apps/erp", App{Scopes: []string{ScopePrint, ScopePrintTemplate, ScopeJobsCancel}, Group: "warehouse-a"}, http.StatusOK)
 	_, body = token("erp", made.Secret, "grant_type=client_credentials")
 	tok3 := body["access_token"].(string)
-	if res, out := e.do(nil, "POST", "/in/data-in", tok3, map[string]any{"x": 1}); res.StatusCode != http.StatusCreated {
+	if res, out := e.do(nil, "POST", "/api/upload/data-in", tok3, map[string]any{"x": 1}); res.StatusCode != http.StatusCreated {
 		t.Fatalf("data with the scope: %d %s", res.StatusCode, out)
 	}
 	e.admin("DELETE", "/api/nodes/data-in", nil, http.StatusNoContent)
 	e.admin("DELETE", "/api/nodes/forms", nil, http.StatusNoContent)
 	// its jobs are its group's now
-	res, out = e.do(nil, "POST", "/in/intake?name=grouped", tok2, doc)
+	res, out = e.do(nil, "POST", "/api/upload/intake?name=grouped", tok2, doc)
 	json.Unmarshal(out, &j)
 	if res.StatusCode != http.StatusCreated || j.Group != "warehouse-a" {
 		t.Fatalf("the app's group: %d %+v", res.StatusCode, j)
@@ -220,10 +220,10 @@ func TestApps(t *testing.T) {
 		t.Fatalf("an expired token: %d", res.StatusCode)
 	}
 
-	// an app an endpoint or a CUPS server lists is not deleted; the
+	// an app an uploader or a CUPS server lists is not deleted; the
 	// audit log has it all
 	e.admin("DELETE", "/api/apps/erp", nil, http.StatusConflict)
-	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}}, http.StatusOK)
+	e.node("intake", Node{Kind: KindUpload, To: []string{"wh-a"}}, http.StatusOK)
 	e.admin("DELETE", "/api/apps/erp", nil, http.StatusConflict)
 	e.node("erp-cups", Node{Kind: KindCups, To: []string{"intake"}}, http.StatusOK)
 	e.admin("DELETE", "/api/apps/erp", nil, http.StatusNoContent)

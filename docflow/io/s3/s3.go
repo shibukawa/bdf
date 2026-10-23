@@ -18,11 +18,11 @@
 //
 // The trigger does not listen to a bucket: an S3 event goes to an
 // EventBridge rule (an API destination) or a Lambda, which posts the
-// object's reference to POST /in/<node> with the node's key (it is keyed
-// as an endpoint is): {"bucket": …, "key": …}, the event of an S3
-// notification (Records), or the event EventBridge sends (detail). The
-// node reads the object with its credential, and the job goes on as from
-// an endpoint, with s3.bucket and s3.key in its metadata. Its Path is
+// object's reference to POST /api/s3-trigger/<node> with the node's key
+// (it is keyed as an uploader is): {"bucket": …, "key": …}, the event of
+// an S3 notification (Records), or the event EventBridge sends (detail).
+// The node reads the object with its credential, and the job goes on as
+// from an uploader, with s3.bucket and s3.key in its metadata. Its Path is
 // the prefix of the keys it takes.
 package s3
 

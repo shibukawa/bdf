@@ -91,11 +91,11 @@ func (s loginStates) Prune(ctx context.Context, before time.Time, limit int) (in
 // The paths that are not the pages: the top page is the sign-in (a
 // button to the IdP), the devices' page and endpoints keep
 // their own sign-in (the device's key), the API and the printers take
-// their tokens (and the API the session too), the endpoints their keys.
+// their tokens (and the API the session too), the uploaders their keys.
 // /lang, the switch of the language, is the top page's and the devices'
 // as well. /oauth/authorize is a page: a person is sent to the IdP from
 // it, and comes back to it with their session.
-var publicPaths = append([]string{"/", "/tablet", "/lang", "/public/**", "/api/**", docflow.InPath + "/**", docflow.OutPath + "/**", docflow.OAuthTokenPath, "/device/**"}, ingressPaths()...)
+var publicPaths = append([]string{"/", "/tablet", "/lang", "/public/**", docflow.APIPath + "/**", docflow.OAuthTokenPath, "/device/**"}, ingressPaths()...)
 
 // ingressPaths are the paths of the ingresses registered (docflow/io/ipp:
 // /ipp/print), whose senders bring their own credentials.

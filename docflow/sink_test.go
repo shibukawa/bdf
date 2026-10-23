@@ -92,9 +92,9 @@ func TestSink(t *testing.T) {
 	}
 }
 
-// An entry node's own port: a CUPS server's IPP, an endpoint's REST. A
-// CUPS server forwards what it receives along its edges, as an endpoint
-// does; its port is a CUPS server with one printer, the node.
+// An entry node's own port: a CUPS server's IPP (an uploader is at the
+// API alone). A CUPS server forwards what it receives along its edges, as
+// an uploader does; its port is a CUPS server with one printer, the node.
 func TestPortHandler(t *testing.T) {
 	e := newEnv(t, nil)
 	ctx := context.Background()
@@ -120,11 +120,15 @@ func TestPortHandler(t *testing.T) {
 	e.node("cups1", Node{Kind: KindCups, To: []string{"nowhere"}, Port: 6310}, http.StatusBadRequest)
 	e.node("cups1", Node{Kind: KindCups, To: []string{"cups1"}, Port: 6310}, http.StatusBadRequest)
 	e.node("cups1", Node{Kind: KindCups, Title: "CUPS", To: []string{"wh-a", "laser"}, Port: 6310}, http.StatusOK)
-	e.node("api", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Port: 6310}, http.StatusConflict)
+	// an uploader has no port of its own (it is at the API, on the
+	// manager's server): a port it is given is dropped
 	var made struct {
-		Key string `json:"key"`
+		Key  string `json:"key"`
+		Port int    `json:"port"`
 	}
-	json.Unmarshal(e.node("api", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Port: 6311}, http.StatusOK), &made)
+	if json.Unmarshal(e.node("api", Node{Kind: KindUpload, To: []string{"wh-a"}, Port: 6310}, http.StatusOK), &made); made.Port != 0 || made.Key == "" {
+		t.Fatalf("an uploader %+v", made)
+	}
 	// its edges are edges: a node it sends to stays, and no path leads back
 	e.admin("DELETE", "/api/nodes/laser", nil, http.StatusConflict)
 	if out := e.node("relay", Node{Kind: KindQueue, To: []string{"cups1"}}, http.StatusOK); len(out) == 0 {
@@ -183,32 +187,19 @@ func TestPortHandler(t *testing.T) {
 	if j := e.printJob("cups1", "by the API", 1); j.Number != 4 || j.Source != "api" || legs(j) != "cups1:routed wh-a:shown laser:pending" {
 		t.Fatalf("job %+v", j)
 	}
-	// the endpoint's port: every POST is to it, with its key
+	// the uploader is at the API alone: nothing listens for it on a port
 	api := httptest.NewServer(PortHandler(e.m(), "api"))
 	defer api.Close()
-	post := func(key string) int {
-		req, _ := http.NewRequest("POST", api.URL+"/anything?name=x", bytes.NewReader(testDoc(t, 1)))
-		if key != "" {
-			req.Header.Set("Authorization", "Bearer "+key)
-		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		res.Body.Close()
-		return res.StatusCode
+	req, _ := http.NewRequest("POST", api.URL+"/anything?name=x", bytes.NewReader(testDoc(t, 1)))
+	req.Header.Set("Authorization", "Bearer "+made.Key)
+	if res, err := http.DefaultClient.Do(req); err != nil || res.StatusCode != http.StatusNotFound {
+		t.Fatalf("an uploader's port: %v %v", res, err)
 	}
-	if post(made.Key) != http.StatusCreated || post("") != http.StatusUnauthorized {
-		t.Fatal("the endpoint's port")
+	if res, out := e.do(nil, "POST", "/api/upload/api?name=x", made.Key, testDoc(t, 1)); res.StatusCode != http.StatusCreated {
+		t.Fatalf("the uploader at the API: %d %s", res.StatusCode, out)
 	}
-	if j := e.job(5); j.Dest != "api" || j.Source != "endpoint" {
-
+	if j := e.job(5); j.Dest != "api" || j.Source != KindUpload {
 		t.Fatalf("job %+v", j)
-	}
-	// the node gone, or without its port: 404
-	e.node("api", Node{Kind: KindEndpoint, To: []string{"wh-a"}}, http.StatusOK)
-	if post(made.Key) != http.StatusNotFound {
-		t.Fatal("a port the node lost")
 	}
 	// where there are no ports (serverless), none is given
 	s := newEnv(t, func(o *Options) { o.NoPorts = true })

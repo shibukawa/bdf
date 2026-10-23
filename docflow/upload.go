@@ -22,22 +22,20 @@ import (
 	"github.com/shibukawa/yuruidb"
 )
 
-// An endpoint is an entry of the network for applications, over REST:
-// POST /in/<name> with the endpoint's key takes a document (PDF, Office,
-// images, .bdf …) or data (JSON, YAML, CSV, Excel, Parquet: for a template
-// node after it), and the job flows from the endpoint to its nodes. What
-// it takes is its Accept and Formats, and what it sends on of a document
-// its Output (PutNode). Each endpoint has a key of its own, kept as a
-// hash (argon2id); the key is shown once, when the endpoint is made or
-// its key rotated.
-
-// InPath is where the endpoints are.
-const InPath = "/in"
+// An uploader is an entry of the network for applications, over REST:
+// POST /api/upload/<name> with the uploader's key, or an app's token,
+// takes a document (PDF, Office, images, .bdf …) or data (JSON, YAML,
+// CSV, Excel, Parquet: for a template node after it), and the job flows
+// from the uploader to its nodes. What it takes is its Accept and
+// Formats, and what it sends on of a document its Output (PutNode). Each
+// keyed entry (an uploader, an S3 trigger at /api/s3-trigger/<name>) has
+// a key of its own, kept as a hash (argon2id); the key is shown once,
+// when the node is made or its key rotated.
 
 // OAuthTokenPath is where the apps take their tokens (apps.go).
 const OAuthTokenPath = "/oauth/token"
 
-// newKey makes an endpoint's key: 32 random bytes, in base64url.
+// newKey makes a keyed entry's key: 32 random bytes, in base64url.
 func newKey() string {
 	b := make([]byte, 32)
 	rand.Read(b)
@@ -83,43 +81,49 @@ func checkKey(phc, key string) bool {
 	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
-// endpoint returns an endpoint node, or a keyed entry of an adapter's.
-func (m *Manager) endpoint(ctx context.Context, name string) (*Node, error) {
+// keyedNode returns a keyed entry of a kind: an uploader, or a keyed
+// entry of an adapter's.
+func (m *Manager) keyedNode(ctx context.Context, kind, name string) (*Node, error) {
 	n, err := m.Node(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	if !keyed(n.Kind) {
-		return nil, fmt.Errorf("%w: %s is a %s, not an endpoint", ErrNotFound, name, n.Kind)
+	if !keyed(n.Kind) || n.Kind != kind {
+		return nil, fmt.Errorf("%w: %s is a %s, not a %s", ErrNotFound, name, n.Kind, kind)
 	}
 	return n, nil
 }
 
-// Endpoint finds the endpoint a key opens.
-func (m *Manager) Endpoint(ctx context.Context, name, key string) (*Node, error) {
-	n, err := m.endpoint(ctx, name)
+// KeyedNode finds the keyed entry of a kind a key opens.
+func (m *Manager) KeyedNode(ctx context.Context, kind, name, key string) (*Node, error) {
+	n, err := m.keyedNode(ctx, kind, name)
 	if err != nil {
 		return nil, err
 	}
 	if key == "" || n.KeyHash == "" || !checkKey(n.KeyHash, key) {
-		return nil, fmt.Errorf("%w: the endpoint's key", ErrUnauthorized)
+		return nil, fmt.Errorf("%w: the key of %s", ErrUnauthorized, name)
 	}
 	return n, nil
 }
 
-// serveIn takes a request to an endpoint: a document, or data, as the
-// body or in a multipart/form-data body (readBody), with the sender's
-// metadata. What the endpoint refuses (ErrFormat) is recorded in the
-// audit log.
-func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
+// serveIn takes a request to a keyed entry of a kind (POST
+// /api/<kind>/<name>): a document, or data, as the body or in a
+// multipart/form-data body (readBody), with the sender's metadata; of an
+// entry that reads what the body names (Kind.Fetch), the reference. What
+// the entry refuses (ErrFormat) is recorded in the audit log.
+func (h *handler) serveIn(kind string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { h.takeIn(w, r, kind) }
+}
+
+func (h *handler) takeIn(w http.ResponseWriter, r *http.Request, kind string) {
 	ctx := r.Context()
 	name := r.PathValue("name")
 	var ep *Node
 	var by *Principal
-	var app *Viewer // an app sends with its token: the endpoint must list it
+	var app *Viewer // an app sends with its token: the entry must list it
 	if v, ok := h.viewerOf(r); ok && (v.Admin || v.Kind == PrincipalApp) && r.Header.Get("Authorization") != "" {
 		by = v.Principal()
-		n, err := h.m.endpoint(ctx, name)
+		n, err := h.m.keyedNode(ctx, kind, name)
 		if err != nil {
 			h.writeErr(w, ErrNotFound)
 			return
@@ -129,16 +133,16 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 			app = v
 		}
 	} else {
-		n, err := h.m.Endpoint(ctx, name, bearer(r))
+		n, err := h.m.KeyedNode(ctx, kind, name, bearer(r))
 		if err != nil {
 			if errors.Is(err, ErrUnauthorized) {
-				w.Header().Set("WWW-Authenticate", `Bearer realm="bdf docflow endpoint"`)
+				w.Header().Set("WWW-Authenticate", `Bearer realm="bdf docflow `+kind+`"`)
 			}
 			h.writeErr(w, err)
 			return
 		}
 		ep = n
-		by = &Principal{Kind: PrincipalEndpoint, ID: name, Via: ViaEndpointKey}
+		by = &Principal{Kind: PrincipalKey, ID: name, Via: ViaNodeKey}
 	}
 	if err := h.m.appMaySend(ctx, app, ep.Name, ep.Accept == AcceptData); err != nil {
 		h.writeErr(w, err)
@@ -180,7 +184,7 @@ func (h *handler) serveIn(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "the document is too large"})
 		return
 	}
-	j, err := h.m.Submit(ctx, ep.Name, Input{Name: in.Name, By: by, ClaimedUser: q.Get("user"), Source: "endpoint", Doc: f, Size: in.Size,
+	j, err := h.m.Submit(ctx, ep.Name, Input{Name: in.Name, By: by, ClaimedUser: q.Get("user"), Source: ep.Kind, Doc: f, Size: in.Size,
 		ContentType: in.ContentType, Meta: in.Meta})
 	if err != nil {
 		if errors.Is(err, ErrFormat) {
@@ -279,7 +283,7 @@ func fileNameOf(disposition string) string {
 	return filepath.Base(params["filename"])
 }
 
-// formats answers the formats an endpoint may take.
+// formats answers the formats an entry may take.
 func (h *handler) formats(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, KnownFormats())
 }

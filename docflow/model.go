@@ -84,9 +84,9 @@ func or[T comparable](v, def T) T {
 }
 
 // The core's kinds of node (kinds_core.go): what a job sent to a node
-// becomes. Endpoints are entries; queues, classes, filters and inboxes
+// becomes. Uploaders are entries; queues, classes, filters and inboxes
 // route; template and convert nodes make a payload; displays, archives,
-// sinks and exports are where a job ends. The kinds of the adapters of
+// sinks and downloaders are where a job ends. The kinds of the adapters of
 // docflow/io (printers, CUPS servers) are theirs.
 const (
 	// KindQueue forwards a job to every node of To: a virtual printer
@@ -103,11 +103,12 @@ const (
 	// that is written once and never changed by the manager: an audit
 	// trail (the vault of pm-2 adds the retention of S3 Object Lock).
 	KindArchive = "archive"
-	// KindEndpoint takes documents over HTTP (POST /in/<name>, with the
-	// endpoint's own key): a document of any format the converter reads,
-	// or a template's id and the data to fill it with. It forwards the
-	// job to every node of To, as a queue does.
-	KindEndpoint = "endpoint"
+	// KindUpload is an uploader: it takes documents over HTTP (POST
+	// /api/upload/<name>, with the uploader's own key or an app's token),
+	// a document of any format the converter reads, or data for a
+	// template node after it. It forwards the job to every node of To, as
+	// a queue does (upload.go).
+	KindUpload = "upload"
 	// KindDisplay shows the job as a slip on the devices enrolled at the
 	// display (the tablets of a warehouse), and prints on paper what
 	// nobody opened in time (Fallback).
@@ -131,19 +132,18 @@ const (
 	// Office document, a CSV file …), as an entry does when it converts,
 	// and sends it on (transform.go).
 	KindConvert = "convert"
-	// KindExport is an exit applications and people fetch documents from:
-	// it lists what an archive before it wrote, each entry under the
-	// owner its metadata names, and serves them at GET /out/<name>
-	// (export.go). It is shown as HTTP (pull), beside the HTTP (push) of
-	// docflow/io/http.
-	KindExport = "export"
+	// KindDownload is a downloader: an exit applications and people
+	// fetch documents from. It lists what an inbox or an archive before it
+	// keeps, each entry under the owner its metadata names, and serves
+	// them at GET /api/download/<name> (download.go).
+	KindDownload = "download"
 	// KindSign signs the .bdf document that reaches it with the key of
 	// the manager, as a witness of who sent it, and sends it on
 	// (signnode.go).
 	KindSign = "sign"
 )
 
-// What an entry (an endpoint, a CUPS server) accepts: documents (PDF,
+// What an entry (an uploader, a CUPS server) accepts: documents (PDF,
 // Office, images, .bdf …; the default), or data (JSON, YAML, CSV, Excel,
 // Parquet: what a template node fills).
 const (
@@ -175,7 +175,7 @@ type Node struct {
 	// element is (its first lines on the canvas, all of it beside).
 	Title       string `json:"title,omitempty"`
 	Description string `json:"description,omitempty"`
-	// To are the nodes a queue, an endpoint or a CUPS server forwards to
+	// To are the nodes a queue, an uploader or a CUPS server forwards to
 	// (all of them), the nodes an archive sends on to once it wrote, or
 	// the nodes an inbox's items may be released to; of a template or a
 	// convert node, the nodes the document it makes goes to, and Original
@@ -230,9 +230,10 @@ type Node struct {
 	// SignRole is the role a sign node signs in (RoleWitness when "").
 	SignRole string `json:"sign_role,omitempty"`
 	Strict   bool   `json:"strict,omitempty"`
-	// KeyHash is the hash of an endpoint's key (argon2id), never the key.
-	// Apps are the apps that may send to the endpoint with their own
-	// credentials (apps.go), besides the key.
+	// KeyHash is the hash of a keyed entry's key (argon2id), never the
+	// key. Apps are the apps that may send to an entry with their own
+	// credentials (apps.go), besides the key; that may read a downloader;
+	// that may work an inbox (inboxapi.go).
 	KeyHash string   `json:"key_hash,omitempty"`
 	Apps    []string `json:"apps,omitempty"`
 	// Fallback prints a display's slips nobody opened in time, or all of
@@ -245,30 +246,36 @@ type Node struct {
 	// the manager reaches over the network); Route how its jobs reach it
 	// (direct, branch: docflow/io/ipp). Preview is a printer's fake printer on a
 	// farm (tools/fakeprinter): the URL of the printer on the farm's API,
-	// whose pages are shown beside the node (preview.go).
+	// whose pages are shown beside the node (preview.go). Bonjour is the
+	// instance name a printer's or a CUPS server (sink)'s URL was picked
+	// by, of what Bonjour (DNS-SD) found on the local links: when that
+	// address stops answering, the printer is looked for again by it
+	// (docflow/io/ipp).
 	URL     string `json:"url,omitempty"`
 	Route   string `json:"route,omitempty"`
 	Preview string `json:"preview,omitempty"`
-	// Port is a port of the process's own that an endpoint (REST) or a
-	// CUPS server (IPP) listens on (ports.go); TLSCert and TLSKey are the
-	// files of a CUPS server's certificate (none: plain ipp). DNSSD
-	// advertises a CUPS server's printer on the local links (Bonjour), as
-	// an AirPrint printer computers and phones find.
+	Bonjour string `json:"bonjour,omitempty"`
+	// Port is a port of the process's own that a CUPS server (IPP)
+	// listens on (ports.go); the REST of the other nodes is at the API,
+	// on the manager's own port. TLSCert and TLSKey are the files of a
+	// CUPS server's certificate (none: plain ipp). DNSSD false keeps a
+	// CUPS server's printer off the local links; otherwise it is
+	// advertised there (Bonjour), as an AirPrint printer computers and
+	// phones find (Advertised).
 	Port    int    `json:"port,omitempty"`
 	TLSCert string `json:"tls_cert,omitempty"`
 	TLSKey  string `json:"tls_key,omitempty"`
-	DNSSD   bool   `json:"dnssd,omitempty"`
+	DNSSD   *bool  `json:"dnssd,omitempty"`
 	// Latest is how many of the latest documents a sink keeps (default
 	// 10).
 	Latest int `json:"latest,omitempty"`
-	// By, Subject, Fields and Entries are an export's: By is the metadata
+	// By, Subject, Fields and Entries are a downloader's: By is the metadata
 	// key whose value says whose a document is (a customer's id the
 	// sender gave, say), Subject what of a person is compared with it
 	// (SubjectEmail, the default, SubjectSub, SubjectID or SubjectGroup),
 	// Fields the metadata keys copied into the entries listed, and
 	// Entries how many of the latest entries are listed for one owner,
-	// and for everyone (default 1000). Apps are the apps that may read
-	// it, as an endpoint's are those that may send.
+	// and for everyone (default 1000).
 	By      string   `json:"by,omitempty"`
 	Subject string   `json:"subject,omitempty"`
 	Fields  []string `json:"fields,omitempty"`
@@ -309,6 +316,10 @@ type Node struct {
 	Body        string            `json:"body,omitempty"`
 	Via         string            `json:"via,omitempty"`
 }
+
+// Advertised tells a node announced on the local links (Bonjour): one
+// with a port that DNSSD does not keep off.
+func (n *Node) Advertised() bool { return n.Port != 0 && (n.DNSSD == nil || *n.DNSSD) }
 
 func (n *Node) keep() time.Duration { return time.Duration(or(n.Keep, defaultKeep)) }
 func (n *Node) offlineAfter() time.Duration {
@@ -437,7 +448,7 @@ type Job struct {
 	// and scope come from it alone.
 	SubmittedBy *Principal `json:"submitted_by,omitempty"`
 	// ClaimedUser is who the sender said sent it (requesting-user-name,
-	// ?user= of the API, the user of an endpoint's data): shown, never
+	// ?user= of the API, the user of an uploader's data): shown, never
 	// trusted.
 	ClaimedUser string `json:"claimed_user,omitempty"`
 	// Group is the group whose members see the job besides its
@@ -475,13 +486,13 @@ type Leg struct {
 	At   time.Time `json:"at"`
 	// State is routed (queue, class), shown or canceled (display), held,
 	// released or discarded (inbox), pending, done, failed or canceled
-	// (printer, archive), kept (sink), listed (export), refused (assert),
+	// (printer, archive), kept (sink), listed (downloader), refused (assert),
 	// or error when the node could not take it.
 	State string `json:"state"`
 	// Ref is the slip, the item or the delivery made here.
 	Ref string `json:"ref,omitempty"`
 	// Member is the member a class chose, the rule of a filter, the case
-	// of a branch, or the owner an export listed the job for.
+	// of a branch, or the owner a downloader listed the job for.
 	Member string `json:"member,omitempty"`
 	// Payload is the payload the node got, and Made the one it made of it
 	// (a template or a convert node).
@@ -613,7 +624,7 @@ type Item struct {
 	// discarded it (or canceled the job).
 	Released  *Release `json:"released,omitempty"`
 	Discarded *Mark    `json:"discarded,omitempty"`
-	// Listed are the HTTP (pull) nodes that list it while it is held.
+	// Listed are the downloaders that list it while it is held.
 	Listed []string `json:"listed,omitempty"`
 }
 

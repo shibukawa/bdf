@@ -20,7 +20,7 @@ type routing struct {
 	payload *Payload
 	// stock is where an inbox or an archive keeps the payload (an
 	// archive's job goes on once it wrote it; an inbox's while it holds
-	// it): what an HTTP (pull) node right after it lists.
+	// it): what a downloader right after it lists.
 	stock *stockRef
 	// trace is the step the payload came out of, or went into (trace.go).
 	trace *Trace
@@ -38,7 +38,7 @@ func (r *routing) next() int { return len(r.job.Legs) + len(r.legs) }
 
 // fits tells whether a node of a kind takes the payload as it comes from
 // a node: a stocked file, from the inbox or the archive that keeps it, to
-// a node that reads one there (HTTP (pull)); else the payload's kind.
+// a node that reads one there (a downloader); else the payload's kind.
 func (r *routing) fits(kind, from string) bool {
 	if t := takes(kind); t.has(PayloadStocked) {
 		return r.stock != nil && r.stock.Node == from
@@ -57,7 +57,7 @@ func (r *routing) add(l Leg) {
 // route takes a job to a node, and on along the edges: a slip at a
 // location, a delivery to a printer or an archive, a step of a template or
 // a convert node, an item in an inbox, and the next nodes of a queue, an
-// entry (an endpoint, a CUPS server) or a class. A node that cannot take
+// entry (an uploader, a CUPS server) or a class. A node that cannot take
 // it (one that does not take the payload's kind: the graph is typed when
 // a node is put, but a job may be on its way while it changes) gets a leg
 // of its error; the job goes on elsewhere.

@@ -20,9 +20,9 @@ import (
 
 // viewerOf finds who a request is from: the admin token (bearer), an
 // app's token, a submit token (bearer name:secret, or Basic), a person's
-// token (a frontend's, at the exports and /api/me alone), or a person
-// signed in to the pages (their session). A request with a credential
-// that is not known is nobody's.
+// token (a frontend's, at the downloaders, the inboxes and /api/me
+// alone), or a person signed in to the pages (their session). A request
+// with a credential that is not known is nobody's.
 func (h *handler) viewerOf(r *http.Request) (*Viewer, bool) {
 	tok := bearer(r)
 	if sameSecret(h.m.o.AdminToken, tok) {
@@ -33,10 +33,10 @@ func (h *handler) viewerOf(r *http.Request) (*Viewer, bool) {
 		if v, ok := h.m.appTokenViewer(r.Context(), tok); ok {
 			return v, true
 		}
-		// a person's token (oauth.go): it opens the exports and /api/me,
-		// not the pages' API
+		// a person's token (oauth.go): it opens the downloaders, the
+		// inboxes and /api/me, not the pages' API
 		if v, ok := h.m.userTokenViewer(r.Context(), tok); ok {
-			if strings.HasPrefix(r.URL.Path, OutPath+"/") || r.URL.Path == "/api/me" {
+			if tokenPath(r.URL.Path) {
 				return v, true
 			}
 			return nil, false
@@ -60,6 +60,13 @@ func (h *handler) viewerOf(r *http.Request) (*Viewer, bool) {
 	}
 	v := h.m.o.Viewer(r)
 	return v, v != nil
+}
+
+// tokenPath tells a path a person's token opens: the downloaders', the
+// inboxes' and /api/me.
+func tokenPath(p string) bool {
+	inbox := NodePath(KindInbox, "")
+	return strings.HasPrefix(p, NodePath(KindDownload, "")) || strings.HasPrefix(p, inbox) || p == strings.TrimSuffix(inbox, "/") || p == "/api/me"
 }
 
 // sameOrigin tells a request that a page of the manager's own origin
@@ -91,7 +98,7 @@ func (h *handler) whoami(w http.ResponseWriter, r *http.Request) {
 	me := map[string]any{"kind": v.Kind, "id": v.ID, "name": v.Label(), "email": v.Email, "groups": v.Groups, "admin": v.Admin,
 		"topology": v.Can(RoleTopology), "audit": v.Can(RoleAudit)}
 	if v.Admin {
-		// the pages: whether entry nodes may have ports of their own here
+		// the pages: whether CUPS servers may have ports of their own here
 		me["ports"] = !h.m.o.NoPorts
 	}
 	writeJSON(w, http.StatusOK, me)
@@ -175,7 +182,7 @@ type Destination struct {
 }
 
 // Destinations returns the nodes a viewer may send to: an app, the
-// endpoints that list it.
+// entries that list it.
 func (m *Manager) Destinations(ctx context.Context, v *Viewer) ([]Destination, error) {
 	topo, err := m.Topology(ctx)
 	if err != nil {
@@ -183,7 +190,7 @@ func (m *Manager) Destinations(ctx context.Context, v *Viewer) ([]Destination, e
 	}
 	out := []Destination{}
 	for _, n := range topo {
-		if n.Kind == KindExport {
+		if n.Kind == KindDownload {
 			continue // read from, never sent to
 		}
 		allowed := v.CanSendTo(n.Scope, n.Owner)
