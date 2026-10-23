@@ -72,22 +72,10 @@ func URL(lang, name string) string {
 	return path.Join(Path, lang, name)
 }
 
-// IsLang tells a language the manual is written in.
+// IsLang tells a language the manual is written in. They are the pages'
+// languages (popcornweb.toml's [i18n]): a page links the manual in its
+// own language.
 func IsLang(s string) bool { return slices.Contains(Languages, s) }
-
-// Lang picks the language of a browser from its Accept-Language header:
-// the first of the list the manual is written in (browsers list them in
-// order of preference), else the default.
-func Lang(acceptLanguage string) string {
-	for _, part := range strings.Split(acceptLanguage, ",") {
-		tag, _, _ := strings.Cut(strings.TrimSpace(part), ";")
-		primary, _, _ := strings.Cut(strings.ToLower(tag), "-")
-		if IsLang(primary) {
-			return primary
-		}
-	}
-	return Languages[0]
-}
 
 // Get returns a chapter in a language, rendered; false when there is no
 // such chapter or language.

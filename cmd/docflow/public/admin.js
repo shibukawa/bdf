@@ -1,7 +1,12 @@
 // Shared by the administrator's pages (topology.js, inboxes.js,
 // admin-jobs.js, deliveries.js, audit.js): the API with the session's
-// cookie (the sign-in at /), toasts, small builders of elements, and the
-// nav's own tab.
+// cookie (the sign-in at /), toasts, small builders of elements, the
+// names of the kinds and states in the page's language (i18n.js), and
+// the nav's own tab.
+
+import { _, locale, sentences } from "./i18n.js";
+
+export { _, locale, sentences };
 
 export const $ = (id) => document.getElementById(id);
 
@@ -26,7 +31,7 @@ export async function api(method, path, body, raw) {
   });
   if (res.status === 401) {
     location.href = "/";
-    throw new Error("signed out");
+    throw new Error(_("signed out"));
   }
   if (res.status === 204) return null;
   const out = await res.json();
@@ -73,14 +78,15 @@ export function button(text, fn, className = "btn btn-sm") {
 
 export function since(t) {
   if (!t) return "—";
-  return new Date(t).toLocaleString();
+  return new Date(t).toLocaleString(locale);
 }
 
 export function badge(text, cls = "badge-ghost") {
   return el("span", text, { className: "badge " + cls });
 }
 
-export const KINDS = { endpoint: "Endpoint", cups: "CUPS server (source)", "cups-out": "CUPS server (sink)", queue: "Queue", class: "Class", filter: "Filter", assert: "Assert", branch: "Branch", template: "Template", convert: "Convert", sign: "Sign", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "HTTP (pull)", render: "Render", notify: "Notify", smtp: "Mail (SMTP)", s3: "S3", "s3-trigger": "S3 Trigger", http: "HTTP (push)" };
+// KINDS are the kinds' names, as the palette says them (pages.yaml).
+export const KINDS = { endpoint: _("Endpoint"), cups: _("CUPS server (source)"), "cups-out": _("CUPS server (sink)"), queue: _("Queue"), class: _("Class"), filter: _("Filter"), assert: _("Assert"), branch: _("Branch"), template: _("Template"), convert: _("Convert"), sign: _("Sign"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer"), sink: _("Sink"), export: "HTTP (pull)", render: _("Render"), notify: _("Notify"), smtp: _("Mail (SMTP)"), s3: "S3", "s3-trigger": _("S3 Trigger"), http: "HTTP (push)" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
@@ -110,7 +116,7 @@ export function kindBadge(kind) {
 // file, which an inbox or an archive keeps and sends to HTTP (pull)
 // alone. Ports, edges and the borders of the nodes are colored by them
 // (canvas.js), as are the jobs' badges: blue, green, amber, cyan.
-export const PAYLOADS = { bdf: ".bdf document", data: "data (JSON, YAML, CSV, Excel, Parquet)", any: "any file as received", stocked: "stocked file (any format, kept by an inbox or an archive)" };
+export const PAYLOADS = { bdf: _(".bdf document"), data: _("data (JSON, YAML, CSV, Excel, Parquet)"), any: _("any file as received"), stocked: _("stocked file (any format, kept by an inbox or an archive)") };
 export const PAYLOAD_COLOR = { bdf: "#2563eb", data: "#16a34a", any: "#d97706", stocked: "#0891b2" };
 
 // payloadBadge tells what a job carries: its kind and format.
@@ -119,7 +125,7 @@ export function payloadBadge(j) {
   const b = badge(kind === "bdf" ? ".bdf" : kind + " · " + (j.format || ""), "badge-sm badge-outline whitespace-nowrap");
   b.style.borderColor = PAYLOAD_COLOR[kind] || PAYLOAD_COLOR.any;
   b.style.color = PAYLOAD_COLOR[kind] || PAYLOAD_COLOR.any;
-  b.title = (PAYLOADS[kind] || kind) + (j.format ? ", received as " + j.format : "");
+  b.title = j.format ? _("{payload}, received as {format}", { payload: PAYLOADS[kind] || kind, format: j.format }) : PAYLOADS[kind] || kind;
   return b;
 }
 
@@ -127,7 +133,7 @@ export function payloadBadge(j) {
 export function sender(j) {
   const by = j.submitted_by || {};
   const who = by.name || by.id || by.kind || "";
-  return j.claimed_user && j.claimed_user !== who ? `${who} (as ${j.claimed_user})` : who;
+  return j.claimed_user && j.claimed_user !== who ? _("{who} (as {claimed})", { who, claimed: j.claimed_user }) : who;
 }
 
 export function legsOf(j) {
@@ -138,10 +144,17 @@ export function legsOf(j) {
 
 export const ENDED = ["completed", "canceled", "aborted"];
 
+// STATES are the states of a job, as the page says them; the badge's
+// title is the state itself, as the API and the manual write it.
+export const STATES = { processing: _("processing"), held: _("held"), completed: _("completed"), canceled: _("canceled"), aborted: _("aborted") };
+
 export function stateBadge(state) {
   const cls = state === "completed" ? "badge-success badge-soft" : state === "held" ? "badge-warning" : state === "processing" ? "badge-info" : "badge-ghost";
-  return el("span", state, { className: "badge whitespace-nowrap " + cls });
+  return el("span", STATES[state] || state, { className: "badge whitespace-nowrap " + cls, title: state });
 }
+
+// pagesText says a count of pages.
+export const pagesText = (n) => (n === 1 ? _("{n} page", { n }) : _("{n} pages", { n }));
 
 // cancellable tells a job the administrator may still cancel: one not
 // ended, or one whose slip is still open on a board.
@@ -153,15 +166,15 @@ export function cancellable(j) {
 // first, with the first page of each.
 export async function keptSection(name) {
   const box = el("div", undefined, { className: "mt-3 flex flex-col gap-2 border-t border-base-300 pt-3" });
-  box.append(el("h4", "Kept here", { className: "font-semibold" }));
+  box.append(el("h4", _("Kept here"), { className: "font-semibold" }));
   const jobs = await api("GET", `/api/nodes/${encodeURIComponent(name)}/latest`);
-  if (!jobs.length) box.append(el("p", "Nothing yet.", { className: "text-xs text-base-content/60" }));
+  if (!jobs.length) box.append(el("p", _("Nothing yet."), { className: "text-xs text-base-content/60" }));
   const grid = el("div", undefined, { className: "grid grid-cols-2 gap-2" });
   for (const j of jobs) {
     const card = el("a", undefined, { className: "flex flex-col gap-1 rounded-box bg-base-200 p-2 text-xs hover:bg-base-300", href: `/api/jobs/${j.id}/document`, title: `#${j.number} ${j.name || ""}` });
-    card.append(el("img", undefined, { src: `/api/jobs/${j.id}/pages/1.png?w=240`, alt: `page 1 of #${j.number}`, className: "aspect-[1/1.3] w-full rounded bg-white object-cover object-top shadow-sm", loading: "lazy" }));
+    card.append(el("img", undefined, { src: `/api/jobs/${j.id}/pages/1.png?w=240`, alt: _("page 1 of #{n}", { n: j.number }), className: "aspect-[1/1.3] w-full rounded bg-white object-cover object-top shadow-sm", loading: "lazy" }));
     card.append(el("span", `#${j.number} ${j.name || ""}`, { className: "truncate font-semibold" }));
-    card.append(el("span", `${j.pages} page${j.pages === 1 ? "" : "s"} · ${since(j.received)}`, { className: "text-base-content/60" }));
+    card.append(el("span", `${pagesText(j.pages)} · ${since(j.received)}`, { className: "text-base-content/60" }));
     grid.append(card);
   }
   box.append(grid);
@@ -172,15 +185,15 @@ export async function keptSection(name) {
 // what an archive before it wrote, with the owner each is listed for.
 export async function listedSection(name) {
   const box = el("div", undefined, { className: "mt-3 flex flex-col gap-2 border-t border-base-300 pt-3" });
-  box.append(el("h4", "Listed here", { className: "font-semibold" }));
+  box.append(el("h4", _("Listed here"), { className: "font-semibold" }));
   const entries = await api("GET", `/out/${encodeURIComponent(name)}?limit=20`);
-  if (!entries.length) box.append(el("p", "Nothing you may read yet.", { className: "text-xs text-base-content/60" }));
+  if (!entries.length) box.append(el("p", _("Nothing you may read yet."), { className: "text-xs text-base-content/60" }));
   const list = el("ul", undefined, { className: "flex flex-col gap-1 text-xs" });
   for (const e of entries) {
     const li = el("li", undefined, { className: "flex flex-wrap items-center gap-x-2 rounded-box bg-base-200 px-2 py-1" });
-    li.append(el("a", `#${e.job} ${e.name || ""}`, { className: "link font-semibold", href: `/out/${encodeURIComponent(name)}/${e.job}/document`, title: "download the document from the archive" }));
+    li.append(el("a", `#${e.job} ${e.name || ""}`, { className: "link font-semibold", href: `/out/${encodeURIComponent(name)}/${e.job}/document`, title: _("download the document from the archive") }));
     if (e.owner) li.append(el("span", e.owner, { className: "badge badge-ghost badge-xs" }));
-    li.append(el("span", `${e.pages ? e.pages + " page" + (e.pages === 1 ? "" : "s") + " · " : ""}${e.format || e.kind} · ${since(e.received)}`, { className: "text-base-content/60" }));
+    li.append(el("span", `${e.pages ? pagesText(e.pages) + " · " : ""}${e.format || e.kind} · ${since(e.received)}`, { className: "text-base-content/60" }));
     for (const [k, v] of Object.entries(e.fields || {})) li.append(el("span", `${k}: ${v}`, { className: "font-mono text-base-content/60" }));
     list.append(li);
   }

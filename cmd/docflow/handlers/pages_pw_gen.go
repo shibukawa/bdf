@@ -3,17 +3,28 @@
 package handlers
 
 import (
+	"context"
+	"github.com/shibukawa/bdf/cmd/docflow/messages"
+	"github.com/shibukawa/popcornweb/pwruntime"
 	"github.com/shibukawa/tinybind-go/htmlbind"
 	"net/url"
 )
 
 type Account struct {
-	Name     string
-	Initial  string
-	Email    string
-	Admin    bool
-	Topology bool
-	Audit    bool
+	Name      string
+	Initial   string
+	Email     string
+	Admin     bool
+	Topology  bool
+	Audit     bool
+	Languages []Language
+	Here      string
+}
+
+type Language struct {
+	Tag     string
+	Label   string
+	Current bool
 }
 
 type HelpSection struct {
@@ -28,14 +39,14 @@ type HelpChapter struct {
 	Sections []HelpSection
 }
 
-type HelpLang struct {
-	Label string
-	Href  url.URL
-}
-
 type renderShellParams struct {
 	Title    string
 	Children htmlbind.Fragment
+}
+
+type renderLanguageSwitchParams struct {
+	Languages []Language
+	Next      string
 }
 
 type renderAppBarParams struct {
@@ -45,7 +56,8 @@ type renderAppBarParams struct {
 }
 
 type SignInParams struct {
-	Enabled bool
+	Enabled   bool
+	Languages []Language
 }
 
 type ForbiddenParams struct {
@@ -69,7 +81,10 @@ type AuditParams struct {
 	Account Account
 }
 
-type TabletParams struct{}
+type TabletParams struct {
+	Languages []Language
+	Here      string
+}
 
 type renderPaletteGroupParams struct {
 	Title    string
@@ -107,51 +122,150 @@ type HelpParams struct {
 	Title    string
 	Language string
 	Chapters []HelpChapter
-	Langs    []HelpLang
 	Body     string
 }
 
-var planSignInOpsFill1Plan = &htmlbind.Plan[SignInParams]{Ops: []htmlbind.Op[SignInParams]{
-	planSignInOps.Static(" <main class=\"mx-auto flex min-h-screen max-w-md flex-col justify-center p-4\"> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h1 class=\"card-title text-2xl\">BDF Docflow</h1> <p class=\"text-base-content/70\">A software-defined document network: documents enter at virtual printers and API endpoints, flow through the nodes you compose, and end on display boards, printers and archives.</p> "),
+type planLanguageSwitchOpsScope1 struct {
+	Outer renderLanguageSwitchParams
+	Item  Language
+	Index int
+}
+
+var planLanguageSwitchOpsScope1Ops = htmlbind.Builder[planLanguageSwitchOpsScope1]{}
+
+var planSignInOpsFill2Plan = &htmlbind.Plan[SignInParams]{Ops: []htmlbind.Op[SignInParams]{
+	planSignInOps.Static(" <main class=\"mx-auto flex min-h-screen max-w-md flex-col justify-center p-4\"> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <div class=\"flex items-center justify-between gap-2\"> <h1 class=\"card-title text-2xl\">BDF Docflow</h1> "),
+	planSignInOps.Component(func(p SignInParams) htmlbind.Fragment {
+		return renderLanguageSwitch(renderLanguageSwitchParams{Languages: p.Languages, Next: "/"})
+	}),
+	planSignInOps.Static(" </div> <p class=\"text-base-content/70\">"),
+	planSignInOps.TextCtx(func(ctx context.Context, p SignInParams) string {
+		return messages.PagesSigninLead(pwruntime.MessageLocale(ctx))
+	}),
+	planSignInOps.Static("</p> "),
 	planSignInOps.If(func(p SignInParams) bool { return p.Enabled },
 		[]htmlbind.Op[SignInParams]{
-			planSignInOps.Static(" <a id=\"sign-in\" href=\"/auth/login?next=%2Fjobs\" class=\"btn btn-primary btn-block\">Sign in</a> <p class=\"text-center text-sm text-base-content/60\">with your organization's account</p> "),
+			planSignInOps.Static(" <a id=\"sign-in\" href=\"/auth/login?next=%2Fjobs\" class=\"btn btn-primary btn-block\">"),
+			planSignInOps.TextCtx(func(ctx context.Context, p SignInParams) string {
+				return messages.PagesSigninButton(pwruntime.MessageLocale(ctx))
+			}),
+			planSignInOps.Static("</a> <p class=\"text-center text-sm text-base-content/60\">"),
+			planSignInOps.TextCtx(func(ctx context.Context, p SignInParams) string {
+				return messages.PagesSigninWith(pwruntime.MessageLocale(ctx))
+			}),
+			planSignInOps.Static("</p> "),
 		},
 		[]htmlbind.Op[SignInParams]{
-			planSignInOps.Static(" <div role=\"alert\" class=\"alert alert-warning\">No sign-in is configured (AUTH_OIDC_ISSUER): nobody signs in. Development only.</div> "),
+			planSignInOps.Static(" <div role=\"alert\" class=\"alert alert-warning\">"),
+			planSignInOps.TextCtx(func(ctx context.Context, p SignInParams) string {
+				return messages.PagesSigninNone(pwruntime.MessageLocale(ctx))
+			}),
+			planSignInOps.Static("</div> "),
 		}),
-	planSignInOps.Static(" <a href=\"/tablet\" class=\"link link-hover text-center text-sm text-base-content/60\">This is a display board's device</a> </div> </div> </main> "),
+	planSignInOps.Static(" <a href=\"/tablet\" class=\"link link-hover text-center text-sm text-base-content/60\">"),
+	planSignInOps.TextCtx(func(ctx context.Context, p SignInParams) string {
+		return messages.PagesSigninDevice(pwruntime.MessageLocale(ctx))
+	}),
+	planSignInOps.Static("</a> </div> </div> </main> "),
 }}
 
-var planForbiddenOpsFill2Plan = &htmlbind.Plan[ForbiddenParams]{Ops: []htmlbind.Op[ForbiddenParams]{
+var planForbiddenOpsFill3Plan = &htmlbind.Plan[ForbiddenParams]{Ops: []htmlbind.Op[ForbiddenParams]{
 	planForbiddenOps.Static(" "),
 	planForbiddenOps.Component(func(p ForbiddenParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Docflow", Account: p.Account})
 	}),
-	planForbiddenOps.Static(" <main class=\"mx-auto max-w-lg p-4 sm:p-8\"> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body items-center text-center\"> <h1 class=\"card-title text-2xl\">Not your page</h1> <p class=\"text-base-content/70\">"),
-	planForbiddenOps.Text(func(p ForbiddenParams) string { return p.Account.Name }),
-	planForbiddenOps.Static(" does not have the role "),
-	planForbiddenOps.Text(func(p ForbiddenParams) string { return p.Role }),
-	planForbiddenOps.Static(". Your jobs and your groups' are on the Jobs page.</p> <div class=\"card-actions\"><a href=\"/jobs\" class=\"btn btn-primary\">Jobs</a></div> </div> </div> </main> "),
+	planForbiddenOps.Static(" <main class=\"mx-auto max-w-lg p-4 sm:p-8\"> <div class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body items-center text-center\"> <h1 class=\"card-title text-2xl\">"),
+	planForbiddenOps.TextCtx(func(ctx context.Context, p ForbiddenParams) string {
+		return messages.PagesForbiddenHeading(pwruntime.MessageLocale(ctx))
+	}),
+	planForbiddenOps.Static("</h1> <p class=\"text-base-content/70\">"),
+	planForbiddenOps.TextCtx(func(ctx context.Context, p ForbiddenParams) string {
+		return messages.PagesForbiddenText(pwruntime.MessageLocale(ctx), p.Account.Name, p.Role)
+	}),
+	planForbiddenOps.Static("</p> <div class=\"card-actions\"><a href=\"/jobs\" class=\"btn btn-primary\">"),
+	planForbiddenOps.TextCtx(func(ctx context.Context, p ForbiddenParams) string {
+		return messages.PagesNavJobs(pwruntime.MessageLocale(ctx))
+	}),
+	planForbiddenOps.Static("</a></div> </div> </div> </main> "),
 }}
 
-var planJobsOpsFill3Plan = &htmlbind.Plan[JobsParams]{Ops: []htmlbind.Op[JobsParams]{
+var planJobsOpsFill4Plan = &htmlbind.Plan[JobsParams]{Ops: []htmlbind.Op[JobsParams]{
 	planJobsOps.Static(" "),
 	planJobsOps.Component(func(p JobsParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Docflow", Account: p.Account})
 	}),
-	planJobsOps.Static(" <main class=\"mx-auto grid max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <form id=\"print-form\" class=\"card-body\"> <h2 class=\"card-title\">Print a document</h2> <p class=\"text-sm text-base-content/60\">PDF, Office documents, images and .bdf. It flows from the node chosen; the nodes listed are those you may send to.</p> <div class=\"flex flex-wrap gap-2\"> <select id=\"print-dest\" class=\"select w-full sm:w-64\" required></select> <input id=\"print-file\" type=\"file\" class=\"file-input w-full sm:flex-1\" required> <input id=\"print-name\" class=\"input w-full sm:w-48\" placeholder=\"job name (the file's)\"> <button type=\"submit\" class=\"btn btn-primary\">Print</button> </div> </form> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
+	planJobsOps.Static(" <main class=\"mx-auto grid max-w-6xl grid-cols-1 gap-6 p-4 sm:p-6\"> <section class=\"card bg-base-100 shadow-sm\"> <form id=\"print-form\" class=\"card-body\"> <h2 class=\"card-title\">"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesJobsPrintHeading(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</h2> <p class=\"text-sm text-base-content/60\">"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesJobsPrintNote(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</p> <div class=\"flex flex-wrap gap-2\"> <select id=\"print-dest\" class=\"select w-full sm:w-64\" required></select> <input id=\"print-file\" type=\"file\" class=\"file-input w-full sm:flex-1\" required> <input id=\"print-name\" class=\"input w-full sm:w-48\""),
+	planJobsOps.AttrCtx("placeholder", func(ctx context.Context, p JobsParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesJobsNamePlaceholder(pwruntime.MessageLocale(ctx))), true
+	}),
+	planJobsOps.Static("> <button type=\"submit\" class=\"btn btn-primary\">"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesJobsPrint(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</button> </div> </form> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
 	planJobsOps.If(func(p JobsParams) bool { return p.Account.Audit },
 		[]htmlbind.Op[JobsParams]{
-			planJobsOps.Static("All jobs"),
+			planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+				return messages.PagesJobsAll(pwruntime.MessageLocale(ctx))
+			}),
 		},
 		[]htmlbind.Op[JobsParams]{
-			planJobsOps.Static("My jobs and my groups'"),
+			planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+				return messages.PagesJobsMine(pwruntime.MessageLocale(ctx))
+			}),
 		}),
-	planJobsOps.Static("</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th class=\"hidden md:table-cell\">Group</th><th class=\"hidden sm:table-cell\">Received</th><th>State</th><th class=\"hidden lg:table-cell\">Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> <p class=\"text-xs text-base-content/60\">Reprint sends the document again as a new job of yours, to the node it went to, or to another you may send to.</p> </div> </section> </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/jobs.js\"></script> "),
+	planJobsOps.Static("</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesRefresh(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesColNumber(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</th><th>"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesColName(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</th><th>"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesColSentTo(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</th><th>"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesColSentBy(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</th><th class=\"hidden md:table-cell\">"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesColGroup(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</th><th class=\"hidden sm:table-cell\">"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesColReceived(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</th><th>"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesColState(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</th><th class=\"hidden lg:table-cell\">"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesColRoute(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> <p class=\"text-xs text-base-content/60\">"),
+	planJobsOps.TextCtx(func(ctx context.Context, p JobsParams) string {
+		return messages.PagesJobsReprintNote(pwruntime.MessageLocale(ctx))
+	}),
+	planJobsOps.Static("</p> </div> </section> </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/jobs.js\"></script> "),
 }}
 
-var planAdminPageOpsFill4Plan = &htmlbind.Plan[renderAdminPageParams]{Ops: []htmlbind.Op[renderAdminPageParams]{
+var planAdminPageOpsFill5Plan = &htmlbind.Plan[renderAdminPageParams]{Ops: []htmlbind.Op[renderAdminPageParams]{
 	planAdminPageOps.Static(" "),
 	planAdminPageOps.Component(func(p renderAdminPageParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Docflow", Account: p.Account})
@@ -164,215 +278,389 @@ var planAdminPageOpsFill4Plan = &htmlbind.Plan[renderAdminPageParams]{Ops: []htm
 	planAdminPageOps.Static(" </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> "),
 }}
 
-var planAuditOpsFill5Plan = &htmlbind.Plan[AuditParams]{Ops: []htmlbind.Op[AuditParams]{
-	planAuditOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Audit log</h2> <span class=\"text-sm text-base-content/60\">Sign-ins, changes of the topology, keys and templates, devices, documents an endpoint refused, what people did in inboxes, and cancellations. Newest first.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>When</th><th>Who</th><th>Action</th><th>Subject</th><th>Detail</th></tr></thead><tbody id=\"audit\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">Recent jobs and their routes</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Source</th><th>Received</th><th>State</th><th>Route</th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/audit.js\"></script> "),
+var planAuditOpsFill6Plan = &htmlbind.Plan[AuditParams]{Ops: []htmlbind.Op[AuditParams]{
+	planAuditOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesAuditHeading(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</h2> <span class=\"text-sm text-base-content/60\">"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesAuditNote(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesAuditWhen(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesAuditWho(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesAuditAction(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesAuditSubject(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesAuditDetail(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th></tr></thead><tbody id=\"audit\"></tbody></table> </div> </div> </section> <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <h2 class=\"card-title\">"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesAuditJobsHeading(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</h2> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesColNumber(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesColName(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesColSentTo(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesColSentBy(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesColSource(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesColReceived(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesColState(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th><th>"),
+	planAuditOps.TextCtx(func(ctx context.Context, p AuditParams) string {
+		return messages.PagesColRoute(pwruntime.MessageLocale(ctx))
+	}),
+	planAuditOps.Static("</th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/audit.js\"></script> "),
 }}
 
-var planTabletOpsFill6Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
-	planTabletOps.Static(" <div id=\"app\" class=\"min-h-screen\"> <header id=\"bar\" class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex min-w-0 flex-1 items-center gap-3\"> <h1 id=\"title\" class=\"truncate text-2xl font-bold\">Display board</h1> <span id=\"status\" class=\"badge\" hidden></span> </div> <label class=\"input input-lg w-full sm:w-56\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name\"> </label> </header> <section id=\"enroll\" class=\"mx-auto max-w-lg p-4 sm:p-8\" hidden> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h2 class=\"card-title text-2xl\">Enroll this device</h2> <p class=\"text-base-content/70\">Enter the enrollment code an administrator made. Only enrolled devices see the documents of their display.</p> <form id=\"enroll-form\" class=\"flex flex-col gap-4\"> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Enrollment code</legend> <input id=\"code\" class=\"input input-lg w-full font-mono tracking-widest uppercase\" autocomplete=\"off\" autocapitalize=\"characters\" required> </fieldset> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Device name</legend> <input id=\"device-name\" class=\"input input-lg w-full\" autocomplete=\"off\" placeholder=\"e.g. tablet at the shipping dock\"> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">Enroll</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">Open <span id=\"open-count\" class=\"badge badge-warning ml-2\" hidden></span></button> <button id=\"tab-ended\" role=\"tab\" class=\"tab flex-1 sm:flex-none\" type=\"button\">Done and canceled</button> </div> <ul id=\"open-list\" class=\"mt-4 grid gap-3\"></ul> <ul id=\"ended-list\" class=\"mt-4 grid gap-3\" hidden></ul> <div id=\"empty\" class=\"mt-16 text-center text-xl text-base-content/50\" hidden>No documents</div> </section> <section id=\"viewer\" hidden> <div class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <button id=\"back\" type=\"button\" class=\"btn btn-lg btn-ghost\">← Board</button> <span id=\"viewer-title\" class=\"min-w-0 flex-1 truncate text-lg font-semibold\"></span> <div class=\"flex gap-2\"> <button id=\"print\" type=\"button\" class=\"btn btn-lg btn-outline\" hidden>Print here</button> <button id=\"done\" type=\"button\" class=\"btn btn-lg btn-success\">Done</button> </div> </div> <div id=\"pages\" class=\"mx-auto grid max-w-5xl gap-4 p-4\"></div> </section> <div id=\"toasts\" class=\"toast toast-top toast-center z-50\"></div> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
-}}
-
-var planTopologyOpsFill9Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("a REST entry for applications"),
+var planTabletOpsFill7Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[TabletParams]{
+	planTabletOps.Static(" <div id=\"app\" class=\"min-h-screen\"> <header id=\"bar\" class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex min-w-0 flex-1 items-center gap-3\"> <h1 id=\"title\" class=\"truncate text-2xl font-bold\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletTitle(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</h1> <span id=\"status\" class=\"badge\" hidden></span> </div> <label class=\"input input-lg w-full sm:w-56\"> <span class=\"label\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesWorker(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</span> <input id=\"worker\" autocomplete=\"off\""),
+	planTabletOps.AttrCtx("placeholder", func(ctx context.Context, p TabletParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesTabletWorkerPlaceholder(pwruntime.MessageLocale(ctx))), true
+	}),
+	planTabletOps.Static("> </label> "),
+	planTabletOps.Component(func(p TabletParams) htmlbind.Fragment {
+		return renderLanguageSwitch(renderLanguageSwitchParams{Languages: p.Languages, Next: p.Here})
+	}),
+	planTabletOps.Static(" </header> <section id=\"enroll\" class=\"mx-auto max-w-lg p-4 sm:p-8\" hidden> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h2 class=\"card-title text-2xl\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletEnrollHeading(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</h2> <p class=\"text-base-content/70\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletEnrollNote(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</p> <form id=\"enroll-form\" class=\"flex flex-col gap-4\"> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesEnrollmentCode(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</legend> <input id=\"code\" class=\"input input-lg w-full font-mono tracking-widest uppercase\" autocomplete=\"off\" autocapitalize=\"characters\" required> </fieldset> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletDeviceName(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</legend> <input id=\"device-name\" class=\"input input-lg w-full\" autocomplete=\"off\""),
+	planTabletOps.AttrCtx("placeholder", func(ctx context.Context, p TabletParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesTabletDevicePlaceholder(pwruntime.MessageLocale(ctx))), true
+	}),
+	planTabletOps.Static("> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletEnroll(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletOpen(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static(" <span id=\"open-count\" class=\"badge badge-warning ml-2\" hidden></span></button> <button id=\"tab-ended\" role=\"tab\" class=\"tab flex-1 sm:flex-none\" type=\"button\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletEnded(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</button> </div> <ul id=\"open-list\" class=\"mt-4 grid gap-3\"></ul> <ul id=\"ended-list\" class=\"mt-4 grid gap-3\" hidden></ul> <div id=\"empty\" class=\"mt-16 text-center text-xl text-base-content/50\" hidden>"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletEmpty(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</div> </section> <section id=\"viewer\" hidden> <div class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <button id=\"back\" type=\"button\" class=\"btn btn-lg btn-ghost\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletBack(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</button> <span id=\"viewer-title\" class=\"min-w-0 flex-1 truncate text-lg font-semibold\"></span> <div class=\"flex gap-2\"> <button id=\"print\" type=\"button\" class=\"btn btn-lg btn-outline\" hidden>"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletPrint(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</button> <button id=\"done\" type=\"button\" class=\"btn btn-lg btn-success\">"),
+	planTabletOps.TextCtx(func(ctx context.Context, p TabletParams) string {
+		return messages.PagesTabletDone(pwruntime.MessageLocale(ctx))
+	}),
+	planTabletOps.Static("</button> </div> </div> <div id=\"pages\" class=\"mx-auto grid max-w-5xl gap-4 p-4\"></div> </section> <div id=\"toasts\" class=\"toast toast-top toast-center z-50\"></div> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
 }}
 
 var planTopologyOpsFill10Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("the IPP entry: computers print to it, on a port of its own"),
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindEndpointNote(pwruntime.MessageLocale(ctx))
+	}),
 }}
 
 var planTopologyOpsFill11Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("takes the objects an S3 event names"),
-}}
-
-var planTopologyOpsFill8Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "endpoint", Name: "Endpoint", Children: planTopologyOpsFill9Plan.Bind(p)})
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindCupsNote(pwruntime.MessageLocale(ctx))
 	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "cups", Name: "CUPS server (source)", Children: planTopologyOpsFill10Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "s3-trigger", Name: "S3 Trigger", Children: planTopologyOpsFill11Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-}}
-
-var planTopologyOpsFill13Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("forwards to every node it points to"),
-}}
-
-var planTopologyOpsFill14Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("one member in turn, or the first"),
-}}
-
-var planTopologyOpsFill15Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("sends on by rules on what a job is, and its metadata"),
-}}
-
-var planTopologyOpsFill16Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("checks the metadata; right after an entry, refuses the sender what fails"),
-}}
-
-var planTopologyOpsFill17Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("a switch: the first case whose checks hold, else default"),
-}}
-
-var planTopologyOpsFill18Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("held until a person releases it"),
-}}
-
-var planTopologyOpsFill19Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("tells Slack, a mail or a webhook; failures come along on_error"),
 }}
 
 var planTopologyOpsFill12Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindS3TriggerNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill9Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "queue", Name: "Queue", Children: planTopologyOpsFill13Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "endpoint", Name: messages.PagesKindEndpoint(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill10Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "class", Name: "Class", Children: planTopologyOpsFill14Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "cups", Name: messages.PagesKindCups(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill11Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "filter", Name: "Filter", Children: planTopologyOpsFill15Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "assert", Name: "Assert", Children: planTopologyOpsFill16Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "branch", Name: "Branch", Children: planTopologyOpsFill17Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "inbox", Name: "Inbox", Children: planTopologyOpsFill18Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "notify", Name: "Notify", Children: planTopologyOpsFill19Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "s3-trigger", Name: messages.PagesKindS3Trigger(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill12Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 }}
 
-var planTopologyOpsFill21Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("fills a template with data, into a .bdf document"),
+var planTopologyOpsFill14Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindQueueNote(pwruntime.MessageLocale(ctx))
+	}),
 }}
 
-var planTopologyOpsFill22Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("makes a .bdf document of a file received as it is"),
+var planTopologyOpsFill15Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindClassNote(pwruntime.MessageLocale(ctx))
+	}),
 }}
 
-var planTopologyOpsFill23Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("signs a .bdf document as a witness of who sent it"),
+var planTopologyOpsFill16Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindFilterNote(pwruntime.MessageLocale(ctx))
+	}),
 }}
 
-var planTopologyOpsFill24Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("draws a .bdf document as a PDF, or a page as a PNG"),
+var planTopologyOpsFill17Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindAssertNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill18Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindBranchNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill19Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindInboxNote(pwruntime.MessageLocale(ctx))
+	}),
 }}
 
 var planTopologyOpsFill20Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindNotifyNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill13Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "template", Name: "Template", Children: planTopologyOpsFill21Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "queue", Name: messages.PagesKindQueue(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill14Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "convert", Name: "Convert", Children: planTopologyOpsFill22Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "class", Name: messages.PagesKindClass(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill15Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "sign", Name: "Sign", Children: planTopologyOpsFill23Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "filter", Name: messages.PagesKindFilter(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill16Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "render", Name: "Render", Children: planTopologyOpsFill24Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "assert", Name: messages.PagesKindAssert(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill17Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "branch", Name: messages.PagesKindBranch(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill18Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "inbox", Name: messages.PagesKindInbox(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill19Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "notify", Name: messages.PagesKindNotify(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill20Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 }}
 
-var planTopologyOpsFill26Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("shown on the devices enrolled there"),
+var planTopologyOpsFill22Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindTemplateNote(pwruntime.MessageLocale(ctx))
+	}),
 }}
 
-var planTopologyOpsFill27Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("printed on paper"),
+var planTopologyOpsFill23Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindConvertNote(pwruntime.MessageLocale(ctx))
+	}),
 }}
 
-var planTopologyOpsFill28Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("printed to a queue of a CUPS server, over IPP"),
-}}
-
-var planTopologyOpsFill29Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("written once, never changed"),
-}}
-
-var planTopologyOpsFill30Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("keeps the latest documents, to look at"),
-}}
-
-var planTopologyOpsFill31Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("fetched by applications and people from an inbox or an archive"),
-}}
-
-var planTopologyOpsFill32Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("sent to a web service, as the body or as multipart"),
-}}
-
-var planTopologyOpsFill33Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("mails it as an attachment"),
-}}
-
-var planTopologyOpsFill34Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("written to a bucket, once"),
+var planTopologyOpsFill24Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindSignNote(pwruntime.MessageLocale(ctx))
+	}),
 }}
 
 var planTopologyOpsFill25Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindRenderNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill21Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "display", Name: "Display", Children: planTopologyOpsFill26Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "template", Name: messages.PagesKindTemplate(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill22Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "printer", Name: "Printer", Children: planTopologyOpsFill27Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "convert", Name: messages.PagesKindConvert(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill23Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "cups-out", Name: "CUPS server (sink)", Children: planTopologyOpsFill28Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "sign", Name: messages.PagesKindSign(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill24Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "archive", Name: "Archive", Children: planTopologyOpsFill29Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "sink", Name: "Sink", Children: planTopologyOpsFill30Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: "HTTP (pull)", Children: planTopologyOpsFill31Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: "HTTP (push)", Children: planTopologyOpsFill32Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: "Mail (SMTP)", Children: planTopologyOpsFill33Plan.Bind(p)})
-	}),
-	planTopologyOps.Static(" "),
-	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: "S3", Children: planTopologyOpsFill34Plan.Bind(p)})
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "render", Name: messages.PagesKindRender(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill25Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 }}
 
-var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill27Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindDisplayNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill28Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindPrinterNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill29Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindCupsOutNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill30Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindArchiveNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill31Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindSinkNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill32Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindExportNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill33Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindHttpNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill34Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindSmtpNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill35Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindS3Note(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill26Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "display", Name: messages.PagesKindDisplay(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill27Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "printer", Name: messages.PagesKindPrinter(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill28Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "cups-out", Name: messages.PagesKindCupsOut(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill29Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "archive", Name: messages.PagesKindArchive(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill30Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "sink", Name: messages.PagesKindSink(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill31Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: messages.PagesKindExport(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill32Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: messages.PagesKindHttp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill33Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: messages.PagesKindSmtp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill34Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: messages.PagesKindS3(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill35Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+}}
+
+var planTopologyOpsFill8Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Docflow", Account: p.Account})
@@ -385,74 +673,328 @@ var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 			planTopologyOps.Static(" "),
 		},
 		nil),
-	planTopologyOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body gap-3\"> <div class=\"flex flex-wrap items-center gap-2\"> <h2 class=\"card-title\">Topology</h2> "),
+	planTopologyOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body gap-3\"> <div class=\"flex flex-wrap items-center gap-2\"> <h2 class=\"card-title\">"),
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesNavTopology(pwruntime.MessageLocale(ctx))
+	}),
+	planTopologyOps.Static("</h2> "),
 	planTopologyOps.If(func(p TopologyParams) bool { return p.Account.Topology },
 		[]htmlbind.Op[TopologyParams]{
-			planTopologyOps.Static(" <div class=\"dropdown max-sm:static\"> <div tabindex=\"0\" role=\"button\" class=\"btn btn-sm btn-primary\">+ Add a node</div> <div tabindex=\"0\" class=\"dropdown-content z-20 max-h-[75vh] w-80 overflow-y-auto max-sm:inset-x-4 max-sm:w-auto md:w-[38rem] lg:w-[44rem] xl:w-[64rem] rounded-box bg-base-100 shadow-md\"> <ul id=\"palette\" class=\"menu w-full md:block md:columns-2 xl:columns-4\"> "),
-			planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-				return renderPaletteGroup(renderPaletteGroupParams{Title: "Source", Children: planTopologyOpsFill8Plan.Bind(p)})
+			planTopologyOps.Static(" <div class=\"dropdown max-sm:static\"> <div tabindex=\"0\" role=\"button\" class=\"btn btn-sm btn-primary\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesTopologyAdd(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</div> <div tabindex=\"0\" class=\"dropdown-content z-20 max-h-[75vh] w-80 overflow-y-auto max-sm:inset-x-4 max-sm:w-auto md:w-[38rem] lg:w-[44rem] xl:w-[64rem] rounded-box bg-base-100 shadow-md\"> <ul id=\"palette\" class=\"menu w-full md:block md:columns-2 xl:columns-4\"> "),
+			planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+				return renderPaletteGroup(renderPaletteGroupParams{Title: messages.PagesPaletteSource(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill9Plan.Bind(p)})
 			}),
 			planTopologyOps.Static(" "),
-			planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-				return renderPaletteGroup(renderPaletteGroupParams{Title: "Control", Children: planTopologyOpsFill12Plan.Bind(p)})
+			planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+				return renderPaletteGroup(renderPaletteGroupParams{Title: messages.PagesPaletteControl(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill13Plan.Bind(p)})
 			}),
 			planTopologyOps.Static(" "),
-			planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-				return renderPaletteGroup(renderPaletteGroupParams{Title: "Convert", Children: planTopologyOpsFill20Plan.Bind(p)})
+			planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+				return renderPaletteGroup(renderPaletteGroupParams{Title: messages.PagesPaletteConvert(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill21Plan.Bind(p)})
 			}),
 			planTopologyOps.Static(" "),
-			planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-				return renderPaletteGroup(renderPaletteGroupParams{Title: "Sink", Children: planTopologyOpsFill25Plan.Bind(p)})
+			planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+				return renderPaletteGroup(renderPaletteGroupParams{Title: messages.PagesPaletteSink(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill26Plan.Bind(p)})
 			}),
 			planTopologyOps.Static(" </ul> </div> </div> "),
 		},
 		nil),
-	planTopologyOps.Static(" <div class=\"join\"> <button id=\"zoom-out\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom out\">−</button> <button id=\"zoom-fit\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Fit the topology in the view\">Fit</button> <button id=\"zoom-in\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom in\">+</button> </div> "),
+	planTopologyOps.Static(" <div class=\"join\"> <button id=\"zoom-out\" type=\"button\" class=\"btn btn-sm join-item\""),
+	planTopologyOps.AttrCtx("title", func(ctx context.Context, p TopologyParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesZoomOut(pwruntime.MessageLocale(ctx))), true
+	}),
+	planTopologyOps.Static(">−</button> <button id=\"zoom-fit\" type=\"button\" class=\"btn btn-sm join-item\""),
+	planTopologyOps.AttrCtx("title", func(ctx context.Context, p TopologyParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesZoomFitTitle(pwruntime.MessageLocale(ctx))), true
+	}),
+	planTopologyOps.Static(">"),
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesZoomFit(pwruntime.MessageLocale(ctx))
+	}),
+	planTopologyOps.Static("</button> <button id=\"zoom-in\" type=\"button\" class=\"btn btn-sm join-item\""),
+	planTopologyOps.AttrCtx("title", func(ctx context.Context, p TopologyParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesZoomIn(pwruntime.MessageLocale(ctx))), true
+	}),
+	planTopologyOps.Static(">+</button> </div> "),
 	planTopologyOps.If(func(p TopologyParams) bool { return p.Account.Topology },
 		[]htmlbind.Op[TopologyParams]{
-			planTopologyOps.Static(" <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <a href=\"/api/openapi.json\" download=\"docflow.openapi.json\" class=\"btn btn-sm btn-ghost\" title=\"The OpenAPI document of every endpoint and HTTP (pull) node\">OpenAPI</a> "),
+			planTopologyOps.Static(" <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesRefresh(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</button> <a href=\"/api/openapi.json\" download=\"docflow.openapi.json\" class=\"btn btn-sm btn-ghost\""),
+			planTopologyOps.AttrCtx("title", func(ctx context.Context, p TopologyParams) (string, bool) {
+				return htmlbind.Escape(messages.PagesTopologyOpenapiTitle(pwruntime.MessageLocale(ctx))), true
+			}),
+			planTopologyOps.Static(">OpenAPI</a> "),
 		},
 		nil),
 	planTopologyOps.Static(" <span id=\"live\" class=\"badge badge-ghost badge-sm\"></span> "),
 	planTopologyOps.If(func(p TopologyParams) bool { return p.Account.Topology },
 		[]htmlbind.Op[TopologyParams]{
-			planTopologyOps.Static(" <span class=\"text-sm text-base-content/60\">Drag the background to pan, wheel or pinch to zoom. Drag a node to move it; drag from its right port onto another node to connect them (a node that would not take what the edge carries fades, and the wire turns red over it); click an edge to remove it; click a node to edit it in the sidebar.</span> "),
+			planTopologyOps.Static(" <span class=\"text-sm text-base-content/60\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesTopologyEditNote(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</span> "),
 		},
 		[]htmlbind.Op[TopologyParams]{
-			planTopologyOps.Static(" <span class=\"text-sm text-base-content/60\">The network your documents flow through. The counts and the dots are the jobs you may see: yours and your groups'. Drag the background to pan, wheel or pinch to zoom; click a node for its jobs, and to print there when you may.</span> "),
+			planTopologyOps.Static(" <span class=\"text-sm text-base-content/60\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesTopologyViewNote(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</span> "),
 		}),
 	planTopologyOps.Static(" </div> <div class=\"grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]\"> <div id=\"canvas-wrap\" class=\"relative h-[62vh] min-h-96 overflow-hidden rounded-box border border-base-300 bg-base-200\"> <svg id=\"canvas\" class=\"block h-full w-full select-none touch-none\" xmlns=\"http://www.w3.org/2000/svg\"></svg> </div> <aside id=\"sidebar\" class=\"max-h-[62vh] min-h-96 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-4\"></aside> </div> <div id=\"legend\" class=\"flex flex-wrap gap-x-4 gap-y-1 text-xs text-base-content/60\"></div> </div> </section> "),
 	planTopologyOps.If(func(p TopologyParams) bool { return p.Account.Topology },
 		[]htmlbind.Op[TopologyParams]{
-			planTopologyOps.Static(" <datalist id=\"node-names\"></datalist> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">Enrollment code</h3> <p class=\"text-sm text-base-content/70\">Open the URL on the device, or scan the code there: the device makes its own key and enrolls itself at this display. The code works once.</p> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <dialog id=\"key-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">Endpoint key</h3> <p class=\"mt-2 text-sm text-base-content/70\">The key of <span id=\"key-name\" class=\"font-mono\"></span>. It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one.</p> <pre id=\"key-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"key-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <button id=\"key-copy\" type=\"button\" class=\"btn btn-primary\">Copy</button> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> "),
+			planTopologyOps.Static(" <datalist id=\"node-names\"></datalist> <dialog id=\"enroll-modal\" class=\"modal\"> <div class=\"modal-box max-w-md text-center\"> <h3 class=\"text-lg font-bold\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesEnrollmentCode(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</h3> <p class=\"text-sm text-base-content/70\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesEnrollModalNote(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</p> <div id=\"qr\" class=\"qr mx-auto my-4 size-56 rounded-box bg-white p-2\"></div> <p id=\"enroll-code\" class=\"font-mono text-4xl font-bold tracking-widest\"></p> <p class=\"mt-3 break-all\"><a id=\"enroll-url\" class=\"link link-primary\"></a></p> <p id=\"enroll-expires\" class=\"mt-2 text-sm text-base-content/60\"></p> <div class=\"modal-action justify-center\"> <form method=\"dialog\"><button class=\"btn\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesClose(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesClose(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</button></form> </dialog> <dialog id=\"key-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesKeyModalHeading(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static(": <span id=\"key-name\" class=\"font-mono\"></span></h3> <p class=\"mt-2 text-sm text-base-content/70\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesKeyModalNote(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</p> <pre id=\"key-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"key-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <button id=\"key-copy\" type=\"button\" class=\"btn btn-primary\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesCopy(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</button> <form method=\"dialog\"><button class=\"btn\">"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesClose(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>"),
+			planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+				return messages.PagesClose(pwruntime.MessageLocale(ctx))
+			}),
+			planTopologyOps.Static("</button></form> </dialog> "),
 		},
 		nil),
 	planTopologyOps.Static(" </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/topology.js\"></script> "),
 }}
 
-var planAppsOpsFill35Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
-	planAppsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Apps</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Applications with credentials of their own. A backend takes a token at <code class=\"font-mono\">POST /oauth/token</code> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the HTTP (pull) nodes that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <code class=\"font-mono\">/oauth/authorize</code> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the HTTP (pull) nodes as that person. The scopes tick and admin are for a scheduler and for scripts.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Id</th><th>Title</th><th>Scopes</th><th>Group</th><th>Endpoints / redirect URIs</th><th>Last used</th><th></th></tr></thead><tbody id=\"apps\"></tbody></table> </div> <form id=\"app-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <input id=\"app-id\" class=\"input sm:col-span-1\" placeholder=\"id (erp)\" autocomplete=\"off\" required> <input id=\"app-title\" class=\"input sm:col-span-2\" placeholder=\"title\"> <input id=\"app-group\" class=\"input sm:col-span-2\" placeholder=\"group whose members see its jobs (optional)\"> <label class=\"label cursor-pointer gap-2 sm:col-span-2\"><input id=\"app-public\" type=\"checkbox\" class=\"checkbox checkbox-sm\"><span class=\"text-sm\">Public client (a frontend: no secret, PKCE)</span></label> <textarea id=\"app-redirects\" class=\"textarea sm:col-span-4\" rows=\"2\" placeholder=\"redirect URIs, one per line: https://portal.example.com/callback (http only on localhost)\" hidden></textarea> <div id=\"app-scopes\" class=\"flex flex-wrap items-center gap-3 sm:col-span-6\"></div> <button id=\"app-submit\" type=\"submit\" class=\"btn btn-primary sm:col-span-1\">Add</button> <button id=\"app-cancel\" type=\"button\" class=\"btn btn-ghost sm:col-span-1\" hidden>Cancel</button> </form> </div> </section> <dialog id=\"secret-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">App secret</h3> <p class=\"mt-2 text-sm text-base-content/70\">The secret of <span id=\"secret-id\" class=\"font-mono\"></span>. It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working.</p> <pre id=\"secret-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"secret-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/apps.js\"></script> "),
+var planAppsOpsFill36Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
+	planAppsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesTabApps(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesRefresh(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</button> <span class=\"text-sm text-base-content/60\">"),
+	planAppsOps.Message(func(ctx context.Context, p AppsParams) []htmlbind.MessageSegment {
+		return messages.PagesAppsNote(pwruntime.MessageLocale(ctx))
+	},
+		[]htmlbind.MessageHoleOps[AppsParams]{
+			{Name: "token", Ops: []htmlbind.Op[AppsParams]{
+				planAppsOps.Static("<code hole=\"token\" class=\"font-mono\">"),
+				planAppsOps.MessageInner(),
+				planAppsOps.Static("</code>"),
+			}},
+			{Name: "authorize", Ops: []htmlbind.Op[AppsParams]{
+				planAppsOps.Static("<code hole=\"authorize\" class=\"font-mono\">"),
+				planAppsOps.MessageInner(),
+				planAppsOps.Static("</code>"),
+			}},
+		}),
+	planAppsOps.Static("</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesAppsId(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</th><th>"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesAppsColTitle(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</th><th>"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesAppsScopes(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</th><th>"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesColGroup(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</th><th>"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesAppsWhere(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</th><th>"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesAppsLastUsed(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</th><th></th></tr></thead><tbody id=\"apps\"></tbody></table> </div> <form id=\"app-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <input id=\"app-id\" class=\"input sm:col-span-1\""),
+	planAppsOps.AttrCtx("placeholder", func(ctx context.Context, p AppsParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesAppsIdPlaceholder(pwruntime.MessageLocale(ctx))), true
+	}),
+	planAppsOps.Static(" autocomplete=\"off\" required> <input id=\"app-title\" class=\"input sm:col-span-2\""),
+	planAppsOps.AttrCtx("placeholder", func(ctx context.Context, p AppsParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesAppsTitlePlaceholder(pwruntime.MessageLocale(ctx))), true
+	}),
+	planAppsOps.Static("> <input id=\"app-group\" class=\"input sm:col-span-2\""),
+	planAppsOps.AttrCtx("placeholder", func(ctx context.Context, p AppsParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesAppsGroupPlaceholder(pwruntime.MessageLocale(ctx))), true
+	}),
+	planAppsOps.Static("> <label class=\"label cursor-pointer gap-2 sm:col-span-2\"><input id=\"app-public\" type=\"checkbox\" class=\"checkbox checkbox-sm\"><span class=\"text-sm\">"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesAppsPublic(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</span></label> <textarea id=\"app-redirects\" class=\"textarea sm:col-span-4\" rows=\"2\""),
+	planAppsOps.AttrCtx("placeholder", func(ctx context.Context, p AppsParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesAppsRedirectsPlaceholder(pwruntime.MessageLocale(ctx))), true
+	}),
+	planAppsOps.Static(" hidden></textarea> <div id=\"app-scopes\" class=\"flex flex-wrap items-center gap-3 sm:col-span-6\"></div> <button id=\"app-submit\" type=\"submit\" class=\"btn btn-primary sm:col-span-1\">"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string { return messages.PagesAdd(pwruntime.MessageLocale(ctx)) }),
+	planAppsOps.Static("</button> <button id=\"app-cancel\" type=\"button\" class=\"btn btn-ghost sm:col-span-1\" hidden>"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesCancel(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</button> </form> </div> </section> <dialog id=\"secret-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesSecretModalHeading(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static(": <span id=\"secret-id\" class=\"font-mono\"></span></h3> <p class=\"mt-2 text-sm text-base-content/70\">"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesSecretModalNote(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</p> <pre id=\"secret-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"secret-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesClose(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>"),
+	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
+		return messages.PagesClose(pwruntime.MessageLocale(ctx))
+	}),
+	planAppsOps.Static("</button></form> </dialog> <script type=\"module\" src=\"/public/apps.js\"></script> "),
 }}
 
-var planInboxesOpsFill36Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
-	planInboxesOps.Static(" <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"text-xl font-bold\">Inboxes</h2> <label class=\"input input-sm w-64\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name (for the record)\"> </label> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <section id=\"inboxes\" class=\"grid gap-4\"></section> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
+var planInboxesOpsFill37Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
+	planInboxesOps.Static(" <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"text-xl font-bold\">"),
+	planInboxesOps.TextCtx(func(ctx context.Context, p InboxesParams) string {
+		return messages.PagesTabInboxes(pwruntime.MessageLocale(ctx))
+	}),
+	planInboxesOps.Static("</h2> <label class=\"input input-sm w-64\"> <span class=\"label\">"),
+	planInboxesOps.TextCtx(func(ctx context.Context, p InboxesParams) string {
+		return messages.PagesWorker(pwruntime.MessageLocale(ctx))
+	}),
+	planInboxesOps.Static("</span> <input id=\"worker\" autocomplete=\"off\""),
+	planInboxesOps.AttrCtx("placeholder", func(ctx context.Context, p InboxesParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesInboxesWorkerPlaceholder(pwruntime.MessageLocale(ctx))), true
+	}),
+	planInboxesOps.Static("> </label> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">"),
+	planInboxesOps.TextCtx(func(ctx context.Context, p InboxesParams) string {
+		return messages.PagesRefresh(pwruntime.MessageLocale(ctx))
+	}),
+	planInboxesOps.Static("</button> </div> <section id=\"inboxes\" class=\"grid gap-4\"></section> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
 }}
 
-var planAdminJobsOpsFill37Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
-	planAdminJobsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Jobs</h2> <select id=\"jobs-dest\" class=\"select select-sm w-64\"></select> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/admin-jobs.js\"></script> "),
+var planAdminJobsOpsFill38Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
+	planAdminJobsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
+	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
+		return messages.PagesNavJobs(pwruntime.MessageLocale(ctx))
+	}),
+	planAdminJobsOps.Static("</h2> <select id=\"jobs-dest\" class=\"select select-sm w-64\"></select> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">"),
+	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
+		return messages.PagesRefresh(pwruntime.MessageLocale(ctx))
+	}),
+	planAdminJobsOps.Static("</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>"),
+	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
+		return messages.PagesColNumber(pwruntime.MessageLocale(ctx))
+	}),
+	planAdminJobsOps.Static("</th><th>"),
+	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
+		return messages.PagesColName(pwruntime.MessageLocale(ctx))
+	}),
+	planAdminJobsOps.Static("</th><th>"),
+	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
+		return messages.PagesColSentTo(pwruntime.MessageLocale(ctx))
+	}),
+	planAdminJobsOps.Static("</th><th>"),
+	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
+		return messages.PagesColSentBy(pwruntime.MessageLocale(ctx))
+	}),
+	planAdminJobsOps.Static("</th><th>"),
+	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
+		return messages.PagesColReceived(pwruntime.MessageLocale(ctx))
+	}),
+	planAdminJobsOps.Static("</th><th>"),
+	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
+		return messages.PagesColState(pwruntime.MessageLocale(ctx))
+	}),
+	planAdminJobsOps.Static("</th><th>"),
+	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
+		return messages.PagesColRoute(pwruntime.MessageLocale(ctx))
+	}),
+	planAdminJobsOps.Static("</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/admin-jobs.js\"></script> "),
 }}
 
-var planDeliveriesOpsFill38Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
-	planDeliveriesOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Deliveries waiting</h2> <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">Tick now</button> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Jobs on their way to printers and archives. A process sends them in the background, a serverless deployment at the tick; a send that failed is tried again after a wait that grows, and retry sends it now.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>State</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/deliveries.js\"></script> "),
+var planDeliveriesOpsFill39Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
+	planDeliveriesOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesDeliveriesHeading(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</h2> <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesDeliveriesTick(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</button> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesRefresh(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</button> <span class=\"text-sm text-base-content/60\">"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesDeliveriesNote(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesDeliveriesJob(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</th><th>"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesDeliveriesNode(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</th><th>"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesDeliveriesPrinter(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</th><th>"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesColState(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</th><th>"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesDeliveriesAttempts(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</th><th>"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesDeliveriesNext(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</th><th>"),
+	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
+		return messages.PagesDeliveriesError(pwruntime.MessageLocale(ctx))
+	}),
+	planDeliveriesOps.Static("</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/deliveries.js\"></script> "),
 }}
-
-type planHelpOpsScope40 struct {
-	Outer HelpParams
-	Item  HelpLang
-	Index int
-}
-
-var planHelpOpsScope40Ops = htmlbind.Builder[planHelpOpsScope40]{}
 
 type planHelpOpsScope41 struct {
 	Outer HelpParams
@@ -470,29 +1012,24 @@ type planHelpOpsScope41OpsScope42 struct {
 
 var planHelpOpsScope41OpsScope42Ops = htmlbind.Builder[planHelpOpsScope41OpsScope42]{}
 
-var planHelpOpsFill39Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpParams]{
+var planHelpOpsFill40Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpParams]{
 	planHelpOps.Static(" "),
 	planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Docflow", Account: p.Account})
 	}),
 	planHelpOps.Static(" <main class=\"mx-auto grid max-w-7xl grid-cols-1 gap-4 p-4 sm:p-6 lg:grid-cols-[17rem_minmax(0,1fr)]\"> <article id=\"help\""),
 	planHelpOps.Attr("lang", func(p HelpParams) (string, bool) { return htmlbind.Escape(p.Language), true }),
-	planHelpOps.Static(" class=\"prose max-w-none rounded-box bg-base-100 p-6 shadow-sm dark:prose-invert sm:p-8 lg:col-start-2 lg:row-start-1\"> <div class=\"not-prose -mt-2 mb-4 flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm\"> <a href=\"#help-nav\" class=\"link link-hover lg:hidden\">Contents</a> "),
-	planHelpOps.For(
-		func(p HelpParams) []HelpLang { return p.Langs },
-		func(p HelpParams, item HelpLang, index int) planHelpOpsScope40 {
-			return planHelpOpsScope40{Outer: p, Item: item, Index: index}
-		},
-		[]htmlbind.Op[planHelpOpsScope40]{
-			planHelpOpsScope40Ops.Static(" <a"),
-			planHelpOpsScope40Ops.URLAttr("href", func(p planHelpOpsScope40) (string, bool) { return p.Item.Href.String(), true }),
-			planHelpOpsScope40Ops.Static(" class=\"link link-hover\">"),
-			planHelpOpsScope40Ops.Text(func(p planHelpOpsScope40) string { return p.Item.Label }),
-			planHelpOpsScope40Ops.Static("</a> "),
-		}),
-	planHelpOps.Static(" </div> "),
+	planHelpOps.Static(" class=\"prose max-w-none rounded-box bg-base-100 p-6 shadow-sm dark:prose-invert sm:p-8 lg:col-start-2 lg:row-start-1\"> <div class=\"not-prose -mt-2 mb-4 flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm lg:hidden\"> <a href=\"#help-nav\" class=\"link link-hover\">"),
+	planHelpOps.TextCtx(func(ctx context.Context, p HelpParams) string {
+		return messages.PagesHelpContents(pwruntime.MessageLocale(ctx))
+	}),
+	planHelpOps.Static("</a> </div> "),
 	planHelpOps.Raw(func(p HelpParams) string { return string(p.Body) }),
-	planHelpOps.Static(" </article> <nav aria-label=\"Manual\" class=\"lg:sticky lg:top-20 lg:col-start-1 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto\"> <ul id=\"help-nav\" class=\"menu w-full rounded-box bg-base-100 shadow-sm\"> "),
+	planHelpOps.Static(" </article> <nav"),
+	planHelpOps.AttrCtx("aria-label", func(ctx context.Context, p HelpParams) (string, bool) {
+		return htmlbind.Escape(messages.PagesHelpManual(pwruntime.MessageLocale(ctx))), true
+	}),
+	planHelpOps.Static(" class=\"lg:sticky lg:top-20 lg:col-start-1 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto\"> <ul id=\"help-nav\" class=\"menu w-full rounded-box bg-base-100 shadow-sm\"> "),
 	planHelpOps.For(
 		func(p HelpParams) []HelpChapter { return p.Chapters },
 		func(p HelpParams, item HelpChapter, index int) planHelpOpsScope41 {
@@ -541,7 +1078,11 @@ var planShellPlan = &htmlbind.Plan[renderShellParams]{
 		return []htmlbind.Fragment{p.Children}
 	},
 	Ops: []htmlbind.Op[renderShellParams]{
-		planShellOps.Static("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"mobile-web-app-capable\" content=\"yes\"><title>"),
+		planShellOps.Static("<!doctype html><html"),
+		planShellOps.AttrCtx("lang", func(ctx context.Context, p renderShellParams) (string, bool) {
+			return htmlbind.Escape(pwruntime.LangTag(ctx)), true
+		}),
+		planShellOps.Static("><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\"><meta name=\"apple-mobile-web-app-capable\" content=\"yes\"><meta name=\"mobile-web-app-capable\" content=\"yes\"><title>"),
 		planShellOps.Text(func(p renderShellParams) string { return p.Title }),
 		planShellOps.Static("</title><link rel=\"stylesheet\" href=\"/public/app.css\">"),
 		planShellOps.MergedHead(),
@@ -554,6 +1095,48 @@ var planShellPlan = &htmlbind.Plan[renderShellParams]{
 
 // renderShell binds Shell to its parameters, producing a renderable fragment.
 func renderShell(params renderShellParams) htmlbind.Fragment { return planShellPlan.Bind(params) }
+
+var planLanguageSwitchOps = htmlbind.Builder[renderLanguageSwitchParams]{}
+
+var planLanguageSwitchPlan = &htmlbind.Plan[renderLanguageSwitchParams]{
+	Head: nil,
+	Ops: []htmlbind.Op[renderLanguageSwitchParams]{
+		planLanguageSwitchOps.Static(" <form method=\"post\" action=\"/lang\" class=\"flex items-center\">"),
+		planLanguageSwitchOps.CSRFField("_csrf"),
+		planLanguageSwitchOps.Static(" <input type=\"hidden\" name=\"next\""),
+		planLanguageSwitchOps.Attr("value", func(p renderLanguageSwitchParams) (string, bool) { return htmlbind.Escape(p.Next), true }),
+		planLanguageSwitchOps.Static("> "),
+		planLanguageSwitchOps.For(
+			func(p renderLanguageSwitchParams) []Language { return p.Languages },
+			func(p renderLanguageSwitchParams, item Language, index int) planLanguageSwitchOpsScope1 {
+				return planLanguageSwitchOpsScope1{Outer: p, Item: item, Index: index}
+			},
+			[]htmlbind.Op[planLanguageSwitchOpsScope1]{
+				planLanguageSwitchOpsScope1Ops.Static(" "),
+				planLanguageSwitchOpsScope1Ops.If(func(p planLanguageSwitchOpsScope1) bool { return !(p.Item.Current) },
+					[]htmlbind.Op[planLanguageSwitchOpsScope1]{
+						planLanguageSwitchOpsScope1Ops.Static(" <button type=\"submit\" name=\"lang\""),
+						planLanguageSwitchOpsScope1Ops.Attr("value", func(p planLanguageSwitchOpsScope1) (string, bool) { return htmlbind.Escape(p.Item.Tag), true }),
+						planLanguageSwitchOpsScope1Ops.Attr("lang", func(p planLanguageSwitchOpsScope1) (string, bool) { return htmlbind.Escape(p.Item.Tag), true }),
+						planLanguageSwitchOpsScope1Ops.Static(" class=\"btn btn-sm btn-ghost\""),
+						planLanguageSwitchOpsScope1Ops.AttrCtx("title", func(ctx context.Context, p planLanguageSwitchOpsScope1) (string, bool) {
+							return htmlbind.Escape(messages.PagesLanguageSwitch(pwruntime.MessageLocale(ctx))), true
+						}),
+						planLanguageSwitchOpsScope1Ops.Static(">"),
+						planLanguageSwitchOpsScope1Ops.Text(func(p planLanguageSwitchOpsScope1) string { return p.Item.Label }),
+						planLanguageSwitchOpsScope1Ops.Static("</button> "),
+					},
+					nil),
+				planLanguageSwitchOpsScope1Ops.Static(" "),
+			}),
+		planLanguageSwitchOps.Static(" </form> "),
+	},
+}
+
+// renderLanguageSwitch binds LanguageSwitch to its parameters, producing a renderable fragment.
+func renderLanguageSwitch(params renderLanguageSwitchParams) htmlbind.Fragment {
+	return planLanguageSwitchPlan.Bind(params)
+}
 
 var planAppBarOps = htmlbind.Builder[renderAppBarParams]{}
 
@@ -568,19 +1151,47 @@ var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
 		planAppBarOps.Static("</a> </div> <nav class=\"flex flex-wrap items-center gap-2\"> "),
 		planAppBarOps.Slot(func(p renderAppBarParams) htmlbind.Fragment { return p.Children },
 			nil),
-		planAppBarOps.Static(" <a href=\"/jobs\" class=\"btn btn-sm btn-ghost\">Jobs</a> <a href=\"/topology\" class=\"btn btn-sm btn-ghost\">Topology</a> "),
+		planAppBarOps.Static(" <a href=\"/jobs\" class=\"btn btn-sm btn-ghost\">"),
+		planAppBarOps.TextCtx(func(ctx context.Context, p renderAppBarParams) string {
+			return messages.PagesNavJobs(pwruntime.MessageLocale(ctx))
+		}),
+		planAppBarOps.Static("</a> <a href=\"/topology\" class=\"btn btn-sm btn-ghost\">"),
+		planAppBarOps.TextCtx(func(ctx context.Context, p renderAppBarParams) string {
+			return messages.PagesNavTopology(pwruntime.MessageLocale(ctx))
+		}),
+		planAppBarOps.Static("</a> "),
 		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Topology },
 			[]htmlbind.Op[renderAppBarParams]{
-				planAppBarOps.Static(" <a href=\"/admin\" class=\"btn btn-sm btn-ghost\">Admin</a> "),
+				planAppBarOps.Static(" <a href=\"/admin\" class=\"btn btn-sm btn-ghost\">"),
+				planAppBarOps.TextCtx(func(ctx context.Context, p renderAppBarParams) string {
+					return messages.PagesNavAdmin(pwruntime.MessageLocale(ctx))
+				}),
+				planAppBarOps.Static("</a> "),
 			},
 			nil),
 		planAppBarOps.Static(" "),
 		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Audit },
 			[]htmlbind.Op[renderAppBarParams]{
-				planAppBarOps.Static(" <a href=\"/audit\" class=\"btn btn-sm btn-ghost\">Audit</a> "),
+				planAppBarOps.Static(" <a href=\"/audit\" class=\"btn btn-sm btn-ghost\">"),
+				planAppBarOps.TextCtx(func(ctx context.Context, p renderAppBarParams) string {
+					return messages.PagesNavAudit(pwruntime.MessageLocale(ctx))
+				}),
+				planAppBarOps.Static("</a> "),
 			},
 			nil),
-		planAppBarOps.Static(" <a href=\"/help\" class=\"btn btn-sm btn-ghost\" title=\"The manual\">Help</a> <div class=\"flex min-w-0 items-center gap-2\"> <div class=\"avatar avatar-placeholder\""),
+		planAppBarOps.Static(" <a href=\"/help\" class=\"btn btn-sm btn-ghost\""),
+		planAppBarOps.AttrCtx("title", func(ctx context.Context, p renderAppBarParams) (string, bool) {
+			return htmlbind.Escape(messages.PagesNavHelpTitle(pwruntime.MessageLocale(ctx))), true
+		}),
+		planAppBarOps.Static(">"),
+		planAppBarOps.TextCtx(func(ctx context.Context, p renderAppBarParams) string {
+			return messages.PagesNavHelp(pwruntime.MessageLocale(ctx))
+		}),
+		planAppBarOps.Static("</a> "),
+		planAppBarOps.Component(func(p renderAppBarParams) htmlbind.Fragment {
+			return renderLanguageSwitch(renderLanguageSwitchParams{Languages: p.Account.Languages, Next: p.Account.Here})
+		}),
+		planAppBarOps.Static(" <div class=\"flex min-w-0 items-center gap-2\"> <div class=\"avatar avatar-placeholder\""),
 		planAppBarOps.Attr("title", func(p renderAppBarParams) (string, bool) { return htmlbind.Escape(p.Account.Name), true }),
 		planAppBarOps.Static("> <div class=\"w-8 rounded-full bg-neutral text-neutral-content\"><span class=\"text-sm\">"),
 		planAppBarOps.Text(func(p renderAppBarParams) string { return p.Account.Initial }),
@@ -591,12 +1202,20 @@ var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
 		planAppBarOps.Static("</span> </div> "),
 		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Admin },
 			[]htmlbind.Op[renderAppBarParams]{
-				planAppBarOps.Static("<span class=\"badge badge-primary badge-sm\">Admin</span>"),
+				planAppBarOps.Static("<span class=\"badge badge-primary badge-sm\">"),
+				planAppBarOps.TextCtx(func(ctx context.Context, p renderAppBarParams) string {
+					return messages.PagesBadgeAdmin(pwruntime.MessageLocale(ctx))
+				}),
+				planAppBarOps.Static("</span>"),
 			},
 			nil),
 		planAppBarOps.Static(" <form method=\"post\" action=\"/auth/logout\">"),
 		planAppBarOps.CSRFField("_csrf"),
-		planAppBarOps.Static(" <button id=\"logout\" type=\"submit\" class=\"btn btn-sm btn-outline\">Sign out</button> </form> </div> </nav> </header> "),
+		planAppBarOps.Static(" <button id=\"logout\" type=\"submit\" class=\"btn btn-sm btn-outline\">"),
+		planAppBarOps.TextCtx(func(ctx context.Context, p renderAppBarParams) string {
+			return messages.PagesSignOut(pwruntime.MessageLocale(ctx))
+		}),
+		planAppBarOps.Static("</button> </form> </div> </nav> </header> "),
 	},
 }
 
@@ -610,7 +1229,7 @@ var planSignInPlan = &htmlbind.Plan[SignInParams]{
 	Ops: []htmlbind.Op[SignInParams]{
 		planSignInOps.Static(" "),
 		planSignInOps.Component(func(p SignInParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "BDF Docflow", Children: planSignInOpsFill1Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: "BDF Docflow", Children: planSignInOpsFill2Plan.Bind(p)})
 		}),
 		planSignInOps.Static(" "),
 	},
@@ -625,8 +1244,8 @@ var planForbiddenPlan = &htmlbind.Plan[ForbiddenParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[ForbiddenParams]{
 		planForbiddenOps.Static(" "),
-		planForbiddenOps.Component(func(p ForbiddenParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "Forbidden · BDF Docflow", Children: planForbiddenOpsFill2Plan.Bind(p)})
+		planForbiddenOps.ComponentCtx(func(ctx context.Context, p ForbiddenParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: messages.PagesForbiddenTitle(pwruntime.MessageLocale(ctx)), Children: planForbiddenOpsFill3Plan.Bind(p)})
 		}),
 		planForbiddenOps.Static(" "),
 	},
@@ -641,8 +1260,8 @@ var planJobsPlan = &htmlbind.Plan[JobsParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[JobsParams]{
 		planJobsOps.Static(" "),
-		planJobsOps.Component(func(p JobsParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "Jobs · BDF Docflow", Children: planJobsOpsFill3Plan.Bind(p)})
+		planJobsOps.ComponentCtx(func(ctx context.Context, p JobsParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: messages.PagesJobsTitle(pwruntime.MessageLocale(ctx)), Children: planJobsOpsFill4Plan.Bind(p)})
 		}),
 		planJobsOps.Static(" "),
 	},
@@ -656,7 +1275,31 @@ var planAdminNavOps = htmlbind.Builder[renderAdminNavParams]{}
 var planAdminNavPlan = &htmlbind.Plan[renderAdminNavParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[renderAdminNavParams]{
-		planAdminNavOps.Static(" <nav id=\"admin-nav\" role=\"tablist\" class=\"tabs tabs-box tabs-sm w-fit\"> <a role=\"tab\" class=\"tab\" href=\"/topology\">Topology</a> <a role=\"tab\" class=\"tab\" href=\"/admin/apps\">Apps</a> <a role=\"tab\" class=\"tab\" href=\"/admin/inboxes\">Inboxes</a> <a role=\"tab\" class=\"tab\" href=\"/admin/jobs\">Jobs</a> <a role=\"tab\" class=\"tab\" href=\"/admin/deliveries\">Deliveries</a> <a role=\"tab\" class=\"tab\" href=\"/audit\">Audit</a> </nav> "),
+		planAdminNavOps.Static(" <nav id=\"admin-nav\" role=\"tablist\" class=\"tabs tabs-box tabs-sm w-fit\"> <a role=\"tab\" class=\"tab\" href=\"/topology\">"),
+		planAdminNavOps.TextCtx(func(ctx context.Context, p renderAdminNavParams) string {
+			return messages.PagesNavTopology(pwruntime.MessageLocale(ctx))
+		}),
+		planAdminNavOps.Static("</a> <a role=\"tab\" class=\"tab\" href=\"/admin/apps\">"),
+		planAdminNavOps.TextCtx(func(ctx context.Context, p renderAdminNavParams) string {
+			return messages.PagesTabApps(pwruntime.MessageLocale(ctx))
+		}),
+		planAdminNavOps.Static("</a> <a role=\"tab\" class=\"tab\" href=\"/admin/inboxes\">"),
+		planAdminNavOps.TextCtx(func(ctx context.Context, p renderAdminNavParams) string {
+			return messages.PagesTabInboxes(pwruntime.MessageLocale(ctx))
+		}),
+		planAdminNavOps.Static("</a> <a role=\"tab\" class=\"tab\" href=\"/admin/jobs\">"),
+		planAdminNavOps.TextCtx(func(ctx context.Context, p renderAdminNavParams) string {
+			return messages.PagesNavJobs(pwruntime.MessageLocale(ctx))
+		}),
+		planAdminNavOps.Static("</a> <a role=\"tab\" class=\"tab\" href=\"/admin/deliveries\">"),
+		planAdminNavOps.TextCtx(func(ctx context.Context, p renderAdminNavParams) string {
+			return messages.PagesTabDeliveries(pwruntime.MessageLocale(ctx))
+		}),
+		planAdminNavOps.Static("</a> <a role=\"tab\" class=\"tab\" href=\"/audit\">"),
+		planAdminNavOps.TextCtx(func(ctx context.Context, p renderAdminNavParams) string {
+			return messages.PagesNavAudit(pwruntime.MessageLocale(ctx))
+		}),
+		planAdminNavOps.Static("</a> </nav> "),
 	},
 }
 
@@ -675,7 +1318,7 @@ var planAdminPagePlan = &htmlbind.Plan[renderAdminPageParams]{
 	Ops: []htmlbind.Op[renderAdminPageParams]{
 		planAdminPageOps.Static(" "),
 		planAdminPageOps.Component(func(p renderAdminPageParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: p.Title, Children: planAdminPageOpsFill4Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: p.Title, Children: planAdminPageOpsFill5Plan.Bind(p)})
 		}),
 		planAdminPageOps.Static(" "),
 	},
@@ -692,8 +1335,8 @@ var planAuditPlan = &htmlbind.Plan[AuditParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[AuditParams]{
 		planAuditOps.Static(" "),
-		planAuditOps.Component(func(p AuditParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Audit · BDF Docflow", Account: p.Account, Children: planAuditOpsFill5Plan.Bind(p)})
+		planAuditOps.ComponentCtx(func(ctx context.Context, p AuditParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: messages.PagesAuditTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planAuditOpsFill6Plan.Bind(p)})
 		}),
 		planAuditOps.Static(" "),
 	},
@@ -708,8 +1351,8 @@ var planTabletPlan = &htmlbind.Plan[TabletParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[TabletParams]{
 		planTabletOps.Static(" "),
-		planTabletOps.Component(func(p TabletParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "Display board", Children: planTabletOpsFill6Plan.Bind(p)})
+		planTabletOps.ComponentCtx(func(ctx context.Context, p TabletParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: messages.PagesTabletTitle(pwruntime.MessageLocale(ctx)), Children: planTabletOpsFill7Plan.Bind(p)})
 		}),
 		planTabletOps.Static(" "),
 	},
@@ -770,8 +1413,8 @@ var planTopologyPlan = &htmlbind.Plan[TopologyParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[TopologyParams]{
 		planTopologyOps.Static(" "),
-		planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: "Topology · BDF Docflow", Children: planTopologyOpsFill7Plan.Bind(p)})
+		planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+			return renderShell(renderShellParams{Title: messages.PagesTopologyTitle(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill8Plan.Bind(p)})
 		}),
 		planTopologyOps.Static(" "),
 	},
@@ -786,8 +1429,8 @@ var planAppsPlan = &htmlbind.Plan[AppsParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[AppsParams]{
 		planAppsOps.Static(" "),
-		planAppsOps.Component(func(p AppsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Apps · BDF Docflow", Account: p.Account, Children: planAppsOpsFill35Plan.Bind(p)})
+		planAppsOps.ComponentCtx(func(ctx context.Context, p AppsParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: messages.PagesAppsTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planAppsOpsFill36Plan.Bind(p)})
 		}),
 		planAppsOps.Static(" "),
 	},
@@ -802,8 +1445,8 @@ var planInboxesPlan = &htmlbind.Plan[InboxesParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[InboxesParams]{
 		planInboxesOps.Static(" "),
-		planInboxesOps.Component(func(p InboxesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Docflow", Account: p.Account, Children: planInboxesOpsFill36Plan.Bind(p)})
+		planInboxesOps.ComponentCtx(func(ctx context.Context, p InboxesParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: messages.PagesInboxesTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planInboxesOpsFill37Plan.Bind(p)})
 		}),
 		planInboxesOps.Static(" "),
 	},
@@ -818,8 +1461,8 @@ var planAdminJobsPlan = &htmlbind.Plan[AdminJobsParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[AdminJobsParams]{
 		planAdminJobsOps.Static(" "),
-		planAdminJobsOps.Component(func(p AdminJobsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Docflow", Account: p.Account, Children: planAdminJobsOpsFill37Plan.Bind(p)})
+		planAdminJobsOps.ComponentCtx(func(ctx context.Context, p AdminJobsParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: messages.PagesJobsTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planAdminJobsOpsFill38Plan.Bind(p)})
 		}),
 		planAdminJobsOps.Static(" "),
 	},
@@ -834,8 +1477,8 @@ var planDeliveriesPlan = &htmlbind.Plan[DeliveriesParams]{
 	Head: nil,
 	Ops: []htmlbind.Op[DeliveriesParams]{
 		planDeliveriesOps.Static(" "),
-		planDeliveriesOps.Component(func(p DeliveriesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Docflow", Account: p.Account, Children: planDeliveriesOpsFill38Plan.Bind(p)})
+		planDeliveriesOps.ComponentCtx(func(ctx context.Context, p DeliveriesParams) htmlbind.Fragment {
+			return renderAdminPage(renderAdminPageParams{Title: messages.PagesDeliveriesTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planDeliveriesOpsFill39Plan.Bind(p)})
 		}),
 		planDeliveriesOps.Static(" "),
 	},
@@ -851,7 +1494,7 @@ var planHelpPlan = &htmlbind.Plan[HelpParams]{
 	Ops: []htmlbind.Op[HelpParams]{
 		planHelpOps.Static(" "),
 		planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: p.Title, Children: planHelpOpsFill39Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: p.Title, Children: planHelpOpsFill40Plan.Bind(p)})
 		}),
 		planHelpOps.Static(" "),
 	},

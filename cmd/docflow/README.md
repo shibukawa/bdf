@@ -156,8 +156,21 @@ identity, the container's or the instance's role.
 
 ## Use it
 
+The pages are in English and Japanese: in the language a person chose
+with the switch in the bar (English, 日本語; the top page and a device's
+board have it too), which pw keeps in a cookie for a year, else in the
+browser's (Accept-Language), else in English. The templates' texts are
+the catalog [messages/pages.yaml](messages/pages.yaml), which `pw
+generate` compiles and checks against every `{t id}` of the templates;
+the scripts write theirs in English in `_("…")`
+([public/i18n.js](public/i18n.js)), and [public/ja.js](public/ja.js) has
+their Japanese, loaded on a Japanese page only (`public_test.go` checks
+that every text has its translation, and every translation its text). The
+API is not translated: its errors, shown in the pages' toasts, are
+English.
+
 The manual is in the application: **Help** in the bar of every page, at
-`/help`, in English and Japanese by the browser's language. Its chapters
+`/help`, in English and Japanese, opening in the language of the pages. Its chapters
 are the Markdown files of [help/en](help/en) and [help/ja](help/ja),
 embedded by [package help](help/help.go) and rendered when served
 (goldmark, no raw HTML): the pages, the topology and its editor, every
@@ -246,15 +259,16 @@ pw reads `popcornweb.toml` at the repository's root (it wants it beside
 `go.mod`): `[generate]` names only `cmd/docflow/handlers`, and
 `[assets]` places the public tree in `cmd/docflow` (`public`, built
 into `dist/public` and embedded by `public.go`). After changing the pages
-(`.pw.html`), `handlers/config.go` or a file in `public` (the manual in
-`help/` needs nothing: the Markdown is embedded as it is), run from the
-repository's root:
+(`.pw.html`), their texts (`messages/pages.yaml`), `handlers/config.go` or
+a file in `public` (the manual in `help/` needs nothing: the Markdown is
+embedded as it is), run from the repository's root:
 
 ```sh
 pw generate
 ```
 
-and commit what it wrote: the `*_pw_gen.go` files, `dist/public` and
+and commit what it wrote: the `*_pw_gen.go` files (the catalog's is
+`messages/messages_pw_gen.go`), `dist/public` and
 `public_manifest_pw_gen.go`. The module's build runs no generator, so a
 plain `go build` embeds what is committed.
 

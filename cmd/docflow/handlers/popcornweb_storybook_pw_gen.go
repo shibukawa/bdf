@@ -110,6 +110,13 @@ func init() {
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
+		Name:      "renderLanguageSwitch",
+		Exported:  false,
+		NewParams: func() any { return new(renderLanguageSwitchParams) },
+		Render:    func(params any) htmlbind.Fragment { return renderLanguageSwitch(*params.(*renderLanguageSwitchParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
 		Name:      "renderPaletteGroup",
 		Exported:  false,
 		NewParams: func() any { return new(renderPaletteGroupParams) },
