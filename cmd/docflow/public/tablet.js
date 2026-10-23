@@ -313,6 +313,13 @@ worker.addEventListener("change", () => {
   } catch {}
 });
 
+// a browser gives WebCrypto only to a secure context (HTTPS, or
+// localhost): elsewhere the device cannot make its key
+if (!window.isSecureContext || !crypto.subtle) {
+  $("enroll-insecure").hidden = false;
+  $("enroll-submit").disabled = true;
+}
+
 setInterval(() => {
   if (!document.hidden) poll();
 }, POLL_MS);

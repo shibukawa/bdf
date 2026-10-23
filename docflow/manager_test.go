@@ -654,6 +654,26 @@ func TestDevices(t *testing.T) {
 	}
 }
 
+// TestEnrollmentURL: an enrollment's URL is at the request's origin, or
+// at DeviceOrigin's.
+func TestEnrollmentURL(t *testing.T) {
+	for _, tc := range []struct {
+		origin func(*http.Request) string
+		want   string
+	}{
+		{nil, "http://127.0.0.1:"},
+		{func(*http.Request) string { return "https://192.168.1.7:8443" }, "https://192.168.1.7:8443/tablet?code="},
+	} {
+		e := newEnv(t, func(o *Options) { o.DeviceOrigin = tc.origin })
+		e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay}, http.StatusOK)
+		var en struct{ Code, URL, QR string }
+		json.Unmarshal(e.admin("POST", "/api/nodes/wh-a/enrollments", nil, http.StatusCreated), &en)
+		if !strings.HasPrefix(en.URL, tc.want) || !strings.HasSuffix(en.URL, "/tablet?code="+en.Code) || en.QR == "" {
+			t.Errorf("url %q, want %s…", en.URL, tc.want)
+		}
+	}
+}
+
 func TestStore(t *testing.T) {
 	ctx := context.Background()
 	for _, u := range []string{"", "cfkv://x", "file:///tmp/x", "bbolt:" + filepath.Join(t.TempDir(), "x.db") + "\x00"} {

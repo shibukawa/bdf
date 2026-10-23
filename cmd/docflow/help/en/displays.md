@@ -20,6 +20,15 @@ The device's page makes a key that cannot leave the browser (WebCrypto, kept in 
 
 The display's sidebar lists its devices, their names and when each was last seen, and Remove takes one off: it is out at once, and must be enrolled again to come back. Codes, enrollments and removals are in the audit log.
 
+## Devices on the network {#network}
+
+A device makes its key with WebCrypto, which a browser gives only to a page on HTTPS, or on localhost (the computer itself). An enrollment's URL is therefore at an origin the devices reach:
+
+- `docflow.device_url` (`DOCFLOW_DEVICE_URL`) when it is set: the manager's HTTPS address, such as `https://docflow.example.com`.
+- Otherwise the manager as the administrator reached it. When that is localhost — the administrator's browser on the manager's computer — the URL is at the computer's address on the network instead (`192.168.1.7`); and when the manager listens on `docflow.https_port`, the URL goes there.
+
+`docflow.https_port` (`DOCFLOW_HTTPS_PORT`) is an HTTPS listener that serves what the HTTP one does, with the certificate of `docflow.tls_cert_file` and `docflow.tls_key_file`. In development it goes without them: the manager makes a certificate of the computer signed by itself and keeps it in the user's cache (`bdf/docflow-dev-tls.pem`), so a device's browser warns about it the first time; go on to the page (Advanced, then Proceed). The development settings (`config.dev.toml`) listen on 8443. The dialog of a code warns when its URL is plain http on the network, and the board says so when it is opened there.
+
 ## The board {#board}
 
 The board (`/tablet`) shows the slips of the display under two tabs: **Open**, the slips new and opened, and **Done and canceled**. A new slip arrives with a sound and a notice; the board polls the manager every few seconds and shows the display's title.

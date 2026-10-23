@@ -38,6 +38,10 @@ func registerDocflowConfigDefinition0() {
 			"docflow.on_error",
 			"docflow.credential_dir",
 			"docflow.secure_cookies",
+			"docflow.device_url",
+			"docflow.https_port",
+			"docflow.tls_cert_file",
+			"docflow.tls_key_file",
 			"docflow.sign_key_file",
 			"docflow.sign_cert_file",
 			"docflow.sign_tsa",
@@ -50,6 +54,7 @@ func registerDocflowConfigDefinition0() {
 			"docflow.no_system_fonts": "false",
 			"docflow.max_document_mb": "64",
 			"docflow.secure_cookies":  "true",
+			"docflow.https_port":      "0",
 		},
 		FlagMetas: []cliparser.FieldMeta{
 			{Prefix: "docflow", Key: "records", Help: "store of the records: bbolt:path, dynamodb://table?region=…, firestore://project/database, s3://bucket?region=…, r2://bucket?endpoint=…, gcs://bucket"},
@@ -68,6 +73,10 @@ func registerDocflowConfigDefinition0() {
 			{Prefix: "docflow", Key: "on_error", Help: "nodes a job goes to when a send or a step fails for good at a node with no on_error edges (a notify node)", Kind: cliparser.KindArray},
 			{Prefix: "docflow", Key: "credential_dir", Help: "directory of the credentials nodes name, a file each (DOCFLOW_CRED_<name> comes first)"},
 			{Prefix: "docflow", Key: "secure_cookies", Help: "Secure on the devices' cookie (false only for plain http in development)", Kind: cliparser.KindBool},
+			{Prefix: "docflow", Key: "device_url", Help: "origin the devices of displays open (an enrollment's URL and QR code), e.g. https://docflow.example.com; empty: this server as the admin reached it, at this computer's address on the network for localhost, on https_port when there is one"},
+			{Prefix: "docflow", Key: "https_port", Help: "port of an HTTPS listener serving what the HTTP one does, for devices on the network (a device's key needs HTTPS); 0 for none"},
+			{Prefix: "docflow", Key: "tls_cert_file", Help: "file of the certificate (PEM) of https_port, followed by its chain; empty in development: one signed by itself, kept in the user's cache"},
+			{Prefix: "docflow", Key: "tls_key_file", Help: "file of the private key (PEM) of tls_cert_file"},
 			{Prefix: "docflow", Key: "sign_key_file", Help: "file of the private key (PEM) that sign nodes sign documents with, as a witness"},
 			{Prefix: "docflow", Key: "sign_cert_file", Help: "file of the certificate of the signing key (PEM), followed by those of its chain"},
 			{Prefix: "docflow", Key: "sign_tsa", Help: "URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes"},
@@ -90,6 +99,10 @@ func registerDocflowConfigDefinition0() {
 			{Key: "on_error", Kind: configbind.ScaffoldStringSlice, Help: "nodes a job goes to when a send or a step fails for good at a node with no on_error edges (a notify node)"},
 			{Key: "credential_dir", Kind: configbind.ScaffoldString, Help: "directory of the credentials nodes name, a file each (DOCFLOW_CRED_<name> comes first)"},
 			{Key: "secure_cookies", Kind: configbind.ScaffoldBool, Default: "true", Help: "Secure on the devices' cookie (false only for plain http in development)"},
+			{Key: "device_url", Kind: configbind.ScaffoldString, Help: "origin the devices of displays open (an enrollment's URL and QR code), e.g. https://docflow.example.com; empty: this server as the admin reached it, at this computer's address on the network for localhost, on https_port when there is one"},
+			{Key: "https_port", Kind: configbind.ScaffoldInt, Default: "0", Help: "port of an HTTPS listener serving what the HTTP one does, for devices on the network (a device's key needs HTTPS); 0 for none"},
+			{Key: "tls_cert_file", Kind: configbind.ScaffoldString, Help: "file of the certificate (PEM) of https_port, followed by its chain; empty in development: one signed by itself, kept in the user's cache"},
+			{Key: "tls_key_file", Kind: configbind.ScaffoldString, Help: "file of the private key (PEM) of tls_cert_file"},
 			{Key: "sign_key_file", Kind: configbind.ScaffoldString, Help: "file of the private key (PEM) that sign nodes sign documents with, as a witness"},
 			{Key: "sign_cert_file", Kind: configbind.ScaffoldString, Help: "file of the certificate of the signing key (PEM), followed by those of its chain"},
 			{Key: "sign_tsa", Kind: configbind.ScaffoldString, Help: "URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes"},
@@ -187,6 +200,24 @@ func applyDocflowConfigDefinition0(dst any, o *configbind.Overlay) error {
 		p.SecureCookies = bb
 	} else {
 		p.SecureCookies = true
+	}
+	if v, ok := o.GetString("docflow.device_url"); ok {
+		p.DeviceURL = v
+	}
+	if v, ok := o.GetString("docflow.https_port"); ok {
+		n, err := strconv.ParseInt(v, 10, 0)
+		if err != nil {
+			return fmt.Errorf("configbind: docflow.https_port: %w", err)
+		}
+		p.HTTPSPort = int(n)
+	} else {
+		p.HTTPSPort = 0
+	}
+	if v, ok := o.GetString("docflow.tls_cert_file"); ok {
+		p.TLSCertFile = v
+	}
+	if v, ok := o.GetString("docflow.tls_key_file"); ok {
+		p.TLSKeyFile = v
 	}
 	if v, ok := o.GetString("docflow.sign_key_file"); ok {
 		p.SignKeyFile = v

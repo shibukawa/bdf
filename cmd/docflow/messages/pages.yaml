@@ -233,6 +233,10 @@ tablet-enroll-note:
   locales:
     en: "Enter the enrollment code an administrator made. Only enrolled devices see the documents of their display."
     ja: "管理者が作った登録コードを入力します。登録したデバイスだけが、そのディスプレイの文書を見られます。"
+tablet-insecure:
+  locales:
+    en: "This page is not on HTTPS, so this browser cannot make the device's key. Open the URL an administrator gave (https://…)."
+    ja: "このページは HTTPS ではないので、このブラウザはデバイスのキーを作れません。管理者が渡した URL（https://…）を開いてください。"
 enrollment-code:
   locales:
     en: "Enrollment code"
@@ -518,6 +522,10 @@ enroll-modal-note:
   locales:
     en: "Open the URL on the device, or scan the code there: the device makes its own key and enrolls itself at this display. The code works once."
     ja: "デバイスで URL を開くか、そこでコードを読み取ります。デバイスは自分のキーを作り、このディスプレイに自分を登録します。コードは 1 度だけ使えます。"
+enroll-insecure:
+  locales:
+    en: "This URL is plain http on the network, where a device cannot make its key (a browser gives WebCrypto only to HTTPS and localhost). Set docflow.https_port, or docflow.device_url to an HTTPS address of this server."
+    ja: "この URL はネットワーク上の平文の http で、デバイスはそこでキーを作れません（ブラウザは WebCrypto を HTTPS と localhost にしか与えません）。docflow.https_port を設定するか、docflow.device_url にこのサーバーの HTTPS のアドレスを設定してください。"
 key-modal-heading:
   locales:
     en: "The node's key"
