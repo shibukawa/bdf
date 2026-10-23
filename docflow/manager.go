@@ -78,8 +78,12 @@ type Options struct {
 	SessionFor    time.Duration
 	SecureCookies bool
 	// TabletPath is the devices' page, which an enrollment's URL opens
-	// with ?code= (default /tablet).
-	TabletPath string
+	// with ?code= (default /tablet); DeviceOrigin is the origin of that
+	// URL for the request that made the code (nil: the request's own),
+	// for an origin the devices reach when the admin's is not one
+	// (localhost).
+	TabletPath   string
+	DeviceOrigin func(*http.Request) string
 	// JobKeep is how long a job that ended stays (its record and, once
 	// nothing shows it any more, its document): 14 days by default.
 	JobKeep time.Duration

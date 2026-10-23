@@ -18,6 +18,8 @@
 | `DOCFLOW_MAX_DOCUMENT_MB` | 受け取る文書の最大サイズ（64） |
 | `DOCFLOW_FONT_DIRS`、`DOCFLOW_NO_SYSTEM_FONTS` | 文書を描くフォント。フォントのディレクトリと、マシン自身のフォントを使うかどうか |
 | `DOCFLOW_SECURE_COOKIES` | クッキーの `Secure`（true。false は開発で平文の http を使うときだけ） |
+| `DOCFLOW_DEVICE_URL` | ディスプレイのデバイスが開くオリジン（登録の URL と QR コード）。`https://docflow.example.com` など。空なら、管理者がアクセスしたときのマネージャー（[ネットワーク上のデバイス](displays.md#network)） |
+| `DOCFLOW_HTTPS_PORT`、`DOCFLOW_TLS_CERT_FILE`、`DOCFLOW_TLS_KEY_FILE` | ネットワーク上のデバイスのための、HTTP と同じものを返す HTTPS の待ち受けと、その証明書（続けて中間証明書）と鍵（PEM）。開発では、なければ自己署名証明書 |
 | `DOCFLOW_SERVERLESS` | 1 プロセスしか使えないストアを拒否し、呼ばれたときだけティックし、ポートを開きません |
 
 ## サインイン {#oidc}

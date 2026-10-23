@@ -474,6 +474,16 @@ func PagesDeliveriesTitle(loc pw.Locale) string {
 	return tblPagesDeliveriesTitle[loc.Index()]
 }
 
+var tblPagesEnrollInsecure = [...]string{
+	"This URL is plain http on the network, where a device cannot make its key (a browser gives WebCrypto only to HTTPS and localhost). Set docflow.https_port, or docflow.device_url to an HTTPS address of this server.", // en
+	"この URL はネットワーク上の平文の http で、デバイスはそこでキーを作れません（ブラウザは WebCrypto を HTTPS と localhost にしか与えません）。docflow.https_port を設定するか、docflow.device_url にこのサーバーの HTTPS のアドレスを設定してください。",                                                // ja
+}
+
+// PagesEnrollInsecure renders message "pages.enroll-insecure".
+func PagesEnrollInsecure(loc pw.Locale) string {
+	return tblPagesEnrollInsecure[loc.Index()]
+}
+
 var tblPagesEnrollModalNote = [...]string{
 	"Open the URL on the device, or scan the code there: the device makes its own key and enrolls itself at this display. The code works once.", // en
 	"デバイスで URL を開くか、そこでコードを読み取ります。デバイスは自分のキーを作り、このディスプレイに自分を登録します。コードは 1 度だけ使えます。",                                                              // ja
@@ -1452,6 +1462,16 @@ var tblPagesTabletEnrollNote = [...]string{
 // PagesTabletEnrollNote renders message "pages.tablet-enroll-note".
 func PagesTabletEnrollNote(loc pw.Locale) string {
 	return tblPagesTabletEnrollNote[loc.Index()]
+}
+
+var tblPagesTabletInsecure = [...]string{
+	"This page is not on HTTPS, so this browser cannot make the device's key. Open the URL an administrator gave (https://…).", // en
+	"このページは HTTPS ではないので、このブラウザはデバイスのキーを作れません。管理者が渡した URL（https://…）を開いてください。",                                                 // ja
+}
+
+// PagesTabletInsecure renders message "pages.tablet-insecure".
+func PagesTabletInsecure(loc pw.Locale) string {
+	return tblPagesTabletInsecure[loc.Index()]
 }
 
 var tblPagesTabletOpen = [...]string{

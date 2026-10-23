@@ -249,7 +249,11 @@ func (h *handler) enrollment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.m.audit(r.Context(), h.who(r), "enrollment-code", r.PathValue("name"), "")
-	u := origin(r) + h.m.o.TabletPath + "?code=" + e.Code
+	o := origin(r)
+	if h.m.o.DeviceOrigin != nil {
+		o = h.m.o.DeviceOrigin(r)
+	}
+	u := o + h.m.o.TabletPath + "?code=" + e.Code
 	writeJSON(w, http.StatusCreated, struct {
 		*Enrollment
 		URL string `json:"url"`

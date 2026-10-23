@@ -64,6 +64,8 @@ or with variables:
 | `DOCFLOW_JOB_KEEP` | how long a job that ended is kept, with its document once nothing shows it (default 336h, 14 days) |
 | `DOCFLOW_ON_ERROR` | nodes a job goes to when a send or a step fails for good at a node without `on_error` edges (a `notify` node) |
 | `DOCFLOW_CREDENTIAL_DIR` | directory of the credentials nodes name, a file each; `DOCFLOW_CRED_<name>` comes first |
+| `DOCFLOW_DEVICE_URL` | origin the devices of displays open (an enrollment's URL and QR code), e.g. `https://docflow.example.com`; empty: this server as the admin reached it, at this computer's address on the network for localhost, on `DOCFLOW_HTTPS_PORT` when there is one |
+| `DOCFLOW_HTTPS_PORT`, `DOCFLOW_TLS_CERT_FILE`, `DOCFLOW_TLS_KEY_FILE` | an HTTPS listener serving what the HTTP one does, for devices on the network (a device makes its key with WebCrypto, which needs HTTPS off localhost), and its certificate and key (PEM); in development, without them, one signed by itself and kept in the user's cache (`config.dev.toml` listens on 8443) |
 
 ## Sign-in
 

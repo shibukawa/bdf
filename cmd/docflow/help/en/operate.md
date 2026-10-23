@@ -18,6 +18,8 @@ The manager is one binary, `docflow`, on Popcorn Web. It keeps no state in the p
 | `DOCFLOW_MAX_DOCUMENT_MB` | the largest document taken (64) |
 | `DOCFLOW_FONT_DIRS`, `DOCFLOW_NO_SYSTEM_FONTS` | the fonts the documents are drawn with: directories of fonts, and whether the machine's own are used |
 | `DOCFLOW_SECURE_COOKIES` | `Secure` on the cookies (true; false only for plain http in development) |
+| `DOCFLOW_DEVICE_URL` | the origin the devices of displays open (an enrollment's URL and QR code), such as `https://docflow.example.com`; empty: the manager as the administrator reached it ([Devices on the network](displays.md#network)) |
+| `DOCFLOW_HTTPS_PORT`, `DOCFLOW_TLS_CERT_FILE`, `DOCFLOW_TLS_KEY_FILE` | an HTTPS listener serving what the HTTP one does, for the devices on the network, and its certificate (followed by its chain) and key (PEM); in development, without them, a certificate signed by itself |
 | `DOCFLOW_SERVERLESS` | refuse a store one process keeps, tick only when called, and open no ports |
 
 ## Sign-in {#oidc}
