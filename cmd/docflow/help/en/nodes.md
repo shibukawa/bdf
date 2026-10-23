@@ -39,6 +39,7 @@ The IPP entry, for computers and business systems, and the only one: a CUPS serv
 | Forwards to (`to`) | every node chosen gets what is printed here, made `.bdf` |
 | Port (`port`) | the port the server listens on; none given: the first port no node has, from 6310 (none on a serverless deployment) |
 | TLS (`tls_cert`, `tls_key`) | the files of a certificate and its key: `ipps`; without them, plain `ipp` |
+| Bonjour (`dnssd`) | advertises the printer on the local network with DNS-SD (Bonjour) as an AirPrint printer: Macs list it under Add Printer → Default, iPhones and iPads in Print. With a port only (none on a serverless deployment); the sidebar checks it for a new CUPS server |
 | Metadata (`meta`) | as an endpoint's. The job attributes of a Print-Job request are metadata, `ipp.media`, `ipp.copies` … |
 | Apps allowed (`apps`) | the apps that may print here with their id and secret as IPP Basic ([Apps](entries.md#apps)) |
 
