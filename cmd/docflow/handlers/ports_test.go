@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/shibukawa/bdf/docflow"
 	docflowipp "github.com/shibukawa/bdf/docflow/io/ipp"
 	"github.com/shibukawa/bdf/print/ipp"
+	"golang.org/x/net/dns/dnsmessage"
 )
 
 // The process listens on the ports of the entry nodes, and stops when a
@@ -80,5 +82,91 @@ func TestPorts(t *testing.T) {
 	if res, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d/", apiPort), "application/octet-stream", nil); err == nil {
 		res.Body.Close()
 		t.Fatal("the endpoint's port is still open")
+	}
+}
+
+// A CUPS server node that says so is advertised with DNS-SD while its
+// port is open, as "<title> @ <computer>" on a host name of the
+// process's own; it stops when the node no longer says so. The
+// responder is asked on the loopback, at a port of the test's own.
+func TestPortsAdvertise(t *testing.T) {
+	ctx := context.Background()
+	a, err := Open(ctx, DocflowConfig{Records: "bbolt:" + filepath.Join(t.TempDir(), "pm.db"), AdminToken: "t", MaxDocumentMB: 1}, OIDCConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cupsPort := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	uc, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mdnsPort := uc.LocalAddr().(*net.UDPAddr).Port
+	uc.Close()
+	a.ports.mdns = ipp.ResponderOptions{Port: mdnsPort, Interfaces: []net.Interface{}, Loopback: true}
+	put := func(dnssd bool) {
+		t.Helper()
+		if _, err := a.m.PutNode(ctx, docflow.Node{Name: "wh-a", Kind: docflow.KindDisplay}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.m.PutNode(ctx, docflow.Node{Name: "office", Kind: docflowipp.KindCups, Title: "Office", To: []string{"wh-a"}, Port: cupsPort, DNSSD: dnssd}); err != nil {
+			t.Fatal(err)
+		}
+		a.ports.reconcile(ctx)
+	}
+	// ask asks for the IPP printers; "" when nothing answers in time
+	ask := func(wait time.Duration) string {
+		t.Helper()
+		c, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c.Close()
+		b := dnsmessage.NewBuilder(nil, dnsmessage.Header{ID: 9})
+		b.StartQuestions()
+		b.Question(dnsmessage.Question{Name: dnsmessage.MustNewName("_ipp._tcp.local."), Type: dnsmessage.TypePTR, Class: dnsmessage.ClassINET})
+		q, _ := b.Finish()
+		c.WriteTo(q, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: mdnsPort})
+		c.SetReadDeadline(time.Now().Add(wait))
+		buf := make([]byte, 9000)
+		n, _, err := c.ReadFrom(buf)
+		if err != nil {
+			return ""
+		}
+		var p dnsmessage.Parser
+		if _, err := p.Start(buf[:n]); err != nil {
+			t.Fatal(err)
+		}
+		p.SkipAllQuestions()
+		ans, _ := p.AllAnswers()
+		if len(ans) != 1 {
+			t.Fatalf("answers %v", ans)
+		}
+		return ans[0].Body.(*dnsmessage.PTRResource).PTR.String()
+	}
+	put(true)
+	want := "Office @ " + machineName() + "._ipp._tcp.local."
+	got := ""
+	for i := 0; i < 50 && got == ""; i++ {
+		// the names are probed first (a second, more on a busy machine)
+		got = ask(200 * time.Millisecond)
+	}
+	if got != want {
+		t.Fatalf("advertised %q, want %q", got, want)
+	}
+	// reconciled again unchanged, it goes on as it is
+	a.ports.reconcile(ctx)
+	if got := ask(time.Second); got != want {
+		t.Fatalf("advertised %q after a reconcile", got)
+	}
+	// the node no longer says so: goodbye
+	put(false)
+	if got := ask(500 * time.Millisecond); got != "" {
+		t.Fatalf("still advertised: %q", got)
 	}
 }

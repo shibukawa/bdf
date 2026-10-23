@@ -67,6 +67,7 @@ func main() {
 	defer app.Close()
 	stop := app.StartTimer(ctx)
 	defer stop()
+	pw.RegisterMiddleware(pw.SlotAccessLog-5, "quiet-polls", handlers.QuietPolls)
 	if err := pw.Run(ctx, app.Handler(), pw.WithPublicFS(publicTree())); err != nil {
 		log.Fatal(err)
 	}
