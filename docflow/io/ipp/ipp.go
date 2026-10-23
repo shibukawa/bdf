@@ -1,20 +1,22 @@
 // Package ipp is the IPP input and output of docflow: the printers a job
-// is printed on (the kind printer, over IPP, port 9100 or LPD), CUPS
-// servers on ports of their own (the kind cups, an entry), and every
-// node's IPP printer at /ipp/print/<name> (an ingress), as docflow's
-// kinds of node are registered. A program that imports it serves them.
+// is printed on (the kind printer, over IPP, port 9100 or LPD), the CUPS
+// servers jobs are printed to (the kind cups, an entry: a source), and
+// the queues of CUPS servers jobs are printed on (the kind cups-out, an
+// exit: a sink), as docflow's kinds of node are registered. A program that imports it
+// serves them.
 //
-// Every node is an IPP printer at /ipp/print/<name>, unless it turned IPP
-// off (Node.NoIPP): a sender (a WMS, a business system, an office PC)
-// prints to it as to any printer, over HTTP(S) on the manager's own port,
-// and the job follows the topology from there. Only the operations of one
-// request are taken (Print-Job, not Create-Job and Send-Document), so
-// that a request is all there is to a job: no instance waits for a
-// document. /ipp/print itself answers CUPS-Get-Printers and
-// CUPS-Get-Classes with every node, as a CUPS server lists its
-// destinations. A CUPS server node's own port is a CUPS server with one
-// printer, the node, at /printers/<node>: what is printed there follows
-// the node's edges.
+// A CUPS server node is the one way IPP enters the topology (the other
+// entries, an endpoint or an S3 trigger, take files over HTTP). Its own
+// port is a CUPS server with one printer, the node, at /printers/<node>;
+// the node is also an IPP printer at /ipp/print/<name> of the manager's
+// own server (an ingress: on a serverless deployment, with no ports, the
+// only one). A sender (a WMS, a business system, an office PC) prints to
+// it as to any printer, and the job follows the node's edges from there.
+// Only the operations of one request are taken (Print-Job, not
+// Create-Job and Send-Document), so that a request is all there is to a
+// job: no instance waits for a document. /ipp/print itself answers
+// CUPS-Get-Printers with the CUPS server nodes, as a CUPS server lists
+// its destinations.
 package ipp
 
 import (
@@ -34,21 +36,26 @@ const (
 	// server on a port of its own, with one printer there, the node
 	// itself. It forwards what it receives to every node of To.
 	KindCups = "cups"
+	// KindCupsOut is an exit: a queue of a CUPS server the job is printed
+	// to over IPP (cupsout.go).
+	KindCupsOut = "cups-out"
 )
 
 func init() {
-	docflow.RegisterKind(docflow.Kind{Name: KindCups, Title: "CUPS server", Role: docflow.RoleEntry, PassesOn: true, Check: checkCups, Serve: serveCups})
+	docflow.RegisterKind(docflow.Kind{Name: KindCups, Title: "CUPS server (source)", Role: docflow.RoleEntry, PassesOn: true, Check: checkCups, Serve: serveCups})
+	docflow.RegisterKind(docflow.Kind{Name: KindCupsOut, Title: "CUPS server (sink)", Role: docflow.RoleExit, Takes: []string{docflow.PayloadBDF}, Fixed: true,
+		Check: checkCupsOut, Send: sendCupsOut, Discover: discoverQueues})
 	docflow.RegisterKind(docflow.Kind{Name: KindPrinter, Role: docflow.RoleExit, Takes: []string{docflow.PayloadBDF}, Fixed: true,
 		Check: checkPrinter, Ready: ready, Send: send})
 	docflow.RegisterIngress(docflow.Ingress{Name: "ipp", Prefix: Path, Mount: mount, Address: func(n *docflow.Node) string {
-		if n.NoIPP || n.Kind == docflow.KindExport {
-			return "" // an export is read from, never sent to
+		if n.Kind != KindCups {
+			return "" // IPP enters at a CUPS server alone
 		}
 		return Path + "/" + n.Name
 	}})
 }
 
-// mount adds the nodes' IPP printers to the engine's handler.
+// mount adds the CUPS server nodes' IPP printers to the engine's handler.
 func mount(m *docflow.Manager, mux *http.ServeMux) {
 	s := &server{m: m}
 	mux.HandleFunc("POST "+Path+"/{dest}", s.serveIPP)

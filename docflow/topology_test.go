@@ -67,7 +67,7 @@ func TestQueueFanout(t *testing.T) {
 	a, b := e.enroll("wh-a", "a"), e.enroll("wh-b", "b")
 
 	js := e.printJob("both", "picking", 2)
-	if js.ID != 1 || js.State != ipp.JobCompleted {
+	if js.Number != 1 || js.State != JobCompleted {
 		t.Fatalf("job %+v", js)
 	}
 	sa, sb := a.board().Open[0], b.board().Open[0]
@@ -86,9 +86,9 @@ func TestQueueFanout(t *testing.T) {
 	if got := e.job(1); got.State != JobCompleted {
 		t.Fatalf("after one done: %s", got.State)
 	}
-	// the sender cancels: the slip still open leaves its board
-	if err := e.ippClient("both").CancelJob(context.Background(), 1); err != nil {
-		t.Fatal(err)
+	// it is canceled: the slip still open leaves its board
+	if res, out := e.do(nil, "POST", "/api/jobs/1/cancel", adminToken, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("cancel: %d %s", res.StatusCode, out)
 	}
 	if bb := b.board(); bb == nil || len(bb.Open) != 0 || bb.Ended[0].State != SlipCanceled {
 		t.Fatalf("board b after cancel %+v", bb)
@@ -99,15 +99,16 @@ func TestQueueFanout(t *testing.T) {
 	if got := e.job(1); got.State != JobCanceled || got.Canceled == nil {
 		t.Fatalf("job after cancel %+v", got)
 	}
-	if err := e.ippClient("both").CancelJob(context.Background(), 1); !ipp.IsStatus(err, ipp.StatusClientErrorNotPossible) {
-		t.Fatalf("cancel twice: %v", err)
+	if res, _ := e.do(nil, "POST", "/api/jobs/1/cancel", adminToken, nil); res.StatusCode != http.StatusConflict {
+		t.Fatalf("cancel twice: %d", res.StatusCode)
 	}
-	// the job is not the locations' (Get-Jobs there is empty), it is the queue's
-	jobs, err := e.ippClient("both").GetJobs(context.Background(), "completed", false, 10)
-	if err != nil || len(jobs) != 1 {
-		t.Fatalf("jobs of both %+v %v", jobs, err)
+	// the job is not the locations' (their jobs are none), it is the queue's
+	var jobs []Job
+	json.Unmarshal(e.admin("GET", "/api/destinations/both/jobs", nil, http.StatusOK), &jobs)
+	if len(jobs) != 1 || jobs[0].Number != 1 {
+		t.Fatalf("jobs of both %+v", jobs)
 	}
-	if jobs, _ := e.ippClient("wh-a").GetJobs(context.Background(), "all", false, 10); len(jobs) != 0 {
+	if json.Unmarshal(e.admin("GET", "/api/destinations/wh-a/jobs", nil, http.StatusOK), &jobs); len(jobs) != 0 {
 		t.Fatalf("jobs of wh-a %+v", jobs)
 	}
 	// after the keep, the slips go, then the job and its document
@@ -132,7 +133,7 @@ func TestClass(t *testing.T) {
 	e.node("tokyo", Node{Kind: KindClass, Members: []string{"p1", "p2"}}, http.StatusOK)
 	for i := range 4 {
 		js := e.printJob("tokyo", fmt.Sprint("job ", i), 1)
-		if js.State != ipp.JobProcessing {
+		if js.State != JobProcessing {
 			t.Fatalf("job %+v", js)
 		}
 	}
@@ -149,8 +150,10 @@ func TestClass(t *testing.T) {
 	if j.State != JobCompleted || legs(j) != "tokyo:done(p1)" || j.Live != 0 {
 		t.Fatalf("job %+v: %s", j, legs(j))
 	}
-	if got, err := e.ippClient("tokyo").GetJobAttributes(context.Background(), 3); err != nil || got.State != ipp.JobCompleted {
-		t.Fatalf("job 3: %+v %v", got, err)
+	var jobs []Job
+	json.Unmarshal(e.admin("GET", "/api/destinations/tokyo/jobs", nil, http.StatusOK), &jobs)
+	if len(jobs) != 4 || jobs[1].Number != 3 || jobs[1].State != JobCompleted {
+		t.Fatalf("jobs of tokyo %+v", jobs)
 	}
 	if rep := e.tick(); rep.Delivered != 0 {
 		t.Fatalf("delivered again %+v", rep)
@@ -194,7 +197,7 @@ func TestPrinterDirect(t *testing.T) {
 	e := newEnv(t, func(o *Options) { o.Background = true })
 	p := e.printer("laser")
 	js := e.printJob("laser", "direct", 1)
-	if js.State != ipp.JobProcessing {
+	if js.State != JobProcessing {
 		t.Fatalf("job %+v", js)
 	}
 	for i := 0; len(p.Jobs()) == 0 && i < 100; i++ {
@@ -223,7 +226,7 @@ func TestInbox(t *testing.T) {
 	d.board()
 
 	js := e.printJob("in", "to review", 1)
-	if js.State != ipp.JobPendingHeld {
+	if js.State != JobHeld {
 		t.Fatalf("job %+v", js)
 	}
 	var v InboxView
@@ -277,10 +280,10 @@ func TestInbox(t *testing.T) {
 	if j := e.job(3); j.State != JobCompleted || legs(j) != "in:routed review:discarded" {
 		t.Fatalf("job %+v: %s", j, legs(j))
 	}
-	// canceled by the sender while held: it leaves the inbox
+	// canceled while held: it leaves the inbox
 	e.printJob("in", "cancel", 1)
-	if err := e.ippClient("in").CancelJob(context.Background(), 4); err != nil {
-		t.Fatal(err)
+	if res, out := e.do(nil, "POST", "/api/jobs/4/cancel", adminToken, nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("cancel: %d %s", res.StatusCode, out)
 	}
 	json.Unmarshal(e.admin("GET", "/api/inboxes/review", nil, http.StatusOK), &v)
 	if len(v.Held) != 0 || len(v.Ended) != 4 || v.Ended[0].State != ItemDiscarded {
@@ -314,7 +317,7 @@ func TestArchive(t *testing.T) {
 	e.node("audit", Node{Kind: KindArchive, Title: "監査", Store: store}, http.StatusOK)
 	e.node("audit-in", Node{Kind: KindQueue, To: []string{"audit"}}, http.StatusOK)
 	js := e.printJob("audit-in", "invoice", 3)
-	if js.State != ipp.JobProcessing {
+	if js.State != JobProcessing {
 		t.Fatalf("job %+v", js)
 	}
 	if rep := e.tick(); rep.Delivered != 1 {
@@ -377,7 +380,10 @@ func TestNodes(t *testing.T) {
 	e.printer("laser")
 	e.admin("PUT", "/api/nodes/wh-b", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "laser"}}, http.StatusOK)
 	e.node("x", Node{Kind: "tee", To: []string{"wh-a"}}, http.StatusBadRequest)
-	e.node("x", Node{Kind: KindQueue}, http.StatusBadRequest)
+	// a node is put before the nodes after it: none yet is fine
+	e.node("x", Node{Kind: KindQueue}, http.StatusOK)
+	e.node("x", Node{Kind: KindClass}, http.StatusOK)
+	e.admin("DELETE", "/api/nodes/x", nil, http.StatusNoContent)
 	e.node("x", Node{Kind: KindQueue, To: []string{"nowhere"}}, http.StatusBadRequest)
 	e.node("x", Node{Kind: KindClass, Members: []string{"laser"}, Policy: "random"}, http.StatusBadRequest)
 	e.node("wh-a", Node{Kind: KindQueue, To: []string{"laser"}}, http.StatusConflict)
@@ -418,18 +424,21 @@ func TestNodes(t *testing.T) {
 		t.Fatalf("topology %+v", topo)
 	}
 	// a job to a node that is not there
-	if _, err := e.ippClient("nowhere").PrintJob(context.Background(), "x", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1))); err == nil {
-		t.Fatal("printed to nowhere")
+	if res, _ := e.do(nil, "POST", "/api/destinations/nowhere/jobs?name=x", "", testDoc(t, 1)); res.StatusCode != http.StatusNotFound {
+		t.Fatalf("printed to nowhere: %d", res.StatusCode)
 	}
 }
 
-// CUPS clients list every node as a destination of the server.
+// CUPS clients list the CUPS server nodes as the destinations of the
+// server; the other nodes are reached through them.
 func TestCupsGetPrinters(t *testing.T) {
 	e := newEnv(t, nil)
 	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay, Title: "第 1 倉庫"}, http.StatusOK)
 	e.printer("laser")
 	e.node("tokyo", Node{Kind: KindClass, Members: []string{"laser"}}, http.StatusOK)
 	e.node("review", Node{Kind: KindInbox}, http.StatusOK)
+	e.node("front", Node{Kind: KindCups, Title: "第 1 倉庫の受付", To: []string{"wh-a"}}, http.StatusOK)
+	e.cups("office", "tokyo")
 	c := &ipp.Client{URL: e.srv.URL + IPPPath, User: "lpstat"}
 	ps, err := c.CupsGetPrinters(context.Background())
 	if err != nil {
@@ -438,34 +447,38 @@ func TestCupsGetPrinters(t *testing.T) {
 	var names []string
 	for _, p := range ps {
 		names = append(names, p.Name)
-		if p.URI != strings.Replace(e.srv.URL, "http://", "ipp://", 1)+IPPPath+"/"+p.Name || !p.Accepting || p.State != ipp.PrinterIdle {
+		if p.URI != strings.Replace(e.srv.URL, "http://", "ipp://", 1)+IPPPath+"/"+p.Name || !p.Accepting || p.State != ipp.PrinterIdle || p.IsClass {
 			t.Errorf("printer %+v", p)
 		}
 		switch p.Name {
-		case "wh-a":
-			if p.Info != "第 1 倉庫" || p.DeviceURI != "display://wh-a" || p.IsClass {
-				t.Errorf("wh-a %+v", p)
+		case "front":
+			if p.Info != "第 1 倉庫の受付" || p.DeviceURI != "cups://front" {
+				t.Errorf("front %+v", p)
 			}
-		case "tokyo":
-			if !p.IsClass || p.DeviceURI != "class://tokyo" {
-				t.Errorf("tokyo %+v", p)
-			}
-		case "laser":
-			if !strings.HasPrefix(p.DeviceURI, "ipp://") {
-				t.Errorf("laser %+v", p)
+		case "office":
+			if p.Info != "office" || p.DeviceURI != "cups://office" {
+				t.Errorf("office %+v", p)
 			}
 		}
 	}
-	if !slices.Equal(names, []string{"laser", "review", "tokyo", "wh-a"}) {
+	if !slices.Equal(names, []string{"front", "office"}) {
 		t.Fatalf("names %v", names)
 	}
-	// the server itself is not a printer; a class is one
+	// a class is no IPP printer: CUPS-Get-Classes lists none
+	if res, err := c.Do(context.Background(), c.NewRequest(ipp.OpCupsGetClasses), nil); !ipp.IsStatus(err, ipp.StatusClientErrorNotFound) {
+		t.Fatalf("CUPS-Get-Classes: %+v %v", res, err)
+	}
+	// the server itself is not a printer; a CUPS server node is one, and
+	// a class none
 	if _, err := c.GetPrinterAttributes(context.Background()); err == nil {
 		t.Fatal("the server answered as a printer")
 	}
-	pa, err := e.ippClient("tokyo").GetPrinterAttributes(context.Background())
-	if err != nil || pa.Name != "tokyo" {
-		t.Fatalf("class attributes %+v %v", pa, err)
+	pa, err := e.ippClient("office").GetPrinterAttributes(context.Background())
+	if err != nil || pa.Name != "office" {
+		t.Fatalf("CUPS server attributes %+v %v", pa, err)
+	}
+	if _, err := e.ippClient("tokyo").GetPrinterAttributes(context.Background()); err == nil || !strings.Contains(err.Error(), "404") {
+		t.Fatalf("class attributes: %v", err)
 	}
 }
 
@@ -526,7 +539,8 @@ func TestEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.node("forms", Node{Kind: KindTemplate, To: []string{"wh-a"}}, http.StatusBadRequest)
+	// its templates are uploaded once it is there: none named yet
+	e.node("forms", Node{Kind: KindTemplate, To: []string{"wh-a"}}, http.StatusOK)
 	e.node("forms", Node{Kind: KindTemplate, Template: "slip", TemplateFrom: "doc_type", To: []string{"wh-a"}}, http.StatusBadRequest)
 	e.node("forms", Node{Kind: KindTemplate, Template: "no.dot", To: []string{"wh-a"}}, http.StatusBadRequest)
 	e.node("forms", Node{Kind: KindTemplate, Template: "slip", To: []string{"wh-a"}}, http.StatusOK)
@@ -604,8 +618,8 @@ func TestEndpoint(t *testing.T) {
 	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, data); res.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("data at a document endpoint: %d", res.StatusCode)
 	}
-	if _, err := e.ippClient("forms").PrintJob(context.Background(), "x", "application/x-bdf", nil, bytes.NewReader(doc)); !ipp.IsStatus(err, ipp.StatusClientErrorDocumentFormatError) {
-		t.Fatalf("ipp of a document to a template node: %v", err)
+	if res, _ := e.do(nil, "POST", "/api/destinations/forms/jobs?name=x", adminToken, doc); res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("a document to a template node: %d", res.StatusCode)
 	}
 	// no template of the id: the step fails for good, at once
 	e.node("forms", Node{Kind: KindTemplate, Template: "nowhere", To: []string{"wh-a"}}, http.StatusOK)
@@ -685,9 +699,18 @@ func TestEndpoint(t *testing.T) {
 		t.Fatalf("the new key: %d", res.StatusCode)
 	}
 	e.admin("POST", "/api/nodes/wh-a/key", nil, http.StatusBadRequest)
-	// the endpoint is an IPP printer too, and a destination of the API
-	if js := e.printJob("intake", "ipp", 1); js.State != ipp.JobCompleted {
-		t.Fatalf("ipp %+v", js)
+	// the endpoint is a destination of the API too; IPP reaches it
+	// through a CUPS server alone
+	if js := e.printJob("intake", "api", 1); js.State != JobCompleted || legs(js) != "intake:routed wh-a:shown" {
+		t.Fatalf("api %+v: %s", js, legs(js))
+	}
+	if _, err := e.ippClient("intake").PrintJob(ctx, "ipp", "application/x-bdf", nil, bytes.NewReader(doc)); err == nil || !strings.Contains(err.Error(), "404") {
+		t.Fatalf("ipp to the endpoint: %v", err)
+	}
+	if js, err := e.cups("cups1", "intake").PrintJob(ctx, "ipp", "application/x-bdf", nil, bytes.NewReader(doc)); err != nil || js.State != ipp.JobCompleted {
+		t.Fatalf("ipp through a CUPS server: %+v %v", js, err)
+	} else if j := e.job(js.ID); legs(j) != "cups1:routed intake:routed wh-a:shown" {
+		t.Fatalf("job %+v: %s", j, legs(j))
 	}
 
 	// the layout of the canvas

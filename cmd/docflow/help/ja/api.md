@@ -48,6 +48,8 @@ API は `/api` の下の JSON です。リクエストは次のどれかを添�
 | `PUT /api/nodes/<name>` | ノードを保存する。`kind` と種類ごとの設定（[ノードの種類](nodes.md)）。新しいエンドポイントの応答には `key` が 1 度だけ入ります |
 | `DELETE /api/nodes/<name>` | 削除する。ほかのノードが送り先にしている間はできません |
 | `POST /api/nodes/<name>/key` | エンドポイントのキーを回す。新しいキーを 1 度だけ |
+| `POST /api/kinds/<kind>/discover` | 保存する前に、ノードの設定（ボディ。`PUT` と同じ）の向こう側に何があるかを尋ねる。CUPS サーバー（シンク）ならキューの一覧 `[{"name", "path", "info", "state", "accepting", "class"}]`。応答がなければ 502 |
+| `POST /api/nodes/<name>/rename` | 名前を変える。`{"name": "<new>"}`。エッジとその名前で保存しているものが付いてきます。そこで処理中の仕事がある間は拒否します（409。[名前](topology.md#names)） |
 | `GET /api/formats` | 入口が受け取れる形式 |
 | `GET /api/openapi.json?node=` | 呼び出し元が使えるエンドポイントとエクスポートの OpenAPI 文書（[OpenAPI](#openapi)） |
 
@@ -121,4 +123,4 @@ curl -H "Authorization: Bearer $TOKEN" "https://<host>/api/openapi.json?node=erp
 
 ## IPP {#ipp}
 
-`POST /ipp/print/<node>` はすべてのノードの IPP プリンタで、`POST /ipp/print` はサーバーです。その CUPS-Get-Printers がノードを一覧します（[IPP](entries.md#ipp)）。
+`POST /ipp/print/<node>` は CUPS サーバーノードの IPP プリンタです（ほかのノードは IPP プリンタではありません）。`POST /ipp/print` はサーバーで、その CUPS-Get-Printers が CUPS サーバーノードを一覧します（[IPP](entries.md#ipp)）。

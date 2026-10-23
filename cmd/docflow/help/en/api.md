@@ -48,6 +48,8 @@ Everyone signed in reads the topology; changing it is the role `topology`'s and 
 | `PUT /api/nodes/<name>` | save a node: its `kind` and the kind's settings ([Node kinds](nodes.md)); the answer of a new endpoint carries its `key`, once |
 | `DELETE /api/nodes/<name>` | delete it; not while another node sends to it |
 | `POST /api/nodes/<name>/key` | rotate an endpoint's key: the new one, once |
+| `POST /api/kinds/<kind>/discover` | ask the far side of a node's settings (the body, as for `PUT`) what is there before it is saved: the queues of a CUPS server (sink), `[{"name", "path", "info", "state", "accepting", "class"}]`; 502 when it does not answer |
+| `POST /api/nodes/<name>/rename` | rename it: `{"name": "<new>"}`. Its edges and what is kept under its name follow; refused (409) while work is on its way there ([Names](topology.md#names)) |
 | `GET /api/formats` | the formats an entry may take |
 | `GET /api/openapi.json?node=` | the OpenAPI document of the endpoints and exports the caller may use ([OpenAPI](#openapi)) |
 
@@ -121,4 +123,4 @@ curl -H "Authorization: Bearer $TOKEN" "https://<host>/api/openapi.json?node=erp
 
 ## IPP {#ipp}
 
-`POST /ipp/print/<node>` is every node's IPP printer, and `POST /ipp/print` the server, whose CUPS-Get-Printers lists the nodes ([IPP](entries.md#ipp)).
+`POST /ipp/print/<node>` is the IPP printer of a CUPS server node (no other node is one), and `POST /ipp/print` the server, whose CUPS-Get-Printers lists the CUPS server nodes ([IPP](entries.md#ipp)).

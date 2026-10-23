@@ -157,8 +157,8 @@ const (
 )
 
 // Node is a node of the topology, of any kind. Its name is a destination
-// (/ipp/print/<name>) in the one namespace; the settings are the kind's
-// (PutNode drops the others).
+// in the one namespace (/in/<name>, a CUPS server's /printers/<name>);
+// the settings are the kind's (PutNode drops the others).
 type Node struct {
 	Name string `json:"name"`
 	Kind string `json:"kind"`
@@ -213,7 +213,7 @@ type Node struct {
 	ListName     string `json:"list_name,omitempty"`
 	// SignRole is the role a sign node signs in (RoleWitness when "").
 	SignRole string `json:"sign_role,omitempty"`
-	Strict       bool   `json:"strict,omitempty"`
+	Strict   bool   `json:"strict,omitempty"`
 	// KeyHash is the hash of an endpoint's key (argon2id), never the key.
 	// Apps are the apps that may send to the endpoint with their own
 	// credentials (apps.go), besides the key.
@@ -261,10 +261,6 @@ type Node struct {
 	// group's node are the group's: its members see them.
 	Scope string `json:"scope,omitempty"`
 	Owner string `json:"owner,omitempty"`
-	// NoIPP keeps the node from being an IPP printer at
-	// /ipp/print/<name> (docflow/io/ipp), for a node only applications
-	// or other nodes send to. A CUPS server's own port stays IPP.
-	NoIPP bool `json:"no_ipp,omitempty"`
 	// OnError are the nodes a job goes to, with the payload that reached
 	// the node, when the node's send or step fails for good (a notify
 	// node, say); none, the manager's (Options.OnError), or the job stops

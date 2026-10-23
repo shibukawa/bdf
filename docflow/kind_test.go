@@ -34,8 +34,11 @@ func TestKindRegistry(t *testing.T) {
 	if p := by[KindPrinter]; p.Role != RoleExit || !p.SendsOut || !p.Fixed || !slices.Equal(p.Takes, []string{PayloadBDF}) {
 		t.Errorf("printer: %+v", p)
 	}
-	if c := by[KindCups]; c.Role != RoleEntry || c.Title != "CUPS server" || !c.Port || !c.PassesOn || c.SendsOut {
+	if c := by[KindCups]; c.Role != RoleEntry || c.Title != "CUPS server (source)" || !c.Port || !c.PassesOn || c.SendsOut {
 		t.Errorf("cups: %+v", c)
+	}
+	if c := by[KindCupsOut]; c.Role != RoleExit || c.Title != "CUPS server (sink)" || !c.SendsOut || !c.Fixed || !c.Discovers || !slices.Equal(c.Takes, []string{PayloadBDF}) {
+		t.Errorf("cups-out: %+v", c)
 	}
 	if x := by[KindEndpoint]; !x.Port || x.SendsOut {
 		t.Errorf("endpoint: %+v", x)
@@ -55,17 +58,22 @@ func TestKindRegistry(t *testing.T) {
 	RegisterKind(Kind{Name: KindPrinter, Role: RoleExit})
 }
 
-// A node with no_ipp is no IPP printer at /ipp/print: not there, not
-// listed, no address; what other nodes send it still reaches it.
-func TestNoIPP(t *testing.T) {
+// IPP enters the topology at a CUPS server alone: the other nodes are no
+// IPP printers at /ipp/print, not listed there, and have no ipp address;
+// what the CUPS server receives goes on along its edges.
+func TestIPPAtCups(t *testing.T) {
 	e := newEnv(t, nil)
 	e.display("wh-a", Node{})
-	e.node("quiet", Node{Kind: KindQueue, To: []string{"wh-a"}, NoIPP: true}, http.StatusOK)
-	e.node("front", Node{Kind: KindQueue, To: []string{"quiet"}}, http.StatusOK)
+	e.printer("laser")
+	e.node("front", Node{Kind: KindQueue, To: []string{"wh-a"}}, http.StatusOK)
+	e.node("tokyo", Node{Kind: KindClass, Members: []string{"laser"}}, http.StatusOK)
+	c := e.cups("cups1", "front")
 	ctx := context.Background()
 
-	if _, err := e.ippClient("quiet").PrintJob(ctx, "hidden", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1))); err == nil || !strings.Contains(err.Error(), "404") {
-		t.Fatalf("print to a node with no_ipp: %v", err)
+	for _, name := range []string{"front", "wh-a", "laser", "tokyo"} {
+		if _, err := e.ippClient(name).PrintJob(ctx, "hidden", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1))); err == nil || !strings.Contains(err.Error(), "404") {
+			t.Errorf("print to %s over IPP: %v", name, err)
+		}
 	}
 	ps, err := (&ipp.Client{URL: e.srv.URL + IPPPath, User: "wms"}).CupsGetPrinters(ctx)
 	if err != nil {
@@ -75,29 +83,31 @@ func TestNoIPP(t *testing.T) {
 	for _, p := range ps {
 		names = append(names, p.Name)
 	}
-	if slices.Contains(names, "quiet") || !slices.Contains(names, "front") || !slices.Contains(names, "wh-a") {
+	if !slices.Equal(names, []string{"cups1"}) {
 		t.Errorf("CUPS-Get-Printers: %v", names)
 	}
 	var topo []TopoNode
 	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &topo)
 	for _, n := range topo {
-		want := IPPPath + "/" + n.Name
-		if n.Name == "quiet" {
-			want = ""
+		want := ""
+		if n.Name == "cups1" {
+			want = IPPPath + "/cups1"
 		}
 		if n.Addresses["ipp"] != want {
 			t.Errorf("%s: addresses %v", n.Name, n.Addresses)
 		}
 	}
 
-	// through the node before it, the job goes on through it
-	js := e.printJob("front", "through", 1)
-	j := e.job(js.ID)
-	if !slices.ContainsFunc(j.Legs, func(l Leg) bool { return l.Node == "quiet" && l.State == LegRouted }) {
-		t.Errorf("legs: %+v", j.Legs)
+	// through the CUPS server, the job goes on through the queue
+	js, err := c.PrintJob(ctx, "through", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1)))
+	if err != nil || js.State != ipp.JobCompleted {
+		t.Fatalf("print to cups1: %+v %v", js, err)
 	}
-
-	// IPP on again
-	e.node("quiet", Node{Kind: KindQueue, To: []string{"wh-a"}}, http.StatusOK)
-	e.printJob("quiet", "shown", 1)
+	if j := e.job(js.ID); j.Dest != "cups1" || j.Source != "ipp" || legs(j) != "cups1:routed front:routed wh-a:shown" {
+		t.Errorf("job %+v: %s", j, legs(j))
+	}
+	// what the API sends the queue goes there as before
+	if j := e.printJob("front", "by the API", 1); legs(j) != "front:routed wh-a:shown" {
+		t.Errorf("job %+v: %s", j, legs(j))
+	}
 }

@@ -38,9 +38,6 @@ func init() {
 
 func check(ctx context.Context, m *docflow.Manager, in docflow.Node, n *docflow.Node) error {
 	n.To = docflow.CleanNames(in.To)
-	if len(n.To) == 0 {
-		return fmt.Errorf("%w: a render node sends the file it draws to at least one node (to)", docflow.ErrInvalid)
-	}
 	n.Format = strings.ToLower(strings.TrimSpace(in.Format))
 	if n.Format == "" {
 		n.Format = FormatPDF

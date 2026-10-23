@@ -68,6 +68,8 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 	switch {
 	case k == nil:
 		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: "no such kind of node here: " + kind})
+	case forwardsOnly(k) && m.nowhere(ctx, name):
+		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: "sends to no node yet: connect it to the nodes after it"})
 	case k.route != nil:
 		k.route(m, ctx, r, name, from, depth)
 	case k.Step != nil:
@@ -87,6 +89,20 @@ func (m *Manager) route(ctx context.Context, r *routing, name, from string, dept
 	default:
 		r.add(Leg{Node: name, Kind: kind, From: from, State: LegError, Error: "cannot take a job"})
 	}
+}
+
+// forwardsOnly tells a kind whose job goes nowhere but along To: an entry
+// or a queue, which sends on what reaches it, and a step, which sends on
+// what it makes. A node of one is put before the nodes after it, and
+// has none until they are connected.
+func forwardsOnly(k *Kind) bool {
+	return k.Role == RoleStep || k.PassesOn && k.route == nil && k.Step == nil
+}
+
+// nowhere tells a node that sends to no node yet.
+func (m *Manager) nowhere(ctx context.Context, name string) bool {
+	n, err := m.Node(ctx, name)
+	return err == nil && len(n.To) == 0
 }
 
 // routeClass sends a job to a member of a class. A member that sends out

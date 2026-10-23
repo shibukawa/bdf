@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shibukawa/bdf"
 	"github.com/shibukawa/bdf/docflow"
 	"github.com/shibukawa/bdf/print"
 	"github.com/shibukawa/bdf/print/ipp"
@@ -71,21 +72,39 @@ func ready(n *docflow.Node) error {
 // for the printer (printMeta), and returns the printer's job id (none for
 // a raw printer).
 func send(ctx context.Context, o *docflow.Out) (string, error) {
-	doc, err := o.Document(ctx)
-	if err != nil {
-		return "", err
-	}
-	mo := o.Manager().Options()
-	opts := &print.Options{Ticket: print.Ticket{JobName: o.Name, Meta: printMeta(o.Meta)}, FontDirs: mo.FontDirs, NoSystemFonts: mo.NoSystemFonts}
 	if raw.IsURL(o.Node.URL) {
 		rp, err := raw.Parse(o.Node.URL)
+		if err != nil {
+			return "", err
+		}
+		doc, opts, err := printJob(ctx, o)
 		if err != nil {
 			return "", err
 		}
 		_, err = print.PrintRaw(ctx, rp, doc, opts)
 		return "", err
 	}
-	res, err := print.Print(ctx, &ipp.Client{URL: o.Node.URL, User: "bdf-docflow"}, doc, opts)
+	return printTo(ctx, o, &ipp.Client{URL: o.Node.URL, User: "bdf-docflow"})
+}
+
+// printJob is the document of a send and how it is printed.
+func printJob(ctx context.Context, o *docflow.Out) (*bdf.Document, *print.Options, error) {
+	doc, err := o.Document(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	mo := o.Manager().Options()
+	return doc, &print.Options{Ticket: print.Ticket{JobName: o.Name, Meta: printMeta(o.Meta)}, FontDirs: mo.FontDirs, NoSystemFonts: mo.NoSystemFonts}, nil
+}
+
+// printTo prints a document on an IPP printer (a printer, a CUPS server's
+// queue), and returns the printer's job id.
+func printTo(ctx context.Context, o *docflow.Out, c *ipp.Client) (string, error) {
+	doc, opts, err := printJob(ctx, o)
+	if err != nil {
+		return "", err
+	}
+	res, err := print.Print(ctx, c, doc, opts)
 	if err != nil {
 		return "", err
 	}

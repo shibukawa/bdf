@@ -1,13 +1,13 @@
 # Node kinds
 
-Every node has a kind, and the settings of its kind. The entries — endpoints and CUPS servers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. Every node, whatever its kind, is also an IPP printer at `/ipp/print/<name>` ([IPP](entries.md#ipp)), unless “No IPP printer” is ticked in its sidebar (`no_ipp`): such a node is reached only from the nodes before it, and IPP clients do not list it.
+Every node has a kind, and the settings of its kind. The entries — endpoints, CUPS servers and S3 triggers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, CUPS servers' queues, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. IPP enters at CUPS server nodes alone ([IPP](entries.md#ipp)): computers print to them, applications post files to endpoints, and a bucket's events reach S3 triggers; every other node is reached along the edges. A node is put before the nodes after it: no edge below (`to`, a class's `members`) is needed to add it, and a job that reaches an entry, a queue or a step that sends to no node yet gets an error there.
 
 ## Every node {#common}
 
 | Setting | |
 |---|---|
-| Name | the node's name ([Names, titles and descriptions](topology.md#names)) |
-| Title | shown under the name |
+| Name | the system's name of the node: letters, digits, `.`, `_` and `-`, no other node's. Changing it renames the node, and its edges follow ([Names, titles and descriptions](topology.md#names)) |
+| Title | what people read, shown in the node's title bar |
 | Description (`description`) | a note of what the node is for, up to 1000 characters: its first lines in the node on the canvas, all of it in the sidebar |
 | Scope, Owner | who may send to the node from the pages, and whose its jobs are: `shared` (everyone signed in), `group` with the group as owner, or `personal` with the person's email as owner ([Scopes of nodes](roles.md#scopes)) |
 | On error (`on_error`) | the nodes a job goes to, with what reached this node, when its send or step fails for good: a [notify](#notify) node, say. None: the manager's default (`docflow.on_error`), or the job stops here, aborted ([On error](#on-error)) |
@@ -20,26 +20,29 @@ A REST entry for applications: `POST /in/<name>` with the endpoint's own key tak
 
 | Setting | |
 |---|---|
-| Forwards to (`to`) | every node chosen gets the job |
+| Forwards to (`to`) | every node chosen gets the job; none yet: a job gets an error here |
 | Accepts (`accept`) | `file`: documents (the default); `data`: JSON, YAML, CSV, an Excel workbook or a Parquet file, for a template node after it |
 | Sends on (`output`) | of a document: `bdf`, the `.bdf` made of it (the default), or `file`, the file as received, for a convert node or an archive after it |
 | Formats (`formats`) | the formats it takes, as the converter names them (`pdf`, `docx`, `image`, `csv`, `bdf`, `json`, `yaml` …); none takes any. A file of another format is refused (415), and the refusal is in the audit log |
 | Metadata (`meta`) | keys the endpoint adds to every job it takes; they win over the sender's ([Metadata](flow.md#metadata)) |
-| Port (`port`) | a port of the process's own: every POST to it is to this endpoint (none on a serverless deployment) |
+| Port (`port`) | a port of the process's own: every POST to it is to this endpoint (none on a serverless deployment). The sidebar fills a new endpoint's with the first port no node has, from 6310; empty it for none |
 | Apps allowed (`apps`) | the apps that may send here with their own credentials, besides the key ([Apps](entries.md#apps)) |
 
 The key is shown once, when the endpoint is made or the key rotated; the manager keeps only its hash.
 
-## CUPS server {#cups}
+## CUPS server (source) {#cups}
 
-An IPP entry for computers and business systems: a CUPS server on a port of the process's own, with one printer, the node itself. `lpstat -h <host>:<port> -p` lists it, computers print to `ipp://<host>:<port>/printers/<name>`, and what it receives goes on to every node of `to`. [CUPS server nodes](entries.md#cups) has the setup.
+The IPP entry, for computers and business systems, and the only one: a CUPS server on a port of the process's own, with one printer, the node itself. `lpstat -h <host>:<port> -p` lists it, computers print to `ipp://<host>:<port>/printers/<name>`, and what it receives goes on to every node of `to` as the `.bdf` made of it. The node is also an IPP printer at `/ipp/print/<name>` of the manager's own server: on a serverless deployment, which has no ports, the only one. [CUPS server nodes](entries.md#cups) has the setup.
 
 | Setting | |
 |---|---|
-| Forwards to (`to`) | every node chosen gets what is printed here |
-| Port (`port`) | the port the server listens on (none on a serverless deployment) |
+| Forwards to (`to`) | every node chosen gets what is printed here, made `.bdf` |
+| Port (`port`) | the port the server listens on; none given: the first port no node has, from 6310 (none on a serverless deployment) |
 | TLS (`tls_cert`, `tls_key`) | the files of a certificate and its key: `ipps`; without them, plain `ipp` |
-| Accepts, Sends on, Formats, Metadata | as an endpoint's. The job attributes of a Print-Job request are metadata, `ipp.media`, `ipp.copies` … |
+| Metadata (`meta`) | as an endpoint's. The job attributes of a Print-Job request are metadata, `ipp.media`, `ipp.copies` … |
+| Apps allowed (`apps`) | the apps that may print here with their id and secret as IPP Basic ([Apps](entries.md#apps)) |
+
+What computers print is a document: a CUPS server has no Accepts, Sends on or Formats of an endpoint, and sends on the `.bdf` it makes. A file to send on as received goes to an endpoint or an S3 trigger.
 
 ## Queue {#queue}
 
@@ -55,7 +58,7 @@ Sends the job to one of its `members`: in turn (`round-robin`, the default), or 
 
 | Setting | |
 |---|---|
-| Members (`members`) | the nodes, in order |
+| Members (`members`) | the nodes, in order; none yet: a job gets an error here |
 | Policy (`policy`) | `round-robin` or `failover` |
 
 ## Filter {#filter}
@@ -75,7 +78,7 @@ Fills one of its templates with the data that reaches it, and sends the form on 
 |---|---|
 | Forwards to (`to`) | the nodes the filled form goes to |
 | The data as it came to (`original`) | the nodes the data goes to as it reached the node, traced with the form ([Originals and traces](flow.md#traces)) |
-| Template (`template`) | the template to fill, by its id |
+| Template (`template`) | the template to fill, by its id; none yet: upload one once the node is there (a job meanwhile fails here) |
 | Template from (`template_from`) | instead: the metadata key whose value names the template (a sender's `doc-type`) |
 | List name (`list_name`) | the name data that is a list of records (a CSV file, a sheet, a JSON array) gets in the template; the file's name by default |
 | Strict (`strict`) | refuse data that lacks a name the template looks up |
@@ -126,9 +129,20 @@ Prints the job on paper, on a printer the manager reaches over the network. It t
 
 | Setting | |
 |---|---|
-| URL (`url`) | `ipp://` or `ipps://` (an IPP printer, or a queue of a CUPS server: `ipp://host:631/printers/<queue>`), `socket://host:9100`, or `lpd://host/queue` |
+| URL (`url`) | `ipp://` or `ipps://` (an IPP printer), `socket://host:9100`, or `lpd://host/queue`. A queue of a CUPS server is a [CUPS server (sink)](#cups-out) |
 | Route (`route`) | how its jobs reach it: `direct`, the manager sends them (the default). `branch`, a `bdf printd` of the site fetching them, is not there yet: a delivery to such a printer fails |
 | Preview (`preview`) | the URL of this printer on a fake printer farm's API (`tools/fakeprinter`): what the fake printer received is shown beside the node, as the farm read it back |
+
+## CUPS server (sink) {#cups-out}
+
+Prints the job to a queue of a CUPS server over IPP, as a computer prints to it: a printer or a class there. The CUPS server's filters and drivers make what its printer takes, of the PDF (or PWG Raster) the manager sends, as the queue says what it supports. It takes `.bdf` documents only; a print that fails is tried again ([Deliveries](inboxes.md#deliveries)). Its counterpart, a [CUPS server (source)](#cups), takes what computers print.
+
+| Setting | |
+|---|---|
+| Server (`url`) | the queue's URL: `ipp://host:631/printers/<queue>`, `/classes/<class>` for a class, `ipps://` over TLS. In the sidebar, Find queues asks the server for its queues (CUPS-Get-Printers) to pick one |
+| Credential (`credential`) | `user:password`, when the server asks for them; none: no authentication ([Credentials](#credentials)) |
+
+The keys `ipp.job-account-id` and the others go on to the queue as they go on to a printer ([What goes on to the printer](flow.md#ipp-attributes)).
 
 ## Archive {#archive}
 
@@ -221,7 +235,7 @@ Sends what reaches it to a web service as the body of a request, with the job's 
 | Headers (`headers`) | more headers, with `{{meta.<key>}}` |
 | Credential (`credential`) | the Authorization: a token, sent as Bearer, or a whole value (`Basic …`) |
 
-These kinds have no form of their own in the sidebar: their settings are a JSON box there.
+Render, Notify, Mail (SMTP), S3 and HTTP have no form of their own in the sidebar: their settings are a JSON box there. An S3 trigger has a form, as an endpoint has.
 
 ## On error {#on-error}
 
