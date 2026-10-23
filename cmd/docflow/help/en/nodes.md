@@ -1,6 +1,6 @@
 # Node kinds
 
-Every node has a kind, and the settings of its kind. The entries — endpoints, CUPS servers and S3 triggers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, CUPS servers' queues, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. IPP enters at CUPS server nodes alone ([IPP](entries.md#ipp)): computers print to them, applications post files to endpoints, and a bucket's events reach S3 triggers; every other node is reached along the edges. A node is put before the nodes after it: no edge below (`to`, a class's `members`) is needed to add it, and a job that reaches an entry, a queue or a step that sends to no node yet gets an error there.
+Every node has a kind, and the settings of its kind. The entries — endpoints, CUPS servers and S3 triggers — take documents and data from outside; queues, classes, filters, asserts, branches and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, CUPS servers' queues, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. IPP enters at CUPS server nodes alone ([IPP](entries.md#ipp)): computers print to them, applications post files to endpoints, and a bucket's events reach S3 triggers; every other node is reached along the edges. A node is put before the nodes after it: no edge below (`to`, a class's `members`) is needed to add it, and a job that reaches an entry, a queue or a step that sends to no node yet gets an error there.
 
 ## Every node {#common}
 
@@ -69,6 +69,31 @@ Sends the job on by rules: the first rule whose match fits the job forwards it t
 |---|---|
 | Rules (`rules`) | in order: a match (name, user, format, pages, metadata, kind of payload) and the nodes |
 | Otherwise (`otherwise`) | the nodes a job no rule fits goes to |
+
+## Assert {#assert}
+
+Checks the job's metadata: a job that passes every check goes on to every node of `to`, as it reached the assert; one that fails a check goes no further, and goes to `on_error` with what failed. [Checks](flow.md#checks) has what a check looks at.
+
+An assert right after the node a job is sent to — an entry, or a queue sent to from the pages or the API — or that node itself is the sender's gate: the job is checked before it goes anywhere, and the sender's request is answered only once its checks pass. A job that fails is refused to the sender with what failed — 422 of REST, `client-error-bad-request` of IPP ([Endpoints](entries.md#endpoints)) — and kept, aborted, with a leg `refused` at the assert. An assert further on checks the job as it reaches it, after the sender was answered: a job it refuses is aborted there.
+
+| Setting | |
+|---|---|
+| Passes to (`to`) | the nodes a job that passes goes to; none yet: a job that passes gets an error here |
+| Checks (`checks`) | every one must hold: a key, and what its value must be |
+| On fail (`on_error`) | the nodes a job that fails goes to, with what reached the assert: a [notify](#notify) node tells `{{meta.$error}}`, what failed. None: the manager's default (`docflow.on_error`), or the job stops here |
+
+On the canvas an assert has two ports: `pass`, its `to`, and `fail`, its `on_error`.
+
+## Branch {#branch}
+
+A switch: the first of its cases whose checks the job passes sends it to the case's nodes, and the others are not tried; a job no case fits goes to `default`, or ends there (`dropped`) when there is none. What reaches it goes on as it is. A case checks as an assert does ([Checks](flow.md#checks)).
+
+| Setting | |
+|---|---|
+| Cases (`cases`) | in order: a name (`name`, the label of its port; `case <n>` when it has none), the checks (`when`), every one of which must hold, and the nodes (`to`). A case checks something; a case with no node yet gives a job that fits it an error |
+| Default (`default`) | the nodes a job no case fits goes to |
+
+On the canvas a branch has a port for each case, labelled with its name, and one for `default`: drag from a port to add a node to that arm. The leg names the arm the job took.
 
 ## Template {#template}
 

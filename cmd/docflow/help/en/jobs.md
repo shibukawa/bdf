@@ -39,19 +39,20 @@ A job's state follows its legs:
 | `held` | an inbox holds it, and nothing else is pending |
 | `completed` | every node took it: shown, printed, archived, kept, released or dropped |
 | `canceled` | the sender or an administrator canceled it |
-| `aborted` | a delivery failed for good: after every retry, or at once when no retry could mend it ([Deliveries](inboxes.md#deliveries)) |
+| `aborted` | a delivery failed for good: after every retry, or at once when no retry could mend it ([Deliveries](inboxes.md#deliveries)); or an assert refused the job |
 
 A leg's state is what the node did with the job:
 
 | Leg | Nodes | |
 |---|---|---|
-| `routed` | queue, class, filter, endpoint, CUPS server | sent on along the edges |
+| `routed` | queue, class, filter, assert, branch, endpoint, CUPS server | sent on along the edges; of a branch, the leg names the arm |
 | `shown` | display | a slip on the devices; `canceled` when the job was |
 | `held`, `released`, `discarded` | inbox | held; sent on by a person; discarded by a person, or by a cancellation |
 | `pending`, `done`, `failed`, `canceled` | printer, archive, template, convert | a delivery: waiting or being sent; done; given up; withdrawn by a cancellation |
 | `kept` | sink | among the latest the sink keeps |
 | `listed` | export | listed for its owner, who the leg names ([Exports](exports.md)) |
-| `dropped` | filter | no rule fit, and there is no otherwise |
+| `dropped` | filter, branch | no rule or case fit, and there is no otherwise or default |
+| `refused` | assert | the job failed a check, and the error says which ([Checks](flow.md#checks)); right after the node the job was sent to, its sender was refused |
 | `error` | any | the node could not take the job, and the error says why: a kind of payload it does not take, a node that is gone |
 
 A job that ended is kept 14 days by default (the operator's `job_keep`), with its document while something still shows it; then it is removed.

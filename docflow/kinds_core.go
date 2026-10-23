@@ -15,6 +15,8 @@ func init() {
 	RegisterKind(Kind{Name: KindQueue, Role: RoleRoute, PassesOn: true, Check: checkForward})
 	RegisterKind(Kind{Name: KindClass, Role: RoleRoute, PassesOn: true, Check: checkClass, route: (*Manager).routeClass})
 	RegisterKind(Kind{Name: KindFilter, Role: RoleRoute, PassesOn: true, Check: checkFilter, route: (*Manager).routeFilter})
+	RegisterKind(Kind{Name: KindAssert, Role: RoleRoute, PassesOn: true, Check: checkAssert, route: (*Manager).routeAssert})
+	RegisterKind(Kind{Name: KindBranch, Role: RoleRoute, PassesOn: true, Check: checkBranch, route: (*Manager).routeBranch})
 	RegisterKind(Kind{Name: KindInbox, Role: RoleRoute, PassesOn: true, Check: checkInbox,
 		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
 			m.routeInbox(ctx, r, name, from)

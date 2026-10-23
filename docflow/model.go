@@ -117,6 +117,13 @@ const (
 	KindSink = "sink"
 	// KindFilter sends a job on by rules on what it is (filter.go).
 	KindFilter = "filter"
+	// KindAssert checks the job's metadata and sends on the job that
+	// passes; one right after the node a job is sent to refuses it to the
+	// sender (assert.go).
+	KindAssert = "assert"
+	// KindBranch sends the job along the first of its cases whose checks
+	// it passes, else along its default, as a switch does (branch.go).
+	KindBranch = "branch"
 	// KindTemplate fills one of its templates with the data that reaches
 	// it (kind data) and sends the form on as .bdf (transform.go).
 	KindTemplate = "template"
@@ -181,6 +188,14 @@ type Node struct {
 	// forwards it; none, Otherwise (empty: the job ends there).
 	Rules     []Rule   `json:"rules,omitempty"`
 	Otherwise []string `json:"otherwise,omitempty"`
+	// Checks are an assert's: a job must pass every one to go on to To;
+	// one that does not goes along OnError (assert.go).
+	Checks []Check `json:"checks,omitempty"`
+	// Cases and Default are a branch's: the first case whose checks the
+	// job passes sends it to the case's nodes; none, Default (empty: the
+	// job ends there).
+	Cases   []Case   `json:"cases,omitempty"`
+	Default []string `json:"default,omitempty"`
 	// Keep is how long an inbox shows its released and discarded items,
 	// and a display its slips done or canceled (default 14 days).
 	Keep Duration `json:"keep,omitempty"`
@@ -297,7 +312,8 @@ func (n *Node) offlineAfter() time.Duration {
 func (n *Node) collection() string { return or(n.Collection, "archive-"+n.Name) }
 
 // edges are the nodes a node sends to: To, Original, Members, a filter's
-// rules and Otherwise, a display's fallback printer, and OnError.
+// rules and Otherwise, a branch's cases and Default, a display's fallback
+// printer, and OnError.
 func (n *Node) edges() []string {
 	return append(n.flowEdges(), n.OnError...)
 }
@@ -307,6 +323,7 @@ func (n *Node) edges() []string {
 func (n *Node) flowEdges() []string {
 	out := append(append(append([]string{}, n.To...), n.Original...), n.Members...)
 	out = append(out, n.ruleTargets()...)
+	out = append(out, n.caseTargets()...)
 	if n.Fallback != nil && n.Fallback.Printer != "" {
 		out = append(out, n.Fallback.Printer)
 	}
@@ -368,7 +385,7 @@ const (
 	JobCompleted JobState = "completed"
 	// JobCanceled: the sender or an administrator canceled it.
 	JobCanceled JobState = "canceled"
-	// JobAborted: a delivery failed for good.
+	// JobAborted: a delivery failed for good, or an assert refused it.
 	JobAborted JobState = "aborted"
 )
 
@@ -452,13 +469,13 @@ type Leg struct {
 	At   time.Time `json:"at"`
 	// State is routed (queue, class), shown or canceled (display), held,
 	// released or discarded (inbox), pending, done, failed or canceled
-	// (printer, archive), kept (sink), listed (export), or error when the
-	// node could not take it.
+	// (printer, archive), kept (sink), listed (export), refused (assert),
+	// or error when the node could not take it.
 	State string `json:"state"`
 	// Ref is the slip, the item or the delivery made here.
 	Ref string `json:"ref,omitempty"`
-	// Member is the member a class chose, the rule of a filter, or the
-	// owner an export listed the job for.
+	// Member is the member a class chose, the rule of a filter, the case
+	// of a branch, or the owner an export listed the job for.
 	Member string `json:"member,omitempty"`
 	// Payload is the payload the node got, and Made the one it made of it
 	// (a template or a convert node).
@@ -511,6 +528,7 @@ const (
 	LegKept      = "kept"
 	LegListed    = "listed"
 	LegDropped   = "dropped"
+	LegRefused   = "refused"
 	LegError     = "error"
 )
 
@@ -526,7 +544,7 @@ func (j *Job) derive(now time.Time) {
 				pending = true
 			case LegHeld:
 				held = true
-			case LegFailed:
+			case LegFailed, LegRefused:
 				failed = true
 			}
 		}

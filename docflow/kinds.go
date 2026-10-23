@@ -304,10 +304,14 @@ func (n *Node) withoutEdges(names map[string]bool) *Node {
 		return out
 	}
 	c := *n
-	c.To, c.Original, c.Members, c.Otherwise, c.OnError = keep(n.To), keep(n.Original), keep(n.Members), keep(n.Otherwise), keep(n.OnError)
+	c.To, c.Original, c.Members, c.Otherwise, c.Default, c.OnError = keep(n.To), keep(n.Original), keep(n.Members), keep(n.Otherwise), keep(n.Default), keep(n.OnError)
 	c.Rules = slices.Clone(n.Rules)
 	for i := range c.Rules {
 		c.Rules[i].To = keep(n.Rules[i].To)
+	}
+	c.Cases = slices.Clone(n.Cases)
+	for i := range c.Cases {
+		c.Cases[i].To = keep(n.Cases[i].To)
 	}
 	if c.Fallback != nil && names[c.Fallback.Printer] {
 		c.Fallback = nil

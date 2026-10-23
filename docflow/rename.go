@@ -294,9 +294,13 @@ func (n *Node) renameEdge(from, to string) bool {
 	swap(n.Original)
 	swap(n.Members)
 	swap(n.Otherwise)
+	swap(n.Default)
 	swap(n.OnError)
 	for i := range n.Rules {
 		swap(n.Rules[i].To)
+	}
+	for i := range n.Cases {
+		swap(n.Cases[i].To)
 	}
 	if n.Fallback != nil && n.Fallback.Printer == from {
 		n.Fallback.Printer = to

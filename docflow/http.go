@@ -145,6 +145,13 @@ func (h *handler) writeErr(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, ErrFormat):
 		status = http.StatusUnsupportedMediaType
+	case errors.Is(err, ErrRefused):
+		var ref *Refusal
+		if errors.As(err, &ref) {
+			writeJSON(w, http.StatusUnprocessableEntity, ref.body())
+			return
+		}
+		status = http.StatusUnprocessableEntity
 	case errors.Is(err, ErrUnsupported):
 		status = http.StatusNotImplemented
 	case errors.Is(err, ErrPrint):

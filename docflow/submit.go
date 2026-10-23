@@ -54,6 +54,8 @@ var ErrFormat = errors.New("manager: the document's format is not known")
 // and the job is routed from the destination through the topology
 // (route). What the nodes send and make (deliveries, the steps of
 // template and convert nodes) is done after (Tick, or the background).
+// A job the asserts right after the destination refuse is kept, aborted,
+// and the error is a *Refusal (gate).
 func (m *Manager) Submit(ctx context.Context, dest string, in Input) (*Job, error) {
 	n, err := m.Node(ctx, dest)
 	if err != nil {
@@ -195,7 +197,10 @@ func (m *Manager) submitPayload(ctx context.Context, dest string, entry *Node, r
 		return nil, mapErr(err)
 	}
 	r := &routing{job: j, now: now, payload: &j.Payloads[0]}
-	m.route(ctx, r, dest, "", 0)
+	refused := m.gate(ctx, r, dest)
+	if refused == nil {
+		m.route(ctx, r, dest, "", 0)
+	}
 	j, err = m.changeJob(ctx, j.ID, func(j *Job) error {
 		j.Legs = append(j.Legs, r.legs...)
 		j.Live += r.live
@@ -213,6 +218,10 @@ func (m *Manager) submitPayload(ctx context.Context, dest string, entry *Node, r
 	m.o.Log.Info("job", "dest", dest, "job", number, "name", j.Name, "kind", j.Kind, "format", j.Format, "pages", j.Pages, "source", j.Source, "state", j.State, "legs", len(j.Legs),
 		"by", by.Kind+":"+by.ID, "via", by.Via)
 	m.kick(r.deliveries)
+	if refused != nil {
+		refused.Job = j
+		return j, refused
+	}
 	return j, nil
 }
 

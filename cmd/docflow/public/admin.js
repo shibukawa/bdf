@@ -34,10 +34,16 @@ export async function api(method, path, body, raw) {
   return out;
 }
 
+// el makes an element: its text, and its properties, but data-* and
+// aria-*, which are attributes (a property of that name would be lost on
+// querySelector).
 export function el(tag, text, attrs = {}) {
   const e = document.createElement(tag);
   if (text !== undefined) e.textContent = text;
-  Object.assign(e, attrs);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith("data-") || k.startsWith("aria-")) e.setAttribute(k, v);
+    else e[k] = v;
+  }
   return e;
 }
 
@@ -74,13 +80,15 @@ export function badge(text, cls = "badge-ghost") {
   return el("span", text, { className: "badge " + cls });
 }
 
-export const KINDS = { endpoint: "Endpoint", cups: "CUPS server (source)", "cups-out": "CUPS server (sink)", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", sign: "Sign", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "Export", render: "Render", notify: "Notify", smtp: "Mail (SMTP)", s3: "S3", "s3-trigger": "S3 Trigger", http: "HTTP" };
+export const KINDS = { endpoint: "Endpoint", cups: "CUPS server (source)", "cups-out": "CUPS server (sink)", queue: "Queue", class: "Class", filter: "Filter", assert: "Assert", branch: "Branch", template: "Template", convert: "Convert", sign: "Sign", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "Export", render: "Render", notify: "Notify", smtp: "Mail (SMTP)", s3: "S3", "s3-trigger": "S3 Trigger", http: "HTTP" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
   sink: "badge-success badge-soft",
   export: "badge-accent badge-soft",
   filter: "badge-secondary badge-soft",
+  assert: "badge-secondary badge-soft",
+  branch: "badge-secondary badge-soft",
   template: "badge-secondary badge-soft",
   convert: "badge-secondary badge-soft",
   sign: "badge-secondary badge-soft",

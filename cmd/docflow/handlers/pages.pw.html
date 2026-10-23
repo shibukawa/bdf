@@ -318,6 +318,8 @@ export component Topology(account: Account): html {
                       <PaletteKind kind="queue" name="Queue">forwards to every node it points to</PaletteKind>
                       <PaletteKind kind="class" name="Class">one member in turn, or the first</PaletteKind>
                       <PaletteKind kind="filter" name="Filter">sends on by rules on what a job is, and its metadata</PaletteKind>
+                      <PaletteKind kind="assert" name="Assert">checks the metadata; right after an entry, refuses the sender what fails</PaletteKind>
+                      <PaletteKind kind="branch" name="Branch">a switch: the first case whose checks hold, else default</PaletteKind>
                       <PaletteKind kind="inbox" name="Inbox">held until a person releases it</PaletteKind>
                       <PaletteKind kind="notify" name="Notify">tells Slack, a mail or a webhook; failures come along on_error</PaletteKind>
                     </PaletteGroup>

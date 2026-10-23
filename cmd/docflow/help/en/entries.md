@@ -28,6 +28,7 @@ curl -X POST -H "Authorization: Bearer bdfk_…" \
 - `?name=` names the job; `?user=` names who sent it, shown as "(as …)".
 - `X-Meta-<Key>` headers and `?meta.<key>=` parameters are the job's metadata ([Metadata](flow.md#metadata)).
 - The answer is the job (201), with its number and its legs so far. A document of a format the endpoint does not take is refused (415), and the refusal is in the audit log; a wrong key is refused (401).
+- An [assert](nodes.md#assert) right after the endpoint checks the metadata before the answer: a job that fails is refused (422) with `{"error": "…", "job": <number>, "failures": [{"node", "key", "error"}]}`, and kept, aborted, for its legs to show what failed. A CUPS server answers the same as IPP's `client-error-bad-request`, with what failed as the status message.
 
 The endpoint's OpenAPI document — the link OpenAPI in its sidebar, or `GET /api/openapi.json?node=<name>` — says what it takes: the media types, the schema of the data its templates fill, and the metadata the nodes after it look at ([OpenAPI](api.md#openapi)).
 

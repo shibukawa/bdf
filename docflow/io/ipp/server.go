@@ -408,7 +408,8 @@ func (s *server) printJob(ctx context.Context, q *ippRequest, body io.Reader) {
 	case errors.Is(err, docflow.ErrFormat):
 		q.fail(ipp.StatusClientErrorDocumentFormatError, "%v", err)
 		return
-	case errors.Is(err, docflow.ErrInvalid):
+	case errors.Is(err, docflow.ErrInvalid), errors.Is(err, docflow.ErrRefused):
+		// a refusal of an assert after the node: the job is kept, aborted
 		q.fail(ipp.StatusClientErrorBadRequest, "%v", err)
 		return
 	case err != nil:
