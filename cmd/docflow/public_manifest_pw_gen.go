@@ -20,11 +20,11 @@ func init() {
 			{Path: "admin.js.gz", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "gzip", Length: 3226, ETag: "\"f08987b2e63dfff0346c18346ea97f17\"", Preference: 1, External: false},
 			{Path: "admin.js.zstd", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "zstd", Length: 3253, ETag: "\"16b64edbf2d593625a6bcf49f06655fc\"", Preference: 1, External: false},
 		}},
-		{URL: "app.css", CacheControl: "public, no-cache", Revision: "3b63b158c99f9f13", Representations: []middlewares.AssetRepresentation{
-			{Path: "app.css", MediaType: "text/css; charset=utf-8", ContentEncoding: "", Length: 141925, ETag: "\"421096992c39248eb857166a1d3e0a7d\"", Preference: 1, External: false},
-			{Path: "app.css.br", MediaType: "text/css; charset=utf-8", ContentEncoding: "br", Length: 17718, ETag: "\"1329f7c2f95d73fd42c7e890baf61373\"", Preference: 1, External: false},
-			{Path: "app.css.gz", MediaType: "text/css; charset=utf-8", ContentEncoding: "gzip", Length: 20850, ETag: "\"f61ef6c4eb76bb6792a387d409918e4d\"", Preference: 1, External: false},
-			{Path: "app.css.zstd", MediaType: "text/css; charset=utf-8", ContentEncoding: "zstd", Length: 20326, ETag: "\"8340dd1c914d095764dc423dc16eb21e\"", Preference: 1, External: false},
+		{URL: "app.css", CacheControl: "public, no-cache", Revision: "221cb1d0f6e656e2", Representations: []middlewares.AssetRepresentation{
+			{Path: "app.css", MediaType: "text/css; charset=utf-8", ContentEncoding: "", Length: 143077, ETag: "\"f6faab1ec96874c17f2f72255c2a3207\"", Preference: 1, External: false},
+			{Path: "app.css.br", MediaType: "text/css; charset=utf-8", ContentEncoding: "br", Length: 17923, ETag: "\"d38f1d222bc9f31cc226be74c233093e\"", Preference: 1, External: false},
+			{Path: "app.css.gz", MediaType: "text/css; charset=utf-8", ContentEncoding: "gzip", Length: 21103, ETag: "\"eb9a6512ddaf11690e85484584088bc8\"", Preference: 1, External: false},
+			{Path: "app.css.zstd", MediaType: "text/css; charset=utf-8", ContentEncoding: "zstd", Length: 20580, ETag: "\"76236c1291ea8307c8ac49f393d30bfa\"", Preference: 1, External: false},
 		}},
 		{URL: "apps.js", CacheControl: "public, no-cache", Revision: "86f45f4182ca8a96", Representations: []middlewares.AssetRepresentation{
 			{Path: "apps.js", MediaType: "text/javascript; charset=utf-8", ContentEncoding: "", Length: 5474, ETag: "\"c694ed4d354c04a22f5a47cfced8ee55\"", Preference: 1, External: false},
