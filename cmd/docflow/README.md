@@ -200,9 +200,11 @@ and that every kind of node has its section. Changing the manual is
 editing the Markdown: no generation.
 
 In short: a person signs in at the IdP (see Sign-in) and sees `/jobs`,
-their jobs and their groups' and a form that prints to a node they may
-send to, and `/topology`, the network with the activity of their jobs.
-The role `topology` gets the administrator's pages under `/admin` (the
+their jobs and their groups' and a form that prints to a source (an
+entry: an uploader, a CUPS server) they may send to, and `/topology`,
+the network with the activity of their jobs. The role `topology` prints
+to any node from the form, to try the topology out, and gets the
+administrator's pages under `/admin` (the
 editor of the topology, apps, jobs, deliveries), `/inboxes` (every inbox; the
 members of an inbox's group get it for theirs) and the role `audit` gets
 `/audit`. Every node is `PUT /api/nodes/<name>` with its

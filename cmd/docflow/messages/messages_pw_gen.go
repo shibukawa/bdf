@@ -635,8 +635,8 @@ func PagesJobsPrintHeading(loc pw.Locale) string {
 }
 
 var tblPagesJobsPrintNote = [...]string{
-	"PDF, Office documents, images and .bdf. It flows from the node chosen; the nodes listed are those you may send to.", // en
-	"PDF、Office 文書、画像、.bdf。選んだノードから流れます。並ぶのは自分が送れるノードです。",                                                                // ja
+	"PDF, Office documents, images and .bdf. It comes into the topology at the source chosen and flows from there; the sources listed are those you may send to (with the role topology, every node, to try it out).", // en
+	"PDF、Office 文書、画像、.bdf。選んだソースからトポロジーに入り、そこから流れます。並ぶのは自分が送れるソースです（役割 topology なら、動作確認用にすべてのノード）。",                                                                                                                  // ja
 }
 
 // PagesJobsPrintNote renders message "pages.jobs-print-note".
@@ -645,8 +645,8 @@ func PagesJobsPrintNote(loc pw.Locale) string {
 }
 
 var tblPagesJobsReprintNote = [...]string{
-	"Reprint sends the document again as a new job of yours, to the node it went to, or to another you may send to.", // en
-	"再印刷は、文書をもう一度、自分の新しいジョブとして、元のノードか、送れるほかのノードに送ります。",                                                               // ja
+	"Reprint sends the document again as a new job of yours, to the node it went to, or to a source you may send to.", // en
+	"再印刷は、文書をもう一度、自分の新しいジョブとして、元のノードか、送れるソースに送ります。",                                                                   // ja
 }
 
 // PagesJobsReprintNote renders message "pages.jobs-reprint-note".

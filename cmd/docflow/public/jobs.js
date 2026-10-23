@@ -1,7 +1,8 @@
-// A person's page: print a document to a node they may send to, and see
-// their jobs and their groups' (an administrator: every job), through the
-// API with the session's cookie.
+// A person's page: print a document to a source they may send to (the
+// role topology: to any node), and see their jobs and their groups' (an
+// administrator: every job), through the API with the session's cookie.
 
+import { KINDS } from "./admin.js";
 import { _, locale } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
@@ -35,7 +36,6 @@ function el(tag, text, attrs = {}) {
   return e;
 }
 
-const KINDS = { upload: _("Uploader"), queue: _("Queue"), class: _("Class"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer") };
 const ENDED = ["completed", "canceled", "aborted"];
 const STATES = { processing: _("processing"), held: _("held"), completed: _("completed"), canceled: _("canceled"), aborted: _("aborted") };
 
@@ -65,10 +65,26 @@ function stateBadge(state) {
   return el("span", STATES[state] || state, { className: "badge whitespace-nowrap " + cls, title: state });
 }
 
+// loadDestinations lists the sources, where documents come into the
+// topology; with the role topology, every other node after them, apart.
 async function loadDestinations() {
   const ds = await api("GET", "/api/destinations");
   const chosen = $("print-dest").value;
-  $("print-dest").replaceChildren(...ds.map((d) => el("option", (d.title && d.title !== d.name ? d.title + " · " : "") + _("{name} ({kind})", { name: d.name, kind: KINDS[d.kind] || d.kind }), { value: d.name, selected: d.name === chosen })));
+  const option = (d) => el("option", (d.title && d.title !== d.name ? d.title + " · " : "") + _("{name} ({kind})", { name: d.name, kind: KINDS[d.kind] || d.kind }), { value: d.name, selected: d.name === chosen });
+  const group = (label, list) => {
+    const g = el("optgroup", undefined, { label });
+    g.append(...list.map(option));
+    return g;
+  };
+  const sources = ds.filter((d) => d.source);
+  const others = ds.filter((d) => !d.source);
+  if (!ds.length) {
+    $("print-dest").replaceChildren(el("option", _("No source you may send to"), { value: "", disabled: true, selected: true }));
+  } else if (!others.length) {
+    $("print-dest").replaceChildren(...sources.map(option));
+  } else {
+    $("print-dest").replaceChildren(...(sources.length ? [group(_("Sources"), sources)] : []), group(_("Other nodes, to try them out (the role topology)"), others));
+  }
 }
 
 async function loadJobs() {

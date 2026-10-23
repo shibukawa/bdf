@@ -295,7 +295,7 @@ func TestDownload(t *testing.T) {
 	e.node("mine", Node{Kind: KindDownload}, http.StatusOK)
 	e.node("dept", Node{Kind: KindDownload, By: "dept", Subject: SubjectGroup}, http.StatusOK)
 	e.node("vault2", Node{Kind: KindArchive, Store: store2, To: []string{"mine", "dept"}}, http.StatusOK)
-	e.node("in2", Node{Kind: KindQueue, To: []string{"vault2"}}, http.StatusOK)
+	e.node("in2", Node{Kind: KindUpload, To: []string{"vault2"}}, http.StatusOK)
 	if res, out := e.as("alice", "POST", "/api/destinations/in2/jobs?name=alices&meta.dept=warehouse-b", doc); res.StatusCode != http.StatusCreated {
 		t.Fatalf("alice sends: %d %s", res.StatusCode, out)
 	}

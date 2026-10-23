@@ -256,6 +256,7 @@ export default {
   "Print": "印刷",
   "Job #{n} is {state}": "ジョブ #{n} は{state}です",
   "You may not print here.": "ここには印刷できません。",
+  "Documents come in at a source: print at an uploader or a CUPS server.": "文書はソースから入ります。アップローダーか CUPS サーバーで印刷してください。",
   "Jobs here ({n})": "ここのジョブ（{n}）",
   "None of yours.": "自分のものはありません。",
   "Document": "文書",
@@ -502,6 +503,9 @@ export default {
   "Send the document again, to {node} (hold Shift: to the node chosen above)": "文書をもう一度 {node} に送ります（Shift を押しながらなら、上で選んだノードへ）",
   "Job #{n} is {state} (a reprint of #{of} at {node})": "ジョブ #{n} は{state}です（#{of} を {node} で再印刷）",
   "No jobs yet": "ジョブはまだありません",
+  "No source you may send to": "送れるソースがありません",
+  "Sources": "ソース",
+  "Other nodes, to try them out (the role topology)": "ほかのノード（動作確認用、役割 topology）",
 
   // admin-jobs.js
   "All jobs": "すべてのジョブ",

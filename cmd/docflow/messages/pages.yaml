@@ -137,8 +137,8 @@ jobs-print-heading:
     ja: "文書を印刷する"
 jobs-print-note:
   locales:
-    en: "PDF, Office documents, images and .bdf. It flows from the node chosen; the nodes listed are those you may send to."
-    ja: "PDF、Office 文書、画像、.bdf。選んだノードから流れます。並ぶのは自分が送れるノードです。"
+    en: "PDF, Office documents, images and .bdf. It comes into the topology at the source chosen and flows from there; the sources listed are those you may send to (with the role topology, every node, to try it out)."
+    ja: "PDF、Office 文書、画像、.bdf。選んだソースからトポロジーに入り、そこから流れます。並ぶのは自分が送れるソースです（役割 topology なら、動作確認用にすべてのノード）。"
 jobs-name-placeholder:
   locales:
     en: "job name (the file's)"
@@ -157,8 +157,8 @@ jobs-mine:
     ja: "自分のジョブと自分のグループのジョブ"
 jobs-reprint-note:
   locales:
-    en: "Reprint sends the document again as a new job of yours, to the node it went to, or to another you may send to."
-    ja: "再印刷は、文書をもう一度、自分の新しいジョブとして、元のノードか、送れるほかのノードに送ります。"
+    en: "Reprint sends the document again as a new job of yours, to the node it went to, or to a source you may send to."
+    ja: "再印刷は、文書をもう一度、自分の新しいジョブとして、元のノードか、送れるソースに送ります。"
 
 # The administrator's tabs.
 tab-apps:
