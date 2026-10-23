@@ -1,0 +1,152 @@
+id: requirement:docflow-api-layout
+type: requirement
+title: Docflow の外から呼ばれるものを 1 つの API サーバーにまとめ、/api/<種類>/<名前> に並べる。インボックスの承認も REST API でできる
+summary: >-
+  2026-10-23 利用者の依頼。外からアクセスされるものはすべて単一の API サーバーにし、エンドポイントの別ポートは削除する。データ種（ノードの種類）を
+  ルートに、その下に名前を置く：/api/upload/<名前>（アップローダー。エンドポイントから改名）、/api/inbox/<名前>（インボックス）、
+  /api/download/<名前>（ダウンローダー。HTTP (pull) から改名）。インボックスは許可（承認）が要るので、画面だけでなく REST API で
+  候補の一覧、サムネイルのダウンロード、決定ができること。同日、問い 2 つに利用者が答え（open_questions）、ブランチ
+  claude/docflow-api-restructure-09393f に実装した（facts.implementation）。
+lifecycle: active
+authority: authored
+aliases:
+- アップローダー
+- uploader
+- ダウンローダー
+- downloader
+- インボックスの API
+- inbox API
+- 承認
+- approval
+- /api/upload
+- /api/inbox
+- /api/download
+- 単一の API サーバー
+constraints:
+- 外から呼ぶ REST はすべて管理者の 1 つのサーバー（pw のポート）の /api の下。ノードに届く道は /api/<kind>/<name>（NodePath）。キー付きの入口（upload、s3-trigger）は POST /api/<kind>/<name>、インボックスは /api/inbox/<name>、ダウンローダーは /api/download/<name>
+- アップローダーは自分のポートを持たない（PUT で port を渡しても捨てる）。自分のポートを持つのは IPP の入口（CUPS サーバー）だけ（AirPrint・Bonjour のため）
+- kind の ID も変える：endpoint → upload、export → download。アプリのスコープ export → download。古い ID・パス（/in、/out、/api/inboxes、/api/items）との互換は持たない
+- インボックスを扱えるのは、ロール topology（すべて）、インボックスの apps に挙がりスコープ inbox を持つアプリ、インボックスの scope の人（group ならメンバー、personal なら持ち主）。人のトークン（公開クライアント）はスコープ inbox があるときだけ
+- topology 以外が送り出せるのはインボックスの to だけ。to を挙げないインボックスはロール topology だけが送り出す
+- サムネイルとページは .bdf の文書のものだけ。受け取ったままのファイルやデータの項目は文書のダウンロードだけ
+- 画面の文は英語と日本語（_() と ja.js、pages.yaml）。マニュアルも両方で、節の ID をそろえる
+non_goals:
+- CUPS サーバーの IPP を /ipp/print 以外で管理者のポートに寄せること（自分のポートと Bonjour は今のまま）
+- 古い kind の ID・パスを読み替える移行（利用者が互換なしを選んだ）
+- 受け取ったままのファイル（PDF など）のサムネイルを、その場で変換して作ること（重い文書で遅く、キャッシュも要る）
+- インボックスの承認を多段・多人数の合議にすること（1 人・1 アプリの決定で送り出すか破棄する、今のまま）
+capabilities:
+  single-api-server:
+    state: implemented
+    about: capability:docflow/api-node-paths
+    evidence: {path: docflow/http.go, locator: 'APIPath・NodePath、Handler の「the nodes reached from outside」（keyed な種類ごとの POST、inbox・download の経路）'}
+  uploader-no-port:
+    state: implemented
+    about: capability:docflow/uploader-no-port
+    evidence: {path: docflow/kinds_core.go, locator: 'checkEntry の ServesPort（Kind.Serve を持つ種類だけ port を残す）、ports.go の PortHandler'}
+  kind-rename:
+    state: implemented
+    about: capability:docflow/kind-upload-download
+    evidence: {path: docflow/model.go, locator: 'KindUpload = "upload"、KindDownload = "download"、kinds_core.go の Title（Uploader、Downloader）'}
+  inbox-api:
+    state: implemented
+    about: capability:docflow/inbox-api
+    evidence: {path: docflow/inboxapi.go, locator: 'listInboxes・inbox（ETag）・getItem・itemThumbnail・itemPage・itemDocument・release・discardItem'}
+  inbox-workers:
+    state: implemented
+    about: capability:docflow/inbox-workers
+    evidence: {path: docflow/inboxapi.go, locator: 'Viewer.mayWork、release の「names no nodes」'}
+  inbox-openapi:
+    state: implemented
+    about: capability:docflow/openapi-inbox
+    evidence: {path: docflow/openapi.go, locator: 'apiDoc.inbox・apiDoc.inboxes、shows の KindInbox'}
+  inbox-page:
+    state: implemented
+    about: capability:docflow/inbox-page
+    evidence: {path: cmd/docflow/public/inboxes.js, locator: 'GET /api/inbox、サムネイル、topology でない人の送り出し'}
+acceptance:
+  a1-upload:
+    text: アップローダーに POST /api/upload/<名前> でキー（またはアプリのトークン）付きで送るとジョブが入る。/in/<名前> はもう無い。S3 トリガーは POST /api/s3-trigger/<名前>
+    verified_by: [docflow-tests, app-browser]
+  a2-no-port:
+    text: アップローダーに port を渡して保存しても port は残らず、プロセスはそのポートで待たない。CUPS サーバーのポートは今のまま開く
+    verified_by: [docflow-tests, handlers-tests]
+  a3-inbox-list:
+    text: GET /api/inbox がその人・アプリが扱うインボックスだけを返す（topology は全部、グループのメンバーはそのグループの分、挙げられたアプリはその分、それ以外は空）
+    verified_by: [docflow-tests, app-browser]
+  a4-inbox-candidates:
+    text: GET /api/inbox/<名前> が留まっている項目（古い順）と送り出し先（to）を返し、同じ ETag なら 304
+    verified_by: [docflow-tests, app-browser]
+  a5-thumbnail:
+    text: GET /api/inbox/<名前>/<ジョブ番号>/thumbnail が 1 ページ目の PNG（既定は長い辺 256 の全体、mode=crop で上の正方形）を返す。pages/<n>.png と document も返す
+    verified_by: [docflow-tests, app-browser]
+  a6-decision:
+    text: POST …/release（to と worker）と …/discard でアプリとメンバーが決められる。to 以外へは 400、2 度目は 409、扱わない人は 403、to の無いインボックスは topology 以外 403。監査に誰が決めたかが残る
+    verified_by: [docflow-tests, app-browser]
+  a7-pages:
+    text: /inboxes をインボックスを扱う人が開ける（バーに出る）。/admin/inboxes は /inboxes へ。エディタのパレットと使い方タブがアップローダー・ダウンローダーと新しいパスを示す
+    verified_by: [handlers-tests, app-browser]
+verification:
+  docflow-tests:
+    state: passed
+    method: integration
+    test: go test ./docflow/...（TestInboxAPI が一覧・権限・サムネイル・ページ・文書・決定・OpenAPI を、TestPortHandler がアップローダーのポートの無さを確かめる）
+    authority: observed
+    evidence: {path: docflow/inboxapi_test.go, locator: TestInboxAPI}
+  handlers-tests:
+    state: passed
+    method: integration
+    test: go test ./cmd/docflow/...（TestPorts、TestLogin の /inboxes とバー、public_test の ja.js）
+    authority: observed
+  app-browser:
+    state: passed
+    method: manual
+    test: >-
+      pw dev（in-app のブラウザ、Ada Admin と Mina Member）で、upload intake → inbox review（group warehouse-a、apps approver）→ display wh-a を作り、
+      POST /api/upload/intake で画像を送る。/inboxes にサムネイル付きで出る。アプリ approver のトークンで GET /api/inbox、ETag で 304、thumbnail 141×200、
+      to 以外への release が 400、release が 200、OpenAPI に inbox の 8 経路。Mina のバーにインボックスが出て、送り出せる
+    authority: observed
+open_questions:
+  kind-ids:
+    text: kind の ID も変えるか（パスを /api/<kind>/<name> の規則にそろえるか）。(a) 変えて古いものを読み替える、(b) 変えて互換なし、(c) 表示名とパスだけ
+    state: answered
+    resolution: 2026-10-23 利用者「ID も変える、互換なし」（b）
+  inbox-workers:
+    text: インボックスを API と画面で扱えるのは誰か。(a) アプリ（スコープ inbox）と topology、(b) それに加えてインボックスのグループ
+    state: answered
+    resolution: >-
+      2026-10-23 利用者「インボックスのグループも」（b）。shared のインボックスは topology だけ、topology 以外は to へだけ送り出せる、の 2 つは Claude の暫定
+  s3-trigger-path:
+    text: S3 トリガーのパス。/api/upload/<名前> に入れるか、規則どおり /api/s3-trigger/<名前> にするか
+    state: answered
+    resolution: 暫定（Claude）：規則どおり /api/s3-trigger/<名前>。キー付きの入口は kind ごとに POST を登録する
+  cups-ports:
+    text: 「外からのものは全て単一の API サーバー」に CUPS サーバーの IPP ポートも含めるか
+    state: answered
+    resolution: 暫定（Claude）：含めない。利用者が削除と言ったのはエンドポイントのポートで、CUPS の IPP は API でなく、AirPrint・Bonjour が自分のポートを要る
+relations:
+- relation: refines
+  to: requirement:docflow
+- relation: related_to
+  to: requirement:print-manager-export
+facts:
+  request:
+    text: >-
+      2026-10-23 利用者「docflowのAPIサーバー体系を作り直したい。外からアクセスがあるようなものは、全て単一のAPIサーバーとしたい。今のエンドポイントに
+      別ポートサポートがあるが、それは削除で。基本的にデータ種をルートに、その下に名前があるようにしたい。/api/upload/[name]: アップローダー(エンドポイント
+      から名前を変える) /api/inbox/[name]: インボックス /api/download/[name]: ダウンローダー(HTTP(pull)から名前変更) inboxは許可を出さないといけないが、
+      今の画面だけではなく、REST APIでそれが行えるように候補のリストを返す、サムネイルのダウンロード、決定などがAPIでできる必要がある」
+  implementation:
+    branch: claude/docflow-api-restructure-09393f（2026-10-23）
+    server: >-
+      docflow/endpoint.go → upload.go（keyedNode・KeyedNode、serveIn(kind)）、export.go → download.go（DownloadEntry、download-entries・download-lists の集まり）、
+      新しい inboxapi.go。主体の種類 endpoint → key（Via node-key）、Source は入口の kind。TopoNode.In → API
+    pages: >-
+      /inboxes（Account.Inboxes でバーに出す）、pages.pw.html のパレット（kind-upload・kind-download）、topology.js（使い方タブのインボックスの API、
+      アップローダーの port 欄を削除、インボックスの apps 欄）、apps.js のスコープ download・inbox
+    docs: help の exports.md → downloads.md、inboxes.md に #workers と #api、api.md に #nodes、nodes.md の #upload・#download。README
+history:
+  implemented:
+    summary: >-
+      2026-10-23 利用者の依頼（facts.request）を受け、問い 2 つ（kind の ID、インボックスを扱う人）に答えをもらって同じ日に実装した。
+      S3 トリガーのパスと CUPS のポートは Claude の暫定

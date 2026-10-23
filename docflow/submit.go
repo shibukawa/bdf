@@ -28,7 +28,8 @@ type Input struct {
 	By *Principal
 	// ClaimedUser is who the sender says sent it (requesting-user-name).
 	ClaimedUser string
-	// Source is "ipp", "api", "endpoint" or "reprint".
+	// Source is "ipp", "api", the kind of the keyed entry it came in at
+	// ("upload", "s3-trigger") or "reprint".
 	Source string
 	// Doc is what was sent, of Size bytes: .bdf, data, or what the
 	// converter reads.
@@ -70,9 +71,10 @@ func (m *Manager) Submit(ctx context.Context, dest string, in Input) (*Job, erro
 		accept = AcceptData
 	case n.Kind == KindConvert:
 		output = OutputFile
-	case n.Kind == KindExport:
-		// an export lists what an archive wrote: a job sent to it has none
-		return nil, fmt.Errorf("%w: %s is an export, which lists what an archive before it wrote: send to an entry", ErrInvalid, dest)
+	case n.Kind == KindDownload:
+		// a downloader lists what an inbox or an archive keeps: a job sent
+		// to it has none
+		return nil, fmt.Errorf("%w: %s is a downloader, which lists what an inbox or an archive before it keeps: send to an entry", ErrInvalid, dest)
 	}
 	claimed, err := claimedMeta(in.Meta)
 	if err != nil {

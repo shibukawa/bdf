@@ -13,13 +13,13 @@ import (
 // keys an archive names them by (archiveKey). An archive writes the trace
 // into its record (ArchiveRecord.Trace), so that from either object the
 // other is found by its name in the archive it went to; the manager does
-// not look for it, nor know whether it was written. Rules and exports see
+// not look for it, nor know whether it was written. Rules and downloaders see
 // the trace as $trace, $trace_role, $trace_node, $trace_peer and
 // $fingerprints (metaView).
 //
 // A trace goes with the payload until the next template or convert node
 // makes one of its own, through queues, filters, classes, inboxes and an
-// archive (on to an export after it). The new one keeps the fingerprints
+// archive (on to a downloader after it). The new one keeps the fingerprints
 // of the old (Fingerprints): every step the payload's lineage went
 // through, so that two objects many steps apart (a PDF received, and the
 // stamped .bdf made of the .bdf made of it) share a step's id. The other

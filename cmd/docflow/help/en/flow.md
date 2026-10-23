@@ -11,14 +11,14 @@ What flows along an edge is of one of four kinds:
 | `bdf` | a `.bdf` document: what printers, displays and the pages show | blue |
 | `data` | data for a template: JSON, YAML, CSV, an Excel workbook or a Parquet file | green |
 | `any` | any other file as it was received — a PDF, an Office document, a picture — for a convert node or an archive | amber |
-| `stocked` | a stocked file, of any format: what an inbox holds or an archive wrote, read from there by an [HTTP (pull)](exports.md) node, which takes nothing else. Where it is kept is where it comes from and how long it is there: an inbox's while it holds the job, an archive's for good | cyan |
+| `stocked` | a stocked file, of any format: what an inbox holds or an archive wrote, read from there by a [downloader](downloads.md), which takes nothing else. Where it is kept is where it comes from and how long it is there: an inbox's while it holds the job, an archive's for good | cyan |
 
 What a node sends on:
 
-- an entry (an endpoint, a CUPS server) sends what its settings say: with `accept: data`, data; with `output: file`, the file as received; else the `.bdf` made of the document (the default);
+- an entry (an uploader, a CUPS server) sends what its settings say: with `accept: data`, data; with `output: file`, the file as received; else the `.bdf` made of the document (the default);
 - a template node and a convert node send the `.bdf` they made, and along `original` what reached them, as it was;
 - a display sends what its fallback printer prints, `.bdf`;
-- an inbox and an archive send a stocked file to the HTTP (pull) nodes of their `to`, and what reached them to the others;
+- an inbox and an archive send a stocked file to the downloaders of their `to`, and what reached them to the others;
 - every other node sends on what reached it.
 
 What a node takes: a printer and a display take `bdf` only; a template node takes `data` only; every other node takes anything. What may be sent to a node now is narrower: what it takes, within what every node after it takes. A queue in front of a printer takes `.bdf` alone, as it would carry nothing else that the printer could print; a queue, a class, a filter or an inbox with no edge yet takes the kind of its first edge, on either side. The canvas colors the ports and the edges by these kinds — blue `bdf`, green `data`, amber `any`, purple several — and draws a port not typed yet hollow and dashed.
@@ -51,15 +51,15 @@ Both sides go on with a `trace` of the step:
 | `source`, `output` | both payloads — `payload`, `kind`, `format`, `name`, `sha256` — with the `key` and the `object` an archive names each by (`<received day>.<job id>.<sha256 head>`; the record is `<key>.json`) |
 | `fingerprints` | every step of the payload's lineage, oldest first: `id`, `node`, `role` |
 
-An archive writes the trace into its record, and an export into its entries, so that from either object the other is found by its name in the archive it went to. The manager does not look for it, nor know whether it was written. The trace goes with the payload through queues, filters, classes, inboxes and an archive, until the next template or convert node, whose trace keeps the fingerprints of the old: two objects many steps apart — a PDF received, and the stamped `.bdf` made of the `.bdf` made of it — are matched by the step ids their fingerprints have in common. Both sides are of the same job, so an export after each archive lists them under the same job number.
+An archive writes the trace into its record, and a downloader into its entries, so that from either object the other is found by its name in the archive it went to. The manager does not look for it, nor know whether it was written. The trace goes with the payload through queues, filters, classes, inboxes and an archive, until the next template or convert node, whose trace keeps the fingerprints of the old: two objects many steps apart — a PDF received, and the stamped `.bdf` made of the `.bdf` made of it — are matched by the step ids their fingerprints have in common. Both sides are of the same job, so a downloader after each archive lists them under the same job number.
 
 ## Metadata {#metadata}
 
 Metadata goes with a job through the topology. It comes from three sources, each key once, the later winning:
 
-1. **The sender's.** `X-Meta-<Key>` headers (the key in lower case) and `?meta.<key>=` parameters of a request to an endpoint or to the API, and the JSON object in the part `meta` of its `multipart/form-data` body ([Endpoints](entries.md#endpoints)), and the job attributes of an IPP request as `ipp.<name>` (`ipp.media`, `ipp.copies`, `ipp.job-name` …). These are claims: a filter routes by them and a template node picks its template by them, as the administrator set up; nothing is authorized by them.
-2. **The entry's.** The `meta` of the endpoint or the CUPS server the job came in at.
-3. **The manager's**, under keys that start with `$`, which a sender cannot write: `$job` (the number), `$received` (when), `$entry` (the node the job was sent to), `$source` (the way it came in), `$sender` and `$sender_kind` (who, as verified: a person, an app, a token, an endpoint, anonymous), `$file` (the job's name).
+1. **The sender's.** `X-Meta-<Key>` headers (the key in lower case) and `?meta.<key>=` parameters of a request to an uploader or to the API, and the JSON object in the part `meta` of its `multipart/form-data` body ([Uploaders](entries.md#uploaders)), and the job attributes of an IPP request as `ipp.<name>` (`ipp.media`, `ipp.copies`, `ipp.job-name` …). These are claims: a filter routes by them and a template node picks its template by them, as the administrator set up; nothing is authorized by them.
+2. **The entry's.** The `meta` of the uploader or the CUPS server the job came in at.
+3. **The manager's**, under keys that start with `$`, which a sender cannot write: `$job` (the number), `$received` (when), `$entry` (the node the job was sent to), `$source` (the way it came in), `$sender` and `$sender_kind` (who, as verified: `user` a person, `app` an app, `token` a token, `key` the key of an uploader or an S3 trigger, `anonymous`), `$file` (the job's name).
 
 A key is letters, digits, `_`, `.`, `-` and `/`, up to 64 characters; a job has at most 64 keys and 16 KiB of metadata. The Jobs pages show a job's metadata when hovering its name, and an archive's record keeps it.
 
@@ -67,7 +67,7 @@ At a node, a filter's rules and a template node's `template_from` see the job's 
 
 ### What goes on to the printer {#ipp-attributes}
 
-A few keys go on to the printer as the IPP attributes of the same names, when a printer node prints the job: `ipp.job-account-id` and `ipp.job-accounting-user-id` (the account the print is charged to, PWG 5100.7), `ipp.document-metadata` (`key=value` strings with Dublin Core's keys or keys that begin with `x-`, PWG 5100.13) and `ipp.x-…` (attributes of one's own). An IPP request's own attributes give them, or the metadata of a request to an endpoint or the API: `?meta.ipp.job-account-id=sales`. A value the attribute does not take is left out; whether the printer uses the rest is the printer's.
+A few keys go on to the printer as the IPP attributes of the same names, when a printer node prints the job: `ipp.job-account-id` and `ipp.job-accounting-user-id` (the account the print is charged to, PWG 5100.7), `ipp.document-metadata` (`key=value` strings with Dublin Core's keys or keys that begin with `x-`, PWG 5100.13) and `ipp.x-…` (attributes of one's own). An IPP request's own attributes give them, or the metadata of a request to an uploader or the API: `?meta.ipp.job-account-id=sales`. A value the attribute does not take is left out; whether the printer uses the rest is the printer's.
 
 ## Rules of a filter {#rules}
 

@@ -10,7 +10,7 @@ import (
 )
 
 // A sink keeps the latest documents that reach it, to look at on the
-// topology: what an endpoint or a queue sends, seen without a printer or
+// topology: what an uploader or a queue sends, seen without a printer or
 // a device. It keeps the last Latest jobs (their documents stay while a
 // sink keeps them); an older one is let go when a newer comes.
 

@@ -17,7 +17,7 @@ import (
 
 // The kinds of node are registered, as the drivers of database/sql are:
 // the core's (queues, classes, filters, inboxes, archives, template and
-// convert nodes, displays, sinks, exports and endpoints) by this package,
+// convert nodes, displays, sinks, downloaders and uploaders) by this package,
 // and the inputs and outputs by the packages of docflow/io, in their init
 // (docflow/io/ipp: printers, and CUPS servers, the one entry of IPP, also
 // at /ipp/print). A program imports the ones it serves. The engine knows a
@@ -56,7 +56,7 @@ type Kind struct {
 	PassesOn bool
 	// Stocks tells a kind that keeps what reaches it (an inbox while it
 	// holds the job, an archive for good): along its To, to a node that
-	// takes a stocked file (HTTP (pull)), it sends that, read from where
+	// takes a stocked file (a downloader), it sends that, read from where
 	// it keeps it, and what reaches it along the others.
 	Stocks bool
 	// Makes is the kind of payload it sends on whatever reaches it (a
@@ -84,15 +84,18 @@ type Kind struct {
 	// least once and tried again after a failure (Final: never again).
 	// It returns what to record of the send (the printer's job id).
 	Send func(ctx context.Context, o *Out) (result string, err error)
-	// Serve serves a node of an entry on its own port (Node.Port).
+	// Serve serves a node of an entry on its own port (Node.Port): a
+	// protocol of its own, as a CUPS server's IPP is; what applications
+	// call is at the API (/api/<kind>/<name>), on the manager's server.
 	Serve func(m *Manager, n *Node) http.Handler
 	// Step is the step of a node of the kind (a render or a notify
 	// node): a job that reaches the node becomes a delivery, done in the
 	// background at least once as Send is, and the job goes on from the
 	// node's To with what Step made, or, with nil, with what reached it.
 	Step func(ctx context.Context, o *Out) (*Made, error)
-	// Keyed gives a node of an entry a key, as an endpoint has: POST
-	// /in/<name> with it sends to the node (an S3 Trigger).
+	// Keyed gives a node of an entry a key, as an uploader has: POST
+	// /api/<kind>/<name> with it sends to the node (an S3 Trigger's
+	// /api/s3-trigger/<name>).
 	Keyed bool
 	// Fetch takes what a request to a keyed entry carries, a reference
 	// (an S3 event), and reads the document it names; none, the body is
@@ -201,20 +204,17 @@ func (n *Node) takesApp(id string) bool {
 }
 
 // ServesPort tells a kind whose node listens on a port of its own
-// (Node.Port, PortHandler): an endpoint, and an entry of an adapter that
-// serves one (Kind.Serve: a CUPS server).
+// (Node.Port, PortHandler): an entry of an adapter that serves one
+// (Kind.Serve: a CUPS server).
 func ServesPort(kind string) bool {
-	if kind == KindEndpoint {
-		return true
-	}
 	k := kindNamed(kind)
 	return k != nil && k.Serve != nil
 }
 
 // keyed tells a kind of entry whose node has a key that sends to it at
-// POST /in/<name>: an endpoint, and a keyed entry of an adapter.
+// POST /api/<kind>/<name>: an uploader, and a keyed entry of an adapter.
 func keyed(kind string) bool {
-	if kind == KindEndpoint {
+	if kind == KindUpload {
 		return true
 	}
 	k := kindNamed(kind)
@@ -465,14 +465,14 @@ func (m *Manager) Options() Options { return m.o }
 func (m *Manager) Now() time.Time { return m.now() }
 
 // Sender finds who sends a job with a request (an ingress's, an entry's
-// port's): the admin token, a submit token, an app, or, with no
+// port's: a CUPS server's IPP): the admin token, a submit token, an app, or, with no
 // SubmitTokens, anyone. ok is false for credentials not known, or none
 // where some are required.
 func (m *Manager) Sender(r *http.Request) (by *Principal, ok bool) {
 	return (&handler{m: m}).submitter(r)
 }
 
-// MaySend refuses an app a destination its endpoints do not let it send
+// MaySend refuses an app a destination whose entry does not let it send
 // to; anyone else may.
 func (m *Manager) MaySend(ctx context.Context, r *http.Request, dest string) error {
 	if v, ok := (&handler{m: m}).viewerOf(r); ok && v.Kind == PrincipalApp {
@@ -515,11 +515,12 @@ type KindInfo struct {
 	Fixed    bool     `json:"fixed,omitempty"`
 	// SendsOut tells an exit whose jobs are sent out of the topology
 	// (Kind.Send: a printer); Port an entry that listens on a port of
-	// its own (an endpoint, a CUPS server).
+	// its own (a CUPS server).
 	SendsOut bool `json:"sends_out,omitempty"`
 	Port     bool `json:"port,omitempty"`
 	// Step tells a kind whose step is done in the background (render,
-	// notify); Keyed an entry with a key of its own at /in/<name>.
+	// notify); Keyed an entry with a key of its own, at
+	// /api/<kind>/<name>.
 	Step  bool `json:"step,omitempty"`
 	Keyed bool `json:"keyed,omitempty"`
 	// Discovers tells a kind whose far side is asked what is there

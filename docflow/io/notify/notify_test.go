@@ -28,7 +28,7 @@ func TestOnError(t *testing.T) {
 	e.Put(docflow.Node{Name: "log", Kind: "http", URL: log.URL},
 		docflow.Node{Name: "alert", Kind: notify.KindNotify, Via: notify.ViaSlack, Credential: "slack-ops", To: []string{"log"}},
 		docflow.Node{Name: "erp", Kind: "http", URL: refuse.URL, OnError: []string{"alert"}},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"erp"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"erp"}})
 	doc := flowtest.Doc(t, 1)
 	j := e.Submit("in", "order.bdf", doc, nil)
 	e.Tick()
@@ -72,7 +72,7 @@ func TestOnErrorDefault(t *testing.T) {
 		docflow.Node{Name: "broken", Kind: notify.KindNotify, Via: notify.ViaHTTP, URL: refuse.URL},
 		docflow.Node{Name: "erp", Kind: "http", URL: refuse.URL},
 		docflow.Node{Name: "crm", Kind: "http", URL: refuse.URL, OnError: []string{"broken"}},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"erp", "crm"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"erp", "crm"}})
 	j := e.Submit("in", "x", flowtest.Doc(t, 1), map[string]any{"customer": "acme"})
 	e.Tick()
 	got := hook.Got()
@@ -96,7 +96,7 @@ func TestOnErrorDefault(t *testing.T) {
 	}
 
 	plain := flowtest.New(t, nil)
-	plain.Put(docflow.Node{Name: "erp", Kind: "http", URL: refuse.URL}, docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"erp"}})
+	plain.Put(docflow.Node{Name: "erp", Kind: "http", URL: refuse.URL}, docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"erp"}})
 	j = plain.Submit("in", "x", flowtest.Doc(t, 1), nil)
 	plain.Tick()
 	if job := plain.Job(j.Number); job.State != docflow.JobAborted || len(job.Legs) != 2 {
@@ -113,7 +113,7 @@ func TestNotifyRefused(t *testing.T) {
 	e.Put(docflow.Node{Name: "seen", Kind: docflow.KindSink},
 		docflow.Node{Name: "alert", Kind: notify.KindNotify, Via: notify.ViaSlack, Credential: "slack-ops"},
 		docflow.Node{Name: "check", Kind: docflow.KindAssert, To: []string{"seen"}, OnError: []string{"alert"}, Checks: []docflow.Check{{Key: "doc-type"}}},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"check"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"check"}})
 	doc := flowtest.Doc(t, 1)
 	_, err := e.M().Submit(context.Background(), "in", docflow.Input{Name: "order.bdf", Source: "api", Doc: bytes.NewReader(doc), Size: int64(len(doc))})
 	var ref *docflow.Refusal
@@ -143,7 +143,7 @@ func TestNotifyPasses(t *testing.T) {
 	e := flowtest.New(t, nil)
 	e.Put(docflow.Node{Name: "out", Kind: "http", URL: out.URL},
 		docflow.Node{Name: "told", Kind: notify.KindNotify, Via: notify.ViaSlack, Credential: "slack", To: []string{"out"}},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, Accept: docflow.AcceptData, To: []string{"told"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, Accept: docflow.AcceptData, To: []string{"told"}})
 	j := e.Submit("in", "rows.json", []byte(`{"a": 1}`), nil)
 	e.Tick()
 	var msg struct{ Text string }
@@ -170,7 +170,7 @@ func TestOnErrorTyped(t *testing.T) {
 	e.Put(docflow.Node{Name: "out", Kind: "http", URL: hook.URL},
 		docflow.Node{Name: "pdf", Kind: "render", To: []string{"out"}},
 		docflow.Node{Name: "erp", Kind: "http", URL: hook.URL},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, Accept: docflow.AcceptData, To: []string{"erp"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, Accept: docflow.AcceptData, To: []string{"erp"}})
 	ctx := context.Background()
 	_, err := e.M().PutNode(ctx, docflow.Node{Name: "erp", Kind: "http", URL: hook.URL, OnError: []string{"pdf"}})
 	if !errors.Is(err, docflow.ErrInvalid) || !strings.Contains(err.Error(), "in → erp → pdf") {
@@ -197,7 +197,7 @@ func TestNotifyMail(t *testing.T) {
 	e := flowtest.New(t, nil)
 	e.Put(docflow.Node{Name: "mail", Kind: notify.KindNotify, Via: notify.ViaMail, URL: "smtp://" + srv.Addr, From: "docflow@example.com", Recipients: []string{"ops@example.com"}},
 		docflow.Node{Name: "erp", Kind: "http", URL: refuse.URL, OnError: []string{"mail"}},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"erp"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"erp"}})
 	j := e.Submit("in", "x", flowtest.Doc(t, 1), nil)
 	e.Tick()
 	mails := srv.Mails()

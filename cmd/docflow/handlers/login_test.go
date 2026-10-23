@@ -161,6 +161,7 @@ func TestLogin(t *testing.T) {
 	}
 	// the settings, and jobs of the WMS (a submit token) to each warehouse
 	api("PUT", "/api/nodes/wh-a", docflow.Node{Kind: docflow.KindDisplay, Title: "Warehouse A", Scope: docflow.ScopeGroup, Owner: "warehouse-a"}, "t", http.StatusOK)
+	api("PUT", "/api/nodes/review-a", docflow.Node{Kind: docflow.KindInbox, To: []string{"wh-a"}, Scope: docflow.ScopeGroup, Owner: "warehouse-a"}, "t", http.StatusOK)
 	api("PUT", "/api/nodes/wh-b", docflow.Node{Kind: docflow.KindDisplay, Title: "Warehouse B", Scope: docflow.ScopeGroup, Owner: "warehouse-b"}, "t", http.StatusOK)
 	api("PUT", "/api/nodes/office", docflow.Node{Kind: docflow.KindDisplay, Title: "Office"}, "t", http.StatusOK)
 	api("POST", "/api/destinations/wh-a/jobs?name=picking-a&user=sato", doc(t), "wms:s3cret", http.StatusCreated)
@@ -256,6 +257,22 @@ func TestLogin(t *testing.T) {
 		t.Errorf("root's /topology: %d, no editor", code)
 	}
 
+	// the inboxes are the page of whoever works one: alice works her
+	// group's (the bar links it), bob none, root every one (the admin's
+	// tabs link it)
+	for who, b := range map[string]*browser{"alice": alice, "bob": bob, "root": root} {
+		code, body := b.get("/inboxes")
+		if code != http.StatusOK || !strings.Contains(body, "/public/inboxes.js") {
+			t.Errorf("%s's /inboxes: %d", who, code)
+		}
+		if _, bar := b.get("/jobs"); strings.Contains(bar, `href="/inboxes"`) != (who == "alice") {
+			t.Errorf("%s's bar links the inboxes: %v", who, !strings.Contains(bar, `href="/inboxes"`))
+		}
+	}
+	if code, body := alice.get("/api/inbox"); code != http.StatusOK || !strings.Contains(body, `"name":"review-a"`) {
+		t.Errorf("alice's inboxes: %d %s", code, body)
+	}
+
 	// /admin and /audit: the admins (by email, by a group of a nested
 	// claim), 403 for others
 	lead := s.login("lead")
@@ -264,7 +281,7 @@ func TestLogin(t *testing.T) {
 		if who == "root" || who == "lead" {
 			want = http.StatusOK
 		}
-		for path, script := range map[string]string{"/admin": "/public/topology.js", "/admin/inboxes": "/public/inboxes.js", "/admin/jobs": "/public/admin-jobs.js",
+		for path, script := range map[string]string{"/admin": "/public/topology.js", "/admin/jobs": "/public/admin-jobs.js",
 			"/admin/deliveries": "/public/deliveries.js", "/admin/apps": "/public/apps.js", "/audit": "/public/audit.js"} {
 			code, body := b.get(path)
 			if code != want {
@@ -438,7 +455,7 @@ func TestOAuthAuthorize(t *testing.T) {
 			t.Fatalf("%s %s: %d %s; want %d", method, path, res.StatusCode, out, status)
 		}
 	}
-	api("PUT", "/api/apps/portal", docflow.App{Public: true, Scopes: []string{docflow.ScopeExport}, RedirectURIs: []string{"https://portal.example/cb"}}, http.StatusOK)
+	api("PUT", "/api/apps/portal", docflow.App{Public: true, Scopes: []string{docflow.ScopeDownload}, RedirectURIs: []string{"https://portal.example/cb"}}, http.StatusOK)
 	authorize := "/oauth/authorize?response_type=code&client_id=portal&redirect_uri=https%3A%2F%2Fportal.example%2Fcb&state=s1&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256"
 	stop := func(b *browser) *http.Client {
 		return &http.Client{Jar: b.c.Jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -469,7 +486,7 @@ func TestOAuthAuthorize(t *testing.T) {
 		t.Fatalf("signed in: %d %s", res.StatusCode, loc)
 	}
 	// the code is exchanged with the verifier of the challenge above (RFC
-	// 7636's example), and the token is the person at the exports
+	// 7636's example), and the token is the person at the downloaders
 	code := strings.TrimPrefix(strings.SplitN(strings.TrimPrefix(loc, "https://portal.example/cb?"), "&", 2)[0], "code=")
 	form := "grant_type=authorization_code&client_id=portal&code=" + code + "&code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk&redirect_uri=https%3A%2F%2Fportal.example%2Fcb"
 	req, _ = http.NewRequest("POST", s.url+"/oauth/token", strings.NewReader(form))
@@ -485,7 +502,7 @@ func TestOAuthAuthorize(t *testing.T) {
 	}
 	json.NewDecoder(res.Body).Decode(&tok)
 	res.Body.Close()
-	if res.StatusCode != http.StatusOK || tok.AccessToken == "" || tok.Scope != "export" || res.Header.Get("Access-Control-Allow-Origin") != "https://portal.example" {
+	if res.StatusCode != http.StatusOK || tok.AccessToken == "" || tok.Scope != "download" || res.Header.Get("Access-Control-Allow-Origin") != "https://portal.example" {
 		t.Fatalf("the token: %d %+v %q", res.StatusCode, tok, res.Header.Get("Access-Control-Allow-Origin"))
 	}
 	req, _ = http.NewRequest("GET", s.url+"/api/me", nil)
@@ -503,10 +520,10 @@ func TestOAuthAuthorize(t *testing.T) {
 	if res.StatusCode != http.StatusOK || me.Kind != docflow.PrincipalUser || me.Email != "alice@example.com" || len(me.Groups) != 1 {
 		t.Fatalf("me with the token: %d %+v", res.StatusCode, me)
 	}
-	// the exports are served by the application: the token reads one, and
+	// the downloaders are served by the application: the token reads one, and
 	// the session of the pages too
-	api("PUT", "/api/nodes/out", docflow.Node{Kind: docflow.KindExport, By: "customer"}, http.StatusOK)
-	req, _ = http.NewRequest("GET", s.url+"/out/out", nil)
+	api("PUT", "/api/nodes/out", docflow.Node{Kind: docflow.KindDownload, By: "customer"}, http.StatusOK)
+	req, _ = http.NewRequest("GET", s.url+"/api/download/out", nil)
 	req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
 	res, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -517,7 +534,7 @@ func TestOAuthAuthorize(t *testing.T) {
 	if res.StatusCode != http.StatusOK || strings.TrimSpace(string(out)) != "[]" {
 		t.Fatalf("/out with the token: %d %s", res.StatusCode, out)
 	}
-	if code, body := alice.send("GET", "/out/out/1", nil, func(r *http.Request) { r.Header.Set("Accept", "application/json") }); code != http.StatusNotFound || !strings.Contains(body, "not found") {
+	if code, body := alice.send("GET", "/api/download/out/1", nil, func(r *http.Request) { r.Header.Set("Accept", "application/json") }); code != http.StatusNotFound || !strings.Contains(body, "not found") {
 		t.Fatalf("/out with the session: %d %s", code, body)
 	}
 }

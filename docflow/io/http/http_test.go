@@ -32,9 +32,9 @@ func TestHTTPOut(t *testing.T) {
 	}
 	hook := flowtest.NewHook(t, nethttp.StatusServiceUnavailable, nethttp.StatusCreated)
 	e := flowtest.New(t, func(o *docflow.Options) { o.CredentialDir = dir })
-	e.Put(docflow.Node{Name: "erp", Kind: http.KindHTTP, URL: hook.URL + "/in/remote?name={{meta.$name}}&customer={{meta.customer}}", Method: "put", Credential: "erp",
+	e.Put(docflow.Node{Name: "erp", Kind: http.KindHTTP, URL: hook.URL + "/api/upload/remote?name={{meta.$name}}&customer={{meta.customer}}", Method: "put", Credential: "erp",
 		Headers: map[string]string{"X-Order": "{{meta.order}}"}},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"erp"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"erp"}})
 	doc := flowtest.Doc(t, 1)
 	j := e.Submit("in", "a b.bdf", doc, map[string]any{"customer": "a&b", "order": "7\r\nX-Evil: 1", "doc/type": "x"})
 	e.Tick()
@@ -52,7 +52,7 @@ func TestHTTPOut(t *testing.T) {
 		t.Fatalf("%d requests", len(got))
 	}
 	r := got[1]
-	if r.Method != "PUT" || r.Path != "/in/remote" || r.Query != "name=a+b.bdf&customer=a%26b" {
+	if r.Method != "PUT" || r.Path != "/api/upload/remote" || r.Query != "name=a+b.bdf&customer=a%26b" {
 		t.Errorf("%s %s?%s", r.Method, r.Path, r.Query)
 	}
 	if r.Header.Get("Authorization") != "Bearer tok-123" || r.Header.Get("Idempotency-Key") != d.ID || got[0].Header.Get("Idempotency-Key") != d.ID {
@@ -74,7 +74,7 @@ func TestHTTPOutMultipart(t *testing.T) {
 	hook := flowtest.NewHook(t, nethttp.StatusOK)
 	e := flowtest.New(t, nil)
 	e.Put(docflow.Node{Name: "erp", Kind: http.KindHTTP, URL: hook.URL + "/upload", Body: "Multipart", Headers: map[string]string{"X-Order": "{{meta.order}}"}},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"erp"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"erp"}})
 	doc := flowtest.Doc(t, 1)
 	j := e.Submit("in", `a "b".bdf`, doc, map[string]any{"customer": "a&b", "order": "7\r\nX-Evil: 1", "count": 3, "tags": []any{"x", "y"}})
 	e.Tick()
@@ -121,19 +121,19 @@ func TestHTTPOutMultipart(t *testing.T) {
 	}
 }
 
-// To another Docflow's endpoint, with the endpoint's key: either body
+// To another Docflow's uploader, with the uploader's key: either body
 // arrives as the same document, with its name and the sender's
 // metadata (a number stays one in multipart, a header is text).
 func TestHTTPToDocflow(t *testing.T) {
 	dir := t.TempDir()
 	e := flowtest.New(t, func(o *docflow.Options) { o.CredentialDir = dir })
-	key := e.Put(docflow.Node{Name: "keep", Kind: docflow.KindSink}, docflow.Node{Name: "remote", Kind: docflow.KindEndpoint, To: []string{"keep"}})
+	key := e.Put(docflow.Node{Name: "keep", Kind: docflow.KindSink}, docflow.Node{Name: "remote", Kind: docflow.KindUpload, To: []string{"keep"}})
 	if err := os.WriteFile(filepath.Join(dir, "remote"), []byte(key), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	e.Put(docflow.Node{Name: "direct", Kind: http.KindHTTP, URL: e.Srv.URL + "/in/remote", Credential: "remote"},
-		docflow.Node{Name: "multi", Kind: http.KindHTTP, URL: e.Srv.URL + "/in/remote", Credential: "remote", Body: http.BodyMultipart},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"direct", "multi"}})
+	e.Put(docflow.Node{Name: "direct", Kind: http.KindHTTP, URL: e.Srv.URL + "/api/upload/remote", Credential: "remote"},
+		docflow.Node{Name: "multi", Kind: http.KindHTTP, URL: e.Srv.URL + "/api/upload/remote", Credential: "remote", Body: http.BodyMultipart},
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"direct", "multi"}})
 	doc := flowtest.Doc(t, 2)
 	j := e.Submit("in", "請求書.bdf", doc, map[string]any{"customer": "a&b", "count": 3})
 	e.Tick()
@@ -146,7 +146,7 @@ func TestHTTPToDocflow(t *testing.T) {
 	got := map[string]any{}
 	for n := j.Number + 1; n <= j.Number+2; n++ {
 		r := e.Job(n)
-		if r.Dest != "remote" || r.Name != "請求書.bdf" || r.Meta["customer"] != "a&b" || r.Meta["$sender_kind"] != docflow.PrincipalEndpoint || !bytes.Equal(e.Payload(r.Payloads[0].ID), doc) {
+		if r.Dest != "remote" || r.Name != "請求書.bdf" || r.Meta["customer"] != "a&b" || r.Meta["$sender_kind"] != docflow.PrincipalKey || !bytes.Equal(e.Payload(r.Payloads[0].ID), doc) {
 			t.Fatalf("job %d: %s %q %+v", n, r.Dest, r.Name, r.Meta)
 		}
 		if _, ok := r.Meta["count"].(string); ok {
@@ -168,7 +168,7 @@ func TestHTTPRefused(t *testing.T) {
 	e := flowtest.New(t, nil)
 	e.Put(docflow.Node{Name: "bad", Kind: http.KindHTTP, URL: hook.URL},
 		docflow.Node{Name: "moved", Kind: http.KindHTTP, URL: moved.URL},
-		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"bad", "moved"}})
+		docflow.Node{Name: "in", Kind: docflow.KindUpload, To: []string{"bad", "moved"}})
 	j := e.Submit("in", "x", flowtest.Doc(t, 1), nil)
 	e.Tick()
 	for _, node := range []string{"bad", "moved"} {

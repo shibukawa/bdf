@@ -24,14 +24,16 @@ import (
 // takes a short token at POST /oauth/token (OAuth 2.0 client credentials:
 // Basic client_id:secret, or client_id and client_secret in the form) and
 // sends with it as a bearer; over IPP it sends Basic client_id:secret.
-// What it may send to are the endpoints that list it among their apps.
+// What it may send to are the entries that list it among their apps (an
+// uploader, a CUPS server), and what it may read and work the downloaders
+// and the inboxes that list it.
 // The manager keeps the secret's argon2id hash only.
 
 // Scopes of an app.
 const (
-	// ScopePrint sends documents to the endpoints that list the app.
+	// ScopePrint sends documents to the entries that list the app.
 	ScopePrint = "print"
-	// ScopePrintTemplate sends data to those endpoints (for the template
+	// ScopePrintTemplate sends data to those entries (for the template
 	// nodes after them).
 	ScopePrintTemplate = "print.template"
 	// ScopeJobsCancel cancels the app's own jobs.
@@ -40,12 +42,16 @@ const (
 	ScopeTick = "tick"
 	// ScopeAdmin uses the API as an administrator (a script).
 	ScopeAdmin = "admin"
-	// ScopeExport reads the exports that list the app (export.go); of a
-	// person's token, the exports they may read.
-	ScopeExport = "export"
+	// ScopeDownload reads the downloaders that list the app
+	// (download.go); of a person's token, the downloaders they may read.
+	ScopeDownload = "download"
+	// ScopeInbox works the inboxes that list the app (inboxapi.go): lists
+	// what they hold, reads its pages and documents, releases and
+	// discards; of a person's token, the inboxes they work.
+	ScopeInbox = "inbox"
 )
 
-var appScopes = []string{ScopePrint, ScopePrintTemplate, ScopeJobsCancel, ScopeTick, ScopeAdmin, ScopeExport}
+var appScopes = []string{ScopePrint, ScopePrintTemplate, ScopeJobsCancel, ScopeTick, ScopeAdmin, ScopeDownload, ScopeInbox}
 
 // AppTokenFor is how long an app's token lasts; an app takes another
 // with its credentials.
@@ -174,7 +180,8 @@ func (m *Manager) Apps(ctx context.Context) ([]App, error) {
 	return out, nil
 }
 
-// DeleteApp removes an app; one a node lists (an entry, an export) stays.
+// DeleteApp removes an app; one a node lists (an entry, a downloader, an
+// inbox) stays.
 func (m *Manager) DeleteApp(ctx context.Context, id string) error {
 	rec, err := m.st.db.Get[appRecord](ctx, id)
 	if err != nil {
@@ -347,7 +354,7 @@ func (m *Manager) touchApp(ctx context.Context, a *App) {
 }
 
 // appMaySend tells whether an app may send to a destination: an entry (an
-// endpoint, a CUPS server) that lists it, with the scope print (a
+// uploader, a CUPS server) that lists it, with the scope print (a
 // document) or print.template (data). nil, another kind of viewer and an administrator may.
 func (m *Manager) appMaySend(ctx context.Context, v *Viewer, dest string, data bool) error {
 	if v == nil || v.Kind != PrincipalApp || v.Admin {

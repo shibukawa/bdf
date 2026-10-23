@@ -1,10 +1,11 @@
 // The apps: applications that send with credentials of their own
 // (client credentials). An administrator registers one with its scopes
-// and gets its secret once; an endpoint lists the apps it takes.
+// and gets its secret once; an uploader, an inbox or a downloader lists
+// the apps it takes.
 
 import { $, _, api, badge, button, el, onChange, since, status } from "./admin.js";
 
-const SCOPES = { print: _("print: send documents"), "print.template": _("print.template: fill templates"), "jobs.cancel": _("jobs.cancel: cancel its own jobs"), export: _("export: read the HTTP (pull) nodes"), tick: "tick: POST /api/tick", admin: _("admin: the API as an administrator") };
+const SCOPES = { print: _("print: send documents"), "print.template": _("print.template: fill templates"), "jobs.cancel": _("jobs.cancel: cancel its own jobs"), download: _("download: read the downloaders"), inbox: _("inbox: work the inboxes (release, discard)"), tick: "tick: POST /api/tick", admin: _("admin: the API as an administrator") };
 
 let editing = ""; // the app in the form
 

@@ -74,9 +74,9 @@ func TestApp(t *testing.T) {
 	if code, body := get("/api/nodes", "t"); code != http.StatusOK || strings.TrimSpace(body) != "[]" {
 		t.Errorf("api: %d %s", code, body)
 	}
-	// the endpoints and the IPP server are mounted too: the manager
+	// the uploaders and the IPP server are mounted too: the manager
 	// answers (JSON), not the framework's page
-	for _, path := range []string{"/in/nowhere", "/ipp/print"} {
+	for _, path := range []string{"/api/upload/nowhere", "/ipp/print"} {
 		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader("{}"))
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {

@@ -51,11 +51,11 @@ const PORT_GAP = 18; // between the ports of a node with several
 // what picks by rules or checks (filter, assert, branch), what makes a
 // new payload of it (transform), and where it ends (sink).
 export const ROLES = { source: _("Source"), flow: _("Control flow"), filter: _("Filter"), transform: _("Transform"), sink: _("Sink") };
-export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", assert: "filter", branch: "filter", template: "transform", convert: "transform", sign: "transform", display: "sink", printer: "sink", "cups-out": "sink", archive: "sink", sink: "sink", export: "sink", "s3-trigger": "source", notify: "flow", render: "transform", smtp: "sink", s3: "sink", http: "sink" };
+export const ROLE_OF = { upload: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", assert: "filter", branch: "filter", template: "transform", convert: "transform", sign: "transform", display: "sink", printer: "sink", "cups-out": "sink", archive: "sink", sink: "sink", download: "sink", "s3-trigger": "source", notify: "flow", render: "transform", smtp: "sink", s3: "sink", http: "sink" };
 export const ROLE_COLOR = { source: "#0f766e", flow: "#4338ca", filter: "#be185d", transform: "#c2410c", sink: "#334155" };
 // The icons of the kinds: strokes in a 24 by 24 box.
 const ICONS = {
-  endpoint: ["M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4", "M3 12h10", "M9 8l4 4-4 4"],
+  upload: ["M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4", "M3 12h10", "M9 8l4 4-4 4"],
   cups: ["M4 5h16v6H4z", "M4 13h16v6H4z", "M7 8h.01", "M7 16h.01", "M15 8h2", "M15 16h2"],
   queue: ["M12 3l9 5-9 5-9-5z", "M3 13l9 5 9-5", "M3 17l9 5 9-5"],
   class: ["M17 3l4 4-4 4", "M3 11V9a2 2 0 0 1 2-2h16", "M7 21l-4-4 4-4", "M21 13v2a2 2 0 0 1-2 2H3"],
@@ -75,31 +75,31 @@ const ICONS = {
   "cups-out": ["M3 5h12v6H3z", "M3 13h12v6H3z", "M6 8h.01", "M6 16h.01", "M17 12h5", "M19 9l3 3-3 3"],
   archive: ["M3 4h18v4H3z", "M5 8v12h14V8", "M10 12h4"],
   sink: ["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
-  // the two HTTP exits, on the same tray: HTTP (pull) an arrow going up
+  // the two HTTP exits, on the same tray: a downloader an arrow going up
   // out of it, documents fetched from outside; HTTP (push) an arrow
   // turning out to the right, documents sent to a web service
-  export: ["M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5", "M12 3v12", "M7 8l5-5 5 5"],
+  download: ["M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5", "M12 3v12", "M7 8l5-5 5 5"],
   http: ["M4 14v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5", "M12 15V9a2 2 0 0 1 2-2h7", "M17 3l4 4-4 4"],
 };
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer, an archive what it wrote)
-const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "assert", "branch", "template", "convert", "sign", "inbox", "display", "archive"]);
-// the exits read from outside: applications and people fetch what an
-// export lists, and what a printer or a CUPS server (sink) is sent over
+const OUT_PORT = new Set(["upload", "cups", "queue", "class", "filter", "assert", "branch", "template", "convert", "sign", "inbox", "display", "archive"]);
+// the exits read from outside: applications and people fetch what a
+// downloader lists, and what a printer or a CUPS server (sink) is sent over
 // IPP, drawn as an arrow going out
-const EXIT = new Set(["export", "printer", "cups-out"]);
-// the entries: their input is from outside the network (an endpoint's
+const EXIT = new Set(["download", "printer", "cups-out"]);
+// the entries: their input is from outside the network (an uploader's
 // REST, a CUPS server's IPP port, an S3 event's reference), drawn as an
 // arrow coming in
-const ENTRY = new Set(["endpoint", "cups", "s3-trigger"]);
+const ENTRY = new Set(["upload", "cups", "s3-trigger"]);
 // the kinds that keep what reaches them (kinds.go: stocks): along their
-// to, to HTTP (pull), they send a stocked file, and what reaches them to
+// to, to a downloader, they send a stocked file, and what reaches them to
 // the others; the kinds that take a stocked file alone
 const STOCKS = new Set(["inbox", "archive"]);
-const TAKES_STOCKED = new Set(["export"]);
+const TAKES_STOCKED = new Set(["download"]);
 // the kinds of node that send on what reaches them: typed by their first
 // edge, on either side (kinds.go: passesOn)
-const PASSES_ON = new Set(["queue", "class", "filter", "assert", "branch", "inbox", "endpoint", "cups", "s3-trigger", "archive"]);
+const PASSES_ON = new Set(["queue", "class", "filter", "assert", "branch", "inbox", "upload", "cups", "s3-trigger", "archive"]);
 // the kinds a display's fallback prints on: they send .bdf out over IPP
 // (and a printer over 9100 or LPD)
 export const PRINTS = new Set(["printer", "cups-out"]);
@@ -143,7 +143,7 @@ export function portsOf(n) {
   return null;
 }
 
-// edgesOf are the edges from a node: to (a queue's, an endpoint's, a CUPS
+// edgesOf are the edges from a node: to (a queue's, an uploader's, a CUPS
 // server's, an inbox's, a filter's rules and otherwise, a branch's cases
 // and default), original (what a template or a convert node took, sent
 // on as it was), member (a class's), fallback (a display's printer) or
@@ -209,7 +209,7 @@ export function typeOf(n) {
   const emits = asList(n.emits);
   const passes = PASSES_ON.has(n.kind);
   let inn;
-  if (ENTRY.has(n.kind)) inn = emits; // what it sends on is what it is: a data endpoint, a document endpoint
+  if (ENTRY.has(n.kind)) inn = emits; // what it sends on is what it is: a data uploader, a document uploader
   else if (passes) inn = emits.length ? emits : narrowed(accepts) ? accepts : [];
   else inn = narrowed(takes) ? takes : [];
   const out = MAKES_BDF.has(n.kind) ? ["bdf"] : emits.length ? emits : passes && narrowed(accepts) ? accepts : [];
@@ -249,8 +249,8 @@ export function legend(box) {
     s.append(svgEl("rect", { x: "1", y: "2", width: "12", height: "10", rx: "2", fill }));
     return s;
   };
-  const of = { source: _("endpoint, CUPS server"), flow: _("queue, class, inbox"), filter: _("filter, assert, branch"), transform: _("template, convert, sign"), sink: _("display, printer, archive, sink, HTTP (pull)") };
-  box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), _("{role} ({kinds})", { role: label, kinds: of[role] }))), item(dot(PAYLOAD_COLOR.bdf, "#fff"), _(".bdf document")), item(dot(PAYLOAD_COLOR.data, "#fff"), _("data (for a template node)")), item(dot(PAYLOAD_COLOR.any, "#fff"), _("any file as received (for a convert node)")), item(dot(PAYLOAD_COLOR.stocked, "#fff"), _("stocked file: what an inbox holds or an archive wrote (for HTTP (pull))")), item(dot(MIXED_COLOR, "#fff"), _("several kinds")), item(dot(ANY_KIND_COLOR, "#fff"), _("takes any kind")), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), _("not typed yet: its first edge types it")), item(line(BROKEN_COLOR, "6 4"), _("no longer connects: the node after does not take what reaches it")));
+  const of = { source: _("uploader, CUPS server"), flow: _("queue, class, inbox"), filter: _("filter, assert, branch"), transform: _("template, convert, sign"), sink: _("display, printer, archive, sink, downloader") };
+  box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), _("{role} ({kinds})", { role: label, kinds: of[role] }))), item(dot(PAYLOAD_COLOR.bdf, "#fff"), _(".bdf document")), item(dot(PAYLOAD_COLOR.data, "#fff"), _("data (for a template node)")), item(dot(PAYLOAD_COLOR.any, "#fff"), _("any file as received (for a convert node)")), item(dot(PAYLOAD_COLOR.stocked, "#fff"), _("stocked file: what an inbox holds or an archive wrote (for a downloader)")), item(dot(MIXED_COLOR, "#fff"), _("several kinds")), item(dot(ANY_KIND_COLOR, "#fff"), _("takes any kind")), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), _("not typed yet: its first edge types it")), item(line(BROKEN_COLOR, "6 4"), _("no longer connects: the node after does not take what reaches it")));
 }
 
 // createCanvas draws a topology in an svg. opts: editable (nodes move
@@ -456,9 +456,9 @@ export function createCanvas(svg, opts = {}) {
     if (a.kind === "display" && !PRINTS.has(b.kind)) return { ok: false, why: _("a display's port sets its fallback printer; {node} is a {kind}", { node: b.name, kind: (KINDS[b.kind] || b.kind).toLowerCase() }) };
     if (edgesOf(a).some((e) => e.to === b.name && (!port || e.port === port))) return { ok: false, already: true, why: _("{from} sends to {to} already", { from: a.name, to: b.name }) };
     if (reaches(b.name, a.name)) return { ok: false, why: _("a cycle: {to} leads back to {from}", { to: b.name, from: a.name }) };
-    // HTTP (pull) takes a stocked file, which an inbox or an archive
+    // a downloader takes a stocked file, which an inbox or an archive
     // sends whatever reaches it
-    if (TAKES_STOCKED.has(b.kind)) return STOCKS.has(a.kind) ? { ok: true } : { ok: false, why: _("{node} (HTTP (pull)) takes a stocked file, which only an inbox or an archive sends: put one between", { node: b.name }) };
+    if (TAKES_STOCKED.has(b.kind)) return STOCKS.has(a.kind) ? { ok: true } : { ok: false, why: _("{node} (a downloader) takes a stocked file, which only an inbox or an archive sends: put one between", { node: b.name }) };
     const out = typeOf(a).out;
     const tb = typeOf(b);
     const bad = out.filter((k) => !tb.accepts.includes(k));
@@ -748,20 +748,21 @@ export function createCanvas(svg, opts = {}) {
     }
     if (ENTRY.has(n.kind)) {
       // what an entry receives comes from outside: computers print to a
-      // CUPS server's port, applications POST to an endpoint
+      // CUPS server's port, applications POST to an uploader
       const inArrow = svgEl("path", { d: `M -30 ${h / 2} L -8 ${h / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": arrow("#64748b") });
       const x = svgEl("title");
       if (n.kind === "cups") x.textContent = n.port ? _("IPP on port {port}: computers print here, and the job goes on along the edges", { port: n.port }) : _("IPP: computers print here, and the job goes on along the edges");
       else if (n.kind === "s3-trigger") x.textContent = _("REST: an S3 event's reference is POSTed here, and the object read goes on along the edges");
-      else x.textContent = n.port ? _("REST on port {port}: applications POST here, and the job goes on along the edges", { port: n.port }) : _("REST: applications POST here, and the job goes on along the edges");
+      else x.textContent = _("REST: applications POST here ({request}), and the job goes on along the edges", { request: "POST /api/upload/" + n.name });
       inArrow.append(x);
       g.append(inArrow);
     }
     if (EXIT.has(n.kind)) {
-      // what an export lists is fetched from outside: GET /out/<name>
+      // what a downloader lists is fetched from outside: GET
+      // /api/download/<name>
       const outArrow = svgEl("path", { d: `M ${NODE_W + 8} ${h / 2} L ${NODE_W + 30} ${h / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": arrow("#64748b") });
       const x = svgEl("title");
-      x.textContent = n.kind === "export" ? _("REST: applications and people fetch the documents listed here ({request})", { request: "GET /out/" + n.name }) : (n.kind === "cups-out" ? _("IPP: printed to a CUPS server's queue") : _("Printed on the printer")) + (n.url ? ", " + n.url : "");
+      x.textContent = n.kind === "download" ? _("REST: applications and people fetch the documents listed here ({request})", { request: "GET /api/download/" + n.name }) : (n.kind === "cups-out" ? _("IPP: printed to a CUPS server's queue") : _("Printed on the printer")) + (n.url ? ", " + n.url : "");
       outArrow.append(x);
       g.append(outArrow);
     }
@@ -799,7 +800,7 @@ export function createCanvas(svg, opts = {}) {
           if (p.id) port.setAttribute("data-port-id", p.id);
         }
         const x = svgEl("title");
-        let how = n.kind === "display" ? _("Drag onto a printer: the fallback printer.") : n.kind === "class" ? _("Drag onto a node: a member.") : n.kind === "archive" ? _("Drag onto a node: what the archive wrote goes on there (an HTTP (pull) node lists it, a stocked file).") : n.kind === "inbox" ? _("Drag onto a node: a person releases to it, or an HTTP (pull) node lists what the inbox holds (a stocked file).") : _("Drag onto a node to connect.");
+        let how = n.kind === "display" ? _("Drag onto a printer: the fallback printer.") : n.kind === "class" ? _("Drag onto a node: a member.") : n.kind === "archive" ? _("Drag onto a node: what the archive wrote goes on there (a downloader lists it, a stocked file).") : n.kind === "inbox" ? _("Drag onto a node: an item is released to it, or a downloader lists what the inbox holds (a stocked file).") : _("Drag onto a node to connect.");
         if (p.id === "default") how = _("Drag onto a node: where a job no case fits goes.");
         else if (p.id === "to" && n.kind === "assert") how = _("Drag onto a node: where a job that passes every check goes.");
         else if (p.id === "error") how = _("Drag onto a node (a notify node): where a job that fails a check goes, with what failed.");

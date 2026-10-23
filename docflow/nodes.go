@@ -11,10 +11,10 @@ import (
 	"github.com/shibukawa/bdf/converter"
 )
 
-// The topology is a graph of nodes in one namespace: entries (endpoints,
+// The topology is a graph of nodes in one namespace: entries (uploaders,
 // CUPS servers), routing nodes (queues, classes, filters, inboxes),
 // transforming nodes (templates, converts) and exits (displays, printers,
-// archives, sinks), with edges from queues, endpoints, CUPS servers,
+// archives, sinks), with edges from queues, uploaders, CUPS servers,
 // template and convert nodes and inboxes (To; a template or a convert
 // node's Original, too), filters (Rules,
 // Otherwise), classes (Members) and displays (Fallback). A job sent to a
@@ -23,8 +23,8 @@ import (
 // the kinds of payload that reach every node are ones it takes (typed).
 
 // PutNode adds a node or replaces its settings; the settings of other
-// kinds are dropped. An endpoint added gets a key, returned once (Key);
-// PutNode keeps the key and the templates of an endpoint that is one
+// kinds are dropped. An uploader added gets a key, returned once (Key);
+// PutNode keeps the key and the templates of an uploader that is one
 // already (RotateKey makes a new key).
 func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) {
 	if !validName(in.Name) {
@@ -92,8 +92,8 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 	}
 	var hash string
 	if keyed(n.Kind) {
-		// a new endpoint, or one that was another kind, gets a key; an
-		// endpoint keeps its (and so does a keyed entry of an adapter)
+		// a new uploader, or one that was another kind, gets a key; an
+		// uploader keeps its (and so does a keyed entry of an adapter)
 		if cur != nil && cur.Kind == n.Kind && cur.KeyHash != "" {
 			hash = cur.KeyHash
 		} else {
@@ -156,7 +156,7 @@ func (m *Manager) FreePort(ctx context.Context, except string) (int, error) {
 	return 0, fmt.Errorf("%w: no port free", ErrConflict)
 }
 
-// RotateKey gives an endpoint a new key, returned once; requests with the
+// RotateKey gives an uploader a new key, returned once; requests with the
 // old one are refused from now.
 func (m *Manager) RotateKey(ctx context.Context, name string) (string, error) {
 	key := newKey()
@@ -166,7 +166,7 @@ func (m *Manager) RotateKey(ctx context.Context, name string) (string, error) {
 	}
 	_, err = change(ctx, m.st.db, name, false, func(r *nodeRecord) error {
 		if !keyed(r.Kind) {
-			return fmt.Errorf("%w: %s is a %s, not an endpoint", ErrInvalid, name, r.Kind)
+			return fmt.Errorf("%w: %s is a %s, not an uploader", ErrInvalid, name, r.Kind)
 		}
 		r.KeyHash = hash
 		return nil
@@ -174,7 +174,7 @@ func (m *Manager) RotateKey(ctx context.Context, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	m.o.Log.Info("endpoint key rotated", "endpoint", name)
+	m.o.Log.Info("uploader key rotated", "uploader", name)
 	return key, nil
 }
 
@@ -288,8 +288,8 @@ func (m *Manager) DeleteNode(ctx context.Context, name string) error {
 		return m.removeTemplatesOf(ctx, name)
 	case KindSink:
 		return m.dropSink(ctx, name)
-	case KindExport:
-		return m.dropExport(ctx, name)
+	case KindDownload:
+		return m.dropDownload(ctx, name)
 	}
 	return nil
 }
@@ -385,9 +385,10 @@ func (m *Manager) acyclic(ctx context.Context, n *Node) error {
 type TopoNode struct {
 	Node
 	// Addresses are where the node is reached, by ingress (ipp: its IPP
-	// printer's path); In is an endpoint's path.
+	// printer's path); API is where the API reaches it (NodePath): a
+	// keyed entry's, an inbox's, a downloader's.
 	Addresses map[string]string `json:"addresses,omitempty"`
-	In        string            `json:"in,omitempty"`
+	API       string            `json:"api,omitempty"`
 	// Takes is the kind of payload the node takes at its input (bdf,
 	// data or any), and Emits the kinds it sends on along its edges, as
 	// inferred from the entries (kinds.go). Accepts are the kinds its
@@ -409,7 +410,7 @@ type TopoNode struct {
 	// Held counts the items an inbox holds; Open the slips open at a
 	// display and Devices its devices; Pending the deliveries waiting at
 	// a printer, an archive or a class; Kept the jobs a sink keeps, and
-	// Latest the newest of them; Listed the entries an export lists (of
+	// Latest the newest of them; Listed the entries a downloader lists (of
 	// every owner).
 	Held    int    `json:"held,omitempty"`
 	Open    int    `json:"open,omitempty"`
@@ -475,8 +476,8 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 			}
 			t.Broken[to] = bad.names()
 		}
-		if keyed(n.Kind) {
-			t.In = InPath + "/" + n.Name
+		if keyed(n.Kind) || n.Kind == KindInbox || n.Kind == KindDownload {
+			t.API = NodePath(n.Kind, n.Name)
 		}
 		switch n.Kind {
 		case KindArchive:
@@ -496,8 +497,8 @@ func (m *Manager) Topology(ctx context.Context) ([]TopoNode, error) {
 			if ids := m.sinkJobs(ctx, n.Name); len(ids) > 0 {
 				t.Kept, t.Latest = len(ids), ids[len(ids)-1]
 			}
-		case KindExport:
-			t.Listed = len(m.exportJobs(ctx, exportListID(n.Name, "")))
+		case KindDownload:
+			t.Listed = len(m.downloadJobs(ctx, downloadListID(n.Name, "")))
 		}
 		out = append(out, t)
 	}

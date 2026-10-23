@@ -45,11 +45,11 @@ func TestAssert(t *testing.T) {
 	var made struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("in", Node{Kind: KindEndpoint, To: []string{"check"}}, http.StatusOK), &made)
+	json.Unmarshal(e.node("in", Node{Kind: KindUpload, To: []string{"check"}}, http.StatusOK), &made)
 
 	post := func(query string, pages, status int) (*Job, apiRefusal) {
 		t.Helper()
-		res, out := e.do(nil, "POST", "/in/in?name=x&"+query, made.Key, testDoc(t, pages))
+		res, out := e.do(nil, "POST", "/api/upload/in?name=x&"+query, made.Key, testDoc(t, pages))
 		if res.StatusCode != status {
 			t.Fatalf("%s: %d %s; want %d", query, res.StatusCode, out, status)
 		}
@@ -127,7 +127,7 @@ func TestAssert(t *testing.T) {
 	// request was taken, and the job is aborted there
 	e.node("late", Node{Kind: KindAssert, To: []string{"seen"}, OnError: []string{"errors"}, Checks: []Check{{Key: "doc-type"}}}, http.StatusOK)
 	e.node("hop", Node{Kind: KindQueue, To: []string{"late"}}, http.StatusOK)
-	e.node("in2", Node{Kind: KindEndpoint, To: []string{"hop"}}, http.StatusOK)
+	e.node("in2", Node{Kind: KindUpload, To: []string{"hop"}}, http.StatusOK)
 	j = e.printJob("in2", "late", 1)
 	if legs(j) != "in2:routed hop:routed late:refused errors:kept" || j.State != JobAborted {
 		t.Errorf("late: %s %s", j.State, legs(j))
@@ -148,7 +148,7 @@ func TestAssertDefault(t *testing.T) {
 	e.node("ops", Node{Kind: KindSink}, http.StatusOK)
 	e.node("seen", Node{Kind: KindSink}, http.StatusOK)
 	e.node("check", Node{Kind: KindAssert, To: []string{"seen"}, Checks: []Check{{Key: "doc-type"}}}, http.StatusOK)
-	e.node("in", Node{Kind: KindEndpoint, To: []string{"check"}}, http.StatusOK)
+	e.node("in", Node{Kind: KindUpload, To: []string{"check"}}, http.StatusOK)
 	res, out := e.do(nil, "POST", "/api/destinations/in/jobs?name=x", "", testDoc(t, 1))
 	var ref apiRefusal
 	json.Unmarshal(out, &ref)

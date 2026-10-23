@@ -1,10 +1,11 @@
 # BDF Docflow
 
 A document workflow engine: a software-defined document network. Documents enter at virtual printers
-(CUPS server nodes, the IPP entries) and at API endpoints (a document, or a
+(CUPS server nodes, the IPP entries) and at the API's uploaders (a document, or a
 template and the data to fill it with), flow through the nodes an
 administrator composes — queues that fan out, classes that send to one
-member in turn, inboxes that hold a job until a person sends it on — and
+member in turn, inboxes that hold a job until a person or an application
+sends it on — and
 end on display boards (the devices enrolled at a location, such as the
 tablets of a warehouse), on printers, and in archives that keep a copy
 nobody changes. Paper is one destination among others. The topology is
@@ -57,7 +58,7 @@ or with variables:
 | `DOCFLOW_ADMIN_TOKEN` | bearer token of the API (`/api`), for scripts (people sign in) |
 | `DOCFLOW_TICK_TOKEN` | bearer token a scheduler calls `POST /api/tick` with |
 | `DOCFLOW_SUBMIT_TOKENS` | `name:secret` pairs that may send jobs (IPP Basic, or bearer `name:secret`); none lets anyone send |
-| `DOCFLOW_SERVERLESS` | refuse a store one process keeps, and tick only when called |
+| `DOCFLOW_SERVERLESS` | refuse a store one process keeps, tick only when called, and open no ports (CUPS servers are reached at `/ipp/print/<name>`) |
 | `DOCFLOW_SIGN_KEY_FILE`, `DOCFLOW_SIGN_CERT_FILE` | the private key (PEM) that sign nodes sign with, and its certificate followed by its chain |
 | `DOCFLOW_SIGN_TSA` | URL of a time-stamp authority (RFC 3161) that stamps the signatures of sign nodes |
 | `DOCFLOW_TICK_INTERVAL` | how often a process ticks (default 30s) |
@@ -83,7 +84,7 @@ and who is an admin is `[oidc]`:
 | `OIDC_GROUPS_PREFIX` | take only the groups of this prefix |
 | `OIDC_ADMINS` | admins: `issuer#subject`, or an email the IdP verified |
 | `OIDC_ADMIN_GROUPS` | groups whose members are admins (one admin rule is required outside dev) |
-| `OIDC_TOPOLOGY_ADMINS`, `OIDC_TOPOLOGY_ADMIN_GROUPS` | the role `topology`: the admin pages and the API of the topology (nodes, templates, keys, apps, devices, inboxes, deliveries), short of an admin |
+| `OIDC_TOPOLOGY_ADMINS`, `OIDC_TOPOLOGY_ADMIN_GROUPS` | the role `topology`: the admin pages and the API of the topology (nodes, templates, keys, apps, devices, every inbox, deliveries), short of an admin |
 | `OIDC_AUDITORS`, `OIDC_AUDITOR_GROUPS` | the role `audit`: `/audit`, `GET /api/audit`, and every job (reading); an admin has both roles |
 | `OIDC_ALLOWED_ISSUERS`, `OIDC_ALLOWED_DOMAINS`, `OIDC_ALLOWED_GROUPS` | narrow who gets in (email domain or Google's `hd`; admins always get in) |
 
@@ -100,24 +101,36 @@ Safari asks for on its own, `/favicon.ico` and `/apple-touch-icon*.png`,
 get 401), so the IdP does not sign the same person in again without a
 word.
 
+Everything an application calls is the API of the one server, `/api`:
+the nodes reached from outside are under their kind and their name,
+`/api/<kind>/<name>` — an uploader takes documents at
+`POST /api/upload/<name>`, an inbox is worked at `/api/inbox/<name>`,
+a downloader is read at `/api/download/<name>`, an S3 trigger takes an
+event's reference at `POST /api/s3-trigger/<name>`. No node but a CUPS
+server (IPP, AirPrint) has a port of its own.
+
 **Apps** are the applications that send with credentials of their own (a
 business system, a WMS): an administrator registers one on `/admin/apps`
 (`PUT /api/apps/<id>` with its `scopes`; the secret comes back once,
-`POST /api/apps/<id>/secret` rotates it), and an endpoint lists the apps
-it takes (`apps`). The app takes a token at `POST /oauth/token` (the
-client credentials grant: `-u id:secret -d grant_type=client_credentials`,
-ten minutes) and sends with it as a bearer to `/in/<endpoint>`, or
-prints over IPP with the same id and secret as Basic; it sees and, with
-the scope `jobs.cancel`, cancels its own jobs. The scopes are `print`,
-`print.template`, `jobs.cancel`, `export` (reads the exports that list
-it: [help/en/exports.md](help/en/exports.md)), `tick` (a scheduler's) and `admin` (a
-script's: the API as an administrator). An app's jobs are its `group`'s
-when the destination gives them none. Disabling an app refuses its
-credentials and the tokens out. `GET /api/openapi.json` is the OpenAPI
-3.1 document of what the topology publishes, made of it as it is: the
-endpoints (the formats they take, the JSON Schema of the data their
-templates fill, the metadata the nodes after them look at) and the
-exports; an app reads the ones that list it, `?node=` narrows it
+`POST /api/apps/<id>/secret` rotates it), and an uploader, an inbox or a
+downloader lists the apps it takes (`apps`). The app takes a token at
+`POST /oauth/token` (the client credentials grant:
+`-u id:secret -d grant_type=client_credentials`, ten minutes) and sends
+with it as a bearer to `/api/upload/<name>`, or prints over IPP with the
+same id and secret as Basic; it sees and, with the scope `jobs.cancel`,
+cancels its own jobs. The scopes are `print`, `print.template`,
+`jobs.cancel`, `inbox` (works the inboxes that list it: lists what they
+hold, their thumbnails, pages and documents, releases and discards:
+[help/en/inboxes.md](help/en/inboxes.md#api)), `download` (reads the
+downloaders that list it: [help/en/downloads.md](help/en/downloads.md)),
+`tick` (a scheduler's) and `admin` (a script's: the API as an
+administrator). An app's jobs are its `group`'s when the destination
+gives them none. Disabling an app refuses its credentials and the tokens
+out. `GET /api/openapi.json` is the OpenAPI 3.1 document of what the
+topology publishes, made of it as it is: the uploaders (the formats they
+take, the JSON Schema of the data their templates fill, the metadata the
+nodes after them look at), the inboxes (the nodes they release to) and
+the downloaders; an app reads the ones that list it, `?node=` narrows it
 ([help/en/api.md](help/en/api.md#openapi)).
 
 A **public client** is a frontend of one's own in people's browsers (a
@@ -131,9 +144,10 @@ registration is the consent, no screen asks), and comes back with a
 `code`, which it exchanges at `POST /oauth/token`
 (`grant_type=authorization_code`, `client_id`, `code`, `code_verifier`,
 `redirect_uri`) for a token of an hour. The token is the person, with
-the client's scopes: it opens the exports and `/api/me`, nothing else of
-the API. A page of the client's origin may call the token endpoint and
-the exports (CORS).
+the client's scopes: it opens the downloaders, the inboxes the person
+works and `/api/me`, nothing else of the API. A page of the client's
+origin may call the token endpoint, the downloaders and the inboxes
+(CORS).
 
 Every node (a display, a printer, a queue, a class …) has a scope and an
 owner (`"scope":"group", "owner":"warehouse-a"`, a value of the groups
@@ -141,7 +155,7 @@ claim; `personal` and a person's email; `shared`, the default): who may
 print to it from the pages, and the group whose members see the jobs
 sent to it (of a display with none, its fallback printer's). A job
 records who sent it as verified (`submitted_by`: the person signed in,
-the token, the endpoint, or anonymous) apart from the name the sender
+the token, the key of an uploader, or anonymous) apart from the name the sender
 gave (`claimed_user`, shown only). The sender and the admins cancel a
 job; its group only sees it.
 
@@ -175,8 +189,8 @@ are the Markdown files of [help/en](help/en) and [help/ja](help/ja),
 embedded by [package help](help/help.go) and rendered when served
 (goldmark, no raw HTML): the pages, the topology and its editor, every
 kind of node and its settings, what flows along the edges and the
-metadata, templates and data, the entries (endpoints, CUPS server nodes,
-apps, IPP), display boards and devices, inboxes and deliveries, sign-in,
+metadata, templates and data, the entries (uploaders, CUPS server nodes,
+apps, IPP), display boards and devices, inboxes (and their API) and deliveries, downloaders, sign-in,
 roles and audit, the API, and the configuration. A link between chapters
 is written as `jobs.md`, so that the files read on GitHub too; every
 chapter has the same section ids in every language, so that the pages
@@ -189,18 +203,23 @@ In short: a person signs in at the IdP (see Sign-in) and sees `/jobs`,
 their jobs and their groups' and a form that prints to a node they may
 send to, and `/topology`, the network with the activity of their jobs.
 The role `topology` gets the administrator's pages under `/admin` (the
-editor of the topology, apps, inboxes, jobs, deliveries) and the role
-`audit` gets `/audit`. Every node is `PUT /api/nodes/<name>` with its
-`kind` and the kind's settings — `endpoint`, `cups`, `queue`, `class`,
+editor of the topology, apps, jobs, deliveries), `/inboxes` (every inbox; the
+members of an inbox's group get it for theirs) and the role `audit` gets
+`/audit`. Every node is `PUT /api/nodes/<name>` with its
+`kind` and the kind's settings — `upload`, `cups`, `queue`, `class`,
 `filter`, `assert`, `branch`, `template`, `convert`, `sign`, `inbox`, `display`, `printer`, `cups-out`,
-`archive`, `sink`, `export` ([help/en/nodes.md](help/en/nodes.md)) —
+`archive`, `sink`, `download` ([help/en/nodes.md](help/en/nodes.md)) —
 and `POST /api/nodes/<name>/rename` renames one, its edges following; IPP
 enters at `cups` nodes alone (their port's `/printers/<name>`, and
 `/ipp/print/<name>`); a display's tablets are
 enrolled with a one-time code from the display's sidebar
-([help/en/displays.md](help/en/displays.md)); an export after an
-archive lets backends and people's frontends fetch the documents at
-`/out/<name>` ([help/en/exports.md](help/en/exports.md)); and the API is
+([help/en/displays.md](help/en/displays.md)); an inbox holds a job
+until someone releases it, on `/inboxes` or through
+`/api/inbox/<name>` (the role `topology`, the members of the inbox's
+group, the apps it lists: [help/en/inboxes.md](help/en/inboxes.md)); a
+downloader after an archive or an inbox lets backends and people's
+frontends fetch the documents at `/api/download/<name>`
+([help/en/downloads.md](help/en/downloads.md)); and the API is
 [help/en/api.md](help/en/api.md). For example: an audit copy, a site's
 printers in turn, both warehouses at once, a review before printing, and
 an application that prints invoices from data:
@@ -226,14 +245,17 @@ curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/invoices 
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/tokyo -d '{"kind":"class","members":["mfp-3f","mfp-4f"]}'
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/both -d '{"kind":"queue","to":["wh-a","wh-b"]}'
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/review -d '{"kind":"inbox","to":["wh-a","tokyo"]}'
-curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/erp -d '{"kind":"endpoint","to":["invoices"],"formats":["pdf"]}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/erp -d '{"kind":"upload","to":["invoices"],"formats":["pdf"]}'
 # → {"name":"erp", …, "key":"bdfk_…"}: the application sends with that key
-curl -X POST -H "Authorization: Bearer bdfk_…" --data-binary @statement.pdf "localhost:8080/in/erp?name=statement&meta.dept=sales"
-# data for a template: a data endpoint, and a template node that fills the invoice
+curl -X POST -H "Authorization: Bearer bdfk_…" --data-binary @statement.pdf "localhost:8080/api/upload/erp?name=statement&meta.dept=sales"
+# the review inbox: what it holds, and a release (an app with the scope inbox it lists, or the admin token)
+curl -H "Authorization: Bearer $TOKEN" localhost:8080/api/inbox/review
+curl -X POST -H "Authorization: Bearer $TOKEN" localhost:8080/api/inbox/review/1/release -d '{"to":["wh-a"],"worker":"Sato"}'
+# data for a template: a data uploader, and a template node that fills the invoice
 curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/forms -d '{"kind":"template","template":"invoice","to":["invoices"]}'
 curl -X PUT -H "Authorization: Bearer $TOKEN" "localhost:8080/api/nodes/forms/templates/invoice?name=invoice.xlsx" --data-binary @invoice.xlsx
-curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/erp-data -d '{"kind":"endpoint","accept":"data","to":["forms"]}'
-curl -X POST -H "Authorization: Bearer bdfk_…" -H "Content-Type: application/json" "localhost:8080/in/erp-data?name=INV-1" -d '{"customer":"ACME","total":12000}'
+curl -X PUT -H "Authorization: Bearer $TOKEN" localhost:8080/api/nodes/erp-data -d '{"kind":"upload","accept":"data","to":["forms"]}'
+curl -X POST -H "Authorization: Bearer bdfk_…" -H "Content-Type: application/json" "localhost:8080/api/upload/erp-data?name=INV-1" -d '{"customer":"ACME","total":12000}'
 ```
 
 ## On AWS Lambda

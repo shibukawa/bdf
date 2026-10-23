@@ -230,19 +230,19 @@ func TestInbox(t *testing.T) {
 		t.Fatalf("job %+v", js)
 	}
 	var v InboxView
-	json.Unmarshal(e.admin("GET", "/api/inboxes/review", nil, http.StatusOK), &v)
+	json.Unmarshal(e.admin("GET", "/api/inbox/review", nil, http.StatusOK), &v)
 	if len(v.Held) != 1 || v.Held[0].Job != 1 || v.Held[0].Name != "to review" || v.Held[0].Dest != "in" || v.Title != "確認" {
 		t.Fatalf("inbox %+v", v)
 	}
 	if d.board() != nil {
 		t.Fatal("on the board before its release")
 	}
-	item := v.Held[0].ID
+	item := fmt.Sprint(v.Held[0].Job)
 	// not to a node the inbox does not name
-	e.admin("POST", "/api/items/"+item+"/release", map[string]any{"to": []string{"review"}}, http.StatusBadRequest)
+	e.admin("POST", "/api/inbox/review/"+item+"/release", map[string]any{"to": []string{"review"}}, http.StatusBadRequest)
 	// to the location, by Sato
 	var it Item
-	json.Unmarshal(e.admin("POST", "/api/items/"+item+"/release", map[string]any{"to": []string{"wh-a"}, "worker": "Sato"}, http.StatusOK), &it)
+	json.Unmarshal(e.admin("POST", "/api/inbox/review/"+item+"/release", map[string]any{"to": []string{"wh-a"}, "worker": "Sato"}, http.StatusOK), &it)
 	if it.State != ItemReleased || it.Released.Worker != "Sato" || !slices.Equal(it.Released.To, []string{"wh-a"}) {
 		t.Fatalf("item %+v", it)
 	}
@@ -253,16 +253,16 @@ func TestInbox(t *testing.T) {
 	if j.State != JobCompleted || legs(j) != "in:routed review:released wh-a:shown" || j.Live != 2 {
 		t.Fatalf("job %+v: %s", j, legs(j))
 	}
-	e.admin("POST", "/api/items/"+item+"/release", nil, http.StatusConflict)
-	json.Unmarshal(e.admin("GET", "/api/inboxes/review", nil, http.StatusOK), &v)
+	e.admin("POST", "/api/inbox/review/"+item+"/release", nil, http.StatusConflict)
+	json.Unmarshal(e.admin("GET", "/api/inbox/review", nil, http.StatusOK), &v)
 	if len(v.Held) != 0 || len(v.Ended) != 1 {
 		t.Fatalf("inbox after release %+v", v)
 	}
 
 	// released to everything the inbox names, when no node is named
 	e.printJob("in", "both", 1)
-	json.Unmarshal(e.admin("GET", "/api/inboxes/review", nil, http.StatusOK), &v)
-	e.admin("POST", "/api/items/"+v.Held[0].ID+"/release", nil, http.StatusOK)
+	json.Unmarshal(e.admin("GET", "/api/inbox/review", nil, http.StatusOK), &v)
+	e.admin("POST", "/api/inbox/review/"+fmt.Sprint(v.Held[0].Job)+"/release", nil, http.StatusOK)
 	if rep := e.tick(); rep.Delivered != 1 || len(p.Jobs()) != 1 {
 		t.Fatalf("tick %+v", rep)
 	}
@@ -272,8 +272,8 @@ func TestInbox(t *testing.T) {
 
 	// discarded: the job ends here
 	e.printJob("in", "discard", 1)
-	json.Unmarshal(e.admin("GET", "/api/inboxes/review", nil, http.StatusOK), &v)
-	json.Unmarshal(e.admin("POST", "/api/items/"+v.Held[0].ID+"/discard", map[string]any{"worker": "Sato"}, http.StatusOK), &it)
+	json.Unmarshal(e.admin("GET", "/api/inbox/review", nil, http.StatusOK), &v)
+	json.Unmarshal(e.admin("POST", "/api/inbox/review/"+fmt.Sprint(v.Held[0].Job)+"/discard", map[string]any{"worker": "Sato"}, http.StatusOK), &it)
 	if it.State != ItemDiscarded || it.Discarded.Worker != "Sato" {
 		t.Fatalf("item %+v", it)
 	}
@@ -285,7 +285,7 @@ func TestInbox(t *testing.T) {
 	if res, out := e.do(nil, "POST", "/api/jobs/4/cancel", adminToken, nil); res.StatusCode != http.StatusOK {
 		t.Fatalf("cancel: %d %s", res.StatusCode, out)
 	}
-	json.Unmarshal(e.admin("GET", "/api/inboxes/review", nil, http.StatusOK), &v)
+	json.Unmarshal(e.admin("GET", "/api/inbox/review", nil, http.StatusOK), &v)
 	if len(v.Held) != 0 || len(v.Ended) != 4 || v.Ended[0].State != ItemDiscarded {
 		t.Fatalf("inbox after cancel %+v", v)
 	}
@@ -299,7 +299,7 @@ func TestInbox(t *testing.T) {
 	if rep := e.tick(); rep.Items != 4 {
 		t.Fatalf("tick %+v", rep)
 	}
-	json.Unmarshal(e.admin("GET", "/api/inboxes/review", nil, http.StatusOK), &v)
+	json.Unmarshal(e.admin("GET", "/api/inbox/review", nil, http.StatusOK), &v)
 	if len(v.Held) != 1 || len(v.Ended) != 0 {
 		t.Fatalf("inbox after keep %+v", v)
 	}
@@ -390,8 +390,8 @@ func TestNodes(t *testing.T) {
 	e.node("x", Node{Kind: KindQueue, To: []string{"x"}}, http.StatusBadRequest)
 	e.admin("PUT", "/api/nodes/wh-c", Node{Kind: KindDisplay, Fallback: &Fallback{Printer: "wh-a"}}, http.StatusBadRequest)
 	e.admin("PUT", "/api/nodes/p", Node{Kind: KindPrinter}, http.StatusBadRequest)
-	e.node("x", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Accept: "maybe"}, http.StatusBadRequest)
-	e.node("x", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Formats: []string{"PDF/A"}}, http.StatusBadRequest)
+	e.node("x", Node{Kind: KindUpload, To: []string{"wh-a"}, Accept: "maybe"}, http.StatusBadRequest)
+	e.node("x", Node{Kind: KindUpload, To: []string{"wh-a"}, Formats: []string{"PDF/A"}}, http.StatusBadRequest)
 	e.admin("PUT", "/api/nodes/laser", Node{Kind: KindDisplay}, http.StatusConflict)
 	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindPrinter, URL: "ipp://127.0.0.1:1/ipp/print"}, http.StatusConflict)
 
@@ -482,9 +482,9 @@ func TestCupsGetPrinters(t *testing.T) {
 	}
 }
 
-// An endpoint takes documents and filled templates from an application
+// An uploader takes documents and filled templates from an application
 // with its own key, and the job flows from it.
-func TestEndpoint(t *testing.T) {
+func TestUpload(t *testing.T) {
 	e := newEnv(t, nil)
 	ctx := context.Background()
 	e.admin("PUT", "/api/nodes/wh-a", Node{Kind: KindDisplay}, http.StatusOK)
@@ -496,45 +496,45 @@ func TestEndpoint(t *testing.T) {
 		Node
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("intake", Node{Kind: KindEndpoint, Title: "WMS", To: []string{"wh-a"}}, http.StatusOK), &made)
-	if !strings.HasPrefix(made.Key, "bdfk_") || made.KeyHash != "" || made.Kind != KindEndpoint {
+	json.Unmarshal(e.node("intake", Node{Kind: KindUpload, Title: "WMS", To: []string{"wh-a"}}, http.StatusOK), &made)
+	if !strings.HasPrefix(made.Key, "bdfk_") || made.KeyHash != "" || made.Kind != KindUpload {
 		t.Fatalf("endpoint %+v", made)
 	}
 	var again struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("intake", Node{Kind: KindEndpoint, Title: "WMS 2", To: []string{"wh-a"}}, http.StatusOK), &again)
+	json.Unmarshal(e.node("intake", Node{Kind: KindUpload, Title: "WMS 2", To: []string{"wh-a"}}, http.StatusOK), &again)
 	if again.Key != "" {
 		t.Fatal("the key was shown twice")
 	}
 	var topo []TopoNode
 	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &topo)
-	if topo[0].Name != "intake" || topo[0].In != "/in/intake" || topo[0].Title != "WMS 2" {
+	if topo[0].Name != "intake" || topo[0].API != "/api/upload/intake" || topo[0].Title != "WMS 2" {
 		t.Fatalf("topology %+v", topo)
 	}
 
 	// a document, with the key; not without, nor with another
 	doc := testDoc(t, 2)
-	if res, _ := e.do(nil, "POST", "/in/intake?name=pick", "", doc); res.StatusCode != http.StatusUnauthorized {
+	if res, _ := e.do(nil, "POST", "/api/upload/intake?name=pick", "", doc); res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("no key: %d", res.StatusCode)
 	}
-	if res, _ := e.do(nil, "POST", "/in/intake?name=pick", "bdfk_wrong", doc); res.StatusCode != http.StatusUnauthorized {
+	if res, _ := e.do(nil, "POST", "/api/upload/intake?name=pick", "bdfk_wrong", doc); res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("a wrong key: %d", res.StatusCode)
 	}
-	res, out := e.do(nil, "POST", "/in/intake?name=pick", made.Key, doc)
+	res, out := e.do(nil, "POST", "/api/upload/intake?name=pick", made.Key, doc)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("in: %d %s", res.StatusCode, out)
 	}
 	var j Job
 	json.Unmarshal(out, &j)
-	if j.Dest != "intake" || j.Source != "endpoint" || j.SubmittedBy.Kind != PrincipalEndpoint || j.SubmittedBy.ID != "intake" || j.Pages != 2 || legs(&j) != "intake:routed wh-a:shown" {
+	if j.Dest != "intake" || j.Source != "upload" || j.SubmittedBy.Kind != PrincipalKey || j.SubmittedBy.ID != "intake" || j.Pages != 2 || legs(&j) != "intake:routed wh-a:shown" {
 		t.Fatalf("job %+v: %s", j, legs(&j))
 	}
 	if b := d.board(); b == nil || len(b.Open) != 1 || b.Open[0].Name != "pick" {
 		t.Fatalf("board %+v", b)
 	}
 
-	// a template node fills its templates with the data an endpoint takes
+	// a template node fills its templates with the data an uploader takes
 	tpl, err := os.ReadFile("../testdata/form/pages.bdft")
 	if err != nil {
 		t.Fatal(err)
@@ -565,7 +565,7 @@ func TestEndpoint(t *testing.T) {
 	var din struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("data-in", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"forms"}}, http.StatusOK), &din)
+	json.Unmarshal(e.node("data-in", Node{Kind: KindUpload, Accept: AcceptData, To: []string{"forms"}}, http.StatusOK), &din)
 	var typed []TopoNode // a fresh slice: Unmarshal keeps the old elements' fields
 	json.Unmarshal(e.admin("GET", "/api/topology", nil, http.StatusOK), &typed)
 	byName := map[string]TopoNode{}
@@ -579,7 +579,7 @@ func TestEndpoint(t *testing.T) {
 		t.Fatalf("topology data-in %+v", d)
 	}
 	data := map[string]any{"pages": []map[string]any{{"slip": "No. 7", "customer": "ACME", "carry_in": 10}, {"slip": "No. 7", "customer": "ACME", "carry_in": 20}}}
-	res, out = e.do(nil, "POST", "/in/data-in?name=slip-7.json", din.Key, data)
+	res, out = e.do(nil, "POST", "/api/upload/data-in?name=slip-7.json", din.Key, data)
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("data: %d %s", res.StatusCode, out)
 	}
@@ -611,11 +611,11 @@ func TestEndpoint(t *testing.T) {
 	if res, _ := e.do(nil, "GET", fmt.Sprintf("/api/jobs/%d/pages/1.png?payload=%s", j.Number, j.ID), adminToken, nil); res.StatusCode != http.StatusNotFound {
 		t.Fatalf("a page of data: %d", res.StatusCode)
 	}
-	// a document is refused at a data endpoint, and data at a document one
-	if res, _ := e.do(nil, "POST", "/in/data-in?name=pick", din.Key, doc); res.StatusCode != http.StatusUnsupportedMediaType {
+	// a document is refused at a data uploader, and data at a document one
+	if res, _ := e.do(nil, "POST", "/api/upload/data-in?name=pick", din.Key, doc); res.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("a document at a data endpoint: %d", res.StatusCode)
 	}
-	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, data); res.StatusCode != http.StatusUnsupportedMediaType {
+	if res, _ := e.do(nil, "POST", "/api/upload/intake", made.Key, data); res.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("data at a document endpoint: %d", res.StatusCode)
 	}
 	if res, _ := e.do(nil, "POST", "/api/destinations/forms/jobs?name=x", adminToken, doc); res.StatusCode != http.StatusUnsupportedMediaType {
@@ -623,7 +623,7 @@ func TestEndpoint(t *testing.T) {
 	}
 	// no template of the id: the step fails for good, at once
 	e.node("forms", Node{Kind: KindTemplate, Template: "nowhere", To: []string{"wh-a"}}, http.StatusOK)
-	_, out = e.do(nil, "POST", "/in/data-in", din.Key, data)
+	_, out = e.do(nil, "POST", "/api/upload/data-in", din.Key, data)
 	json.Unmarshal(out, &j)
 	if rep := e.tick(); rep.Undelivered != 1 {
 		t.Fatalf("tick %+v", rep)
@@ -636,9 +636,9 @@ func TestEndpoint(t *testing.T) {
 	res, out = e.doWith(func(r *http.Request) {
 		r.Header.Set("Authorization", "Bearer "+din.Key)
 		r.Header.Set("X-Meta-Doc-Type", "slip")
-	}, "POST", "/in/data-in?name=by-meta", data)
+	}, "POST", "/api/upload/data-in?name=by-meta", data)
 	json.Unmarshal(out, &j)
-	if res.StatusCode != http.StatusCreated || j.Meta["doc-type"] != "slip" || j.Meta["$entry"] != "data-in" || j.Meta["$sender"] != "data-in" || j.Meta["$sender_kind"] != PrincipalEndpoint || j.Meta["$file"] != "by-meta" || j.Meta["$source"] != "endpoint" {
+	if res.StatusCode != http.StatusCreated || j.Meta["doc-type"] != "slip" || j.Meta["$entry"] != "data-in" || j.Meta["$sender"] != "data-in" || j.Meta["$sender_kind"] != PrincipalKey || j.Meta["$file"] != "by-meta" || j.Meta["$source"] != KindUpload {
 		t.Fatalf("meta: %d %+v", res.StatusCode, j.Meta)
 	}
 	if rep := e.tick(); rep.Delivered != 1 {
@@ -647,7 +647,7 @@ func TestEndpoint(t *testing.T) {
 	if got := e.job(j.Number); got.State != JobCompleted || legs(got) != "data-in:routed forms:done wh-a:shown" {
 		t.Fatalf("by meta %+v: %s", got, legs(got))
 	}
-	_, out = e.do(nil, "POST", "/in/data-in", din.Key, data)
+	_, out = e.do(nil, "POST", "/api/upload/data-in", din.Key, data)
 	json.Unmarshal(out, &j)
 	e.tick()
 	if got := e.job(j.Number); got.State != JobAborted || !strings.Contains(got.Legs[1].Error, "doc-type") {
@@ -662,13 +662,13 @@ func TestEndpoint(t *testing.T) {
 		t.Fatalf("forms' template stayed: %v", err)
 	}
 
-	// what an endpoint takes: some formats
-	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Accept: AcceptFile, Formats: []string{"PDF"}}, http.StatusOK)
-	if res, _ := e.do(nil, "POST", "/in/intake?name=pick", made.Key, doc); res.StatusCode != http.StatusUnsupportedMediaType {
+	// what an uploader takes: some formats
+	e.node("intake", Node{Kind: KindUpload, To: []string{"wh-a"}, Accept: AcceptFile, Formats: []string{"PDF"}}, http.StatusOK)
+	if res, _ := e.do(nil, "POST", "/api/upload/intake?name=pick", made.Key, doc); res.StatusCode != http.StatusUnsupportedMediaType {
 		t.Fatalf("bdf at a pdf endpoint: %d", res.StatusCode)
 	}
-	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}, Formats: []string{"bdf", "pdf"}}, http.StatusOK)
-	if res, _ := e.do(nil, "POST", "/in/intake?name=pick", made.Key, doc); res.StatusCode != http.StatusCreated {
+	e.node("intake", Node{Kind: KindUpload, To: []string{"wh-a"}, Formats: []string{"bdf", "pdf"}}, http.StatusOK)
+	if res, _ := e.do(nil, "POST", "/api/upload/intake?name=pick", made.Key, doc); res.StatusCode != http.StatusCreated {
 		t.Fatalf("bdf at a bdf endpoint: %d", res.StatusCode)
 	}
 	var got Node
@@ -692,14 +692,14 @@ func TestEndpoint(t *testing.T) {
 	// the key rotated: the old one is refused
 	var rot map[string]string
 	json.Unmarshal(e.admin("POST", "/api/nodes/intake/key", nil, http.StatusOK), &rot)
-	if res, _ := e.do(nil, "POST", "/in/intake", made.Key, doc); res.StatusCode != http.StatusUnauthorized {
+	if res, _ := e.do(nil, "POST", "/api/upload/intake", made.Key, doc); res.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("the old key: %d", res.StatusCode)
 	}
-	if res, _ := e.do(nil, "POST", "/in/intake", rot["key"], doc); res.StatusCode != http.StatusCreated {
+	if res, _ := e.do(nil, "POST", "/api/upload/intake", rot["key"], doc); res.StatusCode != http.StatusCreated {
 		t.Fatalf("the new key: %d", res.StatusCode)
 	}
 	e.admin("POST", "/api/nodes/wh-a/key", nil, http.StatusBadRequest)
-	// the endpoint is a destination of the API too; IPP reaches it
+	// the uploader is a destination of the API too; IPP reaches it
 	// through a CUPS server alone
 	if js := e.printJob("intake", "api", 1); js.State != JobCompleted || legs(js) != "intake:routed wh-a:shown" {
 		t.Fatalf("api %+v: %s", js, legs(js))

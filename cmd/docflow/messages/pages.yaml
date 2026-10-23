@@ -46,8 +46,8 @@ language-switch:
 # The top page.
 signin-lead:
   locales:
-    en: "A software-defined document network: documents enter at virtual printers and API endpoints, flow through the nodes you compose, and end on display boards, printers and archives."
-    ja: "ソフトウェアで定義する文書のネットワークです。文書は仮想プリンタと API のエンドポイントから入り、組み立てたノードを流れて、ディスプレイボード、プリンタ、アーカイブに行き着きます。"
+    en: "A software-defined document network: documents enter at virtual printers and the API's uploaders, flow through the nodes you compose, and end on display boards, printers and archives."
+    ja: "ソフトウェアで定義する文書のネットワークです。文書は仮想プリンタと API のアップローダーから入り、組み立てたノードを流れて、ディスプレイボード、プリンタ、アーカイブに行き着きます。"
 signin-button:
   locales:
     en: "Sign in"
@@ -185,8 +185,8 @@ audit-heading:
     ja: "監査ログ"
 audit-note:
   locales:
-    en: "Sign-ins, changes of the topology, keys and templates, devices, documents an endpoint refused, what people did in inboxes, and cancellations. Newest first."
-    ja: "サインイン、トポロジー・キー・テンプレートの変更、デバイス、エンドポイントが拒否した文書、インボックスで人がしたこと、取り消しです。新しい順に並びます。"
+    en: "Sign-ins, changes of the topology, keys and templates, devices, documents an uploader refused, what people and apps did in inboxes, and cancellations. Newest first."
+    ja: "サインイン、トポロジー・キー・テンプレートの変更、デバイス、アップローダーが拒否した文書、インボックスで人やアプリがしたこと、取り消しです。新しい順に並びます。"
 audit-when:
   locales:
     en: "When"
@@ -292,11 +292,11 @@ palette-sink:
   locales:
     en: "Sink"
     ja: "シンク"
-kind-endpoint:
+kind-upload:
   locales:
-    en: "Endpoint"
-    ja: "エンドポイント"
-kind-endpoint-note:
+    en: "Uploader"
+    ja: "アップローダー"
+kind-upload-note:
   locales:
     en: "a REST entry for applications"
     ja: "アプリケーション向けの REST の入口"
@@ -362,8 +362,8 @@ kind-inbox:
     ja: "インボックス"
 kind-inbox-note:
   locales:
-    en: "held until a person releases it"
-    ja: "人が送り出すまで留める"
+    en: "held until a person or an app releases it"
+    ja: "人かアプリが送り出すまで留める"
 kind-notify:
   locales:
     en: "Notify"
@@ -444,11 +444,11 @@ kind-sink-note:
   locales:
     en: "keeps the latest documents, to look at"
     ja: "最新の文書を見られるように保持する"
-kind-export:
+kind-download:
   locales:
-    en: "HTTP (pull)"
-    ja: "HTTP (pull)"
-kind-export-note:
+    en: "Downloader"
+    ja: "ダウンローダー"
+kind-download-note:
   locales:
     en: "fetched by applications and people from an inbox or an archive"
     ja: "インボックスかアーカイブのものを、アプリケーションや人が取りに来る"
@@ -504,8 +504,8 @@ zoom-in:
     ja: "拡大"
 topology-openapi-title:
   locales:
-    en: "The OpenAPI document of every endpoint and HTTP (pull) node"
-    ja: "すべてのエンドポイントと HTTP (pull) ノードの OpenAPI 文書"
+    en: "The OpenAPI document of every uploader, inbox and downloader"
+    ja: "すべてのアップローダー、インボックス、ダウンローダーの OpenAPI 文書"
 topology-edit-note:
   locales:
     en: "Drag the background to pan, wheel or pinch to zoom. Drag a node to move it; drag from its right port onto another node to connect them (a node that would not take what the edge carries fades, and the wire turns red over it); click an edge to remove it; click a node to edit it in the sidebar."
@@ -520,12 +520,12 @@ enroll-modal-note:
     ja: "デバイスで URL を開くか、そこでコードを読み取ります。デバイスは自分のキーを作り、このディスプレイに自分を登録します。コードは 1 度だけ使えます。"
 key-modal-heading:
   locales:
-    en: "Endpoint key"
-    ja: "エンドポイントのキー"
+    en: "The node's key"
+    ja: "ノードのキー"
 key-modal-note:
   locales:
-    en: "It is shown only now: copy it into the application that sends to the endpoint. Rotate it to get a new one."
-    ja: "表示されるのは今だけです。エンドポイントに送るアプリケーションにコピーしてください。新しいキーが要るときは回します。"
+    en: "It is shown only now: copy it into the application that sends to the node. Rotate it to get a new one."
+    ja: "表示されるのは今だけです。このノードに送るアプリケーションにコピーしてください。新しいキーが要るときは回します。"
 copy:
   locales:
     en: "Copy"
@@ -539,8 +539,8 @@ apps-title:
 apps-note:
   rich: true
   locales:
-    en: "Applications with credentials of their own. A backend takes a token at <token>POST /oauth/token</token> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the HTTP (pull) nodes that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <authorize>/oauth/authorize</authorize> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the HTTP (pull) nodes as that person. The scopes tick and admin are for a scheduler and for scripts."
-    ja: "自前の資格情報を持つアプリケーションです。バックエンドは id とシークレットで <token>POST /oauth/token</token> からトークンを受け取り（クライアントクレデンシャル）、自分をアプリに挙げたエンドポイントに送り、自分を挙げた HTTP (pull) ノードを読みます（スコープ export）。IPP では、自分を挙げた CUPS サーバーに、同じ id とシークレットを Basic で送ります。シークレットは 1 度だけ表示されます。公開クライアントは人のブラウザで動くフロントエンドです。シークレットを持たず、使っている人のトークンを <authorize>/oauth/authorize</authorize>（PKCE 付きの認可コードグラント）で受け取り、リダイレクト URI の 1 つに戻して、その人として HTTP (pull) ノードを読みます。スコープ tick と admin は、スケジューラとスクリプトのためのものです。"
+    en: "Applications with credentials of their own. A backend takes a token at <token>POST /oauth/token</token> with its id and secret (client credentials), sends to the uploaders that list it among their apps, works the inboxes that list it (the scope inbox) and reads the downloaders that list it (the scope download); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <authorize>/oauth/authorize</authorize> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the downloaders and work the inboxes as that person. The scopes tick and admin are for a scheduler and for scripts."
+    ja: "自前の資格情報を持つアプリケーションです。バックエンドは id とシークレットで <token>POST /oauth/token</token> からトークンを受け取り（クライアントクレデンシャル）、自分をアプリに挙げたアップローダーに送り、自分を挙げたインボックスを扱い（スコープ inbox）、自分を挙げたダウンローダーを読みます（スコープ download）。IPP では、自分を挙げた CUPS サーバーに、同じ id とシークレットを Basic で送ります。シークレットは 1 度だけ表示されます。公開クライアントは人のブラウザで動くフロントエンドです。シークレットを持たず、使っている人のトークンを <authorize>/oauth/authorize</authorize>（PKCE 付きの認可コードグラント）で受け取り、リダイレクト URI の 1 つに戻して、その人としてダウンローダーを読み、インボックスを扱います。スコープ tick と admin は、スケジューラとスクリプトのためのものです。"
 apps-id:
   locales:
     en: "Id"
@@ -555,8 +555,8 @@ apps-scopes:
     ja: "スコープ"
 apps-where:
   locales:
-    en: "Endpoints / redirect URIs"
-    ja: "エンドポイント / リダイレクト URI"
+    en: "Nodes / redirect URIs"
+    ja: "ノード / リダイレクト URI"
 apps-last-used:
   locales:
     en: "Last used"
@@ -603,6 +603,10 @@ inboxes-title:
   locales:
     en: "Inboxes · BDF Docflow"
     ja: "インボックス · BDF Docflow"
+inboxes-note:
+  locales:
+    en: "What the inboxes you work hold, oldest first: release an item to a node, or discard it. Applications do the same through the API (/api/inbox)."
+    ja: "自分が扱うインボックスに留まっているもの（古い順）です。項目をノードへ送り出すか、破棄します。アプリケーションは API（/api/inbox）で同じことができます。"
 inboxes-worker-placeholder:
   locales:
     en: "name (for the record)"

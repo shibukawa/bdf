@@ -24,8 +24,9 @@ const (
 	// PrincipalToken is a sender with a token of the configuration: a
 	// submit token's name, or "admin" for the admin token.
 	PrincipalToken = "token"
-	// PrincipalEndpoint is an endpoint's key (POST /in/<name>).
-	PrincipalEndpoint = "endpoint"
+	// PrincipalKey is the key of a keyed entry (an uploader, POST
+	// /api/upload/<name>; an S3 trigger): whoever holds it.
+	PrincipalKey = "key"
 	// PrincipalApp is an app with credentials of its own (apps.go).
 	PrincipalApp = "app"
 	// PrincipalAnonymous is a sender nobody verified (no submit tokens
@@ -38,7 +39,7 @@ const (
 	ViaOIDC        = "oidc"
 	ViaAdminToken  = "admin-token"
 	ViaSubmitToken = "submit-token"
-	ViaEndpointKey = "endpoint-key"
+	ViaNodeKey     = "node-key"
 	// ViaClientCredentials is an app's token (POST /oauth/token) or its
 	// Basic client_id:secret.
 	ViaClientCredentials = "client-credentials"
@@ -52,7 +53,7 @@ const (
 // Principal is who sent a job, as the manager verified it.
 type Principal struct {
 	Kind string `json:"kind"`
-	// ID is the person's (Viewer.ID), the token's or the endpoint's
+	// ID is the person's (Viewer.ID), the token's or the keyed entry's
 	// name; empty for an anonymous sender.
 	ID string `json:"id,omitempty"`
 	// Name is shown: the person's name or email at the time.
@@ -122,7 +123,7 @@ type Viewer struct {
 	// Groups are the values of the IdP's groups claim at the last login.
 	Groups []string
 	// Subject is the person's subject at the IdP (sub), when the web
-	// application knows it: what an export compares with a document's
+	// application knows it: what a downloader compares with a document's
 	// owner under SubjectSub.
 	Subject string
 	// Scopes are an app's (granted to its token), or a person's token's.
@@ -133,7 +134,7 @@ type Viewer struct {
 	Admin bool
 }
 
-// What of a person an export compares with the owner a document's
+// What of a person a downloader compares with the owner a document's
 // metadata names (Node.Subject).
 const (
 	// SubjectEmail is the person's email, as the IdP verified it (the
@@ -147,7 +148,7 @@ const (
 	SubjectGroup = "group"
 )
 
-var exportSubjects = []string{SubjectEmail, SubjectSub, SubjectID, SubjectGroup}
+var ownerSubjects = []string{SubjectEmail, SubjectSub, SubjectID, SubjectGroup}
 
 // identities are the values of the viewer an owner is compared with,
 // under a subject: a person's email, subject, ID, or groups. Nothing for
@@ -184,8 +185,8 @@ func (v *Viewer) owns(subject, owner string) bool {
 	return false
 }
 
-// Token tells a person's token (ViaOAuth): it opens the export
-// endpoints and /api/me alone, not the pages' API.
+// Token tells a person's token (ViaOAuth): it opens the downloaders, the
+// inboxes and /api/me alone, not the pages' API.
 func (v *Viewer) Token() bool { return v != nil && v.Kind == PrincipalUser && v.Via == ViaOAuth }
 
 // Has tells a scope of the viewer (an administrator has every one).

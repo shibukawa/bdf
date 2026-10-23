@@ -17,7 +17,7 @@ import (
 )
 
 // Frontends: a web application of the organization's own, running in
-// people's browsers on another origin, reads an export for the person
+// people's browsers on another origin, reads a downloader for the person
 // using it with a token of theirs. The frontend is registered as a
 // public client (an App with Public and its RedirectURIs: no secret, as
 // a browser keeps none), and gets the token with the authorization code
@@ -29,7 +29,7 @@ import (
 // registration of the client is the consent: no screen asks the person.
 // The token carries the person (their record is read on each request:
 // the groups of their last login, the subject at the IdP) and the scopes
-// granted, no role: it opens the export endpoints and /api/me, nothing
+// granted, no role: it opens the downloaders, the inboxes and /api/me, nothing
 // else of the API. The frontend asks for a code again when it expires
 // (the person's session at the manager makes that silent).
 
@@ -88,7 +88,7 @@ func loopbackHost(host string) bool {
 
 // clientOrigin tells an origin of a public client: of one of its
 // redirect URIs. A page there may call the token endpoint and the
-// exports (CORS).
+// downloaders (CORS).
 func (m *Manager) clientOrigin(ctx context.Context, origin string) bool {
 	o, err := url.Parse(origin)
 	if err != nil || o.Host == "" {
@@ -112,7 +112,7 @@ func (m *Manager) clientOrigin(ctx context.Context, origin string) bool {
 }
 
 // cors lets a page of a public client's origin call: the token endpoint
-// and the exports answer its preflight, and name the origin.
+// and the downloaders answer its preflight, and name the origin.
 func (h *handler) cors(fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if origin := r.Header.Get("Origin"); origin != "" && h.m.clientOrigin(r.Context(), origin) {

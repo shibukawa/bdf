@@ -40,8 +40,11 @@ func TestKindRegistry(t *testing.T) {
 	if c := by[KindCupsOut]; c.Role != RoleExit || c.Title != "CUPS server (sink)" || !c.SendsOut || !c.Fixed || !c.Discovers || !slices.Equal(c.Takes, []string{PayloadBDF}) {
 		t.Errorf("cups-out: %+v", c)
 	}
-	if x := by[KindEndpoint]; !x.Port || x.SendsOut {
-		t.Errorf("endpoint: %+v", x)
+	if x := by[KindUpload]; x.Port || x.SendsOut || !x.Keyed || x.Title != "Uploader" {
+		t.Errorf("upload: %+v", x)
+	}
+	if x := by[KindDownload]; x.Title != "Downloader" || !slices.Equal(x.Takes, []string{PayloadStocked}) {
+		t.Errorf("download: %+v", x)
 	}
 	if x := by[KindTemplate]; x.Makes != PayloadBDF || !slices.Equal(x.Takes, []string{PayloadData}) {
 		t.Errorf("template: %+v", x)

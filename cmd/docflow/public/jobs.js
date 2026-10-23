@@ -35,7 +35,7 @@ function el(tag, text, attrs = {}) {
   return e;
 }
 
-const KINDS = { endpoint: _("Endpoint"), queue: _("Queue"), class: _("Class"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer") };
+const KINDS = { upload: _("Uploader"), queue: _("Queue"), class: _("Class"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer") };
 const ENDED = ["completed", "canceled", "aborted"];
 const STATES = { processing: _("processing"), held: _("held"), completed: _("completed"), canceled: _("canceled"), aborted: _("aborted") };
 

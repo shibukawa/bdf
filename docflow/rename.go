@@ -15,7 +15,7 @@ import (
 // moves with it: where it is drawn, the edges of the nodes that send to
 // it, a template node's templates, a display's devices, enrollment codes
 // and the slips it still shows, an inbox's items it still shows, a sink's
-// documents, an export's entries, and the list of the jobs sent to it.
+// documents, a downloader's entries, and the list of the jobs sent to it.
 // An archive keeps writing to the collection it wrote to. Where the node
 // is reached changes with it (/ipp/print/<name>, /in/<name>,
 // /out/<name>, a CUPS server's /printers/<name>); the jobs that reached
@@ -182,8 +182,8 @@ func (m *Manager) moveState(ctx context.Context, n *Node, to string) error {
 				return err
 			}
 		}
-	case KindExport:
-		if err := m.moveExport(ctx, from, to); err != nil {
+	case KindDownload:
+		if err := m.moveDownload(ctx, from, to); err != nil {
 			return err
 		}
 		return m.moveListedAt(ctx, from, to)
@@ -246,21 +246,21 @@ func (m *Manager) moveTemplates(ctx context.Context, from, to string) error {
 	return nil
 }
 
-// moveExport moves an export's entries (<name>.<job>) and lists (<name>,
+// moveDownload moves a downloader's entries (<name>.<job>) and lists (<name>,
 // <name>.<owner's hash>).
-func (m *Manager) moveExport(ctx context.Context, from, to string) error {
-	entries, err := list[exportEntryRecord](ctx, m.st.db)
+func (m *Manager) moveDownload(ctx context.Context, from, to string) error {
+	entries, err := list[downloadEntryRecord](ctx, m.st.db)
 	if err != nil {
 		return err
 	}
 	for _, r := range entries {
 		if rest, ok := strings.CutPrefix(r.ID(), from+"."); ok && len(rest) == 10 && isDigits(rest) {
-			if err := moveRecord(ctx, m.st.db, r.ID(), exportEntryID(to, rest), func(d *exportEntryRecord, s exportEntryRecord) { *d = s }); err != nil {
+			if err := moveRecord(ctx, m.st.db, r.ID(), downloadEntryID(to, rest), func(d *downloadEntryRecord, s downloadEntryRecord) { *d = s }); err != nil {
 				return err
 			}
 		}
 	}
-	lists, err := list[exportList](ctx, m.st.db)
+	lists, err := list[downloadList](ctx, m.st.db)
 	if err != nil {
 		return err
 	}
@@ -274,7 +274,7 @@ func (m *Manager) moveExport(ctx context.Context, from, to string) error {
 		if id == "" {
 			continue
 		}
-		if err := moveRecord(ctx, m.st.db, r.ID(), id, func(d *exportList, s exportList) { d.Seq, d.Jobs = d.Seq+s.Seq+1, append(s.Jobs, d.Jobs...) }); err != nil {
+		if err := moveRecord(ctx, m.st.db, r.ID(), id, func(d *downloadList, s downloadList) { d.Seq, d.Jobs = d.Seq+s.Seq+1, append(s.Jobs, d.Jobs...) }); err != nil {
 			return err
 		}
 	}

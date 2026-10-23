@@ -17,6 +17,7 @@ type Account struct {
 	Admin     bool
 	Topology  bool
 	Audit     bool
+	Inboxes   bool
 	Languages []Language
 	Here      string
 }
@@ -416,7 +417,7 @@ var planTabletOpsFill7Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[Tab
 
 var planTopologyOpsFill10Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
-		return messages.PagesKindEndpointNote(pwruntime.MessageLocale(ctx))
+		return messages.PagesKindUploadNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
@@ -435,7 +436,7 @@ var planTopologyOpsFill12Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 var planTopologyOpsFill9Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "endpoint", Name: messages.PagesKindEndpoint(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill10Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "upload", Name: messages.PagesKindUpload(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill10Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
@@ -598,7 +599,7 @@ var planTopologyOpsFill31Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 
 var planTopologyOpsFill32Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
-		return messages.PagesKindExportNote(pwruntime.MessageLocale(ctx))
+		return messages.PagesKindDownloadNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
@@ -643,7 +644,7 @@ var planTopologyOpsFill26Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: messages.PagesKindExport(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill32Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "download", Name: messages.PagesKindDownload(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill32Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
@@ -889,6 +890,18 @@ var planAppsOpsFill36Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsPa
 }}
 
 var planInboxesOpsFill37Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
+	planInboxesOps.Static(" "),
+	planInboxesOps.Component(func(p InboxesParams) htmlbind.Fragment {
+		return renderAppBar(renderAppBarParams{Title: "BDF Docflow", Account: p.Account})
+	}),
+	planInboxesOps.Static(" <main class=\"mx-auto flex max-w-[1600px] flex-col gap-4 p-4 sm:p-6\"> "),
+	planInboxesOps.If(func(p InboxesParams) bool { return p.Account.Topology },
+		[]htmlbind.Op[InboxesParams]{
+			planInboxesOps.Static(" "),
+			planInboxesOps.Component(func(p InboxesParams) htmlbind.Fragment { return renderAdminNav(renderAdminNavParams{}) }),
+			planInboxesOps.Static(" "),
+		},
+		nil),
 	planInboxesOps.Static(" <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"text-xl font-bold\">"),
 	planInboxesOps.TextCtx(func(ctx context.Context, p InboxesParams) string {
 		return messages.PagesTabInboxes(pwruntime.MessageLocale(ctx))
@@ -905,7 +918,11 @@ var planInboxesOpsFill37Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[
 	planInboxesOps.TextCtx(func(ctx context.Context, p InboxesParams) string {
 		return messages.PagesRefresh(pwruntime.MessageLocale(ctx))
 	}),
-	planInboxesOps.Static("</button> </div> <section id=\"inboxes\" class=\"grid gap-4\"></section> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
+	planInboxesOps.Static("</button> </div> <p class=\"text-sm text-base-content/60\">"),
+	planInboxesOps.TextCtx(func(ctx context.Context, p InboxesParams) string {
+		return messages.PagesInboxesNote(pwruntime.MessageLocale(ctx))
+	}),
+	planInboxesOps.Static("</p> <section id=\"inboxes\" class=\"grid gap-4\"></section> </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
 }}
 
 var planAdminJobsOpsFill38Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
@@ -1160,6 +1177,22 @@ var planAppBarPlan = &htmlbind.Plan[renderAppBarParams]{
 			return messages.PagesNavTopology(pwruntime.MessageLocale(ctx))
 		}),
 		planAppBarOps.Static("</a> "),
+		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Inboxes },
+			[]htmlbind.Op[renderAppBarParams]{
+				planAppBarOps.Static(" "),
+				planAppBarOps.If(func(p renderAppBarParams) bool { return !(p.Account.Topology) },
+					[]htmlbind.Op[renderAppBarParams]{
+						planAppBarOps.Static(" <a href=\"/inboxes\" class=\"btn btn-sm btn-ghost\">"),
+						planAppBarOps.TextCtx(func(ctx context.Context, p renderAppBarParams) string {
+							return messages.PagesTabInboxes(pwruntime.MessageLocale(ctx))
+						}),
+						planAppBarOps.Static("</a> "),
+					},
+					nil),
+				planAppBarOps.Static(" "),
+			},
+			nil),
+		planAppBarOps.Static(" "),
 		planAppBarOps.If(func(p renderAppBarParams) bool { return p.Account.Topology },
 			[]htmlbind.Op[renderAppBarParams]{
 				planAppBarOps.Static(" <a href=\"/admin\" class=\"btn btn-sm btn-ghost\">"),
@@ -1283,7 +1316,7 @@ var planAdminNavPlan = &htmlbind.Plan[renderAdminNavParams]{
 		planAdminNavOps.TextCtx(func(ctx context.Context, p renderAdminNavParams) string {
 			return messages.PagesTabApps(pwruntime.MessageLocale(ctx))
 		}),
-		planAdminNavOps.Static("</a> <a role=\"tab\" class=\"tab\" href=\"/admin/inboxes\">"),
+		planAdminNavOps.Static("</a> <a role=\"tab\" class=\"tab\" href=\"/inboxes\">"),
 		planAdminNavOps.TextCtx(func(ctx context.Context, p renderAdminNavParams) string {
 			return messages.PagesTabInboxes(pwruntime.MessageLocale(ctx))
 		}),
@@ -1446,7 +1479,7 @@ var planInboxesPlan = &htmlbind.Plan[InboxesParams]{
 	Ops: []htmlbind.Op[InboxesParams]{
 		planInboxesOps.Static(" "),
 		planInboxesOps.ComponentCtx(func(ctx context.Context, p InboxesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: messages.PagesInboxesTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planInboxesOpsFill37Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: messages.PagesInboxesTitle(pwruntime.MessageLocale(ctx)), Children: planInboxesOpsFill37Plan.Bind(p)})
 		}),
 		planInboxesOps.Static(" "),
 	},

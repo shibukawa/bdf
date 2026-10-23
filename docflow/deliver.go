@@ -208,7 +208,7 @@ func (m *Manager) deliver(ctx context.Context, id string) (*Delivery, error) {
 		if err != nil || d.State != DeliveryDone || len(n.To) == 0 || p == nil {
 			return d, err
 		}
-		// what it wrote goes on: an export after it lists it
+		// what it wrote goes on: a downloader after it lists it
 		if err := m.continueFrom(ctx, d, n, p, false, &stockRef{Node: n.Name, Key: key}); err != nil {
 			m.o.Log.Warn("continue after an archive", "delivery", d.ID, "job", d.Job, "node", d.Node, "err", err)
 			return d, err

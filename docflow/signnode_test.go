@@ -25,14 +25,14 @@ func TestSignNode(t *testing.T) {
 	e.node("witness", Node{Kind: KindSign, To: []string{"keep"}, SignRole: strings.Repeat("x", 65)}, http.StatusBadRequest)
 	e.node("witness", Node{Kind: KindSign, To: []string{"keep"}}, http.StatusOK)
 	// it signs .bdf: data does not reach it
-	if out := e.node("din", Node{Kind: KindEndpoint, Accept: AcceptData, To: []string{"witness"}}, http.StatusBadRequest); !strings.Contains(string(out), "takes bdf") {
+	if out := e.node("din", Node{Kind: KindUpload, Accept: AcceptData, To: []string{"witness"}}, http.StatusBadRequest); !strings.Contains(string(out), "takes bdf") {
 		t.Fatalf("data to a sign node: %s", out)
 	}
 	var in struct {
 		Key string `json:"key"`
 	}
-	json.Unmarshal(e.node("in", Node{Kind: KindEndpoint, To: []string{"witness"}}, http.StatusOK), &in)
-	res, out := e.do(nil, "POST", "/in/in?name=contract", in.Key, testDoc(t, 1))
+	json.Unmarshal(e.node("in", Node{Kind: KindUpload, To: []string{"witness"}}, http.StatusOK), &in)
+	res, out := e.do(nil, "POST", "/api/upload/in?name=contract", in.Key, testDoc(t, 1))
 	if res.StatusCode != http.StatusCreated {
 		t.Fatalf("%d %s", res.StatusCode, out)
 	}
@@ -70,8 +70,8 @@ func TestSignNode(t *testing.T) {
 	e2 := newEnv(t, nil)
 	e2.node("keep", Node{Kind: KindSink}, http.StatusOK)
 	e2.node("witness", Node{Kind: KindSign, To: []string{"keep"}, SignRole: "notary"}, http.StatusOK)
-	json.Unmarshal(e2.node("in", Node{Kind: KindEndpoint, To: []string{"witness"}}, http.StatusOK), &in)
-	_, out = e2.do(nil, "POST", "/in/in?name=contract", in.Key, testDoc(t, 1))
+	json.Unmarshal(e2.node("in", Node{Kind: KindUpload, To: []string{"witness"}}, http.StatusOK), &in)
+	_, out = e2.do(nil, "POST", "/api/upload/in?name=contract", in.Key, testDoc(t, 1))
 	json.Unmarshal(out, &j)
 	e2.tick()
 	if got := e2.job(j.Number); !strings.HasPrefix(legs(got), "in:routed witness:failed") || !strings.Contains(got.Legs[1].Error, "no key to sign with") {
