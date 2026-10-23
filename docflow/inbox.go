@@ -13,12 +13,21 @@ import (
 // An inbox holds the jobs that reach it as items, until a person
 // releases one to a node (one of the inbox's To, when it names any) or
 // discards it: a filter worked by hand. An item released or discarded
-// stays, shown as ended, for the inbox's keep.
+// stays, shown as ended, for the inbox's keep. The HTTP (pull) nodes of
+// its To are not where it releases to: they list each item while it is
+// held, for applications to fetch (a stocked file), and no longer once
+// it is released or discarded.
 
-// routeInbox holds the job in an inbox.
-func (m *Manager) routeInbox(ctx context.Context, r *routing, name, from string) {
+// routeInbox holds the job in an inbox, and lists it at the inbox's
+// HTTP (pull) nodes.
+func (m *Manager) routeInbox(ctx context.Context, r *routing, name, from string, depth int) {
 	j, p := r.job, r.payload
-	it := Item{ID: itemID(j.Number, name), Job: j.Number, Inbox: name, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Dest: j.Dest, Payload: p.ID, Trace: r.trace, Pages: p.Pages, Received: r.now, State: ItemHeld}
+	var pulls []string
+	if n, err := m.Node(ctx, name); err == nil {
+		pulls, _ = m.pullsOf(ctx, n)
+	}
+	it := Item{ID: itemID(j.Number, name), Job: j.Number, Inbox: name, Name: j.Name, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Dest: j.Dest, Payload: p.ID, Trace: r.trace, Pages: p.Pages, Received: r.now, State: ItemHeld,
+		Listed: pulls}
 	_, err := m.st.db.Insert(ctx, it.ID, itemRecord(it))
 	if errors.Is(err, yuruidb.ErrAlreadyExists) {
 		r.add(Leg{Node: name, Kind: KindInbox, From: from, State: LegError, Ref: it.ID, Error: "the job passed this inbox already"})
@@ -34,6 +43,64 @@ func (m *Manager) routeInbox(ctx context.Context, r *routing, name, from string)
 		return
 	}
 	r.add(Leg{Node: name, Kind: KindInbox, From: from, State: LegHeld, Ref: it.ID})
+	if len(pulls) > 0 {
+		was := r.stock
+		r.stock = &stockRef{Node: name, Item: it.ID}
+		for _, to := range pulls {
+			m.route(ctx, r, to, name, depth+1)
+		}
+		r.stock = was
+	}
+}
+
+// pullsOf splits an inbox's To: the HTTP (pull) nodes that list what it
+// holds, and the nodes it releases to.
+func (m *Manager) pullsOf(ctx context.Context, n *Node) (pulls, release []string) {
+	for _, to := range n.To {
+		if x, err := m.Node(ctx, to); err == nil && n.stockedTo(x) {
+			pulls = append(pulls, to)
+		} else {
+			release = append(release, to)
+		}
+	}
+	return pulls, release
+}
+
+// moveListedAt renames an HTTP (pull) node in the items held that it
+// lists, so that their release takes them off it under its new name.
+func (m *Manager) moveListedAt(ctx context.Context, from, to string) error {
+	items, err := list[itemRecord](ctx, m.st.db)
+	if err != nil {
+		return err
+	}
+	for _, rec := range items {
+		if rec.Data.State != ItemHeld || !slices.Contains(rec.Data.Listed, from) {
+			continue
+		}
+		if _, err := change(ctx, m.st.db, rec.ID(), false, func(r *itemRecord) error {
+			r.Listed = slices.DeleteFunc(r.Listed, func(x string) bool { return x == to })
+			for i, x := range r.Listed {
+				if x == from {
+					r.Listed[i] = to
+				}
+			}
+			return nil
+		}); err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+	}
+	return nil
+}
+
+// unlistItem takes an item that is no longer held off the HTTP (pull)
+// nodes that list it. One that fails is logged: the export reads the
+// item before it shows the entry.
+func (m *Manager) unlistItem(ctx context.Context, it *Item) {
+	for _, name := range it.Listed {
+		if err := m.unlist(ctx, name, it.Job); err != nil {
+			m.o.Log.Warn("unlist an item", "item", it.ID, "export", name, "err", err)
+		}
+	}
 }
 
 // touchInbox changes an inbox's state.
@@ -76,7 +143,8 @@ func (m *Manager) Inbox(ctx context.Context, name string) (*InboxView, error) {
 	if n.Kind != KindInbox {
 		return nil, fmt.Errorf("%w: %s is a %s", ErrNotFound, name, n.Kind)
 	}
-	v := &InboxView{Name: name, Title: or(n.Title, name), To: n.To, Rev: "0", Held: []Item{}, Ended: []Item{}}
+	_, release := m.pullsOf(ctx, n)
+	v := &InboxView{Name: name, Title: or(n.Title, name), To: release, Rev: "0", Held: []Item{}, Ended: []Item{}}
 	if v.To == nil {
 		v.To = []string{}
 	}
@@ -115,7 +183,7 @@ func (m *Manager) Inbox(ctx context.Context, name string) (*InboxView, error) {
 
 // Release sends a held item on to nodes: those named, or all of the
 // inbox's To when none is. When the inbox names nodes, only those may be
-// chosen.
+// chosen; its HTTP (pull) nodes are not among them, nor is any such node.
 func (m *Manager) Release(ctx context.Context, id string, to []string, by Mark) (*Item, error) {
 	by.At = m.now()
 	it, err := m.Item(ctx, id)
@@ -127,7 +195,7 @@ func (m *Manager) Release(ctx context.Context, id string, to []string, by Mark) 
 	}
 	var allowed []string
 	if n, err := m.Node(ctx, it.Inbox); err == nil && n.Kind == KindInbox {
-		allowed = n.To
+		_, allowed = m.pullsOf(ctx, n)
 	}
 	to = cleanNames(to)
 	if len(to) == 0 {
@@ -137,11 +205,15 @@ func (m *Manager) Release(ctx context.Context, id string, to []string, by Mark) 
 		return nil, fmt.Errorf("%w: name the nodes to release to", ErrInvalid)
 	}
 	for _, name := range to {
+		kind, err := m.kindOf(ctx, name)
+		if err != nil {
+			return nil, fmt.Errorf("%w: no node %q", ErrInvalid, name)
+		}
+		if takes(kind).has(PayloadStocked) {
+			return nil, fmt.Errorf("%w: %s lists what an inbox holds; it is not a node to release to", ErrInvalid, name)
+		}
 		if len(allowed) > 0 && !slices.Contains(allowed, name) {
 			return nil, fmt.Errorf("%w: %s releases to %s only", ErrInvalid, it.Inbox, strings.Join(allowed, ", "))
-		}
-		if _, err := m.kindOf(ctx, name); err != nil {
-			return nil, fmt.Errorf("%w: no node %q", ErrInvalid, name)
 		}
 	}
 	j, err := m.JobOfNumber(ctx, it.Job)
@@ -162,6 +234,7 @@ func (m *Manager) Release(ctx context.Context, id string, to []string, by Mark) 
 	if err := m.endItem(ctx, it.Inbox, id); err != nil {
 		return it, err
 	}
+	m.unlistItem(ctx, it)
 	r := &routing{job: j, now: by.At, payload: j.payload(it.Payload), trace: it.Trace}
 	for _, name := range to {
 		m.route(ctx, r, name, it.Inbox, 0)
@@ -215,7 +288,11 @@ func (m *Manager) discardItem(ctx context.Context, id string, by Mark) error {
 	if err != nil {
 		return err
 	}
-	return m.endItem(ctx, it.Inbox, id)
+	if err := m.endItem(ctx, it.Inbox, id); err != nil {
+		return err
+	}
+	m.unlistItem(ctx, it)
+	return nil
 }
 
 // end moves an item from the held ones to the ended ones.

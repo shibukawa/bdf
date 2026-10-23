@@ -4,7 +4,7 @@
 
 import { $, api, badge, button, el, onChange, since, status } from "./admin.js";
 
-const SCOPES = { print: "print: send documents", "print.template": "print.template: fill templates", "jobs.cancel": "jobs.cancel: cancel its own jobs", export: "export: read the exports", tick: "tick: POST /api/tick", admin: "admin: the API as an administrator" };
+const SCOPES = { print: "print: send documents", "print.template": "print.template: fill templates", "jobs.cancel": "jobs.cancel: cancel its own jobs", export: "export: read the HTTP (pull) nodes", tick: "tick: POST /api/tick", admin: "admin: the API as an administrator" };
 
 let editing = ""; // the app in the form
 

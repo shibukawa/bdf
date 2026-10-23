@@ -224,7 +224,7 @@ func (d *apiDoc) entry(n *Node) {
 	if len(n.To) > 0 {
 		desc = append(desc, "It goes on to "+d.names(n.To)+".")
 	}
-	desc = append(desc, "The answer is the job, which an app follows at /api/jobs/{id}. The sender's metadata is ?meta.<key>= parameters, or X-Meta-<Key> headers (the key in lower case); the parameters below are the keys the nodes after this one look at, and any other key goes along too.")
+	desc = append(desc, "The answer is the job, which an app follows at /api/jobs/{id}. The sender's metadata is ?meta.<key>= parameters, or X-Meta-<Key> headers (the key in lower case), or in a multipart/form-data body a JSON object in the part meta, beside the document in the part file; the parameters below are the keys the nodes after this one look at, and any other key goes along too.")
 	security := []any{map[string]any{"key": []string{}}, map[string]any{"admin": []string{}}}
 	if n.Kind == KindEndpoint {
 		scope := ScopePrint
@@ -311,7 +311,8 @@ func mediaTypeOf(format string) string {
 
 // entryBody is the content an entry takes: of a reference, its schema;
 // of data, the schema of the templates it reaches; of documents, the
-// media types of its formats.
+// media types of its formats. Either may come in multipart/form-data
+// too (withMultipart).
 func (d *apiDoc) entryBody(n *Node, k *Kind) map[string]any {
 	binary := map[string]any{"type": "string", "format": "binary"}
 	if k != nil && k.Fetch != nil {
@@ -326,9 +327,9 @@ func (d *apiDoc) entryBody(n *Node, k *Kind) map[string]any {
 		formats = dataFormats
 	}
 	if len(formats) == 0 {
-		return map[string]any{"application/octet-stream": map[string]any{"schema": map[string]any{
+		return withMultipart(map[string]any{"application/octet-stream": map[string]any{"schema": map[string]any{
 			"type": "string", "format": "binary", "description": "A document of any format the converter reads (" + strings.Join(KnownFormats(), ", ") + "), told by its content and ?name=.",
-		}}}
+		}}})
 	}
 	data := d.dataSchema(n)
 	byType := map[string][]string{}
@@ -358,7 +359,29 @@ func (d *apiDoc) entryBody(n *Node, k *Kind) map[string]any {
 		}
 		out[t] = map[string]any{"schema": s}
 	}
-	return out
+	return withMultipart(out)
+}
+
+// withMultipart adds to the media types of a body the same in
+// multipart/form-data (readBody): the document, of one of those types, in
+// the part file, after the metadata as a JSON object in the part meta.
+func withMultipart(content map[string]any) map[string]any {
+	types := slices.Sorted(maps.Keys(content))
+	content["multipart/form-data"] = map[string]any{
+		"schema": map[string]any{
+			"type":     "object",
+			"required": []string{"file"},
+			"properties": map[string]any{
+				"meta": map[string]any{"type": "object", "description": "The sender's metadata, over the X-Meta-* headers and ?meta.<key>= parameters."},
+				"file": map[string]any{"type": "string", "format": "binary", "description": "The document, as the body of the other media types; its name is the job's unless ?name= is given."},
+			},
+		},
+		"encoding": map[string]any{
+			"meta": map[string]any{"contentType": "application/json"},
+			"file": map[string]any{"contentType": strings.Join(types, ", ")},
+		},
+	}
+	return content
 }
 
 // dataSchema is the schema of the data an entry takes: that of the one
@@ -522,7 +545,7 @@ func (n *Node) expanded() []string {
 
 // export describes GET /out/<name> and its entries.
 func (d *apiDoc) export(n *Node) {
-	d.tag(n, "an export: the documents an archive wrote, for their owners and the apps it lists")
+	d.tag(n, "an export (HTTP (pull)): the documents an inbox holds or an archive wrote, for their owners and the apps it lists")
 	entry := d.goSchema(reflect.TypeFor[ExportEntry]())
 	if len(n.Fields) > 0 {
 		props := map[string]any{}
@@ -561,9 +584,10 @@ func (d *apiDoc) export(n *Node) {
 		jsonBody("the entries", map[string]any{"type": "array", "items": ref(entry)}))
 	d.paths[base+"/{job}"] = get("get_entry", "An entry of "+or(n.Title, n.Name), "One entry, by its job's number.",
 		[]any{job}, jsonBody("the entry", ref(entry)))
-	d.paths[base+"/{job}/record"] = get("get_record", "The archive's record of an entry", "The record the archive wrote of the job: its metadata, payloads and legs then.",
-		[]any{job}, jsonBody("the record", ref(d.goSchema(reflect.TypeFor[ArchiveRecord]()))))
-	d.paths[base+"/{job}/document"] = get("get_document", "The document of an entry", "The document as the archive wrote it, of the entry's format; the download is in the audit log.",
+	record := map[string]any{"oneOf": []any{ref(d.goSchema(reflect.TypeFor[ArchiveRecord]())), ref(d.goSchema(reflect.TypeFor[Job]()))}}
+	d.paths[base+"/{job}/record"] = get("get_record", "The record of an entry", "The record the archive wrote of the job: its metadata, payloads and legs then; of an inbox's entry, the job as it is now.",
+		[]any{job}, jsonBody("the record", record))
+	d.paths[base+"/{job}/document"] = get("get_document", "The document of an entry", "The document where it is kept (as the archive wrote it, or as the inbox holds it), of the entry's format; the download is in the audit log.",
 		[]any{job}, map[string]any{"description": "the document", "content": map[string]any{"*/*": map[string]any{"schema": map[string]any{"type": "string", "format": "binary"}}}})
 }
 

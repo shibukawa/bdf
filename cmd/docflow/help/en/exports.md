@@ -1,13 +1,19 @@
-# Exports
+# HTTP (pull) {#exports}
 
-An export is where documents leave the network for the applications and people that fetch them: a customer portal that shows each customer their invoices, a backend that files what was printed. An archive writes the document for good, and the export after it lists it; applications and people read the list and the documents at `/out/<name>`.
+An HTTP (pull) node — the kind `export`, an export for short — is where documents leave the network for the applications and people that fetch them: a customer portal that shows each customer their invoices, a backend that files what was printed. It lists a stocked file: what an archive right before it wrote, for good, or what an inbox right before it holds, while it holds it. Applications and people read the list and the documents at `/out/<name>`. For the manager to send documents to a web service itself, use an [HTTP (push)](nodes.md#http) node instead.
 
 ## Setting one up {#setup}
 
-Put an archive, and an export after it: drag from the archive's right port onto the export on the Topology page, or give the archive `"to": ["<export>"]`. Once the archive wrote a job, the job goes on to the export, which lists it: an entry with where the archive wrote it and whose it is. The settings are in [Export](nodes.md#export).
+Put an archive or an inbox, and an export after it: drag from its right port onto the export on the Topology page, or give it `"to": ["<export>"]`. The edge carries a stocked file ([Kinds of payload](flow.md#kinds)), drawn cyan. The settings are in [HTTP (pull)](nodes.md#export).
 
-- A way that reaches an export without an archive before it is refused when a node is saved (400, with the way), and a job sent straight to an export ends there with an error leg. An export is not a node to print to.
-- The documents stay in the archive, which keeps them for good: an entry outlives the job's record ([States](jobs.md#states)).
+| Before it | Listed | Until |
+|---|---|---|
+| an archive | once the archive wrote the job | for good: the archive keeps the document, and the entry outlives the job's record ([States](jobs.md#states)) |
+| an inbox | as the inbox holds the job | a person releases or discards it ([Inboxes](inboxes.md#inboxes)): the entry goes, and its URLs are not found |
+
+An entry says where the document is kept: `archive`, `key` and `object` of an archive's, or `inbox` and `item` of an inbox's.
+
+- An edge to an export from any other node — an entry, a queue, a filter, a node after an archive — is refused when the node is saved (400). To list documents by their metadata, put a filter in front of the archives, an archive and an export for each. A job sent straight to an export is refused, and one that reaches it otherwise ends there with an error leg. An export is not a node to print to, nor one an inbox releases to.
 - An export lists the latest `entries` (1000) for everyone and for each owner; an older entry is still read by its job's number.
 
 ## Whose a document is {#owners}
@@ -31,7 +37,7 @@ The owner is what the sender claimed: whoever may send to the entry decides whos
 |---|---|
 | `GET /out/<name>` | the entries the reader may read, newest first: the job's number, name, kind, format, pages, size, sha256, owner and fields. `?owner=` one owner's, `?limit=` (100) |
 | `GET /out/<name>/<job>` | one entry, with who sent it and where the archive wrote it |
-| `GET /out/<name>/<job>/record` | the archive's record of the job: its metadata, payloads and legs when it was written |
+| `GET /out/<name>/<job>/record` | the archive's record of the job: its metadata, payloads and legs when it was written; of an inbox's entry, the job as it is now |
 | `GET /out/<name>/<job>/document` | the document as the archive wrote it; each download is in the audit log |
 
 The export's OpenAPI document — the link OpenAPI in its sidebar, or `GET /api/openapi.json?node=<name>` — describes these, with the fields of its entries ([OpenAPI](api.md#openapi)).

@@ -188,11 +188,11 @@ const ADAPTER_SETTINGS = {
   notify: "via (slack, mail or http), text, credential (slack: the webhook's URL), url (http; mail: smtp://host:587), from, recipients, mail_subject, to.",
   smtp: "url (smtp://host:587, smtps://host:465), credential (user:password), from, recipients, mail_subject, text.",
   s3: "url (s3://bucket?region=…&endpoint=…), credential (access-key:secret-key), path (the key; {{meta.$job}}/{{meta.$name}} by default).",
-  http: "url, method (POST or PUT), headers, credential (the Authorization: a token as Bearer).",
+  http: "url, method (POST or PUT), body (direct: the document as the body, the metadata as X-Meta-* headers; multipart: form-data, the metadata as JSON in the part meta and the document in the part file), headers, credential (the Authorization: a token as Bearer).",
 };
 
 // SETTINGS are the fields of a node an adapter's kind may have.
-const SETTINGS = ["to", "url", "credential", "format", "page", "via", "text", "from", "recipients", "mail_subject", "path", "method", "headers", "accept", "output", "formats", "meta"];
+const SETTINGS = ["to", "url", "credential", "format", "page", "via", "text", "from", "recipients", "mail_subject", "path", "method", "body", "headers", "accept", "output", "formats", "meta"];
 
 function settingsOf(n, kind) {
   const out = {};
@@ -894,11 +894,11 @@ function settingsForm(n) {
       form.append(field("Policy", selectInput("f-policy", [["round-robin", "in turn (round-robin)"], ["failover", "the first member (failover)"]], n.policy || "round-robin"), "A printer that does not take the job is skipped for the next member."));
       break;
     case "inbox":
-      form.append(field("A person releases to", picker("to", n.to || [], n.name), "The nodes a person may release to; none chosen: any node."));
+      form.append(field("A person releases to", picker("to", n.to || [], n.name), "The nodes a person may release to; none chosen: any node. An HTTP (pull) node chosen is not one to release to: it lists each job while the inbox holds it, for applications to fetch."));
       form.append(field("Keep", input("f-keep", n.keep || "", { placeholder: "14d" }), "How long released and discarded items stay shown."));
       break;
     case "archive":
-      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Once written, the job goes on to every node chosen: an export after the archive lists the document for applications and people to fetch. The port on the canvas adds one too."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Once written, the job goes on to every node chosen: an HTTP (pull) node after the archive lists the document for applications and people to fetch. The port on the canvas adds one too."));
       form.append(field("Store", input("f-store", n.store || "", { placeholder: "s3://bucket?region=… or bbolt:path", required: true }), "A documents URL: bbolt, s3, r2 or gcs. Each job's .bdf and record are written once; the manager never changes or deletes them."));
       form.append(field("Collection", input("f-collection", n.collection || "", { placeholder: "archive-" + (n.name || "<name>") })));
       break;
@@ -1131,7 +1131,7 @@ function usagePanel(n, box) {
       break;
     case "export": {
       const sec = section("Readers");
-      sec.append(hint("Applications and people fetch what is listed here: the entries newest first (?owner= one owner's, ?limit=), one entry, the archive's record of it, and the document itself. A backend sends its token (POST /oauth/token, client credentials, the scope export); a frontend sends the token it got for the person (a public client, /oauth/authorize with PKCE); the pages use their session."));
+      sec.append(hint("Applications and people fetch what is listed here: the entries newest first (?owner= one owner's, ?limit=), one entry, its record (the archive's, or of an inbox's the job), and the document itself, read from the inbox or the archive before it. A backend sends its token (POST /oauth/token, client credentials, the scope export); a frontend sends the token it got for the person (a public client, /oauth/authorize with PKCE); the pages use their session."));
       sec.append(pre(`GET ${location.origin}/out/${n.name}
 GET ${location.origin}/out/${n.name}/<job>
 GET ${location.origin}/out/${n.name}/<job>/record

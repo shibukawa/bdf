@@ -1,6 +1,6 @@
 # Node kinds
 
-Every node has a kind, and the settings of its kind. The entries — endpoints, CUPS servers and S3 triggers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, CUPS servers' queues, archives and sinks are where a job ends, and an export after an archive is where applications and people fetch it. IPP enters at CUPS server nodes alone ([IPP](entries.md#ipp)): computers print to them, applications post files to endpoints, and a bucket's events reach S3 triggers; every other node is reached along the edges. A node is put before the nodes after it: no edge below (`to`, a class's `members`) is needed to add it, and a job that reaches an entry, a queue or a step that sends to no node yet gets an error there.
+Every node has a kind, and the settings of its kind. The entries — endpoints, CUPS servers and S3 triggers — take documents and data from outside; queues, classes, filters and inboxes route; template and convert nodes make a document; sign nodes sign it; displays, printers, CUPS servers' queues, archives and sinks are where a job ends; an HTTP (pull) node after an inbox or an archive is where applications and people fetch it, and an HTTP (push) node sends it to a web service. IPP enters at CUPS server nodes alone ([IPP](entries.md#ipp)): computers print to them, applications post files to endpoints, and a bucket's events reach S3 triggers; every other node is reached along the edges. A node is put before the nodes after it: no edge below (`to`, a class's `members`) is needed to add it, and a job that reaches an entry, a queue or a step that sends to no node yet gets an error there.
 
 ## Every node {#common}
 
@@ -106,11 +106,11 @@ Signs the `.bdf` document that reaches it with Docflow's key, as a witness, and 
 
 ## Inbox {#inbox}
 
-Holds the job until a person releases it to nodes, or discards it, on Admin → Inboxes ([Inboxes](inboxes.md#inboxes)). Released and discarded items stay shown for `keep`.
+Holds the job until a person releases it to nodes, or discards it, on Admin → Inboxes ([Inboxes](inboxes.md#inboxes)). Released and discarded items stay shown for `keep`. An [HTTP (pull)](#export) node in its `to` lists each job while the inbox holds it (a stocked file), for applications to fetch, and no longer once it is released or discarded.
 
 | Setting | |
 |---|---|
-| Releases to (`to`) | the nodes an item may be released to; none: any node |
+| Releases to (`to`) | the nodes an item may be released to; none: any node. Its HTTP (pull) nodes are not among them |
 | Keep (`keep`) | how long ended items stay (14 days) |
 
 ## Display {#display}
@@ -146,13 +146,13 @@ The keys `ipp.job-account-id` and the others go on to the queue as they go on to
 
 ## Archive {#archive}
 
-Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to`: an export, which lists it ([Exports](exports.md)).
+Writes what reaches it — a `.bdf` document, or any file or data as received — and a JSON record of the job (its metadata, payloads and legs) to a store, each object once; the manager never changes or deletes them. Give the bucket a default retention (S3 Object Lock) for an audit trail nobody can change. Once written, the job goes on to every node of `to`: an HTTP (pull) node, which lists it ([HTTP (pull)](exports.md)).
 
 | Setting | |
 |---|---|
 | Store (`store`) | a documents store: `bbolt:path`, `s3://bucket?region=…`, `r2://bucket?endpoint=…`, `gcs://bucket` |
 | Collection (`collection`) | the prefix of its objects: `archive-<name>` by default |
-| Forwards to (`to`) | the nodes the job goes on to once written: exports |
+| Forwards to (`to`) | the nodes the job goes on to once written: HTTP (pull) nodes |
 
 ## Sink {#sink}
 
@@ -162,9 +162,9 @@ Keeps the latest documents that reach it, to look at on the topology: the first 
 |---|---|
 | Latest (`latest`) | how many it keeps (10) |
 
-## Export {#export}
+## HTTP (pull) {#export}
 
-Lists what an archive before it wrote, for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. A way that reaches it without an archive is refused, and nothing is printed to it. [Exports](exports.md) has who reads what, backends and frontends.
+The kind `export`. Lists what an inbox or an archive right before it keeps — a stocked file, the only kind it takes — for applications and people to fetch at `GET /out/<name>`: each entry under the owner its metadata names. An archive's stays for good; an inbox's while the inbox holds the job. An edge to it from any other node is refused, and nothing is printed to it. [HTTP (pull)](exports.md) has who reads what, backends and frontends. To send documents to a web service instead, the manager making the request, use [HTTP (push)](#http).
 
 | Setting | |
 |---|---|
@@ -224,15 +224,16 @@ Writes what reaches it to a bucket, once, and does not look back: an object ther
 | Bucket (`url`), Credential (`credential`) | as an S3 Trigger's |
 | Key (`path`) | with `{{meta.<key>}}`: `{{meta.$job}}/{{meta.$name}}` by default; a value cannot leave the prefix (no `..`, no leading `/`) |
 
-## HTTP {#http}
+## HTTP (push) {#http}
 
-Sends what reaches it to a web service as the body of a request, with the job's metadata as `X-Meta-*` headers and the delivery's id as the `Idempotency-Key`. To another Docflow, the URL is its `/in/<node>` and the credential an app's token: the `.bdf` goes there as it is. 408, 429 and 5xx are tried again; any other answer fails for good.
+The kind `http`. Sends what reaches it to a web service in a request, the document and the job's metadata as `body` says, with the delivery's id as the `Idempotency-Key`. To another Docflow, the URL is its `/in/<node>` and the credential its key or an app's token: the `.bdf` goes there as it is, with its name and its metadata as the sender's, in either body ([Endpoints](entries.md#endpoints)). 408, 429 and 5xx are tried again; any other answer fails for good. The other way round, applications fetching documents, is [HTTP (pull)](#export).
 
 | Setting | |
 |---|---|
 | URL (`url`) | `http(s)://…`, with `{{meta.<key>}}` (each value URL-escaped) |
 | Method (`method`) | `POST` (the default) or `PUT` |
-| Headers (`headers`) | more headers, with `{{meta.<key>}}` |
+| Body (`body`) | `direct` (the default): the document is the body as it is, with its `Content-Type` and its name in `Content-Disposition`, and the metadata goes in `X-Meta-<key>` headers. `multipart`: the body is `multipart/form-data`, the metadata a JSON object in the part `meta` (its values as given), then the document in the part `file`, with its name and type. Either way, the manager's keys (`$…`) are not sent |
+| Headers (`headers`) | more headers, with `{{meta.<key>}}`; with a `multipart` body, not `Content-Type` or `Content-Disposition` |
 | Credential (`credential`) | the Authorization: a token, sent as Bearer, or a whole value (`Basic …`) |
 
 Render, Notify, Mail (SMTP), S3 and HTTP have no form of their own in the sidebar: their settings are a JSON box there. An S3 trigger has a form, as an endpoint has.

@@ -24,9 +24,20 @@ curl -X POST -H "Authorization: Bearer bdfk_…" \
      "https://<host>/in/erp?name=statement&meta.dept=sales"
 ```
 
+フォームとして送るなら次のとおりです。
+
+```sh
+curl -H "Authorization: Bearer bdfk_…" \
+     -F 'meta={"dept": "sales"};type=application/json' \
+     -F file=@statement.pdf \
+     https://<host>/in/erp
+```
+
 - ボディは文書、`accept: data` のエンドポイントならデータです。内容から形式が分からないときは、名前（`?name=`）と `Content-Type` で判別します。
 - `?name=` はジョブの名前、`?user=` は送った人の名前で、「(as …)」として表示されます。
 - `X-Meta-<Key>` ヘッダと `?meta.<key>=` パラメータはジョブのメタデータです（[メタデータ](flow.md#metadata)）。
+- ボディは `multipart/form-data` でも構いません。`Content-Type` で見分けます。文書はパート `file` に入れ、その名前と `Content-Type` が文書のものになります（名前は `?name=` が優先）。メタデータはパート `meta` に JSON オブジェクトで入れ、ヘッダとパラメータのものより優先されます。別の Docflow の [HTTP (push)](nodes.md#http) ノードはどちらの形でも送ります。
+- `?name=` がなければ、そのままのボディは `Content-Disposition`（`attachment; filename="statement.pdf"`）から名前を取ります。
 - 応答はジョブ（201）で、番号とそこまでのレグが入ります。エンドポイントが受け取らない形式の文書は拒否され（415）、拒否は監査ログに残ります。キーが違えば拒否されます（401）。
 
 エンドポイントが何を受け取るか（メディアタイプ、テンプレートが埋めるデータのスキーマ、後ろのノードが見るメタデータ）は、その OpenAPI 文書に載ります。サイドバーのリンク OpenAPI か、`GET /api/openapi.json?node=<name>` です（[OpenAPI](api.md#openapi)）。

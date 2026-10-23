@@ -301,19 +301,19 @@ var planTopologyOpsFill28Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 }}
 
 var planTopologyOpsFill29Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("lists what an archive wrote, for applications and people to fetch"),
+	planTopologyOps.Static("fetched by applications and people from an inbox or an archive"),
 }}
 
 var planTopologyOpsFill30Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("mails it as an attachment"),
+	planTopologyOps.Static("sent to a web service, as the body or as multipart"),
 }}
 
 var planTopologyOpsFill31Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("written to a bucket, once"),
+	planTopologyOps.Static("mails it as an attachment"),
 }}
 
 var planTopologyOpsFill32Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
-	planTopologyOps.Static("sent to a web service"),
+	planTopologyOps.Static("written to a bucket, once"),
 }}
 
 var planTopologyOpsFill23Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
@@ -339,19 +339,19 @@ var planTopologyOpsFill23Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: "Export", Children: planTopologyOpsFill29Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: "HTTP (pull)", Children: planTopologyOpsFill29Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: "Mail (SMTP)", Children: planTopologyOpsFill30Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: "HTTP (push)", Children: planTopologyOpsFill30Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: "S3", Children: planTopologyOpsFill31Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: "Mail (SMTP)", Children: planTopologyOpsFill31Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: "HTTP", Children: planTopologyOpsFill32Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: "S3", Children: planTopologyOpsFill32Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 }}
@@ -394,7 +394,7 @@ var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 	planTopologyOps.Static(" <div class=\"join\"> <button id=\"zoom-out\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom out\">−</button> <button id=\"zoom-fit\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Fit the topology in the view\">Fit</button> <button id=\"zoom-in\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom in\">+</button> </div> "),
 	planTopologyOps.If(func(p TopologyParams) bool { return p.Account.Topology },
 		[]htmlbind.Op[TopologyParams]{
-			planTopologyOps.Static(" <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <a href=\"/api/openapi.json\" download=\"docflow.openapi.json\" class=\"btn btn-sm btn-ghost\" title=\"The OpenAPI document of every endpoint and export\">OpenAPI</a> "),
+			planTopologyOps.Static(" <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <a href=\"/api/openapi.json\" download=\"docflow.openapi.json\" class=\"btn btn-sm btn-ghost\" title=\"The OpenAPI document of every endpoint and HTTP (pull) node\">OpenAPI</a> "),
 		},
 		nil),
 	planTopologyOps.Static(" <span id=\"live\" class=\"badge badge-ghost badge-sm\"></span> "),
@@ -415,7 +415,7 @@ var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 }}
 
 var planAppsOpsFill33Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
-	planAppsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Apps</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Applications with credentials of their own. A backend takes a token at <code class=\"font-mono\">POST /oauth/token</code> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the exports that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <code class=\"font-mono\">/oauth/authorize</code> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the exports as that person. The scopes tick and admin are for a scheduler and for scripts.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Id</th><th>Title</th><th>Scopes</th><th>Group</th><th>Endpoints / redirect URIs</th><th>Last used</th><th></th></tr></thead><tbody id=\"apps\"></tbody></table> </div> <form id=\"app-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <input id=\"app-id\" class=\"input sm:col-span-1\" placeholder=\"id (erp)\" autocomplete=\"off\" required> <input id=\"app-title\" class=\"input sm:col-span-2\" placeholder=\"title\"> <input id=\"app-group\" class=\"input sm:col-span-2\" placeholder=\"group whose members see its jobs (optional)\"> <label class=\"label cursor-pointer gap-2 sm:col-span-2\"><input id=\"app-public\" type=\"checkbox\" class=\"checkbox checkbox-sm\"><span class=\"text-sm\">Public client (a frontend: no secret, PKCE)</span></label> <textarea id=\"app-redirects\" class=\"textarea sm:col-span-4\" rows=\"2\" placeholder=\"redirect URIs, one per line: https://portal.example.com/callback (http only on localhost)\" hidden></textarea> <div id=\"app-scopes\" class=\"flex flex-wrap items-center gap-3 sm:col-span-6\"></div> <button id=\"app-submit\" type=\"submit\" class=\"btn btn-primary sm:col-span-1\">Add</button> <button id=\"app-cancel\" type=\"button\" class=\"btn btn-ghost sm:col-span-1\" hidden>Cancel</button> </form> </div> </section> <dialog id=\"secret-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">App secret</h3> <p class=\"mt-2 text-sm text-base-content/70\">The secret of <span id=\"secret-id\" class=\"font-mono\"></span>. It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working.</p> <pre id=\"secret-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"secret-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/apps.js\"></script> "),
+	planAppsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Apps</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Applications with credentials of their own. A backend takes a token at <code class=\"font-mono\">POST /oauth/token</code> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the HTTP (pull) nodes that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <code class=\"font-mono\">/oauth/authorize</code> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the HTTP (pull) nodes as that person. The scopes tick and admin are for a scheduler and for scripts.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Id</th><th>Title</th><th>Scopes</th><th>Group</th><th>Endpoints / redirect URIs</th><th>Last used</th><th></th></tr></thead><tbody id=\"apps\"></tbody></table> </div> <form id=\"app-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <input id=\"app-id\" class=\"input sm:col-span-1\" placeholder=\"id (erp)\" autocomplete=\"off\" required> <input id=\"app-title\" class=\"input sm:col-span-2\" placeholder=\"title\"> <input id=\"app-group\" class=\"input sm:col-span-2\" placeholder=\"group whose members see its jobs (optional)\"> <label class=\"label cursor-pointer gap-2 sm:col-span-2\"><input id=\"app-public\" type=\"checkbox\" class=\"checkbox checkbox-sm\"><span class=\"text-sm\">Public client (a frontend: no secret, PKCE)</span></label> <textarea id=\"app-redirects\" class=\"textarea sm:col-span-4\" rows=\"2\" placeholder=\"redirect URIs, one per line: https://portal.example.com/callback (http only on localhost)\" hidden></textarea> <div id=\"app-scopes\" class=\"flex flex-wrap items-center gap-3 sm:col-span-6\"></div> <button id=\"app-submit\" type=\"submit\" class=\"btn btn-primary sm:col-span-1\">Add</button> <button id=\"app-cancel\" type=\"button\" class=\"btn btn-ghost sm:col-span-1\" hidden>Cancel</button> </form> </div> </section> <dialog id=\"secret-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">App secret</h3> <p class=\"mt-2 text-sm text-base-content/70\">The secret of <span id=\"secret-id\" class=\"font-mono\"></span>. It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working.</p> <pre id=\"secret-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"secret-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/apps.js\"></script> "),
 }}
 
 var planInboxesOpsFill34Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{

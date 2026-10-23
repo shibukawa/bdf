@@ -29,9 +29,16 @@ const (
 	// PayloadAny is any other file as it was received (a PDF, an Office
 	// document, an image …), which a convert node makes a .bdf of.
 	PayloadAny = "any"
+	// PayloadStocked is a file of any format that an inbox or an archive
+	// keeps, sent along its edge to a node that reads it there: HTTP
+	// (pull), where applications fetch it. Where it is kept is where it
+	// comes from and how long it is there: an inbox's while it holds the
+	// job, an archive's for good. Only those send it (Kind.Stocks), and
+	// only along their To, to such a node.
+	PayloadStocked = "stocked"
 )
 
-var payloadKinds = []string{PayloadBDF, PayloadData, PayloadAny}
+var payloadKinds = []string{PayloadBDF, PayloadData, PayloadAny, PayloadStocked}
 
 // dataFormats are the formats of the kind data, as the entries name them.
 var dataFormats = []string{"json", "yaml", "csv", "xlsx", "parquet"}
@@ -54,6 +61,9 @@ const (
 	kindBDF kinds = 1 << iota
 	kindData
 	kindAny
+	kindStocked
+	// allKinds is what a node that takes anything takes: every kind but
+	// a stocked file, which only a node that reads one takes.
 	allKinds = kindBDF | kindData | kindAny
 )
 
@@ -65,6 +75,8 @@ func kindBit(kind string) kinds {
 		return kindData
 	case PayloadAny:
 		return kindAny
+	case PayloadStocked:
+		return kindStocked
 	}
 	return 0
 }
@@ -108,14 +120,30 @@ func passesOn(kind string) bool {
 	return k != nil && k.PassesOn
 }
 
+// stocks tells a kind of node that keeps what reaches it (an inbox, an
+// archive): along its To, to a node that takes a stocked file, it sends
+// that (Kind.Stocks).
+func stocks(kind string) bool {
+	k := kindNamed(kind)
+	return k != nil && k.Stocks
+}
+
+// stockedTo tells whether a node sends a stocked file along its edge to
+// x: a node that stocks, along its To, to one that takes it.
+func (n *Node) stockedTo(x *Node) bool {
+	return x != nil && stocks(n.Kind) && takes(x.Kind).has(PayloadStocked) && slices.Contains(n.To, x.Name)
+}
+
 // takesName is the input of a kind of node as the API shows it: bdf,
-// data, or any.
+// data, stocked, or any.
 func takesName(kind string) string {
 	switch takes(kind) {
 	case kindBDF:
 		return PayloadBDF
 	case kindData:
 		return PayloadData
+	case kindStocked:
+		return PayloadStocked
 	}
 	return PayloadAny
 }
@@ -154,10 +182,15 @@ func (n *Node) emits(in kinds) kinds {
 	return in
 }
 
-// emitsTo tells the kinds a node sends on along its edge to a node: of a
-// template or a convert node, what reaches it along Original (as it took
-// it) and the .bdf it makes along To; of the others, what it emits.
-func (n *Node) emitsTo(in kinds, to string) kinds {
+// emitsTo tells the kinds a node sends on along its edge to a node (x,
+// nil when it is not there): of a template or a convert node, what
+// reaches it along Original (as it took it) and the .bdf it makes along
+// To; of an inbox or an archive, a stocked file to a node that takes one
+// (stockedTo); of the others, what it emits.
+func (n *Node) emitsTo(in kinds, to string, x *Node) kinds {
+	if n.stockedTo(x) {
+		return kindStocked
+	}
 	if n.Kind != KindTemplate && n.Kind != KindConvert {
 		return n.emits(in)
 	}
@@ -186,7 +219,7 @@ func inferKinds(nodes map[string]*Node) *typing {
 	for range len(nodes) + 2 {
 		changed := false
 		for _, n := range nodes {
-			for to, out := range n.sends(t.reach[n.Name]) {
+			for to, out := range n.sends(t.reach[n.Name], nodes) {
 				if nodes[to] == nil {
 					continue
 				}
@@ -244,7 +277,8 @@ func accepts(nodes map[string]*Node) map[string]kinds {
 		for name, n := range nodes {
 			// what reaches a node goes on along OnError as it is, along
 			// Original of a template or a convert node, and along every
-			// edge of one that passes it on
+			// edge of one that passes it on, but those along which an
+			// inbox or an archive sends a stocked file instead
 			along := append(slices.Clone(n.Original), n.OnError...)
 			if passesOn(n.Kind) {
 				along = n.edges()
@@ -254,7 +288,7 @@ func accepts(nodes map[string]*Node) map[string]kinds {
 			}
 			a := takes(n.Kind)
 			for _, to := range along {
-				if nodes[to] != nil {
+				if x := nodes[to]; x != nil && !n.stockedTo(x) {
 					a &= acc[to]
 				}
 			}
@@ -275,7 +309,7 @@ func accepts(nodes map[string]*Node) map[string]kinds {
 func (t *typing) broken(nodes map[string]*Node) map[string]map[string]kinds {
 	out := map[string]map[string]kinds{}
 	for _, n := range nodes {
-		for to, sent := range n.sends(t.reach[n.Name]) {
+		for to, sent := range n.sends(t.reach[n.Name], nodes) {
 			x := nodes[to]
 			if x == nil {
 				continue

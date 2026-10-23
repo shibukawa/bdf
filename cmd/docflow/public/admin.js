@@ -74,7 +74,7 @@ export function badge(text, cls = "badge-ghost") {
   return el("span", text, { className: "badge " + cls });
 }
 
-export const KINDS = { endpoint: "Endpoint", cups: "CUPS server (source)", "cups-out": "CUPS server (sink)", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", sign: "Sign", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "Export", render: "Render", notify: "Notify", smtp: "Mail (SMTP)", s3: "S3", "s3-trigger": "S3 Trigger", http: "HTTP" };
+export const KINDS = { endpoint: "Endpoint", cups: "CUPS server (source)", "cups-out": "CUPS server (sink)", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", sign: "Sign", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "HTTP (pull)", render: "Render", notify: "Notify", smtp: "Mail (SMTP)", s3: "S3", "s3-trigger": "S3 Trigger", http: "HTTP (push)" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
@@ -98,11 +98,12 @@ export function kindBadge(kind) {
 }
 
 // The kinds of payload that flow along the edges (kinds.go): a .bdf
-// document, data for a template, or any file as received. Ports, edges
-// and the borders of the nodes are colored by them (canvas.js), as are
-// the jobs' badges: blue, green, amber.
-export const PAYLOADS = { bdf: ".bdf document", data: "data (JSON, YAML, CSV, Excel, Parquet)", any: "any file as received" };
-export const PAYLOAD_COLOR = { bdf: "#2563eb", data: "#16a34a", any: "#d97706" };
+// document, data for a template, any file as received, or a stocked
+// file, which an inbox or an archive keeps and sends to HTTP (pull)
+// alone. Ports, edges and the borders of the nodes are colored by them
+// (canvas.js), as are the jobs' badges: blue, green, amber, cyan.
+export const PAYLOADS = { bdf: ".bdf document", data: "data (JSON, YAML, CSV, Excel, Parquet)", any: "any file as received", stocked: "stocked file (any format, kept by an inbox or an archive)" };
+export const PAYLOAD_COLOR = { bdf: "#2563eb", data: "#16a34a", any: "#d97706", stocked: "#0891b2" };
 
 // payloadBadge tells what a job carries: its kind and format.
 export function payloadBadge(j) {
