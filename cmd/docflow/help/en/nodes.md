@@ -39,7 +39,7 @@ The IPP entry, for computers and business systems, and the only one: a CUPS serv
 | Forwards to (`to`) | every node chosen gets what is printed here, made `.bdf` |
 | Port (`port`) | the port the server listens on; none given: the first port no node has, from 6310 (none on a serverless deployment) |
 | TLS (`tls_cert`, `tls_key`) | the files of a certificate and its key: `ipps`; without them, plain `ipp` |
-| Bonjour (`dnssd`) | advertises the printer on the local network with DNS-SD (Bonjour) as an AirPrint printer: Macs list it under Add Printer → Default, iPhones and iPads in Print. With a port only (none on a serverless deployment); the sidebar checks it for a new CUPS server |
+| Bonjour (`dnssd`) | advertises the printer on the local network with DNS-SD (Bonjour) as an AirPrint printer: Macs list it under Add Printer → Default, iPhones and iPads in Print. On by default, with a port (none on a serverless deployment); `false` keeps it off the network |
 | Metadata (`meta`) | as an endpoint's. The job attributes of a Print-Job request are metadata, `ipp.media`, `ipp.copies` … |
 | Apps allowed (`apps`) | the apps that may print here with their id and secret as IPP Basic ([Apps](entries.md#apps)) |
 
@@ -156,6 +156,7 @@ Prints the job on paper, on a printer the manager reaches over the network. It t
 | Setting | |
 |---|---|
 | URL (`url`) | `ipp://` or `ipps://` (an IPP printer), `socket://host:9100`, or `lpd://host/queue`. A queue of a CUPS server is a [CUPS server (sink)](#cups-out) |
+| Bonjour (`bonjour`) | the instance name the URL was picked by. In the sidebar, Connect: AirPrint lists the IPP printers Bonjour finds on the server's local network (AirPrint and IPP Everywhere printers, and the queues computers share) to pick one; Manual is the address typed. A printer picked so that takes no connection at its address is looked for again by the name, and the job printed where it is now (a printer's address from DHCP changes). Not on a serverless deployment |
 | Route (`route`) | how its jobs reach it: `direct`, the manager sends them (the default). `branch`, a `bdf printd` of the site fetching them, is not there yet: a delivery to such a printer fails |
 | Preview (`preview`) | the URL of this printer on a fake printer farm's API (`tools/fakeprinter`): what the fake printer received is shown beside the node, as the farm read it back |
 
@@ -166,6 +167,7 @@ Prints the job to a queue of a CUPS server over IPP, as a computer prints to it:
 | Setting | |
 |---|---|
 | Server (`url`) | the queue's URL: `ipp://host:631/printers/<queue>`, `/classes/<class>` for a class, `ipps://` over TLS. In the sidebar, Find queues asks the server for its queues (CUPS-Get-Printers) to pick one |
+| Bonjour (`bonjour`) | the instance name the queue was picked by. In the sidebar, Connect: AirPrint lists the queues that Macs and CUPS servers share on the server's local network, as Bonjour finds them, to pick one; Manual is the server and the queue typed. A queue picked so is looked for again as a [printer's](#printer) is. This manager's own CUPS servers are not listed: they are reached along edges |
 | Credential (`credential`) | `user:password`, when the server asks for them; none: no authentication ([Credentials](#credentials)) |
 
 The keys `ipp.job-account-id` and the others go on to the queue as they go on to a printer ([What goes on to the printer](flow.md#ipp-attributes)).

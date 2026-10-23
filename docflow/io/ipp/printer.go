@@ -36,6 +36,9 @@ func checkPrinter(ctx context.Context, m *docflow.Manager, in docflow.Node, n *d
 	if err := checkPrinterURL(n.URL); err != nil {
 		return err
 	}
+	if err := checkBonjour(in, n); err != nil {
+		return err
+	}
 	n.Preview = strings.TrimSpace(in.Preview)
 	return docflow.CheckPreviewURL(n.Preview)
 }
@@ -84,7 +87,7 @@ func send(ctx context.Context, o *docflow.Out) (string, error) {
 		_, err = print.PrintRaw(ctx, rp, doc, opts)
 		return "", err
 	}
-	return printTo(ctx, o, &ipp.Client{URL: o.Node.URL, User: "bdf-docflow"})
+	return printFound(ctx, o, func(url string) (*ipp.Client, error) { return &ipp.Client{URL: url, User: "bdf-docflow"}, nil })
 }
 
 // printJob is the document of a send and how it is printed.

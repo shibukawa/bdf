@@ -31,6 +31,22 @@ let formats = []; // the formats an endpoint may take
 let me = null; // /api/me: whether this process has ports of its own
 let apps = []; // the apps, for an endpoint's allow-list
 let kinds = {}; // GET /api/kinds by name: the settings each requires
+// bonjourFound is what Bonjour found last, by kind (a printer's: every
+// IPP printer; a CUPS server (sink)'s: the shared queues), that the
+// sidebar's AirPrint lists are made of before they are searched again.
+const bonjourFound = new Map();
+const bonjourAsked = new Map(); // the searches going on, by kind
+
+// bonjourSearch asks what Bonjour finds for a kind, one search at a time.
+function bonjourSearch(kind) {
+  if (!bonjourAsked.has(kind)) {
+    const p = api("POST", `/api/kinds/${kind}/discover`, {})
+      .then((list) => (bonjourFound.set(kind, list), list))
+      .finally(() => bonjourAsked.delete(kind));
+    bonjourAsked.set(kind, p);
+  }
+  return bonjourAsked.get(kind);
+}
 let selected = null; // the node in the sidebar
 // drafts are the nodes being added, not put yet: {id, kind, pos, kept}
 // (kept: their form when the sidebar left them, shown again when they
@@ -634,10 +650,100 @@ function composeURL(form) {
   return `${scheme}://${host}${port ? ":" + port : ""}${path}`;
 }
 
+// connectFields are how a printer or a CUPS server (sink) is reached,
+// put before the fields of its address (manual): the address typed, or
+// AirPrint, picked from what Bonjour finds on this server's local
+// network (POST /api/kinds/<kind>/discover with no URL: a printer's,
+// every IPP printer; a CUPS server (sink)'s, the queues computers and
+// CUPS servers share), whose instance name the node keeps (bonjour) to
+// find it again where its address changes. The fields of the way not
+// chosen are hidden and not required. changed is told the URL picked
+// (null: Manual chosen), to fill the address's fields with, so that
+// Manual shows it. A serverless deployment has no local network: the
+// address is typed there.
+function connectFields(form, n, manual, changed) {
+  if (me && me.ports === false) return;
+  const queues = n.kind === "cups-out";
+  const via = selectInput("f-via", [["manual", _("Manual: the address typed")], ["bonjour", _("AirPrint: found with Bonjour")]], n.bonjour ? "bonjour" : "manual");
+  form.append(field(_("Connect"), via));
+  const pick = el("select", undefined, { id: "f-bonjour", className: "select select-sm w-full", required: true });
+  pick.dataset.need = queues ? _("Required: choose a queue found, or search again.") : _("Required: choose a printer found, or search again.");
+  const again = el("button", _("Search again"), { type: "button", className: "btn btn-sm w-fit" });
+  const said = el("span", "", { className: "text-xs text-base-content/60" });
+  const row = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
+  row.append(again, said);
+  const box = el("div", undefined, { className: "flex flex-col gap-1" });
+  box.append(pick, row);
+  const air = field(queues ? _("Shared queue") : _("Printer"), box, queues
+    ? _("The queues that Macs and CUPS servers on this server's local network share, as Bonjour finds them. The node keeps the name: when the address stops answering, it is looked for again.")
+    : _("The printers on this server's local network, as Bonjour finds them (AirPrint and IPP Everywhere printers, and the queues computers share). The node keeps the name: when the address stops answering, it is looked for again."));
+  form.append(air);
+  const opt = (name, label, url) => {
+    const o = el("option", label, { value: name });
+    o.dataset.url = url || "";
+    return o;
+  };
+  // the options: what was found, and the one chosen when it is not there
+  const fill = (list) => {
+    const was = pick.selectedOptions[0];
+    const chosen = pick.value || n.bonjour || "";
+    const url = (was && was.value === chosen && was.dataset.url) || (chosen === n.bonjour ? n.url : "");
+    pick.replaceChildren(opt("", _("— choose —"), ""));
+    for (const x of list || []) pick.append(opt(x.name, [x.name, x.model, x.note, !queues && x.queue && _("shared queue")].filter(Boolean).join(" · "), x.url));
+    if (chosen && ![...pick.options].some((o) => o.value === chosen)) pick.append(opt(chosen, list ? _("{name} (not found now)", { name: chosen }) : chosen, url));
+    pick.value = chosen;
+  };
+  fill(bonjourFound.get(n.kind));
+  let tried = false;
+  const search = async () => {
+    tried = again.disabled = true;
+    said.className = "text-xs text-base-content/60";
+    said.textContent = _("Looking on the local network …");
+    try {
+      const list = await bonjourSearch(n.kind);
+      fill(list);
+      said.textContent = list.length ? _("Found: {n}", { n: list.length }) : queues ? _("No shared queue found.") : _("No printer found.");
+    } catch (e) {
+      said.className = "text-xs text-error";
+      said.textContent = e.message;
+    } finally {
+      again.disabled = false;
+    }
+  };
+  again.addEventListener("click", search);
+  const sync = () => {
+    const on = via.value === "bonjour";
+    air.hidden = !on;
+    pick.disabled = !on;
+    for (const f of manual) {
+      f.hidden = on;
+      for (const x of f.querySelectorAll("input, select, button")) x.disabled = on;
+    }
+    // searched once by itself; again when asked
+    if (on && !tried && !bonjourFound.has(n.kind)) search();
+  };
+  via.addEventListener("change", () => {
+    sync();
+    changed(via.value === "bonjour" ? pickedURL(form) : null);
+  });
+  pick.addEventListener("change", () => changed(pickedURL(form)));
+  sync();
+}
+
+// pickedURL is the URL of what was picked from Bonjour when the form
+// says AirPrint ("" when nothing is), null when it says Manual.
+function pickedURL(form) {
+  const via = form.querySelector("#f-via");
+  if (!via || via.value !== "bonjour") return null;
+  const o = form.querySelector("#f-bonjour").selectedOptions[0];
+  return (o && o.dataset.url) || "";
+}
+
 // cupsOutFields are a CUPS server (sink)'s: its server, the queue there
 // (Find queues asks the server for them: CUPS-Get-Printers, through POST
-// /api/kinds/cups-out/discover, before the node is saved), and the
-// credential the server asks for.
+// /api/kinds/cups-out/discover, before the node is saved), or a queue
+// shared on the local network (connectFields), and the credential the
+// server asks for.
 function cupsOutFields(form, n) {
   let path = "/printers/";
   let queue = "";
@@ -646,7 +752,7 @@ function cupsOutFields(form, n) {
   if (m) [path, queue] = ["/" + m[1] + "/", m[2]];
   const row = el("div", undefined, { className: "grid grid-cols-[6rem_1fr_5rem] gap-1" });
   row.append(selectInput("f-cscheme", [["ipp", "ipp://"], ["ipps", "ipps://"]], u.scheme === "ipps" ? "ipps" : "ipp"), input("f-chost", u.host, { placeholder: _("the CUPS server's host"), required: true, autocomplete: "off" }), input("f-cport", u.port, { placeholder: "631", inputMode: "numeric" }));
-  form.append(field(_("Server"), row, _("The CUPS server the jobs are printed to over IPP, as computers print to it; ipps over TLS.")));
+  const server = field(_("Server"), row, _("The CUPS server the jobs are printed to over IPP, as computers print to it; ipps over TLS."));
   const q = input("f-queue", queue, { placeholder: _("a printer or a class there: laser-3f"), required: true, autocomplete: "off" });
   q.dataset.path = path;
   q.addEventListener("input", () => (q.dataset.path = q.value.includes("/") ? "" : found.get(q.value.trim()) || "/printers/"));
@@ -677,10 +783,24 @@ function cupsOutFields(form, n) {
   });
   const box = el("div", undefined, { className: "flex flex-col gap-1" });
   box.append(q, find, list);
-  form.append(field(_("Queue"), box, _("Its name on the server; Find queues lists them (the server, and the credential below if it asks for one, first).")));
-  form.append(field(_("Credential"), input("f-credential", n.credential || "", { placeholder: _("a name: the secret is DOCFLOW_CRED_<name> (user:password)"), autocomplete: "off" }), _("None: the server asks for no user and password.")));
+  const queueField = field(_("Queue"), box, _("Its name on the server; Find queues lists them (the server, and the credential below if it asks for one, first)."));
   const preview = el("p", "", { className: "font-mono text-xs text-base-content/60 break-all" });
-  const update = () => (preview.textContent = cupsQueueURL(form) || "—");
+  const update = () => (preview.textContent = (pickedURL(form) ?? cupsQueueURL(form)) || "—");
+  connectFields(form, n, [server, queueField], (url) => {
+    const x = url && parsePrinterURL(url);
+    const m = x && /^\/(printers|classes)\/([^/]+)$/.exec(x.path);
+    if (m) {
+      const f = (id) => form.querySelector("#" + id);
+      f("f-cscheme").value = x.scheme === "ipps" ? "ipps" : "ipp";
+      f("f-chost").value = x.host;
+      f("f-cport").value = x.port;
+      q.value = m[2];
+      q.dataset.path = "/" + m[1] + "/";
+    }
+    update();
+  });
+  form.append(server, queueField);
+  form.append(field(_("Credential"), input("f-credential", n.credential || "", { placeholder: _("a name: the secret is DOCFLOW_CRED_<name> (user:password)"), autocomplete: "off" }), _("None: the server asks for no user and password.")));
   form.append(preview);
   setTimeout(update);
   for (const x of [row, q]) x.addEventListener("input", update);
@@ -1220,10 +1340,10 @@ function settingsForm(n) {
       form.append(field(_("TLS certificate (file)"), input("f-tls-cert", n.tls_cert || "", { placeholder: _("/etc/bdf/cups.crt; empty: plain ipp") })));
       form.append(field(_("TLS key (file)"), input("f-tls-key", n.tls_key || "", { placeholder: "/etc/bdf/cups.key" })));
       {
-        // a new one is advertised, where nodes have ports
+        // advertised unless it says not to (dnssd false), where nodes have ports
         const none = !!(me && me.ports === false);
         const bonjour = el("label", undefined, { className: "inline-flex items-center gap-2 text-sm" });
-        bonjour.append(el("input", undefined, { id: "f-dnssd", type: "checkbox", className: "checkbox checkbox-sm", checked: draft ? !none : !!n.dnssd, disabled: none }), _("Bonjour: advertised on the local network, where Macs, iPhones and iPads find it as an AirPrint printer"));
+        bonjour.append(el("input", undefined, { id: "f-dnssd", type: "checkbox", className: "checkbox checkbox-sm", checked: !none && n.dnssd !== false, disabled: none }), _("Bonjour: advertised on the local network, where Macs, iPhones and iPads find it as an AirPrint printer"));
         form.append(bonjour);
       }
       form.append(appsField(n, _("Apps print here with their id and secret as IPP Basic, within their scopes; computers print as the submit tokens allow.")));
@@ -1328,11 +1448,22 @@ function settingsForm(n) {
       const u = parsePrinterURL(n.url);
       const row = el("div", undefined, { className: "grid grid-cols-[6rem_1fr_5rem] gap-1" });
       row.append(selectInput("f-scheme", SCHEMES.map((s) => [s, s + "://"]), SCHEMES.includes(u.scheme) ? u.scheme : "ipp"), input("f-host", u.host, { placeholder: _("host or address"), required: true }), input("f-pport", u.port, { placeholder: _("port"), inputMode: "numeric" }));
-      form.append(field(_("Protocol and address"), row, _("ipp and ipps are IPP printers; socket is port 9100 (raw), lpd a line printer daemon.")));
-      form.append(field(_("Path"), input("f-path", u.path, { placeholder: _("/ipp/print (ipp); a queue name (lpd)") })));
+      const address = field(_("Protocol and address"), row, _("ipp and ipps are IPP printers; socket is port 9100 (raw), lpd a line printer daemon."));
+      const path = field(_("Path"), input("f-path", u.path, { placeholder: _("/ipp/print (ipp); a queue name (lpd)") }));
       const preview = el("p", "", { className: "font-mono text-xs text-base-content/60 break-all" });
-      const update = () => (preview.textContent = composeURL(form) || "—");
-      form.append(preview);
+      const update = () => (preview.textContent = (pickedURL(form) ?? composeURL(form)) || "—");
+      connectFields(form, n, [address, path], (url) => {
+        if (url) {
+          const x = parsePrinterURL(url);
+          const f = (id) => form.querySelector("#" + id);
+          f("f-scheme").value = SCHEMES.includes(x.scheme) ? x.scheme : "ipp";
+          f("f-host").value = x.host;
+          f("f-pport").value = x.port;
+          f("f-path").value = x.path;
+        }
+        update();
+      });
+      form.append(address, path, preview);
       setTimeout(update);
       for (const id of ["f-scheme", "f-host", "f-pport", "f-path"]) form.querySelector("#" + id).addEventListener("input", update);
       form.append(field(_("Route"), selectInput("f-route", [["direct", _("direct: the manager sends to it")], ["branch", _("branch: a bdf printd of the site fetches (not yet)")]], n.route || "direct")));
@@ -1405,7 +1536,7 @@ function formOf(n, form, lenient) {
       if (dur("f-port")) body.port = Number(dur("f-port"));
       if (dur("f-tls-cert")) body.tls_cert = dur("f-tls-cert");
       if (dur("f-tls-key")) body.tls_key = dur("f-tls-key");
-      if (f("f-dnssd").checked) body.dnssd = true;
+      if (!f("f-dnssd").checked && !f("f-dnssd").disabled) body.dnssd = false;
       break;
     case "template":
       body.to = picked(form, "to");
@@ -1473,11 +1604,13 @@ function formOf(n, form, lenient) {
       body.offline_after = dur("f-offline");
       break;
     case "cups-out":
-      body.url = cupsQueueURL(form);
+      body.url = pickedURL(form) ?? cupsQueueURL(form);
+      if (pickedURL(form) !== null && f("f-bonjour").value) body.bonjour = f("f-bonjour").value;
       if (dur("f-credential")) body.credential = dur("f-credential");
       break;
     case "printer":
-      body.url = composeURL(form);
+      body.url = pickedURL(form) ?? composeURL(form);
+      if (pickedURL(form) !== null && f("f-bonjour").value) body.bonjour = f("f-bonjour").value;
       body.route = f("f-route").value;
       if (dur("f-preview")) body.preview = dur("f-preview");
       break;
@@ -1608,6 +1741,7 @@ GET ${location.origin}/out/${n.name}/<job>/pages/<n>.png?w=`));
         ? sentences(_("This system prints each job to this queue of the CUPS server over IPP, as a computer does: PDF (or PWG Raster), as the queue says it supports; the server's filters and drivers do the rest."), n.credential && _("It gives the user and password of the credential {name}.", { name: n.credential }))
         : _("This system prints each job on this printer itself: over IPP (PDF or PWG Raster, as the printer says it supports), or raw over 9100 or LPD.")));
       sec.append(pre(n.url || "—"));
+      if (n.bonjour) sec.append(hint(_("Picked with Bonjour as {name}: when this address stops answering, it is looked for again by the name on the local network, and printed to where it is now.", { name: n.bonjour })));
       box.append(sec);
       break;
     }
@@ -1658,7 +1792,7 @@ function printerSetup(n) {
     : _("Computers and business systems add it as an IPP printer, as a printer of a CUPS server: what they print goes on to no node yet (connect it in Settings), made .bdf.")));
   sec.append(pre(url));
   const steps = el("ul", undefined, { className: "flex list-disc flex-col gap-1 pl-5 text-sm" });
-  if (own && n.dnssd) {
+  if (own && n.dnssd !== false) {
     steps.append(el("li", _("Macs, iPhones and iPads on the local network find it with Bonjour as {name} @ <this computer>: macOS: System Settings → Printers & Scanners → Add Printer → Default, Use: AirPrint; iPhone and iPad: Print → Printer.", { name: n.title || n.name })));
   }
   steps.append(

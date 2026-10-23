@@ -99,13 +99,13 @@ func TestAirPrintAttributes(t *testing.T) {
 // The CUPS server nodes that say so are advertised with DNS-SD as
 // AirPrint printers: _ipp._tcp, or _ipps._tcp with a certificate, with
 // the subtypes of IPP Everywhere and AirPrint and the TXT keys their
-// clients read; a node that does not say so is not.
+// clients read; a node that says not to (dnssd false) is not.
 func TestAdvertisements(t *testing.T) {
 	e := flowtest.New(t, nil)
 	e.Put(docflow.Node{Name: "keep", Kind: docflow.KindSink},
-		docflow.Node{Name: "office", Kind: dipp.KindCups, Title: "Office 2.F", To: []string{"keep"}, Port: 16310, DNSSD: true},
-		docflow.Node{Name: "secure", Kind: dipp.KindCups, To: []string{"keep"}, Port: 16311, DNSSD: true, TLSCert: "c.crt", TLSKey: "c.key"},
-		docflow.Node{Name: "quiet", Kind: dipp.KindCups, To: []string{"keep"}, Port: 16312})
+		docflow.Node{Name: "office", Kind: dipp.KindCups, Title: "Office 2.F", To: []string{"keep"}, Port: 16310},
+		docflow.Node{Name: "secure", Kind: dipp.KindCups, To: []string{"keep"}, Port: 16311, TLSCert: "c.crt", TLSKey: "c.key"},
+		docflow.Node{Name: "quiet", Kind: dipp.KindCups, To: []string{"keep"}, Port: 16312, DNSSD: new(false)})
 	nodes, err := e.M().Nodes(context.Background())
 	if err != nil {
 		t.Fatal(err)

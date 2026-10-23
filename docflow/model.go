@@ -245,19 +245,25 @@ type Node struct {
 	// the manager reaches over the network); Route how its jobs reach it
 	// (direct, branch: docflow/io/ipp). Preview is a printer's fake printer on a
 	// farm (tools/fakeprinter): the URL of the printer on the farm's API,
-	// whose pages are shown beside the node (preview.go).
+	// whose pages are shown beside the node (preview.go). Bonjour is the
+	// instance name a printer's or a CUPS server (sink)'s URL was picked
+	// by, of what Bonjour (DNS-SD) found on the local links: when that
+	// address stops answering, the printer is looked for again by it
+	// (docflow/io/ipp).
 	URL     string `json:"url,omitempty"`
 	Route   string `json:"route,omitempty"`
 	Preview string `json:"preview,omitempty"`
+	Bonjour string `json:"bonjour,omitempty"`
 	// Port is a port of the process's own that an endpoint (REST) or a
 	// CUPS server (IPP) listens on (ports.go); TLSCert and TLSKey are the
-	// files of a CUPS server's certificate (none: plain ipp). DNSSD
-	// advertises a CUPS server's printer on the local links (Bonjour), as
-	// an AirPrint printer computers and phones find.
+	// files of a CUPS server's certificate (none: plain ipp). DNSSD false
+	// keeps a CUPS server's printer off the local links; otherwise it is
+	// advertised there (Bonjour), as an AirPrint printer computers and
+	// phones find (Advertised).
 	Port    int    `json:"port,omitempty"`
 	TLSCert string `json:"tls_cert,omitempty"`
 	TLSKey  string `json:"tls_key,omitempty"`
-	DNSSD   bool   `json:"dnssd,omitempty"`
+	DNSSD   *bool  `json:"dnssd,omitempty"`
 	// Latest is how many of the latest documents a sink keeps (default
 	// 10).
 	Latest int `json:"latest,omitempty"`
@@ -309,6 +315,10 @@ type Node struct {
 	Body        string            `json:"body,omitempty"`
 	Via         string            `json:"via,omitempty"`
 }
+
+// Advertised tells a node announced on the local links (Bonjour): one
+// with a port that DNSSD does not keep off.
+func (n *Node) Advertised() bool { return n.Port != 0 && (n.DNSSD == nil || *n.DNSSD) }
 
 func (n *Node) keep() time.Duration { return time.Duration(or(n.Keep, defaultKeep)) }
 func (n *Node) offlineAfter() time.Duration {
