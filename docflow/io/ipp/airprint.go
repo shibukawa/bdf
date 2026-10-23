@@ -14,7 +14,8 @@ import (
 // ask before they print (the paper, the rasters, PDF), so that a Mac
 // makes an AirPrint queue of it and sends PDF, not PostScript (which
 // bdf does not read), and it is advertised with DNS-SD on the local
-// links when the node says so (Node.DNSSD; cmd/docflow announces it).
+// links unless the node says not to (Node.DNSSD false; cmd/docflow
+// announces it).
 // What it receives is made .bdf and sent on, so what it can do is not a
 // printer's: any of the paper below, in colour, with no margins; one
 // side and one copy, as the document goes on as it is.
@@ -182,7 +183,7 @@ func (q *ippRequest) moreInfo() string {
 }
 
 // Advertisements are the DNS-SD services of the CUPS server nodes that
-// are advertised (Node.DNSSD) on a port of their own, of nodes (those
+// are advertised (Node.Advertised) on a port of their own, of nodes (those
 // whose port the process listens on): _ipps._tcp for one with a
 // certificate, else _ipp._tcp, with the subtypes _print (IPP
 // Everywhere) and _universal (AirPrint), as "<title> @ <machine>"
@@ -195,7 +196,7 @@ func Advertisements(m *docflow.Manager, nodes []docflow.Node, machine string) []
 	}
 	var out []ipp.Advertisement
 	for _, n := range nodes {
-		if n.Kind != KindCups || !n.DNSSD || n.Port == 0 {
+		if n.Kind != KindCups || !n.Advertised() {
 			continue
 		}
 		title := or(n.Title, n.Name)

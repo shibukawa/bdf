@@ -14,13 +14,18 @@ import (
 // docflow.FirstPort when none is given; none on a serverless deployment,
 // where it is reached at /ipp/print/<name> alone), its certificate's
 // files (none: plain ipp) and whether it is advertised with DNS-SD (on
-// its port: none without one); docflow checked what every entry has.
+// its port, unless dnssd is false: none without one); docflow checked
+// what every entry has.
 // What computers print is a document, made .bdf: a CUPS server has no
 // accept, output or formats of its own.
 func checkCups(ctx context.Context, m *docflow.Manager, in docflow.Node, n *docflow.Node) error {
 	n.Accept, n.Output, n.Formats = docflow.AcceptFile, docflow.OutputBDF, nil
 	n.TLSCert, n.TLSKey = strings.TrimSpace(in.TLSCert), strings.TrimSpace(in.TLSKey)
-	n.DNSSD = in.DNSSD && m.Ports()
+	// advertised is the default: only false is kept
+	n.DNSSD = nil
+	if in.DNSSD != nil && !*in.DNSSD {
+		n.DNSSD = in.DNSSD
+	}
 	if n.Port == 0 && m.Ports() {
 		p, err := m.FreePort(ctx, n.Name)
 		if err != nil {
