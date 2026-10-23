@@ -232,6 +232,61 @@ func TestOpenAPIMetaOfExits(t *testing.T) {
 	}
 }
 
+// The asserts right after an entry are its contract: the keys they check
+// are parameters with their constraints, required unless optional, and
+// a refusal is 422. Those further on, and a branch's cases, are told.
+func TestOpenAPIAsserts(t *testing.T) {
+	d := &apiDoc{m: &Manager{}, schemas: map[string]any{}, nodes: map[string]*Node{
+		"in": {Name: "in", Kind: KindEndpoint, To: []string{"check", "route"}, Meta: map[string]any{"site": "tokyo"}},
+		"check": {Name: "check", Kind: KindAssert, To: []string{"late"}, Checks: []Check{
+			{Key: "doc-type", Enum: []string{"invoice", "order"}},
+			{Key: "amount", Optional: true, Min: ptr(0), Max: ptr(10000)},
+			{Key: "zip", Pattern: `^\d{3}-\d{4}$`, Message: "a postal code"},
+			{Key: "site"}, {Key: "$pages", Max: ptr(3)},
+		}},
+		"late":  {Name: "late", Kind: KindAssert, Checks: []Check{{Key: "owner"}}},
+		"route": {Name: "route", Kind: KindBranch, Cases: []Case{{When: []Check{{Key: "region", Enum: []string{"jp"}}}}}},
+	}}
+	params := map[string]map[string]any{}
+	for _, p := range d.metaParams(d.nodes["in"]) {
+		params[p.(map[string]any)["name"].(string)] = p.(map[string]any)
+	}
+	if got := keysOf(map[string]any{"meta.amount": 1, "meta.doc-type": 1, "meta.owner": 1, "meta.region": 1, "meta.zip": 1}); !slices.Equal(got, keysOf(anyMap(params))) {
+		t.Fatalf("parameters %v", keysOf(anyMap(params)))
+	}
+	if p := params["meta.doc-type"]; p["required"] != true || !reflect.DeepEqual(p["schema"], map[string]any{"type": "string", "minLength": 1, "enum": []any{"invoice", "order"}}) ||
+		!strings.Contains(p["description"].(string), "refused (422)") {
+		t.Errorf("doc-type %v", p)
+	}
+	if p := params["meta.amount"]; p["required"] != nil || !reflect.DeepEqual(p["schema"], map[string]any{"type": "number", "minimum": 0.0, "maximum": 10000.0}) {
+		t.Errorf("amount %v", p)
+	}
+	if p := params["meta.zip"]; p["required"] != true || dig(p, "schema", "pattern") != `^\d{3}-\d{4}$` || dig(p, "schema", "description") != "a postal code" {
+		t.Errorf("zip %v", p)
+	}
+	for _, k := range []string{"meta.owner", "meta.region"} {
+		if p := params[k]; p["required"] != nil || !reflect.DeepEqual(p["schema"], map[string]any{"type": "string"}) {
+			t.Errorf("%s %v", k, p)
+		}
+	}
+	if !strings.Contains(params["meta.owner"]["description"].(string), "aborted there") || !strings.Contains(params["meta.region"]["description"].(string), "branch route") {
+		t.Errorf("told %v %v", params["meta.owner"], params["meta.region"])
+	}
+	responses := map[string]any{}
+	d.errorResponses(responses, 400, 422)
+	if dig(responses, "422", "content", "application/json", "schema", "$ref") != "#/components/schemas/Refusal" || dig(d.schemas, "Refusal", "properties", "failures") == nil {
+		t.Errorf("422 %v %v", responses["422"], keysOf(d.schemas))
+	}
+}
+
+func anyMap[T any](m map[string]T) map[string]any {
+	out := map[string]any{}
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
 // dig walks a JSON value by keys and indexes; nil when it is not there.
 func dig(v any, path ...any) any {
 	for _, p := range path {

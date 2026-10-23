@@ -104,6 +104,37 @@ func TestOnErrorDefault(t *testing.T) {
 	}
 }
 
+// A job an assert right after its entry refuses goes to the assert's
+// on_error notify node, which tells what failed; the sender is refused.
+func TestNotifyRefused(t *testing.T) {
+	slack := flowtest.NewHook(t)
+	t.Setenv(docflow.CredentialEnv("slack-ops"), slack.URL+"/services/T000/B000/xyz")
+	e := flowtest.New(t, nil)
+	e.Put(docflow.Node{Name: "seen", Kind: docflow.KindSink},
+		docflow.Node{Name: "alert", Kind: notify.KindNotify, Via: notify.ViaSlack, Credential: "slack-ops"},
+		docflow.Node{Name: "check", Kind: docflow.KindAssert, To: []string{"seen"}, OnError: []string{"alert"}, Checks: []docflow.Check{{Key: "doc-type"}}},
+		docflow.Node{Name: "in", Kind: docflow.KindEndpoint, To: []string{"check"}})
+	doc := flowtest.Doc(t, 1)
+	_, err := e.M().Submit(context.Background(), "in", docflow.Input{Name: "order.bdf", Source: "api", Doc: bytes.NewReader(doc), Size: int64(len(doc))})
+	var ref *docflow.Refusal
+	if !errors.As(err, &ref) || ref.Job == nil || len(ref.Failures) != 1 || ref.Failures[0].Key != "doc-type" {
+		t.Fatalf("refused: %v", err)
+	}
+	e.Tick()
+	got := slack.Got()
+	if len(got) != 1 {
+		t.Fatalf("%d notifications: %+v", len(got), e.Job(ref.Job.Number).Legs)
+	}
+	var msg struct{ Text string }
+	json.Unmarshal(got[0].Body, &msg)
+	if msg.Text != "Job 1 (order.bdf) failed at check: doc-type: required" {
+		t.Errorf("text %q", msg.Text)
+	}
+	if j := e.Job(ref.Job.Number); j.State != docflow.JobAborted {
+		t.Errorf("job %s", j.State)
+	}
+}
+
 // A notify node passes on what reaches it, telling that it did.
 func TestNotifyPasses(t *testing.T) {
 	slack := flowtest.NewHook(t)

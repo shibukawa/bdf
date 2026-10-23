@@ -28,10 +28,12 @@ import (
 // endpoints they use, or tries them. What each takes is the node's: the
 // formats an entry accepts, as media types; of an entry of data, the
 // JSON Schema of the templates its data reaches (form.Schema), and the
-// metadata keys the nodes after it look at (a filter's rules, a template
-// node's template_from, an export's by and fields, the {{meta.<key>}} of
-// an exit's settings), as ?meta.<key>= parameters; of an export, the
-// fields its entries carry. The jobs an app sent are followed at
+// metadata keys the nodes after it look at (a filter's rules, an
+// assert's checks, a branch's cases, a template node's template_from, an
+// export's by and fields, the {{meta.<key>}} of an exit's settings), as
+// ?meta.<key>= parameters, those the asserts right after it check with
+// their constraints (and the refusal, 422); of an export, the fields its
+// entries carry. The jobs an app sent are followed at
 // /api/jobs/<id>. The document's version is a hash of what it describes:
 // it changes when the topology changes what it publishes.
 
@@ -190,6 +192,10 @@ func (d *apiDoc) errorResponses(out map[string]any, statuses ...int) {
 		http.StatusRequestEntityTooLarge: "a document larger than the manager takes",
 		http.StatusUnsupportedMediaType:  "a format the entry does not take",
 	}
+	if slices.Contains(statuses, http.StatusUnprocessableEntity) {
+		out["422"] = jsonBody("metadata an assert right after the entry refused: the job is kept, aborted", ref(d.goSchema(reflect.TypeFor[apiRefusal]())))
+		statuses = slices.DeleteFunc(slices.Clone(statuses), func(s int) bool { return s == http.StatusUnprocessableEntity })
+	}
 	d.goSchema(reflect.TypeFor[apiError]())
 	for _, s := range statuses {
 		out[strconv.Itoa(s)] = jsonBody(why[s], ref("Error"))
@@ -225,6 +231,10 @@ func (d *apiDoc) entry(n *Node) {
 		desc = append(desc, "It goes on to "+d.names(n.To)+".")
 	}
 	desc = append(desc, "The answer is the job, which an app follows at /api/jobs/{id}. The sender's metadata is ?meta.<key>= parameters, or X-Meta-<Key> headers (the key in lower case), or in a multipart/form-data body a JSON object in the part meta, beside the document in the part file; the parameters below are the keys the nodes after this one look at, and any other key goes along too.")
+	gates := d.gates(n)
+	if len(gates) > 0 {
+		desc = append(desc, "The asserts right after it ("+d.names(gates)+") check the metadata first: a job that fails a check is refused (422) with what failed, and kept, aborted.")
+	}
 	security := []any{map[string]any{"key": []string{}}, map[string]any{"admin": []string{}}}
 	if n.Kind == KindEndpoint {
 		scope := ScopePrint
@@ -234,7 +244,11 @@ func (d *apiDoc) entry(n *Node) {
 		security = append(security, map[string]any{"app": []string{scope}})
 	}
 	responses := map[string]any{"201": jsonBody("the job", ref(d.goSchema(reflect.TypeFor[Job]())))}
-	d.errorResponses(responses, http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusUnsupportedMediaType)
+	statuses := []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusUnsupportedMediaType}
+	if len(gates) > 0 {
+		statuses = append(statuses, http.StatusUnprocessableEntity)
+	}
+	d.errorResponses(responses, statuses...)
 	params := []any{
 		map[string]any{"name": "name", "in": "query", "description": "The job's name: a file's name, whose extension tells the format.", "schema": map[string]any{"type": "string"}},
 		map[string]any{"name": "user", "in": "query", "description": "Who the sender says sent it: shown, never trusted.", "schema": map[string]any{"type": "string"}},
@@ -469,11 +483,36 @@ func (d *apiDoc) reach(from *Node, passing bool) []string {
 	return out
 }
 
+// gates are the asserts right after an entry, which refuse a job to its
+// sender (gate).
+func (d *apiDoc) gates(entry *Node) []string {
+	var out []string
+	for _, name := range entry.To {
+		if x := d.nodes[name]; x != nil && x.Kind == KindAssert {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 // metaParams are the ?meta.<key>= parameters of an entry: the keys the
 // nodes after it look at, but those the entry sets itself (they win).
+// Those the asserts right after it check are described by the checks:
+// required unless optional, and their schema.
 func (d *apiDoc) metaParams(entry *Node) []any {
 	uses := map[string][]string{}
 	enums := map[string][]string{}
+	checked := map[string][]any{} // the schemas of the gates' checks, by key
+	required := map[string]bool{}
+	for _, name := range d.gates(entry) {
+		for _, c := range d.nodes[name].Checks {
+			if _, set := entry.Meta[c.Key]; set || !metaKeyRE.MatchString(c.Key) || c.Key == "name" || c.Key == "user" {
+				continue
+			}
+			checked[c.Key] = append(checked[c.Key], checkSchema(c))
+			required[c.Key] = required[c.Key] || !c.Optional
+		}
+	}
 	use := func(key, what string) {
 		if !metaKeyRE.MatchString(key) || key == "name" || key == "user" {
 			return // the manager's, or the job's own (?name=, ?user=)
@@ -490,6 +529,18 @@ func (d *apiDoc) metaParams(entry *Node) []any {
 		for _, r := range n.Rules {
 			for key := range r.Match.Meta {
 				use(key, "routes the job at the filter "+n.Name)
+			}
+		}
+		for _, c := range n.Checks {
+			if slices.Contains(entry.To, n.Name) {
+				use(c.Key, "is checked before the job is taken, at the assert "+n.Name+": a job that fails is refused (422)")
+			} else {
+				use(c.Key, "is checked at the assert "+n.Name+": a job that fails is aborted there")
+			}
+		}
+		for _, c := range n.Cases {
+			for _, w := range c.When {
+				use(w.Key, "routes the job at the branch "+n.Name)
 			}
 		}
 		if n.Kind == KindTemplate && n.TemplateFrom != "" {
@@ -526,10 +577,58 @@ func (d *apiDoc) metaParams(entry *Node) []any {
 			slices.Sort(e)
 			s["enum"] = e
 		}
-		out = append(out, map[string]any{"name": "meta." + k, "in": "query",
-			"description": "The metadata " + k + ": it " + strings.Join(uses[k], "; it ") + ".", "schema": s})
+		switch cs := checked[k]; len(cs) {
+		case 0:
+		case 1:
+			s = cs[0].(map[string]any)
+		default:
+			s = map[string]any{"allOf": cs}
+		}
+		p := map[string]any{"name": "meta." + k, "in": "query",
+			"description": "The metadata " + k + ": it " + strings.Join(uses[k], "; it ") + ".", "schema": s}
+		if required[k] {
+			p["required"] = true
+		}
+		out = append(out, p)
 	}
 	return out
+}
+
+// checkSchema is the schema of a value a check takes: a number within
+// its bounds, or text that matches its pattern, one of its values when
+// it has some.
+func checkSchema(c Check) map[string]any {
+	s := map[string]any{"type": "string"}
+	if !c.Optional {
+		s["minLength"] = 1
+	}
+	if c.Min != nil || c.Max != nil {
+		s = map[string]any{"type": "number"}
+		if c.Min != nil {
+			s["minimum"] = *c.Min
+		}
+		if c.Max != nil {
+			s["maximum"] = *c.Max
+		}
+	}
+	if c.Pattern != "" {
+		s["pattern"] = c.Pattern
+	}
+	if len(c.Enum) > 0 {
+		var enum []any
+		for _, v := range c.Enum {
+			if x, err := strconv.ParseFloat(v, 64); err == nil && s["type"] == "number" {
+				enum = append(enum, x)
+			} else {
+				enum = append(enum, v)
+			}
+		}
+		s["enum"] = enum
+	}
+	if c.Message != "" {
+		s["description"] = c.Message
+	}
+	return s
 }
 
 // expanded are the settings of a node that expand {{meta.<key>}}.

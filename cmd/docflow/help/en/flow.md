@@ -83,3 +83,18 @@ A rule is a match and the nodes a job that matches goes to. Every condition of t
 | kind of payload | `bdf`, `data` or `any` |
 
 The rules are tried in order, and the first that fits sends the job on; the leg names the rule. A job no rule fits goes to the filter's otherwise, or ends there, `dropped`, when there is none. A rule with no condition fits every job.
+
+## Checks {#checks}
+
+An [assert](nodes.md#assert) and the cases of a [branch](nodes.md#branch) look at the job by checks. A check is a key of the job's metadata, as the nodes see it ([Metadata](#metadata)): a sender's key (`doc-type` of `X-Meta-Doc-Type`, `ipp.job-account-id` of IPP), an entry's, or the manager's (`$pages`, `$format`, `$sender` …), and what its value must be. Every condition given must hold:
+
+| Condition | |
+|---|---|
+| key (`key`) | the key must have a value that is not empty |
+| optional (`optional`) | instead: a job without the key passes, and the conditions below are of a value it has |
+| matches (`pattern`) | a regular expression (RE2) the value matches somewhere in it; `^…$` for all of it |
+| min, max (`min`, `max`) | the value is a number within the bounds, both included |
+| one of (`enum`) | the value is one of these, as written |
+| message (`message`) | of an assert: what a failure says, instead of the check's own words |
+
+A failure says the key and why: `doc-type: required`, `amount: 12000 is more than 10000`, `doc-type: "memo" is not one of invoice, order`. An assert checks every check, so that the sender learns all that failed at once; the job's leg at the assert and `{{meta.$error}}` of a notify node after it are those failures, one after another. The OpenAPI document of an entry tells the keys the asserts right after it check, with their constraints, required unless optional ([OpenAPI](api.md#openapi)).

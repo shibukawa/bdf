@@ -192,7 +192,7 @@ The role `topology` gets the administrator's pages under `/admin` (the
 editor of the topology, apps, inboxes, jobs, deliveries) and the role
 `audit` gets `/audit`. Every node is `PUT /api/nodes/<name>` with its
 `kind` and the kind's settings — `endpoint`, `cups`, `queue`, `class`,
-`filter`, `template`, `convert`, `sign`, `inbox`, `display`, `printer`, `cups-out`,
+`filter`, `assert`, `branch`, `template`, `convert`, `sign`, `inbox`, `display`, `printer`, `cups-out`,
 `archive`, `sink`, `export` ([help/en/nodes.md](help/en/nodes.md)) —
 and `POST /api/nodes/<name>/rename` renames one, its edges following; IPP
 enters at `cups` nodes alone (their port's `/printers/<name>`, and

@@ -20,7 +20,9 @@
 // carries fade, the wire turns red over one, and it snaps to the port of
 // one that takes it. An edge that no longer carries what the node after
 // it takes (after a change of settings) is drawn broken: dashed, red,
-// with a mark on it.
+// with a mark on it. A branch has a port for each of its cases and one
+// for its default, an assert one for what passes and one for what fails
+// (its on_error): each labelled, each dragged from on its own.
 
 import { _, KINDS, PAYLOAD_COLOR, PAYLOADS, sentences } from "./admin.js";
 
@@ -39,12 +41,13 @@ const DESC_Y = 52; // the baseline of the first line of the description
 const LINE_H = 13;
 const MAX_LINES = 5; // of a description on the canvas
 const GAP = 30; // between the rows the nodes are laid out in
+const PORT_GAP = 18; // between the ports of a node with several
 // The roles of the kinds, which color a node's title bar: where a job
 // comes in from outside (source), what passes it on (control flow),
-// what picks by rules (filter), what makes a new payload of it
-// (transform), and where it ends (sink).
+// what picks by rules or checks (filter, assert, branch), what makes a
+// new payload of it (transform), and where it ends (sink).
 export const ROLES = { source: _("Source"), flow: _("Control flow"), filter: _("Filter"), transform: _("Transform"), sink: _("Sink") };
-export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", template: "transform", convert: "transform", sign: "transform", display: "sink", printer: "sink", "cups-out": "sink", archive: "sink", sink: "sink", export: "sink", "s3-trigger": "source", notify: "flow", render: "transform", smtp: "sink", s3: "sink", http: "sink" };
+export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", assert: "filter", branch: "filter", template: "transform", convert: "transform", sign: "transform", display: "sink", printer: "sink", "cups-out": "sink", archive: "sink", sink: "sink", export: "sink", "s3-trigger": "source", notify: "flow", render: "transform", smtp: "sink", s3: "sink", http: "sink" };
 export const ROLE_COLOR = { source: "#0f766e", flow: "#4338ca", filter: "#be185d", transform: "#c2410c", sink: "#334155" };
 // The icons of the kinds: strokes in a 24 by 24 box.
 const ICONS = {
@@ -53,6 +56,10 @@ const ICONS = {
   queue: ["M12 3l9 5-9 5-9-5z", "M3 13l9 5 9-5", "M3 17l9 5 9-5"],
   class: ["M17 3l4 4-4 4", "M3 11V9a2 2 0 0 1 2-2h16", "M7 21l-4-4 4-4", "M21 13v2a2 2 0 0 1-2 2H3"],
   filter: ["M4 4h16l-6 8v6l-4 2v-8z"],
+  // a shield with a tick: what passes the checks
+  assert: ["M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z", "M9 12l2 2 4-4"],
+  // a way that splits: the arms of a switch
+  branch: ["M3 12h6", "M9 12c4 0 4-6 8-6h4", "M9 12c4 0 4 6 8 6h4", "M18 3l3 3-3 3", "M18 15l3 3-3 3"],
   template: ["M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z", "M14 3v5h5", "M9 13h6", "M9 17h4"],
   convert: ["M21 12a9 9 0 0 1-15 6.7L3 16", "M3 12a9 9 0 0 1 15-6.7L21 8", "M3 21v-5h5", "M21 3v5h-5"],
   // a pen over a line: a signature
@@ -72,7 +79,7 @@ const ICONS = {
 };
 // the kinds with an output port: they send to other nodes (a display to
 // its fallback printer, an archive what it wrote)
-const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "sign", "inbox", "display", "archive"]);
+const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "assert", "branch", "template", "convert", "sign", "inbox", "display", "archive"]);
 // the exits read from outside: applications and people fetch what an
 // export lists, and what a printer or a CUPS server (sink) is sent over
 // IPP, drawn as an arrow going out
@@ -88,7 +95,7 @@ const STOCKS = new Set(["inbox", "archive"]);
 const TAKES_STOCKED = new Set(["export"]);
 // the kinds of node that send on what reaches them: typed by their first
 // edge, on either side (kinds.go: passesOn)
-const PASSES_ON = new Set(["queue", "class", "filter", "inbox", "endpoint", "cups", "s3-trigger", "archive"]);
+const PASSES_ON = new Set(["queue", "class", "filter", "assert", "branch", "inbox", "endpoint", "cups", "s3-trigger", "archive"]);
 // the kinds a display's fallback prints on: they send .bdf out over IPP
 // (and a printer over 9100 or LPD)
 export const PRINTS = new Set(["printer", "cups-out"]);
@@ -123,26 +130,41 @@ export function iconOf(kind, size = 14) {
 
 export const roleColor = (kind) => ROLE_COLOR[ROLE_OF[kind] || "flow"];
 
+// portsOf are the output ports of a node that has several, each with
+// its label (null: one port): a branch's, a case each and its default;
+// an assert's, what passes (to) and what fails (on_error).
+export function portsOf(n) {
+  if (n.kind === "branch") return [...(n.cases || []).map((c, i) => ({ id: "case:" + i, label: c.name || `case ${i + 1}` })), { id: "default", label: "default" }];
+  if (n.kind === "assert") return [{ id: "to", label: "pass" }, { id: "error", label: "fail" }];
+  return null;
+}
+
 // edgesOf are the edges from a node: to (a queue's, an endpoint's, a CUPS
-// server's, an inbox's, a filter's rules and otherwise), original (what a
-// template or a convert node took, sent on as it was), member (a
-// class's), fallback (a display's printer) or error (on_error: where the
-// job goes when the node's send or step fails for good).
+// server's, an inbox's, a filter's rules and otherwise, a branch's cases
+// and default), original (what a template or a convert node took, sent
+// on as it was), member (a class's), fallback (a display's printer) or
+// error (on_error: where the job goes when the node's send or step fails
+// for good, or an assert refuses it). An edge of a node with several
+// ports names its port.
 export function edgesOf(n) {
   const out = [];
   const seen = new Set();
-  const to = (name, kind) => {
-    if (seen.has(kind + ":" + name)) return;
-    seen.add(kind + ":" + name);
-    out.push({ to: name, kind });
+  const to = (name, kind, port) => {
+    const key = `${kind}:${port || ""}:${name}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(port ? { to: name, kind, port } : { to: name, kind });
   };
-  for (const x of n.to || []) to(x, "to");
+  const ports = portsOf(n);
+  for (const x of n.to || []) to(x, "to", ports ? "to" : undefined);
   for (const r of n.rules || []) for (const x of r.to || []) to(x, "to");
   for (const x of n.otherwise || []) to(x, "to");
+  for (const [i, c] of (n.cases || []).entries()) for (const x of c.to || []) to(x, "to", "case:" + i);
+  for (const x of n.default || []) to(x, "to", "default");
   for (const x of n.original || []) to(x, "original");
   for (const x of n.members || []) to(x, "member");
   if (n.fallback && n.fallback.printer) to(n.fallback.printer, "fallback");
-  for (const x of n.on_error || []) to(x, "error");
+  for (const x of n.on_error || []) to(x, "error", ports && ports.some((p) => p.id === "error") ? "error" : undefined);
   return out;
 }
 
@@ -223,13 +245,13 @@ export function legend(box) {
     s.append(svgEl("rect", { x: "1", y: "2", width: "12", height: "10", rx: "2", fill }));
     return s;
   };
-  const of = { source: _("endpoint, CUPS server"), flow: _("queue, class, inbox"), filter: _("by rules"), transform: _("template, convert, sign"), sink: _("display, printer, archive, sink, HTTP (pull)") };
+  const of = { source: _("endpoint, CUPS server"), flow: _("queue, class, inbox"), filter: _("filter, assert, branch"), transform: _("template, convert, sign"), sink: _("display, printer, archive, sink, HTTP (pull)") };
   box.replaceChildren(...Object.entries(ROLES).map(([role, label]) => item(bar(ROLE_COLOR[role]), _("{role} ({kinds})", { role: label, kinds: of[role] }))), item(dot(PAYLOAD_COLOR.bdf, "#fff"), _(".bdf document")), item(dot(PAYLOAD_COLOR.data, "#fff"), _("data (for a template node)")), item(dot(PAYLOAD_COLOR.any, "#fff"), _("any file as received (for a convert node)")), item(dot(PAYLOAD_COLOR.stocked, "#fff"), _("stocked file: what an inbox holds or an archive wrote (for HTTP (pull))")), item(dot(MIXED_COLOR, "#fff"), _("several kinds")), item(dot(ANY_KIND_COLOR, "#fff"), _("takes any kind")), item(dot("#f8fafc", UNTYPED_COLOR, "2 2"), _("not typed yet: its first edge types it")), item(line(BROKEN_COLOR, "6 4"), _("no longer connects: the node after does not take what reaches it")));
 }
 
 // createCanvas draws a topology in an svg. opts: editable (nodes move
 // and connect), onSelect(name or null), onMove(name, pos), onConnect(node,
-// toName), onReject(node, toName, why) (an edge dropped on a node that
+// toName, port: the port of a node with several), onReject(node, toName, why) (an edge dropped on a node that
 // cannot take it), onRemoveEdge(node, edge), draftLabel() and
 // draftNote() (the title, or the name, and the description typed for a
 // node being added).
@@ -334,8 +356,17 @@ export function createCanvas(svg, opts = {}) {
   // linesOf are the lines of a node's description on the canvas.
   const linesOf = (n) => (n.description ? wrap(n.description, NODE_W - 20 - (latestOf(n) ? 44 : 0), MAX_LINES) : []);
   const heightOfLines = (count) => (count ? DESC_Y + (count - 1) * LINE_H + 11 : NODE_H);
-  const heightOf = (n) => heightOfLines(linesOf(n).length);
+  // a node with several ports is as tall as they need, below its title bar
+  const heightOfPorts = (n) => {
+    const ports = portsOf(n);
+    return ports ? HEAD_H + ports.length * PORT_GAP + 4 : 0;
+  };
+  const heightOf = (n) => Math.max(heightOfLines(linesOf(n).length), heightOfPorts(n));
+  // portY is where a node's port is, from its top: spread over the body
+  // of a node of a height, below its title bar
+  const portY = (i, count, h) => HEAD_H + ((h - HEAD_H) * (i + 0.5)) / count;
   let heights = {}; // by name, as drawn last
+  let portYs = {}; // by name, of a node with several ports: by port, its y
 
   // autoLayout places the nodes that have no position: in columns by
   // their depth from the entries, rows within a column, each as tall as
@@ -409,11 +440,11 @@ export function createCanvas(svg, opts = {}) {
   // display's only to a printer (its fallback), not twice (already), no
   // path back (a cycle), and what the edge would carry is taken by the
   // node after it (the server checks the same when the node is put).
-  function canConnect(a, b) {
+  function canConnect(a, b, port) {
     if (a.name === b.name) return { ok: false, why: _("a node does not send to itself") };
     if (b.kind === "cups") return { ok: false, why: _("{node} is a CUPS server: it takes what computers print there, not what other nodes send", { node: b.name }) };
     if (a.kind === "display" && !PRINTS.has(b.kind)) return { ok: false, why: _("a display's port sets its fallback printer; {node} is a {kind}", { node: b.name, kind: (KINDS[b.kind] || b.kind).toLowerCase() }) };
-    if (edgesOf(a).some((e) => e.to === b.name)) return { ok: false, already: true, why: _("{from} sends to {to} already", { from: a.name, to: b.name }) };
+    if (edgesOf(a).some((e) => e.to === b.name && (!port || e.port === port))) return { ok: false, already: true, why: _("{from} sends to {to} already", { from: a.name, to: b.name }) };
     if (reaches(b.name, a.name)) return { ok: false, why: _("a cycle: {to} leads back to {from}", { to: b.name, from: a.name }) };
     // HTTP (pull) takes a stocked file, which an inbox or an archive
     // sends whatever reaches it
@@ -431,7 +462,7 @@ export function createCanvas(svg, opts = {}) {
     return { ok: true };
   }
 
-  const compatOf = (a) => Object.fromEntries(topo.filter((x) => x.name !== a.name).map((x) => [x.name, canConnect(a, x)]));
+  const compatOf = (a, port) => Object.fromEntries(topo.filter((x) => x.name !== a.name).map((x) => [x.name, canConnect(a, x, port)]));
 
   // counts are what is at a node: the live activity when there is some
   // (the viewer's), else what the topology says (an administrator's).
@@ -442,6 +473,7 @@ export function createCanvas(svg, opts = {}) {
     if (l.open) out.push(_("{n} open", { n: l.open }));
     if (l.pending) out.push(_("{n} waiting", { n: l.pending }));
     if (l.failed) out.push(_("{n} failed", { n: l.failed }));
+    if (l.refused) out.push(_("{n} refused", { n: l.refused }));
     if (l.kept) out.push(_("{n} kept", { n: l.kept }));
     if (l.listed) out.push(_("{n} listed", { n: l.listed }));
     if (!live && n.devices) out.push(n.devices === 1 ? _("{n} device", { n: 1 }) : _("{n} devices", { n: n.devices }));
@@ -457,11 +489,16 @@ export function createCanvas(svg, opts = {}) {
     return { d: `M ${x1} ${y1} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${x2} ${y2}`, mid: { x: (x1 + 3 * c1.x + 3 * c2.x + x2) / 8, y: (y1 + 3 * c1.y + 3 * c2.y + y2) / 8 } };
   }
 
-  const outPoint = (name) => ({ x: pos(name).x + NODE_W, y: pos(name).y + (heights[name] ?? NODE_H) / 2 });
+  // outPoint is where an edge leaves a node: its port, of a node that has
+  // several
+  const outPoint = (name, port) => ({ x: pos(name).x + NODE_W, y: pos(name).y + ((portYs[name] || {})[port] ?? (heights[name] ?? NODE_H) / 2) });
   const inPoint = (name) => ({ x: pos(name).x, y: pos(name).y + (heights[name] ?? NODE_H) / 2 });
 
+  // edgePath is the path of a flow from a node to the next: along the
+  // first of its edges there
   function edgePath(from, to) {
-    const a = outPoint(from);
+    const e = edgesOf(byName()[from] || {}).find((x) => x.to === to);
+    const a = outPoint(from, e && e.port);
     const b = inPoint(to);
     return curve(a.x, a.y, b.x, b.y).d;
   }
@@ -489,13 +526,18 @@ export function createCanvas(svg, opts = {}) {
     defs = svgEl("defs");
     markers.clear();
     heights = Object.fromEntries(topo.map((n) => [n.name, heightOf(n)]));
+    portYs = {};
+    for (const n of topo) {
+      const ports = portsOf(n);
+      if (ports) portYs[n.name] = Object.fromEntries(ports.map((p, i) => [p.id, portY(i, ports.length, heights[n.name])]));
+    }
     world = svgEl("g", { id: "world", transform: `translate(${view.x} ${view.y}) scale(${view.k})` });
     const nodes = byName();
     for (const n of topo) {
       const t = typeOf(n);
       for (const e of edgesOf(n)) {
         if (!nodes[e.to]) continue;
-        const a = outPoint(n.name);
+        const a = outPoint(n.name, e.port);
         const b = inPoint(e.to);
         const { d, mid } = curve(a.x, a.y, b.x, b.y);
         const hit = svgEl("path", { d, fill: "none", stroke: "transparent", "stroke-width": "14", class: editable ? "cursor-pointer" : "" });
@@ -523,8 +565,10 @@ export function createCanvas(svg, opts = {}) {
           const carried = kinds.length ? payloadText(kinds) : _("not typed yet");
           if (e.kind === "fallback") what = _("{from} prints on {to} as a fallback", { from: n.name, to: e.to });
           else if (e.kind === "original") what = _("{from} sends what it took, as it was, to {to}: {kinds} (traced with what it made)", { from: n.name, to: e.to, kinds: carried });
+          else if (e.kind === "error" && n.kind === "assert") what = _("{from} → {to} on fail: what reached {from}, when it fails a check", { from: n.name, to: e.to });
           else if (e.kind === "error") what = _("{from} → {to} on error: what reached {from}, when its send or step fails for good", { from: n.name, to: e.to });
           else if (e.kind === "member") what = _("{to} is a member of {from}: {kinds}", { from: n.name, to: e.to, kinds: carried });
+          else if (e.port && e.port !== "to") what = `${n.name} → ${e.to} (${(portsOf(n).find((p) => p.id === e.port) || {}).label || e.port}): ${carried}`;
           else what = `${n.name} → ${e.to}: ${carried}`;
         }
         title.textContent = editable ? _("{edge} (click to remove)", { edge: what }) : what;
@@ -620,7 +664,7 @@ export function createCanvas(svg, opts = {}) {
     const g = svgEl("g", { transform: `translate(${p.x} ${p.y})`, class: editable ? "cursor-grab" : "cursor-pointer", "data-name": n.name });
     if (faded) g.setAttribute("opacity", "0.35");
     const lines = linesOf(n);
-    const h = heightOfLines(lines.length);
+    const h = Math.max(heightOfLines(lines.length), heightOfPorts(n));
     if (isSelected) g.append(svgEl("rect", { x: "-4", y: "-4", width: NODE_W + 8, height: h + 8, rx: "11", fill: "none", stroke: "#4f46e5", "stroke-width": "2", opacity: "0.7" }));
     // a sink shows the first page of the latest document it keeps
     const latest = latestOf(n);
@@ -695,21 +739,37 @@ export function createCanvas(svg, opts = {}) {
       g.append(input);
     }
     if (OUT_PORT.has(n.kind)) {
-      const port = svgEl("circle", { cx: NODE_W, cy: h / 2, r: editable ? "7" : "5", fill: t.out.length ? payloadColor(t.out) : "#f8fafc", stroke: "#fff", "stroke-width": "2" });
-      if (!t.out.length) {
-        port.setAttribute("stroke", UNTYPED_COLOR);
-        port.setAttribute("stroke-dasharray", "2 2");
-      }
-      if (editable) {
-        port.setAttribute("class", "cursor-crosshair");
-        port.setAttribute("data-port", n.name);
-      }
-      const x = svgEl("title");
       const sends = t.out.length ? (asList(n.emits).length ? _("Sends on {kinds}", { kinds: payloadText(t.out) }) : _("Carries {kinds}", { kinds: payloadText(t.out) })) : _("Not typed yet: the first edge types it");
-      const how = n.kind === "display" ? _("Drag onto a printer: the fallback printer.") : n.kind === "class" ? _("Drag onto a node: a member.") : n.kind === "archive" ? _("Drag onto a node: what the archive wrote goes on there (an HTTP (pull) node lists it, a stocked file).") : n.kind === "inbox" ? _("Drag onto a node: a person releases to it, or an HTTP (pull) node lists what the inbox holds (a stocked file).") : _("Drag onto a node to connect.");
-      x.textContent = editable ? sentences(how, sends) : sends;
-      port.append(x);
-      g.append(port);
+      const ports = portsOf(n);
+      for (const [i, p] of (ports || [{}]).entries()) {
+        const y = ports ? portY(i, ports.length, h) : h / 2;
+        const port = svgEl("circle", { cx: NODE_W, cy: y, r: editable ? (ports ? "6" : "7") : "5", fill: t.out.length ? payloadColor(t.out) : "#f8fafc", stroke: "#fff", "stroke-width": "2" });
+        if (!t.out.length) {
+          port.setAttribute("stroke", UNTYPED_COLOR);
+          port.setAttribute("stroke-dasharray", "2 2");
+        }
+        if (editable) {
+          port.setAttribute("class", "cursor-crosshair");
+          port.setAttribute("data-port", n.name);
+          if (p.id) port.setAttribute("data-port-id", p.id);
+        }
+        const x = svgEl("title");
+        let how = n.kind === "display" ? _("Drag onto a printer: the fallback printer.") : n.kind === "class" ? _("Drag onto a node: a member.") : n.kind === "archive" ? _("Drag onto a node: what the archive wrote goes on there (an HTTP (pull) node lists it, a stocked file).") : n.kind === "inbox" ? _("Drag onto a node: a person releases to it, or an HTTP (pull) node lists what the inbox holds (a stocked file).") : _("Drag onto a node to connect.");
+        if (p.id === "default") how = _("Drag onto a node: where a job no case fits goes.");
+        else if (p.id === "to" && n.kind === "assert") how = _("Drag onto a node: where a job that passes every check goes.");
+        else if (p.id === "error") how = _("Drag onto a node (a notify node): where a job that fails a check goes, with what failed.");
+        else if (p.id) how = _("Drag onto a node: where a job that fits {arm} goes.", { arm: p.label });
+        x.textContent = editable ? sentences(how, sends) : p.label ? `${p.label}: ${sends}` : sends;
+        port.append(x);
+        g.append(port);
+        if (ports) {
+          // the arm's label, outside the node, haloed over the edges that
+          // leave it and cross it
+          const label = svgEl("text", { x: NODE_W + 9, y: y - 5, "font-size": "9.5", "font-weight": "500", fill: p.id === "error" ? "#b91c1c" : "#4b5563", stroke: "#f8fafc", "stroke-width": "3", "stroke-linejoin": "round", "paint-order": "stroke", "pointer-events": "none" });
+          label.textContent = clipText(p.label, 18);
+          g.append(label);
+        }
+      }
     }
     g.addEventListener("pointerdown", (ev) => startDrag(ev, n));
     return g;
@@ -725,7 +785,7 @@ export function createCanvas(svg, opts = {}) {
       if (shown.has(key)) continue;
       shown.add(key);
       if (!nodes[f.from] || !nodes[f.to] || now - new Date(f.at).getTime() > FLOW_AGE_MS) continue;
-      const dot = svgEl("circle", { r: "6", fill: f.state === "error" || f.state === "failed" ? "#dc2626" : "#4f46e5", stroke: "#fff", "stroke-width": "2" });
+      const dot = svgEl("circle", { r: "6", fill: f.state === "error" || f.state === "failed" || f.state === "refused" ? "#dc2626" : "#4f46e5", stroke: "#fff", "stroke-width": "2" });
       const title = svgEl("title");
       title.textContent = `#${f.job} ${f.name || ""} ${f.from} → ${f.to}`;
       dot.append(title);
@@ -826,11 +886,12 @@ export function createCanvas(svg, opts = {}) {
     ev.stopPropagation();
     const s = screenPoint(ev);
     if (editable && n && ev.target.dataset.port) {
-      const p = outPoint(n.name);
+      const port = ev.target.dataset.portId;
+      const p = outPoint(n.name, port);
       const out = typeOf(n).out;
       const color = out.length ? payloadColor(out) : UNTYPED_COLOR;
       const line = svgEl("path", { fill: "none", stroke: color, "stroke-width": "2.5", "stroke-dasharray": "4 3", "pointer-events": "none" });
-      drag = { kind: "edge", from: n, line, label: wireLabel(), color, x1: p.x, y1: p.y, compat: compatOf(n), over: null };
+      drag = { kind: "edge", from: n, port, line, label: wireLabel(), color, x1: p.x, y1: p.y, compat: compatOf(n, port), over: null };
       draw(); // the nodes that would not take it fade
     } else if (editable || !n) {
       const p = n ? pos(n.name) : draftPos;
@@ -939,8 +1000,8 @@ export function createCanvas(svg, opts = {}) {
         const name = nodeAt(ev);
         draw(); // the wire goes, the nodes come back
         if (!name || name === d.from.name) return;
-        const cm = d.compat[name] || canConnect(d.from, byName()[name]);
-        if (cm.ok) onConnect(d.from, name);
+        const cm = d.compat[name] || canConnect(d.from, byName()[name], d.port);
+        if (cm.ok) onConnect(d.from, name, d.port);
         else if (!cm.already) onReject(d.from, name, cm.why);
       }
     }
@@ -966,7 +1027,7 @@ export function createCanvas(svg, opts = {}) {
       autoLayout();
       if (selected && !topo.some((n) => n.name === selected)) selected = null;
       const c = connecting();
-      if (c) c.compat = compatOf(c.from);
+      if (c) c.compat = compatOf(c.from, c.port);
       draw();
     },
     // setLive takes the activity: the counts, and the flows to run.

@@ -39,10 +39,16 @@ export async function api(method, path, body, raw) {
   return out;
 }
 
+// el makes an element: its text, and its properties, but data-* and
+// aria-*, which are attributes (a property of that name would be lost on
+// querySelector).
 export function el(tag, text, attrs = {}) {
   const e = document.createElement(tag);
   if (text !== undefined) e.textContent = text;
-  Object.assign(e, attrs);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k.startsWith("data-") || k.startsWith("aria-")) e.setAttribute(k, v);
+    else e[k] = v;
+  }
   return e;
 }
 
@@ -80,13 +86,15 @@ export function badge(text, cls = "badge-ghost") {
 }
 
 // KINDS are the kinds' names, as the palette says them (pages.yaml).
-export const KINDS = { endpoint: _("Endpoint"), cups: _("CUPS server (source)"), "cups-out": _("CUPS server (sink)"), queue: _("Queue"), class: _("Class"), filter: _("Filter"), template: _("Template"), convert: _("Convert"), sign: _("Sign"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer"), sink: _("Sink"), export: "HTTP (pull)", render: _("Render"), notify: _("Notify"), smtp: _("Mail (SMTP)"), s3: "S3", "s3-trigger": _("S3 Trigger"), http: "HTTP (push)" };
+export const KINDS = { endpoint: _("Endpoint"), cups: _("CUPS server (source)"), "cups-out": _("CUPS server (sink)"), queue: _("Queue"), class: _("Class"), filter: _("Filter"), assert: _("Assert"), branch: _("Branch"), template: _("Template"), convert: _("Convert"), sign: _("Sign"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer"), sink: _("Sink"), export: "HTTP (pull)", render: _("Render"), notify: _("Notify"), smtp: _("Mail (SMTP)"), s3: "S3", "s3-trigger": _("S3 Trigger"), http: "HTTP (push)" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
   sink: "badge-success badge-soft",
   export: "badge-accent badge-soft",
   filter: "badge-secondary badge-soft",
+  assert: "badge-secondary badge-soft",
+  branch: "badge-secondary badge-soft",
   template: "badge-secondary badge-soft",
   convert: "badge-secondary badge-soft",
   sign: "badge-secondary badge-soft",

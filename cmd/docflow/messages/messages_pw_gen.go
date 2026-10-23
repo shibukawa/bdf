@@ -694,6 +694,46 @@ func PagesKindArchiveNote(loc pw.Locale) string {
 	return tblPagesKindArchiveNote[loc.Index()]
 }
 
+var tblPagesKindAssert = [...]string{
+	"Assert", // en
+	"アサート",   // ja
+}
+
+// PagesKindAssert renders message "pages.kind-assert".
+func PagesKindAssert(loc pw.Locale) string {
+	return tblPagesKindAssert[loc.Index()]
+}
+
+var tblPagesKindAssertNote = [...]string{
+	"checks the metadata; right after an entry, refuses the sender what fails", // en
+	"メタデータを検査する。入口の直後なら、通らないものを送り手に拒否する",                                       // ja
+}
+
+// PagesKindAssertNote renders message "pages.kind-assert-note".
+func PagesKindAssertNote(loc pw.Locale) string {
+	return tblPagesKindAssertNote[loc.Index()]
+}
+
+var tblPagesKindBranch = [...]string{
+	"Branch", // en
+	"ブランチ",   // ja
+}
+
+// PagesKindBranch renders message "pages.kind-branch".
+func PagesKindBranch(loc pw.Locale) string {
+	return tblPagesKindBranch[loc.Index()]
+}
+
+var tblPagesKindBranchNote = [...]string{
+	"a switch: the first case whose checks hold, else default", // en
+	"switch 文。チェックを満たす最初のケース、なければ default へ",                   // ja
+}
+
+// PagesKindBranchNote renders message "pages.kind-branch-note".
+func PagesKindBranchNote(loc pw.Locale) string {
+	return tblPagesKindBranchNote[loc.Index()]
+}
+
 var tblPagesKindClass = [...]string{
 	"Class", // en
 	"クラス",   // ja

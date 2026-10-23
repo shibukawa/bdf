@@ -468,11 +468,23 @@ var planTopologyOpsFill16Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 
 var planTopologyOpsFill17Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
-		return messages.PagesKindInboxNote(pwruntime.MessageLocale(ctx))
+		return messages.PagesKindAssertNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
 var planTopologyOpsFill18Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindBranchNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill19Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
+		return messages.PagesKindInboxNote(pwruntime.MessageLocale(ctx))
+	}),
+}}
+
+var planTopologyOpsFill20Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindNotifyNote(pwruntime.MessageLocale(ctx))
 	}),
@@ -493,149 +505,157 @@ var planTopologyOpsFill13Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "inbox", Name: messages.PagesKindInbox(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill17Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "assert", Name: messages.PagesKindAssert(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill17Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "notify", Name: messages.PagesKindNotify(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill18Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "branch", Name: messages.PagesKindBranch(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill18Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "inbox", Name: messages.PagesKindInbox(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill19Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "notify", Name: messages.PagesKindNotify(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill20Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 }}
 
-var planTopologyOpsFill20Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill22Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindTemplateNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill21Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill23Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindConvertNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill22Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill24Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindSignNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill23Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill25Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindRenderNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill19Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill21Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "template", Name: messages.PagesKindTemplate(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill20Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "template", Name: messages.PagesKindTemplate(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill22Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "convert", Name: messages.PagesKindConvert(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill21Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "convert", Name: messages.PagesKindConvert(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill23Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "sign", Name: messages.PagesKindSign(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill22Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "sign", Name: messages.PagesKindSign(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill24Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "render", Name: messages.PagesKindRender(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill23Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "render", Name: messages.PagesKindRender(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill25Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 }}
 
-var planTopologyOpsFill25Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill27Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindDisplayNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill26Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill28Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindPrinterNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill27Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill29Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindCupsOutNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill28Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill30Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindArchiveNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill29Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill31Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindSinkNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill30Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill32Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindExportNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill31Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill33Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindHttpNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill32Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill34Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindSmtpNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill33Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill35Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
 		return messages.PagesKindS3Note(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
-var planTopologyOpsFill24Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+var planTopologyOpsFill26Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "display", Name: messages.PagesKindDisplay(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill25Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "display", Name: messages.PagesKindDisplay(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill27Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "printer", Name: messages.PagesKindPrinter(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill26Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "printer", Name: messages.PagesKindPrinter(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill28Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "cups-out", Name: messages.PagesKindCupsOut(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill27Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "cups-out", Name: messages.PagesKindCupsOut(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill29Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "archive", Name: messages.PagesKindArchive(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill28Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "archive", Name: messages.PagesKindArchive(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill30Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "sink", Name: messages.PagesKindSink(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill29Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "sink", Name: messages.PagesKindSink(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill31Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: messages.PagesKindExport(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill30Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: messages.PagesKindExport(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill32Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: messages.PagesKindHttp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill31Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: messages.PagesKindHttp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill33Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: messages.PagesKindSmtp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill32Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: messages.PagesKindSmtp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill34Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: messages.PagesKindS3(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill33Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: messages.PagesKindS3(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill35Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 }}
@@ -674,11 +694,11 @@ var planTopologyOpsFill8Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 			}),
 			planTopologyOps.Static(" "),
 			planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-				return renderPaletteGroup(renderPaletteGroupParams{Title: messages.PagesPaletteConvert(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill19Plan.Bind(p)})
+				return renderPaletteGroup(renderPaletteGroupParams{Title: messages.PagesPaletteConvert(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill21Plan.Bind(p)})
 			}),
 			planTopologyOps.Static(" "),
 			planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-				return renderPaletteGroup(renderPaletteGroupParams{Title: messages.PagesPaletteSink(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill24Plan.Bind(p)})
+				return renderPaletteGroup(renderPaletteGroupParams{Title: messages.PagesPaletteSink(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill26Plan.Bind(p)})
 			}),
 			planTopologyOps.Static(" </ul> </div> </div> "),
 		},
@@ -774,7 +794,7 @@ var planTopologyOpsFill8Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 	planTopologyOps.Static(" </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/topology.js\"></script> "),
 }}
 
-var planAppsOpsFill34Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
+var planAppsOpsFill36Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
 	planAppsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
 	planAppsOps.TextCtx(func(ctx context.Context, p AppsParams) string {
 		return messages.PagesTabApps(pwruntime.MessageLocale(ctx))
@@ -868,7 +888,7 @@ var planAppsOpsFill34Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsPa
 	planAppsOps.Static("</button></form> </dialog> <script type=\"module\" src=\"/public/apps.js\"></script> "),
 }}
 
-var planInboxesOpsFill35Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
+var planInboxesOpsFill37Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
 	planInboxesOps.Static(" <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"text-xl font-bold\">"),
 	planInboxesOps.TextCtx(func(ctx context.Context, p InboxesParams) string {
 		return messages.PagesTabInboxes(pwruntime.MessageLocale(ctx))
@@ -888,7 +908,7 @@ var planInboxesOpsFill35Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[
 	planInboxesOps.Static("</button> </div> <section id=\"inboxes\" class=\"grid gap-4\"></section> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
 }}
 
-var planAdminJobsOpsFill36Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
+var planAdminJobsOpsFill38Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
 	planAdminJobsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
 	planAdminJobsOps.TextCtx(func(ctx context.Context, p AdminJobsParams) string {
 		return messages.PagesNavJobs(pwruntime.MessageLocale(ctx))
@@ -928,7 +948,7 @@ var planAdminJobsOpsFill36Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind
 	planAdminJobsOps.Static("</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/admin-jobs.js\"></script> "),
 }}
 
-var planDeliveriesOpsFill37Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
+var planDeliveriesOpsFill39Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
 	planDeliveriesOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">"),
 	planDeliveriesOps.TextCtx(func(ctx context.Context, p DeliveriesParams) string {
 		return messages.PagesDeliveriesHeading(pwruntime.MessageLocale(ctx))
@@ -976,23 +996,23 @@ var planDeliveriesOpsFill37Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbi
 	planDeliveriesOps.Static("</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/deliveries.js\"></script> "),
 }}
 
-type planHelpOpsScope39 struct {
+type planHelpOpsScope41 struct {
 	Outer HelpParams
 	Item  HelpChapter
 	Index int
 }
 
-var planHelpOpsScope39Ops = htmlbind.Builder[planHelpOpsScope39]{}
+var planHelpOpsScope41Ops = htmlbind.Builder[planHelpOpsScope41]{}
 
-type planHelpOpsScope39OpsScope40 struct {
-	Outer planHelpOpsScope39
+type planHelpOpsScope41OpsScope42 struct {
+	Outer planHelpOpsScope41
 	Item  HelpSection
 	Index int
 }
 
-var planHelpOpsScope39OpsScope40Ops = htmlbind.Builder[planHelpOpsScope39OpsScope40]{}
+var planHelpOpsScope41OpsScope42Ops = htmlbind.Builder[planHelpOpsScope41OpsScope42]{}
 
-var planHelpOpsFill38Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpParams]{
+var planHelpOpsFill40Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpParams]{
 	planHelpOps.Static(" "),
 	planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Docflow", Account: p.Account})
@@ -1012,40 +1032,40 @@ var planHelpOpsFill38Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpPa
 	planHelpOps.Static(" class=\"lg:sticky lg:top-20 lg:col-start-1 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto\"> <ul id=\"help-nav\" class=\"menu w-full rounded-box bg-base-100 shadow-sm\"> "),
 	planHelpOps.For(
 		func(p HelpParams) []HelpChapter { return p.Chapters },
-		func(p HelpParams, item HelpChapter, index int) planHelpOpsScope39 {
-			return planHelpOpsScope39{Outer: p, Item: item, Index: index}
+		func(p HelpParams, item HelpChapter, index int) planHelpOpsScope41 {
+			return planHelpOpsScope41{Outer: p, Item: item, Index: index}
 		},
-		[]htmlbind.Op[planHelpOpsScope39]{
-			planHelpOpsScope39Ops.Static(" "),
-			planHelpOpsScope39Ops.If(func(p planHelpOpsScope39) bool { return p.Item.Current },
-				[]htmlbind.Op[planHelpOpsScope39]{
-					planHelpOpsScope39Ops.Static(" <li> <a"),
-					planHelpOpsScope39Ops.URLAttr("href", func(p planHelpOpsScope39) (string, bool) { return p.Item.Href.String(), true }),
-					planHelpOpsScope39Ops.Static(" class=\"menu-active\">"),
-					planHelpOpsScope39Ops.Text(func(p planHelpOpsScope39) string { return p.Item.Title }),
-					planHelpOpsScope39Ops.Static("</a> <ul> "),
-					planHelpOpsScope39Ops.For(
-						func(p planHelpOpsScope39) []HelpSection { return p.Item.Sections },
-						func(p planHelpOpsScope39, item HelpSection, index int) planHelpOpsScope39OpsScope40 {
-							return planHelpOpsScope39OpsScope40{Outer: p, Item: item, Index: index}
+		[]htmlbind.Op[planHelpOpsScope41]{
+			planHelpOpsScope41Ops.Static(" "),
+			planHelpOpsScope41Ops.If(func(p planHelpOpsScope41) bool { return p.Item.Current },
+				[]htmlbind.Op[planHelpOpsScope41]{
+					planHelpOpsScope41Ops.Static(" <li> <a"),
+					planHelpOpsScope41Ops.URLAttr("href", func(p planHelpOpsScope41) (string, bool) { return p.Item.Href.String(), true }),
+					planHelpOpsScope41Ops.Static(" class=\"menu-active\">"),
+					planHelpOpsScope41Ops.Text(func(p planHelpOpsScope41) string { return p.Item.Title }),
+					planHelpOpsScope41Ops.Static("</a> <ul> "),
+					planHelpOpsScope41Ops.For(
+						func(p planHelpOpsScope41) []HelpSection { return p.Item.Sections },
+						func(p planHelpOpsScope41, item HelpSection, index int) planHelpOpsScope41OpsScope42 {
+							return planHelpOpsScope41OpsScope42{Outer: p, Item: item, Index: index}
 						},
-						[]htmlbind.Op[planHelpOpsScope39OpsScope40]{
-							planHelpOpsScope39OpsScope40Ops.Static(" <li><a"),
-							planHelpOpsScope39OpsScope40Ops.URLAttr("href", func(p planHelpOpsScope39OpsScope40) (string, bool) { return p.Item.Href.String(), true }),
-							planHelpOpsScope39OpsScope40Ops.Static(">"),
-							planHelpOpsScope39OpsScope40Ops.Text(func(p planHelpOpsScope39OpsScope40) string { return p.Item.Title }),
-							planHelpOpsScope39OpsScope40Ops.Static("</a></li> "),
+						[]htmlbind.Op[planHelpOpsScope41OpsScope42]{
+							planHelpOpsScope41OpsScope42Ops.Static(" <li><a"),
+							planHelpOpsScope41OpsScope42Ops.URLAttr("href", func(p planHelpOpsScope41OpsScope42) (string, bool) { return p.Item.Href.String(), true }),
+							planHelpOpsScope41OpsScope42Ops.Static(">"),
+							planHelpOpsScope41OpsScope42Ops.Text(func(p planHelpOpsScope41OpsScope42) string { return p.Item.Title }),
+							planHelpOpsScope41OpsScope42Ops.Static("</a></li> "),
 						}),
-					planHelpOpsScope39Ops.Static(" </ul> </li> "),
+					planHelpOpsScope41Ops.Static(" </ul> </li> "),
 				},
-				[]htmlbind.Op[planHelpOpsScope39]{
-					planHelpOpsScope39Ops.Static(" <li><a"),
-					planHelpOpsScope39Ops.URLAttr("href", func(p planHelpOpsScope39) (string, bool) { return p.Item.Href.String(), true }),
-					planHelpOpsScope39Ops.Static(">"),
-					planHelpOpsScope39Ops.Text(func(p planHelpOpsScope39) string { return p.Item.Title }),
-					planHelpOpsScope39Ops.Static("</a></li> "),
+				[]htmlbind.Op[planHelpOpsScope41]{
+					planHelpOpsScope41Ops.Static(" <li><a"),
+					planHelpOpsScope41Ops.URLAttr("href", func(p planHelpOpsScope41) (string, bool) { return p.Item.Href.String(), true }),
+					planHelpOpsScope41Ops.Static(">"),
+					planHelpOpsScope41Ops.Text(func(p planHelpOpsScope41) string { return p.Item.Title }),
+					planHelpOpsScope41Ops.Static("</a></li> "),
 				}),
-			planHelpOpsScope39Ops.Static(" "),
+			planHelpOpsScope41Ops.Static(" "),
 		}),
 	planHelpOps.Static(" </ul> </nav> </main> "),
 }}
@@ -1410,7 +1430,7 @@ var planAppsPlan = &htmlbind.Plan[AppsParams]{
 	Ops: []htmlbind.Op[AppsParams]{
 		planAppsOps.Static(" "),
 		planAppsOps.ComponentCtx(func(ctx context.Context, p AppsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: messages.PagesAppsTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planAppsOpsFill34Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: messages.PagesAppsTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planAppsOpsFill36Plan.Bind(p)})
 		}),
 		planAppsOps.Static(" "),
 	},
@@ -1426,7 +1446,7 @@ var planInboxesPlan = &htmlbind.Plan[InboxesParams]{
 	Ops: []htmlbind.Op[InboxesParams]{
 		planInboxesOps.Static(" "),
 		planInboxesOps.ComponentCtx(func(ctx context.Context, p InboxesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: messages.PagesInboxesTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planInboxesOpsFill35Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: messages.PagesInboxesTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planInboxesOpsFill37Plan.Bind(p)})
 		}),
 		planInboxesOps.Static(" "),
 	},
@@ -1442,7 +1462,7 @@ var planAdminJobsPlan = &htmlbind.Plan[AdminJobsParams]{
 	Ops: []htmlbind.Op[AdminJobsParams]{
 		planAdminJobsOps.Static(" "),
 		planAdminJobsOps.ComponentCtx(func(ctx context.Context, p AdminJobsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: messages.PagesJobsTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planAdminJobsOpsFill36Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: messages.PagesJobsTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planAdminJobsOpsFill38Plan.Bind(p)})
 		}),
 		planAdminJobsOps.Static(" "),
 	},
@@ -1458,7 +1478,7 @@ var planDeliveriesPlan = &htmlbind.Plan[DeliveriesParams]{
 	Ops: []htmlbind.Op[DeliveriesParams]{
 		planDeliveriesOps.Static(" "),
 		planDeliveriesOps.ComponentCtx(func(ctx context.Context, p DeliveriesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: messages.PagesDeliveriesTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planDeliveriesOpsFill37Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: messages.PagesDeliveriesTitle(pwruntime.MessageLocale(ctx)), Account: p.Account, Children: planDeliveriesOpsFill39Plan.Bind(p)})
 		}),
 		planDeliveriesOps.Static(" "),
 	},
@@ -1474,7 +1494,7 @@ var planHelpPlan = &htmlbind.Plan[HelpParams]{
 	Ops: []htmlbind.Op[HelpParams]{
 		planHelpOps.Static(" "),
 		planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: p.Title, Children: planHelpOpsFill38Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: p.Title, Children: planHelpOpsFill40Plan.Bind(p)})
 		}),
 		planHelpOps.Static(" "),
 	},

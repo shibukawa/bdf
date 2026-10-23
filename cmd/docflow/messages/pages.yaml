@@ -340,6 +340,22 @@ kind-filter-note:
   locales:
     en: "sends on by rules on what a job is, and its metadata"
     ja: "ジョブの性質とメタデータのルールで振り分ける"
+kind-assert:
+  locales:
+    en: "Assert"
+    ja: "アサート"
+kind-assert-note:
+  locales:
+    en: "checks the metadata; right after an entry, refuses the sender what fails"
+    ja: "メタデータを検査する。入口の直後なら、通らないものを送り手に拒否する"
+kind-branch:
+  locales:
+    en: "Branch"
+    ja: "ブランチ"
+kind-branch-note:
+  locales:
+    en: "a switch: the first case whose checks hold, else default"
+    ja: "switch 文。チェックを満たす最初のケース、なければ default へ"
 kind-inbox:
   locales:
     en: "Inbox"

@@ -53,8 +53,8 @@ const canvas = createCanvas($("canvas"), {
   onMove(name, p) {
     api("PUT", "/api/layout", { positions: { [name]: p } }).catch((e) => status(e.message, true));
   },
-  onConnect(from, to) {
-    addEdge(from, to).catch((e) => status(e.message, true));
+  onConnect(from, to, port) {
+    addEdge(from, to, port).catch((e) => status(e.message, true));
   },
   onReject(from, to, why) {
     status(`${from.name} → ${to}: ${why}`, true);
@@ -142,15 +142,23 @@ const either = (kinds) => kinds.map((k) => PAYLOADS[k] || k).join(_(" or "));
 
 // addEdge connects a node to a target through the API, which checks the
 // edge (the target exists, no cycle): a class's member, a display's
-// fallback printer, or the node's to.
-async function addEdge(from, to) {
+// fallback printer, a branch's case (by its port) or default, an
+// assert's on_error (its fail port), or the node's to.
+async function addEdge(from, to, port) {
   if (from.name === to) return;
   const n = await api("GET", "/api/nodes/" + from.name);
+  const arm = n.kind === "branch" && port && port.startsWith("case:") ? (n.cases || [])[Number(port.slice(5))] : null;
   if (n.kind === "display") {
     n.fallback = { ...(n.fallback || {}), printer: to };
   } else if (n.kind === "filter") {
     if ((n.otherwise || []).includes(to)) return;
     n.otherwise = [...(n.otherwise || []), to];
+  } else if (n.kind === "branch" || (n.kind === "assert" && port === "error")) {
+    const field = n.kind === "assert" ? "on_error" : "default";
+    const list = arm ? arm.to || [] : n[field] || [];
+    if (list.includes(to)) return;
+    if (arm) arm.to = [...list, to];
+    else n[field] = [...list, to];
   } else {
     const field = n.kind === "class" ? "members" : "to";
     const list = n[field] || [];
@@ -169,6 +177,10 @@ async function removeEdge(from, e) {
   try {
     const n = await api("GET", "/api/nodes/" + from.name);
     if (e.kind === "fallback") n.fallback = null;
+    else if (n.kind === "branch" && e.port && e.port.startsWith("case:")) {
+      const arm = (n.cases || [])[Number(e.port.slice(5))];
+      if (arm) arm.to = (arm.to || []).filter((x) => x !== e.to);
+    } else if (n.kind === "branch" && e.port === "default") n.default = (n.default || []).filter((x) => x !== e.to);
     else if (n.kind === "filter") {
       n.otherwise = (n.otherwise || []).filter((x) => x !== e.to);
       n.rules = (n.rules || []).map((r) => ({ ...r, to: (r.to || []).filter((x) => x !== e.to) })).filter((r) => r.to.length);
@@ -217,8 +229,9 @@ if (editable) $("palette").addEventListener("click", (ev) => {
   document.activeElement?.blur();
   draft = { kind: a.dataset.kind, name: "", title: "" };
   selected = null;
-  canvas.setDraft(draft, canvas.freeSpot(canvas.center()));
+  // the sidebar first: the draft is drawn with its title and description
   renderSidebar();
+  canvas.setDraft(draft, canvas.freeSpot(canvas.center()));
   $("sidebar").scrollTop = 0;
   $("f-name")?.focus();
 });
@@ -325,6 +338,93 @@ function rulesOf() {
     const to = names(v("to"));
     if (!Object.keys(match).length && !to.length) continue;
     out.push({ match, to });
+  }
+  return out;
+}
+
+// checksBox is the checks of an assert, or of a branch's case, in the
+// sidebar: a row each, and a button that adds one. An assert's say what
+// they tell a sender who fails them (message).
+function checksBox(checks, assert) {
+  const rows = el("div", undefined, { className: "checks flex flex-col gap-1" });
+  if (assert) rows.id = "f-checks";
+  for (const c of checks) rows.append(checkRow(c, assert));
+  const add = el("button", _("+ a check"), { type: "button", className: "btn btn-xs w-fit" });
+  add.addEventListener("click", () => rows.append(checkRow({}, assert)));
+  const box = el("div", undefined, { className: "flex flex-col gap-1" });
+  box.append(rows, add);
+  return box;
+}
+
+function checkRow(c, assert) {
+  const row = el("div", undefined, { className: "check grid grid-cols-2 gap-1 rounded-box border border-base-300 bg-base-100 p-2" });
+  const need = el("select", undefined, { className: "select select-xs", "data-k": "optional" });
+  need.append(el("option", _("required"), { value: "", selected: !c.optional }), el("option", _("optional: may be absent"), { value: "1", selected: !!c.optional }));
+  const num = (k, placeholder) => el("input", undefined, { className: "input input-xs w-full", placeholder, value: c[k] ?? "", inputMode: "decimal", "data-k": k });
+  const range = el("div", undefined, { className: "col-span-2 flex gap-1" });
+  range.append(num("min", _("a number ≥ (min)")), num("max", _("≤ (max)")));
+  row.append(
+    el("input", undefined, { className: "input input-xs", placeholder: _("key: doc-type, ipp.job-account-id, $pages …"), value: c.key || "", "data-k": "key", autocomplete: "off", title: _("The sender's keys, the entry's, and $job, $entry, $sender, $file, $kind, $format, $pages, $size …") }),
+    need,
+    el("input", undefined, { className: "input input-xs col-span-2 font-mono", placeholder: _("matches (RE2): {example}", { example: "^\\d{3}-\\d{4}$" }), value: c.pattern || "", "data-k": "pattern", autocomplete: "off" }),
+    range,
+    el("input", undefined, { className: "input input-xs col-span-2", placeholder: _("one of: invoice, order (comma-separated)"), value: (c.enum || []).join(", "), "data-k": "enum", autocomplete: "off" }),
+  );
+  if (assert) row.append(el("input", undefined, { className: "input input-xs col-span-2", placeholder: _("what a failure says (instead of the check's own words)"), value: c.message || "", "data-k": "message", maxLength: 255 }));
+  const drop = el("button", _("remove the check"), { type: "button", className: "btn btn-xs btn-ghost col-span-2 justify-self-end text-error" });
+  drop.addEventListener("click", () => row.remove());
+  row.append(drop);
+  return row;
+}
+
+// checksOf reads the checks of a box of rows; a bound that is not a
+// number is refused here.
+function checksOf(box) {
+  const out = [];
+  for (const row of box.querySelectorAll(":scope > .check")) {
+    const raw = (k) => row.querySelector(`[data-k="${k}"]`)?.value ?? "";
+    const v = (k) => raw(k).trim();
+    const c = { key: v("key") };
+    if (!c.key) continue;
+    if (v("optional")) c.optional = true;
+    if (raw("pattern")) c.pattern = raw("pattern");
+    for (const k of ["min", "max"]) {
+      if (v(k) === "") continue;
+      c[k] = Number(v(k));
+      if (!Number.isFinite(c[k])) throw new Error(_("{key}: {bound} {value} is not a number", { key: c.key, bound: k, value: v(k) }));
+    }
+    if (v("enum")) c.enum = names(v("enum"));
+    if (v("message")) c.message = v("message");
+    out.push(c);
+  }
+  return out;
+}
+
+// caseRow is a case of a branch in the sidebar: its name (its port's
+// label), its checks and the nodes it sends to; ↑ moves it before the one
+// above it, as the cases are tried in order.
+function caseRow(c = { when: [], to: [] }) {
+  const row = el("div", undefined, { className: "case flex flex-col gap-1 rounded-box bg-base-200 p-2" });
+  const head = el("div", undefined, { className: "flex items-center gap-1" });
+  const up = el("button", "↑", { type: "button", className: "btn btn-xs btn-ghost", title: _("Try this case before the one above it") });
+  up.addEventListener("click", () => row.previousElementSibling && row.parentElement.insertBefore(row, row.previousElementSibling));
+  const drop = el("button", _("remove the case"), { type: "button", className: "btn btn-xs btn-ghost text-error" });
+  drop.addEventListener("click", () => row.remove());
+  head.append(el("input", undefined, { className: "input input-xs flex-1", placeholder: _("name: invoice (its port's label; empty: case <n>)"), value: c.name || "", "data-k": "name", maxLength: 64, autocomplete: "off" }), up, drop);
+  const to = el("input", undefined, { className: "input input-xs", placeholder: _("→ nodes, comma-separated (or drag from its port)"), value: (c.to || []).join(", "), "data-k": "to" });
+  to.setAttribute("list", "node-names");
+  row.append(head, checksBox(c.when || [], false), to);
+  return row;
+}
+
+// casesOf reads the branch's cases from the sidebar: a case with no name,
+// check or node is left out.
+function casesOf() {
+  const out = [];
+  for (const row of document.querySelectorAll("#f-cases > .case")) {
+    const c = { name: row.querySelector('[data-k="name"]').value.trim(), when: checksOf(row.querySelector(".checks")), to: names(row.querySelector(':scope > [data-k="to"]').value) };
+    if (!c.name && !c.when.length && !c.to.length) continue;
+    out.push(c);
   }
   return out;
 }
@@ -562,6 +662,8 @@ function viewSidebar() {
   for (const to of n.to || []) out.push(to);
   for (const [i, r] of (n.rules || []).entries()) out.push(_("{nodes} (rule {n})", { nodes: (r.to || []).join(", "), n: i + 1 }));
   for (const to of n.otherwise || []) out.push(_("{node} (otherwise)", { node: to }));
+  for (const [i, c] of (n.cases || []).entries()) for (const to of c.to || []) out.push(`${to} (${c.name || "case " + (i + 1)})`);
+  for (const to of n.default || []) out.push(`${to} (default)`);
   for (const to of n.original || []) out.push(_("{node} (original)", { node: to }));
   for (const m of n.members || []) out.push(n.policy === "failover" ? _("{node} (first)", { node: m }) : _("{node} (in turn)", { node: m }));
   if (n.fallback && n.fallback.printer) out.push(_("{node} (fallback)", { node: n.fallback.printer }));
@@ -643,7 +745,7 @@ function renderSidebar() {
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) {
     aside.replaceChildren(
-      el("p", _("Click a node to edit it here, or add one with “+ Add a node”: it is placed at once, and connected when the nodes after it are there. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take."), { className: "text-sm text-base-content/60" }),
+      el("p", _("Click a node to edit it here, or add one with “+ Add a node”: it is placed at once, and connected when the nodes after it are there. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer, a branch has a port for each case and one for default, an assert one for what passes and one for what fails. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take."), { className: "text-sm text-base-content/60" }),
       el("a", _("The manual: the editor, and every kind of node"), { className: "link mt-2 block text-sm", href: "/help/topology#editor", target: "_blank", rel: "noopener" }),
     );
     return;
@@ -812,7 +914,9 @@ function settingsForm(n) {
     const k = kindsLine(n);
     if (k) form.append(k);
   }
-  if (kind !== "export") form.append(field(_("On error"), picker("on_error", n.on_error || [], n.name), _("Where the job goes, with what reached this node, when its send or step fails for good (a notify node); none chosen: the manager's default, or the job stops here.")));
+  // nothing fails at a branch: it sends on, or drops; an assert's
+  // failures are with its checks
+  if (kind !== "export" && kind !== "branch" && kind !== "assert") form.append(field(_("On error"), picker("on_error", n.on_error || [], n.name), _("Where the job goes, with what reached this node, when its send or step fails for good (a notify node); none chosen: the manager's default, or the job stops here.")));
   if (ADAPTER_SETTINGS[kind]) {
     const box = el("textarea", undefined, { id: "f-settings", className: "textarea textarea-sm w-full font-mono", rows: 8, value: JSON.stringify(settingsOf(n, kind), null, 2) });
     form.append(field(_("Settings (JSON)"), box, sentences(ADAPTER_SETTINGS[kind], _("Credentials are names: the secret is the server's DOCFLOW_CRED_<name>, or a file. Text, recipients, paths and headers may use {{meta.<key>}}."))));
@@ -897,6 +1001,22 @@ function settingsForm(n) {
       box.append(rules, add);
       form.append(field(_("Rules, in order"), box, _("The first rule that fits the job sends it to its nodes. name, user (the sender), format and the values of the metadata are regular expressions; pages are bounds; the kind of payload is .bdf, data or any other file. What reaches the filter goes on as it is.")));
       form.append(field(_("Otherwise"), picker("otherwise", n.otherwise || [], n.name), _("Where a job no rule fits goes; none: it ends here (dropped).")));
+      break;
+    }
+    case "assert":
+      form.append(field(_("Passes to"), picker("to", n.to || [], n.name), later(_("A job that passes every check goes on to every node chosen, as it reached the assert. The pass port on the canvas adds one too."))));
+      form.append(field(_("Checks"), checksBox(n.checks || [], true), _("Every check must hold. The key is the sender's (X-Meta-*, ?meta.<key>=, IPP's ipp.<attribute>), the entry's, or the manager's ($pages, $format, $sender …); it must have a value unless optional. Then, those given: the value matches the regular expression (RE2, anywhere: ^…$ for all of it), is a number from min to max, and is one of the values listed. Right after an entry (or a queue a job is sent to), a job that fails is refused to its sender (REST 422, IPP client-error-bad-request) with what failed; further on, it is aborted here.")));
+      form.append(field(_("On fail"), picker("on_error", n.on_error || [], n.name), _("Where a job that fails a check goes, with what reached the assert and what failed ({{meta.$error}}): a notify node, say. None chosen: the manager's default, or the job stops here. The fail port on the canvas adds one too.")));
+      break;
+    case "branch": {
+      const cases = el("div", undefined, { id: "f-cases", className: "flex flex-col gap-2" });
+      for (const c of n.cases || []) cases.append(caseRow(c));
+      const add = el("button", _("+ a case"), { type: "button", className: "btn btn-xs w-fit" });
+      add.addEventListener("click", () => cases.append(caseRow()));
+      const box = el("div", undefined, { className: "flex flex-col gap-2" });
+      box.append(cases, add);
+      form.append(field(_("Cases, in order"), box, _("As a switch: the first case whose checks all hold sends the job to its nodes; the others are not tried. Each case is a port of its own on the canvas, labelled with its name: drag from it to add a node. What reaches the branch goes on as it is.")));
+      form.append(field(_("Default"), picker("default", n.default || [], n.name), _("Where a job no case fits goes; none: it ends here (dropped). The default port on the canvas adds one too.")));
       break;
     }
     case "class":
@@ -1050,6 +1170,21 @@ async function save(ev) {
     case "filter":
       body.rules = rulesOf();
       body.otherwise = picked("otherwise");
+      break;
+    case "assert":
+    case "branch":
+      try {
+        if (n.kind === "assert") {
+          body.to = picked("to");
+          body.checks = checksOf($("f-checks"));
+        } else {
+          body.cases = casesOf();
+          body.default = picked("default");
+        }
+      } catch (e) {
+        status(e.message, true);
+        return;
+      }
       break;
     case "class":
       body.members = names($("f-members").value);

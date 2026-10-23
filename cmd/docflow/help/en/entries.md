@@ -39,6 +39,7 @@ curl -H "Authorization: Bearer bdfk_…" \
 - Or the body is `multipart/form-data`, told by its `Content-Type`: the document in the part `file`, whose name and `Content-Type` are the document's (`?name=` over the name), and the metadata as a JSON object in the part `meta`, over the headers' and the parameters'. An [HTTP (push)](nodes.md#http) node of another Docflow sends either.
 - Without `?name=`, a body as it is takes its name from `Content-Disposition` (`attachment; filename="statement.pdf"`).
 - The answer is the job (201), with its number and its legs so far. A document of a format the endpoint does not take is refused (415), and the refusal is in the audit log; a wrong key is refused (401).
+- An [assert](nodes.md#assert) right after the endpoint checks the metadata before the answer: a job that fails is refused (422) with `{"error": "…", "job": <number>, "failures": [{"node", "key", "error"}]}`, and kept, aborted, for its legs to show what failed. A CUPS server answers the same as IPP's `client-error-bad-request`, with what failed as the status message.
 
 The endpoint's OpenAPI document — the link OpenAPI in its sidebar, or `GET /api/openapi.json?node=<name>` — says what it takes: the media types, the schema of the data its templates fill, and the metadata the nodes after it look at ([OpenAPI](api.md#openapi)).
 

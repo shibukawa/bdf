@@ -8,7 +8,7 @@ The API is JSON under `/api`. A request carries one of:
 - a submit token's `name:secret` as a bearer: sending jobs;
 - the tick token: `POST /api/tick` alone.
 
-An error is `{"error": "…"}` with its status: 400 a request the manager cannot take (a node that would make a cycle, a kind of payload a node does not take), 401 no credentials or wrong ones, 403 not yours, 404 not found, 409 a conflict (a name of another kind, a job that ended), 413 a document too large, 415 a format the entry does not take, 502 a printer that failed.
+An error is `{"error": "…"}` with its status: 400 a request the manager cannot take (a node that would make a cycle, a kind of payload a node does not take), 401 no credentials or wrong ones, 403 not yours, 404 not found, 409 a conflict (a name of another kind, a job that ended), 413 a document too large, 415 a format the entry does not take, 422 metadata an assert after the entry refused (with `job` and `failures` besides `error`: [Endpoints](entries.md#endpoints)), 502 a printer that failed.
 
 ## Who {#me}
 

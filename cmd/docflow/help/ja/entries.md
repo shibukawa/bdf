@@ -39,6 +39,7 @@ curl -H "Authorization: Bearer bdfk_…" \
 - ボディは `multipart/form-data` でも構いません。`Content-Type` で見分けます。文書はパート `file` に入れ、その名前と `Content-Type` が文書のものになります（名前は `?name=` が優先）。メタデータはパート `meta` に JSON オブジェクトで入れ、ヘッダとパラメータのものより優先されます。別の Docflow の [HTTP (push)](nodes.md#http) ノードはどちらの形でも送ります。
 - `?name=` がなければ、そのままのボディは `Content-Disposition`（`attachment; filename="statement.pdf"`）から名前を取ります。
 - 応答はジョブ（201）で、番号とそこまでのレグが入ります。エンドポイントが受け取らない形式の文書は拒否され（415）、拒否は監査ログに残ります。キーが違えば拒否されます（401）。
+- エンドポイントの直後の[アサート](nodes.md#assert)は、応答の前にメタデータを検査します。通らなかったジョブは `{"error": "…", "job": <番号>, "failures": [{"node", "key", "error"}]}` とともに拒否され（422）、何が通らなかったかをレグで見られるよう、中止として残ります。CUPS サーバーは同じことを IPP の `client-error-bad-request` で答え、何が通らなかったかをステータスメッセージに入れます。
 
 エンドポイントが何を受け取るか（メディアタイプ、テンプレートが埋めるデータのスキーマ、後ろのノードが見るメタデータ）は、その OpenAPI 文書に載ります。サイドバーのリンク OpenAPI か、`GET /api/openapi.json?node=<name>` です（[OpenAPI](api.md#openapi)）。
 

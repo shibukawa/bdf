@@ -35,6 +35,8 @@ type LiveNode struct {
 	Open    int `json:"open,omitempty"`
 	Pending int `json:"pending,omitempty"`
 	Failed  int `json:"failed,omitempty"`
+	// Refused counts the jobs an assert refused.
+	Refused int `json:"refused,omitempty"`
 	// Recent counts the jobs that reached the node in the last
 	// recentWindow.
 	Recent int `json:"recent,omitempty"`
@@ -95,6 +97,8 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 				n.Pending++
 			case LegFailed:
 				n.Failed++
+			case LegRefused:
+				n.Refused++
 			case LegListed:
 				// the leg stays listed: the export's list tells whether it
 				// lists the job still (an export deleted and put again does not)
@@ -149,13 +153,19 @@ func (m *Manager) Live(ctx context.Context, v *Viewer) (*Live, error) {
 }
 
 // publicTopology is the topology as everyone signed in sees it: the
-// nodes, their kinds and edges, without the settings (who may send,
-// stores, printers' addresses, formats) and without the counts, which
-// Live gives within the viewer's scope.
+// nodes, their kinds and edges (a branch's arms without their checks),
+// without the settings (who may send, stores, printers' addresses,
+// formats, rules and checks) and without the counts, which Live gives
+// within the viewer's scope.
 func publicTopology(ns []TopoNode) []TopoNode {
 	for i := range ns {
 		n := &ns[i]
-		n.Node = Node{Name: n.Name, Kind: n.Kind, Title: n.Title, Description: n.Description, To: n.To, Original: n.Original, Members: n.Members, Policy: n.Policy, Fallback: n.Fallback}
+		var cases []Case
+		for _, c := range n.Cases {
+			cases = append(cases, Case{Name: c.Name, To: c.To})
+		}
+		n.Node = Node{Name: n.Name, Kind: n.Kind, Title: n.Title, Description: n.Description, To: n.To, Original: n.Original, Members: n.Members, Policy: n.Policy, Fallback: n.Fallback,
+			Cases: cases, Default: n.Default}
 		n.In, n.Templates, n.Held, n.Open, n.Devices, n.Pending, n.Kept, n.Latest, n.Listed = "", nil, 0, 0, 0, 0, 0, "", 0
 	}
 	return ns
