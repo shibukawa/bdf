@@ -38,7 +38,8 @@ func TestPorts(t *testing.T) {
 	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "wh-a", Kind: docflow.KindDisplay}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "cups1", Kind: docflowipp.KindCups, To: []string{"wh-a"}, Port: cupsPort}); err != nil {
+	// not announced on the network the test runs on (TestPortsAdvertise)
+	if _, err := a.m.PutNode(ctx, docflow.Node{Name: "cups1", Kind: docflowipp.KindCups, To: []string{"wh-a"}, Port: cupsPort, DNSSD: new(false)}); err != nil {
 		t.Fatal(err)
 	}
 	key, err := a.m.PutNode(ctx, docflow.Node{Name: "api", Kind: docflow.KindEndpoint, To: []string{"wh-a"}, Port: apiPort})
@@ -85,10 +86,10 @@ func TestPorts(t *testing.T) {
 	}
 }
 
-// A CUPS server node that says so is advertised with DNS-SD while its
-// port is open, as "<title> @ <computer>" on a host name of the
-// process's own; it stops when the node no longer says so. The
-// responder is asked on the loopback, at a port of the test's own.
+// A CUPS server node is advertised with DNS-SD while its port is open,
+// as "<title> @ <computer>" on a host name of the process's own, unless
+// it says not to (dnssd false): then it stops. The responder is asked on
+// the loopback, at a port of the test's own.
 func TestPortsAdvertise(t *testing.T) {
 	ctx := context.Background()
 	a, err := Open(ctx, DocflowConfig{Records: "bbolt:" + filepath.Join(t.TempDir(), "pm.db"), AdminToken: "t", MaxDocumentMB: 1}, OIDCConfig{})
@@ -109,7 +110,7 @@ func TestPortsAdvertise(t *testing.T) {
 	mdnsPort := uc.LocalAddr().(*net.UDPAddr).Port
 	uc.Close()
 	a.ports.mdns = ipp.ResponderOptions{Port: mdnsPort, Interfaces: []net.Interface{}, Loopback: true}
-	put := func(dnssd bool) {
+	put := func(dnssd *bool) {
 		t.Helper()
 		if _, err := a.m.PutNode(ctx, docflow.Node{Name: "wh-a", Kind: docflow.KindDisplay}); err != nil {
 			t.Fatal(err)
@@ -149,7 +150,7 @@ func TestPortsAdvertise(t *testing.T) {
 		}
 		return ans[0].Body.(*dnsmessage.PTRResource).PTR.String()
 	}
-	put(true)
+	put(nil)
 	want := "Office @ " + machineName() + "._ipp._tcp.local."
 	got := ""
 	for i := 0; i < 50 && got == ""; i++ {
@@ -164,8 +165,8 @@ func TestPortsAdvertise(t *testing.T) {
 	if got := ask(time.Second); got != want {
 		t.Fatalf("advertised %q after a reconcile", got)
 	}
-	// the node no longer says so: goodbye
-	put(false)
+	// the node says not to: goodbye
+	put(new(false))
 	if got := ask(500 * time.Millisecond); got != "" {
 		t.Fatalf("still advertised: %q", got)
 	}
