@@ -3,23 +3,26 @@ description: >
   actions/setup-go, and the module and build caches (GOMODCACHE and
   GOCACHE) of the job restored from its newest run on main. Pull requests
   only read them: the job saves them on main, at its end, with
-  actions/cache/save and the outputs of this action. (setup-go's own cache
-  was saved by whichever job of a pull request came first, in the scope of
-  that pull request, under a key of go.sum it never saved again, so every
-  pull request built everything from nothing.)
-  Go trims GOCACHE of what it has not used for five days; a new version of
-  Go starts both afresh, which also drops the modules no longer used.
+  .github/actions/go-save and the outputs of this action. (setup-go's own
+  cache was saved by whichever job of a pull request came first, in the
+  scope of that pull request, under a key of go.sum it never saved again,
+  so every pull request built everything from nothing.)
+  go-save keeps of GOCACHE only what the job used; a new version of Go
+  starts both afresh, which also drops the modules no longer used.
 inputs:
   go-version:
     description: the version of Go
     required: true
 outputs:
   path:
-    description: the directories of the cache, for actions/cache/save
+    description: the directories of the cache, for go-save
     value: ${{ steps.env.outputs.path }}
   key:
-    description: the key to save the cache under, for actions/cache/save
+    description: the key to save the cache under, for go-save
     value: ${{ steps.restore.outputs.cache-primary-key }}
+  since:
+    description: the time before the restore, in seconds since 1970, for go-save
+    value: ${{ steps.env.outputs.since }}
 runs:
   using: composite
   steps:
@@ -34,6 +37,7 @@ runs:
           echo 'path<<EOF'
           go env GOMODCACHE GOCACHE
           echo EOF
+          echo "since=$(date +%s)"
         } >>"$GITHUB_OUTPUT"
     - id: restore
       uses: actions/cache/restore@v6

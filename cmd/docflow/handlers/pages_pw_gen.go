@@ -71,6 +71,17 @@ type AuditParams struct {
 
 type TabletParams struct{}
 
+type renderPaletteGroupParams struct {
+	Title    string
+	Children htmlbind.Fragment
+}
+
+type renderPaletteKindParams struct {
+	Kind     string
+	Name     string
+	Children htmlbind.Fragment
+}
+
 type TopologyParams struct {
 	Account Account
 }
@@ -161,6 +172,190 @@ var planTabletOpsFill6Plan = &htmlbind.Plan[TabletParams]{Ops: []htmlbind.Op[Tab
 	planTabletOps.Static(" <div id=\"app\" class=\"min-h-screen\"> <header id=\"bar\" class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <div class=\"flex min-w-0 flex-1 items-center gap-3\"> <h1 id=\"title\" class=\"truncate text-2xl font-bold\">Display board</h1> <span id=\"status\" class=\"badge\" hidden></span> </div> <label class=\"input input-lg w-full sm:w-56\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name\"> </label> </header> <section id=\"enroll\" class=\"mx-auto max-w-lg p-4 sm:p-8\" hidden> <div class=\"card bg-base-100 shadow-md\"> <div class=\"card-body gap-4\"> <h2 class=\"card-title text-2xl\">Enroll this device</h2> <p class=\"text-base-content/70\">Enter the enrollment code an administrator made. Only enrolled devices see the documents of their display.</p> <form id=\"enroll-form\" class=\"flex flex-col gap-4\"> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Enrollment code</legend> <input id=\"code\" class=\"input input-lg w-full font-mono tracking-widest uppercase\" autocomplete=\"off\" autocapitalize=\"characters\" required> </fieldset> <fieldset class=\"fieldset\"> <legend class=\"fieldset-legend text-base\">Device name</legend> <input id=\"device-name\" class=\"input input-lg w-full\" autocomplete=\"off\" placeholder=\"e.g. tablet at the shipping dock\"> </fieldset> <button type=\"submit\" class=\"btn btn-primary btn-lg btn-block\">Enroll</button> </form> <div id=\"enroll-error\" role=\"alert\" class=\"alert alert-error\" hidden></div> </div> </div> </section> <section id=\"board\" class=\"mx-auto max-w-5xl p-4\" hidden> <div role=\"tablist\" class=\"tabs tabs-box tabs-lg w-full sm:w-fit\"> <button id=\"tab-open\" role=\"tab\" class=\"tab tab-active flex-1 sm:flex-none\" type=\"button\">Open <span id=\"open-count\" class=\"badge badge-warning ml-2\" hidden></span></button> <button id=\"tab-ended\" role=\"tab\" class=\"tab flex-1 sm:flex-none\" type=\"button\">Done and canceled</button> </div> <ul id=\"open-list\" class=\"mt-4 grid gap-3\"></ul> <ul id=\"ended-list\" class=\"mt-4 grid gap-3\" hidden></ul> <div id=\"empty\" class=\"mt-16 text-center text-xl text-base-content/50\" hidden>No documents</div> </section> <section id=\"viewer\" hidden> <div class=\"navbar sticky top-0 z-30 flex-wrap gap-2 bg-base-100 px-4 shadow-sm\"> <button id=\"back\" type=\"button\" class=\"btn btn-lg btn-ghost\">← Board</button> <span id=\"viewer-title\" class=\"min-w-0 flex-1 truncate text-lg font-semibold\"></span> <div class=\"flex gap-2\"> <button id=\"print\" type=\"button\" class=\"btn btn-lg btn-outline\" hidden>Print here</button> <button id=\"done\" type=\"button\" class=\"btn btn-lg btn-success\">Done</button> </div> </div> <div id=\"pages\" class=\"mx-auto grid max-w-5xl gap-4 p-4\"></div> </section> <div id=\"toasts\" class=\"toast toast-top toast-center z-50\"></div> </div> <script type=\"module\" src=\"/public/tablet.js\"></script> "),
 }}
 
+var planTopologyOpsFill9Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("a REST entry for applications"),
+}}
+
+var planTopologyOpsFill10Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("the IPP entry: computers print to it, on a port of its own"),
+}}
+
+var planTopologyOpsFill11Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("takes the objects an S3 event names"),
+}}
+
+var planTopologyOpsFill8Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "endpoint", Name: "Endpoint", Children: planTopologyOpsFill9Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "cups", Name: "CUPS server (source)", Children: planTopologyOpsFill10Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "s3-trigger", Name: "S3 Trigger", Children: planTopologyOpsFill11Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+}}
+
+var planTopologyOpsFill13Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("forwards to every node it points to"),
+}}
+
+var planTopologyOpsFill14Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("one member in turn, or the first"),
+}}
+
+var planTopologyOpsFill15Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("sends on by rules on what a job is, and its metadata"),
+}}
+
+var planTopologyOpsFill16Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("held until a person releases it"),
+}}
+
+var planTopologyOpsFill17Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("tells Slack, a mail or a webhook; failures come along on_error"),
+}}
+
+var planTopologyOpsFill12Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "queue", Name: "Queue", Children: planTopologyOpsFill13Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "class", Name: "Class", Children: planTopologyOpsFill14Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "filter", Name: "Filter", Children: planTopologyOpsFill15Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "inbox", Name: "Inbox", Children: planTopologyOpsFill16Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "notify", Name: "Notify", Children: planTopologyOpsFill17Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+}}
+
+var planTopologyOpsFill19Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("fills a template with data, into a .bdf document"),
+}}
+
+var planTopologyOpsFill20Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("makes a .bdf document of a file received as it is"),
+}}
+
+var planTopologyOpsFill21Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("signs a .bdf document as a witness of who sent it"),
+}}
+
+var planTopologyOpsFill22Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("draws a .bdf document as a PDF, or a page as a PNG"),
+}}
+
+var planTopologyOpsFill18Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "template", Name: "Template", Children: planTopologyOpsFill19Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "convert", Name: "Convert", Children: planTopologyOpsFill20Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "sign", Name: "Sign", Children: planTopologyOpsFill21Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "render", Name: "Render", Children: planTopologyOpsFill22Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+}}
+
+var planTopologyOpsFill24Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("shown on the devices enrolled there"),
+}}
+
+var planTopologyOpsFill25Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("printed on paper"),
+}}
+
+var planTopologyOpsFill26Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("printed to a queue of a CUPS server, over IPP"),
+}}
+
+var planTopologyOpsFill27Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("written once, never changed"),
+}}
+
+var planTopologyOpsFill28Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("keeps the latest documents, to look at"),
+}}
+
+var planTopologyOpsFill29Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("lists what an archive wrote, for applications and people to fetch"),
+}}
+
+var planTopologyOpsFill30Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("mails it as an attachment"),
+}}
+
+var planTopologyOpsFill31Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("written to a bucket, once"),
+}}
+
+var planTopologyOpsFill32Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static("sent to a web service"),
+}}
+
+var planTopologyOpsFill23Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "display", Name: "Display", Children: planTopologyOpsFill24Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "printer", Name: "Printer", Children: planTopologyOpsFill25Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "cups-out", Name: "CUPS server (sink)", Children: planTopologyOpsFill26Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "archive", Name: "Archive", Children: planTopologyOpsFill27Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "sink", Name: "Sink", Children: planTopologyOpsFill28Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "export", Name: "Export", Children: planTopologyOpsFill29Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: "Mail (SMTP)", Children: planTopologyOpsFill30Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: "S3", Children: planTopologyOpsFill31Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: "HTTP", Children: planTopologyOpsFill32Plan.Bind(p)})
+	}),
+	planTopologyOps.Static(" "),
+}}
+
 var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.Static(" "),
 	planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
@@ -177,7 +372,23 @@ var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 	planTopologyOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body gap-3\"> <div class=\"flex flex-wrap items-center gap-2\"> <h2 class=\"card-title\">Topology</h2> "),
 	planTopologyOps.If(func(p TopologyParams) bool { return p.Account.Topology },
 		[]htmlbind.Op[TopologyParams]{
-			planTopologyOps.Static(" <div class=\"dropdown\"> <div tabindex=\"0\" role=\"button\" class=\"btn btn-sm btn-primary\">+ Add a node</div> <ul id=\"palette\" tabindex=\"0\" class=\"dropdown-content menu z-20 w-72 rounded-box bg-base-100 p-2 shadow-md\"> <li><a data-kind=\"endpoint\"><span class=\"font-semibold\">Endpoint</span><span class=\"text-xs text-base-content/60\">a REST entry for applications</span></a></li> <li><a data-kind=\"cups\"><span class=\"font-semibold\">CUPS server (source)</span><span class=\"text-xs text-base-content/60\">the IPP entry: computers print to it, on a port of its own</span></a></li> <li><a data-kind=\"queue\"><span class=\"font-semibold\">Queue</span><span class=\"text-xs text-base-content/60\">forwards to every node it points to</span></a></li> <li><a data-kind=\"class\"><span class=\"font-semibold\">Class</span><span class=\"text-xs text-base-content/60\">one member in turn, or the first</span></a></li> <li><a data-kind=\"filter\"><span class=\"font-semibold\">Filter</span><span class=\"text-xs text-base-content/60\">sends on by rules on what a job is, and its metadata</span></a></li> <li><a data-kind=\"template\"><span class=\"font-semibold\">Template</span><span class=\"text-xs text-base-content/60\">fills a template with data, into a .bdf document</span></a></li> <li><a data-kind=\"convert\"><span class=\"font-semibold\">Convert</span><span class=\"text-xs text-base-content/60\">makes a .bdf document of a file received as it is</span></a></li> <li><a data-kind=\"sign\"><span class=\"font-semibold\">Sign</span><span class=\"text-xs text-base-content/60\">signs a .bdf document as a witness of who sent it</span></a></li> <li><a data-kind=\"inbox\"><span class=\"font-semibold\">Inbox</span><span class=\"text-xs text-base-content/60\">held until a person releases it</span></a></li> <li><a data-kind=\"display\"><span class=\"font-semibold\">Display</span><span class=\"text-xs text-base-content/60\">shown on the devices enrolled there</span></a></li> <li><a data-kind=\"printer\"><span class=\"font-semibold\">Printer</span><span class=\"text-xs text-base-content/60\">printed on paper</span></a></li> <li><a data-kind=\"cups-out\"><span class=\"font-semibold\">CUPS server (sink)</span><span class=\"text-xs text-base-content/60\">printed to a queue of a CUPS server, over IPP</span></a></li> <li><a data-kind=\"archive\"><span class=\"font-semibold\">Archive</span><span class=\"text-xs text-base-content/60\">written once, never changed</span></a></li> <li><a data-kind=\"sink\"><span class=\"font-semibold\">Sink</span><span class=\"text-xs text-base-content/60\">keeps the latest documents, to look at</span></a></li> <li><a data-kind=\"export\"><span class=\"font-semibold\">Export</span><span class=\"text-xs text-base-content/60\">lists what an archive wrote, for applications and people to fetch</span></a></li> <li><a data-kind=\"s3-trigger\"><span class=\"font-semibold\">S3 Trigger</span><span class=\"text-xs text-base-content/60\">takes the objects an S3 event names</span></a></li> <li><a data-kind=\"render\"><span class=\"font-semibold\">Render</span><span class=\"text-xs text-base-content/60\">draws a .bdf document as a PDF, or a page as a PNG</span></a></li> <li><a data-kind=\"notify\"><span class=\"font-semibold\">Notify</span><span class=\"text-xs text-base-content/60\">tells Slack, a mail or a webhook; failures come along on_error</span></a></li> <li><a data-kind=\"smtp\"><span class=\"font-semibold\">Mail (SMTP)</span><span class=\"text-xs text-base-content/60\">mails it as an attachment</span></a></li> <li><a data-kind=\"s3\"><span class=\"font-semibold\">S3</span><span class=\"text-xs text-base-content/60\">written to a bucket, once</span></a></li> <li><a data-kind=\"http\"><span class=\"font-semibold\">HTTP</span><span class=\"text-xs text-base-content/60\">sent to a web service</span></a></li> </ul> </div> "),
+			planTopologyOps.Static(" <div class=\"dropdown max-sm:static\"> <div tabindex=\"0\" role=\"button\" class=\"btn btn-sm btn-primary\">+ Add a node</div> <div tabindex=\"0\" class=\"dropdown-content z-20 max-h-[75vh] w-80 overflow-y-auto max-sm:inset-x-4 max-sm:w-auto md:w-[38rem] lg:w-[44rem] xl:w-[64rem] rounded-box bg-base-100 shadow-md\"> <ul id=\"palette\" class=\"menu w-full md:block md:columns-2 xl:columns-4\"> "),
+			planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+				return renderPaletteGroup(renderPaletteGroupParams{Title: "Source", Children: planTopologyOpsFill8Plan.Bind(p)})
+			}),
+			planTopologyOps.Static(" "),
+			planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+				return renderPaletteGroup(renderPaletteGroupParams{Title: "Control", Children: planTopologyOpsFill12Plan.Bind(p)})
+			}),
+			planTopologyOps.Static(" "),
+			planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+				return renderPaletteGroup(renderPaletteGroupParams{Title: "Convert", Children: planTopologyOpsFill18Plan.Bind(p)})
+			}),
+			planTopologyOps.Static(" "),
+			planTopologyOps.Component(func(p TopologyParams) htmlbind.Fragment {
+				return renderPaletteGroup(renderPaletteGroupParams{Title: "Sink", Children: planTopologyOpsFill23Plan.Bind(p)})
+			}),
+			planTopologyOps.Static(" </ul> </div> </div> "),
 		},
 		nil),
 	planTopologyOps.Static(" <div class=\"join\"> <button id=\"zoom-out\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom out\">−</button> <button id=\"zoom-fit\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Fit the topology in the view\">Fit</button> <button id=\"zoom-in\" type=\"button\" class=\"btn btn-sm join-item\" title=\"Zoom in\">+</button> </div> "),
@@ -203,47 +414,47 @@ var planTopologyOpsFill7Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op
 	planTopologyOps.Static(" </main> <div id=\"toasts\" class=\"toast toast-end z-50\"></div> <script type=\"module\" src=\"/public/topology.js\"></script> "),
 }}
 
-var planAppsOpsFill8Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
+var planAppsOpsFill33Plan = &htmlbind.Plan[AppsParams]{Ops: []htmlbind.Op[AppsParams]{
 	planAppsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Apps</h2> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Applications with credentials of their own. A backend takes a token at <code class=\"font-mono\">POST /oauth/token</code> with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the exports that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at <code class=\"font-mono\">/oauth/authorize</code> (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the exports as that person. The scopes tick and admin are for a scheduler and for scripts.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Id</th><th>Title</th><th>Scopes</th><th>Group</th><th>Endpoints / redirect URIs</th><th>Last used</th><th></th></tr></thead><tbody id=\"apps\"></tbody></table> </div> <form id=\"app-form\" class=\"mt-2 grid gap-2 sm:grid-cols-6\"> <input id=\"app-id\" class=\"input sm:col-span-1\" placeholder=\"id (erp)\" autocomplete=\"off\" required> <input id=\"app-title\" class=\"input sm:col-span-2\" placeholder=\"title\"> <input id=\"app-group\" class=\"input sm:col-span-2\" placeholder=\"group whose members see its jobs (optional)\"> <label class=\"label cursor-pointer gap-2 sm:col-span-2\"><input id=\"app-public\" type=\"checkbox\" class=\"checkbox checkbox-sm\"><span class=\"text-sm\">Public client (a frontend: no secret, PKCE)</span></label> <textarea id=\"app-redirects\" class=\"textarea sm:col-span-4\" rows=\"2\" placeholder=\"redirect URIs, one per line: https://portal.example.com/callback (http only on localhost)\" hidden></textarea> <div id=\"app-scopes\" class=\"flex flex-wrap items-center gap-3 sm:col-span-6\"></div> <button id=\"app-submit\" type=\"submit\" class=\"btn btn-primary sm:col-span-1\">Add</button> <button id=\"app-cancel\" type=\"button\" class=\"btn btn-ghost sm:col-span-1\" hidden>Cancel</button> </form> </div> </section> <dialog id=\"secret-modal\" class=\"modal\"> <div class=\"modal-box max-w-lg\"> <h3 class=\"text-lg font-bold\">App secret</h3> <p class=\"mt-2 text-sm text-base-content/70\">The secret of <span id=\"secret-id\" class=\"font-mono\"></span>. It is shown only now: copy it into the application. Rotate it to get a new one; the old one stops working.</p> <pre id=\"secret-value\" class=\"mt-3 overflow-x-auto rounded-box bg-base-200 p-3 font-mono text-sm break-all whitespace-pre-wrap\"></pre> <p id=\"secret-usage\" class=\"mt-2 font-mono text-xs text-base-content/60 break-all\"></p> <div class=\"modal-action\"> <form method=\"dialog\"><button class=\"btn\">Close</button></form> </div> </div> <form method=\"dialog\" class=\"modal-backdrop\"><button>Close</button></form> </dialog> <script type=\"module\" src=\"/public/apps.js\"></script> "),
 }}
 
-var planInboxesOpsFill9Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
+var planInboxesOpsFill34Plan = &htmlbind.Plan[InboxesParams]{Ops: []htmlbind.Op[InboxesParams]{
 	planInboxesOps.Static(" <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"text-xl font-bold\">Inboxes</h2> <label class=\"input input-sm w-64\"> <span class=\"label\">Worker</span> <input id=\"worker\" autocomplete=\"off\" placeholder=\"name (for the record)\"> </label> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <section id=\"inboxes\" class=\"grid gap-4\"></section> <script type=\"module\" src=\"/public/inboxes.js\"></script> "),
 }}
 
-var planAdminJobsOpsFill10Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
+var planAdminJobsOpsFill35Plan = &htmlbind.Plan[AdminJobsParams]{Ops: []htmlbind.Op[AdminJobsParams]{
 	planAdminJobsOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Jobs</h2> <select id=\"jobs-dest\" class=\"select select-sm w-64\"></select> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>No.</th><th>Name</th><th>Sent to</th><th>Sent by</th><th>Received</th><th>State</th><th>Route</th><th></th></tr></thead><tbody id=\"jobs\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/admin-jobs.js\"></script> "),
 }}
 
-var planDeliveriesOpsFill11Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
+var planDeliveriesOpsFill36Plan = &htmlbind.Plan[DeliveriesParams]{Ops: []htmlbind.Op[DeliveriesParams]{
 	planDeliveriesOps.Static(" <section class=\"card bg-base-100 shadow-sm\"> <div class=\"card-body\"> <div class=\"flex flex-wrap items-center gap-3\"> <h2 class=\"card-title\">Deliveries waiting</h2> <button id=\"tick\" type=\"button\" class=\"btn btn-sm\">Tick now</button> <button id=\"refresh\" type=\"button\" class=\"btn btn-sm btn-ghost\">Refresh</button> <span class=\"text-sm text-base-content/60\">Jobs on their way to printers and archives. A process sends them in the background, a serverless deployment at the tick; a send that failed is tried again after a wait that grows, and retry sends it now.</span> </div> <div class=\"overflow-x-auto\"> <table class=\"table table-sm\"><thead><tr><th>Job</th><th>Node</th><th>Printer</th><th>State</th><th>Attempts</th><th>Next</th><th>Last error</th><th></th></tr></thead><tbody id=\"deliveries\"></tbody></table> </div> </div> </section> <script type=\"module\" src=\"/public/deliveries.js\"></script> "),
 }}
 
-type planHelpOpsScope13 struct {
+type planHelpOpsScope38 struct {
 	Outer HelpParams
 	Item  HelpLang
 	Index int
 }
 
-var planHelpOpsScope13Ops = htmlbind.Builder[planHelpOpsScope13]{}
+var planHelpOpsScope38Ops = htmlbind.Builder[planHelpOpsScope38]{}
 
-type planHelpOpsScope14 struct {
+type planHelpOpsScope39 struct {
 	Outer HelpParams
 	Item  HelpChapter
 	Index int
 }
 
-var planHelpOpsScope14Ops = htmlbind.Builder[planHelpOpsScope14]{}
+var planHelpOpsScope39Ops = htmlbind.Builder[planHelpOpsScope39]{}
 
-type planHelpOpsScope14OpsScope15 struct {
-	Outer planHelpOpsScope14
+type planHelpOpsScope39OpsScope40 struct {
+	Outer planHelpOpsScope39
 	Item  HelpSection
 	Index int
 }
 
-var planHelpOpsScope14OpsScope15Ops = htmlbind.Builder[planHelpOpsScope14OpsScope15]{}
+var planHelpOpsScope39OpsScope40Ops = htmlbind.Builder[planHelpOpsScope39OpsScope40]{}
 
-var planHelpOpsFill12Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpParams]{
+var planHelpOpsFill37Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpParams]{
 	planHelpOps.Static(" "),
 	planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
 		return renderAppBar(renderAppBarParams{Title: "BDF Docflow", Account: p.Account})
@@ -253,55 +464,55 @@ var planHelpOpsFill12Plan = &htmlbind.Plan[HelpParams]{Ops: []htmlbind.Op[HelpPa
 	planHelpOps.Static(" class=\"prose max-w-none rounded-box bg-base-100 p-6 shadow-sm dark:prose-invert sm:p-8 lg:col-start-2 lg:row-start-1\"> <div class=\"not-prose -mt-2 mb-4 flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm\"> <a href=\"#help-nav\" class=\"link link-hover lg:hidden\">Contents</a> "),
 	planHelpOps.For(
 		func(p HelpParams) []HelpLang { return p.Langs },
-		func(p HelpParams, item HelpLang, index int) planHelpOpsScope13 {
-			return planHelpOpsScope13{Outer: p, Item: item, Index: index}
+		func(p HelpParams, item HelpLang, index int) planHelpOpsScope38 {
+			return planHelpOpsScope38{Outer: p, Item: item, Index: index}
 		},
-		[]htmlbind.Op[planHelpOpsScope13]{
-			planHelpOpsScope13Ops.Static(" <a"),
-			planHelpOpsScope13Ops.URLAttr("href", func(p planHelpOpsScope13) (string, bool) { return p.Item.Href.String(), true }),
-			planHelpOpsScope13Ops.Static(" class=\"link link-hover\">"),
-			planHelpOpsScope13Ops.Text(func(p planHelpOpsScope13) string { return p.Item.Label }),
-			planHelpOpsScope13Ops.Static("</a> "),
+		[]htmlbind.Op[planHelpOpsScope38]{
+			planHelpOpsScope38Ops.Static(" <a"),
+			planHelpOpsScope38Ops.URLAttr("href", func(p planHelpOpsScope38) (string, bool) { return p.Item.Href.String(), true }),
+			planHelpOpsScope38Ops.Static(" class=\"link link-hover\">"),
+			planHelpOpsScope38Ops.Text(func(p planHelpOpsScope38) string { return p.Item.Label }),
+			planHelpOpsScope38Ops.Static("</a> "),
 		}),
 	planHelpOps.Static(" </div> "),
 	planHelpOps.Raw(func(p HelpParams) string { return string(p.Body) }),
 	planHelpOps.Static(" </article> <nav aria-label=\"Manual\" class=\"lg:sticky lg:top-20 lg:col-start-1 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto\"> <ul id=\"help-nav\" class=\"menu w-full rounded-box bg-base-100 shadow-sm\"> "),
 	planHelpOps.For(
 		func(p HelpParams) []HelpChapter { return p.Chapters },
-		func(p HelpParams, item HelpChapter, index int) planHelpOpsScope14 {
-			return planHelpOpsScope14{Outer: p, Item: item, Index: index}
+		func(p HelpParams, item HelpChapter, index int) planHelpOpsScope39 {
+			return planHelpOpsScope39{Outer: p, Item: item, Index: index}
 		},
-		[]htmlbind.Op[planHelpOpsScope14]{
-			planHelpOpsScope14Ops.Static(" "),
-			planHelpOpsScope14Ops.If(func(p planHelpOpsScope14) bool { return p.Item.Current },
-				[]htmlbind.Op[planHelpOpsScope14]{
-					planHelpOpsScope14Ops.Static(" <li> <a"),
-					planHelpOpsScope14Ops.URLAttr("href", func(p planHelpOpsScope14) (string, bool) { return p.Item.Href.String(), true }),
-					planHelpOpsScope14Ops.Static(" class=\"menu-active\">"),
-					planHelpOpsScope14Ops.Text(func(p planHelpOpsScope14) string { return p.Item.Title }),
-					planHelpOpsScope14Ops.Static("</a> <ul> "),
-					planHelpOpsScope14Ops.For(
-						func(p planHelpOpsScope14) []HelpSection { return p.Item.Sections },
-						func(p planHelpOpsScope14, item HelpSection, index int) planHelpOpsScope14OpsScope15 {
-							return planHelpOpsScope14OpsScope15{Outer: p, Item: item, Index: index}
+		[]htmlbind.Op[planHelpOpsScope39]{
+			planHelpOpsScope39Ops.Static(" "),
+			planHelpOpsScope39Ops.If(func(p planHelpOpsScope39) bool { return p.Item.Current },
+				[]htmlbind.Op[planHelpOpsScope39]{
+					planHelpOpsScope39Ops.Static(" <li> <a"),
+					planHelpOpsScope39Ops.URLAttr("href", func(p planHelpOpsScope39) (string, bool) { return p.Item.Href.String(), true }),
+					planHelpOpsScope39Ops.Static(" class=\"menu-active\">"),
+					planHelpOpsScope39Ops.Text(func(p planHelpOpsScope39) string { return p.Item.Title }),
+					planHelpOpsScope39Ops.Static("</a> <ul> "),
+					planHelpOpsScope39Ops.For(
+						func(p planHelpOpsScope39) []HelpSection { return p.Item.Sections },
+						func(p planHelpOpsScope39, item HelpSection, index int) planHelpOpsScope39OpsScope40 {
+							return planHelpOpsScope39OpsScope40{Outer: p, Item: item, Index: index}
 						},
-						[]htmlbind.Op[planHelpOpsScope14OpsScope15]{
-							planHelpOpsScope14OpsScope15Ops.Static(" <li><a"),
-							planHelpOpsScope14OpsScope15Ops.URLAttr("href", func(p planHelpOpsScope14OpsScope15) (string, bool) { return p.Item.Href.String(), true }),
-							planHelpOpsScope14OpsScope15Ops.Static(">"),
-							planHelpOpsScope14OpsScope15Ops.Text(func(p planHelpOpsScope14OpsScope15) string { return p.Item.Title }),
-							planHelpOpsScope14OpsScope15Ops.Static("</a></li> "),
+						[]htmlbind.Op[planHelpOpsScope39OpsScope40]{
+							planHelpOpsScope39OpsScope40Ops.Static(" <li><a"),
+							planHelpOpsScope39OpsScope40Ops.URLAttr("href", func(p planHelpOpsScope39OpsScope40) (string, bool) { return p.Item.Href.String(), true }),
+							planHelpOpsScope39OpsScope40Ops.Static(">"),
+							planHelpOpsScope39OpsScope40Ops.Text(func(p planHelpOpsScope39OpsScope40) string { return p.Item.Title }),
+							planHelpOpsScope39OpsScope40Ops.Static("</a></li> "),
 						}),
-					planHelpOpsScope14Ops.Static(" </ul> </li> "),
+					planHelpOpsScope39Ops.Static(" </ul> </li> "),
 				},
-				[]htmlbind.Op[planHelpOpsScope14]{
-					planHelpOpsScope14Ops.Static(" <li><a"),
-					planHelpOpsScope14Ops.URLAttr("href", func(p planHelpOpsScope14) (string, bool) { return p.Item.Href.String(), true }),
-					planHelpOpsScope14Ops.Static(">"),
-					planHelpOpsScope14Ops.Text(func(p planHelpOpsScope14) string { return p.Item.Title }),
-					planHelpOpsScope14Ops.Static("</a></li> "),
+				[]htmlbind.Op[planHelpOpsScope39]{
+					planHelpOpsScope39Ops.Static(" <li><a"),
+					planHelpOpsScope39Ops.URLAttr("href", func(p planHelpOpsScope39) (string, bool) { return p.Item.Href.String(), true }),
+					planHelpOpsScope39Ops.Static(">"),
+					planHelpOpsScope39Ops.Text(func(p planHelpOpsScope39) string { return p.Item.Title }),
+					planHelpOpsScope39Ops.Static("</a></li> "),
 				}),
-			planHelpOpsScope14Ops.Static(" "),
+			planHelpOpsScope39Ops.Static(" "),
 		}),
 	planHelpOps.Static(" </ul> </nav> </main> "),
 }}
@@ -491,6 +702,52 @@ var planTabletPlan = &htmlbind.Plan[TabletParams]{
 // Tablet binds Tablet to its parameters, producing a renderable fragment.
 func Tablet(params TabletParams) htmlbind.Fragment { return planTabletPlan.Bind(params) }
 
+var planPaletteGroupOps = htmlbind.Builder[renderPaletteGroupParams]{}
+
+var planPaletteGroupPlan = &htmlbind.Plan[renderPaletteGroupParams]{
+	Head: nil,
+	Slots: func(p renderPaletteGroupParams) []htmlbind.Fragment {
+		return []htmlbind.Fragment{p.Children}
+	},
+	Ops: []htmlbind.Op[renderPaletteGroupParams]{
+		planPaletteGroupOps.Static(" <li class=\"block break-inside-avoid xl:break-before-column\"> <h3 class=\"menu-title\">"),
+		planPaletteGroupOps.Text(func(p renderPaletteGroupParams) string { return p.Title }),
+		planPaletteGroupOps.Static("</h3> <ul class=\"ms-0 ps-0 whitespace-normal before:hidden\">"),
+		planPaletteGroupOps.Slot(func(p renderPaletteGroupParams) htmlbind.Fragment { return p.Children },
+			nil),
+		planPaletteGroupOps.Static("</ul> </li> "),
+	},
+}
+
+// renderPaletteGroup binds PaletteGroup to its parameters, producing a renderable fragment.
+func renderPaletteGroup(params renderPaletteGroupParams) htmlbind.Fragment {
+	return planPaletteGroupPlan.Bind(params)
+}
+
+var planPaletteKindOps = htmlbind.Builder[renderPaletteKindParams]{}
+
+var planPaletteKindPlan = &htmlbind.Plan[renderPaletteKindParams]{
+	Head: nil,
+	Slots: func(p renderPaletteKindParams) []htmlbind.Fragment {
+		return []htmlbind.Fragment{p.Children}
+	},
+	Ops: []htmlbind.Op[renderPaletteKindParams]{
+		planPaletteKindOps.Static(" <li><a"),
+		planPaletteKindOps.Attr("data-kind", func(p renderPaletteKindParams) (string, bool) { return htmlbind.Escape(p.Kind), true }),
+		planPaletteKindOps.Static("><span class=\"flex flex-col\"><span class=\"font-semibold\">"),
+		planPaletteKindOps.Text(func(p renderPaletteKindParams) string { return p.Name }),
+		planPaletteKindOps.Static("</span><span class=\"text-xs text-base-content/60\">"),
+		planPaletteKindOps.Slot(func(p renderPaletteKindParams) htmlbind.Fragment { return p.Children },
+			nil),
+		planPaletteKindOps.Static("</span></span></a></li> "),
+	},
+}
+
+// renderPaletteKind binds PaletteKind to its parameters, producing a renderable fragment.
+func renderPaletteKind(params renderPaletteKindParams) htmlbind.Fragment {
+	return planPaletteKindPlan.Bind(params)
+}
+
 var planTopologyOps = htmlbind.Builder[TopologyParams]{}
 
 var planTopologyPlan = &htmlbind.Plan[TopologyParams]{
@@ -514,7 +771,7 @@ var planAppsPlan = &htmlbind.Plan[AppsParams]{
 	Ops: []htmlbind.Op[AppsParams]{
 		planAppsOps.Static(" "),
 		planAppsOps.Component(func(p AppsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Apps · BDF Docflow", Account: p.Account, Children: planAppsOpsFill8Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Apps · BDF Docflow", Account: p.Account, Children: planAppsOpsFill33Plan.Bind(p)})
 		}),
 		planAppsOps.Static(" "),
 	},
@@ -530,7 +787,7 @@ var planInboxesPlan = &htmlbind.Plan[InboxesParams]{
 	Ops: []htmlbind.Op[InboxesParams]{
 		planInboxesOps.Static(" "),
 		planInboxesOps.Component(func(p InboxesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Docflow", Account: p.Account, Children: planInboxesOpsFill9Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Inboxes · BDF Docflow", Account: p.Account, Children: planInboxesOpsFill34Plan.Bind(p)})
 		}),
 		planInboxesOps.Static(" "),
 	},
@@ -546,7 +803,7 @@ var planAdminJobsPlan = &htmlbind.Plan[AdminJobsParams]{
 	Ops: []htmlbind.Op[AdminJobsParams]{
 		planAdminJobsOps.Static(" "),
 		planAdminJobsOps.Component(func(p AdminJobsParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Docflow", Account: p.Account, Children: planAdminJobsOpsFill10Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Jobs · BDF Docflow", Account: p.Account, Children: planAdminJobsOpsFill35Plan.Bind(p)})
 		}),
 		planAdminJobsOps.Static(" "),
 	},
@@ -562,7 +819,7 @@ var planDeliveriesPlan = &htmlbind.Plan[DeliveriesParams]{
 	Ops: []htmlbind.Op[DeliveriesParams]{
 		planDeliveriesOps.Static(" "),
 		planDeliveriesOps.Component(func(p DeliveriesParams) htmlbind.Fragment {
-			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Docflow", Account: p.Account, Children: planDeliveriesOpsFill11Plan.Bind(p)})
+			return renderAdminPage(renderAdminPageParams{Title: "Deliveries · BDF Docflow", Account: p.Account, Children: planDeliveriesOpsFill36Plan.Bind(p)})
 		}),
 		planDeliveriesOps.Static(" "),
 	},
@@ -578,7 +835,7 @@ var planHelpPlan = &htmlbind.Plan[HelpParams]{
 	Ops: []htmlbind.Op[HelpParams]{
 		planHelpOps.Static(" "),
 		planHelpOps.Component(func(p HelpParams) htmlbind.Fragment {
-			return renderShell(renderShellParams{Title: p.Title, Children: planHelpOpsFill12Plan.Bind(p)})
+			return renderShell(renderShellParams{Title: p.Title, Children: planHelpOpsFill37Plan.Bind(p)})
 		}),
 		planHelpOps.Static(" "),
 	},

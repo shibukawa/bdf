@@ -110,6 +110,20 @@ func init() {
 	})
 	pwstory.Register(pwstory.Template{
 		Package:   "handlers",
+		Name:      "renderPaletteGroup",
+		Exported:  false,
+		NewParams: func() any { return new(renderPaletteGroupParams) },
+		Render:    func(params any) htmlbind.Fragment { return renderPaletteGroup(*params.(*renderPaletteGroupParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
+		Name:      "renderPaletteKind",
+		Exported:  false,
+		NewParams: func() any { return new(renderPaletteKindParams) },
+		Render:    func(params any) htmlbind.Fragment { return renderPaletteKind(*params.(*renderPaletteKindParams)) },
+	})
+	pwstory.Register(pwstory.Template{
+		Package:   "handlers",
 		Name:      "renderShell",
 		Exported:  false,
 		NewParams: func() any { return new(renderShellParams) },
