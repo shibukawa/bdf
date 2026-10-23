@@ -116,14 +116,18 @@ func TestApps(t *testing.T) {
 	if len(ds) != 1 || ds[0].Name != "intake" {
 		t.Fatalf("the app's destinations %+v", ds)
 	}
-	// over IPP, with Basic client_id:secret
-	c := &ipp.Client{URL: e.srv.URL + IPPPath + "/intake", User: "erp", Username: "erp", Password: made.Secret}
+	// over IPP, with Basic client_id:secret, at a CUPS server that lists
+	// it, in front of its endpoint
+	e.node("erp-cups", Node{Kind: KindCups, To: []string{"intake"}, Apps: []string{"erp"}}, http.StatusOK)
+	c := e.ippClient("erp-cups")
+	c.User, c.Username, c.Password = "erp", "erp", made.Secret
 	if js, err := c.PrintJob(ctx, "ipp", "application/x-bdf", nil, bytes.NewReader(doc)); err != nil || js.State != ipp.JobCompleted {
 		t.Fatalf("ipp as the app: %+v %v", js, err)
 	}
-	c.URL = e.srv.URL + IPPPath + "/wh-a"
+	// a CUPS server that does not list it refuses it
+	c.URL = e.cups("wh-a-cups", "wh-a").URL
 	if _, err := c.PrintJob(ctx, "ipp", "application/x-bdf", nil, bytes.NewReader(doc)); !ipp.IsStatus(err, ipp.StatusClientErrorNotAuthorized) {
-		t.Fatalf("ipp as the app to a display: %v", err)
+		t.Fatalf("ipp as the app to a CUPS server not listing it: %v", err)
 	}
 	c.Password = "wrong"
 	if _, err := c.PrintJob(ctx, "ipp", "application/x-bdf", nil, bytes.NewReader(doc)); err == nil {
@@ -216,9 +220,12 @@ func TestApps(t *testing.T) {
 		t.Fatalf("an expired token: %d", res.StatusCode)
 	}
 
-	// an app an endpoint lists is not deleted; the audit log has it all
+	// an app an endpoint or a CUPS server lists is not deleted; the
+	// audit log has it all
 	e.admin("DELETE", "/api/apps/erp", nil, http.StatusConflict)
 	e.node("intake", Node{Kind: KindEndpoint, To: []string{"wh-a"}}, http.StatusOK)
+	e.admin("DELETE", "/api/apps/erp", nil, http.StatusConflict)
+	e.node("erp-cups", Node{Kind: KindCups, To: []string{"intake"}}, http.StatusOK)
 	e.admin("DELETE", "/api/apps/erp", nil, http.StatusNoContent)
 	e.admin("GET", "/api/apps/erp", nil, http.StatusNotFound)
 	var log []AuditEntry

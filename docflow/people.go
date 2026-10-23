@@ -6,7 +6,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -189,7 +188,7 @@ func (m *Manager) Destinations(ctx context.Context, v *Viewer) ([]Destination, e
 		}
 		allowed := v.CanSendTo(n.Scope, n.Owner)
 		if v.Kind == PrincipalApp && !v.Admin {
-			allowed = n.Kind == KindEndpoint && slices.Contains(n.Apps, v.ID)
+			allowed = n.takesApp(v.ID)
 		}
 		if allowed {
 			out = append(out, Destination{Name: n.Name, Kind: n.Kind, Title: n.Title, Scope: n.Scope, Owner: n.Owner})

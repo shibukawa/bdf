@@ -240,6 +240,9 @@ func (m *Manager) transform(ctx context.Context, d *Delivery, n *Node, j *Job) (
 // one the metadata names at TemplateFrom) with the job's data.
 func (m *Manager) fill(ctx context.Context, n *Node, j *Job, in *Payload) (*bdf.Document, error) {
 	id := n.Template
+	if id == "" && n.TemplateFrom == "" {
+		return nil, final("%s names no template yet: choose one of its templates, or the metadata key that names one", n.Name)
+	}
 	if n.TemplateFrom != "" {
 		if id = metaView(j, in, nil)[n.TemplateFrom]; id == "" {
 			return nil, final("the metadata has no %s to name the template", n.TemplateFrom)

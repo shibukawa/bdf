@@ -10,12 +10,21 @@ import (
 	"github.com/shibukawa/bdf/docflow"
 )
 
-// checkCups takes a CUPS server's port (required) and its certificate's
-// files (none: plain ipp); docflow checked what every entry has.
+// checkCups takes a CUPS server's port (the first free from
+// docflow.FirstPort when none is given; none on a serverless deployment,
+// where it is reached at /ipp/print/<name> alone) and its certificate's
+// files (none: plain ipp); docflow checked what every entry has. What
+// computers print is a document, made .bdf: a CUPS server has no
+// accept, output or formats of its own.
 func checkCups(ctx context.Context, m *docflow.Manager, in docflow.Node, n *docflow.Node) error {
+	n.Accept, n.Output, n.Formats = docflow.AcceptFile, docflow.OutputBDF, nil
 	n.TLSCert, n.TLSKey = strings.TrimSpace(in.TLSCert), strings.TrimSpace(in.TLSKey)
-	if n.Port == 0 {
-		return fmt.Errorf("%w: a CUPS server listens on a port of its own (port)", docflow.ErrInvalid)
+	if n.Port == 0 && m.Ports() {
+		p, err := m.FreePort(ctx, n.Name)
+		if err != nil {
+			return err
+		}
+		n.Port = p
 	}
 	if (n.TLSCert == "") != (n.TLSKey == "") {
 		return fmt.Errorf("%w: a CUPS server's certificate takes both tls_cert and tls_key (files)", docflow.ErrInvalid)

@@ -1,6 +1,7 @@
 package docflow
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -35,7 +36,7 @@ type handler struct {
 func Handler(m *Manager) http.Handler {
 	h := &handler{m: m}
 	mux := http.NewServeMux()
-	// the ingresses' routes (docflow/io/ipp: every node's IPP printer)
+	// the ingresses' routes (docflow/io/ipp: the CUPS servers' IPP printers)
 	for _, in := range ingresses() {
 		in.Mount(m, mux)
 	}
@@ -47,6 +48,7 @@ func Handler(m *Manager) http.Handler {
 	mux.HandleFunc("PUT /api/nodes/{name}", h.adminOnly(h.putNode))
 	mux.HandleFunc("DELETE /api/nodes/{name}", h.adminOnly(h.deleteNode))
 	mux.HandleFunc("POST /api/nodes/{name}/key", h.adminOnly(h.rotateKey))
+	mux.HandleFunc("POST /api/nodes/{name}/rename", h.adminOnly(h.renameNode))
 	mux.HandleFunc("GET /api/nodes/{name}/board", h.adminOnly(h.board))
 	mux.HandleFunc("GET /api/nodes/{name}/devices", h.adminOnly(h.listDevices))
 	mux.HandleFunc("POST /api/nodes/{name}/enrollments", h.adminOnly(h.enrollment))
@@ -88,6 +90,7 @@ func Handler(m *Manager) http.Handler {
 	// settings too), as is where it is drawn; its activity is the viewer's
 	mux.HandleFunc("GET /api/topology", h.userOnly(h.topology))
 	mux.HandleFunc("GET /api/kinds", h.userOnly(func(w http.ResponseWriter, r *http.Request, _ *Viewer) { writeJSON(w, http.StatusOK, KindInfos()) }))
+	mux.HandleFunc("POST /api/kinds/{kind}/discover", h.adminOnly(h.discover))
 	// the OpenAPI document of the endpoints it publishes (openapi.go): the
 	// viewer's to use
 	mux.HandleFunc("GET "+OpenAPIPath, h.userOnly(h.openAPI))
@@ -369,6 +372,59 @@ func (h *handler) rotateKey(w http.ResponseWriter, r *http.Request) {
 	}
 	h.m.audit(r.Context(), h.who(r), "rotate-key", r.PathValue("name"), "")
 	writeJSON(w, http.StatusOK, map[string]string{"name": r.PathValue("name"), "key": key})
+}
+
+// discoverTimeout bounds asking a node's far side what is there.
+const discoverTimeout = 15 * time.Second
+
+// discover asks the far side of the settings in the body what is there
+// (Kind.Discover): the queues of a CUPS server, before the node is saved.
+func (h *handler) discover(w http.ResponseWriter, r *http.Request) {
+	k := kindNamed(r.PathValue("kind"))
+	if k == nil || k.Discover == nil {
+		h.writeErr(w, fmt.Errorf("%w: kind %q asks nothing of a far side", ErrNotFound, r.PathValue("kind")))
+		return
+	}
+	var n Node
+	if err := readJSON(r, &n); err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	n.Kind = k.Name
+	ctx, cancel := context.WithTimeout(r.Context(), discoverTimeout)
+	defer cancel()
+	out, err := k.Discover(ctx, h.m, n)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// renameNode gives a node the name of the body ({"name": …}).
+func (h *handler) renameNode(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	from, to := r.PathValue("name"), strings.TrimSpace(body.Name)
+	if err := h.m.RenameNode(r.Context(), from, to); err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	got, err := h.m.Node(r.Context(), to)
+	if err != nil {
+		h.writeErr(w, err)
+		return
+	}
+	got.KeyHash = ""
+	if from != to {
+		h.m.audit(r.Context(), h.who(r), "rename-node", to, "was "+from)
+	}
+	writeJSON(w, http.StatusOK, got)
 }
 
 func (h *handler) deleteNode(w http.ResponseWriter, r *http.Request) {

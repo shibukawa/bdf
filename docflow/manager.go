@@ -5,8 +5,8 @@
 // until a person sends them on; displays show jobs as slips on the
 // tablets enrolled there (a warehouse) instead of printing them, and
 // print on paper what nobody opened; printers print; archives keep a copy
-// that is never changed. Every node is an IPP printer at
-// /ipp/print/<name>.
+// that is never changed. Jobs enter at the entries: endpoints, CUPS
+// servers (IPP) and the adapters' (docflow/io).
 //
 // A Manager holds no state of its own: everything is in its Store, so
 // that any request may reach any instance (a container, several, or a

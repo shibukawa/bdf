@@ -126,14 +126,14 @@ func (q *ippRequest) uri(dest string) string {
 
 func (q *ippRequest) printerURI() string { return q.uri(q.dest) }
 
-// destInfo tells the kind and the title of a destination; a node that
-// turned IPP off is none here.
-func (s *server) destInfo(ctx context.Context, name, server string) (kind, title string, err error) {
+// destInfo tells the kind and the title of a destination: a CUPS server
+// node, the one kind that takes IPP.
+func (s *server) destInfo(ctx context.Context, name string) (kind, title string, err error) {
 	n, err := s.m.Node(ctx, name)
 	if err != nil {
 		return "", "", err
 	}
-	if n.NoIPP && server == "" {
+	if n.Kind != KindCups {
 		return "", "", docflow.ErrNotFound
 	}
 	return n.Kind, or(n.Title, name), nil
@@ -162,7 +162,7 @@ func (s *server) serveIPPTo(w http.ResponseWriter, r *http.Request, dest, server
 	ctx := r.Context()
 	q := &ippRequest{w: w, r: r, by: by, server: server}
 	if dest != "" {
-		kind, title, err := s.destInfo(ctx, dest, server)
+		kind, title, err := s.destInfo(ctx, dest)
 		if err != nil {
 			http.Error(w, "no such printer", http.StatusNotFound)
 			return
@@ -268,28 +268,9 @@ func printerUUID(name string) string {
 	return "urn:uuid:" + x[:8] + "-" + x[8:12] + "-" + x[12:16] + "-" + x[16:20] + "-" + x[20:]
 }
 
-// cupsPrinterType is CUPS's printer-type of a node: the bit of a class
-// for classes, none for the rest.
-func cupsPrinterType(kind string) int {
-	if kind == docflow.KindClass {
-		return 1 // CUPS_PRINTER_CLASS
-	}
-	return 0
-}
-
-// deviceURI is the device-uri a node is shown with: a printer's URL, or
-// the kind of the node as a scheme.
-func deviceURI(n *docflow.TopoNode) string {
-	if n.Kind == KindPrinter {
-		return n.URL
-	}
-	return n.Kind + "://" + n.Name
-}
-
-// cupsPrinters answers CUPS-Get-Printers (every node on the manager's own
-// server; on a CUPS server node's port, that node alone) or
-// CUPS-Get-Classes (the classes, with their members; none on a CUPS
-// server node's port).
+// cupsPrinters answers CUPS-Get-Printers (the CUPS server nodes on the
+// manager's own server; on a CUPS server node's port, that node alone) or
+// CUPS-Get-Classes (none: a class is no IPP printer).
 func (s *server) cupsPrinters(ctx context.Context, q *ippRequest, classes bool) {
 	nodes, err := s.m.Topology(ctx)
 	if err != nil {
@@ -298,13 +279,7 @@ func (s *server) cupsPrinters(ctx context.Context, q *ippRequest, classes bool) 
 	}
 	for i := range nodes {
 		n := &nodes[i]
-		if classes && n.Kind != docflow.KindClass {
-			continue
-		}
-		if q.server != "" && n.Name != q.server {
-			continue
-		}
-		if q.server == "" && n.NoIPP {
+		if classes || n.Kind != KindCups || q.server != "" && n.Name != q.server {
 			continue
 		}
 
@@ -318,16 +293,8 @@ func (s *server) cupsPrinters(ctx context.Context, q *ippRequest, classes bool) 
 			ipp.Attr("printer-state", ipp.Enum(3)),
 			ipp.Attr("printer-state-reasons", ipp.Keyword("none")),
 			ipp.Attr("printer-is-accepting-jobs", ipp.Boolean(true)),
-			ipp.Attr("printer-type", ipp.Integer(cupsPrinterType(n.Kind))),
-			ipp.Attr("device-uri", ipp.URI(deviceURI(n))),
-		}
-		if n.Kind == docflow.KindClass {
-			names := make([]ipp.Value, len(n.Members))
-			uris := make([]ipp.Value, len(n.Members))
-			for i, mem := range n.Members {
-				names[i], uris[i] = ipp.Name(mem), ipp.URI(q.uri(mem))
-			}
-			attrs = append(attrs, ipp.Attr("member-names", names...), ipp.Attr("member-uris", uris...))
+			ipp.Attr("printer-type", ipp.Integer(0)),
+			ipp.Attr("device-uri", ipp.URI(n.Kind+"://"+n.Name)),
 		}
 		q.res.Groups = append(q.res.Groups, ipp.Group{Tag: ipp.TagPrinter, Attrs: attrs})
 	}
@@ -370,7 +337,7 @@ func (s *server) printerAttributes(ctx context.Context, q *ippRequest) {
 		ipp.Attr("printer-location", ipp.Text(q.title)),
 		ipp.Attr("printer-make-and-model", ipp.Text("BDF Docflow "+q.kind)),
 		ipp.Attr("printer-uuid", ipp.URI(printerUUID(q.dest))),
-		ipp.Attr("printer-type", ipp.Integer(cupsPrinterType(q.kind))),
+		ipp.Attr("printer-type", ipp.Integer(0)),
 		ipp.Attr("printer-state", ipp.Enum(3)), // idle
 		ipp.Attr("printer-state-reasons", ipp.Keyword("none")),
 		ipp.Attr("printer-is-accepting-jobs", ipp.Boolean(true)),

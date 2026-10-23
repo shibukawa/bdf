@@ -4,17 +4,20 @@
 // person may see running along the edges, polled with its revision).
 // Editing: nodes of every kind are placed, connected by dragging from a
 // node's output port onto another node, and set up in the sidebar (the
-// fields of the node's kind, and what is at it: an endpoint's templates
-// and key, a display's devices and enrollment codes); everything goes
-// through the API, and the server checks a node when it is put (its
-// edges, its name, no cycle, and that every node takes the kinds of
-// payload that reach it along a new edge; a change of settings may
-// leave an edge broken, which the canvas draws dashed and the sidebar
-// explains). Looking: a node shows the jobs sent to it that the person
-// sees, and a form to print there when they may.
+// fields of the node's kind under Settings; how it is reached from
+// outside and what is at it under Usage: a CUPS server's printer, an
+// endpoint's request and key, a display's devices and enrollment codes);
+// everything goes through the API, and the server checks a node when it
+// is put (its edges, its name, no cycle, and that every node takes the
+// kinds of payload that reach it along a new edge; a change of settings
+// may leave an edge broken, which the canvas draws dashed and the sidebar
+// explains). A node is put before the nodes after it, with no edges yet,
+// and renamed when its name is changed: its edges and what is kept under
+// its name follow. Looking: a node shows the jobs sent to it that the
+// person sees, and a form to print there when they may.
 
 import { $, api, button, changed, el, keptSection, kindBadge, KINDS, legsOf, listedSection, onChange, PAYLOADS, sender, since, stateBadge, status } from "./admin.js";
-import { createCanvas, iconOf, legend, payloadColor, roleColor, typeOf } from "./canvas.js";
+import { createCanvas, iconOf, legend, payloadColor, PRINTS, roleColor, typeOf } from "./canvas.js";
 
 const SCHEMES = ["ipp", "ipps", "socket", "lpd"];
 const ACCEPTS = { file: "documents (PDF, Office, images, .bdf …)", data: "data (JSON, YAML, CSV, Excel, Parquet)" };
@@ -57,7 +60,7 @@ const canvas = createCanvas($("canvas"), {
     status(`${from.name} → ${to}: ${why}`, true);
   },
   onRemoveEdge: removeEdge,
-  draftLabel: () => $("f-name")?.value || "",
+  draftLabel: () => $("f-title")?.value.trim() || $("f-name")?.value.trim() || "",
   draftNote: () => $("f-description")?.value || "",
 });
 
@@ -185,7 +188,6 @@ const ADAPTER_SETTINGS = {
   notify: "via (slack, mail or http), text, credential (slack: the webhook's URL), url (http; mail: smtp://host:587), from, recipients, mail_subject, to.",
   smtp: "url (smtp://host:587, smtps://host:465), credential (user:password), from, recipients, mail_subject, text.",
   s3: "url (s3://bucket?region=…&endpoint=…), credential (access-key:secret-key), path (the key; {{meta.$job}}/{{meta.$name}} by default).",
-  "s3-trigger": "url (s3://bucket?region=…), credential, path (the prefix of the keys it takes), to, accept, output, formats, meta. An S3 event's reference is POSTed to /in/<name> with the node's key.",
   http: "url, method (POST or PUT), body (direct: the document as the body, the metadata as X-Meta-* headers; multipart: form-data, the metadata as JSON in the part meta and the document in the part file), headers, credential (the Authorization: a token as Bearer).",
 };
 
@@ -373,9 +375,10 @@ function formatsField(n, label, what) {
   return field(label, fmts, what);
 }
 
-// entryFields are what an entry takes and sends on: documents or data,
-// the formats, and whether a document goes on as the .bdf made of it or
-// as received.
+// entryFields are what an endpoint or an S3 trigger takes and sends on:
+// documents or data, the formats, and whether a document goes on as the
+// .bdf made of it or as received. A CUPS server has none: what computers
+// print is a document, made .bdf.
 function entryFields(form, n) {
   const accept = selectInput("f-accept", Object.entries(ACCEPTS), n.accept || "file");
   const output = selectInput("f-output", Object.entries(OUTPUTS), n.output || "bdf");
@@ -440,7 +443,7 @@ function parsePrinterURL(u) {
 function composeURL() {
   const scheme = $("f-scheme").value;
   const host = $("f-host").value.trim();
-  const port = $("f-port").value.trim();
+  const port = $("f-pport").value.trim();
   let path = $("f-path").value.trim();
   if (!host) return "";
   if (!path && scheme.startsWith("ipp")) path = "/ipp/print";
@@ -448,11 +451,65 @@ function composeURL() {
   return `${scheme}://${host}${port ? ":" + port : ""}${path}`;
 }
 
-// portField is the port of an entry node, when this process has ports.
-function portField(n, what, required = false) {
-  const none = me && me.ports === false;
-  const f = field("Port (this process only)", input("f-port", n.port || "", { placeholder: required ? "6310" : "empty: the manager's own port only", inputMode: "numeric", required, disabled: none }), none ? "Not available here (serverless): applications call the manager's own API, and there is no IPP port." : what);
-  return f;
+// cupsOutFields are a CUPS server (sink)'s: its server, the queue there
+// (Find queues asks the server for them: CUPS-Get-Printers, through POST
+// /api/kinds/cups-out/discover, before the node is saved), and the
+// credential the server asks for.
+function cupsOutFields(form, n) {
+  let path = "/printers/";
+  let queue = "";
+  const u = parsePrinterURL(n.url);
+  const m = /^\/(printers|classes)\/([^/]+)$/.exec(u.path);
+  if (m) [path, queue] = ["/" + m[1] + "/", m[2]];
+  const row = el("div", undefined, { className: "grid grid-cols-[6rem_1fr_5rem] gap-1" });
+  row.append(selectInput("f-cscheme", [["ipp", "ipp://"], ["ipps", "ipps://"]], u.scheme === "ipps" ? "ipps" : "ipp"), input("f-chost", u.host, { placeholder: "the CUPS server's host", required: true, autocomplete: "off" }), input("f-cport", u.port, { placeholder: "631", inputMode: "numeric" }));
+  form.append(field("Server", row, "The CUPS server the jobs are printed to over IPP, as computers print to it; ipps over TLS."));
+  const q = input("f-queue", queue, { placeholder: "a printer or a class there: laser-3f", required: true, autocomplete: "off" });
+  q.dataset.path = path;
+  q.addEventListener("input", () => (q.dataset.path = q.value.includes("/") ? "" : found.get(q.value.trim()) || "/printers/"));
+  const found = new Map(); // queue name -> its path, as the server listed it
+  const list = el("div", undefined, { className: "flex flex-col gap-1" });
+  const find = el("button", "Find queues", { type: "button", className: "btn btn-sm w-fit" });
+  find.addEventListener("click", async () => {
+    list.replaceChildren(el("span", "Asking the server …", { className: "text-xs text-base-content/60" }));
+    try {
+      const qs = await api("POST", "/api/kinds/cups-out/discover", { url: `${$("f-cscheme").value}://${$("f-chost").value.trim()}:${$("f-cport").value.trim() || 631}`, credential: $("f-credential").value.trim() });
+      list.replaceChildren();
+      if (!qs.length) list.append(el("span", "The server lists no queue.", { className: "text-xs text-base-content/60" }));
+      for (const x of qs) {
+        found.set(x.name, x.path.slice(0, x.path.length - x.name.length));
+        const b = el("button", undefined, { type: "button", className: "btn btn-xs btn-ghost h-auto justify-start py-1 text-left font-normal" });
+        b.append(el("span", x.name, { className: "font-mono font-semibold" }), el("span", ` ${x.class ? "class · " : ""}${x.info || x.make_model || ""} · ${x.state}${x.accepting ? "" : ", not accepting jobs"}`, { className: "text-base-content/60" }));
+        b.addEventListener("click", () => {
+          q.value = x.name;
+          q.dataset.path = found.get(x.name);
+          update();
+        });
+        list.append(b);
+      }
+    } catch (e) {
+      list.replaceChildren(el("span", e.message, { className: "text-xs text-error" }));
+    }
+  });
+  const box = el("div", undefined, { className: "flex flex-col gap-1" });
+  box.append(q, find, list);
+  form.append(field("Queue", box, "Its name on the server; Find queues lists them (the server, and the credential below if it asks for one, first)."));
+  form.append(field("Credential", input("f-credential", n.credential || "", { placeholder: "a name: the secret is DOCFLOW_CRED_<name> (user:password)", autocomplete: "off" }), "None: the server asks for no user and password."));
+  const preview = el("p", "", { className: "font-mono text-xs text-base-content/60 break-all" });
+  const update = () => (preview.textContent = cupsQueueURL() || "—");
+  form.append(preview);
+  setTimeout(update);
+  for (const x of [row, q]) x.addEventListener("input", update);
+  row.addEventListener("change", update);
+}
+
+// cupsQueueURL is the URL of the queue of a CUPS server (sink)'s fields.
+function cupsQueueURL() {
+  const host = $("f-chost").value.trim();
+  const q = $("f-queue");
+  const name = q.value.trim().replace(/^\/+/, "");
+  if (!host || !name) return "";
+  return `${$("f-cscheme").value}://${host}:${$("f-cport").value.trim() || 631}${q.dataset.path || "/"}${name}`;
 }
 
 // Looking: the sidebar of a node is its counts, a form to print there
@@ -501,6 +558,7 @@ function viewSidebar() {
   if (out.length) parts.push(el("p", "→ " + out.join(", "), { className: "font-mono text-xs text-base-content/60" }));
   const k = kindsLine(n);
   if (k) parts.push(k);
+  if (n.kind === "cups") parts.push(printerSetup(n));
   const dest = dests.find((d) => d.name === n.name);
   if (dest) {
     const form = el("form", undefined, { className: "flex flex-col gap-2 border-t border-base-300 pt-3" });
@@ -565,41 +623,181 @@ function viewSidebar() {
   if (n.kind === "export") listedSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
 }
 
+// tab is the sidebar's tab of a saved node: its settings, or its usage
+// (how computers, applications and devices reach it, and what is at it).
+let tab = "settings";
+
 function renderSidebar() {
   if (!editable) return viewSidebar();
   const aside = $("sidebar");
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) {
     aside.replaceChildren(
-      el("p", "Click a node to edit it here, or add one with “+ Add a node”. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take.", { className: "text-sm text-base-content/60" }),
+      el("p", "Click a node to edit it here, or add one with “+ Add a node”: it is placed at once, and connected when the nodes after it are there. Drag from a node's right port onto another node to connect them; a display's port sets its fallback printer. A node's title bar is colored by its role (source, control flow, filter, transform, sink), with an icon of its kind. The ports and the edges are colored by what flows: blue a .bdf document, green data (for a template node), amber any file as received (for a convert node), purple several kinds. A queue, a class, a filter or an inbox is typed by its first edge, on either side: in front of a printer it carries .bdf, and takes .bdf alone; one with no edge yet is hollow. While you drag an edge, the nodes that would not take it fade and the wire turns red over them. An edge drawn dashed and red no longer connects: a change of settings left it carrying what the node after it does not take.", { className: "text-sm text-base-content/60" }),
       el("a", "The manual: the editor, and every kind of node", { className: "link mt-2 block text-sm", href: "/help/topology#editor", target: "_blank", rel: "noopener" }),
     );
     return;
   }
+  const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
+  head.append(kindIcon(n.kind, 20), kindBadge(n.kind));
+  if (draft) head.append(el("span", "new", { className: "badge badge-outline" }));
+  else {
+    head.append(el("h3", n.title || n.name, { className: "text-lg font-semibold" }));
+    if (n.title && n.title !== n.name) head.append(el("span", n.name, { className: "font-mono text-sm text-base-content/60" }));
+    head.append(scopeBadge(n));
+  }
+  // the manual's section of the kind (the language is the browser's)
+  head.append(el("a", "Help", { className: "link link-hover ml-auto text-xs text-base-content/60", href: "/help/nodes#" + n.kind, target: "_blank", rel: "noopener", title: "The manual: " + (KINDS[n.kind] || n.kind) + " nodes" }));
+  if (draft) {
+    aside.replaceChildren(head, settingsForm(n));
+    return;
+  }
+  const settings = el("div");
+  settings.append(settingsForm(n));
+  if (n.kind === "template") {
+    const tpls = section("Templates");
+    settings.append(tpls);
+    templatesSection(n, tpls).catch((e) => status(e.message, true));
+  }
+  const usage = el("div", undefined, { className: "flex flex-col gap-2" });
+  usagePanel(n, usage);
+  const panels = { settings, usage };
+  const tabs = el("div", undefined, { role: "tablist", className: "tabs tabs-border mt-1 mb-2" });
+  const show = () => {
+    for (const t of tabs.children) {
+      t.classList.toggle("tab-active", t.dataset.tab === tab);
+      t.setAttribute("aria-selected", String(t.dataset.tab === tab));
+    }
+    for (const [id, p] of Object.entries(panels)) p.style.display = id === tab ? "" : "none";
+  };
+  for (const [id, label] of [["settings", "Settings"], ["usage", "Usage"]]) {
+    const t = el("button", label, { type: "button", role: "tab", className: "tab" });
+    t.dataset.tab = id;
+    t.addEventListener("click", () => {
+      tab = id;
+      show();
+    });
+    tabs.append(t);
+  }
+  show();
+  aside.replaceChildren(head, tabs, settings, usage);
+}
+
+// NAME_RE is the shape of a node's name, as the server takes it (nameRE,
+// model.go): it is in the URLs, and the records are kept under it.
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+
+// nameError tells what is wrong with a name typed for a node (self: the
+// node's name now; "" for one being added), or "" when it is fine.
+function nameError(v, self) {
+  if (!v) return "A name is needed: other nodes and the URLs call the node by it.";
+  if (/\s/.test(v)) return "No spaces: letters, digits, . _ and - only.";
+  const bad = [...v].find((c) => !/[A-Za-z0-9_.-]/.test(c));
+  if (bad) return `“${bad}” is not taken: letters, digits, . _ and - only.`;
+  if (!NAME_RE.test(v)) return v.length > 64 ? `64 characters at most (${v.length} now).` : "It starts with a letter or a digit.";
+  const other = topo.find((x) => x.name === v && x.name !== self);
+  if (other) return `Taken: another node (${KINDS[other.kind] || other.kind}${other.title ? ", " + other.title : ""}) is named ${v}.`;
+  return "";
+}
+
+// renameNote says what renaming a node changes: where it is reached.
+function renameNote(n, to) {
+  const at = [];
+  if (n.kind === "cups") at.push(`/printers/${to} on its port`, `/ipp/print/${to}`);
+  if (n.in) at.push(`/in/${to}`);
+  if (n.kind === "export") at.push(`/out/${to}`);
+  const where = at.length ? ` It is reached at ${at.join(", ")} from then on: computers and applications set up with ${n.name} must be set up again.` : "";
+  return `Saving renames it to ${to}.${where} The nodes that send to it follow; the jobs that reached it keep ${n.name}.`;
+}
+
+// liveCheck checks a field as it is typed: it turns red, with what is
+// wrong under it, and the form is not sent until it is right (test gives
+// the error, or ""). note gives what is said under it meanwhile, and
+// whether it is a warning: [text, warn].
+function liveCheck(box, test, note) {
+  const msg = el("p", "", { className: "label whitespace-normal" });
+  let touched = !!box.value;
+  const run = () => {
+    const err = touched ? test(box.value) : "";
+    box.classList.toggle("input-error", !!err);
+    box.setCustomValidity(err);
+    box.setAttribute("aria-invalid", err ? "true" : "false");
+    const [text, warn] = err ? [err, false] : note(box.value);
+    msg.textContent = text;
+    msg.className = "label whitespace-normal" + (err ? " text-error" : warn ? " text-warning" : "");
+  };
+  box.addEventListener("input", () => {
+    touched = true;
+    run();
+  });
+  run();
+  return msg;
+}
+
+// nameField is a node's name, checked as it is typed. Changing a saved
+// node's name renames it when it is saved (POST /api/nodes/<name>/rename).
+function nameField(n) {
+  const self = draft ? "" : n.name;
+  const box = input("f-name", self, { placeholder: "intake, both, tokyo, review, wh-a, laser, audit", required: true, autocomplete: "off", spellcheck: false, maxLength: 80 });
+  if (draft) box.addEventListener("input", () => canvas.draw());
+  const f = field("Name", box);
+  f.append(liveCheck(box, (v) => nameError(v, self), (v) => (!draft && v !== n.name ? [renameNote(n, v), true] : ["The system's name: letters, digits, . _ and -, no spaces. Other nodes and the URLs call the node by it; the title is what people read.", false])));
+  return f;
+}
+
+// nextPort is the first port from 6310 that no node has: the server gives
+// a CUPS server put without a port the same.
+function nextPort(self) {
+  const used = new Set(topo.filter((x) => x.name !== self).map((x) => x.port).filter(Boolean));
+  let p = 6310;
+  while (used.has(p)) p++;
+  return p;
+}
+
+// portField is the port of an entry of its own (an endpoint's REST, a
+// CUPS server's IPP): a node being added gets the first port free from
+// 6310; none where this process has no ports (serverless).
+function portField(n, what, empty) {
+  const none = me && me.ports === false;
+  const self = draft ? "" : n.name;
+  const box = input("f-port", n.port || (draft && !none ? nextPort(self) : ""), { placeholder: none ? "" : empty, inputMode: "numeric", disabled: none, autocomplete: "off" });
+  const f = field("Port (this process only)", box);
+  f.append(liveCheck(box, (v) => {
+    if (!v.trim()) return "";
+    const p = Number(v);
+    if (!/^\d+$/.test(v.trim()) || p < 1024 || p > 65535) return "A port is a number from 1024 to 65535.";
+    const other = topo.find((x) => x.port === p && x.name !== self);
+    return other ? `Port ${p} is ${other.name}'s: ${nextPort(self)} is free.` : "";
+  }, () => [none ? "Not available here (serverless): no node has a port of its own." : what, false]));
+  return f;
+}
+
+// appsField is the apps an entry (an endpoint, a CUPS server) takes with
+// their own credentials.
+function appsField(n, what) {
+  const boxes = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
+  for (const a of apps) {
+    if (a.public) continue; // a frontend reads exports, as a person
+    const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
+    l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name: "app", value: a.id, checked: (n.apps || []).includes(a.id) }), a.id + (a.title ? " · " + a.title : ""));
+    boxes.append(l);
+  }
+  if (!boxes.childElementCount) boxes.append(el("a", "No apps yet: register one", { className: "link text-sm", href: "/admin/apps" }));
+  return field("Apps allowed", boxes, what);
+}
+
+// settingsForm is the form of a node's settings: its title and name, a
+// description, and the fields of its kind.
+function settingsForm(n) {
   const kind = n.kind;
   const form = el("form", undefined, { className: "flex flex-col gap-1" });
-  const head = el("div", undefined, { className: "flex flex-wrap items-center gap-2" });
-  head.append(kindIcon(kind, 20), kindBadge(kind));
-  if (draft) head.append(el("span", "new", { className: "badge badge-outline" }));
-  else head.append(el("h3", n.name, { className: "font-mono text-lg font-semibold" }), scopeBadge(n));
-  // the manual's section of the kind (the language is the browser's)
-  head.append(el("a", "Help", { className: "link link-hover ml-auto text-xs text-base-content/60", href: "/help/nodes#" + kind, target: "_blank", rel: "noopener", title: "The manual: " + (KINDS[kind] || kind) + " nodes" }));
-  form.append(head);
-  if (draft) {
-    const name = input("f-name", "", { placeholder: "intake, both, tokyo, review, wh-a, laser, audit", required: true, pattern: "[A-Za-z0-9][A-Za-z0-9_.\\-]{0,63}", autocomplete: "off" });
-    name.addEventListener("input", () => canvas.draw());
-    form.append(field("Name", name, "Letters, digits, . _ and -. It is the node's IPP destination (/ipp/print/<name>, unless IPP is off) and does not change later."));
-  }
-  form.append(field("Title", input("f-title", n.title || "", { placeholder: "shown in the node beside its kind" })));
+  const title = input("f-title", n.title || "", { placeholder: "what people call it: 3F laser, invoices of the ERP …", maxLength: 255 });
+  if (draft) title.addEventListener("input", () => canvas.draw());
+  form.append(field("Title", title, "Shown on the node, in any characters."));
+  form.append(nameField(n));
   const note = el("textarea", undefined, { id: "f-description", className: "textarea textarea-sm w-full", rows: 3, value: n.description || "", placeholder: "what it is for: the invoices of the ERP, PDF only; printed on the 3rd floor …" });
   note.addEventListener("input", () => canvas.draw());
   form.append(field("Description", note, "A note shown in the node, under its [kind], as in a C4 diagram: the first lines on the canvas, all of it here."));
-  // an export is read from, never sent to: no IPP printer either way
-  if (kind !== "export") {
-    const noIPP = el("label", undefined, { className: "inline-flex items-center gap-2 text-sm" });
-    noIPP.append(el("input", undefined, { id: "f-no-ipp", type: "checkbox", className: "checkbox checkbox-sm", checked: !!n.no_ipp }), "No IPP printer: computers cannot print to this node at /ipp/print (other nodes still send to it)");
-    form.append(noIPP);
-  }
   if (!draft) {
     const k = kindsLine(n);
     if (k) form.append(k);
@@ -609,32 +807,34 @@ function renderSidebar() {
     const box = el("textarea", undefined, { id: "f-settings", className: "textarea textarea-sm w-full font-mono", rows: 8, value: JSON.stringify(settingsOf(n, kind), null, 2) });
     form.append(field("Settings (JSON)", box, ADAPTER_SETTINGS[kind] + " Credentials are names: the secret is the server's DOCFLOW_CRED_<name>, or a file. Text, recipients, paths and headers may use {{meta.<key>}}."));
   }
+  const later = " None yet is fine: connect it when the nodes after it are there (a job that reaches it meanwhile gets an error).";
   switch (kind) {
     case "endpoint": {
-      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job. The port on the canvas adds one too."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job. The port on the canvas adds one too." + later));
       entryFields(form, n);
       form.append(metaField(n));
-      form.append(portField(n, "Applications may POST to http://<this host>:<port>/ as well as to " + n.in + "."));
-      const appBoxes = el("div", undefined, { className: "flex flex-wrap gap-x-3 gap-y-1" });
-      for (const a of apps) {
-        const l = el("label", undefined, { className: "inline-flex items-center gap-1 text-sm" });
-        l.append(el("input", undefined, { type: "checkbox", className: "checkbox checkbox-xs", name: "app", value: a.id, checked: (n.apps || []).includes(a.id) }), a.id + (a.title ? " · " + a.title : ""));
-        appBoxes.append(l);
-      }
-      if (!apps.length) appBoxes.append(el("a", "No apps yet: register one", { className: "link text-sm", href: "/admin/apps" }));
-      form.append(field("Apps allowed", appBoxes, "Apps send here with their token (POST /oauth/token) or IPP Basic, within their scopes; the endpoint's own key works as well."));
+      form.append(portField(n, "Applications may POST to http://<this host>:<port>/ as well as to /in/" + (n.name || "<name>") + ". Empty: /in/<name> on the manager's own port only.", "empty: the manager's own port only"));
+      form.append(appsField(n, "Apps send here with their token (POST /oauth/token), within their scopes; the endpoint's own key works as well."));
       break;
     }
-    case "cups":
-      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets what computers print here: a printer makes it a relay, a sink shows the pages, a filter keeps only what fits. The port on the canvas adds one too."));
+    case "s3-trigger":
+      form.append(field("Bucket", input("f-url", n.url || "", { placeholder: "s3://bucket?region=ap-northeast-1 (&endpoint=… for MinIO, R2)", required: true, autocomplete: "off" }), "The bucket whose objects it takes. It does not listen to the bucket: an S3 event's reference is POSTed to it (Usage)."));
+      form.append(field("Credential", input("f-credential", n.credential || "", { placeholder: "a name: the secret is DOCFLOW_CRED_<name> (access-key:secret-key)", autocomplete: "off" }), "None: AWS's own (the environment, the role)."));
+      form.append(field("Prefix", input("f-path", n.path || "", { placeholder: "incoming/ (the keys it takes are under it)", autocomplete: "off" }), "A key elsewhere, or another bucket, is refused (403)."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the object read." + later));
       entryFields(form, n);
       form.append(metaField(n));
-      form.append(portField(n, `Computers print to ipp://<this host>:<port>/printers/${n.name || "<name>"}, the one printer of this CUPS server; lpstat -h <host>:<port> -p lists it.`, true));
+      break;
+    case "cups":
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets what computers print here, made .bdf: a printer makes it a relay, a sink shows the pages, a filter keeps only what fits. The port on the canvas adds one too." + later));
+      form.append(metaField(n));
+      form.append(portField(n, `Computers print to ipp://<this host>:<port>/printers/${n.name || "<name>"}, the one printer of this CUPS server (Usage). Empty: the first port free from 6310.`, "empty: the first free from 6310"));
       form.append(field("TLS certificate (file)", input("f-tls-cert", n.tls_cert || "", { placeholder: "/etc/bdf/cups.crt; empty: plain ipp" })));
       form.append(field("TLS key (file)", input("f-tls-key", n.tls_key || "", { placeholder: "/etc/bdf/cups.key" })));
+      form.append(appsField(n, "Apps print here with their id and secret as IPP Basic, within their scopes; computers print as the submit tokens allow."));
       break;
     case "sink":
-      form.append(field("Latest", input("f-latest", n.latest || "", { placeholder: "10", inputMode: "numeric" }), "How many of the latest documents it keeps; an older one goes when a newer comes. Their first pages show here and on the canvas."));
+      form.append(field("Latest", input("f-latest", n.latest || "", { placeholder: "10", inputMode: "numeric" }), "How many of the latest documents it keeps; an older one goes when a newer comes. Their first pages show in Usage and on the canvas."));
       break;
     case "export": {
       form.append(field("Owner's key", input("f-by", n.by || "", { placeholder: "customer_id (a metadata key); empty: a person reads what they could see of the job", autocomplete: "off" }), "The metadata key whose value says whose a document is: a person reads the documents whose value is them, under the subject below. A backend reads every one."));
@@ -653,16 +853,16 @@ function renderSidebar() {
       break;
     }
     case "queue":
-      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job: a fan-out when there are several."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "Every node chosen gets the job: a fan-out when there are several." + later));
       break;
     case "template": {
-      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The form filled (.bdf) goes to every node chosen."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The form filled (.bdf) goes to every node chosen." + later));
       form.append(field("The data as it came to", picker("original", n.original || [], n.name, n.reaches || []), "What reached the node goes on as it was to every node chosen (an archive of originals, say), with the same trace as the document made: each archive's record names the other's object."));
       const ids = n.templates || [];
-      const options = [["", "— named by the metadata below —"], ...ids.map((id) => [id, id])];
+      const options = [["", ids.length ? "— named by the metadata below, or none yet —" : "— none yet: upload one once the node is added —"], ...ids.map((id) => [id, id])];
       if (n.template && !ids.includes(n.template)) options.push([n.template, n.template + " (not uploaded yet)"]);
-      form.append(field("Template", selectInput("f-template", options, n.template || ""), draft ? "Add the node first, then upload its templates below and choose one here." : "One of the templates uploaded below, filled with the data that reaches the node."));
-      form.append(field("Or the metadata key naming it", input("f-template-from", n.template_from || "", { placeholder: "doc_type: the sender's X-Meta-Doc-Type names the template" }), "A job whose metadata lacks the key, or names a template that is not here, fails here (no retry)."));
+      form.append(field("Template", selectInput("f-template", options, n.template || ""), draft ? "Add the node first, then upload its templates (Settings, below) and choose one here." : "One of the templates uploaded below, filled with the data that reaches the node."));
+      form.append(field("Or the metadata key naming it", input("f-template-from", n.template_from || "", { placeholder: "doc_type: the sender's X-Meta-Doc-Type names the template" }), "A job whose metadata lacks the key, or names a template that is not here, fails here (no retry); so does one while the node names no template."));
       form.append(field("Name of a list", input("f-list-name", n.list_name || "", { placeholder: "the file's name without its extension (orders for orders.csv)" }), "Data that is a list of records (a CSV file, a sheet, a JSON array) is the value of this name for the template; an object is the data itself."));
       const strict = el("label", undefined, { className: "inline-flex items-center gap-2 text-sm" });
       strict.append(el("input", undefined, { id: "f-strict", type: "checkbox", className: "checkbox checkbox-sm", checked: !!n.strict }), "Strict: refuse data that lacks a name the template looks up (else the tag is left empty, with a warning)");
@@ -670,12 +870,12 @@ function renderSidebar() {
       break;
     }
     case "convert":
-      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The .bdf document made goes to every node chosen; a .bdf that reaches the node goes on as it is."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The .bdf document made goes to every node chosen; a .bdf that reaches the node goes on as it is." + later));
       form.append(field("The file as it came to", picker("original", n.original || [], n.name, n.reaches || []), "What reached the node goes on as it was to every node chosen (an archive of originals, say), with the same trace as the document made: each archive's record names the other's object."));
       form.append(formatsField(n, "Formats converted", "None checked: every format the converter reads. A file of another format fails here (no retry); JSON and YAML have no document of their own: fill a template with them."));
       break;
     case "sign":
-      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The signed .bdf goes to every node chosen."));
+      form.append(field("Forwards to", picker("to", n.to || [], n.name), "The signed .bdf goes to every node chosen." + later));
       form.append(field("Role", input("f-sign-role", n.sign_role || "", { placeholder: "witness" }), "The role the signature says Docflow signs in. The signature also says the node, the job, who sent it (as Docflow verified it) and when it was received; bdf verify shows them. The key is the manager's (docflow.sign_key_file); without one the node fails its jobs."));
       break;
     case "filter": {
@@ -690,7 +890,7 @@ function renderSidebar() {
       break;
     }
     case "class":
-      form.append(field("Members", input("f-members", (n.members || []).join(", "), { placeholder: "mfp-3f, mfp-4f", list: "node-names", required: true })));
+      form.append(field("Members", input("f-members", (n.members || []).join(", "), { placeholder: "mfp-3f, mfp-4f", list: "node-names" }), "None yet is fine: add the members when they are there (a job that reaches the class meanwhile gets an error)."));
       form.append(field("Policy", selectInput("f-policy", [["round-robin", "in turn (round-robin)"], ["failover", "the first member (failover)"]], n.policy || "round-robin"), "A printer that does not take the job is skipped for the next member."));
       break;
     case "inbox":
@@ -703,26 +903,29 @@ function renderSidebar() {
       form.append(field("Collection", input("f-collection", n.collection || "", { placeholder: "archive-" + (n.name || "<name>") })));
       break;
     case "display": {
-      const printers = topo.filter((x) => x.kind === "printer").map((x) => [x.name, x.name + (x.title ? " · " + x.title : "")]);
+      const printers = topo.filter((x) => PRINTS.has(x.kind)).map((x) => [x.name, (x.title || x.name) + (x.title ? " · " + x.name : "")]);
       form.append(field("Fallback printer", selectInput("f-fallback", [["", "none"], ...printers], n.fallback ? n.fallback.printer : ""), "Prints the slips nobody opened in time, and every unopened slip while no device is connected. The port on the canvas sets it too."));
       form.append(field("Print after", input("f-after", n.fallback && n.fallback.after ? n.fallback.after : "", { placeholder: "10m; empty: only while no device is connected" })));
       form.append(field("Keep", input("f-keep", n.keep || "", { placeholder: "14d" }), "How long slips done or canceled stay on the devices."));
       form.append(field("Offline after", input("f-offline", n.offline_after || "", { placeholder: "2m" }), "How long a device may be silent and still count as connected."));
       break;
     }
+    case "cups-out":
+      cupsOutFields(form, n);
+      break;
     case "printer": {
       const u = parsePrinterURL(n.url);
       const row = el("div", undefined, { className: "grid grid-cols-[6rem_1fr_5rem] gap-1" });
-      row.append(selectInput("f-scheme", SCHEMES.map((s) => [s, s + "://"]), SCHEMES.includes(u.scheme) ? u.scheme : "ipp"), input("f-host", u.host, { placeholder: "host or address", required: true }), input("f-port", u.port, { placeholder: "port", inputMode: "numeric" }));
+      row.append(selectInput("f-scheme", SCHEMES.map((s) => [s, s + "://"]), SCHEMES.includes(u.scheme) ? u.scheme : "ipp"), input("f-host", u.host, { placeholder: "host or address", required: true }), input("f-pport", u.port, { placeholder: "port", inputMode: "numeric" }));
       form.append(field("Protocol and address", row, "ipp and ipps are IPP printers; socket is port 9100 (raw), lpd a line printer daemon."));
       form.append(field("Path", input("f-path", u.path, { placeholder: "/ipp/print (ipp); a queue name (lpd)" })));
       const preview = el("p", "", { className: "font-mono text-xs text-base-content/60 break-all" });
       const update = () => (preview.textContent = composeURL() || "—");
       form.append(preview);
       setTimeout(update);
-      for (const id of ["f-scheme", "f-host", "f-port", "f-path"]) form.querySelector("#" + id).addEventListener("input", update);
+      for (const id of ["f-scheme", "f-host", "f-pport", "f-path"]) form.querySelector("#" + id).addEventListener("input", update);
       form.append(field("Route", selectInput("f-route", [["direct", "direct: the manager sends to it"], ["branch", "branch: a bdf printd of the site fetches (not yet)"]], n.route || "direct")));
-      form.append(field("Preview (a fake printer)", input("f-preview", n.preview || "", { placeholder: "http://127.0.0.1:8650/api/printers/eve" }), "The printer on a tools/fakeprinter farm's API: what it received is shown below. For development and demonstrations."));
+      form.append(field("Preview (a fake printer)", input("f-preview", n.preview || "", { placeholder: "http://127.0.0.1:8650/api/printers/eve" }), "The printer on a tools/fakeprinter farm's API: what it received is shown in Usage. For development and demonstrations."));
       break;
     }
   }
@@ -748,18 +951,24 @@ function renderSidebar() {
   }
   form.append(actions);
   form.addEventListener("submit", save);
-  aside.replaceChildren(form);
-  if (!draft) extras(n, aside);
+  return form;
 }
 
 async function save(ev) {
   ev.preventDefault();
   const n = draft || topo.find((x) => x.name === selected);
   if (!n) return;
-  const name = draft ? $("f-name").value.trim() : n.name;
+  const name = $("f-name").value;
+  const bad = nameError(name, draft ? "" : n.name);
+  if (bad) {
+    status(bad, true);
+    $("f-name").focus();
+    return;
+  }
+  const rename = !draft && name !== n.name;
+  if (rename && !confirm(`Rename ${n.name} to ${name}?\n\n${renameNote(n, name)}`)) return;
   const body = { kind: n.kind, title: $("f-title").value.trim(), description: $("f-description").value.trim(), scope: $("f-scope").value };
   if ($("f-owner").value.trim()) body.owner = $("f-owner").value.trim();
-  if ($("f-no-ipp")?.checked) body.no_ipp = true;
   if ($("f-settings")) {
     try {
       Object.assign(body, JSON.parse($("f-settings").value || "{}"));
@@ -770,23 +979,31 @@ async function save(ev) {
   }
   if (document.querySelector('input[name="on_error"]')) body.on_error = picked("on_error");
   const dur = (id) => ($(id).value.trim() ? $(id).value.trim() : undefined);
+  const entry = () => {
+    body.to = picked("to");
+    body.accept = $("f-accept").value;
+    body.output = $("f-output").value;
+    body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
+    body.meta = metaOf();
+  };
   switch (n.kind) {
     case "endpoint":
-      body.to = picked("to");
-      body.accept = $("f-accept").value;
-      body.output = $("f-output").value;
-      body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
-      body.meta = metaOf();
+      entry();
       body.apps = [...document.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
       if (dur("f-port")) body.port = Number(dur("f-port"));
       break;
+    case "s3-trigger":
+      entry();
+      body.url = $("f-url").value.trim();
+      if (dur("f-credential")) body.credential = dur("f-credential");
+      if (dur("f-path")) body.path = dur("f-path");
+      break;
     case "cups":
+      // what computers print is a document, made .bdf: no accept, output or formats
       body.to = picked("to");
-      body.accept = $("f-accept").value;
-      body.output = $("f-output").value;
-      body.formats = [...document.querySelectorAll('input[name="fmt"]:checked')].map((c) => c.value);
       body.meta = metaOf();
-      body.port = Number($("f-port").value);
+      body.apps = [...document.querySelectorAll('input[name="app"]:checked')].map((c) => c.value);
+      if (dur("f-port")) body.port = Number(dur("f-port"));
       if (dur("f-tls-cert")) body.tls_cert = dur("f-tls-cert");
       if (dur("f-tls-key")) body.tls_key = dur("f-tls-key");
       break;
@@ -845,14 +1062,28 @@ async function save(ev) {
       body.keep = dur("f-keep");
       body.offline_after = dur("f-offline");
       break;
+    case "cups-out":
+      body.url = cupsQueueURL();
+      if (dur("f-credential")) body.credential = dur("f-credential");
+      break;
     case "printer":
       body.url = composeURL();
       body.route = $("f-route").value;
       if (dur("f-preview")) body.preview = dur("f-preview");
       break;
   }
+  let renamed = false;
   try {
     const was = new Set(brokenEdges(topo));
+    if (rename) {
+      // the node, its edges and what is kept under its name move first;
+      // its settings are saved under the new name after
+      await api("POST", `/api/nodes/${encodeURIComponent(n.name)}/rename`, { name });
+      renamed = true;
+      selected = name;
+      canvas.setSelected(name);
+      status(`${n.name} renamed ${name}`);
+    }
     const res = await api("PUT", "/api/nodes/" + encodeURIComponent(name), body);
     if (draft) {
       await api("PUT", "/api/layout", { positions: { [name]: canvas.draftPos() } });
@@ -869,7 +1100,8 @@ async function save(ev) {
     if (broke.length) status(`Saved, but ${broke.join("; ")} no longer connect${broke.length === 1 ? "s" : ""}: the node after does not take what reaches it (the dashed edge). Put a convert or a template node between, or remove the edge.`, true);
     $("sidebar").scrollTop = 0;
   } catch (e) {
-    status(e.message, true);
+    status(renamed ? `Renamed ${name}, but its settings were not saved: ${e.message}` : e.message, true);
+    if (renamed) await load();
   }
 }
 
@@ -885,63 +1117,122 @@ async function remove(name) {
   }
 }
 
-// extras are what is at a saved node: its jobs, an endpoint's entry, key
-// and templates, a display's devices.
-function extras(n, aside) {
-  const links = el("div", undefined, { className: "mt-3 flex flex-col gap-1 border-t border-base-300 pt-3 text-sm" });
-  // where the node is reached (an export is read from, never sent to)
-  for (const [via, path] of Object.entries(n.addresses || {})) links.append(el("span", `${via.toUpperCase()}: ${path}`, { className: "font-mono text-xs text-base-content/60 break-all" }));
-  const row = el("div", undefined, { className: "flex flex-wrap gap-3" });
+// usagePanel is how a saved node is used: how computers, applications
+// and devices reach it from outside (a CUPS server, an endpoint, an S3
+// trigger, an export, a display), and what is at it now.
+function usagePanel(n, box) {
+  switch (n.kind) {
+    case "cups":
+      box.append(printerSetup(n));
+      break;
+    case "endpoint":
+    case "s3-trigger":
+      entryUsage(n, box);
+      break;
+    case "export": {
+      const sec = section("Readers");
+      sec.append(hint("Applications and people fetch what is listed here: the entries newest first (?owner= one owner's, ?limit=), one entry, its record (the archive's, or of an inbox's the job), and the document itself, read from the inbox or the archive before it. A backend sends its token (POST /oauth/token, client credentials, the scope export); a frontend sends the token it got for the person (a public client, /oauth/authorize with PKCE); the pages use their session."));
+      sec.append(pre(`GET ${location.origin}/out/${n.name}
+GET ${location.origin}/out/${n.name}/<job>
+GET ${location.origin}/out/${n.name}/<job>/record
+GET ${location.origin}/out/${n.name}/<job>/document`));
+      box.append(sec);
+      listedSection(n.name).then((x) => box.append(x)).catch((e) => status(e.message, true));
+      break;
+    }
+    case "printer":
+    case "cups-out": {
+      const sec = section("Where it prints");
+      sec.append(hint(n.kind === "cups-out"
+        ? "This system prints each job to this queue of the CUPS server over IPP, as a computer does: PDF (or PWG Raster), as the queue says it supports; the server's filters and drivers do the rest." + (n.credential ? ` It gives the user and password of the credential ${n.credential}.` : "")
+        : "This system prints each job on this printer itself: over IPP (PDF or PWG Raster, as the printer says it supports), or raw over 9100 or LPD."));
+      sec.append(pre(n.url || "—"));
+      box.append(sec);
+      break;
+    }
+    case "display": {
+      const dev = section("Devices");
+      box.append(dev);
+      devicesSection(n, dev).catch((e) => status(e.message, true));
+      break;
+    }
+    default:
+      box.append(hint("Other nodes send to it along the edges: it is not reached from outside. Computers print to a CUPS server (source); applications post to an endpoint, and a bucket's events to an S3 trigger."));
+  }
+  // the first section has no rule above it, under the tabs
+  box.firstElementChild?.classList.remove("mt-3", "border-t", "pt-3");
+  const row = el("div", undefined, { className: "mt-3 flex flex-wrap gap-3 border-t border-base-300 pt-3 text-sm" });
   if (n.kind !== "export") row.append(el("a", "Jobs sent here", { className: "link", href: "/admin/jobs?dest=" + encodeURIComponent(n.name) }));
   if (n.kind === "inbox") row.append(el("a", `${n.held || 0} held: open the inbox`, { className: "link", href: "/admin/inboxes" }));
   if (n.pending) row.append(el("a", `${n.pending} deliveries waiting`, { className: "link", href: "/admin/deliveries" }));
   // what an entry or an export publishes, for an application's developer
   if (n.in || n.kind === "export") row.append(el("a", "OpenAPI", { className: "link", href: "/api/openapi.json?node=" + encodeURIComponent(n.name), download: n.name + ".openapi.json" }));
-  links.append(row);
-  aside.append(links);
-  if (n.kind === "endpoint") {
-    const entry = section("Entry");
-    entry.append(hint(n.accept === "data" ? "Applications POST the data (JSON, YAML, CSV, an Excel workbook or a Parquet file) as the body, with the key as a bearer token; ?name= names the job, X-Meta-* headers and ?meta.<key>= give metadata." : "Applications POST a document as the body, with the key as a bearer token; ?name= names the job, X-Meta-* headers and ?meta.<key>= give metadata."));
-    entry.append(el("pre", `POST ${location.origin}${n.in}`, { className: "overflow-x-auto rounded-box bg-base-200 p-2 font-mono text-xs break-all whitespace-pre-wrap" }));
-    const key = section("Key");
-    key.append(hint("Shown once, when the endpoint was made or the key rotated; the manager keeps only its hash. Rotating it makes a new one and the old one stops working."));
-    key.append(button("Rotate key", async () => showKey(n.name, (await api("POST", `/api/nodes/${n.name}/key`)).key), "btn btn-sm btn-outline w-fit"));
-    aside.append(entry, key);
-  }
-  if (n.kind === "template") {
-    const tpls = section("Templates");
-    aside.append(tpls);
-    templatesSection(n, tpls).catch((e) => status(e.message, true));
-  }
-  if (n.kind === "display") {
-    const dev = section("Devices");
-    aside.append(dev);
-    devicesSection(n, dev).catch((e) => status(e.message, true));
-  }
-  if (n.kind === "cups" && n.port) {
-    const sec = section("Clients");
-    sec.append(hint(`As on a CUPS server with one printer, ${n.name}: what is printed there goes on to ${(n.to || []).join(", ") || "nothing yet"}. Add the printer on a computer with the URL, or list it:`));
-    sec.append(el("pre", `ipp://${location.hostname}:${n.port}/printers/${n.name}
-lpstat -h ${location.hostname}:${n.port} -p`, { className: "overflow-x-auto rounded-box bg-base-200 p-2 font-mono text-xs whitespace-pre-wrap" }));
-    aside.append(sec);
-  }
-  if (n.kind === "sink") {
-    keptSection(n.name).then((sec) => aside.append(sec)).catch((e) => status(e.message, true));
-  }
-  if (n.kind === "export") {
-    const sec = section("Readers");
-    sec.append(hint("Applications and people fetch what is listed here: the entries newest first (?owner= one owner's, ?limit=), one entry, the archive's record of it, and the document itself. A backend sends its token (POST /oauth/token, client credentials, the scope export); a frontend sends the token it got for the person (a public client, /oauth/authorize with PKCE); the pages use their session."));
-    sec.append(el("pre", `GET ${location.origin}/out/${n.name}
-GET ${location.origin}/out/${n.name}/<job>
-GET ${location.origin}/out/${n.name}/<job>/record
-GET ${location.origin}/out/${n.name}/<job>/document`, { className: "overflow-x-auto rounded-box bg-base-200 p-2 font-mono text-xs whitespace-pre-wrap" }));
-    aside.append(sec);
-    listedSection(n.name).then((box) => aside.append(box)).catch((e) => status(e.message, true));
-  }
+  box.append(row);
+  if (n.kind === "sink") keptSection(n.name).then((x) => box.append(x)).catch((e) => status(e.message, true));
   if (n.kind === "printer" && n.preview) {
     const sec = section("Preview");
-    aside.append(sec);
+    box.append(sec);
     previewSection(n, sec).catch((e) => status(e.message, true));
+  }
+}
+
+function pre(text) {
+  return el("pre", text, { className: "overflow-x-auto rounded-box bg-base-200 p-2 font-mono text-xs break-all whitespace-pre-wrap" });
+}
+
+// printerSetup tells how a computer adds a CUPS server node as a printer:
+// at its own port, as a printer of a CUPS server (/printers/<name>), or
+// at the manager's own server (/ipp/print/<name>: on a serverless
+// deployment, the only one). Looking, the port is not known: the
+// manager's own server is said.
+function printerSetup(n) {
+  const sec = section("Add it as a printer");
+  const own = !!n.port;
+  const scheme = own ? (n.tls_cert ? "ipps" : "ipp") : location.protocol === "https:" ? "ipps" : "ipp";
+  const host = own ? `${location.hostname}:${n.port}` : location.host;
+  const queue = own ? `printers/${n.name}` : ((n.addresses || {}).ipp || `/ipp/print/${n.name}`).replace(/^\//, "");
+  const url = `${scheme}://${host}/${queue}`;
+  sec.append(hint(`Computers and business systems add it as an IPP printer, as a printer of a CUPS server: what they print goes on to ${(n.to || []).join(", ") || "no node yet (connect it in Settings)"}, made .bdf.`));
+  sec.append(pre(url));
+  const steps = el("ul", undefined, { className: "flex list-disc flex-col gap-1 pl-5 text-sm" });
+  steps.append(
+    el("li", `macOS: System Settings → Printers & Scanners → Add Printer → IP: address ${host}, protocol IPP (Internet Printing Protocol), queue ${queue}.`),
+    el("li", `Windows: Settings → Printers & scanners → Add device → Add manually → Select a shared printer by name: ${scheme === "ipps" ? "https" : "http"}://${host}/${queue}.`),
+    el("li", "Linux, or a Mac's Terminal (CUPS):"),
+  );
+  sec.append(steps);
+  sec.append(pre(`lpadmin -p ${n.name} -E -v ${url}` + (own ? `\nlpstat -h ${host} -p` : "")));
+  const listed = n.apps || [];
+  sec.append(hint("When the manager has submit tokens (DOCFLOW_SUBMIT_TOKENS), the computer asks for a name and a password: a token's name and its secret." + (listed.length ? ` The apps allowed (${listed.join(", ")}) give their id and secret instead.` : "") + (own ? ` The manager's own server takes it too, at ${location.protocol === "https:" ? "ipps" : "ipp"}://${location.host}${(n.addresses || {}).ipp || ""}.` : "")));
+  return sec;
+}
+
+// entryUsage is how applications send to an endpoint, and how a bucket's
+// events reach an S3 trigger: the request, and the node's key.
+function entryUsage(n, box) {
+  const sec = section(n.kind === "endpoint" ? "Send to it" : "Point the bucket's events at it");
+  if (n.kind === "endpoint") {
+    sec.append(hint(n.accept === "data" ? "Applications POST the data (JSON, YAML, CSV, an Excel workbook or a Parquet file) as the body, with the key as a bearer token; ?name= names the job, X-Meta-* headers and ?meta.<key>= give metadata." : "Applications POST a document as the body, with the key as a bearer token; ?name= names the job, X-Meta-* headers and ?meta.<key>= give metadata."));
+    sec.append(pre(`curl -X POST -H "Authorization: Bearer <key>" --data-binary @${n.accept === "data" ? "orders.json" : "document.pdf"} "${location.origin}${n.in}?name=document"` + (n.port ? `\n\nor, on its own port: POST http://${location.hostname}:${n.port}/` : "")));
+    const allowed = n.apps || [];
+    sec.append(hint(allowed.length ? `Apps that send with their own token (POST /oauth/token): ${allowed.join(", ")}.` : "No app sends with its own token yet: only the key (Settings → Apps allowed)."));
+  } else {
+    sec.append(hint("It does not listen to the bucket: an S3 event goes to an EventBridge rule (an API destination) or a Lambda, which posts the object's reference here with the node's key. The body is {\"bucket\": …, \"key\": …}, an S3 notification (Records, one object), or the event EventBridge sends (detail). The node reads the object itself; the job goes on with s3.bucket and s3.key in its metadata."));
+    sec.append(pre(`curl -X POST -H "Authorization: Bearer <key>" -H "Content-Type: application/json" \\
+  --data '{"bucket": "${bucketOf(n.url) || "<bucket>"}", "key": "${n.path ? n.path + "/" : ""}<key>"}' "${location.origin}${n.in}"`));
+  }
+  const key = section("Key");
+  key.append(hint("Shown once, when the node was made or the key rotated; the manager keeps only its hash. Rotating it makes a new one and the old one stops working."));
+  key.append(button("Rotate key", async () => showKey(n.name, (await api("POST", `/api/nodes/${n.name}/key`)).key), "btn btn-sm btn-outline w-fit"));
+  box.append(sec, key);
+}
+
+// bucketOf is the bucket of an s3:// URL.
+function bucketOf(u) {
+  try {
+    return new URL(u).hostname;
+  } catch {
+    return "";
   }
 }
 

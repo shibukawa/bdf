@@ -1,6 +1,6 @@
 # 文書の入口 {#where-documents-come-in}
 
-ジョブは入口からネットワークに入ります。Jobs ページのフォーム、どのノードにもある IPP プリンタ、アプリケーションが POST するエンドポイント、コンピュータが印刷する CUPS サーバーノード、API です。誰がどこへ送れるかは[ノードのスコープ](roles.md#scopes)にあります。
+ジョブは入口からネットワークに入ります。Jobs ページのフォーム、アプリケーションが POST するエンドポイント、コンピュータが印刷する CUPS サーバーノード、バケットのイベントが届く S3 トリガー、API です。誰がどこへ送れるかは[ノードのスコープ](roles.md#scopes)にあります。
 
 ## ページから {#pages}
 
@@ -8,7 +8,7 @@
 
 ## IPP {#ipp}
 
-すべてのノードは `ipp://<host>:<port>/ipp/print/<name>` の IPP プリンタです（マネージャーが TLS の後ろにあれば `ipps://`）。キューの名前に印刷したジョブは先へ送られ、プリンタの名前なら印刷され、ディスプレイの名前なら表示されます。コンピュータはノードを IPP プリンタとして追加します。`bdf printers -url ipp://<host>:<port>/ipp/print` はすべてのノードを一覧します。CUPS クライアントの `lpstat` も同じです（CUPS-Get-Printers）。リクエストのジョブ属性（`media`、`copies`、`job-name` ……）と `document-metadata` はメタデータ `ipp.<name>` としてジョブとともに流れます。アカウント（`job-account-id`、`job-accounting-user-id`）、`document-metadata`、独自の属性（`x-…`）は、ジョブが届くプリンタへ渡ります（[プリンタへ渡るもの](flow.md#ipp-attributes)）。
+IPP が入ってくるのは CUPS サーバーノードだけです（[CUPS サーバーノード](#cups)）。コンピュータはそれを IPP プリンタとして追加します。ノード自身のポート（`ipp://<host>:<port>/printers/<name>`）でも、マネージャー自身のサーバー（`ipp://<host>:<port>/ipp/print/<name>`。マネージャーが TLS の後ろにあれば `ipps://`）でも構いません。ジョブはそこからノードのエッジをたどります。`bdf printers -url ipp://<host>:<port>/ipp/print` はそれらを一覧します。CUPS クライアントの `lpstat` も同じです（CUPS-Get-Printers）。ほかのノードは IPP プリンタではありません。キュー、プリンタ、ディスプレイにはエッジを通って届きます。リクエストのジョブ属性（`media`、`copies`、`job-name` ……）と `document-metadata` はメタデータ `ipp.<name>` としてジョブとともに流れます。アカウント（`job-account-id`、`job-accounting-user-id`）、`document-metadata`、独自の属性（`x-…`）は、ジョブが届くプリンタへ渡ります（[プリンタへ渡るもの](flow.md#ipp-attributes)）。
 
 IPP で印刷できる人は運用者の `submit_tokens` で決まります。1 つでも設定されていれば、クライアントはトークンの名前とシークレットを Basic 認証で渡します（アプリも id とシークレットを同じように渡します）。設定がなければ、マネージャーに届く誰もが送れます。クライアントが渡す requesting-user-name は「(as …)」として表示されるだけで、確認はしません。
 
@@ -46,7 +46,7 @@ curl -H "Authorization: Bearer bdfk_…" \
 
 ## CUPS サーバーノード {#cups}
 
-CUPS サーバーノード（[CUPS サーバー](nodes.md#cups)）は、印刷するコンピュータや業務システム向けです。プロセス自身のポートで動く CUPS サーバーで、プリンタはノード自身の 1 台です。コンピュータは、ほかの CUPS プリンタと同じように `ipp://<host>:<port>/printers/<name>`（ノードに証明書があれば `ipps://`）でプリンタを追加し、そこに印刷したものはノードの `to` へ進みます。プリンタならノードは中継になり、シンクなら印刷されたものが見え、フィルタなら条件に合うものだけが残ります。`lpstat -h <host>:<port> -p` で一覧できます。ノードのサイドバーに URL とコマンドが表示されます。
+CUPS サーバーノード（[CUPS サーバー](nodes.md#cups)）は、印刷するコンピュータや業務システム向けです。プロセス自身のポートで動く CUPS サーバーで、プリンタはノード自身の 1 台です。コンピュータは、ほかの CUPS プリンタと同じように `ipp://<host>:<port>/printers/<name>`（ノードに証明書があれば `ipps://`）でプリンタを追加し、そこに印刷したものはノードの `to` へ進みます。プリンタならノードは中継になり、シンクなら印刷されたものが見え、フィルタなら条件に合うものだけが残ります。`lpstat -h <host>:<port> -p` で一覧できます。新しい CUPS サーバーには、6310 から、どのノードも使っていない最初のポートが付きます。逆に、このシステムから CUPS サーバーのキューへ印刷するには、エッジの先に [CUPS サーバー（シンク）](nodes.md#cups-out)を置きます。ノードの Usage タブに、URL、macOS・Windows・CUPS での追加のしかた、コマンドが表示されます。
 
 ## アプリ {#apps}
 
@@ -63,7 +63,7 @@ CUPS サーバーノード（[CUPS サーバー](nodes.md#cups)）は、印刷�
 
 シークレットはアプリを追加したときに 1 度だけ表示され、Rotate secret で新しいものを作ります（古いものは使えなくなります）。Disable はアプリの資格情報と発行済みのトークンを拒否し、Delete は削除します。
 
-アプリは `POST /oauth/token`（OAuth 2.0 のクライアントクレデンシャルグラント）でトークンを取り、ベアラーとして、そのアプリを Apps allowed（エンドポイントのサイドバー）に挙げたエンドポイントへ送ります。または、id とシークレットを Basic 認証で渡して IPP で印刷します。
+アプリは `POST /oauth/token`（OAuth 2.0 のクライアントクレデンシャルグラント）でトークンを取り、ベアラーとして、そのアプリを Apps allowed（エンドポイントのサイドバー）に挙げたエンドポイントへ送ります。または、同じようにそのアプリを挙げた CUPS サーバーノードへ、id とシークレットを Basic 認証で渡して IPP で印刷します。
 
 ```sh
 curl -u 'erp:<secret>' -d grant_type=client_credentials https://<host>/oauth/token

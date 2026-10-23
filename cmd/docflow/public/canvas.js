@@ -44,7 +44,7 @@ const GAP = 30; // between the rows the nodes are laid out in
 // what picks by rules (filter), what makes a new payload of it
 // (transform), and where it ends (sink).
 export const ROLES = { source: "Source", flow: "Control flow", filter: "Filter", transform: "Transform", sink: "Sink" };
-export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", template: "transform", convert: "transform", sign: "transform", display: "sink", printer: "sink", archive: "sink", sink: "sink", export: "sink", "s3-trigger": "source", notify: "flow", render: "transform", smtp: "sink", s3: "sink", http: "sink" };
+export const ROLE_OF = { endpoint: "source", cups: "source", queue: "flow", class: "flow", inbox: "flow", filter: "filter", template: "transform", convert: "transform", sign: "transform", display: "sink", printer: "sink", "cups-out": "sink", archive: "sink", sink: "sink", export: "sink", "s3-trigger": "source", notify: "flow", render: "transform", smtp: "sink", s3: "sink", http: "sink" };
 export const ROLE_COLOR = { source: "#0f766e", flow: "#4338ca", filter: "#be185d", transform: "#c2410c", sink: "#334155" };
 // The icons of the kinds: strokes in a 24 by 24 box.
 const ICONS = {
@@ -60,6 +60,8 @@ const ICONS = {
   inbox: ["M5.5 5h13l3.5 7v7H2v-7z", "M2 12h5l2 3h6l2-3h5"],
   display: ["M3 4h18v12H3z", "M8 21h8", "M12 16v5"],
   printer: ["M6 9V3h12v6", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v7H6z"],
+  // the CUPS server's racks, with what goes out to its queues
+  "cups-out": ["M3 5h12v6H3z", "M3 13h12v6H3z", "M6 8h.01", "M6 16h.01", "M17 12h5", "M19 9l3 3-3 3"],
   archive: ["M3 4h18v4H3z", "M5 8v12h14V8", "M10 12h4"],
   sink: ["M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
   // the two HTTP exits, on the same tray: HTTP (pull) an arrow going up
@@ -72,11 +74,13 @@ const ICONS = {
 // its fallback printer, an archive what it wrote)
 const OUT_PORT = new Set(["endpoint", "cups", "queue", "class", "filter", "template", "convert", "sign", "inbox", "display", "archive"]);
 // the exits read from outside: applications and people fetch what an
-// export lists, drawn as an arrow going out
-const EXIT = new Set(["export"]);
+// export lists, and what a printer or a CUPS server (sink) is sent over
+// IPP, drawn as an arrow going out
+const EXIT = new Set(["export", "printer", "cups-out"]);
 // the entries: their input is from outside the network (an endpoint's
-// REST, a CUPS server's IPP port), drawn as an arrow coming in
-const ENTRY = new Set(["endpoint", "cups"]);
+// REST, a CUPS server's IPP port, an S3 event's reference), drawn as an
+// arrow coming in
+const ENTRY = new Set(["endpoint", "cups", "s3-trigger"]);
 // the kinds that keep what reaches them (kinds.go: stocks): along their
 // to, to HTTP (pull), they send a stocked file, and what reaches them to
 // the others; the kinds that take a stocked file alone
@@ -84,7 +88,10 @@ const STOCKS = new Set(["inbox", "archive"]);
 const TAKES_STOCKED = new Set(["export"]);
 // the kinds of node that send on what reaches them: typed by their first
 // edge, on either side (kinds.go: passesOn)
-const PASSES_ON = new Set(["queue", "class", "filter", "inbox", "endpoint", "cups", "archive"]);
+const PASSES_ON = new Set(["queue", "class", "filter", "inbox", "endpoint", "cups", "s3-trigger", "archive"]);
+// the kinds a display's fallback prints on: they send .bdf out over IPP
+// (and a printer over 9100 or LPD)
+export const PRINTS = new Set(["printer", "cups-out"]);
 // the kinds of node that send on a .bdf whatever reaches them: a template
 // or a convert node the one it makes, a display the one its fallback
 // printer prints
@@ -224,8 +231,8 @@ export function legend(box) {
 // and connect), onSelect(name or null), onMove(name, pos), onConnect(node,
 // toName), onReject(node, toName, why) (an edge dropped on a node that
 // cannot take it), onRemoveEdge(node, edge), draftLabel() and
-// draftNote() (the name and the description typed for a node being
-// added).
+// draftNote() (the title, or the name, and the description typed for a
+// node being added).
 export function createCanvas(svg, opts = {}) {
   const { editable = false, onSelect = () => {}, onMove = () => {}, onConnect = () => {}, onReject = () => {}, onRemoveEdge = () => {}, draftLabel = () => "", draftNote = () => "" } = opts;
   let topo = []; // the nodes, as /api/topology lists them
@@ -405,7 +412,7 @@ export function createCanvas(svg, opts = {}) {
   function canConnect(a, b) {
     if (a.name === b.name) return { ok: false, why: "a node does not send to itself" };
     if (b.kind === "cups") return { ok: false, why: `${b.name} is a CUPS server: it takes what computers print there, not what other nodes send` };
-    if (a.kind === "display" && b.kind !== "printer") return { ok: false, why: `a display's port sets its fallback printer; ${b.name} is a ${(KINDS[b.kind] || b.kind).toLowerCase()}` };
+    if (a.kind === "display" && !PRINTS.has(b.kind)) return { ok: false, why: `a display's port sets its fallback printer; ${b.name} is a ${(KINDS[b.kind] || b.kind).toLowerCase()}` };
     if (edgesOf(a).some((e) => e.to === b.name)) return { ok: false, already: true, why: `${a.name} sends to ${b.name} already` };
     if (reaches(b.name, a.name)) return { ok: false, why: `a cycle: ${b.name} leads back to ${a.name}` };
     // HTTP (pull) takes a stocked file, which an inbox or an archive
@@ -570,8 +577,8 @@ export function createCanvas(svg, opts = {}) {
   // take it fades, and the port of one that would is lit.
   // box draws the body of a node into a group, as a C4 element: the
   // white box of a height, the title bar in the role's color with the
-  // kind's icon and the node's name, the kind as a tag ([Printer]) with
-  // the title and what is at the node after it, and the lines of the
+  // kind's icon and the node's title, the kind as a tag ([Printer]) with
+  // the name and what is at the node after it, and the lines of the
   // description.
   function box(g, kind, title, tag, rest, lines, h, titleMax, restMax) {
     g.append(svgEl("rect", { width: NODE_W, height: h, rx: "8", fill: BASE_FILL, stroke: BORDER, "stroke-width": "1.5" }));
@@ -607,13 +614,13 @@ export function createCanvas(svg, opts = {}) {
     if (isSelected) g.append(svgEl("rect", { x: "-4", y: "-4", width: NODE_W + 8, height: h + 8, rx: "11", fill: "none", stroke: "#4f46e5", "stroke-width": "2", opacity: "0.7" }));
     // a sink shows the first page of the latest document it keeps
     const latest = latestOf(n);
-    // the name is the title bar's; the kind, the title and what is at
-    // the node are the line under it
+    // the title (the name when it has none) is the title bar's; the
+    // kind, the name and what is at the node are the line under it
     const parts = [];
-    if (n.title && n.title !== n.name) parts.push(n.title);
+    if (n.title && n.title !== n.name) parts.push(n.name);
     parts.push(...counts(n));
     const first = g.childElementCount;
-    box(g, n.kind, n.name, KINDS[n.kind] || n.kind, parts.join(" · "), lines, h, latest ? 14 : 20, latest ? 24 : 32);
+    box(g, n.kind, n.title || n.name, KINDS[n.kind] || n.kind, parts.join(" · "), lines, h, latest ? 14 : 20, latest ? 24 : 32);
     // a node nothing fits any more is marked
     if (t.dead) {
       g.children[first].setAttribute("stroke", BROKEN_COLOR);
@@ -645,7 +652,7 @@ export function createCanvas(svg, opts = {}) {
       // CUPS server's port, applications POST to an endpoint
       const inArrow = svgEl("path", { d: `M -30 ${h / 2} L -8 ${h / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": arrow("#64748b") });
       const x = svgEl("title");
-      x.textContent = n.kind === "cups" ? `IPP${n.port ? " on port " + n.port : ""}: computers print here, and the job goes on along the edges` : `REST${n.port ? " on port " + n.port : ""}: applications POST here, and the job goes on along the edges`;
+      x.textContent = n.kind === "cups" ? `IPP${n.port ? " on port " + n.port : ""}: computers print here, and the job goes on along the edges` : n.kind === "s3-trigger" ? "REST: an S3 event's reference is POSTed here, and the object read goes on along the edges" : `REST${n.port ? " on port " + n.port : ""}: applications POST here, and the job goes on along the edges`;
       inArrow.append(x);
       g.append(inArrow);
     }
@@ -653,7 +660,7 @@ export function createCanvas(svg, opts = {}) {
       // what an export lists is fetched from outside: GET /out/<name>
       const outArrow = svgEl("path", { d: `M ${NODE_W + 8} ${h / 2} L ${NODE_W + 30} ${h / 2}`, fill: "none", stroke: "#64748b", "stroke-width": "2", "stroke-dasharray": "3 3", "marker-end": arrow("#64748b") });
       const x = svgEl("title");
-      x.textContent = "REST: applications and people fetch the documents listed here (GET /out/" + n.name + ")";
+      x.textContent = n.kind === "export" ? "REST: applications and people fetch the documents listed here (GET /out/" + n.name + ")" : `${n.kind === "cups-out" ? "IPP: printed to a CUPS server's queue" : "Printed on the printer"}${n.url ? ", " + n.url : ""}`;
       outArrow.append(x);
       g.append(outArrow);
     }

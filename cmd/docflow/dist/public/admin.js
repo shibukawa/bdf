@@ -74,7 +74,7 @@ export function badge(text, cls = "badge-ghost") {
   return el("span", text, { className: "badge " + cls });
 }
 
-export const KINDS = { endpoint: "Endpoint", cups: "CUPS server", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", sign: "Sign", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "HTTP (pull)", render: "Render", notify: "Notify", smtp: "Mail (SMTP)", s3: "S3", "s3-trigger": "S3 Trigger", http: "HTTP (push)" };
+export const KINDS = { endpoint: "Endpoint", cups: "CUPS server (source)", "cups-out": "CUPS server (sink)", queue: "Queue", class: "Class", filter: "Filter", template: "Template", convert: "Convert", sign: "Sign", inbox: "Inbox", archive: "Archive", display: "Display", printer: "Printer", sink: "Sink", export: "HTTP (pull)", render: "Render", notify: "Notify", smtp: "Mail (SMTP)", s3: "S3", "s3-trigger": "S3 Trigger", http: "HTTP (push)" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
@@ -90,6 +90,7 @@ export const KIND_BADGE = {
   archive: "badge-neutral badge-soft",
   display: "badge-info badge-soft",
   printer: "badge-neutral badge-soft",
+  "cups-out": "badge-neutral badge-soft",
 };
 
 export function kindBadge(kind) {

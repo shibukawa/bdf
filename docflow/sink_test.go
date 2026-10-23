@@ -100,8 +100,21 @@ func TestPortHandler(t *testing.T) {
 	ctx := context.Background()
 	e.display("wh-a", Node{Title: "Warehouse A"})
 	e.printer("laser")
-	e.node("cups1", Node{Kind: KindCups, Port: 6310}, http.StatusBadRequest)
-	e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}}, http.StatusBadRequest)
+	// put before the nodes after it, on the first port free from 6310;
+	// what computers print is a document: no accept, output or formats
+	var got Node
+	json.Unmarshal(e.node("cups1", Node{Kind: KindCups, Accept: AcceptData, Output: OutputFile, Formats: []string{"pdf"}}, http.StatusOK), &got)
+	if got.Port != FirstPort || got.Accept != AcceptFile || got.Output != OutputBDF || len(got.Formats) != 0 || len(got.To) != 0 {
+		t.Fatalf("cups1 %+v", got)
+	}
+	json.Unmarshal(e.node("cups2", Node{Kind: KindCups}, http.StatusOK), &got)
+	if got.Port != FirstPort+1 {
+		t.Fatalf("cups2 on %d", got.Port)
+	}
+	e.admin("DELETE", "/api/nodes/cups2", nil, http.StatusNoContent)
+	if json.Unmarshal(e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}}, http.StatusOK), &got); got.Port != FirstPort {
+		t.Fatalf("cups1 moved to %d", got.Port)
+	}
 	e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}, Port: 80}, http.StatusBadRequest)
 	e.node("cups1", Node{Kind: KindCups, To: []string{"wh-a"}, Port: 6310, TLSCert: "cert.pem"}, http.StatusBadRequest)
 	e.node("cups1", Node{Kind: KindCups, To: []string{"nowhere"}, Port: 6310}, http.StatusBadRequest)
@@ -159,12 +172,15 @@ func TestPortHandler(t *testing.T) {
 	if res, err := http.Get(cups.URL + "/"); err != nil || res.StatusCode != http.StatusOK {
 		t.Fatalf("GET on the port: %v", err)
 	}
-	// on the manager's own server the node is a destination like any
-	if js := e.printJob("cups1", "own server", 1); js.State != ipp.JobProcessing {
-		t.Fatalf("print to the node on the manager's server: %+v", js)
+	// on the manager's own server the node is an IPP printer at
+	// /ipp/print/<node>, and a destination of the API like any
+	if js, err := e.ippClient("cups1").PrintJob(ctx, "own server", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1))); err != nil || js.State != ipp.JobProcessing {
+		t.Fatalf("print to the node on the manager's server: %+v %v", js, err)
 	}
-
-	if j := e.job(3); j.Dest != "cups1" || legs(j) != "cups1:routed wh-a:shown laser:pending" {
+	if j := e.job(3); j.Dest != "cups1" || j.Source != "ipp" || legs(j) != "cups1:routed wh-a:shown laser:pending" {
+		t.Fatalf("job %+v", j)
+	}
+	if j := e.printJob("cups1", "by the API", 1); j.Number != 4 || j.Source != "api" || legs(j) != "cups1:routed wh-a:shown laser:pending" {
 		t.Fatalf("job %+v", j)
 	}
 	// the endpoint's port: every POST is to it, with its key
@@ -185,7 +201,7 @@ func TestPortHandler(t *testing.T) {
 	if post(made.Key) != http.StatusCreated || post("") != http.StatusUnauthorized {
 		t.Fatal("the endpoint's port")
 	}
-	if j := e.job(4); j.Dest != "api" || j.Source != "endpoint" {
+	if j := e.job(5); j.Dest != "api" || j.Source != "endpoint" {
 
 		t.Fatalf("job %+v", j)
 	}

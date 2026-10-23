@@ -52,7 +52,8 @@ func TestKinds(t *testing.T) {
 		t.Fatalf("typed: %s", out)
 	}
 	e.node("raw", Node{Kind: KindEndpoint, Output: "maybe", To: []string{"audit"}}, http.StatusBadRequest)
-	e.node("conv", Node{Kind: KindConvert}, http.StatusBadRequest)
+	// a node is put before the nodes after it
+	e.node("conv", Node{Kind: KindConvert}, http.StatusOK)
 	e.node("conv", Node{Kind: KindConvert, To: []string{"laser"}, Formats: []string{"PDF/A"}}, http.StatusBadRequest)
 	e.node("conv", Node{Kind: KindConvert, To: []string{"laser"}}, http.StatusOK)
 	e.node("fan", Node{Kind: KindQueue, To: []string{"audit", "conv"}}, http.StatusOK)
@@ -259,8 +260,12 @@ func TestKinds(t *testing.T) {
 	}
 	// the nodes the deliveries of the jobs refer to stay
 	e.admin("DELETE", "/api/nodes/conv", nil, http.StatusConflict)
-	if _, err := e.ippClient("forms").PrintJob(ctx, "x", "application/x-bdf", nil, bytes.NewReader(testDoc(t, 1))); !ipp.IsStatus(err, ipp.StatusClientErrorDocumentFormatError) {
-		t.Fatalf("a document to a template node: %v", err)
+	if res, _ := e.do(nil, "POST", "/api/destinations/forms/jobs?name=x", adminToken, testDoc(t, 1)); res.StatusCode != http.StatusUnsupportedMediaType {
+		t.Fatalf("a document to a template node: %d", res.StatusCode)
+	}
+	// nor does a CUPS server send it one: what computers print is a document
+	if out := e.node("cups1", Node{Kind: KindCups, To: []string{"forms"}}, http.StatusBadRequest); !strings.Contains(string(out), "forms (template) takes data, but bdf reaches it") {
+		t.Fatalf("a CUPS server to a template node: %s", out)
 	}
 }
 
@@ -338,15 +343,18 @@ func TestMeta(t *testing.T) {
 	if res, _ := e.do(nil, "POST", "/in/tagged?name=e&meta.a="+strings.Repeat("x", 17<<10), tagged.Key, testDoc(t, 1)); res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("too much: %d", res.StatusCode)
 	}
-	// IPP: the job attributes, and who printed
-	c := &ipp.Client{URL: e.srv.URL + IPPPath + "/tagged", User: "wms", Username: "wms", Password: "s3cret"}
+	// IPP, at a CUPS server with metadata of its own: the job attributes,
+	// and who printed
+	e.node("cups1", Node{Kind: KindCups, To: []string{"sort"}, Meta: map[string]any{"site": "tokyo"}}, http.StatusOK)
+	c := &ipp.Client{URL: e.srv.URL + IPPPath + "/cups1", User: "wms", Username: "wms", Password: "s3cret"}
 	js, err := c.PrintJob(ctx, "ipp", "application/x-bdf", []ipp.Attribute{ipp.Attr("copies", ipp.Integer(2)), ipp.Attr("media", ipp.Keyword("iso_a4_210x297mm"))}, bytes.NewReader(testDoc(t, 1)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := e.job(js.ID)
-	if got.Meta["ipp.copies"] != float64(2) || got.Meta["ipp.media"] != "iso_a4_210x297mm" || got.Meta["ipp.document-format"] != "application/x-bdf" || got.Meta["$sender"] != "wms" || got.Meta["$source"] != "ipp" || got.Meta["site"] != "tokyo" {
-		t.Fatalf("ipp meta %+v", got.Meta)
+	if got.Meta["ipp.copies"] != float64(2) || got.Meta["ipp.media"] != "iso_a4_210x297mm" || got.Meta["ipp.document-format"] != "application/x-bdf" || got.Meta["$sender"] != "wms" || got.Meta["$source"] != "ipp" ||
+		got.Meta["$entry"] != "cups1" || got.Meta["site"] != "tokyo" || legs(got) != "cups1:routed sort:routed(otherwise) audit:pending" {
+		t.Fatalf("ipp meta %+v: %s", got.Meta, legs(got))
 	}
 	// the API's destinations take metadata too
 	res, out := e.do(nil, "POST", "/api/destinations/keep/jobs?name=f&meta.dept=ops", "wms:s3cret", testDoc(t, 1))

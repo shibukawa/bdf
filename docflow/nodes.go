@@ -38,9 +38,9 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 		return "", err
 	}
 	n := Node{Name: in.Name, Kind: in.Kind, Title: clip(strings.TrimSpace(in.Title), 255), Description: clip(strings.TrimSpace(in.Description), 1000), Scope: in.Scope, Owner: in.Owner,
-		NoIPP: in.NoIPP, OnError: cleanNames(in.OnError)}
+		OnError: cleanNames(in.OnError)}
 	if k.Role == RoleEntry {
-		if err := checkEntry(k, in, &n); err != nil {
+		if err := checkEntry(ctx, m, k, in, &n); err != nil {
 			return "", err
 		}
 	}
@@ -122,6 +122,38 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 	}
 	m.changed()
 	return key, nil
+}
+
+// FirstPort is the first port FreePort gives.
+const FirstPort = 6310
+
+// Ports tells whether nodes may have ports of their own here (not on a
+// serverless deployment: Options.NoPorts).
+func (m *Manager) Ports() bool { return !m.o.NoPorts }
+
+// FreePort returns the first port from FirstPort that no node but the
+// one named has, for an entry of an adapter that listens on a port of
+// its own (a CUPS server) put without one.
+func (m *Manager) FreePort(ctx context.Context, except string) (int, error) {
+	if m.o.NoPorts {
+		return 0, fmt.Errorf("%w: ports of their own are not available here (serverless): applications call the API instead", ErrInvalid)
+	}
+	nodes, err := m.Nodes(ctx)
+	if err != nil {
+		return 0, err
+	}
+	used := map[int]bool{}
+	for _, o := range nodes {
+		if o.Name != except {
+			used[o.Port] = true
+		}
+	}
+	for p := FirstPort; p <= 65535; p++ {
+		if !used[p] {
+			return p, nil
+		}
+	}
+	return 0, fmt.Errorf("%w: no port free", ErrConflict)
 }
 
 // RotateKey gives an endpoint a new key, returned once; requests with the

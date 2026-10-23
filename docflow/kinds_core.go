@@ -11,8 +11,8 @@ import (
 // The core's kinds of node. Their settings are checked here; what a job
 // that reaches one does is in route.go and the file of the kind.
 func init() {
-	RegisterKind(Kind{Name: KindEndpoint, Role: RoleEntry, PassesOn: true, Check: checkEndpoint})
-	RegisterKind(Kind{Name: KindQueue, Role: RoleRoute, PassesOn: true, Check: checkForward("a queue forwards to at least one node (to)")})
+	RegisterKind(Kind{Name: KindEndpoint, Role: RoleEntry, PassesOn: true})
+	RegisterKind(Kind{Name: KindQueue, Role: RoleRoute, PassesOn: true, Check: checkForward})
 	RegisterKind(Kind{Name: KindClass, Role: RoleRoute, PassesOn: true, Check: checkClass, route: (*Manager).routeClass})
 	RegisterKind(Kind{Name: KindFilter, Role: RoleRoute, PassesOn: true, Check: checkFilter, route: (*Manager).routeFilter})
 	RegisterKind(Kind{Name: KindInbox, Role: RoleRoute, PassesOn: true, Stocks: true, Check: checkInbox,
@@ -45,34 +45,20 @@ func routeStep(kind string) func(m *Manager, ctx context.Context, r *routing, na
 	}
 }
 
-func checkForward(why string) func(ctx context.Context, m *Manager, in Node, n *Node) error {
-	return func(ctx context.Context, m *Manager, in Node, n *Node) error {
-		n.To = cleanNames(in.To)
-		if len(n.To) == 0 {
-			return fmt.Errorf("%w: %s", ErrInvalid, why)
-		}
-		return nil
-	}
-}
-
-func checkEndpoint(ctx context.Context, m *Manager, in Node, n *Node) error {
-	n.Apps = cleanNames(in.Apps)
-	for _, id := range n.Apps {
-		if _, err := m.App(ctx, id); err != nil {
-			return fmt.Errorf("%w: no app %q", ErrInvalid, id)
-		}
-	}
+// checkForward takes where a node forwards to. A node is put before the
+// nodes after it, so none is fine: a job that reaches it meanwhile gets
+// an error there (route).
+func checkForward(ctx context.Context, m *Manager, in Node, n *Node) error {
+	n.To = cleanNames(in.To)
 	return nil
 }
 
 // checkEntry checks the settings every entry has: where it forwards, what
 // it accepts and sends on, the formats it takes, the metadata it adds,
-// and its own port.
-func checkEntry(k *Kind, in Node, n *Node) error {
+// its own port, and the apps that may send to it with their own
+// credentials (an endpoint's REST, a CUPS server's IPP Basic).
+func checkEntry(ctx context.Context, m *Manager, k *Kind, in Node, n *Node) error {
 	n.To = cleanNames(in.To)
-	if len(n.To) == 0 {
-		return fmt.Errorf("%w: a %s forwards what it receives to at least one node (to)", ErrInvalid, k.title())
-	}
 	n.Accept = or(in.Accept, AcceptFile)
 	if n.Accept != AcceptFile && n.Accept != AcceptData {
 		return fmt.Errorf("%w: accept %q: file or data", ErrInvalid, in.Accept)
@@ -93,17 +79,22 @@ func checkEntry(k *Kind, in Node, n *Node) error {
 		return err
 	}
 	n.Port = in.Port
+	n.Apps = cleanNames(in.Apps)
+	for _, id := range n.Apps {
+		if _, err := m.App(ctx, id); err != nil {
+			return fmt.Errorf("%w: no app %q", ErrInvalid, id)
+		}
+	}
 	return nil
 }
 
 func checkTemplate(ctx context.Context, m *Manager, in Node, n *Node) error {
 	n.To = cleanNames(in.To)
-	if len(n.To) == 0 {
-		return fmt.Errorf("%w: a template node sends the form it fills to at least one node (to)", ErrInvalid)
-	}
+	// its templates are uploaded once it is there: none named yet is
+	// fine, and a job that reaches it meanwhile fails there (fill)
 	n.Template, n.TemplateFrom = strings.TrimSpace(in.Template), strings.TrimSpace(in.TemplateFrom)
-	if (n.Template == "") == (n.TemplateFrom == "") {
-		return fmt.Errorf("%w: a template node names the template it fills (template), or the metadata key that names one (template_from)", ErrInvalid)
+	if n.Template != "" && n.TemplateFrom != "" {
+		return fmt.Errorf("%w: a template node names the template it fills (template), or the metadata key that names one (template_from), not both", ErrInvalid)
 	}
 	if n.Template != "" && !templateIDRE.MatchString(n.Template) {
 		return fmt.Errorf("%w: template id %q: letters, digits, _ and -", ErrInvalid, n.Template)
@@ -115,9 +106,6 @@ func checkTemplate(ctx context.Context, m *Manager, in Node, n *Node) error {
 
 func checkConvert(ctx context.Context, m *Manager, in Node, n *Node) error {
 	n.To = cleanNames(in.To)
-	if len(n.To) == 0 {
-		return fmt.Errorf("%w: a convert node sends the document it makes to at least one node (to)", ErrInvalid)
-	}
 	n.Formats = cleanFormats(in.Formats)
 	n.Original = cleanNames(in.Original)
 	return checkFormats(n.Formats)
@@ -125,9 +113,6 @@ func checkConvert(ctx context.Context, m *Manager, in Node, n *Node) error {
 
 func checkSign(ctx context.Context, m *Manager, in Node, n *Node) error {
 	n.To = cleanNames(in.To)
-	if len(n.To) == 0 {
-		return fmt.Errorf("%w: a sign node sends the document it signs to at least one node (to)", ErrInvalid)
-	}
 	n.SignRole = strings.TrimSpace(in.SignRole)
 	if len(n.SignRole) > 64 {
 		return fmt.Errorf("%w: sign_role is 64 bytes at most", ErrInvalid)
@@ -145,9 +130,6 @@ func checkSink(ctx context.Context, m *Manager, in Node, n *Node) error {
 
 func checkClass(ctx context.Context, m *Manager, in Node, n *Node) error {
 	n.Members = cleanNames(in.Members)
-	if len(n.Members) == 0 {
-		return fmt.Errorf("%w: a class has at least one member", ErrInvalid)
-	}
 	n.Policy = or(in.Policy, PolicyRoundRobin)
 	if n.Policy != PolicyRoundRobin && n.Policy != PolicyFailover {
 		return fmt.Errorf("%w: policy %q: round-robin or failover", ErrInvalid, in.Policy)

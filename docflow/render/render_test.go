@@ -74,7 +74,6 @@ func TestRenderSettings(t *testing.T) {
 	for _, n := range []docflow.Node{
 		{Name: "r", Kind: render.KindRender, Format: "svg", To: []string{"out"}},
 		{Name: "r", Kind: render.KindRender, Format: "tiff", To: []string{"out"}},
-		{Name: "r", Kind: render.KindRender},
 	} {
 		if _, err := e.M().PutNode(ctx, n); !errors.Is(err, docflow.ErrInvalid) {
 			t.Errorf("%+v: %v", n, err)
