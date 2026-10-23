@@ -36,7 +36,7 @@ A sink also shows the latest documents it kept, and an export the entries listed
 
 With the role topology, the same page is the editor: the canvas, and the sidebar for the node selected, with the administrator's tabs above.
 
-- **+ Add a node** opens the palette of kinds. Choose one, and the new node appears on the canvas with the sidebar open on it: give it a name and its settings, and press Add; Escape drops it.
+- **+ Add a node** opens the palette of kinds, under four headings: Source, Control (the roles control flow and filter), Convert (transform) and Sink. Choose one, and the new node appears on the canvas with the sidebar open on it: give it a name and its settings, and press Add; Escape drops it.
 - **Click a node** to open it in the sidebar: its settings, and what is at it ([The sidebar of a node](#sidebar)). Save writes the node; Delete, or the Delete key, removes it. A node another node sends to cannot be deleted: remove the edge first.
 - **Drag a node** to move it. Where the nodes are drawn is saved for everyone (the layout), apart from the nodes themselves.
 - **Drag from a node's right port onto another node** to connect them. While you drag, the nodes that would not take what the edge carries fade, the wire turns red over one with the reason, and it snaps to the port of one that takes it; a drop on one that does not is refused before the server is asked. The edge is added to the node's `to` (a queue, an endpoint, a CUPS server, an inbox, a template or a convert node, an archive), to its `members` (a class), to its `otherwise` (a filter: a rule's nodes are set in the rule), or it sets the fallback printer (a display). Click an edge to remove it, after a confirmation.
