@@ -80,7 +80,7 @@ export function badge(text, cls = "badge-ghost") {
 }
 
 // KINDS are the kinds' names, as the palette says them (pages.yaml).
-export const KINDS = { endpoint: _("Endpoint"), cups: _("CUPS server (source)"), "cups-out": _("CUPS server (sink)"), queue: _("Queue"), class: _("Class"), filter: _("Filter"), template: _("Template"), convert: _("Convert"), sign: _("Sign"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer"), sink: _("Sink"), export: _("Export"), render: _("Render"), notify: _("Notify"), smtp: _("Mail (SMTP)"), s3: "S3", "s3-trigger": _("S3 Trigger"), http: "HTTP" };
+export const KINDS = { endpoint: _("Endpoint"), cups: _("CUPS server (source)"), "cups-out": _("CUPS server (sink)"), queue: _("Queue"), class: _("Class"), filter: _("Filter"), template: _("Template"), convert: _("Convert"), sign: _("Sign"), inbox: _("Inbox"), archive: _("Archive"), display: _("Display"), printer: _("Printer"), sink: _("Sink"), export: "HTTP (pull)", render: _("Render"), notify: _("Notify"), smtp: _("Mail (SMTP)"), s3: "S3", "s3-trigger": _("S3 Trigger"), http: "HTTP (push)" };
 export const KIND_BADGE = {
   endpoint: "badge-accent badge-soft",
   cups: "badge-error badge-soft",
@@ -104,11 +104,12 @@ export function kindBadge(kind) {
 }
 
 // The kinds of payload that flow along the edges (kinds.go): a .bdf
-// document, data for a template, or any file as received. Ports, edges
-// and the borders of the nodes are colored by them (canvas.js), as are
-// the jobs' badges: blue, green, amber.
-export const PAYLOADS = { bdf: _(".bdf document"), data: _("data (JSON, YAML, CSV, Excel, Parquet)"), any: _("any file as received") };
-export const PAYLOAD_COLOR = { bdf: "#2563eb", data: "#16a34a", any: "#d97706" };
+// document, data for a template, any file as received, or a stocked
+// file, which an inbox or an archive keeps and sends to HTTP (pull)
+// alone. Ports, edges and the borders of the nodes are colored by them
+// (canvas.js), as are the jobs' badges: blue, green, amber, cyan.
+export const PAYLOADS = { bdf: _(".bdf document"), data: _("data (JSON, YAML, CSV, Excel, Parquet)"), any: _("any file as received"), stocked: _("stocked file (any format, kept by an inbox or an archive)") };
+export const PAYLOAD_COLOR = { bdf: "#2563eb", data: "#16a34a", any: "#d97706", stocked: "#0891b2" };
 
 // payloadBadge tells what a job carries: its kind and format.
 export function payloadBadge(j) {

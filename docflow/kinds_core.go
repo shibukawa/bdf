@@ -15,14 +15,14 @@ func init() {
 	RegisterKind(Kind{Name: KindQueue, Role: RoleRoute, PassesOn: true, Check: checkForward})
 	RegisterKind(Kind{Name: KindClass, Role: RoleRoute, PassesOn: true, Check: checkClass, route: (*Manager).routeClass})
 	RegisterKind(Kind{Name: KindFilter, Role: RoleRoute, PassesOn: true, Check: checkFilter, route: (*Manager).routeFilter})
-	RegisterKind(Kind{Name: KindInbox, Role: RoleRoute, PassesOn: true, Check: checkInbox,
-		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
-			m.routeInbox(ctx, r, name, from)
+	RegisterKind(Kind{Name: KindInbox, Role: RoleRoute, PassesOn: true, Stocks: true, Check: checkInbox,
+		route: func(m *Manager, ctx context.Context, r *routing, name, from string, depth int) {
+			m.routeInbox(ctx, r, name, from, depth)
 		}})
 	RegisterKind(Kind{Name: KindTemplate, Role: RoleStep, Takes: []string{PayloadData}, Makes: PayloadBDF, Check: checkTemplate, route: routeStep(KindTemplate)})
 	RegisterKind(Kind{Name: KindConvert, Role: RoleStep, Makes: PayloadBDF, Check: checkConvert, route: routeStep(KindConvert)})
 	RegisterKind(Kind{Name: KindSign, Role: RoleStep, Takes: []string{PayloadBDF}, Makes: PayloadBDF, Check: checkSign, route: routeStep(KindSign)})
-	RegisterKind(Kind{Name: KindArchive, Role: RoleExit, PassesOn: true, Check: checkArchive, route: routeStep(KindArchive)})
+	RegisterKind(Kind{Name: KindArchive, Role: RoleExit, PassesOn: true, Stocks: true, Check: checkArchive, route: routeStep(KindArchive)})
 	RegisterKind(Kind{Name: KindDisplay, Role: RoleExit, Takes: []string{PayloadBDF}, Makes: PayloadBDF, Fixed: true, Check: checkDisplay,
 		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
 			m.routeDisplay(ctx, r, name, from)
@@ -31,7 +31,7 @@ func init() {
 		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
 			m.routeSink(ctx, r, name, from)
 		}})
-	RegisterKind(Kind{Name: KindExport, Role: RoleExit, Fixed: true, Check: func(ctx context.Context, m *Manager, in Node, n *Node) error { return m.checkExport(ctx, in, n) },
+	RegisterKind(Kind{Name: KindExport, Title: "HTTP (pull)", Role: RoleExit, Takes: []string{PayloadStocked}, Fixed: true, Check: func(ctx context.Context, m *Manager, in Node, n *Node) error { return m.checkExport(ctx, in, n) },
 		route: func(m *Manager, ctx context.Context, r *routing, name, from string, _ int) {
 			m.routeExport(ctx, r, name, from)
 		}})

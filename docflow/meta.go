@@ -12,9 +12,10 @@ import (
 )
 
 // Metadata goes with a job through the topology: what the sender gave
-// (an API request's X-Meta-* headers and ?meta.<key>= parameters, an IPP
-// request's job attributes as ipp.<name>), what the entry adds (Node.Meta)
-// and what the manager verified. A sender's keys are claims: a filter
+// (an API request's X-Meta-* headers and ?meta.<key>= parameters, and
+// the part meta of a multipart body, readBody; an IPP request's job
+// attributes as ipp.<name>), what the entry adds (Node.Meta) and what
+// the manager verified. A sender's keys are claims: a filter
 // routes by them and a template node picks its template by them, as the
 // administrator set up; nothing is authorized by them. The keys the
 // manager verifies start with $, which a sender's cannot: $job,

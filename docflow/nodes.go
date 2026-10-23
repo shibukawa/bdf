@@ -80,10 +80,10 @@ func (m *Manager) PutNode(ctx context.Context, in Node) (key string, err error) 
 	if err := m.acyclic(ctx, &n); err != nil {
 		return "", err
 	}
-	if err := m.typed(ctx, &n); err != nil {
+	if err := m.fromStock(ctx, &n); err != nil {
 		return "", err
 	}
-	if err := m.exportsArchived(ctx, &n); err != nil {
+	if err := m.typed(ctx, &n); err != nil {
 		return "", err
 	}
 	cur, err := m.Node(ctx, n.Name)

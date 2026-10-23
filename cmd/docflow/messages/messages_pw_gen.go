@@ -85,8 +85,8 @@ func PagesAppsLastUsed(loc pw.Locale) string {
 }
 
 var tblPagesAppsNote = [...][]pwruntime.RichSegment{
-	{{Lit: "Applications with credentials of their own. A backend takes a token at "}, {Hole: "token", Lit: "POST /oauth/token"}, {Lit: " with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the exports that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at "}, {Hole: "authorize", Lit: "/oauth/authorize"}, {Lit: " (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the exports as that person. The scopes tick and admin are for a scheduler and for scripts."}}, // en
-	{{Lit: "自前の資格情報を持つアプリケーションです。バックエンドは id とシークレットで "}, {Hole: "token", Lit: "POST /oauth/token"}, {Lit: " からトークンを受け取り（クライアントクレデンシャル）、自分をアプリに挙げたエンドポイントに送り、自分を挙げたエクスポートを読みます（スコープ export）。IPP では、自分を挙げた CUPS サーバーに、同じ id とシークレットを Basic で送ります。シークレットは 1 度だけ表示されます。公開クライアントは人のブラウザで動くフロントエンドです。シークレットを持たず、使っている人のトークンを "}, {Hole: "authorize", Lit: "/oauth/authorize"}, {Lit: "（PKCE 付きの認可コードグラント）で受け取り、リダイレクト URI の 1 つに戻して、その人としてエクスポートを読みます。スコープ tick と admin は、スケジューラとスクリプトのためのものです。"}},                                                                                                                                                                                                                                                                                         // ja
+	{{Lit: "Applications with credentials of their own. A backend takes a token at "}, {Hole: "token", Lit: "POST /oauth/token"}, {Lit: " with its id and secret (client credentials), sends to the endpoints that list it among their apps, and reads the HTTP (pull) nodes that list it (the scope export); over IPP it sends the same id and secret as Basic, to the CUPS servers that list it. The secret is shown once. A public client is a frontend in people's browsers: it has no secret, and gets a token of the person using it at "}, {Hole: "authorize", Lit: "/oauth/authorize"}, {Lit: " (the authorization code grant with PKCE), sent back to one of its redirect URIs, to read the HTTP (pull) nodes as that person. The scopes tick and admin are for a scheduler and for scripts."}}, // en
+	{{Lit: "自前の資格情報を持つアプリケーションです。バックエンドは id とシークレットで "}, {Hole: "token", Lit: "POST /oauth/token"}, {Lit: " からトークンを受け取り（クライアントクレデンシャル）、自分をアプリに挙げたエンドポイントに送り、自分を挙げた HTTP (pull) ノードを読みます（スコープ export）。IPP では、自分を挙げた CUPS サーバーに、同じ id とシークレットを Basic で送ります。シークレットは 1 度だけ表示されます。公開クライアントは人のブラウザで動くフロントエンドです。シークレットを持たず、使っている人のトークンを "}, {Hole: "authorize", Lit: "/oauth/authorize"}, {Lit: "（PKCE 付きの認可コードグラント）で受け取り、リダイレクト URI の 1 つに戻して、その人として HTTP (pull) ノードを読みます。スコープ tick と admin は、スケジューラとスクリプトのためのものです。"}},                                                                                                                                                                                                                                                                                         // ja
 }
 
 // PagesAppsNote renders message "pages.apps-note".
@@ -815,8 +815,8 @@ func PagesKindEndpointNote(loc pw.Locale) string {
 }
 
 var tblPagesKindExport = [...]string{
-	"Export", // en
-	"エクスポート", // ja
+	"HTTP (pull)", // en
+	"HTTP (pull)", // ja
 }
 
 // PagesKindExport renders message "pages.kind-export".
@@ -825,8 +825,8 @@ func PagesKindExport(loc pw.Locale) string {
 }
 
 var tblPagesKindExportNote = [...]string{
-	"lists what an archive wrote, for applications and people to fetch", // en
-	"アーカイブが書いたものを一覧し、アプリケーションや人が取りに来る",                                  // ja
+	"fetched by applications and people from an inbox or an archive", // en
+	"インボックスかアーカイブのものを、アプリケーションや人が取りに来る",                              // ja
 }
 
 // PagesKindExportNote renders message "pages.kind-export-note".
@@ -855,8 +855,8 @@ func PagesKindFilterNote(loc pw.Locale) string {
 }
 
 var tblPagesKindHttp = [...]string{
-	"HTTP", // en
-	"HTTP", // ja
+	"HTTP (push)", // en
+	"HTTP (push)", // ja
 }
 
 // PagesKindHttp renders message "pages.kind-http".
@@ -865,8 +865,8 @@ func PagesKindHttp(loc pw.Locale) string {
 }
 
 var tblPagesKindHttpNote = [...]string{
-	"sent to a web service", // en
-	"Web サービスに送る",           // ja
+	"sent to a web service, as the body or as multipart", // en
+	"Web サービスに送る。ボディそのままか multipart で",                   // ja
 }
 
 // PagesKindHttpNote renders message "pages.kind-http-note".
@@ -1475,8 +1475,8 @@ func PagesTopologyEditNote(loc pw.Locale) string {
 }
 
 var tblPagesTopologyOpenapiTitle = [...]string{
-	"The OpenAPI document of every endpoint and export", // en
-	"すべてのエンドポイントとエクスポートの OpenAPI 文書",                    // ja
+	"The OpenAPI document of every endpoint and HTTP (pull) node", // en
+	"すべてのエンドポイントと HTTP (pull) ノードの OpenAPI 文書",                    // ja
 }
 
 // PagesTopologyOpenapiTitle renders message "pages.topology-openapi-title".

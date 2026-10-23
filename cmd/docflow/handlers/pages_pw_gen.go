@@ -584,19 +584,19 @@ var planTopologyOpsFill30Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 
 var planTopologyOpsFill31Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
-		return messages.PagesKindSmtpNote(pwruntime.MessageLocale(ctx))
+		return messages.PagesKindHttpNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
 var planTopologyOpsFill32Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
-		return messages.PagesKindS3Note(pwruntime.MessageLocale(ctx))
+		return messages.PagesKindSmtpNote(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
 var planTopologyOpsFill33Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.Op[TopologyParams]{
 	planTopologyOps.TextCtx(func(ctx context.Context, p TopologyParams) string {
-		return messages.PagesKindHttpNote(pwruntime.MessageLocale(ctx))
+		return messages.PagesKindS3Note(pwruntime.MessageLocale(ctx))
 	}),
 }}
 
@@ -627,15 +627,15 @@ var planTopologyOpsFill24Plan = &htmlbind.Plan[TopologyParams]{Ops: []htmlbind.O
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: messages.PagesKindSmtp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill31Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: messages.PagesKindHttp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill31Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: messages.PagesKindS3(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill32Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "smtp", Name: messages.PagesKindSmtp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill32Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 	planTopologyOps.ComponentCtx(func(ctx context.Context, p TopologyParams) htmlbind.Fragment {
-		return renderPaletteKind(renderPaletteKindParams{Kind: "http", Name: messages.PagesKindHttp(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill33Plan.Bind(p)})
+		return renderPaletteKind(renderPaletteKindParams{Kind: "s3", Name: messages.PagesKindS3(pwruntime.MessageLocale(ctx)), Children: planTopologyOpsFill33Plan.Bind(p)})
 	}),
 	planTopologyOps.Static(" "),
 }}

@@ -18,14 +18,19 @@ import (
 	"github.com/shibukawa/yuruidb"
 )
 
-// An export is an exit that applications and people fetch documents
-// from, at GET /out/<name>: the documents an archive before it wrote.
-// The job goes on from an archive once it wrote (the archive's To), and
-// the export lists it as it arrives: an entry with where the archive
-// wrote it and whose it is, the value of the metadata key By (a
-// customer's id the sender gave, say). The documents themselves stay in
-// the archive, which keeps them for good; the export reads them from
-// there, so what it lists does not go when the job's record does.
+// An export (HTTP (pull)) is an exit that applications and people fetch
+// documents from, at GET /out/<name>. It takes a stocked file
+// (PayloadStocked) alone: what an inbox or an archive right before it
+// keeps, which says where the document comes from and how long it is
+// there. A job goes on from an archive once it wrote (the archive's To)
+// and stays there for good; an inbox lists the job it holds at the
+// exports of its To as it holds it, and unlists it when a person
+// releases or discards it. The export lists the job as it arrives: an
+// entry with where it is kept and whose it is, the value of the metadata
+// key By (a customer's id the sender gave, say). The documents stay where
+// they are kept and the export reads them from there: an archive's do
+// not go when the job's record does, and an inbox's keep the job while
+// held.
 //
 // Who may read what: an app the export lists among its Apps, with the
 // scope export, reads every entry (a backend that knows its own users;
@@ -54,15 +59,17 @@ const (
 
 func (n *Node) entries() int { return or(n.Entries, defaultEntries) }
 
-// archiveRef is what an archive wrote of a job: the archive, and the key
-// of its objects there (archiveKey).
-type archiveRef struct {
+// stockRef is where an inbox or an archive keeps a job's payload: the
+// node, and the key of the objects an archive wrote (archiveKey) or the
+// item an inbox holds.
+type stockRef struct {
 	Node string
 	Key  string
+	Item string
 }
 
 // ExportEntry is a document an export lists: the job as it reached the
-// export, where the archive wrote it, and whose it is.
+// export, where it is kept (an archive, or an inbox), and whose it is.
 type ExportEntry struct {
 	Job    int32  `json:"job"`
 	Name   string `json:"name,omitempty"`
@@ -76,11 +83,14 @@ type ExportEntry struct {
 	Received time.Time `json:"received"`
 	Listed   time.Time `json:"listed"`
 	// Archive is the archive that wrote it, Key the key of its objects
-	// there, Object the payload's object (the record is Key + ".json"),
-	// and Payload the payload's id in the job.
-	Archive string `json:"archive"`
-	Key     string `json:"key"`
-	Object  string `json:"object"`
+	// there and Object the payload's object (the record is Key +
+	// ".json"); or Inbox is the inbox that holds it, and Item the item.
+	// Payload is the payload's id in the job.
+	Archive string `json:"archive,omitempty"`
+	Key     string `json:"key,omitempty"`
+	Object  string `json:"object,omitempty"`
+	Inbox   string `json:"inbox,omitempty"`
+	Item    string `json:"item,omitempty"`
 	Payload string `json:"payload,omitempty"`
 	// Trace is the step the document came out of or went into, which
 	// names the other side's objects (trace.go).
@@ -140,82 +150,28 @@ func (m *Manager) checkExport(ctx context.Context, in Node, n *Node) error {
 	return nil
 }
 
-// exportsArchived refuses a graph in which a job may reach an export
-// without an archive before it, with n put as it is. The walk starts at
-// every entry, every node nothing sends to (a destination of its own),
-// and every node whose output is a payload no archive wrote: a template
-// or a convert node (what it makes is new) and an inbox (a release is a
-// routing of its own); an archive ends the walk (what goes on from it
-// was written). A job sent straight to a node in between is checked when
-// it is routed.
-func (m *Manager) exportsArchived(ctx context.Context, n *Node) error {
-	list, err := m.Nodes(ctx)
-	if err != nil {
-		return err
-	}
-	nodes := map[string]*Node{}
-	for i := range list {
-		nodes[list[i].Name] = &list[i]
-	}
-	nodes[n.Name] = n
-	var exports []string
-	incoming := map[string]bool{}
-	for _, x := range nodes {
-		if x.Kind == KindExport {
-			exports = append(exports, x.Name)
-		}
-		for _, to := range x.edges() {
-			incoming[to] = true
+// fromStock refuses a new edge of n to a node that takes a stocked file
+// (HTTP (pull)) unless n keeps what it sends there: an inbox or an
+// archive, along its To. Typing refuses most such edges (what reaches n
+// is not a stocked file), but not those of a node nothing reaches yet,
+// to which a job may be sent straight. An edge n had already is left, as
+// typing leaves a broken edge: a job gets a leg of the error there.
+func (m *Manager) fromStock(ctx context.Context, n *Node) error {
+	had := map[string]bool{}
+	if cur, err := m.Node(ctx, n.Name); err == nil {
+		for _, to := range cur.edges() {
+			had[to] = true
 		}
 	}
-	if len(exports) == 0 {
-		return nil
-	}
-	from := map[string]string{} // the node a job came from, on a way without an archive
-	var walk func(name string)
-	walk = func(name string) {
-		for _, to := range nodes[name].edges() {
-			x := nodes[to]
-			if x == nil {
-				continue
-			}
-			if _, seen := from[to]; seen {
-				continue
-			}
-			from[to] = name
-			if x.Kind != KindArchive {
-				walk(to)
-			}
-		}
-	}
-	roots := make([]string, 0, len(nodes))
-	for name, x := range nodes {
-		switch {
-		case x.Kind == KindArchive:
-		case isEntry(x.Kind), x.Kind == KindTemplate, x.Kind == KindConvert, x.Kind == KindSign, x.Kind == KindInbox, !incoming[name]:
-			roots = append(roots, name)
-		}
-	}
-	slices.Sort(roots)
-	for _, root := range roots {
-		if _, seen := from[root]; !seen {
-			from[root] = ""
-			walk(root)
-		}
-	}
-	slices.Sort(exports)
-	for _, name := range exports {
-		if _, reached := from[name]; !reached {
+	for _, to := range n.edges() {
+		if had[to] {
 			continue
 		}
-		path := []string{name}
-		for prev := from[name]; prev != ""; prev = from[prev] {
-			path = append([]string{prev}, path...)
+		x, err := m.Node(ctx, to)
+		if err != nil || !takes(x.Kind).has(PayloadStocked) || n.stockedTo(x) {
+			continue
 		}
-		if len(path) == 1 {
-			continue // a root itself: jobs sent straight to it are refused when routed
-		}
-		return fmt.Errorf("%w: %s (export) lists what an archive wrote, but a job reaches it without one: %s", ErrInvalid, name, strings.Join(path, " → "))
+		return fmt.Errorf("%w: %s (HTTP (pull)) takes a stocked file, which only an inbox or an archive sends, along its to: not %s (%s)", ErrInvalid, to, n.Name, n.Kind)
 	}
 	return nil
 }
@@ -245,22 +201,27 @@ func exportListID(node, owner string) string {
 	return node + "." + ownerHash(owner)
 }
 
-// routeExport lists the job at an export: what the archive before it
-// wrote, under the owner its metadata names.
+// routeExport lists the job at an export: what the inbox or the archive
+// right before it keeps, under the owner its metadata names.
 func (m *Manager) routeExport(ctx context.Context, r *routing, name, from string) {
 	n, err := m.nodeOfKind(ctx, name, KindExport)
 	if err != nil {
 		r.add(Leg{Node: name, Kind: KindExport, From: from, State: LegError, Error: err.Error()})
 		return
 	}
-	if r.archived == nil || r.payload == nil {
-		r.add(Leg{Node: name, Kind: KindExport, From: from, State: LegError, Error: "reached without an archive before it: an export lists what an archive wrote"})
+	if r.stock == nil || r.stock.Node != from || r.payload == nil {
+		r.add(Leg{Node: name, Kind: KindExport, From: from, State: LegError, Error: "not from an inbox or an archive right before it: HTTP (pull) lists what one of them keeps"})
 		return
 	}
 	j, p := r.job, r.payload
 	view := metaView(j, p, r.trace)
 	e := ExportEntry{Job: j.Number, Name: j.Name, Kind: p.Kind, Format: p.Format, Pages: p.Pages, Size: p.Size, SHA256: p.SHA256, Received: j.Received, Listed: r.now,
-		Archive: r.archived.Node, Key: r.archived.Key, Object: r.archived.Key + extensionOf(p), Payload: p.ID, Trace: r.trace, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Group: j.Group}
+		Payload: p.ID, Trace: r.trace, SubmittedBy: j.SubmittedBy, ClaimedUser: j.ClaimedUser, Group: j.Group}
+	if r.stock.Item != "" {
+		e.Inbox, e.Item = r.stock.Node, r.stock.Item
+	} else {
+		e.Archive, e.Key, e.Object = r.stock.Node, r.stock.Key, r.stock.Key+extensionOf(p)
+	}
 	if n.By != "" {
 		e.Owner = clip(view[n.By], 255)
 	}
@@ -307,6 +268,49 @@ func (m *Manager) listAt(ctx context.Context, id, job string, limit int) error {
 	return err
 }
 
+// unlist takes a job off an export: its entry, and its place in the
+// lists (every one's, and its owner's). A job not listed there is left.
+func (m *Manager) unlist(ctx context.Context, name string, job int32) error {
+	id := jobID(job)
+	rec, err := m.st.db.Get[exportEntryRecord](ctx, exportEntryID(name, id))
+	if errors.Is(err, yuruidb.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return mapErr(err)
+	}
+	lists := []string{exportListID(name, "")}
+	if n, err := m.Node(ctx, name); err == nil && rec.Data.Owner != "" {
+		lists = append(lists, exportListID(name, n.listKey(rec.Data.Owner)))
+	}
+	for _, list := range lists {
+		if _, err := change(ctx, m.st.db, list, false, func(l *exportList) error {
+			if !slices.Contains(l.Jobs, id) {
+				return errSkip
+			}
+			l.Jobs = slices.DeleteFunc(l.Jobs, func(x string) bool { return x == id })
+			l.Seq++
+			return nil
+		}); err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+	}
+	if err := m.st.db.Delete[exportEntryRecord](ctx, rec.ID(), rec.Revision()); err != nil && !errors.Is(err, yuruidb.ErrNotFound) {
+		return mapErr(err)
+	}
+	return nil
+}
+
+// kept tells whether what an entry lists is still where it is kept: an
+// inbox's item while it is held (an archive keeps it for good).
+func (m *Manager) kept(ctx context.Context, e *ExportEntry) bool {
+	if e.Item == "" {
+		return true
+	}
+	it, err := m.Item(ctx, e.Item)
+	return err == nil && it.State == ItemHeld
+}
+
 // exportJobs are the ids of the jobs a list of an export holds, newest
 // first.
 func (m *Manager) exportJobs(ctx context.Context, id string) []string {
@@ -326,6 +330,9 @@ func (m *Manager) Entry(ctx context.Context, node string, job int32) (*ExportEnt
 		return nil, mapErr(err)
 	}
 	e := ExportEntry(rec.Data)
+	if !m.kept(ctx, &e) {
+		return nil, fmt.Errorf("%w: job %d is no longer held at %s", ErrNotFound, job, e.Inbox)
+	}
 	return &e, nil
 }
 
@@ -355,7 +362,9 @@ func (m *Manager) Entries(ctx context.Context, n *Node, owners []string, limit i
 			if err != nil {
 				return nil, mapErr(err)
 			}
-			out = append(out, ExportEntry(rec.Data))
+			if e := ExportEntry(rec.Data); m.kept(ctx, &e) {
+				out = append(out, e)
+			}
 		}
 	}
 	slices.SortFunc(out, func(a, b ExportEntry) int { return int(b.Job - a.Job) })
@@ -369,7 +378,7 @@ func (m *Manager) Entries(ctx context.Context, n *Node, owners []string, limit i
 }
 
 // dropExport forgets an export's entries and lists (the export is
-// deleted); the archive keeps the documents.
+// deleted); the archives and the inboxes keep the documents.
 func (m *Manager) dropExport(ctx context.Context, name string) error {
 	entries, err := list[exportEntryRecord](ctx, m.st.db)
 	if err != nil {
@@ -413,9 +422,9 @@ func isHex(s string) bool {
 
 // The export's endpoints: GET /out/<name> lists the entries the viewer
 // may see (?owner= one owner's, ?limit=), GET /out/<name>/<job> is one
-// entry, …/record the archive's record of it, and …/document the
-// document itself, read from the archive. What the viewer may not see is
-// not found.
+// entry, …/record the archive's record of it (of an inbox's, the job as
+// it is), and …/document the document itself, read from where it is
+// kept. What the viewer may not see is not found.
 
 // exportViewer finds who reads an export, and what they may read of it:
 // every entry (an administrator, an auditor, an app the export lists with
@@ -589,17 +598,22 @@ func (m *Manager) archiveOf(ctx context.Context, e *ExportEntry) (*Node, error) 
 	return a, nil
 }
 
-// exportObject streams an object of the archive that wrote an entry.
+// exportObject streams an object of the archive that wrote an entry, or
+// of an inbox's the job's payload it holds.
 func (h *handler) exportObject(w http.ResponseWriter, r *http.Request, e *ExportEntry, object, contentType, disposition string) {
-	a, err := h.m.archiveOf(r.Context(), e)
-	if err != nil {
-		h.writeErr(w, err)
-		return
-	}
-	st, err := h.m.st.archive(r.Context(), a.Store, a.collection())
-	if err != nil {
-		h.writeErr(w, err)
-		return
+	st := h.m.st.docs
+	if e.Inbox != "" {
+		object = e.Payload
+	} else {
+		a, err := h.m.archiveOf(r.Context(), e)
+		if err != nil {
+			h.writeErr(w, err)
+			return
+		}
+		if st, err = h.m.st.archive(r.Context(), a.Store, a.collection()); err != nil {
+			h.writeErr(w, err)
+			return
+		}
 	}
 	rd, err := st.Open(r.Context(), object)
 	if err != nil {
@@ -619,10 +633,21 @@ func (h *handler) exportObject(w http.ResponseWriter, r *http.Request, e *Export
 }
 
 // exportRecord is …/record: the archive's record of the job, as it
-// wrote it (ArchiveRecord: its metadata, payloads and legs then).
+// wrote it (ArchiveRecord: its metadata, payloads and legs then); of an
+// inbox's entry, the job as it is now, which nothing wrote down.
 func (h *handler) exportRecord(w http.ResponseWriter, r *http.Request) {
 	_, _, e, ok := h.exportEntry(w, r)
 	if !ok {
+		return
+	}
+	if e.Inbox != "" {
+		j, err := h.m.JobOfNumber(r.Context(), e.Job)
+		if err != nil {
+			h.writeErr(w, err)
+			return
+		}
+		w.Header().Set("Cache-Control", "private, no-store")
+		writeJSON(w, http.StatusOK, j)
 		return
 	}
 	h.exportObject(w, r, e, e.Key+".json", "application/json; charset=utf-8", "")
